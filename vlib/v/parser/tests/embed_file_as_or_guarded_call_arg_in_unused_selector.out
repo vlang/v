@@ -1,0 +1,6 @@
+vlib/v/parser/tests/embed_file_as_or_guarded_call_arg_in_unused_selector.vv:9:63: error: expression evaluated but not used
+    7 | fn main() {
+    8 |     fallback := $embed_file(@FILE)
+    9 |     (maybe_file($embed_file(@FILE).to_string()) or { fallback }).path
+      |                                                                  ~~~~
+   10 | }

@@ -93,7 +93,7 @@ fn gen_api_for_module_in_os(mod_name string, os_name string) string {
 		eprintln('Checking module: ${mod_name:-30} for OS: ${os_name:-10} ...')
 	}
 	vexe := os.real_path(os.getenv_opt('VEXE') or { @VEXE })
-	result := os.execute('${os.quoted_path(vexe)} doc -f json -o - -os ${os_name} ${os.quoted_path(mod_name)}')
+	result := os.exec([vexe, 'doc', '-f', 'json', '-o', '-', '-os', '${os_name}', '${mod_name}'])
 	if result.exit_code != 0 {
 		panic('failed to document `${mod_name}` for `${os_name}`:\n${result.output}')
 	}

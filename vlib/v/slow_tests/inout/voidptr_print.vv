@@ -1,0 +1,30 @@
+struct PointerHolder {
+	value voidptr
+}
+
+fn pointer_value() voidptr {
+	return voidptr(u64(42))
+}
+
+fn print_pointer[T](p T) {
+	println(p)
+}
+
+fn main() {
+	p := voidptr(u64(42))
+	println(p)
+	println('${p}')
+	println(p.str())
+	print(p)
+	println('')
+	eprint(p)
+	eprintln('')
+	eprintln(p)
+	println(voidptr(u64(0)))
+	println(pointer_value())
+	holder := PointerHolder{ value: p }
+	println(holder.value)
+	values := [p]
+	println(values[0])
+	print_pointer(p)
+}

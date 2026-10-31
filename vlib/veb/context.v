@@ -58,6 +58,28 @@ mut:
 	// already_compressed indicates that the response body is already compressed (zstd/gzip)
 	// and the compression middlewares should skip it
 	already_compressed bool
+	// throttle_leases are the handler slots throttle middleware took for this
+	// request. `handle_route` frees them however the request ends: 404s and
+	// requests a middleware refuses skip the after-middleware, so an
+	// after-middleware could not free them reliably.
+	throttle_leases []ThrottleLease
+	// Deferred response state, armed by `Context.after`: `deferred_cb` runs no
+	// sooner than `deferred_ms` milliseconds after the handler returns, with
+	// `deferred_arg`. `handle_request_and_route` spawns the timer thread once
+	// the handled context is preserved on the heap.
+	deferred     bool
+	deferred_ms  int
+	deferred_arg u64
+	deferred_cb  AfterCallback = unsafe { nil }
+	// trusted_proxies are the socket peer addresses whose forwarding headers
+	// `ip()` may believe. The framework copies this from a `trusted_proxies`
+	// field on the app struct into every request context; an app that does not
+	// declare one gets the empty list, so `ip()` answers the socket peer.
+	trusted_proxies []string
+	// access_log_start_ns is the monotonic clock reading (`time.sys_mono_now()`)
+	// the access-log middleware stamped when the request arrived, so its finish
+	// half can log the latency. Zero means unstamped.
+	access_log_start_ns i64
 pub:
 	// TODO: move this to `handle_request`
 	// time.ticks() from start of veb connection handle.
@@ -79,8 +101,11 @@ pub mut:
 	files map[string][]http.FileData
 	res   http.Response
 	// use form_error to pass errors from the context to your frontend
-	form_error                  string
-	livereload_poll_interval_ms int = 250
+	form_error string
+	// livereload_poll_interval_ms is not used: veb serves the livereload script
+	// before any user code runs, so it could never be set. With
+	// `-d veb_livereload_polling`, use `-d veb_livereload_poll_ms=<ms>` instead.
+	livereload_poll_interval_ms int = 250 @[deprecated: 'use `-d veb_livereload_poll_ms=<ms>`']
 }
 
 fn clone_response_writer_header(header http.Header) http.Header {
@@ -147,7 +172,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	$if veb_livereload ? {
 		if mimetype == 'text/html' {
 			ctx.res.body = response.replace('</html>',
-				'<script src="/veb_livereload/${veb_livereload_server_start}/script.js"></script>\n</html>')
+				livereload_script_tag(ctx.req.method.str()) + '\n</html>')
 		} else {
 			ctx.res.body = response.clone()
 		}
@@ -162,7 +187,7 @@ pub fn (mut ctx Context) send_response_to_client(mimetype string, response strin
 	if custom_mimetype != '' {
 		ctx.res.header.set(.content_type, custom_mimetype)
 	}
-	if !ctx.res.header.contains(.content_length) {
+	if !ctx.res.header.contains(.content_length) && ctx.res.status_code != int(http.Status.not_modified) {
 		ctx.res.header.set(.content_length, ctx.res.body.len.str())
 	}
 	// send veb's closing headers
@@ -243,8 +268,24 @@ pub fn (mut ctx Context) file(file_path string) Result {
 		}
 	}
 	if content_type.len == 0 {
-		eprintln('[veb] no MIME type found for extension "${ext}"')
-		return ctx.server_error('')
+		// Unknown extension: sniff the content instead of failing, so
+		// extension-less downloads and captures still serve. Known types
+		// always win; sniffed output is never relabelled afterwards.
+		mut f := os.open(file_path) or {
+			eprintln('[veb] error while trying to open file: ${err.msg()}')
+			return ctx.server_error('could not open resource')
+		}
+		defer {
+			f.close()
+		}
+		// Include up to three continuation bytes for a UTF-8 sequence crossing byte 512.
+		mut head := []u8{len: 515}
+		n := f.read(mut head) or { 0 }
+		content_type = if n > 0 {
+			http.detect_content_type(head[..n])
+		} else {
+			'text/plain; charset=utf-8'
+		}
 	}
 	return ctx.send_file(content_type, file_path)
 }
@@ -266,9 +307,9 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 	}
 	file.close()
 	// Check which encodings the client accepts
-	accept_encoding := ctx.req.header.get(.accept_encoding) or { '' }
-	client_accepts_zstd := accept_encoding.contains('zstd')
-	client_accepts_gzip := accept_encoding.contains('gzip')
+	accept_encoding := ctx.req.header.values(.accept_encoding).join(',')
+	client_accepts_zstd := client_accepts_encoding(accept_encoding, 'zstd')
+	client_accepts_gzip := client_accepts_encoding(accept_encoding, 'gzip')
 	max_size_bytes := ctx.static_compression_max_size
 	should_use_static_compression := ctx.should_use_static_compression_for_mime(content_type)
 	// Determine which compression modes are enabled
@@ -308,11 +349,29 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 					return result
 				}
 			}
-			// Compression failed: serve uncompressed in streaming mode
-			ctx.return_type = .file
-			ctx.return_file = file_path
-			ctx.res.header.set(.content_length, file_size.str())
-			return ctx.send_response_to_client(content_type, '')
+			// Compression failed: continue with the identity representation below.
+		}
+	}
+	// Identity validators never apply to the encoded representations above.
+	ctx.vary_static_encoding()
+	mtime := os.file_last_mod_unix(file_path)
+	etag := static_file_etag(file_path) or { return ctx.server_error('could not read resource') }
+	last_modified := time.unix(mtime).http_header_string()
+	// A validator the client already has skips the whole transfer (RFC 7232).
+	// If-None-Match takes precedence over If-Modified-Since.
+	if_none_match_values := ctx.req.header.values(.if_none_match)
+	is_retrieval := ctx.req.method in [.get, .head]
+	if if_none_match_values.len > 0 {
+		if etag_matches(if_none_match_values.join(','), etag) {
+			if is_retrieval {
+				return ctx.send_not_modified(etag, last_modified)
+			}
+			ctx.res.set_status(.precondition_failed)
+			return ctx.send_response_to_client('text/plain', '')
+		}
+	} else if if_modified_since := ctx.req.header.get(.if_modified_since) {
+		if is_retrieval && static_not_modified_since(if_modified_since, mtime) {
+			return ctx.send_not_modified(etag, last_modified)
 		}
 	}
 	// Takeover mode: load file in memory (backward compatibility)
@@ -321,12 +380,34 @@ fn (mut ctx Context) send_file(content_type string, file_path string) Result {
 			eprintln('[veb] error while trying to read file: ${err.msg()}')
 			return ctx.server_error('could not read resource')
 		}
+		// A satisfiable single range is served as 206 straight from the
+		// identity bytes, skipping the compression machinery below.
+		if range_header := ctx.req.header.get(.range) {
+			if ctx.req.method == .get
+				&& if_range_holds(ctx.req.header.get(.if_range) or { '' }, etag, mtime) {
+				if rng := parse_range_header(range_header, i64(data.len)) {
+					if rng.start >= i64(data.len) {
+						return ctx.send_range_not_satisfiable(i64(data.len))
+					}
+					return ctx.send_file_range(content_type, file_path, rng, etag,
+						last_modified)
+				}
+			}
+		}
+		ctx.res.header.set(.etag, etag)
+		ctx.res.header.set(.last_modified, last_modified)
+		ctx.res.header.set(.accept_ranges, 'bytes')
 		return ctx.send_response_to_client(content_type, data)
 	}
-	// Default: serve uncompressed file in streaming mode (zero-copy sendfile)
+	// Default: serve uncompressed file in streaming mode (zero-copy sendfile).
+	// Range requests fall through to the full 200 body here: the streaming
+	// transports have no offset support yet, and a full response is always legal.
 	ctx.return_type = .file
 	ctx.return_file = file_path
 	ctx.res.header.set(.content_length, file_size.str())
+	ctx.res.header.set(.etag, etag)
+	ctx.res.header.set(.last_modified, last_modified)
+	ctx.res.header.set(.accept_ranges, 'bytes')
 	return ctx.send_response_to_client(content_type, '')
 }
 
@@ -379,6 +460,9 @@ fn (mut ctx Context) serve_compressed_path_if_fresh(content_type string, compres
 	if compressed_mtime < orig_mtime {
 		return false
 	}
+	if _ := ctx.encoded_if_none_match_star() {
+		return true
+	}
 	// Serve existing compressed file in streaming mode (zero-copy)
 	ctx.return_type = .file
 	ctx.return_file = compressed_path
@@ -418,6 +502,9 @@ fn (mut ctx Context) serve_compressed_static(content_type string, file_path stri
 			c := gzip.compress(data.bytes()) or { return none }
 			c, '.gz', 'gzip'
 		}
+	}
+	if result := ctx.encoded_if_none_match_star() {
+		return result
 	}
 
 	compressed_path := static_compression_cache_path(file_path, ext)
@@ -469,6 +556,20 @@ pub fn (mut ctx Context) server_error(msg string) Result {
 	return ctx.send_response_to_client('text/plain', msg)
 }
 
+// error_with answers a handler that declined to respond and returned an error
+// instead, which is what a `!veb.Result` handler does. The response is a JSON
+// envelope carrying the message. When the handler already chose a status with
+// `ctx.res.set_status`, it is kept, so such handlers still control 4xx
+// themselves; otherwise this is a 500.
+pub fn (mut ctx Context) error_with(err IError) Result {
+	if ctx.res.status_code == 0 {
+		ctx.res.set_status(.internal_server_error)
+	}
+	return ctx.json({
+		'error': err.msg()
+	})
+}
+
 // send an error with a custom status
 pub fn (mut ctx Context) server_error_with_status(s http.Status) Result {
 	ctx.res.set_status(s)
@@ -509,6 +610,18 @@ pub fn (mut ctx Context) before_request() {
 pub fn (mut ctx Context) not_found() Result {
 	ctx.res.set_status(.not_found)
 	return ctx.send_response_to_client('text/plain', '404 Not Found')
+}
+
+// method_not_allowed returns a HTTP 405 response, listing the methods the
+// matched route does accept in the `Allow` header.
+pub fn (mut ctx Context) method_not_allowed(allowed []http.Method) Result {
+	ctx.res.set_status(.method_not_allowed)
+	if allowed.len > 0 {
+		// The key is a literal and the values come from the Method enum, so a
+		// header-write failure here is not reachable, but the API is a Result.
+		ctx.res.header.add_custom('Allow', allowed.map(it.str()).join(',')) or {}
+	}
+	return ctx.send_response_to_client('text/plain', '405 Method Not Allowed')
 }
 
 // Gets a cookie by a key
@@ -607,28 +720,74 @@ fn peer_ip_from_socket_handle(handle int) string {
 	return address.all_before(':')
 }
 
-// Returns the ip address from the current user
+fn normalized_client_ip(address string) !string {
+	if address.contains(':') {
+		return net.canonical_ipv6(address)
+	}
+	return net.format_ip(net.parse_ip(address)!)
+}
+
+fn is_trusted_proxy(address string, trusted_proxies []string) bool {
+	ip := normalized_client_ip(address) or { return false }
+	for proxy in trusted_proxies {
+		trusted_ip := normalized_client_ip(proxy) or { continue }
+		if ip == trusted_ip {
+			return true
+		}
+	}
+	return false
+}
+
+// resolved_client_ip walks from the trusted socket peer toward the client,
+// stopping at the nearest untrusted address. An earlier prefix is unverified.
+// An invalid entry stops the walk at the last trusted hop; if every entry is
+// trusted, the left-most entry is the client address.
+fn resolved_client_ip(peer string, forwarded_for string, trusted_proxies []string) string {
+	if !is_trusted_proxy(peer, trusted_proxies) {
+		return peer
+	}
+	mut client := peer
+	entries := forwarded_for.split(',')
+	for i := entries.len - 1; i >= 0; i-- {
+		client = normalized_client_ip(entries[i].trim_space()) or { return client }
+		if !is_trusted_proxy(client, trusted_proxies) {
+			return client
+		}
+	}
+	return client
+}
+
+// ip returns the client's IP address, defaulting to the socket peer.
+// Forwarding headers are honoured only when the peer is in the app's
+// `trusted_proxies []string` field. X-Forwarded-For is walked right to left
+// until the nearest untrusted address. Only when it is absent are
+// CF-Connecting-IP and then X-Real-Ip used; trusted proxies must overwrite
+// or remove these single-address headers received from untrusted clients.
 pub fn (ctx &Context) ip() string {
-	mut ip := ctx.req.header.get_custom('CF-Connecting-IP') or { '' }
-	if ip == '' {
-		ip = ctx.req.header.get(.x_forwarded_for) or { '' }
+	mut peer := ''
+	if ctx.conn != unsafe { nil } {
+		peer = ctx.conn.peer_ip() or { '' }
 	}
-	if ip == '' {
-		ip = ctx.req.header.get_custom('X-Forwarded-For') or { '' }
+	if peer == '' && ctx.client_fd >= 0 {
+		peer = peer_ip_from_socket_handle(ctx.client_fd)
 	}
-	if ip == '' {
-		ip = ctx.req.header.get_custom('X-Real-Ip') or { '' }
+	if is_trusted_proxy(peer, ctx.trusted_proxies) {
+		xff := ctx.req.header.values(.x_forwarded_for)
+		if xff.len > 0 {
+			return resolved_client_ip(peer, xff.join(','), ctx.trusted_proxies)
+		}
+		if cf := ctx.req.header.get_custom('CF-Connecting-IP') {
+			if cf.trim_space() != '' {
+				return normalized_client_ip(cf.trim_space()) or { peer }
+			}
+		}
+		if real_ip := ctx.req.header.get_custom('X-Real-Ip') {
+			if real_ip.trim_space() != '' {
+				return normalized_client_ip(real_ip.trim_space()) or { peer }
+			}
+		}
 	}
-	if ip.contains(',') {
-		ip = ip.all_before(',')
-	}
-	if ip == '' && ctx.conn != unsafe { nil } {
-		ip = ctx.conn.peer_ip() or { '' }
-	}
-	if ip == '' && ctx.client_fd >= 0 {
-		ip = peer_ip_from_socket_handle(ctx.client_fd)
-	}
-	return ip
+	return peer
 }
 
 // time_to_render returns the time in milliseconds that it took to render the page

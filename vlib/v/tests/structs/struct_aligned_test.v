@@ -11,3 +11,18 @@ fn test_struct_aligned() {
 	ptr := u64(voidptr(&y))
 	assert ptr % 512 == 0
 }
+
+fn aligned_struct_value() MyStruct {
+	return MyStruct{ a: 42 }
+}
+
+fn aligned_struct_pointer() &MyStruct {
+	value := aligned_struct_value()
+	return &value
+}
+
+fn test_promoted_struct_preserves_alignment() {
+	value := aligned_struct_pointer()
+	assert value.a == 42
+	assert uint(voidptr(value)) % 512 == 0
+}

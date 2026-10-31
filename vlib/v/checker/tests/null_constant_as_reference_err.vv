@@ -1,0 +1,59 @@
+struct Node {
+	x int
+}
+
+struct Holder {
+mut:
+	a &Node = voidptr(0)
+	b &Node = nil
+	c &Node = 0
+	d &Node = unsafe { nil }
+}
+
+fn return_voidptr() &Node {
+	return voidptr(0)
+}
+
+fn return_nil() &Node {
+	return nil
+}
+
+fn return_zero() &Node {
+	return 0
+}
+
+fn return_in_parentheses() &Node {
+	return (voidptr(0))
+}
+
+fn return_result() !&Node {
+	return voidptr(0)
+}
+
+fn return_multiple() (&Node, int) {
+	return voidptr(0), 1
+}
+
+fn return_raw_pointer() &u8 {
+	return voidptr(0)
+}
+
+fn take(n &Node) int {
+	return n.x
+}
+
+fn main() {
+	mut p := &Node{}
+	p = voidptr(0)
+	p = nil
+	p = 0
+	println(take(voidptr(0)))
+	println(take(nil))
+	println(take((0)))
+	mut h := Holder{
+		a: voidptr(0)
+		b: nil
+	}
+	h.d = voidptr(0)
+	println(p.x + h.a.x)
+}

@@ -1,0 +1,42 @@
+vlib/v/checker/tests/enum_c_symbolic_call_err.vv:9:11: error: enum function calls must be known at compile time
+    7 |
+    8 | enum SymbolicCall {
+    9 |     direct = enum_offset(C.SEEK_CUR)
+      |              ~~~~~~~~~~~~~~~~~~~~~~~
+   10 |     nested = int(enum_offset(enum_offset(C.SEEK_CUR))) + 2
+   11 |     prefix = -enum_offset(C.SEEK_CUR)
+vlib/v/checker/tests/enum_c_symbolic_call_err.vv:10:15: error: enum function calls must be known at compile time
+    8 | enum SymbolicCall {
+    9 |     direct = enum_offset(C.SEEK_CUR)
+   10 |     nested = int(enum_offset(enum_offset(C.SEEK_CUR))) + 2
+      |                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   11 |     prefix = -enum_offset(C.SEEK_CUR)
+   12 |     conditional = if C.SEEK_CUR > 0 { enum_offset(C.SEEK_CUR) } else { 6 }
+vlib/v/checker/tests/enum_c_symbolic_call_err.vv:11:12: error: enum function calls must be known at compile time
+    9 |     direct = enum_offset(C.SEEK_CUR)
+   10 |     nested = int(enum_offset(enum_offset(C.SEEK_CUR))) + 2
+   11 |     prefix = -enum_offset(C.SEEK_CUR)
+      |               ~~~~~~~~~~~~~~~~~~~~~~~
+   12 |     conditional = if C.SEEK_CUR > 0 { enum_offset(C.SEEK_CUR) } else { 6 }
+   13 |     condition = if enum_offset(C.SEEK_CUR) > 0 { 7 } else { 8 }
+vlib/v/checker/tests/enum_c_symbolic_call_err.vv:12:36: error: enum function calls must be known at compile time
+   10 |     nested = int(enum_offset(enum_offset(C.SEEK_CUR))) + 2
+   11 |     prefix = -enum_offset(C.SEEK_CUR)
+   12 |     conditional = if C.SEEK_CUR > 0 { enum_offset(C.SEEK_CUR) } else { 6 }
+      |                                       ~~~~~~~~~~~~~~~~~~~~~~~
+   13 |     condition = if enum_offset(C.SEEK_CUR) > 0 { 7 } else { 8 }
+   14 | }
+vlib/v/checker/tests/enum_c_symbolic_call_err.vv:13:17: error: enum function calls must be known at compile time
+   11 |     prefix = -enum_offset(C.SEEK_CUR)
+   12 |     conditional = if C.SEEK_CUR > 0 { enum_offset(C.SEEK_CUR) } else { 6 }
+   13 |     condition = if enum_offset(C.SEEK_CUR) > 0 { 7 } else { 8 }
+      |                    ~~~~~~~~~~~~~~~~~~~~~~~
+   14 | }
+   15 |
+vlib/v/checker/tests/enum_c_symbolic_call_err.vv:17:10: error: enum function calls must be known at compile time
+   15 |
+   16 | enum SymbolicCallCopy {
+   17 |     value = enum_offset(int(SymbolicCallMiddle.value))
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   18 | }
+   19 |

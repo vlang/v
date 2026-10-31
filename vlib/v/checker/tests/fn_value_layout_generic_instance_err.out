@@ -1,0 +1,7 @@
+vlib/v/checker/tests/fn_value_layout_generic_instance_err.vv:16:7: error: cannot use `fn () ?[2]int` as `fn () ?[]int` in argument 1 to `call`
+   14 | 
+   15 | fn call_through[T](f fn () ?T) {
+   16 |     call(f)
+      |          ^
+   17 | }
+   18 |

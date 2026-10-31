@@ -4,7 +4,6 @@ import math
 import rand
 import sokol.audio
 import os.asset
-import sokol.sgl
 
 const designed_width = 600
 const designed_height = 800
@@ -126,8 +125,8 @@ fn (mut g Game) init_bricks() {
 fn (mut g Game) draw() {
 	ws := gg.window_size()
 	g.ctx.begin()
-	sgl.push_matrix()
-	sgl.scale(f32(ws.width) / f32(designed_width), f32(ws.height) / f32(designed_height), 0)
+	g.ctx.r.push_matrix()
+	g.ctx.r.scale(f32(ws.width) / f32(designed_width), f32(ws.height) / f32(designed_height), 0)
 
 	g.draw_paddle()
 	g.draw_ball()
@@ -141,7 +140,7 @@ fn (mut g Game) draw() {
 	g.ctx.draw_text(5, 3, label1, size: 24, color: gg.rgb(255, 255, 255))
 	g.ctx.draw_text(320, 3, label2, size: 24, color: gg.rgb(255, 255, 255))
 
-	sgl.pop_matrix()
+	g.ctx.r.pop_matrix()
 	g.ctx.end()
 }
 

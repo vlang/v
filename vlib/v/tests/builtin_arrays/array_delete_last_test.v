@@ -1,6 +1,6 @@
 struct ArrayList[T] {
 mut:
-	size  usize
+	size  uint
 	items []&T
 }
 

@@ -864,7 +864,7 @@ const test_quantifier_sequences_list = [
 
 fn test_quantifier_sequences() {
 	for pattern in test_quantifier_sequences_list {
-		re, re_err, err_pos := regex.regex_base(pattern)
+		_, re_err, _ := regex.regex_base(pattern)
 		if re_err != regex.err_syntax_error {
 			eprintln('pattern: ${pattern} => ${re_err}')
 		}
@@ -1006,7 +1006,7 @@ fn test_negation_groups() {
 	mut query := r'(?!auto)\w+le'
 	mut re := regex.regex_opt(query) or { panic(err) }
 	for test in negation_groups {
-		start, end := re.match_string(test.src)
+		start, _ := re.match_string(test.src)
 		assert (start >= 0) == test.res
 	}
 }

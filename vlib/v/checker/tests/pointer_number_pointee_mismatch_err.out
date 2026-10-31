@@ -1,0 +1,105 @@
+vlib/v/checker/tests/pointer_number_pointee_mismatch_err.vv:39:9: error: cannot use `&u8` as type `&u64` in return argument
+   37 | 
+   38 | fn as_u64(p &u8) &u64 {
+   39 |     return p
+      |            ^
+   40 | }
+   41 |
+vlib/v/checker/tests/pointer_number_pointee_mismatch_err.vv:43:9: error: cannot use `&u8` as type `?&u64` in return argument
+   41 | 
+   42 | fn as_optional_u64(p &u8) ?&u64 {
+   43 |     return p
+      |            ^
+   44 | }
+   45 |
+vlib/v/checker/tests/pointer_number_pointee_mismatch_err.vv:51:19: error: cannot use `&u8` as `&u64` in argument 1 to `take_u64`
+   49 |     number := 5
+   50 |     long := i64(5)
+   51 |     println(take_u64(&small))
+      |                      ~~~~~~
+   52 |     println(take_u64(small))
+   53 |     println(take_f64(&wide))
+vlib/v/checker/tests/pointer_number_pointee_mismatch_err.vv:52:19: error: cannot use `u8` as `&u64` in argument 1 to `take_u64`
+   50 |     long := i64(5)
+   51 |     println(take_u64(&small))
+   52 |     println(take_u64(small))
+      |                      ~~~~~
+   53 |     println(take_f64(&wide))
+   54 |     println(take_u8(&wide))
+vlib/v/checker/tests/pointer_number_pointee_mismatch_err.vv:53:19: error: cannot use `&u64` as `&f64` in argument 1 to `take_f64`
+   51 |     println(take_u64(&small))
+   52 |     println(take_u64(small))
+   53 |     println(take_f64(&wide))
+      |                      ~~~~~
+   54 |     println(take_u8(&wide))
+   55 |     println(take_int(&long))
+vlib/v/checker/tests/pointer_number_pointee_mismatch_err.vv:54:18: error: cannot use `&u64` as `&u8` in argument 1 to `take_u8`
+   52 |     println(take_u64(small))
+   53 |     println(take_f64(&wide))
+   54 |     println(take_u8(&wide))
+      |                     ~~~~~
+   55 |     println(take_int(&long))
+   56 |     println(take_i64(&number))
+vlib/v/checker/tests/pointer_number_pointee_mismatch_err.vv:55:19: error: cannot use `&i64` as `&int` in argument 1 to `take_int`
+   53 |     println(take_f64(&wide))
+   54 |     println(take_u8(&wide))
+   55 |     println(take_int(&long))
+      |                      ~~~~~
+   56 |     println(take_i64(&number))
+   57 |     small_ref := &small
+vlib/v/checker/tests/pointer_number_pointee_mismatch_err.vv:56:19: error: cannot use `&int` as `&i64` in argument 1 to `take_i64`
+   54 |     println(take_u8(&wide))
+   55 |     println(take_int(&long))
+   56 |     println(take_i64(&number))
+      |                      ~~~~~~~
+   57 |     small_ref := &small
+   58 |     println(take_u64_ref(&small_ref))
+vlib/v/checker/tests/pointer_number_pointee_mismatch_err.vv:58:23: error: cannot use `&&u8` as `&&u64` in argument 1 to `take_u64_ref`
+   56 |     println(take_i64(&number))
+   57 |     small_ref := &small
+   58 |     println(take_u64_ref(&small_ref))
+      |                          ~~~~~~~~~~
+   59 |     println(Reader{}.read(&small))
+   60 |     mut q := &wide
+vlib/v/checker/tests/pointer_number_pointee_mismatch_err.vv:59:24: error: cannot use `&u8` as `&u64` in argument 1 to `Reader.read`
+   57 |     small_ref := &small
+   58 |     println(take_u64_ref(&small_ref))
+   59 |     println(Reader{}.read(&small))
+      |                           ~~~~~~
+   60 |     mut q := &wide
+   61 |     q = &small
+vlib/v/checker/tests/pointer_number_pointee_mismatch_err.vv:61:6: error: cannot assign to `q`: expected `&u64`, not `&u8`
+   59 |     println(Reader{}.read(&small))
+   60 |     mut q := &wide
+   61 |     q = &small
+      |         ~~~~~~
+   62 |     h := Holder{
+   63 |         p: &small
+vlib/v/checker/tests/pointer_number_pointee_mismatch_err.vv:63:3: error: cannot assign to field `p`: expected `&u64`, not `&u8`
+   61 |     q = &small
+   62 |     h := Holder{
+   63 |         p: &small
+      |         ~~~~~~~~~
+   64 |     }
+   65 |     mut h2 := Holder{}
+vlib/v/checker/tests/pointer_number_pointee_mismatch_err.vv:66:9: error: cannot assign to `h2.p`: expected `&u64`, not `&u8`
+   64 |     }
+   65 |     mut h2 := Holder{}
+   66 |     h2.p = &small
+      |            ~~~~~~
+   67 |     mut ptrs := []&u64{}
+   68 |     ptrs << &small
+vlib/v/checker/tests/pointer_number_pointee_mismatch_err.vv:68:10: error: cannot append `&u8` to `[]&u64`
+   66 |     h2.p = &small
+   67 |     mut ptrs := []&u64{}
+   68 |     ptrs << &small
+      |             ~~~~~~
+   69 |     by_name := {
+   70 |         'a': &wide
+vlib/v/checker/tests/pointer_number_pointee_mismatch_err.vv:73:11: error: cannot assign to `m['b']`: expected `&u64`, not `&u8`
+   71 |     }
+   72 |     mut m := by_name.clone()
+   73 |     m['b'] = &small
+      |              ~~~~~~
+   74 |     println(*as_u64(&small))
+   75 |     if p := as_optional_u64(&small) {

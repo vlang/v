@@ -10,7 +10,8 @@ fn struct_alias_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_struct_alias_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${struct_alias_vexe} -gc none -path "${struct_alias_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${struct_alias_v3_src}')
+		os.exec([struct_alias_vexe, '-gc', 'none', '-path',
+			'${struct_alias_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${struct_alias_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -165,17 +166,21 @@ fn test_struct_init_uses_local_alias_authority_before_short_name_fallback() {
 	v3_bin := struct_alias_build_v3()
 	root := struct_alias_write_project()
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '65544'
 	generated := os.read_file(bin + '.c') or { panic(err) }
-	assert generated.contains('const struct sgl_context sgl_like__context = (struct sgl_context){'), generated
+	// Static struct constants use plain brace initializers (025a92ef15), so the C type that
+	// the alias resolved to is the one in the declaration.
+	assert generated.contains('const struct sgl_context sgl_like__context = {'), generated
 	assert generated.contains('.id = (u32)(0x00010001)') || generated.contains('.id = 0x00010001'), generated
 
-	assert generated.contains('const sgl_like__LocalBase sgl_like__local_context = (sgl_like__LocalBase){'), generated
+	assert generated.contains('const sgl_like__LocalBase sgl_like__local_context = {'), generated
 
+	assert !generated.contains('main__Context sgl_like__context'), generated
+	assert !generated.contains('gg__Context sgl_like__context'), generated
 	assert !generated.contains('sgl_like__context = (main__Context){'), generated
 	assert !generated.contains('(gg__Context){'), generated
 	assert !generated.contains('.render_text = 0x00010001'), generated

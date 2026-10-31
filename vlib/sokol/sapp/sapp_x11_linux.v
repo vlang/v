@@ -892,7 +892,7 @@ fn x11_init_keytable() {
 		for km in keymap {
 			if unsafe {
 				C.strncmp(&char(&desc.names.keys[scancode].name[0]), &char(&km.name[0]),
-					usize(xkb_key_name_length))
+					uint(xkb_key_name_length))
 			} == 0 {
 				key = km.key
 				break
@@ -903,14 +903,14 @@ fn x11_init_keytable() {
 			for i in 0 .. int(desc.names.num_key_aliases) {
 				if unsafe {
 					C.strncmp(&char(&desc.names.key_aliases[i].real[0]),
-						&char(&desc.names.keys[scancode].name[0]), usize(xkb_key_name_length))
+						&char(&desc.names.keys[scancode].name[0]), uint(xkb_key_name_length))
 				} != 0 {
 					continue
 				}
 				for km in keymap {
 					if unsafe {
 						C.strncmp(&char(&desc.names.key_aliases[i].alias[0]), &char(&km.name[0]),
-							usize(xkb_key_name_length))
+							uint(xkb_key_name_length))
 					} == 0 {
 						key = km.key
 						break
@@ -932,7 +932,7 @@ fn x11_init_keytable() {
 		scancode_min + 1, &syms_per_code)
 	for scancode in scancode_min .. scancode_max + 1 {
 		if g_sapp_state.keycodes[scancode] == .invalid {
-			base := usize((scancode - scancode_min) * syms_per_code)
+			base := uint((scancode - scancode_min) * syms_per_code)
 			g_sapp_state.keycodes[scancode] = x11_translate_keysyms(unsafe { keysyms + base },
 				syms_per_code)
 		}
@@ -1220,7 +1220,7 @@ fn x11_create_hidden_cursor() {
 	}
 	img.xhot = 0
 	img.yhot = 0
-	unsafe { C.memset(img.pixels, 0, usize(16 * 16 * 4)) }
+	unsafe { C.memset(img.pixels, 0, uint(16 * 16 * 4)) }
 	g_sapp_state.x11.hidden_cursor = C.XcursorImageLoadCursor(g_sapp_state.x11.display, img)
 	C.XcursorImageDestroy(img)
 }
@@ -1375,8 +1375,8 @@ fn x11_get_clipboard_string() &char {
 		if data == nil {
 			return nil
 		}
-		item_size := usize(item_count)
-		if item_size >= usize(g_sapp_state.clipboard.buf_size) {
+		item_size := uint(item_count)
+		if item_size >= uint(g_sapp_state.clipboard.buf_size) {
 			C.XFree(data)
 			return nil
 		}
@@ -1532,14 +1532,14 @@ fn x11_keyrelease_repeat(keycode int) {
 
 // === Window property helpers ===
 
-fn x11_get_window_property(window Window, property Atom, req_type Atom, value &&u8) usize {
+fn x11_get_window_property(window Window, property Atom, req_type Atom, value &&u8) uint {
 	mut actual_type := Atom(0)
 	mut actual_format := 0
 	mut item_count := XlibULong(0)
 	mut bytes_after := XlibULong(0)
 	C.XGetWindowProperty(g_sapp_state.x11.display, window, property, 0, 0x7fffffff, x_false,
 		req_type, &actual_type, &actual_format, &item_count, &bytes_after, value)
-	return usize(item_count)
+	return uint(item_count)
 }
 
 fn x11_get_window_state() int {
@@ -1564,7 +1564,7 @@ fn x11_parse_dropped_files_list(src &char) bool {
 		return false
 	}
 	// Clear drop buffer
-	unsafe { C.memset(g_sapp_state.drop.buffer, 0, usize(g_sapp_state.drop.buf_size)) }
+	unsafe { C.memset(g_sapp_state.drop.buffer, 0, uint(g_sapp_state.drop.buf_size)) }
 	g_sapp_state.drop.num_files = 0
 
 	mut err := false
@@ -1573,7 +1573,7 @@ fn x11_parse_dropped_files_list(src &char) bool {
 	dst_end_ptr := unsafe { g_sapp_state.drop.buffer + (g_sapp_state.drop.max_path_length - 1) }
 	mut p := unsafe { src }
 	for {
-		src_chr := unsafe { *p }
+		src_chr := u8(unsafe { *p })
 		if src_chr == 0 {
 			break
 		}
@@ -1612,15 +1612,15 @@ fn x11_parse_dropped_files_list(src &char) bool {
 					digits[0] = u8(*p)
 					digits[1] = u8(*(p + 1))
 					digits[2] = 0
-					p = &char(usize(p) + 2)
+					p = &char(uint(p) + 2)
 					dst_chr = u8(C.strtol(&char(&digits[0]), nil, 16))
 				}
 			}
 		} else {
-			dst_chr = u8(src_chr)
+			dst_chr = src_chr
 		}
 		if dst_chr != 0 {
-			if usize(dst_ptr) < usize(dst_end_ptr) {
+			if uint(dst_ptr) < uint(dst_end_ptr) {
 				unsafe {
 					*dst_ptr = char(dst_chr)
 					dst_ptr++
@@ -1632,7 +1632,7 @@ fn x11_parse_dropped_files_list(src &char) bool {
 		}
 	}
 	if err {
-		unsafe { C.memset(g_sapp_state.drop.buffer, 0, usize(g_sapp_state.drop.buf_size)) }
+		unsafe { C.memset(g_sapp_state.drop.buffer, 0, uint(g_sapp_state.drop.buf_size)) }
 		g_sapp_state.drop.num_files = 0
 		return false
 	}
@@ -1883,7 +1883,7 @@ fn x11_on_clientmessage(event &C.XEvent) {
 			if g_sapp_state.x11.xdnd.version > x11_xdnd_version {
 				return
 			}
-			mut count := usize(0)
+			mut count := uint(0)
 			mut formats := &Atom(nil)
 			if is_list {
 				count = x11_get_window_property(g_sapp_state.x11.xdnd.source,

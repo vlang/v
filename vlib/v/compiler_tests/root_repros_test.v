@@ -21,7 +21,7 @@ fn test_root_has_no_temporary_v_programs_and_repros_compile() {
 	assert build.exit_code == 0, build.output
 
 	for name in ['inner_loop_pointer', 'embedded_child'] {
-		source := os.join_path(root_repros_v3_dir, 'tests', 'repros', name, 'main.v')
+		source := os.join_path(os.dir(@FILE), 'repros', name, 'main.v')
 		output := os.join_path(root, name)
 		compile := cmdexec.run(v3_bin, [source, '-o', output])
 		assert compile.exit_code == 0, compile.output

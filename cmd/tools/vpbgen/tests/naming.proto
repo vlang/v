@@ -1,0 +1,44 @@
+// Spellings a schema is free to use that V does not accept as they are, and
+// shapes whose generated code did not compile: an UPPER_SNAKE enum with an
+// alias, a camelCase field, a keyword field, a block comment over several
+// lines, two messages with a map field of the same name, a packed enum list,
+// maps whose values are messages, enums, and bytes, a fully qualified type
+// name, and an open-ended reserved range.
+
+syntax = "proto3";
+
+package naming;
+
+/**
+ * Color is spelled the way most published schemas spell an enum.
+ *
+ * Its values are UPPER_SNAKE, and two of them are aliases.
+ */
+enum Color {
+  option allow_alias = true;
+  COLOR_UNSPECIFIED = 0;
+  COLOR_RED = 1;
+  COLOR_CRIMSON = 1;
+  TYPE = 2;
+}
+
+message Item {
+  int32 x = 1;
+}
+
+/* Labels is the first message with a `labels` map. */
+message Labels {
+  map<string, string> labels = 1;
+}
+
+message Pod {
+  map<string, string> labels = 1;
+  string userName = 2;
+  int32 type = 3;
+  repeated Color colors = 4;
+  map<string, Item> items = 5;
+  map<string, Color> shades = 6;
+  map<int32, bytes> blobs = 7;
+  .naming.Item leading_dot = 8;
+  reserved 40 to max;
+}

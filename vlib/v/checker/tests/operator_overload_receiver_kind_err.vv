@@ -1,0 +1,40 @@
+enum Color {
+	red = 1
+	green
+	blue
+}
+
+fn (a Color) + (b Color) Color {
+	return .blue
+}
+
+fn (a Color) ** (b Color) Color {
+	return .blue
+}
+
+// A sum type can overload `==`.
+type Num = f64 | int
+
+fn (a Num) == (b Num) bool {
+	return a.type_name() == b.type_name()
+}
+
+interface Shape {
+	area() f64
+}
+
+fn (a Shape) < (b Shape) bool {
+	return a.area() < b.area()
+}
+
+// An alias of an enum can overload operators.
+type Hue = Color
+
+fn (a Hue) + (b Hue) Hue {
+	return Hue(Color.blue)
+}
+
+fn main() {
+	println(Color.red + Color.red)
+	println(Hue(Color.red) + Hue(Color.red))
+}

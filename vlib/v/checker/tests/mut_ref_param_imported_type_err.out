@@ -1,0 +1,14 @@
+vlib/v/checker/tests/mut_ref_param_imported_type_err.vv:10:16: error: method `index` parameter `t` is `mut t &time.Time`, a mutable reference to a `&time.Time`: pass `mut` of a `&time.Time` variable (e.g. `mut p := &user_t`, then `mut p`), or declare it `mut t time.Time`
+    8 |
+    9 | fn call(app App, mut user_t time.Time) {
+   10 |     app.index(mut user_t)
+      |                   ~~~~~~
+   11 | }
+   12 |
+vlib/v/checker/tests/mut_ref_param_imported_type_err.vv:16:20: error: method `index` parameter `t` is `mut t &time.Time`, a mutable reference to a `&time.Time`: pass `mut` of a `&time.Time` variable (e.g. `mut p := &user_t`, then `mut p`), or declare it `mut t time.Time`
+   14 |     $for method in App.methods {
+   15 |         if method.name == 'index' {
+   16 |             app.$method(mut user_t)
+      |                             ~~~~~~
+   17 |         }
+   18 |     }

@@ -44,7 +44,7 @@ fn veb_generic_context_compile(root string) string {
 	program := os.join_path(root, 'app' + $if windows { '.exe' } $else { '' })
 	source := os.join_path(root, 'main.v')
 	// An automatic retry with the compatibility compiler would hide this regression.
-	result := os.execute('${os.quoted_path(@VEXE)} -new-compiler -nocache -o ${os.quoted_path(program)} ${os.quoted_path(source)}')
+	result := os.exec([@VEXE, '-new-compiler', '-nocache', '-o', '${program}', source])
 	assert result.exit_code == 0, result.output
 	assert os.is_file(program), result.output
 	return program
@@ -90,7 +90,7 @@ fn test_veb_generic_user_context_method_preserves_response() {
 		os.rmdir_all(root) or {}
 	}
 	program := veb_generic_context_compile(root)
-	result := os.execute(os.quoted_path(program))
+	result := os.exec([program])
 	assert result.exit_code == 0, result.output
 	assert result.output.trim_space() == 'ok', result.output
 }

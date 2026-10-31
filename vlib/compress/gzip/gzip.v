@@ -84,12 +84,12 @@ pub fn validate(data []u8, _ DecompressParams) !deflate.GzipHeader {
 	return deflate.validate_gzip_header(data)!
 }
 
-// decompress decompresses a gzip stream and returns the decompressed bytes in a new array.
+// decompress decompresses all gzip members and returns their concatenated bytes in a new array.
 pub fn decompress(data []u8) ![]u8 {
 	return deflate.decompress_gzip(data)
 }
 
-// decompress_with_callback decompresses a gzip stream (RFC 1952) using a callback for chunked delivery.
+// decompress_with_callback decompresses all gzip members (RFC 1952) with chunked callback delivery.
 // The callback receives chunks of decompressed data and should return the chunk length to continue, or 0 to abort.
 // Returns the total decompressed length.
 pub fn decompress_with_callback(data []u8, cb deflate.ChunkCallback, userdata voidptr) !int {

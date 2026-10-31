@@ -13,7 +13,7 @@ module iconv
 
 fn C.iconv_open(tocode charptr, fromcode charptr) voidptr
 fn C.iconv_close(cd voidptr) i32
-fn C.iconv(cd voidptr, inbuf &charptr, inbytesleft &usize, outbuf &charptr, outbytesleft &usize) usize
+fn C.iconv(cd voidptr, inbuf &charptr, inbytesleft &uint, outbuf &charptr, outbytesleft &uint) uint
 
 // conv convert `fromcode` encoding string to `tocode` encoding string
 @[direct_array_access]
@@ -43,7 +43,7 @@ fn conv(tocode string, fromcode string, src &u8, src_len int) ![]u8 {
 	}
 
 	mut cd := C.iconv_open(charptr(dst_encoding.str), charptr(src_encoding.str))
-	if isize(cd) == -1 {
+	if int(cd) == -1 {
 		return error("platform can't convert from ${src_encoding} to ${dst_encoding}")
 	}
 	defer { C.iconv_close(cd) }
@@ -52,10 +52,10 @@ fn conv(tocode string, fromcode string, src &u8, src_len int) ![]u8 {
 
 	mut src_ptr := charptr(src)
 	mut dst_ptr := charptr(dst.data)
-	mut src_left := usize(src_len)
-	mut dst_left := usize(dst.len)
+	mut src_left := uint(src_len)
+	mut dst_left := uint(dst.len)
 	res := C.iconv(cd, &src_ptr, &src_left, &dst_ptr, &dst_left)
-	if res == usize(-1) {
+	if res == uint(-1) {
 		return error('convert encoding string fail, iconv return ${res}')
 	}
 

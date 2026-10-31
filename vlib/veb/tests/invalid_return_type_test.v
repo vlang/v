@@ -1,17 +1,23 @@
 import veb
 
-pub struct App {}
+pub struct WrongApp {}
 
-struct Context {
+struct WrongContext {
 	veb.Context
 }
 
-// Test that methods with route attributes but wrong return type are caught
-fn test_invalid_return_type_is_detected() {
-	mut app := &App{}
+pub struct FallibleApp {}
 
-	// This should fail because get_task has route attributes but returns !veb.Result
-	veb.generate_routes[App, Context](app) or {
+struct FallibleContext {
+	veb.Context
+}
+
+// A handler may return `veb.Result` or `!veb.Result`; anything else with route
+// attributes is still a route-definition error.
+fn test_invalid_return_type_is_detected() {
+	mut app := &WrongApp{}
+
+	veb.generate_routes[WrongApp, WrongContext](app) or {
 		assert err.msg().contains('invalid return type'), 'Expected error about invalid return type, got: ${err.msg()}'
 		assert err.msg().contains('get_task'), 'Expected error to mention method name, got: ${err.msg()}'
 		return
@@ -20,7 +26,19 @@ fn test_invalid_return_type_is_detected() {
 	assert false, 'Expected generate_routes to return an error for invalid return type'
 }
 
+fn test_result_return_type_is_accepted() {
+	// `!veb.Result` used to be rejected the same way; it now generates a route.
+	mut app := &FallibleApp{}
+	routes := veb.generate_routes[FallibleApp, FallibleContext](app) or { panic(err) }
+	assert 'get_task' in routes
+}
+
 @['/test'; get]
-pub fn (app &App) get_task(mut ctx Context) !veb.Result {
+pub fn (app &WrongApp) get_task(mut ctx WrongContext) string {
+	return 'Hello'
+}
+
+@['/task'; get]
+pub fn (app &FallibleApp) get_task(mut ctx FallibleContext) !veb.Result {
 	return ctx.text('Hello')
 }

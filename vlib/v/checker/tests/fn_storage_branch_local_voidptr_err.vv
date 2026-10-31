@@ -1,0 +1,33 @@
+type Choice = int | string
+
+struct CallbackHolder {
+	callback fn () = unsafe { nil }
+}
+
+fn test(choice Choice, use_nil bool) {
+	if choice is int {
+		holder := CallbackHolder{
+			callback: if use_nil {
+				unsafe { nil }
+			} else {
+				raw := voidptr(123)
+				raw
+			}
+		}
+		println(holder)
+		holder_match := CallbackHolder{
+			callback: match use_nil {
+				true { unsafe { nil } }
+				false {
+					raw := voidptr(123)
+					raw
+				}
+			}
+		}
+		println(holder_match)
+	}
+}
+
+fn main() {
+	test(Choice(1), false)
+}

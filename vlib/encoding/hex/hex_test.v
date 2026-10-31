@@ -51,6 +51,15 @@ fn test_encode_params() {
 	assert encode([u8(0xab), 0xcd], with_prefix: 'hex:') == 'hex:abcd'
 }
 
+fn test_encode_empty_with_prefix() {
+	assert encode([]u8{}) == ''
+	assert encode([]u8{}, with_prefix: '0x') == '0x'
+	assert encode([]u8{}, uppercase: true, with_prefix: '0X') == '0X'
+	assert encode([]u8{}, with_prefix: 'hex:') == 'hex:'
+	assert encode([]u8{}, with_prefix: '字:') == '字:'
+	assert decode(encode([]u8{}, with_prefix: '0x'))! == []u8{}
+}
+
 fn test_decode_0x() {
 	assert decode('0x') or { []u8{} } == []u8{}
 	assert decode('0x0')! == [u8(0x0)]
@@ -61,14 +70,13 @@ fn test_decode_0x() {
 }
 
 fn test_decode_error_indexes() {
-	decode('g') or {
-		assert err.msg() == 'invalid hex char g at index 0'
-		return
-	}
-	assert false
+	assert_decode_error('g', 'invalid hex char g at index 0')
+	assert_decode_error('0xg', 'invalid hex char g at index 2')
+}
 
-	decode('0xg') or {
-		assert err.msg() == 'invalid hex char g at index 2'
+fn assert_decode_error(input string, expected string) {
+	decode(input) or {
+		assert err.msg() == expected
 		return
 	}
 	assert false

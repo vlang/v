@@ -29,7 +29,7 @@ fn test_zstd_builds_with_cstrict_on_linux() {
 		os.write_file(source, 'import compress.zstd\n\nfn main() {\n\tprintln(zstd.version_number())\n}\n') or {
 			panic(err)
 		}
-		compile := os.execute('${os.quoted_path(@VEXE)} -new-compiler -cstrict -nocache -o ${os.quoted_path(executable)} ${os.quoted_path(source)}')
+		compile := os.exec([@VEXE, '-new-compiler', '-cstrict', '-nocache', '-o', executable, source])
 		assert compile.exit_code == 0, compile.output
 	}
 }
@@ -164,7 +164,7 @@ fn compress_file(fname string, oname string, params CompressParams) ! {
 
 		mut finished := false
 		input.src = buf_in.data
-		input.size = usize(read_len)
+		input.size = uint(read_len)
 		input.pos = 0
 		for !finished {
 			output.dst = buf_out.data
@@ -208,11 +208,11 @@ fn decompress_file(fname string, oname string, params DecompressParams) ! {
 		pos:  0
 	}
 
-	mut last_ret := usize(0)
+	mut last_ret := uint(0)
 	for {
 		read_len := fin.read(mut buf_in)!
 		input.src = buf_in.data
-		input.size = usize(read_len)
+		input.size = uint(read_len)
 		input.pos = 0
 		for input.pos < input.size {
 			output.dst = buf_out.data

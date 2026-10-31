@@ -10,7 +10,9 @@ fn for_blank_index_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_for_blank_index_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${for_blank_index_vexe} -gc none -path "${for_blank_index_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${for_blank_index_v3_src}')
+		os.exec([for_blank_index_vexe, '-gc', 'none', '-path',
+			'${for_blank_index_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${for_blank_index_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -33,7 +35,7 @@ fn test_for_in_blank_index_uses_synthetic_c_loop_index() {
 	bin := os.join_path(os.temp_dir(), 'v3_for_blank_index_input_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -42,7 +44,7 @@ fn test_for_in_blank_index_uses_synthetic_c_loop_index() {
 	assert !c_code.contains('array_get(arr, _)'), c_code
 	assert c_code.contains('__for_idx_') || c_code.contains('__discard_'), c_code
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }

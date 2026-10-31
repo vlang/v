@@ -1,6 +1,9 @@
+// vtest build: false
+
 module fastc
 
 import os
+import v.flat
 import v.pref
 
 fn test_fastc_parser_emits_arm64_without_c() {
@@ -23,7 +26,7 @@ fn test_fastc_parser_emits_arm64_without_c() {
 		assert result.source_paths.len > 0
 		assert os.is_executable(output_path)
 		assert !os.exists(output_path + '.c')
-		run_result := os.execute(output_path)
+		run_result := os.exec([output_path])
 		assert run_result.exit_code == 0
 		assert run_result.output == 'native\n'
 	}
@@ -213,7 +216,7 @@ fn main() {
 		println("wrong return or argument conversion")
 		return
 	}
-	typed_floats := []f64{1, 2}
+	typed_floats := [f64(1), 2]
 	if typed_floats[0] != 1.0 || typed_floats[1] != 2.0 {
 		println("wrong typed array conversion")
 		return
@@ -574,7 +577,7 @@ fn main() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'before wait\nspawned\nnative\n'
 	}
@@ -756,10 +759,10 @@ fn main() {
 	numeric_map[1] = 2
 	numeric_map[u64(2)] = 3
 	numeric_map.delete(2)
-	typed_values := []f64{1, 2}
-	typed_nested_values := [][]f64{[1, 2]}
-	inferred_nested_values := [[]f64{1.0}, [2, 3]]
-	inferred_nested_map := {"first": []f64{1.0}, "second": [2, 3]}
+	typed_values := [f64(1), 2]
+	typed_nested_values := [[f64(1), 2]]
+	inferred_nested_values := [[f64(1.0)], [2, 3]]
+	inferred_nested_map := {"first": [f64(1.0)], "second": [2, 3]}
 	mut assigned_float_values := []f64{}
 	assigned_float_values = [1, 2]
 	mut indexed_float_values := [][]f64{len: 1}
@@ -808,12 +811,12 @@ fn main() {
 	}
 	matched_zero := matched_success or { 63 }
 	aggregate_fallback := maybe_floats(false) or { [1, 2] }
-	conditional_floats := if false { []f64{1.0} } else { [2, 3] }
+	conditional_floats := if false { [f64(1.0)] } else { [2, 3] }
 	matched_floats := match false {
-		true { []f64{1.0} }
+		true { [f64(1.0)] }
 		else { [2, 3] }
 	}
-	case_values := []f64{1.0, 2.0}
+	case_values := [f64(1.0), 2.0]
 	mut statement_case_matched := false
 	match case_values {
 		[1, 2] { statement_case_matched = true }
@@ -884,8 +887,8 @@ fn main() {
 	writeback_before_break(mut broken_map)
 	mut propagated_map := map[string][]int{"value": [1]}
 	_ := writeback_before_propagation(mut propagated_map) or { false }
-	executed := os.execute("printf arm64-captured; printf arm64-error >&2")
-	terminated := os.execute("kill -TERM $$")
+	executed := os.exec(["sh", "-c", "printf arm64-captured; printf arm64-error >&2"])
+	terminated := os.exec(["sh", "-c", "kill -TERM $$"])
 	failure_a := spawn option_worker(false)
 	success_a := spawn option_worker(true)
 	failure_b := spawn option_worker(false)
@@ -916,7 +919,7 @@ fn main() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'native\n'
 		for field in ['len', 'cap'] {
@@ -925,7 +928,7 @@ fn main() {
 			invalid_source := 'fn negative() int { return -1 }\nfn main() { _ := []int{${field}: negative()} }\n'
 			os.write_file(invalid_source_path, invalid_source) or { panic(err) }
 			generate_arm64_files([invalid_source_path], prefs, invalid_output_path) or { panic(err) }
-			invalid_result := os.execute(invalid_output_path)
+			invalid_result := os.exec([invalid_output_path])
 			assert invalid_result.exit_code != 0
 		}
 		exec_source_path := os.join_path_single(test_dir, 'unsupported_exec.v')
@@ -965,7 +968,7 @@ fn main() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == '1.5:7\n'
 	}
@@ -988,7 +991,7 @@ fn test_fastc_arm64_spawn_for_general_programs() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'spawned\n'
 		double_wait_source := os.join_path_single(test_dir, 'double_wait.v')
@@ -997,7 +1000,7 @@ fn test_fastc_arm64_spawn_for_general_programs() {
 			panic(err)
 		}
 		generate_arm64_files([double_wait_source], prefs, double_wait_output) or { panic(err) }
-		double_wait_result := os.execute(double_wait_output)
+		double_wait_result := os.exec([double_wait_output])
 		assert double_wait_result.exit_code != 0
 		// `sizeof` must not leave a cached, body-less spawn wrapper behind: a real
 		// `spawn worker()` after `sizeof(spawn worker())` has to run the worker body.
@@ -1007,7 +1010,7 @@ fn test_fastc_arm64_spawn_for_general_programs() {
 			panic(err)
 		}
 		generate_arm64_files([sizeof_spawn_source], prefs, sizeof_spawn_output) or { panic(err) }
-		sizeof_spawn_result := os.execute(sizeof_spawn_output)
+		sizeof_spawn_result := os.exec([sizeof_spawn_output])
 		assert sizeof_spawn_result.exit_code == 0
 		assert sizeof_spawn_result.output == 'spawned\n', sizeof_spawn_result.output
 	}
@@ -1034,7 +1037,7 @@ fn test_fastc_arm64_binds_c_externs_beyond_the_linker_allowlist() {
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
 		assert os.is_executable(output_path)
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'bound\n', result.output
 	}
@@ -1077,7 +1080,7 @@ fn test_fastc_arm64_array_index_bounds() {
 				panic(err)
 			}
 			generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-			result := os.execute(output_path)
+			result := os.exec([output_path])
 			assert result.exit_code != 0
 		}
 	}
@@ -1157,7 +1160,7 @@ fn main() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'native\n'
 	}
@@ -1221,7 +1224,7 @@ fn main() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'native\n'
 	}
@@ -1245,7 +1248,7 @@ fn main() {
 	base << 3
 	view2 := base[..]
 	base.insert(0, 4)
-	values := []f64{1, 2}
+	values := [f64(1), 2]
 	ptr := &values
 	first := ptr[0][0]
 	if view1 != [1, 2] || view2 != [3] || base != [4, 3] || first != 1.0 {
@@ -1260,7 +1263,7 @@ fn main() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'native\n'
 	}
@@ -1297,7 +1300,7 @@ fn main() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'native\n'
 	}
@@ -1376,7 +1379,7 @@ fn main() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'native\n', result.output
 	}
@@ -1399,7 +1402,7 @@ struct CacheLine {
 
 fn local_is_aligned() bool {
 	value := CacheLine{value: 7}
-	return usize(&value) % 64 == 0
+	return uint(&value) % 64 == 0
 }
 
 fn main() {
@@ -1414,7 +1417,7 @@ fn main() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'native\n', result.output
 	}
@@ -1452,7 +1455,7 @@ fn test_fastc_arm64_zero_capacity_array_data_is_nil() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'native\n', result.output
 	}
@@ -1471,7 +1474,7 @@ fn test_fastc_arm64_execute_output_is_nul_terminated() {
 		os.write_file(source_path, 'import os
 
 fn main() {
-	result := os.execute("printf captured")
+	result := os.exec(["printf", "captured"])
 	unsafe {
 		if result.output.str[result.output.len] != 0 {
 			println("wrong")
@@ -1485,7 +1488,7 @@ fn main() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'native\n', result.output
 	}
@@ -1517,7 +1520,7 @@ fn test_fastc_arm64_empty_multi_append_preserves_slice_storage() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'native\n', result.output
 	}
@@ -1549,7 +1552,7 @@ fn test_fastc_arm64_trim_noop_preserves_slice_storage() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'native\n', result.output
 	}
@@ -1579,7 +1582,7 @@ fn test_fastc_arm64_nonpositive_raw_push_many_is_noop() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'native\n', result.output
 	}
@@ -1595,7 +1598,7 @@ fn test_fastc_arm64_string_slice_owns_terminated_storage() {
 		}
 		source_path := os.join_path_single(test_dir, 'main.v')
 		output_path := os.join_path_single(test_dir, 'app')
-		os.write_file(source_path, 'fn C.strlen(value &char) usize
+		os.write_file(source_path, 'fn C.strlen(value &char) uint
 fn C.free(value voidptr)
 
 fn main() {
@@ -1613,7 +1616,7 @@ fn main() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'native\n', result.output
 	}
@@ -1663,7 +1666,7 @@ fn main() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'native\n', result.output
 	}
@@ -1695,7 +1698,7 @@ fn test_fastc_arm64_typed_pointer_arithmetic_scales_offsets() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'native\n', result.output
 	}
@@ -1752,7 +1755,7 @@ fn main() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'native\n', result.output
 	}
@@ -1790,7 +1793,7 @@ fn main() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'native\n'
 	}
@@ -1824,7 +1827,7 @@ fn main() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'native\n', result.output
 	}
@@ -1860,7 +1863,7 @@ fn main() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'native\n', result.output
 	}
@@ -1869,7 +1872,7 @@ fn main() {
 fn test_fastc_arm64_map_rehash_frees_superseded_buckets() {
 	$if arm64 ? {
 		mut prefs := pref.new_preferences()
-		mut program := FastArm64Program.new(prefs, map[string]bool{}, map[string]FastcFunctionSignature{}, map[string]FastArm64TypeDecl{}, map[string]FastArm64ConstantDecl{}, map[string]FastArm64ConstantDecl{})
+		mut program := FastArm64Program.new(prefs, map[u32]bool{}, map[string]FastcFunctionSignature{}, map[u32]FastArm64TypeDecl{}, map[string]FastArm64ConstantDecl{}, map[string]FastArm64ConstantDecl{})
 		program.register_functions()
 		rehash_id := program.fn_ids['fast_map_rehash']
 		mut free_calls := 0
@@ -1961,7 +1964,7 @@ fn test_fastc_arm64_map_move_transfers_state() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == '0:42\n', result.output
 	}
@@ -2000,7 +2003,7 @@ fn main() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		resolved_source_path := os.real_path(source_path)
 		expected := 'main.v:4\n${resolved_source_path}:5, main.LocationOwner{}.instance_location\nmain.v:9\n${resolved_source_path}:10, main.LocationOwner.static_location (static)\n'
@@ -2042,7 +2045,7 @@ fn test_fastc_arm64_remaining_pseudo_values() {
 		prefs.vcurrent_hash = 'arm64-vcurrent-hash'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		expected := '${prefs.vhash}\n${prefs.vcurrent_hash}\n${prefs.build_date}\n${prefs.build_time}\n${prefs.build_timestamp}\n${prefs.ccompiler}\n${os.real_path(test_dir)}\n${manifest}\n${full_hash[..7]}\n'
 		assert result.output == expected, 'expected `${expected}`, got `${result.output}`'
@@ -2087,7 +2090,7 @@ fn main() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == '9\n'
 	}
@@ -2135,7 +2138,7 @@ fn cleanup() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'dependency init\nmain init\nmain\nmain cleanup\ndependency cleanup\n'
 	}
@@ -2200,8 +2203,52 @@ fn main() {
 		prefs.backend = 'fastc'
 		prefs.user_defines = ['arm64']
 		generate_arm64_files([source_path], prefs, output_path) or { panic(err) }
-		result := os.execute(output_path)
+		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'native:1024\n'
+	}
+}
+
+fn test_fastc_arm64_numeric_nominal_registry_preserves_qualified_identity_and_order() {
+	$if arm64 ? {
+		first := flat.source_type_id('first.Item')
+		first_c := flat.source_type_id('first__Item')
+		second := flat.source_type_id('second.Item')
+		second_c := flat.source_type_id('second__Item')
+		alias := flat.source_type_id('first.Alias')
+		alias_c := flat.source_type_id('first__Alias')
+		mut declarations := map[u32]FastArm64TypeDecl{}
+		first_declaration := FastArm64TypeDecl{
+			key:    first
+			c_name: first_c
+			fields: [FastArm64FieldDecl{ name: 'value', typ: flat.source_type_int }]
+		}
+		second_declaration := FastArm64TypeDecl{
+			key:    second
+			c_name: second_c
+			fields: [FastArm64FieldDecl{ name: 'value', typ: flat.source_type_i64 }]
+		}
+		alias_declaration := FastArm64TypeDecl{
+			key:      alias
+			c_name:   alias_c
+			alias_of: first
+		}
+		declarations[first] = first_declaration
+		declarations[first_c] = first_declaration
+		declarations[second] = second_declaration
+		declarations[second_c] = second_declaration
+		declarations[alias] = alias_declaration
+		declarations[alias_c] = alias_declaration
+		prefs := pref.new_preferences()
+		mut program := FastArm64Program.new(prefs, map[u32]bool{}, map[string]FastcFunctionSignature{}, declarations, map[string]FastArm64ConstantDecl{}, map[string]FastArm64ConstantDecl{})
+		assert program.type_ids[first] == program.type_ids[first_c]
+		assert program.type_ids[second] == program.type_ids[second_c]
+		assert program.type_ids[first] != program.type_ids[second]
+		assert program.type_ids[flat.source_type_id('Item')] == program.type_ids[second]
+		assert program.type_id(alias) == program.type_ids[first]
+		assert program.type_id(alias_c) == program.type_ids[first]
+		assert program.type_id(flat.source_type_id('Alias')) == program.type_ids[first]
+		assert program.resolved_type_name(alias) == first
+		assert program.resolved_type_name(alias_c) == first
 	}
 }

@@ -1,0 +1,14 @@
+vlib/v/parser/tests/sum_type_named_variant_binding_err.vv:6:15: error: cannot bind the payload `n` in a match branch with several patterns; use a separate branch for each payload
+    4 |     e := Expr.Count(1)
+    5 |     match e {
+    6 |         Expr.IntLit(n), Expr.Count(m) { println(n) }
+      |                     ^
+    7 |         else {}
+    8 |     }
+vlib/v/parser/tests/sum_type_named_variant_binding_err.vv:9:10: error: cannot bind the payload of `Expr.Count` in an `is` check; use `match` to bind it
+    7 |         else {}
+    8 |     }
+    9 |     if e is Expr.Count(n) {
+      |             ~~~~~~~~~~~
+   10 |         println(n)
+   11 |     }

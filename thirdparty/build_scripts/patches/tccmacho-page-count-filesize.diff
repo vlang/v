@@ -1,0 +1,47 @@
+diff --git a/tccmacho.c b/tccmacho.c
+index cee09fd7..ecd467da 100644
+--- a/tccmacho.c
++++ b/tccmacho.c
+@@ -1272,6 +1272,15 @@ const struct {
+ #define	N_SEGMENT	(sizeof(all_segment)/sizeof(all_segment[0]))
+ 
+ #ifdef CONFIG_NEW_MACHO
++/* Only the pages of a segment that are backed by the file can hold fixups.
++   dyld's page-in linking maps every page listed in a segment's chained starts
++   from the file, so listing the zero-fill tail (__bss) as well would fill it
++   with the bytes that follow the segment in the file, instead of zeros. */
++static int fixup_page_count(struct segment_command_64 *seg)
++{
++    return (seg->filesize + SEG_PAGE_SIZE - 1) / SEG_PAGE_SIZE;
++}
++
+ static void calc_fixup_size(TCCState *s1, struct macho *mo)
+ {
+     int i, size;
+@@ -1279,7 +1288,9 @@ static void calc_fixup_size(TCCState *s1, struct macho *mo)
+     size = (sizeof(struct dyld_chained_fixups_header) + 7) & -8;
+     size += (sizeof(struct dyld_chained_starts_in_image) + (mo->nseg - 1) * sizeof(uint32_t) + 7) & -8;
+     for (i = (s1->output_type == TCC_OUTPUT_EXE); i < mo->nseg - 1; i++) {
+-	int page_count = (get_segment(mo, i)->vmsize + SEG_PAGE_SIZE - 1) / SEG_PAGE_SIZE;
++	int page_count = fixup_page_count(get_segment(mo, i));
++	if (page_count == 0)
++	    continue;
+ 	size += (sizeof(struct dyld_chained_starts_in_segment) + (page_count - 1) * sizeof(uint16_t) + 7) & -8;
+     }
+     size += mo->n_bind * sizeof (struct dyld_chained_import) + 1;
+@@ -2059,10 +2070,13 @@ ST_FUNC void bind_rebase_import(TCCState *s1, struct macho *mo)
+     data += (size + 7) & -8;
+     image->seg_count = mo->nseg;
+     for (i = (s1->output_type == TCC_OUTPUT_EXE); i < mo->nseg - 1; i++) {
++	seg = get_segment(mo, i);
++	page_count = fixup_page_count(seg);
++	/* No file-backed pages, so no fixups: an offset of 0 says so. */
++	if (page_count == 0)
++	    continue;
+         image->seg_info_offset[i] = (data - mo->chained_fixups->data) -
+ 				    header->starts_offset;
+-	seg = get_segment(mo, i);
+-	page_count = (seg->vmsize + SEG_PAGE_SIZE - 1) / SEG_PAGE_SIZE;
+ 	size = sizeof(struct dyld_chained_starts_in_segment) +
+ 		      (page_count - 1) * sizeof(uint16_t);
+         segment = (struct dyld_chained_starts_in_segment *) data;

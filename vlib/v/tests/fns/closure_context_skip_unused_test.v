@@ -62,8 +62,9 @@ fn run_closure_skip_unused_case(tmp_dir string, mode string) {
 	source_path := os.join_path(tmp_dir, 'closure_skip_unused_${mode}.v')
 	binary_path := os.join_path(tmp_dir, 'closure_skip_unused_${mode}')
 	os.write_file(source_path, closure_skip_unused_source()) or { panic(err) }
-	compile_cmd := '${os.quoted_path(vexe)} -skip-unused -gc ${mode} -o ${os.quoted_path(binary_path)} ${os.quoted_path(source_path)}'
-	compile_res := os.execute(compile_cmd)
+	compile_cmd := '${os.quoted_path(vexe)} -gc ${mode} -o ${os.quoted_path(binary_path)} ${os.quoted_path(source_path)}'
+	compile_res := os.exec([vexe, '-gc', ...(os.split_args(mode) or { panic(err) }), '-o', binary_path,
+		source_path])
 	if mode != 'none' && compile_res.exit_code != 0 && missing_boehm_lib(compile_res.output) {
 		eprintln('skipping ${mode} closure skip-unused test: missing libgc')
 		return
@@ -72,7 +73,7 @@ fn run_closure_skip_unused_case(tmp_dir string, mode string) {
 	if mode == 'boehm_leak' {
 		return
 	}
-	run_res := os.execute(os.quoted_path(binary_path))
+	run_res := os.exec([binary_path])
 	assert run_res.exit_code == 0, run_res.output
 	assert run_res.output.contains('4096'), run_res.output
 }

@@ -1,0 +1,19 @@
+module main
+
+import gg
+
+gg.start(
+	width:        300
+	height:       200
+	window_title: 'Per-corner Rounded Rectangles'
+	frame_fn:     fn (mut ctx gg.Context) {
+		ctx.begin()
+		ctx.draw_rounded_rect_filled_4(10, 10, 100, 60, 20, 0, 0, 0, gg.blue)
+		ctx.draw_rounded_rect_filled_4(120, 10, 100, 60, 0, 20, 0, 0, gg.red)
+		ctx.draw_rounded_rect_filled_4(10, 80, 100, 60, 0, 0, 20, 0, gg.green)
+		ctx.draw_rounded_rect_filled_4(120, 80, 100, 60, 0, 0, 0, 20, gg.yellow)
+		// radii larger than half the side are clamped
+		ctx.draw_rounded_rect_filled_4(230, 10, 60, 60, 1000, 1000, 1000, 1000, gg.magenta)
+		ctx.end()
+	}
+)

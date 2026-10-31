@@ -1,0 +1,16 @@
+Translate C source code to V with c2v.
+
+Usage:
+  v translate file.c
+  v translate wrapper file.c
+
+This command is a thin wrapper over c2v
+(https://github.com/vlang/c2v):
+
+On the first run, it clones c2v into ~/.vmodules/c2v and compiles it.
+Later runs reuse the compiled c2v binary, which is then called with
+the given files. See the c2v repository for the details of the
+translation process and its options.
+
+The optional `wrapper` word before the .c files is passed to c2v
+as is, like all remaining arguments.

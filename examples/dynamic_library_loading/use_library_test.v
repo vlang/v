@@ -38,7 +38,7 @@ fn test_can_compile_main_program() {
 fn test_can_compile_and_use_library_with_skip_unused() {
 	os.chdir(cfolder) or {}
 	os.rm(library_file_name) or {}
-	v_compile('-skip-unused -d no_backtrace -o library -shared library/library.v')
+	v_compile('-d no_backtrace -o library -shared library/library.v')
 	assert os.is_file(library_file_name)
 	result := v_compile('run use_dl_module.v')
 	assert result.output.contains('res: 4')
@@ -58,7 +58,7 @@ fn test_can_compile_and_use_library_with_prod() {
 fn v_compile(vopts string) os.Result {
 	cmd := '${os.quoted_path(vexe)} -showcc ${vopts}'
 	// dump(cmd)
-	res := os.execute_or_exit(cmd)
+	res := os.exec_or_exit([vexe, '-showcc', ...(os.split_args(vopts) or { panic(err) })])
 	// dump(res)
 	assert res.exit_code == 0
 	return res

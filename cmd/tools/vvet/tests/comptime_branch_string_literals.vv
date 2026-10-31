@@ -1,0 +1,40 @@
+// Every `$if` branch is vetted, whatever the host: the lines of a multi-line
+// string are skipped in all of them, and space indentation is reported in all.
+$if windows {
+	const windows_text = 'first
+    spaced, inside a string
+'
+} $else {
+	const other_text = 'first
+    spaced, inside a string
+'
+}
+
+fn main() {
+	$if linux {
+		println('first
+    spaced, inside a string
+')
+  _ = 1
+	} $else $if macos {
+		println('first
+    spaced, inside a string
+')
+  _ = 2
+	} $else $if windows {
+		println('first
+    spaced, inside a string
+')
+  _ = 3
+	} $else {
+		println('first
+    spaced, inside a string
+')
+  _ = 4
+	}
+	$if some_custom_flag ? {
+		println('first
+    spaced, inside a string
+')
+	}
+}

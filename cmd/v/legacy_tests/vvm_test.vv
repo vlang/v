@@ -33,8 +33,8 @@ fn build_current_v_wrapper(tmp_root string) string {
 	} else {
 		'v_public_wrapper'
 	})
-	compile_res := os.execute('${os.quoted_path(current_vexe)} -path "${os.join_path(vroot, 'vlib')}|@vlib|@vmodules" -o ${os.quoted_path(wrapper_exe)} ${os.quoted_path(os.join_path(vroot,
-		'cmd', 'v'))}')
+	compile_res := os.exec([current_vexe, '-path', '${os.join_path(vroot, 'vlib')}' + '|@vlib|@vmodules', '-o', wrapper_exe, '${os.join_path(vroot,
+		'cmd', 'v')}'])
 	assert compile_res.exit_code == 0, compile_res.output
 	return wrapper_exe
 }
@@ -85,7 +85,7 @@ fn test_vvmrc_delegates_to_matching_compiler_executable() {
 		'v${requested_vvm_test_version}'
 	})
 	compile_res :=
-		os.execute('${os.quoted_path(current_vexe)} -o ${os.quoted_path(fake_compiler_exe)} ${os.quoted_path(fake_compiler_source)}')
+		os.exec([current_vexe, '-o', fake_compiler_exe, fake_compiler_source])
 	assert compile_res.exit_code == 0, compile_res.output
 	project_dir := os.join_path(tmp_root, 'project')
 	os.mkdir_all(project_dir) or { panic(err) }

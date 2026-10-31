@@ -190,8 +190,11 @@ fn main() {
 }
 
 fn test_mut_parameter_pointer_return_stays_pointer() {
+	// Returning a mut parameter as a reference needs `@[heap]`, otherwise the
+	// checker rejects it as a possible stack escape.
 	c_code := gen_c_for_c_global_source('mut_parameter_pointer_return', 'module main
 
+@[heap]
 struct Builder {
 mut:
 	value int

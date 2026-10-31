@@ -1,17 +1,14 @@
+// vtest build: network?
 import os
 import time
 import rand
 import v.vmod
-import test_utils { cmd_ok }
+import test_utils { cmd_ok_args }
 
-const v = os.quoted_path(@VEXE)
+const v = @VEXE
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_dependency_test_${rand.ulid()}')
 
 fn testsuite_begin() {
-	$if !network ? {
-		eprintln('> skipping ${@FILE}, when `-d network` is missing')
-		exit(0)
-	}
 	dump(test_path)
 	test_utils.set_test_env(test_path)
 	os.mkdir_all(test_path) or {}
@@ -19,7 +16,7 @@ fn testsuite_begin() {
 }
 
 fn testsuite_end() {
-	dump(os.system('find ${test_path}'))
+	dump(os.system_args(['find', test_path]))
 	os.rmdir_all(test_path) or {}
 }
 
@@ -53,7 +50,7 @@ fn test_install_dependencies_in_module_dir() {
 	}
 	assert v_mod.dependencies == ['markdown', 'pcre', 'https://github.com/spytheman/vtray']
 	// Run `v install`
-	mut res := cmd_ok(@LOCATION, '${v} install --once')
+	mut res := cmd_ok_args(@LOCATION, ['${v}', 'install', '--once'])
 	assert res.output.contains('Detected v.mod file inside the project directory. Using it...'), res.output
 	expect_installing(@LOCATION, res.output, 'markdown')
 	expect_installing(@LOCATION, res.output, 'pcre')
@@ -62,12 +59,13 @@ fn test_install_dependencies_in_module_dir() {
 	assert get_mod_name(os.join_path(test_path, 'markdown', 'v.mod')) == 'markdown'
 	assert get_mod_name(os.join_path(test_path, 'pcre', 'v.mod')) == 'pcre'
 	assert get_mod_name(os.join_path(test_path, 'spytheman', 'vtray', 'v.mod')) == 'vtray'
-	res = cmd_ok(@LOCATION, '${v} install --once')
+	res = cmd_ok_args(@LOCATION, ['${v}', 'install', '--once'])
 	assert res.output.contains('All modules are already installed.'), res.output
 }
 
 fn test_resolve_external_dependencies_during_module_install() {
-	res := cmd_ok(@LOCATION, '${v} install -v https://github.com/ttytm/emoji-mart-desktop')
+	res := cmd_ok_args(@LOCATION, ['${v}', 'install', '-v',
+		'https://github.com/ttytm/emoji-mart-desktop'])
 	assert res.output.contains('Found 2 dependencies'), res.output
 	expect_installing(@LOCATION, res.output, 'ttytm.webview')
 	expect_installing(@LOCATION, res.output, 'miniaudio')
@@ -83,13 +81,13 @@ fn test_install_with_recursive_dependencies() {
 		eprintln('Timeout while testing installation with recursive dependencies.')
 		exit(1)
 	}()
-	cmd_ok(@LOCATION, '${v} install https://gitlab.com/tobealive/a')
+	cmd_ok_args(@LOCATION, ['${v}', 'install', 'https://gitlab.com/tobealive/a'])
 
 	// Test the installation of a module when passing its URL with the `.git` extension.
 	// One of the modules dependencies `https://gitlab.com/tobealive/c` has the
 	// `https://gitlab.com/tobealive/a` dependency without `.git`.
-	cmd_ok(@LOCATION, '${v} remove a b c')
-	cmd_ok(@LOCATION, '${v} install https://gitlab.com/tobealive/a.git')
+	cmd_ok_args(@LOCATION, ['${v}', 'remove', 'a', 'b', 'c'])
+	cmd_ok_args(@LOCATION, ['${v}', 'install', 'https://gitlab.com/tobealive/a.git'])
 }
 
 fn expect_installing(location string, output string, what string) {

@@ -11,7 +11,7 @@ mut:
 
 struct LinkedList[T] {
 mut:
-	size usize
+	size uint
 	head ?&Node[T]
 }
 

@@ -1,0 +1,10 @@
+module main
+
+fn foobar(a int) int {
+	$compile_notice('The default behavior of foobar() will be changed in future release, see https://example.com/foobar-change.html for details')
+	return 0
+}
+
+fn main() {
+	println(foobar(7))
+}

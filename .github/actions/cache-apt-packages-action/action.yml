@@ -54,7 +54,7 @@ runs:
             ;;
         esac
         echo "packages=$packages" >> "$GITHUB_OUTPUT"
-    - uses: awalsh128/cache-apt-pkgs-action@v1.5.3
+    - uses: awalsh128/cache-apt-pkgs-action@553a35bb8ebd9fcabcb1c9451aa4c98e1b4ca8a9 # v1.6.3
       with:
         version: 1.0-${{ inputs.profile }}
         packages: ${{ steps.package-profile.outputs.packages }}

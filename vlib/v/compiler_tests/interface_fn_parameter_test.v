@@ -11,7 +11,8 @@ fn build_interface_fn_v3() string {
 		return interface_fn_v3_bin
 	}
 	build :=
-		os.execute('${os.quoted_path(@VEXE)} -gc none -path "${interface_fn_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(interface_fn_v3_bin)} ${os.quoted_path(interface_fn_v3_src)}')
+		os.exec([@VEXE, '-gc', 'none', '-path', '${interface_fn_vlib_dir}' + '|@vlib|@vmodules',
+			'-o', interface_fn_v3_bin, '${interface_fn_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return interface_fn_v3_bin
 }
@@ -40,10 +41,10 @@ fn test_interface_method_fn_parameter_uses_c_typedef() {
 		os.rmdir_all(root) or {}
 	}
 	output := os.join_path(root, 'interface_fn_parameter')
-	compile := os.execute('${os.quoted_path(v3_bin)} -nocache -b c -o ${os.quoted_path(output)} ${os.quoted_path(os.join_path(root, 'main.v'))}')
+	compile := os.exec([v3_bin, '-nocache', '-b', 'c', '-o', output, os.join_path(root, 'main.v')])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(os.quoted_path(output))
+	run := os.exec([output])
 	assert run.exit_code == 0, run.output
 	assert run.output == 'ok'
 }

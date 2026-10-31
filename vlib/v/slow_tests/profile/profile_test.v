@@ -27,9 +27,10 @@ fn test_v_profile_works_when_interrupted() {
 	os.rm(program_exe) or {}
 	os.rm(program_profile) or {}
 	os.chdir(vroot) or {}
-	compile_cmd := '${os.quoted_path(vexe)} -skip-unused -o ${os.quoted_path(program_exe)} -profile ${os.quoted_path(program_profile)} ${os.quoted_path(program_source)}'
+	compile_cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(program_exe)} -profile ${os.quoted_path(program_profile)} ${os.quoted_path(program_source)}'
 	eprintln('> compiling cmd: ${compile_cmd}')
-	compilation_result := os.execute(compile_cmd)
+	compilation_result := os.exec([vexe, '-o', program_exe, '-profile', program_profile,
+		program_source])
 	assert compilation_result.exit_code == 0, compilation_result.output
 	eprintln('> compiled ${program_exe}')
 	mut p := os.new_process(program_exe)
@@ -131,7 +132,8 @@ fn validate_output(fn_name string, vopts string, fsource string, expected map[st
 	os.chdir(vroot) or {}
 	program_source := os.join_path(vroot, fsource)
 	res :=
-		os.execute('${os.quoted_path(vexe)} ${vopts} -profile - run ${os.quoted_path(program_source)}')
+		os.exec([vexe, ...(os.split_args(vopts) or { panic(err) }), '-profile', '-', 'run',
+			program_source])
 	assert res.exit_code == 0
 	assert res.output.len > 0
 	res_lines := res.output.split_into_lines()

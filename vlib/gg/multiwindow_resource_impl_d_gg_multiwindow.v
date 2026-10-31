@@ -1,7 +1,7 @@
 module gg
 
+import gg.render
 import sokol.gfx
-import sokol.sgl
 
 struct ManagedBufferDescCopy {
 mut:
@@ -649,12 +649,13 @@ fn (app &App) managed_attachments(id WindowAttachmentsId, window WindowId) !(gfx
 	return slot.attachments, compatibility, key
 }
 
-fn (app &App) managed_sgl_pipeline(id WindowSglPipelineId, window WindowId, context sgl.Context, target_key string) !sgl.Pipeline {
+fn (app &App) managed_sgl_pipeline(id WindowSglPipelineId, window WindowId, context &render.Context,
+	target_key string) !render.Pipeline {
 	if !app.gfx_started || !app.core.renderer_device_available_for_gg() {
 		return error(err_multiwindow_render_backend_unavailable)
 	}
-	if target_key !in app.sgl_contexts || app.sgl_contexts[target_key] != context
-		|| target_key !in app.sgl_context_targets {
+	if target_key !in app.render_contexts || target_key !in app.render_context_targets
+		|| app.render_contexts[target_key]! != context {
 		return error(err_multiwindow_render_stale_lease)
 	}
 	mut runtime := app.render_runtime
@@ -686,10 +687,7 @@ fn (app &App) managed_sgl_pipeline(id WindowSglPipelineId, window WindowId, cont
 		return error(message)
 	}
 	app.note_managed_gpu_work(app.active_batch_epoch)!
-	previous := sgl.get_context()
-	sgl.set_context(context)
-	pipeline := sgl.context_make_pipeline(context, &recipe)
-	sgl.set_context(previous)
+	pipeline := context.make_pipeline(recipe)
 	if !app.core.renderer_device_available_for_gg() {
 		return error(err_multiwindow_render_backend_unavailable)
 	}
@@ -701,7 +699,7 @@ fn (app &App) managed_sgl_pipeline(id WindowSglPipelineId, window WindowId, cont
 		.window) or {
 		runtime.mutex.unlock()
 		if pipeline.id != 0 && app.core.renderer_device_available_for_gg() {
-			sgl.destroy_pipeline(pipeline)
+			destroy_render_pipeline_pips(pipeline)
 		}
 		return err
 	}
@@ -751,13 +749,13 @@ fn copy_managed_buffer_desc(desc &gfx.BufferDesc) !ManagedBufferDescCopy {
 		result.desc.label = &char(result.label.str)
 	}
 	if desc.data.size > 0 {
-		if desc.data.ptr == unsafe { nil } || desc.data.size > usize(0x7fffffff) {
+		if desc.data.ptr == unsafe { nil } || desc.data.size > uint(0x7fffffff) {
 			return error(err_multiwindow_render_invalid_descriptor)
 		}
 		result.data = unsafe { desc.data.ptr.vbytes(int(desc.data.size)).clone() }
 		result.desc.data = gfx.Range{
 			ptr:  result.data.data
-			size: usize(result.data.len)
+			size: uint(result.data.len)
 		}
 	} else if desc.data.ptr != unsafe { nil } {
 		return error(err_multiwindow_render_invalid_descriptor)
@@ -769,7 +767,7 @@ fn validate_raw_buffer_desc(desc &gfx.BufferDesc) ! {
 	if desc == unsafe { nil } {
 		return error(err_multiwindow_render_invalid_descriptor)
 	}
-	if desc.size > usize(0x7fffffff) || desc.data.size > usize(0x7fffffff) {
+	if desc.size > uint(0x7fffffff) || desc.data.size > uint(0x7fffffff) {
 		return error(err_multiwindow_render_invalid_descriptor)
 	}
 	match desc.usage {
@@ -793,7 +791,7 @@ fn validate_raw_buffer_desc(desc &gfx.BufferDesc) ! {
 }
 
 fn validate_effective_buffer_desc(desc gfx.BufferDesc) ! {
-	if desc.size == 0 || desc.size > usize(0x7fffffff) || desc.data.size > usize(0x7fffffff) {
+	if desc.size == 0 || desc.size > uint(0x7fffffff) || desc.data.size > uint(0x7fffffff) {
 		return error(err_multiwindow_render_invalid_descriptor)
 	}
 	if desc.type != .vertexbuffer && desc.type != .indexbuffer && desc.type != .storagebuffer {
@@ -845,14 +843,14 @@ fn copy_managed_image_desc(desc &gfx.ImageDesc) !ManagedImageDescCopy {
 				}
 				continue
 			}
-			if range.ptr == unsafe { nil } || range.size > usize(0x7fffffff) {
+			if range.ptr == unsafe { nil } || range.size > uint(0x7fffffff) {
 				return error(err_multiwindow_render_invalid_descriptor)
 			}
 			owned := unsafe { range.ptr.vbytes(int(range.size)).clone() }
 			result.data << owned
 			result.desc.data.subimage[face][mip] = gfx.Range{
 				ptr:  result.data[result.data.len - 1].data
-				size: usize(owned.len)
+				size: uint(owned.len)
 			}
 		}
 	}
@@ -949,14 +947,14 @@ fn copy_managed_shader_stage(mut stage gfx.ShaderStageDesc, mut strings []string
 	stage.entry = copy_managed_cstring(stage.entry, mut strings)!
 	stage.d3d11_target = copy_managed_cstring(stage.d3d11_target, mut strings)!
 	if stage.bytecode.size > 0 {
-		if stage.bytecode.ptr == unsafe { nil } || stage.bytecode.size > usize(0x7fffffff) {
+		if stage.bytecode.ptr == unsafe { nil } || stage.bytecode.size > uint(0x7fffffff) {
 			return error(err_multiwindow_render_invalid_descriptor)
 		}
 		owned := unsafe { stage.bytecode.ptr.vbytes(int(stage.bytecode.size)).clone() }
 		bytes << owned
 		stage.bytecode = gfx.Range{
 			ptr:  bytes[bytes.len - 1].data
-			size: usize(owned.len)
+			size: uint(owned.len)
 		}
 	} else if stage.bytecode.ptr != unsafe { nil } {
 		return error(err_multiwindow_render_invalid_descriptor)

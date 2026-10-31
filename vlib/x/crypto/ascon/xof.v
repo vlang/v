@@ -78,8 +78,16 @@ pub fn (x &Xof128) block_size() int {
 
 // clone returns a clone of x on the current state.
 fn (x &Xof128) clone() &Xof128 {
+	// the buffer is cloned too, so writing into the clone does not touch the original
+	digest := Digest{
+		State:       x.Digest.State
+		buf:         x.Digest.buf.clone()
+		length:      x.Digest.length
+		done:        x.Digest.done
+		squeeze_pos: x.Digest.squeeze_pos
+	}
 	return &Xof128{
-		Digest: x.Digest
+		Digest: digest
 		size:   x.size
 	}
 }
@@ -107,7 +115,7 @@ pub fn (mut x Xof128) sum(msg []u8) []u8 {
 }
 
 // read tries to read `dst.len` bytes of hash output from current Xof128 state and stored into dst.
-// Note: 1 ≤ dst.len ≤ max_hash_size.
+// Successive calls continue the output stream, including partial blocks. Note: 1 ≤ dst.len ≤ max_hash_size.
 pub fn (mut x Xof128) read(mut dst []u8) !int {
 	// Left unchanged
 	if dst.len == 0 {
@@ -117,11 +125,12 @@ pub fn (mut x Xof128) read(mut dst []u8) !int {
 	if dst.len > max_hash_size {
 		panic('Xof128.read: invalid size')
 	}
-	mut x0 := x.clone()
-	x0.Digest.finish()
-	n := x0.Digest.squeeze(mut dst)
-	x0.reset()
-	return n
+	// squeeze from the digest itself, so that the state advances and the
+	// next call continues the stream instead of restarting it
+	if !x.Digest.done {
+		x.Digest.finish()
+	}
+	return x.Digest.squeeze(mut dst)
 }
 
 // reset resets internal Xof128 state into default initialized state.
@@ -130,6 +139,7 @@ pub fn (mut x Xof128) reset() {
 	unsafe { x.Digest.buf.reset() }
 	x.Digest.length = 0
 	x.Digest.done = false
+	x.Digest.squeeze_pos = block_size
 	x.Digest.State = xof128_initial_state
 }
 
@@ -247,6 +257,7 @@ pub fn (mut x CXof128) sum(msg []u8) []u8 {
 }
 
 // read tries to read `dst.len` bytes of hash output from current CXof128 state and stored into dst.
+// Successive calls continue the output stream.
 pub fn (mut x CXof128) read(mut dst []u8) !int {
 	// Left unchanged, nothing space to store checksum
 	if dst.len == 0 {
@@ -255,17 +266,26 @@ pub fn (mut x CXof128) read(mut dst []u8) !int {
 	if dst.len > max_hash_size {
 		panic('CXof128.read: invalid size')
 	}
-	mut x0 := x.clone()
-	x0.Digest.finish()
-	n := x0.Digest.squeeze(mut dst)
-	x0.reset()
-	return n
+	// squeeze from the digest itself, so that the state advances and the
+	// next call continues the stream instead of restarting it
+	if !x.Digest.done {
+		x.Digest.finish()
+	}
+	return x.Digest.squeeze(mut dst)
 }
 
 // clone returns a clone of x on the current state.
 fn (x &CXof128) clone() &CXof128 {
+	// the buffer is cloned too, so writing into the clone does not touch the original
+	digest := Digest{
+		State:       x.Digest.State
+		buf:         x.Digest.buf.clone()
+		length:      x.Digest.length
+		done:        x.Digest.done
+		squeeze_pos: x.Digest.squeeze_pos
+	}
 	return &CXof128{
-		Digest: x.Digest
+		Digest: digest
 		size:   x.size
 		cs:     x.cs
 	}
@@ -277,6 +297,7 @@ pub fn (mut x CXof128) reset() {
 	unsafe { x.Digest.buf.reset() }
 	x.Digest.length = 0
 	x.Digest.done = false
+	x.Digest.squeeze_pos = block_size
 	x.Digest.State = cxof128_initial_state
 	// reabsorbs custom string
 	cxof128_absorb_custom_string(mut x.Digest.State, x.cs)

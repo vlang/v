@@ -1,0 +1,84 @@
+vlib/v/checker/tests/nested_option_type_err.vv:16:10: notice: unused parameter: `x`
+   14 | }
+   15 | 
+   16 | fn param(x ? ?int) {}
+      |          ^
+   17 | 
+   18 | fn res() !!int {
+vlib/v/checker/tests/nested_option_type_err.vv:1:19: error: nested option type `??int` is not supported
+    1 | type MaybeMaybe = ??int
+      |                   ~~~~~
+    2 | 
+    3 | struct Foo {
+Details: an option has a single `none`, so the outer option could not be told from the inner one; use `?int` instead
+vlib/v/checker/tests/nested_option_type_err.vv:4:4: error: nested option type `??int` is not supported
+    2 | 
+    3 | struct Foo {
+    4 |     a ??int
+      |       ~~~~~
+    5 |     b ?!int
+    6 |     c []??string
+Details: an option has a single `none`, so the outer option could not be told from the inner one; use `?int` instead
+vlib/v/checker/tests/nested_option_type_err.vv:5:4: error: the type must be Option or Result
+    3 | struct Foo {
+    4 |     a ??int
+    5 |     b ?!int
+      |       ~~~~~
+    6 |     c []??string
+    7 | }
+vlib/v/checker/tests/nested_option_type_err.vv:6:6: error: nested option type `??string` is not supported
+    4 |     a ??int
+    5 |     b ?!int
+    6 |     c []??string
+      |         ~~~~~~~~
+    7 | }
+    8 |
+Details: an option has a single `none`, so the outer option could not be told from the inner one; use `?string` instead
+vlib/v/checker/tests/nested_option_type_err.vv:9:16: error: nested option type `??int` is not supported
+    7 | }
+    8 | 
+    9 | fn ret(b bool) ??int {
+      |                ~~~~~
+   10 |     if b {
+   11 |         return none
+Details: an option has a single `none`, so the outer option could not be told from the inner one; use `?int` instead
+vlib/v/checker/tests/nested_option_type_err.vv:16:12: error: nested option type `??int` is not supported
+   14 | }
+   15 | 
+   16 | fn param(x ? ?int) {}
+      |            ~~~
+   17 | 
+   18 | fn res() !!int {
+Details: an option has a single `none`, so the outer option could not be told from the inner one; use `?int` instead
+vlib/v/checker/tests/nested_option_type_err.vv:18:10: error: nested result type `!!int` is not supported
+   16 | fn param(x ? ?int) {}
+   17 | 
+   18 | fn res() !!int {
+      |          ~~~~~
+   19 |     return 1
+   20 | }
+Details: a result has a single error, so the outer result could not be told from the inner one; use `!int` instead
+vlib/v/checker/tests/nested_option_type_err.vv:23:7: error: nested option type `??int` is not supported
+   21 | 
+   22 | fn main() {
+   23 |     x := ??int(3)
+      |          ~~~~~
+   24 |     m := map[string]??int{}
+   25 |     f := fn () ?(?int) {
+Details: an option has a single `none`, so the outer option could not be told from the inner one; use `?int` instead
+vlib/v/checker/tests/nested_option_type_err.vv:24:18: error: nested option type `??int` is not supported
+   22 | fn main() {
+   23 |     x := ??int(3)
+   24 |     m := map[string]??int{}
+      |                     ~~~~~
+   25 |     f := fn () ?(?int) {
+   26 |         return none
+Details: an option has a single `none`, so the outer option could not be told from the inner one; use `?int` instead
+vlib/v/checker/tests/nested_option_type_err.vv:25:13: error: nested option type `??int` is not supported
+   23 |     x := ??int(3)
+   24 |     m := map[string]??int{}
+   25 |     f := fn () ?(?int) {
+      |                ~~~
+   26 |         return none
+   27 |     }
+Details: an option has a single `none`, so the outer option could not be told from the inner one; use `?int` instead

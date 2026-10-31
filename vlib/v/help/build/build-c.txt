@@ -68,6 +68,20 @@ see also `v help build`.
       Turn on additional C warnings. This slows down compilation
       slightly (~10% for gcc), but sometimes provides better error diagnosis.
 
+   -race
+      Enable the data race detector, like `go build -race`. The program is
+      compiled with ThreadSanitizer (`-fsanitize=thread`; clang when it is
+      installed, since gcc misses races on struct values), and reports every
+      data race it runs into with the V file:line stacks of both accesses.
+      A program that reported races exits with status 66.
+      Race builds do not use a garbage collector (like `-gc none`) nor
+      `-prealloc`, and are slower and use more memory. `$if race ? {}` is
+      true in them; `-d race` without `-race` is an error.
+      The VRACE environment variable passes options to the detector, like
+      GORACE does for Go, e.g. `VRACE="halt_on_error=1 log_path=/tmp/race"`.
+      Supported on linux (amd64, arm64, ppc64le, s390x, loongarch64, riscv64),
+      macos (amd64, arm64), freebsd/amd64 and netbsd/amd64.
+
    -cmain <MainFunctionName>
       Useful with framework like code, that uses macros to re-define `main`,
       like SDL2 does for example.
@@ -97,8 +111,11 @@ see also `v help build`.
    -icon <path>
    --icon=<path>
    -seticon <path>
+   --seticon=<path>
       Embed the provided `.ico` or `.png` file as the icon of the generated
-      Windows executable. Use it only when V is producing a Windows `.exe`.
+      Windows executable. All spellings accept either a space or `=` before
+      the path. This requires the C backend and a Windows `.exe` output.
+      Cross-compiling also requires `windres` or `llvm-windres`.
 
    -showcc
       Prints the C command that is used to build the program.
@@ -111,49 +128,52 @@ see also `v help build`.
       cached `.o` files when V can find the corresponding source on disk.
 
    -freestanding
-      Build the executable without dependency on libc.
-      Supported only on `linux` targets currently.
+      Build the executable without dependency on libc. It is linked with
+      `-static -nostdlib` and without a garbage collector, and takes its
+      process entry point, syscalls and memory allocator from the bare builtin
+      implementation (see `-bare-builtin-dir`).
+      Supported only on `linux` targets, on amd64 and arm64, currently.
 
    -bare-builtin-dir <bare-builtin-dir>
       Use with `-freestanding`. This specifies the directory to the
       implementation of some basic builtin functions. The list is as follows:
-         bare_print(buf &byte, len u64)
+         bare_print(buf &u8, len u64)
             Print len characters from the buffer pointed to by buf to stdout.
-         bare_eprint(buf &byte, len u64)
+         bare_eprint(buf &u8, len u64)
             Print len characters from the buffer pointed to by buf to stderr.
          bare_panic(msg string)
             Print "V panic: " + msg, along with an optional backtrace
             and/or the V commit hash, and then exit.
          @[export: 'malloc']
-         __malloc(n usize) &C.void
+         __malloc(n uint) &C.void
             Allocates n bytes of memory and returns the pointer to the first
             byte.
          @[export: 'free']
          __free(ptr &C.void)
             Free the block of memory ptr allocated by malloc.
-         realloc(old_area &C.void, new_size usize) &C.void
+         realloc(old_area &C.void, new_size uint) &C.void
             Allocates a new area of size new_size, copies old_area
             to the new area, and returns a pointer to the new area.
          @[export: 'calloc']
-         __calloc(nmemb usize, size usize) &C.void
+         __calloc(nmemb uint, size uint) &C.void
             Like malloc, but sets all the bytes to `0` first.
-         memcpy(dest &C.void, const_src &C.void, n usize) &C.void
+         memcpy(dest &C.void, const_src &C.void, n uint) &C.void
             Moves n bytes from dest to src, and returns dest
-         memmove(dest &C.void, const_src &C.void, n usize) &C.void
+         memmove(dest &C.void, const_src &C.void, n uint) &C.void
             Like memcpy, but guaranteed to work if dest and src overlap.
-         memcmp(const_a &C.void, const_b &C.void, n usize) int
+         memcmp(const_a &C.void, const_b &C.void, n uint) int
             Compare two buffers of length n. If a and b are equal, return 0.
             Otherwise, return the difference between the first different letter.
-         strlen(const_s &char) usize
+         strlen(const_s &char) uint
             Returns the amount of bytes until the first `0`, starting at s
-         memset(s &C.void, c int, n usize) &C.void
+         memset(s &C.void, c int, n uint) &C.void
             Sets n bytes starting at s to c (c is casted to a char)
             and returns s.
          getchar() int
             Read one character from stdin and return it.
          vsprintf(str &char, format &char, ap va_list) int
             See `man vsprintf`.
-         vsnprintf(str &char, size usize, format &char, ap va_list) int
+         vsnprintf(str &char, size uint, format &char, ap va_list) int
             See `man vsnprintf`.
          bare_backtrace() string
             Return a backtrace that can be printed. If backtraces are not
@@ -162,6 +182,7 @@ see also `v help build`.
          __exit(code int)
             Exit with code code. code is allowed to be ignored.
 
+         The implementation also defines the process entry point, `_start`.
          The module declaration should be `builtin`. The default Linux
          implementation can be found in `vlib/builtin/linux_bare`.
 
@@ -273,10 +294,10 @@ see also `v help build`.
       platform files themselves.
 
    -m32, -m64
-      Whether 32-bit or 64-bit machine code will be generated.
-      On x86 C backend builds, `-m32` also selects the i386 target unless you
-      already passed an explicit `-arch`, so `$if i386 {}` and `*.i386.v`
-      files follow the same target width.
+      These are not V compiler options: `v -m32` is rejected with
+      `unknown option`. To build 32-bit code, select the target and pass
+      the machine flag to the C compiler yourself, for example:
+      `v -arch i386 -cflags -m32 -cc gcc run arch.v`.
       NB: if you need to produce 32-bit code, *and* you are cross compiling
       to another OS, you may need to also set the environment variable
       VCROSS_COMPILER_NAME or pass `-cc your-compiler` for a one-off override,
@@ -305,7 +326,9 @@ see also `v help build`.
       larger program, potentially written in another language.
       The flag can also be combined with `-o file.c`, to generate C source that can be
       compiled and linked together with other `-is_o` generated V units.
-      Note: this option currently works with gcc/clang/tcc, but not msvc.
+      This also applies to -o file.o. Production objects retain machine code
+      rather than automatically enabling LTO. On Windows, MSVC writes a staged
+      .obj file, which V moves to the requested output path.
       Note: use either -no-skip-unused or tag the functions you expect to be publicly
       usable in the .o file with `@[markused]` . Adding `-gc none` may be also needed,
       unless you plan to link with -lgc later.
@@ -355,10 +378,28 @@ see also `v help build`.
       a system libgc selected with `-d dynamic_boehm`; use a system libgc built
       without thread-local allocation for that case.
 
+      On Linux and macOS, `-d gc_parallel_mark` compiles V's bundled source
+      copy of Boehm (used e.g. by `-prod`) with parallel marking: helper
+      threads, one per extra CPU core (at most 15), mark the heap together
+      with the collecting thread. This shortens GC pauses for large live
+      heaps, but can slow down programs with small heaps that allocate a lot,
+      and programs with many allocating threads. The prebuilt library used by
+      default TCC builds always has parallel marking; set `GC_MARKERS=1` to
+      mark with a single thread at run time.
+
       The option `-gc boehm_leak` is intended for leak detection in
       manual memory management. The function `gc_check_leaks()`
       can be called to get detection results. This function is a no-op
       when `-gc boehm_leak` is not supplied.
+
+      On Linux and macOS, V's bundled source copy of Boehm (used for example by
+      `-prod` with gcc or clang, and by `-d use_bundled_libgc`) is compiled with
+      HANDLE_FORK, as the prebuilt library of default TCC builds on Linux amd64
+      and macOS is. A child process that calls fork() without exec() from a
+      multi-threaded program can then allocate and collect garbage. HANDLE_FORK
+      is left out with `-d no_gc_threads`, and with TCC on 32-bit ARM. A
+      system libgc selected with `-d dynamic_boehm` keeps the setting it was
+      built with.
 
       Use `-gc none` to completely disable the garbage collector, in case of
       wanting to handle memory manually, or strictly using `-autofree`.
@@ -440,6 +481,11 @@ see also `v help build`.
    -showcc
       Prints the C command that is used to build the program.
 
+   -nocache, --no-cache
+      Disable the module cache, which is enabled by default for supported builds,
+      including builds with bundled TinyCC on macOS and Linux. Imported modules
+      are normally compiled once into objects that later builds reuse.
+
    -show-c-output
       Prints the output, that your C compiler produced, while compiling your program.
 
@@ -453,7 +499,8 @@ see also `v help build`.
       Set V_C_ERROR_BUG_REPORT_DISABLED=1 to disable automatic report submission.
 
    -dump-c-flags file.txt
-      Write all C flags into `file.txt`, one flag per line.
+      Write the C flags passed to the selected compiler into `file.txt`,
+      one flag per line. The monolithic bundled TCC command uses the same flag plan.
       If `file.txt` is `-`, write to stdout instead.
 
    -dump-modules file.txt
@@ -544,5 +591,16 @@ see also `v help build`.
       all the time (which can break your flow).
 
    -check-overflow
-      Enable runtime overflow checking for integer arithmetic operations (+, -, *).
-      Triggers a panic when integer overflow is detected.
+      Enable runtime overflow checking for integer arithmetic operations (+, -, *),
+      and for `min / -1` and `min % -1` (also in `/=` and `%=`).
+      In code outside vlib, it also checks unary negation of the minimum signed value,
+      and `<<`, `>>`, `>>>` (and their compound forms) with a shift count that is negative
+      or not less than the bit width of the left operand.
+      Triggers a panic when one of these is detected. Functions tagged with
+      `@[ignore_overflow]` are not checked.
+
+   -check-casts
+      Enable runtime checks for integer casts that lose information, like `i8(i64(300))`,
+      `u8(-1)` or `u32(i64(-5))`. Triggers a panic instead of truncating or reinterpreting
+      the value. Only code outside vlib is checked, since the standard library relies on
+      truncating casts. Functions tagged with `@[ignore_overflow]` are not checked.

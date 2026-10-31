@@ -52,7 +52,7 @@ fn test_builtin_inline_calls_from_other_modules() {
 		calls << '\tprintln(my_helper(1, 1))'
 	}
 	os.write_file(os.join_path(tmp, 'caller.v'), 'module main\n\nfn main() {\n${calls.join('\n')}\n}\n')!
-	res := os.execute('${os.quoted_path(vexe)} vet -nocolor -I ${os.quoted_path(tmp)}')
+	res := os.exec([vexe, 'vet', '-nocolor', '-I', '${tmp}'])
 	assert res.exit_code >= 0, res.output
 	assert res.output.contains('my_helper fn might be inlined'), res.output
 }
@@ -75,7 +75,7 @@ fn test_local_function_shadows_builtin_inline_calls() {
 		calls << '\tprintln(my_helper(1, 1))'
 	}
 	os.write_file(os.join_path(tmp, 'caller.v'), 'module main\n\n@[inline]\nfn my_helper(a int, b int) int {\n\treturn a + b\n}\n\nfn main() {\n${calls.join('\n')}\n}\n')!
-	res := os.execute('${os.quoted_path(vexe)} vet -nocolor -I ${os.quoted_path(tmp)}')
+	res := os.exec([vexe, 'vet', '-nocolor', '-I', '${tmp}'])
 	assert res.exit_code >= 0, res.output
 	assert !res.output.contains('my_helper fn might be inlined'), res.output
 }
@@ -90,7 +90,7 @@ fn test_for_c_body_is_analyzed_before_increment() {
 		os.rm(path) or {}
 	}
 	os.write_file(path, "import regex\n\nfn main() {\n\tmut re := regex.new()\n\tfor ; false; re = 0 {\n\t\tre.compile_opt(r'foo|bar') or { panic(err) }\n\t}\n}\n")!
-	res := os.execute('${os.quoted_path(vexe)} vet -nocolor ${os.quoted_path(path)}')
+	res := os.exec([vexe, 'vet', '-nocolor', path])
 	assert res.exit_code >= 0, res.output
 	assert res.output.contains('Confusing regex `|` in `foo|bar`'), res.output
 }
@@ -110,7 +110,8 @@ fn check_path(vexe string, dir string, tests []string) int {
 		print(path + ' ')
 		file_options := get_file_options(path)
 		res :=
-			os.execute('${os.quoted_path(vexe)} vet -nocolor ${file_options.vflags} ${os.quoted_path(program)}')
+			os.exec([vexe, 'vet', '-nocolor',
+				...(os.split_args(file_options.vflags) or { panic(err) }), '${program}'])
 		if res.exit_code < 0 {
 			panic(res.output)
 		}

@@ -16,6 +16,10 @@ with minimal overhead.
 - **Graceful Shutdown**: Clean resource termination
 - **Dynamic Configuration**: Runtime configuration updates
 
+Connections can be acquired and returned while other threads read statistics or update the
+configuration, including on Windows. Call `close()` after these threads finish to stop the
+pool's background maintenance thread.
+
 ## Basic Usage
 
 ### Creating a Pool
@@ -83,6 +87,10 @@ my_pool.close()
 ## Advanced Features
 
 ### Dynamic Configuration Update
+
+Lowering `max_conns` below the current connection count is allowed. Existing connections
+remain usable and close through their normal lifecycle; maintenance adds no new connections
+until the count falls below the new limit.
 
 ```v ignore
 new_config := pool.ConnectionPoolConfig{

@@ -1,11 +1,11 @@
-// vtest build: !musl? && !sanitized_job?
+// vtest build: network? && !musl? && !sanitized_job?
 // vtest retry: 3
 import os
 import rand
 import v.vmod
-import test_utils { cmd_ok }
+import test_utils { cmd_ok_args }
 
-const vexe = os.quoted_path(@VEXE)
+const vexe = @VEXE
 const test_path = os.join_path(os.vtmp_dir(), 'vpm_install_version_input_test_${rand.ulid()}')
 const expect_tests_path = os.join_path(@VEXEROOT, 'cmd', 'tools', 'vpm', 'expect')
 const expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
@@ -14,10 +14,6 @@ const expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
 })
 
 fn testsuite_begin() {
-	$if !network ? {
-		eprintln('> skipping ${@FILE}, when `-d network` is missing')
-		exit(0)
-	}
 	dump(test_path)
 	test_utils.set_test_env(test_path)
 	// Explicitly disable fail on prompt.
@@ -42,7 +38,7 @@ fn test_reinstall_mod_with_version_installation() {
 	// Install version.
 	ident := 'vsl'
 	tag := 'v0.1.47'
-	cmd_ok(@LOCATION, '${vexe} install ${ident}@${tag}')
+	cmd_ok_args(@LOCATION, [vexe, 'install', '${ident}' + '@' + '${tag}'])
 	mut manifest := get_vmod(ident)
 	assert manifest.name == ident
 	assert manifest.version == tag.trim_left('v')
@@ -50,20 +46,22 @@ fn test_reinstall_mod_with_version_installation() {
 	// Try reinstalling.
 	new_tag := 'v0.1.50'
 	install_path := os.real_path(os.join_path(test_path, ident))
-	expect_args := [vexe, ident, tag, new_tag, install_path].join(' ')
+	expect_args := [vexe, ident, tag, new_tag, install_path]
 
 	// Decline.
 	decline_test := os.join_path(expect_tests_path,
 		'decline_reinstall_mod_with_version_installation.expect')
 	manifest_path := os.join_path(install_path, 'v.mod')
 	last_modified := os.file_last_mod_unix(manifest_path)
-	cmd_ok(@LOCATION, '${expect_exe} ${decline_test} ${expect_args}')
+	cmd_ok_args(@LOCATION, [...(os.split_args(expect_exe) or { panic(err) }), '${decline_test}',
+		...expect_args])
 	assert last_modified == os.file_last_mod_unix(manifest_path)
 
 	// Accept.
 	accept_test := os.join_path(expect_tests_path,
 		'accept_reinstall_mod_with_version_installation.expect')
-	cmd_ok(@LOCATION, '${expect_exe} ${accept_test} ${expect_args}')
+	cmd_ok_args(@LOCATION, [...(os.split_args(expect_exe) or { panic(err) }), accept_test,
+		...expect_args])
 	manifest = get_vmod(ident)
 	assert manifest.name == ident
 	assert manifest.version == new_tag.trim_left('v')

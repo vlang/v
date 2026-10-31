@@ -3,6 +3,7 @@ module c
 import strings
 import v.gen.c.naming
 import v.types
+import v.util
 
 // c_name converts c name data for c.
 fn c_name(name string) string {
@@ -20,56 +21,60 @@ mut:
 	base             &CNameCache = unsafe { nil }
 	last_name        string
 	last_value       string
-	recent_ptrs      [1024]voidptr
-	recent_lens      [1024]u16
+	recent_names     [1024]string
 	recent_values    [1024]string
 	recent_populated [1024]bool
 }
 
-@[inline]
+@[direct_array_access; inline]
 fn c_name_recent_slot(name string) int {
-	return int(((u64(voidptr(name.str)) >> 4) ^ u64(name.len)) & 1023)
-}
-
-// c_name_is_pre_sanitized reports names that are already unambiguously in V's
-// module-qualified C spelling. C keywords, libc collisions and special builtin
-// rewrites never contain `__`, so these names can bypass the map-backed slow
-// path after their direct-cache miss.
-@[direct_array_access; inline]
-fn c_name_is_pre_sanitized(name string) bool {
-	mut previous_underscore := false
-	mut has_double_underscore := false
-	for i in 0 .. name.len {
-		c := name[i]
-		if (c < `a` || c > `z`) && (c < `A` || c > `Z`) && (c < `0` || c > `9`) && c != `_` {
-			return false
-		}
-		if c == `_` {
-			if previous_underscore {
-				has_double_underscore = true
-			}
-			previous_underscore = true
-		} else {
-			previous_underscore = false
-		}
+	if name.len == 0 {
+		return 0
 	}
-	return has_double_underscore
+	mut key := u64(name.len)
+	if name.len >= 8 {
+		mut first := u64(0)
+		mut last := u64(0)
+		// Copying bounded words also permits unaligned source slices.
+		unsafe {
+			vmemcpy(&first, name.str, 8)
+			vmemcpy(&last, name.str + name.len - 8, 8)
+		}
+		key ^= first ^ (last * u64(0x9e3779b97f4a7c15))
+	} else {
+		key ^= (u64(name[0]) << 8) ^ (u64(name[name.len >> 1]) << 16) ^ (u64(name[name.len - 1]) << 24)
+	}
+	key = (key ^ (key >> 32)) * u64(0x9e3779b97f4a7c15)
+	return int((key >> 32) & 1023)
 }
 
+// c_name_shape classifies the identifier and dotted fast paths in one scan.
+// Bit 0 is a plain spelling, bit 1 a double underscore, and bit 2 a dot.
 @[direct_array_access; inline]
-fn c_name_is_plain_dotted(name string) bool {
-	mut has_dot := false
+fn c_name_shape(name string) u8 {
+	mut shape := u8(1)
+	mut previous_underscore := false
 	for i in 0 .. name.len {
 		c := name[i]
 		if c == `.` {
-			has_dot = true
+			shape |= 4
+			previous_underscore = false
 			continue
 		}
 		if (c < `a` || c > `z`) && (c < `A` || c > `Z`) && (c < `0` || c > `9`) && c != `_` {
-			return false
+			return 0
 		}
+		if c == `_` && previous_underscore {
+			shape |= 2
+		}
+		previous_underscore = c == `_`
 	}
-	return has_dot
+	return shape
+}
+
+@[inline]
+fn c_name_is_pre_sanitized(name string) bool {
+	return c_name_shape(name) == 3
 }
 
 @[direct_array_access; inline]
@@ -85,27 +90,19 @@ fn c_name_is_string_literal_symbol(name string) bool {
 	return true
 }
 
-@[inline]
+@[direct_array_access; inline]
 fn (c &CNameCache) recent(name string) ?string {
-	if name.len > 65535 {
-		return none
-	}
 	slot := c_name_recent_slot(name)
-	if c.recent_populated[slot] && c.recent_ptrs[slot] == voidptr(name.str)
-		&& c.recent_lens[slot] == u16(name.len) {
+	if c.recent_populated[slot] && c.recent_names[slot] == name {
 		return c.recent_values[slot]
 	}
 	return none
 }
 
-@[inline]
+@[direct_array_access; inline]
 fn (mut c CNameCache) remember(name string, value string) {
-	if name.len > 65535 {
-		return
-	}
 	slot := c_name_recent_slot(name)
-	c.recent_ptrs[slot] = voidptr(name.str)
-	c.recent_lens[slot] = u16(name.len)
+	c.recent_names[slot] = name
 	c.recent_values[slot] = value
 	c.recent_populated[slot] = true
 }
@@ -116,8 +113,14 @@ fn (mut c CNameCache) remember(name string, value string) {
 @[heap]
 struct ConstShortIndex {
 mut:
-	built   bool
-	entries map[string]string
+	built                     bool
+	entries                   map[string]string
+	call_names_ready          bool
+	call_names                [64]u64
+	call_const_vals_count     int
+	call_const_exprs_count    int
+	call_const_types_count    int
+	call_const_suffixes_count int
 }
 
 // FnNameFactCache memoizes per-fn-name conclusions (1 = yes, -1 = no) that
@@ -139,6 +142,15 @@ mut:
 	entries    map[string]i8
 	last_name  string
 	last_value i8
+	// parked keeps the entries of contexts switched away from, as in
+	// ContextStringLookupCache.
+	parked map[string]&ContextNameFacts
+}
+
+@[heap]
+struct ContextNameFacts {
+mut:
+	entries map[string]i8
 }
 
 @[inline]
@@ -190,27 +202,87 @@ fn (mut c ContextNameFactCache) select_context(file string, module_name string) 
 		&& (unsafe { c.module.str == module_name.str } || c.module == module_name) {
 		return
 	}
+	if c.entries.len > 0 {
+		c.parked[context_lookup_key(c.file, c.module)] = &ContextNameFacts{
+			entries: c.entries.move()
+		}
+	}
 	c.file = file
 	c.module = module_name
-	c.entries = map[string]i8{}
+	key := context_lookup_key(file, module_name)
+	if mut parked := c.parked[key] {
+		c.entries = parked.entries.move()
+		c.parked.delete(key)
+	} else {
+		c.entries = map[string]i8{}
+	}
 	c.last_name = ''
 	c.last_value = 0
 }
 
-// StringLookupCache memoizes context-qualified string lookups whose empty
-// result is meaningful. Keeping the cache behind a pointer lets read-only
-// FlatGen query methods populate a worker-local cache.
+// AliasMethodLookupCache memoizes alias-target lookups, including empty misses.
+// Source identities and method declaration names occupy separate key slots.
+// The pointer lets read-only FlatGen queries populate a worker-local cache.
 @[heap]
-struct StringLookupCache {
+struct AliasMethodLookupCache {
 mut:
+	entries     map[u32]map[string]string
+	last_target u32
+	last_method string
+	last_value  string
+	last_valid  bool
+}
+
+@[inline]
+fn (mut c AliasMethodLookupCache) get(target_id u32, method string) ?string {
+	if c.last_valid && c.last_target == target_id && c.last_method.len == method.len
+		&& (unsafe { c.last_method.str == method.str } || c.last_method == method) {
+		return c.last_value
+	}
+	if cached := c.entries[target_id][method] {
+		c.last_target = target_id
+		c.last_method = method
+		c.last_value = cached
+		c.last_valid = true
+		return cached
+	}
+	return none
+}
+
+@[inline]
+fn (mut c AliasMethodLookupCache) put(target_id u32, method string, value string) {
+	c.entries[target_id][method] = value
+	c.last_target = target_id
+	c.last_method = method
+	c.last_value = value
+	c.last_valid = true
+}
+
+// ContextStringLookupCache memoizes string lookups whose answers depend on the
+// current source file and module. Hot lookups use the active context's map
+// directly, so they never allocate a compound key. Function items are not
+// grouped by file, so a context switch parks the active entries under their
+// context instead of discarding them, and a returning context resumes them.
+@[heap]
+struct ContextStringLookupCache {
+mut:
+	file       string = '\x00'
+	module     string
 	entries    map[string]string
 	last_name  string
 	last_value string
 	last_valid bool
+	parked     map[string]&ContextStringEntries
+}
+
+@[heap]
+struct ContextStringEntries {
+mut:
+	entries map[string]string
 }
 
 @[inline]
-fn (mut c StringLookupCache) get(name string) ?string {
+fn (mut c ContextStringLookupCache) get(name string) ?string {
 	if c.last_valid && c.last_name.len == name.len
 		&& (unsafe { c.last_name.str == name.str } || c.last_name == name) {
 		return c.last_value
@@ -225,26 +297,11 @@ fn (mut c StringLookupCache) get(name string) ?string {
 }
 
 @[inline]
-fn (mut c StringLookupCache) put(name string, value string) {
+fn (mut c ContextStringLookupCache) put(name string, value string) {
 	c.entries[name] = value
 	c.last_name = name
 	c.last_value = value
 	c.last_valid = true
-}
-
-// ContextStringLookupCache memoizes string lookups whose answers depend on the
-// current source file and module. Cgen visits functions in source order, so
-// replacing on a context switch avoids allocating a compound key on every hot
-// lookup while retaining almost all hits.
-@[heap]
-struct ContextStringLookupCache {
-mut:
-	file       string = '\x00'
-	module     string
-	entries    map[string]string
-	last_name  string
-	last_value string
-	last_valid bool
 }
 
 @[inline]
@@ -254,17 +311,103 @@ fn (mut c ContextStringLookupCache) select_context(file string, module_name stri
 		&& (unsafe { c.module.str == module_name.str } || c.module == module_name) {
 		return
 	}
+	if c.entries.len > 0 {
+		c.parked[context_lookup_key(c.file, c.module)] = &ContextStringEntries{
+			entries: c.entries.move()
+		}
+	}
 	c.file = file
 	c.module = module_name
-	c.entries = map[string]string{}
+	key := context_lookup_key(file, module_name)
+	if mut parked := c.parked[key] {
+		c.entries = parked.entries.move()
+		c.parked.delete(key)
+	} else {
+		c.entries = map[string]string{}
+	}
 	c.last_name = ''
 	c.last_value = ''
 	c.last_valid = false
 }
 
+// context_lookup_key names a (file, module) lookup context. A newline cannot
+// occur in either part.
+@[inline]
+fn context_lookup_key(file string, module_name string) string {
+	return '${file}\n${module_name}'
+}
+
+struct SourceTypeLookupRecentEntry {
+	name  u32
+	value u32
+	valid bool
+}
+
+// ContextSourceTypeLookupCache memoizes source-spelling lookups within one file and module.
+// Zero values record misses; validity distinguishes an empty cache from a cached miss.
+@[heap]
+struct ContextSourceTypeLookupCache {
+mut:
+	file       string = '\x00'
+	module     string
+	entries    map[u32]u32
+	recent     [64]SourceTypeLookupRecentEntry
+	last_name  u32
+	last_value u32
+	last_valid bool
+}
+
+@[inline]
+fn (mut c ContextSourceTypeLookupCache) get(name u32) ?u32 {
+	if c.last_valid && c.last_name == name { return c.last_value }
+	slot := int(name & 63)
+	entry := c.recent[slot]
+	if entry.valid && entry.name == name {
+		c.last_name = name
+		c.last_value = entry.value
+		c.last_valid = true
+		return entry.value
+	}
+	if cached := c.entries[name] {
+		c.recent[slot] = SourceTypeLookupRecentEntry{ name: name, value: cached, valid: true }
+		c.last_name = name
+		c.last_value = cached
+		c.last_valid = true
+		return cached
+	}
+	return none
+}
+
+@[inline]
+fn (mut c ContextSourceTypeLookupCache) put(name u32, value u32) {
+	c.entries[name] = value
+	c.recent[int(name & 63)] = SourceTypeLookupRecentEntry{ name: name, value: value, valid: true }
+	c.last_name = name
+	c.last_value = value
+	c.last_valid = true
+}
+
+@[inline]
+fn (mut c ContextSourceTypeLookupCache) select_context(file string, module_name string) {
+	if c.file.len == file.len && c.module.len == module_name.len
+		&& (unsafe { c.file.str == file.str } || c.file == file)
+		&& (unsafe { c.module.str == module_name.str } || c.module == module_name) {
+		return
+	}
+	c.file = file
+	c.module = module_name
+	c.entries = map[u32]u32{}
+	c.recent = [64]SourceTypeLookupRecentEntry{}
+	c.last_name = 0
+	c.last_value = 0
+	c.last_valid = false
+}
+
 fn (mut g FlatGen) reset_context_lookup_caches() {
+	g.normalize_call_cache = &ContextStringLookupCache{}
+	g.import_key_cache = &util.KeyRecentCache{}
 	g.import_alias_cache = &ContextStringLookupCache{}
-	g.enum_selector_cache = &ContextStringLookupCache{}
+	g.enum_selector_cache = &ContextSourceTypeLookupCache{}
 	g.enum_method_cache = &ContextStringLookupCache{}
 	g.qualified_enum_method_cache = &ContextStringLookupCache{}
 	g.import_type_cache = &ImportTypeCache{}
@@ -278,15 +421,15 @@ fn (mut g FlatGen) reset_context_lookup_caches() {
 // generator on a pool thread out of the memo maps body lanes concurrently clone.
 // See begin_scratch_lookup_caches.
 struct ScratchLookupCaches {
-	interface_receiver_cache        &StringLookupCache
-	normalize_call_cache            &StringLookupCache
-	flattened_generic_name_cache    &StringLookupCache
-	generic_struct_context_ct_cache &StringLookupCache
-	struct_cname_cache              &StringLookupCache
-	unique_struct_ct_cache          &StringLookupCache
-	alias_method_cache              &StringLookupCache
+	interface_receiver_cache        &TypeNameLookupCache
+	normalize_call_cache            &ContextStringLookupCache
+	flattened_generic_name_cache    &TypeNameLookupCache
+	generic_struct_context_ct_cache &TypeNameLookupCache
+	struct_cname_cache              &TypeNameLookupCache
+	unique_struct_ct_cache          &TypeNameLookupCache
+	alias_method_cache              &AliasMethodLookupCache
 	import_alias_cache              &ContextStringLookupCache
-	enum_selector_cache             &ContextStringLookupCache
+	enum_selector_cache             &ContextSourceTypeLookupCache
 	enum_method_cache               &ContextStringLookupCache
 	qualified_enum_method_cache     &ContextStringLookupCache
 	import_type_cache               &ImportTypeCache
@@ -297,6 +440,7 @@ struct ScratchLookupCaches {
 	struct_decl_pref_cache          &StructDeclPrefCache
 	sum_variant_actual_cache        &SumVariantActualCache
 	array_method_cache              map[string]string
+	array_method_receiver_cache     map[u64]map[string]string
 	param_types_cache               map[string][]types.Type
 }
 
@@ -325,19 +469,20 @@ fn (mut g FlatGen) begin_scratch_lookup_caches() ScratchLookupCaches {
 		struct_decl_pref_cache:          g.struct_decl_pref_cache
 		sum_variant_actual_cache:        g.sum_variant_actual_cache
 		array_method_cache:              g.array_method_cache
+		array_method_receiver_cache:     g.array_method_receiver_cache
 		param_types_cache:               g.param_types_cache
 	}
 	// A cache the generator has disabled stays disabled, so this only changes
 	// where entries are written, never whether they are memoized at all.
-	g.interface_receiver_cache = scratch_string_lookup_cache(saved.interface_receiver_cache)
-	g.normalize_call_cache = scratch_string_lookup_cache(saved.normalize_call_cache)
-	g.flattened_generic_name_cache = scratch_string_lookup_cache(saved.flattened_generic_name_cache)
-	g.generic_struct_context_ct_cache = scratch_string_lookup_cache(saved.generic_struct_context_ct_cache)
-	g.struct_cname_cache = scratch_string_lookup_cache(saved.struct_cname_cache)
-	g.unique_struct_ct_cache = scratch_string_lookup_cache(saved.unique_struct_ct_cache)
-	g.alias_method_cache = scratch_string_lookup_cache(saved.alias_method_cache)
+	g.interface_receiver_cache = scratch_type_name_lookup_cache(saved.interface_receiver_cache)
+	g.normalize_call_cache = scratch_context_string_lookup_cache(saved.normalize_call_cache)
+	g.flattened_generic_name_cache = scratch_type_name_lookup_cache(saved.flattened_generic_name_cache)
+	g.generic_struct_context_ct_cache = scratch_type_name_lookup_cache(saved.generic_struct_context_ct_cache)
+	g.struct_cname_cache = scratch_type_name_lookup_cache(saved.struct_cname_cache)
+	g.unique_struct_ct_cache = scratch_type_name_lookup_cache(saved.unique_struct_ct_cache)
+	g.alias_method_cache = scratch_alias_method_lookup_cache(saved.alias_method_cache)
 	g.import_alias_cache = scratch_context_string_lookup_cache(saved.import_alias_cache)
-	g.enum_selector_cache = scratch_context_string_lookup_cache(saved.enum_selector_cache)
+	g.enum_selector_cache = scratch_context_source_type_lookup_cache(saved.enum_selector_cache)
 	g.enum_method_cache = scratch_context_string_lookup_cache(saved.enum_method_cache)
 	g.qualified_enum_method_cache = scratch_context_string_lookup_cache(saved.qualified_enum_method_cache)
 	g.import_type_cache = scratch_import_type_cache(saved.import_type_cache)
@@ -348,6 +493,7 @@ fn (mut g FlatGen) begin_scratch_lookup_caches() ScratchLookupCaches {
 	g.struct_decl_pref_cache = scratch_struct_decl_pref_cache(saved.struct_decl_pref_cache)
 	g.sum_variant_actual_cache = scratch_sum_variant_actual_cache(saved.sum_variant_actual_cache)
 	g.array_method_cache = map[string]string{}
+	g.array_method_receiver_cache = map[u64]map[string]string{}
 	g.param_types_cache = map[string][]types.Type{}
 	return saved
 }
@@ -373,22 +519,28 @@ fn (mut g FlatGen) restore_scratch_lookup_caches(saved ScratchLookupCaches) {
 	g.generic_app_cache = saved.generic_app_cache
 	g.struct_decl_pref_cache = saved.struct_decl_pref_cache
 	g.sum_variant_actual_cache = saved.sum_variant_actual_cache
-	// These two are plain maps rather than pointers, so putting the generator's
+	// These three are plain maps rather than pointers, so putting the generator's
 	// own map back is an aliasing copy the checker rejects outside `unsafe`.
 	// Cloning would deep-copy a cache we are only restoring, and `saved` is a
 	// by-value parameter that dies with this call, so nothing else can observe
 	// the alias.
 	unsafe {
 		g.array_method_cache = saved.array_method_cache
+		g.array_method_receiver_cache = saved.array_method_receiver_cache
 		g.param_types_cache = saved.param_types_cache
 	}
 }
 
-fn scratch_string_lookup_cache(cache &StringLookupCache) &StringLookupCache {
+fn scratch_alias_method_lookup_cache(cache &AliasMethodLookupCache) &AliasMethodLookupCache {
 	if isnil(cache) {
 		return unsafe { nil }
 	}
-	return &StringLookupCache{}
+	return &AliasMethodLookupCache{}
+}
+
+fn scratch_context_source_type_lookup_cache(cache &ContextSourceTypeLookupCache) &ContextSourceTypeLookupCache {
+	if isnil(cache) { return unsafe { nil } }
+	return &ContextSourceTypeLookupCache{}
 }
 
 fn scratch_context_string_lookup_cache(cache &ContextStringLookupCache) &ContextStringLookupCache {
@@ -469,21 +621,20 @@ fn (g &FlatGen) cname(name string) string {
 		cache.last_value = cached
 		return cached
 	}
-	needs_internal_namespace := naming.c_name_needs_internal_namespace(name)
-	if !needs_internal_namespace && c_name_is_pre_sanitized(name) {
-		cache.last_name = name
-		cache.last_value = name
-		cache.remember(name, name)
-		return name
-	}
-	if !needs_internal_namespace && naming.is_plain_identifier(name) && name != 'malloc'
-		&& name != 'int_str' && name != 'exit'
-		&& !c_name_is_string_literal_symbol(name) && !naming.is_reserved_word(name)
-		&& !naming.is_libc_collision(name) {
-		cache.last_name = name
-		cache.last_value = name
-		cache.remember(name, name)
-		return name
+	return g.cname_uncached(name)
+}
+
+fn (g &FlatGen) cname_uncached(name string) string {
+	mut cache := g.c_name_cache
+	// c_name is pure, so every cache level holds the same C name for `name`: the
+	// base's recent slots can answer before the map lookups.
+	if !isnil(cache.base) {
+		if cached := cache.base.recent(name) {
+			cache.last_name = name
+			cache.last_value = cached
+			cache.remember(name, cached)
+			return cached
+		}
 	}
 	if cached := cache.entries[name] {
 		cache.last_name = name
@@ -492,12 +643,6 @@ fn (g &FlatGen) cname(name string) string {
 		return cached
 	}
 	if !isnil(cache.base) {
-		if cached := cache.base.recent(name) {
-			cache.last_name = name
-			cache.last_value = cached
-			cache.remember(name, cached)
-			return cached
-		}
 		if cached := cache.base.entries[name] {
 			cache.last_name = name
 			cache.last_value = cached
@@ -505,7 +650,29 @@ fn (g &FlatGen) cname(name string) string {
 			return cached
 		}
 	}
-	if !needs_internal_namespace && !name.starts_with('C.') && c_name_is_plain_dotted(name) {
+	shape := c_name_shape(name)
+	// A plain spelling without `__` cannot contain the internal prefix, a static
+	// marker, or an operator method. Preserve those rewrites for other names.
+	needs_internal_namespace := (shape == 0 || shape & 2 != 0)
+		&& naming.c_name_needs_internal_namespace(name)
+	if !needs_internal_namespace && shape == 3 {
+		cache.entries[name] = name
+		cache.last_name = name
+		cache.last_value = name
+		cache.remember(name, name)
+		return name
+	}
+	if !needs_internal_namespace && shape == 1 && name != 'malloc'
+		&& name != 'int_str' && name != 'exit'
+		&& !c_name_is_string_literal_symbol(name) && !naming.is_reserved_word(name)
+		&& !naming.is_libc_collision(name) {
+		cache.entries[name] = name
+		cache.last_name = name
+		cache.last_value = name
+		cache.remember(name, name)
+		return name
+	}
+	if !needs_internal_namespace && !name.starts_with('C.') && shape & 4 != 0 {
 		result := naming.sanitize(name)
 		cache.entries[name] = result
 		cache.last_name = name
@@ -553,7 +720,18 @@ fn c_escape(s string) string {
 // c_escape_into appends the C-escaped form of s to out, without the temporary
 // builder and copy that c_escape needs for its return value.
 fn c_escape_into(mut out strings.Builder, s string) {
-	for b in s.bytes() {
+	// Copy runs of bytes that need no escape in one write; literal tables are
+	// mostly plain text, and a per-byte write dominated emitting them.
+	mut run_start := 0
+	for i in 0 .. s.len {
+		b := s[i]
+		if b >= 32 && b != 127 && b != `\\` && b != `"` {
+			continue
+		}
+		if i > run_start {
+			unsafe { out.write_ptr(s.str + run_start, i - run_start) }
+		}
+		run_start = i + 1
 		match b {
 			`\\` {
 				out.write_string('\\\\')
@@ -582,6 +760,31 @@ fn c_escape_into(mut out strings.Builder, s string) {
 				}
 			}
 		}
+	}
+	if s.len > run_start {
+		unsafe { out.write_ptr(s.str + run_start, s.len - run_start) }
+	}
+}
+
+// c_literal_escape_into splits escaped literal bodies between complete escapes.
+// Even a four-byte octal escape fits within the source-line chunk bound.
+fn c_literal_escape_into(mut out strings.Builder, s string) {
+	max_bytes := c_string_literal_chunk_len / 4
+	mut start := 0
+	for start < s.len {
+		if start > 0 {
+			out.write_string('"\n"')
+		}
+		mut end := if s.len - start > max_bytes { start + max_bytes } else { s.len }
+		// Keep UTF-8 code points in one literal for C compilers that validate them.
+		for end > start && end < s.len && s[end] >= 0x80 && s[end] < 0xc0 {
+			end--
+		}
+		if end == start {
+			end = if s.len - start > max_bytes { start + max_bytes } else { s.len }
+		}
+		c_escape_into(mut out, s[start..end])
+		start = end
 	}
 }
 

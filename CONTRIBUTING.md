@@ -86,7 +86,7 @@ The main files are:
 
 7. `vlib/v/gen/c` is the primary C backend. Other backends and lowerings live under
    `vlib/v/gen/`, including FastC, WebAssembly, and ARM64 via SSA, MIR, and instruction
-   selection.
+   selection. WebAssembly also consumes SSA; see [the backend guide](doc/wasm.md).
 
 The rest of the directories are vlib modules: `builtin/` (strings, arrays,
 maps), `time/`, `os/`, etc. Their documentation is pretty clear.
@@ -217,6 +217,20 @@ is:open is:issue label:Bug label:"OS: Windows" label:"Status: Confirmed"
 
 This filter will return all open issues with the labels `Bug`, `OS: Windows`,
 and `Status: Confirmed`.
+
+The `vlib modules CI` workflow tests `v doc` and generates the standard module documentation.
+On master pushes, it also publishes the generated site to <https://modules.vlang.io/>.
+A failed deployment fails the workflow, so a green run confirms that publishing succeeded too.
+
+The `docs.vlang.io deploy` workflow builds the language documentation site from this checkout's
+`doc/docs.md`. It validates generation on pull requests that change documentation, V sources,
+build files, or the workflow. On master, documentation changes and a daily scheduled run publish
+the site to <https://docs.vlang.io/>; `workflow_dispatch` can also retry a deployment manually.
+Each page's "Last updated" time comes from the V commit timestamp in UTC. Generation checks
+compare two runs so retrying the same source does not produce changes from the wall clock.
+The generator is pinned to a revision of `vlang/docs` and adapted by
+`.github/docs_site_generator.patch`. When updating that revision, check that the patch still
+applies and generation succeeds. Pull request builds only validate generation.
 
 ## Using Github's hub CLI tool
 

@@ -9,5 +9,5 @@ module embed_file
 // symbols outside a `.c.v` one.
 @[inline; unsafe]
 fn join_chunks_raw_alloc(size int) &u8 {
-	return unsafe { &u8(C.malloc(usize(size))) }
+	return unsafe { &u8(C.malloc(uint(size))) }
 }

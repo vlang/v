@@ -1,0 +1,32 @@
+// Messages that contain themselves, which V accepts only through an optional
+// pointer, next to a message field that is not on a cycle and keeps its value
+// type.
+
+syntax = "proto3";
+
+package tree;
+
+message Node {
+  int32 v = 1;
+  Node child = 2;
+  repeated Node kids = 3;
+  oneof pick {
+    Node alt = 4;
+    string label = 5;
+  }
+}
+
+// Ping and Pong contain each other, so neither can hold the other by value.
+message Ping {
+  Pong pong = 1;
+  int32 n = 2;
+}
+
+message Pong {
+  Ping ping = 1;
+  Leaf leaf = 2;
+}
+
+message Leaf {
+  string s = 1;
+}

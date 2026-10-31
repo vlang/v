@@ -8,15 +8,15 @@ const cleanup_tmp = '-no-cleanup' !in os.args
 const fetch_remote = '-no-fetch' !in os.args
 
 fn gbranch() string {
-	return os.execute(r'git branch --list|grep ^\*').output.trim_left('* ').trim_space()
+	return os.exec(['sh', '-c', 'git branch --list|grep ^\\*']).output.trim_left('* ').trim_space()
 }
 
 fn gcommit() string {
-	return os.execute(r'git rev-parse --short=7 HEAD').output.trim_left('* ').trim_space()
+	return os.exec(['git', 'rev-parse', '--short=7', 'HEAD']).output.trim_left('* ').trim_space()
 }
 
 fn r(cmd string) {
-	res := os.system(cmd)
+	res := os.system_args(os.split_args(cmd) or { panic(err) })
 	if res != 0 {
 		eprintln('> failed running: `${cmd}`')
 		exit(1)
@@ -51,6 +51,11 @@ fn compare_size(fpath1 string, fpath2 string) {
 	println('>>>>>> size("${fpath2:17}") - size("${fpath1:17}") = ${size2:10} - ${size1:10} = ${diff_:10}')
 }
 
+// A serial non-prod self-build of cmd/v takes over a minute on the CI runner, above the
+// default `v repeat` limit of 60s. Use fewer runs and a higher limit for the slow cmd/v
+// series, so that the job stays within its timeout.
+const cmd_v_repeat = 'v repeat --nmaxs 1 -R 1 -r 3 -w 1 -m 300000'
+
 fn vcompare(vold string, vnew string) {
 	r("v repeat --nmaxs 7 -R 3 '${vold} -check-syntax           examples/hello_world.v' '${vnew} -check-syntax           examples/hello_world.v'")
 	r("v repeat --nmaxs 7 -R 3 '${vold} -check                  examples/hello_world.v' '${vnew} -check                  examples/hello_world.v'")
@@ -60,10 +65,10 @@ fn vcompare(vold string, vnew string) {
 	compare_size('ohw.exe', 'nhw.exe')
 
 	r("v repeat --nmaxs 7 -R 3 '${vold} -check-syntax           cmd/v' '${vnew} -check-syntax           cmd/v'")
-	r("v repeat --nmaxs 7 -R 3 '${vold} -check                  cmd/v' '${vnew} -check                  cmd/v'")
-	r("v repeat --nmaxs 7 -R 3 '${vold} -no-parallel -o ov.c    cmd/v' '${vnew} -no-parallel -o nv.c    cmd/v'")
+	r("${cmd_v_repeat} '${vold} -check                  cmd/v' '${vnew} -check                  cmd/v'")
+	r("${cmd_v_repeat} '${vold} -no-parallel -o ov.c    cmd/v' '${vnew} -no-parallel -o nv.c    cmd/v'")
 	compare_size('ov.c', 'nv.c')
-	r("v repeat --nmaxs 7 -R 3 '${vold} -no-parallel -o ov.exe  cmd/v' '${vnew} -no-parallel -o nv.exe  cmd/v'")
+	r("${cmd_v_repeat} '${vold} -no-parallel -o ov.exe  cmd/v' '${vnew} -no-parallel -o nv.exe  cmd/v'")
 	compare_size('ov.exe', 'nv.exe')
 }
 
@@ -100,10 +105,10 @@ fn main() {
 
 	if fetch_remote {
 		// make sure to always compare against the main V repo's master branch by default:
-		os.execute('git -C . remote add V_REPO https://github.com/vlang/v.git')
-		os.execute('git -C . fetch V_REPO')
-		os.execute('git branch -D v_repo_master')
-		os.execute('git branch -f --track v_repo_master V_REPO/master')
+		os.exec(['git', '-C', '.', 'remote', 'add', 'V_REPO', 'https://github.com/vlang/v.git'])
+		os.exec(['git', '-C', '.', 'fetch', 'V_REPO'])
+		os.exec(['git', 'branch', '-D', 'v_repo_master'])
+		os.exec(['git', 'branch', '-f', '--track', 'v_repo_master', 'V_REPO/master'])
 	}
 
 	r('git checkout v_repo_master')

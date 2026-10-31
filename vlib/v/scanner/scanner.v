@@ -14,9 +14,13 @@ pub enum Mode {
 // Diagnostic describes a lexical error at a byte offset in the current source.
 pub struct Diagnostic {
 pub:
-	offset  int
-	end     int
-	message string
+	offset         int
+	end            int
+	severity       string
+	message        string
+	details        []string
+	detail_offset  int = -1
+	detail_message string
 }
 
 // Scanner represents scanner data used by scanner.
@@ -41,6 +45,12 @@ pub mut:
 	str_parent_quotes   []u8
 	str_parent_depths   []int
 	diagnostics         []Diagnostic
+	// line_directives makes the scanner record valid `#line` directives in its file.
+	// Only the scanner that reads a whole source file for the parser turns it on.
+	line_directives bool
+	// line_directive_offsets lists the offsets of the `#line` directives scanned, valid
+	// or not, so the parser can report the ones that are not between statements.
+	line_directive_offsets []int
 }
 
 // peek_byte supports peek byte handling for Scanner.
@@ -76,10 +86,11 @@ pub fn (mut s Scanner) skip_block_to(offset int) {
 	s.after_dot = false
 }
 
-// init supports init handling for Scanner.
+// init resets the scanner for src, ignoring a leading UTF-8 byte order mark.
 pub fn (mut s Scanner) init(file &token.File, src string) {
-	s.offset = 0
-	s.pos = 0
+	// Keep the original buffer and byte positions for source spans and diagnostics.
+	s.offset = if src.starts_with('\xef\xbb\xbf') { 3 } else { 0 }
+	s.pos = s.offset
 	s.lit = ''
 	s.insert_semi = false
 	s.after_dot = false
@@ -91,6 +102,8 @@ pub fn (mut s Scanner) init(file &token.File, src string) {
 	s.str_parent_quotes = []u8{}
 	s.str_parent_depths = []int{}
 	s.diagnostics = []Diagnostic{}
+	s.line_directives = false
+	s.line_directive_offsets = []int{}
 	s.file = unsafe { file }
 	s.src = src
 }
@@ -108,6 +121,34 @@ fn (mut s Scanner) error_span(message string, start int, end int) {
 		offset:  start
 		end:     end
 		message: message
+	}
+}
+
+fn (mut s Scanner) error_with_details(message string, offset int, details []string) {
+	s.diagnostics << Diagnostic{
+		offset:  offset
+		end:     offset + 1
+		message: message
+		details: details
+	}
+}
+
+fn (mut s Scanner) warning(message string, offset int) {
+	s.diagnostics << Diagnostic{
+		offset:   offset
+		end:      offset + 1
+		severity: 'warning:'
+		message:  message
+	}
+}
+
+fn (mut s Scanner) error_with_detail_position(message string, offset int, detail_message string, detail_offset int) {
+	s.diagnostics << Diagnostic{
+		offset:         offset
+		end:            offset + 1
+		message:        message
+		detail_offset:  detail_offset
+		detail_message: detail_message
 	}
 }
 
@@ -152,8 +193,176 @@ fn (mut s Scanner) scan_char_literal(quote u8) token.Token {
 		s.error('unterminated character literal', start)
 	}
 	s.lit = s.source_lit(s.pos + 1, end)
+	if quote == `\`` && closed {
+		s.validate_char_literal(start, s.pos + 1, end)
+	}
 	s.insert_semi = true
 	return .char
+}
+
+fn (mut s Scanner) validate_char_literal(start int, content_start int, content_end int) {
+	content := s.source_lit(content_start, content_end)
+	details := ['use quotes for strings, backticks for characters']
+	if content.len == 0 {
+		s.error_with_details('invalid empty character literal ``', start, details)
+		return
+	}
+	if content.contains('\n') {
+		s.error_with_details(r'invalid character literal, use `\n` instead', start, details)
+		return
+	}
+	mut parts := []string{}
+	mut offset := content_start
+	for offset < content_end {
+		part_start := offset
+		if s.src[offset] == `\\` {
+			escape := s.src[offset + 1]
+			if !is_known_string_escape(escape) {
+				s.error('`${escape.ascii_str()}` unknown escape sequence', offset + 2)
+				return
+			}
+			before_errors := s.diagnostics.len
+			s.check_string_escape(offset)
+			if s.diagnostics.len > before_errors {
+				return
+			}
+			offset = s.char_literal_escape_end(offset, content_end)
+			// A character can be spelled as its UTF-8 bytes (`\xe2\x98\x85`, `\342\230\205`),
+			// the same as in a string, so those escapes together are still one character.
+			if lead := s.char_literal_escape_byte(part_start, offset) {
+				offset = s.char_literal_utf8_escapes_end(lead, offset, content_end)
+			}
+		} else {
+			offset = int_min(content_end, offset + utf8_char_len(s.src[offset]))
+		}
+		parts << s.source_lit(part_start, offset)
+	}
+	if parts.len > 1 {
+		formatted_parts := parts.map('`${it}`').join(', ')
+		s.error_with_details('invalid character literal `${content}` => `${content}` ([${formatted_parts}]) (more than one character)', start, details)
+	}
+}
+
+// char_literal_escape_end returns where the escape that starts at the backslash at
+// `offset` ends. An octal escape is exactly three octal digits, which is how string
+// literals decode it; without three, the backslash escapes only the next character.
+fn (s &Scanner) char_literal_escape_end(offset int, content_end int) int {
+	extra := match s.src[offset + 1] {
+		`x` {
+			2
+		}
+		`u` {
+			4
+		}
+		`U` {
+			8
+		}
+		else {
+			if s.char_literal_octal_escape_at(offset, content_end) { 2 } else { 0 }
+		}
+	}
+	return int_min(content_end, offset + 2 + extra)
+}
+
+fn (s &Scanner) char_literal_octal_escape_at(offset int, content_end int) bool {
+	if offset + 3 >= content_end {
+		return false
+	}
+	for i in 1 .. 4 {
+		c := s.src[offset + i]
+		if c < `0` || c > `7` {
+			return false
+		}
+	}
+	return true
+}
+
+// char_literal_escape_byte returns the byte that a `\xHH` or three-digit octal escape
+// spanning `start` to `end` stands for.
+fn (s &Scanner) char_literal_escape_byte(start int, end int) ?u8 {
+	if end - start != 4 {
+		return none
+	}
+	escape := s.src[start + 1]
+	mut value := 0
+	if escape == `x` {
+		for i in start + 2 .. end {
+			if !s.src[i].is_hex_digit() {
+				return none
+			}
+			value = value * 16 + int(string_escape_hex_value(s.src[i]))
+		}
+	} else if escape >= `0` && escape <= `7` {
+		for i in start + 1 .. end {
+			if s.src[i] < `0` || s.src[i] > `7` {
+				return none
+			}
+			value = value * 8 + int(s.src[i] - `0`)
+		}
+	} else {
+		return none
+	}
+	if value > 0xff {
+		return none
+	}
+	return u8(value)
+}
+
+// char_literal_utf8_escapes_end extends a byte escape holding the UTF-8 lead byte `lead`
+// over the continuation byte escapes that complete its character, and returns where
+// they end. The bytes have to be one well-formed UTF-8 sequence: if they are missing, are
+// not continuation bytes, or spell an overlong form, a surrogate or a code point above
+// U+10FFFF, the escape stays on its own.
+fn (s &Scanner) char_literal_utf8_escapes_end(lead u8, offset int, content_end int) int {
+	continuation_bytes := if lead >= 0xc2 && lead <= 0xdf {
+		1
+	} else if lead >= 0xe0 && lead <= 0xef {
+		2
+	} else if lead >= 0xf0 && lead <= 0xf4 {
+		3
+	} else {
+		0
+	}
+	if continuation_bytes == 0 {
+		return offset
+	}
+	mut code_point := u32(lead) & (u32(0x7f) >> (continuation_bytes + 1))
+	mut end := offset
+	for _ in 0 .. continuation_bytes {
+		if end + 1 >= content_end || s.src[end] != `\\` {
+			return offset
+		}
+		next_end := s.char_literal_escape_end(end, content_end)
+		b := s.char_literal_escape_byte(end, next_end) or { return offset }
+		if b < 0x80 || b > 0xbf {
+			return offset
+		}
+		code_point = (code_point << 6) | u32(b & 0x3f)
+		end = next_end
+	}
+	// The same range `check_string_escape` enforces for `\u`/`\U`, plus the smallest code
+	// point each length may encode, which rules out overlong forms.
+	shortest_form_minimum := [u32(0x80), 0x800, 0x10000][continuation_bytes - 1]
+	if code_point < shortest_form_minimum || code_point > 0x10ffff
+		|| (code_point >= 0xd800 && code_point <= 0xdfff) {
+		return offset
+	}
+	return end
+}
+
+// record_line_directive notes the offset of the `#line` directive just scanned, and
+// records it in the file when it is valid, so the lines after it report their logical
+// location. A malformed directive is reported by the parser instead.
+fn (mut s Scanner) record_line_directive() {
+	if s.lit.len > 4 && s.lit[4] !in [` `, `\t`] {
+		return
+	}
+	s.line_directive_offsets << s.pos
+	if isnil(s.file) || s.lit.len < 5 {
+		return
+	}
+	line, file := token.parse_line_directive(s.lit[5..]) or { return }
+	unsafe { s.file.add_line_directive(s.pos, line, file) }
 }
 
 // current_file returns current file data for Scanner.
@@ -226,55 +435,65 @@ pub fn (mut s Scanner) scan() token.Token {
 			s.offset++
 			return .attribute
 		}
-		for s.offset < s.src.len {
-			c3 := s.src[s.offset]
-			if (c3 >= `a` && c3 <= `z`) || (c3 >= `A` && c3 <= `Z`)
-				|| (c3 >= `0` && c3 <= `9`) || c3 == `_` {
-				s.offset++
+		// Scan the name in locals: a store to the offset field per byte cannot
+		// be kept out of the loop, since the source bytes could alias it.
+		src := s.src
+		mut off := s.offset
+		for off < src.len {
+			if identifier_tail_bytes[src[off]] {
+				off++
 				continue
 			}
 			break
 		}
+		s.offset = off
 		s.lit = s.source_lit(s.pos, s.offset)
-		if s.lit == 'c' && s.offset < s.src.len
-			&& (s.src[s.offset] == `'` || s.src[s.offset] == `"`) {
-			quote := s.src[s.offset]
-			s.pos = s.offset
-			tok := s.scan_char_literal(quote)
-			s.lit = 'c:${s.lit}'
-			return tok
-		}
-		if s.lit == 'r' && s.offset < s.src.len
-			&& (s.src[s.offset] == `'` || s.src[s.offset] == `"`) {
-			quote := s.src[s.offset]
-			s.offset++
-			if !s.in_str_inter {
-				s.str_quote = quote
+		// Only a following quote can make a name a literal prefix.
+		if s.offset < s.src.len && (s.src[s.offset] == `'` || s.src[s.offset] == `"`) {
+			if s.lit == 'c' {
+				quote := s.src[s.offset]
+				s.pos = s.offset
+				tok := s.scan_char_literal(quote)
+				s.lit = 'c:${s.lit}'
+				return tok
 			}
-			s.string_literal(true, quote)
-			s.lit = s.source_lit(s.pos, s.offset)
-			s.insert_semi = true
-			return .string
-		}
-		if s.lit == 'js' && s.offset < s.src.len
-			&& (s.src[s.offset] == `'` || s.src[s.offset] == `"`) {
-			quote := s.src[s.offset]
-			s.offset++
-			nested_interpolation := s.in_str_inter && !s.skip_interpolation
-			if nested_interpolation {
-				s.begin_nested_string_interpolation(quote)
-			} else if !s.in_str_inter {
-				s.str_quote = quote
+			if s.lit == 'r' {
+				quote := s.src[s.offset]
+				s.offset++
+				if !s.in_str_inter {
+					s.str_quote = quote
+				}
+				s.string_literal(true, quote)
+				s.lit = s.source_lit(s.pos, s.offset)
+				s.insert_semi = true
+				return .string
 			}
-			s.string_literal(false, quote)
-			s.lit = s.source_lit(s.pos, s.offset)
-			if nested_interpolation && !s.in_str_inter {
-				s.restore_parent_string_interpolation()
+			if s.lit == 'js' {
+				quote := s.src[s.offset]
+				s.offset++
+				nested_interpolation := s.in_str_inter && !s.skip_interpolation
+				if nested_interpolation {
+					s.begin_nested_string_interpolation(quote)
+				} else if !s.in_str_inter {
+					s.str_quote = quote
+				}
+				s.string_literal(false, quote)
+				s.lit = s.source_lit(s.pos, s.offset)
+				if nested_interpolation && !s.in_str_inter {
+					s.restore_parent_string_interpolation()
+				}
+				s.insert_semi = true
+				return .string
 			}
-			s.insert_semi = true
-			return .string
 		}
 		tok := token.Token.from_string_tinyv(s.lit)
+		// FastC reads tokens without a parser, so it receives an escaped keyword
+		// (`@type`, `@none`) as the plain identifier it names; `@FILE` and the other
+		// compile-time values are not keywords and keep their `@`.
+		if c == `@` && tok == .name && s.lit.len > 1 && !isnil(s.pref) && s.pref.backend == 'fastc'
+			&& token.Token.from_string_tinyv(s.lit[1..]).is_keyword() {
+			s.lit = s.lit[1..]
+		}
 		if tok in [.key_break, .key_continue, .key_nil, .key_none, .key_return, .key_false, .key_true,
 			.name]
 			|| (follows_dot && tok.is_keyword()) {
@@ -488,6 +707,9 @@ pub fn (mut s Scanner) scan() token.Token {
 			}
 			s.lit = s.source_lit(start, s.offset).trim_space()
 			s.insert_semi = true
+			if s.line_directives && s.lit.starts_with('line') {
+				s.record_line_directive()
+			}
 			return .hash
 		}
 		`~` {
@@ -558,30 +780,36 @@ pub fn (mut s Scanner) scan() token.Token {
 
 @[direct_array_access]
 fn (mut s Scanner) whitespace() {
-	for s.offset < s.src.len {
-		c := s.src[s.offset]
+	src := s.src
+	mut off := s.offset
+	for off < src.len {
+		c := src[off]
 		if c == ` ` || c == `\t` || c == `\r` {
-			s.offset++
+			off++
 			continue
 		} else if c == `\n` {
 			if s.insert_semi {
-				return
+				break
 			}
-			s.offset++
+			off++
 			continue
 		}
 		break
 	}
+	s.offset = off
 }
 
 @[direct_array_access]
 fn (mut s Scanner) line() {
-	for s.offset < s.src.len {
-		if s.src[s.offset] == `\n` {
+	src := s.src
+	mut off := s.offset
+	for off < src.len {
+		if src[off] == `\n` {
 			break
 		}
-		s.offset++
+		off++
 	}
+	s.offset = off
 }
 
 @[direct_array_access]
@@ -618,7 +846,7 @@ fn (mut s Scanner) comment() {
 			}
 		}
 		if ml_comment_depth > 0 {
-			s.error('unterminated block comment', s.pos)
+			s.error('unterminated multiline comment', s.pos + 1)
 		}
 	}
 }
@@ -648,6 +876,23 @@ fn (mut s Scanner) string_literal(scan_as_raw bool, c_quote u8) {
 		return
 	}
 	for s.offset < s.src.len {
+		if !s.skip_interpolation || !s.in_str_inter {
+			// Only escapes, interpolations and the closing quote end a run of
+			// literal bytes here; skip such a run in locals.
+			src := s.src
+			mut off := s.offset
+			for off < src.len {
+				b := src[off]
+				if b == `\\` || b == `$` || b == c_quote {
+					break
+				}
+				off++
+			}
+			s.offset = off
+			if off >= src.len {
+				break
+			}
+		}
 		c := s.src[s.offset]
 		if c == `\\` {
 			if s.offset + 1 >= s.src.len {
@@ -685,7 +930,12 @@ fn (mut s Scanner) string_literal(scan_as_raw bool, c_quote u8) {
 		}
 		s.offset++
 	}
-	s.error('unfinished string literal', s.src.len)
+	if s.src[s.pos..].count('\n') > 1 {
+		s.error_with_detail_position('unfinished string literal', s.src.len, 'literal started here',
+			s.pos)
+	} else {
+		s.error('unfinished string literal', s.src.len)
+	}
 }
 
 fn (mut s Scanner) begin_nested_string_interpolation(quote u8) {
@@ -759,7 +1009,12 @@ fn (mut s Scanner) number() {
 		c := s.peek_byte(1)
 		if c == `b` || c == `B` {
 			s.offset += 2
+			diagnostics_before := s.diagnostics.len
 			digits := s.consume_digits(2)
+			if s.diagnostics.len > diagnostics_before {
+				s.consume_invalid_numeric_suffix()
+				return
+			}
 			if s.offset < s.src.len && s.src[s.offset].is_alnum() {
 				s.error('this binary number has unsuitable digit `${s.src[s.offset].ascii_str()}`',
 					s.offset)
@@ -770,7 +1025,12 @@ fn (mut s Scanner) number() {
 			return
 		} else if c == `x` || c == `X` {
 			s.offset += 2
+			diagnostics_before := s.diagnostics.len
 			digits := s.consume_digits(16)
+			if s.diagnostics.len > diagnostics_before {
+				s.consume_invalid_numeric_suffix()
+				return
+			}
 			if s.offset < s.src.len && s.src[s.offset].is_alnum() {
 				s.error('this hexadecimal number has unsuitable digit `${s.src[s.offset].ascii_str()}`',
 					s.offset)
@@ -781,7 +1041,12 @@ fn (mut s Scanner) number() {
 			return
 		} else if c == `o` || c == `O` {
 			s.offset += 2
+			diagnostics_before := s.diagnostics.len
 			digits := s.consume_digits(8)
+			if s.diagnostics.len > diagnostics_before {
+				s.consume_invalid_numeric_suffix()
+				return
+			}
 			if s.offset < s.src.len && s.src[s.offset].is_alnum() {
 				s.error('this octal number has unsuitable digit `${s.src[s.offset].ascii_str()}`',
 					s.offset)
@@ -802,6 +1067,11 @@ fn (mut s Scanner) number() {
 			if next >= `0` && next <= `9` {
 				s.consume_digits(10)
 			}
+		} else if next == 0 || next.is_space() || next in [`,`, `;`, `)`, `]`, `}`] {
+			has_fraction = true
+			s.offset++
+			s.warning('float literals should have a digit after the decimal point, e.g. `1.0`',
+				s.offset)
 		}
 	}
 	mut has_exponent := false
@@ -915,6 +1185,7 @@ fn (mut s Scanner) consume_invalid_numeric_suffix() {
 fn (mut s Scanner) consume_digits(base int) int {
 	mut digits := 0
 	mut previous_underscore := false
+	mut invalid_separator := false
 	for s.offset < s.src.len {
 		c := s.src[s.offset]
 		// Decimal digits are by far the most common case, so test them inline
@@ -933,7 +1204,9 @@ fn (mut s Scanner) consume_digits(base int) int {
 		}
 		if c == `_` {
 			if digits == 0 || previous_underscore {
-				s.error('numeric separators must occur between digits', s.offset)
+				s.error('separator `_` is only valid between digits in a numeric literal',
+					s.offset)
+				invalid_separator = true
 			}
 			previous_underscore = true
 			s.offset++
@@ -941,7 +1214,7 @@ fn (mut s Scanner) consume_digits(base int) int {
 		}
 		break
 	}
-	if previous_underscore {
+	if previous_underscore && !invalid_separator {
 		s.error('numeric literal cannot end with a separator', s.offset - 1)
 	}
 	return digits
@@ -959,4 +1232,9 @@ fn digit_value(c u8) int {
 		return int(c - `A`) + 10
 	}
 	return 256
+}
+
+// compile_value is the value given with `-d name=value`, if any.
+pub fn (s &Scanner) compile_value(name string) ?string {
+	return s.pref.compile_values[name] or { return none }
 }

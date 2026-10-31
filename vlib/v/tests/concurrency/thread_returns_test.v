@@ -61,3 +61,13 @@ fn test_arrays_of_threads_with_multi_returns() {
 		assert a == 1 && b == 2
 	}
 }
+
+fn test_anon_fn_statement_returning_thread_with_multi_returns() {
+	fn () thread (int, int) {
+		return spawn get_multi_returns()
+	}().wait()
+	a, b := fn (x int) thread (int, int) {
+		return spawn get_multi_returns()
+	}(1).wait()
+	assert a == 1 && b == 2
+}

@@ -1,0 +1,53 @@
+Run a tool module by name.
+
+VPM installs modules rather than binaries, so a CLI tool written in V has to be
+run by path today: `v run ~/.vmodules/mytool` or `v run ../mytool`, with a path
+you have to know and keep correct.
+
+Usage:
+  v tool                List the tool modules that can be seen.
+  v tool NAME           Run the tool module called NAME.
+
+`v tool NAME` resolves NAME the way an import would, then builds and runs the
+module. That means it finds a tool installed with `v install`, and equally a
+tool you have a checkout of next to the project, without either path being
+written down anywhere:
+
+  $ v tool greet
+  hello from the tool
+
+With no argument, `v tool` lists the tool modules of the project and of the
+global module folders, so the names do not have to be remembered.
+
+A module is a tool when its root holds a `main.v`. A library module asked for by
+name is refused rather than attempted:
+
+  $ v tool libmod
+  v tool: module `libmod` holds no program to run.
+  A tool module has a `main.v` at its root.
+
+A name that resolves to nothing in the module search path is an error:
+
+  $ v tool nosuchtool
+  v tool: no module named `nosuchtool` in the module search path.
+
+Note what running a tool does: it builds and starts the module, which means it
+runs code from a module in the module search path. That is the same trust that
+`v install` already places in a module you chose to install, but it is worth
+knowing before running a name you did not install yourself.
+
+The listing covers the project and the global module folders. Running by name
+uses the same lookup as an import, so a module checked out beside the project
+can be run even though the listing does not walk up to find it: enumerating
+every module from a project to the filesystem root would report far more than
+belongs in a list. Nested module folders, such as one under `cmd/`, are left out
+for the opposite reason, because a module there is not resolvable by name and so
+could not be run by one.
+Installed tools are listed by their import path relative to the module folder,
+even without v.mod or when the manifest name differs from that path.
+
+The project entry uses its directory name when lookup resolves it to that
+project, even when v.mod declares a different name. Every listed name must
+resolve to its intended tool directory. A literal dot in a directory name is
+interpreted as a module separator, so an unresolvable entry is omitted; that
+project can still be run by path with `v run .`.

@@ -11,7 +11,8 @@ fn tlb_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_tmpl_lambda_body_test_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${tlb_vexe} -gc none -path "${tlb_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${tlb_v3_src}')
+		os.exec([tlb_vexe, '-gc', 'none', '-path', '${tlb_vlib_dir}' + '|@vlib|@vmodules', '-o',
+			v3_bin, '${tlb_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -34,10 +35,10 @@ fn test_template_in_expression_lambda_bodies_are_lowered() {
 	source := "module main\n\nfn build_map() string {\n\trows := ['a', 'b', 'c']\n\tparts := rows.map(|r| \$tmpl('row.txt'))\n\treturn parts.join(',').replace('\\n', '')\n}\n\nfn build_noarg() string {\n\tcb := || \$tmpl('greet.txt')\n\treturn cb().replace('\\n', '')\n}\n\nfn main() {\n\tprintln(build_map())\n\tprintln(build_noarg())\n}\n"
 	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_tmpl_lambda_body_bin_${pid}')
-	compile := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${bin}')
+	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	lines := run.output.trim_space().split('\n')
 	assert lines.len == 2, run.output

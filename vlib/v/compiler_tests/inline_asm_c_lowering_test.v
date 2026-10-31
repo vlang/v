@@ -11,12 +11,13 @@ fn inline_asm_tmp_path(name string) string {
 }
 
 fn build_v3_inline_asm() string {
-	v3_bin := inline_asm_tmp_path('compiler')
+	v3_bin := inline_asm_tmp_path('compiler') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}
 	build :=
-		os.execute('${inline_asm_vexe} -gc none -path "${inline_asm_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${inline_asm_v3_source}')
+		os.exec([inline_asm_vexe, '-gc', 'none', '-path',
+			'${inline_asm_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, inline_asm_v3_source])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -185,7 +186,7 @@ fn main() {
 		; =r (character)
 	}
 	values := [u64(11), 22]!
-	base := &values[0]
+	base := unsafe { &values[0] }
 	index := u64(8)
 	mut indexed := u64(0)
 	asm amd64 {
@@ -218,7 +219,7 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 	c_path := '${inline_asm_tmp_path('program')}.c'
 	bin_path := inline_asm_tmp_path('program')
 	os.write_file(source_path, source) or { panic(err) }
-	generate := os.execute('${v3_bin} -enable-globals -cc clang -o ${c_path} ${source_path}')
+	generate := os.exec([v3_bin, '-enable-globals', '-cc', 'clang', '-o', c_path, source_path])
 	assert generate.exit_code == 0, generate.output
 	assert !generate.output.contains('inline assembly is not supported'), generate.output
 	c_source := os.read_file(c_path) or { panic(err) }
@@ -245,9 +246,9 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 		assert c_source.contains('".byte 0x27, 0x35, 0x0f, 0x48\\n\\t"'), c_source
 		assert !c_source.contains('.byte \\\$0x27'), c_source
 	}
-	compile := os.execute('${v3_bin} -enable-globals -cc clang -o ${bin_path} ${source_path}')
+	compile := os.exec([v3_bin, '-enable-globals', '-cc', 'clang', '-o', bin_path, source_path])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin_path)
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	$if arm64 {
 		assert run.output.trim_space() == '8\n10\n6\n7\n65\n25\n100'
@@ -269,7 +270,8 @@ fn test_i386_inline_asm_reaches_c_lowering() {
 ') or {
 		panic(err)
 	}
-	generate := os.execute('${v3_bin} -os linux -arch i386 -cc clang -o ${c_path} ${source_path}')
+	generate := os.exec([v3_bin, '-os', 'linux', '-arch', 'i386', '-cc', 'clang', '-o', c_path,
+		source_path])
 	assert generate.exit_code == 0, generate.output
 	assert !generate.output.contains('inline assembly is not supported'), generate.output
 	c_source := os.read_file(c_path) or { panic(err) }
@@ -293,7 +295,8 @@ fn test_x86_inline_asm_segment_address_reaches_c_lowering() {
 ') or {
 		panic(err)
 	}
-	generate := os.execute('${v3_bin} -os linux -arch amd64 -cc clang -o ${c_path} ${source_path}')
+	generate := os.exec([v3_bin, '-os', 'linux', '-arch', 'amd64', '-cc', 'clang', '-o', c_path,
+		source_path])
 	assert generate.exit_code == 0, generate.output
 	c_source := os.read_file(c_path) or { panic(err) }
 	assert c_source.contains('"mov %%fs:(%[value]), %[value]\\n\\t"'), c_source
@@ -359,6 +362,19 @@ fn test_asm_goto_lowers_branch_after_leading_local_label() {
 	assert c_source.contains('"retry: jne %l[__v_user_goto_0]\\n\\t"'), c_source
 }
 
+fn test_asm_goto_lowers_uppercase_branch_mnemonics() {
+	generate, c_source := generate_inline_asm_c('goto_uppercase_mnemonic_program', 'fn main() {
+	asm goto amd64 {
+		retry: JNE done
+		; ; ; ; done
+	}
+	done:
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"retry: JNE %l[__v_user_goto_0]\\n\\t"'), c_source
+}
+
 fn test_raw_asm_goto_keeps_symbolic_label_references_valid() {
 	generate, c_source := generate_inline_asm_c('raw_goto_program', 'fn main() {
 	asm goto amd64 raw {
@@ -374,7 +390,7 @@ fn test_raw_asm_goto_keeps_symbolic_label_references_valid() {
 }
 
 fn test_asm_goto_across_lock_scope_is_rejected() {
-	generate, c_source := generate_inline_asm_c('goto_lock_scope_program', 'struct Counter {
+	generate, _ := generate_inline_asm_c('goto_lock_scope_program', 'struct Counter {
 mut:
 	value int
 }
@@ -390,8 +406,110 @@ fn main() {
 	done:
 }
 ')
+	assert generate.exit_code != 0, generate.output
+	assert generate.output.contains('different `lock`/`rlock` scope'), generate.output
+}
+
+fn test_asm_goto_within_lock_scope_is_allowed() {
+	generate, c_source := generate_inline_asm_c('goto_within_lock_scope_program', 'struct Counter {
+mut:
+	value int
+}
+
+fn main() {
+	shared counter := Counter{}
+	lock counter {
+		asm goto amd64 {
+			jmp done
+			; ; ; ; done
+		}
+		done:
+	}
+}
+')
 	assert generate.exit_code == 0, generate.output
-	assert c_source.contains('#error asm goto into or out of a lock scope is not supported'), c_source
+	assert c_source.contains('jmp %l[__v_user_goto_0]'), c_source
+	assert !c_source.contains('#error asm goto'), c_source
+}
+
+fn test_asm_goto_across_rlock_scope_is_rejected() {
+	generate, _ := generate_inline_asm_c('goto_rlock_scope_program', 'struct Counter {
+mut:
+	value int
+}
+
+fn main() {
+	shared counter := Counter{}
+	rlock counter {
+		asm goto amd64 {
+			jmp done
+			; ; ; ; done
+		}
+	}
+	done:
+}
+')
+	assert generate.exit_code != 0, generate.output
+	assert generate.output.contains('different `lock`/`rlock` scope'), generate.output
+}
+
+fn test_asm_goto_across_lock_scope_inside_closure_is_rejected() {
+	generate, _ := generate_inline_asm_c('goto_lock_scope_closure_program', 'struct Counter {
+mut:
+	value int
+}
+
+fn main() {
+	shared counter := Counter{}
+	f := fn [shared counter] () {
+		lock counter {
+			asm goto amd64 {
+				jmp done
+				; ; ; ; done
+			}
+		}
+		done:
+	}
+	f()
+}
+')
+	assert generate.exit_code != 0, generate.output
+	assert generate.output.contains('different `lock`/`rlock` scope'), generate.output
+}
+
+fn test_asm_goto_to_undeclared_label_in_lock_scope_is_rejected() {
+	generate, _ := generate_inline_asm_c('goto_undeclared_label_program', 'struct Counter {
+mut:
+	value int
+}
+
+fn main() {
+	shared counter := Counter{}
+	lock counter {
+		asm goto amd64 {
+			jmp done
+			; ; ; ; done
+		}
+	}
+}
+')
+	assert generate.exit_code != 0, generate.output
+}
+
+fn test_asm_goto_across_objectless_lock_is_allowed() {
+	generate, c_source := generate_inline_asm_c('goto_objectless_lock_program', 'fn main() {
+	lock {
+		asm goto amd64 {
+			jmp done
+			; ; ; ; done
+		}
+	}
+	done:
+}
+')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('jmp %l[__v_user_goto_0]'), c_source
+	assert !c_source.contains('#error asm goto'), c_source
 }
 
 fn generate_inline_asm_c(name string, source string) (os.Result, string) {
@@ -403,15 +521,16 @@ fn generate_inline_asm_c_for_arch(name string, source string, arch string) (os.R
 	source_path := '${inline_asm_tmp_path(name)}.v'
 	c_path := '${inline_asm_tmp_path(name)}.c'
 	os.write_file(source_path, source) or { panic(err) }
-	result := os.execute('${v3_bin} -os linux -arch ${arch} -cc clang -o ${c_path} ${source_path}')
+	result := os.exec([v3_bin, '-os', 'linux', '-arch', '${arch}', '-cc', 'clang', '-o', c_path,
+		source_path])
 	c_source := os.read_file(c_path) or { '' }
 	return result, c_source
 }
 
 fn test_raw_asm_templates_reach_c_lowering_unchanged() {
 	generate, c_source := generate_inline_asm_c('raw_program', 'fn main() {
-	mut value := 40
-	increment := 2
+	mut value := i32(40)
+	increment := i32(2)
 	asm amd64 raw {
 		"addl %[increment], %[value]\\n\\t"
 		; [value] "+r" (value)
@@ -685,7 +804,7 @@ fn test_intel_asm_rejects_narrow_register_operands() {
 }
 ')
 	assert generate.exit_code != 0, generate.output
-	assert generate.output.contains('structured `intel` assembly cannot represent a 32-bit register operand'), generate.output
+	assert generate.output.contains('hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers'), generate.output
 }
 
 fn test_intel_asm_validates_enum_backing_widths() {
@@ -702,7 +821,24 @@ fn main() {
 }
 ')
 	assert default_generate.exit_code != 0, default_generate.output
-	assert default_generate.output.contains('structured `intel` assembly cannot represent a 32-bit register operand'), default_generate.output
+	assert default_generate.output.contains('hard register `eax` is 32-bit, but named operands in structured `intel` assembly expand to 64-bit registers'), default_generate.output
+
+	// The same 64-bit instruction that accepts a `u64` backed enum below must see the
+	// default enum as a 32-bit signed value.
+	default_wide_generate, _ := generate_inline_asm_c('intel_default_enum_wide_register_program', 'enum Kind {
+	one
+}
+
+fn main() {
+	value := Kind.one
+	asm amd64 intel {
+		mov rax, value
+		; ; r (value)
+	}
+}
+')
+	assert default_wide_generate.exit_code != 0, default_wide_generate.output
+	assert default_wide_generate.output.contains('named source `value` has 32-bit signed type `Kind`, but instruction `mov` consumes the wider 64-bit register'), default_wide_generate.output
 
 	narrow_generate, _ := generate_inline_asm_c('intel_narrow_enum_register_program', 'enum Kind as u8 {
 	one
@@ -717,7 +853,7 @@ fn main() {
 }
 ')
 	assert narrow_generate.exit_code != 0, narrow_generate.output
-	assert narrow_generate.output.contains('structured `intel` assembly cannot represent a 8-bit register operand'), narrow_generate.output
+	assert narrow_generate.output.contains('hard register `al` is 8-bit, but named operands in structured `intel` assembly expand to 64-bit registers'), narrow_generate.output
 
 	wide_generate, c_source := generate_inline_asm_c('intel_wide_enum_register_program', 'enum Kind as u64 {
 	one

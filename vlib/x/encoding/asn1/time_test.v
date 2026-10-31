@@ -18,6 +18,7 @@ fn test_serialize_utctime_basic() ! {
 
 	// back
 	back, pos := UtcTime.decode(out)!
+	assert pos == out.len
 	assert back.tag().tag_number() == int(TagType.utctime)
 	assert back == ut
 	assert back.value == inp
@@ -59,37 +60,33 @@ fn test_serialize_utctime_error_without_z() ! {
 	// this input does not contains zulu 'Z' part
 	inp := '191215190210'
 
-	exp := [u8(0x17), 0x0D, 49, 57, 49, 50, 49, 53, 49, 57, 48, 50, 49, 48]
-
-	ut := UtcTime.new(inp) or {
+	UtcTime.new(inp) or {
 		assert err == error('UtcTime: fail on validate utctime')
 		return
 	}
+	assert false, 'expected UtcTime.new to reject a value without the Z suffix'
 }
 
 fn test_serialize_utctime_error_month() ! {
 	// the month part is > 12
 	inp := '191815190210Z'
 
-	exp := [u8(0x17), 0x0D, 49, 57, 49, 56, 49, 53, 49, 57, 48, 50, 49, 48]
-
-	ut := UtcTime.new(inp) or {
+	UtcTime.new(inp) or {
 		assert err == error('UtcTime: fail on validate utctime')
 		return
 	}
+	assert false, 'expected UtcTime.new to reject an invalid month'
 }
 
 fn test_serialize_utctime_error_day() ! {
 	// the day part is > 30
 	inp := '191235190210Z'
 
-	exp := [u8(0x17), 0x0D, 0x31, 0x39, 0x31, 0x32, 0x31, 0x32, 0x31, 0x39, 0x30, 0x32, 0x31, 0x30,
-		0x5A]
-
-	ut := UtcTime.new(inp) or {
+	UtcTime.new(inp) or {
 		assert err == error('UtcTime: fail on validate utctime')
 		return
 	}
+	assert false, 'expected UtcTime.new to reject an invalid day'
 }
 
 fn test_serialize_decode_generalizedtime() ! {
@@ -103,6 +100,7 @@ fn test_serialize_decode_generalizedtime() ! {
 
 	// back
 	back, pos := GeneralizedTime.decode(out)!
+	assert pos == out.len
 
 	assert back == gt
 	assert back.value == s
@@ -141,4 +139,22 @@ fn test_create_generalizedtime_from_std_time_with_negative_offset() ! {
 
 	now := time.new(year: 2024, month: 11, day: 13, hour: 17, minute: 45, second: 50)
 	GeneralizedTime.from_time(now)!
+}
+
+// test_generalizedtime_rejects_trailing_garbage checks that a value with
+// bytes after the terminating `Z` is rejected instead of accepted and
+// re-emitted with the garbage intact.
+// See https://github.com/vlang/v/issues/30184
+fn test_generalizedtime_rejects_trailing_garbage() {
+	if _ := GeneralizedTime.new('20240101000000ZZ') {
+		assert false, 'GeneralizedTime accepted trailing garbage after Z'
+	}
+	// the valid form still parses
+	gt := GeneralizedTime.new('20240101000000Z')!
+	assert gt.value == '20240101000000Z'
+	for value in ['20240101000000Z0', '20240101000000Z2024', '20240101000000', '20240101000000z'] {
+		if _ := GeneralizedTime.new(value) {
+			assert false, 'accepted invalid GeneralizedTime ${value}'
+		}
+	}
 }

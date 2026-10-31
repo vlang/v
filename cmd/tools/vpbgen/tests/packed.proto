@@ -1,0 +1,24 @@
+// The wire form of a repeated numeric field is chosen by the schema here. Both
+// forms are legal on the wire and a reader has to accept either, so what this
+// pins down is which one the producer emits.
+
+syntax = "proto3";
+
+package packed;
+
+message Explicit {
+  // The spec defaults this to packed; saying so changes nothing.
+  repeated int32 stated_packed = 1 [packed = true];
+  // This one asks for the other form, so each element carries its own tag.
+  repeated int32 stated_unpacked = 2 [packed = false];
+  // No option at all, so the default applies.
+  repeated int32 silent = 3;
+  // A string has no packed form either way, so the option is redundant rather
+  // than wrong.
+  repeated string tags = 4 [packed = false];
+  repeated Inner messages = 5 [packed = false];
+}
+
+message Inner {
+  int32 x = 1;
+}

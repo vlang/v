@@ -12,10 +12,11 @@ fn fail(message string) {
 	exit(1)
 }
 
-fn parse_arguments(args []string) (string, string, bool) {
+fn parse_arguments(args []string, mut prefs pref.Preferences) (string, string, bool, bool) {
 	mut input := ''
 	mut output := ''
 	mut keep_c := false
+	mut no_cache := false
 	mut index := 0
 	for index < args.len {
 		arg := args[index]
@@ -53,7 +54,11 @@ fn parse_arguments(args []string) (string, string, bool) {
 		}
 		if arg == '-keepc' {
 			keep_c = true
-		} else if arg.ends_with('.v') {
+		} else if arg in ['-nocache', '--no-cache'] {
+			no_cache = true
+		} else if arg == '-enable-globals' {
+			prefs.enable_globals = true
+		} else if arg.ends_with('.v') || os.is_dir(arg) {
 			if input != '' {
 				fail('fastc self-host compiler accepts only one V source entry file')
 			}
@@ -69,7 +74,7 @@ fn parse_arguments(args []string) (string, string, bool) {
 	if output == '' {
 		output = os.file_name(input).all_before_last('.')
 	}
-	return input, output, keep_c
+	return input, output, keep_c, no_cache
 }
 
 fn self_command_index(args []string) int {
@@ -146,7 +151,7 @@ fn parse_self_arguments(args []string, command_index int) (int, []string, string
 			index += 2
 			continue
 		}
-		if arg in ['-silent', '-keepc'] {
+		if arg in ['-silent', '-keepc', '-nocache', '--no-cache'] {
 			compile_args << arg
 			index++
 			continue
@@ -170,12 +175,12 @@ fn parse_self_arguments(args []string, command_index int) (int, []string, string
 
 fn run_self_compiler(compiler string, compile_args []string, output string, source string) {
 	mut command := []string{cap: compile_args.len + 4}
-	command << os.quoted_path(compiler)
+	command << compiler
 	for arg in compile_args {
-		command << os.quoted_path(arg)
+		command << arg
 	}
-	command << ['-o', os.quoted_path(output), os.quoted_path(source)]
-	result := os.execute(command.join(' '))
+	command << ['-o', output, source]
+	result := os.exec(command)
 	if result.exit_code != 0 {
 		fail(result.output)
 	}
@@ -374,7 +379,8 @@ pub fn run(args []string) {
 		run_self(args, command_index)
 		return
 	}
-	input, output, keep_c := parse_arguments(args)
+	mut prefs := pref.new_preferences()
+	input, output, keep_c, no_cache := parse_arguments(args, mut prefs)
 	real_input := os.real_path(input)
 	if pref.is_test_file_for_backend(real_input, 'fastc') || pref.is_test_file_for_backend(real_input, 'c') {
 		fail('fastc self-host compiler does not support test files')
@@ -382,15 +388,14 @@ pub fn run(args []string) {
 	if canonical_output_path(output) == real_input {
 		fail('fastc output path `${output}` aliases input source `${input}`')
 	}
-	mut prefs := pref.new_preferences()
 	if prefs.vroot == '' && real_input.ends_with('/vlib/v/v.v') {
 		prefs.vroot = os.dir(os.dir(os.dir(real_input)))
 	}
 	prefs.vroot = fastc_canonical_vroot(prefs.vroot)
 	prefs.backend = 'fastc'
 	prefs.ccompiler = 'tinyc'
-	prefs.building_v = real_input.ends_with('/vlib/v/v.v')
-	prefs.selfhost = prefs.building_v
+	prefs.selfhost = real_input.ends_with('/vlib/v/v.v')
+	prefs.building_v = prefs.selfhost || os.is_dir(real_input)
 	$if arm64 ? {
 		prefs.target = pref.Target{
 			os:            'macos'
@@ -400,12 +405,13 @@ pub fn run(args []string) {
 			pointer_bits:  64
 			object_format: 'macho'
 		}
-		prefs.user_defines = ['fastc_selfhost', 'v3_backend', 'v3_no_parallel', 'arm64', 'skip_wasm',
-			'skip_eval']
+		prefs.user_defines = ['fastc_selfhost', 'v3_backend', 'v3_no_parallel', 'arm64', 'skip_x64',
+			'skip_wasm', 'skip_eval']
 		fastc.generate_arm64_files([real_input], prefs, output) or { fail(err.msg()) }
 		return
 	}
-	prefs.user_defines = ['fastc_selfhost', 'v3_backend', 'skip_arm64', 'skip_wasm', 'skip_eval']
+	prefs.user_defines = ['fastc_selfhost', 'v3_backend', 'skip_arm64', 'skip_x64', 'skip_wasm',
+		'skip_eval']
 	backtrace_enabled := fastc_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.target.arch)
 	// Mirror the driver's TinyCC compatibility plan (add_v3_tcc_compat_defines):
 	// TCC's backtrace runtime cannot be linked on macOS arm64, so builtin must
@@ -471,14 +477,17 @@ pub fn run(args []string) {
 	tcc_lib := os.join_path_single(tcc_dir, 'lib')
 	mut cc_args := ['-std=gnu11', '-I${os.join_path_single(tcc_lib, 'include')}', '-L${tcc_lib}']
 	cc_args << tcc_host_system_flags(prefs.normalized_target_os())
-	cc_args << generation.c_flags
+	cc_args << generation.c_flags.filter(!fastc.fastc_flag_is_native_input(it))
 	if backtrace_enabled {
 		cc_args << '-bt25'
 	}
 	// A call without a prototype would silently truncate a pointer result
 	// (the C carries no headers): it is an error, not a warning.
 	cc_args << '-Werror=implicit-function-declaration'
-	mut link_libs := []string{}
+	native_inputs := generation.c_flags.filter(fastc.fastc_flag_is_native_input(it))
+	// C helpers can introduce references satisfied by later static archives.
+	mut link_libs := native_inputs.filter(it.ends_with('.c'))
+	link_libs << native_inputs.filter(!it.ends_with('.c'))
 	if generation.uses_threads {
 		// The emitted spawn runtime calls pthread functions, which live outside
 		// libc on Linux with glibc before 2.34 and on the BSDs.
@@ -503,9 +512,11 @@ pub fn run(args []string) {
 		// The end-to-end benchmark must actually run TinyCC; otherwise a warm
 		// executable cache hit would report copying a prior binary as compile time.
 		prepared_units := fastc.fastc_prepare_c_units(tcc, cc_args, unit_paths, prefs.building_v
-			&& !bench)
+			&& !bench && !no_cache)
 		link_inputs := prepared_units.objects.clone()
-		link_cache_key = fastc.fastc_link_cache_key(prepared_units.cache_key, link_libs)
+		if native_inputs.len == 0 {
+			link_cache_key = fastc.fastc_link_cache_key(prepared_units.cache_key, link_libs)
+		}
 		if fastc.fastc_restore_link_cache(link_cache_key, staged_output) {
 			link_cache_restored = true
 			result = os.Result{}

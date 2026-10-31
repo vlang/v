@@ -1,0 +1,28 @@
+vlib/v/checker/tests/generated_module_c_temporary_names_err.vv:6:11: error: parameter name `_t1` is reserved for the temporaries of the generated C code
+    4 | // The generated C code names its temporaries `_t1`, `_t2`, ..., so generated
+    5 | // code cannot use such names: `_t1 / _t2` would read the temporaries instead.
+    6 | fn divide(_t1 int, _t2 int) int {
+      |           ~~~
+    7 |     return _t1 / _t2
+    8 | }
+vlib/v/checker/tests/generated_module_c_temporary_names_err.vv:6:20: error: parameter name `_t2` is reserved for the temporaries of the generated C code
+    4 | // The generated C code names its temporaries `_t1`, `_t2`, ..., so generated
+    5 | // code cannot use such names: `_t1 / _t2` would read the temporaries instead.
+    6 | fn divide(_t1 int, _t2 int) int {
+      |                    ~~~
+    7 |     return _t1 / _t2
+    8 | }
+vlib/v/checker/tests/generated_module_c_temporary_names_err.vv:11:2: error: variable name `_t1` is reserved for the temporaries of the generated C code
+    9 | 
+   10 | fn main() {
+   11 |     _t1 := 10
+      |     ~~~
+   12 |     _t2 := 3
+   13 |     println(_t1 / _t2)
+vlib/v/checker/tests/generated_module_c_temporary_names_err.vv:12:2: error: variable name `_t2` is reserved for the temporaries of the generated C code
+   10 | fn main() {
+   11 |     _t1 := 10
+   12 |     _t2 := 3
+      |     ~~~
+   13 |     println(_t1 / _t2)
+   14 |     println(divide(20, 4))

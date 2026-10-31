@@ -30,7 +30,7 @@ fn test_compiling_without_vmodules_fails() {
 	os.chdir(vroot) or {}
 	os.setenv('VMODULES', '', true)
 	dump(cmd)
-	res := os.execute(cmd)
+	res := os.exec(os.split_args(cmd) or { panic(err) })
 	assert res.exit_code == 1, res.output
 	assert res.output.trim_space().contains('builder error: cannot import module "yyy" (not found)')
 }
@@ -41,7 +41,7 @@ fn test_compiling_with_vmodules_works() {
 	os.setenv('VMODULES', vmpaths.join(os.path_delimiter), true)
 	dump(os.getenv('VMODULES'))
 	dump(cmd)
-	res := os.execute(cmd)
+	res := os.exec(os.split_args(cmd) or { panic(err) })
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == "['x', 'y', 'z']"
 }
@@ -51,7 +51,7 @@ fn test_importing_third_party_submodule_works() {
 	os.setenv('VMODULES', os.join_path(basepath, 'path4'), true)
 	dump(os.getenv('VMODULES'))
 	dump(submodule_cmd)
-	res := os.execute(submodule_cmd)
+	res := os.exec(os.split_args(submodule_cmd) or { panic(err) })
 	assert res.exit_code == 0, res.output
 }
 
@@ -65,7 +65,7 @@ fn test_running_installed_module_with_short_submodule_imports_works() {
 	run_cmd := '${os.quoted_path(vexe)} run vab.v'
 	dump(os.getenv('VMODULES'))
 	dump(run_cmd)
-	res := os.execute(run_cmd)
+	res := os.exec([vexe, 'run', 'vab.v'])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'android sdk'
 }

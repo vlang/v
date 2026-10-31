@@ -9,7 +9,8 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 fn test_character_interpolation_with_static_width() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_string_interp_char_format_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	source_file := os.join_path(os.temp_dir(), 'v3_string_interp_char_format_input.v')
@@ -22,9 +23,9 @@ fn test_character_interpolation_with_static_width() {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_string_interp_char_format_input')
-	compile := os.execute('${v3_bin} -nocache ${source_file} -o ${bin}')
+	compile := os.exec([v3_bin, '-nocache', source_file, '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '|f|\n|  f|\n|f  |'
 }

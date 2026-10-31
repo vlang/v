@@ -98,7 +98,7 @@ fn init(user_data voidptr) {
 	}
 	unsafe { vmemset(&vertex_buffer_desc, 0, int(sizeof(vertex_buffer_desc))) }
 
-	vertex_buffer_desc.size = usize(vertices.len * int(sizeof(Vertex_t)))
+	vertex_buffer_desc.size = uint(vertices.len * int(sizeof(Vertex_t)))
 	vertex_buffer_desc.data = gfx.Range{
 		ptr:  vertices.data
 		size: vertex_buffer_desc.size
@@ -136,7 +136,7 @@ fn init(user_data voidptr) {
 	app.shader_pipeline = gfx.make_pipeline(&pipeline_desc)
 }
 
-fn cleanup(user_data voidptr) {
+fn cleanup(_user_data voidptr) {
 	gfx.shutdown()
 }
 

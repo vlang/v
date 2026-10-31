@@ -21,7 +21,7 @@ fn test_debug_generated_c_keeps_real_output_path() {
 		os.rm(generated_c_path + '.rsp') or {}
 	}
 	cmd := '${os.quoted_path(vlines_reproducibility_vexe)} -old-compiler -g -keepc -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
-	result := os.execute(cmd)
+	result := os.exec([vlines_reproducibility_vexe, '-old-compiler', '-g', '-keepc', '-o', output_path, source_path])
 	assert result.exit_code == 0, result.output
 	generated := os.read_file(generated_c_path)!
 	debug_lines := generated.split_into_lines().filter(it.starts_with('#line '))
@@ -46,7 +46,7 @@ fn test_macos_debug_compiler_generated_c_is_reproducible_across_output_paths() {
 	for name in ['first.c', 'second.c'] {
 		output_path := os.join_path(test_dir, name)
 		cmd := '${os.quoted_path(vlines_reproducibility_vexe)} -old-compiler -g -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
-		result := os.execute(cmd)
+		result := os.exec([vlines_reproducibility_vexe, '-old-compiler', '-g', '-o', output_path, source_path])
 		assert result.exit_code == 0, result.output
 		generated << os.read_file(output_path)!
 	}

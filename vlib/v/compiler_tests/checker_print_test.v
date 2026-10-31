@@ -38,7 +38,7 @@ fn check_print_sources(name string, files map[string]string) []types.TypeError {
 // build_checker_print_v3_bin builds checker print v3 bin data for v3 tests.
 fn build_checker_print_v3_bin(name string) string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_checker_print_${name}')
-	build := os.execute('${checker_print_vexe} -gc none -o ${v3_bin} ${checker_print_v3_src}')
+	build := os.exec([checker_print_vexe, '-gc', 'none', '-o', v3_bin, '${checker_print_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -52,6 +52,23 @@ fn println(s string) {}
 
 fn main() {
 	println(123)
+}
+'
+	})
+	assert errors.len == 0, errors.str()
+}
+
+fn test_bare_println_allows_explicit_multi_pointer_for_stringify_lowering() {
+	errors := check_print_sources('bare_println_multi_pointer', {
+		'main.v': 'module main
+
+struct Item {}
+
+fn println(s string) {}
+
+fn main() {
+	item := &Item{}
+	println(&item)
 }
 '
 	})
@@ -104,6 +121,6 @@ fn main() {
 	eprint(true)
 }
 ') or { panic(err) }
-	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 }

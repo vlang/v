@@ -18,19 +18,24 @@ fn vpm_install(query []string) {
 		vpm_adopt(query)
 		return
 	}
+	if settings.is_locked && query.len != 0 && !settings.is_local {
+		vpm_error('`--locked` applies to installing the dependencies of a project (a directory with a `v.mod`); a plain `v install <module>` installs globally and has no lockfile to check against.',
+			details: 'Run without `--locked`, or run `v install --locked` inside the project directory.'
+		)
+		exit(1)
+	}
 
 	mut selector := new_install_server_selector()
-	mut modules := parse_query(if query.len == 0 {
+	dep_strings := if query.len == 0 {
 		if os.exists('./v.mod') {
 			// Case: `v install` was run in a directory of another V-module to install its dependencies
 			// - without additional module arguments.
 			println('Detected v.mod file inside the project directory. Using it...')
-			manifest := vmod.from_file('./v.mod') or { panic(err) }
-			if manifest.dependencies.len == 0 {
-				println('Nothing to install.')
-				exit(0)
+			manifest := vmod.from_file('./v.mod') or {
+				vpm_error('failed to read `./v.mod`', details: err.msg())
+				exit(1)
 			}
-			manifest.dependencies
+			project_dependencies(manifest)
 		} else {
 			vpm_error('specify at least one module for installation.',
 				details: 'example: `v install publisher.package` or `v install https://github.com/owner/repository`'
@@ -39,8 +44,32 @@ fn vpm_install(query []string) {
 		}
 	} else {
 		query
-	}, mut selector)
+	}
 
+	// Anchor the run to the project in scope, so that the resolved revisions of
+	// its dependencies are recorded in `v.mod.lock` once everything installed.
+	mut scope := LockScope{}
+	if settings.is_local || query.len == 0 {
+		scope.begin()
+		scope.complete = query.len == 0
+	}
+	if dep_strings.len == 0 {
+		println('Nothing to install.')
+		scope.finish()
+		return
+	}
+
+	mut modules, parse_errors := parse_query(dep_strings, mut selector, mut scope)
+	scope.resolved_keys = modules.map(lockfile_module_key(it.requested))
+	// Resolution succeeds before any installed checkout is changed.
+	// An incomplete project must not record a lockfile.
+	is_incomplete := parse_errors > 0 && scope.active
+
+	resolve_and_lock(modules, scope) or {
+		for m in modules { rmdir_all(m.tmp_path) or {} }
+		vpm_error(err.msg())
+		exit(1)
+	}
 	installed_modules := get_installed_modules()
 
 	vpm_log(@FILE_LINE, @FN, 'Queried Modules: ${modules}')
@@ -65,26 +94,80 @@ fn vpm_install(query []string) {
 			verbose_println('Already installed modules: ${already_installed}')
 			if already_installed.len == num_to_install {
 				println('All modules are already installed.')
-				exit(0)
+				exit(if is_incomplete { 1 } else { 0 })
 			}
 		}
 	}
 
-	install_modules(modules, selector.selected_url)
+	install_modules(modules, selector.selected_url, mut scope)
+	if is_incomplete {
+		vpm_error('failed to install ${parse_errors} module(s) of the project; not recording `${lockfile_name}`.')
+		exit(1)
+	}
+	scope.finish()
+	suggest_fmt_hook()
 }
 
-fn install_modules(modules []Module, selected_server_url string) {
+// suggest_fmt_hook prints a one-line pointer to the pre-commit hook when the
+// current directory is a git repository holding V files without one installed.
+// Silent otherwise, so bulk installs stay quiet.
+fn suggest_fmt_hook() {
+	top := git_top_level(os.getwd()) or { return }
+	if os.exists(os.join_path(top, '.git', 'hooks', 'pre-commit')) {
+		return
+	}
+	if !dir_has_v_files(top) {
+		return
+	}
+	println('Tip: run `v git-fmt-hook install` to format V files automatically before every commit.')
+}
+
+// git_top_level climbs from `start` to the nearest directory holding `.git`.
+fn git_top_level(start string) ?string {
+	mut dir := os.abs_path(start)
+	for _ in 0 .. 255 {
+		if os.is_dir(os.join_path(dir, '.git')) {
+			return dir
+		}
+		parent := os.dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return none
+}
+
+// dir_has_v_files reports whether `dir` itself holds V source files. Only the
+// top level is listed: cheap, and enough to tell a V project from elsewhere.
+fn dir_has_v_files(dir string) bool {
+	for entry in os.ls(dir) or { return false } {
+		if entry.ends_with('.v') || entry.ends_with('.vsh') {
+			return true
+		}
+	}
+	return false
+}
+
+fn install_modules(modules []Module, selected_server_url string, mut scope LockScope) {
 	vpm_log(@FILE_LINE, @FN, 'modules: ${modules}')
 	mut errors := 0
 	for m in modules {
 		vpm_log(@FILE_LINE, @FN, 'module: ${m}')
-		match m.install() {
+		desired_revision := head_revision(m.tmp_path)
+		match m.install(mut scope) {
 			.installed {}
 			.failed {
 				errors++
 				continue
 			}
 			.skipped {
+				if scope.active && desired_revision != '' && head_revision(m.install_path) != desired_revision {
+					vpm_error('`${m.name}` was not installed at the resolved revision; not recording the project lockfile.')
+					errors++
+				} else {
+					scope.record(m)
+				}
 				continue
 			}
 		}
@@ -141,7 +224,7 @@ fn (m Module) manifest_name_was_normalized() bool {
 	return normalized_name != m.manifest.name
 }
 
-fn (m Module) install() InstallResult {
+fn (m Module) install(mut scope LockScope) InstallResult {
 	defer {
 		os.rmdir_all(m.tmp_path) or {}
 	}
@@ -167,8 +250,50 @@ fn (m Module) install() InstallResult {
 		exit(1)
 	}
 	if m.is_installed {
-		// Case: installed, but not an explicit version. Update instead of continuing the installation.
-		if m.version == '' && m.installed_version == '' {
+		if !m.is_resolution_update {
+			if entry := scope.locked_entry(m.requested, m.url) {
+				if head_revision(m.tmp_path) == entry.revision && head_revision(m.install_path) != entry.revision {
+					println('Restoring `${m.name}` to the locked revision `${entry.revision}` ...')
+					(m.vcs or { settings.vcs }).checkout(m.install_path, entry.revision) or {
+						vpm_error('failed to restore `${m.name}`: ${err.msg()}')
+						return .failed
+					}
+					scope.record(m)
+					return .skipped
+				}
+			}
+		}
+		if !settings.is_force && !m.is_resolution_update
+			&& head_revision(m.install_path) != ''
+			&& head_revision(m.install_path) == head_revision(m.tmp_path) {
+			println('Module `${m.name}${at_version(m.version)}` is already installed.')
+			scope.record(m)
+			return .skipped
+		}
+		// Case: installed, but not an explicit version. Update instead of continuing the installation,
+		// unless the lockfile of the project in scope records the module: installs honor
+		// the locked revision, and moving it forward is what `v update` is for.
+		if m.version == '' && m.installed_version == '' && !m.is_resolved {
+			// The lock only applies while the project still asks for the
+			// dependency string and source it was recorded under; a changed one
+			// falls through to the update below and is then locked anew.
+			if entry := scope.locked_entry(m.requested, m.url) {
+				installed_revision := head_revision(m.install_path)
+				if installed_revision == entry.revision {
+					verbose_println('`${m.name}` is already installed at the locked revision `${entry.revision}`.')
+					return .skipped
+				}
+				// The installed checkout drifted from the locked revision: put the
+				// project back on the lock, fetching the revision when the checkout
+				// is older than it. The local-changes guard above already refused
+				// checkouts holding work that would be lost.
+				println('Restoring `${m.name}` to the locked revision `${entry.revision}` ...')
+				(m.vcs or { settings.vcs }).checkout(m.install_path, entry.revision) or {
+					vpm_error('failed to restore `${m.name}` to the locked revision `${entry.revision}` in `${m.install_path_fmted}`: ${err.msg()}')
+					return .failed
+				}
+				return .skipped
+			}
 			if m.is_external && m.url.starts_with('http://') {
 				vpm_update([
 					m.install_path.all_after(settings.vmodules_path).trim_left(os.path_separator).replace(os.path_separator, '.'),
@@ -176,10 +301,14 @@ fn (m Module) install() InstallResult {
 			} else {
 				vpm_update([m.name])
 			}
+			// The module sits at a new revision now, so what the lockfile of the
+			// project records for it has to follow.
+			scope.record(m)
 			return .skipped
 		}
 		// Case: installed, but conflicting. Confirmation or -[-f]orce flag required.
-		if settings.is_force || m.confirm_install() {
+		if settings.is_force || m.is_resolution_update || (m.is_resolved && m.version == '')
+			|| m.confirm_install() {
 			if !vpm_owns_module_dir(m.install_path) {
 				vpm_error('refusing to replace `${m.name}`: `${m.install_path_fmted}` was not installed by VPM.',
 					details: not_installed_by_vpm_details()
@@ -229,6 +358,7 @@ fn (m Module) install() InstallResult {
 			return .failed
 		}
 	}
+	scope.record(m)
 	return .installed
 }
 
@@ -330,8 +460,7 @@ fn local_git_changes_reason(path string) string {
 	if !os.exists(os.join_path(path, '.git')) {
 		return ''
 	}
-	quoted := os.quoted_path(path)
-	status := os.execute_opt('git -C ${quoted} status --porcelain') or {
+	status := os.exec_opt(['git', '-C', path, 'status', '--porcelain']) or {
 		return 'failed to run `git status`: ${err.msg()}'
 	}
 	if status.output.trim_space() != '' {
@@ -344,7 +473,8 @@ fn local_git_changes_reason(path string) string {
 	// which leaves HEAD detached at a tag without creating a remote tracking
 	// branch, so HEAD would otherwise appear as unpushed even on a pristine
 	// clone.
-	unpushed := os.execute_opt('git -C ${quoted} rev-list HEAD --branches --not --remotes --tags') or {
+	unpushed := os.exec_opt(['git', '-C', path, 'rev-list', 'HEAD', '--branches', '--not', '--remotes',
+		'--tags']) or {
 		return 'failed to run `git rev-list`: ${err.msg()}'
 	}
 	if unpushed.output.trim_space() != '' {

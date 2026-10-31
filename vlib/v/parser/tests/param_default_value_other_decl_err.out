@@ -1,0 +1,13 @@
+vlib/v/parser/tests/param_default_value_other_decl_err.vv:2:10: error: default parameter values are not supported
+    1 | interface Defaults {
+    2 |     f(a int = 2) int
+      |             ^
+    3 | }
+    4 |
+vlib/v/parser/tests/param_default_value_other_decl_err.vv:5:30: error: default parameter values are not supported
+    3 | }
+    4 | 
+    5 | type WithDefault = fn (a int = 2, b string) int
+      |                              ^
+    6 | 
+    7 | fn main() {

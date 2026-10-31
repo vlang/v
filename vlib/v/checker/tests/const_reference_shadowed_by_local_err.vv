@@ -1,0 +1,27 @@
+const count = 3
+
+struct Counter {
+mut:
+	n int
+}
+
+const counter = Counter{1}
+
+fn shadowed() {
+	count := 4
+	pc := &count
+	dump(*pc)
+	mut counter := Counter{2}
+	mut counters := []&Counter{}
+	counters << &counter
+	dump(counters.len)
+}
+
+fn main() {
+	shadowed()
+	pc := &count
+	dump(pc)
+	mut counters := []&Counter{}
+	counters << &counter
+	dump(counters.len)
+}

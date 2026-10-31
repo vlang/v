@@ -1,5 +1,5 @@
 import os
 
 fn main() {
-	os.system('echo hi')
+	os.system_args(['echo', 'hi'])
 }

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/attribute_use_duplicate_named_field_err.vv:6:3: error: duplicate field `path` in attribute `Route`
+    4 | }
+    5 | 
+    6 | @[Route(path: '/a', path: '/b')]
+      |   ~~~~~
+    7 | fn index() {}
+    8 |

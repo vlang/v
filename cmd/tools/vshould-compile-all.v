@@ -73,7 +73,8 @@ fn main() {
 		}
 		cmd := '${os.quoted_path(@VEXE)} ${backend_options} ${os.quoted_path(example)}'
 		log.info('> compiling program ${idx + 1:4}/${files.len:-4}: ${cmd}')
-		if 0 != os.system(cmd) {
+		if 0 != os.system_args([@VEXE, ...(os.split_args(backend_options) or { panic(err) }),
+			'${example}']) {
 			failed_commands << cmd
 		} else {
 			executables << executable_name(example)
@@ -87,14 +88,14 @@ fn main() {
 		if glsl_files.len > 0 {
 			if pf !in glsl_folders {
 				log.debug('>>> found .glsl files in ${pf} ... running `v shader ${pf}` ...')
-				os.system('${os.quoted_path(@VEXE)} shader ${os.quoted_path(pf)}')
+				os.system_args([@VEXE, 'shader', '${pf}'])
 				glsl_folders[pf] = true
 			}
 		}
 		exe_path := os.join_path(pf, os.file_name(pf) + exe_extension)
 		cmd := '${os.quoted_path(@VEXE)} -o ${exe_path} ${pf}'
 		log.info('> compiling project ${pfi + 1:4}/${project_folders.len:-4}: ${cmd}')
-		if 0 != os.system(cmd) {
+		if 0 != os.system_args([@VEXE, '-o', exe_path, '${pf}']) {
 			failed_commands << cmd
 		} else {
 			executables << exe_path

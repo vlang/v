@@ -21,7 +21,7 @@ struct Win32ClipboardPending {
 	hwnd           voidptr
 	operation      ServiceOperation
 	write_utf16    []u16
-	reserved_bytes usize
+	reserved_bytes uint
 mut:
 	deadline_ns i64
 }
@@ -29,7 +29,7 @@ mut:
 struct Win32ClipboardRetainedCharge {
 	request ServiceRequestId
 	window  WindowId
-	bytes   usize
+	bytes   uint
 mut:
 	claimed_by_app bool
 }
@@ -112,16 +112,16 @@ $if windows {
 	fn C.v_multiwindow_win32_service_window_monitor(hwnd voidptr) u64
 	fn C.v_multiwindow_win32_service_window_dpi(hwnd voidptr) u32
 	fn C.v_multiwindow_win32_clipboard_now_ns() i64
-	fn C.v_multiwindow_win32_clipboard_utf8_to_utf16(text &char, text_bytes usize, output &u16, output_units usize, out_units &usize) int
-	fn C.v_multiwindow_win32_clipboard_write(owner voidptr, text &u16, units usize) int
-	fn C.v_multiwindow_win32_clipboard_read(owner voidptr, out_text &voidptr, out_text_bytes &usize) int
+	fn C.v_multiwindow_win32_clipboard_utf8_to_utf16(text &char, text_bytes uint, output &u16, output_units uint, out_units &uint) int
+	fn C.v_multiwindow_win32_clipboard_write(owner voidptr, text &u16, units uint) int
+	fn C.v_multiwindow_win32_clipboard_read(owner voidptr, out_text &voidptr, out_text_bytes &uint) int
 	fn C.v_multiwindow_win32_clipboard_text_free(text voidptr)
 
 	$if test {
 		fn C.v_multiwindow_win32_service_test_focus_cleanup_failures(count int)
 		fn C.v_multiwindow_win32_clipboard_now_for_test(backend voidptr, real_now_ns i64) i64
-		fn C.v_multiwindow_win32_clipboard_write_for_test(backend voidptr, request_app u64, request_serial u64, owner voidptr, text &u16, units usize) int
-		fn C.v_multiwindow_win32_clipboard_read_for_test(backend voidptr, request_app u64, request_serial u64, owner voidptr, out_text &voidptr, out_text_bytes &usize) int
+		fn C.v_multiwindow_win32_clipboard_write_for_test(backend voidptr, request_app u64, request_serial u64, owner voidptr, text &u16, units uint) int
+		fn C.v_multiwindow_win32_clipboard_read_for_test(backend voidptr, request_app u64, request_serial u64, owner voidptr, out_text &voidptr, out_text_bytes &uint) int
 		fn C.v_multiwindow_win32_clipboard_record_sequence_for_test(backend voidptr)
 	}
 }
@@ -488,23 +488,23 @@ fn (backend &Win32Backend) clipboard_now_ns() i64 {
 
 fn win32_clipboard_utf16(text string) ![]u16 {
 	$if windows {
-		mut units := usize(0)
-		query := C.v_multiwindow_win32_clipboard_utf8_to_utf16(&char(text.str), usize(text.len),
+		mut units := uint(0)
+		query := C.v_multiwindow_win32_clipboard_utf8_to_utf16(&char(text.str), uint(text.len),
 			unsafe { nil }, 0, &units)
 		if query == win32_clipboard_convert_capacity {
 			return error(err_clipboard_capacity)
 		}
 		if query != win32_clipboard_convert_ready || units == 0
-			|| units > usize(win32_clipboard_max_bytes / 2) {
+			|| units > uint(win32_clipboard_max_bytes / 2) {
 			return error(err_capability_unsupported)
 		}
 		mut wide := []u16{len: int(units)}
 		converted := C.v_multiwindow_win32_clipboard_utf8_to_utf16(&char(text.str),
-			usize(text.len), wide.data, units, &units)
+			uint(text.len), wide.data, units, &units)
 		if converted == win32_clipboard_convert_capacity {
 			return error(err_clipboard_capacity)
 		}
-		if converted != win32_clipboard_convert_ready || units != usize(wide.len) {
+		if converted != win32_clipboard_convert_ready || units != uint(wide.len) {
 			return error(err_capability_unsupported)
 		}
 		return wide
@@ -514,13 +514,13 @@ fn win32_clipboard_utf16(text string) ![]u16 {
 	}
 }
 
-fn (backend &Win32Backend) clipboard_can_admit(reserved_bytes usize) bool {
+fn (backend &Win32Backend) clipboard_can_admit(reserved_bytes uint) bool {
 	return backend.clipboard_pending.len < win32_clipboard_max_pending_operations
-		&& reserved_bytes <= usize(win32_clipboard_max_pending_bytes)
-		&& backend.clipboard_pending_bytes <= usize(win32_clipboard_max_pending_bytes) - reserved_bytes
+		&& reserved_bytes <= uint(win32_clipboard_max_pending_bytes)
+		&& backend.clipboard_pending_bytes <= uint(win32_clipboard_max_pending_bytes) - reserved_bytes
 }
 
-fn (mut backend Win32Backend) release_clipboard_bytes(bytes usize) {
+fn (mut backend Win32Backend) release_clipboard_bytes(bytes uint) {
 	if bytes <= backend.clipboard_pending_bytes {
 		backend.clipboard_pending_bytes -= bytes
 	}
@@ -575,9 +575,9 @@ fn (mut backend Win32Backend) admit_clipboard_request(request ServiceRequestId, 
 		return error(err_capability_unsupported)
 	}
 	reserved_bytes := if operation == .clipboard_write {
-		usize(write_utf16.len) * usize(2)
+		uint(write_utf16.len) * uint(2)
 	} else {
-		usize(win32_clipboard_max_pending_bytes)
+		uint(win32_clipboard_max_pending_bytes)
 	}
 	if !backend.clipboard_can_admit(reserved_bytes) {
 		return error(err_clipboard_capacity)
@@ -607,8 +607,8 @@ fn (mut backend Win32Backend) finish_clipboard_head(status ServiceStatus, text s
 	mut terminal_text := text
 	mut terminal_message := message
 	if status == .ready && pending.operation == .clipboard_read {
-		read_charge := usize(text.len) + usize(1)
-		if read_charge <= usize(win32_clipboard_max_pending_bytes)
+		read_charge := uint(text.len) + uint(1)
+		if read_charge <= uint(win32_clipboard_max_pending_bytes)
 			&& backend.clipboard_can_admit(read_charge) {
 			backend.clipboard_retained << Win32ClipboardRetainedCharge{
 				request: pending.request
@@ -662,14 +662,14 @@ fn (mut backend Win32Backend) collect_clipboard_events() []Win32NativeQueuedEven
 			$if test {
 				status = C.v_multiwindow_win32_clipboard_write_for_test(voidptr(backend),
 					pending.request.app_instance, pending.request.serial, pending.hwnd,
-					pending.write_utf16.data, usize(pending.write_utf16.len))
+					pending.write_utf16.data, uint(pending.write_utf16.len))
 			} $else {
 				status = C.v_multiwindow_win32_clipboard_write(pending.hwnd,
-					pending.write_utf16.data, usize(pending.write_utf16.len))
+					pending.write_utf16.data, uint(pending.write_utf16.len))
 			}
 		} else {
 			mut native_text := voidptr(unsafe { nil })
-			mut text_bytes := usize(0)
+			mut text_bytes := uint(0)
 			$if test {
 				status = C.v_multiwindow_win32_clipboard_read_for_test(voidptr(backend),
 					pending.request.app_instance, pending.request.serial, pending.hwnd,
@@ -680,7 +680,7 @@ fn (mut backend Win32Backend) collect_clipboard_events() []Win32NativeQueuedEven
 			}
 			if status == win32_clipboard_attempt_ready {
 				if native_text == unsafe { nil }
-					|| text_bytes > usize(win32_clipboard_max_bytes - 1) {
+					|| text_bytes > uint(win32_clipboard_max_bytes - 1) {
 					status = win32_clipboard_attempt_failed
 				} else {
 					text = unsafe { tos(native_text, int(text_bytes)).clone() }
@@ -715,7 +715,7 @@ fn (mut backend Win32Backend) purge_clipboard_window(id WindowId) {
 	}
 	head_removed := backend.clipboard_pending[0].window == id
 	mut retained := []Win32ClipboardPending{cap: backend.clipboard_pending.len}
-	mut removed_bytes := usize(0)
+	mut removed_bytes := uint(0)
 	for pending in backend.clipboard_pending {
 		if pending.window == id {
 			removed_bytes += pending.reserved_bytes
@@ -732,7 +732,7 @@ fn (mut backend Win32Backend) purge_clipboard_window(id WindowId) {
 }
 
 fn (mut backend Win32Backend) purge_all_clipboard_requests() {
-	mut removed_bytes := usize(0)
+	mut removed_bytes := uint(0)
 	for pending in backend.clipboard_pending {
 		removed_bytes += pending.reserved_bytes
 	}
@@ -1440,7 +1440,7 @@ $if test {
 	}
 
 	@[markused]
-	fn win32_service_test_clipboard_pending_write_matches(backend_pointer voidptr, index int, request_app u64, request_serial u64, window_app u64, window_slot int, window_generation u32, text &u16, units usize) int {
+	fn win32_service_test_clipboard_pending_write_matches(backend_pointer voidptr, index int, request_app u64, request_serial u64, window_app u64, window_slot int, window_generation u32, text &u16, units uint) int {
 		if backend_pointer == unsafe { nil } || text == unsafe { nil } {
 			return 0
 		}
@@ -1452,7 +1452,7 @@ $if test {
 		if pending.operation != .clipboard_write || pending.request.app_instance != request_app
 			|| pending.request.serial != request_serial || pending.window.app_instance != window_app
 			|| pending.window.slot != window_slot || pending.window.generation != window_generation
-			|| usize(pending.write_utf16.len) != units {
+			|| uint(pending.write_utf16.len) != units {
 			return 0
 		}
 		for unit_index in 0 .. pending.write_utf16.len {

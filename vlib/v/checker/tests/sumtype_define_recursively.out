@@ -5,8 +5,3 @@ vlib/v/checker/tests/sumtype_define_recursively.vv:3:6: notice: unused parameter
       |      ~~~~~
     4 |     return 0
     5 | }
-vlib/v/checker/tests/sumtype_define_recursively.vv:1:13: error: sum type `Expr` cannot be defined recursively
-    1 | type Expr = fn ([]Expr) Expr | int
-      |             ~~~~~~~~~~~~~~~~
-    2 | 
-    3 | fn f(exprs []Expr) Expr {

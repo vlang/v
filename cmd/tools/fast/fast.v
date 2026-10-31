@@ -37,7 +37,7 @@ const warmup_samples = 1
 const max_samples = 8
 const discard_highest_samples = 3
 const rss_samples = 5 // runs used for the peak-RSS five-number summary
-const voptions = ' -skip-unused -show-timings -stats '
+const voptions = ' -show-timings -stats '
 
 fn elog(msg string) {
 	line := '${time.now().format_ss_micro()} ${msg}\n'
@@ -50,7 +50,7 @@ fn elog(msg string) {
 
 fn lexec(cmd string) string {
 	elog('  lexec: ${cmd}')
-	res := os.execute(cmd)
+	res := os.exec(os.split_args(cmd) or { panic(err) })
 	if res.exit_code != 0 {
 		elog('  lexec FAILED, exit_code: ${res.exit_code}, output:\n${res.output}')
 	}

@@ -2,3 +2,12 @@ Display some useful info about your system necessary for bug reports.
 
 Usage:
   v doctor
+
+The report also tells which `vlib` the V executable is paired with:
+`V vlib dir` flags a `vlib` that is not in the folder of the V executable, and
+`V vlib commit` flags a `vlib` checkout that is not at the commit that V was
+built from. Both happen silently, when an executable is copied, or when a
+checkout is updated without rebuilding V. In a folder of another V checkout,
+the `cwd vlib` rows inspect its `vlib` as well. Which checkout is selected for
+compilation depends on the compiler mode.
+See doc/vdoctor.md for details.

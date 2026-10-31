@@ -28,7 +28,7 @@ fn test_js_backend_supports_exported_global_aliases() {
 	js_path := os.join_path(js_global_export_test_dir, 'global_export.js')
 	os.write_file(source_path, js_global_export_test_source) or { panic(err) }
 	compile_res :=
-		os.execute('${os.quoted_path(js_global_export_test_vexe)} -b js -w -o ${os.quoted_path(js_path)} ${os.quoted_path(source_path)}')
+		os.exec([js_global_export_test_vexe, '-b', 'js', '-w', '-o', js_path, source_path])
 	if compile_res.exit_code != 0 {
 		panic(compile_res.output)
 	}
@@ -37,9 +37,9 @@ fn test_js_backend_supports_exported_global_aliases() {
 	assert generated.contains('Object.defineProperty(globalThis,"TIC", {')
 	assert generated.contains(r'return $global["tic"];')
 	assert generated.contains(r'$global["tic"] = value;')
-	node_res := os.execute('node --version')
+	node_res := os.exec(['node', '--version'])
 	if node_res.exit_code == 0 {
-		run_res := os.execute('node ${os.quoted_path(js_path)}')
+		run_res := os.exec(['node', js_path])
 		if run_res.exit_code != 0 {
 			panic(run_res.output)
 		}

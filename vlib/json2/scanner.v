@@ -167,6 +167,41 @@ fn important_escapable_char(ch u8) ?u8 {
 	}
 }
 
+// HighSurrogate remembers a `\uD800`..`\uDBFF` escape that was the last thing written
+// to a string, so that a `\uDC00`..`\uDFFF` escape right after it can be joined with it.
+struct HighSurrogate {
+mut:
+	unit  u32 // the escaped UTF-16 code unit, 0 when there is none
+	start int // the length of the string before the escape was written
+	end   int // the length of the string after the escape was written
+}
+
+// write_unicode_escape appends the UTF-8 encoding of the `\uXXXX` escape `val` to `chrs`.
+// A high surrogate escape directly followed by a low surrogate escape is one code point
+// above U+FFFF (RFC 8259, section 7), so the two are joined. A half without its partner
+// is not a code point, and is written as U+FFFD, the replacement character.
+@[manualfree]
+fn write_unicode_escape(mut chrs []u8, val u32, mut high HighSurrogate) {
+	mut code := val
+	// Every other character or escape makes `chrs` longer, so `high.end == chrs.len`
+	// means that nothing was written after the high surrogate escape.
+	if high.unit != 0 && high.end == chrs.len && val >= 0xDC00 && val <= 0xDFFF {
+		// drop the U+FFFD that was written for the high surrogate on its own
+		chrs.trim(high.start)
+		code = 0x10000 + ((high.unit - 0xD800) << 10) + (val - 0xDC00)
+	}
+	high.unit = if val >= 0xD800 && val <= 0xDBFF { val } else { u32(0) }
+	high.start = chrs.len
+	converted := utf32_to_str(code)
+	converted_bytes := converted.bytes()
+	chrs << converted_bytes
+	unsafe {
+		converted.free()
+		converted_bytes.free()
+	}
+	high.end = chrs.len
+}
+
 fn invalid_token_description(ch u8) string {
 	if ch >= 32 && ch <= 126 {
 		x := ch.ascii_str()
@@ -180,6 +215,13 @@ fn invalid_token_description(ch u8) string {
 // move_pos proceeds to the next position.
 fn (mut s Scanner) move() {
 	s.move_pos(true, true)
+}
+
+// move to the next nth position.
+fn (mut s Scanner) move_n(n u8) {
+	for _ in 0 .. n {
+		s.move()
+	}
 }
 
 // move_pos_with_newlines is the same as move_pos but only enables newline checking.
@@ -231,6 +273,7 @@ fn (s &Scanner) tokenize(lit []u8, kind TokenKind) Token {
 fn (mut s Scanner) text_scan() Token {
 	mut has_closed := false
 	mut chrs := []u8{}
+	mut high := HighSurrogate{}
 	for {
 		s.pos++
 		s.col++
@@ -277,12 +320,8 @@ fn (mut s Scanner) text_scan() Token {
 						return s.error('unicode escape must have 4 hex digits')
 					}
 					val := u32(strconv.parse_uint(codepoint.bytestr(), 16, 32) or { 0 })
-					converted := utf32_to_str(val)
-					converted_bytes := converted.bytes()
-					chrs << converted_bytes
+					write_unicode_escape(mut chrs, val, mut high)
 					unsafe {
-						converted.free()
-						converted_bytes.free()
 						codepoint.free()
 					}
 					continue
@@ -387,12 +426,9 @@ fn (mut s Scanner) scan() Token {
 				kind = .bool
 			}
 			unsafe { ident.free() }
-			val := s.text[s.pos..s.pos + 4]
+			val := unsafe { s.text[s.pos..s.pos + 4] }
 			tok := s.tokenize(val, kind)
-			s.move() // n / t
-			s.move() // u / r
-			s.move() // l / u
-			s.move() // l / e
+			s.move_n(4) // null / true
 			return tok
 		}
 		unsafe { ident.free() }
@@ -401,13 +437,9 @@ fn (mut s Scanner) scan() Token {
 		ident := s.text[s.pos..s.pos + 5].bytestr()
 		if ident == 'false' {
 			unsafe { ident.free() }
-			val := s.text[s.pos..s.pos + 5]
+			val := unsafe { s.text[s.pos..s.pos + 5] }
 			tok := s.tokenize(val, .bool)
-			s.move() // f
-			s.move() // a
-			s.move() // l
-			s.move() // s
-			s.move() // e
+			s.move_n(5) // false
 			return tok
 		}
 		unsafe { ident.free() }
@@ -517,6 +549,7 @@ fn (mut s ReaderScanner) scan_ident(ident string, kind TokenKind, line int, col 
 @[manualfree]
 fn (mut s ReaderScanner) text_scan(line int, col int) !Token {
 	mut chrs := []u8{}
+	mut high := HighSurrogate{}
 	_ = s.read_byte()! // opening quote
 	for {
 		current_line, current_col := s.line, s.col
@@ -565,12 +598,8 @@ fn (mut s ReaderScanner) text_scan(line int, col int) !Token {
 					_ = s.read_byte()!
 				}
 				val := u32(strconv.parse_uint(codepoint.bytestr(), 16, 32) or { 0 })
-				converted := utf32_to_str(val)
-				converted_bytes := converted.bytes()
-				chrs << converted_bytes
+				write_unicode_escape(mut chrs, val, mut high)
 				unsafe {
-					converted.free()
-					converted_bytes.free()
 					codepoint.free()
 				}
 				continue

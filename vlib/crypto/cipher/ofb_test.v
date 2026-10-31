@@ -13,7 +13,7 @@ fn test_ofb_stream_cipher() ! {
 	block := des.new_cipher(key[..8])
 	c := cipher.new_ofb(block, iv)
 
-	s := StreamCipher{
+	_ := StreamCipher{
 		cipher: c
 	}
 }

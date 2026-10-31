@@ -79,6 +79,7 @@ fn test_hmac_sha1() {
 	for i, key in keys {
 		result = new(key, data[i], sha1.sum, sha1.block_size).hex()
 		assert result == sha1_expected_results[i]
+		assert prekeyed_sum(sha1.new, key, data[i]) == sha1_expected_results[i]
 	}
 }
 
@@ -96,6 +97,7 @@ fn test_hmac_sha224() {
 	for i, key in keys {
 		result = new(key, data[i], sha256.sum224, sha256.block_size).hex()
 		assert result == sha224_expected_results[i]
+		assert prekeyed_sum(sha256.new224, key, data[i]) == sha224_expected_results[i]
 	}
 }
 
@@ -113,6 +115,7 @@ fn test_hmac_sha256() {
 	for i, key in keys {
 		result = new(key, data[i], sha256.sum, sha256.block_size).hex()
 		assert result == sha256_expected_results[i]
+		assert prekeyed_sum(sha256.new, key, data[i]) == sha256_expected_results[i]
 	}
 }
 
@@ -130,6 +133,7 @@ fn test_hmac_sha384() {
 	for i, key in keys {
 		result = new(key, data[i], sha512.sum384, sha512.block_size).hex()
 		assert result == sha384_expected_results[i]
+		assert prekeyed_sum(sha512.new384, key, data[i]) == sha384_expected_results[i]
 	}
 }
 
@@ -147,6 +151,7 @@ fn test_hmac_sha512() {
 	for i, key in keys {
 		result = new(key, data[i], sha512.sum512, sha512.block_size).hex()
 		assert result == sha512_expected_results[i]
+		assert prekeyed_sum(sha512.new, key, data[i]) == sha512_expected_results[i]
 	}
 }
 
@@ -388,4 +393,85 @@ fn test_hmac_equal() {
 	assert equal(mac2_1, mac2_2)
 	assert !equal(mac1_1, mac2_1)
 	assert !equal(mac1_1, mac2_2)
+}
+
+// prekeyed_sum returns the HMAC of `data` computed with `Hmac`, as hex.
+fn prekeyed_sum[D](h fn () D, key []u8, data []u8) string {
+	mut mac := new_hmac(h, key)
+	mac.write(data) or { panic(err) }
+	mut out := []u8{len: mac.size()}
+	mac.sum_into(mut out)
+	return out.hex()
+}
+
+fn check_against_new[D](name string, h fn () D, sum fn ([]u8) []u8, block_size int) ! {
+	message := []u8{len: 300, init: u8(index * 11 + 3)}
+	// keys shorter than, equal to and longer than the block size
+	for key_length in [0, 7, block_size - 1, block_size, block_size + 1, 2 * block_size + 3] {
+		key := []u8{len: key_length, init: u8(index * 5 + 1)}
+		mut mac := new_hmac(h, key)
+		mut out := []u8{len: mac.size()}
+		for message_length in [0, 1, 55, 56, 64, 111, 112, 128, 129, 300] {
+			expected := new(key, message[..message_length], sum, block_size)
+			assert out.len == expected.len, name
+			// written in one call; the previous sum_into started a new message
+			mac.write(message[..message_length])!
+			mac.sum_into(mut out)
+			assert out == expected, '${name} key.len=${key_length} message.len=${message_length}'
+			// written in chunks of 13 bytes
+			for start := 0; start < message_length; start += 13 {
+				end := if start + 13 < message_length { start + 13 } else { message_length }
+				mac.write(message[start..end])!
+			}
+			mac.sum_into(mut out)
+			assert out == expected, '${name} key.len=${key_length} message.len=${message_length} in chunks'
+		}
+	}
+}
+
+fn test_new_hmac_matches_new() {
+	check_against_new('sha1', sha1.new, sha1.sum, sha1.block_size)!
+	check_against_new('sha224', sha256.new224, sha256.sum224, sha256.block_size)!
+	check_against_new('sha256', sha256.new, sha256.sum256, sha256.block_size)!
+	check_against_new('sha384', sha512.new384, sha512.sum384, sha512.block_size)!
+	check_against_new('sha512', sha512.new, sha512.sum512, sha512.block_size)!
+	check_against_new('sha512_224', sha512.new512_224, sha512.sum512_224, sha512.block_size)!
+	check_against_new('sha512_256', sha512.new512_256, sha512.sum512_256, sha512.block_size)!
+}
+
+fn test_new_hmac_sum_into_starts_a_new_message() {
+	key := 'key'.bytes()
+	mut mac := new_hmac(sha256.new, key)
+	mut out := []u8{len: sha256.size}
+	mac.write('The quick brown fox '.bytes())!
+	mac.write('jumps over the lazy dog'.bytes())!
+	mac.sum_into(mut out)
+	assert out.hex() == 'f7bc83f430538424b13298e6aa6fb143ef4d59a14946175997479dbc2d1a3cd8'
+	// summing again right away gives the HMAC of the empty message
+	mac.sum_into(mut out)
+	assert out == new(key, []u8{}, sha256.sum256, sha256.block_size)
+	// and the next write starts a new message
+	mac.write('second'.bytes())!
+	mac.sum_into(mut out)
+	assert out == new(key, 'second'.bytes(), sha256.sum256, sha256.block_size)
+}
+
+fn test_new_hmac_reset() {
+	mut mac := new_hmac(sha1.new, 'key'.bytes())
+	mac.write('something else'.bytes())!
+	mac.reset()
+	mac.write('The quick brown fox jumps over the lazy dog'.bytes())!
+	mut out := []u8{len: sha1.size}
+	mac.sum_into(mut out)
+	assert out.hex() == 'de7c9b85b8b78aa6bc8a7a36f70a90701c9db4d9'
+}
+
+fn test_new_hmac_sum_into_a_longer_buffer() {
+	mut mac := new_hmac(sha512.new384, 'key'.bytes())
+	mac.write('data'.bytes())!
+	mut out := []u8{len: sha512.size384 + 3, init: 0xaa}
+	mac.sum_into(mut out)
+	assert out[..sha512.size384] == new('key'.bytes(), 'data'.bytes(), sha512.sum384,
+		sha512.block_size)
+	assert out[sha512.size384..] == [u8(0xaa), 0xaa, 0xaa]
 }

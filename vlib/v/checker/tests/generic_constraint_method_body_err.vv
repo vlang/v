@@ -1,0 +1,32 @@
+interface Named {
+	name string
+}
+
+type Number = int | f64
+
+fn (host_ Host) members[T Named](a T) int {
+	return a.age
+}
+
+fn (host_ Host) remainder[T Number](x T, y T) T {
+	return x % y
+}
+
+fn (host_ Host) kind[T Number](x T) string {
+	if x is f64 {
+		return 'f64'
+	}
+	return 'int'
+}
+
+fn (host_ Host) ages[T Named](xs []T) []int {
+	return xs.map(it.age)
+}
+
+fn main() {}
+
+// The method form of generic_constraint_body_err.vv: its generic functions are
+// methods of `Host`, with the same type parameters, and report the same errors.
+struct Host {}
+
+const host = Host{}

@@ -11,8 +11,7 @@ fn vroot_path(relpath string) string {
 
 fn vexecute(relpath string) os.Result {
 	vexe := @VEXE
-	return os.execute('${os.quoted_path(vexe)} -test-runner normal ' +
-		os.quoted_path(vroot_path(relpath)))
+	return os.exec([vexe, '-test-runner', 'normal', vroot_path(relpath)])
 }
 
 fn deferred_file_flush_line(i int) string {
@@ -45,10 +44,23 @@ fn test_sizeof_in_assert() {
 	assert res.exit_code == 1
 	// dump(res)
 	assert res.output.contains('sizeof_used_in_assert_test.v:11: fn test_assert_offsetof')
-	assert res.output.contains('assert __offsetof(main.Abc, y) == 1')
+	assert res.output.contains('assert __offsetof(Abc, y) == 1')
 
 	assert res.output.contains('sizeof_used_in_assert_test.v:15: fn test_assert_sizeof')
-	assert res.output.contains('assert sizeof(main.Abc) == sizeof(main.Xyz)')
+	assert res.output.contains('assert sizeof(Abc) == sizeof(Xyz)')
+}
+
+fn test_assert_failure_preserves_builtin_source_spelling() {
+	res := vexecute('vlib/v/tests/testdata/assert_builtin_source_spelling_failing_test.v')
+	assert res.exit_code == 1, res.output
+	for expression in [
+		"assert 'sizeof(AssertSourceType)' == 'sizeof(int)'",
+		"assert '__offsetof(AssertSourceType, value)' == 'offsetof(AssertSourceType, value)'",
+		'assert sizeof(&AssertSourceType) == 0',
+		'assert sizeof([2]AssertSourceType) == 0',
+	] {
+		assert res.output.contains(expression), res.output
+	}
 }
 
 fn test_assert_failure_runs_scoped_defer_cleanup() {
@@ -92,7 +104,7 @@ fn test_run_only_reports_filtered_failures() {
 	].join_lines()
 	os.write_file(test_path, test_source)!
 	res :=
-		os.execute('${os.quoted_path(@VEXE)} -test-runner normal -run-only test_fail ${os.quoted_path(test_path)}')
+		os.exec([@VEXE, '-test-runner', 'normal', '-run-only', 'test_fail', test_path])
 	assert res.exit_code == 1
 	assert res.output.contains('fn test_fail'), res.output
 	assert res.output.contains('expected to fail'), res.output
@@ -128,7 +140,7 @@ fn test_before_each_and_after_each_run_around_each_test() {
 	os.write_file(test_path, test_source)!
 	os.rm(log_path) or {}
 	os.setenv('V_ISSUE_19699_LOG_PATH', log_path, true)
-	res := os.execute('${os.quoted_path(@VEXE)} -test-runner normal ${os.quoted_path(test_path)}')
+	res := os.exec([@VEXE, '-test-runner', 'normal', test_path])
 	assert res.exit_code == 0, res.output
 	log_lines := os.read_lines(log_path)!
 	assert log_lines == [
@@ -159,7 +171,7 @@ fn test_windows_c_system_info_is_undefined_on_non_windows() {
 	defer {
 		os.rm(source_path) or {}
 	}
-	res := os.execute('${os.quoted_path(@VEXE)} ${os.quoted_path(source_path)}')
+	res := os.exec([@VEXE, source_path])
 	assert res.exit_code != 0, res.output
 	assert res.output.contains('unknown type `C.SYSTEM_INFO`'), res.output
 	assert !res.output.contains('C compilation error'), res.output

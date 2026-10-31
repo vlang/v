@@ -1,0 +1,74 @@
+struct FooBar {
+	s int
+}
+
+fn accept_map_of_strings(inp map[string]string) {
+	dump(typeof(inp).name)
+}
+
+fn accept_map_of_ints(inp map[string]int) {
+	dump(typeof(inp).name)
+}
+
+fn accept_nested_map(inp map[string]map[string]int) {
+	dump(typeof(inp).name)
+}
+
+fn accept_map_ptr(inp &map[string]string) {
+	dump(typeof(inp).name)
+}
+
+fn accept_right_type(inp map[string]int) {
+	dump(typeof(inp).name)
+}
+
+fn accept_option_map(inp ?map[string]string) {
+	dump(typeof(inp).name)
+}
+
+fn accept_chan_map(inp chan map[string]string) {
+	dump(typeof(inp).name)
+}
+
+fn accept_option_array(inp ?[]string) {
+	dump(typeof(inp).name)
+}
+
+fn accept_chan_array(inp chan []string) {
+	dump(typeof(inp).name)
+}
+
+fn accept_right_option_map(inp ?map[string]int) {
+	dump(typeof(inp).name)
+}
+
+fn accept_right_chan_map(inp chan map[string]int) {
+	dump(typeof(inp).name)
+}
+
+fn option_map_of_ints() ?map[string]int {
+	return {
+		'a': 1
+	}
+}
+
+fn main() {
+	mymap := {
+		'foo': FooBar{1}
+		'bar': FooBar{2}
+	}
+	accept_map_of_strings(mymap)
+	accept_map_of_ints(mymap)
+	accept_nested_map(mymap)
+	accept_map_ptr(&mymap)
+	accept_right_type({
+		'a': 1
+	})
+	ch := chan map[string]int{cap: 1}
+	accept_option_map(option_map_of_ints())
+	accept_chan_map(ch)
+	accept_option_array(?[]int([1]))
+	accept_chan_array(chan []int{cap: 1})
+	accept_right_option_map(option_map_of_ints())
+	accept_right_chan_map(ch)
+}

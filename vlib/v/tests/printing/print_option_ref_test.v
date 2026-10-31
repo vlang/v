@@ -17,5 +17,5 @@ fn test_non_nil() {
 	hrefs := footer.get_tag_by_class_name('Truncate')
 	println(hrefs)
 	res := '${hrefs}'
-	assert res == '&Option(<div class="Truncate" >abc</div>)'
+	assert res == '&Option(<div class="Truncate">abc</div>)'
 }

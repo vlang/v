@@ -1,0 +1,7 @@
+vlib/v/parser/tests/nested_unsafe_in_defer.vv:7:5: error: already inside `unsafe` block
+    5 |             unsafe {
+    6 |                 a++
+    7 |                 unsafe {
+      |                 ~~~~~~
+    8 |                     a++
+    9 |                 }

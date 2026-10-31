@@ -1,0 +1,21 @@
+vlib/v/checker/tests/attribute_use_wrong_type_err.vv:8:3: error: field `count` in attribute `Limits` expects an integer, got `'x'`
+    6 | }
+    7 | 
+    8 | @[Limits('x', 1, 'y')]
+      |   ~~~~~~
+    9 | fn index() {
+   10 | }
+vlib/v/checker/tests/attribute_use_wrong_type_err.vv:8:3: error: field `flag` in attribute `Limits` expects a boolean, got `'y'`
+    6 | }
+    7 | 
+    8 | @[Limits('x', 1, 'y')]
+      |   ~~~~~~
+    9 | fn index() {
+   10 | }
+vlib/v/checker/tests/attribute_use_wrong_type_err.vv:8:3: error: field `label` in attribute `Limits` expects a string, got `1`
+    6 | }
+    7 | 
+    8 | @[Limits('x', 1, 'y')]
+      |   ~~~~~~
+    9 | fn index() {
+   10 | }

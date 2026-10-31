@@ -1,0 +1,26 @@
+fn read(shared m map[string]int) int {
+	return rlock m {
+		m['a']
+	}
+}
+
+fn main() {
+	shared m := map[string]int{}
+	shared other := map[string]int{}
+	// operations on another `shared` map would nest the automatic locks
+	m['a'] = other['b']
+	x := m[other.keys()[0]]
+	// the statement runs with `m` locked, and `read` locks it again
+	m['b'] = read(shared m)
+	// the `or` block runs with `m` read-locked
+	y := m['c'] or {
+		m['c'] = 1
+		0
+	}
+	// only single operations are locked automatically
+	m['d'], m['e'] = 1, 2
+	lock other {
+		m['f'] = 1
+	}
+	println('${x} ${y}')
+}

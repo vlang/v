@@ -122,5 +122,5 @@ with `jsonrpc.method_not_found` error
 
 ### Interceptors
 Both `jsonrpc.Client` and `jsonrpc.Server` support `jsonrpc.Interceptors` - the collection of 
-on event handlers. There is implementation of all supported interceptors called 
+on event handlers. There is an implementation of all supported interceptors called 
 `jsonrpc.LoggingInterceptor`.

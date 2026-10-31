@@ -1,0 +1,14 @@
+// Field numbers outside the legal range. Zero is reserved, and a number past
+// 2^29-1 does not fit the tag, where the top three bits carry the wire type.
+
+syntax = "proto3";
+
+package bad;
+
+message Zero {
+  int32 x = 0;
+}
+
+message TooBig {
+  int32 x = 900000000;
+}

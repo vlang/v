@@ -210,7 +210,7 @@ fn main() { println(int_str(C.cached_value())) }
 	assert cmdexec.run(third_out, []string{}).output.trim_space() == '9'
 
 	warm_out := os.join_path(root, 'warm')
-	warm := cmdexec.run(v3_bin, [v_source, '-prod', '-o', warm_out])
+	warm := cmdexec.run(v3_bin, [v_source, '-prod', '-show-timings', '-o', warm_out])
 	assert warm.exit_code == 0, warm.output
 	stage_lines := warm.output.split_into_lines().filter(it.starts_with('  C object cache'))
 	assert stage_lines.len == 1, warm.output
@@ -222,13 +222,16 @@ fn main() { println(int_str(C.cached_value())) }
 		os.unsetenv('V3_CACHE_TRACE')
 	}
 	fourth_out := os.join_path(root, 'fourth')
-	fourth := cmdexec.run(v3_bin, [v_source, '-prod', '-o', fourth_out])
+	fourth := cmdexec.run(v3_bin, [v_source, '-prod', '-show-timings', '-o', fourth_out])
 	assert fourth.exit_code == 0, fourth.output
 	assert fourth.output.contains('C object cache hit: key='), fourth.output
 	assert fourth.output.contains('reason=compiler, target, argv, and dependency contents matched'), fourth.output
 	assert fourth.output.contains('matched via manifest'), fourth.output
 
-	assert fourth.output.contains('dependencies=2'), fourth.output
+	helper_hits := fourth.output.split_into_lines().filter(it.contains('C object cache hit: key=helper_o_'))
+	assert helper_hits.len == 1, fourth.output
+	// The source and header are required; Clang can also list SDKSettings.json.
+	assert helper_hits[0].all_after('dependencies=').int() >= 2, fourth.output
 	assert fourth.output.contains('C object content-key hits'), fourth.output
 	assert cmdexec.run(fourth_out, []string{}).output.trim_space() == '9'
 }
@@ -368,16 +371,21 @@ fn test_c_object_cache_detects_input_change_during_compile() {
 	header := os.join_path(root, 'value.h')
 	c_source := os.join_path(root, 'helper.c')
 	v_source := os.join_path(root, 'main.v')
-	// This wrapper delegates to the real `cc`, but on the object compile (`-c`)
-	// it mutates the header AFTER building the object — simulating a source edit
-	// that lands while the compiler is running.
+	// This wrapper delegates to the real `cc`, but on the object compile of
+	// `helper.c` (`-c`) it mutates the header AFTER building the object —
+	// simulating a source edit that lands while the compiler is running. Runtime
+	// objects such as the GC are compiled through the same wrapper first.
 	compiler := os.join_path(root, 'cc_mutating_header')
 	os.write_file(compiler, '#!/bin/sh
 is_compile=0
+prev=""
 for arg in "\$@"; do
-	if [ "\$arg" = "-c" ]; then
-		is_compile=1
+	if [ "\$prev" = "-c" ]; then
+		case "\$arg" in
+		*/helper.c) is_compile=1 ;;
+		esac
 	fi
+	prev="\$arg"
 done
 cc "\$@"
 rc=\$?

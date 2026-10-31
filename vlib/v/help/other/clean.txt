@@ -1,0 +1,49 @@
+Remove the executables that a default V build leaves behind.
+
+A V build writes its executable next to the sources it was built from, named
+after them, so a project directory accumulates binaries that no other tool
+tracks. `v clean` removes exactly the ones the compiler would write for the
+paths it is given, and nothing else.
+
+Usage:
+  v clean [options] [PATH...]
+
+  v clean                Clean the current directory.
+  v clean ./cmd/mytool   Clean the executable of one project folder.
+  v clean hello.v        Clean the executable of one source file.
+
+With no PATH, the current directory is used. For a directory, the executable is
+named after the directory; for a `.v` file, after the file.
+
+Options:
+  -n, --dry-run    Print what would be removed, change nothing.
+  -x, --verbose    Print each removal as a command.
+
+Output is one line per path:
+
+  removed `/home/me/mytool/mytool`
+
+  nothing to clean for `.`
+
+Only the single name the compiler itself would have written is removed. Any
+other executable sitting in the directory, and any unrelated file, is left
+alone.
+
+A path whose executable name cannot be worked out with certainty is refused
+rather than guessed, and `v clean` exits 1:
+
+  v clean notes.txt
+  v clean: cannot tell which executable `notes.txt` would produce, skipping it
+
+The other paths in the same invocation are still cleaned.
+
+This does not touch the build cache. `v wipe-cache` clears the build cache and
+the temporary folder instead; it is a separate command because it affects every
+project on the machine, not just the ones named here.
+Source symlinks use the resolved source basename, matching a default build.
+The command exits with a failure status if an output cannot be removed, while
+continuing to clean the other supported inputs.
+
+Source basenames with leading or trailing whitespace are refused because the
+compiler may normalize their output names. Both build outputs and unrelated
+files are preserved for refused inputs.

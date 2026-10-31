@@ -1,0 +1,18 @@
+struct Box {
+	v int
+}
+
+fn make_gate[T]() T {
+	return T{}
+}
+
+fn main() {
+	make_gate := [fn () Box {
+		return Box{1}
+	}, fn () Box {
+		return Box{2}
+	}]
+	idx := 1
+	b := make_gate[idx]()
+	println(b.v)
+}

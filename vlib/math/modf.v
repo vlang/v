@@ -19,9 +19,9 @@ pub fn modf(f f64) (f64, f64) {
 		for i > abs_f { // above arithmetic might round
 			i -= 1.0 // test again just to be sure
 		}
-		if f < 0.0 {
+		if signbit(f) {
 			i = -i
 		}
 	}
-	return i, f - i // signed fractional part
+	return i, copysign(f - i, f) // preserve the sign even when the fractional part is zero
 }

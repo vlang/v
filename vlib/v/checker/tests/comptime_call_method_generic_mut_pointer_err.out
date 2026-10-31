@@ -1,0 +1,7 @@
+vlib/v/checker/tests/comptime_call_method_generic_mut_pointer_err.vv:17:20: error: method `index` parameter `ctx` is `mut ctx &Context`, a mutable reference to a `&Context`: pass `mut` of a `&Context` variable (e.g. `mut p := &user_context`, then `mut p`), or declare it `mut ctx Context`
+   15 |     $for method in A.methods {
+   16 |         if method.name == 'index' {
+   17 |             app.$method(mut user_context)
+      |                             ~~~~~~~~~~~~
+   18 |         }
+   19 |     }

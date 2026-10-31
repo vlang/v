@@ -341,7 +341,7 @@ fn draw_retained_ui_probe(mut context gg.WindowContext, accent gg.Color, frames 
 			data_bytes := [u8(1), 2, 3, 4]
 			data := gfx.Range{
 				ptr:  data_bytes.data
-				size: usize(data_bytes.len)
+				size: uint(data_bytes.len)
 			}
 			mut rejected := false
 			resources.update_buffer(state.main_buffer, &data) or {

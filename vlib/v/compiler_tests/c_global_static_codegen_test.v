@@ -91,7 +91,7 @@ fn gen_c_for_source_with_scalar_zero_decl(name string, source string, decl_name 
 		lhs_id := a.child(&node, 0)
 		lhs := a.nodes[int(lhs_id)]
 		if lhs.kind == .ident && lhs.value == decl_name {
-			a.nodes[i].typ = decl_type
+			a.nodes[i].typ = flat.source_type_id(decl_type)
 			a.children[int(node.children_start) + 1] = zero_id
 			patched = true
 		}
@@ -131,7 +131,8 @@ fn main() {
 	_ := next_value()
 }
 ')
-	assert c_code.contains('static i64 x = 0;')
+	// Translated `int` stores keep C's 32-bit `int` conversion.
+	assert c_code.contains('static i64 x = ((i32)(0));'), c_code
 }
 
 // test_aggregate_globals_are_brace_zero_initialized validates this v3 regression case.
@@ -267,7 +268,7 @@ fn test_nil_pointer_global_initializer_is_emitted_at_file_scope() {
 	c_code := gen_c_for_source('nil_pointer_global_static_initializer', '__global early_state = unsafe { nil }
 
 fn use_before_vinit() {
-	early_state = voidptr(usize(0x1000))
+	early_state = voidptr(uint(0x1000))
 }
 
 fn main() {}

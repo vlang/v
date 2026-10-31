@@ -1,0 +1,14 @@
+vlib/v/checker/tests/attribute_use_bare_err.vv:7:3: error: attribute `Route` is missing field `method`
+    5 | }
+    6 | 
+    7 | @[Route]
+      |   ~~~~~
+    8 | fn index() {
+    9 | }
+vlib/v/checker/tests/attribute_use_bare_err.vv:7:3: error: attribute `Route` is missing field `path`
+    5 | }
+    6 | 
+    7 | @[Route]
+      |   ~~~~~
+    8 | fn index() {
+    9 | }

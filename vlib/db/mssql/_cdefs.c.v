@@ -7,11 +7,11 @@ type C.SQLHANDLE = voidptr
 type C.SQLHSTMT = voidptr
 type C.SQLHWND = voidptr
 type C.SQLINTEGER = int
-type C.SQLLEN = isize
+type C.SQLLEN = C.ptrdiff_t
 type C.SQLPOINTER = voidptr
 type C.SQLRETURN = i16
 type C.SQLSMALLINT = i16
-type C.SQLULEN = usize
+type C.SQLULEN = uint
 type C.SQLUSMALLINT = u16
 
 fn C.SQLAllocHandle(handle_type C.SQLSMALLINT, input_handle C.SQLHANDLE, output_handle &C.SQLHANDLE) C.SQLRETURN

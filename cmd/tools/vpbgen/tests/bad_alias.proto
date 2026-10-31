@@ -1,0 +1,11 @@
+// Two values on one number without `allow_alias`, which protoc refuses.
+
+syntax = "proto3";
+
+package badalias;
+
+enum Color {
+  COLOR_UNSPECIFIED = 0;
+  COLOR_RED = 1;
+  COLOR_CRIMSON = 1;
+}

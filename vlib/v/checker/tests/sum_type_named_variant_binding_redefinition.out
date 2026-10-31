@@ -1,0 +1,28 @@
+vlib/v/checker/tests/sum_type_named_variant_binding_redefinition.vv:12:14: error: redefinition of `n`
+   10 |     e := Expr.Count(7)
+   11 |     match e {
+   12 |         Expr.Count(n) { println(n) }
+      |                    ^
+   13 |         else {}
+   14 |     }
+vlib/v/checker/tests/sum_type_named_variant_binding_redefinition.vv:21:14: error: redefinition of `e`
+   19 |     e := Expr.Count(7)
+   20 |     match e {
+   21 |         Expr.Count(e) { println(e) }
+      |                    ^
+   22 |         else {}
+   23 |     }
+vlib/v/checker/tests/sum_type_named_variant_binding_redefinition.vv:29:14: error: redefinition of `value`
+   27 |     e := Expr.Count(7)
+   28 |     match e {
+   29 |         Expr.Count(value) { println(value) }
+      |                    ~~~~~
+   30 |         else {}
+   31 |     }
+vlib/v/checker/tests/sum_type_named_variant_binding_redefinition.vv:37:14: error: variable `counter` shadows a global variable
+   35 |     e := Expr.Count(7)
+   36 |     match e {
+   37 |         Expr.Count(counter) { println(counter) }
+      |                    ~~~~~~~
+   38 |         else {}
+   39 |     }

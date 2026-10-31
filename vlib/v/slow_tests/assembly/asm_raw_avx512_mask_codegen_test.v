@@ -36,7 +36,7 @@ fn main() {
 ')!
 	// `-arch amd64` only selects the target; nothing is assembled or linked, so the
 	// template is checked on hosts that are not amd64 too.
-	res := os.execute('${os.quoted_path(vexe)} -arch amd64 -o ${os.quoted_path(out_c)} ${os.quoted_path(source)}')
+	res := os.exec([vexe, '-arch', 'amd64', '-o', '${out_c}', source])
 	if res.exit_code != 0 && res.output.contains('unexpected name `raw`') {
 		// The V 0.5.2 compatibility compiler behind `-old-compiler` predates the
 		// `raw` template modifier, so it has no codegen to check here.

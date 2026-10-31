@@ -58,12 +58,13 @@ pub fn (mut ctx CsrfContext) set_csrf_token[T](mut user_context T) string {
 	return ctx.csrf_token
 }
 
-// clear the csrf token and cookie header from the context
+// clear_csrf_token expires the CSRF cookie using the context's configured cookie name and path.
 pub fn (ctx &CsrfContext) clear_csrf_token[T](mut user_context T) {
 	user_context.set_cookie(http.Cookie{
-		name:    config.cookie_name
+		name:    ctx.config.cookie_name
 		value:   ''
-		max_age: 0
+		path:    ctx.config.cookie_path
+		max_age: -1
 	})
 }
 

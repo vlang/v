@@ -20,7 +20,7 @@ fn nested_map_generated_c() string {
 		os.rm(src) or {}
 	}
 	cmd := '${test_vexe} -old-compiler -o - ${os.quoted_path(src)}'
-	res := os.execute(cmd)
+	res := os.exec([@VEXE, '-old-compiler', '-o', '-', '${src}'])
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
 	return res.output
 }

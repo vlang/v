@@ -1,0 +1,71 @@
+@[unsafe]
+fn risky(x int) int {
+	return x + 1
+}
+
+fn plain(p &u8) {
+	defer {
+		free(p)
+	}
+}
+
+fn after_an_unsafe_block(p &u8, q &u8) {
+	unsafe {
+		defer {
+			free(p)
+		}
+	}
+	defer {
+		free(q)
+	}
+}
+
+fn after_its_own_unsafe_block(p &u8, q &u8) {
+	defer {
+		unsafe {
+			free(p)
+		}
+		free(q)
+	}
+}
+
+fn in_a_fn_literal(p &u8) {
+	cb := fn (q &u8) {
+		defer {
+			free(q)
+		}
+	}
+	cb(p)
+}
+
+fn other_operations(p &u8, n int) {
+	defer {
+		println(risky(n))
+		q := p + n
+		println(q[0])
+	}
+}
+
+fn redeclared_in_its_own_unsafe_block(n int) {
+	unsafe {
+		x := n
+		defer {
+			unsafe {
+				x := n + 1
+				println(x)
+			}
+		}
+		println(x)
+	}
+}
+
+fn main() {
+	unsafe {
+		plain(malloc_noscan(1))
+		after_an_unsafe_block(malloc_noscan(1), malloc_noscan(1))
+		after_its_own_unsafe_block(malloc_noscan(1), malloc_noscan(1))
+		in_a_fn_literal(malloc_noscan(1))
+	}
+	other_operations(c'abc', 1)
+	redeclared_in_its_own_unsafe_block(1)
+}

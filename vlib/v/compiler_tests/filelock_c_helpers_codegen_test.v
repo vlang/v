@@ -10,7 +10,8 @@ fn filelock_helpers_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_filelock_helpers_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${filelock_helpers_vexe} -gc none -d parallel -path "${filelock_helpers_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${filelock_helpers_v3_src}')
+		os.exec([filelock_helpers_vexe, '-gc', 'none', '-d', 'parallel', '-path',
+			'${filelock_helpers_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, filelock_helpers_v3_src])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -42,7 +43,7 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_filelock_helpers_input_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -53,7 +54,7 @@ fn main() {
 	assert !c_code.contains('\ni32 v_filelock_lock('), c_code
 	assert !c_code.contains('\ni32 v_filelock_unlock('), c_code
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '47'
 
@@ -79,7 +80,7 @@ fn main() {
 	method_bin := os.join_path(os.temp_dir(), 'v3_filelock_helpers_method_input_${os.getpid()}')
 	os.rm(method_bin) or {}
 	os.rm(method_bin + '.c') or {}
-	method_compile := os.execute('${v3_bin} ${method_src} -b c -o ${method_bin}')
+	method_compile := os.exec([v3_bin, '${method_src}', '-b', 'c', '-o', method_bin])
 	assert method_compile.exit_code == 0, method_compile.output
 	assert !method_compile.output.contains('C compilation failed'), method_compile.output
 	method_c_code := os.read_file(method_bin + '.c') or { panic(err) }

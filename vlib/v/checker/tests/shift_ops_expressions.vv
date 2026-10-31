@@ -1,5 +1,5 @@
 fn left_shifts() {
-	mut a := 12
+	mut a := i32(12)
 	mut arr := []int{}
 	a << 1
 	if true {
@@ -42,7 +42,7 @@ fn left_shifts() {
 }
 
 fn right_shifts() {
-	mut rr := 12
+	mut rr := i32(12)
 	rr >> 1
 	if true {
 		rr >> 2

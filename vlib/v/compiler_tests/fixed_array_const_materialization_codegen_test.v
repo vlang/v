@@ -10,7 +10,9 @@ fn fixed_array_const_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_fixed_array_const_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${fixed_array_const_vexe} -gc none -path "${fixed_array_const_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${fixed_array_const_v3_src}')
+		os.exec([fixed_array_const_vexe, '-gc', 'none', '-path',
+			'${fixed_array_const_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${fixed_array_const_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -49,9 +51,9 @@ fn main() {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_fixed_array_const_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().split_into_lines() == ['21', '15'], run.output
 
@@ -59,10 +61,15 @@ fn main() {
 	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
 	assert compact.contains('memmove(main__nums,'), generated
 	assert compact.contains('memmove(main__items,'), generated
-	assert compact.contains('introw[3];'), generated
+	// V `int` is `i64` on 64-bit targets.
+	assert compact.contains('i64row[3];'), generated
 	assert compact.contains('memmove(row,main__nums['), generated
-	assert !compact.contains('introw=main__nums['), generated
-	assert !compact.contains('<0;'), generated
+	assert !compact.contains('i64row=main__nums['), generated
+	// The nested loops must not get an empty `< 0` bound. Only `sum_nums` is
+	// checked: builtin code such as `string__lt` returns `cmp < 0;`.
+	assert generated.contains('i64 sum_nums(void) {'), generated
+	sum_nums_body := generated.all_after('i64 sum_nums(void) {').all_before('\n}\n')
+	assert !sum_nums_body.replace('\t', '').replace(' ', '').replace('\n', '').contains('<0;'), sum_nums_body
 	deparenthesized := compact.replace('(', '').replace(')', '')
 	assert deparenthesized.contains('returnmain__items[0]->value+main__items[1]->value;'), generated
 }
@@ -93,9 +100,9 @@ fn main() {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_fixed_array_arg_const_clone_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '17', run.output
 
@@ -134,9 +141,9 @@ fn main() {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_fixed_array_const_dynamic_use_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '11', run.output
 
@@ -193,17 +200,17 @@ fn main() {
 		panic(err)
 	}
 	bin := os.join_path(root, 'app')
-	compile := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${bin}')
+	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '17', run.output
 
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	compact := generated.replace('\t', '').replace(' ', '').replace('\n', '')
 	// Cache-split builds keep inferred array constants dynamic to preserve the module ABI.
-	assert compact.contains('constinta__vals[3]') || generated.contains('Array a__vals'), generated
-	assert compact.contains('constintb__vals[3]') || generated.contains('Array b__vals'), generated
+	assert compact.contains('consti64a__vals[3]') || generated.contains('Array a__vals'), generated
+	assert compact.contains('consti64b__vals[3]') || generated.contains('Array b__vals'), generated
 }
 
 fn test_aliased_import_dynamic_const_use_stays_dynamic() {
@@ -236,9 +243,9 @@ fn main() {
 		panic(err)
 	}
 	bin := os.join_path(root, 'app')
-	compile := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${bin}')
+	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '5', run.output
 

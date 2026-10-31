@@ -1,0 +1,12 @@
+@[attribute]
+struct Route {
+	path string
+}
+
+struct Box[T] {
+	item T
+}
+
+fn main() {
+	_ := Box[Route]{}
+}

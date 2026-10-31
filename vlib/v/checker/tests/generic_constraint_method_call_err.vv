@@ -1,0 +1,46 @@
+interface Named {
+	name string
+}
+
+struct User {
+	name string
+}
+
+struct Admin {
+	User
+	level int
+}
+
+type Number = int | f64
+
+struct Box[T Named] {
+	item T
+}
+
+fn (host_ Host) longest[T Named](a T, b T) T {
+	return if a.name.len >= b.name.len { a } else { b }
+}
+
+fn (host_ Host) half[T Number](x T) T {
+	return x / 2
+}
+
+fn (host_ Host) greet[T User](x T) string {
+	return x.name
+}
+
+fn main() {
+	println(host.longest(1, 2))
+	println(host.longest[int](1, 2))
+	println(host.half('a'))
+	println(host.greet(Admin{}))
+	println(host.greet(1))
+	b := Box[int]{}
+	println(b)
+}
+
+// The method form of generic_constraint_call_err.vv: its generic functions are
+// methods of `Host`, with the same type parameters, and report the same errors.
+struct Host {}
+
+const host = Host{}

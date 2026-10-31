@@ -4,6 +4,8 @@ Usage:
   v remove [PACKAGE...]
 
 If no PACKAGE is provided, removes ALL installed packages.
+Run inside a project, the entries of the removed packages are dropped from its
+`v.mod.lock`.
 
 Options:
   -v           Print more details about the performed operation.

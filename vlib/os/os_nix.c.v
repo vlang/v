@@ -1,14 +1,6 @@
 module os
 
-#include <dirent.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <sys/utsname.h>
-#include <sys/types.h>
-#include <sys/statvfs.h>
-#include <sys/wait.h>
-#include <utime.h>
-#insert "@VEXEROOT/vlib/os/execute_capture_nix.h"
+#flag @VEXEROOT/vlib/os/execute_capture_nix.o
 
 // short_path is a Windows-only helper that returns the DOS 8.3 short path.
 // On non-Windows platforms it simply returns the given path unchanged,
@@ -35,22 +27,22 @@ const stderr_value = 2
 
 // (Must be realized in Syscall) (Must be specified)
 // ref: http://www.ccfit.nsu.ru/~deviv/courses/unix/unix/ng7c229.html
-pub const s_ifmt = 0xF000 // type of file
-pub const s_ifdir = 0x4000 // directory
-pub const s_ifreg = 0x8000 // regular file
-pub const s_iflnk = 0xa000 // link
-pub const s_isuid = 0o4000 // SUID
-pub const s_isgid = 0o2000 // SGID
-pub const s_isvtx = 0o1000 // Sticky
-pub const s_irusr = 0o0400 // Read by owner
-pub const s_iwusr = 0o0200 // Write by owner
-pub const s_ixusr = 0o0100 // Execute by owner
-pub const s_irgrp = 0o0040 // Read by group
-pub const s_iwgrp = 0o0020 // Write by group
-pub const s_ixgrp = 0o0010 // Execute by group
-pub const s_iroth = 0o0004 // Read by others
-pub const s_iwoth = 0o0002 // Write by others
-pub const s_ixoth = 0o0001
+pub const s_ifmt = u32(0xF000) // type of file
+pub const s_ifdir = u32(0x4000) // directory
+pub const s_ifreg = u32(0x8000) // regular file
+pub const s_iflnk = u32(0xa000) // link
+pub const s_isuid = u32(0o4000) // SUID
+pub const s_isgid = u32(0o2000) // SGID
+pub const s_isvtx = u32(0o1000) // Sticky
+pub const s_irusr = u32(0o0400) // Read by owner
+pub const s_iwusr = u32(0o0200) // Write by owner
+pub const s_ixusr = u32(0o0100) // Execute by owner
+pub const s_irgrp = u32(0o0040) // Read by group
+pub const s_iwgrp = u32(0o0020) // Write by group
+pub const s_ixgrp = u32(0o0010) // Execute by group
+pub const s_iroth = u32(0o0004) // Read by others
+pub const s_iwoth = u32(0o0002) // Write by others
+pub const s_ixoth = u32(0o0001)
 
 fn C.utime(&char, &C.utimbuf) i32
 
@@ -58,11 +50,11 @@ fn C.uname(name &C.utsname) i32
 
 fn C.symlink(&char, &char) i32
 
-fn C.readlink(&char, &char, usize) i32
+fn C.readlink(&char, &char, uint) i32
 
 fn C.link(&char, &char) i32
 
-fn C.gethostname(&char, usize) i32
+fn C.gethostname(&char, uint) i32
 
 // Note: not available on Android fn C.getlogin_r(&char, int) int
 fn C.getlogin() &char
@@ -84,6 +76,26 @@ enum GlobMatch {
 	start_and_ends_with
 	contains
 	any
+}
+
+fn glob_match_wildcard(name string, pattern string) bool {
+	parts := pattern.split('*')
+	if !name.starts_with(parts[0]) {
+		return false
+	}
+	mut pos := parts[0].len
+	for i in 1 .. parts.len {
+		part := parts[i]
+		if part == '' {
+			continue
+		}
+		if i == parts.len - 1 {
+			return name.ends_with(part) && name.len - part.len >= pos
+		}
+		offset := name[pos..].index(part) or { return false }
+		pos += offset + part.len
+	}
+	return true
 }
 
 fn glob_match(dir string, pattern string, next_pattern string, mut matches []string) []string {
@@ -146,8 +158,8 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 				f.ends_with(pat)
 			}
 			.start_and_ends_with {
-				p := pat.split('*')
-				f.starts_with(p[0]) && f.ends_with(p[1])
+				// Keep the original edge wildcards and match every interior piece in order.
+				glob_match_wildcard(f, if pattern == '**' { next_pattern } else { pattern })
 			}
 			.contains {
 				f.contains(pat)
@@ -170,9 +182,21 @@ fn glob_match(dir string, pattern string, next_pattern string, mut matches []str
 
 fn native_glob_pattern(pattern string, mut matches []string) ! {
 	steps := pattern.split(path_separator)
-	cwd := if pattern.starts_with(path_separator) { path_separator } else { '.' }
+	mut cwd := if pattern.starts_with(path_separator) { path_separator } else { '.' }
+	// A leading `.` or `..` says where the search starts; it is not a pattern to
+	// match the entries of a folder against. It is folded into the start folder,
+	// and put back in front of the results verbatim, the way `glob(3)` reports
+	// them: `./a/*.v` yields `./a/x.v`, not `a/x.v`.
+	mut first := 0
+	mut prefix := ''
+	for first + 1 < steps.len && (steps[first] == '.' || steps[first] == '..') {
+		prefix += '${steps[first]}${path_separator}'
+		cwd = if cwd == '.' { steps[first] } else { '${cwd}/${steps[first]}' }
+		first++
+	}
+	from := matches.len
 	mut subdirs := [cwd]
-	for i := 0; i < steps.len; i++ {
+	for i := first; i < steps.len; i++ {
 		step := steps[i]
 		step2 := if i + 1 == steps.len { step } else { steps[i + 1] }
 		if step == '' {
@@ -196,18 +220,24 @@ fn native_glob_pattern(pattern string, mut matches []string) ! {
 		}
 		mut subs := []string{}
 		for sd in subdirs {
-			d := if cwd == '/' {
-				sd
-			} else {
-				if cwd == '.' || cwd == '' {
-					sd
-				} else {
-					if sd == '.' || sd == '/' { cwd } else { '${cwd}/${sd}' }
-				}
-			}
-			subs << glob_match(d.replace('//', '/'), step, step2, mut matches)
+			// The folders walked already carry the start folder in front.
+			subs << glob_match(sd.replace('//', '/'), step, step2, mut matches)
 		}
 		subdirs = subs.clone()
+	}
+	if prefix != '' {
+		// The walk reports paths rooted at the folded start folder; swap that
+		// root for the prefix as it was written in the pattern. From `.`, only the
+		// folders matched by a wildcard or walked by `**` start with `./`.
+		walked := '${cwd}${path_separator}'
+		for i := from; i < matches.len; i++ {
+			found := matches[i]
+			matches[i] = if found.starts_with(walked) {
+				'${prefix}${found[walked.len..]}'
+			} else {
+				'${prefix}${found}'
+			}
+		}
 	}
 }
 
@@ -240,7 +270,10 @@ pub fn uname() Uname {
 	mut u := Uname{}
 	unsafe {
 		d := &C.utsname(malloc_noscan(int(sizeof(C.utsname))))
-		if C.uname(d) == 0 {
+		// illumos returns 1 on success (SysV heritage), Linux and the BSDs
+		// return 0, and both return -1 on error, so anything non-negative
+		// means the struct is filled.
+		if C.uname(d) >= 0 {
 			u.sysname = cstring_to_vstring(d.sysname)
 			u.nodename = cstring_to_vstring(d.nodename)
 			u.release = cstring_to_vstring(d.release)
@@ -276,6 +309,9 @@ pub fn loginname() !string {
 }
 
 // ls returns ![]string of the files and dirs in the given `path` ( os.ls uses C.readdir ). Symbolic links are returned to be files. For recursive list see os.walk functions.
+// The entries come in the order the operating system reports them, which os.ls does not sort.
+// That order differs between platforms and filesystems, so call `.sort()` on the result when
+// a stable order is needed.
 // See also: `os.walk`, `os.walk_ext`, `os.is_dir`, `os.is_file`
 // Example:
 // ```
@@ -326,12 +362,17 @@ pub fn mkdir(path string, params MkdirParams) ! {
 	apath := real_path(path)
 	r := unsafe { C.mkdir(&char(apath.str), params.mode) }
 	if r == -1 {
-		return error(posix_get_error_msg(C.errno))
+		return error_posix()
 	}
 }
 
 // execute starts the specified command, waits for it to complete, and returns its output.
+@[deprecated: 'use os.exec with an argument array; command strings can allow shell injection']
 pub fn execute(cmd string) Result {
+	return execute_shell(cmd)
+}
+
+fn execute_shell(cmd string) Result {
 	mut pid := 0
 	mut read_fd := -1
 	v_os_execute_lock()
@@ -417,9 +458,10 @@ pub fn exec(args []string) Result {
 // On Windows raw_execute starts the specified command, waits for it to complete, and returns its output.
 // It's marked as `unsafe` to help emphasize the problems that may arise by allowing, for example,
 // user provided escape sequences.
+@[deprecated: 'use os.exec with an argument array; command strings can allow shell injection']
 @[unsafe]
 pub fn raw_execute(cmd string) Result {
-	return execute(cmd)
+	return execute_shell(cmd)
 }
 
 // symlink creates a symbolic link named link_name, which points to target.
@@ -593,10 +635,11 @@ pub fn page_size() int {
 }
 
 struct C.statvfs {
-	f_bsize  usize
-	f_blocks usize
-	f_bfree  usize
-	f_bavail usize
+	f_bsize  uint
+	f_frsize uint
+	f_blocks uint
+	f_bfree  uint
+	f_bavail uint
 }
 
 // disk_usage returns disk usage of `path`.
@@ -609,13 +652,19 @@ pub fn disk_usage(path string) !DiskUsage {
 	if ret == -1 {
 		return error('cannot get disk usage of path')
 	}
-	f_bsize := u64(vfs.f_bsize)
+	// f_blocks counts f_frsize units (POSIX). f_bsize is the preferred I/O size,
+	// which Solaris and FreeBSD report far above the fragment size, so using it
+	// overstated the disk size.
+	mut unit := u64(vfs.f_frsize)
+	if unit == 0 {
+		unit = u64(vfs.f_bsize)
+	}
 	f_blocks := u64(vfs.f_blocks)
 	f_bavail := u64(vfs.f_bavail)
 	f_bfree := u64(vfs.f_bfree)
 	return DiskUsage{
-		total:     f_bsize * f_blocks
-		available: f_bsize * f_bavail
-		used:      f_bsize * (f_blocks - f_bfree)
+		total:     unit * f_blocks
+		available: unit * f_bavail
+		used:      unit * (f_blocks - f_bfree)
 	}
 }

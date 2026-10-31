@@ -12,6 +12,7 @@ fn test_benchmark_acos() {
 		x = math.acos(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_acosh() {
@@ -21,6 +22,7 @@ fn test_benchmark_acosh() {
 		x = math.acosh(1.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_asin() {
@@ -30,6 +32,7 @@ fn test_benchmark_asin() {
 		x = math.asin(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_asinh() {
@@ -39,6 +42,7 @@ fn test_benchmark_asinh() {
 		x = math.asinh(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_atan() {
@@ -48,6 +52,7 @@ fn test_benchmark_atan() {
 		x = math.atan(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_atanh() {
@@ -57,6 +62,7 @@ fn test_benchmark_atanh() {
 		x = math.atanh(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_atan2() {
@@ -66,6 +72,7 @@ fn test_benchmark_atan2() {
 		x = math.atan2(0.5, 1)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_cbrt() {
@@ -75,6 +82,7 @@ fn test_benchmark_cbrt() {
 		x = math.cbrt(10)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_ceil() {
@@ -84,6 +92,7 @@ fn test_benchmark_ceil() {
 		x = math.ceil(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_copysign() {
@@ -93,6 +102,7 @@ fn test_benchmark_copysign() {
 		x = math.copysign(0.5, -1.0)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_cos() {
@@ -102,6 +112,7 @@ fn test_benchmark_cos() {
 		x = math.cos(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_cosh() {
@@ -111,6 +122,7 @@ fn test_benchmark_cosh() {
 		x = math.cosh(2.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_erf() {
@@ -120,6 +132,7 @@ fn test_benchmark_erf() {
 		x = math.erf(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_erfc() {
@@ -129,6 +142,7 @@ fn test_benchmark_erfc() {
 		x = math.erfc(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_exp() {
@@ -138,6 +152,7 @@ fn test_benchmark_exp() {
 		x = math.exp(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_expm1() {
@@ -147,6 +162,7 @@ fn test_benchmark_expm1() {
 		x = math.expm1(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_exp2() {
@@ -156,6 +172,7 @@ fn test_benchmark_exp2() {
 		x = math.exp2(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_abs() {
@@ -165,6 +182,7 @@ fn test_benchmark_abs() {
 		x = math.abs(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_floor() {
@@ -174,6 +192,7 @@ fn test_benchmark_floor() {
 		x = math.floor(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_max() {
@@ -183,6 +202,7 @@ fn test_benchmark_max() {
 		x = math.max(10, 3)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_min() {
@@ -192,6 +212,7 @@ fn test_benchmark_min() {
 		x = math.min(10, 3)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_mod() {
@@ -201,6 +222,7 @@ fn test_benchmark_mod() {
 		x = math.mod(10, 3)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_frexp() {
@@ -211,6 +233,8 @@ fn test_benchmark_frexp() {
 		x, y = math.frexp(8)
 	}
 	bmark.measure(@FN)
+	_ = x
+	_ = y
 }
 
 fn test_benchmark_gamma() {
@@ -220,6 +244,7 @@ fn test_benchmark_gamma() {
 		x = math.gamma(2.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_hypot() {
@@ -229,6 +254,7 @@ fn test_benchmark_hypot() {
 		x = math.hypot(3, 4)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_ldexp() {
@@ -238,6 +264,7 @@ fn test_benchmark_ldexp() {
 		x = math.ldexp(0.5, 2)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_log_gamma() {
@@ -247,6 +274,7 @@ fn test_benchmark_log_gamma() {
 		x = math.log_gamma(2.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_log() {
@@ -256,6 +284,7 @@ fn test_benchmark_log() {
 		x = math.log(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_log_b() {
@@ -265,6 +294,7 @@ fn test_benchmark_log_b() {
 		x = math.log_b(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_log1p() {
@@ -274,6 +304,7 @@ fn test_benchmark_log1p() {
 		x = math.log1p(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_log10() {
@@ -283,6 +314,7 @@ fn test_benchmark_log10() {
 		x = math.log10(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_log2() {
@@ -292,6 +324,7 @@ fn test_benchmark_log2() {
 		x = math.log2(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_modf() {
@@ -302,6 +335,8 @@ fn test_benchmark_modf() {
 		x, y = math.modf(1.5)
 	}
 	bmark.measure(@FN)
+	_ = x
+	_ = y
 }
 
 fn test_benchmark_nextafter32() {
@@ -311,6 +346,7 @@ fn test_benchmark_nextafter32() {
 		x = math.nextafter32(0.5, 1)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_nextafter64() {
@@ -320,6 +356,7 @@ fn test_benchmark_nextafter64() {
 		x = math.nextafter(0.5, 1)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_pow_int() {
@@ -329,6 +366,7 @@ fn test_benchmark_pow_int() {
 		x = math.pow(2, 2)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_pow_frac() {
@@ -338,6 +376,7 @@ fn test_benchmark_pow_frac() {
 		x = math.pow(2.5, 1.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_pow10_pos() {
@@ -347,6 +386,7 @@ fn test_benchmark_pow10_pos() {
 		x = math.pow10(300)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_pow10_neg() {
@@ -356,6 +396,7 @@ fn test_benchmark_pow10_neg() {
 		x = math.pow10(-300)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_round() {
@@ -365,6 +406,7 @@ fn test_benchmark_round() {
 		x = math.round(-2.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_round_to_even() {
@@ -374,6 +416,7 @@ fn test_benchmark_round_to_even() {
 		x = math.round_to_even(-2.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_signbit() {
@@ -383,6 +426,7 @@ fn test_benchmark_signbit() {
 		x = math.signbit(2.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_sin() {
@@ -392,6 +436,7 @@ fn test_benchmark_sin() {
 		x = math.sin(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_sincos() {
@@ -402,6 +447,8 @@ fn test_benchmark_sincos() {
 		x, y = math.sincos(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
+	_ = y
 }
 
 fn test_benchmark_sinh() {
@@ -411,6 +458,7 @@ fn test_benchmark_sinh() {
 		x = math.sinh(2.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_sqrt_indirect() {
@@ -421,6 +469,7 @@ fn test_benchmark_sqrt_indirect() {
 		x += f(y)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_sqrt_latency() {
@@ -430,6 +479,7 @@ fn test_benchmark_sqrt_latency() {
 		x = math.sqrt(x)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_sqrt_indirect_latency() {
@@ -440,6 +490,7 @@ fn test_benchmark_sqrt_indirect_latency() {
 		x = f(x)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn is_prime(i int) bool {
@@ -463,6 +514,7 @@ fn test_benchmark_sqrt_prime() {
 		x = is_prime(100003)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_tan() {
@@ -472,6 +524,7 @@ fn test_benchmark_tan() {
 		x = math.tan(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_tanh() {
@@ -481,6 +534,7 @@ fn test_benchmark_tanh() {
 		x = math.tanh(2.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_trunc() {
@@ -490,6 +544,7 @@ fn test_benchmark_trunc() {
 		x = math.trunc(0.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_f64_bits() {
@@ -499,6 +554,7 @@ fn test_benchmark_f64_bits() {
 		x = math.f64_bits(-2.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_f64_from_bits() {
@@ -508,6 +564,7 @@ fn test_benchmark_f64_from_bits() {
 		x = math.f64_from_bits(5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_f32_bits() {
@@ -517,6 +574,7 @@ fn test_benchmark_f32_bits() {
 		x = math.f32_bits(-2.5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }
 
 fn test_benchmark_f32_from_bits() {
@@ -526,4 +584,5 @@ fn test_benchmark_f32_from_bits() {
 		x = math.f32_from_bits(5)
 	}
 	bmark.measure(@FN)
+	_ = x
 }

@@ -2,6 +2,7 @@ module veb
 
 import net.urllib
 import net.http
+import json2
 
 // Parsing function attributes for methods and path.
 fn parse_attrs(name string, attrs []string) !([]http.Method, string, string) {
@@ -93,7 +94,45 @@ fn parse_form_from_request(request http.Request) !(map[string]string, map[string
 		// Firefox and other browsers, do not use quotes around the boundary:
 		return http.parse_multipart_form(request.data, boundary)
 	}
+	if ct[0].trim(' \t').to_lower() == json_media_type {
+		return parse_json_form(request.data)
+	}
 	return http.parse_form(request.data), map[string][]http.FileData{}
+}
+
+// json_media_type is the content type a JSON request body is read as.
+const json_media_type = 'application/json'
+
+// parse_json_form decodes a JSON object body into the same flat form map a
+// urlencoded body fills, so a handler reads `ctx.form['name']` whichever
+// encoding the client used.
+// A nested object or an array is skipped rather than flattened: a form field
+// holds one scalar value, and handing a handler a mangled copy of the structure
+// would hide the fact that it needs a typed decode instead. A body that is not
+// a JSON object is an error, so it never looks like an empty form.
+fn parse_json_form(body string) !(map[string]string, map[string][]http.FileData) {
+	values := json2.decode[json2.Any](body) or {
+		return error('the JSON body is not an object: ${err.msg()}')
+	}
+	if values !is map[string]json2.Any {
+		return error('the JSON body is not an object')
+	}
+	mut form := map[string]string{}
+	for key, value in values {
+		if scalar := json_form_value(value) {
+			form[key] = scalar
+		}
+	}
+	return form, map[string][]http.FileData{}
+}
+
+// json_form_value renders one decoded JSON value as a form field value, or
+// returns `none` for the shapes a flat map cannot represent.
+fn json_form_value(value json2.Any) ?string {
+	if value is map[string]json2.Any || value is []json2.Any || value is json2.Null {
+		return none
+	}
+	return value.str()
 }
 
 // has_route_attributes checks if a method has attributes that indicate it should be a route handler

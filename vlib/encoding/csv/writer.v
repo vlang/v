@@ -4,6 +4,7 @@
 module csv
 
 import strings
+import encoding.utf8
 
 struct Writer {
 	use_crlf  bool
@@ -28,7 +29,8 @@ pub fn new_writer(config WriterConfig) &Writer {
 	}
 }
 
-// write writes a single record
+// write writes a single record, preserving bare carriage returns in quoted fields.
+// With use_crlf, newlines become CRLF while existing CRLF pairs are preserved.
 pub fn (mut w Writer) write(record []string) !bool {
 	if !valid_delim(w.delimiter) {
 		return &InvalidDelimiterError{}
@@ -55,7 +57,14 @@ pub fn (mut w Writer) write(record []string) !bool {
 				z := field[0]
 				match z {
 					`"` { w.sb.write_string('""') }
-					`\r`, `\n` { w.sb.write_string(le) }
+					`\r` {
+						w.sb.write_string('\r')
+						if w.use_crlf && field.len > 1 && field[1] == `\n` {
+							w.sb.write_string('\n')
+							field = field[1..]
+						}
+					}
+					`\n` { w.sb.write_string(le) }
 					else {}
 				}
 
@@ -81,7 +90,7 @@ fn (w &Writer) field_needs_quotes(field string) bool {
 	if field.contains(w.delimiter.ascii_str()) || field.index_any('"\r\n') != -1 {
 		return true
 	}
-	return false
+	return utf8.is_space(utf8.get_rune(field, 0))
 }
 
 // str returns the writer contents

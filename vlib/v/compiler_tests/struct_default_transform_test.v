@@ -73,7 +73,7 @@ fn main() {
 }
 ")
 	init := transformed_struct_init(a, 'main')
-	assert init.value == 'Person'
+	assert init.value_text() == 'Person'
 	assert init.children_count == 2
 
 	name_field := find_field(a, init, 'name')

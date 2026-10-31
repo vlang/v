@@ -41,17 +41,17 @@ fn test_alias_of_pointer_types() {
 fn test_calling_a_function_expecting_a_mut_alias() {
 	eprintln('------------------------')
 	mut s := &MyStructInt{456}
-	mut ps := PZZMyStructInt(s)
+	mut ps := unsafe { PZZMyStructInt(s) }
 	dump(voidptr(s))
 	dump(voidptr(ps))
 	eprintln('------------------------')
-	dump(&MyStructInt(ps))
+	dump(unsafe { &MyStructInt(ps) })
 	res := mut_alias(mut ps)
-	dump(&MyStructInt(ps))
+	dump(unsafe { &MyStructInt(ps) })
 	// the alias `ps` is now changed and points to another object
 	assert res == 123
 	assert s.x == 456 // should remain the same
-	assert (&MyStructInt(ps)).x == 789
+	assert (unsafe { &MyStructInt(ps) }).x == 789
 	assert u64(voidptr(s)) != u64(voidptr(ps))
 	dump(voidptr(s))
 	dump(voidptr(ps))
@@ -68,7 +68,7 @@ fn mut_alias(mut ps PZZMyStructInt) int {
 	//	dump(ptr_str(voidptr(ps)))
 	another := &MyStructInt{789}
 	//	dump(ptr_str(voidptr(another)))
-	ps = PZZMyStructInt(another)
+	ps = unsafe { PZZMyStructInt(another) }
 	//	dump(ptr_str(voidptr(ps)))
 	return 123
 }

@@ -30,7 +30,8 @@ fn test_all_samples_can_be_compiled() {
 	mut fails := []string{}
 	for program_source in samples {
 		compile_cmd := '${os.quoted_path(vexe)}${draw_fns_api_child_flags()} ${os.quoted_path(program_source)}'
-		res := os.execute(compile_cmd)
+		res := os.exec([vexe, ...(os.split_args(draw_fns_api_child_flags()) or { panic(err) }),
+			program_source])
 		if res.exit_code != 0 {
 			eprintln('>>> FAIL ${compile_cmd}')
 			eprintln(res.output)

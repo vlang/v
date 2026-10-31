@@ -79,6 +79,152 @@ pub fn (mut p Point) inc(dx int) int {
 '
 }
 
+fn test_formatter_keeps_anon_fn_statements_returning_threads() {
+	src := 'fn main() {
+	fn () thread (int, int) {
+		return spawn pair()
+	}().wait()
+	fn (x int) thread (int, int) {
+		return spawn pair()
+	}(1).wait()
+}
+'
+	assert vfmt('anon_fn_thread_return', src) == src
+}
+
+fn test_formatter_keeps_the_spacing_of_compile_time_conditions() {
+	// `v fmt` wrote `[f32, f64]&& b`, `!( a is f64 )`, `sizeof ( A )` and `[]&& int`.
+	source := "module main\n\nfn f[A, B](a A, b B) {\n\t\$if a in [f32, f64] && b !is f32 {\n\t\tprintln(1)\n\t}\n\t\$if !(a is f64) {\n\t\tprintln(2)\n\t}\n\t\$if A is []&&int {\n\t\tprintln(3)\n\t}\n\t\$if A in [f32, f64] || A is int {\n\t\tprintln(4)\n\t}\n\t\$if sizeof(A) == 8 {\n\t\tprintln(5)\n\t}\n\t\$if (a is int) || (a is f64) {\n\t\tprintln(6)\n\t}\n\t\$if A.name == 'f64' {\n\t\tprintln(7)\n\t}\n\t\$if linux && !debug {\n\t\tprintln(8)\n\t}\n\t\$if my_flag ? {\n\t\tprintln(9)\n\t}\n\t\$if a is \$int {\n\t\tprintln(10)\n\t}\n\t\$if A !in [i8, i16] && A is \$int {\n\t\tprintln(11)\n\t}\n\t\$if a is ?int {\n\t\tprintln(12)\n\t}\n\t\$if \$d('mode', 1) == 2 {\n\t\tprintln(13)\n\t}\n\t\$if !(A in [f32, f64]) && (B is int || B is i64) {\n\t\tprintln(14)\n\t}\n\t\$if A is [3]&&int {\n\t\tprintln(15)\n\t}\n}\n\nfn main() {\n\tf(1, 2)\n}\n"
+	assert vfmt('comptime_condition_spacing', source) == source
+}
+
+fn test_formatter_keeps_binary_ampersands_after_array_literals() {
+	// `v fmt` wrote `assert a == []&&b{} == []`: the `&&` after the `]` was read as the
+	// reference prefix of an element type.
+	source := 'module main
+
+struct Foo {}
+
+fn takes(value bool) bool {
+	return value
+}
+
+fn f(a []int, b []int, c bool, n int) bool {
+	assert a == [] && b == []
+	assert a != [] && b != []
+	assert a == [] || b == []
+	assert c && a == [] && b == [1]
+	if a == [] && c {
+		return takes(a == [] && b == [])
+	}
+	for a == [] && c {
+		break
+	}
+	x := (a == [] && b == [])
+	y := [1]! == [n]! && c
+	_ = [] & n
+	_ = a == [n] & n
+	return x && y && a == [] && b == []
+}
+
+fn g(n int) {
+	_ = []&Foo{}
+	_ = []&&Foo{}
+	_ = [3]&Foo{}
+	_ = [3]&&Foo{}
+	_ = [][]&Foo{len: n}
+	_ = []&Foo{} == [] && []&&Foo{} == []
+}
+'
+	assert vfmt('array_literal_ampersand', source) == source
+	// An operator that is detached on one side only is still an operator for `&&`, and
+	// still a reference prefix for `&`.
+	out := vfmt('array_literal_ampersand_spacing', 'struct Foo {}\n\nfn f(a []int, c bool) {\n\t_ = a == []&& c\n\t_ = a == [1] &&c\n\t_ = [] &Foo{}\n}\n')
+	assert out.contains('\t_ = a == [] && c\n\t_ = a == [1] && c\n\t_ = []&Foo{}\n'), out
+}
+
+fn test_formatter_keeps_generic_constraints() {
+	// `v fmt` used to delete them: `fn longest[T Named]` became `fn longest[T]`.
+	source := 'module m
+
+interface Named {
+	name string
+}
+
+struct Box[T Named] {
+	item T
+}
+
+fn longest[T Named](a T, b T) T {
+	return a
+}
+
+fn (b Box[T]) label() string {
+	return b.item.name
+}
+
+fn pair[K, V mod.Named](k K, v V) string {
+	return v.name
+}
+
+struct Host {}
+
+fn (h Host) longest[T Named](a T, b T) T {
+	return a
+}
+
+fn (b Box[T]) map[U Named](f fn (T) U) U {
+	return f(b.item)
+}
+
+fn (h &Host) pair[K, V mod.Named](k K, v V) string {
+	return v.name
+}
+
+pub fn (mut h Host) double[T Number](x T) T {
+	return x
+}
+
+interface Shelf[T Named] {
+	items []T
+}
+
+type Picker[T Named] = fn (T) bool
+
+pub type Number = int | i64 | f64
+
+fn double[T Number](x T) T {
+	return x
+}
+'
+	assert vfmt('generic_constraints', source) == source
+}
+
+fn test_formatter_preserves_contextually_invalid_method_and_range_syntax() {
+	for source in [
+		'struct Example {}\n\nfn (value Example) Foo.bar() {}\n',
+		'struct Example {}\n\nfn (value Example) Foo.@select()\n',
+		'fn main() {\n\tfor i in 0 ... 3 { println(i) }\n}\n',
+	] {
+		formatted := vfmt('contextual_method_range', source)
+		assert formatted == source, formatted
+		assert vfmt('contextual_method_range_twice', formatted) == formatted
+	}
+}
+
+fn test_formatter_preserves_interop_receiver_qualifiers() {
+	for source in [
+		'struct Native {}\n\nfn (value Native) C.foo() {}\n',
+		'struct Native {}\n\nfn (value &Native) JS.nested.foo() {}\n',
+		'struct C.Native {}\n\nfn (value C.Native) foo() {}\n',
+		'struct C.Native {}\n\nfn (value C.Native) C.foo()\n',
+	] {
+		formatted := vfmt('interop_receiver', source)
+		assert formatted == source, formatted
+		assert vfmt('interop_receiver_twice', formatted) == formatted
+	}
+}
+
 fn test_formatter_preserves_operator_method_spacing() {
 	source := 'struct Number {\n\tvalue int\n}\n\nfn (a Number) + (b Number) Number {\n\treturn Number{a.value + b.value}\n}\n\nfn (a Number) == (b Number) bool {\n\treturn a.value == b.value\n}\n\nfn (a Number) < (b Number) bool {\n\treturn a.value < b.value\n}\n\nfn (a Number) [] (index int) int {\n\treturn a.value + index\n}\n'
 	out := vfmt('operator_method_spacing', source)
@@ -131,6 +277,16 @@ fn test_formatter_preserves_multiline_call_struct_arguments() {
 	named_argument := "value := encode(Payload{'item'},\n\tescape_unicode: true\n)\n"
 	assert vfmt_with_options('multiline_named_argument_call', named_argument,
 		FormatOptions{}) == named_argument
+	// A line break inside a positional struct literal does not expand the named ones.
+	inline_named := "value := encode(Payload{\n\tname: 'item'\n}, escape_unicode: true)\n"
+	assert vfmt_with_options('inline_named_after_multiline_struct', inline_named,
+		FormatOptions{}) == inline_named
+}
+
+fn test_formatter_keeps_anonymous_struct_generic_type_arguments() {
+	source := 'fn main() {\n\tb := decode[struct {\n\t\ta string\n\t}](text)!.a\n\t_ = b\n}\n'
+	out := vfmt('anon_struct_type_arg', source)
+	assert out == source, out
 }
 
 fn test_formatter_preserves_gated_slices() {
@@ -152,6 +308,238 @@ fn test_formatter_preserves_compact_function_and_expression_bodies() {
 	out := vfmt('compact_bodies', source)
 	assert out == source, out
 	assert vfmt('compact_bodies_twice', out) == out
+}
+
+fn test_formatter_keeps_line_directives_next_to_the_code_they_locate() {
+	source := 'module main
+
+#line 100 "src/app.zbr"
+fn helper() int {
+	return 5
+}
+
+#line 1 \'gen.zbr\' // generated
+@[inline]
+fn twice(x int) int {
+	#line 2
+	return x * 2
+}
+
+#line 10 "src/app.zbr"
+
+fn main() {
+	#line 42 "src/app.zbr"
+	x := helper()
+	#line 43
+	println(twice(x))
+}
+'
+	assert vfmt('line_directive.v', source) == source
+	// A directive at the start of a line in a function body is indented like other statements.
+	unindented := source.replace('\t#line 42', '#line 42')
+	assert vfmt('line_directive.v', unindented) == source
+}
+
+fn test_formatter_keeps_single_statement_bodies_written_on_one_line() {
+	source := 'struct Point {
+	x int
+mut:
+	y int
+}
+
+fn (p &Point) sum() int { return p.x + p.y }
+
+pub fn (mut p Point) set(y int) { p.y = y }
+
+fn first_positive(a []int) int {
+	mut total := 0
+	for i := 0; i < a.len; i++ { total += a[i] }
+	for x in a { if x > 0 { return x } }
+	for i, x in a { total += i * x }
+	for total > 100 { total /= 2 }
+	if total > 10 { return total } else { total = 0 }
+	if total < 0 { total = -total }
+	cmp := fn (x &int, y &int) int { return *x - *y }
+	_ = cmp
+	return total
+}
+'
+	out := vfmt('single_statement_bodies', source)
+	assert out == source, out
+	assert vfmt('single_statement_bodies_twice', out) == out
+}
+
+fn test_formatter_expands_single_statement_bodies_that_do_not_fit_one_line() {
+	source := "fn expand(a []int, extra_long_argument_name int, another_long_argument_name int) int { return a.len }
+
+fn loops(a []int) {
+	for x in a { m := {'k': x} }
+	for x in a { if x > 1 { println(x) } else if x > 2 { println(x) } }
+	for x in a { // note
+		println(x)
+	}
+	if a.len > 1 { return } else if a.len > 2 { println(a) }
+}
+
+fn multi(x int) int {
+	return x
+}
+"
+	out := vfmt('expanded_single_statement_bodies', source)
+	assert out == "fn expand(a []int, extra_long_argument_name int, another_long_argument_name int) int {
+	return a.len
+}
+
+fn loops(a []int) {
+	for x in a {
+		m := {
+			'k': x
+		}
+	}
+	for x in a {
+		if x > 1 {
+			println(x)
+		} else if x > 2 {
+			println(x)
+		}
+	}
+	for x in a { // note
+		println(x)
+	}
+	if a.len > 1 {
+		return
+	} else if a.len > 2 {
+		println(a)
+	}
+}
+
+fn multi(x int) int {
+	return x
+}
+", out
+	assert vfmt('expanded_single_statement_bodies_twice', out) == out
+}
+
+fn test_formatter_measures_formatted_single_statement_bodies_against_the_line_limit() {
+	// Every source line is at most 99 columns, but `{return x}` gains two spaces when it is
+	// formatted: the bodies that end up over 100 columns are expanded on the first run, not
+	// on the second one.
+	over, fits := 'o'.repeat(71), 'f'.repeat(70)
+	for_in, c_for, lit := 'i'.repeat(66), 'c'.repeat(59), 'l'.repeat(65)
+	source := "fn over() string {return '${over}'}
+
+fn fits() string {return '${fits}'}
+
+fn loops() {
+	for i in 0 .. 3 {println('${for_in}')}
+	for i := 0; i < 3; i++ {println('${c_for}')}
+	cb := fn () string {return '${lit}'}
+	_ = cb
+}
+"
+	out := vfmt('formatted_single_statement_body_width', source)
+	assert out == "fn over() string {
+	return '${over}'
+}
+
+fn fits() string { return '${fits}' }
+
+fn loops() {
+	for i in 0 .. 3 {
+		println('${for_in}')
+	}
+	for i := 0; i < 3; i++ {
+		println('${c_for}')
+	}
+	cb := fn () string {
+		return '${lit}'
+	}
+	_ = cb
+}
+", out
+	assert vfmt('formatted_single_statement_body_width_twice', out) == out
+}
+
+fn test_formatter_measures_formatted_compact_if_branches_against_the_line_limit() {
+	// As for function and loop bodies, `{return x}` and `{'x'}` gain two spaces each: the
+	// branches that end up over 100 columns are expanded on the first run.
+	over, fits := 'o'.repeat(79), 'f'.repeat(78)
+	expr_over, expr_fits := 'e'.repeat(71), 'v'.repeat(68)
+	source := "fn branches(c bool) string {
+	if c {return '${over}'}
+	if c {return '${fits}'}
+	s := if c {'${expr_over}'} else {''}
+	t := if c {'${expr_fits}'} else {''}
+	return s + t
+}
+"
+	out := vfmt('formatted_compact_if_width', source)
+	assert out == "fn branches(c bool) string {
+	if c {
+		return '${over}'
+	}
+	if c { return '${fits}' }
+	s := if c {
+		'${expr_over}'
+	} else {
+		''
+	}
+	t := if c { '${expr_fits}' } else { '' }
+	return s + t
+}
+", out
+	assert vfmt('formatted_compact_if_width_twice', out) == out
+}
+
+fn test_formatter_expands_single_statement_bodies_with_multi_statement_or_blocks() {
+	source := "fn h() ?int { return 1 }
+
+fn first() int { return h() or { println('none') 0 } }
+
+fn second() int { return h() or { 0 } }
+
+fn loops(a []int) {
+	for x in a { _ = h() or { println(x) continue } }
+	if a.len > 0 { _ = h() or { println(a) return } }
+	cb := fn () int { return h() or { println('none') 0 } }
+	_ = cb
+}
+"
+	out := vfmt('multi_statement_or_block_bodies', source)
+	assert out == "fn h() ?int { return 1 }
+
+fn first() int {
+	return h() or {
+		println('none')
+		0
+	}
+}
+
+fn second() int { return h() or { 0 } }
+
+fn loops(a []int) {
+	for x in a {
+		_ = h() or {
+			println(x)
+			continue
+		}
+	}
+	if a.len > 0 {
+		_ = h() or {
+			println(a)
+			return
+		}
+	}
+	cb := fn () int {
+		return h() or {
+			println('none')
+			0
+		}
+	}
+	_ = cb
+}
+", out
+	assert vfmt('multi_statement_or_block_bodies_twice', out) == out
 }
 
 fn test_formatter_keeps_trailing_array_comments_inside_literal() {
@@ -198,6 +586,78 @@ fn test_formatter_preserves_loop_labels_debugger_and_enum_groups() {
 	out := vfmt('loop_label_debugger_enum_groups', source)
 	assert out == source, out
 	assert vfmt('loop_label_debugger_enum_groups_twice', out) == out
+}
+
+fn test_formatter_splits_enum_value_alignment_at_standalone_comments() {
+	source := 'pub enum Grouped as u8 {
+	s = 0
+	// long is an enum field
+	long = 1
+	x = 2
+	// another group
+	// with two comments
+	a = 3
+	bb = 4
+	/* block comment
+	separates groups */
+	long_name = 5
+	c = 6
+
+	d = 7
+	ee = 8
+}
+'
+	expected := 'pub enum Grouped as u8 {
+	s = 0
+	// long is an enum field
+	long = 1
+	x    = 2
+	// another group
+	// with two comments
+	a  = 3
+	bb = 4
+	/* block comment
+	separates groups */
+	long_name = 5
+	c         = 6
+
+	d  = 7
+	ee = 8
+}
+'
+	for newline in ['\n', '\r\n'] {
+		out := vfmt('enum_comment_alignment_groups', source.replace('\n', newline))
+		assert out == expected, out
+		assert vfmt('enum_comment_alignment_groups_twice', out) == out
+	}
+}
+
+fn test_formatter_keeps_enum_alignment_across_trailing_comments() {
+	source := 'enum Trailing {
+	a = 1 // trailing comment
+	long_name = 2
+	bb = 3 /* trailing block comment
+	continued */
+	c = 4
+	implicit_member_with_a_long_name
+	d = 5 /* inline block comment */
+	ee = 6
+}
+'
+	expected := 'enum Trailing {
+	a         = 1 // trailing comment
+	long_name = 2
+	bb        = 3 /* trailing block comment
+	continued */
+	c         = 4
+	implicit_member_with_a_long_name
+	d         = 5 /* inline block comment */
+	ee        = 6
+}
+'
+	out := vfmt('enum_trailing_comment_alignment', source)
+	assert out == expected, out
+	assert vfmt('enum_trailing_comment_alignment_twice', out) == out
 }
 
 fn test_formatter_preserves_or_block_layout_and_lock_comments() {
@@ -314,6 +774,16 @@ fn test_formatter_preserves_declaration_attribute_groups() {
 	out := vfmt('declaration_attribute_groups', source)
 	assert out == expected, out
 	assert vfmt('declaration_attribute_groups_twice', out) == out
+}
+
+fn test_formatter_keeps_module_qualified_attribute_names() {
+	// A module-qualified custom attribute name (`@[mod.Tag]`, vlang/rfcs#35)
+	// is one name, so the formatter must not split it back into `mod` and
+	// `Tag` at declaration, field, or enum-value level.
+	source := "module main\n\n@[mod.Skip]\nstruct Dotted {\n\tfield string @[mod.Other; mod.Tag: 'x']\n\tplain string @[mod.Third]\n}\n\nenum Level {\n\tone  @[mod.Fourth: 'y']\n\ttwo  @[mod.Fifth]\n}\n\nfn main() {}\n"
+	out := vfmt('module_qualified_attribute_names', source)
+	assert out == source, out
+	assert vfmt('module_qualified_attribute_names_twice', out) == out
 }
 
 fn test_formatter_keeps_comptime_branch_and_selective_import_comments_inside() {
@@ -515,6 +985,39 @@ fn test_formatter_preserves_anonymous_aggregate_types() {
 	assert out.contains('value struct{ foo string }'), out
 	assert out.contains("accept(struct { foo: 'ok' })"), out
 	assert vfmt('anonymous_aggregate_types_twice', out) == out
+}
+
+fn test_formatter_fixes_indented_anonymous_union() {
+	source := 'struct LaborUnion {\n\trespect_workers bool\n\tcontent         union {\nworkers []string\n\t}\n}\n'
+	out := vfmt('indented_union', source)
+	expected := 'struct LaborUnion {\n\trespect_workers bool\n\tcontent         union {\n\t\tworkers []string\n\t}\n}\n'
+	assert out == expected, out
+	assert vfmt('indented_union_twice', out) == out
+}
+
+fn test_formatter_indents_nested_anonymous_aggregates() {
+	source := 'struct Holder {\nitem union {\nrecord struct {\nvalue int\n}\nother int\n}\n}\n'
+	out := vfmt('nested_anonymous_aggregates', source)
+	expected := 'struct Holder {\n\titem union {\n\t\trecord struct {\n\t\t\tvalue int\n\t\t}\n\t\tother int\n\t}\n}\n'
+	assert out == expected, out
+	assert vfmt('nested_anonymous_aggregates_twice', out) == out
+}
+
+fn test_formatter_preserves_anonymous_aggregate_literal_and_comment_continuations() {
+	source := "struct Holder {\nitem struct {\ntext string = 'first {\n  second }\nthird'\n/* comment {\n  preserved }\n*/\n\ncount int\n}\n}\n"
+	out := vfmt('anonymous_aggregate_continuations', source)
+	assert out.contains("'first {\n  second }\nthird'"), out
+	assert out.contains('\t\t/* comment {\n  preserved }\n*/\n\n\t\tcount int'), out
+	assert !out.contains('\n\t\t\n'), out
+	assert vfmt('anonymous_aggregate_continuations_twice', out) == out
+}
+
+fn test_formatter_indents_anonymous_aggregate_access_sections() {
+	source := 'struct Holder {\nitem union {\npub:\nvalue int\nmut :\nother int\nmodule:\nprivate_value int\npub  mut:\nmutable_value int\npub module_mut :\nlegacy_value int\n}\n}\n'
+	out := vfmt('anonymous_aggregate_access_sections', source)
+	expected := 'struct Holder {\n\titem union {\n\tpub:\n\t\tvalue int\n\tmut :\n\t\tother int\n\tmodule:\n\t\tprivate_value int\n\tpub  mut:\n\t\tmutable_value int\n\tpub module_mut :\n\t\tlegacy_value int\n\t}\n}\n'
+	assert out == expected, out
+	assert vfmt('anonymous_aggregate_access_sections_twice', out) == out
 }
 
 fn test_formatter_preserves_mutable_match_subjects() {
@@ -999,12 +1502,12 @@ fn test_formatter_ignores_vfmt_directives_inside_strings() {
 	out := vfmt('vfmt_directives_in_strings', "fn main(){\n\toff := '// vfmt off'\n\ton := '// vfmt on'\n\tprintln(off + on)\n}\n\nfn format_me(){println('yes')}\n")
 	assert out.contains("off := '// vfmt off'"), out
 	assert out.contains("on := '// vfmt on'"), out
-	assert out.contains("fn format_me() {\n\tprintln('yes')\n}"), out
+	assert out.contains("fn format_me() { println('yes') }"), out
 }
 
 fn test_formatter_preserves_go_legacy_dollar_builtins_and_bodyless_functions() {
-	bodyless := vfmt('bodyless_functions', 'fn plain(value usize) usize\nfn C.c_call(value int) int\nfn JS.js_call(value int) int\n')
-	assert bodyless.contains('fn plain(value usize) usize'), bodyless
+	bodyless := vfmt('bodyless_functions', 'fn plain(value uint) uint\nfn C.c_call(value int) int\nfn JS.js_call(value int) int\n')
+	assert bodyless.contains('fn plain(value uint) uint'), bodyless
 	assert bodyless.contains('fn C.c_call(value int) int'), bodyless
 	assert bodyless.contains('fn JS.js_call(value int) int'), bodyless
 	assert !bodyless.contains('fn C.plain'), bodyless
@@ -1339,6 +1842,36 @@ fn test_source_preservation_matches_formatter_fixtures() {
 		actual := vfmt_file_with_json_migration(path)
 		assert actual == expected, name
 	}
+}
+
+// An embed with a default (`Inner = Inner{}`) is a field without a type. Its empty type column
+// must not add a second space before the `=`, and the fields after it keep their alignment.
+fn test_formatter_writes_embed_defaults_without_an_empty_type_column() {
+	fixture_dir := os.join_path(@VEXEROOT, 'vlib/v/fmt/tests')
+	keep := os.read_file(os.join_path(fixture_dir, 'struct_embed_with_default_keep.vv')) or {
+		panic(err)
+	}
+	assert vfmt('embed_default_keep', keep) == keep
+	input := os.read_file(os.join_path(fixture_dir, 'struct_embed_with_default_input.vv')) or {
+		panic(err)
+	}
+	expected := os.read_file(os.join_path(fixture_dir, 'struct_embed_with_default_expected.vv')) or {
+		panic(err)
+	}
+	formatted := vfmt('embed_default_input', input)
+	assert formatted == expected
+	assert vfmt('embed_default_twice', formatted) == formatted
+}
+
+// `typeof(expr)` in a type position is linked to its expression by the
+// compiler's parser; vfmt must write back the source spelling, not the link.
+fn test_formatter_round_trips_typeof_types() {
+	fixture := os.join_path(@VEXEROOT, 'vlib/v/fmt/tests/typeof_as_type_keep.vv')
+	source := os.read_file(fixture) or { panic(err) }
+	out := vfmt('typeof_as_type', source)
+	assert out == source
+	assert !out.contains('__expr_')
+	assert reparse_diagnostics('typeof_as_type_reparse', out) == 0
 }
 
 fn test_channel_ops() {
@@ -1763,6 +2296,13 @@ fn test_formatter_keeps_a_trailing_comment_on_a_match_branch() {
 	assert vfmt('match_branch_trailing_comment_twice', out) == out
 }
 
+fn test_formatter_keeps_trailing_comments_on_compact_match_branches() {
+	source := 'fn foo(arg int) int {\n\treturn match arg {\n\t\t1 { 1 } // return 1\n\t\telse { 0 } // return 2\n\t}\n}\n'
+	out := vfmt('compact_match_branch_trailing_comments', source)
+	assert out == source, out
+	assert vfmt('compact_match_branch_trailing_comments_twice', out) == out
+}
+
 // A blank separator line must carry no indentation. Writing it left a line of whitespace, which
 // V source never carries and which the next run read back differently, so the formatter was not a
 // fixed point.
@@ -2019,6 +2559,336 @@ fn test_formatter_aligns_struct_field_defaults_and_comments() {
 	assert vfmt('struct_field_suffix_alignment_twice', out) == out
 }
 
+fn test_formatter_aligns_struct_field_attributes_with_defaults() {
+	source := 'struct Foo {\n\ta    int    @[some_attr]\n\tbeta string @[another]\n\tpi   f32 = 3.14    @[yet_another]\n\td    f64 = 2.9999999    @[yet_another]\n}\n\nfn main() {}\n'
+	want := 'struct Foo {\n\ta    int             @[some_attr]\n\tbeta string          @[another]\n\tpi   f32 = 3.14      @[yet_another]\n\td    f64 = 2.9999999 @[yet_another]\n}\n\nfn main() {}\n'
+	out := vfmt('struct_field_attribute_alignment', source)
+	assert out == want, out
+	assert vfmt('struct_field_attribute_alignment_twice', out) == want
+}
+
+fn test_formatter_aligns_attributes_across_mixed_volatile_fields() {
+	for separator in ['; ', '\n\t'] {
+		for fields in [
+			'volatile a MyAlias @[a]${separator}b MyAlias = 0 @[b]',
+			'a MyAlias @[a]${separator}volatile b MyAlias = 0 @[b]',
+			'volatile a MyAlias = 0 @[a]${separator}b MyAlias @[b]',
+			'volatile a int = 0 @[a]${separator}b MyAlias = 12 @[b]',
+			'volatile a int = 0 @[a]${separator}volatile beta MyAlias = 12 @[b]',
+			'volatile a MyAlias @[a]${separator}volatile beta MyAlias @[b]',
+			'pub volatile a MyAlias @[a]${separator}b MyAlias = 0 @[b]',
+		] {
+			source := 'type MyAlias = int\n\nstruct Mixed {\n\t${fields}\n}\n'
+			out := vfmt('struct_field_mixed_volatile_attributes', source)
+			field_lines := out.split_into_lines().filter(it.contains('@['))
+			assert field_lines.len == 2, out
+			assert field_lines[0].all_before('@[').len == field_lines[1].all_before('@[').len, out
+			assert vfmt('struct_field_mixed_volatile_attributes_twice', out) == out
+		}
+	}
+}
+
+fn test_formatter_aligns_struct_field_attributes_after_padded_defaults() {
+	source := "struct Defaults {\n\ta int = 1 @[one] // first\n\tbeta string = 'x' @[two] // second\n\tc bool @[three] // third\n\n\tx int @[one]\n\ty string @[two]\n}\n"
+	want := "struct Defaults {\n\ta    int    = 1   @[one]   // first\n\tbeta string = 'x' @[two]   // second\n\tc    bool         @[three] // third\n\n\tx int    @[one]\n\ty string @[two]\n}\n"
+	out := vfmt('struct_field_padded_default_attributes', source)
+	assert out == want, out
+	assert vfmt('struct_field_padded_default_attributes_twice', out) == out
+}
+
+fn test_formatter_aligns_struct_field_attributes_after_formatted_defaults() {
+	source := 'struct Expressions {\n\tn int=1+2 @[n]\n\ts string="" @[s]\n\tp voidptr=unsafe{nil} @[p]\n}\n'
+	want := "struct Expressions {\n\tn int     = 1 + 2          @[n]\n\ts string  = ''             @[s]\n\tp voidptr = unsafe { nil } @[p]\n}\n"
+	out := vfmt('struct_field_formatted_default_attributes', source)
+	assert out == want, out
+	assert vfmt('struct_field_formatted_default_attributes_twice', out) == out
+}
+
+fn test_formatter_does_not_align_attributes_across_wrapped_defaults() {
+	source := 'struct Wrapped {\n\textremely_long_field_name_with_many_characters_to_move_default_values_right bool @[plain]\n\tvalues []int=[1,2,3,4,5] @[values]\n}\n'
+	out := vfmt('struct_field_wrapped_default_attributes', source)
+	assert out.contains('bool @[plain]\n'), out
+	assert out.contains('[]int = [\n'), out
+	assert out.contains('] @[values]\n'), out
+	assert vfmt('struct_field_wrapped_default_attributes_twice', out) == out
+}
+
+fn test_formatter_ends_attribute_groups_at_skipped_wrapped_defaults() {
+	field_name := 'extremely_long_field_name_with_many_characters_to_move_default_values_right'
+	for separator in ['; ', '\n\t'] {
+		source := 'struct Wrapped { a I @[a]${separator}${field_name} []int = [1, 2, 3] @[values]${separator}c Other @[c]${separator}d I @[d] }'
+		out := vfmt('struct_field_skipped_wrapped_default_groups', source)
+		assert out.contains(' I @[a]\n'), out
+		assert out.contains('[]int = [\n'), out
+		assert out.contains(' Other @[c]\n'), out
+		assert out.contains(' I     @[d]\n'), out
+		assert vfmt('struct_field_skipped_wrapped_default_groups_twice', out) == out
+	}
+}
+
+fn test_formatter_aligns_attributes_at_array_default_wrap_boundary() {
+	// The first array element reaches column 85 with the field's actual indentation.
+	field_name := 'array_field_name_to_place_the_default_near_the_array_wrapping_boundary'
+	source := 'struct Arrays {\n\t${field_name} []int = [1, 2] @[first]\n\tother []int = [3, 4, 5] @[second]\n}\n'
+	out := vfmt('struct_field_array_wrap_boundary', source)
+	assert out.contains('[]int = [1, 2]    @[first]\n'), out
+	assert out.contains('[]int = [3, 4, 5] @[second]\n'), out
+	assert vfmt('struct_field_array_wrap_boundary_twice', out) == out
+}
+
+fn test_formatter_aligns_attributes_at_call_default_wrap_boundary() {
+	// The calls end at columns 98 and 99, just below the 100-column wrapping limit.
+	field_name := 'call_field_name_to_place_the_default_near_function_call_wrapping_boundary'
+	source := 'struct Calls {\n\t${field_name} int = make(value: 1) @[first]\n\tother int = make(value: 12) @[second]\n}\n'
+	out := vfmt('struct_field_call_wrap_boundary', source)
+	assert out.contains('int = make(value: 1)  @[first]\n'), out
+	assert out.contains('int = make(value: 12) @[second]\n'), out
+	assert vfmt('struct_field_call_wrap_boundary_twice', out) == out
+}
+
+fn test_formatter_keeps_comments_before_attributed_defaults_out_of_alignment() {
+	source := 'struct Comments {\n\ta int = /* note a */ 1 @[a]\n\tb int = /* note b */ 1234567 @[b]\n\tc int = 0 @[c]\n\td int = 12 @[d]\n}\n'
+	want := 'struct Comments {\n\ta int = /* note a */\n\t1 @[a]\n\tb int = /* note b */\n\t1234567 @[b]\n\tc int = 0  @[c]\n\td int = 12 @[d]\n}\n'
+	out := vfmt('struct_field_leading_default_comments', source)
+	assert out == want, out
+	assert vfmt('struct_field_leading_default_comments_twice', out) == out
+}
+
+fn test_formatter_keeps_comments_after_defaults_with_their_attributes() {
+	source := 'struct Comments {\n\ta int = 1 /* note a */ @[a]\n\tb int = 1234567 /* note b */ @[b]\n\tc int = 0 @[c]\n\td int = 12 @[d]\n}\n'
+	want := 'struct Comments {\n\ta int = 1       @[a] /* note a */\n\tb int = 1234567 @[b] /* note b */\n\tc int = 0       @[c]\n\td int = 12      @[d]\n}\n'
+	out := vfmt('struct_field_trailing_default_comments', source)
+	assert out == want, out
+	assert vfmt('struct_field_trailing_default_comments_twice', out) == out
+}
+
+fn test_formatter_aligns_deferred_default_comments_on_the_first_pass() {
+	for tail in ['', ' // tail'] {
+		source := 'struct Comments {\n\ta int = 1 /* a */ @[x]${tail}\n\tb int = 2 /* b */ @[long]${tail}\n}\n'
+		want := 'struct Comments {\n\ta int = 1 @[x]    /* a */${tail}\n\tb int = 2 @[long] /* b */${tail}\n}\n'
+		out := vfmt('struct_field_deferred_comment_alignment', source)
+		assert out == want, out
+		assert vfmt('struct_field_deferred_comment_alignment_twice', out) == out
+	}
+}
+
+fn test_formatter_aligns_deferred_and_trailing_field_comments_together() {
+	source := 'struct Comments {\n\ta int = 1 /* a */ @[x]\n\tb int = 2 @[long] // b\n}\n'
+	want := 'struct Comments {\n\ta int = 1 @[x]    /* a */\n\tb int = 2 @[long] // b\n}\n'
+	out := vfmt('struct_field_mixed_deferred_trailing_comments', source)
+	assert out == want, out
+	assert vfmt('struct_field_mixed_deferred_trailing_comments_twice', out) == out
+}
+
+fn test_formatter_preserves_deferred_comment_groups_for_semicolon_fields() {
+	long_attr := 'long'.repeat(8)
+	shorter_attr := 'long'.repeat(7)
+	source := 'struct Comments { a int = 1 /* a */ @[x]; b int = 2 /* b */ @[${long_attr}]; c int = 3 /* c */ @[${shorter_attr}] }'
+	want := 'struct Comments {\n\ta int = 1 @[x] /* a */\n\tb int = 2 @[${long_attr}] /* b */\n\tc int = 3 @[${shorter_attr}]     /* c */\n}\n'
+	out := vfmt('struct_field_semicolon_deferred_comment_groups', source)
+	assert out == want, out
+	assert vfmt('struct_field_semicolon_deferred_comment_groups_twice', out) == out
+}
+
+fn test_formatter_ends_comment_groups_at_wrapping_attributed_defaults() {
+	field_name := 'extremely_long_field_name_with_many_characters_to_move_default_values_right'
+	for separator in ['; ', '\n\t'] {
+		for middle_comment in [' /* middle */', ''] {
+			source := 'struct Comments { a usize = 1 /* a */ @[x]${separator}${field_name} []int = [1, 2, 3]${middle_comment} @[long]${separator}c usize = 2 /* c */ @[x]${separator}d usize = 3 /* d */ @[xx] }'
+			out := vfmt('struct_field_wrapped_default_comment_groups', source)
+			assert out.contains('[]int = [\n'), out
+			assert out.contains('@[x]  /* c */\n'), out
+			assert out.contains('@[xx] /* d */\n'), out
+			assert vfmt('struct_field_wrapped_default_comment_groups_twice', out) == out
+		}
+	}
+}
+
+fn test_formatter_keeps_multiple_default_comments_and_trailing_field_comments() {
+	source := 'struct Comments {\n\ta int = 1 /* note a */ /* second a */ @[a] // tail a\n\tb int = 123 /* note b */ @[b] // tail b\n}\n'
+	want := 'struct Comments {\n\ta int = 1   @[a] /* note a */ /* second a */ // tail a\n\tb int = 123 @[b] /* note b */ // tail b\n}\n'
+	out := vfmt('struct_field_multiple_default_comments', source)
+	assert out == want, out
+	assert vfmt('struct_field_multiple_default_comments_twice', out) == out
+}
+
+fn test_formatter_preserves_attribute_groups_for_semicolon_fields() {
+	source := 'struct S { a int @[a]; b int = 1234567890123456789012 @[b]; c int = 123456789012345 @[c] }'
+	want := 'struct S {\n\ta int @[a]\n\tb int = 1234567890123456789012 @[b]\n\tc int = 123456789012345        @[c]\n}\n'
+	out := vfmt('struct_field_semicolon_attribute_groups', source)
+	assert out == want, out
+	assert vfmt('struct_field_semicolon_attribute_groups_twice', out) == out
+}
+
+fn test_formatter_keeps_nested_default_comments_inside_calls() {
+	for tail in ['', ' // tail'] {
+		source := 'struct Comments {\n\tvalue int = make(inner(1 /* unit */)) /* after */ @[x]${tail}\n}\n'
+		want := 'struct Comments {\n\tvalue int = make(inner(1 /* unit */\n\t)) @[x] /* after */${tail}\n}\n'
+		out := vfmt('struct_field_nested_default_comments', source)
+		assert out == want, out
+		assert vfmt('struct_field_nested_default_comments_twice', out) == out
+	}
+}
+
+fn test_formatter_defers_comments_after_the_last_default_operand() {
+	source := 'struct Comments {\n\tvalue int = 1 + 2 /* after */ @[x]\n}\n'
+	want := 'struct Comments {\n\tvalue int = 1 + 2 @[x] /* after */\n}\n'
+	out := vfmt('struct_field_last_operand_default_comments', source)
+	assert out == want, out
+	assert vfmt('struct_field_last_operand_default_comments_twice', out) == out
+}
+
+fn test_formatter_preserves_off_directives_before_default_attributes() {
+	for ending in ['\t// vfmt on\n\tb int = 2 @[b]\n}\n', '\tb   int=2 @[b]\n}\n'] {
+		source := 'struct Directives {\n\ta int = 1 // vfmt off\n\t@[a]\n${ending}'
+		out := vfmt('struct_field_off_directive_before_attrs', source)
+		assert out == source, out
+		assert out.count('@[a]') == 1, out
+		assert vfmt('struct_field_off_directive_before_attrs_twice', out) == out
+	}
+}
+
+fn test_formatter_preserves_on_directives_before_default_attributes() {
+	source := 'struct Directives {\n\t// vfmt off\n\ta   int=1 // vfmt on\n\t@[a]\n\tb int = 2 @[b]\n}\n'
+	want := 'struct Directives {\n\t// vfmt off\n\ta   int=1 // vfmt on\n\tb int = 2 @[a; b]\n}\n'
+	out := vfmt('struct_field_on_directive_before_attrs', source)
+	assert out == want, out
+	assert out.count('@[a; b]') == 1, out
+	assert vfmt('struct_field_on_directive_before_attrs_twice', out) == out
+}
+
+fn test_formatter_preserves_directives_between_default_attribute_groups() {
+	source := 'struct Directives {\n\ta int = 1 // vfmt off\n\t@[a]\n\t// vfmt on\n\t@[b]\n\tc int = 3 @[c]\n}\n'
+	out := vfmt('struct_field_directives_between_attr_groups', source)
+	assert out == source, out
+	assert out.count('@[a]') == 1, out
+	assert out.count('@[b]') == 1, out
+	assert vfmt('struct_field_directives_between_attr_groups_twice', out) == out
+}
+
+fn test_formatter_formats_leading_attributes_after_completed_directives() {
+	declarations := ['@[a] value   int=1+2', '@[a] x, y   int']
+	formatted_fields := ['value int = 1 + 2 @[a]', 'x int @[a]\n\ty int @[a]']
+	for i, declaration in declarations {
+		source := 'struct Completed {\n\tbefore int\n\t// vfmt off\n\t// vfmt on\n\t${declaration}\n}\n'
+		want := 'struct Completed {\n\tbefore int\n\t// vfmt off\n\t// vfmt on\n\t${formatted_fields[i]}\n}\n'
+		out := vfmt('struct_field_attrs_after_completed_directives_${i}', source)
+		assert out == want, out
+		assert vfmt('struct_field_attrs_after_completed_directives_${i}_twice', out) == out
+	}
+}
+
+fn test_formatter_preserves_first_field_attributes_crossing_directives() {
+	for attribute in ['@[required]', "@[json: 'value']"] {
+		for declaration in ['a   int', 'a, b   int'] {
+			for ending in ['\t// vfmt on\n\tc int @[c]\n}\n', '}\n'] {
+				source := 'struct First {\n\t${attribute}\n\t// vfmt off\n\t${declaration}\n${ending}'
+				out := vfmt('struct_first_field_attribute_directives', source)
+				assert out == source, out
+				assert out.count(attribute) == 1, out
+				assert vfmt('struct_first_field_attribute_directives_twice', out) == out
+			}
+		}
+	}
+}
+
+fn test_formatter_normalizes_crlf_in_directive_crossing_field_prefixes() {
+	for preceding_field in ['', '\tz int\n'] {
+		for declaration in ['a   int', 'a, b   int'] {
+			for ending in ['\t// vfmt on\n\tc int @[c]\n}\n', '}\n'] {
+				source := 'struct First {\n${preceding_field}\t@[required]\n\t// vfmt off\n\t${declaration}\n${ending}'
+				out := vfmt('struct_field_directive_crlf_prefix', source.replace('\n', '\r\n'))
+				assert out == source, out
+				assert !out.contains('\r'), out
+				assert vfmt('struct_field_directive_crlf_prefix_twice', out) == out
+			}
+		}
+	}
+}
+
+fn test_formatter_formats_doc_commented_structs_with_pending_header_comments() {
+	mut declarations := []string{cap: 256}
+	for i in 0 .. 256 {
+		declarations << '// Empty${i} is documented.\nstruct Empty${i} {}'
+	}
+	prefix := declarations.join('\n\n') + '\n\n'
+	source := prefix + '// Last is documented.\nstruct /* { header } */ Last {\n\t@[required]\n\t// vfmt off\n\ta   int\n\t// vfmt on\n\tc int @[c]\n}\n'
+	for line_ending in ['\n', '\r\n'] {
+		out := vfmt('doc_commented_structs_header_comments', source.replace('\n', line_ending))
+		assert out.starts_with(prefix), out
+		assert out.count('// Last is documented.') == 1, out
+		assert out.count('/* { header } */') == 1, out
+		assert out.count('struct Last {') == 1, out
+		assert out.count('@[required]') == 1, out
+		assert out.contains('\n\t@[required]\n\t// vfmt off\n\ta   int\n'), out
+		assert reparse_diagnostics('doc_commented_structs_header_comments', out) == 0
+		assert vfmt('doc_commented_structs_header_comments_twice', out) == out
+	}
+}
+
+fn test_formatter_preserves_first_field_directive_attributes_with_header_comments() {
+	source := '@[heap]\nstruct /* { header } */ First {\n\t@[required]\n\t// vfmt off\n\ta   int\n\t// vfmt on\n\tc int @[c]\n}\n'
+	out := vfmt('struct_first_field_directives_header_comment', source)
+	assert out.count('/* { header } */') == 1, out
+	assert out.contains('\n\t@[required]\n\t// vfmt off\n\ta   int\n'), out
+	assert out.count('@[heap]') == 1, out
+	assert out.count('struct First {') == 1, out
+	assert vfmt('struct_first_field_directives_header_comment_twice', out) == out
+}
+
+fn test_formatter_preserves_directive_attributes_after_comptime_members() {
+	for attribute in ['@[required]', "@[json: 'value']"] {
+		for declaration in ['a   int', 'a, b   int'] {
+			for ending in ['\t// vfmt on\n\tc int @[c]\n}\n', '}\n'] {
+				source := 'struct After {\n\t\$if linux {\n\t}\n\t${attribute}\n\t// vfmt off\n\t${declaration}\n${ending}'
+				for line_ending in ['\n', '\r\n'] {
+					out := vfmt('struct_directive_attrs_after_comptime', source.replace('\n',
+						line_ending))
+					assert out == source, out
+					assert out.count(attribute) == 1, out
+					assert vfmt('struct_directive_attrs_after_comptime_twice', out) == out
+				}
+			}
+		}
+	}
+}
+
+fn test_formatter_keeps_header_line_comments_separate_from_directive_attributes() {
+	for header in ['struct First\n\t// header\n{', 'struct First // header\n{',
+		'struct // header\nFirst {'] {
+		for declaration in ['a   int', 'a, b   int'] {
+			for attribute_prefix in [' @[required]\n', '\n\t@[required]\n'] {
+				source := '${header}${attribute_prefix}\t// vfmt off\n\t${declaration}\n\t// vfmt on\n\tc int @[c]\n}\n'
+				for line_ending in ['\n', '\r\n'] {
+					out := vfmt('struct_header_line_comment_directive_attrs', source.replace('\n',
+						line_ending))
+					assert out.split_into_lines().filter(it.trim_space() == '@[required]').len == 1, out
+					assert !out.contains('// header\n\n'), out
+					assert out.count('@[required]') == 1, out
+					assert out.count('// header') == 1, out
+					assert reparse_diagnostics('struct_header_line_comment_directive_attrs', out) == 0
+					assert vfmt('struct_header_line_comment_directive_attrs_twice', out) == out
+				}
+			}
+		}
+	}
+}
+
+fn test_formatter_formats_first_field_after_completed_directives() {
+	source := 'struct First {\n\t// vfmt off\n\t// vfmt on\n\t@[required] a, b   int\n}\n'
+	want := 'struct First {\n\t// vfmt off\n\t// vfmt on\n\ta int @[required]\n\tb int @[required]\n}\n'
+	out := vfmt('struct_first_field_completed_directives', source)
+	assert out == want, out
+	assert vfmt('struct_first_field_completed_directives_twice', out) == out
+}
+
+fn test_formatter_preserves_grouped_fields_crossing_attribute_directives_once() {
+	source := 'struct Crossing {\n\tbefore int\n\t@[a]\n\t// vfmt off\n\t// vfmt on\n\tx, y   int\n}\n'
+	out := vfmt('struct_grouped_field_attribute_directives', source)
+	assert out == source, out
+	assert vfmt('struct_grouped_field_attribute_directives_twice', out) == out
+}
+
 // Enum members and interface members align their trailing comments the same way.
 fn test_formatter_aligns_enum_and_interface_trailing_comments() {
 	source := 'enum Stage {\n\tcompile_begin // before\n\tcompile_end   // after\n\tcmd_begin     // before run\n}\n\ninterface Reporter {\n\tsession_start(message string) // at the start\n\tstop()                        // at the end\n}\n'
@@ -2065,4 +2935,143 @@ fn test_formatter_output_is_a_fixed_point_over_the_fixture_corpus() {
 		checked++
 	}
 	assert checked > 100
+}
+
+fn test_formatter_preserves_and_aligns_inline_struct_access() {
+	source := 'pub struct Foobar {
+	aaaaaa int
+	mut b int
+	pub ccccc int
+	pub mut d int
+	after int
+}
+'
+	expected := 'pub struct Foobar {
+	aaaaaa        int
+	mut     b     int
+	pub     ccccc int
+	pub mut d     int
+	after         int
+}
+'
+	out := vfmt('inline_struct_access', source)
+	assert out == expected, out
+	assert vfmt('inline_struct_access_twice', out) == out
+}
+
+fn test_formatter_keeps_sections_with_inline_struct_access() {
+	source := 'struct Mixed {
+pub:
+	a int
+	mut b int
+	c int
+	pub mut d int
+mut:
+	e int
+}
+'
+	out := vfmt('mixed_inline_struct_access', source)
+	assert out.count('pub:') == 1, out
+	assert out.count('mut:') == 1, out
+	assert out.contains('mut     b'), out
+	assert out.contains('pub mut d'), out
+	assert vfmt('mixed_inline_struct_access_twice', out) == out
+}
+
+fn test_formatter_keeps_inline_access_before_volatile() {
+	out := vfmt('inline_access_volatile', 'struct State {
+	pub volatile value int
+}
+')
+	assert out.contains('pub     volatile value int'), out
+	assert vfmt('inline_access_volatile_twice', out) == out
+}
+
+fn test_formatter_keeps_comptime_string_expression_sources() {
+	source := "fn main() {\n path := 'GET /users'.all_after(' ')\n \$for segment in path.trim_left('/').split('/') { println(segment) }\n \$for word in 'alpha beta'.fields() { println(word) }\n \$for part in 'a,b;c'.split_any(',;') { println(part) }\n \$if path[1..].starts_with('users') { println(path) }\n}\n"
+	out := vfmt('comptime_string_sources', source)
+	assert out.contains("\$for segment in path.trim_left('/').split('/') {")
+	assert out.contains("\$for word in 'alpha beta'.fields() {")
+	assert out.contains("\$for part in 'a,b;c'.split_any(',;') {")
+	assert out.contains("path[1..].starts_with('users')"), out
+	assert vfmt('comptime_string_sources_twice', out) == out
+}
+
+// format_text must produce byte-identical output to the file path, or a
+// filesystem-less caller (like the Emscripten build) silently diverges from
+// `v fmt`.
+fn test_format_text_matches_file_path() {
+	src := 'module main\nfn main() {\nprintln(  1+2  )\n}\n'
+	assert format_text(src)! == vfmt('text_matches_file', src)
+}
+
+fn test_format_text_is_idempotent() {
+	src := 'module main\nfn main() {\nprintln(1 + 2)\n}\n'
+	once := format_text(src)!
+	assert format_text(once)! == once
+}
+
+fn test_format_text_reports_parser_errors() {
+	format_text('module main\nfn broken( {') or {
+		assert err.msg().contains('main.v:2:12'), err.msg()
+		return
+	}
+	assert false, 'expected a parser error'
+}
+
+fn test_parse_text_matches_parse_file() {
+	src := 'module main\nfn main() {\nprintln(1)\n}\n'
+	mut prefs := pref.new_preferences()
+	prefs.is_fmt = true
+	mut p := parser.Parser.new(prefs)
+	a := p.parse_text('main.v', src)
+	assert format(a) == vfmt('text_matches_file_ast', src)
+}
+
+fn test_format_text_honors_options() {
+	source := "fn main() {\n\ts := 'abc'.str\n}\n"
+	assert format_text(source)! == vfmt_with_options('text_default_options', source, FormatOptions{})
+	assert format_text_with_options(source, backend: 'js')! == source
+	assert format_text_with_options(source, backend: 'js')! == vfmt_with_options('text_js_options',
+		source,
+		backend: 'js'
+	)
+	assert format_text(source)! != source
+	c_source := 'fn C.convert(value int) int\n'
+	assert format_text_with_options(c_source, is_new_int: true)! == 'fn C.convert(value i32) i32\n'
+	assert format_text_with_options(c_source, is_new_int: true)! == vfmt_with_options('text_int_options',
+		c_source,
+		is_new_int: true
+	)
+}
+
+fn test_format_text_preserves_comments_and_comptime_branches() {
+	source := 'module main\n// keep this comment\n\$if windows {\nfn selected() { println( 1 ) }\n} \$else {\nfn selected() { println( 2 ) }\n}\n'
+	output := format_text(source)!
+	assert output == vfmt('text_comptime_comments', source)
+	assert output.contains('// keep this comment')
+	assert output.contains('println(1)')
+	assert output.contains('println(2)')
+	assert format_text(output)! == output
+}
+
+fn test_format_text_recovers_after_invalid_input() {
+	format_text_with_options('fn broken( {', backend: 'js') or {
+		assert err.msg().starts_with('main.v:'), err.msg()
+		valid := 'fn main() {}\n'
+		assert format_text(valid)! == valid
+		assert format_text_with_options(valid, backend: 'js')! == valid
+		return
+	}
+	assert false, 'expected a parser error'
+}
+
+fn test_formatter_multiline_parenthesized_condition_with_comments() {
+	source := "fn main() {\n one := 1\n two := 2\n three := 3\n if (one == 1 // one is one\n || two == 2) // two is two\n && three == 3 { // three is three\n println('hello')\n }\n}\n"
+	formatted := vfmt('commented_parenthesized_condition', source)
+	assert reparse_diagnostics('commented_parenthesized_condition', formatted) == 0
+	for comment in ['one is one', 'two is two', 'three is three'] {
+		assert formatted.count('// ' + comment) == 1
+	}
+	assert vfmt('commented_parenthesized_condition_again', formatted) == formatted
 }

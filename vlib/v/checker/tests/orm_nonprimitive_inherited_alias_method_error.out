@@ -1,0 +1,21 @@
+vlib/v/checker/tests/orm_nonprimitive_inherited_alias_method_error.vv:27:37: error: ORM: value expressions must produce only primitive types and time.Time, but this expression has type `Holder`
+   25 |     mut db := sqlite.connect(':memory:')!
+   26 |     returned := sql db {
+   27 |         select from Account where name == make_wrapped_names().clone()[0]
+      |                                           ~~~~~~~~~~~~~~~~~~~~
+   28 |     }!
+   29 |     names := make_wrapped_names()
+vlib/v/checker/tests/orm_nonprimitive_inherited_alias_method_error.vv:31:43: error: ORM: value expressions must produce only primitive types and time.Time, but this expression has type `Holder`
+   29 |     names := make_wrapped_names()
+   30 |     local := sql db {
+   31 |         select from Account where name == names.clone()[0]
+      |                                                 ~~~~~~~
+   32 |     }!
+   33 |     grouped := sql db {
+vlib/v/checker/tests/orm_nonprimitive_inherited_alias_method_error.vv:34:45: error: ORM: value expressions must produce only primitive types and time.Time, but this expression has type `Holder`
+   32 |     }!
+   33 |     grouped := sql db {
+   34 |         select from Account where name == (names).clone()[0]
+      |                                                   ~~~~~~~
+   35 |     }!
+   36 |     dump(returned)

@@ -51,6 +51,12 @@ fn test_parse_request_two_headers() {
 	assert req.header.custom_values('Test2') == ['B']
 }
 
+fn test_parse_request_preserves_present_empty_header() {
+	mut reader_ := reader('GET / HTTP/1.1\r\nHost: example.com\r\nX-Empty:\r\n\r\n')
+	req := http.parse_request(mut reader_) or { panic('did not parse: ${err}') }
+	assert req.header.custom_values('X-Empty') == ['']
+}
+
 fn test_parse_request_two_header_values() {
 	mut reader_ := reader('GET / HTTP/1.1\r\nTest1: a; b\r\nTest2: c\r\nTest2: d\r\n\r\n')
 	req := http.parse_request(mut reader_) or { panic('did not parse: ${err}') }
@@ -124,9 +130,11 @@ fn test_parse_form() {
 		'a': 'b'
 		'c': ' d '
 	}
-	assert http.parse_form('{json}') == {
-		'json': '{json}'
-	}
+	// `parse_form` is the urlencoded path only. A body that looked like a JSON
+	// object used to be glob-matched and stored whole under a literal `json` key,
+	// so a caller passing JSON got one unusable field instead of the keys it
+	// needed; decoding a JSON body is now the caller's job, by content type.
+	assert http.parse_form('{json}') == {}
 	assert http.parse_form('{
     "_id": "76c",
     "friends": [
@@ -136,18 +144,7 @@ fn test_parse_form() {
       }
     ],
     "greeting": "Hello."
-  }') == {
-		'json': '{
-    "_id": "76c",
-    "friends": [
-      {
-        "id": 0,
-        "name": "Mason Luna"
-      }
-    ],
-    "greeting": "Hello."
-  }'
-	}
+  }') == {}
 }
 
 fn test_parse_multipart_form() {
@@ -203,6 +200,7 @@ admin123\r
 	}
 	assert form['username'] == 'admin'
 	assert form['password'] == 'admin123'
+	assert files.len == 0
 }
 
 fn test_multipart_form_body() {
@@ -287,6 +285,11 @@ fn test_parse_request_head_str_post_with_headers() {
 	assert req.header.custom_values('Content-Type') == ['application/json']
 }
 
+fn test_parse_request_head_str_preserves_present_empty_header() {
+	req := http.parse_request_head_str('GET / HTTP/1.1\r\nHost: example.com\r\nX-Empty:\r\n\r\n')!
+	assert req.header.custom_values('X-Empty') == ['']
+}
+
 fn test_parse_request_head_str_post_with_headers_and_body() {
 	s := 'POST /index HTTP/1.1\r\nHost: localhost:9008\r\nUser-Agent: curl/7.68.0\r\nAccept: */*\r\nContent-Type: application/json\r\nContent-Length: 24\r\nConnection: keep-alive\r\n\r\n{"username": "test"}'
 	req := http.parse_request_head_str(s) or {
@@ -329,6 +332,53 @@ fn test_parse_request_head_str_multiple_same_header() {
 	assert req.header.custom_values('Set-Cookie') == ['session=abc', 'user=xyz']
 }
 
+// request_with_header_fields returns a raw request that has `n` header fields.
+fn request_with_header_fields(n int) string {
+	mut lines := ['GET / HTTP/1.1']
+	for i in 0 .. n {
+		lines << 'X-Field-${i}: v${i}'
+	}
+	return lines.join('\r\n') + '\r\n\r\n'
+}
+
+fn test_parse_request_accepts_max_headers_fields() {
+	s := request_with_header_fields(http.max_headers)
+	last := 'X-Field-${http.max_headers - 1}'
+	req := http.parse_request_head_str(s) or { panic('did not parse: ${err}') }
+	assert req.header.keys().len == http.max_headers
+	assert req.header.custom_values(last) == ['v${http.max_headers - 1}']
+	mut reader_ := reader(s)
+	req2 := http.parse_request(mut reader_) or { panic('did not parse: ${err}') }
+	assert req2.header.keys().len == http.max_headers
+	assert req2.header.custom_values(last) == ['v${http.max_headers - 1}']
+}
+
+fn test_parse_request_with_too_many_header_fields_fails() {
+	s := request_with_header_fields(http.max_headers + 1)
+	if req := http.parse_request_head_str(s) {
+		assert false, 'should not have parsed ${req.header.keys().len} fields'
+	} else {
+		assert err is http.HeaderLimitError
+	}
+	if req := http.parse_request_str(s) {
+		assert false, 'should not have parsed ${req.header.keys().len} fields'
+	} else {
+		assert err is http.HeaderLimitError
+	}
+	mut head_reader := reader(s)
+	if req := http.parse_request_head(mut head_reader) {
+		assert false, 'should not have parsed ${req.header.keys().len} fields'
+	} else {
+		assert err is http.HeaderLimitError
+	}
+	mut reader_ := reader(s)
+	if req := http.parse_request(mut reader_) {
+		assert false, 'should not have parsed ${req.header.keys().len} fields'
+	} else {
+		assert err is http.HeaderLimitError
+	}
+}
+
 fn test_get_does_not_wait_for_timeout_when_content_length_is_complete() {
 	mut listener := net.listen_tcp(.ip, '127.0.0.1:0')!
 	port := listener.addr()!.port()!
@@ -367,6 +417,15 @@ fn test_get_does_not_wait_for_timeout_when_content_length_is_complete() {
 	assert res.status() == .ok
 	assert res.body == 'ok'
 	assert elapsed < time.second
+}
+
+fn test_http2_requires_explicit_client_opt_in() {
+	assert !http.FetchConfig{}.enable_http2
+	assert !http.Request{}.enable_http2
+	default_request := http.prepare(url: 'https://example.com')!
+	assert !default_request.enable_http2
+	opted_in := http.prepare(url: 'https://example.com', enable_http2: true)!
+	assert opted_in.enable_http2
 }
 
 fn test_prepare_uses_fetch_config_timeouts() {

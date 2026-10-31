@@ -1,6 +1,5 @@
 import gg
 import os.asset
-import sokol.sgl
 
 // If you have emscripten (see https://emscripten.org/docs/getting_started/index.html), you can compile this program to WASM, using:
 // `v -os wasm32_emscripten -o examples/gg/rotating_textured_quad.html examples/gg/rotating_textured_quad.v`, and later check with:
@@ -23,21 +22,21 @@ pub fn (mut window Window) init() {
 pub fn (mut window Window) draw() {
 	angle := f32(window.ctx.frame) / 64 // since window.ctx.frame is increased by 1 on every frame -> the angle will be increasing too
 	window.ctx.begin()
-	sgl.load_pipeline(window.ctx.pipeline.alpha)
+	window.ctx.r.load_pipeline(window.ctx.pipeline.alpha)
 
-	sgl.translate(250, 250, 0) // center of the screen
-	sgl.rotate(angle, 0.0, 0.0, 1.0) // rotate around the Z axis pointing towards the camera
+	window.ctx.r.translate(250, 250, 0) // center of the screen
+	window.ctx.r.rotate(angle, 0.0, 0.0, 1.0) // rotate around the Z axis pointing towards the camera
 
-	sgl.enable_texture()
-	sgl.texture(window.img.simg, window.img.ssmp)
-	sgl.begin_quads()
-	sgl.c4b(255, 255, 255, 255)
-	sgl.v3f_t2f(200, 200, 0, 1.0, 1.0)
-	sgl.v3f_t2f(200, -200, 0, 1.0, 0.0)
-	sgl.v3f_t2f(-200, -200, 0, 0.0, 0.0)
-	sgl.v3f_t2f(-200, 200, 0, 0.0, 1.0)
-	sgl.end()
-	sgl.disable_texture()
+	window.ctx.r.enable_texture()
+	window.ctx.r.texture(window.img.simg, window.img.ssmp)
+	window.ctx.r.begin_quads()
+	window.ctx.r.c4b(255, 255, 255, 255)
+	window.ctx.r.v3f_t2f(200, 200, 0, 1.0, 1.0)
+	window.ctx.r.v3f_t2f(200, -200, 0, 1.0, 0.0)
+	window.ctx.r.v3f_t2f(-200, -200, 0, 0.0, 0.0)
+	window.ctx.r.v3f_t2f(-200, 200, 0, 0.0, 1.0)
+	window.ctx.r.end()
+	window.ctx.r.disable_texture()
 	window.ctx.end()
 }
 

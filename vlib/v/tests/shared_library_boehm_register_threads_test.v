@@ -25,7 +25,7 @@ fn test_shared_library_boehm_emits_allow_register_threads() {
 		'}',
 	].join('\n')) or { panic(err) }
 	res :=
-		os.execute('${os.quoted_path(vexe)} -gc boehm -shared -o ${os.quoted_path(lib_c)} ${os.quoted_path(lib_src)}')
+		os.exec([vexe, '-gc', 'boehm', '-shared', '-o', '${lib_c}', '${lib_src}'])
 	assert res.exit_code == 0, 'shared-lib codegen failed:\n${res.output}'
 	c_src := os.read_file(lib_c) or { panic(err) }
 	// The call must appear inside `_vinit`, not in a separate constructor:
@@ -43,5 +43,5 @@ fn test_shared_library_boehm_emits_allow_register_threads() {
 	}
 	vinit_body := c_src[vinit_start..vinit_end]
 	assert vinit_body.contains('GC_allow_register_threads();'), 'expected `GC_allow_register_threads()` inside `_vinit`, got:\n${vinit_body}'
-	assert vinit_body.contains('#if defined(_VGCBOEHM) && defined(GC_THREADS)'), 'expected `GC_THREADS` guard around the call, got:\n${vinit_body}'
+	assert vinit_body.contains('#if (defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)) && defined(GC_THREADS)'), 'expected `GC_THREADS` guard around the call, got:\n${vinit_body}'
 }

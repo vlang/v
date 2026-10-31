@@ -5,6 +5,7 @@ module i18n
 
 import json2
 import os
+import v.embed_file
 
 pub const default_translations_dir = 'translations'
 
@@ -48,6 +49,128 @@ pub fn load_tr_map_from_dir(dir string) map[string]map[string]string {
 		}
 	}
 	return res
+}
+
+// load_tr_map_from_files builds translations from file contents instead of reading
+// them from disk. files maps each file's path inside the translations directory
+// (`en.tr`, `en.json`, `zh/dashboard.json`) to its text, and is read exactly as
+// load_tr_map_from_dir reads the same files from a directory. A path may use either
+// `/` or `\` between its parts, so one built with `os.join_path` works everywhere, and
+// its `.` and `..` parts are resolved before the language is taken from it.
+pub fn load_tr_map_from_files(files map[string]string) map[string]map[string]string {
+	mut res := map[string]map[string]string{}
+	mut paths := files.keys()
+	paths.sort()
+	// JSON first, so that a `.tr` entry for the same key replaces it.
+	for path in paths {
+		if !path.ends_with('.json') {
+			continue
+		}
+		lang, prefix := fetch_lang_and_prefix_from_relative_json_path(translation_file_path(path))
+		if lang.len == 0 {
+			continue
+		}
+		for key, val in parse_tr_json(files[path], prefix, path) {
+			res[lang][key] = val
+		}
+	}
+	for path in paths {
+		if !path.ends_with('.tr') {
+			continue
+		}
+		lang := translation_file_path(path).all_after_last('/').all_before_last('.tr')
+		if lang.len == 0 {
+			continue
+		}
+		for key, val in parse_tr_text(files[path]) {
+			res[lang][key] = val
+		}
+	}
+	return res
+}
+
+// load_tr_map_from_embedded builds translations from files embedded in the program
+// with `$embed_file`, so it does not depend on a translations directory being
+// installed next to the executable:
+//
+// ```v ignore
+// const translations = i18n.load_tr_map_from_embedded('translations', [
+// 	$embed_file('translations/en.tr'),
+// 	$embed_file('translations/zh/dashboard.json'),
+// ])
+// ```
+//
+// dir is the translations directory, spelled the way the embedded paths spell it.
+// A file's path inside it decides its language and key prefix, as it does for
+// load_tr_map_from_dir. A file outside dir is read as if it were directly in it.
+//
+// Only a `-prod` build (or `-os cross` C output) puts the files' contents into the
+// executable. A development build keeps just their paths, to keep rebuilds cheap,
+// and reads the files from those paths when the translations are loaded. It works
+// where it was built, but panics where the files are missing, so build anything you
+// ship to other machines with `-prod`.
+pub fn load_tr_map_from_embedded(dir string, files []embed_file.EmbedFileData) map[string]map[string]string {
+	mut texts := map[string]string{}
+	for file in files {
+		texts[embedded_relative_path(dir, file.path)] = file.to_string()
+	}
+	return load_tr_map_from_files(texts)
+}
+
+// embedded_relative_path is where an embedded file sits inside the translations
+// directory, with `/` separators whatever the platform.
+fn embedded_relative_path(dir string, path string) string {
+	clean_path := clean_slash_path(path)
+	clean_dir := clean_slash_path(dir)
+	if clean_dir.len == 0 {
+		return clean_path
+	}
+	if clean_path.starts_with(clean_dir + '/') {
+		return clean_path[clean_dir.len + 1..]
+	}
+	return clean_path.all_after_last('/')
+}
+
+// translation_file_path is where a file sits inside the translations directory, spelled
+// the way the directory loader finds it there. A path that climbs out of the directory
+// is read as if its file were directly in it.
+fn translation_file_path(path string) string {
+	clean := clean_slash_path(path)
+	if clean == '..' || clean.starts_with('../') {
+		return clean.all_after_last('/')
+	}
+	return clean
+}
+
+// clean_slash_path spells a path with `/` between its parts, and without the `.` parts
+// or the `..` parts that step back over a directory named earlier in it. Paths inside a
+// translations directory come from callers on every platform, and `os.join_path`
+// separates them with `\` on Windows, which os.norm_path elsewhere does not split on.
+// A `..` that climbs above the start of the path is kept.
+fn clean_slash_path(path string) string {
+	mut parts := []string{}
+	for part in path.replace('\\', '/').split('/') {
+		if part in ['', '.'] {
+			continue
+		}
+		if part == '..' && parts.len > 0 && parts.last() != '..' {
+			parts.delete_last()
+			continue
+		}
+		parts << part
+	}
+	return parts.join('/')
+}
+
+// fetch_lang_and_prefix_from_relative_json_path is fetch_lang_and_prefix_from_json_path
+// for a path already relative to the translations directory, separated with `/`.
+fn fetch_lang_and_prefix_from_relative_json_path(path string) (string, string) {
+	parts := path.split('/')
+	name := parts.last().all_before_last('.json')
+	if parts.len == 1 {
+		return name, ''
+	}
+	return parts[parts.len - 2], name
 }
 
 fn parse_tr_text(text string) map[string]string {
@@ -112,6 +235,64 @@ fn flatten_tr_json(value json2.Any, key string, mut res map[string]string) {
 	}
 }
 
+// MissingKeyBehavior controls an Option lookup when no non-empty translation is available.
+pub enum MissingKeyBehavior {
+	or_text
+	key
+	empty
+}
+
+// LookupConfig configures Option lookups without changing the legacy string APIs.
+@[params]
+pub struct LookupConfig {
+pub:
+	missing_key_behavior MissingKeyBehavior
+	default_language     string
+}
+
+// tr_opt returns a translation from the default directory, or none when it is missing.
+pub fn tr_opt(lang string, key string, config LookupConfig) ?string {
+	return tr_from_map_opt(default_tr_map, lang, key, config)
+}
+
+// tr_from_map_opt returns a non-empty translation, checking the default language next.
+// Missing translations return none unless config selects the key or an empty string.
+pub fn tr_from_map_opt(translations map[string]map[string]string, lang string, key string, config LookupConfig) ?string {
+	return lookup_opt(translations, lang, key, config, false, 0)
+}
+
+// tr_plural_opt returns a pluralized translation from the default directory, or none.
+pub fn tr_plural_opt(lang string, key string, amount int, config LookupConfig) ?string {
+	return tr_plural_from_map_opt(default_tr_map, lang, key, amount, config)
+}
+
+// tr_plural_from_map_opt returns a pluralized translation, with the same fallback
+// and missing-key policy as tr_from_map_opt.
+pub fn tr_plural_from_map_opt(translations map[string]map[string]string, lang string, key string, amount int, config LookupConfig) ?string {
+	return lookup_opt(translations, lang, key, config, true, amount)
+}
+
+fn lookup_opt(translations map[string]map[string]string, lang string, key string, config LookupConfig, plural bool, amount int) ?string {
+	for language in [lang, config.default_language] {
+		if language == '' {
+			continue
+		}
+		text := translations[language][key]
+		if text == '' {
+			continue
+		}
+		value := if plural { pluralize(text, amount) } else { text }
+		if value != '' {
+			return value
+		}
+	}
+	return match config.missing_key_behavior {
+		.or_text { none }
+		.key { key }
+		.empty { '' }
+	}
+}
+
 // tr returns the translation for key from the default translations directory.
 pub fn tr(lang string, key string) string {
 	return tr_from_map(default_tr_map, lang, key)
@@ -139,6 +320,10 @@ pub fn tr_plural_from_map(translations map[string]map[string]string, lang string
 		eprintln('NO TRANSLATION FOR KEY "${key}"')
 		return key
 	}
+	return pluralize(s, amount)
+}
+
+fn pluralize(s string, amount int) string {
 	if !s.contains('|') {
 		return s
 	}

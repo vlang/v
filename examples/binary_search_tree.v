@@ -8,13 +8,13 @@ struct Node[T] {
 	right Tree[T]
 }
 
-type Tree[T] = Empty | Node[T]
+type Tree[T] = Empty | &Node[T]
 
 // return size(number of nodes) of BST
 fn (tree Tree[T]) size[T]() int {
 	return match tree {
 		Empty { 0 }
-		Node[T] { 1 + tree.left.size() + tree.right.size() }
+		&Node[T] { 1 + tree.left.size() + tree.right.size() }
 	}
 }
 
@@ -22,18 +22,18 @@ fn (tree Tree[T]) size[T]() int {
 fn (tree Tree[T]) insert[T](x T) Tree[T] {
 	return match tree {
 		Empty {
-			Node[T]{x, tree, tree}
+			&Node[T]{x, tree, tree}
 		}
-		Node[T] {
+		&Node[T] {
 			if x == tree.value {
 				tree
 			} else if x < tree.value {
-				Node[T]{
+				&Node[T]{
 					...tree
 					left: tree.left.insert(x)
 				}
 			} else {
-				Node[T]{
+				&Node[T]{
 					...tree
 					right: tree.right.insert(x)
 				}
@@ -48,7 +48,7 @@ fn (tree Tree[T]) search[T](x T) bool {
 		Empty {
 			false
 		}
-		Node[T] {
+		&Node[T] {
 			if x == tree.value {
 				true
 			} else if x < tree.value {
@@ -66,7 +66,7 @@ fn (tree Tree[T]) min[T]() T {
 		Empty {
 			T(1e9)
 		}
-		Node[T] {
+		&Node[T] {
 			if tree.value < tree.left.min() {
 				tree.value
 			} else {
@@ -82,20 +82,20 @@ fn (tree Tree[T]) delete[T](x T) Tree[T] {
 		Empty {
 			tree
 		}
-		Node[T] {
+		&Node[T] {
 			if tree.left !is Empty && tree.right !is Empty {
 				if x < tree.value {
-					Node[T]{
+					&Node[T]{
 						...tree
 						left: tree.left.delete(x)
 					}
 				} else if x > tree.value {
-					Node[T]{
+					&Node[T]{
 						...tree
 						right: tree.right.delete(x)
 					}
 				} else {
-					Node[T]{
+					&Node[T]{
 						...tree
 						value: tree.right.min()
 						right: tree.right.delete(tree.right.min())
@@ -105,7 +105,7 @@ fn (tree Tree[T]) delete[T](x T) Tree[T] {
 				if x == tree.value {
 					tree.left
 				} else {
-					Node[T]{
+					&Node[T]{
 						...tree
 						left: tree.left.delete(x)
 					}
@@ -114,7 +114,7 @@ fn (tree Tree[T]) delete[T](x T) Tree[T] {
 				if x == tree.value {
 					tree.right
 				} else {
-					Node[T]{
+					&Node[T]{
 						...tree
 						right: tree.right.delete(x)
 					}

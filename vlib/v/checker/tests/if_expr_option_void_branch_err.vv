@@ -1,0 +1,26 @@
+fn maybe_void(ok bool) ? {
+	if !ok {
+		return none
+	}
+}
+
+fn choose(take_value bool, value ?int) ?int {
+	result := if take_value { value } else { maybe_void(true) }
+	return result
+}
+
+fn choose_chain(take_value bool, other bool, value ?int) ?int {
+	result := if take_value {
+		value
+	} else if other {
+		none
+	} else {
+		maybe_void(true)
+	}
+	return result
+}
+
+fn main() {
+	println(choose(false, 42) or { -1 })
+	println(choose_chain(false, false, 42) or { -1 })
+}

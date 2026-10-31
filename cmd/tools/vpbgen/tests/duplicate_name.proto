@@ -1,0 +1,11 @@
+// Two fields with the same name in one message, which protoc rejects and which
+// would otherwise declare one V field twice.
+
+syntax = "proto3";
+
+package dupn;
+
+message M {
+  string tag = 1;
+  string tag = 2;
+}

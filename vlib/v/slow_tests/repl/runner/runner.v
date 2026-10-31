@@ -50,7 +50,15 @@ pub fn run_repl_file(wd string, vexec string, file string) !string {
 		panic(err)
 	}
 	rcmd := '${os.quoted_path(vexec)} repl -replfolder ${os.quoted_path(wd)} -replprefix "${fname}." < ${os.quoted_path(input_temporary_filename)}'
-	r := os.execute(rcmd)
+	mut input_process := os.new_process(vexec)
+	input_process.set_args(['repl', '-replfolder', wd, '-replprefix', '${fname}.'])
+	input_process.set_redirect_stdio_merged()
+	input_process.set_stdin_path(input_temporary_filename)
+	input_process.run()
+	input_output := input_process.stdout_slurp()
+	input_process.wait()
+	r := os.Result{ exit_code: input_process.code, output: input_output }
+	input_process.close()
 	if r.exit_code != 0 {
 		os.rm(input_temporary_filename)!
 		return error('Could not execute: ${rcmd}')
@@ -74,14 +82,15 @@ pub fn run_repl_file(wd string, vexec string, file string) !string {
 	return file.replace('./', '')
 }
 
+// run_prod_file compares production program output, suppressing compiler progress notices.
 pub fn run_prod_file(wd string, vexec string, file string) !string {
 	file_expected := '${file}.expected.txt'
 	f_expected_content := os.read_file(file_expected) or {
 		return error('Could not read expected prod file ${file_expected}')
 	}
 	expected_content := f_expected_content.replace('\r', '')
-	cmd := '${os.quoted_path(vexec)} -prod run ${os.quoted_path(file)}'
-	r := os.execute(cmd)
+	cmd := '${os.quoted_path(vexec)} -silent -prod run ${os.quoted_path(file)}'
+	r := os.exec([vexec, '-silent', '-prod', 'run', file])
 	if r.exit_code < 0 {
 		return error('Could not execute: ${cmd}')
 	}

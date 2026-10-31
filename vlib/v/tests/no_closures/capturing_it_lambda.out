@@ -1,0 +1,6 @@
+vlib/v/tests/no_closures/capturing_it_lambda.vv:8:15: cgen error: a closure was generated for function
+    6 |     it := 'b'
+    7 |     // only array DSL calls bind an implicit `it`; here it is the captured local
+    8 |     println(call(|| 'abc'.contains(it)))
+      |                  ~~~~~~~~~~~~~~~~~~~~~
+    9 | }

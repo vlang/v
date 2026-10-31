@@ -132,7 +132,7 @@ mut:
 
 fn (opt Options) verbose_execute(cmd string) os.Result {
 	opt.verbose_eprintln('Running `${cmd}`')
-	return os.execute(cmd)
+	return os.exec(os.split_args(cmd) or { panic(err) })
 }
 
 fn (opt Options) verbose_eprintln(msg string) {
@@ -156,7 +156,6 @@ fn main() {
 	fp.version(tool_version)
 	fp.description(tool_description)
 	fp.arguments_description('PATH [PATH]')
-	fp.skip_executable()
 
 	show_help := fp.bool('help', `h`, false, 'Show this help text.')
 

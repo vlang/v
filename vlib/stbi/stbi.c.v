@@ -12,15 +12,15 @@ fn trace_allocation(message string) {
 }
 
 @[export: 'stbi__callback_malloc']
-fn cb_malloc(s usize) voidptr {
-	res := unsafe { malloc(isize(s)) }
+fn cb_malloc(s uint) voidptr {
+	res := unsafe { malloc(int(s)) }
 	trace_allocation('> stbi__callback_malloc: ${s} => ${ptr_str(res)}')
 	return res
 }
 
 @[export: 'stbi__callback_realloc']
-fn cb_realloc(p voidptr, s usize) voidptr {
-	res := unsafe { v_realloc(p, isize(s)) }
+fn cb_realloc(p voidptr, s uint) voidptr {
+	res := unsafe { v_realloc(p, int(s)) }
 	trace_allocation('> stbi__callback_realloc: ${ptr_str(p)} , ${s} => ${ptr_str(res)}')
 	return res
 }
@@ -189,7 +189,7 @@ pub fn load_from_memory(buf &u8, bufsize int, params LoadParams) !Image {
 //
 //-----------------------------------------------------------------------------
 fn C.stbir_resize_uint8_linear(input_pixels &u8, input_w i32, input_h i32, input_stride_in_bytes i32, output_pixels &u8,
-	output_w i32, output_h i32, output_stride_in_bytes i32, num_channels i32) i32
+	output_w i32, output_h i32, output_stride_in_bytes i32, num_channels i32) &u8
 
 // resize_uint8 resizes `img` to dimensions of `output_w` and `output_h`
 pub fn resize_uint8(img &Image, output_w int, output_h int) !Image {
@@ -202,13 +202,15 @@ pub fn resize_uint8(img &Image, output_w int, output_h int) !Image {
 		original_nr_channels: img.original_nr_channels // preserve the metadata of the original, during resizes
 	}
 
-	res.data = cb_malloc(usize(output_w * output_h * img.nr_channels))
+	res.data = cb_malloc(uint(output_w * output_h * img.nr_channels))
 	if res.data == 0 {
 		return error('stbi_image failed to resize file')
 	}
 
-	if 0 == C.stbir_resize_uint8_linear(img.data, img.width, img.height, 0, res.data, output_w,
-		output_h, 0, img.nr_channels) {
+	// The C API returns the output buffer on success, and nil on failure.
+	resized := C.stbir_resize_uint8_linear(img.data, img.width, img.height, 0, res.data, output_w,
+		output_h, 0, img.nr_channels)
+	if isnil(resized) {
 		return error('stbi_image failed to resize file')
 	}
 	return res

@@ -221,6 +221,13 @@ temporary, child, build-fact, no-run, job, and compiler/linker flag overrides ar
 the helper creates private V directories and passes one resolved `CC` explicitly to every V
 compilation.
 
+The seed compiler uses the same VC compatibility adapter as the normal V build, including the
+BSD bootstrap libraries and OpenBSD compatibility source. All V stages explicitly select the new
+compiler and disable automatic fallback, so a compilation failure cannot download another compiler.
+On macOS, callers must also provide an exact, clean, architecture-matching `vlang/tccbin` checkout
+through `TCCBIN_BOOTSTRAP_TCC_ROOT` and its full `TCCBIN_BOOTSTRAP_TCC_COMMIT`. The helper attaches
+that bundle only to its private clone and removes the attachment before final attestation.
+
 The bootstrap interface is:
 
 ```sh
@@ -235,6 +242,34 @@ to discover the validator path, a result file, or a last-line protocol.
 
 Materializing the two exact checkouts is the caller's responsibility. A workflow must use reviewed,
 immutable checkout actions and must not ask the bootstrap helper to contact a remote repository.
+When adopting a new contract, update `CONTRACT_SHA`, `VC_SHA`, and both manifest contract bindings
+together in every managed tccbin branch: Linux, macOS Intel and ARM, FreeBSD, OpenBSD, and Windows
+amd64. Distribution aliases without workflows do not bootstrap a validator independently.
+
+### VC lock dry run
+
+`vc-lock-dry-run` shows the `vc.lock` that the newest `vlang/vc` snapshot would get, without
+writing it:
+
+```sh
+./vnew run thirdparty/tccbin_automation/bin/cmd vc-lock-dry-run
+```
+
+It fetches the `vlang/vc` master tip, and the commits (no trees or blobs) of `vlang/v` master, into
+a fresh scratch directory that it removes again. The snapshot is accepted only when its provenance
+holds by content: the commit message is `[v:master] <sha> - <title>`, `<sha>` is an ancestor of
+`vlang/v` master, and the first line of both `v.c` and `v_win.c` is
+`#define V_COMMIT_HASH "<sha>"`. The command then renders the six records with
+`render_vc_bootstrap_lock`, which parses its own output back, and prints a unified diff against the
+current lock (nothing when they are equal) followed by
+`vc_commit=<sha> v_commit=<sha> changed=<true|false> writes=0`. The diff applies with `git apply`
+at the repository root.
+
+The command never writes `vc.lock`, commits, or pushes. `plan_vc_bootstrap_lock_update` does the
+same checks on Git directories that already hold the objects, so a long-running service can plan
+against its own mirrors. Adopting a snapshot stays a reviewed change: the contract tests require
+the lock, the pinned `vlang/vc` checkout refs in `tccbin_automation_contract.yml` and
+`update_tccbin.yml`, and the VC constant in `workflow_contract_test.v` to name the same commit.
 
 ### Candidate staging preflight
 

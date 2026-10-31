@@ -1,4 +1,5 @@
 module main
 
 fn bar()
+@[deprecated: 'use bar instead']
 fn foo()

@@ -1,0 +1,13 @@
+#include <stdio.h>
+
+enum FromC {
+	item = C.EOF
+}
+
+fn main() {
+	$for member in FromC.values {
+		$if member.value == 0 {
+			println('zero')
+		}
+	}
+}

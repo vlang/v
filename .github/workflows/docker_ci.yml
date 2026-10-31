@@ -10,13 +10,6 @@ on:
       - '!**/docker_ci.yml'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
-  pull_request:
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/docker_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
 
 concurrency:
   group: docker-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -25,9 +18,17 @@ concurrency:
 env:
   V_CI_MUSL: 1
 
+permissions:
+  contents: read
+
 jobs:
   docker-alpine-musl-gcc:
     runs-on: ubuntu-24.04
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
     timeout-minutes: 241
     container:
       image: thevlang/vlang:alpine-build
@@ -38,6 +39,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Show Environment
         run: |
           echo "PWD:"
@@ -57,6 +60,11 @@ jobs:
 
   docker-alpine-musl-tcc:
     runs-on: ubuntu-24.04
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
     timeout-minutes: 241
     container:
       image: thevlang/vlang:alpine-build
@@ -65,6 +73,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Add dependencies
         run: apk add musl-dev libatomic_ops-dev libatomic openssl libc6-compat gcompat gc gc-dev binutils diffutils elfutils
       - name: Build V
@@ -76,6 +86,11 @@ jobs:
 
   docker-ubuntu-musl:
     runs-on: ubuntu-24.04
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
     timeout-minutes: 150
     container:
       image: thevlang/vlang:ubuntu-build
@@ -87,6 +102,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: echo "$VFLAGS" && make -j4 && ./v -cg -o v cmd/v
       - name: Verify `v test` works

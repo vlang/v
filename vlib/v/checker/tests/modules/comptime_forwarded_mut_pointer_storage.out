@@ -1,0 +1,7 @@
+vlib/v/checker/tests/modules/comptime_forwarded_mut_pointer_storage/bridge/bridge.v:15:20: error: method `index` parameter `ctx` is `mut ctx &Context`, a mutable reference to a `&Context`: pass `mut` of a `&Context` variable (e.g. `mut p := &user_context`, then `mut p`), or declare it `mut ctx Context`
+   13 |     $for method in A.methods {
+   14 |         $if method.name == 'index' {
+   15 |             app.$method(mut user_context)
+      |                             ~~~~~~~~~~~~
+   16 |         }
+   17 |     }

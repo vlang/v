@@ -23,7 +23,7 @@ module openssl
 #flag windows -IC:/Program Files/OpenSSL/include
 #flag windows -LC:/Program Files/OpenSSL/lib/VC/x64/MD
 
-$if $pkgconfig ( 'openssl' ) {
+$if $pkgconfig('openssl') {
 	#pkgconfig --cflags --libs openssl
 } $else {
 	#flag windows -l libssl -l libcrypto
@@ -114,7 +114,21 @@ fn C.SSL_CTX_free(ctx &C.SSL_CTX)
 
 fn C.SSL_CTX_use_certificate_file(ctx &C.SSL_CTX, const_file &char, file_type i32) i32
 
+fn C.SSL_CTX_use_certificate_chain_file(ctx &C.SSL_CTX, const_file &char) i32
+
 fn C.SSL_CTX_use_PrivateKey_file(ctx &C.SSL_CTX, const_file &char, file_type i32) i32
+
+fn C.v_net_openssl_SSL_CTX_use_certificate_chain_memory(ctx &C.SSL_CTX, data &u8, len uint) i32
+
+fn C.v_net_openssl_SSL_CTX_extra_chain_certs_count(ctx &C.SSL_CTX) int
+
+fn C.v_net_openssl_SSL_CTX_use_PrivateKey_memory(ctx &C.SSL_CTX, data &u8, len uint) i32
+
+fn C.v_net_openssl_SSL_CTX_load_verify_memory(ctx &C.SSL_CTX, data &u8, len uint) i32
+
+fn C.v_net_openssl_SSL_CTX_load_client_CA_file(ctx &C.SSL_CTX, const_file &char) i32
+
+fn C.v_net_openssl_SSL_CTX_client_CA_names_count(ctx &C.SSL_CTX) int
 
 fn C.SSL_new(&C.SSL_CTX) &C.SSL
 
@@ -132,7 +146,7 @@ fn C.v_net_openssl_has_x509_identity_checks() int
 
 fn C.X509_free(const_cert &C.X509)
 
-fn C.v_net_openssl_x509_check_host(const_cert &C.X509, const_name &char, name_len usize, flags u32, peer_name &&char) int
+fn C.v_net_openssl_x509_check_host(const_cert &C.X509, const_name &char, name_len uint, flags u32, peer_name &&char) int
 
 fn C.v_net_openssl_x509_check_ip_asc(const_cert &C.X509, const_ip_asc &char, flags u32) int
 
@@ -140,7 +154,7 @@ fn C.ERR_clear_error()
 
 fn C.ERR_get_error() u64
 
-fn C.ERR_error_string_n(e u64, buf &char, len usize)
+fn C.ERR_error_string_n(e u64, buf &char, len uint)
 
 fn C.SSL_get_error(ssl &C.SSL, ret i32) i32
 
@@ -158,6 +172,8 @@ fn C.v_net_openssl_set_alpn_protos(ssl &C.SSL, protos &u8, protos_len u32) i32
 
 fn C.v_net_openssl_get0_alpn_selected(ssl &C.SSL, data voidptr, len &u32)
 
+fn C.v_net_openssl_SSL_CTX_set_alpn_select_protos(ctx &C.SSL_CTX, protos &u8, protos_len u32) voidptr
+
 fn C.SSL_shutdown(&C.SSL) i32
 
 fn C.SSL_free(&C.SSL)
@@ -170,7 +186,13 @@ fn C.SSLv23_client_method() &C.SSL_METHOD
 
 fn C.TLS_method() voidptr
 
+fn C.v_net_openssl_TLS_server_method() &C.SSL_METHOD
+
 fn C.TLSv1_2_method() voidptr
+
+fn C.SSL_CTX_check_private_key(ctx &C.SSL_CTX) i32
+
+fn C.SSL_accept(ssl &C.SSL) i32
 
 fn C.v_net_openssl_init_ssl() i32
 
@@ -193,7 +215,7 @@ fn ssl_get_error_queue() string {
 			break
 		}
 		mut buf := [256]char{}
-		C.ERR_error_string_n(code, &buf[0], usize(buf.len))
+		C.ERR_error_string_n(code, &buf[0], uint(buf.len))
 		reasons << unsafe { cstring_to_vstring(&buf[0]) }
 	}
 	return reasons.join('; ')

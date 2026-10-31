@@ -290,7 +290,8 @@ fn run_issue(cmd cli.Command, issue_query string, issue_label string, help_label
 
 fn run_document(_cmd cli.Command) ! {
 	res :=
-		os.execute('${os.quoted_path(@VEXE)} missdoc --exclude vlib/v --exclude /linux_bare/ --exclude /wasm_bare/ @vlib')
+		os.exec([@VEXE, 'missdoc', '--exclude', 'vlib/v', '--exclude', '/linux_bare/', '--exclude',
+			'/wasm_bare/', '@vlib'])
 	if res.exit_code != 0 {
 		return error('v missdoc failed: ${res.output}')
 	}

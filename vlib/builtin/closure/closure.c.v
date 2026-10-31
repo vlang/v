@@ -9,8 +9,6 @@ const ppc64_architecture = int(11)
 
 type ClosureGetDataFn = fn () voidptr
 
-type ClosureInitFn = fn ()
-
 type ClosureDataDropFn = fn (voidptr)
 
 struct ClosurePage {
@@ -21,9 +19,10 @@ mut:
 
 struct ClosureLiveInfo {
 mut:
-	ctx        voidptr
-	owns_data  bool
-	drop_data  voidptr
+	ctx       voidptr
+	drop_data voidptr
+	// A full-width flag prevents stale pointer bytes in padding from reaching the GC-scanned map.
+	owns_data  u64
 	generation u64
 }
 
@@ -113,7 +112,9 @@ fn is_ppc64() bool {
 // The final `big_endian` branch maps to ppc64 here, since the supported big-endian
 // closure targets handled above are s390x and sparc64.
 // vfmt off
-pub const closure_thunk = $if ppc64le {
+pub const closure_thunk = $if cross ? {
+    portable_closure_thunk()
+} $else $if ppc64le {
     [
     u8(0xa6), 0x02, 0x08, 0x7c,	// mflr   %r0
         0x05, 0x00, 0x00, 0x48,	// bl     here
@@ -138,6 +139,14 @@ pub const closure_thunk = $if ppc64le {
         0x7c, 0x08, 0x03, 0xa6,	// mtlr   %r0
         0x7d, 0x89, 0x03, 0xa6,	// mtctr  %r12
         0x4e, 0x80, 0x04, 0x20,	// bctr
+    ]!
+} $else $if amd64 && windows {
+    // Windows x64: xmm6-xmm15 are callee-saved, so the thunk must not touch xmm15.
+    // Use the volatile xmm5 (not an argument register there). The empty REX prefix 0x40
+    // keeps the instruction length the same as in the xmm15 variant below.
+    [
+    u8(0xF3), 0x40, 0x0F, 0x7E, 0x2D, 0xF7, 0xBF, 0xFF, 0xFF,  // movq  xmm5, QWORD PTR [rip - userdata]
+        0xFF, 0x25, 0xF9, 0xBF, 0xFF, 0xFF                     // jmp  QWORD PTR [rip - fn]
     ]!
 } $else $if amd64 {
     [
@@ -226,7 +235,9 @@ pub const closure_thunk = $if ppc64le {
 
 // NOTE: Keep the first branch as the longest byte sequence. In translated/bootstrap C mode
 // (`vc/v.c`), V emits a fixed C array whose size is inferred from the first branch.
-const closure_get_data_bytes = $if !ppc64le && !amd64 && !i386 && !arm64 && !arm32 && !rv64 && !rv32 && !s390x && !loongarch64 {
+const closure_get_data_bytes = $if cross ? {
+    portable_closure_get_data_bytes()
+} $else $if !ppc64le && !amd64 && !i386 && !arm64 && !arm32 && !rv64 && !rv32 && !s390x && !loongarch64 {
     // ppc (32-bit PowerPC) - expressed as negation of all other arches for bootstrap compat
     [
     u8(0x94), 0x21, 0xff, 0xf0,	// stwu   %r1, -16(%r1)
@@ -240,6 +251,11 @@ const closure_get_data_bytes = $if !ppc64le && !amd64 && !i386 && !arm64 && !arm
     u8(0x90), 0x0A, 0x17, 0xEE,  // vmov r0, s15
         0x04, 0x00, 0x10, 0xE5,  // ldr r0, [r0, #-4]
         0x1E, 0xFF, 0x2F, 0xE1   // bx lr
+    ]!
+} $else $if amd64 && windows {
+    [
+    u8(0x66), 0x48, 0x0F, 0x7E, 0xE8,  // movq rax, xmm5
+        0xC3                           // ret
     ]!
 } $else $if amd64 {
     [
@@ -331,7 +347,7 @@ fn closure_slot_meta(exec_ptr voidptr) &voidptr {
 
 fn closure_register_page(exec_page_start voidptr) {
 	unsafe {
-		node := &ClosurePage(malloc(sizeof(ClosurePage)))
+		node := &ClosurePage(malloc(int(sizeof(ClosurePage))))
 		*node = ClosurePage{
 			next:            g_closure.pages
 			exec_page_start: exec_page_start
@@ -344,13 +360,13 @@ fn closure_is_managed(exec_ptr voidptr) bool {
 	if isnil(exec_ptr) {
 		return false
 	}
-	exec_addr := unsafe { usize(exec_ptr) }
+	exec_addr := unsafe { uint(exec_ptr) }
 	mut page := g_closure.pages
 	for page != unsafe { nil } {
-		page_addr := unsafe { usize(page.exec_page_start) }
-		if exec_addr >= page_addr && exec_addr < page_addr + usize(g_closure.v_page_size) {
+		page_addr := unsafe { uint(page.exec_page_start) }
+		if exec_addr >= page_addr && exec_addr < page_addr + uint(g_closure.v_page_size) {
 			slot_offset := exec_addr - page_addr
-			return slot_offset >= usize(closure_size) && slot_offset % usize(closure_size) == 0
+			return slot_offset >= uint(closure_size) && slot_offset % uint(closure_size) == 0
 		}
 		page = page.next
 	}
@@ -361,7 +377,7 @@ fn closure_live_set(exec_ptr voidptr, data voidptr, owns_data bool, drop_data vo
 	g_closure.next_generation++
 	g_closure.live[exec_ptr] = ClosureLiveInfo{
 		ctx:        data
-		owns_data:  owns_data
+		owns_data:  if owns_data { u64(1) } else { u64(0) }
 		drop_data:  drop_data
 		generation: g_closure.next_generation
 	}
@@ -382,7 +398,7 @@ fn new_closure_lifetime_state_no_lock() &ClosureLifetimeState {
 		g_closure.free_lifetime_states = state.next_free
 	} else {
 		unsafe {
-			state = &ClosureLifetimeState(malloc(sizeof(ClosureLifetimeState)))
+			state = &ClosureLifetimeState(malloc(int(sizeof(ClosureLifetimeState))))
 		}
 		g_closure.lifetime_state_allocs++
 	}
@@ -485,7 +501,7 @@ fn closure_release_no_lock(exec_ptr voidptr, generation u64) bool {
 	}
 	data := closure_slot_data(exec_ptr)
 	_ := closure_live_delete(exec_ptr)
-	if info.owns_data && !isnil(data) {
+	if info.owns_data != 0 && !isnil(data) {
 		if !isnil(info.drop_data) {
 			drop_fn := ClosureDataDropFn(info.drop_data)
 			// A user-defined drop can allocate another closure. Run it outside the
@@ -548,6 +564,14 @@ fn closure_lifetime_reclaim_no_lock(mut state ClosureLifetimeState, retain int) 
 }
 
 fn closure_ensure_initialized() {
+	$if race ? {
+		// The once-initialization locks a global mutex on every call; like the closure
+		// allocator's mutex, it must not order the threads that create closures.
+		racedisable()
+		closure_init_once_platform()
+		raceenable()
+		return
+	}
 	closure_init_once_platform()
 }
 
@@ -797,7 +821,7 @@ fn closure_init_body() {
 		}
 		g_closure.closure_get_data = unsafe { ClosureGetDataFn(desc) }
 	} else {
-		g_closure.closure_get_data = g_closure.closure_ptr
+		g_closure.closure_get_data = unsafe { ClosureGetDataFn(g_closure.closure_ptr) }
 	}
 
 	// Advance allocation pointer past header

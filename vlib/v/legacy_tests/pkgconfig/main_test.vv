@@ -28,7 +28,7 @@ fn main_test_fixture_result(args []string) MainResult {
 fn assert_main_test_shell_round_trip(output string, expected []string) {
 	$if !windows {
 		script := 'set -- ' + output + r'; printf "%s\n" "$@"'
-		result := os.execute('sh -c ${os.quoted_path(script)}')
+		result := os.exec(['sh', '-c', '${script}'])
 		assert result.exit_code == 0, result.output
 		assert result.output.split_into_lines() == expected
 	}

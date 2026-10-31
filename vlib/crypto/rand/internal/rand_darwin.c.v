@@ -5,7 +5,7 @@ module internal
 
 #include <sys/random.h>
 
-fn C.getentropy(buf voidptr, buflen usize) i32
+fn C.getentropy(buf voidptr, buflen uint) i32
 
 const read_batch_size = 256
 

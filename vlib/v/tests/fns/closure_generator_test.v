@@ -197,7 +197,7 @@ fn test_closure_return_${styp}_${i}() ! {
 	os.write_file(full_path_to_target, code)!
 	vexe := os.getenv('VEXE')
 	cmd := '${os.quoted_path(vexe)} -keepc -cg -showcc ${full_path_to_target}'
-	res := os.execute(cmd)
+	res := os.exec([vexe, '-keepc', '-cg', '-showcc', full_path_to_target])
 	if res.exit_code != 0 {
 		eprintln(res.output)
 		eprintln('> failed exit code: ${res.exit_code} | cmd:\n${cmd}')

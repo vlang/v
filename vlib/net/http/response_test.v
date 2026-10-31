@@ -4,6 +4,24 @@ import compress.brotli
 import compress.gzip
 import compress.zlib
 
+fn test_normalize_server_response_preserves_unassigned_three_digit_status() {
+	mut resp := Response{
+		status_code: 299
+	}
+	normalize_server_response(mut resp, Request{})
+	assert resp.status_code == 299
+	assert resp.status_msg == ''
+}
+
+fn test_normalize_server_response_defaults_zero_status_despite_reason_phrase() {
+	mut resp := Response{
+		status_msg: 'custom reason without a status'
+	}
+	normalize_server_response(mut resp, Request{})
+	assert resp.status_code == 200
+	assert resp.status_msg == 'OK'
+}
+
 fn test_response_bytestr_1() {
 	resp := new_response(
 		status: .ok
@@ -101,6 +119,58 @@ fn test_parse_response_with_cookies() {
 	assert response_cookie_base64[0].str().split(';')[0] == 'enctoken=${cookie_base64}'
 }
 
+fn test_parse_response_cookie_expires() {
+	content := 'HTTP/1.1 200 OK\r\nSet-Cookie: a=b; Expires=Tue, 10 Nov 2009 23:00:00 GMT\r\nSet-Cookie: c=d; expires=Tue, 10-Nov-2009 23:00:00 GMT\r\nSet-Cookie: e=f; expires=bogus\r\nContent-Length: 0\r\n\r\n'
+	x := parse_response(content)!
+	cookies := x.cookies()
+	assert cookies.len == 3
+	assert cookies[0].expires.unix() == 1257894000
+	assert cookies[0].raw_expires == 'Tue, 10 Nov 2009 23:00:00 GMT'
+	assert cookies[1].expires.unix() == 1257894000
+	assert cookies[2].expires.year == 0
+	assert cookies[2].raw_expires == 'bogus'
+	assert 'expires=bogus' in cookies[2].unparsed
+}
+
+fn test_parse_response_cookie_expires_boundaries_and_invalid_dates() {
+	for expires in ['Tue, 31 Apr 2009 23:00:00 GMT', 'Sun, 29 Feb 2009 23:00:00 GMT',
+		'Sun, 31 Dec 1600 23:00:00 GMT'] {
+		content := 'HTTP/1.1 200 OK\r\nSet-Cookie: a=b; Expires=${expires}\r\nContent-Length: 0\r\n\r\n'
+		response := parse_response(content)!
+		cookies := response.cookies()
+		assert cookies.len == 1
+		assert cookies[0].expires.year == 0
+		assert cookies[0].raw_expires == expires
+		assert 'Expires=${expires}' in cookies[0].unparsed
+	}
+	content := 'HTTP/1.1 200 OK\r\nSet-Cookie: a=b; Expires=Mon, 01 Jan 1601 00:00:00 GMT\r\nContent-Length: 0\r\n\r\n'
+	response := parse_response(content)!
+	cookies := response.cookies()
+	assert cookies.len == 1
+	assert cookies[0].expires.year == 1601
+	assert 'Expires=Mon, 01 Jan 1601 00:00:00 GMT' !in cookies[0].unparsed
+}
+
+fn test_parse_response_cookie_expires_duplicate_attributes() {
+	valid := 'Tue, 10 Nov 2009 23:00:00 GMT'
+	for invalid in ['bogus', 'Sun, 31 Dec 1600 23:00:00 GMT'] {
+		content := 'HTTP/1.1 200 OK\r\nSet-Cookie: a=b; Expires=${valid}; expires=${invalid}\r\nContent-Length: 0\r\n\r\n'
+		response := parse_response(content)!
+		cookies := response.cookies()
+		assert cookies.len == 1
+		assert cookies[0].expires.unix() == 1257894000
+		assert cookies[0].raw_expires == invalid
+		assert 'expires=${invalid}' in cookies[0].unparsed
+	}
+	content := 'HTTP/1.1 200 OK\r\nSet-Cookie: a=b; expires=bogus; Expires=${valid}; Expires=Wed, 11 Nov 2009 23:00:00 GMT\r\nContent-Length: 0\r\n\r\n'
+	response := parse_response(content)!
+	cookies := response.cookies()
+	assert cookies.len == 1
+	assert cookies[0].expires.unix() == 1257980400
+	assert cookies[0].raw_expires == 'Wed, 11 Nov 2009 23:00:00 GMT'
+	assert 'expires=bogus' in cookies[0].unparsed
+}
+
 fn test_parse_response_with_weird_cookie() {
 	// weird cookies test
 	content_weird := 'HTTP/1.1 200 OK\r\nSet-Cookie: a=b; ; =; aa=; =bb; cc; ==\r\nContent-Length: 3\r\n\r\nFoo'
@@ -184,4 +254,30 @@ fn test_vschannel_parse_response_normalizes_connect_failure_output() {
 		return
 	}
 	assert false
+}
+
+fn test_proxy_response_parsing_preserves_encoded_representations() {
+	for encoding in ['gzip', 'deflate', 'br'] {
+		compressed := match encoding {
+			'gzip' { gzip.compress('encoded upstream body'.bytes())! }
+			'deflate' { zlib.compress('encoded upstream body'.bytes())! }
+			else { brotli.compress('encoded upstream body'.bytes())! }
+		}
+		for chunked in [false, true] {
+			framing := if chunked {
+				'Transfer-Encoding: chunked'
+			} else {
+				'Content-Length: ${compressed.len}'
+			}
+			body := if chunked {
+				'${compressed.len:x}\r\n${compressed.bytestr()}\r\n0\r\n\r\n'
+			} else {
+				compressed.bytestr()
+			}
+			wire := 'HTTP/1.1 200 OK\r\nContent-Encoding: ${encoding}\r\n${framing}\r\n\r\n${body}'
+			assert parse_response(wire)!.body == 'encoded upstream body'
+			assert parse_received_response(wire, ReceivedResponseInfo{ raw_body: true })!.body.bytes() == compressed
+			assert vschannel_parse_response(wire, 0, raw_body: true)!.body.bytes() == compressed
+		}
+	}
 }

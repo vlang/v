@@ -1,0 +1,11 @@
+@[attribute: 'fn']
+struct OnlyFn {
+	name string
+}
+
+@[OnlyFn('x')]
+struct Cfg {
+}
+
+fn main() {
+}

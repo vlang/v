@@ -186,12 +186,11 @@ fn unescape(s_ string, mode EncodingMode) !string {
 					// That is, you can use escaping in the zone identifier but not
 					// to introduce bytes you couldn't just write directly.
 					// But Windows puts spaces here! Yay.
-					if i + 3 >= s.len {
-						return error(error_msg('unescape: invalid escape sequence', ''))
-					}
+					// The escape's two hex digits were checked above; a complete
+					// escape is valid even when it ends the zone identifier.
 					v := ((unhex(s[i + 1]) << u8(4)) | unhex(s[i + 2]))
 					if s[i..i + 3] != '%25' && v != ` ` && should_escape(v, .encode_host) {
-						error(error_msg(err_msg_escape, s[i..i + 3]))
+						return error(error_msg(err_msg_escape, s[i..i + 3]))
 					}
 				}
 				i += 3
@@ -367,7 +366,7 @@ pub:
 }
 
 fn (u Userinfo) empty() bool {
-	return u.username == '' && u.password == ''
+	return u.username == '' && u.password == '' && !u.password_set
 }
 
 // string returns the encoded userinfo information in the standard form
@@ -429,11 +428,15 @@ fn split(s string, sep u8, cutc bool) (string, string) {
 }
 
 // parse parses rawurl into a URL structure.
+// IPv6 zone identifiers permit escaped percent signs (%25) and spaces (%20),
+// including at the end of the zone. Invalid or prohibited escapes return an error.
 //
 // The rawurl may be relative (a path, without a host) or absolute
 // (starting with a scheme). Trying to parse a hostname and path
 // without a scheme is invalid but may not necessarily return an
 // error, due to parsing ambiguities.
+// A literal colon in userinfo sets the password, even when it is empty.
+// Percent-encoded colons do not act as userinfo separators.
 pub fn parse(rawurl string) !URL {
 	// Cut off #frag
 	u, frag := split(rawurl, `#`, true)
@@ -484,8 +487,7 @@ fn parse_url(rawurl string, via_request bool) !URL {
 	url.scheme = p[0]
 	mut rest := p[1]
 	url.scheme = url.scheme.to_lower()
-	// if rest.ends_with('?') && strings.count(rest, '?') == 1 {
-	if rest.ends_with('?') && !rest[..1].contains('?') {
+	if rest.ends_with('?') && rest.count('?') == 1 {
 		url.force_query = true
 		rest = rest[..rest.len - 1]
 	} else {
@@ -552,7 +554,7 @@ fn parse_authority(authority string) !ParseAuthorityRes {
 	}
 	host := parse_host(raw_host)!
 	name, pwd := split(raw_user, `:`, true)
-	auth := if pwd != '' {
+	auth := if raw_user.contains(':') {
 		user_password(unescape(name, .encode_user_password)!, unescape(pwd, .encode_user_password)!)
 	} else {
 		user(unescape(name, .encode_user_password)!)
@@ -647,7 +649,7 @@ fn valid_encoded_path(s string) bool {
 		// should_escape handle the others.
 		x := s[i]
 		match x {
-			`!`, `$`, `&`, `\\`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `@` {
+			`!`, `$`, `&`, `'`, `(`, `)`, `*`, `+`, `,`, `;`, `=`, `:`, `@` {
 				// ok
 			}
 			`[`, `]` {

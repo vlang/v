@@ -1,8 +1,14 @@
 module pref
 
 import os
+import strings
 import time
 import v.cmdexec
+
+// native_backend_replacement_message explains how to replace the removed native backend option.
+pub const native_backend_replacement_message = '`-b native` has been replaced by `-b arm64` and `-b x64`.\n' +
+	'Enable ARM64 support with `v -compile-backend arm64 self`, then use `v -b arm64 -gc none file.v`.\n' +
+	'On Linux AMD64, first run `v -compile-backend x64 self`, then `v -b x64 file.v`.'
 
 const macos_v3_caller_vexe_env = 'V_MACOS_V3_CALLER_VEXE'
 const macos_v3_caller_vexe_present_env = 'V_MACOS_V3_CALLER_VEXE_PRESENT'
@@ -13,12 +19,15 @@ const macos_v3_caller_no_fallback_present_env = 'V_MACOS_V3_CALLER_NO_FALLBACK_P
 const macos_v3_private_environment_names = [
 	'V_MACOS_V3_FALLBACK_FILE',
 	'V_MACOS_V3_C_ERROR_DIR',
+	'V_MACOS_V3_SOURCE_MANIFEST',
 	'V_MACOS_V3_VHASH',
 	'V_MACOS_V3_VCURRENT_HASH',
 	'V_MACOS_V3_EMBEDDED',
 	'V_MACOS_V3_RETRY',
 	'V3_CRUN_BUILD_IDENTITY',
 	'V3_INTERNAL_RESTART',
+	'V3_INTERNAL_CACHE_RECOVERY',
+	'V3_INTERNAL_CACHE_FORCE_SOURCE',
 	macos_v3_caller_vexe_env,
 	macos_v3_caller_vexe_present_env,
 	macos_v3_caller_vchild_env,
@@ -92,10 +101,16 @@ pub mut:
 	// architecture or C compiler (`-os cross`). Target-dependent `$if` branches
 	// are all kept and decided by the C preprocessor instead of by the checker.
 	output_cross_c bool
+	// raw_vsh_file is the real path of an input without the `.vsh` extension that
+	// is still compiled as a V script (`-raw-vsh-tmp-prefix`).
+	raw_vsh_file string
 pub:
 	build_date      string
 	build_time      string
 	build_timestamp string
+pub mut:
+	// hot_fn extracts raw machine code for a single function only (hot reload).
+	hot_fn string
 }
 
 // without_excluded returns files, minus the ones matched by a `-exclude` pattern.
@@ -175,7 +190,13 @@ pub fn host_target() Target {
 
 // default_thread_stack_size returns the target-specific spawned-thread stack size.
 pub fn (target Target) default_thread_stack_size() int {
-	return if target.pointer_bits == 32 { 2 * 1024 * 1024 } else { 8 * 1024 * 1024 }
+	return default_thread_stack_size_for_bits(target.pointer_bits)
+}
+
+// default_thread_stack_size_for_bits returns the spawned-thread stack size for a
+// target with `pointer_bits`-bit pointers.
+pub fn default_thread_stack_size_for_bits(pointer_bits int) int {
+	return if pointer_bits == 32 { 2 * 1024 * 1024 } else { 8 * 1024 * 1024 }
 }
 
 // target_from validates and canonicalizes an OS/architecture pair.
@@ -243,10 +264,10 @@ pub fn option_may_consume_value(option string) bool {
 		'-cov', '-coverage', '-profile-fns', '-bug-report-url', '-run-only', '-exclude', '-file-list',
 		'-test-runner', '-dump-c-flags', '-dump-modules', '-dump-files', '-dump-defines',
 		'-generate-c-project', '-macosx-version-min', '-os', '-printfn', '-cflags', '-ldflags',
-		'-d', '-define', '-message-limit', '-thread-stack-size', '-cc', '-c++',
+		'-d', '-define', '-message-limit', '-thread-stack-size', '-hot-fn', '-cc', '-c++',
 		'-checker-match-exhaustive-cutoff-limit', '-o', '-output', '-b', '-backend', '-compile-backend',
 		'--compile-backend', '-path', '-bare-builtin-dir', '-custom-prelude', '-raw-vsh-tmp-prefix',
-		'-cmain', '-line-info']
+		'-cmain', '-line-info', '-memory-limit', '--memory-limit']
 }
 
 fn two_digits(value int) string {
@@ -393,6 +414,24 @@ fn detect_vroot_from(start string) string {
 	return ''
 }
 
+// expand_module_search_paths expands the value of `-path`: the search roots are
+// separated by `|` (or the OS path delimiter), `@vlib` and `@vmodules` stand for the
+// vlib folder and the global module folders, and `@vroot` for the V root folder.
+pub fn expand_module_search_paths(spec string, vroot string) []string {
+	if spec.len == 0 {
+		return []
+	}
+	mut expanded := []string{}
+	for path in spec.replace('|', os.path_delimiter).split(os.path_delimiter) {
+		match path {
+			'@vlib' { expanded << os.join_path_single(vroot, 'vlib') }
+			'@vmodules' { expanded << os.vmodules_paths() }
+			else { expanded << path.replace('@vroot', vroot) }
+		}
+	}
+	return expanded
+}
+
 // get_vlib_module_path returns get vlib module path data for Preferences.
 pub fn (p &Preferences) get_vlib_module_path(mod string) string {
 	mod_path := vlib_module_path(mod)
@@ -444,6 +483,12 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 				return try_path
 			}
 		}
+		// An explicit `.v.mod.stop` marker ends the walk: what lies above it is
+		// not part of this project, so a module up there is not what the import
+		// means.
+		if is_module_search_stop_dir(current_dir) {
+			break
+		}
 		parent_dir := os.dir(current_dir)
 		if parent_dir == current_dir {
 			break
@@ -451,6 +496,18 @@ pub fn (p &Preferences) get_module_path(mod string, importing_file_path string) 
 		current_dir = parent_dir
 	}
 	return ''
+}
+
+// module_search_stop_marker is the file that explicitly ends the module search
+// in a directory: the module lookups that walk up from a file do not continue
+// above a directory that holds it. It is what a test session's temp directory
+// carries, so that tests never resolve against whatever contains that directory.
+pub const module_search_stop_marker = '.v.mod.stop'
+
+// is_module_search_stop_dir reports whether `dir` holds the
+// module_search_stop_marker.
+pub fn is_module_search_stop_dir(dir string) bool {
+	return os.exists(os.join_path_single(dir, module_search_stop_marker))
 }
 
 // is_retired_modules_namespace reports whether a directory is the `modules/` a
@@ -608,6 +665,10 @@ fn vmod_root_for_dir(start string) ?string {
 	for dir.len > 0 {
 		if os.is_file(os.join_path_single(dir, 'v.mod')) {
 			return dir
+		}
+		if is_module_search_stop_dir(dir) || ['.git', '.hg', '.svn'].any(os.exists(os.join_path_single(dir,
+			it))) {
+			return none
 		}
 		dir = os.parent_dir(dir)
 	}
@@ -785,13 +846,33 @@ fn file_has_incompatible_os_only_suffix(file string, current_os string) bool {
 
 // get_v_files_from_dir returns get v files from dir data for pref.
 pub fn get_v_files_from_dir(dir string, user_defines []string, target_os string) []string {
-	return get_v_files_from_dir_for_target(dir, user_defines, target_from(target_os, host_arch()) or {
-		host_target()
-	})
+	return get_v_files_from_dir_for_backend_target(dir, user_defines, '', target_from(target_os,
+		host_arch()) or { host_target() })
 }
 
 // get_v_files_from_dir_for_target returns sources compatible with the complete target.
 pub fn get_v_files_from_dir_for_target(dir string, user_defines []string, target Target) []string {
+	return get_v_files_from_dir_for_backend_target(dir, user_defines, '', target)
+}
+
+// wasm_source_file_matches_backend reports whether `path` names a source of the
+// WASM backend's own file family, the counterpart of FastC's own backend
+// filter: a plain `.v` file, a `.wasm.v` file, or one of the `_nix.`/`_default.`
+// styled files the wasm target accepts anyway. Another backend's family
+// (`.c.v`, `.js.v`, `.native.v`) and a file qualified with another architecture
+// (`.arm64.v`, `.amd64.v`, `.rv64.v`) is foreign, exactly as those are foreign
+// to FastC.
+fn wasm_source_file_matches_backend(path string) bool {
+	return !path.ends_with('.c.v') && !path.ends_with('.js.v') && !path.ends_with('.native.v')
+		&& !path.ends_with('.arm64.v') && !path.ends_with('.amd64.v') && !path.ends_with('.rv64.v')
+}
+
+// get_v_files_from_dir_for_backend_target returns sources compatible with the
+// complete target and with the file family of `backend`. The empty `backend`
+// has no family of its own and keeps every candidate, which is the list the
+// callers that do not know the backend had before.
+pub fn get_v_files_from_dir_for_backend_target(dir string, user_defines []string, backend string,
+	target Target) []string {
 	if dir == '' || !os.is_dir(dir) {
 		return []string{}
 	}
@@ -818,21 +899,37 @@ pub fn get_v_files_from_dir_for_target(dir string, user_defines []string, target
 			|| file_name_has_marker(file, '_test.') {
 			continue
 		}
-		if file_has_incompatible_os_only_suffix(file, target.os) {
+		// A file qualified with a backend suffix belongs to the backend that
+		// spelled it, so a wasm build compiles `foo.wasm.v` instead of pulling in
+		// `foo.c.v` beside it. Every other backend keeps the one shared family it
+		// compiled before, because this branch is only taken for `wasm`.
+		if backend == 'wasm' && !wasm_source_file_matches_backend(file) {
+			continue
+		}
+		// Everything after `_d_`/`_notd_` names a compile-time define, even when
+		// that define is also an OS or architecture name. The define selector must
+		// own that suffix instead of the platform filters below.
+		is_define_specific := file_name_has_marker(file, '_d_')
+			|| file_name_has_marker(file, '_notd_')
+		if !is_define_specific && file_has_incompatible_os_only_suffix(file, target.os) {
 			continue
 		}
 		mut incompatible := false
-		for arch in incompatible_archs {
-			if file_name_has_arch_marker(file, arch) {
-				incompatible = true
-				break
+		if !is_define_specific {
+			for arch in incompatible_archs {
+				if file_name_has_arch_marker(file, arch) {
+					incompatible = true
+					break
+				}
 			}
 		}
 		if incompatible {
 			continue
 		}
-		if base := os_specific_base_for(file, os_suffixes) {
-			has_os_specific[base] = true
+		if !is_define_specific {
+			if base := os_specific_base_for(file, os_suffixes) {
+				has_os_specific[base] = true
+			}
 		}
 		candidates << VFileCandidate{
 			file: file
@@ -925,7 +1022,8 @@ pub fn is_test_file_for_backend(path string, backend string) bool {
 		return backend == 'c'
 	}
 	if file.ends_with('_test.js.v') {
-		return backend == 'js'
+		// Disabled on every target until V3 has a JavaScript backend.
+		return false
 	}
 	if !file.ends_with('.v') {
 		return false
@@ -942,6 +1040,11 @@ pub fn is_test_file_for_backend(path string, backend string) bool {
 	if suffix_is_backend_name(backend_suffix) {
 		// A backend name wins over an architecture alias: `wasm` spells both, and
 		// `foo_test.wasm.v` is a WASM backend test, not an amd64/arm64 one.
+		if backend_suffix == 'native' {
+			// `.native.v` is the backend-specific file suffix shared by the
+			// architecture code generators.
+			return backend in ['native', 'arm64', 'x64']
+		}
 		return backend_suffix == backend
 	}
 	if _ := arch_from_string(backend_suffix) {
@@ -1133,7 +1236,255 @@ pub fn normalized_arch(target_arch string) string {
 	}
 }
 
+// directive_target_os returns the operating system a `#flag` or `#include` target
+// prefix (`#flag linux -lm`) names, or none when the word is not such a prefix.
+pub fn directive_target_os(prefix string) ?string {
+	normalized := normalized_os(prefix)
+	if normalized in ['windows', 'macos', 'linux', 'freebsd', 'openbsd', 'netbsd', 'dragonfly',
+		'android', 'termux', 'ios', 'solaris', 'qnx', 'haiku', 'serenity', 'vinix', 'wasm32_emscripten'] {
+		return normalized
+	}
+	return none
+}
+
+// directive_target_arch returns the architecture a `#flag` or `#include` target
+// prefix (`#flag amd64 -msse2`) names, or none when the word is not such a prefix.
+pub fn directive_target_arch(prefix string) ?string {
+	normalized := normalized_arch(prefix)
+	if normalized in ['amd64', 'arm64', 'x86', 'arm32', 'riscv32', 'riscv64', 'ppc', 'ppc64', 'ppc64le',
+		's390x', 'loongarch64', 'sparc64', 'wasm32'] {
+		return normalized
+	}
+	return none
+}
+
 // normalized_target_os supports normalized target os handling for Preferences.
+// ccompiler_can_assemble reports whether `ccompiler` is a GCC or Clang compatible
+// driver, one that preprocesses and assembles a `.S` file with `-c`. tcc and MSVC
+// cannot; a `cc` or `gcc` name is trusted only after its version output rules
+// out an alias for tcc.
+pub fn ccompiler_can_assemble(ccompiler string) bool {
+	real_name := os.file_name(os.real_path(ccompiler)).to_lower_ascii()
+	if tinycc_file_name(real_name) || real_name.contains('msvc')
+		|| real_name in ['cl', 'cl.exe'] {
+		return false
+	}
+	quoted_ccompiler := os.quoted_path(ccompiler)
+	for version_flag in ['--version', '-v'] {
+		res := os.exec([ccompiler, '${version_flag}'])
+		output := res.output.to_lower_ascii()
+		if ccompiler_version_is_tinycc(output)
+			|| output.contains('microsoft c/c++') || output.contains('msvc') {
+			return false
+		}
+		if output.contains('clang') || output.contains('gcc version') || output.contains('(gcc)')
+			|| output.contains('free software foundation') || output.contains('gcc ') {
+			return true
+		}
+	}
+	return false
+}
+
+// tcc_with_prod_requested reports whether a production C build selects TinyCC.
+// Compiler option values are skipped and the last compiler/backend options win.
+// Executable aliases follow ccompiler_is_tinycc in the caller's working directory.
+pub fn tcc_with_prod_requested(args []string) bool {
+	return tcc_with_prod_requested_in(args, '')
+}
+
+// tcc_with_prod_requested_in reports whether a production C build selects TinyCC in cwd.
+// Relative compiler paths and wrapper version queries use cwd without changing the caller's
+// working directory. Compiler option values are skipped and the last compiler/backend win.
+pub fn tcc_with_prod_requested_in(args []string, cwd string) bool {
+	mut prod := false
+	mut ccompiler := ''
+	mut backend := 'c'
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if arg == '-prod' {
+			prod = true
+		} else if arg in ['-cc', '-b', '-backend'] && i + 1 < args.len {
+			i++
+			if arg == '-cc' { ccompiler = args[i] } else { backend = args[i] }
+		} else if arg.starts_with('-cc=') {
+			ccompiler = arg['-cc='.len..]
+		} else if arg.starts_with('-b=') {
+			backend = arg['-b='.len..]
+		} else if arg.starts_with('-backend=') {
+			backend = arg['-backend='.len..]
+		} else if arg in ['-prof', '-profile'] {
+			if prod_profile_consumes_value(args, i) { i++ }
+		} else if arg == '-cf' || option_may_consume_value(arg) {
+			i++
+		}
+		i++
+	}
+	return prod && backend == 'c' && ccompiler != '' && ccompiler_is_tinycc_in(ccompiler, cwd)
+}
+
+// prod_profile_consumes_value follows the launcher's optional profiling output rule.
+fn prod_profile_consumes_value(args []string, index int) bool {
+	next := args[index + 1] or { return false }
+	if next == '-' { return true }
+	if next.starts_with('-') || next in ['run', 'build', 'test', 'doc']
+		|| next.ends_with('.v') || next.ends_with('.vv') || next.ends_with('.vsh') || os.is_dir(next) {
+		return false
+	}
+	return args[index + 2..].any(!it.starts_with('-'))
+}
+
+// ccompiler_is_tinycc reports whether `ccompiler` is TinyCC. It resolves the path and any
+// symlink, then checks the file name with tinycc_file_name. Any other executable is asked for
+// its version banner, so a copy of tcc under another name is still recognised. Mentions of
+// TinyCC in metadata such as an installed directory do not identify a compiler. A name that
+// does not resolve to an executable is judged by its name alone.
+// Local launchable files precede PATH. Windows also permits loadable PE files with other extensions.
+pub fn ccompiler_is_tinycc(ccompiler string) bool {
+	return ccompiler_is_tinycc_in(ccompiler, os.getwd())
+}
+
+fn ccompiler_is_tinycc_in(ccompiler string, cwd string) bool {
+	work_folder := if cwd == '' { os.getwd() } else { cwd }
+	path := ccompiler_path_in(ccompiler, work_folder)
+	if path == '' {
+		mut name := ccompiler
+		$if windows {
+			name = ccompiler_windows_expand_env_vars(name)
+		}
+		return tinycc_file_name(os.file_name(name))
+	}
+	resolved := os.real_path(path)
+	if tinycc_file_name(os.file_name(resolved)) {
+		return true
+	}
+	if !os.is_file(resolved) {
+		return false
+	}
+	$if !windows {
+		if !os.is_executable(resolved) { return false }
+	}
+	for flag in ['--version', '-v'] {
+		version := cmdexec.run_in(resolved, [flag], work_folder).output
+		if ccompiler_version_is_tinycc(version) {
+			return true
+		}
+	}
+	return false
+}
+
+// ccompiler_path_in resolves explicit paths and PATH entries in the requested directory.
+// Match cmdexec's local-file and explicit-path rules before searching PATH.
+fn ccompiler_path_in(ccompiler string, cwd string) string {
+	mut program := ccompiler
+	$if windows {
+		program = ccompiler_windows_expand_env_vars(program)
+	}
+	path := if os.is_abs_path(program) { program } else { os.join_path(cwd, program) }
+	if os.is_file(path) && os.is_executable(path) { return path }
+	mut explicit_path := os.is_abs_path(program) || program.contains('/')
+	$if windows {
+		explicit_path = explicit_path || program.contains('\\')
+	}
+	if explicit_path {
+		$if windows {
+			return ccompiler_windows_executable_path(path)
+		} $else {
+			return path
+		}
+	}
+	mut suffixes := ['']
+	$if windows {
+		suffixes = ['.com', '.exe', '.bat', '.cmd', '']
+		if os.file_ext(program).to_lower_ascii() in suffixes && os.file_ext(program) != '' {
+			suffixes = ['']
+		}
+	}
+	for suffix in suffixes {
+		for entry in os.getenv('PATH').split(os.path_delimiter) {
+			directory := if os.is_abs_path(entry) { entry } else { os.join_path(cwd, entry) }
+			candidate := os.join_path(directory, program + suffix)
+			if os.is_file(candidate) && os.is_executable(candidate) { return candidate }
+		}
+	}
+	return ''
+}
+
+// Explicit Windows paths have CreateProcessW's single implicit `.exe` suffix.
+// Nonstandard extensions can still contain a loadable PE image.
+fn ccompiler_windows_executable_path(candidate string) string {
+	if os.is_file(candidate) && os.is_executable(candidate) { return candidate }
+	if os.file_ext(candidate) != '' { return candidate }
+	probed := candidate + '.exe'
+	if os.is_file(probed) && os.is_executable(probed) { return probed }
+	return candidate
+}
+
+// Keep the same single-pass percent expansion as cmdexec's Windows launch path.
+fn ccompiler_windows_expand_env_vars(text string) string {
+	if !text.contains('%') { return text }
+	parts := text.split('%')
+	mut out := strings.new_builder(text.len)
+	for i in 0 .. parts.len {
+		if i % 2 == 0 {
+			out.write_string(parts[i])
+			continue
+		}
+		if i == parts.len - 1 {
+			out.write_string('%')
+			out.write_string(parts[i])
+			continue
+		}
+		name := parts[i]
+		value := if name == '' { '' } else { os.getenv(name) }
+		if value != '' {
+			out.write_string(value)
+			continue
+		}
+		out.write_string('%')
+		out.write_string(name)
+		out.write_string('%')
+	}
+	return out.str()
+}
+
+// ccompiler_version_is_tinycc reports whether output contains a TinyCC version or branding
+// banner line. Paths and other metadata containing the compiler's name are ignored.
+pub fn ccompiler_version_is_tinycc(output string) bool {
+	for line in output.to_lower_ascii().split_into_lines() {
+		banner := line.trim_space()
+		if banner in ['tcc', 'tinycc', 'tiny c compiler']
+			|| banner.starts_with('tcc version ') || banner.starts_with('tinycc version ')
+			|| banner.starts_with('tiny c compiler ') {
+			return true
+		}
+	}
+	return false
+}
+
+// tinycc_file_name reports whether `file_name` is tcc or tinyc, with an optional `.exe` and an
+// optional target prefix such as `x86_64-w64-mingw32-tcc`. A name that only contains tcc, such
+// as `distcc` or `notcc`, is not TinyCC.
+pub fn tinycc_file_name(file_name string) bool {
+	mut name := file_name.to_lower_ascii()
+	if name.ends_with('.exe') {
+		name = name[..name.len - '.exe'.len]
+	}
+	return name in ['tcc', 'tinyc', 'tinycc'] || name.ends_with('-tcc') || name.ends_with('-tinycc')
+}
+
+// find_system_assembler returns a GCC or Clang compatible compiler driver found
+// on PATH, one that can assemble a preprocessed `.S` file, or none.
+pub fn find_system_assembler() ?string {
+	for candidate in ['clang', 'gcc', 'cc'] {
+		path := os.find_abs_path_of_executable(candidate) or { continue }
+		if ccompiler_can_assemble(path) {
+			return path
+		}
+	}
+	return none
+}
+
 pub fn (p &Preferences) normalized_target_os() string {
 	return p.target.os
 }
@@ -1252,16 +1603,17 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 			return p.is_test
 		}
 		'native', 'builtin_write_buf_to_fd_should_use_c_write' {
-			return p.backend == 'arm64'
+			return p.backend in ['arm64', 'x64']
 		}
 		'gcc', 'clang', 'mingw', 'msvc', 'cplusplus' {
 			return p.backend == 'c' && p.ccompiler == name
 		}
 		'tinyc' {
-			return p.backend == 'arm64' || (p.backend in ['c', 'fastc'] && p.ccompiler == 'tinyc')
+			return p.backend in ['arm64', 'x64']
+				|| (p.backend in ['c', 'fastc'] && p.ccompiler == 'tinyc')
 		}
 		'no_backtrace' {
-			return p.backend == 'arm64' || name in p.user_defines
+			return p.backend in ['arm64', 'x64'] || name in p.user_defines
 		}
 		else {
 			return name in p.user_defines
@@ -1386,10 +1738,13 @@ pub fn comptime_flag_is_target_dependent(name string) bool {
 
 // comptime_optional_flag_value supports comptime optional flag value handling for pref.
 pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
-	// `int` is a 64-bit type on 64-bit targets, so the builtin's `$if new_int ?`
-	// guards (max_int/min_int, `int.str`, str_l overflow bounds) must take the
-	// i64 branch there. This mirrors v3's `int` -> `i64` C lowering.
 	if name == 'new_int' {
+		// SSA currently lowers `int` to i32, including array and string headers.
+		// Its builtin limits must use that width even on a 64-bit target.
+		if p.backend in ['arm64', 'x64'] {
+			return false
+		}
+		// The C backend lowers `int` to the target pointer width.
 		return p.target.pointer_bits == 64 || name in p.user_defines
 	}
 	// Test mode is added internally to `user_defines`, but `$if test ?` only asks
@@ -1397,6 +1752,12 @@ pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
 	// `compile_values`.
 	if name == 'test' && name !in p.compile_values {
 		return false
+	}
+	// Builtin spells its native backend check `$if native ?`, because the V1
+	// compatibility compiler, which still checks some fixtures, knows `native`
+	// only as a define. Here it also names the backend, as in `$if native`.
+	if name == 'native' {
+		return comptime_flag_value(p, name) || name in p.user_defines
 	}
 	return name in p.user_defines
 }

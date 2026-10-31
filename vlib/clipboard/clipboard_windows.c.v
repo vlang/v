@@ -9,8 +9,8 @@ struct WndClassEx {
 	cb_size         u32
 	style           u32
 	lpfn_wnd_proc   voidptr
-	cb_cls_extra    int
-	cb_wnd_extra    int
+	cb_cls_extra    i32
+	cb_wnd_extra    i32
 	h_instance      C.HINSTANCE
 	h_icon          C.HICON
 	h_cursor        C.HCURSOR
@@ -97,15 +97,16 @@ fn new_clipboard() &Clipboard {
 		lpsz_class_name: class_name.to_wide()
 		lpsz_menu_name:  unsafe { 0 }
 		h_icon_sm:       unsafe { 0 }
+		h_instance:      C.GetModuleHandleW(unsafe { nil })
 	}
 	if C.RegisterClassEx(voidptr(&wndclass)) == 0
 		&& C.GetLastError() != u32(C.ERROR_CLASS_ALREADY_EXISTS) {
-		println('Failed registering class.')
+		eprintln('Failed registering class.')
 	}
 	hwnd := C.CreateWindowEx(0, wndclass.lpsz_class_name, wndclass.lpsz_class_name, 0, 0, 0, 0, 0,
-		C.HWND_MESSAGE, C.NULL, C.NULL, C.NULL)
+		C.HWND_MESSAGE, unsafe { nil }, wndclass.h_instance, unsafe { nil })
 	if hwnd == unsafe { nil } {
-		println('Error creating window!')
+		eprintln('Error creating window!')
 	}
 	cb.hwnd = voidptr(hwnd)
 	return cb
@@ -143,7 +144,7 @@ const cp_utf8 = 65001
 fn to_wide(text string) C.HGLOBAL {
 	len_required := C.MultiByteToWideChar(cp_utf8, C.MB_ERR_INVALID_CHARS, voidptr(text.str),
 
-		text.len + 1, C.NULL, 0)
+		text.len + 1, unsafe { nil }, 0)
 	buf := C.GlobalAlloc(C.GMEM_MOVEABLE, i64(sizeof(u16)) * len_required)
 	if buf != unsafe { nil } {
 		mut locked := &u16(C.GlobalLock(buf))
@@ -169,7 +170,7 @@ pub fn (mut cb Clipboard) set_text(text string) bool {
 		// EmptyClipboard must be called to properly update clipboard ownership
 		C.EmptyClipboard()
 		if C.SetClipboardData(C.CF_UNICODETEXT, buf) == unsafe { nil } {
-			println('SetClipboardData: Failed.')
+			eprintln('SetClipboardData: Failed.')
 			C.CloseClipboard()
 			C.GlobalFree(buf)
 			return false

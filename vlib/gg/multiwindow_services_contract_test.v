@@ -33,7 +33,8 @@ fn test_multiwindow_service_enabled_and_disabled_facades_compile_same_consumer()
 		}
 		define := if enabled { ' -d gg_multiwindow' } else { '' }
 		c_cmd := '${os.quoted_path(@VEXE)} -gc none${define} -b c -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(c_output)} ${os.quoted_path(fixture)}'
-		c_result := os.execute(c_cmd)
+		c_result := os.exec([@VEXE, '-gc', 'none', ...(os.split_args(define) or { panic(err) }),
+			'-b', 'c', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', c_output, '${fixture}'])
 		assert c_result.exit_code == 0, '${mode} service facade failed structural compilation:\n${c_result.output}'
 		if !enabled {
 			generated := os.read_file(c_output) or { panic(err) }
@@ -44,9 +45,10 @@ fn test_multiwindow_service_enabled_and_disabled_facades_compile_same_consumer()
 			}
 		}
 		link_cmd := '${os.quoted_path(@VEXE)} -gc none${define} -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(binary)} ${os.quoted_path(fixture)}'
-		link_result := os.execute(link_cmd)
+		link_result := os.exec([@VEXE, '-gc', 'none', ...(os.split_args(define) or { panic(err) }),
+			'-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', binary, '${fixture}'])
 		assert link_result.exit_code == 0, '${mode} service facade failed link:\n${link_result.output}'
-		run_result := os.execute(os.quoted_path(binary))
+		run_result := os.exec([binary])
 		assert run_result.exit_code == 0, '${mode} service facade failed run:\n${run_result.output}'
 	}
 }

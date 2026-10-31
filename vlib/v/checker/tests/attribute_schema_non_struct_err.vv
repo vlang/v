@@ -1,0 +1,7 @@
+@[attribute]
+fn routed() {
+}
+
+fn main() {
+	routed()
+}

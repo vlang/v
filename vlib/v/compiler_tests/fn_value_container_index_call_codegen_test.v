@@ -10,7 +10,8 @@ fn fn_index_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_fn_index_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${fn_index_vexe} -gc none -path "${fn_index_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${fn_index_v3_src}')
+		os.exec([fn_index_vexe, '-gc', 'none', '-path', '${fn_index_vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${fn_index_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -67,9 +68,9 @@ fn main() {
 }
 ')
 	out := os.join_path(os.temp_dir(), 'v3_fn_index_container_field_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${source} -b c -o ${out}')
+	compile := os.exec([v3_bin, source, '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.split_into_lines() == ['hello', '28']
 	generated := os.read_file(out + '.c') or { panic(err) }
@@ -105,9 +106,9 @@ fn main() {
 }
 ')
 	out := os.join_path(os.temp_dir(), 'v3_fn_index_local_container_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${source} -b c -o ${out}')
+	compile := os.exec([v3_bin, source, '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.split_into_lines() == ['called', 'called', 'called', 'called']
 	generated := os.read_file(out + '.c') or { panic(err) }
@@ -145,9 +146,9 @@ fn main() {
 }
 ')
 	out := os.join_path(os.temp_dir(), 'v3_fn_index_explicit_generic_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${source} -b c -o ${out}')
+	compile := os.exec([v3_bin, source, '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.split_into_lines() == ['generic-ok', '42']
 }

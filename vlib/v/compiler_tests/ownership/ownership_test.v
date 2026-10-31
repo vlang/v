@@ -19,20 +19,25 @@ fn ownership_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_ownership_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${ownership_vexe} -gc none -d ownership -path "${ownership_vlib_dir}" -o ${v3_bin} ${ownership_v3_src}')
+		os.exec([ownership_vexe, '-gc', 'none', '-d', 'ownership', '-path', ownership_vlib_dir,
+			'-o', v3_bin, '${ownership_v3_src}'])
 	assert build.exit_code == 0, build.output
 	os.write_file(cache_path, v3_bin) or {}
 	return v3_bin
 }
 
 fn run_ownership_check(v3_bin string, name string, code string) os.Result {
+	return run_ownership_check_with_flags(v3_bin, name, code, ['-ownership'])
+}
+
+fn run_ownership_check_with_flags(v3_bin string, name string, code string, flags []string) os.Result {
 	tmp_dir := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}')
 	os.rmdir_all(tmp_dir) or {}
 	os.mkdir_all(tmp_dir) or { panic(err) }
 	src := os.join_path(tmp_dir, 'main.v')
 	out := os.join_path(tmp_dir, 'out')
 	os.write_file(src, code) or { panic(err) }
-	return os.execute('${v3_bin} -ownership -b c -o ${out} ${src} 2>&1')
+	return os.exec([v3_bin, ...flags, '-b', 'c', '-o', '${out}', '${src}'])
 }
 
 fn run_autofree_check(v3_bin string, name string, code string) os.Result {
@@ -42,7 +47,7 @@ fn run_autofree_check(v3_bin string, name string, code string) os.Result {
 	src := os.join_path(tmp_dir, 'main.v')
 	out := os.join_path(tmp_dir, 'out')
 	os.write_file(src, code) or { panic(err) }
-	return os.execute('${v3_bin} -ownership -autofree -b c -o ${out} ${src} 2>&1')
+	return os.exec([v3_bin, '-ownership', '-autofree', '-b', 'c', '-o', '${out}', '${src}'])
 }
 
 fn run_ownership_check_c_only(v3_bin string, name string, code string) os.Result {
@@ -52,7 +57,7 @@ fn run_ownership_check_c_only(v3_bin string, name string, code string) os.Result
 	src := os.join_path(tmp_dir, 'main.v')
 	out := os.join_path(tmp_dir, 'out.c')
 	os.write_file(src, code) or { panic(err) }
-	return os.execute('${v3_bin} -ownership -b c -o ${out} ${src} 2>&1')
+	return os.exec([v3_bin, '-ownership', '-b', 'c', '-o', '${out}', '${src}'])
 }
 
 fn run_autofree_check_c_only(v3_bin string, name string, code string) os.Result {
@@ -62,7 +67,7 @@ fn run_autofree_check_c_only(v3_bin string, name string, code string) os.Result 
 	src := os.join_path(tmp_dir, 'main.v')
 	out := os.join_path(tmp_dir, 'out.c')
 	os.write_file(src, code) or { panic(err) }
-	return os.execute('${v3_bin} -ownership -autofree -b c -o ${out} ${src} 2>&1')
+	return os.exec([v3_bin, '-ownership', '-autofree', '-b', 'c', '-o', '${out}', '${src}'])
 }
 
 fn run_ownership_check_with_module(v3_bin string, name string, main_code string, module_name string, module_code string) os.Result {
@@ -76,19 +81,46 @@ fn run_ownership_check_with_module(v3_bin string, name string, main_code string,
 	out := os.join_path(tmp_dir, 'out')
 	os.write_file(src, main_code) or { panic(err) }
 	os.write_file(mod_src, module_code) or { panic(err) }
-	return os.execute('${v3_bin} -ownership -b c -o ${out} ${src} 2>&1')
+	return os.exec([v3_bin, '-ownership', '-b', 'c', '-o', '${out}', '${src}'])
 }
 
-fn test_ownership_flag_does_not_define_target_ownership() {
+fn test_ownership_build_define_is_isolated_and_mode_defines_target() {
 	v3_bin := ownership_build_v3()
-	ok := run_ownership_check(v3_bin, 'target_define_not_forwarded', r'
+	plain := run_ownership_check_with_flags(v3_bin, 'build_define_not_forwarded', r'
 $if ownership ? {
-	$compile_error("ownership define leaked into target")
+	$compile_error("compiler build define leaked into target")
+}
+
+fn main() {}
+', [])
+	assert plain.exit_code == 0, plain.output
+
+	ownership := run_ownership_check(v3_bin, 'mode_defines_target', r'
+$if !ownership ? {
+	$compile_error("ownership mode did not define the target option")
 }
 
 fn main() {}
 ')
-	assert ok.exit_code == 0, ok.output
+	assert ownership.exit_code == 0, ownership.output
+}
+
+fn test_ownership_prescan_converges_for_long_acyclic_call_chains() {
+	v3_bin := ownership_build_v3()
+	for reverse in [false, true] {
+		mut declarations := ['struct ChainNode { name string }',
+			'fn link_0(p &ChainNode) &ChainNode { return p }']
+		for i in 1 .. 90 {
+			declarations << 'fn link_${i}(p &ChainNode) &ChainNode { return link_${i - 1}(p) }'
+		}
+		if reverse {
+			declarations.reverse_in_place()
+		}
+		declarations << 'fn main() { n := ChainNode{name: "node"}; assert link_89(&n).name == "node" }'
+		result := run_ownership_check(v3_bin, 'long_acyclic_chain_${reverse}',
+			declarations.join('\n'))
+		assert result.exit_code == 0, result.output
+	}
 }
 
 fn test_autofree_main_enum_symbols_are_namespaced() {
@@ -113,9 +145,21 @@ fn main() {
 	assert !c_source.contains('} Cursor;'), c_source
 }
 
-fn test_non_mut_reference_parameter_accepts_literal_temporary() {
+fn test_non_mut_reference_parameter_requires_addressable_value() {
 	v3_bin := ownership_build_v3()
-	result := run_ownership_check(v3_bin, 'borrow_literal_temporary', '
+	ok := run_ownership_check(v3_bin, 'borrow_named_value', '
+fn borrowed_len(value &string) int {
+	return value.len
+}
+
+fn main() {
+	value := "literal"
+	assert borrowed_len(value) == 7
+}
+')
+	assert ok.exit_code == 0, ok.output
+
+	fail := run_ownership_check(v3_bin, 'borrow_literal_temporary', '
 fn borrowed_len(value &string) int {
 	return value.len
 }
@@ -124,7 +168,8 @@ fn main() {
 	assert borrowed_len("literal") == 7
 }
 ')
-	assert result.exit_code == 0, result.output
+	assert fail.exit_code != 0
+	assert fail.output.contains('literal argument cannot be passed as reference parameter `&string`'), fail.output
 }
 
 fn test_ownership_move_on_assign_and_clone_escape() {
@@ -341,7 +386,7 @@ fn main() {
 }
 	')
 	assert fail_plain_struct_clone.exit_code != 0
-	assert fail_plain_struct_clone.output.contains('unknown function'), fail_plain_struct_clone.output
+	assert fail_plain_struct_clone.output.contains('unknown method or field: `Plain.clone`'), fail_plain_struct_clone.output
 
 	ok_iclone_default_clone := run_ownership_check(v3_bin, 'iclone_default_clone', '
 struct Resource implements IClone {
@@ -1047,7 +1092,7 @@ fn main() {
 ")
 	assert ok_lambda_shadow_param.exit_code == 0, ok_lambda_shadow_param.output
 
-	ok_lambda_if_guard_shadow := run_ownership_check_c_only(v3_bin, 'lambda_if_guard_shadow', "
+	ok_lambda_if_guard_local := run_ownership_check_c_only(v3_bin, 'lambda_if_guard_local', "
 fn take(s string) {
 	_ = s
 }
@@ -1062,15 +1107,15 @@ fn maybe() ?string {
 
 fn main() {
 	s := 'outer'.to_owned()
-	keep(|_| if s := maybe() {
-		take(s)
+	keep(|_| if inner := maybe() {
+		take(inner)
 	})
 	println(s)
 }
 ")
-	assert ok_lambda_if_guard_shadow.exit_code == 0, ok_lambda_if_guard_shadow.output
+	assert ok_lambda_if_guard_local.exit_code == 0, ok_lambda_if_guard_local.output
 
-	ok_lambda_match_branch_shadow := run_ownership_check_c_only(v3_bin, 'lambda_match_branch_shadow', "
+	ok_lambda_match_branch_local := run_ownership_check_c_only(v3_bin, 'lambda_match_branch_local', "
 fn keep(f fn ()) {
 	_ = f
 }
@@ -1080,8 +1125,8 @@ fn main() {
 	keep(|| {
 		match 0 {
 			0 {
-				s := 'inner'.to_owned()
-				println(s)
+				inner := 'inner'.to_owned()
+				println(inner)
 			}
 			else {}
 		}
@@ -1089,18 +1134,18 @@ fn main() {
 	println(s)
 }
 ")
-	assert ok_lambda_match_branch_shadow.exit_code == 0, ok_lambda_match_branch_shadow.output
+	assert ok_lambda_match_branch_local.exit_code == 0, ok_lambda_match_branch_local.output
 }
 
-fn test_ownership_shadowed_owned_local_does_not_poison_outer() {
+fn test_ownership_scoped_owned_locals_do_not_poison_outer() {
 	v3_bin := ownership_build_v3()
-	ok := run_ownership_check(v3_bin, 'shadow_owned_local', "
+	ok := run_ownership_check(v3_bin, 'scoped_owned_local', "
 fn main() {
 	cond := true
 	s := 'outer'.to_owned()
 	if cond {
-		s := 'inner'.to_owned()
-		t := s
+		inner := 'inner'.to_owned()
+		t := inner
 		println(t)
 	}
 	println(s)
@@ -1108,15 +1153,15 @@ fn main() {
 ")
 	assert ok.exit_code == 0, ok.output
 
-	ok_guard := run_ownership_check(v3_bin, 'if_guard_shadow_owned_local', "
+	ok_guard := run_ownership_check(v3_bin, 'if_guard_scoped_owned_local', "
 fn maybe_string() ?string {
 	return 'inner'
 }
 
 fn main() {
 	s := 'outer'.to_owned()
-	if s := maybe_string() {
-		t := s
+	if inner := maybe_string() {
+		t := inner
 		println(t)
 	}
 	println(s)
@@ -1124,15 +1169,15 @@ fn main() {
 	")
 	assert ok_guard.exit_code == 0, ok_guard.output
 
-	fail_guard_outer_owned := run_ownership_check(v3_bin, 'if_guard_shadow_preserves_outer_owned', "
+	fail_guard_outer_owned := run_ownership_check(v3_bin, 'if_guard_preserves_outer_owned', "
 fn maybe_string() ?string {
 	return 'inner'
 }
 
 fn main() {
 	s := 'outer'.to_owned()
-	if s := maybe_string() {
-		println(s)
+	if inner := maybe_string() {
+		println(inner)
 	}
 	t := s
 	println(s)
@@ -1163,6 +1208,27 @@ fn main() {
 ')
 	assert fail_guard_owned_option_source.exit_code != 0
 	assert fail_guard_owned_option_source.output.contains('use of moved value: `opt`'), fail_guard_owned_option_source.output
+}
+
+fn test_ownership_rejects_local_shadowing() {
+	v3_bin := ownership_build_v3()
+	for i, body in [
+		'if true { s := "inner".to_owned(); _ = s }',
+		'if s := maybe_string() { _ = s }',
+		'keep(|_| if s := maybe_string() { _ = s })',
+	] {
+		fail := run_ownership_check_c_only(v3_bin, 'local_shadow_${i}', '
+fn maybe_string() ?string { return "inner" }
+fn keep(f fn (int)) { _ = f }
+fn main() {
+	s := "outer".to_owned()
+	${body}
+	println(s)
+}
+')
+		assert fail.exit_code != 0
+		assert fail.output.contains('redefinition of `s`'), fail.output
+	}
 }
 
 fn test_ownership_reassigned_reference_releases_old_borrow() {
@@ -1474,7 +1540,8 @@ fn pass(s string) string {
 	assert fail_param_expr_arg.exit_code != 0
 	assert fail_param_expr_arg.output.contains('use of moved value: `x`'), fail_param_expr_arg.output
 
-	ok_param_literal_after_owned_call := run_ownership_check(v3_bin, 'return_param_literal_after_owned_call', "
+	// Owning calls copy literals, so their returned copies keep move tracking.
+	fail_param_literal_after_owned_call := run_ownership_check(v3_bin, 'return_param_literal_after_owned_call', "
 fn main() {
 	owned := 'hello'.to_owned()
 	x := pass(owned)
@@ -1489,7 +1556,26 @@ fn pass(s string) string {
 	return s
 }
 	")
-	assert ok_param_literal_after_owned_call.exit_code == 0, ok_param_literal_after_owned_call.output
+	assert fail_param_literal_after_owned_call.exit_code != 0
+	assert fail_param_literal_after_owned_call.output.contains('use of moved value: `y`'), fail_param_literal_after_owned_call.output
+
+	ok_cloned_param_literal_after_owned_call := run_ownership_check(v3_bin, 'cloned_return_param_literal_after_owned_call', "
+fn main() {
+	owned := 'hello'.to_owned()
+	x := pass(owned)
+	println(x)
+	y := pass('literal')
+	z := y.clone()
+	assert z == y
+	assert unsafe { z.str != y.str }
+	println(y)
+}
+
+fn pass(s string) string {
+	return s
+}
+	")
+	assert ok_cloned_param_literal_after_owned_call.exit_code == 0, ok_cloned_param_literal_after_owned_call.output
 
 	ok_nested_fn_literal_return := run_ownership_check(v3_bin, 'nested_fn_literal_return_ignored', "
 fn run(f fn () string) {
@@ -2551,7 +2637,7 @@ fn make() string {
 	assert fail_array_pop_return_from_fn.exit_code != 0
 	assert fail_array_pop_return_from_fn.output.contains('use of moved value: `x`'), fail_array_pop_return_from_fn.output
 
-	fail_array_first_call_arg := run_ownership_check(v3_bin, 'array_first_call_arg_moves_element', '
+	ok_array_first_call_arg := run_ownership_check(v3_bin, 'array_first_call_arg_clones_element', '
 fn sink(s string) {
 	_ = s
 }
@@ -2563,8 +2649,21 @@ fn main() {
 	_ = x
 }
 ')
-	assert fail_array_first_call_arg.exit_code != 0
-	assert fail_array_first_call_arg.output.contains('use of moved value: `arr[0]`'), fail_array_first_call_arg.output
+	assert ok_array_first_call_arg.exit_code == 0, ok_array_first_call_arg.output
+
+	for method in ['first', 'last'] {
+		fail_accessor_result := run_ownership_check(v3_bin, 'array_${method}_result_is_owned', '
+fn main() {
+	arr := ["item".to_owned()]
+	x := arr.${method}()
+	y := x
+	println(x)
+	_ = y
+}
+')
+		assert fail_accessor_result.exit_code != 0
+		assert fail_accessor_result.output.contains('use of moved value: `x`'), fail_accessor_result.output
+	}
 
 	fail_array_first_discard := run_ownership_check(v3_bin, 'array_first_discard_moves_element', '
 fn main() {
@@ -2708,7 +2807,7 @@ fn main() {
 	fail_fixed_array_init := run_ownership_check(v3_bin, 'fixed_array_init_owned_elements', '
 fn main() {
 	s := "item".to_owned()
-	arr := [2]string{s, s}
+	arr := [2]string[s, s]
 	_ = arr
 }
 ')
@@ -2754,6 +2853,150 @@ fn main() {
 ')
 	assert fail_map_dynamic_index_read.exit_code != 0
 	assert fail_map_dynamic_index_read.output.contains('use of moved value: `m[k]`'), fail_map_dynamic_index_read.output
+}
+
+fn test_ownership_array_pop_call_arguments_update_storage() {
+	v3_bin := ownership_build_v3()
+	for method in ['pop', 'pop_left'] {
+		name := 'array_${method}_call_arg_storage'
+		ok := run_ownership_check(v3_bin, name, '
+fn sink(s string, original &u8) {
+	assert s.str == original
+	assert s == "item"
+}
+
+fn main() {
+	value := "item".to_owned()
+	original := value.str
+	mut arr := [value]
+	sink(arr.${method}(), original)
+	arr << "literal"
+	x := arr[0]
+	y := x
+	assert x == "literal"
+	_ = y
+}
+')
+		assert ok.exit_code == 0, ok.output
+		binary := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+		run := os.exec([binary])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == '', run.output
+
+		remaining := run_ownership_check(v3_bin, 'array_${method}_call_arg_retains_other_owner', '
+fn sink(s string) {
+	_ = s
+}
+
+fn main() {
+	mut arr := ["first".to_owned(), "last".to_owned()]
+	sink(arr.${method}())
+	x := arr[0]
+	y := x
+	println(x)
+	_ = y
+}
+')
+		assert remaining.exit_code != 0
+		assert remaining.output.contains('use of moved value: `x`'), remaining.output
+	}
+
+	for method in ['pop', 'pop_left'] {
+		name := 'array_${method}_literal_call_arg_clone'
+		code := '
+fn sink(s string) {
+	assert s == "seed" || s == "literal"
+}
+
+fn main() {
+	sink("seed".to_owned())
+	mut arr := ["literal"]
+	sink(arr.${method}())
+	assert arr.len == 0
+}
+'
+		cloned := run_ownership_check_c_only(v3_bin, name, code)
+		assert cloned.exit_code == 0, cloned.output
+		cloned_c_path := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out.c')
+		cloned_c := os.read_file(cloned_c_path) or { panic(err) }
+		assert cloned_c.contains('sink(string__clone(')
+		compiled := run_ownership_check(v3_bin, name, code)
+		assert compiled.exit_code == 0, compiled.output
+		binary := os.join_path(os.temp_dir(), 'v3_ownership_${name}_${os.getpid()}', 'out')
+		run := os.exec([binary])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == '', run.output
+
+		unknown := run_ownership_check(v3_bin, 'array_${method}_unknown_length_call_arg', '
+fn count() int {
+	return 0
+}
+
+fn sink(s string, original &u8) {
+	assert s.str == original
+	assert s == "item"
+}
+
+fn main() {
+	value := "item".to_owned()
+	original := value.str
+	mut arr := []string{len: count()}
+	arr << value
+	sink(arr.${method}(), original)
+	assert arr.len == 0
+}
+')
+		assert unknown.exit_code == 0, unknown.output
+		unknown_binary := os.join_path(os.temp_dir(), 'v3_ownership_array_${method}_unknown_length_call_arg_${os.getpid()}', 'out')
+		unknown_run := os.exec([unknown_binary])
+		assert unknown_run.exit_code == 0, unknown_run.output
+
+		consecutive := run_ownership_check(v3_bin, 'array_${method}_consecutive_call_args', '
+fn sink(s string, original &u8) {
+	assert s.str == original
+	assert s == "first" || s == "last"
+}
+
+fn main() {
+	first := "first".to_owned()
+	last := "last".to_owned()
+	first_ptr := first.str
+	last_ptr := last.str
+	mut arr := [first, last]
+	sink(arr.${method}(), ${if method == 'pop' { 'last_ptr' } else { 'first_ptr' }})
+	assert arr.len == 1
+	sink(arr.${method}(), ${if method == 'pop' { 'first_ptr' } else { 'last_ptr' }})
+	assert arr.len == 0
+	arr << "literal"
+	x := arr[0]
+	y := x
+	assert x == "literal"
+	_ = y
+}
+')
+		assert consecutive.exit_code == 0, consecutive.output
+		consecutive_binary := os.join_path(os.temp_dir(), 'v3_ownership_array_${method}_consecutive_call_args_${os.getpid()}', 'out')
+		consecutive_run := os.exec([consecutive_binary])
+		assert consecutive_run.exit_code == 0, consecutive_run.output
+	}
+
+	shifted := run_ownership_check(v3_bin, 'array_pop_left_cloned_call_arg_shifts_owner', '
+fn sink(s string) {
+	_ = s
+}
+
+fn main() {
+	sink("seed".to_owned())
+	mut arr := ["literal", "owned".to_owned()]
+	sink(arr.pop_left())
+	x := arr[0]
+	y := x
+	println(x)
+	_ = y
+}
+')
+	assert shifted.exit_code != 0
+	assert shifted.output.contains('use of moved value: `x`'), shifted.output
 }
 
 fn test_ownership_array_alias_builtin_method_keeps_receiver() {
@@ -2856,6 +3099,51 @@ fn main() {
 }
 ')
 	assert ok.exit_code == 0, ok.output
+}
+
+fn test_ownership_defer_in_unsafe_block_stays_unsafe_at_scope_exits() {
+	v3_bin := ownership_build_v3()
+	ok := run_ownership_check(v3_bin, 'defer_in_unsafe_block', '
+fn fill(n int) u8 {
+	mut last := u8(0)
+	unsafe {
+		p := malloc_noscan(16)
+		defer {
+			free(p)
+		}
+		if n > 8 {
+			return last
+		}
+		defer {
+			mut q := p + n
+			q[0] = 7
+			last = q[0]
+		}
+	}
+	return last
+}
+
+fn fill_at_fn_end(n int) {
+	p := unsafe { malloc_noscan(16) }
+	if n > 0 {
+		unsafe {
+			defer(fn) {
+				q := p + n
+				q[0] = 7
+				free(p)
+			}
+		}
+	}
+	println(n)
+}
+
+fn main() {
+	println(fill(2))
+	fill_at_fn_end(2)
+}
+')
+	assert ok.exit_code == 0, ok.output
+	assert !ok.output.contains('unsafe'), ok.output
 }
 
 fn test_ownership_returned_pointer_moves_aggregate_drop_state() {
@@ -3091,7 +3379,7 @@ fn dup(arr []string) {
 	fail_fixed_array_init_param := run_ownership_check(v3_bin, 'fixed_array_init_param_owned_element', '
 fn main() {
 	s := "field".to_owned()
-	dup([1]string{s})
+	dup([1]string[s])
 }
 
 fn dup(arr [1]string) {
@@ -3280,7 +3568,7 @@ fn main() {
 ')
 	assert distinct_field_moves.exit_code == 0, distinct_field_moves.output
 	distinct_field_binary := os.join_path(os.temp_dir(), 'v3_ownership_branch_distinct_field_moves_${os.getpid()}', 'out')
-	distinct_field_run := os.execute(distinct_field_binary)
+	distinct_field_run := os.exec([distinct_field_binary])
 	assert distinct_field_run.exit_code == 0, distinct_field_run.output
 	dropped_ids := distinct_field_run.output.fields()
 	assert '2' in dropped_ids, distinct_field_run.output

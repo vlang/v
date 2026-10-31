@@ -1,0 +1,17 @@
+query Pokemons {
+    pokemons {
+        id
+        name
+    }
+}
+
+query PokemonList {
+  pokemons(first: 151) {
+    name
+    classification
+    id
+    number
+    image
+    types
+  }
+}

@@ -1,6 +1,6 @@
 module main
 
-import json
+import json2
 
 struct Message {
 	content string
@@ -12,6 +12,6 @@ struct LinksData {
 }
 
 fn main() {
-	links_data := json.decode(LinksData, '{}')!
+	links_data := json2.decode[LinksData]('{}')!
 	println(links_data.messages)
 }

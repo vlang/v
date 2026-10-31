@@ -352,7 +352,7 @@
         {"type": "string", "minLength": 1, "maxLength": 128}
       ]
     },
-    "manual_green_publications": {"type": "integer", "minimum": 0}
+    "manual_green_publications": {"type": "integer", "minimum": 0, "maximum": 2147483647}
   },
   "allOf": [
     {

@@ -26,6 +26,7 @@ MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCjmcr22TtipralMR7+k8TWRzl8oFqY+lzdty1oFqsW
 
 	bytes := hex.decode(data)!
 	seq, n := Sequence.decode(bytes)!
+	assert n == bytes.len
 
 	els := seq.fields()
 	assert els.len == 2
@@ -66,6 +67,7 @@ MC4CAQAwBQYDK2VwBCIEINTuctv5E1hK1bbY8fdp+K06/nwoy/HU++CXqI9EdVhC
 	block, _ := pem.decode(data)?
 
 	seq, n := Sequence.decode(block.data)!
+	assert n == block.data.len
 
 	assert seq.payload()!.len == 46
 

@@ -1,0 +1,172 @@
+type Bytes = []u8
+type Counts8 = map[string]u8
+type Byte = u8
+
+struct Wide {
+	vals []u64
+}
+
+fn to_bytes[T](a []T) []u8 {
+	return []u8(a)
+}
+
+fn to_alias[T](a []T) Bytes {
+	return Bytes(a)
+}
+
+fn widen[T](a []T) []u64 {
+	return a
+}
+
+fn assign[T](a []T) []u64 {
+	mut b := []u64{}
+	b = a.clone()
+	return b
+}
+
+fn wrap[T](a []T) Wide {
+	return Wide{
+		vals: a
+	}
+}
+
+fn sum(a []i64) i64 {
+	mut s := i64(0)
+	for v in a {
+		s += v
+	}
+	return s
+}
+
+fn total[T](a []T) i64 {
+	return sum(a)
+}
+
+fn narrow_map[T](m map[string]T) Counts8 {
+	return Counts8(m)
+}
+
+fn widen_map[T](m map[string]T) map[string]u64 {
+	return m
+}
+
+fn map_total(m map[string]i64) i64 {
+	mut s := i64(0)
+	for _, v in m {
+		s += v
+	}
+	return s
+}
+
+fn total_map[T](m map[string]T) i64 {
+	return map_total(m)
+}
+
+fn opt[T](a ?[]T) ?[]u64 {
+	return a
+}
+
+fn res[T](a []T) ![]u64 {
+	return a
+}
+
+fn fixed[T](a [3]T) [3]u64 {
+	return a
+}
+
+fn nested[T](a [][]T) [][]u64 {
+	return a
+}
+
+fn take_mut(mut a []u64) {
+	a << 1
+}
+
+fn grow[T](mut a []T) {
+	take_mut(mut a)
+}
+
+fn append[T](a []T) [][]u64 {
+	mut out := [][]u64{}
+	out << a
+	return out
+}
+
+interface Speaker {
+	speak() string
+}
+
+struct Dog {}
+
+fn (d Dog) speak() string {
+	return 'woof'
+}
+
+// speakers converts each element, so any `T` that implements `Speaker` fits.
+fn speakers[T](a []T) []Speaker {
+	return a
+}
+
+// never_called has no instance, so nothing decides its layout.
+fn never_called[T](a []T) []u64 {
+	return []u64(a)
+}
+
+fn main() {
+	ints := [1, 2, 3]
+	i32s := [i32(1), 2]
+	u8s := [u8(1), 2]
+	bytes := [Byte(1), 2]
+	u64s := [u64(1), 2]
+	i64s := [i64(1), 2]
+	println(to_bytes(ints))
+	println(to_bytes(i32s))
+	println(to_bytes(u8s))
+	println(to_bytes(bytes))
+	println(to_alias(ints))
+	println(to_alias(u8s))
+	println(widen(u8s))
+	println(widen(u64s))
+	println(assign(i32s))
+	println(assign(u64s))
+	println(wrap(u8s))
+	println(wrap(u64s))
+	println(total(i32s))
+	println(total(i64s))
+	m_int := {
+		'a': 1
+	}
+	m_u8 := {
+		'a': u8(1)
+	}
+	m_u64 := {
+		'a': u64(1)
+	}
+	m_i32 := {
+		'a': i32(1)
+	}
+	m_i64 := {
+		'a': i64(1)
+	}
+	println(narrow_map(m_int))
+	println(narrow_map(m_u8))
+	println(widen_map(m_u8))
+	println(widen_map(m_u64))
+	println(total_map(m_i32))
+	println(total_map(m_i64))
+	println(opt[u8]([u8(1)]))
+	println(opt[u64]([u64(1)]))
+	println(res(u8s) or { [] })
+	println(res(u64s) or { [] })
+	println(fixed([u8(1), 2, 3]!))
+	println(fixed([u64(1), 2, 3]!))
+	println(nested([u8s]))
+	println(nested([u64s]))
+	mut grown_u8s := [u8(1)]
+	grow(mut grown_u8s)
+	mut grown_u64s := [u64(1)]
+	grow(mut grown_u64s)
+	println(append(u8s))
+	println(append(u64s))
+	println(speakers([Dog{}]).len)
+}

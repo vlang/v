@@ -1,0 +1,7 @@
+vlib/v/checker/tests/attribute_use_enum_err.vv:12:3: error: `.put` is not a value of enum `HttpMethod`
+   10 | }
+   11 | 
+   12 | @[Route('/x', method: .put)]
+      |   ~~~~~
+   13 | fn index() {
+   14 | }

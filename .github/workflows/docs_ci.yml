@@ -12,15 +12,13 @@ on:
       - '**.yml'
       - '!**/docs_ci.yml'
       - 'cmd/tools/vrepl.v'
-  pull_request:
-    paths-ignore:
-      - '**.yml'
-      - '!**/docs_ci.yml'
-      - 'cmd/tools/vrepl.v'
 
 concurrency:
   group: docs-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   check-markdown:
@@ -28,6 +26,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
         with:
           profile: docs
@@ -47,12 +47,15 @@ jobs:
       MOPTIONS: --diff --deprecated --relative-paths --exclude /vlib/v/ --exclude /builtin/linux_bare/ --exclude /testdata/ --exclude /tests/ --exclude /vlib/sokol/ --exclude /vlib/x/
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: make
 
       - name: Checkout previous v
         uses: actions/checkout@v7
         with:
+          persist-credentials: false
           repository: vlang/v
           ref: master
           path: pv
@@ -67,6 +70,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: make
       - name: Check doc comment dots for some key modules
@@ -82,6 +87,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: make
       - name: Install markdown dependency

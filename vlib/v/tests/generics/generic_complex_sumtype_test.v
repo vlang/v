@@ -2,8 +2,8 @@ struct Empty {}
 
 struct Node[T] {
 	value T
-	left  Tree[T]
-	right Tree[T]
+	left  &Tree[T]
+	right &Tree[T]
 }
 
 type Tree[T] = Empty | Node[T]
@@ -20,7 +20,7 @@ fn size[T](tree Tree[T]) int {
 fn insert[T](tree Tree[T], x T) Tree[T] {
 	return match tree {
 		Empty {
-			Node[T]{x, tree, tree}
+			Node[T]{x, &Tree[T](tree), &Tree[T](tree)}
 		}
 		Node[T] {
 			if x == tree.value {
@@ -28,12 +28,12 @@ fn insert[T](tree Tree[T], x T) Tree[T] {
 			} else if x < tree.value {
 				Node[T]{
 					...tree
-					left: insert[T](tree.left, x)
+					left: &Tree[T](insert[T](tree.left, x))
 				}
 			} else {
 				Node[T]{
 					...tree
-					right: insert[T](tree.right, x)
+					right: &Tree[T](insert[T](tree.right, x))
 				}
 			}
 		}
@@ -85,18 +85,18 @@ fn delete[T](tree Tree[T], x T) Tree[T] {
 				if x < tree.value {
 					Node[T]{
 						...tree
-						left: delete[T](tree.left, x)
+						left: &Tree[T](delete[T](tree.left, x))
 					}
 				} else if x > tree.value {
 					Node[T]{
 						...tree
-						right: delete[T](tree.right, x)
+						right: &Tree[T](delete[T](tree.right, x))
 					}
 				} else {
 					Node[T]{
 						...tree
 						value: min[T](tree.right)
-						right: delete[T](tree.right, min[T](tree.right))
+						right: &Tree[T](delete[T](tree.right, min[T](tree.right)))
 					}
 				}
 			} else if tree.left is Node[T] {
@@ -105,16 +105,16 @@ fn delete[T](tree Tree[T], x T) Tree[T] {
 				} else {
 					Node[T]{
 						...tree
-						left: delete[T](tree.left, x)
+						left: &Tree[T](delete[T](tree.left, x))
 					}
 				}
 			} else {
 				if x == tree.value {
-					tree.right
+					*tree.right
 				} else {
 					Node[T]{
 						...tree
-						right: delete[T](tree.right, x)
+						right: &Tree[T](delete[T](tree.right, x))
 					}
 				}
 			}

@@ -13,10 +13,19 @@ pub:
 	value     Primitive = Null{}
 }
 
+enum RelationLoadMode {
+	explicit
+	implicit
+}
+
 @[heap]
 pub struct QueryBuilder[T] {
 mut:
-	builder_error string
+	relation_load_mode RelationLoadMode
+	include_paths      [][]string
+	last_include_path  []string
+	hydration_fields   []string
+	builder_error      string
 pub mut:
 	meta                  []TableField
 	valid_sql_field_names []string
@@ -26,7 +35,47 @@ pub mut:
 	where                 QueryData
 }
 
-// new_query creates a new query object for struct `T`.
+// include loads a direct relationship when query runs. Unrequested relationships remain unloaded.
+pub fn (qb_ &QueryBuilder[T]) include(field string) !&QueryBuilder[T] {
+	if field.trim_space().len == 0 || field.contains('.') {
+		return error('include: expected a direct relationship name')
+	}
+	path := canonical_include_path[T]([field])!
+	mut qb := unsafe { qb_ }
+	qb.add_include_path(path)
+	qb.last_include_path = path
+	return qb
+}
+
+// then_include continues the last included path. query and reset clear that path.
+pub fn (qb_ &QueryBuilder[T]) then_include(field string) !&QueryBuilder[T] {
+	if qb_.last_include_path.len == 0 {
+		return error('then_include: call `include` before `then_include`')
+	}
+	if field.trim_space().len == 0 || field.contains('.') {
+		return error('then_include: expected a direct relationship name')
+	}
+	mut candidate := qb_.last_include_path.clone()
+	candidate << field
+	path := canonical_include_path[T](candidate)!
+	mut qb := unsafe { qb_ }
+	qb.add_include_path(path)
+	qb.last_include_path = path
+	return qb
+}
+
+fn (qb_ &QueryBuilder[T]) add_include_path(path []string) {
+	mut qb := unsafe { qb_ }
+	for existing in qb.include_paths {
+		if existing == path {
+			return
+		}
+	}
+	qb.include_paths << path
+}
+
+// new_query creates a query for struct `T` with explicit relationship loading.
+// Use include and then_include to request related data.
 @[deprecated: 'the Function Call API (orm_fn) will be moved out of the standard library after 2027-08-17; see https://github.com/vlang/v/issues/27001']
 @[deprecated_after: '2027-02-18']
 pub fn new_query[T](conn Connection) &QueryBuilder[T] {
@@ -57,17 +106,23 @@ pub fn (qb_ &QueryBuilder[T]) reset() &QueryBuilder[T] {
 	qb.data = QueryData{}
 	qb.where = QueryData{}
 	qb.builder_error = ''
+	qb.relation_load_mode = .explicit
+	qb.include_paths = [][]string{}
+	qb.last_include_path = []string{}
+	qb.hydration_fields = []string{}
 	return qb
 }
 
 fn (qb_ &QueryBuilder[T]) v_sql_select_fields(fields []string) &QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
+	qb.relation_load_mode = .implicit
 	qb.config.fields = fields.map(qb.v_sql_field_name(it))
 	return qb
 }
 
 fn (qb_ &QueryBuilder[T]) v_sql_select_qualified_fields(fields []string) &QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
+	qb.relation_load_mode = .implicit
 	mut select_fields := fields.map(qb.v_sql_field_name(it))
 	if select_fields.len == 0 {
 		for field in qb.meta {
@@ -343,7 +398,11 @@ fn (qb_ &QueryBuilder[T]) v_sql_update_many_and_zero(values []T, key_field strin
 }
 
 fn (qb &QueryBuilder[T]) v_sql_field_name(field string) string {
-	for meta_field in qb.meta {
+	return meta_sql_field_name(qb.meta, field)
+}
+
+fn meta_sql_field_name(meta []TableField, field string) string {
+	for meta_field in meta {
 		if meta_field.name == field || sql_field_name(meta_field) == field {
 			return sql_field_name(meta_field)
 		}
@@ -536,14 +595,21 @@ fn (mut ss MyTextScanner) next_tok() string {
 
 // parse_conditions update `qb` by parsing the `conds` string
 fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
-	// conditions: '(a > ? AND b <= ?) OR (c <> ? AND (x = ? OR y = ?))'
 	mut qb := unsafe { qb_ }
+	parse_query_conditions(conds, params, qb.meta, qb.valid_sql_field_names, qb.config.table,
+		@FN, mut qb.where)!
+}
+
+// The condition grammar depends on runtime metadata, not the model type. Keep one
+// parser body shared by all QueryBuilder specializations (issue #31282).
+fn parse_query_conditions(conds string, params []Primitive, meta []TableField, valid_sql_field_names []string, table Table, caller string, mut where QueryData) ! {
+	// conditions: '(a > ? AND b <= ?) OR (c <> ? AND (x = ? OR y = ?))'
 	if conds.len == 0 {
-		return error('${@FN}(): empty condition')
+		return error('${caller}(): empty condition')
 	}
 	required_params := conds.count('?')
 	if required_params != params.len {
-		parse_error('${@FN}(): condition requires `${required_params}` params but got `${params.len}`',
+		parse_error('${caller}(): condition requires `${required_params}` params but got `${params.len}`',
 			0, conds)!
 	}
 
@@ -565,20 +631,20 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
 		match state {
 			.field {
 				// only support valid field names
-				mapped_field := qb.v_sql_field_name(tok)
-				if mapped_field in qb.valid_sql_field_names {
+				mapped_field := meta_sql_field_name(meta, tok)
+				if mapped_field in valid_sql_field_names {
 					current_field = mapped_field
 					state = .op
 				} else if tok == '(' {
-					paren_stack << qb.where.fields.len
+					paren_stack << where.fields.len
 				} else if tok == ')' {
 					if paren_stack.len == 0 {
-						parse_error('${@FN}: unexpected `)`', s.last_tok_start, conds)!
+						parse_error('${caller}: unexpected `)`', s.last_tok_start, conds)!
 					}
 					start_pos := paren_stack.pop()
-					qb.where.parentheses << [start_pos, qb.where.fields.len - 1]
+					where.parentheses << [start_pos, where.fields.len - 1]
 				} else {
-					parse_error("${@FN}: table `${qb.config.table}` has no field's name: `${tok}`",
+					parse_error("${caller}: table `${table}` has no field's name: `${tok}`",
 						s.last_tok_start, conds)!
 				}
 			}
@@ -624,20 +690,20 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
 						OperationKind.not_in
 					}
 					else {
-						parse_error('${@FN}(): unsupported operator: `${tok}`', s.last_tok_start,
+						parse_error('${caller}(): unsupported operator: `${tok}`', s.last_tok_start,
 							conds)!
 						OperationKind.eq
 					}
 				}
 
 				if current_op in [.is_null, .is_not_null]! {
-					qb.where.fields << current_field
-					qb.where.kinds << current_op
+					where.fields << current_field
+					where.kinds << current_op
 					if is_first_field {
 						is_first_field = false
 					} else {
 						// skip first field
-						qb.where.is_and << current_is_and
+						where.is_and << current_is_and
 					}
 				}
 				state = .qm
@@ -645,22 +711,22 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
 			.qm {
 				if tok == '?' {
 					// finish an expr, update `qb`
-					qb.where.fields << current_field
-					qb.where.data << params[i]
-					qb.where.kinds << current_op
+					where.fields << current_field
+					where.data << params[i]
+					where.kinds << current_op
 					if is_first_field {
 						is_first_field = false
 					} else {
 						// skip first field
-						qb.where.is_and << current_is_and
+						where.is_and << current_is_and
 					}
 					i++
 				} else if tok == ')' {
 					if paren_stack.len == 0 {
-						parse_error('${@FN}: unexpected `)`', s.last_tok_start, conds)!
+						parse_error('${caller}: unexpected `)`', s.last_tok_start, conds)!
 					}
 					start_pos := paren_stack.pop()
-					qb.where.parentheses << [start_pos, qb.where.fields.len - 1]
+					where.parentheses << [start_pos, where.fields.len - 1]
 				} else if tok == 'AND' {
 					current_is_and = true
 					state = .field
@@ -674,7 +740,7 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
 					current_is_and = false
 					state = .field
 				} else {
-					parse_error('${@FN}(): unexpected `${tok}`, maybe `AND`,`OR`',
+					parse_error('${caller}(): unexpected `${tok}`, maybe `AND`,`OR`',
 						s.last_tok_start, conds)!
 				}
 			}
@@ -863,129 +929,291 @@ fn orm_attr_name_arg(attr string) (string, string, bool) {
 	return attr[..idx].trim_space(), attr[idx + 1..].trim_space(), true
 }
 
+// Shared type classification keeps each model field specialization small.
+fn orm_metadata_field_type(raw_type int, unaliased_type string, raw_name string, is_struct bool, is_enum bool) int {
+	core := unaliased_type.trim_left('?')
+	if typ := type_idx[core] {
+		return typ
+	}
+	if core == 'time.Time' || raw_name.contains('time.Time') {
+		return time_
+	}
+	if is_enum {
+		return enum_
+	}
+	if is_struct {
+		return type_idx['int']
+	}
+	return raw_type
+}
+
+fn orm_append_metadata_field(mut meta []TableField, name string, raw_type int, unaliased_type string, raw_name string, is_struct bool, is_enum bool, nullable bool, is_array bool, field_attrs []string) {
+	attrs, is_skip := orm_field_attrs_from_strings(field_attrs)
+	if is_skip {
+		return
+	}
+	meta << TableField{
+		name:     name
+		typ:      orm_metadata_field_type(raw_type, unaliased_type, raw_name, is_struct, is_enum)
+		nullable: nullable
+		attrs:    attrs
+		is_arr:   is_array || orm_type_name_is_optional_array(raw_name)
+	}
+}
+
 // struct_meta return a struct's fields info
 fn struct_meta[T]() []TableField {
 	mut meta := []TableField{}
 	$for field in T.fields {
 		$if field.is_embed {
 			$for sub in field.typ.fields {
-				attrs, is_skip := orm_field_attrs_from_strings(sub.attrs)
-				mut field_type := sub.typ
-				$if sub.unaliased_typ is bool || sub.unaliased_typ is ?bool {
-					field_type = type_idx['bool']
-				} $else $if sub.unaliased_typ is f32 || sub.unaliased_typ is ?f32 {
-					field_type = type_idx['f32']
-				} $else $if sub.unaliased_typ is f64 || sub.unaliased_typ is ?f64 {
-					field_type = type_idx['f64']
-				} $else $if sub.unaliased_typ is i8 || sub.unaliased_typ is ?i8 {
-					field_type = type_idx['i8']
-				} $else $if sub.unaliased_typ is i16 || sub.unaliased_typ is ?i16 {
-					field_type = type_idx['i16']
-				} $else $if sub.unaliased_typ is int || sub.unaliased_typ is ?int {
-					field_type = type_idx['int']
-				} $else $if sub.unaliased_typ is i64 || sub.unaliased_typ is ?i64 {
-					field_type = type_idx['i64']
-				} $else $if sub.unaliased_typ is u8 || sub.unaliased_typ is ?u8 {
-					field_type = type_idx['u8']
-				} $else $if sub.unaliased_typ is u16 || sub.unaliased_typ is ?u16 {
-					field_type = type_idx['u16']
-				} $else $if sub.unaliased_typ is u32 || sub.unaliased_typ is ?u32 {
-					field_type = type_idx['u32']
-				} $else $if sub.unaliased_typ is u64 || sub.unaliased_typ is ?u64 {
-					field_type = type_idx['u64']
-				} $else $if sub.unaliased_typ is string || sub.unaliased_typ is ?string {
-					field_type = type_string
-				} $else $if sub.unaliased_typ is time.Time || sub.unaliased_typ is ?time.Time {
-					field_type = time_
-				} $else $if sub.unaliased_typ is $enum {
-					field_type = enum_
-				} $else {
-					if typeof(sub).name.contains('time.Time') {
-						field_type = time_
-					} else if sub.is_struct {
-						field_type = type_idx['int']
-					} else if sub.is_enum {
-						field_type = enum_
-					}
+				mut is_arr := false
+				$if sub.unaliased_typ is $array {
+					is_arr = true
 				}
-
-				if !is_skip {
-					mut is_arr := false
-					$if sub.unaliased_typ is $array {
-						is_arr = true
-					}
-					if orm_type_name_is_optional_array(typeof(sub).name) {
-						is_arr = true
-					}
-					meta << TableField{
-						name:     '${field.name}.${sub.name}'
-						typ:      field_type
-						nullable: sub.is_option
-						attrs:    attrs
-						is_arr:   is_arr
-					}
-				}
+				orm_append_metadata_field(mut meta, '${field.name}.${sub.name}', sub.typ,
+					typeof(sub).unaliased_typ, typeof(sub).name, sub.is_struct, sub.is_enum,
+					sub.is_option, is_arr, sub.attrs)
 			}
 		} $else {
-			attrs, is_skip := orm_field_attrs_from_strings(field.attrs)
-			mut field_type := field.typ
-			$if field.unaliased_typ is bool || field.unaliased_typ is ?bool {
-				field_type = type_idx['bool']
-			} $else $if field.unaliased_typ is f32 || field.unaliased_typ is ?f32 {
-				field_type = type_idx['f32']
-			} $else $if field.unaliased_typ is f64 || field.unaliased_typ is ?f64 {
-				field_type = type_idx['f64']
-			} $else $if field.unaliased_typ is i8 || field.unaliased_typ is ?i8 {
-				field_type = type_idx['i8']
-			} $else $if field.unaliased_typ is i16 || field.unaliased_typ is ?i16 {
-				field_type = type_idx['i16']
-			} $else $if field.unaliased_typ is int || field.unaliased_typ is ?int {
-				field_type = type_idx['int']
-			} $else $if field.unaliased_typ is i64 || field.unaliased_typ is ?i64 {
-				field_type = type_idx['i64']
-			} $else $if field.unaliased_typ is u8 || field.unaliased_typ is ?u8 {
-				field_type = type_idx['u8']
-			} $else $if field.unaliased_typ is u16 || field.unaliased_typ is ?u16 {
-				field_type = type_idx['u16']
-			} $else $if field.unaliased_typ is u32 || field.unaliased_typ is ?u32 {
-				field_type = type_idx['u32']
-			} $else $if field.unaliased_typ is u64 || field.unaliased_typ is ?u64 {
-				field_type = type_idx['u64']
-			} $else $if field.unaliased_typ is string || field.unaliased_typ is ?string {
-				field_type = type_string
-			} $else $if field.unaliased_typ is time.Time || field.unaliased_typ is ?time.Time {
-				field_type = time_
-			} $else $if field.unaliased_typ is $enum {
-				field_type = enum_
-			} $else {
-				if typeof(field).name.contains('time.Time') {
-					field_type = time_
-				} else if field.is_struct {
-					field_type = type_idx['int']
-				} else if field.is_enum {
-					field_type = enum_
-				}
+			mut is_arr := false
+			$if field.unaliased_typ is $array {
+				is_arr = true
 			}
-
-			if !is_skip {
-				mut is_arr := false
-				$if field.unaliased_typ is $array {
-					is_arr = true
-				}
-				if orm_type_name_is_optional_array(typeof(field).name) {
-					is_arr = true
-				}
-				meta << TableField{
-					name:     field.name
-					typ:      field_type
-					nullable: field.is_option
-					attrs:    attrs
-					is_arr:   is_arr
-				}
-			}
+			orm_append_metadata_field(mut meta, field.name, field.typ,
+				typeof(field).unaliased_typ, typeof(field).name, field.is_struct, field.is_enum,
+				field.is_option, is_arr, field.attrs)
 		}
 	}
 	return meta
+}
+
+// Keep primitive conversion outside the model field loop: every model shares these helpers.
+fn row_primitive_to_i8(value Primitive) i8 {
+	return match value {
+		i8 { i8(value) }
+		i16 { i8(value) }
+		int { i8(value) }
+		i64 { i8(value) }
+		u8 { i8(value) }
+		u16 { i8(value) }
+		u32 { i8(value) }
+		u64 { i8(value) }
+		bool { i8(value) }
+		f32 { i8(value) }
+		f64 { i8(value) }
+		else { 0 }
+	}
+}
+
+fn row_primitive_to_i16(value Primitive) i16 {
+	return match value {
+		i8 { i16(value) }
+		i16 { i16(value) }
+		int { i16(value) }
+		i64 { i16(value) }
+		u8 { i16(value) }
+		u16 { i16(value) }
+		u32 { i16(value) }
+		u64 { i16(value) }
+		bool { i16(value) }
+		f32 { i16(value) }
+		f64 { i16(value) }
+		else { 0 }
+	}
+}
+
+fn row_primitive_to_int(value Primitive) int {
+	return match value {
+		i8 { int(value) }
+		i16 { int(value) }
+		int { int(value) }
+		i64 { int(value) }
+		u8 { int(value) }
+		u16 { int(value) }
+		u32 { int(value) }
+		u64 { int(value) }
+		bool { int(value) }
+		f32 { int(value) }
+		f64 { int(value) }
+		else { 0 }
+	}
+}
+
+fn row_primitive_to_i64(value Primitive) i64 {
+	return match value {
+		i8 { i64(value) }
+		i16 { i64(value) }
+		int { i64(value) }
+		i64 { i64(value) }
+		u8 { i64(value) }
+		u16 { i64(value) }
+		u32 { i64(value) }
+		u64 { i64(value) }
+		bool { i64(value) }
+		f32 { i64(value) }
+		f64 { i64(value) }
+		else { 0 }
+	}
+}
+
+fn row_primitive_to_u8(value Primitive) u8 {
+	return match value {
+		i8 { u8(value) }
+		i16 { u8(value) }
+		int { u8(value) }
+		i64 { u8(value) }
+		u8 { u8(value) }
+		u16 { u8(value) }
+		u32 { u8(value) }
+		u64 { u8(value) }
+		bool { u8(value) }
+		f32 { u8(value) }
+		f64 { u8(value) }
+		else { 0 }
+	}
+}
+
+fn row_primitive_to_u16(value Primitive) u16 {
+	return match value {
+		i8 { u16(value) }
+		i16 { u16(value) }
+		int { u16(value) }
+		i64 { u16(value) }
+		u8 { u16(value) }
+		u16 { u16(value) }
+		u32 { u16(value) }
+		u64 { u16(value) }
+		bool { u16(value) }
+		f32 { u16(value) }
+		f64 { u16(value) }
+		else { 0 }
+	}
+}
+
+fn row_primitive_to_u32(value Primitive) u32 {
+	return match value {
+		i8 { u32(value) }
+		i16 { u32(value) }
+		int { u32(value) }
+		i64 { u32(value) }
+		u8 { u32(value) }
+		u16 { u32(value) }
+		u32 { u32(value) }
+		u64 { u32(value) }
+		bool { u32(value) }
+		f32 { u32(value) }
+		f64 { u32(value) }
+		else { 0 }
+	}
+}
+
+fn row_primitive_to_u64(value Primitive) u64 {
+	return match value {
+		i8 { u64(value) }
+		i16 { u64(value) }
+		int { u64(value) }
+		i64 { u64(value) }
+		u8 { u64(value) }
+		u16 { u64(value) }
+		u32 { u64(value) }
+		u64 { u64(value) }
+		bool { u64(value) }
+		f32 { u64(value) }
+		f64 { u64(value) }
+		else { 0 }
+	}
+}
+
+fn row_primitive_to_f32(value Primitive) f32 {
+	return match value {
+		i8 { f32(value) }
+		i16 { f32(value) }
+		int { f32(value) }
+		i64 { f32(value) }
+		u8 { f32(value) }
+		u16 { f32(value) }
+		u32 { f32(value) }
+		u64 { f32(value) }
+		bool { f32(value) }
+		f32 { value }
+		f64 { f32(value) }
+		else { 0 }
+	}
+}
+
+fn row_primitive_to_f64(value Primitive) f64 {
+	return match value {
+		i8 { f64(value) }
+		i16 { f64(value) }
+		int { f64(value) }
+		i64 { f64(value) }
+		u8 { f64(value) }
+		u16 { f64(value) }
+		u32 { f64(value) }
+		u64 { f64(value) }
+		bool { f64(value) }
+		f32 { f64(value) }
+		f64 { value }
+		else { 0 }
+	}
+}
+
+fn row_primitive_to_bool(value Primitive) bool {
+	return match value {
+		i8 { value != 0 }
+		i16 { value != 0 }
+		int { value != 0 }
+		i64 { value != 0 }
+		u8 { value != 0 }
+		u16 { value != 0 }
+		u32 { value != 0 }
+		u64 { value != 0 }
+		bool { value }
+		f32 { value != 0 }
+		f64 { value != 0 }
+		else { false }
+	}
+}
+
+// Keep the remaining dynamic sum type casts outside model field loops. Inlining
+// `value as Type` into map_row would repeat the complete cast error switch for
+// every string and time field in every model.
+@[noinline]
+fn row_primitive_to_string(value Primitive) string {
+	return value as string
+}
+
+@[noinline]
+fn row_primitive_to_time(value Primitive) time.Time {
+	return value as time.Time
+}
+
+@[noinline]
+fn row_primitive_to_time_string(value Primitive) !time.Time {
+	return time.parse(value as string)!
+}
+
+struct MappedRowField {
+	typ   int
+	index int
+}
+
+// row_field_for_mapping shares metadata lookup across model field specializations
+// and avoids allocating a filtered metadata array for every field of every row.
+fn row_field_for_mapping(meta []TableField, fields []string, hydration_fields []string, name string) ?MappedRowField {
+	for field in meta {
+		if field.name != name {
+			continue
+		}
+		column := sql_field_name(field)
+		index := fields.index(column)
+		if index < 0 || column in hydration_fields {
+			return none
+		}
+		return MappedRowField{ typ: field.typ, index: index }
+	}
+	return none
 }
 
 // map_row map a row result into a struct
@@ -996,191 +1224,42 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 		$if field.is_embed {
 			mut embedded := instance.$(field.name)
 			$for sub in field.typ.fields {
-				mut m := TableField{}
-				mm := qb.meta.filter(it.name == '${field.name}.${sub.name}')
-				if mm.len != 0 {
-					m = mm[0]
-					index := qb.config.fields.index(sql_field_name(m))
-					if index >= 0 {
-						value := row[index]
+				if mapped := row_field_for_mapping(qb.meta, qb.config.fields, qb.hydration_fields, '${field.name}.${sub.name}') {
+					value := row[mapped.index]
 
-						if value != Primitive(Null{}) {
-							$if sub.unaliased_typ is i8 || sub.unaliased_typ is ?i8 {
-								embedded.$(sub.name) = match value {
-									i8 { i8(value) }
-									i16 { i8(value) }
-									int { i8(value) }
-									i64 { i8(value) }
-									u8 { i8(value) }
-									u16 { i8(value) }
-									u32 { i8(value) }
-									u64 { i8(value) }
-									bool { i8(value) }
-									f32 { i8(value) }
-									f64 { i8(value) }
-									else { 0 }
-								}
-							} $else $if sub.unaliased_typ is i16 || sub.unaliased_typ is ?i16 {
-								embedded.$(sub.name) = match value {
-									i8 { i16(value) }
-									i16 { i16(value) }
-									int { i16(value) }
-									i64 { i16(value) }
-									u8 { i16(value) }
-									u16 { i16(value) }
-									u32 { i16(value) }
-									u64 { i16(value) }
-									bool { i16(value) }
-									f32 { i16(value) }
-									f64 { i16(value) }
-									else { 0 }
-								}
-							} $else $if sub.unaliased_typ is int || sub.unaliased_typ is ?int {
-								embedded.$(sub.name) = match value {
-									i8 { int(value) }
-									i16 { int(value) }
-									int { int(value) }
-									i64 { int(value) }
-									u8 { int(value) }
-									u16 { int(value) }
-									u32 { int(value) }
-									u64 { int(value) }
-									bool { int(value) }
-									f32 { int(value) }
-									f64 { int(value) }
-									else { 0 }
-								}
-							} $else $if sub.unaliased_typ is $enum {
-								embedded = orm_embedded_enum_from_primitive(embedded, sub.name,
-									value)
-							} $else $if sub.unaliased_typ is i64 || sub.unaliased_typ is ?i64 {
-								embedded.$(sub.name) = match value {
-									i8 { i64(value) }
-									i16 { i64(value) }
-									int { i64(value) }
-									i64 { i64(value) }
-									u8 { i64(value) }
-									u16 { i64(value) }
-									u32 { i64(value) }
-									u64 { i64(value) }
-									bool { i64(value) }
-									f32 { i64(value) }
-									f64 { i64(value) }
-									else { 0 }
-								}
-							} $else $if sub.unaliased_typ is u8 || sub.unaliased_typ is ?u8 {
-								embedded.$(sub.name) = match value {
-									i8 { u8(value) }
-									i16 { u8(value) }
-									int { u8(value) }
-									i64 { u8(value) }
-									u8 { u8(value) }
-									u16 { u8(value) }
-									u32 { u8(value) }
-									u64 { u8(value) }
-									bool { u8(value) }
-									f32 { u8(value) }
-									f64 { u8(value) }
-									else { 0 }
-								}
-							} $else $if sub.unaliased_typ is u16 || sub.unaliased_typ is ?u16 {
-								embedded.$(sub.name) = match value {
-									i8 { u16(value) }
-									i16 { u16(value) }
-									int { u16(value) }
-									i64 { u16(value) }
-									u8 { u16(value) }
-									u16 { u16(value) }
-									u32 { u16(value) }
-									u64 { u16(value) }
-									bool { u16(value) }
-									f32 { u16(value) }
-									f64 { u16(value) }
-									else { 0 }
-								}
-							} $else $if sub.unaliased_typ is u32 || sub.unaliased_typ is ?u32 {
-								embedded.$(sub.name) = match value {
-									i8 { u32(value) }
-									i16 { u32(value) }
-									int { u32(value) }
-									i64 { u32(value) }
-									u8 { u32(value) }
-									u16 { u32(value) }
-									u32 { u32(value) }
-									u64 { u32(value) }
-									bool { u32(value) }
-									f32 { u32(value) }
-									f64 { u32(value) }
-									else { 0 }
-								}
-							} $else $if sub.unaliased_typ is u64 || sub.unaliased_typ is ?u64 {
-								embedded.$(sub.name) = match value {
-									i8 { u64(value) }
-									i16 { u64(value) }
-									int { u64(value) }
-									i64 { u64(value) }
-									u8 { u64(value) }
-									u16 { u64(value) }
-									u32 { u64(value) }
-									u64 { u64(value) }
-									bool { u64(value) }
-									f32 { u64(value) }
-									f64 { u64(value) }
-									else { 0 }
-								}
-							} $else $if sub.unaliased_typ is f32 || sub.unaliased_typ is ?f32 {
-								embedded.$(sub.name) = match value {
-									i8 { f32(value) }
-									i16 { f32(value) }
-									int { f32(value) }
-									i64 { f32(value) }
-									u8 { f32(value) }
-									u16 { f32(value) }
-									u32 { f32(value) }
-									u64 { f32(value) }
-									bool { f32(value) }
-									f32 { value }
-									f64 { f32(value) }
-									else { 0 }
-								}
-							} $else $if sub.unaliased_typ is f64 || sub.unaliased_typ is ?f64 {
-								embedded.$(sub.name) = match value {
-									i8 { f64(value) }
-									i16 { f64(value) }
-									int { f64(value) }
-									i64 { f64(value) }
-									u8 { f64(value) }
-									u16 { f64(value) }
-									u32 { f64(value) }
-									u64 { f64(value) }
-									bool { f64(value) }
-									f32 { f64(value) }
-									f64 { value }
-									else { 0 }
-								}
-							} $else $if sub.unaliased_typ is bool || sub.unaliased_typ is ?bool {
-								embedded.$(sub.name) = match value {
-									i8 { value != 0 }
-									i16 { value != 0 }
-									int { value != 0 }
-									i64 { value != 0 }
-									u8 { value != 0 }
-									u16 { value != 0 }
-									u32 { value != 0 }
-									u64 { value != 0 }
-									bool { value }
-									f32 { value != 0 }
-									f64 { value != 0 }
-									else { false }
-								}
-							} $else $if sub.unaliased_typ is string || sub.unaliased_typ is ?string {
-								embedded.$(sub.name) = value as string
-							} $else $if sub.unaliased_typ is time.Time || sub.unaliased_typ is ?time.Time {
-								if m.typ == time_ {
-									embedded.$(sub.name) = value as time.Time
-								} else if m.typ == type_string {
-									embedded.$(sub.name) = time.parse(value as string)!
-								}
+					if value != Primitive(Null{}) {
+						$if sub.unaliased_typ is i8 || sub.unaliased_typ is ?i8 {
+							embedded.$(sub.name) = row_primitive_to_i8(value)
+						} $else $if sub.unaliased_typ is i16 || sub.unaliased_typ is ?i16 {
+							embedded.$(sub.name) = row_primitive_to_i16(value)
+						} $else $if sub.unaliased_typ is int || sub.unaliased_typ is ?int {
+							embedded.$(sub.name) = row_primitive_to_int(value)
+						} $else $if sub.unaliased_typ is $enum {
+							embedded = orm_embedded_enum_from_primitive(embedded, sub.name,
+								value)
+						} $else $if sub.unaliased_typ is i64 || sub.unaliased_typ is ?i64 {
+							embedded.$(sub.name) = row_primitive_to_i64(value)
+						} $else $if sub.unaliased_typ is u8 || sub.unaliased_typ is ?u8 {
+							embedded.$(sub.name) = row_primitive_to_u8(value)
+						} $else $if sub.unaliased_typ is u16 || sub.unaliased_typ is ?u16 {
+							embedded.$(sub.name) = row_primitive_to_u16(value)
+						} $else $if sub.unaliased_typ is u32 || sub.unaliased_typ is ?u32 {
+							embedded.$(sub.name) = row_primitive_to_u32(value)
+						} $else $if sub.unaliased_typ is u64 || sub.unaliased_typ is ?u64 {
+							embedded.$(sub.name) = row_primitive_to_u64(value)
+						} $else $if sub.unaliased_typ is f32 || sub.unaliased_typ is ?f32 {
+							embedded.$(sub.name) = row_primitive_to_f32(value)
+						} $else $if sub.unaliased_typ is f64 || sub.unaliased_typ is ?f64 {
+							embedded.$(sub.name) = row_primitive_to_f64(value)
+						} $else $if sub.unaliased_typ is bool || sub.unaliased_typ is ?bool {
+							embedded.$(sub.name) = row_primitive_to_bool(value)
+						} $else $if sub.unaliased_typ is string || sub.unaliased_typ is ?string {
+							embedded.$(sub.name) = row_primitive_to_string(value)
+						} $else $if sub.unaliased_typ is time.Time || sub.unaliased_typ is ?time.Time {
+							if mapped.typ == time_ {
+								embedded.$(sub.name) = row_primitive_to_time(value)
+							} else if mapped.typ == type_string {
+								embedded.$(sub.name) = row_primitive_to_time_string(value)!
 							}
 						}
 					}
@@ -1188,196 +1267,47 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 			}
 			instance.$(field.name) = embedded
 		} $else {
-			mut m := TableField{}
-			mm := qb.meta.filter(it.name == field.name)
-			if mm.len != 0 {
-				m = mm[0]
-				index := qb.config.fields.index(sql_field_name(m))
-				if index >= 0 {
-					value := row[index]
+			if mapped := row_field_for_mapping(qb.meta, qb.config.fields, qb.hydration_fields, field.name) {
+				value := row[mapped.index]
 
-					$if field.typ is $option {
-						if value == Primitive(Null{}) {
-							instance.$(field.name) = none
-						}
+				$if field.typ is $option {
+					if value == Primitive(Null{}) {
+						instance.$(field.name) = none
 					}
-					if value != Primitive(Null{}) {
-						$if field.unaliased_typ is i8 || field.unaliased_typ is ?i8 {
-							instance.$(field.name) = match value {
-								i8 { i8(value) }
-								i16 { i8(value) }
-								int { i8(value) }
-								i64 { i8(value) }
-								u8 { i8(value) }
-								u16 { i8(value) }
-								u32 { i8(value) }
-								u64 { i8(value) }
-								bool { i8(value) }
-								f32 { i8(value) }
-								f64 { i8(value) }
-								else { 0 }
-							}
-						} $else $if field.unaliased_typ is i16 || field.unaliased_typ is ?i16 {
-							instance.$(field.name) = match value {
-								i8 { i16(value) }
-								i16 { i16(value) }
-								int { i16(value) }
-								i64 { i16(value) }
-								u8 { i16(value) }
-								u16 { i16(value) }
-								u32 { i16(value) }
-								u64 { i16(value) }
-								bool { i16(value) }
-								f32 { i16(value) }
-								f64 { i16(value) }
-								else { 0 }
-							}
-						} $else $if field.unaliased_typ is int || field.unaliased_typ is ?int {
-							instance.$(field.name) = match value {
-								i8 { int(value) }
-								i16 { int(value) }
-								int { int(value) }
-								i64 { int(value) }
-								u8 { int(value) }
-								u16 { int(value) }
-								u32 { int(value) }
-								u64 { int(value) }
-								bool { int(value) }
-								f32 { int(value) }
-								f64 { int(value) }
-								else { 0 }
-							}
-						} $else $if field.unaliased_typ is $enum {
-							instance.$(field.name) = orm_enum_i64_from_primitive(value,
-								instance.$(field.name))
-						} $else $if field.unaliased_typ is i64 || field.unaliased_typ is ?i64 {
-							instance.$(field.name) = match value {
-								i8 { i64(value) }
-								i16 { i64(value) }
-								int { i64(value) }
-								i64 { i64(value) }
-								u8 { i64(value) }
-								u16 { i64(value) }
-								u32 { i64(value) }
-								u64 { i64(value) }
-								bool { i64(value) }
-								f32 { i64(value) }
-								f64 { i64(value) }
-								else { 0 }
-							}
-						} $else $if field.unaliased_typ is u8 || field.unaliased_typ is ?u8 {
-							instance.$(field.name) = match value {
-								i8 { u8(value) }
-								i16 { u8(value) }
-								int { u8(value) }
-								i64 { u8(value) }
-								u8 { u8(value) }
-								u16 { u8(value) }
-								u32 { u8(value) }
-								u64 { u8(value) }
-								bool { u8(value) }
-								f32 { u8(value) }
-								f64 { u8(value) }
-								else { 0 }
-							}
-						} $else $if field.unaliased_typ is u16 || field.unaliased_typ is ?u16 {
-							instance.$(field.name) = match value {
-								i8 { u16(value) }
-								i16 { u16(value) }
-								int { u16(value) }
-								i64 { u16(value) }
-								u8 { u16(value) }
-								u16 { u16(value) }
-								u32 { u16(value) }
-								u64 { u16(value) }
-								bool { u16(value) }
-								f32 { u16(value) }
-								f64 { u16(value) }
-								else { 0 }
-							}
-						} $else $if field.unaliased_typ is u32 || field.unaliased_typ is ?u32 {
-							instance.$(field.name) = match value {
-								i8 { u32(value) }
-								i16 { u32(value) }
-								int { u32(value) }
-								i64 { u32(value) }
-								u8 { u32(value) }
-								u16 { u32(value) }
-								u32 { u32(value) }
-								u64 { u32(value) }
-								bool { u32(value) }
-								f32 { u32(value) }
-								f64 { u32(value) }
-								else { 0 }
-							}
-						} $else $if field.unaliased_typ is u64 || field.unaliased_typ is ?u64 {
-							instance.$(field.name) = match value {
-								i8 { u64(value) }
-								i16 { u64(value) }
-								int { u64(value) }
-								i64 { u64(value) }
-								u8 { u64(value) }
-								u16 { u64(value) }
-								u32 { u64(value) }
-								u64 { u64(value) }
-								bool { u64(value) }
-								f32 { u64(value) }
-								f64 { u64(value) }
-								else { 0 }
-							}
-						} $else $if field.unaliased_typ is f32 || field.unaliased_typ is ?f32 {
-							instance.$(field.name) = match value {
-								i8 { f32(value) }
-								i16 { f32(value) }
-								int { f32(value) }
-								i64 { f32(value) }
-								u8 { f32(value) }
-								u16 { f32(value) }
-								u32 { f32(value) }
-								u64 { f32(value) }
-								bool { f32(value) }
-								f32 { value }
-								f64 { f32(value) }
-								else { 0 }
-							}
-						} $else $if field.unaliased_typ is f64 || field.unaliased_typ is ?f64 {
-							instance.$(field.name) = match value {
-								i8 { f64(value) }
-								i16 { f64(value) }
-								int { f64(value) }
-								i64 { f64(value) }
-								u8 { f64(value) }
-								u16 { f64(value) }
-								u32 { f64(value) }
-								u64 { f64(value) }
-								bool { f64(value) }
-								f32 { f64(value) }
-								f64 { value }
-								else { 0 }
-							}
-						} $else $if field.unaliased_typ is bool || field.unaliased_typ is ?bool {
-							instance.$(field.name) = match value {
-								i8 { value != 0 }
-								i16 { value != 0 }
-								int { value != 0 }
-								i64 { value != 0 }
-								u8 { value != 0 }
-								u16 { value != 0 }
-								u32 { value != 0 }
-								u64 { value != 0 }
-								bool { value }
-								f32 { value != 0 }
-								f64 { value != 0 }
-								else { false }
-							}
-						} $else $if field.unaliased_typ is string || field.unaliased_typ is ?string {
-							instance.$(field.name) = value as string
-						} $else $if field.unaliased_typ is time.Time || field.unaliased_typ is ?time.Time {
-							if m.typ == time_ {
-								instance.$(field.name) = value as time.Time
-							} else if m.typ == type_string {
-								instance.$(field.name) = time.parse(value as string)!
-							}
+				}
+				if value != Primitive(Null{}) {
+					$if field.unaliased_typ is i8 || field.unaliased_typ is ?i8 {
+						instance.$(field.name) = row_primitive_to_i8(value)
+					} $else $if field.unaliased_typ is i16 || field.unaliased_typ is ?i16 {
+						instance.$(field.name) = row_primitive_to_i16(value)
+					} $else $if field.unaliased_typ is int || field.unaliased_typ is ?int {
+						instance.$(field.name) = row_primitive_to_int(value)
+					} $else $if field.unaliased_typ is $enum {
+						instance.$(field.name) = orm_enum_i64_from_primitive(value,
+							instance.$(field.name))
+					} $else $if field.unaliased_typ is i64 || field.unaliased_typ is ?i64 {
+						instance.$(field.name) = row_primitive_to_i64(value)
+					} $else $if field.unaliased_typ is u8 || field.unaliased_typ is ?u8 {
+						instance.$(field.name) = row_primitive_to_u8(value)
+					} $else $if field.unaliased_typ is u16 || field.unaliased_typ is ?u16 {
+						instance.$(field.name) = row_primitive_to_u16(value)
+					} $else $if field.unaliased_typ is u32 || field.unaliased_typ is ?u32 {
+						instance.$(field.name) = row_primitive_to_u32(value)
+					} $else $if field.unaliased_typ is u64 || field.unaliased_typ is ?u64 {
+						instance.$(field.name) = row_primitive_to_u64(value)
+					} $else $if field.unaliased_typ is f32 || field.unaliased_typ is ?f32 {
+						instance.$(field.name) = row_primitive_to_f32(value)
+					} $else $if field.unaliased_typ is f64 || field.unaliased_typ is ?f64 {
+						instance.$(field.name) = row_primitive_to_f64(value)
+					} $else $if field.unaliased_typ is bool || field.unaliased_typ is ?bool {
+						instance.$(field.name) = row_primitive_to_bool(value)
+					} $else $if field.unaliased_typ is string || field.unaliased_typ is ?string {
+						instance.$(field.name) = row_primitive_to_string(value)
+					} $else $if field.unaliased_typ is time.Time || field.unaliased_typ is ?time.Time {
+						if mapped.typ == time_ {
+							instance.$(field.name) = row_primitive_to_time(value)
+						} else if mapped.typ == type_string {
+							instance.$(field.name) = row_primitive_to_time_string(value)!
 						}
 					}
 				}
@@ -1388,41 +1318,48 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 	mut conn := qb.conn
 	$for field in T.fields {
 		field_type_name := typeof(field).name
-		$if field.unaliased_typ is $array {
-			fkey := orm_field_fkey(field.attrs)
-			if fkey.len > 0 && parent_key != Primitive(Null{}) {
-				instance.$(field.name) = query_relation_array_like(mut conn, parent_key, fkey,
-					instance.$(field.name))!
-			}
-		} $else $if field.typ is $option {
-			if orm_type_name_is_optional_array(field_type_name) {
+		if relation_should_load(qb.relation_load_mode, qb.include_paths, field.name) {
+			child_paths := include_child_paths(qb.include_paths, field.name)
+			$if field.unaliased_typ is $array {
 				fkey := orm_field_fkey(field.attrs)
 				if fkey.len > 0 && parent_key != Primitive(Null{}) {
-					instance.$(field.name) = query_relation_optional_array_like(mut conn,
-						parent_key, fkey, instance.$(field.name))!
+					instance.$(field.name) = query_relation_array_like(mut conn, parent_key, fkey,
+						qb.relation_load_mode, child_paths, instance.$(field.name))!
 				}
-			} else if field.is_struct && !orm_type_name_is_time(field_type_name) {
-				mm := qb.meta.filter(it.name == field.name)
-				if mm.len != 0 {
-					index := qb.config.fields.index(sql_field_name(mm[0]))
-					if index >= 0 && index < row.len
-						&& orm_relation_lookup_key_has_value(row[index]) {
-						instance.$(field.name) = query_relation_one_optional_like(mut conn,
-							row[index], instance.$(field.name))
+			} $else $if field.typ is $option {
+				if orm_type_name_is_optional_array(field_type_name) {
+					fkey := orm_field_fkey(field.attrs)
+					if fkey.len > 0 && parent_key != Primitive(Null{}) {
+						instance.$(field.name) = query_relation_optional_array_like(mut conn,
+							parent_key, fkey, qb.relation_load_mode, child_paths,
+							instance.$(field.name))!
+					}
+				} else if field.is_struct && !orm_type_name_is_time(field_type_name) {
+					mm := qb.meta.filter(it.name == field.name)
+					if mm.len != 0 {
+						index := qb.config.fields.index(sql_field_name(mm[0]))
+						if index >= 0 && index < row.len
+							&& orm_relation_lookup_key_has_value(row[index]) {
+							related := query_relation_one_optional_like(mut conn, row[index],
+								qb.relation_load_mode, child_paths, instance.$(field.name))!
+							if related.len > 0 {
+								instance.$(field.name) = related[0]
+							}
+						}
 					}
 				}
-			}
-		} $else $if field.unaliased_typ is time.Time {
-		} $else $if field.unaliased_typ is ?time.Time {
-		} $else $if field.unaliased_typ is $struct {
-			if !orm_type_name_is_time(field_type_name) {
-				mm := qb.meta.filter(it.name == field.name)
-				if mm.len != 0 {
-					index := qb.config.fields.index(sql_field_name(mm[0]))
-					if index >= 0 && index < row.len
-						&& orm_relation_lookup_key_has_value(row[index]) {
-						instance.$(field.name) = query_relation_one_like(mut conn, row[index],
-							instance.$(field.name))!
+			} $else $if field.unaliased_typ is time.Time {
+			} $else $if field.unaliased_typ is ?time.Time {
+			} $else $if field.unaliased_typ is $struct {
+				if !orm_type_name_is_time(field_type_name) {
+					mm := qb.meta.filter(it.name == field.name)
+					if mm.len != 0 {
+						index := qb.config.fields.index(sql_field_name(mm[0]))
+						if index >= 0 && index < row.len
+							&& orm_relation_lookup_key_has_value(row[index]) {
+							instance.$(field.name) = query_relation_one_like(mut conn, row[index],
+								qb.relation_load_mode, child_paths, instance.$(field.name))!
+						}
 					}
 				}
 			}
@@ -1434,31 +1371,37 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 // prepare QueryBuilder, ready for gen SQL
 fn (qb_ &QueryBuilder[T]) prepare() ! {
 	mut qb := unsafe { qb_ }
-	if qb.builder_error.len > 0 {
-		return error(qb.builder_error)
+	prepare_query(qb.meta, qb.where, qb.builder_error, @FN, mut qb.config)!
+}
+
+// Query preparation uses the resolved field metadata, so it can be shared by all
+// model types just like condition parsing.
+fn prepare_query(meta []TableField, where QueryData, builder_error string, caller string, mut config SelectConfig) ! {
+	if builder_error.len > 0 {
+		return error(builder_error)
 	}
 
 	// check for mismatch `(` and `)`
-	for p in qb.where.parentheses {
+	for p in where.parentheses {
 		if p[1] == -1 {
-			return error('${@FN}(): missing `)`')
+			return error('${caller}(): missing `)`')
 		}
 	}
 
 	// auto fill field's names if not set by `select`
-	if qb.config.fields.len == 0 {
-		for field in qb.meta {
+	if config.fields.len == 0 {
+		for field in meta {
 			if !field.is_arr {
-				qb.config.fields << sql_field_name(field)
+				config.fields << sql_field_name(field)
 			}
 		}
 	}
 
-	if qb.config.select_exprs.len != qb.config.fields.len {
-		mut select_exprs := []string{cap: qb.config.fields.len}
-		for f in qb.config.fields {
+	if config.select_exprs.len != config.fields.len {
+		mut select_exprs := []string{cap: config.fields.len}
+		for f in config.fields {
 			mut select_expr := f
-			for ff in qb.meta {
+			for ff in meta {
 				if sql_field_name(ff) == f {
 					select_expr = sql_field_select_expr(ff)
 					break
@@ -1466,20 +1409,20 @@ fn (qb_ &QueryBuilder[T]) prepare() ! {
 			}
 			select_exprs << select_expr
 		}
-		qb.config.select_exprs = select_exprs
+		config.select_exprs = select_exprs
 	}
 
-	if qb.config.types.len == 0 {
+	if config.types.len == 0 {
 		// set field's types
-		mut types := []int{cap: qb.config.fields.len}
-		for f in qb.config.fields {
-			for ff in qb.meta {
+		mut types := []int{cap: config.fields.len}
+		for f in config.fields {
+			for ff in meta {
 				if sql_field_name(ff) == f {
 					types << ff.typ
 				}
 			}
 		}
-		qb.config.types = types
+		config.types = types
 	}
 }
 
@@ -1628,12 +1571,13 @@ pub fn (value AggregateValue) as_time() ?time.Time {
 	}
 }
 
-// query start a query and return result in struct `T`
+// query runs the query, loads requested relationships, and resets the builder.
 pub fn (qb_ &QueryBuilder[T]) query() ![]T {
 	mut qb := unsafe { qb_ }
 	defer {
 		qb.reset()
 	}
+	qb.ensure_keys_for_includes()!
 	qb.prepare()!
 	rows := qb.conn.select(qb.config, qb.data, qb.where)!
 	mut result := []T{cap: rows.len}
@@ -1811,7 +1755,10 @@ fn (qb_ &QueryBuilder[T]) v_sql_upsert_and_last_id(value T, initialized_fields [
 	if count == 0 {
 		qb.conn.insert(qb.config.table, prepared.insert_data)!
 	} else if count == 1 {
-		qb.conn.update(qb.config.table, prepared.insert_data, prepared.where)!
+		update_data := filter_insert_only_update_fields(prepared.insert_data, qb.meta)
+		if update_data.fields.len > 0 {
+			qb.conn.update(qb.config.table, update_data, prepared.where)!
+		}
 	} else {
 		upsert_ambiguous_error(qb.config.table)!
 	}
@@ -1879,7 +1826,7 @@ pub fn (qb_ &QueryBuilder[T]) insert_many[T](values []T) !&QueryBuilder[T] {
 	return qb
 }
 
-// save updates all mapped fields in `value` using the struct primary key or `id` field.
+// save updates mapped fields except sql_insert_only fields, using the primary key or `id`.
 pub fn save[T](conn Connection, value T) ! {
 	mut qb := new_query_internal[T](conn)
 	data, where := build_save_query_data[T](qb.meta, qb.config.table.name, value)!
@@ -1904,6 +1851,9 @@ fn build_save_query_data[T](meta []TableField, table_name string, value T) !(Que
 			where_data.data << data.data[i]
 			continue
 		}
+		if orm_insert_only_field(meta, field_name) != none {
+			continue
+		}
 		update_data.fields << field_name
 		update_data.data << data.data[i]
 	}
@@ -1914,6 +1864,42 @@ fn build_save_query_data[T](meta []TableField, table_name string, value T) !(Que
 		return error('${@FN}(): no updatable fields were found for table `${table_name}`')
 	}
 	return update_data, where_data
+}
+
+fn orm_insert_only_field(meta []TableField, name string) ?TableField {
+	// Callers have already mapped V field names to their SQL column names.
+	for field in meta {
+		for attr in field.attrs {
+			if attr.name == 'sql_insert_only'
+				&& sql_field_name(field).to_lower() == name.to_lower() {
+				return field
+			}
+		}
+	}
+	return none
+}
+
+fn validate_update_fields[T](meta []TableField, fields []string) ! {
+	for name in fields {
+		if field := orm_insert_only_field(meta, name) {
+			return error('ORM: cannot update insert-only field `${T.name}.${field.name}` (@[sql_insert_only])')
+		}
+	}
+}
+
+fn filter_insert_only_update_fields(data QueryData, meta []TableField) QueryData {
+	mut out := QueryData{}
+	for i, name in data.fields {
+		if orm_insert_only_field(meta, name) != none {
+			continue
+		}
+		out.fields << name
+		out.data << data.data[i]
+		if i < data.types.len {
+			out.types << data.types[i]
+		}
+	}
+	return out
 }
 
 fn find_save_primary_field_name(meta []TableField) ?string {
@@ -2322,8 +2308,10 @@ fn primitive_for_field[U](value Primitive, field_name string) Primitive {
 	return value
 }
 
-fn query_relation_one[U](mut conn Connection, key Primitive) !U {
+fn query_relation_one[U](mut conn Connection, key Primitive, mode RelationLoadMode, paths [][]string) !U {
 	mut qb := new_query_internal[U](conn)
+	qb.relation_load_mode = mode
+	qb.include_paths = paths
 	primary := find_save_primary_field_name(qb.meta) or { return U{} }
 	rows := qb.v_sql_where_primitive(primary, .eq, primitive_for_field[U](key, primary)).query()!
 	if rows.len == 0 {
@@ -2332,42 +2320,53 @@ fn query_relation_one[U](mut conn Connection, key Primitive) !U {
 	return rows[0]
 }
 
-fn query_relation_one_like[U](mut conn Connection, key Primitive, _ U) !U {
-	return query_relation_one[U](mut conn, key)
+fn query_relation_one_like[U](mut conn Connection, key Primitive, mode RelationLoadMode, paths [][]string, _ U) !U {
+	return query_relation_one[U](mut conn, key, mode, paths)
 }
 
-fn query_relation_one_optional_like[U](mut conn Connection, key Primitive, _ ?U) ?U {
+fn query_relation_one_optional_like[U](mut conn Connection, key Primitive, mode RelationLoadMode, paths [][]string, _ ?U) ![]U {
 	$if U is time.Time {
-		return none
+		return []U{}
 	} $else $if U is $struct {
-		return query_relation_one[U](mut conn, key) or { return none }
+		mut qb := new_query_internal[U](conn)
+		qb.relation_load_mode = mode
+		qb.include_paths = paths
+		primary := find_save_primary_field_name(qb.meta) or { return []U{} }
+		return qb.v_sql_where_primitive(primary, .eq, primitive_for_field[U](key, primary)).query() or {
+			if mode == .implicit {
+				return []U{}
+			}
+			return err
+		}
 	} $else {
-		return none
+		return []U{}
 	}
 }
 
-fn query_relation_array[U](mut conn Connection, key Primitive, fkey string) ![]U {
+fn query_relation_array[U](mut conn Connection, key Primitive, fkey string, mode RelationLoadMode, paths [][]string) ![]U {
 	mut qb := new_query_internal[U](conn)
+	qb.relation_load_mode = mode
+	qb.include_paths = paths
 	field_key := primitive_for_field[U](key, fkey)
 	return qb.v_sql_where_primitive(fkey, .eq, field_key).query() or {
-		if err.msg().contains('no such table') {
+		if mode == .implicit && err.msg().contains('no such table') {
 			return []U{}
 		}
 		return err
 	}
 }
 
-fn query_relation_array_like[U](mut conn Connection, key Primitive, fkey string, _ []U) ![]U {
-	return query_relation_array[U](mut conn, key, fkey)
+fn query_relation_array_like[U](mut conn Connection, key Primitive, fkey string, mode RelationLoadMode, paths [][]string, _ []U) ![]U {
+	return query_relation_array[U](mut conn, key, fkey, mode, paths)
 }
 
-fn query_relation_array_from_optional[U](mut conn Connection, key Primitive, fkey string, _ ?[]U) ![]U {
-	return query_relation_array[U](mut conn, key, fkey)!
+fn query_relation_array_from_optional[U](mut conn Connection, key Primitive, fkey string, mode RelationLoadMode, paths [][]string, _ ?[]U) ![]U {
+	return query_relation_array[U](mut conn, key, fkey, mode, paths)!
 }
 
-fn query_relation_optional_array_like[U](mut conn Connection, key Primitive, fkey string, value ?U) !U {
+fn query_relation_optional_array_like[U](mut conn Connection, key Primitive, fkey string, mode RelationLoadMode, paths [][]string, _ ?U) !U {
 	$if U is $array {
-		return query_relation_array_from_optional(mut conn, key, fkey, value)!
+		return query_relation_array_like(mut conn, key, fkey, mode, paths, U{})!
 	}
 	return U{}
 }
@@ -2719,7 +2718,7 @@ fn fill_data_with_struct[T](value T, meta []TableField) QueryData {
 	return qb
 }
 
-// update update record(s) in the database
+// update updates records, rejecting assignments to sql_insert_only fields.
 pub fn (qb_ &QueryBuilder[T]) update() !&QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
 	defer {
@@ -2729,18 +2728,23 @@ pub fn (qb_ &QueryBuilder[T]) update() !&QueryBuilder[T] {
 	if qb.data.fields.len == 0 {
 		return error('${@FN}(): `update` need at least one `set` clause')
 	}
+	validate_update_fields[T](qb.meta, qb.data.fields)!
 	qb.conn.update(qb.config.table, qb.data, qb.where)!
 	return qb
 }
 
 // update_many updates multiple records by a key field, using batch CASE WHEN for efficiency.
 // key_field is the column used to match rows (e.g. 'id').
-// field_names selects which columns to update; if empty, all struct fields except key_field are updated.
+// field_names selects columns to update; sql_insert_only fields are rejected.
+// If empty, all mapped fields except key_field and sql_insert_only fields are updated.
 pub fn update_many[T](mut conn Connection, values []T, key_field string, field_names ...string) ! {
 	if values.len == 0 {
 		return error('${@FN}(): need at least one record')
 	}
 	mut qb := new_query_internal[T](conn)
+	key_name := qb.v_sql_field_name(key_field)
+	selected_fields := field_names.map(qb.v_sql_field_name(it))
+	validate_update_fields[T](qb.meta, selected_fields)!
 
 	// Build the field list from the first value
 	first := fill_data_with_struct[T](values[0], qb.meta)
@@ -2749,9 +2753,10 @@ pub fn update_many[T](mut conn Connection, values []T, key_field string, field_n
 	mut value_indexes := []int{}
 
 	for i, field in first.fields {
-		if field == key_field {
+		if field == key_name {
 			key_index = i
-		} else if field_names.len == 0 || field in field_names {
+		} else if (selected_fields.len == 0 || field in selected_fields)
+			&& orm_insert_only_field(qb.meta, field) == none {
 			value_fields << field
 			value_indexes << i
 		}
@@ -2768,7 +2773,7 @@ pub fn update_many[T](mut conn Connection, values []T, key_field string, field_n
 	mut update_data := QueryData{
 		fields:     value_fields
 		batch_rows: values.len
-		batch_key:  key_field
+		batch_key:  key_name
 	}
 
 	// Build data: per value_field, per row: [key_value, value_field_value]
@@ -2794,7 +2799,7 @@ pub fn update_many[T](mut conn Connection, values []T, key_field string, field_n
 	}
 
 	mut where_data := QueryData{
-		fields: [key_field]
+		fields: [key_name]
 		data:   [Primitive(key_values)]
 		kinds:  [.in]
 	}
@@ -2838,4 +2843,141 @@ pub fn (qb_ &QueryBuilder[T]) last_id() int {
 	mut qb := unsafe { qb_ }
 	qb.reset()
 	return qb.conn.last_id()
+}
+
+fn relation_field_name[T](name string) string {
+	$for field in T.fields {
+		if field.name == name {
+			return name
+		}
+	}
+	$for field in T.fields {
+		if orm_field_sql_name(field.attrs, field.name) == name {
+			return field.name
+		}
+	}
+	return name
+}
+
+fn relation_should_load(mode RelationLoadMode, paths [][]string, field string) bool {
+	return mode == .implicit || paths.any(it.len > 0 && it[0] == field)
+}
+
+fn include_child_paths(paths [][]string, field string) [][]string {
+	mut children := [][]string{}
+	for path in paths {
+		if path.len > 1 && path[0] == field {
+			children << path[1..]
+		}
+	}
+	return children
+}
+
+fn canonical_include_path[T](path []string) ![]string {
+	if path.len == 0 {
+		return []string{}
+	}
+	meta := struct_meta[T]()
+	table := table_from_struct[T](meta)
+	relation := relation_field_name[T](path[0])
+	if !meta.any(it.name == relation) {
+		return error('include: field `${path[0]}` does not exist on `${table.name}`')
+	}
+	empty := T{}
+	$for field in T.fields {
+		if field.name == relation && !field.is_embed {
+			mut children := []string{}
+			field_type_name := typeof(field).name
+			$if field.unaliased_typ is $array {
+				fkey := orm_field_fkey(field.attrs)
+				if fkey.len == 0 {
+					return error('include: field `${relation}` is not a `@[fkey]` relationship')
+				}
+				_ := find_save_primary_field_name(meta) or {
+					return error('include: table `${table.name}` requires a `@[primary]` or `id` field')
+				}
+				children = canonical_include_array(path[1..], fkey, empty.$(field.name))!
+			} $else $if field.typ is $option {
+				if orm_type_name_is_optional_array(field_type_name) {
+					fkey := orm_field_fkey(field.attrs)
+					if fkey.len == 0 {
+						return error('include: field `${relation}` is not a `@[fkey]` relationship')
+					}
+					_ := find_save_primary_field_name(meta) or {
+						return error('include: table `${table.name}` requires a `@[primary]` or `id` field')
+					}
+					children = canonical_include_optional(path[1..], fkey, empty.$(field.name))!
+				} else if field.is_struct && !orm_type_name_is_time(field_type_name) {
+					children = canonical_include_optional(path[1..], '', empty.$(field.name))!
+				} else {
+					return error('include: field `${relation}` is not a relationship')
+				}
+			} $else $if field.unaliased_typ is time.Time {
+				return error('include: field `${relation}` is not a relationship')
+			} $else $if field.unaliased_typ is $struct {
+				children = canonical_include_one(path[1..], empty.$(field.name))!
+			} $else {
+				return error('include: field `${relation}` is not a `@[fkey]` relationship')
+			}
+			mut result := [relation]
+			result << children
+			return result
+		}
+	}
+	return error('include: field `${path[0]}` is not a relationship')
+}
+
+fn canonical_include_array[U](path []string, fkey string, _ []U) ![]string {
+	meta := struct_meta[U]()
+	if !meta.any((it.name == fkey || sql_field_name(it) == fkey) && !it.is_arr) {
+		return error('include: foreign key `${fkey}` does not exist on `${table_from_struct[U](meta).name}`')
+	}
+	return canonical_include_path[U](path)
+}
+
+fn canonical_include_one[U](path []string, _ U) ![]string {
+	meta := struct_meta[U]()
+	_ := find_save_primary_field_name(meta) or {
+		return error('include: table `${table_from_struct[U](meta).name}` requires a `@[primary]` or `id` field')
+	}
+	return canonical_include_path[U](path)
+}
+
+fn canonical_include_optional[U](path []string, fkey string, _ ?U) ![]string {
+	$if U is $array {
+		return canonical_include_array(path, fkey, U{})
+	} $else $if U is $struct {
+		return canonical_include_one(path, U{})
+	}
+	return error('include: invalid optional relationship')
+}
+
+// Fetch lookup keys omitted by select without exposing them as selected scalar fields.
+fn (qb_ &QueryBuilder[T]) ensure_keys_for_includes() ! {
+	if qb_.include_paths.len == 0 || qb_.config.fields.len == 0 {
+		return
+	}
+	mut qb := unsafe { qb_ }
+	for path in qb.include_paths {
+		for field in qb.meta {
+			if field.name != path[0] {
+				continue
+			}
+			key := if field.is_arr {
+				find_save_primary_field_name(qb.meta) or {
+					return error('include: missing primary key')
+				}
+			} else {
+				sql_field_name(field)
+			}
+			if key in qb.config.fields {
+				continue
+			}
+			if qb.config.has_distinct {
+				return error('include with `distinct` requires selecting the relationship key `${key}`')
+			}
+			qb.config.fields << key
+			qb.hydration_fields << key
+		}
+	}
 }

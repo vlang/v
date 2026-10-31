@@ -4,10 +4,10 @@ module strconv
 // Use of this source code is governed by an MIT license
 // that can be found in the LICENSE file.
 // TODO: use options, or some way to return default with error.
-// int_size is the size in bits of an int or uint value.
-// int_size = 32 << (~u32(0) >> 63)
+// int_size is the size in bits of an int value: 64 on 64-bit targets, 32 on 32-bit
+// targets and with the backends that lower `int` to 32 bits.
 // max_u64 = u64(u64(1 << 63) - 1)
-const int_size = 32
+const int_size = int(sizeof(int)) * 8
 
 @[inline]
 pub fn byte_to_lower(c u8) u8 {
@@ -30,8 +30,9 @@ pub fn common_parse_uint(s string, _base int, _bit_size int, error_on_non_digit 
 	return result
 }
 
-// the first returned value contains the parsed value,
-// the second returned value contains the error code (0 = OK, >1 = index of first non-parseable character + 1, -1 = wrong base, -2 = wrong bit size, -3 = overflow)
+// common_parse_uint2 returns the parsed value as its first result.
+// Its second result is 0 on success, positive for syntax errors (including a
+// non-parseable character's index + 1), -2 for a wrong bit size, or -3 for overflow.
 @[direct_array_access]
 pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 	if s == '' {
@@ -43,36 +44,25 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 	mut start_index := 0
 
 	if base == 0 {
-		// Look for octal, binary and hex prefix.
+		// A leading zero implies octal unless an explicit prefix selects another base.
 		base = 10
 		if s[0] == `0` {
-			ch := if s.len > 1 { s[1] | 32 } else { `0` }
+			base = 8
 			if s.len >= 3 {
+				ch := s[1] | 32
 				if ch == `b` {
 					base = 2
-					start_index += 2
+					start_index = 2
 				} else if ch == `o` {
-					base = 8
-					start_index += 2
+					start_index = 2
 				} else if ch == `x` {
 					base = 16
-					start_index += 2
+					start_index = 2
 				}
-
-				// check for underscore after the base prefix
-				if s[start_index] == `_` {
+				// An underscore may immediately follow an explicit base prefix.
+				if start_index == 2 && s[start_index] == `_` {
 					start_index++
 				}
-			}
-			// manage leading zeros in decimal base's numbers
-			// otherwise it is an octal for C compatibility
-			// TODO: Check if this behaviour is logically right
-			else if s.len >= 2 && (s[1] >= `0` && s[1] <= `9`) {
-				base = 10
-				start_index++
-			} else {
-				base = 8
-				start_index++
 			}
 		}
 	}
@@ -81,6 +71,9 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 		bit_size = int_size
 	} else if bit_size < 0 || bit_size > 64 {
 		return u64(0), -2
+	}
+	if start_index == s.len {
+		return u64(0), 1
 	}
 	// Cutoff is the smallest number such that cutoff*base > maxUint64.
 	// Use compile-time constants for common cases.
@@ -148,34 +141,55 @@ pub fn common_parse_uint2(s string, _base int, _bit_size int) (u64, int) {
 
 // parse_uint is like parse_int but for unsigned numbers.
 pub fn parse_uint(s string, _base int, _bit_size int) !u64 {
-	return common_parse_uint(s, _base, _bit_size, true, true)
+	n := common_parse_uint(s, _base, _bit_size, true, true)!
+	// Only base 0 permits underscores. The shared digit loop accepts them in every base,
+	// because `string.int()` and its siblings parse `1_000` with an explicit base 10.
+	if _base != 0 && s.contains_u8(`_`) {
+		return error('common_parse_uint: syntax error ${s}')
+	}
+	return n
 }
 
-// common_parse_int is called by parse int and allows the parsing
-// to stop on non or invalid digit characters and return with an error
+// common_parse_int parses a signed integer, optionally stopping at invalid digits.
+// It borrows the input string and reports syntax or range errors when requested.
 @[direct_array_access]
 pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit bool, error_on_high_digit bool) !i64 {
 	if _s == '' {
-		// return error('parse_int: syntax error ${s}')
+		// Like common_parse_uint, report the error only when the caller asked for errors.
+		if error_on_non_digit || error_on_high_digit {
+			return error('common_parse_int: syntax error ${_s}')
+		}
 		return i64(0)
 	}
 	mut bit_size := _bit_size
 	if bit_size == 0 {
 		bit_size = int_size
 	}
-	mut s := _s
+	mut s := ''
+	$if ownership ? {
+		// Replacing the sign-trimmed local must not destroy the caller's input.
+		s = _s.clone()
+	} $else {
+		s = _s
+	}
 	// Pick off leading sign.
 	mut neg := false
 	if s[0] == `+` {
-		// s = s[1..]
-		unsafe {
-			s = tos(s.str + 1, s.len - 1)
+		$if ownership ? {
+			s = s.substr_unsafe(1, s.len).clone()
+		} $else {
+			unsafe {
+				s = tos(s.str + 1, s.len - 1)
+			}
 		}
 	} else if s[0] == `-` {
 		neg = true
-		// s = s[1..]
-		unsafe {
-			s = tos(s.str + 1, s.len - 1)
+		$if ownership ? {
+			s = s.substr_unsafe(1, s.len).clone()
+		} $else {
+			unsafe {
+				s = tos(s.str + 1, s.len - 1)
+			}
 		}
 	}
 
@@ -217,7 +231,12 @@ pub fn common_parse_int(_s string, base int, _bit_size int, error_on_non_digit b
 // correspond to int, int8, int16, int32, and int64.
 // If bitSize is below 0 or above 64, an error is returned.
 pub fn parse_int(_s string, base int, _bit_size int) !i64 {
-	return common_parse_int(_s, base, _bit_size, true, false)
+	n := common_parse_int(_s, base, _bit_size, true, false)!
+	// Only base 0 permits underscores, see parse_uint.
+	if base != 0 && _s.contains_u8(`_`) {
+		return error('common_parse_uint: syntax error ${_s}')
+	}
+	return n
 }
 
 // atoi_common_check perform basics check on string to parse:
@@ -284,7 +303,7 @@ fn atoi_common(s string, type_min i64, type_max i64) !i64 {
 	return x
 }
 
-// atoi is equivalent to parse_int(s, 10, 0), converted to type int.
+// atoi parses a decimal string into an int, rejecting values outside the i32 range.
 // It follows V scanner as much as observed.
 pub fn atoi(s string) !int {
 	return int(atoi_common(s, i64_min_int32, i64_max_int32)!)

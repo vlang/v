@@ -437,3 +437,37 @@ fn test_rgba64_at_matches_at_rgba_from_go() {
 
 	assert_rgba64_matches_at(r, 1, 1)
 }
+
+fn test_planar_sub_images_share_pixel_storage() {
+	for ratio in [YCbCrSubsampleRatio.ratio_444, .ratio_422, .ratio_420, .ratio_440, .ratio_411,
+		.ratio_410] {
+		mut img := new_ycbcr(rect(-4, -2, 8, 6), ratio)
+		mut sub := img.sub_image(rect(0, 0, 4, 4))
+		sub.y[0] = 42
+		sub.cb[0] = 17
+		sub.cr[0] = 33
+		assert img.ycbcr_at(0, 0) == sub.ycbcr_at(0, 0)
+		img.y[img.y_offset(0, 0)] = 51
+		img.cb[img.c_offset(0, 0)] = 62
+		img.cr[img.c_offset(0, 0)] = 73
+		assert sub.ycbcr_at(0, 0).y == 51
+		assert sub.ycbcr_at(0, 0).cb == 62
+		assert sub.ycbcr_at(0, 0).cr == 73
+
+		mut alpha := new_nycbcra(rect(-4, -2, 8, 6), ratio)
+		mut alpha_sub := alpha.sub_image(rect(0, 0, 4, 4))
+		alpha_sub.ycbcr.y[0] = 42
+		alpha_sub.ycbcr.cb[0] = 17
+		alpha_sub.ycbcr.cr[0] = 33
+		alpha_sub.a[0] = 44
+		assert alpha.nycbcra_at(0, 0) == alpha_sub.nycbcra_at(0, 0)
+		alpha.ycbcr.y[alpha.ycbcr.y_offset(0, 0)] = 51
+		alpha.ycbcr.cb[alpha.ycbcr.c_offset(0, 0)] = 62
+		alpha.ycbcr.cr[alpha.ycbcr.c_offset(0, 0)] = 73
+		alpha.a[alpha.a_offset(0, 0)] = 84
+		assert alpha_sub.nycbcra_at(0, 0).ycbcr.y == 51
+		assert alpha_sub.nycbcra_at(0, 0).ycbcr.cb == 62
+		assert alpha_sub.nycbcra_at(0, 0).ycbcr.cr == 73
+		assert alpha_sub.nycbcra_at(0, 0).a == 84
+	}
+}

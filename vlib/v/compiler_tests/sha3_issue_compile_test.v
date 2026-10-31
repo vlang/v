@@ -13,7 +13,8 @@ fn test_sha3_issue_26961_compile() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_sha3_issue_26961_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${sha3_issue_vexe} -gc none -path "${sha3_issue_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${sha3_issue_v3_src}')
+		os.exec([sha3_issue_vexe, '-gc', 'none', '-path',
+			'${sha3_issue_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${sha3_issue_v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_sha3_issue_26961_${pid}.v')
@@ -33,7 +34,7 @@ fn main() {
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
 
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert os.exists(bin), compile.output
 }

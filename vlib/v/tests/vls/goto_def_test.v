@@ -2,6 +2,9 @@ import os
 import term
 import v.util.diff
 
+// The compiler under test, not the first `v` on PATH, which may be another checkout.
+const vexe = os.quoted_path(@VEXE)
+
 const vroot = @VMODROOT
 const test_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'goto_def_test_data.vv')
 const mod1_text_file = os.join_path(vroot, 'vlib', 'v', 'tests', 'vls', 'sample_mod1', 'sample.v')
@@ -270,8 +273,9 @@ fn test_goto_definition() {
 	mut passed := 0
 
 	for tc in test_cases {
-		cmd := 'v -w -check -json-errors -nocolor -vls-mode -line-info "${test_file}:${tc.line}:gd^${tc.col}" ${os.quoted_path(test_file)}'
-		res := os.execute(cmd)
+		cmd := '${vexe} -w -check -json-errors -nocolor -vls-mode -line-info "${test_file}:${tc.line}:gd^${tc.col}" ${os.quoted_path(test_file)}'
+		res := os.exec([@VEXE, '-w', '-check', '-json-errors', '-nocolor', '-vls-mode', '-line-info',
+			'${test_file}' + ':' + '${tc.line}' + ':gd^' + '${tc.col}', test_file])
 
 		if res.exit_code < 0 {
 			println('${term.red('FAIL')} ${tc.name}: Command failed to execute')

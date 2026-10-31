@@ -9,6 +9,18 @@ V's `time` module, provides utilities for working with time and dates:
 - stop watches for accurately measuring time durations
 - sleeping for a period of time
 
+Dates before year 1 use the proleptic Gregorian calendar with astronomical year numbering: year
+0 is 1 BC and is a leap year. Unix timestamp and day-offset conversions preserve dates at the
+400-year cycle boundaries before year 0, including March 1 and 2 of years -400, -800 and -1200.
+`days_from_unix_epoch`, `day_of_week` and `Time.week_of_year()` use the same calendar for
+year zero and negative years. Weekdays remain 1 (Monday) through 7 (Sunday), and ISO week
+numbers repeat every 400 years. The zero `Time` value has Unix timestamp `-62167219200`.
+
+`time.ticks()` returns milliseconds since the UNIX epoch on Unix platforms. On Windows it
+returns a 64-bit count of milliseconds since system startup, which does not wrap after
+49.7 days. The Windows counter is resolved at runtime so it also works with bundled TCC
+versions whose import library does not list `GetTickCount64`.
+
 ## Examples
 
 You can see the current time. [See](https://play.vlang.io/?query=c121a6dda7):
@@ -57,6 +69,30 @@ println(t.unix())
 
 V's time module also has these parse methods:
 
+Month and weekday names in `parse_format` may end the input. For example,
+`time.parse_format('May', 'MMMM')!` and `time.parse_format('Jul', 'MMM')!`
+return times in May and July, respectively; weekday tokens also accept a terminal name.
+
+`parse_format(s, format)` requires the format to cover the entire input, including literals.
+Unmatched trailing text or whitespace returns an error instead of parsing only a prefix.
+
+Unpadded clock tokens `H`, `h`, `k`, `m`, and `s` accept one or two digits, including
+leading zeros. Their doubled forms require exactly two digits. Thus layouts such as
+`YYYY-MM-DD k:m:s` read back both `2024-07-15 3:4:5` and `2024-07-15 23:40:50`.
+
+`parse_format` defaults an omitted month to January. Day-only layouts such as
+`time.parse_format('31', 'DD')!` therefore accept January 31; an explicit month still
+enforces its actual length.
+
+`Time.custom_format('YYYY')` pads nonnegative years to at least four digits, so year `100`
+is written as `0100`. For nonnegative years, `YY` writes the final two year digits
+with leading zeros. Negative years retain their existing `YYYY` and `YY` representations.
+
+`parse_format` supports `A` for `AM`/`PM` and `a` for `am`/`pm`. Use these markers with
+an hour from `1` to `12`, for example `time.parse_format('02:30:45PM', 'hh:mm:ssA')!`
+returns hour `14`, while `12:00:00AM` returns hour `0`. Layouts without a marker retain
+their existing 24-hour behavior.
+
 ```v ignore
 fn parse(s string) !Time
 fn parse_iso8601(s string) !Time
@@ -75,6 +111,11 @@ or UTC `Time` values to that location's calendar time. `load_location` searches
 that need embedded time zone data (no system zoneinfo, portable binaries) can
 import `time.tzdata`.
 
+`load_location('Local')` uses the system time zone when `TZ` is unset. On POSIX,
+setting `TZ` to an empty string selects UTC. On Windows, `os.setenv('TZ', '', true)`
+removes `TZ`, so the local location uses the system time zone. To select UTC explicitly
+on either platform, use `load_location('UTC')` or set `TZ` to the POSIX rule `UTC0`.
+
 ```v
 import time
 import time.tzdata as _
@@ -92,6 +133,20 @@ fields (`year`, `hour`, ...) are wall time in that location. Prefer
 marks system-local wall time with a fixed process offset and is left `false`
 on IANA-zoned `Time` values.
 
+`parse_rfc3339` and `parse_iso8601` keep a non-zero numeric UTC offset in the
+same way: the calendar fields stay as written, and `t.zone()` returns a fixed
+zone with that offset (in seconds east of UTC). Inputs ending in `Z`, `+00:00`
+or `-00:00` give plain UTC values without a location.
+
+```v
+import time
+
+t := time.parse_rfc3339('2024-07-15T18:30:45-05:00')!
+assert t.format_ss() == '2024-07-15 18:30:45'
+assert (t.zone()!).offset == -18_000
+assert t.format_rfc3339() == '2024-07-15T23:30:45.000Z'
+```
+
 The bundled `vlib/time/tzdata/zoneinfo.zip` is a store-only (uncompressed) zip
 of IANA zoneinfo files for offline use via `import time.tzdata`. Refresh it
 from a full IANA tzdb source archive with packrat data enabled, so named zones
@@ -105,6 +160,33 @@ cd /tmp/tzdb-full/zoneinfo
 find . -type f -print | LC_ALL=C sort | sed 's#^./##' | \
   zip -0 -X /path/to/v/vlib/time/tzdata/zoneinfo.zip -@
 ```
+
+`time.parse_duration(s)` parses a string such as `1h30m`, `-1.5s` or `300ms` into a
+`time.Duration`. The format is the one of Go's `time.ParseDuration`: an optional sign,
+followed by one or more decimal numbers, each with an optional fraction and a unit. The
+units are `ns`, `us` (or `µs`), `ms`, `s`, `m` and `h`; only `0` can be written without one.
+A string that is not a duration, a number without a unit, an unknown unit such as `d`, and
+a duration that does not fit in the `i64` range of nanoseconds are reported as errors:
+
+```v
+import time
+
+timeout := time.parse_duration('1h30m')!
+assert timeout == 90 * time.minute
+assert time.parse_duration('-1.5s')! == -1500 * time.millisecond
+assert time.parse_duration('2h45m30.5s')!.seconds() == 9930.5
+
+time.parse_duration('5') or { assert err.msg() == 'missing unit in duration: "5"' }
+time.parse_duration('1d') or { assert err.msg() == 'unknown unit "d" in duration: "1d"' }
+```
+
+`Duration.str()` is meant for display. For a minute or more it writes forms such as
+`1:30:00`, which are not duration strings, so `parse_duration` does not read them back.
+Negative durations retain a single minus sign even at the minimum `i64` value:
+`time.Duration(i64(-9223372036854775807) - 1).str()` returns `-2562047:47:16`.
+It renders the maximum `i64` duration as `2562047:47:16`, including `time.infinite`.
+The `time.infinite` constant still tells APIs that support it to wait forever; displaying it
+uses the same duration format as other finite `i64` values.
 
 Another very useful feature of the `time` module is the stop watch,
 for when you want to measure short time periods, elapsed while you
@@ -124,19 +206,33 @@ fn main() {
 }
 ```
 
-Use a timer when a wait needs to participate in a `select`:
+A wait that needs to participate in a `select` uses `sync.new_timer`, which sends the
+time on a channel: see the `sync` module.
 
-```v
-import time
+`Time.from_json_string` accepts a quoted value returned by `to_json()` as well as the unquoted
+value passed by json2. Unix timestamp strings contain decimal digits with an optional leading
+minus and must fit in `i64`. Empty, malformed, and overflowing values return an error.
+`clean12()` uses a single-digit hour when appropriate, followed by `a.m.` or `p.m.`.
 
-timer := time.new_timer(500 * time.millisecond)
-defer {
-	timer.stop()
-}
-select {
-	fired_at := <-timer.c {
-		println('timer fired at ${fired_at}')
-	}
-	// another channel can be handled here
-}
-```
+`unix_milli`, `unix_micro` and `unix_nano` round the seconds component down for negative
+timestamps, keeping `Time.nanosecond` in `0 .. 999_999_999`. `unix_nanosecond` and
+`unix_microsecond` carry out-of-range subsecond arguments into the seconds component.
+`Location.unix_nanosecond_to_local` applies the same normalization before choosing the zone.
+
+## Calendar arithmetic and monotonic readings
+
+`Time.weekday()` returns a `Weekday` enum using ISO numbering: Monday is 1 and Sunday is 7.
+`Time.add_date(years, months, days)` normalizes the requested month, clamps the original day
+to that month's last day, then applies the day offset. January 31 plus one month becomes
+February 28 or 29. The method preserves nanoseconds and the associated location.
+
+Ambiguous times prefer the original UTC offset when it remains valid. Nonexistent times use
+the original offset and normalize to a nearby valid time: in New York, advancing March 9,
+2024 at 02:30 by one day gives March 10 at 03:30; moving back from March 11 at 02:30 gives
+March 10 at 01:30. A zero date adjustment preserves the original instant.
+
+`time.clock()` returns monotonic milliseconds with a platform-dependent origin. Subtract two
+readings to measure elapsed time; the value is not a Unix timestamp or a portable process age.
+
+Darwin clock initialization retains its native function declarations in cached and uncached C
+builds, preserving headerless output without adding a Mach SDK include to the module.

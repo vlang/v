@@ -1,0 +1,56 @@
+vlib/v/checker/tests/shared_map_autolock_err.vv:11:11: error: `other` is `shared` and cannot be locked automatically while `m` is, use `lock m, other {...}` or a separate statement
+    9 |     shared other := map[string]int{}
+   10 |     // operations on another `shared` map would nest the automatic locks
+   11 |     m['a'] = other['b']
+      |              ~~~~~~~~~~
+   12 |     x := m[other.keys()[0]]
+   13 |     // the statement runs with `m` locked, and `read` locks it again
+vlib/v/checker/tests/shared_map_autolock_err.vv:12:9: error: `other` is `shared` and cannot be locked automatically while `m` is, use `lock m, other {...}` or a separate statement
+   10 |     // operations on another `shared` map would nest the automatic locks
+   11 |     m['a'] = other['b']
+   12 |     x := m[other.keys()[0]]
+      |            ~~~~~~~~~~~~
+   13 |     // the statement runs with `m` locked, and `read` locks it again
+   14 |     m['b'] = read(shared m)
+vlib/v/checker/tests/shared_map_autolock_err.vv:14:23: error: function with `shared` arguments cannot be called while `m` is locked automatically, call it in a separate statement
+   12 |     x := m[other.keys()[0]]
+   13 |     // the statement runs with `m` locked, and `read` locks it again
+   14 |     m['b'] = read(shared m)
+      |                          ^
+   15 |     // the `or` block runs with `m` read-locked
+   16 |     y := m['c'] or {
+vlib/v/checker/tests/shared_map_autolock_err.vv:17:3: error: m has an `rlock` but needs a `lock`
+   15 |     // the `or` block runs with `m` read-locked
+   16 |     y := m['c'] or {
+   17 |         m['c'] = 1
+      |         ^
+   18 |         0
+   19 |     }
+vlib/v/checker/tests/shared_map_autolock_err.vv:17:3: error: `m` is `shared` and needs explicit lock for `v.ast.SelectorExpr`
+   15 |     // the `or` block runs with `m` read-locked
+   16 |     y := m['c'] or {
+   17 |         m['c'] = 1
+      |         ^
+   18 |         0
+   19 |     }
+vlib/v/checker/tests/shared_map_autolock_err.vv:21:2: error: `m` is `shared` and needs explicit lock for `v.ast.SelectorExpr`
+   19 |     }
+   20 |     // only single operations are locked automatically
+   21 |     m['d'], m['e'] = 1, 2
+      |     ^
+   22 |     lock other {
+   23 |         m['f'] = 1
+vlib/v/checker/tests/shared_map_autolock_err.vv:21:10: error: `m` is `shared` and needs explicit lock for `v.ast.SelectorExpr`
+   19 |     }
+   20 |     // only single operations are locked automatically
+   21 |     m['d'], m['e'] = 1, 2
+      |             ^
+   22 |     lock other {
+   23 |         m['f'] = 1
+vlib/v/checker/tests/shared_map_autolock_err.vv:23:3: error: `m` is `shared` and needs explicit lock for `v.ast.SelectorExpr`
+   21 |     m['d'], m['e'] = 1, 2
+   22 |     lock other {
+   23 |         m['f'] = 1
+      |         ^
+   24 |     }
+   25 |     println('${x} ${y}')

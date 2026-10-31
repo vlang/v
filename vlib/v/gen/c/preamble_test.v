@@ -1,7 +1,9 @@
 module c
 
+import os
 import v.flat
 import v.pref
+import v.types
 
 fn windows_preamble_test_gen() FlatGen {
 	mut g := FlatGen.new()
@@ -16,10 +18,28 @@ fn test_windows_translation_unit_preserves_configuration_preincludes() {
 		'#include <synchapi.h>', '#include <windows.h>']
 	g.emit_translation_unit_include_directives()
 	c_code := g.sb.str()
-	assert c_code.index('#include "winapi_config.h"')? < c_code.index('#include <windows.h>')?
+	config_index := c_code.index('#include "winapi_config.h"')?
+	assert c_code.index('#ifndef UNICODE\n#define UNICODE\n#endif')? < config_index
+	assert c_code.index('#ifndef _UNICODE\n#define _UNICODE\n#endif')? < config_index
+	assert config_index < c_code.index('#include <windows.h>')?
 	assert c_code.index('#include <windows.h>')? < c_code.index('#include <bcrypt.h>')?
 	assert c_code.index('#include <windows.h>')? < c_code.index('#include <synchapi.h>')?
 	assert c_code.count('#include <windows.h>') == 1
+}
+
+fn test_cross_c_translation_unit_guards_windows_unicode_apis() {
+	for target_os in ['linux', 'windows'] {
+		mut g := FlatGen.new()
+		g.a = &flat.FlatAst{}
+		g.set_target(pref.target_from(target_os, 'amd64') or { panic(err) })
+		g.set_output_cross_c(true)
+		g.preinclude_directives = ['#include "winapi_config.h"']
+		g.emit_translation_unit_include_directives()
+		c_code := g.sb.str()
+		unicode_guard := '#if defined(_WIN32)\n#ifndef UNICODE\n#define UNICODE\n#endif\n#ifndef _UNICODE\n#define _UNICODE\n#endif\n#endif\n'
+		assert c_code.starts_with(unicode_guard), target_os
+		assert c_code.index('#include "winapi_config.h"')? >= unicode_guard.len
+	}
 }
 
 fn test_windows_translation_unit_adds_windows_header_after_configuration_preincludes() {
@@ -68,6 +88,156 @@ fn test_windows_translation_unit_interposes_windows_header_before_dependent_head
 	assert windows_index < bcrypt_index
 	assert windows_index < synchapi_index
 	assert c_code.count('#include <windows.h>') == 1
+}
+
+// legacy_winsock_guarded is the C that keeps the windows.h of the Windows SDK from
+// loading the legacy winsock.h while `directive` is included, and releases the macro
+// again afterwards.
+fn legacy_winsock_guarded(directive string) string {
+	return '#if defined(_MSC_VER) && !defined(_WINSOCKAPI_)\n#define _WINSOCKAPI_\n#define V_LEGACY_WINSOCK_GUARD\n#endif\n${directive}\n#ifdef V_LEGACY_WINSOCK_GUARD\n#undef V_LEGACY_WINSOCK_GUARD\n#ifndef _WINSOCK2API_\n#undef _WINSOCKAPI_\n#endif\n#endif\n'
+}
+
+fn test_windows_translation_unit_keeps_legacy_winsock_out_of_headers_that_include_windows_header() {
+	// builtin is ordered before every module that uses sockets, and with the Boehm GC
+	// its <gc.h> includes windows.h itself. That loaded the legacy winsock.h first, and
+	// MSVC then rejected `os`'s winsock2.h with `'sockaddr': 'struct' type redefinition`
+	// for every program importing `os`.
+	mut g := windows_preamble_test_gen()
+	g.add_c_directive('builtin', '#include <gc.h>', false)
+	g.add_c_directive('os', '#include <io.h>', false)
+	g.add_c_directive('os', '#include <winsock2.h>', false)
+	g.add_c_directive('net', '#include <ws2tcpip.h>', false)
+	g.emit_translation_unit_include_directives()
+	c_code := g.sb.str()
+	assert c_code.contains(legacy_winsock_guarded('#include <gc.h>') + '#include <io.h>\n'), c_code
+	// No header moves: the guard alone keeps winsock.h out of gc.h's windows.h.
+	gc_index := c_code.index('#include <gc.h>')?
+	io_index := c_code.index('#include <io.h>')?
+	winsock_index := c_code.index('#include <winsock2.h>')?
+	ws2tcpip_index := c_code.index('#include <ws2tcpip.h>')?
+	windows_index := c_code.index('#include <windows.h>')?
+	assert gc_index < io_index
+	assert io_index < winsock_index
+	assert winsock_index < ws2tcpip_index
+	assert ws2tcpip_index < windows_index
+	assert c_code.count('#define _WINSOCKAPI_') == 1
+	assert c_code.count('#include <winsock2.h>') == 1
+	assert c_code.count('#include <windows.h>') == 1
+}
+
+fn test_windows_translation_unit_leaves_headers_alone_before_conditional_winsock_includes() {
+	// Only the C preprocessor knows whether a conditional winsock2.h include is
+	// active. When it is not, the headers after windows.h rely on the winsock.h that
+	// it loads (`SOCKET`, `sockaddr_in`, ...), so nothing may be suppressed on a guess.
+	conditional_includes := [
+		['#if 0\n#include <winsock2.h>\n#endif'],
+		['#ifdef USE_WINSOCK2', '#include <winsock2.h>', '#endif'],
+		['#define FD_SETSIZE 1024', '#ifndef NO_WINSOCK2', '#include <ws2tcpip.h>', '#endif'],
+	]
+	for includes in conditional_includes {
+		mut g := windows_preamble_test_gen()
+		g.add_c_directive('builtin', '#include <gc.h>', false)
+		g.add_c_directive('main', '#include <windows.h>', false)
+		g.add_c_directive('main', '#include <project/uses_socket.h>', false)
+		for directive in includes {
+			g.add_c_directive('main', directive, false)
+		}
+		g.emit_translation_unit_include_directives()
+		c_code := g.sb.str()
+		assert !c_code.contains('WINSOCK_GUARD'), c_code
+		assert !c_code.contains('_WINSOCKAPI_'), c_code
+		assert c_code.contains('#include <gc.h>\n#include <windows.h>\n#include <project/uses_socket.h>\n'), c_code
+	}
+}
+
+fn test_windows_translation_unit_guards_before_the_last_unconditional_winsock_include() {
+	// A conditional include does not hide an unconditional one: winsock2.h is certain
+	// to follow every header up to the latter.
+	mut g := windows_preamble_test_gen()
+	g.add_c_directive('builtin', '#include <gc.h>', false)
+	g.add_c_directive('os', '#include <winsock2.h>', false)
+	g.add_c_directive('term', '#include <windows.h>', false)
+	g.add_c_directive('net', '#define FD_SETSIZE 1024', false)
+	g.add_c_directive('net', '#include <winsock2.h>\n#include <ws2tcpip.h>', false)
+	g.add_c_directive('main', '#include <gc/gc.h>', false)
+	g.add_c_directive('main', '#if 0\n#include <winsock2.h>\n#endif', false)
+	g.emit_translation_unit_include_directives()
+	c_code := g.sb.str()
+	assert c_code.contains(legacy_winsock_guarded('#include <gc.h>')), c_code
+	assert c_code.contains(legacy_winsock_guarded('#include <windows.h>')), c_code
+	assert !c_code.contains(legacy_winsock_guarded('#include <gc/gc.h>')), c_code
+	assert c_code.count('#define V_LEGACY_WINSOCK_GUARD') == 2
+}
+
+fn test_windows_translation_unit_keeps_winsock_prerequisite_headers_in_place() {
+	// A header that configures Winsock (FD_SETSIZE, ...) has to stay ahead of the
+	// winsock2.h it configures, with or without a windows.h-including header before it.
+	for with_gc in [true, false] {
+		mut g := windows_preamble_test_gen()
+		if with_gc {
+			g.add_c_directive('builtin', '#include <gc.h>', false)
+		}
+		g.add_c_directive('main', '#include <project/socket_config.h>', false)
+		g.add_c_directive('main', '#define FD_SETSIZE 1024', false)
+		g.add_c_directive('main', '#include <winsock2.h>', false)
+		g.emit_translation_unit_include_directives()
+		c_code := g.sb.str()
+		assert c_code.contains('#include <project/socket_config.h>\n#define FD_SETSIZE 1024\n#include <winsock2.h>\n'), c_code
+		assert c_code.contains(legacy_winsock_guarded('#include <gc.h>')) == with_gc, c_code
+		assert c_code.contains('_WINSOCKAPI_') == with_gc, c_code
+		if with_gc {
+			assert c_code.index('#include <gc.h>')? < c_code.index('#include <project/socket_config.h>')?
+		}
+	}
+}
+
+fn test_windows_translation_unit_guards_every_windows_header_including_form() {
+	mut g := windows_preamble_test_gen()
+	g.add_c_directive('builtin', '#if defined(_WIN32)\n#include <gc/gc.h>\n#endif', false)
+	g.add_c_directive('term', '#ifdef USE_CONSOLE', false)
+	g.add_c_directive('term', '#include <windows.h>', false)
+	g.add_c_directive('term', '#endif', false)
+	// ws2tcpip.h includes winsock2.h itself.
+	g.add_c_directive('net', '#include <ws2tcpip.h>', false)
+	g.emit_translation_unit_include_directives()
+	c_code := g.sb.str()
+	block := legacy_winsock_guarded('#if defined(_WIN32)\n#include <gc/gc.h>\n#endif')
+	// The guard stays inside the lifted context of the include that it protects.
+	guarded := '#ifdef USE_CONSOLE\n' + legacy_winsock_guarded('#include <windows.h>') + '#endif\n'
+	assert c_code.contains(block), c_code
+	assert c_code.contains(guarded), c_code
+	assert c_code.index(block)? < c_code.index(guarded)?
+	assert c_code.index(guarded)? < c_code.index('#include <ws2tcpip.h>')?
+	assert c_code.count('#include <windows.h>') == 1
+}
+
+fn test_translation_unit_leaves_headers_alone_without_a_later_winsock_include() {
+	// Nothing to protect: no winsock2.h, or winsock2.h already ahead of gc.h.
+	mut plain := windows_preamble_test_gen()
+	plain.add_c_directive('builtin', '#include <gc.h>', false)
+	plain.add_c_directive('os', '#include <io.h>', false)
+	plain.emit_translation_unit_include_directives()
+	plain_code := plain.sb.str()
+	assert !plain_code.contains('WINSOCK'), plain_code
+	assert !plain_code.contains('<winsock.h>'), plain_code
+
+	mut ordered := windows_preamble_test_gen()
+	ordered.add_c_directive('builtin', '#include <winsock2.h>', false)
+	ordered.add_c_directive('builtin', '#include <gc.h>', false)
+	ordered.emit_translation_unit_include_directives()
+	ordered_code := ordered.sb.str()
+	assert !ordered_code.contains('WINSOCK'), ordered_code
+	assert !ordered_code.contains('<winsock.h>'), ordered_code
+
+	mut linux := FlatGen.new()
+	linux.a = &flat.FlatAst{}
+	linux.target = pref.target_from('linux', 'amd64') or { panic(err) }
+	linux.add_c_directive('builtin', '#include <gc.h>', false)
+	linux.add_c_directive('os', '#include <winsock2.h>', false)
+	linux.emit_translation_unit_include_directives()
+	linux_code := linux.sb.str()
+	assert !linux_code.contains('WINSOCK'), linux_code
+	assert linux_code.index('#include <gc.h>')? < linux_code.index('#include <winsock2.h>')?
 }
 
 fn test_thread_local_decl_uses_portable_c_dialects() {
@@ -176,10 +346,122 @@ fn test_vinix_globals_do_not_require_elf_tls() {
 	assert g.global_is_thread_local('__anon_fn_1_capture')
 }
 
+fn test_arena_stack_top_is_thread_local_only_in_builtin() {
+	mut g := FlatGen.new()
+	g.target = pref.target_from('linux', 'arm64') or { panic(err) }
+	g.global_modules['g_arena_top'] = 'builtin'
+	assert g.global_is_thread_local('g_arena_top')
+	g.global_modules['g_arena_top'] = 'main'
+	assert !g.global_is_thread_local('g_arena_top')
+}
+
 fn test_manual_stdlib_headers_clear_fortified_memory_macros() {
 	headers := manual_stdlib_c_headers()
 	for name in ['memcpy', 'memmove', 'memset'] {
 		assert headers.contains('#ifdef ${name}\n#undef ${name}\n#endif'), name
+	}
+}
+
+fn test_manual_stdlib_header_problem_accepts_the_embedded_header() {
+	assert manual_stdlib_header_problem(manual_c_headers_source) == ''
+	assert manual_stdlib_c_headers_error() == none
+}
+
+fn test_manual_stdlib_header_problem_reports_truncated_headers() {
+	cut := manual_c_headers_source.index('};\n#endif') or { panic('no RAND_MAX enum close') }
+	assert manual_stdlib_header_problem(manual_c_headers_source[..cut]).contains('unterminated `#ifndef RAND_MAX`')
+	assert manual_stdlib_header_problem(manual_c_headers_source[..manual_c_headers_source.len - 1]).contains('newline')
+	assert manual_stdlib_header_problem('#endif\n').contains('unmatched `#endif`')
+}
+
+fn test_manual_stdlib_header_problem_follows_preprocessor_comments_and_continuations() {
+	for text in ['/*\n#if IGNORE\n*/\n', '#if(1)\n#endif/*closed*/\n',
+		'# /* comment */ if 1\n# /* comment */ endif\n', '#i\\\nf 1\n#en\\\ndif\n',
+		'// ignored \\\n#if ignored\n', 'char* comment = "/*";\n#if 1\n#endif\n',
+		'#if 1\n#elif 2\n#else\n#if 3\n#else\n#endif\n#endif\n'] {
+		assert manual_stdlib_header_problem(text) == '', text
+	}
+	assert manual_stdlib_header_problem('#if(1)\n').contains('unterminated')
+	assert manual_stdlib_header_problem('/*\n#endif\n').contains('block comment')
+	for text in ['#else\n', '#elif 1\n', '#if 1\n#else\n#else\n#endif\n', '#if 1\n#else\n#elif 2\n#endif\n'] {
+		assert manual_stdlib_header_problem(text) != '', text
+	}
+}
+
+fn test_manual_stdlib_header_usage_matches_headerless_and_target_header_modes() {
+	mut ast := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&ast)
+	mut prefs := pref.new_preferences()
+	prefs.target = pref.host_target()
+	assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false)
+	ast.add_node(flat.Node{ kind: .module_decl, value: 'builtin' })
+	ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id('<pthread.h>') })
+	assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false)
+	ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id('<stdio.h>') })
+	assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false)
+	prefs.target_libc_headers = true
+	assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false)
+}
+
+fn test_manual_stdlib_header_usage_matches_include_collection() {
+	for kind in ['include', 'preinclude', 'insert'] {
+		for header in ['<stdio.h>', '"local_header.h"', 'windows <windows.h>'] {
+			mut ast := flat.FlatAst.new()
+			mut tc := types.TypeChecker.new(&ast)
+			mut prefs := pref.new_preferences()
+			prefs.target = pref.host_target()
+			ast.add_node(flat.Node{ kind: .file, value: '/project/main.v' })
+			ast.add_node(flat.Node{ kind: .module_decl, value: 'main' })
+			ast.add_node(flat.Node{ kind: .directive, value: kind, typ: flat.source_type_id(header) })
+			assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false) == (header != 'windows <windows.h>'
+				|| prefs.target.os == 'windows')
+			// Portable C includes retain a preprocessor guard for the target C compiler.
+			prefs.output_cross_c = true
+			assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false)
+			prefs.target_libc_headers = true
+			assert !uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], false)
+		}
+	}
+}
+
+fn test_manual_stdlib_header_usage_resolves_native_sources_with_cli_include_dirs() {
+	root := os.join_path(os.vtmp_dir(), 'manual_header_usage_${os.getpid()}')
+	include_dir := os.join_path(root, 'includes')
+	os.mkdir_all(include_dir)!
+	defer { os.rmdir_all(root) or {} }
+	for has_include in [false, true] {
+		source := if has_include {
+			'#include <stdio.h>\n'
+		} else {
+			'int helper(void) { return 1; }\n'
+		}
+		os.write_file(os.join_path(include_dir, 'helper.c'), source)!
+		for portable in [false, true] {
+			mut ast := flat.FlatAst.new()
+			mut tc := types.TypeChecker.new(&ast)
+			mut prefs := pref.new_preferences()
+			prefs.target = pref.host_target()
+			prefs.output_cross_c = portable
+			ast.add_node(flat.Node{ kind: .file, value: os.join_path(root, 'main.v') })
+			ast.add_node(flat.Node{ kind: .module_decl, value: 'main' })
+			ast.add_node(flat.Node{ kind: .directive, value: 'include', typ: flat.source_type_id('"helper.c"') })
+			// Portable runtime helpers require compatibility headers even when the
+			// application's native source has no includes of its own.
+			assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, ['-I', include_dir], false)
+			mut g := FlatGen.new()
+			g.a = &ast
+			g.tc = &tc
+			g.target = prefs.target
+			g.output_cross_c = portable
+			g.compiler_vroot = prefs.vroot
+			g.c_flags = ['-I', include_dir]
+			assert g.collect_c_directive_at(ast.nodes.len - 1, 'main', ast.nodes.last(),
+				os.join_path(root, 'main.v'), true)
+			assert g.c_directives.len == 1
+			// Both output modes leave source-local header lookup to the C compiler.
+			assert g.c_directives[0].text.contains(os.real_path(os.join_path(include_dir, 'helper.c')).replace('\\', '/'))
+			assert g.inlined_c_fns['helper'] == !has_include
+		}
 	}
 }
 
@@ -203,9 +485,91 @@ fn test_system_libc_thread_preamble_uses_native_windows_api() {
 	assert windows_code.contains('WaitForSingleObject('), windows_code
 	assert windows_code.contains('CloseHandle('), windows_code
 	assert windows_code.contains('return a.handle == b.handle;'), windows_code
+	assert windows_code.contains('static __v_thread __v_thread_spawn_detached(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {'), windows_code
+	// The detached thread frees its own context and result; its handle is closed at once.
+	assert windows_code.contains('__v_thread_free(raw_context); void* result = context.start(context.arg); if (result) __v_thread_free(result); return 0; }'), windows_code
+	assert windows_code.contains('HANDLE handle = CreateThread(NULL, __v_thread_stack_size, __v_windows_detached_thread_start, context, 0, NULL);'), windows_code
+	assert windows_code.contains('if (!CloseHandle(handle))'), windows_code
 	assert !windows_code.contains('pthread_'), windows_code
 	posix_code := c_code[posix_start..]
 	assert posix_code.contains('pthread_equal(a.handle, b.handle) != 0'), posix_code
+	assert posix_code.contains('pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)'), posix_code
+	assert posix_code.contains('__v_thread_free(raw_context); void* result = context.start(context.arg); if (result) __v_thread_free(result); return NULL; }'), posix_code
+}
+
+fn test_headerless_thread_runtime_can_spawn_detached_threads() {
+	mut g := FlatGen.new()
+	g.headerless_libc_preamble()
+	c_code := g.sb.str()
+	assert !c_code.contains('int pthread_detach(void* thread);'), c_code
+	assert c_code.contains('HANDLE handle = CreateThread(NULL, __v_thread_stack_size, __v_windows_detached_thread_start, context, 0, NULL);'), c_code
+	assert c_code.contains('pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)'), c_code
+}
+
+fn test_boehm_windows_spawn_threads_are_created_by_gc_create_thread() {
+	// Every Windows spawn thread under Boehm goes through GC_CreateThread, which registers
+	// it with the collector. Each preamble emits three spawn creates: __v_thread_spawn,
+	// __v_thread_spawn_detached and __v_thread_spawn_comparable. A partial change fails the count.
+	for preamble in ['system', 'headerless'] {
+		mut g := windows_preamble_test_gen()
+		g.compile_defines << 'gcboehm'
+		if preamble == 'system' {
+			g.system_libc_preamble()
+		} else {
+			g.headerless_libc_preamble()
+		}
+		c_code := g.sb.str()
+		assert !c_code.contains('= CreateThread(NULL'), '${preamble}: raw CreateThread spawn remains'
+		assert c_code.count('GC_CreateThread(NULL, __v_thread_stack_size') == 3, '${preamble}: ${c_code.count('GC_CreateThread(NULL, __v_thread_stack_size')} spawn creates through GC_CreateThread'
+		assert c_code.contains('HANDLE WINAPI GC_CreateThread('), preamble
+		// libgc exports the stdcall name with an underscore when built with GC_UNDERSCORE_STDCALL.
+		// Mirror gc.h's rename, so the declaration matches that export.
+		assert c_code.contains('#if defined(GC_UNDERSCORE_STDCALL)\n#define GC_CreateThread _GC_CreateThread\n#endif'), preamble
+	}
+}
+
+fn test_cross_c_system_libc_preamble_keeps_posix_environ() {
+	mut g := windows_preamble_test_gen()
+	g.set_output_cross_c(true)
+	g.system_libc_preamble()
+	c_code := g.sb.str()
+	assert c_code.contains('#ifndef _WIN32\nextern char** environ;\n#endif')
+}
+
+fn test_strict_iso_c_flags_request_linux_posix_feature_macros() {
+	for flags in [['-std=c99'], ['-std=c11'], ['--std=c17'], ['-std', 'c99'], ['-ansi']] {
+		mut g := FlatGen.new()
+		g.c_flags = flags
+		g.c99_feature_test_macros()
+		c_code := g.sb.str()
+		assert c_code.contains('#if defined(__linux__) && !defined(_GNU_SOURCE)\n#define _GNU_SOURCE\n#endif'), '${flags}: ${c_code}'
+		assert c_code.contains('#define _POSIX_C_SOURCE 200809L'), '${flags}: ${c_code}'
+	}
+}
+
+fn test_gnu_c_flags_keep_default_feature_macros() {
+	for flags in [[]string{}, ['-std=gnu11'], ['-std=c99', '-std=gnu99'], ['-O2']] {
+		mut g := FlatGen.new()
+		g.c_flags = flags
+		g.c99_feature_test_macros()
+		c_code := g.sb.str()
+		assert !c_code.contains('_GNU_SOURCE'), '${flags}: ${c_code}'
+		assert !c_code.contains('_POSIX_C_SOURCE'), '${flags}: ${c_code}'
+	}
+}
+
+fn test_syncfs_binding_requests_linux_gnu_feature_macros() {
+	for flags in [[]string{}, ['-std=gnu11'], ['-std=c99', '-std=gnu99']] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		tc.fn_ret_types['C.syncfs'] = types.Type(types.int_)
+		mut g := FlatGen.new()
+		g.tc = &tc
+		g.c_flags = flags
+		g.c99_feature_test_macros()
+		c_code := g.sb.str()
+		assert c_code.contains('#if defined(__linux__) && !defined(_GNU_SOURCE)\n#define _GNU_SOURCE\n#endif'), '${flags}: ${c_code}'
+	}
 }
 
 fn test_headerless_pthread_fallback_respects_darwin_type_guards() {
@@ -221,33 +585,57 @@ fn test_headerless_pthread_fallback_respects_darwin_type_guards() {
 	assert c_code.contains('typedef __darwin_pthread_key_t pthread_key_t;'), c_code
 	assert c_code.contains('#define PTHREAD_MUTEX_INITIALIZER { 0x32AAABA7, { 0 } }'), c_code
 	assert c_code.contains('#define PTHREAD_ONCE_INIT { 0x30B1BCBA, { 0 } }'), c_code
-	assert c_code.contains('int pthread_once(pthread_once_t* once_control, void (*init_routine)(void));'), c_code
-	assert c_code.contains('int pthread_equal(pthread_t t1, pthread_t t2);'), c_code
+	assert !c_code.contains('int pthread_once(pthread_once_t* once_control, void (*init_routine)(void));'), c_code
+	assert !c_code.contains('int pthread_equal(pthread_t t1, pthread_t t2);'), c_code
 	assert c_code.contains('pthread_equal(a.handle, b.handle) != 0'), c_code
 }
 
-fn test_headerless_libc_preamble_declares_printf_for_cached_test_harnesses() {
+fn test_headerless_darwin_pthread_storage_matches_the_sdk() ! {
+	$if !macos {
+		return
+	}
+	mut g := FlatGen.new()
+	g.headerless_darwin_pthread_storage()
+	mut source := '#include <pthread.h>\n'
+	pthread_types := ['pthread_attr_t', 'pthread_mutex_t', 'pthread_cond_t', 'pthread_rwlock_t',
+		'pthread_rwlockattr_t', 'pthread_condattr_t', 'pthread_once_t']
+	for typ in pthread_types {
+		source += '#define ${typ} v_test_${typ}\n'
+	}
+	source += g.sb.str()
+	for typ in pthread_types {
+		source += '#undef ${typ}\n'
+		source += '_Static_assert(sizeof(v_test_${typ}) == sizeof(${typ}), "${typ} size");\n'
+		source += '_Static_assert(_Alignof(v_test_${typ}) == _Alignof(${typ}), "${typ} alignment");\n'
+	}
+	root := os.join_path(os.vtmp_dir(), 'darwin_pthread_storage_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'storage.c')
+	os.write_file(path, source)!
+	for arch in ['arm64', 'x86_64'] {
+		result := os.exec(['cc', '-arch', arch, '-std=c11', '-fsyntax-only', path])
+		assert result.exit_code == 0, '${arch}: ${result.output}'
+	}
+}
+
+fn test_headerless_libc_preamble_leaves_library_prototypes_to_v_bindings() {
 	mut g := FlatGen.new()
 	g.headerless_libc_preamble()
 	c_code := g.sb.str()
-	assert c_code.contains('int printf(const char* format, ...);'), c_code
-	assert c_code.contains('void perror(const char* message);'), c_code
-	assert c_code.contains('void* memchr(const void* s, int c, size_t n);'), c_code
-	assert c_code.contains('DWORD WINAPI TlsAlloc(void);'), c_code
-	assert c_code.contains('void* WINAPI TlsGetValue(DWORD index);'), c_code
-	assert c_code.contains('BOOL WINAPI TlsSetValue(DWORD index, void* value);'), c_code
-	assert c_code.contains('void* WINAPI GetModuleHandleA(const char* module_name);'), c_code
-	assert c_code.contains('void* WINAPI GetProcAddress(void* module, const char* proc_name);'), c_code
+	assert !c_code.contains('int printf(const char* format, ...);'), c_code
+	assert !c_code.contains('void perror(const char* message);'), c_code
+	assert !c_code.contains('void* memchr(const void* s, int c, size_t n);'), c_code
 	assert !c_code.contains('DWORD WINAPI FlsAlloc('), c_code
 	assert !c_code.contains('void* WINAPI FlsGetValue('), c_code
 	assert !c_code.contains('BOOL WINAPI FlsSetValue('), c_code
 }
 
-fn test_headerless_libc_preamble_declares_qsort_for_generated_sort_helpers() {
+fn test_headerless_libc_preamble_keeps_qsort_callback_type() {
 	mut g := FlatGen.new()
 	g.headerless_libc_preamble()
 	c_code := g.sb.str()
-	assert c_code.contains('void qsort(void* base, size_t items, size_t item_size, int (*cb)(const void*, const void*));'), c_code
+	assert c_code.contains('typedef int (*qsort_callback_func)(const void*, const void*);'), c_code
 }
 
 fn test_target_libc_preamble_uses_target_header_declarations() {
@@ -315,7 +703,27 @@ fn test_target_libc_preamble_emits_pthread_runtime_when_threads_are_used() {
 	assert c_code.contains('#include <pthread.h>')
 	assert c_code.contains('static __v_thread __v_thread_spawn(')
 	assert c_code.contains('static void* __v_thread_join(')
+	assert c_code.contains('pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED)')
 	assert c_code.contains('pthread_equal(a.handle, b.handle) != 0')
+	assert c_code.contains('void* p = v_gc_malloc_uncollectable(size);')
+	assert c_code.contains('v_gc_free(ptr);')
+}
+
+fn test_object_file_boehm_declares_gc_helpers_before_thread_allocation() {
+	mut g := FlatGen.new()
+	g.compile_defines = ['gcboehm']
+	g.set_object_file_mode(true)
+	g.needs_thread_runtime = true
+	g.preamble()
+	c_code := g.sb.str()
+	alloc := c_code.index('static void* __v_thread_alloc(') or { -1 }
+	assert alloc >= 0
+	// The helper definitions are embedded as `static` in object-file mode, so their
+	// prototypes must be `static` too and must precede the first call site.
+	alloc_decl := c_code.index('static void* v_gc_malloc_uncollectable(size_t size);') or { -1 }
+	assert alloc_decl >= 0 && alloc_decl < alloc
+	free_decl := c_code.index('static void v_gc_free(void* ptr);') or { -1 }
+	assert free_decl >= 0 && free_decl < alloc
 }
 
 fn test_vinix_target_libc_thread_runtime_uses_freestanding_pthread_abi() {
@@ -326,6 +734,10 @@ fn test_vinix_target_libc_thread_runtime_uses_freestanding_pthread_abi() {
 	g.preamble()
 	c_code := g.sb.str()
 	assert c_code.contains('pthread_create(&result.handle, NULL, (void*)start, arg)')
+	assert c_code.contains('pthread_create(&handle, NULL, (void*)__v_detached_thread_start, context)')
+	assert c_code.contains('if (pthread_detach(handle) != 0) exit(1);')
+	// Detached spawn wrappers free their argument block with it.
+	assert c_code.contains('static void __v_thread_free(void* ptr) { free(ptr); }')
 	assert !c_code.contains('pthread_attr_init(&attr)')
 	assert !c_code.contains('fprintf(stderr, "V thread')
 	assert !c_code.contains('abort();')
@@ -392,10 +804,10 @@ fn test_libc_compat_gettid_supports_s390x() {
 	assert c_code.contains('#elif defined(__s390x__)\n#define SYS_gettid 236'), c_code
 }
 
-fn test_headerless_libc_preamble_suppresses_its_mach_timebase_declaration() {
+fn test_headerless_libc_preamble_uses_v_mach_timebase_declaration() {
 	mut g := FlatGen.new()
 	g.headerless_libc_preamble()
-	assert !g.should_emit_c_extern_decl('mach_timebase_info')
+	assert g.should_emit_c_extern_decl('mach_timebase_info')
 	// Compiler builtins never get a prototype; clang rejects redeclaring them.
 	assert !g.should_emit_c_extern_decl('__atomic_fetch_add')
 	assert !g.should_emit_c_extern_decl('__builtin_expect')
@@ -423,9 +835,11 @@ fn test_builtin_abi_decls_reuse_tcc_x64_stdatomic_fence_declaration() {
 	mut g := FlatGen.new()
 	g.atomic_thread_fence_compat_decls()
 	c_code := g.sb.str()
-	assert c_code.contains('#if defined(_WIN32) && defined(__TINYC__)\n/* V atomic.h supplies atomic_thread_fence on Windows TCC. */')
+	assert c_code.contains('#if defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__)))\n/* V atomic.h supplies atomic_thread_fence on Windows TCC and MSVC. */')
 	assert c_code.contains('#define atomic_thread_fence(order) __atomic_thread_fence(order)')
 	assert !c_code.contains('extern void __atomic_thread_fence(int order);')
+	// a <stdatomic.h> included first already defines the macro; defining it again is a warning
+	assert c_code.contains('#elif !defined(atomic_thread_fence)\n#define atomic_thread_fence(order) __atomic_thread_fence(order)')
 }
 
 fn test_map_equality_fallback_does_not_infer_value_type_from_size() {
@@ -452,9 +866,148 @@ fn test_system_libc_headers_make_stdatomic_compatible_with_gnu_objective_c() {
 	mut g := FlatGen.new()
 	g.system_libc_headers()
 	c_code := g.sb.str()
-	assert c_code.contains('#if defined(_WIN32) && defined(__TINYC__)')
+	assert c_code.contains('#if defined(__has_include)\n#if __has_include(<wchar.h>)\n#include <wchar.h>\n#endif\n#else\n#include <wchar.h>\n#endif')
+	assert c_code.contains('#if defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__)))')
 	assert c_code.contains('thirdparty/stdatomic/win/atomic.h"\n#else')
 	compat_guard := '#if defined(__OBJC__) && defined(__GNUC__) && !defined(__clang__)'
 	assert c_code.contains('${compat_guard}\n#define _Atomic volatile\n#endif\n#include <stdatomic.h>')
 	assert c_code.contains('#include <stdatomic.h>\n${compat_guard}\n#undef _Atomic\n#endif')
+}
+
+fn test_system_libc_headers_provide_posix_file_lock_flags() ! {
+	$if windows || freestanding {
+		return
+	}
+	mut g := FlatGen.new()
+	g.compiler_vroot = @VEXEROOT
+	g.system_libc_headers()
+	dir := os.join_path(os.vtmp_dir(), 'system_file_lock_headers_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	source := os.join_path(dir, 'lock.c')
+	os.write_file(source, g.sb.str() + '\nint (*lock_file)(int, int) = flock;\nint main(void) { return (LOCK_EX | LOCK_NB | LOCK_SH | LOCK_UN) == 0; }\n')!
+	compiled := os.exec(['cc', '-D_GNU_SOURCE=1', '-std=gnu11', '-Werror', '-fsyntax-only', source])
+	assert compiled.exit_code == 0, compiled.output
+}
+
+fn test_system_libc_headers_leave_the_msvc_only_headers_to_the_c_preprocessor() {
+	// The generated C is compiled by whatever C compiler the user picked, which is
+	// not the one V generated it for: `vc/v_win.c` comes out of
+	// `-cross -os windows -cc msvc` (gen_vc_ci.yml) and is then built by tcc, clang
+	// and gcc (makev.bat). Choosing the MSVC-only headers at generation time baked
+	// <intrin.h> and <dbghelp.h> into every Windows snapshot, and the bundled
+	// TinyCC ships neither, so `makev.bat` died on
+	// `include file 'intrin.h' not found` before compiling any line of V.
+	// See #29146.
+	mut g := FlatGen.new()
+	// Generated exactly the way gen_vc_ci.yml generates the Windows snapshot.
+	g.set_ccompiler('msvc')
+	g.system_libc_headers()
+	c_code := g.sb.str()
+	// Only MSVC has these two, so the guard is the whole story: pinned as one block,
+	// because a bare include of either one is exactly the regression.
+	emitted := c_code.split_into_lines().filter(it.trim_space() in [
+		'#include <intrin.h>',
+		'#include <dbghelp.h>',
+	]).map(it.trim_space())
+	assert c_code_is_guarded_msvc_only(c_code), 'the snapshot emits ${emitted} unguarded, but only MSVC has those headers, so a snapshot built by tcc, clang or gcc fails with `include file not found`'
+}
+
+// c_code_is_guarded_msvc_only reports whether <intrin.h> and <dbghelp.h> are emitted
+// as one `#if defined(_MSC_VER)` block, which is the only shape that lets a snapshot
+// built by tcc, clang or gcc skip headers they do not have.
+fn c_code_is_guarded_msvc_only(c_code string) bool {
+	return c_code.contains('#if defined(_MSC_VER)\n#include <intrin.h>\n#include <dbghelp.h>\n#endif')
+}
+
+fn test_system_libc_headers_do_not_depend_on_the_c_compiler_v_was_generated_for() {
+	// A snapshot is generated for one C compiler and compiled by another, so the
+	// header set must not vary with `g.ccompiler`. Branches on it belong in the C
+	// preprocessor instead: see #29146, where `if g.ccompiler == 'msvc'` made
+	// `-cc msvc` the only spelling that could build a Windows snapshot, even
+	// though <intrin.h>/<dbghelp.h> exist nowhere but under MSVC anyway.
+	mut reference := []string{}
+	for ccompiler in ['msvc', 'gcc', 'clang', 'tcc', 'tinyc'] {
+		mut g := FlatGen.new()
+		g.set_ccompiler(ccompiler)
+		g.system_libc_headers()
+		includes := g.sb.str().split_into_lines().filter(it.trim_space().starts_with('#include'))
+			.map(it.trim_space())
+		if reference.len == 0 {
+			reference = includes.clone()
+			continue
+		}
+		// Report the difference rather than both full lists: a header that is
+		// missing from one spelling of the same snapshot is the whole finding.
+		only_here := includes.filter(it !in reference)
+		only_there := reference.filter(it !in includes)
+		assert only_here.len == 0 && only_there.len == 0, '-cc ${ccompiler} emits ${only_here} but the msvc spelling emits ${only_there} instead'
+	}
+}
+
+fn test_manual_windows_crt_declares_compiler_environment_setup() {
+	headers := manual_stdlib_c_headers()
+	declaration := 'V_CRT_LINKAGE int V_CRT_CALL _putenv_s(const char *name, const char *value);'
+	assert headers.contains(declaration)
+	mut g := windows_preamble_test_gen()
+	g.compiler_vexe_env_setup = true
+	g.compiler_vexe = 'C:/v/v.exe'
+	g.compiler_vroot = 'C:/v'
+	g.gen_compiler_vexe_env_setup()
+	assert g.sb.str().contains('_putenv_s("VEXE", v3_vexe);')
+}
+
+fn test_manual_header_preflight_matches_portable_no_builtin_and_object_generation() {
+	for portable in [false, true] {
+		for no_builtin in [false, true] {
+			for object_file_mode in [false, true] {
+				for target_libc_headers in [false, true] {
+					mut ast := flat.FlatAst.new()
+					mut tc := types.TypeChecker.new(&ast)
+					mut prefs := pref.new_preferences()
+					prefs.target = pref.host_target()
+					prefs.output_cross_c = portable
+					prefs.no_builtin = no_builtin
+					prefs.target_libc_headers = target_libc_headers
+					expected := !target_libc_headers && (portable || no_builtin || object_file_mode)
+					assert uses_manual_stdlib_c_headers(&ast, &tc, prefs, [], object_file_mode) == expected
+					mut g := FlatGen.new()
+					g.a = &ast
+					g.tc = &tc
+					g.set_target(prefs.target)
+					g.set_target_libc_headers(target_libc_headers)
+					g.set_output_cross_c(portable)
+					g.set_no_builtin(no_builtin)
+					g.set_object_file_mode(object_file_mode)
+					g.preamble()
+					assert g.sb.str().contains('#define V_MANUAL_STDLIB_HEADERS 1') == expected
+				}
+			}
+		}
+	}
+}
+
+fn test_arm32_output_undefines_tinycc_identifier_macros() {
+	mut g := FlatGen.new()
+	g.set_target(pref.target_from('linux', 'amd64')!)
+	g.undef_target_identifier_macros()
+	assert g.sb.len == 0, '64-bit output is unchanged'
+	g.set_target(pref.target_from('linux', 'arm32')!)
+	g.undef_target_identifier_macros()
+	assert g.sb.str() == '#undef arm\n#undef arm_elf\n'
+	$if !macos && !linux {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'arm32_identifier_macros_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	c_file := os.join_path(root, 'main.c')
+	os.write_file(source, 'fn main() {\n\tarm := 3\n\tarm_elf := 4\n\tprintln(arm + arm_elf)\n}\n')!
+	generated := os.execute('${os.quoted_path(@VEXE)} -nocache -gc none -os linux -arch arm32 -cross -d v3_headerless_bootstrap -o ${os.quoted_path(c_file)} ${os.quoted_path(source)}')
+	assert generated.exit_code == 0, generated.output
+	// TinyCC predefines both macros on 32-bit ARM.
+	checked := os.execute('${os.quoted_path(clang)} -target armv7-unknown-linux-gnueabihf -std=c99 -fsyntax-only -Wno-everything -Darm=1 -Darm_elf=1 ${os.quoted_path(c_file)}')
+	assert checked.exit_code == 0, checked.output
 }

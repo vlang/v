@@ -1,0 +1,9 @@
+fn call(f fn () bool) bool {
+	return f()
+}
+
+fn main() {
+	it := 'b'
+	// only array DSL calls bind an implicit `it`; here it is the captured local
+	println(call(|| 'abc'.contains(it)))
+}

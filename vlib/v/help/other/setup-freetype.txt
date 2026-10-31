@@ -1,0 +1,15 @@
+Setup the thirdparty "freetype" library, on Windows.
+
+Usage:
+  v setup-freetype
+
+This command only does anything on Windows; on other systems it just
+prints a reminder message and exits.
+
+It checks whether `thirdparty/freetype` is present in the V
+installation, and if it is not, clones
+https://github.com/ubawurinna/freetype-windows-binaries into it.
+
+Freetype is needed for drawing text by several of the graphical
+examples, so run this command if building them fails with linker
+errors mentioning freetype.

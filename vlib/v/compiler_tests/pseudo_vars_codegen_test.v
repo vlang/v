@@ -10,36 +10,38 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 fn test_at_mod_codegen() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_pseudo_vars_codegen_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	main_src := os.join_path(os.temp_dir(), 'v3_at_mod_main.v')
 	main_bin := os.join_path(os.temp_dir(), 'v3_at_mod_main')
 	os.write_file(main_src, "fn main() {\n\tassert @MOD == 'main'\n}\n")!
-	main_result := os.execute('${v3_bin} ${main_src} -o ${main_bin}')
+	main_result := os.exec([v3_bin, '${main_src}', '-o', main_bin])
 	assert main_result.exit_code == 0, main_result.output
 
 	module_test_src := os.join_path(os.temp_dir(), 'v3_at_mod_module_test.v')
 	module_test_bin := os.join_path(os.temp_dir(), 'v3_at_mod_module_test')
 	os.write_file(module_test_src,
 		"module sample\n\nfn test_at_mod() {\n\tassert @MOD == 'sample'\n}\n")!
-	module_test_result := os.execute('${v3_bin} ${module_test_src} -o ${module_test_bin}')
+	module_test_result := os.exec([v3_bin, module_test_src, '-o', module_test_bin])
 	assert module_test_result.exit_code == 0, module_test_result.output
 }
 
 fn test_at_file_line_codegen_uses_source_line() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_file_line_codegen_test')
 	build :=
-		os.execute('${vexe} -gc none -prealloc -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-prealloc', '-path', '${vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	main_src := os.join_path(os.temp_dir(), 'v3_file_line_main.v')
 	main_bin := os.join_path(os.temp_dir(), 'v3_file_line_main')
 	os.write_file(main_src,
 		"fn main() {\n\tgot := @FILE_LINE\n\texpected := 'v3_file_line_main.v:' + @LINE.str()\n\tprintln(got)\n\tprintln(expected)\n}\n")!
-	main_result := os.execute('${v3_bin} -nocache -o ${main_bin} ${main_src}')
+	main_result := os.exec([v3_bin, '-nocache', '-o', main_bin, '${main_src}'])
 	assert main_result.exit_code == 0, main_result.output
-	run := os.execute(main_bin)
+	run := os.exec([main_bin])
 	assert run.exit_code == 0, run.output
 	assert run.output == 'v3_file_line_main.v:2\nv3_file_line_main.v:3\n', run.output
 }
@@ -47,16 +49,17 @@ fn test_at_file_line_codegen_uses_source_line() {
 fn test_quoted_comptime_pseudo_vars_are_not_expanded() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_quoted_pseudo_vars_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	main_src := os.join_path(os.temp_dir(), 'v3_quoted_pseudo_vars_main.v')
 	main_bin := os.join_path(os.temp_dir(), 'v3_quoted_pseudo_vars_main')
 	os.write_file(main_src,
 		"fn main() {\n\t\$if '@OS' == @OS {\n\t\tprintln('wrong')\n\t} \$else {\n\t\tprintln('ok')\n\t}\n}\n")!
-	compile := os.execute('${v3_bin} ${main_src} -o ${main_bin}')
+	compile := os.exec([v3_bin, '${main_src}', '-o', main_bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(main_bin)
+	run := os.exec([main_bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -65,7 +68,8 @@ fn test_quoted_comptime_pseudo_vars_are_not_expanded() {
 fn test_embed_file_codegen() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_embed_file_codegen_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	tmp_dir := os.join_path(os.temp_dir(), 'v3_embed_file_codegen_${os.getpid()}')
@@ -80,9 +84,9 @@ fn test_embed_file_codegen() {
 	bin := os.join_path(tmp_dir, 'main')
 	os.write_file(src,
 		"fn main() {\n\tdata := \$embed_file('payload.txt')\n\tassert data.len == 5\n\tassert data.to_string() == 'hello'\n}\n")!
-	result := os.execute('${v3_bin} ${src} -o ${bin}')
+	result := os.exec([v3_bin, '${src}', '-o', bin])
 	assert result.exit_code == 0, result.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 }
 
@@ -91,7 +95,8 @@ fn test_embed_file_codegen() {
 fn test_embed_file_at_file_from_relative_subdir_path() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_embed_file_at_file_codegen_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	tmp_dir := os.join_path(os.temp_dir(), 'v3_embed_file_at_file_codegen_${os.getpid()}')
@@ -109,9 +114,9 @@ fn test_embed_file_at_file_from_relative_subdir_path() {
 	defer {
 		os.chdir(old_wd) or { panic(err) }
 	}
-	result := os.execute('${v3_bin} sub/main.v -o ${bin}')
+	result := os.exec([v3_bin, 'sub/main.v', '-o', bin])
 	assert result.exit_code == 0, result.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 }
 
@@ -120,7 +125,8 @@ fn test_embed_file_at_file_from_relative_subdir_path() {
 fn test_prod_embed_file_keeps_bytes_after_source_removed() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_prod_embed_file_codegen_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	tmp_dir := os.join_path(os.temp_dir(), 'v3_prod_embed_file_codegen_${os.getpid()}')
@@ -135,10 +141,10 @@ fn test_prod_embed_file_keeps_bytes_after_source_removed() {
 	bin := os.join_path(tmp_dir, 'main')
 	os.write_file(src,
 		"fn main() {\n\tdata := \$embed_file('payload.txt')\n\tassert data.to_string() == 'original payload'\n}\n")!
-	result := os.execute('${v3_bin} -prod ${src} -o ${bin}')
+	result := os.exec([v3_bin, '-prod', '${src}', '-o', bin])
 	assert result.exit_code == 0, result.output
 	os.rm(payload)!
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 }
 
@@ -147,7 +153,8 @@ fn test_prod_embed_file_keeps_bytes_after_source_removed() {
 fn test_imported_module_embed_file_codegen() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_imported_embed_file_codegen_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	tmp_dir := os.join_path(os.temp_dir(), 'v3_imported_embed_file_codegen_${os.getpid()}')
@@ -163,8 +170,8 @@ fn test_imported_module_embed_file_codegen() {
 	src := os.join_path(tmp_dir, 'main.v')
 	bin := os.join_path(tmp_dir, 'main')
 	os.write_file(src, "import assets\n\nfn main() {\n\tassert assets.message() == 'hello'\n}\n")!
-	result := os.execute('${v3_bin} ${src} -o ${bin}')
+	result := os.exec([v3_bin, '${src}', '-o', bin])
 	assert result.exit_code == 0, result.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 }

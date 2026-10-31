@@ -2,11 +2,17 @@ name: Test prebuilt binaries
 
 on:
   workflow_dispatch:
-  release:
-    types: [edited, published]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prebuilt-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   prebuilt-linux:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -23,6 +29,7 @@ jobs:
           ./v -showcc -gc none -cc tcc -no-retry-compilation run examples/hello_world.v
 
   prebuilt-macos-arm64:
+    if: github.ref == 'refs/heads/master'
     ## macos-14 is a m1 runner
     runs-on: macos-14
     timeout-minutes: 5
@@ -40,6 +47,7 @@ jobs:
           ./v -showcc -gc none -cc tcc -no-retry-compilation run examples/hello_world.v
 
   prebuilt-macos-x86_64:
+    if: github.ref == 'refs/heads/master'
     runs-on: macos-latest
     timeout-minutes: 5
     steps:
@@ -55,6 +63,7 @@ jobs:
           ./v run examples/hello_world.v
 
   prebuilt-windows:
+    if: github.ref == 'refs/heads/master'
     runs-on: windows-latest
     timeout-minutes: 5
     steps:

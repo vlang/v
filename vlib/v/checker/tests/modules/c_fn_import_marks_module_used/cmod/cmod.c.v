@@ -2,4 +2,4 @@ module cmod
 
 #include <string.h>
 
-fn C.strlen(s &char) usize
+fn C.strlen(s &char) uint

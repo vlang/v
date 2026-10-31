@@ -65,7 +65,7 @@ fn vschannel_h2_do(req &Request, port int, method Method, host_name string, path
 		err_code := C.vschannel_last_error(&ctx)
 		C.vschannel_cleanup(&ctx)
 		if err_code != 0 {
-			return vschannel_request_error(err_code)
+			return vschannel_handshake_error(err_code)
 		}
 		return error('http: vschannel connect failed')
 	}

@@ -11,13 +11,6 @@ on:
       - '!**/paths_ci.yml'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
-  pull_request:
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/paths_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
 
 concurrency:
   group: paths-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -26,9 +19,18 @@ concurrency:
 env:
   V_MACOS_V3_NO_FALLBACK: '1'
 
+permissions:
+  contents: read
+
 jobs:
   space-paths-linux:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
@@ -56,7 +58,13 @@ jobs:
           ./v test vlib/builtin vlib/os
 
   space-paths-macos:
+    if: github.ref == 'refs/heads/master'
     runs-on: macos-14
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -87,7 +95,13 @@ jobs:
           ./v test vlib/builtin vlib/os
 
   space-paths-windows:
+    if: github.ref == 'refs/heads/master'
     runs-on: windows-2022
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
     timeout-minutes: 30
     ## NB: the following paths do not work for now:
     ##### MY_V_PATH: '你好 my $path, @с интервали'

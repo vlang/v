@@ -1,0 +1,21 @@
+// The channel elements of a generic instance must be stored as the expected ones, as
+// outside generic functions.
+fn as_wide[T](ch chan T) chan u64 {
+	return ch
+}
+
+fn take_wide(ch chan u64) {
+	println(ch.len)
+}
+
+fn pass_on[T](ch chan T) {
+	take_wide(ch)
+}
+
+fn main() {
+	println(as_wide[u8](chan u8{}).len)
+	pass_on(chan u8{})
+	// An instance whose elements are stored as expected is accepted.
+	println(as_wide[u64](chan u64{}).len)
+	pass_on(chan u64{})
+}

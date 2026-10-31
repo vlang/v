@@ -50,7 +50,22 @@ const cs_page_size_arm64 = 16384 // Code signing page size for ARM64 macOS
 
 const cs_page_shift_arm64 = 14 // log2(16384)
 
-const o_wronly_creat_trunc = $if linux { 0x241 } $else { 0x601 }
+// The output file is created through the C library's open(), and the create and
+// truncate bits are laid out differently per platform: the BSD family (and so
+// macOS, the only target this linker was built for) uses 0x200/0x400, Linux
+// 0x40/0x200 and MSVCRT 0x100/0x200. One constant only ever suits one of them;
+// the others silently fail to create the file. MSVCRT also needs binary mode
+// to preserve instruction bytes, including bytes equal to a newline.
+const o_wronly_creat_trunc = $if windows {
+	0x8301
+} $else $if linux {
+	0x241
+} $else {
+	0x601
+}
+
+// MSVCRT accepts read/write permission bits, without POSIX executable bits.
+const output_file_permissions = $if windows { 0o600 } $else { 0o755 }
 
 // ARM64 page size on macOS
 const page_size = 0x4000 // 16KB
@@ -101,7 +116,7 @@ const force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_exit',
 	'_rand', '_srand', '_isdigit', '_isspace', '_tolower', '_toupper', '_setenv',
 	'_unsetenv', '_sysconf', '_uname', '_gethostname', '_pthread_mutex_init', '_pthread_mutex_lock',
 	'_pthread_mutex_trylock', '_pthread_mutex_unlock', '_pthread_mutex_destroy', '_pthread_self',
-	'_pthread_create', '_pthread_join', '_pthread_attr_init', '_pthread_attr_setstacksize',
+	'_pthread_create', '_pthread_join', '_pthread_detach', '_pthread_attr_init', '_pthread_attr_setstacksize',
 	'_pthread_attr_destroy', '_pthread_key_create', '_pthread_key_delete', '_pthread_getspecific',
 	'_pthread_setspecific', '_pthread_rwlockattr_init', '_pthread_rwlockattr_setpshared',
 	'_pthread_rwlockattr_destroy', '_pthread_rwlock_init', '_pthread_rwlock_rdlock',
@@ -551,10 +566,10 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	if !write_file_array_raw(tmp_output_path, l.buf) {
 		panic('failed to write output file')
 	}
-	if C.chmod(&char(tmp_output_path.str), 0o755) != 0 {
+	if C.chmod(&char(tmp_output_path.str), output_file_permissions) != 0 {
 		panic('failed to chmod output file')
 	}
-	if C.rename(&char(tmp_output_path.str), &char(output_path.str)) != 0 {
+	if !replace_output_file(tmp_output_path, output_path) {
 		panic('failed to rename output file')
 	}
 
@@ -562,9 +577,23 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	println('  TOTAL linker: ${time.since(t_total)}')
 }
 
+// replace_output_file publishes the completed output using the host rename semantics.
+fn replace_output_file(tmp_output_path string, output_path string) bool {
+	if C.rename(&char(tmp_output_path.str), &char(output_path.str)) == 0 {
+		return true
+	}
+	$if windows {
+		// MSVCRT rename cannot replace an existing destination. POSIX rename
+		// already can, so its failure must preserve the previous output.
+		C.remove(&char(output_path.str))
+		return C.rename(&char(tmp_output_path.str), &char(output_path.str)) == 0
+	}
+	return false
+}
+
 // write_file_array_raw writes file array raw output for arm64.
 fn write_file_array_raw(path string, data []u8) bool {
-	fd := C.open(&char(path.str), o_wronly_creat_trunc, 0o755)
+	fd := C.open(&char(path.str), o_wronly_creat_trunc, output_file_permissions)
 	if fd < 0 {
 		return false
 	}
@@ -802,7 +831,8 @@ fn (mut l Linker) write_main_cmd(entry_off int) {
 	write_u32_le(mut l.buf, u32(lc_main))
 	write_u32_le(mut l.buf, 24)
 	write_u64_le(mut l.buf, u64(entry_off)) // entryoff (offset from __TEXT start)
-	write_u64_le(mut l.buf, 0) // stacksize
+	// Match the macOS C backend's main stack for recursive compiler passes.
+	write_u64_le(mut l.buf, 64 * 1024 * 1024) // stacksize
 }
 
 // write_uuid writes uuid output for arm64.

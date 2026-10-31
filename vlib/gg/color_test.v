@@ -12,6 +12,34 @@ fn test_hex() {
 	// assert short == gg.Color{0, 0, 15, 255}
 }
 
+fn test_color_from_string() {
+	// 6 digit #RRGGBB
+	assert gg.color_from_string('#FF0000') == gg.red
+	assert gg.color_from_string('#00FF00') == gg.green
+	assert gg.color_from_string('#0000FF') == gg.blue
+	// 3 digit shorthand #RGB: every digit is doubled
+	assert gg.color_from_string('#F00') == gg.red
+	assert gg.color_from_string('#0F0') == gg.green
+	assert gg.color_from_string('#00F') == gg.blue
+	assert gg.color_from_string('#FFF') == gg.white
+	assert gg.color_from_string('#000') == gg.black
+	assert gg.color_from_string('#ABC') == gg.rgb(0xAA, 0xBB, 0xCC)
+	// 4 digit shorthand #RGBA: every digit is doubled, the last two give the alpha
+	assert gg.color_from_string('#F008') == gg.rgba(255, 0, 0, 0x88)
+	// 8 digit #RRGGBBAA: the last two digits give the alpha
+	assert gg.color_from_string('#FF000080') == gg.rgba(255, 0, 0, 0x80)
+	// unrecognised forms are black, like unknown color names
+	assert gg.color_from_string('#ggg') == gg.black
+	assert gg.color_from_string('#12zz34') == gg.black
+	assert gg.color_from_string('#12345x78') == gg.black
+	assert gg.color_from_string('#abcdef') == gg.rgb(0xAB, 0xCD, 0xEF)
+	assert gg.color_from_string('#') == gg.black
+	assert gg.color_from_string('#F') == gg.black
+	assert gg.color_from_string('#12345') == gg.black
+	assert gg.color_from_string('red') == gg.red
+	assert gg.color_from_string('not-a-color') == gg.black
+}
+
 fn test_add() {
 	a := gg.rgba(100, 100, 100, 100)
 	b := gg.rgba(100, 100, 100, 100)
@@ -26,7 +54,7 @@ fn test_add() {
 fn test_sub() {
 	a := gg.rgba(100, 100, 100, 50)
 	b := gg.rgba(100, 100, 100, 100)
-	r := gg.rgba(0, 0, 0, 100)
+	r := gg.rgba(0, 0, 0, 50)
 	assert (a - b) == r
 
 	assert gg.white - gg.green == gg.magenta
@@ -35,10 +63,16 @@ fn test_sub() {
 }
 
 fn test_mult() {
+	// normalized channel-wise multiply with rounding: (c1 * c2 + 127) / 255
 	a := gg.rgba(10, 10, 10, 10)
 	b := gg.rgba(10, 10, 10, 10)
-	r := gg.rgba(100, 100, 100, 100)
-	assert (a * b) == r
+	assert (a * b) == gg.rgba(0, 0, 0, 0)
+	c := gg.rgba(200, 200, 200, 200)
+	assert (c * c) == gg.rgba(157, 157, 157, 157)
+	// white is the neutral element
+	assert gg.white * gg.white == gg.white
+	assert gg.red * gg.white == gg.red
+	assert gg.red * gg.red == gg.red
 }
 
 fn test_div() {
@@ -46,6 +80,10 @@ fn test_div() {
 	b := gg.rgba(10, 10, 10, 10)
 	r := gg.rgba(10, 10, 10, 10)
 	assert (a / b) == r
+	// a zero divisor channel saturates instead of panicking
+	z := gg.rgba(0, 0, 0, 0)
+	assert (a / z) == gg.rgba(255, 255, 255, 255)
+	assert (z / z) == gg.rgba(0, 0, 0, 0)
 }
 
 fn test_rgba8() {
@@ -99,4 +137,13 @@ fn test_over() {
 	assert semi_b.over(r) == gg.Color{126, 0, 128, 255}
 	assert semi_b.over(g) == gg.Color{0, 126, 128, 255}
 	assert semi_b.over(b) == gg.Color{0, 0, 255, 255} // preserve pure blue
+
+	// fully transparent over fully transparent stays transparent (no divide by zero)
+	transparent := gg.Color{
+		r: 0
+		g: 0
+		b: 0
+		a: 0
+	}
+	assert transparent.over(transparent) == transparent
 }

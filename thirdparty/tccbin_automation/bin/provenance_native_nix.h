@@ -479,7 +479,7 @@ static inline int tccbin_sigchld_read(struct sigaction *previous) {
 
 typedef struct tccbin_native_stat_snapshot {
 	uint64_t volume;
-	uint64_t index;
+	uint64_t file_index;
 	uint64_t links;
 	uint64_t size;
 	uint32_t mode;
@@ -493,7 +493,7 @@ typedef struct tccbin_native_stat_snapshot {
 static void tccbin_snapshot_from_stat(const struct stat *information,
 	tccbin_native_stat_snapshot *snapshot) {
 	snapshot->volume = (uint64_t) information->st_dev;
-	snapshot->index = (uint64_t) information->st_ino;
+	snapshot->file_index = (uint64_t) information->st_ino;
 	snapshot->links = (uint64_t) information->st_nlink;
 	snapshot->size = (uint64_t) information->st_size;
 	snapshot->mode = (uint32_t) information->st_mode;

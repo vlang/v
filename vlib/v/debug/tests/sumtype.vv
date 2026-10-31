@@ -1,5 +1,5 @@
 struct Test {
-	a MySum
+	a &MySum
 }
 
 struct Test2 {
@@ -10,7 +10,7 @@ type MySum = Test | bool | int
 
 fn sumtype() {
 	a := MySum(Test{
-		a: false
+		a: &MySum(false)
 	})
 	if a is Test {
 		dump(a)
@@ -18,7 +18,7 @@ fn sumtype() {
 	}
 
 	b := ?MySum(Test{
-		a: 1
+		a: &MySum(1)
 	})
 	if b != none {
 		if b is Test {

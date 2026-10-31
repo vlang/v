@@ -244,6 +244,39 @@ fn test_zoneinfo_search_continues_after_invalid_tzif_data() {
 	assert loc.offset_at(1_704_067_200)! == 0
 }
 
+fn test_zoneinfo_source_directory_needs_no_permission_to_list_it() {
+	$if !windows {
+		temp_dir := os.join_path(os.vtmp_dir(), 'zoneinfo_search_only_source')
+		zone_name := 'ReviewZone'
+		os.chmod(temp_dir, 0o755) or {}
+		os.rmdir_all(temp_dir) or {}
+		defer {
+			os.chmod(temp_dir, 0o755) or {}
+			os.rmdir_all(temp_dir) or {}
+		}
+		os.mkdir_all(temp_dir)!
+		data := load_zoneinfo_from_source(zoneinfo_vroot_zip, 'America/New_York')!
+		os.write_file_array(os.join_path(temp_dir, zone_name), data)!
+		// Search permission alone: the directory cannot be listed, and its files can
+		// still be opened by name.
+		os.chmod(temp_dir, 0o111)!
+		if os.getuid() != 0 {
+			if _ := os.ls(temp_dir) {
+				assert false, 'a directory without the permission to read it was listed'
+			}
+		}
+		assert zoneinfo_is_dir(temp_dir)
+		assert !zoneinfo_is_file(temp_dir)
+		assert load_zoneinfo_from_source(temp_dir, zone_name)! == data
+		loc := load_zoneinfo_location_from_sources(zone_name, [temp_dir], [])!
+		assert loc.name == zone_name
+		assert loc.offset_at(1_704_067_200)! == -18_000
+		// A file is not a directory, whatever follows its name.
+		assert !zoneinfo_is_dir(os.join_path(temp_dir, zone_name))
+		assert zoneinfo_is_file(os.join_path(temp_dir, zone_name))
+	}
+}
+
 fn test_local_location_loads_unprefixed_absolute_tz_path() {
 	$if !windows {
 		temp_dir := os.join_path(os.vtmp_dir(), 'zoneinfo_absolute_tz_path')
@@ -430,4 +463,21 @@ fn test_windows_no_dst_offset_changes_add_year_boundaries() {
 		assert loc.zones[loc.transitions[0].index].offset == -5 * seconds_per_hour
 		assert loc.zones[loc.transitions[1].index].offset == -4 * seconds_per_hour
 	}
+}
+
+fn test_nanosecond_carry_selects_the_zone_of_the_normalized_instant() {
+	// A synthetic offset change at the epoch requires no installed time zone database.
+	loc := Location{
+		name:        'carry-transition'
+		zones:       [Zone{ name: 'STD', offset: 0 }, Zone{ name: 'DST', offset: 3600, is_dst: true }]
+		transitions: [ZoneTransition{ when: 0, index: 1 }]
+	}
+	before := loc.unix_nanosecond_to_local(0, -1)!
+	assert before.unix() == -1
+	assert before.nanosecond == 999_999_999
+	assert before.format_ss_nano() == '1969-12-31 23:59:59.999999999'
+	after := loc.unix_nanosecond_to_local(-1, 1_000_000_000)!
+	assert after.unix() == 0
+	assert after.nanosecond == 0
+	assert after.format_ss_nano() == '1970-01-01 01:00:00.000000000'
 }

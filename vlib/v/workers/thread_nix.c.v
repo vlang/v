@@ -1,0 +1,63 @@
+module workers
+
+#include "@VMODROOT/vlib/v/pthread_helper.h"
+
+#flag @VMODROOT/vlib/v/pthread_helper.o
+
+$if linux {
+	#include <sys/prctl.h>
+	#flag @VEXEROOT/vlib/v/diagserver/syscalls_linux.o
+}
+
+// C.pthread_t is the platform pthread handle type.
+@[typedef]
+struct C.pthread_t {}
+
+fn C.pthread_join(worker C.pthread_t, retval voidptr) int
+
+// Keep linked-object prototypes explicit alongside unrelated system headers.
+@[c_extern]
+fn C.v3_linux_name_worker() int
+
+@[c_extern]
+fn C.v3_pthread_zero() C.pthread_t
+
+@[c_extern]
+fn C.v3_pthread_create(worker &C.pthread_t, stack_size uint, start_routine fn (voidptr) voidptr, arg voidptr) int
+
+@[c_extern]
+fn C.v3_pthread_is_current(worker C.pthread_t) int
+
+// WorkerThread is one joinable persistent pool worker.
+struct WorkerThread {
+	id C.pthread_t
+}
+
+// worker_thread_create starts a joinable worker with an explicit stack
+// reservation. A non-zero result is the pthread error code.
+fn worker_thread_create(stack_size uint, start_routine fn (voidptr) voidptr, arg voidptr) (WorkerThread, int) {
+	mut thread_id := C.v3_pthread_zero()
+	rc := C.v3_pthread_create(&thread_id, stack_size, start_routine, arg)
+	return WorkerThread{
+		id: thread_id
+	}, rc
+}
+
+// worker_thread_join waits for the worker to exit. A non-zero result is the
+// pthread error code.
+fn worker_thread_join(worker WorkerThread) int {
+	return C.pthread_join(worker.id, unsafe { nil })
+}
+
+// worker_thread_is_current reports whether the calling thread is `worker`.
+fn worker_thread_is_current(worker WorkerThread) bool {
+	return C.v3_pthread_is_current(worker.id) != 0
+}
+
+// name_worker_thread names the calling pool worker `v3-pool`: a diagnostics
+// server forks only when every other thread of the process is one of these.
+fn name_worker_thread() {
+	$if linux {
+		C.v3_linux_name_worker()
+	}
+}

@@ -503,3 +503,44 @@ fn test_dynamic_update_where_block_with_or_expression() {
 
 	assert rows.map(it.status) == ['archived', 'archived', 'archived', 'active']
 }
+
+fn test_dynamic_queries_with_indexed_struct_fields() {
+	mut db := sqlite.connect(':memory:')!
+	defer {
+		db.close() or { panic(err) }
+	}
+	sql db {
+		create table DynamicOrMember
+	}!
+	member := DynamicOrMember{
+		id:        1
+		tenant_id: 7
+		name:      'Alice'
+		status:    'active'
+	}
+	sql db {
+		insert member into DynamicOrMember
+	}!
+	existing := [member]
+	rows := sql db {
+		dynamic select from DynamicOrMember where name == existing[0].name
+	}!
+	assert rows.len == 1
+	assert rows[0].id == member.id
+	update_expr := {
+		name == 'Alicia',
+		tenant_id == 8
+	}
+	sql db {
+		dynamic update DynamicOrMember set update_expr where id == existing[0].id
+	}!
+	by_name := {
+		'alice': member
+	}
+	updated := sql db {
+		dynamic select from DynamicOrMember where id == by_name['alice'].id
+	}!
+	assert updated.len == 1
+	assert updated[0].name == 'Alicia'
+	assert updated[0].tenant_id == 8
+}

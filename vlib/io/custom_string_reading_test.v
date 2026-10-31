@@ -63,7 +63,6 @@ pub fn test_buffered_reader_readline() {
 		text: text
 	}
 	mut stream := io.new_buffered_reader(reader: str)
-	mut buf := []u8{len: 1}
 	mut i := 0
 	for {
 		line := stream.read_line() or {

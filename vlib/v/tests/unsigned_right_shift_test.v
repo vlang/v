@@ -6,12 +6,12 @@ const answer_u8 = u8(125)
 
 fn test_unsigned_right_shift_expr_isize_usize() {
 	$if x32 {
-		assert isize(-5) >>> 1 == answer_u32
-		assert usize(-5) >>> 1 == answer_u32
+		assert int(-5) >>> 1 == answer_u32
+		assert uint(-5) >>> 1 == answer_u32
 	}
 	$if x64 {
-		assert isize(-5) >>> 1 == answer_u64
-		assert usize(-5) >>> 1 == answer_u64
+		assert int(-5) >>> 1 == answer_u64
+		assert uint(-5) >>> 1 == answer_u64
 	}
 }
 

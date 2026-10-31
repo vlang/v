@@ -15,7 +15,7 @@ fn print_error() ?[]Empty {
 
 fn test_option_expr_with_array_value() {
 	test_error := print_error() or {
-		eprintln(err)
+		eprintln('none')
 		[]Empty{}
 	}
 	println(test_error)

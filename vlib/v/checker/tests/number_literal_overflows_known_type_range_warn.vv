@@ -26,7 +26,7 @@ fn f_i64(a i64) {
 	_ = a
 }
 
-fn f_isize(a isize) {
+fn f_isize(a int) {
 	_ = a
 }
 
@@ -39,8 +39,8 @@ struct Sample {
 	i64_under_min   i64
 	i8_over_max     i8
 	i8_under_min    i8
-	isize_over_max  isize
-	isize_under_min isize
+	isize_over_max  int
+	isize_under_min int
 	u16_over_max    u16
 	u32_over_max    u32
 	u8_over_max     u8
@@ -93,6 +93,6 @@ fn main() {
 	_ := GenericSample[i32]{-2147483649}
 	_ := GenericSample[i64]{9223372036854775808}
 	_ := GenericSample[i64]{-9223372036854775809}
-	_ := GenericSample[isize]{9223372036854775808}
-	_ := GenericSample[isize]{-9223372036854775809}
+	_ := GenericSample[int]{9223372036854775808}
+	_ := GenericSample[int]{-9223372036854775809}
 }

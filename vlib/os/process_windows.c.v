@@ -88,8 +88,13 @@ fn win_bare_command_search_dirs() []string {
 // application name, so without this every bare-name spawn failed with "The
 // system cannot find the file specified".
 fn (p &Process) win_resolve_filename() !string {
-	if is_abs_path(p.filename) {
+	// A `\\?\` path is already absolute and must reach CreateProcessW unchanged:
+	// abs_path would normalize it back into a form that exceeds MAX_PATH.
+	if p.filename.starts_with('\\\\?\\') {
 		return p.filename
+	}
+	if is_abs_path(p.filename) {
+		return win_exec_application_name(p.filename)
 	}
 	if p.filename.contains('\\') || p.filename.contains('/') {
 		return abs_path(p.filename)
@@ -170,7 +175,7 @@ fn (mut p Process) win_spawn_process() int {
 		stdin_handle := C.CreateFileW(stdin_path_wide, C.GENERIC_READ,
 			C.FILE_SHARE_READ | C.FILE_SHARE_WRITE | C.FILE_SHARE_DELETE, voidptr(&sa),
 			C.OPEN_EXISTING, C.FILE_ATTRIBUTE_NORMAL, 0)
-		if stdin_handle == C.INVALID_HANDLE_VALUE {
+		if stdin_handle == invalid_handle_value {
 			failed_cfn_report_error(false, 'CreateFileW stdin')
 		}
 		wdata.child_stdin_read = &u32(stdin_handle)
@@ -218,7 +223,14 @@ fn (mut p Process) win_spawn_process() int {
 	}
 	cmd_wide_ptr := cmd.to_wide()
 	to_be_freed << cmd_wide_ptr
-	C.ExpandEnvironmentStringsW(cmd_wide_ptr, voidptr(&wdata.command_line[0]), 32768)
+	if p.expand_environment {
+		C.ExpandEnvironmentStringsW(cmd_wide_ptr, voidptr(&wdata.command_line[0]), 32768)
+	}
+	command_line_ptr := if p.expand_environment {
+		voidptr(&wdata.command_line[0])
+	} else {
+		voidptr(cmd_wide_ptr)
+	}
 
 	mut creation_flags := if p.create_no_window {
 		int(C.CREATE_NO_WINDOW)
@@ -246,11 +258,12 @@ fn (mut p Process) win_spawn_process() int {
 		to_be_freed << work_folder_ptr
 	}
 
+	windows_avoid_long_temp_env()
 	mut env_block := []u16{}
 	if p.env.len > 0 {
 		mut env_ptr := &u16(unsafe { nil })
 
-		for e in p.env {
+		for e in windows_temp_env_entries_fix(p.env, windows_temp_env_candidates) {
 			// e should in `ABC=123` format
 			env_ptr = e.to_wide()
 			if isnil(env_ptr) {
@@ -275,11 +288,11 @@ fn (mut p Process) win_spawn_process() int {
 		}
 	}
 
-	create_process_ok := C.CreateProcessW(application_name_ptr, voidptr(&wdata.command_line[0]), 0,
+	create_process_ok := C.CreateProcessW(application_name_ptr, command_line_ptr, 0,
 		0, C.TRUE, creation_flags, if env_block.len > 0 {
 			env_block.data
 		} else {
-			0
+			voidptr(0)
 		}, work_folder_ptr, voidptr(&start_info), voidptr(&wdata.proc_info))
 	failed_cfn_report_error(create_process_ok, 'CreateProcess `${p.filename}`')
 	if p.use_stdio_ctl {
@@ -328,11 +341,14 @@ fn (mut p Process) win_kill_pgroup() {
 }
 
 fn (mut p Process) win_wait() {
-	exit_code := u32(1)
+	mut exit_code := u32(1)
 	mut wdata := unsafe { &WProcess(p.wdata) }
 	if p.wdata != 0 {
 		C.WaitForSingleObject(wdata.proc_info.h_process, C.INFINITE)
-		C.GetExitCodeProcess(wdata.proc_info.h_process, voidptr(&exit_code))
+		// The SDK DWORD output is a 32-bit value; use its exact pointer type.
+		unsafe {
+			C.GetExitCodeProcess(wdata.proc_info.h_process, &C.DWORD(&exit_code))
+		}
 		close_valid_handle(&wdata.child_stdin_read)
 		close_valid_handle(&wdata.child_stdout_write)
 		close_valid_handle(&wdata.child_stderr_write)
@@ -340,13 +356,16 @@ fn (mut p Process) win_wait() {
 		close_valid_handle(&wdata.proc_info.h_thread)
 	}
 	p.status = .exited
-	p.code = int(exit_code)
+	p.code = int(i32(exit_code))
 }
 
 fn (mut p Process) win_is_alive() bool {
-	exit_code := u32(0)
+	mut exit_code := u32(0)
 	wdata := unsafe { &WProcess(p.wdata) }
-	C.GetExitCodeProcess(wdata.proc_info.h_process, voidptr(&exit_code))
+	// The SDK DWORD output is a 32-bit value; use its exact pointer type.
+	unsafe {
+		C.GetExitCodeProcess(wdata.proc_info.h_process, &C.DWORD(&exit_code))
+	}
 	if exit_code == C.STILL_ACTIVE {
 		return true
 	}
@@ -364,9 +383,9 @@ fn (mut p Process) win_write_string(idx int, _s string) {
 	if rhandle == 0 {
 		return
 	}
-	mut bytes_write := u32(0)
+	mut bytes_write := C.DWORD(0)
 	unsafe {
-		C.WriteFile(rhandle, _s.str, u32(_s.len), &bytes_write, 0)
+		C.WriteFile(rhandle, _s.str, u32(_s.len), voidptr(&bytes_write), 0)
 	}
 }
 
@@ -417,8 +436,9 @@ fn (mut p Process) win_is_pending(idx int) bool {
 	if rhandle == 0 {
 		return false
 	}
-	mut bytes_avail := C.DWORD(0)
-	if C.PeekNamedPipe(rhandle, 0, 0, 0, &bytes_avail, 0) {
+	mut bytes_avail := int(0)
+	if C.PeekNamedPipe(rhandle, unsafe { nil }, int(0), unsafe { nil }, voidptr(&bytes_avail),
+		unsafe { nil }) {
 		return bytes_avail > 0
 	}
 	return false
@@ -489,55 +509,4 @@ fn (mut p Process) unix_wait() {
 
 fn (mut p Process) unix_is_alive() bool {
 	return false
-}
-
-@[manualfree]
-fn requote_args(cargs []string) string {
-	mut sb := strings.new_builder(128)
-	defer { unsafe { sb.free() } }
-	for idx, a in cargs {
-		if idx > 0 {
-			sb.write_rune(` `)
-		}
-		sb.write_string(requote_arg(a))
-	}
-	res := sb.str()
-	return res
-}
-
-fn requote_arg(arg string) string {
-	if arg.len == 0 {
-		return '""'
-	}
-	// Escape a literal argv entry using the same backslash+quote rules that
-	// Windows uses when reconstructing argc/argv from CreateProcessW.
-	mut sb := strings.new_builder(arg.len + 8)
-	defer { unsafe { sb.free() } }
-	sb.write_u8(`"`)
-	mut pending_backslashes := 0
-	for i := 0; i < arg.len; i++ {
-		ch := arg[i]
-		if ch == `\\` {
-			pending_backslashes++
-			continue
-		}
-		if ch == `"` {
-			for _ in 0 .. pending_backslashes * 2 + 1 {
-				sb.write_u8(`\\`)
-			}
-			sb.write_u8(`"`)
-			pending_backslashes = 0
-			continue
-		}
-		for _ in 0 .. pending_backslashes {
-			sb.write_u8(`\\`)
-		}
-		pending_backslashes = 0
-		sb.write_u8(ch)
-	}
-	for _ in 0 .. pending_backslashes * 2 {
-		sb.write_u8(`\\`)
-	}
-	sb.write_u8(`"`)
-	return sb.str()
 }

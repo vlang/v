@@ -3,7 +3,6 @@ module openssl
 import io
 import net
 import time
-import os
 
 // SSLConn is the current connection
 pub struct SSLConn {
@@ -154,6 +153,7 @@ pub fn (mut s SSLConn) shutdown() ! {
 	}
 
 	if s.owns_socket {
+		s.owns_socket = false
 		net.shutdown(s.handle)
 		net.close(s.handle)!
 	}
@@ -170,19 +170,67 @@ fn (mut s SSLConn) init() ! {
 	if s.sslctx == 0 {
 		return error('net.openssl Could not get ssl context')
 	}
+	mut initialized := false
+	defer {
+		if !initialized {
+			if s.ssl != unsafe { nil } {
+				C.SSL_free(voidptr(s.ssl))
+				s.ssl = unsafe { nil }
+			}
+			C.SSL_CTX_free(s.sslctx)
+			s.sslctx = unsafe { nil }
+		}
+	}
 
 	if s.config.validate {
 		C.SSL_CTX_set_verify(s.sslctx, C.SSL_VERIFY_PEER, unsafe { nil })
 		C.SSL_CTX_set_verify_depth(s.sslctx, 4)
 		C.SSL_CTX_set_options(s.sslctx, C.SSL_OP_NO_COMPRESSION)
+		res := if s.config.verify == '' {
+			C.SSL_CTX_set_default_verify_paths(s.sslctx)
+		} else if s.config.in_memory_verification {
+			C.v_net_openssl_SSL_CTX_load_verify_memory(s.sslctx, s.config.verify.str,
+				uint(s.config.verify.len))
+		} else {
+			C.SSL_CTX_load_verify_locations(s.sslctx, &char(s.config.verify.str), unsafe { nil })
+		}
+		if res != 1 {
+			return error('net.openssl SSLConn.init, could not load root CA')
+		}
+	}
+
+	// SSL_new copies the context's credentials, so configure client authentication first.
+	if s.config.cert != '' || s.config.cert_key != '' {
+		if s.config.cert == '' || s.config.cert_key == '' {
+			return error('net.openssl SSLConn.init, client certificate and private key are both required')
+		}
+		certificate_result := if s.config.in_memory_verification {
+			C.v_net_openssl_SSL_CTX_use_certificate_chain_memory(s.sslctx, s.config.cert.str,
+				uint(s.config.cert.len))
+		} else {
+			C.SSL_CTX_use_certificate_chain_file(s.sslctx, &char(s.config.cert.str))
+		}
+		if certificate_result != 1 {
+			return error('net.openssl SSLConn.init, could not load client certificate')
+		}
+		key_result := if s.config.in_memory_verification {
+			C.v_net_openssl_SSL_CTX_use_PrivateKey_memory(s.sslctx, s.config.cert_key.str,
+				uint(s.config.cert_key.len))
+		} else {
+			C.SSL_CTX_use_PrivateKey_file(s.sslctx, &char(s.config.cert_key.str), C.SSL_FILETYPE_PEM)
+		}
+		if key_result != 1 {
+			return error('net.openssl SSLConn.init, could not load client private key')
+		}
+		if C.SSL_CTX_check_private_key(s.sslctx) != 1 {
+			return error('net.openssl SSLConn.init, client certificate and private key do not match')
+		}
 	}
 
 	s.ssl = unsafe { &C.SSL(C.SSL_new(s.sslctx)) }
 	if s.ssl == 0 {
 		return error('net.openssl Could not create OpenSSL instance')
 	}
-
-	mut res := 0
 
 	// Advertise ALPN protocols (e.g. ['h2', 'http/1.1']) when requested.
 	// OpenSSL expects the length-prefixed wire format: each protocol is a
@@ -204,56 +252,13 @@ fn (mut s SSLConn) init() ! {
 	}
 
 	if s.config.validate {
-		mut verify := s.config.verify
-		mut cert := s.config.cert
-		mut cert_key := s.config.cert_key
-		if s.config.in_memory_verification {
-			now := time.now().unix().str()
-			verify = os.temp_dir() + '/v_verify' + now
-			cert = os.temp_dir() + '/v_cert' + now
-			cert_key = os.temp_dir() + '/v_cert_key' + now
-			if s.config.verify != '' {
-				os.write_file(verify, s.config.verify)!
-			}
-			if s.config.cert != '' {
-				os.write_file(cert, s.config.cert)!
-			}
-			if s.config.cert_key != '' {
-				os.write_file(cert_key, s.config.cert_key)!
-			}
-		}
-		if s.config.verify != '' {
-			res = C.SSL_CTX_load_verify_locations(voidptr(s.sslctx), &char(verify.str), 0)
-			if s.config.validate && res != 1 {
-				return error('net.openssl SSLConn.init, SSL_CTX_load_verify_locations failed')
-			}
-		} else {
-			res = C.SSL_CTX_set_default_verify_paths(s.sslctx)
-			if res != 1 {
-				return error('net.openssl SSLConn.init, SSL_CTX_set_default_verify_paths failed')
-			}
-		}
-		if s.config.cert != '' {
-			res = C.SSL_CTX_use_certificate_file(voidptr(s.sslctx), &char(cert.str),
-				C.SSL_FILETYPE_PEM)
-			if s.config.validate && res != 1 {
-				return error('net.openssl SSLConn.init, SSL_CTX_use_certificate_file failed, res: ${res}')
-			}
-		}
-		if s.config.cert_key != '' {
-			res = C.SSL_CTX_use_PrivateKey_file(voidptr(s.sslctx), &char(cert_key.str),
-				C.SSL_FILETYPE_PEM)
-			if s.config.validate && res != 1 {
-				return error('net.openssl SSLConn.init, SSL_CTX_use_PrivateKey_file failed, res: ${res}')
-			}
-		}
-
 		preferred_ciphers := 'HIGH:!aNULL:!kRSA:!PSK:!SRP:!MD5:!RC4'
-		res = C.SSL_set_cipher_list(voidptr(s.ssl), &char(preferred_ciphers.str))
-		if s.config.validate && res != 1 {
+		res := C.SSL_set_cipher_list(voidptr(s.ssl), &char(preferred_ciphers.str))
+		if res != 1 {
 			println('net.openssl: set cipher failed')
 		}
 	}
+	initialized = true
 }
 
 // connect to server using OpenSSL.
@@ -310,7 +315,7 @@ fn (s &SSLConn) verify_hostname(hostname string) ! {
 	}
 	ip_result := C.v_net_openssl_x509_check_ip_asc(cert, &char(hostname.str), 0)
 	verified := if ip_result == -2 {
-		C.v_net_openssl_x509_check_host(cert, &char(hostname.str), usize(hostname.len), 0,
+		C.v_net_openssl_x509_check_host(cert, &char(hostname.str), uint(hostname.len), 0,
 			unsafe { nil }) == 1
 	} else {
 		ip_result == 1
@@ -602,13 +607,13 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 		mut res := -1
 		match test {
 			.read {
-				res = C.select(handle + 1, &set, C.NULL, C.NULL, timeval_timeout)
+				res = C.select(handle + 1, &set, unsafe { nil }, unsafe { nil }, timeval_timeout)
 			}
 			.write {
-				res = C.select(handle + 1, C.NULL, &set, C.NULL, timeval_timeout)
+				res = C.select(handle + 1, unsafe { nil }, &set, unsafe { nil }, timeval_timeout)
 			}
 			.except {
-				res = C.select(handle + 1, C.NULL, C.NULL, &set, timeval_timeout)
+				res = C.select(handle + 1, unsafe { nil }, unsafe { nil }, &set, timeval_timeout)
 			}
 		}
 
@@ -623,7 +628,7 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 			net.socket_error(res)!
 			return error_with_code('net.openssl select, failed: ${res}', C.errno)
 		} else if res == 0 {
-			return net.err_timed_out
+			return error_with_code(net.err_timed_out.msg(), net.err_timed_out.code())
 		}
 
 		res = C.FD_ISSET(handle, &set)
@@ -633,7 +638,7 @@ fn select(handle int, test Select, timeout time.Duration) !bool {
 		return res != 0
 	}
 
-	return net.err_timed_out
+	return error_with_code(net.err_timed_out.msg(), net.err_timed_out.code())
 }
 
 // wait_for wraps the common wait code
@@ -643,7 +648,7 @@ fn wait_for(handle int, what Select, timeout time.Duration) ! {
 		return
 	}
 
-	return net.err_timed_out
+	return error_with_code(net.err_timed_out.msg(), net.err_timed_out.code())
 }
 
 // wait_for_write waits for a write io operation to be available. Pure

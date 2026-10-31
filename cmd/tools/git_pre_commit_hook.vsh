@@ -26,11 +26,16 @@ import term
 // Note 2: Git supports skipping the hooks, by passing the `--no-verify` option.
 // That can be used to commit some .v files that are not formatted, without removing
 // the hook.
+//
+// Note 3: Git runs the hook with the `v` found on PATH (see the first line), which
+// can be an older V release than the one that installed the hook. Keep the script
+// to syntax and APIs that the latest V release supports.
 
 fn main() {
 	// This hook cares only about the changed V files, that will be committed, as reported by git itself:
 	changed :=
-		os.execute('git diff --cached --name-only --diff-filter=ACMR -- "*.v" "*.vsh" "*.vv"')
+		os.exec(['git', 'diff', '--cached', '--name-only', '--diff-filter=ACMR', '--', '*.v', '*.vsh',
+			'*.vv'])
 
 	all_changed_vfiles := changed.output.trim_space().split('\n')
 	// _input.vv files are NOT formatted on purpose.
@@ -48,9 +53,10 @@ fn main() {
 		eprintln('>>> 0 changed V files, that may need formatting found.')
 		exit(0)
 	}
-	configured_stop_committing := os.execute('git config --bool hooks.stopCommitOfNonVfmtedVFiles')
+	configured_stop_committing := os.exec(['git', 'config', '--bool',
+		'hooks.stopCommitOfNonVfmtedVFiles'])
 	if configured_stop_committing.output.trim_space().bool() {
-		verify_result := os.execute('${os.quoted_path(@VEXE)} fmt -verify ${vfiles.join(' ')}')
+		verify_result := exec_with_files([@VEXE, 'fmt', '-verify'], vfiles)
 		if verify_result.exit_code != 0 {
 			eprintln(verify_result.output)
 		}
@@ -62,8 +68,16 @@ fn main() {
 			eprintln('    ${term.bold('${vfile}')}')
 		}
 		// vfmt on
-		all_vfiles_on_a_line := vfiles.map(os.quoted_path(it)).join(' ')
-		os.system('${os.quoted_path(@VEXE)} fmt -w ${all_vfiles_on_a_line}')
-		os.system('git add ${all_vfiles_on_a_line}')
+		print(exec_with_files([@VEXE, 'fmt', '-w'], vfiles).output)
+		print(exec_with_files(['git', 'add'], vfiles).output)
 	}
+}
+
+// exec_with_files runs `args` followed by `files`, without a shell.
+// It builds the arguments with `<<` and runs them with `os.exec`, instead of
+// array spreading and `os.system_args`, which V releases may not have yet.
+fn exec_with_files(args []string, files []string) os.Result {
+	mut all_args := args.clone()
+	all_args << files
+	return os.exec(all_args)
 }

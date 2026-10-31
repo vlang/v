@@ -1,0 +1,63 @@
+vlib/v/checker/tests/orm_nonprimitive_receiver_result_error.vv:43:37: error: ORM: value expressions must produce only primitive types and time.Time, but this expression has type `Holder`
+   41 |     _ = load_holders() or { fallback }
+   42 |     indexed := sql db {
+   43 |         select from Account where name == make_holders()[0]
+      |                                           ~~~~~~~~~~~~~~
+   44 |     }!
+   45 |     nested := sql db {
+vlib/v/checker/tests/orm_nonprimitive_receiver_result_error.vv:46:37: error: ORM: value expressions must produce only primitive types and time.Time, but this expression has type `Holder`
+   44 |     }!
+   45 |     nested := sql db {
+   46 |         select from Account where name == make_holder_groups()[0][0]
+      |                                           ~~~~~~~~~~~~~~~~~~~~
+   47 |     }!
+   48 |     field := sql db {
+vlib/v/checker/tests/orm_nonprimitive_receiver_result_error.vv:49:37: error: ORM: value expressions must produce only primitive types and time.Time, but this expression has type `Holder`
+   47 |     }!
+   48 |     field := sql db {
+   49 |         select from Account where name == make_holder_box().holder
+      |                                           ~~~~~~~~~~~~~~~~~
+   50 |     }!
+   51 |     optional := sql db {
+vlib/v/checker/tests/orm_nonprimitive_receiver_result_error.vv:52:38: error: ORM: value expressions must produce only primitive types and time.Time, but this expression has type `Holder`
+   50 |     }!
+   51 |     optional := sql db {
+   52 |         select from Account where name == (load_holders() or { fallback })[0]
+      |                                            ~~~~~~~~~~~~~~
+   53 |     }!
+   54 |     generic_method := sql db {
+vlib/v/checker/tests/orm_nonprimitive_receiver_result_error.vv:55:37: error: ORM: value expressions must produce only primitive types and time.Time, but this expression has type `Holder`
+   53 |     }!
+   54 |     generic_method := sql db {
+   55 |         select from Account where name == make_holders().last()
+      |                                           ~~~~~~~~~~~~~~
+   56 |     }!
+   57 |     boxes := [make_holder_box()]
+vlib/v/checker/tests/orm_nonprimitive_receiver_result_error.vv:59:46: error: ORM: function calls must return only primitive types and time.Time, but `get` returns `Holder`
+   57 |     boxes := [make_holder_box()]
+   58 |     indexed_receiver := sql db {
+   59 |         select from Account where name == boxes[0].get()
+      |                                                    ~~~~~
+   60 |     }!
+   61 |     grouped_receiver := sql db {
+vlib/v/checker/tests/orm_nonprimitive_receiver_result_error.vv:62:48: error: ORM: function calls must return only primitive types and time.Time, but `get` returns `Holder`
+   60 |     }!
+   61 |     grouped_receiver := sql db {
+   62 |         select from Account where name == (boxes[0]).get()
+      |                                                      ~~~~~
+   63 |     }!
+   64 |     call_free_member := sql db {
+vlib/v/checker/tests/orm_nonprimitive_receiver_result_error.vv:65:37: error: ORM: value expressions must produce only primitive types and time.Time, but this expression has type `Holder`
+   63 |     }!
+   64 |     call_free_member := sql db {
+   65 |         select from Account where name == boxes[0].holder
+      |                                           ~~~~~~~~~~~~~~~
+   66 |     }!
+   67 |     holder := boxes[0].holder
+vlib/v/checker/tests/orm_nonprimitive_receiver_result_error.vv:69:48: error: ORM: value expressions must produce only primitive types and time.Time, but this expression has type `Holder`
+   67 |     holder := boxes[0].holder
+   68 |     local_struct := sql db {
+   69 |         select from Account where id == 1 && name == holder
+      |                                                      ~~~~~~
+   70 |     }!
+   71 |     dump(indexed)

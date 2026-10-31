@@ -67,7 +67,7 @@ fn main() {
 }
 
 fn run_or_exit(cmd string) string {
-	res := os.execute_opt(cmd) or {
+	res := os.exec_opt(os.split_args(cmd) or { panic(err) }) or {
 		eprintln('error: ${err}')
 		exit(1)
 	}

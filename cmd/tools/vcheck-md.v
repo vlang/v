@@ -635,7 +635,7 @@ fn (mut f MDFile) debug() {
 
 fn cmdexecute(cmd string) int {
 	verbose_println(cmd)
-	res := os.execute(cmd)
+	res := os.exec(os.split_args(cmd) or { panic(err) })
 	if res.exit_code < 0 {
 		return 1
 	}
@@ -647,7 +647,7 @@ fn cmdexecute(cmd string) int {
 
 fn silent_cmdexecute(cmd string) int {
 	verbose_println(cmd)
-	res := os.execute(cmd)
+	res := os.exec(os.split_args(cmd) or { panic(err) })
 	return res.exit_code
 }
 

@@ -2,8 +2,8 @@ interface Number2 {}
 
 fn t(v Number2) {
 	match v {
-		int, i32, isize, i64 {
-			x := isize(v)
+		int, i32, i64 {
+			x := int(v)
 			println(x)
 			assert x == 42
 		}
@@ -12,7 +12,7 @@ fn t(v Number2) {
 
 	match v {
 		int {
-			x := isize(v)
+			x := int(v)
 			println(x)
 			assert x == 42
 		}
@@ -22,4 +22,6 @@ fn t(v Number2) {
 
 fn test_cast_interface_value_in_match() {
 	t(int(42))
+	t(i32(42))
+	t(i64(42))
 }

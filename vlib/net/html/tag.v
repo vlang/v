@@ -37,12 +37,17 @@ fn (mut tag Tag) add_child(t &Tag) int {
 	return tag.children.len
 }
 
-// text returns the text contents of the tag.
+// text returns the text contents of the tag and its children.
+// A br element (including the parser's br/ form) contributes a newline.
 pub fn (tag &Tag) text() string {
 	if tag.name == 'text' {
 		return tag.leading_text()
 	}
-	if tag.name.len >= 2 && tag.name[..2] == 'br' {
+	// Only the line-break element maps to a newline: a prefix match would
+	// also catch custom elements like `bracket` and drop their content.
+	// `br/` is the name the parser currently keeps for a self-closing
+	// `<br/>` (see #30139); accept it until that is normalized to `br`.
+	if tag.name == 'br' || tag.name == 'br/' {
 		return '\n'
 	}
 	mut text_str := strings.new_builder(200)
@@ -116,7 +121,7 @@ pub fn (tag &Tag) get_tags(name string) []&Tag {
 // get_tag_by_attribute retrieves the first found child tag in the tag that has the given attribute name.
 pub fn (tag &Tag) get_tag_by_attribute(name string) ?&Tag {
 	for child in tag.children {
-		if child.attributes[name] != '' {
+		if name in child.attributes {
 			return child
 		}
 		if c := child.get_tag_by_attribute(name) {
@@ -130,7 +135,7 @@ pub fn (tag &Tag) get_tag_by_attribute(name string) ?&Tag {
 pub fn (tag &Tag) get_tags_by_attribute(name string) []&Tag {
 	mut res := []&Tag{}
 	for child in tag.children {
-		if child.attributes[name] != '' {
+		if name in child.attributes {
 			res << child
 		}
 		res << child.get_tags_by_attribute(name)
@@ -141,7 +146,7 @@ pub fn (tag &Tag) get_tags_by_attribute(name string) []&Tag {
 // get_tag_by_attribute_value retrieves the first found child tag in the tag that has the given attribute name and value.
 pub fn (tag &Tag) get_tag_by_attribute_value(name string, value string) ?&Tag {
 	for child in tag.children {
-		if child.attributes[name] == value {
+		if name in child.attributes && child.attributes[name] == value {
 			return child
 		}
 		if c := child.get_tag_by_attribute_value(name, value) {
@@ -155,7 +160,7 @@ pub fn (tag &Tag) get_tag_by_attribute_value(name string, value string) ?&Tag {
 pub fn (tag &Tag) get_tags_by_attribute_value(name string, value string) []&Tag {
 	mut res := []&Tag{}
 	for child in tag.children {
-		if child.attributes[name] == value {
+		if name in child.attributes && child.attributes[name] == value {
 			res << child
 		}
 		res << child.get_tags_by_attribute_value(name, value)
@@ -165,6 +170,10 @@ pub fn (tag &Tag) get_tags_by_attribute_value(name string, value string) []&Tag 
 
 // get_tag_by_class_name retrieves the first found child tag in the tag that has the given class name(s).
 pub fn (tag &Tag) get_tag_by_class_name(names ...string) ?&Tag {
+	if names.len == 0 {
+		// no class name to match, no tag can match it
+		return none
+	}
 	for child in tag.children {
 		mut matched := true
 		for name in names {
@@ -185,6 +194,10 @@ pub fn (tag &Tag) get_tag_by_class_name(names ...string) ?&Tag {
 
 // get_tags_by_class_name retrieves all child tags recursively in the tag that have the given class name(s).
 pub fn (tag &Tag) get_tags_by_class_name(names ...string) []&Tag {
+	if names.len == 0 {
+		// no class name to match, no tag can match it
+		return []&Tag{}
+	}
 	mut res := []&Tag{}
 	for child in tag.children {
 		mut matched := true

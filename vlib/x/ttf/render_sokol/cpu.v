@@ -14,7 +14,6 @@ module render_sokol
 **********************************************************************/
 import math
 import gg
-import sokol.sgl
 import sokol.gfx
 import x.ttf
 
@@ -137,7 +136,7 @@ pub fn (mut tf_skl TTF_render_Sokol) create_texture() {
 	// comment for dynamic
 	img_desc.data.subimage[0][0] = gfx.Range{
 		ptr:  tf_skl.bmp.buf
-		size: usize(sz)
+		size: uint(sz)
 	}
 
 	simg := gfx.make_image(&img_desc)
@@ -169,16 +168,16 @@ pub fn (mut tf_skl TTF_render_Sokol) update_text_texture() {
 	mut tmp_sbc := gfx.ImageData{}
 	tmp_sbc.subimage[0][0] = gfx.Range{
 		ptr:  tf_skl.bmp.buf
-		size: usize(sz)
+		size: uint(sz)
 	}
 	gfx.update_image(tf_skl.sg_img, &tmp_sbc)
 }
 
-// draw_text_bmp renders the internal state to the current sokol pipeline.
+// draw_text_bmp renders the internal state to the current gg renderer pipeline.
 pub fn (tf_skl TTF_render_Sokol) draw_text_bmp(ctx &gg.Context, x f32, y f32) {
 	// width  := tf_skl.bmp.width  >> 1
 	// height := tf_skl.bmp.height >> 1
-	sgl.push_matrix()
+	ctx.r.push_matrix()
 
 	width := tf_skl.bmp.width / (tf_skl.scale_reduct)
 	height := tf_skl.bmp.height / (tf_skl.scale_reduct)
@@ -212,18 +211,18 @@ pub fn (tf_skl TTF_render_Sokol) draw_text_bmp(ctx &gg.Context, x f32, y f32) {
 		0,
 		1,
 	]
-	sgl.mult_matrix(m)
+	ctx.r.mult_matrix(m)
 
-	sgl.load_pipeline(ctx.pipeline.alpha)
-	sgl.enable_texture()
-	sgl.texture(tf_skl.sg_img, tf_skl.sg_smp)
-	sgl.begin_quads()
-	sgl.c4b(255, 255, 255, 255)
-	sgl.v2f_t2f(x0, y0, u0, v0)
-	sgl.v2f_t2f(x1, y0, u1, v0)
-	sgl.v2f_t2f(x1, y1, u1, v1)
-	sgl.v2f_t2f(x0, y1, u0, v1)
-	sgl.end()
-	sgl.disable_texture()
-	sgl.pop_matrix()
+	ctx.r.load_pipeline(ctx.pipeline.alpha)
+	ctx.r.enable_texture()
+	ctx.r.texture(tf_skl.sg_img, tf_skl.sg_smp)
+	ctx.r.begin_quads()
+	ctx.r.c4b(255, 255, 255, 255)
+	ctx.r.v2f_t2f(x0, y0, u0, v0)
+	ctx.r.v2f_t2f(x1, y0, u1, v0)
+	ctx.r.v2f_t2f(x1, y1, u1, v1)
+	ctx.r.v2f_t2f(x0, y1, u0, v1)
+	ctx.r.end()
+	ctx.r.disable_texture()
+	ctx.r.pop_matrix()
 }

@@ -1,0 +1,10 @@
+module main
+
+const words = [
+	'as',
+	'asm',
+}
+
+fn main() {
+	println(words.len)
+}

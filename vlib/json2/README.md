@@ -1,9 +1,167 @@
-> The name `json2` was chosen to avoid any unwanted potential conflicts with the
-> existing codegen tailored for the main `json` module which is powered by CJSON.
+> `json2` replaces the removed cJSON based `json` module. `v fmt -w file.v`
+> rewrites the usual `json.decode(T, s)`, `json.encode(x)` and
+> `json.encode_pretty(x)` calls to `json2`, and leaves code it cannot rewrite
+> safely unchanged. By hand:
+>
+> - `json.decode(T, s)` becomes `json2.decode[T](s)`
+> - `json.encode(x)` becomes `json2.encode(x, escape_unicode: true, time_as_unix: true)`
+> - `json.encode_pretty(x)` becomes `json2.encode(x, prettify: true, legacy_layout: true,
+>   escape_unicode: true, time_as_unix: true)`
+>
+> These options keep the output of the old module: non-ASCII characters escaped as
+> `\uXXXX`, `time.Time` values as Unix timestamps, and its tab based pretty layout.
+> One difference remains: a `@[raw]` field, or a string that receives a JSON object
+> or array, holds the JSON text exactly as written, while the old module returned it
+> without whitespace.
+>
+> `json.decode(?T, s)` has no direct counterpart, since V does not accept `?T` as a
+> type argument, and vfmt leaves such files unchanged: decode `T` with
+> `json2.decode[T](s)`, and handle a `null` input yourself.
+>
+> `json.encode(x)` wrote a sum type value narrowed by `x is Cat` or `match x` as the
+> whole sum type, with its `_type` field, while `json2.encode(x)` writes the narrowed
+> variant. vfmt leaves such files unchanged as well: cast the value back to its sum
+> type, as in `json2.encode(Animal(x), escape_unicode: true, time_as_unix: true)`.
+>
+> A type with its own `to_json()` method (or the deprecated `json_str()`), such as
+> `big.Integer`, is written by `json2.encode` through that method, while the old module
+> ignored it and wrote the type's fields. vfmt migrates these calls too, since it does
+> not resolve types, so check the output of such types after migrating. Decoding is not
+> affected: the `from_json_*` methods only handle a JSON string, number, boolean or
+> `null`, so objects written by the old module still decode field by field.
+>
+> `json2.decode` also accepts an enum value given as the number of one of its members,
+> for an enum without `@[json_as_number]` too, as `json2.encode(x, enum_as_int: true)`
+> writes it; the old module only accepted the member's name there. Other numbers are
+> still rejected.
 
 `json2` is an experimental JSON parser written from scratch on V.
 
+## Typed map keys
+
+Integer map keys are parsed as the declared integer type with range checks. Invalid
+numeric text and values outside that type's range return errors, including with the
+default decoding options. For example, decoding `{"256":1}` as `map[u8]int` fails.
+
+A `rune` map key is a string containing exactly one Unicode character. Encoding and
+decoding preserve that character, including non-ASCII keys. Code that used numeric
+text such as `"65"` for the code point of `A` should use `"A"` instead. A digit key
+such as `"1"` means the character `1`; empty and multi-character keys are rejected.
+`json2.decode[map[rune]int](json2.encode(values))` round-trips the rune keys.
+
+## JSON5
+
+Set `json5: true` on the existing encoding or decoding options to use JSON5:
+
+```v
+import json2
+
+struct Config {
+	name string @[json: 'displayName']
+	port int = 8080
+}
+
+fn main() {
+	cfg := json2.decode[Config]("{displayName: 'V', port: 0x1F90,}", json5: true)!
+	text := json2.encode(cfg,
+		json5:           true
+		single_quotes:   true
+		unquoted_keys:   true
+		trailing_commas: true
+		prettify:        true
+		indent_string:   '  '
+	)
+	println(text)
+}
+```
+
+JSON5 decoding accepts comments, bare object keys (including `\uXXXX` escapes), single quotes,
+trailing commas, hexadecimal numbers, leading `+`, leading or trailing decimal points, `Infinity`
+and `NaN`. Strings support JSON5 escapes and escaped line continuations, including
+UTF-16 surrogate pairs. Malformed escapes return a `JsonScanError` with a line and column.
+Decimal integer parts cannot have leading zeros: `01` and `00.5` are rejected.
+Bare keys follow [ECMAScript `IdentifierName`](https://262.ecma-international.org/5.1/#sec-7.6)
+categories using Unicode 15.0.0:
+letters (Lu, Ll, Lt, Lm, Lo, Nl), `$` and `_` may start a key; Mn and Mc marks,
+Nd decimal digits, Pc connectors, U+200C and U+200D may also continue it.
+Other numbers (No) and enclosing marks (Me) require quoted keys.
+Numeric literal keys such as `{42: 1}` and `{0x10: 1}` are rejected; quote the keys instead.
+Bare `null`, `true`, `false`, `Infinity` and `NaN` are valid identifier keys, while
+signed forms such as `+Infinity` and `-NaN` require quotes.
+All Unicode space separators are accepted between tokens, including U+1680 and U+2000.
+Escaped digits `\1` through `\9` are rejected, and `\0` cannot precede another decimal digit.
+Typed decoding errors report their location and context in the original JSON5 input.
+Columns count Unicode code points, excluding an initial BOM; tabs occupy eight columns.
+Error previews keep complete runes, limit their prefix and highlighted span to 50 columns,
+and expand tabs to spaces so the underline aligns with the displayed text.
+CR, LF, CRLF, U+2028 and U+2029 are counted as JSON5 line terminators.
+Raw LF and CR in strings are rejected; use a backslash line continuation or a string escape.
+Unescaped U+2028 and U+2029 are allowed in strings, as specified by
+[JSON5 section 5.2](https://spec.json5.org/#separators).
+Decoded strings, raw fields and retained scalar-hook inputs own their text in both dialects.
+File contents, normalized decoding buffers and `decode_any` serialization buffers are released
+after decoding; returned values remain valid independently of those buffers.
+
+`single_quotes`, `unquoted_keys` and `trailing_commas` only affect encoding when
+`json5: true`. Otherwise the existing JSON output is unchanged. Bare keys are used
+only for valid identifiers; other keys are quoted and escaped. `prettify`,
+`indent_string`, `newline_string`, `escape_unicode` and the other encoding options
+work in either dialect. Trailing commas also work in compact output.
+JSON5 strings escape U+2028 and U+2029 with either quote style, even without `escape_unicode`.
+
+JSON5 encodes non-finite floats as `Infinity`, `-Infinity` and `NaN`; ordinary JSON
+continues to encode them as `null`. Typed integer decoding preserves 64-bit values,
+including hexadecimal integers, and rejects values outside the target's range.
+Floating-point decoding accepts hexadecimal integers beyond 64 bits, rounding to
+floating-point precision; values exceeding the float range become signed infinity,
+as with decimal JSON5 numbers. Dynamic `Any` values use json2's existing native
+numeric types, so re-encoding normalizes number spelling and its default `f64`
+numbers have the usual floating-point precision limits.
+
+`strict: true` controls type conversion independently of `json5`: it still rejects
+quoted numbers, non-optional `null` values and fixed arrays of the wrong length.
+`encode_append` and `decode_reuse` accept the same JSON5 options as `encode` and `decode`.
+JSON5 encoding releases temporary map keys. Decoded strings own their text, and decoding releases
+its UTF-8 scratch buffers.
+
+### Migrating from x.json5
+
+The `x.json5` module has been removed. Import `json2` and add `json5: true` to
+`encode`, `decode`, `parse`, `parse_text`, `parse_file` and `decode_file` calls.
+Replace `encode_with_opts` with `encode` and use `EncoderOptions`: `indent` becomes
+`prettify: true, indent_string: ...`. Replace `@[json5: 'name']` with `@[json: 'name']`.
+
+Use `to_json` for custom encoding and `from_json_string`, `from_json_number`,
+`from_json_boolean` or `from_json_null` for scalar decoding. A `from_json(value Any)`
+method decodes a whole value. Number hooks receive the original JSON5 literal,
+including hexadecimal spelling. String hooks follow json2's convention: escaped
+JSON string content without its quotes. Custom encoders return text verbatim.
+For JSON5, `@[raw]` fields contain normalized text: comments and trailing commas
+are removed, keys and strings use JSON quoting, and number literals retain their spelling.
+
+`parse` returns `json2.Any`; use `str()` and `as_array()` instead of `string()` and
+`array()`. `parse_text` returns a `Doc` with `value`, `value_opt`, `get`, `decode` and
+`reflect`. `get` distinguishes missing paths (`none`) from explicit `null` values.
+`decode_any` converts a dynamic tree with the same options as `decode`.
+`Doc.decode` keeps the options used to parse the document. `Doc.reflect` leaves
+missing or incompatible fields at their defaults.
+
+Use `encode(text)` instead of `quote_string(text)`. To reindent a document, decode
+or parse it and call `encode(value, prettify: true, indent_string: '  ')`.
+For iterative JSON5 scanning, use `new_json5_scanner`; its tokens are `Json5Token`
+with `Json5TokenKind` and `Json5Pos` source positions. String and identifier literals
+contain their decoded values; `length` preserves the original token's byte length.
+
 ## Usage
+
+#### encode_append[T]
+
+`encode_append(value, mut destination, options)` appends JSON bytes to a caller-owned
+`[]u8`, preserving its prefix and reusing capacity. Call `destination.clear()` before
+encoding to replace its contents. It accepts the same options and values as `encode`.
+The destination must have exclusive access during the call, and the value being encoded
+must not refer to its storage. Finish consuming the bytes before clearing or changing them.
+Use separate buffers for concurrent workers.
 
 #### encode[T]
 
@@ -29,10 +187,82 @@ fn main() {
 }
 ```
 
+Struct fields are encoded under their names or `@[json: '...']` keys, including fields
+named after builtin types such as `i64` and `string`. Embedded structs contribute their fields.
+
 Enums encode as strings by default. Use `@[json_as_number]` on an enum to emit
 its integer value instead.
 
+Integer encoding preserves the width of the input type, including `int` and its aliases.
+An `int` is not narrowed to `i32` when written as a value, struct field, or collection element.
+
+Floats use decimal notation for zero and magnitudes from `1e-6` (inclusive) to
+`1e21` (exclusive), and scientific notation outside that range, matching Go's
+`encoding/json`. Exponents omit leading zeros, for example `1e-7`.
+
+Use `@[omitempty]` to omit empty struct fields. For boolean fields, including optional
+booleans, `false` is empty and `true` is encoded. `@[omitempty]` only affects encoding:
+`decode` still assigns an explicit empty value such as `0` or `""` from the input.
+
+Maps encode with keys sorted lexically by their string representation, before JSON
+escaping. Integer keys therefore place `"10"` before `"2"`. This applies to nested
+maps and maps held in `Any`, and to compact, pretty, and appended output.
+
 #### decode[T]
+
+`decode_standard[T](text, options)` decodes standard JSON without generating a JSON5
+decoder for `T`. Use it for HTTP APIs, protocol messages and other standard JSON input
+to reduce generated code. It keeps the same lenient defaults and `strict: true` type
+conversion as `decode`. It always rejects JSON5 syntax, even if `options.json5` is true.
+Existing `decode[T](text)` and `decode[T](text, json5: true)` calls keep their behavior.
+
+```v
+import json2
+
+struct User {
+	name string
+}
+
+fn main() {
+	user := json2.decode_standard[User]('{"name":"V"}')!
+	println(user.name)
+}
+```
+
+`decode_reuse[T](text, mut buffer, options)` accepts a `DecodeBuffer` and retains its
+token storage for the next call. It uses the same validation and decoding rules as
+`decode`. Results stay valid across reuse and errors; the buffer stores neither input
+strings nor decoded values. Each concurrent or reentrant call needs its own buffer.
+Create each independent buffer with `DecodeBuffer{}`. Do not copy a buffer after
+decoding has retained storage in it, including after an error: copies share that storage.
+Capacity follows the largest token count seen, so limit input sizes when appropriate.
+With garbage collection, assigning `DecodeBuffer{}` releases the retained allocation
+for collection when it is no longer needed.
+
+Struct field renaming attributes are also honored when compiling with `-autofree`.
+
+Floating-point values outside the target type's finite range return a decoding error.
+The overflow check also applies with C finite-math flags, such as `-cflags '-ffast-math'`.
+This also applies to numbers inside `json2.Any`, collections, and struct fields, and to
+quoted numeric strings accepted in default mode. Finite subnormal values remain valid;
+values too small to represent may round to zero.
+
+JSON object keys are decoded to the target map key type, including signed and unsigned
+integer keys. Nested maps and maps stored in struct fields follow the same conversion.
+Enum map keys, including enum type aliases, use member names as written by `encode`.
+Member `@[json: ...]` attributes do not rename map keys. Unknown member names return
+a decoding error.
+Flag-enum keys, including aliases, also accept their encoded form, such as
+`Permission{.read | .write}` or `Permission{}` for zero, so maps with flag keys
+round-trip through JSON.
+
+The target type keeps its declaring module. A program's own sum type named `Any`
+is distinct from `json2.Any`, including through nested dynamic arrays, fixed arrays,
+and maps such as `json2.decode[[][2]Any](text)`.
+
+Every nested value requires its enclosing array's or object's closing delimiter.
+Truncated containers such as `[0` or `{"key": 123` return an end-delimiter error,
+including when a complete nested value consumes the final byte of the input.
 
 ```v
 import json2
@@ -63,6 +293,9 @@ decode[T] is smart and can auto-convert the types of struct fields - this means
 examples below will have the same result
 
 Embedded struct fields are decoded from the surrounding object, including reference fields.
+
+Decoding a pointer allocates an initialized value. Nested arrays keep their element types,
+and omitted struct fields retain their declared defaults, as for value fields.
 
 ```v ignore
 json2.decode[Person]('{"name": "Bob", "age": 20, "birthday": "2022-03-11T13:54:25.000Z"}')!
@@ -215,6 +448,11 @@ The following list shows the possible outputs when casting a value to an incompa
    JSON string representation of the value.
 4. Casting non-numeric values to int/float (`int()`/`i64()`/`f32()`/`f64()`) will return zero.
 
+## Decoding errors
+
+Error previews begin within the line containing the failing position. Tabs expand
+the displayed column count without expanding byte offsets into the input string.
+
 ## Encoding using string builder instead of []u8
 
 To be more performant, `json2`, in PR 20052, decided to use buffers directly instead of Writers.
@@ -230,3 +468,7 @@ sb.write(buffer)!
 
 unsafe { buffer.free() }
 ```
+
+`Scanner` and `ReaderScanner` join adjacent high/low UTF-16 `\uXXXX` escapes into one
+Unicode scalar value. An unpaired surrogate escape yields U+FFFD; malformed escapes
+still report an error. These scanner rules are separate from `json2.decode`.

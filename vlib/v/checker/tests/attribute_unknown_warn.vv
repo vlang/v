@@ -1,0 +1,10 @@
+@[attribute]
+struct Route {
+	path string
+}
+
+@[Rout('/index')]
+fn index() {}
+
+@[completely_unknown_flag]
+struct Conf {}

@@ -12,27 +12,29 @@ on:
       - 'cmd/tools/vshader.v'
       - '**/sdl_ci.yml'
       - '!**.md'
-  pull_request:
-    paths:
-      - 'vlib/**'
-      - 'thirdparty/**'
-      - 'cmd/tools/builders/**.v'
-      - 'cmd/tools/vshader.v'
-      - '**/sdl_ci.yml'
-      - '!**.md'
 
 concurrency:
   group: sdl-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   v-compiles-sdl-examples:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
       VFLAGS: -cc tcc
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build V
         run: make && sudo ./v symlink

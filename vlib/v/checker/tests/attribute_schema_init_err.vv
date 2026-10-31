@@ -1,0 +1,10 @@
+@[attribute]
+struct Route {
+	path string
+}
+
+fn main() {
+	_ := Route{
+		path: '/x'
+	}
+}

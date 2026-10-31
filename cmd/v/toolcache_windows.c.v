@@ -7,7 +7,7 @@ import os
 
 #flag windows -l advapi32
 
-#include "@VMODROOT/cmd/v/toolcache_windows_helpers.h"
+#flag @VMODROOT/cmd/v/toolcache_windows_helpers.o
 
 fn C.v_toolcache_move_file_ex_w(const_existing &u16, const_new &u16, flags u32) int
 
@@ -17,6 +17,10 @@ fn C.v_toolcache_create_file_w(const_path &u16, desired_access u32, share_mode u
 fn C.v_toolcache_get_file_information(handle voidptr, information voidptr) int
 
 fn C.v_toolcache_close_handle(handle voidptr) int
+
+fn C.v_toolcache_file_is_disk(handle voidptr) int
+
+fn C.v_toolcache_read_file(handle voidptr, buffer voidptr, size u32, read &u32) int
 
 fn C.v_toolcache_root_is_private(const_path &u16) int
 
@@ -42,6 +46,7 @@ struct WindowsToolCacheFileInformation {
 const movefile_replace_existing = u32(0x00000001)
 const toolcache_windows_file_share_all = u32(0x00000001 | 0x00000002 | 0x00000004)
 const toolcache_windows_file_share_read_write = u32(0x00000001 | 0x00000002)
+const toolcache_windows_generic_read = u32(0x80000000)
 const toolcache_windows_create_new = u32(1)
 const toolcache_windows_open_existing = u32(3)
 const toolcache_windows_file_attribute_normal = u32(0x00000080)
@@ -51,7 +56,7 @@ const toolcache_windows_file_flag_open_reparse_point = u32(0x00200000)
 const toolcache_windows_file_flag_backup_semantics = u32(0x02000000)
 
 // ToolCacheEntryDir pins the directory that receives a compiled tool. Omitting
-// FILE_SHARE_DELETE keeps the pathname bound to this directory until the build is over;
+// FILE_SHARE_DELETE on a read handle keeps the pathname bound until the build is over;
 // FILE_FLAG_OPEN_REPARSE_POINT makes the attributes below describe the link itself.
 struct ToolCacheEntryDir {
 	path   string
@@ -66,7 +71,9 @@ fn open_tool_cache_entry_dir(path string) !ToolCacheEntryDir {
 	defer {
 		unsafe { free(voidptr(w_path)) }
 	}
-	handle := C.v_toolcache_create_file_w(w_path, 0, toolcache_windows_file_share_read_write, toolcache_windows_open_existing, toolcache_windows_file_flag_backup_semantics | toolcache_windows_file_flag_open_reparse_point)
+	// A zero-access metadata handle does not participate in Windows share checks.
+	// Request directory read access so omitting FILE_SHARE_DELETE prevents renames.
+	handle := C.v_toolcache_create_file_w(w_path, toolcache_windows_generic_read, toolcache_windows_file_share_read_write, toolcache_windows_open_existing, toolcache_windows_file_flag_backup_semantics | toolcache_windows_file_flag_open_reparse_point)
 	if handle == voidptr(-1) {
 		return error('cannot safely open the tool cache entry `${path}`')
 	}
@@ -96,6 +103,42 @@ fn (entry ToolCacheEntryDir) publish(source string, name string) bool {
 
 fn (entry ToolCacheEntryDir) remove(name string) {
 	os.rm(os.join_path(entry.path, name)) or {}
+}
+
+// read_metadata pins the child file, rejects reparse points and directories, and reads from
+// that handle. The entry's handle prevents its parent pathname from being replaced.
+fn (entry ToolCacheEntryDir) read_metadata(name string) ?string {
+	w_path := os.join_path(entry.path, name).replace('/', '\\').to_wide()
+	defer {
+		unsafe { free(voidptr(w_path)) }
+	}
+	handle := C.v_toolcache_create_file_w(w_path, u32(0x80000000), toolcache_windows_file_share_read_write,
+		toolcache_windows_open_existing, toolcache_windows_file_attribute_normal | toolcache_windows_file_flag_open_reparse_point)
+	if handle == voidptr(-1) {
+		return none
+	}
+	defer {
+		C.v_toolcache_close_handle(handle)
+	}
+	mut information := WindowsToolCacheFileInformation{}
+	if C.v_toolcache_get_file_information(handle, voidptr(&information)) == 0
+		|| information.file_attributes & toolcache_windows_file_attribute_directory != 0
+		|| information.file_attributes & toolcache_windows_file_attribute_reparse_point != 0
+		|| C.v_toolcache_file_is_disk(handle) == 0 {
+		return none
+	}
+	mut chunks := []string{}
+	mut buffer := []u8{len: 4096}
+	for {
+		mut count := u32(0)
+		if C.v_toolcache_read_file(handle, buffer.data, u32(buffer.len), &count) == 0 {
+			return none
+		}
+		if count == 0 {
+			return chunks.join('')
+		}
+		chunks << buffer[..int(count)].bytestr()
+	}
 }
 
 // ensure_tool_cache_lock_file creates the persistent file used to serialize every cache key
@@ -137,6 +180,31 @@ fn tool_cache_root_can_stage(path string) bool {
 	}
 	return C.v_toolcache_root_is_private(w_path) != 0
 }
+
+// tool_cache_root_problem explains why `path` cannot hold the tool cache, and returns an empty
+// string when it can.
+fn tool_cache_root_problem(path string) string {
+	if tool_cache_root_can_stage(path) {
+		return ''
+	}
+	return '`${path}` is not private: it is not owned by the current user, or its access control list lets other accounts change it'
+}
+
+// tool_cache_parents_are_trusted always accepts on Windows. Folders like `C:\Users` are not
+// owned by the current user, so the ACL check used for the cache folder would reject them.
+fn tool_cache_parents_are_trusted(_ string) bool {
+	return true
+}
+
+// tool_cache_parent_is_tolerated is never needed on Windows, where the folders above the cache
+// are not checked.
+fn tool_cache_parent_is_tolerated(_ string, _ string) bool {
+	return false
+}
+
+// make_tool_cache_root_private does nothing on Windows. There, folder access is controlled by
+// ACLs (per-user permission lists), not by Unix permission bits.
+fn make_tool_cache_root_private(_ string) {}
 
 fn (entry ToolCacheEntryDir) stage_parent(_ string) !string {
 	// The entry handle was opened without FILE_SHARE_DELETE, so a staging child created
@@ -210,6 +278,21 @@ fn windows_binary_file_identity(path string) ?string {
 	return '${information.volume_serial_number}:${index}:${creation}:${size}'
 }
 
+// publish_atomically moves `staged` over `destination` in a single step, so that a
+// concurrently running V process either sees the previous file or the new one, but never
+// a half written one, and never has the executable it is starting truncated underneath it.
+// `destination` regularly already exists: a tool whose own sources and compiler are
+// unchanged keeps its cache key, so a rebuild triggered by an imported vlib module lands
+// in the very same slot. Replacing it is what `replace_file_atomically` is for; a plain
+// `os.rename` would fail there on Windows.
+fn publish_atomically(staged string, destination string) bool {
+	if !replace_file_atomically(staged, destination) {
+		os.rm(staged) or {}
+		return false
+	}
+	return true
+}
+
 // replace_file_atomically moves `source` onto `destination`, replacing it if it is already
 // there. A tool that only imports a vlib module which changed keeps its cache key, so a
 // rebuild lands on the very same destination and has to be able to overwrite it.
@@ -221,7 +304,7 @@ fn replace_file_atomically(source string, destination string) bool {
 	// replacement above fails whenever another `v` is using the cached tool. Renaming the
 	// old binary out of the way *is* permitted in that state, and is what makes a
 	// self-replacing cache possible at all. The displaced file stays locked until that
-	// process exits, so it is left for `prune_stale_tool_binaries` to collect later.
+	// process exits, so it is left for `prune_stale_tool_binaries_locked` to collect later.
 	displaced := '${destination}${tool_cache_replaced_marker}${os.getpid()}'
 	os.rm(displaced) or {}
 	os.rename(destination, displaced) or { return false }

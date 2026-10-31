@@ -13,11 +13,12 @@ const timeout_drain_ms = i64(200)
 
 // run executes program with an exact argument vector and captures its output.
 // Both output pipes are drained until EOF, including writers inherited by descendants.
+// Standard input is empty (the null device); the caller's input is not inherited.
 pub fn run(program string, args []string) os.Result {
 	return run_in(program, args, '')
 }
 
-// run_in executes program in work_folder with an exact argument vector.
+// run_in executes program in work_folder with an exact argument vector and empty stdin.
 pub fn run_in(program string, args []string, work_folder string) os.Result {
 	return run_in_mode(program, args, work_folder, false, no_timeout)
 }
@@ -31,16 +32,222 @@ pub fn run_with_timeout(program string, args []string, timeout_ms i64) os.Result
 	return run_in_mode(program, args, '', false, timeout_ms)
 }
 
+// resolve_program returns the executable to hand to os.Process, or none when
+// nothing can be started. Deciding this up front turns a command that cannot
+// start into an ordinary failing result that the caller can report, or fall
+// back from, instead of letting os.Process abort the whole compiler (as a
+// failed CreateProcessW does on Windows).
 fn resolve_program(program string) ?string {
-	if os.is_executable(program) {
+	$if windows {
+		// os.Process hands CreateProcessW an absolute filename *unexpanded* as
+		// lpApplicationName; only the separate command-line buffer goes through
+		// ExpandEnvironmentStringsW. Expand `%NAME%` here, both to probe the
+		// real path and to launch it.
+		exe := windows_resolve_program(expand_windows_env_vars(program)) or { return none }
+		return windows_extended_length_path(exe)
+	} $else {
+		if os.is_executable(program) {
+			// Pin the file checked above before Process can interpret a bare name
+			// as a fresh PATH lookup or start the child in a different directory.
+			return os.abs_path(program)
+		}
+		if program.contains(os.path_separator) {
+			// A path is never looked up on PATH. Relative paths are anchored to the
+			// caller's folder, as above, since the child may start elsewhere.
+			return unix_launchable(os.abs_path(program))
+		}
+		return os.find_abs_path_of_executable(program) or { return none }
+	}
+}
+
+// unix_launchable accepts `path` whenever something may exist there. Only a
+// path that is not there at all counts as missing: a file that exists but is
+// not executable has to reach os.Process anyway, because the child's execve()
+// reports EACCES, and that is the actionable error. Refusing it here would
+// claim an existing compiler is missing instead.
+fn unix_launchable(path string) ?string {
+	if os.exists(path) {
+		return path
+	}
+	// os.exists() is access(F_OK), which also fails when a parent directory is
+	// not searchable -- the file may well be there. Only call it missing when the
+	// parent is readable and the entry genuinely is not; otherwise let the launch
+	// run so execve() can report the real EACCES.
+	parent := os.dir(path)
+	if parent != path && !os.exists(parent) {
+		return path
+	}
+	return none
+}
+
+// windows_implicit_suffixes are the extensions probed for a program *path*
+// that carries none. os.Process binds an absolute, non-batch filename as
+// lpApplicationName, for which CreateProcessW performs no PATHEXT search, so
+// a program that only exists as `${program}.exe` has to be launched under that
+// name. Probing `.com`, `.bat` or `.cmd` here would accept a program the real
+// launch cannot start.
+const windows_implicit_suffixes = ['.exe']
+
+// windows_resolve_program mirrors os.Process on Windows: a bare name is looked
+// up on PATH, while a path (absolute, or relative to the caller's folder) names
+// exactly one file.
+fn windows_resolve_program(program string) ?string {
+	if program == '' {
+		return none
+	}
+	// os.is_executable only checks existence plus a recognized extension, so a
+	// *directory* called `tool.exe` satisfies it. CreateProcessW cannot start a
+	// directory, so require a regular file.
+	if os.is_file(program) && os.is_executable(program) {
 		// Pin the file checked above before Process can interpret a bare name
 		// as a fresh PATH lookup or start the child in a different directory.
 		return os.abs_path(program)
 	}
+	if os.is_abs_path(program) || program.contains('\\') || program.contains('/') {
+		return windows_resolve_executable_path(os.abs_path(program))
+	}
 	return os.find_abs_path_of_executable(program) or { return none }
 }
 
+// windows_extended_length_path returns `path` in the `\\?\` form once it reaches MAX_PATH
+// UTF-16 units, the form CreateProcessW can start past that length: `\\?\C:\...` for a
+// drive path and `\\?\UNC\server\share\...` for a UNC path, normalized first, since Windows
+// takes a `\\?\` path literally. Shorter paths, paths that already use a `\\?\` or `\\.\`
+// prefix, and paths that are not fully qualified (relative, `C:dir`, `\dir`) are returned
+// unchanged.
+fn windows_extended_length_path(path string) string {
+	$if !windows {
+		return path
+	}
+	return windows_extended_length_path_for(path)
+}
+
+// windows_extended_length_path_for is windows_extended_length_path without the host check,
+// so that it can be tested on any host.
+fn windows_extended_length_path_for(path string) string {
+	p := path.replace('/', '\\')
+	if windows_utf16_len(p) < 260 || p.starts_with('\\\\?\\') || p.starts_with('\\\\.\\') {
+		return path
+	}
+	if p.len >= 3 && p[0].is_letter() && p[1] == `:` && p[2] == `\\` {
+		return '\\\\?\\' + windows_normalize_path(p)
+	}
+	if p.starts_with('\\\\') && p.len > 2 && p[2] != `\\` {
+		return '\\\\?\\UNC\\' + windows_normalize_path(p)[2..]
+	}
+	return path
+}
+
+// windows_normalize_path resolves the `.` and `..` parts of the fully qualified Windows
+// path `p` and drops repeated separators, as Windows does for a path without `\\?\`.
+// The drive (`C:`) or the `\\server\share` of a UNC path is kept as the root.
+fn windows_normalize_path(p string) string {
+	unc := p.starts_with('\\\\')
+	parts := p.trim_left('\\').split('\\')
+	root_len := if unc { 2 } else { 1 }
+	if parts.len < root_len {
+		return p
+	}
+	mut kept := parts[..root_len].clone()
+	for part in parts[root_len..] {
+		if part == '' || part == '.' {
+			continue
+		}
+		if part == '..' {
+			if kept.len > root_len {
+				kept.delete_last()
+			}
+			continue
+		}
+		kept << part
+	}
+	normalized := kept.join('\\')
+	return if unc {
+		'\\\\' + normalized
+	} else if kept.len == root_len {
+		normalized + '\\'
+	} else {
+		normalized
+	}
+}
+
+// windows_utf16_len returns the length of `s` in UTF-16 code units, the unit of MAX_PATH.
+fn windows_utf16_len(s string) int {
+	mut n := 0
+	for r in s.runes() {
+		n += if u32(r) > 0xFFFF { 2 } else { 1 }
+	}
+	return n
+}
+
+// windows_resolve_executable_path returns the candidate CreateProcessW would
+// load, appending the implicit extensions when the path carries none. Every
+// branch errs towards letting the launch proceed: this check only exists to
+// turn an unstartable command into a result instead of an abort, so a false
+// "missing" would break callers that work today, while a false "present"
+// merely restores the previous behaviour.
+fn windows_resolve_executable_path(candidate string) ?string {
+	if os.is_file(candidate) && os.is_executable(candidate) {
+		return candidate
+	}
+	if os.file_ext(candidate) != '' {
+		// os.is_executable only accepts the conventional extensions, but
+		// CreateProcessW runs any module it can load - including a PE binary
+		// deliberately named `clang.bin`. Existence is the honest test here.
+		return if os.is_file(candidate) { candidate } else { none }
+	}
+	for suffix in windows_implicit_suffixes {
+		probed := candidate + suffix
+		if os.is_file(probed) && os.is_executable(probed) {
+			return probed
+		}
+	}
+	// An extension-less file can still be a loadable module.
+	return if os.is_file(candidate) { candidate } else { none }
+}
+
+// expand_windows_env_vars replaces every `%NAME%` with its environment value,
+// the way ExpandEnvironmentStringsW does. An unset name, an empty name (`%%`)
+// and a trailing unmatched `%` are all left exactly as written, which is also
+// what the Windows API does.
+fn expand_windows_env_vars(text string) string {
+	if !text.contains('%') {
+		return text
+	}
+	parts := text.split('%')
+	mut out := strings.new_builder(text.len)
+	for i in 0 .. parts.len {
+		if i % 2 == 0 {
+			out.write_string(parts[i])
+			continue
+		}
+		if i == parts.len - 1 {
+			// No closing `%` for this one.
+			out.write_string('%')
+			out.write_string(parts[i])
+			continue
+		}
+		name := parts[i]
+		value := if name == '' { '' } else { os.getenv(name) }
+		if value != '' {
+			out.write_string(value)
+			continue
+		}
+		out.write_string('%')
+		out.write_string(name)
+		out.write_string('%')
+	}
+	return out.str()
+}
+
 fn run_in_mode(program string, args []string, work_folder string, merge_output bool, timeout_ms i64) os.Result {
+	return run_in_mode_with_env(program, args, work_folder, merge_output, timeout_ms,
+		map[string]string{})
+}
+
+// run_in_mode_with_env is run_in_mode for a child that gets the variables of `env`
+// on top of the environment of this process.
+fn run_in_mode_with_env(program string, args []string, work_folder string, merge_output bool, timeout_ms i64, env map[string]string) os.Result {
 	executable := resolve_program(program) or {
 		return os.Result{
 			exit_code: 1
@@ -49,8 +256,22 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 	}
 	mut process := os.new_process(executable)
 	process.set_args(args)
+	// These capture-only helpers expose no stdin writer. Give the child EOF
+	// instead of an open pipe that nobody will ever write to or close.
+	$if windows {
+		process.set_stdin_path('NUL')
+	} $else {
+		process.set_stdin_path('/dev/null')
+	}
 	if work_folder.len > 0 {
 		process.set_work_folder(work_folder)
+	}
+	if env.len > 0 {
+		mut child_env := os.environ()
+		for name, value in env {
+			child_env[name] = value
+		}
+		process.set_environment(child_env)
 	}
 	if timeout_ms > 0 {
 		// A bounded run must be able to take down everything the command
@@ -160,74 +381,22 @@ fn run_in_mode(program string, args []string, work_folder string, merge_output b
 }
 
 // run_in_merged executes a command with an exact argument vector and captures
-// both stdout and stderr.
+// both stdout and stderr. Standard input is empty, as with run.
 pub fn run_in_merged(program string, args []string, work_folder string) os.Result {
 	return run_in_mode(program, args, work_folder, true, no_timeout)
+}
+
+// run_in_merged_with_env is run_in_merged for a command that gets the variables
+// of `env` on top of the environment of this process, as `LC_ALL` for a tool whose
+// messages are read.
+pub fn run_in_merged_with_env(program string, args []string, work_folder string, env map[string]string) os.Result {
+	return run_in_mode_with_env(program, args, work_folder, true, no_timeout, env)
 }
 
 // split_args parses a directive or tool response into literal argv elements.
 // Quotes and quoting backslash escapes group text; no shell expansion is performed.
 pub fn split_args(input string) ![]string {
-	mut args := []string{}
-	mut current := strings.new_builder(input.len)
-	mut quote := u8(0)
-	mut has_arg := false
-	mut i := 0
-	for i < input.len {
-		ch := input[i]
-		if quote == 0 && ch in [` `, `\t`, `\r`, `\n`] {
-			if has_arg {
-				args << current.str()
-				current = strings.new_builder(input.len - i)
-				has_arg = false
-			}
-			i++
-			continue
-		}
-		if ch in [`'`, `"`] {
-			if quote == 0 {
-				quote = ch
-				has_arg = true
-				i++
-				continue
-			}
-			if quote == ch {
-				quote = 0
-				i++
-				continue
-			}
-		}
-		if ch == `\\` && quote != `'` {
-			if i + 1 < input.len {
-				next := input[i + 1]
-				escapable := if quote == `"` {
-					next in [`"`, `\\`]
-				} else {
-					next in [` `, `\t`, `\r`, `\n`, `'`, `"`, `\\`]
-				}
-				if escapable {
-					current.write_u8(next)
-					has_arg = true
-					i += 2
-					continue
-				}
-			}
-			current.write_u8(ch)
-			has_arg = true
-			i++
-			continue
-		}
-		current.write_u8(ch)
-		has_arg = true
-		i++
-	}
-	if quote != 0 {
-		return error('unterminated quote in argument list')
-	}
-	if has_arg {
-		args << current.str()
-	}
-	return args
+	return os.split_args(input)
 }
 
 // display returns a shell-escaped representation for logging only.

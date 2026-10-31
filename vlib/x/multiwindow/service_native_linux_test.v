@@ -1,7 +1,9 @@
 module multiwindow
 
-import os
-import time
+$if linux && x_multiwindow_x11 ? {
+	import os
+	import time
+}
 
 const x11_stale_xid_child_marker = 'V_MULTIWINDOW_X11_STALE_XID_CHILD'
 
@@ -382,8 +384,7 @@ fn test_x11_checked_queries_survive_retained_destroyed_window() {
 			modes << 'render'
 		}
 		for mode in modes {
-			command := 'env ${x11_stale_xid_child_marker}=${mode} ${os.quoted_path(os.executable())}'
-			result := os.execute(command)
+			result := os.exec(['env', '${x11_stale_xid_child_marker}=${mode}', os.executable()])
 			assert result.exit_code == 0, 'X11 stale-XID ${mode} child failed with exit ${result.exit_code}:\n${result.output}'
 			assert result.output.trim_space() == '', 'X11 stale-XID ${mode} child emitted diagnostics:\n${result.output}'
 		}

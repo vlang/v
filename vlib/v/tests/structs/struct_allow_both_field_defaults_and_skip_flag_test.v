@@ -1,5 +1,5 @@
 // vtest vflags: -w
-import json
+import json2
 
 struct Foo {
 	x   int = 123
@@ -17,7 +17,7 @@ fn test_check_field_default_expr() {
 
 fn test_check_field_skip_attribute() {
 	f := Foo{}
-	s := json.encode(f)
+	s := json2.encode(f, escape_unicode: true)
 	// eprintln('f: ${f}')
 	// eprintln('s: ${s}')
 	assert s == '{"x":123,"y":456}'

@@ -1,0 +1,20 @@
+fn identity[T](value T) T {
+	return value
+}
+
+fn main() {
+	x := 'hello'
+	mut a := []typeof(x){}
+	a << x
+	b := []typeof(identity(x).len + 1){}
+	f := fn (s typeof(x)) typeof(s.len * 2) {
+		return s.len * 2
+	}
+	g := fn [x] () !typeof(x) {
+		return x
+	}
+	println(a)
+	println(b)
+	println(f(x))
+	println(g() or { '' })
+}

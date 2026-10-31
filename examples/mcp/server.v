@@ -3,6 +3,10 @@
 // per-argument completions, RFC 5424 logging, cooperative cancellation,
 // progress notifications, subscriptions, and server-initiated requests.
 //
+// The features below are demonstrated through the 2025-11-25 handshake, which
+// stays the default. `vlib/mcp` also speaks the sessionless 2026-07-28
+// revision; see vlib/mcp/README.md for that side of the module.
+//
 // Usage:
 //   v run examples/mcp/server.v                            # stdio transport (default)
 //   v run examples/mcp/server.v -- --http                  # HTTP transport on 127.0.0.1:8080

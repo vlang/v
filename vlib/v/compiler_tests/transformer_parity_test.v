@@ -40,6 +40,27 @@ fn parse_checked_transform_source(source string) &flat.FlatAst {
 	return a
 }
 
+// parse_checked_transform_source_with_builtin is parse_checked_transform_source with a
+// `module builtin` stand-in file parsed first. Only module builtin may define methods on
+// builtin collection types such as `array` (7d98ceea18), so a fixture that declares one of
+// the builtin methods itself has to declare it there.
+fn parse_checked_transform_source_with_builtin(builtin_source string, source string) &flat.FlatAst {
+	builtin_src := os.join_path(os.temp_dir(), 'v3_transformer_checked_parity_builtin.v')
+	src := os.join_path(os.temp_dir(), 'v3_transformer_checked_parity_input.v')
+	os.write_file(builtin_src, 'module builtin\n' + builtin_source) or { panic(err) }
+	os.write_file(src, source) or { panic(err) }
+	prefs := pref.new_preferences()
+	mut p := parser.Parser.new(prefs)
+	mut a := p.parse_files([builtin_src, src])
+	mut tc := types.TypeChecker.new(a)
+	tc.diagnose_unknown_calls = true
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	transform.transform(mut a, &tc)
+	return a
+}
+
 // find_fn resolves find fn information for v3 tests.
 fn find_fn(a &flat.FlatAst, name string) flat.Node {
 	for node in a.nodes {
@@ -581,13 +602,13 @@ fn main() {
 	assert sql_expr_count == 0
 	users := decl_rhs(a, 'main', 'users')
 	assert users.kind == .call
-	assert users.typ == '![]User'
+	assert users.typ_text() == '![]User'
 	count := decl_rhs(a, 'main', 'count')
 	assert count.kind == .call
-	assert count.typ == '!int'
+	assert count.typ_text() == '!int'
 	created := decl_rhs(a, 'main', 'created')
 	assert created.kind == .call
-	assert created.typ == '!int'
+	assert created.typ_text() == '!int'
 }
 
 // test_or_expr_lowers_to_temp_and_if validates this v3 regression case.
@@ -722,7 +743,7 @@ fn main() {
 		if stmt.kind == .decl_assign && stmt.children_count >= 2 {
 			lhs := a.child_node(stmt, 0)
 			if lhs.kind == .ident && lhs.value == key_tmp {
-				assert stmt.typ == '[2]string'
+				assert stmt.typ_text() == '[2]string'
 				found_key_decl = true
 			}
 		}
@@ -730,14 +751,20 @@ fn main() {
 	assert found_key_decl
 }
 
+// Methods on a map of builtin types are rejected outside module builtin (b65d402374), so
+// the receiver map holds a local type.
 fn test_exact_map_receiver_method_wins_over_builtin_lowering() {
 	a := parse_checked_transform_source('
-fn (m map[string]int) keys() int {
+struct Count {
+	n int
+}
+
+fn (m map[string]Count) keys() int {
 	return 7
 }
 
 fn main() {
-	mut m := map[string]int{}
+	mut m := map[string]Count{}
 	n := m.keys()
 }
 ')
@@ -746,8 +773,8 @@ fn main() {
 	mut builtin_count := 0
 	for i in 0 .. main_fn.children_count {
 		child_id := a.child(&main_fn, i)
-		exact_count += count_call_name(a, child_id, 'map[string]int.keys')
-		exact_count += count_call_name(a, child_id, 'main.map[string]int.keys')
+		exact_count += count_call_name(a, child_id, 'map[string]Count.keys')
+		exact_count += count_call_name(a, child_id, 'main.map[string]Count.keys')
 		builtin_count += count_call_name(a, child_id, 'map__keys')
 		builtin_count += count_call_name(a, child_id, 'map.keys')
 	}
@@ -792,7 +819,9 @@ fn main() {
 	mut selector_count := 0
 	for i in 0 .. main_fn.children_count {
 		child_id := a.child(&main_fn, i)
-		direct_count += count_call_name(a, child_id, 'Tool.make')
+		// Static type methods have an internal name of their own (73287062e9).
+		direct_count += count_call_name(a, child_id, flat.encode_static_type_method_name('Tool',
+			'make'))
 		selector_count += count_selector_value(a, child_id, 'make')
 	}
 	assert direct_count == 1
@@ -800,12 +829,12 @@ fn main() {
 }
 
 fn test_array_builtin_method_fallback_lowers_to_direct_call() {
-	a := parse_checked_transform_source('
+	a := parse_checked_transform_source_with_builtin('
 @[unsafe]
-fn (a array) pointers() []voidptr {
+pub fn (a array) pointers() []voidptr {
 	return []voidptr{}
 }
-
+', '
 fn main() {
 	nums := [1, 2, 3]
 	unsafe {
@@ -863,12 +892,12 @@ fn main() {
 }
 
 fn test_fixed_array_pointers_uses_intrinsic_without_copy() {
-	a := parse_checked_transform_source('
+	a := parse_checked_transform_source_with_builtin('
 @[unsafe]
-fn (a array) pointers() []voidptr {
+pub fn (a array) pointers() []voidptr {
 	return []voidptr{}
 }
-
+', '
 fn main() {
 	mut fixed := [3]int{}
 	unsafe {
@@ -891,19 +920,25 @@ fn main() {
 	assert selector_count == 0
 }
 
+// Methods on an array of builtin types are rejected outside module builtin (b65d402374), so
+// the receiver array holds a local type.
 fn test_fixed_array_dynamic_receiver_method_wins_over_array_builtin() {
-	a := parse_checked_transform_source('
+	a := parse_checked_transform_source_with_builtin('
 @[unsafe]
-fn (a array) pointers() []voidptr {
+pub fn (a array) pointers() []voidptr {
 	return []voidptr{}
 }
+', '
+struct Item {
+	n int
+}
 
-fn (a []int) pointers() int {
+fn (a []Item) pointers() int {
 	return 7
 }
 
 fn main() {
-	mut fixed := [3]int{}
+	mut fixed := [3]Item{}
 	n := fixed.pointers()
 }
 ')
@@ -912,30 +947,38 @@ fn main() {
 	mut builtin_count := 0
 	for i in 0 .. main_fn.children_count {
 		child_id := a.child(&main_fn, i)
-		dynamic_count += count_call_name(a, child_id, '[]int.pointers')
-		dynamic_count += count_call_name(a, child_id, 'main.[]int.pointers')
+		dynamic_count += count_call_name(a, child_id, '[]Item.pointers')
+		dynamic_count += count_call_name(a, child_id, 'main.[]Item.pointers')
 		builtin_count += count_call_name(a, child_id, 'array.pointers')
 	}
 	assert dynamic_count == 1
 	assert builtin_count == 0
 }
 
+// As above, the exact receiver array holds a local type (b65d402374).
 fn test_exact_array_receiver_method_wins_over_builtin_fallback() {
-	a := parse_checked_transform_source('
+	a := parse_checked_transform_source_with_builtin('
 @[unsafe]
-fn (a array) pointers() []voidptr {
+pub fn (a array) pointers() []voidptr {
 	return []voidptr{}
 }
+', '
+struct Item {
+	n int
+}
 
-fn (a []int) pointers() []int {
+fn (a []Item) pointers() []Item {
 	return a
 }
 
 fn main() {
-	mut nums := []int{}
-	nums << 1
-	nums << 2
-	nums << 3
+	mut nums := []Item{}
+	nums << Item{
+		n: 1
+	}
+	nums << Item{
+		n: 2
+	}
 	ptrs := nums.pointers()
 }
 ')
@@ -944,8 +987,8 @@ fn main() {
 	mut builtin_count := 0
 	for i in 0 .. main_fn.children_count {
 		child_id := a.child(&main_fn, i)
-		exact_count += count_call_name(a, child_id, '[]int.pointers')
-		exact_count += count_call_name(a, child_id, 'main.[]int.pointers')
+		exact_count += count_call_name(a, child_id, '[]Item.pointers')
+		exact_count += count_call_name(a, child_id, 'main.[]Item.pointers')
 		builtin_count += count_call_name(a, child_id, 'array.pointers')
 	}
 	assert exact_count == 1

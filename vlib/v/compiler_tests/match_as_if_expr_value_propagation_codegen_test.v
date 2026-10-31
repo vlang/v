@@ -13,7 +13,8 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 fn test_match_as_if_expr_value_with_propagation() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_match_as_if_expr_value_propagation_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_match_as_if_expr_value_propagation_input.v')
@@ -632,18 +633,18 @@ fn (mut tr Tracer) needle_str() string {
 	return "lo"
 }
 
-fn (mut tr Tracer) text_first(_ First) !string {
+fn (mut tr Tracer) text_first(_ First) ![]string {
 	tr.order << 2
-	return "hello"
+	return ["hel", "lo"]
 }
 
-fn (mut tr Tracer) text_second(_ Second) !string {
+fn (mut tr Tracer) text_second(_ Second) ![]string {
 	tr.order << 2
-	return "world"
+	return ["wor", "ld"]
 }
 
-// String-membership ordering: the side-effecting needle must run before the
-// hoisting match container. "lo" in "hello" is true; order [1,2] -> 512 (a
+// String-element membership ordering: the side-effecting needle must run before the
+// hoisting match container. "lo" in ["hel", "lo"] is true; order [1,2] -> 512 (a
 // reversed order would be 521).
 fn select_value_string_membership_order(node Node) !int {
 	mut tr := Tracer{}
@@ -654,14 +655,14 @@ fn select_value_string_membership_order(node Node) !int {
 	return (if inside { 500 } else { 0 }) + tr.order[0] * 10 + tr.order[1]
 }
 
-fn wrap_str(s string) string {
+fn wrap_str(s []string) []string {
 	return s
 }
 
-// String-membership ordering with a *nested* container: the match is wrapped inside a call
-// (`needle in wrap_str(match ...)`), which still hoists the match prelude. The side-effecting
-// needle must run before it. First -> "lo" in "hello" = true, order [1,2] -> 512 (a reversed
-// order would be 521).
+// String-element membership ordering with a *nested* container: the match is wrapped inside a
+// call (`needle in wrap_str(match ...)`), which still hoists the match prelude. The
+// side-effecting needle must run before it. First -> "lo" in ["hel", "lo"] = true, order [1,2]
+// -> 512 (a reversed order would be 521).
 fn select_value_nested_string_membership_order(node Node) !int {
 	mut tr := Tracer{}
 	inside := tr.needle_str() in wrap_str(match node {
@@ -1914,11 +1915,11 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_match_as_if_expr_value_propagation_out')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '1\n2\n1\n2\n1\n2\n2\n12\n20\n100\n20\n[1]\n-1\n20\n[20, 30, 40]\ntrue\n1\n100\nx=1\ntrue\n1\n2\n6\n6\n2\n1112\n1212\n102412\n204812\n1012\n2012\n3012\n6\ntrue\n112\n112\ntrue\n60\n2\n512\n512\n712\n812\ntrue\n612\n61\n63\n1003\n42\n2012\n4512\n5002\n9912\n9912\n7712\n5512\n7\n7\n3412\n3512\n7612\n4004\n507\n212\n312\n6100\n1005\n3\n5\n5\n4550\n16000\n2500\n3412\n500\n12\n5\n12\ntrue\n41\n712\n30\n1'
 }

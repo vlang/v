@@ -1,0 +1,31 @@
+type MaybeMaybe = ??int
+
+struct Foo {
+	a ??int
+	b ?!int
+	c []??string
+}
+
+fn ret(b bool) ??int {
+	if b {
+		return none
+	}
+	return 3
+}
+
+fn param(x ? ?int) {}
+
+fn res() !!int {
+	return 1
+}
+
+fn main() {
+	x := ??int(3)
+	m := map[string]??int{}
+	f := fn () ?(?int) {
+		return none
+	}
+	println(x)
+	println(m)
+	println(f)
+}

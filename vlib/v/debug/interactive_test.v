@@ -8,10 +8,10 @@ const test_module_path = os.join_path(os.vtmp_dir(), 'test_vdbg_input')
 const bar = term.yellow('-'.repeat(107))
 const be_verbose = os.getenv('GITHUB_JOB') != '' || os.getenv('VERBOSE') != ''
 
-const expect_exe = os.quoted_path(os.find_abs_path_of_executable('expect') or {
+const expect_exe = os.find_abs_path_of_executable('expect') or {
 	eprintln('skipping test, since expect is missing')
 	exit(0)
-})
+}
 
 fn testsuite_begin() {
 	os.chdir(@VEXEROOT) or {}
@@ -49,23 +49,25 @@ fn test_debugger() {
 
 		compile_sw := time.new_stopwatch()
 		comp_res :=
-			os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(output_file)} ${os.quoted_path(vfile)}')
+			os.system_args([vexe, '-o', output_file, vfile])
 		cdur_ms := compile_sw.elapsed().milliseconds()
 		if be_verbose {
 			gprintln('>>>>>>>>>>> compilation took ${cdur_ms} ms, comp_res: ${comp_res}')
 		}
 
 		verbose_options := if be_verbose { '-d' } else { '' }
-		expect_cmd := '${expect_exe} ${verbose_options} -c "cd ${expect_tests_path}" ${os.quoted_path(efile)} ${os.quoted_path(output_file)} ${os.quoted_path(vfile)}'
+		expect_cmd := '${os.quoted_path(expect_exe)} ${verbose_options} -c "cd ${expect_tests_path}" ${os.quoted_path(efile)} ${os.quoted_path(output_file)} ${os.quoted_path(vfile)}'
 		if be_verbose {
 			gprintln(term.cyan(expect_cmd))
 		}
 		sw := time.new_stopwatch()
 		mut res := 0
 		if be_verbose {
-			res = os.system(expect_cmd)
+			res = os.system_args([expect_exe, ...(os.split_args(verbose_options) or { panic(err) }),
+				'-c', 'cd ' + '${expect_tests_path}', efile, output_file, vfile])
 		} else {
-			result := os.execute(expect_cmd)
+			result := os.exec([expect_exe, ...(os.split_args(verbose_options) or { panic(err) }),
+				'-c', 'cd ' + '${expect_tests_path}', efile, output_file, vfile])
 			res = result.exit_code
 			if res != 0 {
 				eprintln(result.output)

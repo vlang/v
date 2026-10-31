@@ -1,0 +1,27 @@
+struct Inner {
+	a int
+	b int
+}
+
+struct Outer {
+	Inner  = Inner{
+		a: 1
+		b: 2
+	}
+}
+
+struct OneLine {
+	Inner   =   Inner{} // the embed's default
+}
+
+struct WithFields {
+	Inner  = Inner{}
+	x     int
+	name  string = 'abc'
+}
+
+struct ShorterThanField {
+	Inner        = Inner{}
+	longer_name int
+	y           int = 4
+}

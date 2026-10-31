@@ -77,11 +77,13 @@ fn main() {
 		panic(err)
 	}
 	build :=
-		os.execute('"${promoted_assignment_vexe}" -gc none -prealloc -path "${promoted_assignment_vlib_dir}|@vlib|@vmodules" -o "${v3_bin}" "${promoted_assignment_v3_source}"')
+		os.exec([promoted_assignment_vexe, '-gc', 'none', '-prealloc', '-path',
+			'${promoted_assignment_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			promoted_assignment_v3_source])
 	assert build.exit_code == 0, build.output
-	compile := os.execute('"${v3_bin}" -prealloc -o "${output}" "${os.join_path(root, 'main.v')}"')
+	compile := os.exec([v3_bin, '-prealloc', '-o', output, os.join_path(root, 'main.v')])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute('"${output}"')
+	run := os.exec([output])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '1'
 }

@@ -1,0 +1,10 @@
+@[generated]
+module main
+
+// `println('a')` would be parsed as a cast to the type.
+type println = string
+
+fn main() {
+	x := println('a')
+	print(x)
+}

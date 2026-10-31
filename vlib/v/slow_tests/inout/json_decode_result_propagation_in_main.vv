@@ -1,0 +1,24 @@
+import json2
+
+struct Person {
+	name string
+	age  int
+}
+
+fn main() {
+	// `json2.decode[T](s)` returns `!T`; `!` in `main` must unwrap it as that
+	// type (issue #28828 was about the same unwrap for the removed `json` module).
+	p := json2.decode[Person]('{"name":"a","age":3}')!
+	println(p.name)
+	println(p.age)
+	mut q := json2.decode[Person]('{"name":"b"}')!
+	q = Person{
+		...q
+		age: 4
+	}
+	println('${q.name} ${q.age}')
+	r := json2.decode[Person]('{"name":"c"}') or { panic('unreachable') }
+	println(r.name)
+	people := json2.decode[[]Person]('[{"name":"d"},{"name":"e"}]')!
+	println(people.map(it.name))
+}

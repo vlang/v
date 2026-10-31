@@ -1,0 +1,72 @@
+struct Foo {
+	a int
+}
+
+struct Bar {
+	b string
+}
+
+type Rows = [][]u8
+
+fn takes_bars(bars []Bar) int {
+	return bars.len
+}
+
+fn main() {
+	// the first element against the element type of the context
+	bars := []Bar([Foo{1}])
+	println(bars)
+	mut more := []Bar{}
+	more = [Foo{2}]
+	println(more)
+	println(takes_bars([Foo{3}, Bar{'x'}]))
+	// integer literals whose bits do not fit the element type, also in nested literals
+	rows := Rows([[1, 300]])
+	println(rows)
+	nested := [][]u8([[u8(1), 2], [3, 256]])
+	println(nested)
+	bytes := []u8([1, 300])
+	println(bytes)
+	inferred := [u8(1), -129]
+	println(inferred)
+	small := []i8([-129, 127, 128, 256])
+	println(small)
+	fits := []u8([0, 255])
+	println(fits)
+	// fixed array literals take the element type of their context too
+	pair := [2]u8([300, 1]!)
+	println(pair)
+	println(takes_pair([1, 300]!))
+	mut fixed := [2]u8{}
+	fixed = [1, 256]!
+	println(fixed)
+	println(Holder{
+		pair: [-1, 300]!
+	})
+	println(fixed_return())
+	fixed_fits := [2]u8([0, 255]!)
+	println(fixed_fits)
+	println(opt_pair() or { [2]u8{} })
+	// a fixed array literal where a dynamic array is expected keeps its own type
+	println(takes_bytes([5.0]!))
+}
+
+struct Holder {
+	pair [2]u8
+}
+
+fn takes_pair(pair [2]u8) u8 {
+	return pair[1]
+}
+
+fn fixed_return() [2]i8 {
+	return [1, -129]!
+}
+
+fn opt_pair() ?[2]u8 {
+	return [2, 512]!
+}
+
+fn takes_bytes(bytes []u8) int {
+	return bytes.len
+}

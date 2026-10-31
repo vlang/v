@@ -51,12 +51,13 @@ fn workflow_index_after(source string, needle string, offset int) int {
 	return offset + relative
 }
 
-fn test_pr_contract_workflow_always_exposes_both_required_checks() {
+fn test_master_contract_workflow_always_exposes_both_required_checks() {
 	source := workflow_source('tccbin_automation_contract.yml')
 	vc_lock := bin.validate_vc_bootstrap_contract(automation_root()) or { panic(err) }
 	tcc_lock := 'ece46f06fbe6eb701d52442f11dd59c48d166cae'
-	assert source.contains('  pull_request:')
-	assert source.contains('  merge_group:')
+	assert source.contains('on:\n  push:\n    branches:\n      - master\n')
+	assert !source.contains('  pull_request:')
+	assert !source.contains('  merge_group:')
 	assert !source.contains('paths:')
 	assert !source.contains('paths-ignore:')
 	assert source.contains('name: tccbin-automation-contract')
@@ -231,8 +232,8 @@ fn test_update_authenticates_real_staging_before_every_upload_or_publication() {
 	source := workflow_source('update_tccbin.yml')
 	checkout_pin := '3d3c42e5aac5ba805825da76410c181273ba90b1'
 	upload_pin := '043fb46d1a93c77aae656e7c1c64a875d1fc6a0a'
-	vc_lock := 'dfc458a13ba8923ebc249e262c331f8169aa728b'
-	cpa_pin := '24ef01df165c76df1ed2b9f9e9212e78dc2fc963'
+	vc_lock := '0781dbf8ed16a8e9ebce3771a645b814456c0103'
+	cpa_pin := 'e0b9770014ba65d5e0815f15b74031c3a635f641'
 	mut action_calls := 0
 	for raw_line in source.split_into_lines() {
 		mut line := raw_line.trim_space()
@@ -262,6 +263,10 @@ fn test_update_authenticates_real_staging_before_every_upload_or_publication() {
 	assert source.count('"$TCCBIN_VALIDATOR_CLI" candidate-preflight') == 2
 	assert !source.contains('"$TCCBIN_VALIDATOR_CLI" staged-preflight')
 	assert source.count('Bootstrap the contract-bound Phase A validator before') == 2
+	assert source.count('name: Checkout the TCC bootstrap bundle for the macOS validator') == 1
+	assert source.count('TCCBIN_BOOTSTRAP_TCC_ROOT=') == 1
+	assert source.count('TCCBIN_BOOTSTRAP_TCC_COMMIT=') == 1
+	assert source.count("V_MACOS_V3_NO_FALLBACK: '1'") == 1
 	assert source.count('thirdparty/tccbin_automation/bootstrap/bootstrap.sh') == 2
 	assert source.count('contract-binding') == 2
 	assert source.count('TCCBIN_VALIDATOR_CLI=') == 2
@@ -299,6 +304,10 @@ fn test_update_authenticates_real_staging_before_every_upload_or_publication() {
 		panic('hosted upload missing')
 	}
 	hosted_push := source.index('name: Push tccbin branch') or { panic('hosted publisher missing') }
+	tcc_bundle_index := source.index('name: Checkout the TCC bootstrap bundle for the macOS validator') or {
+		panic('TCC bootstrap bundle checkout missing')
+	}
+	assert tcc_bundle_index < hosted_bootstrap
 	assert hosted_bootstrap < hosted_clone
 	assert hosted_clone < hosted_preflight
 	assert hosted_preflight < hosted_upload

@@ -1,0 +1,6 @@
+vlib/v/tests/no_closures/capturing_shadowed_it_lambda.vv:9:16: cgen error: a closure was generated for function
+    7 |     println(it)
+    8 |     // the transform captures the outer `it`, although `filter` shadows it
+    9 |     println(apply(|n| [1, 2].filter(it > n).len, 1))
+      |                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   10 | }

@@ -1,0 +1,20 @@
+struct Header {
+mut:
+	prev u64
+}
+
+// A `mut` struct parameter is a pointer: it casts to an integer address, but
+// not to a float.
+fn address(mut h Header) u64 {
+	return u64(h)
+}
+
+fn as_float(mut h Header) f64 {
+	return f64(h)
+}
+
+fn main() {
+	mut h := Header{}
+	println(address(mut h) != 0)
+	println(as_float(mut h))
+}

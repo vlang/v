@@ -82,6 +82,8 @@ mut:
 	memory_monitor_interval i64
 	memory_monitor_thread   thread
 	memory_monitor_started  bool
+	show_instructions       bool
+	last_instructions       u64
 }
 
 // new creates a new value for bench.
@@ -103,25 +105,37 @@ pub fn new() Bench {
 	}
 }
 
+// changes the compiler memory safety limit.
+pub fn (mut b Bench) set_memory_limit(new_limit i64) {
+	b.memory_limit_kb = new_limit
+}
+
 // disable_memory_limit disables the compiler memory safety limit.
 pub fn (mut b Bench) disable_memory_limit() {
-	b.memory_limit_kb = 0
+	b.set_memory_limit(0)
 }
 
 // use_self_host_memory_limit sets the safety limit for compiler self-host builds.
 pub fn (mut b Bench) use_self_host_memory_limit() {
-	b.memory_limit_kb = self_host_memory_limit_kb
+	b.set_memory_limit(self_host_memory_limit_kb)
 }
 
 // use_compiler_tree_memory_limit sets the safety limit for tests that compile
 // the complete V3 compiler module without disabling the OOM guard.
 pub fn (mut b Bench) use_compiler_tree_memory_limit() {
-	b.memory_limit_kb = compiler_tree_memory_limit_kb
+	b.set_memory_limit(compiler_tree_memory_limit_kb)
 }
 
 // set_quiet suppresses benchmark output while retaining timing and memory checks.
 pub fn (mut b Bench) set_quiet() {
 	b.quiet = true
+}
+
+// enable_instruction_counts adds the retired CPU instructions of every step
+// (summed over all threads) to the report, where the platform exposes them.
+pub fn (mut b Bench) enable_instruction_counts() {
+	b.show_instructions = true
+	b.last_instructions = current_instruction_count() or { 0 }
 }
 
 // start_memory_monitor starts the compiler memory safety watchdog.
@@ -217,7 +231,7 @@ fn monitor_stage_memory(state &StageMemoryMonitor, limit_kb i64, interval i64) {
 				monitor.exiting = true
 				monitor.mutex.unlock()
 				eprintln(message)
-				exit(1)
+				exit_memory_limit()
 			}
 		}
 	}
@@ -240,7 +254,7 @@ fn monitor_memory_limit(limit_kb i64) {
 		message := memory_limit_error(memory.kb, limit_kb, 'during compilation', memory.metric)
 		if message.len > 0 {
 			eprintln(message)
-			exit(1)
+			exit_memory_limit()
 		}
 	}
 }
@@ -278,7 +292,7 @@ pub fn (b &Bench) current_step_time_us() i64 {
 // account for their full wall time.
 pub fn (mut b Bench) step_measured(name string, elapsed_us i64) {
 	allocations := current_allocation_stats()
-	b.report_step(name, false, elapsed_us, 0, 0, allocations.enabled, false)
+	b.report_step(name, false, elapsed_us, 0, 0, allocations.enabled, false, '')
 }
 
 // step_parallel records a pipeline step, appending "(parallel)" to its name
@@ -286,9 +300,11 @@ pub fn (mut b Bench) step_measured(name string, elapsed_us i64) {
 pub fn (mut b Bench) step_parallel(name string, parallel bool) {
 	elapsed_us := b.step_sw.elapsed().microseconds()
 	allocations := current_allocation_stats()
+	instructions := b.step_instructions()
 	b.report_step(name, parallel, elapsed_us,
 		allocations.allocation_count - b.last_allocation_count,
-		allocations.allocated_bytes - b.last_allocated_bytes, allocations.enabled, true)
+		allocations.allocated_bytes - b.last_allocated_bytes, allocations.enabled, true,
+		instructions)
 	b.finish_step_report()
 }
 
@@ -298,6 +314,9 @@ pub fn (mut b Bench) step_parts(parts []StepPart) {
 		return
 	}
 	allocations := current_allocation_stats()
+	// Instructions are counted per process, so they cannot be split between the
+	// parts; the whole group's count is shown on its last part.
+	instructions := b.step_instructions()
 	total_allocation_count := allocations.allocation_count - b.last_allocation_count
 	total_allocated_bytes := allocations.allocated_bytes - b.last_allocated_bytes
 	mut total_us := i64(0)
@@ -321,15 +340,20 @@ pub fn (mut b Bench) step_parts(parts []StepPart) {
 		} else {
 			u64(i64(total_allocated_bytes) * part.time_us / total_us)
 		}
+		part_instructions := if is_last && instructions.len > 0 {
+			'${instructions} (${parts.len} parts)'
+		} else {
+			''
+		}
 		b.report_step(part.name, part.parallel, part.time_us, allocation_count, allocated_bytes,
-			allocations.enabled, false)
+			allocations.enabled, false, part_instructions)
 		reported_allocation_count += allocation_count
 		reported_allocated_bytes += allocated_bytes
 	}
 	b.finish_step_report()
 }
 
-fn (mut b Bench) report_step(name string, parallel bool, elapsed_us i64, allocation_count u64, allocated_bytes u64, allocations_enabled bool, has_stage_peak bool) {
+fn (mut b Bench) report_step(name string, parallel bool, elapsed_us i64, allocation_count u64, allocated_bytes u64, allocations_enabled bool, has_stage_peak bool, instructions string) {
 	label := if parallel { '${name} (parallel)' } else { name }
 	ram_kb := current_rss_kb()
 	stage_peak_ram_kb := if has_stage_peak { b.finish_stage_memory(ram_kb) } else { i64(0) }
@@ -339,7 +363,7 @@ fn (mut b Bench) report_step(name string, parallel bool, elapsed_us i64, allocat
 		message := memory_limit_error(memory.kb, b.memory_limit_kb, 'after ${label}', memory.metric)
 		if message.len > 0 {
 			eprintln(message)
-			exit(1)
+			exit_memory_limit()
 		}
 	}
 	ram_mb := f64(ram_kb) / 1024.0
@@ -359,7 +383,7 @@ fn (mut b Bench) report_step(name string, parallel bool, elapsed_us i64, allocat
 		''
 	}
 	if !b.quiet {
-		println('  ${label:-20s} ${ms:8.2f} ms   ${ram_mb:6.0f} MB RSS${footprint_suffix}${stage_peak_suffix}   ${peak_ram_mb:6.0f} MB peak${allocation_suffix}')
+		println('  ${label:-20s} ${ms:8.2f} ms   ${ram_mb:6.0f} MB RSS${footprint_suffix}${stage_peak_suffix}   ${peak_ram_mb:6.0f} MB peak${allocation_suffix}${instruction_suffix(instructions)}')
 	}
 	b.steps << Step{
 		name:              label
@@ -377,7 +401,31 @@ fn (mut b Bench) finish_step_report() {
 	after_report := current_allocation_stats()
 	b.last_allocation_count = after_report.allocation_count
 	b.last_allocated_bytes = after_report.allocated_bytes
+	if b.show_instructions {
+		b.last_instructions = current_instruction_count() or { 0 }
+	}
 	b.step_sw.restart()
+}
+
+// step_instructions returns the formatted instruction count of the current
+// step, or an empty string when instruction counts are off or unavailable.
+fn (b &Bench) step_instructions() string {
+	if !b.show_instructions {
+		return ''
+	}
+	count := current_instruction_count() or { return '' }
+	return format_instructions(count - b.last_instructions)
+}
+
+fn format_instructions(count u64) string {
+	return '${f64(count) / 1e9:8.3f} G instructions'
+}
+
+fn instruction_suffix(instructions string) string {
+	if instructions.len == 0 {
+		return ''
+	}
+	return '   ${instructions}'
 }
 
 fn physical_footprint_suffix(memory LimitMemory) string {
@@ -400,7 +448,7 @@ fn memory_limit_error(memory_kb i64, limit_kb i64, context string, metric string
 		'${limit_mb} MiB'
 	}
 	return 'error: v3 compiler memory usage reached ${memory_mb} MiB ${metric} ${context} ' +
-		'(limit: ${limit_label}); use `-no-memory-limit` to disable this limit'
+		'(limit: ${limit_label}); use `-no-memory-limit` to disable this limit or `-memory-limit` to set your own limit'
 }
 
 // metric records a structural compiler counter for the final benchmark report.
@@ -438,7 +486,17 @@ pub fn (b &Bench) print_report() {
 		return
 	}
 	total_ms := f64(b.total_sw.elapsed().microseconds()) / 1000.0
-	println('  ${'total':-20s} ${total_ms:8.2f} ms')
+	mut total_instructions := ''
+	if b.show_instructions {
+		// The process total includes startup and everything between the steps,
+		// so it matches what an external counter such as `/usr/bin/time -l` reports.
+		total_instructions = if count := current_instruction_count() {
+			'   ${format_instructions(count)} (process)'
+		} else {
+			'   instruction counts are unavailable on this platform'
+		}
+	}
+	println('  ${'total':-20s} ${total_ms:8.2f} ms${total_instructions}')
 	if b.metrics.len > 0 {
 		println('  metrics:')
 		for metric in b.metrics {

@@ -61,14 +61,14 @@ fn test_all() {
 		tbase := os.join_path(os.vtmp_dir(), tname)
 		texe := if os.user_os() == 'windows' { '${tbase}.exe' } else { tbase }
 		compilation :=
-			os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(tbase)} -cflags "-w" -cg ${os.quoted_path(program)}')
+			os.exec([vexe, '-o', '${tbase}', '-cflags', '-w', '-cg', '${program}'])
 		if compilation.exit_code < 0 {
 			panic(compilation.output)
 		}
 		if compilation.exit_code != 0 {
 			panic('compilation failed: ${compilation.output}')
 		}
-		res := os.execute(os.quoted_path(texe))
+		res := os.exec([texe])
 		if res.exit_code < 0 {
 			vprintln('nope')
 			panic(res.output)

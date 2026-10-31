@@ -342,3 +342,13 @@ fn test_parse_flow_collection_spanning_multiple_lines() ! {
 	assert doc2.value('obj.a').int() == 1
 	assert doc2.value('obj.b').int() == 2
 }
+
+fn test_hash_inside_a_plain_scalar_is_not_a_comment() ! {
+	// YAML starts a comment only at a `#` that begins the line or follows white space
+	doc := parse_text('ref: net.arxml#Body\nlist:\n  - a#b\n  - c # comment\nlead: x\t# tab comment\n# whole line\n')!
+	assert doc.value('ref').string() == 'net.arxml#Body'
+	items := doc.value('list').array()
+	assert items[0].string() == 'a#b'
+	assert items[1].string() == 'c'
+	assert doc.value('lead').string() == 'x'
+}

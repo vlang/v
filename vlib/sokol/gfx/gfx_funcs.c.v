@@ -28,7 +28,7 @@ fn C.sg_update_buffer(buf C.sg_buffer, data &C.sg_range)
 fn C.sg_update_image(img C.sg_image, data &C.sg_image_data)
 fn C.sg_append_buffer(buf C.sg_buffer, data &C.sg_range) i32
 fn C.sg_query_buffer_overflow(buf C.sg_buffer) bool
-fn C.sg_query_buffer_will_overflow(buf C.sg_buffer, size usize) bool
+fn C.sg_query_buffer_will_overflow(buf C.sg_buffer, size uint) bool
 
 // rendering functions
 fn C.sg_begin_pass(const_pass &C.sg_pass)
@@ -96,7 +96,7 @@ fn C.sg_dealloc_shader(shd C.sg_shader)
 fn C.sg_dealloc_pipeline(pip C.sg_pipeline)
 fn C.sg_dealloc_attachments(atts C.sg_attachments)
 fn C.sg_init_buffer(buf C.sg_buffer, const_desc &C.sg_buffer_desc)
-fn C.sg_init_image(img C.sg_image, const_desc &C.sg_buffer_desc)
+fn C.sg_init_image(img C.sg_image, const_desc &C.sg_image_desc)
 fn C.sg_init_sampler(smg C.sg_sampler, const_desc &C.sg_sampler_desc)
 fn C.sg_init_shader(shd C.sg_shader, const_desc &C.sg_shader_desc)
 fn C.sg_init_pipeline(pip C.sg_pipeline, const_desc &C.sg_pipeline_desc)

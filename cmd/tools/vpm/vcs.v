@@ -12,11 +12,12 @@ enum VCS {
 struct VCSInfo {
 	dir  string @[required]
 	args struct {
-		install  string   @[required]
-		version  string   @[required] // flag to specify a version, added to install.
-		path     string   @[required] // flag to specify a path. E.g., used to explicitly work on a path during multithreaded updating.
-		update   string   @[required]
-		outdated []string @[required]
+		install  []string   @[required]
+		version  string     @[required] // flag name; passed as one `--flag=<version>` element.
+		path     string     @[required] // flag to specify a path. E.g., used to explicitly work on a path during multithreaded updating.
+		// update is a list of whole commands, run in order.
+		update   [][]string @[required]
+		outdated []string   @[required]
 	}
 }
 
@@ -25,30 +26,44 @@ const vcs_info = init_vcs_info() or {
 	exit(1)
 }
 
-fn init_vcs_info() !map[VCS]VCSInfo {
-	git_installed_raw_ver := parse_git_version(os.execute_opt('git --version')!.output) or { '' }
-	git_installed_ver := semver.from(git_installed_raw_ver)!
-	git_submod_filter_ver := semver.from('2.36.0')!
-	mut git_install_cmd := 'clone --recursive'
-	if os.user_os() != 'windows' {
+// git_clone_install_args returns the options `git clone` takes before the url and
+// path, for the installed git `git_ver` on `os_name`.
+fn git_clone_install_args(git_ver semver.Version, os_name string) ![]string {
+	git_shallow_submod_ver := semver.from('2.36.0')!
+	mut git_install_args := ['clone', '--recursive']
+	if os_name != 'windows' {
 		// The variation of environment factors on windows is too high;
 		// the following options are known to work well on != windows,
 		// but can sometimes cause failures on windows for yet unknown reasons,
 		// see https://discord.com/channels/592103645835821068/665558664949530644/1345422482974310440
 		// for more details, about why this is now allowed only on != windows platforms.
-		git_install_cmd += ' --filter=blob:none'
-		if git_installed_ver >= git_submod_filter_ver {
-			git_install_cmd += ' --shallow-submodules'
-			git_install_cmd += ' --also-filter-submodules'
+		// Keep module blobs in the initial pack. Partial clones need another network
+		// fetch during checkout, which can stall installations such as `v install ui2`.
+		if git_ver >= git_shallow_submod_ver {
+			git_install_args << '--shallow-submodules'
 		}
 	}
+	// A tagged install needs one commit, so history is pure cost: measured on a
+	// large module it was 167s and 96 MB of `.git` without this, against 32s and
+	// 13.6 MB with it, for an identical working tree.
+	git_install_args << '--depth'
+	git_install_args << '1'
+	return git_install_args
+}
+
+fn init_vcs_info() !map[VCS]VCSInfo {
+	git_installed_raw_ver := parse_git_version(os.exec_opt(['git', '--version'])!.output) or { '' }
+	git_installed_ver := semver.from(git_installed_raw_ver)!
+	git_install_args := git_clone_install_args(git_installed_ver, os.user_os())!
 	return {
 		VCS.git: VCSInfo{
 			dir:  '.git'
 			args: struct {
-				install:  git_install_cmd
-				version:  '--single-branch -b'
-				update:   'pull --recurse-submodules' // pulling with `--depth=1` leads to conflicts when the upstream has more than 1 new commits.
+				install:  git_install_args
+				version:  '--branch'
+				// Pull the configured upstream without discarding local history.
+				// Detached checkouts use an explicit fetch/checkout in update_module.
+				update:   [['pull', '--ff-only', '--recurse-submodules']]
 				path:     '-C'
 				outdated: ['fetch', 'rev-parse @', 'rev-parse @{u}']
 			}
@@ -56,9 +71,9 @@ fn init_vcs_info() !map[VCS]VCSInfo {
 		VCS.hg:  VCSInfo{
 			dir:  '.hg'
 			args: struct {
-				install:  'clone'
+				install:  ['clone']
 				version:  '--rev'
-				update:   'pull --update'
+				update:   [['pull', '--update']]
 				path:     '-R'
 				outdated: ['incoming']
 			}
@@ -66,12 +81,77 @@ fn init_vcs_info() !map[VCS]VCSInfo {
 	}
 }
 
+// git_config_count returns how many GIT_CONFIG_* entries the environment already
+// holds, or none when GIT_CONFIG_COUNT is set to anything but a plain decimal count.
+fn git_config_count() ?int {
+	text := os.getenv('GIT_CONFIG_COUNT')
+	if text == '' {
+		return 0
+	}
+	count := text.int()
+	if count < 0 || count == 2147483647 || count.str() != text {
+		return none
+	}
+	return count
+}
+
+// enable_git_longpaths sets core.longpaths for every git process vpm starts after
+// main begins. The `git --version` call that initializes vcs_info runs before that, and
+// reads no config, so it does not need the setting.
+// Windows git keeps the 260-character path limit unless that setting is on, and
+// vpm's module cache is deep enough to exceed it. The setting goes in two variables:
+// GIT_CONFIG_COUNT, which git 2.31 and later read, and GIT_CONFIG_PARAMETERS, the
+// variable `git -c` fills in, which every git version reads, so it also covers git
+// before 2.31. Existing entries in both are kept, and the new setting is appended
+// after them. A GIT_CONFIG_COUNT that is not a plain non-negative decimal is left
+// alone and reported, since extending it would overwrite or hide the user's entries.
+// The new entries come last, so a core.longpaths=false the user already set is
+// overridden for the git processes vpm starts.
+fn enable_git_longpaths() {
+	mut params := os.getenv('GIT_CONFIG_PARAMETERS')
+	if params != '' {
+		params += ' '
+	}
+	os.setenv('GIT_CONFIG_PARAMETERS', "${params}'core.longpaths=true'", true)
+	count := git_config_count() or {
+		vpm_warn('not adding core.longpaths to GIT_CONFIG_COUNT.',
+			details: 'GIT_CONFIG_COUNT is not a plain non-negative integer, so vpm leaves it alone. Git may exit with an error on it.'
+		)
+		return
+	}
+	os.setenv('GIT_CONFIG_KEY_${count}', 'core.longpaths', true)
+	os.setenv('GIT_CONFIG_VALUE_${count}', 'true', true)
+	os.setenv('GIT_CONFIG_COUNT', '${count + 1}', true)
+}
+
+fn (vcs VCS) clone_args(url string, version string, path string) ![]string {
+	if version.contains('\0') || version.contains('\r') || version.contains('\n') {
+		return error('version contains NUL, CR, or LF')
+	}
+	// A source like `--upload-pack=...` would be taken for an option, not a url.
+	if url.starts_with('-') {
+		return error('refusing to clone from `${url}`, which looks like an option')
+	}
+	info := vcs_info[vcs]
+	mut args := [vcs.str()]
+	args << info.args.install
+	if version != '' {
+		if vcs == .git {
+			args << '--single-branch'
+		}
+		args << '${info.args.version}=${version}'
+	}
+	args << [url, path]
+	return args
+}
+
 fn (vcs VCS) clone(url string, version string, path string) ! {
-	args := vcs_info[vcs].args
-	version_opt := if version != '' { '${args.version} ${version}' } else { '' }
-	cmd := [vcs.str(), args.install, version_opt, os.quoted_path(url), os.quoted_path(path)].join(' ')
-	vpm_log(@FILE_LINE, @FN, 'cmd: ${cmd}')
-	res := os.execute_opt(cmd)!
+	args := vcs.clone_args(url, version, path)!
+	vpm_log(@FILE_LINE, @FN, 'cmd: ${args}')
+	res := os.exec(args)
+	if res.exit_code != 0 {
+		return error(res.output)
+	}
 	vpm_log(@FILE_LINE, @FN, 'cmd output: ${res.output}')
 }
 
@@ -97,6 +177,118 @@ fn vcs_from_str(str string) ?VCS {
 		'git' { .git }
 		'hg' { .hg }
 		else { none }
+	}
+}
+
+// head_revision returns the full SHA of the current HEAD of the git checkout
+// in `dir`, trimmed, or '' when it cannot be determined, e.g. when `dir` is
+// not a checkout at all. `hg` checkouts are reported as ''.
+fn head_revision(dir string) string {
+	head_vcs := vcs_used_in_dir(dir) or { return '' }
+	if head_vcs != .git {
+		return ''
+	}
+	res := os.exec_opt(['git', '-C', dir, 'rev-parse', 'HEAD']) or { return '' }
+	if res.exit_code != 0 {
+		return ''
+	}
+	return res.output.trim_space()
+}
+
+// head_commit_unix_ts returns the time of the current HEAD of the git checkout
+// in `dir`, as a unix timestamp, or 0 when it cannot be determined. `hg`
+// checkouts are reported as 0.
+fn head_commit_unix_ts(dir string) i64 {
+	head_vcs := vcs_used_in_dir(dir) or { return 0 }
+	if head_vcs != .git {
+		return 0
+	}
+	res := os.exec_opt(['git', '-C', dir, 'log', '-1', '--format=%ct']) or { return 0 }
+	if res.exit_code != 0 {
+		return 0
+	}
+	return res.output.trim_space().i64()
+}
+
+// head_is_detached reports whether the git checkout in `dir` is not on a
+// branch, e.g. after it was checked out at a locked revision, or cloned at a
+// tag. A detached HEAD cannot be pulled; it has to be moved by hand.
+fn head_is_detached(dir string) bool {
+	os.exec_opt(['git', '-C', dir, 'symbolic-ref', '-q', 'HEAD']) or { return true }
+	return false
+}
+
+// checkout switches the git checkout in `dir` to the revision `rev`, e.g. the
+// full SHA recorded for a module in the lockfile of a project, and moves its
+// submodules along. A revision that the checkout does not hold yet, like one
+// that a teammate locked after this clone was made, is fetched from the origin
+// first. `hg` checkouts are left untouched, since a lockfile records git
+// revisions only. A failed checkout is an error: installing whatever HEAD the
+// clone happens to sit on instead would silently defeat the pinning the
+// lockfile exists for.
+fn (vcs VCS) checkout(dir string, rev string) ! {
+	if vcs != .git {
+		return
+	}
+	if rev == '' || rev.starts_with('-') || rev.contains_any(' \0\r\n') {
+		return error('refusing to checkout the invalid revision `${rev}`.')
+	}
+	if !git_has_commit(dir, rev) {
+		// Fetch the branches of the origin explicitly, since a clone made at a tag
+		// with `--single-branch` would otherwise fetch only that tag.
+		fetch_args := ['git', '-C', dir, 'fetch', '--quiet', 'origin',
+			'+refs/heads/*:refs/remotes/origin/*']
+		vpm_log(@FILE_LINE, @FN, 'cmd: ${fetch_args}')
+		fetch_res := os.exec(fetch_args)
+		if fetch_res.exit_code != 0 {
+			return error('failed to fetch `${rev}` from the origin of `${fmt_mod_path(dir)}`: ${fetch_res.output.trim_space()}')
+		}
+	}
+	args := ['git', '-C', dir, 'checkout', '--quiet', rev]
+	vpm_log(@FILE_LINE, @FN, 'cmd: ${args}')
+	res := os.exec_opt(args) or {
+		return error('failed to checkout `${rev}` in `${fmt_mod_path(dir)}`: ${err.msg()}')
+	}
+	if res.exit_code != 0 {
+		return error('failed to checkout `${rev}` in `${fmt_mod_path(dir)}`: ${res.output.trim_space()}')
+	}
+	update_git_submodules(dir)!
+}
+
+// update_git_submodules moves the submodules of the git checkout in `dir` to the
+// commits its HEAD records. A plain `git checkout` leaves them where the
+// previous HEAD had them, which shows up as local changes that later installs
+// refuse to overwrite.
+fn update_git_submodules(dir string) ! {
+	args := ['git', '-C', dir, 'submodule', 'update', '--init', '--recursive']
+	vpm_log(@FILE_LINE, @FN, 'cmd: ${args}')
+	res := os.exec(args)
+	if res.exit_code != 0 {
+		return error('failed to update the submodules of `${fmt_mod_path(dir)}`: ${res.output.trim_space()}')
+	}
+}
+
+// git_has_commit reports whether the git checkout in `dir` holds the commit `rev`.
+fn git_has_commit(dir string, rev string) bool {
+	res := os.exec(['git', '-C', dir, 'cat-file', '-e', '${rev}^{commit}'])
+	return res.exit_code == 0
+}
+
+// checkout_origin_url returns the source url recorded in the VCS metadata of
+// the checkout in `dir`, or '' when it cannot be determined.
+fn checkout_origin_url(dir string) string {
+	existing_vcs := vcs_used_in_dir(dir) or { return '' }
+	match existing_vcs {
+		.git {
+			res := os.exec_opt(['git', '-C', dir, 'remote', 'get-url', 'origin']) or {
+				return ''
+			}
+			return res.output.trim_space()
+		}
+		.hg {
+			res := os.exec_opt(['hg', '-R', dir, 'paths', 'default']) or { return '' }
+			return res.output.trim_space()
+		}
 	}
 }
 

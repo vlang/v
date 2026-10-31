@@ -382,7 +382,7 @@ fn sapp_init_state(desc &Desc) {
 	if g_sapp_state.clipboard.enabled {
 		g_sapp_state.clipboard.buf_size = g_sapp_state.desc.clipboard_size
 		g_sapp_state.clipboard.buffer = unsafe {
-			&char(C.calloc(1, usize(g_sapp_state.clipboard.buf_size)))
+			&char(C.calloc(1, uint(g_sapp_state.clipboard.buf_size)))
 		}
 	}
 	g_sapp_state.drop.enabled = g_sapp_state.desc.enable_dragndrop
@@ -390,7 +390,7 @@ fn sapp_init_state(desc &Desc) {
 		g_sapp_state.drop.max_files = g_sapp_state.desc.max_dropped_files
 		g_sapp_state.drop.max_path_length = g_sapp_state.desc.max_dropped_file_path_length
 		g_sapp_state.drop.buf_size = g_sapp_state.drop.max_files * g_sapp_state.drop.max_path_length
-		g_sapp_state.drop.buffer = unsafe { &char(C.calloc(1, usize(g_sapp_state.drop.buf_size))) }
+		g_sapp_state.drop.buffer = unsafe { &char(C.calloc(1, uint(g_sapp_state.drop.buf_size))) }
 	}
 	// Copy window title
 	if g_sapp_state.desc.window_title != unsafe { nil }

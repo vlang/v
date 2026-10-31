@@ -66,8 +66,8 @@ fn fake_server_sign_certificate_verify(signed_content []u8) ![]u8 {
 	// verify_rsa_pss_signature uses on the verify side (pk.h/md.h,
 	// confirmed there, not re-derived here).
 	mut sig := []u8{len: 600}
-	mut sig_len := usize(0)
-	ret := C.mbedtls_pk_sign_ext(6, &pk, 9, hash.data, usize(hash.len), sig.data, usize(sig.len), &sig_len, C.mbedtls_ctr_drbg_random, &ctr_drbg)
+	mut sig_len := uint(0)
+	ret := C.mbedtls_pk_sign_ext(6, &pk, 9, hash.data, uint(hash.len), sig.data, uint(sig.len), &sig_len, C.mbedtls_ctr_drbg_random, &ctr_drbg)
 	if ret != 0 {
 		return error('test: mbedtls_pk_sign_ext failed, mbedtls ret: ${ret}')
 	}
@@ -599,7 +599,7 @@ fn test_handshake_certificate_verify_and_finished_with_real_cryptography() {
 	// appended client_finished_framed to h.transcript before returning, so
 	// strip it back off to recover the checkpoint the client actually
 	// signed over.
-	pre_client_finished_transcript := h.transcript[..h.transcript.len - client_finished_framed.len]
+	pre_client_finished_transcript := unsafe { h.transcript[..h.transcript.len - client_finished_framed.len] }
 	pre_client_finished_hash := sha256.sum256(pre_client_finished_transcript)
 	ok := verify_finished(server.handshake_secrets.client_secret, pre_client_finished_hash, client_finished_framed[4..])!
 	assert ok

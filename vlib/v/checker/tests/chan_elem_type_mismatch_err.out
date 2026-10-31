@@ -1,0 +1,84 @@
+vlib/v/checker/tests/chan_elem_type_mismatch_err.vv:59:9: error: cannot use `chan u8` as type `chan u64` in return argument
+   57 | 
+   58 | fn narrow_as_wide(ch chan u8) chan u64 {
+   59 |     return ch
+      |            ~~
+   60 | }
+   61 |
+vlib/v/checker/tests/chan_elem_type_mismatch_err.vv:64:12: error: cannot use `chan [2]int` as `chan []int` in argument 1 to `take_rows`
+   62 | fn main() {
+   63 |     pairs := chan [2]int{cap: 1}
+   64 |     take_rows(pairs)
+      |               ~~~~~
+   65 |     narrow := chan u8{cap: 1}
+   66 |     take_wide(narrow)
+vlib/v/checker/tests/chan_elem_type_mismatch_err.vv:66:12: error: cannot use `chan u8` as `chan u64` in argument 1 to `take_wide`
+   64 |     take_rows(pairs)
+   65 |     narrow := chan u8{cap: 1}
+   66 |     take_wide(narrow)
+      |               ~~~~~~
+   67 |     take_named(chan Item{cap: 1})
+   68 |     take_wides([narrow])
+vlib/v/checker/tests/chan_elem_type_mismatch_err.vv:67:13: error: cannot use `chan Item` as `chan Named` in argument 1 to `take_named`
+   65 |     narrow := chan u8{cap: 1}
+   66 |     take_wide(narrow)
+   67 |     take_named(chan Item{cap: 1})
+      |                ~~~~~~~~~~~~~~~~~
+   68 |     take_wides([narrow])
+   69 |     take_wide_map({
+vlib/v/checker/tests/chan_elem_type_mismatch_err.vv:68:14: error: invalid array element: expected `chan u64`, not `chan u8`
+   66 |     take_wide(narrow)
+   67 |     take_named(chan Item{cap: 1})
+   68 |     take_wides([narrow])
+      |                 ~~~~~~
+   69 |     take_wide_map({
+   70 |         'a': narrow
+vlib/v/checker/tests/chan_elem_type_mismatch_err.vv:70:8: error: invalid map value: expected `chan u64`, not `chan u8`
+   68 |     take_wides([narrow])
+   69 |     take_wide_map({
+   70 |         'a': narrow
+      |              ~~~~~~
+   71 |     })
+   72 |     take_wide_ref(&narrow)
+vlib/v/checker/tests/chan_elem_type_mismatch_err.vv:69:16: error: cannot use `map[string]chan u8` as `map[string]chan u64` in argument 1 to `take_wide_map`
+   67 |     take_named(chan Item{cap: 1})
+   68 |     take_wides([narrow])
+   69 |     take_wide_map({
+      |                   ^
+   70 |         'a': narrow
+   71 |     })
+vlib/v/checker/tests/chan_elem_type_mismatch_err.vv:72:16: error: cannot use `&chan u8` as `&chan u64` in argument 1 to `take_wide_ref`
+   70 |         'a': narrow
+   71 |     })
+   72 |     take_wide_ref(&narrow)
+      |                   ~~~~~~~
+   73 |     take_maybe_wide(narrow)
+   74 |     mut narrows := [narrow]
+vlib/v/checker/tests/chan_elem_type_mismatch_err.vv:73:18: error: cannot use `chan u8` as `?chan u64` in argument 1 to `take_maybe_wide`
+   71 |     })
+   72 |     take_wide_ref(&narrow)
+   73 |     take_maybe_wide(narrow)
+      |                     ~~~~~~
+   74 |     mut narrows := [narrow]
+   75 |     fill_wides(mut narrows)
+vlib/v/checker/tests/chan_elem_type_mismatch_err.vv:75:17: error: cannot use `&[]chan u8` as `&[]chan u64` in argument 1 to `fill_wides`
+   73 |     take_maybe_wide(narrow)
+   74 |     mut narrows := [narrow]
+   75 |     fill_wides(mut narrows)
+      |                    ~~~~~~~
+   76 |     mut wide := chan u64{}
+   77 |     wide = narrow
+vlib/v/checker/tests/chan_elem_type_mismatch_err.vv:77:9: error: cannot assign to `wide`: expected `chan u64`, not `chan u8`
+   75 |     fill_wides(mut narrows)
+   76 |     mut wide := chan u64{}
+   77 |     wide = narrow
+      |            ~~~~~~
+   78 |     pipes := Pipes{
+   79 |         wide: narrow
+vlib/v/checker/tests/chan_elem_type_mismatch_err.vv:79:3: error: cannot assign to field `wide`: expected `chan u64`, not `chan u8`
+   77 |     wide = narrow
+   78 |     pipes := Pipes{
+   79 |         wide: narrow
+      |         ~~~~~~~~~~~~
+   80 |     }
+   81 |     // Elements stored the same way are accepted.

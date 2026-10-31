@@ -7,14 +7,13 @@ on:
     paths:
       - '**/vpm_ci.yml'
       - '**/cmd/tools/vpm/**'
-  pull_request:
-    paths:
-      - '**/vpm_ci.yml'
-      - '**/cmd/tools/vpm/**'
 
 concurrency:
   group: vpm-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   setup-vpm:
@@ -23,9 +22,11 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
       fail-fast: false
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           path: vlang
       - name: Show git version
         run: git version
@@ -62,6 +63,7 @@ jobs:
             cc: msvc
       fail-fast: false
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     steps:
       - name: Restore V cache
         uses: actions/cache/restore@v6

@@ -1,6 +1,6 @@
 module main
 
-import markdown
+import x.markdown
 import os
 import time
 import strings
@@ -112,37 +112,70 @@ fn write_location(cn doc.DocNode, mut pw strings.Builder) {
 	pw.write_string(dn_to_location(cn))
 }
 
+// write_plaintext_declaration writes the declaration of `cn`, after the platforms that it is
+// available on, as a comment, since they apply to all the declarations of a group of constants.
+fn (vd &VDoc) write_plaintext_declaration(cn doc.DocNode, mut pw strings.Builder) {
+	cfg := vd.cfg
+	platforms := doc.platforms_note(cn.platforms, fn (name string) string {
+		return name
+	})
+	if platforms != '' {
+		pw.writeln(if cfg.is_color { color_highlight('// ${platforms}') } else { '// ${platforms}' })
+	}
+	if cfg.show_loc {
+		write_location(cn, mut pw)
+	}
+	if cfg.is_color {
+		pw.writeln(color_highlight(cn.content))
+	} else {
+		pw.writeln(cn.content)
+	}
+}
+
+// write_plaintext_comments writes the doc comment of `cn`, with its examples.
+fn (vd &VDoc) write_plaintext_comments(cn doc.DocNode, mut pw strings.Builder) {
+	cfg := vd.cfg
+	if cn.comments.len == 0 || !cfg.include_comments {
+		return
+	}
+	comments := cn.merge_comments_without_examples()
+	pw.writeln(indent(comments.trim_space()))
+	if cfg.include_examples {
+		examples := cn.examples()
+		for ex in examples {
+			pw.write_string('    Example: ')
+			mut fex := ex
+			if ex.index_u8(`\n`) >= 0 {
+				// multi-line example
+				pw.write_u8(`\n`)
+				fex = indent(ex)
+			}
+			if cfg.is_color {
+				fex = color_highlight(fex)
+			}
+			pw.writeln(fex)
+		}
+	}
+}
+
 fn (mut vd VDoc) write_plaintext_content(contents []doc.DocNode, mut pw strings.Builder) {
 	cfg := vd.cfg
 	for cn in contents {
 		if cn.content.len > 0 {
-			if cfg.show_loc {
-				write_location(cn, mut pw)
+			vd.write_plaintext_declaration(cn, mut pw)
+			// The comment is shown once, after all the declarations, unless they have their own.
+			comments_apart := has_variant_comments(cn)
+			if comments_apart {
+				vd.write_plaintext_comments(cn, mut pw)
 			}
-			if cfg.is_color {
-				pw.writeln(color_highlight(cn.content))
-			} else {
-				pw.writeln(cn.content)
-			}
-			if cn.comments.len > 0 && cfg.include_comments {
-				comments := cn.merge_comments_without_examples()
-				pw.writeln(indent(comments.trim_space()))
-				if cfg.include_examples {
-					examples := cn.examples()
-					for ex in examples {
-						pw.write_string('    Example: ')
-						mut fex := ex
-						if ex.index_u8(`\n`) >= 0 {
-							// multi-line example
-							pw.write_u8(`\n`)
-							fex = indent(ex)
-						}
-						if cfg.is_color {
-							fex = color_highlight(fex)
-						}
-						pw.writeln(fex)
-					}
+			for variant in cn.variants {
+				vd.write_plaintext_declaration(variant, mut pw)
+				if cfg.include_comments && has_own_comments(variant, cn) {
+					pw.writeln(indent(variant.merge_comments_without_examples().trim_space()))
 				}
+			}
+			if !comments_apart {
+				vd.write_plaintext_comments(cn, mut pw)
 			}
 		}
 		vd.write_plaintext_content(cn.children, mut pw)
@@ -354,7 +387,7 @@ fn (mut vd VDoc) generate_docs_from_file() {
 			text:        readme.content
 		}
 		if out.typ == .ansi {
-			println(markdown.to_plain(readme.content))
+			println(readme_plaintext(readme.content))
 		} else if out.typ == .html && cfg.is_multi {
 			vd.docs << doc.Doc{
 				head:           doc.DocNode{
@@ -369,9 +402,13 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		}
 	}
 	dirs := if cfg.is_multi { get_modules(cfg.input_path) } else { [cfg.input_path] }
+	rules_root := if os.is_dir(cfg.input_path) { cfg.input_path } else { os.dir(cfg.input_path) }
+	mut rules_cache := map[string]IgnoreRules{}
 	for dirpath in dirs {
 		vd.vprintln('Generating ${out.typ} docs for "${dirpath}"')
-		mut dcs := doc.generate(dirpath, cfg.pub_only, true, cfg.platform, cfg.symbol_name) or {
+		keep_subdir_file := subdir_files_filter(dirpath, rules_root, mut rules_cache)
+		mut dcs := doc.generate_with_subdir_filter(dirpath, keep_subdir_file, cfg.pub_only,
+			true, cfg.platform, cfg.symbol_name) or {
 			// TODO: use a variable like `src_path := os.join_path(dirpath, 'src')` after `https://github.com/vlang/v/issues/21504`
 			if os.exists(os.join_path(dirpath, 'src')) {
 				doc.generate(os.join_path(dirpath, 'src'), cfg.pub_only, true, cfg.platform, cfg.symbol_name) or {
@@ -404,9 +441,19 @@ fn (mut vd VDoc) generate_docs_from_file() {
 		}
 		if cfg.pub_only {
 			for name, dc in dcs.contents {
-				dcs.contents[name].content = dc.content.all_after('pub ')
+				dcs.contents[name].content = without_pub_keyword(dc.content)
+				for j, variant in dc.variants {
+					dcs.contents[name].variants[j].content = without_pub_keyword(variant.content)
+				}
 				for i, cc in dc.children {
-					dcs.contents[name].children[i].content = cc.content.all_after('pub ')
+					dcs.contents[name].children[i].content = if cc.kind == .const_group {
+						without_pub_keywords(cc.content)
+					} else {
+						without_pub_keyword(cc.content)
+					}
+					for j, variant in cc.variants {
+						dcs.contents[name].children[i].variants[j].content = without_pub_keyword(variant.content)
+					}
 				}
 			}
 		}
@@ -484,5 +531,47 @@ fn (mut vd VDoc) generate_docs_from_file() {
 fn (vd &VDoc) vprintln(str string) {
 	if vd.cfg.is_verbose {
 		println('vdoc: ${str}')
+	}
+}
+
+// readme_plaintext keeps terminal README output free of Markdown formatting.
+fn readme_plaintext(source string) string {
+	mut md := markdown.Markdown.new(markdown.Options{})
+	node := md.parse(source)
+	mut output := strings.new_builder(source.len)
+	append_readme_plaintext(node, &md, false, mut output)
+	return output.str().trim_space()
+}
+
+fn append_readme_plaintext(node &markdown.Node, md &markdown.Markdown, tight_list bool, mut output strings.Builder) {
+	match node.kind {
+		.text, .code_span, .autolink { output.write_string(node.literal) }
+		.code_block, .fenced_code { output.write_string(node.literal) }
+		.hard_break, .soft_break { output.write_u8(`\n`) }
+		.raw_html, .html_block, .link_ref_def, .footnote_def {}
+		else {
+			if node.children.len == 0 && node.literal != '' {
+				for child in markdown.parse_inline(node.literal, markdown.Options{}, md.ref_map) {
+					append_readme_plaintext(child, md, if node.kind == .list {
+						node.is_tight
+					} else {
+						tight_list
+					}, mut output)
+				}
+			} else {
+				for child in node.children {
+					append_readme_plaintext(child, md, if node.kind == .list {
+						node.is_tight
+					} else {
+						tight_list
+					}, mut output)
+				}
+			}
+		}
+	}
+	if (node.kind == .paragraph && !tight_list) || node.kind in [.heading, .blockquote, .list,
+		.list_item, .code_block, .fenced_code, .table, .table_head, .table_body, .table_row,
+		.table_cell, .definition_list, .definition_term, .definition_desc] {
+		output.write_u8(`\n`)
 	}
 }

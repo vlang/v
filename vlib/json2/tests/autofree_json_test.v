@@ -22,3 +22,18 @@ fn test_autofree_preserves_json_renamed_key() {
 	assert json2.decode[RenamedConfig]('{"renamed_key":true}')!.renamed
 	assert json2.decode[RenamedConfig]('{"renamed_key":true}')!.renamed
 }
+
+struct RenamedTextConfig {
+	text string @[json: 'renamed_key']
+}
+
+fn test_autofree_retains_renamed_keys_for_escaped_names_and_buffer_reuse() {
+	mut buffer := json2.DecodeBuffer{}
+	retained := json2.decode_reuse[RenamedTextConfig]('{"renamed_key":"first"}', mut buffer)!
+	for _ in 0 .. 20 {
+		assert json2.decode[RenamedTextConfig](r'{"renamed_\u006bey":"second"}')!.text == 'second'
+		assert json2.decode_reuse[RenamedTextConfig](r'{"renamed_\u006bey":"\n"}', mut buffer)!.text == '\n'
+		assert json2.decode_reuse[RenamedTextConfig]('{"renamed_key":"plain"}', mut buffer)!.text == 'plain'
+	}
+	assert retained.text == 'first'
+}

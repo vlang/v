@@ -1,0 +1,14 @@
+vlib/v/parser/tests/attribute_dotted_name_duplicate.vv:3:3: error: duplicate attribute `moda.A`
+    1 | // vfmt off
+    2 | @[moda.A]
+    3 | @[moda.A('/x')]
+      |   ~~~~~~
+    4 | struct Both {
+    5 |     field string @[moda.B; moda.B('y')]
+vlib/v/parser/tests/attribute_dotted_name_duplicate.vv:5:25: error: duplicate attribute `moda.B`
+    3 | @[moda.A('/x')]
+    4 | struct Both {
+    5 |     field string @[moda.B; moda.B('y')]
+      |                            ~~~~~~
+    6 | }
+    7 | // vfmt on

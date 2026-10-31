@@ -1,0 +1,42 @@
+vlib/v/checker/tests/container_nested_sum_elem_mismatch_err.vv:12:9: error: cannot use `map[string]Inner` as type `map[string]Outer` in return argument
+   10 |         'a': Inner(Item{3})
+   11 |     }
+   12 |     return m
+      |            ^
+   13 | }
+   14 |
+vlib/v/checker/tests/container_nested_sum_elem_mismatch_err.vv:17:9: error: cannot use `[2]Inner` as type `[2]Outer` in return argument
+   15 | fn return_fixed() [2]Outer {
+   16 |     a := [Inner(Item{3}), Inner(5)]!
+   17 |     return a
+      |            ^
+   18 | }
+   19 |
+vlib/v/checker/tests/container_nested_sum_elem_mismatch_err.vv:27:9: error: cannot use `map[string]Inner` as type `map[string]Outer` in return argument
+   25 | 
+   26 | fn forward_map() (int, map[string]Outer) {
+   27 |     return make_map()
+      |            ~~~~~~~~~~
+   28 | }
+   29 |
+vlib/v/checker/tests/container_nested_sum_elem_mismatch_err.vv:42:10: error: cannot assign to `outer`: expected `map[string]Outer`, not `map[string]Inner`
+   40 |     }
+   41 |     mut outer := map[string]Outer{}
+   42 |     outer = inner.clone()
+      |             ~~~~~~~~~~~~~
+   43 |     mut n := 0
+   44 |     n, outer = make_map()
+vlib/v/checker/tests/container_nested_sum_elem_mismatch_err.vv:44:13: error: cannot assign to `outer`: expected `map[string]Outer`, not `map[string]Inner`
+   42 |     outer = inner.clone()
+   43 |     mut n := 0
+   44 |     n, outer = make_map()
+      |                ~~~~~~~~~~
+   45 |     mut values := [Inner(5)]
+   46 |     grow(mut values)
+vlib/v/checker/tests/container_nested_sum_elem_mismatch_err.vv:46:11: error: cannot use `&[]Inner` as `&[]Outer` in argument 1 to `grow`
+   44 |     n, outer = make_map()
+   45 |     mut values := [Inner(5)]
+   46 |     grow(mut values)
+      |              ~~~~~~
+   47 |     println('${n} ${outer.len}')
+   48 | }

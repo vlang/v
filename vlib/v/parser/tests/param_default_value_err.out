@@ -1,0 +1,5 @@
+vlib/v/parser/tests/param_default_value_err.vv:1:12: error: default parameter values are not supported
+    1 | fn f(a int = 2, in int) int {
+      |            ^
+    2 |     return a
+    3 | }

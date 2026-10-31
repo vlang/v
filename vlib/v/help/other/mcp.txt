@@ -1,0 +1,52 @@
+Serve the V compiler to a coding agent over the Model Context Protocol.
+
+An agent editing V through a generic LSP, or through plain file reads, cannot
+ask the questions only the compiler can answer: what does this file declare,
+what does not compile, is this symbol the declaration or a mention, and what is
+the signature of that stdlib call. `v mcp` answers those by calling the parser,
+the checker and the formatter in process, so it is correct about code that does
+not compile yet.
+
+Usage:
+  v mcp serve [options]
+  v mcp tools
+  v mcp install [client] [--project] [--print]
+  v mcp uninstall [client|--all] [--project]
+
+  v mcp tools              List the tools and what each one answers, and exit.
+  v mcp serve              Serve over stdio, the transport editors use.
+
+Options:
+  --http <addr>    serve over Streamable HTTP instead of stdio
+  --root <dir>     resolve relative paths against <dir> (default: cwd)
+  --read-only      register no tool that writes a file
+  --instructions   print the model instructions and exit
+  -h, --help       show this help and exit
+
+The tools that write are `v_edit_replace`, `v_rename_symbol` and `v_format`, and
+`--read-only` registers none of them. `v_rename_symbol` and `v_format` report a
+plan and write nothing unless the call says otherwise: `dry_run: false` for the
+rename, `write: true` for the format. `v_edit_replace` has no preview mode: it
+writes as soon as the range matches the `expected_old` text it was given, so
+passing that text approves the edit instead of previewing it.
+
+Only the tools that genuinely compile or run something start the compiler; the
+rest answer from the parsed source.
+
+Registering with a coding agent:
+
+  v mcp install                   print the entry for every client it finds
+  v mcp install opencode          write it into that client's configuration
+  v mcp install --project         use the project-level file instead
+  v mcp install opencode --print  print it without writing
+  v mcp uninstall opencode        remove it again
+  v mcp uninstall --all           remove it from every client that has it
+
+  Clients: opencode, claude-code, cursor, vscode, zed, gemini.
+
+  Nothing is written without a client name. The file is edited where it already
+  is, so a commented or trailing-comma configuration is reported rather than
+  rewritten, and the entry is added beside the servers a client already has.
+
+See also `v skills`, which installs the bundled agent skills, including one for
+using this server.

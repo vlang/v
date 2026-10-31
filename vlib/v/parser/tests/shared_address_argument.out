@@ -1,0 +1,7 @@
+vlib/v/parser/tests/shared_address_argument.vv:9:23: error: shared address arguments are not supported; remove `&` from the shared parameter type and argument
+    7 | fn main() {
+    8 |     shared values := map[string]int{}
+    9 |     task := spawn worker(shared &values)
+      |                          ~~~~~~~~
+   10 |     task.wait()
+   11 | }

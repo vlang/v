@@ -98,15 +98,19 @@ fn test_all() {
 	no_closures_dir := 'vlib/v/tests/no_closures'
 	js_checker_tests := ['index_expr_implicit_int_downcast_err.vv',
 		'js_number_requires_explicit_cast.vv']
+	raw_asm_checker_tests := ['asm_raw_label_ok.vv']
 	disable_explicit_mutability_tests := ['disable_explicit_mutability.vv']
 
 	checker_tests := get_tests_in_dir(checker_dir, false).filter(!it.contains('with_check_option')
-		&& it !in js_checker_tests && it !in disable_explicit_mutability_tests)
+		&& it !in js_checker_tests && it !in raw_asm_checker_tests
+		&& it !in disable_explicit_mutability_tests)
 	parser_tests := get_tests_in_dir(parser_dir, false)
 	scanner_tests := get_tests_in_dir(scanner_dir, false)
 	global_tests := get_tests_in_dir(global_dir, false)
 	global_run_tests := get_tests_in_dir(global_run_dir, false)
-	module_tests := get_tests_in_dir(module_dir, true)
+	// These fixtures exercise V3's checks of uninstantiated generic bodies.
+	v3_module_tests := ['generic_fn_own_module_private_access', 'generic_fn_private_access_err']
+	module_tests := get_tests_in_dir(module_dir, true).filter(it !in v3_module_tests)
 	run_tests := get_tests_in_dir(run_dir, false)
 	su_dir_tests := get_tests_in_dir(su_dir, false)
 	no_closures_tests := get_tests_in_dir(no_closures_dir, false)
@@ -178,11 +182,14 @@ fn test_all() {
 	tasks.add('', parser_dir, '', '.out', parser_tests, false)
 	tasks.add('', checker_dir, '', '.out', checker_tests, false)
 	tasks.add('', checker_dir, '-b js', '.js.out', js_checker_tests, false)
+	// Keep raw assembly on the compiler selected for this test and its skip rules.
+	tasks.add('', checker_dir, '-cc ${@CCOMPILER}', '.out', raw_asm_checker_tests, false)
 	tasks.add('', scanner_dir, '', '.out', scanner_tests, false)
 	tasks.add('', checker_dir, '-enable-globals run', '.run.out', ['globals_error.vv'], false)
 	tasks.add('', global_run_dir, '-enable-globals run', '.run.out', global_run_tests, false)
 	tasks.add('', global_dir, '-enable-globals', '.out', global_tests, false)
 	tasks.add('', module_dir, '-prod run', '.out', module_tests, true)
+	tasks.add('', module_dir, '-new-compiler -prod run', '.out', v3_module_tests, true)
 	tasks.add('', run_dir, 'run', '.run.out', run_tests, false)
 	tasks.add('', checker_dir, '-disable-explicit-mutability run', '.disable_explicit_mutability.run.out', disable_explicit_mutability_tests, false)
 	tasks.add('', checker_with_check_option_dir, '-check', '.out', checker_with_check_option_tests, false)
@@ -254,10 +261,13 @@ fn (mut tasks Tasks) run() {
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
 		m_skip_files << 'vlib/v/checker/tests/comptime_value_d_in_include_errors.vv'
 		m_skip_files << 'vlib/v/checker/tests/missing_shader_header_1.vv'
+		// tcc has no `%=` operand in inline assembly templates.
+		m_skip_files << 'vlib/v/checker/tests/asm_raw_label_ok.vv'
 	}
 	$if msvc {
 		m_skip_files << 'vlib/v/checker/tests/asm_alias_does_not_exist.vv'
 		m_skip_files << 'vlib/v/checker/tests/asm_immutable_err.vv'
+		m_skip_files << 'vlib/v/checker/tests/asm_raw_label_ok.vv'
 		// TODO: investigate why MSVC regressed
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_1.vv'
 		m_skip_files << 'vlib/v/checker/tests/missing_c_lib_header_with_explanation_2.vv'
@@ -383,7 +393,13 @@ fn (mut task TaskDescription) execute() {
 		return
 	}
 	cli_cmd := task.get_cli_cmd()
-	res := os.execute(cli_cmd)
+	program := task.path
+	mut command := [task.vexe, ...(os.split_args(task.voptions) or { panic(err) }), program]
+	if task.evars != '' {
+		command.prepend(os.split_args(task.evars) or { panic(err) })
+		command.prepend('env')
+	}
+	res := os.exec(command)
 	expected_out_path := task.path.replace('.vv', '') + task.result_extension
 	task.expected_out_path = expected_out_path
 	task.cli_cmd = cli_cmd

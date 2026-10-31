@@ -1,0 +1,18 @@
+// Map keys whose encoding is not the one their V type suggests: `sint32` and
+// `sfixed32` are both `i32` in V, and `fixed64` is a `u64` like `uint64`. Also a
+// map next to other fields, for checking that entries add up wherever they are.
+
+syntax = "proto3";
+
+package mapkeys;
+
+message Keys {
+  map<sint32, string> by_sint = 1;
+  map<fixed64, bool> by_fixed = 2;
+  map<sfixed32, int32> by_sfixed = 3;
+  map<sint64, string> by_sint64 = 4;
+  map<bool, string> by_bool = 5;
+  map<string, int32> counts = 6;
+  repeated string names = 7;
+  repeated int32 nums = 8;
+}

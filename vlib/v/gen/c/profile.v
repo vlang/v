@@ -1,5 +1,7 @@
 module c
 
+import v.gen.c.naming
+
 struct ProfileCounterMeta {
 	fn_name      string
 	counter_name string
@@ -24,6 +26,13 @@ fn (g &FlatGen) profile_timer_c_name() string {
 }
 
 fn profile_v1_fn_name(cfn_name string, module_name string, fn_name string) string {
+	// An operator overload is labelled without the internal C namespace of its name:
+	// `Vec.+` is `main__Vec__plus`, as in V 0.5.2. gen_profile_fn_begin adds
+	// `__operator` when an ordinary method has that label too.
+	if cfn_name.starts_with(naming.operator_method_c_prefix) {
+		return profile_v1_fn_name(cfn_name[naming.operator_method_c_prefix.len..], module_name,
+			fn_name)
+	}
 	if cfn_name == 'main' && fn_name == 'main' && module_name in ['', 'main'] {
 		return 'main__main'
 	}
@@ -36,11 +45,35 @@ fn profile_v1_fn_name(cfn_name string, module_name string, fn_name string) strin
 	return cfn_name
 }
 
-fn (mut g FlatGen) gen_profile_fn_begin(cfn_name string, module_name string, fn_name string, is_inline bool) {
+// profile_operator_label_suffix returns `__operator` for an operator overload whose
+// receiver also has an ordinary method named like the operator's C word (`Vec.+` and
+// `Vec.plus`), so the operator keeps its own label, `main__Vec__plus__operator`, and
+// `-profile-fns` can select either function. Other operators get no suffix.
+fn (g &FlatGen) profile_operator_label_suffix(cfn_name string, module_name string, fn_name string) string {
+	if !cfn_name.starts_with(naming.operator_method_c_prefix) {
+		return ''
+	}
+	receiver := dotted_fn_name_in_module(module_name, fn_name).all_before_last('.')
+	ordinary := '${receiver}.${cfn_name.all_after_last('__')}'
+	if ordinary in g.tc.fn_param_types || ordinary in g.tc.fn_ret_types {
+		return '__operator'
+	}
+	return ''
+}
+
+fn (mut g FlatGen) gen_profile_fn_begin(cfn_name string, module_name string, fn_name string, is_inline bool, skip_instrumentation bool) {
+	// These two fields are this function's ONLY resetter. A caller that skips
+	// the whole call for one function (a @[_naked] body, which has no frame
+	// for the timer/locals below to live in) must still reach this point, or
+	// the fields keep whatever a PRECEDING profiled function left them at --
+	// and an explicit return in that later function still runs
+	// gen_profile_fn_exit() independently, via gen_return_cleanup in
+	// stmt.v, regardless of naked-ness.
 	g.profile_fn_active = false
 	g.profile_fn_restore_enabled = false
-	if g.profile_file.len == 0 || (g.profile_no_inline && is_inline)
+	if skip_instrumentation || g.profile_file.len == 0 || (g.profile_no_inline && is_inline)
 		|| module_name == g.profile_runtime_module_name()
+		|| (g.is_trace_calls && module_name == g.trace_runtime_module_name())
 		|| fn_name.starts_with('time.vpc_now')
 		|| cfn_name.starts_with('time__vpc_now') {
 		return
@@ -52,7 +85,8 @@ fn (mut g FlatGen) gen_profile_fn_begin(cfn_name string, module_name string, fn_
 	// `_only_current` suffix. The index makes every base name unambiguous.
 	counter_name := 'vpc_${g.profile_counters.len}_${cfn_name}'
 	calls_name := '${counter_name}_calls'
-	profile_fn_name := profile_v1_fn_name(cfn_name, module_name, fn_name)
+	profile_fn_name := profile_v1_fn_name(cfn_name, module_name, fn_name) +
+		g.profile_operator_label_suffix(cfn_name, module_name, fn_name)
 	g.profile_fn_active = true
 	g.profile_fn_restore_enabled = g.profile_fns.len > 0 && profile_fn_name in g.profile_fns
 	profile_enabled := g.profile_enabled_c_name()

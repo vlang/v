@@ -70,7 +70,15 @@ const test_cases = [
 		// Tests the completion of "v ru<tab>"
 		structure: [] // no test folders
 		completes: {
-			'v ru': ['run']
+			'v ru':            ['run']
+			'v -prod ru':      ['run']
+			'v -prod -g ru':   ['run']
+			'v help ru':       ['run']
+			'v -prod help ru': ['run']
+			'v -cc clang ru':  ['run']
+			'v -o run ru':     ['run']
+			'v -cc ru':        []
+			'v -o ru':         []
 		}
 	},
 	CompleteTestCase{
@@ -87,6 +95,8 @@ const test_cases = [
 		// vfmt on
 		completes: {
 			'v run e':                  ['examples/']
+			'v -prod run e':            ['examples/']
+			'v -cc clang run e':        ['examples/']
 			'v run':                    ['examples/']
 			'v run ':                   ['examples/']
 			'v run examples/':          ['ex1', 'ex2', 'ex3']
@@ -202,7 +212,7 @@ fn run_individual_test(case CompleteTestCase) ! {
 			normalized_complete = normalized_complete.replace('/', '\\')
 		}
 		complete_command += ' ${normalized_complete}'
-		res := os.execute('${complete_command}')
+		res := os.exec([...(os.split_args(complete_command) or { panic(err) })])
 		mut lines := res.output.split('\n')
 		for mut line in lines {
 			if case.shell == .powershell {

@@ -8,7 +8,7 @@ fn C.TlsFree(key u32) bool
 
 // new_tls creates new TLS storage initialized with the given `value`
 pub fn new_tls[T](value T) !ThreadLocalStorage[T] {
-	$if T !in [i8, i16, i32, i64, u8, u16, u32, u64, isize, usize, f32, f64, rune, int, voidptr, $pointer] {
+	$if T !in [i8, i16, i32, i64, u8, u16, u32, u64, int, uint, f32, f64, rune, isize, voidptr, $pointer] {
 		return error('new_tls: invalid type ${T.name}')
 	}
 

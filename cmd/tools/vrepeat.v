@@ -225,7 +225,11 @@ fn (mut context Context) run() {
 					context.flushed_print('${line_prefix}, warm up run: ${i + 1:4}/${context.warmup:-4}, took: ${f64(duration) / 1000:6.1f}ms ...')
 					context.verbose_command(cmd)
 					mut sw := time.new_stopwatch()
-					res := os.execute(cmd)
+					res := os.exec(if os.user_os() == 'windows' {
+						['cmd.exe', '/d', '/s', '/c', cmd]
+					} else {
+						['sh', '-c', cmd]
+					})
 					duration = i64(sw.elapsed().microseconds())
 					context.verbose_result(res)
 					mut should_show_fail_output := false
@@ -246,7 +250,11 @@ fn (mut context Context) run() {
 			for i in 0 .. context.run_count {
 				context.verbose_command(cmd)
 				mut sw := time.new_stopwatch()
-				res := os.execute(cmd)
+				res := os.exec(if os.user_os() == 'windows' {
+					['cmd.exe', '/d', '/s', '/c', cmd]
+				} else {
+					['sh', '-c', cmd]
+				})
 				duration = i64(sw.elapsed().microseconds())
 				context.verbose_result(res)
 				//
@@ -439,7 +447,6 @@ fn (mut context Context) parse_options() ! {
 	fp.version('0.0.3')
 	fp.description('Repeat command(s) and collect statistics.\nNote: quote each command (argument), when it contains spaces.')
 	fp.arguments_description('CMD1 CMD2 ...')
-	fp.skip_executable()
 	fp.limit_free_args_to_at_least(1)!
 	context.show_help = fp.bool('help', `h`, false, 'Show this help screen.')
 	context.run_count = fp.int('runs', `r`, 10, 'Run count. Default: 10')

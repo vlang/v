@@ -3,16 +3,47 @@ module transform
 import v.flat
 import v.types
 
+fn test_comptime_canonical_type_is_not_rebound_by_another_module_import() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs[flat.source_type_id('config.Cfg')] = []types.StructField{}
+	tc.imports['config'] = 'rand.config'
+	tc.imports['cfg'] = 'config'
+	t := Transformer{
+		a:          &a
+		tc:         &tc
+		cur_file:   'generic.v'
+		cur_module: 'json2'
+	}
+	assert t.comptime_resolve_selective_import_type(flat.source_type_id('config.Cfg')) == flat.source_type_id('config.Cfg')
+	assert t.comptime_resolve_selective_import_type(flat.source_type_id('cfg.Cfg')) == flat.source_type_id('config.Cfg')
+}
+
+fn test_comptime_explicit_file_alias_precedes_a_same_spelled_canonical_type() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs[flat.source_type_id('config.Cfg')] = []types.StructField{}
+	tc.structs[flat.source_type_id('alternate.Cfg')] = []types.StructField{}
+	tc.file_imports[file_import_key('alias.v', 'config')] = 'alternate'
+	t := Transformer{
+		a:          &a
+		tc:         &tc
+		cur_file:   'alias.v'
+		cur_module: 'main'
+	}
+	assert t.comptime_resolve_selective_import_type(flat.source_type_id('config.Cfg')) == flat.source_type_id('alternate.Cfg')
+}
+
 fn test_comptime_field_function_type_keeps_declaring_module() {
 	mut a := flat.FlatAst.new()
 	t := Transformer{
 		a: &a
 	}
-	qualified := t.comptime_field_type_id_key('?fn (mut SSLListener, string) !&SSLCerts', 'mbedtls')
+	qualified := flat.source_type_name(t.comptime_field_type_id_key(flat.source_type_id('?fn (mut SSLListener, string) !&SSLCerts'), 'mbedtls'))
 	assert qualified == '?fn(mut mbedtls.SSLListener, string) !&mbedtls.SSLCerts'
-	assert t.comptime_field_type_id_key('Registry[string]', 'eventbus') == 'eventbus.Registry[string]'
-	assert t.comptime_field_type_id_key('Container[T]', 'eventbus') == 'eventbus.Container[T]'
-	assert t.comptime_field_type_id_key('!(Item, []u8)', 'main') == '!(Item, []u8)'
+	assert flat.source_type_name(t.comptime_field_type_id_key(flat.source_type_id('Registry[string]'), 'eventbus')) == 'eventbus.Registry[string]'
+	assert flat.source_type_name(t.comptime_field_type_id_key(flat.source_type_id('Container[T]'), 'eventbus')) == 'eventbus.Container[T]'
+	assert flat.source_type_name(t.comptime_field_type_id_key(flat.source_type_id('!(Item, []u8)'), 'main')) == '!(Item, []u8)'
 }
 
 fn test_comptime_field_type_id_keeps_custom_types_above_builtin_range() {
@@ -20,11 +51,20 @@ fn test_comptime_field_type_id_keeps_custom_types_above_builtin_range() {
 	t := Transformer{
 		a: &a
 	}
-	assert comptime_type_id_hash('T207') & ~(0xff << 16) < 65536
-	type_id := t.comptime_field_type_id('T207', '')
+	type_id := t.type_index(flat.source_type_id('T207'), '')
 	assert type_id > 65535
-	assert type_id != comptime_builtin_type_idx('isize')
+	assert type_id != types.builtin_type_index(flat.source_type_int)
 	assert type_id & (0xff << 16) == 0
+}
+
+fn test_comptime_field_type_id_keeps_specialized_main_type_provenance() {
+	mut a := flat.FlatAst.new()
+	mut t := Transformer{
+		a: &a
+	}
+	t.active_specialization_main_types[flat.source_type_id('MyParams')] = true
+	assert flat.source_type_name(t.comptime_field_type_id_key(flat.source_type_id('MyParams'), 'reflection')) == 'main.MyParams'
+	assert t.type_index(flat.source_type_id('MyParams'), 'reflection') == types.stable_type_index(flat.source_type_id('main.MyParams'))
 }
 
 fn test_comptime_for_base_type_unwraps_storage_indirections() {
@@ -32,13 +72,154 @@ fn test_comptime_for_base_type_unwraps_storage_indirections() {
 	t := Transformer{
 		a: &a
 	}
-	assert t.comptime_for_base_type('&websocket.Server') == 'websocket.Server'
-	assert t.comptime_for_base_type('shared websocket.ClientState') == 'websocket.ClientState'
+	assert flat.source_type_name(t.comptime_for_base_type(flat.source_type_id('&websocket.Server'))) == 'websocket.Server'
+	assert flat.source_type_name(t.comptime_for_base_type(flat.source_type_id('shared websocket.ClientState'))) == 'websocket.ClientState'
 }
 
 fn test_comptime_method_receiver_name_normalizes_main_qualification() {
-	assert comptime_method_receiver_name('main.App', 'veb') == 'App'
-	assert comptime_method_receiver_matches('App', 'main.App', 'main.App', 'main', 'veb')
+	assert flat.source_type_name(comptime_method_receiver_name(flat.source_type_id('main.App'), 'veb')) == 'App'
+	assert comptime_method_receiver_matches(flat.source_type_id('App'), flat.source_type_id('main.App'), flat.source_type_id('main.App'), 'main', 'veb')
+}
+
+fn substitute_reflected_method_receiver(mut t Transformer, receiver flat.NodeId, method MethodMeta) flat.NodeId {
+	name := t.make_ident('method')
+	start := t.a.children.len
+	t.a.children << [receiver, name]
+	selector := t.a.add_node(flat.Node{
+		kind:           .selector
+		value:          '\$'
+		children_start: start
+		children_count: 2
+	})
+	return t.clone_method_subst_scoped(selector, 'method', method, []string{}) or {
+		panic('missing reflected method selector')
+	}
+}
+
+fn test_comptime_method_selector_keeps_unregistered_local_receivers() {
+	for binding in ['unregistered', 'checked', 'registered', 'builtin_shadow', 'checked_builtin_shadow',
+		'checked_generated_shadow'] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		tc.structs[flat.source_type_id('Dummy')] = []types.StructField{}
+		tc.structs[flat.source_type_id('generated')] = []types.StructField{}
+		tc.fn_param_types['Dummy.sample'] = [
+			types.Type(types.Struct{ name_id: flat.source_type_id('Dummy') }),
+			types.Type(types.String{}),
+		]
+		tc.fn_ret_types['Dummy.sample'] = types.Type(types.int_)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		t.cur_module = 'main'
+		name := match binding {
+			'builtin_shadow' { 'string' }
+			'checked_builtin_shadow' { 'uint' }
+			'checked_generated_shadow' { 'generated' }
+			else { 'd' }
+		}
+		receiver := a.add_val(.ident, name)
+		if binding in ['checked', 'checked_builtin_shadow', 'checked_generated_shadow'] {
+			tc.register_synth_type(receiver, types.Type(types.Struct{ name_id: flat.source_type_id('Dummy') }))
+		} else if binding in ['registered', 'builtin_shadow'] {
+			t.set_var_type(name, flat.source_type_id('Dummy'))
+		}
+		selector := substitute_reflected_method_receiver(mut t, receiver, MethodMeta{
+			name:        'sample'
+			receiver:    flat.source_type_id('Dummy')
+			module_name: 'main'
+			return_type: flat.source_type_int
+			params:      [ParamMeta{ name: 'value', typ: flat.source_type_string }]
+		})
+		node := a.node(selector)
+		assert node.kind == .selector, binding
+		assert a.child_node(node, 0).value == name
+		assert node.generic_params() == [comptime_method_selector_marker]
+		expected_signature := fn_literal_value_type_text_from_text([flat.source_type_string], flat.source_type_int)
+		assert node.fn_value_type_id() == expected_signature
+		declaration := t.make_decl_assign_typed('method_value', selector, flat.source_type_int)
+		assert t.infer_decl_type(a.node(declaration)) == expected_signature
+	}
+}
+
+fn test_comptime_method_selector_preserves_type_namespace_function_values() {
+	for name in ['Dummy', 'Alias', 'T', 'string', 'generated', 'dep.Dummy', 'receiver'] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		tc.structs[flat.source_type_id('Dummy')] = []types.StructField{}
+		tc.structs[flat.source_type_id('generated')] = []types.StructField{}
+		tc.structs[flat.source_type_id('dep.Dummy')] = []types.StructField{}
+		tc.structs[flat.source_type_id('dep.receiver')] = []types.StructField{}
+		tc.type_aliases.set_id(flat.source_type_id('Alias'), flat.source_type_id('Dummy'))
+		tc.generated_files['generated.v'] = true
+		tc.selective_import_files['generated.v'] = &types.FileImportInfo{
+			selective_imports: {
+				flat.source_type_id('receiver'): [flat.source_type_id('dep.receiver')]
+			}
+		}
+		receiver_type := match name {
+			'Alias' { 'Dummy' }
+			'receiver' { 'dep.receiver' }
+			else { name }
+		}
+		method_key := '${receiver_type}.sample'
+		param_type := if name == 'string' {
+			types.Type(types.String{})
+		} else {
+			types.Type(types.Struct{ name_id: flat.source_type_id(receiver_type) })
+		}
+		tc.fn_param_types[method_key] = [param_type, types.Type(types.String{})]
+		tc.fn_ret_types[method_key] = types.Type(types.int_)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		t.cur_module = 'main'
+		t.cur_file = 'generated.v'
+		receiver := a.add_val(.ident, name)
+		if name != 'T' {
+			tc.register_synth_type(receiver, param_type)
+		}
+		value := substitute_reflected_method_receiver(mut t, receiver, MethodMeta{
+			name:        'sample'
+			receiver:    flat.source_type_id(receiver_type)
+			module_name: 'main'
+			return_type: flat.source_type_int
+			params:      [ParamMeta{ name: 'value', typ: flat.source_type_string }]
+		})
+		node := a.node(value)
+		assert node.kind == .ident, name
+		assert node.value == method_key
+		fn_type := tc.expr_type(value) or { panic('missing reflected function type') }
+		assert fn_type is types.FnType
+		if fn_type is types.FnType {
+			assert fn_type.params.len == 2
+			assert *fn_type.params[0].typ == param_type
+		}
+	}
+}
+
+fn test_comptime_generated_type_namespace_respects_unlowered_same_type_local() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs[flat.source_type_id('receiver')] = []types.StructField{}
+	tc.fn_param_types['receiver.sample'] = [types.Type(types.Struct{ name_id: flat.source_type_id('receiver') })]
+	tc.fn_ret_types['receiver.sample'] = types.Type(types.int_)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+	value := a.add_node(flat.Node{ kind: .struct_init, typ: flat.source_type_id('receiver') })
+	decl := t.make_decl_assign('receiver', value)
+	receiver := a.add_val(.ident, 'receiver')
+	tc.register_synth_type(receiver, types.Type(types.Struct{ name_id: flat.source_type_id('receiver') }))
+	body := t.make_block([decl, receiver])
+	start := a.children.len
+	a.children << body
+	a.add_node(flat.Node{ kind: .fn_decl, value: 'run', children_start: start, children_count: 1 })
+	t.build_source_parent_index()
+	selector := substitute_reflected_method_receiver(mut t, receiver, MethodMeta{
+		name:        'sample'
+		receiver:    flat.source_type_id('receiver')
+		module_name: 'main'
+		return_type: flat.source_type_int
+	})
+	node := a.node(selector)
+	assert node.kind == .selector
+	assert a.child_node(node, 0).value == 'receiver'
 }
 
 fn test_comptime_method_call_arity_allows_omitted_optional_args_and_ctx() {
@@ -50,13 +231,13 @@ fn test_comptime_method_call_arity_allows_omitted_optional_args_and_ctx() {
 	ctx := a.add_node(flat.Node{
 		kind:   .ident
 		value:  'ctx'
-		typ:    '&Context'
+		typ:    flat.source_type_id('&Context')
 		is_mut: true
 	})
 	route_arg := a.add_node(flat.Node{
 		kind:  .string_literal
 		value: 'item'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	children_start := a.children.len
 	a.children << callee
@@ -82,17 +263,19 @@ fn test_comptime_method_call_arity_allows_omitted_optional_args_and_ctx() {
 		children_count: 2
 	}
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Context'] = []types.StructField{}
-	tc.interface_names['IError'] = true
-	tc.interface_abstract_methods['IError'] = ['msg']
+	tc.structs[flat.source_type_id('Context')] = []types.StructField{}
+	tc.interface_names[flat.source_type_id('IError')] = true
+	tc.interface_abstract_methods[flat.source_type_id('IError')] = ['msg']
 	tc.fn_implicit_veb_ctx['App.show'] = true
-	tc.fn_param_types['App.show'] = [types.Type(types.Struct{ name: 'App' }),
-		tc.parse_type('mut Context')]
-	tc.params_structs['RouteParams'] = true
+	tc.fn_param_types['App.show'] = [
+		types.Type(types.Struct{ name_id: flat.source_type_id('App') }),
+		tc.parse_type(flat.source_type_id('mut Context')),
+	]
+	tc.params_structs[flat.source_type_id('RouteParams')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	base_method := MethodMeta{
 		name:        'show'
-		receiver:    'App'
+		receiver:    flat.source_type_id('App')
 		module_name: 'main'
 	}
 	assert t.comptime_method_call_arity_matches(call_without_ctx, base_method)
@@ -100,45 +283,45 @@ fn test_comptime_method_call_arity_allows_omitted_optional_args_and_ctx() {
 	assert t.comptime_method_call_matches(call, base_method)
 	optional_method := MethodMeta{
 		...base_method
-		params: [ParamMeta{ typ: '?string' }]
+		params: [ParamMeta{ typ: flat.source_type_id('?string') }]
 	}
 	assert t.comptime_method_call_arity_matches(call, optional_method)
 	assert t.comptime_method_call_matches(call, optional_method)
 	params_method := MethodMeta{
 		...base_method
-		params: [ParamMeta{ typ: 'RouteParams' }]
+		params: [ParamMeta{ typ: flat.source_type_id('RouteParams') }]
 	}
 	assert t.comptime_method_call_arity_matches(call, params_method)
 	assert t.comptime_method_call_matches(call, params_method)
 	variadic_method := MethodMeta{
 		...base_method
-		params: [ParamMeta{ typ: '...bool' }]
+		params: [ParamMeta{ typ: flat.source_type_id('...bool') }]
 	}
 	assert t.comptime_method_call_arity_matches(call, variadic_method)
 	assert t.comptime_method_call_matches(call, variadic_method)
 	assert !t.comptime_method_call_arity_matches(call_without_ctx, MethodMeta{
 		...base_method
-		params: [ParamMeta{ typ: 'string' }]
+		params: [ParamMeta{ typ: flat.source_type_string }]
 	})
 	string_method := MethodMeta{
 		...base_method
-		params: [ParamMeta{ typ: 'string' }]
+		params: [ParamMeta{ typ: flat.source_type_string }]
 	}
 	assert t.comptime_method_call_arity_matches(call, string_method)
 	assert !t.comptime_method_call_matches(call, string_method)
 	route_method := MethodMeta{
 		...base_method
-		params: [ParamMeta{ typ: 'string' }]
+		params: [ParamMeta{ typ: flat.source_type_string }]
 	}
 	assert t.comptime_method_call_arity_matches(call_with_route_arg, route_method)
 	assert t.comptime_method_call_matches(call_with_route_arg, route_method)
 	assert !t.comptime_method_call_arity_matches(call_without_ctx, MethodMeta{
 		...base_method
-		params: [ParamMeta{ typ: '!fn ()' }]
+		params: [ParamMeta{ typ: flat.source_type_id('!fn ()') }]
 	})
 	result_callback_method := MethodMeta{
 		...base_method
-		params: [ParamMeta{ typ: '!fn ()' }]
+		params: [ParamMeta{ typ: flat.source_type_id('!fn ()') }]
 	}
 	assert t.comptime_method_call_arity_matches(call, result_callback_method)
 	assert !t.comptime_method_call_matches(call, result_callback_method)
@@ -153,7 +336,7 @@ fn test_comptime_method_call_arity_distinguishes_mut_route_arg_from_ctx() {
 	item := a.add_node(flat.Node{
 		kind:   .ident
 		value:  'item'
-		typ:    'main.Item'
+		typ:    flat.source_type_id('main.Item')
 		is_mut: true
 	})
 	children_start := a.children.len
@@ -166,14 +349,17 @@ fn test_comptime_method_call_arity_distinguishes_mut_route_arg_from_ctx() {
 	}
 	mut tc := types.TypeChecker.new(&a)
 	tc.fn_implicit_veb_ctx['App.update'] = true
-	tc.fn_param_types['App.update'] = [types.Type(types.Struct{ name: 'App' }),
-		tc.parse_type('mut Context'), tc.parse_type('mut Item')]
+	tc.fn_param_types['App.update'] = [
+		types.Type(types.Struct{ name_id: flat.source_type_id('App') }),
+		tc.parse_type(flat.source_type_id('mut Context')),
+		tc.parse_type(flat.source_type_id('mut Item')),
+	]
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	method := MethodMeta{
 		name:        'update'
-		receiver:    'App'
+		receiver:    flat.source_type_id('App')
 		module_name: 'main'
-		params:      [ParamMeta{ typ: '&Item' }]
+		params:      [ParamMeta{ typ: flat.source_type_id('&Item') }]
 	}
 	assert t.comptime_method_call_arity_matches(call, method)
 	assert t.comptime_method_call_matches(call, method)
@@ -188,7 +374,7 @@ fn test_comptime_method_call_arity_binds_context_value_to_declared_interface() {
 	ctx := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'ctx'
-		typ:   '&main.Context'
+		typ:   flat.source_type_id('&main.Context')
 	})
 	children_start := a.children.len
 	a.children << callee
@@ -199,17 +385,20 @@ fn test_comptime_method_call_arity_binds_context_value_to_declared_interface() {
 		children_count: 2
 	}
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Context'] = []types.StructField{}
-	tc.interface_names['RouteArg'] = true
+	tc.structs[flat.source_type_id('Context')] = []types.StructField{}
+	tc.interface_names[flat.source_type_id('RouteArg')] = true
 	tc.fn_implicit_veb_ctx['App.show'] = true
-	tc.fn_param_types['App.show'] = [types.Type(types.Struct{ name: 'App' }),
-		tc.parse_type('mut Context'), tc.parse_type('RouteArg')]
+	tc.fn_param_types['App.show'] = [
+		types.Type(types.Struct{ name_id: flat.source_type_id('App') }),
+		tc.parse_type(flat.source_type_id('mut Context')),
+		tc.parse_type(flat.source_type_id('RouteArg')),
+	]
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	method := MethodMeta{
 		name:        'show'
-		receiver:    'App'
+		receiver:    flat.source_type_id('App')
 		module_name: 'main'
-		params:      [ParamMeta{ typ: 'RouteArg' }]
+		params:      [ParamMeta{ typ: flat.source_type_id('RouteArg') }]
 	}
 	assert t.comptime_method_call_arity_matches(call, method)
 	assert t.comptime_method_call_matches(call, method)
@@ -224,7 +413,7 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 	ctx := a.add_node(flat.Node{
 		kind:   .ident
 		value:  'ctx'
-		typ:    '&Context'
+		typ:    flat.source_type_id('&Context')
 		is_mut: true
 	})
 	first_field := a.add_node(flat.Node{
@@ -261,131 +450,144 @@ fn test_comptime_method_call_matches_params_struct_fields() {
 		children_count: 5
 	}
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Context'] = []types.StructField{}
-	tc.structs['RouteParams'] = [
+	tc.structs[flat.source_type_id('Context')] = []types.StructField{}
+	tc.structs[flat.source_type_id('RouteParams')] = [
 		types.StructField{
 			name: 'a'
-			typ:  tc.parse_type('int')
+			typ:  tc.parse_type(flat.source_type_int)
 		},
 		types.StructField{
 			name: 'b'
-			typ:  tc.parse_type('int')
+			typ:  tc.parse_type(flat.source_type_int)
 		},
 	]
-	tc.structs['OtherParams'] = [types.StructField{
+	tc.structs[flat.source_type_id('OtherParams')] = [types.StructField{
 		name: 'a'
-		typ:  tc.parse_type('int')
+		typ:  tc.parse_type(flat.source_type_int)
 	}]
-	tc.structs['RequiredParams'] = [
+	tc.structs[flat.source_type_id('RequiredParams')] = [
 		types.StructField{
 			name: 'a'
-			typ:  tc.parse_type('int')
+			typ:  tc.parse_type(flat.source_type_int)
 		},
 		types.StructField{
 			name: 'b'
-			typ:  tc.parse_type('int')
+			typ:  tc.parse_type(flat.source_type_int)
 		},
 		types.StructField{
 			name: 'c'
-			typ:  tc.parse_type('int')
+			typ:  tc.parse_type(flat.source_type_int)
 		},
 	]
 	tc.fn_implicit_veb_ctx['App.configure'] = true
-	tc.fn_param_types['App.configure'] = [types.Type(types.Struct{ name: 'App' }),
-		tc.parse_type('mut Context'), tc.parse_type('RouteParams')]
-	tc.params_structs['RouteParams'] = true
-	tc.params_structs['OtherParams'] = true
-	tc.params_structs['RequiredParams'] = true
+	tc.fn_param_types['App.configure'] = [
+		types.Type(types.Struct{ name_id: flat.source_type_id('App') }),
+		tc.parse_type(flat.source_type_id('mut Context')),
+		tc.parse_type(flat.source_type_id('RouteParams')),
+	]
+	tc.params_structs[flat.source_type_id('RouteParams')] = true
+	tc.params_structs[flat.source_type_id('OtherParams')] = true
+	tc.params_structs[flat.source_type_id('RequiredParams')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['RouteParams'] = StructInfo{
-		name:      'RouteParams'
+	t.structs[flat.source_type_id('RouteParams')] = StructInfo{
+		name:      flat.source_type_id('RouteParams')
 		is_params: true
 		fields:    [
 			FieldInfo{
 				name:    'a'
-				typ:     'int'
-				raw_typ: 'int'
+				typ:     flat.source_type_int
+				raw_typ: flat.source_type_int
 			},
 			FieldInfo{
 				name:    'b'
-				typ:     'int'
-				raw_typ: 'int'
+				typ:     flat.source_type_int
+				raw_typ: flat.source_type_int
 			},
 		]
 	}
-	t.structs['OtherParams'] = StructInfo{
-		name:      'OtherParams'
+	t.structs[flat.source_type_id('OtherParams')] = StructInfo{
+		name:      flat.source_type_id('OtherParams')
 		is_params: true
 		fields:    [
 			FieldInfo{
 				name:    'a'
-				typ:     'int'
-				raw_typ: 'int'
+				typ:     flat.source_type_int
+				raw_typ: flat.source_type_int
 			},
 		]
 	}
-	t.structs['RequiredParams'] = StructInfo{
-		name:      'RequiredParams'
+	t.structs[flat.source_type_id('RequiredParams')] = StructInfo{
+		name:      flat.source_type_id('RequiredParams')
 		is_params: true
 		fields:    [
 			FieldInfo{
 				name:    'a'
-				typ:     'int'
-				raw_typ: 'int'
+				typ:     flat.source_type_int
+				raw_typ: flat.source_type_int
 			},
 			FieldInfo{
 				name:    'b'
-				typ:     'int'
-				raw_typ: 'int'
+				typ:     flat.source_type_int
+				raw_typ: flat.source_type_int
 			},
 			FieldInfo{
 				name:    'c'
-				typ:     'int'
-				raw_typ: 'int'
+				typ:     flat.source_type_int
+				raw_typ: flat.source_type_int
 			},
 		]
 	}
-	t.struct_field_decl_metas_cache['RequiredParams'] = {
+	t.struct_field_decl_metas_cache[flat.source_type_id('RequiredParams')] = {
 		'c': FieldDeclMeta{
 			attrs: ['required']
 		}
 	}
 	method := MethodMeta{
 		name:        'configure'
-		receiver:    'App'
+		receiver:    flat.source_type_id('App')
 		module_name: 'main'
-		params:      [ParamMeta{ typ: 'RouteParams' }]
+		params:      [ParamMeta{ typ: flat.source_type_id('RouteParams') }]
 	}
 	assert t.comptime_method_call_arity_matches(call, method)
 	assert t.comptime_method_call_matches(call, method)
 	assert !t.comptime_method_call_matches(call, MethodMeta{
 		...method
-		params: [ParamMeta{ typ: 'int' }]
+		params: [ParamMeta{ typ: flat.source_type_int }]
 	})
 	assert !t.comptime_method_call_matches(call, MethodMeta{
 		...method
-		params: [ParamMeta{ typ: 'OtherParams' }]
+		params: [ParamMeta{ typ: flat.source_type_id('OtherParams') }]
 	})
 	required_method := MethodMeta{
 		...method
-		params: [ParamMeta{ typ: 'RequiredParams' }]
+		params: [ParamMeta{ typ: flat.source_type_id('RequiredParams') }]
 	}
 	assert !t.comptime_method_call_matches(call, required_method)
 	assert t.comptime_method_call_matches(call_with_required, required_method)
 }
 
+fn test_comptime_method_attrs_index_cond_keeps_member_access_attached() {
+	method := MethodMeta{
+		name:  'one'
+		attrs: ['GET /a', 'flag']
+	}
+	// `==` follows the index without a space in the serialized guard
+	assert subst_method_attrs_access_cond("method.attrs[0]== 'GET /a'", 'method', method) == "'GET /a' == 'GET /a'"
+	// a method call or a closing paren must stay attached to the literal
+	assert subst_method_attrs_access_cond("method.attrs[0].starts_with ( 'GET' )", 'method',
+		method) == "'GET /a'.starts_with ( 'GET' )"
+	assert subst_method_attrs_access_cond('method.attrs[2].len == 0', 'method', method) == "''.len == 0"
+	assert subst_method_attrs_access_cond("(method.attrs[1]) == 'flag'", 'method', method) == "('flag') == 'flag'"
+}
+
 fn test_comptime_sum_variants_normalize_main_specialization_lock() {
 	mut a := flat.FlatAst.new()
-	t := Transformer{
-		a:         &a
-		sum_types: {
-			'Sum': ['int', 'string']
-		}
-	}
-	variants := t.comptime_sum_variants('main.Sum')
+	mut t := Transformer{ a: &a }
+	t.sum_types.set(flat.source_type_id('Sum'), ['int', 'string'])
+	variants := t.comptime_sum_variants(flat.source_type_id('main.Sum'))
 	assert variants.len == 2
-	assert variants[0].typ == 'int'
-	assert variants[1].typ == 'string'
+	assert variants[0].typ_text() == 'int'
+	assert variants[1].typ_text() == 'string'
 }
 
 fn test_comptime_condition_distinguishes_pointer_depth_from_logical_and() {
@@ -410,13 +612,108 @@ fn test_comptime_condition_distinguishes_pointer_depth_from_logical_and() {
 	assert pointer_and_true
 }
 
+fn test_comptime_condition_ignores_brackets_and_operators_in_string_literals() {
+	mut a := flat.FlatAst.new()
+	mut t := Transformer{
+		a: &a
+	}
+	assert comptime_condition_strip_outer_parens("('a)b' == 'a)b')") == "'a)b' == 'a)b'"
+	assert comptime_condition_top_level_index("'a(b' == 'x'", ' == ') == 5
+	assert comptime_condition_top_level_index("'x || y' == 'x'", '||') == -1
+	conds := {
+		"('a)b' == 'a)b')":                            true
+		"'a(b' == 'a(b'":                              true
+		"'x || y' == 'x'":                             false
+		"'a,b' in ['a,b', 'c']":                       true
+		"'a' in ['a,b', 'c']":                         false
+		"'c' !in ['a,b', 'c']":                        false
+		"'get_user' !in ['x]', 'get_user']":           false
+		"'get_user' in ['x]', 'get_user']":            true
+		"'list_users' !in ['x]', 'get_user']":         true
+		"'get_user' in ['a)b', 'get_user']":           true
+		"'a,b' in ['a,b'.to_upper().to_lower(), 'c']": true
+		"'anything' in []":                            false
+		"('a]' == 'a]') && true":                      true
+	}
+	for cond, want in conds {
+		got := t.eval_field_cond(cond) or {
+			assert false, 'condition `${cond}` should be decidable'
+			return
+		}
+		assert got == want, cond
+	}
+}
+
+fn test_comptime_condition_string_literal_members() {
+	mut a := flat.FlatAst.new()
+	mut t := Transformer{
+		a: &a
+	}
+	members := {
+		"'name'.len":                    '4'
+		"'name'.starts_with ( 'na' )":   'true'
+		"('name'.ends_with ( 'x' ))":    'false'
+		"'a)b'.contains ( ')' )":        'true'
+		'"it\'s".contains ( "\'" )':     'true'
+		"'name'.contains ( 'a' + 'b' )": ''
+		"'name'.to_upper ( )":           "'NAME'"
+		"'name'.to_upper ( ).len":       '4'
+		"'name'.starts_with ( prefix )": ''
+		"name.starts_with ( 'na' )":     ''
+	}
+	for expr, want in members {
+		got := comptime_cond_string_member(expr) or { '' }
+		assert got == want, expr
+	}
+	conds := {
+		"!'name'.starts_with ( 'x' ) && 'name'.len == 4": true
+		"'name'.len > 4 || 'name'.ends_with ( 'me' )":    true
+		"'name'.len in [3, 5]":                           false
+	}
+	for cond, want in conds {
+		got := t.eval_field_cond(cond) or {
+			assert false, 'condition `${cond}` should be decidable'
+			return
+		}
+		assert got == want, cond
+	}
+	assert t.eval_field_cond("'name'.to_upper ( ).len > 3") or { false }
+}
+
+fn test_comptime_condition_does_not_compare_expressions_as_text() {
+	mut a := flat.FlatAst.new()
+	mut t := Transformer{
+		a: &a
+	}
+	for cond in ["'name'.unsupported ( ) == 'NAME'", "'name'[0] != `n`", "'name'.split ( 'a' ) in ['n']",
+		"'name'.index ( 'a' ) < 2"] {
+		if value := t.eval_field_cond(cond) {
+			assert false, 'condition `${cond}` should stay undecided, got ${value}'
+		}
+	}
+	conds := {
+		"('name') == 'name'":            true
+		'2 != 3':                        true
+		'.plain == .string':             false
+		"'x' == x":                      true
+		"`n` == `n` && 'name'.len == 4": true
+	}
+	for cond, want in conds {
+		got := t.eval_field_cond(cond) or {
+			assert false, 'condition `${cond}` should be decidable'
+			return
+		}
+		assert got == want, cond
+	}
+}
+
 fn test_mangled_generic_struct_field_metadata_resolves_declaration() {
 	mut a := flat.FlatAst.new()
 	a.add_val(.module_decl, 'sample')
 	mut field := flat.Node{
 		kind:  .field_decl
 		value: 'value'
-		typ:   'T'
+		typ:   flat.source_type_id('T')
 	}
 	field.set_generic_params(['mp', 'skip'])
 	field_id := a.add_node(field)
@@ -436,7 +733,7 @@ fn test_mangled_generic_struct_field_metadata_resolves_declaration() {
 	}
 	t.build_struct_field_decl_metas_cache()
 	for name in ['Box_int', 'sample.Box_int', 'sample__Box_int'] {
-		metas := t.struct_field_decl_metas(name)
+		metas := t.struct_field_decl_metas(flat.source_type_id(name))
 		meta := metas['value'] or {
 			assert false, 'missing field metadata for `${name}`'
 			continue
@@ -451,15 +748,15 @@ fn test_comptime_field_metadata_cache_uses_resolved_module() {
 	mut a := flat.FlatAst.new()
 	mut t := Transformer{
 		a:                             &a
-		comptime_field_metas_cache:    map[string][]FieldMeta{}
+		comptime_field_metas_cache:    map[u32][]FieldMeta{}
 		struct_field_decl_metas_cache: {
-			'first.Config':  {
+			flat.source_type_id('first.Config'):  {
 				'first': FieldDeclMeta{
 					is_pub: true
 					attrs:  ['first_attr']
 				}
 			}
-			'second.Config': {
+			flat.source_type_id('second.Config'): {
 				'second': FieldDeclMeta{
 					is_mut: true
 					attrs:  ['second_attr']
@@ -467,42 +764,44 @@ fn test_comptime_field_metadata_cache_uses_resolved_module() {
 			}
 		}
 		structs:                       {
-			'first.Config':  StructInfo{
-				name:   'Config'
+			flat.source_type_id('first.Config'):  StructInfo{
+				name:   flat.source_type_id('Config')
 				module: 'first'
 				fields: [
 					FieldInfo{
 						name:    'first'
-						typ:     'int'
-						raw_typ: 'int'
+						typ:     flat.source_type_int
+						raw_typ: flat.source_type_int
 					},
 				]
 			}
-			'second.Config': StructInfo{
-				name:   'Config'
+			flat.source_type_id('second.Config'): StructInfo{
+				name:   flat.source_type_id('Config')
 				module: 'second'
 				fields: [
 					FieldInfo{
 						name:    'second'
-						typ:     'string'
-						raw_typ: 'string'
+						typ:     flat.source_type_string
+						raw_typ: flat.source_type_string
 					},
 				]
 			}
 		}
 	}
 	t.cur_module = 'first'
-	first := t.comptime_field_metas('Config')
+	first := t.comptime_field_metas(flat.source_type_id('Config'))
 	assert first.len == 1
 	assert first[0].name == 'first'
 	assert first[0].attrs == ['first_attr']
+	assert flat.source_type_name(first[0].attribute_module_id) == 'first'
 	assert first[0].is_pub
 
 	t.cur_module = 'second'
-	second := t.comptime_field_metas('Config')
+	second := t.comptime_field_metas(flat.source_type_id('Config'))
 	assert second.len == 1
 	assert second[0].name == 'second'
 	assert second[0].attrs == ['second_attr']
+	assert flat.source_type_name(second[0].attribute_module_id) == 'second'
 	assert second[0].is_mut
 }
 
@@ -510,29 +809,29 @@ fn test_comptime_field_metadata_cache_normalizes_main_qualified_name() {
 	mut a := flat.FlatAst.new()
 	mut t := Transformer{
 		a:                             &a
-		comptime_field_metas_cache:    map[string][]FieldMeta{}
+		comptime_field_metas_cache:    map[u32][]FieldMeta{}
 		struct_field_decl_metas_cache: {
-			'Config': {
+			flat.source_type_id('Config'): {
 				'skipped': FieldDeclMeta{
 					attrs: ['skip']
 				}
 			}
 		}
 		structs:                       {
-			'main.Config': StructInfo{
-				name:   'main.Config'
+			flat.source_type_id('main.Config'): StructInfo{
+				name:   flat.source_type_id('main.Config')
 				module: 'main'
 				fields: [
 					FieldInfo{
 						name:    'skipped'
-						typ:     '&App'
-						raw_typ: '&App'
+						typ:     flat.source_type_id('&App')
+						raw_typ: flat.source_type_id('&App')
 					},
 				]
 			}
 		}
 	}
-	metas := t.comptime_field_metas('main.Config')
+	metas := t.comptime_field_metas(flat.source_type_id('main.Config'))
 	assert metas.len == 1
 	assert metas[0].attrs == ['skip']
 }
@@ -543,7 +842,7 @@ fn test_comptime_field_metadata_cache_keeps_main_and_builtin_names_distinct() {
 	mut builtin_field := flat.Node{
 		kind:  .field_decl
 		value: 'builtin_value'
-		typ:   'int'
+		typ:   flat.source_type_int
 	}
 	builtin_field.set_generic_params(['p', 'builtin_attr'])
 	builtin_field_id := a.add_node(builtin_field)
@@ -560,7 +859,7 @@ fn test_comptime_field_metadata_cache_keeps_main_and_builtin_names_distinct() {
 	mut main_field := flat.Node{
 		kind:  .field_decl
 		value: 'main_value'
-		typ:   'string'
+		typ:   flat.source_type_string
 	}
 	main_field.set_generic_params(['mp', 'main_attr'])
 	main_field_id := a.add_node(main_field)
@@ -577,7 +876,7 @@ fn test_comptime_field_metadata_cache_keeps_main_and_builtin_names_distinct() {
 		a: &a
 	}
 	t.build_struct_field_decl_metas_cache()
-	main_metas := t.struct_field_decl_metas_in_module('FieldData', 'main')
+	main_metas := t.struct_field_decl_metas_in_module(flat.source_type_id('FieldData'), 'main')
 	main_meta := main_metas['main_value'] or {
 		assert false, 'missing main FieldData metadata'
 		return
@@ -587,7 +886,7 @@ fn test_comptime_field_metadata_cache_keeps_main_and_builtin_names_distinct() {
 	assert main_meta.attrs == ['main_attr']
 	assert 'builtin_value' !in main_metas
 
-	builtin_metas := t.struct_field_decl_metas_in_module('FieldData', 'builtin')
+	builtin_metas := t.struct_field_decl_metas_in_module(flat.source_type_id('FieldData'), 'builtin')
 	builtin_meta := builtin_metas['builtin_value'] or {
 		assert false, 'missing builtin FieldData metadata'
 		return
@@ -597,7 +896,453 @@ fn test_comptime_field_metadata_cache_keeps_main_and_builtin_names_distinct() {
 	assert builtin_meta.attrs == ['builtin_attr']
 	assert 'main_value' !in builtin_metas
 
-	bare_metas := t.struct_field_decl_metas('FieldData')
+	bare_metas := t.struct_field_decl_metas(flat.source_type_id('FieldData'))
 	assert 'main_value' in bare_metas
 	assert 'builtin_value' !in bare_metas
+}
+
+fn add_comptime_test_method(mut a flat.FlatAst, receiver string, name string, return_type string, param_type string) flat.NodeId {
+	receiver_id := a.add_node(flat.Node{
+		kind:  .param
+		op:    .dot
+		value: 'self'
+		typ:   flat.source_type_id(receiver)
+	})
+	param_id := if param_type.len > 0 {
+		a.add_node(flat.Node{ kind: .param, value: 'value', typ: flat.source_type_id(param_type) })
+	} else {
+		flat.NodeId(-1)
+	}
+	children_start := a.children.len
+	a.children << receiver_id
+	if int(param_id) >= 0 {
+		a.children << param_id
+	}
+	return a.add_node(flat.Node{
+		kind:           .fn_decl
+		value:          '${receiver}.${name}'
+		typ:            flat.source_type_id(return_type)
+		children_start: i32(children_start)
+		children_count: if int(param_id) >= 0 { 2 } else { 1 }
+	})
+}
+
+fn test_comptime_method_metadata_keeps_resolved_module_and_file_context() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.module_decl, 'first')
+	add_comptime_test_method(mut a, 'App', 'show', 'int', '')
+	add_comptime_test_method(mut a, 'Alias', 'extra', 'int', '')
+	a.add_val(.module_decl, 'second')
+	add_comptime_test_method(mut a, 'App', 'show', 'string', '')
+	add_comptime_test_method(mut a, 'Alias', 'extra', 'string', '')
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs[flat.source_type_id('first.App')] = []types.StructField{}
+	tc.structs[flat.source_type_id('second.App')] = []types.StructField{}
+	tc.type_aliases.set_id(flat.source_type_id('first.Alias'), flat.source_type_id('first.App'))
+	tc.type_aliases.set_id(flat.source_type_id('second.Alias'), flat.source_type_id('second.App'))
+	tc.file_imports[file_import_key('first.v', 'dep')] = 'first'
+	tc.file_imports[file_import_key('second.v', 'dep')] = 'second'
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	for module_name in ['first', 'second', 'first'] {
+		t.cur_module = module_name
+		for name in ['App', 'Alias', '${module_name}.App'] {
+			methods := t.comptime_method_metas(flat.source_type_id(name))
+			assert methods.len == if name == 'Alias' { 2 } else { 1 }
+			assert methods[0].module_name == module_name
+			assert methods[0].return_type_text() == if module_name == 'first' {
+				'int'
+			} else {
+				'string'
+			}
+			if name == 'Alias' {
+				assert methods[1].name == 'extra'
+				assert methods[1].module_name == module_name
+			}
+		}
+	}
+	t.cur_module = 'main'
+	for module_name in ['first', 'second', 'first'] {
+		t.cur_file = '${module_name}.v'
+		methods := t.comptime_method_metas(flat.source_type_id('dep.App'))
+		assert methods.len == 1
+		assert methods[0].module_name == module_name
+	}
+}
+
+fn test_comptime_method_metadata_keeps_generic_receiver_specializations() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.module_decl, 'main')
+	add_comptime_test_method(mut a, 'Box[T]', 'replace', 'T', 'T')
+	mut tc := types.TypeChecker.new(&a)
+	tc.struct_generic_params[flat.source_type_id('Box')] = types.generic_param_ids(['T'])
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+	for typ in ['int', 'string', 'uint'] {
+		for name in ['Box[${typ}]', 'Box_${typ}'] {
+			methods := t.comptime_method_metas(flat.source_type_id(name))
+			assert methods.len == 1
+			assert methods[0].return_type_text() == typ
+			assert methods[0].params.len == 1
+			assert methods[0].params[0].typ_text() == typ
+		}
+	}
+}
+
+fn test_comptime_method_metadata_keeps_specialization_main_type_provenance() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.module_decl, 'main')
+	add_comptime_test_method(mut a, 'App', 'show', 'int', '')
+	a.add_val(.module_decl, 'reflection')
+	add_comptime_test_method(mut a, 'App', 'show', 'string', '')
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs[flat.source_type_id('App')] = []types.StructField{}
+	tc.structs[flat.source_type_id('reflection.App')] = []types.StructField{}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'reflection'
+	for main_type in [false, true, false] {
+		t.active_specialization_main_types[flat.source_type_id('App')] = main_type
+		methods := t.comptime_method_metas(flat.source_type_id('App'))
+		assert methods.len == 1
+		assert methods[0].module_name == if main_type { 'main' } else { 'reflection' }
+		assert methods[0].return_type_text() == if main_type { 'int' } else { 'string' }
+	}
+}
+
+fn test_comptime_method_metadata_keeps_module_sensitive_generic_arguments() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.module_decl, 'main')
+	add_comptime_test_method(mut a, 'Box[T]', 'replace', 'T', 'T')
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs[flat.source_type_id('first.A')] = []types.StructField{}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	for module_name in ['first', 'second', 'first'] {
+		t.cur_module = module_name
+		methods := t.comptime_method_metas(flat.source_type_id('main.Box[A]'))
+		assert methods.len == 1
+		assert methods[0].return_type_text() == if module_name == 'first' { 'A' } else { 'T' }
+		assert methods[0].params[0].typ_text() == methods[0].return_type_text()
+	}
+}
+
+fn test_comptime_method_metadata_observes_appended_methods_and_attributes() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.module_decl, 'main')
+	method_id := add_comptime_test_method(mut a, 'App', 'first', 'int', '')
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+	initial := t.comptime_method_metas(flat.source_type_id('App'))
+	assert initial.len == 1
+	assert initial[0].attrs.len == 0
+	a.add_node(flat.Node{
+		kind:    .directive
+		value:   '@attributes:${int(method_id)}'
+		typ:     flat.source_type_id('1,2,3,0')
+		payload: flat.node_payload(["route: '/first'", 'priority: 2', 'enabled: true', 'inline'])
+	})
+	attributed := t.comptime_method_metas(flat.source_type_id('App'))
+	assert attributed.len == 1
+	assert attributed[0].attrs == ["route: '/first'", 'priority: 2', 'enabled: true', 'inline']
+	assert attributed[0].attributes == [
+		AttributeMeta{ name: 'route', arg: '/first', has_arg: true, kind: 1 },
+		AttributeMeta{ name: 'priority', arg: '2', has_arg: true, kind: 2 },
+		AttributeMeta{ name: 'enabled', arg: 'true', has_arg: true, kind: 3 },
+		AttributeMeta{ name: 'inline', kind: 0 },
+	]
+	add_comptime_test_method(mut a, 'App', 'second', 'string', '')
+	expanded := t.comptime_method_metas(flat.source_type_id('App'))
+	assert expanded.len == 2
+	assert expanded[0].name == 'first'
+	assert expanded[0].attrs == attributed[0].attrs
+	assert expanded[1].name == 'second'
+	assert expanded[1].return_type_text() == 'string'
+	assert expanded[1].attrs.len == 0
+}
+
+fn test_comptime_method_metadata_observes_erased_generic_methods() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.module_decl, 'main')
+	template_id := add_comptime_test_method(mut a, 'Box[T]', 'replace', 'T', 'T')
+	add_comptime_test_method(mut a, 'Box[int]', 'keep', 'bool', '')
+	clone_id := add_comptime_test_method(mut a, 'Box[int]', 'replace', 'int', 'int')
+	a.add_node(flat.Node{
+		kind:    .directive
+		value:   '@attributes:${int(template_id)}'
+		payload: flat.node_payload(['generic'])
+	})
+	a.add_node(flat.Node{
+		kind:    .directive
+		value:   '@attributes:${int(clone_id)}'
+		payload: flat.node_payload(['concrete'])
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.struct_generic_params[flat.source_type_id('Box')] = types.generic_param_ids(['T'])
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+	initial := t.comptime_method_metas(flat.source_type_id('Box[int]'))
+	assert initial.map(it.name) == ['replace', 'keep']
+	assert flat.source_type_name(initial[0].receiver) == 'Box[T]'
+	assert initial[0].attrs == ['generic']
+	decl := GenericFnDecl{
+		id:     template_id
+		node:   a.nodes[int(template_id)]
+		file:   'main.v'
+		module: 'main'
+		key:    'Box.replace'
+	}
+	node_count := a.nodes.len
+	t.erase_generic_fn_decls({
+		decl.key: decl
+	})
+	assert a.nodes.len == node_count
+	assert a.node(template_id).kind == .empty
+	after := t.comptime_method_metas(flat.source_type_id('Box[int]'))
+	assert after.map(it.name) == ['keep', 'replace']
+	assert flat.source_type_name(after[1].receiver) == 'Box[int]'
+	assert after[1].return_type_text() == 'int'
+	assert after[1].params.len == 1
+	assert after[1].params[0].typ_text() == 'int'
+	assert after[1].attrs == ['concrete']
+}
+
+fn test_comptime_method_scan_does_not_allocate_per_ast_node() {
+	$if gcboehm ? {
+		mut a := flat.FlatAst.new()
+		a.add_val(.module_decl, 'main')
+		method_id := add_comptime_test_method(mut a, 'App', 'show', 'int', 'string')
+		for _ in 0 .. 8192 {
+			a.add_node(flat.Node{ kind: .int_literal, value: '0', typ: flat.source_type_int })
+		}
+		a.add_node(flat.Node{
+			kind:    .directive
+			value:   '@attributes:${int(method_id)}'
+			typ:     flat.source_type_id('1')
+			payload: flat.node_payload(["route: '/show'"])
+		})
+		mut tc := types.TypeChecker.new(&a)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		t.cur_module = 'main'
+		before := gc_heap_usage().total_bytes
+		for _ in 0 .. 16 {
+			assert t.comptime_method_metas(flat.source_type_int).len == 0
+			methods := t.comptime_method_metas(flat.source_type_id('App'))
+			assert methods.len == 1
+			assert methods[0].attrs == ["route: '/show'"]
+			assert methods[0].attributes[0].arg == '/show'
+		}
+		allocated := gc_heap_usage().total_bytes - before
+		// Method and attribute lookups allocate metadata independently of unrelated AST nodes.
+		assert allocated < 1024 * 1024, 'method scans allocated ${allocated} bytes'
+	}
+}
+
+fn test_comptime_method_metadata_reuses_repeated_receiver_lookups() {
+	$if gcboehm ? {
+		mut a := flat.FlatAst.new()
+		a.add_val(.module_decl, 'main')
+		for i in 0 .. 128 {
+			method_id := add_comptime_test_method(mut a, 'App', 'method_${i}', 'string', 'int')
+			a.add_node(flat.Node{
+				kind:    .directive
+				value:   '@attributes:${int(method_id)}'
+				typ:     flat.source_type_id('1')
+				payload: flat.node_payload(["route: '/show'"])
+			})
+		}
+		mut tc := types.TypeChecker.new(&a)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		t.cur_module = 'main'
+		assert t.comptime_method_metas(flat.source_type_id('App')).len == 128
+		before := gc_heap_usage().total_bytes
+		for _ in 0 .. 64 {
+			methods := t.comptime_method_metas(flat.source_type_id('App'))
+			assert methods.len == 128
+			assert methods[127].params[0].typ_text() == 'int'
+			assert methods[127].attributes[0].arg == '/show'
+		}
+		allocated := gc_heap_usage().total_bytes - before
+		assert allocated < 1024 * 1024, 'repeated method lookups allocated ${allocated} bytes'
+	}
+}
+
+fn test_comptime_string_method_chains_match_builtin_methods() {
+	mut a := flat.FlatAst.new()
+	mut t := Transformer{ a: &a }
+	for cond in ["'GET /users/:id'.all_after(' ').trim_left('/').starts_with('users')",
+		"'GET /users'.all_before(' ').to_lower() == 'get'", "'a/b/c'.count('/') == 2",
+		"'  x  '.trim_space().to_upper() == 'X'",
+		"'prefix-value'.trim_string_left('prefix-') == 'value'",
+		"'value-suffix'.trim_string_right('-suffix') == 'value'",
+		"'a,b,c'.replace(',', '/').all_after_last('/') == 'c'", "'a/b/c'.all_before_last('/') == 'a/b'",
+		"'name'.trim_right('e').trim_left('n') == 'am'", "'aa'.replace('a', 'x').count('x') == 2"] {
+		assert t.eval_field_cond(cond) or { false }, cond
+	}
+}
+
+fn test_folded_condition_string_keeps_its_own_quotes() {
+	value := "'QUOTED'"
+	text := comptime_cond_string_literal(value)
+	expr := text + '.to_lower()'
+	assert comptime_cond_operand(expr) or { '' } == value.to_lower()
+	mut a := flat.FlatAst.new()
+	mut t := Transformer{ a: &a }
+	assert t.eval_field_cond(expr + ' == ' + comptime_cond_string_literal(value.to_lower())) or { false }
+}
+
+fn test_unresolved_type_guard_does_not_hide_concrete_string_conditions() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.active_generic_params = ['T']
+	assert t.comptime_condition_has_unresolved_type_test('T is \$struct')
+	assert t.comptime_condition_has_unresolved_type_test('T !is int && runtime.contains("x")')
+	assert !t.comptime_condition_has_unresolved_type_test("int is int && 'abc'.repeat(1) == 'abc'")
+	assert !t.comptime_condition_has_unresolved_type_test("' is '.contains('is')")
+}
+
+fn test_scalar_constant_lookup_respects_global_owners_and_import_namespaces() {
+	mut a := flat.FlatAst.new()
+	value := a.add_val(.string_literal, 'a b')
+	mut tc := types.TypeChecker.new(&a)
+	for key, owner in {
+		'registry.value': 'registry'
+		'registry.route': 'registry'
+		'route':          'main'
+	} {
+		tc.const_types[key] = types.string_
+		tc.const_exprs[key] = value
+		tc.const_modules[key] = owner
+	}
+	tc.file_imports[file_import_key('main.v', 'registry')] = 'registry'
+	tc.file_imports[file_import_key('main.v', 'r')] = 'registry'
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.globals.set_id('registry', flat.source_type_id('registry.Record'))
+	t.globals.set_id('registry.registry', flat.source_type_id('registry.Record'))
+	t.globals.set_id('route', flat.source_type_id('api.Record'))
+	t.globals.set_id('api.route', flat.source_type_id('api.Record'))
+	assert t.comptime_scalar_named_const('registry.value', 0, 'registry', 'registry.v') == none
+	assert (t.comptime_scalar_named_const('registry.route', 0, 'main', 'main.v') or { panic('import') }).value == 'a b'
+	assert (t.comptime_scalar_named_const('r.route', 0, 'main', 'main.v') or { panic('alias') }).value == 'a b'
+	assert (t.comptime_scalar_named_const('route', 0, 'main', 'main.v') or { panic('owner') }).value == 'a b'
+	assert (t.comptime_scalar_named_const('route', 0, '', 'main.v') or { panic('implicit main owner') }).value == 'a b'
+	assert t.subst_comptime_scalar_locals('registry.value == 7') == 'registry.value == 7'
+}
+
+fn test_reflected_method_escape_analysis_restores_ast_buffers() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.module_decl, 'main')
+	add_comptime_test_method(mut a, 'App', 'first', 'int', '')
+	add_comptime_test_method(mut a, 'App', 'second', 'int', '')
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs[flat.source_type_id('App')] = []types.StructField{}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'main'
+	body := t.make_block([t.make_int_literal(7)])
+	start := a.children.len
+	a.children << body
+	loop := a.add_node(flat.Node{
+		kind:           .comptime_for
+		value:          'method|methods'
+		typ:            flat.source_type_id('App')
+		children_start: start
+		children_count: 1
+	})
+	a.nodes.ensure_cap(a.nodes.len + 1024)
+	a.children.ensure_cap(a.children.len + 1024)
+	a.nodes.flags.set(.nogrow)
+	a.children.flags.set(.nogrow)
+	initial_nodes := a.nodes.len
+	initial_children := a.children.len
+	initial_nodes_cap := a.nodes.cap
+	initial_children_cap := a.children.cap
+	initial_nodes_data := a.nodes.data
+	initial_children_data := a.children.data
+	for _ in 0 .. 3 {
+		mut amp_ptrs := map[string]bool{}
+		mut amp_sources := map[string][]string{}
+		mut ptr_aliases := map[string]string{}
+		mut method_receivers := map[string]string{}
+		mut capture_aliases := map[string][]string{}
+		mut interface_boxes := map[string]bool{}
+		mut returned := map[string]bool{}
+		mut local_names := map[string]bool{}
+		mut local_added := []string{}
+		mut backing_sources := map[string][]string{}
+		t.scan_escape_pass(loop, mut amp_ptrs, mut amp_sources, mut ptr_aliases,
+			mut method_receivers, mut capture_aliases, mut interface_boxes, mut returned,
+			mut local_names, mut local_added, mut backing_sources, false)
+		assert a.nodes.len == initial_nodes
+		assert a.children.len == initial_children
+		assert a.nodes.cap == initial_nodes_cap
+		assert a.children.cap == initial_children_cap
+		assert a.nodes.data == initial_nodes_data
+		assert a.children.data == initial_children_data
+		assert a.node(loop).kind == .comptime_for
+	}
+}
+
+fn test_comptime_schema_registry_is_lazy_and_worker_owned() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.module_decl, 'schemas')
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	assert isnil(t.comptime_attribute_schema_state)
+	ordinary := a.add_val(.struct_decl, 'Ordinary')
+	a.add_node(flat.Node{
+		kind:    .directive
+		value:   '@attributes:${int(ordinary)}'
+		payload: flat.node_payload(['inline'])
+	})
+	assert t.comptime_attribute_schemas().len == 0
+	assert isnil(t.comptime_attribute_schema_state)
+	marked := a.add_val(.struct_decl, 'Marker')
+	a.add_node(flat.Node{
+		kind:    .directive
+		value:   '@attributes:${int(marked)}'
+		payload: flat.node_payload(['attribute', 'attribute'])
+	})
+	assert t.comptime_attribute_schemas().len == 1
+	assert t.comptime_attribute_schema_state.decls.len == 1
+	assert t.comptime_attribute_schema_state.cache[0].module == 'schemas'
+	mut worker := t.fork_program_view(&a, &tc, map[string]bool{}, false)
+	assert isnil(worker.comptime_attribute_schema_state)
+	assert worker.comptime_attribute_schemas().len == 1
+	assert voidptr(worker.comptime_attribute_schema_state) != voidptr(t.comptime_attribute_schema_state)
+	worker.comptime_attribute_schema_state.decls.clear()
+	assert t.comptime_attribute_schema_state.decls.len == 1
+	// Replacing the AST invalidates indexed node ids and the worker-owned registry.
+	a.nodes = a.nodes[..1]
+	assert t.comptime_attribute_schemas().len == 0
+	assert isnil(t.comptime_attribute_schema_state)
+}
+
+fn test_comptime_schema_instance_narrowing_does_not_change_legacy_metadata_or_siblings() {
+	legacy := comptime_attribute_metas_from_raw(['inline', "route: '/home'"], [0, 1])
+	assert legacy[0].name == 'inline'
+	assert legacy[1].arg == '/home'
+	for attr in legacy {
+		assert isnil(attr.schema)
+		assert !attr.narrowed().schema_narrowed
+	}
+	schema := AttributeSchemaInfo{
+		name:      'Route'
+		module:    'routes'
+		fields:    [AttributeSchemaFieldInfo{ name: 'name', kind: .string_ }]
+		supported: true
+	}
+	attr := comptime_attribute_schema_instance('Route', schema, RawAttributeData{
+		attrs: ["Route: '/home'"]
+		kinds: [1]
+	}, [0]) or { panic('schema instance must bind') }
+	assert !isnil(attr.schema)
+	assert attr.schema.module == 'routes'
+	assert attr.schema.values == ["'/home'"]
+	assert subst_attribute_schema_field_cond('attr.name == Route', 'attr', attr) == 'attr.name == Route'
+	instances := [attr, attr].clone()
+	narrowed := instances[0].narrowed()
+	assert narrowed.schema_narrowed
+	assert !instances[1].schema_narrowed
+	assert !attr.schema_narrowed
+	assert subst_attribute_schema_field_cond('attr.name', 'attr', narrowed) == "'/home'"
+	assert narrowed.schema.values == instances[1].schema.values
 }

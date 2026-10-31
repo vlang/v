@@ -31,7 +31,7 @@ pub type Logger = C.sapp_logger
 pub struct C.sapp_range {
 pub:
 	ptr  voidptr
-	size usize
+	size uint
 }
 
 pub type Range = C.sapp_range
@@ -308,7 +308,7 @@ pub fn (e &Event) str() string {
 @[typedef]
 pub struct C.sapp_touchpoint {
 pub:
-	identifier       u64
+	identifier       uint
 	pos_x            f32
 	pos_y            f32
 	android_tooltype TouchToolType

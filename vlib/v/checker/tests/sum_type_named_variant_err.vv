@@ -1,0 +1,18 @@
+type Expr = IntLit(int) | Count(int) | Void
+
+fn main() {
+	a := Expr.Count('x')
+	b := Expr.Void(3)
+	c := Expr.Count
+	d := Expr.Nope(1)
+	println('${b} ${c} ${d}')
+	match a {
+		Expr.IntLit(n) { println(n) }
+		Expr.Void(v) { println(v) }
+	}
+	mut m := Expr.Count(2)
+	match mut m {
+		Expr.Count(mut n) { println(n) }
+		else {}
+	}
+}

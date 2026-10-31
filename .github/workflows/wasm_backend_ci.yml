@@ -24,31 +24,13 @@ on:
       - 'vlib/v/gen/wasm/tests_decompile/**.v'
       - 'vlib/v/gen/wasm/tests_decompile/**.vv'
       - '**/wasm_backend_ci.yml'
-  pull_request:
-    paths:
-      - 'cmd/tools/builders/**.v'
-      - 'vlib/builtin/**.v'
-      - 'vlib/v/**.v'
-      - 'vlib/v/ast/**.v'
-      - 'vlib/v/scanner/**.v'
-      - 'vlib/v/parser/**.v'
-      - 'vlib/v/checker/**.v'
-      - 'vlib/v/gen/c/**.v'
-      - 'vlib/v/builder/**.v'
-      - 'vlib/v/cflag/**.v'
-      - 'vlib/v/live/**.v'
-      - 'vlib/v/util/**.v'
-      - 'vlib/v/markused/**.v'
-      - 'vlib/v/gen/wasm/**.v'
-      - 'vlib/v/gen/wasm/tests/**.v'
-      - 'vlib/v/gen/wasm/tests/**.vv'
-      - 'vlib/v/gen/wasm/tests_decompile/**.v'
-      - 'vlib/v/gen/wasm/tests_decompile/**.vv'
-      - '**/wasm_backend_ci.yml'
 
 concurrency:
   group: wasm-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   wasm-backend:
@@ -59,9 +41,15 @@ jobs:
       fail-fast: false
     timeout-minutes: 20
     env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
       VTEST_ONLY: wasm
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Build V
         if: runner.os != 'Windows'
@@ -75,7 +63,7 @@ jobs:
         run: ./v retry -- sudo apt install wabt
 
       - name: Setup Wasmer
-        uses: wasmerio/setup-wasmer@v3.1
+        uses: wasmerio/setup-wasmer@24b15c95293d23f89c68bd40dac76338f773e924 # v3.1
         with:
           version: v4.4.0
 

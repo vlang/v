@@ -1,0 +1,70 @@
+vlib/v/checker/tests/forwarded_multi_return_container_slot_err.vv:20:9: error: cannot use `map[string]Item` as type `map[string]Named` in return argument
+   18 | 
+   19 | fn forward_map() (int, map[string]Named) {
+   20 |     return make_map()
+      |            ~~~~~~~~~~
+   21 | }
+   22 |
+vlib/v/checker/tests/forwarded_multi_return_container_slot_err.vv:30:9: error: cannot use `map[string]Item` as type `map[string]Named` in return argument
+   28 | 
+   29 | fn forward_map_result() !(int, map[string]Named) {
+   30 |     return make_map_result()
+      |            ~~~~~~~~~~~~~~~~~
+   31 | }
+   32 |
+vlib/v/checker/tests/forwarded_multi_return_container_slot_err.vv:40:9: error: cannot use `map[string]Item` as type `map[string]Named` in return argument
+   38 | 
+   39 | fn forward_map_option() ?(int, map[string]Named) {
+   40 |     return make_map_option()
+      |            ~~~~~~~~~~~~~~~~~
+   41 | }
+   42 |
+vlib/v/checker/tests/forwarded_multi_return_container_slot_err.vv:50:9: error: cannot use `map[string]u8` as type `map[string]u64` in return argument
+   48 | 
+   49 | fn forward_wide_map() (int, map[string]u64) {
+   50 |     return make_bytes_map()
+      |            ~~~~~~~~~~~~~~~~
+   51 | }
+   52 |
+vlib/v/checker/tests/forwarded_multi_return_container_slot_err.vv:54:9: error: cannot use `map[string]u8` as type `map[string]string` in return argument
+   52 | 
+   53 | fn forward_string_map() (int, map[string]string) {
+   54 |     return make_bytes_map()
+      |            ~~~~~~~~~~~~~~~~
+   55 | }
+   56 |
+vlib/v/checker/tests/forwarded_multi_return_container_slot_err.vv:62:9: error: cannot use `[]u8` as type `[]u64` in return argument
+   60 | 
+   61 | fn forward_wide() (int, []u64) {
+   62 |     return make_bytes()
+      |            ~~~~~~~~~~~~
+   63 | }
+   64 |
+vlib/v/checker/tests/forwarded_multi_return_container_slot_err.vv:66:9: error: cannot use `[]u8` as type `[]string` in return argument
+   64 | 
+   65 | fn forward_strings() (int, []string) {
+   66 |     return make_bytes()
+      |            ~~~~~~~~~~~~
+   67 | }
+   68 |
+vlib/v/checker/tests/forwarded_multi_return_container_slot_err.vv:74:9: error: cannot use `[]u8` as type `[]u64` in return argument
+   72 | 
+   73 | fn forward_wide_result() !(int, []u64) {
+   74 |     return make_bytes_result()
+      |            ~~~~~~~~~~~~~~~~~~~
+   75 | }
+   76 |
+vlib/v/checker/tests/forwarded_multi_return_container_slot_err.vv:82:9: error: cannot use `[][]u8` as type `[][]u64` in return argument
+   80 | 
+   81 | fn forward_wide_rows() (int, [][]u64) {
+   82 |     return make_byte_rows()
+      |            ~~~~~~~~~~~~~~~~
+   83 | }
+   84 |
+vlib/v/checker/tests/forwarded_multi_return_container_slot_err.vv:98:9: error: cannot assign to `wide`: expected `fn () (int, []u64)`, not `fn () (int, []u8)`
+   96 |         return 0, []u64{}
+   97 |     }
+   98 |     wide = make_bytes
+      |            ~~~~~~~~~~
+   99 |     _, _ := wide()
+  100 | }

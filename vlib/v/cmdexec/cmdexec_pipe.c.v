@@ -7,15 +7,9 @@ $if windows {
 
 	fn C.PeekNamedPipe(handle voidptr, buffer voidptr, size i32, bytes_read voidptr, bytes_available voidptr, bytes_left voidptr) bool
 } $else {
-	#include <poll.h>
+	#include "@VMODROOT/vlib/v/cmdexec/cmdexec_poll.h"
 
-	struct C.pollfd {
-		fd      int
-		events  i16
-		revents i16
-	}
-
-	fn C.poll(fds &C.pollfd, nfds u64, timeout int) int
+	fn C.v_cmdexec_poll_revents(fd int, events i16) i16
 }
 
 // read_process_pipe reads without waiting and distinguishes EOF from an empty
@@ -31,7 +25,7 @@ fn read_process_pipe(mut process os.Process, kind os.ChildProcessPipeKind) (stri
 			return '', true
 		}
 		mut available := u32(0)
-		if !C.PeekNamedPipe(handle, 0, 0, 0, &available, 0) {
+		if !C.PeekNamedPipe(handle, 0, 0, 0, voidptr(&available), 0) {
 			return '', true
 		}
 		if available == 0 {
@@ -46,14 +40,11 @@ fn read_process_pipe(mut process os.Process, kind os.ChildProcessPipeKind) (stri
 		}
 		// FIONREAD (used by os.fd_is_pending) reports zero for both an empty
 		// open pipe and EOF. poll also reports the last writer's hangup.
-		mut descriptor := C.pollfd{
-			fd:     fd
-			events: i16(C.POLLIN)
-		}
-		if C.poll(&descriptor, 1, 0) <= 0 {
+		revents := C.v_cmdexec_poll_revents(fd, i16(1))
+		if revents == 0 {
 			return '', false
 		}
-		if descriptor.revents & i16(C.POLLNVAL) != 0 {
+		if revents & i16(0x20) != 0 {
 			return '', true
 		}
 		text, count := os.fd_read(fd, 4096)

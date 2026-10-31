@@ -36,6 +36,6 @@ fn query_defaults_api_probe(buffer gfx.Buffer, image gfx.Image, shader gfx.Shade
 fn main() {}
 ')!
 	command := '${os.quoted_path(@VEXE)} -b c -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}'
-	result := os.execute(command)
+	result := os.exec([@VEXE, '-b', 'c', '-o', output_path, source_path])
 	assert result.exit_code == 0, '${command}\n${result.output}'
 }

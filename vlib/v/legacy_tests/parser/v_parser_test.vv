@@ -370,7 +370,7 @@ type MySum = u8 | u16	// MySum end_comment
 
 // not_MyFnType comment line1
 // MyFnType comment line2
-type MyFnType = fn (msg &char, arg usize)	// MyFnType end_comment
+type MyFnType = fn (msg &char, arg uint)	// MyFnType end_comment
 
 
 // not_MyEnum comment line1

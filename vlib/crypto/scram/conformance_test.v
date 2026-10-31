@@ -12,9 +12,6 @@
 // MongoDB Go driver authenticates with, which agrees on all four messages.
 module scram
 
-import crypto.pbkdf2
-import crypto.sha256
-import crypto.sha512
 import encoding.base64
 import encoding.hex
 
@@ -111,16 +108,32 @@ fn test_hi_matches_the_reference_salted_passwords() {
 	}
 }
 
-// Hi() is PBKDF2 with a single output block, so it must agree with the
-// unrelated implementation already in vlib.
-fn test_hi_agrees_with_crypto_pbkdf2() {
-	password := 'pencil'.bytes()
+// naive_hi is `Hi()` of RFC 5802 §2.2 written directly as a loop over the
+// one-shot `hmac.new`. It is an independent reference for `Mechanism.hi`,
+// which uses `crypto.pbkdf2`.
+fn naive_hi(m Mechanism, password []u8, salt []u8, iterations int) []u8 {
+	mut block := salt.clone()
+	block << [u8(0), 0, 0, 1]
+	mut u := m.hmac(password, block)
+	mut result := u.clone()
+	for _ in 1 .. iterations {
+		u = m.hmac(password, u)
+		for i in 0 .. result.len {
+			result[i] ^= u[i]
+		}
+	}
+	return result
+}
+
+fn test_hi_agrees_with_a_naive_hmac_loop() {
 	salt := hex.decode('4142434445464748')!
-	for iterations in [1, 2, 1000, 4096] {
-		sha256_expected := pbkdf2.key(password, salt, iterations, sha256.size, sha256.new())!
-		assert Mechanism.sha256.hi(password, salt, iterations) == sha256_expected
-		sha512_expected := pbkdf2.key(password, salt, iterations, sha512.size, sha512.new())!
-		assert Mechanism.sha512.hi(password, salt, iterations) == sha512_expected
+	for m in [Mechanism.sha1, .sha256, .sha512] {
+		// passwords shorter and longer than the HMAC block size
+		for password in ['pencil'.bytes(), []u8{len: 200, init: u8(index)}] {
+			for iterations in [1, 2, 1000, 4096] {
+				assert m.hi(password, salt, iterations) == naive_hi(m, password, salt, iterations), '${m.name()} password.len=${password.len} iterations=${iterations}'
+			}
+		}
 	}
 }
 

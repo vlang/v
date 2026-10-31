@@ -1,0 +1,35 @@
+vlib/v/checker/tests/comptime_call_method_mut_arg_err.vv:25:20: error: cannot use `&string` as `&Context` in argument 1 to `App.by_value`
+   23 |     $for method in App.methods {
+   24 |         if method.name == 'by_value' {
+   25 |             app.$method(mut name)
+      |                             ~~~~
+   26 |         }
+   27 |     }
+vlib/v/checker/tests/comptime_call_method_mut_arg_err.vv:34:20: error: cannot use `&Other` as `&Context` in argument 1 to `App.by_value`
+   32 |     $for method in App.methods {
+   33 |         if method.name == 'by_value' {
+   34 |             app.$method(mut o)
+      |                             ^
+   35 |             app.$method(mut other)
+   36 |         }
+vlib/v/checker/tests/comptime_call_method_mut_arg_err.vv:35:20: error: cannot use `&Other` as `&Context` in argument 1 to `App.by_value`
+   33 |         if method.name == 'by_value' {
+   34 |             app.$method(mut o)
+   35 |             app.$method(mut other)
+      |                             ~~~~~
+   36 |         }
+   37 |     }
+vlib/v/checker/tests/comptime_call_method_mut_arg_err.vv:44:20: error: cannot use `&Other` as `&Context` in argument 1 to `App.by_ref`
+   42 |     $for method in App.methods {
+   43 |         if method.name == 'by_ref' {
+   44 |             app.$method(mut o)
+      |                             ^
+   45 |         }
+   46 |     }
+vlib/v/checker/tests/comptime_call_method_mut_arg_err.vv:55:20: error: cannot use `&&&Context` as `&Context` in argument 1 to `App.by_ref`
+   53 |     $for method in App.methods {
+   54 |         if method.name == 'by_ref' {
+   55 |             app.$method(mut ppp)
+      |                             ~~~
+   56 |         }
+   57 |     }

@@ -23,15 +23,15 @@ fn test_github_issue_form_uri_prefills_bug_report_fields() {
 	assert !uri.contains('body=')
 
 	query := urllib.parse_query(uri.all_after('?')) or { panic(err) }
-	assert (query.get('template') or { panic(err) }) == 'bug-report.yml'
-	assert (query.get('description') or { panic(err) }) == report.description
-	assert (query.get('reproduction') or { panic(err) }) == report.reproduction
-	assert (query.get('expected') or { panic(err) }) == report.expected
-	assert (query.get('current') or { panic(err) }) == report.current
-	assert (query.get('solution') or { panic(err) }) == report.solution
-	assert (query.get('context') or { panic(err) }) == report.context
-	assert (query.get('version') or { panic(err) }) == report.version
-	assert (query.get('environment') or { panic(err) }) == report.environment
+	assert (query.get('template') or { panic('missing query field template') }) == 'bug-report.yml'
+	assert (query.get('description') or { panic('missing query field description') }) == report.description
+	assert (query.get('reproduction') or { panic('missing query field reproduction') }) == report.reproduction
+	assert (query.get('expected') or { panic('missing query field expected') }) == report.expected
+	assert (query.get('current') or { panic('missing query field current') }) == report.current
+	assert (query.get('solution') or { panic('missing query field solution') }) == report.solution
+	assert (query.get('context') or { panic('missing query field context') }) == report.context
+	assert (query.get('version') or { panic('missing query field version') }) == report.version
+	assert (query.get('environment') or { panic('missing query field environment') }) == report.environment
 }
 
 fn test_prepare_bug_report_delivery_falls_back_to_local_report_for_large_reports() {

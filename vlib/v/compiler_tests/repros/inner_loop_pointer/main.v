@@ -17,13 +17,14 @@ mut:
 }
 
 fn update_loop(mut g Gen, node Stmt) {
+	node_ref := &node
 	match node {
 		ForCStmt {
 			saved := g.inner_loop
-			g.inner_loop = unsafe { &node }
+			g.inner_loop = node_ref
 			if node.label != '' {
 				unsafe {
-					g.labeled_loops[node.label] = &node
+					g.labeled_loops[node.label] = node_ref
 				}
 			}
 			g.inner_loop = saved

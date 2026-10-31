@@ -1,5 +1,7 @@
 module binary
 
+import math.bits
+
 // Little Endian Tests
 
 fn test_little_endian_u16() {
@@ -152,10 +154,7 @@ fn test_little_endian_u64_at() {
 
 fn test_little_endian_f32_at() {
 	assert little_endian_f32_at([u8(1), 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1], 1) == f32(0)
-	/*
-	assert little_endian_f32_at([u8(0), 5, 4, 9, 1, 7, 3, 6, 8, 0, 0, 0, 0, 0, 0, 0],
-		1).eq_epsilon(0.00000000000000000000000000000000002516)
-		*/
+	assert bits.f32_bits(little_endian_f32_at([u8(0), 5, 4, 9, 1, 7, 3, 6, 8], 1)) == 0x01090405
 }
 
 fn test_little_endian_u64_end() {

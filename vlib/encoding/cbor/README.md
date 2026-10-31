@@ -65,6 +65,15 @@ fn main() {
 Optional fields (`?T`) encode as CBOR `null` when set to `none`. Enums
 encode as their underlying integer.
 
+Embedded structs encode as nested maps under their type names, preserving the
+existing CBOR wire format. Decoding also accepts their promoted fields in the
+containing map, including multi-level embedding. Explicit field names, rename
+strategies, optional values, and skipped fields keep the embedded type's rules.
+Fields declared on the containing struct take precedence over promoted names;
+when a name occurs in multiple embedded structs, the first declared embed is used.
+Mixed nested and flattened entries are applied in wire order, so later entries
+replace earlier values. Ordinary named struct fields remain nested.
+
 ### Struct attributes
 
 ```v oksyntax

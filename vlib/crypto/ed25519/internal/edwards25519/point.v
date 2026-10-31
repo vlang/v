@@ -225,19 +225,8 @@ fn (mut v Point) bytes_generic(mut buf [32]u8) []u8 {
 }
 
 fn copy_field_element(mut buf [32]u8, mut v Element) []u8 {
-	// this fail in test
-	/*
-	copy(mut buf[..], v.bytes())
+	copy(mut buf, v.bytes())
 	return buf[..]
-	*/
-
-	// this pass the test
-	mut out := []u8{len: 32}
-	for i := 0; i <= buf.len - 1; i++ {
-		out[i] = v.bytes()[i]
-	}
-
-	return out
 }
 
 // Conversions.

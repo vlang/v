@@ -43,7 +43,7 @@ fn test_last_write_sent_is_zero_on_failed_write_to_closed_conn() {
 		th.wait()
 		return
 	}
-	assert false, 'write to a closed connection unexpectedly succeeded'
 	l.close() or {}
 	th.wait()
+	assert false, 'write to a closed connection unexpectedly succeeded'
 }

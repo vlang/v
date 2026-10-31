@@ -1,4 +1,4 @@
-import json
+import json2
 
 interface Foo {
 	a int
@@ -11,6 +11,6 @@ struct Bar {
 fn main() {
 	mut foo_mut := Foo(Bar{})
 	if foo_mut is Bar {
-		println(json.encode(foo_mut))
+		println(json2.encode(foo_mut))
 	}
 }

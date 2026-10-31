@@ -41,7 +41,7 @@ fn metal_hook_body(source string, signature string) string {
 }
 
 fn metal_hook_run(command string) string {
-	result := os.execute(command)
+	result := os.exec(os.split_args(command) or { panic(err) })
 	assert result.exit_code == 0, '`${command}` failed (${result.exit_code}):\n${result.output}'
 	return result.output.trim_space()
 }

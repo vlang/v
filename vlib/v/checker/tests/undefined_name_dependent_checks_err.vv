@@ -1,0 +1,82 @@
+struct Expr {
+	x int
+}
+
+struct Holder {
+	expr Expr
+}
+
+fn takes_expr(e Expr) {
+	println(e)
+}
+
+fn takes_error(e IError) {
+	println(e)
+}
+
+// Only the name that does not resolve is reported, not the checks that depend
+// on its type: the `or` block, the uses of the variables declared from it, a
+// method call, a field access, an index, and the assignments of its value.
+fn parse(nested bool) !Expr {
+	if nested {
+		result := parser.expr() or { return err }
+		println(result)
+		return result
+	}
+	return Expr{}
+}
+
+fn method_call(nested bool) {
+	if nested {
+		value := source.method()
+		takes_expr(value)
+		println(value.x + 1)
+	}
+}
+
+fn field_access(nested bool) int {
+	if nested {
+		field := source.field
+		mut e := Expr{}
+		e = field
+		println(e)
+		h := Holder{
+			expr: field
+		}
+		println(h)
+		for item in field.items {
+			println(item)
+		}
+		return field[0]
+	}
+	return 0
+}
+
+fn propagation(nested bool) ?Expr {
+	if nested {
+		first, second := pair.split() or { return none }
+		println(first)
+		println(second)
+		opt := maybe?
+		return opt
+	}
+	return none
+}
+
+fn counter(nested bool) {
+	if nested {
+		count++
+		takes_error(failure)
+		// a check that does not depend on the unresolved name still runs
+		n := 1 + 'a'
+		println(n)
+	}
+}
+
+fn main() {
+	parse(true) or {}
+	method_call(true)
+	field_access(true)
+	propagation(true) or {}
+	counter(true)
+}

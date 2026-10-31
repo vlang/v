@@ -1,0 +1,19 @@
+// The control for the one-letter case: every name here is spelled out, so a check
+// that rejects anything short would be caught here rather than in a real schema.
+
+syntax = "proto3";
+
+package spelled;
+
+message MA {
+  int32 x = 1;
+}
+
+message Message {
+  int32 x = 1;
+}
+
+enum Kind {
+  kind_unspecified = 0;
+  kind_one = 1;
+}

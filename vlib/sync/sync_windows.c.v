@@ -6,6 +6,11 @@ module sync
 #include <synchapi.h>
 #include <time.h>
 
+$if tinyc {
+	// TinyCC's <synchapi.h> leaves out the SRW lock and condition variable functions.
+	#insert "@VEXEROOT/vlib/sync/sync_windows_tcc.h"
+}
+
 fn C.InitializeConditionVariable(voidptr)
 fn C.WakeConditionVariable(voidptr)
 fn C.SleepConditionVariableSRW(voidptr, voidptr, u32, u32) i32

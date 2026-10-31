@@ -1,3 +1,17 @@
+vlib/v/checker/tests/struct_required_fn_field.vv:4:13: warning: unknown attribute `attr1` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+    2 |     f1 int @[required]
+    3 |     f2 int
+    4 |     f3 fn () @[attr1; attr2; required]
+      |                ~~~~~
+    5 | }
+    6 |
+vlib/v/checker/tests/struct_required_fn_field.vv:4:20: warning: unknown attribute `attr2` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+    2 |     f1 int @[required]
+    3 |     f2 int
+    4 |     f3 fn () @[attr1; attr2; required]
+      |                       ~~~~~
+    5 | }
+    6 |
 vlib/v/checker/tests/struct_required_fn_field.vv:12:6: error: field `Abc.f3` must be initialized
    10 |         f3: fn () {}
    11 |     }

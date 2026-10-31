@@ -1,9 +1,21 @@
+@[has_globals]
 module closure
 
 #include <synchapi.h>
-#insert "@VEXEROOT/vlib/builtin/closure/closure_once_windows.h"
 
-fn C.v_closure_init_once(ClosureInitFn)
+$if tinyc {
+	// TinyCC's <synchapi.h> leaves out the SRW lock functions; vlib/sync declares them.
+	#insert "@VEXEROOT/vlib/sync/sync_windows_tcc.h"
+}
+
+// The lock and the flag of the one-time setup are globals of this module, with C
+// initializers, rather than the file-static storage of a C header: every
+// translation unit that includes such a header gets its own copy of them.
+@[cinit]
+__global g_closure_once_lock C.SRWLOCK = C.SRWLOCK_INIT
+
+@[cinit]
+__global g_closure_once_done = false
 
 struct ClosureMutex {
 	closure_mtx C.SRWLOCK
@@ -17,7 +29,7 @@ fn closure_alloc_platform() &u8 {
 }
 
 @[inline]
-fn closure_memory_protect_platform(ptr voidptr, size isize, attr MemoryProtectAtrr) {
+fn closure_memory_protect_platform(ptr voidptr, size int, attr MemoryProtectAtrr) {
 	mut tmp := C.DWORD(0)
 	match attr {
 		.read_exec {
@@ -62,5 +74,10 @@ fn closure_current_thread_id_platform() u64 {
 
 @[inline]
 fn closure_init_once_platform() {
-	C.v_closure_init_once(closure_init_body)
+	C.AcquireSRWLockExclusive(&g_closure_once_lock)
+	if !g_closure_once_done {
+		closure_init_body()
+		g_closure_once_done = true
+	}
+	C.ReleaseSRWLockExclusive(&g_closure_once_lock)
 }

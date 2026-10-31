@@ -42,7 +42,7 @@ fn main() {
 	// 1. Compile examples/veb/veb_example.v (veb uses the fasthttp backend).
 	println('> compiling ${source} ...')
 	compile :=
-		os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(serverexe)} ${os.quoted_path(source)}')
+		os.exec([vexe, '-o', serverexe, source])
 	if compile.exit_code != 0 {
 		fail('veb_example.v failed to compile:\n${compile.output}')
 	}

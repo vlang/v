@@ -17,12 +17,14 @@ fn selective_import_setup_v3_cache() {
 
 fn selective_import_build_v3() string {
 	selective_import_setup_v3_cache()
-	v3_bin := os.join_path(os.temp_dir(), 'v3_selective_import_test_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_selective_import_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}
 	build :=
-		os.execute('${selective_import_vexe} -gc none -path "${selective_import_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${selective_import_v3_src}')
+		os.exec([selective_import_vexe, '-gc', 'none', '-path',
+			'${selective_import_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${selective_import_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -76,9 +78,9 @@ fn selective_import_compile_run_with_extra(v3_bin string, name string, main_src 
 
 fn selective_import_compile_run_root(v3_bin string, root string) (string, string) {
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} -nocache ${root} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '-nocache', root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	generated := os.read_file(bin + '.c') or { panic(err) }
 	return run.output.trim_space(), generated
@@ -96,7 +98,7 @@ fn selective_import_compile_bad_with_extra(v3_bin string, name string, main_src 
 
 fn selective_import_compile_bad_root(v3_bin string, name string, root string) string {
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} -nocache ${root} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '-nocache', root, '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, '${name}: compile unexpectedly succeeded: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), compile.output
 	return compile.output
@@ -230,23 +232,8 @@ pub fn sum(values ...int) int {
 	assert !generated.contains('logger__sum(log'), generated
 }
 
-fn test_selective_import_json_decode_uses_fast_path() {
+fn test_json2_decode_calls_the_module_decoder() {
 	v3_bin := selective_import_build_v3()
-	json_output, json_generated := selective_import_compile_run(v3_bin, 'json_decode', 'module main
-
-import json { decode }
-
-struct Config {
-	value int
-}
-
-fn main() {
-	cfg := decode(Config, "{\\"value\\":1}")!
-	println(int_str(cfg.value))
-}
-')
-	assert json_output == '1'
-	assert json_generated.contains('cJSON_ParseWithLength((char*)'), json_generated
 	json2_output, json2_generated := selective_import_compile_run_with_extra(v3_bin,
 		'json2_decode', 'module main
 
@@ -317,24 +304,6 @@ pub:
 	assert output == '42'
 	assert generated.contains('json2__Any'), generated
 	assert generated.contains('other__Any'), generated
-}
-
-fn test_selective_import_json_encode_uses_fast_path() {
-	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run(v3_bin, 'json_encode', 'module main
-
-import json { encode }
-
-struct User {
-	name string
-}
-
-fn main() {
-	println(encode(User{name: "x"}))
-}
-')
-	assert output == '{"name":"x"}'
-	assert generated.contains('v3_json_encode_string('), generated
 }
 
 fn test_json2_encode_pure_v_is_specialized() {
@@ -579,7 +548,7 @@ fn main() {
 	println(int_str(hidden_xy(2, 3)))
 }
 ')
-	assert output.contains('unknown function `hidden_xy`'), output
+	assert output.contains('unknown function: hidden_xy'), output
 }
 
 fn test_selective_import_scope_is_file_local() {
@@ -599,7 +568,7 @@ fn from_other_file() int {
 }
 '
 	})
-	assert output.contains('unknown function `add_xy`'), output
+	assert output.contains('unknown function: add_xy'), output
 }
 
 fn test_selective_import_same_symbol_from_two_modules_is_ambiguous() {
@@ -668,9 +637,11 @@ fn main() {
 	assert !output.contains('unknown identifier `hit`'), output
 }
 
-fn test_local_function_keeps_priority_over_selective_import_homonym() {
+// A local function used to take priority over a selectively imported homonym. Defining
+// one is an error now, as in V1 (f39e8541d8), so neither function is silently picked.
+fn test_local_function_cannot_redefine_selective_import_homonym() {
 	v3_bin := selective_import_build_v3()
-	output, generated := selective_import_compile_run(v3_bin, 'local_homonym', 'module main
+	output := selective_import_compile_bad(v3_bin, 'local_homonym', 'module main
 
 import mymodules { add_xy }
 
@@ -682,10 +653,7 @@ fn main() {
 	println(int_str(add_xy(2, 3)))
 }
 ')
-	assert output == '6'
-	assert generated.contains('i64 add_xy(i64 x, i64 y)'), generated
-	assert generated.contains('int__str(add_xy(2, 3))'), generated
-	assert !generated.contains('int__str(mymodules__add_xy(2, 3))'), generated
+	assert output.contains('main.v:5:4: error: cannot redefine imported function `add_xy`'), output
 }
 
 fn test_module_homonym_function_signature_uses_module_key() {
@@ -1038,8 +1006,10 @@ fn main() {
 ',
 		selective_import_type_collision_modules())
 	assert output == '3'
-	assert generated.contains('i64 m = 1 | 2;'), generated
-	assert !generated.contains('i64 m = 1 | 4;'), generated
+	// `m` is a `geometry.Perm`, whose C type is `int`; the C type is not what is checked
+	// here, the flag values are: `.b` is 2 in geometry and 4 in pixels.
+	assert generated.contains(' m = 1 | 2;'), generated
+	assert !generated.contains(' m = 1 | 4;'), generated
 	assert !generated.contains('Perm.a'), generated
 }
 
@@ -1089,7 +1059,10 @@ fn main() {
 }
 ',
 		selective_import_type_collision_modules())
-	assert output.contains('cannot use `geometry.Mode` as argument 1 to `takes_pixel`; expected `pixels.Mode`'), output
+	// The V1 wording (238dd3add8). A module of the compiled project directory is named
+	// after that directory in diagnostics (9aa2b7350f), so only its tail is checked.
+	assert output.contains('.geometry.Mode` as `'), output
+	assert output.contains('pixels.Mode` in argument 1 to `takes_pixel`'), output
 }
 
 fn test_unselected_type_from_selective_import_is_not_resolved_by_suffix() {

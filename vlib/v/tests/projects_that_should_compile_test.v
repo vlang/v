@@ -48,7 +48,7 @@ fn setup_module_resolution_workdir_fixture() string {
 
 fn vrun_ok(options string, path string) string {
 	cmd := '${os.quoted_path(@VEXE)} ${options} ${os.quoted_path(path)}'
-	res := os.execute(cmd)
+	res := os.exec([@VEXE, ...(os.split_args(options) or { panic(err) }), path])
 	if res.exit_code != 0 {
 		eprintln('> failing vrun cmd: ${cmd}')
 		eprintln('> output:\n${res.output}')
@@ -82,7 +82,7 @@ fn test_running_subdir_project_with_parent_vmod_works() {
 		os.chdir(old_dir) or {}
 	}
 	os.chdir(root)!
-	res := os.execute('${os.quoted_path(@VEXE)} run hexagonal')
+	res := os.exec([@VEXE, 'run', 'hexagonal'])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == 'built'
 }
@@ -107,7 +107,7 @@ fn test_running_module_with_same_module_subdirs_setting_works() {
 		os.chdir(old_dir) or {}
 	}
 	os.chdir(root)!
-	res := os.execute('${os.quoted_path(@VEXE)} run app/main.v')
+	res := os.exec([@VEXE, 'run', 'app/main.v'])
 	assert res.exit_code == 0, res.output
 	assert res.output.trim_space() == '42'
 }
@@ -167,7 +167,7 @@ pub fn (mut app App) ci_runs(mut ctx Context) veb.Result {
 		os.chdir(old_dir) or {}
 	}
 	os.chdir(root)!
-	res := os.execute('${os.quoted_path(@VEXE)} .')
+	res := os.exec([@VEXE, '.'])
 	assert res.exit_code == 0, res.output
 }
 
@@ -236,6 +236,164 @@ fn test_custom_print_should_compile_with_no_builtin() {
 		os.rm(source_path) or {}
 		os.rm(output_path) or {}
 	}
+	_ = vrun_ok('-o ${os.quoted_path(output_path)} -no-builtin', source_path)
+	assert os.exists(output_path)
+}
+
+// Without builtin there is no `IError`, so option/result wrappers have no `err`
+// field. `or {}` blocks, if-guard `else` branches, `?`/`!` propagation and `none`
+// must neither bind nor copy one (issue #28887).
+fn test_option_or_blocks_should_compile_and_run_with_no_builtin() {
+	$if windows {
+		return
+	}
+	source_path := os.join_path(os.vtmp_dir(), 'option_or_no_builtin_${os.getpid()}.v')
+	source := "module main
+
+fn C.printf(fmt &char, ...) int
+
+struct Holder {
+mut:
+	v ?int
+}
+
+fn opt(ok bool) ?int {
+	if ok {
+		return 7
+	}
+	return none
+}
+
+fn res(ok bool) !int {
+	return if ok { 8 } else { 80 }
+}
+
+fn pair(ok bool) ?(int, int) {
+	if ok {
+		return 1, 2
+	}
+	return none
+}
+
+fn prop(ok bool) ?int {
+	x := opt(ok)?
+	return x + 1
+}
+
+fn prop_res(ok bool) !int {
+	x := res(ok)!
+	return x + 1
+}
+
+fn stmt_or(ok bool) int {
+	opt(ok) or { return -1 }
+	return 1
+}
+
+fn guard_value(ok bool) int {
+	return if v := opt(ok) { v } else { -1 }
+}
+
+fn main() {
+	a := opt(true) or { 0 }
+	b := opt(false) or { 0 }
+	c := res(false) or { 5 }
+	d := opt(false) or {
+		y := 3
+		y + 1
+	}
+	p, q := pair(false) or { 9, 10 }
+	r := prop(true) or { -1 }
+	s := prop(false) or { -1 }
+	u := prop_res(false) or { -2 }
+	mut g := 0
+	if v := opt(false) {
+		g = v
+	} else {
+		g = -1
+	}
+	mut h := Holder{}
+	h.v = none
+	hv := h.v or { 11 }
+	C.printf(c'%d %d %d %d %d %d %d %d %d %d %d %d %d %d\\n', a, b, c, d, p, q, r, s, u, g,
+		stmt_or(false), guard_value(true), guard_value(false), hv)
+}
+"
+	os.write_file(source_path, source)!
+	defer {
+		os.rm(source_path) or {}
+	}
+	res := vrun_ok('-new-compiler -gc none -no-builtin run', source_path)
+	assert res.trim_space() == '7 0 80 4 9 10 8 -1 81 -1 -1 7 -1 11'
+}
+
+// With no `IError` there is no implicit `err` either, so using it is a checker
+// error instead of generated C that reads an absent field (issue #28887).
+fn test_implicit_err_is_undefined_with_no_builtin() {
+	source_path := os.join_path(os.vtmp_dir(), 'implicit_err_no_builtin_${os.getpid()}.v')
+	output_path := os.join_path(os.vtmp_dir(), 'implicit_err_no_builtin_${os.getpid()}.c')
+	source := [
+		'fn foo() ?int {',
+		'\treturn 1',
+		'}',
+		'',
+		'fn main() {',
+		'\tfoo() or {',
+		'\t\t_ = err',
+		'\t\treturn',
+		'\t}',
+		'}',
+	].join_lines()
+	os.write_file(source_path, source)!
+	defer {
+		os.rm(source_path) or {}
+		os.rm(output_path) or {}
+	}
+	res :=
+		os.exec([@VEXE, '-new-compiler', '-gc', 'none', '-no-builtin', '-o', output_path, source_path])
+	assert res.exit_code != 0, res.output
+	assert res.output.contains('undefined ident: `err`'), res.output
+}
+
+// https://github.com/vlang/v/issues/28886
+fn test_enum_shorthand_match_branches_should_compile_with_no_builtin() {
+	source_path := os.join_path(os.vtmp_dir(), 'enum_shorthand_match_no_builtin_${os.getpid()}.v')
+	output_path := os.join_path(os.vtmp_dir(), 'enum_shorthand_match_no_builtin_${os.getpid()}.c')
+	source := [
+		'enum Foo {',
+		'\tfoo',
+		'\tbar',
+		'}',
+		'',
+		'fn foo(value int) Foo {',
+		'\treturn match value {',
+		'\t\t0 { .foo }',
+		'\t\telse { .bar }',
+		'\t}',
+		'}',
+		'',
+		'fn take(f Foo) int {',
+		'\treturn int(f)',
+		'}',
+		'',
+		'fn main() {',
+		'\tmut f := foo(1)',
+		'\tf = match int(f) {',
+		'\t\t0 { .bar }',
+		'\t\telse { .foo }',
+		'\t}',
+		'\t_ = take(match int(f) {',
+		'\t\t0 { .foo }',
+		'\t\telse { .bar }',
+		'\t})',
+		'}',
+	].join_lines()
+	os.write_file(source_path, source)!
+	defer {
+		os.rm(source_path) or {}
+		os.rm(output_path) or {}
+	}
+	_ = vrun_ok('-check -no-builtin', source_path)
 	_ = vrun_ok('-o ${os.quoted_path(output_path)} -no-builtin', source_path)
 	assert os.exists(output_path)
 }

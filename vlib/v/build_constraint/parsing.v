@@ -55,6 +55,10 @@ fn (mut p BParser) and_expr() !BAnd {
 	}
 }
 
+fn unary_reference(value BUnary) &BUnary {
+	return &value
+}
+
 fn (mut p BParser) unary_expr() !BUnary {
 	t := p.peek(0)
 	match t.kind {
@@ -72,12 +76,12 @@ fn (mut p BParser) unary_expr() !BUnary {
 			if nt.kind in [.tfact, .tdefine] {
 				ident := p.unary_expr()!
 				return BNot{
-					expr: ident
+					expr: unary_reference(BUnary(ident))
 				}
 			}
 			expr := p.expr()!
 			return BNot{
-				expr: expr
+				expr: unary_reference(BUnary(expr))
 			}
 		}
 		.tparen_open {

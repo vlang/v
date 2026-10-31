@@ -10,6 +10,14 @@ fn test_decode_rfc1421() {
 	}
 }
 
+fn test_decode_rfc1421_with_crlf() {
+	for i in 0 .. test_data_rfc1421.len {
+		decoded, rest := decode(test_data_rfc1421[i].replace('\n', '\r\n')) or { Block{}, '' }
+		assert decoded == expected_results_rfc1421[i]
+		assert rest == ''
+	}
+}
+
 fn test_decode() {
 	for i in 0 .. test_data.len {
 		decoded, rest := decode(test_data[i]) or { Block{}, '' }

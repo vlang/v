@@ -1,0 +1,26 @@
+vlib/v/parser/tests/sum_type_named_variant_decl_err.vv:1:25: error: invalid sum type variant `string`: sum type `Mixed` has named variants, so each variant must be a capitalized name with an optional payload, e.g. `Value(string)`
+    1 | type Mixed = Num(int) | string
+      |                         ~~~~~~
+    2 | 
+    3 | type Dup = Count(int) | Count(string)
+vlib/v/parser/tests/sum_type_named_variant_decl_err.vv:3:25: error: duplicate sum type variant `Count` in `Dup`
+    1 | type Mixed = Num(int) | string
+    2 | 
+    3 | type Dup = Count(int) | Count(string)
+      |                         ~~~~~
+    4 | 
+    5 | type Lower = count(int) | Empty
+vlib/v/parser/tests/sum_type_named_variant_decl_err.vv:5:14: error: invalid sum type variant name `count`: variant names must start with a capital letter
+    3 | type Dup = Count(int) | Count(string)
+    4 | 
+    5 | type Lower = count(int) | Empty
+      |              ~~~~~
+    6 | 
+    7 | type Parens = Empty() | Full(int)
+vlib/v/parser/tests/sum_type_named_variant_decl_err.vv:7:15: error: invalid sum type variant `Empty()`: a variant without a payload is written without parentheses, e.g. `Empty`
+    5 | type Lower = count(int) | Empty
+    6 | 
+    7 | type Parens = Empty() | Full(int)
+      |               ~~~~~~~
+    8 | 
+    9 | fn main() {

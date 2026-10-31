@@ -9,9 +9,10 @@ pub type SymbolId = u32
 @[heap]
 struct SymbolInterner {
 mut:
-	lock  &sync.Mutex = unsafe { nil }
-	names []string
-	ids   map[string]SymbolId
+	lock   &sync.Mutex = unsafe { nil }
+	names  []string
+	ids    map[string]SymbolId
+	recent [128]SymbolId
 }
 
 fn new_symbol_interner() &SymbolInterner {
@@ -29,14 +30,26 @@ fn (mut i SymbolInterner) intern(name string) (SymbolId, string) {
 	defer {
 		i.lock.unlock()
 	}
+	// Cache identities only: input storage can be a disposable or reused buffer.
+	// Checking the canonical bytes makes pointer reuse and hash collisions safe.
+	slot := int((uint(name.str) >> 4 ^ uint(name.len)) & 127)
+	recent := i.recent[slot]
+	if recent != 0 {
+		canonical := i.names[int(recent) - 1]
+		if canonical.len == name.len && (canonical.str == name.str || canonical == name) {
+			return recent, canonical
+		}
+	}
 	if id := i.ids[name] {
+		i.recent[slot] = id
 		return id, i.names[int(id) - 1]
 	}
-	canonical := name.clone()
 	id := SymbolId(i.names.len + 1)
-	i.names << canonical
+	i.names << name.clone()
+	canonical := i.names.last()
 	i.ids[canonical] = id
-	return id, i.names.last()
+	i.recent[slot] = id
+	return id, canonical
 }
 
 fn (mut i SymbolInterner) name(id SymbolId) string {
@@ -81,9 +94,8 @@ fn (mut i SymbolInterner) promote_from(start int, scope voidptr) {
 	mut names := []string{cap: i.names.len}
 	mut ids := map[string]SymbolId{}
 	for idx, name in i.names {
-		canonical := name.clone()
-		names << canonical
-		ids[canonical] = SymbolId(idx + 1)
+		names << name.clone()
+		ids[names.last()] = SymbolId(idx + 1)
 	}
 	i.names = names
 	i.ids = ids.move()

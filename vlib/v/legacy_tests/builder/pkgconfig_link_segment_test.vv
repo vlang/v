@@ -496,7 +496,7 @@ fn test_static_pkgconfig_split_version_script_with_spaced_operand_links_direct_a
 		direct_args << ordered_args
 		direct_args << ['-o', direct_output]
 		direct_command := '${os.quoted_path(gcc)} ${direct_args.map(shell_safe_cc_arg(it)).join(' ')}'
-		direct_link := os.execute(direct_command)
+		direct_link := os.exec([gcc, direct_args.map(shell_safe_cc_arg(it)).join(' ')])
 		assert direct_link.exit_code == 0, direct_link.output
 		assert issue74_run_tool(direct_output, [], root).exit_code == 0
 
@@ -688,7 +688,7 @@ fn test_static_pkgconfig_quoted_search_path_links_direct_and_response_file() {
 		direct_args << ordered_args
 		direct_args << ['-o', direct_output]
 		direct_command := '${os.quoted_path(gcc)} ${direct_args.map(shell_safe_cc_arg(it)).join(' ')}'
-		direct_link := os.execute(direct_command)
+		direct_link := os.exec([gcc, direct_args.map(shell_safe_cc_arg(it)).join(' ')])
 		assert direct_link.exit_code == 0, direct_link.output
 		assert issue74_run_tool(direct_output, [], root).exit_code == 0
 
@@ -742,7 +742,7 @@ fn test_static_pkgconfig_raw_spaced_colon_archive_links_direct_and_response_file
 		direct_args << ordered_args
 		direct_args << ['-o', direct_output]
 		direct_command := '${os.quoted_path(gcc)} ${direct_args.map(shell_safe_cc_arg(it)).join(' ')}'
-		direct_link := os.execute(direct_command)
+		direct_link := os.exec([gcc, direct_args.map(shell_safe_cc_arg(it)).join(' ')])
 		assert direct_link.exit_code == 0, direct_link.output
 		assert issue74_run_tool(direct_output, [], root).exit_code == 0
 
@@ -795,7 +795,7 @@ fn test_static_pkgconfig_spaced_wl_rpath_links_direct_and_response_file() {
 		direct_args << ordered_args
 		direct_args << ['-o', direct_output]
 		direct_command := '${os.quoted_path(gcc)} ${direct_args.map(shell_safe_cc_arg(it)).join(' ')}'
-		direct_link := os.execute(direct_command)
+		direct_link := os.exec([gcc, direct_args.map(shell_safe_cc_arg(it)).join(' ')])
 		assert direct_link.exit_code == 0, direct_link.output
 		assert issue74_run_tool(direct_output, [], root).exit_code == 0
 		direct_dynamic := issue74_run_tool(readelf, ['-d', direct_output], root)

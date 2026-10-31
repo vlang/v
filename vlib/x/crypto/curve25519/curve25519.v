@@ -210,7 +210,7 @@ pub interface Derivator {
 // RawDerivator was a simple derivator with no derivation behaviour.
 struct RawDerivator {}
 
-fn (rd RawDerivator) derive(sec []u8, opt DeriveOpts) ![]u8 {
+fn (rd RawDerivator) derive(sec []u8, _opt DeriveOpts) ![]u8 {
 	return sec
 }
 

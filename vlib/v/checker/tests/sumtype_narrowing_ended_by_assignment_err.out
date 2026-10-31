@@ -1,0 +1,63 @@
+vlib/v/checker/tests/sumtype_narrowing_ended_by_assignment_err.vv:11:14: error: cannot use operator `+` with `Val`
+    9 |     if mut b.v is int {
+   10 |         b.v = 'str'
+   11 |         return b.v + 1
+      |                    ^
+   12 |     }
+   13 |     return 0
+vlib/v/checker/tests/sumtype_narrowing_ended_by_assignment_err.vv:11:10: error: cannot use `Val` as type `int` in return argument
+    9 |     if mut b.v is int {
+   10 |         b.v = 'str'
+   11 |         return b.v + 1
+      |                ~~~~~~~
+   12 |     }
+   13 |     return 0
+vlib/v/checker/tests/sumtype_narrowing_ended_by_assignment_err.vv:19:14: error: cannot use operator `+` with `Val`
+   17 |     if mut b.v is int {
+   18 |         b.v = Val(5)
+   19 |         return b.v + 1
+      |                    ^
+   20 |     }
+   21 |     return 0
+vlib/v/checker/tests/sumtype_narrowing_ended_by_assignment_err.vv:19:10: error: cannot use `Val` as type `int` in return argument
+   17 |     if mut b.v is int {
+   18 |         b.v = Val(5)
+   19 |         return b.v + 1
+      |                ~~~~~~~
+   20 |     }
+   21 |     return 0
+vlib/v/checker/tests/sumtype_narrowing_ended_by_assignment_err.vv:28:15: error: cannot use operator `+` with `Val`
+   26 |         if c {
+   27 |             b.v = 'str'
+   28 |             return b.v + 1
+      |                        ^
+   29 |         }
+   30 |     }
+vlib/v/checker/tests/sumtype_narrowing_ended_by_assignment_err.vv:28:11: error: cannot use `Val` as type `int` in return argument
+   26 |         if c {
+   27 |             b.v = 'str'
+   28 |             return b.v + 1
+      |                    ~~~~~~~
+   29 |         }
+   30 |     }
+vlib/v/checker/tests/sumtype_narrowing_ended_by_assignment_err.vv:39:13: error: cannot use operator `+` with `Val`
+   37 |         for c {
+   38 |             x = 'str'
+   39 |             return x + 1
+      |                      ^
+   40 |         }
+   41 |     }
+vlib/v/checker/tests/sumtype_narrowing_ended_by_assignment_err.vv:39:11: error: cannot use `Val` as type `int` in return argument
+   37 |         for c {
+   38 |             x = 'str'
+   39 |             return x + 1
+      |                    ~~~~~
+   40 |         }
+   41 |     }
+vlib/v/checker/tests/sumtype_narrowing_ended_by_assignment_err.vv:49:15: error: field `len` does not exist or have the same type in these sumtype `Val` variants:
+   47 |         string {
+   48 |             b.v = 5
+   49 |             return b.v.len
+      |                        ~~~
+   50 |         }
+   51 |         int {

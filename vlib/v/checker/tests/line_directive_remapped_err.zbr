@@ -1,0 +1,4 @@
+total = 0
+for item in items
+    total = total + item.price
+print(totl)

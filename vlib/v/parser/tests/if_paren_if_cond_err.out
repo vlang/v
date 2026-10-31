@@ -1,0 +1,6 @@
+vlib/v/parser/tests/if_paren_if_cond_err.vv:2:6: error: the condition of an `if` cannot start with a parenthesized `if` expression; assign it to a variable first
+    1 | fn pick(enabled bool, other bool) int {
+    2 |     if (if enabled {
+      |         ~~
+    3 |         other
+    4 |     } else {

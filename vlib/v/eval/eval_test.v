@@ -631,7 +631,7 @@ fn test_eval_array_init_adapts_sum_elements() {
 type Any = int | string
 
 fn main() {
-	xs := []Any{1, "s"}
+	xs := [Any(1), "s"]
 	ys := []Any{len: 2, init: 1}
 	println(int_str(xs[0]._typ))
 	println(int_str(xs[1]._typ))
@@ -1916,6 +1916,25 @@ fn main() {
 	assert e.stdout() == '0\n10\n'
 }
 
+fn test_eval_escaped_reference_to_plain_keyword_enum_member() {
+	mut e := create()
+	e.run_text('
+enum E {
+	first
+	struct = 7
+}
+
+fn main() {
+	println(int_str(E.@struct))
+	match E.@struct {
+		.@struct { println("seven") }
+		else { println("wrong") }
+	}
+}
+') or { panic(err) }
+	assert e.stdout() == '7\nseven\n'
+}
+
 fn test_eval_enum_selector_preserves_sum_variant_type() {
 	mut e := create()
 	e.run_text('
@@ -2967,7 +2986,7 @@ fn main() {
 	assert e.stdout() == 'none\n'
 }
 
-fn test_eval_or_block_binds_err() {
+fn test_eval_option_or_block_preserves_outer_err() {
 	mut e := create()
 	e.run_text('
 fn maybe() ?int {
@@ -2975,16 +2994,16 @@ fn maybe() ?int {
 }
 
 fn main() {
+	err := "outer"
 	maybe() or {
-		_ := err
-		println("handled")
+		println(err)
 		return
 	}
 }
 	') or {
 		panic(err)
 	}
-	assert e.stdout() == 'handled\n'
+	assert e.stdout() == 'outer\n'
 }
 
 fn test_eval_or_block_return_propagates_from_for_in_header() {
@@ -4002,7 +4021,8 @@ fn main() {
 fn test_v3_eval_backend_cli() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_eval_backend_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-compile-backend', 'eval,wasm,arm64', '-path',
+			'${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 	src := os.join_path(os.temp_dir(), 'v3_eval_backend_sample.v')
 	os.write_file(src, '
@@ -4020,7 +4040,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	result := os.execute('${v3_bin} ${src} -b eval')
+	result := os.exec([v3_bin, '${src}', '-b', 'eval'])
 	assert result.exit_code == 0
 	assert result.output.contains('21\n8\n512\n')
 
@@ -4032,7 +4052,7 @@ fn main() {
 			unsupported_src := os.join_path(os.temp_dir(),
 				'v3_${backend}_unsupported_power_${operator.len}.v')
 			os.write_file(unsupported_src, 'fn main() {\n\t${expression}\n}\n') or { panic(err) }
-			unsupported := os.execute('${v3_bin} -b ${backend} ${unsupported_src}')
+			unsupported := os.exec([v3_bin, '-b', '${backend}', '${unsupported_src}'])
 			assert unsupported.exit_code != 0
 			assert unsupported.output.contains('operator `${operator}` is not supported by the V3 ${backend} backend'), unsupported.output
 		}
@@ -4041,7 +4061,7 @@ fn main() {
 			'enum Powered {\n\ta = 2 ** 3\n}\n\nfn main() {\n\tprintln(Powered.a)\n}\n') or {
 			panic(err)
 		}
-		enum_result := os.execute('${v3_bin} -b ${backend} ${enum_src}')
+		enum_result := os.exec([v3_bin, '-b', '${backend}', '${enum_src}'])
 		assert enum_result.exit_code != 0, enum_result.output
 		assert enum_result.output.contains('operator `**` is not supported by the V3 ${backend} backend'), enum_result.output
 		inactive_src := os.join_path(os.temp_dir(), 'v3_${backend}_inactive_generic_power.v')
@@ -4058,12 +4078,12 @@ fn main() {
 }
 '
 		os.write_file(inactive_src, inactive_code) or { panic(err) }
-		inactive := os.execute('${v3_bin} -b ${backend} ${inactive_src}')
+		inactive := os.exec([v3_bin, '-b', '${backend}', '${inactive_src}'])
 		assert inactive.exit_code == 0, inactive.output
 		assert !inactive.output.contains('operator `**` is not supported by the V3 ${backend} backend'), inactive.output
 		active_src := os.join_path(os.temp_dir(), 'v3_${backend}_active_generic_power.v')
 		os.write_file(active_src, inactive_code.replace('[string]', '[int]')) or { panic(err) }
-		active := os.execute('${v3_bin} -b ${backend} ${active_src}')
+		active := os.exec([v3_bin, '-b', '${backend}', '${active_src}'])
 		assert active.exit_code != 0, active.output
 		assert active.output.contains('operator `**` is not supported by the V3 ${backend} backend'), active.output
 		for name, consts in {
@@ -4080,7 +4100,7 @@ fn main() {
 			os.write_file(const_src, '${consts}\n\nfn main() {\n\t${const_use}\n}\n') or {
 				panic(err)
 			}
-			const_result := os.execute('${v3_bin} -b ${backend} ${const_src}')
+			const_result := os.exec([v3_bin, '-b', '${backend}', '${const_src}'])
 			assert const_result.exit_code != 0, const_result.output
 			assert const_result.output.contains('operator `**` is not supported by the V3 ${backend} backend'), const_result.output
 		}
@@ -4098,7 +4118,7 @@ fn main() {
 			os.write_file(global_src, '${declarations}\n\nfn main() {\n\t${global_use}\n}\n') or {
 				panic(err)
 			}
-			global_result := os.execute('${v3_bin} -enable-globals -b ${backend} ${global_src}')
+			global_result := os.exec([v3_bin, '-enable-globals', '-b', '${backend}', '${global_src}'])
 			assert global_result.exit_code != 0, global_result.output
 			assert global_result.output.contains('operator `**` is not supported by the V3 ${backend} backend'), global_result.output
 		}
@@ -4107,8 +4127,20 @@ fn main() {
 			'const v3_unreachable_power_const_27908 = 2 ** 3\n\nfn main() {\n\tv3_unreachable_power_const_27908 := 1\n\tprintln(v3_unreachable_power_const_27908)\n}\n') or {
 			panic(err)
 		}
-		shadowed := os.execute('${v3_bin} -b ${backend} ${shadowed_src}')
+		shadowed := os.exec([v3_bin, '-b', '${backend}', '${shadowed_src}'])
 		assert shadowed.exit_code == 0, shadowed.output
 		assert !shadowed.output.contains('operator `**` is not supported by the V3 ${backend} backend'), shadowed.output
 	}
+}
+
+fn test_eval_os_exec_accepts_literal_argument_arrays() {
+	mut e := create()
+	e.run_text('import os
+fn main() {
+ result := os.exec(["${vexe}", "version"])
+ println(result.exit_code)
+ println(result.output.starts_with("V "))
+}
+') or { panic(err) }
+	assert e.stdout() == '0\ntrue\n'
 }

@@ -10,7 +10,9 @@ fn test_imported_sum_map_assignment_wraps_concrete_struct_value() {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_imported_sum_map_test_${pid}')
 	build :=
-		os.execute('${imported_sum_map_vexe} -gc none -path "${imported_sum_map_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${imported_sum_map_v3_src}')
+		os.exec([imported_sum_map_vexe, '-gc', 'none', '-path',
+			'${imported_sum_map_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${imported_sum_map_v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	root := os.join_path(os.temp_dir(), 'v3_imported_sum_map_project_${pid}')
@@ -64,9 +66,9 @@ fn main() {
 	}
 
 	out := os.join_path(os.temp_dir(), 'v3_imported_sum_map_out_${pid}')
-	compile := os.execute('${v3_bin} -o ${out} ${main_path}')
+	compile := os.exec([v3_bin, '-o', '${out}', main_path])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '42'
 }

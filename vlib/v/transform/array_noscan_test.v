@@ -1,0 +1,63 @@
+module transform
+
+import v.flat
+import v.types
+
+fn test_array_new_selects_noscan_for_scalar_elements() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases.set_id(flat.source_type_id('ScalarAlias'), flat.source_type_f64)
+	tc.type_aliases.set_id(flat.source_type_id('ScalarAliasChain'), flat.source_type_id('ScalarAlias'))
+	mut t := new_transformer(mut a, &tc, {
+		'main': true
+	})
+	len_expr := t.make_int_literal(3)
+	cap_expr := t.make_int_literal(7)
+	for elem_type in ['f64', 'f32', 'int', 'u8', 'bool', 'char', 'rune', 'uint', 'ScalarAlias',
+		'ScalarAliasChain', '?f64'] {
+		id := t.make_array_new_call(flat.source_type_id(elem_type), len_expr, cap_expr)
+		call := a.nodes[int(id)]
+		assert call.kind == .call
+		assert call.typ_text() == '[]${elem_type}'
+		assert a.child_node(&call, 0).value == '__new_array_noscan'
+		// __new_array_noscan takes len/cap/size, unlike array_new's size/len/cap.
+		assert a.child(&call, 1) == len_expr
+		assert a.child(&call, 2) == cap_expr
+		assert a.child_node(&call, 3).kind == .sizeof_expr
+		assert a.child_node(&call, 3).source_value_id() == flat.source_type_id(elem_type)
+	}
+	assert t.used_fns['__new_array_noscan']
+	enum_type := types.Type(types.Enum{ name_id: flat.source_type_id('ScalarEnum') })
+	assert !tc.allocation_layout(enum_type).has(.scanned)
+}
+
+fn test_array_new_keeps_pointer_bearing_and_unknown_elements_scanned() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.type_aliases.set_id(flat.source_type_id('PointerAlias'), flat.source_type_id('&f64'))
+	tc.structs[flat.source_type_id('PointerValue')] = [types.StructField{
+		name: 'pointer'
+		typ:  *tc.parse_type(flat.source_type_id('&f64'))
+	}]
+	mut t := new_transformer(mut a, &tc, {
+		'main': true
+	})
+	len_expr := t.make_int_literal(2)
+	cap_expr := t.make_int_literal(5)
+	for elem_type in ['[]f64', 'string', '&f64', 'voidptr', 'PointerAlias', 'PointerValue',
+		'map[string]int', 'fn ()', 'shared int', 'UnresolvedElement'] {
+		id := t.make_array_new_call(flat.source_type_id(elem_type), len_expr, cap_expr)
+		call := a.nodes[int(id)]
+		assert a.child_node(&call, 0).value == 'array_new'
+		assert a.child_node(&call, 1).kind == .sizeof_expr
+		expected_size_type := if elem_type == 'shared int' {
+			'&void'
+		} else {
+			elem_type
+		}
+		assert a.child_node(&call, 1).source_value_id() == flat.source_type_id(expected_size_type)
+		assert a.child(&call, 2) == len_expr
+		assert a.child(&call, 3) == cap_expr
+	}
+	assert !t.used_fns['__new_array_noscan']
+}

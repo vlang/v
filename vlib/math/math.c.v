@@ -3,8 +3,6 @@
 // that can be found in the LICENSE file.
 module math
 
-#include <math.h>
-
 $if windows {
 	$if tinyc {
 		#flag @VEXEROOT/thirdparty/tcc/lib/openlibm.o

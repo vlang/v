@@ -36,8 +36,8 @@ fn test_crun_simple_v_program_several_times() {
 	dump(times)
 	assert times.first() > times.last() * 2 // cruns compile just once, if the source file is not changed
 	$if !windows {
-		os.system('ls -la ${crun_folder}')
-		os.system('find ${crun_folder}')
+		os.system_args(['ls', '-la', '${crun_folder}'])
+		os.system_args(['find', '${crun_folder}'])
 	}
 }
 
@@ -84,7 +84,7 @@ fn write_c_source_module(module_dir string, prefix string, count int) ! {
 fn vcrun(target string) os.Result {
 	cmd := '${os.quoted_path(vexe)} crun ${os.quoted_path(target)}'
 	eprintln('now: ${time.now().format_ss_milli()} | cmd: ${cmd}')
-	res := os.execute(cmd)
+	res := os.exec([vexe, 'crun', '${target}'])
 	assert res.exit_code == 0
 	return res
 }

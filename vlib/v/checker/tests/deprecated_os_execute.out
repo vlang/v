@@ -1,0 +1,62 @@
+vlib/v/checker/tests/deprecated_os_execute.vv:6:6: warning: function `execute` has been deprecated; use os.exec with an argument array; command strings can allow shell injection
+    4 | fn main() {
+    5 |     _ = os.exec(['echo', 'hello'])
+    6 |     _ = os.execute('echo hello')
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~
+    7 |     _ = os.system('echo hello')
+    8 |     _ = os.execute_or_panic('echo hello')
+vlib/v/checker/tests/deprecated_os_execute.vv:7:6: warning: function `system` has been deprecated; use os.system_args with an argument array; command strings can allow shell injection
+    5 |     _ = os.exec(['echo', 'hello'])
+    6 |     _ = os.execute('echo hello')
+    7 |     _ = os.system('echo hello')
+      |         ~~~~~~~~~~~~~~~~~~~~~~~
+    8 |     _ = os.execute_or_panic('echo hello')
+    9 |     _ = os.execute_or_exit('echo hello')
+vlib/v/checker/tests/deprecated_os_execute.vv:8:6: warning: function `execute_or_panic` has been deprecated; use os.exec_or_panic with an argument array; command strings can allow shell injection
+    6 |     _ = os.execute('echo hello')
+    7 |     _ = os.system('echo hello')
+    8 |     _ = os.execute_or_panic('echo hello')
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    9 |     _ = os.execute_or_exit('echo hello')
+   10 |     _ = os.execute_opt('echo hello') or { os.Result{} }
+vlib/v/checker/tests/deprecated_os_execute.vv:9:6: warning: function `execute_or_exit` has been deprecated; use os.exec_or_exit with an argument array; command strings can allow shell injection
+    7 |     _ = os.system('echo hello')
+    8 |     _ = os.execute_or_panic('echo hello')
+    9 |     _ = os.execute_or_exit('echo hello')
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   10 |     _ = os.execute_opt('echo hello') or { os.Result{} }
+   11 |     _ = util.execute_with_timeout('echo hello', 1000) or { os.Result{} }
+vlib/v/checker/tests/deprecated_os_execute.vv:10:6: warning: function `execute_opt` has been deprecated; use os.exec_opt with an argument array; command strings can allow shell injection
+    8 |     _ = os.execute_or_panic('echo hello')
+    9 |     _ = os.execute_or_exit('echo hello')
+   10 |     _ = os.execute_opt('echo hello') or { os.Result{} }
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   11 |     _ = util.execute_with_timeout('echo hello', 1000) or { os.Result{} }
+   12 |     _ = unsafe { os.raw_execute('echo hello') }
+vlib/v/checker/tests/deprecated_os_execute.vv:11:6: warning: function `execute_with_timeout` has been deprecated; use os.util.exec_with_timeout with an argument array; command strings can allow shell injection
+    9 |     _ = os.execute_or_exit('echo hello')
+   10 |     _ = os.execute_opt('echo hello') or { os.Result{} }
+   11 |     _ = util.execute_with_timeout('echo hello', 1000) or { os.Result{} }
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   12 |     _ = unsafe { os.raw_execute('echo hello') }
+   13 |     mut command := os.start_new_command('echo hello') or { return }
+vlib/v/checker/tests/deprecated_os_execute.vv:12:15: warning: function `raw_execute` has been deprecated; use os.exec with an argument array; command strings can allow shell injection
+   10 |     _ = os.execute_opt('echo hello') or { os.Result{} }
+   11 |     _ = util.execute_with_timeout('echo hello', 1000) or { os.Result{} }
+   12 |     _ = unsafe { os.raw_execute('echo hello') }
+      |                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   13 |     mut command := os.start_new_command('echo hello') or { return }
+   14 |     command.start() or {}
+vlib/v/checker/tests/deprecated_os_execute.vv:13:17: warning: function `start_new_command` has been deprecated; use os.start_new_command_args with an argument array to avoid shell injection
+   11 |     _ = util.execute_with_timeout('echo hello', 1000) or { os.Result{} }
+   12 |     _ = unsafe { os.raw_execute('echo hello') }
+   13 |     mut command := os.start_new_command('echo hello') or { return }
+      |                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   14 |     command.start() or {}
+   15 | }
+vlib/v/checker/tests/deprecated_os_execute.vv:14:10: warning: method `Command.start` has been deprecated; use os.start_new_command_args with an argument array to avoid shell injection
+   12 |     _ = unsafe { os.raw_execute('echo hello') }
+   13 |     mut command := os.start_new_command('echo hello') or { return }
+   14 |     command.start() or {}
+      |             ~~~~~~~
+   15 | }

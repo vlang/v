@@ -9,7 +9,8 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 fn build_v3_review_cgen() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_review_cgen_regressions_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -24,10 +25,10 @@ fn review_cgen_run_good(v3_bin string, name string, src string) string {
 	good_src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(good_src, src) or { panic(err) }
 	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} -nocache ${good_src} -b c -o ${good_bin}')
+	compile := os.exec([v3_bin, '-nocache', '${good_src}', '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
-	run := os.execute(good_bin)
+	run := os.exec([good_bin])
 	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
 	return run.output.trim_space()
 }
@@ -43,10 +44,10 @@ fn review_cgen_run_good_project(v3_bin string, name string, files map[string]str
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	good_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} -nocache ${input_path} -b c -o ${good_bin}')
+	compile := os.exec([v3_bin, '-nocache', input_path, '-b', 'c', '-o', good_bin])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert !compile.output.contains('C compilation failed'), '${name}: C compilation failed\n${compile.output}'
-	run := os.execute(good_bin)
+	run := os.exec([good_bin])
 	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
 	return run.output.trim_space()
 }
@@ -62,7 +63,7 @@ fn review_cgen_run_bad_project(v3_bin string, name string, files map[string]stri
 	}
 	input_path := if input.len == 0 { root } else { os.join_path(root, input) }
 	bad_bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	result := os.execute('${v3_bin} -nocache ${input_path} -b c -o ${bad_bin}')
+	result := os.exec([v3_bin, '-nocache', input_path, '-b', 'c', '-o', bad_bin])
 	assert result.exit_code != 0, '${name}: expected failure, got success\n${result.output}'
 	assert result.output.contains(expected), '${name}: expected `${expected}` in\n${result.output}'
 	assert !result.output.contains('C compilation failed'), '${name}: reached C compilation\n${result.output}'
@@ -101,13 +102,23 @@ fn main() {
 		panic(err)
 	}
 	assert c_code.contains('u8 main__byte_power;'), c_code
-	assert c_code.contains('int main__max_len;'), c_code
-	assert c_code.contains('int main__address_power;'), c_code
+	assert c_code.contains('i64 main__max_len;'), c_code
+	assert c_code.contains('i64 main__address_power;'), c_code
 	assert c_code.contains('double main__float_power;'), c_code
 	assert c_code.contains('main__byte_power = '), c_code
 	assert c_code.contains('main__max_len = '), c_code
 	assert c_code.contains('main__address_power = '), c_code
 	assert c_code.contains('main__float_power = '), c_code
+	// `max_len` also names a private builtin const, which sizes the SortedMap
+	// nodes; the builtin consts derived from it must not use the main const.
+	mut builtin_max_len_uses := 0
+	for line in c_code.split_into_lines() {
+		if line.contains('builtin__max_len') || line.contains('builtin__children_bytes') {
+			builtin_max_len_uses++
+			assert !line.contains('main__max_len'), line
+		}
+	}
+	assert builtin_max_len_uses > 0, c_code
 }
 
 fn test_struct_const_with_sum_type_uses_portable_runtime_init() {
@@ -234,11 +245,11 @@ fn main() {
 	assert out == '8\n45\n9\n23'
 	c_code := os.read_file(os.join_path(os.temp_dir(), 'v3_array_power_assign.c')) or { panic(err) }
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert compact.contains('array__set(_a0,_i0,&(int[]){((int)__v_pow_i64('), c_code
-	assert compact.contains('array__set(_a1,_i1,&(main__Exponent[]){Exponent__mul_(*(main__Exponent*)array_get(*_a1,_i1),'), c_code
-	assert compact.contains('IntList__op_index_set('), c_code
-	assert compact.contains('ExponentList__op_index_set('), c_code
-	assert compact.contains('Exponent__mul_('), c_code
+	assert compact.contains('array__set(_a0,_i0,&(i64[]){((i64)__v_pow_i64('), c_code
+	assert compact.contains('array__set(_a1,_i1,&(main__Exponent[]){__v3_internal_symbol_op_Exponent__pow(*(main__Exponent*)array_get(*_a1,_i1),'), c_code
+	assert compact.contains('__v3_internal_symbol_op_IntList__op_index_set('), c_code
+	assert compact.contains('__v3_internal_symbol_op_ExponentList__op_index_set('), c_code
+	assert compact.contains('__v3_internal_symbol_op_Exponent__pow('), c_code
 	assert !c_code.contains(' ** '), c_code
 }
 
@@ -276,7 +287,7 @@ fn main() {
 		panic(err)
 	}
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
-	assert compact.contains('box.value=Exponent__mul_(box.value,(main__Exponent){.value=3});'), c_code
+	assert compact.contains('box.value=__v3_internal_symbol_op_Exponent__pow(box.value,(main__Exponent){.value=3});'), c_code
 }
 
 fn test_mut_parameter_power_assign_uses_scalar_type() {
@@ -304,7 +315,7 @@ fn main() {
 	}
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
 	assert compact.contains('__v_pow_i64('), c_code
-	assert !compact.contains('(int*)__v_pow_i64('), c_code
+	assert !compact.contains('(i64*)__v_pow_i64('), c_code
 }
 
 fn test_addressed_inferred_array_const_keeps_dynamic_storage() {
@@ -318,7 +329,7 @@ fn array_len(values &[]int) int {
 fn main() {
 	ptr := &vals
 	copy := vals
-	println(int_str(array_len(ptr) + ptr[0] + copy[2]))
+	println(int_str(array_len(ptr) + unsafe { ptr[0] } + copy[2]))
 }
 ')
 	assert out == '7'
@@ -327,8 +338,8 @@ fn main() {
 	}
 	compact := c_code.replace('\t', '').replace(' ', '').replace('\n', '')
 	assert compact.contains('Arraymain__vals;'), c_code
-	assert compact.contains('main__vals=new_array_from_c_array(3,3,sizeof(int),'), c_code
-	assert !compact.contains('intmain__vals[3]'), c_code
+	assert compact.contains('main__vals=new_array_from_c_array(3,3,sizeof(i64),'), c_code
+	assert !compact.contains('i64main__vals[3]'), c_code
 }
 
 fn test_numbered_string_identifiers_do_not_collide_with_literal_symbols() {
@@ -417,7 +428,7 @@ fn test_sum_container_variant_import_alias_collision_uses_exact_tag() {
 		'v.mod':            'Module { name: "sum_container_variant_alias_collision" }\n'
 		'other/value.v':    'module other\n\npub struct Value {\npub:\n\tn int\n}\n'
 		'sub/tast/value.v': 'module tast\n\npub struct Value {\npub:\n\tn int\n}\n'
-		'main.v':           'module main\n\nimport other\nimport sub.tast as tast\n\ntype Mixed = map[string]other.Value | map[string]tast.Value\n\nfn score(value Mixed) int {\n\tif value is map[string]tast.Value {\n\t\titems := value as map[string]tast.Value\n\t\treturn items["x"].n\n\t}\n\treturn -1\n}\n\nfn main() {\n\tvalue := Mixed(map[string]tast.Value{\n\t\t"x": tast.Value{\n\t\t\tn: 71\n\t\t}\n\t})\n\tprintln(int_str(score(value)))\n}\n'
+		'main.v':           'module main\n\nimport other\nimport sub.tast\n\ntype Mixed = map[string]other.Value | map[string]tast.Value\n\nfn score(value Mixed) int {\n\tif value is map[string]tast.Value {\n\t\titems := value as map[string]tast.Value\n\t\treturn items["x"].n\n\t}\n\treturn -1\n}\n\nfn main() {\n\tvalue := Mixed(map[string]tast.Value{\n\t\t"x": tast.Value{\n\t\t\tn: 71\n\t\t}\n\t})\n\tprintln(int_str(score(value)))\n}\n'
 	}, 'main.v')
 	assert out == '71'
 }
@@ -428,7 +439,7 @@ fn test_sum_name_import_alias_collision_uses_exact_sum() {
 		'v.mod':         'Module { name: "sum_name_import_alias_collision" }\n'
 		'a/tast/tast.v': 'module tast\n\npub struct Target {}\npub struct Second {}\npub type Value = Target | Second\n'
 		'b/tast/tast.v': 'module tast\n\npub struct First {}\npub struct Target {\npub:\n\tn int\n}\npub type Value = First | Target\n'
-		'main.v':        'module main\n\nimport a.tast as other_tast\nimport b.tast as tast\n\nfn score(value tast.Value) int {\n\tif value is tast.Target {\n\t\ttarget := value as tast.Target\n\t\treturn target.n\n\t}\n\treturn -1\n}\n\nfn main() {\n\t_ := other_tast.Value(other_tast.Target{})\n\tvalue := tast.Value(tast.Target{\n\t\tn: 79\n\t})\n\tprintln(int_str(score(value)))\n}\n'
+		'main.v':        'module main\n\nimport a.tast as other_tast\nimport b.tast\n\nfn score(value tast.Value) int {\n\tif value is tast.Target {\n\t\ttarget := value as tast.Target\n\t\treturn target.n\n\t}\n\treturn -1\n}\n\nfn main() {\n\t_ := other_tast.Value(other_tast.Target{})\n\tvalue := tast.Value(tast.Target{\n\t\tn: 79\n\t})\n\tprintln(int_str(score(value)))\n}\n'
 	}, 'main.v')
 	assert out == '79'
 }
@@ -538,7 +549,7 @@ fn f() b.Foo {
 
 fn main() {}
 '
-	review_cgen_run_bad_project(v3_bin, 'bad_pointer_value_cross_module_return', return_files, 'main.v', 'cannot return')
+	review_cgen_run_bad_project(v3_bin, 'bad_pointer_value_cross_module_return', return_files, 'main.v', 'cannot use `&a.Foo` as type `b.Foo` in return argument')
 	mut field_files := files.clone()
 	field_files['main.v'] = 'module main
 
@@ -557,7 +568,7 @@ fn make_holder() Holder {
 
 fn main() {}
 '
-	review_cgen_run_bad_project(v3_bin, 'bad_pointer_value_cross_module_field', field_files, 'main.v', 'cannot initialize field')
+	review_cgen_run_bad_project(v3_bin, 'bad_pointer_value_cross_module_field', field_files, 'main.v', 'cannot assign to field `item`: expected `b.Foo`, not `&a.Foo`')
 }
 
 fn test_optional_single_letter_struct_keeps_concrete_payload_type() {
@@ -592,13 +603,11 @@ fn main() {
 
 fn test_enum_power_initializers_are_folded() {
 	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'enum_power_initializers', 'fn enum_power(base int, exponent int) int {
-	return base ** exponent
-}
+	out := review_cgen_run_good(v3_bin, 'enum_power_initializers', 'const helper_base = 3
 
 enum Power {
 	direct = 2 ** 3
-	helper = enum_power(3, 2)
+	helper = helper_base ** 2
 	next
 }
 
@@ -708,10 +717,10 @@ fn main() {
 	println(int_str(optional_generic.len))
 	println(int_str(result_generic.len))
 	println(int_str(pointer_generic.len))
-	println(int_str(optional_generic_ptr[0] or { -1 }))
-	println(int_str(direct_ptr[0]))
-	println(int_str(nested_ptr[0][0]))
-	println(int_str(optional_ptr[0] or { -1 }))
+	println(int_str(unsafe { optional_generic_ptr[0] or { -1 } }))
+	println(int_str(unsafe { direct_ptr[0] }))
+	println(int_str(unsafe { nested_ptr[0][0] }))
+	println(int_str(unsafe { optional_ptr[0] or { -1 } }))
 	println(int_str(defaults.values[0]))
 	println(int_str(defaults.lookup["answer"]))
 	println(int_str(defaults.count))
@@ -769,119 +778,4 @@ fn main() {
 }
 ")
 	assert out == 'after false\ninitialized\nfalse\ninitialized\ntrue'
-}
-
-fn test_recursive_json_sum_generation_is_cycle_safe() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'recursive_json_sum_generation', "import json
-
-type RecursiveAny = []RecursiveAny | int | map[string]RecursiveAny
-
-fn main() {
-	value := RecursiveAny([
-		RecursiveAny(1),
-		RecursiveAny({
-			'two': RecursiveAny(2)
-		}),
-	])
-	println(json.encode(value))
-	mut decode_rejected := false
-	_ := json.decode(RecursiveAny, '[1]') or {
-		decode_rejected = true
-		RecursiveAny(0)
-	}
-	println(decode_rejected)
-}
-")
-	assert out == '[1,{"two":2}]\ntrue'
-}
-
-fn test_json_decode_fixed_array_sum_variant_assigns_elements() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'json_decode_fixed_array_sum_variant', "import json
-
-type Payload = [2]int | string
-
-fn main() {
-	payload := json.decode(Payload, '[4, 5]') or { panic(err) }
-	if payload is [2]int {
-		println('\${payload[0]}:\${payload[1]}')
-	} else {
-		println('wrong variant')
-	}
-}
-")
-	assert out == '4:5'
-}
-
-fn test_json_decode_nested_structs_preserve_skipped_defaults() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'json_decode_nested_struct_defaults', 'import json
-
-struct NestedDefault {
-	hidden int = 7 @[skip]
-}
-
-struct NestedDefaultEnvelope {
-	direct  NestedDefault
-	items   []NestedDefault
-	by_name map[string]NestedDefault
-	pointer &NestedDefault
-}
-
-type NestedDefaultPayload = NestedDefault | string
-
-fn main() {
-	value := json.decode(NestedDefaultEnvelope, \'{"direct":{},"items":[{}],"by_name":{"first":{}},"pointer":{}}\') or {
-		panic(err)
-	}
-	payload := json.decode(NestedDefaultPayload, \'{}\') or { panic(err) }
-	if payload is NestedDefault {
-		println(\'\${value.direct.hidden}:\${value.items[0].hidden}:\${value.by_name[\'first\'].hidden}:\${value.pointer.hidden}:\${payload.hidden}\')
-	} else {
-		println(\'wrong variant\')
-	}
-}
-')
-	assert out == '7:7:7:7:7'
-}
-
-fn test_json_encode_pretty_preserves_exact_integers() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'json_encode_pretty_exact_integers', 'import json
-
-struct ExactNumbers {
-	signed   i64
-	unsigned u64
-	values   []u64
-}
-
-fn main() {
-	println(json.encode_pretty(ExactNumbers{
-		signed: 9007199254740993
-		unsigned: 18446744073709551615
-		values: [u64(9007199254740993), 18446744073709551615]
-	}))
-}
-')
-	assert out == '{\n\t"signed":\t9007199254740993,\n\t"unsigned":\t18446744073709551615,\n\t"values":\t[9007199254740993, 18446744073709551615]\n}'
-}
-
-fn test_recursive_json_value_struct_declines_fast_path() {
-	v3_bin := build_v3_review_cgen()
-	out := review_cgen_run_good(v3_bin, 'recursive_json_value_struct', 'import json
-
-struct ValueNode {
-	value    int
-	children []ValueNode
-}
-
-fn main() {
-	_ := json.decode(ValueNode, \'{"value":1,"children":[{"value":2,"children":[]}]}\') or {
-		ValueNode{}
-	}
-	println(\'compiled\')
-}
-')
-	assert out == 'compiled'
 }

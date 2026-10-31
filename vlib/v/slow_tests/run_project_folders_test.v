@@ -27,7 +27,7 @@ fn test_v_profile_works() {
 		local_path := folder_path.replace(vroot + os.path_separator, '').replace('\\', '/')
 		println('...........   v run ${local_path}/')
 		t := time.ticks()
-		res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(folder_path)}')
+		res := os.exec([vexe, 'run', folder_path])
 		delta := time.ticks() - t
 		// eprintln('res: ${res}')
 		assert res.exit_code == 0, 'failing res: ${res}'

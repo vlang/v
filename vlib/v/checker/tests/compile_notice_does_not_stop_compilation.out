@@ -1,0 +1,14 @@
+vlib/v/checker/tests/compile_notice_does_not_stop_compilation.vv:4:2: notice: The default behavior of foobar() will be changed in future release, see https://example.com/foobar-change.html for details
+    2 | 
+    3 | fn foobar(a int) int {
+    4 |     $compile_notice('The default behavior of foobar() will be changed in future release, see https://example.com/foobar-change.html for details')
+      |     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    5 |     return 0
+    6 | }
+vlib/v/checker/tests/compile_notice_does_not_stop_compilation.vv:3:11: notice: unused parameter: `a`
+    1 | module main
+    2 | 
+    3 | fn foobar(a int) int {
+      |           ^
+    4 |     $compile_notice('The default behavior of foobar() will be changed in future release, see https://example.com/foobar-change.html for details')
+    5 |     return 0

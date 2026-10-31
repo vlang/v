@@ -81,8 +81,13 @@ probe_exe="$probe_dir/probe"
 probe_log="$probe_dir/probe.log"
 search_dirs_log="$probe_dir/search-dirs.log"
 
+# Include Boehm's header the way V's own C does with TinyCC on Linux (see
+# vlib/builtin/gc_boehm_helpers.c). The compatibility <gc.h> also defines a weak
+# GC_noop1_ptr, which TinyCC does not keep weak after the plain prototype in
+# <gc/gc.h>: since TinyCC e23dabed, linking it against a libgc.a that defines the
+# function fails with "link symbol 'GC_noop1_ptr' defined twice".
 cat > "$probe_source" <<'EOF'
-#include <gc.h>
+#include <gc/gc.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -346,6 +351,14 @@ latest_bundle() {
 		&& ! run_git -C "$tcc_dir" merge-base --is-ancestor "$current_sha" "$remote_head_sha"; then
 		echo "Refusing to overwrite local TCC commits on ${expected_branch}; run 'make fresh_tcc' after preserving them." >&2
 		return 1
+	fi
+	# Keep a validated historical bundle in place while upstream is unchanged.
+	# Checking out the incompatible head and back rewrites native cache inputs.
+	if [ -z "$current_branch" ] \
+		&& grep -Fqx "remote_head_sha=$remote_head_sha" "$tcc_dir/.git/$marker_name/metadata" \
+		&& probe_bundle; then
+		echo "Using newest host-compatible TCC commit ${current_sha} from ${expected_branch}."
+		return
 	fi
 	run_git -C "$tcc_dir" checkout --detach --quiet "$remote_head_sha"
 	if probe_bundle; then

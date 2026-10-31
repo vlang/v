@@ -26,7 +26,7 @@ vlib/v/checker/tests/int_signess_call_arg_test.vv:8:9: error: cannot use literal
       |            ~~
     9 |     ztest5(-1)
    10 | }
-vlib/v/checker/tests/int_signess_call_arg_test.vv:9:9: error: cannot use literal signed integer as `usize` in argument 1 to `ztest5`
+vlib/v/checker/tests/int_signess_call_arg_test.vv:9:9: error: cannot use literal signed integer as `uint` in argument 1 to `ztest5`
     7 |     ztest3(-1)
     8 |     ztest4(-1)
     9 |     ztest5(-1)

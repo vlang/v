@@ -84,3 +84,33 @@ fn test_bloom_filter_fast_union_intersection() {
 	assert d.exists('power by v') == true
 	assert d.exists('my world') == false
 }
+
+fn bloom_filter_int_hash_func(value int) u32 {
+	return u32(value) * 3 + 1
+}
+
+fn test_bloom_filter_int_hash_callback() {
+	mut b := new_bloom_filter[int](bloom_filter_int_hash_func, 64, 1) or { panic(err) }
+	assert !b.exists(7)
+	b.add(7)
+	assert b.exists(7)
+	// With one hash, these inputs have distinct bit positions modulo 64.
+	assert !b.exists(42)
+	index := int((bloom_filter_int_hash_func(7) ^ salts[0]) % u32(64))
+	assert b.table[index / 8] == u8(1 << (index % 8))
+
+	b.add(42)
+	assert b.exists(7)
+	assert b.exists(42)
+	assert !b.exists(13)
+}
+
+fn test_bloom_filter_fast_int_hash_callback() {
+	mut b := new_bloom_filter_fast[int](bloom_filter_int_hash_func)
+	assert !b.exists(7)
+	b.add(7)
+	b.add(42)
+	b.add(7)
+	assert b.exists(7)
+	assert b.exists(42)
+}

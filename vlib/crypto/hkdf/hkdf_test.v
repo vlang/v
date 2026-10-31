@@ -1,7 +1,10 @@
 module hkdf
 
+import crypto.hmac
+import crypto.md5
 import crypto.sha1
 import crypto.sha256
+import crypto.sha512
 import encoding.hex
 import hash
 
@@ -152,4 +155,115 @@ fn test_direct_hash_constructor() {
 	out := key(sha256.new, [u8(0), 1, 2, 3], []u8{}, 'context', sha256.size)!
 	assert out.len == sha256.size
 	assert out != []u8{len: sha256.size}
+}
+
+// naive_extract is HKDF-Extract of RFC 5869, section 2.2, written on top of the
+// one-shot `hmac.new`, used as a reference.
+fn naive_extract(sum fn ([]u8) []u8, block_size int, hash_length int, salt []u8, ikm []u8) []u8 {
+	xkey := if salt.len == 0 { []u8{len: hash_length} } else { salt }
+	return hmac.new(xkey, ikm, sum, block_size)
+}
+
+// naive_expand is HKDF-Expand of RFC 5869, section 2.3, written on top of the
+// one-shot `hmac.new`, used as a reference.
+fn naive_expand(sum fn ([]u8) []u8, block_size int, prk []u8, info []u8, key_length int) []u8 {
+	mut okm := []u8{}
+	mut t := []u8{}
+	for i := 1; okm.len < key_length; i++ {
+		mut msg := t.clone()
+		msg << info
+		msg << u8(i)
+		t = hmac.new(prk, msg, sum, block_size)
+		okm << t
+	}
+	return okm[..key_length]
+}
+
+fn check_against_reference[H](name string, h fn () H, sum fn ([]u8) []u8, block_size int, hash_length int) ! {
+	ikm := []u8{len: 22, init: u8(index + 1)}
+	// salts shorter than, equal to and longer than the block size
+	for salt_length in [0, 13, block_size, block_size + 1, 2 * block_size + 3] {
+		salt := []u8{len: salt_length, init: u8(index * 7)}
+		prk := naive_extract(sum, block_size, hash_length, salt, ikm)
+		assert extract(h, ikm, salt)! == prk, '${name}: extract, salt.len=${salt_length}'
+		for info in ['', 'some context info'] {
+			okm := naive_expand(sum, block_size, prk, info.bytes(), 255 * hash_length)
+			for key_length in [0, 1, hash_length - 1, hash_length, hash_length + 1,
+				3 * hash_length + 5, 255 * hash_length] {
+				assert expand(h, prk, info, key_length)! == okm[..key_length], '${name}: expand, salt.len=${salt_length} info=`${info}` L=${key_length}'
+				assert key(h, ikm, salt, info, key_length)! == okm[..key_length], '${name}: key, salt.len=${salt_length} info=`${info}` L=${key_length}'
+			}
+		}
+	}
+	// a pseudorandom key longer than the block size is hashed first
+	long_prk := []u8{len: 2 * block_size + 3, init: u8(index)}
+	assert expand(h, long_prk, 'info', 2 * hash_length)! == naive_expand(sum, block_size,
+		long_prk, 'info'.bytes(), 2 * hash_length), '${name}: expand with a long PRK'
+}
+
+// MinimalHash has only the methods that hkdf uses, so it does not implement
+// `hash.Hash` and always takes the generic path.
+struct MinimalHash {
+mut:
+	d &sha256.Digest
+}
+
+fn new_minimal_hash() &MinimalHash {
+	return &MinimalHash{
+		d: sha256.new()
+	}
+}
+
+fn (mut m MinimalHash) write(p []u8) !int {
+	return m.d.write(p)
+}
+
+fn (m &MinimalHash) sum(b []u8) []u8 {
+	return m.d.sum(b)
+}
+
+fn (m &MinimalHash) size() int {
+	return sha256.size
+}
+
+fn (m &MinimalHash) block_size() int {
+	return sha256.block_size
+}
+
+fn test_matches_naive_reference() {
+	// concrete digest constructors
+	check_against_reference('sha1', sha1.new, sha1.sum, sha1.block_size, sha1.size)!
+	check_against_reference('sha224', sha256.new224, sha256.sum224, sha256.block_size,
+		sha256.size224)!
+	check_against_reference('sha256', sha256.new, sha256.sum256, sha256.block_size, sha256.size)!
+	check_against_reference('sha384', sha512.new384, sha512.sum384, sha512.block_size,
+		sha512.size384)!
+	check_against_reference('sha512', sha512.new, sha512.sum512, sha512.block_size, sha512.size)!
+	check_against_reference('sha512_224', sha512.new512_224, sha512.sum512_224, sha512.block_size,
+		sha512.size224)!
+	check_against_reference('sha512_256', sha512.new512_256, sha512.sum512_256, sha512.block_size,
+		sha512.size256)!
+	// constructors returning the `hash.Hash` interface
+	check_against_reference('hash.Hash sha1', sha1_hash, sha1.sum, sha1.block_size, sha1.size)!
+	check_against_reference('hash.Hash sha224', fn () hash.Hash {
+		return sha256.new224()
+	}, sha256.sum224, sha256.block_size, sha256.size224)!
+	check_against_reference('hash.Hash sha256', sha256_hash, sha256.sum256, sha256.block_size,
+		sha256.size)!
+	check_against_reference('hash.Hash sha384', fn () hash.Hash {
+		return sha512.new384()
+	}, sha512.sum384, sha512.block_size, sha512.size384)!
+	check_against_reference('hash.Hash sha512', fn () hash.Hash {
+		return sha512.new()
+	}, sha512.sum512, sha512.block_size, sha512.size)!
+	check_against_reference('hash.Hash sha512_224', fn () hash.Hash {
+		return sha512.new512_224()
+	}, sha512.sum512_224, sha512.block_size, sha512.size224)!
+	check_against_reference('hash.Hash sha512_256', fn () hash.Hash {
+		return sha512.new512_256()
+	}, sha512.sum512_256, sha512.block_size, sha512.size256)!
+	// the generic path: a `hash.Hash` without `copy_from`, and a type that is not a `hash.Hash`
+	check_against_reference('md5', md5.new, md5.sum, md5.block_size, md5.size)!
+	check_against_reference('MinimalHash', new_minimal_hash, sha256.sum256, sha256.block_size,
+		sha256.size)!
 }

@@ -144,7 +144,7 @@ pub fn encode_prefixed_string(mut out []u8, s string, length_prefix_bits int, hi
 	raw := s.bytes()
 	huff := qpack_huffman_encode(raw)
 	if huff.len < raw.len {
-		encode_prefixed_int(mut out, u64(huff.len), length_prefix_bits, high_bits | (u8(1) << u32(length_prefix_bits)))
+		encode_prefixed_int(mut out, u64(huff.len), length_prefix_bits, high_bits | u8(u8(1) << u32(length_prefix_bits)))
 		out << huff
 	} else {
 		encode_prefixed_int(mut out, u64(raw.len), length_prefix_bits, high_bits)

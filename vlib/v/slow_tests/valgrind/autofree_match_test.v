@@ -1,7 +1,7 @@
 // vtest vflags: -autofree
 // vtest build: !sanitize-address-gcc && !sanitize-address-clang
 
-type Tree = Empty | Node
+type Tree = Empty | &Node
 
 struct Empty {}
 
@@ -16,10 +16,10 @@ fn (tree Tree) delete(x int) Tree {
 		Empty {
 			tree
 		}
-		Node {
+		&Node {
 			if tree.left !is Empty && tree.right !is Empty {
 				if x < tree.value {
-					Node{
+					&Node{
 						...tree
 						left: tree.left.delete(x)
 					}

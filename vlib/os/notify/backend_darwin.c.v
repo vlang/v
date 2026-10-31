@@ -7,17 +7,17 @@ import os
 
 pub struct C.kevent {
 mut:
-	ident  usize
+	ident  uint
 	filter i16
 	flags  u16
 	fflags u32
-	data   isize
+	data   int
 	udata  voidptr
 }
 
 fn C.kqueue() i32
 fn C.__kevent__(i32, voidptr, i32, voidptr, i32, voidptr) i32
-fn C.EV_SET(voidptr, usize, i16, u16, u32, isize, voidptr)
+fn C.EV_SET(voidptr, uint, i16, u16, u32, C.ptrdiff_t, voidptr)
 
 // KqueueNotifier provides methods that implement FdNotifier using the
 // kqueue I/O event notification facility (macos, freeBSD, xxxBSD...unix only)
@@ -89,7 +89,7 @@ const kqueue_error = u16(C.EV_ERROR)
 // ctl is a helper method for add, modify, and remove
 fn (mut kn KqueueNotifier) ctl(fd int, filter i16, flags u16) ! {
 	event := [1]C.kevent{}
-	C.EV_SET(&event[0], usize(fd), filter, flags, 0, 0, unsafe { nil })
+	C.EV_SET(&event[0], uint(fd), filter, flags, 0, 0, unsafe { nil })
 	if C.__kevent__(kn.kqueue_fd, &event[0], 1, unsafe { nil }, 0, unsafe { nil }) == -1 {
 		return error(os.posix_get_error_msg(C.errno))
 	}

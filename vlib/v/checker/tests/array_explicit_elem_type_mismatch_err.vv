@@ -1,0 +1,91 @@
+type Ids = []u64
+
+interface Named {
+	name() string
+}
+
+struct Item {}
+
+fn (i Item) name() string {
+	return 'item'
+}
+
+@[flag]
+enum Perm {
+	read
+	write
+}
+
+struct Cache {
+mut:
+	ids    []u64
+	nested [][]u64
+	fixed  [3]u64
+	by_key map[string][]u64
+	maybe  ?[]u64
+	alias  Ids
+	floats []f64
+	opts   []?int
+	perms  []Perm
+	wide   []u64 = []u8{}
+}
+
+fn take(ids []u64) int {
+	return ids.len
+}
+
+fn take_mut(mut ids []u64) {
+	ids << 1
+}
+
+fn take_fixed(ids [3]u64) u64 {
+	return ids[0]
+}
+
+fn take_named(named [2]Named) int {
+	return named.len
+}
+
+fn make_ids() []u64 {
+	return []u8{}
+}
+
+fn main() {
+	mut cache := Cache{
+		ids: []u8{}
+	}
+	small := [u8(1), 2, 3]
+	cache.ids = []u32{}
+	cache.ids = []i32{len: 2}
+	cache.ids = small
+	cache.ids = small.clone()
+	cache.ids = []int{}
+	cache.nested = [][]u8{}
+	cache.nested << small
+	cache.by_key['a'] = small
+	cache.maybe = small
+	cache.alias = small
+	cache.fixed = [3]u8[1, 2, 3]
+	fixed_small := [u8(1), 2, 3]!
+	cache.fixed = fixed_small
+	singles := [f32(1.5)]
+	cache.floats = singles
+	ints := [1, 2]
+	cache.floats = ints
+	cache.opts = ints
+	cache.perms = ints
+	println(cache.ids == small)
+	println(take(small))
+	println(take([]u8{}))
+	mut buf := small.clone()
+	take_mut(mut buf)
+	println(take_fixed(fixed_small))
+	items := [Item{}, Item{}]!
+	println(take_named(items))
+	mut boxed := [Item{}]
+	mut refs := &[]Named{}
+	refs = &boxed
+	println(refs.len)
+	println(make_ids())
+	println(cache)
+}

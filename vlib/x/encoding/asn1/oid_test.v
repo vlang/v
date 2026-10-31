@@ -203,6 +203,7 @@ fn test_serialize_decode_oid() {
 		// decode back
 		oidback, next := ObjectIdentifier.decode(out)!
 
+		assert next == out.len
 		assert oidback.tag().tag_number() == int(TagType.oid)
 		assert oidback == oid
 	}

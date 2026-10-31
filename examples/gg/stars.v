@@ -3,7 +3,6 @@ module main
 import os.asset
 import gg
 import rand
-import sokol.sgl
 
 const win_width = 800
 const win_height = 600
@@ -89,13 +88,13 @@ fn frame(mut app App) {
 
 // fn C.glPointSize(size f32)
 fn (mut app App) draw() {
-	sgl.defaults()
-	sgl.perspective(sgl.rad(90), 1.0, 1.0, 100.0)
+	app.gg.r.defaults()
+	app.gg.r.perspective(app.gg.r.rad(90), 1.0, 1.0, 100.0)
 	// C.glPointSize(3.0)
-	sgl.begin_points()
+	app.gg.r.begin_points()
 	for i in 0 .. app.stars.len {
 		s := app.stars[i]
-		sgl.v3f_c3f(s.x, s.y, s.z, s.r, s.g, s.b)
+		app.gg.r.v3f_c3f(s.x, s.y, s.z, s.r, s.g, s.b)
 		app.stars[i].z += 0.3
 		if app.stars[i].z > -1.0 {
 			app.stars[i].x = rand.f32_in_range(-200.0, 200.0) or { -200.0 }
@@ -103,13 +102,13 @@ fn (mut app App) draw() {
 			app.stars[i].z = rand.f32_in_range(-200.0, -100.0) or { -200.0 }
 		}
 	}
-	sgl.end()
+	app.gg.r.end()
 	// ////
 	for i in 0 .. app.v_letters.len {
 		v := app.v_letters[i]
-		sgl.defaults()
-		sgl.perspective(sgl.rad(90), 1.0, 1.0, 100.0)
-		sgl.rotate(v.angle, 0, 0, 1)
+		app.gg.r.defaults()
+		app.gg.r.perspective(app.gg.r.rad(90), 1.0, 1.0, 100.0)
+		app.gg.r.rotate(v.angle, 0, 0, 1)
 		app.gg.draw_image_3d(v.x, v.y, v.z, v.w, v.h, app.image)
 		//
 		app.v_letters[i].z += app.v_letters[i].dz

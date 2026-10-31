@@ -10,6 +10,8 @@ fn has_non_runtime_include(c_code string) bool {
 	for line in c_code.split_into_lines() {
 		trimmed := line.trim_space()
 		if trimmed.starts_with('#include') {
+			// Bundled runtime headers remain C toolchain inputs.
+			if trimmed.ends_with('/vlib/builtin/track_heap_checks.h"') { continue }
 			return true
 		}
 	}
@@ -19,16 +21,16 @@ fn has_non_runtime_include(c_code string) bool {
 // test_prod_flag_before_input_uses_optimized_c_compile validates this v3 regression case.
 fn test_prod_flag_before_input_uses_optimized_c_compile() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_prod_flag_test')
-	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
+	build := os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	out_bin := os.join_path(os.temp_dir(), 'v3_prod_hello')
-	compile := os.execute('${v3_bin} -prod ${hello_src} -o ${out_bin}')
+	compile := os.exec([v3_bin, '-prod', '-showcc', '${hello_src}', '-o', out_bin])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('cc -std=gnu11 -O3')
 	assert !compile.output.contains('tcc.exe')
 
-	run := os.execute(out_bin)
+	run := os.exec([out_bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'hello world'
 }
@@ -36,17 +38,17 @@ fn test_prod_flag_before_input_uses_optimized_c_compile() {
 // test_c99_flag_uses_c99_c_compile_mode validates this v3 regression case.
 fn test_c99_flag_uses_c99_c_compile_mode() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c99_flag_test')
-	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
+	build := os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	out_bin := os.join_path(os.temp_dir(), 'v3_c99_hello')
-	compile := os.execute('${v3_bin} -prod -c99 ${hello_src} -o ${out_bin}')
+	compile := os.exec([v3_bin, '-prod', '-c99', '-showcc', '${hello_src}', '-o', out_bin])
 	assert compile.exit_code == 0, compile.output
 	assert compile.output.contains('cc -std=c99 -O3')
 	assert !compile.output.contains('cc -std=gnu11')
 	assert !compile.output.contains('tcc.exe')
 
-	run := os.execute(out_bin)
+	run := os.exec([out_bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'hello world'
 }
@@ -54,29 +56,33 @@ fn test_c99_flag_uses_c99_c_compile_mode() {
 // test_c99_flag_emits_linux_feature_macros_in_headerless_preamble validates this v3 regression case.
 fn test_c99_flag_emits_linux_feature_macros_in_headerless_preamble() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c99_feature_macro_test')
-	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
+	build := os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	out_c := os.join_path(os.temp_dir(), 'v3_c99_feature_macro_hello.c')
-	compile := os.execute('${v3_bin} -c99 ${hello_src} -o ${out_c}')
+	src := os.join_path(os.temp_dir(), 'v3_c99_feature_macro_hello_${os.getpid()}.v')
+	os.write_file(src, "fn main() { message := 'hello world'; println(message) }\n")!
+	defer { os.rm(src) or {} }
+	compile := os.exec([v3_bin, '-c99', '-o', '${out_c}', '${src}'])
 	assert compile.exit_code == 0, compile.output
 
 	c_code := os.read_file(out_c) or { panic(err) }
+	preamble := c_code[..if c_code.len < 200 { c_code.len } else { 200 }]
 	gnu_idx := c_code.index('#define _GNU_SOURCE') or { -1 }
 	posix_idx := c_code.index('#define _POSIX_C_SOURCE 200809L') or { -1 }
 	typedef_idx := c_code.index('typedef signed char i8;') or { -1 }
-	assert gnu_idx >= 0, c_code[..200]
-	assert posix_idx >= 0, c_code[..200]
-	assert typedef_idx >= 0, c_code[..200]
-	assert gnu_idx < typedef_idx, c_code[..200]
-	assert posix_idx < typedef_idx, c_code[..200]
-	assert !has_non_runtime_include(c_code), c_code[..200]
+	assert gnu_idx >= 0, preamble
+	assert posix_idx >= 0, preamble
+	assert typedef_idx >= 0, preamble
+	assert gnu_idx < typedef_idx, preamble
+	assert posix_idx < typedef_idx, preamble
+	assert !has_non_runtime_include(c_code), preamble
 }
 
 // test_c99_flag_uses_headerless_stdatomic_fallback validates this v3 regression case.
 fn test_c99_flag_uses_headerless_stdatomic_fallback() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c99_stdatomic_test')
-	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
+	build := os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_c99_stdatomic_swap.v')
@@ -86,19 +92,20 @@ fn test_c99_flag_uses_headerless_stdatomic_fallback() {
 	}
 
 	out_bin := os.join_path(os.temp_dir(), 'v3_c99_stdatomic_swap')
-	compile := os.execute('${v3_bin} -c99 ${src} -o ${out_bin}')
+	compile := os.exec([v3_bin, '-c99', '${src}', '-o', out_bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(out_bin)
+	run := os.exec([out_bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'atomic helpers ok'
 }
 
-// test_c99_flag_system_stdatomic_include_is_headerless validates this v3 regression case.
-fn test_c99_flag_system_stdatomic_include_is_headerless() {
+// test_c99_flag_system_stdatomic_include_keeps_the_header validates this v3 regression case.
+// An explicit system header stays in the C output and owns its declarations.
+fn test_c99_flag_system_stdatomic_include_keeps_the_header() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_c99_system_stdatomic_test')
-	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
+	build := os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_c99_system_stdatomic.v')
@@ -108,12 +115,12 @@ fn test_c99_flag_system_stdatomic_include_is_headerless() {
 	}
 
 	out_c := os.join_path(os.temp_dir(), 'v3_c99_system_stdatomic.c')
-	gen_c := os.execute('${v3_bin} -c99 ${src} -o ${out_c}')
+	gen_c := os.exec([v3_bin, '-c99', '${src}', '-o', '${out_c}'])
 	assert gen_c.exit_code == 0, gen_c.output
 	c_code := os.read_file(out_c) or { panic(err) }
-	assert !has_non_runtime_include(c_code), c_code
+	assert c_code.contains('#include <stdatomic.h>'), c_code
 	assert !c_code.contains('typedef volatile uintptr_t atomic_uintptr_t;'), c_code
-	assert c_code.contains('typedef void* atomic_uintptr_t;'), c_code
+	assert !c_code.contains('typedef void* atomic_uintptr_t;'), c_code
 	assert c_code.contains('static inline byte atomic_fetch_add_byte'), c_code
 	assert c_code.contains('static inline u16 atomic_fetch_add_u16'), c_code
 	assert c_code.contains('static inline u64 atomic_fetch_add_u64'), c_code
@@ -123,18 +130,18 @@ fn test_c99_flag_system_stdatomic_include_is_headerless() {
 	assert c_code.contains('static inline bool atomic_compare_exchange_strong_u64'), c_code
 
 	out_bin := os.join_path(os.temp_dir(), 'v3_c99_system_stdatomic')
-	compile := os.execute('${v3_bin} -prod -c99 ${src} -o ${out_bin}')
+	compile := os.exec([v3_bin, '-prod', '-c99', '${src}', '-o', out_bin])
 	assert compile.exit_code == 0, compile.output
 
-	run := os.execute(out_bin)
+	run := os.exec([out_bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'system stdatomic ok'
 
 	gnu_bin := os.join_path(os.temp_dir(), 'v3_gnu11_system_stdatomic')
-	gnu_compile := os.execute('${v3_bin} -prod ${src} -o ${gnu_bin}')
+	gnu_compile := os.exec([v3_bin, '-prod', '${src}', '-o', gnu_bin])
 	assert gnu_compile.exit_code == 0, gnu_compile.output
 
-	gnu_run := os.execute(gnu_bin)
+	gnu_run := os.exec([gnu_bin])
 	assert gnu_run.exit_code == 0, gnu_run.output
 	assert gnu_run.output.trim_space() == 'system stdatomic ok'
 }

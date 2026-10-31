@@ -16,23 +16,12 @@ struct Pet {
 	title          JobTitle
 	address        Address
 	meal_frequency map[string]int
-	// *¹ Currently it is only possible to decode a single nested struct generically.
-	// As soon as we decode another nested struct (e.g. within this struct, like `contact` below)
-	// or only one nested struct within another struct, it results in wrong values or errors.
-	// Related issue: https://github.com/vlang/v/issues/18110
-	// contact Contact
 }
 
 struct Address {
 	street string
 	city   string
 }
-
-// *¹
-/*
-struct Contact {
-	phone string
-}*/
 
 struct AnyStruct {
 	val toml.Any
@@ -78,8 +67,6 @@ struct MapDoc {
 }
 
 fn test_encode_and_decode() {
-	// *¹
-	// p := Pet{'Mr. Scratchy McEvilPaws', ['Freddy', 'Fred', 'Charles'], 8, -1, 0.8, true, .manager, Address{'1428 Elm Street', 'Springwood'}, Contact{'123-456-7890'}}
 	p := Pet{'Mr. Scratchy McEvilPaws', ['Freddy', 'Fred', 'Charles'], 8, -1, 0.8, true, .manager, Address{'1428 Elm Street', 'Springwood'}, {
 		'bones':  2
 		'kibble': 5
@@ -97,7 +84,6 @@ has_furr = true
 title = 2
 address = { street = "1428 Elm Street", city = "Springwood" }
 meal_frequency = { bones = 2, kibble = 5 }'
-	// contact = { phone = "123-456-7890" }' // *¹
 
 	assert toml.encode[Pet](p) == s
 	assert toml.decode[Pet](s)! == p
@@ -400,4 +386,33 @@ dates = [ 1979-05-27    , 2022-12-31    ]
 		dates: [toml.Date{'1979-05-27'}, toml.Date{'2022-12-31'}]
 	}
 	assert toml.decode[Arrs](s)! == a
+}
+
+struct EscapedStrings {
+	text string
+}
+
+fn test_encode_escapes_special_characters_in_strings() {
+	// strings requiring escapes must round-trip: an unescaped quote,
+	// backslash or newline produces TOML the decoder rejects.
+	for original in ['plain', 'say "hi"', 'back\\slash', 'tab\there', 'new\nline', 'nul\x00here',
+		'esc\x1b!', 'del\x7f!'] {
+		encoded := toml.encode(EscapedStrings{
+			text: original
+		})
+		decoded := toml.decode[EscapedStrings](encoded)!
+		assert decoded.text == original
+	}
+}
+
+fn test_encode_escapes_all_control_bytes_and_preserves_unicode() {
+	for c in 0 .. 32 {
+		original := [u8(c)].bytestr()
+		encoded := toml.encode(EscapedStrings{ text: original })
+		assert toml.decode[EscapedStrings](encoded)!.text == original
+	}
+	for original in ['こんにちは 😀', '\r\n\b\f', '\\\\\"'] {
+		encoded := toml.encode(EscapedStrings{ text: original })
+		assert toml.decode[EscapedStrings](encoded)!.text == original
+	}
 }

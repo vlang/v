@@ -7,7 +7,7 @@
   - syntax checking
   - embed the template into the binary
 
-Its a very cool way how to do also do e.g. system administration, fill in 
+It's a very cool way to do things like system administration, fill in 
 config files, etc...
 
 The example there is also a good demonstration of how to use json on a more 

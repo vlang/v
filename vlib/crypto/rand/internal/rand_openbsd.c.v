@@ -5,7 +5,7 @@ module internal
 
 #include <stdlib.h>
 
-fn C.arc4random_buf(p &u8, n usize)
+fn C.arc4random_buf(p &u8, n uint)
 
 // read fills `buffer` with random bytes from the OS.
 pub fn read(mut buffer []u8) ! {

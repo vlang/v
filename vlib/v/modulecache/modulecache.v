@@ -8,11 +8,12 @@ import v.pref
 import v.tempname
 import v.types
 import v.util
+import v.util.cache_refresh
 
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-52'
+const cache_format = 'v3-module-cache-57'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -23,12 +24,219 @@ const c_source_directives_end = '/* V3CACHE_SOURCE_DIRECTIVES_END */'
 const c_late_directives_begin = '/* V3CACHE_LATE_DIRECTIVES_BEGIN */'
 const c_late_directives_end = '/* V3CACHE_LATE_DIRECTIVES_END */'
 const source_body_marker = '// v3cache: source bodies required'
-const source_signature_cache_format = 'v3-source-signature-cache-9'
+// recover_call_marker is a line of the header of a module whose code calls
+// `recover()`. A header has the declarations of a module and not its code, so a
+// build that reads it cannot tell otherwise that the program reaches that call.
+const recover_call_marker = '// v3cache: calls recover'
+const source_signature_cache_format = 'v3-source-signature-cache-12'
+const program_executable_format = 'v3-program-executable-2'
+const source_type_void_pointer_head = flat.source_type_id('&void')
+
+// PkgConfigProbes remembers what `pkg-config --exists` answered in this compiler
+// process, and which recorded answers apply to it. A build validates the sources
+// of `builtin` several times, and each validation asked again. The table holds no
+// heap memory of its own, so what is written to it inside a disposable allocation
+// scope outlives that scope.
+struct PkgConfigProbes {
+mut:
+	len         int
+	names       [16]u64
+	available   [16]bool
+	state_known bool
+	state_key   u64 // 0 when the answers of this pkg-config cannot be recorded
+}
+
+// pkg_config_exists reports whether pkg-config knows `name`. It asks pkg-config
+// at most once per process when `probes` has room for the answer, and not at
+// all when `cache_dir` holds the answer that the same pkg-config gave while its
+// packages were as they are now (see pkg_config_state_key).
+fn pkg_config_exists(name string, cache_dir string, probes &PkgConfigProbes) bool {
+	key := hash_bytes(u64(1469598103934665603), name.bytes()) ^ u64(name.len)
+	if !isnil(probes) {
+		for i in 0 .. probes.len {
+			if probes.names[i] == key {
+				return probes.available[i]
+			}
+		}
+	}
+	mut available := false
+	answers := pkg_config_answers_path(cache_dir, probes)
+	if answer := pkg_config_recorded_answer(answers, name) {
+		available = answer
+	} else {
+		available = os.exec(['pkg-config', '--exists', '${name}']).exit_code == 0
+		pkg_config_record_answer(answers, name, available)
+	}
+	if !isnil(probes) && probes.len < 16 {
+		// The table is the one place a manager, handed around by value and by
+		// immutable reference, keeps anything that it learns.
+		mut known := unsafe { &PkgConfigProbes(voidptr(probes)) }
+		known.names[known.len] = key
+		known.available[known.len] = available
+		known.len++
+	}
+	return available
+}
+
+// pkg_config_answers_path returns the file that holds the answers recorded for
+// the present state of pkg-config, or '' when they cannot be recorded. The state
+// is worked out once per process when `probes` can keep it.
+fn pkg_config_answers_path(cache_dir string, probes &PkgConfigProbes) string {
+	if cache_dir.len == 0 {
+		return ''
+	}
+	mut state_key := u64(0)
+	if !isnil(probes) && probes.state_known {
+		state_key = probes.state_key
+	} else {
+		state_key = pkg_config_state_key(cache_dir)
+		if !isnil(probes) {
+			mut known := unsafe { &PkgConfigProbes(voidptr(probes)) }
+			known.state_known = true
+			known.state_key = state_key
+		}
+	}
+	if state_key == 0 {
+		return ''
+	}
+	return os.join_path(cache_dir, '.pkgconfig_answers_${state_key.hex()}')
+}
+
+// pkg_config_state_key identifies everything that an answer of
+// `pkg-config --exists` depends on: the executable, the environment variables
+// that steer it, and every `.pc` file of the directories that it searches. A
+// package exists when its file and the files of what it requires are there and
+// agree on their versions, so one file does not decide the answer, while a file
+// outside those directories has no part in it. Installing, removing or editing
+// any package therefore makes the answers recorded so far unreachable.
+// It returns 0 when that state cannot be told, and pkg-config is then asked.
+fn pkg_config_state_key(cache_dir string) u64 {
+	executable := os.find_abs_path_of_executable('pkg-config') or { return 0 }
+	executable_identity := file_metadata_signature(os.real_path(executable))
+	if executable_identity.len == 0 {
+		return 0
+	}
+	mut steering := []string{}
+	for name, value in os.environ() {
+		if name.starts_with('PKG_CONFIG') {
+			steering << '${name}=${value}'
+		}
+	}
+	steering.sort()
+	search_key := hash_text(executable_identity + '\x00' + steering.join('\x00'))
+	search_file := os.join_path(cache_dir, '.pkgconfig_search_${search_key}')
+	search_path := os.read_file(search_file) or {
+		result := os.exec([executable, '--variable', 'pc_path', 'pkg-config'])
+		if result.exit_code != 0 {
+			return 0
+		}
+		listed := result.output.trim_space()
+		os.mkdir_all(cache_dir) or {}
+		write_atomic(search_file, listed) or {}
+		listed
+	}
+	mut dirs := []string{}
+	for listed in [os.getenv('PKG_CONFIG_PATH'), os.getenv('PKG_CONFIG_LIBDIR'), search_path] {
+		for dir in listed.split(os.path_delimiter) {
+			if dir.len > 0 && dir !in dirs {
+				dirs << dir
+			}
+		}
+	}
+	mut hash := hash_bytes(u64(1469598103934665603), search_key.bytes())
+	mut searched := 0
+	for dir in dirs {
+		hash = hash_bytes(hash, dir.bytes())
+		hash = hash_bytes(hash, [u8(0)])
+		mut entries := os.ls(dir) or {
+			// A searchable directory can contain readable package files without
+			// granting permission to list them. Their identities must be known
+			// before any answer can persist across compiler processes.
+			if os.exists(dir) {
+				return 0
+			}
+			continue
+		}
+		searched++
+		entries.sort()
+		for entry in entries {
+			if !entry.ends_with('.pc') {
+				continue
+			}
+			path := os.join_path(dir, entry)
+			mut metadata := file_metadata_signature(path)
+			if metadata.len == 0 {
+				if os.exists(path) {
+					// Changed too recently to tell this state from the next one.
+					return 0
+				}
+				// A link to a file that is gone: pkg-config cannot read it either.
+				metadata = 'unreadable'
+			}
+			hash = hash_bytes(hash, entry.bytes())
+			hash = hash_bytes(hash, [u8(0)])
+			hash = hash_bytes(hash, metadata.bytes())
+			hash = hash_bytes(hash, [u8(0xff)])
+		}
+		hash = hash_bytes(hash, [u8(0xfe)])
+	}
+	if searched == 0 {
+		// Not the answer of a pkg-config: nothing ties a record to its packages.
+		return 0
+	}
+	return hash
+}
+
+fn pkg_config_recorded_answer(answers string, name string) ?bool {
+	if answers.len == 0 {
+		return none
+	}
+	content := os.read_file(answers) or { return none }
+	for line in content.split_into_lines() {
+		if line == '${name}\t1' {
+			return true
+		}
+		if line == '${name}\t0' {
+			return false
+		}
+	}
+	return none
+}
+
+fn pkg_config_record_answer(answers string, name string, available bool) {
+	if answers.len == 0 || name.contains_any('\t\r\n') {
+		return
+	}
+	mut lines := []string{}
+	if content := os.read_file(answers) {
+		for line in content.split_into_lines() {
+			if line.len > 0 && line.all_before('\t') != name {
+				lines << line
+			}
+		}
+	}
+	lines << '${name}\t${if available { 1 } else { 0 }}'
+	write_atomic(answers, lines.join('\n') + '\n') or {}
+}
+
+// SourcePaths remembers the resolved path of each source file that a build asks
+// the cache about. A build validates the sources of a module several times, by
+// their resolved paths, and resolving one path costs a system call per component
+// of it. The table takes new paths until freeze_source_paths: later stages ask
+// from several threads and inside disposable allocation scopes, and read only.
+@[heap]
+struct SourcePaths {
+mut:
+	resolved map[string]string
+	frozen   bool
+}
 
 // Manager owns persistent v3 module cache paths for one compiler configuration.
 pub struct Manager {
 	build_pseudo_values   string
 	version_pseudo_values string
+	pkg_probes            &PkgConfigProbes = unsafe { nil }
+	source_paths          &SourcePaths     = unsafe { nil }
 pub:
 	dir     string
 	enabled bool
@@ -39,6 +247,7 @@ pub:
 pub struct Entry {
 	source_bodies       bool
 	source_bodies_known bool
+	calls_recover       bool
 pub:
 	header         string
 	object         string
@@ -100,6 +309,15 @@ pub:
 	stamp            string
 }
 
+// ProgramExecutable is the linked executable that the cache keeps for a program,
+// with what its build printed about the program.
+pub struct ProgramExecutable {
+	metadata string
+pub:
+	path    string
+	notices string
+}
+
 // CSplit contains the declaration/runtime prefix and per-module C function bodies.
 pub struct CSplit {
 pub:
@@ -108,23 +326,66 @@ pub:
 }
 
 // new_manager creates a configuration-scoped persistent module cache manager.
+// Delegated compilers retain V3_PRIMARY_VEXE for isolated cache lookup.
 pub fn new_manager(vroot string, salt string, enabled bool, build_pseudo_values string, version_pseudo_values string) Manager {
-	root_key := hash_text(os.real_path(vroot))
 	config_key := hash_text(cache_format + '\n' + salt)
-	base_dir := os.abs_path(os.getenv_opt('V3CACHE') or {
-		default_dir := os.vtmp_dir()
-		if os.getenv('V3_TEST_ISOLATE_CACHE') == '1' {
-			os.join_path(default_dir, 'v3_test_cache_${hash_text(os.real_path(os.executable()))}')
-		} else {
-			default_dir
-		}
-	})
+	primary := os.getenv_opt('V3_PRIMARY_VEXE') or { os.getenv_opt('VEXE') or { os.executable() } }
 	return Manager{
-		dir:                   os.join_path(base_dir, 'v3_module_cache_${root_key}', config_key)
+		dir:                   os.join_path(cache_refresh.root_dir(vroot, primary), config_key)
 		enabled:               enabled
 		salt:                  salt
 		build_pseudo_values:   build_pseudo_values
 		version_pseudo_values: version_pseudo_values
+		pkg_probes:            &PkgConfigProbes{}
+		source_paths:          &SourcePaths{}
+	}
+}
+
+// real_source_path returns `os.real_path(path)` for a source file. The answer is
+// kept for the rest of the build when it is asked for before freeze_source_paths.
+pub fn (m &Manager) real_source_path(path string) string {
+	if isnil(m.source_paths) {
+		return os.real_path(path)
+	}
+	if resolved := m.source_paths.resolved[path] {
+		return resolved
+	}
+	resolved := os.real_path(path)
+	if !m.source_paths.frozen {
+		// The table is the one place a manager, handed around by value and by
+		// immutable reference, keeps the paths that it resolved.
+		mut known := unsafe { &SourcePaths(voidptr(m.source_paths)) }
+		known.resolved[path.clone()] = resolved
+	}
+	return resolved
+}
+
+// remember_source_path records that `resolved` is `os.real_path(path)`, for a caller
+// that has resolved the path already. It does nothing after freeze_source_paths.
+pub fn (m &Manager) remember_source_path(path string, resolved string) {
+	if isnil(m.source_paths) || m.source_paths.frozen || path in m.source_paths.resolved {
+		return
+	}
+	mut known := unsafe { &SourcePaths(voidptr(m.source_paths)) }
+	known.resolved[path.clone()] = resolved.clone()
+}
+
+// real_source_paths returns real_source_path of every file, in the order of `files`.
+pub fn (m &Manager) real_source_paths(files []string) []string {
+	mut paths := []string{cap: files.len}
+	for file in files {
+		paths << m.real_source_path(file)
+	}
+	return paths
+}
+
+// freeze_source_paths ends the recording of resolved source paths. Call it on the
+// thread that owns the build, outside any disposable allocation scope and before
+// other threads use the manager; what was resolved until then stays available.
+pub fn (m &Manager) freeze_source_paths() {
+	if !isnil(m.source_paths) {
+		mut known := unsafe { &SourcePaths(voidptr(m.source_paths)) }
+		known.frozen = true
 	}
 }
 
@@ -143,7 +404,7 @@ pub fn (m &Manager) ensure_dir() bool {
 pub fn (m &Manager) entry(module_name string, source_files []string) Entry {
 	mut source_root := module_name
 	if source_files.len > 0 {
-		source_root = os.dir(os.real_path(source_files[0]))
+		source_root = os.dir(m.real_source_path(source_files[0]))
 	}
 	id := '${sanitize_name(module_name)}_${hash_text(source_root)}'
 	return Entry{
@@ -169,9 +430,40 @@ pub fn (m &Manager) object_entry(module_name string, source_files []string, comp
 	}
 }
 
+// object_alias_path returns the file that names the object of a module for one set of
+// program facts that a build knows before it has generated the C of the module.
+fn (m &Manager) object_alias_path(module_name string, source_files []string, alias_signature string) string {
+	entry := m.entry(module_name, source_files)
+	return '${entry.object.all_before_last('.o')}_${hash_text(alias_signature)}.alias'
+}
+
+// object_alias returns the content key of the object that an earlier build compiled
+// or found for `alias_signature`. The key says nothing about the sources or the
+// dependencies of the module: the stamp of the object it leads to does.
+pub fn (m &Manager) object_alias(module_name string, source_files []string, alias_signature string) ?string {
+	if !m.enabled || source_files.len == 0 {
+		return none
+	}
+	content := os.read_file(m.object_alias_path(module_name, source_files, alias_signature)) or {
+		return none
+	}
+	key := content.trim_space()
+	if key.len == 0 || key.contains_any(' \t\r\n/\\') {
+		return none
+	}
+	return key
+}
+
+// write_object_alias records that a build with `alias_signature` generates the C
+// that `content_key` identifies for this module.
+pub fn (m &Manager) write_object_alias(module_name string, source_files []string, alias_signature string, content_key string) ! {
+	write_atomic(m.object_alias_path(module_name, source_files, alias_signature), content_key +
+		'\n')!
+}
+
 // cgen_entry returns the artifact paths for one stable program source set.
 pub fn (m &Manager) cgen_entry(source_files []string) CgenEntry {
-	mut paths := source_files.map(os.real_path(it))
+	mut paths := m.real_source_paths(source_files)
 	paths.sort()
 	id := hash_text(paths.join('\n'))
 	base := os.join_path(m.dir, 'program_${id}')
@@ -244,6 +536,11 @@ struct SourceSignatureDetails {
 }
 
 fn source_signature_details(source_files []string, build_pseudo_values string, version_pseudo_values string) SourceSignatureDetails {
+	return source_signature_details_probed(source_files, build_pseudo_values, version_pseudo_values,
+		'', unsafe { nil })
+}
+
+fn source_signature_details_probed(source_files []string, build_pseudo_values string, version_pseudo_values string, cache_dir string, probes &PkgConfigProbes) SourceSignatureDetails {
 	mut files := source_files.clone()
 	files.sort()
 	mut hash := u64(1469598103934665603)
@@ -264,38 +561,6 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 		hash = hash_bytes(hash, content)
 		hash = hash_bytes(hash, [u8(0xff)])
 		source := content.bytestr()
-		vml_paths, vml_lookup_paths, vml_lookup_candidates, has_unresolved_vml_path := compile_time_vml_paths(source, path)
-		if has_unresolved_vml_path {
-			cacheable = false
-		}
-		for lookup_path in vml_lookup_paths {
-			resolved := os.real_path(lookup_path)
-			metadata := optional_file_metadata_signature(lookup_path)
-			validation << 'vmllookup=${lookup_path}\t${resolved}\t${metadata}'
-			hash = hash_bytes(hash, [u8(0xf7)])
-			hash = hash_bytes(hash, lookup_path.bytes())
-			hash = hash_bytes(hash, [u8(0)])
-			hash = hash_bytes(hash, resolved.bytes())
-			hash = hash_bytes(hash, [u8(0xff)])
-		}
-		for candidate in vml_lookup_candidates {
-			metadata := optional_file_metadata_signature(candidate)
-			validation << 'vmlcandidate=${candidate}\t${metadata}'
-			hash = hash_bytes(hash, [u8(0xf6)])
-			hash = hash_bytes(hash, candidate.bytes())
-			hash = hash_bytes(hash, [u8(0)])
-			hash = hash_bytes(hash, metadata.bytes())
-			hash = hash_bytes(hash, [u8(0xff)])
-		}
-		for vml_path in vml_paths {
-			vml_content := os.read_bytes(vml_path) or { return SourceSignatureDetails{} }
-			validation << 'vml=${vml_path}\t${file_metadata_signature(vml_path)}'
-			hash = hash_bytes(hash, [u8(0xf8)])
-			hash = hash_bytes(hash, vml_path.bytes())
-			hash = hash_bytes(hash, [u8(0)])
-			hash = hash_bytes(hash, vml_content)
-			hash = hash_bytes(hash, [u8(0xff)])
-		}
 		if source_uses_pseudo(source, [
 			'@BUILD_TIMESTAMP',
 			'@BUILD_DATE',
@@ -310,9 +575,12 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 		if uses_vmod_hash || source_uses_pseudo(source, ['@VMODROOT', '@VMOD_FILE', '@VROOT']) {
 			root, vmod_file := signature_vmod_root(file)
 			vmod_metadata := if vmod_file.len > 0 {
-				file_metadata_signature(vmod_file)
+				file_change_signature(vmod_file)
 			} else {
 				''
+			}
+			if vmod_file.len > 0 && vmod_metadata.len == 0 {
+				cacheable = false
 			}
 			validation << 'vmod=${path}\t${root}\t${vmod_file}\t${vmod_metadata}'
 			hash = hash_bytes(hash, [u8(0xfc)])
@@ -369,7 +637,7 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 	mut packages := pkgconfig_names.keys()
 	packages.sort()
 	for name in packages {
-		available := os.execute('pkg-config --exists ${name}').exit_code == 0
+		available := pkg_config_exists(name, cache_dir, probes)
 		validation << 'pkg=${name}\t${if available { 1 } else { 0 }}'
 		hash = hash_bytes(hash, [u8(0xfd)])
 		hash = hash_bytes(hash, name.bytes())
@@ -379,7 +647,7 @@ fn source_signature_details(source_files []string, build_pseudo_values string, v
 	}
 	if !cacheable {
 		// Keep repeated queries consistent inside one compiler process, while
-		// ensuring another process cannot reuse an artifact whose VML input path
+		// ensuring another process cannot reuse an artifact whose compile-time input
 		// could not be extracted from source text.
 		hash = hash_bytes(hash, [u8(0xf7)])
 		hash = hash_bytes(hash, os.getpid().str().bytes())
@@ -618,7 +886,8 @@ fn (m &Manager) cacheable_source_signature(source_files []string) ?string {
 }
 
 fn (m &Manager) source_signature_details(source_files []string) SourceSignatureDetails {
-	return cached_source_signature_details_with_build_values(m.dir, 'module', source_files, m.build_pseudo_values, m.version_pseudo_values)
+	return cached_source_signature_details_resolved(m.dir, 'module', m.real_source_paths(source_files),
+		m.build_pseudo_values, m.version_pseudo_values, m.pkg_probes)
 }
 
 // cached_source_signature returns a content signature while using precise file
@@ -628,18 +897,33 @@ pub fn cached_source_signature(cache_dir string, namespace string, source_files 
 }
 
 fn cached_source_signature_details_with_build_values(cache_dir string, namespace string, source_files []string, build_pseudo_values string, version_pseudo_values string) SourceSignatureDetails {
-	mut paths := source_files.map(os.real_path(it))
+	return cached_source_signature_details_probed(cache_dir, namespace, source_files, build_pseudo_values,
+		version_pseudo_values, &PkgConfigProbes{})
+}
+
+fn cached_source_signature_details_probed(cache_dir string, namespace string, source_files []string, build_pseudo_values string, version_pseudo_values string, probes &PkgConfigProbes) SourceSignatureDetails {
+	return cached_source_signature_details_resolved(cache_dir, namespace, source_files.map(os.real_path(it)),
+		build_pseudo_values, version_pseudo_values, probes)
+}
+
+// cached_source_signature_details_resolved is cached_source_signature_details_probed
+// for source files that are given by their resolved paths.
+fn cached_source_signature_details_resolved(cache_dir string, namespace string, resolved_files []string, build_pseudo_values string, version_pseudo_values string, probes &PkgConfigProbes) SourceSignatureDetails {
+	mut paths := resolved_files.clone()
 	paths.sort()
 	cache_key := hash_text(namespace + '\n' + paths.join('\n'))
 	cache_path := os.join_path(cache_dir, '.source_signature_${cache_key}')
 	metadata := source_files_metadata_signature(paths)
 	if metadata.len > 0 {
 		cached := os.read_file(cache_path) or { '' }
-		if details := valid_cached_source_signature(cached, metadata, build_pseudo_values, version_pseudo_values, paths.len) {
+		if details := valid_cached_source_signature(cached, metadata, build_pseudo_values,
+			version_pseudo_values, paths.len, cache_dir, probes)
+		{
 			return details
 		}
 	}
-	details := source_signature_details(paths, build_pseudo_values, version_pseudo_values)
+	details := source_signature_details_probed(paths, build_pseudo_values, version_pseudo_values,
+		cache_dir, probes)
 	if details.signature.len == 0 || !details.cacheable {
 		return details
 	}
@@ -686,7 +970,7 @@ fn source_files_metadata_signature(paths []string) string {
 	return hash.hex()
 }
 
-fn valid_cached_source_signature(content string, metadata string, build_pseudo_values string, version_pseudo_values string, source_count int) ?SourceSignatureDetails {
+fn valid_cached_source_signature(content string, metadata string, build_pseudo_values string, version_pseudo_values string, source_count int, cache_dir string, probes &PkgConfigProbes) ?SourceSignatureDetails {
 	lines := content.split_into_lines()
 	if lines.len < 4 || lines[0] != 'format=${source_signature_cache_format}'
 		|| lines[1] != 'metadata=${metadata}' || lines.last() != 'complete=1' {
@@ -735,36 +1019,12 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 			if parts.len != 2 || parts[0].len == 0 {
 				return none
 			}
-			available := os.execute('pkg-config --exists ${parts[0]}').exit_code == 0
+			available := pkg_config_exists(parts[0], cache_dir, probes)
 			if parts[1] != '${if available {
 				1
 			} else {
 				0
 			}}' {
-				return none
-			}
-			continue
-		}
-		if line.starts_with('vml=') {
-			parts := line['vml='.len..].split('\t')
-			if parts.len != 2 || parts[0].len == 0
-				|| file_metadata_signature(parts[0]) != parts[1] {
-				return none
-			}
-			continue
-		}
-		if line.starts_with('vmlcandidate=') {
-			parts := line['vmlcandidate='.len..].split('\t')
-			if parts.len != 2 || parts[0].len == 0
-				|| optional_file_metadata_signature(parts[0]) != parts[1] {
-				return none
-			}
-			continue
-		}
-		if line.starts_with('vmllookup=') {
-			parts := line['vmllookup='.len..].split('\t')
-			if parts.len != 3 || parts[0].len == 0 || os.real_path(parts[0]) != parts[1]
-				|| optional_file_metadata_signature(parts[0]) != parts[2] {
 				return none
 			}
 			continue
@@ -775,12 +1035,14 @@ fn valid_cached_source_signature(content string, metadata string, build_pseudo_v
 				return none
 			}
 			root, vmod_file := signature_vmod_root(parts[0])
-			vmod_metadata := if vmod_file.len > 0 {
-				file_metadata_signature(vmod_file)
-			} else {
-				''
+			if root != parts[1] || vmod_file != parts[2] {
+				return none
 			}
-			if root != parts[1] || vmod_file != parts[2] || vmod_metadata != parts[3] {
+			if vmod_file.len > 0 {
+				if !file_change_signature_matches(vmod_file, parts[3]) {
+					return none
+				}
+			} else if parts[3] != '' {
 				return none
 			}
 			continue
@@ -821,11 +1083,13 @@ fn is_sha256_hex_digest(digest string) bool {
 	return true
 }
 
-fn source_digest_map(source_files []string, digests []string) map[string]string {
-	if source_files.len != digests.len {
+// source_digest_map maps the resolved paths of source files to their digests,
+// which are in the order of the sorted paths.
+fn source_digest_map(resolved_files []string, digests []string) map[string]string {
+	if resolved_files.len != digests.len {
 		return {}
 	}
-	mut paths := source_files.map(os.real_path(it))
+	mut paths := resolved_files.clone()
 	paths.sort()
 	mut result := map[string]string{}
 	for i, path in paths {
@@ -835,18 +1099,10 @@ fn source_digest_map(source_files []string, digests []string) map[string]string 
 }
 
 fn signature_vmod_root(source_file string) (string, string) {
-	mut dir := os.dir(os.real_path(source_file))
-	original_dir := dir
-	for dir.len > 0 {
-		vmod_file := os.join_path_single(dir, 'v.mod')
-		if os.exists(vmod_file) {
-			return os.real_path(dir), os.real_path(vmod_file)
-		}
-		// `os.parent_dir` stops at a filesystem root; `os.dir` would escape a bare
-		// Windows drive into the relative `.` and match the current directory.
-		dir = os.parent_dir(dir)
+	if root := util.nearest_vmod_root(source_file) {
+		return root, os.real_path(os.join_path_single(root, 'v.mod'))
 	}
-	return os.real_path(original_dir), ''
+	return os.dir(os.real_path(source_file)), ''
 }
 
 fn signature_vmod_hash(root string, vmod_file string) string {
@@ -998,90 +1254,31 @@ fn signature_string_call_arg_prefix(source string, start int) (string, int, bool
 	return '', source.len, false, false
 }
 
-fn compile_time_vml_paths(source string, source_file string) ([]string, []string, []string, bool) {
-	if !source.contains('\$vml') {
-		return []string{}, []string{}, []string{}, false
-	}
-	mut paths := map[string]bool{}
-	mut lookup_paths := map[string]bool{}
-	mut lookup_candidates := map[string]bool{}
-	mut has_unresolved_path := false
-	mut pos := 0
-	for pos < source.len {
-		if source[pos] == `/` && pos + 1 < source.len
-			&& (source[pos + 1] == `/` || source[pos + 1] == `*`) {
-			pos = skip_signature_space_and_comments(source, pos)
-			continue
-		}
-		if source[pos] in [`'`, `"`, `\``] {
-			pos = skip_signature_quoted_text(source, pos, false)
-			continue
-		}
-		if source[pos] == `r` && pos + 1 < source.len && source[pos + 1] in [`'`, `"`] {
-			pos = skip_signature_quoted_text(source, pos + 1, true)
-			continue
-		}
-		if pos + 4 > source.len || source[pos..pos + 4] != '\$vml'
-			|| (pos + 4 < source.len && signature_name_char(source[pos + 4])) {
-			pos++
-			continue
-		}
-		raw_path, next_pos, ok, is_raw := signature_string_call_arg(source, pos + 4)
-		if ok {
-			path_value := if is_raw { raw_path } else { cached_unescape_v_string(raw_path) }
-			path, candidates := resolve_signature_vml_path(path_value, source_file)
-			paths[os.real_path(path)] = true
-			lookup_paths[path] = true
-			for candidate in candidates {
-				lookup_candidates[os.real_path(candidate)] = true
-			}
-		} else {
-			has_unresolved_path = true
-		}
-		pos = if next_pos > pos { next_pos } else { pos + 4 }
-	}
-	mut result := paths.keys()
-	result.sort()
-	mut lookups := lookup_paths.keys()
-	lookups.sort()
-	mut candidates := lookup_candidates.keys()
-	candidates.sort()
-	return result, lookups, candidates, has_unresolved_path
-}
-
-fn resolve_signature_vml_path(path string, source_file string) (string, []string) {
-	if os.is_abs_path(path) {
-		return path, []string{}
-	}
-	dir := os.dir(os.real_path(source_file))
-	direct := os.join_path_single(dir, path)
-	if os.exists(direct) {
-		return direct, []string{}
-	}
-	mut candidates := [direct]
-	in_templates := os.join_path(dir, 'templates', path)
-	if os.exists(in_templates) {
-		return in_templates, candidates
-	}
-	candidates << in_templates
-	root, _ := signature_vmod_root(source_file)
-	if root != dir {
-		vmod_direct := os.join_path_single(root, path)
-		if os.exists(vmod_direct) {
-			return vmod_direct, candidates
-		}
-		candidates << vmod_direct
-		vmod_templates := os.join_path(root, 'templates', path)
-		if os.exists(vmod_templates) {
-			return vmod_templates, candidates
-		}
-	}
-	return direct, []string{}
-}
-
-fn optional_file_metadata_signature(path string) string {
+// file_change_signature returns a value that changes whenever the file at `path`
+// changes, appears or disappears: its metadata when the file system reports one,
+// a digest of its contents when it does not, and `missing` when nothing exists at
+// `path`. It is empty for an existing path that can be neither described nor
+// read, which a cached signature must not depend on.
+fn file_change_signature(path string) string {
 	metadata := file_metadata_signature(path)
-	return if metadata.len > 0 { metadata } else { 'missing' }
+	if metadata.len > 0 {
+		return metadata
+	}
+	if !os.exists(path) {
+		return 'missing'
+	}
+	content := file_signature(path)
+	if content.len == 0 {
+		return ''
+	}
+	return 'content:${content}'
+}
+
+// file_change_signature_matches reports whether the file at `path` is unchanged
+// since `signature` was recorded by file_change_signature.
+fn file_change_signature_matches(path string, signature string) bool {
+	current := file_change_signature(path)
+	return current.len > 0 && current == signature
 }
 
 fn signature_name_char(c u8) bool {
@@ -1170,11 +1367,11 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 	}
 	source_details := m.source_signature_details(source_files)
 	if !source_details.cacheable {
-		cache_trace_module_miss(module_name, 'source has an unresolved compile-time VML path')
+		cache_trace_module_miss(module_name, 'source has an unresolved compile-time input')
 		return none
 	}
 	expected := entry_stamp(m.salt, source_details.signature)
-	source_bodies := header_stamp_source_bodies(stamp, expected) or {
+	flags := header_stamp_flags(stamp, expected) or {
 		cache_trace_module_miss(module_name, 'source signature changed')
 		return none
 	}
@@ -1188,9 +1385,10 @@ pub fn (m &Manager) valid_entry_with_metadata_cache(module_name string, source_f
 	}
 	return Entry{
 		...entry
-		source_bodies:       source_bodies
+		source_bodies:       flags.source_bodies
 		source_bodies_known: true
-		source_digests:      source_digest_map(source_files, source_details.source_digests)
+		calls_recover:       flags.calls_recover
+		source_digests:      source_digest_map(m.real_source_paths(source_files), source_details.source_digests)
 	}
 }
 
@@ -1215,12 +1413,13 @@ pub fn (m &Manager) valid_header(module_name string, source_files []string) ?Ent
 		return none
 	}
 	expected := entry_stamp(m.salt, source_details.signature)
-	source_bodies := header_stamp_source_bodies(stamp, expected) or { return none }
+	flags := header_stamp_flags(stamp, expected) or { return none }
 	return Entry{
 		...entry
-		source_bodies:       source_bodies
+		source_bodies:       flags.source_bodies
 		source_bodies_known: true
-		source_digests:      source_digest_map(source_files, source_details.source_digests)
+		calls_recover:       flags.calls_recover
+		source_digests:      source_digest_map(m.real_source_paths(source_files), source_details.source_digests)
 	}
 }
 
@@ -1232,6 +1431,23 @@ pub fn header_needs_source(entry Entry) bool {
 		return header.contains(source_body_marker)
 	}
 	return entry.source_bodies
+}
+
+// header_calls_recover reports whether the code of the module of a header calls
+// `recover()`. Every `defer` of a build with such a module links a panic frame:
+// the program may reach the call through a function that the header only
+// declares, and the objects of its modules were compiled before it did.
+pub fn header_calls_recover(entry Entry) bool {
+	if !entry.source_bodies_known {
+		header := os.read_file(entry.header) or { return true }
+		return header_text_calls_recover(header)
+	}
+	return entry.calls_recover
+}
+
+// header_text_calls_recover is header_calls_recover for the text of a header.
+pub fn header_text_calls_recover(header string) bool {
+	return header.contains('\n${recover_call_marker}\n')
 }
 
 // valid_object reports whether a cached object matches the supplied sources.
@@ -1278,20 +1494,45 @@ pub fn (m &Manager) write_header(module_name string, source_files []string, head
 // valid_object_for_compile_signature reports whether the flag-specific object
 // matches its sources, dependency headers, and effective C compilation flags.
 pub fn (m &Manager) valid_object_for_compile_signature(cache_name string, source_files []string, compile_signature string, dependency_inputs map[string]string) ?Entry {
+	return m.object_for_compile_signature(cache_name, source_files, compile_signature,
+		dependency_inputs, true)
+}
+
+// reusable_object is valid_object_for_compile_signature for a build that has the C
+// of the module and compiles it when the object is not there: nothing is missing
+// then, so nothing is traced.
+pub fn (m &Manager) reusable_object(cache_name string, source_files []string, compile_signature string, dependency_inputs map[string]string) ?Entry {
+	return m.object_for_compile_signature(cache_name, source_files, compile_signature,
+		dependency_inputs, false)
+}
+
+fn (m &Manager) object_for_compile_signature(cache_name string, source_files []string, compile_signature string, dependency_inputs map[string]string, trace bool) ?Entry {
 	entry := m.object_entry(cache_name, source_files, compile_signature)
 	if !os.is_file(entry.object) || !os.is_file(entry.object_stamp) {
+		if trace {
+			cache_trace_module_miss(cache_name, 'no object for these C compilation flags and this generated C')
+		}
 		return none
 	}
 	stamp := os.read_file(entry.object_stamp) or { return none }
 	source_hash := m.cacheable_source_signature(source_files) or { return none }
 	if !object_stamp_valid(stamp, entry_stamp(m.salt, source_hash)) {
+		if trace {
+			cache_trace_module_miss(cache_name, 'object source or dependency changed')
+		}
 		return none
 	}
 	expected := 'compile=${hash_text(compile_signature)}'
 	if !stamp.split_into_lines().any(it == expected) {
+		if trace {
+			cache_trace_module_miss(cache_name, 'object stamp names other C compilation flags')
+		}
 		return none
 	}
 	if !object_stamp_dependencies_match(stamp, dependency_inputs) {
+		if trace {
+			cache_trace_module_miss(cache_name, 'object was built against other dependency interfaces')
+		}
 		return none
 	}
 	return entry
@@ -1602,6 +1843,248 @@ pub fn (m &Manager) write_cgen_prepared_objects(entry CgenEntry, compile_signatu
 	write_atomic(path, content)!
 }
 
+// program_executable_slot returns the path that every artifact of the linked
+// executable of one program source set starts with.
+fn (m &Manager) program_executable_slot(source_files []string) string {
+	return m.cgen_entry(source_files).source.all_before_last('.c')
+}
+
+// program_executable_identity is what a build knows of its executable before it
+// has generated any C: the inputs of the whole-program C plan, and what decides
+// the link besides them.
+fn (m &Manager) program_executable_identity(source_files []string, generation_signature string, dependency_inputs map[string]string, link_signature string) ?string {
+	source_hash := m.cacheable_source_signature(source_files) or { return none }
+	return 'executable_format=${program_executable_format}\n' +
+		cgen_entry_stamp(m.salt, source_hash, dependency_inputs, generation_signature) +
+		'link=${hash_text(link_signature)}\n'
+}
+
+// valid_program_executable returns the executable that an earlier build linked from
+// the inputs that this build has: the same program sources, module interfaces,
+// native inputs and configuration (as for valid_cgen), the same `link_signature`,
+// and inputs of the C compiler and of the linker that are the files they were. The
+// headers that the compiler read and the files that the link read are compared by
+// their metadata, and a path where either looked for a file in vain has to be
+// absent still. Such a build has nothing left to generate, compile or link.
+pub fn (m &Manager) valid_program_executable(source_files []string, generation_signature string, dependency_inputs map[string]string, link_signature string) ?ProgramExecutable {
+	if !m.enabled || source_files.len == 0 {
+		return none
+	}
+	slot := m.program_executable_slot(source_files)
+	stamp := os.read_file('${slot}.exe.stamp') or { return none }
+	identity := m.program_executable_identity(source_files, generation_signature, dependency_inputs,
+		link_signature) or { return none }
+	if !stamp.starts_with(identity) {
+		if os.getenv('V3_CACHE_TRACE') != '' {
+			actual_lines := stamp.split_into_lines()
+			expected_lines := identity.split_into_lines()
+			mut line := 0
+			for line < actual_lines.len && line < expected_lines.len
+				&& actual_lines[line] == expected_lines[line] {
+				line++
+			}
+			actual := if line < actual_lines.len { actual_lines[line] } else { '<missing>' }
+			expected := if line < expected_lines.len { expected_lines[line] } else { '<missing>' }
+			eprintln('  V3 program executable miss: stamp line ${line + 1}: cached=${actual} expected=${expected}')
+		}
+		trace_program_executable_miss('the inputs of the program changed')
+		return none
+	}
+	mut executable_metadata := ''
+	mut pos := identity.len
+	for pos < stamp.len {
+		line_end := stamp.index_after_('\n', pos)
+		if line_end < 0 {
+			return none
+		}
+		line := stamp[pos..line_end]
+		pos = line_end + 1
+		if line.starts_with('input=') {
+			path, metadata := program_executable_stamp_pair(line['input='.len..]) or { return none }
+			if file_metadata_signature(path) != metadata {
+				trace_program_executable_miss('an input of the compiler or the linker changed: ${path}')
+				return none
+			}
+		} else if line.starts_with('missing=') {
+			if os.exists(line['missing='.len..]) {
+				trace_program_executable_miss('a file appeared where the compiler or the linker looks: ${line['missing='.len..]}')
+				return none
+			}
+		} else if line.starts_with('executable=') {
+			executable_metadata = line['executable='.len..]
+		} else if line.starts_with('notices=') {
+			// The notices are the rest of the stamp: nothing else follows them.
+			length := line['notices='.len..].int()
+			if executable_metadata.len == 0 || length != stamp.len - pos
+				|| line != 'notices=${length}' {
+				return none
+			}
+			executable := '${slot}_${hash_text(identity)}.exe'
+			if file_metadata_signature(executable) != executable_metadata {
+				trace_program_executable_miss('the cached executable is not the one that was recorded')
+				return none
+			}
+			return ProgramExecutable{
+				path:     executable
+				metadata: executable_metadata
+				notices:  stamp[pos..]
+			}
+		} else {
+			return none
+		}
+	}
+	return none
+}
+
+fn program_executable_stamp_pair(value string) ?(string, string) {
+	tab := value.last_index_u8(`\t`)
+	if tab <= 0 || tab + 1 >= value.len {
+		return none
+	}
+	return value[..tab], value[tab + 1..]
+}
+
+fn trace_program_executable_miss(reason string) {
+	if os.getenv('V3_CACHE_TRACE') != '' {
+		eprintln('  V3 program executable miss: ${reason}')
+	}
+}
+
+// restore copies the cached executable to `destination`, through a new file that
+// replaces `destination` when it is complete. It reports false, and leaves
+// `destination` alone, unless the bytes it copied are those of the executable that
+// valid_program_executable found: a build that publishes at the same moment
+// replaces that file, and never changes it in place.
+pub fn (e &ProgramExecutable) restore(destination string) bool {
+	if file_metadata_signature(e.path) != e.metadata {
+		return false
+	}
+	bytes := os.read_bytes(e.path) or { return false }
+	if file_metadata_signature(e.path) != e.metadata {
+		return false
+	}
+	tmp := '${destination}.tmp.${tempname.unique_token()}'
+	// A linker creates its output with every permission that the umask of the
+	// caller leaves: so does this, by asking for all of them.
+	mut file := os.open_file(tmp, 'w', 0o777) or { return false }
+	written := file.write(bytes) or { -1 }
+	file.close()
+	if written != bytes.len {
+		os.rm(tmp) or {}
+		return false
+	}
+	os.mv(tmp, destination) or {
+		os.rm(tmp) or {}
+		return false
+	}
+	return true
+}
+
+// discard_program_entries removes the stamps of every whole-program entry of
+// `source_files` (C plan, prepared plan, generic and incremental snapshots, linked
+// executable). The entry files stay, but no build reads them again until it writes
+// them afresh, so the next build generates the program from its sources.
+pub fn (m &Manager) discard_program_entries(source_files []string) {
+	if !m.enabled || source_files.len == 0 {
+		return
+	}
+	cgen := m.cgen_entry(source_files)
+	for stamp in [cgen.stamp, cgen.prepared_stamp, m.generic_program_entry(source_files).stamp,
+		m.incremental_program_entry(source_files).stamp,
+		'${m.program_executable_slot(source_files)}.exe.stamp'] {
+		os.rm(stamp) or {}
+	}
+}
+
+// write_program_executable keeps a copy of `executable`, which a build has just
+// linked, for the next build of the same inputs. `link_files` are the files that
+// the C compiler and the linker read besides the C of the build: headers, objects,
+// libraries. `link_identities` is the metadata that each of them had when it was
+// read, or before, `link_missing` the paths where a file would have been read too
+// if it had been there, and `notices` what the build printed about the program, in
+// a form that the driver can print again. A file that is no longer what it was
+// then, or a path that is no longer absent, may or may not be what was read:
+// nothing is kept then. One executable is kept for a program source
+// set: the copy of the previous one is removed.
+pub fn (m &Manager) write_program_executable(source_files []string, generation_signature string, dependency_inputs map[string]string, link_signature string, link_files []string, link_identities []string, link_missing []string, executable string, notices string) ! {
+	if !m.ensure_dir() {
+		return error('v3 module cache directory is unavailable')
+	}
+	if link_files.len != link_identities.len {
+		return error('the link inputs have no identities')
+	}
+	slot := m.program_executable_slot(source_files)
+	identity := m.program_executable_identity(source_files, generation_signature, dependency_inputs,
+		link_signature) or { return error('the program sources cannot be cached') }
+	mut out := strings.new_builder(identity.len + 256 + link_files.len * 128 + notices.len)
+	out.write_string(identity)
+	for i, path in link_files {
+		metadata := link_identities[i]
+		if metadata.len == 0 || path.contains_any('\t\n') {
+			return error('link input ${path} cannot be told apart from a changed one')
+		}
+		if file_metadata_signature(path) != metadata {
+			return error('link input ${path} changed while the program was linked')
+		}
+		out.writeln('input=${path}\t${metadata}')
+	}
+	for path in link_missing {
+		if path.contains_any('\n') {
+			return error('library candidate ${path} cannot be recorded')
+		}
+		if os.exists(path) {
+			return error('${path} appeared while the program was linked')
+		}
+		out.writeln('missing=${path}')
+	}
+	stamp_path := '${slot}.exe.stamp'
+	cached := '${slot}_${hash_text(identity)}.exe'
+	// The stamp is the commit marker, and it names the copy by the identity of the
+	// build, so that it can never lead to the executable of another build.
+	previous := program_executable_of_stamp(os.read_file(stamp_path) or { '' }, slot)
+	os.rm(stamp_path) or {}
+	if previous.len == 0 {
+		// No stamp says which copy the slot holds: a build that was interrupted, or
+		// that published while another one did, may have left one behind.
+		copy_prefix := os.file_name(slot) + '_'
+		for name in os.ls(os.dir(slot)) or { []string{} } {
+			if name.starts_with(copy_prefix) && name.ends_with('.exe') {
+				os.rm(os.join_path_single(os.dir(slot), name)) or {}
+			}
+		}
+	} else if previous != cached {
+		os.rm(previous) or {}
+	}
+	tmp := '${cached}.tmp.${tempname.unique_token()}'
+	defer {
+		os.rm(tmp) or {}
+	}
+	// One read and one write: os.cp moves a file a kilobyte at a time. The copy
+	// is data: a build that restores it creates the executable anew.
+	os.write_file_array(tmp, os.read_bytes(executable)!)!
+	os.mv(tmp, cached)!
+	executable_metadata := file_metadata_signature(cached)
+	if executable_metadata.len == 0 {
+		os.rm(cached) or {}
+		return error('the cached executable cannot be told apart from a changed one')
+	}
+	out.writeln('executable=${executable_metadata}')
+	out.writeln('notices=${notices.len}')
+	out.write_string(notices)
+	write_atomic(stamp_path, out.str())!
+}
+
+// program_executable_of_stamp returns the path of the executable that `stamp`
+// commits, or '' for a stamp of another format.
+fn program_executable_of_stamp(stamp string, slot string) string {
+	link := stamp.index('\nlink=') or { return '' }
+	identity_end := stamp.index_after_('\n', link + 1)
+	if identity_end < 0 || !stamp.starts_with('executable_format=${program_executable_format}\n') {
+		return ''
+	}
+	return '${slot}_${hash_text(stamp[..identity_end + 1])}.exe'
+}
+
 // write_stamp refreshes a cache stamp after the object and header are durable.
 // dependency_inputs maps every transitive imported `.vh` and non-V input path
 // to the content signature that the object was compiled against.
@@ -1630,15 +2113,39 @@ fn entry_stamp(salt string, source_hash string) string {
 }
 
 fn header_entry_stamp(salt string, source_hash string, header string) string {
-	return entry_stamp(salt, source_hash) + 'source_bodies=${int(header.contains(source_body_marker))}\n'
+	return entry_stamp(salt, source_hash) + 'source_bodies=${int(header.contains(source_body_marker))}\n' +
+		'recover=${int(header_text_calls_recover(header))}\n'
 }
 
-fn header_stamp_source_bodies(stamp string, expected_entry string) ?bool {
-	if stamp == expected_entry + 'source_bodies=0\n' {
-		return false
+// HeaderStampFlags is what the stamp of a header says about its text.
+struct HeaderStampFlags {
+	source_bodies bool
+	calls_recover bool
+}
+
+fn header_stamp_flags(stamp string, expected_entry string) ?HeaderStampFlags {
+	if !stamp.starts_with(expected_entry) {
+		return none
 	}
-	if stamp == expected_entry + 'source_bodies=1\n' {
-		return true
+	rest := stamp[expected_entry.len..]
+	if rest == 'source_bodies=0\nrecover=0\n' {
+		return HeaderStampFlags{}
+	}
+	if rest == 'source_bodies=1\nrecover=0\n' {
+		return HeaderStampFlags{
+			source_bodies: true
+		}
+	}
+	if rest == 'source_bodies=0\nrecover=1\n' {
+		return HeaderStampFlags{
+			calls_recover: true
+		}
+	}
+	if rest == 'source_bodies=1\nrecover=1\n' {
+		return HeaderStampFlags{
+			source_bodies: true
+			calls_recover: true
+		}
 	}
 	return none
 }
@@ -1777,8 +2284,25 @@ pub fn header_signature(header string) string {
 
 // file_signature returns a stable content signature for a cache input file.
 pub fn file_signature(path string) string {
-	content := os.read_bytes(path) or { return '' }
-	return hash_bytes(u64(1469598103934665603), content).hex()
+	mut file := os.open(path) or { return '' }
+	defer { file.close() }
+	mut hash := u64(1469598103934665603)
+	mut buffer := []u8{len: 64 * 1024}
+	for {
+		read := file.read(mut buffer) or {
+			if err is os.Eof {
+				break
+			}
+			return ''
+		}
+		if read == 0 {
+			break
+		}
+		for value in buffer[..read] {
+			hash = (hash ^ u64(value)) * u64(1099511628211)
+		}
+	}
+	return hash.hex()
 }
 
 fn sanitize_name(name string) string {
@@ -2001,9 +2525,17 @@ pub fn rewrite_cached_runtime_strings(cached_source string, old_values []string,
 	if replacements.len == 0 {
 		return cached_source.clone()
 	}
-	mut source := cached_source
 	mut replacement_values := replacements.keys()
 	replacement_values.sort()
+	// Definitions are found by symbol: cgen splits a long literal over several
+	// lines, so its text is not the single-line form written here.
+	units := c_source_units(cached_source)
+	mut defined_symbols := map[string]bool{}
+	for unit in units {
+		if unit.symbol != '' {
+			defined_symbols[unit.symbol] = true
+		}
+	}
 	mut symbol_replacements := map[string]string{}
 	mut target_definitions := map[string]string{}
 	mut target_definitions_present := map[string]bool{}
@@ -2015,19 +2547,24 @@ pub fn rewrite_cached_runtime_strings(cached_source string, old_values []string,
 			continue
 		}
 		new_symbol := cached_c_string_symbol(new_value)
-		old_definition := 'static string ${old_symbol} = {"${cached_c_escape(old_value)}", ${old_value.len}, 1};'
-		new_definition := 'static string ${new_symbol} = {"${cached_c_escape(new_value)}", ${new_value.len}, 1};'
-		if cached_source.contains(new_definition) {
+		new_definition := 'static const string ${new_symbol} = {"${cached_c_escape(new_value)}", ${new_value.len}, 1};'
+		if defined_symbols[new_symbol] {
 			target_definitions_present[new_symbol] = true
 		}
-		if source.contains(old_definition) {
-			source = source.replace('${old_definition}\n', '').replace(old_definition, '')
+		if defined_symbols[old_symbol] {
 			removed_definition_symbols[old_symbol] = true
 		}
 		symbol_replacements[old_symbol] = new_symbol
 		target_definitions[new_symbol] = new_definition
 	}
-	source = rewrite_c_identifier_tokens(source, symbol_replacements)
+	mut kept := strings.new_builder(cached_source.len)
+	for unit in units {
+		if unit.symbol != '' && removed_definition_symbols[unit.symbol] {
+			continue
+		}
+		kept.writeln(unit.text)
+	}
+	mut source := rewrite_c_identifier_tokens(kept.str(), symbol_replacements)
 	mut definitions := []string{}
 	mut target_symbols := target_definitions.keys()
 	target_symbols.sort()
@@ -2121,38 +2658,97 @@ fn rewrite_c_identifier_tokens(source string, replacements map[string]string) st
 	return out.str()
 }
 
+// CSourceUnit is one line of generated C, or all lines of one generated literal
+// definition.
+struct CSourceUnit {
+	text   string // without the final newline
+	symbol string // the generated literal this unit defines, if any
+}
+
+// c_source_units splits generated C into lines, keeping each generated literal
+// definition in one unit however many lines it spans.
+fn c_source_units(source string) []CSourceUnit {
+	lines := source.split_into_lines()
+	mut units := []CSourceUnit{cap: lines.len}
+	mut i := 0
+	for i < lines.len {
+		symbol := generated_static_string_definition_symbol(lines[i]) or {
+			units << CSourceUnit{
+				text: lines[i]
+			}
+			i++
+			continue
+		}
+		end := static_string_definition_end(lines, i, '')
+		units << CSourceUnit{
+			text:   if end == i + 1 { lines[i] } else { lines[i..end].join('\n') }
+			symbol: symbol
+		}
+		i = end
+	}
+	return units
+}
+
+// static_string_definition_end returns the index just past the last line of the
+// generated literal definition that starts at lines[start]. cgen continues a long
+// literal in adjacent literals on the following lines, because C compilers limit
+// the length of one literal and of one source line. A definition therefore runs to
+// the line that ends its initializer; keeping or dropping only its first line
+// leaves bare string lines, which no C compiler accepts. Every line of the
+// definition begins with prefix.
+fn static_string_definition_end(lines []string, start int, prefix string) int {
+	mut end := start + 1
+	for end < lines.len && !lines[end - 1].trim_space().ends_with(';') {
+		next := lines[end]
+		if !next.starts_with(prefix) || !next[prefix.len..].trim_space().starts_with('"') {
+			break
+		}
+		end++
+	}
+	return end
+}
+
 // prune_unreferenced_static_string_definitions removes generated string storage
 // that is referenced only by the program body. Cached module objects carry
 // their own static copies, while the program translation unit retains the full
 // prefix. Keeping body-only strings out of the shared dylib prefix makes an
 // ordinary program literal edit reuse the same cached dylib.
 pub fn prune_unreferenced_static_string_definitions(prefix string) string {
+	units := c_source_units(prefix)
 	mut references := map[string]int{}
-	for line in prefix.split_into_lines() {
-		for symbol in generated_string_symbols(line) {
+	for unit in units {
+		for symbol in generated_string_symbols(unit.text) {
 			references[symbol]++
 		}
 	}
 	mut out := strings.new_builder(prefix.len)
-	for line in prefix.split_into_lines() {
-		if symbol := generated_static_string_definition_symbol(line) {
-			if references[symbol] == 1 {
-				continue
-			}
+	for unit in units {
+		if unit.symbol != '' && references[unit.symbol] == 1 {
+			continue
 		}
-		out.writeln(line)
+		out.writeln(unit.text)
 	}
 	return out.str()
+}
+
+// static_string_definition_texts returns each generated literal definition of
+// source, without its final newline. A definition can span several lines.
+pub fn static_string_definition_texts(source string) []string {
+	mut definitions := []string{}
+	for unit in c_source_units(source) {
+		if unit.symbol != '' {
+			definitions << unit.text
+		}
+	}
+	return definitions
 }
 
 // static_string_definitions returns generated literal storage needed by the
 // current program body. Cached dependency declarations omit these records.
 pub fn static_string_definitions(source string) string {
 	mut out := strings.new_builder(4096)
-	for line in source.split_into_lines() {
-		if line.starts_with('static string _v3_lit_') {
-			out.writeln(line)
-		}
+	for definition in static_string_definition_texts(source) {
+		out.writeln(definition)
 	}
 	return out.str()
 }
@@ -2160,8 +2756,9 @@ pub fn static_string_definitions(source string) string {
 // without_duplicate_static_string_definitions removes literal storage already
 // supplied by an earlier cached C prefix while retaining new body-only literals.
 pub fn without_duplicate_static_string_definitions(source string, existing_source string) string {
-	if !source.contains('static string _v3_lit_')
-		|| !existing_source.contains('static string _v3_lit_') {
+	if !(source.contains('static string _v3_lit_') || source.contains('static const string _v3_lit_'))
+		|| !(existing_source.contains('static string _v3_lit_')
+			|| existing_source.contains('static const string _v3_lit_')) {
 		return source.clone()
 	}
 	mut existing := map[string]bool{}
@@ -2171,13 +2768,11 @@ pub fn without_duplicate_static_string_definitions(source string, existing_sourc
 		}
 	}
 	mut out := strings.new_builder(source.len)
-	for line in source.split_into_lines() {
-		if symbol := generated_static_string_definition_symbol(line) {
-			if existing[symbol] {
-				continue
-			}
+	for unit in c_source_units(source) {
+		if unit.symbol != '' && existing[unit.symbol] {
+			continue
 		}
-		out.writeln(line)
+		out.writeln(unit.text)
 	}
 	return out.str()
 }
@@ -2189,8 +2784,9 @@ pub fn materialize_cached_body_string_definitions(source string) string {
 	if !source.contains(marker) {
 		return source.clone()
 	}
+	lines := source.split_into_lines()
 	mut actual_symbols := map[string]bool{}
-	for line in source.split_into_lines() {
+	for line in lines {
 		if line.starts_with(marker) {
 			continue
 		}
@@ -2200,31 +2796,47 @@ pub fn materialize_cached_body_string_definitions(source string) string {
 	}
 	mut emitted_symbols := map[string]bool{}
 	mut out := strings.new_builder(source.len)
-	for line in source.split_into_lines() {
+	mut i := 0
+	for i < lines.len {
+		line := lines[i]
 		if line.starts_with(marker) {
-			definition := line[marker.len..]
-			if symbol := generated_static_string_definition_symbol(definition) {
+			if symbol := generated_static_string_definition_symbol(line[marker.len..]) {
+				// A long definition is recorded as one marker line per source line.
+				end := static_string_definition_end(lines, i, marker)
 				if !actual_symbols[symbol] && !emitted_symbols[symbol] {
-					out.writeln(definition)
+					for definition_line in lines[i..end] {
+						out.writeln(definition_line[marker.len..])
+					}
 					emitted_symbols[symbol] = true
 				}
+				i = end
 				continue
 			}
 		}
 		if symbol := generated_static_string_definition_symbol(line) {
-			if emitted_symbols[symbol] {
-				continue
+			end := static_string_definition_end(lines, i, '')
+			if !emitted_symbols[symbol] {
+				for definition_line in lines[i..end] {
+					out.writeln(definition_line)
+				}
+				emitted_symbols[symbol] = true
 			}
-			emitted_symbols[symbol] = true
+			i = end
+			continue
 		}
 		out.writeln(line)
+		i++
 	}
 	return out.str()
 }
 
 fn generated_static_string_definition_symbol(line string) ?string {
 	clean := line.trim_space()
-	prefix := 'static string '
+	prefix := if clean.starts_with('static const string ') {
+		'static const string '
+	} else {
+		'static string '
+	}
 	if !clean.starts_with(prefix) {
 		return none
 	}
@@ -2364,6 +2976,113 @@ fn c_declaration_head_has_api_decl_macro(head string) bool {
 pub fn c_source_has_static_storage(source string) bool {
 	_, has_static_storage, _ := c_declaration_header(source)
 	return has_static_storage
+}
+
+// c_source_is_replicable reports whether every translation unit can include a
+// native input unchanged: it defines no function or variable with external
+// linkage and keeps no static storage, so the copies that separate objects get
+// can neither collide at link time nor diverge at run time.
+pub fn c_source_is_replicable(source string) bool {
+	_, has_static_storage, has_function_static_storage, _, _, defines_external_symbols := c_declaration_header_mode(source,
+		false)
+	if has_static_storage || has_function_static_storage || defines_external_symbols {
+		return false
+	}
+	variables, complete := c_source_static_variable_identifiers(source)
+	return complete && variables.len == 0
+}
+
+// c_declaration_item_defines_external_symbol reports whether declaration_header had
+// to turn a file-scope item into a declaration because it defines a function or a
+// variable with external linkage. A plain declaration that only lacks a visible
+// `extern` is not one: a macro such as `GC_API` usually supplies that keyword.
+fn c_declaration_item_defines_external_symbol(item string, converted string, has_brace bool) bool {
+	if converted == item {
+		return false
+	}
+	if has_brace {
+		// Weak definitions, such as the `GC_noop1_ptr` helper in V's `gc.h`, are
+		// merged by the linker.
+		head := item.all_before('{').replace(' ', '')
+		return !head.contains('((weak))') && !head.contains('__weak__')
+	}
+	return c_declaration_item_has_initializer(item)
+}
+
+// c_declaration_item_keeps_static_object reports whether a file-scope item defines
+// a `static` object rather than a function, whatever its initializer looks like,
+// as in `static uint64_t n = UINT64_C(0);` or `static void (*cb)(void);`.
+fn c_declaration_item_keeps_static_object(item string, has_brace bool) bool {
+	clean := trim_leading_c_comments(item.trim_space())
+	if !clean.starts_with('static') || clean.len == 6 || !clean[6].is_space() {
+		return false
+	}
+	head := if has_brace { clean.all_before('{') } else { clean }
+	if c_declaration_item_has_initializer(head) {
+		return true
+	}
+	// An array size such as `[sizeof(int)]` does not make the item a function.
+	mut first_paren := -1
+	mut bracket_depth := 0
+	for i, c in head {
+		if c == `[` {
+			bracket_depth++
+		} else if c == `]` && bracket_depth > 0 {
+			bracket_depth--
+		} else if c == `(` && bracket_depth == 0 {
+			first_paren = i
+			break
+		}
+	}
+	if first_paren < 0 {
+		return true
+	}
+	// `static void (*callback)(void);` declares a pointer object, while a function
+	// declarator names the function before its parameter list.
+	return !has_brace && head[first_paren + 1..].trim_left(' \t').starts_with('*')
+}
+
+// c_declaration_item_has_initializer reports whether a declaration assigns a value
+// outside parentheses, brackets, literals and comments.
+fn c_declaration_item_has_initializer(item string) bool {
+	mut depth := 0
+	mut i := 0
+	for i < item.len {
+		c := item[i]
+		if c == `/` && i + 1 < item.len && item[i + 1] == `/` {
+			i = item.index_after('\n', i) or { return false }
+			continue
+		}
+		if c == `/` && i + 1 < item.len && item[i + 1] == `*` {
+			end := item.index_after('*/', i + 2) or { return false }
+			i = end + 2
+			continue
+		}
+		if c == `"` || c == `\'` {
+			i++
+			for i < item.len && item[i] != c {
+				if item[i] == `\\` {
+					i++
+				}
+				i++
+			}
+			i++
+			continue
+		}
+		if c in [`(`, `[`] {
+			depth++
+		} else if c in [`)`, `]`] && depth > 0 {
+			depth--
+		} else if c == `=` && depth == 0 {
+			prev := if i > 0 { item[i - 1] } else { ` ` }
+			next := if i + 1 < item.len { item[i + 1] } else { ` ` }
+			if next != `=` && prev !in [`=`, `!`, `<`, `>`] {
+				return true
+			}
+		}
+		i++
+	}
+	return false
 }
 
 // c_source_declares_types reports whether a local C input defines a type whose
@@ -3421,23 +4140,24 @@ pub fn c_source_type_declarations(source string) string {
 // c_source_type_declarations_with_status also reports whether every declaration-like
 // file-scope macro invocation could be classified.
 pub fn c_source_type_declarations_with_status(source string) (string, bool) {
-	header, _, _, _, complete := c_declaration_header_mode(source, true)
+	header, _, _, _, complete, _ := c_declaration_header_mode(source, true)
 	return header, complete
 }
 
 fn c_declaration_header(prefix string) (string, bool, bool) {
-	header, has_static_storage, _, declares_types, _ := c_declaration_header_mode(prefix, false)
+	header, has_static_storage, _, declares_types, _, _ := c_declaration_header_mode(prefix, false)
 	return header, has_static_storage, declares_types
 }
 
 // c_source_replicated_function_has_static_storage reports whether a function
 // definition retained by declaration_header contains function-local static storage.
 pub fn c_source_replicated_function_has_static_storage(source string) bool {
-	_, _, has_replicated_function_static_storage, _, _ := c_declaration_header_mode(source, false)
+	_, _, has_replicated_function_static_storage, _, _, _ := c_declaration_header_mode(source,
+		false)
 	return has_replicated_function_static_storage
 }
 
-fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool, bool, bool) {
+fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool, bool, bool, bool) {
 	mut out := strings.new_builder(prefix.len / 2)
 	mut item := strings.new_builder(512)
 	mut item_head := strings.new_builder(512)
@@ -3450,6 +4170,7 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 	mut has_replicated_function_static_storage := false
 	mut declares_types := false
 	mut types_complete := true
+	mut defines_external_symbols := false
 	mut in_block_comment := false
 	mut in_preprocessor_directive := false
 	mut preprocessor_in_item := false
@@ -3585,7 +4306,11 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 		}
 		declares_types = declares_types || item_declares_type
 		if !types_only || item_declares_type {
-			out.write_string(c_declaration_item(declaration, has_brace, types_only, definition_preserving_macros))
+			converted := c_declaration_item(declaration, has_brace, types_only, definition_preserving_macros)
+			defines_external_symbols = defines_external_symbols
+				|| c_declaration_item_defines_external_symbol(declaration, converted, has_brace)
+				|| c_declaration_item_keeps_static_object(declaration, has_brace)
+			out.write_string(converted)
 		}
 		item_head.clear()
 		brace_depth = 0
@@ -3610,10 +4335,14 @@ fn c_declaration_header_mode(prefix string, types_only bool) (string, bool, bool
 		}
 		declares_types = declares_types || item_declares_type
 		if !types_only || item_declares_type {
-			out.write_string(c_declaration_item(declaration, has_brace, types_only, definition_preserving_macros))
+			converted := c_declaration_item(declaration, has_brace, types_only, definition_preserving_macros)
+			defines_external_symbols = defines_external_symbols
+				|| c_declaration_item_defines_external_symbol(declaration, converted, has_brace)
+				|| c_declaration_item_keeps_static_object(declaration, has_brace)
+			out.write_string(converted)
 		}
 	}
-	return out.str(), has_static_storage, has_replicated_function_static_storage, declares_types, types_complete
+	return out.str(), has_static_storage, has_replicated_function_static_storage, declares_types, types_complete, defines_external_symbols
 }
 
 fn c_type_declaration_macro_names(source string) map[string]bool {
@@ -3875,7 +4604,7 @@ fn c_declaration_item(item string, has_brace bool, types_only bool, definition_p
 	}
 	clean := trim_leading_c_comments(trimmed)
 	if block := c_extern_c_block(item) {
-		inner_header, _, _, _, _ := c_declaration_header_mode(block.inner, types_only)
+		inner_header, _, _, _, _, _ := c_declaration_header_mode(block.inner, types_only)
 		mut result := block.before
 		if !result.ends_with('\n') && !inner_header.starts_with('\n') {
 			result += '\n'
@@ -3888,7 +4617,9 @@ fn c_declaration_item(item string, has_brace bool, types_only bool, definition_p
 	}
 	brace := if has_brace { clean.index_u8(`{`) } else { -1 }
 	head := if brace > 0 { clean[..brace].trim_space() } else { clean }
-	if c_has_static_storage_class(head) || clean.starts_with('typedef ')
+	if c_has_static_storage_class(head)
+		|| c_declaration_head_uses_macro(head, definition_preserving_macros)
+		|| clean.starts_with('typedef ')
 		|| c_tag_declaration_is_type_only(clean, has_brace) {
 		return item
 	}
@@ -4550,7 +5281,7 @@ fn module_header_const_storage_name(module_name string, name string) string {
 	return name
 }
 
-fn module_header_const_replacements(a &flat.FlatAst, module_name string, const_order []string) (map[int]flat.NodeId, map[int]string) {
+fn module_header_const_replacements(a &flat.FlatAst, module_name string, file_ids []flat.NodeId, const_order []string) (map[int]flat.NodeId, map[int]string) {
 	mut replacements := map[int]flat.NodeId{}
 	mut files := map[int]string{}
 	if const_order.len == 0 {
@@ -4561,14 +5292,11 @@ fn module_header_const_replacements(a &flat.FlatAst, module_name string, const_o
 		ranks[name] = i
 	}
 	mut declarations := []ModuleHeaderConstDecl{}
-	for file_node in a.nodes {
-		if file_node.kind != .file || file_node.children_count == 0
-			|| file_module_name(a, file_node) != module_name {
-			continue
-		}
+	for file_id in file_ids {
+		file_node := a.node(file_id)
 		for i in 0 .. file_node.children_count {
 			mut decl_ids := []flat.NodeId{}
-			append_declaration_nodes(a, a.child(&file_node, i), mut decl_ids)
+			append_declaration_nodes(a, a.child(file_node, i), mut decl_ids)
 			for id in decl_ids {
 				node := a.nodes[int(id)]
 				if node.kind != .const_decl {
@@ -4610,51 +5338,123 @@ fn module_header_const_replacements(a &flat.FlatAst, module_name string, const_o
 	return replacements, files
 }
 
+struct ModuleHeaderIndex {
+	files           map[string][]flat.NodeId
+	modules         map[string][]flat.NodeId
+	imports         map[string][]flat.NodeId
+	attrs           map[int]CachedDeclarationAttrs
+	generic_callees map[string]bool
+}
+
+fn module_header_index(a &flat.FlatAst, tc &types.TypeChecker) ModuleHeaderIndex {
+	mut files := map[string][]flat.NodeId{}
+	mut modules := map[string][]flat.NodeId{}
+	mut imports := map[string][]flat.NodeId{}
+	mut stream_module := ''
+	for i, node in a.nodes {
+		match node.kind {
+			.file {
+				stream_module = file_module_name(a, node)
+				if node.children_count > 0 {
+					files[stream_module] << flat.NodeId(i)
+				}
+			}
+			.module_decl { modules[node.value] << flat.NodeId(i) }
+			.import_decl { imports[stream_module] << flat.NodeId(i) }
+			else {}
+		}
+	}
+	return ModuleHeaderIndex{
+		files:           files
+		modules:         modules
+		imports:         imports
+		attrs:           cached_declaration_attrs(a)
+		generic_callees: generic_specialization_callee_names(tc)
+	}
+}
+
+// module_headers_with_const_order generates module headers using one declaration index for the
+// checked AST, preserving the same source and constant order as module_header_with_const_order.
+pub fn module_headers_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, module_names []string, vroot string, import_paths map[string]string, const_order []string) map[string]string {
+	if module_names.len == 0 {
+		return map[string]string{}
+	}
+	index := module_header_index(a, tc)
+	mut headers := map[string]string{}
+	mut source_cache := map[string]string{}
+	for module_name in module_names {
+		headers[module_name] = module_header_indexed(a, tc, module_name, vroot, import_paths, const_order, index, mut source_cache)
+	}
+	return headers
+}
+
 // module_header_with_const_order preserves dependency ordering for runtime
 // constants whose helper bodies are intentionally omitted from warm headers.
 pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, module_name string, vroot string, import_paths map[string]string, const_order []string) string {
-	mut out := strings.new_builder(4096)
-	out.writeln('module ${module_name.all_after_last('.')}')
-	generic_specialization_callees := generic_specialization_callee_names(tc)
-	needs_source_bodies := module_needs_source_bodies(a, tc, module_name, generic_specialization_callees)
+	index := module_header_index(a, tc)
 	mut source_cache := map[string]string{}
+	return module_header_indexed(a, tc, module_name, vroot, import_paths, const_order, index, mut source_cache)
+}
+
+fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name string, vroot string, import_paths map[string]string, const_order []string, index &ModuleHeaderIndex, mut source_cache map[string]string) string {
+	mut out := strings.new_builder(4096)
+	declaration_attrs := index.attrs
+	mut module_attr_lines := []string{}
+	mut seen_module_attrs := map[string]bool{}
+	for id in index.modules[module_name] {
+		attrs := declaration_attrs[int(id)] or { continue }
+		for line in cached_declaration_attrs_text(attrs).split_into_lines() {
+			if line.len == 0 || seen_module_attrs[line] {
+				continue
+			}
+			seen_module_attrs[line] = true
+			module_attr_lines << line
+		}
+	}
+	if module_attr_lines.len > 0 {
+		out.writeln(module_attr_lines.join('\n'))
+	}
+	out.writeln('module ${module_name.all_after_last('.')}')
+	file_ids := index.files[module_name]
+	generic_specialization_callees := index.generic_callees
+	needs_source_bodies := module_needs_source_bodies(a, tc, file_ids, generic_specialization_callees)
 	embed_source_bodies := needs_source_bodies
-		&& module_source_bodies_are_embeddable(a, tc, module_name, generic_specialization_callees, mut source_cache)
+		&& module_source_bodies_are_embeddable(a, tc, file_ids, generic_specialization_callees, mut source_cache)
 	if needs_source_bodies && !embed_source_bodies {
 		out.writeln(source_body_marker)
 	}
 	out.writeln('')
 	mut trusted_c_fns := map[string]bool{}
-	for file_node in a.nodes {
-		if file_node.kind != .file || file_node.children_count == 0
-			|| file_module_name(a, file_node) != module_name {
-			continue
-		}
+	mut calls_recover := false
+	for file_id in file_ids {
+		file_node := a.node(file_id)
 		for i in 0 .. file_node.children_count {
 			mut decl_ids := []flat.NodeId{}
-			append_declaration_nodes(a, a.child(&file_node, i), mut decl_ids)
+			append_declaration_nodes(a, a.child(file_node, i), mut decl_ids)
 			for id in decl_ids {
 				node := a.nodes[int(id)]
 				if node.kind == .c_fn_decl && node.is_mut {
 					trusted_c_fns[node.value] = true
 				}
+				if !calls_recover && node_calls_recover(a, tc, id) {
+					calls_recover = true
+				}
 			}
 		}
 	}
+	if calls_recover {
+		out.writeln(recover_call_marker)
+		out.writeln('')
+	}
 	mut seen := map[string]bool{}
-	declaration_attrs := cached_declaration_attrs(a)
-	const_replacements, const_files := module_header_const_replacements(a, module_name, const_order)
-	for file_node in a.nodes {
-		if file_node.kind != .file || file_node.children_count == 0 {
-			continue
-		}
-		file_module := file_module_name(a, file_node)
-		if file_module != module_name {
-			continue
-		}
+	mut seen_types := map[u64]bool{}
+	mut selected_imports := map[string]bool{}
+	const_replacements, const_files := module_header_const_replacements(a, module_name, file_ids, const_order)
+	for file_id in file_ids {
+		file_node := a.node(file_id)
 		for i in 0 .. file_node.children_count {
 			mut decl_ids := []flat.NodeId{}
-			append_declaration_nodes(a, a.child(&file_node, i), mut decl_ids)
+			append_declaration_nodes(a, a.child(file_node, i), mut decl_ids)
 			for id in decl_ids {
 				effective_id := const_replacements[int(id)] or { id }
 				node := a.nodes[int(effective_id)]
@@ -4662,8 +5462,15 @@ pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, mo
 				if node.kind == .module_decl {
 					continue
 				}
-				key := decl_key(a, node)
-				if key.len > 0 && seen[key] {
+				type_key := nominal_decl_key(node)
+				key := if type_key == 0 { decl_key(a, node) } else { '' }
+				if (type_key != 0 && seen_types[type_key]) || (key.len > 0 && seen[key]) {
+					continue
+				}
+				if node.kind == .import_decl {
+					seen[key] = true
+					out.writeln(header_import_text(a, node, import_paths, mut selected_imports))
+					out.writeln('')
 					continue
 				}
 				attrs := declaration_attrs[int(effective_id)] or { CachedDeclarationAttrs{} }
@@ -4707,7 +5514,9 @@ pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, mo
 				if attrs_text.len > 0 && (!source_embedded || !text.trim_space().starts_with('@[')) {
 					text = '${attrs_text}\n${text}'
 				}
-				if key.len > 0 {
+				if type_key != 0 {
+					seen_types[type_key] = true
+				} else if key.len > 0 {
 					seen[key] = true
 				}
 				out.writeln(text)
@@ -4719,23 +5528,13 @@ pub fn module_header_with_const_order(a &flat.FlatAst, tc &types.TypeChecker, mo
 	// (`sync` for locks and `v.embed_file` for `$embed_file`). They are not file
 	// children, so preserve them separately or a warm header would omit the
 	// cached object's link dependencies.
-	mut stream_module := ''
-	for node in a.nodes {
-		if node.kind == .file {
-			stream_module = file_module_name(a, node)
-			continue
-		}
-		if node.kind != .import_decl || stream_module != module_name {
-			continue
-		}
+	for import_id in index.imports[module_name] {
+		node := a.node(import_id)
 		key := decl_key(a, node)
 		if seen[key] {
 			continue
 		}
-		text := import_text(a, node, import_paths)
-		if text.len == 0 {
-			continue
-		}
+		text := header_import_text(a, node, import_paths, mut selected_imports)
 		seen[key] = true
 		out.writeln(text)
 		out.writeln('')
@@ -4761,8 +5560,8 @@ fn cached_declaration_attrs(a &flat.FlatAst) map[int]CachedDeclarationAttrs {
 		}
 		result[decl_id] = CachedDeclarationAttrs{
 			attrs: params.clone()
-			kinds: if node.typ.len > 0 {
-				node.typ.split(',').map(it.int())
+			kinds: if node.typ != 0 {
+				node.typ_text().split(',').map(it.int())
 			} else {
 				[]int{}
 			}
@@ -4896,17 +5695,11 @@ fn append_declaration_nodes(a &flat.FlatAst, id flat.NodeId, mut declarations []
 	declarations << id
 }
 
-fn module_needs_source_bodies(a &flat.FlatAst, tc &types.TypeChecker, module_name string, generic_callees map[string]bool) bool {
-	for file_node in a.nodes {
-		if file_node.kind != .file || file_node.children_count == 0 {
-			continue
-		}
-		file_module := file_module_name(a, file_node)
-		if file_module != module_name {
-			continue
-		}
+fn module_needs_source_bodies(a &flat.FlatAst, tc &types.TypeChecker, file_ids []flat.NodeId, generic_callees map[string]bool) bool {
+	for file_id in file_ids {
+		file_node := a.node(file_id)
 		for i in 0 .. file_node.children_count {
-			id := a.child(&file_node, i)
+			id := a.child(file_node, i)
 			if declaration_node_needs_source(a, id)
 				|| node_creates_generic_specialization(a, tc, id, generic_callees) {
 				return true
@@ -4916,15 +5709,19 @@ fn module_needs_source_bodies(a &flat.FlatAst, tc &types.TypeChecker, module_nam
 	return false
 }
 
-fn module_source_bodies_are_embeddable(a &flat.FlatAst, tc &types.TypeChecker, module_name string, generic_callees map[string]bool, mut source_cache map[string]string) bool {
-	for file_node in a.nodes {
-		if file_node.kind != .file || file_node.children_count == 0
-			|| file_module_name(a, file_node) != module_name {
-			continue
+fn module_source_bodies_are_embeddable(a &flat.FlatAst, tc &types.TypeChecker, file_ids []flat.NodeId, generic_callees map[string]bool, mut source_cache map[string]string) bool {
+	for file_id in file_ids {
+		file_node := a.node(file_id)
+		// An embedded declaration is parsed again without the `#line` directives of its
+		// file, which would change the source locations that it reports.
+		uses_line_directives := if file := a.source_files[file_node.pos.id] {
+			file.has_line_directives()
+		} else {
+			false
 		}
 		for i in 0 .. file_node.children_count {
 			mut decl_ids := []flat.NodeId{}
-			append_declaration_nodes(a, a.child(&file_node, i), mut decl_ids)
+			append_declaration_nodes(a, a.child(file_node, i), mut decl_ids)
 			for id in decl_ids {
 				needs_source := declaration_node_needs_source(a, id)
 					|| node_creates_generic_specialization(a, tc, id, generic_callees)
@@ -4932,7 +5729,7 @@ fn module_source_bodies_are_embeddable(a &flat.FlatAst, tc &types.TypeChecker, m
 					continue
 				}
 				node := a.nodes[int(id)]
-				if !declaration_node_source_is_embeddable(a, id) {
+				if uses_line_directives || !declaration_node_source_is_embeddable(a, id) {
 					return false
 				}
 				source := declaration_source_text(a, node, file_node.value, mut source_cache) or {
@@ -5263,6 +6060,30 @@ fn cached_embed_file_path_edit(source string, start int, vroot string, source_fi
 		end:         content_end + 1
 		replacement: "'${escape_v_string(path)}'"
 	}
+}
+
+// embedded_source_paths lists the resolved `$embed_file` paths in one source
+// file. Callers use it to keep resources that cached declaration bodies omit in
+// the whole-program cache identity.
+pub fn embedded_source_paths(source_file string, vroot string) []string {
+	source := os.read_file(source_file) or { return [] }
+	mut paths := []string{}
+	mut search_from := 0
+	for {
+		marker := source.index_after('$embed_file', search_from) or { break }
+		search_from = marker + '$embed_file'.len
+		edit := cached_embed_file_path_edit(source, marker, vroot, source_file) or { continue }
+		if edit.replacement.len < 3 {
+			continue
+		}
+		escaped_path := edit.replacement[1..edit.replacement.len - 1]
+		path := cached_unescape_v_string(escaped_path)
+		if os.is_file(path) && path !in paths {
+			paths << path
+		}
+		search_from = edit.end
+	}
+	return paths
 }
 
 fn cached_unescape_v_string(value string) string {
@@ -5694,6 +6515,17 @@ fn source_balanced_declaration_end(source string, start int, open u8, close u8) 
 	return none
 }
 
+fn type_has_generic_receiver_args(tc &types.TypeChecker, type_id u32) bool {
+	if !flat.source_type_shape(type_id).has(.bracketed) {
+		return false
+	}
+	base := flat.source_type_syntax(type_id).generic_base()
+	short_base := flat.source_type_syntax(base).unqualified()
+	// Declaration lookup and structural selection share source spelling IDs.
+	return base in tc.struct_generic_params
+		|| short_base in tc.struct_generic_params
+}
+
 fn node_creates_generic_specialization(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId, generic_callees map[string]bool) bool {
 	if int(id) < 0 || int(id) >= a.nodes.len {
 		return false
@@ -5716,11 +6548,9 @@ fn node_creates_generic_specialization(a &flat.FlatAst, tc &types.TypeChecker, i
 		// required by the cached module object. Unwrap aliases first: a `type
 		// IntNumber = Number[int]` operand resolves to the alias name (no `[`), which
 		// would otherwise hide the generic receiver base.
-		operand_type :=
-			types.unalias_type(tc.resolve_type(a.child(&node, 0))).name().trim_left('&?!')
-		receiver_base := operand_type.all_before('[')
-		if operand_type.contains('[') && (receiver_base in tc.struct_generic_params
-			|| receiver_base.all_after_last('.') in tc.struct_generic_params) {
+		operand_id := types.unalias_type(tc.resolve_type(a.child(&node, 0))).source_type_id()
+		operand_type := flat.source_type_syntax(operand_id).source_wrapper_base()
+		if type_has_generic_receiver_args(tc, operand_type) {
 			return true
 		}
 	}
@@ -5733,17 +6563,46 @@ fn node_creates_generic_specialization(a &flat.FlatAst, tc &types.TypeChecker, i
 		}
 		callee := a.nodes[int(callee_id)]
 		if callee.kind == .selector && callee.children_count > 0 {
-			receiver_type :=
-				types.unalias_type(tc.resolve_type(a.child(callee, 0))).name().trim_left('&?')
-			receiver_base := receiver_type.all_before('[')
-			if receiver_type.contains('[') && (receiver_base in tc.struct_generic_params
-				|| receiver_base.all_after_last('.') in tc.struct_generic_params) {
+			mut receiver_type := types.unalias_type(tc.resolve_type(a.child(callee, 0))).source_type_id()
+			for {
+				shape := flat.source_type_shape(receiver_type)
+				if !shape.has(.pointer) && !shape.has(.option_type) {
+					break
+				}
+				receiver_type = flat.source_type_syntax(receiver_type).raw_base()
+			}
+			if type_has_generic_receiver_args(tc, receiver_type) {
 				return true
 			}
 		}
 	}
 	for i in 0 .. node.children_count {
 		if node_creates_generic_specialization(a, tc, a.child(&node, i), generic_callees) {
+			return true
+		}
+	}
+	return false
+}
+
+// node_calls_recover reports whether the code below a node calls the builtin
+// `recover()`.
+fn node_calls_recover(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= a.nodes.len {
+		return false
+	}
+	node := a.nodes[int(id)]
+	if node.kind == .call && node.children_count == 1 {
+		callee := a.child_node(&node, 0)
+		if callee.kind == .ident && callee.value == 'recover' {
+			// A module can have a function of that name of its own.
+			name := tc.resolved_call_name(id) or { 'recover' }
+			if name in ['recover', 'builtin.recover'] {
+				return true
+			}
+		}
+	}
+	for i in 0 .. node.children_count {
+		if node_calls_recover(a, tc, a.child(&node, i)) {
 			return true
 		}
 	}
@@ -5757,15 +6616,15 @@ fn generic_call_source_name(a &flat.FlatAst, id flat.NodeId) ?string {
 	node := a.nodes[int(id)]
 	match node.kind {
 		.ident {
-			return node.value
+			return node.value_text()
 		}
 		.selector {
 			if node.children_count == 0 {
 				return none
 			}
 			base := a.child_node(&node, 0)
-			if base.kind == .ident && base.value.len > 0 && node.value.len > 0 {
-				return '${base.value}.${node.value}'
+			if base.kind == .ident && base.value_text().len > 0 && node.value_text().len > 0 {
+				return '${base.value_text()}.${node.value_text()}'
 			}
 		}
 		.index, .paren {
@@ -5784,7 +6643,7 @@ fn generic_specialization_callee_names(tc &types.TypeChecker) map[string]bool {
 		names[name] = true
 	}
 	for name in tc.fn_param_type_texts.keys() {
-		if !name.contains('[') {
+		if !receiver_has_generic_type_args(name) {
 			continue
 		}
 		closed := generic_receiver_name_without_type_args(name)
@@ -5799,6 +6658,24 @@ fn generic_specialization_callee_names(tc &types.TypeChecker) map[string]bool {
 		}
 	}
 	return names
+}
+
+// receiver_has_generic_type_args reports whether the receiver of the method
+// `name` is an instance of a generic type, like `Stack[int].push`. The brackets
+// of an array, a fixed array or a map receiver (`[]u8.hex`, `map[string]int.x`)
+// hold no type arguments: without them the name is that of another method
+// (`u8.hex`), and each of its callers would pass for the user of a generic one.
+fn receiver_has_generic_type_args(name string) bool {
+	open := name.index_u8(`[`)
+	if open <= 0 {
+		return false
+	}
+	mut start := open
+	for start > 0 && (name[start - 1].is_alnum() || name[start - 1] == `_`) {
+		start--
+	}
+	base := name[start..open]
+	return base.len > 0 && base != 'map'
 }
 
 fn generic_receiver_name_without_type_args(name string) string {
@@ -5827,6 +6704,11 @@ fn declaration_node_needs_source(a &flat.FlatAst, id flat.NodeId) bool {
 		return false
 	}
 	node := a.nodes[int(id)]
+	if node.kind == .import_decl {
+		// The payload of an import is the path it was spelled with, not a list of
+		// generic parameters, and a header repeats the import itself.
+		return false
+	}
 	if node.generic_params().len > 0 || fn_decl_has_generic_receiver(a, node)
 		|| declaration_contains_fn_literal(a, node)
 		|| (node.kind in [.const_decl, .struct_decl, .global_decl]
@@ -5901,12 +6783,13 @@ fn fn_decl_has_generic_receiver(a &flat.FlatAst, node flat.Node) bool {
 		return false
 	}
 	receiver_type := clean_receiver_type(receiver.typ)
-	declared_receiver := node.value.all_before_last('.')
+	declared_receiver := flat.source_type_id(node.value.all_before_last('.'))
 	if receiver_type != declared_receiver
-		&& receiver_type.all_after_last('.') != declared_receiver.all_after_last('.') {
+		&& flat.source_type_syntax(receiver_type).unqualified() != flat.source_type_syntax(declared_receiver).unqualified() {
 		return false
 	}
-	return receiver_type.contains('[') && receiver_type.contains(']')
+	return flat.source_type_shape(receiver_type).has(.bracketed)
+		&& flat.source_type_syntax(receiver_type).contains_closing_bracket()
 }
 
 fn file_module_name(a &flat.FlatAst, file_node flat.Node) string {
@@ -5919,6 +6802,15 @@ fn file_module_name(a &flat.FlatAst, file_node flat.Node) string {
 	return ''
 }
 
+fn nominal_decl_key(node flat.Node) u64 {
+	return match node.kind {
+		.struct_decl, .enum_decl, .type_decl, .interface_decl {
+			(u64(node.kind) << 32) | u64(flat.source_type_id(node.value))
+		}
+		else { u64(0) }
+	}
+}
+
 fn decl_key(a &flat.FlatAst, node flat.Node) string {
 	return match node.kind {
 		.import_decl {
@@ -5926,9 +6818,9 @@ fn decl_key(a &flat.FlatAst, node flat.Node) string {
 			for i in 0 .. node.children_count {
 				selected << a.child_node(&node, i).value
 			}
-			'import:${node.value}:${node.typ}:${selected.join(',')}'
+			'import:${node.value}:${node.typ_text()}:${selected.join(',')}'
 		}
-		.fn_decl, .c_fn_decl, .struct_decl, .enum_decl, .type_decl, .interface_decl {
+		.fn_decl, .c_fn_decl {
 			'${int(node.kind)}:${node.value}'
 		}
 		.directive {
@@ -5985,11 +6877,22 @@ fn cached_directive_text(node flat.Node, vroot string, source_file string) strin
 		'if', 'elif', 'else', 'endif', 'pragma', 'error', 'warning'] {
 		return ''
 	}
-	value := cached_directive_value(node.value, node.typ, vroot, source_file)
+	value := cached_directive_value(node.value, node.typ_text(), vroot, source_file)
 	return if value.len > 0 { '#${node.value} ${value}' } else { '#${node.value}' }
 }
 
 fn cached_directive_value(directive string, value string, vroot string, source_file string) string {
+	if directive == 'flag' {
+		return cached_resolve_flag_value(value, vroot, source_file)
+	}
+	result := cached_expand_pseudo_paths(value, vroot, source_file)
+	if directive in ['include', 'insert'] {
+		return cached_resolve_relative_include_path(result, source_file)
+	}
+	return result
+}
+
+fn cached_expand_pseudo_paths(value string, vroot string, source_file string) string {
 	mut result := value.replace('@VEXEROOT', vroot)
 	result = result.replace('@VROOT', '@VMODROOT')
 	if result.contains('@VMODROOT') {
@@ -5997,12 +6900,6 @@ fn cached_directive_value(directive string, value string, vroot string, source_f
 	}
 	if result.contains('@DIR') {
 		result = result.replace('@DIR', os.real_path(os.dir(source_file)))
-	}
-	if directive in ['include', 'insert'] {
-		return cached_resolve_relative_include_path(result, source_file)
-	}
-	if directive == 'flag' {
-		return cached_resolve_relative_flag_paths(result, source_file)
 	}
 	return result
 }
@@ -6033,23 +6930,60 @@ fn cached_resolve_relative_include_path(value string, source_file string) string
 	return value[..quote_start + 1] + resolved + value[quote_end..]
 }
 
-fn cached_resolve_relative_flag_paths(value string, source_file string) string {
-	if source_file.len == 0 || !value.contains('/') {
-		return value
-	}
-	base_dir := os.dir(source_file)
-	if base_dir.len == 0 {
-		return value
-	}
+// cached_resolve_flag_value resolves the pseudo variables and the relative paths of
+// a `#flag` value for a cached header, one argument at a time. The header is parsed
+// again later, so a path that has white space or quotes in it (a V root such as
+// `/Volumes/Data 4TB/v`) is quoted where it replaces plain text. Unquoted, it split
+// `@VEXEROOT/vlib/builtin/gc_boehm_helpers.o` into two arguments, and the second one
+// was then resolved as a path relative to the directory of the header.
+fn cached_resolve_flag_value(value string, vroot string, source_file string) string {
 	tokens, valid := cached_split_flag_tokens(value)
 	if !valid {
-		return value
+		return cached_expand_pseudo_paths(value, vroot, source_file)
 	}
-	mut resolved := []string{}
+	base_dir := if source_file.len > 0 { os.dir(source_file) } else { '' }
+	mut changed := false
+	mut resolved := []string{cap: tokens.len}
 	for token in tokens {
-		resolved << cached_resolve_relative_flag_path_token(token, base_dir)
+		mut arg := cached_expand_pseudo_paths(token, vroot, source_file)
+		if base_dir.len > 0 {
+			arg = cached_resolve_relative_flag_path_token(arg, base_dir)
+		}
+		if arg != token {
+			// Without quotes or escapes, the token is plain text, and so is the path
+			// that it became. A token with them keeps its own quoting.
+			if !token.contains_any('\'"\\') {
+				arg = cached_quote_flag_arg(arg)
+			}
+			changed = true
+		}
+		resolved << arg
 	}
-	return resolved.join(' ')
+	return if changed { resolved.join(' ') } else { value }
+}
+
+// cached_quote_flag_arg quotes a plain `#flag` argument that has white space or quotes
+// in it. A joined `-I` or `-L` stays outside of the quotes, so that the argument still
+// starts with it. Path-selection expressions are evaluated from their text when the
+// header is read, and are kept as they are.
+fn cached_quote_flag_arg(arg string) string {
+	if !arg.contains_any(' \t\r\n\'"') || arg.contains(r'$first_existing')
+		|| arg.contains(r'$when_first_existing') {
+		return arg
+	}
+	for prefix in ['-I', '-L'] {
+		if arg.starts_with(prefix) && arg.len > prefix.len {
+			return prefix + cached_single_quoted(arg[prefix.len..])
+		}
+	}
+	return cached_single_quoted(arg)
+}
+
+// cached_single_quoted quotes `text` for the flag parsers that read cached headers.
+// Single quotes have no escapes in them, so the backslashes of a Windows path stay as
+// they are on every platform.
+fn cached_single_quoted(text string) string {
+	return "'" + text.replace("'", "'\\''") + "'"
 }
 
 fn cached_split_flag_tokens(value string) ([]string, bool) {
@@ -6137,30 +7071,45 @@ fn cached_flag_path_is_relative(path string) bool {
 }
 
 fn cached_vmod_root(source_file string) string {
-	mut dir := os.dir(os.real_path(source_file))
-	for dir.len > 0 {
-		if os.is_file(os.join_path_single(dir, 'v.mod')) {
-			return dir
-		}
-		// `os.parent_dir` stops at a filesystem root; `os.dir` would escape a bare
-		// Windows drive into the relative `.` and match the current directory.
-		dir = os.parent_dir(dir)
+	if root := util.nearest_vmod_root(source_file) {
+		return root
 	}
 	return os.dir(os.real_path(source_file))
 }
 
 fn import_text(a &flat.FlatAst, node flat.Node, import_paths map[string]string) string {
+	mut names := []string{}
+	for i in 0 .. node.children_count {
+		names << a.child_node(&node, i).value
+	}
+	return import_text_with_names(node, import_paths[node.value] or { node.value }, names)
+}
+
+// header_import_text is import_text for a module header, which joins the imports of
+// all the files of a module in one file. Two files can select the same symbol of
+// a module, which one file cannot do twice: the header selects it once.
+fn header_import_text(a &flat.FlatAst, node flat.Node, import_paths map[string]string, mut selected map[string]bool) string {
 	import_path := import_paths[node.value] or { node.value }
+	mut names := []string{}
+	for i in 0 .. node.children_count {
+		name := a.child_node(&node, i).value
+		key := '${import_path}\x00${name}'
+		if selected[key] {
+			continue
+		}
+		selected[key] = true
+		names << name
+	}
+	return import_text_with_names(node, import_path, names)
+}
+
+fn import_text_with_names(node flat.Node, import_path string, names []string) string {
 	mut text := 'import ${import_path}'
 	default_alias := import_path.all_after_last('.')
-	if node.typ.len > 0 && node.typ != default_alias {
-		text += ' as ${node.typ}'
+	if node.typ != 0 && node.typ_text() != default_alias {
+		text += ' as ${node.typ_text()}'
 	}
-	if node.children_count > 0 {
-		mut names := []string{}
-		for i in 0 .. node.children_count {
-			names << a.child_node(&node, i).value
-		}
+	if names.len > 0 {
 		text += ' { ${names.join(', ')} }'
 	}
 	return text
@@ -6188,22 +7137,22 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 	mut head := if is_c { 'fn C.${name}' } else { '${visibility}fn ${name}' }
 	mut param_start := 0
 	if !is_c && !node.is_static_type_method() && name.contains('.') && params.len > 0 {
-		receiver_type := name.all_before_last('.')
+		receiver_type := flat.source_type_id(name.all_before_last('.'))
 		first_type := clean_receiver_type(params[0].typ)
 		if first_type == receiver_type
-			|| first_type.all_after_last('.') == receiver_type.all_after_last('.') {
+			|| flat.source_type_syntax(first_type).unqualified() == flat.source_type_syntax(receiver_type).unqualified() {
 			receiver := params[0]
 			receiver_name := if receiver.value.len > 0 { receiver.value } else { 'it' }
 			mut receiver_decl_type := receiver.typ
 			mut receiver_prefix := ''
 			if receiver.is_mut {
 				receiver_prefix = 'mut '
-				receiver_decl_type = receiver_decl_type.trim_left('&').trim_space()
-			} else if receiver_decl_type.starts_with('shared ') {
+				receiver_decl_type = flat.source_type_syntax(flat.source_type_syntax(receiver_decl_type).pointer_raw_base()).trimmed()
+			} else if flat.source_type_shape(receiver_decl_type).has(.shared_type) {
 				receiver_prefix = 'shared '
-				receiver_decl_type = receiver_decl_type['shared '.len..].trim_space()
+				receiver_decl_type = flat.source_type_syntax(flat.source_type_syntax(receiver_decl_type).raw_base()).trimmed()
 			}
-			head = '${visibility}fn (${receiver_prefix}${receiver_name} ${receiver_decl_type}) ${name.all_after_last('.')}'
+			head = '${visibility}fn (${receiver_prefix}${receiver_name} ${flat.source_type_name(receiver_decl_type)}) ${name.all_after_last('.')}'
 			param_start = 1
 		}
 	}
@@ -6222,18 +7171,18 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 		mut prefix := ''
 		if p.is_mut && p.op == .amp {
 			prefix = 'mut '
-			if !ptype.starts_with('&') {
-				ptype = '&${ptype}'
+			if !flat.source_type_shape(ptype).has(.pointer) {
+				ptype = flat.source_type_composition_one(.pointer, ptype)
 			}
-		} else if ptype.starts_with('&') && p.is_mut {
+		} else if flat.source_type_shape(ptype).has(.pointer) && p.is_mut {
 			prefix = 'mut '
-			ptype = ptype[1..].trim_space()
+			ptype = flat.source_type_syntax(flat.source_type_syntax(ptype).raw_base()).trimmed()
 		}
-		ptexts << '${prefix}${pname} ${ptype}'
+		ptexts << '${prefix}${pname} ${flat.source_type_name(ptype)}'
 	}
 	head += '(${ptexts.join(', ')})'
-	if node.typ.len > 0 && node.typ != 'void' {
-		head += ' ${node.typ}'
+	if node.typ != 0 && node.typ != flat.source_type_void {
+		head += ' ${node.typ_text()}'
 	}
 	mut attr_lines := []string{}
 	if fn_is_disabled(a, module_name, decl_name) {
@@ -6246,7 +7195,7 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 		}
 	}
 	if !cached_declaration_has_attr(declaration_attrs, 'noreturn')
-		&& fn_is_noreturn(a, module_name, decl_name) {
+		&& fn_is_noreturn(a, module_name, if is_c { 'C.${decl_name}' } else { decl_name }) {
 		attrs << 'noreturn'
 	}
 	if attrs.len > 0 {
@@ -6301,7 +7250,7 @@ fn fn_export_name(a &flat.FlatAst, module_name string, name string) ?string {
 }
 
 fn fn_is_noreturn(a &flat.FlatAst, module_name string, name string) bool {
-	if module_name.len == 0 || module_name in ['main', 'builtin'] {
+	if module_name.len == 0 || module_name in ['main', 'builtin'] || name.starts_with('C.') {
 		return name in a.noreturn_fns
 	}
 	qualified_name := if name.starts_with('${module_name}.') {
@@ -6321,13 +7270,10 @@ fn fn_is_noreturn(a &flat.FlatAst, module_name string, name string) bool {
 	return short_qualified_name in a.noreturn_fns
 }
 
-fn clean_receiver_type(value string) string {
-	mut typ := value.trim_space()
-	for typ.starts_with('&') {
-		typ = typ[1..].trim_space()
-	}
-	if typ.starts_with('shared ') {
-		typ = typ['shared '.len..].trim_space()
+fn clean_receiver_type(value u32) u32 {
+	mut typ := flat.source_type_syntax(value).pointer_base()
+	if flat.source_type_shape(typ).has(.shared_type) {
+		typ = flat.source_type_syntax(flat.source_type_syntax(typ).raw_base()).trimmed()
 	}
 	return typ
 }
@@ -6354,20 +7300,24 @@ fn append_struct_field_nodes(a &flat.FlatAst, id flat.NodeId, mut fields []flat.
 }
 
 fn struct_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, source_is_public bool) string {
-	kind := if node.typ.split(',').contains('union') { 'union' } else { 'struct' }
+	kind := if node.typ_text().split(',').contains('union') { 'union' } else { 'struct' }
 	visibility := if source_is_public { 'pub ' } else { '' }
 	mut head := '${visibility}${kind} ${node.value}${generic_suffix(node.generic_params())}'
-	for part in node.typ.split(',') {
+	for part in node.typ_text().split(',') {
 		if part.starts_with('implements=') {
 			head += ' implements ' + part.all_after('=').replace('|', ', ')
 		}
 	}
-	if node.typ.split(',').contains('params')
+	if node.typ_text().split(',').contains('params')
 		&& !cached_declaration_has_attr(declaration_attrs, 'params') {
 		head = '@[params]\n${head}'
 	}
 	if node.children_count == 0 {
-		return head
+		// Only a C or JS struct may be declared without a body.
+		if node.value.starts_with('C.') || node.value.starts_with('JS.') {
+			return head
+		}
+		return '${head} {\n}'
 	}
 	mut out := strings.new_builder(256)
 	out.writeln('${head} {')
@@ -6395,12 +7345,12 @@ fn struct_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, sour
 			out.writeln('${wanted}:')
 			section = wanted
 		}
-		for ai := 1; ai < field_params.len; ai++ {
-			out.writeln('\t@[${field_params[ai]}]')
+		if field_params.len > 1 {
+			out.writeln('\t@[${field_params[1..].join('; ')}]')
 		}
 		mut line := '\t${field.value}'
-		if field.typ.len > 0 && field.typ != field.value {
-			line += ' ${field.typ}'
+		if field.typ != 0 && !flags.contains('e') {
+			line += ' ${field.typ_text()}'
 		}
 		if field.children_count > 0 {
 			value := expr_text(a, a.child(field, 0))
@@ -6434,10 +7384,10 @@ fn global_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node 
 		}
 		line += field.value
 		mut field_type := field.typ
-		if field_type.len == 0 {
-			field_type = cached_global_type_name(tc, module_name, field.value)
+		if field_type == 0 {
+			field_type = cached_global_source_type_id(tc, module_name, field.value)
 		}
-		if field_type.len > 0 {
+		if field_type != 0 {
 			line += ' ${cached_type_source_text(tc, field_type)}'
 		}
 		if field.children_count > 0 {
@@ -6452,29 +7402,33 @@ fn global_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node 
 	return out.str()
 }
 
-fn cached_global_type_name(tc &types.TypeChecker, module_name string, name string) string {
+fn cached_global_source_type_id(tc &types.TypeChecker, module_name string, name string) u32 {
 	for candidate in [name, '${module_name}.${name}', '${module_name.all_after_last('.')}.${name}'] {
 		if typ := tc.file_scope.lookup(candidate) {
-			mut type_name := typ.name()
-			if type_name == 'nil' || type_name == 'none' || type_name == 'unknown' {
-				return 'voidptr'
+			source_id := typ.source_type_id()
+			if source_id in [flat.source_type_nil, flat.source_type_none, flat.source_type_unknown] {
+				return flat.source_type_voidptr
 			}
-			if type_name.starts_with('&void[') {
-				type_name = 'voidptr' + type_name['&void'.len..]
+			if flat.source_type_shape(source_id).has(.pointer)
+				&& flat.source_type_shape(source_id).has(.bracketed) {
+				syntax := flat.source_type_syntax(source_id)
+				if syntax.generic_base() == source_type_void_pointer_head {
+					return flat.source_type_composition_two(.concat, flat.source_type_voidptr, syntax.bracket_from())
+				}
 			}
-			return type_name
+			return source_id
 		}
 	}
-	return ''
+	return 0
 }
 
-fn cached_type_source_text(tc &types.TypeChecker, type_text string) string {
-	typ := tc.parse_resolution_type(type_text)
+fn cached_type_source_text(tc &types.TypeChecker, source_id u32) string {
+	typ := tc.parse_resolution_type(source_id)
 	if typ is types.ArrayFixed {
 		len_text := if typ.len_expr.len > 0 { typ.len_expr } else { typ.len.str() }
 		return '[${len_text}]${cached_type_source_name(typ.elem_type)}'
 	}
-	return type_text
+	return flat.source_type_name(source_id)
 }
 
 fn cached_type_source_name(typ types.Type) string {
@@ -6492,25 +7446,24 @@ fn const_text(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node, source_is_
 		mut line := field.value
 		if field.children_count > 0 {
 			expr_id := a.child(field, 0)
-			mut value := expr_text(a, expr_id)
-			expr := a.node(expr_id)
-			if expr.kind == .array_literal {
-				typ := tc.resolve_type(expr_id)
-				if typ is types.Array {
-					// Cache headers are declaration inputs. A bare const literal uses
-					// fixed storage there and disagrees with the cached object's source ABI.
-					// Preserve the checked element type too: the raw `array.clone` header
-					// signature cannot reconstruct it from every declaration-only literal.
-					value = '${cached_array_literal_type_source_name(a, expr, typ)}(${value}).clone()'
-				}
+			typ := tc.resolve_type(expr_id)
+			if typ is types.Array || typ is types.ArrayFixed || typ is types.Map
+				|| typ is types.Struct || typ is types.Pointer || typ is types.Interface
+				|| typ is types.SumType || typ is types.OptionType || typ is types.ResultType
+				|| (a.node(expr_id).kind == .call && typ !is types.FnType) {
+				// Stored constants belong to the module object. Its interface needs
+				// the checked type, not the table or the code that initializes it.
+				lines << '${line} ${cached_type_source_name(typ)}'
+				continue
 			}
+			value := expr_text(a, expr_id)
 			if value.len > 0 {
 				line += ' = ${value}'
 			} else {
 				line += ' int'
 			}
-		} else if field.typ.len > 0 {
-			line += ' ${field.typ}'
+		} else if field.typ != 0 {
+			line += ' ${field.typ_text()}'
 		} else {
 			line += ' int'
 		}
@@ -6529,19 +7482,9 @@ fn const_text(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node, source_is_
 	return out.str()
 }
 
-fn cached_array_literal_type_source_name(a &flat.FlatAst, expr flat.Node, typ types.Array) string {
-	if expr.children_count > 0 {
-		first := a.child_node(&expr, 0)
-		if first.kind == .struct_init && first.value.len > 0 {
-			return '[]${first.value.trim_left('?')}'
-		}
-	}
-	return cached_type_source_name(typ)
-}
-
 fn enum_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, source_is_public bool) string {
 	mut out := strings.new_builder(128)
-	if node.typ == 'flag' && !cached_declaration_has_attr(declaration_attrs, 'flag') {
+	if node.typ_text() == 'flag' && !cached_declaration_has_attr(declaration_attrs, 'flag') {
 		out.writeln('@[flag]')
 	}
 	params := node.generic_params()
@@ -6551,8 +7494,9 @@ fn enum_text(a &flat.FlatAst, node flat.Node, declaration_attrs []string, source
 	}
 	visibility := if source_is_public { 'pub ' } else { '' }
 	mut head := '${visibility}enum ${node.value}'
-	if params.len > 0 && params[0].len > 0 {
-		head += ' as ${params[0]}'
+	backing := node.enum_backing_type_id()
+	if backing != 0 {
+		head += ' as ${flat.source_type_name(backing)}'
 	}
 	out.writeln('${head} {')
 	for i in 0 .. node.children_count {
@@ -6577,11 +7521,11 @@ fn type_text(a &flat.FlatAst, node flat.Node, source_is_public bool) string {
 	visibility := if source_is_public { 'pub ' } else { '' }
 	head := '${visibility}type ${node.value}${generic_suffix(node.generic_params())} = '
 	if node.children_count == 0 {
-		return head + node.typ
+		return head + node.typ_text()
 	}
 	mut variants := []string{}
 	for i in 0 .. node.children_count {
-		variants << a.child_node(&node, i).value
+		variants << a.child_node(&node, i).value_text()
 	}
 	return head + variants.join(' | ')
 }
@@ -6622,20 +7566,20 @@ fn interface_field_text(a &flat.FlatAst, field &flat.Node) string {
 			if param.is_mut {
 				prefix = 'mut '
 				if param.op == .amp {
-					if !param_type.starts_with('&') {
-						param_type = '&${param_type}'
+					if !flat.source_type_shape(param_type).has(.pointer) {
+						param_type = flat.source_type_composition_one(.pointer, param_type)
 					}
-				} else if param_type.starts_with('&') {
-					param_type = param_type[1..].trim_space()
+				} else if flat.source_type_shape(param_type).has(.pointer) {
+					param_type = flat.source_type_syntax(flat.source_type_syntax(param_type).raw_base()).trimmed()
 				}
 			}
-			params << '${prefix}arg${pi} ${param_type}'
+			params << '${prefix}arg${pi} ${flat.source_type_name(param_type)}'
 		}
-		ret := if field.typ.len > 0 { ' ${field.typ}' } else { '' }
+		ret := if field.typ != 0 { ' ${field.typ_text()}' } else { '' }
 		return '\t${field.value}(${params.join(', ')})${ret}'
 	}
-	if field.typ.len > 0 {
-		return '\t${field.value} ${field.typ}'
+	if field.typ != 0 {
+		return '\t${field.value} ${field.typ_text()}'
 	}
 	return '\t${field.value}'
 }
@@ -6647,10 +7591,14 @@ fn expr_text(a &flat.FlatAst, id flat.NodeId) string {
 	node := a.nodes[int(id)]
 	return match node.kind {
 		.int_literal, .float_literal, .bool_literal, .ident {
-			node.value
+			node.value_text()
 		}
 		.char_literal {
-			'`${escape_v_char(node.value)}`'
+			if node.value.starts_with('c:') {
+				c_string_expr_text(node.value[2..])
+			} else {
+				'`${escape_v_char(node.value)}`'
+			}
 		}
 		.string_literal {
 			"'${escape_v_string(node.value)}'"
@@ -6675,9 +7623,9 @@ fn expr_text(a &flat.FlatAst, id flat.NodeId) string {
 		}
 		.selector {
 			if node.children_count > 0 {
-				'${expr_text(a, a.child(&node, 0))}.${node.value}'
+				'${expr_text(a, a.child(&node, 0))}.${node.value_text()}'
 			} else {
-				node.value
+				node.value_text()
 			}
 		}
 		.enum_val {
@@ -6691,11 +7639,11 @@ fn expr_text(a &flat.FlatAst, id flat.NodeId) string {
 			call_expr_text(a, node)
 		}
 		.cast_expr, .as_expr {
-			target := if node.typ.len > 0 { node.typ } else { node.value }
+			target := if node.typ != 0 { node.typ_text() } else { node.value_text() }
 			'${target}(${expr_text(a, a.child(&node, 0))})'
 		}
 		.sizeof_expr {
-			'sizeof(${node.value})'
+			'sizeof(${node.value_text()})'
 		}
 		.typeof_expr {
 			'typeof(${expr_text(a, a.child(&node, 0))})'
@@ -6761,7 +7709,7 @@ fn expr_can_serialize(a &flat.FlatAst, id flat.NodeId) bool {
 			expr_children_can_serialize(a, node)
 		}
 		.map_init {
-			(node.value.len > 0 || node.typ.len > 0) && node.children_count % 2 == 0
+			(node.source_value_id() != 0 || node.typ != 0) && node.children_count % 2 == 0
 				&& expr_children_can_serialize(a, node)
 		}
 		.cast_expr, .as_expr {
@@ -6794,13 +7742,13 @@ fn array_init_expr_text(a &flat.FlatAst, node flat.Node) string {
 	for i in 0 .. node.children_count {
 		values << expr_text(a, a.child(&node, i))
 	}
-	typ := if node.typ.len > 0 { node.typ } else { node.value }
+	typ := if node.typ != 0 { node.typ_text() } else { node.value_text() }
 	return '${typ}{${values.join(', ')}}'
 }
 
 fn call_expr_text(a &flat.FlatAst, node flat.Node) string {
 	if node.children_count == 0 {
-		return '${node.value}()'
+		return '${node.value_text()}()'
 	}
 	callee := expr_text(a, a.child(&node, 0))
 	mut args := []string{}
@@ -6815,7 +7763,7 @@ fn list_expr_text(a &flat.FlatAst, node flat.Node, open string, close string) st
 	for i in 0 .. node.children_count {
 		values << expr_text(a, a.child(&node, i))
 	}
-	prefix := if node.typ.len > 0 { node.typ } else { '' }
+	prefix := if node.typ != 0 { node.typ_text() } else { '' }
 	return '${prefix}${open}${values.join(', ')}${close}'
 }
 
@@ -6824,10 +7772,10 @@ fn map_expr_text(a &flat.FlatAst, node flat.Node) string {
 	for i := 0; i + 1 < node.children_count; i += 2 {
 		values << '${expr_text(a, a.child(&node, i))}: ${expr_text(a, a.child(&node, i + 1))}'
 	}
-	prefix := if node.value.len > 0 {
-		node.value
-	} else if node.typ.len > 0 {
-		node.typ
+	prefix := if node.source_value_id() != 0 {
+		node.value_text()
+	} else if node.typ != 0 {
+		node.typ_text()
 	} else {
 		'map[string]string'
 	}
@@ -6839,7 +7787,7 @@ fn struct_init_expr_text(a &flat.FlatAst, node flat.Node) string {
 	for i in 0 .. node.children_count {
 		values << expr_text(a, a.child(&node, i))
 	}
-	return '${node.value}{${values.join(', ')}}'
+	return '${node.value_text()}{${values.join(', ')}}'
 }
 
 fn op_text(op flat.Op) string {
@@ -6910,4 +7858,28 @@ fn escape_v_char(value string) string {
 	// escape sequences. Escaping it again would turn `\\` into `\\\\` in a
 	// cached header and change the rune's value when that header is parsed.
 	return value
+}
+
+// C-string nodes retain escape spellings. Preserve those escapes while using a
+// double-quoted delimiter, including strings originally written with single quotes.
+fn c_string_expr_text(value string) string {
+	mut out := strings.new_builder(value.len + 4)
+	out.write_string('c"')
+	mut escaped := false
+	for ch in value {
+		if escaped {
+			if ch != `\'` { out.write_u8(`\\`) }
+			out.write_u8(ch)
+			escaped = false
+		} else if ch == `\\` {
+			escaped = true
+		} else if ch == `"` {
+			out.write_string('\\"')
+		} else {
+			out.write_u8(ch)
+		}
+	}
+	if escaped { out.write_string('\\\\') }
+	out.write_u8(`"`)
+	return out.str()
 }

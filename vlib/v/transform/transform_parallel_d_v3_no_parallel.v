@@ -11,11 +11,19 @@ fn scan_top_level_kind_flags_parallel(_ &flat.FlatAst, _ int, mut _ []u8, _ bool
 	return false
 }
 
+fn scan_anonymous_struct_init_flags_parallel(_ &flat.FlatAst, _ int, mut _ []u8) bool {
+	return false
+}
+
 fn (mut _ Transformer) prepare_parallel_monomorph_scan(_ int, _ int) bool {
 	return false
 }
 
-fn (mut _ Transformer) run_parallel_monomorphize_specs(_ []PendingGenericFnSpec, _ map[string]GenericStructDecl, _ map[string]GenericSumDecl, mut _ map[string]bool, mut _ []string) bool {
+fn (mut _ Transformer) run_serial_scoped_monomorphize_specs(_ []PendingGenericFnSpec, mut _ GenericFnSpecBoolMap, mut _ []string) bool {
+	return false
+}
+
+fn (mut _ Transformer) run_parallel_monomorphize_specs(_ []PendingGenericFnSpec, _ map[u32]GenericStructDecl, _ map[u32]GenericSumDecl, mut _ GenericFnSpecBoolMap, mut _ []string) bool {
 	return false
 }
 
@@ -35,7 +43,7 @@ fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, _ int, _ int) 
 // scan_late_call_names_dispatch falls back to the serial late-name scan when
 // v3 is built with the internal `v3_no_parallel` define.
 fn (mut t Transformer) scan_late_call_names_dispatch(cands []LateFnCandidate, used &map[string]bool, candidate_names &map[string]bool) []string {
-	return t.scan_late_call_names_range(cands, used, candidate_names, 0, cands.len)
+	return t.scan_late_call_names_range(cands, used, candidate_names, t.new_late_scan_gate(candidate_names), 0, cands.len)
 }
 
 // promote_scoped_texts_parallel reports that scoped text promotion stays serial in no-parallel builds.
@@ -53,8 +61,20 @@ pub fn scan_scoped_text_flags_parallel(_ &flat.FlatAst, _ voidptr, mut _ []u8) b
 	return false
 }
 
+// scan_scoped_text_flags_parallel_multi reports that scoped text flag scanning
+// stays serial in no-parallel builds.
+pub fn scan_scoped_text_flags_parallel_multi(_ &flat.FlatAst, _ []voidptr, mut _ []u8) bool {
+	return false
+}
+
 fn free_worker_scopes_parallel(_ &flat.FlatAst, _ []voidptr) bool {
 	return false
+}
+
+// prescan_fixed_array_borrow_bodies leaves every borrow-summary body analysis to
+// the serial fixed point when v3 is built with the internal `v3_no_parallel` define.
+fn (mut _ Transformer) prescan_fixed_array_borrow_bodies(_ []BorrowCandidate) BorrowPrescan {
+	return BorrowPrescan{}
 }
 
 // prepare_with_pre_scans keeps preparation serial when v3 is built with the

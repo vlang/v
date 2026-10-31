@@ -1,0 +1,87 @@
+diff --git a/main.v b/main.v
+index 9c83b60..d4617bf 100644
+--- a/main.v
++++ b/main.v
+@@ -1,30 +1,31 @@
+ module main
+ 
+ import os
+-import net.http
+ import markdown
+ import time
+-import json
++import json2
+ 
+-const v_doc_path = 'https://raw.githubusercontent.com/vlang/v/master/doc/docs.md'
+ const output_path = 'output'
+ const template_path = 'templates'
+ const should_be_skipped = ['Table of Contents']
+ 
+ fn main() {
++	if os.args.len != 4 {
++		eprintln('usage: docs_generator <docs.md> <commit> <commit-unix-time>')
++		exit(1)
++	}
++	full_text := os.read_file(os.args[1])!
++	latest_v_commit_hash := os.args[2]
+ 	os.chdir(os.dir(@FILE))!
+ 	clean_output_directory()!
+ 	create_output_directory()!
+ 
+-	response := http.get(v_doc_path)!
+-	commit_res := os.execute_or_exit('git ls-remote -h https://github.com/vlang/v.git refs/heads/master')
+-	latest_v_commit_hash := commit_res.output.all_before('\t')
+-
+ 	// Removed need for sass, using css variables
+ 	// update_sass()
+ 
+ 	mut ctx := Context{
+-		full_text: response.body
++		update_time: time.unix(os.args[3].i64())
++		full_text:   full_text
+ 	}
+ 	ctx.generate_pages(latest_v_commit_hash)!
+ 	copy_assets_to_output()!
+@@ -33,6 +34,7 @@ fn main() {
+ }
+ 
+ struct Context {
++	update_time time.Time
+ mut:
+ 	full_text        string
+ 	pages            map[string]string
+@@ -42,8 +44,8 @@ mut:
+ fn (mut ctx Context) write_mapping() ! {
+ 	js_file_index := '
+ 	// Lookups of sections to files
+-	vdocs.titles_to_fnames = ${json.encode_pretty(ctx.titles_to_fnames)};
+-	vdocs.fnames = ${json.encode_pretty(ctx.pages)};'
++	vdocs.titles_to_fnames = ${json2.encode(ctx.titles_to_fnames, prettify: true, escape_unicode: true)};
++	vdocs.fnames = ${json2.encode(ctx.pages, prettify: true, escape_unicode: true)};'
+ 
+ 	js_src := os.read_file('templates/assets/scripts/v-docs.js') or {
+ 		eprintln('Failed to read file: ${err}')
+@@ -110,7 +112,7 @@ fn (mut ctx Context) generate_page_from_template(topics []Topic, main_topic Topi
+ 	markdown_subtopics := split_source_by_topics(markdown_content, 2)
+ 	subtopics := extract_topics_from_markdown_parts(markdown_subtopics, true)
+ 	title := main_topic.title
+-	update_time := time.now()
++	update_time := ctx.update_time
+ 	update_commit_full := vcommit.clone()
+ 	update_commit_short := vcommit#[..7]
+ 	mut transformer := HTMLTransformer{
+diff --git a/markdown.v b/markdown.v
+index 1417d56..51b03a6 100644
+--- a/markdown.v
++++ b/markdown.v
+@@ -56,7 +56,9 @@ fn extract_topics_from_markdown_parts(parts []Section, skip_first bool) []Topic
+ 			continue
+ 		}
+ 
+-		topic_title := extract_title_from_markdown_topic(part.text) or { panic(err) }
++		topic_title := extract_title_from_markdown_topic(part.text) or {
++			panic('missing title in section starting at line ${part.start_line}')
++		}
+ 		title := topic_title.title
+ 
+ 		filename := if index == 0 { 'index' } else { title_to_filename(title) }

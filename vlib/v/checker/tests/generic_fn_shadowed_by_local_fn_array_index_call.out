@@ -1,0 +1,14 @@
+vlib/v/checker/tests/generic_fn_shadowed_by_local_fn_array_index_call.vv:5:4: notice: unused function: `make_gate`
+    3 | }
+    4 | 
+    5 | fn make_gate[T]() T {
+      |    ~~~~~~~~~
+    6 |     return T{}
+    7 | }
+vlib/v/checker/tests/generic_fn_shadowed_by_local_fn_array_index_call.vv:10:2: notice: variable `make_gate` shadows a function declaration
+    8 | 
+    9 | fn main() {
+   10 |     make_gate := [fn () Box {
+      |     ~~~~~~~~~
+   11 |         return Box{1}
+   12 |     }, fn () Box {

@@ -1,0 +1,12 @@
+Run `v vet` and `v fmt` over most of the .v files of the V repo.
+
+Usage:
+  v test-cleancode [-fix]
+
+The command runs v vet over `vlib/v`, `vlib/json2`, `vlib/x/ttf`,
+`cmd/v`, `cmd/tools` and several examples folders, and then checks the
+formatting of most of the .v files of the checkout with
+`v fmt -verify`.
+
+  -fix   instead of only reporting formatting differences, fix them by
+         running `v fmt -w` over the same files.

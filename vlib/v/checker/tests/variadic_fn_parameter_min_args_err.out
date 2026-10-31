@@ -1,0 +1,17 @@
+vlib/v/checker/tests/variadic_fn_parameter_min_args_err.vv:2:2: error: expected 1 argument, but got 0
+    1 | fn call_variadic(callback fn (int, ...string) int) {
+    2 |     callback()
+      |     ~~~~~~~~~~
+    3 | }
+    4 |
+Details: have ()
+         want (int)
+vlib/v/checker/tests/variadic_fn_parameter_min_args_err.vv:6:2: error: expected 2 arguments, but got 1
+    4 | 
+    5 | fn call_fixed_array(callback fn (int, []string) int) {
+    6 |     callback(1)
+      |     ~~~~~~~~~~~
+    7 | }
+    8 |
+Details: have (int literal)
+         want (int, []string)

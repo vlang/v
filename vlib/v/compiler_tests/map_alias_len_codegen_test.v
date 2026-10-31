@@ -19,7 +19,8 @@ const map_alias_len_v3_src = os.join_path(map_alias_len_v3_dir, 'v.v')
 fn map_alias_len_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_map_alias_len_compiler_${os.getpid()}')
 	os.rm(v3_bin) or {}
-	build := os.execute('${map_alias_len_vexe} -gc none -path "${map_alias_len_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${map_alias_len_v3_src}')
+	build := os.exec([map_alias_len_vexe, '-gc', 'none', '-path',
+		'${map_alias_len_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${map_alias_len_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -30,11 +31,11 @@ fn map_alias_len_build_and_run(v3_bin string, root string, source string) os.Res
 	main_v := os.join_path(root, 'main.v')
 	os.write_file(main_v, source) or { panic(err) }
 	exe := os.join_path(root, 'prog')
-	compile := os.execute('${v3_bin} -nocache ${main_v} -b c -o ${exe}')
+	compile := os.exec([v3_bin, '-nocache', '${main_v}', '-b', 'c', '-o', exe])
 	if compile.exit_code != 0 {
 		return compile
 	}
-	return os.execute(exe)
+	return os.exec([exe])
 }
 
 fn test_len_through_a_map_alias() {

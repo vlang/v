@@ -59,7 +59,7 @@ fn test_load_location_from_zoneinfo_env_zip() {
 fn test_bundled_zoneinfo_has_future_posix_rules() {
 	zoneinfo_zip := os.join_path(@VEXEROOT, 'vlib', 'time', 'tzdata', 'zoneinfo.zip')
 	os.setenv('ZONEINFO', zoneinfo_zip, true)
-	loc := time.load_location('America/Vancouver')!
+	loc := time.load_location('America/Los_Angeles')!
 	winter := loc.zone_at(1_893_456_000)! // 2030-01-01 00:00 UTC
 	summer := loc.zone_at(1_900_000_000)! // 2030-03-17 17:46:40 UTC
 	assert winter.name == 'PST'
@@ -68,6 +68,23 @@ fn test_bundled_zoneinfo_has_future_posix_rules() {
 	assert summer.name == 'PDT'
 	assert summer.offset == -25_200
 	assert summer.is_dst == true
+}
+
+fn test_bundled_zoneinfo_has_2026_canada_rules() {
+	// tz 2026b-2026e: British Columbia, Alberta, the Northwest Territories and Manitoba
+	// stay on their daylight offset after 2026-11-01.
+	zoneinfo_zip := os.join_path(@VEXEROOT, 'vlib', 'time', 'tzdata', 'zoneinfo.zip')
+	os.setenv('ZONEINFO', zoneinfo_zip, true)
+	december := i64(1_797_336_000) // 2026-12-15 12:00 UTC
+	for name, offset in {
+		'America/Vancouver': -25_200
+		'America/Edmonton':  -21_600
+		'America/Inuvik':    -21_600
+		'America/Winnipeg':  -18_000
+	} {
+		loc := time.load_location(name)!
+		assert loc.offset_at(december)! == offset, name
+	}
 }
 
 fn test_bundled_zoneinfo_preserves_pre_1970_history() {
@@ -296,19 +313,19 @@ fn test_load_location_posix_future_dst() {
 }
 
 fn test_load_location_posix_fixed_future_rule() {
-	// IANA 2025b models Morocco as fixed at +01 after the final explicit transition.
+	// IANA 2026c and later model Morocco as fixed at +00 from 2026-09-20.
 	loc := time.load_location('Africa/Casablanca')!
 	start_of_year := loc.zone_at(2_524_608_000)! // 2050-01-01 00:00 UTC
 	end_of_year := loc.zone_at(2_556_057_600)! // 2050-12-31 00:00 UTC
-	assert start_of_year.name == '+01'
-	assert start_of_year.offset == 3_600
+	assert start_of_year.name == '+00'
+	assert start_of_year.offset == 0
 	assert start_of_year.is_dst == false
-	assert end_of_year.name == '+01'
-	assert end_of_year.offset == 3_600
+	assert end_of_year.name == '+00'
+	assert end_of_year.offset == 0
 	assert end_of_year.is_dst == false
 	local_new_year := loc.zone_at(2_556_138_600)! // 2050-12-31 22:30 UTC
-	assert local_new_year.name == '+01'
-	assert local_new_year.offset == 3_600
+	assert local_new_year.name == '+00'
+	assert local_new_year.offset == 0
 	assert local_new_year.is_dst == false
 }
 
@@ -366,20 +383,52 @@ fn test_load_location_local_ignores_tz_local() {
 }
 
 fn test_load_location_local_empty_tz_is_utc() {
-	old_tz := os.getenv_opt('TZ')
-	os.setenv('TZ', '', true)
-	defer {
-		if old := old_tz {
-			os.setenv('TZ', old, true)
-		} else {
-			os.unsetenv('TZ')
+	$if !windows {
+		// Windows removes TZ when it is set to an empty value.
+		old_tz := os.getenv_opt('TZ')
+		os.setenv('TZ', '', true)
+		defer {
+			if old := old_tz {
+				os.setenv('TZ', old, true)
+			} else {
+				os.unsetenv('TZ')
+			}
+		}
+		loc := time.load_location('Local')!
+		zone := loc.zone_at(1_704_067_200)!
+		assert loc.name == 'UTC'
+		assert zone.name == 'UTC'
+		assert zone.offset == 0
+	}
+}
+
+fn test_load_location_local_empty_tz_uses_system_zone_on_windows() {
+	$if windows {
+		old_tz := os.getenv_opt('TZ')
+		defer {
+			if old := old_tz {
+				os.setenv('TZ', old, true)
+			} else {
+				os.unsetenv('TZ')
+			}
+		}
+		os.unsetenv('TZ')
+		system_loc := time.load_location('Local')!
+		os.setenv('TZ', 'UTC0', true)
+		utc_loc := time.load_location('Local')!
+		assert (utc_loc.zone_at(1_704_067_200)!).offset == 0
+		os.setenv('TZ', '', true)
+		assert os.getenv_opt('TZ') == none
+		loc := time.load_location('Local')!
+		assert loc.name == system_loc.name
+		for timestamp in [i64(1_704_067_200), i64(1_719_792_000)] {
+			zone := loc.zone_at(timestamp)!
+			system_zone := system_loc.zone_at(timestamp)!
+			assert zone.name == system_zone.name
+			assert zone.offset == system_zone.offset
+			assert zone.is_dst == system_zone.is_dst
 		}
 	}
-	loc := time.load_location('Local')!
-	zone := loc.zone_at(1_704_067_200)!
-	assert loc.name == 'UTC'
-	assert zone.name == 'UTC'
-	assert zone.offset == 0
 }
 
 fn test_load_location_local_posix_tz() {

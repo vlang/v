@@ -35,9 +35,10 @@ fn (c Context) compare_versions() {
 	// Input is validated at this point...
 	// Cleanup artifacts from previous runs of this tool:
 	scripting.chdir(c.vgo.workdir)
-	scripting.run('rm -rf "${c.a}" "${c.b}" "${c.vc}" ')
+	scripting.run_args(['rm', '-rf', '${c.a}', '${c.b}', '${c.vc}'])
 	// clone the VC source *just once per comparison*, and reuse it:
-	scripting.run('git clone --filter=blob:none --quiet "${c.vgo.vc_repo_url}" "${c.vc}" ')
+	scripting.run_args(['git', 'clone', '--filter=blob:none', '--quiet', '${c.vgo.vc_repo_url}',
+		'${c.vc}'])
 	println('Comparing V performance of commit ${c.commit_before} (before) vs commit ${c.commit_after} (after) ...')
 	c.prepare_v(c.b, c.commit_before)
 	c.prepare_v(c.a, c.commit_after)
@@ -90,39 +91,43 @@ fn (c &Context) prepare_v(cdir string, commit string) {
 	}
 	vgit_context.compile_oldv_if_needed()
 	scripting.chdir(cdir)
-	scripting.run('${cdir}/v version')
+	scripting.run_args(['${cdir}' + '/v', 'version'])
 	println('Making a v compiler in ${cdir}')
-	scripting.run('./v -cc ${cc}       -o v     ${vgit_context.vvlocation}')
+	scripting.run_args(['./v', '-cc', cc, '-o', 'v', '${vgit_context.vvlocation}'])
 	println('Making a vprod compiler in ${cdir}')
-	scripting.run('./v -cc ${cc} -prod -o vprod ${vgit_context.vvlocation}')
+	scripting.run_args(['./v', '-cc', cc, '-prod', '-o', 'vprod', '${vgit_context.vvlocation}'])
 	println('Stripping and compressing cv v and vprod binaries in ${cdir}')
-	scripting.run('cp    cv     cv_stripped')
-	scripting.run('cp     v      v_stripped')
-	scripting.run('cp vprod  vprod_stripped')
-	scripting.run('strip *_stripped')
-	scripting.run('cp cv_stripped cv_stripped_upxed')
-	scripting.run('cp  v_stripped  v_stripped_upxed')
-	scripting.run('cp vprod_stripped vprod_stripped_upxed')
-	scripting.run('upx -qqq --lzma    cv_stripped_upxed')
-	scripting.run('upx -qqq --lzma     v_stripped_upxed')
-	scripting.run('upx -qqq --lzma vprod_stripped_upxed')
+	scripting.run_args(['cp', 'cv', 'cv_stripped'])
+	scripting.run_args(['cp', 'v', 'v_stripped'])
+	scripting.run_args(['cp', 'vprod', 'vprod_stripped'])
+	scripting.run_args(['sh', '-c', 'strip *_stripped'])
+	scripting.run_args(['cp', 'cv_stripped', 'cv_stripped_upxed'])
+	scripting.run_args(['cp', 'v_stripped', 'v_stripped_upxed'])
+	scripting.run_args(['cp', 'vprod_stripped', 'vprod_stripped_upxed'])
+	scripting.run_args(['upx', '-qqq', '--lzma', 'cv_stripped_upxed'])
+	scripting.run_args(['upx', '-qqq', '--lzma', 'v_stripped_upxed'])
+	scripting.run_args(['upx', '-qqq', '--lzma', 'vprod_stripped_upxed'])
 	scripting.show_sizes_of_files(['${cdir}/cv', '${cdir}/cv_stripped', '${cdir}/cv_stripped_upxed'])
 	scripting.show_sizes_of_files(['${cdir}/v', '${cdir}/v_stripped', '${cdir}/v_stripped_upxed'])
 	scripting.show_sizes_of_files(['${cdir}/vprod', '${cdir}/vprod_stripped',
 		'${cdir}/vprod_stripped_upxed'])
-	vversion := scripting.run('${cdir}/v -version')
-	vcommit := scripting.run('git rev-parse --short  --verify HEAD')
+	vversion := scripting.run_args(['${cdir}' + '/v', '-version'])
+	vcommit := scripting.run_args(['git', 'rev-parse', '--short', '--verify', 'HEAD'])
 	println('V version is: ${vversion} , local source commit: ${vcommit}')
 	if vgit_context.vvlocation == 'cmd/v' {
 		if os.exists('vlib/v') {
-			println('Source lines of the compiler: ' + scripting.run('find cmd/v/ vlib/v/ -name "*.v" ! -path "*/tests/*" ! -path "*_tests/*" ! -name "*_test.v" ! -name "*_test.*.v" | xargs wc | tail -n -1'))
+			println('Source lines of the compiler: ' + scripting.run_args(['sh', '-c',
+				'find cmd/v/ vlib/v/ -name "*.v" ! -path "*/tests/*" ! -path "*_tests/*" ! -name "*_test.v" ! -name "*_test.*.v" | xargs wc | tail -n -1']))
 		} else {
-			println('Source lines of the compiler: ' + scripting.run('wc cmd/v/*.v vlib/compiler/*.v | tail -n -1'))
+			println('Source lines of the compiler: ' + scripting.run_args(['sh', '-c',
+				'wc cmd/v/*.v vlib/compiler/*.v | tail -n -1']))
 		}
 	} else if vgit_context.vvlocation == 'v.v' {
-		println('Source lines of the compiler: ' + scripting.run('wc v.v vlib/compiler/*.v | tail -n -1'))
+		println('Source lines of the compiler: ' + scripting.run_args(['sh', '-c',
+			'wc v.v vlib/compiler/*.v | tail -n -1']))
 	} else {
-		println('Source lines of the compiler: ' + scripting.run('wc compiler/*.v | tail -n -1'))
+		println('Source lines of the compiler: ' + scripting.run_args(['sh', '-c',
+			'wc compiler/*.v | tail -n -1']))
 	}
 }
 
@@ -142,9 +147,11 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 		source_location_b = if os.exists('${c.b}/v.v') { 'v.v       ' } else { 'compiler/ ' }
 	}
 	timestamp_a, _ :=
-		vgit.line_to_timestamp_and_commit(scripting.run('cd ${c.a}/ ; git rev-list -n1 --timestamp HEAD'))
+		vgit.line_to_timestamp_and_commit(scripting.run_args(['sh', '-c',
+			'cd "\${1}"/ ; git rev-list -n1 --timestamp HEAD', 'v', '${c.a}']))
 	timestamp_b, _ :=
-		vgit.line_to_timestamp_and_commit(scripting.run('cd ${c.b}/ ; git rev-list -n1 --timestamp HEAD'))
+		vgit.line_to_timestamp_and_commit(scripting.run_args(['sh', '-c',
+			'cd "\${1}"/ ; git rev-list -n1 --timestamp HEAD', 'v', '${c.b}']))
 	// 1570877641 is 065ce39 2019-10-12
 	debug_option_a := if timestamp_a > 1570877641 { '-cg    ' } else { '-debug ' }
 	debug_option_b := if timestamp_b > 1570877641 { '-cg    ' } else { '-debug ' }
@@ -176,7 +183,7 @@ fn (c Context) compare_v_performance(label string, commands []string) string {
 	if c.vgo.verbose {
 		println(comparison_cmd)
 	}
-	os.system(comparison_cmd)
+	os.system_args(os.split_args(comparison_cmd) or { panic(err) })
 	println('The detailed performance comparison report was saved to: ${cmd_stats_file} .')
 	println('')
 	return cmd_stats_file

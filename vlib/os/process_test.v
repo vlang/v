@@ -106,32 +106,32 @@ fn testsuite_begin() {
 		//   WINE_TEST_OS_PROCESS_EXE=x.exe ./v -os windows vlib/os/process_test.v
 		os.cp(os.getenv('WINE_TEST_OS_PROCESS_EXE'), test_os_process)!
 	} else {
-		os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(test_os_process)} ${os.quoted_path(test_os_process_source)}')
+		os.system_args([vexe, '-o', '${test_os_process}', test_os_process_source])
 	}
 	assert os.exists(test_os_process)
 
 	os.write_file(echo_process_source_filename, echo_process_source_code)!
-	os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(echo_process_exe_filename)} ${os.quoted_path(echo_process_source_filename)}')
+	os.system_args([vexe, '-o', echo_process_exe_filename, echo_process_source_filename])
 	assert os.exists(echo_process_exe_filename)
 
 	os.write_file(delayed_output_source_filename, delayed_output_source_code)!
-	os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(delayed_output_exe_filename)} ${os.quoted_path(delayed_output_source_filename)}')
+	os.system_args([vexe, '-o', delayed_output_exe_filename, delayed_output_source_filename])
 	assert os.exists(delayed_output_exe_filename)
 
 	os.write_file(utf16le_output_source_filename, utf16le_output_source_code)!
-	os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(utf16le_output_exe_filename)} ${os.quoted_path(utf16le_output_source_filename)}')
+	os.system_args([vexe, '-o', utf16le_output_exe_filename, utf16le_output_source_filename])
 	assert os.exists(utf16le_output_exe_filename)
 
 	os.write_file(stdin_exit_source_filename, stdin_exit_source_code)!
-	os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(stdin_exit_exe_filename)} ${os.quoted_path(stdin_exit_source_filename)}')
+	os.system_args([vexe, '-o', stdin_exit_exe_filename, stdin_exit_source_filename])
 	assert os.exists(stdin_exit_exe_filename)
 
 	os.write_file(stdin_copy_source_filename, stdin_copy_source_code)!
-	os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(stdin_copy_exe_filename)} ${os.quoted_path(stdin_copy_source_filename)}')
+	os.system_args([vexe, '-o', stdin_copy_exe_filename, stdin_copy_source_filename])
 	assert os.exists(stdin_copy_exe_filename)
 
 	os.write_file(argv_echo_source_filename, argv_echo_source_code)!
-	os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(argv_echo_exe_filename)} ${os.quoted_path(argv_echo_source_filename)}')
+	os.system_args([vexe, '-o', argv_echo_exe_filename, argv_echo_source_filename])
 	assert os.exists(argv_echo_exe_filename)
 }
 
@@ -208,7 +208,7 @@ fn test_new_process_uses_exact_executable_path_when_folder_contains_spaces() {
 	stale_source := os.join_path(tfolder, 'spawn.v')
 	stale_exe := os.join_path(tfolder, 'spawn.exe')
 	os.write_file(stale_source, 'fn main() {\n\tprintln("stale-prefix-exe")\n}\n')!
-	assert os.system('${os.quoted_path(vexe)} -o ${os.quoted_path(stale_exe)} ${os.quoted_path(stale_source)}') == 0
+	assert os.system_args([vexe, '-o', stale_exe, stale_source]) == 0
 
 	mut p := os.new_process(spaced_exe)
 	p.set_args(['-show_env', '-target', 'stdout'])
@@ -446,7 +446,8 @@ fn test_run() {
 			break
 		}
 		$if trace_process_output ? {
-			os.system('ps -opid= -oppid= -ouser= -onice= -of= -ovsz= -orss= -otime= -oargs= -p ${p.pid}')
+			os.system_args(['ps', '-opid=', '-oppid=', '-ouser=', '-onice=', '-of=', '-ovsz=',
+				'-orss=', '-otime=', '-oargs=', '-p', '${p.pid}'])
 		}
 		time.sleep(50 * time.millisecond)
 		i++

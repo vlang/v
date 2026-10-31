@@ -20,6 +20,35 @@ system's cryptographically secure random source and can return an error. The sep
 
 ## Examples
 
+### Streamed SHA checksums
+
+SHA-1 and SHA-2 digests accept a stream through repeated `write()` calls. The total stream
+can exceed 2 GiB on 32-bit targets; each individual input buffer must fit in an array.
+Call `sum([])` to obtain the current checksum while preserving the digest for further writes.
+
+### HMAC for many messages with one key
+
+`hmac.new` is a one-shot HMAC that accepts any hash function. To authenticate many messages
+with the same key, use `hmac.new_hmac`: it processes the key once, and after that `write()`
+and `sum_into()` do not allocate. Each `sum_into()` completes one message, and the next
+`write()` starts a new one. It supports `crypto.sha1`, `crypto.sha256` and `crypto.sha512`
+digests.
+
+```v
+import crypto.hmac
+import crypto.sha256
+
+fn main() {
+	mut mac := hmac.new_hmac(sha256.new, 'secret key'.bytes())
+	mut tag := []u8{len: mac.size()}
+	for message in ['first message', 'second message'] {
+		mac.write(message.bytes())!
+		mac.sum_into(mut tag)
+		println('${message}: ${tag.hex()}')
+	}
+}
+```
+
 ### Prime generation
 
 Use `crypto.rand.prime(bits)` to generate an odd prime with exactly `bits` bits. Its two

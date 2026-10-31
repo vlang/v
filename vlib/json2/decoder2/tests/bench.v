@@ -1,5 +1,4 @@
 import json2.decoder2
-import json as old_json
 import benchmark
 import time
 
@@ -68,22 +67,10 @@ fn main() {
 	b.measure('decoder2.decode[Stru](json_data)!')
 
 	for i := 0; i < max_iterations; i++ {
-		_ := old_json.decode(Stru, json_data)!
-	}
-
-	b.measure('old_json.decode(Stru, json_data)!\n')
-
-	for i := 0; i < max_iterations; i++ {
 		_ := decoder2.decode[SumTypes](json_data)!
 	}
 
 	b.measure('decoder2.decode[SumTypes](json_data)!')
-
-	for i := 0; i < max_iterations; i++ {
-		_ := old_json.decode(SumTypes, json_data)!
-	}
-
-	b.measure('old_json.decode(SumTypes, json_data)!\n')
 
 	// StructType[string] **********************************************************
 	for i := 0; i < max_iterations; i++ {
@@ -92,24 +79,12 @@ fn main() {
 
 	b.measure('decoder2.decode[StructType[string]](json_data1)!')
 
-	for i := 0; i < max_iterations; i++ {
-		_ := old_json.decode(StructType[string], json_data1)!
-	}
-
-	b.measure('old_json.decode(StructType[string], json_data1)!\n')
-
 	// StructTypeOption[string] **********************************************************
 	for i := 0; i < max_iterations; i++ {
 		_ := decoder2.decode[StructTypeOption[string]](json_data1)!
 	}
 
 	b.measure('decoder2.decode[StructTypeOption[string]](json_data1)!')
-
-	for i := 0; i < max_iterations; i++ {
-		_ := old_json.decode(StructTypeOption[string], json_data1)!
-	}
-
-	b.measure('old_json.decode(StructTypeOption[string], json_data1)!\n')
 
 	// StructType[int] **********************************************************
 	for i := 0; i < max_iterations; i++ {
@@ -118,24 +93,12 @@ fn main() {
 
 	b.measure('decoder2.decode[StructType[int]](json_data2)!')
 
-	for i := 0; i < max_iterations; i++ {
-		_ := old_json.decode(StructType[int], json_data2)!
-	}
-
-	b.measure('old_json.decode(StructType[int], json_data2)!\n')
-
 	// map[string]string **********************************************************
 	for i := 0; i < max_iterations; i++ {
 		_ := decoder2.decode[map[string]string](json_data1)!
 	}
 
 	b.measure('decoder2.decode[map[string]string](json_data1)!')
-
-	for i := 0; i < max_iterations; i++ {
-		_ := old_json.decode(map[string]string{}, json_data1)!
-	}
-
-	b.measure('old_json.decode(map[string]string, json_data1)!\n')
 
 	// array **********************************************************
 
@@ -146,12 +109,6 @@ fn main() {
 	}
 
 	b.measure("decoder2.decode[[]int]('[1, 2, 3, 4, 5, 6, 7, 8, 9, 0]')!")
-
-	for i := 0; i < max_iterations; i++ {
-		_ := old_json.decode([]int{}, '[1, 2, 3, 4, 5, 6, 7, 8, 9, 0]')!
-	}
-
-	b.measure("old_json.decode([]int, '[1, 2, 3, 4, 5, 6, 7, 8, 9, 0]')!\n")
 
 	println('\n***simple types***')
 

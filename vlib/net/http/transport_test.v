@@ -5,6 +5,7 @@ module http
 // transparent retry on stale pooled connections, idle eviction, and the
 // `disable_connection_reuse` opt-out. Each test runs its own loopback server
 // with an accept counter: the accept count is the proof of (non-)reuse.
+import io
 import net
 import net.mbedtls
 import sync
@@ -85,10 +86,12 @@ fn ka_srv_serve_conn(mut s KaSrv, mut conn net.TcpConn) {
 	conn.set_read_timeout(10 * time.second)
 	for {
 		head := ka_read_request_head(mut conn) or { return }
-		if s.drop_on_post && head.starts_with('POST ') {
+		if head.starts_with('POST ') {
 			s.mu.lock()
 			s.posts++
 			s.mu.unlock()
+		}
+		if s.drop_on_post && head.starts_with('POST ') {
 			// Drop the connection without responding: the request bytes were
 			// written, so this is not a stale-write.
 			return
@@ -274,6 +277,50 @@ fn test_h1_stale_pooled_connection_is_retried() {
 	stop_ka_srv(mut listener, th)
 }
 
+fn test_h1_server_closed_idle_connection_is_discarded_before_post() {
+	mut srv := &KaSrv{
+		close_after_each: true
+	}
+	port, mut listener, th := start_ka_srv(mut srv)!
+	defer {
+		stop_ka_srv(mut listener, th)
+	}
+	url := 'http://127.0.0.1:${port}/'
+	assert fetch(url: url)!.status_code == 200
+	mut pool := default_transport()
+	key := transport_pool_key(&Request{}, 'http', '127.0.0.1', port)
+	mut idle := pool.checkout(key)
+	assert idle != unsafe { nil }
+	// Observe the peer's EOF before returning this connection to the idle pool.
+	// This avoids depending on a sleep for the server's FIN to arrive.
+	idle.tcp.set_read_timeout(time.second)
+	mut buf := []u8{len: 1}
+	if _ := idle.tcp.read(mut buf) {
+		assert false, 'expected EOF on the idle connection'
+	} else {
+		assert err is io.Eof
+	}
+	pool.checkin(mut idle)
+	resp := fetch(method: .post, url: url)!
+	assert resp.status_code == 200
+	assert resp.body == 'hello'
+	assert srv.accept_count() == 2
+	assert srv.post_count() == 1
+}
+
+fn test_h1_healthy_idle_connection_is_reused_for_post() {
+	mut srv := &KaSrv{}
+	port, mut listener, th := start_ka_srv(mut srv)!
+	defer {
+		stop_ka_srv(mut listener, th)
+	}
+	url := 'http://127.0.0.1:${port}/'
+	assert fetch(url: url)!.status_code == 200
+	assert fetch(method: .post, url: url)!.status_code == 200
+	assert srv.accept_count() == 1
+	assert srv.post_count() == 1
+}
+
 // A non-idempotent request that fails on a reused keep-alive connection after
 // its bytes were written must NOT be replayed: doing so could duplicate side
 // effects. The server reads the POST then drops the connection; the client must
@@ -301,8 +348,8 @@ fn test_h1_unsafe_pooled_post_is_not_retried() {
 		stop_ka_srv(mut listener, th)
 		return
 	}
-	assert false, 'the POST unexpectedly succeeded'
 	stop_ka_srv(mut listener, th)
+	assert false, 'the POST unexpectedly succeeded'
 }
 
 fn test_h1_opt_out_disables_reuse() {
@@ -480,9 +527,9 @@ fn test_h1_tls_reuse() {
 	th.wait()
 }
 
-// A TLS connection dialled with HTTP/2 disabled (no ALPN) must not satisfy an
-// HTTP/2-enabled request to the same origin — the ALPN preference is part of
-// the pool key. Forced-h1 requests still share among themselves.
+// A default HTTP/1.1 TLS connection (no ALPN) must not satisfy an explicit
+// HTTP/2 request to the same origin. The ALPN preference is part of the pool
+// key, and default requests still share an HTTP/1.1 connection.
 fn test_h1_tls_no_reuse_across_alpn_preference() {
 	mut port_listener := net.listen_tcp(.ip, '127.0.0.1:0') or {
 		assert false, 'port: ${err}'
@@ -506,22 +553,21 @@ fn test_h1_tls_no_reuse_across_alpn_preference() {
 	}
 	mut srv := &TlsKaSrv{}
 	th := spawn tls_ka_srv_loop(mut srv, mut listener)
-	// 1. Forced-HTTP/1.1 request: dialled without ALPN, pooled under its key.
-	r1 := fetch(url: 'https://127.0.0.1:${port}/h1', validate: false, enable_http2: false) or {
+	// 1. Default HTTP/1.1 request: dialled without ALPN, pooled under its key.
+	r1 := fetch(url: 'https://127.0.0.1:${port}/h1', validate: false) or {
 		assert false, 'fetch 1: ${err}'
 		return
 	}
 	assert r1.status_code == 200
-	// 2. Default (HTTP/2-enabled) request: must NOT reuse the no-ALPN
-	// connection; it dials fresh and advertises h2.
-	r2 := fetch(url: 'https://127.0.0.1:${port}/h2pref', validate: false) or {
+	// 2. Explicit HTTP/2 request: dials fresh and advertises h2.
+	r2 := fetch(url: 'https://127.0.0.1:${port}/h2pref', validate: false, enable_http2: true) or {
 		assert false, 'fetch 2: ${err}'
 		return
 	}
 	assert r2.status_code == 200
 	assert srv.accept_count() == 2
-	// 3. Another forced-HTTP/1.1 request: reuses connection 1.
-	r3 := fetch(url: 'https://127.0.0.1:${port}/h1again', validate: false, enable_http2: false) or {
+	// 3. Another default HTTP/1.1 request: reuses connection 1.
+	r3 := fetch(url: 'https://127.0.0.1:${port}/h1again', validate: false) or {
 		assert false, 'fetch 3: ${err}'
 		return
 	}
@@ -530,4 +576,54 @@ fn test_h1_tls_no_reuse_across_alpn_preference() {
 	close_idle_connections()
 	listener.shutdown() or {}
 	th.wait()
+}
+
+struct CallbackAbort {
+	Error
+}
+
+fn (_ CallbackAbort) msg() string { return 'application cancelled response' }
+
+fn (_ CallbackAbort) code() int { return 12345 }
+
+fn abort_progress(_ &Request, _ []u8, _ u64) ! { return CallbackAbort{} }
+
+fn abort_progress_body(_ &Request, _ []u8, _ u64, _ u64, _ int) ! { return CallbackAbort{} }
+
+fn test_h1_callback_abort_is_not_retried_and_preserves_original_error() ! {
+	for disable_reuse in [false, true] {
+		for body_callback in [false, true] {
+			for method in [Method.get, Method.post] {
+				mut srv := &KaSrv{}
+				port, mut listener, th := start_ka_srv(mut srv)!
+				// Prime a pooled connection, so cancellation also covers reused sockets.
+				if !disable_reuse {
+					fetch(url: 'http://127.0.0.1:${port}/prime')!
+				}
+				before := srv.accept_count()
+				mut req := Request{
+					url:                      'http://127.0.0.1:${port}/cancel'
+					method:                   method
+					max_retries:              3
+					disable_connection_reuse: disable_reuse
+				}
+				if body_callback {
+					req.on_progress_body = abort_progress_body
+				} else {
+					req.on_progress = abort_progress
+				}
+				mut aborted := false
+				req.do() or {
+					aborted = true
+					assert err is CallbackAbort
+					assert err.code() == 12345
+					assert err.msg() == 'application cancelled response'
+				}
+				assert aborted
+				assert srv.accept_count() == before + if disable_reuse { 1 } else { 0 }
+				assert srv.post_count() == if method == .post { 1 } else { 0 }
+				stop_ka_srv(mut listener, th)
+			}
+		}
+	}
 }

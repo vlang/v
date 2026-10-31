@@ -78,13 +78,11 @@ V supports the following commands:
   list                         List all installed modules.
   outdated                     List installed modules that need updates.
   show                         Display information about a module on vpm
+  why                          Explain why a module is in a project's
+                               dependency graph.
 
 Use "v help <command>" for more information about a command, example:
 `v help build`, `v help build-c`, `v help build-native`
 
 Use "v help other" to see less frequently used commands.
 Use "v help topics" to see a list of all known help topics.
-
-Note: Help is required to write more help topics.
-Only build, new, init, doc, fmt, vet, run, test, watch, search, install,
-link, remove, unlink, update, bin2v, check-md are properly documented currently.

@@ -115,7 +115,7 @@ fn test_mut_struct() {
 }
 
 /*
-fn mod_ptr(mut buf &byte) {
+fn mod_ptr(mut buf &u8) {
 	buf[0] = 77
 }
 

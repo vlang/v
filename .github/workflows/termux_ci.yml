@@ -11,43 +11,23 @@ on:
       - '!**/termux_ci.yml'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
-  pull_request:
-    paths:
-      - 'cmd/v/**'
-      - 'cmd/tools/builders/**.v'
-      - 'vlib/builtin/**'
-      - 'vlib/os/**'
-      - 'vlib/time/**'
-      - 'vlib/runtime/**'
-      - 'vlib/term/**'
-      - 'vlib/net/**'
-      - 'vlib/crypto/rand/**'
-      - 'vlib/picoev/**'
-      - 'vlib/strconv/**'
-      - 'vlib/strings/**'
-      - 'vlib/sync/**'
-      - 'vlib/v/**'
-      - 'thirdparty/**'
-      - 'vc/**'
-      - 'v.mod'
-      - 'GNUmakefile'
-      - 'Makefile'
-      - '.github/problem-matchers/**'
-      - '.github/workflows/retry.sh'
-      - '!**.md'
-      - '!**.yml'
-      - '.github/workflows/termux_ci.yml'
 
 concurrency:
   group: termux-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   termux-build:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build and test in Termux
         run: |
           set -o xtrace
@@ -80,6 +60,7 @@ jobs:
           '
 
   termux-build-arm64-tcc:
+    if: github.ref == 'refs/heads/master'
     # Diagnostic job for vlang/v#27207: reproduces the Termux/AArch64 tcc
     # bootstrap failure on a real arm64 runner so we can collect logs without
     # local hardware. Allowed to fail until the upstream tcc AArch64 bug is
@@ -89,11 +70,18 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build in Termux (arm64, default tcc)
         run: |
           set -o xtrace
           uname -a
-          docker run --rm --platform=linux/arm64 --mount type=bind,source=/home/runner/work/v/v,destination=/src -w /src termux/termux-docker:aarch64 bash -c '
+          # The container runs as a non-root user that cannot write to the
+          # runner-owned checkout mounted at /src, so the log gets its own
+          # world-writable bind mount.
+          mkdir -p "$RUNNER_TEMP/termux-logs"
+          chmod 777 "$RUNNER_TEMP/termux-logs"
+          docker run --rm --platform=linux/arm64 --mount type=bind,source=/home/runner/work/v/v,destination=/src --mount type=bind,source="$RUNNER_TEMP/termux-logs",destination=/logs -w /src termux/termux-docker:aarch64 bash -c '
             set -o xtrace
             uname -a
             cp -r /src ~/vproject; cd ~/vproject
@@ -114,7 +102,7 @@ jobs:
             echo "make exit code: $rc"
             # Always copy the log back to the bind-mounted dir so the runner
             # step that uploads the artifact can find it.
-            cp build.log /src/build.log || true
+            cp build.log /logs/build.log || true
             if [ "$rc" -ne 0 ] || [ ! -x ./v ]; then
               echo "===== bootstrap failed; collecting diagnostics ====="
               echo "--- tcc binary ---"
@@ -150,5 +138,5 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: termux-arm64-build-log
-          path: build.log
+          path: ${{ runner.temp }}/termux-logs/build.log
           if-no-files-found: ignore

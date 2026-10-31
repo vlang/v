@@ -22,3 +22,7 @@ println('${result.location}, ${result.length}')
 The typed senders hide the platform-specific `objc_msgSend` casts. Framework-specific methods
 still require the corresponding `#flag darwin -framework ...` declaration in the importing
 program.
+
+The bridge supports the bundled TCC on older macOS SDKs whose runtime headers expose
+an unguarded Blocks declaration. Blocks-based runtime APIs still require a C compiler
+with Blocks support.

@@ -18,7 +18,9 @@ fn test_addressed_slice_rvalue_lives_through_clone_call() {
 		os.rm(out + '.c') or {}
 	}
 	build :=
-		os.execute('${rvalue_pointer_vexe} -gc none -path "${rvalue_pointer_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${rvalue_pointer_v3_src}')
+		os.exec([rvalue_pointer_vexe, '-gc', 'none', '-path',
+			'${rvalue_pointer_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${rvalue_pointer_v3_src}'])
 	assert build.exit_code == 0, build.output
 	os.write_file(src, "module main
 
@@ -34,11 +36,11 @@ fn main() {
 ") or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${out}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 	c_source := os.read_file(out + '.c') or { panic(err) }
 	assert !c_source.contains('; &_t'), c_source
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }

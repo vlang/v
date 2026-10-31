@@ -22,8 +22,7 @@ mut:
 	f_i64 i64
 
 	f_voidptr voidptr
-	f_isize   isize
-	f_usize   usize
+	f_usize   uint
 	f_int     int
 	f_f32     f32
 	f_f64     f64
@@ -53,8 +52,8 @@ fn convert_t_to_voidptr[T](value T) !voidptr {
 	} $else $if T is $pointer {
 		f.f_voidptr = voidptr(value)
 	} $else $if T is isize {
-		f.f_isize = value
-	} $else $if T is usize {
+		f.f_int = int(value)
+	} $else $if T is uint {
 		f.f_usize = value
 	} $else $if T is int {
 		f.f_int = value
@@ -95,8 +94,8 @@ fn convert_voidptr_to_t[T](value voidptr) !T {
 	} $else $if T is $pointer {
 		return unsafe { f.f_voidptr }
 	} $else $if T is isize {
-		return unsafe { f.f_isize }
-	} $else $if T is usize {
+		return T(unsafe { f.f_int })
+	} $else $if T is uint {
 		return unsafe { f.f_usize }
 	} $else $if T is int {
 		return unsafe { f.f_int }

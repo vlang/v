@@ -325,9 +325,10 @@ pub fn (l Log) get_local_time() bool {
 }
 
 // use_stdout will restore the old behaviour of logging to stdout, instead of stderr.
+// The replacement logger uses log_default_level (info by default).
 // It will also silence the deprecation note in the transition period.
 pub fn use_stdout() {
-	mut l := ThreadSafeLog{}
+	mut l := new_thread_safe_log()
 	l.set_output_stream(os.stdout())
 	set_logger(l)
 }

@@ -1,0 +1,48 @@
+// The schema this example implements, kept next to the code so the two can be
+// read together. kv/codec.v and kv/service.v are generated from this file; run
+// from examples/grpc, this reproduces them exactly:
+//
+//   v pbgen -m kv -o kv/codec.v -grpc kv/service.v kv.proto
+//   v fmt -w kv/codec.v kv/service.v
+//
+// net.grpc itself takes `[]u8` payloads, so nothing above the codec changes.
+
+syntax = "proto3";
+
+package kv;
+
+message GetRequest {
+  string key = 1;
+}
+
+message GetResponse {
+  bytes value = 1;
+  bool found = 2;
+}
+
+message PutRequest {
+  string key = 1;
+  bytes value = 2;
+}
+
+message PutResponse {
+  bool replaced = 1;
+}
+
+message PutManyResponse {
+  int32 written = 1;
+}
+
+service KV {
+  // unary: one request, one response
+  rpc Get(GetRequest) returns (GetResponse);
+
+  // unary
+  rpc Put(PutRequest) returns (PutResponse);
+
+  // server streaming: one request, many responses
+  rpc Scan(GetRequest) returns (stream GetResponse);
+
+  // client streaming: many requests, one response
+  rpc PutMany(stream PutRequest) returns (PutManyResponse);
+}

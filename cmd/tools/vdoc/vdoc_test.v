@@ -5,7 +5,8 @@ module main
 import os
 import arrays
 import document as doc
-import markdown
+import x.markdown
+import term
 
 const vexe_path = @VEXE
 const vexe_ = os.quoted_path(vexe_path)
@@ -121,6 +122,327 @@ fn test_html_highlight_escapes_html_tokens() {
 	assert highlighted.contains('<span class="token operator">&lt;</span>')
 }
 
+// classify returns every token of `code` with its kind, as `raw:kind`.
+fn classify(code string) []string {
+	return highlight_tokens(code).map('${code[it.start..it.end]}:${it.typ}')
+}
+
+// The terminal and the HTML output both use `highlight_tokens`, so they highlight the same things.
+fn test_highlight_tokens_names() {
+	assert classify('int f() Foo os.') == ['int:builtin', 'f:function', '(:punctuation', '):punctuation',
+		'Foo:type_name', 'os:module_', '.:punctuation']
+}
+
+fn test_highlight_tokens_byte_as_an_identifier() {
+	assert classify('byte') == ['byte:name']
+	assert classify('byte()') == ['byte:function', '(:punctuation', '):punctuation']
+	assert classify('u8') == ['u8:builtin']
+}
+
+fn test_highlight_tokens_option_and_chan() {
+	assert classify('?int chan') == ['?:operator', 'int:builtin', 'chan:builtin']
+}
+
+fn test_highlight_tokens_string_interpolation() {
+	assert classify("'a\${x}b'") == ["'a:string", '$:string_interp', '{:string_interp', 'x:name',
+		'}:string_interp', "b':string"]
+}
+
+fn test_highlight_tokens_braces_inside_an_interpolation() {
+	assert classify("'\${Foo{}}'") == ["':string", '$:string_interp', '{:string_interp', 'Foo:type_name',
+		'{:punctuation', '}:punctuation', '}:string_interp', "':string"]
+}
+
+fn test_highlight_tokens_nested_interpolation() {
+	assert classify("'\${f('\${x}')}'") == ["':string", '$:string_interp', '{:string_interp',
+		'f:function', '(:punctuation', "':string", '$:string_interp', '{:string_interp', 'x:name',
+		'}:string_interp', "':string", '):punctuation', '}:string_interp', "':string"]
+}
+
+fn test_highlight_tokens_braces_outside_strings() {
+	assert classify('struct S {}') == ['struct:keyword', 'S:type_name', '{:punctuation', '}:punctuation']
+}
+
+// kind_of returns the kind of the first token in `code` whose text is `raw`.
+fn kind_of(code string, raw string) string {
+	for highlighted in highlight_tokens(code) {
+		if code[highlighted.start..highlighted.end] == raw {
+			return highlighted.typ.str()
+		}
+	}
+	return 'no token `${raw}`'
+}
+
+// kinds_of returns the kind of every token of `code` that is `raw`.
+fn kinds_of(code string, raw string) []string {
+	return highlight_tokens(code).filter(code[it.start..it.end] == raw).map(it.typ.str())
+}
+
+fn test_highlight_tokens_map_as_a_builtin() {
+	assert classify('map[string]int') == ['map:builtin', '[:punctuation', 'string:builtin',
+		']:punctuation', 'int:builtin']
+	// The `.map()` method is not the map type.
+	assert kind_of('a.map(it)', 'map') == 'function'
+}
+
+fn test_highlight_tokens_generic_function() {
+	assert kind_of('fn map_of[T](x T) T', 'map_of') == 'function'
+	assert kind_of('decode[Config](text)', 'decode') == 'function'
+	assert kind_of('pairs[map[string]int](x)', 'pairs') == 'function'
+	// An index is not a call.
+	assert kinds_of('items[0] + items[1]', 'items') == ['name', 'name']
+}
+
+fn test_highlight_tokens_negated_keywords() {
+	assert classify('a in b') == ['a:name', 'in:keyword', 'b:name']
+	assert classify('a !in b') == ['a:name', '!in:keyword', 'b:name']
+	assert classify('a is B') == ['a:name', 'is:keyword', 'B:type_name']
+	assert classify('a !is B') == ['a:name', '!is:keyword', 'B:type_name']
+}
+
+fn test_highlight_tokens_comptime_dollar() {
+	assert classify('\$if x {} \$else {}') == ['$:keyword', 'if:keyword', 'x:name', '{:punctuation',
+		'}:punctuation', '$:keyword', 'else:keyword', '{:punctuation', '}:punctuation']
+}
+
+fn test_highlight_tokens_format_spec() {
+	assert classify("'\${n:5.2f}'") == ["':string", '$:string_interp', '{:string_interp', 'n:name',
+		'::string_interp', '5.2:string_interp', 'f:string_interp', '}:string_interp', "':string"]
+	assert classify("'\${x:-10}'") == ["':string", '$:string_interp', '{:string_interp', 'x:name',
+		'::string_interp', '-:string_interp', '10:string_interp', '}:string_interp', "':string"]
+	assert kind_of("'\${a[1..2]:5}'", ':') == 'string_interp'
+	// A `:` inside a nested expression is not a format spec.
+	assert kind_of("'\${f({'a': 1})}'", ':') == 'punctuation'
+	assert kind_of("'\${f(a: 1)}'", ':') == 'punctuation'
+	assert kind_of("'\${f(a: 1)}'", '1') == 'number'
+}
+
+fn test_highlight_tokens_attribute() {
+	assert classify("@[deprecated: 'use y'; inline] fn f()") == ['@[:attribute', 'deprecated:attribute',
+		'::punctuation', "'use y':string", 'inline:attribute', ']:attribute', 'fn:keyword', 'f:function',
+		'(:punctuation', '):punctuation']
+	assert classify('@[if debug]') == ['@[:attribute', 'if:attribute', 'debug:attribute', ']:attribute']
+	// An enum value in an argument is an enum value, not a word of the attribute.
+	assert classify('@[x: .bar]') == ['@[:attribute', 'x:attribute', '::punctuation', '.:enum_value',
+		'bar:enum_value', ']:attribute']
+	// An attribute ends at its `]`, so later names and brackets are classified as usual.
+	assert classify('@[x] a[0]') == ['@[:attribute', 'x:attribute', ']:attribute', 'a:name',
+		'[:punctuation', '0:number', ']:punctuation']
+}
+
+fn test_highlight_tokens_enum_value() {
+	assert classify('s = .closed') == ['s:name', '=:operator', '.:enum_value', 'closed:enum_value']
+	assert classify('f(.a, .b)') == ['f:function', '(:punctuation', '.:enum_value', 'a:enum_value',
+		',:punctuation', '.:enum_value', 'b:enum_value', '):punctuation']
+	assert kind_of('match x {\n\t.a {}\n\t.b {}\n}', 'a') == 'enum_value'
+}
+
+fn test_highlight_tokens_qualified_enum_value() {
+	assert classify('State.unknown') == ['State:type_name', '.:enum_value', 'unknown:enum_value']
+	assert kind_of('http.Method.post', 'post') == 'enum_value'
+	// A static method, compile time reflection and C or JS names are not enum values.
+	assert kind_of('Foo.new()', 'new') == 'function'
+	assert kind_of('fn Sides.from[W](input W) !Sides', 'from') == 'function'
+	assert kind_of('Sides.from[int](3)', 'from') == 'function'
+	assert kind_of('Sides.top[0]', 'top') == 'enum_value'
+	assert kind_of('\$for f in T.fields {}', 'fields') == 'name'
+	assert classify('C.FILE') == ['C:type_name', '.:punctuation', 'FILE:type_name']
+	assert classify('JS.foo') == ['JS:type_name', '.:punctuation', 'foo:name']
+}
+
+fn test_highlight_tokens_keywords_used_as_enum_fields() {
+	// Any keyword can be an enum field.
+	assert classify('enum Fill {\n\tnone\n\ttype = 2\n}') == ['enum:keyword', 'Fill:type_name',
+		'{:punctuation', 'none:name', 'type:name', '=:operator', '2:number', '}:punctuation']
+	assert classify('f = .none') == ['f:name', '=:operator', '.:enum_value', 'none:enum_value']
+	assert kinds_of('Fill.none', 'none') == ['enum_value']
+	assert kind_of('match f {\n\t.none {}\n}', 'none') == 'enum_value'
+	// Elsewhere, they are still keywords.
+	assert kind_of('x := none', 'none') == 'none'
+	assert kind_of('enum Fill {\n\ta\n}\nfn f() {\n\treturn\n}', 'return') == 'keyword'
+	assert kind_of('\$if T is \$enum {\n\treturn 1\n}', 'return') == 'keyword'
+}
+
+fn test_highlight_tokens_field_access_is_not_an_enum_value() {
+	assert classify('foo.bar') == ['foo:module_', '.:punctuation', 'bar:name']
+	assert kind_of('a[0].x', 'x') == 'name'
+	assert kind_of('f()?.x', 'x') == 'name'
+	// The kinds that end a value include strings, chars and numbers.
+	assert kind_of("'a'.len", 'len') == 'name'
+	assert kind_of('`a`.str()', 'str') == 'function'
+	assert kind_of('`a`.bytes', 'bytes') == 'name'
+	// A method called on the next line is not an enum value either.
+	assert classify('x\n\t.map()') == ['x:name', '.:punctuation', 'map:function', '(:punctuation',
+		'):punctuation']
+}
+
+fn test_highlight_tokens_module_names() {
+	assert kind_of('os.args', 'os') == 'module_'
+	assert kind_of('fn f(r http.Request)', 'http') == 'module_'
+	assert kinds_of('import net.http\nhttp.get(url)', 'http') == ['module_', 'module_']
+	// An import alias is a module, even when it is named like an implicit variable.
+	assert kinds_of('import arrays as a\na.sum([1, 2, 3])', 'a') == ['module_', 'module_']
+	assert kinds_of('import arrays as it\nit.sum([1])', 'it') == ['module_', 'module_']
+	// A declared variable still hides the import.
+	assert kinds_of('import arrays as a\na := [1]\na.len', 'a') == ['module_', 'name', 'name']
+	assert classify('import net.http as h') == ['import:keyword', 'net:module_', '.:punctuation',
+		'http:module_', 'as:keyword', 'h:module_']
+	assert kind_of('module demo', 'demo') == 'module_'
+	// Fields named like the keywords do not start a module path.
+	assert kind_of('struct Foo {\n\tmodule string\n}', 'string') == 'builtin'
+	assert kind_of('x := node.module\ng.f(x)', 'f') == 'function'
+	// The symbols of a selective import are no modules.
+	assert kinds_of('import os { args }\nargs.len', 'args') == ['name', 'name']
+	// A field of a field is no module.
+	assert kind_of('os.args.len', 'args') == 'name'
+}
+
+fn test_highlight_tokens_variables_are_not_module_names() {
+	assert kinds_of('a := [1]\nassert a.len == 1', 'a') == ['name', 'name']
+	assert kinds_of('mut x, y := 1, 2\ny.str()', 'y') == ['name', 'name']
+	// Only the names before `:=` are declared, not a name that ends the line before.
+	assert kinds_of('import net.http as h\nresp := h.get(url)', 'h') == ['module_', 'module_']
+	assert kinds_of('for i, item in items { item.name }', 'item') == ['name', 'name']
+	assert kinds_of('fn (s Foo) f(mut b Bar) { s.x = b.y }', 's') == ['name', 'name']
+	assert kinds_of('fn (s Foo) f(mut b Bar) { s.x = b.y }', 'b') == ['name', 'name']
+	assert kinds_of('fn (x int, y int) { y.str() }', 'y') == ['name', 'name']
+	assert kinds_of('squares := parallel.amap(xs, |x| x.sq())', 'x') == ['name', 'name']
+	assert kinds_of('const cfg = Config{}\ncfg.name', 'cfg') == ['name', 'name']
+	assert kind_of('a.map(it.len)', 'it') == 'name'
+	assert kind_of('f() or { panic(err.msg()) }', 'err') == 'name'
+	// The parameter of a closure does not hide the module before it.
+	assert kind_of('squares := parallel.amap(xs, |x| x.sq())', 'parallel') == 'module_'
+	assert kinds_of('for i, x in xs { x.y }', 'x') == ['name', 'name']
+	// A `for` condition declares no variables.
+	assert kinds_of('for os.args.len > 0 { os.args.pop() }', 'os') == ['module_', 'module_']
+	assert kinds_of('const (\n\ta = 1\n\tcfg = Config{}\n)\ncfg.name', 'cfg') == [
+		'name',
+		'name',
+	]
+	assert kinds_of('fn (s Stack[T]) peek[U](x U) { s.items }', 's') == ['name', 'name']
+	assert kinds_of('fn [x] () { x.str() }', 'x') == ['name', 'name']
+	assert kinds_of('if w is Mars { w.dust_storm() }', 'w') == ['name', 'name']
+	assert kinds_of('match w { Mars { w.dust_storm() } else {} }', 'w') == ['name', 'name']
+	assert kinds_of('x := y as Foo\ny.z', 'y') == ['name', 'name']
+}
+
+fn test_highlight_tokens_string_escapes() {
+	assert classify("'a\\nb'") == ["'a:string", '\\n:escape', "b':string"]
+	assert classify("'\\x41\\u00e9\\101\\0'") == ["':string", '\\x41:escape', '\\u00e9:escape',
+		'\\101:escape', '\\0:escape', "':string"]
+	// An octal escape takes exactly three digits; otherwise `\0` is an escape of its own.
+	assert classify("'\\01'") == ["':string", '\\0:escape', "1':string"]
+	assert classify("'\\012'") == ["':string", '\\012:escape', "':string"]
+	assert classify("'\\08'") == ["':string", '\\0:escape', "8':string"]
+	// Another digit without three octal digits keeps its `\`, so it is no escape.
+	assert classify("'\\1'") == ["'\\1':string"]
+	assert classify("'\\12'") == ["'\\12':string"]
+	assert classify("'\\8\\n'") == ["'\\8:string", '\\n:escape', "':string"]
+	assert classify("'\\\${x}'").filter(it.ends_with(':escape')) == ['\\$:escape']
+	assert classify("r'a\\n'") == ["r'a\\n':string"]
+	// A part after an interpolation that starts with `r` is no raw string, even when it ends
+	// with the quote that follows the `r`.
+	assert classify('\'\${x}r"\\n\'').filter(it.ends_with(':escape')) == ['\\n:escape']
+	assert classify('\'\${x}r"\\n"\${y}\'').filter(it.ends_with(':escape')) == ['\\n:escape']
+	// An unfinished raw string is still raw, and so is a raw string inside an interpolation.
+	assert classify("r'path\\name").filter(it.ends_with(':escape')) == []
+	assert classify("'\${r'\\n'}'").filter(it.ends_with(':escape')) == []
+	assert classify("'a\\") == ["'a:string", '\\:escape']
+}
+
+fn test_highlight_tokens_c_string() {
+	assert classify("c'hi'") == ["c'hi':string"]
+	// A char literal whose text starts like the scanner's mark for a C string.
+	assert classify('`c:`') == ['`c:`:char']
+	assert kind_of('x(`c:a`)', '`c:a`') == 'char'
+}
+
+fn test_highlight_tokens_comptime_pseudo_variable() {
+	assert kind_of('println(@FN)', '@FN') == 'keyword'
+	assert kind_of('@BUILD_TIMESTAMP.i64()', '@BUILD_TIMESTAMP') == 'keyword'
+	// A keyword used as a name, like `@type`, is not one.
+	assert kind_of('fn @lock() {}', '@lock') == 'function'
+}
+
+fn test_highlight_tokens_unclosed_attribute_ends_with_its_line() {
+	assert kind_of('@[deprecated\nfn foo() {}', 'fn') == 'keyword'
+}
+
+fn test_highlight_tokens_attribute_arguments_keep_their_kinds() {
+	assert kind_of('@[x: false; inline]', 'false') == 'boolean'
+	assert kind_of('@[noalloc: strict]', 'strict') == 'name'
+	assert kind_of('@[x: false; inline]', 'inline') == 'attribute'
+	assert kind_of("@[x: 'use \${label}'; inline]", 'label') == 'name'
+	assert kind_of("@[x: 'use \${label}'; inline]", 'inline') == 'attribute'
+	assert kind_of("@[x: '\${a[0]}'; inline]", 'a') == 'name'
+	assert kind_of("@[x: '\${f('\${label}')}'; inline]", 'label') == 'name'
+	assert kind_of("@[x: '\${f('\${label}')}'; inline]", 'inline') == 'attribute'
+}
+
+fn test_highlight_tokens_attribute_call_arguments_keep_their_kinds() {
+	code := "@[deprecated(msg: 'use g', after: '2999-01-01')]"
+	assert kind_of(code, 'msg') == 'name'
+	assert kind_of(code, 'after') == 'name'
+	assert kind_of(code, 'deprecated') == 'attribute'
+}
+
+fn test_highlight_tokens_spaced_field_access_is_not_an_enum_value() {
+	assert kind_of('foo .bar', 'bar') == 'name'
+	assert kind_of('foo\n\t.bar', 'bar') == 'name'
+	assert kind_of('a[0] .bar', 'bar') == 'name'
+	assert kind_of('f()\n\t.bar', 'bar') == 'name'
+	// Inspect the last token because the struct field's name occurs twice.
+	assert classify('Item{ field: 1 } .field').last() == 'field:name'
+	assert classify('Item{ field: 1 }\n\t.field').last() == 'field:name'
+	assert classify('match x { .a { Item{} } else { Item{} } } .field').last() == 'field:name'
+}
+
+fn test_highlight_tokens_separated_enum_values() {
+	assert kind_of('match x {\n\t.a {}\n\t.b {}\n}', 'b') == 'enum_value'
+	assert kind_of('[.a .b]', 'b') == 'enum_value'
+	assert kind_of('[State.a .b]', 'b') == 'enum_value'
+	assert kind_of('match x { .a { Item{} } .b {} }', 'b') == 'enum_value'
+	assert kind_of('match x { State.a { if ok {} } .b {} }', 'b') == 'enum_value'
+}
+
+// The tests below check how each output displays the kinds.
+
+fn test_color_highlight_string_interpolation() {
+	interp_open := term.bright_magenta('$') + term.bright_magenta('{')
+	assert color_highlight("':\${port}'") == term.yellow("':") + interp_open + 'port' +
+		term.bright_magenta('}') + term.yellow("'")
+}
+
+fn test_color_highlight_option_and_chan() {
+	assert color_highlight('?int') == term.magenta('?') + term.green('int')
+	assert color_highlight('chan int') == term.green('chan') + ' ' + term.green('int')
+}
+
+fn test_color_highlight_attribute_arguments() {
+	assert color_highlight('@[x: false]') == term.gray('@[') + term.gray('x') + ': ' +
+		term.bright_magenta('false') + term.gray(']')
+	assert color_highlight('.closed') == term.bright_magenta('.') + term.bright_magenta('closed')
+}
+
+fn test_color_highlight_module_names_and_escapes() {
+	assert color_highlight('os.args') == term.bold('os') + '.' + 'args'
+	assert color_highlight("'\\n'") == term.yellow("'") + term.bright_magenta('\\n') + term.yellow("'")
+}
+
+fn test_html_highlight_string_interpolation() {
+	interp := '<span class="token string_interp">'
+	assert html_highlight("'\${x}'") == '<span class="token string">\'</span>${interp}$</span>${interp}{</span>x${interp}}</span><span class="token string">\'</span>'
+}
+
+fn test_html_highlight_names() {
+	assert html_highlight('x os.Foo') == 'x <span class="token module_">os</span><span class="token punctuation">.</span><span class="token type_name">Foo</span>'
+}
+
+fn test_html_highlight_attribute_arguments_and_enum_values() {
+	assert html_highlight('@[x: false]') == '<span class="token attribute">@[</span><span class="token attribute">x</span><span class="token punctuation">:</span> <span class="token boolean">false</span><span class="token attribute">]</span>'
+	assert html_highlight('.closed') == '<span class="token enum_value">.</span><span class="token enum_value">closed</span>'
+}
+
 fn test_get_readme_md_src() {
 	// a special testcase for `src` dir get_readme
 	// https://github.com/vlang/v/issues/24232
@@ -141,7 +463,7 @@ pub fn square(x int) int {
         return x * x
 }
 ')!
-	res := os.execute_opt('${vexe_} doc -m src/ -v') or { panic(err) }
+	res := os.exec_opt([vexe_path, 'doc', '-m', 'src/', '-v']) or { panic(err) }
 	assert res.exit_code == 0
 	assert res.output.contains('square')
 }
@@ -208,7 +530,8 @@ pub fn greet() string {
 	return 'hello'
 }
 ")!
-	res := os.execute_opt('${vexe_} doc -no-timestamp -f text -o - -readme -comments ${os.quoted_path('./' + mod_dir)}') or { panic(err) }
+	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'text', '-o', '-', '-readme',
+		'-comments', '${'./' + mod_dir}']) or { panic(err) }
 	assert res.exit_code == 0
 	assert res.output.replace('\r\n', '\n').trim_space() == 'module overview
     `overview` uses the first comment after the module declaration as the module overview.
@@ -234,7 +557,8 @@ pub enum Bar {
 	bar
 }
 ')!
-	res := os.execute_opt('${vexe_} doc -no-timestamp -m -f html -o - -html-only-contents ${os.quoted_path('./' + mod_dir)}') or { panic(err) }
+	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-m', '-f', 'html', '-o', '-',
+		'-html-only-contents', '${'./' + mod_dir}']) or { panic(err) }
 	assert res.exit_code == 0
 	output := res.output.replace('\r\n', '\n')
 	assert output.contains('Foo lorem ipsum foo.')
@@ -248,7 +572,8 @@ fn test_doc_generates_for_modules_without_public_symbols() {
 
 const internal = 1
 ')!
-	res := os.execute_opt('${vexe_} doc -no-timestamp -f text -o - ${os.quoted_path('./' + mod_dir)}') or {
+	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'text', '-o', '-',
+		'${'./' + mod_dir}']) or {
 		panic(err)
 	}
 	assert res.exit_code == 0
@@ -271,22 +596,24 @@ fn test_resolve_relative_markdown_link_keeps_absolute_urls() {
 
 fn test_markdown_renderer_resolves_relative_links() ! {
 	base := 'https://github.com/vlang/v/blob/master/vlib/net/html/'
-	mut renderer := markdown.HtmlRenderer{
-		transformer: &MdHtmlCodeHighlighter{
-			relative_link_base: base
+	mut renderer := markdown.HTMLRenderer{
+		opts:          markdown.Options{}
+		link_base:     base
+		link_resolver: fn (b string, url string) string {
+			return resolve_relative_markdown_link(b, url)
 		}
 	}
-	out := markdown.render('More examples in [parser](parser_test.v).', mut renderer)!
+	out := markdown.render('More examples in [parser](parser_test.v).', mut renderer)
 	assert out.contains('<a href="https://github.com/vlang/v/blob/master/vlib/net/html/parser_test.v">')
 }
 
 fn test_prepare_markdown_for_html_preserves_blockquote_linebreaks() ! {
-	mut renderer := markdown.HtmlRenderer{
-		transformer: &MdHtmlCodeHighlighter{}
+	mut renderer := markdown.HTMLRenderer{
+		opts: markdown.Options{}
 	}
-	out := markdown.render(prepare_markdown_for_html('> **Note**\n> line one\n> line two'), mut renderer)!
+	out := markdown.render(prepare_markdown_for_html('> **Note**\n> line one\n> line two'), mut renderer)
 	assert out.contains('<blockquote>')
-	assert out.contains('<strong>Note</strong><br />line one<br />line two')
+	assert out.contains('<strong>Note</strong>')
 }
 
 fn test_prepare_markdown_for_html_skips_fenced_code_blocks() {
@@ -296,16 +623,29 @@ fn test_prepare_markdown_for_html_skips_fenced_code_blocks() {
 
 fn test_markdown_renderer_preserves_wrapped_readme_markdown() ! {
 	input := '1. The basic atomic elements of this regex engine are the tokens.\n   In a query string a simple character is a token.\n\n- The basic element **is the token not the sequence of symbols**,\n  and the most simple token, is a single character.\n\n- `|` **the OR operator acts on tokens,** for example `abc|ebc` is not\n  `abc` OR `ebc`.'
-	mut renderer := markdown.HtmlRenderer{
-		transformer: &MdHtmlCodeHighlighter{}
+	mut renderer := markdown.HTMLRenderer{
+		opts: markdown.Options{}
 	}
-	out := markdown.render(prepare_markdown_for_html(input), mut renderer)!
+	out := markdown.render(prepare_markdown_for_html(input), mut renderer)
 	assert !out.contains('tokens.In')
 	assert !out.contains('mostsimple')
 	assert !out.contains('not<code>abc</code>')
 	assert out.contains('tokens. In a query string a simple character is a token.')
 	assert out.contains('the most simple token')
 	assert out.contains('is not <code>abc</code> OR <code>ebc</code>')
+}
+
+fn test_markdown_renderer_highlights_only_v_code_blocks() ! {
+	input := '```sh\nv run server.v\n```\n\n```cpp\n#include <x>\n```\n\n```V\nos.args\n```\n\n```v ignore\nfn f() {}\n```\n\n```\nfn g() {}\n```'
+	mut renderer := new_doc_markdown_renderer('')
+	out := markdown.render(input, mut renderer)
+	// Code in other languages, or without a language, is shown as it is, and escaped.
+	assert out.contains('<code class="language-sh">v run server.v\n</code>')
+	assert out.contains('<code class="language-cpp">#include &lt;x&gt;\n</code>')
+	assert out.contains('fn g() {}')
+	// The language is the first word of the fence, in any case.
+	assert out.contains('<span class="token module_">os</span>')
+	assert out.contains('<span class="token keyword">fn</span> <span class="token function">f</span>')
 }
 
 fn test_doc_multi_skips_modules_without_valid_files_for_platform() {
@@ -336,7 +676,8 @@ pub fn only_win() int {
 }
 ')!
 	// `-color` exercises the original crash path in `gen_plaintext`.
-	res := os.execute_opt('${vexe_} doc -no-timestamp -m -color -f text -o - ${os.quoted_path('./' + base_dir)}') or { panic(err) }
+	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-m', '-color', '-f', 'text', '-o',
+		'-', '${'./' + base_dir}']) or { panic(err) }
 	// The crash showed up as a non-zero exit code (V panic), so this is the key check.
 	assert res.exit_code == 0
 	assert res.output.contains('hello')
@@ -363,7 +704,8 @@ pub fn only_win() int {
 }
 ')!
 	// `os.execute` (not `execute_opt`) so the expected non-zero exit is not an error.
-	res := os.execute('${vexe_} doc -no-timestamp -m -f html -o ${os.quoted_path('./' + out_dir)} ${os.quoted_path('./' + base_dir)}')
+	res := os.exec([vexe_path, 'doc', '-no-timestamp', '-m', '-f', 'html', '-o', '${'./' + out_dir}',
+		'${'./' + base_dir}'])
 	assert res.exit_code != 0
 	assert res.output.contains('No documentation found')
 	// The output directory must not have been created.
@@ -383,4 +725,355 @@ fn test_module_display_name_is_relative_to_the_input_root() {
 	// are named by the directory they are.
 	assert module_display_name('/tmp/app', '/tmp/app') == 'app'
 	assert module_display_name('/somewhere/else/foo', '/tmp/app') == 'foo'
+}
+
+fn write_subdirs_fixture(root string, vmod_extra string, files map[string]string) ! {
+	os.mkdir_all(root)!
+	os.write_file(os.join_path(root, 'v.mod'), "Module {\n\tname: 'mypkg'\n\tversion: '0.0.1'\n${vmod_extra}}\n")!
+	for rel, content in files {
+		path := os.join_path(root, rel)
+		os.mkdir_all(os.dir(path))!
+		os.write_file(path, content)!
+	}
+}
+
+fn test_vmod_subdirs_are_documented_as_part_of_the_module() {
+	root := 'subdirs_mod'
+	write_subdirs_fixture(root, "\tsubdirs: ['internal', 'internal/deep']\n", {
+		'root.v':                   'module mypkg\n\npub fn root_fn() {}\n'
+		'internal/sub.v':           'module mypkg\n\npub fn sub_fn() {}\n'
+		'internal/deep/deep.v':     'module mypkg\n\npub fn deep_fn() {}\n'
+		'internal/nested/v.mod':    "Module {\n\tname: 'nested'\n}\n"
+		'internal/nested/nested.v': 'module nested\n\npub fn nested_fn() {}\n'
+		'internal_other/other.v':   'module internal_other\n\npub fn other_fn() {}\n'
+	})!
+	d := doc.generate(root, true, true, .auto)!
+	assert d.head.name == 'mypkg'
+	assert d.contents.keys().sorted() == ['deep_fn', 'root_fn', 'sub_fn']
+	assert get_modules(root) == [root, os.join_path(root, 'internal', 'nested'),
+		os.join_path(root, 'internal_other')]
+	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'text', '-o', '-', root])!
+	assert res.output.contains('fn root_fn()')
+	assert res.output.contains('fn sub_fn()')
+	assert res.output.contains('fn deep_fn()')
+}
+
+fn test_vmod_subdirs_without_root_files() {
+	root := 'subdirs_only'
+	write_subdirs_fixture(root, "\tsubdirs: ['internal']\n", {
+		'internal/sub.v': 'module mypkg\n\npub fn sub_fn() {}\n'
+	})!
+	d := doc.generate(root, true, true, .auto)!
+	assert d.contents.keys() == ['sub_fn']
+	assert get_modules(root) == [root]
+}
+
+fn test_vmod_external_subdirs_without_root_files() {
+	root := 'subdirs_external_only'
+	write_subdirs_fixture(root, "\tsubdirs: ['../subdirs_external_only_sources']\n", {
+		'../subdirs_external_only_sources/sub.v': 'module mypkg\n\npub fn external_fn() {}\n'
+	})!
+	assert get_modules(root) == [root]
+	os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-m', '-f', 'text', root])!
+	output := os.read_file(os.join_path(root, '_docs', 'mypkg.txt'))!
+	assert output.contains('fn external_fn()')
+}
+
+fn test_vmod_external_subdirs_are_owned_by_base_url_source_root() {
+	root := 'subdirs_external_base_url'
+	write_subdirs_fixture(root, "\tbase_url: 'src'\n\tsubdirs: ['../shared']\n", {
+		'shared/sub.v': 'module mypkg\n\npub fn external_fn() {}\n'
+	})!
+	source_root := os.join_path(root, 'src')
+	os.mkdir_all(source_root)!
+	assert get_modules(root) == [source_root]
+	assert get_modules('./${root}') == [os.join_path('.', source_root)]
+}
+
+fn test_vmod_external_subdirs_are_not_discovered_as_separate_modules() {
+	root := 'subdirs_external_collection'
+	module_root := os.join_path(root, 'mypkg')
+	write_subdirs_fixture(module_root, "\tsubdirs: ['../shared']\n", {
+		'../shared/sub.v': 'module mypkg\n\npub fn external_fn() {}\n'
+	})!
+	assert get_modules(root) == [module_root]
+}
+
+fn test_vmod_external_subdirs_with_only_ignored_files_are_skipped() {
+	root := 'subdirs_external_ignored'
+	write_subdirs_fixture(root, "\tsubdirs: ['../subdirs_external_ignored_sources']\n", {
+		'../subdirs_external_ignored_sources/tests/sub.v': 'module mypkg\n\npub fn ignored_fn() {}\n'
+	})!
+	assert get_modules(root) == []string{}
+}
+
+fn test_vmod_subdirs_are_resolved_from_base_url() {
+	root := 'subdirs_base_url'
+	write_subdirs_fixture(root, "\tbase_url: 'src'\n\tsubdirs: ['internal']\n", {
+		'src/root.v':         'module mypkg\n\npub fn root_fn() {}\n'
+		'src/internal/sub.v': 'module mypkg\n\npub fn sub_fn() {}\n'
+	})!
+	src := os.join_path(root, 'src')
+	d := doc.generate(src, true, true, .auto)!
+	assert d.contents.keys().sorted() == ['root_fn', 'sub_fn']
+	assert get_modules(root) == [src]
+}
+
+fn test_vmod_subdirs_dot_walks_the_whole_module_tree() {
+	root := 'subdirs_dot'
+	write_subdirs_fixture(root, "\tsubdirs: ['.']\n", {
+		'root.v':                   'module mypkg\n\npub struct Thing {}\n\npub fn (t Thing) method_fn() {}\n'
+		'internal/deep/deep.v':     'module mypkg\n\npub fn deep_fn() {}\n'
+		'internal/nested/v.mod':    "Module {\n\tname: 'nested'\n}\n"
+		'internal/nested/nested.v': 'module nested\n\npub fn nested_fn() {}\n'
+	})!
+	// A symlink to an already documented file must not document its symbols twice.
+	os.symlink(os.real_path(os.join_path(root, 'root.v')), os.join_path(root, 'internal',
+		'root_link.v'))!
+	d := doc.generate(root, true, true, .auto)!
+	assert d.contents.keys().sorted() == ['Thing', 'deep_fn']
+	assert d.contents['Thing'].children.filter(it.name == 'method_fn').len == 1
+	assert get_modules(root) == [root, os.join_path(root, 'internal', 'nested')]
+}
+
+fn test_repo_file_path_for_links_keeps_subdirs() {
+	root := 'subdirs_links'
+	write_subdirs_fixture(root, "\tsubdirs: ['internal']\n", {
+		'root.v':         'module mypkg\n\npub fn root_fn() {}\n'
+		'internal/sub.v': 'module mypkg\n\npub fn sub_fn() {}\n'
+	})!
+	vd := VDoc{
+		cfg: Config{
+			input_path: root
+		}
+	}
+	real_root := os.real_path(root)
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_root, 'root.v')) == 'root.v'
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_root, 'internal', 'sub.v')) == 'internal/sub.v'
+}
+
+fn test_repo_file_path_for_links_keeps_external_subdirs() {
+	repo := 'subdirs_external_links'
+	root := os.join_path(repo, 'mypkg')
+	os.mkdir_all(os.join_path(repo, '.git'))!
+	write_subdirs_fixture(root, "\trepo_url: 'https://github.com/example/project'\n\trepo_branch: 'main'\n\tsubdirs: ['../shared', '../other']\n", {
+		'root.v':          'module mypkg\n\npub fn root_fn() {}\n'
+		'../shared/sub.v': 'module mypkg\n\n// external_fn links to [a guide](guide.md).\npub fn external_fn() {}\n'
+		'../other/sub.v':  'module mypkg\n\npub fn other_fn() {}\n'
+	})!
+	vd := VDoc{
+		cfg: Config{
+			input_path: root
+		}
+	}
+	real_repo := os.real_path(repo)
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_repo, 'mypkg', 'root.v')) == 'mypkg/root.v'
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_repo, 'shared', 'sub.v')) == 'shared/sub.v'
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_repo, 'other', 'sub.v')) == 'other/sub.v'
+	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'html', '-o', '-',
+		'-html-only-contents', '-comments', root])!
+	assert res.output.contains('https://github.com/example/project/blob/main/shared/sub.v#L')
+	assert res.output.contains('https://github.com/example/project/blob/main/other/sub.v#L')
+	assert res.output.contains('https://github.com/example/project/blob/main/shared/guide.md')
+}
+
+fn test_repo_file_path_for_links_uses_base_url_manifest_root() {
+	root := 'subdirs_base_url_links'
+	write_subdirs_fixture(root, "\tbase_url: 'src'\n\tsubdirs: ['../shared', 'internal']\n", {
+		'src/root.v':         'module mypkg\n\npub fn root_fn() {}\n'
+		'src/internal/sub.v': 'module mypkg\n\npub fn internal_fn() {}\n'
+		'shared/sub.v':       'module mypkg\n\npub fn external_fn() {}\n'
+	})!
+	vd := VDoc{
+		cfg: Config{
+			input_path: os.join_path(root, 'src')
+		}
+	}
+	real_root := os.real_path(root)
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_root, 'src', 'root.v')) == 'src/root.v'
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_root, 'src', 'internal', 'sub.v')) == 'src/internal/sub.v'
+	assert repo_file_path_for_links(vd.links_root(), os.join_path(real_root, 'shared', 'sub.v')) == 'shared/sub.v'
+}
+
+fn test_repo_file_path_for_links_handles_worktrees_and_file_inputs() {
+	repo := 'subdirs_worktree_links'
+	root := os.join_path(repo, 'mypkg')
+	os.mkdir_all(repo)!
+	os.write_file(os.join_path(repo, '.git'), 'gitdir: /unused/worktrees/mypkg\n')!
+	write_subdirs_fixture(root, "\tsubdirs: ['../shared']\n", {
+		'root.v':          'module mypkg\n\npub fn root_fn() {}\n'
+		'../shared/sub.v': 'module mypkg\n\npub fn external_fn() {}\n'
+	})!
+	real_repo := os.real_path(repo)
+	for is_multi in [false, true] {
+		vd := VDoc{
+			cfg: Config{
+				input_path: os.join_path(root, 'root.v')
+				is_multi:   is_multi
+			}
+		}
+		assert repo_file_path_for_links(vd.links_root(), '') == ''
+		assert repo_file_path_for_links(vd.links_root(), os.join_path(real_repo, 'mypkg', 'root.v')) == 'mypkg/root.v'
+		assert repo_file_path_for_links(vd.links_root(), os.join_path(real_repo, 'shared', 'sub.v')) == 'shared/sub.v'
+	}
+}
+
+fn test_repo_file_path_for_links_preserves_manifestless_input_roots() {
+	// Keep this fixture outside the suite's v.mod created by the README test.
+	fixture_root := tpath + '_links_no_manifest'
+	defer {
+		os.rmdir_all(fixture_root) or {}
+	}
+	root := os.join_path(fixture_root, 'nested')
+	os.mkdir_all(root)!
+	file := os.join_path(root, 'file.v')
+	os.write_file(file, 'module mypkg\n')!
+	for input_path in [root, file] {
+		for is_multi in [false, true] {
+			vd := VDoc{
+				cfg: Config{
+					input_path: input_path
+					is_multi:   is_multi
+				}
+			}
+			expected := if is_multi && input_path == root { 'nested/file.v' } else { 'file.v' }
+			assert repo_file_path_for_links(vd.links_root(), os.real_path(file)) == expected
+		}
+	}
+}
+
+fn test_repo_file_path_for_links_ignores_unrelated_enclosing_checkout() {
+	repo := 'links_unrelated_checkout'
+	os.mkdir_all(os.join_path(repo, '.git'))!
+	os.write_file(os.join_path(repo, 'v.mod'), "Module {\n\tname: 'outer'\n\trepo_url: 'https://github.com/example/outer'\n}\n")!
+	for base_url in ['', 'src'] {
+		root := os.join_path(repo, 'examples', if base_url == '' { 'mypkg' } else { 'mypkg_src' })
+		write_subdirs_fixture(root, "\trepo_url: 'https://github.com/example/mypkg'\n\trepo_branch: 'main'\n\tbase_url: '${base_url}'\n\tsubdirs: ['internal']\n", {
+			os.join_path(base_url, 'root.v'):            'module mypkg\n\n// root_fn links to [a guide](guide.md).\npub fn root_fn() {}\n'
+			os.join_path(base_url, 'internal', 'sub.v'): 'module mypkg\n\npub fn sub_fn() {}\n'
+		})!
+		source_root := os.join_path(root, base_url)
+		file := os.real_path(os.join_path(source_root, 'root.v'))
+		expected := if base_url == '' { 'root.v' } else { 'src/root.v' }
+		for input_path in [source_root, file] {
+			for is_multi in [false, true] {
+				vd := VDoc{
+					cfg: Config{
+						input_path: input_path
+						is_multi:   is_multi
+					}
+				}
+				assert repo_file_path_for_links(vd.links_root(), file) == expected
+			}
+		}
+	}
+	root := os.join_path(repo, 'examples', 'mypkg')
+	res := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'html', '-o', '-',
+		'-html-only-contents', '-comments', root])!
+	assert res.output.contains('https://github.com/example/mypkg/blob/main/root.v#L')
+	assert res.output.contains('https://github.com/example/mypkg/blob/main/internal/sub.v#L')
+	assert res.output.contains('https://github.com/example/mypkg/blob/main/guide.md')
+	assert !res.output.contains('/blob/main/examples/')
+}
+
+fn test_repo_file_path_for_links_keeps_manifestless_git_root() {
+	repo := 'links_git_without_manifest'
+	root := os.join_path(repo, 'nested')
+	os.mkdir_all(root)!
+	os.write_file(os.join_path(repo, '.git'), 'gitdir: /unused/worktrees/mypkg\n')!
+	file := os.join_path(root, 'file.v')
+	os.write_file(file, 'module mypkg\n')!
+	for input_path in [root, file] {
+		for is_multi in [false, true] {
+			vd := VDoc{
+				cfg: Config{
+					input_path: input_path
+					is_multi:   is_multi
+				}
+			}
+			assert repo_file_path_for_links(vd.links_root(), os.real_path(file)) == 'nested/file.v'
+		}
+	}
+}
+
+fn test_vdocignore_applies_to_vmod_subdirs() {
+	root := 'subdirs_ignored'
+	// A subdir outside of the module folder is documented, but the default rules
+	// (e.g. `testdata`) still apply to it.
+	os.mkdir_all('subdirs_shared')!
+	os.write_file(os.join_path('subdirs_shared', 'shared.v'), 'module mypkg\n\npub fn shared_fn() {}\n')!
+	os.mkdir_all(os.join_path('subdirs_shared', 'testdata'))!
+	os.write_file(os.join_path('subdirs_shared', 'testdata', 't.v'), 'module mypkg\n\npub fn shared_fixture_fn() {}\n')!
+	os.mkdir_all('subdirs_link_target')!
+	os.write_file(os.join_path('subdirs_link_target', 'linked.v'), 'module mypkg\n\npub fn linked_fn() {}\n')!
+	os.mkdir_all('subdirs_two_links_target')!
+	os.write_file(os.join_path('subdirs_two_links_target', 'two.v'), 'module mypkg\n\npub fn two_links_fn() {}\n')!
+	write_subdirs_fixture(root, "\tsubdirs: ['internal', 'linked', 'ignored_link', 'allowed_link', '../subdirs_shared']\n", {
+		'.vdocignore':           'private\nskip.v\n/linked\n/ignored_link/two.v\n'
+		'root.v':                'module mypkg\n\npub fn root_fn() {}\n'
+		'internal/sub.v':        'module mypkg\n\npub fn sub_fn() {}\n'
+		'internal/skip.v':       'module mypkg\n\npub fn skipped_fn() {}\n'
+		'internal/private/p.v':  'module mypkg\n\npub fn private_fn() {}\n'
+		'internal/testdata/t.v': 'module mypkg\n\npub fn fixture_fn() {}\n'
+	})!
+	// Rules match the subdir name used in the module, even when it is a symlink.
+	os.symlink(os.real_path('subdirs_link_target'), os.join_path(root, 'linked'))!
+	// A file ignored through one alias is still documented when reached through another one.
+	os.symlink(os.real_path('subdirs_two_links_target'), os.join_path(root, 'ignored_link'))!
+	os.symlink(os.real_path('subdirs_two_links_target'), os.join_path(root, 'allowed_link'))!
+	single := os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-f', 'text', '-o', '-', root])!
+	os.exec_opt([vexe_path, 'doc', '-no-timestamp', '-m', '-f', 'text', root])!
+	multi := os.read_file(os.join_path(root, '_docs', 'mypkg.txt'))!
+	for output in [single.output, multi] {
+		assert output.contains('fn root_fn()')
+		assert output.contains('fn sub_fn()')
+		assert output.contains('fn shared_fn()')
+		assert !output.contains('skipped_fn')
+		assert !output.contains('private_fn')
+		assert !output.contains('fixture_fn')
+		assert !output.contains('shared_fixture_fn')
+		assert !output.contains('linked_fn')
+		assert output.contains('fn two_links_fn()')
+	}
+}
+
+fn test_os_cross_labels_the_symbols_of_some_platforms() {
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_os_cross_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	os.write_file(os.join_path(dir, 'plat.v'), 'module plat\n\npub fn everywhere() {}\n')!
+	os.write_file(os.join_path(dir, 'plat_windows.c.v'), 'module plat\n\npub fn on_windows() {}\n')!
+	os.write_file(os.join_path(dir, 'plat_nix.c.v'), 'module plat\n\npub fn on_unix() {}\n')!
+	for platform in ['cross', 'all'] {
+		res := os.exec_opt([vexe_path, 'doc', '-os', platform, '-f', 'text', '-o', '-', dir])!
+		assert res.output.contains('fn everywhere()\n// Available on Unix only.\nfn on_unix()\n// Available on Windows only.\nfn on_windows()\n'), res.output
+	}
+	// In HTML, the note comes right before the signature, which the theme attaches it to.
+	html := os.exec_opt([vexe_path, 'doc', '-os', 'cross', '-f', 'html', '-o', '-',
+		'-html-only-contents', dir])!
+	assert html.output.contains('<p class="platforms">Available on <strong>Windows</strong> only.</p>\n<pre class="signature">'), html.output
+}
+
+fn test_os_cross_shows_the_own_comment_of_each_declaration() {
+	dir := os.join_path(os.vtmp_dir(), 'vdoc_os_cross_variants_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	os.write_file(os.join_path(dir, 'lock_nix.c.v'), 'module lock\n\n// Lock uses pthreads.\n@[heap]\npub struct Lock {\n\tm int\n}\n\npub const spins = 10 // spins before sleeping\n')!
+	os.write_file(os.join_path(dir, 'lock_windows.c.v'), 'module lock\n\n// Lock uses an SRWLOCK.\npub struct Lock {\n\tm voidptr\n}\n\npub const spins = 10 // how often to spin\n')!
+	res := os.exec_opt([vexe_path, 'doc', '-os', 'cross', '-comments', '-f', 'text', '-o', '-',
+		dir])!
+	// A constant that is only written differently is documented once.
+	assert res.output.contains('const spins = 10 // spins before sleeping\n'), res.output
+	assert !res.output.contains('how often to spin'), res.output
+	// Each declaration is followed by its own comment.
+	assert res.output.contains('// Available on Unix only.\n@[heap]\nstruct Lock {\n\tm int\n}\n    Lock uses pthreads.\n// Available on Windows only.\nstruct Lock {\n\tm voidptr\n}\n    Lock uses an SRWLOCK.\n'), res.output
+	// In HTML, each declaration shows its own attributes in its signature, not above all of them.
+	html := os.exec_opt([vexe_path, 'doc', '-os', 'cross', '-f', 'html', '-o', '-',
+		'-html-only-contents', dir])!
+	assert !html.output.contains('<div class="attributes">'), html.output
+	assert html.output.contains('Available on <strong>Unix</strong> only.</p>\n<pre class="signature">\n<code><span class="token attribute">@[</span>'), html.output
+}
+
+fn test_readme_plaintext_preserves_unformatted_terminal_output() {
+	assert readme_plaintext('# Title\n\nA [link](https://vlang.io), **bold**, and `code`.\n\n```v\nfn main() {}\n```') == 'Title\nA link, bold, and code.\nfn main() {}'
 }

@@ -10,7 +10,9 @@ fn numeric_array_literal_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_numeric_array_literal_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${numeric_array_literal_vexe} -gc none -path "${numeric_array_literal_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${numeric_array_literal_v3_src}')
+		os.exec([numeric_array_literal_vexe, '-gc', 'none', '-path',
+			'${numeric_array_literal_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${numeric_array_literal_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -127,24 +129,24 @@ fn add_all[T](items []T) T {
 	bin := os.join_path(os.temp_dir(), 'v3_numeric_array_literal_input_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
 	c_compact := numeric_array_literal_compact_c(c_code)
-	assert c_compact.contains('array_new(sizeof(double),0,6)'), c_code
+	assert c_compact.contains('__new_array_noscan(0,6,sizeof(double))'), c_code
 	assert c_code.contains('double x = *(double*)(array_get(xs,'), c_code
 	assert c_compact.contains('new_array_from_c_array(3,3,sizeof(i64)'), c_code
 	assert !c_code.contains('i64 x = *(i64*)(array_get(xs,'), c_code
-	assert c_compact.contains('array_new(sizeof(float),0,2)'), c_code
+	assert c_compact.contains('__new_array_noscan(0,2,sizeof(float))'), c_code
 	assert c_code.contains('float z = *(float*)(array_get(zs,'), c_code
 	assert c_code.contains('float w = *(float*)(array_get(ws,'), c_code
-	assert c_compact.contains('array_new(sizeof(float),0,4)'), c_code
+	assert c_compact.contains('__new_array_noscan(0,4,sizeof(float))'), c_code
 	assert c_code.contains('float f = *(float*)(array_get(fs,'), c_code
 	assert c_code.contains('float g = *(float*)(array_get(gs,'), c_code
 	assert c_code.contains('float h = *(float*)(array_get(hs,'), c_code
@@ -153,9 +155,9 @@ fn add_all[T](items []T) T {
 	assert c_code.contains('double e = *(double*)(array_get(es,'), c_code
 	assert c_code.contains('add_all_T_MyAlias'), c_code
 	assert !c_code.contains('add_all_T_i64'), c_code
-	assert c_code.contains('MyAlias__plus'), c_code
-	assert c_code.contains('head = MyAlias__plus(head, item);'), c_code
+	assert c_code.contains('__v3_internal_symbol_op_MyAlias__plus'), c_code
+	assert c_code.contains('head = __v3_internal_symbol_op_MyAlias__plus(head, item);'), c_code
 	assert !c_code.contains('head += item;'), c_code
 	assert !c_code.contains('UnusedAlias__plus'), c_code
-	assert !c_compact.contains('array_new(sizeof(double),0,4)'), c_code
+	assert !c_compact.contains('__new_array_noscan(0,4,sizeof(double))'), c_code
 }

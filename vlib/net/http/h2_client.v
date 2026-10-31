@@ -17,10 +17,18 @@ const h2_hop_by_hop = ['connection', 'keep-alive', 'proxy-connection', 'transfer
 // h2_authority returns the :authority value for a host and port, omitting the
 // port for the default HTTPS port.
 fn h2_authority(host string, port int) string {
+	wire_host := authority_host(host)
 	if port == 443 || port == 0 {
-		return host
+		return wire_host
 	}
-	return '${host}:${port}'
+	return '${wire_host}:${port}'
+}
+
+fn authority_host(host string) string {
+	if host.contains(':') && !(host.starts_with('[') && host.ends_with(']')) {
+		return '[${host}]'
+	}
+	return host
 }
 
 // to_h2_request builds an HTTP/2 request from this request. Header names are
@@ -31,18 +39,19 @@ fn (req &Request) to_h2_request(method Method, authority string, path string, da
 	// path (used for virtual-host / host-override requests).
 	mut auth := authority
 	if host := header.get(.host) {
-		if host != '' {
-			auth = host
+		trimmed_host := host.trim_space()
+		if trimmed_host != '' {
+			auth = trimmed_host
 		}
 	}
 	mut extra := []H2HeaderField{}
-	if !header.contains(.user_agent) && req.user_agent != '' {
+	if !header.contains(.user_agent) {
 		extra << H2HeaderField{'user-agent', req.user_agent}
 	}
-	if data.len > 0 && !header.contains(.content_length) {
+	if method != .trace && !header.contains(.content_length) {
 		extra << H2HeaderField{'content-length', data.len.str()}
 	}
-	for key in header.keys() {
+	for key in header.unique_keys() {
 		lkey := key.to_lower()
 		if lkey in h2_hop_by_hop {
 			continue
@@ -59,15 +68,9 @@ fn (req &Request) to_h2_request(method Method, authority string, path string, da
 	}
 	// Cookies: the request's own cookie map plus any Cookie header values,
 	// joined into one field (RFC 7540 Section 8.1.2.5 also allows splitting).
-	mut cookie_parts := []string{}
-	for k, v in req.cookies {
-		cookie_parts << '${k}=${v}'
-	}
-	for cv in header.values(.cookie) {
-		cookie_parts << cv
-	}
-	if cookie_parts.len > 0 {
-		extra << H2HeaderField{'cookie', cookie_parts.join('; ')}
+	cookie_value := req.cookie_header_value_with_header(header)
+	if cookie_value != '' || header.contains(.cookie) {
+		extra << H2HeaderField{'cookie', cookie_value}
 	}
 	return H2ClientRequest{
 		method:    method.str()
@@ -81,12 +84,28 @@ fn (req &Request) to_h2_request(method Method, authority string, path string, da
 
 // h2_response_to_http converts an HTTP/2 response into a net.http Response,
 // decoding any Content-Encoding the same way the HTTP/1.1 path does.
-fn h2_response_to_http(h2resp H2ClientResponse) Response {
+// A field that the Header can not store is an error, not a Response without
+// that field: a `HeaderLimitError`, as from the HTTP/1.1 parser, for a response
+// whose header and trailer sections hold more than `max_headers` fields, and a
+// malformed response for a field that `add_custom` refuses. Both clients reject
+// such a field when they receive it (h2_response_field_with_value_error), so
+// the second case is left for an H2ClientResponse that was not read by one of
+// them.
+fn h2_response_to_http(h2resp H2ClientResponse, opts ResponseParseOptions) !Response {
 	mut h := new_header()
 	for f in h2resp.headers {
-		h.add_custom(f.name, f.value) or {}
+		h.add_custom(f.name, f.value) or {
+			if err is HeaderLimitError {
+				return err
+			}
+			return error('h2: malformed response: ${err.msg()}')
+		}
 	}
-	body := decode_response_body(h2resp.body.bytestr(), h.get(.content_encoding) or { '' })
+	body := if opts.raw_body {
+		h2resp.body.bytestr()
+	} else {
+		decode_response_body(h2resp.body.bytestr(), h.get(.content_encoding) or { '' })
+	}
 	status := status_from_int(h2resp.status)
 	return Response{
 		http_version: '2.0'

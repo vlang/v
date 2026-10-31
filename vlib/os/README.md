@@ -4,15 +4,66 @@
 command line arguments, reading/writing files, listing folders,
 handling processes etc.
 
+See [Named pipes](fifo.md) for client/server FIFO endpoints.
+
 On Windows, `os.data_dir()` uses `%LocalAppData%` for user-specific
 application data.
 
+`os.user_os()` returns `wasm32_emscripten` when compiled for Emscripten.
+
+On Windows, `os.environ()` walks UTF-16 environment entries without losing non-ASCII names or
+values. If the operating system cannot provide an environment block, it returns an empty map.
+
+### Console input
+
+On Windows, `os.input()` supports both console and redirected standard input.
+It returns an empty string when the standard input handle is invalid.
+
+### Memory-mapped files
+
+See [memory-mapped files](mmap.md) for file mappings and safe use of their byte views.
+
 ### Path helpers
+
+Windows short-path expansion counts output capacity in UTF-16 characters and reports an
+insufficient output buffer as an error.
+
+`os.executable()` returns the process executable path. On Linux, NetBSD, and DragonFly,
+it uses the exact byte count returned by `readlink`, without requiring a NUL terminator.
+
+`os.base()` removes all trailing separators before returning the final path element.
+For example, `os.base('a///')` returns `a`. An empty path returns `.`, and a path made
+entirely of separators returns one separator (`/` for `///`, or `\` for `\\`).
+
+`is_abs_path` follows the host operating system's path conventions. On Unix,
+a leading `/` identifies an absolute path. On Windows, it accepts drive-rooted
+paths (`C:/x`), UNC paths containing a server and share (`//Host/share`), and
+paths rooted on the current drive (`/x` or `\x`). The last form depends on the
+current drive; this predicate does not promise that the path names a drive.
+A bare doubled separator (`//` or `\\`) is an incomplete UNC path and returns
+false. Both slash styles, including mixed separators, are accepted on Windows.
+
+This preserves V's rooted-path convention; it differs from Go's
+`filepath.IsAbs`, which requires a fully qualified Windows path.
+
+`os.join_path()` and `os.join_path_single()` ignore empty elements and collapse
+repeated separators between elements. For example, joining `a` with `/b` gives
+`a/b` on POSIX or `a\b` on Windows. An absolute first nonempty element keeps its
+root: joining `''` with `/b` gives `/b` on POSIX or `\b` on Windows. Windows UNC
+and device prefixes keep their initial double separator. A relative first element
+such as `./b` still gives `b` when the base is empty. A component containing only
+the current directory, such as `./` or `././`, remains `.` instead of an empty path.
 
 `os.dir()` returns everything before the last separator, matching the classic
 `dirname` behaviour. It is not a "go up one level" primitive: on Windows it
 answers `.` for `C:` and the bare volume `C:` for `C:\dir`, and both of those
 name a *current* directory rather than a location in the given path.
+
+`os.dir()`, `os.base()`, `os.file_name()` and `os.split_path()` agree on what a
+separator is. `/` always is one. `\` is one on Windows, so a path may mix both
+there: `os.file_name(r'a/b\c')` is `c`. On other systems `\` is a valid file name
+character, so the same call gives `b\c`; it separates only in a path that has no
+`/` at all, which keeps a Windows style path such as `a\b\c.v` usable everywhere.
 
 `os.parent_dir()` is the walking variant. Every value it returns is safe to
 probe directly, and it returns an empty string once there is no parent left:
@@ -44,13 +95,185 @@ directory, so they are ignored, and `os.parent_dir('/a/b/')` is `/a` rather than
 `/a/b`. A separator is any byte the platform accepts as one, so a Windows path
 may mix `/` and `\` and the last separator of either kind decides the parent.
 
+`os.path_rel()` goes the other way: given a base and a target, it returns the
+path that leads from one to the other. It is the function to reach for instead of
+stripping a common prefix by hand, which gets the number of `..` wrong as soon as
+the two paths share no prefix at all:
+
+```v ignore
+css := os.path_rel('/srv/app', '/srv/app/static/main.css') or { panic(err) } // 'static/main.css'
+up := os.path_rel('/srv/app/logs', '/srv/app/static') or { panic(err) }      // '../static'
+```
+
+Both paths are normalized first, so `.` comes back for two spellings of the same
+path, and `..` is collapsed before anything is compared. The separator in the
+result is the platform's, so on Windows the results above are `static\main.css`
+and `..\static`. Two cases have no answer and return an error rather than a
+misleading path: when one path is absolute and the other is not, and when, after
+the leading components it shares with the target, the base still contains `..`
+(the base climbs higher above the starting directory than the target does). A
+`..` in the target is fine, so `os.path_rel('a', '../b')` is `../../b`, and so is
+a `..` the two paths share: `os.path_rel('../a', '../b')` is `../b`.
+
+`os.path_rel()` is purely lexical: it does not access the filesystem, resolve
+symlinks or use the working directory, so `a/link/..` collapses to `a` even if
+`link` is a symlink. Pass the paths through `os.real_path()` or `os.abs_path()`
+first if that matters (this is also why mixing an absolute and a relative path is
+an error).
+
+On Windows the two paths must also be on the same volume, since `C:\a` cannot be
+reached from `D:\b` by changing directory.
+
+On Windows, `os.uname()` leaves `release` and `version` empty if the `ver` command
+fails or does not report a numeric version. Localized version labels are accepted.
+
+### Walking a tree
+
+`os.utime(path, actime, modtime)` changes access and modification times for files
+and directories using Unix timestamps in seconds. On Windows, it accepts Unicode
+paths and reports Win32 error codes. Timestamps must use positive `FILETIME` tick counts below
+2^63. The zero value (1601-01-01 00:00:00 UTC) is rejected because Windows treats it as
+"leave unchanged".
+
+On Windows, `os.stat()` reports pre-1970 file and directory timestamps as negative Unix
+timestamps, including when the path reaches the target through a symbolic link.
+
+On Windows, `os.rm()` clears a file's read-only attribute for deletion while preserving
+its other attributes. If removal fails, it attempts to restore the original attributes
+and reports the removal error. `os.rmdir_all()` continues after deletion errors and
+returns the first failure's message and code.
+
+`os.walk()` reports files only, and `os.walk_with_context()` reports directories
+too but cannot skip them, so neither lets you say "do not descend into this one",
+and a large tree has to be read in full. `os.walk_dir()` reports every entry,
+directories included, and lets the callback prune:
+
+```v ignore
+os.walk_dir('/srv/app', fn (path string, entry os.WalkDirEntry) os.WalkDirAction {
+	if err := entry.err {
+		eprintln('skipping ${path}: ${err}')
+		return .proceed
+	}
+	if entry.is_dir && entry.name in ['.git', 'node_modules', 'target'] {
+		return .skip_dir // the directory is reported, its contents are never read
+	}
+	if !entry.is_dir && entry.name.ends_with('.v') {
+		println(path)
+	}
+	return .proceed
+}) or { panic(err) }
+```
+
+Returning `.stop` ends the walk where it stands. Entries are visited in lexical
+order and the root is reported first. Symlinks are reported but never followed,
+a symlinked root included; pass `os.real_path(root)` to walk what it points to.
+
+`entry.err` is set in two cases. An entry that cannot be stat'ed, such as a
+missing root, arrives with `is_dir` left false, so a callback cannot accidentally
+descend into something unreadable. A directory that cannot be listed is reported
+a second time, with `entry.err` set and `is_dir` still true; returning `.stop`
+from that report ends the walk, anything else moves on to its next sibling.
+
+To accumulate state across calls, pass a method of a `mut` local, as in
+`os.walk_dir(root, c.visit)`, or capture a reference (`mut c := &Counter{}`): a
+closure that captures `[mut n]` only updates its own copy, see
+[Closures](https://github.com/vlang/v/blob/master/doc/docs.md#closures).
+
+Only `os.walk_dir()` and `os.glob()` sort. `os.ls()` returns the entries of a directory
+in the order the operating system reports them, and `os.walk()`, `os.walk_ext()` and
+`os.walk_with_context()` visit each directory in that order. It differs between platforms
+and filesystems: NTFS usually lists names alphabetically without regard to case, while on
+APFS or ext4 the order looks arbitrary. Sort the result when a stable order is needed:
+
+```v
+import os
+
+mut entries := os.ls('.')!
+entries.sort()
+println(entries)
+```
+
 ### Running commands
 
 Use `os.exec(['program', 'arg 1', 'arg 2'])` when the command and its arguments
-are already separate values. It runs the program directly and does not invoke a
-shell, so spaces and shell metacharacters inside arguments are passed literally.
+are separate values. It runs the program directly without invoking a shell, so
+spaces and shell metacharacters inside arguments are passed literally. Pass raw
+arguments without `os.quoted_path()` or shell escaping.
 
-Use `os.execute('command string')` only when shell syntax is intended.
+`os.exec_opt(args)` returns an error on failure. `os.exec_or_panic(args)` and
+`os.exec_or_exit(args)` report failures by panicking or exiting. Use
+`os.system_args(args)` to inherit standard streams and return only the exit code.
+`os.util.exec_with_timeout(args, milliseconds)` returns `none` when the timeout
+elapses; it does not terminate the child process.
+
+For configuration values such as a tool name followed by options,
+`os.split_args(text)!` parses quoting into literal arguments without shell expansion.
+Keep data such as paths and URLs as separate array elements rather than interpolating
+it into the configuration string.
+
+The string APIs `os.execute`, `os.raw_execute`, `os.system`, `os.execute_opt`,
+`os.execute_or_panic`, `os.execute_or_exit`, and `os.util.execute_with_timeout` are
+deprecated because command strings can allow shell injection. Streaming shell commands
+through `os.start_new_command` or `os.Command.start` is also deprecated; use
+`os.start_new_command_args(args)` instead. It returns a `CommandArgs` stream with
+`read_line()`, `eof`, `close()`, and `exit_code`. `read_line()` waits for a complete
+line or the end of the output pipe, including when the child pauses between writes.
+For more control, use `os.new_process(program)` and `process.set_args(args)`.
+These arguments are literal on Windows too: `%PATH%` stays `%PATH%`, and quotes
+and trailing backslashes are preserved. Expand environment variables explicitly
+with `os.getenv()` when that is intended.
+
+Call `process.wait()` before `process.close()`, including after `process.signal_kill()`.
+On POSIX systems, waiting reaps the killed child and records its signal exit status.
+Repeated waits preserve the exit status already collected by `wait()` or `is_alive()`.
+
+On Windows, `Result.exit_code` and `Process.code` interpret the child's 32-bit exit
+status as a signed value: `0x80000000` becomes `-2147483648` and `0xFFFFFFFF` becomes
+`-1`. Check `Process.status` to distinguish a completed child returning `-1` from
+a process that has not exited. On POSIX systems, normal exit codes range from 0 to 255.
+
+When shell syntax is required, invoke the shell explicitly with an argument array.
+A shell still interprets its script as code: use a fixed script with positional
+arguments for data, and never interpolate untrusted values into the script.
+On Windows, shell builtins and batch scripts likewise require an explicit shell.
+For example, `os.exec(['cmd', '/d', '/c', 'echo', 'hello'])` runs the `echo` builtin.
+
+---
+
+### Error codes
+
+The `IError` returned by the failing `os.*` functions carries a message produced by the
+platform's `strerror()`/`FormatMessage()`, so the message text is not the same on every
+system. Check the error with a predicate instead:
+
+```v
+import os
+
+path := 'no_such_file.txt'
+if st := os.stat(path) {
+	println('${path} has ${st.size} bytes')
+} else {
+	if os.is_not_exist(err) {
+		println('${path} does not exist')
+	}
+}
+```
+
+`os.is_not_exist`, `os.is_exist` and `os.is_permission_denied` accept every code the
+platform may use for that condition. Checking the error is also what avoids the extra
+`os.exists()` call that would otherwise be a time-of-check/time-of-use race.
+
+On POSIX systems, the `os.*` functions report a C `errno` value. On Windows, the functions
+built on the C runtime (for example `os.stat`, `os.rm`, `os.read_file`, `os.open`,
+`os.create`, `os.write_file`, `os.chdir`, `os.truncate` and `os.rename`) report a C `errno`
+value too, while the ones built on the Win32 API (`os.mkdir`, `os.rmdir`, `os.ls`,
+`os.symlink` and `os.link`) report a Win32 error code. The `os.error_code_*` constants
+hold one of these codes for a condition, so prefer the predicates over comparing
+`err.code()` with them.
+
+`os.utime`, `os.symlink` and `os.link` preserve the Windows API's error code when they fail,
+so duplicate targets and missing paths can be classified with these predicates.
+`os.hostname` and `os.loginname` also preserve their Win32 error codes on failure.
 
 ---
 
@@ -111,3 +334,54 @@ The following functions should be used with care and only when used correctly.
 - os.is_writable()
 - os.is_executable()
 - os.is_link()
+
+`get_line()` removes CRLF and LF line endings from standard input on every platform.
+
+Windows process exit codes and disk usage use the SDK's `DWORD` and `ULARGE_INTEGER`
+output types. These bindings keep Clang's incompatible pointer diagnostics enabled.
+
+On Windows, `exec` and `Process` accept an absolute executable path without an extension.
+They use that exact file when it exists, then try the same path with `.exe` appended.
+Explicit extensions are preserved.
+
+On Windows, `os.get_error_msg` removes the trailing CR/LF line break from system
+messages. Error text returned by operations using it retains the message's punctuation.
+
+### Child process output
+
+On Windows, `os.exec()` captures bytes from successful child-pipe reads only. Closing the output
+pipe does not append a previous chunk again. Commands with no output return an empty output string.
+
+### Writing arrays
+
+`os.write_file_array()` closes its file even when writing fails, including when a device is full
+or a pipe reader closes. The write error is still returned to the caller.
+
+`os.cp` reports source read failures as `cp: failed to read from <source>` and closes both files.
+
+### File identity and user directories
+
+`is_absolute` requires a drive root or UNC volume on Windows. Drive-relative paths such as
+`C:file` and paths rooted on the current drive such as `/file` return false. `volume_name`
+returns the drive or UNC root on Windows and an empty string elsewhere.
+
+`same_file(a, b)` follows symbolic links and compares filesystem object identity. It supports
+Unicode paths and directories on Windows; missing or inaccessible paths return an error.
+`copy_file(src, dst)` follows source links, copies contents and basic permission bits (`0o777`),
+and reports read, write, or permission-setting errors. Copying to the source or a hard link to it
+is rejected.
+
+`user_home_dir` uses a nonempty `HOME` on POSIX or `USERPROFILE` on Windows, where
+`HOMEDRIVE` plus `HOMEPATH` is a fallback. `user_cache_dir` and `user_config_dir` use
+`LOCALAPPDATA` and `APPDATA` on Windows, falling back to `AppData/Local` and `AppData/Roaming`.
+On POSIX they use nonempty, absolute `XDG_CACHE_HOME` and `XDG_CONFIG_HOME`; empty values
+fall back to `~/.cache` and `~/.config`. Variables from the other platform are ignored.
+
+### Experimental vlibc file operations
+
+With `-d vlibc`, Unix C builds use the experimental raw syscall runtime for `read_file`,
+`read_bytes`, `write_file`, `write_bytes`, and `exists`. This applies to hosted builds and
+`-freestanding` builds. Hosted builds retain the normal C runtime startup.
+New files use mode `0666` filtered by the process umask. Read and write errors retain their
+POSIX error codes; interrupted operations retry. `exists` follows symbolic links.
+See [the vlibc runtime notes](../builtin/README.vlibc.md) for supported platforms and limitations.

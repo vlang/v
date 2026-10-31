@@ -9,7 +9,8 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 fn test_optional_pointer_nil_return_is_success_payload() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_optional_pointer_nil_return_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_optional_pointer_nil_return_input.v')
@@ -62,7 +63,7 @@ fn check_result_unwrap() ! {
 }
 
 fn main() {
-	check_question_unwrap() or { panic(err) }
+	check_question_unwrap() or { panic('missing value') }
 	check_result_unwrap() or { panic(err) }
 	b := maybe(false) or { unsafe { nil } }
 	assert b == unsafe { nil }
@@ -85,20 +86,20 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_optional_pointer_nil_return_input')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
-	assert c_code.contains('return (Optional_main__Tptr){.ok = true, .value = NULL};'), c_code
-	assert c_code.contains('Optional_main__Tptr _t')
-		&& c_code.contains('= (Optional_main__Tptr){.ok = true, .value =')
+	assert c_code.contains('return (__v_option_main__Tptr){.ok = true, .value = NULL};'), c_code
+	assert c_code.contains('__v_option_main__Tptr _t')
+		&& c_code.contains('= (__v_option_main__Tptr){.ok = true, .value =')
 		&& c_code.contains('NULL};'), c_code
 
-	assert c_code.contains('return (Optional_main__Tptr){.ok = false};'), c_code
-	assert c_code.contains('return (Optional_main__Tptr){.ok = false, .err = (IError)'), c_code
+	assert c_code.contains('return (__v_option_main__Tptr){.ok = false};'), c_code
+	assert c_code.contains('return (__v_result_main__Tptr){.ok = false, .err = (IError)'), c_code
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }

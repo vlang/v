@@ -35,15 +35,15 @@ fn test_match_expr_returning_option() {
 	assert ret2 == Any(1)
 }
 
-fn func() ?string {
+fn func() !string {
 	code := 0
 	return match code {
 		0 { 'zero' }
-		else { error('as we are returning an option') }
+		else { error('as we are returning a result') }
 	}
 }
 
-fn test_match_expr_returning_option_with_error() {
+fn test_match_expr_returning_result_with_error() {
 	ret := func() or { 'error' }
 	println(ret)
 	assert ret == 'zero'
@@ -65,8 +65,8 @@ fn match_expr_or_block_subfunc(i int) !int {
 }
 
 fn test_match_expr_or_block_return_none() {
-	assert match_expr_or_block_return_none(0) or { panic(err) } == 5
-	assert match_expr_or_block_return_none(2) or { panic(err) } == 2
+	assert match_expr_or_block_return_none(0) or { panic('missing match value') } == 5
+	assert match_expr_or_block_return_none(2) or { panic('missing match value') } == 2
 	assert match_expr_or_block_return_none(1) == none
 	assert match_expr_or_block_return_none(3) == none
 }

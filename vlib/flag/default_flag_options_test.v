@@ -8,9 +8,9 @@ fn testsuite_begin() {
 	os.chdir(@VMODROOT) or {}
 	os.rm(simple_flag_app_executable) or {}
 	res :=
-		os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(simple_flag_app_executable)} ${os.quoted_path(source)}')
+		os.exec([@VEXE, '-o', simple_flag_app_executable, source])
 	assert res.exit_code == 0
-	assert os.execute(simple_flag_app_executable).exit_code == 0
+	assert os.exec([simple_flag_app_executable]).exit_code == 0
 }
 
 fn testsuite_end() {
@@ -20,7 +20,7 @@ fn testsuite_end() {
 
 fn check_program(opts string, extension string) {
 	result := source.replace('.v', extension)
-	res := os.execute('${os.quoted_path(simple_flag_app_executable)} ${opts}')
+	res := os.exec([simple_flag_app_executable, ...(os.split_args(opts) or { panic(err) })])
 	lines := os.read_lines(result) or { panic(err) }
 	assert res.exit_code == 0
 	assert res.output.split_into_lines() == lines

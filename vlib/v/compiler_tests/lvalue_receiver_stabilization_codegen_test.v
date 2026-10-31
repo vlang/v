@@ -10,7 +10,9 @@ fn test_lvalue_receiver_stabilization_finishes_after_one_redispatch() {
 	pid := os.getpid()
 	v3_bin := os.join_path(os.temp_dir(), 'v3_lvalue_stabilization_test_${pid}')
 	os.rm(v3_bin) or {}
-	build := os.execute('${os.quoted_path(lvalue_stabilization_vexe)} -gc none -no-parallel -path "${lvalue_stabilization_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(lvalue_stabilization_v3_src)}')
+	build := os.exec([lvalue_stabilization_vexe, '-gc', 'none', '-no-parallel', '-path',
+		'${lvalue_stabilization_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+		'${lvalue_stabilization_v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_lvalue_stabilization_${pid}.v')
@@ -67,10 +69,10 @@ fn main() {
 }
 ') or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_lvalue_stabilization_${pid}')
-	compile := os.execute('${os.quoted_path(v3_bin)} -no-parallel ${os.quoted_path(src)} -b c -o ${os.quoted_path(bin)}')
+	compile := os.exec([v3_bin, '-no-parallel', '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(os.quoted_path(bin))
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '55\n55', run.output
 }

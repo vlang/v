@@ -51,7 +51,8 @@ fn test_direct_array_access_survives_generic_specialization() {
 
 	v3_bin := os.join_path(root, 'v3')
 	build :=
-		os.execute('${@VEXE} -prealloc -path "${direct_array_access_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${direct_array_access_v3_dir}/v.v')
+		os.exec([@VEXE, '-prealloc', '-path', '${direct_array_access_vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${direct_array_access_v3_dir}' + '/v.v'])
 	assert build.exit_code == 0, build.output
 
 	source_path := os.join_path(root, 'main.v')
@@ -67,7 +68,7 @@ fn main() {
 		panic(err)
 	}
 	c_path := os.join_path(root, 'main.c')
-	gen := os.execute('${v3_bin} ${source_path} -b c -o ${c_path}')
+	gen := os.exec([v3_bin, source_path, '-b', 'c', '-o', c_path])
 	assert gen.exit_code == 0, gen.output
 	c_source := os.read_file(c_path) or { panic(err) }
 	body := direct_array_access_specialized_fn_body(c_source, 'at_T_v_int(')

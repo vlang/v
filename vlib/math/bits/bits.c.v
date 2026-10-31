@@ -5,8 +5,8 @@ module bits
 
 fn C.__builtin_clz(x u32) i32
 fn C.__builtin_clzll(x u64) i32
-fn C.__lzcnt(x u32) i32
-fn C.__lzcnt64(x u64) i32
+fn C._BitScanReverse(pos &int, x u32) u8
+fn C._BitScanReverse64(pos &int, x u64) u8
 
 // leading_zeros_8 returns the number of leading zero bits in x; the result is 8 for x == 0.
 @[inline]
@@ -15,7 +15,9 @@ pub fn leading_zeros_8(x u8) int {
 		return 8
 	}
 	$if msvc {
-		return C.__lzcnt(u32(x)) - 24
+		mut pos := 0
+		_ := C._BitScanReverse(&pos, u32(x))
+		return 7 - pos
 	} $else $if !tinyc {
 		return C.__builtin_clz(u32(x)) - 24
 	}
@@ -29,7 +31,9 @@ pub fn leading_zeros_16(x u16) int {
 		return 16
 	}
 	$if msvc {
-		return C.__lzcnt(u32(x)) - 16
+		mut pos := 0
+		_ := C._BitScanReverse(&pos, u32(x))
+		return 15 - pos
 	} $else $if !tinyc {
 		return C.__builtin_clz(u32(x)) - 16
 	}
@@ -43,7 +47,9 @@ pub fn leading_zeros_32(x u32) int {
 		return 32
 	}
 	$if msvc {
-		return C.__lzcnt(x)
+		mut pos := 0
+		_ := C._BitScanReverse(&pos, x)
+		return 31 - pos
 	} $else $if !tinyc {
 		return C.__builtin_clz(x)
 	}
@@ -57,7 +63,9 @@ pub fn leading_zeros_64(x u64) int {
 		return 64
 	}
 	$if msvc {
-		return C.__lzcnt64(x)
+		mut pos := 0
+		_ := C._BitScanReverse64(&pos, x)
+		return 63 - pos
 	} $else $if !tinyc {
 		return C.__builtin_clzll(x)
 	}

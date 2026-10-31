@@ -1,0 +1,91 @@
+vlib/v/checker/tests/modules/generic_fn_private_access_err/main.v:13:4: error: field `generic_fn_private_access_err.privlib.S.secret` is not public
+   11 | // A generic function without an instance.
+   12 | fn unused[T](mut s privlib.S, v T) T {
+   13 |     s.secret = 1
+      |       ~~~~~~
+   14 |     return v
+   15 | }
+vlib/v/checker/tests/modules/generic_fn_private_access_err/main.v:19:12: error: field `generic_fn_private_access_err.privlib.S.secret` is not public
+   17 | // A generic function with an instance.
+   18 | fn used[T](mut s privlib.S, v T) T {
+   19 |     println(s.secret)
+      |               ~~~~~~
+   20 |     s.counter = 2
+   21 |     s.items[0].weight = 3
+vlib/v/checker/tests/modules/generic_fn_private_access_err/main.v:20:4: error: field `generic_fn_private_access_err.privlib.S.counter` is not public
+   18 | fn used[T](mut s privlib.S, v T) T {
+   19 |     println(s.secret)
+   20 |     s.counter = 2
+      |       ~~~~~~~
+   21 |     s.items[0].weight = 3
+   22 |     s.hidden[0].a = 4
+vlib/v/checker/tests/modules/generic_fn_private_access_err/main.v:21:13: error: field `generic_fn_private_access_err.privlib.Item.weight` is not public
+   19 |     println(s.secret)
+   20 |     s.counter = 2
+   21 |     s.items[0].weight = 3
+      |                ~~~~~~
+   22 |     s.hidden[0].a = 4
+   23 |     _ = privlib.S{
+vlib/v/checker/tests/modules/generic_fn_private_access_err/main.v:22:14: error: struct `generic_fn_private_access_err.privlib.Hidden` was declared as private to module `generic_fn_private_access_err.privlib`, so it can not be used inside module `main`
+   20 |     s.counter = 2
+   21 |     s.items[0].weight = 3
+   22 |     s.hidden[0].a = 4
+      |                 ^
+   23 |     _ = privlib.S{
+   24 |         secret: 5
+vlib/v/checker/tests/modules/generic_fn_private_access_err/main.v:24:3: error: cannot access private field `secret` on `privlib.S`
+   22 |     s.hidden[0].a = 4
+   23 |     _ = privlib.S{
+   24 |         secret: 5
+      |         ~~~~~~~~~
+   25 |     }
+   26 |     _ = privlib.Hidden{}
+vlib/v/checker/tests/modules/generic_fn_private_access_err/main.v:26:6: error: struct `privlib.Hidden` was declared as private to module `privlib`, so it can not be used inside module `main`
+   24 |         secret: 5
+   25 |     }
+   26 |     _ = privlib.Hidden{}
+      |         ~~~~~~~~~~~~~~~~
+   27 |     println(privlib.private_fn())
+   28 |     println(s.private_method())
+vlib/v/checker/tests/modules/generic_fn_private_access_err/main.v:26:6: error: type `privlib.Hidden` is private
+   24 |         secret: 5
+   25 |     }
+   26 |     _ = privlib.Hidden{}
+      |         ~~~~~~~~~~~~~~~~
+   27 |     println(privlib.private_fn())
+   28 |     println(s.private_method())
+vlib/v/checker/tests/modules/generic_fn_private_access_err/main.v:27:18: error: function `generic_fn_private_access_err.privlib.private_fn` is private
+   25 |     }
+   26 |     _ = privlib.Hidden{}
+   27 |     println(privlib.private_fn())
+      |                     ~~~~~~~~~~~~
+   28 |     println(s.private_method())
+   29 |     println(privlib.private_const)
+vlib/v/checker/tests/modules/generic_fn_private_access_err/main.v:28:12: error: method `privlib.S.private_method` is private
+   26 |     _ = privlib.Hidden{}
+   27 |     println(privlib.private_fn())
+   28 |     println(s.private_method())
+      |               ~~~~~~~~~~~~~~~~
+   29 |     println(privlib.private_const)
+   30 |     // What is public stays usable.
+vlib/v/checker/tests/modules/generic_fn_private_access_err/main.v:29:18: error: constant `privlib.private_const` is private
+   27 |     println(privlib.private_fn())
+   28 |     println(s.private_method())
+   29 |     println(privlib.private_const)
+      |                     ~~~~~~~~~~~~~
+   30 |     // What is public stays usable.
+   31 |     s.shown = 6
+vlib/v/checker/tests/modules/generic_fn_private_access_err/main.v:39:4: error: field `generic_fn_private_access_err.privlib.S.secret` is not public
+   37 | // A generic method.
+   38 | fn (w Wrapper) set[T](mut s privlib.S, v T) T {
+   39 |     s.secret = 9
+      |       ~~~~~~
+   40 |     return v
+   41 | }
+vlib/v/checker/tests/modules/generic_fn_private_access_err/main.v:45:4: error: field `generic_fn_private_access_err.privlib.S.secret` is not public
+   43 | // A method of a generic struct.
+   44 | fn (b Box[T]) set(mut s privlib.S) T {
+   45 |     s.secret = 10
+      |       ~~~~~~
+   46 |     return b.v
+   47 | }

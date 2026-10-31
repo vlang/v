@@ -6,6 +6,7 @@ umask 077
 
 readonly vc_repository_allowlisted='https://github.com/vlang/vc'
 readonly bootstrap_lock_relative='thirdparty/tccbin_automation/bootstrap/vc.lock'
+readonly tcc_repository_allowlisted='https://github.com/vlang/tccbin'
 
 die() {
 	printf '%s\n' "tccbin bootstrap: $*" >&2
@@ -322,6 +323,36 @@ resolve_cc() {
 	printf '%s\n' "$resolved"
 }
 
+# attach_tcc_bootstrap_bundle links the TCC bundle named by TCCBIN_BOOTSTRAP_TCC_ROOT
+# into the private contract copy. The workflow picks the pinned commit for the runner
+# architecture and passes it as TCCBIN_BOOTSTRAP_TCC_COMMIT; this script only checks that
+# the checkout matches it. Compiling the darwin fastc backend needs thirdparty/tcc headers
+# and library, and the contract checkout itself must stay clean for the attestations.
+attach_tcc_bootstrap_bundle() {
+	local private_root=$1
+	local tcc_root tcc_commit
+	[[ -n "${TCCBIN_BOOTSTRAP_TCC_ROOT:-}" ]] || return 0
+	tcc_root=$(physical_directory "$TCCBIN_BOOTSTRAP_TCC_ROOT")
+	tcc_commit=${TCCBIN_BOOTSTRAP_TCC_COMMIT:-}
+	[[ "$tcc_commit" =~ ^[0-9a-f]{40}$ ]] || die 'TCC bootstrap bundle commit must be a full SHA'
+	validate_checkout "$tcc_root" "$tcc_repository_allowlisted" "$tcc_commit"
+	[[ -f "$tcc_root/include/libtcc.h" && ! -L "$tcc_root/include/libtcc.h" ]] \
+		|| die 'TCC bootstrap bundle lacks include/libtcc.h'
+	[[ -f "$tcc_root/lib/libtcc.a" && ! -L "$tcc_root/lib/libtcc.a" ]] \
+		|| die 'TCC bootstrap bundle lacks lib/libtcc.a'
+	[[ ! -e "$private_root/thirdparty/tcc" && ! -L "$private_root/thirdparty/tcc" ]] \
+		|| die 'private contract checkout already has a thirdparty/tcc entry'
+	ln -s -- "$tcc_root" "$private_root/thirdparty/tcc"
+}
+
+# detach_tcc_bootstrap_bundle removes the link before the final clean-checkout checks.
+detach_tcc_bootstrap_bundle() {
+	local private_root=$1
+	[[ -L "$private_root/thirdparty/tcc" ]] || return 0
+	rm -f -- "$private_root/thirdparty/tcc" \
+		|| die 'TCC bootstrap bundle link cannot be removed'
+}
+
 contract_root=$(physical_directory "$contract_root_input")
 vc_root=$(physical_directory "$vc_root_input")
 work_root=$(canonical_new_directory "$work_root_input")
@@ -375,10 +406,12 @@ export VJOBS=1
 export CFLAGS=
 export CPPFLAGS=
 export LDFLAGS=
+export V_MACOS_V3_NO_FALLBACK=1
 
 private_contract_root="$work_root/contract-source"
 clone_contract_checkout "$contract_root" "$private_contract_root" "$contract_repository_url" \
 	"$contract_sha" "$work_root/empty-template"
+attach_tcc_bootstrap_bundle "$private_contract_root"
 lock_path="$private_contract_root/$bootstrap_lock_relative"
 [[ -f "$lock_path" && ! -L "$lock_path" ]] || die 'VC lock is absent from the contract checkout'
 read_lock "$lock_path"
@@ -399,22 +432,72 @@ vc_source_win="$work_root/v_win.c"
 materialize_vc_artifact "$vc_root" "$lock_v_c" "$vc_source_v"
 materialize_vc_artifact "$vc_root" "$lock_v_win_c" "$vc_source_win"
 
+# build_v_program builds the package named by the last argument with the compiler named by the first,
+# writing the program to the second. Anything in between is passed to the compiler as flags.
+# Windows builds the C first and links the native runtime helpers the way makev.bat does: V emits
+# their declarations only in C output mode, so a direct build fails when cc treats implicit
+# declarations as errors (gcc 14 and later).
+build_v_program() {
+	local compiler=$1 output=$2 package=${!#}
+	# Bash 3.2 joins a quoted positional slice when IFS omits spaces. Copy then drop the package.
+	shift 2
+	local -a flags=("$@")
+	unset "flags[$(($# - 1))]"
+	case "$(uname -s)" in
+		MINGW* | MSYS* | CYGWIN*)
+			"$compiler" -new-compiler -no-parallel -nocache -cc "$cc_command" "${flags[@]}" -o "$output.c" "$package"
+			"$cc_command" -std=gnu11 -municode -w -fwrapv -o "$output" "$output.c" \
+				vlib/builtin/core_windows.c vlib/v/modulecache/file_metadata.c \
+				vlib/time/ticks_windows.c vlib/v/winthread_helper_windows.c \
+				cmd/v/toolcache_windows_helpers.c vlib/sync/thread_helper.c \
+				-I thirdparty/stdatomic/win -ldbghelp -lws2_32 -lbcrypt -ladvapi32 \
+				-Wl,-stack=33554432 || die 'Windows V program link failed'
+			rm -f -- "$output.c"
+			;;
+		*)
+			"$compiler" -new-compiler -no-parallel -nocache -cc "$cc_command" "${flags[@]}" ${v_link_flags[@]+"${v_link_flags[@]}"} -o "$output" "$package"
+			;;
+	esac
+}
+
 cc_command=$(resolve_cc)
+vc_compat="$private_contract_root/cmd/tools/vc_compat.sh"
+vc_cc_flags=()
+vc_link_inputs=()
+v_link_flags=()
+case "$(uname -s)" in
+	OpenBSD)
+		vc_cc_flags=(-DSYS_getrandom=0)
+		vc_link_inputs=("$private_contract_root/cmd/tools/openbsd_vc_compat.c")
+		;;
+esac
+case "$(uname -s)" in
+	FreeBSD | OpenBSD)
+		vc_link_inputs+=(-lexecinfo)
+		v_link_flags=(-ldflags -lexecinfo)
+		;;
+esac
 case "$(uname -s)" in
 	MINGW* | MSYS* | CYGWIN*)
 		vc_source=$vc_source_win
 		vc_record=$lock_v_win_c
 		exe_suffix='.exe'
+		# Native Windows compilers need a regular input file rather than the Unix adapter's FIFO.
+		vc_windows_compat="$work_root/v_win_compat.c"
+		powershell -NoProfile -ExecutionPolicy Bypass \
+			-File "$private_contract_root/cmd/tools/vc_compat_uint.ps1" \
+			-Source "$vc_source" -Destination "$vc_windows_compat"
 		"$cc_command" -std=c99 -DCUSTOM_DEFINE_v1_fallback -municode -w \
-			-o "$private_contract_root/v1.exe" "$vc_source" \
-			-ladvapi32 -lws2_32 -Wl,-stack=33554432
+			-o "$private_contract_root/v1.exe" "$vc_windows_compat" \
+			-ladvapi32 -lws2_32 -lbcrypt -Wl,-stack=33554432
+		rm -f -- "$vc_windows_compat"
 		;;
 	*)
 		vc_source=$vc_source_v
 		vc_record=$lock_v_c
 		exe_suffix=''
-		"$cc_command" -std=c99 -DCUSTOM_DEFINE_v1_fallback -w \
-			-o "$private_contract_root/v1" "$vc_source" -lm -lpthread
+		sh "$vc_compat" "$vc_source" "$cc_command" -std=c99 -DCUSTOM_DEFINE_v1_fallback -w \
+			${vc_cc_flags[@]+"${vc_cc_flags[@]}"} -o "$private_contract_root/v1" -- -lm -lpthread ${vc_link_inputs[@]+"${vc_link_inputs[@]}"}
 		;;
 esac
 cli_path="$work_root/tccbin-automation${exe_suffix}"
@@ -423,17 +506,15 @@ validate_materialized_vc_artifact "$vc_root" "$vc_source"
 
 (
 	cd -P -- "$private_contract_root"
-	"$private_contract_root/v1${exe_suffix}" -no-parallel -nocache -cc "$cc_command" \
-		-o "$private_contract_root/v2${exe_suffix}" -gc none cmd/v
-	"$private_contract_root/v2${exe_suffix}" -no-parallel -nocache -cc "$cc_command" \
-		-o "$private_contract_root/v${exe_suffix}" -gc none cmd/v
-		"$private_contract_root/v${exe_suffix}" -no-parallel -nocache -cc "$cc_command" \
-			-gc none \
-			-d "tccbin_contract_repository=${contract_repository}" \
-			-d "tccbin_contract_sha=${contract_sha}" \
-			-o "$cli_path" thirdparty/tccbin_automation/bin/cmd
+	build_v_program "$private_contract_root/v1${exe_suffix}" "$private_contract_root/v2${exe_suffix}" -gc none cmd/v
+	build_v_program "$private_contract_root/v2${exe_suffix}" "$private_contract_root/v${exe_suffix}" -gc none cmd/v
+	build_v_program "$private_contract_root/v${exe_suffix}" "$cli_path" -gc none \
+		-d "tccbin_contract_repository=${contract_repository}" \
+		-d "tccbin_contract_sha=${contract_sha}" \
+		thirdparty/tccbin_automation/bin/cmd
 )
 
+detach_tcc_bootstrap_bundle "$private_contract_root"
 rm -f -- "$private_contract_root/v1${exe_suffix}" "$private_contract_root/v2${exe_suffix}" \
 	"$private_contract_root/v${exe_suffix}" \
 	|| die 'private bootstrap compilers cannot be removed before final attestation'

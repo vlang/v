@@ -32,7 +32,7 @@ fn test_println_does_not_hang_on_failed_stdout_write() {
 		os.rm(child_binary_path) or {}
 	}
 	compile_cmd := '${os.quoted_path(@VEXE)} -o ${os.quoted_path(child_binary_path)} ${os.quoted_path(child_source_path)}'
-	compile_result := os.execute(compile_cmd)
+	compile_result := os.exec([@VEXE, '-o', child_binary_path, child_source_path])
 	assert compile_result.exit_code == 0, 'child compilation failed\ncommand: ${compile_cmd}\noutput:\n${compile_result.output}'
 	mut p := os.new_process(child_binary_path)
 	p.set_redirect_stdio()

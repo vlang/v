@@ -33,10 +33,24 @@ export LIBGC_COMMIT_FULL_HASH=$(git rev-parse HEAD)
 
 ./autogen.sh
 
-CC=$CC CFLAGS='-fPIC' LDFLAGS='-fPIC' ./configure \
+# The bundled TinyCC links this library into V programs, so it must not need
+# anything that TinyCC's ARM linker cannot provide:
+# - configure adds `-fexceptions` for GCC, and on ARM EHABI the unwind tables it
+#   emits reference `__aeabi_unwind_cpp_pr0/pr1`, which TinyCC does not supply.
+#   The `-fno-*` flags below come after configure's and turn the tables off.
+# - `-marm`: armhf distributions default to Thumb-2, and TinyCC mishandles calls
+#   from its ARM code into Thumb code.
+# - `--enable-handle-fork=no`: fork handling registers `pthread_atfork` handlers,
+#   and glibc's `pthread_atfork` (like `atexit`) is Thumb-2 code in
+#   libc_nonshared.a: a call to it from a TinyCC-linked program lands at address 0.
+#   Trade-off: without fork handling, a child forked by a multi-threaded program
+#   must not allocate from the GC before it calls exec. V's own process spawning
+#   forks and then execs, so it is unaffected.
+CC=$CC CFLAGS='-fPIC -marm -fno-exceptions -fno-unwind-tables -fno-asynchronous-unwind-tables' \
+	LDFLAGS='-fPIC' ./configure \
 	--disable-dependency-tracking \
 	--disable-docs \
-	--enable-handle-fork=yes \
+	--enable-handle-fork=no \
 	--enable-rwlock \
 	--enable-threads=pthreads \
 	--enable-static \
@@ -53,6 +67,7 @@ make
 popd
 
 cp bdwgc/.libs/libgc.a         $TCC_FOLDER/lib/libgc.a
+cp "$CURRENT_SCRIPT_PATH"      $TCC_FOLDER/lib/build_libgc.sh
 
 date                         > $TCC_FOLDER/lib/libgc_build_on_date.txt
 echo $LIBGC_COMMIT_FULL_HASH > $TCC_FOLDER/lib/libgc_build_source_hash.txt

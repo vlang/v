@@ -9,7 +9,8 @@ const pr_27962_v3_src = os.join_path(pr_27962_v3_dir, 'v.v')
 fn pr_27962_build_v3(root string) string {
 	v3_bin := os.join_path(root, 'v3')
 	build :=
-		os.execute('${os.quoted_path(pr_27962_vexe)} -gc none -prealloc -path "${pr_27962_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(pr_27962_v3_src)}')
+		os.exec([pr_27962_vexe, '-gc', 'none', '-prealloc', '-path',
+			'${pr_27962_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${pr_27962_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -24,9 +25,9 @@ fn pr_27962_compile_and_run(v3_bin string, root string, name string, source stri
 	source_path := pr_27962_write_source(root, name, source)
 	binary_path := os.join_path(root, name)
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} -silent -nocache -o ${os.quoted_path(binary_path)} ${os.quoted_path(source_path)}')
+		os.exec([v3_bin, '-silent', '-nocache', '-o', binary_path, source_path])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(os.quoted_path(binary_path))
+	run := os.exec([binary_path])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }
@@ -35,7 +36,8 @@ fn pr_27962_generate_c(v3_bin string, root string, name string, source string, f
 	source_path := pr_27962_write_source(root, name, source)
 	c_path := os.join_path(root, '${name}.c')
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} -silent -nocache ${flags} -o ${os.quoted_path(c_path)} ${os.quoted_path(source_path)}')
+		os.exec([v3_bin, '-silent', '-nocache', ...(os.split_args(flags) or { panic(err) }), '-o',
+			c_path, source_path])
 	assert compile.exit_code == 0, compile.output
 	return os.read_file(c_path) or { panic(err) }
 }
@@ -132,7 +134,7 @@ fn main() {
 	mut wg := sync.new_waitgroup()
 	wg.go(work)
 	wg.wait()
-	timer := time.new_timer(time.nanosecond)
+	timer := sync.new_timer(time.nanosecond)
 	_ = <-timer.c
 }
 '
@@ -143,12 +145,13 @@ fn main() {
 		assert false, custom_stack_c
 		return
 	}
-	thread_helper_index := custom_stack_c.index('#ifndef V_SYNC_THREAD_HELPER_H') or {
-		assert false, custom_stack_c
-		return
-	}
-	assert define_index < thread_helper_index
-	assert custom_stack_c.contains('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;')
+	// The thread helpers that read the size follow its definition.
+	stack_size_index :=
+		custom_stack_c.index('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;') or {
+			assert false, custom_stack_c
+			return
+		}
+	assert define_index < stack_size_index
 
 	x86_c := pr_27962_generate_c(v3_bin, root, 'runtime_x86_stack', 'fn main() {}\n', '-arch i386')
 	assert x86_c.contains('#define V_THREAD_STACK_SIZE 2097152'), x86_c

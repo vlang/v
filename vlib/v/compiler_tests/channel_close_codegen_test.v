@@ -13,7 +13,8 @@ fn channel_close_tmp_path(name string) string {
 fn channel_close_build_v3() string {
 	v3_bin := channel_close_tmp_path('channel_close_codegen_test')
 	build :=
-		os.execute('${channel_close_vexe} -gc none -path "${channel_close_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${channel_close_v3_src}')
+		os.exec([channel_close_vexe, '-gc', 'none', '-path',
+			'${channel_close_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${channel_close_v3_src}'])
 	if build.exit_code != 0 {
 		panic(build.output)
 	}
@@ -24,14 +25,14 @@ fn channel_close_run_good(v3_bin string, name string, src string) string {
 	src_path := '${channel_close_tmp_path(name)}.v'
 	os.write_file(src_path, src) or { panic(err) }
 	bin_path := channel_close_tmp_path(name)
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${bin_path}')
+	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
 	if compile.exit_code != 0 {
 		panic('${name}: ${compile.output}')
 	}
 	if compile.output.contains('C compilation failed') {
 		panic('${name}: ${compile.output}')
 	}
-	run := os.execute(bin_path)
+	run := os.exec([bin_path])
 	if run.exit_code != 0 {
 		panic('${name}: ${run.output}')
 	}
@@ -43,7 +44,7 @@ fn channel_close_gen_c(v3_bin string, name string, src string) string {
 	os.write_file(src_path, src) or { panic(err) }
 	c_path := '${channel_close_tmp_path(name)}.c'
 	os.rm(c_path) or {}
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${c_path}')
+	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', c_path])
 	if compile.exit_code != 0 {
 		panic('${name}: ${compile.output}')
 	}

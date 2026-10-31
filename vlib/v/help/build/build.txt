@@ -42,6 +42,7 @@ The default compiler:
 
 Use `v build script.vsh` to compile a `.vsh` script without running it.
 `v -skip-running script.vsh` works too.
+See `v help vsh` for what script mode changes.
 
 When compiling a single main package, V writes the resulting executable to an output file
 named after the build target. ('v abc.v' and 'v abc/' both write either 'abc' or 'abc.exe')
@@ -68,17 +69,27 @@ NB: the build flags are shared with the run command too:
     Specifies the backend that will be used for building the executable.
     Current list of supported backends:
     * `c` (default)       - V outputs C source code, which is then passed to a C compiler.
-    * `fastc`             - V parses supported source directly to C without an AST; available only
-                            on macOS and Linux hosts in V builds that embed V3.
+    * `fastc`             - V parses supported source directly to C without an AST and compiles
+                            it with the bundled TinyCC; available on macOS, Linux, and Windows
+                            hosts. C-only compilers automatically build and run a cached
+                            full compiler when an omitted backend is selected.
+                            Use `v -compile-backend fastc self` to include FastC in `v` itself.
+                            Supports array/map literals, checked array indexing, and `in`/`!in`.
+                            See doc/fastc.md for supported constructs and current limitations.
     * `go`                - V outputs Go source code, which is then passed to a Go compiler.
     * `js`                - V outputs JS source code which can be passed to NodeJS to be ran.
     * `js_browser`        - V outputs JS source code ready for the browser.
     * `js_node`           - V outputs JS source code to run with nodejs.
     * `js_freestanding`   - V outputs JS source code with no hard runtime dependency.
-    * `native`            - V outputs a native executable directly.
-	                        (see -arch x64|arm64 and -os linux|macos) (EXPERIMENTAL).
+    * `arm64`             - V outputs a native ARM64 executable directly on macOS.
+                            Use `v -b arm64 -gc none file.v` (EXPERIMENTAL).
+    * `x64`               - V outputs a native AMD64 executable directly on Linux.
+                            Use `v -b x64 file.v` (EXPERIMENTAL). Add `-prod`
+                            to optimize generated runtime code.
     * `wasm`              - V outputs a WebAssembly module directly
 	                        (see -os wasi|browser) (EXPERIMENTAL).
+
+    `-b native` has been replaced by `-b arm64` and `-b x64`.
 
   -d <flag>[=<value>], -define <flag>[=<value>]
     Define the provided flag.
@@ -135,13 +146,18 @@ NB: the build flags are shared with the run command too:
     Compile the executable in production mode, where most optimizations are enabled.
     Note that most V warnings turn to errors, if you pass -prod, so you will have
     to fix them first.
+    TinyCC is not a -prod compiler: `-cc tcc`, or any compiler that resolves to TinyCC,
+    stops with `tcc is not allowed with -prod`. `-b fastc` is not supported with `-prod` either.
     Note: gcc versions > 12.0 often have issues with inlining, that manifest with `-prod`.
     To work around them, you can use `-prod -cflags -fno-inline-small-functions` .
 
   -warn-about-allocs
     Warn about array initialization, string interpolation, string concatenation, and casts to
-    interfaces that allocate. Add `@[freed]` after an assignment to suppress allocation warnings
-    for allocations that the assignment frees explicitly.
+    interfaces that allocate, and about allocations the source does not show: `&Struct{}`,
+    values converted to an interface without a cast (arguments, assignments, returns, struct
+    fields, appended elements), slices of strings and fixed arrays, and locals moved to the
+    heap because their address escapes. Add `@[freed]` after an assignment to suppress
+    allocation warnings for allocations that the assignment frees explicitly.
 
   -no-prod-options
     Useful in combination with -prod and -cflags, for allowing more complete customisation,
@@ -170,6 +186,22 @@ NB: the build flags are shared with the run command too:
   -disable-explicit-mutability, --disable-explicit-mutability
     Allow ordinary variables and mutable call arguments in user code to omit explicit `mut`.
     `mut`/`shared`/`atomic` in function and method signatures remain unchanged.
+
+  -trace-calls
+    Log entries to generated V functions on stderr (C backend only).
+    Each record contains the thread id, elapsed timer value, stack delta in bytes,
+    and module/function name with its parameter count (including method receivers).
+    Startup (C.main and _vinit) and cleanup (_vcleanup) are also traced.
+    Tracing disables the module cache so imported functions are instrumented too.
+    Stack deltas are relative to the startup frame, not individual frame sizes;
+    they are only meaningful for the startup thread.
+    Example: v -trace-calls run examples/hello_world.v
+
+  -trace-fns <patterns>
+    Restrict -trace-calls to comma-separated function or module names/glob patterns.
+    This selects entries, not their callees. The trace header is still printed
+    when no function matches. Quote wildcard patterns to avoid shell expansion.
+    Example: v -trace-calls -trace-fns 'main.*,println,_vcleanup' run program.v
 
   -prof, -profile <file.txt>
     Compile the executable with all functions profiled.
@@ -210,6 +242,15 @@ NB: the build flags are shared with the run command too:
           127          0.110ms            866ns i64_str
           127          0.016ms            127ns tos
 
+  -e <code>, -e=<code>
+    Compile and run inline V source as a script. Compiler options go before -e; arguments
+    after the source are passed to the program. The program exit status is returned.
+    For example: v -e 'println(1)'
+
+  -http
+    Serve the current directory on localhost:4001. Equivalent to:
+    v -e 'import net.http.file; file.serve()'
+
   -message-limit <limit>
     The maximum amount of warnings / errors / notices, that will be accumulated (defaults to 200).
     The compiler may stop accumulating additional diagnostics, once this limit has been reached.
@@ -229,11 +270,12 @@ NB: the build flags are shared with the run command too:
     duration of each _test.v comptime, and then the duration of its runtime.
     Note: the same effect can be achieved by setting the environment variable VNORUN to 1.
 
-  -skip-unused
-    Skip generating C/JS code for functions, that are provably not used by your project.
-    This speeds up compilation, and reduces the generated output size.
-    It is still experimental, due to historical reasons, but please do try it,
-    and report issues, if compilation breaks with that option for your program.
+  -no-skip-unused
+    Generate C/JS code for all functions, including those that are provably not used by your
+    project. By default, V skips them, which speeds up compilation, and reduces the generated
+    output size. Use this option if your program breaks only because of that, and please
+    report the issue. The obsolete -skip-unused flag has no effect and prints a notice
+    that unused code is skipped by default.
 
   -stats
     Enable more detailed statistics reporting, while compiling test files.
@@ -278,16 +320,36 @@ NB: the build flags are shared with the run command too:
 
   -check
     Scans, parses, and checks the files without compiling the program.
+    It checks every function. A build leaves out the bodies of the standard library functions
+    that the program cannot reach, as it does not compile them either; the environment
+    variable V_CHECK_LIBRARY_BODIES=all makes a build check them too.
 
   -check-syntax
     Only scan and parse the files, but then stop. Useful for very quick syntax checks.
 
+  -json-errors
+    Print each error, warning and notice as one JSON object per line on stderr, for editors and
+    other tools that read them, instead of the text with a source excerpt. For example:
+      {"file":"a.v","line":3,"col":7,"end_line":3,"end_col":14,"severity":"error","message":"..."}
+    The lines and the columns start at 1, a column counts bytes, and the end is the position
+    after the reported span. The severity is `error`, `warning` or `notice`. A diagnostic can
+    also have `details`, `label` for the label of the text form when it says more than the
+    severity (like `builder error`), and `called_from` for an error inside a template. The
+    exit code does not change. Combine it with -check to get the diagnostics without building
+    the program.
+
   -show-timings
-    Print a summary about how long each compiler stage took, for example:
-      PARSE: 152ms
-      CHECK: 62ms
-      C GEN: 103ms
-      C tcc: 95ms
+    Print elapsed time for each compiler stage and the total compilation time.
+    Uses the same benchmark summary as -v, including memory usage and cache metrics,
+    without verbose compiler traces. -silent suppresses this summary, as does writing
+    generated C to stdout with -o -.
+
+  -show-instructions
+    Like -show-timings, and also prints the retired CPU instructions of each compiler
+    stage, summed over all threads, plus the total for the whole process. Instruction
+    counts are less sensitive to machine load than elapsed time, which makes them useful
+    when comparing compiler changes. They are read from the kernel on macOS; on other
+    systems, only the timings are printed.
 
     Related to -show-timings, is the ability to compile a special instrumented
     v compiler with this command:
@@ -296,7 +358,7 @@ NB: the build flags are shared with the run command too:
     each .v file.
 
   -n
-    Hide all notices.
+    Hide all notices, without hiding warnings or errors.
 
   -N
     Treat *all V notices* as errors.
@@ -325,8 +387,10 @@ NB: the build flags are shared with the run command too:
 
 For C-specific build flags, use `v help build-c`.
 For JS-specific build flags, use `v help build-js`.
-For Native-specific build flags, use `v help build-native`.
 For WebAssembly-specific build flags, use `v help build-wasm`.
 
 See also:
    `v help run` for documentation regarding `v run`.
+
+Production C builds reject TinyCC, including executable aliases. This restriction does not
+apply to help/version commands or non-C backends.

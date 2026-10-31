@@ -590,18 +590,6 @@ static NSCursor *v_multiwindow_appkit_cursor_for_shape(int shape) {
 	}
 }
 
-static char *v_multiwindow_appkit_copy_cstring(const char *value) {
-	if (value == NULL) {
-		return NULL;
-	}
-	size_t len = strlen(value);
-	char *copy = (char *)calloc(len + 1, 1);
-	if (copy == NULL) {
-		return NULL;
-	}
-	memcpy(copy, value, len);
-	return copy;
-}
 
 void v_multiwindow_appkit_release_queued_event_resources(VMultiwindowAppKitQueuedEvent *event) {
 	if (event == NULL || event->dropped_files == NULL) {
@@ -853,15 +841,6 @@ static BOOL v_multiwindow_appkit_touch_sets_share_identity(NSSet<NSTouch *> *tou
 	return NO;
 }
 
-static float v_multiwindow_appkit_clamp_unit(CGFloat value) {
-	if (value < 0.0) {
-		return 0.0f;
-	}
-	if (value > 1.0) {
-		return 1.0f;
-	}
-	return (float)value;
-}
 
 static void v_multiwindow_appkit_fill_touch_point(VMultiwindowAppKitWindowState *state, VMultiwindowAppKitQueuedEvent *event, int index, NSTouch *touch, BOOL changed) {
 	if (state == nil || event == NULL || touch == nil || index < 0 || index >= V_MULTIWINDOW_APPKIT_MAX_TOUCH_POINTS) {
@@ -880,15 +859,6 @@ static void v_multiwindow_appkit_fill_touch_point(VMultiwindowAppKitWindowState 
 	event->touch_changed[index] = changed ? 1 : 0;
 }
 
-static int v_multiwindow_appkit_clamped_int(CGFloat value) {
-	if (value >= (CGFloat)INT_MAX) {
-		return INT_MAX;
-	}
-	if (value <= (CGFloat)INT_MIN) {
-		return INT_MIN;
-	}
-	return (int)llround(value);
-}
 
 static NSArray<NSScreen *> *v_multiwindow_appkit_screens(void) {
 	return [NSScreen screens];
@@ -2185,7 +2155,7 @@ static void v_multiwindow_appkit_readback_end_pass_hook(const void *command_buff
 			continue;
 		}
 		const char *path = url.standardizedURL.path.UTF8String;
-		char *copy = v_multiwindow_appkit_copy_cstring(path);
+		char *copy = v_multiwindow_appkit_copy_cstring((char *)path);
 		if (copy == NULL) {
 			continue;
 		}
@@ -2667,16 +2637,6 @@ int v_multiwindow_test_appkit_admit_window(void *state_ptr) {
 }
 #endif
 
-static NSString *v_multiwindow_appkit_string(const char *value) {
-	if (value == NULL) {
-		return @"";
-	}
-	return [NSString stringWithUTF8String:value] ?: @"";
-}
-
-static int v_multiwindow_appkit_max_int(int value, int minimum) {
-	return minimum > 0 && value < minimum ? minimum : value;
-}
 
 int v_multiwindow_appkit_is_main_thread(void) {
 	return [NSThread isMainThread] ? 1 : 0;
@@ -2882,7 +2842,7 @@ VMultiwindowNativePrimitive v_multiwindow_appkit_create_window(void *device_ptr,
 			return result;
 		}
 		window.releasedWhenClosed = NO;
-		window.title = v_multiwindow_appkit_string(title);
+		window.title = (__bridge NSString *)v_multiwindow_appkit_string((char *)title);
 		window.acceptsMouseMovedEvents = YES;
 		window.restorable = NO;
 		if (min_width > 0 || min_height > 0) {
@@ -3197,7 +3157,7 @@ int v_multiwindow_appkit_set_window_title(void *state_ptr, const char *title) {
 		if (state.window == nil) {
 			return 0;
 		}
-		state.window.title = v_multiwindow_appkit_string(title);
+		state.window.title = (__bridge NSString *)v_multiwindow_appkit_string((char *)title);
 		return 1;
 	}
 }

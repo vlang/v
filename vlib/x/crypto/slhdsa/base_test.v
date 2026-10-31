@@ -73,7 +73,7 @@ fn test_privkey_signing() ! {
 fn test_basic_properties() ! {
 	mut pv := PrivateKey.new()!
 	desc := key_description(pv.key)
-	unsafe { desc.vstring() } == 'OpenSSL SLH-DSA-SHA2-128f implementation'
+	assert unsafe { desc.vstring() } == 'OpenSSL SLH-DSA-SHA2-128s implementation'
 
 	n := C.EVP_PKEY_is_a(pv.key, ln_slhdsa_sha2_128s)
 	assert n == 1 // true

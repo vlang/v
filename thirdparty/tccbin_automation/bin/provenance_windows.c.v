@@ -29,11 +29,11 @@ struct WindowsFileBasicInformation {
 }
 
 fn C._get_osfhandle(fd int) voidptr
-fn C.GetFileInformationByHandle(handle voidptr, information voidptr) bool
+fn C.GetFileInformationByHandle(handle voidptr, information voidptr) i32
 fn C.GetFileInformationByHandleEx(handle voidptr, information_class int, information voidptr,
-	information_size u32) bool
+	information_size u32) i32
 fn C.GetFileType(handle voidptr) u32
-fn C.ReadFile(handle voidptr, buffer voidptr, bytes_to_read u32, bytes_read &u32,
+fn C.ReadFile(handle voidptr, buffer voidptr, bytes_to_read u32, bytes_read &C.DWORD,
 	overlapped voidptr) bool
 fn C.CreateFileW(path &u16, desired_access u32, share_mode u32, security_attributes voidptr,
 	creation_disposition u32, flags_and_attributes u32, template_file voidptr) voidptr
@@ -61,8 +61,9 @@ fn windows_snapshot_from_handle(handle voidptr) !NativeFileSnapshot {
 	}
 	mut information := WindowsByHandleFileInformation{}
 	mut basic := WindowsFileBasicInformation{}
-	if !C.GetFileInformationByHandle(handle, voidptr(&information))
-		|| !C.GetFileInformationByHandleEx(handle, windows_file_basic_info_class, voidptr(&basic), u32(sizeof(WindowsFileBasicInformation)))
+	if C.GetFileInformationByHandle(handle, voidptr(&information)) == 0
+		|| C.GetFileInformationByHandleEx(handle, windows_file_basic_info_class, voidptr(&basic),
+			u32(sizeof(WindowsFileBasicInformation))) == 0
 		|| information.file_attributes & windows_file_attribute_reparse_point != 0
 		|| basic.file_attributes & windows_file_attribute_reparse_point != 0 {
 		return error('Windows payload file identity query failed or found a reparse point')
@@ -92,12 +93,12 @@ fn windows_identity_from_handle(handle voidptr) !NativeFileIdentity {
 }
 
 fn windows_file_identity(file &os.File) !NativeFileIdentity {
-	handle := C._get_osfhandle(file.fd)
+	handle := voidptr(C._get_osfhandle(file.fd))
 	return windows_identity_from_handle(handle)!
 }
 
 fn windows_file_snapshot(file &os.File) !NativeFileSnapshot {
-	handle := C._get_osfhandle(file.fd)
+	handle := voidptr(C._get_osfhandle(file.fd))
 	return windows_snapshot_from_handle(handle)!
 }
 
@@ -160,9 +161,9 @@ fn native_read_toolchain_document(document &NativeToolchainDocument, mut buffer 
 	if !document.opened || document.handle == voidptr(-1) || document.handle == unsafe { nil } {
 		return error('native toolchain document handle is closed')
 	}
-	mut bytes_read := u32(0)
+	mut bytes_read := C.DWORD(0)
 	if !C.ReadFile(document.handle, buffer.data, u32(buffer.len), &bytes_read, unsafe { nil })
-		|| bytes_read > u32(buffer.len) {
+		|| u32(bytes_read) > u32(buffer.len) {
 		return error('native toolchain document read failed')
 	}
 	return int(bytes_read)

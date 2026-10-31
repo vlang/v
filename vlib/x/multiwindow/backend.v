@@ -1,6 +1,12 @@
 module multiwindow
 
-import os
+$if linux {
+	$if x_multiwindow_x11 ? {
+		import os
+	} $else $if sokol_wayland ? {
+		import os
+	}
+}
 
 const err_backend_event_sequence_exhausted = 'multiwindow: native event sequence exhausted'
 

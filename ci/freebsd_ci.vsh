@@ -1,5 +1,5 @@
 import os
-import common { Task, exec }
+import common { Task, exec_args }
 
 fn v_doctor() {
 	if common.is_github_job {
@@ -8,18 +8,18 @@ fn v_doctor() {
 		println('### vdoctor')
 	}
 	dump(os.getenv('PATH'))
-	exec('v doctor')
+	exec_args(['v', 'doctor'])
 	if common.is_github_job {
-		exec('freebsd-version')
-		exec('sysctl hw.model')
-		exec('sysctl hw.ncpu')
-		exec('sysctl hw.physmem')
-		exec('sysctl hw.usermem')
-		exec('whoami')
-		exec('pwd')
-		exec('ls -la')
-		exec('git log -n1')
-		exec('cc --version')
+		exec_args(['freebsd-version'])
+		exec_args(['sysctl', 'hw.model'])
+		exec_args(['sysctl', 'hw.ncpu'])
+		exec_args(['sysctl', 'hw.physmem'])
+		exec_args(['sysctl', 'hw.usermem'])
+		exec_args(['whoami'])
+		exec_args(['pwd'])
+		exec_args(['ls', '-la'])
+		exec_args(['git', 'log', '-n1'])
+		exec_args(['cc', '--version'])
 		println('::endgroup::')
 	}
 }
@@ -30,14 +30,15 @@ fn build_v_with_prealloc() {
 	} else {
 		println('### Build v with prealloc')
 	}
-	exec('v -cg -cstrict -o vstrict1 cmd/v')
+	exec_args(['v', '-cg', '-cstrict', '-o', 'vstrict1', 'cmd/v'])
 	// -prealloc uses _Thread_local for g_memory_block; bundled tcc does not support it.
 	prealloc_cc_flag := if os.getenv('VFLAGS').contains('-cc tcc') { ' -cc cc' } else { '' }
-	exec('./vstrict1${prealloc_cc_flag} -o vprealloc -prealloc cmd/v')
-	exec('./vprealloc run examples/hello_world.v')
-	exec('./vprealloc -o v3 cmd/v')
-	exec('./v3 -o v4 cmd/v')
-	exec('./v4 -d debug_malloc -d debug_realloc -o vdebug1 cmd/v')
+	exec_args(['./vstrict1', ...(os.split_args(prealloc_cc_flag) or { panic(err) }), '-o', 'vprealloc',
+		'-prealloc', 'cmd/v'])
+	exec_args(['./vprealloc', 'run', 'examples/hello_world.v'])
+	exec_args(['./vprealloc', '-o', 'v3', 'cmd/v'])
+	exec_args(['./v3', '-o', 'v4', 'cmd/v'])
+	exec_args(['./v4', '-d', 'debug_malloc', '-d', 'debug_realloc', '-o', 'vdebug1', 'cmd/v'])
 	if common.is_github_job {
 		println('::endgroup::')
 	}
@@ -49,9 +50,9 @@ fn verify_v_test_works() {
 	} else {
 		println('### Verify v test')
 	}
-	exec('echo \$VFLAGS')
-	exec('v cmd/tools/test_if_v_test_system_works.v')
-	exec('./cmd/tools/test_if_v_test_system_works')
+	println(os.getenv('VFLAGS'))
+	exec_args(['v', 'cmd/tools/test_if_v_test_system_works.v'])
+	exec_args(['./cmd/tools/test_if_v_test_system_works'])
 	if common.is_github_job {
 		println('::endgroup::')
 	}
@@ -63,7 +64,9 @@ fn build_fast_script() {
 	} else {
 		println('### Build fast script')
 	}
-	exec('cd cmd/tools/fast && v -o fast .')
+	os.chdir('cmd/tools/fast') or { panic(err) }
+	exec_args(['v', '-o', 'fast', '.'])
+	os.chdir('../../..') or { panic(err) }
 	if common.is_github_job {
 		println('::endgroup::')
 	}
@@ -75,10 +78,10 @@ fn check_math() {
 	} else {
 		println('### Test vlib/math')
 	}
-	exec('v -silent test vlib/math')
+	exec_args(['v', '-silent', 'test', 'vlib/math'])
 	println('Test the math module, using only the pure V versions,')
 	println('                          without the .c.v overrides.')
-	exec('v -silent -exclude @vlib/math/*.c.v test vlib/math')
+	exec_args(['v', '-silent', '-exclude', '@vlib/math/*.c.v', 'test', 'vlib/math'])
 	if common.is_github_job {
 		println('::endgroup::')
 	}
@@ -90,7 +93,7 @@ fn test_inline_assembly() {
 	} else {
 		println('### Test inline Assembly')
 	}
-	exec('v test vlib/v/slow_tests/assembly')
+	exec_args(['v', 'test', 'vlib/v/slow_tests/assembly'])
 	if common.is_github_job {
 		println('::endgroup::')
 	}
@@ -102,7 +105,7 @@ fn check_compress() {
 	} else {
 		println('### Test vlib/compress')
 	}
-	exec('v -silent test vlib/compress')
+	exec_args(['v', '-silent', 'test', 'vlib/compress'])
 	if common.is_github_job {
 		println('::endgroup::')
 	}
@@ -111,22 +114,22 @@ fn check_compress() {
 fn run_essential_tests() {
 	if common.is_github_job {
 		println('::group::Run essential tests')
-		exec('VTEST_JUST_ESSENTIAL=1 v -silent test-self')
+		exec_args(['env', 'VTEST_JUST_ESSENTIAL=1', 'v', '-silent', 'test-self'])
 		println('::endgroup::')
 	} else {
 		println('### Run essential tests')
-		exec('VTEST_JUST_ESSENTIAL=1 v -progress test-self')
+		exec_args(['env', 'VTEST_JUST_ESSENTIAL=1', 'v', '-progress', 'test-self'])
 	}
 }
 
 fn build_examples() {
 	if common.is_github_job {
 		println('::group::Build examples')
-		exec('v -W build-examples')
+		exec_args(['v', '-W', 'build-examples'])
 		println('::endgroup::')
 	} else {
 		println('### Build examples')
-		exec('v -progress build-examples')
+		exec_args(['v', '-progress', 'build-examples'])
 	}
 }
 

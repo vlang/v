@@ -69,7 +69,7 @@ fn build_v3_bin(name string) string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_markused_${name}')
 	// v.v guards against being built with a garbage collector (see the `$if gcboehm`
 	// `$compile_error` blocks at its top), so this sub-build must pass `-gc none`.
-	build := os.execute('${custom_str_vexe} -gc none -o ${v3_bin} ${custom_str_v3_src}')
+	build := os.exec([custom_str_vexe, '-gc', 'none', '-o', v3_bin, '${custom_str_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -212,6 +212,43 @@ fn test_string_interpolation_seeds_imported_enum_str_method() {
 	assert used['colors.Color.str']
 }
 
+fn test_debugger_seeds_custom_str_method() {
+	a, tc := parse_checked_two_file_source('debugger_custom_str', '
+module main
+
+struct Test {}
+
+fn (t &Test) str() string {
+	return "test"
+}
+
+fn main() {
+	value := Test{}
+	_ = value
+	\$dbg
+}
+', 'unused/unused.v', 'module unused')
+	used := mark_used(a, tc)
+	assert used['Test.str'] || used['main.Test.str']
+}
+
+fn test_assert_comparison_seeds_enum_autostr_helper() {
+	a, tc := parse_checked_two_file_source('assert_enum_autostr', '
+module main
+
+enum State {
+	ready
+}
+
+fn main() {
+	actual := State.ready
+	assert actual == State.ready
+}
+', 'unused/unused.v', 'module unused')
+	used := mark_used(a, tc)
+	assert used['State__autostr'] || used['main__State__autostr']
+}
+
 // test_optional_string_interpolation_seeds_imported_enum_str_method
 // validates this v3 regression case.
 fn test_optional_string_interpolation_seeds_imported_enum_str_method() {
@@ -222,6 +259,19 @@ fn test_optional_string_interpolation_seeds_imported_enum_str_method() {
 
 fn test_string_interpolation_seeds_imported_enum_autostr_helper() {
 	a, tc := parse_checked_two_file_source('imported_enum_interp_autostr', imported_enum_main_source('_ := "\${c}"'), 'colors/colors.v', 'module colors
+
+pub enum Color {
+	red
+	blue
+}
+')
+	used := mark_used(a, tc)
+	assert used['colors__Color__autostr']
+}
+
+fn test_cached_header_enum_keeps_autostr_helper_without_visible_call() {
+	a, tc := parse_checked_two_file_source('cached_header_enum_autostr', imported_enum_main_source('_ := c'),
+		'colors/colors.vh', 'module colors
 
 pub enum Color {
 	red
@@ -314,6 +364,7 @@ fn test_optional_struct_zero_seeds_imported_default_helper() {
 fn test_prelude_global_initializer_seeds_calls_and_c_externs() {
 	mut a, mut tc := parse_checked_prelude_user_source('prelude_global_initializer', 'hidden/hidden.c.v', 'module hidden
 
+@[c_extern]
 fn C.hidden_external() int
 
 pub const hidden_value = helper() + C.hidden_external()
@@ -366,8 +417,8 @@ fn test_imported_operator_infix_lowers_after_used_filter_transform() {
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('vectors__Vec__plus(')
-	assert c_code.contains('vectors__Vec__lt(')
+	assert c_code.contains('__v3_internal_symbol_op_vectors__Vec__plus(')
+	assert c_code.contains('__v3_internal_symbol_op_vectors__Vec__lt(')
 }
 
 // test_optional_struct_zero_lowers_to_imported_default_after_used_filter_transform
@@ -416,7 +467,7 @@ fn test_imported_enum_print_compile_keeps_str_method() {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_markused_imported_enum_print_input_bin')
-	compile := os.execute('${v3_bin} -o ${bin} ${root}')
+	compile := os.exec([v3_bin, '-o', bin, root])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -434,7 +485,7 @@ fn test_imported_operator_compile_keeps_operator_methods() {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_markused_imported_operator_input_bin')
-	compile := os.execute('${v3_bin} -o ${bin} ${root}')
+	compile := os.exec([v3_bin, '-o', bin, root])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -453,7 +504,7 @@ fn test_optional_struct_zero_compile_keeps_imported_default_helper() {
 	}
 	os.write_file(os.join_path(root, 'defaults/defaults.v'), imported_struct_default_module_source()) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_markused_imported_struct_default_or_input_bin')
-	compile := os.execute('${v3_bin} -o ${bin} ${root}')
+	compile := os.exec([v3_bin, '-o', bin, root])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -472,7 +523,7 @@ fn test_imported_optional_enum_interpolation_compile_keeps_str_method() {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_markused_imported_optional_enum_interp_input_bin')
-	compile := os.execute('${v3_bin} -o ${bin} ${root}')
+	compile := os.exec([v3_bin, '-o', bin, root])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -495,6 +546,6 @@ pub enum Color {
 }
 ') or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_markused_imported_enum_direct_autostr_input_bin')
-	compile := os.execute('${v3_bin} -o ${bin} ${root}')
+	compile := os.exec([v3_bin, '-o', bin, root])
 	assert compile.exit_code == 0, compile.output
 }

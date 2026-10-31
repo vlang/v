@@ -6,9 +6,13 @@ module markdown
 import strings
 
 // HTMLRenderer renders a parsed markdown AST to an HTML string.
-struct HTMLRenderer {
-	opts    Options
-	ref_map map[string]LinkRef
+pub struct HTMLRenderer {
+pub mut:
+	opts             Options
+	code_highlighter fn (lang string, code string) string = unsafe { nil }
+	link_base        string
+	link_resolver    fn (base string, url string) string = unsafe { nil }
+	ref_map          map[string]LinkRef
 mut:
 	sb strings.Builder
 	// footnote tracking
@@ -16,6 +20,16 @@ mut:
 	fn_nodes      map[string]&Node // label → footnote_def node
 	tight_list    bool             // whether we're inside a tight list
 	in_table_head bool
+}
+
+// render parses the markdown source `src` and renders it to HTML using `r`.
+// It is a convenience wrapper around Markdown.parse + HTMLRenderer.render,
+// mirroring the external vlang/markdown API used by vdoc.
+pub fn render(src string, mut r HTMLRenderer) string {
+	mut md := Markdown.new(r.opts)
+	doc := md.parse(src)
+	r.ref_map = md.ref_map
+	return r.render(doc)
 }
 
 // render renders the document node to an HTML string.
@@ -91,7 +105,18 @@ fn (mut r HTMLRenderer) render_inline(src string) {
 	}
 }
 
+// cr writes a newline unless the output is empty or already ends with one.
+// Block-level renderers call it on entry, matching the reference renderer:
+// blocks are always newline-separated, while tight-list paragraphs and
+// <li> open tags stay on the same line as their text.
+fn (mut r HTMLRenderer) cr() {
+	if r.sb.len > 0 && r.sb.byte_at(r.sb.len - 1) != `\n` {
+		r.sb.write_string('\n')
+	}
+}
+
 fn (mut r HTMLRenderer) render_heading(node &Node) {
+	r.cr()
 	tag := 'h${node.level}'
 	if node.id.len > 0 {
 		r.sb.write_string('<${tag} id="${html_escape(node.id)}">')
@@ -116,6 +141,7 @@ fn (mut r HTMLRenderer) render_paragraph(node &Node) {
 		}
 		return
 	}
+	r.cr()
 	r.sb.write_string('<p>')
 	if node.children.len > 0 {
 		r.render_children(node)
@@ -126,12 +152,18 @@ fn (mut r HTMLRenderer) render_paragraph(node &Node) {
 }
 
 fn (mut r HTMLRenderer) render_blockquote(node &Node) {
+	r.cr()
 	r.sb.write_string('<blockquote>\n')
+	// A blockquote breaks tight-list context for its own paragraphs.
+	prev_tight := r.tight_list
+	r.tight_list = false
 	r.render_children(node)
+	r.tight_list = prev_tight
 	r.sb.write_string('</blockquote>\n')
 }
 
 fn (mut r HTMLRenderer) render_list(node &Node) {
+	r.cr()
 	tag := if node.is_ordered { 'ol' } else { 'ul' }
 	if node.is_ordered && node.list_start != 1 {
 		r.sb.write_string('<${tag} start="${node.list_start}">\n')
@@ -167,24 +199,39 @@ fn (mut r HTMLRenderer) render_list_item(node &Node) {
 }
 
 fn (mut r HTMLRenderer) render_code_block(node &Node) {
+	r.cr()
 	r.sb.write_string('<pre><code>')
-	r.sb.write_string(html_escape(node.literal))
+	if r.code_highlighter != unsafe { nil } {
+		r.sb.write_string(r.code_highlighter('', node.literal))
+	} else {
+		r.sb.write_string(html_escape(node.literal))
+	}
 	r.sb.write_string('</code></pre>\n')
 }
 
 fn (mut r HTMLRenderer) render_fenced_code(node &Node) {
-	if node.fence_info.len > 0 {
-		// Use only the first word of the info string as the language class.
-		lang := node.fence_info.split(' ')[0].split('\t')[0]
+	r.cr()
+	// Use only the first word of the info string as the language class.
+	lang := if node.fence_info.len > 0 {
+		node.fence_info.split(' ')[0].split('\t')[0]
+	} else {
+		''
+	}
+	if lang.len > 0 {
 		r.sb.write_string('<pre><code class="language-${html_escape(lang)}">')
 	} else {
 		r.sb.write_string('<pre><code>')
 	}
-	r.sb.write_string(html_escape(node.literal))
+	if r.code_highlighter != unsafe { nil } {
+		r.sb.write_string(r.code_highlighter(lang, node.literal))
+	} else {
+		r.sb.write_string(html_escape(node.literal))
+	}
 	r.sb.write_string('</code></pre>\n')
 }
 
 fn (mut r HTMLRenderer) render_thematic_break() {
+	r.cr()
 	if r.opts.renderer_opts.xhtml {
 		r.sb.write_string('<hr />\n')
 	} else {
@@ -193,6 +240,7 @@ fn (mut r HTMLRenderer) render_thematic_break() {
 }
 
 fn (mut r HTMLRenderer) render_html_block(node &Node) {
+	r.cr()
 	if r.opts.renderer_opts.unsafe_ {
 		r.sb.write_string(node.literal)
 	} else {
@@ -321,7 +369,11 @@ fn (mut r HTMLRenderer) render_code_span(node &Node) {
 }
 
 fn (mut r HTMLRenderer) render_link(node &Node) {
-	r.sb.write_string('<a href="${html_escape(url_encode(node.dest))}"')
+	mut dest := node.dest
+	if r.link_resolver != unsafe { nil } {
+		dest = r.link_resolver(r.link_base, dest)
+	}
+	r.sb.write_string('<a href="${html_escape(url_encode(dest))}"')
 	if node.title.len > 0 {
 		r.sb.write_string(' title="${html_escape(node.title)}"')
 	}
@@ -331,8 +383,12 @@ fn (mut r HTMLRenderer) render_link(node &Node) {
 }
 
 fn (mut r HTMLRenderer) render_image(node &Node) {
-	alt := node.text_content()
-	r.sb.write_string('<img src="${html_escape(url_encode(node.dest))}" alt="${html_escape(alt)}"')
+	alt := node.image_alt_text()
+	mut dest := node.dest
+	if r.link_resolver != unsafe { nil } {
+		dest = r.link_resolver(r.link_base, dest)
+	}
+	r.sb.write_string('<img src="${html_escape(url_encode(dest))}" alt="${html_escape(alt)}"')
 	if node.title.len > 0 {
 		r.sb.write_string(' title="${html_escape(node.title)}"')
 	}

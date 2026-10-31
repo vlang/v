@@ -58,23 +58,14 @@ fn (mut dom DocumentObjectModel) where_is(item_name string, attribute_name strin
 }
 
 fn (mut dom DocumentObjectModel) add_tag_attribute(tag &Tag) {
-	for attribute_name, _ in tag.attributes {
-		attribute_value := tag.attributes[attribute_name]
+	for attribute_name, attribute_value in tag.attributes {
 		location := dom.where_is(attribute_value, attribute_name)
-		if attribute_name !in dom.tag_attributes {
-			dom.tag_attributes[attribute_name] = []
+		mut attribute_tags := dom.tag_attributes[attribute_name] or { [][]&Tag{} }
+		for attribute_tags.len <= location {
+			attribute_tags << []&Tag{}
 		}
-		for {
-			mut temp_array := unsafe { dom.tag_attributes[attribute_name] }
-			temp_array << []&Tag{}
-			dom.tag_attributes[attribute_name] = temp_array
-			if location < unsafe { dom.tag_attributes[attribute_name].len } + 1 {
-				break
-			}
-		}
-		mut temp_array := unsafe { dom.tag_attributes[attribute_name][location] }
-		temp_array << tag
-		dom.tag_attributes[attribute_name][location] = temp_array
+		attribute_tags[location] << tag
+		dom.tag_attributes[attribute_name] = attribute_tags
 	}
 }
 
@@ -119,6 +110,13 @@ fn (mut dom DocumentObjectModel) construct(tag_list []&Tag) {
 	temp_map['0'] = dom.btree.add_children(tag_list[0])
 	stack.push(0)
 	root_index := 0
+	// the root never passes through the loop below, so index it like
+	// every other tag, or no lookup can ever find it
+	if !is_close_tag(tag_list[0]) && tag_list[0].name != '' {
+		dom.add_tag_attribute(tag_list[0])
+		dom.add_tag_by_attribute(tag_list[0])
+		dom.add_tag_by_type(tag_list[0])
+	}
 
 	for index := 1; index < tag_list.len; index++ {
 		mut tag := tag_list[index]
@@ -212,7 +210,23 @@ pub fn (dom &DocumentObjectModel) get_tags(options GetTagsOptions) []&Tag {
 
 // get_tags_by_class_name retrieves all tags recursively in the document root that have the given class name(s).
 pub fn (dom &DocumentObjectModel) get_tags_by_class_name(names ...string) []&Tag {
-	return dom.root.get_tags_by_class_name(...names)
+	if names.len == 0 || dom.all_tags.len == 0 {
+		return []&Tag{}
+	}
+	mut res := []&Tag{}
+	// the tag level search only looks at children, so consider the root itself here
+	mut matched := true
+	for name in names {
+		matched = dom.root.class_set.exists(name)
+		if !matched {
+			break
+		}
+	}
+	if matched {
+		res << dom.root
+	}
+	res << dom.root.get_tags_by_class_name(...names)
+	return res
 }
 
 // get_tags_by_attribute retrieves all tags in the document that have the given attribute name.

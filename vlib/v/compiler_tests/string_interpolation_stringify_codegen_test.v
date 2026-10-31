@@ -7,12 +7,13 @@ const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
 
 fn string_interp_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_string_interpolation_stringify_test_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_string_interpolation_stringify_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -20,7 +21,7 @@ fn string_interp_build_v3() string {
 fn compile_v3_input(v3_bin string, name string, source string, bin string) os.Result {
 	src := os.join_path(os.temp_dir(), '${name}_${os.getpid()}.v')
 	os.write_file(src, source) or { panic(err) }
-	return os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	return os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 }
 
 fn test_typed_string_interpolation_stringifies_maps_arrays_and_generic_indexes() {
@@ -70,7 +71,7 @@ fn main() {
 	compile := compile_v3_input(v3_bin, 'v3_string_interpolation_stringify_positive', src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -106,7 +107,7 @@ fn main() {
 	compile := compile_v3_input(v3_bin, 'v3_string_interp_method_markused', src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '{"begin":7}'
 }
@@ -132,7 +133,7 @@ fn main() {
 	compile := compile_v3_input(v3_bin, 'v3_string_interp_str_helper', src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'wrapped'
 }
@@ -164,10 +165,10 @@ fn show_plain_box[T](b PlainBox[T]) {
 	lookup['one'] = b
 	mut rune_lookup := map[rune]PlainBox[T]{}
 	rune_lookup[`x`] = b
-	mut rune_value_lookup := map[PlainBox[T]]rune{}
-	rune_value_lookup[b] = `y`
+	// A `map[PlainBox[T]]rune` was printed here too; struct map keys are rejected since
+	// 2c7c304cc8, also in specialized generic bodies.
 	defer {
-		println('plain \${b} \${list} \${lookup} \${rune_lookup} \${rune_value_lookup}')
+		println('plain \${b} \${list} \${lookup} \${rune_lookup}')
 	}
 	println('body-plain')
 }
@@ -191,9 +192,12 @@ fn main() {
 "
 	bin := os.join_path(os.temp_dir(), 'v3_defer_generic_string_interp_${os.getpid()}')
 	compile := compile_v3_input(v3_bin, 'v3_defer_generic_string_interp', src, bin)
-	assert compile.exit_code == 0, compile.output
+	// A `-b c` build of a `map[string]PlainBox[T]` interpolation calls prelude helpers
+	// (`v3_map_str_piece`, `v3_f64_array_str`) that need `f64__str`; before #30850 it was not
+	// kept and the link failed. The module cache hid it by linking the cached builtin object.
+	assert compile.exit_code == 0, 'undefined f64__str: ${compile.output}'
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	expected := "body-box
 box box:7
@@ -206,9 +210,7 @@ plain PlainBox[int]{
     value: 8
 }} {`x`: PlainBox[int]{
     value: 8
-}} {PlainBox[int]{
-    value: 8
-}: `y`}
+}}
 body-d
 value 9"
 	assert run.output.trim_space() == expected
@@ -229,7 +231,7 @@ fn main() {
 	compile := compile_v3_input(v3_bin, 'v3_string_alias_plus_positive', src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -253,7 +255,7 @@ fn main() {
 	compile := compile_v3_input(v3_bin, 'v3_primitive_alias_chain_str', src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'x\n7\ntrue'
 }
@@ -291,7 +293,7 @@ fn main() {
 	compile := compile_v3_input(v3_bin, 'v3_generic_fn_alias_custom_str', src, bin)
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -305,7 +307,8 @@ fn test_string_plus_does_not_stringify_non_strings() {
 ",
 		int_bin)
 	assert int_result.exit_code != 0, int_result.output
-	assert int_result.output.contains('operator `+` cannot concatenate `string` and `int`'), int_result.output
+	// The V1 wording (550e503dce).
+	assert int_result.output.contains('infix expr: cannot use `int literal` (right expression) as `string`'), int_result.output
 	assert !int_result.output.contains('C compilation failed'), int_result.output
 
 	map_bin := os.join_path(os.temp_dir(), 'v3_string_plus_map_negative_${os.getpid()}')
@@ -315,7 +318,7 @@ fn test_string_plus_does_not_stringify_non_strings() {
 ",
 		map_bin)
 	assert map_result.exit_code != 0, map_result.output
-	assert map_result.output.contains('operator `+` cannot concatenate `string` and `map[string]int`'), map_result.output
+	assert map_result.output.contains('infix expr: cannot use `map[string]int` (right expression) as `string`'), map_result.output
 	assert !map_result.output.contains('C compilation failed'), map_result.output
 }
 
@@ -377,7 +380,7 @@ fn main() {
 	bin := os.join_path(os.temp_dir(), 'v3_string_join_order_${os.getpid()}')
 	compile := compile_v3_input(v3_bin, 'v3_string_join_order', src, bin)
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }

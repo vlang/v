@@ -19,7 +19,8 @@ const alias_shadow_v3_src = os.join_path(alias_shadow_v3_dir, 'v.v')
 fn alias_shadow_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_alias_shadow_compiler_${os.getpid()}')
 	os.rm(v3_bin) or {}
-	build := os.execute('${alias_shadow_vexe} -gc none -path "${alias_shadow_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${alias_shadow_v3_src}')
+	build := os.exec([alias_shadow_vexe, '-gc', 'none', '-path',
+		'${alias_shadow_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${alias_shadow_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -33,11 +34,11 @@ fn alias_shadow_build_and_run(v3_bin string, root string, files map[string]strin
 	}
 	main_v := os.join_path(root, 'main.v')
 	exe := os.join_path(root, 'prog')
-	compile := os.execute('${v3_bin} -nocache ${main_v} -b c -o ${exe}')
+	compile := os.exec([v3_bin, '-nocache', '${main_v}', '-b', 'c', '-o', exe])
 	if compile.exit_code != 0 {
 		return compile
 	}
-	return os.execute(exe)
+	return os.exec([exe])
 }
 
 fn test_a_shadowed_module_keeps_its_own_type() {

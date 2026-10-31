@@ -47,7 +47,7 @@ fn test_merge_nominal() {
 
 	mut ctx, cancel2 := merge(ctx1, ctx2)
 
-	if deadline := ctx.deadline() {
+	if _ := ctx.deadline() {
 		assert false
 	}
 

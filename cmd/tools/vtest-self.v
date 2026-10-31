@@ -1,7 +1,44 @@
 module main
 
 import os
+import crypto.sha256
 import testing
+import v.util.vtest
+import v.pref
+
+struct SelfTestShard {
+	index int
+	count int = 1
+}
+
+fn self_test_shard_from_env() !SelfTestShard {
+	count_text := os.getenv('VTEST_SELF_SHARD_COUNT')
+	index_text := os.getenv('VTEST_SELF_SHARD_INDEX')
+	if count_text == '' && index_text == '' {
+		return SelfTestShard{}
+	}
+	count := count_text.int()
+	index := index_text.int()
+	if count < 1 || count.str() != count_text || index < 0 || index.str() != index_text
+		|| index >= count {
+		return error('VTEST_SELF_SHARD_INDEX and VTEST_SELF_SHARD_COUNT must be decimal integers with 0 <= index < count')
+	}
+	return SelfTestShard{
+		index: index
+		count: count
+	}
+}
+
+fn self_test_shard_for_file(path string, count int) int {
+	// Checkout-relative paths give every runner the same assignment.
+	relative_path := path[vroot.len + 1..].replace('\\', '/')
+	digest := sha256.sum256(relative_path.bytes())
+	mut hash := u64(0)
+	for byte in digest[..8] {
+		hash = (hash << 8) | u64(byte)
+	}
+	return int(hash % u64(count))
+}
 
 struct Config {
 	run_just_essential     bool   = '${os.getenv('VTEST_JUST_ESSENTIAL')}${os.getenv('VTEST_SANDBOXED_PACKAGING')}' != ''
@@ -55,7 +92,7 @@ const essential_list = [
 	'vlib/encoding/utf8/validate/encoding_utf8_test.v',
 	'vlib/encoding/utf8/utf8_util_test.v',
 	'vlib/flag/flag_test.v',
-	'vlib/json/tests/json_decode_test.v',
+	'vlib/json2/tests/json_module_compatibility_test/json_decode_test.v',
 	'vlib/math/math_test.v',
 	'vlib/net/tcp_test.v',
 	'vlib/net/http/http_test.v',
@@ -174,7 +211,6 @@ const skip_with_fsanitize_address = [
 	'vlib/compress/zstd/zstd_test.v', // ASan reports leaks from zstd library
 	'vlib/crypto/argon2/argon2_test.v', // ASan flags large alloc on test setup
 	'vlib/gg/text_rendering_test.v', // depends on freetype/font assets not available under sanitize CI
-	'vlib/json/tests/json_decode_with_sumtype_test.v', // ASan flake on sumtype decode buffer reuse
 	'vlib/net/mbedtls/mbedtls_read_timeout_test.v', // network timing test, ASan-incompatible
 	'vlib/net/websocket/websocket_test.v',
 	'vlib/orm/orm_create_and_drop_test.v',
@@ -331,7 +367,6 @@ const skip_on_ubuntu_musl = [
 	'vlib/veb/tests/veb_app_test.v',
 	'vlib/ncurses/ncurses_test.v',
 	'vlib/v/tests/fixed_array_update_c_struct_alias_test.v',
-	'vlib/x/crypto/mldsa/mldsa_test.v',
 ]
 
 fn Config.init(vargs []string, targs []string) !Config {
@@ -397,28 +432,71 @@ fn Config.init(vargs []string, targs []string) !Config {
 	return cfg
 }
 
+fn self_test_matches_filename(path string) bool {
+	if path.ends_with('_test.v') || path.ends_with('_test.c.v')
+		|| (testing.is_node_present && path.ends_with('_test.js.v')) {
+		return true
+	}
+	name := os.file_name(path)
+	if !name.ends_with('.v') || name.count('.') != 2 {
+		return false
+	}
+	stem := name.all_before_last('.v')
+	if !stem.all_before_last('.').ends_with('_test') {
+		return false
+	}
+	suffix := stem.all_after_last('.')
+	if pref.suffix_is_backend_name(suffix) {
+		return false
+	}
+	if arch := pref.arch_from_string(suffix) {
+		return arch == pref.host_arch()
+	}
+	return false
+}
+
 fn main() {
 	unbuffer_stdout()
 	os.chdir(vroot)!
+	shard := self_test_shard_from_env() or {
+		eprintln(err)
+		exit(1)
+	}
 	args_idx := os.args.index('test-self')
 	if args_idx < 0 {
 		eprintln('vtest-self: could not find `test-self` in os.args: ${os.args}')
 		exit(1)
 	}
-	vargs := os.args[1..args_idx]
+	mut vargs := os.args[1..args_idx].clone()
+	requested_args := os.split_args(os.getenv('VFLAGS')) or { panic(err) }
+	mut all_requested_args := requested_args.clone()
+	all_requested_args << vargs
+	strict_v3 := ('-new-compiler' in all_requested_args && '-old-compiler' !in all_requested_args)
+		|| os.getenv('V_MACOS_V3_NO_FALLBACK') == '1'
+	if strict_v3 {
+		// Apply environment flags to test compilation, without leaking a host C
+		// compiler choice into nested compiler invocations (for example FastC).
+		if vargs.len < requested_args.len || vargs[..requested_args.len] != requested_args {
+			vargs = requested_args.clone()
+			vargs << os.args[1..args_idx]
+		}
+		os.unsetenv('VFLAGS')
+	}
 	targs := os.args#[args_idx + 1..]
 	cfg := Config.init(vargs, targs) or {
 		eprintln(err)
 		exit(1)
 	}
 	// dump(cfg)
-	title := 'testing: ${cfg.test_dirs.join(', ')}'
+	mut title := 'testing: ${cfg.test_dirs.join(', ')}'
+	if shard.count > 1 {
+		title += ' (shard ${shard.index + 1}/${shard.count})'
+	}
 	mut tpaths := map[string]bool{}
 	mut tpaths_ref := &tpaths
 	for dir in cfg.test_dirs {
 		os.walk(os.join_path(vroot, dir), fn [mut tpaths_ref] (p string) {
-			if p.ends_with('_test.v') || p.ends_with('_test.c.v')
-				|| (testing.is_node_present && p.ends_with('_test.js.v')) {
+			if self_test_matches_filename(p) {
 				unsafe {
 					tpaths_ref[p] = true
 				}
@@ -429,13 +507,17 @@ fn main() {
 	if cfg.run_just_essential {
 		all_test_files = essential_list.map(os.join_path(vroot, it))
 	}
-	mut tsession := testing.new_test_session(vargs.join(' '), true)
+	mut tsession := testing.new_test_session(vargs.map(self_test_argument(it)).join(' '), true)
 	tsession.exec_mode = .compile_and_run
-	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator))
+	tsession.files << all_test_files.filter(!it.contains('testdata' + os.path_separator)
+		&& (shard.count == 1 || self_test_shard_for_file(it, shard.count) == shard.index))
 	// The compiler tests have their own driver, so they are excluded from `v test-self`.
 	for test_dir in temporarily_disabled_self_test_vlib_dirs {
 		dir_fragment := '${os.path_separator}vlib${os.path_separator}${test_dir}${os.path_separator}'
 		tsession.skip_files << tsession.files.filter(it.contains(dir_fragment))
+	}
+	if vtest.skip_ownership_autofree_tests() {
+		tsession.skip_files << tsession.files.filter(vtest.is_ownership_autofree_test(it))
 	}
 	if cfg.werror {
 		tsession.custom_defines << 'self_werror'
@@ -486,4 +568,11 @@ fn main() {
 		eprintln('\nError: failed ${tsession.benchmark.nfail} times.\n')
 		exit(1)
 	}
+}
+
+fn self_test_argument(arg string) string {
+	if arg != '' && !arg.contains_any(' \t\r\n\\\'"') {
+		return arg
+	}
+	return '"' + arg.replace('\\', '\\\\').replace('"', '\\"') + '"'
 }

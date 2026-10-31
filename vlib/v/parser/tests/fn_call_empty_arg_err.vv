@@ -1,0 +1,23 @@
+type Number = int | i64 | f32 | f64
+
+struct Foo {}
+
+fn (f Foo) add(a int, b int) int {
+	return a + b
+}
+
+fn format(n Number, b Number) string {
+	return '${n} ${b}'
+}
+
+fn sum(a int, b int, c int) int {
+	return a + b + c
+}
+
+fn main() {
+	b := 2.0
+	println(format(, b))
+	println(sum(1, , 2))
+	println(sum(1, 2,,))
+	println(Foo{}.add(, 1))
+}

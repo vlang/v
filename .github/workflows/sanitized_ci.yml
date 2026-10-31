@@ -43,32 +43,6 @@ on:
       - 'vlib/v/markused/**.v'
       - 'vlib/json2/**.v'
       - '**/sanitized_ci.yml'
-  pull_request:
-    paths:
-      - '!**'
-      - 'vlib/builtin/**.v'
-      - 'vlib/strconv/**.v'
-      - 'vlib/strings/**.v'
-      - 'vlib/math/**.v'
-      - 'vlib/math/big/**.v'
-      - 'vlib/arrays/**.v'
-      - 'vlib/crypto/ecdsa/**.v'
-      - 'vlib/datatypes/**.v'
-      - 'vlib/os/**.v'
-      - 'vlib/sync/**.v'
-      - 'vlib/v/**.v'
-      - 'vlib/v/ast/**.v'
-      - 'vlib/v/scanner/**.v'
-      - 'vlib/v/parser/**.v'
-      - 'vlib/v/checker/**.v'
-      - 'vlib/v/gen/c/**.v'
-      - 'vlib/v/builder/**.v'
-      - 'vlib/v/cflag/**.v'
-      - 'vlib/v/live/**.v'
-      - 'vlib/v/util/**.v'
-      - 'vlib/v/markused/**.v'
-      - 'vlib/json2/**.v'
-      - '**/sanitized_ci.yml'
 
 concurrency:
   group: sanitized-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -82,8 +56,12 @@ env:
     libasound2-dev libegl-dev
   SANITIZER_CLANG_PACKAGES: clang
 
+permissions:
+  contents: read
+
 jobs:
   sanitize-linux:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-22.04
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
@@ -141,6 +119,10 @@ jobs:
             lsan_options: detect_leaks=0
     name: sanitize-${{ matrix.name }}
     env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
       SANITIZER_GITHUB_JOB: sanitize-${{ matrix.name }}
       VFLAGS: ${{ matrix.vflags }}
       VJOBS: 1
@@ -153,6 +135,8 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
         with:
           profile: sanitizers
@@ -228,9 +212,14 @@ jobs:
         run: GITHUB_JOB=sanitize-memory-clang ./v -silent build-examples
 
   sanitize-address-msvc:
+    if: github.ref == 'refs/heads/master'
     runs-on: windows-2025
     timeout-minutes: 30
     env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
       VFLAGS: -cc msvc
       VJOBS: 1
       VNATIVE_SKIP_LIBC_VV: 1
@@ -239,6 +228,8 @@ jobs:
       VTEST_SHOW_LONGEST_BY_TOTALTIME: 3
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build
         run: |
           echo %VFLAGS%

@@ -1,0 +1,26 @@
+import time
+
+struct App {}
+
+fn (_ App) index(mut t &time.Time) {
+	println(t.year)
+}
+
+fn call(app App, mut user_t time.Time) {
+	app.index(mut user_t)
+}
+
+fn comptime_call(app App, mut user_t time.Time) {
+	$for method in App.methods {
+		if method.name == 'index' {
+			app.$method(mut user_t)
+		}
+	}
+}
+
+fn main() {
+	app := App{}
+	mut t := time.now()
+	call(app, mut t)
+	comptime_call(app, mut t)
+}

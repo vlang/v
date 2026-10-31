@@ -1,5 +1,5 @@
-fn f() ?int {
-	return none
+fn f() !int {
+	return error('')
 }
 
 fn type_unimplemented_ierror() {

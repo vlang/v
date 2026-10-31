@@ -10,7 +10,9 @@ const fixed_array_pointer_assignment_v3_src = os.join_path(fixed_array_pointer_a
 fn test_fixed_array_pointer_assignment_targets_element() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_fixed_array_pointer_assignment_${os.getpid()}')
 	build :=
-		os.execute('${fixed_array_pointer_assignment_vexe} -gc none -prealloc -path "${fixed_array_pointer_assignment_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${fixed_array_pointer_assignment_v3_src}')
+		os.exec([fixed_array_pointer_assignment_vexe, '-gc', 'none', '-prealloc', '-path',
+			'${fixed_array_pointer_assignment_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${fixed_array_pointer_assignment_v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_fixed_array_pointer_assignment_${os.getpid()}.v')
@@ -37,9 +39,10 @@ fn main() {
 		panic(err)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_fixed_array_pointer_assignment_program_${os.getpid()}')
-	compile := os.execute('${v3_bin} -nocache -no-parallel -keepc -b c ${src} -o ${bin}')
+	compile := os.exec([v3_bin, '-nocache', '-no-parallel', '-keepc', '-b', 'c', '${src}', '-o',
+		bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '53', run.output
 

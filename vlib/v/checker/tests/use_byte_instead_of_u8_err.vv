@@ -1,8 +1,0 @@
-type Byte = byte
-
-fn foo(_ byte) {}
-
-fn main() {
-	_ := byte(0)
-	_ := fn(_ byte) {}
-}

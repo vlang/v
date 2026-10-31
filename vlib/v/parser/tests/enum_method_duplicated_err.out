@@ -3,5 +3,5 @@ vlib/v/parser/tests/enum_method_duplicated_err.vv:13:14: error: duplicate method
    12 | 
    13 | fn (f Flags) has(f2 Flags) bool {
       |              ~~~
-   14 |     return f & f2 > 0
+   14 |     return int(f & f2) > 0
    15 | }

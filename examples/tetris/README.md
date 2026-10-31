@@ -27,7 +27,7 @@ emcc --version
 
 3. Compile the game to WASM:
 ```sh
-v -skip-unused -prod -os wasm32_emscripten examples/tetris/`
+v -prod -os wasm32_emscripten examples/tetris/`
 ```
 
 4. Copy the generated `tetris` file to `index.js`

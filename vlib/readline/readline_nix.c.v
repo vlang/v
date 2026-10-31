@@ -99,7 +99,7 @@ pub fn (mut r Readline) disable_raw_mode() {
 
 // read_char reads a single character.
 pub fn (r Readline) read_char() !int {
-	return int(term.utf8_getchar() or { return err })
+	return int(term.utf8_getchar() or { return error('failed to read character') })
 }
 
 // read_line_utf8 blocks execution in a loop and awaits user input
@@ -184,7 +184,7 @@ fn (mut r Readline) analyse(c int) Action {
 		return Action.insert_character
 	}
 	match u8(c) {
-		`\0`, 0x3, 0x4, 255 {
+		`\0`, 0x3, 0x4 {
 			return .eof
 		} // NUL, End of Text, End of Transmission
 		`\n`, `\r` {
@@ -443,7 +443,7 @@ fn (mut r Readline) delete_character() {
 }
 
 fn (mut r Readline) delete_word_left() {
-	if r.cursor == 0 {
+	if r.cursor == 0 || r.current.len == 0 {
 		return
 	}
 
@@ -452,7 +452,7 @@ fn (mut r Readline) delete_word_left() {
 		r.cursor = r.current.len - 1
 	}
 
-	if r.current[r.cursor] != ` ` && r.current[r.cursor - 1] == ` ` {
+	if r.cursor > 0 && r.current[r.cursor] != ` ` && r.current[r.cursor - 1] == ` ` {
 		r.cursor--
 	}
 

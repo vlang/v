@@ -1,0 +1,8 @@
+@[attribute]
+struct Route {
+mut:
+	path string
+}
+
+fn main() {
+}

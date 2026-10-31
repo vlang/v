@@ -14,7 +14,8 @@ fn fixed_enum_build_v3() string {
 	v3_bin := fixed_enum_tmp_path('compiler')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${fixed_enum_vexe} -gc none -path "${fixed_enum_vlib_dir}|@vlib|@vmodules" -o "${v3_bin}" "${fixed_enum_v3_source}"')
+		os.exec([fixed_enum_vexe, '-gc', 'none', '-path',
+			'${fixed_enum_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, fixed_enum_v3_source])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -48,13 +49,13 @@ fn main() {
 	}
 	old_no_fallback := os.getenv_opt('V_MACOS_V3_NO_FALLBACK')
 	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
-	compile := os.execute('"${v3_bin}" -o "${output_path}" "${source_path}"')
+	compile := os.exec([v3_bin, '-o', output_path, source_path])
 	if value := old_no_fallback {
 		os.setenv('V_MACOS_V3_NO_FALLBACK', value, true)
 	} else {
 		os.unsetenv('V_MACOS_V3_NO_FALLBACK')
 	}
 	assert compile.exit_code == 0, compile.output
-	run := os.execute('"${output_path}"')
+	run := os.exec([output_path])
 	assert run.exit_code == 0, run.output
 }

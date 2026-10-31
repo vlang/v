@@ -11,7 +11,8 @@ fn tmplord_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_tmpl_subexpr_order_test_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${tmplord_vexe} -gc none -path "${tmplord_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${tmplord_v3_src}')
+		os.exec([tmplord_vexe, '-gc', 'none', '-path', '${tmplord_vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${tmplord_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -31,10 +32,10 @@ fn test_tmpl_subexpr_preserves_evaluation_order() {
 	source := "module main\n\nstruct S {\nmut:\n\tn int\n}\n\nfn (mut s S) bump() string {\n\ts.n++\n\treturn 'B'\n}\n\nfn cat(a string, b string) string {\n\treturn a + '|' + b\n}\n\nfn (mut s S) after() string {\n\treturn cat(s.bump(), \$tmpl('row.txt')).replace('\\n', '')\n}\n\nfn (mut s S) before() string {\n\treturn cat(\$tmpl('row.txt'), s.bump()).replace('\\n', '')\n}\n\nfn main() {\n\tmut a := S{}\n\tprintln(a.after())\n\tmut b := S{}\n\tprintln(b.before())\n}\n"
 	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_tmpl_subexpr_order_bin_${pid}')
-	compile := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${bin}')
+	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	lines := run.output.trim_space().split('\n')
 	assert lines.len == 2, run.output

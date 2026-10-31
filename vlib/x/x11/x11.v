@@ -5,7 +5,7 @@ module x11
 // Basic X11 types
 pub type Window = u64
 pub type Atom = u64
-pub type VisualID = usize
+pub type VisualID = uint
 pub type Time = u64
 pub type Colormap = u64
 

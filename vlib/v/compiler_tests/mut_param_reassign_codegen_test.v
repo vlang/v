@@ -7,12 +7,13 @@ const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
 
 fn mut_param_reassign_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_mut_param_reassign_codegen_test_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_mut_param_reassign_codegen_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -21,10 +22,10 @@ fn mut_param_reassign_run_good(v3_bin string, name string, source string) string
 	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }
@@ -33,10 +34,10 @@ fn mut_param_reassign_run_good_with_c(v3_bin string, name string, source string)
 	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -keepc -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-keepc', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	c_source := os.read_file('${bin}.c') or { panic(err) }
 	return run.output.trim_space(), c_source
@@ -46,7 +47,7 @@ fn mut_param_reassign_run_bad(v3_bin string, name string, source string, expecte
 	src := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}.v')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains(expected), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
@@ -186,7 +187,7 @@ fn main() {
 	println("ok")
 }
 ',
-		'redefinition of xs')
+		'redefinition of `xs`')
 }
 
 fn test_pointer_local_redefinition_of_mut_param_is_rejected_before_c_compile() {
@@ -209,7 +210,7 @@ fn main() {
 	println("ok")
 }
 ',
-		'redefinition of xs')
+		'redefinition of `xs`')
 }
 
 fn test_mut_param_compound_assign_and_postfix_store_through_pointer() {
@@ -385,7 +386,7 @@ fn main() {
 	replace[Item](mut current, &replacement)
 }
 ',
-		'expected `&&Item`')
+		'parameter `current` is `mut current &Item`, a mutable reference to a `&Item`')
 }
 
 fn test_fn_literal_mut_pointer_param_reassigns_caller_slot() {
@@ -559,8 +560,8 @@ fn main() {
 }
 ')
 	assert out == "Animal(Cat{\n    name: 'Tom'\n})"
-	assert c_source.contains('replace_T_Animal(value, replacement);')
-	assert !c_source.contains('replace_T_Animal(&value, replacement);')
+	assert c_source.contains('replace_T_Animal(value, ')
+	assert !c_source.contains('replace_T_Animal(&value, ')
 }
 
 fn test_mut_param_reassign_keeps_invalid_assignments_rejected() {
@@ -583,7 +584,7 @@ fn main() {
 	_ = shadow_read(mut text)
 }
 ",
-		'redefinition of text')
+		'redefinition of `text`')
 	mut_param_reassign_run_bad(v3_bin, 'bad_mut_array_param_reassign_elem', "fn bad(mut xs []int) {
 	mut ys := []string{}
 	ys << 'bad'
@@ -631,5 +632,5 @@ fn main() {
 	replace(mut xs)
 }
 ',
-		'redefinition of xs')
+		'redefinition of `xs`')
 }

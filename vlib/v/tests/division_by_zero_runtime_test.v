@@ -33,9 +33,9 @@ fn compile_and_run_program(source string) string {
 	exe_path := os.join_path(vtmp_folder, 'division_by_zero_test${exe_suffix()}')
 	os.write_file(source_path, source) or { panic(err) }
 	compile_cmd := '${os.quoted_path(vexe)} -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}'
-	compilation := os.execute(compile_cmd)
+	compilation := os.exec([vexe, '-o', exe_path, source_path])
 	assert compilation.exit_code == 0, 'compilation failed: ${compilation.output}'
-	result := os.execute(os.quoted_path(exe_path))
+	result := os.exec([exe_path])
 	assert result.exit_code != 0, 'program unexpectedly succeeded'
 	return result.output
 }

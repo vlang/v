@@ -206,7 +206,9 @@ pub fn (t Token) is_assignment() bool {
 		.right_shift_unsigned_assign, .xor_assign]
 }
 
-// is_overloadable reports whether is overloadable applies in token.
+// is_overloadable reports whether t can follow a method receiver as an operator
+// method name. The parser rejects `|` and `^` there with a diagnostic, and
+// `!=`, `>`, `<=` and `>=`, which are generated from `==` and `<`.
 @[inline]
 pub fn (t Token) is_overloadable() bool {
 	return t in [.div, .eq, .ge, .gt, .le, .lt, .minus, .mod, .mul, .power, .ne, .pipe, .plus,

@@ -1,12 +1,23 @@
 module sapp
 
+// Screenshot holds the RGBA8 pixels read back from the window framebuffer by `screenshot_window`.
+// `size` is the buffer length in bytes (`width * height * 4`).
 @[heap]
 pub struct Screenshot {
+pub:
 	width  int
 	height int
 	size   int
 mut:
+	// pixels is allocated here and released by `free`/`destroy`, so it is not exposed; use `pixels()`.
 	pixels &u8 = unsafe { nil }
+}
+
+// pixels returns the start of the RGBA8 pixel buffer (`size` bytes, rows ordered bottom to top).
+// The buffer is owned by the Screenshot: it is nil after `free()`, and neither the buffer nor the
+// Screenshot may be used after `destroy()`.
+pub fn (ss &Screenshot) pixels() &u8 {
+	return ss.pixels
 }
 
 @[manualfree]

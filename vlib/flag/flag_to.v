@@ -25,11 +25,11 @@ pub enum ParseMode {
 
 pub enum Style {
 	short         // Posix short only, allows multiple shorts -def is `-d -e -f` and "sticky" arguments e.g.: `-ofoo` = `-o foo`
-	long          // GNU style long option *only*. E.g.: `--name` or `--name=value`
-	short_long    // extends `posix` style shorts with GNU style long options: `--flag` or `--name=value`
+	long          // GNU style long option *only*. E.g.: `--name`, `--name=value` or `--name value`
+	short_long    // extends `posix` style shorts with GNU style long options: `--flag`, `--name=value` or `--name value`. A single dash exact long name, e.g. `-name value`, is also accepted
 	v             // V style flags as found in flags for the `v` compiler. Single flag denote `-` followed by string identifier e.g.: `-verbose`, `-name value`, `-v`, `-n value` or `-d ident=value`
 	v_flag_parser // V `flag.FlagParser` style flags as supported by `flag.FlagParser`. Long flag denote `--` followed by string identifier e.g.: `--verbose`, `--name value`, `-v` or `-n value`.
-	go_flag       // GO `flag` module style. Single flag denote `-` followed by string identifier e.g.: `-verbose`, `-name value`, `-v` or `-n value` and both long `--name value` and GNU long `--name=value`
+	go_flag       // GO `flag` module style. Single flag denote `-` followed by string identifier e.g.: `-verbose`, `-name value`, `-name=value`, `-v` or `-n value` and both long `--name value` and GNU long `--name=value`
 	cmd_exe       // `cmd.exe` style flags. Single flag denote `/` followed by lower- or upper-case character
 }
 
@@ -68,54 +68,30 @@ fn assign_single_flag_value[T](mut target T, default_value T, f FlagData, struct
 	_ = target
 	a_or_r := f.arg or { '${f.repeats}' }
 	$if T is int {
-		if !a_or_r.is_int() {
-			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
-		}
-		target = a_or_r.int()
+		// bit size 0 is the size of `int` on the target
+		target = int(int_arg(a_or_r, 0, f, struct_name, field_name)!)
 	} $else $if T is i64 {
-		if !a_or_r.is_int() {
-			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
-		}
-		target = a_or_r.i64()
+		target = int_arg(a_or_r, 64, f, struct_name, field_name)!
 	} $else $if T is u64 {
-		if !a_or_r.is_int() {
-			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
-		}
-		target = a_or_r.u64()
+		target = uint_arg(a_or_r, 64, f, struct_name, field_name)!
 	} $else $if T is i32 {
-		if !a_or_r.is_int() {
-			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
-		}
-		target = a_or_r.i32()
+		target = i32(int_arg(a_or_r, 32, f, struct_name, field_name)!)
 	} $else $if T is u32 {
-		if !a_or_r.is_int() {
-			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
-		}
-		target = a_or_r.u32()
+		target = u32(uint_arg(a_or_r, 32, f, struct_name, field_name)!)
 	} $else $if T is i16 {
-		if !a_or_r.is_int() {
-			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
-		}
-		target = a_or_r.i16()
+		target = i16(int_arg(a_or_r, 16, f, struct_name, field_name)!)
 	} $else $if T is u16 {
-		if !a_or_r.is_int() {
-			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
-		}
-		target = a_or_r.u16()
+		target = u16(uint_arg(a_or_r, 16, f, struct_name, field_name)!)
 	} $else $if T is i8 {
-		if !a_or_r.is_int() {
-			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
-		}
-		target = a_or_r.i8()
+		target = i8(int_arg(a_or_r, 8, f, struct_name, field_name)!)
 	} $else $if T is u8 {
-		if !a_or_r.is_int() {
-			return error('can not assign non-integer value `${a_or_r}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
-		}
-		target = a_or_r.u8()
+		target = u8(uint_arg(a_or_r, 8, f, struct_name, field_name)!)
 	} $else $if T is f32 {
-		target = f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.f32()
+		target = f32(float_arg(f.arg or { return error('failed appending ${f.raw} to ${field_name}') },
+			32, f, struct_name, field_name)!)
 	} $else $if T is f64 {
-		target = f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.f64()
+		target = float_arg(f.arg or { return error('failed appending ${f.raw} to ${field_name}') },
+			64, f, struct_name, field_name)!
 	} $else $if T is bool {
 		if arg := f.arg {
 			return error('can not assign `${arg}` to bool field `${field_name}`')
@@ -128,34 +104,73 @@ fn assign_single_flag_value[T](mut target T, default_value T, f FlagData, struct
 	}
 }
 
-fn append_multi_flag_value[T](mut target T, f FlagData, field_name string) ! {
+fn append_multi_flag_value[T](mut target T, f FlagData, struct_name string, field_name string) ! {
 	$if T is []string {
 		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.str()
-	} $else $if T is []int {
-		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.int()
-	} $else $if T is []i64 {
-		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.i64()
-	} $else $if T is []u64 {
-		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.u64()
-	} $else $if T is []i32 {
-		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.i32()
-	} $else $if T is []u32 {
-		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.u32()
-	} $else $if T is []i16 {
-		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.i16()
-	} $else $if T is []u16 {
-		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.u16()
-	} $else $if T is []i8 {
-		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.i8()
-	} $else $if T is []u8 {
-		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.u8()
-	} $else $if T is []f32 {
-		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.f32()
-	} $else $if T is []f64 {
-		target << f.arg or { return error('failed appending ${f.raw} to ${field_name}') }.f64()
 	} $else {
-		return error('field type: ${T.name} for multi value ${field_name} is not supported')
+		arg := f.arg or { return error('failed appending ${f.raw} to ${field_name}') }
+		$if T is []int {
+			target << int(int_arg(arg, 0, f, struct_name, field_name)!)
+		} $else $if T is []i64 {
+			target << int_arg(arg, 64, f, struct_name, field_name)!
+		} $else $if T is []u64 {
+			target << uint_arg(arg, 64, f, struct_name, field_name)!
+		} $else $if T is []i32 {
+			target << i32(int_arg(arg, 32, f, struct_name, field_name)!)
+		} $else $if T is []u32 {
+			target << u32(uint_arg(arg, 32, f, struct_name, field_name)!)
+		} $else $if T is []i16 {
+			target << i16(int_arg(arg, 16, f, struct_name, field_name)!)
+		} $else $if T is []u16 {
+			target << u16(uint_arg(arg, 16, f, struct_name, field_name)!)
+		} $else $if T is []i8 {
+			target << i8(int_arg(arg, 8, f, struct_name, field_name)!)
+		} $else $if T is []u8 {
+			target << u8(uint_arg(arg, 8, f, struct_name, field_name)!)
+		} $else $if T is []f32 {
+			target << f32(float_arg(arg, 32, f, struct_name, field_name)!)
+		} $else $if T is []f64 {
+			target << float_arg(arg, 64, f, struct_name, field_name)!
+		} $else {
+			return error('field type: ${T.name} for multi value ${field_name} is not supported')
+		}
 	}
+}
+
+// int_arg converts the integer `arg`, given with the flag `f`, for the signed field
+// `struct_name.field_name` of `bit_size` bits (0 for `int`).
+// It returns an error, when `arg` is not an integer, or does not fit in the field.
+fn int_arg(arg string, bit_size int, f FlagData, struct_name string, field_name string) !i64 {
+	return parse_int_value(arg, bit_size) or {
+		number_arg_error(err, arg, f, struct_name, field_name)
+	}
+}
+
+// uint_arg is like int_arg, for an unsigned field.
+fn uint_arg(arg string, bit_size int, f FlagData, struct_name string, field_name string) !u64 {
+	return parse_uint_value(arg, bit_size) or {
+		number_arg_error(err, arg, f, struct_name, field_name)
+	}
+}
+
+// float_arg converts the number `arg`, given with the flag `f`, for the `f32` or `f64` field
+// `struct_name.field_name` (`bit_size` 32 or 64).
+// It returns an error, when `arg` is not a number, or is too large for the field.
+fn float_arg(arg string, bit_size int, f FlagData, struct_name string, field_name string) !f64 {
+	return parse_float_value(arg, bit_size) or {
+		number_arg_error(err, arg, f, struct_name, field_name)
+	}
+}
+
+// number_arg_error returns the error for the argument `arg` of the flag `f`, that could not
+// be converted for the field `struct_name.field_name`, because of `err`.
+fn number_arg_error(err IError, arg string, f FlagData, struct_name string, field_name string) IError {
+	kind := match err.msg() {
+		value_out_of_range { 'out of range' }
+		'not a number' { 'non-number' }
+		else { 'non-integer' }
+	}
+	return error('can not assign ${kind} value `${arg}` from flag `${f.raw}` to `${struct_name}.${field_name}`')
 }
 
 fn (sf StructField) shortest_match_name() ?string {
@@ -479,24 +494,27 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 	}
 
 	for pos, arg in args {
+		mut pos_is_handled := pos in fm.handled_pos
+		if pos_is_handled {
+			// Skipped via `config.skip` or already consumed as the argument of a previous flag. E.g.: `--name -value`
+			trace_dbg_println('${@FN}: skipping position "${pos}". Already handled')
+			continue
+		}
 		if arg == '' {
 			fm.no_match << pos
 			continue
 		}
-		mut pos_is_handled := pos in fm.handled_pos
 
-		if !pos_is_handled {
-			// Stop parsing as soon as possible if `--` (or user defined) stop option is sat and encountered
-			if arg == config.stop or { '' } {
-				trace_println('${@FN}: reached option stop (${config.stop}) at index ${pos}')
-				// record all positions after this as not matching, unless pos is the last entry
-				if pos < args.len - 1 {
-					for unused_pos in pos + 1 .. args.len {
-						fm.no_match << unused_pos
-					}
+		// Stop parsing as soon as possible if `--` (or user defined) stop option is sat and encountered
+		if arg == config.stop or { '' } {
+			trace_println('${@FN}: reached option stop (${config.stop}) at index ${pos}')
+			// record all positions after this as not matching, unless pos is the last entry
+			if pos < args.len - 1 {
+				for unused_pos in pos + 1 .. args.len {
+					fm.no_match << unused_pos
 				}
-				break
 			}
+			break
 		}
 
 		// peek next arg
@@ -521,6 +539,11 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 			is_long_delimiter := used_delimiter.count(delimiter) == 2
 			is_short_delimiter := used_delimiter.count(delimiter) == 1
 			is_invalid_delimiter := !is_long_delimiter && !is_short_delimiter
+			// In `.short_long` style, a short delimiter flag exactly matching a long flag name is mapped as a long flag,
+			// like GO's `flag` module and GNU's `getopt_long_only()` do. E.g.: `-name value` = `--name value`
+			is_long_name := is_short_delimiter && style == .short_long && flag_name.len > 1
+				&& fm.si.fields.values().any(!it.hints.has(.short_only)
+					&& !it.hints.has(.is_ignore) && it.match_name == flag_name)
 			if is_invalid_delimiter {
 				if config.mode == .relaxed {
 					fm.no_match << pos
@@ -553,7 +576,8 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 					}
 					return error('short delimiter `${used_delimiter}` encountered in flag `${arg}` in ${style} (GNU) style parsing mode')
 				}
-				if style == .short_long && flag_name.len > 1 && flag_name.contains('-') {
+				if style == .short_long && flag_name.len > 1 && flag_name.contains('-')
+					&& !is_long_name {
 					if config.mode == .relaxed {
 						fm.no_match << pos
 						continue
@@ -579,7 +603,7 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 			}
 
 			// Identify and match short clusters first. Example: `-yxz( arg)` = `-y -x -z( arg)`
-			if is_short_delimiter && style in [.short, .short_long] {
+			if is_short_delimiter && !is_long_name && style in [.short, .short_long] {
 				fm.map_posix_short_cluster(flag_ctx)!
 			}
 
@@ -614,7 +638,7 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 					trace_println('${@FN}: skipping long delimiter `${used_delimiter}` match for ${struct_name}.${field.name} since it has [only: ${field.short}]')
 				}
 
-				if is_short_delimiter {
+				if is_short_delimiter && !is_long_name {
 					if style in [.short, .short_long] {
 						if fm.map_posix_short(flag_ctx, field)! {
 							continue
@@ -638,8 +662,8 @@ pub fn (mut fm FlagMapper) parse[T]() ! {
 					}
 				}
 
-				if is_long_delimiter {
-					// Parse GNU `--name=value`
+				if is_long_delimiter || is_long_name {
+					// Parse GNU `--name=value` or `--name value`
 					if style in [.long, .short_long] {
 						if fm.map_gnu_long(flag_ctx, field)! {
 							continue
@@ -975,7 +999,7 @@ pub fn (fm FlagMapper) to_struct[T](defaults ?T) !T {
 				assign_single_flag_value(mut result.$(field.name), the_default.$(field.name), f, struct_name, field.name)!
 			}
 			for f in fm.array_field_map_flag[field.name] {
-				append_multi_flag_value(mut result.$(field.name), f, field.name)!
+				append_multi_flag_value(mut result.$(field.name), f, struct_name, field.name)!
 			}
 		}
 	} $else {
@@ -1160,6 +1184,19 @@ fn (mut fm FlagMapper) map_v_flag_parser_long(flag_ctx FlagContext, field Struct
 	return false
 }
 
+// flag_arg returns the argument of the (non-bool) flag in `flag_ctx`, given either as `--name=value`
+// or, like GNU's `getopt_long()` and GO's `flag` module allow, as the next argument: `--name value`.
+// The returned `bool` is `true` when the next argument is used.
+fn (fm FlagMapper) flag_arg(flag_ctx FlagContext, field StructField) !(string, bool) {
+	if flag_ctx.raw.contains('=') {
+		return flag_ctx.raw.all_after('='), false
+	}
+	if flag_ctx.pos + 1 >= fm.input.len {
+		return error('flag `${flag_ctx.raw}` mapping to `${field.name}` expects an argument. E.g.: `${flag_ctx.raw} value` or `${flag_ctx.raw}=value`')
+	}
+	return flag_ctx.next, true
+}
+
 // map_go_flag_short returns `true` if the GO short style flag in `flag_ctx` can be mapped to `field`.
 // map_go_flag_short adds data of the match in the internal structures for further processing if applicable
 fn (mut fm FlagMapper) map_go_flag_short(flag_ctx FlagContext, field StructField) !bool {
@@ -1167,7 +1204,6 @@ fn (mut fm FlagMapper) map_go_flag_short(flag_ctx FlagContext, field StructField
 	flag_name := flag_ctx.name
 	pos := flag_ctx.pos
 	used_delimiter := flag_ctx.delimiter
-	next := flag_ctx.next
 
 	if field.hints.has(.is_bool) {
 		if flag_name == field.match_name {
@@ -1189,29 +1225,33 @@ fn (mut fm FlagMapper) map_go_flag_short(flag_ctx FlagContext, field StructField
 	}
 
 	if flag_name == field.match_name || flag_name == field.short {
+		// GO `flag` style `-name value` or `-name=value`
+		arg, next_is_used := fm.flag_arg(flag_ctx, field)!
 		if field.hints.has(.is_array) {
-			trace_println('${@FN}: found match for (GO short style multiple occurrences) ${fm.dbg_match(flag_ctx, field, next, '')}')
+			trace_println('${@FN}: found match for (GO short style multiple occurrences) ${fm.dbg_match(flag_ctx, field, arg, '')}')
 			fm.add_array_flag(field.name, FlagData{
 				raw:        flag_raw
 				field_name: field.name
 				delimiter:  used_delimiter
 				name:       flag_name
-				arg:        ?string(next)
+				arg:        ?string(arg)
 				pos:        pos
 			})
 		} else {
-			trace_println('${@FN}: found match for (GO short style) ${fm.dbg_match(flag_ctx, field, next, '')}')
+			trace_println('${@FN}: found match for (GO short style) ${fm.dbg_match(flag_ctx, field, arg, '')}')
 			fm.field_map_flag[field.name] = FlagData{
 				raw:        flag_raw
 				field_name: field.name
 				delimiter:  used_delimiter
 				name:       flag_name
-				arg:        ?string(next)
+				arg:        ?string(arg)
 				pos:        pos
 			}
 		}
 		fm.handled_pos << pos
-		fm.handled_pos << pos + 1 // arg
+		if next_is_used {
+			fm.handled_pos << pos + 1 // arg
+		}
 		return true
 	}
 	return false
@@ -1243,14 +1283,10 @@ fn (mut fm FlagMapper) map_go_flag_long(flag_ctx FlagContext, field StructField)
 			return true
 		}
 
-		if !flag_raw.contains('=') {
-			if field.hints.has(.is_int_type) && field.hints.has(.can_repeat) {
-				return error('field `${field.name}` has @[repeats], only POSIX short style allows repeating')
-			}
-			return error('long delimiter `${used_delimiter}` flag `${flag_raw}` mapping to `${field.name}` in ${fm.config.style} style parsing mode, expects GO (GNU) style assignment. E.g.: --name=value')
+		if !flag_raw.contains('=') && field.hints.has(.is_int_type) && field.hints.has(.can_repeat) {
+			return error('field `${field.name}` has @[repeats], only POSIX short style allows repeating')
 		}
-
-		arg := if flag_raw.contains('=') { flag_raw.all_after('=') } else { '' }
+		arg, next_is_used := fm.flag_arg(flag_ctx, field)!
 		if field.hints.has(.is_array) {
 			trace_println('${@FN}: found match for (GO `flag` style multiple occurrences) ${fm.dbg_match(flag_ctx, field, arg, '')}')
 			fm.add_array_flag(field.name, FlagData{
@@ -1272,7 +1308,10 @@ fn (mut fm FlagMapper) map_go_flag_long(flag_ctx FlagContext, field StructField)
 				pos:        pos
 			}
 		}
-		fm.handled_pos << pos // NOTE: arg is part of the flag in GO (GNU) long style args
+		fm.handled_pos << pos
+		if next_is_used {
+			fm.handled_pos << pos + 1 // arg
+		}
 		return true
 	}
 	return false
@@ -1302,14 +1341,12 @@ fn (mut fm FlagMapper) map_gnu_long(flag_ctx FlagContext, field StructField) !bo
 			}
 			fm.handled_pos << pos
 			return true
-		} else if fm.config.style in [.long, .short_long] && !flag_raw.contains('=') {
-			if field.hints.has(.is_int_type) && field.hints.has(.can_repeat) {
-				return error('field `${field.name}` has @[repeats], only POSIX short style allows repeating')
-			}
-			return error('long delimiter `${used_delimiter}` flag `${flag_raw}` mapping to `${field.name}` in ${fm.config.style} style parsing mode, expects GNU style assignment. E.g.: --name=value')
 		}
 
-		arg := if flag_raw.contains('=') { flag_raw.all_after('=') } else { '' }
+		if !flag_raw.contains('=') && field.hints.has(.is_int_type) && field.hints.has(.can_repeat) {
+			return error('field `${field.name}` has @[repeats], only POSIX short style allows repeating')
+		}
+		arg, next_is_used := fm.flag_arg(flag_ctx, field)!
 		if field.hints.has(.is_array) {
 			trace_println('${@FN}: found match for (GNU style multiple occurrences) ${fm.dbg_match(flag_ctx, field, arg, '')}')
 			fm.add_array_flag(field.name, FlagData{
@@ -1331,7 +1368,10 @@ fn (mut fm FlagMapper) map_gnu_long(flag_ctx FlagContext, field StructField) !bo
 				pos:        pos
 			}
 		}
-		fm.handled_pos << pos // NOTE: arg is part of the flag in GNU long style args
+		fm.handled_pos << pos
+		if next_is_used {
+			fm.handled_pos << pos + 1 // arg
+		}
 		return true
 	}
 	return false
@@ -1372,6 +1412,21 @@ fn (mut fm FlagMapper) map_posix_short_cluster(flag_ctx FlagContext) ! {
 
 		if matched_fields.len == 0 {
 			return
+		}
+
+		// Every flag in the cluster must be known, up to one that takes the rest as its argument. E.g.: `-vxf` = `-v -x -f`
+		for mflag in split {
+			field := matched_fields[mflag] or {
+				if fm.config.mode == .relaxed {
+					fm.no_match << flag_ctx.pos
+					fm.handled_pos << flag_ctx.pos
+					return
+				}
+				return error('unknown flag `${flag_ctx.delimiter}${mflag}` in short flag cluster `${flag_ctx.raw}`')
+			}
+			if !field.hints.has(.is_bool) && !field.hints.has(.can_repeat) {
+				break
+			}
 		}
 
 		// Iterate `split` instead of `matched_fields` since the order of appearance has significance

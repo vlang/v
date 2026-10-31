@@ -5,6 +5,77 @@ import strings
 // Keep this marker synchronized with v.flat's static type-method name codec.
 const static_type_method_name_marker = '@static@'
 const internal_symbol_c_prefix = '__v3_internal_symbol_'
+// operator_method_c_prefix starts the C name of an operator overload method
+// (`Vec.+`). sanitize spells an operator as a word (`Vec__plus`), and an ordinary
+// method of the same receiver can have that word as its name (`Vec.plus`). No
+// source name can sanitize to a name in the internal namespace, so the two
+// cannot meet in C.
+pub const operator_method_c_prefix = '${internal_symbol_c_prefix}op_'
+// overloadable_operators lists every operator a method can overload (see
+// `token.Token.is_overloadable`), and the index operators.
+const overloadable_operators = ['+', '-', '*', '/', '%', '**', '==', '!=', '<', '>', '<=', '>=',
+	'|', '^', '[]', '[]=']
+const max_c_collision_name_len = 8
+
+// Additional C++ keywords use the internal partition so source names such as
+// `operator` and `v_operator` remain distinct. Native C names bypass this map.
+const cpp_reserved_words = {
+	'alignas':          true
+	'alignof':          true
+	'and':              true
+	'and_eq':           true
+	'bitand':           true
+	'bitor':            true
+	'catch':            true
+	'char8_t':          true
+	'char16_t':         true
+	'char32_t':         true
+	'class':            true
+	'compl':            true
+	'concept':          true
+	'const_cast':       true
+	'consteval':        true
+	'constexpr':        true
+	'constinit':        true
+	'co_await':         true
+	'co_return':        true
+	'co_yield':         true
+	'decltype':         true
+	'delete':           true
+	'dynamic_cast':     true
+	'explicit':         true
+	'export':           true
+	'friend':           true
+	'mutable':          true
+	'namespace':        true
+	'new':              true
+	'noexcept':         true
+	'not':              true
+	'not_eq':           true
+	'nullptr':          true
+	'operator':         true
+	'or':               true
+	'or_eq':            true
+	'private':          true
+	'protected':        true
+	'public':           true
+	'reinterpret_cast': true
+	'requires':         true
+	'static_assert':    true
+	'static_cast':      true
+	'template':         true
+	'this':             true
+	'thread_local':     true
+	'throw':            true
+	'try':              true
+	'typeid':           true
+	'typename':         true
+	'using':            true
+	'virtual':          true
+	'wchar_t':          true
+	'xor':              true
+	'xor_eq':           true
+}
 
 // reserved_words is a set (not a list) so `name in reserved_words` is an O(1)
 // hash lookup. c_name() runs on every emitted identifier, so a linear scan here
@@ -12,6 +83,7 @@ const internal_symbol_c_prefix = '__v3_internal_symbol_'
 const reserved_words = {
 	'auto':     true
 	'break':    true
+	'bool':     true
 	'case':     true
 	'char':     true
 	'asm':      true
@@ -51,10 +123,23 @@ const reserved_words = {
 	'void':     true
 	'volatile': true
 	'while':    true
+	// The C99 header <complex.h> defines this as the keyword _Complex.
+	'complex':  true
+	// Windows headers define these as memory-model and calling-convention macros.
+	'near':     true
+	'far':      true
+	'pascal':   true
+	'cdecl':    true
+	// windef.h defines these as function-like macros, which reject a one-argument
+	// declaration (`double min(Tree* tree)`) or a two-argument definition.
+	'min':      true
+	'max':      true
+	// GNU C modes predefine these as macros (`linux` on Linux, `unix` on Unix).
 	'unix':     true
+	'linux':    true
 }
 
-// libc_collisions are libc function names that are not C keywords but clash at
+// libc_collisions are C runtime and intrinsic names that are not keywords but clash at
 // link/declaration time when a user defines a plain (module `main`) function with
 // the same name (e.g. `fn rint(...)` vs libc's `double rint(double)`). They are
 // mangled to `v_<name>` consistently at definition and call sites. `C.<name>`
@@ -63,12 +148,14 @@ const libc_collisions = {
 	'abort':    true
 	'abs':      true
 	'access':   true
+	'alloca':   true
 	'acos':     true
 	'atexit':   true
 	'ceil':     true
 	'ceilf':    true
 	'close':    true
 	'clock':    true
+	'connect':  true
 	'cos':      true
 	'drem':     true
 	'dup2':     true
@@ -92,10 +179,12 @@ const libc_collisions = {
 	'memcpy':   true
 	'memmove':  true
 	'memset':   true
+	'mktemp':   true
 	'open':     true
 	'pipe':     true
 	'pow':      true
 	'printf':   true
+	'raise':    true
 	'read':     true
 	'realpath': true
 	'rint':     true
@@ -113,6 +202,7 @@ const libc_collisions = {
 	'strncpy':  true
 	'strrchr':  true
 	'strstr':   true
+	'truncate': true
 	'wait':     true
 	'y0':       true
 	'y1':       true
@@ -130,6 +220,9 @@ pub fn c_name(name string) string {
 		}
 		return name[2..]
 	}
+	if is_operator_method_name(name) {
+		return operator_method_c_name(name)
+	}
 	if name == 'malloc' {
 		return 'v_malloc'
 	}
@@ -144,8 +237,22 @@ pub fn c_name(name string) string {
 		return 'v_exit'
 	}
 	n := sanitize(name)
+	if n in cpp_reserved_words {
+		return '${internal_symbol_c_prefix}cpp_${n}'
+	}
+	if n == 'complex' || name == '@complex' {
+		return '${internal_symbol_c_prefix}macro_complex'
+	}
+	if n in ['mktemp', 'truncate', 'alloca'] {
+		return '${internal_symbol_c_prefix}libc_${n}'
+	}
 	mut result := n
-	if n in reserved_words || n in libc_collisions || is_string_literal_symbol(n) {
+	// The collision sets contain only short names; longer identifiers cannot match.
+	if (n.len <= max_c_collision_name_len && (n in reserved_words || n in libc_collisions))
+		|| is_string_literal_symbol(n) {
+		if n in ['near', 'far', 'pascal', 'cdecl', 'min', 'max'] {
+			return '${internal_symbol_c_prefix}macro_${n}'
+		}
 		if name.contains('@') {
 			result = '_v_${n}'
 		} else {
@@ -164,7 +271,40 @@ pub fn c_name(name string) string {
 // identifier fast paths because c_name applies the internal-symbol partition.
 pub fn c_name_needs_internal_namespace(name string) bool {
 	return name.contains(static_type_method_name_marker)
-		|| name.starts_with(internal_symbol_c_prefix)
+		|| name.starts_with(internal_symbol_c_prefix) || is_operator_method_name(name)
+}
+
+// is_operator_method_name reports whether name is the V name of an operator
+// overload method: a receiver, `.` and the operator (`Vec.+`, `Box[T].[]=`).
+@[direct_array_access]
+pub fn is_operator_method_name(name string) bool {
+	if name.len < 3 {
+		return false
+	}
+	match name[name.len - 1] {
+		`+`, `-`, `*`, `/`, `%`, `=`, `<`, `>`, `|`, `^`, `]` {}
+		else {
+			return false
+		}
+	}
+	dot := name.last_index_u8(`.`)
+	if dot <= 0 || name.len - dot - 1 > 3 {
+		return false
+	}
+	return unsafe { name.substr_unsafe(dot + 1, name.len) } in overloadable_operators
+}
+
+// operator_method_c_name returns the C name of the operator overload method `name`.
+// The operators of the builtin `string` keep their plain C names (`string__eq`,
+// `string__lt`, `string__plus`): the compiler and its C prelude call them by those
+// names, and only the builtin module can declare methods on `string`.
+fn operator_method_c_name(name string) string {
+	sanitized := sanitize(name)
+	receiver := name.all_before_last('.')
+	if receiver == 'string' || receiver == 'builtin.string' {
+		return sanitized
+	}
+	return operator_method_c_prefix + sanitized
 }
 
 fn static_type_method_c_name(name string) string {
@@ -269,6 +409,11 @@ fn sanitize_complex(name string) string {
 					continue
 				}
 				if next == `*` {
+					if i + 2 < name.len && name[i + 2] == `*` {
+						b.write_string('__pow')
+						i += 3
+						continue
+					}
 					b.write_string('__mul')
 					i += 2
 					continue
@@ -346,7 +491,7 @@ fn sanitize_complex(name string) string {
 		} else if c == `&` {
 			b.write_string('ptr')
 		} else if c == `?` {
-			b.write_string('Optional_')
+			b.write_string('__v_option_')
 		} else if c == `!` {
 			b.write_string('Result_')
 		} else if c == `@` {
@@ -386,9 +531,15 @@ pub fn local_rename(cname string) string {
 	return '${internal_symbol_c_prefix}local_${cname}'
 }
 
+// global_rename returns collision-free storage for a global sharing a callable name.
+// The internal namespace is disjoint from source names and renamed locals.
+pub fn global_rename(cname string) string {
+	return '${internal_symbol_c_prefix}global_${cname}'
+}
+
 // is_reserved_word reports whether name needs a prefix to avoid a C reserved word.
 pub fn is_reserved_word(name string) bool {
-	return name in reserved_words
+	return name in reserved_words || name in cpp_reserved_words
 }
 
 // is_libc_collision reports whether name needs a prefix to avoid a libc symbol.
@@ -427,4 +578,103 @@ pub fn fn_ptr_type_name(encoded string) string {
 		hash = (hash ^ u64(c)) * u64(1099511628211)
 	}
 	return '_fn_ptr_${hash.hex()}'
+}
+
+// fn_ptr_encoded returns the internal `fn_ptr:ret|params` key of a function-pointer
+// signature from the C spellings of its return type and parameter types. A part that
+// is itself a `fn_ptr:` key is wrapped in parentheses (see fn_ptr_encoded_part), so
+// its own `|` and `, ` separators cannot merge into the enclosing signature.
+pub fn fn_ptr_encoded(ret string, params []string) string {
+	mut sb := strings.new_builder(32)
+	sb.write_string('fn_ptr:')
+	sb.write_string(fn_ptr_encoded_part(ret))
+	sb.write_u8(`|`)
+	if params.len == 0 {
+		sb.write_string('void')
+	}
+	for i, param in params {
+		if i > 0 {
+			sb.write_string(', ')
+		}
+		sb.write_string(fn_ptr_encoded_part(param))
+	}
+	return sb.str()
+}
+
+// fn_ptr_encoded_part spells a return or parameter C type the way it is embedded in
+// an enclosing `fn_ptr:ret|params` key. A nested `fn_ptr:` key is parenthesized:
+// spliced in as is, `fn (int, fn (int, int) int)` and `fn (int, fn (int) int, int)`
+// would both read `fn_ptr:void|i64, fn_ptr:i64|i64, i64`.
+pub fn fn_ptr_encoded_part(ct string) string {
+	if ct.starts_with('fn_ptr:') {
+		return '(${ct})'
+	}
+	return ct
+}
+
+// fn_ptr_encoded_unwrap undoes fn_ptr_encoded_part for one return or parameter part.
+pub fn fn_ptr_encoded_unwrap(part string) string {
+	clean := part.trim_space()
+	if clean.len > 2 && clean[0] == `(` && clean[clean.len - 1] == `)`
+		&& clean[1..].starts_with('fn_ptr:') {
+		return clean[1..clean.len - 1]
+	}
+	return clean
+}
+
+// fn_ptr_encoded_split splits a `fn_ptr:ret|params` key into its return type (with a
+// nested `fn_ptr:` key unwrapped) and its raw parameter list (see fn_ptr_encoded_params).
+// A key without a parameter list yields `void` parameters.
+pub fn fn_ptr_encoded_split(encoded string) (string, string) {
+	payload := if encoded.starts_with('fn_ptr:') { encoded['fn_ptr:'.len..] } else { encoded }
+	mut depth := 0
+	for i in 0 .. payload.len {
+		match payload[i] {
+			`(` {
+				depth++
+			}
+			`)` {
+				depth--
+			}
+			`|` {
+				if depth == 0 {
+					return fn_ptr_encoded_unwrap(payload[..i]), payload[i + 1..]
+				}
+			}
+			else {}
+		}
+	}
+	return fn_ptr_encoded_unwrap(payload), 'void'
+}
+
+// fn_ptr_encoded_params splits the raw parameter list of a `fn_ptr:ret|params` key into
+// its parameter C types, keeping each parenthesized nested `fn_ptr:` key in one piece
+// and unwrapping it. A `void` (or empty) list yields no parameters.
+pub fn fn_ptr_encoded_params(params string) []string {
+	clean := params.trim_space()
+	if clean.len == 0 || clean == 'void' {
+		return []string{}
+	}
+	mut out := []string{}
+	mut depth := 0
+	mut start := 0
+	for i in 0 .. clean.len {
+		match clean[i] {
+			`(` {
+				depth++
+			}
+			`)` {
+				depth--
+			}
+			`,` {
+				if depth == 0 {
+					out << fn_ptr_encoded_unwrap(clean[start..i])
+					start = i + 1
+				}
+			}
+			else {}
+		}
+	}
+	out << fn_ptr_encoded_unwrap(clean[start..])
+	return out
 }

@@ -28,6 +28,25 @@ mut:
 	@struct int
 }
 
+struct EscapedCWrapper {
+	C.EscapedFieldRecord
+}
+
+struct EscapedShadowWrapper {
+	C.EscapedFieldRecord
+mut:
+	@type int
+}
+
+enum EscapedDefault {
+	@none = -10
+	other
+}
+
+struct EscapedDefaultHolder {
+	state EscapedDefault
+}
+
 fn read_escaped_event_type(event &C.EscapedFieldEvent) u32 {
 	return unsafe { event.@type }
 }
@@ -98,4 +117,26 @@ fn test_escaped_v_fields_are_unchanged() {
 	value.@type++
 	assert value.@type == 44
 	assert value.@struct == 47
+}
+
+fn test_promoted_escaped_c_field_reads_and_writes() {
+	mut value := EscapedCWrapper{}
+	value.@type = 53
+	assert value.@type == 53
+	value.@type += 1
+	assert value.@type == 54
+}
+
+fn test_direct_escaped_v_field_shadows_promoted_c_field() {
+	mut value := EscapedShadowWrapper{
+		@type: 59
+	}
+	assert value.@type == 59
+	value.@type = 61
+	assert value.@type == 61
+}
+
+fn test_escaped_first_enum_member_is_used_for_default() {
+	holder := EscapedDefaultHolder{}
+	assert int(holder.state) == -10
 }

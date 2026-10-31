@@ -5,6 +5,7 @@ module http
 
 import net
 import net.quic
+import strconv
 import sync
 import time
 
@@ -332,6 +333,45 @@ fn (mut c H3MuxConn) finish_stream(mut s H3MuxStream) {
 	c.release()
 }
 
+// h3_response_field_error returns a non-empty reason when a regular (non-pseudo)
+// received response or trailer field is malformed per RFC 9114 §4.1.2/§4.2, or
+// '' when it is valid: the name must be a non-empty, lowercase token, the value
+// must contain only field-content characters (h3_field_value_has_invalid_char,
+// RFC 9114 §10.3), and connection-specific fields are forbidden --
+// TE included, since §4.2 permits it only in requests. Stricter than
+// h2_response_field_error (reused here for the name rules), which checks
+// neither TE nor field values.
+fn h3_response_field_error(name string, value string) string {
+	reason := h2_response_field_error(name)
+	if reason != '' {
+		return reason
+	}
+	is_valid(name) or { return 'invalid header field name "${name}"' }
+	if name == 'te' {
+		return 'TE header field in a response'
+	}
+	if h3_field_value_has_invalid_char(value) {
+		return 'invalid character in value of "${name}"'
+	}
+	return ''
+}
+
+// h3_field_value_has_invalid_char reports whether `value` contains a character
+// RFC 9110 §5.5's field-content rule does not permit (only VCHAR, obs-text,
+// SP and HTAB are allowed): any other control byte, i.e. 0x00-0x1F except
+// HTAB, plus DEL (0x7F). RFC 9114 §10.3 makes such a message malformed -- a
+// wider set than HTTP/2's NUL/CR/LF-only rule (h2_field_value_has_forbidden_octet).
+// Empty values and non-ASCII (obs-text) bytes are valid. Leading/trailing SP/HTAB
+// are permitted characters, so they are deliberately not rejected here.
+fn h3_field_value_has_invalid_char(value string) bool {
+	for ch in value {
+		if (ch < 0x20 && ch != `\t`) || ch == 0x7f {
+			return true
+		}
+	}
+	return false
+}
+
 // wait_response blocks until `s` has a complete response or a terminal
 // failure, assembling one H3ClientResponse from the headers/data/trailers
 // dispatch_h3_event delivers. Deliberately minimal versus H2MuxConn's own
@@ -385,11 +425,34 @@ fn (mut c H3MuxConn) wait_response(mut s H3MuxStream, req H3ClientRequest) !H3Cl
 					continue
 				}
 				seen_regular = true
-				resp.headers << f
-				if f.name == 'content-length' && all_digits(f.value) {
-					body_expected = f.value.u64()
+				reason := h3_response_field_error(f.name, f.value)
+				if reason != '' {
+					s.mu.unlock()
+					return error('h3: malformed response: ${reason}')
+				}
+				if f.name == 'content-length' {
+					// A malformed Content-Length makes the response malformed
+					// (RFC 9110 §8.6, RFC 9114 §4.1.2); silently skipping it
+					// would also skip the body-length check below. u64() is
+					// lenient and wraps on overflow, so validate digits first
+					// and parse with a range check. Differing duplicates are
+					// malformed too -- at most one can match the DATA length.
+					if !all_digits(f.value) {
+						s.mu.unlock()
+						return error('h3: malformed response: invalid content-length "${f.value}"')
+					}
+					cl := strconv.parse_uint(f.value, 10, 64) or {
+						s.mu.unlock()
+						return error('h3: malformed response: content-length "${f.value}" is out of range')
+					}
+					if has_content_length && cl != body_expected {
+						s.mu.unlock()
+						return error('h3: malformed response: conflicting content-length values ${body_expected} and ${cl}')
+					}
+					body_expected = cl
 					has_content_length = true
 				}
+				resp.headers << f
 			}
 			if !status_seen {
 				s.mu.unlock()
@@ -408,8 +471,26 @@ fn (mut c H3MuxConn) wait_response(mut s H3MuxStream, req H3ClientRequest) !H3Cl
 		serr_code := s.err_code
 		retryable := s.retryable
 		if ended {
+			// Trailers get the same field rules as headers, and MUST NOT carry
+			// pseudo-headers (RFC 9114 §4.3). The verdict is reported only after
+			// the stream-error checks below, so a malformed trailer can never
+			// mask a retryable stream failure.
+			mut trailer_err := ''
 			for f in s.resp_trailers {
-				resp.headers << f
+				if f.name.starts_with(':') {
+					trailer_err = 'pseudo-header "${f.name}" in trailers'
+					break
+				}
+				reason := h3_response_field_error(f.name, f.value)
+				if reason != '' {
+					trailer_err = reason
+					break
+				}
+			}
+			if trailer_err == '' {
+				for f in s.resp_trailers {
+					resp.headers << f
+				}
 			}
 			s.mu.unlock()
 			if serr != '' {
@@ -446,6 +527,9 @@ fn (mut c H3MuxConn) wait_response(mut s H3MuxStream, req H3ClientRequest) !H3Cl
 			}
 			if !got_headers {
 				return error('h3: stream closed without a response')
+			}
+			if trailer_err != '' {
+				return error('h3: malformed response trailers: ${trailer_err}')
 			}
 			// RFC 9110 §8.6: a Content-Length must match the bytes received.
 			// Skip for responses defined to carry no body -- HEAD requests and

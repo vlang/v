@@ -1,0 +1,30 @@
+fn hinted_sign(value int) int {
+	if _unlikely_(value == 0) {
+		return 0
+	} else if _likely_(value > 0) {
+		return 1
+	}
+	return -1
+}
+
+fn main() {
+	assert hinted_sign(-1) == -1
+	assert hinted_sign(0) == 0
+	assert hinted_sign(1) == 1
+
+	value := 1
+	if _likely_(value == 1) {
+		assert value > 0
+	} else if _unlikely_(value == 0) {
+		assert false
+	}
+
+	likely := if _likely_(value == 1) { 10 } else { 20 }
+	unlikely := if _unlikely_(value == 0) { 10 } else { 20 }
+	assert likely == 10
+	assert unlikely == 20
+
+	if _unlikely_((value == 0)) {
+		assert false
+	}
+}

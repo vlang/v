@@ -96,7 +96,9 @@ pub fn (mut pv Picoev) add(fd int, events int, timeout int, callback voidptr) in
 	}
 	mut target := pv.file_descriptors[fd]
 	target.fd = fd
-	target.cb = callback
+	unsafe {
+		target.cb = callback
+	}
 	target.loop_id = pv.loop.id
 	target.events = 0
 	if pv.update_events(fd, events | picoev_add) != 0 {

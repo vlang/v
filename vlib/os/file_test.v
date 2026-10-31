@@ -426,6 +426,16 @@ fn test_open_file_wb_ab() {
 	assert os.read_file('text.txt')! == 'hellohello'
 }
 
+fn test_read_file_on_directory_returns_error() {
+	// Reading a directory must produce an error, not a panic: glibc's ftell()
+	// on a directory stream returns LONG_MAX, which would overflow the
+	// allocation size when `int` is 64-bit.
+	os.read_file(tfolder) or {
+		return
+	}
+	assert false, 'read_file on a directory should fail'
+}
+
 fn test_open_append() {
 	os.rm(tfile) or {}
 	mut f1 := os.open_append(tfile)!

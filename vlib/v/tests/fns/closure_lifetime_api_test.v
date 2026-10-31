@@ -86,30 +86,32 @@ fn write_program(tmp_dir string, name string, source string) string {
 
 fn run_program_with_gc(tmp_dir string, name string, source string, mode string) os.Result {
 	source_path := write_program(tmp_dir, '${name}_${mode}', source)
-	return os.execute('${os.quoted_path(vexe)} -gc ${mode} run ${os.quoted_path(source_path)}')
+	return os.exec([vexe, '-gc', ...(os.split_args(mode) or { panic(err) }), 'run', source_path])
 }
 
 fn compile_program_with_gc(tmp_dir string, name string, source string, mode string) os.Result {
 	source_path := write_program(tmp_dir, '${name}_${mode}', source)
 	binary_path := os.join_path(tmp_dir, '${name}_${mode}')
-	return os.execute('${os.quoted_path(vexe)} -gc ${mode} -o ${os.quoted_path(binary_path)} ${os.quoted_path(source_path)}')
+	return os.exec([vexe, '-gc', ...(os.split_args(mode) or { panic(err) }), '-o', binary_path,
+		source_path])
 }
 
 fn compile_freestanding_object(tmp_dir string, name string, source string) os.Result {
 	source_path := write_program(tmp_dir, name, source)
 	object_path := os.join_path(tmp_dir, '${name}.o')
-	return os.execute('${os.quoted_path(vexe)} -gc none -freestanding -no-std -is_o -o ${os.quoted_path(object_path)} ${os.quoted_path(source_path)}')
+	return os.exec([vexe, '-gc', 'none', '-freestanding', '-no-std', '-is_o', '-o', object_path,
+		source_path])
 }
 
 fn run_program_with_track_heap(tmp_dir string, name string, source string) os.Result {
 	source_path := write_program(tmp_dir, name, source)
-	return os.execute('${os.quoted_path(vexe)} -gc none -d track_heap run ${os.quoted_path(source_path)}')
+	return os.exec([vexe, '-gc', 'none', '-d', 'track_heap', 'run', source_path])
 }
 
 fn c_output_for_program(tmp_dir string, name string, source string) os.Result {
 	source_path := write_program(tmp_dir, name, source)
 	// These assertions verify the legacy C backend's ownership cleanup shape.
-	return os.execute('${os.quoted_path(vexe)} -o - ${os.quoted_path(source_path)}')
+	return os.exec([vexe, '-o', '-', source_path])
 }
 
 fn assert_boehm_leak_compile_or_missing_lib(tmp_dir string, name string, source string) {
@@ -472,6 +474,58 @@ fn boehm_leak_clean_lifetime_source() string {
 	].join('\n')
 }
 
+// gc_no_interior_pointers_header turns off Boehm's recognition of interior pointers
+// before V calls `GC_INIT()`, like in the bundled Windows tcc libgc, which is built
+// without `ALL_INTERIOR_POINTERS`. Then only the registered displacements keep objects alive.
+fn gc_no_interior_pointers_header() string {
+	return [
+		'#if defined(__GNUC__) || defined(__clang__) || defined(__TINYC__)',
+		'extern void GC_set_all_interior_pointers(int);',
+		'__attribute__((constructor)) static void v_test_gc_no_interior_pointers(void) {',
+		'\tGC_set_all_interior_pointers(0);',
+		'}',
+		'#endif',
+	].join('\n')
+}
+
+// boehm_leak_no_interior_pointers_source collects, while the lifetime bookkeeping
+// arrays are only referenced from the heap, with `gc_no_interior_pointers_header`.
+fn boehm_leak_no_interior_pointers_source(header_path string) string {
+	c_header_path := header_path.replace('\\', '/')
+	return [
+		'module main',
+		'import builtin.closure',
+		'',
+		'#include "${c_header_path}"',
+		'',
+		'fn make_cb(value int) fn () int {',
+		'\treturn fn [value] () int {',
+		'\t\treturn value + 1',
+		'\t}',
+		'}',
+		'',
+		'fn run() ! {',
+		'\tmut lifetime := closure.new_lifetime()',
+		'\tfor n in 0 .. 128 {',
+		'\t\tlifetime.frame(fn [n] () {',
+		'\t\t\tcb := make_cb(n)',
+		'\t\t\tassert cb() == n + 1',
+		'\t\t})!',
+		'\t\tif n % 16 == 0 {',
+		'\t\t\tgc_collect()',
+		'\t\t}',
+		'\t\tlifetime.reclaim_all()!',
+		'\t}',
+		'\tlifetime.dispose()!',
+		'}',
+		'',
+		'fn main() {',
+		'\trun() or { panic(err) }',
+		"\tprintln('lifetime done')",
+		'}',
+	].join('\n')
+}
+
 fn gc_none_lifetime_reclaim_memory_source() string {
 	return [
 		'module main',
@@ -619,7 +673,7 @@ fn lazy_concurrent_lifetime_init_source() string {
 
 fn assert_misuse_program_passes(tmp_dir string, name string, source string) {
 	source_path := write_program(tmp_dir, name, source)
-	res := os.execute('${os.quoted_path(vexe)} run ${os.quoted_path(source_path)}')
+	res := os.exec([vexe, 'run', source_path])
 	assert res.exit_code == 0, res.output
 }
 
@@ -669,6 +723,33 @@ fn test_closure_lifetime_boehm_leak_runtime_without_persistent_callbacks() {
 		os.rmdir_all(tmp_dir) or {}
 	}
 	assert_boehm_leak_runtime_or_compile_only(tmp_dir, 'closure_lifetime_boehm_leak_clean', boehm_leak_clean_lifetime_source())
+}
+
+// Regression test for https://github.com/vlang/v/issues/28896 . `-gc boehm_leak` puts
+// a debug header in front of every object, so V's array data pointers need that
+// displacement registered too, or the leak detector frees live array buffers.
+fn test_closure_lifetime_boehm_leak_runtime_without_interior_pointers() {
+	$if gcboehm_leak ? {
+		return
+	}
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v_closure_lifetime_boehm_leak_no_interior_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	header_path := os.join_path(tmp_dir, 'gc_no_interior_pointers.h')
+	os.write_file(header_path, gc_no_interior_pointers_header()) or { panic(err) }
+	res := run_program_with_gc(tmp_dir, 'closure_lifetime_boehm_leak_no_interior',
+		boehm_leak_no_interior_pointers_source(header_path), 'boehm_leak')
+	if res.exit_code != 0 && missing_boehm_lib(res.output) {
+		eprintln('skipping boehm_leak runtime without interior pointers: missing libgc')
+		return
+	}
+	assert res.exit_code == 0, res.output
+	for gc_error in ['Invalid pointer', 'smashed', 'deallocated', 'Fatal error in GC'] {
+		assert !res.output.contains(gc_error), res.output
+	}
+	assert res.output.contains('lifetime done'), res.output
 }
 
 fn test_closure_lifetime_gc_none_does_not_leak_frame_callback_or_bookkeeping() {
@@ -796,12 +877,25 @@ fn test_closure_lifetime_dispose_frees_bookkeeping_buffers_but_keeps_state() {
 	assert !helper.contains('free(state)')
 }
 
-fn test_closure_lifetime_once_headers_keep_helper_internal() {
-	for header_name in ['closure_once_nix.h', 'closure_once_windows.h'] {
-		source_path := os.join_path(os.dir(vexe), 'vlib/builtin/closure/${header_name}')
-		source := os.read_file(source_path) or { panic(err) }
-		assert source.contains('V_CLOSURE_STATIC_INLINE void v_closure_init_once')
-		assert !source.contains('\nvoid v_closure_init_once')
+fn test_closure_runtime_setup_state_is_kept_in_v() {
+	// A C header that keeps the state of the one-time setup gives a copy of it to
+	// every translation unit that includes it, so that programs whose modules are
+	// compiled separately cannot share the closure runtime.
+	closure_dir := os.join_path(os.dir(vexe), 'vlib/builtin/closure')
+	for file in os.ls(closure_dir) or { panic(err) } {
+		assert !file.ends_with('.h'), file
+		if !file.ends_with('.v') {
+			continue
+		}
+		source := os.read_file(os.join_path(closure_dir, file)) or { panic(err) }
+		// TinyCC needs the Windows API declarations; this header contains no state.
+		declarations := '#insert "@VEXEROOT/vlib/sync/sync_windows_tcc.h"'
+		checked_source := if file == 'closure_windows.c.v' {
+			source.replace(declarations, '')
+		} else {
+			source
+		}
+		assert !checked_source.contains('#insert'), file
 	}
 }
 
@@ -972,6 +1066,44 @@ fn test_closure_lifetime_borrowed_callback_result_is_not_destroyed() {
 	run_fn := c_function_body(c_res.output, 'run(void) {') or { panic(c_res.output) }
 	assert !run_fn.contains('closure_try_destroy('), run_fn
 	res := run_program_with_gc(tmp_dir, 'closure_lifetime_borrowed_callback', source, 'none')
+	assert res.exit_code == 0, res.output
+}
+
+fn test_nested_map_append_cleans_up_staged_capturing_closures() {
+	$if gcboehm_leak ? {
+		return
+	}
+	tmp_dir := os.join_path(os.vtmp_dir(), 'v_nested_map_append_closure_${os.getpid()}')
+	os.mkdir_all(tmp_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(tmp_dir) or {}
+	}
+	source := [
+		'module main',
+		'',
+		'struct ClosureMapHolder {',
+		'mut:',
+		'\tvalues map[string]map[string][]fn () int',
+		'}',
+		'',
+		'fn run() {',
+		'\tvalue := 7',
+		'\tmut holder := ClosureMapHolder{}',
+		"\tholder.values['a']['b'] << fn [value] () int { return value }",
+		"\tholder.values['a']['b'] << [fn [value] () int { return value + 1 }]",
+		"\tassert holder.values['a']['b'][0]() == 7",
+		"\tassert holder.values['a']['b'][1]() == 8",
+		'}',
+		'',
+		'fn main() {',
+		'\trun()',
+		'}',
+	].join('\n')
+	c_res := c_output_for_program(tmp_dir, 'nested_map_append_closure', source)
+	assert c_res.exit_code == 0, c_res.output
+	run_fn := c_function_body(c_res.output, 'run(void) {') or { panic(c_res.output) }
+	assert total_closure_destroys(run_fn) == 2, run_fn
+	res := run_program_with_gc(tmp_dir, 'nested_map_append_closure', source, 'none')
 	assert res.exit_code == 0, res.output
 }
 

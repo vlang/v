@@ -95,10 +95,10 @@ fn test_bootstrap_script_is_syntax_valid_network_free_and_ordered() {
 		assert !source.contains(forbidden), forbidden
 	}
 	cc_index := source.index('"$cc_command" -std=c99') or { panic('cc bootstrap missing') }
-	v1_index := source.index(r'"$private_contract_root/v1${exe_suffix}" -no-parallel') or {
+	v1_index := source.index(r'build_v_program "$private_contract_root/v1${exe_suffix}"') or {
 		panic('v1 bootstrap missing')
 	}
-	v2_index := source.index(r'"$private_contract_root/v2${exe_suffix}" -no-parallel') or {
+	v2_index := source.index(r'build_v_program "$private_contract_root/v2${exe_suffix}"') or {
 		panic('v2 bootstrap missing')
 	}
 	cli_index := source.index(r'-d "tccbin_contract_repository=${contract_repository}"') or {
@@ -110,7 +110,19 @@ fn test_bootstrap_script_is_syntax_valid_network_free_and_ordered() {
 	assert v2_index < cli_index
 	assert cli_index < oracle_index
 	assert source.contains(r'-d "tccbin_contract_sha=${contract_sha}"')
-	assert source.count('-no-parallel -nocache -cc "$cc_command"') == 3
+	// build_v_program holds one direct invocation per branch; every cmd/v build goes through it.
+	assert source.count('-new-compiler -no-parallel -nocache -cc "$cc_command"') == 2
+	assert source.count('export V_MACOS_V3_NO_FALLBACK=1') == 1
+	assert source.count(r'sh "$vc_compat" "$vc_source" "$cc_command" -std=c99') == 1
+	assert source.contains(r'vc_compat="$private_contract_root/cmd/tools/vc_compat.sh"')
+	assert source.contains('powershell -NoProfile -ExecutionPolicy Bypass')
+	assert source.contains(r'-File "$private_contract_root/cmd/tools/vc_compat_uint.ps1"')
+	assert source.contains(r'-Source "$vc_source" -Destination "$vc_windows_compat"')
+	assert source.contains(r'-o "$private_contract_root/v1.exe" "$vc_windows_compat"')
+	assert source.contains(r'rm -f -- "$vc_windows_compat"')
+	assert source.contains('-DSYS_getrandom=0')
+	assert source.contains('cmd/tools/openbsd_vc_compat.c')
+	assert source.contains('v_link_flags=(-ldflags -lexecinfo)')
 	assert source.count('-gc none') == 3
 	cli_path_assignment := r'cli_path="$work_root/tccbin-automation${exe_suffix}"'
 	assert source.count(cli_path_assignment) == 1
@@ -120,7 +132,8 @@ fn test_bootstrap_script_is_syntax_valid_network_free_and_ordered() {
 	assert source.count(r'$cli_path') == 2
 	assert source.count(r'${cli_path}') == 0
 	assert source.count(r'"$cli_path"') == 2
-	assert source.count(r'-o "$cli_path"') == 1
+	assert source.count(r'"$private_contract_root/v${exe_suffix}" "$cli_path" -gc none') == 1
+	assert source.contains('vlib/builtin/core_windows.c')
 	assert source.count(r'binding_output=$("$cli_path" contract-binding)') == 1
 	for forbidden_interface in ['-silent', 'result-file', 'result_file', 'tail -n 1', 'tail -1'] {
 		assert !source.contains(forbidden_interface), forbidden_interface
@@ -129,6 +142,42 @@ fn test_bootstrap_script_is_syntax_valid_network_free_and_ordered() {
 		stat := os.lstat(script_path) or { panic(err) }
 		assert stat.get_mode().owner.execute
 	}
+}
+
+fn test_bootstrap_preserves_compiler_flag_argument_boundaries() {
+	source := os.read_file(os.join_path(automation_root(), 'bootstrap', 'bootstrap.sh')) or {
+		panic(err)
+	}
+	start := source.index('build_v_program() {\n') or { panic('build helper missing') }
+	end := source[start..].index('\n}\n') or { panic('build helper end missing') }
+	build_function := source[start..start + end + 3]
+	ifs := source.split_into_lines().filter(it.starts_with('IFS='))
+	assert ifs.len == 1
+	script := 'set -euo pipefail\n${ifs[0]}\n' + build_function + '
+uname() { printf "Linux\\n"; }
+record_compiler() { printf "<%s>\\n" "$@"; }
+cc_command="cc with space"
+v_link_flags=(-ldflags "-lexecinfo -other")
+build_v_program record_compiler "output path" -gc none -d "contract value" "package path"
+'
+	result := os.exec(['bash', '-c', script])
+	assert result.exit_code == 0, result.output
+	assert result.output.split_into_lines() == [
+		'<-new-compiler>',
+		'<-no-parallel>',
+		'<-nocache>',
+		'<-cc>',
+		'<cc with space>',
+		'<-gc>',
+		'<none>',
+		'<-d>',
+		'<contract value>',
+		'<-ldflags>',
+		'<-lexecinfo -other>',
+		'<-o>',
+		'<output path>',
+		'<package path>',
+	]
 }
 
 fn test_bootstrap_contract_rejects_republished_cli_path_expressions() {
@@ -164,6 +213,7 @@ fn clean_bootstrap_environment_command() []string {
 	mut command := ['env']
 	mut blocked_names := bootstrap_blocked_git_environment.clone()
 	blocked_names << bootstrap_blocked_v_environment
+	blocked_names << ['TCCBIN_BOOTSTRAP_TCC_ROOT', 'TCCBIN_BOOTSTRAP_TCC_COMMIT']
 	for name in os.environ().keys() {
 		upper_name := name.to_upper()
 		if (upper_name in bootstrap_blocked_git_environment
@@ -230,11 +280,14 @@ fn bootstrap_test_git(args []string) os.Result {
 	return os.exec(command)
 }
 
-fn prepare_contract_bootstrap_checkout(source_root string, destination string, remote string) string {
+fn prepare_contract_bootstrap_checkout(source_root string, destination string, remote string,
+	local_objects bool) string {
 	template_root := '${destination}.empty-template'
 	os.mkdir_all(template_root) or { panic(err) }
+	transport := if local_objects { '--local' } else { '--no-local' }
 	clone := bootstrap_test_git(['-c', 'protocol.file.allow=always', 'clone', '--quiet', '--no-checkout',
-		'--no-local', '--no-hardlinks', '--template=${template_root}', source_root, destination])
+		'--single-branch', transport, '--no-hardlinks', '--template=${template_root}', source_root,
+		destination])
 	assert clone.exit_code == 0, clone.output
 	os.rmdir_all(template_root) or { panic(err) }
 	for args in [
@@ -338,10 +391,13 @@ fn prepare_locked_vc_capsule(source_root string, destination string, remote stri
 }
 
 fn bootstrap_execution_command(script_path string, contract_input string, contract_sha string,
-	vc_input string, work_root string) []string {
+	vc_input string, work_root string, tcc_environment map[string]string) []string {
 	mut command := clean_bootstrap_environment_command()
 	command << 'GIT_ALLOW_PROTOCOL=file'
 	command << 'CC=cc'
+	for name, value in tcc_environment {
+		command << '${name}=${value}'
+	}
 	command << 'bash'
 	command << script_path
 	command << contract_input
@@ -350,6 +406,34 @@ fn bootstrap_execution_command(script_path string, contract_input string, contra
 	command << vc_input
 	command << work_root
 	return command
+}
+
+fn prepare_bootstrap_tcc_environment(source_root string, base string) map[string]string {
+	$if macos {
+		tcc_source_root := os.join_path(source_root, 'thirdparty', 'tcc')
+		assert os.is_dir(tcc_source_root), 'the reviewed local macOS TCC bundle is required'
+		remote := bootstrap_test_git(['-C', tcc_source_root, 'remote', 'get-url', 'origin'])
+		assert remote.exit_code == 0, remote.output
+		assert remote.output.trim_space() in ['https://github.com/vlang/tccbin',
+			'https://github.com/vlang/tccbin.git']
+		shallow := bootstrap_test_git(['-C', tcc_source_root, 'rev-parse', '--is-shallow-repository'])
+		assert shallow.exit_code == 0, shallow.output
+		assert shallow.output.trim_space() == 'false'
+		status := bootstrap_test_git(['-C', tcc_source_root, 'status', '--porcelain=v1',
+			'--untracked-files=all', '--ignored=matching'])
+		assert status.exit_code == 0, status.output
+		assert status.output == ''
+		// Copy the local object store without hardlinks: partial bundles may omit historical blobs.
+		tcc_input := prepare_contract_bootstrap_checkout(tcc_source_root, os.join_path(base,
+			'tcc-input'), 'https://github.com/vlang/tccbin', true)
+		commit := bootstrap_test_git(['-C', tcc_input, 'rev-parse', 'HEAD'])
+		assert commit.exit_code == 0, commit.output
+		return {
+			'TCCBIN_BOOTSTRAP_TCC_ROOT':   tcc_input
+			'TCCBIN_BOOTSTRAP_TCC_COMMIT': commit.output.trim_space()
+		}
+	}
+	return {}
 }
 
 fn expected_bootstrap_cli_path(work_root string) string {
@@ -441,18 +525,20 @@ fn test_bootstrap_compiles_the_real_local_contract_without_network_or_moving_inp
 			os.rmdir_all(base) or {}
 		}
 		contract_input := prepare_contract_bootstrap_checkout(source_root, os.join_path(base,
-			'contract-input'), 'https://github.com/GGRei/v')
+			'contract-input'), 'https://github.com/GGRei/v', false)
 		contract_sha := commit_current_automation_contract(source_root, contract_input)
 		vc_input := prepare_locked_vc_capsule(vc_source_root, os.join_path(base, 'vc-input'),
 			'https://github.com/vlang/vc', vc_lock)
+		tcc_environment := prepare_bootstrap_tcc_environment(source_root, base)
 		work_root := os.join_path(base, 'work')
 		command := bootstrap_execution_command(os.join_path(contract_input, 'thirdparty',
 			'tccbin_automation', 'bootstrap', 'bootstrap.sh'), contract_input, contract_sha,
-			vc_input, work_root)
+			vc_input, work_root, tcc_environment)
 		result := os.exec(command)
 		assert result.exit_code == 0, result.output
 		cli_path := expected_bootstrap_cli_path(work_root)
 		assert os.is_file(cli_path)
+		assert !os.is_link(os.join_path(work_root, 'contract-source', 'thirdparty', 'tcc'))
 		assert !os.exists(os.join_path(work_root, 'contract-source', 'thirdparty', 'tcc', 'lib',
 			'libgc.a'))
 		assert !os.exists(os.join_path(work_root, 'contract-source', 'v1'))
@@ -482,7 +568,7 @@ fn test_bootstrap_rejects_missing_selected_and_nonselected_vc_objects_and_cleans
 			os.rmdir_all(base) or {}
 		}
 		contract_input := prepare_contract_bootstrap_checkout(source_root, os.join_path(base,
-			'contract-input'), 'https://github.com/GGRei/v')
+			'contract-input'), 'https://github.com/GGRei/v', false)
 		contract_sha := commit_current_automation_contract(source_root, contract_input)
 		cases := [
 			MissingVcObjectCase{
@@ -513,7 +599,7 @@ fn test_bootstrap_rejects_missing_selected_and_nonselected_vc_objects_and_cleans
 			work_root := os.join_path(base, 'work-${missing.label}')
 			command := bootstrap_execution_command(os.join_path(contract_input, 'thirdparty',
 				'tccbin_automation', 'bootstrap', 'bootstrap.sh'), contract_input, contract_sha,
-				vc_input, work_root)
+				vc_input, work_root, {})
 			result := os.exec(command)
 			assert result.exit_code == 1, '${missing.label}: ${result.output}'
 			assert result.output.contains(missing.expected_message), '${missing.label}: ${result.output}'

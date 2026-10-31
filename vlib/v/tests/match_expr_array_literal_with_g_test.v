@@ -29,7 +29,7 @@ fn main() {
 }
 ")!
 	res :=
-		os.execute('${os.quoted_path(vexe)} -g -o ${os.quoted_path(out_c)} -b c ${os.quoted_path(source)}')
+		os.exec([vexe, '-g', '-o', '${out_c}', '-b', 'c', source])
 	assert res.exit_code == 0, res.output
 	generated := os.read_file(out_c)!
 	// Ensure no #line directive is glued to the following expression (missing newline).

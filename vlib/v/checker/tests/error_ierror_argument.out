@@ -1,0 +1,12 @@
+vlib/v/checker/tests/error_ierror_argument.vv:6:24: warning: `error(err)` can be shortened to just `err`
+    4 | 
+    5 | fn main() {
+    6 |     fail() or { _ = error(err) }
+      |                           ~~~
+    7 | }
+vlib/v/checker/tests/error_ierror_argument.vv:6:24: error: cannot use `IError` as `string` in argument 1 to `error`
+    4 | 
+    5 | fn main() {
+    6 |     fail() or { _ = error(err) }
+      |                           ~~~
+    7 | }

@@ -16,7 +16,8 @@ fn test_pr_28064_v1_regressions_pass_with_v3() {
 
 	v3_bin := os.join_path(root, 'v3')
 	build :=
-		os.execute('${os.quoted_path(pr_28064_vexe)} -gc none -path "${pr_28064_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(pr_28064_v3_src)}')
+		os.exec([pr_28064_vexe, '-gc', 'none', '-path', '${pr_28064_vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${pr_28064_v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	regressions := {
@@ -28,7 +29,7 @@ fn test_pr_28064_v1_regressions_pass_with_v3() {
 			'variadic_optional_fn_type_issue_28017_test.v')
 	}
 	for issue, source in regressions {
-		result := os.execute('${os.quoted_path(v3_bin)} -silent -nocache ${os.quoted_path(source)}')
+		result := os.exec([v3_bin, '-silent', '-nocache', source])
 		assert result.exit_code == 0, '${issue} failed with V3:\n${result.output}'
 	}
 }

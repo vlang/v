@@ -1,0 +1,48 @@
+struct Item {
+	n int
+}
+
+type Inner = Item | int
+type Outer = Inner | string
+
+fn return_map() map[string]Outer {
+	m := {
+		'a': Inner(Item{3})
+	}
+	return m
+}
+
+fn return_fixed() [2]Outer {
+	a := [Inner(Item{3}), Inner(5)]!
+	return a
+}
+
+fn make_map() (int, map[string]Inner) {
+	return 1, {
+		'a': Inner(Item{3})
+	}
+}
+
+fn forward_map() (int, map[string]Outer) {
+	return make_map()
+}
+
+fn grow(mut values []Outer) {
+	values << Outer('s')
+}
+
+fn main() {
+	_ := return_map()
+	_ := return_fixed()
+	_, _ := forward_map()
+	inner := {
+		'a': Inner(Item{3})
+	}
+	mut outer := map[string]Outer{}
+	outer = inner.clone()
+	mut n := 0
+	n, outer = make_map()
+	mut values := [Inner(5)]
+	grow(mut values)
+	println('${n} ${outer.len}')
+}

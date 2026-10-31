@@ -94,14 +94,14 @@ pub enum FormatDelimiter {
 	no_delimiter
 }
 
-fn normalize_new_time(t Time) Time {
+fn check_new_time(t Time) ! {
 	month := if t.month == 0 { 1 } else { t.month }
 	day := if t.day == 0 { 1 } else { t.day }
 	if t.year < -9999 || t.year > 9999 {
-		panic('invalid time: year must be between -9999 and 9999')
+		return error('invalid time: year must be between -9999 and 9999')
 	}
 	if month < 1 || month > 12 {
-		panic('invalid time: month must be between 1 and 12')
+		return error('invalid time: month must be between 1 and 12')
 	}
 	max_day := month_days[month - 1] + if month == 2 && is_leap_year(t.year) {
 		1
@@ -109,25 +109,37 @@ fn normalize_new_time(t Time) Time {
 		0
 	}
 	if day < 1 || day > max_day {
-		panic('invalid time: day must be between 1 and ${max_day} for year ${t.year}, month ${month}')
+		return error('invalid time: day must be between 1 and ${max_day} for year ${t.year}, month ${month}')
 	}
 	if t.hour < 0 || t.hour > 23 {
-		panic('invalid time: hour must be between 0 and 23')
+		return error('invalid time: hour must be between 0 and 23')
 	}
 	if t.minute < 0 || t.minute > 59 {
-		panic('invalid time: minute must be between 0 and 59')
+		return error('invalid time: minute must be between 0 and 59')
 	}
 	if t.second < 0 || t.second > 59 {
-		panic('invalid time: second must be between 0 and 59')
+		return error('invalid time: second must be between 0 and 59')
 	}
 	if t.nanosecond < 0 || t.nanosecond >= 1_000_000_000 {
-		panic('invalid time: nanosecond must be between 0 and 999999999')
+		return error('invalid time: nanosecond must be between 0 and 999999999')
 	}
+}
+
+fn normalize_new_time(t Time) Time {
+	check_new_time(t) or { panic(err.msg()) }
 	return Time{
 		...t
-		month: month
-		day:   day
+		month: if t.month == 0 { 1 } else { t.month }
+		day:   if t.day == 0 { 1 } else { t.day }
 	}
+}
+
+// new_checked is like `new`, but returns an error instead of panicking when
+// the fields do not form a valid date and time. The parse functions use it so
+// that malformed input, such as February 30th, is reported to the caller.
+fn new_checked(t Time) !Time {
+	check_new_time(t)!
+	return Time.new(t)
 }
 
 // Time.new returns a time struct with the calculated Unix time.
@@ -382,16 +394,25 @@ pub fn (t Time) relative_short() string {
 	return '${prefix}${y}y${suffix}'
 }
 
+// sakamoto_month_offsets is Sakamoto's day-of-week lookup table.
+// A fixed array avoids a heap allocation on every call.
+const sakamoto_month_offsets = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]!
+
 // day_of_week returns the current day of a given year, month, and day, as an integer.
+// The result is from 1 (Monday) to 7 (Sunday), also for the years before 1 of the
+// proleptic Gregorian calendar, where the year 0 is 1 BC.
 pub fn day_of_week(y int, m int, d int) int {
-	// Sakomotho's algorithm is explained here:
-	// https://stackoverflow.com/a/6385934
-	t := [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4]
 	mut sy := y
 	if m < 3 {
 		sy = sy - 1
 	}
-	return (sy + sy / 4 - sy / 100 + sy / 400 + t[iclamp(0, m - 1, 11)] + d - 1) % 7 + 1
+	if sy < 0 {
+		// The formula needs floored divisions and a floored remainder, but `/` and `%`
+		// truncate toward zero. The Gregorian calendar repeats every 400 years (146097
+		// days, which is 20871 whole weeks), so use the same year of a later cycle.
+		sy = sy % 400 + 400
+	}
+	return (sy + sy / 4 - sy / 100 + sy / 400 + sakamoto_month_offsets[iclamp(0, m - 1, 11)] + d - 1) % 7 + 1
 }
 
 // day_of_week returns the current day as an integer.

@@ -9,8 +9,10 @@ import benchmark
 import sync
 import sync.pool
 import v.pref
+import v.scanner
+import v.token
 import v.util.vtest
-import v.util.vflags
+import v.cmdexec
 import runtime
 import rand
 import strings
@@ -57,15 +59,15 @@ pub const fail_retry_delay_ms = get_fail_retry_delay_ms()
 
 pub const pkgcmd = get_pkgcmd()
 
-pub const is_node_present = os.execute('node --version').exit_code == 0
+pub const is_node_present = os.exec(['node', '--version']).exit_code == 0
 
-pub const is_go_present = os.execute('go version').exit_code == 0
+pub const is_go_present = os.exec(['go', 'version']).exit_code == 0
 
-pub const is_ruby_present = os.execute('ruby --version').exit_code == 0
-	&& os.execute('${pkgcmd} ruby --libs').exit_code == 0
+pub const is_ruby_present = os.exec(['ruby', '--version']).exit_code == 0
+	&& os.exec(['${pkgcmd}', 'ruby', '--libs']).exit_code == 0
 
-pub const is_python_present = os.execute('python --version').exit_code == 0
-	&& os.execute('${pkgcmd} python3 --libs').exit_code == 0
+pub const is_python_present = os.exec(['python', '--version']).exit_code == 0
+	&& os.exec(['${pkgcmd}', 'python3', '--libs']).exit_code == 0
 
 pub const is_sqlite3_present = get_present_sqlite()
 
@@ -105,6 +107,7 @@ fn automatic_test_jobs(cpu_jobs int, total_memory u64, configured_jobs int) int 
 	return jobs
 }
 
+@[markused]
 fn cgroup_memory_limit_from_contents(cgroups string, mountinfo string) !u64 {
 	mut v2_path := ''
 	mut v1_memory_path := ''
@@ -219,6 +222,7 @@ fn cgroup_memory_limit_value(content string) !u64 {
 	return limit
 }
 
+@[markused]
 fn effective_test_memory(physical_memory u64, cgroup_memory_limit u64) u64 {
 	if cgroup_memory_limit > 0 && cgroup_memory_limit < physical_memory {
 		return cgroup_memory_limit
@@ -260,7 +264,7 @@ fn get_fail_retry_delay_ms() time.Duration {
 
 fn get_pkgcmd() string {
 	for cmd in ['pkgconf', 'pkg-config'] {
-		if os.execute('${cmd} --version').exit_code == 0 {
+		if os.exec(['${cmd}', '--version']).exit_code == 0 {
 			return cmd
 		}
 	}
@@ -271,8 +275,8 @@ fn get_present_sqlite() bool {
 	if os.user_os() == 'windows' {
 		return os.exists(@VEXEROOT + '/thirdparty/sqlite/sqlite3.c')
 	}
-	return os.execute('sqlite3 --version').exit_code == 0
-		&& os.execute('${pkgcmd} sqlite3 --libs').exit_code == 0
+	return os.exec(['sqlite3', '--version']).exit_code == 0
+		&& os.exec(['${pkgcmd}', 'sqlite3', '--libs']).exit_code == 0
 }
 
 fn get_all_processes() []string {
@@ -280,7 +284,7 @@ fn get_all_processes() []string {
 		// TODO
 		return []
 	} $else {
-		return os.execute('ps ax').output.split_any('\r\n')
+		return os.exec(['ps', 'ax']).output.split_any('\r\n')
 	}
 }
 
@@ -319,6 +323,7 @@ pub mut:
 	custom_defines    []string                     // for adding custom defines, known only to the individual runners
 mut:
 	benchmark_mu &sync.Mutex = sync.new_mutex()
+	resume_dir   string
 }
 
 pub fn (mut ts TestSession) add_failed_cmd(cmd string) {
@@ -516,18 +521,40 @@ pub fn (mut ts TestSession) print_messages() {
 	}
 }
 
+// execute runs a legacy command string.
+@[deprecated: 'use TestSession.exec with an argument array to avoid shell injection']
 pub fn (mut ts TestSession) execute(cmd string, mtc MessageThreadContext) os.Result {
 	if show_cmd {
 		ts.append_message(.info, '> execute cmd: ${cmd}', mtc)
 	}
-	return os.execute(cmd)
+	return os.exec(os.split_args(cmd) or { panic(err) })
 }
 
+// exec runs literal arguments without invoking a shell.
+pub fn (mut ts TestSession) exec(args []string, mtc MessageThreadContext) os.Result {
+	cmd := args.join(' ')
+	if show_cmd {
+		ts.append_message(.info, '> execute cmd: ${cmd}', mtc)
+	}
+	return os.exec(args)
+}
+
+// system runs a legacy command string.
+@[deprecated: 'use TestSession.system_args with an argument array to avoid shell injection']
 pub fn (mut ts TestSession) system(cmd string, mtc MessageThreadContext) int {
 	if show_cmd {
 		ts.append_message(.info, '> system cmd: ${cmd}', mtc)
 	}
-	return os.system(cmd)
+	return os.system_args(os.split_args(cmd) or { panic(err) })
+}
+
+// system_args runs literal arguments without invoking a shell.
+pub fn (mut ts TestSession) system_args(args []string, mtc MessageThreadContext) int {
+	cmd := args.join(' ')
+	if show_cmd {
+		ts.append_message(.info, '> system cmd: ${cmd}', mtc)
+	}
+	return os.system_args(args)
 }
 
 fn should_retry_execution(result os.Result) bool {
@@ -578,6 +605,7 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		hash:          hash
 		silent_mode:   _vargs.contains('-silent')
 		progress_mode: _vargs.contains('-progress')
+		resume_dir:    test_resume_dir()
 	}
 	if keep_session {
 		ts.rm_binaries = false
@@ -646,8 +674,25 @@ pub fn (mut ts TestSession) add(file string) {
 	ts.files << file
 }
 
+fn test_file_is_target_of(this_os string, file string) bool {
+	test_stem := if file.ends_with('_test.c.v') {
+		file.all_before_last('_test.c.v')
+	} else {
+		file.all_before_last('_test.v')
+	}
+	// Keep the compound Android target intact instead of selecting Termux.
+	os_target := if test_stem.ends_with('_android_outside_termux') {
+		'android_outside_termux'
+	} else {
+		test_stem.all_after_last('_')
+	}
+	return pref.os_is_target_of(this_os, os_target)
+}
+
+// test processes the selected files, matching exclusions by their resolved paths.
 pub fn (mut ts TestSession) test() {
 	unbuffer_stdout()
+	ts.skip_files = ts.skip_files.map(os.real_path)
 	// Ensure that .tmp.c files generated from compiling _test.v files,
 	// are easy to delete at the end, *without* affecting the existing ones.
 	current_wd := os.getwd()
@@ -662,18 +707,8 @@ pub fn (mut ts TestSession) test() {
 		if ts.build_tools && dot_relative_file.ends_with('_test.v') {
 			continue
 		}
-		// Skip OS-specific tests if we are not running that OS
-		// Special case for android_outside_termux because of its
-		// underscores
-		if file.ends_with('_android_outside_termux_test.v') {
-			if !pref.os_is_target_of(host_os, 'android_outside_termux') {
-				remaining_files << dot_relative_file
-				ts.skip_files << file
-				continue
-			}
-		}
-		os_target := file.all_before_last('_test.v').all_after_last('_')
-		if !pref.os_is_target_of(host_os, os_target) {
+		// Skip OS-specific tests if we are not running that OS.
+		if !test_file_is_target_of(host_os, file) {
 			remaining_files << dot_relative_file
 			ts.skip_files << file
 			continue
@@ -696,7 +731,7 @@ pub fn (mut ts TestSession) test() {
 	ts.nmessages = chan LogMessage{cap: 10000}
 	ts.nmessage_idx = 0
 	printing_thread := spawn ts.print_messages()
-	pool_of_test_runners.set_shared_context(ts)
+	pool_of_test_runners.set_shared_context(&ts)
 	ts.reporter.worker_threads_start(remaining_files, mut ts)
 
 	ts.setup_build_environment()
@@ -717,6 +752,7 @@ pub fn (mut ts TestSession) test() {
 			os.rmdir_all(ts.vtmp_dir) or {}
 		}
 	}
+	os.rm(os.join_path(ts.vtmp_dir, '.v.mod.stop')) or {}
 	if os.ls(ts.vtmp_dir) or { [] }.len == 0 {
 		os.rmdir_all(ts.vtmp_dir) or {}
 	}
@@ -740,8 +776,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	tls_bench.njobs = ts.benchmark.njobs
 	abs_path := os.real_path(p.get_item[string](idx))
 	mut relative_file := abs_path
-	mut cmd_options :=
-		vflags.tokenize_to_args(ts.vargs) // make sure that `'-W -silent'` becomes `['-W', '-silent']`, while keeping quoted spaces intact
+	mut cmd_options := os.split_args(ts.vargs) or { panic(err) }
 	mut run_js := false
 
 	is_fmt := ts.vargs.contains('fmt')
@@ -750,20 +785,20 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 
 	if relative_file.ends_with('.js.v') {
 		if produces_file_output {
-			cmd_options << ' -b js'
+			cmd_options << ['-b', 'js']
 			run_js = true
 		}
 	}
 
 	if relative_file.ends_with('.c.v') {
 		if produces_file_output {
-			cmd_options << ' -b c'
+			cmd_options << ['-b', 'c']
 			run_js = false
 		}
 	}
 
 	if relative_file.contains('global') && !is_fmt {
-		cmd_options << ' -enable-globals'
+		cmd_options << '-enable-globals'
 	}
 	if ts.root_relative {
 		relative_file = relative_file.replace_once(ts.vroot + os.path_separator, '')
@@ -789,8 +824,6 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	if ts.build_tools {
 		// `v build-tools`, produce all executables in the same session folder, so that they can be copied later:
 		test_folder_path = ts.vtmp_dir
-	} else {
-		os.mkdir_all(test_folder_path) or {}
 	}
 	fname := os.file_name(file)
 	// There are test files ending with `_test.v`, `_test.c.v` and `_test.js.v`.
@@ -805,34 +838,28 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	mut details := get_test_details(file)
 	if details.vflags != '' && !is_fmt {
-		cmd_options << details.vflags
+		cmd_options << os.split_args(details.vflags) or { panic(err) }
 	}
 
-	reproduce_options := cmd_options.clone()
+	mut reproduce_options := cmd_options.clone()
 	generated_binary_fpath := os.join_path_single(test_folder_path, generated_binary_fname)
 	if produces_file_output {
 		if ts.rm_binaries {
 			os.rm(generated_binary_fpath) or {}
 		}
-		cmd_options << ' -o ${os.quoted_path(generated_binary_fpath)}'
-	}
-	defer {
-		if produces_file_output && ts.rm_binaries {
-			os.rmdir_all(test_folder_path) or {}
-		}
-	}
-
-	mut skip_running := '-skip-running'
-	if ts.show_stats {
-		skip_running = ''
+		cmd_options << ['-o', generated_binary_fpath]
 	}
 	compile_options := cmd_options.filter(it != '-silent')
-	mut compile_vexe := ts.vexe
-	mut compile_args := '${skip_running} ${compile_options.join(' ')}'
-	mut reproduce_vexe := ts.vexe
-	mut reproduce_args := reproduce_options.join(' ')
-	reproduce_cmd := '${os.quoted_path(reproduce_vexe)} ${reproduce_args} ${os.quoted_path(file)}'
-	cmd := '${os.quoted_path(compile_vexe)} ${compile_args} ${os.quoted_path(file)}'
+	mut compile_argv := [ts.vexe]
+	if !ts.show_stats {
+		compile_argv << '-skip-running'
+	}
+	compile_argv << compile_options
+	compile_argv << file
+	reproduce_options << file
+	reproduce_cmd := cmdexec.display(ts.vexe, reproduce_options)
+	cmd := cmdexec.display(ts.vexe, compile_argv[1..])
+
 	run_cmd := if run_js {
 		'node ${os.quoted_path(generated_binary_fpath)}'
 	} else {
@@ -853,7 +880,10 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 
 	ts.benchmark_step()
 	tls_bench.step()
-	if produces_file_output && !ts.build_tools && (!should_be_built || abs_path in ts.skip_files) {
+	// Keep JS tests disabled for every session caller, including v test-self.
+	// Formatting and vetting still process these sources without compiling them.
+	if produces_file_output && !ts.build_tools
+		&& (!should_be_built || abs_path in ts.skip_files || abs_path.ends_with('_test.js.v')) {
 		ts.benchmark_skip()
 		tls_bench.skip()
 		if !hide_skips {
@@ -864,12 +894,45 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		}
 		return pool.no_result
 	}
+	resume := ts.test_resume(file) or {
+		tls_bench.fail()
+		ts.fail_test_resume(err, reproduce_cmd, mtc)
+		return pool.no_result
+	}
+	if resume.passed {
+		ts.benchmark_skip()
+		tls_bench.skip()
+		if !hide_skips {
+			ts.append_message(.skip, tls_bench.step_message_with_label_and_duration(benchmark.b_skip,
+				'${normalised_relative_file} (already passed)', 0,
+				preparation: 1 * time.microsecond
+			), mtc)
+		}
+		return pool.no_result
+	}
+	if produces_file_output && !ts.build_tools {
+		os.mkdir_all(test_folder_path) or {
+			ts.benchmark_fail()
+			tls_bench.fail()
+			ts.add_failed_cmd(reproduce_cmd)
+			ts.append_message(.fail, tls_bench.step_message_with_label(benchmark.b_fail,
+				'${normalised_relative_file}\n>> could not create test folder ${test_folder_path}: ${err}'),
+				mtc)
+			return pool.no_result
+		}
+	}
+	defer {
+		if produces_file_output && ts.rm_binaries {
+			os.rmdir_all(test_folder_path) or {}
+		}
+	}
+	mut test_succeeded := true
 	mut compile_cmd_duration := time.Duration(0)
 	mut cmd_duration := time.Duration(0)
 	if ts.show_stats {
 		ts.append_message(.cmd_begin, cmd, mtc)
 		d_cmd := time.new_stopwatch()
-		mut res := ts.execute(cmd, mtc)
+		mut res := ts.exec(compile_argv, mtc)
 		mut status := res.exit_code
 		if res.output != '' {
 			output_kind := if status == 0 { MessageKind.stats_output } else { .stats_error }
@@ -889,7 +952,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				os.setenv('VTEST_RETRY', '${retry}', true)
 				ts.append_message(.cmd_begin, cmd, mtc)
 				d_cmd_2 := time.new_stopwatch()
-				retry_res := ts.execute(cmd, mtc)
+				retry_res := ts.exec(compile_argv, mtc)
 				status = retry_res.exit_code
 				if retry_res.output != '' {
 					output_kind := if status == 0 { MessageKind.stats_output } else { .stats_error }
@@ -906,6 +969,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				time.sleep(fail_retry_delay_ms)
 			}
 			if details.flaky && !fail_flaky {
+				test_succeeded = false
 				ts.append_message(.info, '   *FAILURE* of the known flaky test file ${relative_file} is ignored, since VTEST_FAIL_FLAKY is 0 . Retry count: ${details.retry} .\ncmd: ${cmd}', mtc)
 				unsafe {
 					goto test_passed_system
@@ -928,7 +992,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		compile_d_cmd := time.new_stopwatch()
 		mut compile_r := os.Result{}
 		for cretry in 0 .. max_compilation_retries {
-			compile_r = ts.execute(cmd, mtc)
+			compile_r = ts.exec(compile_argv, mtc)
 			compile_cmd_duration = compile_d_cmd.elapsed()
 			// eprintln('>>>> cretry: ${cretry} | compile_r.exit_code: ${compile_r.exit_code} | compile_cmd_duration: ${compile_cmd_duration:8} | file: ${normalised_relative_file}')
 			if compile_r.exit_code == 0 {
@@ -960,7 +1024,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		mut failure_output := strings.new_builder(1024)
 		ts.append_message(.cmd_begin, run_cmd, mtc)
 		d_cmd := time.new_stopwatch()
-		mut r := ts.execute(run_cmd, mtc)
+		mut r := ts.exec(os.split_args(run_cmd) or { panic(err) }, mtc)
 		cmd_duration = d_cmd.elapsed()
 		ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
 		if ts.show_asserts && r.exit_code == 0 {
@@ -982,7 +1046,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				os.setenv('VTEST_RETRY', '${retry}', true)
 				ts.append_message(.cmd_begin, run_cmd, mtc)
 				d_cmd_2 := time.new_stopwatch()
-				r = ts.execute(run_cmd, mtc)
+				r = ts.exec(os.split_args(run_cmd) or { panic(err) }, mtc)
 				cmd_duration = d_cmd_2.elapsed()
 				ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
 
@@ -999,6 +1063,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 			}
 			full_failure_output := failure_output.str().trim_space()
 			if details.flaky && !fail_flaky {
+				test_succeeded = false
 				ts.append_message(.info, '>>> flaky failures so far:', mtc)
 				for line in full_failure_output.split_into_lines() {
 					ts.append_message(.info, '>>>>>> ${line}', mtc)
@@ -1021,6 +1086,13 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	}
 	test_passed_system:
 	test_passed_execute:
+	if test_succeeded {
+		resume.save() or {
+			tls_bench.fail()
+			ts.fail_test_resume(err, reproduce_cmd, mtc)
+			return pool.no_result
+		}
+	}
 	ts.benchmark_ok()
 	tls_bench.ok()
 	if !hide_oks {
@@ -1040,6 +1112,49 @@ pub fn vlib_should_be_present(parent_dir string) {
 	}
 }
 
+fn build_source_is_program(source string) bool {
+	mut files := token.FileSet.new()
+	file := files.add_file('build-source.v', source.len)
+	mut lexer := scanner.new_scanner(pref.new_preferences(), .normal)
+	lexer.init(file, source)
+	mut kind := lexer.scan()
+	for {
+		if kind in [.semicolon, .hash] {
+			// A hash token contains the complete directive line, including shebangs.
+			kind = lexer.scan()
+			continue
+		}
+		if kind in [.attribute, .lsbr] {
+			mut depth := 1
+			for depth > 0 {
+				kind = lexer.scan()
+				if kind == .eof {
+					return true
+				} else if kind in [.attribute, .lsbr] {
+					depth++
+				} else if kind == .rsbr {
+					depth--
+				}
+			}
+			kind = lexer.scan()
+			continue
+		}
+		break
+	}
+	if kind != .key_module {
+		// Files without a module declaration are implicit main programs.
+		return true
+	}
+	kind = lexer.scan()
+	if kind != .name && !kind.is_keyword() {
+		// Let the compiler report malformed declarations instead of hiding them.
+		return true
+	}
+	name := lexer.lit
+	return lexer.scan() != .dot && name in ['main', 'no_main']
+}
+
+// prepare_test_session discovers standalone programs, preserving configured folder exclusions.
 pub fn prepare_test_session(zargs string, folder string, oskipped []string, main_label string) TestSession {
 	vexe := pref.vexe_path()
 	parent_dir := os.dir(vexe)
@@ -1074,13 +1189,11 @@ pub fn prepare_test_session(zargs string, folder string, oskipped []string, main
 			}
 		}
 		c := os.read_file(fnormalised) or { panic(err) }
-		start := c#[0..header_bytes_to_search_for_module_main]
-		if start.contains('module ') {
-			modname := start.all_after('module ').all_before('\n')
-			if modname !in ['main', 'no_main'] {
-				skipped << fnormalised.replace(nparent_dir + '/', '')
-				continue next_file
-			}
+		// Scan past the complete comment header; library declarations can occur
+		// well beyond the first few hundred bytes of an example support file.
+		if !build_source_is_program(c) {
+			skipped << fnormalised.replace(nparent_dir + '/', '')
+			continue next_file
 		}
 		for skip_prefix in oskipped {
 			skip_folder := skip_prefix + '/'
@@ -1107,8 +1220,15 @@ pub fn v_build_failing_skipped(zargs string, folder string, oskipped []string, c
 	return session.has_failures()
 }
 
+// build_v_cmd_failed reports whether a legacy command string fails.
+@[deprecated: 'use build_v_args_failed with an argument array to avoid shell injection']
 pub fn build_v_cmd_failed(cmd string) bool {
-	res := os.execute(cmd)
+	return build_v_args_failed(os.split_args(cmd) or { panic(err) })
+}
+
+// build_v_args_failed reports whether a program with literal arguments fails.
+pub fn build_v_args_failed(args []string) bool {
+	res := os.exec(args)
 	if res.exit_code < 0 {
 		return true
 	}
@@ -1134,7 +1254,7 @@ pub fn building_any_v_binaries_failed() bool {
 	mut bmark := benchmark.new_benchmark()
 	for cmd in v_build_commands {
 		bmark.step()
-		if build_v_cmd_failed(cmd) {
+		if build_v_args_failed(os.split_args(cmd) or { panic(err) }) {
 			bmark.fail()
 			failed = true
 			eprintln(bmark.step_message_fail('command: ${cmd} . See details above ^^^^^^^'))
@@ -1160,8 +1280,17 @@ pub fn h_divider() {
 // so that V programs/tests will write their temporary files to new location.
 // The new nested folder, and its contents, will get removed after all tests/programs succeed.
 pub fn setup_new_vtmp_folder(hash string) string {
+	// The V3 module cache defaults to VTMP. Keep it in the shared VTMP, so that each
+	// session does not rebuild every cached module, unless isolation was requested.
+	if os.getenv('V3CACHE') == '' && os.getenv('V3_TEST_ISOLATE_CACHE') != '1' {
+		os.setenv('V3CACHE', os.vtmp_dir(), true)
+	}
 	new_vtmp_dir := os.join_path(os.vtmp_dir(), 'tsession_${hash}')
 	os.mkdir_all(new_vtmp_dir) or { panic(err) }
+	// A test session must not inherit an unrelated `v.mod` from the shared temp
+	// directory, or from whatever contains it. The explicit project-boundary
+	// marker ends the upward search there.
+	os.write_file(os.join_path(new_vtmp_dir, '.v.mod.stop'), '') or { panic(err) }
 	os.setenv('VTMP', new_vtmp_dir, true)
 	return new_vtmp_dir
 }
@@ -1245,11 +1374,11 @@ fn check_openssl_present() bool {
 		return false
 	}
 	$if openbsd {
-		return os.execute('eopenssl35 --version').exit_code == 0
-			&& os.execute('${pkgcmd} eopenssl35 --libs').exit_code == 0
+		return os.exec(['eopenssl35', '--version']).exit_code == 0
+			&& os.exec(['${pkgcmd}', 'eopenssl35', '--libs']).exit_code == 0
 	} $else {
-		return os.execute('openssl --version').exit_code == 0
-			&& os.execute('${pkgcmd} openssl --libs').exit_code == 0
+		return os.exec(['openssl', '--version']).exit_code == 0
+			&& os.exec(['${pkgcmd}', 'openssl', '--libs']).exit_code == 0
 	}
 }
 
@@ -1261,15 +1390,19 @@ fn check_modern_openssl_present() bool {
 	$if openbsd {
 		version_cmd = 'eopenssl35 version'
 	}
-	res := os.execute(version_cmd)
+	res := os.exec(os.split_args(version_cmd) or { panic(err) })
 	if res.exit_code != 0 {
 		return false
 	}
-	line := res.output.trim_space()
-	if !line.starts_with('OpenSSL ') {
+	return has_modern_openssl_version(res.output)
+}
+
+fn has_modern_openssl_version(output string) bool {
+	words := output.fields()
+	if words.len < 2 || words[0] != 'OpenSSL' {
 		return false
 	}
-	version := semver.coerce(line) or { return false }
+	version := semver.coerce(words[1].all_before('-')) or { return false }
 	return version.satisfies('>=3.5.0')
 }
 
@@ -1286,7 +1419,18 @@ pub const is_started_postgres = find_started_process('postgres') or { '' }
 pub const is_started_mssql = find_started_process('sqlservr') or { '' }
 
 // is_started_redis is true, when the test runner determines that there is a running redis server
-pub const is_started_redis = find_started_process('redis-server') or { '' }
+// on the default port 6379, which the db.redis tests connect to. A redis-server, that another tool
+// started on a different port, can not serve them.
+pub const is_started_redis = find_started_redis_on_default_port(all_processes) or { '' }
+
+fn find_started_redis_on_default_port(process_lines []string) !string {
+	for line in process_lines {
+		if vtest.is_default_port_redis_server(line) {
+			return line
+		}
+	}
+	return error('could not find a redis-server process, that serves the default port 6379')
+}
 
 pub fn (mut ts TestSession) setup_build_environment() {
 	facts, mut defines := pref.get_build_facts_and_defines()

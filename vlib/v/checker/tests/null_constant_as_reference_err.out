@@ -1,0 +1,133 @@
+vlib/v/checker/tests/null_constant_as_reference_err.vv:7:12: error: cannot use `voidptr(0)` as `&Node` outside `unsafe`, use `unsafe { nil }`
+    5 | struct Holder {
+    6 | mut:
+    7 |     a &Node = voidptr(0)
+      |               ~~~~~~~~~~
+    8 |     b &Node = nil
+    9 |     c &Node = 0
+vlib/v/checker/tests/null_constant_as_reference_err.vv:8:12: error: `nil` is only allowed in `unsafe` code
+    6 | mut:
+    7 |     a &Node = voidptr(0)
+    8 |     b &Node = nil
+      |               ~~~
+    9 |     c &Node = 0
+   10 |     d &Node = unsafe { nil }
+vlib/v/checker/tests/null_constant_as_reference_err.vv:9:12: error: cannot use `0` as `&Node` outside `unsafe`, use `unsafe { nil }`
+    7 |     a &Node = voidptr(0)
+    8 |     b &Node = nil
+    9 |     c &Node = 0
+      |               ^
+   10 |     d &Node = unsafe { nil }
+   11 | }
+vlib/v/checker/tests/null_constant_as_reference_err.vv:14:9: error: cannot use `voidptr(0)` as `&Node` outside `unsafe`, use `unsafe { nil }`
+   12 | 
+   13 | fn return_voidptr() &Node {
+   14 |     return voidptr(0)
+      |            ~~~~~~~~~~
+   15 | }
+   16 |
+vlib/v/checker/tests/null_constant_as_reference_err.vv:18:9: error: `nil` is only allowed in `unsafe` code
+   16 | 
+   17 | fn return_nil() &Node {
+   18 |     return nil
+      |            ~~~
+   19 | }
+   20 |
+vlib/v/checker/tests/null_constant_as_reference_err.vv:22:9: error: cannot use `0` as `&Node` outside `unsafe`, use `unsafe { nil }`
+   20 | 
+   21 | fn return_zero() &Node {
+   22 |     return 0
+      |            ^
+   23 | }
+   24 |
+vlib/v/checker/tests/null_constant_as_reference_err.vv:26:9: error: cannot use `voidptr(0)` as `&Node` outside `unsafe`, use `unsafe { nil }`
+   24 | 
+   25 | fn return_in_parentheses() &Node {
+   26 |     return (voidptr(0))
+      |            ~~~~~~~~~~~~
+   27 | }
+   28 |
+vlib/v/checker/tests/null_constant_as_reference_err.vv:30:9: error: cannot use `voidptr(0)` as `&Node` outside `unsafe`, use `unsafe { nil }`
+   28 | 
+   29 | fn return_result() !&Node {
+   30 |     return voidptr(0)
+      |            ~~~~~~~~~~
+   31 | }
+   32 |
+vlib/v/checker/tests/null_constant_as_reference_err.vv:34:9: error: cannot use `voidptr(0)` as `&Node` outside `unsafe`, use `unsafe { nil }`
+   32 | 
+   33 | fn return_multiple() (&Node, int) {
+   34 |     return voidptr(0), 1
+      |            ~~~~~~~~~~
+   35 | }
+   36 |
+vlib/v/checker/tests/null_constant_as_reference_err.vv:38:9: error: cannot use `voidptr(0)` as `&u8` outside `unsafe`, use `unsafe { nil }`
+   36 | 
+   37 | fn return_raw_pointer() &u8 {
+   38 |     return voidptr(0)
+      |            ~~~~~~~~~~
+   39 | }
+   40 |
+vlib/v/checker/tests/null_constant_as_reference_err.vv:47:6: error: cannot use `voidptr(0)` as `&Node` outside `unsafe`, use `unsafe { nil }`
+   45 | fn main() {
+   46 |     mut p := &Node{}
+   47 |     p = voidptr(0)
+      |         ~~~~~~~~~~
+   48 |     p = nil
+   49 |     p = 0
+vlib/v/checker/tests/null_constant_as_reference_err.vv:48:6: error: `nil` is only allowed in `unsafe` code
+   46 |     mut p := &Node{}
+   47 |     p = voidptr(0)
+   48 |     p = nil
+      |         ~~~
+   49 |     p = 0
+   50 |     println(take(voidptr(0)))
+vlib/v/checker/tests/null_constant_as_reference_err.vv:49:6: error: cannot use `0` as `&Node` outside `unsafe`, use `unsafe { nil }`
+   47 |     p = voidptr(0)
+   48 |     p = nil
+   49 |     p = 0
+      |         ^
+   50 |     println(take(voidptr(0)))
+   51 |     println(take(nil))
+vlib/v/checker/tests/null_constant_as_reference_err.vv:50:15: error: cannot use `voidptr(0)` as `&Node` outside `unsafe`, use `unsafe { nil }`
+   48 |     p = nil
+   49 |     p = 0
+   50 |     println(take(voidptr(0)))
+      |                  ~~~~~~~~~~
+   51 |     println(take(nil))
+   52 |     println(take((0)))
+vlib/v/checker/tests/null_constant_as_reference_err.vv:51:15: error: `nil` is only allowed in `unsafe` code
+   49 |     p = 0
+   50 |     println(take(voidptr(0)))
+   51 |     println(take(nil))
+      |                  ~~~
+   52 |     println(take((0)))
+   53 |     mut h := Holder{
+vlib/v/checker/tests/null_constant_as_reference_err.vv:52:15: error: cannot use `0` as `&Node` outside `unsafe`, use `unsafe { nil }`
+   50 |     println(take(voidptr(0)))
+   51 |     println(take(nil))
+   52 |     println(take((0)))
+      |                  ~~~
+   53 |     mut h := Holder{
+   54 |         a: voidptr(0)
+vlib/v/checker/tests/null_constant_as_reference_err.vv:54:6: error: cannot use `voidptr(0)` as `&Node` outside `unsafe`, use `unsafe { nil }`
+   52 |     println(take((0)))
+   53 |     mut h := Holder{
+   54 |         a: voidptr(0)
+      |            ~~~~~~~~~~
+   55 |         b: nil
+   56 |     }
+vlib/v/checker/tests/null_constant_as_reference_err.vv:55:6: error: `nil` is only allowed in `unsafe` code
+   53 |     mut h := Holder{
+   54 |         a: voidptr(0)
+   55 |         b: nil
+      |            ~~~
+   56 |     }
+   57 |     h.d = voidptr(0)
+vlib/v/checker/tests/null_constant_as_reference_err.vv:57:8: error: cannot use `voidptr(0)` as `&Node` outside `unsafe`, use `unsafe { nil }`
+   55 |         b: nil
+   56 |     }
+   57 |     h.d = voidptr(0)
+      |           ~~~~~~~~~~
+   58 |     println(p.x + h.a.x)
+   59 | }

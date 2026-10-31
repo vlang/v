@@ -1,0 +1,12 @@
+vlib/v/parser/tests/line_directive_misplaced_err.vv:2:1: error: a `#line` directive can only be used at the top level of a file or between statements
+    1 | struct Point {
+    2 | #line 10 "point.zbr"
+      | ~~~~~~~~~~~~~~~~~~~~
+    3 |     x int
+    4 |     y int
+point.zbr:16:1: error: a `#line` directive can only be used at the top level of a file or between statements
+   16 | #line 20 "numbers.zbr"
+      | ~~~~~~~~~~~~~~~~~~~~~~
+match.zbr:32:1: error: a `#line` directive can only be used at the top level of a file or between statements
+   32 | #line 40 "match.zbr"
+      | ~~~~~~~~~~~~~~~~~~~~

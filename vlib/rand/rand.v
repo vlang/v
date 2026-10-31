@@ -6,6 +6,7 @@ module rand
 
 import math.bits
 import rand.config
+import rand.seed as seed_generator
 import rand.wyrand
 import time
 
@@ -26,12 +27,19 @@ mut:
 // default_rng is used by the module level public APIs like rand.u8() etc.
 __global default_rng &PRNG
 
-// new_default returns a new instance of the default RNG. If the seed is not provided, the current time will be used to seed the instance.
+// new_default returns a new instance of the default RNG.
+// An omitted or empty seed uses the current time. Explicit seeds are borrowed: the caller
+// retains ownership and may reuse, modify or free the seed after this function returns.
 @[manualfree]
 pub fn new_default(config_ config.PRNGConfigStruct) &PRNG {
 	mut rng := &wyrand.WyRandRNG{}
-	rng.seed(config_.seed_)
-	unsafe { config_.seed_.free() }
+	if config_.seed_.len == 0 {
+		seed_data := seed_generator.time_seed_array(2)
+		rng.seed(seed_data)
+		unsafe { seed_data.free() }
+	} else {
+		rng.seed(config_.seed_)
+	}
 	return &PRNG(rng)
 }
 

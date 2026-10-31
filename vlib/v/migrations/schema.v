@@ -5,6 +5,7 @@ import orm
 import strconv
 
 const sqlite_digit_separator_min_version = 3_046_000
+const sqlite_partial_index_min_version = 3_008_000
 
 // Dialect selects the SQL emitted by schema helpers.
 pub enum Dialect {
@@ -51,7 +52,8 @@ pub:
 }
 
 // Table describes a table for Context.create_table. An auto-incrementing
-// bigint `id` primary key is added unless id is false.
+// bigint `id` primary key is added unless id is false. options is inserted
+// verbatim and should contain trusted SQL.
 pub struct Table {
 pub:
 	name          string
@@ -60,6 +62,7 @@ pub:
 	id            bool   = true
 	id_name       string = 'id'
 	if_not_exists bool
+	options       string // optional raw SQL table options appended after the column list
 }
 
 // Index describes an index for Context.add_index.
@@ -69,6 +72,7 @@ pub:
 	columns []string
 	name    string
 	unique  bool
+	where   string // optional raw SQL WHERE expression for a partial index
 }
 
 // ForeignKey describes a foreign-key constraint.
@@ -156,7 +160,8 @@ pub fn (mut ctx Context) create_table(table Table) ! {
 	}
 	guard := if table.if_not_exists { ' IF NOT EXISTS' } else { '' }
 	name := quote_identifier(ctx.dialect, table.name)
-	ctx.execute('CREATE TABLE${guard} ${name} (${definitions.join(', ')});')!
+	options := if table.options != '' { ' ${table.options}' } else { '' }
+	ctx.execute('CREATE TABLE${guard} ${name} (${definitions.join(', ')})${options};')!
 }
 
 // drop_table drops a table by name.
@@ -291,6 +296,20 @@ pub fn (mut ctx Context) add_index(index Index) ! {
 	if ctx.dialect == .mysql && name.contains('.') {
 		return error('MySQL add_index name `${name}` must be unqualified')
 	}
+	if index.where != '' {
+		match ctx.dialect {
+			.pg {}
+			.sqlite {
+				version := ctx.sqlite_version_number()!
+				if version < sqlite_partial_index_min_version {
+					return error('SQLite add_index with WHERE requires SQLite 3.8.0 or newer')
+				}
+			}
+			.mysql {
+				return error('MySQL does not support partial indexes with WHERE')
+			}
+		}
+	}
 	columns := quoted_columns(ctx.dialect, index.columns)!
 	mut create_name_sql := quote_identifier(ctx.dialect, name)
 	if ctx.dialect == .sqlite && !name.contains('.') {
@@ -298,7 +317,8 @@ pub fn (mut ctx Context) add_index(index Index) ! {
 		create_name_sql = '${quote_identifier_component(.sqlite, schema)}.${quote_identifier_component(.sqlite, name)}'
 	}
 	unique := if index.unique { 'UNIQUE ' } else { '' }
-	ctx.execute('CREATE ${unique}INDEX ${create_name_sql} ON ${quote_identifier(ctx.dialect, index.table)} (${columns});')!
+	where_clause := if index.where != '' { ' WHERE ${index.where}' } else { '' }
+	ctx.execute('CREATE ${unique}INDEX ${create_name_sql} ON ${quote_identifier(ctx.dialect, index.table)} (${columns})${where_clause};')!
 }
 
 // remove_index removes an index by name. PostgreSQL and SQLite derive the index

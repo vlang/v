@@ -495,7 +495,7 @@ fn main() {
 		panic(err)
 	}
 	res :=
-		os.execute('${os.quoted_path(@VEXE)} -dump-c-flags - -os linux -cc tcc -arch arm64 ${os.quoted_path(src_file)}')
+		os.exec([@VEXE, '-dump-c-flags', '-', '-os', 'linux', '-cc', 'tcc', '-arch', 'arm64', src_file])
 	assert res.exit_code == 0, res.output
 	assert !res.output.contains('thirdparty/stdatomic/nix/atomic.S')
 	// libatomic.so is only emitted when the host has the aarch64 cross-compile gcc toolchain installed.

@@ -5,9 +5,6 @@ module builtin
 
 @[markused]
 fn builtin_init() {
-	$if v3_backend && ( gcboehm || vgc ) ? {
-		gc_runtime_init()
-	}
 	$if prealloc && v3_backend ? {
 		unsafe { prealloc_vinit() }
 	}
@@ -16,9 +13,12 @@ fn builtin_init() {
 			gc_set_warn_proc(internal_gc_warn_proc_none)
 		}
 	}
-	$if !vinix {
+	// A freestanding `bare_print` writes straight to the file descriptor, so there
+	// is no stdio buffer to turn off.
+	$if !vinix && !freestanding {
 		unbuffer_stdout()
 	}
+	install_segfault_handler()
 }
 
 fn break_if_debugger_attached() {

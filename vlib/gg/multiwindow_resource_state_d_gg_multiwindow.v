@@ -1,7 +1,7 @@
 module gg
 
+import gg.render
 import sokol.gfx
-import sokol.sgl
 
 enum MultiWindowResourceKind {
 	buffer
@@ -40,7 +40,7 @@ struct MultiWindowAttachmentsRecipe {
 }
 
 struct MultiWindowSglMaterialization {
-	pipeline    sgl.Pipeline
+	pipeline    render.Pipeline
 	context_key string
 }
 
@@ -57,7 +57,7 @@ mut:
 	dependents           []MultiWindowResourceKey
 	last_mutation_batch  u64
 	buffer_mutation_mode MultiWindowBufferMutationMode
-	buffer_capacity      usize
+	buffer_capacity      uint
 	buffer_usage         gfx.Usage
 	buffer_desc          gfx.BufferDesc
 	buffer               gfx.Buffer
@@ -227,7 +227,7 @@ fn (registry &MultiWindowResourceRegistry) validate_any(key MultiWindowResourceK
 	return key.slot
 }
 
-fn (registry &MultiWindowResourceRegistry) plan_buffer_mutation(key MultiWindowResourceKey, window WindowId, scope MultiWindowResourceScope, batch u64, mode MultiWindowBufferMutationMode, data_size usize) !MultiWindowBufferMutationPlan {
+fn (registry &MultiWindowResourceRegistry) plan_buffer_mutation(key MultiWindowResourceKey, window WindowId, scope MultiWindowResourceScope, batch u64, mode MultiWindowBufferMutationMode, data_size uint) !MultiWindowBufferMutationPlan {
 	index := registry.validate(key, .buffer, window, scope)!
 	registry.validate_mutation_scope(index, scope)!
 	if batch == 0 {
@@ -496,8 +496,20 @@ fn destroy_retired_resource(resource MultiWindowRetiredResource) {
 		}
 		.sgl_pipeline {
 			for _, materialization in resource.materialized_sgl {
-				sgl.destroy_pipeline(materialization.pipeline)
+				destroy_render_pipeline_pips(materialization.pipeline)
 			}
+		}
+	}
+}
+
+// destroy_render_pipeline_pips releases the concrete gfx pipelines that back a
+// render pipeline. Index 5 is an alias of index 3 (quads are emulated with
+// triangles), so it must not be destroyed twice.
+fn destroy_render_pipeline_pips(pipeline render.Pipeline) {
+	for i in 0 .. render.num_primitive_types {
+		if i != 5 {
+			mut pip := pipeline.pips[i]
+			pip.free()
 		}
 	}
 }

@@ -8,12 +8,13 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 
 // build_v3 builds v3 data for v3 tests.
 fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_option_arg_codegen_test_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_option_arg_codegen_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -23,11 +24,11 @@ fn run_good(v3_bin string, name string, source string) string {
 	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0
 	assert !compile.output.contains('C compilation failed')
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0
 	return run.output.trim_space()
 }
@@ -36,7 +37,7 @@ fn generated_c(v3_bin string, name string, source string) string {
 	src := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src, source) or { panic(err) }
 	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${c_path}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, compile.output
 	return os.read_file(c_path) or { panic(err) }
 }
@@ -62,7 +63,7 @@ fn main() {
 	out := run_good(v3_bin, 'optional_literal_expected_wrapper', source)
 	assert out == 'ok'
 	c_code := generated_c(v3_bin, 'optional_literal_expected_wrapper_c', source)
-	assert c_code.contains('take((Optional_i64){.ok = true, .value = 1})'), c_code
+	assert c_code.contains('take((__v_option_i64){.ok = true, .value = 1})'), c_code
 }
 
 fn test_optional_reference_string_interpolation_preserves_wrapper() {
@@ -120,7 +121,7 @@ fn test_error_call_argument_expected_ierror_not_result_wrapper() {
 	assert out == 'ok'
 	c_code := generated_c(v3_bin, 'error_call_argument_expected_ierror_c', source)
 	assert c_code.contains('wrap((IError){'), c_code
-	assert !c_code.contains('wrap((Optional_string)'), c_code
+	assert !c_code.contains('wrap((__v_option_string)'), c_code
 }
 
 fn test_selector_named_error_expected_ierror_calls_method() {
@@ -181,16 +182,16 @@ fn test_optional_abi_distinguishes_plain_t_name_from_specialized_generic() {
 	v3_bin := build_v3()
 	c_code := generated_c(v3_bin, 'optional_plain_t_name_abi', 'fn plain[T](x T) T {\n\treturn x\n}\n\nfn plain_t_name(x ?int) int {\n\treturn x or { 0 }\n}\n\nfn maybe() ?int {\n\treturn 3\n}\n\nfn use_fn(f fn (?int) int) int {\n\treturn f(maybe())\n}\n\nfn take[T](x ?T, fallback T) T {\n\treturn x or { fallback }\n}\n\nfn main() {\n\tprintln(plain_t_name(maybe()) + use_fn(plain_t_name) + take[int](7, 0) + plain[int](4))\n}\n')
 	// With platform `int` lowered to `i64`, `?int` and `?i64` share the
-	// `Optional_i64` representation, so plain and generic-specialized `?int` uses
+	// `__v_option_i64` representation, so plain and generic-specialized `?int` uses
 	// converge on it (the fn-pointer ABI stays consistent because every `?int`
 	// site now spells the same optional type).
-	assert c_code.contains('i64 plain_t_name(Optional_i64 x)'), c_code
-	assert !c_code.contains('Optional_int'), c_code
-	assert c_code.contains(')(struct Optional_i64);'), c_code
+	assert c_code.contains('i64 plain_t_name(__v_option_i64 x)'), c_code
+	assert !c_code.contains('__v_option_int'), c_code
+	assert c_code.contains(')(struct __v_option_i64);'), c_code
 	assert c_code.contains('plain_T_v_int(') || c_code.contains('plain_T_int('), c_code
-	assert c_code.contains('i64 take_T_v_int(Optional_i64 x, i64 fallback)')
-		|| c_code.contains('i64 take_T_int(Optional_i64 x, i64 fallback)'), c_code
-	assert c_code.contains('(Optional_i64){.ok = true, .value = 7}'), c_code
+	assert c_code.contains('i64 take_T_v_int(__v_option_i64 x, i64 fallback)')
+		|| c_code.contains('i64 take_T_int(__v_option_i64 x, i64 fallback)'), c_code
+	assert c_code.contains('(__v_option_i64){.ok = true, .value = 7}'), c_code
 }
 
 fn test_optional_generic_concrete_abi_converts_optional_args() {
@@ -199,13 +200,13 @@ fn test_optional_generic_concrete_abi_converts_optional_args() {
 	out := run_good(v3_bin, 'optional_generic_concrete_abi_run', source)
 	assert out == 'ok'
 	c_code := generated_c(v3_bin, 'optional_generic_concrete_abi_c', source)
-	assert c_code.contains('i64 take_T_v_int(Optional_i64 x, i64 fallback)')
-		|| c_code.contains('i64 take_T_int(Optional_i64 x, i64 fallback)'), c_code
+	assert c_code.contains('i64 take_T_v_int(__v_option_i64 x, i64 fallback)')
+		|| c_code.contains('i64 take_T_int(__v_option_i64 x, i64 fallback)'), c_code
 	// `int` lowers to `i64`, so a plain `?int` value and the specialized `?T`
-	// (T = int) share `Optional_i64`. The optional arg then passes straight
-	// through, without the generic-`Optional` conversion temp the mismatched
+	// (T = int) share `__v_option_i64`. The optional arg then passes straight
+	// through, without the generic-`__v_option` conversion temp the mismatched
 	// representations used to require.
-	assert !c_code.contains('Optional_int'), c_code
+	assert !c_code.contains('__v_option_int'), c_code
 	assert c_code.contains('take_T_v_int(maybe(), 0)') || c_code.contains('take_T_int(maybe(), 0)'), c_code
 	assert c_code.contains('take_T_v_int(x, 0)') || c_code.contains('take_T_int(x, 0)'), c_code
 }
@@ -256,6 +257,14 @@ fn main() {
 	out := run_good(v3_bin, 'result_multi_return_optional_wrapper', source)
 	assert out == 'ok'
 	c_code := generated_c(v3_bin, 'result_multi_return_optional_wrapper_c', source)
-	assert c_code.contains('typedef struct Optional_multi_return_i64_main__Ticket {')
-		|| c_code.contains('typedef struct Optional_multi_return_i32_main__Ticket {'), c_code
+	// A `!` multi-return is a Result, so its wrapper is `__v_result_...`; it must be
+	// declared before the first function that returns it.
+	mut wrapper := 'multi_return_i64_main__Ticket'
+	if !c_code.contains('__v_result_${wrapper}') {
+		wrapper = 'multi_return_i32_main__Ticket'
+	}
+	typedef_pos := c_code.index('typedef struct __v_result_${wrapper} {') or { -1 }
+	use_pos := c_code.index('__v_result_${wrapper} App__state(') or { -1 }
+	assert typedef_pos >= 0, c_code
+	assert use_pos > typedef_pos, c_code
 }

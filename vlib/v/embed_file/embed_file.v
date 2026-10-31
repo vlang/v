@@ -32,7 +32,7 @@ fn join_chunks_buffer(size int) &u8 {
 			return buffer
 		}
 	} $else {
-		return unsafe { &u8(malloc(isize(size))) }
+		return unsafe { &u8(malloc(int(size))) }
 	}
 }
 
@@ -62,7 +62,7 @@ pub fn join_chunks(chunks &EmbedFileChunk, len int) &u8 {
 			if offset + n > len {
 				n = len - offset
 			}
-			vmemcpy(buffer + offset, chunk.data, isize(n))
+			vmemcpy(buffer + offset, chunk.data, int(n))
 			offset += n
 			chunk++
 		}
@@ -81,6 +81,8 @@ mut:
 	free_compressed   bool
 	free_uncompressed bool
 pub:
+	// len is the size of what `data()` returns: the size the file had when the program
+	// was compiled, until a development build loads the file, and what it loaded after.
 	len  int
 	path string
 }
@@ -109,7 +111,9 @@ pub fn (mut ed EmbedFileData) free() {
 pub fn (original &EmbedFileData) to_string() string {
 	unsafe {
 		mut ed := &EmbedFileData(original)
-		the_copy := &u8(memdup(ed.data(), ed.len))
+		// Loading the file sets `len`, so the bytes are taken before the length is read.
+		payload := ed.data()
+		the_copy := &u8(memdup(payload, ed.len))
 		return the_copy.vstring_with_len(ed.len)
 	}
 }
@@ -117,19 +121,26 @@ pub fn (original &EmbedFileData) to_string() string {
 pub fn (original &EmbedFileData) to_bytes() []u8 {
 	unsafe {
 		mut ed := &EmbedFileData(original)
-		the_copy := memdup(ed.data(), ed.len)
+		// Loading the file sets `len`, so the bytes are taken before the length is read.
+		payload := ed.data()
+		the_copy := memdup(payload, ed.len)
 		return the_copy.vbytes(ed.len)
 	}
 }
 
-pub fn (mut ed EmbedFileData) data() &u8 {
-	if ed.uncompressed != unsafe { nil } {
-		return ed.uncompressed
+// data returns the embedded bytes, loading or decompressing them on the first call if needed.
+pub fn (original &EmbedFileData) data() &u8 {
+	if original.uncompressed != unsafe { nil } {
+		return original.uncompressed
 	}
+	// Reading bytes may populate the private cache, as in to_string and to_bytes.
+	mut ed := unsafe { &EmbedFileData(original) }
 	if ed.uncompressed == unsafe { nil } && ed.compressed != unsafe { nil } {
-		decoder := g_embed_file_decoders.decoders[ed.compression_type] or {
+		if ed.compression_type !in g_embed_file_decoders.decoders {
 			panic('EmbedFileData error: unknown compression of "${ed.path}": "${ed.compression_type}"')
 		}
+		// The core module must also compile before address-or lowering is bootstrapped.
+		decoder := unsafe { &g_embed_file_decoders.decoders[ed.compression_type] }
 		compressed := unsafe { ed.compressed.vbytes(ed.compressed_len) }
 		decompressed := decoder.decompress(compressed) or {
 			panic('EmbedFileData error: decompression of "${ed.path}" failed: ${err}')

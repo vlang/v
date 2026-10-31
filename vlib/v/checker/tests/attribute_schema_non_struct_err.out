@@ -1,0 +1,6 @@
+vlib/v/checker/tests/attribute_schema_non_struct_err.vv:2:1: error: `@[attribute]` can only be applied to struct declarations
+    1 | @[attribute]
+    2 | fn routed() {
+      | ~~~~~~~~~
+    3 | }
+    4 |

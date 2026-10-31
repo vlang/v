@@ -10,7 +10,9 @@ fn fixed_array_force_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_fixed_array_force_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${fixed_array_force_vexe} -gc none -path "${fixed_array_force_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${fixed_array_force_v3_src}')
+		os.exec([fixed_array_force_vexe, '-gc', 'none', '-path',
+			'${fixed_array_force_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${fixed_array_force_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -96,9 +98,9 @@ fn test_fixed_array_force_array_literal_const_field_does_not_leak_array_temp() {
 	v3_bin := fixed_array_force_build_v3()
 	root := fixed_array_force_write_project()
 	bin := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} ${root} -b c -o ${bin}')
+	compile := os.exec([v3_bin, root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '42'
 	generated := os.read_file(bin + '.c') or { panic(err) }

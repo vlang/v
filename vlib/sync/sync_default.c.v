@@ -9,6 +9,10 @@ $if !android {
 	#flag -lpthread
 }
 
+// NetBSD keeps the unnamed POSIX semaphores in librt, not in the pthread
+// library this file links above.
+#flag netbsd -lrt
+
 #include <semaphore.h>
 
 @[trusted]
@@ -111,7 +115,7 @@ pub fn new_mutex() &Mutex {
 // since it creates the associated resources needed for the mutex to work properly.
 @[inline]
 pub fn (mut m Mutex) init() {
-	C.pthread_mutex_init(&m.mutex, C.NULL)
+	C.pthread_mutex_init(&m.mutex, unsafe { nil })
 }
 
 // new_rwmutex creates a new read/write mutex instance on the heap, and returns a pointer to it.
@@ -130,19 +134,19 @@ pub fn (mut m RwMutex) init() {
 	C.pthread_rwlockattr_setkind_np(&a.attr, C.PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP)
 	C.pthread_rwlock_init(&m.mutex, &a.attr)
 	C.pthread_rwlockattr_destroy(&a.attr) // destroy the attr when done
-	C.atomic_store_u32(&m.inited, 1)
+	C.atomic_store_u32(&m.inited, 2)
 }
 
 fn (mut m RwMutex) lazy_init() {
-	if C.atomic_load_u32(&m.inited) == 0 {
-		mut expected := u32(0)
-		if C.atomic_compare_exchange_strong_u32(&m.inited, &expected, 1) {
-			a := RwMutexAttr{}
-			C.pthread_rwlockattr_init(&a.attr)
-			C.pthread_rwlockattr_setkind_np(&a.attr, C.PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP)
-			C.pthread_rwlock_init(&m.mutex, &a.attr)
-			C.pthread_rwlockattr_destroy(&a.attr)
-		}
+	if C.atomic_load_u32(&m.inited) == 2 {
+		return
+	}
+	mut expected := u32(0)
+	if C.atomic_compare_exchange_strong_u32(&m.inited, &expected, 1) {
+		m.init()
+		return
+	}
+	for C.atomic_load_u32(&m.inited) != 2 {
 	}
 }
 
@@ -201,6 +205,7 @@ pub fn (mut m RwMutex) lock() {
 // If the mutex was already locked, it will return false.
 @[inline]
 pub fn (mut m RwMutex) try_rlock() bool {
+	m.lazy_init()
 	return C.pthread_rwlock_tryrdlock(&m.mutex) == 0
 }
 
@@ -208,6 +213,7 @@ pub fn (mut m RwMutex) try_rlock() bool {
 // If the mutex was already locked, it will return false.
 @[inline]
 pub fn (mut m RwMutex) try_wlock() bool {
+	m.lazy_init()
 	return C.pthread_rwlock_trywrlock(&m.mutex) == 0
 }
 
@@ -375,7 +381,7 @@ pub fn (mut sem Semaphore) destroy() {
 // and lets the C preprocessor pick the one that the target's libc can actually run.
 fn (mut sem Semaphore) cond_init(n u32) {
 	C.atomic_store_u32(&sem.count, n)
-	should_be_zero(C.pthread_mutex_init(&sem.mtx, C.NULL))
+	should_be_zero(C.pthread_mutex_init(&sem.mtx, unsafe { nil }))
 	attr := CondAttr{}
 	should_be_zero(C.pthread_condattr_init(&attr.attr))
 	$if !openbsd {

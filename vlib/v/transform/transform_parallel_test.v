@@ -4,6 +4,59 @@ import v.flat
 import v.token
 import v.types
 
+fn test_optional_platform_integer_conversion_uses_target_width() {
+	original_bits := types.platform_int_bits()
+	original_portable := types.platform_int_c_spelling() == types.portable_int_c_type
+	defer {
+		types.set_platform_int_bits(original_bits)
+		if original_portable {
+			types.set_portable_platform_int()
+		}
+	}
+	for bits in [32, 64] {
+		types.set_platform_int_bits(bits)
+		assert optional_integer_conversion_needed('?int', '?i32') == (bits != 32)
+		assert optional_integer_conversion_needed('?i32', '?int') == (bits != 32)
+		assert optional_integer_conversion_needed('?int', '?i64') == (bits != 64)
+		assert optional_integer_conversion_needed('?i64', '?int') == (bits != 64)
+		assert optional_integer_conversion_needed('?int', '?u32')
+		assert optional_integer_conversion_needed('!int', '!u64')
+		types.set_portable_platform_int()
+		assert optional_integer_conversion_needed('?int', '?i32')
+		assert optional_integer_conversion_needed('!int', '!i64')
+	}
+}
+
+fn optional_integer_conversion_needed(source string, target string) bool {
+	mut a := flat.FlatAst.new()
+	value := a.add_node(flat.Node{ kind: .ident, value: 'value', typ: flat.source_type_id(source) })
+	mut tc := types.TypeChecker.new(&a)
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	if _, _ := t.option_payload_conversion_types(value, flat.source_type_id(source), flat.source_type_id(target)) {
+		return true
+	}
+	return false
+}
+
+fn test_scoped_transform_batches_use_source_cost_for_ordinary_programs() {
+	$if !v3_no_parallel ? {
+		assert scoped_transform_batch_count(0, 0, 16, false) == 0
+		assert scoped_transform_batch_count(1, 1, 16, false) == 1
+		assert scoped_transform_batch_count(128, 512, 16, false) == 1
+		assert scoped_transform_batch_count(128, 4096, 16, false) == 2
+		assert scoped_transform_batch_count(128, 262144, 16, false) == 16
+		assert scoped_transform_batch_count(128, 512, 16, true) == 16
+		assert scoped_transform_batch_count(3, 512, 16, true) == 3
+		assert scoped_transform_batch_count(128, 512, 4, true) == 4
+		small := []FnWorkItem{len: 128, init: FnWorkItem{ cost: 3 }}
+		assert shared_helper_batch_count(small, false) == 1
+		assert shared_helper_batch_count(small, true) == 16
+		large := []FnWorkItem{len: 128, init: FnWorkItem{ cost: 2047 }}
+		assert shared_helper_batch_count(large, false) == 64
+		assert shared_helper_batch_count(large, true) == 64
+	}
+}
+
 fn test_monomorph_job_count_does_not_start_empty_workers() {
 	$if !v3_no_parallel ? {
 		assert monomorph_job_count(16, 1) == 1
@@ -14,8 +67,8 @@ fn test_monomorph_job_count_does_not_start_empty_workers() {
 
 fn test_monomorph_job_limit_caps_large_programs() {
 	$if !v3_no_parallel ? {
-		assert monomorph_job_limit(12, 499_999, 0) == 4
-		assert monomorph_job_limit(12, 500_000, 0) == 4
+		assert monomorph_job_limit(12, 499_999, 0) == 8
+		assert monomorph_job_limit(12, 500_000, 0) == 8
 		assert monomorph_job_limit(1, 500_000, 0) == 1
 		assert monomorph_job_limit(12, 500_000, 6) == 6
 		assert monomorph_job_limit(4, 500_000, 8) == 4
@@ -33,37 +86,158 @@ fn test_generated_calls_publish_exact_resolution_except_cgen_intrinsics() {
 }
 
 fn test_forwarded_optional_conversion_propagates_borrowed_clone() {
+	payload := types.Type(types.string_)
+	option := types.Type(types.OptionType{ base_type: &types.Type(payload) })
+	result := types.Type(types.ResultType{ base_type: &types.Type(payload) })
+	option_clones := ['string__clone']
+	result_clones := ['__v3_clone_owned_ierror', 'string__clone']
+	assert forwarded_wrapper_clone_calls(option, true) == option_clones
+	assert forwarded_wrapper_clone_calls(result, true) == result_clones
+	assert forwarded_wrapper_clone_calls(option, false) == []string{}
+	assert forwarded_wrapper_clone_calls(result, false) == []string{}
+}
+
+fn forwarded_wrapper_clone_calls(wrapper types.Type, clone_borrowed bool) []string {
 	mut a := flat.FlatAst.new()
 	source := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'source'
-		typ:   '?string'
+		typ:   wrapper.source_type_id()
 	})
 	mut tc := types.TypeChecker.new(&a)
+	tc.interface_names[flat.source_type_id('IError')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('source', wrapper.source_type_id())
 	payload := types.Type(types.string_)
-	optional := types.Type(types.OptionType{
-		base_type: types.Type(types.string_)
-	})
-
-	result := t.convert_forwarded_optional_result(source, optional, payload, optional, optional, payload, true)
-
+	result := t.convert_forwarded_optional_result(source, wrapper, payload,
+		wrapper, wrapper, payload, clone_borrowed)
 	assert result != source
-	mut saw_clone := false
-	mut saw_error_clone := false
-	for i, node in a.nodes {
-		if node.kind == .call && tc.resolved_call_name(flat.NodeId(i)) or { '' } == 'string__clone' {
-			saw_clone = true
+	assert t.pending_stmts.len >= 2
+	for statement in t.pending_stmts[..t.pending_stmts.len - 1] {
+		assert forwarded_wrapper_node_calls(&a, statement) == []string{}
+		assert forwarded_wrapper_error_reads(&a, statement) == 0
+	}
+	branch := a.nodes[int(t.pending_stmts.last())]
+	assert branch.kind == .if_expr
+	assert branch.children_count == 3
+	condition := a.child_node(&branch, 0)
+	assert condition.kind == .selector
+	assert condition.value == 'ok'
+	then_id := a.child(&branch, 1)
+	else_id := a.child(&branch, 2)
+	then_calls := forwarded_wrapper_node_calls(&a, then_id)
+	else_calls := forwarded_wrapper_node_calls(&a, else_id)
+	assert then_calls == if clone_borrowed { ['string__clone'] } else { []string{} }
+	assert forwarded_wrapper_error_reads(&a, then_id) == 0
+	if wrapper is types.ResultType {
+		assert forwarded_wrapper_error_reads(&a, else_id) == 1
+		assert else_calls == if clone_borrowed {
+			['__v3_clone_owned_ierror']
+		} else {
+			[]string{}
 		}
-		if node.kind == .call && node.children_count > 0 {
-			callee := a.child_node(&node, 0)
-			if callee.kind == .ident && callee.value == '__v3_clone_owned_ierror' {
-				saw_error_clone = true
-			}
+	} else {
+		assert forwarded_wrapper_error_reads(&a, else_id) == 0
+		assert else_calls == []string{}
+	}
+	mut calls := then_calls.clone()
+	calls << else_calls
+	calls.sort()
+	return calls
+}
+
+fn forwarded_wrapper_node_calls(a &flat.FlatAst, id flat.NodeId) []string {
+	node := a.nodes[int(id)]
+	mut calls := []string{}
+	if node.kind == .call && node.children_count > 0 {
+		callee := a.child_node(&node, 0)
+		if callee.kind == .ident {
+			calls << callee.value
 		}
 	}
-	assert saw_clone
-	assert saw_error_clone
+	for i in 0 .. int(node.children_count) {
+		calls << forwarded_wrapper_node_calls(a, a.child(&node, i))
+	}
+	return calls
+}
+
+fn forwarded_wrapper_error_reads(a &flat.FlatAst, id flat.NodeId) int {
+	node := a.nodes[int(id)]
+	mut reads := if node.kind == .selector && node.value == 'err' { 1 } else { 0 }
+	for i in 0 .. int(node.children_count) {
+		reads += forwarded_wrapper_error_reads(a, a.child(&node, i))
+	}
+	return reads
+}
+
+fn test_optional_conversions_guard_error_reads() {
+	targets := ['?&string', '!&string', '?Value', '!Value']
+	for target in targets {
+		check_optional_conversion(target)?
+	}
+}
+
+fn check_optional_conversion(target string) ? {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.interface_names[flat.source_type_id('IError')] = true
+	tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
+	source_type := target[..1] + 'string'
+	t.set_var_type('source', flat.source_type_id(source_type))
+	source := t.make_ident('source')
+	converted := if target.contains('&') {
+		t.transform_optional_value_to_pointer(source, flat.source_type_id(source_type), flat.source_type_id(target), false)?
+	} else {
+		t.transform_optional_value_to_sum(source, flat.source_type_id(source_type), flat.source_type_id(target))?
+	}
+	branch_id := if a.nodes[int(converted)].kind == .if_expr {
+		converted
+	} else {
+		t.pending_stmts.last()
+	}
+	for statement in t.pending_stmts {
+		if statement == branch_id {
+			continue
+		}
+		assert forwarded_wrapper_error_reads(&a, statement) == 0
+		assert forwarded_wrapper_node_calls(&a, statement) == []string{}
+	}
+	branch := a.nodes[int(branch_id)]
+	assert branch.kind == .if_expr
+	assert flat.source_type_name(t.node_type(converted)) == target
+	condition := a.child_node(&branch, 0)
+	assert condition.kind == .selector
+	assert condition.value == 'ok'
+	success := a.child(&branch, 1)
+	failure := a.child(&branch, 2)
+	assert forwarded_wrapper_error_reads(&a, success) == 0
+	assert forwarded_wrapper_error_reads(&a, failure) == int(target.starts_with('!'))
+	assert forwarded_wrapper_node_calls(&a, failure) == []string{}
+}
+
+fn test_optional_conversion_keeps_payload_statements_in_success_branch() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.interface_names[flat.source_type_id('IError')] = true
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.set_var_type('source', flat.source_type_id('!string'))
+	source := t.make_ident('source')
+	before := t.make_expr_stmt(t.make_call_typed('before', [], flat.source_type_void))
+	convert := t.make_expr_stmt(t.make_call_typed('convert', [], flat.source_type_void))
+	t.pending_stmts << before
+	t.pending_stmts << convert
+	value := t.make_selector(source, 'value', flat.source_type_string)
+	converted := t.make_optional_conversion(source, value, flat.source_type_id('!string'), 1)
+	assert t.pending_stmts == [before]
+	branch := a.nodes[int(converted)]
+	success := a.child(&branch, 1)
+	failure := a.child(&branch, 2)
+	assert forwarded_wrapper_node_calls(&a, success) == ['convert']
+	assert forwarded_wrapper_node_calls(&a, failure) == []string{}
+	assert forwarded_wrapper_error_reads(&a, success) == 0
+	assert forwarded_wrapper_error_reads(&a, failure) == 1
 }
 
 fn test_const_map_expansion_estimate_ignores_shadowing_local() {
@@ -74,7 +248,7 @@ fn test_const_map_expansion_estimate_ignores_shadowing_local() {
 	param := a.add_node(flat.Node{
 		kind:  .param
 		value: 'lookup'
-		typ:   'map[string]int'
+		typ:   flat.source_type_id('map[string]int')
 	})
 	ident := a.add_node(flat.Node{
 		kind:  .ident
@@ -131,7 +305,7 @@ fn test_const_map_expansion_estimate_ignores_stale_transformer_local() {
 	tc.const_exprs['lookup'] = const_id
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.build_source_parent_index()
-	t.set_var_type('lookup', 'map[string]int')
+	t.set_var_type('lookup', flat.source_type_id('map[string]int'))
 	assert t.collection_const_expr_for_ident(ident)? == const_id
 }
 
@@ -260,12 +434,12 @@ fn test_map_expansion_estimate_includes_owned_value_cleanup() {
 	tc.collect(&a)
 	plain_id := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[int]int'
+		typ:            flat.source_type_id('map[int]int')
 		children_count: 254
 	})
 	owned_id := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[int]string'
+		typ:            flat.source_type_id('map[int]string')
 		children_count: 254
 	})
 	t := new_transformer(mut a, &tc, map[string]bool{})
@@ -278,7 +452,7 @@ fn test_map_expansion_estimate_defers_metadata_driven_spread_clone() {
 	mut a := flat.FlatAst.new()
 	spread_source := a.add_node(flat.Node{
 		kind: .ident
-		typ:  'map[int][]string'
+		typ:  flat.source_type_id('map[int][]string')
 	})
 	spread_start := a.children.len
 	a.children << spread_source
@@ -295,7 +469,7 @@ fn test_map_expansion_estimate_defers_metadata_driven_spread_clone() {
 	})
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[int][]string'
+		typ:            flat.source_type_id('map[int][]string')
 		children_start: map_start
 		children_count: 2
 	})
@@ -309,7 +483,7 @@ fn test_array_literal_expansion_estimate_defers_metadata_driven_spread_clone() {
 	mut a := flat.FlatAst.new()
 	spread_source := a.add_node(flat.Node{
 		kind: .ident
-		typ:  '[][]string'
+		typ:  flat.source_type_id('[][]string')
 	})
 	spread_start := a.children.len
 	a.children << spread_source
@@ -323,7 +497,7 @@ fn test_array_literal_expansion_estimate_defers_metadata_driven_spread_clone() {
 	a.children << spread
 	root := a.add_node(flat.Node{
 		kind:           .array_literal
-		typ:            '[][]string'
+		typ:            flat.source_type_id('[][]string')
 		children_start: array_start
 		children_count: 1
 	})
@@ -367,7 +541,7 @@ fn test_external_map_expansion_estimate_includes_nested_array_lowering() {
 	a.children << outer
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string][][]int'
+		typ:            flat.source_type_id('map[string][][]int')
 		children_start: map_start
 		children_count: 2
 	})
@@ -389,14 +563,14 @@ fn test_external_map_expansion_estimate_follows_nested_const_index() {
 	}
 	large := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[int]int'
+		typ:            flat.source_type_id('map[int]int')
 		children_start: large_start
 		children_count: 256
 	})
 	large_ident := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'large'
-		typ:   'map[int]int'
+		typ:   flat.source_type_id('map[int]int')
 	})
 	large_key := a.add_node(flat.Node{
 		kind:  .int_literal
@@ -419,7 +593,7 @@ fn test_external_map_expansion_estimate_follows_nested_const_index() {
 	a.children << large_index
 	outer := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]int'
+		typ:            flat.source_type_id('map[string]int')
 		children_start: outer_start
 		children_count: 2
 	})
@@ -442,14 +616,14 @@ fn test_fn_span_map_expansion_estimate_ignores_const_array_index() {
 	}
 	large := a.add_node(flat.Node{
 		kind:           .array_literal
-		typ:            '[]int'
+		typ:            flat.source_type_id('[]int')
 		children_start: array_start
 		children_count: flat.child_count(deferred_map_expansion_threshold + 1)
 	})
 	large_ident := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'large'
-		typ:   '[]int'
+		typ:   flat.source_type_id('[]int')
 	})
 	large_key := a.add_node(flat.Node{
 		kind:  .int_literal
@@ -460,7 +634,7 @@ fn test_fn_span_map_expansion_estimate_ignores_const_array_index() {
 	a.children << large_key
 	large_index := a.add_node(flat.Node{
 		kind:           .index
-		typ:            'int'
+		typ:            flat.source_type_int
 		children_start: index_start
 		children_count: 2
 	})
@@ -495,7 +669,7 @@ fn test_external_map_expansion_estimate_includes_direct_array_copy() {
 	a.children << array
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string][]int'
+		typ:            flat.source_type_id('map[string][]int')
 		children_start: map_start
 		children_count: 2
 	})
@@ -510,7 +684,7 @@ fn test_external_map_expansion_estimate_defers_struct_reconstruction() {
 	mut a := flat.FlatAst.new()
 	value := a.add_node(flat.Node{
 		kind: .struct_init
-		typ:  'LargeValue'
+		typ:  flat.source_type_id('LargeValue')
 	})
 	key := a.add_node(flat.Node{
 		kind:  .string_literal
@@ -521,7 +695,7 @@ fn test_external_map_expansion_estimate_defers_struct_reconstruction() {
 	a.children << value
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]LargeValue'
+		typ:            flat.source_type_id('map[string]LargeValue')
 		children_start: map_start
 		children_count: 2
 	})
@@ -536,7 +710,7 @@ fn test_external_map_expansion_estimate_includes_fixed_array_init() {
 	index := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'index'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	field_start := a.children.len
 	a.children << index
@@ -550,7 +724,7 @@ fn test_external_map_expansion_estimate_includes_fixed_array_init() {
 	a.children << init_field
 	root := a.add_node(flat.Node{
 		kind:           .array_init
-		typ:            'int[4096]'
+		typ:            flat.source_type_id('int[4096]')
 		children_start: array_start
 		children_count: 1
 	})
@@ -564,7 +738,7 @@ fn test_external_map_expansion_estimate_includes_empty_fixed_array_runtime_init(
 	mut a := flat.FlatAst.new()
 	root := a.add_node(flat.Node{
 		kind: .array_init
-		typ:  '[4096][]int'
+		typ:  flat.source_type_id('[4096][]int')
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
@@ -574,7 +748,7 @@ fn test_external_map_expansion_estimate_includes_empty_fixed_array_runtime_init(
 
 	plain := a.add_node(flat.Node{
 		kind: .array_init
-		typ:  'int[4096]'
+		typ:  flat.source_type_id('int[4096]')
 	})
 	assert t.fixed_array_init_expansion_estimate(plain, a.nodes[int(plain)]) == 0
 }
@@ -583,7 +757,7 @@ fn test_fn_span_map_expansion_estimate_includes_fixed_array_runtime_init() {
 	mut a := flat.FlatAst.new()
 	root := a.add_node(flat.Node{
 		kind: .array_init
-		typ:  '[4096][]int'
+		typ:  flat.source_type_id('[4096][]int')
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
@@ -604,7 +778,7 @@ fn test_fn_span_map_expansion_estimate_includes_comptime_zero_value_markers() {
 		markers << a.add_node(flat.Node{
 			kind:           .string_literal
 			value:          marker_name
-			typ:            'string'
+			typ:            flat.source_type_string
 			children_start: start
 			children_count: 1
 		})
@@ -622,19 +796,19 @@ fn test_fn_span_map_expansion_estimate_includes_map_index_zero_value() {
 	base := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'items'
-		typ:   'map[string][4096][]int'
+		typ:   flat.source_type_id('map[string][4096][]int')
 	})
 	key := a.add_node(flat.Node{
 		kind:  .string_literal
 		value: 'missing'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	index_start := a.children.len
 	a.children << base
 	a.children << key
 	root := a.add_node(flat.Node{
 		kind:           .index
-		typ:            '[4096][]int'
+		typ:            flat.source_type_id('[4096][]int')
 		children_start: index_start
 		children_count: 2
 	})
@@ -649,19 +823,19 @@ fn test_owned_array_index_zero_value_expansion_is_reserved() {
 	base := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'items'
-		typ:   '[][4096][]int'
+		typ:   flat.source_type_id('[][4096][]int')
 	})
 	key := a.add_node(flat.Node{
 		kind:  .int_literal
 		value: '0'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	index_start := a.children.len
 	a.children << base
 	a.children << key
 	root := a.add_node(flat.Node{
 		kind:           .index
-		typ:            '[4096][]int'
+		typ:            flat.source_type_id('[4096][]int')
 		children_start: index_start
 		children_count: 2
 	})
@@ -677,12 +851,12 @@ fn test_if_expr_zero_value_expansion_is_reserved() {
 	condition := a.add_node(flat.Node{
 		kind:  .bool_literal
 		value: 'true'
-		typ:   'bool'
+		typ:   flat.source_type_bool
 	})
 	then_value := a.add_node(flat.Node{
 		kind:  .call
 		value: 'first'
-		typ:   '[4096][]int'
+		typ:   flat.source_type_id('[4096][]int')
 	})
 	then_start := a.children.len
 	a.children << then_value
@@ -694,7 +868,7 @@ fn test_if_expr_zero_value_expansion_is_reserved() {
 	else_value := a.add_node(flat.Node{
 		kind:  .call
 		value: 'second'
-		typ:   '[4096][]int'
+		typ:   flat.source_type_id('[4096][]int')
 	})
 	else_start := a.children.len
 	a.children << else_value
@@ -709,7 +883,7 @@ fn test_if_expr_zero_value_expansion_is_reserved() {
 	a.children << else_block
 	root := a.add_node(flat.Node{
 		kind:           .if_expr
-		typ:            '[4096][]int'
+		typ:            flat.source_type_id('[4096][]int')
 		children_start: if_start
 		children_count: 3
 	})
@@ -724,14 +898,14 @@ fn test_channel_receive_if_guard_zero_value_expansion_is_reserved() {
 	channel := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'values'
-		typ:   'chan [4096][]int'
+		typ:   flat.source_type_id('chan [4096][]int')
 	})
 	receive_start := a.children.len
 	a.children << channel
 	receive := a.add_node(flat.Node{
 		kind:           .prefix
 		op:             .arrow
-		typ:            '[4096][]int'
+		typ:            flat.source_type_id('[4096][]int')
 		children_start: receive_start
 		children_count: 1
 	})
@@ -769,19 +943,19 @@ fn test_multi_return_if_zero_value_expansion_is_reserved_per_slot() {
 	condition := a.add_node(flat.Node{
 		kind:  .bool_literal
 		value: 'true'
-		typ:   'bool'
+		typ:   flat.source_type_bool
 	})
 	mut branches := []flat.NodeId{}
 	for name in ['first', 'second'] {
 		large := a.add_node(flat.Node{
 			kind:  .call
 			value: '${name}_large'
-			typ:   '[4096][]int'
+			typ:   flat.source_type_id('[4096][]int')
 		})
 		number := a.add_node(flat.Node{
 			kind:  .call
 			value: '${name}_number'
-			typ:   'int'
+			typ:   flat.source_type_int
 		})
 		expr_start := a.children.len
 		a.children << large
@@ -805,7 +979,7 @@ fn test_multi_return_if_zero_value_expansion_is_reserved_per_slot() {
 	a.children << branches[1]
 	root := a.add_node(flat.Node{
 		kind:           .if_expr
-		typ:            '([4096][]int, int)'
+		typ:            flat.source_type_id('([4096][]int, int)')
 		children_start: if_start
 		children_count: 3
 	})
@@ -838,19 +1012,19 @@ fn test_multi_return_match_zero_value_expansion_is_reserved_per_slot() {
 	subject := a.add_node(flat.Node{
 		kind:  .bool_literal
 		value: 'true'
-		typ:   'bool'
+		typ:   flat.source_type_bool
 	})
 	mut branches := []flat.NodeId{}
 	for i, name in ['first', 'second'] {
 		large := a.add_node(flat.Node{
 			kind:  .call
 			value: '${name}_large'
-			typ:   '[4096][]int'
+			typ:   flat.source_type_id('[4096][]int')
 		})
 		number := a.add_node(flat.Node{
 			kind:  .call
 			value: '${name}_number'
-			typ:   'int'
+			typ:   flat.source_type_int
 		})
 		expr_start := a.children.len
 		a.children << large
@@ -873,7 +1047,7 @@ fn test_multi_return_match_zero_value_expansion_is_reserved_per_slot() {
 			condition := a.add_node(flat.Node{
 				kind:  .bool_literal
 				value: 'true'
-				typ:   'bool'
+				typ:   flat.source_type_bool
 			})
 			a.children << condition
 		}
@@ -891,7 +1065,7 @@ fn test_multi_return_match_zero_value_expansion_is_reserved_per_slot() {
 	a.children << branches[1]
 	root := a.add_node(flat.Node{
 		kind:           .match_stmt
-		typ:            '([4096][]int, int)'
+		typ:            flat.source_type_id('([4096][]int, int)')
 		children_start: match_start
 		children_count: 3
 	})
@@ -924,17 +1098,17 @@ fn test_match_expr_zero_value_expansion_is_reserved() {
 	subject := a.add_node(flat.Node{
 		kind:  .bool_literal
 		value: 'true'
-		typ:   'bool'
+		typ:   flat.source_type_bool
 	})
 	condition := a.add_node(flat.Node{
 		kind:  .bool_literal
 		value: 'true'
-		typ:   'bool'
+		typ:   flat.source_type_bool
 	})
 	value := a.add_node(flat.Node{
 		kind:  .call
 		value: 'make_big'
-		typ:   '[4096][]int'
+		typ:   flat.source_type_id('[4096][]int')
 	})
 	branch_start := a.children.len
 	a.children << condition
@@ -949,7 +1123,7 @@ fn test_match_expr_zero_value_expansion_is_reserved() {
 	a.children << branch
 	root := a.add_node(flat.Node{
 		kind:           .match_stmt
-		typ:            '[4096][]int'
+		typ:            flat.source_type_id('[4096][]int')
 		children_start: root_start
 		children_count: 2
 	})
@@ -964,12 +1138,12 @@ fn test_nested_optional_leaf_zero_value_expansion_is_reserved() {
 	optional := a.add_node(flat.Node{
 		kind:  .call
 		value: 'maybe_big'
-		typ:   '?[4096][]int'
+		typ:   flat.source_type_id('?[4096][]int')
 	})
 	expected := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'big'
-		typ:   '[4096][]int'
+		typ:   flat.source_type_id('[4096][]int')
 	})
 	comparison_start := a.children.len
 	a.children << optional
@@ -977,14 +1151,14 @@ fn test_nested_optional_leaf_zero_value_expansion_is_reserved() {
 	comparison := a.add_node(flat.Node{
 		kind:           .infix
 		op:             .eq
-		typ:            'bool'
+		typ:            flat.source_type_bool
 		children_start: comparison_start
 		children_count: 2
 	})
 	fallback := a.add_node(flat.Node{
 		kind:  .bool_literal
 		value: 'false'
-		typ:   'bool'
+		typ:   flat.source_type_bool
 	})
 	fallback_start := a.children.len
 	a.children << fallback
@@ -998,7 +1172,7 @@ fn test_nested_optional_leaf_zero_value_expansion_is_reserved() {
 	a.children << fallback_block
 	root := a.add_node(flat.Node{
 		kind:           .or_expr
-		typ:            'bool'
+		typ:            flat.source_type_bool
 		children_start: or_start
 		children_count: 2
 	})
@@ -1013,13 +1187,13 @@ fn test_forwarded_fixed_array_return_expansion_is_reserved() {
 	value := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'values'
-		typ:   '[4096]int'
+		typ:   flat.source_type_id('[4096]int')
 	})
 	return_start := a.children.len
 	a.children << value
 	return_stmt := a.add_node(flat.Node{
 		kind:           .return_stmt
-		typ:            '[4096]i64'
+		typ:            flat.source_type_id('[4096]i64')
 		children_start: return_start
 		children_count: 1
 	})
@@ -1028,7 +1202,7 @@ fn test_forwarded_fixed_array_return_expansion_is_reserved() {
 	fn_decl := a.add_node(flat.Node{
 		kind:           .fn_decl
 		value:          'forward'
-		typ:            '[4096]i64'
+		typ:            flat.source_type_id('[4096]i64')
 		children_start: fn_start
 		children_count: 1
 	})
@@ -1043,13 +1217,13 @@ fn test_forwarded_wrapped_fixed_array_return_expansion_is_reserved() {
 	value := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'values'
-		typ:   '?[4096]int'
+		typ:   flat.source_type_id('?[4096]int')
 	})
 	return_start := a.children.len
 	a.children << value
 	return_stmt := a.add_node(flat.Node{
 		kind:           .return_stmt
-		typ:            '?[4096]i64'
+		typ:            flat.source_type_id('?[4096]i64')
 		children_start: return_start
 		children_count: 1
 	})
@@ -1058,7 +1232,7 @@ fn test_forwarded_wrapped_fixed_array_return_expansion_is_reserved() {
 	fn_decl := a.add_node(flat.Node{
 		kind:           .fn_decl
 		value:          'forward_optional'
-		typ:            '?[4096]i64'
+		typ:            flat.source_type_id('?[4096]i64')
 		children_start: fn_start
 		children_count: 1
 	})
@@ -1073,13 +1247,13 @@ fn test_forwarded_container_fixed_array_return_expansion_is_reserved() {
 	array_value := array_ast.add_node(flat.Node{
 		kind:  .ident
 		value: 'values'
-		typ:   '[][4096]int'
+		typ:   flat.source_type_id('[][4096]int')
 	})
 	array_return_start := array_ast.children.len
 	array_ast.children << array_value
 	array_return := array_ast.add_node(flat.Node{
 		kind:           .return_stmt
-		typ:            '[][4096]i64'
+		typ:            flat.source_type_id('[][4096]i64')
 		children_start: array_return_start
 		children_count: 1
 	})
@@ -1088,7 +1262,7 @@ fn test_forwarded_container_fixed_array_return_expansion_is_reserved() {
 	array_fn := array_ast.add_node(flat.Node{
 		kind:           .fn_decl
 		value:          'promote_array'
-		typ:            '[][4096]i64'
+		typ:            flat.source_type_id('[][4096]i64')
 		children_start: array_fn_start
 		children_count: 1
 	})
@@ -1100,13 +1274,13 @@ fn test_forwarded_container_fixed_array_return_expansion_is_reserved() {
 	map_value := map_ast.add_node(flat.Node{
 		kind:  .ident
 		value: 'values'
-		typ:   'map[string][4096]int'
+		typ:   flat.source_type_id('map[string][4096]int')
 	})
 	map_return_start := map_ast.children.len
 	map_ast.children << map_value
 	map_return := map_ast.add_node(flat.Node{
 		kind:           .return_stmt
-		typ:            'map[string][4096]i64'
+		typ:            flat.source_type_id('map[string][4096]i64')
 		children_start: map_return_start
 		children_count: 1
 	})
@@ -1115,25 +1289,27 @@ fn test_forwarded_container_fixed_array_return_expansion_is_reserved() {
 	map_fn := map_ast.add_node(flat.Node{
 		kind:           .fn_decl
 		value:          'promote_map'
-		typ:            'map[string][4096]i64'
+		typ:            flat.source_type_id('map[string][4096]i64')
 		children_start: map_fn_start
 		children_count: 1
 	})
 	mut map_tc := types.TypeChecker.new(&map_ast)
 	mut map_transformer := new_transformer(mut map_ast, &map_tc, map[string]bool{})
-	assert map_transformer.fn_span_map_expansion_estimate(int(map_value), int(map_fn)) > deferred_map_expansion_threshold
+	// Since #30938 a returned map is copied as it is, never converted entry by entry, so it
+	// reserves no expansion; the checker rejects maps whose entries are stored differently.
+	assert map_transformer.fn_span_map_expansion_estimate(int(map_value), int(map_fn)) == 0
 
 	mut lookup_ast := flat.FlatAst.new()
 	lookup_value := lookup_ast.add_node(flat.Node{
 		kind:  .ident
 		value: 'values'
-		typ:   'map[int][4096][]int'
+		typ:   flat.source_type_id('map[int][4096][]int')
 	})
 	lookup_return_start := lookup_ast.children.len
 	lookup_ast.children << lookup_value
 	lookup_return := lookup_ast.add_node(flat.Node{
 		kind:           .return_stmt
-		typ:            'map[i64][4096][]int'
+		typ:            flat.source_type_id('map[i64][4096][]int')
 		children_start: lookup_return_start
 		children_count: 1
 	})
@@ -1142,13 +1318,13 @@ fn test_forwarded_container_fixed_array_return_expansion_is_reserved() {
 	lookup_fn := lookup_ast.add_node(flat.Node{
 		kind:           .fn_decl
 		value:          'promote_map_key'
-		typ:            'map[i64][4096][]int'
+		typ:            flat.source_type_id('map[i64][4096][]int')
 		children_start: lookup_fn_start
 		children_count: 1
 	})
 	mut lookup_tc := types.TypeChecker.new(&lookup_ast)
 	mut lookup_transformer := new_transformer(mut lookup_ast, &lookup_tc, map[string]bool{})
-	assert lookup_transformer.fn_span_map_expansion_estimate(int(lookup_value), int(lookup_fn)) > deferred_map_expansion_threshold
+	assert lookup_transformer.fn_span_map_expansion_estimate(int(lookup_value), int(lookup_fn)) == 0
 }
 
 fn test_disabled_call_zero_value_expansion_is_reserved() {
@@ -1161,7 +1337,7 @@ fn test_disabled_call_zero_value_expansion_is_reserved() {
 	a.children << callee
 	call := a.add_node(flat.Node{
 		kind:           .call
-		typ:            '[4096][]int'
+		typ:            flat.source_type_id('[4096][]int')
 		children_start: call_start
 		children_count: 1
 	})
@@ -1177,32 +1353,32 @@ fn test_disabled_struct_operator_zero_value_expansion_is_reserved() {
 	lhs := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'lhs'
-		typ:   'Box'
+		typ:   flat.source_type_id('Box')
 	})
 	rhs := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'rhs'
-		typ:   'Box'
+		typ:   flat.source_type_id('Box')
 	})
 	infix_start := a.children.len
 	a.children << lhs
 	a.children << rhs
 	infix := a.add_node(flat.Node{
 		kind:           .infix
-		typ:            '[4096][]int'
+		typ:            flat.source_type_id('[4096][]int')
 		op:             .plus
 		children_start: infix_start
 		children_count: 2
 	})
 	a.disabled_fns['Box.+'] = true
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Box'] = []types.StructField{}
-	box_type := tc.parse_type('Box')
+	tc.structs[flat.source_type_id('Box')] = []types.StructField{}
+	box_type := tc.parse_type(flat.source_type_id('Box'))
 	tc.fn_param_types['Box.+'] = [box_type, box_type]
-	tc.fn_ret_types['Box.+'] = tc.parse_type('[4096][]int')
+	tc.fn_ret_types['Box.+'] = tc.parse_type(flat.source_type_id('[4096][]int'))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Box'] = StructInfo{
-		name: 'Box'
+	t.structs[flat.source_type_id('Box')] = StructInfo{
+		name: flat.source_type_id('Box')
 	}
 
 	assert t.fn_span_map_expansion_estimate(int(lhs), int(infix) + 1) > deferred_map_expansion_threshold
@@ -1213,20 +1389,20 @@ fn test_variant_types_metadata_expansion_is_reserved() {
 	type_value := a.add_node(flat.Node{
 		kind:  .typeof_expr
 		value: 'WideSum'
-		typ:   'TypeInfo'
+		typ:   flat.source_type_id('TypeInfo')
 	})
 	selector_start := a.children.len
 	a.children << type_value
 	variant_types := a.add_node(flat.Node{
 		kind:           .selector
 		value:          'variant_types'
-		typ:            '[]int'
+		typ:            flat.source_type_id('[]int')
 		children_start: selector_start
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types['WideSum'] = ['First', 'Second']
+	t.sum_types.set(flat.source_type_id('WideSum'), ['First', 'Second'])
 
 	assert t.external_selector_expands_from_type_metadata(a.nodes[int(variant_types)])
 	assert t.fn_span_map_expansion_estimate(int(type_value), int(variant_types) + 1) > deferred_map_expansion_threshold
@@ -1247,19 +1423,19 @@ fn test_interface_cast_metadata_expansion_is_reserved() {
 	value := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'value'
-		typ:   'Concrete'
+		typ:   flat.source_type_id('Concrete')
 	})
 	cast_start := a.children.len
 	a.children << value
 	cast := a.add_node(flat.Node{
 		kind:           .cast_expr
 		value:          'WideInterface'
-		typ:            'WideInterface'
+		typ:            flat.source_type_id('WideInterface')
 		children_start: cast_start
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['WideInterface'] = true
+	tc.interface_names[flat.source_type_id('WideInterface')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	assert t.interface_cast_expands_from_type_metadata(a.nodes[int(cast)])
 	assert t.fn_span_map_expansion_estimate(int(value), int(cast) + 1) > deferred_map_expansion_threshold
@@ -1271,12 +1447,12 @@ fn test_or_expr_zero_value_expansion_is_reserved() {
 	optional_value := a.add_node(flat.Node{
 		kind:  .call
 		value: 'make_big'
-		typ:   '?[4096][]int'
+		typ:   flat.source_type_id('?[4096][]int')
 	})
 	fallback_value := a.add_node(flat.Node{
 		kind:  .call
 		value: 'fallback'
-		typ:   '[4096][]int'
+		typ:   flat.source_type_id('[4096][]int')
 	})
 	fallback_start := a.children.len
 	a.children << fallback_value
@@ -1290,7 +1466,7 @@ fn test_or_expr_zero_value_expansion_is_reserved() {
 	a.children << fallback_block
 	root := a.add_node(flat.Node{
 		kind:           .or_expr
-		typ:            '[4096][]int'
+		typ:            flat.source_type_id('[4096][]int')
 		children_start: root_start
 		children_count: 2
 	})
@@ -1305,25 +1481,25 @@ fn test_fn_span_map_expansion_estimate_defers_sum_type_map_index_zero_value() {
 	base := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'items'
-		typ:   'map[string]Item'
+		typ:   flat.source_type_id('map[string]Item')
 	})
 	key := a.add_node(flat.Node{
 		kind:  .string_literal
 		value: 'missing'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	index_start := a.children.len
 	a.children << base
 	a.children << key
 	root := a.add_node(flat.Node{
 		kind:           .index
-		typ:            'Item'
+		typ:            flat.source_type_id('Item')
 		children_start: index_start
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types['Item'] = ['Wide', 'int']
+	t.sum_types.set(flat.source_type_id('Item'), ['Wide', 'int'])
 
 	assert t.fn_span_map_expansion_estimate(int(root), int(root) + 1) > deferred_map_expansion_threshold
 }
@@ -1333,7 +1509,7 @@ fn test_fn_span_map_expansion_estimate_defers_dynamic_array_initialization() {
 	length := a.add_node(flat.Node{
 		kind:  .int_literal
 		value: '1'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	len_field_start := a.children.len
 	a.children << length
@@ -1347,14 +1523,14 @@ fn test_fn_span_map_expansion_estimate_defers_dynamic_array_initialization() {
 	a.children << len_field
 	default_root := a.add_node(flat.Node{
 		kind:           .array_init
-		typ:            '[]Wide'
+		typ:            flat.source_type_id('[]Wide')
 		children_start: default_start
 		children_count: 1
 	})
 	initial := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'make_wide()'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	init_field_start := a.children.len
 	a.children << initial
@@ -1369,12 +1545,12 @@ fn test_fn_span_map_expansion_estimate_defers_dynamic_array_initialization() {
 	a.children << init_field
 	explicit_root := a.add_node(flat.Node{
 		kind:           .array_init
-		typ:            '[]Wide'
+		typ:            flat.source_type_id('[]Wide')
 		children_start: explicit_start
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Wide'] = []types.StructField{}
+	tc.structs[flat.source_type_id('Wide')] = []types.StructField{}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.fn_span_map_expansion_estimate(int(length), int(default_root) + 1) > deferred_map_expansion_threshold
@@ -1386,14 +1562,14 @@ fn test_fn_span_map_expansion_estimate_defers_compiler_default_clone_calls() {
 	receiver := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'wide'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	selector_start := a.children.len
 	a.children << receiver
 	selector := a.add_node(flat.Node{
 		kind:           .selector
 		value:          'clone'
-		typ:            'fn () Wide'
+		typ:            flat.source_type_id('fn () Wide')
 		children_start: selector_start
 		children_count: 1
 	})
@@ -1401,13 +1577,13 @@ fn test_fn_span_map_expansion_estimate_defers_compiler_default_clone_calls() {
 	a.children << selector
 	clone_call := a.add_node(flat.Node{
 		kind:           .call
-		typ:            'Wide'
+		typ:            flat.source_type_id('Wide')
 		children_start: call_start
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Wide'] = []types.StructField{}
-	tc.struct_implements['Wide'] = ['IClone']
+	tc.structs[flat.source_type_id('Wide')] = []types.StructField{}
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.fn_span_map_expansion_estimate(int(receiver), int(clone_call) + 1) > deferred_map_expansion_threshold
@@ -1418,21 +1594,21 @@ fn test_fn_span_map_expansion_estimate_defers_struct_defaults() {
 	default_value := a.add_node(flat.Node{
 		kind:  .int_literal
 		value: '1'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	init := a.add_node(flat.Node{
 		kind:  .struct_init
 		value: 'Wide'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Wide'] = StructInfo{
-		name:   'Wide'
+	t.structs[flat.source_type_id('Wide')] = StructInfo{
+		name:   flat.source_type_id('Wide')
 		fields: [
 			FieldInfo{
 				name:         'value'
-				typ:          'int'
+				typ:          flat.source_type_int
 				default_expr: default_value
 			},
 		]
@@ -1446,19 +1622,19 @@ fn test_fn_span_map_expansion_estimate_defers_metadata_driven_calls_and_equality
 	type_idx_call := add_runtime_metadata_call(mut metadata_ast, 'item', 'Item', 'type_idx', 'int')
 	mut metadata_tc := types.TypeChecker.new(&metadata_ast)
 	mut metadata_transformer := new_transformer(mut metadata_ast, &metadata_tc, map[string]bool{})
-	metadata_transformer.sum_types['Item'] = ['First', 'Second']
+	metadata_transformer.sum_types.set(flat.source_type_id('Item'), ['First', 'Second'])
 	assert metadata_transformer.fn_span_map_expansion_estimate(0, int(type_idx_call) + 1) > deferred_map_expansion_threshold
 
 	mut equality_ast := flat.FlatAst.new()
 	left := equality_ast.add_node(flat.Node{
 		kind:  .ident
 		value: 'left'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	right := equality_ast.add_node(flat.Node{
 		kind:  .ident
 		value: 'right'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	equality_start := equality_ast.children.len
 	equality_ast.children << left
@@ -1466,14 +1642,14 @@ fn test_fn_span_map_expansion_estimate_defers_metadata_driven_calls_and_equality
 	equality := equality_ast.add_node(flat.Node{
 		kind:           .infix
 		op:             .eq
-		typ:            'bool'
+		typ:            flat.source_type_bool
 		children_start: equality_start
 		children_count: 2
 	})
 	mut equality_tc := types.TypeChecker.new(&equality_ast)
 	mut equality_transformer := new_transformer(mut equality_ast, &equality_tc, map[string]bool{})
-	equality_transformer.structs['Wide'] = StructInfo{
-		name: 'Wide'
+	equality_transformer.structs[flat.source_type_id('Wide')] = StructInfo{
+		name: flat.source_type_id('Wide')
 	}
 	assert equality_transformer.fn_span_map_expansion_estimate(0, int(equality) + 1) > deferred_map_expansion_threshold
 
@@ -1481,19 +1657,19 @@ fn test_fn_span_map_expansion_estimate_defers_metadata_driven_calls_and_equality
 	predicate_value := predicate_ast.add_node(flat.Node{
 		kind:  .ident
 		value: 'value'
-		typ:   'View'
+		typ:   flat.source_type_id('View')
 	})
 	predicate_start := predicate_ast.children.len
 	predicate_ast.children << predicate_value
 	predicate := predicate_ast.add_node(flat.Node{
 		kind:           .is_expr
 		value:          'Target'
-		typ:            'bool'
+		typ:            flat.source_type_bool
 		children_start: predicate_start
 		children_count: 1
 	})
 	mut predicate_tc := types.TypeChecker.new(&predicate_ast)
-	predicate_tc.interface_names['View'] = true
+	predicate_tc.interface_names[flat.source_type_id('View')] = true
 	mut predicate_transformer := new_transformer(mut predicate_ast, &predicate_tc, map[string]bool{})
 	assert predicate_transformer.fn_span_map_expansion_estimate(0, int(predicate) + 1) > deferred_map_expansion_threshold
 
@@ -1501,20 +1677,20 @@ fn test_fn_span_map_expansion_estimate_defers_metadata_driven_calls_and_equality
 	selector_base := selector_ast.add_node(flat.Node{
 		kind:  .ident
 		value: 'view'
-		typ:   'View'
+		typ:   flat.source_type_id('View')
 	})
 	selector_start := selector_ast.children.len
 	selector_ast.children << selector_base
 	selector := selector_ast.add_node(flat.Node{
 		kind:           .selector
 		value:          'value'
-		typ:            'int'
+		typ:            flat.source_type_int
 		children_start: selector_start
 		children_count: 1
 	})
 	mut selector_tc := types.TypeChecker.new(&selector_ast)
-	selector_tc.interface_names['View'] = true
-	selector_tc.interface_fields['View'] = [types.StructField{
+	selector_tc.interface_names[flat.source_type_id('View')] = true
+	selector_tc.interface_fields[flat.source_type_id('View')] = [types.StructField{
 		name: 'value'
 		typ:  types.Type(types.int_)
 	}]
@@ -1530,14 +1706,14 @@ fn test_fn_span_map_expansion_estimate_defers_ownership_collection_clones() {
 	receiver := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'items'
-		typ:   '[]Wide'
+		typ:   flat.source_type_id('[]Wide')
 	})
 	selector_start := a.children.len
 	a.children << receiver
 	selector := a.add_node(flat.Node{
 		kind:           .selector
 		value:          'reverse'
-		typ:            'fn () []Wide'
+		typ:            flat.source_type_id('fn () []Wide')
 		children_start: selector_start
 		children_count: 1
 	})
@@ -1545,17 +1721,17 @@ fn test_fn_span_map_expansion_estimate_defers_ownership_collection_clones() {
 	a.children << selector
 	reverse_call := a.add_node(flat.Node{
 		kind:           .call
-		typ:            '[]Wide'
+		typ:            flat.source_type_id('[]Wide')
 		children_start: call_start
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
-		typ:  tc.parse_type('string')
+		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements['Wide'] = ['IClone']
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.fn_span_map_expansion_estimate(0, int(reverse_call) + 1) > deferred_map_expansion_threshold
@@ -1569,17 +1745,17 @@ fn test_fn_span_map_expansion_estimate_defers_ownership_for_in_binding_clones() 
 	index := a.add_node(flat.Node{
 		kind:  .ident
 		value: '_'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	item := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'item'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	items := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'items'
-		typ:   '[]Wide'
+		typ:   flat.source_type_id('[]Wide')
 	})
 	loop_start := a.children.len
 	a.children << index
@@ -1593,11 +1769,11 @@ fn test_fn_span_map_expansion_estimate_defers_ownership_for_in_binding_clones() 
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
-		typ:  tc.parse_type('string')
+		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements['Wide'] = ['IClone']
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.ownership_for_in_binding_clone_expands(a.nodes[int(loop)])
@@ -1612,17 +1788,17 @@ fn test_fn_span_map_expansion_estimate_defers_owned_map_delete_snapshot_clone() 
 	key := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'key'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	ignored_value := a.add_node(flat.Node{
 		kind:  .ident
 		value: '_'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	items := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'items'
-		typ:   'map[string]Wide'
+		typ:   flat.source_type_id('map[string]Wide')
 	})
 	selector_start := a.children.len
 	a.children << items
@@ -1653,11 +1829,11 @@ fn test_fn_span_map_expansion_estimate_defers_owned_map_delete_snapshot_clone() 
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
-		typ:  tc.parse_type('string')
+		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements['Wide'] = ['IClone']
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert !t.ownership_for_in_binding_clone_expands(a.nodes[int(loop)])
@@ -1673,19 +1849,19 @@ fn test_fn_span_map_expansion_estimate_defers_nested_map_delete_key_clone() {
 	items := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'items'
-		typ:   'map[Wide]map[string]int'
+		typ:   flat.source_type_id('map[Wide]map[string]int')
 	})
 	outer_key := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'outer_key'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	outer_index_start := a.children.len
 	a.children << items
 	a.children << outer_key
 	outer_index := a.add_node(flat.Node{
 		kind:           .index
-		typ:            'map[string]int'
+		typ:            flat.source_type_id('map[string]int')
 		children_start: outer_index_start
 		children_count: 2
 	})
@@ -1700,7 +1876,7 @@ fn test_fn_span_map_expansion_estimate_defers_nested_map_delete_key_clone() {
 	inner_key := a.add_node(flat.Node{
 		kind:  .string_literal
 		value: 'inner'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	call_start := a.children.len
 	a.children << delete_selector
@@ -1712,11 +1888,11 @@ fn test_fn_span_map_expansion_estimate_defers_nested_map_delete_key_clone() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
-		typ:  tc.parse_type('string')
+		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements['Wide'] = ['IClone']
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.ownership_nested_map_delete_key_clone_expands(a.nodes[int(delete_call)])
@@ -1731,24 +1907,24 @@ fn test_fn_span_map_expansion_estimate_defers_overlapping_owned_map_assignment()
 	items := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'items'
-		typ:   'map[string]Wide'
+		typ:   flat.source_type_id('map[string]Wide')
 	})
 	left_key := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'left_key'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	right_key := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'right_key'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	lhs_start := a.children.len
 	a.children << items
 	a.children << left_key
 	lhs := a.add_node(flat.Node{
 		kind:           .index
-		typ:            'Wide'
+		typ:            flat.source_type_id('Wide')
 		children_start: lhs_start
 		children_count: 2
 	})
@@ -1757,7 +1933,7 @@ fn test_fn_span_map_expansion_estimate_defers_overlapping_owned_map_assignment()
 	a.children << right_key
 	rhs := a.add_node(flat.Node{
 		kind:           .index
-		typ:            'Wide'
+		typ:            flat.source_type_id('Wide')
 		children_start: rhs_start
 		children_count: 2
 	})
@@ -1772,11 +1948,11 @@ fn test_fn_span_map_expansion_estimate_defers_overlapping_owned_map_assignment()
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
-		typ:  tc.parse_type('string')
+		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements['Wide'] = ['IClone']
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.ownership_map_assignment_clone_expands(a.nodes[int(assignment)])
@@ -1791,26 +1967,26 @@ fn test_fn_span_map_expansion_estimate_defers_borrowed_owned_map_key_clone() {
 	items := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'items'
-		typ:   'map[Wide]int'
+		typ:   flat.source_type_id('map[Wide]int')
 	})
 	key := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'key'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	lhs_start := a.children.len
 	a.children << items
 	a.children << key
 	lhs := a.add_node(flat.Node{
 		kind:           .index
-		typ:            'int'
+		typ:            flat.source_type_int
 		children_start: lhs_start
 		children_count: 2
 	})
 	value := a.add_node(flat.Node{
 		kind:  .int_literal
 		value: '1'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	assignment_start := a.children.len
 	a.children << lhs
@@ -1823,11 +1999,11 @@ fn test_fn_span_map_expansion_estimate_defers_borrowed_owned_map_key_clone() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
-		typ:  tc.parse_type('string')
+		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements['Wide'] = ['IClone']
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.ownership_map_assignment_clone_expands(a.nodes[int(assignment)])
@@ -1842,19 +2018,19 @@ fn test_fn_span_map_expansion_estimate_defers_nested_map_lvalue_key_clone() {
 	items := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'items'
-		typ:   'map[Wide]Entry'
+		typ:   flat.source_type_id('map[Wide]Entry')
 	})
 	key := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'key'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	index_start := a.children.len
 	a.children << items
 	a.children << key
 	index := a.add_node(flat.Node{
 		kind:           .index
-		typ:            'Entry'
+		typ:            flat.source_type_id('Entry')
 		children_start: index_start
 		children_count: 2
 	})
@@ -1863,14 +2039,14 @@ fn test_fn_span_map_expansion_estimate_defers_nested_map_lvalue_key_clone() {
 	field := a.add_node(flat.Node{
 		kind:           .selector
 		value:          'value'
-		typ:            'int'
+		typ:            flat.source_type_int
 		children_start: selector_start
 		children_count: 1
 	})
 	rhs := a.add_node(flat.Node{
 		kind:  .int_literal
 		value: '1'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	assignment_start := a.children.len
 	a.children << field
@@ -1883,11 +2059,11 @@ fn test_fn_span_map_expansion_estimate_defers_nested_map_lvalue_key_clone() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
-		typ:  tc.parse_type('string')
+		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements['Wide'] = ['IClone']
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.ownership_map_assignment_clone_expands(a.nodes[int(assignment)])
@@ -1902,40 +2078,40 @@ fn test_fn_span_map_expansion_estimate_defers_outer_nested_map_assignment_key_cl
 	items := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'items'
-		typ:   'map[Wide]map[string]int'
+		typ:   flat.source_type_id('map[Wide]map[string]int')
 	})
 	outer_key := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'outer_key'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	outer_start := a.children.len
 	a.children << items
 	a.children << outer_key
 	outer_index := a.add_node(flat.Node{
 		kind:           .index
-		typ:            'map[string]int'
+		typ:            flat.source_type_id('map[string]int')
 		children_start: outer_start
 		children_count: 2
 	})
 	inner_key := a.add_node(flat.Node{
 		kind:  .string_literal
 		value: 'inner'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	inner_start := a.children.len
 	a.children << outer_index
 	a.children << inner_key
 	inner_index := a.add_node(flat.Node{
 		kind:           .index
-		typ:            'int'
+		typ:            flat.source_type_int
 		children_start: inner_start
 		children_count: 2
 	})
 	rhs := a.add_node(flat.Node{
 		kind:  .int_literal
 		value: '1'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	assignment_start := a.children.len
 	a.children << inner_index
@@ -1948,11 +2124,11 @@ fn test_fn_span_map_expansion_estimate_defers_outer_nested_map_assignment_key_cl
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
-		typ:  tc.parse_type('string')
+		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements['Wide'] = ['IClone']
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.map_assignment_lvalue_key_clone_expands(inner_index)
@@ -1968,27 +2144,27 @@ fn test_fn_span_map_expansion_estimate_defers_owned_method_value_receiver_clone(
 	receiver := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'wide'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	selector_start := a.children.len
 	a.children << receiver
 	method_value := a.add_node(flat.Node{
 		kind:           .selector
 		value:          'consume'
-		typ:            'fn () int'
+		typ:            flat.source_type_id('fn () int')
 		children_start: selector_start
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	wide_type := tc.parse_type('Wide')
-	tc.structs['Wide'] = [types.StructField{
+	wide_type := tc.parse_type(flat.source_type_id('Wide'))
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
-		typ:  tc.parse_type('string')
+		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements['Wide'] = ['IClone']
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	tc.fn_param_types['Wide.consume'] = [wide_type]
-	tc.fn_ret_types['Wide.consume'] = tc.parse_type('int')
+	tc.fn_ret_types['Wide.consume'] = tc.parse_type(flat.source_type_int)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.ownership_method_value_clone_expands(method_value, a.nodes[int(method_value)])
@@ -2001,7 +2177,7 @@ fn test_fn_span_map_expansion_estimate_defers_reflected_comptime_loops() {
 		comptime_loop := a.add_node(flat.Node{
 			kind:  .comptime_for
 			value: 'item|${kind}'
-			typ:   'Wide'
+			typ:   flat.source_type_id('Wide')
 		})
 		mut tc := types.TypeChecker.new(&a)
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
@@ -2018,12 +2194,12 @@ fn test_fn_span_map_expansion_estimate_defers_ownership_array_append_clone() {
 	items := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'items'
-		typ:   '[]Wide'
+		typ:   flat.source_type_id('[]Wide')
 	})
 	borrowed := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'borrowed'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	append_start := a.children.len
 	a.children << items
@@ -2031,15 +2207,15 @@ fn test_fn_span_map_expansion_estimate_defers_ownership_array_append_clone() {
 	append := a.add_node(flat.Node{
 		kind:           .infix
 		op:             .left_shift
-		typ:            '[]Wide'
+		typ:            flat.source_type_id('[]Wide')
 		children_start: append_start
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
-		typ:  tc.parse_type('string')
+		typ:  tc.parse_type(flat.source_type_string)
 	}]
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
@@ -2055,26 +2231,26 @@ fn test_fn_span_map_expansion_estimate_defers_ownership_map_index_append_clone()
 	values := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'values'
-		typ:   'map[string][]Wide'
+		typ:   flat.source_type_id('map[string][]Wide')
 	})
 	key := a.add_node(flat.Node{
 		kind:  .string_literal
 		value: 'key'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	index_start := a.children.len
 	a.children << values
 	a.children << key
 	index := a.add_node(flat.Node{
 		kind:           .index
-		typ:            '[]Wide'
+		typ:            flat.source_type_id('[]Wide')
 		children_start: index_start
 		children_count: 2
 	})
 	item := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'item'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	append_start := a.children.len
 	a.children << index
@@ -2082,15 +2258,15 @@ fn test_fn_span_map_expansion_estimate_defers_ownership_map_index_append_clone()
 	append := a.add_node(flat.Node{
 		kind:           .infix
 		op:             .left_shift
-		typ:            '[]Wide'
+		typ:            flat.source_type_id('[]Wide')
 		children_start: append_start
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
-		typ:  tc.parse_type('string')
+		typ:  tc.parse_type(flat.source_type_string)
 	}]
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
@@ -2107,7 +2283,7 @@ fn test_fn_span_expansion_defers_builtin_auto_stringification() {
 	wide := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'wide'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	call_start := a.children.len
 	a.children << callee
@@ -2119,11 +2295,11 @@ fn test_fn_span_expansion_defers_builtin_auto_stringification() {
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Wide'] = StructInfo{
-		name:   'Wide'
+	t.structs[flat.source_type_id('Wide')] = StructInfo{
+		name:   flat.source_type_id('Wide')
 		fields: [FieldInfo{
 			name: 'value'
-			typ:  'int'
+			typ:  flat.source_type_int
 		}]
 	}
 
@@ -2136,14 +2312,14 @@ fn test_fn_span_expansion_defers_dump_auto_stringification() {
 	wide := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'wide'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	dump_start := a.children.len
 	a.children << wide
 	dump_expr := a.add_node(flat.Node{
 		kind:           .dump_expr
 		value:          'wide'
-		typ:            'Wide'
+		typ:            flat.source_type_id('Wide')
 		children_start: dump_start
 		children_count: 1
 	})
@@ -2158,26 +2334,26 @@ fn test_fn_span_expansion_defers_direct_aggregate_membership() {
 	needle := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'needle'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	items := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'items'
-		typ:   '[]Wide'
+		typ:   flat.source_type_id('[]Wide')
 	})
 	membership_start := a.children.len
 	a.children << needle
 	a.children << items
 	membership := a.add_node(flat.Node{
 		kind:           .in_expr
-		typ:            'bool'
+		typ:            flat.source_type_bool
 		children_start: membership_start
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Wide'] = StructInfo{
-		name: 'Wide'
+	t.structs[flat.source_type_id('Wide')] = StructInfo{
+		name: flat.source_type_id('Wide')
 	}
 
 	assert t.array_membership_equality_expands(a.nodes[int(membership)])
@@ -2189,7 +2365,7 @@ fn test_external_map_expansion_estimate_defers_dynamic_array_struct_defaults() {
 	length := a.add_node(flat.Node{
 		kind:  .int_literal
 		value: '1'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	field_start := a.children.len
 	a.children << length
@@ -2204,12 +2380,12 @@ fn test_external_map_expansion_estimate_defers_dynamic_array_struct_defaults() {
 	root := a.add_node(flat.Node{
 		kind:           .array_init
 		value:          'Wide'
-		typ:            '[]Wide'
+		typ:            flat.source_type_id('[]Wide')
 		children_start: array_start
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Wide'] = []types.StructField{}
+	tc.structs[flat.source_type_id('Wide')] = []types.StructField{}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
@@ -2220,7 +2396,7 @@ fn test_external_map_expansion_estimate_defers_dynamic_array_explicit_init() {
 	length := a.add_node(flat.Node{
 		kind:  .int_literal
 		value: '4'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	len_field_start := a.children.len
 	a.children << length
@@ -2233,7 +2409,7 @@ fn test_external_map_expansion_estimate_defers_dynamic_array_explicit_init() {
 	initial := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'index'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	init_field_start := a.children.len
 	a.children << initial
@@ -2249,7 +2425,7 @@ fn test_external_map_expansion_estimate_defers_dynamic_array_explicit_init() {
 	root := a.add_node(flat.Node{
 		kind:           .array_init
 		value:          'int'
-		typ:            '[]int'
+		typ:            flat.source_type_id('[]int')
 		children_start: array_start
 		children_count: 2
 	})
@@ -2263,7 +2439,7 @@ fn test_external_map_expansion_estimate_defers_nested_empty_fixed_array_runtime_
 	mut a := flat.FlatAst.new()
 	root := a.add_node(flat.Node{
 		kind: .array_init
-		typ:  '[64][64][]int'
+		typ:  flat.source_type_id('[64][64][]int')
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
@@ -2276,13 +2452,13 @@ fn test_external_map_expansion_estimate_includes_string_interpolation() {
 	wide_value := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'wide'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	interp_start := a.children.len
 	a.children << wide_value
 	interp := a.add_node(flat.Node{
 		kind:           .string_interp
-		typ:            'string'
+		typ:            flat.source_type_string
 		children_start: interp_start
 		children_count: 1
 	})
@@ -2295,7 +2471,7 @@ fn test_external_map_expansion_estimate_includes_string_interpolation() {
 	a.children << interp
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]string'
+		typ:            flat.source_type_id('map[string]string')
 		children_start: map_start
 		children_count: 2
 	})
@@ -2303,13 +2479,13 @@ fn test_external_map_expansion_estimate_includes_string_interpolation() {
 	for i in 0 .. 256 {
 		fields << FieldInfo{
 			name: 'value_${i}'
-			typ:  'int'
+			typ:  flat.source_type_int
 		}
 	}
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Wide'] = StructInfo{
-		name:   'Wide'
+	t.structs[flat.source_type_id('Wide')] = StructInfo{
+		name:   flat.source_type_id('Wide')
 		fields: fields
 	}
 
@@ -2321,13 +2497,13 @@ fn test_external_map_expansion_estimate_defers_small_aggregate_interpolation() {
 	value := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'value'
-		typ:   'Small'
+		typ:   flat.source_type_id('Small')
 	})
 	interp_start := a.children.len
 	a.children << value
 	interp := a.add_node(flat.Node{
 		kind:           .string_interp
-		typ:            'string'
+		typ:            flat.source_type_string
 		children_start: interp_start
 		children_count: 1
 	})
@@ -2340,18 +2516,18 @@ fn test_external_map_expansion_estimate_defers_small_aggregate_interpolation() {
 	a.children << interp
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]string'
+		typ:            flat.source_type_id('map[string]string')
 		children_start: map_start
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Small'] = StructInfo{
-		name:   'Small'
+	t.structs[flat.source_type_id('Small')] = StructInfo{
+		name:   flat.source_type_id('Small')
 		fields: [
 			FieldInfo{
 				name: 'number'
-				typ:  'int'
+				typ:  flat.source_type_int
 			},
 		]
 	}
@@ -2369,14 +2545,14 @@ fn test_external_map_expansion_estimate_defers_or_lowering() {
 	a.children << callee
 	call := a.add_node(flat.Node{
 		kind:           .call
-		typ:            '!int'
+		typ:            flat.source_type_id('!int')
 		children_start: call_start
 		children_count: 1
 	})
 	fallback_value := a.add_node(flat.Node{
 		kind:  .int_literal
 		value: '0'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	fallback_start := a.children.len
 	a.children << fallback_value
@@ -2390,7 +2566,7 @@ fn test_external_map_expansion_estimate_defers_or_lowering() {
 	a.children << fallback
 	or_expr := a.add_node(flat.Node{
 		kind:           .or_expr
-		typ:            'int'
+		typ:            flat.source_type_int
 		children_start: or_start
 		children_count: 2
 	})
@@ -2403,7 +2579,7 @@ fn test_external_map_expansion_estimate_defers_or_lowering() {
 	a.children << or_expr
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]int'
+		typ:            flat.source_type_id('map[string]int')
 		children_start: map_start
 		children_count: 2
 	})
@@ -2418,14 +2594,14 @@ fn test_external_map_expansion_estimate_defers_dump_lowering() {
 	value := a.add_node(flat.Node{
 		kind:  .int_literal
 		value: '1'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	inner_start := a.children.len
 	a.children << value
 	inner := a.add_node(flat.Node{
 		kind:           .dump_expr
 		value:          '1'
-		typ:            'int'
+		typ:            flat.source_type_int
 		children_start: inner_start
 		children_count: 1
 	})
@@ -2434,7 +2610,7 @@ fn test_external_map_expansion_estimate_defers_dump_lowering() {
 	outer := a.add_node(flat.Node{
 		kind:           .dump_expr
 		value:          'dump(1)'
-		typ:            'int'
+		typ:            flat.source_type_int
 		children_start: outer_start
 		children_count: 1
 	})
@@ -2447,7 +2623,7 @@ fn test_external_map_expansion_estimate_defers_dump_lowering() {
 	a.children << outer
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]int'
+		typ:            flat.source_type_id('map[string]int')
 		children_start: map_start
 		children_count: 2
 	})
@@ -2462,19 +2638,19 @@ fn test_external_map_expansion_estimate_defers_membership_lowering() {
 	needle := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'needle'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	haystack := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'haystack'
-		typ:   '[]Wide'
+		typ:   flat.source_type_id('[]Wide')
 	})
 	membership_start := a.children.len
 	a.children << needle
 	a.children << haystack
 	root := a.add_node(flat.Node{
 		kind:           .in_expr
-		typ:            'bool'
+		typ:            flat.source_type_bool
 		children_start: membership_start
 		children_count: 2
 	})
@@ -2494,7 +2670,7 @@ fn external_map_metadata_expr_expansion_estimate(kind flat.NodeKind) int {
 	a.children << value
 	expr := a.add_node(flat.Node{
 		kind:           kind
-		typ:            'Target'
+		typ:            flat.source_type_id('Target')
 		children_start: expr_start
 		children_count: 1
 	})
@@ -2507,7 +2683,7 @@ fn external_map_metadata_expr_expansion_estimate(kind flat.NodeKind) int {
 	a.children << expr
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]bool'
+		typ:            flat.source_type_id('map[string]bool')
 		children_start: map_start
 		children_count: 2
 	})
@@ -2525,14 +2701,14 @@ fn add_runtime_metadata_call(mut a flat.FlatAst, base_name string, base_type str
 	base := a.add_node(flat.Node{
 		kind:  .ident
 		value: base_name
-		typ:   base_type
+		typ:   flat.source_type_id(base_type)
 	})
 	selector_start := a.children.len
 	a.children << base
 	selector := a.add_node(flat.Node{
 		kind:           .selector
 		value:          method
-		typ:            'fn () ${result_type}'
+		typ:            flat.source_type_id('fn () ${result_type}')
 		children_start: selector_start
 		children_count: 1
 	})
@@ -2540,7 +2716,7 @@ fn add_runtime_metadata_call(mut a flat.FlatAst, base_name string, base_type str
 	a.children << selector
 	return a.add_node(flat.Node{
 		kind:           .call
-		typ:            result_type
+		typ:            flat.source_type_id(result_type)
 		children_start: call_start
 		children_count: 1
 	})
@@ -2558,13 +2734,13 @@ fn test_external_map_expansion_estimate_defers_runtime_type_metadata_calls() {
 	a.children << type_idx_call
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]int'
+		typ:            flat.source_type_id('map[string]int')
 		children_start: map_start
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types['Item'] = ['First', 'Second']
+	t.sum_types.set(flat.source_type_id('Item'), ['First', 'Second'])
 
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
@@ -2574,28 +2750,28 @@ fn test_external_map_expansion_estimate_defers_enum_from_string_calls() {
 	enum_type := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'Wide'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	selector_start := a.children.len
 	a.children << enum_type
 	selector := a.add_node(flat.Node{
 		kind:           .selector
 		value:          'from_string'
-		typ:            'fn (string) ?Wide'
+		typ:            flat.source_type_id('fn (string) ?Wide')
 		children_start: selector_start
 		children_count: 1
 	})
 	argument := a.add_node(flat.Node{
 		kind:  .string_literal
 		value: 'v0'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	call_start := a.children.len
 	a.children << selector
 	a.children << argument
 	call := a.add_node(flat.Node{
 		kind:           .call
-		typ:            '?Wide'
+		typ:            flat.source_type_id('?Wide')
 		children_start: call_start
 		children_count: 2
 	})
@@ -2608,13 +2784,13 @@ fn test_external_map_expansion_estimate_defers_enum_from_string_calls() {
 	a.children << call
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]?Wide'
+		typ:            flat.source_type_id('map[string]?Wide')
 		children_start: map_start
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.enum_types['Wide'] = ['v0', 'v1']
+	t.enum_types[flat.source_type_id('Wide')] = ['v0', 'v1']
 
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
 }
@@ -2631,7 +2807,7 @@ fn external_map_equality_expansion_estimate(operand_type string, metadata_type s
 		a.children << callee
 		operands << a.add_node(flat.Node{
 			kind:           .call
-			typ:            operand_type
+			typ:            flat.source_type_id(operand_type)
 			children_start: call_start
 			children_count: 1
 		})
@@ -2642,7 +2818,7 @@ fn external_map_equality_expansion_estimate(operand_type string, metadata_type s
 	equality := a.add_node(flat.Node{
 		kind:           .infix
 		op:             .eq
-		typ:            'bool'
+		typ:            flat.source_type_bool
 		children_start: equality_start
 		children_count: 2
 	})
@@ -2655,18 +2831,18 @@ fn external_map_equality_expansion_estimate(operand_type string, metadata_type s
 	a.children << equality
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]bool'
+		typ:            flat.source_type_id('map[string]bool')
 		children_start: map_start
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
 	if is_interface {
-		tc.interface_names[metadata_type] = true
+		tc.interface_names[flat.source_type_id(metadata_type)] = true
 	}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	if !is_interface {
-		t.structs[metadata_type] = StructInfo{
-			name: metadata_type
+		t.structs[flat.source_type_id(metadata_type)] = StructInfo{
+			name: flat.source_type_id(metadata_type)
 		}
 	}
 	return t.external_map_tree_expansion_estimate(root, 0, 0)
@@ -2684,7 +2860,7 @@ fn test_map_fixed_array_equality_reserves_missing_value_zeroing() {
 	mut tc := types.TypeChecker.new(&a)
 	t := new_transformer(mut a, &tc, map[string]bool{})
 
-	assert t.equality_type_expands_from_metadata('map[string][4096][]int', 0)
+	assert t.equality_type_expands_from_metadata(flat.source_type_id('map[string][4096][]int'), 0)
 }
 
 fn test_external_map_expansion_estimate_includes_index_reconstruction() {
@@ -2773,7 +2949,7 @@ fn test_external_map_expansion_estimate_includes_range_reconstruction() {
 	a.children << value
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string][]int'
+		typ:            flat.source_type_id('map[string][]int')
 		children_start: map_start
 		children_count: 2
 	})
@@ -2815,7 +2991,7 @@ fn test_external_map_expansion_estimate_includes_selector_reconstruction() {
 	a.children << value
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]int'
+		typ:            flat.source_type_id('map[string]int')
 		children_start: map_start
 		children_count: 2
 	})
@@ -2830,14 +3006,14 @@ fn test_external_map_expansion_estimate_defers_sum_shared_field_selector() {
 	base := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'item'
-		typ:   'Item'
+		typ:   flat.source_type_id('Item')
 	})
 	selector_start := a.children.len
 	a.children << base
 	selector := a.add_node(flat.Node{
 		kind:           .selector
 		value:          'value'
-		typ:            'int'
+		typ:            flat.source_type_int
 		children_start: selector_start
 		children_count: 1
 	})
@@ -2850,28 +3026,28 @@ fn test_external_map_expansion_estimate_defers_sum_shared_field_selector() {
 	a.children << selector
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]int'
+		typ:            flat.source_type_id('map[string]int')
 		children_start: map_start
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types['Item'] = ['First', 'Second']
-	t.structs['First'] = StructInfo{
-		name:   'First'
+	t.sum_types.set(flat.source_type_id('Item'), ['First', 'Second'])
+	t.structs[flat.source_type_id('First')] = StructInfo{
+		name:   flat.source_type_id('First')
 		fields: [
 			FieldInfo{
 				name: 'value'
-				typ:  'int'
+				typ:  flat.source_type_int
 			},
 		]
 	}
-	t.structs['Second'] = StructInfo{
-		name:   'Second'
+	t.structs[flat.source_type_id('Second')] = StructInfo{
+		name:   flat.source_type_id('Second')
 		fields: [
 			FieldInfo{
 				name: 'value'
-				typ:  'int'
+				typ:  flat.source_type_int
 			},
 		]
 	}
@@ -2892,7 +3068,7 @@ fn test_external_map_expansion_estimate_includes_interpolation_concatenation() {
 	}
 	interp := a.add_node(flat.Node{
 		kind:           .string_interp
-		typ:            'string'
+		typ:            flat.source_type_string
 		children_start: interp_start
 		children_count: flat.child_count(part_count)
 	})
@@ -2905,7 +3081,7 @@ fn test_external_map_expansion_estimate_includes_interpolation_concatenation() {
 	a.children << interp
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]string'
+		typ:            flat.source_type_id('map[string]string')
 		children_start: map_start
 		children_count: 2
 	})
@@ -2920,24 +3096,24 @@ fn test_string_interp_expansion_estimate_includes_possible_temp_hoisting() {
 	literal := a.add_node(flat.Node{
 		kind:  .string_literal
 		value: 'part'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	base := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'values'
-		typ:   'map[string]string'
+		typ:   flat.source_type_id('map[string]string')
 	})
 	key := a.add_node(flat.Node{
 		kind:  .string_literal
 		value: 'key'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	index_start := a.children.len
 	a.children << base
 	a.children << key
 	index := a.add_node(flat.Node{
 		kind:           .index
-		typ:            'string'
+		typ:            flat.source_type_string
 		children_start: index_start
 		children_count: 2
 	})
@@ -2949,7 +3125,7 @@ fn test_string_interp_expansion_estimate_includes_possible_temp_hoisting() {
 	a.children << index
 	interp := a.add_node(flat.Node{
 		kind:           .string_interp
-		typ:            'string'
+		typ:            flat.source_type_string
 		children_start: interp_start
 		children_count: flat.child_count(part_count)
 	})
@@ -2970,13 +3146,13 @@ fn test_string_interp_expansion_estimate_includes_array_ident_hoisting() {
 		items := a.add_node(flat.Node{
 			kind:  .ident
 			value: 'items'
-			typ:   array_type
+			typ:   flat.source_type_id(array_type)
 		})
 		interp_start := a.children.len
 		a.children << items
 		interp := a.add_node(flat.Node{
 			kind:           .string_interp
-			typ:            'string'
+			typ:            flat.source_type_string
 			children_start: interp_start
 			children_count: 1
 		})
@@ -2997,19 +3173,19 @@ fn test_reflected_comptime_for_interpolation_defers_with_bounded_join_estimate()
 	literal := a.add_node(flat.Node{
 		kind:  .string_literal
 		value: 'part'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	metadata := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'field_name'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	interp_start := a.children.len
 	a.children << literal
 	a.children << metadata
 	interp := a.add_node(flat.Node{
 		kind:           .string_interp
-		typ:            'string'
+		typ:            flat.source_type_string
 		children_start: interp_start
 		children_count: 2
 	})
@@ -3029,19 +3205,19 @@ fn test_string_interp_expansion_estimate_includes_container_cast_hoisting() {
 	literal := a.add_node(flat.Node{
 		kind:  .string_literal
 		value: 'part'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	value := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'value'
-		typ:   'Any'
+		typ:   flat.source_type_id('Any')
 	})
 	cast_start := a.children.len
 	a.children << value
 	cast := a.add_node(flat.Node{
 		kind:           .as_expr
 		value:          '[]int'
-		typ:            '[]int'
+		typ:            flat.source_type_id('[]int')
 		children_start: cast_start
 		children_count: 1
 	})
@@ -3050,7 +3226,7 @@ fn test_string_interp_expansion_estimate_includes_container_cast_hoisting() {
 	a.children << cast
 	interp := a.add_node(flat.Node{
 		kind:           .string_interp
-		typ:            'string'
+		typ:            flat.source_type_string
 		children_start: interp_start
 		children_count: 2
 	})
@@ -3067,14 +3243,14 @@ fn test_string_interp_expansion_estimate_defers_interface_conversion_hoisting() 
 	value := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'value'
-		typ:   'Source'
+		typ:   flat.source_type_id('Source')
 	})
 	cast_start := a.children.len
 	a.children << value
 	cast := a.add_node(flat.Node{
 		kind:           .as_expr
 		value:          'Target'
-		typ:            'Target'
+		typ:            flat.source_type_id('Target')
 		children_start: cast_start
 		children_count: 1
 	})
@@ -3082,13 +3258,13 @@ fn test_string_interp_expansion_estimate_defers_interface_conversion_hoisting() 
 	a.children << cast
 	interp := a.add_node(flat.Node{
 		kind:           .string_interp
-		typ:            'string'
+		typ:            flat.source_type_string
 		children_start: interp_start
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['Source'] = true
-	tc.interface_names['Target'] = true
+	tc.interface_names[flat.source_type_id('Source')] = true
+	tc.interface_names[flat.source_type_id('Target')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.string_interp_expr_needs_deferred_lowering(cast)
@@ -3102,28 +3278,28 @@ fn test_string_interp_expansion_estimate_defers_metadata_driven_selectors() {
 	interface_base := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'view'
-		typ:   'View'
+		typ:   flat.source_type_id('View')
 	})
 	interface_selector_start := a.children.len
 	a.children << interface_base
 	interface_selector := a.add_node(flat.Node{
 		kind:           .selector
 		value:          'value'
-		typ:            'int'
+		typ:            flat.source_type_int
 		children_start: interface_selector_start
 		children_count: 1
 	})
 	sum_base := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'item'
-		typ:   'Item'
+		typ:   flat.source_type_id('Item')
 	})
 	sum_selector_start := a.children.len
 	a.children << sum_base
 	sum_selector := a.add_node(flat.Node{
 		kind:           .selector
 		value:          'value'
-		typ:            'int'
+		typ:            flat.source_type_int
 		children_start: sum_selector_start
 		children_count: 1
 	})
@@ -3132,27 +3308,27 @@ fn test_string_interp_expansion_estimate_defers_metadata_driven_selectors() {
 	a.children << sum_selector
 	interp := a.add_node(flat.Node{
 		kind:           .string_interp
-		typ:            'string'
+		typ:            flat.source_type_string
 		children_start: interp_start
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['View'] = true
-	tc.interface_fields['View'] = [
+	tc.interface_names[flat.source_type_id('View')] = true
+	tc.interface_fields[flat.source_type_id('View')] = [
 		types.StructField{
 			name: 'value'
 			typ:  types.Type(types.int_)
 		},
 	]
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types['Item'] = ['First', 'Second']
+	t.sum_types.set(flat.source_type_id('Item'), ['First', 'Second'])
 	for variant in ['First', 'Second'] {
-		t.structs[variant] = StructInfo{
-			name:   variant
+		t.structs[flat.source_type_id(variant)] = StructInfo{
+			name:   flat.source_type_id(variant)
 			fields: [
 				FieldInfo{
 					name: 'value'
-					typ:  'int'
+					typ:  flat.source_type_int
 				},
 			]
 		}
@@ -3170,26 +3346,26 @@ fn test_string_interp_expansion_estimate_defers_metadata_driven_predicates() {
 	value := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'value'
-		typ:   'Value'
+		typ:   flat.source_type_id('Value')
 	})
 	is_start := a.children.len
 	a.children << value
 	is_expr := a.add_node(flat.Node{
 		kind:           .is_expr
 		value:          'Target'
-		typ:            'bool'
+		typ:            flat.source_type_bool
 		children_start: is_start
 		children_count: 1
 	})
 	left := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'left'
-		typ:   'WideRecord'
+		typ:   flat.source_type_id('WideRecord')
 	})
 	right := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'right'
-		typ:   'WideRecord'
+		typ:   flat.source_type_id('WideRecord')
 	})
 	equality_start := a.children.len
 	a.children << left
@@ -3197,15 +3373,15 @@ fn test_string_interp_expansion_estimate_defers_metadata_driven_predicates() {
 	equality := a.add_node(flat.Node{
 		kind:           .infix
 		op:             .eq
-		typ:            'bool'
+		typ:            flat.source_type_bool
 		children_start: equality_start
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['Value'] = true
+	tc.interface_names[flat.source_type_id('Value')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['WideRecord'] = StructInfo{
-		name: 'WideRecord'
+	t.structs[flat.source_type_id('WideRecord')] = StructInfo{
+		name: flat.source_type_id('WideRecord')
 	}
 
 	assert t.string_interp_expr_needs_deferred_lowering(is_expr)
@@ -3221,14 +3397,14 @@ fn test_string_interp_expansion_estimate_defers_runtime_type_metadata_calls() {
 	a.children << interface_call
 	interp := a.add_node(flat.Node{
 		kind:           .string_interp
-		typ:            'string'
+		typ:            flat.source_type_string
 		children_start: interp_start
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['View'] = true
+	tc.interface_names[flat.source_type_id('View')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types['Item'] = ['First', 'Second']
+	t.sum_types.set(flat.source_type_id('Item'), ['First', 'Second'])
 
 	assert t.string_interp_expr_needs_deferred_lowering(sum_call)
 	assert t.string_interp_expr_needs_deferred_lowering(interface_call)
@@ -3242,14 +3418,14 @@ fn test_string_interp_expansion_estimate_defers_compiler_clone_calls() {
 		receiver := a.add_node(flat.Node{
 			kind:  .ident
 			value: 'value'
-			typ:   clone_type
+			typ:   flat.source_type_id(clone_type)
 		})
 		selector_start := a.children.len
 		a.children << receiver
 		selector := a.add_node(flat.Node{
 			kind:           .selector
 			value:          'clone'
-			typ:            'fn () ${clone_type}'
+			typ:            flat.source_type_id('fn () ${clone_type}')
 			children_start: selector_start
 			children_count: 1
 		})
@@ -3257,7 +3433,7 @@ fn test_string_interp_expansion_estimate_defers_compiler_clone_calls() {
 		a.children << selector
 		clone_call := a.add_node(flat.Node{
 			kind:           .call
-			typ:            clone_type
+			typ:            flat.source_type_id(clone_type)
 			children_start: call_start
 			children_count: 1
 		})
@@ -3265,13 +3441,13 @@ fn test_string_interp_expansion_estimate_defers_compiler_clone_calls() {
 		a.children << clone_call
 		interp := a.add_node(flat.Node{
 			kind:           .string_interp
-			typ:            'string'
+			typ:            flat.source_type_string
 			children_start: interp_start
 			children_count: 1
 		})
 		mut tc := types.TypeChecker.new(&a)
-		tc.structs['Wide'] = []
-		tc.struct_implements['Wide'] = ['IClone']
+		tc.structs[flat.source_type_id('Wide')] = []
+		tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 		assert t.string_interp_expr_needs_deferred_lowering(clone_call)
@@ -3285,25 +3461,25 @@ fn test_string_interp_expansion_estimate_includes_shared_ident_hoisting() {
 	literal := a.add_node(flat.Node{
 		kind:  .string_literal
 		value: 'part'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	shared_value := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'counter'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	interp_start := a.children.len
 	a.children << literal
 	a.children << shared_value
 	interp := a.add_node(flat.Node{
 		kind:           .string_interp
-		typ:            'string'
+		typ:            flat.source_type_string
 		children_start: interp_start
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.set_var_type('counter', 'shared int')
+	t.set_var_type('counter', flat.source_type_id('shared int'))
 
 	estimate, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
 	assert estimate == 3 + 2 * string_interp_hoisted_part_expansion_estimate
@@ -3315,19 +3491,19 @@ fn test_string_interp_expansion_estimate_defers_optional_ident_hoisting() {
 	literal := a.add_node(flat.Node{
 		kind:  .string_literal
 		value: 'part'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	optional_value := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'maybe_value'
-		typ:   '?int'
+		typ:   flat.source_type_id('?int')
 	})
 	interp_start := a.children.len
 	a.children << literal
 	a.children << optional_value
 	interp := a.add_node(flat.Node{
 		kind:           .string_interp
-		typ:            'string'
+		typ:            flat.source_type_string
 		children_start: interp_start
 		children_count: 2
 	})
@@ -3345,24 +3521,24 @@ fn test_string_interp_expansion_estimate_includes_shared_param_hoisting() {
 	param := a.add_node(flat.Node{
 		kind:  .param
 		value: 'counter'
-		typ:   'shared int'
+		typ:   flat.source_type_id('shared int')
 	})
 	literal := a.add_node(flat.Node{
 		kind:  .string_literal
 		value: 'part'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	shared_value := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'counter'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	interp_start := a.children.len
 	a.children << literal
 	a.children << shared_value
 	interp := a.add_node(flat.Node{
 		kind:           .string_interp
-		typ:            'string'
+		typ:            flat.source_type_string
 		children_start: interp_start
 		children_count: 2
 	})
@@ -3400,7 +3576,7 @@ fn test_string_interp_expansion_estimate_ignores_stale_shared_binding() {
 	stale_rhs := a.add_node(flat.Node{
 		kind:  .int_literal
 		value: '0'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	stale_decl_start := a.children.len
 	a.children << stale_lhs
@@ -3423,24 +3599,24 @@ fn test_string_interp_expansion_estimate_ignores_stale_shared_binding() {
 	param := a.add_node(flat.Node{
 		kind:  .param
 		value: 'counter'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	literal := a.add_node(flat.Node{
 		kind:  .string_literal
 		value: 'part'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	plain_value := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'counter'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	interp_start := a.children.len
 	a.children << literal
 	a.children << plain_value
 	interp := a.add_node(flat.Node{
 		kind:           .string_interp
-		typ:            'string'
+		typ:            flat.source_type_string
 		children_start: interp_start
 		children_count: 2
 	})
@@ -3464,7 +3640,7 @@ fn test_string_interp_expansion_estimate_ignores_stale_shared_binding() {
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.build_source_parent_index()
-	t.set_var_type('counter', 'shared int')
+	t.set_var_type('counter', flat.source_type_id('shared int'))
 
 	estimate, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
 	assert estimate == 3
@@ -3481,7 +3657,7 @@ fn test_string_interp_expansion_estimate_defers_unresolved_values() {
 	a.children << unresolved
 	interp := a.add_node(flat.Node{
 		kind:           .string_interp
-		typ:            'string'
+		typ:            flat.source_type_string
 		children_start: interp_start
 		children_count: 1
 	})
@@ -3502,13 +3678,13 @@ fn test_string_interp_expansion_estimate_defers_nested_literal_interpolation() {
 		nested := a.add_node(flat.Node{
 			kind:  .string_literal
 			value: value
-			typ:   'string'
+			typ:   flat.source_type_string
 		})
 		interp_start := a.children.len
 		a.children << nested
 		interp := a.add_node(flat.Node{
 			kind:           .string_interp
-			typ:            'string'
+			typ:            flat.source_type_string
 			children_start: interp_start
 			children_count: 1
 		})
@@ -3526,18 +3702,18 @@ fn test_string_interp_expansion_estimate_defers_interface_auto_stringification()
 	value := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'value'
-		typ:   'View'
+		typ:   flat.source_type_id('View')
 	})
 	interp_start := a.children.len
 	a.children << value
 	interp := a.add_node(flat.Node{
 		kind:           .string_interp
-		typ:            'string'
+		typ:            flat.source_type_string
 		children_start: interp_start
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['View'] = true
+	tc.interface_names[flat.source_type_id('View')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.string_interp_expr_needs_deferred_lowering(value)
@@ -3551,13 +3727,13 @@ fn test_string_interp_expansion_estimate_defers_typed_map_stringification() {
 		value := a.add_node(flat.Node{
 			kind:  .ident
 			value: 'value'
-			typ:   typ
+			typ:   flat.source_type_id(typ)
 		})
 		interp_start := a.children.len
 		a.children << value
 		interp := a.add_node(flat.Node{
 			kind:           .string_interp
-			typ:            'string'
+			typ:            flat.source_type_string
 			children_start: interp_start
 			children_count: 1
 		})
@@ -3575,14 +3751,14 @@ fn test_pointer_formatted_interp_skips_aggregate_stringify_expansion() {
 	pointer := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'pointer'
-		typ:   '&Large'
+		typ:   flat.source_type_id('&Large')
 	})
 	format_start := a.children.len
 	a.children << pointer
 	formatted := a.add_node(flat.Node{
 		kind:           .directive
 		value:          'string_interp_format'
-		typ:            'p'
+		typ:            flat.source_type_id('p')
 		children_start: format_start
 		children_count: 1
 	})
@@ -3590,18 +3766,18 @@ fn test_pointer_formatted_interp_skips_aggregate_stringify_expansion() {
 	a.children << formatted
 	interp := a.add_node(flat.Node{
 		kind:           .string_interp
-		typ:            'string'
+		typ:            flat.source_type_string
 		children_start: interp_start
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Large'] = StructInfo{
-		name:   'Large'
+	t.structs[flat.source_type_id('Large')] = StructInfo{
+		name:   flat.source_type_id('Large')
 		fields: [
 			FieldInfo{
 				name: 'value'
-				typ:  'string'
+				typ:  flat.source_type_string
 			},
 		]
 	}
@@ -3616,14 +3792,14 @@ fn test_pointer_formatted_interp_still_accounts_for_temp_hoisting() {
 	value := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'value'
-		typ:   'Any'
+		typ:   flat.source_type_id('Any')
 	})
 	cast_start := a.children.len
 	a.children << value
 	cast := a.add_node(flat.Node{
 		kind:           .as_expr
 		value:          '[]int'
-		typ:            '[]int'
+		typ:            flat.source_type_id('[]int')
 		children_start: cast_start
 		children_count: 1
 	})
@@ -3632,7 +3808,7 @@ fn test_pointer_formatted_interp_still_accounts_for_temp_hoisting() {
 	formatted := a.add_node(flat.Node{
 		kind:           .directive
 		value:          'string_interp_format'
-		typ:            'p'
+		typ:            flat.source_type_id('p')
 		children_start: format_start
 		children_count: 1
 	})
@@ -3640,7 +3816,7 @@ fn test_pointer_formatted_interp_still_accounts_for_temp_hoisting() {
 	a.children << formatted
 	interp := a.add_node(flat.Node{
 		kind:           .string_interp
-		typ:            'string'
+		typ:            flat.source_type_string
 		children_start: interp_start
 		children_count: 1
 	})
@@ -3657,14 +3833,14 @@ fn test_pointer_formatted_interp_accounts_for_pointer_to_sum_cast_hoisting() {
 	value := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'value'
-		typ:   'First'
+		typ:   flat.source_type_id('First')
 	})
 	cast_start := a.children.len
 	a.children << value
 	cast := a.add_node(flat.Node{
 		kind:           .cast_expr
 		value:          '&Item'
-		typ:            '&Item'
+		typ:            flat.source_type_id('&Item')
 		children_start: cast_start
 		children_count: 1
 	})
@@ -3673,7 +3849,7 @@ fn test_pointer_formatted_interp_accounts_for_pointer_to_sum_cast_hoisting() {
 	formatted := a.add_node(flat.Node{
 		kind:           .directive
 		value:          'string_interp_format'
-		typ:            'p'
+		typ:            flat.source_type_id('p')
 		children_start: format_start
 		children_count: 1
 	})
@@ -3681,13 +3857,13 @@ fn test_pointer_formatted_interp_accounts_for_pointer_to_sum_cast_hoisting() {
 	a.children << formatted
 	interp := a.add_node(flat.Node{
 		kind:           .string_interp
-		typ:            'string'
+		typ:            flat.source_type_string
 		children_start: interp_start
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types['Item'] = ['First', 'Second']
+	t.sum_types.set(flat.source_type_id('Item'), ['First', 'Second'])
 
 	estimate, needs_deferred_lowering := t.string_interp_expansion_estimates(a.nodes[int(interp)])
 	assert t.string_interp_expr_may_hoist(cast)
@@ -3739,7 +3915,7 @@ fn test_external_map_expansion_estimate_includes_string_concatenation() {
 		concat = a.add_node(flat.Node{
 			kind:           .infix
 			op:             .plus
-			typ:            'string'
+			typ:            flat.source_type_string
 			children_start: infix_start
 			children_count: 2
 		})
@@ -3753,7 +3929,7 @@ fn test_external_map_expansion_estimate_includes_string_concatenation() {
 	a.children << concat
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]string'
+		typ:            flat.source_type_id('map[string]string')
 		children_start: map_start
 		children_count: 2
 	})
@@ -3781,7 +3957,7 @@ fn test_external_map_expansion_estimate_includes_string_comparisons() {
 		comparison := a.add_node(flat.Node{
 			kind:           .infix
 			op:             .eq
-			typ:            'bool'
+			typ:            flat.source_type_bool
 			children_start: comparison_start
 			children_count: 2
 		})
@@ -3795,7 +3971,7 @@ fn test_external_map_expansion_estimate_includes_string_comparisons() {
 		comparison_tree = a.add_node(flat.Node{
 			kind:           .infix
 			op:             .logical_and
-			typ:            'bool'
+			typ:            flat.source_type_bool
 			children_start: and_start
 			children_count: 2
 		})
@@ -3809,7 +3985,7 @@ fn test_external_map_expansion_estimate_includes_string_comparisons() {
 	a.children << comparison_tree
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]bool'
+		typ:            flat.source_type_id('map[string]bool')
 		children_start: map_start
 		children_count: 2
 	})
@@ -3836,7 +4012,7 @@ fn test_external_map_expansion_estimate_includes_logical_rewrites() {
 		logical_tree = a.add_node(flat.Node{
 			kind:           .infix
 			op:             if i % 2 == 0 { .logical_and } else { .logical_or }
-			typ:            'bool'
+			typ:            flat.source_type_bool
 			children_start: infix_start
 			children_count: 2
 		})
@@ -3850,7 +4026,7 @@ fn test_external_map_expansion_estimate_includes_logical_rewrites() {
 	a.children << logical_tree
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]bool'
+		typ:            flat.source_type_id('map[string]bool')
 		children_start: map_start
 		children_count: 2
 	})
@@ -3867,7 +4043,7 @@ fn test_external_map_expansion_estimate_includes_call_reconstruction() {
 		level << a.add_node(flat.Node{
 			kind:  .int_literal
 			value: i.str()
-			typ:   'int'
+			typ:   flat.source_type_int
 		})
 	}
 	for level.len > 1 {
@@ -3883,7 +4059,7 @@ fn test_external_map_expansion_estimate_includes_call_reconstruction() {
 			a.children << level[i + 1]
 			next << a.add_node(flat.Node{
 				kind:           .call
-				typ:            'int'
+				typ:            flat.source_type_int
 				children_start: call_start
 				children_count: 3
 			})
@@ -3899,7 +4075,7 @@ fn test_external_map_expansion_estimate_includes_call_reconstruction() {
 	a.children << level[0]
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]int'
+		typ:            flat.source_type_id('map[string]int')
 		children_start: map_start
 		children_count: 2
 	})
@@ -3914,14 +4090,14 @@ fn test_external_map_expansion_estimate_defers_compiler_default_clone_calls() {
 	receiver := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'wide'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	selector_start := a.children.len
 	a.children << receiver
 	selector := a.add_node(flat.Node{
 		kind:           .selector
 		value:          'clone'
-		typ:            'fn () Wide'
+		typ:            flat.source_type_id('fn () Wide')
 		children_start: selector_start
 		children_count: 1
 	})
@@ -3929,7 +4105,7 @@ fn test_external_map_expansion_estimate_defers_compiler_default_clone_calls() {
 	a.children << selector
 	clone_call := a.add_node(flat.Node{
 		kind:           .call
-		typ:            'Wide'
+		typ:            flat.source_type_id('Wide')
 		children_start: call_start
 		children_count: 1
 	})
@@ -3942,13 +4118,13 @@ fn test_external_map_expansion_estimate_defers_compiler_default_clone_calls() {
 	a.children << clone_call
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]Wide'
+		typ:            flat.source_type_id('map[string]Wide')
 		children_start: map_start
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Wide'] = []
-	tc.struct_implements['Wide'] = ['IClone']
+	tc.structs[flat.source_type_id('Wide')] = []
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
@@ -3960,14 +4136,14 @@ fn test_external_map_expansion_estimate_defers_ownership_collection_clone_calls(
 		receiver := a.add_node(flat.Node{
 			kind:  .ident
 			value: 'items'
-			typ:   collection_type
+			typ:   flat.source_type_id(collection_type)
 		})
 		selector_start := a.children.len
 		a.children << receiver
 		selector := a.add_node(flat.Node{
 			kind:           .selector
 			value:          'clone'
-			typ:            'fn () ${collection_type}'
+			typ:            flat.source_type_id('fn () ${collection_type}')
 			children_start: selector_start
 			children_count: 1
 		})
@@ -3975,7 +4151,7 @@ fn test_external_map_expansion_estimate_defers_ownership_collection_clone_calls(
 		a.children << selector
 		clone_call := a.add_node(flat.Node{
 			kind:           .call
-			typ:            collection_type
+			typ:            flat.source_type_id(collection_type)
 			children_start: call_start
 			children_count: 1
 		})
@@ -3988,13 +4164,13 @@ fn test_external_map_expansion_estimate_defers_ownership_collection_clone_calls(
 		a.children << clone_call
 		root := a.add_node(flat.Node{
 			kind:           .map_init
-			typ:            'map[string]${collection_type}'
+			typ:            flat.source_type_id('map[string]${collection_type}')
 			children_start: map_start
 			children_count: 2
 		})
 		mut tc := types.TypeChecker.new(&a)
-		tc.structs['Wide'] = []
-		tc.struct_implements['Wide'] = ['IClone']
+		tc.structs[flat.source_type_id('Wide')] = []
+		tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 		assert t.external_map_tree_expansion_estimate(root, 0, 0) > deferred_map_expansion_threshold
@@ -4009,14 +4185,14 @@ fn test_external_map_expansion_estimate_defers_ownership_array_reverse_calls() {
 	receiver := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'items'
-		typ:   '[]Wide'
+		typ:   flat.source_type_id('[]Wide')
 	})
 	selector_start := a.children.len
 	a.children << receiver
 	selector := a.add_node(flat.Node{
 		kind:           .selector
 		value:          'reverse'
-		typ:            'fn () []Wide'
+		typ:            flat.source_type_id('fn () []Wide')
 		children_start: selector_start
 		children_count: 1
 	})
@@ -4024,7 +4200,7 @@ fn test_external_map_expansion_estimate_defers_ownership_array_reverse_calls() {
 	a.children << selector
 	reverse_call := a.add_node(flat.Node{
 		kind:           .call
-		typ:            '[]Wide'
+		typ:            flat.source_type_id('[]Wide')
 		children_start: call_start
 		children_count: 1
 	})
@@ -4037,17 +4213,17 @@ fn test_external_map_expansion_estimate_defers_ownership_array_reverse_calls() {
 	a.children << reverse_call
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string][]Wide'
+		typ:            flat.source_type_id('map[string][]Wide')
 		children_start: map_start
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
-		typ:  tc.parse_type('string')
+		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements['Wide'] = ['IClone']
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.compiler_collection_clone_call_expands(a.nodes[int(reverse_call)])
@@ -4063,18 +4239,18 @@ fn test_external_map_expansion_estimate_defers_ownership_array_sorted_calls() {
 		receiver := a.add_node(flat.Node{
 			kind:  .ident
 			value: 'items'
-			typ:   '[]Wide'
+			typ:   flat.source_type_id('[]Wide')
 		})
 		selector_start := a.children.len
 		a.children << receiver
 		selector := a.add_node(flat.Node{
 			kind:           .selector
 			value:          method
-			typ:            if method == 'sorted' {
+			typ:            flat.source_type_id(if method == 'sorted' {
 				'fn () []Wide'
 			} else {
 				'fn (fn (Wide, Wide) int) []Wide'
-			}
+			})
 			children_start: selector_start
 			children_count: 1
 		})
@@ -4085,13 +4261,13 @@ fn test_external_map_expansion_estimate_defers_ownership_array_sorted_calls() {
 			a.children << a.add_node(flat.Node{
 				kind:  .ident
 				value: 'compare'
-				typ:   'fn (Wide, Wide) int'
+				typ:   flat.source_type_id('fn (Wide, Wide) int')
 			})
 			call_children++
 		}
 		sorted_call := a.add_node(flat.Node{
 			kind:           .call
-			typ:            '[]Wide'
+			typ:            flat.source_type_id('[]Wide')
 			children_start: call_start
 			children_count: u16(call_children)
 		})
@@ -4104,17 +4280,17 @@ fn test_external_map_expansion_estimate_defers_ownership_array_sorted_calls() {
 		a.children << sorted_call
 		root := a.add_node(flat.Node{
 			kind:           .map_init
-			typ:            'map[string][]Wide'
+			typ:            flat.source_type_id('map[string][]Wide')
 			children_start: map_start
 			children_count: 2
 		})
 		mut tc := types.TypeChecker.new(&a)
 		tc.collect(&a)
-		tc.structs['Wide'] = [types.StructField{
+		tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 			name: 'text'
-			typ:  tc.parse_type('string')
+			typ:  tc.parse_type(flat.source_type_string)
 		}]
-		tc.struct_implements['Wide'] = ['IClone']
+		tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 		assert t.compiler_collection_clone_call_expands(a.nodes[int(sorted_call)]), method
@@ -4131,14 +4307,14 @@ fn test_external_map_expansion_estimate_defers_owned_map_item_calls() {
 		receiver := a.add_node(flat.Node{
 			kind:  .ident
 			value: 'items'
-			typ:   'map[Wide]Wide'
+			typ:   flat.source_type_id('map[Wide]Wide')
 		})
 		selector_start := a.children.len
 		a.children << receiver
 		selector := a.add_node(flat.Node{
 			kind:           .selector
 			value:          method
-			typ:            'fn () []Wide'
+			typ:            flat.source_type_id('fn () []Wide')
 			children_start: selector_start
 			children_count: 1
 		})
@@ -4146,7 +4322,7 @@ fn test_external_map_expansion_estimate_defers_owned_map_item_calls() {
 		a.children << selector
 		items_call := a.add_node(flat.Node{
 			kind:           .call
-			typ:            '[]Wide'
+			typ:            flat.source_type_id('[]Wide')
 			children_start: call_start
 			children_count: 1
 		})
@@ -4159,17 +4335,17 @@ fn test_external_map_expansion_estimate_defers_owned_map_item_calls() {
 		a.children << items_call
 		root := a.add_node(flat.Node{
 			kind:           .map_init
-			typ:            'map[string][]Wide'
+			typ:            flat.source_type_id('map[string][]Wide')
 			children_start: map_start
 			children_count: 2
 		})
 		mut tc := types.TypeChecker.new(&a)
 		tc.collect(&a)
-		tc.structs['Wide'] = [types.StructField{
+		tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 			name: 'text'
-			typ:  tc.parse_type('string')
+			typ:  tc.parse_type(flat.source_type_string)
 		}]
-		tc.struct_implements['Wide'] = ['IClone']
+		tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 		assert t.compiler_owned_map_items_call_expands(a.nodes[int(items_call)]), method
@@ -4183,28 +4359,28 @@ fn test_external_map_expansion_estimate_defers_array_equality_calls() {
 	receiver := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'left'
-		typ:   '[]Wide'
+		typ:   flat.source_type_id('[]Wide')
 	})
 	selector_start := a.children.len
 	a.children << receiver
 	selector := a.add_node(flat.Node{
 		kind:           .selector
 		value:          'equals'
-		typ:            'fn ([]Wide) bool'
+		typ:            flat.source_type_id('fn ([]Wide) bool')
 		children_start: selector_start
 		children_count: 1
 	})
 	right := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'right'
-		typ:   '[]Wide'
+		typ:   flat.source_type_id('[]Wide')
 	})
 	call_start := a.children.len
 	a.children << selector
 	a.children << right
 	equals_call := a.add_node(flat.Node{
 		kind:           .call
-		typ:            'bool'
+		typ:            flat.source_type_bool
 		children_start: call_start
 		children_count: 2
 	})
@@ -4217,14 +4393,14 @@ fn test_external_map_expansion_estimate_defers_array_equality_calls() {
 	a.children << equals_call
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]bool'
+		typ:            flat.source_type_id('map[string]bool')
 		children_start: map_start
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Wide'] = StructInfo{
-		name: 'Wide'
+	t.structs[flat.source_type_id('Wide')] = StructInfo{
+		name: flat.source_type_id('Wide')
 	}
 
 	assert t.compiler_array_search_call_expands(a.nodes[int(equals_call)])
@@ -4237,28 +4413,28 @@ fn external_map_array_search_expansion_estimate(method string) int {
 	receiver := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'items'
-		typ:   '[]Wide'
+		typ:   flat.source_type_id('[]Wide')
 	})
 	selector_start := a.children.len
 	a.children << receiver
 	selector := a.add_node(flat.Node{
 		kind:           .selector
 		value:          method
-		typ:            'fn (Wide) int'
+		typ:            flat.source_type_id('fn (Wide) int')
 		children_start: selector_start
 		children_count: 1
 	})
 	needle := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'needle'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	call_start := a.children.len
 	a.children << selector
 	a.children << needle
 	search_call := a.add_node(flat.Node{
 		kind:           .call
-		typ:            if method == 'contains' { 'bool' } else { 'int' }
+		typ:            flat.source_type_id(if method == 'contains' { 'bool' } else { 'int' })
 		children_start: call_start
 		children_count: 2
 	})
@@ -4271,14 +4447,18 @@ fn external_map_array_search_expansion_estimate(method string) int {
 	a.children << search_call
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            if method == 'contains' { 'map[string]bool' } else { 'map[string]int' }
+		typ:            flat.source_type_id(if method == 'contains' {
+			'map[string]bool'
+		} else {
+			'map[string]int'
+		})
 		children_start: map_start
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Wide'] = StructInfo{
-		name: 'Wide'
+	t.structs[flat.source_type_id('Wide')] = StructInfo{
+		name: flat.source_type_id('Wide')
 	}
 	assert t.compiler_array_search_call_expands(a.nodes[int(search_call)]), method
 	assert t.fn_span_map_expansion_estimate(0, int(search_call) + 1) > deferred_map_expansion_threshold, method
@@ -4300,14 +4480,14 @@ fn test_external_map_expansion_estimate_defers_owned_array_accessor_calls() {
 		receiver := a.add_node(flat.Node{
 			kind:  .ident
 			value: 'items'
-			typ:   '[]Wide'
+			typ:   flat.source_type_id('[]Wide')
 		})
 		selector_start := a.children.len
 		a.children << receiver
 		selector := a.add_node(flat.Node{
 			kind:           .selector
 			value:          method
-			typ:            'fn () Wide'
+			typ:            flat.source_type_id('fn () Wide')
 			children_start: selector_start
 			children_count: 1
 		})
@@ -4315,7 +4495,7 @@ fn test_external_map_expansion_estimate_defers_owned_array_accessor_calls() {
 		a.children << selector
 		accessor_call := a.add_node(flat.Node{
 			kind:           .call
-			typ:            'Wide'
+			typ:            flat.source_type_id('Wide')
 			children_start: call_start
 			children_count: 1
 		})
@@ -4328,17 +4508,17 @@ fn test_external_map_expansion_estimate_defers_owned_array_accessor_calls() {
 		a.children << accessor_call
 		root := a.add_node(flat.Node{
 			kind:           .map_init
-			typ:            'map[string]Wide'
+			typ:            flat.source_type_id('map[string]Wide')
 			children_start: map_start
 			children_count: 2
 		})
 		mut tc := types.TypeChecker.new(&a)
 		tc.collect(&a)
-		tc.structs['Wide'] = [types.StructField{
+		tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 			name: 'text'
-			typ:  tc.parse_type('string')
+			typ:  tc.parse_type(flat.source_type_string)
 		}]
-		tc.struct_implements['Wide'] = ['IClone']
+		tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 		assert t.compiler_owned_array_accessor_call_expands(a.nodes[int(accessor_call)]), method
@@ -4355,28 +4535,28 @@ fn test_external_map_expansion_estimate_defers_owned_array_filter_calls() {
 	receiver := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'items'
-		typ:   '[]Wide'
+		typ:   flat.source_type_id('[]Wide')
 	})
 	selector_start := a.children.len
 	a.children << receiver
 	selector := a.add_node(flat.Node{
 		kind:           .selector
 		value:          'filter'
-		typ:            'fn (fn (Wide) bool) []Wide'
+		typ:            flat.source_type_id('fn (fn (Wide) bool) []Wide')
 		children_start: selector_start
 		children_count: 1
 	})
 	predicate := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'keep'
-		typ:   'fn (Wide) bool'
+		typ:   flat.source_type_id('fn (Wide) bool')
 	})
 	call_start := a.children.len
 	a.children << selector
 	a.children << predicate
 	filter_call := a.add_node(flat.Node{
 		kind:           .call
-		typ:            '[]Wide'
+		typ:            flat.source_type_id('[]Wide')
 		children_start: call_start
 		children_count: 2
 	})
@@ -4389,17 +4569,17 @@ fn test_external_map_expansion_estimate_defers_owned_array_filter_calls() {
 	a.children << filter_call
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string][]Wide'
+		typ:            flat.source_type_id('map[string][]Wide')
 		children_start: map_start
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
-		typ:  tc.parse_type('string')
+		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements['Wide'] = ['IClone']
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.compiler_owned_array_filter_call_expands(a.nodes[int(filter_call)])
@@ -4420,7 +4600,7 @@ fn test_external_map_expansion_estimate_defers_owned_array_map_calls() {
 	a.children << make_items
 	receiver := a.add_node(flat.Node{
 		kind:           .call
-		typ:            '[]Wide'
+		typ:            flat.source_type_id('[]Wide')
 		children_start: make_start
 		children_count: 1
 	})
@@ -4429,21 +4609,21 @@ fn test_external_map_expansion_estimate_defers_owned_array_map_calls() {
 	selector := a.add_node(flat.Node{
 		kind:           .selector
 		value:          'map'
-		typ:            'fn (fn (Wide) Wide) []Wide'
+		typ:            flat.source_type_id('fn (fn (Wide) Wide) []Wide')
 		children_start: selector_start
 		children_count: 1
 	})
 	mapper := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'it'
-		typ:   'Wide'
+		typ:   flat.source_type_id('Wide')
 	})
 	call_start := a.children.len
 	a.children << selector
 	a.children << mapper
 	map_call := a.add_node(flat.Node{
 		kind:           .call
-		typ:            '[]Wide'
+		typ:            flat.source_type_id('[]Wide')
 		children_start: call_start
 		children_count: 2
 	})
@@ -4456,17 +4636,17 @@ fn test_external_map_expansion_estimate_defers_owned_array_map_calls() {
 	a.children << map_call
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string][]Wide'
+		typ:            flat.source_type_id('map[string][]Wide')
 		children_start: map_start
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
-		typ:  tc.parse_type('string')
+		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements['Wide'] = ['IClone']
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.compiler_owned_array_map_call_expands(a.nodes[int(map_call)])
@@ -4485,7 +4665,7 @@ fn test_external_map_expansion_estimate_defers_compiler_collection_str_calls() {
 		a.children << make_items
 		receiver := a.add_node(flat.Node{
 			kind:           .call
-			typ:            collection_type
+			typ:            flat.source_type_id(collection_type)
 			children_start: make_start
 			children_count: 1
 		})
@@ -4494,7 +4674,7 @@ fn test_external_map_expansion_estimate_defers_compiler_collection_str_calls() {
 		selector := a.add_node(flat.Node{
 			kind:           .selector
 			value:          'str'
-			typ:            'fn () string'
+			typ:            flat.source_type_id('fn () string')
 			children_start: selector_start
 			children_count: 1
 		})
@@ -4502,7 +4682,7 @@ fn test_external_map_expansion_estimate_defers_compiler_collection_str_calls() {
 		a.children << selector
 		str_call := a.add_node(flat.Node{
 			kind:           .call
-			typ:            'string'
+			typ:            flat.source_type_string
 			children_start: call_start
 			children_count: 1
 		})
@@ -4515,15 +4695,15 @@ fn test_external_map_expansion_estimate_defers_compiler_collection_str_calls() {
 		a.children << str_call
 		root := a.add_node(flat.Node{
 			kind:           .map_init
-			typ:            'map[string]string'
+			typ:            flat.source_type_id('map[string]string')
 			children_start: map_start
 			children_count: 2
 		})
 		mut tc := types.TypeChecker.new(&a)
-		tc.structs['Wide'] = []
+		tc.structs[flat.source_type_id('Wide')] = []
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
-		t.structs['Wide'] = StructInfo{
-			name: 'Wide'
+		t.structs[flat.source_type_id('Wide')] = StructInfo{
+			name: flat.source_type_id('Wide')
 		}
 
 		assert t.compiler_collection_str_call_expands(a.nodes[int(str_call)]), collection_type
@@ -4545,7 +4725,7 @@ fn test_external_map_expansion_estimate_defers_ownership_array_repeat_calls() {
 	a.children << make_items
 	items := a.add_node(flat.Node{
 		kind:           .call
-		typ:            '[]Wide'
+		typ:            flat.source_type_id('[]Wide')
 		children_start: make_start
 		children_count: 1
 	})
@@ -4554,21 +4734,21 @@ fn test_external_map_expansion_estimate_defers_ownership_array_repeat_calls() {
 	repeat_selector := a.add_node(flat.Node{
 		kind:           .selector
 		value:          'repeat'
-		typ:            'fn (int) []Wide'
+		typ:            flat.source_type_id('fn (int) []Wide')
 		children_start: selector_start
 		children_count: 1
 	})
 	count := a.add_node(flat.Node{
 		kind:  .int_literal
 		value: '2'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	repeat_start := a.children.len
 	a.children << repeat_selector
 	a.children << count
 	repeat_call := a.add_node(flat.Node{
 		kind:           .call
-		typ:            '[]Wide'
+		typ:            flat.source_type_id('[]Wide')
 		children_start: repeat_start
 		children_count: 2
 	})
@@ -4581,17 +4761,17 @@ fn test_external_map_expansion_estimate_defers_ownership_array_repeat_calls() {
 	a.children << repeat_call
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string][]Wide'
+		typ:            flat.source_type_id('map[string][]Wide')
 		children_start: map_start
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
 	tc.collect(&a)
-	tc.structs['Wide'] = [types.StructField{
+	tc.structs[flat.source_type_id('Wide')] = [types.StructField{
 		name: 'text'
-		typ:  tc.parse_type('string')
+		typ:  tc.parse_type(flat.source_type_string)
 	}]
-	tc.struct_implements['Wide'] = ['IClone']
+	tc.struct_implements.set(flat.source_type_id('Wide'), ['IClone'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.ownership_array_repeat_call_expands(a.nodes[int(repeat_call)])
@@ -4604,7 +4784,7 @@ fn test_expansion_estimate_defers_interface_array_literal_repeat_calls_without_o
 	item := a.add_node(flat.Node{
 		kind:  .ident
 		value: 'item'
-		typ:   'IValue'
+		typ:   flat.source_type_id('IValue')
 	})
 	literal_start := a.children.len
 	for _ in 0 .. 8 {
@@ -4612,7 +4792,7 @@ fn test_expansion_estimate_defers_interface_array_literal_repeat_calls_without_o
 	}
 	literal := a.add_node(flat.Node{
 		kind:           .array_literal
-		typ:            '[]IValue'
+		typ:            flat.source_type_id('[]IValue')
 		children_start: literal_start
 		children_count: 8
 	})
@@ -4621,26 +4801,26 @@ fn test_expansion_estimate_defers_interface_array_literal_repeat_calls_without_o
 	repeat_selector := a.add_node(flat.Node{
 		kind:           .selector
 		value:          'repeat'
-		typ:            'fn (int) []IValue'
+		typ:            flat.source_type_id('fn (int) []IValue')
 		children_start: selector_start
 		children_count: 1
 	})
 	count := a.add_node(flat.Node{
 		kind:  .int_literal
 		value: '32'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	repeat_start := a.children.len
 	a.children << repeat_selector
 	a.children << count
 	repeat_call := a.add_node(flat.Node{
 		kind:           .call
-		typ:            '[]IValue'
+		typ:            flat.source_type_id('[]IValue')
 		children_start: repeat_start
 		children_count: 2
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['IValue'] = true
+	tc.interface_names[flat.source_type_id('IValue')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 
 	assert t.interface_array_literal_repeat_call_expands(a.nodes[int(repeat_call)])
@@ -4655,14 +4835,14 @@ fn test_external_map_expansion_estimate_includes_cast_and_arithmetic_reconstruct
 		value := a.add_node(flat.Node{
 			kind:  .int_literal
 			value: i.str()
-			typ:   'int'
+			typ:   flat.source_type_int
 		})
 		cast_start := a.children.len
 		a.children << value
 		level << a.add_node(flat.Node{
 			kind:           .cast_expr
 			value:          'int'
-			typ:            'int'
+			typ:            flat.source_type_int
 			children_start: cast_start
 			children_count: 1
 		})
@@ -4676,7 +4856,7 @@ fn test_external_map_expansion_estimate_includes_cast_and_arithmetic_reconstruct
 			next << a.add_node(flat.Node{
 				kind:           .infix
 				op:             .plus
-				typ:            'int'
+				typ:            flat.source_type_int
 				children_start: infix_start
 				children_count: 2
 			})
@@ -4692,7 +4872,7 @@ fn test_external_map_expansion_estimate_includes_cast_and_arithmetic_reconstruct
 	a.children << level[0]
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]int'
+		typ:            flat.source_type_id('map[string]int')
 		children_start: map_start
 		children_count: 2
 	})
@@ -4710,7 +4890,7 @@ fn test_external_map_expansion_estimate_includes_unary_wrapper_reconstruction() 
 	mut wrapped := a.add_node(flat.Node{
 		kind:  .int_literal
 		value: '1'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	for i in 0 .. 1024 {
 		wrapper_start := a.children.len
@@ -4718,7 +4898,7 @@ fn test_external_map_expansion_estimate_includes_unary_wrapper_reconstruction() 
 		wrapped = if i % 2 == 0 {
 			a.add_node(flat.Node{
 				kind:           .paren
-				typ:            'int'
+				typ:            flat.source_type_int
 				children_start: wrapper_start
 				children_count: 1
 			})
@@ -4726,7 +4906,7 @@ fn test_external_map_expansion_estimate_includes_unary_wrapper_reconstruction() 
 			a.add_node(flat.Node{
 				kind:           .prefix
 				op:             .bit_not
-				typ:            'int'
+				typ:            flat.source_type_int
 				children_start: wrapper_start
 				children_count: 1
 			})
@@ -4741,7 +4921,7 @@ fn test_external_map_expansion_estimate_includes_unary_wrapper_reconstruction() 
 	a.children << wrapped
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]int'
+		typ:            flat.source_type_id('map[string]int')
 		children_start: map_start
 		children_count: 2
 	})
@@ -4759,19 +4939,19 @@ fn test_external_map_expansion_estimate_includes_conditional_reconstruction() {
 	mut conditional := a.add_node(flat.Node{
 		kind:  .int_literal
 		value: '0'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	level_count := deferred_map_expansion_threshold / 8 + 1
 	for i in 0 .. level_count {
 		guard := a.add_node(flat.Node{
 			kind:  .bool_literal
 			value: 'false'
-			typ:   'bool'
+			typ:   flat.source_type_bool
 		})
 		then_value := a.add_node(flat.Node{
 			kind:  .int_literal
 			value: i.str()
-			typ:   'int'
+			typ:   flat.source_type_int
 		})
 		then_start := a.children.len
 		a.children << then_value
@@ -4793,7 +4973,7 @@ fn test_external_map_expansion_estimate_includes_conditional_reconstruction() {
 		a.children << else_block
 		conditional = a.add_node(flat.Node{
 			kind:           .if_expr
-			typ:            'int'
+			typ:            flat.source_type_int
 			children_start: if_start
 			children_count: 3
 		})
@@ -4807,7 +4987,7 @@ fn test_external_map_expansion_estimate_includes_conditional_reconstruction() {
 	a.children << conditional
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]int'
+		typ:            flat.source_type_id('map[string]int')
 		children_start: map_start
 		children_count: 2
 	})
@@ -4825,17 +5005,17 @@ fn test_external_map_expansion_estimate_defers_match_reconstruction() {
 	subject := a.add_node(flat.Node{
 		kind:  .int_literal
 		value: '1'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	condition := a.add_node(flat.Node{
 		kind:  .int_literal
 		value: '1'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	value := a.add_node(flat.Node{
 		kind:  .int_literal
 		value: '42'
-		typ:   'int'
+		typ:   flat.source_type_int
 	})
 	branch_start := a.children.len
 	a.children << condition
@@ -4850,7 +5030,7 @@ fn test_external_map_expansion_estimate_defers_match_reconstruction() {
 	a.children << branch
 	match_expr := a.add_node(flat.Node{
 		kind:           .match_stmt
-		typ:            'int'
+		typ:            flat.source_type_int
 		children_start: match_start
 		children_count: 2
 	})
@@ -4863,7 +5043,7 @@ fn test_external_map_expansion_estimate_defers_match_reconstruction() {
 	a.children << match_expr
 	root := a.add_node(flat.Node{
 		kind:           .map_init
-		typ:            'map[string]int'
+		typ:            flat.source_type_id('map[string]int')
 		children_start: map_start
 		children_count: 2
 	})
@@ -4982,35 +5162,35 @@ fn test_parallel_master_detaches_metadata_maps_before_writing() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut master := new_transformer(mut a, &tc, map[string]bool{})
-	master.fn_ret_types['main.base'] = 'int'
+	master.fn_ret_types.set_id('main.base', flat.source_type_int)
 	tc.fn_param_types['main.base'] = [types.Type(types.int_)]
-	master.structs['main.Base'] = StructInfo{
-		name: 'main.Base'
+	master.structs[flat.source_type_id('main.Base')] = StructInfo{
+		name: flat.source_type_id('main.Base')
 	}
-	tc.structs['main.Base'] = []types.StructField{}
+	tc.structs[flat.source_type_id('main.Base')] = []types.StructField{}
 
 	mut worker_ast := master.clone_ast_base(master.a.nodes.len, master.a.children.len)
 	worker_tc := tc.fork_for_parallel_transform(worker_ast)
 	worker := master.fork_worker(worker_ast, worker_tc)
 	master.mark_parallel_worker_maps_shared()
 
-	master.set_fn_ret_type('main.master_generated', 'bool')
+	master.set_fn_ret_type('main.master_generated', flat.source_type_bool)
 	mut master_tc := unsafe { &types.TypeChecker(voidptr(master.tc)) }
 	master_tc.ensure_private_transform_signatures()
 	master_tc.register_generated_fn_param_types('main.master_generated', [
 		types.Type(types.bool_),
 	])
 
-	assert master.fn_ret_types['main.master_generated'] == 'bool'
-	assert 'main.master_generated' !in worker.fn_ret_types
+	assert master.fn_ret_types.value_id('main.master_generated') == flat.source_type_bool
+	assert !worker.fn_ret_types.contains('main.master_generated')
 	assert 'main.master_generated' in master.tc.fn_param_types
 	assert 'main.master_generated' !in worker.tc.fn_param_types
 
-	master.add_fn_literal_capture_context('CaptureContext', 'main', []string{}, map[string]string{})
-	assert 'CaptureContext' in master.structs
-	assert 'CaptureContext' !in worker.structs
-	assert 'CaptureContext' in master.tc.structs
-	assert 'CaptureContext' !in worker.tc.structs
+	master.add_fn_literal_capture_context('CaptureContext', 'main', []string{}, map[string]u32{})
+	assert flat.source_type_id('CaptureContext') in master.structs
+	assert flat.source_type_id('CaptureContext') !in worker.structs
+	assert flat.source_type_id('CaptureContext') in master.tc.structs
+	assert flat.source_type_id('CaptureContext') !in worker.tc.structs
 }
 
 fn test_transform_ast_clone_preserves_template_metadata() {
@@ -5152,64 +5332,141 @@ fn test_parallel_escape_precheck_preserves_candidate_across_local_type_decl() {
 fn test_struct_lookup_name_prefers_selected_struct_over_imported_enum_short_name() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['shapes.Lang'] = []types.StructField{}
-	tc.struct_modules['shapes.Lang'] = 'shapes'
-	tc.file_selective_imports[file_import_key('main.v', 'Lang')] = ['shapes.Lang']
+	tc.structs[flat.source_type_id('shapes.Lang')] = []types.StructField{}
+	tc.struct_modules[flat.source_type_id('shapes.Lang')] = 'shapes'
+	tc.selective_import_files['main.v'] = &types.FileImportInfo{
+		selective_imports: {
+			flat.source_type_id('Lang'): [flat.source_type_id('shapes.Lang')]
+		}
+	}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	t.cur_file = 'main.v'
-	t.structs['shapes.Lang'] = StructInfo{
-		name:   'Lang'
+	t.structs[flat.source_type_id('shapes.Lang')] = StructInfo{
+		name:   flat.source_type_id('Lang')
 		module: 'shapes'
 	}
-	t.enum_types['Lang'] = ['en']
-	t.enum_types['other.Lang'] = ['en']
+	t.enum_types[flat.source_type_id('Lang')] = ['en']
+	t.enum_types[flat.source_type_id('other.Lang')] = ['en']
 
-	assert t.struct_lookup_name('Lang') == 'shapes.Lang'
+	assert flat.source_type_name(t.struct_lookup_name(flat.source_type_id('Lang'))) == 'shapes.Lang'
 	t.cur_file = 'without_selective_import.v'
-	assert t.struct_lookup_name('Lang') == ''
+	assert flat.source_type_name(t.struct_lookup_name(flat.source_type_id('Lang'))) == ''
 }
 
 fn test_struct_lookup_name_resolves_alias_before_imported_enum_short_name() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases['Lang'] = 'Record'
-	tc.type_aliases['Count'] = 'other.Count'
+	tc.type_aliases.set_id(flat.source_type_id('Lang'), flat.source_type_id('Record'))
+	tc.type_aliases.set_id(flat.source_type_id('Count'), flat.source_type_id('other.Count'))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
-	t.structs['Record'] = StructInfo{
-		name: 'Record'
+	t.structs[flat.source_type_id('Record')] = StructInfo{
+		name: flat.source_type_id('Record')
 	}
-	t.enum_types['Lang'] = ['en']
-	t.enum_types['other.Lang'] = ['en']
-	t.enum_types['Count'] = ['one']
-	t.enum_types['other.Count'] = ['one']
+	t.enum_types[flat.source_type_id('Lang')] = ['en']
+	t.enum_types[flat.source_type_id('other.Lang')] = ['en']
+	t.enum_types[flat.source_type_id('Count')] = ['one']
+	t.enum_types[flat.source_type_id('other.Count')] = ['one']
 
-	assert t.struct_lookup_name('Lang') == 'Record'
-	assert t.struct_lookup_name('Count') == ''
+	assert flat.source_type_name(t.struct_lookup_name(flat.source_type_id('Lang'))) == 'Record'
+	assert flat.source_type_name(t.struct_lookup_name(flat.source_type_id('Count'))) == ''
 }
 
 fn test_struct_lookup_name_preserves_builtin_struct_over_imported_enum_short_name() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['SliceIndex'] = []types.StructField{}
-	tc.struct_modules['SliceIndex'] = 'builtin'
+	tc.structs[flat.source_type_id('SliceIndex')] = []types.StructField{}
+	tc.struct_modules[flat.source_type_id('SliceIndex')] = 'builtin'
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'sample'
 	t.cur_file = 'sample.v'
-	t.structs['SliceIndex'] = StructInfo{
-		name:   'SliceIndex'
+	t.structs[flat.source_type_id('SliceIndex')] = StructInfo{
+		name:   flat.source_type_id('SliceIndex')
 		module: 'builtin'
 	}
-	t.enum_types['SliceIndex'] = ['value']
-	t.enum_types['other.SliceIndex'] = ['value']
+	t.enum_types[flat.source_type_id('SliceIndex')] = ['value']
+	t.enum_types[flat.source_type_id('other.SliceIndex')] = ['value']
 
-	assert t.struct_lookup_name('SliceIndex') == 'SliceIndex'
-	t.enum_types['sample.SliceIndex'] = ['local']
-	assert t.struct_lookup_name('SliceIndex') == ''
-	t.enum_types.delete('sample.SliceIndex')
-	tc.file_selective_imports[file_import_key('sample.v', 'SliceIndex')] = [
-		'other.SliceIndex',
-	]
-	assert t.struct_lookup_name('SliceIndex') == ''
+	assert flat.source_type_name(t.struct_lookup_name(flat.source_type_id('SliceIndex'))) == 'SliceIndex'
+	t.enum_types[flat.source_type_id('sample.SliceIndex')] = ['local']
+	assert flat.source_type_name(t.struct_lookup_name(flat.source_type_id('SliceIndex'))) == ''
+	t.enum_types.delete(flat.source_type_id('sample.SliceIndex'))
+	tc.selective_import_files['sample.v'] = &types.FileImportInfo{
+		selective_imports: {
+			flat.source_type_id('SliceIndex'): [flat.source_type_id('other.SliceIndex')]
+		}
+	}
+	assert flat.source_type_name(t.struct_lookup_name(flat.source_type_id('SliceIndex'))) == ''
+}
+
+fn test_merge_worker_relocates_allocation_warnings() {
+	mut a := flat.FlatAst.new()
+	base_id := a.add_node(flat.Node{
+		kind:  .ident
+		value: 'source_local'
+	})
+	mut tc := types.TypeChecker.new(&a)
+	tc.warn_about_allocs = true
+	mut master := new_transformer(mut a, &tc, map[string]bool{})
+	base_nodes := master.a.nodes.len
+	base_children := master.a.children.len
+
+	mut worker_ast := master.clone_ast_base(base_nodes, base_children)
+	mut worker_tc := tc.fork_for_parallel_transform(worker_ast)
+	mut worker := master.fork_worker(worker_ast, worker_tc)
+	// A local a comptime `$for` expansion made inside the worker, and one of
+	// the source's.
+	worker_id := worker_ast.add_node(flat.Node{
+		kind:  .ident
+		value: 'expanded_local'
+	})
+	decl := flat.Node{
+		kind: .decl_assign
+	}
+	freed_decl := flat.Node{
+		kind:  .decl_assign
+		flags: flat.node_flag_freed_assignment
+	}
+	worker.warn_alloc(decl, worker_id, token.Pos{}, 'local of a `@[heap]` struct')
+	worker.warn_alloc(freed_decl, worker_id, token.Pos{}, 'local of a `@[heap]` struct')
+	worker.warn_alloc(decl, base_id, token.Pos{}, 'local moved to the heap: its address escapes')
+	assert worker.alloc_warnings.len == 2
+
+	master.a.add_node(flat.Node{
+		kind:  .ident
+		value: 'earlier_master_append'
+	})
+	shifted_id := master.a.nodes.len
+	master.merge_worker(worker, []FnWorkItem{}, base_nodes, base_children, false)
+
+	assert master.alloc_warnings.len == 2
+	assert int(master.alloc_warnings[0].node) == shifted_id
+	assert master.a.nodes[int(master.alloc_warnings[0].node)].value == 'expanded_local'
+	assert master.alloc_warnings[1].node == base_id
+}
+
+fn test_deferred_worker_type_write_keeps_identity_through_clone_and_flush() {
+	$if !v3_no_parallel ? {
+		mut a := flat.FlatAst.new()
+		node_id := a.add_node(flat.Node{
+			kind:  .ident
+			value: 'value'
+			typ:   flat.source_type_int
+		})
+		type_id := flat.source_type_id('[]pkg.Item[T]')
+		mut t := Transformer{
+			a:                    &a
+			deferred_base_writes: [DeferredBaseWrite{
+				idx:  int(node_id)
+				kind: 0
+				typ:  type_id
+			}]
+		}
+		t.clone_deferred_worker_writes_from(0)
+		t.flush_deferred_base_writes()
+		assert a.nodes[int(node_id)].typ == type_id
+		assert a.nodes[int(node_id)].typ_text() == '[]pkg.Item[T]'
+		assert t.deferred_base_writes.len == 0
+	}
 }

@@ -1,0 +1,21 @@
+Run the full test suite for the V compiler and standard library.
+
+Usage:
+  v test-self [compiler flags...]
+
+The command runs the full set of `*_test.v` files for the V compiler
+modules, the standard library and the runtime, in a single test
+session, reporting a summary at the end.
+
+Compiler options given to `v test-self`, or set through VFLAGS, are
+passed to every test compilation. The collection of the compiler tests
+in `vlib/v/` has its own dedicated test driver, so those tests are
+excluded here.
+
+Environment variables used by CI:
+  VTEST_SELF_SHARD_COUNT / VTEST_SELF_SHARD_INDEX
+        split the suite deterministically into several shards, so that
+        multiple machines can test it in parallel; the assignment is
+        based on a hash of each test file's path.
+  VTEST_JUST_ESSENTIAL
+        reduce the suite to its essential test files only.

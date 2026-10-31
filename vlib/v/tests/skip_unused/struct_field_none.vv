@@ -1,4 +1,4 @@
-import json
+import json2
 
 pub struct Struct {
 	version ?int // = none
@@ -6,5 +6,5 @@ pub struct Struct {
 
 fn main() {
 	s := Struct{}
-	println('${json.encode(s)}')
+	println('${json2.encode(s)}')
 }

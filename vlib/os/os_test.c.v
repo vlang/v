@@ -509,6 +509,69 @@ fn test_realpath_absolutizes_existing_relative_paths() {
 	assert os.is_abs_path(real_path_of_examples_folder)
 }
 
+fn test_realpath_resolves_a_relative_path_like_its_absolute_spelling() {
+	os.mkdir_all(os.join_path('rp_dir', 'sub')) or { panic(err) }
+	os.write_file(os.join_path('rp_dir', 'sub', 'file.txt'), 'abc') or { panic(err) }
+	mut existing := ['.', 'rp_dir', os.join_path('rp_dir', 'sub', 'file.txt'),
+		os.join_path('rp_dir', '.', 'sub', '..', 'sub'),
+		os.join_path('..', os.file_name(os.getwd()), 'rp_dir')]
+	$if !windows {
+		existing << 'rp_dir//sub/'
+		if _ := os.symlink(os.join_path('rp_dir', 'sub'), 'rp_link') {
+			existing << os.join_path('rp_link', 'file.txt')
+			assert os.real_path(os.join_path('rp_link', 'file.txt')) == os.real_path(os.join_path('rp_dir',
+				'sub', 'file.txt'))
+		}
+	}
+	wd := os.getwd()
+	for path in existing {
+		resolved := os.real_path(path)
+		assert os.is_abs_path(resolved), path
+		assert resolved == os.real_path(os.join_path_single(wd, path)), path
+	}
+	$if !windows {
+		// what does not exist, or lies under a file, stays as it was given
+		for path in ['rp_missing', os.join_path('rp_dir', 'rp_missing', 'file.txt'),
+			os.join_path('rp_dir', 'sub', 'file.txt', 'below')] {
+			assert os.real_path(path) == path
+		}
+	}
+}
+
+fn test_realpath_follows_a_renamed_working_directory() {
+	$if windows {
+		return
+	}
+	root := os.real_path(os.getwd())
+	defer {
+		os.chdir(root) or { panic(err) }
+	}
+	os.mkdir_all(os.join_path('rp_before', 'inner')) or { panic(err) }
+	os.write_file(os.join_path('rp_before', 'inner', 'file.txt'), 'abc') or { panic(err) }
+	os.chdir(os.join_path('rp_before', 'inner')) or { panic(err) }
+	os.mv(os.join_path(root, 'rp_before'), os.join_path(root, 'rp_after')) or { panic(err) }
+	// another directory takes the name the working directory had
+	os.mkdir_all(os.join_path(root, 'rp_before', 'inner')) or { panic(err) }
+	os.write_file(os.join_path(root, 'rp_before', 'inner', 'file.txt'), 'other') or { panic(err) }
+	assert os.real_path('file.txt') == os.join_path(root, 'rp_after', 'inner', 'file.txt')
+	assert os.real_path('.') == os.join_path(root, 'rp_after', 'inner')
+	assert os.real_path(os.join_path('..', '..', 'rp_before', 'inner', 'file.txt')) == os.join_path(root,
+		'rp_before', 'inner', 'file.txt')
+}
+
+fn test_realpath_keeps_a_path_that_starts_with_a_nul_byte() {
+	$if windows {
+		return
+	}
+	os.mkdir_all('rp_dir') or { panic(err) }
+	// libc reads such a path as the empty one, which names nothing
+	for path in ['\x00', '\x00.', '\x00rp_dir'] {
+		assert os.real_path(path) == path
+	}
+	// a later one ends the path that libc reads
+	assert os.real_path('rp_dir\x00missing') == os.real_path('rp_dir')
+}
+
 // TODO: think much more about whether this is desirable:
 
 fn test_realpath_does_not_absolutize_non_existing_relative_paths() {
@@ -798,8 +861,10 @@ fn test_rmdir_not_exist() ! {
 	dir := 'non_existing_dir'
 	assert !os.exists(dir)
 	os.rmdir(dir) or {
-		// 0x00000002 is both ENOENT in POSIX and ERROR_FILE_NOT_FOUND in Win32 API
-		assert err.code() == 0x00000002
+		// ENOENT on POSIX and ERROR_FILE_NOT_FOUND on Windows have the same
+		// value, which is why one constant covers both.
+		assert err.code() == os.error_code_noent
+		assert os.is_not_exist(err)
 	}
 	assert !os.exists(dir)
 }
@@ -829,6 +894,19 @@ fn test_base() {
 	assert os.base('v\\vlib\\os') == 'os'
 	assert os.base('v\\vlib\\os\\') == 'os'
 	assert os.base('filename') == 'filename'
+}
+
+fn test_base_multiple_trailing_separators() {
+	assert os.base('a//') == 'a'
+	assert os.base('v/vlib/os///') == 'os'
+	assert os.base('a\\\\') == 'a'
+	assert os.base('v\\vlib\\os\\\\\\') == 'os'
+	assert os.base('/') == '/'
+	assert os.base('//') == '/'
+	assert os.base('////') == '/'
+	assert os.base('\\') == '\\'
+	assert os.base('\\\\') == '\\'
+	assert os.base('\\\\\\\\') == '\\'
 }
 
 fn test_file_name() {
@@ -1134,7 +1212,7 @@ fn test_exec_with_args() {
 		os.rm(output_arg + '.c') or {}
 	}
 	compile_result :=
-		os.execute('${os.quoted_path(@VEXE)} -o ${os.quoted_path(output_arg)} ${os.quoted_path(source_path)}')
+		os.exec([@VEXE, '-o', output_arg, source_path])
 	assert compile_result.exit_code == 0, compile_result.output
 
 	result := os.exec([exe_path, 'one two', 'semi;colon'])
@@ -1190,7 +1268,7 @@ fn test_execute_pipe_into_vfmt() {
 	result :=
 		os.execute('${os.quoted_path(@VEXE)} run ${os.quoted_path(producer_script)} | ${os.quoted_path(@VEXE)} fmt')
 	assert result.exit_code == 0, result.output
-	assert result.output.replace('\r\n', '\n') == 'fn main() {\n\tprintln(1)\n}\n'
+	assert result.output.replace('\r\n', '\n') == 'fn main() { println(1) }\n'
 }
 
 fn test_execute_fc_get_output() {
@@ -1278,9 +1356,10 @@ fn move_across_partitions_using_function(f fn (src string, dst string, opts os.M
 	├── mountpoint
 	└── original.txt
 	*/
-	os.system('${bindfs} --no-allow-other ${cfolder} ${mfolder}')
+	os.system_args([bindfs, '--no-allow-other', cfolder, mfolder])
 	defer {
-		os.system('sync; umount ${mfolder}')
+		os.system_args(['sync'])
+		os.system_args(['umount', mfolder])
 	}
 	// os.system('tree ${pfolder}')
 	/*
@@ -1333,4 +1412,27 @@ fn test_disk_usage() {
 	assert usage.total > 0
 	assert usage.available > 0
 	assert usage.used > 0
+}
+
+fn test_cp_directory_reports_read_error() {
+	// Copying a directory fails when reading it (EISDIR on Unix): the error
+	// must blame the read side, not the write side, and the -1 from read()
+	// must never reach write() as a SIZE_MAX length.
+	// See https://github.com/vlang/v/issues/30153
+	folder := 'test_cp_directory'
+	dst := 'test_cp_directory_copy'
+	os.mkdir(folder)!
+	defer {
+		os.rmdir_all(folder) or {}
+		os.rm(dst) or {}
+	}
+	os.cp(folder, dst) or {
+		$if windows {
+			// Windows copies via CopyFile, which fails at open with its own message
+			return
+		}
+		assert err.msg().contains('failed to read from')
+		return
+	}
+	assert false, 'cp of a directory should fail'
 }

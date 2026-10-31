@@ -1815,8 +1815,8 @@ fn test_multiwindow_mock_run_with_event_and_frame_rejects_before_callbacks() {
 }
 
 fn test_multiwindow_render_owner_guard_rejects_mixed_owners() {
-	legacy_token := voidptr(usize(0x1001))
-	app_token := voidptr(usize(0x2002))
+	legacy_token := voidptr(uint(0x1001))
+	app_token := voidptr(uint(0x2002))
 	gg_release_gfx_render_owner(.legacy_context, legacy_token)
 	gg_release_gfx_render_owner(.multiwindow_app, app_token)
 	gg_claim_gfx_render_owner(.legacy_context, legacy_token)!
@@ -1857,7 +1857,7 @@ fn test_multiwindow_same_app_can_reclaim_renderer_owner() {
 }
 
 fn test_multiwindow_release_render_owner_allows_other_owner_after_claim() {
-	legacy_token := voidptr(usize(0x5005))
+	legacy_token := voidptr(uint(0x5005))
 	gg_release_gfx_render_owner(.legacy_context, legacy_token)
 	mut app := new_app(backend: .mock)!
 
@@ -1869,7 +1869,7 @@ fn test_multiwindow_release_render_owner_allows_other_owner_after_claim() {
 }
 
 fn test_multiwindow_foreign_thread_stop_does_not_release_render_owner() {
-	legacy_token := voidptr(usize(0x7007))
+	legacy_token := voidptr(uint(0x7007))
 	gg_release_gfx_render_owner(.legacy_context, legacy_token)
 	mut app := new_app(backend: .mock)!
 	app.ensure_render_owner()!
@@ -1922,7 +1922,7 @@ fn test_multiwindow_foreign_thread_stop_does_not_release_render_owner() {
 }
 
 fn test_multiwindow_legacy_then_app_ownership_is_rejected_without_window() {
-	legacy_token := voidptr(usize(0x3003))
+	legacy_token := voidptr(uint(0x3003))
 	mut app := new_app(backend: .mock)!
 
 	gg_claim_gfx_render_owner(.legacy_context, legacy_token)!
@@ -1941,7 +1941,7 @@ fn test_multiwindow_legacy_then_app_ownership_is_rejected_without_window() {
 
 fn test_multiwindow_app_then_legacy_ownership_is_rejected_without_window() {
 	mut app := new_app(backend: .mock)!
-	legacy_token := voidptr(usize(0x4004))
+	legacy_token := voidptr(uint(0x4004))
 
 	app.ensure_render_owner()!
 	mut claim_message := ''
@@ -1989,10 +1989,11 @@ fn main() {
 	}
 
 	cmd := '${os.quoted_path(@VEXE)}${multiwindow_child_v_flags()} -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(bin_path)} ${os.quoted_path(source_path)}'
-	compile := os.execute(cmd)
+	compile := os.exec([@VEXE, ...(os.split_args(multiwindow_child_v_flags()) or { panic(err) }),
+		'-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', bin_path, source_path])
 	multiwindow_assert_command_ok('compile child gg import smoke', cmd, compile)
 	run_cmd := os.quoted_path(bin_path)
-	run := os.execute(run_cmd)
+	run := os.exec(os.split_args(run_cmd) or { panic(err) })
 	multiwindow_assert_command_ok('run child gg import smoke', run_cmd, run)
 }
 
@@ -2027,7 +2028,8 @@ fn main() {
 	}
 
 	cmd := '${os.quoted_path(@VEXE)}${multiwindow_child_v_flags()} -b c -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(c_path)} ${os.quoted_path(source_path)}'
-	compile := os.execute(cmd)
+	compile := os.exec([@VEXE, ...(os.split_args(multiwindow_child_v_flags()) or { panic(err) }),
+		'-b', 'c', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', c_path, source_path])
 	multiwindow_assert_command_ok('compile child input_fn API smoke', cmd, compile)
 }
 
@@ -2111,10 +2113,11 @@ fn main() {
 	}
 
 	cmd := '${os.quoted_path(@VEXE)}${multiwindow_child_v_flags()} -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(bin_path)} ${os.quoted_path(source_path)}'
-	compile := os.execute(cmd)
+	compile := os.exec([@VEXE, ...(os.split_args(multiwindow_child_v_flags()) or { panic(err) }),
+		'-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', bin_path, source_path])
 	multiwindow_assert_command_ok('compile child window info smoke', cmd, compile)
 	run_cmd := os.quoted_path(bin_path)
-	run := os.execute(run_cmd)
+	run := os.exec(os.split_args(run_cmd) or { panic(err) })
 	multiwindow_assert_command_ok('run child window info smoke', run_cmd, run)
 }
 
@@ -2180,10 +2183,11 @@ fn main() {
 	}
 
 	cmd := '${os.quoted_path(@VEXE)}${multiwindow_child_v_flags()} -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(bin_path)} ${os.quoted_path(source_path)}'
-	compile := os.execute(cmd)
+	compile := os.exec([@VEXE, ...(os.split_args(multiwindow_child_v_flags()) or { panic(err) }),
+		'-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', bin_path, source_path])
 	multiwindow_assert_command_ok('compile child enumeration smoke', cmd, compile)
 	run_cmd := os.quoted_path(bin_path)
-	run := os.execute(run_cmd)
+	run := os.exec(os.split_args(run_cmd) or { panic(err) })
 	multiwindow_assert_command_ok('run child enumeration smoke', run_cmd, run)
 }
 
@@ -2240,10 +2244,11 @@ fn main() {
 	}
 
 	cmd := '${os.quoted_path(@VEXE)}${multiwindow_child_v_flags()} -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(bin_path)} ${os.quoted_path(source_path)}'
-	compile := os.execute(cmd)
+	compile := os.exec([@VEXE, ...(os.split_args(multiwindow_child_v_flags()) or { panic(err) }),
+		'-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', bin_path, source_path])
 	multiwindow_assert_command_ok('compile child event callback smoke', cmd, compile)
 	run_cmd := os.quoted_path(bin_path)
-	run := os.execute(run_cmd)
+	run := os.exec(os.split_args(run_cmd) or { panic(err) })
 	multiwindow_assert_command_ok('run child event callback smoke', run_cmd, run)
 }
 
@@ -2304,10 +2309,11 @@ fn main() {
 	}
 
 	cmd := '${os.quoted_path(@VEXE)}${multiwindow_child_v_flags()} -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(bin_path)} ${os.quoted_path(source_path)}'
-	compile := os.execute(cmd)
+	compile := os.exec([@VEXE, ...(os.split_args(multiwindow_child_v_flags()) or { panic(err) }),
+		'-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', bin_path, source_path])
 	multiwindow_assert_command_ok('compile child queued event smoke', cmd, compile)
 	run_cmd := os.quoted_path(bin_path)
-	run := os.execute(run_cmd)
+	run := os.exec(os.split_args(run_cmd) or { panic(err) })
 	multiwindow_assert_command_ok('run child queued event smoke', run_cmd, run)
 }
 
@@ -2353,10 +2359,11 @@ fn main() {
 	}
 
 	cmd := '${os.quoted_path(@VEXE)}${multiwindow_child_v_flags()} -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(bin_path)} ${os.quoted_path(source_path)}'
-	compile := os.execute(cmd)
+	compile := os.exec([@VEXE, ...(os.split_args(multiwindow_child_v_flags()) or { panic(err) }),
+		'-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', bin_path, source_path])
 	multiwindow_assert_command_ok('compile child async post smoke', cmd, compile)
 	run_cmd := os.quoted_path(bin_path)
-	run := os.execute(run_cmd)
+	run := os.exec(os.split_args(run_cmd) or { panic(err) })
 	multiwindow_assert_command_ok('run child async post smoke', run_cmd, run)
 }
 
@@ -2382,7 +2389,8 @@ fn main() {
 	}
 
 	cmd := '${os.quoted_path(@VEXE)}${multiwindow_child_v_flags()} -b c -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(c_path)} ${os.quoted_path(source_path)}'
-	compile := os.execute(cmd)
+	compile := os.exec([@VEXE, ...(os.split_args(multiwindow_child_v_flags()) or { panic(err) }),
+		'-b', 'c', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', c_path, source_path])
 	multiwindow_assert_command_ok('compile child auto render API smoke', cmd, compile)
 }
 
@@ -2397,7 +2405,8 @@ fn test_multiwindow_checked_in_example_compiles_without_running() {
 	}
 
 	cmd := '${os.quoted_path(@VEXE)}${multiwindow_child_v_flags()} -b c -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(c_path)} ${os.quoted_path(example_path)}'
-	compile := os.execute(cmd)
+	compile := os.exec([@VEXE, ...(os.split_args(multiwindow_child_v_flags()) or { panic(err) }),
+		'-b', 'c', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', c_path, example_path])
 	multiwindow_assert_command_ok('compile checked-in gg multiwindow example', cmd, compile)
 }
 
@@ -2475,7 +2484,8 @@ fn main() {
 	}
 
 	cmd := '${os.quoted_path(@VEXE)}${multiwindow_child_v_flags()} -b c -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(c_path)} ${os.quoted_path(source_path)}'
-	compile := os.execute(cmd)
+	compile := os.exec([@VEXE, ...(os.split_args(multiwindow_child_v_flags()) or { panic(err) }),
+		'-b', 'c', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', c_path, source_path])
 	multiwindow_assert_command_ok('compile child legacy gg.Context smoke', cmd, compile)
 }
 

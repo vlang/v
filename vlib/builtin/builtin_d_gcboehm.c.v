@@ -1,5 +1,33 @@
 module builtin
 
+$if macos || linux {
+	// The bundled amalgamation otherwise enables unmapping only with HAVE_CONFIG_H.
+	// Unmapping requires the mmap-based heap. libgc selects it on its own only on
+	// macOS and on glibc x86_64 Linux; elsewhere (e.g. arm64/riscv64 Linux, or
+	// musl) gc.c stops with `USE_MUNMAP requires USE_MMAP`. libgc's configure
+	// defines both together too.
+	#flag -DUSE_MMAP=1
+	#flag -DUSE_MUNMAP=1
+	// The same applies to HANDLE_FORK, which libgc's configure also records in that
+	// part of the amalgamation. Without it the collector installs no pthread_atfork
+	// handlers, so a child that forks from a program with other threads and keeps
+	// running (no exec) still has the parent's threads in its thread table. Its first
+	// collection then tries to stop them and aborts with `pthread_kill failed at
+	// suspend`. With it, the handlers lock the allocator around the fork and rebuild
+	// the thread table in the child. The prebuilt libgc of default TCC builds on
+	// Linux amd64 and macOS has fork handling too; this makes the collector that V
+	// compiles from source agree with it.
+	$if !no_gc_threads ? {
+		// Only multi-threaded collectors need it. Without GC threads it only makes
+		// macOS refuse `-gc boehm_incr` (gc.c's GC_dirty_init, MPROTECT_VDB).
+		$if !(arm32 && tinyc) {
+			// TinyCC on 32-bit ARM cannot call glibc's Thumb-2 `pthread_atfork`; see
+			// thirdparty/build_scripts/thirdparty-linux-armv7_bdwgc.sh.
+			#flag -DHANDLE_FORK=1
+		}
+	}
+}
+
 $if !no_gc_threads ? {
 	#flag -DGC_THREADS=1
 	$if !no_gc_thread_local_alloc ? {
@@ -20,6 +48,23 @@ $if !no_gc_threads ? {
 		// See issues #27486, #27488 and #27553.
 		#flag -DTHREAD_LOCAL_ALLOC=1
 	}
+	$if linux || macos {
+		$if gc_parallel_mark ? {
+			// `-d gc_parallel_mark` enables Boehm's parallel marking in the bundled
+			// `gc.c` that V compiles from source (e.g. `-prod` with gcc/clang). The
+			// amalgamation was generated with `--enable-parallel-mark`, but that
+			// setting lives in its `config.h` part, which is only used with
+			// HAVE_CONFIG_H, so without this flag the marker code is compiled out.
+			// With it, up to `nproc - 1` helper threads (at most 15, `GC_MARKERS=n`
+			// overrides) are started at startup and mark with the collecting thread.
+			// That shortens pauses and total GC time for large live heaps, but the
+			// extra wakeups and lock traffic slow down programs with small live heaps
+			// that allocate a lot, and programs with many allocating threads, so it
+			// is opt-in. The prebuilt `thirdparty/tcc/lib/libgc.a` always has
+			// parallel marking; `GC_MARKERS=1` turns it off at run time.
+			#flag -DPARALLEL_MARK=1
+		}
+	}
 }
 
 $if use_bundled_libgc ? {
@@ -35,20 +80,23 @@ $if dynamic_boehm ? {
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag -L @VEXEROOT/thirdparty/tcc/lib
 			#flag -lgc
+			#flag -luser32
 		} $else $if msvc {
 			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 		} $else {
 			#flag -DGC_WIN32_THREADS=1
+			#flag -DNO_MSGBOX_ON_ERROR=1
+			#flag -DCONSOLE_LOG=1
 			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag -DALL_INTERIOR_POINTERS=1
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
 	} $else {
-		$if $pkgconfig ( 'bdw-gc-threaded' ) {
+		$if $pkgconfig('bdw-gc-threaded') {
 			#pkgconfig bdw-gc-threaded
-		} $else $if $pkgconfig ( 'bdw-gc' ) {
+		} $else $if $pkgconfig('bdw-gc') {
 			#pkgconfig bdw-gc
 		} $else {
 			$if openbsd || freebsd {
@@ -66,7 +114,7 @@ $if dynamic_boehm ? {
 	$if macos || linux {
 		#flag -DGC_BUILTIN_ATOMIC=1
 		#flag -I @VEXEROOT/thirdparty/libgc/include
-		$if ( prod && !tinyc && !debug ) || !( amd64 || arm64 || i386 || arm32 || rv64 ) {
+		$if (prod && !tinyc && !debug) || !(amd64 || arm64 || i386 || arm32 || rv64) {
 			// TODO: replace the architecture check with a `!$exists("@VEXEROOT/thirdparty/tcc/lib/libgc.a")` comptime call
 			#flag -DALL_INTERIOR_POINTERS=1
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
@@ -105,6 +153,13 @@ $if dynamic_boehm ? {
 		}
 		$if macos {
 			#flag -DMPROTECT_VDB=1
+			// AppKit/Metal apps map 1000+ dyld images; libgc registers each
+			// image's __DATA sections as static roots, which overflows the
+			// default MAX_ROOT_SETS (2048) of the source-built gc.o used by
+			// -prod ("Too many root sets"). The prebuilt macOS libgc.a is
+			// already configured with --enable-large-config (8192), as is
+			// Homebrew's bdw-gc; match that. See #25446.
+			#flag -DLARGE_CONFIG=1
 		}
 		#flag -ldl
 		#flag -lpthread
@@ -148,6 +203,10 @@ $if dynamic_boehm ? {
 	} $else $if windows {
 		#flag -DGC_NOT_DLL=1
 		#flag -DGC_WIN32_THREADS=1
+		// For the libgc built from source: report like on other platforms, on
+		// stderr, instead of in a modal message box and an `<exe>.gc.log` file.
+		#flag -DNO_MSGBOX_ON_ERROR=1
+		#flag -DCONSOLE_LOG=1
 		#flag -luser32
 		$if tinyc {
 			#flag -DGC_BUILTIN_ATOMIC=1
@@ -169,7 +228,7 @@ $if dynamic_boehm ? {
 			#flag -DALL_INTERIOR_POINTERS=1
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		}
-	} $else $if $pkgconfig ( 'bdw-gc' ) {
+	} $else $if $pkgconfig('bdw-gc') {
 		#flag -DGC_BUILTIN_ATOMIC=1
 		#pkgconfig bdw-gc
 	} $else {
@@ -182,27 +241,48 @@ $if gcboehm_leak ? {
 	#flag -DGC_DEBUG=1
 }
 
-#include <gc.h>
-#include "@VEXEROOT/vlib/builtin/gc_debugger_linux.h"
-#define v_gc_set_warn_proc(cb) GC_set_warn_proc((GC_warn_proc)(cb))
-
-// #include <gc/gc_mark.h>
+#flag @VEXEROOT/vlib/builtin/gc_boehm_helpers.o
+#flag -DV_GCBOEHM_NATIVE
 
 // replacements for `malloc()/calloc()`, `realloc()` and `free()`
 // for use with Boehm-GC
 // Do not use them manually. They are automatically chosen when
 // compiled with `-gc boehm` or `-gc boehm_leak`.
-fn C.GC_MALLOC(n usize) voidptr
+@[c: 'v_gc_malloc']
+fn C.GC_MALLOC(n uint) voidptr
 
-fn C.GC_MALLOC_ATOMIC(n usize) voidptr
+@[c: 'v_gc_malloc_atomic']
+fn C.GC_MALLOC_ATOMIC(n uint) voidptr
 
-fn C.GC_MALLOC_UNCOLLECTABLE(n usize) voidptr
+@[c: 'v_gc_malloc_uncollectable']
+@[markused]
+fn C.GC_MALLOC_UNCOLLECTABLE(n uint) voidptr
 
-fn C.GC_REALLOC(ptr voidptr, n usize) voidptr
+@[c: 'v_gc_realloc']
+fn C.GC_REALLOC(ptr voidptr, n uint) voidptr
 
+@[c: 'v_gc_free']
+@[markused]
 fn C.GC_FREE(ptr voidptr)
 
-fn C.GC_memalign(align isize, size isize) voidptr
+$if !windows {
+	@[markused]
+	fn C.v_gc_pthread_create(thread voidptr, attr voidptr, start_routine voidptr, arg voidptr) i32
+	@[markused]
+	fn C.v_gc_pthread_join(thread voidptr, retval voidptr) i32
+	@[markused]
+	fn C.v_gc_pthread_detach(thread voidptr) i32
+	@[markused]
+	fn C.v_gc_pthread_sigmask(how i32, const_set voidptr, oldset voidptr) i32
+	@[markused]
+	fn C.v_gc_pthread_cancel(thread voidptr) i32
+	@[markused]
+	fn C.v_gc_pthread_exit(result voidptr)
+	@[markused]
+	fn C.v_gc_dlopen(const_path &char, mode i32) voidptr
+}
+
+fn C.GC_memalign(align uint, size uint) voidptr
 
 // explicitly perform garbage collection now! Garbage collections
 // are done automatically when needed, so this function is hardly needed
@@ -216,9 +296,11 @@ fn C.GC_enable()
 // returns non-zero if GC is disabled
 fn C.GC_is_disabled() i32
 
+@[c_extern]
 fn C.GC_set_no_dls(i32)
 
 // protect memory block from being freed before this call
+@[c: 'GC_noop1_ptr']
 fn C.GC_reachable_here(voidptr)
 
 // gc_is_enabled returns true, if the GC is enabled at runtime.
@@ -258,9 +340,9 @@ pub fn gc_check_leaks() {
 	}
 }
 
-fn C.GC_get_heap_usage_safe(pheap_size &usize, pfree_bytes &usize, punmapped_bytes &usize, pbytes_since_gc &usize,
-	ptotal_bytes &usize)
-fn C.GC_get_memory_use() usize
+fn C.GC_get_heap_usage_safe(pheap_size &uint, pfree_bytes &uint, punmapped_bytes &uint, pbytes_since_gc &uint,
+	ptotal_bytes &uint)
+fn C.GC_get_memory_use() uint
 
 pub struct C.GC_stack_base {
 	mem_base voidptr
@@ -279,8 +361,14 @@ fn C.GC_set_stackbottom(voidptr, voidptr)
 fn C.GC_add_roots(voidptr, voidptr)
 fn C.GC_remove_roots(voidptr, voidptr)
 
+// Defined in gc_boehm_helpers.o; keep their prototypes explicit for backends without its header.
+@[c_extern]
 fn C.v__gc_can_register_main_data_roots_linux() i32
+
+@[c_extern]
 fn C.v__gc_debugger_present_linux() i32
+
+@[c_extern]
 fn C.v__gc_register_main_data_roots_linux()
 
 // fn C.GC_get_push_other_roots() fn()
@@ -291,16 +379,32 @@ fn C.GC_set_sp_corrector(fn (voidptr, voidptr))
 
 // FnGC_WarnCB is the type of the callback, that you have to define, if you want to redirect GC warnings and handle them.
 // Note: GC warnings are silenced by default. Use gc_set_warn_proc/1 to set your own handler for them.
-pub type FnGC_WarnCB = fn (const_msg &char, arg usize)
+pub type FnGC_WarnCB = fn (const_msg &char, arg uint)
 
-fn C.GC_get_warn_proc() FnGC_WarnCB
+fn C.v_gc_get_warn_proc() voidptr
 fn C.v_gc_set_warn_proc(cb FnGC_WarnCB)
 
-fn C.GC_register_displacement(offset usize)
+// GC_REGISTER_DISPLACEMENT is `GC_debug_register_displacement` when `GC_DEBUG` is set
+// (`-gc boehm_leak`), and `GC_register_displacement` otherwise.
+@[c: 'v_gc_register_displacement']
+fn C.GC_REGISTER_DISPLACEMENT(offset uint)
+
+// FnGC_AbortCB is the type of Boehm's fatal error handler (`GC_abort_func`).
+// `const_msg` is nil when Boehm calls it right before `exit(1)`.
+type FnGC_AbortCB = fn (const_msg &char)
+
+// The abort handler functions go through casting macros: V function types drop
+// the `const` of Boehm's `const char *` parameter, which gcc rejects.
+fn C.v_gc_get_abort_func() voidptr
+fn C.v_gc_set_abort_func(cb FnGC_AbortCB)
+fn C.v_gc_call_abort_func(cb voidptr, msg &char)
+
+// Boehm's own abort handler, kept for the non-display part of its work.
+__global gc_boehm_default_abort_func voidptr
 
 // gc_get_warn_proc returns the current callback fn, that will be used for printing GC warnings.
 pub fn gc_get_warn_proc() FnGC_WarnCB {
-	return C.GC_get_warn_proc()
+	return FnGC_WarnCB(C.v_gc_get_warn_proc())
 }
 
 // gc_set_warn_proc sets the callback fn, that will be used for printing GC warnings.
@@ -309,7 +413,47 @@ pub fn gc_set_warn_proc(cb FnGC_WarnCB) {
 }
 
 // used by builtin_init:
-fn internal_gc_warn_proc_none(const_msg &char, arg usize) {}
+fn internal_gc_warn_proc_none(const_msg &char, arg uint) {}
+
+// gc_report_fatal_errors_on_stderr replaces Boehm's abort handler. On Windows the
+// default one shows a modal message box and waits for someone to dismiss it, so a
+// console program or a test run hangs instead of failing.
+fn gc_report_fatal_errors_on_stderr() {
+	gc_boehm_default_abort_func = C.v_gc_get_abort_func()
+	C.v_gc_set_abort_func(internal_gc_abort_to_stderr)
+}
+
+// internal_gc_abort_to_stderr prints a fatal Boehm error on stderr, as Boehm does
+// on Linux and macOS. Windows reporting avoids allocating or locking CRT stdio.
+fn internal_gc_abort_to_stderr(const_msg &char) {
+	// Print before chaining: with GC_LOOP_ON_ABORT set the default handler never
+	// returns. Boehm's own handler also prints first and loops last.
+	if const_msg != unsafe { nil } {
+		$if windows {
+			// The heap may be corrupted, and stopped threads may hold heap or stdio locks.
+			newline := '\n'
+			write_buf_to_std_handle_kernel32(2, &u8(const_msg), vstrlen_char(const_msg))
+			write_buf_to_std_handle_kernel32(2, newline.str, newline.len)
+		} $else {
+			C.fprintf(C.stderr, c'%s\n', const_msg)
+			C.fflush(C.stderr)
+		}
+	}
+	// With a nil message the default handler only disables the at-exit leak
+	// collection (and honours GC_LOOP_ON_ABORT); it shows no message box.
+	C.v_gc_call_abort_func(gc_boehm_default_abort_func, unsafe { nil })
+	$if windows {
+		if const_msg == unsafe { nil } || C.IsDebuggerPresent() {
+			// Let Boehm finish its exit path or stop in the attached debugger.
+			return
+		}
+		$if tinyc {
+			print_backtrace()
+		}
+		// Skip at-exit handlers after a fatal collector error.
+		C._exit(1)
+	}
+}
 
 @[markused]
 fn gc_prepare_for_debugger_init() bool {

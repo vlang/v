@@ -11,6 +11,7 @@ pub const second = Duration(1000 * millisecond)
 pub const minute = Duration(60 * second)
 pub const hour = Duration(60 * minute)
 //	day         = Duration(24 * hour)
+// infinite is the maximum i64 duration, used by APIs that support waiting forever.
 pub const infinite = Duration(i64(9223372036854775807))
 
 // nanoseconds returns the duration as an integer number of nanoseconds.
@@ -50,14 +51,14 @@ pub fn (d Duration) days() f64 {
 	return f64(d) / f64(hour * 24)
 }
 
-fn duration_pad2(n i64) string {
+fn duration_pad2(n u64) string {
 	if n < 10 {
 		return '0' + n.str()
 	}
 	return n.str()
 }
 
-fn duration_pad3(n i64) string {
+fn duration_pad3(n u64) string {
 	if n < 10 {
 		return '00' + n.str()
 	}
@@ -67,7 +68,7 @@ fn duration_pad3(n i64) string {
 	return n.str()
 }
 
-// str pretty prints the duration
+// str pretty prints the duration over the full i64 range, including infinite.
 //
 // ```
 // h:m:s      // 5:02:33
@@ -78,25 +79,23 @@ fn duration_pad3(n i64) string {
 // ns<ns>     // 234ns
 // ```
 pub fn (d Duration) str() string {
-	if d == infinite {
-		return 'inf'
-	}
 	mut sign := ''
-	mut t := i64(d)
-	if t < 0 {
+	mut t := u64(d)
+	if d < 0 {
 		sign = '-'
-		t = -t
+		// The minimum i64 magnitude fits in u64, but cannot be negated as i64.
+		t = u64(-(i64(d) + 1)) + 1
 	}
-	hr := t / hour
-	t -= hr * hour
-	min := t / minute
-	t -= min * minute
-	sec := t / second
-	t -= sec * second
-	ms := t / millisecond
-	t -= ms * millisecond
-	us := t / microsecond
-	t -= us * microsecond
+	hr := t / u64(hour)
+	t -= hr * u64(hour)
+	min := t / u64(minute)
+	t -= min * u64(minute)
+	sec := t / u64(second)
+	t -= sec * u64(second)
+	ms := t / u64(millisecond)
+	t -= ms * u64(millisecond)
+	us := t / u64(microsecond)
+	t -= us * u64(microsecond)
 	ns := t
 
 	if hr > 0 {

@@ -12,7 +12,8 @@ fn build_interface_return_v3() string {
 		return interface_return_v3_bin
 	}
 	build :=
-		os.execute('${os.quoted_path(interface_return_vexe)} -gc none -o ${os.quoted_path(interface_return_v3_bin)} ${os.quoted_path(interface_return_v3_src)}')
+		os.exec([interface_return_vexe, '-gc', 'none', '-o', interface_return_v3_bin,
+			'${interface_return_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return interface_return_v3_bin
 }
@@ -21,7 +22,7 @@ fn compile_interface_return(v3_bin string, name string, source string) os.Result
 	source_path := os.join_path(os.temp_dir(), 'v3_interface_return_${name}_${os.getpid()}.v')
 	output_path := os.join_path(os.temp_dir(), 'v3_interface_return_${name}_${os.getpid()}')
 	os.write_file(source_path, source) or { panic(err) }
-	return os.execute('${os.quoted_path(v3_bin)} -nocache -b c -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}')
+	return os.exec([v3_bin, '-nocache', '-b', 'c', '-o', output_path, source_path])
 }
 
 fn test_interface_method_return_only_accepts_alias_equivalence() {
@@ -30,7 +31,7 @@ fn test_interface_method_return_only_accepts_alias_equivalence() {
 		'type Value = int\n\ntype ChainedValue = Value\n\ninterface Provider {\n\tvalue() int\n}\n\nstruct AliasedValue {}\n\nfn (a AliasedValue) value() ChainedValue {\n\treturn 42\n}\n\nfn main() {\n\tprovider := Provider(AliasedValue{})\n\tprintln(provider.value())\n}\n')
 	assert alias_compile.exit_code == 0, alias_compile.output
 	alias_bin := os.join_path(os.temp_dir(), 'v3_interface_return_chained_alias_${os.getpid()}')
-	alias_run := os.execute(os.quoted_path(alias_bin))
+	alias_run := os.exec([alias_bin])
 	assert alias_run.exit_code == 0, alias_run.output
 	assert alias_run.output.trim_space() == '42', alias_run.output
 
@@ -39,7 +40,7 @@ fn test_interface_method_return_only_accepts_alias_equivalence() {
 	assert wrapped_fn_compile.exit_code == 0, wrapped_fn_compile.output
 	wrapped_fn_bin := os.join_path(os.temp_dir(),
 		'v3_interface_return_wrapped_fn_alias_${os.getpid()}')
-	wrapped_fn_run := os.execute(os.quoted_path(wrapped_fn_bin))
+	wrapped_fn_run := os.exec([wrapped_fn_bin])
 	assert wrapped_fn_run.exit_code == 0, wrapped_fn_run.output
 	assert wrapped_fn_run.output.trim_space() == '5', wrapped_fn_run.output
 
@@ -49,7 +50,7 @@ fn test_interface_method_return_only_accepts_alias_equivalence() {
 	assert multi_return_wrapped_fn_compile.exit_code == 0, multi_return_wrapped_fn_compile.output
 	multi_return_wrapped_fn_bin := os.join_path(os.temp_dir(),
 		'v3_interface_return_multi_return_wrapped_fn_alias_${os.getpid()}')
-	multi_return_wrapped_fn_run := os.execute(os.quoted_path(multi_return_wrapped_fn_bin))
+	multi_return_wrapped_fn_run := os.exec([multi_return_wrapped_fn_bin])
 	assert multi_return_wrapped_fn_run.exit_code == 0, multi_return_wrapped_fn_run.output
 	assert multi_return_wrapped_fn_run.output.trim_space() == 'ok', multi_return_wrapped_fn_run.output
 
@@ -60,7 +61,7 @@ fn test_interface_method_return_only_accepts_alias_equivalence() {
 	option_multi_return_wrapped_fn_bin := os.join_path(os.temp_dir(),
 		'v3_interface_return_option_multi_return_wrapped_fn_alias_${os.getpid()}')
 	option_multi_return_wrapped_fn_run :=
-		os.execute(os.quoted_path(option_multi_return_wrapped_fn_bin))
+		os.exec([option_multi_return_wrapped_fn_bin])
 	assert option_multi_return_wrapped_fn_run.exit_code == 0, option_multi_return_wrapped_fn_run.output
 	assert option_multi_return_wrapped_fn_run.output.trim_space() == 'ok', option_multi_return_wrapped_fn_run.output
 
@@ -71,7 +72,7 @@ fn test_interface_method_return_only_accepts_alias_equivalence() {
 	result_multi_return_wrapped_fn_bin := os.join_path(os.temp_dir(),
 		'v3_interface_return_result_multi_return_wrapped_fn_alias_${os.getpid()}')
 	result_multi_return_wrapped_fn_run :=
-		os.execute(os.quoted_path(result_multi_return_wrapped_fn_bin))
+		os.exec([result_multi_return_wrapped_fn_bin])
 	assert result_multi_return_wrapped_fn_run.exit_code == 0, result_multi_return_wrapped_fn_run.output
 	assert result_multi_return_wrapped_fn_run.output.trim_space() == 'ok', result_multi_return_wrapped_fn_run.output
 

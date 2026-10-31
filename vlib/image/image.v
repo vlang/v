@@ -198,7 +198,7 @@ pub fn (p RGBA) sub_image(r Rectangle) RGBA {
 	}
 	i := p.pix_offset(rr.min.x, rr.min.y)
 	return RGBA{
-		pix:    p.pix[i..]
+		pix:    unsafe { &p.pix[i..] }
 		stride: p.stride
 		rect:   rr
 	}
@@ -302,7 +302,7 @@ pub fn (p RGBA64) sub_image(r Rectangle) RGBA64 {
 	}
 	i := p.pix_offset(rr.min.x, rr.min.y)
 	return RGBA64{
-		pix:    p.pix[i..]
+		pix:    unsafe { &p.pix[i..] }
 		stride: p.stride
 		rect:   rr
 	}
@@ -423,7 +423,7 @@ pub fn (p NRGBA) sub_image(r Rectangle) NRGBA {
 	}
 	i := p.pix_offset(rr.min.x, rr.min.y)
 	return NRGBA{
-		pix:    p.pix[i..]
+		pix:    unsafe { &p.pix[i..] }
 		stride: p.stride
 		rect:   rr
 	}
@@ -549,7 +549,7 @@ pub fn (p NRGBA64) sub_image(r Rectangle) NRGBA64 {
 	}
 	i := p.pix_offset(rr.min.x, rr.min.y)
 	return NRGBA64{
-		pix:    p.pix[i..]
+		pix:    unsafe { &p.pix[i..] }
 		stride: p.stride
 		rect:   rr
 	}
@@ -660,7 +660,7 @@ pub fn (p Alpha) sub_image(r Rectangle) Alpha {
 	}
 	i := p.pix_offset(rr.min.x, rr.min.y)
 	return Alpha{
-		pix:    p.pix[i..]
+		pix:    unsafe { &p.pix[i..] }
 		stride: p.stride
 		rect:   rr
 	}
@@ -770,7 +770,7 @@ pub fn (p Alpha16) sub_image(r Rectangle) Alpha16 {
 	}
 	i := p.pix_offset(rr.min.x, rr.min.y)
 	return Alpha16{
-		pix:    p.pix[i..]
+		pix:    unsafe { &p.pix[i..] }
 		stride: p.stride
 		rect:   rr
 	}
@@ -882,7 +882,7 @@ pub fn (p Gray) sub_image(r Rectangle) Gray {
 	}
 	i := p.pix_offset(rr.min.x, rr.min.y)
 	return Gray{
-		pix:    p.pix[i..]
+		pix:    unsafe { &p.pix[i..] }
 		stride: p.stride
 		rect:   rr
 	}
@@ -979,7 +979,7 @@ pub fn (p Gray16) sub_image(r Rectangle) Gray16 {
 	}
 	i := p.pix_offset(rr.min.x, rr.min.y)
 	return Gray16{
-		pix:    p.pix[i..]
+		pix:    unsafe { &p.pix[i..] }
 		stride: p.stride
 		rect:   rr
 	}
@@ -1078,7 +1078,7 @@ pub fn (p CMYK) sub_image(r Rectangle) CMYK {
 	}
 	i := p.pix_offset(rr.min.x, rr.min.y)
 	return CMYK{
-		pix:    p.pix[i..]
+		pix:    unsafe { &p.pix[i..] }
 		stride: p.stride
 		rect:   rr
 	}
@@ -1178,7 +1178,7 @@ pub fn (p Paletted) sub_image(r Rectangle) Paletted {
 	}
 	i := p.pix_offset(rr.min.x, rr.min.y)
 	return Paletted{
-		pix:     p.pix[i..]
+		pix:     unsafe { &p.pix[i..] }
 		stride:  p.stride
 		rect:    rr
 		palette: p.palette

@@ -10,7 +10,9 @@ fn generic_struct_str_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_struct_str_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${generic_struct_str_vexe} -gc none -path "${generic_struct_str_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${generic_struct_str_v3_src}')
+		os.exec([generic_struct_str_vexe, '-gc', 'none', '-path',
+			'${generic_struct_str_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${generic_struct_str_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -163,7 +165,7 @@ fn generic_struct_str_compile_project(name string, main_source string) (string, 
 	out := os.join_path(os.temp_dir(), 'v3_generic_struct_str_${name}_out_${os.getpid()}')
 	os.rm(out) or {}
 	os.rm(out + '.c') or {}
-	compile := os.execute('${v3_bin} ${main_path} -b c -o ${out}')
+	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -207,7 +209,7 @@ fn main() {
 	println(array_str)
 }
 ')
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == "[['A', 'B'], ['C']]"
 
@@ -233,7 +235,7 @@ fn main() {
 	println(collision)
 }
 ")
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '[gr.Array_string{}]'
 
@@ -262,7 +264,7 @@ fn main() {
 	println(left_text + "|" + right_text)
 }
 ')
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == "[['A'], ['B', 'C']]|[1, 2]"
 
@@ -296,7 +298,7 @@ fn main() {
 	println(text)
 }
 ')
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == "[['A', 'B'], ['C', 'D']]"
 
@@ -326,7 +328,7 @@ fn main() {
 	println(direct)
 }
 ')
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == "outer=inner=[['A', 'B'], ['C']]"
 
@@ -351,7 +353,7 @@ fn main() {
 	println(text)
 }
 ')
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == "[['A', 'B'], ['C']]"
 

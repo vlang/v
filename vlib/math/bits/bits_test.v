@@ -7,14 +7,14 @@ fn test_leading_zeros() {
 	// 8 bit
 	i = 1
 	for x in 0 .. 8 {
-		assert leading_zeros_8(u8(u8(i) << x)) == 7 - x
+		assert leading_zeros_8(u8(u8(i) << u8(x))) == 7 - x
 	}
 	assert leading_zeros_8(0) == 8
 
 	// 16 bit
 	i = 1
 	for x in 0 .. 16 {
-		assert leading_zeros_16(u16(i) << x) == 15 - x
+		assert leading_zeros_16(u16(i) << u16(x)) == 15 - x
 	}
 	assert leading_zeros_16(0) == 16
 
@@ -38,14 +38,14 @@ fn test_trailing_zeros() {
 	// 8 bit
 	i = 1
 	for x in 0 .. 8 {
-		assert trailing_zeros_8(u8(u8(i) << x)) == x
+		assert trailing_zeros_8(u8(u8(i) << u8(x))) == x
 	}
 	assert trailing_zeros_8(0) == 8
 
 	// 16 bit
 	i = 1
 	for x in 0 .. 16 {
-		assert trailing_zeros_16(u16(i) << x) == x
+		assert trailing_zeros_16(u16(i) << u16(x)) == x
 	}
 	assert trailing_zeros_16(0) == 16
 
@@ -313,6 +313,20 @@ fn test_div_64_edge_cases() {
 	q, r := div_64(0, 23, 10000000000000000000)
 	assert q == 0
 	assert r == 23
+}
+
+fn test_normalize() {
+	subnormal := 1.0e-310
+	scale := f64(u64(1) << u64(52))
+	y, exp := normalize(subnormal)
+	assert y == subnormal * scale
+	assert exp == -52
+	negative_y, negative_exp := normalize(-subnormal)
+	assert negative_y == -subnormal * scale
+	assert negative_exp == -52
+	normal_y, normal_exp := normalize(-1.5)
+	assert normal_y == -1.5
+	assert normal_exp == 0
 }
 
 fn test_randomized_arithmetic_properties() {

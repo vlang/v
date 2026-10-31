@@ -350,14 +350,16 @@ const tokens_2 = ['MM', 'Mo', 'DD', 'Do', 'YY', 'ss', 'kk', 'NN', 'mm', 'hh', 'H
 const tokens_3 = ['MMM', 'DDD', 'ZZZ', 'ddd']
 const tokens_4 = ['MMMM', 'DDDD', 'DDDo', 'dddd', 'YYYY']
 
-// custom_format returns a date with custom format
+// custom_format returns a date with custom format.
+// YYYY pads nonnegative years to at least four digits; YY pads their final two digits.
+// Negative years retain their existing token formatting.
 //
 // | Category         | Token | Output                                 |
 // |:-----------------|:------|:---------------------------------------|
 // |          Era     | N     | BC AD                                  |
 // |                  | NN    | Before Christ, Anno Domini             |
-// |         Year     | YY    | 70 71 ... 29 30                        |
-// |                  | YYYY  | 1970 1971 ... 2029 2030                |
+// |         Year     | YY    | 00 01 ... 98 99                        |
+// |                  | YYYY  | 0000 0001 ... 9999                    |
 // |      Quarter     | Q     | 1 2 3 4                                |
 // |                  | QQ    | 01 02 03 04                            |
 // |                  | Qo    | 1st 2nd 3rd 4th                        |
@@ -469,10 +471,14 @@ pub fn (t Time) custom_format(s string) string {
 				sb.write_string(long_days[iclamp(0, t.day_of_week() - 1, 6)])
 			}
 			'YY' {
-				sb.write_string(t.year.str()#[2..4])
+				if t.year < 0 {
+					sb.write_string(t.year.str()#[2..4])
+				} else {
+					sb.write_string('${t.year % 100:02}')
+				}
 			}
 			'YYYY' {
-				sb.write_string(t.year.str())
+				sb.write_string(if t.year < 0 { t.year.str() } else { '${t.year:04}' })
 			}
 			'H' {
 				sb.write_string(t.hour.str())
@@ -596,8 +602,6 @@ fn (t Time) custom_format_zone_offset(token string) string {
 // - a date string in "HH:mm" format (24h) for current day
 // - a date string in "MMM D HH:mm" format (24h) for date of current year
 // - a date string formatted with format function for other dates
-@[deprecated: 'use `custom_format()` or `get_fmt_*()` instead']
-@[deprecated_after: '2026-09-30']
 pub fn (t Time) clean() string {
 	znow := now()
 	// Today
@@ -613,11 +617,9 @@ pub fn (t Time) clean() string {
 
 // clean12 returns a date string in a clean form.
 // It has the following format:
-// - a date string in "hh:mm" format (12h) for current day
-// - a date string in "MMM D hh:mm" format (12h) for date of current year
+// - a date string in "h:mm a.m./p.m." format (12h) for current day
+// - a date string in "MMM D h:mm a.m./p.m." format (12h) for date of current year
 // - a date string formatted with format function for other dates
-@[deprecated: 'use `custom_format()` or `get_fmt_*()` instead']
-@[deprecated_after: '2026-09-30']
 pub fn (t Time) clean12() string {
 	znow := now()
 	// Today

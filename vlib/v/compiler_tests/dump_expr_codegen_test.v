@@ -7,13 +7,14 @@ const dump_expr_vlib_dir = os.dir(dump_expr_v3_dir)
 const dump_expr_v3_src = os.join_path(dump_expr_v3_dir, 'v.v')
 
 fn dump_expr_build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_dump_expr_codegen_test_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_dump_expr_codegen_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.is_executable(v3_bin) {
 		return v3_bin
 	}
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${dump_expr_vexe} -gc none -prealloc -path "${dump_expr_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${dump_expr_v3_src}')
+		os.exec([dump_expr_vexe, '-gc', 'none', '-prealloc', '-path',
+			'${dump_expr_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${dump_expr_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -54,7 +55,7 @@ fn test_dump_expr_is_transparent_for_c_oracle_output() {
 	].join('\n')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_dump_expr_codegen_${os.getpid()}')
-	compile := os.execute('${v3_bin} -no-parallel -nocache -b c -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-no-parallel', '-nocache', '-b', 'c', '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 	mut process := os.new_process(bin)
 	process.set_redirect_stdio()
@@ -71,12 +72,13 @@ fn test_dump_expr_is_transparent_for_c_oracle_output() {
 	compact := dump_expr_compact_c(generated)
 	assert !generated.contains('dump('), generated
 	assert !generated.contains('= ;'), generated
-	assert compact.contains('int__dump_0=1+2;'), generated
-	assert compact.contains('int__dump_1=n+2;'), generated
+	// V `int` is `i64` on 64-bit targets; literal arithmetic widens before evaluation.
+	assert compact.contains('i64__dump_0=((i64)(1)+(2));'), generated
+	assert compact.contains('i64__dump_1=n+2;'), generated
 	assert compact.contains('n=__dump_1;'), generated
 	assert compact.contains('return__dump_0;'), generated
 	assert compact.contains('take_int(__dump_2)'), generated
-	assert compact.contains('int__dump_3=bump(0);'), generated
+	assert compact.contains('i64__dump_3=bump(0);'), generated
 }
 
 fn test_dump_expr_writes_to_stderr() {
@@ -92,7 +94,7 @@ fn test_dump_expr_writes_to_stderr() {
 	].join('\n')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_dump_expr_stderr_${os.getpid()}')
-	compile := os.execute('${v3_bin} -no-parallel -nocache -b c -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-no-parallel', '-nocache', '-b', 'c', '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 
 	mut process := os.new_process(bin)
@@ -130,7 +132,8 @@ fn test_dump_expr_respects_nop_dump_and_preserves_evaluation() {
 	].join('\n')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_dump_expr_nop_dump_${os.getpid()}')
-	compile := os.execute('${v3_bin} -no-parallel -nocache -d nop_dump -b c -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-no-parallel', '-nocache', '-d', 'nop_dump', '-b', 'c', '-o',
+		bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 
 	mut process := os.new_process(bin)
@@ -168,7 +171,7 @@ fn test_dump_expr_preserves_pointer_values() {
 	].join('\n')
 	os.write_file(src, source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_dump_expr_pointer_${os.getpid()}')
-	compile := os.execute('${v3_bin} -no-parallel -nocache -b c -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-no-parallel', '-nocache', '-b', 'c', '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 
 	mut process := os.new_process(bin)

@@ -15,6 +15,6 @@ fn test_large_file() {
 		return
 	}
 	println('Testing parsing of large (${os.file_size(toml_file)} bytes) "${toml_file}"...')
-	doc := toml.parse_file(toml_file) or { panic(err) }
+	_ := toml.parse_file(toml_file) or { panic(err) }
 	assert true
 }

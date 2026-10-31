@@ -159,14 +159,18 @@ You can use the `save` method to update and save any session data.
 When the user logs in, the `save` method is called and a new session id is generated
 and set as cookie. Assuming there wasn't already a session going on. If you want to
 be sure that a new session id is generated when you save data, you can use the `resave`
-method. This method will save the data and *always* set a new session id.
+method. This method will save the data and *always* set a new session id. It destroys the
+old session data and sends the new signed id in a cookie, so the previous id cannot retrieve
+the saved data. Use `resave` when authentication or authorization changes.
+If middleware already issued a session cookie in the current response, rotation replaces it
+while preserving cookies with other names.
 
 **Example:**
 
 ```v ignore
 pub fn (mut app App) login(mut ctx Context) veb.Result {
-	// set a session id cookie and save data for the new user
-	app.sessions.save(mut ctx, User{
+	// rotate the session id cookie and save data for the authenticated user
+	app.sessions.resave(mut ctx, User{
 		name: '[no name provided]'
 	}) or { return ctx.server_error('could not save session data, please try again') }
 	return ctx.text('You are now logged in!')
@@ -242,9 +246,10 @@ checked and sessions will be stored forever until they are destroyed.
 #### Pre-sessions
 
 By default a session cookie is only generated when you call `save`, or `resave`.
-By setting `save_uninitialized` to `true` a session cookie will always be set,
-even if there is no data for the session yet. This is useful when you need session
-data to be always available.
+By setting `save_uninitialized` to `true`, the session middleware creates a cookie
+for a request without a valid session, even before any data is saved. No session
+data is stored until you call `save` or `resave`. Calling `save` without a valid session
+creates one regardless of `save_uninitialized`, including when middleware is not used.
 
 Or, for example, you could use pre-sessions to mitigate login-csrf,
 since you can bind a csrf-token to the "pre-session" id. Then when the user logs

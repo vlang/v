@@ -1,7 +1,5 @@
 module builtin
 
-import strings
-
 const cp_acp = 0
 const cp_utf8 = 65001
 
@@ -73,22 +71,14 @@ pub fn string_from_wide(_wstr &u16) string {
 // style string, encoded in UTF-16. It is more efficient, compared to
 // string_from_wide, but it requires you to know the input string length,
 // and to pass it as the second argument.
+// A surrogate pair is decoded to the code point that it stands for. An unpaired
+// surrogate, which valid UTF-16 does not contain, is kept in its 3 byte form
+// (see wtf8_from_wide), so that no input unit is lost.
 // See also builtin.wchar.to_string2/2, for a version that eases working
 // with the platform dependent &wchar_t L"" strings.
 @[manualfree; unsafe]
 pub fn string_from_wide2(_wstr &u16, len int) string {
-	$if windows {
-		return wtf8_from_wide(_wstr, len)
-	} $else {
-		mut sb := strings.new_builder(len)
-		for i := 0; i < len; i++ {
-			u := unsafe { rune(_wstr[i]) }
-			sb.write_rune(u)
-		}
-		res := sb.str()
-		unsafe { sb.free() }
-		return res
-	}
+	return wtf8_from_wide(_wstr, len)
 }
 
 // wtf8_to_wide decodes V's Windows path representation. Unlike strict UTF-8,
@@ -113,12 +103,17 @@ fn wtf8_to_wide(value string) &u16 {
 				&& (b0 != 0xe0 || value.str[src + 1] >= 0xa0) {
 				codepoint = (u32(b0 & 0x0f) << 12) | (u32(value.str[src + 1] & 0x3f) << 6) | u32(value.str[src + 2] & 0x3f)
 				width = 3
-			} else if b0 >= 0xf0 && b0 <= 0xf4 && src + 3 < value.len
-				&& (value.str[src + 1] & 0xc0) == 0x80 && (value.str[src + 2] & 0xc0) == 0x80
-				&& (value.str[src + 3] & 0xc0) == 0x80 && (b0 != 0xf0 || value.str[src + 1] >= 0x90)
-				&& (b0 != 0xf4 || value.str[src + 1] <= 0x8f) {
-				codepoint = (u32(b0 & 0x07) << 18) | (u32(value.str[src + 1] & 0x3f) << 12) | (u32(value.str[src + 2] & 0x3f) << 6) | u32(value.str[src + 3] & 0x3f)
-				width = 4
+			} else if b0 >= 0xf0 && b0 <= 0xf4 && src + 3 < value.len {
+				b1 := value.str[src + 1]
+				b2 := value.str[src + 2]
+				b3 := value.str[src + 3]
+				if (b1 & 0xc0) == 0x80 && (b2 & 0xc0) == 0x80 && (b3 & 0xc0) == 0x80 {
+					valid_lead := (b0 != 0xf0 || b1 >= 0x90) && (b0 != 0xf4 || b1 <= 0x8f)
+					if valid_lead {
+						codepoint = (u32(b0 & 0x07) << 18) | (u32(b1 & 0x3f) << 12) | (u32(b2 & 0x3f) << 6) | u32(b3 & 0x3f)
+						width = 4
+					}
+				}
 			}
 			src += width
 			if codepoint <= 0xffff {

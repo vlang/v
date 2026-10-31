@@ -28,17 +28,17 @@ fn test_vet_multifile_diagnostics() {
 			continue
 		}
 		for j, file in paths[..2] {
-			res := os.execute('${os.quoted_path(vexe)} vet -nocolor ${os.quoted_path(file)}')
+			res := os.exec([vexe, 'vet', '-nocolor', file])
 			assert res.exit_code == 0, res.output
 			assert_vet_diagnostics(res.output, [warnings[j]])
 		}
-		res := os.execute('${os.quoted_path(vexe)} vet -nocolor ${os.quoted_path(tmp)}')
+		res := os.exec([vexe, 'vet', '-nocolor', '${tmp}'])
 		assert res.exit_code == 0, res.output
 		assert_vet_diagnostics(res.output, warnings)
-		werror := os.execute('${os.quoted_path(vexe)} vet -nocolor -W ${os.quoted_path(tmp)}')
+		werror := os.exec([vexe, 'vet', '-nocolor', '-W', '${tmp}'])
 		assert werror.exit_code == 1, werror.output
 		assert_vet_diagnostics(werror.output, errors)
-		hidden := os.execute('${os.quoted_path(vexe)} vet -nocolor -hide-warnings ${os.quoted_path(tmp)}')
+		hidden := os.exec([vexe, 'vet', '-nocolor', '-hide-warnings', '${tmp}'])
 		assert hidden.exit_code == 0, hidden.output
 		assert hidden.output.trim_space() == '', hidden.output
 	}
@@ -61,7 +61,7 @@ fn test_vet_multifile_notices_and_errors() {
 		expected << "${path}:4: notice: Use `s == ''` instead of `s.len == 0`"
 		expected << '${path}:4: error: Looks like you have trailing whitespace.'
 	}
-	res := os.execute('${os.quoted_path(vexe)} vet -nocolor ${os.quoted_path(tmp)}')
+	res := os.exec([vexe, 'vet', '-nocolor', '${tmp}'])
 	assert res.exit_code == 1, res.output
 	assert_vet_diagnostics(res.output, expected)
 }
@@ -85,7 +85,7 @@ fn test_vet_multifile_analysis_diagnostics() {
 		source += '}\n'
 		os.write_file(path, source)!
 	}
-	res := os.execute('${os.quoted_path(vexe)} vet -nocolor -r -I ${os.quoted_path(tmp)}')
+	res := os.exec([vexe, 'vet', '-nocolor', '-r', '-I', '${tmp}'])
 	assert res.exit_code == 0, res.output
 	assert_vet_diagnostics(res.output, expected)
 }

@@ -10,7 +10,8 @@ fn no_main_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_no_main_renamed_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${no_main_vexe} -gc none -path "${no_main_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${no_main_v3_src}')
+		os.exec([no_main_vexe, '-gc', 'none', '-path', '${no_main_vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${no_main_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -43,7 +44,7 @@ fn main() {
 		panic(err)
 	}
 
-	compile := os.execute('${v3_bin} ${src} -d no_main -b c -o ${out_c}')
+	compile := os.exec([v3_bin, '${src}', '-d', 'no_main', '-b', 'c', '-o', '${out_c}'])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('cannot be called'), compile.output
 
@@ -58,6 +59,7 @@ fn main() {
 	// The renamed function has a prototype, so strict C compilation of the unit
 	// succeeds (no implicit declaration / missing prototype).
 	cc := os.getenv_opt('CC') or { 'cc' }
-	strict := os.execute('${cc} -c -std=gnu11 -w -Wmissing-prototypes -Werror ${out_c} -o ${obj}')
+	strict := os.exec([cc, '-c', '-std=gnu11', '-w', '-Wmissing-prototypes', '-Werror', '${out_c}',
+		'-o', '${obj}'])
 	assert strict.exit_code == 0, strict.output
 }

@@ -1,0 +1,8 @@
+vlib/v/checker/tests/modules/unused_fn_name_in_other_module_skipped_comptime/main.v:6:4: notice: unused function: `foo`
+    4 | 
+    5 | // `amod` spells `foo` only in a skipped branch, which cannot use this private `foo`.
+    6 | fn foo() int {
+      |    ~~~
+    7 |     return 1
+    8 | }
+3

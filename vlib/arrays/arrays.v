@@ -157,7 +157,7 @@ pub fn append[T](a []T, b []T) []T {
 // group n arrays into a single array of arrays with n elements.
 // This function is analogous to the "zip" function of other languages.
 // To fully interleave two arrays, follow this function with a call to `flatten`.
-// NOTE: An error will be generated if the type annotation is omitted.
+// A single input array produces one-element groups: arrays.group([1, 2]) == [[1], [2]].
 // Example: arrays.group[int]([1, 2, 3], [4, 5, 6]) // => [[1, 4], [2, 5], [3, 6]]
 pub fn group[T](arrs ...[]T) [][]T {
 	mut length := if arrs.len > 0 { arrs[0].len } else { 0 }
@@ -187,7 +187,11 @@ pub fn group[T](arrs ...[]T) [][]T {
 
 // chunk array into a single array of arrays where each element is the next `size` elements of the original.
 // Example: arrays.chunk([1, 2, 3, 4, 5, 6, 7, 8, 9], 2) // => [[1, 2], [3, 4], [5, 6], [7, 8], [9]]
+// It returns an empty array, when `size` is not positive.
 pub fn chunk[T](array []T, size int) [][]T {
+	if size <= 0 {
+		return [][]T{}
+	}
 	// allocate chunk array
 	mut chunks := [][]T{cap: array.len / size + if array.len % size == 0 { 0 } else { 1 }}
 
@@ -471,7 +475,8 @@ pub fn concat[T](a []T, b ...T) []T {
 	return m
 }
 
-// returns the smallest element >= val, requires `array` to be sorted.
+// lower_bound returns the smallest element >= val, requiring `array` to be sorted.
+// An empty array or missing bound returns an error describing the operation and value.
 // Example: arrays.lower_bound([2, 4, 6, 8], 3)! // => 4
 pub fn lower_bound[T](array []T, val T) !T {
 	if array.len == 0 {
@@ -488,13 +493,14 @@ pub fn lower_bound[T](array []T, val T) !T {
 		}
 	}
 	if left >= array.len {
-		return error('')
+		return error('.lower_bound: no element >= ${val}')
 	} else {
 		return array[left]
 	}
 }
 
-// returns the largest element <= val, requires `array` to be sorted.
+// upper_bound returns the largest element <= val, requiring `array` to be sorted.
+// An empty array or missing bound returns an error describing the operation and value.
 // Example: arrays.upper_bound([2, 4, 6, 8], 3)! // => 2
 pub fn upper_bound[T](array []T, val T) !T {
 	if array.len == 0 {
@@ -511,7 +517,7 @@ pub fn upper_bound[T](array []T, val T) !T {
 		}
 	}
 	if right < 0 {
-		return error('')
+		return error('.upper_bound: no element <= ${val}')
 	} else {
 		return array[right]
 	}
@@ -536,7 +542,7 @@ pub fn binary_search[T](array []T, target T) !int {
 			right = idx - 1
 		}
 	}
-	return error('')
+	return error('.binary_search: target ${target} not found')
 }
 
 // rotate_left rotates the array in-place.
@@ -554,7 +560,7 @@ pub fn rotate_left[T](mut array []T, mid int) {
 	k := array.len - mid
 	p := unsafe { &T(array.data) }
 	unsafe {
-		ptr_rotate[T](mid, &T(usize(voidptr(p)) + usize(sizeof(T)) * usize(mid)), k)
+		ptr_rotate[T](mid, &T(uint(voidptr(p)) + uint(sizeof(T)) * uint(mid)), k)
 	}
 }
 
@@ -573,24 +579,24 @@ pub fn rotate_right[T](mut array []T, k int) {
 	mid := array.len - k
 	p := unsafe { &T(array.data) }
 	unsafe {
-		ptr_rotate[T](mid, &T(usize(voidptr(p)) + usize(sizeof(T)) * usize(mid)), k)
+		ptr_rotate[T](mid, &T(uint(voidptr(p)) + uint(sizeof(T)) * uint(mid)), k)
 	}
 }
 
 @[unsafe]
 fn ptr_rotate[T](left_ int, mid &T, right_ int) {
-	sz := usize(sizeof(T))
-	mut left := usize(left_)
-	mut right := usize(right_)
+	sz := uint(sizeof(T))
+	mut left := uint(left_)
+	mut right := uint(right_)
 	limit := raw_array_cap[T]()
 	for {
 		delta := if left < right { left } else { right }
-		if delta <= usize(limit) {
+		if delta <= uint(limit) {
 			break
 		}
 		unsafe {
-			swap_nonoverlapping[T](&T(usize(voidptr(mid)) - left * sz), &T(usize(voidptr(mid)) +
-				usize(right - delta) * sz), int(delta))
+			swap_nonoverlapping[T](&T(uint(voidptr(mid)) - left * sz), &T(uint(voidptr(mid)) +
+				uint(right - delta) * sz), int(delta))
 		}
 		if left <= right {
 			right -= delta
@@ -603,15 +609,15 @@ fn ptr_rotate[T](left_ int, mid &T, right_ int) {
 		defer {
 			free(rawarray)
 		}
-		dim := &T(usize(voidptr(mid)) - left * sz + right * sz)
+		dim := &T(uint(voidptr(mid)) - left * sz + right * sz)
 		if left <= right {
-			vmemcpy(rawarray, voidptr(usize(voidptr(mid)) - left * sz), isize(left * sz))
-			vmemmove(voidptr(usize(voidptr(mid)) - left * sz), voidptr(mid), isize(right * sz))
-			vmemcpy(voidptr(dim), rawarray, isize(left * sz))
+			vmemcpy(rawarray, voidptr(uint(voidptr(mid)) - left * sz), int(left * sz))
+			vmemmove(voidptr(uint(voidptr(mid)) - left * sz), voidptr(mid), int(right * sz))
+			vmemcpy(voidptr(dim), rawarray, int(left * sz))
 		} else {
-			vmemcpy(rawarray, voidptr(mid), isize(right * sz))
-			vmemmove(voidptr(dim), voidptr(usize(voidptr(mid)) - left * sz), isize(left * sz))
-			vmemcpy(voidptr(usize(voidptr(mid)) - left * sz), rawarray, isize(right * sz))
+			vmemcpy(rawarray, voidptr(mid), int(right * sz))
+			vmemmove(voidptr(dim), voidptr(uint(voidptr(mid)) - left * sz), int(left * sz))
+			vmemcpy(voidptr(uint(voidptr(mid)) - left * sz), rawarray, int(right * sz))
 		}
 	}
 }
@@ -632,10 +638,10 @@ mut:
 	w u64
 }
 
-const extra_size = 32 * isize(sizeof(usize))
+const extra_size = 32 * int(sizeof(uint))
 
-fn raw_array_cap[T]() isize {
-	size := isize(sizeof(T))
+fn raw_array_cap[T]() int {
+	size := int(sizeof(T))
 	if size > extra_size {
 		return 1
 	} else {
@@ -643,8 +649,8 @@ fn raw_array_cap[T]() isize {
 	}
 }
 
-fn raw_array_malloc_size[T]() isize {
-	size := isize(sizeof(T))
+fn raw_array_malloc_size[T]() int {
+	size := int(sizeof(T))
 	if size > extra_size {
 		return size * 2
 	} else {
@@ -653,29 +659,29 @@ fn raw_array_malloc_size[T]() isize {
 }
 
 @[unsafe]
-fn memswap(x voidptr, y voidptr, len usize) {
-	block_size := isize(sizeof(Block))
+fn memswap(x voidptr, y voidptr, len uint) {
+	block_size := int(sizeof(Block))
 
-	mut i := usize(0)
-	for i + usize(block_size) <= len {
+	mut i := uint(0)
+	for i + uint(block_size) <= len {
 		mut t_ := Block{}
 		t := voidptr(&t_)
 
-		xi := usize(x) + i
-		yi := usize(y) + i
+		xi := uint(x) + i
+		yi := uint(y) + i
 		unsafe {
 			vmemcpy(t, voidptr(xi), block_size)
 			vmemcpy(voidptr(xi), voidptr(yi), block_size)
 			vmemcpy(voidptr(yi), t, block_size)
 		}
-		i += usize(block_size)
+		i += uint(block_size)
 	}
 	if i < len {
 		mut t_ := UnalignedBlock{}
 		t := voidptr(&t_)
-		rem := isize(len - i)
-		xi := usize(x) + i
-		yi := usize(y) + i
+		rem := int(len - i)
+		xi := uint(x) + i
+		yi := uint(y) + i
 		unsafe {
 			vmemcpy(t, voidptr(xi), rem)
 			vmemcpy(voidptr(xi), voidptr(yi), rem)
@@ -689,7 +695,7 @@ fn swap_nonoverlapping[T](x_ &T, y_ &T, count int) {
 	x := voidptr(x_)
 	y := voidptr(y_)
 
-	len := usize(sizeof(T)) * usize(count)
+	len := uint(sizeof(T)) * uint(count)
 	unsafe {
 		memswap(x, y, len)
 	}
@@ -705,12 +711,12 @@ pub fn copy[T](mut dst []T, src []T) int {
 		return 0
 	}
 	if can_copy_bits[T]() {
-		blen := min_len * isize(sizeof(T))
+		blen := min_len * int(sizeof(T))
 		unsafe { vmemmove(&T(dst.data), src.data, blen) }
 	} else {
-		dst_start := unsafe { usize(dst.data) }
-		src_start := unsafe { usize(src.data) }
-		copy_bytes := usize(min_len) * usize(sizeof(T))
+		dst_start := unsafe { uint(dst.data) }
+		src_start := unsafe { uint(src.data) }
+		copy_bytes := uint(min_len) * uint(sizeof(T))
 		if dst_start > src_start && dst_start - src_start < copy_bytes {
 			for i := min_len - 1; i >= 0; i-- {
 				dst[i] = src[i]
@@ -740,7 +746,7 @@ fn can_copy_bits[T]() bool {
 @[unsafe]
 pub fn carray_to_varray[T](c_array_data voidptr, items int) []T {
 	mut v_array := []T{len: items}
-	total_size := items * isize(sizeof(T))
+	total_size := items * int(sizeof(T))
 	unsafe { vmemcpy(v_array.data, c_array_data, total_size) }
 	return v_array
 }

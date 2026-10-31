@@ -42,7 +42,7 @@
     "rerun_triggering_actor": {"type": "string", "minLength": 1, "maxLength": 128},
     "rerun_triggering_integration_id": {"$ref": "common.schema.json#/$defs/run_id"},
     "expected_ledger_generation": {"$ref": "common.schema.json#/$defs/generation"},
-    "active_gate_epoch": {"type": "integer", "minimum": 0},
+    "active_gate_epoch": {"type": "integer", "minimum": 0, "maximum": 2147483647},
     "gate_epochs": {
       "type": "array",
       "minItems": 1,
@@ -64,7 +64,7 @@
           "source_recovery_operation_id"
         ],
         "properties": {
-          "epoch": {"type": "integer", "minimum": 0},
+          "epoch": {"type": "integer", "minimum": 0, "maximum": 2147483647},
           "reason": {
             "type": "string",
             "enum": ["original_push", "initial-v-remediation", "missing-run-retry", "source-recovery"]
@@ -77,7 +77,7 @@
           },
           "selected_run_id": {"$ref": "common.schema.json#/$defs/nullable_run_id"},
           "selected_run_attempt": {
-            "oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]
+            "oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1, "maximum": 2147483647}]
           },
           "selected_check_suite_id": {"$ref": "common.schema.json#/$defs/nullable_run_id"},
           "conclusion": {
@@ -118,7 +118,7 @@
             "then": {
               "properties": {
                 "selected_run_id": {"$ref": "common.schema.json#/$defs/run_id"},
-                "selected_run_attempt": {"type": "integer", "minimum": 1},
+                "selected_run_attempt": {"type": "integer", "minimum": 1, "maximum": 2147483647},
                 "selected_check_suite_id": {"$ref": "common.schema.json#/$defs/run_id"},
                 "conclusion": {
                   "type": "string",
@@ -162,9 +162,9 @@
           "conclusion"
         ],
         "properties": {
-          "gate_epoch": {"type": "integer", "minimum": 0},
+          "gate_epoch": {"type": "integer", "minimum": 0, "maximum": 2147483647},
           "run_id": {"$ref": "common.schema.json#/$defs/run_id"},
-          "run_attempt": {"type": "integer", "minimum": 1},
+          "run_attempt": {"type": "integer", "minimum": 1, "maximum": 2147483647},
           "repository": {"type": "string", "const": "vlang/tccbin"},
           "ref": {"$ref": "common.schema.json#/$defs/branch"},
           "sha": {"$ref": "common.schema.json#/$defs/sha40"},
@@ -201,7 +201,7 @@
     },
     "selected_run_id": {"$ref": "common.schema.json#/$defs/nullable_run_id"},
     "selected_run_attempt": {
-      "oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1}]
+      "oneOf": [{"type": "null"}, {"type": "integer", "minimum": 1, "maximum": 2147483647}]
     },
     "selected_check_suite_id": {"$ref": "common.schema.json#/$defs/nullable_run_id"},
     "selected_conclusion": {
@@ -225,7 +225,7 @@
       },
       "else": {
         "properties": {
-          "selected_run_attempt": {"type": "integer", "minimum": 1},
+          "selected_run_attempt": {"type": "integer", "minimum": 1, "maximum": 2147483647},
           "selected_check_suite_id": {"$ref": "common.schema.json#/$defs/run_id"},
           "selected_conclusion": {
             "type": "string",

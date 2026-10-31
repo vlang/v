@@ -1,8 +1,9 @@
 name: TCC bundle automation contract
 
 on:
-  pull_request:
-  merge_group:
+  push:
+    branches:
+      - master
 
 permissions:
   contents: read
@@ -26,7 +27,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: vlang/vc
-          ref: dfc458a13ba8923ebc249e262c331f8169aa728b
+          ref: 0781dbf8ed16a8e9ebce3771a645b814456c0103
           path: vc
           fetch-depth: 0
           filter: blob:none

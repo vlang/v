@@ -60,7 +60,7 @@ pub fn (r SysRNG) default_rand() int {
 	return C.rand()
 }
 
-// byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
+// u8 returns a uniformly distributed pseudorandom 8-bit unsigned positive `u8`.
 @[inline]
 pub fn (mut r SysRNG) u8() u8 {
 	if r.bytes_left >= 1 {

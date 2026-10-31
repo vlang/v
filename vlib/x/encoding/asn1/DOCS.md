@@ -12,8 +12,8 @@
 
 This document is intended to serve as documentation (actually as a note) of 
 internal details of this `asn1` module.
-Its describes some parts of the module in the way is implemented, 
-the lack and also issues or limitation we have found around it.
+It describes some parts of the module and how it is implemented, 
+the lack thereof, and also the issues and limitations we have found around it.
 
 ## Table of Contents
 
@@ -51,7 +51,7 @@ computer networking, and especially in cryptography.
 ## Encoding of ASN.1
 
 Encoding of ASN.1 is a set of encoding rules that specify how to represent a data structure as 
-a series of bytes. There are multiple rules available that describes way of serializing 
+a series of bytes. There are multiple rules available that describe ways of serializing an 
 ASN.1 object. The standard ASN.1 encoding rules include:
 
 - Basic Encoding Rules (BER)
@@ -91,7 +91,8 @@ mut:
 }
 ```
 
-Where `TagClass` represent class of ASN.1 type. There are four class of ASN.1 type represented in:
+Where `TagClass` represents a class of ASN.1 type. 
+There are four classes of ASN.1 type, represented in:
 
 ```codeblocks
 enum TagClass {
@@ -104,7 +105,8 @@ enum TagClass {
 
 ### Limitation of the Tag in this module.
 
-There are two form how the ASN.1 tag was represented, ie, short form tag for tag number below 31 
+There are two forms in which the ASN.1 tag can be represented, ie, 
+a short form tag for tag numbers below 31 
 and long form tag (multi byte tag) for representing tag number bigger than 31.
 
 This module support both of form, but the size (length) is limited to `max_tag_length` constant, 
@@ -220,8 +222,8 @@ generates payload. Its up to specific encoding rules or other constraints.
 > implemented required constraints in this module.
 
 ### Build custom element payload
-Its possible to build payload for complex structure, your own defined struct contains multiples 
-field of elements with the help of function on this modules. Of course, you can build 
+It is possible to build a payload for a complex structure: your own defined struct contains 
+multiple fields of elements with the help of the functions in this module. Of course, you can build 
 your payload manually, but this `asn1` module has provides helper routine to do that, in the form:
 ```codeblocks
 fn make_payload[T](val T, kd KeyDefault) ![]u8 
@@ -231,8 +233,8 @@ fn make_payload[T](val T, kd KeyDefault) ![]u8
 > - KeyDefault is map of `field.name` key with some element value 
 > (only the field has DEFAULT keyword) to setup default value.
 
-Its would produces only element's payload without tag or length bytes included. 
-When your structures does not contains the fields that 
+It would produce only the element's payload without tag or length bytes included. 
+When your structures do not contain the fields that 
 fulfills interfaces, it would produces and return empty bytes.
 
 ### Serializing ASN.1 Element
@@ -247,7 +249,7 @@ fn encode_with_field_options(el Element, fo FieldOptions) ![]u8
 All of three's functions produces bytes result on success or error on fails. 
 The two latest form is serialization routines intended for serializing element 
 with wrapping, optional or default semantic to existing element, 
-gives you a extra flexibility to the serialization (deserialization) process.
+giving you extra flexibility in the serialization (deserialization) process.
 For more information in detail, see [FieldOptions](#element-serialization-with-fieldoptions)
 
 #### Example 
@@ -264,7 +266,7 @@ a string option into `encode`, ie:
 output := encode_with_options(obj, 'context_specific:5;implicit;inner:19')!
 assert output == [u8(0x85), 0x02, 0x68, 0x69]
 ```
-Or when its a explicit tagged element defined as `[5] EXPLICIT PrintableString`
+Or when it's an explicit tagged element defined as `[5] EXPLICIT PrintableString`
 ```codeblocks
 output := encode_with_options(obj, 'context_specific:5;explicit;inner:0x13')!
 assert output == [u8(0xA5), 0x04, 0x13, 0x02, 0x68, 0x69]
@@ -279,9 +281,9 @@ fn decode_with_options(bytes []u8, opt string) !Element
 fn decode_with_field_options(bytes []u8, fo FieldOptions) !Element
 ```
 Technically, the deserialization mechanism is reverse of serialization process. 
-When you pass an options to decode routine, you should ensure its a same options 
-used for serialization in `encode` part, or the decode would result in undefined behaviour
-if its differs.
+When you pass options to a decode routine, you should ensure they are the same options 
+used for serialization in `encode` part, or the decode would result in undefined behaviour 
+if they differ.
 
 The `decode` function families, accepts DER serialized bytes, and an options 
 (if its should be) and return some `Element`, or return error on fails. 
@@ -329,7 +331,7 @@ from [RFC 5280](https://datatracker.ietf.org/doc/html/rfc5280#section-4.1.1.2),
 ```
 This schema required support for other machinery in the form of tagged element 
 with wrapping semantic, OPTIONAL keyword handling, and DEFAULT keyword handling, 
-Its supported through the `FieldOptions` structures defined as:
+This is supported through the `FieldOptions` structures defined as:
 ```codeblocks
 struct FieldOptions {
 mut:
@@ -354,7 +356,7 @@ The main purpose of this options structures is used for:
 - handling of element with DEFAULT keyword.
 
 ### Wrapping an Element through FieldOptions
-There are two constructor for construct a `FieldOptions`, ie 
+There are two constructors for constructing a `FieldOptions`, ie 
 ```codeblocks
 fn FieldOptions.from_string(s string) !FieldOptions
 fn FieldOptions.from_attrs(attrs []string) !FieldOptions
@@ -366,8 +368,8 @@ fo := FieldOptions.from_string('context_specific:5;explicit;inner:0x13')!
 fo := FieldOptions.from_string('context_specific:5;explicit;inner:0x13;optional')!
 ```
 
-The second form, is gives more controllable options, and its allowing tag your field of struct
-with the supported options,
+The second form gives more controllable options, and allows you to tag your field of struct
+with the supported options.
 Examples :
 ```codeblocks
 struct PersonnelRecord {
@@ -429,10 +431,10 @@ It's currently supports following basic ASN1 type:
 - [x] SetOf
 
 ## Constructor of Universal ASN.1 Type
-Most Universal class of ASN.1 type supported in this modules comes with builtin constructor. 
-You should use this constructor when you hope an universal type. 
-Its comes with common signature of the constructor (not at all, but most of them), 
-see module doc for detail.
+The most Universal class of ASN.1 type supported in this module comes with a builtin constructor. 
+You should use this constructor when you need a universal type. 
+It comes with a common signature for the constructor (not all of them, but most of them), 
+see the module docs for details.
 ```codeblocks
 fn T.new(value) !T
 fn T.from_string(string) !T // for string-based type
@@ -442,8 +444,8 @@ fn T.from_bigint(bigint) !T // for integer with big.Integer
 
 
 ## Support for non-universal class Element
-When your element is non-universal class, this module has a limited support for 
-this type of element. Its represented in several structures, defined as :
+When your element is a non-universal class, this module has limited support for 
+this type of element. It is represented in several structures, defined as:
 ```codeblocks
 pub struct RawElement {
 mut:
@@ -470,16 +472,16 @@ pub struct PrivateELement {
 }
 ```
 Intended usage for this non-universal class is for wrapping semantic, 
-instead create your own non-universal manually. For examples, if you have 
+instead create your own non-universal type manually. For example, if you have 
 some element (maybe non-universal), you want create non-universal element from this element,
 you can call (for creating private type element) routine :
 ```codeblocks
 fn PrivateELement.from_element(inner Element, tagnum int, mode TaggedMode) !PrivateELement
 ```
-Its currently support nested wrapping, but the unwrapping process should do by your self.
+It currently supports nested wrapping, but the unwrapping process should be done by yourself.
 
 > **Warning**
-> There are some limitation on this wrapping,
+> There are some limitations on this wrapping:
 > - You can't wrap into universal class
 > - You can't wrap an Optional Element.
 

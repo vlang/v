@@ -1,0 +1,7 @@
+cleanup starts
+================ V panic ================
+   module: main
+ function: work()
+  message: first
+	panic: second
+     file: vlib/v/slow_tests/inout/recover_panic_in_deferred_block.vv:14

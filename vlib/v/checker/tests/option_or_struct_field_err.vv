@@ -1,0 +1,13 @@
+struct Options {
+	a ?bool
+	s ?string
+}
+
+fn merge(input Options, fallback Options) Options {
+	return Options{
+		a: input.a or { fallback.a }
+		s: input.s or { fallback.s }
+	}
+}
+
+fn main() {}

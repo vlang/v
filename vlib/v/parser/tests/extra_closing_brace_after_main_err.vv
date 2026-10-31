@@ -1,0 +1,17 @@
+fn main() {
+	println(helper(3))
+}
+
+fn helper(x int) string {
+	res := match x {
+		1 { 'one' }
+		else { 'many' }
+		}
+	}
+	println(res)
+	return res
+}
+
+fn other() int {
+	return 1
+}

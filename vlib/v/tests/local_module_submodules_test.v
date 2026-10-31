@@ -66,7 +66,7 @@ fn compile_local_module_submodules(target string, out_name string) os.Result {
 		os.chdir(old_wd) or {}
 		os.rmdir_all(basepath) or {}
 	}
-	return os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(out_name)} ${os.quoted_path(target)}')
+	return os.exec([vexe, '-o', '${out_name}', '${target}'])
 }
 
 fn compile_issue_24649_project(target string, out_name string, cwd string) os.Result {
@@ -78,7 +78,7 @@ fn compile_issue_24649_project(target string, out_name string, cwd string) os.Re
 		os.chdir(old_wd) or {}
 		os.rmdir_all(basepath) or {}
 	}
-	return os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(out_name)} ${os.quoted_path(target)}')
+	return os.exec([vexe, '-o', '${out_name}', '${target}'])
 }
 
 fn test_local_module_submodules_compile_from_main_file() {

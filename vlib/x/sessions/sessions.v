@@ -79,18 +79,27 @@ pub:
 	cookie_options CookieOptions
 	// max age of session data and id, default is 30 days
 	max_age time.Duration = time.hour * 24 * 30
-	// set to true if you want to create a session if there isn't any data stored yet.
-	// Also called pre-sessions
+	// create a session cookie in the middleware before any data is saved (pre-sessions).
+	// Explicit save calls create a session in either mode.
 	save_uninitialized bool
 pub mut:
 	store Store[T] @[required]
 }
 
-// set_session_id generates a new session id and set a Set-Cookie header on the response.
+// set_session_id generates a new session id and sets its Set-Cookie header on the response.
+// It replaces earlier response cookies with the session cookie name, preserving other cookies.
 pub fn (mut s Sessions[T]) set_session_id[X](mut ctx X) string {
 	sid, signed := new_session_id(s.secret)
 	ctx.CurrentSession.session_id = sid
 
+	// Middleware may have issued a pre-session cookie earlier in this response.
+	cookies := ctx.res.header.values(.set_cookie)
+	ctx.res.header.delete(.set_cookie)
+	for cookie in cookies {
+		if cookie.all_before('=').trim_space() != s.cookie_options.cookie_name {
+			ctx.res.header.add(.set_cookie, cookie)
+		}
+	}
 	ctx.set_cookie(http.Cookie{
 		value:     signed
 		max_age:   int(s.max_age / time.second)
@@ -140,33 +149,35 @@ pub fn (mut s Sessions[T]) logout[X](mut ctx X) ! {
 	})
 }
 
-// save `data` for the current session.
+// save stores `data` for the current session, creating a session if needed.
+// save_uninitialized only controls whether middleware creates a session before data is saved.
 pub fn (mut s Sessions[T]) save[X](mut ctx X, data T) ! {
-	if sid := s.get_session_id(ctx) {
-		s.store.set(sid, data)!
+	sid := s.get_session_id(ctx) or { s.set_session_id(mut ctx) }
+	if _ := s.store.set(sid, data) {
 		ctx.CurrentSession.session_data = data
 	} else {
-		if s.save_uninitialized == false {
-			// no valid session id, but the user only wants to create a session
-			// when data is saved. So we create the session here
-			sid := s.set_session_id(mut ctx)
-			s.store.set(sid, data)!
-			ctx.CurrentSession.session_data = data
-		}
-		eprintln('[veb.sessions] error: trying to save data without a valid session!')
+		return err
 	}
 }
 
-// resave saves `data` for the current session and reset the session id.
+// resave saves `data` for the current session and resets the session id.
 // You should use this function when the authentication or authorization status changes
 // e.g. when a user signs in or switches between accounts/permissions.
 // This function also destroys the data associated to the old session id.
 pub fn (mut s Sessions[T]) resave[X](mut ctx X, data T) ! {
 	if sid := s.get_session_id(ctx) {
-		s.store.destroy(sid)!
+		if _ := s.store.destroy(sid) {
+		} else {
+			return err
+		}
 	}
 
-	s.save(mut ctx, data)
+	sid := s.set_session_id(mut ctx)
+	if _ := s.store.set(sid, data) {
+		ctx.CurrentSession.session_data = data
+	} else {
+		return err
+	}
 }
 
 // get_session_id retrieves the current session id, if it is set.

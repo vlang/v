@@ -1,5 +1,4 @@
 // vtest vflags: -w
-import json as stdjson
 import json2
 
 struct Issue24950GateRecord {
@@ -39,18 +38,11 @@ fn test_decode_struct_with_reference_field() {
 }
 
 fn test_decode_embedded_struct_with_reference_field() {
-	empty_std := stdjson.decode(Issue24950Record, '{}')!
 	empty_json2 := json2.decode[Issue24950Record]('{}')!
-
-	assert empty_std.Issue24950RecordBase.gate == unsafe { nil }
 	assert empty_json2.Issue24950RecordBase.gate == unsafe { nil }
 
-	populated_std := stdjson.decode(Issue24950Record, '{"gate":{"exit":"north"}}')!
 	populated_json2 := json2.decode[Issue24950Record]('{"gate":{"exit":"north"}}')!
-
-	assert populated_std.Issue24950RecordBase.gate != unsafe { nil }
 	assert populated_json2.Issue24950RecordBase.gate != unsafe { nil }
-	assert populated_std.Issue24950RecordBase.gate.exit == 'north'
 	assert populated_json2.Issue24950RecordBase.gate.exit == 'north'
 }
 

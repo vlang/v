@@ -1,3 +1,4 @@
+import os
 import v.vmod
 
 const quote = '\x22'
@@ -49,9 +50,141 @@ fn test_base_url() {
 	assert content.base_url == 'source'
 }
 
+fn test_quoted_start_is_rejected_without_panicking() {
+	for text in ['"Module {\n\tname: \'x\'\n}\n', '\'Module {\n\tname: "x"\n}\n'] {
+		vmod.decode(text) or {
+			assert err.msg().starts_with('vmod: ')
+			continue
+		}
+		assert false
+	}
+}
+
+fn test_legacy_dependencies() {
+	for name in ['ui', "'ui'", '"ui"'] {
+		for version in ['0.1', '1', '0.1.2', "'0.1'", '"0.1"', "'^0.1.2'"] {
+			for separator in [':', ': ', ' : ', '\n:\n'] {
+				for trailing_comma in ['', ','] {
+					source := "Module {\n name: 'x'\n dependencies: [${name}${separator}${version}${trailing_comma}]\n base_url: 'src'\n}"
+					content := vmod.decode(source)!
+					assert content.name == 'x'
+					assert content.base_url == 'src'
+					assert content.dependencies == ['ui'], source
+				}
+			}
+		}
+	}
+}
+
+fn test_compact_legacy_dependencies() {
+	content := vmod.decode("Module{name:'x'\n dependencies:[ui:0.1,'gg':'0.2.0']\n base_url:'src'}")!
+	assert content.name == 'x'
+	assert content.base_url == 'src'
+	assert content.dependencies == ['ui', 'gg']
+}
+
+fn test_dependency_names() {
+	for dependencies in ['[]', '[ui]', '[ui,]', "['ui']", '["ui"]'] {
+		content := vmod.decode('Module { dependencies: ${dependencies} }')!
+		assert content.dependencies == if dependencies == '[]' { []string{} } else { ['ui'] }
+	}
+	content := vmod.decode("Module {
+		name: 'x'
+		dependencies: [
+			ui: 0.1,
+			'gg': '0.2.0',
+			nedpals.args: 0.3.0,
+			lib2,
+			'other',
+		]
+		license: 'MIT'
+		subdirs: ['internal']
+	}")!
+	assert content.dependencies == ['ui', 'gg', 'nedpals.args', 'lib2', 'other']
+	assert content.license == 'MIT'
+	assert content.unknown['subdirs'] == ['internal']
+	assert vmod.decode(vmod.encode(content))!.dependencies == content.dependencies
+}
+
+fn test_legacy_dependencies_from_file() {
+	test_dir := os.join_path(os.vtmp_dir(), '${@FN}_${os.getpid()}')
+	os.mkdir_all(test_dir)!
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	path := os.join_path(test_dir, 'v.mod')
+	os.write_file(path, "Module{\n\tname: 'x'\n\tdependencies: [\n\t\tui: 0.1,\n\t]\n}\n")!
+	content := vmod.from_file(path)!
+	assert content.name == 'x'
+	assert content.dependencies == ['ui']
+	assert content.source_root(test_dir) == test_dir
+}
+
+fn test_invalid_dependencies() {
+	for dependencies in ['[ui:]', '[ui:,]', "['ui':]", '[ui: 0.1 gg: 0.2]', '[ui: : 0.1]', '[ui: []]',
+		'[ui: {}]', '[0.1]', "['ui' 'gg']", '[ui: 0.1', '[ui:'] {
+		vmod.decode('Module { dependencies: ${dependencies} }') or { continue }
+		assert false, dependencies
+	}
+}
+
+fn test_unknown_arrays_require_strings() {
+	for values in ['[ui]', '[ui: 0.1]', "['ui': '0.1']", '[0.1]'] {
+		vmod.decode('Module { subdirs: ${values} }') or { continue }
+		assert false, values
+	}
+}
+
 fn test_invalid_end() {
 	vmod.decode('\nModule{\n \nname: ${quote}zzzz}') or {
 		assert err.msg() == 'vmod: invalid token ${quote}eof${quote}, at line 4'
+		return
+	}
+	assert false
+}
+
+fn test_catalog_and_workspaces_are_typed_manifest_metadata() {
+	m := vmod.decode("Module { name: 'app' catalog: { foo: '^1.2.0', 'publisher.bar': '~2.0.0' }, workspaces: ['packages/*', 'tools'] }")!
+	assert m.catalog == {
+		'foo':           '^1.2.0'
+		'publisher.bar': '~2.0.0'
+	}
+	assert m.workspaces == ['packages/*', 'tools']
+	assert 'catalog' !in m.unknown && 'workspaces' !in m.unknown
+	assert vmod.decode('Module { catalog: {} workspaces: [] }')!.catalog.len == 0
+}
+
+fn test_catalog_rejects_invalid_duplicate_and_unterminated_entries() {
+	for text in ["Module { catalog: ['foo'] }", 'Module { catalog: { foo: 1 } }',
+		"Module { catalog: { foo: '^1', foo: '^2' } }", 'Module { catalog: { foo: } }',
+		"Module { catalog: { foo: '^1'; bar: '^2' } }", "Module { catalog: { foo: '^1',, bar: '^2' } }",
+		"Module { catalog: { foo: '^1'", "Module { catalog: { foo: '^1' }",
+		"Module { catalog: { 'foo' '^1' } }"] {
+		mut failed := false
+		vmod.decode(text) or { failed = true }
+		assert failed, text
+	}
+}
+
+fn test_workspaces_require_an_array_of_strings() {
+	for text in ["Module { workspaces: 'packages/*' }", 'Module { workspaces: [foo] }',
+		"Module { workspaces: [foo: '1.0.0'] }", 'Module { workspaces: [1] }'] {
+		mut failed := false
+		vmod.decode(text) or { failed = true }
+		assert failed, text
+	}
+}
+
+fn test_escaped_quote_inside_a_string_keeps_the_character() {
+	content := vmod.decode("Module { name: 'it\\'s' }")!
+	assert content.name == "it's"
+}
+
+fn test_unterminated_string_ending_with_a_backslash() {
+	// The scanner used to read one byte past the text while testing for a
+	// trailing escape, which aborted the process on this input.
+	vmod.decode("Module { name: 'a\\") or {
+		assert err.msg().starts_with('vmod: ')
 		return
 	}
 	assert false

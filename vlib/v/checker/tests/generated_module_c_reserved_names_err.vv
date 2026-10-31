@@ -1,0 +1,31 @@
+@[generated]
+module main
+
+// `_S` is a macro of the generated C code, and C reserves names that begin with
+// `_` and an uppercase letter.
+fn _S(s string) string {
+	return s + '!'
+}
+
+const __zbr_c_limit = 1
+
+// Every interface value already has `_typ` and `_object` members in C.
+interface _zbr_ty_I {
+	_typ    int
+	_object int
+}
+
+struct _zbr_ty_P {
+	_typ    int
+	_object int
+}
+
+fn main() {
+	i := _zbr_ty_I(_zbr_ty_P{
+		_typ:    7
+		_object: 8
+	})
+	println(i._typ + i._object)
+	println(_S('a'))
+	println(__zbr_c_limit)
+}

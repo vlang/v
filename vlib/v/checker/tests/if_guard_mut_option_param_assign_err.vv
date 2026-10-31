@@ -1,0 +1,24 @@
+// `v` refers to the caller's payload, so assigning to it is a use.
+fn reassign(mut a ?[]int) {
+	if mut v := a {
+		v = [7, 7]
+	}
+}
+
+// `v` is a copy of the local option's payload.
+fn reassign_local() {
+	mut o := ?[]int([1])
+	if mut v := o {
+		v = [2]
+	}
+	println(o)
+}
+
+fn main() {
+	mut a := ?[]int([1])
+	reassign(mut a)
+	reassign_local()
+	x := 1
+	x = 2
+	println(x)
+}

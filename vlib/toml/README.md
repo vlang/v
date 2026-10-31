@@ -13,6 +13,25 @@ doc1 := toml.parse_text(<string content>) or { panic(err) }
 doc2 := toml.parse_file(<file path>) or { panic(err) }
 ```
 
+Hexadecimal integers use the `0x` prefix and allow repeated digits, including `b`:
+`color = 0xbbbbbb`. Binary and octal literals still accept only digits valid for their base.
+
+## Parser AST and table views
+
+`toml.ast.DateTime` keeps its public `date` and `time` components, including their
+text and source positions, alongside the complete date-time `text`.
+
+The public `Parser.find_table`, `find_sub_table` and `find_in_table` methods return
+`!&map[string]ast.Value`. Each reference has a heap header sharing the table's storage.
+Insertions, deletions and reservations through a view are visible through other views.
+Growing the parent table does not invalidate the reference: it holds no pointer into
+the parent's inline values. Keep shared table storage alive until all views are finished;
+use `.clone()` when an independent table is needed.
+
+`Parser.double_array_of_tables_contents(target_key)` returns a one-element
+`[]ast.Value` containing the parsed table body. It leaves the following table header
+available for the caller to continue parsing.
+
 ## Example
 
 Here we parse the official [TOML example](https://github.com/toml-lang/toml/blob/3b11f6921da7b6f5db37af039aa021fee450c091/README.md#Example)
@@ -63,6 +82,63 @@ fn main() {
 	println('Server IP: "${ip}"')
 }
 ```
+
+## Struct conversion
+
+`toml.decode[T]` decodes TOML text into a struct and `toml.encode[T]` encodes a struct
+as TOML. A field maps to the key of the same name; `@[toml: <name>]` changes the key
+and `@[skip]` ignores the field. Fields missing from the document keep their default
+values. A `from_toml(toml.Any)` or `to_toml() string` method on `T` replaces the
+generic conversion.
+
+Partial tables preserve the existing defaults inside a present optional struct.
+When that optional field is `none`, a table initializes it from the struct's own defaults.
+
+TOML has no struct embedding, so the fields of an embedded struct are read from and
+written to the same table as the fields of the embedding struct. When decoding, a
+table named after the embedded struct (e.g. `[Db]`) is accepted too and takes
+precedence. Embedded `toml.Date`, `toml.Time` and `toml.DateTime` are scalars, stored
+under their type name (e.g. `Date = 2026-09-30`).
+
+Array elements and map values may be scalars, enums, structs, arrays or maps, at any
+nesting depth, so `[]JobTitle`, `map[string][]int` and `[][]map[string]Item` all decode.
+An element that does not fit the element type, such as a number where a struct is
+expected, is skipped. An enum element must be an integer, so a string, boolean,
+float, array or table in an enum position is skipped rather than coerced; a
+plain enum *field* still follows `Any.int()`, which reads a non-numeric value as
+0.
+
+```v
+import toml
+
+struct Db {
+	host string
+	port int
+}
+
+struct Config {
+	Db
+	name   string @[toml: app_name]
+	secret string @[skip]
+}
+
+config := toml.decode[Config]('app_name = "app"\nhost = "localhost"\nport = 5432')!
+assert config.host == 'localhost' // promoted from Db
+assert config.name == 'app'
+encoded := toml.encode(config)
+assert encoded == 'host = "localhost"\nport = 5432\napp_name = "app"'
+assert toml.decode[Config](encoded)! == config
+```
+
+String values are encoded as TOML basic strings with quotes, backslashes, and control characters
+escaped. Non-ASCII text is preserved.
+
+Map fields support string, boolean, and integer keys up to 64 bits. TOML keys are strings;
+integer keys are parsed as decimal numbers with the destination type's range,
+including full-width `i64` and `u64` keys. Invalid or out-of-range keys are skipped,
+as are out-of-range narrow integer values. Boolean keys must be `true` or `false`.
+Other map key types are rejected at compile time. Nested maps retain their own key
+types.
 
 ## Value retrieval
 
@@ -158,3 +234,7 @@ array = [
 doc := toml.parse_text(toml_text) or { panic(err) }
 assert to.json(doc) == '{ "val": true, "table": { "array": [ { "a": "A" }, { "b": "B" } ] } }'
 ```
+
+`toml.scanner.Scanner.peek(0)` returns the byte at the current scanner position without
+advancing it, or `end_of_text` when the position is at the end of the input.
+Negative offsets look behind that position. An offset outside the input returns `end_of_text`.

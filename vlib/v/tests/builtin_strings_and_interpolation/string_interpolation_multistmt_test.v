@@ -2,7 +2,7 @@
 
 // This file checks that string interpolations where expressions that generate
 // multiple C statements work correctly
-import json
+import json2
 
 fn test_array_map_interpolation() {
 	numbers := [1, 2, 3]
@@ -14,5 +14,5 @@ fn test_json_encode_interpolation() {
 		'example': 'string'
 		'other':   'data'
 	}
-	assert '${json.encode(object)}' == '{"example":"string","other":"data"}'
+	assert '${json2.encode(object, escape_unicode: true)}' == '{"example":"string","other":"data"}'
 }

@@ -11,7 +11,8 @@ fn cfor_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_tmpl_c_style_for_init_capture_test_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${cfor_vexe} -gc none -path "${cfor_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${cfor_v3_src}')
+		os.exec([cfor_vexe, '-gc', 'none', '-path', '${cfor_vlib_dir}' + '|@vlib|@vmodules', '-o',
+			v3_bin, '${cfor_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -28,10 +29,10 @@ fn cfor_render_project(v3_bin string, name string, main_src string) string {
 	// -nocache: both subtests build a project with an anonymous fn returned from get_render;
 	// sharing the module cache across them collides their `anon_fn` symbols in a cached object
 	// (a pre-existing cache quirk unrelated to capture collection).
-	compile := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -nocache -o ${bin}')
+	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-nocache', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }

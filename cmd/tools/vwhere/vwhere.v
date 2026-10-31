@@ -5,7 +5,7 @@ import os
 fn main() {
 	args := os.args[2..]
 	if args.len == 0 || args == ['help'] || '-help' in args || '--help' in args {
-		os.system('${os.quoted_path(vexe)} help where')
+		os.system_args([vexe, 'help', 'where'])
 		exit(0)
 	}
 	mut fdr := Finder{}

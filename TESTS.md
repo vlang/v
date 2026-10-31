@@ -23,6 +23,10 @@ It works, by running these in succession:
 * `v check-md -hide-warnings .`
 * `v install nedpals.args`
 
+The self-build checks include serial transformation and C generation with `-no-parallel`.
+Transformation always runs in the current compiler; the historical `-new-transformer` switch
+is no longer needed.
+
 # Details:
 
 In the `v` repo there are many tests. The main types are:
@@ -39,6 +43,11 @@ and will exit with a 0 exit code, if they all had 0 failing assertions.
 `v -stats file_test.v` - this will run the test_ functions, and show a
 report about how much time it took to run each of them too.
 
+Implicit test executables and their macOS debug symbols are removed after the test process exits,
+including failed assertions, panics, and nonzero exits. This also applies with `-stats`, `-keepc`,
+and `v run file_test.v`; `-keepc` still retains generated C. An explicit `-o` keeps the requested
+output for later execution or debugging.
+
 NB 2: You can also run many test files at once (in parallel, depending on
 how many cores you have), with:
 `v test folder` - this will run *all* `_test.v` files in `folder`,
@@ -51,6 +60,19 @@ By default, `v test` uses at most four parallel workers and budgets one worker p
 of memory. On Linux it uses the lower of physical memory and the active cgroup memory limit.
 Set `VJOBS` to a positive value to explicitly choose a different worker count when your test
 workload and machine capacity are known.
+
+Skipped test paths are resolved before comparison, so selecting a file through a symlink
+does not bypass its platform or architecture exclusion.
+
+On Linux, `-race` test builds use `_setjmp` and `_longjmp` to continue after failed assertions,
+avoiding ThreadSanitizer's incompatible `longjmp` interceptor on glibc 2.44. Later tests and
+race detection still run. A later race report can retain frames from the failed test because
+the sanitizer does not observe that jump.
+
+Tests ending in `_windows_test.v` or `_windows_test.c.v` run only on Windows.
+The compound `_android_outside_termux_test.v` and `_android_outside_termux_test.c.v`
+suffixes select Android outside Termux; `_termux_test.v` and `_termux_test.c.v`
+select Termux.
 
 ## `v test vlib/v/tests`:
 
@@ -78,6 +100,21 @@ for checking that errors and panics are printed.
 The C backend has focused unit and integration tests beside its implementation.
 Many tests compile a small V source to C and assert on the generated declarations,
 expressions, ABI, linker inputs, or runtime behavior.
+
+## `v test cmd/v/`
+
+The compiler process regressions workflow runs every launcher test in `cmd/v/` on Linux,
+macOS, and Windows with the default compiler. This covers argument routing, fallback
+messages, executable discovery, and tool-cache behavior, including platform-specific code.
+
+## Line coverage
+
+Collect coverage with `v -coverage coverage_dir path/to/file_test.v`, then inspect it with
+`v cover coverage_dir`. Add `-no-skip-unused` when compiling to include uncalled functions
+in the report as well as executed code.
+
+On Windows, test statistics and coverage use a 64-bit monotonic clock resolved at runtime,
+so they also work with bundled TCC versions whose import libraries omit `GetTickCount64`.
 
 ## REPL tests
 
@@ -122,6 +159,10 @@ the `vlib/v/tests/known_errors/testdata/` folder.
 * `v build-examples`
 * `v build-vbinaries`
 
+`v build-examples` discovers files with a `main`, `no_main`, or implicit main module,
+and builds configured projects as folders. Leading comments, attributes, and directives do not
+affect module discovery. Library modules are checked when the programs that import them compile.
+
 ## Formatting tests
 
 `cmd/tools/vfmt_test.v` checks the formatter command, while
@@ -151,6 +192,13 @@ Note: if that command finds formatting errors, they can be fixed with:
 ## `v test-self`
 
 Run `vlib` module tests, *including* the compiler tests.
+Test discovery includes architecture-suffixed files such as `_test.amd64.v` when
+the suffix matches the host architecture; files for other architectures are excluded.
+
+To run the same suite across separate machines, set `VTEST_SELF_SHARD_COUNT` to the number of
+machines and set `VTEST_SELF_SHARD_INDEX` to a different zero-based index on each one. For example,
+`VTEST_SELF_SHARD_COUNT=5 VTEST_SELF_SHARD_INDEX=0 ./v test-self vlib` runs the first shard.
+Every test file belongs to exactly one shard. Leave both variables unset for the full suite.
 
 ## `v vlib/v/compiler_errors_test.v`
 
@@ -159,6 +207,37 @@ This runs tests for:
 * `vlib/v/scanner/tests/*.vv`
 * `vlib/v/checker/tests/*.vv`
 * `vlib/v/parser/tests/*.vv`
+
+Some fixtures require the V 0.5.2 compatibility compiler: legacy compiler-module diagnostics,
+legacy JSON code-generation errors, and the `with_check_option` cases. The current driver selects
+that compiler for those fixtures; other fixtures start with the current compiler and may use its
+normal compatibility fallback. The suite remains runnable on master even though the legacy
+compiler sources were removed from this tree.
+
+Prepare the compatibility compiler from the repository root before running the complete suite:
+
+```sh
+make v1
+./v -silent vlib/v/compiler_errors_test.v
+```
+
+`make v1` installs the pinned V 0.5.2 release and its matching library in a cache, or builds that
+release with `oldv` when a usable release binary is unavailable. Initial installation needs network
+access and the installer tools; source builds also need Git and a C compiler. On Windows, run this
+from MSYS2 with GNU make (`make` or `mingw32-make`) available. Building the ordinary compiler with
+`makev.bat` alone does not provision this compatibility compiler.
+
+The driver can run `make v1` automatically when needed. If it reports that no usable fallback was
+found and make is unavailable, install GNU make and run the preparation command above. This is a
+missing test prerequisite, and also affects the complete `v test vlib/v/` run, which includes this
+suite. After installation, a usable cached compatibility compiler can run without make.
+Successful automatic installation keeps progress output out of exact-output fixture diagnostics.
+If installation fails, the driver prints the installer output to explain the missing prerequisite.
+
+Use `-new-compiler` when investigating an individual fixture with the current compiler. It overrides
+explicit legacy fixture selection, so its diagnostics need not match that fixture's existing `.out`
+file. Disabling automatic fallback with `V_MACOS_V3_NO_FALLBACK=1` still permits explicit legacy
+fixture selection and does not remove the suite's compatibility-compiler prerequisite.
 
 > [!NOTE]
 > There are special folders, that compiler_errors_test.v will try to
@@ -190,6 +269,20 @@ NB 5: To show only *the currently running test*, use:
 In this mode, the output lines will be limited, no matter how many `_test.v`
 files there are. The output will contain the total stats and the output of
 the failing tests too.
+
+NB 6: Set `VTEST_SKIP_OWNERSHIP=1` to omit ownership and autofree tests from
+`v test`, `v test-self`, and `vlib/v/test_all.vsh`. GitHub Actions enables this
+behavior automatically while ownership/autofree coverage is disabled there.
+A `_test.v` file is an ownership/autofree test when it is in an `ownership`
+folder, its name contains `ownership` or `autofree`, its `// vtest vflags:` line
+has `-ownership`, `-autofree` or `-d ownership`, or it has this line:
+```v ignore
+// vtest ownership
+```
+Add that line to a test that builds the ownership compiler, or compiles with one
+of those flags (for example with `os.exec([vexe, '-ownership', ...])`). Flags
+elsewhere in a test's source are not enough, since many tests pass them only to
+check how they are parsed or rejected.
 
 ## `.github/workflows/ci.yml`
 

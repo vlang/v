@@ -14,6 +14,9 @@ import math.bits
 pub const max_buffer_length = ((u64(1) << 32) - 1) * 32
 pub const max_blocksize_parallal_product = u64(1 << 30)
 
+// PBKDF2 rounds its output allocation up to a full SHA-256 block using int arithmetic.
+const max_array_buffer_length = u64(0x7fffffff) - 31
+
 // salsa20_8 applies the salsa20/8 core transformation to a block
 // of 64 u8 bytes.  The block is modified in place.
 fn salsa20_8(mut block []u8) {
@@ -162,10 +165,11 @@ fn smix(mut block []u8, r u32, n u64, mut v_block []u8, mut temp_block []u8) {
 struct OutputBufferLengthError {
 	Error
 	length u64
+	limit  u64 = max_buffer_length
 }
 
 fn (err OutputBufferLengthError) msg() string {
-	return 'the output buffer length, ${err.length}, is greater than ${max_buffer_length}'
+	return 'the output buffer length, ${err.length}, is greater than ${err.limit}'
 }
 
 struct BlocksizeParallelProductError {
@@ -205,12 +209,19 @@ fn (err CpuMemoryCostError) msg() string {
 //         a positive integer less than or equal to (2^32 - 1) * hLen
 //         where hLen is 32.
 //
+// The output and working buffers must also fit V array lengths (signed 32-bit int),
+// including PBKDF2 SHA-256 block rounding. Zero r, p or dk_len returns an error.
+//
 // Reasonable values for n, r, and p are n = 1024, r = 8, p = 16.
 pub fn scrypt(password []u8, salt []u8, n u64, r u32, p u32, dk_len u64) ![]u8 {
-	if dk_len > max_buffer_length {
+	if dk_len > max_array_buffer_length {
 		return OutputBufferLengthError{
 			length: dk_len
+			limit:  max_array_buffer_length
 		}
+	}
+	if r == 0 || p == 0 || dk_len == 0 {
+		return error('scrypt: r, p and dk_len must be positive')
 	}
 
 	if u64(r) * u64(p) >= max_blocksize_parallal_product {
@@ -229,16 +240,44 @@ pub fn scrypt(password []u8, salt []u8, n u64, r u32, p u32, dk_len u64) ![]u8 {
 		}
 	}
 
-	mut b := pbkdf2.key(password, salt, 1, int(128 * r * p), sha256.new())!
-
-	mut xy := []u8{len: int(256 * r), cap: int(256 * r), init: 0}
-	mut v := []u8{len: int(128 * r * n), cap: int(128 * r * n), init: 0}
-
-	for i in u32(0) .. p {
-		smix(mut b[i * 128 * r..], r, n, mut v, mut xy)
+	// the buffer lengths are computed in u64: `128 * r * p` used to be computed
+	// in u32 and wrap (r = 2^20, p = 512 gave 2^36 wrapped to 0).
+	block_len := u64(128) * u64(r)
+	buf_len := block_len * u64(p)
+	if buf_len > max_array_buffer_length {
+		return OutputBufferLengthError{
+			length: buf_len
+			limit:  max_array_buffer_length
+		}
+	}
+	// `128 * r * n` is not covered by the guards above, since n is only required
+	// to be a power of two. It can overflow u64 too (r = 2^20, n = 2^40 gives
+	// 2^67), which wrapped to 0 and panicked later in smix, so n is bounded
+	// before the product is formed.
+	max_n := max_array_buffer_length / block_len
+	if n > max_n {
+		return OutputBufferLengthError{
+			length: block_len * (max_n + 1)
+			limit:  max_array_buffer_length
+		}
+	}
+	work_len := block_len * n
+	scratch_len := u64(256) * u64(r)
+	if scratch_len > max_array_buffer_length {
+		return OutputBufferLengthError{
+			length: scratch_len
+			limit:  max_array_buffer_length
+		}
 	}
 
-	result := pbkdf2.key(password, b, 1, int(128 * r * p), sha256.new())!
+	mut b := pbkdf2.key(password, salt, 1, int(buf_len), sha256.new())!
 
-	return result[..int(dk_len)]
+	mut xy := []u8{len: int(scratch_len), cap: int(scratch_len), init: 0}
+	mut v := []u8{len: int(work_len), cap: int(work_len), init: 0}
+
+	for i in u32(0) .. p {
+		smix(mut b[int(u64(i) * 128 * u64(r))..], r, n, mut v, mut xy)
+	}
+
+	return pbkdf2.key(password, b, 1, int(dk_len), sha256.new())
 }

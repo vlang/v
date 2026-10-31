@@ -1,0 +1,19 @@
+@[generated]
+module main
+
+struct _zbr_ty_Point {
+	x int
+}
+
+fn _zbr_ty_Point(x int) int {
+	return x
+}
+
+const _zbr_ty_Point = 1
+
+fn main() {
+	p := _zbr_ty_Point{
+		x: 3
+	}
+	println(p.x)
+}

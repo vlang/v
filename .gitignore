@@ -39,6 +39,7 @@ a.out
 .vrepl_temp.v
 fns.txt
 .noprefix.vrepl_temp.v
+v_stage.c
 
 # Prefix local scratch/repro files with tmp. when they should stay untracked.
 tmp.*
@@ -174,3 +175,6 @@ issue*
 .copilot/
 .agents/
 .codex/
+
+# the C build folder a self compile leaves behind (driver.v names it .<binary>.v3cc.<token>)
+.*.v3cc.*

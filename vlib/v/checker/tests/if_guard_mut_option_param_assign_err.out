@@ -1,0 +1,14 @@
+vlib/v/checker/tests/if_guard_mut_option_param_assign_err.vv:11:9: warning: unused variable: `v`
+    9 | fn reassign_local() {
+   10 |     mut o := ?[]int([1])
+   11 |     if mut v := o {
+      |            ^
+   12 |         v = [2]
+   13 |     }
+vlib/v/checker/tests/if_guard_mut_option_param_assign_err.vv:22:2: error: `x` is immutable, declare it with `mut` to make it mutable
+   20 |     reassign_local()
+   21 |     x := 1
+   22 |     x = 2
+      |     ^
+   23 |     println(x)
+   24 | }

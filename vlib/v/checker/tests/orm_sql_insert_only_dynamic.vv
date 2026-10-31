@@ -1,0 +1,25 @@
+import db.sqlite
+
+struct InsertOnlyUser {
+	id int @[primary]
+	creator string @[sql_insert_only]
+	name string
+}
+
+fn main() {
+	db := sqlite.connect(':memory:')!
+	enabled := true
+	sql db {
+		dynamic update InsertOnlyUser set {
+			if enabled {
+				creator == 'other'
+			}
+		} where id == 1
+	}!
+	assignments := {
+		creator == 'other'
+	}
+	sql db {
+		dynamic update InsertOnlyUser set assignments where id == 1
+	}!
+}

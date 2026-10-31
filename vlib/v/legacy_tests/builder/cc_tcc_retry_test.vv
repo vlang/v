@@ -18,7 +18,7 @@ fn execute_tcc_retry_test_command(cmd string) os.Result {
 			os.setenv('VOSARGS', vosargs, true)
 		}
 	}
-	return os.execute(cmd)
+	return os.exec(os.split_args(cmd) or { panic(err) })
 }
 
 fn test_is_tcc_compilation_failure_detects_tcc_kind() {
@@ -538,7 +538,7 @@ fn test_windows_gnu_compilers_compile_in_a_non_ascii_directory() {
 		res :=
 			execute_tcc_retry_test_command('${os.quoted_path(@VEXE)} -cc ${os.quoted_path(compiler)} -gc none -no-retry-compilation -o ${os.quoted_path(exe_path)} ${os.quoted_path(source_path)}')
 		assert res.exit_code == 0, '${compiler_name}: ${res.output}'
-		run := os.execute(os.quoted_path(exe_path))
+		run := os.exec([exe_path])
 		assert run.exit_code == 0, '${compiler_name}: ${run.output}'
 		assert run.output.trim_space() == 'unicode-path-ok', '${compiler_name}: ${run.output}'
 	}

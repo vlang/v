@@ -109,7 +109,7 @@ pub fn (mut r Response) raw(response string) {
 	r.write_string(response)
 }
 
-fn C.send(sockfd i32, buf voidptr, len usize, flags i32) i32
+fn C.send(sockfd i32, buf voidptr, len uint, flags i32) i32
 
 // Use per-send protection where picoev cannot configure SO_NOSIGPIPE on the
 // socket. This also protects calls made on worker threads, where changing the

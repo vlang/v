@@ -9,17 +9,21 @@ import rand
 import v.help
 import v.vmod
 
-const server_url_option_names = ['-m', '--mirror', '-server-url', '--server-url', '--server-urls']
+const value_option_names = ['-m', '--mirror', '-server-url', '--server-url', '--server-urls',
+	'--precise', '-p', '--package', '--pin', '--exclude-newer', '--minimum-release-age']
 const settings = init_settings()
 const default_vpm_server_urls = ['https://vpm.vlang.io', 'https://vpm.url4e.com']
 const vpm_server_urls = rand.shuffle_clone(default_vpm_server_urls) or { [] } // ensure that all queries are distributed fairly
 const valid_vpm_commands = ['help', 'search', 'install', 'link', 'update', 'upgrade', 'outdated',
-	'list', 'remove', 'show', 'unlink']
+	'list', 'remove', 'show', 'unlink', 'why', 'vendor', 'registry']
 const excluded_dirs = ['.cache', 'vlib']
 
 fn main() {
 	unbuffer_stdout()
 	os.setenv(selected_server_url_env, '', true)
+	$if windows {
+		enable_git_longpaths()
+	}
 	// This tool is intended to be launched by the v frontend,
 	// which provides the path to V inside os.getenv('VEXE')
 	// args are: vpm [options] SUBCOMMAND module names
@@ -39,6 +43,10 @@ fn main() {
 	}
 	mut query := parse_query_args(args, vpm_command)
 	vpm_log(@FILE_LINE, @FN, 'query: ${query}')
+	if is_registry_command(args) {
+		vpm_registry(query)
+		return
+	}
 	ensure_vmodules_dir_exist()
 	match vpm_command {
 		'help' {
@@ -74,6 +82,19 @@ fn main() {
 		'unlink' {
 			vpm_unlink(query)
 		}
+		'why' {
+			vpm_why(query)
+		}
+		'vendor' {
+			if query.len != 0 {
+				vpm_error('`v vendor` takes no package arguments.')
+				exit(1)
+			}
+			vpm_vendor()
+		}
+		'registry' {
+			vpm_registry(query)
+		}
 		else {
 			// Unreachable in regular usage. V will catch unknown commands beforehand.
 			vpm_error('unknown command "${vpm_command}"')
@@ -89,7 +110,7 @@ fn parse_vpm_command(args []string) string {
 			skip_next = false
 			continue
 		}
-		if arg in server_url_option_names {
+		if arg in value_option_names {
 			skip_next = true
 			continue
 		}
@@ -98,6 +119,13 @@ fn parse_vpm_command(args []string) string {
 		}
 	}
 	return ''
+}
+
+// is_registry_command reports whether the requested command is the registry
+// server. It is checked before client-only home and cache setup, so serving a
+// registry does not require a writable VModules directory.
+fn is_registry_command(args []string) bool {
+	return parse_vpm_command(args) == 'registry'
 }
 
 fn parse_query_args(args []string, vpm_command string) []string {
@@ -109,7 +137,16 @@ fn parse_query_args(args []string, vpm_command string) []string {
 			skip_next = false
 			continue
 		}
-		if arg in server_url_option_names {
+		// `registry` takes its own options, and the shared value-option list knows
+		// nothing about them: `-p 9090` is its port, not a package name, so neither
+		// the option nor its value may be dropped once the command is found. Every
+		// other subcommand asks for module names, where an option would be a module
+		// that cannot exist.
+		if has_found_command && vpm_command == 'registry' {
+			query << arg
+			continue
+		}
+		if arg in value_option_names {
 			skip_next = true
 			continue
 		}
@@ -158,6 +195,13 @@ fn vpm_remove(query []string) {
 	mut errors := 0
 	for m in query {
 		final_module_path := get_path_of_existing_module(m) or { continue }
+		if !install_path_is_in_vmodules(final_module_path, settings.vmodules_path) {
+			vpm_error('refusing to remove `${m}`: `${fmt_mod_path(final_module_path)}` is outside the modules directory.',
+				details: 'Run `v unlink` first to replace it.'
+			)
+			errors++
+			continue
+		}
 		if !vpm_owns_module_dir(final_module_path) {
 			vpm_error('refusing to remove `${m}`: `${fmt_mod_path(final_module_path)}` was not installed by VPM.',
 				details: not_installed_by_vpm_details()
@@ -167,6 +211,9 @@ fn vpm_remove(query []string) {
 		}
 		println('Removing module "${m}" from ${fmt_mod_path(final_module_path)} ...')
 		vpm_log(@FILE_LINE, @FN, 'removing: ${final_module_path}')
+		// The clone source is read before the directory is gone; it is what the
+		// lockfile of the project in scope may still name the module by.
+		origin_url := checkout_origin_url(final_module_path)
 		// Whatever is left behind by a failed removal stays VPM's, so the command
 		// can be retried. Losing the record here would make the leftovers look like
 		// the project's own, and nothing could finish the removal.
@@ -178,6 +225,7 @@ fn vpm_remove(query []string) {
 			continue
 		}
 		cleanup_empty_module_parent_dirs(final_module_path)
+		remove_lock_entries(m, origin_url)
 	}
 	if errors > 0 {
 		exit(1)

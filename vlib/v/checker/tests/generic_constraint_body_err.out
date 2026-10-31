@@ -1,0 +1,28 @@
+vlib/v/checker/tests/generic_constraint_body_err.vv:8:11: error: type `T` has no field named `age`: its constraint `Named` does not declare it
+    6 | 
+    7 | fn members[T Named](a T) int {
+    8 |     return a.age
+      |              ~~~
+    9 | }
+   10 |
+vlib/v/checker/tests/generic_constraint_body_err.vv:12:11: error: operator `%` is not defined on type `T`: `f64`, in its constraint `Number`, does not have it
+   10 | 
+   11 | fn remainder[T Number](x T, y T) T {
+   12 |     return x % y
+      |              ^
+   13 | }
+   14 |
+vlib/v/checker/tests/generic_constraint_body_err.vv:16:5: error: `is` can only be used with sum type or interface values, not `T`: `int`, in its constraint `Number`, is neither; test `T` with `$if x is f64`
+   14 | 
+   15 | fn kind[T Number](x T) string {
+   16 |     if x is f64 {
+      |        ~~~~~~~~
+   17 |         return 'f64'
+   18 |     }
+vlib/v/checker/tests/generic_constraint_body_err.vv:23:19: error: type `T` has no field named `age`: its constraint `Named` does not declare it
+   21 | 
+   22 | fn ages[T Named](xs []T) []int {
+   23 |     return xs.map(it.age)
+      |                      ~~~
+   24 | }
+   25 |

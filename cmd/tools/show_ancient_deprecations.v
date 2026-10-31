@@ -9,7 +9,8 @@ mut:
 }
 
 fn (mut ctx Context) analyze_line(line string, position_file string, position_line int) {
-	blame_for_time := os.execute('git blame -L${position_line} --porcelain -- ${position_file}')
+	blame_for_time := os.exec(['git', 'blame', '-L' + '${position_line}', '--porcelain', '--',
+		position_file])
 	if blame_for_time.exit_code != 0 {
 		return
 	}
@@ -20,7 +21,8 @@ fn (mut ctx Context) analyze_line(line string, position_file string, position_li
 		return
 	}
 	ctx.deprecations++
-	blame_for_context := os.execute('git blame -L${position_line},+5 -- ${position_file}')
+	blame_for_context := os.exec(['git', 'blame', '-L' + '${position_line}' + ',+5', '--',
+		position_file])
 	context := blame_for_context.output.trim_space().split_into_lines()
 	println(term.colorize(term.red, '${position_file}:${position_line}: deprecation: ${ctx.deprecations}, timestamp: ${ts} - ${t}'))
 	for cline in context {

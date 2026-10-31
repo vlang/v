@@ -368,12 +368,6 @@ fn read_pairs_into_helper[K, V](mut u Unpacker, mut out map[K]V) ! {
 }
 
 fn (mut u Unpacker) unpack_struct_into[T](mut result T) ! {
-	mut strategy := ''
-	$for attr in T.attributes {
-		if attr.name == 'cbor_rename_all' {
-			strategy = attr.arg
-		}
-	}
 	hdr := u.unpack_map_header()!
 	indef := hdr < 0
 	mut remaining := if indef { i64(-1) } else { hdr }
@@ -402,30 +396,9 @@ fn (mut u Unpacker) unpack_struct_into[T](mut result T) ! {
 			}
 			seen_keys[key_str] = true
 		}
-		mut matched := false
-		$for field in T.fields {
-			if !cbor_field_skipped(field) {
-				name := cbor_field_explicit_key(field) or {
-					if strategy != '' { cbor_rename(field.name, strategy) } else { field.name }
-				}
-				if !matched && key_len == name.len
-					&& unsafe { C.memcmp(key_ptr, name.str, key_len) } == 0 {
-					matched = true
-					$if field.typ is $option {
-						if u.pos < u.data.len && u.data[u.pos] == 0xf6 {
-							u.pos++
-							result.$(field.name) = none
-						} else {
-							mut inner := $zero(field.typ.payload_type)
-							u.unpack_into(mut inner)!
-							result.$(field.name) = inner
-						}
-					} $else {
-						u.unpack_into(mut result.$(field.name))!
-					}
-				}
-			}
-		}
+		decoded := unpack_struct_key(mut u, result, key_ptr, key_len)!
+		result = decoded.value
+		matched := decoded.matched
 		if !matched {
 			start := u.pos
 			u.skip_value()!
@@ -437,6 +410,59 @@ fn (mut u Unpacker) unpack_struct_into[T](mut result T) ! {
 			}
 		}
 	}
+}
+
+struct StructKeyUnpackResult[T] {
+	value   T
+	matched bool
+}
+
+// Return the changed value because recursive generic mutable references do not
+// reliably write back through embedded fields.
+fn unpack_struct_key[T](mut u Unpacker, val T, key_ptr &u8, key_len int) !StructKeyUnpackResult[T] {
+	mut result := val
+	mut strategy := ''
+	$for attr in T.attributes {
+		if attr.name == 'cbor_rename_all' {
+			strategy = attr.arg
+		}
+	}
+	$for field in T.fields {
+		if !cbor_field_skipped(field) {
+			name := cbor_field_explicit_key(field) or {
+				if strategy != '' { cbor_rename(field.name, strategy) } else { field.name }
+			}
+			if key_len == name.len
+				&& unsafe { C.memcmp(key_ptr, name.str, key_len) } == 0 {
+				$if field.typ is $option {
+					if u.pos < u.data.len && u.data[u.pos] == 0xf6 {
+						u.pos++
+						result.$(field.name) = none
+					} else {
+						mut inner := $zero(field.typ.payload_type)
+						u.unpack_into(mut inner)!
+						result.$(field.name) = inner
+					}
+				} $else {
+					u.unpack_into(mut result.$(field.name))!
+				}
+				return StructKeyUnpackResult[T]{ value: result, matched: true }
+			}
+		}
+	}
+	$for field in T.fields {
+		$if field.is_embed && field.typ is $struct && field.typ !is time.Time && field.typ !is Unmarshaler {
+			if !cbor_field_skipped(field) {
+				embedded := unpack_struct_key(mut u, result.$(field.name), key_ptr, key_len)!
+				if embedded.matched {
+					result.$(field.name) = embedded.value
+					return StructKeyUnpackResult[T]{ value: result, matched: true }
+				}
+			}
+		}
+	}
+
+	return StructKeyUnpackResult[T]{ value: result }
 }
 
 // read_text_view returns a (ptr, len) view into the underlying buffer

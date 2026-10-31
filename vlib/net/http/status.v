@@ -156,21 +156,22 @@ pub fn status_from_int(code int) Status {
 	}
 }
 
-// str returns the string representation of Status `code`.
+// str returns the standard HTTP reason phrase for Status `code`.
+// Unknown, unassigned, and legacy nonstandard statuses have no standard phrase.
 pub fn (code Status) str() string {
 	return match code {
 		.cont { 'Continue' }
 		.switching_protocols { 'Switching Protocols' }
 		.processing { 'Processing' }
-		.checkpoint_draft { 'Checkpoint Draft' }
+		.checkpoint_draft { 'Early Hints' }
 		.ok { 'OK' }
 		.created { 'Created' }
 		.accepted { 'Accepted' }
-		.non_authoritative_information { 'Non Authoritative Information' }
+		.non_authoritative_information { 'Non-Authoritative Information' }
 		.no_content { 'No Content' }
 		.reset_content { 'Reset Content' }
 		.partial_content { 'Partial Content' }
-		.multi_status { 'Multi Status' }
+		.multi_status { 'Multi-Status' }
 		.already_reported { 'Already Reported' }
 		.im_used { 'IM Used' }
 		.multiple_choices { 'Multiple Choices' }
@@ -179,7 +180,7 @@ pub fn (code Status) str() string {
 		.see_other { 'See Other' }
 		.not_modified { 'Not Modified' }
 		.use_proxy { 'Use Proxy' }
-		.switch_proxy { 'Switch Proxy' }
+		.switch_proxy { '' }
 		.temporary_redirect { 'Temporary Redirect' }
 		.permanent_redirect { 'Permanent Redirect' }
 		.bad_request { 'Bad Request' }
@@ -200,12 +201,12 @@ pub fn (code Status) str() string {
 		.unsupported_media_type { 'Unsupported Media Type' }
 		.requested_range_not_satisfiable { 'Requested Range Not Satisfiable' }
 		.expectation_failed { 'Expectation Failed' }
-		.im_a_teapot { 'Im a teapot' }
+		.im_a_teapot { "I'm a teapot" }
 		.misdirected_request { 'Misdirected Request' }
 		.unprocessable_entity { 'Unprocessable Entity' }
 		.locked { 'Locked' }
 		.failed_dependency { 'Failed Dependency' }
-		.unordered_collection { 'Unordered Collection' }
+		.unordered_collection { 'Too Early' }
 		.upgrade_required { 'Upgrade Required' }
 		.precondition_required { 'Precondition Required' }
 		.too_many_requests { 'Too Many Requests' }
@@ -220,11 +221,11 @@ pub fn (code Status) str() string {
 		.variant_also_negotiates { 'Variant Also Negotiates' }
 		.insufficient_storage { 'Insufficient Storage' }
 		.loop_detected { 'Loop Detected' }
-		.bandwidth_limit_exceeded { 'Bandwidth Limit Exceeded' }
+		.bandwidth_limit_exceeded { '' }
 		.not_extended { 'Not Extended' }
 		.network_authentication_required { 'Network Authentication Required' }
-		.unassigned { 'Unassigned' }
-		else { 'Unknown' }
+		.unassigned { '' }
+		else { '' }
 	}
 }
 

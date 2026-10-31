@@ -22,7 +22,8 @@ fn build_v3() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${os.quoted_path(@VEXE)} -gc none -prealloc -path "${root_submodule_vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(v3_bin)} ${os.quoted_path(root_submodule_v3_src)}')
+		os.exec([@VEXE, '-gc', 'none', '-prealloc', '-path',
+			'${root_submodule_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, root_submodule_v3_src])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -57,9 +58,9 @@ fn test_v3_compiles_root_submodule_with_enum() {
 	defer {
 		os.chdir(old_wd) or {}
 	}
-	compile := os.execute('${os.quoted_path(v3_bin)} -o ${os.quoted_path(out)} .')
+	compile := os.exec([v3_bin, '-o', '${out}', '.'])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(os.quoted_path(out))
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '1', run.output
 }

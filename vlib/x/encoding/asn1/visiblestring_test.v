@@ -36,6 +36,7 @@ fn test_visible_string_handling() {
 			continue
 		}
 
+		assert idx == out.len
 		assert vsback.tag().tag_number() == int(TagType.visiblestring)
 		assert vsback.value == c.inp
 	}

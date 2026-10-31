@@ -90,8 +90,8 @@ struct X11ReadbackProbe {
 	actual_height          int
 	requested_width        int
 	requested_height       int
-	pixels_length          usize
-	expected_pixels_length usize
+	pixels_length          uint
+	expected_pixels_length uint
 }
 
 $if linux && x_multiwindow_x11 ? {
@@ -138,8 +138,8 @@ $if linux && x_multiwindow_x11 ? {
 		actual_height          int
 		requested_width        int
 		requested_height       int
-		pixels_length          usize
-		expected_pixels_length usize
+		pixels_length          uint
+		expected_pixels_length uint
 	}
 
 	@[typedef]
@@ -371,8 +371,8 @@ $if linux && x_multiwindow_x11 ? {
 	fn C.v_multiwindow_x11_subscribe_randr(display &C.Display, root X11NativeWindow, event_base &int, error_base &int) int
 	fn C.v_multiwindow_x11_is_randr_event(event_type int, event_base int) int
 	fn C.v_multiwindow_x11_update_randr_configuration(event &C.XEvent, event_base int)
-	fn C.v_multiwindow_x11_readback_rgba8(display &C.Display, connection voidptr, window X11NativeWindow, x int, y int, width int, height int, pixels &u8, pixels_len usize) int
-	fn C.v_multiwindow_x11_readback_probe(connection voidptr, window X11NativeWindow, width int, height int, pixels_len usize) C.VMultiwindowX11ReadbackProbe
+	fn C.v_multiwindow_x11_readback_rgba8(display &C.Display, connection voidptr, window X11NativeWindow, x int, y int, width int, height int, pixels &u8, pixels_len uint) int
+	fn C.v_multiwindow_x11_readback_probe(connection voidptr, window X11NativeWindow, width int, height int, pixels_len uint) C.VMultiwindowX11ReadbackProbe
 	fn C.v_multiwindow_x11_paint_rgba8_test_pattern(display &C.Display, window X11NativeWindow, x int, y int) int
 	fn C.v_multiwindow_x11_owner_modal_matches(display &C.Display, window X11NativeWindow, owner X11NativeWindow, modal int) int
 	fn C.v_multiwindow_x11_get_window_size(connection voidptr, window X11NativeWindow, out_width &int, out_height &int) int
@@ -1993,7 +1993,7 @@ fn (backend &X11Backend) service_readback_probe_for_test(id WindowId, width int,
 	$if linux && x_multiwindow_x11 ? {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
 		probe := C.v_multiwindow_x11_readback_probe(backend.checked_connection,
-			backend.windows[index].window, width, height, usize(width * height * 4))
+			backend.windows[index].window, width, height, uint(width * height * 4))
 		return X11ReadbackProbe{
 			attributes_available:   probe.attributes_available
 			map_state:              probe.map_state
@@ -4295,7 +4295,7 @@ fn (mut backend X11Backend) init_renderer() ! {
 			backend.release_egl_lifetime()
 			return error(err_render_native_renderer_unavailable)
 		}
-		C.v_multiwindow_linux_egl_get_display(u64(usize(backend.display)), &raw)
+		C.v_multiwindow_linux_egl_get_display(u64(uint(backend.display)), &raw)
 		backend.native_operations.bind_linux_egl_thread_lifetime_ticket(backend.egl_thread_ticket)
 		actual_display := raw.handle
 		if actual_display != 0 {

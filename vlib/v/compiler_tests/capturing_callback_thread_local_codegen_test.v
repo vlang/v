@@ -18,7 +18,8 @@ fn test_capturing_callbacks_use_owned_capture_contexts() {
 		os.rm(out + '.c') or {}
 	}
 	build :=
-		os.execute('${closure_tls_vexe} -gc none -path "${closure_tls_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${closure_tls_v3_src}')
+		os.exec([closure_tls_vexe, '-gc', 'none', '-path',
+			'${closure_tls_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${closure_tls_v3_src}'])
 	assert build.exit_code == 0, build.output
 	os.write_file(src, "module main
 
@@ -61,11 +62,11 @@ fn main() {
 ") or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${out}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 	c_source := os.read_file(out + '.c') or { panic(err) }
 	assert c_source.contains('closure__closure_create_with_data')
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -82,7 +83,8 @@ fn test_spawned_capturing_literals_use_owned_capture_contexts() {
 		os.rm(out + '.c') or {}
 	}
 	build :=
-		os.execute('${closure_tls_vexe} -gc none -path "${closure_tls_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${closure_tls_v3_src}')
+		os.exec([closure_tls_vexe, '-gc', 'none', '-path',
+			'${closure_tls_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${closure_tls_v3_src}'])
 	assert build.exit_code == 0, build.output
 	os.write_file(src, "module main
 
@@ -117,15 +119,16 @@ fn main() {
 ") or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${out}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 	c_source := os.read_file(out + '.c') or { panic(err) }
 	assert c_source.contains('closure__closure_create_with_data'), c_source
 	assert c_source.contains('__anon_fn_0_Ctx'), c_source
 	assert c_source.contains('_args_thread_wrapper'), c_source
-	assert c_source.contains(' = p->f'), c_source
-	assert c_source.contains('closure__closure_try_destroy((void*)p->f);'), c_source
-	run := os.execute(out)
+	// The spawn wrapper names its argument block `__v3_spawn_args`.
+	assert c_source.contains(' = __v3_spawn_args->f'), c_source
+	assert c_source.contains('closure__closure_try_destroy((void*)__v3_spawn_args->f);'), c_source
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -142,7 +145,8 @@ fn test_spawned_named_capturing_callback_survives_join_and_reuse() {
 		os.rm(out + '.c') or {}
 	}
 	build :=
-		os.execute('${closure_tls_vexe} -gc none -path "${closure_tls_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${closure_tls_v3_src}')
+		os.exec([closure_tls_vexe, '-gc', 'none', '-path',
+			'${closure_tls_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${closure_tls_v3_src}'])
 	assert build.exit_code == 0, build.output
 	os.write_file(src, "module main
 
@@ -159,11 +163,12 @@ fn main() {
 ") or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${out}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 	c_source := os.read_file(out + '.c') or { panic(err) }
-	assert !c_source.contains('closure__closure_try_destroy((void*)p->f);'), c_source
-	run := os.execute(out)
+	assert c_source.contains('_args_thread_wrapper'), c_source
+	assert !c_source.contains('closure__closure_try_destroy((void*)__v3_spawn_args->f);'), c_source
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }

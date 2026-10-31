@@ -1,5 +1,5 @@
 // vtest vflags: -w
-import json
+import json2
 
 struct Window {
 pub mut:
@@ -22,7 +22,7 @@ pub mut:
 fn test_encoding_works() {
 	mut settings := Settings{}
 	dump(settings)
-	encoded := json.encode(settings)
+	encoded := json2.encode(settings, escape_unicode: true)
 	println(encoded)
 	assert encoded == '{"window":{"width":1280,"height":720}}'
 }

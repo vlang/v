@@ -1,0 +1,14 @@
+vlib/v/checker/tests/voidptr_type_punned_alias_err.vv:20:20: notice: `source` is immutable, cannot have a mutable reference to an immutable object
+   18 | 
+   19 | fn dev(source &PunnedSource) {
+   20 |     mut alias := view(source)
+      |                       ~~~~~~
+   21 |     alias.x = 1
+   22 | }
+vlib/v/checker/tests/voidptr_type_punned_alias_err.vv:21:8: error: `alias.x` aliases mutable data from an immutable value
+   19 | fn dev(source &PunnedSource) {
+   20 |     mut alias := view(source)
+   21 |     alias.x = 1
+      |           ^
+   22 | }
+   23 |

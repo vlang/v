@@ -1,18 +1,18 @@
 module dlmalloc
 
-fn system_alloc(_ voidptr, size usize) (voidptr, usize, u32) {
+fn system_alloc(_ voidptr, size uint) (voidptr, uint, u32) {
 	return unsafe { nil }, 0, 0
 }
 
-fn system_remap(_ voidptr, ptr voidptr, oldsize usize, newsize usize, can_move bool) voidptr {
+fn system_remap(_ voidptr, ptr voidptr, oldsize uint, newsize uint, can_move bool) voidptr {
 	return unsafe { nil }
 }
 
-fn system_free_part(_ voidptr, ptr voidptr, oldsize usize, newsize usize) bool {
+fn system_free_part(_ voidptr, ptr voidptr, oldsize uint, newsize uint) bool {
 	return false
 }
 
-fn system_free(_ voidptr, ptr voidptr, size usize) bool {
+fn system_free(_ voidptr, ptr voidptr, size uint) bool {
 	return false
 }
 
@@ -24,7 +24,7 @@ fn system_allocates_zeros(_ voidptr) bool {
 	return false
 }
 
-fn system_page_size(_ voidptr) usize {
+fn system_page_size(_ voidptr) uint {
 	return 4096
 }
 

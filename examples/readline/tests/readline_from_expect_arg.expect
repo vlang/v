@@ -2,12 +2,15 @@
 
 # Allow a cold compiler/module-cache startup before the interactive prompt.
 set timeout 10
+source [file join [file dirname [info script]] raw_mode.tcl]
 set v_root [exec sh -c "git rev-parse --show-toplevel"]
 # Use input arguments for send and expect.
 set send_ [lindex $argv 0]
 set expect_ [lindex $argv 1]
 
 spawn $v_root/v run $v_root/examples/readline/readline.v
+# Give compilation its own deadline; keystroke responses still use timeout above.
+if {![wait_for_raw_mode 60]} { exit 1 }
 
 send $send_
 expect $expect_ {} timeout { exit 1 }

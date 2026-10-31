@@ -1,0 +1,89 @@
+struct Params {
+	n int
+}
+
+struct FixedParams {
+	n      int
+	values [4]int
+}
+
+struct App {}
+
+struct FixedApp {}
+
+struct RetainingApp {}
+
+struct ReturningApp {}
+
+__global retained = &FixedParams(unsafe { nil })
+
+fn (app &App) show(p &Params) int { return p.n }
+
+fn (app &FixedApp) show(p &FixedParams) int { return p.n + p.values[0] }
+
+fn (app &RetainingApp) show(p &FixedParams) int {
+	retained = p
+	return p.n
+}
+
+fn (app &ReturningApp) show(p &FixedParams) &FixedParams { return p }
+
+fn direct[T](app &T, n int) int {
+	p := Params{ n: n }
+	$for method in T.methods {
+		$if method.return_type is int {
+			return app.$method(&p)
+		}
+	}
+	return 0
+}
+
+fn through_local[T](app &T, n int) int {
+	p := Params{ n: n }
+	$for method in T.methods {
+		$if method.return_type is int {
+			result := app.$method(&p)
+			return result
+		}
+	}
+	return 0
+}
+
+fn fixed_direct[T](app &T, n int) int {
+	p := FixedParams{ n: n, values: [n + 1, 0, 0, 0]! }
+	$for method in T.methods {
+		$if method.return_type is int {
+			return app.$method(&p)
+		}
+	}
+	return 0
+}
+
+fn pointer_result[T](app &T, n int) &FixedParams {
+	p := FixedParams{ n: n, values: [n + 1, 0, 0, 0]! }
+	$for method in T.methods {
+		$if method.return_type is &FixedParams {
+			return app.$method(&p)
+		}
+	}
+	panic('missing pointer method')
+}
+
+fn main() {
+	app := App{}
+	fixed := FixedApp{}
+	retaining := RetainingApp{}
+	returning := ReturningApp{}
+	for i in 0 .. 20 {
+		assert direct(&app, i) == i
+		assert through_local(&app, i) == i
+		assert fixed_direct(&fixed, i) == i * 2 + 1
+	}
+	assert fixed_direct(&retaining, 30) == 30
+	assert retained.n == 30
+	assert retained.values[0] == 31
+	result := pointer_result(&returning, 40)
+	assert result.n == 40
+	assert result.values[0] == 41
+	println('OK')
+}

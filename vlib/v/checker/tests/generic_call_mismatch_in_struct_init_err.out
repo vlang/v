@@ -1,0 +1,7 @@
+vlib/v/checker/tests/generic_call_mismatch_in_struct_init_err.vv:15:3: error: cannot assign to field `counts`: expected `map[string]int`, not `map[int]int`
+   13 |     }
+   14 |     att := Attribute{
+   15 |         counts: same_counts(numbers)
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   16 |     }
+   17 |     println(att)

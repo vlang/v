@@ -163,17 +163,17 @@ fn dump_windows_sokol_gfx_cflags(extra_vflags []string) ?string {
 	}
 	source_path := write_sokol_gfx_probe(test_root)
 	mut cmd := [
-		os.quoted_path(@VEXE),
+		@VEXE,
 		'-dump-c-flags',
 		'-',
 		'-os',
 		'windows',
 		'-o',
-		os.quoted_path(os.join_path(test_root, 'sokol_gfx_probe.exe')),
+		os.join_path(test_root, 'sokol_gfx_probe.exe'),
 	]
 	cmd << extra_vflags
-	cmd << os.quoted_path(source_path)
-	res := os.execute(cmd.join(' '))
+	cmd << source_path
+	res := os.exec(cmd)
 	if res.exit_code != 0 {
 		eprintln('> skipping Windows sokol cflag check: `${cmd.join(' ')}` failed with exit code ${res.exit_code}:\n${res.output}')
 		return none
@@ -194,15 +194,15 @@ fn generated_windows_c(extra_vflags []string, source string) ?string {
 	source_path := os.join_path(test_root, 'main.v')
 	os.write_file(source_path, source) or { panic(err) }
 	mut cmd := [
-		os.quoted_path(@VEXE),
+		@VEXE,
 		'-o',
 		'-',
 		'-os',
 		'windows',
 	]
 	cmd << extra_vflags
-	cmd << os.quoted_path(source_path)
-	res := os.execute(cmd.join(' '))
+	cmd << source_path
+	res := os.exec(cmd)
 	if res.exit_code != 0 {
 		eprintln('> skipping Windows sokol codegen check: `${cmd.join(' ')}` failed with exit code ${res.exit_code}:\n${res.output}')
 		return none

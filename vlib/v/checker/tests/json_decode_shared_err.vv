@@ -1,8 +1,0 @@
-import json
-
-fn main() {
-	shared data := [1, 2, 3]
-	rlock data {
-		println(json.encode(data))
-	}
-}

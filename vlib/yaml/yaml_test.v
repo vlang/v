@@ -65,6 +65,8 @@ fn test_generic_encode_decode_with_json_attrs() ! {
 	assert encoded.contains('"role": "manager"')
 	assert encoded.contains('"address":')
 	assert encoded.contains('- 8080')
+	// The port must be written as an integer, not as `8080.0`.
+	assert !encoded.contains('8080.0')
 
 	decoded := decode[AppConfig](encoded)!
 	assert decoded == config

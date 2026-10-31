@@ -1,0 +1,31 @@
+#include <stdio.h>
+
+enum OpaqueEnum {
+	first = C.SEEK_CUR
+	next
+	reset = 10
+}
+
+enum CopiedOpaqueEnum {
+	first = int(OpaqueEnum.first)
+	next
+}
+
+enum BackedOpaqueEnum as u8 {
+	first = C.SEEK_CUR
+	next
+}
+
+type OpaqueEnumAlias = OpaqueEnum
+
+fn main() {
+	println(unsafe { OpaqueEnum(1) })
+	println(unsafe { OpaqueEnum(2) })
+	println(unsafe { OpaqueEnum(10) })
+	println(unsafe { CopiedOpaqueEnum(1) })
+	println(unsafe { CopiedOpaqueEnum(2) })
+	println(unsafe { OpaqueEnumAlias(1) })
+	println(unsafe { OpaqueEnumAlias(2) })
+	println(unsafe { BackedOpaqueEnum(1) })
+	println(unsafe { BackedOpaqueEnum(2) })
+}

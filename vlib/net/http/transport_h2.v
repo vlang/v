@@ -192,8 +192,8 @@ fn h2_dial_probe_ssl(req &Request, host string, port int) !H2ProbeResult {
 // ever dialing at all: see h2_dial_probe_vschannel). Falls back to
 // h2_use_h1_pool_or_dial's existing pooled-or-dial-fresh path, which is
 // itself platform-aware via tls_fresh_round_trip (native Windows dials
-// through vschannel_fresh_round_trip there, never silently switching TLS
-// backends).
+// through vschannel_fresh_round_trip there, with a net.ssl retry only for
+// SEC_E_INVALID_TOKEN before request bytes are sent).
 fn (mut t Transport) h2_fallback_h1(req &Request, key string, raw string, method Method, host string, port int, path string, data string, header Header) !Response {
 	return t.h2_use_h1_pool_or_dial(req, key, raw, method, host, port, path, data, header)
 }
@@ -369,6 +369,7 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 	}
 	mut mux := new_h2_mux_conn(transport, close_transport)
 	t.h2_conns[key] = mux
+	t.start_idle_reaper_locked()
 	t.h2_dial_id[key] = dial_id
 	t.key_proto[key] = 2
 	t.dialing.delete(key)
@@ -534,5 +535,5 @@ fn do_h2(req &Request, mut conn H2MuxConn, method Method, host string, port int,
 	if req.on_finish != unsafe { nil } {
 		req.on_finish(req, u64(h2resp.body.len))!
 	}
-	return h2_response_to_http(h2resp)
+	return h2_response_to_http(h2resp, raw_body: req.raw_response_body)
 }

@@ -1,0 +1,39 @@
+enum First {
+	a
+	b
+}
+
+enum Second {
+	a
+	b
+}
+
+fn main() {
+	for i in 0 .. 3 {
+		mixed := match i {
+			0 { First.a }
+			1 { .b }
+			else { Second.a }
+		}
+		invalid := match i {
+			0 { First.a }
+			else { .missing }
+		}
+		println('${mixed} ${invalid}')
+		wrapped := match i {
+			0 { First.a }
+			else { (.missing) }
+		}
+		flags := match i {
+			0 { Access.read }
+			else { .read | (.missing) }
+		}
+		println('${wrapped} ${flags}')
+	}
+}
+
+@[flag]
+enum Access {
+	read
+	write
+}

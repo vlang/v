@@ -79,8 +79,8 @@ mut:
 	dwMaximumWindowSize C.COORD
 }
 
-fn C.ReadConsoleInput(hConsoleInput C.HANDLE, lpBuffer &C.INPUT_RECORD, nLength u32, lpNumberOfEventsRead &u32) bool
+fn C.ReadConsoleInput(hConsoleInput C.HANDLE, lpBuffer &C.INPUT_RECORD, nLength C.DWORD, lpNumberOfEventsRead &C.DWORD) bool
 
-fn C.GetNumberOfConsoleInputEvents(hConsoleInput C.HANDLE, lpcNumberOfEvents &u32) bool
+fn C.GetNumberOfConsoleInputEvents(hConsoleInput C.HANDLE, lpcNumberOfEvents &C.DWORD) bool
 
 fn C.GetConsoleScreenBufferInfo(handle C.HANDLE, info &C.CONSOLE_SCREEN_BUFFER_INFO) bool

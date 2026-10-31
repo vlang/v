@@ -12,6 +12,8 @@ pub:
 
 struct SchemaContext {
 	root_dir string
+mut:
+	cache map[string]JsonValue
 }
 
 // validate_json_file validates one strict JSON document against a local contract schema.
@@ -20,8 +22,9 @@ pub fn validate_json_file(schema_path string, input_path string) ![]SchemaIssue 
 	input_source := os.read_file(input_path)!
 	schema := parse_strict_json(schema_source)!
 	instance := parse_strict_json(input_source)!
-	context := SchemaContext{
+	mut context := SchemaContext{
 		root_dir: os.dir(os.real_path(schema_path))
+		cache:    map[string]JsonValue{}
 	}
 	mut issues := context.validate(schema, instance, '$', os.real_path(schema_path))!
 	if issues.len == 0 && os.file_name(schema_path) == 'target-state.schema.json' {
@@ -35,8 +38,9 @@ pub fn validate_json_file(schema_path string, input_path string) ![]SchemaIssue 
 // validate_json_value validates an already parsed value against a schema file.
 pub fn validate_json_value(schema_path string, instance JsonValue) ![]SchemaIssue {
 	schema := parse_strict_json(os.read_file(schema_path)!)!
-	context := SchemaContext{
+	mut context := SchemaContext{
 		root_dir: os.dir(os.real_path(schema_path))
+		cache:    map[string]JsonValue{}
 	}
 	mut issues := context.validate(schema, instance, '$', os.real_path(schema_path))!
 	if issues.len == 0 && os.file_name(schema_path) == 'target-state.schema.json' {
@@ -47,7 +51,22 @@ pub fn validate_json_value(schema_path string, instance JsonValue) ![]SchemaIssu
 	return issues
 }
 
-fn (context SchemaContext) validate(schema JsonValue, instance JsonValue, path string,
+// validate_json_value_with_seeded_reference_for_test runs the schema pass of validate_json_value, but the
+// reference cache starts with seeded_value at seeded_path. A test uses it to show that a $ref resolved to
+// that path is served from the cache rather than read from disk.
+pub fn validate_json_value_with_seeded_reference_for_test(schema_path string, instance JsonValue,
+	seeded_path string, seeded_value JsonValue) ![]SchemaIssue {
+	schema := parse_strict_json(os.read_file(schema_path)!)!
+	mut cache := map[string]JsonValue{}
+	cache[seeded_path] = seeded_value
+	mut context := SchemaContext{
+		root_dir: os.dir(os.real_path(schema_path))
+		cache:    cache
+	}
+	return context.validate(schema, instance, '$', os.real_path(schema_path))
+}
+
+fn (mut context SchemaContext) validate(schema JsonValue, instance JsonValue, path string,
 	current_schema_path string) ![]SchemaIssue {
 	if schema.kind == .boolean {
 		if schema.bool_value {
@@ -159,7 +178,7 @@ fn (context SchemaContext) validate(schema JsonValue, instance JsonValue, path s
 	return issues
 }
 
-fn (context SchemaContext) validate_object(schema JsonValue, instance JsonValue, path string,
+fn (mut context SchemaContext) validate_object(schema JsonValue, instance JsonValue, path string,
 	current_schema_path string) ![]SchemaIssue {
 	mut issues := []SchemaIssue{}
 	if minimum := schema.object_value('minProperties') {
@@ -225,7 +244,7 @@ fn (context SchemaContext) validate_object(schema JsonValue, instance JsonValue,
 	return issues
 }
 
-fn (context SchemaContext) validate_array(schema JsonValue, instance JsonValue, path string,
+fn (mut context SchemaContext) validate_array(schema JsonValue, instance JsonValue, path string,
 	current_schema_path string) ![]SchemaIssue {
 	mut issues := []SchemaIssue{}
 	if minimum := schema.object_value('minItems') {
@@ -392,7 +411,7 @@ fn require_schema_array(value JsonValue, keyword string) ![]JsonValue {
 	return value.array_value
 }
 
-fn (context SchemaContext) resolve_reference(reference string,
+fn (mut context SchemaContext) resolve_reference(reference string,
 	current_schema_path string) !(JsonValue, string) {
 	if reference.contains('://') || reference.starts_with('/') || reference.contains('\\') {
 		return error('network, absolute, and non-POSIX schema references are forbidden')
@@ -411,7 +430,13 @@ fn (context SchemaContext) resolve_reference(reference string,
 	if os.dir(resolved_path) != context.root_dir {
 		return error('schema reference escaped the contract schema directory')
 	}
-	mut resolved := parse_strict_json(os.read_file(resolved_path)!)!
+	// Each top-level validation owns its cache. The methods take SchemaContext by mutable reference, so a
+	// write to the map field is visible to every later lookup in the same validation.
+	if resolved_path !in context.cache {
+		parsed := parse_strict_json(os.read_file(resolved_path)!)!
+		context.cache[resolved_path] = parsed
+	}
+	mut resolved := context.cache[resolved_path]
 	if pointer != '' {
 		if !pointer.starts_with('/') {
 			return error('schema fragment must be a JSON pointer')

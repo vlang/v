@@ -291,6 +291,7 @@ fn empty_array_from_generic_typ[T]() []T {
 fn test_array_init_from_typeof() {
 	fixed := [1, 2, 3]!
 	dyn := []typeof(fixed[0]){}
+	assert fixed == [1, 2, 3]!
 	assert typeof(dyn).name == '[]int'
 	assert dyn.len == 0
 }

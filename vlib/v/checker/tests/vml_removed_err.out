@@ -1,0 +1,6 @@
+vlib/v/checker/tests/vml_removed_err.vv:2:10: error: `$vml` has been removed; generate V from VML with `ui2 gen` instead
+    1 | fn main() {
+    2 |     view := $vml('definitely_missing.vml')
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    3 |     println(typeof(view).name)
+    4 |     println('survived')

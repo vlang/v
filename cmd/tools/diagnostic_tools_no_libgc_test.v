@@ -18,14 +18,14 @@ fn test_vdoctor_has_no_libgc_dependency() {
 	vexe := @VEXE
 	// `v doctor` builds the vdoctor tool through `util.launch_tool` (the code path
 	// that received the `-gc none` fix) and then runs it.
-	res := os.execute('${os.quoted_path(vexe)} doctor')
+	res := os.exec([vexe, 'doctor'])
 	assert res.exit_code == 0, res.output
 	vdoctor_exe := os.join_path(os.dir(vexe), 'cmd', 'tools', 'vdoctor')
 	if !os.exists(vdoctor_exe) {
 		eprintln('skipping test, `${vdoctor_exe}` was not produced')
 		return
 	}
-	libs := os.execute('${os.quoted_path(otool)} -L ${os.quoted_path(vdoctor_exe)}')
+	libs := os.exec(['${otool}', '-L', vdoctor_exe])
 	assert libs.exit_code == 0, libs.output
 	assert !libs.output.contains('libgc'), 'vdoctor must not depend on libgc:\n${libs.output}'
 }

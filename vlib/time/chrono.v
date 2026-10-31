@@ -6,7 +6,8 @@ module time
 // Note that function will return negative values for days before 1970-01-01.
 pub fn days_from_unix_epoch(year int, month int, day int) int {
 	y := if month <= 2 { year - 1 } else { year }
-	era := y / 400
+	// the era is floor(y / 400), while `/` truncates toward zero
+	era := (if y >= 0 { y } else { y - 399 }) / 400
 	year_of_the_era := y - era * 400 // [0, 399]
 	day_of_year := (153 * (month + (if month > 2 { -3 } else { 9 })) + 2) / 5 + day - 1 // [0, 365]
 	day_of_the_era := year_of_the_era * 365 + year_of_the_era / 4 - year_of_the_era / 100 +

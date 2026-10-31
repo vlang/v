@@ -4,22 +4,22 @@ module builtin
 
 // Note: they will NOT be used, since calls to them are wrapped with `$if gcboehm ? { }`
 
-fn C.GC_MALLOC(n usize) voidptr
+fn C.GC_MALLOC(n uint) voidptr
 
-fn C.GC_MALLOC_ATOMIC(n usize) voidptr
+fn C.GC_MALLOC_ATOMIC(n uint) voidptr
 
-fn C.GC_MALLOC_UNCOLLECTABLE(n usize) voidptr
+fn C.GC_MALLOC_UNCOLLECTABLE(n uint) voidptr
 
-fn C.GC_REALLOC(ptr voidptr, n usize) voidptr
+fn C.GC_REALLOC(ptr voidptr, n uint) voidptr
 
 fn C.GC_FREE(ptr voidptr)
 
-fn C.GC_memalign(align isize, size isize) voidptr
+fn C.GC_memalign(align uint, size uint) voidptr
 
-fn C.GC_get_heap_usage_safe(pheap_size &usize, pfree_bytes &usize, punmapped_bytes &usize, pbytes_since_gc &usize,
-	ptotal_bytes &usize)
+fn C.GC_get_heap_usage_safe(pheap_size &uint, pfree_bytes &uint, punmapped_bytes &uint, pbytes_since_gc &uint,
+	ptotal_bytes &uint)
 
-fn C.GC_get_memory_use() usize
+fn C.GC_get_memory_use() uint
 
 fn C.GC_gcollect()
 
@@ -31,7 +31,11 @@ pub fn gc_check_leaks() {}
 // It will always return false, with `-gc none`.
 // See also gc_disable() and gc_enable().
 pub fn gc_is_enabled() bool {
-	return false
+	$if vgc ? {
+		return vgc_is_enabled()
+	} $else {
+		return false
+	}
 }
 
 // gc_enable explicitly enables the GC.
@@ -39,19 +43,31 @@ pub fn gc_is_enabled() bool {
 // and also that by default the GC is on, so you do not need to enable it.
 // See also gc_disable() and gc_collect().
 // Note that gc_enable() is a NOP with `-gc none`.
-pub fn gc_enable() {}
+pub fn gc_enable() {
+	$if vgc ? {
+		vgc_enable(true)
+	}
+}
 
 // gc_disable explicitly disables the GC.
 // Do not forget to enable it again by calling gc_enable(), when your program is otherwise idle, and can afford it.
 // See also gc_enable() and gc_collect().
 // Note that gc_disable() is a NOP with `-gc none`.
-pub fn gc_disable() {}
+pub fn gc_disable() {
+	$if vgc ? {
+		vgc_enable(false)
+	}
+}
 
 // gc_collect explicitly performs a garbage collection.
 // When the GC is not on, (with `-gc none`), it is a NOP.
-pub fn gc_collect() {}
+pub fn gc_collect() {
+	$if vgc ? {
+		vgc_collect()
+	}
+}
 
-pub type FnGC_WarnCB = fn (msg &char, arg usize)
+pub type FnGC_WarnCB = fn (msg &char, arg uint)
 
 fn C.GC_get_warn_proc() FnGC_WarnCB
 fn C.GC_set_warn_proc(cb FnGC_WarnCB)
@@ -65,4 +81,4 @@ pub fn gc_get_warn_proc() {}
 pub fn gc_set_warn_proc(cb FnGC_WarnCB) {}
 
 // used by builtin_init
-fn internal_gc_warn_proc_none(msg &char, arg usize) {}
+fn internal_gc_warn_proc_none(msg &char, arg uint) {}

@@ -13,6 +13,9 @@ import os
 const macho_magic_64 = u32(0xfeedfacf)
 const macho_lc_segment_64 = u32(0x19)
 const macho_lc_code_signature = u32(0x1d)
+const macho_lc_dyld_chained_fixups = u32(0x80000034)
+const dyld_chained_fixups_header_size = 28
+const dyld_chained_ptr_start_none = u16(0xffff)
 const macho_header_size = 32
 const macho_page_size = 16384
 const cs_page_shift = 12
@@ -83,6 +86,9 @@ mut:
 	tail_start   int
 	load_end     int
 	final_len    int
+	// The chained fixups that fastc_trim_chained_fixup_pages changed, if any.
+	fixups_start int
+	fixups_end   int
 }
 
 fn fastc_macho_sign_capacity(original_len int, ident string) int {
@@ -123,6 +129,12 @@ fn fastc_sign_macho_adhoc_buffered(path string) ! {
 		out.close()
 		return err
 	}
+	if patch.fixups_end > patch.fixups_start {
+		out.write_to(u64(patch.fixups_start), file[patch.fixups_start..patch.fixups_end]) or {
+			out.close()
+			return err
+		}
+	}
 	out.write_to(u64(patch.tail_start), file[patch.tail_start..patch.final_len]) or {
 		out.close()
 		return err
@@ -150,6 +162,8 @@ fn fastc_patch_macho_signature(mut file []u8, original_len int, path string) !Fa
 	mut linkedit_cmd := -1
 	mut text_limit := u64(0)
 	mut signature_cmd := -1
+	mut fixups_cmd := -1
+	mut segment_filesizes := []u64{}
 	mut offset := macho_header_size
 	for _ in 0 .. ncmds {
 		if offset + 8 > original_len {
@@ -167,13 +181,22 @@ fn fastc_patch_macho_signature(mut file []u8, original_len int, path string) !Fa
 			} else if segname == '__TEXT' {
 				text_limit = fastc_read_u64_le(file, offset + 48) // filesize
 			}
+			segment_filesizes << fastc_read_u64_le(file, offset + 48)
 		} else if cmd == macho_lc_code_signature {
 			signature_cmd = offset
+		} else if cmd == macho_lc_dyld_chained_fixups && cmdsize >= 16 {
+			fixups_cmd = offset
 		}
 		offset += cmdsize
 	}
 	if linkedit_cmd < 0 {
 		return error('`${path}`: no __LINKEDIT segment')
+	}
+	// The fixups are hashed too, so they are settled before the signature.
+	fixups_start, fixups_end := if fixups_cmd >= 0 {
+		fastc_trim_chained_fixup_pages(mut file, original_len, fixups_cmd, segment_filesizes)
+	} else {
+		0, 0
 	}
 	// The signed range ends where the signature starts: at the old signature
 	// when there is one, else at the (16-byte padded) end of the file.
@@ -230,7 +253,89 @@ fn fastc_patch_macho_signature(mut file []u8, original_len int, path string) !Fa
 		tail_start:   tail_start
 		load_end:     load_end
 		final_len:    code_limit + signature.len
+		fixups_start: fixups_start
+		fixups_end:   fixups_end
 	}
+}
+
+// fastc_trim_chained_fixup_pages makes the chained fixups of each segment list
+// only the pages that the file backs, as ld64 does. TinyCC lists the zero-fill
+// `__bss` pages at the end of `__DATA` too, and the dyld of macOS 27 maps every
+// listed page from the file, so those globals start out with the bytes of
+// `__LINKEDIT` instead of zeros (https://github.com/vlang/v/issues/29744).
+// `fixups_cmd` is the offset of the LC_DYLD_CHAINED_FIXUPS command, and
+// `segment_filesizes` has the file size of each segment, in load command order.
+// Pages with fixups stay listed. It returns the range of `file` that changed;
+// an empty one when nothing did.
+fn fastc_trim_chained_fixup_pages(mut file []u8, file_len int, fixups_cmd int, segment_filesizes []u64) (int, int) {
+	data_start := int(fastc_read_u32_le(file, fixups_cmd + 8))
+	data_size := int(fastc_read_u32_le(file, fixups_cmd + 12))
+	if data_start < 0 || data_size < dyld_chained_fixups_header_size
+		|| data_start > file_len - data_size {
+		return 0, 0
+	}
+	data_end := data_start + data_size
+	starts_offset := int(fastc_read_u32_le(file, data_start + 4))
+	image := data_start + starts_offset
+	if starts_offset < dyld_chained_fixups_header_size || image > data_end - 4 {
+		return 0, 0
+	}
+	seg_count := int(fastc_read_u32_le(file, image))
+	if seg_count < 0 || seg_count > segment_filesizes.len || image + 4 + seg_count * 4 > data_end {
+		return 0, 0
+	}
+	mut changed_start := data_end
+	mut changed_end := data_start
+	for i in 0 .. seg_count {
+		info_field := image + 4 + i * 4
+		info_offset := int(fastc_read_u32_le(file, info_field))
+		// dyld_chained_starts_in_segment: size u32, page_size u16, pointer_format
+		// u16, segment_offset u64, max_valid_pointer u32, page_count u16,
+		// page_start [page_count]u16.
+		segment := image + info_offset
+		if info_offset <= 0 || segment > data_end - 22 {
+			continue
+		}
+		page_size := u64(fastc_read_u16_le(file, segment + 4))
+		page_count := int(fastc_read_u16_le(file, segment + 20))
+		if page_size == 0 || segment + 22 + page_count * 2 > data_end {
+			continue
+		}
+		backed := int((segment_filesizes[i] + page_size - 1) / page_size)
+		if backed >= page_count {
+			continue
+		}
+		mut zero_fill_has_fixups := false
+		for page in backed .. page_count {
+			if fastc_read_u16_le(file, segment + 22 + page * 2) != dyld_chained_ptr_start_none {
+				zero_fill_has_fixups = true
+				break
+			}
+		}
+		if zero_fill_has_fixups {
+			continue
+		}
+		mut field := segment + 20
+		mut field_end := field + 2
+		if backed == 0 {
+			// No page is backed by the file, so none has fixups: offset 0 says so.
+			field = info_field
+			field_end = info_field + 4
+			fastc_write_u32_le(mut file, info_field, 0)
+		} else {
+			fastc_write_u16_le(mut file, field, u16(backed))
+		}
+		if field < changed_start {
+			changed_start = field
+		}
+		if field_end > changed_end {
+			changed_end = field_end
+		}
+	}
+	if changed_end <= changed_start {
+		return 0, 0
+	}
+	return changed_start, changed_end
 }
 
 fn fastc_adhoc_signature_size(ident string, code_limit int) int {
@@ -352,6 +457,17 @@ fn fastc_hash_code_pages(data &u8, hashes &u8, page_start int, page_end int, cod
 		unsafe { vmemcpy(hashes + page * cs_hash_size, digest.data, cs_hash_size) }
 	}
 	return true
+}
+
+@[direct_array_access]
+fn fastc_read_u16_le(data []u8, offset int) u16 {
+	return u16(data[offset]) | (u16(data[offset + 1]) << 8)
+}
+
+@[direct_array_access]
+fn fastc_write_u16_le(mut data []u8, offset int, value u16) {
+	data[offset] = u8(value)
+	data[offset + 1] = u8(value >> 8)
 }
 
 @[direct_array_access]

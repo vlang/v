@@ -1,0 +1,61 @@
+// These none checks unwrapped the variable already in V 0.5.2, so an
+// `or {}` block on it stays an error.
+fn mut_then_branch(n int) int {
+	mut x := ?int(n)
+	if x != none {
+		return x or { 0 }
+	}
+	return 0
+}
+
+fn else_if_then_branch(x ?int, b bool) int {
+	if b {
+		return 1
+	} else if x != none {
+		return x or { 0 }
+	}
+	return 0
+}
+
+fn and_chain_then_branch(x ?int, b bool) int {
+	if b && x != none {
+		return x or { 0 }
+	}
+	return 0
+}
+
+fn else_branch(x ?int) int {
+	if x == none {
+		return 1
+	} else {
+		return x or { 0 }
+	}
+}
+
+fn guard_in_parens(x ?int) int {
+	if (x == none) {
+		return 1
+	}
+	return x or { 0 }
+}
+
+fn panic_guard_nested_use(x ?int) int {
+	if x == none {
+		panic('x')
+	}
+	for i in 0 .. 2 {
+		if i > 0 {
+			return x or { 0 }
+		}
+	}
+	return 1
+}
+
+fn main() {
+	println(mut_then_branch(1))
+	println(else_if_then_branch(2, false))
+	println(and_chain_then_branch(3, true))
+	println(else_branch(4))
+	println(guard_in_parens(5))
+	println(panic_guard_nested_use(6))
+}

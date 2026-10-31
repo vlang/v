@@ -20,7 +20,6 @@ fn test_sort_the_set() {
 	objs.add_element(valbol)! // tag: 1
 	objs.add_element(valnull)! // tag: 5
 
-	awal := objs.fields.clone()
 	mut exp := Set.new()!
 	exp.add_element(valbol)!
 	exp.add_element(val12)!
@@ -47,8 +46,6 @@ fn test_sort_the_setof() ! {
 	val4 := Integer.from_i64(4325)
 	val5 := Integer.from_i64(44446)
 	val0 := Integer.from_i64(0)
-	val6 := Boolean.new(false)
-
 	// randomly added to array
 	objs.add_element(val4)! // tag: 2
 	objs.add_element(val2)! // tag: 2

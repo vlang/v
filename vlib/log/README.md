@@ -59,6 +59,9 @@ After 2025/01/21, the `log` module outputs to `stderr` by default.
 Before that, it used `stdout` by default.
 
 If you want to restore the previous behaviour, you have to explicitly call `log.use_stdout()` :
+
+The replacement logger respects `-d log_default_level`, which defaults to `info`.
+
 ```v
 import os
 import log
@@ -72,3 +75,13 @@ fn main() {
 
 If you want to just silence the note about the stdout -> stderr, during the transition period,
 call `l.set_output_stream(os.stderr())` explicitly.
+
+## Structured records
+
+`Log` and `ThreadSafeLog` support `debug_with`, `info_with`, `warn_with`, `error_with`,
+and `fatal_with`, each taking a message and a `map[string]string` of fields.
+These methods emit one JSON object per line and respect the configured log level and targets.
+The built-in `time`, `level`, and `msg` keys precede user fields sorted by key.
+Fields with those reserved names are ignored, and all string keys and values are JSON escaped.
+The plain logging methods retain their text format. `fatal_with` panics like `fatal`.
+Use `ThreadSafeLog` when multiple threads share a logger.

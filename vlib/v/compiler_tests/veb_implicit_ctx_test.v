@@ -7,7 +7,7 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_veb_ctx_test')
-	build := os.execute('${vexe} -gc none -o ${v3_bin} ${v3_src}')
+	build := os.exec([vexe, '-gc', 'none', '-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -37,15 +37,15 @@ pub fn (app &App) index() veb.Result {
 			return app.$method()
 		}
 	}
-	return veb.Result{}
+	return veb.no_result()
 }
 
 pub fn (app &App) helper() veb.Result {
-	return veb.Result{}
+	return veb.no_result()
 }
 
 pub fn (app &App) show(id int) veb.Result {
-	return veb.Result{}
+	return veb.no_result()
 }
 
 fn main() {
@@ -57,7 +57,7 @@ fn main() {
 	os.write_file(src_file, src) or { panic(err) }
 	c_out := os.join_path(os.temp_dir(), 'v3_veb_ctx.c')
 	os.rm(c_out) or {}
-	compile := os.execute('${v3_bin} -no-memory-limit ${src_file} -o ${c_out}')
+	compile := os.exec([v3_bin, '-no-memory-limit', src_file, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_out) or { '' }
 	// No-arg reflected delegation forwards the enclosing ctx in the ctx slot.
@@ -94,7 +94,7 @@ pub fn (app &App) index(mut array Context) veb.Result {
 }
 
 pub fn (app &App) helper() veb.Result {
-	return veb.Result{}
+	return veb.no_result()
 }
 
 fn main() {
@@ -106,7 +106,7 @@ fn main() {
 		panic(err)
 	}
 	bin_out := os.join_path(root, 'app')
-	compile := os.execute('${v3_bin} -no-memory-limit -nocache ${src_file} -o ${bin_out}')
+	compile := os.exec([v3_bin, '-no-memory-limit', '-nocache', src_file, '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -149,7 +149,7 @@ fn main() {
 	os.write_file(src_file, src) or { panic(err) }
 	bin_out := os.join_path(os.temp_dir(), 'v3_veb_implicit_ctx_unnamed_route')
 	os.rm(bin_out) or {}
-	compile := os.execute('${v3_bin} -no-memory-limit ${src_file} -o ${bin_out}')
+	compile := os.exec([v3_bin, '-no-memory-limit', src_file, '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -192,7 +192,7 @@ fn main() {}
 "
 	os.write_file(os.join_path(root, 'main.v'), main_src) or { panic(err) }
 	out := os.join_path(root, 'out')
-	compile := os.execute('${v3_bin} -no-memory-limit ${os.join_path(root, 'main.v')} -o ${out}')
+	compile := os.exec([v3_bin, '-no-memory-limit', os.join_path(root, 'main.v'), '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -233,7 +233,7 @@ fn main() {
 	os.write_file(src_file, src) or { panic(err) }
 	c_out := os.join_path(os.temp_dir(), 'v3_veb_complete_context_receiver.c')
 	os.rm(c_out) or {}
-	compile := os.execute('${v3_bin} -no-memory-limit ${src_file} -o ${c_out}')
+	compile := os.exec([v3_bin, '-no-memory-limit', src_file, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_out) or { '' }
 	assert c_code.contains('Context__before_request(user_context)'), c_code
@@ -242,7 +242,7 @@ fn main() {
 	assert !c_code.contains('v_struct'), c_code
 	bin_out := os.join_path(os.temp_dir(), 'v3_veb_complete_context_receiver')
 	os.rm(bin_out) or {}
-	native_compile := os.execute('${v3_bin} -no-memory-limit ${src_file} -o ${bin_out}')
+	native_compile := os.exec([v3_bin, '-no-memory-limit', src_file, '-o', bin_out])
 	assert native_compile.exit_code == 0, native_compile.output
 }
 
@@ -269,7 +269,7 @@ fn (mut ctx Context) not_found() veb.Result {
 fn (app App) bookmark(kind string, id string) veb.Result {
 	_ = app
 	println(kind + ":" + id)
-	return veb.Result{}
+	return veb.no_result()
 }
 
 fn dispatch[A, X](app A, mut ctx X, args []string) {
@@ -291,9 +291,9 @@ fn main() {
 	os.write_file(src_file, src) or { panic(err) }
 	bin_out := os.join_path(os.temp_dir(), 'v3_veb_reflected_implicit_ctx')
 	os.rm(bin_out) or {}
-	compile := os.execute('${v3_bin} -no-memory-limit -b c ${src_file} -o ${bin_out}')
+	compile := os.exec([v3_bin, '-no-memory-limit', '-b', 'c', src_file, '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin_out)
+	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'first:second', run.output
 }
@@ -301,7 +301,8 @@ fn main() {
 // A reflected `app.$method(mut ctx)` call passes the hidden veb context as its
 // only argument. Handlers that declare no parameters of their own still accept
 // it, so the specialization must be kept: dropping it as an arity mismatch made
-// veb answer `HTTP/ 0` for every route whose handler omitted `ctx`.
+// veb answer `HTTP/ 0` for every route whose handler omitted `ctx`. (A handler
+// that needs more arguments is a reflected-call arity error, so none is here.)
 fn test_veb_reflected_implicit_ctx_call_without_spread_args() {
 	v3_bin := build_v3()
 	src := '
@@ -315,17 +316,12 @@ pub struct App {}
 
 pub fn (mut app App) index() veb.Result {
 	println("index called")
-	return veb.Result{}
+	return veb.no_result()
 }
 
 pub fn (mut app App) explicit(mut ctx Context) veb.Result {
 	println("explicit called")
-	return veb.Result{}
-}
-
-pub fn (mut app App) show(id string) veb.Result {
-	println(id)
-	return veb.Result{}
+	return veb.no_result()
 }
 
 fn dispatch[A, X](mut app A, mut ctx X) {
@@ -346,9 +342,9 @@ fn main() {
 	os.write_file(src_file, src) or { panic(err) }
 	bin_out := os.join_path(os.temp_dir(), 'v3_veb_implicit_ctx_no_spread')
 	os.rm(bin_out) or {}
-	compile := os.execute('${v3_bin} -no-memory-limit -b c ${src_file} -o ${bin_out}')
+	compile := os.exec([v3_bin, '-no-memory-limit', '-b', 'c', src_file, '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin_out)
+	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().split_into_lines() == ['index called', 'explicit called'], run.output
 }
@@ -357,6 +353,8 @@ fn main() {
 // A Context value can therefore bind to a declared interface route parameter
 // when that interface accepts Context; it must not be consumed as an explicit
 // copy of the hidden parameter merely because its concrete type is Context.
+// (A `string` route parameter would leave the argument in the hidden slot and
+// the route short of an argument, which is a reflected-call arity error.)
 fn test_veb_reflected_context_value_binds_to_declared_interface_param() {
 	v3_bin := build_v3()
 	src := '
@@ -373,12 +371,7 @@ pub struct App {}
 pub fn (mut app App) accepts(value RouteArg) veb.Result {
 	_ = value
 	println("interface called")
-	return veb.Result{}
-}
-
-pub fn (mut app App) needs_string(value string) veb.Result {
-	println(value)
-	return veb.Result{}
+	return veb.no_result()
 }
 
 fn dispatch[A](mut app A, ctx &Context) {
@@ -399,9 +392,9 @@ fn main() {
 	os.write_file(src_file, src) or { panic(err) }
 	bin_out := os.join_path(os.temp_dir(), 'v3_veb_ctx_interface_arg')
 	os.rm(bin_out) or {}
-	compile := os.execute('${v3_bin} -no-memory-limit -b c ${src_file} -o ${bin_out}')
+	compile := os.exec([v3_bin, '-no-memory-limit', '-b', 'c', src_file, '-o', bin_out])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin_out)
+	run := os.exec([bin_out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'interface called', run.output
 }
@@ -415,8 +408,8 @@ fn test_veb_reflected_base_context_uses_embedded_field() {
 import veb
 
 pub struct Context {
-	marker int
 	veb.Context
+	marker int
 }
 
 pub struct App {}
@@ -443,9 +436,54 @@ fn main() {
 	os.write_file(src_file, src) or { panic(err) }
 	c_out := os.join_path(os.temp_dir(), 'v3_veb_embedded_base_ctx.c')
 	os.rm(c_out) or {}
-	compile := os.execute('${v3_bin} -no-memory-limit -nocache ${src_file} -o ${c_out}')
+	compile := os.exec([v3_bin, '-no-memory-limit', '-nocache', src_file, '-o', '${c_out}'])
 	assert compile.exit_code == 0, compile.output
 	c_code := os.read_file(c_out) or { '' }
 	assert c_code.contains('App__index(app, &ctx->veb__Context)'), c_code
 	assert !c_code.contains('App__index(app, ctx)'), c_code
+}
+
+// A route whose custom context embeds veb.Context must keep the complete custom
+// context at the reflected route call, while a promoted generic veb.Context
+// method called by that route must receive the embedded framework context.
+fn test_veb_custom_context_route_with_promoted_generic_method() {
+	v3_bin := build_v3()
+	src := '
+import veb
+
+pub struct Context {
+	veb.Context
+}
+
+pub struct App {}
+
+pub struct SomeData {
+	id string
+}
+
+fn (mut ctx Context) handle_ok[T](payload T) veb.Result {
+	ctx.res.set_status(.ok)
+	return ctx.json(payload)
+}
+
+@["/some_data"; get]
+pub fn (mut app App) some_data(mut ctx Context) veb.Result {
+	return ctx.handle_ok(SomeData{ id: "v3" })
+}
+
+fn main() {
+	mut app := App{}
+	veb.run[App, Context](mut app, 8080)
+}
+'
+	src_file := os.join_path(os.temp_dir(), 'v3_veb_custom_context_generic_method.v')
+	os.write_file(src_file, src) or { panic(err) }
+	c_out := os.join_path(os.temp_dir(), 'v3_veb_custom_context_generic_method.c')
+	os.rm(c_out) or {}
+	compile := os.exec([v3_bin, '-no-memory-limit', '-nocache', src_file, '-o', '${c_out}'])
+	assert compile.exit_code == 0, compile.output
+	c_code := os.read_file(c_out) or { '' }
+	assert c_code.contains('veb__Context_SomeData__json(&ctx->veb__Context, payload)'), c_code
+	assert c_code.contains('App__some_data(app, user_context)'), c_code
+	assert !c_code.contains('App__some_data(app, &user_context->veb__Context)'), c_code
 }

@@ -25,7 +25,7 @@ fn execute_in_dir(dir string, cmd string) os.Result {
 	defer {
 		os.chdir(old_dir) or {}
 	}
-	return os.execute(cmd)
+	return os.exec(os.split_args(cmd) or { panic(err) })
 }
 
 fn test_link_and_unlink_current_project() {

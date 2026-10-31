@@ -1,0 +1,28 @@
+vlib/v/checker/tests/conditional_enum_comparison_mismatch_err.vv:13:29: error: unknown enum field `missing` for `ComparisonFirst`
+   11 | fn compare(flag bool) {
+   12 |     state := ComparisonFirst.a
+   13 |     println(state == if flag { .missing } else { .b })
+      |                                ~~~~~~~~
+   14 |     println((if flag { ComparisonSecond.a } else { ComparisonSecond.b }) == state)
+   15 |     println(state == if flag { .a } else { ComparisonSecond.b })
+vlib/v/checker/tests/conditional_enum_comparison_mismatch_err.vv:13:10: error: infix expr: cannot use `int` (right expression) as `ComparisonFirst`
+   11 | fn compare(flag bool) {
+   12 |     state := ComparisonFirst.a
+   13 |     println(state == if flag { .missing } else { .b })
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   14 |     println((if flag { ComparisonSecond.a } else { ComparisonSecond.b }) == state)
+   15 |     println(state == if flag { .a } else { ComparisonSecond.b })
+vlib/v/checker/tests/conditional_enum_comparison_mismatch_err.vv:14:10: error: infix expr: cannot use `ComparisonFirst` (right expression) as `ComparisonSecond`
+   12 |     state := ComparisonFirst.a
+   13 |     println(state == if flag { .missing } else { .b })
+   14 |     println((if flag { ComparisonSecond.a } else { ComparisonSecond.b }) == state)
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   15 |     println(state == if flag { .a } else { ComparisonSecond.b })
+   16 | }
+vlib/v/checker/tests/conditional_enum_comparison_mismatch_err.vv:15:10: error: infix expr: cannot use `ComparisonSecond` (right expression) as `ComparisonFirst`
+   13 |     println(state == if flag { .missing } else { .b })
+   14 |     println((if flag { ComparisonSecond.a } else { ComparisonSecond.b }) == state)
+   15 |     println(state == if flag { .a } else { ComparisonSecond.b })
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   16 | }
+   17 |

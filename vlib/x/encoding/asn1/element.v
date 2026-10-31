@@ -98,7 +98,7 @@ fn (el Element) validate_default(fo FieldOptions) ! {
 		if fo.default_value == none {
 			return error('has_default withoud default value')
 		}
-		def := fo.default_value or { return err }
+		def := fo.default_value or { return error('has_default withoud default value') }
 		if !el.tag().equal(def.tag()) {
 			return error('You provides different tag of default_value with  tag of current element')
 		}

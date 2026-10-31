@@ -60,6 +60,7 @@ mut:
 	pos        int
 }
 
+@[heap]
 pub struct Server {
 pub:
 	family                  net.AddrFamily = .ip6
@@ -277,12 +278,14 @@ fn (mut registry IocpConnRegistry) sweep_timed_out_io(timeout_ns u64) {
 		}
 		read_start := conn.read_start.load()
 		write_start := conn.write_start.load()
-		if !conn.request_active.load() && read_start > 0 && now - read_start >= timeout_ns
-			&& conn.mark_closing() {
+		// Workers can publish timestamps newer than this sweep's clock sample.
+		if !conn.request_active.load() && read_start > 0 && now >= read_start
+			&& now - read_start >= timeout_ns && conn.mark_closing() {
 			C.v_fasthttp_send(conn.fd, status_408_response.data, status_408_response.len, 0)
 			close_conn_socket(conn.fd)
 		}
-		if write_start > 0 && now - write_start >= timeout_ns && conn.mark_closing() {
+		if write_start > 0 && now >= write_start && now - write_start >= timeout_ns
+			&& conn.mark_closing() {
 			close_conn_socket(conn.fd)
 		}
 	}
@@ -575,7 +578,7 @@ fn process_request(mut conn IocpConn, frame_total int, worker_state voidptr) {
 	}
 	// Keep legacy int fd consumers working; client_conn_handle preserves the full SOCKET.
 	decoded.client_conn_fd = int(conn.fd)
-	decoded.client_conn_handle = usize(conn.fd)
+	decoded.client_conn_handle = uint(conn.fd)
 	decoded.user_data = conn.server.user_data
 	decoded.worker_state = worker_state
 
@@ -856,6 +859,7 @@ pub fn (mut server Server) run() ! {
 		return error('CreateIoCompletionPort failed with error ${C.GetLastError()}')
 	}
 
+	server.mark_starting()
 	for i := 0; i < max_thread_pool_size; i++ {
 		server.threads[i] = spawn process_iocp_events(server)
 	}

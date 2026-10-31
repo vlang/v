@@ -5,6 +5,7 @@ builtin/wasm_bare
 os/bare
 # Experimental and not part of the 0.5.1 release.
 goroutines
+net/grpc
 v/slow_tests/
 v/preludes_js/
 v/preludes

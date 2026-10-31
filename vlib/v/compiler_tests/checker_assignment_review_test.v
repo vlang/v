@@ -10,7 +10,9 @@ fn checker_assignment_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_checker_assignment_review_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${checker_assignment_vexe} -gc none -path "${checker_assignment_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${checker_assignment_v3_src}')
+		os.exec([checker_assignment_vexe, '-gc', 'none', '-path',
+			'${checker_assignment_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${checker_assignment_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -21,7 +23,7 @@ fn checker_assignment_run_bad(v3_bin string, name string, source string, expecte
 	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code != 0, compile.output
 	assert compile.output.contains(expected), compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
@@ -33,10 +35,10 @@ fn checker_assignment_run_good(v3_bin string, name string, source string) string
 	bin := os.join_path(os.temp_dir(), 'v3_${name}_${os.getpid()}')
 	os.rm(bin) or {}
 	os.rm(bin + '.c') or {}
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }
@@ -207,48 +209,55 @@ fn main() {
 	assert index_out == '1'
 }
 
-fn test_shadowed_capturing_fn_literal_marker_uses_nearest_binding() {
+// A local cannot be redefined in a nested block, so the same name is bound in
+// sibling blocks instead: each use must resolve to the binding of its own block.
+fn test_capturing_fn_literal_marker_uses_nearest_binding() {
 	v3_bin := checker_assignment_build_v3()
-	out := checker_assignment_run_good(v3_bin, 'capturing_fn_literal_shadowed_by_plain_fn', 'fn plain() int {
+	out := checker_assignment_run_good(v3_bin, 'capturing_fn_literal_then_plain_fn', 'fn plain() int {
 	return 2
 }
 
 fn main() {
 	x := 1
-	f := fn [x] () int {
-		return x
-	}
 	mut callbacks := []fn () int{}
+	{
+		f := fn [x] () int {
+			return x
+		}
+		callbacks << f
+	}
 	{
 		f := plain
 		callbacks << f
 	}
-	assert callbacks[0]() == 2
-	assert f() == 1
+	assert callbacks[0]() == 1
+	assert callbacks[1]() == 2
 	println("ok")
 }
 ')
 	assert out == 'ok'
-	outer_out := checker_assignment_run_good(v3_bin,
-		'capturing_fn_literal_outer_marker_survives_shadow', 'fn plain() int {
+	plain_first_out := checker_assignment_run_good(v3_bin, 'plain_fn_then_capturing_fn_literal',
+		'fn plain() int {
 	return 2
 }
 
 fn main() {
 	x := 1
-	f := fn [x] () int {
-		return x
-	}
 	mut callbacks := []fn () int{}
 	{
 		f := plain
 		callbacks << f
 	}
-	callbacks << f
+	{
+		f := fn [x] () int {
+			return x
+		}
+		callbacks << f
+	}
 	assert callbacks[0]() == 2
 	assert callbacks[1]() == 1
 	println("ok")
 }
 ')
-	assert outer_out == 'ok'
+	assert plain_first_out == 'ok'
 }

@@ -5,6 +5,21 @@ import v.flat
 import v.pref
 import v.types
 
+fn test_cached_builtin_request_keeps_its_header_owned_declaration() {
+	mut a := flat.FlatAst.new()
+	header := '/cache/builtin.vh'
+	a.cached_header_sources[header] = os.join_path(@VEXEROOT, 'vlib', 'builtin', 'array.v')
+	mut g := FlatGen.new()
+	g.a = &a
+	g.compiler_vroot = @VEXEROOT
+	assert !g.should_emit_c_extern_decl_from_file('request', os.join_path(@VEXEROOT, 'vlib', 'builtin', 'cfns.c.v'), 'builtin')
+	assert !g.should_emit_c_extern_decl_from_file('request', header, 'builtin')
+	// A project's C.request still needs its normal prototype when no header owns it.
+	user := '/project/binding.c.v'
+	g.files_linking_c_sources[user] = true
+	assert g.should_emit_c_extern_decl_from_file('request', user, 'main')
+}
+
 fn test_late_source_does_not_reemit_multiline_header_context() {
 	header := '#if defined(HEADER_IMPL)\n' + 'typedef struct { int value; } header_value;\n' + '#endif'
 	directives := [
@@ -51,7 +66,7 @@ fn test_header_backed_declarations_do_not_get_a_second_prototype() {
 	postinclude_g.collect_c_directive('main', flat.Node{
 		kind:  .directive
 		value: 'postinclude'
-		typ:   '"${header}"'
+		typ:   flat.source_type_id('"${header}"')
 	}, source, false)
 	assert 'postinclude_api' !in postinclude_g.inlined_c_declared_fns
 	assert '#include "${header}"' in postinclude_g.postinclude_directives
@@ -62,7 +77,7 @@ fn test_header_backed_declarations_do_not_get_a_second_prototype() {
 	preinclude_g.collect_c_directive('main', flat.Node{
 		kind:  .directive
 		value: 'preinclude'
-		typ:   '"${header}"'
+		typ:   flat.source_type_id('"${header}"')
 	}, source, false)
 	assert 'postinclude_api' !in preinclude_g.inlined_c_declared_fns
 	assert !preinclude_g.should_emit_c_extern_decl_from_file('postinclude_api', source, 'main')
@@ -85,7 +100,7 @@ fn test_include_preserves_header_without_scanning_declarations() {
 	g.collect_c_directive('main', flat.Node{
 		kind:  .directive
 		value: 'include'
-		typ:   '"${header}"'
+		typ:   flat.source_type_id('"${header}"')
 	}, source, false)
 
 	assert g.c_directives.len == 1
@@ -101,6 +116,29 @@ fn test_include_preserves_header_without_scanning_declarations() {
 	mut linked := FlatGen.new()
 	linked.note_c_flag_directive('main', source, '@VMODROOT/api.o')
 	assert linked.should_emit_c_extern_decl_from_file('header_api', source, 'main')
+}
+
+fn test_include_from_cflag_directory_keeps_portable_spelling() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cflag_header_include_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	include_dir := os.join_path(root, 'include')
+	os.mkdir_all(include_dir)!
+	header := os.join_path(include_dir, 'api.h')
+	source := os.join_path(root, 'main.v')
+	os.write_file(header, 'int api(void);\n')!
+	os.write_file(source, 'fn main() {}\n')!
+
+	mut g := FlatGen.new()
+	g.c_flags = ['-I', include_dir]
+	assert g.c_include_directive_text(0, '', '"api.h"', source) == '#include "api.h"'
+
+	local_header := os.join_path(root, 'local.h')
+	os.write_file(local_header, 'int local(void);\n')!
+	assert g.c_include_directive_text(0, '', '"local.h"', source) == c_native_source_context_include(local_header)
 }
 
 fn test_preinclude_does_not_scan_macro_state() {
@@ -121,136 +159,16 @@ fn test_preinclude_does_not_scan_macro_state() {
 	g.collect_c_directive('main', flat.Node{
 		kind:  .directive
 		value: 'preinclude'
-		typ:   '"${config_header}"'
+		typ:   flat.source_type_id('"${config_header}"')
 	}, source, false)
 	g.collect_c_directive('main', flat.Node{
 		kind:  .directive
 		value: 'preinclude'
-		typ:   '"${api_header}"'
+		typ:   flat.source_type_id('"${api_header}"')
 	}, source, false)
 
 	assert 'chained_api' !in g.inlined_c_active_macros
 	assert g.preinclude_directives == ['#include "${config_header}"', '#include "${api_header}"']
-}
-
-fn collect_external_input_tree_status(root string, entry string, ambient_ambiguous bool) (bool, []string) {
-	mut active_paths := map[string]bool{}
-	mut collected_paths := map[string]bool{}
-	mut ambiguous_collected_paths := map[string]bool{}
-	mut files := []string{}
-	mut include_macros := map[string][]string{}
-	mut dynamic_include_macros := map[string]bool{}
-	mut literal_include_macros := map[string][]string{}
-	mut resolution_dirs := map[string]bool{}
-	mut missing_resolution_paths := map[string]bool{}
-	mut active_static_storage_paths := map[string]bool{}
-	mut captured_input_digests := map[string]string{}
-	untracked := c_collect_external_input_tree(entry, '', [root], mut active_paths, mut collected_paths, mut ambiguous_collected_paths, mut files, mut include_macros, mut dynamic_include_macros, mut literal_include_macros, mut resolution_dirs, mut missing_resolution_paths, mut active_static_storage_paths, mut captured_input_digests, 'main', ambient_ambiguous, false)
-	return untracked, files
-}
-
-fn test_diamond_guarded_reinclude_stays_cacheable() {
-	root := os.join_path(os.vtmp_dir(), 'v3_diamond_guarded_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	os.write_file(os.join_path(root, 'shared.h'), '#pragma once\nint shared_diamond_fn(void);\n')!
-	os.write_file(os.join_path(root, 'left.h'), '#include "shared.h"\nint left_diamond_fn(void);\n')!
-	os.write_file(os.join_path(root, 'right.h'), '#include "shared.h"\nint right_diamond_fn(void);\n')!
-	top := os.join_path(root, 'top.h')
-	os.write_file(top, '#include "left.h"\n#include "right.h"\n')!
-
-	untracked, files := collect_external_input_tree_status(root, top, false)
-	// An ordinary diamond include of a whole-file-guarded header is fully resolved
-	// statically, so it must keep the module cache enabled.
-	assert !untracked
-	// The shared header is still recorded exactly once despite both branches including it.
-	shared_path := os.real_path(os.join_path(root, 'shared.h'))
-	assert files.filter(it == shared_path).len == 1, files.str()
-}
-
-fn test_ambiguous_guarded_reinclude_disables_cache() {
-	root := os.join_path(os.vtmp_dir(), 'v3_diamond_guarded_ambiguous_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	os.write_file(os.join_path(root, 'shared.h'), '#pragma once\nint shared_ambiguous_fn(void);\n')!
-	// The first traversal reaches the guarded header through an uncertain macro branch,
-	// so whether its guard actually defined leaves the repeat include indeterminate.
-	os.write_file(os.join_path(root, 'left.h'), '#ifdef V3_UNKNOWN_TOGGLE\n#include "shared.h"\n#endif\nint left_ambiguous_fn(void);\n')!
-	os.write_file(os.join_path(root, 'right.h'), '#include "shared.h"\nint right_ambiguous_fn(void);\n')!
-	top := os.join_path(root, 'top.h')
-	os.write_file(top, '#include "left.h"\n#include "right.h"\n')!
-
-	untracked, _ := collect_external_input_tree_status(root, top, false)
-	assert untracked
-}
-
-fn test_reinclude_after_undef_rescans_new_dependencies() {
-	root := os.join_path(os.vtmp_dir(), 'v3_reinclude_undef_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	os.write_file(os.join_path(root, 'extra.h'), '#pragma once\nint extra_fn(void);\n')!
-	// A whole-file-guarded header whose body pulls in extra.h unless SKIP_EXTRA is
-	// defined. With SKIP_EXTRA defined the include is statically inactive.
-	os.write_file(os.join_path(root, 'a.h'), '#ifndef A_H\n#define A_H\n#ifndef SKIP_EXTRA\n#include "extra.h"\n#endif\n#endif\n')!
-	// The first include skips extra.h (SKIP_EXTRA defined). The root then undefines the
-	// header guard and SKIP_EXTRA and includes a.h again: the real preprocessor traverses
-	// it a second time and now selects extra.h, which the scanner must collect too.
-	top := os.join_path(root, 'top.h')
-	os.write_file(top, '#define SKIP_EXTRA\n#include "a.h"\n#undef A_H\n#undef SKIP_EXTRA\n#include "a.h"\n')!
-
-	_, files := collect_external_input_tree_status(root, top, false)
-	extra_path := os.real_path(os.join_path(root, 'extra.h'))
-	assert extra_path in files, 'undef re-include did not rescan extra.h: ${files.str()}'
-}
-
-fn test_reinclude_after_ambiguous_undef_rescans_new_dependencies() {
-	root := os.join_path(os.vtmp_dir(), 'v3_reinclude_ambiguous_undef_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
-	defer {
-		os.rmdir_all(root) or {}
-	}
-	os.write_file(os.join_path(root, 'extra.h'), '#pragma once\nint extra_fn(void);\n')!
-	os.write_file(os.join_path(root, 'a.h'), '#ifndef A_H\n#define A_H\n#ifndef SKIP_EXTRA\n#include "extra.h"\n#endif\n#endif\n')!
-	// The guard and selection macro are undefined under an unresolved `#if`, so their
-	// defined state becomes ambiguous (`dynamic_include_macros[NAME] == false`) rather
-	// than definitely defined. The preprocessor may still traverse a.h a second time and
-	// select extra.h, so a membership-only guard test would wrongly skip and omit it.
-	top := os.join_path(root, 'top.h')
-	os.write_file(top, '#define SKIP_EXTRA\n#include "a.h"\n#if V3_UNKNOWN_TOGGLE\n#undef A_H\n#undef SKIP_EXTRA\n#endif\n#include "a.h"\n')!
-
-	_, files := collect_external_input_tree_status(root, top, false)
-	extra_path := os.real_path(os.join_path(root, 'extra.h'))
-	assert extra_path in files, 'ambiguous undef re-include did not rescan extra.h: ${files.str()}'
-}
-
-fn test_whole_file_guard_rejects_alternative_branches() {
-	// A plain `#ifndef`/`#define` guard, `#pragma once`, and a guard with only nested
-	// conditionals are whole-file guarded.
-	assert (c_whole_file_guard_macro('#ifndef H_H\n#define H_H\nint h_fn(void);\n#endif\n') or {
-		'?'
-	}) == 'H_H'
-	assert (c_whole_file_guard_macro('#pragma once\nint once_fn(void);\n') or { '?' }) == ''
-	assert (c_whole_file_guard_macro('#ifndef H_H\n#define H_H\n#ifdef X\nint a(void);\n#else\nint b(void);\n#endif\n#endif\n') or {
-		'?'
-	}) == 'H_H'
-	// A guard-level `#else` or `#elif` runs an alternative branch on a repeat include, so
-	// the file is not whole-file guarded and must not be classified as one.
-	if guard := c_whole_file_guard_macro('#ifndef H_H\n#define H_H\nint h_fn(void);\n#else\n#include "alt.h"\n#endif\n') {
-		assert false, 'guard-level #else must not be whole-file guarded, got `${guard}`'
-	}
-	if guard := c_whole_file_guard_macro('#ifndef H_H\n#define H_H\n#elif defined(OTHER)\n#include "alt.h"\n#endif\n') {
-		assert false, 'guard-level #elif must not be whole-file guarded, got `${guard}`'
-	}
 }
 
 fn test_builtin_abi_helper_matches_only_exact_headers() {
@@ -260,7 +178,6 @@ fn test_builtin_abi_helper_matches_only_exact_headers() {
 	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/builtin/prealloc_atomics.h"', root)
 	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/os/filelock/filelock_helpers.h"', root)
 	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/sync/stdatomic/tcc_compat_aliases.h"', root)
-	assert c_include_arg_is_builtin_abi_helper('"/root/vlib/sync/stdatomic/stdatomic_include_after_compat.h"', root)
 	assert c_include_arg_is_builtin_abi_helper('"/root/thirdparty/stdatomic/nix/atomic.h"', root)
 	assert c_include_arg_is_builtin_abi_helper('"C:\\root\\thirdparty\\stdatomic\\win\\atomic.h"', 'C:\\root')
 	// A trailing slash on VROOT resolves to the same anchored path.
@@ -280,6 +197,9 @@ fn test_builtin_abi_helper_matches_only_exact_headers() {
 	assert !c_include_arg_is_builtin_abi_helper('"prealloc_atomics.h"', root)
 	assert !c_include_arg_is_builtin_abi_helper('"my_stdatomic_wrapper.h"', root)
 	assert !c_include_arg_is_builtin_abi_helper('"vendor/atomic.h"', root)
+	// This regression-test header declares a callable probe and must remain included.
+	assert !c_include_arg_is_builtin_abi_helper('"/root/vlib/sync/stdatomic/stdatomic_include_after_compat.h"',
+		root)
 	// The `/` boundary keeps a `.../myvlib/...` path from matching `/vlib/...`.
 	assert !c_include_arg_is_builtin_abi_helper('"/home/user/myvlib/os/filelock/filelock_helpers.h"', root)
 	// The real system header is not one of the superseded inline helpers either.
@@ -323,22 +243,32 @@ fn test_cache_extern_declaration_avoids_tgmath_macro_expansion() {
 	assert c_macro_safe_extern_decl('custom', 'int custom(int x);') == 'int custom(int x);'
 }
 
-fn test_cache_extern_filter_uses_pthread_preamble_declarations() {
+fn test_cache_extern_filter_uses_pthread_v_declarations() {
 	mut preamble_gen := FlatGen.new()
 	preamble_gen.preamble()
 	preamble := preamble_gen.sb.str()
-	assert preamble.contains('int pthread_key_create(pthread_key_t* key, void (*dtor)(void*));')
-	assert preamble.contains('void* pthread_getspecific(pthread_key_t key);')
-	assert preamble.contains('int pthread_setspecific(pthread_key_t key, const void* const_ptr);')
+	assert !preamble.contains('int pthread_key_create(pthread_key_t* key, void (*dtor)(void*));')
+	assert !preamble.contains('void* pthread_getspecific(pthread_key_t key);')
+	assert !preamble.contains('int pthread_setspecific(pthread_key_t key, const void* const_ptr);')
 	assert !preamble.contains('pthread_key_delete(')
 
 	mut g := FlatGen.new()
 	g.set_cache_split(true)
 
-	assert !g.should_emit_c_extern_decl('pthread_key_create')
-	assert !g.should_emit_c_extern_decl('pthread_getspecific')
-	assert !g.should_emit_c_extern_decl('pthread_setspecific')
+	assert g.should_emit_c_extern_decl('pthread_key_create')
+	assert g.should_emit_c_extern_decl('pthread_getspecific')
+	assert g.should_emit_c_extern_decl('pthread_setspecific')
 	assert g.should_emit_c_extern_decl('pthread_key_delete')
+	assert g.should_emit_c_extern_decl('pthread_once')
+	assert g.should_emit_c_extern_decl('pthread_attr_setdetachstate')
+
+	g.collect_c_directive('main', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   flat.source_type_id('<pthread.h>')
+	}, '/tmp/main.c.v', false)
+	assert !g.should_emit_c_extern_decl('pthread_once')
+	assert !g.should_emit_c_extern_decl('pthread_attr_setdetachstate')
 }
 
 fn posix_declaration_filter_gen(target_os string, system_libc bool) FlatGen {
@@ -389,6 +319,146 @@ fn test_cache_split_uses_system_sigaction_declaration() {
 	assert g.skip_builtin_struct('C.sigaction')
 }
 
+fn test_cache_split_omits_only_non_windows_stat64_compatibility_stub() {
+	for target_os in ['macos', 'linux'] {
+		mut cached := posix_declaration_filter_gen(target_os, false)
+		cached.set_cache_split(true)
+		assert cached.skip_builtin_struct('C.__stat64'), target_os
+		assert !cached.skip_builtin_struct('C.ProjectStat'), target_os
+
+		headerless := posix_declaration_filter_gen(target_os, false)
+		assert !headerless.skip_builtin_struct('C.__stat64'), target_os
+		mut custom_libc := posix_declaration_filter_gen(target_os, false)
+		custom_libc.set_cache_split(true)
+		custom_libc.set_target_libc_headers(true)
+		assert !custom_libc.skip_builtin_struct('C.__stat64'), target_os
+	}
+	for cache_split in [false, true] {
+		mut windows := posix_declaration_filter_gen('windows', false)
+		windows.set_cache_split(cache_split)
+		assert !windows.skip_builtin_struct('C.__stat64')
+		windows.add_c_directive('main', '#include <sys/stat.h>', false)
+		assert windows.skip_builtin_struct('C.__stat64')
+	}
+}
+
+fn test_cocoa_nsfont_binding_uses_the_framework_class() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.target = pref.target_from('macos', 'arm64') or { panic(err) }
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'ui', 'ui_darwin.c.v', flat.Node{})
+	// Without an AppKit include, `C.NSFont` is an ordinary header-owned C struct.
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	for include in ['#include <Cocoa/Cocoa.h>', '#import <AppKit/AppKit.h>',
+		'# include <AppKit/NSFont.h>'] {
+		g.c_directives = [CDirective{
+			module: 'ui'
+			text:   include
+		}]
+		assert g.skip_builtin_struct('C.NSFont'), include
+		assert !g.header_c_struct_needs_compat_typedef('C.NSFont'), include
+	}
+	g.c_directives = [CDirective{
+		module: 'ui'
+		text:   '#include <MyCocoa/types.h>'
+	}]
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_directives.clear()
+	g.preinclude_directives << '#include <Cocoa/Cocoa.h>'
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.target = pref.target_from('linux', 'arm64') or { panic(err) }
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+}
+
+fn test_cocoa_nsfont_binding_accepts_a_target_qualified_cocoa_include() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.set_target(pref.target_from('macos', 'arm64') or { panic(err) })
+	// Portable output keeps a target-qualified include under its preprocessor guard,
+	// as a build for macOS on another host does.
+	g.set_output_cross_c(true)
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'ui', 'ui_darwin.c.v', flat.Node{})
+	g.collect_c_directive('ui', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   flat.source_type_id('macos <Cocoa/Cocoa.h>')
+	}, '', false)
+	directives := g.ordered_c_directives(false)
+	assert directives.len == 1 && directives[0].starts_with('#if '), directives.str()
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	// The guard of another target does not make NSFont the Cocoa class.
+	g.c_directives.clear()
+	g.collect_c_directive('ui', flat.Node{
+		kind:  .directive
+		value: 'include'
+		typ:   flat.source_type_id('linux <Cocoa/Cocoa.h>')
+	}, '', false)
+	assert g.ordered_c_directives(false).len == 1
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+}
+
+fn test_cocoa_nsfont_binding_respects_ordered_conditional_directives() {
+	mut ast := &flat.FlatAst{}
+	mut tc := types.TypeChecker.new(ast)
+	mut g := FlatGen.new()
+	g.a = ast
+	g.tc = &tc
+	g.set_target(pref.target_from('macos', 'arm64') or { panic(err) })
+	g.register_struct_decl_info('C.NSFont', 'C.NSFont', 'main', 'main.c.v', flat.Node{})
+	for source in [
+		'#if 0\n#include <Cocoa/Cocoa.h>\n#endif',
+		'#if 1\n#else\n#import <AppKit/AppKit.h>\n#endif',
+		'#if 0\n#if 1\n#include <AppKit/NSFont.h>\n#endif\n#endif',
+		'#if 0\n#elif 0\n#include <Cocoa/Cocoa.h>\n#endif',
+		'#define USE_COCOA 0\n#if USE_COCOA\n#include <Cocoa/Cocoa.h>\n#endif',
+		'#define USE_COCOA 1\n#undef USE_COCOA\n#ifdef USE_COCOA\n#include <Cocoa/Cocoa.h>\n#endif',
+	] {
+		g.c_directives.clear()
+		for line in source.split_into_lines() {
+			g.add_c_directive('main', line, false)
+		}
+		assert g.header_c_struct_needs_compat_typedef('C.NSFont'), source
+	}
+	for source in [
+		'#if 0\n#else\n#include <Cocoa/Cocoa.h>\n#endif',
+		'#if 0\n#elif 1\n#import <AppKit/AppKit.h>\n#endif',
+		'#define USE_COCOA 1\n#if USE_COCOA\n#include <AppKit/NSFont.h>\n#endif',
+	] {
+		g.c_directives.clear()
+		for line in source.split_into_lines() {
+			g.add_c_directive('main', line, false)
+		}
+		assert !g.header_c_struct_needs_compat_typedef('C.NSFont'), source
+	}
+	g.c_directives.clear()
+	for line in ['#if USE_COCOA', '#include <Cocoa/Cocoa.h>', '#endif'] {
+		g.add_c_directive('main', line, false)
+	}
+	g.c_flags = ['-DUSE_COCOA=0']
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_flags = ['-D', 'USE_COCOA=1']
+	assert !g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_flags = ['-DUSE_COCOA=1', '-UUSE_COCOA']
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.c_flags.clear()
+	g.c_directives.clear()
+	g.preinclude_directives = ['#if 0\n#include <Cocoa/Cocoa.h>\n#endif']
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+	g.preinclude_directives.clear()
+	// An import is emitted between its importer's before- and after-import directives.
+	g.module_imports['main'] = ['child']
+	g.add_c_directive('main', '#if 0', true)
+	g.add_c_directive('main', '#endif', false)
+	g.add_c_directive('child', '#include <Cocoa/Cocoa.h>', false)
+	assert g.header_c_struct_needs_compat_typedef('C.NSFont')
+}
+
 fn test_c_struct_declared_in_platform_binding_stays_header_owned() {
 	dir := os.join_path(os.vtmp_dir(), 'v3_c_struct_source_owner_${os.getpid()}')
 	os.rmdir_all(dir) or {}
@@ -416,7 +486,7 @@ fn test_c_struct_declared_in_platform_binding_stays_header_owned() {
 	assert !g.skip_builtin_struct('C.Local')
 
 	g.register_struct_decl_info('C.Alias', 'C.Alias', 'main', headerless_file, flat.Node{})
-	tc.c_typedef_structs['C.Alias'] = true
+	tc.c_typedef_structs[flat.source_type_id('C.Alias')] = true
 	assert g.skip_builtin_struct('C.Alias')
 }
 
@@ -429,6 +499,32 @@ fn test_top_level_include_deduplication_resets_after_preprocessor_state_changes(
 		'#include <types.h>', '#endif', '#include <types.h>'])
 	assert conditional_directives == ['#include <types.h>', '#if FEATURE', '#include <types.h>',
 		'#endif', '#include <types.h>']
+}
+
+fn test_multiline_guard_does_not_make_following_includes_conditional() {
+	guard := '#ifndef INSERTED_GUARD\n#define INSERTED_GUARD\n#endif'
+	header := '#include "unguarded.h"'
+	assert dedupe_top_level_c_includes([guard, header, header]) == [guard, header]
+	// An inline block can change the macro state observed by an earlier header.
+	assert dedupe_top_level_c_includes([header, guard, header]) == [header, guard, header]
+	// The containing guard remains active while an inline block is emitted.
+	conditional := ['#ifdef FIRST', guard, header, '#endif', '#ifdef SECOND', header, '#endif',
+		header, header]
+	assert dedupe_top_level_c_includes(conditional) == conditional[..conditional.len - 1]
+}
+
+fn test_multiline_directives_preserve_open_conditionals_and_ignore_comments() {
+	header := '#include "unguarded.h"'
+	for separator in [' ', '\t'] {
+		opener := '#if${separator}defined(FIRST) \\\n|| defined(SECOND)'
+		conditional := [opener, header, header, '#else', header, header, '#endif', header, header]
+		assert dedupe_top_level_c_includes(conditional) == conditional[..conditional.len - 1]
+	}
+	guard := '/*\n#if COMMENTED_OUT\n*/\n#ifndef INLINE_GUARD\n#define INLINE_GUARD\n#endif'
+	assert dedupe_top_level_c_includes([guard, header, header]) == [guard, header]
+	// Comments may span directive entries as well as lines in an inline header.
+	commented := ['/*', '#if COMMENTED_OUT\n#endif', '*/', header, header]
+	assert dedupe_top_level_c_includes(commented) == commented[..commented.len - 1]
 }
 
 fn test_headerless_preamble_keeps_explicit_puts_declaration() {
@@ -444,6 +540,42 @@ fn test_headerless_preamble_keeps_explicit_puts_declaration() {
 	assert !system_libc.should_emit_c_extern_decl('sendfile')
 }
 
+fn test_headerless_application_platform_bindings_keep_their_declarations() {
+	mut g := FlatGen.new()
+	source := '/project/main.c.v'
+	for name in ['task_info', 'mach_task_self', 'getppid'] {
+		assert g.should_emit_c_extern_decl_from_file(name, source, 'main'), name
+	}
+	// An explicit SDK header remains authoritative for the application bindings.
+	g.add_c_directive('main', '#include <mach/mach.h>', false)
+	g.note_c_include_directive('main', source)
+	for name in ['task_info', 'mach_task_self', 'getppid'] {
+		assert !g.should_emit_c_extern_decl_from_file(name, source, 'main'), name
+	}
+}
+
+fn test_darwin_task_api_runs_with_headerless_and_explicit_sdk_bindings() ! {
+	$if !macos {
+		return
+	}
+	cc := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'v3_mach_task_api_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.c.v')
+	program := '@[typedef]\nstruct C.task_t {}\nstruct C.task_basic_info { resident_size u64 }\nfn C.mach_task_self() C.task_t\nfn C.task_info(C.task_t, i32, &int, &u32) i32\nfn main() {\n mut info := C.task_basic_info{}\n mut count := u32(C.MACH_TASK_BASIC_INFO_COUNT)\n status := C.task_info(C.mach_task_self(), C.TASK_BASIC_INFO, unsafe { &int(&info) }, &count)\n assert status == C.KERN_SUCCESS\n assert info.resident_size > 0\n println("\${sizeof(C.task_basic_info)}:\${__offsetof(C.task_basic_info, resident_size)}:\${u32(C.MACH_TASK_BASIC_INFO_COUNT)}:\${i32(C.TASK_BASIC_INFO)}")\n}\n'
+	mut layouts := []string{}
+	for explicit_header in [false, true] {
+		prefix := if explicit_header { '#include <mach/mach.h>\n' } else { '' }
+		os.write_file(source, prefix + program)!
+		ran := os.exec([@VEXE, '-cc', cc, '-cstrict', '-gc', 'none', '-nocache', '-no-retry-compilation',
+			'run', source])
+		assert ran.exit_code == 0, ran.output
+		layouts << ran.output.trim_space()
+	}
+	assert layouts[0] == layouts[1], 'headerless layout ${layouts[0]} differs from SDK ${layouts[1]}'
+}
+
 fn test_target_libc_headers_own_their_c_extern_declarations() {
 	mut g := FlatGen.new()
 	g.set_target_libc_headers(true)
@@ -453,6 +585,39 @@ fn test_target_libc_headers_own_their_c_extern_declarations() {
 		assert !g.should_emit_c_extern_decl_from_file(name, source, 'main'), name
 	}
 	assert g.should_emit_c_extern_decl_from_file('target_specific_api', source, 'main')
+}
+
+fn test_target_libc_headers_own_errno_accessor_declarations() {
+	mut g := FlatGen.new()
+	source := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'cfns.c.v')
+	g.compiler_vroot = @VEXEROOT
+	for name in ['__error', '__errno', '__errno_location', '___errno', '_errno', '_errnop',
+		'__get_errno_ptr'] {
+		g.set_target_libc_headers(false)
+		assert g.should_emit_c_extern_decl_from_file(name, source, 'builtin'), name
+		g.set_target_libc_headers(true)
+		assert !g.should_emit_c_extern_decl_from_file(name, source, 'builtin'), name
+	}
+}
+
+fn test_freestanding_c_uses_target_errno_header() ! {
+	dir := os.join_path(os.vtmp_dir(), 'target_errno_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	source := os.join_path(dir, 'main.v')
+	output := os.join_path(dir, 'main.c')
+	os.write_file(source, 'fn main() { println(1) }\n')!
+	// -target-libc-headers rejects Windows targets and the target OS defaults to the host's,
+	// so pin Linux. Writing `.c` output only generates C; no Linux toolchain is needed.
+	result := os.exec([@VEXE, '-freestanding', '-target-libc-headers', '-gc', 'none', '-nocache',
+		'-os', 'linux', '-o', output, source])
+	assert result.exit_code == 0, result.output
+	generated := os.read_file(output)!
+	assert generated.contains('#include <errno.h>')
+	for name in ['__error', '__errno', '__errno_location', '___errno', '_errno', '_errnop',
+		'__get_errno_ptr'] {
+		assert !generated.contains('i32* ' + name + '('), name
+	}
 }
 
 fn test_builtin_boehm_directives_use_system_libc() {
@@ -542,7 +707,7 @@ fn test_target_inactive_include_does_not_claim_header_ownership() {
 		g.collect_c_directive('main', flat.Node{
 			kind:  .directive
 			value: kind
-			typ:   '${inactive_target} <ownership_probe.h>'
+			typ:   flat.source_type_id('${inactive_target} <ownership_probe.h>')
 		}, source, false)
 	}
 	assert source !in g.files_with_c_includes
@@ -556,7 +721,7 @@ fn test_target_inactive_include_does_not_claim_header_ownership() {
 	active_g.collect_c_directive('main', flat.Node{
 		kind:  .directive
 		value: 'include'
-		typ:   '${os.user_os()} <ownership_probe.h>'
+		typ:   flat.source_type_id('${os.user_os()} <ownership_probe.h>')
 	}, source, false)
 	assert source in active_g.files_with_c_includes
 	assert !active_g.should_emit_c_extern_decl_from_file('helper_fn', source, 'main')
@@ -571,11 +736,60 @@ fn test_cross_os_target_include_is_guarded_for_the_c_compiler() {
 	g.collect_c_directive('main', flat.Node{
 		kind:  .directive
 		value: 'include'
-		typ:   '${target_os} <target_only.h>'
+		typ:   flat.source_type_id('${target_os} <target_only.h>')
 	}, '', false)
-	condition := pref.cross_target_c_condition(target_os) or { panic(err) }
+	condition := pref.cross_target_c_condition(target_os) or { panic('missing target condition') }
 	directives := g.ordered_c_directives(false)
 	assert directives == [
 		'#if ${condition}\n#include <target_only.h>\n#endif',
 	], 'unexpected directives: ${directives}'
+}
+
+fn test_portable_output_keeps_other_target_linkage_metadata() {
+	source := '/project/bindings.c.v'
+	for flag in ['windows @DIR/helper.o', 'windows -lhelper', 'amd64 @DIR/libhelper.a'] {
+		mut ast := &flat.FlatAst{}
+		ast.add_val(.file, source)
+		ast.add_val(.module_decl, 'bindings')
+		ast.add_node(flat.Node{ kind: .directive, value: 'flag', typ: flat.source_type_id(flag) })
+		mut g := FlatGen.new()
+		g.a = ast
+		g.set_target(pref.target_from('linux', 'arm64') or { panic(err) })
+		g.set_output_cross_c(true)
+		g.collect_c_flags_from_directives()
+		assert g.c_flags.len == 0, flag
+		assert g.should_emit_c_extern_decl_from_file('native_api', source, 'bindings'), flag
+		g.note_c_include_directive('bindings', source)
+		assert !g.should_emit_c_extern_decl_from_file('native_api', source, 'bindings'), flag
+		mut selected := FlatGen.new()
+		selected.a = ast
+		selected.set_target(pref.target_from('linux', 'arm64') or { panic(err) })
+		selected.collect_c_flags_from_directives()
+		// A selected target drops the other target's link inputs, so they do not make the
+		// file need a prototype beside its headers. (A unit without any headers declares
+		// every binding it calls, whatever its link inputs.)
+		assert !selected.c_extern_decl_has_no_header(source, 'bindings'), flag
+	}
+}
+
+fn test_heap_guard_does_not_select_system_headers_or_own_builtin_declarations() {
+	mut g := FlatGen.new()
+	g.compiler_vroot = @VEXEROOT
+	g.set_target(pref.host_target())
+	helper := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'track_heap_checks.h')
+	assert c_include_arg_is_heap_guard('"${helper}"', @VEXEROOT)
+	g.c_directives << CDirective{ module: 'builtin', text: '#include "${helper}"' }
+	assert !g.c_directives_use_system_libc()
+}
+
+fn test_objective_cpp_prototypes_ignore_headers_from_other_modules() {
+	mut g := FlatGen.new()
+	g.c_directives << CDirective{ module: 'other', text: '#include "missing.h"' }
+	g.objective_cpp_source_requests << ObjectiveCppSourceRequest{
+		module:      'sample'
+		source_path: '/project/impl.mm'
+		defined_fns: ['sample_answer']
+	}
+	g.materialize_objective_cpp_sources()
+	assert g.c_extern_forced_decls['sample_answer']
 }

@@ -8,6 +8,14 @@ on:
       - 'vlib/json2/**' # Trigger on changes in this folder
       - '!vlib/json2/strict/**' # Ignore
       - '!vlib/json2/tests/**' # Ignore
+      - '.github/workflows/benchmark_footprint_json_encode.yml'
+
+concurrency:
+  group: json-encoder-benchmark-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   json-encode-benchmark:
@@ -17,6 +25,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Build V
         run: make -j4 && ./v symlink

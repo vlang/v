@@ -40,6 +40,7 @@
 module main
 
 import os
+import v.pref
 
 const auto_complete_shells = ['bash', 'fish', 'zsh', 'powershell'] // list of supported shells
 
@@ -87,16 +88,19 @@ const auto_complete_commands = [
 	'build-vbinaries',
 	'bump',
 	'check-md',
+	'clean',
 	'complete',
 	'compress',
 	'cover',
 	'create',
 	'doctor',
 	'download',
+	'env',
 	'fmt',
 	'gret',
 	'git-fmt-hook',
 	'ls',
+	'pbgen',
 	'quest',
 	'retry',
 	'reduce',
@@ -113,6 +117,7 @@ const auto_complete_commands = [
 	'test-parser',
 	'test-self',
 	'test',
+	'tool',
 	'tracev',
 	'up',
 	'watch',
@@ -133,6 +138,7 @@ const auto_complete_commands = [
 	'list',
 	'remove',
 	'unlink',
+	'why',
 	'vlib-docs',
 	'get',
 	'version',
@@ -140,6 +146,7 @@ const auto_complete_commands = [
 	'build',
 	'build-module',
 	'missdoc',
+	'mod',
 ]
 // Entries in the flag arrays below should be entered as is:
 // * Short flags, e.g.: "-v", should be entered: '-v'
@@ -152,9 +159,11 @@ const auto_complete_flags = [
 	'-arch',
 	'-assert',
 	'-show-timings',
+	'-show-instructions',
 	'-show-asserts',
 	'-check-syntax',
 	'-check',
+	'-json-errors',
 	'-?',
 	'-h',
 	'-help',
@@ -194,7 +203,6 @@ const auto_complete_flags = [
 	'-trace-calls',
 	'-trace-fns',
 	'-manualfree',
-	'-skip-unused',
 	'-no-skip-unused',
 	'-compress',
 	'-freestanding',
@@ -236,7 +244,6 @@ const auto_complete_flags = [
 	'-dump-files',
 	'-dump-defines',
 	'-experimental',
-	'-usecache',
 	'-use-os-system-to-run',
 	'-macosx-version-min',
 	'-nocache',
@@ -560,6 +567,25 @@ fn nearest_path_or_root(path string) string {
 	return fixed_path
 }
 
+fn completing_command(parts []string) bool {
+	mut i := 1
+	for i < parts.len - 1 {
+		part := parts[i]
+		if part == '--' {
+			return false
+		}
+		if part.starts_with('-') {
+			i += if pref.option_may_consume_value(part) { 2 } else { 1 }
+		} else if part == 'help' || part == '' {
+			i++
+		} else {
+			return false
+		}
+	}
+	// An option value is completed as a path, even when it matches a command prefix.
+	return i == parts.len - 1
+}
+
 // auto_complete_request returns a list of completions resolved from a full argument list.
 fn auto_complete_request(args []string) []string {
 	// Using space will ensure a uniform input in cases where the shell
@@ -661,7 +687,7 @@ fn auto_complete_request(args []string) []string {
 			if list.len == 1 && part == list[0] {
 				list.clear()
 			}
-		} else {
+		} else if completing_command(parts) {
 			match part {
 				'help' { // 'v help <tab>' -> top level commands except "help".
 					list = auto_complete_commands.filter(it != part && it != 'complete')

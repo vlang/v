@@ -10,7 +10,15 @@
  * platforms) — using it makes this header valid both from V code and
  * from plain C shims. */
 #ifndef _MSC_VER
-__attribute__ ((weak)) GC_API void GC_CALL GC_noop1_ptr(volatile void *p) {
+/* The fallback must stay weak, so that a libgc which defines GC_noop1_ptr
+ * wins at link time. It is spelled `__attribute`, not `__attribute__`:
+ * TinyCC does not define __GNUC__ on Linux, so glibc's <sys/cdefs.h>
+ * defines `__attribute__(xyz)` to nothing, and after any libc header the
+ * fallback became a strong definition. TinyCC then reported
+ * "'GC_noop1_ptr' defined twice" against such a libgc.a, and since TinyCC
+ * mob e23dabed that is a link error. GCC, clang and TinyCC all accept the
+ * `__attribute` spelling, which glibc leaves alone. */
+__attribute ((weak)) GC_API void GC_CALL GC_noop1_ptr(volatile void *p) {
    GC_noop1((GC_word)p);
 }
 #endif

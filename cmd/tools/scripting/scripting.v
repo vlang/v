@@ -120,10 +120,15 @@ pub fn rmrf(path string) {
 	}
 }
 
-// execute a command, and return a result, or an error, if it failed in any way.
+// exec executes a command, and return a result, or an error, if it failed in any way.
+@[deprecated: 'use exec_args with an argument array to avoid shell injection']
 pub fn exec(cmd string) !os.Result {
 	verbose_trace_strong(modfn(@MOD, @FN), cmd)
-	x := os.execute(cmd)
+	x := os.exec(if os.user_os() == 'windows' {
+		['cmd.exe', '/d', '/s', '/c', cmd]
+	} else {
+		['sh', '-c', cmd]
+	})
 	if x.exit_code != 0 {
 		verbose_trace(modfn(@MOD, @FN), '## failed.')
 		return error(x.output)
@@ -132,10 +137,15 @@ pub fn exec(cmd string) !os.Result {
 	return x
 }
 
-// run a command, tracing its results, and returning ONLY its output
+// run executes a command, tracing its results, and returning ONLY its output
+@[deprecated: 'use run_args with an argument array to avoid shell injection']
 pub fn run(cmd string) string {
 	verbose_trace_strong(modfn(@MOD, @FN), cmd)
-	x := os.execute(cmd)
+	x := os.exec(if os.user_os() == 'windows' {
+		['cmd.exe', '/d', '/s', '/c', cmd]
+	} else {
+		['sh', '-c', cmd]
+	})
 	if x.exit_code < 0 {
 		verbose_trace(modfn(@MOD, @FN), '## failed.')
 		return ''
@@ -148,9 +158,14 @@ pub fn run(cmd string) string {
 }
 
 // frun runs a command, tracing its results, and returning ONLY its output, or an error, if it failed
+@[deprecated: 'use frun_args with an argument array to avoid shell injection']
 pub fn frun(cmd string) !string {
 	verbose_trace_strong(modfn(@MOD, @FN), cmd)
-	x := os.execute(cmd)
+	x := os.exec(if os.user_os() == 'windows' {
+		['cmd.exe', '/d', '/s', '/c', cmd]
+	} else {
+		['sh', '-c', cmd]
+	})
 	if x.exit_code != 0 {
 		verbose_trace(modfn(@MOD, @FN), '## failed.')
 		verbose_trace(modfn(@MOD, @FN), '## failure   code: ${x.exit_code}')
@@ -161,9 +176,15 @@ pub fn frun(cmd string) !string {
 	return x.output.trim_right('\r\n')
 }
 
+// exit_0_status reports whether a legacy command succeeded.
+@[deprecated: 'use exit_0_status_args with an argument array to avoid shell injection']
 pub fn exit_0_status(cmd string) bool {
 	verbose_trace_strong(modfn(@MOD, @FN), cmd)
-	x := os.execute(cmd)
+	x := os.exec(if os.user_os() == 'windows' {
+		['cmd.exe', '/d', '/s', '/c', cmd]
+	} else {
+		['sh', '-c', cmd]
+	})
 	if x.exit_code < 0 {
 		verbose_trace(modfn(@MOD, @FN), '## failed.')
 		return false
@@ -175,10 +196,10 @@ pub fn exit_0_status(cmd string) bool {
 	return false
 }
 
+// tool_must_exist exits when the named executable is absent from PATH.
 pub fn tool_must_exist(toolcmd string) {
 	verbose_trace(modfn(@MOD, @FN), toolcmd)
-	where_is_cmd := if os.user_os() == 'windows' { 'where' } else { 'type' }
-	if exit_0_status('${where_is_cmd} ${toolcmd}') {
+	if os.exists_in_system_path(toolcmd) {
 		return
 	}
 	eprintln('Missing tool: ${toolcmd}')
@@ -197,4 +218,60 @@ pub fn show_sizes_of_files(files []string) {
 		size := os.file_size(f)
 		println('${size} ${f}') // println('${size:10d} ${f}')
 	}
+}
+
+// exec_args runs literal arguments without invoking a shell.
+pub fn exec_args(args []string) !os.Result {
+	verbose_trace_strong(modfn(@MOD, @FN), args.join(' '))
+	x := os.exec(args)
+	if x.exit_code != 0 {
+		verbose_trace(modfn(@MOD, @FN), '## failed.')
+		return error(x.output)
+	}
+	verbose_trace_exec_result(x)
+	return x
+}
+
+// run_args runs literal arguments without invoking a shell.
+pub fn run_args(args []string) string {
+	verbose_trace_strong(modfn(@MOD, @FN), args.join(' '))
+	x := os.exec(args)
+	if x.exit_code < 0 {
+		verbose_trace(modfn(@MOD, @FN), '## failed.')
+		return ''
+	}
+	verbose_trace_exec_result(x)
+	if x.exit_code == 0 {
+		return x.output.trim_right('\r\n')
+	}
+	return ''
+}
+
+// frun_args runs literal arguments without invoking a shell.
+pub fn frun_args(args []string) !string {
+	verbose_trace_strong(modfn(@MOD, @FN), args.join(' '))
+	x := os.exec(args)
+	if x.exit_code != 0 {
+		verbose_trace(modfn(@MOD, @FN), '## failed.')
+		verbose_trace(modfn(@MOD, @FN), '## failure   code: ${x.exit_code}')
+		verbose_trace(modfn(@MOD, @FN), '## failure output: ${x.output}')
+		return error_with_code('failed args: ${args}', x.exit_code)
+	}
+	verbose_trace_exec_result(x)
+	return x.output.trim_right('\r\n')
+}
+
+// exit_0_status_args runs literal arguments without invoking a shell.
+pub fn exit_0_status_args(args []string) bool {
+	verbose_trace_strong(modfn(@MOD, @FN), args.join(' '))
+	x := os.exec(args)
+	if x.exit_code < 0 {
+		verbose_trace(modfn(@MOD, @FN), '## failed.')
+		return false
+	}
+	verbose_trace_exec_result(x)
+	if x.exit_code == 0 {
+		return true
+	}
+	return false
 }

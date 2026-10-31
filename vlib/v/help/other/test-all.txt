@@ -1,0 +1,18 @@
+Run the long list of functional checks that CI runs for V itself.
+
+Usage:
+  v test-all [compiler flags...]
+
+The suite compiles and runs examples in a variety of configurations
+(C, JS, WASM, cross-compilation, different C compilers, GC modes,
+live, etc.), runs a full `v test` over `vlib/builtin`, checks
+expression mode with `v -e`, and several other features and
+invariants of the compiler.
+
+Compiler options given to `v test-all`, or set through VFLAGS, are
+applied to all of the checks.
+
+Passing `-new-compiler` (and not `-old-compiler`) selects strict V3
+mode: checks that are not compatible with the V3 compiler are then
+skipped, and the remaining ones are run with exactly the given
+options.

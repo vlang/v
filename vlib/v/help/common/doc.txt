@@ -9,6 +9,7 @@ Examples:
   v doc -no-color os
   v doc -o math.html math
   v doc -m -f html vlib/
+  v doc -os cross os
 
   Generates the documentation of a given MODULE, DIRECTORY, or FILE
   and prints or saves them to its desired format: HTML, JSON,
@@ -17,6 +18,7 @@ Examples:
 Options:
   -all            Includes private and public functions/methods/structs/consts/enums.
   -color          Forces the use of ANSI escape sequences to make the output colorful.
+                  String interpolation delimiters are highlighted separately from literal text.
   -no-color       Forces plain text output, without ANSI colors.
                   Note: -color is on for -f ansi .
   -f              Specifies the output format to be used.
@@ -26,6 +28,10 @@ Options:
   -m              Generate docs for modules listed in that folder.
   -o              The output file/folder path where to store the docs. Use `-o stdout`
                   or `-o -', to print the output instead of saving it to a file.
+  -os             Documents the module for the given platform, instead of the current one,
+                  like `-os windows`. With `-os cross` (or `-os all`), it documents the
+                  symbols of all platforms, and notes the platforms of the symbols that
+                  are only available on some of them.
   -readme         Include README.md to docs if present.
   -v              Enables verbose logging. For debugging purposes.
   -no-timestamp   Omits the timestamp in the output file.
@@ -56,3 +62,9 @@ For the text and ansi modes:
   -comments       Includes comments in the output.
 
 Note: set the environment variable `VDOC_SORT` to `false`, to avoid sorting the output.
+
+Note: `v doc` needs the `markdown` module. When V first compiles the doc tool, and
+`markdown` is not found in vlib/, in a VMODULES folder, or next to the tool, V clones
+it from https://github.com/vlang/markdown into the first VMODULES folder, which needs
+network access. On offline or sandboxed machines, run `v install markdown` beforehand.
+With `-path`, V does not install anything, and just compiles the tool.

@@ -27,6 +27,9 @@ You can see the origin implementation among with some benchmarks at
 
 ## Run the Simulations
 
+Add `-d verbose` when compiling to print simulation parameters and progress,
+for example `v -d verbose -gc boehm -prod sequential.v`.
+
 ### Sequential Simulation
 
 ```sh

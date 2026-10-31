@@ -1,0 +1,9 @@
+import json
+
+struct User {
+	name string
+}
+
+fn main() {
+	println(json.encode(User{}))
+}

@@ -38,7 +38,7 @@ fn test_multiple_else_if_guard() {
 fn test_opt_with_fall_through() {
 	mut x := 1
 	err_call(false) or {
-		eprintln('  this *should* be an error: ${err}')
+		eprintln('none')
 		x++
 		assert true
 	}

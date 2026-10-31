@@ -1,18 +1,39 @@
 module builtin
 
-fn C.setvbuf(fstream &C.FILE, buffer &char, mode i32, size usize) i32
+fn C.setvbuf(fstream &C.FILE, buffer &char, mode i32, size uint) i32
 
 // set_stream_unbuffered switches a stdio stream to unbuffered mode without using the
 // deprecated `setbuf` API on Windows toolchains.
 @[unsafe]
 fn set_stream_unbuffered(stream &C.FILE) {
-	C.setvbuf(stream, &char(nil), C._IONBF, usize(0))
+	C.setvbuf(stream, &char(nil), C._IONBF, uint(0))
+}
+
+// race_stdio_write marks a write to stdout or stderr in a race build (`v -race`), like
+// `race_file_write` in `os` does for files: the write happens before later reads of the
+// output in other threads. ThreadSanitizer does not see that ordering for C `FILE` writes.
+@[if race ?]
+fn race_stdio_write() {
+	$if race ? {
+		racereleaseio()
+	}
+}
+
+// race_stdio_read marks a read from stdin in a race build, like `race_file_read` in `os`:
+// it happens after earlier writes to files or to stdout and stderr. Call it only when the
+// read did not fail.
+@[if race ?]
+fn race_stdio_read() {
+	$if race ? {
+		raceacquireio()
+	}
 }
 
 // eprintln prints a message with a line end, to stderr. Both stderr and stdout are flushed.
 @[if !noeprintln ?]
 pub fn eprintln(s string) {
 	$if builtin_print_use_fprintf ? {
+		race_stdio_write()
 		C.fprintf(C.stderr, c'%.*s\n', s.len, s.str)
 		return
 	}
@@ -26,7 +47,9 @@ pub fn eprintln(s string) {
 		flush_stdout()
 		flush_stderr()
 		// eprintln is used in panics, so it should not fail at all
-		$if android && !termux {
+		// A `-cross` snapshot such as vc/v.c has no android_print: the file that defines it is
+		// only built for `-os android`, so its Android branches would not link on Termux.
+		$if android && !termux && !cross ? {
 			C.android_print(C.stderr, c'%.*s\n', s.len, s.str)
 		}
 		_writeln_to_fd(2, s)
@@ -38,6 +61,7 @@ pub fn eprintln(s string) {
 @[if !noeprintln ?]
 pub fn eprint(s string) {
 	$if builtin_print_use_fprintf ? {
+		race_stdio_write()
 		C.fprintf(C.stderr, c'%.*s', s.len, s.str)
 		return
 	}
@@ -50,7 +74,7 @@ pub fn eprint(s string) {
 	} $else {
 		flush_stdout()
 		flush_stderr()
-		$if android && !termux {
+		$if android && !termux && !cross ? {
 			C.android_print(C.stderr, c'%.*s', s.len, s.str)
 		}
 		_write_buf_to_fd(2, s.str, s.len)
@@ -124,10 +148,11 @@ pub fn unbuffer_stdout() {
 @[manualfree]
 pub fn print(s string) {
 	$if builtin_print_use_fprintf ? {
+		race_stdio_write()
 		C.fprintf(C.stdout, c'%.*s', s.len, s.str)
 		return
 	}
-	$if android && !termux {
+	$if android && !termux && !cross ? {
 		C.android_print(C.stdout, c'%.*s\n', s.len, s.str)
 	} $else $if ios {
 		// TODO: Implement a buffer as NSLog doesn't have a "print"
@@ -143,10 +168,11 @@ pub fn print(s string) {
 @[if !noprintln ?; manualfree]
 pub fn println(s string) {
 	$if builtin_print_use_fprintf ? {
+		race_stdio_write()
 		C.fprintf(C.stdout, c'%.*s\n', s.len, s.str)
 		return
 	}
-	$if android && !termux {
+	$if android && !termux && !cross ? {
 		C.android_print(C.stdout, c'%.*s\n', s.len, s.str)
 		return
 	} $else $if ios {
@@ -184,6 +210,7 @@ fn _write_buf_to_fd(fd int, buf &u8, buf_len int) {
 	if buf_len <= 0 {
 		return
 	}
+	race_stdio_write()
 	$if windows {
 		$if v2_native_windows_pe_minimal ? {
 			write_buf_to_fd_kernel32_or_exit(fd, buf, buf_len)
@@ -192,8 +219,8 @@ fn _write_buf_to_fd(fd int, buf &u8, buf_len int) {
 		}
 	} $else {
 		mut ptr := unsafe { buf }
-		mut remaining_bytes := isize(buf_len)
-		mut x := isize(0)
+		mut remaining_bytes := int(buf_len)
+		mut x := int(0)
 		$if freestanding || vinix || builtin_write_buf_to_fd_should_use_c_write ? {
 			// Flush any pending libc stdio output (from C.puts, C.putchar, etc.)
 			// before writing directly via write() syscall to prevent output reordering.
@@ -216,7 +243,7 @@ fn _write_buf_to_fd(fd int, buf &u8, buf_len int) {
 			}
 			unsafe {
 				for remaining_bytes > 0 {
-					x = isize(C.fwrite(ptr, 1, remaining_bytes, stream))
+					x = int(C.fwrite(ptr, 1, remaining_bytes, stream))
 					if x <= 0 {
 						// GUI programs on Windows may not have a writable stdout/stderr stream.
 						break

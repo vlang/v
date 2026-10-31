@@ -3,10 +3,19 @@ module vmod
 import strings
 
 fn quote(input string) string {
-	if input.contains("'") {
+	if !input.contains("'") {
+		return "'" + input + "'"
+	}
+	if !input.contains('"') {
 		return '"' + input + '"'
 	}
-	return "'" + input + "'"
+	// The value holds both quote kinds, so the delimiter has to be escaped
+	// instead of swapped; Scanner.create_string reads `\'` back as `'`.
+	mut out := "'"
+	for chr in input {
+		out += if chr == `'` { "\\'" } else { chr.ascii_str() }
+	}
+	return out + "'"
 }
 
 fn encode_array(mut b strings.Builder, input []string) {
@@ -29,6 +38,7 @@ fn encode_array(mut b strings.Builder, input []string) {
 	}
 }
 
+// encode serializes manifest metadata, including catalog and workspaces.
 pub fn encode(manifest Manifest) string {
 	mut b := strings.new_builder(512)
 	b.writeln('Module {')
@@ -48,12 +58,27 @@ pub fn encode(manifest Manifest) string {
 		b.write_string('\trepo_url: ')
 		b.writeln(quote(manifest.repo_url))
 	}
+	if manifest.repo_branch != 'master' {
+		b.write_string('\trepo_branch: ')
+		b.writeln(quote(manifest.repo_branch))
+	}
 	if manifest.author != '' {
 		b.write_string('\tauthor: ')
 		b.writeln(quote(manifest.author))
 	}
 	b.write_string('\tdependencies: ')
 	encode_array(mut b, manifest.dependencies)
+	if manifest.catalog.len > 0 {
+		b.writeln('\tcatalog: {')
+		for key in manifest.catalog.keys().sorted() {
+			b.writeln('\t\t' + quote(key) + ': ' + quote(manifest.catalog[key]))
+		}
+		b.writeln('\t}')
+	}
+	if manifest.workspaces.len > 0 {
+		b.write_string('\tworkspaces: ')
+		encode_array(mut b, manifest.workspaces)
+	}
 	for key, values in manifest.unknown {
 		b.write_string('\t')
 		b.write_string(key)

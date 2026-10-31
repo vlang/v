@@ -38,6 +38,10 @@ pub mut:
 	// replay — from a partial write. (The TLS backends expose the same field but
 	// use -1 for the indeterminate case they cannot prove; plain TCP never does.)
 	last_write_sent int
+mut:
+	read_timeout_in_socket     bool
+	socket_read_timeout_value  time.Duration
+	socket_read_timeout_handle int
 }
 
 // dial_tcp will try to create a new TcpConn to the given address.
@@ -76,6 +80,7 @@ pub fn dial_tcp(oaddress string) !&TcpConn {
 			read_timeout:  tcp_default_read_timeout
 			write_timeout: tcp_default_write_timeout
 		}
+		conn.set_read_timeout(tcp_default_read_timeout)
 		// The blocking / non-blocking mode is determined before the connection is established.
 		$if net_nonblocking_sockets ? {
 			conn.is_blocking = false
@@ -119,6 +124,7 @@ pub fn dial_tcp_with_bind(saddr string, laddr string) !&TcpConn {
 			read_timeout:  tcp_default_read_timeout
 			write_timeout: tcp_default_write_timeout
 		}
+		conn.set_read_timeout(tcp_default_read_timeout)
 		// The blocking / non-blocking mode is determined before the connection is established.
 		$if net_nonblocking_sockets ? {
 			conn.is_blocking = false
@@ -177,14 +183,20 @@ pub fn (mut c TcpConn) close() ! {
 pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 	mut res := 0
 	mut ecode := 0
+	// A read with a deadline set still uses select, so the deadline bounds it (see wait_for_common);
+	// ordinary blocking reads let recv enforce the timeout.
+	socket_read_timeout := c.is_blocking && c.read_timeout_in_socket
+		&& c.read_timeout == c.socket_read_timeout_value
+		&& c.sock.handle == c.socket_read_timeout_handle
+		&& !deadline_set(c.read_deadline)
 	$if is_coroutine ? {
 		res = C.photon_recv(c.sock.handle, voidptr(buf_ptr), len, 0, c.read_timeout)
 		ecode = error_code()
 	} $else {
 		if c.is_blocking {
-			// Honor read deadlines/timeouts first, then use a normal blocking recv.
-			// This avoids transient EAGAIN-style reads on newly accepted sockets.
-			c.wait_for_read()!
+			if !socket_read_timeout {
+				c.wait_for_read()!
+			}
 			res = C.recv(c.sock.handle, voidptr(buf_ptr), len, 0)
 		} else {
 			res = C.recv(c.sock.handle, voidptr(buf_ptr), len, msg_dontwait)
@@ -204,6 +216,9 @@ pub fn (c TcpConn) read_ptr(buf_ptr &u8, len int) !int {
 				unsafe { buf_ptr.vstring_with_len(res) })
 		}
 		return res
+	}
+	if socket_read_timeout && ecode in [int(error_ewouldblock), int(error_eagain)] {
+		return error_with_code(err_timed_out.msg(), err_timed_out.code())
 	}
 	if ecode in [int(error_ewouldblock), int(error_eagain), C.EINTR] {
 		c.wait_for_read()!
@@ -243,8 +258,9 @@ pub fn (c TcpConn) read(mut buf []u8) !int {
 	return c.read_ptr(buf.data, buf.len)!
 }
 
+// read_deadline returns the current read deadline, or an error when it is unset.
 pub fn (mut c TcpConn) read_deadline() !time.Time {
-	if c.read_deadline.unix() == 0 {
+	if deadline_set(c.read_deadline) {
 		return c.read_deadline
 	}
 	return error('none')
@@ -311,8 +327,9 @@ pub fn (mut c TcpConn) set_read_deadline(deadline time.Time) {
 	c.read_deadline = deadline
 }
 
+// write_deadline returns the current write deadline, or an error when it is unset.
 pub fn (mut c TcpConn) write_deadline() !time.Time {
-	if c.write_deadline.unix() == 0 {
+	if deadline_set(c.write_deadline) {
 		return c.write_deadline
 	}
 	return error('none')
@@ -326,8 +343,31 @@ pub fn (c &TcpConn) read_timeout() time.Duration {
 	return c.read_timeout
 }
 
+// set_read_timeout sets the timeout used by subsequent reads.
+// On POSIX sockets, blocking recv enforces it directly when the socket option is available.
 pub fn (mut c TcpConn) set_read_timeout(t time.Duration) {
 	c.read_timeout = t
+	c.read_timeout_in_socket = false
+	$if !windows && !is_coroutine ? {
+		if t < 0 && t != infinite_timeout {
+			return
+		}
+		mut microseconds := i64(0)
+		if t > 0 && t != infinite_timeout {
+			microseconds = t / time.microsecond
+			if t % time.microsecond != 0 {
+				microseconds++
+			}
+		}
+		timeout := C.timeval{
+			tv_sec:  u64(microseconds / 1_000_000)
+			tv_usec: u64(microseconds % 1_000_000)
+		}
+		c.read_timeout_in_socket = C.setsockopt(c.sock.handle, C.SOL_SOCKET, C.SO_RCVTIMEO,
+			voidptr(&timeout), sizeof(timeout)) == 0
+		c.socket_read_timeout_value = t
+		c.socket_read_timeout_handle = c.sock.handle
+	}
 }
 
 pub fn (c &TcpConn) write_timeout() time.Duration {
@@ -352,6 +392,7 @@ pub fn (mut c TcpConn) wait_for_write() ! {
 // Note: just use `.accept()!`. In most cases it is simpler, and calls `.set_sock()!` for you.
 pub fn (mut c TcpConn) set_sock() ! {
 	c.sock = tcp_socket_from_handle(c.handle)!
+	c.set_read_timeout(c.read_timeout)
 	$if trace_tcp ? {
 		eprintln('    TcpListener.accept | << new_sock.handle: ${c.handle:6}')
 	}
@@ -443,20 +484,45 @@ fn ipv4_fallback_listen_addr(saddr string) !string {
 }
 
 fn listen_tcp_with_family(family AddrFamily, saddr string, options ListenOptions) !&TcpListener {
-	mut s := new_tcp_socket(family) or { return error('${err.msg()}; could not create new socket') }
-	s.set_dualstack(options.dualstack) or {}
-
 	addrs := resolve_addrs(saddr, family, .tcp) or {
 		return error('${err.msg()}; could not resolve address ${saddr}')
 	}
-	// TODO(logic to pick here)
-	addr := addrs[0]
+	return listen_tcp_with_addresses(addrs, saddr, options)
+}
+
+fn listen_tcp_with_addresses(addrs []Addr, saddr string, options ListenOptions) !&TcpListener {
+	mut errors := []IError{}
+	for addr in addrs {
+		listener := listen_tcp_addr(addr, saddr, options) or {
+			errors << err
+			continue
+		}
+		return listener
+	}
+	if errors.len > 0 {
+		return errors[errors.len - 1]
+	}
+	return error('no addresses resolved for ${saddr}')
+}
+
+fn listen_tcp_addr(addr Addr, saddr string, options ListenOptions) !&TcpListener {
+	mut s := new_tcp_socket(addr.family()) or {
+		return error('${err.msg()}; could not create new socket')
+	}
+	mut keep_socket := false
+	defer {
+		if !keep_socket {
+			s.close() or {}
+		}
+	}
+	s.set_dualstack(options.dualstack) or {}
 
 	// cast to the correct type
 	alen := addr.len()
 	socket_error_message(C.bind(s.handle, voidptr(&addr), alen), 'binding to ${saddr} failed')!
 	mut res := C.listen(s.handle, options.backlog)
 	if res == 0 {
+		keep_socket = true
 		mut listener := &TcpListener{
 			sock:            s
 			accept_deadline: no_deadline
@@ -498,6 +564,7 @@ fn listen_tcp_with_family(family AddrFamily, saddr string, options ListenOptions
 		$if net_nonblocking_sockets ? {
 			listener.is_blocking = false
 		}
+		keep_socket = true
 		return listener
 	}
 }
@@ -563,8 +630,9 @@ pub fn (mut l TcpListener) accept_only() !&TcpConn {
 	}
 }
 
+// accept_deadline returns the current accept deadline, or an error when it is unset.
 pub fn (c &TcpListener) accept_deadline() !time.Time {
-	if c.accept_deadline.unix() != 0 {
+	if deadline_set(c.accept_deadline) {
 		return c.accept_deadline
 	}
 	return error('invalid deadline')
@@ -659,7 +727,7 @@ pub fn tcp_socket_from_handle_raw(sockfd int) TcpSocket {
 
 fn (mut s TcpSocket) set_option(level int, opt int, value int) ! {
 	v := i32(value) // C socket options are 4-byte `int`; pass i32 storage (sizeof 4)
-	socket_error(C.setsockopt(s.handle, level, opt, &v, sizeof(v)))!
+	socket_error(C.setsockopt(s.handle, level, opt, voidptr(&v), sizeof(v)))!
 }
 
 pub fn (mut s TcpSocket) set_option_bool(opt SocketOption, value bool) ! {
@@ -759,7 +827,7 @@ fn (mut s TcpSocket) connect(a Addr) ! {
 				}
 				return
 			}
-			return err_timed_out
+			return error_with_code(err_timed_out.msg(), err_timed_out.code())
 		}
 		wrap_error(ecode)!
 		return

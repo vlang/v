@@ -11,7 +11,8 @@ fn tdp_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_tmpl_dynamic_path_diag_test_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${tdp_vexe} -gc none -path "${tdp_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${tdp_v3_src}')
+		os.exec([tdp_vexe, '-gc', 'none', '-path', '${tdp_vlib_dir}' + '|@vlib|@vmodules', '-o',
+			v3_bin, '${tdp_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -34,7 +35,7 @@ fn test_dynamic_tmpl_path_is_diagnosed() {
 	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
 	c_out := os.join_path(root, 'out.c')
 	os.rm(c_out) or {}
-	compile := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -o ${c_out}')
+	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-o', '${c_out}'])
 	assert compile.exit_code != 0, 'a dynamic `\$tmpl(path)` must be diagnosed, got:\n${compile.output}'
 	assert compile.output.contains('must be a compile-time string'), compile.output
 	// It must not have silently compiled and rendered nothing.

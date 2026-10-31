@@ -108,7 +108,7 @@ fn test_reading_zipping_files() {
 			assert name in file_name_list
 
 			zp.read_entry_buf(buf, buf_size)!
-			buf[data_len] = 0
+			(&u8(buf))[data_len] = 0
 			tmp_str := tos(buf, data_len)
 
 			assert tmp_str[0..4] == 'file'
@@ -178,4 +178,28 @@ fn test_zip_folder_empty_file() {
 	os.write_file('${test_path}/test.txt', '')! // Empty file
 	szip.zip_folder(test_path, test_dir_zip)!
 	assert os.exists(test_dir_zip)
+}
+
+fn test_missing_entry_and_binary_content() {
+	path := os.join_path(os.temp_dir(), 'v_szip_binary_${os.getpid()}.zip')
+	defer { os.rm(path) or {} }
+	content := [u8(0xff), 0, 0xff]
+	mut writer := szip.open(path, .no_compression, .write)!
+	writer.open_entry('binary')!
+	writer.write_entry(content)!
+	writer.close_entry()
+	writer.close()
+	mut reader := szip.open(path, .no_compression, .read_only)!
+	defer { reader.close() }
+	mut rejected := false
+	reader.open_entry('missing') or {
+		assert err.msg() == 'szip: cannot open archive entry'
+		rejected = true
+	}
+	assert rejected, 'missing archive entry was accepted'
+	reader.open_entry('binary')!
+	defer { reader.close_entry() }
+	mut actual := []u8{len: content.len}
+	assert reader.read_entry_buf(actual.data, actual.len)! == content.len
+	assert actual == content
 }

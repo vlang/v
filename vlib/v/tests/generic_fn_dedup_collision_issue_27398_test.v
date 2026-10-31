@@ -63,7 +63,7 @@ pub fn call_api() {
 	defer {
 		os.chdir(old_wd) or { panic(err) }
 	}
-	res := os.execute('${os.quoted_path(@VEXE)} -skip-unused run .')
+	res := os.exec([@VEXE, 'run', '.'])
 
 	assert res.exit_code == 0, 'compilation failed:\n${res.output}'
 	assert res.output.trim_space() == 'ok'

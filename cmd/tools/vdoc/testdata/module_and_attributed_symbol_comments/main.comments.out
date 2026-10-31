@@ -3,5 +3,6 @@ module main
 
 fn bar()
     bar is the documentation for bar
+@[deprecated: 'use bar instead']
 fn foo()
     foo is the documentation for foo

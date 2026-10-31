@@ -1,5 +1,10 @@
 # V compiler
 
+Generic `typeof` metadata identifies parameterized types with their concrete spellings across
+modules. Local composite type expressions keep their source spelling in `.name`; transported type
+parameters retain the caller's qualified name. Nested `typeof` of a type's key, value, element, or
+index metadata preserves the reflected member's type.
+
 The default V compiler uses a flat AST parser
 with Pratt parsing, a structured type system with sum-type variants, lexical
 scoping, a transformer for AST simplification, a shared type-checking phase, a
@@ -9,15 +14,71 @@ ARM64 backend via SSA IR with a built-in linker, and a direct
 flat-AST-to-WebAssembly backend. With `-prod`, the ARM64 backend runs SSA
 optimization, MIR lowering, and instruction selection.
 
+`parser.Parser.parse_text` copies caller-provided source into the AST, so callers can reuse
+or release their own buffers after parsing.
+
+Inside generic methods, callable parameters and local bindings take precedence over methods
+with the same name. Implicit receiver calls are resolved only when no local binding shadows
+the method name.
+
+Callable parameters and local function values in generic functions take precedence over
+module functions with the same name, including calls from closures that capture the callable.
+
+Function types used as generic struct arguments retain open parameter and return types until
+instantiation, including when the generic function is declared in an imported module.
+
+Nested generic struct arguments retain the module of every type component when used as
+fields or passed to generics declared in another module.
+
+On macOS ARM64, include the native backend with `v -compile-backend arm64 self`, then use
+`v -b arm64 self x2` to rebuild the full CLI twice with that backend. The second build runs
+the compiler produced by the first build. Native self-builds disable GC and include the C
+backend; FastC is omitted by default because native linking does not include libtcc.
+A compiler built without the backend reports that for `-b arm64` and exits with an error.
+The native runtime initializes globals, runtime constants, and module state before `main`.
+Native macOS executables use a 64 MiB main stack, matching the C backend's linker setting
+for recursive compiler passes.
+Native macOS `C.utsname` uses Darwin's five inline `char[256]` fields. Field expressions
+retain the declared `&char` value by returning each array's address. This ABI mapping is
+specific to the 64-bit native target and leaves WebAssembly's 32-bit layout unchanged.
+Runtime constant initializers run once, after their dependencies. The runtime also provides
+process capture, pthread spawning and waiting, exit callbacks, and string-formatting helpers.
+Native fixed-point interpolation follows the C backend's decimal rounding and padding policy.
+Long float conversions expand the selected shortest decimal directly, including large exponents.
+For callers building SSA directly, `ssa.BuildOptions.thread_stack_size` sets the stack size
+for spawned pthreads in bytes. Its default is 8 MiB; zero uses the pthread default.
+The native SSA backend currently uses a 32-bit `int`, including array and string header
+fields. Its `min_int`, `max_int`, and `sizeof(int)` follow that width; use `i64` or `u64`
+for explicit 64-bit values.
+
+Native `run` forwards program arguments and exit status. Native test builds create an
+entry point for selected tests and run suite hooks. SSA callers can select these with
+`ssa.BuildOptions.test_files` and `test_run_only`.
+Native tests retain runtime formatting helpers only when reachable tests or hooks need them.
+Generated enum stringification resolves directly to the enum's formatter.
+
+V3 does not yet have a full JavaScript backend. For now, `*_test.js.v` files are skipped on
+all operating systems, including `v test` and `v test-self`, direct `v`/`v run` commands,
+and explicit `-b js` invocations. The limited JavaScript compatibility generator remains
+available for non-test programs. JavaScript test sources are retained for future backend support.
+
 The `v fmt` command uses `v.parser` and `v.gen.v`. Formatter-mode parsing retains comments,
 compile-time branches, inline assembly, SQL bodies, and literal prefixes so they round-trip
 without a legacy formatter path.
+It also preserves literals of locally declared lowercase types, including declarations that
+follow their uses or appear in inactive compile-time branches. Assembly directives such as
+`.type` do not declare V types. Normal compilation still checks the type naming rules.
 
 Imports all `vlib/builtin/` V source files, both pure V (`.v`) and C-interop
 (`.c.v`), for struct, enum, type alias, interface, C function declarations, and
-global definitions. `$if` compile-time conditionals are resolved directly in the
-parser. The parser evaluates the condition, parses only the taken branch, and
-skips the other, so no AST nodes or transformer pass is needed for `$if` blocks.
+global definitions. The parser resolves platform flags and known literal `$if` conditions,
+parsing only the taken branch. String guards that depend on imported constants are resolved
+before declaration collection. Parallel file parsing retains computed constant names and defers
+their unproved guards, including guards on constants selected by earlier guards.
+Metadata reflection headers do not create runtime method references. A user module named
+`closure` can therefore be imported without requiring the compiler's closure runtime.
+Reflection values, immutable reflection locals, and generic
+type conditions retain `comptime_if` nodes until the transformer can select their branch.
 `#include` and `#flag` directives inside `$if` blocks are handled correctly: the
 scanner consumes the entire directive line as a single token, preventing the
 parser from reading past block boundaries. File selection filters out
@@ -28,6 +89,19 @@ builtin function bodies are skipped during C code generation. Maps use the
 builtin `map` type name and API (`new_map`, `map__set`, `map__get`,
 `map__delete`, etc.) with a simplified open-addressing implementation until V
 can compile the full builtin map.v.
+
+Methods on an alias are resolved using the receiver expression's alias, including calls on
+parameters inside a method of another alias of the same underlying type.
+
+An explicit `.str()` call on a generic struct pointer preserves the result of its
+user-defined pointer-receiver method. Pointer interpolation still adds its reference prefix,
+and automatic pointer stringification retains its existing prefix and nil handling.
+
+Variadic spreads accept array aliases, including struct fields and aliases of other array
+aliases. Each spread contributes the array's elements to the variadic argument list.
+
+Generic function bodies retain nominal alias types after unsafe expressions, array indexing,
+and map iteration, so methods declared on the alias remain available.
 
 ## Compiler dispatch
 
@@ -69,6 +143,35 @@ remains within its scratch-memory safety limit.
 Explicit `-new-compiler` builds remain strict default-compiler operations and do not retry with
 V1.
 
+## Machine-readable diagnostics
+
+`-json-errors` prints each error, warning and notice of the scanner, the parser and the checker
+as one JSON object per line on stderr, instead of the text with a source excerpt:
+
+```json
+{"file":"bad.v","line":3,"col":7,"end_line":3,"end_col":14,"severity":"error","message":"..."}
+```
+
+| Member | Value |
+| --- | --- |
+| `file` | The path the text form shows: relative to the working directory, or absolute with `VERROR_PATHS=absolute`. |
+| `line`, `col` | Where the reported span starts. Both start at 1; a column counts bytes. |
+| `end_line`, `end_col` | The position after the last byte of the span. |
+| `severity` | `error`, `warning` or `notice`. |
+| `label` | Only when the text form uses another label than the severity, like `builder error`, `cgen error` or `conflicting declaration`. |
+| `message` | The message of the text form. |
+| `details` | Only when there are any: the text printed after `Details:`. |
+| `called_from` | Only for a template: the `$tmpl` calls that included it, innermost first, each with `file`, `line` and `col`. |
+
+A diagnostic without a source position has no location members. The same diagnostics are
+reported as without the option, in the same order and with the same exit code, and `-W` and
+`-message-limit` apply as usual. Two things differ: every error is printed, where the text
+form stops after 20 of them, and a failed build is not retried with the compatibility compiler.
+Messages that are not diagnostics of the V source, like the output of a failing C compiler, stay
+text: a line is a diagnostic when it starts with `{`. `-old-compiler`, and `-vls-mode` without
+`-new-compiler`, build with the compatibility compiler, which reads `-json-errors` in its own way
+and does not print this format.
+
 ## Profile-guided compiler build
 
 On macOS or Linux with Clang and a matching `llvm-profdata`, build an optimized standalone
@@ -101,6 +204,10 @@ multiple input paths. `-cc <executable>` selects the C compiler. V3 uses
 `-gc boehm_full_opt` by default and supports the V1 collector modes; compiler self-builds
 disable GC regardless of the requested mode. Directory builds read `subdirs` through the canonical
 `v.mod` parser, including when other manifest strings contain punctuation resembling fields.
+When an explicit `-cc tcc` build fails, the driver retries with the platform C compiler
+and reports the first error line from tcc in its fallback warning. This retry applies to
+all tcc failures. `-show-c-output` displays the complete original diagnostics, and
+`-no-retry-compilation` disables the retry.
 Native C compilation uses `-fwrapv` on supported targets so signed integer overflow retains V's
 two's-complement semantics. On macOS, `-cg` links executables with exported symbols for symbolic
 backtraces while plain `-g` retains its V-source debug behavior.
@@ -110,15 +217,25 @@ The driver monitors compiler memory throughout the build. Ordinary builds stop a
 compiler-tree and self-host builds stop at 9984 MiB, leaving extra sampling headroom below a
 10 GiB process ceiling.
 On macOS it uses physical footprint, matching Activity Monitor more closely; elsewhere it uses
-current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit.
-Native compiler and `v self` builds use `-prealloc` when their target and selected C compiler
-support it, enabling the disposable stage arenas that keep compiler self-hosting within that
-ceiling.
+current RSS. Pass `-no-memory-limit`/`--no-memory-limit` to disable this safety limit or
+`-memory-limit`/`--memory-limit` to set your own.
+A memory-limit failure flushes its diagnostic and immediately exits with status 1. Process-exit
+callbacks are skipped because compiler workers may still be using their allocation arenas.
+Backend type queries discard transient function smartcasts after scoped specialization,
+so generic builds with small worker counts do not retain freed map storage.
+C-backend compiler and `v self` builds use `-prealloc` when their target and selected C
+compiler support it, enabling the disposable stage arenas that keep compiler self-hosting
+within that ceiling. ARM64 backend self-builds use libc allocation without these arenas.
+`v -b arm64 self` disables the default memory limit; an explicit `-memory-limit` or
+`--memory-limit` is preserved.
 Stage rows recorded at pipeline boundaries report sampled peak RSS and the process peak. Timing
 breakdowns reconstructed after a stage omit the sampled peak. On macOS each row also prints
 physical footprint immediately after RSS.
 
 ## Parallel jobs
+
+Parallel C builds preserve local bindings whose names match C functions called in the same
+V function. The calls continue to refer to the declared C functions.
 
 `VJOBS` selects V3's desired parallel job count. On Linux, an executable of the V3 compiler that
 was itself built with `-prealloc` caps ordinary user builds at four total compiler jobs whenever
@@ -132,7 +249,11 @@ for the user program being compiled does not disable the compiler's own job cap.
 
 BSD compiler and self-host builds normally keep their V stages at two jobs. Production builds
 using `-parallel-cc` allow one job per 2 GiB of physical memory, up to eight jobs, and use the same
-limit for the split C compilation. Other parallel C builds remain limited to two jobs.
+limit for the split C compilation. Cached builds divide the compiler across 32 C units and cache
+those production objects by content, compiler, flags, target, and included-file contents. Repeated
+production self-builds therefore compile only changed units. `-nocache` disables this reuse and
+uses one C unit per compiler job to avoid repeatedly parsing the shared declarations. Other
+parallel C builds are limited to eight jobs.
 
 ## Fast C backend
 
@@ -170,16 +291,27 @@ Production, test, shared/live, ownership/autofree, object-file, profiling/covera
 custom compiler, custom-builtin, `no_main`, `-Wimpure-v`, translated, and REPL modes are currently
 rejected.
 
-A conventional C-backend self-host prunes FastC along with the other optional backends. Pass
-`-compile-backend fastc` or `-all-backends` when the generated compiler should retain `-b fastc`.
+Builds of the full `cmd/v` CLI (`make`, `makev.bat`, `v self`, `v up`) keep FastC, so default V
+executables accept `-b fastc`; `-d skip_fastc` leaves it out. Portable `-cross` C (the `vc/v.c` and
+`vc/v_win.c` bootstrap snapshots) leaves it out too, because FastC's libtcc linking and Mach-O
+signing are host specific; the compiler that `make` and `makev.bat` build from a snapshot rebuilds
+`cmd/v` natively and keeps it. A standalone `vlib/v/v.v` C-backend self-host prunes FastC along
+with the other optional backends. Pass `-compile-backend fastc` or `-all-backends` when that
+compiler should retain `-b fastc`.
+
+FastC builds programs on macOS, Linux, and Windows hosts; the C step always uses the bundled
+TinyCC (`thirdparty/tcc/tcc.exe`). The FastC self-host compiler described below lowers `spawn` to
+pthreads and uses header-free C ABI tables for macOS and glibc Linux, so `-selfhost -b fastc` and
+`v self -b fastc` reject Windows targets.
 
 `-selfhost -b fastc -o v4 vlib/v/v.v` builds V3 using only the scanner-to-C path. The generated
 compiler uses the small `v.fastcdriver` entry point and can build further FastC generations without
 the flat AST or conventional C backend. Set `V_MACOS_V3_NO_FALLBACK=1` while validating a chain to
 turn any attempted compatibility fallback into a hard failure.
 
-Set `FASTC_BENCH=1` when running a FastC self-host compiler to print the generation time and
-`loc/s` for its input (`FASTC_BENCH_REPEAT=N` reports the best of N child runs).
+Set `FASTC_BENCH=1` when running a standalone FastC self-host compiler to print generation time
+and generation-only `loc/s`. `FASTC_BENCH_REPEAT=N` reports the fastest generation of N child
+runs. These generation rates exclude TinyCC compilation and linking.
 `FASTC_BENCH_PHASES=1` prints the time of every generation phase, `FASTC_BENCH_FILES=1` the
 generation time of every source file, and `FASTC_BENCH=1 FASTC_BENCH_LOOP=N` repeats generation N
 times in-process so an external sampler can profile it. The compiler's own C preamble and runtime
@@ -187,10 +319,31 @@ times in-process so an external sampler can profile it. The compiler's own C pre
 take effect one generation later: measure the compiler built by the modified compiler, not the
 modified compiler itself.
 
-`FASTC_BENCH=1` also prints end-to-end MLOC/s. The FastC total includes TinyCC compilation and
-linking; the direct ARM64 total includes Mach-O generation, linking, and signing.
-For the optimized FastC pipeline, build the full compiler with `./v -prod -o ./vnew cmd/v`, then run
-`FASTC_BENCH=1 ./vnew -nocache -b fastc -selfhost -o /tmp/v3-fastc vlib/v/v.v`.
+`FASTC_BENCH=1` also prints a FastC total that includes TinyCC compilation and linking.
+The direct ARM64 total includes Mach-O generation, linking, and signing.
+The standalone `vlib/v/v.v` self-host workload retains only the FastC driver and backend:
+
+```sh
+./v -prod -cc clang -o ./vnew cmd/v
+FASTC_BENCH=1 ./vnew -nocache -b fastc -selfhost -o /tmp/v3-fastc vlib/v/v.v
+```
+
+Compiling the full `cmd/v` CLI with its default backend selection is a larger workload.
+Build the production host compiler once, then use the same binary and source snapshot for
+FastC and normal C backend measurements. On macOS, an external timer includes process startup,
+TinyCC compilation, linking, signing, final output publication, and process exit:
+
+```sh
+./v -prod -cc clang self
+FASTC_BENCH=1 /usr/bin/time -l ./v -b fastc -nocache -o /tmp/v-fastc cmd/v
+/usr/bin/time -l ./v -b c -cc tcc -nocache -o /tmp/v-c cmd/v
+```
+
+Divide physical lines in each build's selected V sources by the external elapsed time.
+The full CLI's internal FastC total omits early command-line processing and final output
+publication.
+`-nocache` makes both backends rebuild their generated C; record resolver memo usage separately.
+See [FastC throughput measurements](../../doc/fastc.md) for warmups, paired runs, and cache policy.
 
 Self-host generations box `?`/`!` payloads out of a per-thread bump chunk rather than `malloc`, keep
 one file record per scanner pass, and honor `@[direct_array_access]` for string and array indexing.
@@ -251,13 +404,13 @@ translation units (the shared head of typedefs, prototypes and runtime in every 
 dispatch tables and lifecycle functions only in the first, the file bodies grouped by size; the
 globals are definitions in the first unit and `extern` declarations in the others),
 `fastc_compile_c_units` compiles them with concurrent `tcc -c` processes started through
-`posix_spawn` (forking the large compiler process costs more), and one `tcc` call links the
-objects (`VJOBS=1`, `V3_FASTC_NO_PARALLEL=1`, or `-no-parallel` keeps the single-file build; both
-give the same C with `-keepc`). On macOS TinyCC runs Apple's `codesign` after linking, which costs
-~50 ms per build: the drivers put a no-op `codesign` first on its PATH and ad-hoc sign the
-executable themselves (`gen/fastc/macho_sign.v`, SHA-256 page hashes through CommonCrypto,
-patched into the file in place). The SDK path is taken from `SDKROOT` or the toolchain selected by
-`xcrun`; conventional SDK locations are used only as a fallback.
+`posix_spawn` (forking the large compiler process costs more; Windows uses `os.Process`), and one
+`tcc` call links the objects (`VJOBS=1`, `V3_FASTC_NO_PARALLEL=1`, or `-no-parallel` keeps the
+single-file build; both give the same C with `-keepc`). On macOS TinyCC runs Apple's `codesign`
+after linking, which costs ~50 ms per build: the drivers put a no-op `codesign` first on its PATH
+and ad-hoc sign the executable themselves (`gen/fastc/macho_sign.v`, SHA-256 page hashes through
+CommonCrypto, patched into the file in place). The SDK path is taken from `SDKROOT` or the
+toolchain selected by `xcrun`; conventional SDK locations are used only as a fallback.
 
 Default self-host builds content-cache the split TinyCC objects and the linked, signed executable
 under `os.vtmp_dir()`. The keys cover the exact generated units, TinyCC build, compile options, and
@@ -323,6 +476,8 @@ header only for occupied slots. The existing set bits guard reads. `types.cached
 an immutable entry; `types.promote_cached_name()` preserves both its header and string bytes
 when a worker or transform arena is released. Text interning uses per-pass `flat.TextProbeCache`
 scratch on the stack, while canonical text remains owned by the AST.
+Callback validation retains declared variadic modes when matching a lowered array parameter,
+including callbacks nested in parameters and return types.
 After parallel transform merges its append regions, `FlatAst.discard_unused_capacity()`
 releases unused AST pages on macOS and Linux in preallocated builds. It preserves the virtual
 reservation and live nodes, so later appends keep their existing capacity.
@@ -342,19 +497,126 @@ For C executable and library builds, v3 caches each imported module as a
 declaration-only `.vh` file and a compiled `.o` file. A module object is rebuilt
 when its source content, compiler implementation, target, or relevant build
 configuration changes. `builtin`, `strconv`, `strings`, `hash`, `bits`, and
-`math.bits` share one `builtin.o`, matching the v2 core-cache layout. Cache files live under
+`math.bits` share one `builtin.o`, matching the v2 core-cache layout.
+Module caching is enabled by default for supported builds, including `-cc clang`, `-prod`,
+and builds with bundled TinyCC on macOS and Linux. TinyCC builds and links its own module
+objects. Pass `-nocache` or `--no-cache` to disable caching. A first TinyCC build can be
+faster without the cache, while later builds reuse the cached modules and executable.
+The former `-usecache` flag is no longer accepted.
+The C backend rejects `-prod` with TinyCC, including compiler aliases and renamed copies.
+Use Clang or GCC for production builds. Help, formatter, and other tool commands remain available
+with those flags. `v.pref.ccompiler_version_is_tinycc` recognizes TinyCC banner lines;
+mentions in metadata such as Clang's `InstalledDir` do not identify TinyCC.
+Compiler probes follow the launch path, including executable files in the working directory
+before `PATH`. Windows explicit paths use the implicit `.exe` suffix and expand `%NAME%` variables;
+renamed PE files with other extensions can also be queried.
+
+Cached programs retain the element layouts required by fixed-array aliases and option payloads.
+Cached standard-library headers retain their source classification so headerless C bindings keep
+their complete layouts, including the Boehm GC stack type used by interface stringification.
+Generated fixed-array map-key helpers declare their cached builtin callees before their definitions.
+Inferred anonymous fixed arrays use their materialized element types, including nested arrays.
+Unused functions and the generic calls or function values inside them are pruned by default,
+including those in imported modules. Use `-no-skip-unused` to retain unused functions.
+The obsolete `-skip-unused` spelling prints a notice and has no effect, including when combined
+with `-no-skip-unused`.
+After a `run` or `crun` input, it remains a program argument, including for directories named
+`run`, `crun`, `build`, or `test`.
+Literal-output programs still instantiate retained generic helpers with `-no-skip-unused`.
+Merged imports in cached headers do not create parameter-name conflicts across source files.
+Warm builds retain every `IError` implementer's `msg` and `code` methods and their helpers,
+including calls made by dispatchers inside cached objects.
+Selected option/result tuple signatures retain nested struct payload layouts, including signatures
+discovered after cache demand collection, and declare them before their tuples and wrappers.
+Shared wrappers retain their payload layouts even when only compile-time reflection visits them.
+Recursive interface string helpers belong to the interface's declaration module, including generic
+applications whose arguments name types from other modules.
+Warm builds preserve generic interface parameter metadata after temporary compiler arenas are freed.
+Translated programs regenerate their C prefixes after body edits so new runtime helpers are present;
+their module and executable caches remain enabled.
+Portable cross output keeps its embedded signal-handler installer local so cached builds can
+also link the native helper object.
+With `-v` or `-show-timings`, the compiler prints `Caching module <name>...` to standard error
+before compiling a new module object, including during `run`. Ordinary builds and warm builds
+print no cache creation notices; `-silent` suppresses them too.
+This applies to SHA3 and other imported modules with TinyCC too.
+`v up` refreshes cached modules once per equivalent import sequence and build configuration.
+It preserves import order for module C flags and reuses the same records on repeated updates.
+Both original entries and temporary importers stop after module object validation,
+before compiling program objects or linking an executable.
+`v up` refreshes only TinyCC cache configurations, retaining recorded test modes.
+Production TinyCC records made by older compilers are skipped.
+`v.pref.tcc_with_prod_requested_in` checks compiler wrappers in the record's working directory
+and resolves relative compiler paths and `PATH` entries there without changing the caller's
+directory or environment.
+Caches for other C compilers are refreshed by the next build that uses that compiler.
+Compiler updates validate fresh module interfaces and reuse compiled objects when the generated C,
+C compiler, flags, and native inputs still match. Reused objects print no cache creation notices.
+Objects and their generated C are shared between configurations to avoid duplicate storage.
+Refresh progress labels each build's compiler flags and normal/production and program/test modes.
+Record indices can jump when builds are grouped or skipped; the final summary counts checked builds.
+Refresh stops on a disk-full error so remaining configurations do not keep attempting writes.
+If TinyCC cannot compile or link a cached program unit, V retries the original sources
+without module caching before changing C compilers or reporting a compilation failure.
+Programs importing `v.reflection` parse original module sources to preserve source-file
+metadata, while still reusing compatible module objects. This restart preserves the caller's
+environment for compile-time `$env` and programs launched with `v run`.
+Stored constants are defined and initialized by their owning module object. Cached interfaces
+declare constant tables and other stored values by type, so a warm build does not parse or lower
+their initializers again. C constants keep their declarations in native headers.
+Module startup preserves constant dependency order and initializes
+implicit global defaults read by constants before those constants. These defaults follow module
+import dependency order in both cold and warm builds. After the program changes,
+its C unit emits the cached function prototypes and type declarations reached by its generated
+code, including the payload types of fields, options, tuples, and function pointers.
+Unused generated inline arithmetic, sorting, and formatting helpers and string literal storage
+are omitted from warm program units as well, so TinyCC does not compile them again.
+The interface of a module does not depend on the program that was built first: a module that
+imports others is cached like one that does not, a program that only prints literals still checks
+the whole modules it publishes, and the methods of array and map receivers do not pass for generic
+ones. An object is identified by the C compilation flags, by whether a `defer` links a panic
+frame and by the C that is generated for the module, and not by the `static` wrappers of the
+program prefix. A `defer` links a frame when the program reaches `recover()`, and also when the
+code of one of its modules calls it: the header of a module says so, as the program can reach
+that call later through a function that the header only declares.
+A build that reads a module from its header has not generated the C of the module. It finds the
+object under the implementers of the interfaces that the code of the module can depend on: those
+that the module or one of its imports declares, and those among the fields of an implementer that
+comes from elsewhere. The interfaces of the program are none of these, so a program whose
+declarations changed compiles against the cached `builtin.o` instead of rebuilding every module.
+A program with another implementer of such an interface, most often an error type of its own,
+generates the C of its modules once more; where that C is the C of an object that is there, as
+it is for `builtin`, nothing is compiled.
+Each warm build also reuses what an earlier one found out: what `pkg-config --exists` answered for
+the `$pkgconfig` conditions of the cached sources (until a `.pc` file of the directories that
+pkg-config searches is added, removed or changed, as a package exists only while what it requires
+does), which headers a V-shipped C header includes and whether it can be replicated into every
+module object (until one of those headers changes, or one of their includes would find another
+file, be it through a symbolic link that points elsewhere now), and that the bundled TinyCC runs
+and links the libraries of the program.
+`CFLAGS` and `LDFLAGS` turn the module cache off for all C compilers: no object records them.
+Cache files live under
 the V temporary directory by default; set `V3CACHE` to select another root, or pass
 `-nocache`/`--no-cache` to disable the module cache. C-only `-o file.c` builds do not use the
 object cache. An explicit `-b c` binary build also retains the complete generated translation unit
-at `<output>.c` for codegen inspection. The benchmark output prints counts for parsed `.vh` and
+at `<output>.c` for codegen inspection. Use `-show-timings` to print elapsed time for each compiler
+stage and the total, including memory usage and cache metrics. It enables the same benchmark
+summary as `-v` without verbose compiler traces. `-show-instructions` also prints the retired
+CPU instructions of each stage and of the whole process (macOS only). For self-host builds, `-v`
+also reports time spent preparing markused, marking reachable symbols, and waiting for
+transform preparation.
+`-silent` and generated C output to stdout
+(`-o -`) suppress the summary. The benchmark output prints counts for parsed `.vh` and
 `.v` files and their total
 line counts immediately after the parse stage, followed by each category's space-separated paths
 on one line. Paths below the current home directory use `~` as a prefix. A nonzero `.vh` count
 shows how many cached module interfaces were parsed by that build. Required compile-time bodies
 are embedded in the `.vh` interface, so a warm cached build parses `.v` files only from the input
 program's directory; the `.v` list makes an unexpected module-cache miss visible. After
-successfully populating module objects, a cold build prints a hint that unchanged modules will not
-be recompiled on the next run.
+successfully populating module objects, a cold build with timings enabled prints a hint that
+unchanged modules will not be recompiled on the next run.
+Development compiler cache identity includes every embedded runtime header and native C helper
+source. Editing any of these inputs invalidates cached artifacts without rebuilding the compiler.
 Third-party C objects retain dependency manifests, so warm builds verify each unique source or
 header once without launching a dependency-scanner process per object. Unchanged inputs use
 nanosecond-resolution file metadata; a metadata change falls back to the recorded content hash.
@@ -362,19 +624,129 @@ This work is reported as the separate `C object cache` benchmark stage before `c
 On macOS, cached non-production implicit `run` builds combine the imported-module objects and
 generated runtime prefix into a content-keyed dylib with the system C compiler. The remaining
 current-directory program unit is compiled and linked against that dylib with bundled TinyCC.
-Objective-C and framework compilation flags stay on the cached dylib side. This work is reported
+Builds requiring Objective-C or native header projection use the native compiler directly.
+This work is reported
 as `C dylib cache`; the temporary executable retains an absolute runtime dependency on that cache
 artifact and is removed after the run. An exact warm plan also restores its content-keyed TinyCC
 executable and reports `cc (cached)`; project source, module object, C dependency, TinyCC input,
 argument, or dylib changes invalidate it. Persistent outputs—including ordinary compilation,
 explicit `run -o` output, and `-keepc` runs—are standalone. Production, shared-library, self-host,
 explicit `-cc`, and `-nocache` builds also keep their existing direct-link behavior.
+A cached build also keeps the executable that it linked, one for each program. The next build
+whose program sources, module interfaces, native inputs, configuration and linker flags are the
+same, in the same environment of the compiler and the linker (`LIBRARY_PATH`, `CPATH`,
+`C_INCLUDE_PATH`, `LD_RUN_PATH`, `SDKROOT`, `MACOSX_DEPLOYMENT_TARGET` and the like), restores
+that executable instead of checking, generating, compiling and linking again, with
+the system C compiler and with bundled TinyCC alike. It prints the warnings and notices of the
+program again and reports the stages as cached, the last one as `cc (cached)` or `tcc (cached)`.
+The files that the link read are compared by their metadata first: the objects, archives,
+libraries and other files that the command names, and every name that a linker gives a library
+of `-l` in the directories of `-L`, of `LIBRARY_PATH`, of the compiler (`-print-search-dirs`,
+asked once for a module cache and an environment) and of the system. What `-Wl,` and `-Xlinker`
+hand to the linker
+is read as the one command that it is for the linker, so `-Wl,-L,/dir,-lname` names a directory
+and a library. A library that appears in one of those places counts as a change, and so does a
+program file that was saved while the build that linked the executable ran. A file of text
+among the inputs of the linker is a linker script, whatever its name ends with: it is followed
+to the files and libraries that it names. The identities of the link inputs are taken before the
+linker starts and compared again before the executable is kept, so a file that is replaced in
+between leaves none.
+The C compiler reports header dependencies through its manifest (`-MD`, which TinyCC also
+supports). V treats these files as opaque inputs. A manifest alone does not describe missing
+include candidates or header macro context, so executable reuse is bypassed when that information
+would require inspecting headers. V never parses or recursively expands C headers for cache
+validation. Builds with native inputs lacking an explicit ownership contract bypass module caches.
+See [native cache inputs](../../doc/module_cache_native_inputs.md) for the fallback behavior.
+None is kept either when the command has an input that cannot be followed: a thin archive, whose
+members are other files, a response file, a file list, a linker script that does more than name
+its inputs, or an option for the linker that is not among those whose inputs are known
+(`program_link_inputs.v` lists them). Where the linker can tell what it read, its own account
+is added to what the command shows: `-dependency_info` of Apple's linker, `--dependency-file`
+of GNU ld, gold, LLD and mold, found out once for a module cache by linking an empty program.
+The libraries and start files that a compiler driver adds by itself (`libc`, `libgcc`,
+`crt1.o`, `libSystem`) are inputs then. Apple's linker also tells every path where it looked
+for a file in vain: with that, and with the files that the command gives an option, an option
+that is not known is no reason to keep no executable there. What the linker takes from deep
+inside an SDK, and where it finds nothing in one, is not recorded file by file. A linker that
+turns out not to know the option is run again without it. A command that asks its compiler or its
+linker for a file besides the executable (`-MD`, `-Wp,-MD,<file>`, `--coverage`,
+`-Wl,-map,<file>`, a report of the linker itself, the variable `DEPENDENCIES_OUTPUT`) gets that
+file from a build that compiles and links: no executable is kept of such a command, as far as
+`program_link_inputs.v` knows the option. The command of the linker is read in the order of the
+compiler's: an option takes the value that follows it, however the two were given
+(`-Wl,-rpath /dir`). A relative path is one of the directory in which the command runs, which the
+build makes for itself; one that leaves that directory (`-L../libs`,
+`-fprofile-use=../default.profdata`) is followed like an absolute one. That directory is
+beside the output, so such a path names another file for another output: an executable is
+kept for the directory of its output when a flag or the environment holds one, and none is
+kept when a relative path turns up that no flag showed. A specs file (`-specs`) tells the
+driver what to link, and no executable is kept of a command with one. The copy in the
+cache is a file of its own: changing or removing the output changes nothing there, and an
+executable that is restored gets the permissions that the umask of the caller leaves, as a
+linked one does. Builds that leave more than an executable behind run in
+full: `-g`, `-cg`, `-keepc`, `-showcc`, `-show-c-output`, shared libraries, objects, profiles,
+coverage, tests, and an implicit `run` on macOS, which has its own executable cache below.
+`V3_CACHE_TRACE=1` says why an executable was not restored, and
+`V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1` turns the restoring off. Windows targets always link.
+The experimental unchanged-build receipt is disabled by default. Set
+`V3_ENABLE_UNCHANGED_BUILD_CACHE=1` to enable its early executable restore for explicit binary
+outputs. Its key does not yet cover all compile-time environment, module-search, and linker
+inputs, so it can reuse stale output when those inputs change. `-nocache` and
+`V3_DISABLE_UNCHANGED_BUILD_CACHE=1` both disable this shortcut. Missing file metadata also
+prevents publishing or restoring a receipt.
+The cache resolves the path of each module source once for a build; the table of resolved paths
+is closed when the imports are resolved, before later stages read it from several threads.
+A build that reads every module from its interface gets all the functions of those modules as
+declarations, some sixteen hundred for `builtin` and what it brings along, and each stage would
+register, index and visit them. Before the stages run, such a build takes the plain functions and
+C function declarations that nothing in it names out of the AST: their code is in the objects of
+their modules. A name counts wherever the program, or a function body that an interface carries,
+spells it. Methods always stay, as a method is found through its receiver, an interface, an
+operator or `str`, and so do exported functions, those marked `@[markused]`, `init` and `cleanup`,
+the functions that mark-used seeds, and the functions that a stage of the compiler spells in a
+string literal: those of the runtime by their names (`cached_runtime_function_names`) and those
+of any other module of vlib with the name of the module, as `dl.interface_export_find`
+(`cached_module_function_names`, which keeps the function of that module only). A name that a
+stage puts together when it runs is in no literal: the literals that are names with a part to
+fill in, as `map_hash_int_${size}` or `name + '_str'`, are kept as patterns
+(`cached_function_name_patterns`), and a function that one of them fits stays. Only the
+patterns that fit a function of vlib are in that list; the others are names of temporaries,
+types and keywords. A test works all three lists out from the sources of the stages again. A
+stage that finds no declaration of such a function can do something else without a word. The C
+generator checks the result: when the generated C names a function that was left out, or the C
+compiler reports an error in the program unit, the build starts again with every declaration,
+and records the function in `kept_cached_functions` of the module cache, so that later builds
+keep it. TinyCC
+and the system compiler get `-Werror=implicit-function-declaration` for such a unit. A build
+whose checker or transformer reports errors starts again as well, before it prints them: what an
+error says, the names that it suggests for one, can depend on the declarations that are known.
+The same executable comes out either way. Builds that keep the plans of a development build on
+macOS (`-cc cc` without `-prod`), tests, `-autofree` builds and Windows targets keep every
+declaration, and so do a program that imports `v.reflection`, which can list its functions when
+it runs, and any build with `V3_CACHE_ALL_DECLARATIONS=1`. `V3_CACHE_TRACE=1` prints
+how many were left out, and `V3_CACHE_KEEP_PROGRAM_C=<file>` keeps the unit that TinyCC compiled.
+Cached interface declarations retain local implementing methods and the functions they call,
+even when the dispatch occurs only inside a cached body. Sum-type receivers use the same indirect
+parameter convention as ordinary calls. When a cached dependency imports the module under test,
+its concrete functions remain available to that dependency's object file.
+TinyCC processes the generated unit's includes itself. The preprocessed prelude cache and its
+`V3_TCC_NO_PRELUDE_CACHE` and `V3_TCC_PRELUDE_VERIFY` controls have been removed because validating
+that cache required V to inspect C headers.
+On macOS, TinyCC starts Apple's `codesign` for each executable that it links, which takes longer
+than TinyCC needs for a small program. The compiler gives the executable the same kind of ad-hoc
+signature itself and keeps `codesign` from running; `V3_TCC_APPLE_CODESIGN=1` restores the tool.
 When the whole-program C plan is unchanged, v3 validates it immediately after parsing and reports
 the check, mark-used, transform, type-annotation, monomorphization, and C generation stages as
 cached. This avoids semantic and lowering work whose only consumer would be the cached C plan.
 The pre-split main, TinyCC, and runtime-prefix sources are restored as `C module plan (cached)`.
 Source, imported-module, native-input, compiler, target, flag, or configuration changes invalidate
 the plan and run the complete diagnostic and generation pipeline normally.
+
+If the C toolchain rejects a cached V artifact as missing or malformed, V3 warns, removes the
+affected cache entry and its metadata, then restarts the build once. If the retry still fails, the
+warning names the rejected artifact; run `./v wipe-cache` to clear all caches before retrying.
+This recovery applies only to V-owned cache files. `-nocache` disables the module and FastC caches,
+but third-party object cache entries may still be repaired.
 
 ## Architecture
 
@@ -412,8 +784,10 @@ All `vlib/builtin/` files (38 files: both `.v` and `.c.v`) are parsed first to
 collect struct, enum, type alias, interface, C function, and global definitions.
 `$if` compile-time conditionals (`$if !no_bounds_checking`,
 `$if gcboehm_opt ?`, `$if freestanding`, etc.) are resolved inline during
-parsing. The parser evaluates the condition, parses only the taken branch, and
-skips the other, so no `comptime_if` AST nodes reach the transformer or backends.
+parsing. The parser evaluates these flags, parses only the taken branch, and skips the other.
+Conditions requiring reflection, immutable reflection locals, or generic types remain in the
+AST for later evaluation. Static string declaration guards are finalized after import parsing;
+no undecided reflection string condition is silently dropped by a backend.
 
 After parsing the input file, imports are resolved recursively: the driver scans
 for `import_decl` nodes, resolves module paths, parses module `.v` and `.c.v`
@@ -433,6 +807,9 @@ instead of string-based type checks:
 `resolve_type(NodeId) Type` infers types from AST nodes. `c_type(Type) string`
 lowers to C type strings only at final emission. Lexical scopes store
 `map[string]Type` with parent-chain lookups.
+
+Pointer aliases retain their indirection when dereferenced, including aliases of
+`&map[K]V` used as the container of a `for` loop.
 
 `C.` structs and globals are recognized as extern C types and excluded from code
 generation. Function bodies from builtins are skipped during C code generation;
@@ -586,3 +963,47 @@ skipped during C code generation; C runtime functions are provided via a compact
 preamble.
 
 Measured on macOS (Apple Silicon), warm runs. V1 built from `~/code/v5/v` (V 0.5.1).
+
+Import aliases in type expressions are normalized to full module paths once.
+A module path can begin with the alias itself, including in nested generic heap
+initializers, without repeated expansion or compiler recursion.
+
+Function literals in constant struct initializers are lowered to callable helpers
+through address and parenthesis wrappers, including `const h = &Struct{...}`.
+
+Converting `&callback` to `voidptr`, or passing it to a `voidptr` parameter,
+addresses the storage of a function-valued variable, parameter, field or array
+element. Comparisons with a `voidptr` operand preserve that same storage address
+in either operand order. Taking the address of a named function remains the function pointer.
+
+Constant references to map literals own a heap copy of the map descriptor.
+Both populated and empty map references retain valid storage after initialization.
+
+The special lowering for `strings.Builder` applies to that module’s type.
+Types named `Builder` in other modules keep their own methods.
+
+For diagnostics-only generic checks, `V_CHECK_LIBRARY_BODIES=all` retains every imported
+library instance body. Other values use reachability to omit irrelevant library bodies.
+`V_DIAGNOSTICS_TRACE` appends check tracing to an absolute path on each supported platform.
+
+### Numeric infix differential control
+
+Set `V3_NO_CHECKED_NUMERIC_INFIX=1` to disable the checked numeric infix shortcut during
+both initial function lowering and later monomorphization. This is a diagnostic control for
+comparing generated C through the full dispatch path; ordinary compilation keeps the shortcut.
+
+### Monomorphization parallelism
+
+Generic specialization stays serial by default. Set `V3_PARALLEL_MONOMORPHIZE=1` to opt in.
+Parallel specialization remains experimental because nested generic-interface instantiations can
+lose specialization results. It is available with GCC- and Clang-built compilers, and with
+TinyCC-built compilers on Linux/amd64; other TinyCC targets specialize serially.
+`V3_PARALLEL_MONOMORPHIZE=0` and `-no-parallel` keep specialization serial.
+
+### Transform batch arenas
+
+Function bodies are lowered in batches that share one scratch arena, rewound between batches.
+Batches that run one at a time keep up to 64 MiB of it mapped, so that the next batch does not
+fault its pages in again; build the compiler with `-d transform_sole_batch_arena_keep_mb=N` to
+change that bound. Helpers that run side by side keep 1 MiB each
+(`-d transform_batch_arena_keep_mb=N`), since every idle arena adds to the peak.

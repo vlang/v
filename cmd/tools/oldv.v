@@ -3,6 +3,10 @@ import flag
 import scripting
 import vgit
 
+$if windows {
+	import v.tempname
+}
+
 const tool_version = '0.0.4'
 const tool_description = '  Checkout an old version of V and compile it as it was on a specific commit.
 |     This tool is useful when you want to discover when something broke.
@@ -107,6 +111,37 @@ fn oldv_required_tools(use_cache bool, cc string) []string {
 	return tools
 }
 
+fn run_oldv_command(command string) os.Result {
+	$if windows {
+		// Pass shell code through delayed expansion in a fixed launcher, then let
+		// a fresh cmd parse it. Writing the command itself into a batch file would
+		// change quoting, percent expansion, and the syntax of `for %i` loops.
+		path := os.join_path(os.vtmp_dir(), 'oldv command ${tempname.unique_token()}.cmd')
+		os.write_file(path, '@echo off\r\nsetlocal EnableDelayedExpansion\r\n' +
+			'cmd.exe /d /v:off /s /c "!V_OLDV_SHELL_COMMAND!"\r\n') or {
+			return os.Result{
+				exit_code: 1
+				output:    err.msg()
+			}
+		}
+		defer {
+			os.rm(path) or {}
+		}
+		previous := os.getenv_opt('V_OLDV_SHELL_COMMAND')
+		os.setenv('V_OLDV_SHELL_COMMAND', command.replace('./', '.\\'), true)
+		defer {
+			if value := previous {
+				os.setenv('V_OLDV_SHELL_COMMAND', value, true)
+			} else {
+				os.unsetenv('V_OLDV_SHELL_COMMAND')
+			}
+		}
+		return os.exec(['cmd.exe', '/d', '/c', path])
+	} $else {
+		return os.exec(['sh', '-c', command])
+	}
+}
+
 fn main() {
 	// Resetting VEXE here allows for `v run cmd/tools/oldv.v'.
 	// the parent V would have set VEXE, which later will
@@ -145,7 +180,7 @@ fn main() {
 	scripting.used_tools_must_exist(oldv_required_tools(context.use_cache, context.cc))
 	context.cleanup = fp.bool('clean', 0, false, 'Clean before running (slower).')
 	context.fresh_tcc = fp.bool('fresh_tcc', 0, true, 'Do `make fresh_tcc` when preparing a V compiler.')
-	context.cmd_to_run = fp.string('command', `c`, '', 'Command to run in the old V repo.\n')
+	context.cmd_to_run = fp.string('command', `c`, '', 'Shell command to run in the old V repo.\n')
 	context.show_vccommit = fp.bool('show_VC_commit', 0, false, 'Show the VC commit, that can be used to compile the given V commit, and exit.\n')
 	context.is_bisect = fp.bool('bisect', `b`, false, 'Bisect mode. Use the current commit in the repo where oldv is.')
 
@@ -173,7 +208,7 @@ fn main() {
 			exit(2)
 		}
 	} else {
-		context.commit_v = scripting.run('git rev-list -n1 HEAD')
+		context.commit_v = scripting.run_args(['git', 'rev-list', '-n1', 'HEAD'])
 	}
 	if !context.show_vccommit {
 		scripting.cprintln('#################  context.commit_v: ${context.commit_v} #####################')
@@ -194,7 +229,7 @@ fn main() {
 	scripting.cprintln('#     v commit hash: ${shorter_hash} | folder: ${context.path_v}')
 	if context.cmd_to_run.len > 0 {
 		scripting.cprintln_strong('#           command: ${context.cmd_to_run:-34s}')
-		cmdres := os.execute_or_exit(context.cmd_to_run)
+		cmdres := run_oldv_command(context.cmd_to_run)
 		if cmdres.exit_code != 0 {
 			scripting.cprintln_strong('#         exit code: ${cmdres.exit_code:-4d}')
 		}

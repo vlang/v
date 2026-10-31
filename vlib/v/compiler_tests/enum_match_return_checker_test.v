@@ -9,7 +9,8 @@ const enum_match_v3_src = os.join_path(enum_match_v3_dir, 'v.v')
 fn enum_match_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_enum_match_return_checker_test')
 	build :=
-		os.execute('${enum_match_vexe} -gc none -path "${enum_match_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${enum_match_v3_src}')
+		os.exec([enum_match_vexe, '-gc', 'none', '-path',
+			'${enum_match_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${enum_match_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -19,7 +20,7 @@ fn enum_match_run_to_c(v3_bin string, name string, src string) os.Result {
 	os.write_file(src_path, src) or { panic(err) }
 	c_path := os.join_path(os.temp_dir(), 'v3_enum_match_return_${name}.c')
 	os.rm(c_path) or {}
-	return os.execute('${v3_bin} ${src_path} -b c -o ${c_path}')
+	return os.exec([v3_bin, src_path, '-b', 'c', '-o', c_path])
 }
 
 fn enum_match_check_good(v3_bin string, name string, src string) {

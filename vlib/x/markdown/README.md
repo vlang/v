@@ -20,6 +20,12 @@ extensions. Designed for feature parity with
   entities, raw HTML
 - **Link reference definitions** for DRY Markdown
 
+HTML output follows CommonMark block boundaries, including a newline before a
+nested list or code block inside a tight list. Image alt text flattens inline
+formatting, nested links, and images to their text content.
+Numeric character references follow CommonMark digit limits and replace invalid Unicode values
+with U+FFFD. URI autolinks allow empty scheme payloads and reject ASCII control characters.
+
 ### GFM Extensions (via `.gfm()` helper or individual extensions)
 - **Tables**: `| col | col |` with alignment (`:--`, `:--:`, `--:`)
 - **Strikethrough**: `~~text~~`
@@ -287,6 +293,12 @@ fn test_my_markdown() {
 ```
 
 ## Contributing
+
+Top-level bullet and ordered list markers may have up to three leading spaces.
+Continuation lines use the item's indentation; further indented markers form nested lists.
+Leading tabs used for block indentation expand to four-column tab stops.
+Tabs after a line's first non-whitespace character remain literal content,
+including in fenced and indented code blocks.
 
 - Follow V style guidelines (use `v fmt -w` on edits)
 - Add tests for new features

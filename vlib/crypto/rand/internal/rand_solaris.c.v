@@ -5,7 +5,7 @@ module internal
 
 #include <sys/random.h>
 
-fn C.getrandom(p &u8, n usize, flags u32) i32
+fn C.getrandom(p &u8, n uint, flags u32) i32
 
 const read_batch_size = 256
 

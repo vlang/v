@@ -102,12 +102,14 @@ fn test_write() {
 
 	// write less data than buffer capacity, the underlying writer should receive no data.
 	written := write_random_data(mut aw, mut bw, 65536)!
+	assert written == bw.buffered()
 
 	// now exceed buffer capacity by a little
 	little := small_amount()
 	excess := bw.available() + little
 	excess_data := rand.bytes(excess)!
 	w := bw.write(excess_data)!
+	assert w == excess
 	assert bw.buffered() == little
 	assert bw.available() == max - little
 	assert aw.result.len == max
@@ -162,6 +164,7 @@ fn test_simple_write() {
 	data = create_data(33)
 	bw.reset()
 	w3 := bw.write(data)!
+	assert w3 == data.len
 	assert bw.buffered() == 0
 	assert aw.result.len == 34 // 33*x + \n
 }

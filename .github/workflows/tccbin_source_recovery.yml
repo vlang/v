@@ -12,6 +12,8 @@ on:
   schedule:
     - cron: '47 3 * * *'
   workflow_run:
+    branches:
+      - master
     workflows: ['Update tccbin', 'TCC bundle revalidation']
     types: [completed]
 
@@ -25,6 +27,7 @@ concurrency:
 
 jobs:
   resolver:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -68,7 +71,7 @@ jobs:
 
   state-pre-dark-mode:
     needs: resolver
-    if: needs.resolver.outputs.authorized == 'true'
+    if: github.ref == 'refs/heads/master' && needs.resolver.outputs.authorized == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -102,6 +105,7 @@ jobs:
         run: ./vnew -silent test thirdparty/tccbin_automation/tests/gate_recovery_test.v
 
   dispatch-dark-mode:
+    if: github.ref == 'refs/heads/master'
     needs: state-pre-dark-mode
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -111,7 +115,7 @@ jobs:
 
   state-ack-dark-mode:
     needs: [state-pre-dark-mode, dispatch-dark-mode]
-    if: always()
+    if: github.ref == 'refs/heads/master' && always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:

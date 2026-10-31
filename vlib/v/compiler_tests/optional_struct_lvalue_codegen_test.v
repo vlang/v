@@ -9,7 +9,8 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 fn test_optional_struct_selector_assignment_mutates_payload_storage() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_optional_struct_lvalue_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	src := os.join_path(os.temp_dir(), 'v3_optional_struct_lvalue_input.v')
@@ -128,7 +129,6 @@ fn mutate_explicit_or_none() {
 		opt: none
 	}
 	(holder.opt or {
-		assert err.msg() == ''
 		println('none')
 		return
 	}).name = 'bad'
@@ -171,7 +171,6 @@ fn main() {
 	assert holder.opt?.name == 'ok'
 	mutate_explicit_or_none()
 	guarded_failure() or {
-		assert err.msg() == ''
 		println('ok')
 		return
 	}
@@ -182,17 +181,17 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_optional_struct_lvalue_input')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	c_code := os.read_file(bin + '.c') or { panic(err) }
 	assert c_code.contains('m.value.name ='), c_code
 	assert c_code.contains('holder.opt.value.name ='), c_code
-	assert c_code.contains('.opt = (Optional_Inner){.ok = true, .value = inner}')
-		|| c_code.contains('.opt = (Optional_main__Inner){.ok = true, .value = inner}'), c_code
-	assert (c_code.contains('.opt = (Optional_Borrowed')
-		|| c_code.contains('.opt = (Optional_main__Borrowed'))
+	assert c_code.contains('.opt = (__v_option_Inner){.ok = true, .value = inner}')
+		|| c_code.contains('.opt = (__v_option_main__Inner){.ok = true, .value = inner}'), c_code
+	assert (c_code.contains('.opt = (__v_option_Borrowed')
+		|| c_code.contains('.opt = (__v_option_main__Borrowed'))
 		&& c_code.contains('.value = borrowed'), c_code
 	assert c_code.contains('if (!cache->link.ok)') || c_code.contains('if (!cache.link.ok)'), c_code
 	assert c_code.contains('&cache->link.value') || c_code.contains('&cache.link.value'), c_code
@@ -205,15 +204,16 @@ fn main() {
 	assert c_code.contains('if (!m.ok)'), c_code
 	assert c_code.contains('if (!holder.opt.ok)'), c_code
 	assert c_code.contains('if (!outer.ok)'), c_code
-	assert c_code.contains('IError err = holder.opt.err')
-		|| c_code.contains('IError err = holder->opt.err'), c_code
+	// An Option has no error storage, so its `or` block binds no `err`.
+	assert !c_code.contains('holder.opt.err'), c_code
+	assert !c_code.contains('holder->opt.err'), c_code
 	for line in c_code.split_into_lines() {
 		assert !(line.contains('__or_val_') && line.contains('.name =') && !line.contains('= (')), line
 		assert !(line.contains('__or_val_') && line.contains('.inner.name =')
 			&& !line.contains('= (')), line
 	}
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'none\nok'
 }

@@ -29,7 +29,8 @@ pub fn mm_free(addr &u8) Errno {
 	return sys_munmap(ap, size)
 }
 
-pub fn mem_copy(dest0 voidptr, src0 voidptr, n isize) voidptr {
+// mem_copy copies n bytes from src0 to dest0.
+pub fn mem_copy(dest0 voidptr, src0 voidptr, n int) voidptr {
 	mut dest := &u8(dest0)
 	src := &u8(src0)
 	for i in 0 .. n {
@@ -38,8 +39,9 @@ pub fn mem_copy(dest0 voidptr, src0 voidptr, n isize) voidptr {
 	return dest0
 }
 
+// malloc allocates n bytes of memory.
 @[unsafe]
-pub fn malloc(n isize) &u8 {
+pub fn malloc(n int) &u8 {
 	if n < 0 {
 		panic('malloc(<0)')
 	}

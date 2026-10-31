@@ -60,7 +60,7 @@ pub fn build_certificate_chain(der_certs [][]u8) !&C.mbedtls_x509_crt {
 	mut chain := &C.mbedtls_x509_crt{}
 	C.mbedtls_x509_crt_init(chain)
 	for i, der in der_certs {
-		ret := C.mbedtls_x509_crt_parse(chain, der.data, usize(der.len))
+		ret := C.mbedtls_x509_crt_parse(chain, der.data, uint(der.len))
 		if ret != 0 {
 			C.mbedtls_x509_crt_free(chain)
 			return error_with_code('net.mbedtls: failed to parse certificate ${i} of ${der_certs.len} in the chain, mbedtls ret: ${ret}', ret)
@@ -135,14 +135,14 @@ pub fn certificate_signature_infos(chain &C.mbedtls_x509_crt) []CertificateSigna
 			issuer_known = true
 		}
 		infos << CertificateSignatureInfo{
-			signature_public_key_type: C.v_mbedtls_x509_crt_get_sig_pk(current)
-			signature_digest_type: C.v_mbedtls_x509_crt_get_sig_md(current)
-			signature_pss_mgf1_digest: C.v_mbedtls_x509_crt_get_sig_pss_mgf1_md(current)
-			signature_pss_salt_len: C.v_mbedtls_x509_crt_get_sig_pss_salt_len(current)
-			issuer_public_key_type: issuer_public_key_type
+			signature_public_key_type:  C.v_mbedtls_x509_crt_get_sig_pk(current)
+			signature_digest_type:      C.v_mbedtls_x509_crt_get_sig_md(current)
+			signature_pss_mgf1_digest:  C.v_mbedtls_x509_crt_get_sig_pss_mgf1_md(current)
+			signature_pss_salt_len:     C.v_mbedtls_x509_crt_get_sig_pss_salt_len(current)
+			issuer_public_key_type:     issuer_public_key_type
 			issuer_public_key_curve_id: issuer_public_key_curve_id
-			issuer_known: issuer_known
-			self_issued: self_issued
+			issuer_known:               issuer_known
+			self_issued:                self_issued
 		}
 		current = unsafe { next }
 	}
@@ -213,7 +213,8 @@ pub fn public_key_curve_is_secp256r1(pk &C.mbedtls_pk_context) bool {
 // explicitly accepts MBEDTLS_PK_ECDSA verification requests against an
 // MBEDTLS_PK_ECKEY-typed key, not assumed from the type names alone.
 pub fn verify_ecdsa_signature(pk &C.mbedtls_pk_context, md_alg MbedtlsMdType, hash []u8, signature []u8) ! {
-	ret := C.mbedtls_pk_verify_ext(pk_type_ecdsa, unsafe { nil }, pk, i32(md_alg), hash.data, usize(hash.len), signature.data, usize(signature.len))
+	ret := C.mbedtls_pk_verify_ext(pk_type_ecdsa, unsafe { nil }, pk, i32(md_alg), hash.data,
+		uint(hash.len), signature.data, uint(signature.len))
 	if ret != 0 {
 		return error_with_code('net.mbedtls: ECDSA signature verification failed, mbedtls ret: ${ret}', ret)
 	}
@@ -238,10 +239,11 @@ pub fn verify_ecdsa_signature(pk &C.mbedtls_pk_context, md_alg MbedtlsMdType, ha
 // PSA_HASH_LENGTH(hash_alg)`), so this isn't a novel usage pattern.
 pub fn verify_rsa_pss_signature(pk &C.mbedtls_pk_context, md_alg MbedtlsMdType, hash []u8, signature []u8) ! {
 	mut opts := C.mbedtls_pk_rsassa_pss_options{
-		mgf1_hash_id: int(md_alg)
+		mgf1_hash_id:      int(md_alg)
 		expected_salt_len: hash.len
 	}
-	ret := C.mbedtls_pk_verify_ext(pk_type_rsassa_pss, &opts, pk, i32(md_alg), hash.data, usize(hash.len), signature.data, usize(signature.len))
+	ret := C.mbedtls_pk_verify_ext(pk_type_rsassa_pss, &opts, pk, i32(md_alg), hash.data,
+		uint(hash.len), signature.data, uint(signature.len))
 	if ret != 0 {
 		return error_with_code('net.mbedtls: RSA-PSS signature verification failed, mbedtls ret: ${ret}', ret)
 	}
@@ -280,7 +282,8 @@ pub fn verify_certificate_chain(chain &C.mbedtls_x509_crt, ca_bundle_pem string,
 	// heap-buffer-overflow in mbedtls_x509_crt_parse). Matches every other
 	// PEM-parsing call site's own convention in this module
 	// (new_sslcerts_in_memory_with_rng et al., which all pass `<string>.str`).
-	parse_ret := C.mbedtls_x509_crt_parse(&ca_chain, ca_bundle_pem.str, usize(ca_bundle_pem.len + 1))
+	parse_ret := C.mbedtls_x509_crt_parse(&ca_chain, ca_bundle_pem.str,
+		uint(ca_bundle_pem.len + 1))
 	// != 0, not < 0: for a PEM bundle specifically (unlike the DER path in
 	// build_certificate_chain), mbedtls_x509_crt_parse can return a
 	// POSITIVE count of certificates it failed to parse when others in the

@@ -252,6 +252,7 @@ fn test_service_create_rollback_does_not_leave_registry_record() {
 fn test_service_monitor_identity_and_native_unknown_state() {
 	mut app := new_app()!
 	window := app.create_window()!
+	assert window.str().starts_with('WindowId(')
 	_ = app.drain_events()!
 	ids := app.service_monitor_ids()!
 	assert ids.len == 1
@@ -267,7 +268,6 @@ fn test_service_monitor_identity_and_native_unknown_state() {
 		return
 	}
 	assert false, 'foreign monitor identity was accepted'
-	_ = window
 }
 
 fn test_native_registry_starts_without_mock_observations() {

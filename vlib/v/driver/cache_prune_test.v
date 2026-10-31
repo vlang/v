@@ -1,14 +1,221 @@
 module driver
 
 import os
-import v.pref
+
+fn test_cached_module_closure_dependencies_outlive_prepare_scope() {
+	mut state := V3ModuleCacheState{
+		module_sources: {
+			'closure': ['/vlib/builtin/closure/closure.v']
+		}
+		headers:        {
+			'closure': 'module closure\nfn closure_data()\n'
+		}
+	}
+	for i in 0 .. 64 {
+		name := 'module_${i}'
+		state.module_sources[name] = ['/vlib/${name}/module.v']
+		state.headers[name] = 'module ${name}\nfn value()\n'
+	}
+	scope := prealloc_scope_begin_for_v3()
+	mut bodies := map[string]string{}
+	for i in 0 .. 64 {
+		bodies['module_${i}'] = if i % 2 == 0 {
+			'void value() { closure__closure_data(); }'
+		} else {
+			'void value() { kept_wrapper(); }'
+		}
+	}
+	prefix := '${v3_program_wrappers_begin}\nstatic void kept_wrapper(void) { closure__closure_data(); }\n${v3_program_wrappers_end}\n'
+	cache_record_closure_dependencies(bodies, prefix, scope, mut state)
+	$if prealloc {
+		for i in 0 .. 64 {
+			name := 'module_${i}'
+			header := state.headers[name]
+			dependencies := state.module_dependencies[name]
+			assert !unsafe { prealloc_scope_owns(scope, header.str) }, name
+			assert !unsafe { prealloc_scope_owns(scope, dependencies.data) }, name
+		}
+	}
+	prealloc_scope_leave_for_v3(scope)
+	prealloc_scope_free_for_v3(scope)
+	// The preparation arena has gone away, including temporary module names and
+	// the storage that growing dependency maps and arrays would allocate there.
+	for i in 0 .. 64 {
+		name := 'module_${i}'
+		assert state.headers[name].contains('import builtin.closure as ${closure_runtime_import_alias}')
+		assert state.module_dependencies[name] == ['closure']
+	}
+}
+
+fn test_cached_module_preserves_generated_closure_dependencies() {
+	mut state := V3ModuleCacheState{
+		module_sources: {
+			'os':      ['/vlib/os/os.v']
+			'closure': ['/vlib/builtin/closure/closure.v']
+			'other':   ['/vlib/other/other.v']
+		}
+		headers:        {
+			'os':      'module os\nfn execvp()\n'
+			'closure': 'module closure\nfn closure_try_destroy()\n'
+			'other':   'module other\nfn unrelated()\n'
+		}
+	}
+	cache_record_closure_dependencies({
+		'os':      'void os__execvp() { closure__closure_try_destroy(value); }'
+		'closure': 'void closure__closure_try_destroy() {}'
+		'other':   'void other__unrelated() { puts("closure__fake"); /* closure__unused */ }'
+	}, '', unsafe { nil }, mut state)
+	assert state.headers['os'].contains('import builtin.closure as ${closure_runtime_import_alias}')
+	assert cache_dependency_modules(&state, ['os']) == ['closure']
+	assert !state.headers['closure'].contains('import builtin.closure')
+	assert !state.headers['other'].contains('import builtin.closure')
+	first_header := state.headers['os']
+	cache_record_closure_dependencies({
+		'os': 'void os__execvp() { closure__closure_try_destroy(value); }'
+	}, '', unsafe { nil }, mut state)
+	assert state.headers['os'] == first_header
+	cache_record_closure_dependencies({
+		'other': 'void other__use() { kept_wrapper(); }'
+	}, '${v3_program_wrappers_begin}\nstatic void kept_wrapper(void) { closure__closure_data(); }\nstatic void unused_wrapper(void) { missing(); }\n${v3_program_wrappers_end}\n', unsafe { nil }, mut state)
+	assert cache_dependency_modules(&state, ['other']) == ['closure']
+}
+
+fn test_cached_modules_keep_their_own_wrapper_closure_dependencies() {
+	mut state := V3ModuleCacheState{
+		module_sources: {
+			'closure': ['/vlib/builtin/closure/closure.v']
+		}
+		headers:        {
+			'closure': 'module closure\nfn closure_data()\n'
+		}
+	}
+	for name in ['first', 'second', 'unrelated'] {
+		state.module_sources[name] = ['/vlib/${name}/module.v']
+		state.headers[name] = 'module ${name}\nfn value()\n'
+	}
+	prefix := '${v3_program_wrappers_begin}
+static void closure_wrapper(void) { closure__closure_data(); }
+static void outer_wrapper(void) { closure_wrapper(); }
+static void plain_wrapper(void) { puts("closure__not_a_call"); }
+${v3_program_wrappers_end}\n'
+	cache_record_closure_dependencies({
+		'first':     'void first__value() { outer_wrapper(); }'
+		'second':    'void second__value() { closure_wrapper(); }'
+		'unrelated': 'void unrelated__value() { plain_wrapper(); }'
+	}, prefix, unsafe { nil }, mut state)
+	for name in ['first', 'second'] {
+		assert state.module_dependencies[name] == ['closure']
+		assert state.headers[name].contains('import builtin.closure as ${closure_runtime_import_alias}')
+	}
+	assert 'unrelated' !in state.module_dependencies
+	assert !state.headers['unrelated'].contains('import builtin.closure')
+}
+
+fn test_module_cache_compiler_identity_changes_when_executable_changes() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cache_vexe_identity_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	vexe := os.join_path(root, 'v')
+	os.write_file(vexe, 'old compiler')!
+	old_identity := v3_cache_compiler_executable_identity(vexe)
+	os.write_file(vexe, 'new compiler executable')!
+	new_identity := v3_cache_compiler_executable_identity(vexe)
+	assert old_identity != new_identity
+}
+
+// Without usable file metadata the compiler identity must fall back to the
+// executable contents.
+fn test_module_cache_compiler_identity_changes_without_file_metadata() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cache_vexe_no_metadata_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	name := 'V3_TEST_NO_FILE_METADATA'
+	was_set := name in os.environ()
+	old_value := os.getenv(name)
+	defer {
+		if was_set {
+			os.setenv(name, old_value, true)
+		} else {
+			os.unsetenv(name)
+		}
+		os.rmdir_all(root) or {}
+	}
+	vexe := os.join_path(root, 'v')
+	os.write_file(vexe, 'old compiler')!
+	os.setenv(name, vexe, true)
+	old_identity := v3_cache_compiler_executable_identity(vexe)
+	// Same size, different bytes.
+	os.write_file(vexe, 'new compiler')!
+	new_identity := v3_cache_compiler_executable_identity(vexe)
+	assert old_identity != new_identity
+}
+
+// A development compiler reads its embedded C headers at run time, so editing one
+// must change the cache identity without a rebuild.
+fn test_module_cache_compiler_runtime_inputs_identity_changes_when_a_header_changes() {
+	root := os.join_path(os.vtmp_dir(), 'v3_cache_runtime_inputs_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	for name in v3_cache_compiler_runtime_inputs {
+		path := os.join_path(root, name)
+		os.mkdir_all(os.dir(path))!
+		os.write_file(path, 'old header')!
+		// Keep a coarse file system clock from giving the rewrite the same time stamp.
+		os.utime(path, 1_000_000_000, 1_000_000_000)!
+	}
+	for name in v3_cache_compiler_runtime_inputs {
+		old_identity := v3_cache_compiler_runtime_inputs_identity(root)
+		// Same size, different bytes.
+		os.write_file(os.join_path(root, name), 'new header')!
+		new_identity := v3_cache_compiler_runtime_inputs_identity(root)
+		assert old_identity != new_identity, name
+	}
+}
+
+// Every `$embed_file` of the compiler is read at run time by a development build,
+// so it must be part of the cache identity.
+fn test_module_cache_compiler_runtime_inputs_cover_compiler_embedded_files() {
+	vroot := os.real_path(@VMODROOT)
+	vlib_v := os.join_path(vroot, 'vlib', 'v')
+	mut embedded := map[string]bool{}
+	for file in os.walk_ext(vlib_v, '.v') {
+		normalized := file.replace('\\', '/')
+		if file.ends_with('_test.v') || normalized.contains('/tests/')
+			|| normalized.contains('/testdata/') {
+			continue
+		}
+		for line in os.read_lines(file)! {
+			code := line.all_before('//')
+			if !code.contains('\$embed_file(') {
+				continue
+			}
+			argument := code.all_after('\$embed_file(').trim_space()
+			assert argument.len > 1, '${file}: ${line}'
+			name := argument[1..].all_before(argument[0..1])
+			target := if name.starts_with('@VEXEROOT/') {
+				os.real_path(os.join_path(vroot, name.all_after('@VEXEROOT/')))
+			} else {
+				os.real_path(os.join_path(os.dir(file), name))
+			}
+			relative := os.path_rel(vroot, target)!.replace('\\', '/')
+			assert relative in v3_cache_compiler_runtime_inputs, '${file}: ${line}'
+			embedded[relative] = true
+		}
+	}
+	assert embedded.len == v3_cache_compiler_runtime_inputs.len
+}
 
 fn test_large_cold_cache_restarts_without_cache() {
 	limit := scoped_large_cold_cache_node_limit
 	assert should_restart_v3_large_cold_cache(true, true, limit, false, false, false)
 	assert !should_restart_v3_large_cold_cache(true, true, limit - 1, false, false, false)
 	assert !should_restart_v3_large_cold_cache(false, true, limit, false, false, false)
-	assert !should_restart_v3_large_cold_cache(true, false, limit, false, false, false)
+	assert should_restart_v3_large_cold_cache(true, false, limit, false, false, false)
 	assert !should_restart_v3_large_cold_cache(true, true, limit, true, false, false)
 	assert !should_restart_v3_large_cold_cache(true, true, limit, false, true, false)
 	assert !should_restart_v3_large_cold_cache(true, true, limit, false, false, true)
@@ -77,17 +284,197 @@ fn test_builtin_bundle_module_inputs_do_not_reuse_the_bundle_object() {
 		@VEXEROOT)
 }
 
-fn test_cached_object_wrapper_signature_ignores_non_wrapper_prefix_changes() {
+const test_wrapper_sections = "/* V3CACHE_PROGRAM_WRAPPERS */
+i64 Worker__value(main__Worker);
+typedef struct { main__Worker receiver; } _mvctx_1;
+static i64 _mvwrap_1(void) { _mvctx_1* ctx = (_mvctx_1*)closure_data(); return Worker__value(ctx->receiver); }
+static void* work_args_thread_wrapper(void* arg) { return work_thread_body(arg); }
+static void* work_thread_body(void* arg) { work(arg); return 0; }
+/* V3CACHE_PROGRAM_WRAPPERS_END */
+
+/* V3CACHE_PROGRAM_WRAPPERS */
+static void gc_abort_callback_adapter_7(const char* arg0) { gc_abort((char*)arg0); }
+static void drop_context_3(void* data) { context* ctx = (context*)data;
+	string__free(&ctx->name); char brace = '}';
+}
+typedef void (*__v3_callback_identity_fn)(void);
+static __v3_callback_identity_fn __v3_callback_identity(__v3_callback_identity_fn __v3_identity_candidate) {
+	if (__v3_identity_candidate == (__v3_callback_identity_fn)gc_abort_callback_adapter_7) { return (__v3_callback_identity_fn)gc_abort; }
+	if (__v3_identity_candidate == (__v3_callback_identity_fn)other_callback_adapter_9) { return (__v3_callback_identity_fn)main__other; }
+	return __v3_identity_candidate;
+}
+static void other_callback_adapter_9(int arg0) { main__other(arg0); }
+/* V3CACHE_PROGRAM_WRAPPERS_END */
+"
+
+fn test_module_object_keeps_only_the_wrappers_its_code_refers_to() {
+	declarations := 'typedef struct string string;\n${test_wrapper_sections}int after;\n'
+	// The code of `builtin` passes its own callback adapter and compares callbacks.
+	builtin_body := 'void init(void) { GC_set_abort_func(gc_abort_callback_adapter_7); bool same = __v3_callback_identity(a) == __v3_callback_identity(b); }\n'
+	pruned := prune_foreign_program_wrappers(declarations, builtin_body)
+	assert pruned.contains('static void gc_abort_callback_adapter_7('), pruned
+	// The wrappers of the program refer to its functions: an object that carried
+	// them would not link into another program.
+	assert !pruned.contains('_mvwrap_1'), pruned
+	assert !pruned.contains('work_args_thread_wrapper'), pruned
+	assert !pruned.contains('work_thread_body'), pruned
+	assert !pruned.contains('drop_context_3'), pruned
+	assert !pruned.contains('string__free(&ctx->name)'), pruned
+	assert !pruned.contains('other_callback_adapter_9'), pruned
+	assert !pruned.contains('main__other'), pruned
+	// The identity function stays, and knows the wrapper that stays.
+	assert pruned.contains('(__v3_callback_identity_fn)gc_abort_callback_adapter_7) { return'), pruned
+	assert pruned.contains('\treturn __v3_identity_candidate;\n}\n'), pruned
+	// Declarations emit nothing, and what surrounds the sections is untouched.
+	assert pruned.contains('i64 Worker__value(main__Worker);'), pruned
+	assert pruned.contains('typedef struct { main__Worker receiver; } _mvctx_1;'), pruned
+	assert pruned.starts_with('typedef struct string string;\n'), pruned
+	assert pruned.ends_with('int after;\n'), pruned
+
+	// A wrapper that a kept wrapper calls is kept with it.
+	spawning_body := 'void start(void) { pthread_create(&t, 0, work_args_thread_wrapper, args); }\n'
+	spawning := prune_foreign_program_wrappers(declarations, spawning_body)
+	assert spawning.contains('static void* work_args_thread_wrapper('), spawning
+	assert spawning.contains('static void* work_thread_body('), spawning
+	assert !spawning.contains('_mvwrap_1'), spawning
+	assert !spawning.contains('__v3_callback_identity(__v3_callback_identity_fn __v3_identity_candidate) {'), spawning
+
+	// Code that refers to every wrapper gets the declarations as they are.
+	everything := 'gc_abort_callback_adapter_7 _mvwrap_1 work_args_thread_wrapper drop_context_3 other_callback_adapter_9 __v3_callback_identity'
+	assert prune_foreign_program_wrappers(declarations, everything) == declarations
+	assert prune_foreign_program_wrappers('int plain;\n', builtin_body) == 'int plain;\n'
+}
+
+// What stays in a wrapper section whatever the code of the object refers to can
+// refer to a `static` wrapper itself. Taking that wrapper out would leave C that
+// names a function which is not there.
+fn test_module_object_keeps_the_wrappers_that_retained_items_refer_to() {
+	section := '/* V3CACHE_PROGRAM_WRAPPERS */
+static void adapter(void) { adapter_helper(); }
+static void adapter_helper(void) { main__work(); }
+static void (*handler)(void) = adapter;
+static void lonely_adapter(void) { main__other(); }
+int IShape__area(IShape* i);
+int IShape__area(IShape* i) {
+	return shape_area_adapter(i);
+}
+static int shape_area_adapter(IShape* i) { return 4; }
+static void drop_tree(main__Tree* _value);
+static void drop_tree(main__Tree* _value) { drop_tree(_value->next); }
+static void drop_list(main__List* _value);
+static void drop_list(main__List* _value) { main__free(_value); }
+/* V3CACHE_PROGRAM_WRAPPERS_END */
+'
+	declarations := 'int before;\n${section}int after;\n'
+	// The code of the module refers to one of the two cleanup helpers and to no
+	// other wrapper.
+	pruned := prune_foreign_program_wrappers(declarations, 'void clear(main__List* l) { drop_list(l); }\n')
+	// The initialized variable stays, so the wrapper it holds does, and so does
+	// the one that this wrapper calls.
+	assert pruned.contains('static void (*handler)(void) = adapter;'), pruned
+	assert pruned.contains('static void adapter(void) { adapter_helper(); }'), pruned
+	assert pruned.contains('static void adapter_helper(void) { main__work(); }'), pruned
+	// A function that is not `static` stays, with the wrapper it calls.
+	assert pruned.contains('int IShape__area(IShape* i) {\n\treturn shape_area_adapter(i);\n}'), pruned
+	assert pruned.contains('static int shape_area_adapter(IShape* i) { return 4; }'), pruned
+	// Nothing refers to these, and a function goes with the declaration that
+	// precedes its definition.
+	assert !pruned.contains('lonely_adapter'), pruned
+	assert !pruned.contains('drop_tree'), pruned
+	assert pruned.contains('static void drop_list(main__List* _value);'), pruned
+	assert pruned.contains('static void drop_list(main__List* _value) { main__free(_value); }'), pruned
+	assert pruned.starts_with('int before;\n') && pruned.ends_with('int after;\n'), pruned
+	// The retained items are what keeps the objects of this program to itself.
+	opaque := v3_opaque_program_wrappers(declarations)
+	assert opaque.contains('static void (*handler)(void) = adapter;'), opaque
+	assert opaque.contains('int IShape__area(IShape* i) {'), opaque
+	assert !opaque.contains('adapter_helper'), opaque
+	// A variable whose initializer ends like a prototype is no declaration.
+	item := v3_program_wrapper_item('static void (*handler)(void) = (adapter);', 0, 1)
+	assert !item.declares && item.function == ''
+	assert v3_static_prototype_name(item) == ''
+	assert v3_static_prototype_name(v3_program_wrapper_item('static void drop_tree(main__Tree* _value);',
+		0, 1)) == 'drop_tree'
+	assert v3_static_prototype_name(v3_program_wrapper_item('i64 Worker__value(main__Worker);',
+		0, 1)) == ''
+}
+
+fn test_cached_object_signature_ignores_prunable_program_wrappers() {
+	// A build that parses a module from its header generates none of that module's
+	// wrappers, and has to find the object that the build from source published.
 	base := 'base signature'
-	wrapper := '/* V3CACHE_PROGRAM_WRAPPERS */\nstatic void callback(void) {}\n/* V3CACHE_PROGRAM_WRAPPERS_END */'
-	raw_source := '#define NATIVE_IMPLEMENTATION\n#include "native.h"\n${wrapper}\n/* V3CACHE_BODY_BEGIN */\n'
-	prepared_source := '#define V3CACHE_PROGRAM_UNIT 1\n${wrapper}\n/* V3CACHE_BODY_BEGIN */\n'
-	assert v3_cached_object_wrapper_compile_signature(base, raw_source) == v3_cached_object_wrapper_compile_signature(base,
-		prepared_source)
-	changed_source := prepared_source.replace('callback(void)', 'other_callback(void)')
-	assert v3_cached_object_wrapper_compile_signature(base, prepared_source) != v3_cached_object_wrapper_compile_signature(base,
-		changed_source)
-	assert v3_cached_object_wrapper_compile_signature(base, 'int declaration;') == base
+	plain := v3_cached_object_program_compile_signature(base, '')
+	from_source := '#define V3CACHE_PROGRAM_UNIT 1\n${test_wrapper_sections}/* V3CACHE_BODY_BEGIN */\n'
+	from_header := '#define V3CACHE_PROGRAM_UNIT 1\n/* V3CACHE_BODY_BEGIN */\n'
+	assert v3_opaque_program_wrappers(from_source) == ''
+	assert v3_cached_object_program_compile_signature(base, from_source) == plain
+	assert v3_cached_object_program_compile_signature(base, from_header) == plain
+}
+
+fn test_cached_object_signature_keeps_unprunable_program_wrappers_apart() {
+	// What a wrapper section holds besides functions and declarations stays in
+	// every module object of the build, so those objects serve that program only.
+	base := 'base signature'
+	plain := v3_cached_object_program_compile_signature(base, '')
+	stateful := '/* V3CACHE_PROGRAM_WRAPPERS */\nstatic int wrapper_calls = 0;\nstatic void counted(void) { wrapper_calls++; }\n/* V3CACHE_PROGRAM_WRAPPERS_END */\n'
+	assert v3_opaque_program_wrappers(stateful) == 'static int wrapper_calls = 0;\n'
+	first := v3_cached_object_program_compile_signature(base, stateful)
+	assert first != plain
+	other := v3_cached_object_program_compile_signature(base, stateful.replace('wrapper_calls = 0', 'wrapper_calls = 1'))
+	assert other != plain && other != first
+	exported := '/* V3CACHE_PROGRAM_WRAPPERS */\nint IShape__area(IShape* i) {\n\treturn 0;\n}\n/* V3CACHE_PROGRAM_WRAPPERS_END */\n'
+	assert v3_cached_object_program_compile_signature(base, exported) != plain
+	unfinished := '/* V3CACHE_PROGRAM_WRAPPERS */\nstatic void broken(void) {\n\tint x;\n'
+	assert v3_cached_object_program_compile_signature(base, unfinished) != plain
+}
+
+fn test_cached_object_signature_covers_the_arguments_of_the_object_compiler() {
+	// The system `cc` gets none, and its objects keep the key they had.
+	plain := v3_cached_object_compile_signature(V3CachedObjectCompiler{}, 'c11', '', '',
+		'-w', []string{}, false, '')
+	assert !plain.contains('compiler_args=')
+	// TinyCC is given its resource directory and the include root of the SDK: an
+	// object compiled against another SDK is another object.
+	first_sdk := v3_cached_object_compile_signature(V3CachedObjectCompiler{
+		path: 'tcc'
+		args: ['-B/v/thirdparty/tcc/lib', '-I/sdk/26.0/usr/include']
+	}, 'c11', '', '', '-w', []string{}, false, '')
+	second_sdk := v3_cached_object_compile_signature(V3CachedObjectCompiler{
+		path: 'tcc'
+		args: ['-B/v/thirdparty/tcc/lib', '-I/sdk/26.5/usr/include']
+	}, 'c11', '', '', '-w', []string{}, false, '')
+	assert first_sdk != plain
+	assert first_sdk != second_sdk
+}
+
+fn test_cached_object_signature_keeps_panic_frame_objects_apart() {
+	base := 'base signature'
+	plain := 'int declaration;\n/* V3CACHE_BODY_BEGIN */\n'
+	with_frames := 'typedef struct v_unwind_frame {\n\tstruct v_unwind_frame* prev;\n} v_unwind_frame;\n/* V3CACHE_BODY_BEGIN */\n'
+	no_frames := v3_cached_object_program_compile_signature(base, '')
+	assert v3_cached_object_program_compile_signature(base, plain) == no_frames
+	assert v3_cached_object_program_compile_signature(base, with_frames) != no_frames
+	after_include := '#include <setjmp.h>\n${with_frames}'
+	assert v3_cached_object_program_compile_signature(base, after_include) != no_frames
+}
+
+fn test_cached_object_signature_ignores_panic_frame_text_in_string_literals() {
+	// A program that compiles the C generator holds its source text as literals.
+	// A build that reads that module from its header has no such literals, so the
+	// literals must not give the objects of the cold build a different signature.
+	base := 'base signature'
+	literal := 'static const char _str_7[] = "typedef struct v_unwind_frame {";\n\tputs("typedef struct v_unwind_frame {");\n/* V3CACHE_BODY_BEGIN */\n'
+	assert v3_cached_object_program_compile_signature(base, literal) == v3_cached_object_program_compile_signature(base,
+		'')
+}
+
+fn test_cached_object_signature_keeps_system_libc_header_layouts_apart() {
+	base := 'base signature'
+	headerless := v3_cached_object_program_compile_signature(base, 'int declaration;\n')
+	native := v3_cached_object_program_compile_signature(base, '// preamble\n#define V_MANUAL_STDLIB_HEADERS 1\nint declaration;\n')
+	assert headerless == '${base}\nsystem_libc_headers=false'
+	assert native == '${base}\nsystem_libc_headers=true'
+	assert v3_cached_object_program_compile_signature(base, 'const char *text = "#define V_MANUAL_STDLIB_HEADERS 1";\n') == headerless
 }
 
 fn test_cache_function_reference_counts_scans_source_once() {
@@ -136,28 +523,6 @@ fn test_target_libc_cached_prefix_refreshes_when_thread_support_changes() {
 		'// __v_thread pthread_self\nconst char *name = "__v_thread_spawn pthread_create";\n')
 }
 
-fn test_cache_native_public_include_strips_conventional_implementation_macros() {
-	include := cache_native_public_include('/tmp/native.h', [
-		'#define FEATURE 1',
-		'#include "/tmp/context.h"',
-		'#define FONTSTASH_IMPLEMENTATION',
-		'#define SOKOL_FONTSTASH_IMPL',
-	], map[string]bool{})
-	assert include.contains('#define FEATURE 1')
-	assert !include.contains('context.h')
-	assert include.contains('#undef FONTSTASH_IMPLEMENTATION')
-	assert include.contains('#undef SOKOL_FONTSTASH_IMPL')
-	assert include.contains('#undef SOKOL_IMPL')
-	include_pos := include.index('#include') or { -1 }
-	assert include_pos >= 0
-	// Declaration-only replay must leave the switches undefined so later generated
-	// wrappers are emitted only by the selected owner object.
-	assert (include.index('#undef FONTSTASH_IMPLEMENTATION') or { -1 }) < include_pos
-	assert (include.index('#undef SOKOL_FONTSTASH_IMPL') or { -1 }) < include_pos
-	assert !include.contains('#define FONTSTASH_IMPLEMENTATION')
-	assert !include.contains('#define SOKOL_FONTSTASH_IMPL')
-}
-
 fn test_cached_native_owner_restores_stripped_implementation_context() {
 	path := os.real_path('/tmp/sokol_gl.h')
 	include_line := '#include "${c_include_path(path)}"'
@@ -185,140 +550,6 @@ fn test_cached_native_owner_restores_stripped_implementation_context() {
 	assert native.has_native
 	assert define_pos >= 0
 	assert include_pos > define_pos
-}
-
-fn test_cache_native_public_include_detects_external_function_implementation_macro() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_external_implementation_macro_${os.getpid()}')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	header := os.join_path(dir, 'native.h')
-	os.write_file(header, 'typedef struct { int value; } V3LibType;
-/*
-#define LIB_IMPL
-*/
-#ifdef LIB_IMPL
-int v3_lib_value(void) { return 42; }
-#endif
-')!
-	real_header := os.real_path(header)
-	implementation_macros := cache_native_implementation_context_macros(real_header, [
-		'#define LIB_IMPL',
-	], {
-		real_header: true
-	}, []string{}, 'cc', pref.host_target())
-	assert implementation_macros['LIB_IMPL']
-	include := cache_native_public_include(real_header, ['#define LIB_IMPL'], implementation_macros)
-	assert include.contains('#undef LIB_IMPL')
-	include_pos := include.index('#include') or { -1 }
-	assert include_pos >= 0
-	assert (include.index('#undef LIB_IMPL') or { -1 }) < include_pos
-	assert !include.contains('#define LIB_IMPL')
-	// A gated external definition is stripped, so splitting the root is safe.
-	assert !cache_native_public_include_replays_external_definition(real_header, [
-		'#define LIB_IMPL',
-	], implementation_macros, {
-		real_header: true
-	}, []string{}, 'cc', pref.host_target())
-}
-
-fn test_cache_native_public_include_replays_unconditional_external_definition() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_unconditional_external_definition_${os.getpid()}')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	header := os.join_path(dir, 'native.h')
-	os.write_file(header, 'typedef struct { int value; } V3LibType;
-int v3_unconditional_helper(void) { return 7; }
-')!
-	real_header := os.real_path(header)
-	// No context define gates the definition, so the declaration-only replay would
-	// still emit v3_unconditional_helper and duplicate the owner symbol.
-	assert cache_native_public_include_replays_external_definition(real_header, []string{},
-		map[string]bool{}, {
-			real_header: true
-		}, []string{}, 'cc', pref.host_target())
-}
-
-fn test_cache_native_public_include_keeps_static_definition_private() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_static_definition_private_${os.getpid()}')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	header := os.join_path(dir, 'native.h')
-	os.write_file(header, 'typedef struct { int value; } V3LibType;
-static int v3_private_helper(void) { return 7; }
-')!
-	real_header := os.real_path(header)
-	// A static definition has internal linkage, so replaying it in several units
-	// cannot collide; splitting stays safe.
-	assert !cache_native_public_include_replays_external_definition(real_header, []string{},
-		map[string]bool{}, {
-			real_header: true
-		}, []string{}, 'cc', pref.host_target())
-}
-
-fn test_cache_native_public_include_falls_back_when_isolated_preprocessing_fails() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_public_replay_preprocess_fallback_${os.getpid()}')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	header := os.join_path(dir, 'native.h')
-	os.write_file(header, '#ifndef V3_DEPENDENCY_READY
-#error "include dependency declarations first"
-#endif
-#ifdef LIB_IMPL
-int v3_gated_helper(void) { return 7; }
-#endif
-')!
-	real_header := os.real_path(header)
-	assert !cache_native_public_include_replays_external_definition(real_header, [
-		'#define LIB_IMPL',
-	], {
-		'LIB_IMPL': true
-	}, {
-		real_header: true
-	}, []string{}, 'cc', pref.host_target())
-}
-
-fn test_cache_native_public_include_sees_through_static_storage_macros() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_macro_static_definition_${os.getpid()}')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	header := os.join_path(dir, 'native.h')
-	os.write_file(header, '#define V3_LOCAL static inline
-typedef struct { int value; } V3MacroStaticType;
-V3_LOCAL V3MacroStaticType v3_macro_static_make(void) {
-	V3MacroStaticType r = {41};
-	return r;
-}
-')!
-	real_header := os.real_path(header)
-	// The storage class is hidden behind V3_LOCAL, as builtin closure headers do
-	// with V_CLOSURE_STATIC_INLINE. Preprocessing expands it to `static inline`, so
-	// the helper recognizes the internal linkage and keeps splitting enabled.
-	assert !cache_native_public_include_replays_external_definition(real_header, []string{},
-		map[string]bool{}, {
-			real_header: true
-		}, []string{}, 'cc', pref.host_target())
-}
-
-fn test_cache_c_flags_without_forced_inputs_drops_forced_files() {
-	filtered := cache_c_flags_without_forced_inputs(['-DFEATURE=1', '-include', '/tmp/forced.h',
-		'-I/tmp/inc', '-imacros', '/tmp/macros.h', '-include=/tmp/joined.h',
-		'-imacros=/tmp/joined_macros.h', '-DOTHER'])
-	assert filtered == ['-DFEATURE=1', '-I/tmp/inc', '-DOTHER']
 }
 
 fn test_cache_probe_language_unions_input_and_flag_languages() {
@@ -357,214 +588,6 @@ fn test_v_c_identifiers_accepts_spaced_and_commented_selectors() {
 	]
 }
 
-fn test_cache_c_source_definitely_active_code_filters_conditional_definitions() {
-	source := 'int always_active(void) { return 1; }\n#if FEATURE\nstatic int bundled_api(void) { return 2; }\n#else\nint library_api(void) { return 3; }\n#endif\n'
-	mut disabled_macros := cache_local_c_flag_macros(['-DFEATURE=0'])
-	disabled := cache_c_source_definitely_active_code(source, mut disabled_macros)
-	assert disabled.contains('always_active')
-	assert !disabled.contains('bundled_api')
-	assert disabled.contains('library_api')
-
-	mut enabled_macros := cache_local_c_flag_macros(['-DFEATURE=1'])
-	enabled := cache_c_source_definitely_active_code(source, mut enabled_macros)
-	assert enabled.contains('always_active')
-	assert enabled.contains('bundled_api')
-	assert !enabled.contains('library_api')
-
-	mut unknown_macros := cache_local_c_flag_macros([])
-	unknown := cache_c_source_definitely_active_code(source, mut unknown_macros)
-	assert unknown.contains('always_active')
-	assert !unknown.contains('bundled_api')
-	assert !unknown.contains('library_api')
-}
-
-fn test_cache_c_source_definitely_active_code_ignores_directives_in_comments() {
-	source := '/*\n#define FEATURE\n*/\n#ifdef FEATURE\nint commented_api(void) { return 1; }\n#endif\n'
-	mut macros := cache_local_c_flag_macros(['-UFEATURE'])
-	active, complete := cache_c_source_definitely_active_code_with_status(source, mut macros)
-	assert complete
-	assert !active.contains('commented_api')
-	assert !macros['FEATURE'].is_defined
-}
-
-fn test_cache_c_source_definitely_active_code_uses_compiler_predefined_macros() {
-	source := '#ifdef __clang__\nstatic int compiler_api(void) { return 1; }\n#else\nint fallback_api(void) { return 2; }\n#endif\n'
-	mut clang_macros := cache_local_c_compiler_macros([]string{}, 'clang', pref.host_target())
-	clang_source := cache_c_source_definitely_active_code(source, mut clang_macros)
-	assert clang_source.contains('compiler_api')
-	assert !clang_source.contains('fallback_api')
-
-	mut undefined_macros := cache_local_c_compiler_macros(['-U__clang__'], 'clang',
-		pref.host_target())
-	undefined_source := cache_c_source_definitely_active_code(source, mut undefined_macros)
-	assert !undefined_source.contains('compiler_api')
-	assert undefined_source.contains('fallback_api')
-}
-
-fn test_cache_c_source_definitely_active_code_uses_target_predefined_macros() {
-	target := pref.target_from('macos', 'arm64') or { panic(err) }
-	mut macros := cache_local_c_compiler_macros([]string{}, 'clang', target)
-	source := '#ifdef __APPLE__\nstatic int apple_api(void) { return 1; }\n#endif\n#if defined(__MACH__) && defined(__aarch64__) && defined(__arm64__) && defined(__LP64__)\nstatic int target_api(void) { return 2; }\n#endif\n'
-	active := cache_c_source_definitely_active_code(source, mut macros)
-	assert active.contains('apple_api')
-	assert active.contains('target_api')
-
-	mut overridden := cache_local_c_compiler_macros(['-U__APPLE__'], 'clang', target)
-	disabled := cache_c_source_definitely_active_code(source, mut overridden)
-	assert !disabled.contains('apple_api')
-
-	solaris_sparc64 := pref.target_from('solaris', 'sparc64') or { panic(err) }
-	mut solaris_macros := cache_local_c_compiler_macros([]string{}, 'gcc', solaris_sparc64)
-	solaris_source := '#if defined(__sun) && defined(__sparc__) && defined(__LP64__)\nstatic int solaris_sparc_api(void) { return 3; }\n#endif\n'
-	solaris_active := cache_c_source_definitely_active_code(solaris_source, mut solaris_macros)
-	assert solaris_active.contains('solaris_sparc_api')
-
-	linux_riscv32 := pref.target_from('linux', 'riscv32') or { panic(err) }
-	mut riscv_macros := cache_local_c_compiler_macros([]string{}, 'gcc', linux_riscv32)
-	riscv_source := '#if defined(__riscv) && __riscv_xlen == 32 && defined(__ILP32__)\nstatic int riscv32_api(void) { return 4; }\n#endif\n'
-	riscv_active := cache_c_source_definitely_active_code(riscv_source, mut riscv_macros)
-	assert riscv_active.contains('riscv32_api')
-
-	linux_ppc := pref.target_from('linux', 'ppc') or { panic(err) }
-	mut ppc_macros := cache_local_c_compiler_macros([]string{}, 'gcc', linux_ppc)
-	ppc_source := '#if defined(__powerpc__) && defined(__ppc__) && defined(__ILP32__)\nstatic int ppc_api(void) { return 5; }\n#endif\n'
-	ppc_active := cache_c_source_definitely_active_code(ppc_source, mut ppc_macros)
-	assert ppc_active.contains('ppc_api')
-}
-
-fn test_cache_compiler_macro_probe_uses_implicit_objective_c_language() {
-	$if macos {
-		macros, complete := cache_c_compiler_predefined_macros([]string{}, 'cc',
-			pref.host_target(), 'objective-c')
-		assert complete
-		assert '__OBJC__' in macros
-		// An Objective-C++ input defines both __OBJC__ and __cplusplus; the probe must
-		// carry __cplusplus so branches guarded by it are not discarded.
-		objc_cpp_macros, objc_cpp_complete := cache_c_compiler_predefined_macros([]string{}, 'cc',
-			pref.host_target(), 'objective-c++')
-		assert objc_cpp_complete
-		assert '__OBJC__' in objc_cpp_macros
-		assert '__cplusplus' in objc_cpp_macros
-	}
-}
-
-fn test_cache_compiler_macro_probe_excludes_forced_headers() {
-	$if macos {
-		dir := os.join_path(os.vtmp_dir(), 'v3_probe_forced_header_${os.getpid()}')
-		os.rmdir_all(dir) or {}
-		os.mkdir_all(dir) or { panic(err) }
-		defer {
-			os.rmdir_all(dir) or {}
-		}
-		forced := os.join_path(dir, 'forced.h')
-		os.write_file(forced, '#define V3_FORCED_PROBE_MACRO 1\n') or { panic(err) }
-		macros, complete := cache_c_compiler_predefined_macros(['-include', forced], 'cc',
-			pref.host_target(), 'c')
-		assert complete
-		// The forced header runs before the empty probe input, so its macros must not
-		// be reported as part of the predefined baseline the input scanner starts from.
-		assert 'V3_FORCED_PROBE_MACRO' !in macros
-	}
-}
-
-fn test_cache_c_source_definitely_active_code_evaluates_compound_known_guards() {
-	source := '#if FOO && BAR\nstatic int compound_api(void) { return 1; }\n#else\nint fallback_api(void) { return 2; }\n#endif\n'
-	mut enabled_macros := cache_local_c_flag_macros(['-DFOO=1', '-DBAR=1'])
-	enabled := cache_c_source_definitely_active_code(source, mut enabled_macros)
-	assert enabled.contains('compound_api')
-	assert !enabled.contains('fallback_api')
-
-	mut short_circuit_macros := cache_local_c_flag_macros(['-DFOO=0'])
-	disabled := cache_c_source_definitely_active_code(source, mut short_circuit_macros)
-	assert !disabled.contains('compound_api')
-	assert disabled.contains('fallback_api')
-}
-
-fn test_cache_c_source_definitely_active_code_expands_local_macro_values() {
-	source := '#define ENABLED 1\n#define PARENTHESIZED (1)\n#define ALIASED ENABLED\n#define COMPOUND (PARENTHESIZED && ALIASED)\n#if PARENTHESIZED\nstatic int parenthesized_api(void) { return 1; }\n#endif\n#if ALIASED\nstatic int aliased_api(void) { return 2; }\n#endif\n#if COMPOUND\nstatic int compound_macro_api(void) { return 3; }\n#endif\n#define FIRST SECOND\n#define SECOND FIRST\n#if FIRST\nstatic int cyclic_api(void) { return 4; }\n#endif\n'
-	mut macros := cache_local_c_flag_macros([]string{})
-	active := cache_c_source_definitely_active_code(source, mut macros)
-	assert active.contains('parenthesized_api')
-	assert active.contains('aliased_api')
-	assert active.contains('compound_macro_api')
-	assert !active.contains('cyclic_api')
-}
-
-fn test_cache_c_source_definitely_active_code_evaluates_known_comparisons() {
-	source := '#define FEATURE 1\n#define LEVEL 2\n#if FEATURE == 1\nstatic int matching_api(void) { return 1; }\n#endif\n#if FEATURE != 1\nstatic int mismatched_api(void) { return 2; }\n#else\nstatic int comparison_fallback_api(void) { return 3; }\n#endif\n#if LEVEL >= 2\nstatic int ordered_api(void) { return 4; }\n#endif\n#if FEATURE + 1 == 2\nstatic int arithmetic_api(void) { return 5; }\n#endif\n#if FEATURE + 1\nstatic int direct_arithmetic_api(void) { return 6; }\n#endif\n#if FEATURE - 1\nstatic int zero_arithmetic_api(void) { return 7; }\n#endif\n'
-	mut macros := cache_local_c_flag_macros([]string{})
-	active := cache_c_source_definitely_active_code(source, mut macros)
-	assert active.contains('matching_api')
-	assert !active.contains('mismatched_api')
-	assert active.contains('comparison_fallback_api')
-	assert active.contains('ordered_api')
-	assert active.contains('arithmetic_api')
-	assert active.contains('direct_arithmetic_api')
-	assert !active.contains('zero_arithmetic_api')
-}
-
-fn test_cache_c_source_definitely_active_code_rejects_unresolved_definition_guards() {
-	source := '#if __has_builtin(__builtin_add_overflow)\nstatic int builtin_api(void) { return 1; }\n#else\nstatic int fallback_api(void) { return 0; }\n#endif\n'
-	mut macros := cache_local_c_compiler_macros([]string{}, 'clang', pref.host_target())
-	active, complete := cache_c_source_definitely_active_code_with_status(source, mut macros)
-	assert !active.contains('builtin_api')
-	assert !active.contains('fallback_api')
-	assert !complete
-
-	body_guard_source := 'static int builtin_api(void) {\n#if __has_builtin(__builtin_add_overflow)\n\treturn 1;\n#else\n\treturn 0;\n#endif\n}\n'
-	mut body_macros := cache_local_c_compiler_macros([]string{}, 'clang', pref.host_target())
-	_, body_complete := cache_c_source_definitely_active_code_with_status(body_guard_source, mut
-		body_macros)
-	assert body_complete
-}
-
-fn test_cache_c_source_definitely_active_code_accepts_local_header_guards() {
-	source := '#ifndef LOCAL_API_H\n#define LOCAL_API_H\n#ifndef LOCAL_INLINE\n#define LOCAL_INLINE static inline\n#endif\nLOCAL_INLINE int local_api(void) { return 1; }\n#endif\n'
-	mut macros := cache_local_c_compiler_macros([]string{}, 'clang', pref.host_target())
-	active, complete := cache_c_source_definitely_active_code_with_status(source, mut macros)
-	assert complete
-	assert active.contains('local_api')
-	assert macros['LOCAL_API_H'].is_defined
-	assert macros['LOCAL_INLINE'].is_defined
-}
-
-fn test_cache_c_source_definitely_active_code_uses_include_site_macros() {
-	root_dir := os.join_path(os.temp_dir(), 'v3_cache_active_c_include_${os.getpid()}')
-	os.rmdir_all(root_dir) or {}
-	os.mkdir_all(root_dir) or { panic(err) }
-	defer {
-		os.rmdir_all(root_dir) or {}
-	}
-	root_path := os.join_path(root_dir, 'a_root.c')
-	header_path := os.join_path(root_dir, 'z_api.h')
-	os.write_file(root_path, '#include "z_api.h"\n#undef FEATURE\n#define FEATURE 1\n') or {
-		panic(err)
-	}
-	os.write_file(header_path, '#if FEATURE\nstatic int bundled_api(void) { return 2; }\n#endif\n') or {
-		panic(err)
-	}
-	allowed_paths := {
-		os.real_path(root_path):   true
-		os.real_path(header_path): true
-	}
-	mut active_paths := map[string]bool{}
-	mut macros := cache_local_c_flag_macros(['-DFEATURE=0'])
-	active := cache_c_source_definitely_active_code_for_path(root_path, allowed_paths, mut
-		active_paths, mut macros, false)
-	assert !active.contains('bundled_api')
-	assert macros['FEATURE'].truth == 1
-
-	os.write_file(header_path,
-		'#if __has_builtin(__builtin_add_overflow)\nstatic int builtin_api(void) { return 2; }\n#endif\n') or {
-		panic(err)
-	}
-	mut uncertain_paths := map[string]bool{}
-	mut uncertain_macros := cache_local_c_compiler_macros([]string{}, 'clang', pref.host_target())
-	_, declarations_complete := cache_c_source_definitely_active_code_for_path_with_status(root_path,
-		allowed_paths, mut uncertain_paths, mut uncertain_macros, false)
-	assert !declarations_complete
-}
-
 fn test_prune_cached_native_function_prototypes_resolves_cache_guards() {
 	state := &V3ModuleCacheState{
 		native_declared_functions: {
@@ -578,10 +601,4 @@ fn test_prune_cached_native_function_prototypes_resolves_cache_guards() {
 	assert !pruned.contains('active_api')
 	assert pruned.contains('int library_api(void);')
 	assert !pruned.contains('V3CACHE_PROGRAM_UNIT')
-}
-
-fn test_c_typedef_function_pointer_scan_advances_without_source_slices() {
-	source := '// Callback is declared below.\ntypedef void (*Callback)(void);\ntypedef void *Data;\n'
-	assert c_typedef_is_function_pointer(source, 'Callback')
-	assert !c_typedef_is_function_pointer(source, 'Data')
 }

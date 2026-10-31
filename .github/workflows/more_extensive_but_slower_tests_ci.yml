@@ -10,17 +10,13 @@ on:
       - '!**/more_extensive_but_slower_tests_ci.yml'
       - 'examples/**'
       - 'cmd/tools/**'
-  pull_request:
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/more_extensive_but_slower_tests_ci.yml'
-      - 'examples/**'
-      - 'cmd/tools/**'
 
 concurrency:
   group: slower_tests-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   more-tests:
@@ -28,9 +24,16 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-14, windows-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Build V
         if: runner.os != 'Windows'

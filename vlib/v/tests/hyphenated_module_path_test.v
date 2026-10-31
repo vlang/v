@@ -29,7 +29,7 @@ fn test_value() {
 	os.chdir(test_root)!
 	module_path := os.join_path('some-dir', 'somemodule')
 	cmd := '${os.quoted_path(vexe)} test ${os.quoted_path(module_path)}'
-	res := os.execute(cmd)
+	res := os.exec([vexe, 'test', module_path])
 	if res.exit_code != 0 {
 		eprintln('> failing test cmd: ${cmd}')
 		eprintln('> output:\n${res.output}')

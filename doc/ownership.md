@@ -1,8 +1,8 @@
 # Ownership
 
 V has an optional ownership system inspired by Rust that tracks owned values and prevents
-use-after-move bugs at compile time. It is currently focused on strings and is enabled
-with the `-ownership` flag.
+use-after-move bugs at compile time. It tracks strings and other owning values, including
+aggregates, and is enabled with the `-ownership` flag.
 
 ## Quick start
 
@@ -24,16 +24,135 @@ Ownership mode defines the target-visible custom option `ownership`. Code can us
 `$if ownership ? {}` to select ownership-specific branches, and files named
 `*_d_ownership.v` are included in ownership builds.
 
+Ownership inference follows function calls, including long acyclic call chains. Its convergence
+limit grows with the number of functions; if inference still does not converge, the compiler
+reports the function being analyzed instead of continuing indefinitely.
+
+Ownership checking uses disposable arenas for function batches and recursive storage-source
+queries, so temporary snapshots and query state are released throughout large compilations,
+including compiler builds. Query results, inferred metadata, and diagnostics survive arena release.
+
+Recursive storage-source queries share a cache for one outer query. It retains at most 32,768
+completed entries and 64 MiB of estimated payload. Existing entries remain usable when a limit is
+reached; additional results are computed without adding another cache entry. The cache and
+temporary query state are released when the outer query finishes.
+Membership conditions are stored as exact lists of present and absent declaration IDs. The
+estimate covers cache keys, paths, source indexes, entry and array headers, and eight bytes per
+membership condition; it is separate from the compiler's process-memory limit.
+Entries for the same declaration and parameter share a retained result when their storage paths
+and source-parameter sets match, regardless of traversal order.
+Each entry still retains its own membership conditions;
+shared paths and source indexes are charged once. Previously retained allocations stay charged
+until the query finishes.
+If a completed query and a retained entry prove the same result under complementary
+conditions for one declaration ID, a certificate can omit it when its other conditions include
+the partner's conditions. An existing certificate can be updated even after the cache reaches
+its limits, without allocating another buffer or refunding its original charge. Retained results
+remain immutable. Parent queries use the current incoming proof, and lookups prefer matching
+entries with fewer conditions.
+The current incoming proof can repeat this step with other retained forward partners, removing
+one condition at a time. These additional steps leave retained certificates unchanged and stop
+when no further partner applies. Parent queries receive the final proved conditions.
+After that parent copy, one known equal-result entry can use the final proof when every
+condition of that proof also occurs in the entry with the same expectation.
+Filtering the existing buffers preserves their allocated capacity and cumulative charge;
+otherwise the original one-condition update remains available.
+
+Serial ownership checks reuse resolved call information during return analysis, as parallel
+checks do. This avoids false moved-value diagnostics from rechecking an earlier chained-call
+initializer after its receiver has moved in a return.
+Return analysis can first prove a superset of binding sources harmless in an isolated observer.
+This optional proof stops after 65,536 observer steps. Its history cache retains at most 4,096
+entries, with an estimated 4 MiB allocation charge. Completed proofs retain the incoming ancestor
+conditions they used; reference checks preserve their cycle diagnostics.
+The observer reads completed call and type information only while its checked context is unchanged,
+leaving the original caches intact. Any uncertainty, diagnostic, or request to recheck a node falls
+back to the original storage-source analysis.
+
+If the compiler memory limit is exceeded,
+it reports the limit and exits with status 1, without running cleanup against active workers.
+
+Local owned values declared after a `match` keep their lexical cleanup scope, including
+inside loops with `continue` statements.
+Map insertion and replacement cleanup preserves the lexical scopes of neighboring locals,
+including assignments through map-indexed fields and owned keys.
+
+Map `clear()` and `free()` release owned entries through their stored values, including
+when the map is accessed through a pointer or a generic pointer parameter.
+String map keys retain their cloned storage until the map releases it. Boxed values use the
+selected allocator during ownership cleanup, including VGC.
+Map runtime callbacks release string keys, including nested fixed arrays and aliases, exactly once.
+
 ## Creating owned values
 
-Call `.to_owned()` on a string to create an owned copy. Only strings created with
-`.to_owned()` participate in ownership tracking — regular string literals and primitive
-types (int, f64, bool, ...) are unaffected.
+Call `.to_owned()` on a string to create an owned copy. Copies made with `.clone()` also
+participate in ownership tracking. A standalone string literal does not become an owned value
+just by binding it to a variable. Primitive scalar types (int, f64, bool, ...) remain copyable.
+These value-level rules do not disable ownership inference for aggregate types.
+Returning a scalar field or scalar array element copies its value, including when accessed through
+a pointer to local storage. Scalar copies do not keep a reference to that storage.
+Interpolation with multiple parts copies their storage. A sole string part can pass through
+unchanged, and closures retain their captured references.
+Capturing an owned aggregate transfers its root and owned descendants together. Earlier moves
+and active borrows still prevent capture, and the transferred source cannot be reused afterward.
+Lambdas may capture nested arrays and combine their elements in the same expression.
+Escaped interpolation text stays literal through compile-time reflection and promoted defaults.
+Literal text supplied by reflected attributes or source-location variables follows the same rule.
 
 ```v okfmt
 s := 'hello'.to_owned() // s is owned
 t := 'world' // t is a normal string, no ownership tracking
 ```
+
+Ordinary string slices allocate independent storage and are owned in ownership mode. Assigning,
+passing, or returning a slice transfers its ownership, and its buffer is freed when the owner
+leaves scope. The source remains usable. Addressed string ranges such as `&text[start..end]`
+borrow the original bytes in ownership mode and retain a stable slice header. The source must
+remain alive while the reference is used. A local dereference of a borrowed string or a builtin
+`string.substr_unsafe()` result retains a view of its source, including dereferences of
+pointer-returning calls; the source cannot be moved or reassigned while that view is live.
+Use `.to_owned()` or
+`.clone()` to create an owned copy. Borrowed views stored in owned aggregates or returned
+by value are copied so they can outlive the source.
+Reassigning a borrowed view releases its loan without freeing the source bytes.
+
+Dynamic and fixed array `init:` expressions clone borrowed owning projections for each element,
+including projections indexed by `index` and those inside struct or array literals and conditional
+branches. Each element gets independent storage and leaves the source usable. Fresh returned values
+are evaluated once per element without an additional clone; a zero-length initializer does not
+evaluate its expression.
+
+Standard string methods, numeric parsers, path inspection and joining functions, and
+string-builder writes borrow string arguments that cannot escape through the return value.
+Signed numeric parsing preserves the caller's string while removing a leading sign.
+Arguments that may be returned, such as the fallback of `string.substr_or()`, transfer ownership
+instead. Use `.clone()` when the caller also needs to keep an owned fallback. User functions with
+by-value string parameters still consume owned strings. When a parameter takes ownership, a regular
+string or borrowed view passed to it is copied for the callee, leaving the caller's value available.
+Returned copies remain owned; use `.clone()` when retaining another copy.
+
+Passing `array.pop()` or `array.pop_left()` to an owning string parameter removes that element
+from the array's tracked storage. An owned element transfers to the callee; a non-owning element,
+such as a string literal, is copied for the callee. Remaining elements keep their ownership. For
+arrays with known lengths, later appends use the updated length.
+
+Standard library modules other than `builtin` keep V's value semantics in their own function
+bodies. Their parameters, locals and loop variables never become owners, so library code does not
+move them or drop them at scope exit, and no ownership errors are reported inside it. Assignments
+and array or map updates in library code (`delete`, `clear`, overwriting an element or a map entry)
+do not destroy the value they replace or remove either. The values library code shares are left to
+the garbage collector, so with `-gc none` they are not freed. Call sites in your code are
+unchanged: an owned value passed to a library function that does not borrow it is still moved, and
+the library does not free it. When library code passes a value to a `builtin` or program function
+whose parameter has taken ownership, that function receives an independent copy.
+
+When storing a sum literal, ownership acquisition considers its active payload. Array views in that
+payload acquire independent storage; unrelated variants do not need storage checks. Runtime sum
+cleanup is shared across storage acquisition sites, keeping generated C compact for sums with many
+array variants, such as `orm.Primitive`. Discarded spawn results use separate cleanup helpers
+that also destroy the active payload of a sum.
+Sum cleanup also supports direct packed fields: it uses aligned temporary storage and copies
+cleanup updates back to the original field, evaluating its storage address once.
 
 ## Move semantics
 
@@ -78,6 +197,9 @@ println(s) // ok
 
 ## Borrowing
 
+Replacing an owned value evaluates its replacement before destroying the previous value.
+This also applies when the local value has been moved to heap storage.
+
 Pass `&variable` to borrow without moving. The original stays usable:
 
 ```v okfmt
@@ -91,6 +213,95 @@ fn main() {
 	println(s) // ok — s was borrowed, not moved
 }
 ```
+
+Struct fields can borrow arrays using `&[]T` in ownership mode. Initializing such a
+field with `&values` borrows the existing array instead of creating an owned copy.
+Array-slice references such as `&values[1..]` keep the original elements and a stable slice
+header. The backing value must remain alive while the reference is used. Copy the slice by
+value or use `.clone()` when independent storage is needed.
+
+Passing a fixed-array value to an `&[]T` parameter creates a separate dynamic array with
+durable element ownership. The original fixed-array storage does not escape. References
+inside the copied elements still borrow their original owners and cannot outlive them.
+
+Mutable receiver methods can return a reference to their receiver in ownership mode.
+The returned reference borrows the caller's value; the value must remain alive while it is used.
+
+A reference returned through a receiver call or an addressed range remains tied to its source
+storage and cannot escape the ownership scope of a local value. Caller-backed mutable parameters
+and explicit heap-pointer receivers can return such references. The check follows nested return
+aliases to their source regardless of call depth; unresolved alias cycles are rejected.
+The same rule applies to references returned inside options, results, arrays, struct fields,
+interfaces, or sum-type payloads.
+
+Addressed string ranges such as `&text[1..]` borrow their source's bytes. String literals
+and existing storage can supply those bytes, but a temporary string such as
+`&'abc'.repeat(n)[1..]` has no retained owner and is rejected. Assign the string to a variable
+before taking the range's address, and keep that variable alive while the reference is used.
+
+### Inferred ownership of aggregates
+
+`.to_owned()` explicitly creates an owned string value; it is not a prerequisite for an
+aggregate to be owning. Ownership mode also infers ownership recursively from a type's fields.
+Strings, dynamic arrays, maps, interfaces, results (`!T`), and sum types require destruction.
+An option (`?T`) or fixed array requires destruction when its payload or element does.
+A struct containing one of these types, directly or through another struct, is therefore
+inferred as owning even without `.to_owned()` or `implements Owned`.
+
+In particular, a string field makes its containing struct owning even if initialized with a
+string literal. The literal's static storage and the aggregate's move tracking are separate
+properties. An integer-only struct remains copyable unless explicitly marked owning:
+
+```v okfmt
+struct Plain {
+	value int
+}
+
+struct Request {
+	name string
+}
+
+struct Resource implements Owned {
+	id int
+}
+
+fn read_plain(value Plain) {}
+
+fn read_request(request Request) {}
+
+fn read_resource(resource Resource) {}
+
+fn main() {
+	plain := Plain{ value: 1 }
+	read_plain(plain)
+	read_plain(plain) // ok: copyable scalar fields
+
+	request := Request{ name: 'example' }
+	read_request(request)
+	// read_request(request) // error: request was moved; ownership is inferred
+
+	resource := Resource{ id: 1 }
+	read_resource(resource)
+	// read_resource(resource) // error: resource was moved; explicitly Owned
+}
+```
+
+Passing an owning struct by value consumes it. A by-value method receiver follows the same
+rule unless the method borrows it. Use an `&Request` parameter or an `&Request` receiver to
+borrow a request when it must remain available for another call. An independent owned copy
+requires clone support: declare `Request implements IClone` for compiler-default cloning, or
+define a custom `clone()` method. The plain `Request` above has no `.clone()` method.
+
+### Struct ownership markers
+
+The `Owned`, `Copy`, and `Drop` markers can appear in a struct's `implements` list in
+ownership mode without declaring interfaces for them. These markers supplement field-based
+inference: `Owned` forces move tracking even for an otherwise copyable struct. `Copy` permits
+copying structs whose fields are otherwise copyable; it does not remove destruction requirements
+from owning fields. For example, `struct Message implements Copy { text string }` initialized
+from a struct literal is still tracked as an owner and moves when passed by value.
+`Drop` enables destruction with a custom `drop()` method.
+Declared types with these names still follow the usual interface checks.
 
 ### Explicit lifetimes
 
@@ -222,3 +433,12 @@ To build the ownership-enabled compiler manually:
 ```
 v -d ownership -o v_ownership vlib/v/v.v
 ```
+
+When compiling `cmd/v` with `-autofree`, the launcher first selects the ownership-enabled compiler.
+The regular compiler handles the initial `-d ownership cmd/v` support build directly.
+With `-prealloc`, automatic cleanup runs destructors and leaves boxed storage to its arena.
+A `break` or `continue` at the end of an `or`, `if`, or `match` value branch runs cleanup
+before the jump. Only locals whose declarations have been reached are cleaned up.
+
+A statement `if` branch that ends in `return`, `break`, or `continue` emits its deferred
+actions and ownership cleanup before the transfer, without an unreachable cleanup epilogue.

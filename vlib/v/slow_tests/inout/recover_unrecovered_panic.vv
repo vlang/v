@@ -1,0 +1,23 @@
+// The deferred blocks up the stack run before an unrecovered panic ends the
+// program, like in Go, once the program calls `recover()` somewhere.
+fn recovers_nothing() {
+	defer {
+		recover()
+	}
+}
+
+fn inner() {
+	defer {
+		println('deferred in inner')
+	}
+	panic('boom')
+}
+
+fn main() {
+	recovers_nothing()
+	defer {
+		println('deferred in main')
+	}
+	inner()
+	println('unreachable')
+}

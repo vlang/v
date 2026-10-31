@@ -1,0 +1,22 @@
+struct Point {
+#line 10 "point.zbr"
+	x int
+	y int
+}
+
+fn main() {
+	numbers := [
+#line 20 "numbers.zbr"
+		1,
+		2,
+	]
+	match numbers.len {
+		2 {
+#line 30 "match.zbr"
+			println('two')
+		}
+#line 40 "match.zbr"
+		else {}
+	}
+	println(Point{})
+}

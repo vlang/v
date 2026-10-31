@@ -2,7 +2,13 @@ import sync
 
 const num_iterations = 10000
 
-fn get_val_from_chan(ch chan i64) ?i64 {
+// A result keeps the error a channel was closed with; an option only reports none.
+fn get_val_from_chan(ch chan i64) !i64 {
+	r := <-ch!
+	return r
+}
+
+fn get_opt_val_from_chan(ch chan i64) ?i64 {
 	r := <-ch?
 	return r
 }
@@ -46,4 +52,12 @@ fn test_channel_close_with_error_propagates_after_buffer_drain() {
 		return
 	}
 	assert false
+}
+
+fn test_channel_close_propagates_none_through_an_option() {
+	ch := chan i64{cap: 1}
+	ch <- i64(7)
+	ch.close(error('async failure'))
+	assert get_opt_val_from_chan(ch) or { -1 } == i64(7)
+	assert get_opt_val_from_chan(ch) or { -1 } == i64(-1)
 }

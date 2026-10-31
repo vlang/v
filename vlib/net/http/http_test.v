@@ -6,7 +6,8 @@ fn test_https_get() {
 	$if !network ? {
 		return
 	}
-	assert http.get_text('https://vlang.io/version') == '0.1.5'
+	url := 'https://raw.githubusercontent.com/vlang/v/master/vlib/veb/tests/testdata/root.txt'
+	assert http.get_text(url) == 'root'
 	println('https ok')
 }
 
@@ -125,6 +126,40 @@ fn test_relative_redirects() {
 	assert res.status() == .ok
 	assert res.body != ''
 	assert res.body.contains('"abc": "xyz"')
+}
+
+struct RedirectWithoutLocationHandler {}
+
+fn (mut handler RedirectWithoutLocationHandler) handle(req http.Request) http.Response {
+	mut res := http.Response{}
+	res.set_status(.found)
+	res.set_version(req.version)
+	return res
+}
+
+fn test_redirect_without_location() {
+	$if !network ? {
+		return
+	}
+	mut server := &http.Server{
+		accept_timeout:       100 * time.millisecond
+		handler:              RedirectWithoutLocationHandler{}
+		addr:                 '127.0.0.1:0'
+		show_startup_message: false
+	}
+	t := spawn server.listen_and_serve()
+	server.wait_till_running() or {
+		server.stop()
+		t.wait()
+		panic(err)
+	}
+	defer {
+		server.stop()
+		t.wait()
+	}
+	// a 3xx without a Location header is terminal, the response is handed back
+	res := http.get('http://${server.addr}/') or { panic(err) }
+	assert res.status() == .found
 }
 
 fn user_agent_response_body(request string) string {

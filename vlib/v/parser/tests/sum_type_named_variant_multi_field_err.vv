@@ -1,0 +1,5 @@
+type Shape = Circle(r f64) | Rect(w f64, h f64)
+
+fn main() {
+	println('not reached in script mode')
+}

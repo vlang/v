@@ -452,11 +452,11 @@ mut:
 }
 
 fn native_identity(value voidptr) u64 {
-	return u64(usize(value))
+	return u64(uint(value))
 }
 
 fn native_pointer(identity u64) voidptr {
-	return voidptr(usize(identity))
+	return voidptr(uint(identity))
 }
 
 const native_valid_return_value = u64(1)

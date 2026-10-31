@@ -29,6 +29,38 @@ pub fn host_os_name() string {
 	return host_target().os
 }
 
+// first_tcc_unloadable_darwin_release is the earliest Darwin kernel release known
+// to load TCC-linked executables with corrupted globals: its dyld remaps every
+// `__DATA` page listed in the chained-fixup table from the file, and TCC lists the
+// zero-fill `__bss` pages there too (ld64 lists only the file-backed ones). Those
+// pages then hold the `__LINKEDIT` bytes that follow `__DATA` in the file, instead
+// of zeros. Observed on macOS 27.0.1 (Darwin 27.0.0); see
+// https://github.com/vlang/v/issues/29744 .
+const first_tcc_unloadable_darwin_release = 27
+
+// host_rejects_tcc_executables reports whether this Darwin release was affected
+// by the historical TinyCC Mach-O zero-fill bug. Retained for compatibility;
+// compiler selection no longer consults this version check. Fixed TCC bundles
+// can run on these releases.
+pub fn host_rejects_tcc_executables() bool {
+	$if macos {
+		return darwin_release_rejects_tcc_executables(os.uname().release)
+	} $else {
+		return false
+	}
+}
+
+// darwin_release_rejects_tcc_executables reports whether a Darwin kernel `release`,
+// as `uname -r` prints it, can load TCC-linked executables with corrupted globals.
+// A release that does not start with a decimal major version is not rejected.
+pub fn darwin_release_rejects_tcc_executables(release string) bool {
+	major := release.all_before('.')
+	if major == '' || !major.bytes().all(it.is_digit()) {
+		return false
+	}
+	return major.int() >= first_tcc_unloadable_darwin_release
+}
+
 // os_is_target_of reports whether this_os is one of the systems named by the OS
 // suffix target, for example `nix` names Linux and FreeBSD, but not Windows.
 pub fn os_is_target_of(this_os string, target string) bool {
@@ -65,7 +97,8 @@ fn os_is_bsd_target(this_os string) bool {
 // They take precedence over known_arch_names when a suffix is read, because `wasm` spells
 // both a backend and an architecture and AGENTS.md documents `*.wasm.v` as the WASM backend
 // split. Reading it as an architecture instead both hides the file from `-b wasm` and makes
-// every native host skip it as foreign.
+// every native host skip it as foreign. `arm64` is deliberately absent: `foo_test.arm64.v`
+// names an architecture, while the native backend is spelled `native` in a file name.
 pub const known_backend_suffixes = ['c', 'js', 'native', 'wasm']
 
 // suffix_is_backend_name reports whether a `.<name>.v` suffix names a backend.

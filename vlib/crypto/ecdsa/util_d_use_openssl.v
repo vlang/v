@@ -16,7 +16,7 @@ module ecdsa
 // LR3AGUldy+bBpV2nT306qCIwgUAMeOJP
 // -----END PUBLIC KEY-----'
 //
-// block, _ := pem.decode(pubkey_sample) or { panic(err) }
+// block, _ := pem.decode(pubkey_sample) or { panic('invalid PEM block') }
 // pubkey := ecdsa.pubkey_from_bytes(block.data)!
 // ```
 pub fn pubkey_from_bytes(bytes []u8) !PublicKey {
@@ -235,7 +235,7 @@ const default_groupname_size = 25 // short name commonly only take 10-15 length
 // key_group_name returns underlying group name of the key as a string.
 fn key_group_name(key &C.EVP_PKEY) !string {
 	gname := []u8{len: default_groupname_size}
-	gname_len := usize(0)
+	gname_len := uint(0)
 	mut s := C.EVP_PKEY_get_group_name(key, gname.data, u32(gname.len), &gname_len)
 	if s == 0 {
 		unsafe { gname.free() }

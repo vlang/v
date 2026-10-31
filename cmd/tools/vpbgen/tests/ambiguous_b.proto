@@ -1,0 +1,31 @@
+// The other half of the collision: `Item` and `Kind` here clash with the ones in
+// ambiguous_a.proto, and this file also holds a name nothing else uses, so the
+// test can tell "qualify the ambiguous ones" apart from "qualify everything".
+
+syntax = "proto3";
+
+package two;
+
+import "ambiguous_a.proto";
+
+message Item {
+  string y = 1;
+}
+
+enum Kind {
+  kind_unspecified = 0;
+  kind_b = 1;
+}
+
+// Unique stays unqualified, which is the behaviour that matters: prefixing
+// every name with its package would make a schema where nothing collides read
+// worse for no benefit.
+message Unique {
+  bool flag = 1;
+}
+
+message Holder {
+  one.Item from_one = 1;
+  Item from_two = 2;
+  Unique unique = 3;
+}

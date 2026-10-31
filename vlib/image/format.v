@@ -6,6 +6,7 @@
 module image
 
 import io
+import os
 
 // err_format indicates that decoding encountered an unknown format.
 pub const err_format = 'image: unknown format'
@@ -36,9 +37,10 @@ mut:
 
 struct BufferedPeekReader {
 mut:
-	reader io.Reader
-	buf    []u8
-	offset int
+	reader        io.Reader
+	buf           []u8
+	offset        int
+	pending_error ?IError
 }
 
 // register_format registers an image format for use by decode and decode_config.
@@ -70,11 +72,22 @@ pub fn (mut r BufferedPeekReader) read(mut buf []u8) !int {
 			return copied
 		}
 	}
-	read := r.reader.read(mut buf[copied..]) or {
+	if pending := r.pending_error {
 		if copied > 0 {
 			return copied
 		}
+		r.pending_error = none
+		return pending
+	}
+	read := r.reader.read(mut buf[copied..]) or {
+		if copied > 0 {
+			r.pending_error = err
+			return copied
+		}
 		return err
+	}
+	if read < 0 || read > buf.len - copied {
+		return error('image: invalid reader byte count')
 	}
 	return copied + read
 }
@@ -85,9 +98,18 @@ pub fn (mut r BufferedPeekReader) peek(n int) ![]u8 {
 		return error('image: negative peek length')
 	}
 	for r.buf.len - r.offset < n {
+		if pending := r.pending_error {
+			return pending
+		}
 		missing := n - (r.buf.len - r.offset)
 		mut tmp := []u8{len: missing}
-		read := r.reader.read(mut tmp)!
+		read := r.reader.read(mut tmp) or {
+			r.pending_error = err
+			return err
+		}
+		if read < 0 || read > tmp.len {
+			return error('image: invalid reader byte count')
+		}
 		if read <= 0 {
 			return io.Eof{}
 		}
@@ -109,20 +131,25 @@ fn match_magic(magic string, b []u8) bool {
 }
 
 // sniff determines the registered format of r's data.
-fn sniff(mut r PeekReader) ?Format {
+fn sniff(mut r PeekReader) !Format {
 	for f in registered_formats {
-		b := r.peek(f.magic.len) or { continue }
+		b := r.peek(f.magic.len) or {
+			if err is io.Eof || err is os.Eof {
+				continue
+			}
+			return err
+		}
 		if match_magic(f.magic, b) {
 			return f
 		}
 	}
-	return none
+	return error(err_format)
 }
 
 // decode decodes an image from a registered format.
 pub fn decode(reader io.Reader) !(Image, string) {
 	mut r := as_reader(reader)
-	f := sniff(mut r) or { return error(err_format) }
+	f := sniff(mut r)!
 	m := f.decode(mut r)!
 	return m, f.name
 }
@@ -130,7 +157,7 @@ pub fn decode(reader io.Reader) !(Image, string) {
 // decode_config decodes the color model and dimensions of a registered format.
 pub fn decode_config(reader io.Reader) !(Config, string) {
 	mut r := as_reader(reader)
-	f := sniff(mut r) or { return error(err_format) }
+	f := sniff(mut r)!
 	c := f.decode_config(mut r)!
 	return c, f.name
 }

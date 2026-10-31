@@ -1,0 +1,43 @@
+Generate V protobuf codecs and gRPC service declarations from .proto schemas.
+
+Usage:
+  v pbgen [options] path_to_schema.proto [path_to_other.proto ...]
+
+The generator writes explicit calls into the Packer and Unpacker of
+encoding.protobuf rather than reflecting over a struct at run time. The
+generated file is the artefact a reader debugs, and a frame in a call such as
+`packer.write_int32(7, msg.written)` names the field, where a frame inside a
+generic encoder does not.
+
+Imports are followed, so a schema referring to a type declared in another file
+resolves without passing that file as well. A protobuf "well-known type"
+(google/protobuf/*.proto) is reported rather than bundled: those schemas are
+compiled into every runtime, and bundling them here would let the two copies
+drift apart.
+
+Options:
+  -m <name>        V module name for the generated files. Defaults to the
+                   package of the first file, underscored: package `google.rpc`
+                   gives `google_rpc`, which is also the directory layout that V
+                   import rules expect. A name the generated code cannot use, such
+                   as one that is also a generated local, is reported rather than
+                   producing output that does not compile.
+  -o <file>        Write the codec here. Defaults to stdout.
+  -grpc <file>     Write the service paths and interfaces here. Defaults to the
+                   codec output, which puts both halves in one file.
+  -check           Parse and resolve only, writing nothing. Use it to validate a
+                   schema, including its imports, without producing files.
+  -v               Report each declaration as it is resolved.
+  -h, --help       Print this help.
+
+Examples:
+  v pbgen -m kv -o kv/codec.v kv.proto
+  v pbgen -m kv -o kv/codec.v -grpc kv/service.v kv.proto
+  v pbgen -check -m mypkg api/v1/*.proto
+
+An existing output file is overwritten only when it carries the "Code generated
+by" header, so a mistyped -o cannot delete hand-written source.
+
+Only proto3 is supported. Groups, `extend`, and `required` are reported rather
+than accepted: a `required` field changes what a decoder must accept, and
+quietly treating it as optional would hide that.

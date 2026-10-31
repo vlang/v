@@ -6,7 +6,7 @@ import v.pref
 import v.util
 
 fn run_true_exit_code() int {
-	return os.execute('true').exit_code
+	return os.exec(['true']).exit_code
 }
 
 fn spawn_execute_elapsed_ms() (i64, int) {

@@ -1,0 +1,7 @@
+vlib/v/parser/tests/attribute_call_syntax.vv:14:3: warning: unknown attribute `custom` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+   12 | fn old_mixed() {}
+   13 | 
+   14 | @[custom(flag: true, count: 2)]
+      |   ~~~~~~
+   15 | fn custom_named_args() {}
+   16 | // vfmt on

@@ -1,0 +1,18 @@
+struct Mask {
+	bits int
+}
+
+fn (a Mask) | (b Mask) Mask {
+	return Mask{a.bits | b.bits}
+}
+
+fn (a Mask) ^ (b Mask) Mask {
+	return Mask{a.bits ^ b.bits}
+}
+
+fn main() {
+	a := Mask{1}
+	b := Mask{3}
+	println(a | b)
+	println(a ^ b)
+}

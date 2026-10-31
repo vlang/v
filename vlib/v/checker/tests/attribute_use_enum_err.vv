@@ -1,0 +1,17 @@
+enum HttpMethod {
+	get
+	post
+}
+
+@[attribute]
+struct Route {
+	path   string
+	method HttpMethod
+}
+
+@[Route('/x', method: .put)]
+fn index() {
+}
+
+fn main() {
+}

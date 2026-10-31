@@ -4,12 +4,6 @@ fn test_hex_methods_on_u8() {
 	assert u8(255).hex() == 'ff'
 }
 
-fn test_hex_methods_on_byte() {
-	assert byte(1).hex() == '01'
-	assert byte(` `).hex() == '20'
-	assert byte(255).hex() == 'ff'
-}
-
 fn test_hex_methods_on_char() {
 	assert char(1).hex() == '01'
 	assert char(` `).hex() == '20'

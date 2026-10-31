@@ -60,12 +60,12 @@ fn test_result_alias_direct() {
 }
 
 fn test_option_alias_direct() {
-	b := case_b() or { panic(err) }
+	b := case_b() or { panic('missing alias') }
 	assert b.s == 'b'
 }
 
 fn test_option_alias_array() {
-	c := case_c() or { panic(err) }
+	c := case_c() or { panic('missing alias array') }
 	assert c.len == 1
 	assert c[0].s == 'b'
 }

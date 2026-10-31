@@ -7,7 +7,7 @@ struct Bar {
 }
 
 fn test_generics_with_reference_generic_args() {
-	ret := foo[&Bar](&Bar{ num: 123 }) or { panic(err) }
+	ret := foo[&Bar](&Bar{ num: 123 }) or { panic('missing value') }
 	println(ret)
 	assert ret.num == 123
 }

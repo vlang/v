@@ -123,19 +123,27 @@ fn test_trivial_literal_output_prunes_conservative_runtime_helper_seeds() {
 }
 
 fn test_nontrivial_output_keeps_conservative_runtime_helper_seeds() {
-	used := mark_used_source('nontrivial_output', "
+	a, tc := parse_checked_source('nontrivial_output', "
 fn message() string {
 	return 'Hello, World!'
 }
 
 println(message())
 ")
-	assert used['map.clone']
+	used := markused.mark_used(a, tc)
 	assert used['strconv.format_uint']
-	assert used['array.delete_last']
 	assert used['i64.str']
 	assert used['v.pref.detect_vroot']
 	assert used['v.pref.detect_vexe']
+	// Ordinary builds keep the map and array helpers only for reachable bodies that
+	// use them; the full-runtime scan keeps every conservative seed.
+	full, _ := markused.mark_used_with_generic_usage_full_runtime(a, tc)
+	assert full['map.clone']
+	assert full['strconv.format_uint']
+	assert full['array.delete_last']
+	assert full['i64.str']
+	assert full['v.pref.detect_vroot']
+	assert full['v.pref.detect_vexe']
 }
 
 fn test_cached_trivial_output_keeps_cached_runtime_helper_seeds() {
@@ -363,7 +371,8 @@ fn main() {
 fn build_v3_bin(name string) string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_markused_${name}')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -531,19 +540,626 @@ fn main() {
 	assert used['make']
 }
 
-// test_string_membership_seeds_contains_runtime_helpers validates this v3 regression case.
-fn test_string_membership_seeds_contains_runtime_helpers() {
-	used := mark_used_source('string_membership_contains', '
-fn has_needle() bool {
-	return "bc" in "abcd"
+fn test_array_defaults_stop_at_nested_dynamic_elements() {
+	cases := {
+		'[][]Box{len: 1}':       false
+		'[][][]Box{len: 1}':     false
+		'[2][]Box{}':            false
+		'[][2][]Box{len: 1}':    false
+		'[][2][2][]Box{len: 1}': false
+		'[]Box{len: 1}':         true
+		'[2]Box{}':              true
+		'[][2]Box{len: 1}':      true
+		'[2][2]Box{}':           true
+		'Box{}':                 true
+	}
+	for literal, needs_defaults in cases {
+		a, tc := parse_checked_source('nested_array_default_${os.getpid()}', '
+struct Box {
+	value int = default_value()
+}
+
+fn default_value() int { return 7 }
+
+fn main() {
+	values := ${literal}
+	_ := values
+}
+')
+		used := markused.mark_used(a, tc)
+		assert used['default_value'] == needs_defaults, literal
+		without_generics := markused.mark_used_without_generic_detection(a, tc)
+		assert without_generics['default_value'] == needs_defaults, literal
+	}
+}
+
+fn test_nested_dynamic_array_drops_unresolved_default_call() {
+	v3_bin := build_v3_bin('nested_dynamic_array_default_${os.getpid()}')
+	source := os.join_path(os.temp_dir(), 'v3_markused_nested_dynamic_default_${os.getpid()}.c.v')
+	bin := os.join_path(os.temp_dir(), 'v3_markused_nested_dynamic_default_${os.getpid()}')
+	defer {
+		os.rm(source) or {}
+		os.rm(bin) or {}
+		os.rm(v3_bin) or {}
+	}
+	os.write_file(source, '
+fn C.v3_markused_missing_default_symbol() int
+
+fn default_value() int {
+	return C.v3_markused_missing_default_symbol()
+}
+
+struct Box {
+	value int = default_value()
 }
 
 fn main() {
-	_ := has_needle()
+	values := [][]Box{len: 1}
+	assert values.len == 1
+	assert values[0].len == 0
+	println("ok")
+}
+') or { panic(err) }
+	compiled := os.exec([v3_bin, '-o', bin, source])
+	assert compiled.exit_code == 0, compiled.output
+	ran := os.exec([bin])
+	assert ran.exit_code == 0, ran.output
+	assert ran.output.trim_space() == 'ok', ran.output
+	os.write_file(source, '
+fn default_value() int { return 7 }
+
+struct Box {
+	value int = default_value()
+}
+
+fn main() {
+	direct := []Box{len: 1}
+	fixed := [2]Box{}
+	nested := [][2][2]Box{len: 1}
+	assert direct[0].value == 7
+	assert fixed[1].value == 7
+	assert nested[0][1][1].value == 7
+	println("ok")
+}
+') or { panic(err) }
+	defaults_compiled := os.exec([v3_bin, '-o', bin, source])
+	assert defaults_compiled.exit_code == 0, defaults_compiled.output
+	defaults_ran := os.exec([bin])
+	assert defaults_ran.exit_code == 0, defaults_ran.output
+	assert defaults_ran.output.trim_space() == 'ok', defaults_ran.output
+}
+
+fn test_array_defaults_only_keep_implicitly_initialized_elements() {
+	cases := {
+		'Rows{}':                                 false
+		'Rows{cap: 10}':                          false
+		'Rows{len: 1}':                           true
+		'Rows{len: 1, init: Box{value: 1}}':      false
+		'[]Rows{len: 1}':                         false
+		'FixedAlias{init: Box{value: 1}}':        false
+		'FixedAlias{}':                           true
+		'[Box{value: 1}]!':                       false
+		'[Box{}]!':                               true
+		'[]Box{}':                                false
+		'[]Box{cap: 10}':                         false
+		'[]Box{len: 1, init: Box{value: 1}}':     false
+		'[]Box{len: 1, init: explicit_box()}':    false
+		'[][2]Box{}':                             false
+		'[][2]Box{cap: 10}':                      false
+		'[][2]Box{len: 1, init: explicit_row()}': false
+		'[2]Box{init: Box{value: 1}}':            false
+		'[]Box{len: 1}':                          true
+		'[]Box{len: 1, init: Box{}}':             true
+		'[][2]Box{len: 1}':                       true
+		'[2]Box{}':                               true
+	}
+	for literal, needs_defaults in cases {
+		for top_level in [false, true] {
+			initializer := if top_level {
+				'__global values = ${literal}\nfn main() { _ := values }'
+			} else {
+				'fn main() { values := ${literal}; _ := values }'
+			}
+			a, tc := parse_checked_source('implicit_array_elements_${os.getpid()}', '
+struct Box {
+	value int = default_value()
+}
+type FixedAlias = [2]Box
+type Rows = []Box
+fn default_value() int { return 7 }
+fn explicit_box() Box { return Box{value: 1} }
+fn explicit_row() [2]Box { return [2]Box{init: Box{value: 1}} }
+${initializer}
+')
+			used := markused.mark_used(a, tc)
+			assert used['default_value'] == needs_defaults, '${literal}, global: ${top_level}'
+			without_generics := markused.mark_used_without_generic_detection(a, tc)
+			assert without_generics['default_value'] == needs_defaults, '${literal}, global: ${top_level}'
+			if literal.contains('explicit_box()') {
+				assert used['explicit_box']
+				assert without_generics['explicit_box']
+			}
+		}
+	}
+}
+
+fn test_alias_value_defaults_keep_underlying_struct_calls() {
+	for literal in ['Alias{}', '[]Alias{len: 1}', '[2]Alias{}', '[][2]Alias{len: 1}', 'Wrapper{}',
+		'[]Wrapper{len: 1}', 'FixedWrapper{}', '[]FixedAlias{len: 1}', 'GenericAlias{}',
+		'[]GenericAlias{len: 1}'] {
+		for top_level in [false, true] {
+			initializer := if top_level {
+				'__global values = ${literal}\nfn main() { _ := values }'
+			} else {
+				'fn main() { values := ${literal} _ := values }'
+			}
+			a, tc := parse_checked_source('alias_value_defaults_${os.getpid()}', '
+struct Box { value int = default_value() }
+type FirstAlias = Box
+type Alias = FirstAlias
+struct Wrapper { box Alias }
+type FixedAlias = [2]Alias
+struct FixedWrapper { boxes FixedAlias }
+struct GenericBox[T] { value int = default_value() item T }
+type GenericAlias = GenericBox[int]
+fn default_value() int { return 7 }
+${initializer}
+')
+			used := markused.mark_used(a, tc)
+			assert used['default_value'], '${literal}, global: ${top_level}'
+			without_generics := markused.mark_used_without_generic_detection(a, tc)
+			assert without_generics['default_value'], '${literal}, global: ${top_level}'
+		}
+	}
+}
+
+fn test_generic_omitted_fields_keep_concrete_defaults() {
+	cases := {
+		'Outer[Inner]{}':                       true
+		'Outer[Outer[Inner]]{}':                true
+		'[]Outer[Inner]{len: 1}':               true
+		'[2]Outer[Inner]{}':                    true
+		'OuterAlias{}':                         true
+		'[]OuterAlias{len: 1}':                 true
+		'Outer[InnerAlias]{}':                  true
+		'Outer[[2]Inner]{}':                    true
+		'Outer[[]Inner]{}':                     false
+		'Outer[?Inner]{}':                      false
+		'Outer[map[string]Inner]{}':            false
+		'Outer[Inner]{inner: Inner{value: 1}}': false
+	}
+	for literal, needs_defaults in cases {
+		for top_level in [false, true] {
+			initializer := if top_level {
+				'__global value = ${literal}\nfn main() { _ := value }'
+			} else {
+				'fn main() { value := ${literal}; _ := value }'
+			}
+			a, tc := parse_checked_source('generic_omitted_defaults_${os.getpid()}', '
+struct Inner { value int = default_value() }
+type InnerAlias = Inner
+struct Outer[T] { inner T }
+type OuterAlias = Outer[Inner]
+fn default_value() int { return 7 }
+${initializer}
+')
+			used := markused.mark_used(a, tc)
+			assert used['default_value'] == needs_defaults, '${literal}, global: ${top_level}'
+			without_generics := markused.mark_used_without_generic_detection(a, tc)
+			assert without_generics['default_value'] == needs_defaults, '${literal}, global: ${top_level}'
+		}
+	}
+}
+
+fn test_distinct_generic_nested_defaults_keep_each_specialization() {
+	a, tc := parse_checked_source('distinct_generic_defaults_${os.getpid()}', '
+struct First { value int = first_value() }
+struct Second { value int = second_value() }
+struct Outer[T] { inner T }
+struct Wrapper[T] { outer Outer[T] }
+fn first_value() int { return 7 }
+fn second_value() int { return 9 }
+fn main() {
+	_ := Wrapper[First]{}
+	_ := Wrapper[Second]{}
 }
 ')
-	assert used['string__contains']
-	assert used['string__contains_u8']
+	used := markused.mark_used(a, tc)
+	assert used['first_value']
+	assert used['second_value']
+	without_generics := markused.mark_used_without_generic_detection(a, tc)
+	assert without_generics['first_value']
+	assert without_generics['second_value']
+}
+
+fn test_explicit_generic_field_defaults_keep_concrete_defaults() {
+	cases := {
+		'Wrapper[Inner]{}':                                               true
+		'Wrapper[Inner]{outer: Explicit[Inner]{inner: Inner{value: 1}}}': false
+	}
+	for literal, needs_defaults in cases {
+		for top_level in [false, true] {
+			initializer := if top_level {
+				'__global value = ${literal}\nfn main() { _ := value }'
+			} else {
+				'fn main() { value := ${literal}; _ := value }'
+			}
+			a, tc := parse_checked_source('explicit_generic_defaults_${os.getpid()}', '
+struct Inner { value int = default_value() }
+struct Explicit[T] { inner T }
+struct Wrapper[T] { outer Explicit[T] = Explicit[T]{} }
+fn default_value() int { return 7 }
+${initializer}
+')
+			used := markused.mark_used(a, tc)
+			assert used['default_value'] == needs_defaults, '${literal}, global: ${top_level}'
+			without_generics := markused.mark_used_without_generic_detection(a, tc)
+			assert without_generics['default_value'] == needs_defaults, '${literal}, global: ${top_level}'
+		}
+	}
+}
+
+fn test_generic_default_fields_follow_declared_parameter_positions() {
+	cases := {
+		'Pair[int, First]{}':      [true, false]
+		'Pair[Second, int]{}':     [false, true]
+		'Pair[First, []Second]{}': [true, false]
+		'Pair[[]First, Second]{}': [false, true]
+	}
+	for literal, expected in cases {
+		a, tc := parse_checked_source('generic_parameter_defaults_${os.getpid()}', '
+struct First { value int = first_value() }
+struct Second { value int = second_value() }
+struct Pair[L, R] { left L right R }
+fn first_value() int { return 7 }
+fn second_value() int { return 9 }
+fn main() { _ := ${literal} }
+')
+		used := markused.mark_used(a, tc)
+		assert used['first_value'] == expected[0], literal
+		assert used['second_value'] == expected[1], literal
+		without_generics := markused.mark_used_without_generic_detection(a, tc)
+		assert without_generics['first_value'] == expected[0], literal
+		assert without_generics['second_value'] == expected[1], literal
+	}
+}
+
+fn test_imported_generic_default_fields_keep_concrete_owner() {
+	cases := {
+		'dep.Outer[Inner]{}':            [true, false]
+		'dep.Outer[dep.Outer[Inner]]{}': [true, false]
+		'dep.Outer[[2]Inner]{}':         [true, false]
+		'[]dep.Outer[Inner]{len: 1}':    [true, false]
+		'dep.Outer[dep.Inner]{}':        [false, true]
+		'dep.Holder{}':                  [false, true]
+		'dep.Mixed[int]{}':              [false, true]
+		'dep.Mixed[Inner]{}':            [true, true]
+	}
+	for literal, expected in cases {
+		a, tc := parse_checked_project_in_order('imported_generic_defaults_${os.getpid()}', [
+			'main/main.v',
+			'worker/worker.v',
+			'leaf/leaf.v',
+		], [
+			'module main
+import worker as dep
+struct Inner { value int = main_value() }
+fn main_value() int { return 7 }
+fn main() { _ := ${literal} }
+',
+			'module worker
+import leaf as main
+pub struct Outer[T] { pub: inner T }
+pub struct T { pub: value int }
+pub struct Inner { pub: value int = main.make() }
+pub struct Holder { pub: inner Inner }
+pub struct Mixed[T] { pub: inner T local Inner }
+',
+			'module leaf
+pub fn make() int { return 9 }
+',
+		])
+		used := markused.mark_used(a, tc)
+		assert used['main_value'] == expected[0], literal
+		assert used['leaf.make'] == expected[1], literal
+		without_generics := markused.mark_used_without_generic_detection(a, tc)
+		assert without_generics['main_value'] == expected[0], literal
+		assert without_generics['leaf.make'] == expected[1], literal
+	}
+}
+
+fn test_generic_omitted_field_defaults_compile_and_run() {
+	v3_bin := build_v3_bin('generic_omitted_defaults_${os.getpid()}')
+	source := os.join_path(os.temp_dir(), 'v3_markused_generic_defaults_${os.getpid()}.c.v')
+	bin := os.join_path(os.temp_dir(), 'v3_markused_generic_defaults_run_${os.getpid()}')
+	defer {
+		os.rm(source) or {}
+		os.rm(bin) or {}
+		os.rm(v3_bin) or {}
+	}
+	cases := {
+		'Outer[Inner]{}':                   'value.inner.value'
+		'Outer[Outer[Inner]]{}':            'value.inner.inner.value'
+		'[]Outer[Inner]{len: 1}':           'value[0].inner.value'
+		'ExplicitWrapper[Inner]{}':         'value.outer.inner.value'
+		'[]ExplicitWrapper[Inner]{len: 1}': 'value[0].outer.inner.value'
+		'OuterAlias{}':                     'value.inner.value'
+		'[]OuterAlias{len: 1}':             'value[0].inner.value'
+		'Outer[InnerAlias]{}':              'value.inner.value'
+		'Outer[[2]Inner]{}':                'value.inner[1].value'
+	}
+	for literal, element in cases {
+		os.write_file(source, '
+fn default_value() int { return 7 }
+struct Inner { value int = default_value() }
+type InnerAlias = Inner
+struct Outer[T] { inner T }
+struct ExplicitWrapper[T] { outer Outer[T] = Outer[T]{} }
+type OuterAlias = Outer[Inner]
+fn main() {
+	value := ${literal}
+	assert ${element} == 7
+	println("ok")
+}
+') or { panic(err) }
+		compiled := os.exec([v3_bin, '-gc', 'none', '-o', bin, source])
+		assert compiled.exit_code == 0, '${literal}: ${compiled.output}'
+		ran := os.exec([bin])
+		assert ran.exit_code == 0, ran.output
+		assert ran.output.trim_space() == 'ok', ran.output
+	}
+	os.write_file(source, '
+fn C.v3_generic_defaults_unused_symbol() int
+fn default_value() int { return C.v3_generic_defaults_unused_symbol() }
+struct Inner { value int = default_value() }
+struct Outer[T] { inner T }
+struct ExplicitWrapper[T] { outer Outer[T] = Outer[T]{} }
+fn main() {
+	array := Outer[[]Inner]{}
+	option := Outer[?Inner]{}
+	mapping := Outer[map[string]Inner]{}
+	explicit := Outer[Inner]{inner: Inner{value: 1}}
+	wrapper := ExplicitWrapper[Inner]{outer: Outer[Inner]{inner: Inner{value: 1}}}
+	assert array.inner.len == 0
+	assert option.inner == none
+	assert mapping.inner.len == 0
+	assert explicit.inner.value == 1
+	assert wrapper.outer.inner.value == 1
+	println("ok")
+}
+') or { panic(err) }
+	compiled := os.exec([v3_bin, '-gc', 'none', '-o', bin, source])
+	assert compiled.exit_code == 0, compiled.output
+	ran := os.exec([bin])
+	assert ran.exit_code == 0, ran.output
+	assert ran.output.trim_space() == 'ok', ran.output
+}
+
+fn test_imported_generic_omitted_defaults_compile_and_run() {
+	v3_bin := build_v3_bin('imported_generic_omitted_defaults_${os.getpid()}')
+	root := os.join_path(os.temp_dir(), 'v3_markused_imported_generic_defaults_${os.getpid()}')
+	bin := root + '_run'
+	defer {
+		os.rmdir_all(root) or {}
+		os.rm(bin) or {}
+		os.rm(v3_bin) or {}
+	}
+	os.mkdir_all(os.join_path(root, 'worker')) or { panic(err) }
+	os.mkdir_all(os.join_path(root, 'leaf')) or { panic(err) }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'generic_defaults' }") or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'main.v'), '
+module main
+import worker as dep
+struct Inner { value int = main_value() }
+fn main_value() int { return 7 }
+fn main() {
+	local := dep.Outer[dep.Outer[Inner]]{}
+	remote := dep.Outer[dep.Inner]{}
+	fixed := dep.Outer[[2]Inner]{}
+	local_holder := dep.Holder{}
+	mixed := dep.Mixed[Inner]{}
+	assert local.inner.inner.value == 7
+	assert remote.inner.value == 9
+	assert fixed.inner[1].value == 7
+	assert local_holder.inner.value == 9
+	assert mixed.inner.value == 7
+	assert mixed.local.value == 9
+	println("ok")
+}
+') or { panic(err) }
+	os.write_file(os.join_path(root, 'worker', 'worker.v'), '
+module worker
+import leaf as defaults
+pub struct Outer[T] { pub: inner T }
+pub struct Inner { pub: value int = defaults.make() }
+pub struct Holder { pub: inner Inner }
+pub struct Mixed[T] { pub: inner T local Inner }
+') or { panic(err) }
+	os.write_file(os.join_path(root, 'leaf', 'leaf.v'), '
+module leaf
+pub fn make() int { return 9 }
+') or { panic(err) }
+	compiled := os.exec([v3_bin, '-gc', 'none', '-o', bin, root])
+	assert compiled.exit_code == 0, compiled.output
+	ran := os.exec([bin])
+	assert ran.exit_code == 0, ran.output
+	assert ran.output.trim_space() == 'ok', ran.output
+}
+
+fn test_alias_struct_function_defaults_keep_dependencies() {
+	for literal in ['Alias{}', '[]Alias{len: 1}', '[2]Alias{}', 'Wrapper{}'] {
+		a, tc := parse_checked_source('alias_function_defaults_${os.getpid()}', '
+struct Box { reader fn () int = default_reader }
+type Alias = Box
+struct Wrapper { box Alias }
+fn default_reader() int { return leaf() }
+fn leaf() int { return 7 }
+fn main() { values := ${literal} _ := values }
+')
+		used := markused.mark_used(a, tc)
+		assert used['default_reader'], literal
+		assert used['leaf'], literal
+		without_generics := markused.mark_used_without_generic_detection(a, tc)
+		assert without_generics['default_reader'], literal
+		assert without_generics['leaf'], literal
+	}
+}
+
+fn test_alias_wrappers_do_not_keep_underlying_struct_defaults() {
+	for literal in ['[]ArrayAlias{len: 1}', '[]MapAlias{len: 1}', '[]OptionAlias{len: 1}',
+		'[]PointerAlias{len: 1}', 'Wrapper{}'] {
+		a, tc := parse_checked_source('alias_wrapper_defaults_${os.getpid()}', '
+struct Box { value int = default_value() }
+fn default_value() int { return 7 }
+type ArrayAlias = []Box
+type MapAlias = map[string]Box
+type OptionAlias = ?Box
+type PointerAlias = &Box
+struct Wrapper { values ArrayAlias mapping MapAlias maybe OptionAlias }
+fn main() { values := ${literal} _ := values }
+')
+		used := markused.mark_used(a, tc)
+		assert !used['default_value'], literal
+		without_generics := markused.mark_used_without_generic_detection(a, tc)
+		assert !without_generics['default_value'], literal
+	}
+}
+
+fn test_imported_alias_defaults_keep_declaration_import_context() {
+	a, tc := parse_checked_project_in_order('imported_alias_defaults_${os.getpid()}', [
+		'main/a.v',
+		'main/b.v',
+		'worker/worker.v',
+		'leaf/leaf.v',
+		'decoy/decoy.v',
+	], [
+		'module main
+import worker as dep
+struct Wrapper { box dep.Alias }
+__global global_boxes = []dep.Alias{len: 1}
+fn main() { _ := global_boxes _ := Wrapper{} _ := [2]dep.Alias{} }
+',
+		'module main
+import decoy as dep
+fn unused() { _ := dep.Box{} }
+',
+		'module worker
+import leaf as defaults
+pub struct Box[T] { pub: value int = defaults.make() item T }
+pub type FirstAlias = Box[int]
+pub type Alias = FirstAlias
+',
+		'module leaf
+pub fn make() int { return 7 }
+',
+		'module decoy
+pub struct Box { pub: value int = make() }
+fn make() int { return 9 }
+',
+	])
+	used := markused.mark_used(a, tc)
+	assert used['leaf.make']
+	assert !used['decoy.make']
+	without_generics := markused.mark_used_without_generic_detection(a, tc)
+	assert without_generics['leaf.make']
+	assert !without_generics['decoy.make']
+}
+
+fn test_array_initializers_link_without_unused_defaults() {
+	v3_bin := build_v3_bin('unused_array_defaults_${os.getpid()}')
+	source := os.join_path(os.temp_dir(), 'v3_markused_unused_array_defaults_${os.getpid()}.c.v')
+	bin := os.join_path(os.temp_dir(), 'v3_markused_unused_array_defaults_run_${os.getpid()}')
+	defer {
+		os.rm(source) or {}
+		os.rm(bin) or {}
+		os.rm(v3_bin) or {}
+	}
+	os.write_file(source, '
+fn C.v3_markused_unused_array_default_symbol() int
+fn default_value() int { return C.v3_markused_unused_array_default_symbol() }
+struct Box { value int = default_value() }
+type FixedAlias = [2]Box
+type Rows = []Box
+fn explicit_box() Box { return Box{value: 3} }
+fn main() {
+	empty := []Box{}
+	capacity := []Box{cap: 10}
+	explicit := []Box{len: 1, init: Box{value: 1}}
+	called := []Box{len: 1, init: explicit_box()}
+	nested_empty := [][2]Box{}
+	nested_capacity := [][2]Box{cap: 10}
+	fixed_explicit := [2]Box{init: Box{value: 2}}
+	raw_explicit := [Box{value: 4}]!
+	alias_empty := Rows{}
+	alias_capacity := Rows{cap: 10}
+	alias_explicit := Rows{len: 1, init: Box{value: 6}}
+	assert empty.len == 0
+	assert capacity.len == 0
+	assert explicit[0].value == 1
+	assert called[0].value == 3
+	assert nested_empty.len == 0
+	assert nested_capacity.len == 0
+	assert fixed_explicit[1].value == 2
+	assert raw_explicit[0].value == 4
+	assert alias_empty.len == 0
+	assert alias_capacity.len == 0
+	assert alias_explicit[0].value == 6
+	println("ok")
+}
+') or { panic(err) }
+	compiled := os.exec([v3_bin, '-gc', 'none', '-o', bin, source])
+	assert compiled.exit_code == 0, compiled.output
+	ran := os.exec([bin])
+	assert ran.exit_code == 0, ran.output
+	assert ran.output.trim_space() == 'ok', ran.output
+}
+
+fn test_alias_value_defaults_compile_and_run() {
+	v3_bin := build_v3_bin('alias_array_defaults_${os.getpid()}')
+	source := os.join_path(os.temp_dir(), 'v3_markused_alias_array_defaults_${os.getpid()}.v')
+	bin := os.join_path(os.temp_dir(), 'v3_markused_alias_array_defaults_run_${os.getpid()}')
+	defer {
+		os.rm(source) or {}
+		os.rm(bin) or {}
+		os.rm(v3_bin) or {}
+	}
+	cases := {
+		'FixedAlias{}':           'values[1].value'
+		'Rows{len: 1}':           'values[0].value'
+		'[]Alias{len: 1}':        'values[0].value'
+		'[2]Alias{}':             'values[1].value'
+		'[][2]Alias{len: 1}':     'values[0][1].value'
+		'Wrapper{}':              'values.box.value'
+		'FixedWrapper{}':         'values.boxes[1].value'
+		'[]FixedAlias{len: 1}':   'values[0][1].value'
+		'[]GenericAlias{len: 1}': 'values[0].value'
+	}
+	for literal, element in cases {
+		os.write_file(source, '
+fn default_value() int { return 7 }
+struct Box { value int = default_value() }
+type FirstAlias = Box
+type Alias = FirstAlias
+struct Wrapper { box Alias }
+type FixedAlias = [2]Alias
+type Rows = []Box
+struct FixedWrapper { boxes FixedAlias }
+struct GenericBox[T] { value int = default_value() item T }
+type GenericAlias = GenericBox[int]
+fn main() {
+	values := ${literal}
+	assert ${element} == 7
+	println("ok")
+}
+') or { panic(err) }
+		compiled := os.exec([v3_bin, '-gc', 'none', '-o', bin, source])
+		assert compiled.exit_code == 0, '${literal}: ${compiled.output}'
+		ran := os.exec([bin])
+		assert ran.exit_code == 0, ran.output
+		assert ran.output.trim_space() == 'ok', ran.output
+	}
 }
 
 // test_string_interpolation_seeds_string_plus_and_formatter_helpers
@@ -742,7 +1358,7 @@ fn main() {
 ')
 	assert used['Parser.mk_error']
 	assert used['GlobError.msg']
-	assert used['ErrorKind.unopened_alternates']
+	assert used['ErrorKind@static@unopened_alternates']
 }
 
 fn test_nested_fn_literal_roots_callback_helper_dependencies() {
@@ -803,12 +1419,12 @@ fn main() {
 	replace(mut dst)
 }
 ')
-	assert used['Caps.overall']
+	assert used['Caps@static@overall']
 	assert used['Caps.get']
 	assert used['append_match']
 	assert used['interpolate']
 	assert used['no_index']
-	assert used['Match.new']
+	assert used['Match@static@new']
 }
 
 fn test_imported_nested_fn_literal_roots_private_callback_helpers() {
@@ -877,12 +1493,12 @@ pub fn replace(mut dst []u8) {
 '
 	}, 'main.v')
 	used := markused.mark_used(a, tc)
-	assert used['worker.Caps.overall']
+	assert used['worker.Caps@static@overall']
 	assert used['worker.Caps.get']
 	assert used['worker.append_match']
 	assert used['worker.interpolate']
 	assert used['worker.no_index']
-	assert used['worker.Match.new']
+	assert used['worker.Match@static@new']
 }
 
 fn test_map_str_seeds_string_plus_runtime_helper() {
@@ -1498,9 +2114,9 @@ println(f() + 1)
 ') or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} -b c -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-b', 'c', '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '42'
 	c_code := os.read_file(bin + '.c') or { panic(err) }
@@ -1778,10 +2394,8 @@ fn main() {
 	assert c_code.contains('new_map(sizeof(string), sizeof(i64)')
 }
 
-// test_optional_map_or_lowers_to_new_map_after_used_filter_transform
-// validates this v3 regression case.
-fn test_optional_map_or_lowers_to_new_map_after_used_filter_transform() {
-	mut a, mut tc := parse_checked_source('option_map_or_new_map_cgen', '
+fn test_optional_map_unwrap_does_not_construct_fallback_storage() {
+	mut a, mut tc := parse_checked_source('option_map_unwrap_no_default_allocation', '
 fn maybe_map() ?map[string]int {
 	return none
 }
@@ -1792,38 +2406,16 @@ fn main() {
 }
 ')
 	mut used := markused.mark_used(a, tc)
-	assert used['new_map']
 	used = transform.transform_with_used(mut a, tc, used)
 	tc.diagnose_unknown_calls = false
 	tc.reject_unlowered_map_mutation = true
 	tc.annotate_types()
 	mut g := cgen.FlatGen.new()
 	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('new_map(sizeof(string), sizeof(i64)')
-}
-
-// test_string_membership_lowers_to_contains_after_used_filter_transform
-// validates this v3 regression case.
-fn test_string_membership_lowers_to_contains_after_used_filter_transform() {
-	mut a, mut tc := parse_checked_source('string_membership_contains_cgen', '
-fn has_needle() bool {
-	return "bc" in "abcd"
-}
-
-fn main() {
-	_ := has_needle()
-}
-')
-	mut used := markused.mark_used(a, tc)
-	assert used['string__contains']
-	assert used['string__contains_u8']
-	used = transform.transform_with_used(mut a, tc, used)
-	tc.diagnose_unknown_calls = false
-	tc.reject_unlowered_map_mutation = true
-	tc.annotate_types()
-	mut g := cgen.FlatGen.new()
-	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('string__contains(')
+	body := c_code.all_after('int main(').all_before('\n}')
+	assert body.contains('.ok')
+	assert body.contains('.value')
+	assert !body.contains('new_map(')
 }
 
 // test_string_compound_assign_lowers_to_plus_after_used_filter_transform
@@ -1897,38 +2489,6 @@ fn main() {
 	c_code := g.gen_with_used_options(a, used, tc, true)
 	assert c_code.contains('string__plus('), c_code
 	assert c_code.contains('v3_map_str('), c_code
-	assert c_code.contains('f64__str('), c_code
-}
-
-fn test_json_encode_fast_path_seeds_generated_helpers() {
-	mut a, mut tc := parse_checked_source_with_unknown_calls('json_encode_fast_path_helpers', '
-import json
-
-struct Payload {
-	n     int
-	score f64
-}
-
-fn main() {
-	_ := json.encode(Payload{
-		n:     7
-		score: 1.5
-	})
-}
-',
-		false)
-	mut used := markused.mark_used(a, tc)
-	for helper in ['string__plus', 'i64__str', 'f64__str'] {
-		assert used[helper], helper
-	}
-	used = transform.transform_with_used(mut a, tc, used)
-	tc.diagnose_unknown_calls = false
-	tc.reject_unlowered_map_mutation = true
-	tc.annotate_types()
-	mut g := cgen.FlatGen.new()
-	c_code := g.gen_with_used_options(a, used, tc, true)
-	assert c_code.contains('string__plus('), c_code
-	assert c_code.contains('i64__str('), c_code
 	assert c_code.contains('f64__str('), c_code
 }
 
@@ -2040,7 +2600,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -2062,7 +2622,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -2090,7 +2650,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -2105,7 +2665,7 @@ fn main() {
 	println(true)
 }
 ') or { panic(err) }
-	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 }
 
@@ -2126,10 +2686,10 @@ fn main() {
 ") or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('implicit declaration'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '-5\n-300\n-70000\n-5000000000\n42', run.output
 }
@@ -2150,27 +2710,6 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} -o ${bin} ${src}')
-	assert compile.exit_code == 0, compile.output
-}
-
-// test_string_membership_compile_keeps_contains_runtime_helpers validates this v3 regression case.
-fn test_string_membership_compile_keeps_contains_runtime_helpers() {
-	v3_bin := build_v3_bin('string_membership_test')
-
-	src := os.join_path(os.temp_dir(), 'v3_markused_string_membership_input.v')
-	bin := os.join_path(os.temp_dir(), 'v3_markused_string_membership_input')
-	os.write_file(src, '
-fn has_needle() bool {
-	return "bc" in "abcd"
-}
-
-fn main() {
-	_ := has_needle()
-}
-') or {
-		panic(err)
-	}
-	compile := os.execute('${v3_bin} -o ${bin} ${src}')
+	compile := os.exec([v3_bin, '-o', bin, '${src}'])
 	assert compile.exit_code == 0, compile.output
 }

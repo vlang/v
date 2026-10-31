@@ -40,6 +40,90 @@ fn assert_driver_cli_failure(v3_bin string, args []string, message string) {
 	assert result.output.contains(message), result.output
 }
 
+fn assert_driver_n_diagnostics(result os.Result, hidden bool) {
+	assert result.exit_code == 0, result.output
+	assert result.output.contains('warning:'), result.output
+	assert result.output.contains('notice flag warning'), result.output
+	assert result.output.contains('notice:') == !hidden, result.output
+	assert result.output.contains('unused parameter: `notice_only`') == !hidden, result.output
+}
+
+fn test_driver_n_hides_notices() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_no_notices_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	source_dir := os.join_path(root, 'input')
+	os.mkdir_all(source_dir)!
+	source := os.join_path(source_dir, 'main.v')
+	// An unused parameter is a notice. (An unused variable, which this used, is a warning,
+	// as in V1, so `-n` keeps it.)
+	os.write_file(source, r'module main
+
+import os
+
+fn show(notice_only int) {
+	println(os.args[1..].join("|"))
+}
+
+fn main() {
+	$compile_warn("notice flag warning")
+	show(1)
+}
+')!
+	output := os.join_path(root, 'program')
+	args := ['-nocolor', '-o', output, source]
+
+	// Populate the cache, hide notices on repeated builds, then show them
+	// again. Suppression must not discard diagnostics from the cache.
+	assert_driver_n_diagnostics(cmdexec.run(v3_bin, args), false)
+	for _ in 0 .. 2 {
+		mut hidden_args := ['-n']
+		hidden_args << args
+		assert_driver_n_diagnostics(cmdexec.run(v3_bin, hidden_args), true)
+	}
+	assert_driver_n_diagnostics(cmdexec.run(v3_bin, args), false)
+
+	assert_driver_n_diagnostics(cmdexec.run(v3_bin, ['-n', '-nocolor', '-check', source]), true)
+
+	// Reproduce the reported directory build without treating the dot as
+	// an option value, or changing the test process's working directory.
+	directory := cmdexec.run_in(v3_bin, ['-n', '-nocolor', '-o', output, '.'], source_dir)
+	assert_driver_n_diagnostics(directory, true)
+
+	// VFLAGS is merged into the arguments by the `v` launcher (cmd/v `merged_v_args`); the
+	// compiler built from vlib/v/v.v reads only its own arguments.
+	mut environment := os.environ()
+	environment['VFLAGS'] = '-n'
+	assert_driver_n_diagnostics(run_driver_with_environment(@VEXE, args, environment), true)
+
+	// A second -n after the run target belongs to the program, not V.
+	run := cmdexec.run(v3_bin, ['-n', '-nocolor', 'run', source, '-n'])
+	assert_driver_n_diagnostics(run, true)
+	assert '-n' in run.output.split_into_lines(), run.output
+
+	error_source := os.join_path(root, 'error.v')
+	os.write_file(error_source, 'fn show(notice_only int) {
+	println(missing_value)
+}
+
+fn main() {
+	show(1)
+}
+')!
+	// A hidden notice must not consume the one diagnostic slot and
+	// prevent the actual error from being printed.
+	failed := cmdexec.run(v3_bin, ['-n', '-nocolor', '-check', '-message-limit', '1', error_source])
+	assert failed.exit_code != 0, failed.output
+	assert failed.output.contains('error:'), failed.output
+	assert failed.output.contains('missing_value'), failed.output
+	assert !failed.output.contains('notice:'), failed.output
+	assert !failed.output.contains('unknown option'), failed.output
+}
+
 fn v3_profile_counter(profile_output string, fn_name string) int {
 	for line in profile_output.split_into_lines() {
 		fields := line.fields()
@@ -210,8 +294,11 @@ pub fn profiled_answer() int {
 ")!
 	no_main_c := os.join_path(root, 'profile_no_main.c')
 	no_main_profile := os.join_path(root, 'profile_no_main.txt')
-	no_main_compile := cmdexec.run(v3_bin, ['-silent', '-d', 'no_main', '-profile', no_main_profile,
-		'-o', no_main_c, no_main_source])
+	// The C is linked by a plain `cc` below, without the runtime objects that V links in
+	// itself: the Boehm GC (the default since 02ab53a091) and the native segfault handler
+	// object (aae3f51f7d).
+	no_main_compile := cmdexec.run(v3_bin, ['-silent', '-gc', 'none', '-d', 'no_segfault_handler',
+		'-d', 'no_main', '-profile', no_main_profile, '-o', no_main_c, no_main_source])
 	assert no_main_compile.exit_code == 0, no_main_compile.output
 	no_main_c_source := os.read_file(no_main_c)!
 	no_main_init_body :=
@@ -370,6 +457,9 @@ fn test_v3_garbage_collector_modes() {
 	v3_bin := build_driver_cli_v3(root)
 	source := os.join_path(root, 'gc_mode.v')
 	os.write_file(source, 'fn main() {
+	mut values := []string{}
+	values << "runtime"
+	println(values[0])
 	$if gcboehm ? { println("v3_gc_marker_gcboehm_28636") }
 	$if gcboehm_full ? { println("v3_gc_marker_gcboehm_full_28636") }
 	$if gcboehm_incr ? { println("v3_gc_marker_gcboehm_incr_28636") }
@@ -400,6 +490,10 @@ fn test_v3_garbage_collector_modes() {
 		result := cmdexec.run(v3_bin, args)
 		assert result.exit_code == 0, '${mode}: ${result.output}'
 		generated := os.read_file(output)!
+		if mode == 'default' {
+			assert generated.contains('GC_set_pages_executable(0);')
+			assert generated.contains('void _vinit() {\n\tgc_runtime_init();')
+		}
 		for marker in markers {
 			selected := marker in expected
 			assert generated.contains('v3_gc_marker_${marker}_28636') == selected, '${mode}: marker ${marker}, expected ${selected}'
@@ -423,6 +517,17 @@ fn test_v3_garbage_collector_modes() {
 		for marker in markers {
 			assert !generated.contains('v3_gc_marker_${marker}_28636'), 'cross ${mode}: marker ${marker} must be disabled'
 		}
+	}
+	// vgc needs no library or header of the target's toolchain: it stays in.
+	for vgc_os in [cross_os, if host.os == 'windows' { 'linux' } else { 'windows' }] {
+		output := os.join_path(root, 'gc_cross_vgc_${vgc_os}.c')
+		result := cmdexec.run(v3_bin, ['-silent', '-os', vgc_os, '-gc', 'vgc', '-o', output, source])
+		assert result.exit_code == 0, 'vgc ${vgc_os}: ${result.output}'
+		generated := os.read_file(output)!
+		for marker in markers {
+			assert generated.contains('v3_gc_marker_${marker}_28636') == (marker == 'vgc'), 'cross vgc ${vgc_os}: marker ${marker}'
+		}
+		assert generated.contains('vgc_platform.h')
 	}
 }
 
@@ -651,11 +756,10 @@ fn run_driver_with_stdin_file(v3_bin string, args []string, stdin_path string) o
 }
 
 fn collect_driver_process_result(mut process os.Process) os.Result {
-	process.set_redirect_stdio()
+	process.set_redirect_stdio_merged()
 	process.run()
-	process.wait()
 	mut output := process.stdout_slurp()
-	output += process.stderr_slurp()
+	process.wait()
 	if process.err.len > 0 {
 		output += process.err
 	}
@@ -957,15 +1061,23 @@ fn test_driver_doc_detection_skips_all_option_values() {
 	assert file_list_run.exit_code == 0, file_list_run.output
 	assert file_list_run.output == 'option-value-doc\n', file_list_run.output
 
-	for option in ['-message-limit', '-dump-c-flags'] {
-		option_case := os.join_path(root, option.trim_left('-'))
-		os.mkdir_all(option_case)!
-		output := os.join_path(option_case, 'out')
-		result := run_driver_in_work_folder(v3_bin, ['-silent', option, 'doc', '-o', output, source], option_case)
-		assert result.exit_code == 0, '${option}: ${result.output}'
-		assert os.is_file(output), option
-		assert option != '-dump-c-flags' || os.is_file(os.join_path(option_case, 'doc'))
-	}
+	dump_case := os.join_path(root, 'dump-c-flags')
+	os.mkdir_all(dump_case)!
+	dump_output := os.join_path(dump_case, 'out')
+	dump_result := run_driver_in_work_folder(v3_bin, ['-silent', '-dump-c-flags', 'doc', '-o',
+		dump_output, source], dump_case)
+	assert dump_result.exit_code == 0, dump_result.output
+	assert os.is_file(dump_output)
+	assert os.is_file(os.join_path(dump_case, 'doc'))
+
+	// `-message-limit` takes a number (156d46a47f), so `doc` is an invalid limit; it is
+	// still read as the option's value, not as the `doc` command.
+	limit_case := os.join_path(root, 'message-limit')
+	os.mkdir_all(limit_case)!
+	limit := run_driver_in_work_folder(v3_bin, ['-silent', '-message-limit', 'doc', '-o',
+		os.join_path(limit_case, 'out'), source], limit_case)
+	assert limit.exit_code != 0, limit.output
+	assert limit.output.contains('invalid message limit: doc'), limit.output
 }
 
 fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
@@ -1016,6 +1128,58 @@ fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
 		'c', '-o', no_skip_c_path, source], environment)
 	assert no_skip_c.exit_code == 0, no_skip_c.output
 	assert os.read_file(no_skip_c_path)!.contains('unused_value(')
+	for flags in [['-skip-unused'], ['-skip-unused', '-no-skip-unused'],
+		['-no-skip-unused', '-skip-unused']] {
+		mut args := flags.clone()
+		args << ['-w', '-o', no_skip_c_path, source]
+		obsolete := run_driver_with_environment(v3_bin, args, environment)
+		assert obsolete.exit_code == 0, obsolete.output
+		assert obsolete.output.contains('notice: `-skip-unused` is no longer needed'), obsolete.output
+		assert os.read_file(no_skip_c_path)!.contains('unused_value(') == ('-no-skip-unused' in flags)
+	}
+}
+
+fn test_driver_user_native_header_bypasses_cgen_cache() {
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_user_native_cache_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	mut environment := os.environ()
+	environment['VTMP'] = os.join_path(root, 'vtmp')
+	environment['V3CACHE'] = os.join_path(root, 'cache')
+	environment['V3_CACHE_TRACE'] = '1'
+	bypass := 'native C inputs require compilation without header inspection'
+
+	// System headers are versioned with the platform and keep the cache.
+	system_source := os.join_path(root, 'system.v')
+	os.write_file(system_source, 'module main\n\n#include <stddef.h>\n\nfn main() { println(42) }\n')!
+	for attempt in 0 .. 2 {
+		system := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-o',
+			os.join_path(root, 'system_${attempt}'), system_source], environment)
+		assert system.exit_code == 0, system.output
+		assert !system.output.contains(bypass), system.output
+		assert attempt == 0 || system.output.contains('cgen (cached)'), system.output
+	}
+
+	// V cannot account for what a user header includes, so it is never cached.
+	header := os.join_path(root, 'native.h')
+	user_source := os.join_path(root, 'user.v')
+	os.write_file(user_source, 'module main\n\n#include "@DIR/native.h"\n\nfn C.native_value() int\n\nfn main() { println(C.native_value() + 1) }\n')!
+	for value in [41, 42] {
+		os.write_file(header, 'static inline int native_value(void) { return ${value}; }\n')!
+		output := os.join_path(root, 'user_${value}')
+		user := run_driver_with_environment(v3_bin, ['-v', '-prod', '-no-parallel', '-o', output,
+			user_source], environment)
+		assert user.exit_code == 0, user.output
+		assert user.output.contains(bypass), user.output
+		assert !user.output.contains('(cached)'), user.output
+		run := cmdexec.run(output, [])
+		assert run.exit_code == 0, run.output
+		assert run.output == '${value + 1}\n', run.output
+	}
 }
 
 fn test_driver_valued_define_activates_optional_flag_and_source_suffix() {
@@ -1644,8 +1808,10 @@ fn test_explicit_c_backend_retains_complete_cached_translation_unit() {
 	mut retained_c := ''
 	for build_name in ['cold', 'warm'] {
 		output := os.join_path(root, build_name)
-		compile := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-b', 'c', '-o',
-			output, source], environment)
+		// The retained C is linked by a plain `cc` below, without the runtime objects that V
+		// links in itself (Boehm GC since 02ab53a091, the segfault handler since aae3f51f7d).
+		compile := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-gc', 'none',
+			'-d', 'no_segfault_handler', '-b', 'c', '-o', output, source], environment)
 		assert compile.exit_code == 0, compile.output
 		retained_c = output + '.c'
 		assert os.is_file(retained_c)
@@ -1663,6 +1829,73 @@ fn test_explicit_c_backend_retains_complete_cached_translation_unit() {
 	}
 }
 
+fn test_cached_module_keeps_synthesized_default_clone_helper() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_driver_cached_default_clone_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	v3_bin := build_driver_cli_v3(root)
+	module_dir := os.join_path(root, 'cachedclone')
+	os.mkdir_all(module_dir) or { panic(err) }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'cached_default_clone' }\n")!
+	os.write_file(os.join_path(module_dir, 'cachedclone.v'), 'module cachedclone
+
+pub struct Node {
+pub:
+	children []Node
+}
+
+pub fn (node Node) flatten() []Node {
+	mut result := []Node{}
+	for i in 0 .. node.children.len {
+		result << node.children[i]
+		result << node.children[i].flatten()
+	}
+	return result
+}
+
+pub fn marker() int {
+	return 42
+}
+')!
+	first_source := os.join_path(root, 'first.v')
+	second_source := os.join_path(root, 'second.v')
+	os.write_file(first_source, 'module main
+
+import cachedclone
+
+fn main() {
+	println(cachedclone.marker())
+}
+')!
+	os.write_file(second_source, 'module main
+
+import cachedclone
+
+fn main() {
+	println(cachedclone.marker() + 1 - 1)
+}
+')!
+	mut environment := os.environ()
+	environment['V3CACHE'] = os.join_path(root, 'cache')
+	first_output := os.join_path(root, 'first')
+	first := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-cc', 'cc',
+		'-skip-running', '-o', first_output, first_source], environment)
+	assert first.exit_code == 0, first.output
+	second_output := os.join_path(root, 'second')
+	second := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-cc', 'cc',
+		'-skip-running', '-o', second_output, second_source], environment)
+	assert second.exit_code == 0, second.output
+	run := cmdexec.run(second_output, [])
+	assert run.exit_code == 0, run.output
+	assert run.output == '42\n', run.output
+}
+
 fn test_driver_accepts_dispatcher_arguments_and_runs_vsh_files() {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_vsh_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -1674,8 +1907,8 @@ fn test_driver_accepts_dispatcher_arguments_and_runs_vsh_files() {
 	program := os.join_path(root, 'dispatcher_build.v')
 	binary := os.join_path(root, 'dispatcher_build')
 	os.write_file(program, "println('built')")!
-	build := cmdexec.run(v3_bin, ['-silent', '-no-parallel', '-cstrict', '-skip-running', '-usecache',
-		'build', '-o', binary, program])
+	build := cmdexec.run(v3_bin, ['-silent', '-no-parallel', '-cstrict', '-skip-running', 'build',
+		'-o', binary, program])
 	assert build.exit_code == 0, build.output
 	assert !os.exists(binary + '.c')
 	built := cmdexec.run(binary, [])
@@ -1753,18 +1986,25 @@ fn main() {
 		os.write_file(interrupted_program, "import os
 
 fn main() {
-	os.write_file('${interrupted_marker}', 'started') or { exit(2) }
+	os.write_file('${interrupted_marker}', os.getpid().str()) or { exit(2) }
 	for {}
 }
 ")!
 		mut interrupted_run := os.new_process(v3_bin)
 		interrupted_run.use_pgroup = true
 		interrupted_run.set_args(['-silent', '-no-parallel', 'run', interrupted_program])
+		// A test runner started as a background job of a non-interactive shell
+		// ignores SIGINT, and the driver keeps an inherited ignore for the program
+		// it runs, as nohup expects, so the interrupt below would never reach it.
+		// While SIGINT is caught here, the exec of the driver resets it to the
+		// default.
+		previous_int_handler := os.signal_opt(.int, fn (_ os.Signal) {})!
 		interrupted_run.run()
-		mut interrupted_started := false
+		os.signal_opt(.int, previous_int_handler)!
+		mut program_pid := 0
 		for _ in 0 .. 600 {
-			if os.exists(interrupted_marker) {
-				interrupted_started = true
+			program_pid = (os.read_file(interrupted_marker) or { '' }).int()
+			if program_pid > 0 {
 				break
 			}
 			if !interrupted_run.is_alive() {
@@ -1772,7 +2012,7 @@ fn main() {
 			}
 			time.sleep(100 * time.millisecond)
 		}
-		if !interrupted_started {
+		if program_pid <= 0 {
 			if interrupted_run.is_alive() {
 				interrupted_run.signal_pgkill()
 			}
@@ -1781,12 +2021,30 @@ fn main() {
 			interrupted_run.close()
 			assert false, 'interrupted run did not start: ${run_error}'
 		}
-		interrupt := os.execute('kill -INT -${interrupted_run.pid}')
+		interrupt := os.exec(['kill', '-INT', '-' + '${interrupted_run.pid}'])
 		if interrupt.exit_code != 0 {
+			os.exec(['kill', '-KILL', '${program_pid}'])
 			interrupted_run.signal_pgkill()
 			interrupted_run.wait()
 			interrupted_run.close()
 			assert false, interrupt.output
+		}
+		// The program runs in its own process group, so killing the group of the
+		// driver does not stop it: kill it by its pid if the interrupt is lost.
+		mut interrupted_stopped := false
+		for _ in 0 .. 600 {
+			if !interrupted_run.is_alive() {
+				interrupted_stopped = true
+				break
+			}
+			time.sleep(100 * time.millisecond)
+		}
+		if !interrupted_stopped {
+			os.exec(['kill', '-KILL', '${program_pid}'])
+			interrupted_run.signal_pgkill()
+			interrupted_run.wait()
+			interrupted_run.close()
+			assert false, 'the interrupted run did not stop within 60 seconds'
 		}
 		interrupted_run.wait()
 		interrupted_exit_code := interrupted_run.code
@@ -1907,7 +2165,8 @@ fn test_driver_platform_pseudo_uses_selected_target_arch() {
 	v3_bin := build_driver_cli_v3(root)
 	source := os.join_path(root, 'platform.v')
 	os.write_file(source, "fn main() {
-	println(@PLATFORM)
+	platform := @PLATFORM
+	println(platform)
 	\$if @PLATFORM == 'amd64' {
 		println('selected-amd64')
 	} \$else \$if @PLATFORM == 'arm64' {
@@ -1924,7 +2183,8 @@ fn test_driver_platform_pseudo_uses_selected_target_arch() {
 			target_arch, '-o', output, source])
 		assert compile.exit_code == 0, compile.output
 		generated_c := os.read_file(output)!
-		assert generated_c.contains('{"${platform}", ${platform.len}'), generated_c
+		// String literals are declared with the `_SL(id, "text", len)` macro (f2b0baa611).
+		assert generated_c.contains(', "${platform}", ${platform.len});'), generated_c
 		assert generated_c.contains('selected-${platform}'), generated_c
 		other_platform := if platform == 'amd64' { 'arm64' } else { 'amd64' }
 		assert !generated_c.contains('selected-${other_platform}'), generated_c
@@ -1938,7 +2198,8 @@ fn test_wasm_backend_defaults_target_unless_explicit() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	v3_bin := build_driver_cli_v3(root)
+	// A compiler built from vlib/v/v.v includes WebAssembly only on request (a35cd0a69f).
+	v3_bin := build_driver_cli_v3_with_flags(root, ['-compile-backend', 'wasm'])
 
 	default_dir := os.join_path(root, 'default_target')
 	os.mkdir_all(default_dir) or { panic(err) }
@@ -1982,7 +2243,7 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	}
 	v3_bin := build_driver_cli_v3(root)
 	source := os.join_path(root, 'hello.v')
-	os.write_file(source, "fn main() { println('ok') }\n") or { panic(err) }
+	os.write_file(source, "fn main() { message := 'ok'; println(message) }\n") or { panic(err) }
 
 	path_output := os.join_path(root, 'hello_path')
 	path_compile := cmdexec.run(v3_bin, ['-path', '${driver_cli_vlib_dir}|@vlib|@vmodules', '-o',
@@ -2003,7 +2264,7 @@ fn test_driver_rejects_invalid_cli_and_parses_vmod_subdirs() {
 	assert c_source.len > 100
 	assert c_source.contains('typedef signed char i8;')
 	internal_define_source := os.join_path(root, 'internal_define.v')
-	os.write_file(internal_define_source, "fn main() {\n\t\$if v3_backend ? {\n\t\tprintln('v3_backend_leaked_to_user')\n\t} \$else {\n\t\tprintln('v3_backend_stays_internal')\n\t}\n}\n")!
+	os.write_file(internal_define_source, "fn main() {\n\tmessage := 'runtime'\n\tprintln(message)\n\t\$if v3_backend ? {\n\t\tprintln('v3_backend_leaked_to_user')\n\t} \$else {\n\t\tprintln('v3_backend_stays_internal')\n\t}\n}\n")!
 	internal_define_c := os.join_path(root, 'internal_define.c')
 	internal_define_compile := cmdexec.run(v3_bin, ['-prealloc', '-o', internal_define_c,
 		internal_define_source])
@@ -2084,6 +2345,36 @@ fn main() {
 	assert file_list_run.exit_code == 0, file_list_run.output
 	assert file_list_run.output.trim_space() == '42'
 
+	// vab passes `-dump-modules <file>`; the value must not become a second input path.
+	dump_modules_file := os.join_path(root, 'dump.modules')
+	dump_defines_file := os.join_path(root, 'dump.defines')
+	dump_compile := cmdexec.run(v3_bin, ['-nocache', '-dump-modules', dump_modules_file, '-dump-defines',
+		dump_defines_file, '-d', 'dump_probe', '-o', c_output, bits_source])
+	assert dump_compile.exit_code == 0, dump_compile.output
+	dumped_modules := os.read_lines(dump_modules_file)!
+	assert 'main' in dumped_modules, dumped_modules.str()
+	assert 'builtin' in dumped_modules, dumped_modules.str()
+	// vab looks up the full module names, like `sokol.sapp`.
+	assert 'math.bits' in dumped_modules, dumped_modules.str()
+	dumped_defines := os.read_lines(dump_defines_file)!
+	assert 'system,${os.user_os()},true' in dumped_defines, dumped_defines.str()
+	assert 'user,dump_probe,true' in dumped_defines, dumped_defines.str()
+	// vab reads `-dump-c-flags` after a C object fails to build for a target the host lacks.
+	broken_object_source := os.join_path(root, 'dump_broken.c')
+	os.write_file(broken_object_source, '#include "dump_missing_header.h"\n')!
+	dump_include_dir := os.join_path(root, 'dump inc')
+	os.mkdir_all(dump_include_dir)!
+	broken_main := os.join_path(root, 'dump_broken_main.v')
+	os.write_file(broken_main, '#flag -DDUMP_PROBE_DEFINE\n#flag -I "${dump_include_dir}"\n#flag ${os.join_path(root, 'dump_broken.o')}\n\nfn main() {}\n')!
+	dump_c_flags_file := os.join_path(root, 'dump.cflags')
+	broken_compile := cmdexec.run(v3_bin, ['-nocache', '-dump-c-flags', dump_c_flags_file, '-o',
+		c_output, broken_main])
+	assert broken_compile.exit_code != 0, broken_compile.output
+	dumped_c_flags := os.read_lines(dump_c_flags_file)!
+	assert '-DDUMP_PROBE_DEFINE' in dumped_c_flags, dumped_c_flags.str()
+	// vab parses the dump line by line, so a value-taking flag keeps its value on its line.
+	assert '-I "${dump_include_dir}"' in dumped_c_flags, dumped_c_flags.str()
+
 	assert_driver_cli_failure(v3_bin, ['--bogus'], 'unknown option `--bogus`')
 	assert_driver_cli_failure(v3_bin, ['-o'], 'option `-o` requires a value')
 	assert_driver_cli_failure(v3_bin, ['-b', 'bogus', source], 'unknown backend `bogus`')
@@ -2102,15 +2393,19 @@ fn main() {
 	}
 
 	if false_exe := os.find_abs_path_of_executable('false') {
-		cc_result := cmdexec.run(v3_bin, ['-prod', '-showcc', '-cc', false_exe, source, '-o',
-			os.join_path(root, 'false_cc')])
+		// Exercise the final C compiler command without needing runtime objects
+		// to be built by the deliberately failing compiler first.
+		false_cc_source := os.join_path(root, 'false_cc.v')
+		os.write_file(false_cc_source, "fn main() { println('ok') }\n")!
+		cc_result := cmdexec.run(v3_bin, ['-prod', '-showcc', '-cc', false_exe, '-o',
+			os.join_path(root, 'false_cc'), false_cc_source])
 		assert cc_result.exit_code != 0
 		assert cc_result.output.contains(cmdexec.display(false_exe, ['-std=gnu11'])), cc_result.output
 		assert cc_result.output.contains('-O3'), cc_result.output
 		assert cc_result.output.contains('-flto'), cc_result.output
 		assert !cc_result.output.contains('-O2'), cc_result.output
 		custom_prod_result := cmdexec.run(v3_bin, ['-prod', '-no-prod-options', '-showcc', '-cc',
-			false_exe, source, '-o', os.join_path(root, 'false_cc_custom_prod')])
+			false_exe, '-o', os.join_path(root, 'false_cc_custom_prod'), false_cc_source])
 		assert custom_prod_result.exit_code != 0
 		assert !custom_prod_result.output.contains('-O3'), custom_prod_result.output
 		assert !custom_prod_result.output.contains('-flto'), custom_prod_result.output

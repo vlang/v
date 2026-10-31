@@ -1,6 +1,8 @@
 module main
 
-import os
+$if windows {
+	import os
+}
 
 fn main() {
 	$if windows {
@@ -14,7 +16,8 @@ fn main() {
 			println('Thirdparty "freetype" is already installed.')
 		} else {
 			s :=
-				os.execute('${os.quoted_path(vexe)} retry -- git clone --filter=blob:none ${freetype_repo_url} ${freetype_folder}')
+				os.exec([vexe, 'retry', '--', 'git', 'clone', '--filter=blob:none',
+					'${freetype_repo_url}', '${freetype_folder}'])
 			if s.exit_code != 0 {
 				panic(s.output)
 			}

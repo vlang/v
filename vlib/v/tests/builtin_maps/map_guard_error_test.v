@@ -5,31 +5,32 @@ fn guard_value(items map[string]int, key string) int {
 	return -1
 }
 
-fn guard_error(items map[string]int, key string) string {
+fn guard_status(items map[string]int, key string) string {
 	if _ := items[key] {
 		return 'found'
 	} else {
-		return err.msg()
+		return 'missing'
 	}
 }
 
-fn test_map_guard_preserves_observable_errors() {
+fn test_map_guard_reports_absence() {
 	items := {
 		'present': 7
 	}
 	assert guard_value(items, 'present') == 7
 	assert guard_value(items, 'missing') == -1
-	assert guard_error(items, 'present') == 'found'
-	assert guard_error(items, 'missing') == 'map key does not exist'
+	assert guard_status(items, 'present') == 'found'
+	assert guard_status(items, 'missing') == 'missing'
+	err := 'outer'
 	mut observed := ''
 	if _ := items['first'] {
 		assert false
 	} else if _ := items['second'] {
 		assert false
 	} else {
-		observed = err.msg()
+		observed = err
 	}
-	assert observed == 'map key does not exist'
+	assert observed == 'outer'
 }
 
 fn nested_guard_value(items map[string]int, indexes map[string]string) !int {

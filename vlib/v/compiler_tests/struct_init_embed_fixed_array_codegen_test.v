@@ -11,7 +11,8 @@ fn sife_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_struct_init_embed_fixed_array_test_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${sife_vexe} -gc none -path "${sife_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${sife_v3_src}')
+		os.exec([sife_vexe, '-gc', 'none', '-path', '${sife_vlib_dir}' + '|@vlib|@vmodules', '-o',
+			v3_bin, '${sife_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -32,10 +33,10 @@ fn sife_run_project(v3_bin string, name string, files map[string]string) string 
 		sife_write_file(root, rel, source)
 	}
 	bin := os.join_path(os.temp_dir(), 'v3_${name}_${pid}')
-	compile := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${bin}')
+	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }

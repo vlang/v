@@ -16,6 +16,7 @@ enum TokenKind {
 	eof
 	str
 	ident
+	number
 	unknown
 }
 
@@ -31,6 +32,8 @@ pub mut:
 	author       string
 	dependencies []string
 	unknown      map[string][]string
+	catalog      map[string]string
+	workspaces   []string
 }
 
 struct Scanner {
@@ -89,8 +92,8 @@ fn is_name_alpha(chr u8) bool {
 fn (mut s Scanner) create_string(q u8) string {
 	mut str := ''
 	for s.pos < s.text.len && s.text[s.pos] != q {
-		if s.text[s.pos] == `\\` && s.text[s.pos + 1] == q {
-			str += s.text[s.pos..s.pos + 1]
+		if s.text[s.pos] == `\\` && s.pos + 1 < s.text.len && s.text[s.pos + 1] == q {
+			str += s.text[s.pos + 1].ascii_str()
 			s.pos += 2
 		} else {
 			str += s.text[s.pos].ascii_str()
@@ -102,15 +105,24 @@ fn (mut s Scanner) create_string(q u8) string {
 
 fn (mut s Scanner) create_ident() string {
 	mut text := ''
-	for s.pos < s.text.len && is_name_alpha(s.text[s.pos]) {
+	for s.pos < s.text.len && (is_name_alpha(s.text[s.pos]) || s.text[s.pos].is_digit()
+		|| s.text[s.pos] == `.`) {
 		text += s.text[s.pos].ascii_str()
 		s.pos++
 	}
 	return text
 }
 
+fn (mut s Scanner) create_number() string {
+	start := s.pos
+	for s.pos < s.text.len && (s.text[s.pos].is_digit() || s.text[s.pos] == `.`) {
+		s.pos++
+	}
+	return s.text[start..s.pos]
+}
+
 fn (s &Scanner) peek_char(c u8) bool {
-	return s.pos - 1 < s.text.len && s.text[s.pos - 1] == c
+	return s.pos > 0 && s.pos - 1 < s.text.len && s.text[s.pos - 1] == c
 }
 
 fn (mut s Scanner) scan_all() {
@@ -127,17 +139,19 @@ fn (mut s Scanner) scan_all() {
 			name := s.create_ident()
 			if name == 'Module' {
 				s.tokenize(.module_keyword, name)
-				s.pos++
 				continue
 			} else if s.pos < s.text.len && s.text[s.pos] == `:` {
 				s.tokenize(.field_key, name + ':')
-				s.pos += 2
+				s.pos++
 				continue
 			} else {
 				s.tokenize(.ident, name)
-				s.pos++
 				continue
 			}
+		}
+		if c.is_digit() {
+			s.tokenize(.number, s.create_number())
+			continue
 		}
 		if c in [`'`, `\"`] && !s.peek_char(`\\`) {
 			s.pos++
@@ -161,7 +175,7 @@ fn (mut s Scanner) scan_all() {
 	s.tokenize(.eof, 'eof')
 }
 
-fn get_array_content(tokens []Token, st_idx int) !([]string, int) {
+fn get_array_content(tokens []Token, st_idx int, allow_legacy_dependencies bool) !([]string, int) {
 	mut vals := []string{}
 	mut idx := st_idx
 	if tokens[idx].typ != .labr {
@@ -171,12 +185,31 @@ fn get_array_content(tokens []Token, st_idx int) !([]string, int) {
 	for {
 		tok := tokens[idx]
 		match tok.typ {
-			.str {
-				vals << tok.val
-				if tokens[idx + 1].typ !in [.comma, .rabr] {
-					return error('${err_label} invalid separator "${tokens[idx + 1].val}", at line ${tok.line}')
+			.str, .ident, .field_key {
+				if tok.typ != .str && !allow_legacy_dependencies {
+					return error('${err_label} invalid token "${tok.val}", at line ${tok.line}')
 				}
-				idx += if tokens[idx + 1].typ == .comma { 2 } else { 1 }
+				mut value := tok.val
+				idx++
+				if allow_legacy_dependencies && (tok.typ == .field_key || tokens[idx].typ == .colon) {
+					if tok.typ == .field_key {
+						value = value.trim_right(':')
+					} else {
+						idx++
+					}
+					// Manifest.dependencies stores names only, so ignore legacy version values.
+					if tokens[idx].typ !in [.str, .number] {
+						return error('${err_label} invalid token "${tokens[idx].val}", at line ${tokens[idx].line}')
+					}
+					idx++
+				}
+				vals << value
+				if tokens[idx].typ !in [.comma, .rabr] {
+					return error('${err_label} invalid separator "${tokens[idx].val}", at line ${tok.line}')
+				}
+				if tokens[idx].typ == .comma {
+					idx++
+				}
 			}
 			.rabr {
 				idx++
@@ -216,7 +249,11 @@ fn (mut p Parser) parse() !Manifest {
 			}
 			.field_key {
 				field_name := tok.val.trim_right(':')
-				if tokens[i + 1].typ !in [.str, .labr] {
+				if i + 1 >= tokens.len {
+					return error('${err_label} missing value for field "${field_name}"')
+				}
+				if tokens[i + 1].typ !in [.str, .labr]
+					&& !(field_name == 'catalog' && tokens[i + 1].typ == .lcbr) {
 					return error('${err_label} value of field "${field_name}" must be either string or an array of strings, at line ${tok.line}')
 				}
 				field_value := tokens[i + 1].val
@@ -246,14 +283,57 @@ fn (mut p Parser) parse() !Manifest {
 						mn.author = field_value
 					}
 					'dependencies' {
-						deps, idx := get_array_content(tokens, i + 1)!
+						deps, idx := get_array_content(tokens, i + 1, true)!
 						mn.dependencies = deps
+						i = idx
+						continue
+					}
+					'catalog' {
+						if tokens[i + 1].typ != .lcbr {
+							return error('${err_label} value of field "catalog" must be an object, at line ${tok.line}')
+						}
+						mut catalog := map[string]string{}
+						mut j := i + 2
+						for j < tokens.len && tokens[j].typ != .rcbr {
+							mut key := ''
+							if tokens[j].typ == .field_key {
+								key = tokens[j].val.trim_right(':')
+								j++
+							} else if tokens[j].typ == .str && j + 1 < tokens.len && tokens[j + 1].typ == .colon {
+								key = tokens[j].val
+								j += 2
+							} else {
+								return error('${err_label} invalid catalog entry at line ${tokens[j].line}')
+							}
+							if key == '' || key in catalog {
+								return error('${err_label} empty or duplicate catalog key "${key}"')
+							}
+							if j >= tokens.len || tokens[j].typ != .str {
+								return error('${err_label} catalog value for "${key}" must be a string')
+							}
+							catalog[key] = tokens[j].val
+							j++
+							if j < tokens.len && tokens[j].typ == .comma { j++ }
+						}
+						if j >= tokens.len {
+							return error('${err_label} unterminated catalog object')
+						}
+						if j + 1 >= tokens.len {
+							return error('${err_label} unterminated Module object after catalog')
+						}
+						mn.catalog = catalog
+						i = j + 1
+						continue
+					}
+					'workspaces' {
+						ws, idx := get_array_content(tokens, i + 1, false)!
+						mn.workspaces = ws
 						i = idx
 						continue
 					}
 					else {
 						if tokens[i + 1].typ == .labr {
-							vals, idx := get_array_content(tokens, i + 1)!
+							vals, idx := get_array_content(tokens, i + 1, false)!
 							mn.unknown[field_name] = vals
 							i = idx
 							continue
@@ -266,7 +346,7 @@ fn (mut p Parser) parse() !Manifest {
 				continue
 			}
 			.comma {
-				if tokens[i - 1].typ !in [.str, .rabr] || tokens[i + 1].typ != .field_key {
+				if tokens[i - 1].typ !in [.str, .rabr, .rcbr] || tokens[i + 1].typ != .field_key {
 					return error('${err_label} invalid comma placement, at line ${tok.line}')
 				}
 				i++

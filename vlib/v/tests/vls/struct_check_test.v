@@ -2,6 +2,9 @@ import os
 import term
 import v.util.diff
 
+// The compiler under test, not the first `v` on PATH, which may be another checkout.
+const vexe = os.quoted_path(@VEXE)
+
 const vroot = os.real_path(@VMODROOT)
 const tmp_dir = os.real_path(os.temp_dir())
 
@@ -21,7 +24,7 @@ struct TestData {
 
 const test_data = [
 	TestData{
-		cmd:    'v -w -check -vls-mode ${os.quoted_path(text_file)}'
+		cmd:    '${vexe} -w -check -vls-mode ${os.quoted_path(text_file)}'
 		output: '' // for a struct with `mut:` in it, should report no error
 	},
 ]
@@ -30,7 +33,7 @@ fn test_main() {
 	mut total_errors := 0
 
 	for t in test_data {
-		res := os.execute(t.cmd)
+		res := os.exec(os.split_args(t.cmd) or { panic(err) })
 		if res.exit_code < 0 {
 			println('fail execute ${t.cmd}')
 			panic(res.output)

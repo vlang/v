@@ -1,0 +1,56 @@
+vlib/v/checker/tests/conditional_enum_comparison_branch_err.vv:13:10: error: infix expr: cannot use `ComparisonSecond` (right expression) as `ComparisonFirst`
+   11 | fn compare_branch_locals(flag bool) {
+   12 |     state := ComparisonFirst.a
+   13 |     println(state == if flag {
+      |             ~~~~~~~~~~~~~~~~~~
+   14 |         local := ComparisonSecond.a
+   15 |         local
+vlib/v/checker/tests/conditional_enum_comparison_branch_err.vv:19:10: error: infix expr: cannot use `ComparisonFirst` (right expression) as `ComparisonSecond`
+   17 |         .b
+   18 |     })
+   19 |     println((if flag {
+      |             ~~~~~~~~~~
+   20 |         .a
+   21 |     } else {
+vlib/v/checker/tests/conditional_enum_comparison_branch_err.vv:25:10: error: infix expr: cannot use `ComparisonSecond` (right expression) as `ComparisonFirst`
+   23 |         local
+   24 |     }) != state)
+   25 |     println(state != match flag {
+      |             ~~~~~~~~~~~~~~~~~~~~~
+   26 |         true {
+   27 |             local := ComparisonSecond.a
+vlib/v/checker/tests/conditional_enum_comparison_branch_err.vv:36:4: error: return type mismatch, it should be `ComparisonFirst`, but it is instead `ComparisonSecond`
+   34 |         else {
+   35 |             local := ComparisonSecond.b
+   36 |             local
+      |             ~~~~~
+   37 |         }
+   38 |     }) == state)
+vlib/v/checker/tests/conditional_enum_comparison_branch_err.vv:44:10: error: unknown enum field `missing` for `ComparisonFirst`
+   42 |     state := ComparisonFirst.a
+   43 |     println(state == match flag {
+   44 |         true { .missing }
+      |                ~~~~~~~~
+   45 |         else { .b }
+   46 |     })
+vlib/v/checker/tests/conditional_enum_comparison_branch_err.vv:43:10: error: infix expr: cannot use `int` (right expression) as `ComparisonFirst`
+   41 | fn compare_match(flag bool) {
+   42 |     state := ComparisonFirst.a
+   43 |     println(state == match flag {
+      |             ~~~~~~~~~~~~~~~~~~~~~
+   44 |         true { .missing }
+   45 |         else { .b }
+vlib/v/checker/tests/conditional_enum_comparison_branch_err.vv:47:10: error: infix expr: cannot use `ComparisonFirst` (right expression) as `ComparisonSecond`
+   45 |         else { .b }
+   46 |     })
+   47 |     println((match flag {
+      |             ~~~~~~~~~~~~~
+   48 |         true { ComparisonSecond.a }
+   49 |         else { ComparisonSecond.b }
+vlib/v/checker/tests/conditional_enum_comparison_branch_err.vv:53:27: error: return type mismatch, it should be `ComparisonFirst`, but it is instead `ComparisonSecond`
+   51 |     println(state == match flag {
+   52 |         true { .a }
+   53 |         else { ComparisonSecond.b }
+      |                                 ^
+   54 |     })
+   55 | }

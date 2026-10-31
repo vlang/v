@@ -20,12 +20,12 @@ fn test_array_literal_compound_literal_carries_its_length() {
 	first := g.a.add_node(flat.Node{
 		kind:  .ident
 		value: 'first'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	second := g.a.add_node(flat.Node{
 		kind:  .ident
 		value: 'second'
-		typ:   'string'
+		typ:   flat.source_type_string
 	})
 	start := g.a.children.len
 	g.a.children << first
@@ -45,7 +45,7 @@ fn test_target_libc_thread_array_marks_type_without_runtime() {
 	mut g := array_literal_length_test_gen()
 	g.set_target_libc_headers(true)
 	g.gen_array_literal_value(flat.Node{}, types.Type(types.Struct{
-		name: 'thread'
+		name_id: flat.source_type_id('thread')
 	}))
 	assert g.needs_thread_type
 	assert !g.needs_thread_runtime

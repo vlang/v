@@ -1,0 +1,7 @@
+query searchPokemon($name: String) {
+    pokemon(name: $name) {
+        number
+        name
+        image
+    }
+}

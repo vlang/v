@@ -14,7 +14,8 @@ fn proxy_to_local_v3_if_needed() bool {
 		return false
 	}
 	cmd := 'V3_MATCH_GENERIC_PATTERN_INNER=1 ${os.quoted_path(local_vexe)} -gc none -path "${local_vlib_dir}|@vlib|@vmodules" ${os.quoted_path(@FILE)}'
-	result := os.execute(cmd)
+	result := os.exec(['env', 'V3_MATCH_GENERIC_PATTERN_INNER=1', local_vexe, '-gc', 'none', '-path',
+		'${local_vlib_dir}' + '|@vlib|@vmodules', @FILE])
 	assert result.exit_code == 0, result.output
 	return true
 }
@@ -44,10 +45,10 @@ fn find_match_branch_with_pattern(a &flat.FlatAst, pattern string) flat.Node {
 			continue
 		}
 		cond := a.child_node(&node, 0)
-		if cond.kind == .ident && cond.value == pattern {
+		if cond.kind == .ident && cond.value_text() == pattern {
 			return node
 		}
-		if cond.kind == .selector && cond.value == pattern {
+		if cond.kind == .selector && cond.value_text() == pattern {
 			return node
 		}
 	}
@@ -84,11 +85,11 @@ fn find_match_branch_with_qualified_pattern(a &flat.FlatAst, module_name string,
 			continue
 		}
 		cond := a.child_node(&node, 0)
-		if cond.kind != .selector || cond.value != pattern || cond.children_count == 0 {
+		if cond.kind != .selector || cond.value_text() != pattern || cond.children_count == 0 {
 			continue
 		}
 		base := a.child_node(cond, 0)
-		if base.kind == .ident && base.value == module_name {
+		if base.kind == .ident && base.value_text() == module_name {
 			return node
 		}
 	}
@@ -162,14 +163,14 @@ fn after() int {
 	nested_arg_branch := find_match_branch_with_pattern(a, 'Node[foo.Bar]')
 	nested_cond := a.child_node(&nested_arg_branch, 0)
 	assert nested_cond.kind == .ident
-	assert nested_cond.value == 'Node[foo.Bar]'
+	assert nested_cond.value_text() == 'Node[foo.Bar]'
 
 	qualified_branch := find_match_branch_with_qualified_pattern(a, 'foo', 'Node[T]')
 	cond := a.child_node(&qualified_branch, 0)
 	base := a.child_node(cond, 0)
 	assert base.kind == .ident
-	assert base.value == 'foo'
-	assert cond.value == 'Node[T]'
+	assert base.value_text() == 'foo'
+	assert cond.value_text() == 'Node[T]'
 }
 
 fn check_source_errors(name string, src string) []types.TypeError {
@@ -213,7 +214,7 @@ struct Other[T] {
 	value T
 }
 
-type Tree[T] = Empty | Node[T]
+type Tree[T] = Empty | &Node[T]
 '
 
 fn test_generic_sum_type_checker_accepts_shared_field_on_concrete_sum() {
@@ -246,27 +247,27 @@ fn test_generic_sum_type_checker_accepts_methods_returns_and_smartcasts() {
 fn (tree Tree[T]) size[T]() int {
 	return match tree {
 		Empty { 0 }
-		Node[T] { 1 +
+		&Node[T] { 1 +
 		tree.left.size() }
 	}
 }
 
 fn make_int_tree() Tree[int] {
-	return Node[int]{
+	return &Node[int]{
 		value: 1
 		left: Empty{}
 	}
 }
 
 fn make_tree[T](value T) Tree[T] {
-	return Node[T]{
+	return &Node[T]{
 		value: value
 		left: Empty{}
 	}
 }
 
 fn field_after_is[T](tree Tree[T]) T {
-	if tree is Node[T] {
+	if tree is &Node[T] {
 		return tree.value
 	}
 	return T(0)
@@ -286,7 +287,7 @@ fn test_generic_sum_type_checker_rejects_wrong_generic_variant() {
 	assert_checker_error_contains('generic_sum_wrong_variant_arg', generic_sum_defs +
 		'
 fn bad() Tree[int] {
-	return Node[string]{
+	return &Node[string]{
 		value: "bad"
 		left: Empty{}
 	}
@@ -294,7 +295,7 @@ fn bad() Tree[int] {
 
 fn main() {}
 ',
-		'cannot use `Node[string]` as type `Tree[int]` in return argument')
+		'cannot use `&Node[string]` as type `Tree[int]` in return argument')
 }
 
 fn test_generic_sum_type_checker_rejects_non_variant_pattern() {

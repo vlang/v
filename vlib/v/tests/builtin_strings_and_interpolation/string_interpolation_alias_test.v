@@ -26,3 +26,31 @@ fn test_i64_number_alias_string() {
 	y := Duration(x)
 	assert '${x}' == '${y}'
 }
+
+struct Column {
+	name string
+}
+
+type Columns = []Column
+
+fn (c Columns) str() string {
+	return c.map(it.name).join(', ')
+}
+
+struct Operation {
+	columns []Column
+}
+
+fn (o &Operation) columns() Columns {
+	return o.columns
+}
+
+fn table_columns() Columns {
+	return [Column{'a'}, Column{'b'}]
+}
+
+fn test_interpolated_call_result_uses_the_str_method_of_its_alias() {
+	op := &Operation{[Column{'x'}, Column{'y'}]}
+	assert '(${op.columns()})' == '(x, y)'
+	assert '(${table_columns()})' == '(a, b)'
+}

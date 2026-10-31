@@ -45,7 +45,15 @@ fn is_valid_string(input string) bool {
 	return true
 }
 
+// is_valid_number reports whether input is a run of decimal digits.
+//
+// An empty string is not a number. Returning true for it let `coerce_version(''`
+// succeed as `0.0.0`, which turned an empty range into the exact pin `=0.0.0`
+// instead of the `*` the grammar calls for.
 fn is_valid_number(input string) bool {
+	if input.len == 0 {
+		return false
+	}
 	for c in input {
 		if !c.is_digit() {
 			return false

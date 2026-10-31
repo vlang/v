@@ -11,7 +11,11 @@
 
 // Thread-local Machine pointer
 #if defined(_WIN32) || defined(_WIN64)
+#if defined(__GNUC__)
+static __thread void *_goroutines_current_m = NULL;
+#else
 static __declspec(thread) void *_goroutines_current_m = NULL;
+#endif
 #else
 static _Thread_local void *_goroutines_current_m = NULL;
 #endif
@@ -58,11 +62,20 @@ int goroutines_atomic_cas_u32(volatile uint32_t *ptr, uint32_t *expected, uint32
     return 0;
 }
 
-int goroutines_atomic_cas_ptr(void *volatile *ptr, void **expected, void *desired) {
-    void *old = InterlockedCompareExchangePointer(ptr, desired, *expected);
-    if (old == *expected) return 1;
-    *expected = old;
-    return 0;
+void *goroutines_atomic_load_ptr(void *volatile *ptr) {
+    return InterlockedCompareExchangePointer(ptr, NULL, NULL);
+}
+
+void goroutines_atomic_store_ptr(void *volatile *ptr, void *value) {
+    InterlockedExchangePointer(ptr, value);
+}
+
+void *goroutines_atomic_exchange_ptr(void *volatile *ptr, void *value) {
+    return InterlockedExchangePointer(ptr, value);
+}
+
+int goroutines_atomic_take_ptr(void *volatile *ptr, void *value) {
+    return InterlockedCompareExchangePointer(ptr, NULL, value) == value;
 }
 
 void grt_spinlock_lock(volatile int32_t *lock) {
@@ -106,8 +119,20 @@ int goroutines_atomic_cas_u32(volatile uint32_t *ptr, uint32_t *expected, uint32
     return atomic_compare_exchange_strong((_Atomic uint32_t *)ptr, expected, desired);
 }
 
-int goroutines_atomic_cas_ptr(void *volatile *ptr, void **expected, void *desired) {
-    return atomic_compare_exchange_strong((_Atomic(void *) *)ptr, expected, desired);
+void *goroutines_atomic_load_ptr(void *volatile *ptr) {
+    return atomic_load((_Atomic(void *) *)ptr);
+}
+
+void goroutines_atomic_store_ptr(void *volatile *ptr, void *value) {
+    atomic_store((_Atomic(void *) *)ptr, value);
+}
+
+void *goroutines_atomic_exchange_ptr(void *volatile *ptr, void *value) {
+    return atomic_exchange((_Atomic(void *) *)ptr, value);
+}
+
+int goroutines_atomic_take_ptr(void *volatile *ptr, void *value) {
+    return atomic_compare_exchange_strong((_Atomic(void *) *)ptr, &value, NULL);
 }
 
 void grt_spinlock_lock(volatile int32_t *lock) {

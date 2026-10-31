@@ -59,7 +59,7 @@ def normalize: sorted_walk(if type == "array" then sort else . end);
 normalize'
 
 fn run(args []string) !string {
-	res := os.execute(args.join(' '))
+	res := os.exec(args)
 	if res.exit_code != 0 {
 		return error('${args[0]} failed with return code ${res.exit_code}.\n${res.output}')
 	}
@@ -174,8 +174,8 @@ fn test_iarna_toml_spec_tests() {
 						converted_json_path = os.join_path(compare_work_dir_root,
 							'${valid_test_file_name}.yaml.json')
 						run([python, '-c',
-							"'import sys, yaml, json; json.dump(yaml.load(sys.stdin, Loader=yaml.FullLoader), sys.stdout, indent=4)'",
-							'<', iarna_yaml_path, '>', converted_json_path]) or {
+							'import sys, yaml, json; json.dump(yaml.load(open(sys.argv[1]), Loader=yaml.FullLoader), open(sys.argv[2], "w"), indent=4)',
+							iarna_yaml_path, converted_json_path]) or {
 							contents := os.read_file(iarna_yaml_path)!
 							// NOTE there's known errors with the python convention method.
 							// For now we just ignore them as it's a broken tool - not a wrong test-case.
@@ -207,11 +207,11 @@ fn test_iarna_toml_spec_tests() {
 				iarna_json := os.read_file(converted_json_path)!
 				os.write_file(iarna_toml_json_path, iarna_json)!
 
-				v_normalized_json := run([jq, '-S', '-f "${jq_normalize_path}"', v_toml_json_path]) or {
+				v_normalized_json := run([jq, '-S', '-f', jq_normalize_path, v_toml_json_path]) or {
 					contents := os.read_file(v_toml_json_path)!
 					panic(err.msg() + '\n${contents}')
 				}
-				cmd := [jq, '-S', '-f "${jq_normalize_path}"', iarna_toml_json_path]
+				cmd := [jq, '-S', '-f', jq_normalize_path, iarna_toml_json_path]
 				iarna_normalized_json := run(cmd) or {
 					contents := os.read_file(v_toml_json_path)!
 					panic(err.msg() + '\n${contents}\n\ncmd: ${cmd.join(' ')}')

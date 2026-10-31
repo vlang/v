@@ -23,7 +23,7 @@ fn test_return_result_in_or_block() {
 	println(x1)
 	assert x1 == 1
 
-	x2 := unwrap_function2() or { panic(err) }
+	x2 := unwrap_function2() or { panic('missing value') }
 	println(x2)
 	assert x2 == 1
 }

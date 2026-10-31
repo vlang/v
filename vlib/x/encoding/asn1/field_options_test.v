@@ -128,6 +128,7 @@ fn test_for_inner_tag_marker() ! {
 			continue
 		}
 
+		assert k == 'inner'
 		assert v == item.result
 	}
 }

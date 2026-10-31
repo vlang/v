@@ -1,8 +1,8 @@
-module json
+module strings
 
-import json as vjson
+import strings as vstrings
 
 const used = true
 
 println(used)
-println(vjson.used)
+println(vstrings.used)

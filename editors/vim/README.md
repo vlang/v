@@ -6,6 +6,8 @@ This directory contains official V runtime files for Vim and Neovim:
 - `ftplugin/v.vim`
 - `syntax/v.vim`
 
+The syntax file highlights builtin types such as `u8`. The name `byte` is an ordinary identifier.
+
 ## Install in Vim
 
 ```sh

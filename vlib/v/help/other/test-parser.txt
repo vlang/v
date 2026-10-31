@@ -1,0 +1,26 @@
+Test the V parser, by parsing each .v file in each PATH,
+as if it was typed character by character by the user.
+
+Usage:
+  v test-parser [PATH1 PATH2 ...]
+
+A PATH can be either a folder, or a specific .v file.
+Note: you *have to quote* the PATH, if it contains spaces/punctuation.
+
+The sources are parsed repeatedly, in gradually shorter prefixes, to
+expose parser panics, errors and hangs. Most of the shown options are
+meant for its internal worker processes:
+
+Options:
+  -h, --help            Show help/usage screen.
+  -v, --verbose         Be more verbose.
+  -S, --silent          Do not print progress at all.
+  -L, --linear          Print a linear progress log. Suitable for CI.
+  -E, --show_source     Print the partial source code that caused a
+                        fault/panic in the parser.
+  -s, --progress_ms     Print a status report periodically; the period
+                        is given in milliseconds (default 500).
+
+The worker flags (-w, -c, -t, -p) are used internally by the supervisor
+process, when it spawns workers to parse individual source files
+safely, under a timeout.

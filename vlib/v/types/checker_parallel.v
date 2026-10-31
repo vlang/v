@@ -4,14 +4,21 @@ import os
 import runtime
 import time
 import v.flat
+import v.gen.c.naming
 import v.token
 import v.workers
+
+const parallel_source_type_c_variadic = flat.source_type_id('...')
 
 const min_parallel_check_items = 256
 const max_parallel_check_jobs = 26
 // Scoped workers use bounded arena batches, so let self-host checks occupy all
 // of the worker pool's cores without retaining one large arena per core.
 const max_scoped_check_jobs = 18
+// min_parallel_check_job_cost is the work, in CheckWorkItem.cost, that pays for
+// a worker of the parallel check (see parallel_check_jobs_for_cost): a program
+// of 11 small functions costs 216, one of 201 costs 4,282.
+const min_parallel_check_job_cost = 256
 // The historical 96-batch limit remains the low-memory fallback. Prealloc
 // self-host checks default to one twelfth as many batches below, amortizing
 // checker fork/promotion setup while keeping each worker's scratch bounded.
@@ -19,6 +26,11 @@ const scoped_check_worker_batches = 96
 // A serial checker owns the whole import graph instead of one worker shard, so
 // use finer arena batches to keep compiler-module checks below the memory cap.
 const scoped_check_serial_batches = 64
+// A batch forks the checker and promotes its results back, ~0.3 ms each, which
+// a few small functions do not pay back: 64 batches of a 200-function program
+// took 43 ms of a check, one batch 24 ms. A batch checks at least this many
+// nodes (item costs), a few ms of work.
+const min_scoped_check_batch_cost = 2048
 // Keep one scheduled chunk per scoped worker. Finer arena batches within each
 // chunk release transient checker allocations without retaining extra shards.
 // (Re-verified 2026-08: oversubscribe=2 costs ~3-5ms here — the extra per-chunk
@@ -45,8 +57,7 @@ struct InterfaceImplChunkArgs {
 	checker     voidptr
 	iface_names voidptr
 	results     voidptr
-	start       int
-	end         int
+	queue       chan int
 	scoped      bool
 mut:
 	scope voidptr
@@ -66,9 +77,17 @@ fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
 		a.scope = check_worker_scope_begin(true)
 	}
 	tc := unsafe { &TypeChecker(a.checker) }
-	iface_names := unsafe { &[]string(a.iface_names) }
+	// Declarations and context stay fixed while this worker drains the queue.
+	// Match the serial preparation path: reuse receiver and candidate queries
+	// across interfaces, with one private memo per checker.
+	opened := tc.begin_interface_impl_queries()
+	defer { tc.end_interface_impl_queries(opened) }
+	iface_names := unsafe { &[]u32(a.iface_names) }
 	mut results := unsafe { &InterfaceImplResults(a.results) }
-	for i in a.start .. a.end {
+	// Implementer scans differ widely in cost (IError checks every type), so
+	// each job pulls the next interface instead of taking a fixed slice.
+	for {
+		i := <-a.queue or { break }
 		iface_name := unsafe { iface_names[i] }
 		impls := if is_builtin_ierror_name(iface_name) {
 			tc.ierror_impl_names()
@@ -76,7 +95,7 @@ fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
 			tc.interface_impl_names_uncached(iface_name)
 		}
 		results.items[i] = &InterfaceImplIndex{
-			names: impls
+			names: flat.TypeTextList{ ids: impls }
 			ids:   stable_interface_type_ids(impls)
 		}
 	}
@@ -86,78 +105,77 @@ fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
-fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []string) bool {
-	$if windows {
+fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []u32) bool {
+	pool := checker_worker_pool(tc.a)
+	if iface_names.len < 8 || isnil(pool) {
 		return false
-	} $else {
-		if iface_names.len < 8 || isnil(tc.a) || isnil(tc.a.worker_pool) {
-			return false
-		}
-		n_jobs := int_min(tc.a.worker_pool.size() + 1, iface_names.len)
-		if n_jobs <= 1 {
-			return false
-		}
-		tc.install_type_cache_overlay()
-		mut checkers := []&TypeChecker{cap: n_jobs}
-		checkers << tc
-		for _ in 1 .. n_jobs {
-			checkers << tc.fork_for_parallel_transform(tc.a)
-		}
-		mut results := &InterfaceImplResults{
-			items: []&InterfaceImplIndex{cap: iface_names.len}
-		}
-		for _ in iface_names {
-			results.items << &InterfaceImplIndex(unsafe { nil })
-		}
-		mut args := []InterfaceImplChunkArgs{cap: n_jobs}
-		mut tasks := []workers.Task{cap: n_jobs}
-		for job in 0 .. n_jobs {
-			args << InterfaceImplChunkArgs{
-				checker:     voidptr(checkers[job])
-				iface_names: unsafe { voidptr(&iface_names) }
-				results:     voidptr(results)
-				start:       iface_names.len * job / n_jobs
-				end:         iface_names.len * (job + 1) / n_jobs
-				// Job 0 runs on the master checker, whose overlay is folded back
-				// into the shared cache below; only forks may use scratch arenas.
-				scoped:      job > 0
-			}
-			tasks << workers.Task{
-				run:        interface_impl_index_chunk_thread
-				arg:        unsafe { voidptr(&args[job]) }
-				force_sync: job == 0
-			}
-		}
-		tc.a.worker_pool.run(tasks)
-		tc.restore_type_cache_base()
-		for i, iface_name in iface_names {
-			if !isnil(results.items[i]) {
-				// Worker indexes are backed by disposable worker arenas. Publish a
-				// parent-owned copy before those arenas are released.
-				worker_index := results.items[i]
-				mut names := []string{cap: worker_index.names.len}
-				for name in worker_index.names {
-					names << name.clone()
-				}
-				tc.interface_impl_indexes[iface_name] = &InterfaceImplIndex{
-					names: names
-					ids:   stable_interface_type_ids(names)
-				}
-			}
-		}
-		for arg in args {
-			if arg.scope != unsafe { nil } {
-				check_worker_scope_free(arg.scope)
-			}
-		}
-		return true
 	}
+	n_jobs := int_min(pool.size() + 1, iface_names.len)
+	if n_jobs <= 1 {
+		return false
+	}
+	tc.install_type_cache_overlay()
+	mut checkers := []&TypeChecker{cap: n_jobs}
+	checkers << tc
+	for _ in 1 .. n_jobs {
+		checkers << tc.fork_for_parallel_transform(tc.a)
+	}
+	mut results := &InterfaceImplResults{
+		items: []&InterfaceImplIndex{cap: iface_names.len}
+	}
+	for _ in iface_names {
+		results.items << &InterfaceImplIndex(unsafe { nil })
+	}
+	queue := chan int{cap: iface_names.len}
+	for i in 0 .. iface_names.len {
+		queue <- i
+	}
+	queue.close()
+	mut args := []InterfaceImplChunkArgs{cap: n_jobs}
+	mut tasks := []workers.Task{cap: n_jobs}
+	for job in 0 .. n_jobs {
+		args << InterfaceImplChunkArgs{
+			checker:     voidptr(checkers[job])
+			iface_names: unsafe { voidptr(&iface_names) }
+			results:     voidptr(results)
+			queue:       queue
+			// Job 0 runs on the master checker, whose overlay is folded back
+			// into the shared cache below; only forks may use scratch arenas.
+			scoped:      job > 0
+		}
+		tasks << workers.Task{
+			run:        interface_impl_index_chunk_thread
+			arg:        unsafe { voidptr(&args[job]) }
+			force_sync: job == 0
+		}
+	}
+	pool.run(tasks)
+	tc.restore_type_cache_base()
+	for i, iface_name in iface_names {
+		if !isnil(results.items[i]) {
+			// Worker indexes are backed by disposable worker arenas. Publish a
+			// parent-owned copy before those arenas are released.
+			worker_index := results.items[i]
+			names := worker_index.names.ids.clone()
+			tc.interface_impl_indexes[iface_name] = &InterfaceImplIndex{
+				names: flat.TypeTextList{ ids: names }
+				ids:   stable_interface_type_ids(names)
+			}
+		}
+	}
+	for arg in args {
+		if arg.scope != unsafe { nil } {
+			check_worker_scope_free(arg.scope)
+		}
+	}
+	return true
 }
 
 struct UnusedFnVarCandidate {
-	name   string
-	lhs_id flat.NodeId
-	rhs_id flat.NodeId
+	name    string
+	lhs_id  flat.NodeId
+	rhs_id  flat.NodeId
+	loop_id flat.NodeId = flat.empty_node
 }
 
 struct CollectIndexPrepArgs {
@@ -174,7 +192,7 @@ mut:
 struct CollectDeclarationIndexArgs {
 	tc   voidptr
 	a    &flat.FlatAst
-	kind u8 // 0 = generic params, 1 = type declarations, 2 = functions, 3 = visibility
+	kind u8 // 0 = generic params, 1 = type declarations, 2 = parameter mutability, 3 = visibility, 4 = function names, 5 = file declarations
 }
 
 fn collect_index_prep_thread(arg voidptr) voidptr {
@@ -203,8 +221,10 @@ fn collect_declaration_index_thread(arg voidptr) voidptr {
 	match a.kind {
 		0 { tc.build_enclosing_generic_param_index(a.a) }
 		1 { tc.build_type_declaration_index(a.a) }
-		2 { tc.build_fn_declaration_indexes(a.a) }
-		else { tc.collect_declaration_visibility() }
+		2 { tc.build_declaration_param_mutability_index(a.a) }
+		3 { tc.collect_declaration_visibility() }
+		4 { tc.build_fn_name_indexes(a.a) }
+		else { tc.build_file_declaration_indexes(a.a) }
 	}
 	return unsafe { nil }
 }
@@ -212,15 +232,16 @@ fn collect_declaration_index_thread(arg voidptr) voidptr {
 // prepare_collect_index_parallel overlaps independent index tasks. Each cache
 // group owns its arrays, and all allocations survive in persistent arenas.
 fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
-	if !tc.building_v_fast || os.getenv('V3_NO_PAR_CHECK_INDEX_PREP') != '' || isnil(a.worker_pool)
-		|| a.worker_pool.size() < 2 || a.nodes.len < 65536 {
+	pool := checker_worker_pool(a)
+	if !tc.building_v_fast || os.getenv('V3_NO_PAR_CHECK_INDEX_PREP') != '' || isnil(pool)
+		|| pool.size() < 2 || a.nodes.len < 65536 {
 		return false
 	}
 	// The cache groups below reset the node-indexed arrays on pool lanes; the
 	// sparse fn-value store is cleared here, on the collecting thread.
 	tc.reset_sparse_fn_values()
 	tc.init_direct_parent_index(a)
-	parent_jobs := int_min(8, a.worker_pool.size() + 1)
+	parent_jobs := int_min(16, pool.size() + 1)
 	mut args := []CollectIndexPrepArgs{cap: parent_jobs + 4}
 	mut start := 0
 	for job in 0 .. parent_jobs {
@@ -255,7 +276,7 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 			force_sync: i == args.len - 1
 		}
 	}
-	a.worker_pool.run(tasks)
+	pool.run(tasks)
 	for arg in args {
 		if arg.kind == 0 {
 			tc.merge_direct_parent_chunk(arg.parent_chunk)
@@ -274,54 +295,36 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 // prepare_collect_declaration_indexes_parallel builds independent
 // read-only-AST declaration indexes on separate persistent lanes.
 fn (mut tc TypeChecker) prepare_collect_declaration_indexes_parallel(a &flat.FlatAst) bool {
+	pool := checker_worker_pool(a)
 	if !tc.building_v_fast || !tc.scope_parallel_check_workers
-		|| os.getenv('V3_NO_PAR_CHECK_DECL_INDEXES') != '' || isnil(a.worker_pool)
-		|| a.worker_pool.size() < 2 || tc.top_level_idx.len < 2048 {
+		|| os.getenv('V3_NO_PAR_CHECK_DECL_INDEXES') != '' || isnil(pool)
+		|| pool.size() < 2 || tc.top_level_idx.len < 2048 {
 		return false
 	}
-	mut args := [
-		CollectDeclarationIndexArgs{
+	// Each index task owns its maps; the caller builds one of them itself.
+	mut args := []CollectDeclarationIndexArgs{cap: collect_declaration_index_tasks}
+	for kind in 0 .. collect_declaration_index_tasks {
+		args << CollectDeclarationIndexArgs{
 			tc:   voidptr(tc)
 			a:    a
-			kind: 0
-		},
-		CollectDeclarationIndexArgs{
-			tc:   voidptr(tc)
-			a:    a
-			kind: 1
-		},
-		CollectDeclarationIndexArgs{
-			tc:   voidptr(tc)
-			a:    a
-			kind: 2
-		},
-		CollectDeclarationIndexArgs{
-			tc:   voidptr(tc)
-			a:    a
-			kind: 3
-		},
-	]
-	a.worker_pool.run([
-		workers.Task{
-			run: collect_declaration_index_thread
-			arg: unsafe { voidptr(&args[0]) }
-		},
-		workers.Task{
-			run: collect_declaration_index_thread
-			arg: unsafe { voidptr(&args[1]) }
-		},
-		workers.Task{
-			run: collect_declaration_index_thread
-			arg: unsafe { voidptr(&args[2]) }
-		},
-		workers.Task{
+			kind: u8(kind)
+		}
+	}
+	mut tasks := []workers.Task{cap: args.len}
+	for i in 0 .. args.len {
+		tasks << workers.Task{
 			run:        collect_declaration_index_thread
-			arg:        unsafe { voidptr(&args[3]) }
-			force_sync: true
-		},
-	])
+			arg:        unsafe { voidptr(&args[i]) }
+			force_sync: i == args.len - 1
+		}
+	}
+	pool.run(tasks)
 	return true
 }
+
+// collect_declaration_index_tasks is the number of independent declaration
+// index builders collect_declaration_index_thread dispatches on.
+const collect_declaration_index_tasks = 6
 
 // Pass2FnPrep carries the parse-heavy portion of one fn_decl's pass-2
 // collection (type parsing, param iteration, veb adjustments), computed on the
@@ -330,14 +333,25 @@ fn (mut tc TypeChecker) prepare_collect_declaration_indexes_parallel(a &flat.Fla
 struct Pass2FnPrep {
 mut:
 	prepared            bool
-	ret_type            Type = Type(void_)
+	ret_type            Type = builtin_void_type
 	ptypes              []Type
-	param_texts         []string
+	param_type_ids      []u32
 	shared_params       []bool
 	is_variadic         bool
 	is_c_variadic       bool
 	has_mut_receiver    bool
 	has_forwardable_ctx bool
+	// The names pass 2 registers the function under, when names_ready.
+	names_ready         bool
+	qname               string
+	lowered_qname       string
+	lowered_source_name string
+	// The arena of the lane that computed it, alive until pass 2 has copied
+	// what it keeps (see promote_pass2_fn_prep); nil when there is none.
+	scope voidptr
+	// The lists are a private copy in the collecting thread's arena, which
+	// pass 2 can keep as they are.
+	owned_lists bool
 }
 
 // compute_pass2_fn_prep performs the context-dependent but table-write-free
@@ -351,7 +365,7 @@ fn (mut tc TypeChecker) compute_pass2_fn_prep(node flat.Node) Pass2FnPrep {
 		tc.parse_resolution_type(node.typ)
 	}
 	mut ptypes := []Type{}
-	mut param_texts := []string{}
+	mut param_type_ids := []u32{}
 	mut shared_params := []bool{}
 	mut is_variadic := false
 	mut is_c_variadic := false
@@ -365,28 +379,28 @@ fn (mut tc TypeChecker) compute_pass2_fn_prep(node flat.Node) Pass2FnPrep {
 			continue
 		}
 		if ptypes.len == 0 && node.value.contains('.') && child.is_mut
-			&& !param_type_text_is_shared(child.typ) {
+			&& !param_source_type_is_shared(child.typ) {
 			has_mut_receiver = true
 		}
-		param_type := child.typ
-		if param_type.starts_with('...') {
+		param_type_source_id := child.typ
+		if flat.source_type_shape(param_type_source_id).has(.variadic) {
 			is_variadic = true
-			if param_type == '...' {
+			if param_type_source_id == parallel_source_type_c_variadic {
 				is_c_variadic = true
 			}
 		}
-		raw_parsed_param_type := if is_open_generic {
-			tc.parse_scope_param_type(param_type)
+		parsed_param_type := if is_open_generic {
+			tc.parse_scope_param_type(param_type_source_id)
 		} else {
-			tc.parse_resolution_type(param_type)
+			tc.parse_resolution_type(param_type_source_id)
 		}
 		ptypes << if child.is_mut {
-			mut_param_semantic_type(raw_parsed_param_type)
+			mut_param_semantic_type(parsed_param_type)
 		} else {
-			raw_parsed_param_type
+			parsed_param_type
 		}
-		param_texts << param_type
-		shared_params << param_type_text_is_shared(child.typ)
+		param_type_ids << param_type_source_id
+		shared_params << param_source_type_is_shared(child.typ)
 	}
 	has_forwardable_ctx := tc.fn_needs_implicit_veb_ctx(node)
 	ptypes = tc.fn_param_types_with_implicit_veb_ctx(node, ptypes)
@@ -395,7 +409,7 @@ fn (mut tc TypeChecker) compute_pass2_fn_prep(node flat.Node) Pass2FnPrep {
 		prepared:            true
 		ret_type:            ret_type
 		ptypes:              ptypes
-		param_texts:         param_texts
+		param_type_ids:      param_type_ids
 		shared_params:       shared_params
 		is_variadic:         is_variadic
 		is_c_variadic:       is_c_variadic
@@ -422,7 +436,17 @@ fn (mut tc TypeChecker) collect_pass2_fn_range(start int, end int, mut preps []P
 				tc.cur_module = node.value
 			}
 			.fn_decl {
-				preps[pi] = tc.compute_pass2_fn_prep(node)
+				mut prep := tc.compute_pass2_fn_prep(node)
+				// cached_c_name stores exactly naming.c_name; pass 2 only records it.
+				prep.qname = tc.qualify_fn_name(node.value)
+				prep.lowered_qname = naming.c_name(prep.qname)
+				prep.lowered_source_name = if node.value == prep.qname {
+					prep.lowered_qname
+				} else {
+					naming.c_name(node.value)
+				}
+				prep.names_ready = true
+				preps[pi] = prep
 			}
 			else {}
 		}
@@ -435,68 +459,71 @@ fn (mut tc TypeChecker) collect_pass2_fn_range(start int, end int, mut preps []P
 // private type caches and interners ("TypeIds stay local"), so the produced
 // Type values are plain data and the master's interner keeps its own
 // deterministic id order.
-fn (mut tc TypeChecker) collect_pass2_fn_preps_parallel() []Pass2FnPrep {
-	$if windows {
-		return []Pass2FnPrep{}
-	} $else {
-		n := tc.top_level_idx.len
-		if isnil(tc.a.worker_pool) || tc.a.worker_pool.size() == 0 || n < 2048
-			|| os.getenv('V3_NO_PAR_PASS2') != '' {
-			return []Pass2FnPrep{}
-		}
-		mut n_jobs := tc.a.worker_pool.size() + 1
-		if n_jobs > 10 {
-			n_jobs = 10
-		}
-		mut preps := []Pass2FnPrep{len: n}
-		// One cheap serial walk captures the (file, module) context active at
-		// each shard boundary.
-		mut ctx_files := []string{len: n_jobs}
-		mut ctx_modules := []string{len: n_jobs}
-		mut cur_file := ''
-		mut cur_module := ''
-		mut bi := 0
-		for pi in 0 .. n {
-			for bi < n_jobs && pi == n * bi / n_jobs {
-				ctx_files[bi] = cur_file
-				ctx_modules[bi] = cur_module
-				bi++
-			}
-			node := tc.a.nodes[tc.top_level_idx[pi]]
-			if node.kind == .file {
-				cur_file = node.value
-				cur_module = tc.file_modules[node.value] or { '' }
-			} else if node.kind == .module_decl {
-				cur_module = node.value
-			}
-		}
-		for bi < n_jobs {
+fn (mut tc TypeChecker) collect_pass2_fn_preps_parallel() ([]Pass2FnPrep, []voidptr) {
+	n := tc.top_level_idx.len
+	pool := checker_worker_pool(tc.a)
+	if isnil(pool) || pool.size() == 0 || n < 2048
+		|| os.getenv('V3_NO_PAR_PASS2') != '' {
+		return []Pass2FnPrep{}, []voidptr{}
+	}
+	mut n_jobs := pool.size() + 1
+	if n_jobs > 10 {
+		n_jobs = 10
+	}
+	mut preps := []Pass2FnPrep{len: n}
+	// One cheap serial walk captures the (file, module) context active at
+	// each shard boundary.
+	mut ctx_files := []string{len: n_jobs}
+	mut ctx_modules := []string{len: n_jobs}
+	mut cur_file := ''
+	mut cur_module := ''
+	mut bi := 0
+	for pi in 0 .. n {
+		for bi < n_jobs && pi == n * bi / n_jobs {
 			ctx_files[bi] = cur_file
 			ctx_modules[bi] = cur_module
 			bi++
 		}
-		mut args := []Pass2PrepArgs{cap: n_jobs}
-		for ji in 0 .. n_jobs {
-			args << Pass2PrepArgs{
-				tc:          voidptr(tc)
-				start:       n * ji / n_jobs
-				end:         n * (ji + 1) / n_jobs
-				file:        ctx_files[ji]
-				module_name: ctx_modules[ji]
-				preps:       unsafe { voidptr(&preps) }
-			}
+		node := tc.a.nodes[tc.top_level_idx[pi]]
+		if node.kind == .file {
+			cur_file = node.value
+			cur_module = tc.file_modules[node.value] or { '' }
+		} else if node.kind == .module_decl {
+			cur_module = node.value
 		}
-		mut tasks := []workers.Task{cap: n_jobs}
-		for ji in 0 .. n_jobs {
-			tasks << workers.Task{
-				run:        pass2_fn_prep_thread
-				arg:        unsafe { voidptr(&args[ji]) }
-				force_sync: ji == 0
-			}
-		}
-		tc.a.worker_pool.run(tasks)
-		return preps
 	}
+	for bi < n_jobs {
+		ctx_files[bi] = cur_file
+		ctx_modules[bi] = cur_module
+		bi++
+	}
+	mut args := []Pass2PrepArgs{cap: n_jobs}
+	for ji in 0 .. n_jobs {
+		args << Pass2PrepArgs{
+			tc:          voidptr(tc)
+			start:       n * ji / n_jobs
+			end:         n * (ji + 1) / n_jobs
+			file:        ctx_files[ji]
+			module_name: ctx_modules[ji]
+			preps:       unsafe { voidptr(&preps) }
+		}
+	}
+	mut tasks := []workers.Task{cap: n_jobs}
+	for ji in 0 .. n_jobs {
+		tasks << workers.Task{
+			run:        pass2_fn_prep_thread
+			arg:        unsafe { voidptr(&args[ji]) }
+			force_sync: ji == 0
+		}
+	}
+	pool.run(tasks)
+	mut scopes := []voidptr{cap: n_jobs}
+	for arg in args {
+		if arg.scope != unsafe { nil } {
+			scopes << arg.scope
+		}
+	}
+	return preps, scopes
 }
 
 // finish_pass2_ancillary_registrations replays independent signature tables on
@@ -506,33 +533,29 @@ fn (mut tc TypeChecker) finish_pass2_ancillary_registrations() {
 	if tc.fn_ancillary_registrations.len == 0 {
 		return
 	}
-	$if windows {
-		for group in 0 .. 9 {
+	tc.disable_call_flag_bloom()
+	pool := checker_worker_pool(tc.a)
+	if isnil(pool) || pool.size() < 2 {
+		for group in 0 .. pass2_ancillary_groups {
 			tc.apply_pass2_ancillary_group(group)
 		}
-	} $else {
-		if isnil(tc.a.worker_pool) || tc.a.worker_pool.size() < 2 {
-			for group in 0 .. 9 {
-				tc.apply_pass2_ancillary_group(group)
+	} else {
+		mut args := []Pass2AncillaryArgs{cap: pass2_ancillary_groups}
+		mut tasks := []workers.Task{cap: pass2_ancillary_groups}
+		for group in 0 .. pass2_ancillary_groups {
+			args << Pass2AncillaryArgs{
+				tc:    voidptr(tc)
+				group: group
 			}
-		} else {
-			mut args := []Pass2AncillaryArgs{cap: 9}
-			mut tasks := []workers.Task{cap: 9}
-			for group in 0 .. 9 {
-				args << Pass2AncillaryArgs{
-					tc:    voidptr(tc)
-					group: group
-				}
-			}
-			for group in 0 .. 9 {
-				tasks << workers.Task{
-					run:        pass2_ancillary_thread
-					arg:        unsafe { voidptr(&args[group]) }
-					force_sync: group == 0
-				}
-			}
-			tc.a.worker_pool.run(tasks)
 		}
+		for group in 0 .. pass2_ancillary_groups {
+			tasks << workers.Task{
+				run:        pass2_ancillary_thread
+				arg:        unsafe { voidptr(&args[group]) }
+				force_sync: group == 0
+			}
+		}
+		pool.run(tasks)
 	}
 	tc.fn_ancillary_registrations = []FnAncillaryRegistration{}
 	tc.fn_c_variadic_registrations = []FnNamePairRegistration{}
@@ -574,15 +597,19 @@ fn (mut tc TypeChecker) apply_pass2_ancillary_group(group int) {
 		}
 	} else if group == 5 {
 		for registration in tc.fn_ret_text_registrations {
-			tc.fn_ret_type_texts[registration.name] = registration.text
+			tc.fn_ret_type_texts.set_id(registration.name, registration.text)
 		}
-	} else if group == 6 {
+	} else if group == 6 || group == 9 {
+		// The module-qualified and module-less keys land in separate maps, so the
+		// largest registration set is split over two lanes.
 		for registration in tc.visible_mutation_registrations {
-			tc.register_visible_mutation_fn_decl_with_lowered(registration.idx, registration.module_name, registration.qname, registration.source_name, registration.c_qname, registration.c_source_name)
+			tc.register_visible_mutation_fn_decl_keys(registration.idx, registration.module_name,
+				registration.qname, registration.source_name, registration.c_qname,
+				registration.c_source_name, group == 9)
 		}
 	} else if group == 7 {
 		for registration in tc.fn_ancillary_registrations {
-			tc.fn_ret_types[registration.name] = registration.ret_type
+			tc.register_generated_fn_return_type(registration.name, registration.ret_type)
 		}
 	} else if group == 8 {
 		for registration in tc.fn_ancillary_registrations {
@@ -593,108 +620,348 @@ fn (mut tc TypeChecker) apply_pass2_ancillary_group(group int) {
 	}
 }
 
-$if !windows {
-	struct Pass2AncillaryArgs {
-		tc    voidptr
-		group int
-	}
+// pass2_ancillary_groups is the number of independent table groups filled by
+// apply_pass2_ancillary_group.
+const pass2_ancillary_groups = 10
 
-	fn pass2_ancillary_thread(arg voidptr) voidptr {
-		a := unsafe { &Pass2AncillaryArgs(arg) }
-		mut tc := unsafe { &TypeChecker(a.tc) }
-		tc.apply_pass2_ancillary_group(a.group)
-		return unsafe { nil }
-	}
+struct Pass2AncillaryArgs {
+	tc    voidptr
+	group int
+}
 
-	struct Pass2PrepArgs {
-		tc          voidptr // master &TypeChecker
-		start       int
-		end         int
-		file        string
-		module_name string
-		preps       voidptr // &[]Pass2FnPrep — shards fill disjoint positions
-	}
+fn pass2_ancillary_thread(arg voidptr) voidptr {
+	a := unsafe { &Pass2AncillaryArgs(arg) }
+	mut tc := unsafe { &TypeChecker(a.tc) }
+	tc.apply_pass2_ancillary_group(a.group)
+	return unsafe { nil }
+}
 
-	fn pass2_fn_prep_thread(arg voidptr) voidptr {
-		a := unsafe { &Pass2PrepArgs(arg) }
-		master := unsafe { &TypeChecker(a.tc) }
-		mut view := master.fork_for_parallel_transform(master.a)
-		view.cur_file = a.file
-		view.cur_module = a.module_name
-		mut preps := unsafe { &[]Pass2FnPrep(a.preps) }
-		view.collect_pass2_fn_range(a.start, a.end, mut *preps)
-		return unsafe { nil }
-	}
+struct Pass2PrepArgs {
+	tc          voidptr // master &TypeChecker
+	start       int
+	end         int
+	file        string
+	module_name string
+	preps       voidptr // &[]Pass2FnPrep — shards fill disjoint positions
+mut:
+	scope voidptr // the lane's arena, left for the collecting thread to release
+}
 
-	// UnusedAliveScanArgs shards the unused-declaration reference scan: each
-	// task probes its node range against the shared read-only candidate-key
-	// maps and records hits in a private alive array.
-	struct UnusedAliveScanArgs {
-		tc         voidptr // &TypeChecker
-		fn_keys    map[string][]int
-		const_keys map[string][]int
-		start      int
-		end        int
-	mut:
-		alive []bool
+fn pass2_fn_prep_thread(arg voidptr) voidptr {
+	mut a := unsafe { &Pass2PrepArgs(arg) }
+	master := unsafe { &TypeChecker(a.tc) }
+	// The fork, its caches and the parse scratch die with the lane's arena.
+	// Pass 2 copies what it keeps into the collecting thread's arena: a pool
+	// thread's own arena is released with the pool, while the checker lives on.
+	scope := check_worker_scope_begin(master.scope_parallel_check_workers)
+	mut view := master.fork_for_parallel_transform(master.a)
+	view.cur_file = a.file
+	view.cur_module = a.module_name
+	mut preps := unsafe { &[]Pass2FnPrep(a.preps) }
+	view.collect_pass2_fn_range(a.start, a.end, mut *preps)
+	if scope != unsafe { nil } {
+		mark_pass2_fn_prep_scope(mut *preps, a.start, a.end, scope)
+		check_worker_scope_leave(scope)
+		a.scope = scope
 	}
+	return unsafe { nil }
+}
 
-	fn unused_alive_scan_thread(arg voidptr) voidptr {
-		mut a := unsafe { &UnusedAliveScanArgs(arg) }
-		tc := unsafe { &TypeChecker(a.tc) }
-		tc.scan_unused_alive_range(a.fn_keys, a.const_keys, a.start, a.end, mut a.alive)
-		return unsafe { nil }
-	}
-
-	struct CheckChunkArgs {
-		worker        voidptr
-		items_ptr     voidptr
-		dynamic_items voidptr
-		chunk_queue   chan int
-		scope_enabled bool
-		index         int
-	mut:
-		scope     voidptr
-		processed []CheckWorkItem
-	}
-
-	fn check_chunk_thread(arg voidptr) voidptr {
-		mut a := unsafe { &CheckChunkArgs(arg) }
-		cksw := time.new_stopwatch()
-		a.scope = check_worker_scope_begin(a.scope_enabled)
-		mut w := unsafe { &TypeChecker(a.worker) }
-		items := unsafe { &[]CheckWorkItem(a.items_ptr) }
-		configured_batches := os.getenv('V3_CHECK_WORKER_BATCHES').int()
-		batch_limit := if configured_batches > 0 {
-			configured_batches
-		} else if os.getenv('V3_NO_COARSER_CHECK_BATCHES') != '' {
-			scoped_check_worker_batches
-		} else {
-			scoped_check_worker_batches / 12
+fn mark_pass2_fn_prep_scope(mut preps []Pass2FnPrep, start int, end int, scope voidptr) {
+	for pi in start .. end {
+		if preps[pi].prepared {
+			preps[pi].scope = scope
 		}
-		if a.dynamic_items != unsafe { nil } {
-			chunks := unsafe { &[][]CheckWorkItem(a.dynamic_items) }
-			dynamic_batch_limit := int_max(1, batch_limit / dynamic_check_chunks_per_job)
-			for {
-				chunk_idx := <-a.chunk_queue or { break }
-				chunk := unsafe { chunks[chunk_idx] }
-				if a.scope_enabled {
-					w.check_scoped_batches(chunk, dynamic_batch_limit)
-				} else {
-					w.check_fn_items_serial(chunk)
-				}
-				a.processed << chunk
+	}
+}
+
+// Pass2TypePromotion copies lane-dependent type graphs into the enclosing arena.
+// Semantic cache keys remain valid while the lane's arena is mapped.
+struct Pass2TypePromotion {
+mut:
+	hashes [512]u64
+	values [512]Type
+	set    [512]bool
+}
+
+fn (mut p Pass2TypePromotion) promote(scope voidptr, typ Type) Type {
+	original := typ
+	match typ {
+		Void, Primitive, String, Char, Rune, ISize, USize, Nil, None, Struct, Interface, Enum, SumType {
+			if !type_payload_refers_to_scope(scope, &original) {
+				return original
 			}
-		} else if a.scope_enabled {
-			w.check_scoped_batches(*items, batch_limit)
-		} else {
-			w.check_fn_items_serial(*items)
 		}
-		check_worker_scope_leave(a.scope)
-		item_count := if a.dynamic_items == unsafe { nil } { items.len } else { a.processed.len }
-		w.timing_profile('  [ttime]     ck chunk ${a.index:2}  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${item_count})')
-		return unsafe { nil }
+		else {}
 	}
+	// Stable graphs can retain their references, without recursively hashing a cycle.
+	if !type_refers_to_scope(scope, typ) {
+		return typ
+	}
+	hash := semantic_type_hash(typ)
+	slot := int(hash & u64(p.set.len - 1))
+	if p.set[slot] && p.hashes[slot] == hash && semantic_types_equal(&p.values[slot], typ) {
+		return p.values[slot]
+	}
+	owned := clone_owned_type(typ)
+	p.hashes[slot] = hash
+	p.values[slot] = owned
+	p.set[slot] = true
+	return owned
+}
+
+// Bootstrap compilers can still box Type variants. Taking the address after
+// narrowing finds that box as well as the payload of an inline tagged union.
+// Large immutable variants keep their payload behind an embedded reference.
+fn type_payload_refers_to_scope(scope voidptr, typ &Type) bool {
+	if scope == unsafe { nil } {
+		return false
+	}
+	payload := match typ {
+		Void { voidptr(&typ) }
+		Unknown { voidptr(&typ) }
+		Primitive { voidptr(&typ) }
+		String { voidptr(&typ) }
+		Char { voidptr(&typ) }
+		Rune { voidptr(&typ) }
+		ISize { voidptr(&typ) }
+		USize { voidptr(&typ) }
+		Nil { voidptr(&typ) }
+		None { voidptr(&typ) }
+		Array { voidptr(&typ) }
+		ArrayFixed { voidptr(&typ) }
+		Channel { voidptr(&typ) }
+		Map { voidptr(&typ) }
+		Pointer { voidptr(&typ) }
+		FnType { voidptr(&typ) }
+		OptionType { voidptr(&typ) }
+		ResultType { voidptr(&typ) }
+		Struct { voidptr(&typ) }
+		Interface { voidptr(&typ) }
+		Enum { voidptr(&typ) }
+		SumType { voidptr(&typ) }
+		Alias { voidptr(&typ) }
+		MultiReturn { voidptr(&typ) }
+	}
+	// The allocator only checks whether this storage belongs to the live scope.
+	if unsafe { prealloc_scope_owns(scope, payload) } {
+		return true
+	}
+	indirect := match typ {
+		Unknown { voidptr(typ.UnknownDataRef) }
+		ArrayFixed { voidptr(typ.ArrayFixedDataRef) }
+		Channel { voidptr(typ.ChannelDataRef) }
+		Map { voidptr(typ.MapDataRef) }
+		FnType { voidptr(typ.FnTypeDataRef) }
+		Alias { voidptr(typ.AliasDataRef) }
+		MultiReturn { voidptr(typ.MultiReturnDataRef) }
+		else { return false }
+	}
+	return unsafe { prealloc_scope_owns(scope, indirect) }
+}
+
+// type_refers_to_scope inspects actual descriptor references and their metadata storage.
+// A descriptor outside the lane can still refer to its lists, strings or child types.
+fn type_refers_to_scope(scope voidptr, typ &Type) bool {
+	if scope == unsafe { nil } {
+		return false
+	}
+	mut pending := []&Type{cap: 8}
+	pending << typ
+	mut visited := map[u64]bool{}
+	for pending.len > 0 {
+		current := pending.pop()
+		if unsafe { prealloc_scope_owns(scope, current) }
+			|| type_payload_refers_to_scope(scope, current) {
+			return true
+		}
+		address := u64(voidptr(current))
+		if address in visited {
+			continue
+		}
+		visited[address] = true
+		match current {
+			Unknown {
+				if current.reason.len > 0 && unsafe { prealloc_scope_owns(scope, current.reason.str) } {
+					return true
+				}
+			}
+			Array {
+				pending << current.elem_type
+			}
+			ArrayFixed {
+				if current.len_expr.len > 0 && unsafe { prealloc_scope_owns(scope, current.len_expr.str) } {
+					return true
+				}
+				pending << current.elem_type
+			}
+			Channel {
+				pending << current.elem_type
+			}
+			Map {
+				pending << current.key_type
+				pending << current.value_type
+			}
+			Pointer {
+				pending << current.base_type
+			}
+			OptionType {
+				pending << current.base_type
+			}
+			ResultType {
+				pending << current.base_type
+			}
+			Alias {
+				pending << current.base_type
+			}
+			FnType {
+				if current.params.len > 0 && unsafe { prealloc_scope_owns(scope, current.params.data) } {
+					return true
+				}
+				for param in current.params {
+					pending << param.typ
+				}
+				pending << current.return_type
+			}
+			MultiReturn {
+				if current.types.len > 0 && unsafe { prealloc_scope_owns(scope, current.types.data) } {
+					return true
+				}
+				for i in 0 .. current.types.len {
+					pending << &current.types[i]
+				}
+			}
+			else {}
+		}
+	}
+	return false
+}
+
+@[inline]
+fn same_string_data(a string, b string) bool {
+	return a.str == b.str && a.len == b.len
+}
+
+fn pass2_owned_string(scope voidptr, s string) string {
+	if s.len > 0 && unsafe { prealloc_scope_owns(scope, s.str) } {
+		return s.clone()
+	}
+	return s
+}
+
+// promote_pass2_fn_prep copies what a pass-2 lane computed for one function
+// out of the lane's arena, which is still mapped, into the current one.
+fn promote_pass2_fn_prep(lane_prep Pass2FnPrep, mut types Pass2TypePromotion) Pass2FnPrep {
+	scope := lane_prep.scope
+	if scope == unsafe { nil } {
+		return lane_prep
+	}
+	mut prep := lane_prep
+	prep.scope = unsafe { nil }
+	prep.ret_type = types.promote(scope, lane_prep.ret_type)
+	mut ptypes := []Type{cap: lane_prep.ptypes.len}
+	for typ in lane_prep.ptypes {
+		ptypes << types.promote(scope, typ)
+	}
+	prep.ptypes = ptypes
+	prep.param_type_ids = lane_prep.param_type_ids.clone()
+	prep.shared_params = if lane_prep.shared_params.len > 0 {
+		lane_prep.shared_params.clone()
+	} else {
+		[]bool{}
+	}
+	// The three names are often one string.
+	qname := pass2_owned_string(scope, lane_prep.qname)
+	lowered_qname := if same_string_data(lane_prep.lowered_qname, lane_prep.qname) {
+		qname
+	} else {
+		pass2_owned_string(scope, lane_prep.lowered_qname)
+	}
+	prep.lowered_source_name = if same_string_data(lane_prep.lowered_source_name, lane_prep.lowered_qname) {
+		lowered_qname
+	} else if same_string_data(lane_prep.lowered_source_name, lane_prep.qname) {
+		qname
+	} else {
+		pass2_owned_string(scope, lane_prep.lowered_source_name)
+	}
+	prep.qname = qname
+	prep.lowered_qname = lowered_qname
+	prep.owned_lists = true
+	return prep
+}
+
+// UnusedAliveScanArgs shards the unused-declaration reference scan: each
+// task probes its node range against the shared read-only candidate-key
+// maps and records hits in a private alive array.
+struct UnusedAliveScanArgs {
+	tc         voidptr // &TypeChecker
+	fn_keys    map[string][]int
+	const_keys map[string][]int
+	start      int
+	end        int
+mut:
+	alive []bool
+}
+
+fn unused_alive_scan_thread(arg voidptr) voidptr {
+	mut a := unsafe { &UnusedAliveScanArgs(arg) }
+	tc := unsafe { &TypeChecker(a.tc) }
+	tc.scan_unused_alive_range(a.fn_keys, a.const_keys, a.start, a.end, mut a.alive)
+	return unsafe { nil }
+}
+
+struct CheckChunkArgs {
+	worker        voidptr
+	items_ptr     voidptr
+	dynamic_items voidptr
+	chunk_queue   chan int
+	scope_enabled bool
+	index         int
+mut:
+	scope     voidptr
+	processed []CheckWorkItem
+}
+
+fn check_chunk_thread(arg voidptr) voidptr {
+	mut a := unsafe { &CheckChunkArgs(arg) }
+	cksw := time.new_stopwatch()
+	a.scope = check_worker_scope_begin(a.scope_enabled)
+	mut w := unsafe { &TypeChecker(a.worker) }
+	items := unsafe { &[]CheckWorkItem(a.items_ptr) }
+	configured_batches := os.getenv('V3_CHECK_WORKER_BATCHES').int()
+	batch_limit := if configured_batches > 0 {
+		configured_batches
+	} else if os.getenv('V3_NO_COARSER_CHECK_BATCHES') != '' {
+		scoped_check_worker_batches
+	} else {
+		scoped_check_worker_batches / 12
+	}
+	w.reuse_check_batch_scope = a.scope_enabled
+	if a.dynamic_items != unsafe { nil } {
+		chunks := unsafe { &[][]CheckWorkItem(a.dynamic_items) }
+		dynamic_batch_limit := int_max(1, batch_limit / dynamic_check_chunks_per_job)
+		for {
+			chunk_idx := <-a.chunk_queue or { break }
+			chunk := unsafe { chunks[chunk_idx] }
+			if a.scope_enabled {
+				w.check_scoped_batches(chunk, dynamic_batch_limit)
+			} else {
+				w.check_fn_items_serial(chunk)
+			}
+			a.processed << chunk
+		}
+	} else if a.scope_enabled {
+		w.check_scoped_batches(*items, batch_limit)
+	} else {
+		w.check_fn_items_serial(*items)
+	}
+	check_worker_scope_free(w.check_batch_scope)
+	w.check_batch_scope = unsafe { nil }
+	w.reuse_check_batch_scope = false
+	check_worker_scope_leave(a.scope)
+	item_count := if a.dynamic_items == unsafe { nil } { items.len } else { a.processed.len }
+	w.timing_profile('  [ttime]     ck chunk ${a.index:2}  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${item_count})')
+	return unsafe { nil }
 }
 
 // check_scoped_batches bounds each worker's temporary type-resolution state.
@@ -705,14 +972,16 @@ fn (mut tc TypeChecker) check_scoped_batches(items []CheckWorkItem, batch_limit 
 	if items.len == 0 {
 		return
 	}
-	n_batches := if items.len < batch_limit {
-		items.len
-	} else {
-		batch_limit
-	}
 	mut total_cost := i64(0)
 	for item in items {
 		total_cost += i64(item.cost) + 1
+	}
+	n_batches := scoped_check_batch_count(items.len, total_cost, batch_limit)
+	// A caller that did not opt in (the serial check) reuses one batch arena
+	// for all of its batches here, as the workers do across their chunks.
+	owns_batch_scope := !tc.reuse_check_batch_scope
+	if owns_batch_scope {
+		tc.reuse_check_batch_scope = true
 	}
 	mut start := 0
 	mut consumed_cost := i64(0)
@@ -724,15 +993,63 @@ fn (mut tc TypeChecker) check_scoped_batches(items []CheckWorkItem, batch_limit 
 			consumed_cost += i64(items[end].cost) + 1
 			end++
 		}
-		scratch_scope := check_worker_scope_begin(true)
+		scratch_scope := tc.begin_check_batch_scope()
 		mut batch := tc.fork_for_parallel_check()
 		batch.check_fn_items_serial(items[start..end])
 		check_worker_scope_leave(scratch_scope)
 		tc.clone_parallel_worker_node_caches(items[start..end])
 		tc.merge_parallel_check_worker_scoped(batch, true)
-		check_worker_scope_free(scratch_scope)
+		tc.end_check_batch_scope(scratch_scope)
 		start = end
 	}
+	if owns_batch_scope {
+		check_worker_scope_free(tc.check_batch_scope)
+		tc.check_batch_scope = unsafe { nil }
+		tc.reuse_check_batch_scope = false
+	}
+}
+
+// check_batch_arena_keep_bytes bounds how much of a worker's batch arena stays
+// mapped between its batches (see prealloc_scope_reenter).
+const check_batch_arena_keep_bytes = int(8) * 1024 * 1024
+
+// begin_check_batch_scope starts the arena of one check batch. A worker that
+// reuses its batch arena rewinds the previous batch's one: unmapping and
+// faulting in the arena again for every batch is slower than reusing it.
+fn (mut tc TypeChecker) begin_check_batch_scope() voidptr {
+	$if prealloc {
+		if tc.reuse_check_batch_scope && tc.check_batch_scope != unsafe { nil } {
+			scope := tc.check_batch_scope
+			tc.check_batch_scope = unsafe { nil }
+			if unsafe { prealloc_scope_reenter(scope, check_batch_arena_keep_bytes) } {
+				return scope
+			}
+			check_worker_scope_free(scope)
+		}
+	}
+	return check_worker_scope_begin(true)
+}
+
+// end_check_batch_scope releases a batch arena once its results are merged, or
+// keeps it for the worker's next batch.
+fn (mut tc TypeChecker) end_check_batch_scope(scope voidptr) {
+	if tc.reuse_check_batch_scope && scope != unsafe { nil } {
+		tc.check_batch_scope = scope
+		return
+	}
+	check_worker_scope_free(scope)
+}
+
+// scoped_check_batch_count splits `n_items` of `total_cost` into at most
+// `batch_limit` batches, and into fewer when a batch would check fewer nodes
+// than min_scoped_check_batch_cost.
+fn scoped_check_batch_count(n_items int, total_cost i64, batch_limit int) int {
+	mut n := int_min(n_items, batch_limit)
+	by_cost := total_cost / min_scoped_check_batch_cost
+	if by_cost < i64(n) {
+		n = int(by_cost)
+	}
+	return int_max(n, 1)
 }
 
 fn check_worker_scope_begin(enabled bool) voidptr {
@@ -760,10 +1077,83 @@ fn check_worker_scope_free(scope voidptr) {
 	}
 }
 
+// free_check_worker_scopes releases `scopes`; with a pool, side by side, since
+// unmapping them one after another takes a while.
+fn free_check_worker_scopes(pool &workers.Pool, scopes []voidptr) {
+	if scopes.len < 2 || isnil(pool) || pool.size() == 0 {
+		for scope in scopes {
+			check_worker_scope_free(scope)
+		}
+		return
+	}
+	mut tasks := []workers.Task{cap: scopes.len}
+	for scope in scopes {
+		tasks << workers.Task{
+			run:        check_worker_scope_free_thread
+			arg:        scope
+			force_sync: tasks.len == 0
+		}
+	}
+	pool.run(tasks)
+}
+
+fn check_worker_scope_free_thread(scope voidptr) voidptr {
+	check_worker_scope_free(scope)
+	return unsafe { nil }
+}
+
+// checker_serial_only reports whether v3 was built with the internal
+// `v3_no_parallel` define. The other compiler phases swap in serial variant files
+// for that build; the checker keeps one implementation and instead reaches the
+// worker pool only through checker_worker_pool and ensure_checker_worker_pool.
+fn checker_serial_only() bool {
+	$if v3_no_parallel ? {
+		return true
+	}
+	return false
+}
+
+// checker_worker_pool returns the pool a checker pass may fan work out to. It is
+// nil when there is none, and in `v3_no_parallel` builds even when the driver
+// started one, so the pass takes its serial fallback.
+fn checker_worker_pool(a &flat.FlatAst) &workers.Pool {
+	if isnil(a) || checker_serial_only() {
+		return unsafe { nil }
+	}
+	return a.worker_pool
+}
+
+// ensure_checker_worker_pool returns the pool for the parallel semantic check,
+// starting one sized from VJOBS when the driver did not. It returns nil, and
+// starts nothing, in `v3_no_parallel` builds.
+fn ensure_checker_worker_pool(mut a flat.FlatAst) &workers.Pool {
+	if checker_serial_only() {
+		return unsafe { nil }
+	}
+	if isnil(a.worker_pool) {
+		a.worker_pool = workers.new(runtime.nr_jobs() - 1)
+	}
+	return a.worker_pool
+}
+
 // check_semantics_opt runs semantic checks, using worker threads for independent
 // function bodies when requested and there is enough work.
 pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
+	mut pfsw := time.new_stopwatch()
 	error_count := tc.errors.len
+	if !isnil(tc.a) {
+		tc.check_decl_indexes = tc.new_check_decl_indexes()
+		tc.source_type_keyword_memo = &SourceTypeKeywordMemo{}
+	}
+	defer {
+		tc.retire_check_decl_indexes()
+	}
+	tc.prepare_check_name_filters()
+	// Later stages write the flag tables without going through registration.
+	defer {
+		tc.disable_call_flag_bloom()
+	}
+	tc.check_postfix_value_uses_preflight()
 	tc.check_for_in_const_conflicts_preflight()
 	if tc.checker_fixture_mode && tc.errors.len > 0 {
 		return false
@@ -776,7 +1166,8 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 			return false
 		}
 	}
-	if !want_parallel {
+	tc.timing_profile('  [ttime]   ck preflights    ${f64(pfsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	if !want_parallel || checker_serial_only() {
 		if tc.scope_parallel_check_workers {
 			tc.check_semantics_scoped_serial()
 		} else {
@@ -784,12 +1175,7 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 		}
 		return false
 	}
-	$if windows {
-		tc.check_semantics()
-		return false
-	} $else {
-		return tc.check_semantics_parallel()
-	}
+	return tc.check_semantics_parallel()
 }
 
 // check_semantics_scoped_serial keeps a no-parallel preallocated check bounded
@@ -797,18 +1183,34 @@ pub fn (mut tc TypeChecker) check_semantics_opt(want_parallel bool) bool {
 // independently when scope_parallel_check_workers is enabled.
 fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.resolution_type_mode = false
+	tc.checked_const_names = map[string]bool{}
+	tc.check_import_diagnostics()
+	tc.check_duplicate_fn_declarations()
 	tc.install_type_cache_overlay()
 	tc.defer_ierror_gating = tc.diagnostic_files.len > 0
-	tc.selected_file_called_fns = map[string]bool{}
-	tc.selected_file_worklist = []string{}
+	tc.collect_selected_file_called_fns()
 	tc.check_export_attrs()
-	items := tc.collect_parallel_check_items()
+	tc.check_custom_attribute_uses()
+	tc.check_c_js_generic_declarations()
+	tc.check_interface_reserved_parameter_names()
+	tc.check_goto_labels()
+	tc.check_labelled_loop_controls()
+	items := tc.incremental_select(tc.collect_parallel_check_items())
 	tc.check_top_level_declarations()
 	final_file := tc.cur_file
 	final_module := tc.cur_module
-	tc.check_scoped_batches(items, scoped_check_serial_batches)
+	if tc.incremental_skipping() {
+		tc.check_incremental_items(items)
+	} else {
+		tc.check_scoped_batches(items, scoped_check_serial_batches)
+	}
+	tc.capture_items = false
 	tc.cur_file = final_file
 	tc.cur_module = final_module
+	if !tc.valid_diagnostic_fast {
+		tc.check_unused_import_diagnostics()
+	}
+	tc.check_selective_builtin_import_diagnostics()
 	if tc.defer_ierror_gating {
 		if tc.pending_ierror_errors.len > 0 {
 			tc.collect_selected_file_called_fns()
@@ -818,6 +1220,7 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 		}
 		tc.defer_ierror_gating = false
 	}
+	tc.discard_cascading_fn_redefinition_diagnostics()
 	tc.sort_parallel_check_errors()
 	tc.restore_type_cache_base()
 	tc.direct_parent_index_trusted = false
@@ -829,7 +1232,9 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 // proven that every top-level declaration is unchanged.
 pub fn (mut tc TypeChecker) check_semantics_selected(selected map[string]bool) {
 	tc.resolution_type_mode = false
+	tc.check_duplicate_fn_declarations()
 	tc.check_export_attrs()
+	tc.check_custom_attribute_uses()
 	items := tc.collect_parallel_check_items()
 	tc.check_top_level_declarations()
 	mut selected_items := []CheckWorkItem{cap: selected.len}
@@ -850,6 +1255,7 @@ pub fn (mut tc TypeChecker) check_semantics_selected(selected map[string]bool) {
 // source shapes that have already proven they cannot declare any other items.
 pub fn (mut tc TypeChecker) check_semantics_reachable(selected map[string]bool) {
 	tc.resolution_type_mode = false
+	tc.check_duplicate_fn_declarations()
 	tc.cur_module = ''
 	tc.cur_file = ''
 	mut items := []CheckWorkItem{cap: selected.len}
@@ -922,6 +1328,13 @@ fn (tc &TypeChecker) scan_unused_alive_range(fn_keys map[string][]int, const_key
 					}
 				}
 			}
+			if resolved := tc.resolved_fn_value_name(flat.NodeId(i)) {
+				if hits := fn_keys[resolved] {
+					for cand_idx in hits {
+						alive[cand_idx] = true
+					}
+				}
+			}
 		}
 		if node.kind == .call && node.children_count > 0 {
 			callee := tc.a.child_node(&node, 0)
@@ -948,100 +1361,142 @@ fn (tc &TypeChecker) scan_unused_alive_range(fn_keys map[string][]int, const_key
 // worker pool when available; hit-flag OR-merging keeps the result identical
 // to the serial scan regardless of shard boundaries.
 fn (mut tc TypeChecker) scan_unused_candidate_references(fn_keys map[string][]int, const_keys map[string][]int, mut alive []bool) {
-	$if windows {
-		tc.scan_unused_alive_range(fn_keys, const_keys, 0, tc.a.nodes.len, mut alive)
-		return
-	} $else {
-		n_nodes := tc.a.nodes.len
-		if isnil(tc.a.worker_pool) || tc.a.worker_pool.size() == 0 || n_nodes < 262_144 {
-			tc.scan_unused_alive_range(fn_keys, const_keys, 0, n_nodes, mut alive)
-			return
-		}
-		mut n_jobs := tc.a.worker_pool.size() + 1
-		if n_jobs > 8 {
-			n_jobs = 8
-		}
-		mut args := []UnusedAliveScanArgs{cap: n_jobs}
-		mut tasks := []workers.Task{cap: n_jobs}
-		for job in 0 .. n_jobs {
-			args << UnusedAliveScanArgs{
-				tc:         voidptr(tc)
-				fn_keys:    fn_keys
-				const_keys: const_keys
-				start:      n_nodes * job / n_jobs
-				end:        n_nodes * (job + 1) / n_jobs
-				alive:      []bool{len: alive.len}
-			}
-		}
-		for job in 0 .. n_jobs {
-			tasks << workers.Task{
-				run:        unused_alive_scan_thread
-				arg:        unsafe { voidptr(&args[job]) }
-				force_sync: job == 0
-			}
-		}
-		tc.a.worker_pool.run(tasks)
-		for arg in args {
-			for cand_idx in 0 .. alive.len {
-				if arg.alive[cand_idx] {
+	n_nodes := tc.a.nodes.len
+	start := tc.prepared_names_start()
+	if start > 0 {
+		// The prepared nodes were scanned once, before the first check.
+		prepared := tc.prepared_collect
+		for key, hits in const_keys {
+			if key in prepared.named {
+				for cand_idx in hits {
 					alive[cand_idx] = true
 				}
+			}
+		}
+		for key, hits in fn_keys {
+			if key in prepared.called || key in prepared.function_named {
+				for cand_idx in hits {
+					alive[cand_idx] = true
+				}
+			}
+		}
+	}
+	pool := checker_worker_pool(tc.a)
+	if isnil(pool) || pool.size() == 0 || n_nodes - start < 262_144 {
+		tc.scan_unused_alive_range(fn_keys, const_keys, start, n_nodes, mut alive)
+		return
+	}
+	mut n_jobs := pool.size() + 1
+	if n_jobs > 8 {
+		n_jobs = 8
+	}
+	mut args := []UnusedAliveScanArgs{cap: n_jobs}
+	mut tasks := []workers.Task{cap: n_jobs}
+	for job in 0 .. n_jobs {
+		args << UnusedAliveScanArgs{
+			tc:         voidptr(tc)
+			fn_keys:    fn_keys
+			const_keys: const_keys
+			start:      start + (n_nodes - start) * job / n_jobs
+			end:        start + (n_nodes - start) * (job + 1) / n_jobs
+			alive:      []bool{len: alive.len}
+		}
+	}
+	for job in 0 .. n_jobs {
+		tasks << workers.Task{
+			run:        unused_alive_scan_thread
+			arg:        unsafe { voidptr(&args[job]) }
+			force_sync: job == 0
+		}
+	}
+	pool.run(tasks)
+	for arg in args {
+		for cand_idx in 0 .. alive.len {
+			if arg.alive[cand_idx] {
+				alive[cand_idx] = true
 			}
 		}
 	}
 }
 
 fn (mut tc TypeChecker) check_semantics_parallel() bool {
-	$if windows {
-		tc.check_semantics()
-		return false
-	} $else {
-		tc.resolution_type_mode = false
-		// Freeze the warm post-collect type cache as the shared read-only base
-		// for every worker thread and the master itself via a private overlay.
-		tc.install_type_cache_overlay()
-		// Invalid-IError-return diagnostics are gated to functions reachable
-		// from the selected files. Most successful compiles never produce a
-		// candidate, so defer the call-graph walk until after checking and only
-		// run it when there is something to filter.
-		tc.defer_ierror_gating = tc.diagnostic_files.len > 0
-		tc.selected_file_called_fns = map[string]bool{}
-		tc.selected_file_worklist = []string{}
-		mut cksw := time.new_stopwatch()
-		tc.check_export_attrs()
-		tc.timing_profile('  [ttime]   ck export attrs  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-		cksw.restart()
-		// The work list only drives the dispatch below; keep it and its
-		// collection scratch out of the persistent arena.
-		items_scope := check_worker_scope_begin(tc.scope_parallel_check_workers)
-		items := tc.collect_parallel_check_items()
-		check_worker_scope_leave(items_scope)
-		tc.timing_profile('  [ttime]   ck collect items ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${items.len})')
-		final_file := tc.cur_file
-		final_module := tc.cur_module
-		was_parallel := tc.run_parallel_check(items)
-		check_worker_scope_free(items_scope)
-		// Per-function check costs only schedule the parallel batches above.
-		unsafe { tc.fn_check_costs.free() }
-		tc.fn_check_costs = []i32{}
-		tc.cur_file = final_file
-		tc.cur_module = final_module
-		if tc.defer_ierror_gating {
-			if tc.pending_ierror_errors.len > 0 {
-				tc.collect_selected_file_called_fns()
-			}
-			if tc.filter_pending_ierror_errors() {
-				tc.sort_parallel_check_errors()
-			}
-			tc.defer_ierror_gating = false
-		}
-		tc.restore_type_cache_base()
-		// Match the serial checker: only generated post-check type text may use the
-		// cross-module generic-argument fallback.
-		tc.direct_parent_index_trusted = false
-		tc.resolution_type_mode = true
-		return was_parallel
+	tc.resolution_type_mode = false
+	tc.checked_const_names = map[string]bool{}
+	mut presw := time.new_stopwatch()
+	tc.check_import_diagnostics()
+	tc.timing_profile('  [ttime]   ck import diag   ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	presw.restart()
+	tc.check_duplicate_fn_declarations()
+	tc.timing_profile('  [ttime]   ck dup fns       ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	presw.restart()
+	// Freeze the warm post-collect type cache as the shared read-only base
+	// for every worker thread and the master itself via a private overlay.
+	tc.install_type_cache_overlay()
+	tc.timing_profile('  [ttime]   ck overlay       ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	// Invalid-IError-return diagnostics are gated to functions reachable
+	// from the selected files. Most successful compiles never produce a
+	// candidate, so defer the call-graph walk until after checking and only
+	// run it when there is something to filter.
+	tc.defer_ierror_gating = tc.diagnostic_files.len > 0
+	mut selsw := time.new_stopwatch()
+	tc.collect_selected_file_called_fns()
+	tc.timing_profile('  [ttime]   ck called fns    ${f64(selsw.elapsed().microseconds()) / 1000.0:7.2f} ms (${tc.selected_file_called_fns.len})')
+	mut cksw := time.new_stopwatch()
+	tc.check_export_attrs()
+	tc.check_custom_attribute_uses()
+	tc.check_c_js_generic_declarations()
+	tc.check_interface_reserved_parameter_names()
+	tc.check_goto_labels()
+	tc.check_labelled_loop_controls()
+	tc.timing_profile('  [ttime]   ck export attrs  ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	cksw.restart()
+	// The work list only drives the dispatch below; keep it and its
+	// collection scratch out of the persistent arena.
+	items_scope := check_worker_scope_begin(tc.scope_parallel_check_workers)
+	all_items := tc.collect_parallel_check_items()
+	check_worker_scope_leave(items_scope)
+	// What an incremental check keeps outlives the work list.
+	items := tc.incremental_select(all_items)
+	tc.timing_profile('  [ttime]   ck collect items ${f64(cksw.elapsed().microseconds()) / 1000.0:7.2f} ms (items: ${items.len})')
+	final_file := tc.cur_file
+	final_module := tc.cur_module
+	mut was_parallel := false
+	if tc.incremental_skipping() {
+		tc.check_top_level_declarations()
+		tc.check_incremental_items(items)
+	} else {
+		was_parallel = tc.run_parallel_check(items, false)
 	}
+	tc.capture_items = false
+	mut tailsw := time.new_stopwatch()
+	check_worker_scope_free(items_scope)
+	// Per-function check costs only schedule the parallel batches above.
+	unsafe { tc.fn_check_costs.free() }
+	tc.fn_check_costs = []i32{}
+	tc.cur_file = final_file
+	tc.cur_module = final_module
+	if !tc.valid_diagnostic_fast {
+		tc.check_unused_import_diagnostics()
+	}
+	tc.check_selective_builtin_import_diagnostics()
+	if tc.defer_ierror_gating {
+		if tc.pending_ierror_errors.len > 0 {
+			tc.collect_selected_file_called_fns()
+		}
+		if tc.filter_pending_ierror_errors() {
+			tc.sort_parallel_check_errors()
+		}
+		tc.defer_ierror_gating = false
+	}
+	tc.discard_cascading_fn_redefinition_diagnostics()
+	tc.sort_parallel_check_errors()
+	tc.restore_type_cache_base()
+	// Match the serial checker: only generated post-check type text may use the
+	// cross-module generic-argument fallback.
+	tc.direct_parent_index_trusted = false
+	tc.resolution_type_mode = true
+	tc.timing_profile('  [ttime]   ck tail          ${f64(tailsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	return was_parallel
 }
 
 fn (mut tc TypeChecker) filter_pending_ierror_errors() bool {
@@ -1059,6 +1514,10 @@ fn (mut tc TypeChecker) filter_pending_ierror_errors() bool {
 fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 	tc.cur_module = ''
 	tc.cur_file = ''
+	blocking_import_files := tc.blocking_import_error_files()
+	// A library body is trusted, even an open generic one: it is checked for its
+	// own type parameters, never for the types a program passes to it.
+	library_bodies_trusted := tc.selected_files_only()
 	mut items := []CheckWorkItem{}
 	// Fn subtrees are contiguous: the fn_decl at index i owns exactly the node
 	// range (previous top-level node, i], so the span doubles as the cost
@@ -1076,6 +1535,18 @@ fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 				tc.enter_module(node.value)
 			}
 			.fn_decl {
+				if blocking_import_files[tc.cur_file] {
+					prev_tl = i
+					continue
+				}
+				if library_bodies_trusted && !tc.diagnostic_files[tc.cur_file] {
+					prev_tl = i
+					continue
+				}
+				if tc.skips_library_body(node) {
+					prev_tl = i
+					continue
+				}
 				span := i - prev_tl
 				cost := if i < tc.fn_check_costs.len && tc.fn_check_costs[i] > 0 {
 					tc.fn_check_costs[i]
@@ -1096,6 +1567,15 @@ fn (mut tc TypeChecker) collect_parallel_check_items() []CheckWorkItem {
 		prev_tl = i
 	}
 	return items
+}
+
+// selected_files_only reports whether diagnostics are wanted for the selected
+// files alone, as a client that shows no others asks with
+// V_CHECK_SELECTED_FILES_ONLY. Library code outside them is then trusted: its
+// concrete bodies and its signatures, which could only report on themselves,
+// are left unchecked.
+fn (tc &TypeChecker) selected_files_only() bool {
+	return tc.diagnostic_files.len > 0 && os.getenv('V_CHECK_SELECTED_FILES_ONLY') != ''
 }
 
 // check_top_level_declarations runs every declaration-level check (type
@@ -1127,30 +1607,78 @@ fn (mut tc TypeChecker) check_top_level_declaration_signatures() {
 	tc.check_top_level_declarations_filtered(false, true)
 }
 
-fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do_signatures bool) {
+fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, all_signatures bool) {
 	tc.cur_module = ''
 	tc.cur_file = ''
+	blocking_import_files := tc.blocking_import_error_files()
+	selected_files_only := tc.selected_files_only()
+	mut skip_file_semantics := false
+	mut do_signatures := all_signatures
+	mut file_values := do_values
+	// The written-type walks visit whole bodies; they share one stack.
+	mut written_types := []WrittenTypeItem{cap: 256}
 	for i in tc.top_level_idx {
 		node := tc.a.nodes[i]
+		if node.kind == .file {
+			skip_file_semantics = blocking_import_files[node.value]
+			// A signature check only reports on its own declaration.
+			do_signatures = all_signatures
+				&& (!selected_files_only || tc.diagnostic_files[node.value])
+			// So does a value check, as the bodies of the other files, which
+			// such a check leaves unchecked too.
+			file_values = do_values && (!selected_files_only || tc.diagnostic_files[node.value])
+		} else if skip_file_semantics && node.kind != .module_decl {
+			continue
+		}
+		// The generic-type walk also looks for a nested option or result type, so
+		// that the walk which reports one only runs when there is one.
+		mut no_nested_option_types := false
+		if do_signatures && node.kind in [.fn_decl, .struct_decl, .interface_decl, .type_decl,
+			.global_decl, .const_decl] {
+			no_nested_option_types = tc.check_written_generic_types(flat.NodeId(i), mut
+				written_types)
+		}
+		if do_signatures && !no_nested_option_types && (node.kind in [.fn_decl, .c_fn_decl,
+			.struct_decl, .interface_decl, .type_decl, .global_decl, .const_decl]
+			|| is_top_level_statement_kind(node.kind)) {
+			tc.check_written_nested_option_types(flat.NodeId(i), mut written_types)
+		}
 		match node.kind {
 			.file {
 				tc.enter_file(node.value)
-				if do_values {
+				if file_values {
 					tc.check_top_level_file_statements(node)
 				}
 			}
 			.module_decl {
 				tc.enter_module(node.value)
+				if do_signatures {
+					node_id := flat.NodeId(i)
+					tc.check_invalid_test_file_name(node_id, node)
+					if tc.should_check_source_name(node_id)
+						&& !snake_case_name_is_valid(node.value) {
+						tc.check_snake_case_name(node_id, node.value, 'module name', tc.declaration_keyword_name_pos(node_id, 'module'))
+					}
+				}
 			}
 			.struct_decl {
 				node_id := flat.NodeId(i)
 				if do_signatures {
-					if comma_attr_text_has(node.typ, 'typedef') && !node.value.starts_with('C.') {
+					tc.check_type_declaration_conflict(node_id, node)
+					if comma_attr_text_has(node.typ_text(), 'typedef') && !node.value.starts_with('C.') {
 						tc.record_error_at(.assignment_mismatch, '`typedef` attribute can only be used with C structs', node_id, tc.declaration_keyword_name_pos(node_id, 'struct'))
 					}
+					if tc.should_check_type_declaration_name(node_id, node)
+						&& !pascal_case_name_is_valid(node.value) {
+						tc.check_pascal_case_name(node_id, node.value, 'struct name', tc.declaration_keyword_name_pos(node_id, 'struct'))
+					}
 					tc.check_decl_type_strings(flat.NodeId(i), node)
+					tc.check_struct_implements(flat.NodeId(i), node)
+					if tc.declaration_has_attribute(node_id, 'attribute') {
+						tc.check_attribute_schema_decl(node_id, node)
+					}
 				}
-				if do_values {
+				if file_values {
 					tc.check_struct_field_defaults(node_id, node)
 				}
 			}
@@ -1159,33 +1687,57 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 					continue
 				}
 				node_id := flat.NodeId(i)
-				is_c_alias := node.kind == .type_decl && node.value.starts_with('C.')
-					&& node.children_count == 0 && split_sum_variant_texts(node.typ).len <= 1
-				if node.kind == .type_decl && !is_c_alias
-					&& tc.type_declaration_exists_before(node_id, node.value) {
-					kind := if node.children_count > 0 || split_sum_variant_texts(node.typ).len > 1 {
-						'sum type'
-					} else {
-						'alias'
+				tc.check_attribute_marker_target(node_id, node)
+				tc.check_type_declaration_conflict(node_id, node)
+				if node.kind == .interface_decl {
+					if tc.should_check_type_declaration_name(node_id, node)
+						&& !pascal_case_name_is_valid(node.value) {
+						tc.check_pascal_case_name(node_id, node.value, 'interface name', tc.source_line_declaration_pos(node_id))
 					}
-					tc.record_error_at(.duplicate_decl, 'cannot register ${kind} `${node.value}`, another type with this name exists', node_id, tc.declaration_keyword_name_pos(node_id, 'type'))
+					tc.check_interface_member_names(node)
+				} else {
+					type_kind := if node.children_count > 0 {
+						'sum type'
+					} else if flat.source_type_syntax(node.typ).fn_prefix() {
+						'fn type'
+					} else {
+						'type alias'
+					}
+					if tc.should_check_type_declaration_name(node_id, node)
+						&& !pascal_case_name_is_valid(node.value) {
+						tc.check_pascal_case_name(node_id, node.value, type_kind, tc.declaration_keyword_name_pos(node_id, 'type'))
+					}
 				}
 				tc.check_decl_type_strings(flat.NodeId(i), node)
 			}
 			.enum_decl {
-				if do_values {
+				if do_signatures {
+					node_id := flat.NodeId(i)
+					tc.check_attribute_marker_target(node_id, node)
+					tc.check_type_declaration_conflict(node_id, node)
+					if tc.should_check_type_declaration_name(node_id, node)
+						&& !pascal_case_name_is_valid(node.value) {
+						tc.check_pascal_case_name(node_id, node.value, 'enum name', tc.declaration_keyword_name_pos(node_id, 'enum'))
+					}
+				}
+				if file_values {
+					tc.check_enum_backing_type(flat.NodeId(i), node)
 					tc.check_enum_field_values(flat.NodeId(i), node)
 				}
 			}
 			.const_decl {
-				if do_values {
+				if file_values {
 					tc.check_const_field_values(node)
 				}
 			}
 			.global_decl {
-				if do_values {
-					if !tc.enable_globals && !tc.has_globals_files[tc.cur_file] {
-						tc.record_error_at(.duplicate_decl, 'use `v -enable-globals ...` to enable globals', flat.NodeId(i), node.pos)
+				if do_signatures {
+					tc.check_global_decl_semantics(flat.NodeId(i), node)
+				}
+				if file_values {
+					if !tc.enable_globals && !tc.has_globals_files[tc.cur_file]
+						&& !tc.node_is_from_translated_file(node) {
+						tc.record_error_at(.duplicate_decl, 'use `v -enable-globals ...` to enable globals', flat.NodeId(i), tc.source_line_declaration_pos(flat.NodeId(i)))
 					}
 					tc.check_const_global_initializers(node)
 				}
@@ -1194,7 +1746,9 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, do
 				if !do_signatures {
 					continue
 				}
+				tc.check_attribute_marker_target(flat.NodeId(i), node)
 				tc.check_fn_declaration_name(flat.NodeId(i), node)
+				tc.check_method_field_name_collision(flat.NodeId(i), node)
 				tc.check_main_fn_signature(flat.NodeId(i), node)
 				tc.check_init_fn_signature(flat.NodeId(i), node)
 				tc.check_str_method_signature(flat.NodeId(i), node)
@@ -1226,206 +1780,318 @@ fn check_top_level_decl_signatures_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
-fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem) bool {
-	$if windows {
-		tc.check_top_level_declarations()
-		tc.check_fn_items_serial(items)
-		return false
-	} $else {
-		mut ast := unsafe { tc.a }
-		if isnil(ast.worker_pool) {
-			ast.worker_pool = workers.new(runtime.nr_jobs() - 1)
-		}
-		mut n_jobs := check_job_count(ast.worker_pool.size() + 1, items.len)
-		if tc.scope_parallel_check_workers && n_jobs > max_scoped_check_jobs {
-			n_jobs = max_scoped_check_jobs
-		}
-		if items.len < min_parallel_check_items || n_jobs <= 1 {
+// SignatureCheckArgs is a scoped parallel check's run of the top-level
+// signature checks: on a fork in a disposable arena, merged as a body batch.
+struct SignatureCheckArgs {
+	master voidptr
+mut:
+	scope   voidptr
+	checker voidptr
+	errors  int // the diagnostics the fork started with, from the master
+	notices int
+}
+
+fn check_top_level_decl_signatures_scoped_thread(arg voidptr) voidptr {
+	mut a := unsafe { &SignatureCheckArgs(arg) }
+	master := unsafe { &TypeChecker(a.master) }
+	a.scope = check_worker_scope_begin(true)
+	mut w := master.fork_for_parallel_check()
+	// The checks do not repeat a diagnostic already reported. The master is
+	// idle on them: its own thread runs this task.
+	w.errors = master.errors.clone()
+	w.notices = master.notices.clone()
+	a.errors = w.errors.len
+	a.notices = w.notices.len
+	w.check_top_level_declaration_signatures()
+	check_worker_scope_leave(a.scope)
+	a.checker = voidptr(w)
+	return unsafe { nil }
+}
+
+// merge_scoped_signature_checks merges what the scoped signature checks found,
+// in the place of the master's own sparse cache writes, and releases their
+// arena.
+fn (mut tc TypeChecker) merge_scoped_signature_checks(mut a SignatureCheckArgs) {
+	if a.checker == unsafe { nil } {
+		check_worker_scope_free(a.scope)
+		return
+	}
+	mut w := unsafe { &TypeChecker(a.checker) }
+	// The fork started from the master's diagnostics, and the checks do not only
+	// append: they can remove or replace earlier ones (a nongeneric declaration's
+	// unknown types give way to its missing generic parameters). The fork's lists
+	// therefore replace the master's start, followed by anything the master
+	// reported after the fork was made.
+	tc.errors = merged_scoped_diagnostics(w.errors, tc.errors, a.errors)
+	tc.notices = merged_scoped_diagnostics(w.notices, tc.notices, a.notices)
+	w.errors = []TypeError{}
+	w.notices = []TypeError{}
+	tc.merge_parallel_check_worker_scoped(w, true)
+	a.checker = unsafe { nil }
+	check_worker_scope_free(a.scope)
+	a.scope = unsafe { nil }
+}
+
+// merged_scoped_diagnostics returns the diagnostics of a fork that started from
+// the first `forked` of `master`, copied out of the fork's arena, followed by
+// those the master reported after it.
+fn merged_scoped_diagnostics(fork []TypeError, master []TypeError, forked int) []TypeError {
+	mut merged := []TypeError{cap: fork.len + int_max(master.len - forked, 0)}
+	for err in fork {
+		merged << clone_parallel_type_error(err)
+	}
+	for i in forked .. master.len {
+		merged << master[i]
+	}
+	return merged
+}
+
+// run_parallel_check checks the bodies of `items` on the worker pool, and the
+// top-level declarations along with them, unless `bodies_only`: then it leaves
+// the diagnostics in the order the bodies reported them, after those already
+// found (see complete_incremental_check).
+fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bool) bool {
+	mut ast := unsafe { tc.a }
+	pool := ensure_checker_worker_pool(mut ast)
+	// Without a pool every item is checked by the serial branch below.
+	mut n_jobs := if isnil(pool) { 1 } else { check_job_count(pool.size() + 1, items.len) }
+	if tc.scope_parallel_check_workers && n_jobs > max_scoped_check_jobs {
+		n_jobs = max_scoped_check_jobs
+	}
+	n_jobs = parallel_check_jobs_for_cost(n_jobs, items)
+	if items.len < tc.parallel_check_min_items || n_jobs <= 1 {
+		if !bodies_only {
 			tc.check_top_level_declarations()
-			if tc.scope_parallel_check_workers {
-				tc.check_scoped_batches(items, scoped_check_serial_batches)
-			} else {
-				tc.check_fn_items_serial(items)
-			}
-			return false
 		}
-		// Initializer-value checks can mutate compilation-wide state that the
-		// body workers read (for example the const-cycle poisoning of
-		// tc.const_types), so they must complete before any chunk is
-		// submitted; only the read-only signature checks overlap the pool.
-		tlv_sw := time.new_stopwatch()
-		tc.check_top_level_declaration_values()
-		tc.timing_profile('  [ttime]   ck tl values     ${f64(tlv_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
-		mut chunk_target := n_jobs
 		if tc.scope_parallel_check_workers {
-			chunk_target = n_jobs * check_chunk_oversubscribe
-			if chunk_target > items.len {
-				chunk_target = items.len
-			}
-		}
-		fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
-		dynamic_dispatch := tc.scope_parallel_check_workers && tc.building_v_fast && fail.len == 0
-		// Dynamic workers record their actual assignments after dispatch; the
-		// static partition would only allocate and sort buckets that get replaced.
-		// The chunk partition only serves the dispatch below; keep it out of the
-		// persistent arena together with the worker forks.
-		setup_scope := check_worker_scope_begin(tc.scope_parallel_check_workers)
-		mut chunks := if dynamic_dispatch {
-			[][]CheckWorkItem{len: chunk_target}
+			tc.check_scoped_batches(items, scoped_check_serial_batches)
 		} else {
-			split_check_items(items, chunk_target)
+			tc.check_fn_items_serial(items)
 		}
-		chunk_count := chunks.len
-		mut dynamic_chunks := [][]CheckWorkItem{}
-		mut chunk_queue := chan int{cap: 1}
-		if dynamic_dispatch {
-			dynamic_target := int_min(items.len, chunk_count * dynamic_check_chunks_per_job)
-			dynamic_chunks = split_check_items(items, dynamic_target)
-			chunk_queue = chan int{cap: dynamic_chunks.len}
-			for ci in 0 .. dynamic_chunks.len {
-				chunk_queue <- ci
-			}
-			chunk_queue.close()
+		return false
+	}
+	// Initializer-value checks can mutate compilation-wide state that the
+	// body workers read (for example the const-cycle poisoning of
+	// tc.const_types), so they must complete before any chunk is
+	// submitted; only the read-only signature checks overlap the pool.
+	tlv_sw := time.new_stopwatch()
+	if !bodies_only {
+		tc.check_top_level_declaration_values()
+	}
+	tc.timing_profile('  [ttime]   ck tl values     ${f64(tlv_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	split_sw := time.new_stopwatch()
+	mut chunk_target := n_jobs
+	if tc.scope_parallel_check_workers {
+		chunk_target = n_jobs * check_chunk_oversubscribe
+		if chunk_target > items.len {
+			chunk_target = items.len
 		}
-		thread_count := chunk_count - 1
-		worker_count := if tc.scope_parallel_check_workers { chunk_count } else { thread_count }
-		rpsw := time.new_stopwatch()
-		mut checker_workers := []voidptr{cap: worker_count}
-		for _ in 0 .. worker_count {
-			mut w := tc.fork_for_parallel_check()
-			w.verbose = tc.verbose
-			checker_workers << voidptr(w)
+	}
+	fail := os.getenv('V3_TEST_PTHREAD_CREATE_FAIL')
+	dynamic_dispatch := tc.scope_parallel_check_workers && tc.building_v_fast && fail.len == 0
+	// Dynamic workers record their actual assignments after dispatch; the
+	// static partition would only allocate and sort buckets that get replaced.
+	// The chunk partition only serves the dispatch below; keep it out of the
+	// persistent arena together with the worker forks.
+	setup_scope := check_worker_scope_begin(tc.scope_parallel_check_workers)
+	mut chunks := if dynamic_dispatch {
+		[][]CheckWorkItem{len: chunk_target}
+	} else {
+		split_check_items(items, chunk_target)
+	}
+	chunk_count := chunks.len
+	mut dynamic_chunks := [][]CheckWorkItem{}
+	mut chunk_queue := chan int{cap: 1}
+	if dynamic_dispatch {
+		dynamic_target := int_min(items.len, chunk_count * dynamic_check_chunks_per_job)
+		dynamic_chunks = split_check_items(items, dynamic_target)
+		chunk_queue = chan int{cap: dynamic_chunks.len}
+		for ci in 0 .. dynamic_chunks.len {
+			chunk_queue <- ci
 		}
-		tc.timing_profile('  [ttime]   ck forks         ${f64(rpsw.elapsed().microseconds()) / 1000.0:7.2f} ms (workers: ${worker_count})')
-		mut args := []CheckChunkArgs{cap: chunk_count}
-		mut dynamic_items_ptr := unsafe { nil }
-		if dynamic_dispatch {
-			dynamic_items_ptr = unsafe { voidptr(&dynamic_chunks) }
+		chunk_queue.close()
+	}
+	thread_count := chunk_count - 1
+	worker_count := if tc.scope_parallel_check_workers { chunk_count } else { thread_count }
+	tc.timing_profile('  [ttime]   ck split         ${f64(split_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	rpsw := time.new_stopwatch()
+	mut checker_workers := []voidptr{cap: worker_count}
+	for _ in 0 .. worker_count {
+		mut w := tc.fork_for_parallel_check()
+		w.verbose = tc.verbose
+		checker_workers << voidptr(w)
+	}
+	tc.timing_profile('  [ttime]   ck forks         ${f64(rpsw.elapsed().microseconds()) / 1000.0:7.2f} ms (workers: ${worker_count})')
+	mut args := []CheckChunkArgs{cap: chunk_count}
+	mut dynamic_items_ptr := unsafe { nil }
+	if dynamic_dispatch {
+		dynamic_items_ptr = unsafe { voidptr(&dynamic_chunks) }
+	}
+	for ci in 0 .. chunk_count {
+		mut worker := voidptr(tc)
+		if tc.scope_parallel_check_workers {
+			worker = checker_workers[ci]
+		} else if ci > 0 {
+			worker = checker_workers[ci - 1]
 		}
-		for ci in 0 .. chunk_count {
-			mut worker := voidptr(tc)
-			if tc.scope_parallel_check_workers {
-				worker = checker_workers[ci]
-			} else if ci > 0 {
-				worker = checker_workers[ci - 1]
-			}
-			args << CheckChunkArgs{
-				worker:        worker
-				items_ptr:     unsafe { voidptr(&chunks[ci]) }
-				dynamic_items: dynamic_items_ptr
-				chunk_queue:   chunk_queue
-				scope_enabled: tc.scope_parallel_check_workers
-				index:         ci
-			}
+		args << CheckChunkArgs{
+			worker:        worker
+			items_ptr:     unsafe { voidptr(&chunks[ci]) }
+			dynamic_items: dynamic_items_ptr
+			chunk_queue:   chunk_queue
+			scope_enabled: tc.scope_parallel_check_workers
+			index:         ci
 		}
-		// The master checks its own chunk under the same range discipline as the
-		// workers: in-range cache writes go straight into the shared arrays (the
-		// master owns those slots), out-of-range ones into its sparse maps, which
-		// are replayed first after join so that worker merges overwrite them in
-		// the same order the old serial flow did. The read-only signature checks
-		// run as a final synchronous task, so the master performs them while the
-		// pool workers are still checking bodies; its sparse mode keeps their
-		// cache writes out of the worker-owned shared array ranges. The mutating
-		// value checks already ran before any chunk was created.
-		tc.parallel_check_sparse = true
-		mut tasks := []workers.Task{cap: chunk_count + 1}
-		for ci in 0 .. chunk_count {
-			helper_idx := ci - 1
-			tasks << workers.Task{
-				run:        check_chunk_thread
-				arg:        unsafe { voidptr(&args[ci]) }
-				force_sync: ci == 0 || fail == 'checker:all' || fail == 'checker:${helper_idx}'
-			}
-		}
+	}
+	// The master checks its own chunk under the same range discipline as the
+	// workers: in-range cache writes go straight into the shared arrays (the
+	// master owns those slots), out-of-range ones into its sparse maps, which
+	// are replayed first after join so that worker merges overwrite them in
+	// the same order the old serial flow did. The read-only signature checks
+	// run as a final synchronous task, so the master performs them while the
+	// pool workers are still checking bodies; its sparse mode keeps their
+	// cache writes out of the worker-owned shared array ranges. The mutating
+	// value checks already ran before any chunk was created.
+	tc.parallel_check_sparse = true
+	mut tasks := []workers.Task{cap: chunk_count + 1}
+	// Synchronous tasks run on the master in order. With dynamic dispatch its body
+	// chunks are checked by a fork pulling from the shared queue, so run the
+	// signature checks first: the helpers then take over the bodies the master
+	// would otherwise still be checking when they run out of work.
+	signatures_first := dynamic_dispatch && !bodies_only
+	// A scoped check keeps the signature checks' scratch out of the master's
+	// persistent arena too.
+	mut signature_args := &SignatureCheckArgs{
+		master: voidptr(tc)
+	}
+	signature_run := if tc.scope_parallel_check_workers {
+		check_top_level_decl_signatures_scoped_thread
+	} else {
+		check_top_level_decl_signatures_thread
+	}
+	signature_arg := if tc.scope_parallel_check_workers {
+		voidptr(signature_args)
+	} else {
+		voidptr(tc)
+	}
+	if signatures_first {
 		tasks << workers.Task{
-			run:        check_top_level_decl_signatures_thread
-			arg:        voidptr(tc)
+			run:        signature_run
+			arg:        signature_arg
 			force_sync: true
 		}
-		check_worker_scope_leave(setup_scope)
-		rpsw2 := time.new_stopwatch()
-		any_started := ast.worker_pool.run(tasks)
-		if dynamic_dispatch {
-			for ci in 0 .. chunk_count {
-				chunks[ci] = args[ci].processed
+	}
+	for ci in 0 .. chunk_count {
+		helper_idx := ci - 1
+		tasks << workers.Task{
+			run:        check_chunk_thread
+			arg:        unsafe { voidptr(&args[ci]) }
+			force_sync: ci == 0 || fail == 'checker:all' || fail == 'checker:${helper_idx}'
+		}
+	}
+	if !bodies_only && !signatures_first {
+		tasks << workers.Task{
+			run:        signature_run
+			arg:        signature_arg
+			force_sync: true
+		}
+	}
+	check_worker_scope_leave(setup_scope)
+	rpsw2 := time.new_stopwatch()
+	any_started := pool.run(tasks)
+	if dynamic_dispatch {
+		for ci in 0 .. chunk_count {
+			chunks[ci] = args[ci].processed
+		}
+	}
+	tc.timing_profile('  [ttime]   ck pool.run      ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count})')
+	if tc.scope_parallel_check_workers {
+		tc.merge_scoped_signature_checks(mut signature_args)
+	}
+	tc.merge_own_sparse_caches()
+	tc.parallel_check_sparse = false
+	merge_start := if tc.scope_parallel_check_workers { 0 } else { 1 }
+	// Promote scope-resident cache payloads across the pool while every
+	// worker scope is still alive; only unknown-type interning stays serial.
+	// All checking has joined and sparse-cache promotion has finished. The
+	// master interner stays frozen until these clone tasks have also joined.
+	par_clone := tc.scope_parallel_check_workers && par_check_clone_enabled()
+	mut clone_args := []CheckCloneChunkArgs{cap: chunk_count}
+	mut mg_clone_ns := u64(0)
+	mut mg_merge_ns := u64(0)
+	if par_clone {
+		mg_t0 := time.sys_mono_now()
+		for ci in 0 .. chunk_count {
+			clone_args << CheckCloneChunkArgs{
+				tc:        voidptr(tc)
+				items_ptr: unsafe { voidptr(&chunks[ci]) }
+				miss:      []int{cap: 1024}
 			}
 		}
-		tc.timing_profile('  [ttime]   ck pool.run      ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (chunks: ${chunk_count})')
-		tc.merge_own_sparse_caches()
-		tc.parallel_check_sparse = false
-		merge_start := if tc.scope_parallel_check_workers { 0 } else { 1 }
-		// Promote scope-resident cache payloads across the pool while every
-		// worker scope is still alive; only unknown-type interning stays serial.
-		par_clone := tc.scope_parallel_check_workers && par_check_clone_enabled()
-		mut clone_args := []CheckCloneChunkArgs{cap: chunk_count}
-		mut mg_clone_ns := u64(0)
-		mut mg_merge_ns := u64(0)
-		if par_clone {
+		mut ctasks := []workers.Task{cap: chunk_count}
+		for ci in 0 .. chunk_count {
+			ctasks << workers.Task{
+				run:        check_clone_chunk_thread
+				arg:        unsafe { voidptr(&clone_args[ci]) }
+				force_sync: ci == 0
+			}
+		}
+		pool.run(ctasks)
+		mg_clone_ns += time.sys_mono_now() - mg_t0
+	}
+	for ci in merge_start .. chunk_count {
+		worker_idx := if tc.scope_parallel_check_workers { ci } else { ci - 1 }
+		mut w := unsafe { &TypeChecker(checker_workers[worker_idx]) }
+		// Scoped-mode forks always own private interners, even when this compiler
+		// was built without the prealloc allocator and therefore has no arena.
+		scoped := tc.scope_parallel_check_workers
+		if scoped {
 			mg_t0 := time.sys_mono_now()
-			for ci in 0 .. chunk_count {
-				clone_args << CheckCloneChunkArgs{
-					tc:        voidptr(tc)
-					items_ptr: unsafe { voidptr(&chunks[ci]) }
-					miss:      []int{cap: 1024}
-				}
+			if par_clone {
+				tc.intern_expr_type_misses(clone_args[ci].miss)
+			} else {
+				tc.clone_parallel_worker_node_caches(chunks[ci])
 			}
-			mut ctasks := []workers.Task{cap: chunk_count}
-			for ci in 0 .. chunk_count {
-				ctasks << workers.Task{
-					run:        check_clone_chunk_thread
-					arg:        unsafe { voidptr(&clone_args[ci]) }
-					force_sync: ci == 0
-				}
-			}
-			ast.worker_pool.run(ctasks)
 			mg_clone_ns += time.sys_mono_now() - mg_t0
 		}
-		for ci in merge_start .. chunk_count {
-			worker_idx := if tc.scope_parallel_check_workers { ci } else { ci - 1 }
-			mut w := unsafe { &TypeChecker(checker_workers[worker_idx]) }
-			// Scoped-mode forks always own private interners, even when this compiler
-			// was built without the prealloc allocator and therefore has no arena.
-			scoped := tc.scope_parallel_check_workers
-			if scoped {
-				mg_t0 := time.sys_mono_now()
-				if par_clone {
-					tc.intern_expr_type_misses(clone_args[ci].miss)
-				} else {
-					tc.clone_parallel_worker_node_caches(chunks[ci])
-				}
-				mg_clone_ns += time.sys_mono_now() - mg_t0
-			}
-			mg_t1 := time.sys_mono_now()
-			tc.merge_parallel_check_worker_scoped(w, scoped)
-			mg_merge_ns += time.sys_mono_now() - mg_t1
-			if scoped {
-				check_worker_scope_free(args[ci].scope)
-			} else {
-				w.free_parallel_check_worker_cache()
-			}
+		mg_t1 := time.sys_mono_now()
+		tc.merge_parallel_check_worker_scoped(w, scoped)
+		mg_merge_ns += time.sys_mono_now() - mg_t1
+		if scoped {
+			check_worker_scope_free(args[ci].scope)
+		} else {
+			w.free_parallel_check_worker_cache()
 		}
-		mg_clone_ms := f64(mg_clone_ns) / 1e6
-		mg_merge_ms := f64(mg_merge_ns) / 1e6
-		tc.timing_profile('  [ttime]     ck mg clone    ${mg_clone_ms:7.2f} ms, merge ${mg_merge_ms:.2f} ms')
-		tc.timing_profile('  [ttime]   ck merge         ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (cumulative)')
-		check_worker_scope_free(setup_scope)
-		sort_sw := time.new_stopwatch()
-		tc.sort_parallel_check_errors()
-		tc.timing_profile('  [ttime]   ck err sort      ${f64(sort_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	}
+	mg_clone_ms := f64(mg_clone_ns) / 1e6
+	mg_merge_ms := f64(mg_merge_ns) / 1e6
+	tc.timing_profile('  [ttime]     ck mg clone    ${mg_clone_ms:7.2f} ms, merge ${mg_merge_ms:.2f} ms')
+	tc.timing_profile('  [ttime]   ck merge         ${f64(rpsw2.elapsed().microseconds()) / 1000.0:7.2f} ms (cumulative)')
+	check_worker_scope_free(setup_scope)
+	if bodies_only {
 		return any_started
 	}
+	sort_sw := time.new_stopwatch()
+	tc.sort_parallel_check_errors()
+	tc.timing_profile('  [ttime]   ck err sort      ${f64(sort_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	return any_started
 }
 
 fn (mut tc TypeChecker) sort_parallel_check_errors() {
 	tc.errors.sort_with_compare(compare_type_errors)
 	tc.notices.sort_with_compare(compare_type_notices)
+	tc.library_sorted_notice_count = tc.notices.len
 	if tc.errors.len < 2 {
 		return
 	}
 	mut deduped := []TypeError{cap: tc.errors.len}
 	for err in tc.errors {
 		if deduped.len > 0 && type_errors_equal(deduped[deduped.len - 1], err) {
-			continue
+			preserve_fixture_duplicate := tc.checker_fixture_mode
+				&& err.msg.contains('` is a generic fn, you should pass its concrete types, e.g. ')
+			if !preserve_fixture_duplicate {
+				continue
+			}
 		}
 		deduped << err
 	}
@@ -1433,6 +2099,23 @@ fn (mut tc TypeChecker) sort_parallel_check_errors() {
 }
 
 fn compare_type_notices(a &TypeError, b &TypeError) int {
+	$if prealloc {
+		// Comparisons return no allocated payload; recycle their temporary searches.
+		scope := unsafe { prealloc_scope_begin() }
+		result := compare_type_notices_inner(a, b)
+		unsafe { prealloc_scope_end(scope) }
+		return result
+	} $else {
+		return compare_type_notices_inner(a, b)
+	}
+}
+
+fn compare_type_notices_inner(a &TypeError, b &TypeError) int {
+	a_is_postfix_value_warning := a.msg.ends_with('operator can only be used as a statement')
+	b_is_postfix_value_warning := b.msg.ends_with('operator can only be used as a statement')
+	if a_is_postfix_value_warning != b_is_postfix_value_warning {
+		return if a_is_postfix_value_warning { -1 } else { 1 }
+	}
 	a_is_unsafe_call := a.msg.contains('must be called from an `unsafe` block')
 	b_is_unsafe_call := b.msg.contains('must be called from an `unsafe` block')
 	if a_is_unsafe_call != b_is_unsafe_call {
@@ -1452,6 +2135,725 @@ fn compare_type_notices(a &TypeError, b &TypeError) int {
 }
 
 fn compare_type_errors(a &TypeError, b &TypeError) int {
+	$if prealloc {
+		// Comparisons return no allocated payload; recycle their temporary searches.
+		scope := unsafe { prealloc_scope_begin() }
+		result := compare_type_errors_inner(a, b)
+		unsafe { prealloc_scope_end(scope) }
+		return result
+	} $else {
+		return compare_type_errors_inner(a, b)
+	}
+}
+
+fn compare_type_errors_inner(a &TypeError, b &TypeError) int {
+	if a.node == b.node && a.diagnostic_order > 0 && b.diagnostic_order > 0
+		&& a.diagnostic_order != b.diagnostic_order {
+		return a.diagnostic_order - b.diagnostic_order
+	}
+	a_is_struct_field_mismatch := a.msg.starts_with('cannot assign to field `')
+	b_is_struct_field_mismatch := b.msg.starts_with('cannot assign to field `')
+	a_is_struct_field_nil := a.msg.starts_with('cannot assign `nil` to struct field `')
+	b_is_struct_field_nil := b.msg.starts_with('cannot assign `nil` to struct field `')
+	if a.pos.id == b.pos.id && a.pos.offset < b.pos.end && b.pos.offset < a.pos.end {
+		if a_is_struct_field_mismatch && b_is_struct_field_nil {
+			return -1
+		}
+		if b_is_struct_field_mismatch && a_is_struct_field_nil {
+			return 1
+		}
+	}
+	a_is_unknown_format := a.msg.starts_with('unknown format specifier `')
+	b_is_unknown_format := b.msg.starts_with('unknown format specifier `')
+	a_is_illegal_format := a.msg.starts_with('illegal format specifier `')
+	b_is_illegal_format := b.msg.starts_with('illegal format specifier `')
+	if a.node == b.node && a_is_unknown_format && b_is_illegal_format {
+		return -1
+	}
+	if a.node == b.node && b_is_unknown_format && a_is_illegal_format {
+		return 1
+	}
+	a_is_shared_call_in_lock := a.msg.contains('with `shared` arguments cannot be called inside `lock`/`rlock` block')
+	b_is_shared_call_in_lock := b.msg.contains('with `shared` arguments cannot be called inside `lock`/`rlock` block')
+	a_is_missing_shared_arg := a.msg.contains(' parameter `')
+		&& a.msg.contains('` is `shared`, so use `shared ')
+	b_is_missing_shared_arg := b.msg.contains(' parameter `')
+		&& b.msg.contains('` is `shared`, so use `shared ')
+	if a.node == b.node && a_is_shared_call_in_lock && b_is_missing_shared_arg {
+		return -1
+	}
+	if a.node == b.node && b_is_shared_call_in_lock && a_is_missing_shared_arg {
+		return 1
+	}
+	a_is_shared_receiver := a.msg.ends_with('to be used as non-mut receiver')
+	b_is_shared_receiver := b.msg.ends_with('to be used as non-mut receiver')
+	a_is_shared_assignment := a.msg.ends_with('to be used as non-mut right-hand side of assignment')
+	b_is_shared_assignment := b.msg.ends_with('to be used as non-mut right-hand side of assignment')
+	if a.node == b.node && a_is_shared_receiver && b_is_shared_assignment {
+		return -1
+	}
+	if a.node == b.node && b_is_shared_receiver && a_is_shared_assignment {
+		return 1
+	}
+	a_is_missing_lock_entry := a.msg.ends_with('must be added to the `lock` list above')
+	b_is_missing_lock_entry := b.msg.ends_with('must be added to the `lock` list above')
+	a_is_unlocked_shared_mut := a.msg.contains(' is `shared` and must be `lock`ed to be passed as `mut`')
+	b_is_unlocked_shared_mut := b.msg.contains(' is `shared` and must be `lock`ed to be passed as `mut`')
+	if a.node == b.node && a_is_missing_lock_entry && b_is_unlocked_shared_mut {
+		return -1
+	}
+	if a.node == b.node && b_is_missing_lock_entry && a_is_unlocked_shared_mut {
+		return 1
+	}
+	a_is_duplicate_export := a.msg.starts_with('duplicate export name `')
+	b_is_duplicate_export := b.msg.starts_with('duplicate export name `')
+	if a.file == b.file && a.msg == b.msg && a_is_duplicate_export && b_is_duplicate_export
+		&& a.node_kind != b.node_kind {
+		if a.node_kind == 'const_field' && b.node_kind == 'field_decl' {
+			return -1
+		}
+		if b.node_kind == 'const_field' && a.node_kind == 'field_decl' {
+			return 1
+		}
+	}
+	a_decl_assign_lhs_order := decl_assign_lhs_diagnostic_order(a.msg)
+	b_decl_assign_lhs_order := decl_assign_lhs_diagnostic_order(b.msg)
+	if a.node == b.node && a_decl_assign_lhs_order > 0 && b_decl_assign_lhs_order > 0
+		&& a_decl_assign_lhs_order != b_decl_assign_lhs_order {
+		return a_decl_assign_lhs_order - b_decl_assign_lhs_order
+	}
+	a_is_like_operand := a.msg.starts_with('the left operand of the `like` operator')
+		|| a.msg.starts_with('the right operand of the `like` operator')
+	b_is_like_operand := b.msg.starts_with('the left operand of the `like` operator')
+		|| b.msg.starts_with('the right operand of the `like` operator')
+	a_is_orm_like_field := a.msg.starts_with('ORM: left side of the `like` expression')
+	b_is_orm_like_field := b.msg.starts_with('ORM: left side of the `like` expression')
+	if a.file == b.file && a_is_like_operand && b_is_orm_like_field {
+		return -1
+	}
+	if a.file == b.file && b_is_like_operand && a_is_orm_like_field {
+		return 1
+	}
+	a_is_nested_lock := a.msg == 'nested `lock`/`rlock` not allowed'
+	b_is_nested_lock := b.msg == 'nested `lock`/`rlock` not allowed'
+	a_is_already_locked := a.msg.ends_with(' is already locked')
+		|| a.msg.ends_with(' is already read-locked')
+	b_is_already_locked := b.msg.ends_with(' is already locked')
+		|| b.msg.ends_with(' is already read-locked')
+	a_is_lock_diagnostic := a_is_nested_lock || a_is_already_locked
+		|| a.msg.contains(' has an `rlock` but needs a `lock`')
+		|| (a.msg.contains(' is `shared`') && a.msg.contains('lock'))
+	b_is_lock_diagnostic := b_is_nested_lock || b_is_already_locked
+		|| b.msg.contains(' has an `rlock` but needs a `lock`')
+		|| (b.msg.contains(' is `shared`') && b.msg.contains('lock'))
+	if a.file == b.file && a_is_lock_diagnostic && b_is_lock_diagnostic
+		&& a.pos.offset != b.pos.offset {
+		return a.pos.offset - b.pos.offset
+	}
+	a_is_rlock_write := a.msg.contains(' has an `rlock` but needs a `lock`')
+	b_is_rlock_write := b.msg.contains(' has an `rlock` but needs a `lock`')
+	a_is_explicit_lock := a.msg.contains(' is `shared` and needs explicit lock')
+	b_is_explicit_lock := b.msg.contains(' is `shared` and needs explicit lock')
+	if a.file == b.file && a.pos.offset == b.pos.offset && a_is_rlock_write
+		&& b_is_explicit_lock {
+		return -1
+	}
+	if a.file == b.file && a.pos.offset == b.pos.offset && b_is_rlock_write
+		&& a_is_explicit_lock {
+		return 1
+	}
+	if a.file == b.file && a_is_nested_lock && b_is_already_locked {
+		return -1
+	}
+	if a.file == b.file && b_is_nested_lock && a_is_already_locked {
+		return 1
+	}
+	a_is_reserved_parameter := a.msg.starts_with('invalid use of reserved type `')
+		&& a.msg.ends_with(' as a parameter name')
+	b_is_reserved_parameter := b.msg.starts_with('invalid use of reserved type `')
+		&& b.msg.ends_with(' as a parameter name')
+	if a.file == b.file && a_is_reserved_parameter && b_is_reserved_parameter
+		&& a.node != b.node {
+		return int(b.node) - int(a.node)
+	}
+	a_is_missing_generic_decl := a.msg in [
+		'generic function declaration must specify generic type names',
+		'generic method declaration must specify generic type names',
+	]
+	b_is_missing_generic_decl := b.msg in [
+		'generic function declaration must specify generic type names',
+		'generic method declaration must specify generic type names',
+	]
+	a_is_unmentioned_fn_generic := a.msg.starts_with('generic type name `')
+		&& a.msg.contains(' is not mentioned in fn `')
+	b_is_unmentioned_fn_generic := b.msg.starts_with('generic type name `')
+		&& b.msg.contains(' is not mentioned in fn `')
+	if a.pos.id == b.pos.id && a.pos.offset <= b.pos.offset && a.pos.end >= b.pos.end
+		&& a_is_missing_generic_decl && b_is_unmentioned_fn_generic {
+		return -1
+	}
+	if a.pos.id == b.pos.id && b.pos.offset <= a.pos.offset && b.pos.end >= a.pos.end
+		&& b_is_missing_generic_decl && a_is_unmentioned_fn_generic {
+		return 1
+	}
+	a_is_noreturn_return := a.msg == '[noreturn] functions cannot use return statements'
+	b_is_noreturn_return := b.msg == '[noreturn] functions cannot use return statements'
+	a_is_noreturn_tail := a.msg.starts_with('@[noreturn] functions should end with ')
+	b_is_noreturn_tail := b.msg.starts_with('@[noreturn] functions should end with ')
+	if a.file == b.file && a_is_noreturn_return && b_is_noreturn_tail {
+		return -1
+	}
+	if a.file == b.file && b_is_noreturn_return && a_is_noreturn_tail {
+		return 1
+	}
+	a_is_option_alias_return := a.msg.starts_with('the fn returns type `')
+		&& a.msg.contains(' is an Option alias, you can not mix them')
+	b_is_option_alias_return := b.msg.starts_with('the fn returns type `')
+		&& b.msg.contains(' is an Option alias, you can not mix them')
+	a_is_none_return := a.msg.starts_with('cannot use `none` as type `')
+		&& a.msg.ends_with(' in return argument')
+	b_is_none_return := b.msg.starts_with('cannot use `none` as type `')
+		&& b.msg.ends_with(' in return argument')
+	if a.file == b.file && a_is_option_alias_return && b_is_none_return {
+		return -1
+	}
+	if a.file == b.file && b_is_option_alias_return && a_is_none_return {
+		return 1
+	}
+	a_is_unsafe_nil := a.msg == '`nil` is only allowed in `unsafe` code'
+	b_is_unsafe_nil := b.msg == '`nil` is only allowed in `unsafe` code'
+	a_is_nil_option_assignment := a.msg == 'cannot assign `nil` to option value'
+	b_is_nil_option_assignment := b.msg == 'cannot assign `nil` to option value'
+	if a.file == b.file && a_is_unsafe_nil && b_is_nil_option_assignment {
+		return -1
+	}
+	if a.file == b.file && b_is_unsafe_nil && a_is_nil_option_assignment {
+		return 1
+	}
+	a_is_unhandled_result_call := a.msg.contains('() returns `!')
+		&& a.msg.ends_with('`, so it should have either an `or {}` block, or `!` at the end')
+	b_is_unhandled_result_call := b.msg.contains('() returns `!')
+		&& b.msg.ends_with('`, so it should have either an `or {}` block, or `!` at the end')
+	a_is_unwrapped_result_operand := a.msg.starts_with('unwrapped Result cannot be used')
+	b_is_unwrapped_result_operand := b.msg.starts_with('unwrapped Result cannot be used')
+	if a.node == b.node && a_is_unwrapped_result_operand != b_is_unwrapped_result_operand
+		&& (a_is_unhandled_result_call || b_is_unhandled_result_call) {
+		return if a_is_unwrapped_result_operand { -1 } else { 1 }
+	}
+	a_is_direct_result_call := a.msg == 'Result type cannot be called directly'
+	b_is_direct_result_call := b.msg == 'Result type cannot be called directly'
+	if a.file == b.file
+		&& ((a_is_unhandled_result_call && b_is_direct_result_call)
+			|| (b_is_unhandled_result_call && a_is_direct_result_call)) {
+		if a.pos.offset != b.pos.offset {
+			return a.pos.offset - b.pos.offset
+		}
+		return if a_is_unhandled_result_call { -1 } else { 1 }
+	}
+	a_is_for_in_same_variable := a.msg.starts_with('in a `for x in ')
+		&& a.msg.contains(' can not be the same as the low variable')
+	b_is_for_in_same_variable := b.msg.starts_with('in a `for x in ')
+		&& b.msg.contains(' can not be the same as the low variable')
+	a_is_for_in_cannot_index := a.msg.starts_with('for in: cannot index `')
+	b_is_for_in_cannot_index := b.msg.starts_with('for in: cannot index `')
+	if a.node == b.node && a_is_for_in_same_variable && b_is_for_in_cannot_index {
+		return -1
+	}
+	if a.node == b.node && b_is_for_in_same_variable && a_is_for_in_cannot_index {
+		return 1
+	}
+	a_is_init_visibility := a.msg == 'fn `init` must not be public'
+	b_is_init_visibility := b.msg == 'fn `init` must not be public'
+	a_is_init_return := a.msg == 'fn `init` cannot have a return type'
+	b_is_init_return := b.msg == 'fn `init` cannot have a return type'
+	if a.node == b.node && a_is_init_visibility && b_is_init_return {
+		return -1
+	}
+	if a.node == b.node && b_is_init_visibility && a_is_init_return {
+		return 1
+	}
+	a_is_leading_underscore_name := a.msg.contains(' cannot start with `_`')
+	b_is_leading_underscore_name := b.msg.contains(' cannot start with `_`')
+	a_is_uppercase_name := a.msg.contains(' cannot contain uppercase letters')
+	b_is_uppercase_name := b.msg.contains(' cannot contain uppercase letters')
+	if a.node == b.node && a_is_leading_underscore_name && b_is_uppercase_name {
+		return -1
+	}
+	if a.node == b.node && b_is_leading_underscore_name && a_is_uppercase_name {
+		return 1
+	}
+	a_is_same_name_import := a.msg.starts_with('cannot import `')
+		&& a.msg.ends_with('` into a module with the same name') && !a.msg.contains(' as `')
+	b_is_same_name_import := b.msg.starts_with('cannot import `')
+		&& b.msg.ends_with('` into a module with the same name') && !b.msg.contains(' as `')
+	a_is_aliased_same_name_import := a.msg.starts_with('cannot import `')
+		&& a.msg.contains(' as `') && a.msg.ends_with('` into a module with the same name')
+	b_is_aliased_same_name_import := b.msg.starts_with('cannot import `')
+		&& b.msg.contains(' as `') && b.msg.ends_with('` into a module with the same name')
+	if a.node == b.node && a_is_same_name_import && b_is_aliased_same_name_import {
+		return -1
+	}
+	if a.node == b.node && b_is_same_name_import && a_is_aliased_same_name_import {
+		return 1
+	}
+	a_is_builtin_import_override := a.msg == 'cannot import or override builtin type'
+	b_is_builtin_import_override := b.msg == 'cannot import or override builtin type'
+	a_is_unknown_imported_type := a.msg.starts_with('unknown type `')
+	b_is_unknown_imported_type := b.msg.starts_with('unknown type `')
+	if a.file == b.file && a_is_unknown_imported_type && b_is_builtin_import_override {
+		return -1
+	}
+	if a.file == b.file && b_is_unknown_imported_type && a_is_builtin_import_override {
+		return 1
+	}
+	a_is_enum_value := a.msg.starts_with('enum value ')
+		|| a.msg == 'the default value for an enum has to be an integer'
+		|| (a.msg.contains(' is not one of `i8`,`i16`,`i32`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`')
+			&& a.msg.starts_with('`'))
+	b_is_enum_value := b.msg.starts_with('enum value ')
+		|| b.msg == 'the default value for an enum has to be an integer'
+		|| (b.msg.contains(' is not one of `i8`,`i16`,`i32`,`int`,`i64`,`u8`,`u16`,`u32`,`u64`')
+			&& b.msg.starts_with('`'))
+	if a.file == b.file && a_is_enum_value && b_is_enum_value && a.pos.offset != b.pos.offset {
+		return a.pos.offset - b.pos.offset
+	}
+	a_is_field_method_collision := a.msg.starts_with('type `')
+		&& a.msg.contains(' has both field and method named `')
+	b_is_field_method_collision := b.msg.starts_with('type `')
+		&& b.msg.contains(' has both field and method named `')
+	if a.file == b.file && a_is_field_method_collision && b_is_field_method_collision
+		&& a.node_kind != b.node_kind {
+		if a.node_kind == 'interface_field' {
+			return -1
+		}
+		if b.node_kind == 'interface_field' {
+			return 1
+		}
+	}
+	a_is_duplicate_match_else := a.msg == '`match` can have only one `else` branch'
+	b_is_duplicate_match_else := b.msg == '`match` can have only one `else` branch'
+	a_is_nonfinal_match_else := a.msg == '`else` must be the last branch of `match`'
+	b_is_nonfinal_match_else := b.msg == '`else` must be the last branch of `match`'
+	if a.node == b.node && a_is_duplicate_match_else && b_is_nonfinal_match_else {
+		return -1
+	}
+	if a.node == b.node && b_is_duplicate_match_else && a_is_nonfinal_match_else {
+		return 1
+	}
+	a_is_empty_struct_init := a.msg.starts_with('`{}` can not be used for initialising empty structs')
+	b_is_empty_struct_init := b.msg.starts_with('`{}` can not be used for initialising empty structs')
+	a_is_empty_map_value := a.msg.starts_with('`map{  }` (no value) used as value')
+	b_is_empty_map_value := b.msg.starts_with('`map{  }` (no value) used as value')
+	if a.node == b.node && a_is_empty_struct_init && b_is_empty_map_value {
+		return -1
+	}
+	if a.node == b.node && b_is_empty_struct_init && a_is_empty_map_value {
+		return 1
+	}
+	a_match_range_order := match true {
+		a.msg.starts_with('the low and high parts of a range expression') { 1 }
+		a.msg.starts_with('the range type and the match condition type') { 2 }
+		a.msg.starts_with('match branch range expressions need the ') { 3 }
+		a.msg.starts_with('the start value `') && a.msg.contains(' should be lower than ') { 3 }
+		else { 0 }
+	}
+	b_match_range_order := match true {
+		b.msg.starts_with('the low and high parts of a range expression') { 1 }
+		b.msg.starts_with('the range type and the match condition type') { 2 }
+		b.msg.starts_with('match branch range expressions need the ') { 3 }
+		b.msg.starts_with('the start value `') && b.msg.contains(' should be lower than ') { 3 }
+		else { 0 }
+	}
+	if a.node == b.node && a_match_range_order > 0 && b_match_range_order > 0
+		&& a_match_range_order != b_match_range_order {
+		return a_match_range_order - b_match_range_order
+	}
+	a_is_invalid_comptime_field_access := a.msg.starts_with('compile time field access can only be used')
+	b_is_invalid_comptime_field_access := b.msg.starts_with('compile time field access can only be used')
+	a_is_unknown_comptime_for_var := a.msg.starts_with('unknown `$for` variable `')
+	b_is_unknown_comptime_for_var := b.msg.starts_with('unknown `$for` variable `')
+	if a.node == b.node && a_is_invalid_comptime_field_access && b_is_unknown_comptime_for_var {
+		return -1
+	}
+	if a.node == b.node && b_is_invalid_comptime_field_access && a_is_unknown_comptime_for_var {
+		return 1
+	}
+	a_is_nonliteral_comptime_method := a.msg == 'todo: not a string literal'
+	b_is_nonliteral_comptime_method := b.msg == 'todo: not a string literal'
+	a_is_empty_comptime_method := a.msg == 'could not find method ``'
+	b_is_empty_comptime_method := b.msg == 'could not find method ``'
+	if a.node == b.node && a_is_nonliteral_comptime_method && b_is_empty_comptime_method {
+		return -1
+	}
+	if a.node == b.node && b_is_nonliteral_comptime_method && a_is_empty_comptime_method {
+		return 1
+	}
+	a_is_c_js_generic_struct := a.msg.ends_with('structs cannot be declared as generic')
+	b_is_c_js_generic_struct := b.msg.ends_with('structs cannot be declared as generic')
+	a_is_c_js_generic_fn := a.msg.ends_with('functions cannot be declared as generic')
+	b_is_c_js_generic_fn := b.msg.ends_with('functions cannot be declared as generic')
+	if a.file == b.file && a_is_c_js_generic_struct && b_is_c_js_generic_fn {
+		return -1
+	}
+	if a.file == b.file && b_is_c_js_generic_struct && a_is_c_js_generic_fn {
+		return 1
+	}
+	if a.node == b.node && is_inline_asm_instruction_error(a.msg)
+		&& is_inline_asm_instruction_error(b.msg) && a.pos.offset != b.pos.offset {
+		return a.pos.offset - b.pos.offset
+	}
+	a_is_ierror_msg_method := a.msg.contains("doesn't implement method `msg` of interface `IError`")
+	b_is_ierror_msg_method := b.msg.contains("doesn't implement method `msg` of interface `IError`")
+	a_is_ierror_code_method := a.msg.contains("doesn't implement method `code` of interface `IError`")
+	b_is_ierror_code_method := b.msg.contains("doesn't implement method `code` of interface `IError`")
+	if a.node == b.node && a_is_ierror_msg_method && b_is_ierror_code_method {
+		return -1
+	}
+	if a.node == b.node && b_is_ierror_msg_method && a_is_ierror_code_method {
+		return 1
+	}
+	a_is_missing_interface_method := a.msg.contains("doesn't implement method `")
+	b_is_missing_interface_method := b.msg.contains("doesn't implement method `")
+	a_is_interface_implementation_summary := a.msg.contains("doesn't implement interface `")
+	b_is_interface_implementation_summary := b.msg.contains("doesn't implement interface `")
+	if a.node == b.node && a_is_missing_interface_method && b_is_missing_interface_method {
+		a_orm_order := orm_connection_method_diagnostic_order(a.msg)
+		b_orm_order := orm_connection_method_diagnostic_order(b.msg)
+		if a_orm_order > 0 && b_orm_order > 0 && a_orm_order != b_orm_order {
+			return a_orm_order - b_orm_order
+		}
+		a_interface := a.msg.all_after_last(' of interface `').all_before('`')
+		b_interface := b.msg.all_after_last(' of interface `').all_before('`')
+		if a_interface < b_interface {
+			return -1
+		}
+		if a_interface > b_interface {
+			return 1
+		}
+	}
+	if a.node == b.node && a_is_missing_interface_method && b_is_interface_implementation_summary {
+		return -1
+	}
+	if a.node == b.node && b_is_missing_interface_method && a_is_interface_implementation_summary {
+		return 1
+	}
+	a_is_interface_cast_summary := a.msg.contains(' does not implement interface `')
+		&& a.msg.contains(', cannot cast `')
+	b_is_interface_cast_summary := b.msg.contains(' does not implement interface `')
+		&& b.msg.contains(', cannot cast `')
+	a_is_interface_method_mismatch := a.msg.contains(' incorrectly implements method `')
+	b_is_interface_method_mismatch := b.msg.contains(' incorrectly implements method `')
+	if a.node == b.node && (a_is_missing_interface_method || a_is_interface_method_mismatch)
+		&& b_is_interface_cast_summary {
+		return -1
+	}
+	if a.node == b.node && (b_is_missing_interface_method || b_is_interface_method_mismatch)
+		&& a_is_interface_cast_summary {
+		return 1
+	}
+	a_is_cast_to_struct := a.msg.starts_with('cannot cast `') && a.msg.ends_with(' to struct')
+	b_is_cast_to_struct := b.msg.starts_with('cannot cast `') && b.msg.ends_with(' to struct')
+	a_is_sum_type_cast := a.msg.contains(' sum type value to `')
+	b_is_sum_type_cast := b.msg.contains(' sum type value to `')
+	if a.node == b.node && a_is_cast_to_struct && b_is_sum_type_cast {
+		return -1
+	}
+	if a.node == b.node && b_is_cast_to_struct && a_is_sum_type_cast {
+		return 1
+	}
+	a_is_sumtype_string_cast := a.msg.starts_with('cannot cast sumtype `')
+	b_is_sumtype_string_cast := b.msg.starts_with('cannot cast sumtype `')
+	if a.node == b.node && a_is_sumtype_string_cast && b_is_sum_type_cast {
+		return -1
+	}
+	if a.node == b.node && b_is_sumtype_string_cast && a_is_sum_type_cast {
+		return 1
+	}
+	a_is_cast_into_sumtype := a.msg.starts_with('cannot cast `') && a.msg.ends_with(' to `SumType`')
+	b_is_cast_into_sumtype := b.msg.starts_with('cannot cast `') && b.msg.ends_with(' to `SumType`')
+	a_is_cast_from_sumtype := a.msg.starts_with('cannot cast `SumType` to `')
+	b_is_cast_from_sumtype := b.msg.starts_with('cannot cast `SumType` to `')
+	if a.file == b.file && a_is_cast_into_sumtype && b_is_cast_from_sumtype {
+		return -1
+	}
+	if a.file == b.file && b_is_cast_into_sumtype && a_is_cast_from_sumtype {
+		return 1
+	}
+	a_is_empty_or_block := a.msg == 'expression requires a non empty `or {}` block'
+	b_is_empty_or_block := b.msg == 'expression requires a non empty `or {}` block'
+	a_is_void_branch_tail := a.msg == 'the final expression in `if` or `match`, must have a value of a non-void type'
+	b_is_void_branch_tail := b.msg == 'the final expression in `if` or `match`, must have a value of a non-void type'
+	a_is_void_multi_return := a.msg == 'type `void` cannot be used in multi-return'
+	b_is_void_multi_return := b.msg == 'type `void` cannot be used in multi-return'
+	if a.file == b.file && a_is_empty_or_block && b_is_void_branch_tail {
+		return -1
+	}
+	if a.file == b.file && b_is_empty_or_block && a_is_void_branch_tail {
+		return 1
+	}
+	if a.file == b.file && a.pos.offset == b.pos.offset && a_is_void_multi_return
+		&& b_is_void_branch_tail {
+		return -1
+	}
+	if a.file == b.file && a.pos.offset == b.pos.offset && b_is_void_multi_return
+		&& a_is_void_branch_tail {
+		return 1
+	}
+	a_is_infix_mismatch := a.msg.starts_with('mismatched types `')
+	b_is_infix_mismatch := b.msg.starts_with('mismatched types `')
+	a_is_infix_rhs := a.msg.starts_with('infix expr: cannot use `')
+	b_is_infix_rhs := b.msg.starts_with('infix expr: cannot use `')
+	a_is_option_infix_unwrap := a.msg.ends_with('unwrap the option first')
+	b_is_option_infix_unwrap := b.msg.ends_with('unwrap the option first')
+	a_is_or_block_default := a.msg.starts_with('`or` block must provide a default value')
+	b_is_or_block_default := b.msg.starts_with('`or` block must provide a default value')
+	a_infix_error_order := if a_is_infix_mismatch {
+		1
+	} else if a_is_option_infix_unwrap {
+		2
+	} else if a_is_infix_rhs {
+		3
+	} else if a_is_or_block_default {
+		4
+	} else {
+		0
+	}
+	b_infix_error_order := if b_is_infix_mismatch {
+		1
+	} else if b_is_option_infix_unwrap {
+		2
+	} else if b_is_infix_rhs {
+		3
+	} else if b_is_or_block_default {
+		4
+	} else {
+		0
+	}
+	if a.pos.id == b.pos.id && a.pos.offset == b.pos.offset && a_infix_error_order > 0
+		&& b_infix_error_order > 0 && a_infix_error_order != b_infix_error_order {
+		return a_infix_error_order - b_infix_error_order
+	}
+	a_is_multi_return_operand := a.msg.starts_with('invalid number of operand for `')
+	b_is_multi_return_operand := b.msg.starts_with('invalid number of operand for `')
+	a_is_none_operand := a.msg.starts_with('invalid operator `') && a.msg.ends_with(' to `none` and `none`')
+	b_is_none_operand := b.msg.starts_with('invalid operator `') && b.msg.ends_with(' to `none` and `none`')
+	a_is_primary_infix_operand := a_is_multi_return_operand || a_is_none_operand
+	b_is_primary_infix_operand := b_is_multi_return_operand || b_is_none_operand
+	if a.pos.id == b.pos.id && a.pos.offset < b.pos.end && b.pos.offset < a.pos.end
+		&& a_is_primary_infix_operand != b_is_primary_infix_operand {
+		return if a_is_primary_infix_operand { -1 } else { 1 }
+	}
+	if a.node == b.node && a_is_infix_mismatch && b_is_infix_rhs {
+		return -1
+	}
+	if a.node == b.node && b_is_infix_mismatch && a_is_infix_rhs {
+		return 1
+	}
+	if a.pos.id == b.pos.id && a.pos.offset <= b.pos.offset && a.pos.end >= b.pos.end
+		&& a_is_infix_mismatch && b_is_option_infix_unwrap {
+		return -1
+	}
+	if a.pos.id == b.pos.id && b.pos.offset <= a.pos.offset && b.pos.end >= a.pos.end
+		&& b_is_infix_mismatch && a_is_option_infix_unwrap {
+		return 1
+	}
+	a_is_invalid_operator := a.msg.starts_with('invalid operator `')
+	b_is_invalid_operator := b.msg.starts_with('invalid operator `')
+	a_is_pointer_infix := a.msg.starts_with('infix `')
+		&& a.msg.ends_with(' is not defined for pointer values')
+	b_is_pointer_infix := b.msg.starts_with('infix `')
+		&& b.msg.ends_with(' is not defined for pointer values')
+	if a.node == b.node && a_is_invalid_operator && b_is_pointer_infix {
+		return -1
+	}
+	if a.node == b.node && b_is_invalid_operator && a_is_pointer_infix {
+		return 1
+	}
+	a_array_init_order := if a.msg.ends_with(' as initializer') {
+		1
+	} else if a.msg.ends_with(' as length') {
+		2
+	} else if a.msg.ends_with(' as capacity') {
+		3
+	} else {
+		0
+	}
+	b_array_init_order := if b.msg.ends_with(' as initializer') {
+		1
+	} else if b.msg.ends_with(' as length') {
+		2
+	} else if b.msg.ends_with(' as capacity') {
+		3
+	} else {
+		0
+	}
+	if a.node == b.node && a_array_init_order > 0 && b_array_init_order > 0
+		&& a_array_init_order != b_array_init_order {
+		return a_array_init_order - b_array_init_order
+	}
+	a_is_array_compare_callback_param := a.msg.contains(' callback function parameter `')
+	b_is_array_compare_callback_param := b.msg.contains(' callback function parameter `')
+	if a.file == b.file && a_is_array_compare_callback_param != b_is_array_compare_callback_param {
+		return if a_is_array_compare_callback_param { -1 } else { 1 }
+	}
+	a_is_invalid_sort_arg := a.msg.starts_with('`.sort()` can only use `a` or `b`')
+	b_is_invalid_sort_arg := b.msg.starts_with('`.sort()` can only use `a` or `b`')
+	a_is_sort_undefined_ident := a.msg.starts_with('undefined ident:')
+	b_is_sort_undefined_ident := b.msg.starts_with('undefined ident:')
+	if a.file == b.file && a_is_invalid_sort_arg && b_is_sort_undefined_ident {
+		return -1
+	}
+	if a.file == b.file && b_is_invalid_sort_arg && a_is_sort_undefined_ident {
+		return 1
+	}
+	a_is_sort_call_receiver := a.msg.starts_with('the `sort()` method can be called only on mutable receivers')
+	b_is_sort_call_receiver := b.msg.starts_with('the `sort()` method can be called only on mutable receivers')
+	a_is_mut_expression := a.msg == 'cannot pass expression as `mut`'
+	b_is_mut_expression := b.msg == 'cannot pass expression as `mut`'
+	if a.file == b.file && a_is_sort_call_receiver && b_is_mut_expression {
+		return -1
+	}
+	if a.file == b.file && b_is_sort_call_receiver && a_is_mut_expression {
+		return 1
+	}
+	a_is_missing_mut_arg := (a.msg.starts_with('function `') || a.msg.starts_with('method `'))
+		&& a.msg.contains(' is `mut`, so use `mut ')
+	b_is_missing_mut_arg := (b.msg.starts_with('function `') || b.msg.starts_with('method `'))
+		&& b.msg.contains(' is `mut`, so use `mut ')
+	a_is_call_arg_type_mismatch := a.msg.starts_with('cannot use `')
+		&& a.msg.contains(' in argument ')
+	b_is_call_arg_type_mismatch := b.msg.starts_with('cannot use `')
+		&& b.msg.contains(' in argument ')
+	if a.node == b.node && a_is_missing_mut_arg && b_is_call_arg_type_mismatch {
+		return -1
+	}
+	if a.node == b.node && b_is_missing_mut_arg && a_is_call_arg_type_mismatch {
+		return 1
+	}
+	a_is_unneeded_mut_arg := a.msg.ends_with(' is not `mut`, `mut` is not needed`')
+	b_is_unneeded_mut_arg := b.msg.ends_with(' is not `mut`, `mut` is not needed`')
+	a_is_invalid_mut_expr := a.msg == 'array literal can not be modified' || a_is_mut_expression
+	b_is_invalid_mut_expr := b.msg == 'array literal can not be modified' || b_is_mut_expression
+	if a.node == b.node && a_is_invalid_mut_expr && b_is_unneeded_mut_arg {
+		return -1
+	}
+	if a.node == b.node && b_is_invalid_mut_expr && a_is_unneeded_mut_arg {
+		return 1
+	}
+	a_is_array_append_expr := a.msg == 'array append cannot be used in an expression'
+	b_is_array_append_expr := b.msg == 'array append cannot be used in an expression'
+	a_is_array_literal_mutation := a.msg == 'array literal can not be modified'
+	b_is_array_literal_mutation := b.msg == 'array literal can not be modified'
+	if a.file == b.file && a_is_array_append_expr && b_is_array_literal_mutation {
+		return -1
+	}
+	if a.file == b.file && b_is_array_append_expr && a_is_array_literal_mutation {
+		return 1
+	}
+	a_is_mutable_const_reference := a.msg.starts_with('cannot have mutable reference to const `')
+	b_is_mutable_const_reference := b.msg.starts_with('cannot have mutable reference to const `')
+	a_is_immutable_reference := a.msg.contains(' is immutable, cannot have a mutable reference to it')
+	b_is_immutable_reference := b.msg.contains(' is immutable, cannot have a mutable reference to it')
+	if a.node == b.node && a_is_mutable_const_reference && b_is_immutable_reference {
+		return -1
+	}
+	if a.node == b.node && b_is_mutable_const_reference && a_is_immutable_reference {
+		return 1
+	}
+	a_is_anon_param_semantic := a.msg == 'use `_` to name an unused parameter'
+		|| a.msg.contains('must be explicitly listed as inherited variable to be used inside a closure')
+		|| a.msg.ends_with(' used as value')
+	b_is_anon_param_semantic := b.msg == 'use `_` to name an unused parameter'
+		|| b.msg.contains('must be explicitly listed as inherited variable to be used inside a closure')
+		|| b.msg.ends_with(' used as value')
+	a_is_anon_param_followup := a.msg.starts_with('unknown type `')
+		|| (a.msg.starts_with('cannot use `') && a.msg.contains(' in argument '))
+	b_is_anon_param_followup := b.msg.starts_with('unknown type `')
+		|| (b.msg.starts_with('cannot use `') && b.msg.contains(' in argument '))
+	if a.file == b.file && a_is_anon_param_semantic && b_is_anon_param_followup {
+		return -1
+	}
+	if a.file == b.file && b_is_anon_param_semantic && a_is_anon_param_followup {
+		return 1
+	}
+	a_is_compound_operand := (a.msg.starts_with('operator ')
+		&& a.msg.contains(' not defined on right operand')) || a.msg.starts_with('invalid right operand:')
+	b_is_compound_operand := (b.msg.starts_with('operator ')
+		&& b.msg.contains(' not defined on right operand')) || b.msg.starts_with('invalid right operand:')
+	a_is_assignment_infix_mismatch := a.msg.starts_with('mismatched types `')
+	b_is_assignment_infix_mismatch := b.msg.starts_with('mismatched types `')
+	a_is_assignment_type_mismatch := a.msg.starts_with('cannot assign to `')
+	b_is_assignment_type_mismatch := b.msg.starts_with('cannot assign to `')
+	if a.node == b.node && a_is_assignment_infix_mismatch && b_is_assignment_type_mismatch {
+		return -1
+	}
+	if a.node == b.node && b_is_assignment_infix_mismatch && a_is_assignment_type_mismatch {
+		return 1
+	}
+	if a.pos.id == b.pos.id && a.pos.offset == b.pos.offset && a_is_compound_operand
+		&& b_is_assignment_type_mismatch {
+		return -1
+	}
+	if a.pos.id == b.pos.id && a.pos.offset == b.pos.offset && b_is_compound_operand
+		&& a_is_assignment_type_mismatch {
+		return 1
+	}
+	a_is_deref_unsafe := a.msg.starts_with('modifying variables via dereferencing')
+	b_is_deref_unsafe := b.msg.starts_with('modifying variables via dereferencing')
+	a_is_deref_assignment := a.msg.starts_with('cannot assign to `*')
+	b_is_deref_assignment := b.msg.starts_with('cannot assign to `*')
+	if a.file == b.file && a_is_deref_unsafe && b_is_deref_assignment {
+		return -1
+	}
+	if a.file == b.file && b_is_deref_unsafe && a_is_deref_assignment {
+		return 1
+	}
+	a_is_missing_anon_generic := a.msg.starts_with('Add the generic type `')
+	b_is_missing_anon_generic := b.msg.starts_with('Add the generic type `')
+	a_is_invalid_comptime_for_type := a.msg.starts_with('\$for expects a type name or variable name')
+	b_is_invalid_comptime_for_type := b.msg.starts_with('\$for expects a type name or variable name')
+	if a.file == b.file && a_is_missing_anon_generic && b_is_invalid_comptime_for_type {
+		return -1
+	}
+	if a.file == b.file && b_is_missing_anon_generic && a_is_invalid_comptime_for_type {
+		return 1
+	}
+	a_is_generic_arg_count := a.msg.starts_with('expected ')
+		&& a.msg.contains(' generic parameter')
+	b_is_generic_arg_count := b.msg.starts_with('expected ')
+		&& b.msg.contains(' generic parameter')
+	a_is_value_arg_count := a.msg.starts_with('expected ') && a.msg.contains(' argument')
+	b_is_value_arg_count := b.msg.starts_with('expected ') && b.msg.contains(' argument')
+	if a.node == b.node && a_is_generic_arg_count && b_is_value_arg_count {
+		return -1
+	}
+	if a.node == b.node && b_is_generic_arg_count && a_is_value_arg_count {
+		return 1
+	}
+	a_is_no_arg_method := a.msg.ends_with('does not have any arguments')
+	b_is_no_arg_method := b.msg.ends_with('does not have any arguments')
+	a_is_immutable_receiver := a.msg.contains('is immutable, declare it with `mut`')
+	b_is_immutable_receiver := b.msg.contains('is immutable, declare it with `mut`')
+	if a.file == b.file && a_is_no_arg_method && b_is_immutable_receiver {
+		return -1
+	}
+	if a.file == b.file && b_is_no_arg_method && a_is_immutable_receiver {
+		return 1
+	}
+	a_is_immutable_field := a.msg.starts_with('field `') && a.msg.contains(' is immutable')
+	b_is_immutable_field := b.msg.starts_with('field `') && b.msg.contains(' is immutable')
+	a_is_immutable_binding := a.msg.starts_with('`')
+		&& a.msg.contains('` is immutable, declare it with `mut`')
+	b_is_immutable_binding := b.msg.starts_with('`')
+		&& b.msg.contains('` is immutable, declare it with `mut`')
+	nearby_positions := a.pos.id == b.pos.id && a.pos.offset - b.pos.offset < 64
+		&& b.pos.offset - a.pos.offset < 64
+	if nearby_positions && a_is_immutable_field && b_is_immutable_binding {
+		return -1
+	}
+	if nearby_positions && b_is_immutable_field && a_is_immutable_binding {
+		return 1
+	}
 	a_is_c_string_buffer_conversion := a.msg.starts_with('to convert a C string buffer pointer')
 	b_is_c_string_buffer_conversion := b.msg.starts_with('to convert a C string buffer pointer')
 	a_is_pointer_string_cast := a.msg.starts_with('cannot cast pointer type ')
@@ -1492,12 +2894,83 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 			return if a_is_option_array_push { -1 } else { 1 }
 		}
 	}
+	a_is_option_index_unwrap := a.msg.starts_with('type `?')
+		&& a.msg.contains(' is an Option, it must be unwrapped first; use `')
+	b_is_option_index_unwrap := b.msg.starts_with('type `?')
+		&& b.msg.contains(' is an Option, it must be unwrapped first; use `')
+	a_is_option_field_unwrap := a.msg.starts_with('field `')
+		&& a.msg.ends_with(' is an Option, so it should have either an `or {}` block, or `?` at the end')
+	b_is_option_field_unwrap := b.msg.starts_with('field `')
+		&& b.msg.ends_with(' is an Option, so it should have either an `or {}` block, or `?` at the end')
+	if a.node == b.node && a_is_option_index_unwrap && b_is_option_field_unwrap {
+		return -1
+	}
+	if a.node == b.node && b_is_option_index_unwrap && a_is_option_field_unwrap {
+		return 1
+	}
 	a_is_bare_generic_fntype_decl := a.msg.starts_with('generic function `')
 		&& a.msg.contains(' in fn declaration must specify the generic type names')
 	b_is_bare_generic_fntype_decl := b.msg.starts_with('generic function `')
 		&& b.msg.contains(' in fn declaration must specify the generic type names')
 	if a_is_bare_generic_fntype_decl != b_is_bare_generic_fntype_decl {
 		return if a_is_bare_generic_fntype_decl { 1 } else { -1 }
+	}
+	a_is_print_void := a.msg.contains('can not print void expressions')
+	b_is_print_void := b.msg.contains('can not print void expressions')
+	a_is_undefined_ident := a.msg.starts_with('undefined ident:')
+	b_is_undefined_ident := b.msg.starts_with('undefined ident:')
+	a_is_boolean_operand := (a.msg.starts_with('left operand for `')
+		|| a.msg.starts_with('right operand for `')) && a.msg.ends_with(' is not a boolean')
+	b_is_boolean_operand := (b.msg.starts_with('left operand for `')
+		|| b.msg.starts_with('right operand for `')) && b.msg.ends_with(' is not a boolean')
+	if a.file == b.file && a_is_undefined_ident && b_is_boolean_operand {
+		return -1
+	}
+	if a.file == b.file && b_is_undefined_ident && a_is_boolean_operand {
+		return 1
+	}
+	if a_is_print_void && b_is_undefined_ident {
+		return -1
+	}
+	if b_is_print_void && a_is_undefined_ident {
+		return 1
+	}
+	a_is_test_signature := a.msg.starts_with('test functions should ')
+	b_is_test_signature := b.msg.starts_with('test functions should ')
+	a_is_missing_return := a.msg.starts_with('missing return at end of function `')
+	b_is_missing_return := b.msg.starts_with('missing return at end of function `')
+	if a.node == b.node && a_is_test_signature && b_is_missing_return {
+		return -1
+	}
+	if a.node == b.node && b_is_test_signature && a_is_missing_return {
+		return 1
+	}
+	a_is_unknown_asm_register := a.msg.starts_with('unknown register `')
+		|| a.msg.starts_with('unknown clobbered register `')
+	b_is_unknown_asm_register := b.msg.starts_with('unknown register `')
+		|| b.msg.starts_with('unknown clobbered register `')
+	if a.node == b.node && a_is_unknown_asm_register && b_is_unknown_asm_register
+		&& a.pos.offset != b.pos.offset {
+		return a.pos.offset - b.pos.offset
+	}
+	if a.node == b.node {
+		if a_case := duplicate_match_case_int(a.msg) {
+			if b_case := duplicate_match_case_int(b.msg) {
+				if a_case != b_case {
+					return a_case - b_case
+				}
+			}
+		}
+		a_is_nonconstant_array_bound := a.msg.starts_with('non-constant array bound `')
+		b_is_nonconstant_array_bound := b.msg.starts_with('non-constant array bound `')
+		a_is_invalid_fixed_size := a.msg.starts_with('fixed size cannot be zero or negative')
+		b_is_invalid_fixed_size := b.msg.starts_with('fixed size cannot be zero or negative')
+		if a_is_nonconstant_array_bound && b_is_invalid_fixed_size {
+			return -1
+		}
+		if b_is_nonconstant_array_bound && a_is_invalid_fixed_size {
+			return 1
+		}
 	}
 	if a.node != b.node {
 		return int(a.node) - int(b.node)
@@ -1514,8 +2987,82 @@ fn compare_type_errors(a &TypeError, b &TypeError) int {
 	return 0
 }
 
+fn decl_assign_lhs_diagnostic_order(message string) int {
+	return match message {
+		'parentheses are not supported on the left side of `:=`' { 1 }
+		'modifying variables via dereferencing can only be done in `unsafe` blocks' { 2 }
+		'non-name on the left side of `:=`' { 3 }
+		else { 0 }
+	}
+}
+
+fn orm_connection_method_diagnostic_order(message string) int {
+	if !message.ends_with(' of interface `orm.Connection`') {
+		return 0
+	}
+	method := message.all_after("doesn't implement method `").all_before('`')
+	return match method {
+		'select' { 1 }
+		'insert' { 2 }
+		'update' { 3 }
+		'delete' { 4 }
+		'create' { 5 }
+		'drop' { 6 }
+		'last_id' { 7 }
+		'execute' { 8 }
+		else { 0 }
+	}
+}
+
+fn duplicate_match_case_int(message string) ?int {
+	prefix := 'match case `'
+	if !message.starts_with(prefix) {
+		return none
+	}
+	end := message.index_after('`', prefix.len) or { return none }
+	value := message[prefix.len..end]
+	if value.len == 0 {
+		return none
+	}
+	mut start := 0
+	if value[0] == `-` {
+		if value.len == 1 {
+			return none
+		}
+		start = 1
+	}
+	for i in start .. value.len {
+		if !value[i].is_digit() {
+			return none
+		}
+	}
+	return value.int()
+}
+
 fn type_errors_equal(a TypeError, b TypeError) bool {
+	if a.node == b.node && a.kind == b.kind && a.msg == b.msg
+		&& (is_inline_asm_instruction_error(a.msg)
+			|| a.msg.starts_with('cannot embed non-struct `')) {
+		return a.pos == b.pos
+	}
 	return a.node == b.node && a.kind == b.kind && a.msg == b.msg
+}
+
+fn is_inline_asm_instruction_error(message string) bool {
+	return message.contains('structured `intel`') || message.contains('`raw intel` block')
+}
+
+// parallel_check_jobs_for_cost bounds `n_jobs` by the work of `items`: each
+// worker costs a copy of the checker and a merge, which a few small bodies do
+// not pay back. A program that costs less than min_parallel_check_job_cost gets
+// one job: the serial check.
+fn parallel_check_jobs_for_cost(n_jobs int, items []CheckWorkItem) int {
+	mut total_cost := i64(0)
+	for item in items {
+		total_cost += item.cost
+	}
+	by_cost := total_cost / min_parallel_check_job_cost
+	return if by_cost < i64(n_jobs) { int_max(int(by_cost), 1) } else { n_jobs }
 }
 
 fn check_job_count(n_runtime_jobs int, n_items int) int {
@@ -1544,20 +3091,51 @@ fn split_check_items(items []CheckWorkItem, n int) [][]CheckWorkItem {
 		}
 		loads[0] = -total * check_master_bias_pct / i64(100 * n)
 	}
-	mut sorted := items.clone()
-	sorted.sort(a.rank > b.rank)
+	// Sort compact (rank, index) pairs instead of whole work items. The sort is
+	// stable, so the assignment order is exactly that of sorting the items.
+	mut ranked := []CheckItemRank{cap: items.len}
+	for i, it in items {
+		ranked << CheckItemRank{
+			rank: it.rank
+			idx:  i
+		}
+	}
+	ranked.sort(a.rank > b.rank)
 	mut least_loaded := []int{len: n, init: index}
 	restore_check_load_heap(mut least_loaded, loads)
-	for it in sorted {
+	mut bucket_of := []int{len: items.len}
+	for r in ranked {
 		best := least_loaded[0]
-		buckets[best] << it
-		loads[best] += i64(it.cost) + 1
+		bucket_of[r.idx] = best
+		loads[best] += i64(items[r.idx].cost) + 1
 		restore_check_load_heap(mut least_loaded, loads)
+	}
+	mut strictly_ordered := true
+	for i in 1 .. items.len {
+		if items[i].fn_idx <= items[i - 1].fn_idx {
+			strictly_ordered = false
+			break
+		}
+	}
+	if strictly_ordered {
+		// Filling the buckets in source order already sorts each one by fn_idx.
+		for i, it in items {
+			buckets[bucket_of[i]] << it
+		}
+		return buckets
+	}
+	for r in ranked {
+		buckets[bucket_of[r.idx]] << items[r.idx]
 	}
 	for mut bucket in buckets {
 		bucket.sort(a.fn_idx < b.fn_idx)
 	}
 	return buckets
+}
+
+struct CheckItemRank {
+	rank i64
+	idx  int
 }
 
 // Only the root's load changes. Break equal-load ties by bucket index, exactly
@@ -1599,7 +3177,8 @@ fn (mut tc TypeChecker) merge_own_sparse_caches() {
 		tc.statement_nodes[idx] = true
 	}
 	for idx, typ in tc.sparse_expr_type_values {
-		tc.expr_type_values[idx] = typ
+		tc.invalidate_checked_type_id(idx)
+		tc.expr_type_values[idx] = tc.intern_type_reference(typ)
 		tc.expr_type_set[idx] = true
 	}
 	tc.sparse_resolved_call_names.clear()
@@ -1613,14 +3192,34 @@ fn (mut tc TypeChecker) check_fn_items_serial(items []CheckWorkItem) {
 		tc.body_resolve_memo = &BodyResolveMemo{}
 	}
 	mut memo := tc.body_resolve_memo
-	for it in items {
-		node := tc.a.nodes[it.fn_idx]
-		tc.check_range_lo = it.range_lo
-		tc.check_range_hi = it.fn_idx
-		memo.begin(it.range_lo, it.fn_idx)
-		tc.check_fn_decl_semantics(it.fn_idx, node, it.file, it.module)
+	if items.len > 0 {
+		// This context stays in the batch's arena. Direct/concrete checks and
+		// checker forks receive fresh contexts instead of inheriting its storage.
+		mut reusable_context := new_function_check_context()
+		// So does the smartcast key filter, which is only armed here.
+		mut smartcast_keys := &SmartcastKeyFilter{}
+		for it in items {
+			node := tc.a.nodes[it.fn_idx]
+			tc.check_range_lo = it.range_lo
+			tc.check_range_hi = it.fn_idx
+			memo.begin(it.range_lo, it.fn_idx)
+			smartcast_keys.arm(it.range_lo, it.fn_idx)
+			tc.smartcast_key_filter = smartcast_keys
+			tc.check_fn_decl_semantics_with_context(it.fn_idx, node, it.file, it.module,
+				mut reusable_context)
+			reusable_context.reset_for_sibling_check()
+			if tc.capture_items {
+				tc.item_marks << IncrementalItemMark{
+					fn_idx:  it.fn_idx
+					errors:  tc.errors.len
+					notices: tc.notices.len
+					pending: tc.pending_ierror_errors.len
+				}
+			}
+		}
 	}
 	memo.active = false
+	tc.smartcast_key_filter = unsafe { nil }
 	tc.check_range_lo = -1
 	tc.check_range_hi = -1
 }
@@ -1641,41 +3240,654 @@ pub fn (mut tc TypeChecker) check_concrete_fn_semantics(fn_idx int, file string,
 	tc.check_fn_decl_semantics(fn_idx, node, file, module_name)
 }
 
+// check_concrete_instance_members checks a concrete clone of one of the
+// program's generic functions for what only its concrete types decide: a field,
+// a method or an operator that such a type lacks, as when `show(1)` reads
+// `x.name` or `add(1)` adds a string to `a`, a returned name or field of
+// another type than the function returns, as when `is_set(1)` returns `x` from
+// a `fn is_set[T](x T) bool`, a passed name or field of another type than its
+// parameter, as when `label(mut app)` passes a `bool` `app.flag` to a `string`
+// (see call_arg_is_judged_in_clone), an array or map whose elements are stored
+// differently from the one it is used or cast as, as when `to_bytes([1, 2])`
+// returns `[]u8(a)` for an `a []int` (see is_container_layout_error), and an
+// `if x := a` guard whose `a` is declared neither as an option nor as a result,
+// as when `h(User{})` guards its `a T` (see is_concrete_if_guard_error). Every
+// other error and warning of the clone is dropped: checked before the clone is
+// lowered, only these are reliable outside checker fixtures, where many valid
+// generic programs would fail. `args`
+// are source-spelling IDs of the types of the instance: the clone spells an
+// alias among them by its base type, and a member of the alias is none of its base (see
+// member_of_an_alias_argument).
+pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file string, module_name string, args []u32) {
+	errors_start := tc.errors.len
+	notices_start := tc.notices.len
+	// The clone was appended after the parent index was built; without its edges
+	// every parent query of the check scans the whole tree.
+	if tc.concrete_parents_indexed == 0 {
+		tc.refresh_rewritten_parent_index(tc.a)
+	} else {
+		tc.index_rewritten_parents_after(tc.concrete_parents_indexed)
+	}
+	tc.concrete_parents_indexed = tc.a.nodes.len
+	tc.concrete_guard_options = map[flat.NodeId]bool{}
+	tc.checking_concrete_members = true
+	tc.check_concrete_fn_semantics(fn_idx, file, module_name)
+	tc.checking_concrete_members = false
+	mut kept := []TypeError{}
+	for err in tc.errors[errors_start..] {
+		if (is_concrete_member_error(err.msg) && !tc.member_of_an_alias_argument(err.msg, args))
+			|| (is_concrete_operator_error(err.msg) && tc.operator_operands_are_plain(err.node))
+			|| (is_concrete_return_error(err) && tc.operand_is_plain(err.node)
+				&& !tc.value_is_type_tested(err.node, fn_idx)
+				&& tc.locals_have_plain_initializers(err.node, fn_idx, 0))
+			|| (is_concrete_call_arg_error(err) && tc.call_arg_is_judged_in_clone(err, fn_idx))
+			|| (is_concrete_if_guard_error(err.msg) && tc.operand_is_plain(err.node)
+				&& !tc.concrete_guard_options[err.node])
+			|| tc.is_container_layout_error(err.msg)
+			|| tc.is_container_type_error(err.msg) {
+			kept << err
+		}
+	}
+	tc.errors.trim(errors_start)
+	tc.errors << kept
+	tc.notices.trim(notices_start)
+	tc.concrete_guard_options = map[flat.NodeId]bool{}
+}
+
+// member_of_an_alias_argument reports whether the member error `msg` names the
+// base type of an alias among the types `args` of an instance, and a member
+// that the alias has: `el.val.pack()` of an `Elm[Octet]`, where the clone
+// spells `Octet` as `string` and `pack` is a method of `Octet`.
+fn (tc &TypeChecker) member_of_an_alias_argument(msg string, args []u32) bool {
+	type_name, member := concrete_member_error_parts(msg) or { return false }
+	for arg in args {
+		typ := unwrap_pointer(tc.parse_type(arg))
+		// The base spelling is built before the probe, so a name that only it
+		// interns still matches.
+		if typ is Alias && source_type_id_is_name(unalias_type(typ).source_type_id(), type_name)
+			&& tc.alias_declares_method(typ, member) {
+			return true
+		}
+	}
+	return false
+}
+
+// concrete_member_error_parts returns the type and the member that the member
+// error `msg` names (see is_concrete_member_error): `string` and `pack` for
+// "unknown method or field: `string.pack`", `User` and `nme` for "type `User`
+// has no field named `nme`.".
+fn concrete_member_error_parts(msg string) ?(string, string) {
+	if msg.starts_with('unknown method or field: `') {
+		named := msg.all_after('`').all_before('`')
+		dot := named.last_index_u8(`.`)
+		if dot <= 0 || dot == named.len - 1 {
+			return none
+		}
+		return named[..dot], named[dot + 1..]
+	}
+	quoted := msg.split('`')
+	if quoted.len < 4 {
+		return none
+	}
+	return quoted[1], quoted[3]
+}
+
+// is_concrete_member_error reports whether `msg` says that a concrete type
+// lacks a field or a method. A `voidptr` receiver is a type the clone did not
+// resolve, not one the program uses.
+fn is_concrete_member_error(msg string) bool {
+	if msg.starts_with('`voidptr`') || msg.contains('`voidptr.') {
+		return false
+	}
+	return msg.contains(' has no property `') || msg.contains(' has no field named `')
+		|| msg.contains(' has no field or method `')
+		|| msg.starts_with('unknown method or field: `')
+}
+
+// is_concrete_operator_error reports whether `msg` says that a concrete type
+// lacks an operator, as `int + string` does. A `voidptr` in it is a type the
+// clone did not resolve.
+fn is_concrete_operator_error(msg string) bool {
+	if msg.contains('`voidptr`') {
+		return false
+	}
+	return msg.starts_with('operator `') || msg.starts_with('undefined operation `')
+		|| msg.starts_with('infix expr: cannot use `')
+}
+
+// is_concrete_return_error reports whether `err` says that a returned value has
+// another type than its function returns. Only a plain value (see
+// operand_is_plain) is reported for an instance: a clone types those with its
+// concrete types, where the result of a call or a literal of a type parameter
+// can still have the type of the open body (`return f()` in a closure, or
+// `return T{}` for a map alias). Returned locals must also have plain
+// initializers (see locals_have_plain_initializers): the clone types a local fn
+// literal as its return type. A `voidptr` is a type the clone did not resolve.
+fn is_concrete_return_error(err TypeError) bool {
+	return err.kind == .return_mismatch && err.msg.starts_with('cannot use `')
+		&& err.msg.ends_with('` in return argument') && !err.msg.contains('`voidptr`')
+}
+
+// is_concrete_call_arg_error reports whether `err` says that an argument of a
+// call has another type than its parameter. As for returns, only a plain
+// argument (see operand_is_plain) is reported for an instance, and a `voidptr`
+// in it is a type the clone did not resolve.
+fn is_concrete_call_arg_error(err TypeError) bool {
+	return err.kind == .call_arg_mismatch && err.msg.starts_with('cannot use `')
+		&& err.msg.contains(' in argument ') && !err.msg.contains('`voidptr`')
+}
+
+// call_arg_is_judged_in_clone reports whether the clone `fn_idx` types the
+// argument of the call argument error `err` as its instance does: a plain
+// argument (see operand_is_plain) that is not narrowed (see
+// value_is_type_tested), outside the body of a `$for`, whose locals have plain
+// initializers (see locals_have_plain_initializers). A spread `...args` is
+// checked against the parameters it fills after the clone is lowered, and an
+// argument whose struct embeds the struct of the parameter is passed as that
+// embedded field, as a veb middleware passes its context.
+fn (tc &TypeChecker) call_arg_is_judged_in_clone(err TypeError, fn_idx int) bool {
+	return tc.operand_is_plain(err.node) && !tc.arg_is_spread(err.node)
+		&& !tc.value_is_type_tested(err.node, fn_idx)
+		&& !tc.node_is_in_comptime_for(err.node, fn_idx)
+		&& tc.locals_have_plain_initializers(err.node, fn_idx, 0)
+		&& !tc.call_arg_error_embeds_param(err.msg)
+}
+
+// locals_have_plain_initializers reports whether every declaration in the clone
+// `fn_idx` of the local that the plain value at `id` names initializes it with
+// a plain value whose locals do too. A clone can type a local by another
+// initializer than its instance: `len := match name { 'a' { u8(2) } else { 4 } }`
+// is a `u8`, and an `int` in a clone, and a local holding a fn literal has the
+// type the literal returns there. A for-in binding inherits its iterable's
+// inferred type, so its iterable's locals must have plain initializers too.
+fn (tc &TypeChecker) locals_have_plain_initializers(id flat.NodeId, fn_idx int, depth int) bool {
+	name := tc.plain_value_root_name(id)
+	if name.len == 0 {
+		return true
+	}
+	if depth > 8 || !tc.valid_node_id(flat.NodeId(fn_idx)) {
+		return false
+	}
+	mut stack := [flat.NodeId(fn_idx)]
+	for stack.len > 0 {
+		node := tc.a.node(stack.pop())
+		if node.kind == .decl_assign && node.children_count > 0 {
+			if node.children_count == 2 {
+				if tc.plain_value_root_name(tc.a.child(node, 0)) == name {
+					value := tc.a.child(node, 1)
+					if !tc.operand_is_plain(value)
+						|| !tc.locals_have_plain_initializers(value, fn_idx, depth + 1) {
+						return false
+					}
+				}
+			} else {
+				// `lhs0, rhs, lhs1, lhs2, ...`: a local of a multi-value declaration.
+				for i in 0 .. node.children_count {
+					if i != 1 && tc.plain_value_root_name(tc.a.child(node, i)) == name {
+						return false
+					}
+				}
+			}
+		}
+		if node.kind == .for_in_stmt && node.children_count >= 3 {
+			for i in 0 .. 2 {
+				if tc.plain_value_root_name(tc.a.child(node, i)) == name
+					&& !tc.locals_have_plain_initializers(tc.a.child(node, 2), fn_idx, depth + 1) {
+					return false
+				}
+			}
+		}
+		for i in 0 .. node.children_count {
+			child := tc.a.child(node, i)
+			if tc.valid_node_id(child) {
+				stack << child
+			}
+		}
+	}
+	return true
+}
+
+// plain_value_root_name returns the name that the plain value at `id` (see
+// operand_is_plain) reads or is a field of, and '' for a literal.
+fn (tc &TypeChecker) plain_value_root_name(id flat.NodeId) string {
+	if !tc.valid_node_id(id) {
+		return ''
+	}
+	node := tc.a.node(id)
+	if node.kind == .ident {
+		return if valid_string_data(node.value) { node.value } else { '' }
+	}
+	if node.kind in [.selector, .paren, .prefix] && node.children_count > 0 {
+		return tc.plain_value_root_name(tc.a.child(node, 0))
+	}
+	return ''
+}
+
+// call_arg_error_embeds_param reports whether the call argument error `msg`
+// passes a struct, or a reference to one, that embeds the struct of the
+// parameter.
+fn (tc &TypeChecker) call_arg_error_embeds_param(msg string) bool {
+	parts := msg.split('`')
+	if parts.len < 5 || parts[0] != 'cannot use ' || parts[2] != ' as ' {
+		return false
+	}
+	_, actual := type_pointer_depth_and_base(tc.parse_type(flat.source_type_id(parts[1])))
+	_, expected := type_pointer_depth_and_base(tc.parse_type(flat.source_type_id(parts[3])))
+	return tc.receiver_embeds(actual, expected)
+}
+
+// node_is_in_comptime_for reports whether the node `id` is inside the body of
+// a `$for` of the clone `fn_idx`: the clone types a value there by the field
+// or variant of the loop it is narrowed to, as `val` passed for a `f.typ`.
+fn (tc &TypeChecker) node_is_in_comptime_for(id flat.NodeId, fn_idx int) bool {
+	if !tc.valid_node_id(id) || !tc.valid_node_id(flat.NodeId(fn_idx)) {
+		return false
+	}
+	mut stack := [flat.NodeId(fn_idx)]
+	mut in_for := [false]
+	for stack.len > 0 {
+		current := stack.pop()
+		inside := in_for.pop()
+		if current == id {
+			return inside
+		}
+		node := tc.a.node(current)
+		for i in 0 .. node.children_count {
+			child := tc.a.child(node, i)
+			if tc.valid_node_id(child) {
+				stack << child
+				in_for << (inside || node.kind == .comptime_for)
+			}
+		}
+	}
+	return false
+}
+
+// value_is_type_tested reports whether the value at `id`, or a value it is a
+// field of, is tested with `is` or matched anywhere in the clone `fn_idx`: a
+// clone can type it by its declared type where it is narrowed, as `c.any` in
+// `if c.any is T { return c.any }`.
+fn (tc &TypeChecker) value_is_type_tested(id flat.NodeId, fn_idx int) bool {
+	key := tc.expr_key(id)
+	if key.len == 0 || !tc.valid_node_id(flat.NodeId(fn_idx)) {
+		return false
+	}
+	mut stack := [flat.NodeId(fn_idx)]
+	for stack.len > 0 {
+		node := tc.a.node(stack.pop())
+		if node.kind in [.is_expr, .match_stmt] && node.children_count > 0 {
+			tested := tc.expr_key(tc.a.child(node, 0))
+			if tested.len > 0 && (key == tested || key.starts_with(tested + '.')) {
+				return true
+			}
+		}
+		for i in 0 .. node.children_count {
+			child := tc.a.child(node, i)
+			if tc.valid_node_id(child) {
+				stack << child
+			}
+		}
+	}
+	return false
+}
+
+// operator_operands_are_plain reports whether the operator at `id` applies to
+// names, literals and fields of them: a clone types those with its concrete
+// types, where the result of a call can still have the type of the open body
+// (`1 + leaf.left.size()` in a method of a generic sum type).
+fn (tc &TypeChecker) operator_operands_are_plain(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind !in [.infix, .prefix] || node.children_count == 0 {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		if !tc.operand_is_plain(tc.a.child(node, i)) {
+			return false
+		}
+	}
+	return true
+}
+
+// is_concrete_if_guard_error reports whether `msg` says that an `if x := a`
+// guard unwraps an `a` that is neither an option nor a result. A clone reports it
+// for `a` that is a name, a literal or a field of them (see operand_is_plain),
+// typed with the concrete types of the instance, unless `a` is declared as an
+// option or a result and only smartcast to its payload, as in
+// `if a != none { if v := a {} }` (see concrete_guard_options).
+fn is_concrete_if_guard_error(msg string) bool {
+	return msg == 'expression should either return an Option or a Result'
+}
+
+// operand_is_plain reports whether `id` is a name, a literal, or a field, a
+// prefix or a parenthesized form of one of them.
+fn (tc &TypeChecker) operand_is_plain(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	return match node.kind {
+		.ident, .int_literal, .float_literal, .bool_literal, .char_literal, .string_literal {
+			true
+		}
+		.selector, .paren, .prefix {
+			node.children_count > 0 && tc.operand_is_plain(tc.a.child(node, 0))
+		}
+		else {
+			false
+		}
+	}
+}
+
+// ContainerLayoutUse is what a container layout error (see
+// is_container_layout_error) does with the array or map it names.
+enum ContainerLayoutUse {
+	value  // assigns, passes, returns or stores it
+	cast   // casts it
+	append // appends it to an array
+}
+
+// is_container_layout_error reports whether `msg` says that an array or map is
+// used or cast as one whose elements are stored differently: `[]u8(a)` for an
+// `a []int`, an `[]i32` passed for an `[]i64`, a `map[string]u8` returned as a
+// `map[string]u64`. Such a container is not converted element by element (see
+// container_elem_layouts_differ and container_cast_reinterprets_elems), and in
+// the clone of an instance the elements have the types of that instance, which
+// decide their layout. A `voidptr` in it is a type the clone did not resolve.
+fn (tc &TypeChecker) is_container_layout_error(msg string) bool {
+	actual_name, expected_name, use := container_layout_error_parts(msg) or { return false }
+	if actual_name.contains('voidptr') || expected_name.contains('voidptr') {
+		return false
+	}
+	actual := tc.parse_type(flat.source_type_id(actual_name))
+	mut expected := tc.parse_type(flat.source_type_id(expected_name))
+	match use {
+		.cast {
+			// The only error of a cast from one array or map to another.
+			mut target := unalias_type(expected)
+			if target is OptionType {
+				target = unalias_type(target.base_type)
+			}
+			return is_container_type(actual) && is_container_type(target)
+		}
+		.append {
+			clean_expected := unalias_type(expected)
+			if clean_expected is Array {
+				expected = clean_expected.elem_type
+			} else {
+				return false
+			}
+		}
+		.value {}
+	}
+	return tc.container_value_layouts_differ(actual, expected)
+}
+
+// is_container_type_error reports whether `msg` says that an array or map is
+// used as one whose elements have a type that its elements cannot be used as at
+// all: `[]string` as `[]u64`, `[]Foo` as `[]Bar` (container_elems_incompatible).
+// A cast is a layout error (is_container_layout_error).
+fn (tc &TypeChecker) is_container_type_error(msg string) bool {
+	actual_name, expected_name, use := container_layout_error_parts(msg) or { return false }
+	if use == .cast || actual_name.contains('voidptr') || expected_name.contains('voidptr') {
+		return false
+	}
+	actual := tc.parse_type(flat.source_type_id(actual_name))
+	mut expected := tc.parse_type(flat.source_type_id(expected_name))
+	if use == .append {
+		clean_expected := unalias_type(expected)
+		if clean_expected is Array {
+			expected = clean_expected.elem_type
+		} else {
+			return false
+		}
+	}
+	return tc.container_elems_incompatible(actual, expected)
+}
+
+// container_elems_incompatible reports whether the array or map `actual` is used
+// as the one `expected` although its elements, keys or values cannot be used as
+// those of `expected` at all: `[]string` as `[]u64`, `[]Foo` as `[]Bar`,
+// `map[string]string` as `map[string]int`. An option or a result holds the
+// container as it is, and a referenced container is shared. Whether a type
+// implements an interface or is a variant of a sum type is left out: the clone
+// spells an alias among the types of its instance by its base type, which lacks
+// the methods of the alias (see member_of_an_alias_argument).
+fn (tc &TypeChecker) container_elems_incompatible(actual Type, expected Type) bool {
+	mut clean_actual := unalias_type(actual)
+	mut clean_expected := unalias_type(expected)
+	for {
+		if clean_expected is OptionType {
+			if clean_actual is OptionType {
+				clean_actual = unalias_type(clean_actual.base_type)
+			}
+			clean_expected = unalias_type(clean_expected.base_type)
+			continue
+		}
+		if clean_expected is ResultType {
+			if clean_actual is ResultType {
+				clean_actual = unalias_type(clean_actual.base_type)
+			}
+			clean_expected = unalias_type(clean_expected.base_type)
+			continue
+		}
+		break
+	}
+	if clean_actual is Pointer && clean_expected is Pointer {
+		clean_actual = unalias_type(clean_actual.base_type)
+		clean_expected = unalias_type(clean_expected.base_type)
+	}
+	if !is_container_type(clean_actual) || !is_container_type(clean_expected)
+		|| type_contains_unknown(clean_actual) || type_contains_unknown(clean_expected)
+		|| container_elems_name_an_abstract_type(clean_actual)
+		|| container_elems_name_an_abstract_type(clean_expected) {
+		return false
+	}
+	return !tc.type_compatible(clean_actual, clean_expected)
+}
+
+// container_elems_name_an_abstract_type reports whether an element, key or value
+// of the array or map `typ`, or of one nested in it, is an interface or a sum
+// type (see container_elems_incompatible).
+fn container_elems_name_an_abstract_type(typ Type) bool {
+	clean := unalias_type(typ)
+	return match clean {
+		Array { container_elems_name_an_abstract_type(clean.elem_type) }
+		ArrayFixed { container_elems_name_an_abstract_type(clean.elem_type) }
+		Map {
+			container_elems_name_an_abstract_type(clean.key_type)
+				|| container_elems_name_an_abstract_type(clean.value_type)
+		}
+		OptionType { container_elems_name_an_abstract_type(clean.base_type) }
+		ResultType { container_elems_name_an_abstract_type(clean.base_type) }
+		Pointer { container_elems_name_an_abstract_type(clean.base_type) }
+		Interface, SumType { true }
+		else { false }
+	}
+}
+
+// container_layout_error_parts returns the type of the array or map that the
+// error `msg` names, the type it is used as, and what is done with it, for the
+// errors that report a value of the wrong type in a slot (assignment, argument,
+// return, field) and a cast or an append that reinterprets the elements.
+fn container_layout_error_parts(msg string) ?(string, string, ContainerLayoutUse) {
+	if !msg.starts_with('cannot ') {
+		return none
+	}
+	parts := msg.split('`')
+	if parts.len == 5 && parts[4] == '' && parts[2] == ' to ' {
+		if parts[0] in ['cannot cast array ', 'cannot cast map '] {
+			// cannot cast array `A` to `B`, cannot cast map `A` to `B`
+			return parts[1], parts[3], ContainerLayoutUse.cast
+		}
+		if parts[0] == 'cannot append ' {
+			// cannot append `A` to `B`
+			return parts[1], parts[3], ContainerLayoutUse.append
+		}
+	}
+	if parts.len == 7 && parts[0] == 'cannot cast ' && parts[2] == ' to '
+		&& parts[4] == ' (alias to ' && parts[6] == ')' {
+		// cannot cast `A` to `B` (alias to `C`)
+		return parts[1], parts[5], ContainerLayoutUse.cast
+	}
+	if parts.len == 5 && parts[0] == 'cannot use ' && parts[2] == ' as type '
+		&& parts[4] == ' in return argument' {
+		// cannot use `A` as type `B` in return argument
+		return parts[1], parts[3], ContainerLayoutUse.value
+	}
+	if parts.len == 7 && parts[0] == 'cannot use ' && parts[2] == ' as '
+		&& parts[4].starts_with(' in argument ') && parts[6] == '' {
+		// cannot use `A` as `B` in argument 1 to `f`
+		return parts[1], parts[3], ContainerLayoutUse.value
+	}
+	if parts.len == 7 && parts[0] == 'cannot initialize field ' && parts[2] == ' with '
+		&& parts[4] == '; expected ' && parts[6] == '' {
+		// cannot initialize field `x` with `A`; expected `B`
+		return parts[3], parts[5], ContainerLayoutUse.value
+	}
+	if parts.len >= 7 && parts[0].starts_with('cannot assign to ')
+		&& parts[parts.len - 5] == ': expected ' && parts[parts.len - 3] == ', not '
+		&& parts[parts.len - 1] == '' {
+		// cannot assign to `x`: expected `B`, not `A`
+		return parts[parts.len - 2], parts[parts.len - 4], ContainerLayoutUse.value
+	}
+	return none
+}
+
+// container_value_layouts_differ reports whether the array, map or channel `actual`
+// is used as the one `expected` although their elements are stored differently
+// (container_elem_layouts_differ). An option or a result holds the container as
+// it is, and a value may be wrapped in one. A dynamic array of concrete values is
+// converted to one of their interface or sum type
+// (dynamic_array_elem_types_compatible): an error about that says that a value
+// does not implement it, not how it is stored.
+fn (tc &TypeChecker) container_value_layouts_differ(actual Type, expected Type) bool {
+	mut clean_actual := unalias_type(actual)
+	mut clean_expected := unalias_type(expected)
+	for {
+		if clean_expected is OptionType {
+			if clean_actual is OptionType {
+				clean_actual = unalias_type(clean_actual.base_type)
+			}
+			clean_expected = unalias_type(clean_expected.base_type)
+			continue
+		}
+		if clean_expected is ResultType {
+			if clean_actual is ResultType {
+				clean_actual = unalias_type(clean_actual.base_type)
+			}
+			clean_expected = unalias_type(clean_expected.base_type)
+			continue
+		}
+		break
+	}
+	if clean_actual is Pointer && clean_expected is Pointer {
+		// A referenced array, map or option (a `mut` argument) is shared, never converted.
+		if unalias_type(clean_actual.base_type) is OptionType
+			&& unalias_type(clean_expected.base_type) is OptionType {
+			return tc.mut_arg_container_layouts_differ(clean_actual, clean_expected)
+		}
+		// So is a referenced number.
+		if pointee_number_storage_differs(clean_actual.base_type, clean_expected.base_type) {
+			return true
+		}
+		return is_container_type(clean_actual.base_type)
+			&& is_container_type(clean_expected.base_type)
+			&& tc.in_place_container_layouts_differ(clean_actual.base_type, clean_expected.base_type)
+	}
+	if clean_actual is Channel && clean_expected is Channel {
+		// A channel is shared, never converted, like a referenced container.
+		return tc.container_elem_layouts_differ(clean_actual, clean_expected)
+	}
+	actual_fn_type := *clean_actual
+	expected_fn_type := *clean_expected
+	if actual_fn_type is FnType && expected_fn_type is FnType {
+		// A function value is called as it is, never converted.
+		return tc.fn_value_signature_layouts_differ(actual_fn_type, expected_fn_type)
+	}
+	if !is_container_type(clean_actual) || !is_container_type(clean_expected) {
+		return false
+	}
+	mut actual_elem := clean_actual
+	mut expected_elem := clean_expected
+	if actual_elem is ArrayFixed && expected_elem is Array {
+		// A fixed array used as a dynamic one is copied into a new array element by
+		// element, so its elements are compared as those of a dynamic array.
+		actual_elem = unalias_type(actual_elem.elem_type)
+		expected_elem = unalias_type(expected_elem.elem_type)
+	}
+	compared_actual := actual_elem
+	compared_expected := expected_elem
+	for actual_elem is Array && expected_elem is Array {
+		actual_elem = unalias_type(actual_elem.elem_type)
+		expected_elem = unalias_type(expected_elem.elem_type)
+	}
+	if clean_expected is Array && (expected_elem is Interface || expected_elem is SumType) {
+		return false
+	}
+	return tc.container_elem_layouts_differ(compared_actual, compared_expected)
+}
+
 fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file string, module_name string) {
-	fast_valid_build := tc.building_v_fast
+	mut context := new_function_check_context()
+	tc.check_fn_decl_semantics_with_context(fn_idx, node, file, module_name, mut context)
+}
+
+fn (mut tc TypeChecker) check_fn_decl_semantics_with_context(fn_idx int, node flat.Node, file string, module_name string, mut context FunctionCheckContext) {
 	saved_fn_context := tc.fn_context
-	tc.fn_context = new_function_check_context()
-	inferred_generic_params := tc.infer_decl_generic_param_names(node)
+	tc.fn_context = context
+	defer {
+		context = tc.fn_context
+		tc.fn_context = saved_fn_context
+	}
+	fast_valid_build := tc.building_v_fast
+	inferred_generic_params := tc.infer_decl_generic_param_ids(node)
 	is_concrete_generic_receiver := node.value.contains('.')
 		&& node.value.all_before_last('.').contains('[') && inferred_generic_params.len == 0
 	is_specialized := tc.a.specialized_fn_nodes[fn_idx] || is_concrete_generic_receiver
 	tc.fn_context.generic_params = if is_specialized {
-		[]string{}
+		[]u32{}
 	} else {
 		inferred_generic_params
 	}
 	tc.cur_file = file
 	tc.cur_module = module_name
+	if !fast_valid_build {
+		if receiver_id := tc.global_receiver_id(node) {
+			receiver := tc.a.node(receiver_id)
+			name_pos := tc.fn_receiver_param_diagnostic_pos(node, receiver.value)
+			_, receiver_pos := tc.fn_receiver_source_text_pos(node)
+			pos := token.new_span(name_pos.id, name_pos.offset, int_max(name_pos.end,
+				receiver_pos.end - 1))
+			tc.record_error_at(.duplicate_decl, 'cannot use global variable name `${receiver.value}` as receiver',
+				receiver_id, pos)
+			return
+		}
+	}
 	if !fast_valid_build && module_name in ['', 'main'] && !node.value.contains('.') {
 		if visibility := tc.declaration_visibility['builtin.${node.value}'] {
 			if visibility.is_pub {
 				tc.record_error_at(.duplicate_decl, 'cannot redefine builtin public function `${node.value}`', flat.NodeId(fn_idx), tc.fn_declaration_diagnostic_pos(node))
-				tc.fn_context = saved_fn_context
 				return
 			}
 		}
 	}
 	tc.cur_scope = tc.file_scope
-	checked_return_type := if node.typ.ends_with('?') && !node.typ.starts_with('?') {
-		node.typ.trim_right('?')
+	return_syntax := flat.source_type_syntax(node.typ)
+	checked_return_type := if return_syntax.question_trimmed() != node.typ && !flat.source_type_shape(node.typ).has(.option_type) {
+		return_syntax.question_trimmed()
 	} else {
 		node.typ
 	}
 	tc.cur_fn_ret_type = tc.parse_type(checked_return_type)
 	tc.fn_context.return_type = tc.cur_fn_ret_type
 	tc.fn_context.node_id = fn_idx
-	if !fast_valid_build {
-		tc.index_local_decl_rhs(flat.NodeId(fn_idx))
+	// Full expression validation can query local declarations even when self-host
+	// scheduling is enabled. Build the name index on its first query.
+	if !fast_valid_build || !tc.valid_resolution_fast {
+		tc.prepare_local_decl_rhs_index(flat.NodeId(fn_idx))
 	}
 	tc.fn_context.concrete_generic_receiver_specialization =
 		fn_value_is_concrete_generic_receiver_specialization(node.value)
@@ -1695,7 +3907,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	if !fast_valid_build && module_name != 'builtin' && node.value.ends_with('.map')
 		&& node.children_count > 0 {
 		receiver := tc.a.child_node(&node, 0)
-		if receiver.kind == .param && receiver.typ.trim_left('&').starts_with('[]') {
+		if receiver.kind == .param && flat.source_type_shape(flat.source_type_syntax(receiver.typ).pointer_raw_base()).has(.array_type) {
 			tc.record_error_at(.call_arg_mismatch, 'method overrides built-in array method', flat.NodeId(fn_idx), tc.fn_declaration_diagnostic_pos(node))
 		}
 	}
@@ -1715,27 +3927,29 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 					}
 				}
 				if param.is_mut {
-					implicit_mut_reference := param.op != .amp && param.typ.starts_with('&')
-					diagnostic_type_text := if implicit_mut_reference {
-						param.typ[1..]
+					implicit_mut_reference := param.op != .amp && flat.source_type_shape(param.typ).has(.pointer)
+					diagnostic_type_id := if implicit_mut_reference {
+						flat.source_type_syntax(param.typ).raw_base()
 					} else {
 						param.typ
 					}
-					raw_param_type := tc.parse_scope_param_type(diagnostic_type_text)
+					raw_param_type := tc.parse_scope_param_type(diagnostic_type_id)
 					if tc.is_params_struct_type(raw_param_type) {
-						tc.record_error_at(.call_arg_mismatch, 'declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed', param_id, tc.type_diagnostic_pos(param_id, diagnostic_type_text))
+						tc.record_error_at(.call_arg_mismatch, 'declaring a mutable parameter that accepts a struct with the `@[params]` attribute is not allowed', param_id, tc.type_diagnostic_pos_id(param_id, diagnostic_type_id))
 					}
 					param_type := unalias_type(raw_param_type)
 					if !is_specialized && !mut_param_type_is_allowed(raw_param_type) {
 						type_name := param_type.name()
-						tc.record_error_at(.call_arg_mismatch, 'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases\nreturn values instead: `fn foo(mut n ${type_name}) {` => `fn foo(n ${type_name}) ${type_name} {`', param_id, tc.type_diagnostic_pos(param_id, diagnostic_type_text))
+						tc.record_error_at(.call_arg_mismatch, 'mutable arguments are only allowed for arrays, interfaces, maps, pointers, structs or their aliases\nreturn values instead: `fn foo(mut n ${type_name}) {` => `fn foo(n ${type_name}) ${type_name} {`', param_id, tc.type_diagnostic_pos_id(param_id, diagnostic_type_id))
 					}
 				}
 				tc.check_reserved_parameter_name(param_id)
 				if param.op == .dot {
 					tc.check_import_symbol_conflict_at(param_id, param.value, tc.fn_receiver_param_diagnostic_pos(node, param.value))
+					tc.check_generated_parameter_name(param_id, param, tc.fn_receiver_param_diagnostic_pos(node, param.value))
 				} else {
 					tc.check_import_symbol_conflict(param_id, param.value)
+					tc.check_generated_parameter_name(param_id, param, tc.node_value_diagnostic_pos(param_id))
 				}
 				tc.check_module_name_conflict(param_id, param.value)
 			}
@@ -1760,7 +3974,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	// The source-level global-shadow rule does not depend on concrete types, so inspect
 	// those bindings now before deferring expression and control-flow checks.
 	generic_params := if is_specialized {
-		map[string]bool{}
+		map[u32]bool{}
 	} else {
 		tc.infer_decl_generic_params(node)
 	}
@@ -1770,6 +3984,10 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	has_body := !node.is_mut
 	if has_body && generic_params.len > 0 {
 		tc.check_generic_fn_body_global_shadowing(node)
+		tc.check_generic_fn_literal_capture_types(node)
+		tc.check_generic_fn_chained_bare_struct_method_inference(node)
+		tc.check_generic_fn_struct_init_type_args(node)
+		tc.check_generic_fn_constraint_members(node)
 	}
 	signature_has_bare_generic_type := tc.fn_decl_has_bare_generic_signature_type(node)
 	should_check_generic_body := generic_params.len == 0
@@ -1782,10 +4000,15 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 		&& tc.should_diagnose(flat.NodeId(fn_idx)) {
 		tc.check_deferred_generic_receiver_comparisons(node)
 	}
+	// A check tells what the body of a generic function does wrong without its
+	// type parameters (see check_generic_fn_body).
+	if has_body && generic_params.len > 0 && !fast_valid_build
+		&& !signature_has_bare_generic_type && tc.should_diagnose(flat.NodeId(fn_idx)) {
+		tc.check_generic_fn_body(node, fn_idx, generic_params)
+	}
 	if !fast_valid_build {
 		if has_body {
-			qname := checker_qualified_fn_name(module_name, node.value)
-			tc.check_noreturn_fn_semantics(flat.NodeId(fn_idx), node, qname)
+			tc.check_noreturn_fn_semantics(flat.NodeId(fn_idx), node, module_name)
 			tc.check_unreachable_after_noreturn_call(node)
 		}
 		if !is_specialized {
@@ -1793,6 +4016,7 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 				tc.record_unused_fn_vars(node)
 				tc.record_unused_fn_params(node)
 				tc.record_unused_fn_labels(node)
+				tc.check_asm_goto_lock_scopes(node)
 			}
 			tc.check_fn_bare_generic_fntype_params(node)
 		}
@@ -1816,7 +4040,6 @@ fn (mut tc TypeChecker) check_fn_decl_semantics(fn_idx int, node flat.Node, file
 	$if ownership ? {
 		tc.ownership_end_fn()
 	}
-	tc.fn_context = saved_fn_context
 }
 
 fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id flat.NodeId) {
@@ -1824,20 +4047,71 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 	if node.children_count > 0 {
 		receiver_id := tc.a.child(&node, 0)
 		receiver := tc.a.node(receiver_id)
-		if receiver.kind == .param && receiver.op == .dot
-			&& unalias_type(tc.parse_type(receiver.typ)) is MultiReturn {
-			tc.record_error_at(.call_arg_mismatch, 'cannot define method on multi-value', receiver_id, tc.type_diagnostic_pos(receiver_id, receiver.typ))
+		if receiver.kind == .param && receiver.op == .dot {
+			receiver_type := unwrap_all_pointers(tc.parse_type(receiver.typ))
+			if unalias_type(receiver_type) is MultiReturn {
+				tc.record_error_at(.call_arg_mismatch, 'cannot define method on multi-value', receiver_id, tc.type_diagnostic_pos_id(receiver_id, receiver.typ))
+			}
+			is_non_local_type := tc.cur_module != 'builtin' && match receiver_type {
+				Primitive, String, Char, Rune, ISize, USize, Array, ArrayFixed, Channel, Map,
+				FnType {
+					true
+				}
+				Alias, Struct, Interface, Enum, SumType {
+					receiver_name_id := receiver_type.source_type_id()
+					receiver_query := flat.source_type_query(receiver_name_id)
+					!receiver_query.has(.c_prefix) && !receiver_query.has(.js_prefix)
+						&& tc.type_name_known(receiver_name_id)
+						&& !tc.source_module_declares_type(receiver_name_id)
+				}
+				else {
+					false
+				}
+			}
+			is_builtin_array_override := receiver_type is Array && node.value.ends_with('.map')
+			is_local_collection := is_non_local_type && !is_builtin_array_override && match receiver_type {
+				Array {
+					tc.receiver_collection_payload_is_local(receiver_type.elem_type)
+				}
+				Map {
+					tc.receiver_collection_payload_is_local(receiver_type.value_type)
+				}
+				else {
+					false
+				}
+			}
+			if is_non_local_type && !is_builtin_array_override && !is_local_collection {
+				receiver_text, receiver_pos := tc.fn_receiver_declared_type_pos(node, receiver)
+				receiver_symbols := flat.source_type_syntax(receiver.typ).symbols()
+				receiver_generics := tc.fn_context.generic_params.filter(it != 0
+					&& it in receiver_symbols)
+				alias_name := if receiver_generics.len == 0 {
+					'AliasName'
+				} else {
+					'AliasName[${generic_param_ids_join(receiver_generics, ', ')}]'
+				}
+				receiver_hint := if receiver_generics.len == 0 {
+					''
+				} else {
+					', and use `${alias_name}` as the receiver with matching generic method parameters'
+				}
+				tc.record_error_at(.call_arg_mismatch, 'cannot define new methods on non-local type ${receiver_text}. Define an alias and use that instead like `type ${alias_name} = ${receiver_text}`${receiver_hint}', receiver_id, receiver_pos)
+			}
 		}
 	}
-	raw_return_type := node.typ.trim_space()
-	if raw_return_type.starts_with('!?') || raw_return_type.starts_with('?!') {
+	raw_return_type_id := trimmed_source_type_id(node.typ)
+	raw_return_shape := flat.source_type_shape(raw_return_type_id)
+	raw_return_syntax := flat.source_type_syntax(raw_return_type_id)
+	raw_return_payload_shape := flat.source_type_shape(raw_return_syntax.raw_base())
+	if (raw_return_shape.has(.result_type) && raw_return_payload_shape.has(.option_type))
+		|| (raw_return_shape.has(.option_type) && raw_return_payload_shape.has(.result_type)) {
 		tc.record_error_at(.return_mismatch, 'the type must be Option or Result', id, tc.nested_option_result_marker_pos(node))
 	}
-	if raw_return_type == '?void' {
+	if raw_return_type_id == checker_option_void_source_type {
 		tc.record_error_at(.return_mismatch, 'use `?` instead of `?void`', id, tc.option_void_payload_diagnostic_pos(node))
 	}
-	if raw_return_type.ends_with('?') && !raw_return_type.starts_with('?') {
-		tc.record_error_at(.return_mismatch, 'wrong syntax, it must be ?${raw_return_type.trim_right('?')}, not ${raw_return_type}', id, tc.suffix_option_return_type_diagnostic_pos(node))
+	if raw_return_syntax.question_trimmed() != raw_return_type_id && !raw_return_shape.has(.option_type) {
+		tc.record_error_at(.return_mismatch, 'wrong syntax, it must be ?${flat.source_type_name(raw_return_syntax.question_trimmed())}, not ${flat.source_type_name(raw_return_type_id)}', id, tc.suffix_option_return_type_diagnostic_pos(node))
 	}
 	signature_return_type := unalias_type(tc.parse_type(node.typ))
 	if signature_return_type is MultiReturn {
@@ -1854,25 +4128,35 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 		if receiver.kind == .param && receiver.op == .dot {
 			receiver_type := unalias_type(tc.parse_type(receiver.typ))
 			if receiver_type is Interface
-				&& node.value.all_after_last('.') in tc.interface_abstract_method_names(receiver_type.name) {
-				tc.record_error_at(.duplicate_decl, 'interface `${receiver_type.name}` cannot implement its own interface method `${node.value.all_after_last('.')}`', id, tc.fn_declaration_diagnostic_pos(node))
+				&& node.value.all_after_last('.') in tc.interface_abstract_method_names(receiver_type.source_type_id()) {
+				tc.record_error_at(.duplicate_decl, 'interface `${receiver_type.name()}` cannot implement its own interface method `${node.value.all_after_last('.')}`', id, tc.fn_declaration_diagnostic_pos(node))
 			}
-			if receiver_type is OptionType || receiver.typ.contains('?')
+			if receiver_type is OptionType || flat.source_type_syntax(receiver.typ).contains_question()
 				|| receiver_name.starts_with('?') {
 				tc.record_error_at(.call_arg_mismatch, 'option types cannot have methods', id, tc.fn_option_receiver_diagnostic_pos(node, receiver.value))
 			}
+			method := node.value.all_after_last('.')
+			if receiver_type is Enum && receiver_type.is_flag
+				&& method in ['has', 'all', 'set', 'clear', 'toggle', 'set_all', 'clear_all'] {
+				tc.record_error_at(.duplicate_decl, 'duplicate method `${method}`, `${method}` is an enum type built-in method', id, token.new_span(node.pos.id, node.pos.offset, node.pos.offset + method.len))
+			}
 		}
 	}
-	if raw_return_type.starts_with('!') {
-		alias_name := raw_return_type[1..]
-		alias_target := tc.type_aliases[alias_name] or {
-			tc.type_aliases[tc.qualify_name(alias_name)] or { '' }
-		}
-		if alias_target.starts_with('?') {
-			tc.record_error_at(.return_mismatch, 'the fn returns type `${raw_return_type}`, but type `${alias_name}` is an Option alias, you can not mix them', id, tc.fn_return_type_diagnostic_pos(node))
+	if raw_return_shape.has(.result_type) {
+		alias_name_id := raw_return_syntax.raw_base()
+		alias_target_shape := flat.source_type_shape(tc.type_aliases.type_id(alias_name_id) or {
+			tc.type_aliases.type_id(tc.qualify_type_name(alias_name_id)) or { u32(0) }
+		})
+		if alias_target_shape.has(.option_type) {
+			tc.record_error_at(.return_mismatch, 'the fn returns type `${flat.source_type_name(raw_return_type_id)}`, but type `${flat.source_type_name(alias_name_id)}` is an Option alias, you can not mix them', id, tc.fn_return_type_diagnostic_pos(node))
 		}
 	}
 	operator := node.value.all_after_last('.')
+	if node.value.contains('.') && operator in ['+', '-', '*', '**', '/', '%', '<', '==']
+		&& !tc.operator_method_receiver_can_overload(node) {
+		tc.record_error_at(.call_arg_mismatch, 'operator methods are only allowed for struct and type alias', id, tc.fn_declaration_diagnostic_pos(node))
+		return
+	}
 	if !node.value.contains('.')
 		|| operator !in ['+', '-', '*', '/', '%', '==', '!=', '<', '<=', '>', '>=', '<<', '>>',
 			'&', '|', '^'] {
@@ -1905,14 +4189,16 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 			raw_param_type := tc.parse_type(param.typ)
 			receiver_type := unwrap_pointer(raw_receiver_type)
 			param_type := unwrap_pointer(raw_param_type)
-			if !receiver.is_mut && !param.is_mut && receiver_type.name() == param_type.name()
-				&& raw_receiver_type.name() != raw_param_type.name() {
+			receiver_type_id := receiver_type.source_type_id()
+			param_type_id := param_type.source_type_id()
+			if !receiver.is_mut && !param.is_mut && receiver_type_id == param_type_id
+				&& raw_receiver_type.source_type_id() != raw_param_type.source_type_id() {
 				operator_params_match = false
-				tc.record_error_at(.call_arg_mismatch, 'the receiver type `${receiver.typ}` should be the same type as the operand `${param.typ}`', id, tc.fn_declaration_diagnostic_pos(node))
+				tc.record_error_at(.call_arg_mismatch, 'the receiver type `${receiver.typ_text()}` should be the same type as the operand `${param.typ_text()}`', id, tc.fn_declaration_diagnostic_pos(node))
 			}
-			if receiver_type.name() != param_type.name() && param_type !is FnType {
+			if receiver_type_id != param_type_id {
 				operator_params_match = false
-				tc.record_error_at(.call_arg_mismatch, 'expected `${receiver_type.name()}` not `${param_type.name()}` - both operands must be the same type for operator overloading', param_id, tc.type_diagnostic_pos(param_id, param_type.name()))
+				tc.record_error_at(.call_arg_mismatch, 'expected `${receiver_type.name()}` not `${param_type.name()}` - both operands must be the same type for operator overloading', param_id, tc.type_diagnostic_pos_id(param_id, param_type.source_type_id()))
 			}
 		}
 	}
@@ -1926,10 +4212,92 @@ fn (mut tc TypeChecker) check_fn_receiver_and_operator_return(node flat.Node, id
 		receiver_type := tc.parse_type(receiver.typ)
 		if receiver_type is Alias && (infix_power_type_is_numeric(receiver_type.base_type)
 			|| unalias_type(receiver_type.base_type) is String)
-			&& parsed_return_type.name() != receiver_type.name && operator_params_match {
-			tc.record_error_at(.return_mismatch, 'operator `${operator}` methods on primitive aliases should return `${receiver_type.name}`', id, tc.fn_return_type_diagnostic_pos(node))
+			&& parsed_return_type.source_type_id() != receiver_type.source_type_id()
+			&& operator_params_match {
+			tc.record_error_at(.return_mismatch, 'operator `${operator}` methods on primitive aliases should return `${receiver_type.name()}`', id, tc.fn_return_type_diagnostic_pos(node))
 		}
 	}
+}
+
+// operator_method_receiver_can_overload reports whether the operator method
+// `node` has a receiver whose operators can be overloaded. Nothing lowers an
+// operator method of an enum or an interface: `a + b` and `a == b` kept the
+// builtin operator (integer arithmetic for an enum, invalid C or the builtin
+// equality for an interface). An alias of an enum can still overload
+// operators, as in V 0.5.2. Sum types are not rejected: their `==` is lowered.
+fn (tc &TypeChecker) operator_method_receiver_can_overload(node flat.Node) bool {
+	if node.children_count == 0 {
+		return true
+	}
+	receiver := tc.a.child_node(&node, 0)
+	if receiver.kind != .param || receiver.op != .dot {
+		return true
+	}
+	receiver_type := unwrap_all_pointers(tc.parse_type(receiver.typ))
+	return receiver_type !is Enum && receiver_type !is Interface
+}
+
+fn (tc &TypeChecker) receiver_collection_payload_is_local(typ Type) bool {
+	clean := unwrap_pointer(typ)
+	return match clean {
+		Alias {
+			tc.source_module_declares_type(clean.source_type_id())
+		}
+		Struct {
+			tc.source_module_declares_type(clean.source_type_id())
+		}
+		Interface {
+			tc.source_module_declares_type(clean.source_type_id())
+		}
+		Enum {
+			tc.source_module_declares_type(clean.source_type_id())
+		}
+		SumType {
+			tc.source_module_declares_type(clean.source_type_id())
+		}
+		Array {
+			tc.receiver_collection_payload_is_local(clean.elem_type)
+		}
+		ArrayFixed {
+			tc.receiver_collection_payload_is_local(clean.elem_type)
+		}
+		Map {
+			tc.receiver_collection_payload_is_local(clean.value_type)
+		}
+		OptionType {
+			tc.receiver_collection_payload_is_local(clean.base_type)
+		}
+		ResultType {
+			tc.receiver_collection_payload_is_local(clean.base_type)
+		}
+		else {
+			false
+		}
+	}
+}
+
+fn (tc &TypeChecker) source_module_declares_type(type_name_id u32) bool {
+	qualified_base := flat.source_type_syntax(type_name_id).generic_base()
+	base_syntax := flat.source_type_syntax(qualified_base)
+	current_module := if tc.cur_module in ['', 'main'] { 'main' } else { tc.cur_module }
+	if flat.source_type_shape(qualified_base).has(.dotted) {
+		if !source_type_id_is_name(base_syntax.qualifier(), current_module) {
+			return false
+		}
+	}
+	base_name := flat.source_type_name(base_syntax.unqualified())
+	// Ownership is indexed by module, independently of the method's source file.
+	decl_name := qualify_decl_name_in_module(base_name, current_module)
+	if declaration := tc.declaration_visibility[decl_name] {
+		decl_module := if declaration.module_name in ['', 'main'] {
+			'main'
+		} else {
+			declaration.module_name
+		}
+		return decl_module == current_module
+			&& declaration.kind in [.struct_decl, .type_decl, .interface_decl, .enum_decl]
+	}
+	return false
 }
 
 fn (tc &TypeChecker) operator_receiver_without_mut_pos(node flat.Node) token.Pos {
@@ -1977,7 +4345,7 @@ fn (tc &TypeChecker) comptime_skipped_body_uses_goto_label(node flat.Node, name 
 }
 
 fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
-	if tc.node_is_from_translated_file(node) {
+	if tc.node_is_from_translated_file(node) || is_regular_v_test_file(tc.cur_file) {
 		return
 	}
 	for diagnostic in tc.errors {
@@ -1991,16 +4359,29 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 	mut candidates := []UnusedFnVarCandidate{}
 	mut candidate_names := map[string]bool{}
 	mut stack := []flat.NodeId{}
+	mut mut_option_params := map[string]bool{}
 	for i in 0 .. node.children_count {
 		child_id := tc.a.child(&node, i)
-		if tc.a.node(child_id).kind != .param {
+		child := tc.a.node(child_id)
+		if child.kind != .param {
 			stack << child_id
+		} else if child.is_mut && child.value.len > 0 && param_source_type_is_option(child.typ) {
+			mut_option_params[child.value] = true
 		}
 	}
+	// `if mut v := a` over a `mut a ?T` parameter binds the caller's payload, so
+	// assigning to `v` is a use (transform `mut_optional_param_payload_ref`).
+	mut payload_ref_guards := map[int]bool{}
 	for stack.len > 0 {
 		id := stack.pop()
 		current := tc.a.node(id)
-		if current.kind == .decl_assign {
+		if current.kind == .if_expr && current.children_count > 0 && mut_option_params.len > 0 {
+			cond_id := tc.a.child(current, 0)
+			if tc.guard_binds_mut_param_payload(cond_id, mut_option_params) {
+				payload_ref_guards[int(cond_id)] = true
+			}
+		}
+		if current.kind == .decl_assign && !payload_ref_guards[int(id)] {
 			lhs_ids := tc.multi_assign_lhs_ids(current)
 			rhs_count := tc.multi_assign_rhs_count(current)
 			for lhs_index, lhs_id in lhs_ids {
@@ -2023,6 +4404,21 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 				}
 				candidate_names[lhs.value] = true
 			}
+		} else if current.kind == .for_in_stmt && current.children_count >= 3 {
+			for i in 0 .. 2 {
+				lhs_id := tc.a.child(current, i)
+				lhs := tc.a.node(lhs_id)
+				if lhs.kind != .ident || lhs.value.len == 0 || lhs.value.starts_with('_') {
+					continue
+				}
+				candidates << UnusedFnVarCandidate{
+					name:    lhs.value
+					lhs_id:  lhs_id
+					rhs_id:  tc.a.child(current, 2)
+					loop_id: id
+				}
+				candidate_names[lhs.value] = true
+			}
 		}
 		for i in 0 .. current.children_count {
 			stack << tc.a.child(current, i)
@@ -2033,7 +4429,30 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 	}
 	used_names := tc.fn_body_read_names(node, candidate_names)
 	for candidate in candidates {
-		if used_names[candidate.name] {
+		if candidate.loop_id != flat.empty_node {
+			loop := tc.a.node(candidate.loop_id)
+			header := loop.value.int()
+			body := flat.Node{
+				...*loop
+				children_start: loop.children_start + header
+				children_count: loop.children_count - header
+			}
+			// A use in a different loop with the same binding name does not count.
+			if tc.fn_body_read_names(body, {
+				candidate.name: true
+			})[candidate.name] {
+				continue
+			}
+			value_id := tc.a.child(loop, 1)
+			// Assigning through a mutable element changes the original collection.
+			if loop.op == .amp && (value_id == flat.empty_node || value_id == candidate.lhs_id)
+				&& tc.fn_body_uses_ident(body, candidate.name) {
+				continue
+			}
+		} else if used_names[candidate.name] {
+			continue
+		}
+		if tc.expr_calls_fn_with_duplicate_parameters(candidate.rhs_id) {
 			continue
 		}
 		if tc.expr_subtree_has_error_except(candidate.rhs_id, .if_branch_mismatch)
@@ -2045,6 +4464,75 @@ fn (mut tc TypeChecker) record_unused_fn_vars(node flat.Node) {
 		}
 		tc.record_warning_at(.unknown_ident, 'unused variable: `${candidate.name}`', candidate.lhs_id, tc.node_value_diagnostic_pos(candidate.lhs_id))
 	}
+}
+
+fn param_source_type_is_option(source_id u32) bool {
+	shape := flat.source_type_shape(source_id)
+	if !shape.has(.padded) && !shape.has(.mutable_type) && !shape.has(.pointer) {
+		return shape.has(.option_type)
+	}
+	mut clean := trimmed_source_type_id(source_id)
+	if flat.source_type_shape(clean).has(.mutable_type) {
+		clean = trimmed_source_type_id(flat.source_type_syntax(clean).raw_base())
+	}
+	return flat.source_type_shape(flat.source_type_syntax(clean).pointer_raw_base()).has(.option_type)
+}
+
+// guard_binds_mut_param_payload reports whether `cond_id` is `mut v := a` with `a` one of
+// `params`.
+fn (tc &TypeChecker) guard_binds_mut_param_payload(cond_id flat.NodeId, params map[string]bool) bool {
+	if !tc.valid_node_id(cond_id) {
+		return false
+	}
+	cond := tc.a.node(cond_id)
+	if cond.kind != .decl_assign || cond.children_count != 2 {
+		return false
+	}
+	lhs := tc.a.child_node(cond, 0)
+	if lhs.kind != .ident || !lhs.is_mut {
+		return false
+	}
+	mut rhs := tc.a.child_node(cond, 1)
+	for rhs.kind == .paren && rhs.children_count == 1 {
+		rhs = tc.a.child_node(rhs, 0)
+	}
+	return rhs.kind == .ident && params[rhs.value]
+}
+
+fn (tc &TypeChecker) expr_calls_fn_with_duplicate_parameters(id flat.NodeId) bool {
+	if !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind == .call && node.children_count > 0 {
+		callee := tc.a.child_node(node, 0)
+		if callee.kind == .ident {
+			name := (tc.cached_resolved_call(id) or { callee.value }).all_after_last('.')
+			if decl_index := tc.fn_decl_short_name_ids[name] {
+				decl := tc.a.node(flat.NodeId(decl_index))
+				mut names := map[string]bool{}
+				for i in 0 .. decl.children_count {
+					param := tc.a.child_node(decl, i)
+					if param.kind != .param || param.value.len == 0 || param.value == '_' {
+						continue
+					}
+					if names[param.value] {
+						return true
+					}
+					names[param.value] = true
+				}
+			}
+		}
+	}
+	if node.kind in [.fn_decl, .fn_literal, .lambda_expr] {
+		return false
+	}
+	for i in 0 .. node.children_count {
+		if tc.expr_calls_fn_with_duplicate_parameters(tc.a.child(node, i)) {
+			return true
+		}
+	}
+	return false
 }
 
 fn (mut tc TypeChecker) record_lambda_capture_errors(fn_node flat.Node) {
@@ -2160,8 +4648,8 @@ fn (mut tc TypeChecker) record_unused_top_level_vars(node flat.Node) {
 			rhs_id := tc.a.child(child, j + 1)
 			rhs := tc.a.node(rhs_id)
 			generic_interface_cast := rhs.kind == .cast_expr
-				&& (rhs.value in tc.interface_generic_params
-					|| tc.qualify_name(rhs.value) in tc.interface_generic_params)
+				&& (rhs.source_value_id() in tc.interface_generic_params
+					|| tc.qualify_type_name(rhs.source_value_id()) in tc.interface_generic_params)
 			if tc.expr_subtree_has_error(rhs_id) && !tc.expr_contains_nil_deref(rhs_id)
 				&& !generic_interface_cast {
 				continue
@@ -2234,6 +4722,15 @@ fn (tc &TypeChecker) expr_subtree_has_error(id flat.NodeId) bool {
 			&& diagnostic.pos.end <= root.pos.end {
 			return true
 		}
+	}
+	return tc.expr_subtree_has_node_error(id)
+}
+
+// expr_subtree_has_node_error reports errors attached to an expression's node IDs.
+// Source positions alone cannot distinguish separate generic instantiations.
+pub fn (tc &TypeChecker) expr_subtree_has_node_error(id flat.NodeId) bool {
+	if tc.errors.len == 0 || !tc.valid_node_id(id) {
+		return false
 	}
 	mut stack := []flat.NodeId{}
 	stack << id
@@ -2356,6 +4853,7 @@ fn (tc &TypeChecker) expr_subtree_allows_unused_warning(id flat.NodeId) bool {
 	root := tc.a.node(id)
 	return tc.errors.any(it.pos.id == root.pos.id && it.pos.offset >= root.pos.offset
 		&& it.pos.end <= root.pos.end && (it.msg == 'map value cannot be only `none`'
+		|| it.msg == 'cannot assign global variable to shared variable'
 		|| it.msg == 'cannot take the address of a literal value'
 		|| it.msg.starts_with('ambiguous field `')
 		|| it.msg.starts_with('invalid empty map initialisation syntax')
@@ -2406,7 +4904,22 @@ fn (tc &TypeChecker) fn_body_read_names(node flat.Node, candidate_names map[stri
 			&& shadow_depth[current.value] == 0 {
 			used_names[current.value] = true
 		}
+		if current.kind == .directive && current.value == 'string_interp_format' {
+			for name, _ in candidate_names {
+				if shadow_depth[name] == 0
+					&& string_interp_format_uses_ident(current.typ_text(), name) {
+					used_names[name] = true
+				}
+			}
+		}
 		if current.kind in [.sql_expr, .comptime_if, .array_init] {
+			if current.kind == .comptime_if {
+				metadata := current.generic_params()
+				if metadata.len > 1 && metadata[0] == '__v3_comptime_match'
+					&& candidate_names[metadata[1]] && shadow_depth[metadata[1]] == 0 {
+					used_names[metadata[1]] = true
+				}
+			}
 			for name, _ in candidate_names {
 				if shadow_depth[name] > 0 || used_names[name] {
 					continue
@@ -2418,23 +4931,27 @@ fn (tc &TypeChecker) fn_body_read_names(node flat.Node, candidate_names map[stri
 					continue
 				}
 				if current.kind == .array_init {
-					if bound := fixed_array_bound_text(current.typ) {
-						if bound == name || type_text_contains_symbol(bound, name) {
+					if bound_id := fixed_array_bound_id(current.typ) {
+						if source_type_id_is_name(bound_id, name)
+							|| source_words_contain_name(flat.source_type_syntax(bound_id).symbols(), name) {
 							used_names[name] = true
 						}
 					}
 				}
 			}
 		}
-		if current.kind == .comptime_for && candidate_names[current.typ]
-			&& shadow_depth[current.typ] == 0 {
-			used_names[current.typ] = true
+		if current.kind == .comptime_for && candidate_names[current.typ_text()]
+			&& shadow_depth[current.typ_text()] == 0 {
+			used_names[current.typ_text()] = true
 		}
 		mut write_only_lhs_ids := []flat.NodeId{}
 		if current.kind == .assign && current.op == .assign {
 			write_only_lhs_ids = tc.multi_assign_lhs_ids(current)
 		}
 		for i in 0 .. current.children_count {
+			if current.kind == .for_in_stmt && i < 2 {
+				continue
+			}
 			if i % 2 == 0 && current.kind == .decl_assign {
 				lhs := tc.a.child_node(current, i)
 				if lhs.kind == .ident {
@@ -2497,8 +5014,8 @@ fn (mut tc TypeChecker) record_unused_fn_params(node flat.Node) {
 	}
 }
 
-fn (tc &TypeChecker) fn_body_reflects_param_type(node flat.Node, param_type string) bool {
-	if param_type == '' || param_type !in node.generic_params() {
+fn (tc &TypeChecker) fn_body_reflects_param_type(node flat.Node, param_type_id u32) bool {
+	if param_type_id == u32(0) || !node.generic_params().any(source_type_id_is_name(param_type_id, it)) {
 		return false
 	}
 	mut stack := []flat.NodeId{}
@@ -2511,12 +5028,45 @@ fn (tc &TypeChecker) fn_body_reflects_param_type(node flat.Node, param_type stri
 	for stack.len > 0 {
 		id := stack.pop()
 		child := tc.a.node(id)
-		if child.kind == .comptime_for && child.typ == param_type {
+		if child.kind == .comptime_for && child.typ == param_type_id {
+			return true
+		}
+		if child.kind == .comptime_if && comptime_cond_mentions_type(child.value, flat.source_type_name(param_type_id)) {
 			return true
 		}
 		for i in 0 .. child.children_count {
 			stack << tc.a.child(child, i)
 		}
+	}
+	return false
+}
+
+// comptime_cond_mentions_type reports whether the text of a comptime `$if`
+// condition mentions `type_name` as a whole token outside quoted literals,
+// e.g. `T is $function` for a generic parameter `T`. A body that specialises on
+// the type of the parameter alone still needs it passed, even when the body never names it;
+// such bodies are the usual shape of test helpers like `assert_function[T](f T)`.
+fn comptime_cond_mentions_type(condition string, type_name string) bool {
+	if condition.len == 0 || type_name.len == 0 {
+		return false
+	}
+	mut j := 0
+	for j < condition.len {
+		if condition[j] == `'` || condition[j] == `"` {
+			j = comptime_cond_skip_string(condition, j)
+			continue
+		}
+		start := j
+		for j < condition.len && comptime_cond_name_char(condition[j]) {
+			j++
+		}
+		if j > start {
+			if condition[start..j] == type_name {
+				return true
+			}
+			continue
+		}
+		j++
 	}
 	return false
 }
@@ -2560,6 +5110,102 @@ fn (mut tc TypeChecker) record_unused_fn_labels(node flat.Node) {
 	}
 }
 
+struct AsmGotoLockScan {
+mut:
+	label_scopes    map[string][]int
+	asm_gotos       []flat.NodeId
+	asm_goto_scopes map[int][]int
+}
+
+// check_asm_goto_lock_scopes reports an `asm goto` whose target label sits in a
+// different `lock`/`rlock` scope than the block itself. The C backend cannot lower a
+// jump that enters or leaves a lock scope (the scope's unlock/cleanup would be
+// skipped), so it otherwise emits an `#error` into the generated C with no V source
+// position; this turns that into a positioned compiler diagnostic.
+fn (mut tc TypeChecker) check_asm_goto_lock_scopes(node flat.Node) {
+	mut scan := AsmGotoLockScan{}
+	for i in 0 .. node.children_count {
+		child_id := tc.a.child(&node, i)
+		if tc.a.node(child_id).kind != .param {
+			tc.collect_asm_goto_lock_scopes(child_id, []int{}, mut scan)
+		}
+	}
+	tc.report_asm_goto_lock_crossings(scan)
+}
+
+// report_asm_goto_lock_crossings emits a diagnostic for every collected `asm goto`
+// whose target label resolves to a different `lock`/`rlock` scope path than the
+// block. A target not declared in this function scope resolves to the empty path,
+// matching the C backend (`goto_label_lock_scopes[label] or { [] }`).
+fn (mut tc TypeChecker) report_asm_goto_lock_crossings(scan AsmGotoLockScan) {
+	for asm_id in scan.asm_gotos {
+		asm_node := tc.a.node(asm_id)
+		active := scan.asm_goto_scopes[int(asm_id)]
+		for target in inline_asm_goto_labels(asm_node.value) {
+			target_scope := scan.label_scopes[target] or { []int{} }
+			if !asm_goto_lock_scopes_equal(target_scope, active) {
+				tc.record_error_at(.compile_error, asm_goto_lock_scope_error(target), asm_id,
+					asm_node.pos)
+				break
+			}
+		}
+	}
+}
+
+fn asm_goto_lock_scope_error(target string) string {
+	return '`asm goto` cannot jump to label `${target}`: it is in a different `lock`/`rlock` scope, and the C backend cannot lower a jump that enters or leaves a lock scope'
+}
+
+// collect_asm_goto_lock_scopes walks a function body, recording the `lock`/`rlock`
+// scope path (a stack of enclosing `lock_expr` node ids) at every label declaration
+// and at every `asm goto` block, so report_asm_goto_lock_crossings can compare them.
+fn (mut tc TypeChecker) collect_asm_goto_lock_scopes(id flat.NodeId, scopes []int, mut scan AsmGotoLockScan) {
+	node := tc.a.node(id)
+	if node.kind in [.fn_decl, .c_fn_decl, .fn_literal] {
+		// A nested function or closure is lowered to its own C function with a
+		// fresh lock stack (`collect_fn_prelude_scan` runs per function), so scan
+		// and report its body independently against an empty scope path -- the
+		// enclosing function's locks are not active inside it.
+		mut nested := AsmGotoLockScan{}
+		for i in 0 .. node.children_count {
+			child_id := tc.a.child(node, i)
+			if tc.a.node(child_id).kind != .param {
+				tc.collect_asm_goto_lock_scopes(child_id, []int{}, mut nested)
+			}
+		}
+		tc.report_asm_goto_lock_crossings(nested)
+		return
+	}
+	mut cur := scopes.clone()
+	// `gen_lock_enter` skips a `lock {}` / `rlock {}` with no lock objects
+	// (`lock_count = children_count - 1 <= 0`), so it never becomes an active
+	// scope at runtime -- do not treat it as one here either.
+	if node.kind == .lock_expr && node.children_count > 1 {
+		cur << int(id)
+	}
+	if node.kind == .label_stmt && node.value.len > 0 {
+		scan.label_scopes[node.value] = cur.clone()
+	} else if node.kind == .asm_stmt && inline_asm_goto_labels(node.value).len > 0 {
+		scan.asm_gotos << id
+		scan.asm_goto_scopes[int(id)] = cur.clone()
+	}
+	for i in 0 .. node.children_count {
+		tc.collect_asm_goto_lock_scopes(tc.a.child(node, i), cur, mut scan)
+	}
+}
+
+fn asm_goto_lock_scopes_equal(a []int, b []int) bool {
+	if a.len != b.len {
+		return false
+	}
+	for i, scope in a {
+		if b[i] != scope {
+			return false
+		}
+	}
+	return true
+}
+
 fn (tc &TypeChecker) fn_body_uses_ident(node flat.Node, name string) bool {
 	mut stack := []flat.NodeId{}
 	for i in 0 .. node.children_count {
@@ -2577,9 +5223,39 @@ fn (tc &TypeChecker) fn_body_uses_ident(node flat.Node, name string) bool {
 		if child.kind == .sql_expr && sql_text_contains_ident(child.value, name) {
 			return true
 		}
+		if child.kind == .directive && child.value == 'string_interp_format'
+			&& string_interp_format_uses_ident(child.typ_text(), name) {
+			return true
+		}
 		for i in 0 .. child.children_count {
 			stack << tc.a.child(child, i)
 		}
+	}
+	return false
+}
+
+fn string_interp_format_uses_ident(format string, name string) bool {
+	if name.len == 0 {
+		return false
+	}
+	mut i := 0
+	for i < format.len {
+		if format[i] != `(` {
+			i++
+			continue
+		}
+		end_offset := format[i + 1..].index_u8(`)`)
+		if end_offset < 0 {
+			return false
+		}
+		mut candidate := format[i + 1..i + 1 + end_offset].trim_space()
+		if candidate.starts_with('-') {
+			candidate = candidate[1..].trim_space()
+		}
+		if candidate == name {
+			return true
+		}
+		i += end_offset + 2
 	}
 	return false
 }
@@ -2596,7 +5272,10 @@ fn sql_text_contains_ident(text string, name string) bool {
 	return false
 }
 
-fn (mut tc TypeChecker) fn_has_deferred_generic_return(node flat.Node, generic_params map[string]bool) bool {
+fn (mut tc TypeChecker) fn_has_deferred_generic_return(node flat.Node, generic_params map[u32]bool) bool {
+	if tc.type_contains_open_generic_placeholder(tc.fn_context.return_type) {
+		return true
+	}
 	mut last_stmt := flat.empty_node
 	for i := int(node.children_count) - 1; i >= 0; i-- {
 		child_id := tc.a.child(&node, i)
@@ -2626,7 +5305,7 @@ fn (mut tc TypeChecker) fn_has_deferred_generic_return(node flat.Node, generic_p
 	return tc.stmt_is_terminal_void_propagation(last_stmt, mode)
 }
 
-fn (mut tc TypeChecker) stmt_is_generic_comptime_return(id flat.NodeId, generic_params map[string]bool) bool {
+fn (mut tc TypeChecker) stmt_is_generic_comptime_return(id flat.NodeId, generic_params map[u32]bool) bool {
 	if !tc.valid_node_id(id) {
 		return false
 	}
@@ -2669,8 +5348,10 @@ fn (mut tc TypeChecker) generic_comptime_branch_terminates(id flat.NodeId) bool 
 	return false
 }
 
-fn comptime_condition_references_generic_param(cond string, generic_params map[string]bool) bool {
-	for param, _ in generic_params {
+fn comptime_condition_references_generic_param(cond string, generic_params map[u32]bool) bool {
+	for param_id, _ in generic_params {
+		// The condition is source text that spells the type parameter.
+		param := flat.source_type_name(param_id)
 		mut offset := 0
 		for offset + param.len <= cond.len {
 			if cond[offset..offset + param.len] == param {
@@ -2708,9 +5389,10 @@ fn (mut tc TypeChecker) prewarm_shared_type_cache() {
 	if isnil(tc.type_cache) {
 		return
 	}
+	tc.prepare_tail_decl_ids()
 	_ = tc.local_fn_decl_exists('__v3_prewarm__')
-	_ = tc.unique_qualified_type_name('__V3Prewarm__') or { '' }
-	_ = tc.source_struct_has_non_builtin_error_embed('__V3Prewarm__', '', '')
+	_ = tc.unique_qualified_type_name(checker_source_v3_prewarm) or { u32(0) }
+	_ = tc.source_struct_has_non_builtin_error_embed(checker_source_v3_prewarm, '', '')
 }
 
 // install_type_cache_overlay freezes the master's warm type cache as the
@@ -2721,10 +5403,7 @@ fn (mut tc TypeChecker) install_type_cache_overlay() {
 		return
 	}
 	tc.prewarm_shared_type_cache()
-	tc.type_cache = &TypeCache{
-		base:          tc.type_cache
-		parse_enabled: tc.type_cache.parse_enabled
-	}
+	tc.type_cache = new_type_cache_with_base(tc.type_cache.parse_enabled, tc.type_cache)
 	if !isnil(tc.resolution_type_views) {
 		// Cached parse views still point at the cache that is now the shared base.
 		tc.reset_resolution_type_view_cache()
@@ -2753,21 +5432,31 @@ fn (mut tc TypeChecker) restore_type_cache_base() {
 	for k, v in overlay.c_entries {
 		base.c_entries[k] = v
 	}
-	for k, v in overlay.struct_field_entries {
-		base.struct_field_entries[k] = v
+	for owner_id, fields in overlay.struct_field_entries {
+		for field_name, typ in fields.values {
+			base.remember_struct_field_entry(owner_id, field_name, typ)
+		}
 	}
-	for k, v in overlay.struct_field_misses {
-		base.struct_field_misses[k] = v
+	for owner_id, fields in overlay.struct_field_misses {
+		for field_name, _ in fields.values { base.remember_struct_field_miss(owner_id, field_name) }
 	}
 	for k, v in overlay.ierror_compat_entries {
 		base.ierror_compat_entries[k] = v
 	}
+	for owner_id, contexts in overlay.ierror_scoped_compat_entries {
+		for scope, value in contexts.values {
+			base.remember_ierror_compat_entry(SourceTypeQueryKey{ owner_id: owner_id, scope: scope }, value)
+		}
+	}
 	for k, v in overlay.interface_impl_entries {
-		base.interface_impl_entries[k] = v
+		base.interface_impl_entries[k] = flat.TypeTextList{ ids: v.ids.clone() }
 	}
 	if overlay.source_error_embed_indexed && !base.source_error_embed_indexed {
+		base.clear_source_error_embed_entries()
 		base.source_error_embed_entries = overlay.source_error_embed_entries.move()
 		base.source_error_embed_indexed = true
+		base.source_error_embed_shared = overlay.source_error_embed_shared
+		overlay.source_error_embed_shared = false
 	}
 	if overlay.ierror_impl_names_set && !base.ierror_impl_names_set {
 		base.ierror_impl_names = overlay.ierror_impl_names
@@ -2790,18 +5479,27 @@ fn (mut tc TypeChecker) restore_type_cache_base() {
 
 fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	mut w := tc.fork_program_view(tc.a, map[int][]SymbolId{})
+	// Semantic forks need their live ancestors' visited instances for recursive
+	// forwarding. Completed declaration summaries remain read-only in each fork.
+	w.checked_comptime_method_calls = clone_checked_comptime_method_calls(tc.checked_comptime_method_calls)
+	w.comptime_method_calls_by_decl = tc.comptime_method_calls_by_decl.clone()
 	precomputed := tc.precomputed_check_cache()
 	// Parallel checker workers may populate this cache concurrently, so each
 	// worker (and each disposable scoped batch) owns mutable result/miss maps while
 	// sharing the declaration index that collect completed before checking starts.
 	w.visible_mutation_cache = &VisibleMutationCache{
 		decls:            tc.visible_mutation_cache.decls
+		global_decls:     tc.visible_mutation_cache.global_decls
 		decl_misses:      map[string]bool{}
 		results:          map[u64]bool{}
 		rebind_results:   map[u64]bool{}
 		decl_index_ready: tc.visible_mutation_cache.decl_index_ready
 	}
 	w.scope_parallel_check_workers = tc.scope_parallel_check_workers
+	w.capture_items = tc.capture_items
+	if !isnil(tc.source_type_keyword_memo) {
+		w.source_type_keyword_memo = &SourceTypeKeywordMemo{}
+	}
 	// The node-indexed cache arrays are intentionally SHARED with the master
 	// (the fork copies the slice headers): each work item owns the disjoint
 	// node id range [range_lo, fn_idx], and while parallel_check_sparse is set
@@ -2819,7 +5517,7 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.sparse_checking_nodes = map[int]bool{}
 	w.method_values_by_fn = map[int][]string{}
 	w.fn_context = new_function_check_context()
-	w.generic_method_value_info = map[string]CallInfo{}
+	w.generic_method_value_info = map[u32]map[string]CallInfo{}
 	w.smartcasts = map[string]Type{}
 	w.ownership_time_ns = 0
 	if check_memos_enabled() {
@@ -2829,58 +5527,32 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	$if ownership ? {
 		w.ownership_fork_for_parallel_check(tc)
 	}
-	w.type_cache = &TypeCache{
-		// The master's frozen pre-region cache (the overlay's base) is shared
-		// read-only across all forks; each fork writes to its own maps.
-		base:                        if tc.type_cache != unsafe { nil } {
-			tc.type_cache.base
-		} else {
-			&TypeCache(unsafe { nil })
+	// The master's frozen pre-region cache (the overlay's base) is shared
+	// read-only across all forks; each fork writes to its own maps.
+	w.type_cache = new_type_cache_with_base(if !isnil(tc.type_cache) {
+		tc.type_cache.parse_enabled
+	} else {
+		false
+	}, if !isnil(tc.type_cache) {
+		tc.type_cache.base
+	} else {
+		unsafe { nil }
+	})
+	if !isnil(precomputed) {
+		if precomputed.short_type_name_index_built {
+			w.type_cache.short_type_name_index = precomputed.short_type_name_index
 		}
-		parse_enabled:               if tc.type_cache != unsafe { nil } {
-			tc.type_cache.parse_enabled
-		} else {
-			false
+		w.type_cache.short_type_name_index_built = precomputed.short_type_name_index_built
+		if precomputed.local_fn_decl_indexed_len != 0 {
+			w.type_cache.local_fn_decl_index = precomputed.local_fn_decl_index
 		}
-		parse_entries:               map[u64]ParseTypeCacheEntry{}
-		c_entries:                   map[TypeId]string{}
-		struct_field_entries:        map[string]Type{}
-		struct_field_misses:         map[string]bool{}
-		sum_variant_pattern_entries: map[string]string{}
-		lexical_smartcast_entries:   map[int]Type{}
-		lexical_smartcast_misses:    map[int]bool{}
-		short_type_name_index:       if isnil(precomputed)
-			|| !precomputed.short_type_name_index_built {
-			map[string]string{}
-		} else {
-			precomputed.short_type_name_index
+		w.type_cache.local_fn_decl_indexed_len = precomputed.local_fn_decl_indexed_len
+		w.type_cache.local_fn_decl_last_module = precomputed.local_fn_decl_last_module
+		if precomputed.source_error_embed_indexed {
+			w.type_cache.source_error_embed_entries = precomputed.source_error_embed_entries
 		}
-		short_type_name_index_built: !isnil(precomputed) && precomputed.short_type_name_index_built
-		local_fn_decl_index:         if isnil(precomputed)
-			|| precomputed.local_fn_decl_indexed_len == 0 {
-			map[string]bool{}
-		} else {
-			precomputed.local_fn_decl_index
-		}
-		local_fn_decl_indexed_len:   if isnil(precomputed) {
-			0
-		} else {
-			precomputed.local_fn_decl_indexed_len
-		}
-		local_fn_decl_last_module:   if isnil(precomputed) {
-			''
-		} else {
-			precomputed.local_fn_decl_last_module
-		}
-		ierror_compat_entries:       map[string]int{}
-		source_error_embed_entries:  if isnil(precomputed)
-			|| !precomputed.source_error_embed_indexed {
-			map[string]int{}
-		} else {
-			precomputed.source_error_embed_entries
-		}
-		source_error_embed_indexed:  !isnil(precomputed) && precomputed.source_error_embed_indexed
-		source_error_embed_shared:   !isnil(precomputed) && precomputed.source_error_embed_indexed
+		w.type_cache.source_error_embed_indexed = precomputed.source_error_embed_indexed
+		w.type_cache.source_error_embed_shared = precomputed.source_error_embed_indexed
 	}
 	if tc.scope_parallel_check_workers {
 		// Shared interner growth from a helper arena would leave compilation-wide
@@ -2930,9 +5602,7 @@ mut:
 
 struct CheckTypePromotionCache {
 mut:
-	w0     [512]u64
-	w1     [512]u64
-	values [512]Type
+	values [512]&Type
 	set    [512]bool
 }
 
@@ -2961,25 +5631,34 @@ fn promote_cached_name_value(name &CachedName, mut cache CheckNamePromotionCache
 	return promoted
 }
 
-// Source payloads stay alive and immutable for the entire promotion pass. Raw
-// identities are safe within that pass; never retain this cache across arena frees.
-fn (tc &TypeChecker) cached_check_type_promotion(typ Type, mut cache CheckTypePromotionCache, promote_missing bool) ?Type {
-	w0, w1, raw_slot := type_value_words(&typ)
-	slot := raw_slot & (cache.set.len - 1)
-	if cache.set[slot] && cache.w0[slot] == w0 && cache.w1[slot] == w1 {
+@[direct_array_access; inline]
+fn (tc &TypeChecker) cached_check_type_promotion(typ &Type, mut cache CheckTypePromotionCache, promote_missing bool, frozen_interner bool) ?&Type {
+	// Slot selection stays shallow; structural verification below guards collisions
+	// and borrowed metadata that changed since a previous lookup.
+	slot := int(canonical_intern_cache_key(typ) & u64(cache.set.len - 1))
+	if cache.set[slot] && semantic_types_equal(cache.values[slot], typ) {
 		return cache.values[slot]
 	}
-	canonical := tc.probe_intern_type(typ) or {
+	canonical := tc.probe_check_type_promotion(typ, frozen_interner) or {
 		if !promote_missing {
 			return none
 		}
-		tc.promote_check_type(typ)
+		tc.promote_check_type(*typ)
 	}
-	cache.w0[slot] = w0
-	cache.w1[slot] = w1
 	cache.values[slot] = canonical
 	cache.set[slot] = true
 	return canonical
+}
+
+@[inline]
+fn (tc &TypeChecker) probe_check_type_promotion(typ &Type, frozen_interner bool) ?&Type {
+	if frozen_interner {
+		if isnil(tc.type_interner) {
+			return none
+		}
+		return tc.type_interner.probe_frozen(typ)
+	}
+	return tc.probe_intern_type(typ)
 }
 
 // check_clone_chunk_thread promotes one chunk's node-cache payloads out of
@@ -2999,7 +5678,7 @@ fn check_clone_chunk_thread(arg voidptr) voidptr {
 				tc.resolved_call_names[idx] = promote_cached_name_value(tc.resolved_call_names[idx], mut names)
 			}
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
-				if canonical := tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, false) {
+				if canonical := tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, false, true) {
 					tc.expr_type_values[idx] = canonical
 				} else {
 					a.miss << idx
@@ -3013,8 +5692,8 @@ fn check_clone_chunk_thread(arg voidptr) voidptr {
 fn (mut tc TypeChecker) intern_expr_type_misses(indexes []int) {
 	mut cache := CheckTypePromotionCache{}
 	for idx in indexes {
-		tc.expr_type_values[idx] = tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, true) or {
-			tc.promote_check_type(tc.expr_type_values[idx])
+		tc.expr_type_values[idx] = tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, true, false) or {
+			tc.promote_check_type(*tc.expr_type_values[idx])
 		}
 	}
 }
@@ -3022,11 +5701,14 @@ fn (mut tc TypeChecker) intern_expr_type_misses(indexes []int) {
 // A batch repeats the same types on thousands of nodes. Clone only the first
 // instance into the accumulator's arena, before releasing the batch's storage.
 // The accumulator is private to this lane (or the joined master during merge).
-fn (tc &TypeChecker) promote_check_type(typ Type) Type {
+fn (tc &TypeChecker) promote_check_type(typ Type) &Type {
+	if isnil(tc.type_interner) {
+		return new_type_reference(Type(clone_owned_type(typ)))
+	}
 	if canonical := tc.probe_intern_type(typ) {
 		return canonical
 	}
-	_, canonical := tc.intern_type(clone_owned_type(typ))
+	canonical := tc.intern_type_reference(typ)
 	return canonical
 }
 
@@ -3034,6 +5716,7 @@ fn par_check_clone_enabled() bool {
 	return os.getenv('V3_NO_PAR_CK_CLONE') == ''
 }
 
+@[direct_array_access]
 fn (mut tc TypeChecker) clone_parallel_worker_node_caches(items []CheckWorkItem) {
 	mut cache := CheckTypePromotionCache{}
 	mut names := CheckNamePromotionCache{}
@@ -3043,8 +5726,8 @@ fn (mut tc TypeChecker) clone_parallel_worker_node_caches(items []CheckWorkItem)
 				tc.resolved_call_names[idx] = promote_cached_name_value(tc.resolved_call_names[idx], mut names)
 			}
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
-				tc.expr_type_values[idx] = tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, true) or {
-					tc.promote_check_type(tc.expr_type_values[idx])
+				tc.expr_type_values[idx] = tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, true, false) or {
+					tc.promote_check_type(*tc.expr_type_values[idx])
 				}
 			}
 		}
@@ -3057,16 +5740,17 @@ fn clone_parallel_type_error(err TypeError) TypeError {
 		details << detail.clone()
 	}
 	return TypeError{
-		msg:        err.msg.clone()
-		kind:       err.kind
-		node:       err.node
-		file:       err.file.clone()
-		node_kind:  err.node_kind.clone()
-		node_value: err.node_value.clone()
-		node_pos:   err.node_pos.clone()
-		pos:        err.pos
-		details:    details
-		severity:   err.severity.clone()
+		msg:              err.msg.clone()
+		kind:             err.kind
+		node:             err.node
+		file:             err.file.clone()
+		node_kind:        err.node_kind.clone()
+		node_value:       err.node_value.clone()
+		node_pos:         err.node_pos.clone()
+		pos:              err.pos
+		details:          details
+		severity:         err.severity.clone()
+		diagnostic_order: err.diagnostic_order
 	}
 }
 
@@ -3090,6 +5774,23 @@ fn (mut tc TypeChecker) merge_parallel_check_worker(w &TypeChecker) {
 }
 
 fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scoped bool) {
+	if w.item_marks.len > 0 {
+		if !isnil(tc.incremental) {
+			tc.incremental_capture(w, scoped)
+		} else if tc.capture_items {
+			// A thread of a parallel check merges the batches it checked: their
+			// marks go on, placed in its own lists, to the check that captures
+			// what each body reported.
+			for mark in w.item_marks {
+				tc.item_marks << IncrementalItemMark{
+					fn_idx:  mark.fn_idx
+					errors:  tc.errors.len + mark.errors
+					notices: tc.notices.len + mark.notices
+					pending: tc.pending_ierror_errors.len + mark.pending
+				}
+			}
+		}
+	}
 	// Scoped checkers use a private symbol interner. Translate each distinct
 	// spelling once per worker, then replay dependency edges with O(1) ids; the
 	// old per-edge name+intern path repeated the same locked hash probes across
@@ -3141,6 +5842,7 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 	for idx, name in w.sparse_resolved_fn_values {
 		owned_name := if scoped { name.clone() } else { name }
 		tc.sparse_resolved_fn_values[idx] = owned_name
+		tc.record_sparse_fn_value_filter_key(idx)
 	}
 	for idx, _ in w.sparse_statement_nodes {
 		if tc.parallel_check_sparse {
@@ -3150,15 +5852,16 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 		}
 	}
 	for idx, typ in w.sparse_expr_type_values {
+		tc.invalidate_checked_type_id(idx)
 		owned_type := if scoped {
-			tc.promote_check_type(typ)
+			*tc.promote_check_type(typ)
 		} else {
 			typ
 		}
 		if tc.parallel_check_sparse {
 			tc.sparse_expr_type_values[idx] = owned_type
 		} else {
-			tc.expr_type_values[idx] = owned_type
+			tc.expr_type_values[idx] = tc.intern_type_reference(owned_type)
 			tc.expr_type_set[idx] = true
 		}
 	}
@@ -3220,12 +5923,24 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 			tc.method_values_by_fn[fn_idx] = owned_values
 		}
 	}
-	for key, info in w.generic_method_value_info {
-		owned_key := if scoped { key.clone() } else { key }
-		tc.generic_method_value_info[owned_key] = if scoped {
-			clone_parallel_call_info(info)
+	for owner_id, methods in w.generic_method_value_info {
+		for method, info in methods {
+			owned_method := if scoped { method.clone() } else { method }
+			tc.generic_method_value_info[owner_id][owned_method] = if scoped {
+				clone_parallel_call_info(info)
+			} else {
+				info
+			}
+		}
+	}
+	for inferred in w.inferred_c_globals {
+		if inferred.name in tc.c_globals {
+			continue
+		}
+		if scoped {
+			tc.remember_inferred_c_global(inferred.name.clone(), clone_owned_type(inferred.typ))
 		} else {
-			info
+			tc.remember_inferred_c_global(inferred.name, inferred.typ)
 		}
 	}
 }
@@ -3236,13 +5951,249 @@ fn (mut tc TypeChecker) free_parallel_check_worker_cache() {
 			mut cache := tc.type_cache
 			cache.parse_entries.free()
 			cache.c_entries.free()
-			cache.struct_field_entries.free()
-			cache.struct_field_misses.free()
-			cache.ierror_compat_entries.free()
+			cache.free_struct_field_entries()
+			cache.free_ierror_compat_entries()
 			cache.interface_impl_entries.free()
 			if !cache.source_error_embed_shared {
-				cache.source_error_embed_entries.free()
+				cache.free_source_error_embed_entries()
 			}
 		}
 	}
+}
+
+struct TailDeclScanArgs {
+	a     &flat.FlatAst = unsafe { nil }
+	start int
+	end   int
+mut:
+	ids []i32
+}
+
+const min_parallel_tail_decl_scan = 65_536
+
+// prepare_tail_decl_ids finds the declaration nodes appended after collect built
+// the top-level index (transform appends about a million expression nodes, and
+// only a handful of declarations among them). The lazy index builders consult
+// this list instead of walking the whole tail. It runs only while prewarming a
+// frozen cache, when the persistent pool is idle.
+fn (mut tc TypeChecker) prepare_tail_decl_ids() {
+	mut cache := tc.type_cache
+	start := tc.top_level_idx_nodes_len
+	end := if isnil(tc.a) { 0 } else { tc.a.nodes.len }
+	pool := checker_worker_pool(tc.a)
+	// Only a base cache builds the lazy declaration indexes (overlays defer to it).
+	if !isnil(cache.base) || start <= 0 || end - start < min_parallel_tail_decl_scan
+		|| isnil(pool) || pool.size() == 0 {
+		return
+	}
+	if cache.tail_decl_start == start && cache.tail_decl_end == end {
+		return
+	}
+	n := int_min(pool.size() + 1, 16)
+	mut args := []TailDeclScanArgs{cap: n}
+	for i in 0 .. n {
+		args << TailDeclScanArgs{
+			a:     tc.a
+			start: start + (end - start) * i / n
+			end:   start + (end - start) * (i + 1) / n
+		}
+	}
+	mut tasks := []workers.Task{cap: n}
+	for i in 0 .. n {
+		tasks << workers.Task{
+			run:        tail_decl_scan_thread
+			arg:        unsafe { voidptr(&args[i]) }
+			force_sync: i == 0
+		}
+	}
+	pool.run(tasks)
+	mut total := 0
+	for arg in args {
+		total += arg.ids.len
+	}
+	mut ids := []i32{cap: total}
+	for arg in args {
+		ids << arg.ids
+	}
+	cache.tail_decl_ids = ids
+	cache.tail_decl_start = start
+	cache.tail_decl_end = end
+}
+
+fn tail_decl_scan_thread(arg voidptr) voidptr {
+	mut a := unsafe { &TailDeclScanArgs(arg) }
+	for i in a.start .. a.end {
+		kind := a.a.nodes[i].kind
+		if kind == .file || kind == .module_decl || kind == .fn_decl || kind == .struct_decl {
+			a.ids << i32(i)
+		}
+	}
+	return unsafe { nil }
+}
+
+// tail_decl_ids_for returns the precomputed declaration ids of [start, end), and
+// whether they were prepared for exactly that range.
+fn (tc &TypeChecker) tail_decl_ids_for(start int, end int) ([]i32, bool) {
+	cache := tc.type_cache
+	if isnil(cache) || cache.tail_decl_start != start || cache.tail_decl_end != end {
+		return []i32{}, false
+	}
+	return cache.tail_decl_ids, true
+}
+
+// SelectedFnScanArgs is one pool task of collect_selected_file_called_fns_walk_parallel.
+struct SelectedFnScanArgs {
+	worker       voidptr // &TypeChecker fork used only by this task
+	decls        voidptr // &[]SelectedFnDecl
+	decl_index   voidptr // &SelectedFnDeclIndex
+	lists        voidptr // &[][]string, the called names per declaration
+	callee_decls voidptr // &[][]int, the index in `decls` of each called name, or -1
+	queue        chan int
+	chunk        int
+mut:
+	scope voidptr
+}
+
+const selected_fn_scan_chunk = 64
+
+// SelectedFnDeclIndex maps a function name to its index in the scanned declarations.
+struct SelectedFnDeclIndex {
+mut:
+	names map[string]int
+}
+
+fn selected_fn_scan_thread(arg voidptr) voidptr {
+	mut a := unsafe { &SelectedFnScanArgs(arg) }
+	a.scope = check_worker_scope_begin(true)
+	mut w := unsafe { &TypeChecker(a.worker) }
+	decls := unsafe { &[]SelectedFnDecl(a.decls) }
+	decl_index := unsafe { &SelectedFnDeclIndex(a.decl_index) }
+	mut lists := unsafe { &[][]string(a.lists) }
+	mut callee_decls := unsafe { &[][]int(a.callee_decls) }
+	w.cur_scope = w.file_scope
+	for {
+		start := <-a.queue or { break }
+		end := int_min(start + a.chunk, decls.len)
+		for i in start .. end {
+			decl := unsafe { decls[i] }
+			w.cur_file = decl.file
+			w.cur_module = decl.mod
+			w.selected_file_called_fns = map[string]bool{}
+			w.selected_file_worklist = []string{}
+			w.arm_body_resolve_memo(decl.idx - decl.cost + 1, decl.idx)
+			w.collect_selected_file_fn_body_called_fns(w.a.nodes[decl.idx])
+			w.disarm_body_resolve_memo()
+			// The worklist holds each name the body reaches once, in discovery order.
+			mut callees := []int{cap: w.selected_file_worklist.len}
+			for name in w.selected_file_worklist {
+				di := decl_index.names[name] or { -1 }
+				callees << di
+			}
+			unsafe {
+				lists[i] = w.selected_file_worklist
+				callee_decls[i] = callees
+			}
+		}
+	}
+	check_worker_scope_leave(a.scope)
+	return unsafe { nil }
+}
+
+// collect_selected_file_called_fns_walk_parallel computes the same called set as
+// collect_selected_file_called_fns_walk. Scanning a body depends only on its
+// declaration's file and module, so the pool scans every candidate body once,
+// each task on its own fork of `master`, and the walk then follows those lists.
+// The arenas backing the lists are appended to `body_scopes` for the caller to
+// free once it no longer needs the names. It returns false without a pool.
+fn (mut tc TypeChecker) collect_selected_file_called_fns_walk_parallel(master &TypeChecker, mut body_scopes []voidptr) bool {
+	pool := checker_worker_pool(tc.a)
+	if isnil(pool) || pool.size() == 0 {
+		return false
+	}
+	saved_file := tc.cur_file
+	saved_module := tc.cur_module
+	saved_scope := tc.cur_scope
+	saved_scope_pool_index := tc.scope_pool_index
+	saved_memo := tc.body_resolve_memo
+	tc.body_resolve_memo = unsafe { nil }
+	defer { tc.body_resolve_memo = saved_memo }
+	tc.collect_selected_file_root_called_fns()
+	decls := tc.selected_file_fn_decls()
+	mut decl_list := []SelectedFnDecl{cap: decls.len}
+	mut decl_index := SelectedFnDeclIndex{}
+	decl_index.names.reserve(u32(decls.len))
+	for name, decl in decls {
+		decl_index.names[name] = decl_list.len
+		decl_list << decl
+	}
+	mut lists := [][]string{len: decl_list.len}
+	mut callee_decls := [][]int{len: decl_list.len}
+	chunk := selected_fn_scan_chunk
+	n_chunks := (decl_list.len + chunk - 1) / chunk
+	n_jobs := int_max(1, int_min(pool.size() + 1, n_chunks))
+	queue := chan int{cap: int_max(1, n_chunks)}
+	for start := 0; start < decl_list.len; start += chunk {
+		queue <- start
+	}
+	queue.close()
+	mut args := []SelectedFnScanArgs{cap: n_jobs}
+	for _ in 0 .. n_jobs {
+		args << SelectedFnScanArgs{
+			worker:       voidptr(master.fork_for_parallel_check())
+			decls:        unsafe { voidptr(&decl_list) }
+			decl_index:   unsafe { voidptr(&decl_index) }
+			lists:        unsafe { voidptr(&lists) }
+			callee_decls: unsafe { voidptr(&callee_decls) }
+			queue:        queue
+			chunk:        chunk
+		}
+	}
+	mut tasks := []workers.Task{cap: n_jobs}
+	for job in 0 .. n_jobs {
+		tasks << workers.Task{
+			run:        selected_fn_scan_thread
+			arg:        unsafe { voidptr(&args[job]) }
+			force_sync: job == 0
+		}
+	}
+	pool.run(tasks)
+	for arg in args {
+		if arg.scope != unsafe { nil } {
+			body_scopes << arg.scope
+		}
+	}
+	// Follow the lists from the roots by declaration index, then add the names
+	// each reached body calls: the set a walk by name builds, in another order.
+	mut reached := []bool{len: decl_list.len}
+	mut stack := []int{cap: 1024}
+	for name in tc.selected_file_worklist {
+		if di := decl_index.names[name] {
+			stack << di
+		}
+	}
+	tc.selected_file_worklist.clear()
+	for stack.len > 0 {
+		di := stack.pop()
+		if reached[di] {
+			continue
+		}
+		reached[di] = true
+		for callee in callee_decls[di] {
+			if callee >= 0 && !reached[callee] {
+				stack << callee
+			}
+		}
+	}
+	for di, is_reached in reached {
+		if is_reached {
+			for name in lists[di] {
+				tc.selected_file_called_fns[name] = true
+			}
+		}
+	}
+	tc.cur_file = saved_file
+	tc.cur_module = saved_module
+	tc.cur_scope = saved_scope
+	tc.scope_pool_index = saved_scope_pool_index
+	return true
 }

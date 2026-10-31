@@ -55,7 +55,7 @@ def normalize: sorted_walk(if type == "array" then sort else . end);
 normalize'
 
 fn run(args []string) !string {
-	res := os.execute(args.join(' '))
+	res := os.exec(args)
 	if res.exit_code != 0 {
 		return error('${args[0]} failed with return code ${res.exit_code}.\n${res.output}')
 	}
@@ -155,11 +155,11 @@ fn test_toml_rs_toml_rs() {
 
 				os.write_file(toml_rs_toml_json_path, toml_rs_json)!
 
-				v_normalized_json := run([jq, '-S', '-f "${jq_normalize_path}"', v_toml_json_path]) or {
+				v_normalized_json := run([jq, '-S', '-f', jq_normalize_path, v_toml_json_path]) or {
 					contents := os.read_file(v_toml_json_path)!
 					panic(err.msg() + '\n${contents}')
 				}
-				toml_rs_normalized_json := run([jq, '-S', '-f "${jq_normalize_path}"',
+				toml_rs_normalized_json := run([jq, '-S', '-f', jq_normalize_path,
 					toml_rs_toml_json_path]) or {
 					contents := os.read_file(v_toml_json_path)!
 					panic(err.msg() + '\n${contents}')

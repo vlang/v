@@ -129,3 +129,10 @@ pub fn clear_previous_line() {
 	print('\r\x1b[1A\x1b[2K')
 	flush_stdout()
 }
+
+// show_cursor_on_exit restores the cursor when main returns or exit is called.
+// It preserves the application's signal handlers. Signal termination does not run
+// exit callbacks; applications should arrange signal cleanup in normal execution.
+pub fn show_cursor_on_exit() {
+	at_exit(show_cursor) or {}
+}

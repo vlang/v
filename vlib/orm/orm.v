@@ -158,6 +158,7 @@ pub enum SQLDialect {
 	mysql
 	pg
 	sqlite
+	vsql // https://github.com/elliotchance/vsql
 }
 
 fn (kind OperationKind) to_str() string {
@@ -226,11 +227,12 @@ pub mut:
 	batch_key   string
 }
 
+// InfixType describes an arithmetic SQL expression whose right operand is referenced.
 pub struct InfixType {
 pub:
 	name     string
 	operator MathOperationKind
-	right    Primitive
+	right    &Primitive
 }
 
 pub struct Table {
@@ -922,7 +924,13 @@ pub fn orm_stmt_gen(sql_dialect SQLDialect, table Table, q string, kind StmtKind
 								}
 							}
 
-							str += '${d.name} ${op} ${qm}'
+							// vsql folds an undelimited name to upper case.
+							column := if sql_dialect == .vsql {
+								'${q}${d.name}${q}'
+							} else {
+								d.name
+							}
+							str += '${column} ${op} ${qm}'
 						} else {
 							str += '${qm}'
 						}
@@ -1169,6 +1177,15 @@ pub fn upsert_ambiguous_error(table Table) ! {
 // q, num, qm, start_pos - see orm_stmt_gen
 // where - See QueryData
 pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos int, where QueryData) string {
+	return orm_select_gen_with_dialect(.default, cfg, q, num, qm, start_pos, where)
+}
+
+// orm_select_gen_with_dialect generates a select stmt like orm_select_gen, in the spelling of
+// `sql_dialect`. For `.vsql`, a limit and an offset use the SQL standard
+// `OFFSET n ROWS FETCH FIRST n ROWS ONLY`; their placeholders keep the numbering of
+// `LIMIT n OFFSET n`, so pass `num: true` when both are present.
+pub fn orm_select_gen_with_dialect(sql_dialect SQLDialect, cfg SelectConfig, q string, num bool, qm string,
+	start_pos int, where QueryData) string {
 	mut str := 'SELECT '
 
 	if cfg.has_distinct {
@@ -1235,19 +1252,35 @@ pub fn orm_select_gen(cfg SelectConfig, q string, num bool, qm string, start_pos
 		str += cfg.order_type.to_str()
 	}
 
+	mut limit_qm := ''
 	if cfg.has_limit {
-		str += ' LIMIT ${qm}'
+		limit_qm = qm
 		if num {
-			str += '${c.position}'
+			limit_qm += '${c.position}'
 			c.position++
 		}
 	}
-
+	mut offset_qm := ''
 	if cfg.has_offset {
-		str += ' OFFSET ${qm}'
+		offset_qm = qm
 		if num {
-			str += '${c.position}'
+			offset_qm += '${c.position}'
 			c.position++
+		}
+	}
+	if sql_dialect == .vsql {
+		if cfg.has_offset {
+			str += ' OFFSET ${offset_qm} ROWS'
+		}
+		if cfg.has_limit {
+			str += ' FETCH FIRST ${limit_qm} ROWS ONLY'
+		}
+	} else {
+		if cfg.has_limit {
+			str += ' LIMIT ${limit_qm}'
+		}
+		if cfg.has_offset {
+			str += ' OFFSET ${offset_qm}'
 		}
 	}
 
@@ -1380,7 +1413,12 @@ fn sql_string_literal(sql_dialect SQLDialect, value string) !string {
 
 pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults bool, def_unique_len int, fields []TableField, sql_from_v fn (int) !string,
 	alternative bool) !string {
-	mut str := 'CREATE TABLE IF NOT EXISTS ${q}${table.name}${q} ('
+	// vsql has no `IF NOT EXISTS`: its driver looks the table up before creating it.
+	mut str := if sql_dialect == .vsql {
+		'CREATE TABLE ${q}${table.name}${q} ('
+	} else {
+		'CREATE TABLE IF NOT EXISTS ${q}${table.name}${q} ('
+	}
 
 	if alternative {
 		str = 'IF NOT EXISTS (SELECT * FROM sysobjects WHERE name=${q}${table.name}${q} and xtype=${q}U${q}) CREATE TABLE ${q}${table.name}${q} ('
@@ -1589,7 +1627,12 @@ pub fn orm_table_gen(sql_dialect SQLDialect, table Table, q string, defaults boo
 			for f in v {
 				tmp << '${q}${f}${q}'
 			}
-			fs << '/* ${k} */UNIQUE(${tmp.join(', ')})'
+			// vsql does not support bracketed comments.
+			if sql_dialect == .vsql {
+				fs << 'UNIQUE(${tmp.join(', ')})'
+			} else {
+				fs << '/* ${k} */UNIQUE(${tmp.join(', ')})'
+			}
 		}
 	}
 	for key_fields in unique_key_fields {

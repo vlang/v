@@ -10,7 +10,9 @@ fn generic_receiver_nested_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_generic_receiver_nested_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${generic_receiver_nested_vexe} -gc none -path "${generic_receiver_nested_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${generic_receiver_nested_v3_src}')
+		os.exec([generic_receiver_nested_vexe, '-gc', 'none', '-path',
+			'${generic_receiver_nested_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${generic_receiver_nested_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -129,11 +131,11 @@ fn test_generic_receiver_nested_calls_use_specialized_receiver_methods() {
 	out := os.join_path(os.temp_dir(), 'v3_generic_receiver_nested_out_${os.getpid()}')
 	os.rm(out) or {}
 	os.rm(out + '.c') or {}
-	compile := os.execute('${v3_bin} ${main_path} -b c -o ${out}')
+	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', '${out}'])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
-	run := os.execute(out)
+	run := os.exec([out])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 
@@ -142,8 +144,8 @@ fn test_generic_receiver_nested_calls_use_specialized_receiver_methods() {
 	assert generated.contains('gr__Inner_Array_string__pop'), generated
 	assert generated.contains('gr__Runner_Animal__echo'), generated
 	assert generated.contains('gr__Runner_models__Animal__echo'), generated
-	assert generated.contains('Optional_Array'), generated
+	assert generated.contains('__v_result_Array'), generated
 	assert !generated.contains('Inner_T__'), generated
 	assert !generated.contains('Outer_T__'), generated
-	assert !generated.contains('Optional_i64 __return_opt'), generated
+	assert !generated.contains('__v_result_i64 __return_opt'), generated
 }

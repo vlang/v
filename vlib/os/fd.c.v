@@ -2,11 +2,6 @@ module os
 
 // low level operations with file descriptors/handles
 
-$if !windows {
-	#include <sys/select.h>
-	#include <sys/ioctl.h>
-}
-
 $if windows {
 	#include <winsock2.h>
 }
@@ -35,7 +30,7 @@ pub fn fd_write(fd int, s string) {
 			return
 		}
 		remaining = remaining - written
-		sp = unsafe { voidptr(usize(sp) + usize(written)) }
+		sp = unsafe { voidptr(uint(sp) + uint(written)) }
 	}
 }
 
@@ -143,7 +138,7 @@ pub fn fd_is_pending(fd int) bool {
 		tv_sec:  0
 		tv_usec: 0
 	}
-	res := C.select(fd + 1, &read_set, C.NULL, C.NULL, &ts)
+	res := C.select(fd + 1, &read_set, unsafe { nil }, unsafe { nil }, &ts)
 	if res > 0 {
 		if C.FD_ISSET(fd, &read_set) != 0 {
 			return true

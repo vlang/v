@@ -30,10 +30,11 @@ fn test_win32_nonreadback_no_flag_facade_stays_disabled() {
 	].join('\n')
 	os.write_file(source_path, source) or { panic(err) }
 	compile :=
-		os.execute('${os.quoted_path(@VEXE)} -gc none -subsystem console -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(binary_path)} ${os.quoted_path(source_path)}')
+		os.exec([@VEXE, '-gc', 'none', '-subsystem', 'console', '-path',
+			'${vlib_dir}' + '|@vlib|@vmodules', '-o', binary_path, source_path])
 	assert compile.exit_code == 0, 'no-flag consumer failed to compile:\n${compile.output}'
 	executable := if os.exists(binary_path) { binary_path } else { '${binary_path}.exe' }
-	run := os.execute(os.quoted_path(executable))
+	run := os.exec([executable])
 	assert run.exit_code == 0, 'no-flag consumer failed to run:\n${run.output}'
 	assert run.output.trim_space() == 'gg.multiwindow: compile with `-d gg_multiwindow` to enable gg.App'
 }

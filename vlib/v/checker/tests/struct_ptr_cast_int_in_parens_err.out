@@ -1,0 +1,14 @@
+vlib/v/checker/tests/struct_ptr_cast_int_in_parens_err.vv:7:5: error: cannot cast int to a struct pointer outside `unsafe`
+    5 | address := u64(0x1000)
+    6 | // Parentheses do not make a plain number a computed address.
+    7 | _ = &Entry((address))
+      |     ~~~~~~~~~~~~~~~~~
+    8 | _ = &Entry((1234))
+    9 | // A computed address may be cast, as in V1.
+vlib/v/checker/tests/struct_ptr_cast_int_in_parens_err.vv:8:5: error: cannot cast int to a struct pointer outside `unsafe`
+    6 | // Parentheses do not make a plain number a computed address.
+    7 | _ = &Entry((address))
+    8 | _ = &Entry((1234))
+      |     ~~~~~~~~~~~~~~
+    9 | // A computed address may be cast, as in V1.
+   10 | _ = &Entry((address + 8))

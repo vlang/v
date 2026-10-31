@@ -13,6 +13,7 @@ fn C.pthread_mutex_trylock(voidptr) i32
 fn C.pthread_mutex_unlock(voidptr) i32
 fn C.pthread_mutex_destroy(voidptr) i32
 fn C.pthread_rwlockattr_init(voidptr) i32
+fn C.pthread_rwlockattr_destroy(voidptr) i32
 fn C.pthread_rwlockattr_setkind_np(voidptr, i32) i32
 fn C.pthread_rwlock_init(voidptr, voidptr) i32
 fn C.pthread_rwlock_rdlock(voidptr) i32
@@ -99,7 +100,7 @@ fn (mut m Mutex) lazy_init() {
 	}
 	mut expected := u32(0)
 	if C.atomic_compare_exchange_strong_u32(&m.inited, &expected, 1) {
-		should_be_zero(C.pthread_mutex_init(&m.mutex, C.NULL))
+		should_be_zero(C.pthread_mutex_init(&m.mutex, unsafe { nil }))
 		C.atomic_store_u32(&m.inited, 2)
 		return
 	}
@@ -122,18 +123,20 @@ pub fn (mut m RwMutex) init() {
 	// Give writer priority over readers
 	C.pthread_rwlockattr_setkind_np(&a.attr, C.PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP)
 	should_be_zero(C.pthread_rwlock_init(&m.mutex, &a.attr))
-	C.atomic_store_u32(&m.inited, 1)
+	should_be_zero(C.pthread_rwlockattr_destroy(&a.attr))
+	C.atomic_store_u32(&m.inited, 2)
 }
 
 fn (mut m RwMutex) lazy_init() {
-	if C.atomic_load_u32(&m.inited) == 0 {
-		mut expected := u32(0)
-		if C.atomic_compare_exchange_strong_u32(&m.inited, &expected, 1) {
-			a := RwMutexAttr{}
-			C.pthread_rwlockattr_init(&a.attr)
-			C.pthread_rwlockattr_setkind_np(&a.attr, C.PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP)
-			C.pthread_rwlock_init(&m.mutex, &a.attr)
-		}
+	if C.atomic_load_u32(&m.inited) == 2 {
+		return
+	}
+	mut expected := u32(0)
+	if C.atomic_compare_exchange_strong_u32(&m.inited, &expected, 1) {
+		m.init()
+		return
+	}
+	for C.atomic_load_u32(&m.inited) != 2 {
 	}
 }
 
@@ -200,6 +203,7 @@ pub fn (mut m RwMutex) lock() {
 // If the mutex was already locked, it will return false.
 @[inline]
 pub fn (mut m RwMutex) try_rlock() bool {
+	m.lazy_init()
 	return C.pthread_rwlock_tryrdlock(&m.mutex) == 0
 }
 
@@ -207,6 +211,7 @@ pub fn (mut m RwMutex) try_rlock() bool {
 // If the mutex was already locked, it will return false.
 @[inline]
 pub fn (mut m RwMutex) try_wlock() bool {
+	m.lazy_init()
 	return C.pthread_rwlock_trywrlock(&m.mutex) == 0
 }
 
@@ -255,7 +260,7 @@ pub fn new_semaphore_init(n u32) &Semaphore {
 // resources needed for the semaphore to work properly.
 pub fn (mut sem Semaphore) init(n u32) {
 	C.atomic_store_u32(&sem.count, n)
-	should_be_zero(C.pthread_mutex_init(&sem.mtx, C.NULL))
+	should_be_zero(C.pthread_mutex_init(&sem.mtx, unsafe { nil }))
 	attr := CondAttr{}
 	should_be_zero(C.pthread_condattr_init(&attr.attr))
 	C.pthread_condattr_setpshared(&attr.attr, C.PTHREAD_PROCESS_PRIVATE)

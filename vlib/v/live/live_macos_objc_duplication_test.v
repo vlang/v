@@ -1,3 +1,5 @@
+// vtest build: false
+
 import os
 
 fn live_reload_info_call_source(c_source string) string {
@@ -52,7 +54,8 @@ fn test_livemain_windows_forwards_d3d11_define_to_sharedlive_rebuild_vopts() {
 		'}',
 	].join('\n'))!
 	build_cmd := '${os.quoted_path(@VEXE)} -nocolor -os windows -live -d sokol_d3d11 -o ${os.quoted_path(c_path)} ${os.quoted_path(source_path)}'
-	build_res := os.execute(build_cmd)
+	build_res := os.exec([@VEXE, '-nocolor', '-os', 'windows', '-live', '-d', 'sokol_d3d11', '-o',
+		c_path, source_path])
 	if build_res.exit_code != 0 {
 		eprintln('> skipping Windows live reload D3D11 vopts codegen check: `${build_cmd}` failed with exit code ${build_res.exit_code}:\n${build_res.output}')
 		return
@@ -80,7 +83,7 @@ fn test_sharedlive_windows_cgen_reuses_host_sokol_backend() {
 	c_path := os.join_path(tmp_dir, 'graph_sharedlive_windows.c')
 	graph_path := os.join_path(@VEXEROOT, 'examples', 'hot_reload', 'graph.v')
 	build_cmd := '${os.quoted_path(@VEXE)} -nocolor -os windows -sharedlive -o ${os.quoted_path(c_path)} ${os.quoted_path(graph_path)}'
-	build_res := os.execute(build_cmd)
+	build_res := os.exec([@VEXE, '-nocolor', '-os', 'windows', '-sharedlive', '-o', c_path, graph_path])
 	if build_res.exit_code != 0 {
 		eprintln('> skipping Windows sharedlive Sokol backend reuse codegen check: `${build_cmd}` failed with exit code ${build_res.exit_code}:\n${build_res.output}')
 		return
@@ -104,9 +107,10 @@ fn test_sharedlive_macos_does_not_export_sokol_objc_classes() {
 	dylib_path := os.join_path(tmp_dir, 'graph_sharedlive.dylib')
 	graph_path := os.join_path(@VEXEROOT, 'examples', 'hot_reload', 'graph.v')
 	build_cmd := '${os.quoted_path(@VEXE)} -nocolor -cc clang -sharedlive -shared -o ${os.quoted_path(dylib_path)} ${os.quoted_path(graph_path)}'
-	build_res := os.execute(build_cmd)
+	build_res := os.exec([@VEXE, '-nocolor', '-cc', 'clang', '-sharedlive', '-shared', '-o',
+		dylib_path, graph_path])
 	assert build_res.exit_code == 0
-	nm_res := os.execute('${os.quoted_path(nm_path)} -gjU ${os.quoted_path(dylib_path)}')
+	nm_res := os.exec([nm_path, '-gjU', dylib_path])
 	assert nm_res.exit_code == 0
 	assert !nm_res.output.contains(r'_OBJC_CLASS_$_MyView2')
 	assert !nm_res.output.contains(r'_OBJC_CLASS_$__sapp_macos_')

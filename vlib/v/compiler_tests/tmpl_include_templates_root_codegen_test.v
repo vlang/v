@@ -11,7 +11,8 @@ fn tir_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_tmpl_include_templates_root_test_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${tir_vexe} -gc none -path "${tir_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${tir_v3_src}')
+		os.exec([tir_vexe, '-gc', 'none', '-path', '${tir_vlib_dir}' + '|@vlib|@vmodules', '-o',
+			v3_bin, '${tir_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -40,10 +41,10 @@ fn test_nested_template_includes_shared_root_partial() {
 	source := "module main\n\nfn render() string {\n\treturn \$tmpl('templates/pages/index.html').replace('\\n', '|')\n}\n\nfn main() {\n\tprintln(render())\n}\n"
 	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_tmpl_include_templates_root_bin_${pid}')
-	compile := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${bin}')
+	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	// The root partial was expanded above the page body (trailing `|` is the template's final
 	// newline turned into `|`).

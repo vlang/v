@@ -1,5 +1,9 @@
 module markused
 
+fn markused_can_parallel_precollect(_ &CallCollector) bool {
+	return false
+}
+
 // precollect_body_calls falls back to the serial analysis when v3 is built
 // with the internal `v3_no_parallel` define.
 fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules []string, body_import_contexts []int) []BodyCalls {

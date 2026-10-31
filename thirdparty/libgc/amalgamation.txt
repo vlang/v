@@ -48,3 +48,6 @@ repo for bdwgc.
     rm include/gc/gc_cpp.h
     rm -rf bdwgc
 
+
+gc.c also carries local V patches, each marked with a `__v_` comment.  Find them with
+`grep -n __v_ gc.c` before regenerating the amalgamation, and reapply them afterwards.

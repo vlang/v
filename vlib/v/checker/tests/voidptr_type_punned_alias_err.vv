@@ -1,0 +1,27 @@
+struct PunnedSource {
+mut:
+	x int
+}
+
+struct PunnedView {
+mut:
+	x int
+}
+
+fn erase(source &PunnedSource) voidptr {
+	return source
+}
+
+fn view(source &PunnedSource) &PunnedView {
+	return erase(source)
+}
+
+fn dev(source &PunnedSource) {
+	mut alias := view(source)
+	alias.x = 1
+}
+
+fn main() {
+	source := &PunnedSource{}
+	dev(source)
+}

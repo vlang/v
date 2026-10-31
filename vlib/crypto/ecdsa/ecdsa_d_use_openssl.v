@@ -307,7 +307,7 @@ pub fn (pv PrivateKey) derive_shared_secret(peer PublicKey) ![]u8 {
 		return error('EVP_PKEY_derive_set_peer failed (mismatched curve or invalid peer key?)')
 	}
 	// First call with a nil buffer to learn the required secret length.
-	mut secret_len := usize(0)
+	mut secret_len := uint(0)
 	dlen := C.EVP_PKEY_derive(ctx, unsafe { nil }, &secret_len)
 	if dlen <= 0 || secret_len == 0 {
 		C.EVP_PKEY_CTX_free(ctx)
@@ -393,7 +393,7 @@ pub fn PublicKey.from_uncompressed_bytes(bytes []u8, opt CurveOptions) !PublicKe
 		return error('OSSL_PARAM_BLD_new failed')
 	}
 	n := C.OSSL_PARAM_BLD_push_utf8_string(param_bld, c'group', voidptr(opt.nid.str().str), 0)
-	o := C.OSSL_PARAM_BLD_push_octet_string(param_bld, c'pub', bytes.data, usize(bytes.len))
+	o := C.OSSL_PARAM_BLD_push_octet_string(param_bld, c'pub', bytes.data, uint(bytes.len))
 	if n <= 0 || o <= 0 {
 		C.OSSL_PARAM_BLD_free(param_bld)
 		return error('OSSL_PARAM_BLD_push failed')
@@ -481,7 +481,7 @@ fn sign_digest(key &C.EVP_PKEY, digest []u8) ![]u8 {
 	}
 	// siglen was used to store the size of the signature output. When EVP_PKEY_sign
 	// was called with NULL signature buffer, siglen will tell maximum size of signature.
-	siglen := usize(C.EVP_PKEY_size(key))
+	siglen := uint(C.EVP_PKEY_size(key))
 	sig := []u8{len: int(siglen)}
 
 	// calls directly with sign
@@ -604,7 +604,7 @@ fn evpkey_from_seed(seed []u8, opt CurveOptions) !&C.EVP_PKEY {
 	// push the group, private and public key bytes infos into the builder
 	n := C.OSSL_PARAM_BLD_push_utf8_string(param_bld, c'group', voidptr(opt.nid.str().str), 0)
 	m := C.OSSL_PARAM_BLD_push_BN(param_bld, c'priv', bn)
-	o := C.OSSL_PARAM_BLD_push_octet_string(param_bld, c'pub', pub_bytes.data, usize(pub_bytes.len))
+	o := C.OSSL_PARAM_BLD_push_octet_string(param_bld, c'pub', pub_bytes.data, uint(pub_bytes.len))
 	if n <= 0 || m <= 0 || o <= 0 {
 		C.EC_POINT_free(point)
 		C.BN_free(bn)

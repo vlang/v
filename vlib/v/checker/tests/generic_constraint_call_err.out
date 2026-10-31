@@ -1,0 +1,35 @@
+vlib/v/checker/tests/generic_constraint_call_err.vv:33:18: error: `int` doesn't implement field `name` of interface `Named`
+   31 | 
+   32 | fn main() {
+   33 |     println(longest(1, 2))
+      |                     ^
+   34 |     println(longest[int](1, 2))
+   35 |     println(half('a'))
+vlib/v/checker/tests/generic_constraint_call_err.vv:34:18: error: `int` doesn't implement field `name` of interface `Named`
+   32 | fn main() {
+   33 |     println(longest(1, 2))
+   34 |     println(longest[int](1, 2))
+      |                     ~~~
+   35 |     println(half('a'))
+   36 |     println(greet(Admin{}))
+vlib/v/checker/tests/generic_constraint_call_err.vv:35:15: error: cannot use `string` as `T`: it is not in its constraint `Number`
+   33 |     println(longest(1, 2))
+   34 |     println(longest[int](1, 2))
+   35 |     println(half('a'))
+      |                  ~~~
+   36 |     println(greet(Admin{}))
+   37 |     println(greet(1))
+vlib/v/checker/tests/generic_constraint_call_err.vv:37:16: error: cannot use `int` as `T`: it is not `User` and does not embed it
+   35 |     println(half('a'))
+   36 |     println(greet(Admin{}))
+   37 |     println(greet(1))
+      |                   ^
+   38 |     b := Box[int]{}
+   39 |     println(b)
+vlib/v/checker/tests/generic_constraint_call_err.vv:38:7: error: `int` doesn't implement field `name` of interface `Named`
+   36 |     println(greet(Admin{}))
+   37 |     println(greet(1))
+   38 |     b := Box[int]{}
+      |          ~~~~~~~~~~
+   39 |     println(b)
+   40 | }

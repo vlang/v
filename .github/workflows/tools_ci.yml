@@ -11,29 +11,36 @@ on:
       - 'thirdparty/**'
       - '!**.md'
       - '**/tools_ci.yml'
-  pull_request:
-    paths:
-      - 'cmd/**'
-      - '!cmd/tools/vpm/**'
-      - 'vlib/**'
-      - 'thirdparty/**'
-      - '!**.md'
-      - '**/tools_ci.yml'
 
 concurrency:
   group: tools-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   shell-contracts:
     runs-on: ubuntu-22.04
-    timeout-minutes: 5
+    timeout-minutes: 20
     permissions:
       contents: read
+    env:
+      VFLAGS: -cc gcc
+      VJOBS: '2'
+      V_C_ERROR_BUG_REPORT_DISABLED: '1'
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V for the shell regression tests
+        id: build
+        run: make
       - name: Check BSD tool job failure propagation
-        run: python3 cmd/tools/tools_ci_test.py
+        run: ./v -new-compiler cmd/tools/tools_ci_test.v
+      - name: Check shell regression test formatting
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./v fmt -verify cmd/tools/tools_ci_test.v
 
   tools-linux:
     runs-on: ubuntu-22.04
@@ -43,9 +50,15 @@ jobs:
         cc: [tcc, gcc, clang]
       fail-fast: false
     env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
       - name: Code in cmd/ is formatted
@@ -83,9 +96,15 @@ jobs:
         cc: [clang]
       fail-fast: false
     env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
       - name: Check build-tools
@@ -103,9 +122,15 @@ jobs:
         cc: [tcc, gcc, msvc]
       fail-fast: false
     env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: ./makev.bat -${{ matrix.cc }} && ./v -o v2.exe cmd/v && ./v2 -showcc -o v.exe cmd/v && ./v symlink && ./v doctor
       - name: Install OpenSSL for MSVC
@@ -137,6 +162,11 @@ jobs:
 
   tools-docker-ubuntu-musl:
     runs-on: ubuntu-24.04
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
     timeout-minutes: 35
     container:
       image: thevlang/vlang:ubuntu-build
@@ -149,6 +179,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: make && ./v -cg -o v cmd/v && ./v symlink
       - name: Ensure git commands can be used with no prompts on modern Git versions
@@ -184,9 +216,11 @@ jobs:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Start FreeBSD VM with ${{ matrix.cc }}
-        uses: cross-platform-actions/action@v1.6.0
+        uses: cross-platform-actions/action@82668f1fbd89d9c99487604f822cbf6716f124d3 # v1.7.0
         with:
           operating_system: freebsd
           version: '15.1'
@@ -252,9 +286,11 @@ jobs:
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Start OpenBSD VM with ${{ matrix.cc }}
-        uses: cross-platform-actions/action@v1.6.0
+        uses: cross-platform-actions/action@82668f1fbd89d9c99487604f822cbf6716f124d3 # v1.7.0
         with:
           operating_system: openbsd
           version: '7.8'

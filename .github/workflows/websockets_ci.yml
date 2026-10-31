@@ -10,17 +10,13 @@ on:
       - '!**/websockets_ci.yml'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
-  pull_request:
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/websockets_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
 
 concurrency:
   group: websockets-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   websocket_tests:
@@ -30,6 +26,8 @@ jobs:
       VFLAGS: -cc tcc -no-retry-compilation
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
         run: |
@@ -69,9 +67,11 @@ jobs:
       - name: Copy reports wss
         run: docker cp autobahn_server_wss:/reports ${{github.workspace}}/reports_wss
       - name: Test success
-        run: docker exec autobahn_server "python" "/check_results.py"
+        run: |
+          ./v -silent test cmd/tools/check_autobahn_results/
+          ./v run cmd/tools/check_autobahn_results/main.v ${{github.workspace}}/reports
       - name: Test success WSS
-        run: docker exec autobahn_server_wss "python" "/check_results.py"
+        run: ./v run cmd/tools/check_autobahn_results/main.v ${{github.workspace}}/reports_wss --clients-only
 
       - name: Publish all reports
         uses: actions/upload-artifact@v7

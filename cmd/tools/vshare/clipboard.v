@@ -5,7 +5,7 @@ import time
 
 struct ClipboardCommand {
 	executable string
-	command    string
+	args       []string
 }
 
 // copy_to_clipboard copies `text` to the first available OS clipboard command.
@@ -27,8 +27,13 @@ fn copy_to_clipboard_with_commands(text string, commands []ClipboardCommand) boo
 		if !os.exists_in_system_path(command.executable) {
 			continue
 		}
-		cmd := command.command.replace('@FILE@', os.quoted_path(temp_file))
-		if os.execute(cmd).exit_code == 0 {
+		mut process := os.new_process(command.executable)
+		process.set_args(command.args)
+		process.set_stdin_path(temp_file)
+		process.wait()
+		code := process.code
+		process.close()
+		if code == 0 {
 			return true
 		}
 	}
@@ -40,29 +45,29 @@ fn clipboard_commands() []ClipboardCommand {
 		return [
 			ClipboardCommand{
 				executable: 'clip.exe'
-				command:    'type @FILE@ | clip'
+				args:       []string{}
 			},
 		]
 	} $else $if macos {
 		return [
 			ClipboardCommand{
 				executable: 'pbcopy'
-				command:    'pbcopy < @FILE@'
+				args:       []string{}
 			},
 		]
 	} $else {
 		return [
 			ClipboardCommand{
 				executable: 'wl-copy'
-				command:    'wl-copy < @FILE@'
+				args:       []string{}
 			},
 			ClipboardCommand{
 				executable: 'xclip'
-				command:    'xclip -selection clipboard @FILE@'
+				args:       ['-selection', 'clipboard']
 			},
 			ClipboardCommand{
 				executable: 'xsel'
-				command:    'xsel --clipboard --input < @FILE@'
+				args:       ['--clipboard', '--input']
 			},
 		]
 	}

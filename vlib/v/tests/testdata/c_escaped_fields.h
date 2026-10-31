@@ -12,4 +12,8 @@ typedef struct EscapedFieldRecord {
     unsigned char bytes[4];
 } EscapedFieldRecord;
 
+typedef struct EscapedFieldPlain {
+    unsigned int type;
+} EscapedFieldPlain;
+
 #endif

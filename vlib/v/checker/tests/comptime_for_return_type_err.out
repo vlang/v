@@ -1,0 +1,14 @@
+vlib/v/checker/tests/comptime_for_return_type_err.vv:9:10: error: cannot use `[]u8` as type `[]u64` in return argument
+    7 |         println(field.name)
+    8 |         bytes := [u8(1)]
+    9 |         return bytes
+      |                ~~~~~
+   10 |     }
+   11 |     return []
+vlib/v/checker/tests/comptime_for_return_type_err.vv:17:10: error: cannot use `string` as type `int` in return argument
+   15 |     $for field in Foo.fields {
+   16 |         println(field.name)
+   17 |         return 'a'
+      |                ~~~
+   18 |     }
+   19 |     return 0

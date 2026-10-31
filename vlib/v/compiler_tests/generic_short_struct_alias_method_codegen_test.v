@@ -30,7 +30,8 @@ fn test_generic_short_struct_and_alias_method_compile_without_fallback() {
 		os.rm(v3_bin) or {}
 	}
 	build :=
-		os.execute('${generic_compat_vexe} -gc none -path "${generic_compat_vlib_dir}|@vlib|@vmodules" -o "${v3_bin}" "${generic_compat_v3_source}"')
+		os.exec([generic_compat_vexe, '-gc', 'none', '-path',
+			'${generic_compat_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, generic_compat_v3_source])
 	assert build.exit_code == 0, build.output
 
 	fixtures := [
@@ -43,9 +44,9 @@ fn test_generic_short_struct_and_alias_method_compile_without_fallback() {
 		defer {
 			os.rm(output) or {}
 		}
-		compile := os.execute('"${v3_bin}" -gc none -no-parallel -o "${output}" "${fixture}"')
+		compile := os.exec([v3_bin, '-gc', 'none', '-no-parallel', '-o', output, '${fixture}'])
 		assert compile.exit_code == 0, compile.output
-		run := os.execute('"${output}"')
+		run := os.exec([output])
 		assert run.exit_code == 0, run.output
 	}
 }

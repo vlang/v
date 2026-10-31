@@ -5,6 +5,7 @@ module veb
 
 import fasthttp
 import net.http
+import os
 import strconv
 import strings
 import time
@@ -15,10 +16,22 @@ struct RequestParams {
 	controllers_sorted        []&ControllerPath
 	routes                    &map[string]Route
 	benchmark_page_generation bool
+	// The append handler transfers its arena only after it finishes reading the context.
+	defer_after_timer bool
 }
 
 const http_500_response = 'HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
 const http_400_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+const http_431_response = 'HTTP/1.1 431 Request Header Fields Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.bytes()
+
+// request_head_error_response returns the raw response for a request head that
+// `http.parse_request_head_str` rejected.
+fn request_head_error_response(err IError) []u8 {
+	if err is http.HeaderLimitError {
+		return http_431_response
+	}
+	return http_500_response
+}
 
 // The va_scope_* helpers wrap V's -prealloc request-arena API so the append
 // handler can keep the same per-request bump-allocation behavior the legacy
@@ -76,7 +89,11 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 	if params.port <= 0 || params.port > 65535 {
 		return error('invalid port number `${params.port}`, it should be between 1 and 65535')
 	}
+	if params.max_request_body_size < 0 {
+		return error('invalid max_request_body_size `${params.max_request_body_size}`, it should be 0 (no limit) or a positive number of bytes')
+	}
 	if ssl_enabled(params) {
+		prompt_to_kill_processes_listening_on_port(params.port)
 		maybe_init_server[A](mut global_app, new_server_without_lifecycle())
 		run_at_with_ssl[A, X](mut global_app, params)!
 		return
@@ -85,6 +102,14 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 	// Generate routes and controllers just like the original run() function.
 	routes := generate_routes[A, X](global_app)!
 	controllers_sorted := check_duplicate_routes_in_controllers[A](global_app, routes)!
+	prompt_to_kill_processes_listening_on_port(params.port)
+	$if veb_livereload ? {
+		$if A is StaticApp {
+			start_livereload(global_app.static_files.clone())
+		} $else {
+			start_livereload(map[string]string{})
+		}
+	}
 
 	// Allocate params on the heap to keep it valid for the server lifetime
 	request_params := &RequestParams{
@@ -101,6 +126,7 @@ pub fn run_new[A, X](mut global_app A, params RunParams) ! {
 		port:                    params.port
 		append_handler:          parallel_append_handler[A, X]
 		max_request_buffer_size: params.max_request_buffer_size
+		max_request_body_size:   params.max_request_body_size
 		timeout_in_seconds:      params.timeout_in_seconds
 		user_data:               voidptr(request_params)
 	}) or {
@@ -127,6 +153,50 @@ fn spawn_fasthttp_server_run(mut server fasthttp.Server) thread ! {
 	return spawn server.run()
 }
 
+fn listening_process_ids_from_lsof_output(output string) []int {
+	mut pids := []int{}
+	for line in output.split_into_lines() {
+		pid := strconv.atoi(line.trim_space()) or { continue }
+		if pid > 0 {
+			pids << pid
+		}
+	}
+	return pids
+}
+
+fn listening_process_ids(port int) []int {
+	$if windows {
+		return []int{}
+	} $else {
+		// `lsof` exits with status 1 when no process is listening, which is expected.
+		result := os.exec(['lsof', '-tiTCP:' + '${port}', '-sTCP:LISTEN'])
+		return listening_process_ids_from_lsof_output(result.output)
+	}
+}
+
+fn prompt_to_kill_processes_listening_on_port(port int) {
+	pids := listening_process_ids(port)
+	if pids.len == 0 {
+		return
+	}
+	pid_list := pids.map(it.str()).join(', ')
+	answer := os.input('[veb] Port ${port} is in use by process ${pid_list}. Kill it? [y/N] ')
+	if answer.trim_space().to_lower() != 'y' {
+		return
+	}
+	for pid in pids {
+		// PIDs are parsed as integers from lsof output, so this command has no user-provided shell input.
+		os.exec(['kill', '-TERM', '${pid}'])
+	}
+	// Give gracefully terminated servers a moment to release the listener before binding ours.
+	for _ in 0 .. 10 {
+		if listening_process_ids(port).len == 0 {
+			return
+		}
+		time.sleep(100 * time.millisecond)
+	}
+}
+
 // parallel_append_handler is veb's fasthttp append handler (fasthttp.AppendHandler):
 // it parses and routes the request, then serializes the response DIRECTLY into
 // the connection's reused write buffer `out` — no intermediate response buffer —
@@ -148,7 +218,7 @@ fn parallel_append_handler[A, X](req fasthttp.HttpRequest, mut out []u8, worker_
 	// Parse the request head into a standard `http.Request`, then copy just the body.
 	mut req2 := http.parse_request_head_str(head) or {
 		va_scope_leave(arena)
-		out << http_500_response
+		out << request_head_error_response(err)
 		va_scope_free_after(arena)
 		ctl.should_close = true
 		return .close
@@ -167,15 +237,23 @@ fn parallel_append_handler[A, X](req fasthttp.HttpRequest, mut out []u8, worker_
 		}
 	}
 	// Create and populate the `veb.Context` and route the request.
-	mut completed_context := handle_request_and_route[A, X](mut global_app, req2, client_fd, params)
+	mut completed_context := handle_request_and_route[A, X](mut global_app, req2, client_fd,
+		RequestParams{ ...params, defer_after_timer: true })
 
 	match completed_context.takeover_mode {
 		.manual {
+			ctl.takeover_mode = .manual
+			if completed_context.deferred {
+				// Spawn only after the worker has finished reading the context and
+				// left the arena: even a zero-delay timer may immediately free it.
+				va_scope_leave(arena)
+				spawn after_timer(mut completed_context, arena)
+				return .done
+			}
 			// The handler took over the connection (SSE / WebSocket) and already
 			// wrote the response over ctx.conn: hand the fd off without closing it.
 			// The takeover handler now owns any request-arena allocations.
 			va_scope_abandon(arena)
-			ctl.takeover_mode = .manual
 			return .done
 		}
 		.reusable {
@@ -273,6 +351,10 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 	// Match controller paths first
 	$if A is ControllerInterface {
 		if completed_context := handle_controllers[X](params.controllers_sorted, ctx, mut url, host) {
+			mut armed := unsafe { &Context(completed_context) }
+			if !params.defer_after_timer {
+				armed.spawn_after_timer_if_armed()
+			}
 			return completed_context
 		}
 	}
@@ -283,6 +365,9 @@ fn handle_request_and_route[A, X](mut app A, req http.Request, _client_fd int, p
 	}
 	// Preserve the handled context on the heap before the stack-local user context goes away.
 	ctx.preserve_for_response_writer(user_context.Context)
+	if !params.defer_after_timer {
+		ctx.spawn_after_timer_if_armed()
+	}
 	return ctx
 }
 

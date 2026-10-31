@@ -1,0 +1,63 @@
+vlib/v/checker/tests/fn_value_layout_mismatch_err.vv:87:12: error: cannot use `fn () ?[2]int` as `fn () ?[]int` in argument 1 to `call_ints`
+   85 | 
+   86 | fn main() {
+   87 |     call_ints(fixed)
+      |               ~~~~~
+   88 |     call_wide(narrow)
+   89 |     call_wide_result(narrow_result)
+vlib/v/checker/tests/fn_value_layout_mismatch_err.vv:88:12: error: cannot use `fn () ?u8` as `fn () ?u64` in argument 1 to `call_wide`
+   86 | fn main() {
+   87 |     call_ints(fixed)
+   88 |     call_wide(narrow)
+      |               ~~~~~~
+   89 |     call_wide_result(narrow_result)
+   90 |     call_named(item)
+vlib/v/checker/tests/fn_value_layout_mismatch_err.vv:89:19: error: cannot use `fn () !u8` as `fn () !u64` in argument 1 to `call_wide_result`
+   87 |     call_ints(fixed)
+   88 |     call_wide(narrow)
+   89 |     call_wide_result(narrow_result)
+      |                      ~~~~~~~~~~~~~
+   90 |     call_named(item)
+   91 |     call_names(items)
+vlib/v/checker/tests/fn_value_layout_mismatch_err.vv:90:13: error: cannot use `fn () ?Item` as `fn () ?Named` in argument 1 to `call_named`
+   88 |     call_wide(narrow)
+   89 |     call_wide_result(narrow_result)
+   90 |     call_named(item)
+      |                ~~~~
+   91 |     call_names(items)
+   92 |     call_narrows(take_wides)
+vlib/v/checker/tests/fn_value_layout_mismatch_err.vv:91:13: error: cannot use `fn () []Item` as `fn () []Named` in argument 1 to `call_names`
+   89 |     call_wide_result(narrow_result)
+   90 |     call_named(item)
+   91 |     call_names(items)
+      |                ~~~~~
+   92 |     call_narrows(take_wides)
+   93 |     call_maybe_pair(take_maybe_ints)
+vlib/v/checker/tests/fn_value_layout_mismatch_err.vv:92:15: error: cannot use `fn ([]u64)` as `fn ([]u8)` in argument 1 to `call_narrows`
+   90 |     call_named(item)
+   91 |     call_names(items)
+   92 |     call_narrows(take_wides)
+      |                  ~~~~~~~~~~
+   93 |     call_maybe_pair(take_maybe_ints)
+   94 |     call_narrow_chan(take_wide_chan)
+vlib/v/checker/tests/fn_value_layout_mismatch_err.vv:93:18: error: cannot use `fn (?[]int)` as `fn (?[2]int)` in argument 1 to `call_maybe_pair`
+   91 |     call_names(items)
+   92 |     call_narrows(take_wides)
+   93 |     call_maybe_pair(take_maybe_ints)
+      |                     ~~~~~~~~~~~~~~~
+   94 |     call_narrow_chan(take_wide_chan)
+   95 |     mut cb := fn () ?[]int {
+vlib/v/checker/tests/fn_value_layout_mismatch_err.vv:94:19: error: cannot use `fn (chan u64)` as `fn (chan u8)` in argument 1 to `call_narrow_chan`
+   92 |     call_narrows(take_wides)
+   93 |     call_maybe_pair(take_maybe_ints)
+   94 |     call_narrow_chan(take_wide_chan)
+      |                      ~~~~~~~~~~~~~~
+   95 |     mut cb := fn () ?[]int {
+   96 |         return none
+vlib/v/checker/tests/fn_value_layout_mismatch_err.vv:98:7: error: cannot assign to `cb`: expected `fn () ?[]int`, not `fn () ?[2]int`
+   96 |         return none
+   97 |     }
+   98 |     cb = fixed
+      |          ~~~~~
+   99 |     // Types stored the same way are accepted.
+  100 |     call_ints(ints)

@@ -1,5 +1,5 @@
 // vtest vflags: -w
-import json
+import json2
 
 struct SomeParams {
 	name       string
@@ -9,7 +9,7 @@ struct SomeParams {
 }
 
 fn some_fn(p SomeParams) string {
-	return json.encode(p)
+	return json2.encode(p, escape_unicode: true)
 }
 
 fn test_main() {

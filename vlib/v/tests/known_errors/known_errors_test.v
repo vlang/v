@@ -18,7 +18,7 @@ fn test_known_failures_are_still_failures() {
 	for f in files {
 		cmd := '${os.quoted_path(vexe)} ${os.quoted_path(f)}'
 		println('known compilation failure: ${cmd}')
-		res := os.execute(cmd)
+		res := os.exec([vexe, '${f}'])
 		if res.exit_code == 0 {
 			oks << cmd
 			println('    unexpectedly COMPILED: ${cmd}')

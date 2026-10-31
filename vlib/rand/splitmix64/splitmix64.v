@@ -28,7 +28,7 @@ pub fn (mut rng SplitMix64RNG) seed(seed_data []u32) {
 	rng.buffer = 0
 }
 
-// byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
+// u8 returns a uniformly distributed pseudorandom 8-bit unsigned positive `u8`.
 @[inline]
 pub fn (mut rng SplitMix64RNG) u8() u8 {
 	if rng.bytes_left >= 1 {

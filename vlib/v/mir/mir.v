@@ -215,6 +215,9 @@ fn (m &Module) type_size_inner(typ_id ssa.TypeID, depth int) int {
 	if typ.width > 0 {
 		return (typ.width + 7) / 8
 	}
+	if typ.kind == .array_t {
+		return typ.len * m.type_size_inner(typ.elem_type, depth + 1)
+	}
 	if typ.elem_type > 0 && typ.fields.len == 0 {
 		return 8
 	}
@@ -234,6 +237,13 @@ fn (m &Module) type_size_inner(typ_id ssa.TypeID, depth int) int {
 		align := m.type_align_inner(field_typ, depth + 1)
 		if align > max_align {
 			max_align = align
+		}
+		if typ.is_union {
+			size := m.type_size_inner(field_typ, depth + 1)
+			if size > offset {
+				offset = size
+			}
+			continue
 		}
 		if align > 1 && offset % align != 0 {
 			offset = (offset + align - 1) & ~(align - 1)
@@ -274,6 +284,9 @@ fn (m &Module) type_align_inner(typ_id ssa.TypeID, depth int) int {
 			return 4
 		}
 		return 1
+	}
+	if typ.kind == .array_t {
+		return m.type_align_inner(typ.elem_type, depth + 1)
 	}
 	if typ.elem_type > 0 && typ.fields.len == 0 {
 		return 8

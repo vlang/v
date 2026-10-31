@@ -6,6 +6,169 @@ import v.flat
 import v.parser
 import v.pref
 
+fn test_diagnostic_comparators_preserve_priority_and_interface_order() {
+	first := TypeError{
+		msg:     "`Item` doesn't implement method `read` of interface `Alpha`"
+		node:    flat.NodeId(4)
+		file:    'diagnostics.v'
+		details: ['first detail']
+	}
+	second := TypeError{
+		msg:     "`Item` doesn't implement method `read` of interface `Beta`"
+		node:    first.node
+		file:    first.file
+		details: ['second detail']
+	}
+	assert compare_type_errors(&first, &second) == -1
+	assert compare_type_errors(&second, &first) == 1
+	assert compare_type_errors(&first, &first) == 0
+	// Notices without their own priority use the error comparator in a nested scope.
+	assert compare_type_notices(&first, &second) == -1
+	assert compare_type_notices(&second, &first) == 1
+	ordered := TypeError{ ...first, diagnostic_order: 1 }
+	later := TypeError{ ...second, diagnostic_order: 3 }
+	assert compare_type_errors(&ordered, &later) == -2
+	unused := TypeError{ ...first, msg: 'unused parameter: value' }
+	assert compare_type_notices(&unused, &first) == 1
+	assert compare_type_notices(&first, &unused) == -1
+	assert first.msg == "`Item` doesn't implement method `read` of interface `Alpha`"
+	assert second.msg == "`Item` doesn't implement method `read` of interface `Beta`"
+	assert first.details == ['first detail']
+	assert second.details == ['second detail']
+}
+
+fn test_diagnostic_comparators_release_searches_before_returning_to_parent_arena() {
+	$if prealloc {
+		first := TypeError{
+			msg:  "`Item` doesn't implement method `read` of interface `Alpha`"
+			node: flat.NodeId(4)
+			file: 'diagnostics.v'
+		}
+		second := TypeError{
+			msg:  "`Item` doesn't implement method `read` of interface `Beta`"
+			node: first.node
+			file: first.file
+		}
+		parent := unsafe { prealloc_scope_begin() }
+		defer { unsafe { prealloc_scope_end(parent) } }
+		payload := 'parent payload'.clone()
+		before := unsafe { prealloc_scope_allocated_size(parent) }
+		mut errors_result := 0
+		mut notices_result := 0
+		// These late comparisons allocate temporary substring searches. Repeating
+		// them must not grow the caller arena, including notices' nested fallback.
+		for _ in 0 .. 4096 {
+			errors_result += compare_type_errors(&first, &second)
+			errors_result += compare_type_errors(&second, &first)
+			notices_result += compare_type_notices(&first, &second)
+			notices_result += compare_type_notices(&second, &first)
+		}
+		after := unsafe { prealloc_scope_allocated_size(parent) }
+		assert after == before
+		assert errors_result == 0
+		assert notices_result == 0
+		assert payload == 'parent payload'
+		assert first.file == 'diagnostics.v'
+		assert second.msg.ends_with('`Beta`')
+	}
+}
+
+fn test_parallel_fn_prep_recognizes_source_embedded_veb_context() {
+	mut a := flat.FlatAst.new()
+	a.add_val(.file, 'context.v')
+	a.add_val(.module_decl, 'veb')
+	context_field := a.add_node(flat.Node{
+		kind:  .field_decl
+		value: 'Context'
+	})
+	context_children := a.begin_children()
+	a.add_child(context_field)
+	a.add_node(flat.Node{
+		kind:           .struct_decl
+		value:          'RegressionContext'
+		children_start: context_children
+		children_count: 1
+	})
+	mut tc := TypeChecker.new(&a)
+	for i in 0 .. a.nodes.len {
+		tc.top_level_idx << i
+	}
+	tc.build_type_declaration_index(&a)
+	tc.cur_file = 'context.v'
+	tc.cur_module = 'veb'
+	assert tc.source_type_embeds_veb_context(flat.source_type_id('RegressionContext'))
+
+	a.add_node(flat.Node{
+		kind:  .type_decl
+		value: 'AliasContext'
+		typ:   flat.source_type_id('RegressionContext')
+	})
+	tc.top_level_idx << a.nodes.len - 1
+	tc.build_type_declaration_index(&a)
+	assert tc.source_type_embeds_veb_context(flat.source_type_id('AliasContext'))
+}
+
+fn test_first_type_declaration_index_preserves_conflict_context_and_order() {
+	mut a := flat.FlatAst.new()
+	a.nodes = [
+		flat.Node{ kind: .file, value: 'dep.v' },
+		flat.Node{ kind: .module_decl, value: 'dep' },
+		flat.Node{ kind: .interface_decl, value: 'Item' },
+		flat.Node{ kind: .struct_decl, value: 'dep.Item' },
+		flat.Node{ kind: .file, value: 'main.v' },
+		flat.Node{ kind: .enum_decl, value: 'Item' },
+		flat.Node{ kind: .type_decl, value: 'Item' },
+		flat.Node{ kind: .module_decl, value: 'builtin' },
+		flat.Node{ kind: .struct_decl, value: 'Item' },
+	]
+	mut tc := TypeChecker.new(&a)
+	for i in 0 .. a.nodes.len {
+		tc.top_level_idx << i
+	}
+	for indexed in [false, true] {
+		if indexed {
+			tc.build_type_declaration_index(&a)
+		}
+		tc.cur_module = 'dep'
+		assert tc.type_declaration_before(2, 'Item') == none
+		assert tc.type_declaration_before(3, 'dep.Item')? == flat.NodeId(2)
+		tc.cur_module = 'main'
+		assert tc.type_declaration_before(5, 'Item') == none
+		assert tc.type_declaration_before(6, 'Item')? == flat.NodeId(5)
+		tc.cur_module = 'builtin'
+		assert tc.type_declaration_before(8, 'Item')? == flat.NodeId(5)
+		assert tc.type_declaration_before(8, 'Missing') == none
+	}
+	worker := tc.fork_for_parallel_check()
+	assert worker.type_declaration_before(8, 'Item')? == flat.NodeId(5)
+	worker.free_parallel_check_worker_cache()
+}
+
+fn test_static_method_name_index_preserves_aliases_and_late_signatures() {
+	path := os.join_path(os.vtmp_dir(), 'v3_static_method_index_${os.getpid()}.v')
+	os.write_file(path, 'module main\nstruct Widget {}\ntype Alias = Widget\nfn Widget.make() Widget { return Widget{} }\n') or { panic(err) }
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	assert tc.static_associated_method_names['make']
+	key := flat.encode_static_type_method_name('Widget', 'make')
+	assert tc.static_assoc_fn_key_for_base(flat.source_type_id('Widget'), 'make')? == key
+	assert tc.static_assoc_fn_key_for_base(flat.source_type_id('Alias'), 'make')? == key
+	assert tc.static_assoc_fn_key_for_base(flat.source_type_id('Widget'), 'missing') == none
+	worker := tc.fork_for_parallel_check()
+	assert worker.static_assoc_fn_key_for_base(flat.source_type_id('Alias'), 'make')? == key
+	assert worker.static_assoc_fn_key_for_base(flat.source_type_id('Widget'), 'missing') == none
+	worker.free_parallel_check_worker_cache()
+
+	late_key := flat.encode_static_type_method_name('Widget', 'late')
+	tc.fn_ret_types[late_key] = Type(int_)
+	tc.fn_param_types[late_key] = []Type{}
+	assert tc.static_assoc_fn_key_for_base(flat.source_type_id('Widget'), 'late')? == late_key
+}
+
 fn test_type_promotion_cache_preserves_misses_and_distinct_live_payloads() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
@@ -13,18 +176,41 @@ fn test_type_promotion_cache_preserves_misses_and_distinct_live_payloads() {
 	mut cache := CheckTypePromotionCache{}
 	mut originals := []Type{}
 	for i in 0 .. 600 {
-		typ := Type(Struct{ name: 'Item${i}' })
+		typ := Type(Struct{ name_id: flat.source_type_id('Item${i}') })
 		originals << typ
-		assert tc.cached_check_type_promotion(typ, mut cache, false) == none
-		promoted := tc.cached_check_type_promotion(typ, mut cache, true)?
+		assert tc.cached_check_type_promotion(typ, mut cache, false, false) == none
+		promoted := tc.cached_check_type_promotion(typ, mut cache, true, false)?
 		assert promoted.name() == 'Item${i}'
-		assert tc.cached_check_type_promotion(typ, mut cache, false)? == promoted
+		assert tc.cached_check_type_promotion(typ, mut cache, false, false)? == promoted
 	}
 	// More live payloads than slots exercises eviction without losing identity.
+	// The interner is now frozen, as it is during parallel clone promotion.
 	for i, typ in originals {
-		assert tc.cached_check_type_promotion(typ, mut cache, false)?.name() == 'Item${i}'
+		assert tc.cached_check_type_promotion(typ, mut cache, false, true)?.name() == 'Item${i}'
 	}
 	assert tc.type_count() == initial_count + 600
+}
+
+fn test_type_promotion_cache_verifies_borrowed_metadata_after_reuse() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	mut cache := CheckTypePromotionCache{}
+	mut params := [FnParam{ typ: &builtin_int_type }]
+	typ := Type(FnType{ params: params, return_type: &builtin_int_type })
+	first := tc.cached_check_type_promotion(typ, mut cache, true, false)?
+	assert first.name() == 'fn(int) int'
+
+	// The wrapper, list address and length stay the same. The interner must own
+	// the first payload, and a frozen probe must not mistake the new one for it.
+	params[0] = FnParam{ typ: &builtin_string_type, is_mut: true }
+	assert tc.cached_check_type_promotion(typ, mut cache, false, true) == none
+	second := tc.cached_check_type_promotion(typ, mut cache, true, false)?
+	assert !semantic_types_equal(first, second)
+	assert first.name() == 'fn(int) int'
+	assert second is FnType
+	assert second.params[0].is_mut
+	assert second.params[0].typ is String
+	assert voidptr(tc.cached_check_type_promotion(typ, mut cache, false, true)?) == voidptr(second)
 }
 
 fn test_check_heap_partitions_match_linear_load_selection() {
@@ -90,25 +276,122 @@ fn test_visibility_index_preserves_file_context_and_builtin_aliases() {
 
 fn test_checker_type_promotion_survives_batch_arena_release() {
 	$if prealloc {
-		a := flat.FlatAst.new()
-		tc := TypeChecker.new(&a)
+		for compatibility in [false, true] {
+			a := flat.FlatAst.new()
+			mut tc := TypeChecker.new(&a)
+			if compatibility { tc.type_interner = unsafe { nil } }
+			scope := unsafe { prealloc_scope_begin() }
+			borrowed := Type(FnType{
+				params:      [FnParam{ typ: &Type(Struct{ name_id: flat.source_type_id('ScopedItem'.clone()) }), is_mut: true }]
+				return_type: &Type(Array{ elem_type: &Type(string_) })
+			})
+			unsafe { prealloc_scope_leave(scope) }
+			first := tc.promote_check_type(borrowed)
+			second := tc.promote_check_type(borrowed)
+			if first is FnType && second is FnType {
+				assert !unsafe { prealloc_scope_owns(scope, first.params.data) }
+				if !compatibility {
+					assert first.params.data == second.params.data
+				}
+			} else {
+				assert false
+			}
+			unsafe { prealloc_scope_free_after(scope) }
+			assert first.name() == 'fn(mut ScopedItem) []string'
+			assert second.name() == first.name()
+		}
+	}
+}
+
+fn test_pass2_type_promotion_copies_nested_metadata_out_of_worker_arena() {
+	$if prealloc {
+		mut promotion := Pass2TypePromotion{}
 		scope := unsafe { prealloc_scope_begin() }
 		borrowed := Type(FnType{
-			params:      [Type(Struct{ name: 'ScopedItem'.clone() })]
-			return_type: Type(Array{ elem_type: Type(string_) })
+			params:      [FnParam{
+				typ:    &Type(ArrayFixed{
+					elem_type: &Type(Unknown{ reason: 'worker type'.clone() })
+					len:       5
+					len_expr:  '5'.clone()
+				})
+				is_mut: true
+			}]
+			return_type: &Type(OptionType{ base_type: &Type(string_) })
 		})
 		unsafe { prealloc_scope_leave(scope) }
-		first := tc.promote_check_type(borrowed)
-		second := tc.promote_check_type(borrowed)
-		if first is FnType && second is FnType {
-			assert !unsafe { prealloc_scope_owns(scope, first.params.data) }
-			assert first.params.data == second.params.data
+		owned := promotion.promote(scope, borrowed)
+		again := promotion.promote(scope, borrowed)
+		if owned is FnType && again is FnType {
+			assert owned.params.data == again.params.data
+			assert !unsafe { prealloc_scope_owns(scope, owned.params.data) }
+			assert !unsafe { prealloc_scope_owns(scope, owned.return_type) }
+			param := owned.params[0].typ
+			if param is ArrayFixed {
+				assert !unsafe { prealloc_scope_owns(scope, param.len_expr.str) }
+				assert !unsafe { prealloc_scope_owns(scope, param.elem_type) }
+			} else {
+				assert false
+			}
 		} else {
 			assert false
 		}
 		unsafe { prealloc_scope_free_after(scope) }
-		assert first.name() == 'fn(ScopedItem) []string'
-		assert second.name() == first.name()
+		assert semantic_types_equal(owned, again)
+		if owned is FnType {
+			assert owned.return_type.name() == '?string'
+			param := owned.params[0].typ
+			assert param is ArrayFixed
+			assert param.len_expr == '5'
+			assert param.elem_type is Unknown
+			assert param.elem_type.reason == 'worker type'
+		}
+	}
+}
+
+fn test_pass2_type_promotion_distinguishes_equal_hashes() {
+	mut promotion := Pass2TypePromotion{}
+	immutable := Type(Channel{ elem_type: &Type(string_), is_mut: false })
+	mutable := Type(Channel{ elem_type: &Type(string_), is_mut: true })
+	assert semantic_type_hash(immutable) == semantic_type_hash(mutable)
+	assert !semantic_types_equal(immutable, mutable)
+	first := promotion.promote(unsafe { nil }, immutable)
+	second := promotion.promote(unsafe { nil }, mutable)
+	third := promotion.promote(unsafe { nil }, immutable)
+	assert first is Channel
+	assert !first.is_mut
+	assert second is Channel
+	assert second.is_mut
+	assert third is Channel
+	assert !third.is_mut
+}
+
+fn test_pass2_type_promotion_distinguishes_equal_hashes_in_worker_storage() {
+	$if prealloc {
+		mut promotion := Pass2TypePromotion{}
+		scope := unsafe { prealloc_scope_begin() }
+		child := new_type_reference(Type(string_))
+		immutable := Type(Channel{ elem_type: child, is_mut: false })
+		mutable := Type(Channel{ elem_type: child, is_mut: true })
+		unsafe { prealloc_scope_leave(scope) }
+		assert semantic_type_hash(immutable) == semantic_type_hash(mutable)
+		assert !semantic_types_equal(immutable, mutable)
+		first := promotion.promote(scope, immutable)
+		second := promotion.promote(scope, mutable)
+		third := promotion.promote(scope, immutable)
+		again := promotion.promote(scope, immutable)
+		assert first is Channel
+		assert !first.is_mut
+		assert second is Channel
+		assert second.is_mut
+		assert third is Channel
+		assert !third.is_mut
+		assert again is Channel
+		assert voidptr(third.elem_type) == voidptr(again.elem_type)
+		assert !type_refers_to_scope(scope, first)
+		assert !type_refers_to_scope(scope, second)
+		unsafe { prealloc_scope_free_after(scope) }
+		assert first.elem_type is String
+		assert second.elem_type is String
 	}
 }
 
@@ -197,9 +480,12 @@ fn test_fast_file_index_collects_translated_module_attribute() {
 }
 
 fn test_parent_metadata_replay_matches_full_scan() {
-	path := os.join_path(os.vtmp_dir(), 'v3_parent_metadata_${os.getpid()}.v')
-	os.write_file(path, '@[translated]\nmodule main\nimport strings\n@[inline]\nfn make_builder() { mut b := strings.new_builder(10) }\n') or { panic(err) }
-	defer { os.rm(path) or {} }
+	fixture_dir := os.join_path(os.vtmp_dir(), 'v3_parent_metadata_${os.getpid()}')
+	defer { os.rmdir_all(fixture_dir) or {} }
+	os.mkdir_all(os.join_path(fixture_dir, 'v3_parent_headers')) or { panic(err) }
+	os.mkdir_all(os.join_path(fixture_dir, 'v3_parent_system')) or { panic(err) }
+	path := os.join_path(fixture_dir, 'main.v')
+	os.write_file(path, '@[translated]\nmodule main\nimport strings\n#flag -I @DIR/v3_parent_headers -D FEATURE\n#flag -isystem "@DIR/v3_parent_system" -Wall\n#flag -I @DIR/v3_parent_headers\n@[inline]\nfn make_builder() { mut b := strings.new_builder(10) }\n') or { panic(err) }
 	mut p := parser.Parser.new(pref.new_preferences())
 	a := p.parse_file(path)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
@@ -219,6 +505,29 @@ fn test_parent_metadata_replay_matches_full_scan() {
 	assert split.translated_files[path]
 	assert split.strings_builder_candidates == serial.strings_builder_candidates
 	assert split.strings_builder_candidates.len == 1
+	// The ordinary serial entry must preserve real directive operands/deduplication
+	// and leave builder candidates attached to their enclosing function.
+	mut indexed := TypeChecker.new(a)
+	indexed.build_direct_parent_index(a)
+	assert indexed.declaration_attributes == serial.declaration_attributes
+	assert indexed.translated_files == serial.translated_files
+	assert indexed.strings_builder_candidates == serial.strings_builder_candidates
+	assert indexed.insert_include_dirs_by_file == serial.insert_include_dirs_by_file
+	assert indexed.insert_include_dirs_by_file[path] == [
+		os.real_path(os.join_path(os.dir(path), 'v3_parent_headers')),
+		os.real_path(os.join_path(os.dir(path), 'v3_parent_system')),
+	]
+	mut fn_index := -1
+	for idx, node in a.nodes {
+		if node.kind == .fn_decl && node.value == 'make_builder' {
+			fn_index = idx
+			break
+		}
+	}
+	assert fn_index >= 0
+	indexed.build_file_declaration_indexes(a)
+	assert indexed.strings_builder_bindings[strings_builder_binding_key(fn_index, 'b')]
+	assert indexed.strings_builder_bindings.len == 1
 }
 
 fn test_checker_flag_include_dir_consumes_only_the_operand() {
@@ -314,6 +623,84 @@ fn test_scoped_checker_merge_deep_clones_diagnostic_details() {
 	}
 }
 
+fn test_parallel_interface_indexes_outlive_worker_scopes() {
+	if checker_serial_only() {
+		return
+	}
+	mut source := strings.new_builder(16_000)
+	source.writeln('module main')
+	mut expected := map[string][]string{}
+	// Exceed the parallel interface-index threshold with distinct method
+	// requirements, so each index has its own concrete implementers.
+	for i in 0 .. 16 {
+		iface := 'Contract${i}'
+		source.writeln('interface ${iface} { value_${i}() int }')
+		mut names := []string{}
+		for j in 0 .. 4 {
+			name := 'Item${i}_${j}'
+			names << name
+			source.writeln('struct ${name} {}')
+			source.writeln('fn (item ${name}) value_${i}() int { return ${j} }')
+		}
+		// The receiver prefilter must retain promoted methods too.
+		names << 'Wrapped${i}'
+		source.writeln('struct Wrapped${i} { Item${i}_0 }')
+		expected[iface] = names
+		// A same-named method with the wrong return type must stay excluded.
+		source.writeln('struct Rejected${i} {}')
+		source.writeln('fn (item Rejected${i}) value_${i}() string { return "wrong" }')
+	}
+	path := os.join_path(os.vtmp_dir(), 'v3_parallel_interface_scopes_${os.getpid()}.v')
+	os.write_file(path, source.str()) or { panic(err) }
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	assert tc.errors.len == 0, tc.errors.str()
+	tc.prepare_interface_requirement_indexes()
+	mut names := tc.interface_names.keys().map(flat.source_type_name(it))
+	names.sort()
+	assert names.len == expected.len
+	mut expected_ids := map[string]map[u32]int{}
+	for iface in names {
+		assert flat.TypeTextList{ ids: tc.interface_impl_names(flat.source_type_id(iface)) }.names() == expected[iface], iface
+		expected_ids[iface] = tc.interface_type_ids(flat.source_type_id(iface))
+	}
+	expected_signature := tc.interface_impl_set_signature()
+	a.ensure_workers(2)
+	defer { a.close_workers() }
+	mut retained := map[string][]string{}
+	for round in 0 .. 4 {
+		// This call releases each worker's scratch arena before returning. Later
+		// rounds allocate another set of indexes while the first snapshot stays live.
+		opened := round == 0 && tc.begin_interface_impl_queries()
+		caller_memo := tc.interface_impl_memo
+		assert tc.prepare_interface_impl_indexes_parallel(flat.TypeTextList.from_names(names).ids)
+		assert tc.interface_impl_memo == caller_memo
+		tc.end_interface_impl_queries(opened)
+		assert isnil(tc.interface_impl_memo)
+		for iface in names {
+			prepared := flat.TypeTextList{
+				ids: tc.pre_transform_interface_impl_names(flat.source_type_id(iface)) or {
+					panic('missing prepared interface index for ${iface}')
+				}
+			}.names()
+			assert prepared == expected[iface], '${iface}: ${prepared}'
+			if iface !in retained {
+				retained[iface] = prepared
+			}
+			assert retained[iface] == expected[iface], iface
+		}
+		tc.freeze_pre_transform_interface_impl_names()
+		assert tc.interface_impl_set_signature() == expected_signature
+		for iface in names {
+			assert tc.interface_type_ids(flat.source_type_id(iface)) == expected_ids[iface], iface
+		}
+	}
+}
+
 fn test_direct_parent_index_preserves_first_parent_and_falls_back_for_new_nodes() {
 	mut a := flat.FlatAst.new()
 	child := a.add_val(.ident, 'child')
@@ -388,6 +775,82 @@ fn test_rewritten_parent_index_falls_back_from_a_stale_shared_edge() {
 	assert tc.direct_parent_id(shared_child) == second_parent
 }
 
+fn test_generated_parent_lookup_revalidates_cached_edges() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.build_direct_parent_index(&a)
+	tc.invalidate_direct_parent_index()
+	child := a.add_val(.ident, 'value')
+	assert tc.direct_parent_id(child) == flat.empty_node
+	start := a.begin_children()
+	a.add_child(child)
+	first := a.add_node(flat.Node{ kind: .paren, children_start: start, children_count: 1 })
+	assert tc.direct_parent_id(child) == first
+	assert tc.direct_parent_id(child) == first
+	second_start := a.begin_children()
+	a.add_child(child)
+	second := a.add_node(flat.Node{ kind: .paren, children_start: second_start, children_count: 1 })
+	a.nodes[int(first)].children_count = 0
+	assert tc.direct_parent_id(child) == second
+	a.nodes[int(second)].children_count = 0
+	assert tc.direct_parent_id(child) == flat.empty_node
+	assert tc.direct_parent_id(flat.empty_node) == flat.empty_node
+}
+
+fn test_generated_parent_fallback_does_not_allocate_per_ast_node() {
+	$if gcboehm ? {
+		mut a := flat.FlatAst.new()
+		for _ in 0 .. 8192 {
+			a.add_node(flat.Node{ kind: .int_literal, value: '0', typ: flat.source_type_int })
+		}
+		mut tc := TypeChecker.new(&a)
+		tc.build_direct_parent_index(&a)
+		generated := a.add_node(flat.Node{ kind: .int_literal, value: '1', typ: flat.source_type_int })
+		before := gc_heap_usage().total_bytes
+		for _ in 0 .. 16 {
+			assert tc.direct_parent_id(generated) == flat.empty_node
+			assert tc.enclosing_infix_type_for_or_expr(generated) == none
+			assert !tc.expr_is_standalone_statement(generated)
+		}
+		allocated := gc_heap_usage().total_bytes - before
+		assert allocated < 1024 * 1024, 'parent fallbacks allocated ${allocated} bytes'
+		first_children := a.begin_children()
+		a.add_child(generated)
+		a.add_child(flat.NodeId(0))
+		first := a.add_node(flat.Node{
+			kind:           .infix
+			op:             .plus
+			typ:            flat.source_type_int
+			children_start: first_children
+			children_count: 2
+		})
+		second_children := a.begin_children()
+		a.add_child(generated)
+		second := a.add_node(flat.Node{
+			kind:           .paren
+			children_start: second_children
+			children_count: 1
+		})
+		assert tc.direct_parent_id(generated) == first
+		infix_type := tc.enclosing_infix_type_for_or_expr(generated) or {
+			assert false, 'missing generated infix parent type'
+			return
+		}
+		assert infix_type == Type(int_)
+		a.nodes[int(first)].children_count = 0
+		assert tc.direct_parent_id(generated) == second
+		assert tc.enclosing_infix_type_for_or_expr(generated) == none
+		statement_children := a.begin_children()
+		a.add_child(second)
+		a.add_node(flat.Node{
+			kind:           .expr_stmt
+			children_start: statement_children
+			children_count: 1
+		})
+		assert tc.expr_is_standalone_statement(generated)
+	}
+}
+
 fn test_generated_fn_params_update_method_suffix_index() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
@@ -416,13 +879,13 @@ fn test_generic_receiver_pattern_index_survives_rebuild_and_worker_fork() {
 		tc.fn_ret_types['irrelevant_${i}'] = Type(int_)
 	}
 
-	matched := tc.generic_receiver_method_pattern_match('Box', ['[]int'], 'flatten') or {
+	matched := tc.generic_receiver_method_pattern_match(flat.source_type_id('Box'), flat.TypeTextList.from_names(['[]int']).ids, 'flatten') or {
 		assert false
 		return
 	}
 	assert matched.key == structured_key
-	assert matched.params == ['T']
-	assert matched.args == ['int']
+	assert matched.params == generic_param_ids(['T'])
+	assert matched.args_text() == ['int']
 
 	tc.rebuild_fn_param_suffix_index()
 	assert tc.generic_receiver_method_index['flatten'] == [structured_key]
@@ -460,48 +923,46 @@ fn test_enclosing_generic_param_uses_the_owning_top_level_declaration() {
 }
 
 fn test_parallel_checker_preserves_all_dependency_edges() {
-	$if !windows {
-		old_vjobs := os.getenv_opt('VJOBS')
-		os.setenv('VJOBS', '4', true)
-		defer {
-			if value := old_vjobs {
-				os.setenv('VJOBS', value, true)
-			} else {
-				os.unsetenv('VJOBS')
-			}
+	old_vjobs := os.getenv_opt('VJOBS')
+	os.setenv('VJOBS', '4', true)
+	defer {
+		if value := old_vjobs {
+			os.setenv('VJOBS', value, true)
+		} else {
+			os.unsetenv('VJOBS')
 		}
-		mut source := strings.new_builder(64_000)
-		source.writeln('module main')
-		for i in 0 .. 320 {
-			source.writeln('fn dependency_${i}() int { return ${i} }')
-			source.writeln('fn caller_${i}(flag bool) int { value := if flag { dependency_${i}() } else { ${i} }; return value }')
-		}
-		source.writeln('fn main() { println(caller_0(true)) }')
-		path := os.join_path(os.vtmp_dir(), 'v3_parallel_checker_dependencies_${os.getpid()}.v')
-		os.write_file(path, source.str()) or { panic(err) }
-		defer {
-			os.rm(path) or {}
-		}
-		mut p := parser.Parser.new(pref.new_preferences())
-		mut a := p.parse_file(path)
-		assert p.diagnostics.len == 0, p.diagnostics.str()
-		mut tc := TypeChecker.new(a)
-		tc.building_v_fast = true
-		tc.enable_scoped_parallel_workers()
-		tc.collect(a)
-		assert tc.check_semantics_opt(true)
-		assert tc.errors.len == 0, tc.errors.str()
+	}
+	mut source := strings.new_builder(64_000)
+	source.writeln('module main')
+	for i in 0 .. 320 {
+		source.writeln('fn dependency_${i}() int { return ${i} }')
+		source.writeln('fn caller_${i}(flag bool) int { value := if flag { dependency_${i}() } else { ${i} }; return value }')
+	}
+	source.writeln('fn main() { println(caller_0(true)) }')
+	path := os.join_path(os.vtmp_dir(), 'v3_parallel_checker_dependencies_${os.getpid()}.v')
+	os.write_file(path, source.str()) or { panic(err) }
+	defer {
+		os.rm(path) or {}
+	}
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.building_v_fast = true
+	tc.enable_scoped_parallel_workers()
+	tc.collect(a)
+	assert tc.check_semantics_opt(true)
+	assert tc.errors.len == 0, tc.errors.str()
 
-		mut caller_ids := map[string]int{}
-		for i, node in a.nodes {
-			if node.kind == .fn_decl && node.value.starts_with('caller_') {
-				caller_ids[node.value] = i
-			}
+	mut caller_ids := map[string]int{}
+	for i, node in a.nodes {
+		if node.kind == .fn_decl && node.value.starts_with('caller_') {
+			caller_ids[node.value] = i
 		}
-		for i in 0 .. 320 {
-			dependencies := tc.direct_dependencies(caller_ids['caller_${i}'])
-			assert dependencies.any(it == 'dependency_${i}' || it.ends_with('.dependency_${i}')), 'caller_${i}: ${dependencies}'
-		}
+	}
+	for i in 0 .. 320 {
+		dependencies := tc.direct_dependencies(caller_ids['caller_${i}'])
+		assert dependencies.any(it == 'dependency_${i}' || it.ends_with('.dependency_${i}')), 'caller_${i}: ${dependencies}'
 	}
 }
 
@@ -530,4 +991,66 @@ fn assert_preflight_error_keeps_function_semantics(name string, source string, i
 fn test_preflight_errors_do_not_skip_function_semantics() {
 	assert_preflight_error_keeps_function_semantics('collection_error', 'type Recursive = []Recursive\n\nfn main() {\n\tunknown_call()\n}\n', 'recursive declarations of aliases', true)
 	assert_preflight_error_keeps_function_semantics('for_in_const_conflict', 'const item = 1\n\nfn report_other_error() {\n\tunknown_call()\n}\n\nfn main() {\n\tfor item in [1, 2] {}\n}\n', 'duplicate of a const name `item`', false)
+}
+
+fn test_disabled_resolution_views_reuse_warm_composite_type_parse_cache() {
+	$if gcboehm ? {
+		for fast_recent in [false, true] {
+			a := flat.FlatAst.new()
+			mut tc := TypeChecker.new(&a)
+			tc.type_cache.parse_enabled = true
+			tc.fast_parse_recent = fast_recent
+			tc.disable_resolution_type_view_cache()
+			tc.cur_file = 'items.v'
+			tc.cur_module = 'items'
+			tc.fn_context.generic_params = generic_param_ids(['T'])
+			tc.resolution_type_mode = true
+			tc.structs[flat.source_type_id('items.Item')] = []StructField{}
+			assert tc.parse_resolution_type(flat.source_type_id('[]Item')).name() == '[]items.Item'
+			before := gc_heap_usage().total_bytes
+			for _ in 0 .. 128 {
+				assert tc.parse_resolution_type(flat.source_type_id('[]Item')).name() == '[]items.Item'
+			}
+			allocated := gc_heap_usage().total_bytes - before
+			assert allocated < 1024 * 1024, 'warm resolution calls allocated ${allocated} bytes'
+			assert isnil(tc.resolution_type_views)
+		}
+	}
+}
+
+fn test_disabled_resolution_views_keep_file_context_and_recursive_aliases() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.type_cache.parse_enabled = true
+	tc.disable_resolution_type_view_cache()
+	tc.cur_module = 'main'
+	tc.cur_file = 'one.v'
+	tc.structs[flat.source_type_id('one.Item')] = []StructField{}
+	tc.structs[flat.source_type_id('two.Item')] = []StructField{}
+	tc.register_file_import('dep', 'one')
+	assert tc.parse_resolution_type(flat.source_type_id('[]dep.Item')).name() == '[]one.Item'
+	tc.cur_file = 'two.v'
+	tc.register_file_import('dep', 'two')
+	assert tc.parse_resolution_type(flat.source_type_id('[]dep.Item')).name() == '[]two.Item'
+	tc.fn_context.generic_params = generic_param_ids(['Item'])
+	tc.resolution_type_mode = true
+	assert tc.parse_resolution_type(flat.source_type_id('[]dep.Item')).name() == '[]two.Item'
+	tc.cur_file = 'one.v'
+	assert tc.parse_resolution_type(flat.source_type_id('[]dep.Item')).name() == '[]one.Item'
+	assert tc.cur_module == 'main'
+	assert tc.fn_context.generic_params == generic_param_ids(['Item'])
+	assert tc.resolution_type_mode
+
+	tc.type_aliases.set_id(flat.source_type_id('Handlers'), flat.source_type_id('map[string]fn (Handlers) int'))
+	warm := tc.parse_resolution_type(flat.source_type_id('Handlers'))
+	assert warm is Alias
+	assert (warm as Alias).base_type is Map
+	// A recursive edge must remain symbolic even after the complete alias was cached.
+	tc.type_cache.alias_parse_stack << flat.source_type_id('Handlers')
+	recursive := tc.parse_resolution_type(flat.source_type_id('Handlers'))
+	tc.type_cache.alias_parse_stack.delete_last()
+	assert recursive is Alias
+	assert (recursive as Alias).base_type is Unknown
+	assert tc.parse_resolution_type(flat.source_type_id('Handlers')) == Type(warm)
+	assert isnil(tc.resolution_type_views)
 }

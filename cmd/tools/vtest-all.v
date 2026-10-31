@@ -45,6 +45,7 @@ fn main() {
 				cmd.line = cmd.v3_line
 			}
 			cmd.line = cmd.line.replace_once(vexe, '${vexe} ${strict_flags}')
+			if cmd.arguments.len > 0 { cmd.arguments << requested_args }
 		}
 		commands << cmd
 	}
@@ -80,6 +81,7 @@ enum RunCommandKind {
 struct Command {
 mut:
 	line          string
+	arguments     []string
 	label         string // when set, the label will be printed *before* cmd.line is executed
 	ecode         int
 	okmsg         string
@@ -165,16 +167,33 @@ fn get_all_commands() []Command {
 			expect: 'Hello, World!\n'
 		}
 		if clang_path != '' {
-			res << Command{
-				line:          '${vexe} -os freebsd -gc none examples/hello_world.v'
-				okmsg:         'V cross compiles hello_world.v, to a FreeBSD executable'
-				rmfile:        'examples/hello_world'
-				v3_compatible: false
-				after_cb:      fn () ! {
-					for file in ['examples/hello_world',
-						os.join_path(os.vmodules_dir(), 'freebsdroot/usr/include/stdio.h')] {
-						if !os.exists(file) {
-							return error('>> file ${file} does not exist')
+			$if macos {
+				// The default macOS toolchain cannot link a FreeBSD executable.
+				// Still exercise target selection and the portable C output.
+				res << Command{
+					line:     '${vexe} -os freebsd -gc none -cross -o hhww_freebsd.c examples/hello_world.v'
+					okmsg:    'V generates C for FreeBSD on macOS'
+					rmfile:   'hhww_freebsd.c'
+					after_cb: fn () ! {
+						code := os.read_file('hhww_freebsd.c')!
+						if !code.contains('int main(') || !code.contains('__FreeBSD__')
+							|| !code.contains('#include <stdio.h>') {
+							return error('FreeBSD C output is missing its entry point or platform headers')
+						}
+					}
+				}
+			} $else {
+				res << Command{
+					line:          '${vexe} -os freebsd -gc none examples/hello_world.v'
+					okmsg:         'V cross compiles hello_world.v, to a FreeBSD executable'
+					rmfile:        'examples/hello_world'
+					v3_compatible: false
+					after_cb:      fn () ! {
+						for file in ['examples/hello_world',
+							os.join_path(os.vmodules_dir(), 'freebsdroot/usr/include/stdio.h')] {
+							if !os.exists(file) {
+								return error('>> file ${file} does not exist')
+							}
 						}
 					}
 				}
@@ -196,11 +215,14 @@ fn get_all_commands() []Command {
 			}
 		}
 		res << Command{
-			line:  '${vexe} -o - examples/hello_world.v | grep "#define V_COMMIT_HASH" > /dev/null'
-			okmsg: 'V prints the generated source code to stdout with `-o -` .'
+			line:     '${vexe} -o - examples/hello_world.v'
+			okmsg:    'V prints the generated source code to stdout with `-o -` .'
+			runcmd:   .execute
+			contains: 'int main('
 		}
 		res << Command{
 			line:          '${vexe} run examples/v_script.vsh > /dev/null'
+			arguments:     ['sh', '-c', '"\$@" run examples/v_script.vsh > /dev/null', 'v', vexe_path]
 			okmsg:         'V can run the .VSH script file examples/v_script.vsh'
 			v3_compatible: false
 		}
@@ -253,10 +275,9 @@ fn get_all_commands() []Command {
 		rmfile: 'vtmp_prealloc'
 	}
 	res << Command{
-		line:          '${vexe} -o vtmp_ntransformer -new-transformer cmd/v'
-		okmsg:         'V can compile itself with -new-transformer.'
-		rmfile:        'vtmp_ntransformer'
-		v3_compatible: false
+		line:   '${vexe} -o vtmp_serial_transform -no-parallel cmd/v'
+		okmsg:  'V can compile itself with serial transformation and C generation.'
+		rmfile: 'vtmp_serial_transform'
 	}
 	$if linux {
 		res << Command{
@@ -265,17 +286,15 @@ fn get_all_commands() []Command {
 			rmfile: 'swait'
 		}
 		res << Command{
-			line:          '${vexe} -cc gcc -keepc -freestanding -o bel vlib/os/bare/bare_example_linux.v'
-			okmsg:         'V can compile with -freestanding on Linux with GCC.'
-			rmfile:        'bel'
-			v3_compatible: false
+			line:   '${vexe} -cc gcc -keepc -freestanding -o bel vlib/os/bare/bare_example_linux.v'
+			okmsg:  'V can compile with -freestanding on Linux with GCC.'
+			rmfile: 'bel'
 		}
 
 		res << Command{
-			line:          '${vexe} -cc gcc -keepc -freestanding -o str_array vlib/strconv/bare/str_array_example.v'
-			okmsg:         'V can compile & allocate memory with -freestanding on Linux with GCC.'
-			rmfile:        'str_array'
-			v3_compatible: false
+			line:   '${vexe} -cc gcc -keepc -freestanding -o str_array vlib/strconv/bare/str_array_example.v'
+			okmsg:  'V can compile & allocate memory with -freestanding on Linux with GCC.'
+			rmfile: 'str_array'
 		}
 		res << Command{
 			line:          '${vexe} -cc gcc -keepc -freestanding -o time_now vlib/time/bare/time_now_example.v'
@@ -286,7 +305,7 @@ fn get_all_commands() []Command {
 	}
 	////////////////////////////////////////////////////////////////////////
 	// Test compilation of a shared library (.so, .dll. .dylib) with -shared:
-	common_shared_flags := '-shared -skip-unused -d no_backtrace -o library examples/dynamic_library_loader/library/library.v'
+	common_shared_flags := '-shared -d no_backtrace -o library examples/dynamic_library_loader/library/library.v'
 	$if macos {
 		res << Command{
 			line:   '${vexe} ${common_shared_flags}'
@@ -367,25 +386,28 @@ fn get_all_commands() []Command {
 		v3_compatible: false
 	}
 	res << Command{
-		line:          '${vexe} -usecache -cg examples/hello_world.v'
-		okmsg:         '`v -usecache -cg` works.'
+		line:          '${vexe} -cg examples/hello_world.v'
+		okmsg:         '`v -cg` works.'
 		rmfile:        'examples/hello_world'
 		v3_compatible: false
 	}
 	// Note: test that a program that depends on thirdparty libraries with its
 	// own #flags (tetris depends on gg, which uses sokol) can be compiled
-	// with -usecache:
+	// with default caching:
 	res << Command{
-		line:   '${vexe} -usecache examples/tetris/tetris.v'
-		okmsg:  '`v -usecache` works.'
+		line:   '${vexe} examples/tetris/tetris.v'
+		okmsg:  '`v` with default caching works.'
 		rmfile: 'examples/tetris/tetris'
 	}
 	$if macos || linux {
 		res << Command{
-			line:   '${vexe} -o v.c cmd/v && cc -Werror -std=c99 v.c -lpthread -lm && rm -rf a.out'
-			label:  'v.c should be buildable with no warnings...'
-			okmsg:  'v.c can be compiled without warnings. This is good :)'
-			rmfile: 'v.c'
+			line:      '${vexe} -o v.c cmd/v && cc -Werror -std=c99 v.c -lpthread -lm && rm -rf a.out'
+			arguments: ['sh', '-c',
+				'"\$@" -o v.c cmd/v && cc -Werror -std=c99 v.c -lpthread -lm && rm -rf a.out',
+				'v', vexe_path]
+			label:     'v.c should be buildable with no warnings...'
+			okmsg:     'v.c can be compiled without warnings. This is good :)'
+			rmfile:    'v.c'
 		}
 	}
 	$if linux || macos {
@@ -403,6 +425,9 @@ fn get_all_commands() []Command {
 	$if linux {
 		res << Command{
 			line:          '${vexe} vlib/v/tests/bench/bench_stbi_load.v && prlimit -v10485760 vlib/v/tests/bench/bench_stbi_load'
+			arguments:     ['sh', '-c',
+				'"\$@" vlib/v/tests/bench/bench_stbi_load.v && prlimit -v10485760 vlib/v/tests/bench/bench_stbi_load',
+				'v', vexe_path]
 			okmsg:         'STBI load does not leak with GC on, when loading images multiple times (use < 10MB)'
 			runcmd:        .execute
 			contains:      'logo.png 1000 times.'
@@ -447,12 +472,17 @@ fn (mut cmd Command) run() ? {
 		}
 	}
 	sw := time.new_stopwatch()
+	cmd_args := if cmd.arguments.len > 0 {
+		cmd.arguments
+	} else {
+		os.split_args(cmd.line) or { panic(err) }
+	}
 	if cmd.runcmd == .system {
-		cmd.ecode = os.system(cmd.line)
+		cmd.ecode = os.system_args(cmd_args)
 		cmd.output = ''
 	}
 	if cmd.runcmd == .execute {
-		res := os.execute(cmd.line)
+		res := os.exec(cmd_args)
 		cmd.ecode = res.exit_code
 		cmd.output = res.output
 	}
@@ -497,6 +527,9 @@ fn (mut cmd Command) run() ? {
 			is_failed = true
 			is_failed_contains = true
 		}
+	}
+	if is_failed && cmd.ecode == 0 {
+		cmd.ecode = 1
 	}
 
 	run_label := if is_failed { term.failed('FAILED') } else { term_highlight('OK') }

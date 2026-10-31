@@ -1,3 +1,5 @@
+// vtest vflags: -w
+
 fn match() int {
 	return 7
 }

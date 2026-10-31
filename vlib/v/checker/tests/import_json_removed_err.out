@@ -1,0 +1,7 @@
+vlib/v/checker/tests/import_json_removed_err.vv:1:1: builder error: the `json` module was removed, use `json2` instead.
+`v fmt -w vlib/v/checker/tests/import_json_removed_err.vv` rewrites the usual `json` calls to `json2`, and leaves code it cannot rewrite safely unchanged.
+To migrate by hand, import `json2` and replace `json.decode(T, s)` with `json2.decode[T](s)`, `json.encode(x)` with `json2.encode(x, escape_unicode: true, time_as_unix: true)`, and `json.encode_pretty(x)` with `json2.encode(x, prettify: true, legacy_layout: true, escape_unicode: true, time_as_unix: true)`.
+    1 | import json
+      | ~~~~~~~~~~~
+    2 | 
+    3 | struct User {

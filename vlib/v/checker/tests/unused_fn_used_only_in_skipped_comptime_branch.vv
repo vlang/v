@@ -1,0 +1,106 @@
+const limit_in_skipped_branch = 4
+
+fn used_only_in_skipped_if() int {
+	return limit_in_skipped_branch
+}
+
+fn used_only_in_skipped_else(x int) int {
+	return x
+}
+
+fn called_by_skipped_branch_helper() int {
+	return 1
+}
+
+fn unused_fn() int {
+	return 2
+}
+
+fn main() {
+	mut total := 0
+	$if never_defined ? {
+		total += used_only_in_skipped_if()
+		total += main.called_by_skipped_branch_helper()
+	}
+	$if !never_defined ? {
+		total++
+	} $else {
+		total += used_only_in_skipped_else(total)
+	}
+	println(total + selected_platform_value + selected_in_skipped_if + selected_in_skipped_else +
+		keyword_fns_used_only_in_skipped_branch() + members_used_only_in_skipped_branch())
+}
+
+const platform_value = 1
+
+const selected_platform_value = $if windows { platform_value } $else { 0 }
+
+fn used_only_in_skipped_const_if() int {
+	return 3
+}
+
+const selected_in_skipped_if = $if never_defined ? { used_only_in_skipped_const_if() } $else { 0 }
+
+fn used_only_in_skipped_const_else() int {
+	return 5
+}
+
+const selected_in_skipped_else = $if !never_defined ? { 0 } $else { used_only_in_skipped_const_else() }
+
+fn used_only_by_skipped_top_level_fn() int {
+	return 6
+}
+
+$if never_defined ? {
+	fn only_on_another_target() int {
+		return used_only_by_skipped_top_level_fn()
+	}
+}
+
+const unused_const = 9
+
+fn select() int {
+	return 7
+}
+
+fn lock() int {
+	return 8
+}
+
+fn match() int {
+	return 9
+}
+
+const selected_keyword_fn = $if never_defined ? { select() } $else { 0 }
+
+fn keyword_fns_used_only_in_skipped_branch() int {
+	mut n := selected_keyword_fn
+	$if never_defined ? {
+		n += lock() + match()
+	}
+	return n
+}
+
+// A member after a dot is not this module's same-named fn or const.
+fn shadowed_by_member() int {
+	return 10
+}
+
+const shadowed_const_member = 11
+
+const selected_member = $if never_defined ? { dep.shadowed_const_member } $else { 0 }
+
+struct Holder {}
+
+fn (h Holder) method_used_only_in_skipped_branch() int {
+	return 12
+}
+
+fn members_used_only_in_skipped_branch() int {
+	h := Holder{}
+	mut n := selected_member
+	$if never_defined ? {
+		n += dep.shadowed_by_member() + h.method_used_only_in_skipped_branch()
+	}
+	return n
+}

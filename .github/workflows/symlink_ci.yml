@@ -8,24 +8,27 @@ on:
     paths:
       - 'cmd/tools/vsymlink/**.v'
       - '.github/workflows/symlink_ci.yml'
-  pull_request:
-    paths:
-      - 'cmd/tools/vsymlink/**.v'
-      - '.github/workflows/symlink_ci.yml'
 
 concurrency:
   group: symlink-${{ github.workflow }}-${{ github.ref_name == 'master' && github.sha || github.ref_name }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   symlink-unix:
+    if: github.ref == 'refs/heads/master'
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
       fail-fast: false
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: make -j4
       - name: Symlink
@@ -60,13 +63,17 @@ jobs:
           v run hi.v
 
   symlink-windows:
+    if: github.ref == 'refs/heads/master'
     runs-on: windows-2025
+    timeout-minutes: 60
     strategy:
       matrix:
         flags: ['', '-githubci']
       fail-fast: false
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V
         run: ./makev.bat
       - name: Symlink

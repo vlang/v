@@ -1,4 +1,5 @@
 import hash.crc32
+import encoding.hex
 
 const reflected_test_polys = [crc32.ieee, crc32.crc32c, crc32.crc32k, crc32.crc32q_reflected]
 
@@ -154,4 +155,25 @@ fn test_hash_crc32_update_state() {
 	state = c.update_state(state, part2)
 
 	assert ~state == c.checksum(data)
+}
+
+fn test_crc32q_aixm_codewords() ! {
+	// EUROCONTROL AIXM Primer 4.5, table 6.1: each data/checksum codeword has zero residue.
+	// https://reveng.sourceforge.io/crc-catalogue/17plus.htm#crc.cat.crc-32-aixm
+	for codeword in [
+		'3438303633374ea5a7c704',
+		'3031363334313145a1ae5741',
+		'3438303633374e3031363334313145a1ba30ee',
+		'3738326c297100',
+		'3438303633374e30313633343131453738326a259f4e',
+		'34362e37266d25c1',
+		'3438303633374e303136333431314534362e372f866d6d',
+		'3438303633374e303136333431314537383234362e375e5dc940',
+	] {
+		bytes := hex.decode(codeword)!
+		assert crc32.sum_crc32q(bytes) == 0
+		assert crc32.sum_with_poly(crc32.crc32q, bytes) == 0
+	}
+	assert crc32.sum_crc32q([]u8{}) == 0
+	assert crc32.sum_crc32q('123456789'.bytes()) != crc32.sum_with_poly(crc32.crc32q_reflected, '123456789'.bytes())
 }

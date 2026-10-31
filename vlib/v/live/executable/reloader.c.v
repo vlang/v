@@ -5,6 +5,9 @@ import time
 import dl
 import v.live
 
+fn C.v_live_mutex_lock(mutex voidptr) int
+fn C.v_live_mutex_unlock(mutex voidptr) int
+
 // The live reloader code is implemented here.
 // Note: new_live_reload_info will be called by generated C code inside main()
 @[markused]
@@ -82,7 +85,8 @@ fn compile_lib(mut r live.LiveReloadInfo) ?string {
 	cmd := '${os.quoted_path(r.vexe)} ${r.vopts} -o ${os.quoted_path(new_lib_path_with_extension)} ${os.quoted_path(r.original)}'
 	elog(r, '>       compilation cmd: ${cmd}')
 	cwatch := time.new_stopwatch()
-	recompilation_result := os.execute(cmd)
+	recompilation_result := os.exec([r.vexe, ...(os.split_args(r.vopts) or { panic(err) }), '-o',
+		new_lib_path_with_extension, '${r.original}'])
 	elog(r, 'compilation took: ${cwatch.elapsed().milliseconds()}ms')
 	if recompilation_result.exit_code != 0 {
 		eprintln('recompilation error:')
@@ -104,7 +108,11 @@ fn current_shared_library_path(mut r live.LiveReloadInfo) (string, string) {
 
 fn load_lib(mut r live.LiveReloadInfo, new_lib_path string) {
 	elog(r, 'live mutex locking...')
-	C.pthread_mutex_lock(r.live_fn_mutex)
+	$if windows {
+		C.v_live_mutex_lock(r.live_fn_mutex)
+	} $else {
+		C.pthread_mutex_lock(r.live_fn_mutex)
+	}
 	elog(r, 'live mutex locked')
 
 	if r.cb_locked_before != unsafe { nil } {
@@ -119,14 +127,18 @@ fn load_lib(mut r live.LiveReloadInfo, new_lib_path string) {
 	}
 
 	elog(r, 'live mutex unlocking...')
-	C.pthread_mutex_unlock(r.live_fn_mutex)
+	$if windows {
+		C.v_live_mutex_unlock(r.live_fn_mutex)
+	} $else {
+		C.pthread_mutex_unlock(r.live_fn_mutex)
+	}
 	elog(r, 'live mutex unlocked')
 }
 
 fn protected_load_lib(mut r live.LiveReloadInfo, new_lib_path string) {
 	if r.live_lib != 0 {
 		dl.close(r.live_lib)
-		r.live_lib = C.NULL
+		r.live_lib = unsafe { nil }
 	}
 	r.live_lib = dl.open(new_lib_path, dl.rtld_lazy)
 	if r.live_lib == 0 {

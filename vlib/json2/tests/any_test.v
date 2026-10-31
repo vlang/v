@@ -343,5 +343,5 @@ fn test_str() {
 	assert sample_data['str'] or { 0 }.str() == 'test'
 	assert sample_data['null'] or { 0 }.str() == 'null'
 	assert sample_data['arr'] or { 'not lol' }.str() == '["lol"]'
-	assert sample_data.str() == '{"u8":1,"u16":2,"u32":3,"u64":4,"i8":5,"i16":6,"i32":7,"int":8,"i64":9,"f32":2.3,"f64":1.283,"bool":false,"str":"test","null":null,"arr":["lol"],"obj":{"foo":10}}'
+	assert sample_data.str() == '{"arr":["lol"],"bool":false,"f32":2.3,"f64":1.283,"i16":6,"i32":7,"i64":9,"i8":5,"int":8,"null":null,"obj":{"foo":10},"str":"test","u16":2,"u32":3,"u64":4,"u8":1}'
 }

@@ -208,8 +208,9 @@ fn (a Integer) mont_even(x Integer, m Integer) Integer {
 	delta := if t2.abs_cmp(t1) >= 0 {
 		(t2 - t1).mask_bits(m2n)
 	} else {
-		// (x2 - x1) % m2 = 1 + ((~((x2 % m2) - (x1 % m2))) % m2)
-		(t1 - t2).abs().bitwise_not().mask_bits(m2n) + one_int
+		// (x2 - x1) % m2 = m2 - (t1 - t2), since 0 < t1 - t2 < m2. A bitwise complement of
+		// `t1 - t2` would only flip the bits of its own digits, not all `m2n` bits.
+		m2 - (t1 - t2)
 	}
 	t := (delta * m1i).mask_bits(m2n)
 

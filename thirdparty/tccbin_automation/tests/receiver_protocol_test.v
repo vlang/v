@@ -101,6 +101,12 @@ struct LiveMultiAtomicStateRepository {
 	handoff_ids []string
 }
 
+fn receiver_git(repo_root string, args []string) os.Result {
+	mut argv := ['git', '-C', repo_root]
+	argv << args
+	return bin.git_exec_for_test(argv)
+}
+
 fn write_live_state_blob(root string, relative_path string, source string) {
 	path := os.join_path(root, relative_path)
 	os.mkdir_all(os.dir(path)) or { panic(err) }
@@ -1044,14 +1050,14 @@ fn prepare_live_multi_source_atomic_state(suffix string,
 		'libatomic_ops-master').replace('https://repo.or.cz/tinycc.git',
 		'https://github.com/bdwgc/libatomic_ops').replace('"ref": "mob"', '"ref": "master"'))
 	for command in [
-		'git -C ${os.quoted_path(work_root)} init -q',
-		'git -C ${os.quoted_path(work_root)} checkout -qb tccbin-automation-state',
-		'git -C ${os.quoted_path(work_root)} config user.email ci@example.invalid',
-		'git -C ${os.quoted_path(work_root)} config user.name "Contract Test"',
-		'git -C ${os.quoted_path(work_root)} add -- targets sources',
-		'git -C ${os.quoted_path(work_root)} commit -qm bootstrap',
+		['init', '-q'],
+		['checkout', '-qb', 'tccbin-automation-state'],
+		['config', 'user.email', 'ci@example.invalid'],
+		['config', 'user.name', 'Contract Test'],
+		['add', '--', 'targets', 'sources'],
+		['commit', '-qm', 'bootstrap'],
 	] {
-		result := os.execute(command)
+		result := receiver_git(work_root, command)
 		assert result.exit_code == 0, result.output
 	}
 
@@ -1111,14 +1117,13 @@ fn prepare_live_multi_source_atomic_state(suffix string,
 	} else {
 		assert bin.canonical_json(freebsd_pre_source) == bin.canonical_json(linux_pre_source)
 	}
-	for command in [
-		'git -C ${os.quoted_path(work_root)} add -- ${parent_paths}',
-		'git -C ${os.quoted_path(work_root)} commit -qm atomic-parent-k2',
-	] {
-		result := os.execute(command)
+	mut parent_add := ['add', '--']
+	parent_add << parent_paths.split(' ')
+	for command in [parent_add, ['commit', '-qm', 'atomic-parent-k2']] {
+		result := receiver_git(work_root, command)
 		assert result.exit_code == 0, result.output
 	}
-	parent := os.execute('git -C ${os.quoted_path(work_root)} rev-parse HEAD').output.trim_space()
+	parent := receiver_git(work_root, ['rev-parse', 'HEAD']).output.trim_space()
 
 	mut linux_target := live_recovery_h2_source_waiting_variant_with_parent_and_consumers_for('publish_post',
 		false, false, parent, if shared_source {
@@ -1200,18 +1205,18 @@ fn prepare_live_multi_source_atomic_state(suffix string,
 	write_live_state_blob(work_root, 'targets/linux-amd64.json', linux_target)
 	write_live_state_blob(work_root, 'targets/freebsd-amd64.json', freebsd_target)
 	for command in [
-		'git -C ${os.quoted_path(work_root)} add -A -- targets sources evidence',
-		'git -C ${os.quoted_path(work_root)} commit -qm atomic-target-k2',
+		['add', '-A', '--', 'targets', 'sources', 'evidence'],
+		['commit', '-qm', 'atomic-target-k2'],
 	] {
-		result := os.execute(command)
+		result := receiver_git(work_root, command)
 		assert result.exit_code == 0, result.output
 	}
 	target_commit :=
-		os.execute('git -C ${os.quoted_path(work_root)} rev-parse HEAD').output.trim_space()
-	assert os.execute('git -C ${os.quoted_path(work_root)} commit --allow-empty -qm atomic-head-k2').exit_code == 0
-	head := os.execute('git -C ${os.quoted_path(work_root)} rev-parse HEAD').output.trim_space()
+		receiver_git(work_root, ['rev-parse', 'HEAD']).output.trim_space()
+	assert receiver_git(work_root, ['commit', '--allow-empty', '-qm', 'atomic-head-k2']).exit_code == 0
+	head := receiver_git(work_root, ['rev-parse', 'HEAD']).output.trim_space()
 	clone :=
-		os.execute('git clone -q --bare --no-local ${os.quoted_path(work_root)} ${os.quoted_path(bare_root)}')
+		bin.git_exec_for_test(['git', 'clone', '-q', '--bare', '--no-local', work_root, bare_root])
 	assert clone.exit_code == 0, clone.output
 	proof := live_state_proof_set(os.real_path(bare_root), head, [target_commit])
 	freebsd_root := bin.parse_strict_json(freebsd_target) or { panic(err) }
@@ -1266,14 +1271,14 @@ fn prepare_live_source_atomic_state(suffix string,
 		'libatomic_ops-master').replace('https://repo.or.cz/tinycc.git',
 		'https://github.com/bdwgc/libatomic_ops').replace('"ref": "mob"', '"ref": "master"'))
 	for command in [
-		'git -C ${os.quoted_path(work_root)} init -q',
-		'git -C ${os.quoted_path(work_root)} checkout -qb tccbin-automation-state',
-		'git -C ${os.quoted_path(work_root)} config user.email ci@example.invalid',
-		'git -C ${os.quoted_path(work_root)} config user.name "Contract Test"',
-		'git -C ${os.quoted_path(work_root)} add -- targets sources',
-		'git -C ${os.quoted_path(work_root)} commit -qm bootstrap',
+		['init', '-q'],
+		['checkout', '-qb', 'tccbin-automation-state'],
+		['config', 'user.email', 'ci@example.invalid'],
+		['config', 'user.name', 'Contract Test'],
+		['add', '--', 'targets', 'sources'],
+		['commit', '-qm', 'bootstrap'],
 	] {
-		result := os.execute(command)
+		result := receiver_git(work_root, command)
 		assert result.exit_code == 0, result.output
 	}
 	atomic_parent_target := if options.with_infrastructure_retry {
@@ -1325,15 +1330,14 @@ fn prepare_live_source_atomic_state(suffix string,
 		write_live_state_blob(work_root, evicted_path, evicted_body)
 		atomic_parent_add_paths += ' evidence'
 	}
-	for command in [
-		'git -C ${os.quoted_path(work_root)} add -- ${atomic_parent_add_paths}',
-		'git -C ${os.quoted_path(work_root)} commit -qm atomic-parent',
-	] {
-		result := os.execute(command)
+	mut atomic_parent_add := ['add', '--']
+	atomic_parent_add << atomic_parent_add_paths.split(' ')
+	for command in [atomic_parent_add, ['commit', '-qm', 'atomic-parent']] {
+		result := receiver_git(work_root, command)
 		assert result.exit_code == 0, result.output
 	}
 	mut parent :=
-		os.execute('git -C ${os.quoted_path(work_root)} rev-parse HEAD').output.trim_space()
+		receiver_git(work_root, ['rev-parse', 'HEAD']).output.trim_space()
 	expected_parent := if options.wrong_expected_parent {
 		'cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd'
 	} else {
@@ -1436,10 +1440,10 @@ fn prepare_live_source_atomic_state(suffix string,
 	write_live_state_blob(work_root, source_evidence_path, bin.canonical_json(source_evidence))
 	if options.split_source_target {
 		for command in [
-			'git -C ${os.quoted_path(work_root)} add -- sources evidence',
-			'git -C ${os.quoted_path(work_root)} commit -qm split-source',
+			['add', '--', 'sources', 'evidence'],
+			['commit', '-qm', 'split-source'],
 		] {
-			result := os.execute(command)
+			result := receiver_git(work_root, command)
 			assert result.exit_code == 0, result.output
 		}
 	}
@@ -1460,47 +1464,47 @@ fn prepare_live_source_atomic_state(suffix string,
 		write_live_state_blob(work_root, path, body)
 	}
 	for command in [
-		'git -C ${os.quoted_path(work_root)} add -A -- targets sources evidence',
-		'git -C ${os.quoted_path(work_root)} commit -qm atomic-target',
+		['add', '-A', '--', 'targets', 'sources', 'evidence'],
+		['commit', '-qm', 'atomic-target'],
 	] {
-		result := os.execute(command)
+		result := receiver_git(work_root, command)
 		assert result.exit_code == 0, result.output
 	}
 	atomic_target_commit :=
-		os.execute('git -C ${os.quoted_path(work_root)} rev-parse HEAD').output.trim_space()
+		receiver_git(work_root, ['rev-parse', 'HEAD']).output.trim_space()
 	mut head := atomic_target_commit
 	if options.descendant {
-		assert os.execute('git -C ${os.quoted_path(work_root)} commit --allow-empty -qm descendant').exit_code == 0
-		head = os.execute('git -C ${os.quoted_path(work_root)} rev-parse HEAD').output.trim_space()
+		assert receiver_git(work_root, ['commit', '--allow-empty', '-qm', 'descendant']).exit_code == 0
+		head = receiver_git(work_root, ['rev-parse', 'HEAD']).output.trim_space()
 	}
 	if options.modify_terminal_handoff_at_h {
 		mutated_handoff := target_source.replace_once('"terminal_completed_at":"2026-08-03T02:01:02Z"',
 			'"terminal_completed_at":"2026-08-03T02:01:03Z"')
 		assert mutated_handoff != target_source
 		write_live_state_blob(work_root, 'targets/linux-amd64.json', mutated_handoff)
-		assert os.execute('git -C ${os.quoted_path(work_root)} add -- targets/linux-amd64.json').exit_code == 0
-		assert os.execute('git -C ${os.quoted_path(work_root)} commit -qm terminal-handoff-mutated').exit_code == 0
-		head = os.execute('git -C ${os.quoted_path(work_root)} rev-parse HEAD').output.trim_space()
+		assert receiver_git(work_root, ['add', '--', 'targets/linux-amd64.json']).exit_code == 0
+		assert receiver_git(work_root, ['commit', '-qm', 'terminal-handoff-mutated']).exit_code == 0
+		head = receiver_git(work_root, ['rev-parse', 'HEAD']).output.trim_space()
 	}
 	if options.modify_evidence_at_h {
 		modified := bin.canonical_json(source_evidence).replace_once('"result":"blocked"',
 			'"result":"failed"')
 		write_live_state_blob(work_root, source_evidence_path, modified)
-		assert os.execute('git -C ${os.quoted_path(work_root)} add -- evidence').exit_code == 0
-		assert os.execute('git -C ${os.quoted_path(work_root)} commit -qm evidence-mutated').exit_code == 0
-		head = os.execute('git -C ${os.quoted_path(work_root)} rev-parse HEAD').output.trim_space()
+		assert receiver_git(work_root, ['add', '--', 'evidence']).exit_code == 0
+		assert receiver_git(work_root, ['commit', '-qm', 'evidence-mutated']).exit_code == 0
+		head = receiver_git(work_root, ['rev-parse', 'HEAD']).output.trim_space()
 	}
 	if options.delete_evidence_at_h || options.reintroduce_evidence_at_h {
 		os.rm(os.join_path(work_root, source_evidence_path)) or { panic(err) }
-		assert os.execute('git -C ${os.quoted_path(work_root)} add -A -- evidence').exit_code == 0
-		assert os.execute('git -C ${os.quoted_path(work_root)} commit -qm evidence-deleted').exit_code == 0
+		assert receiver_git(work_root, ['add', '-A', '--', 'evidence']).exit_code == 0
+		assert receiver_git(work_root, ['commit', '-qm', 'evidence-deleted']).exit_code == 0
 		if options.reintroduce_evidence_at_h {
 			write_live_state_blob(work_root, source_evidence_path,
 				bin.canonical_json(source_evidence))
-			assert os.execute('git -C ${os.quoted_path(work_root)} add -- evidence').exit_code == 0
-			assert os.execute('git -C ${os.quoted_path(work_root)} commit -qm evidence-reintroduced').exit_code == 0
+			assert receiver_git(work_root, ['add', '--', 'evidence']).exit_code == 0
+			assert receiver_git(work_root, ['commit', '-qm', 'evidence-reintroduced']).exit_code == 0
 		}
-		head = os.execute('git -C ${os.quoted_path(work_root)} rev-parse HEAD').output.trim_space()
+		head = receiver_git(work_root, ['rev-parse', 'HEAD']).output.trim_space()
 	}
 	if options.coordinated_delete_at_h {
 		write_live_state_blob(work_root, 'targets/linux-amd64.json', atomic_parent_target)
@@ -1510,9 +1514,9 @@ fn prepare_live_source_atomic_state(suffix string,
 			os.rm(os.join_path(work_root, evidence[0])) or {}
 		}
 		os.rm(os.join_path(work_root, source_evidence_path)) or {}
-		assert os.execute('git -C ${os.quoted_path(work_root)} add -A -- targets sources evidence').exit_code == 0
-		assert os.execute('git -C ${os.quoted_path(work_root)} commit -qm coordinated-terminal-delete').exit_code == 0
-		head = os.execute('git -C ${os.quoted_path(work_root)} rev-parse HEAD').output.trim_space()
+		assert receiver_git(work_root, ['add', '-A', '--', 'targets', 'sources', 'evidence']).exit_code == 0
+		assert receiver_git(work_root, ['commit', '-qm', 'coordinated-terminal-delete']).exit_code == 0
+		head = receiver_git(work_root, ['rev-parse', 'HEAD']).output.trim_space()
 	}
 	if options.orphan_business_evidence_at_h {
 		orphan_generation := (target_root.object_value('generation') or {
@@ -1524,21 +1528,22 @@ fn prepare_live_source_atomic_state(suffix string,
 		orphan_path, orphan_body := live_atomic_target_evidence(target_root, orphan_operation,
 			target_proof, target_handoffs.array_value[1], 'business', 99)
 		write_live_state_blob(work_root, orphan_path, orphan_body)
-		assert os.execute('git -C ${os.quoted_path(work_root)} add -- evidence').exit_code == 0
-		assert os.execute('git -C ${os.quoted_path(work_root)} commit -qm orphan-business-evidence').exit_code == 0
-		head = os.execute('git -C ${os.quoted_path(work_root)} rev-parse HEAD').output.trim_space()
+		assert receiver_git(work_root, ['add', '--', 'evidence']).exit_code == 0
+		assert receiver_git(work_root, ['commit', '-qm', 'orphan-business-evidence']).exit_code == 0
+		head = receiver_git(work_root, ['rev-parse', 'HEAD']).output.trim_space()
 	}
 	if options.non_first_parent_evidence_at_h {
 		// The merge pivot keeps P's tree as its first-parent state while hiding T behind the
 		// second parent. H itself is deliberately mono-parent so only the full raw-parent scan can
 		// reject the repository.
-		assert os.execute('git -C ${os.quoted_path(work_root)} checkout -qb history-pivot ${parent}').exit_code == 0
-		assert os.execute('git -C ${os.quoted_path(work_root)} merge -q --no-ff -s ours tccbin-automation-state -m hidden-terminal-pivot').exit_code == 0
-		assert os.execute('git -C ${os.quoted_path(work_root)} commit --allow-empty -qm pivot-descendant').exit_code == 0
-		head = os.execute('git -C ${os.quoted_path(work_root)} rev-parse HEAD').output.trim_space()
+		assert receiver_git(work_root, ['checkout', '-qb', 'history-pivot', parent]).exit_code == 0
+		assert receiver_git(work_root, ['merge', '-q', '--no-ff', '-s', 'ours',
+			'tccbin-automation-state', '-m', 'hidden-terminal-pivot']).exit_code == 0
+		assert receiver_git(work_root, ['commit', '--allow-empty', '-qm', 'pivot-descendant']).exit_code == 0
+		head = receiver_git(work_root, ['rev-parse', 'HEAD']).output.trim_space()
 	}
 	clone :=
-		os.execute('git clone -q --bare --no-local ${os.quoted_path(work_root)} ${os.quoted_path(bare_root)}')
+		bin.git_exec_for_test(['git', 'clone', '-q', '--bare', '--no-local', work_root, bare_root])
 	assert clone.exit_code == 0, clone.output
 	proof := if options.non_first_parent_evidence_at_h {
 		live_state_proof(os.real_path(bare_root), head)
@@ -1596,15 +1601,15 @@ fn prepare_live_state_inventory(suffix string, target_source string, removed_rel
 		panic(err)
 	}
 	bootstrap_commands := [
-		'git -C ${os.quoted_path(root)} init -q',
-		'git -C ${os.quoted_path(root)} checkout -qb tccbin-automation-state',
-		'git -C ${os.quoted_path(root)} config user.email ci@example.invalid',
-		'git -C ${os.quoted_path(root)} config user.name "Contract Test"',
-		'git -C ${os.quoted_path(root)} add -- targets sources',
-		'git -C ${os.quoted_path(root)} commit -qm state',
+		['init', '-q'],
+		['checkout', '-qb', 'tccbin-automation-state'],
+		['config', 'user.email', 'ci@example.invalid'],
+		['config', 'user.name', 'Contract Test'],
+		['add', '--', 'targets', 'sources'],
+		['commit', '-qm', 'state'],
 	]
 	for command in bootstrap_commands {
-		result := os.execute(command)
+		result := receiver_git(root, command)
 		assert result.exit_code == 0, result.output
 	}
 	os.write_file(os.join_path(root, 'targets', 'linux-amd64.json'), target_source) or {
@@ -1619,17 +1624,16 @@ fn prepare_live_state_inventory(suffix string, target_source string, removed_rel
 		assert removed_relative_path in ['targets/freebsd-amd64.json', 'sources/bdwgc-master.json']
 		os.rm(os.join_path(root, removed_relative_path)) or { panic(err) }
 	}
-	for command in ['git -C ${os.quoted_path(root)} add -A -- targets sources',
-		'git -C ${os.quoted_path(root)} commit -qm state-ready'] {
-		result := os.execute(command)
+	for command in [['add', '-A', '--', 'targets', 'sources'], ['commit', '-qm', 'state-ready']] {
+		result := receiver_git(root, command)
 		assert result.exit_code == 0, result.output
 	}
-	head := os.execute('git -C ${os.quoted_path(root)} rev-parse HEAD')
+	head := receiver_git(root, ['rev-parse', 'HEAD'])
 	assert head.exit_code == 0
 	bare_root := '${root}.git'
 	os.rmdir_all(bare_root) or {}
 	clone :=
-		os.execute('git clone -q --bare --no-local ${os.quoted_path(root)} ${os.quoted_path(bare_root)}')
+		bin.git_exec_for_test(['git', 'clone', '-q', '--bare', '--no-local', root, bare_root])
 	assert clone.exit_code == 0, clone.output
 	os.rmdir_all(root) or {}
 	return os.real_path(bare_root), head.output.trim_space()
@@ -1640,8 +1644,9 @@ fn live_state_proof(root string, head string) string {
 }
 
 fn live_state_proof_for(root string, commit string, remote_head string) string {
-	tree := os.execute('git --git-dir ${os.quoted_path(root)} rev-parse ${commit}^{tree}')
-	line := os.execute('git --git-dir ${os.quoted_path(root)} rev-list --parents -n 1 ${commit}')
+	tree := bin.git_exec_for_test(['git', '--git-dir', root, 'rev-parse', '${commit}:'])
+	line := bin.git_exec_for_test(['git', '--git-dir', root, 'rev-list', '--parents', '-n', '1',
+		commit])
 	assert tree.exit_code == 0
 	assert line.exit_code == 0
 	parts := line.output.trim_space().split(' ')
@@ -2411,7 +2416,8 @@ fn test_live_source_atomic_rejects_shallow_history() {
 		os.rmdir_all(shallow) or {}
 	}
 	clone :=
-		os.execute('git clone -q --bare --depth 1 --branch tccbin-automation-state file://${repository.root} ${os.quoted_path(shallow)}')
+		bin.git_exec_for_test(['git', 'clone', '-q', '--bare', '--depth', '1', '--branch',
+			'tccbin-automation-state', 'file://${repository.root}', shallow])
 	assert clone.exit_code == 0, clone.output
 	inspection := bin.inspect_live_receiver_state(automation_root(), os.real_path(shallow),
 		live_state_trust(), repository.proof, live_handoff_id) or { panic(err) }
@@ -2421,7 +2427,8 @@ fn test_live_source_atomic_rejects_shallow_history() {
 fn test_live_source_atomic_rejects_replace_graft_alternate_and_environment_redirects() {
 	replace_repository := prepare_live_source_atomic_state('replace-ref', LiveAtomicStateOptions{})
 	replace_result :=
-		os.execute('git --git-dir ${os.quoted_path(replace_repository.root)} update-ref refs/replace/${replace_repository.head} ${replace_repository.parent}')
+		bin.git_exec_for_test(['git', '--git-dir', replace_repository.root, 'update-ref',
+			'refs/replace/${replace_repository.head}', replace_repository.parent])
 	assert replace_result.exit_code == 0, replace_result.output
 	replace_inspection := bin.inspect_live_receiver_state(automation_root(),
 		replace_repository.root, live_state_trust(), replace_repository.proof, live_handoff_id) or {
@@ -2581,18 +2588,19 @@ fn test_live_state_reader_fails_closed_on_corrupt_duplicate_symlink_or_wrong_che
 	symlink_bare := '${work_root}.git'
 	os.rmdir_all(work_root) or {}
 	os.rmdir_all(symlink_bare) or {}
-	assert os.execute('git clone -q ${os.quoted_path(base_bare)} ${os.quoted_path(work_root)}').exit_code == 0
-	assert os.execute('git -C ${os.quoted_path(work_root)} config user.email ci@example.invalid').exit_code == 0
-	assert os.execute('git -C ${os.quoted_path(work_root)} config user.name "Contract Test"').exit_code == 0
+	assert bin.git_exec_for_test(['git', 'clone', '-q', base_bare, work_root]).exit_code == 0
+	assert receiver_git(work_root, ['config', 'user.email', 'ci@example.invalid']).exit_code == 0
+	assert receiver_git(work_root, ['config', 'user.name', 'Contract Test']).exit_code == 0
 	os.rm(os.join_path(work_root, 'targets', 'linux-amd64.json')) or { panic(err) }
 	os.symlink('../sources/tinycc-mob.json', os.join_path(work_root, 'targets', 'linux-amd64.json')) or {
 		panic(err)
 	}
-	assert os.execute('git -C ${os.quoted_path(work_root)} add -- targets/linux-amd64.json').exit_code == 0
-	assert os.execute('git -C ${os.quoted_path(work_root)} commit -qm symlink').exit_code == 0
+	assert receiver_git(work_root, ['add', '--', 'targets/linux-amd64.json']).exit_code == 0
+	assert receiver_git(work_root, ['commit', '-qm', 'symlink']).exit_code == 0
 	symlink_head :=
-		os.execute('git -C ${os.quoted_path(work_root)} rev-parse HEAD').output.trim_space()
-	assert os.execute('git clone -q --bare --no-local ${os.quoted_path(work_root)} ${os.quoted_path(symlink_bare)}').exit_code == 0
+		receiver_git(work_root, ['rev-parse', 'HEAD']).output.trim_space()
+	assert bin.git_exec_for_test(['git', 'clone', '-q', '--bare', '--no-local', work_root,
+		symlink_bare]).exit_code == 0
 	symlinked := bin.inspect_live_receiver_state(automation_root(), os.real_path(symlink_bare),
 		live_state_trust(), live_state_proof(os.real_path(symlink_bare), symlink_head),
 		live_handoff_id) or { panic(err) }
@@ -2608,11 +2616,15 @@ fn test_live_state_proof_commit_cannot_select_its_parent_inventory() {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	parent_result := os.execute('git --git-dir ${os.quoted_path(root)} rev-parse ${head}^')
+	parent_result := bin.git_exec_for_test(['git', '--git-dir', root, 'rev-parse', '${head}~1'])
 	assert parent_result.exit_code == 0
 	parent := parent_result.output.trim_space()
 	assert parent.len == 40
-	assert os.execute('git --git-dir ${os.quoted_path(root)} rev-parse ${parent}^{tree}').output.trim_space() != os.execute('git --git-dir ${os.quoted_path(root)} rev-parse ${head}^{tree}').output.trim_space()
+	parent_tree_result := bin.git_exec_for_test(['git', '--git-dir', root, 'rev-parse', '${parent}:'])
+	head_tree_result := bin.git_exec_for_test(['git', '--git-dir', root, 'rev-parse', '${head}:'])
+	assert parent_tree_result.exit_code == 0, parent_tree_result.output
+	assert head_tree_result.exit_code == 0, head_tree_result.output
+	assert parent_tree_result.output.trim_space() != head_tree_result.output.trim_space()
 	mismatched_proof := live_state_mutated_proof_bundle(root, head, [], 'commit-binding', head,
 		'"commit_sha":"${head}"', '"commit_sha":"${parent}"')
 	inspection := bin.inspect_live_receiver_state(automation_root(), root, live_state_trust(),
@@ -2799,5 +2811,23 @@ fn test_terminal_projection_v3_and_revalidation_v5_cover_native_validation_witho
 		'"final_projection":${bin.canonical_json(mutated_final)}')) or { panic(err) }
 	assert bin.terminal_revalidation_facts_digest(proof) or { panic(err) } != bin.terminal_revalidation_facts_digest(mutated_proof) or {
 		panic(err)
+	}
+}
+
+// write_cmd_git_wrapper_for_receiver_test writes a git.cmd that runs the installed git.exe.
+fn test_receiver_git_resolves_a_cmd_only_git_on_windows() {
+	$if windows {
+		wrapper_dir := write_cmd_git_wrapper('receiver') or { panic(err) }
+		defer {
+			os.rmdir_all(wrapper_dir) or {}
+		}
+		original_path := os.getenv('PATH')
+		defer {
+			os.setenv('PATH', original_path, true)
+		}
+		os.setenv('PATH', '${wrapper_dir};${os.getenv('SystemRoot')}\\System32', true)
+		result := receiver_git('.', ['--version'])
+		assert result.exit_code == 0, result.output
+		assert result.output.starts_with('git version'), result.output
 	}
 }

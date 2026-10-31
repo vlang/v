@@ -1,5 +1,6 @@
 module driver
 
+import os
 import v.pref
 
 const v3_default_gc_mode = 'boehm_full_opt'
@@ -24,9 +25,26 @@ fn v3_gc_mode_defines(gc_mode string, disable_gc bool) ![]string {
 	return defines
 }
 
-fn v3_gc_is_disabled(building_v bool, cross_output bool, target_os string, target_arch string) bool {
+// v3_gc_is_disabled reports whether the collector of `gc_mode` must be left out of
+// the build.
+// A build for another OS or architecture has no Boehm collector: the bundled
+// libgc and its headers are the host's, and the target's toolchain may have
+// none. vgc stays in: it is V code and one header (thirdparty/vgc), which picks
+// the target's system calls itself, so it builds for any target that it supports
+// natively.
+// The native backend is in that group for its own reason: it links against
+// libSystem alone and allocates through libc, so no collector is ever compiled
+// in. Selecting the Boehm builtin set anyway would only add source files whose
+// declarations the backend cannot satisfy.
+fn v3_gc_is_disabled(building_v bool, cross_output bool, target_os string, target_arch string, backend string, gc_mode string) bool {
 	if building_v || cross_output {
 		return true
+	}
+	if backend in ['arm64', 'x64'] {
+		return true
+	}
+	if gc_mode == 'vgc' {
+		return false
 	}
 	host := pref.host_target()
 	return pref.normalized_os(target_os.trim_space().to_lower()) != host.os
@@ -37,4 +55,39 @@ fn apply_v3_gc_mode(gc_mode string, disable_gc bool, mut user_defines []string, 
 	for define in v3_gc_mode_defines(gc_mode, disable_gc)! {
 		record_user_define(mut user_defines, mut compile_values, define)
 	}
+	if v3_gc_prefers_platform_cc(user_defines) {
+		// The prebuilt archives already enable thread-local allocation. Omitting
+		// THREAD_LOCAL_ALLOC only affects a collector compiled from source.
+		record_user_define(mut user_defines, mut compile_values, 'use_bundled_libgc')
+	}
+}
+
+fn v3_gc_prefers_platform_cc(user_defines []string) bool {
+	return 'gcboehm' in user_defines && 'no_gc_thread_local_alloc' in user_defines
+		&& 'dynamic_boehm' !in user_defines
+}
+
+fn v3_missing_bundled_gc_library(flags []string, vroot string) ?string {
+	lexical_root := os.norm_path(os.abs_path(os.join_path(vroot, 'thirdparty', 'tcc', 'lib')))
+	root := os.real_path(os.join_path(os.real_path(vroot), 'thirdparty', 'tcc', 'lib'))
+	for index in c_link_input_indices(flags) {
+		path := flags[index]
+		canonical := os.join_path(os.real_path(os.dir(path)), os.file_name(path))
+		lexical := os.norm_path(os.abs_path(path))
+		if (canonical in [os.join_path(root, 'libgc.a'), os.join_path(root, 'libgc.dylib')]
+			|| lexical in [os.join_path(lexical_root, 'libgc.a'),
+				os.join_path(lexical_root, 'libgc.dylib')])
+			&& !os.is_file(path) {
+			return path
+		}
+	}
+	return none
+}
+
+fn v3_missing_gc_library_message(path string) string {
+	return 'builder error:
+==================
+Boehm GC library `${path}` was not found.
+Reinstall V to restore its bundled libraries, or pass `-d use_bundled_libgc` to build GC from source.
+To compile without garbage collection, pass `-gc none`.'
 }

@@ -1,5 +1,5 @@
 // vtest vflags: -w
-import json
+import json2
 
 struct Abc {
 	my_ints [6]int
@@ -39,9 +39,9 @@ fn test_json_serialisation_of_fixed_arrays() {
 			my_arr:  [1, 2, 3]
 		},
 	]!}
-	s := json.encode(a)
+	s := json2.encode(a, escape_unicode: true)
 	dump(s)
-	b := json.decode(Fixed_Array, s)!
+	b := json2.decode[Fixed_Array](s)!
 	dump(b)
 	assert a == b
 }

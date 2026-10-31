@@ -95,7 +95,12 @@ fn (mut zftp FTP) read() !(int, string) {
 	if data[3] == `-` {
 		for {
 			data = zftp.reader.read_line()!
-			if data[..3].int() == code && data[3] != `-` {
+			// A short or blank continuation line carries no code: skip it
+			// instead of indexing past its end.
+			if data.len < 4 {
+				continue
+			}
+			if data[..3] == code.str() && data[3] == ` ` {
 				break
 			}
 		}
@@ -187,6 +192,9 @@ fn new_dtp(msg string) !&DTP {
 		return error('Bad message')
 	}
 	ip, port := get_host_ip_from_dtp_message(msg)
+	if ip == '' || port == 0 {
+		return error('Bad message')
+	}
 	mut dtp := &DTP{
 		ip:     ip
 		port:   port
@@ -245,6 +253,7 @@ pub fn (mut zftp FTP) dir() ![]string {
 }
 
 // get retrieves `file` from the remote host.
+// Malformed passive-mode host or port fields return an error before a data connection is opened.
 pub fn (mut zftp FTP) get(file string) ![]u8 {
 	mut dtp := zftp.pasv() or { return error('Cannot stablish data connection') }
 	zftp.write('RETR ${file}')!
@@ -280,7 +289,29 @@ fn get_host_ip_from_dtp_message(msg string) (string, int) {
 			par_end_idx = i
 		}
 	}
+	if par_start_idx < 0 || par_end_idx < par_start_idx {
+		return '', 0
+	}
 	data := msg[par_start_idx..par_end_idx].split(',')
+	if data.len != 6 {
+		return '', 0
+	}
+	// RFC 959 represents the host and port as six decimal octets.
+	for field in data {
+		if field.len == 0 {
+			return '', 0
+		}
+		mut value := 0
+		for ch in field {
+			if ch < `0` || ch > `9` {
+				return '', 0
+			}
+			value = value * 10 + int(ch - `0`)
+			if value > 255 {
+				return '', 0
+			}
+		}
+	}
 	ip := data[0..4].join('.')
 	port := data[4].int() * 256 + data[5].int()
 	return ip, port

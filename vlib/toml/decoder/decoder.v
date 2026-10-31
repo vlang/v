@@ -78,7 +78,7 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ! {
 	mut eat_whitespace := false
 	// See https://toml.io/en/v1.0.0#string for more info on string types.
 	is_basic := q.quote == `\"`
-	if !is_basic {
+	if !is_basic || q.text.index_u8(`\\`) < 0 {
 		return
 	}
 	mut decoded_s := strings.new_builder(q.text.len)
@@ -175,8 +175,7 @@ pub fn decode_quoted_escapes(mut q ast.Quoted) ! {
 							continue
 						}
 						decoded_s.write_string(decoded)
-						replacement := s.text[pos..pos + sequence_length + 1]
-						s.skip_n(replacement.len)
+						s.skip_n(sequence_length + 1)
 						continue
 					} else {
 						pos := s.state().pos

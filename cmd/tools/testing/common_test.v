@@ -154,3 +154,53 @@ fn test_effective_test_memory_uses_lower_cgroup_limit() {
 	assert effective_test_memory(physical_memory, cgroup_memory_limit) == cgroup_memory_limit
 	assert effective_test_memory(cgroup_memory_limit, physical_memory) == cgroup_memory_limit
 }
+
+fn test_os_suffix_selection_preserves_android_outside_termux() {
+	for suffix in ['_test.v', '_test.c.v'] {
+		file := 'fixture_android_outside_termux' + suffix
+		assert test_file_is_target_of('android', file)
+		for host in ['termux', 'linux', 'macos', 'windows'] {
+			assert !test_file_is_target_of(host, file), 'host=${host}, file=${file}'
+		}
+	}
+}
+
+fn test_os_suffix_selection_preserves_simple_and_unspecified_targets() {
+	for suffix in ['_test.v', '_test.c.v'] {
+		assert test_file_is_target_of('termux', 'fixture_termux' + suffix)
+		assert !test_file_is_target_of('android', 'fixture_termux' + suffix)
+		assert test_file_is_target_of('windows', 'fixture_windows' + suffix)
+		assert !test_file_is_target_of('linux', 'fixture_windows' + suffix)
+		assert test_file_is_target_of('linux', 'fixture_nix' + suffix)
+		assert !test_file_is_target_of('windows', 'fixture_nix' + suffix)
+		for host in ['android', 'termux', 'linux', 'macos', 'windows'] {
+			assert test_file_is_target_of(host, 'fixture' + suffix)
+		}
+	}
+}
+
+fn test_build_v_args_failed_accepts_literal_arguments() {
+	assert !build_v_args_failed([@VEXE, 'version'])
+	assert build_v_args_failed([]string{})
+}
+
+fn test_find_started_redis_on_default_port_accepts_an_unrewritten_process_title() {
+	// `set-proc-title no` keeps the original command line, which does not show the port.
+	lines := [
+		'  PID TTY      STAT   TIME COMMAND',
+		' 1234 ?        Ssl    0:10 redis-server /tmp/redis.conf',
+	]
+	assert find_started_redis_on_default_port(lines)! == lines[1]
+}
+
+fn test_find_started_redis_on_default_port_matches_the_whole_port() {
+	other_port := ' 1234 ?        Ssl    0:10 redis-server *:63790'
+	default_port := ' 5678 ?        Ssl    0:10 redis-server *:6379'
+	if _ := find_started_redis_on_default_port([other_port]) {
+		assert false, 'a redis-server on port 63790 does not serve the default port'
+	}
+	if _ := find_started_redis_on_default_port([]string{}) {
+		assert false, 'no process is not a started redis-server'
+	}
+	assert find_started_redis_on_default_port([other_port, default_port])! == default_port
+}

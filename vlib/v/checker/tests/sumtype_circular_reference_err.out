@@ -1,9 +1,9 @@
-vlib/v/checker/tests/sumtype_circular_reference_err.vv:1:14: error: sum type `Type6` cannot be defined recursively
+vlib/v/checker/tests/sumtype_circular_reference_err.vv:1:14: error: sum type `Type6` cannot be defined recursively; inline cycle: `Type6 -> Type7 -> Type6`; use `&Type6` or `[]Type6` to break the cycle
     1 | type Type6 = Type7 | int
       |              ~~~~~
     2 | type Type7 = Type6 | string
     3 |
-vlib/v/checker/tests/sumtype_circular_reference_err.vv:2:14: error: sum type `Type7` cannot be defined recursively
+vlib/v/checker/tests/sumtype_circular_reference_err.vv:2:14: error: sum type `Type7` cannot be defined recursively; inline cycle: `Type7 -> Type6 -> Type7`; use `&Type7` or `[]Type7` to break the cycle
     1 | type Type6 = Type7 | int
     2 | type Type7 = Type6 | string
       |              ~~~~~

@@ -197,12 +197,12 @@ fn test_u64() {
 }
 
 fn test_isize() {
-	isize_ := isize(0)
+	isize_ := int(0)
 	isize_str := isize_.str()
 }
 
 fn test_usize() {
-	usize_ := usize(0)
+	usize_ := uint(0)
 	usize_str := usize_.str()
 }
 

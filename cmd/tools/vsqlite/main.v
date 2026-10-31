@@ -804,7 +804,11 @@ fn (mut app App) dot_cmd(cmd string) {
 				return
 			}
 			shell_cmd := parts[1..].join(' ')
-			result := os.execute(shell_cmd)
+			result := os.exec(if os.user_os() == 'windows' {
+				['cmd.exe', '/d', '/s', '/c', shell_cmd]
+			} else {
+				['sh', '-c', shell_cmd]
+			})
 			if result.output.len > 0 {
 				print(result.output)
 				if !result.output.ends_with('\n') {

@@ -30,12 +30,14 @@ fn test_diagnostics() {
 	dump(sizeof(in6.sin6_port))
 	dump(sizeof(in6.sin6_addr))
 	dump(sizeof(in6))
+	_ = in6
 	eprintln('')
 	dump(__offsetof(Ip6, port))
 	dump(__offsetof(Ip6, addr))
 	dump(sizeof(our_ip6.port))
 	dump(sizeof(our_ip6.addr))
 	dump(sizeof(our_ip6))
+	_ = our_ip6
 	eprintln('--------')
 	in4 := C.sockaddr_in{}
 	our_ip4 := Ip{}
@@ -52,12 +54,14 @@ fn test_diagnostics() {
 	dump(sizeof(in4.sin_port))
 	dump(sizeof(in4.sin_addr))
 	dump(sizeof(in4))
+	_ = in4
 	eprintln('')
 	dump(__offsetof(Ip, port))
 	dump(__offsetof(Ip, addr))
 	dump(sizeof(our_ip4.port))
 	dump(sizeof(our_ip4.addr))
 	dump(sizeof(our_ip4))
+	_ = our_ip4
 	eprintln('--------')
 	dump(__offsetof(C.sockaddr_un, sun_path))
 	dump(__offsetof(Unix, path))
@@ -68,6 +72,8 @@ fn test_sizes_unix_sun_path() {
 	x1 := C.sockaddr_un{}
 	x2 := Unix{}
 	assert sizeof(x1.sun_path) == sizeof(x2.path)
+	_ = x1
+	_ = x2
 }
 
 fn test_offsets_ipv6() {
@@ -163,4 +169,30 @@ fn test_ip6_str_is_unchanged_without_a_scope() {
 	global[3] = 0xb8
 	global[15] = 0x01
 	assert new_ip6(80, global).str() == '[2001:db8::1]:80'
+}
+
+// resolve_ipaddrs indexed addr[0] before validating, so an empty host
+// panicked with string index out of range(idx,s.len):0, 0 instead of
+// returning an error. resolve_addrs_fuzzy already guarded this case.
+fn test_resolve_ipaddrs_rejects_an_empty_host_with_an_error() {
+	for family in [AddrFamily.ip, .ip6, .unspec] {
+		if _ := resolve_ipaddrs('', family, .tcp) {
+			assert false, 'net.resolve_ipaddrs("") should have failed'
+		} else {
+			assert err.msg().contains('empty')
+		}
+	}
+}
+
+// The ":port" forms must keep resolving to the any-addresses.
+fn test_resolve_ipaddrs_bare_port_still_resolves() {
+	addrs := resolve_ipaddrs(':8080', .ip, .tcp)!
+	assert addrs.len == 1
+	assert addrs[0].str() == '0.0.0.0:8080'
+}
+
+fn test_resolve_ipaddrs_ipv6_bare_port_still_resolves() {
+	addrs := resolve_ipaddrs(':8080', .ip6, .tcp)!
+	assert addrs.len == 1
+	assert addrs[0].str() == '[::]:8080'
 }

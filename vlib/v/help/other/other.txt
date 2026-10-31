@@ -18,11 +18,48 @@ Other less frequently used commands supported by V include:
 
   check-md         Check that V examples in markdown files are formatted and can compile.
 
+  clean            Remove the executables that a default V build leaves behind.
+
+  compress         Compress a file with zlib (DEFLATE).
+
+  cover            Make coverage reports from the data files produced
+                   by running programs and tests, compiled with
+                   `-coverage folder/`. See `v help cover`.
+
   doctor           Display some useful info about your system to help reporting bugs.
+
+  env               Print the environment variables that steer the V compiler
+                   and its tools, with the value V would use for each.
+
+  mcp               Serve the V compiler to a coding agent over the Model Context
+                   Protocol, as tools that answer from the compiler's own parser.
+                   `v mcp tools` lists them without starting the server.
+
+  mod               Answer questions about the modules a project depends on.
+                   `v mod why MODULE` prints the chain of imports that brings
+                   MODULE into the build.
+
+  pbgen             Generate V protobuf codecs and gRPC service declarations
+                   from .proto schemas. See `v help pbgen`.
 
   setup-freetype   Setup thirdparty freetype on Windows.
 
+  skills            List, install, update and remove the agent skills bundled
+                   with this compiler. `v skills list` reports which are
+                   installed for this project or for the current user.
+
   share            Send your code to the V Playground
+
+  should-compile-all
+                   Compile all .v files of the given folders/files, one
+                   by one, exiting with 1 if any of them fails.
+
+  sqlite           A SQLite command line tool written in V. Opens an
+                   interactive session, or executes single SQL
+                   statements. See `v help sqlite`.
+
+  tool              Run a tool module by name. `v tool` with no argument lists
+                   the tool modules of the project and the global module folders.
 
   translate        Translate C code to V.
 
@@ -35,6 +72,9 @@ Other less frequently used commands supported by V include:
                    It may take over 2 minutes, and it needs internet connectivity too,
                    because it tries to also verify that `v install` works.
 
+  test-cleancode   Run `v vet`, and check formatting with `v fmt -verify`,
+                   over most .v files of the repo.
+
   test-fmt         Test if all files in the current directory are formatted properly.
 
   test-parser      Test that the V parser works with the given files, as if
@@ -45,5 +85,5 @@ Other less frequently used commands supported by V include:
   test-self        Test if V is working properly by running all tests, including the compiler ones.
                    NB: this can take 1-2 minutes to run.
 
-  wipe-cache       Remove the V cache folder. Useful for cleaning the cache, and guaranteeing a 
-                   clean build.
+  wipe-cache       Remove V cache folders (VCACHE, VTMP, V3CACHE, and tool caches).
+                   Useful for cleaning the cache and guaranteeing a clean build. See `v help wipe-cache`.

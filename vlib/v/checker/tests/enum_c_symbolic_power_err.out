@@ -1,0 +1,21 @@
+vlib/v/checker/tests/enum_c_symbolic_power_err.vv:4:10: error: enum powers must be known at compile time
+    2 |
+    3 | enum SymbolicPower {
+    4 |     value = int(C.SEEK_CUR) ** 2
+      |             ~~~~~~~~~~~~~~~~~~~~
+    5 |     exponent = 2 ** int(C.SEEK_CUR)
+    6 | }
+vlib/v/checker/tests/enum_c_symbolic_power_err.vv:5:13: error: enum powers must be known at compile time
+    3 | enum SymbolicPower {
+    4 |     value = int(C.SEEK_CUR) ** 2
+    5 |     exponent = 2 ** int(C.SEEK_CUR)
+      |                ~~~~~~~~~~~~~~~~~~~~
+    6 | }
+    7 |
+vlib/v/checker/tests/enum_c_symbolic_power_err.vv:13:10: error: enum powers must be known at compile time
+   11 |
+   12 | enum CopiedSymbolicPower {
+   13 |     value = int(SymbolicPowerSource.value) ** 2
+      |             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   14 | }
+   15 |

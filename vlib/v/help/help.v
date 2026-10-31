@@ -2,8 +2,9 @@ module help
 
 import os
 
-// Topics whose module uses the cli or flag modules (both support --help).
-const cli_topics = ['new', 'init', 'repeat']
+// Topics whose module uses the cli or flag modules (both support --help),
+// or whose tool handles --help itself.
+const cli_topics = ['new', 'init', 'repeat', 'clean', 'diff', 'quest', 'timeout', 'vlib-docs']
 
 fn hdir(base string) string {
 	return os.join_path(base, 'vlib', 'v', 'help')
@@ -41,7 +42,7 @@ pub fn print_and_exit(topic string, opts ExitOptions) {
 	}
 	if topic in cli_topics {
 		vexe := get_vexe()
-		os.system('${os.quoted_path(vexe)} ${topic} --help')
+		os.system_args([vexe, '${topic}', '--help'])
 		exit(opts.exit_code)
 	}
 	mut topic_path := ''

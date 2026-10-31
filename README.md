@@ -77,6 +77,11 @@ functional `git` installation.
 
 Note: On Windows, run `makev.bat` instead of `make` in CMD, or `./makev.bat` in
 PowerShell.
+To build with Visual Studio, run `makev.bat -msvc`. If the bundled TCC bootstrap cannot be
+compiled or fails while building the next compiler stage, the script retries with MSVC,
+then Clang and GCC.
+`makev.bat -clang` keeps Clang's installed target: LLVM-MinGW uses its GNU runtime,
+while Visual Studio's Clang uses the adjacent `clang-cl.exe` and the MSVC SDK.
 Note: On FreeBSD, OpenBSD, NetBSD, DragonFly, and Solaris, install GNU `make` and run it as
 `gmake`.
 Note: On Ubuntu/Debian, you may need to run `sudo apt install git build-essential make` first.
@@ -90,6 +95,21 @@ make
 
 That should be it, and you should find your V executable at `[path to V repo]/v`.
 `[path to V repo]` can be anywhere.
+
+On Unix-like systems, `make` and the `v self` bootstrap fallback stream compatibility fixes
+for older `vc/v.c` snapshots to the C compiler. These match the peak RSS helper's return type
+to `i64`, guard Linux-only `prctl` code, and teach pre-`uint` compilers the new integer
+spelling and allocator signatures. The snapshot stays unchanged on disk.
+The compatibility filter uses the system `sh`; Bash is not required.
+
+On Windows, builds use PowerShell to prepare a temporary snapshot with the same integer
+compatibility fixes. `makev.bat` generates the first compiler stage as C and links it directly.
+This also works with older bootstrap snapshots whose process-spawn code is broken.
+Direct TCC links add the installed bundle's `thirdparty\tcc\lib\openlibm.o`, when present,
+for C99 math functions such as `remainder`. Each bundle ships this object for its own compiler,
+so an existing amd64 or i386 checkout links a matching object even when it differs from the
+branch selected by the host, `-tcc32`, or `TCC_BRANCH`.
+For paths longer than 260 characters, see [Long paths on Windows](doc/windows_long_paths.md).
 
 (Like the note above says, on Windows, use `makev.bat`, instead of `make`.)
 
@@ -106,6 +126,10 @@ v up
 ```
 
 This also refreshes the bundled TCC binaries used for fast C compilation.
+Previously cached modules are validated with the updated compiler. Successful checks that
+produce no output remain quiet; `Caching module <name>...` reports actual C compilation.
+Different build configurations can compile the same module separately.
+Use `v up -v` to show progress for every checked cache configuration, including reused objects.
 
 > [!NOTE]
 > If you run into any trouble, or you have a different operating
@@ -128,6 +152,33 @@ $ make
 
 ### Docker
 
+Official images for V are published as [`thevlang/vlang`](https://hub.docker.com/r/thevlang/vlang),
+built from [`vlang/docker`](https://github.com/vlang/docker):
+
+```bash
+docker run --rm -it -v "$PWD":/src -w /src thevlang/vlang:latest
+```
+
+The release workflow targets these variants; each tag is available after successful publication:
+
+| Tag | Base | Notes |
+| --- | --- | --- |
+| `:latest`, `:debian` | Debian | the default: programs built here run on Debian, Ubuntu, Fedora |
+| `:alpine` | Alpine | musl; use this one for static executables |
+| `:nix` | `nixos/nix` | pinned nixpkgs toolchain; `nix-shell -p <pkg>` works inside |
+| `:static-<version>` | `scratch` | a static V compiler; base for compiled static programs |
+| `:<dist>-dev` | the `-build` image | a full V checkout; excludes the `scratch` static variant |
+
+Release builds target both `linux/amd64` and `linux/arm64`. Podman reads the same
+Dockerfiles and needs no daemon, so `podman build -f ... .` works too;
+In rootless mode, Podman maps the container's root user to your user, so files written
+into a mounted source tree stay owned by you.
+
+Manual release publishing accepts a numeric release tag such as `0.5.2`, or a `weekly.*` tag.
+The input is limited to 120 characters so each generated Docker image tag fits its limit.
+
+To build one locally instead:
+
 ```bash
 git clone --depth=1 https://github.com/vlang/v
 cd v
@@ -147,8 +198,8 @@ alias with_alpine='docker run -u 1000:1000 --rm -it -v .:/src -w /src vlang_alpi
 Compiling *static* executables, ready to be copied to a server, that is running
 another linux distro, without dependencies:
 ```bash
-with_alpine v -skip-unused -prod -cc gcc -cflags -static -compress examples/http_server.v
-with_alpine v -skip-unused -prod -cc gcc -cflags -static -compress -gc none examples/hello_world.v
+with_alpine v -prod -cc gcc -cflags -static -compress examples/http_server.v
+with_alpine v -prod -cc gcc -cflags -static -compress -gc none examples/hello_world.v
 ls -la examples/http_server examples/hello_world
 file   examples/http_server examples/hello_world
 examples/http_server: ELF 64-bit LSB executable, x86-64, version 1 (SYSV), statically linked, no section header
@@ -212,6 +263,28 @@ For regular non-production builds on supported hosts, V prefers a working bundle
 working `tcc` from `PATH`, before using the platform compiler. The system fallback is selected only
 when required V runtime artifacts are available, including the bundled `libgc.a` used by default
 glibc and Windows Boehm builds.
+
+On macOS, regular builds and `v self` use TCC by default, including on Darwin 27 and later.
+Use a current TCC bundle built with the Mach-O zero-fill fix for
+[#29744](https://github.com/vlang/v/issues/29744); older bundles can corrupt global variables.
+An explicit `-cc` overrides the default, and `CC` also overrides the compiler used by `v self`.
+
+`-prod` builds never default to TCC, which cannot do their optimizations. On x64 Windows,
+without `-cc`, a `-prod` build uses MSVC when an x64 Visual Studio Developer environment is
+active (`cl` on `PATH`, with `INCLUDE` and `LIB` set; not for `-o file.o`), otherwise a `clang`
+that targets x86_64 MinGW, otherwise `gcc`. A native `-prod` build on another Windows
+architecture uses `gcc`. An explicit `-cc` always wins.
+
+An explicit `-cc msvc` on Windows does not need a Developer environment. When `INCLUDE` or `LIB`
+is not set, V finds the Visual Studio C++ tools (the `cl` on `PATH`, `VCToolsInstallDir`, or the
+newest installation `vswhere` reports) and the Windows SDK (`WindowsSdkDir`, the `KitsRoot10`
+registry value, or `Program Files (x86)\Windows Kits\10`). Expandable registry values use the
+current environment. V puts a `cl` for the architecture V
+builds for on `PATH` when none is there, or when the one there is for another architecture (unless
+`-cc` names it by its path), and sets the missing variables for the C compiler. Variables that are
+already set, as in a Developer Command Prompt, are left as they are. The program that `v run`
+starts gets the environment it was started with, not these changes. If V cannot find tools for
+the requested architecture or a usable SDK, it reports what is missing before `cl` fails.
 
 On macOS, `-cc tcc -gc boehm` uses a persistent bundled `libgc.dylib` store when the physical V
 installation path contains a comma. The store is under `$XDG_DATA_HOME/v-tcc-libgc-v1`, or
@@ -290,6 +363,10 @@ shell/editor after that, so that it can pick up the new PATH variable.
 To bring IDE functions for the V programming languages to your editor, check out
 [v-analyzer](https://github.com/vlang/v-analyzer). It provides language server capabilities.
 
+`v ls --check` reports whether the VLS launcher has an installed, executable language server.
+It exits successfully when none is installed. Use `--path` to check a specific executable.
+
+
 ## Testing and running the examples
 
 Make sure V can compile itself:
@@ -305,9 +382,31 @@ hello world
 >>>
 ```
 
-`v self` defaults to `-gc none`. Pass `-gc <mode>` if you need a different GC mode.
-On macOS and Linux, `v -prod self` uses a single production build instead of the three-pass
-PGO cycle.
+`v self` defaults to `-gc none` and includes only the C backend. Selecting an omitted backend
+automatically builds and runs a cached full compiler. Later requests reuse it while its sources
+are current. Use `v -all-backends self` or `v -compile-backend fastc self` to include optional
+backends in the main executable. Pass `-gc <mode>` if you need a different GC mode.
+On non-Windows hosts, `v -prod self` uses profile-guided optimization (PGO) when the selected C
+compiler is Clang and `llvm-profdata` is available. Clang's reported installation directory and
+resolved executable directory are searched before `PATH` and macOS `xcrun` for the profile tool,
+keeping LLVM versions together.
+Both `-cc clang` and `-cc=clang` select that toolchain; the last compiler option takes precedence.
+It builds an instrumented compiler, trains it on
+uncached self-compilation, then builds the optimized compiler. This takes longer to build the
+production compiler. Other C toolchains and failed PGO attempts use a regular production build.
+Use `v -prod -parallel-cc self` to skip PGO and compile the generated C units in parallel.
+Explicit `-no-prod-options` or profile-related `-cflags` also skip automatic PGO.
+
+Use `v -b arm64 file.v` on macOS ARM64 or `v -b x64 file.v` on Linux AMD64 to compile
+with a native backend. Use `v -b arm64 self` or `v -b x64 self` to rebuild
+the full compiler with the selected native backend. A backend-specific `self x2` replaces
+the compiler twice, so the second build runs the compiler produced by the first native
+build. Use `-o v_arm64` or `-o v_x64` to keep the current compiler and write a separate
+executable. Native self-builds use `-gc none` and retain commands such as `self`, `fmt`,
+and `version`. The native compiler includes the C backend and leaves out FastC by default.
+For x64, add `-prod` to enable SSA optimization, register allocation and optimized C helpers.
+Very large x64 modules may skip the global SSA pass to bound compiler memory. The ARM64
+backend retains its existing optimization behavior.
 
 ```bash
 cd examples

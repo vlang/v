@@ -122,9 +122,9 @@ pub fn get_statistics() Statistics {
 pub fn format_bytes(bytes u64) string {
 	if bytes < 1024 {
 		return '${bytes} B'
-	} else if bytes < 1024 * 1024 {
+	} else if bytes < u64(1024 * 1024) {
 		return '${f64(bytes) / 1024.0:.1} KB'
-	} else if bytes < 1024 * 1024 * 1024 {
+	} else if bytes < u64(1024 * 1024 * 1024) {
 		return '${f64(bytes) / (1024.0 * 1024.0):.1} MB'
 	} else {
 		return '${f64(bytes) / (1024.0 * 1024.0 * 1024.0):.2} GB'

@@ -7,7 +7,7 @@ const or_review_vlib_dir = os.dir(or_review_v3_dir)
 const or_review_v3_src = os.join_path(or_review_v3_dir, 'v.v')
 
 fn or_review_v3_bin_path() string {
-	return os.join_path(os.temp_dir(), 'v3_or_expr_transform_review_test')
+	return os.join_path(os.temp_dir(), 'v3_or_expr_transform_review_test') + $if windows { '.exe' } $else { '' }
 }
 
 fn testsuite_begin() {
@@ -23,7 +23,8 @@ fn build_v3_or_review() string {
 		return v3_bin
 	}
 	build :=
-		os.execute('${or_review_vexe} -gc none -path "${or_review_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${or_review_v3_src}')
+		os.exec([or_review_vexe, '-gc', 'none', '-path', '${or_review_vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${or_review_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -33,7 +34,8 @@ fn or_review_gen_c(v3_bin string, name string, src string) string {
 	os.write_file(src_path, src) or { panic(err) }
 	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
 	os.rm(c_path) or {}
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${c_path}')
+	// Some cases count calls through `__global` variables.
+	compile := os.exec([v3_bin, '-enable-globals', src_path, '-b', 'c', '-o', c_path])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
 	assert os.exists(c_path), '${name}: missing generated C'
 	return os.read_file(c_path) or { panic(err) }
@@ -43,9 +45,9 @@ fn or_review_run(v3_bin string, name string, src string) string {
 	src_path := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src_path, src) or { panic(err) }
 	bin_path := os.join_path(os.temp_dir(), 'v3_${name}')
-	compile := os.execute('${v3_bin} ${src_path} -b c -o ${bin_path}')
+	compile := os.exec([v3_bin, '-enable-globals', src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, '${name}: compile failed\n${compile.output}'
-	run := os.execute(bin_path)
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, '${name}: run failed\n${run.output}'
 	return run.output.trim_space()
 }
@@ -53,7 +55,7 @@ fn or_review_run(v3_bin string, name string, src string) string {
 fn or_review_compile_bad(v3_bin string, name string, src string) string {
 	src_path := os.join_path(os.temp_dir(), 'v3_${name}.v')
 	os.write_file(src_path, src) or { panic(err) }
-	compile := os.execute('${v3_bin} ${src_path} -b c')
+	compile := os.exec([v3_bin, src_path, '-b', 'c'])
 	assert compile.exit_code != 0, '${name}: invalid source compiled successfully'
 	return compile.output
 }
@@ -78,20 +80,36 @@ fn test_bare_channel_or_is_rejected() {
 	assert output.contains('cannot use `or {}` block on non-option variable'), output
 }
 
-fn test_array_optional_element_or_uses_loaded_element_error() {
+fn test_array_optional_element_or_uses_fallback_without_err_binding() {
 	v3_bin := build_v3_or_review()
-	c_source := or_review_gen_c(v3_bin, 'array_optional_element_error_source',
-		'fn main() {\n\tmut arr := []?int{}\n\tarr << none\n\tvalue := arr[0] or {\n\t\tprintln(err.msg())\n\t\t0\n\t}\n\tprintln(int_str(value))\n}\n')
-	assert c_source.contains('Optional __arr_opt_'), 'missing loaded optional temp'
-	assert c_source.contains('IError err = __arr_opt_'), 'element failure branch does not use loaded optional err'
+	src := 'fn main() {\n\terr := 7\n\tmut arr := []?int{}\n\tarr << none\n\tarr << 5\n\tmissing := arr[0] or { err }\n\tpresent := arr[1] or { -1 }\n\tprintln(int_str(missing))\n\tprintln(int_str(present))\n}\n'
+	c_source := or_review_gen_c(v3_bin, 'array_optional_element_fallback_source', src)
+	assert c_source.contains('__v_option_i64 __arr_opt_'), 'missing loaded optional temp'
+	assert c_source.contains('i64 err = 7;'), 'explicit outer err was not preserved'
+	assert !c_source.contains('IError err = __arr_opt_'), 'element failure branch binds an Option error'
+	out := or_review_run(v3_bin, 'array_optional_element_fallback_run', src)
+	assert out == '7\n5'
 }
 
-fn test_map_optional_element_or_uses_loaded_element_error() {
+fn test_map_optional_element_or_uses_fallback_without_err_binding() {
 	v3_bin := build_v3_or_review()
-	c_source := or_review_gen_c(v3_bin, 'map_optional_element_error_source',
+	src := "fn main() {\n\terr := 7\n\tmut m := map[string]?int{}\n\tm['x'] = none\n\tm['y'] = 5\n\tmissing := m['x'] or { err }\n\tpresent := m['y'] or { -1 }\n\tabsent := m['z'] or { -2 }\n\tprintln(int_str(missing))\n\tprintln(int_str(present))\n\tprintln(int_str(absent))\n}\n"
+	c_source := or_review_gen_c(v3_bin, 'map_optional_element_fallback_source', src)
+	assert c_source.contains('__v_option_i64 __map_opt_'), 'missing loaded map optional temp'
+	assert c_source.contains('i64 err = 7;'), 'explicit outer err was not preserved'
+	assert !c_source.contains('IError err = __map_opt_'), 'map element failure branch binds an Option error'
+	out := or_review_run(v3_bin, 'map_optional_element_fallback_run', src)
+	assert out == '7\n5\n-2'
+}
+
+fn test_optional_element_or_rejects_implicit_err() {
+	v3_bin := build_v3_or_review()
+	array_output := or_review_compile_bad(v3_bin, 'array_optional_element_implicit_err',
+		'fn main() {\n\tmut arr := []?int{}\n\tarr << none\n\tvalue := arr[0] or {\n\t\tprintln(err.msg())\n\t\t0\n\t}\n\tprintln(int_str(value))\n}\n')
+	assert array_output.contains('undefined variable: `err`'), array_output
+	map_output := or_review_compile_bad(v3_bin, 'map_optional_element_implicit_err',
 		"fn main() {\n\tmut m := map[string]?int{}\n\tm['x'] = none\n\tvalue := m['x'] or {\n\t\tprintln(err.msg())\n\t\t0\n\t}\n\tprintln(int_str(value))\n}\n")
-	assert c_source.contains('Optional __map_opt_'), 'missing loaded map optional temp'
-	assert c_source.contains('IError err = __map_opt_'), 'map element failure branch does not use loaded optional err'
+	assert map_output.contains('undefined variable: `err`'), map_output
 }
 
 fn test_map_index_address_or_nil_remains_valid() {
@@ -141,11 +159,11 @@ fn test_backed_enum_map_key_uses_backing_storage_size() {
 	v3_bin := build_v3_or_review()
 	c_source := or_review_gen_c(v3_bin, 'backed_enum_map_key_size',
 		'enum Wide as u64 {\n\ta = 1\n\tb = 2\n}\n\nfn main() {\n\tmut m := map[Wide]int{}\n\tm[.a] = 3\n\tm[.b] = 4\n\tm.delete(.a)\n\tprintln(int_str(m[.b] or { 0 }))\n}\n')
-	assert c_source.contains('new_map(sizeof(u64), sizeof(int), map_hash_int_8, map_eq_int_8'), 'backed enum map key size does not match 8-byte callbacks'
+	assert c_source.contains('new_map(sizeof(u64), sizeof(i64), map_hash_int_8, map_eq_int_8'), 'backed enum map key size does not match 8-byte callbacks'
 	assert c_source.contains('u64 __map_key_'), 'backed enum map key temp does not use backing storage'
 	assert !c_source.contains('Wide __map_key_'), 'backed enum map key temp still uses enum typedef storage'
-	assert !c_source.contains('new_map(sizeof(Wide)'), 'backed enum map allocation still uses enum typedef size'
-	assert !c_source.contains('&(Wide[]){'), 'backed enum map compound key literal still uses enum typedef storage'
+	assert !c_source.contains('new_map(sizeof(main__Wide)'), 'backed enum map allocation still uses enum typedef size'
+	assert !c_source.contains('&(main__Wide[]){'), 'backed enum map compound key literal still uses enum typedef storage'
 }
 
 fn test_pointer_channel_try_call_derefs_receiver() {

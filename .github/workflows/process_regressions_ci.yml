@@ -1,13 +1,6 @@
 name: Compiler process regressions
 
 on:
-  pull_request:
-    paths:
-      - 'vlib/v/cmdexec/**'
-      - 'vlib/v/util/vflags/**'
-      - 'cmd/v/**'
-      - 'vlib/v/driver/**'
-      - '.github/workflows/process_regressions_ci.yml'
   push:
     branches: [master]
     paths:
@@ -18,11 +11,16 @@ on:
       - '.github/workflows/process_regressions_ci.yml'
   workflow_dispatch:
 
+concurrency:
+  group: process-regressions-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
 jobs:
   process-regressions:
+    if: github.ref == 'refs/heads/master'
     strategy:
       fail-fast: false
       matrix:
@@ -37,22 +35,28 @@ jobs:
             build: .\makev.bat -gcc
             v: ./v.exe
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 20
+    timeout-minutes: 30
     env:
       VFLAGS: -cc gcc
       VJOBS: '2'
       V_C_ERROR_BUG_REPORT_DISABLED: '1'
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build V with the system C compiler
         id: build
         run: ${{ matrix.build }}
       - name: Check executable resolution
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_resolve_program_test.v
-      - name: Check diagnostic replay
+      - name: Check capture-only commands receive stdin EOF
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
-        run: ${{ matrix.v }} -new-compiler cmd/v/v3_fallback_diagnostics_test.v
+        timeout-minutes: 3
+        run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_stdin_test.v
+      - name: Test the compiler launcher
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ${{ matrix.v }} -new-compiler -silent test cmd/v/
       - name: Check deadlines and inherited output pipes
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ${{ matrix.v }} -new-compiler vlib/v/cmdexec/cmdexec_timeout_test.v

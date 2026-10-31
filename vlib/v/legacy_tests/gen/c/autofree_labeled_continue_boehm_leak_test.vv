@@ -16,13 +16,13 @@ fn test_autofree_labeled_continue_boehm_leak_cleanup() {
 		exe_path += '.exe'
 	}
 	cmd := '${test_vexe} -autofree -gc boehm_leak -o ${os.quoted_path(exe_path)} ${os.quoted_path(testdata_file)}'
-	res := os.execute(cmd)
+	res := os.exec([@VEXE, '-autofree', '-gc', 'boehm_leak', '-o', exe_path, testdata_file])
 	if res.exit_code != 0 && missing_boehm_leak_lib(res.output) {
 		eprintln('skipping boehm_leak labeled continue cleanup test: missing libgc')
 		return
 	}
 	assert res.exit_code == 0, '${cmd}\n${res.output}'
-	run_res := os.execute(os.quoted_path(exe_path))
+	run_res := os.exec([exe_path])
 	assert run_res.exit_code == 0, run_res.output
 	os.rm(exe_path) or {}
 }

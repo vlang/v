@@ -32,15 +32,19 @@ pub fn u64toa(buf_start &u8, value u64) !int {
 		d2 := u32((v % 100) << 1)
 		unsafe {
 			if v >= 1000 {
-				*buf++ = g_digits_lut[d1]
+				buf[0] = g_digits_lut[d1]
+				buf++
 			}
 			if v >= 100 {
-				*buf++ = g_digits_lut[d1 + 1]
+				buf[0] = g_digits_lut[d1 + 1]
+				buf++
 			}
 			if v >= 10 {
-				*buf++ = g_digits_lut[d2]
+				buf[0] = g_digits_lut[d2]
+				buf++
 			}
-			*buf++ = g_digits_lut[d2 + 1]
+			buf[0] = g_digits_lut[d2 + 1]
+			buf++
 		}
 	} else {
 		b := v / 10_000
@@ -54,20 +58,28 @@ pub fn u64toa(buf_start &u8, value u64) !int {
 
 		unsafe {
 			if value >= 10_000_000 {
-				*buf++ = g_digits_lut[d1]
+				buf[0] = g_digits_lut[d1]
+				buf++
 			}
 			if value >= 1_000_000 {
-				*buf++ = g_digits_lut[d1 + 1]
+				buf[0] = g_digits_lut[d1 + 1]
+				buf++
 			}
 			if value >= 100_000 {
-				*buf++ = g_digits_lut[d2]
+				buf[0] = g_digits_lut[d2]
+				buf++
 			}
-			*buf++ = g_digits_lut[d2 + 1]
+			buf[0] = g_digits_lut[d2 + 1]
+			buf++
 
-			*buf++ = g_digits_lut[d3]
-			*buf++ = g_digits_lut[d3 + 1]
-			*buf++ = g_digits_lut[d4]
-			*buf++ = g_digits_lut[d4 + 1]
+			buf[0] = g_digits_lut[d3]
+			buf++
+			buf[0] = g_digits_lut[d3 + 1]
+			buf++
+			buf[0] = g_digits_lut[d4]
+			buf++
+			buf[0] = g_digits_lut[d4 + 1]
+			buf++
 		}
 	}
 

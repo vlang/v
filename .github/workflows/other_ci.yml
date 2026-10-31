@@ -11,25 +11,23 @@ on:
       - '!**/other_ci.yml'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
-  pull_request:
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/other_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
 
 concurrency:
   group: other-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   performance-compare-with-master:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 80
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Environment info
         run: echo "$VFLAGS $GITHUB_SHA $GITHUB_REF"
@@ -45,16 +43,19 @@ jobs:
         run: VREPEAT_SILENT=1 ./v run .github/workflows/compare_pr_to_master.v
 
   prevent-gpl-licenses:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - name: Checkout V ${{ github.head_ref }}
         uses: actions/checkout@v7
         with:
+          persist-credentials: false
           path: v
       - name: Checkout V master
         uses: actions/checkout@v7
         with:
+          persist-credentials: false
           repository: vlang/v
           path: vmaster
       - name: Detect potentially added GPL licensed code
@@ -68,12 +69,15 @@ jobs:
           diff -d -a -U 2 --color=always gpl_res_vmaster gpl_res_vnew
 
   code-formatting:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       VFLAGS: -cc gcc
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Environment info
         run: echo "$VFLAGS $GITHUB_SHA $GITHUB_REF"
       - name: Build local v
@@ -84,12 +88,15 @@ jobs:
         run: ./v -silent test-fmt
 
   performance-regressions:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     env:
       VFLAGS: -cc gcc
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Environment info
         run: echo "$VFLAGS $GITHUB_SHA $GITHUB_REF"
       - name: Build local v
@@ -108,6 +115,7 @@ jobs:
         run: ./v repeat --max_time 12000 --series 3 --runs 20 --nmins 2 --nmaxs 5 --warmup 3 --fail_percent 10 -t 'cd {T} ; ./v -o v.c cmd/v' . ./vmaster
 
   misc-tooling:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -115,6 +123,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          persist-credentials: false
           fetch-depth: 10
       - uses: ./.github/actions/cache-apt-packages-action
       - name: Build v
@@ -151,10 +160,13 @@ jobs:
           ./v should-compile-all examples/sokol/*.v examples/sokol/0?*/*.v
 
   parser-silent:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Build local v
         run: |
           make -j4 && ./v symlink

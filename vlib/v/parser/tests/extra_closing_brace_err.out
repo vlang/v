@@ -1,0 +1,7 @@
+vlib/v/parser/tests/extra_closing_brace_err.vv:15:1: error: invalid expression: unexpected token `}`
+   13 |     }
+   14 |     return res
+   15 | }
+      | ^
+   16 | 
+   17 | pub fn (mod &Depmod) format() string {

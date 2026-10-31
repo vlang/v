@@ -9,23 +9,27 @@ on:
       - '.github/actions/setup-v/**'
       - '**/toml_ci.yml'
       - '!**.md'
-  pull_request:
-    paths:
-      - 'vlib/**'
-      - '.github/actions/setup-v/**'
-      - '**/toml_ci.yml'
-      - '!**.md'
 
 concurrency:
   group: toml-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   toml-module-pass-external-test-suites:
     runs-on: ubuntu-latest
+    env:
+      # Stop a failing test session at its first failure instead of
+      # running the whole suite to completion; the remaining files
+      # add no signal.
+      VTEST_FAIL_FAST: '1'
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: Cache V toolchain
         id: cache-v
         uses: actions/cache@v6

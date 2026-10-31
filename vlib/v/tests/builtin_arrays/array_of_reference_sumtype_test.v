@@ -32,9 +32,9 @@ fn test_array_of_reference_sumtype() {
 	mut parent := &Element{
 		name: 'parent'
 	}
-	mut child := &Element{
+	mut child := &Node(Element{
 		name: 'child'
-	}
+	})
 	parent.append_child(child)
 
 	ret := parent.has_child(child)
@@ -44,17 +44,17 @@ fn test_array_of_reference_sumtype() {
 	assert ret == 0
 }
 
-fn test_array_of_reference_sumtype_attribute_variant_aliases_original_payload() {
+fn test_array_of_reference_sumtype_attribute_reference_aliases_original_sum() {
 	mut parent := &Element{
 		name: 'parent'
 	}
-	attr := &Attribute{
+	attr := &Node(Attribute{
 		name:  'foo'
 		value: 'bar'
-	}
+	})
 	parent.append_child(attr)
 
-	attr_node := &Node(attr)
+	attr_node := attr
 	assert parent.has_child(attr_node) == 0
 
 	if parent.child_nodes[0] is Attribute {

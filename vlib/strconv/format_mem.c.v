@@ -134,332 +134,106 @@ pub fn format_dec_sb(d u64, p BF_param, mut res strings.Builder) {
 	return
 }
 
-// f64_to_str_lnd1 formats a f64 to a `string` with `dec_digit` digits after the dot.
-@[direct_array_access; manualfree]
+// f64_to_str_lnd1 formats the exact f64 value with dec_digit fractional digits, rounding half up.
 pub fn f64_to_str_lnd1(f f64, dec_digit int) string {
-	unsafe {
-		// we add the rounding value
-		clamped_dec := if dec_digit >= dec_round.len { dec_round.len - 1 } else { dec_digit }
-		s := f64_to_str(f + dec_round[clamped_dec], 18)
-		// check for +inf -inf Nan
-		if s.len > 2 && (s[0] == `n` || s[1] == `i`) {
-			return s
-		}
-
-		m_sgn_flag := false
-		mut sgn := 1
-		mut b := [26]u8{}
-		mut d_pos := 1
-		mut i := 0
-		mut i1 := 0
-		mut exp := 0
-		mut exp_sgn := 1
-
-		mut dot_res_sp := -1
-
-		// get sign and decimal parts
-		for c in s {
-			match c {
-				`-` {
-					sgn = -1
-					i++
-				}
-				`+` {
-					sgn = 1
-					i++
-				}
-				`0`...`9` {
-					b[i1] = c
-					i1++
-					i++
-				}
-				`.` {
-					if sgn > 0 {
-						d_pos = i
-					} else {
-						d_pos = i - 1
-					}
-					i++
-				}
-				`e` {
-					i++
-					break
-				}
-				else {
-					s.free()
-					return '[Float conversion error!!]'
-				}
-			}
-		}
-		b[i1] = 0
-
-		// get exponent
-		if s[i] == `-` {
-			exp_sgn = -1
-			i++
-		} else if s[i] == `+` {
-			exp_sgn = 1
-			i++
-		}
-
-		mut c := i
-		for c < s.len {
-			exp = exp * 10 + int(s[c] - `0`)
-			c++
-		}
-
-		// Reserve enough space for the current digits, exponent-driven zeros,
-		// requested fractional padding, and the trailing NUL.
-		extra_frac_digits := if dec_digit > 0 { dec_digit } else { 0 }
-		sign_len := if sgn < 0 { 1 } else { 0 }
-		mut res := []u8{len: sign_len + i1 + exp + extra_frac_digits + 4, init: 0}
-		mut r_i := 0 // result string buffer index
-
-		// println("s:${sgn} b:${b[0]} es:${exp_sgn} exp:${exp}")
-
-		// s no more needed
-		s.free()
-
-		if sgn == 1 {
-			if m_sgn_flag {
-				res[r_i] = `+`
-				r_i++
-			}
-		} else {
-			res[r_i] = `-`
-			r_i++
-		}
-
-		i = 0
-		if exp_sgn >= 0 {
-			for b[i] != 0 {
-				res[r_i] = b[i]
-				r_i++
-				i++
-				if i >= d_pos && exp >= 0 {
-					if exp == 0 {
-						dot_res_sp = r_i
-						res[r_i] = `.`
-						r_i++
-					}
-					exp--
-				}
-			}
-			for exp >= 0 {
-				res[r_i] = `0`
-				r_i++
-				exp--
-			}
-			// println("exp: ${exp} ${r_i} ${dot_res_sp}")
-		} else {
-			mut dot_p := true
-			for exp > 0 {
-				res[r_i] = `0`
-				r_i++
-				exp--
-				if dot_p {
-					dot_res_sp = r_i
-					res[r_i] = `.`
-					r_i++
-					dot_p = false
-				}
-			}
-			for b[i] != 0 {
-				res[r_i] = b[i]
-				r_i++
-				i++
-			}
-		}
-
-		// no more digits needed, stop here
-		if dec_digit <= 0 {
-			// C.printf(c'f: %f, i: %d, res.data: %p | dot_res_sp: %d | *(res.data): %s \n', f, i, res.data, dot_res_sp, res.data)
-			if dot_res_sp < 0 {
-				dot_res_sp = i + 1
-			}
-			tmp_res := tos(res.data, dot_res_sp).clone()
-			res.free()
-			return tmp_res
-		}
-
-		// println("r_i-d_pos: ${r_i - d_pos}")
-		if dot_res_sp >= 0 {
-			r_i = dot_res_sp + dec_digit + 1
-			res[r_i] = 0
-			for c1 in 1 .. dec_digit + 1 {
-				if res[r_i - c1] == 0 {
-					res[r_i - c1] = `0`
-				}
-			}
-			// println("result: [${tos(&res[0],r_i)}]")
-			tmp_res := tos(res.data, r_i).clone()
-			res.free()
-			return tmp_res
-		} else {
-			if dec_digit > 0 {
-				mut c1 := 0
-				res[r_i] = `.`
-				r_i++
-				for c1 < dec_digit {
-					res[r_i] = `0`
-					r_i++
-					c1++
-				}
-				res[r_i] = 0
-			}
-			tmp_res := tos(res.data, r_i).clone()
-			res.free()
-			return tmp_res
-		}
-	}
+	return exact_float_fixed(f, dec_digit)
 }
 
-// format_fl is a `strings.Builder` version of format_fl.
-@[direct_array_access; manualfree]
+// format_fl formats the exact f64 value in fixed notation according to p, rounding half up.
 pub fn format_fl(f f64, p BF_param) string {
-	unsafe {
-		mut fs := f64_to_str_lnd1(if f >= 0.0 { f } else { -f }, p.len1)
+	return format_float_magnitude(exact_float_fixed(fabs(f), p.len1), p)
+}
 
-		// error!!
-		if fs[0] == `[` {
-			return fs
-		}
-
-		if p.rm_tail_zero {
-			tmp := fs
-			fs = remove_tail_zeros(fs)
-			tmp.free()
-		}
-
-		mut buf := [max_size_f64_char]u8{} // write temp float buffer in stack
-		mut out := [max_size_f64_char]u8{} // out buffer
-		mut buf_i := 0 // index temporary string
-		mut out_i := 0 // index output string
-
-		mut sign_len_diff := 0
-		if p.pad_ch == `0` {
-			if p.positive {
-				if p.sign_flag {
-					out[out_i] = `+`
-					out_i++
-					sign_len_diff = -1
-				}
-			} else {
-				out[out_i] = `-`
-				out_i++
-				sign_len_diff = -1
-			}
+// format_fl_sb appends the same fixed notation as format_fl to sb.
+// Finite values use stack storage for their exact digits, without temporary heap allocations.
+// BF_param.positive supplies the output sign.
+pub fn format_fl_sb(f f64, p BF_param, mut sb strings.Builder) {
+	mut bits := Uf64{}
+	bits.f = f
+	if unsafe { (bits.u >> 52) & 0x7ff == 0x7ff } {
+		special := format_fl(f, p)
+		sb.write_string(special)
+		unsafe { special.free() }
+		return
+	}
+	precision := if p.len1 > 0 { p.len1 } else { 0 }
+	mut decimal_buf := [768]u8{}
+	mut length, exponent := exact_float_decimal_digits(f, mut decimal_buf)
+	mut trailing := exponent + precision
+	if trailing < 0 {
+		keep := length + trailing
+		if keep <= 0 {
+			decimal_buf[0] = if keep == 0 && decimal_buf[0] >= `5` { `1` } else { `0` }
+			length = 1
 		} else {
-			if p.positive {
-				if p.sign_flag {
-					buf[buf_i] = `+`
-					buf_i++
+			round_up := decimal_buf[keep] >= `5`
+			length = keep
+			if round_up {
+				mut i := length - 1
+				for i >= 0 && decimal_buf[i] == `9` {
+					decimal_buf[i] = `0`
+					i--
 				}
-			} else {
-				buf[buf_i] = `-`
-				buf_i++
+				if i >= 0 {
+					decimal_buf[i]++
+				} else {
+					decimal_buf[0] = `1`
+					decimal_buf[length] = `0`
+					length++
+				}
 			}
 		}
-
-		// copy the float
-		vmemcpy(&buf[buf_i], fs.str, fs.len)
-		buf_i += fs.len
-
-		// make the padding if needed
-		dif := p.len0 - buf_i + sign_len_diff
-		if p.align == .right {
-			for i1 := 0; i1 < dif; i1++ {
-				out[out_i] = p.pad_ch
-				out_i++
+		trailing = 0
+	}
+	mut fractional := precision
+	if p.rm_tail_zero {
+		if length == 1 && decimal_buf[0] == `0` {
+			fractional = 0
+		} else {
+			mut zeros := trailing
+			for i := length - 1; i >= 0 && decimal_buf[i] == `0`; i-- {
+				zeros++
 			}
+			fractional = if zeros < precision { precision - zeros } else { 0 }
 		}
-		vmemcpy(&out[out_i], &buf[0], buf_i)
-		out_i += buf_i
-		if p.align == .left {
-			for i1 := 0; i1 < dif; i1++ {
-				out[out_i] = p.pad_ch
-				out_i++
-			}
+	}
+	integer_digits := if length + trailing > precision { length + trailing - precision } else { 1 }
+	leading := integer_digits + precision - length - trailing
+	sign_len := if !p.positive || p.sign_flag { 1 } else { 0 }
+	number_len := integer_digits + (if fractional > 0 { fractional + 1 } else { 0 })
+	padding := p.len0 - number_len - sign_len
+	if p.align != .left && p.pad_ch != `0` {
+		for _ in 0 .. padding {
+			sb.write_u8(p.pad_ch)
 		}
-		out[out_i] = 0
-
-		// return and free
-		tmp := fs
-		fs = tos_clone(&out[0])
-		tmp.free()
-		return fs
+	}
+	if !p.positive {
+		sb.write_u8(`-`)
+	} else if p.sign_flag {
+		sb.write_u8(`+`)
+	}
+	if p.align != .left && p.pad_ch == `0` {
+		for _ in 0 .. padding {
+			sb.write_u8(p.pad_ch)
+		}
+	}
+	for i in 0 .. integer_digits + fractional {
+		if i == integer_digits {
+			sb.write_u8(`.`)
+		}
+		index := i - leading
+		sb.write_u8(if index >= 0 && index < length { decimal_buf[index] } else { `0` })
+	}
+	if p.align == .left {
+		for _ in 0 .. padding {
+			sb.write_u8(p.pad_ch)
+		}
 	}
 }
 
-// format_es returns a f64 as a `string` formatted according to the options set in `p`.
-@[direct_array_access; manualfree]
+// format_es formats the exact f64 value in scientific notation according to p, rounding half up.
 pub fn format_es(f f64, p BF_param) string {
-	unsafe {
-		mut fs := f64_to_str_pad(if f > 0 { f } else { -f }, p.len1)
-		if p.rm_tail_zero {
-			tmp := fs
-			fs = remove_tail_zeros(fs)
-			tmp.free()
-		}
-
-		mut buf := [max_size_f64_char]u8{} // write temp float buffer in stack
-		mut out := [max_size_f64_char]u8{} // out buffer
-		mut buf_i := 0 // index temporary string
-		mut out_i := 0 // index output string
-
-		mut sign_len_diff := 0
-		if p.pad_ch == `0` {
-			if p.positive {
-				if p.sign_flag {
-					out[out_i] = `+`
-					out_i++
-					sign_len_diff = -1
-				}
-			} else {
-				out[out_i] = `-`
-				out_i++
-				sign_len_diff = -1
-			}
-		} else {
-			if p.positive {
-				if p.sign_flag {
-					buf[buf_i] = `+`
-					buf_i++
-				}
-			} else {
-				buf[buf_i] = `-`
-				buf_i++
-			}
-		}
-
-		// copy the float
-		vmemcpy(&buf[buf_i], fs.str, fs.len)
-		buf_i += fs.len
-
-		// make the padding if needed
-		dif := p.len0 - buf_i + sign_len_diff
-		if p.align == .right {
-			for i1 := 0; i1 < dif; i1++ {
-				out[out_i] = p.pad_ch
-				out_i++
-			}
-		}
-		vmemcpy(&out[out_i], &buf[0], buf_i)
-		out_i += buf_i
-		if p.align == .left {
-			for i1 := 0; i1 < dif; i1++ {
-				out[out_i] = p.pad_ch
-				out_i++
-			}
-		}
-		out[out_i] = 0
-
-		// return and free
-		tmp := fs
-		fs = tos_clone(&out[0])
-		tmp.free()
-		return fs
-	}
+	return format_float_magnitude(exact_float_scientific(fabs(f), p.len1), p)
 }
 
 // remove_tail_zeros strips trailing zeros from `s` and return the resulting `string`.

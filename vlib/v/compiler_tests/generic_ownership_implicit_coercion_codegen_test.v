@@ -18,7 +18,9 @@ fn test_generic_ownership_implicit_reference_coercions() {
 		os.rm(output + '.c') or {}
 	}
 	build :=
-		os.execute('${generic_coercion_vexe} -gc none -d ownership -path "${generic_coercion_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${generic_coercion_v3_src}')
+		os.exec([generic_coercion_vexe, '-gc', 'none', '-d', 'ownership', '-path',
+			'${generic_coercion_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${generic_coercion_v3_src}'])
 	assert build.exit_code == 0, build.output
 	os.write_file(source, "interface Matcher {
 \tfind() int
@@ -74,9 +76,10 @@ fn main() {
 		panic(err)
 	}
 	compile :=
-		os.execute('${v3_bin} -ownership -d ownership -nocache -no-parallel -o ${output} ${source}')
+		os.exec([v3_bin, '-ownership', '-d', 'ownership', '-nocache', '-no-parallel', '-o', output,
+			source])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(output)
+	run := os.exec([output])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok', run.output
 }

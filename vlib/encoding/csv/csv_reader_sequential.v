@@ -193,7 +193,8 @@ pub fn (mut cr SequentialReader) get_next_row() ![]string {
 	mut i := cr.start_index
 	mut state := SequentialReadingState.cell
 
-	p := &u8(cr.mem_buf)
+	// mem_buf is the raw byte buffer owned by the reader.
+	p := unsafe { &u8(cr.mem_buf) }
 	for i < cr.end_index {
 		if i < cr.mem_buf_start || i >= cr.mem_buf_end {
 			cr.fill_buffer(i)!

@@ -638,11 +638,6 @@ struct InvalidIndexFieldName1 {
 }
 
 fn test_orm_func_invalid_index_field_name1() {
-	p := InvalidIndexFieldName1{
-		age_f32: 10.33
-		age_f64: 10.343
-	}
-
 	db := sqlite.connect(':memory:')!
 
 	mut qb := orm.new_query[InvalidIndexFieldName1](db)
@@ -661,11 +656,6 @@ struct InvalidIndexFieldName2 {
 }
 
 fn test_orm_func_invalid_index_field_name2() {
-	p := InvalidIndexFieldName2{
-		age_f32: 10.33
-		age_f64: 10.343
-	}
-
 	db := sqlite.connect(':memory:')!
 
 	mut qb := orm.new_query[InvalidIndexFieldName2](db)

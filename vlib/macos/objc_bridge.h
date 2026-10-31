@@ -1,34 +1,18 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#ifdef __TINYC__
-typedef void* id;
-typedef void* Class;
-typedef void* SEL;
-typedef void* IMP;
-typedef void Protocol;
-typedef void* Ivar;
-typedef uintptr_t objc_AssociationPolicy;
-
-id objc_getClass(const char*);
-Protocol* objc_getProtocol(const char*);
-SEL sel_registerName(const char*);
-Class objc_allocateClassPair(Class, const char*, size_t);
-void objc_registerClassPair(Class);
-bool class_addMethod(Class, SEL, IMP, const char*);
-bool class_addIvar(Class, const char*, size_t, uint8_t, const char*);
-bool class_addProtocol(Class, Protocol*);
-void objc_setAssociatedObject(id, const void*, id, objc_AssociationPolicy);
-id objc_getAssociatedObject(id, const void*);
-Class object_getClass(id);
-Ivar class_getInstanceVariable(Class, const char*);
-ptrdiff_t ivar_getOffset(Ivar);
-void objc_msgSend(void);
-
-#define __bridge
-#else
+#if defined(__TINYC__) && !defined(__OBJC__)
+// Older SDKs declare this Blocks API without checking __BLOCKS__. TCC cannot
+// parse block types; the bridge does not call this function.
+#define objc_enumerateClasses(...) objc_enumerateClasses(void)
+#endif
 #include <objc/message.h>
 #include <objc/runtime.h>
+#if defined(__TINYC__) && !defined(__OBJC__)
+#undef objc_enumerateClasses
+// TCC reads the SDK runtime headers as plain C. Declaring the runtime types
+// here instead would conflict with any other header that includes them.
+#define __bridge
 #endif
 
 typedef struct macos_rect {
@@ -284,6 +268,14 @@ static inline void macos_objc_msg_void_point(void* obj, void* sel, macos_point p
 	((void (*)(void*, void*, macos_point))objc_msgSend)(obj, sel, point);
 }
 
+static inline void macos_objc_msg_void_point_id(void* obj, void* sel, macos_point point, void* a1) {
+	((void (*)(void*, void*, macos_point, void*))objc_msgSend)(obj, sel, point, a1);
+}
+
+static inline macos_point macos_objc_msg_point_id(void* obj, void* sel, void* a0) {
+	return ((macos_point (*)(void*, void*, void*))objc_msgSend)(obj, sel, a0);
+}
+
 static inline void macos_objc_msg_void_id_sel_id_id(void* obj, void* sel, void* a0, void* a1, void* a2, void* a3) {
 	((void (*)(void*, void*, void*, void*, void*, void*))objc_msgSend)(obj, sel, a0, a1, a2, a3);
 }
@@ -312,6 +304,15 @@ static inline double macos_objc_msg_f64(void* obj, void* sel) {
 	return ((double (*)(void*, void*))objc_msgSend)(obj, sel);
 }
 
+// A 32-byte NSRect is answered through memory on Intel, which plain
+// objc_msgSend does not do; Apple Silicon returns it in registers, so the
+// direct call is kept there.
 static inline macos_rect macos_objc_msg_rect(void* obj, void* sel) {
+#if defined(__x86_64__)
+	macos_rect result;
+	((void (*)(macos_rect*, void*, void*))objc_msgSend_stret)(&result, obj, sel);
+	return result;
+#else
 	return ((macos_rect (*)(void*, void*))objc_msgSend)(obj, sel);
+#endif
 }

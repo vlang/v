@@ -11,7 +11,8 @@ fn tlc_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_tmpl_lambda_param_callee_test_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${tlc_vexe} -gc none -path "${tlc_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${tlc_v3_src}')
+		os.exec([tlc_vexe, '-gc', 'none', '-path', '${tlc_vlib_dir}' + '|@vlib|@vmodules', '-o',
+			v3_bin, '${tlc_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -34,10 +35,10 @@ fn test_template_iife_captures_function_valued_lambda_parameter() {
 	source := "module main\n\nfn render(s string) string {\n\treturn 'TOP:' + s\n}\n\nfn build(row string) string {\n\tcallbacks := [fn (s string) string {\n\t\treturn 'LOCAL:' + s\n\t}]\n\tparts := callbacks.map(|render| \$tmpl('row.txt'))\n\treturn ('<' + parts.join(',') + '>').replace('\\n', '')\n}\n\nfn main() {\n\tprintln(build('abc'))\n}\n"
 	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_tmpl_lambda_param_callee_bin_${pid}')
-	compile := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${bin}')
+	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	// The template called the captured lambda parameter (the LOCAL callback), not top-level render.
 	assert run.output.trim_space() == '<LOCAL:abc>', run.output

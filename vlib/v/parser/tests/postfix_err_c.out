@@ -1,0 +1,25 @@
+vlib/v/parser/tests/postfix_err_c.vv:5:5: warning: `++` operator can only be used as a statement
+    3 | fn test_postfix() {
+    4 |     mut x := 1
+    5 |     f(x++ )
+      |        ~~
+    6 |     f(x++ /* comment */)
+    7 |     a := [x]
+vlib/v/parser/tests/postfix_err_c.vv:6:5: warning: `++` operator can only be used as a statement
+    4 |     mut x := 1
+    5 |     f(x++ )
+    6 |     f(x++ /* comment */)
+      |        ~~
+    7 |     a := [x]
+    8 |     _ = a[x-- ]
+vlib/v/parser/tests/postfix_err_c.vv:8:9: warning: `--` operator can only be used as a statement
+    6 |     f(x++ /* comment */)
+    7 |     a := [x]
+    8 |     _ = a[x-- ]
+      |            ~~
+    9 | }
+vlib/v/parser/tests/postfix_err_c.vv:1:6: notice: unused parameter: `i`
+    1 | fn f(i int) {}
+      |      ^
+    2 | 
+    3 | fn test_postfix() {

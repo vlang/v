@@ -41,7 +41,7 @@ fn test_skip_unused_walks_mut_interface_dispatch_method_dependencies() {
 	].join('\n')
 	os.write_file(source_path, source) or { panic(err) }
 	res :=
-		os.execute('${os.quoted_path(vexe)} -o ${os.quoted_path(binary_path)} ${os.quoted_path(source_path)}')
+		os.exec([vexe, '-o', binary_path, source_path])
 	if res.exit_code != 0 {
 		panic(res.output)
 	}

@@ -1,0 +1,8 @@
+const (
+	x = 2
+	in = 3
+)
+
+fn main() {
+	println(x)
+}

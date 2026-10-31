@@ -17,7 +17,9 @@ fn test_pointer_map_index_is_preserved_in_multi_return_lvalue() {
 		os.rm(bin + '.c') or {}
 	}
 	build :=
-		os.execute('${pointer_map_lvalue_vexe} -gc none -prealloc -path "${pointer_map_lvalue_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${pointer_map_lvalue_v3_src}')
+		os.exec([pointer_map_lvalue_vexe, '-gc', 'none', '-prealloc', '-path',
+			'${pointer_map_lvalue_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${pointer_map_lvalue_v3_src}'])
 	assert build.exit_code == 0, build.output
 
 	os.write_file(src, "fn pair() ([]int, int) {
@@ -111,9 +113,10 @@ fn main() {
 ") or {
 		panic(err)
 	}
-	compile := os.execute('${v3_bin} -nocache -no-parallel -keepc -b c ${src} -o ${bin}')
+	compile := os.exec([v3_bin, '-nocache', '-no-parallel', '-keepc', '-b', 'c', '${src}', '-o',
+		bin])
 	assert compile.exit_code == 0, compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '24:9', run.output
 

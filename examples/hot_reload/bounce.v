@@ -1,5 +1,7 @@
-// Build this example with
-// v -live bounce.v
+// Run this example with `v watch run bounce.v`, then modify it while
+// it is running to see the changes take effect on restart.
+// (The older `v -live` workflow is described in the Hot code reloading
+// section of doc/docs.md.)
 module main
 
 import gg

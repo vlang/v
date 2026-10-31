@@ -5,15 +5,139 @@ module main
 
 import os
 import time
+import v.cmdexec
+import v.util
 
 // `vtimeout` is used as the probe tool: it is small enough to compile quickly, and
 // `v timeout <seconds> <command>` both succeeds and terminates on its own.
 const probe_tool = 'vtimeout'
+const toolcache_prune_probe_env = 'VTEST_TOOLCACHE_PRUNE_PROBE'
+const toolcache_sidecar_probe_env = 'VTEST_TOOLCACHE_SIDECAR_PROBE'
+
+// Reuse the test executable for a bounded pruning probe. Reading a planted FIFO used to
+// block indefinitely while holding the tool's lock, so run that work in a child process.
+fn testsuite_begin() {
+	if mode := os.getenv_opt(toolcache_sidecar_probe_env) {
+		// Act as a compiler that produces an executable and optionally a sidecar.
+		mut output := ''
+		mut dumped := ''
+		for i, arg in os.args {
+			if arg == '-o' { output = os.args[i + 1] }
+			if arg == '-dump-files' { dumped = os.args[i + 1] }
+		}
+		os.cp(os.executable(), output)!
+		os.chmod(output, 0o755)!
+		if mode == 'sidecar' {
+			os.write_file('${output}.manifest', 'application manifest')!
+		}
+		os.write_file(dumped, os.args.last() + '\n')!
+		os.write_file(os.args.last() + '.stage', os.dir(output))!
+		exit(0)
+	}
+	if directory := os.getenv_opt(toolcache_prune_probe_env) {
+		prune_stale_tool_binaries(ToolCacheEntry{
+			name: 'vdemo'
+			dir:  os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+		})
+		exit(0)
+	}
+}
+
+fn test_cached_tool_publishes_and_tracks_its_application_manifest() ! {
+	directory := toolcache_test_dir('application_manifest')
+	defer { os.rmdir_all(directory) or {} }
+	previous := os.getenv_opt(toolcache_sidecar_probe_env)
+	defer {
+		if value := previous {
+			os.setenv(toolcache_sidecar_probe_env, value, true)
+		} else {
+			os.unsetenv(toolcache_sidecar_probe_env)
+		}
+	}
+	source := os.join_path(directory, 'vdemo.v')
+	os.write_file(source, 'module main\n')!
+	// Source timestamps must be older than the recorded build start.
+	time.sleep(1100 * time.millisecond)
+	cache := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	entry := ToolCacheEntry{
+		name:                 'vdemo'
+		source:               source
+		vroot:                directory
+		dir:                  cache
+		binary:               os.join_path(cache, 'vdemo' + tool_exe_suffix())
+		manifest:             os.join_path(cache, 'inputs')
+		unbuildable:          os.join_path(cache, 'unbuildable')
+		unbuildable_manifest: os.join_path(cache, 'unbuildable.inputs')
+	}
+	os.setenv(toolcache_sidecar_probe_env, 'sidecar', true)
+	build_tool_binary(os.executable(), entry)!
+	sidecar := '${entry.binary}.manifest'
+	assert os.read_file(sidecar)! == 'application manifest'
+	assert !os.exists(os.read_file(source + '.stage')!)
+	assert tool_cache_is_fresh(entry), tool_cache_stale_reason(entry)
+	os.write_file(sidecar, 'application manifesT')!
+	assert !tool_cache_is_fresh(entry)
+	build_tool_binary(os.executable(), entry)!
+	assert os.read_file(sidecar)! == 'application manifest'
+	os.rm(sidecar)!
+	assert !tool_cache_is_fresh(entry)
+	// Rebuilding without a sidecar removes the old one and records its absence.
+	os.write_file(sidecar, 'stale manifest')!
+	os.setenv(toolcache_sidecar_probe_env, 'none', true)
+	build_tool_binary(os.executable(), entry)!
+	assert !os.exists(sidecar)
+	assert tool_cache_is_fresh(entry), tool_cache_stale_reason(entry)
+	os.write_file(sidecar, 'unexpected manifest')!
+	assert !tool_cache_is_fresh(entry)
+}
+
+fn toolcache_prune_probe(directory string) os.Result {
+	previous := os.getenv_opt(toolcache_prune_probe_env)
+	os.setenv(toolcache_prune_probe_env, directory, true)
+	defer {
+		if value := previous {
+			os.setenv(toolcache_prune_probe_env, value, true)
+		} else {
+			os.unsetenv(toolcache_prune_probe_env)
+		}
+	}
+	return cmdexec.run_with_timeout(os.executable(), [], 5000)
+}
+
+// tool_cache_is_fresh reports whether `entry.binary` can be executed as is, i.e. whether
+// every source file it was built from is still exactly the way it was at build time.
+fn tool_cache_is_fresh(entry ToolCacheEntry) bool {
+	return tool_cache_stale_reason(entry) == ''
+}
+
+// record_unbuildable_tool writes a failed build and its inputs for cache test fixtures.
+fn record_unbuildable_tool(entry ToolCacheEntry, dumped string, started i64, details string) {
+	manifest := encode_unbuildable_tool_manifest(entry, dumped, started, details)
+	os.write_file(entry.unbuildable_manifest, manifest) or { return }
+	os.write_file(entry.unbuildable, details) or {}
+}
+
+// prune_stale_tool_binaries drops the cache entries of previous builds of the same tool.
+// Unlinking an executable that another process is currently running is safe on POSIX: that
+// process keeps its own already opened image.
+fn prune_stale_tool_binaries(entry ToolCacheEntry) {
+	mut build_lock := tool_cache_lock(entry) or { return }
+	if !build_lock.try_acquire() {
+		return
+	}
+	defer {
+		build_lock.release()
+	}
+	prune_stale_tool_binaries_locked(entry)
+}
 
 fn toolcache_test_dir(name string) string {
 	directory := os.join_path(os.vtmp_dir(), 'v_toolcache_test', '${name}_${os.getpid()}')
 	os.rmdir_all(directory) or {}
 	os.mkdir_all(directory) or { panic(err) }
+	// Make the test folder private (0700). The cache refuses folders that the group can
+	// write to, and a umask like 002 would create them that way.
+	os.chmod(directory, 0o700) or { panic(err) }
 	return directory
 }
 
@@ -45,7 +169,7 @@ fn test_a_second_invocation_of_a_tool_reuses_the_compiled_binary() {
 	}
 	command := '${os.quoted_path(vexe)} timeout 60 ${os.quoted_path(vexe)} version'
 
-	first := os.execute(command)
+	first := os.exec([vexe, 'timeout', '60', vexe, 'version'])
 	assert first.exit_code == 0, first.output
 	entries := cached_entry_dirs(cache, probe_tool)
 	assert entries.len == 1, 'expected a single cached `${probe_tool}`, got ${entries}'
@@ -57,7 +181,7 @@ fn test_a_second_invocation_of_a_tool_reuses_the_compiled_binary() {
 	assert os.is_executable(binary), 'expected an executable at `${binary}`'
 	before := os.stat(binary)!
 
-	// Every rebuild prunes the earlier entries of the same tool, so a decoy shaped like the
+	// Every rebuild prunes invalid earlier entries of the same tool, so a decoy shaped like the
 	// entry of an older build, still being there afterwards, proves that the second
 	// invocation did not recompile anything.
 	decoy := os.join_path(cache, '${probe_tool}-' + 'a'.repeat(64))
@@ -73,7 +197,7 @@ fn test_a_second_invocation_of_a_tool_reuses_the_compiled_binary() {
 	reason := tool_cache_stale_reason(probe)
 	assert reason == '', 'the just built tool is already considered stale: ${reason}'
 
-	second := os.execute(command)
+	second := os.exec([vexe, 'timeout', '60', vexe, 'version'])
 	assert second.exit_code == 0, second.output
 	assert os.exists(decoy), 'the tool was recompiled although none of its inputs changed'
 	after := os.stat(binary)!
@@ -134,7 +258,9 @@ fn test_the_cache_key_covers_vflags() {
 // fresh_cache_fixture builds a cache entry whose recorded inputs are all still valid.
 fn fresh_cache_fixture(name string) (ToolCacheEntry, string) {
 	directory := toolcache_test_dir(name)
-	binary := os.join_path(directory, 'vdemo-0123456789')
+	// A cached tool is named like the tool plus the platform suffix, because that
+	// is what `os.is_executable` accepts on this platform.
+	binary := os.join_path(directory, 'vdemo-0123456789' + tool_exe_suffix())
 	os.write_file(binary, 'a pretend compiled tool') or { panic(err) }
 	os.chmod(binary, 0o755) or { panic(err) }
 	module_dir := os.join_path(directory, 'demomod')
@@ -183,6 +309,33 @@ fn test_a_new_file_in_an_imported_module_invalidates_the_cache() {
 	}
 	os.write_file(os.join_path(os.dir(dependency), 'extra.v'), 'module demomod\n')!
 	assert !tool_cache_is_fresh(entry), 'a new module source must force a rebuild'
+}
+
+fn test_project_boundary_markers_invalidate_the_cache() {
+	for marker_name in util.project_boundary_markers {
+		entry, dependency := fresh_cache_fixture('boundary_${marker_name}')
+		defer { os.rmdir_all(os.dir(entry.binary)) or {} }
+		marker := os.join_path(os.dir(os.dir(dependency)), marker_name)
+		if marker_name == '.v.mod.stop' {
+			os.write_file(marker, '')!
+		} else {
+			os.mkdir(marker)!
+		}
+		assert !tool_cache_is_fresh(entry), 'adding ${marker_name} must force a rebuild'
+		time.sleep(1100 * time.millisecond)
+		os.write_file(entry.manifest, encode_tool_cache_manifest([dependency], time.now().unix()))!
+		assert tool_cache_is_fresh(entry)
+		if marker_name == '.v.mod.stop' {
+			os.write_file(marker, 'marker contents changed')!
+			assert tool_cache_is_fresh(entry), 'editing ${marker_name} must not force a rebuild'
+			os.rm(marker)!
+		} else {
+			os.write_file(os.join_path(marker, 'index.lock'), '')!
+			assert tool_cache_is_fresh(entry), 'editing ${marker_name} must not force a rebuild'
+			os.rmdir_all(marker)!
+		}
+		assert !tool_cache_is_fresh(entry), 'removing ${marker_name} must force a rebuild'
+	}
 }
 
 fn test_a_missing_or_damaged_manifest_invalidates_the_cache() {
@@ -385,7 +538,11 @@ fn test_publishing_replaces_an_existing_binary() {
 	os.write_file(destination, 'old') or { panic(err) }
 	os.write_file(staged, 'new') or { panic(err) }
 
-	assert publish_atomically(staged, destination)
+	cache_entry := open_tool_cache_entry_dir(directory)!
+	defer {
+		cache_entry.close()
+	}
+	assert cache_entry.publish(staged, os.file_name(destination))
 	assert os.read_file(destination) or { '' } == 'new'
 	assert !os.exists(staged)
 }
@@ -422,6 +579,56 @@ fn test_pruning_collects_binaries_that_were_replaced_while_in_use() {
 	assert os.exists(entry.manifest), 'the current manifest must be kept'
 	assert !os.exists(displaced), 'a binary replaced while in use must be collected'
 	assert !os.exists(stale), 'a previous build must be collected'
+}
+
+fn test_pruning_preserves_other_fresh_keys_and_failures_until_their_inputs_change() {
+	directory := toolcache_test_dir('prune_fresh_keys')
+	defer { os.rmdir_all(directory) or {} }
+	mut dependencies := []string{}
+	mut entries := []ToolCacheEntry{}
+	for index, key in ['a', 'b', 'c'] {
+		module_dir := os.join_path(directory, 'module_${index}')
+		os.mkdir(module_dir)!
+		dependency := os.join_path(module_dir, 'source.v')
+		os.write_file(dependency, 'module module_${index}\n')!
+		dependencies << dependency
+		entry_dir := os.join_path(directory, 'vdemo-' + key.repeat(64))
+		os.mkdir(entry_dir)!
+		entry := ToolCacheEntry{
+			name:                 'vdemo'
+			dir:                  entry_dir
+			binary:               os.join_path(entry_dir, 'vdemo' + tool_exe_suffix())
+			manifest:             os.join_path(entry_dir, 'inputs')
+			unbuildable:          os.join_path(entry_dir, 'unbuildable')
+			unbuildable_manifest: os.join_path(entry_dir, 'unbuildable.inputs')
+		}
+		entries << entry
+		if index < 2 {
+			os.write_file(entry.binary, 'compiled tool ${index}')!
+			os.chmod(entry.binary, 0o755)!
+		} else {
+			os.write_file(entry.unbuildable, 'error: rejected source')!
+		}
+	}
+	time.sleep(1100 * time.millisecond)
+	for index, entry in entries {
+		manifest := encode_tool_cache_manifest([dependencies[index]], time.now().unix())
+		os.write_file(if index < 2 { entry.manifest } else { entry.unbuildable_manifest }, manifest)!
+	}
+
+	prune_stale_tool_binaries(entries[0])
+	assert tool_cache_is_fresh(entries[0])
+	assert tool_cache_is_fresh(entries[1]), 'building one key must preserve another usable key'
+	assert unbuildable_tool_failure(entries[2])? == 'error: rejected source'
+	prune_stale_tool_binaries(entries[1])
+	assert tool_cache_is_fresh(entries[0]), 'alternating keys must reuse both cached builds'
+
+	for index in [1, 2] {
+		os.write_file(dependencies[index], 'module module_${index}\nfn changed() {}\n')!
+	}
+	prune_stale_tool_binaries(entries[0])
+	assert !os.exists(entries[1].dir), 'a changed source must make its old binary collectible'
+	assert !os.exists(entries[2].dir), 'a changed source must make its old failure collectible'
 }
 
 fn test_tool_cache_lock_path_is_persistent_between_owners() {
@@ -505,6 +712,106 @@ fn test_pruning_unlinks_stale_symlinks_without_touching_their_targets() {
 	assert os.read_file(payload)! == 'safe', 'the symlink target must not be traversed'
 }
 
+fn test_pruning_rejects_fifo_metadata_without_blocking() {
+	$if windows {
+		return
+	}
+	directory := toolcache_test_dir('prune_fifo_metadata')
+	defer { os.rmdir_all(directory) or {} }
+	os.mkdir(os.join_path(directory, 'vdemo-' + 'a'.repeat(64)))!
+	manifest := '${tool_cache_manifest_version}\nstarted${tool_cache_field_separator}${time.now().unix()}\n'
+	mut siblings := []string{}
+	for index, metadata in ['inputs', 'unbuildable', 'unbuildable.inputs'] {
+		sibling := os.join_path(directory, 'vdemo-' + ['b', 'c', 'd'][index].repeat(64))
+		os.mkdir(sibling)!
+		siblings << sibling
+		if metadata == 'inputs' {
+			binary := os.join_path(sibling, 'vdemo')
+			os.write_file(binary, 'compiled tool')!
+			os.chmod(binary, 0o755)!
+		} else {
+			os.write_file(os.join_path(sibling, 'unbuildable'), 'source error')!
+			os.write_file(os.join_path(sibling, 'unbuildable.inputs'), manifest)!
+			os.rm(os.join_path(sibling, metadata))!
+		}
+		fifo := cmdexec.run('mkfifo', [os.join_path(sibling, metadata)])
+		assert fifo.exit_code == 0, fifo.output
+	}
+
+	result := toolcache_prune_probe(directory)
+	assert result.exit_code == 0, 'pruning FIFO metadata must return promptly: ${result.output}'
+	for sibling in siblings {
+		assert !os.exists(sibling), 'unsafe metadata cannot preserve `${sibling}`'
+	}
+}
+
+fn test_pruning_does_not_follow_metadata_symlinks() {
+	directory := toolcache_test_dir('prune_metadata_links')
+	defer { os.rmdir_all(directory) or {} }
+	os.mkdir(os.join_path(directory, 'vdemo-' + 'a'.repeat(64)))!
+	manifest := '${tool_cache_manifest_version}\nstarted${tool_cache_field_separator}${time.now().unix()}\n'
+	target := os.join_path(directory, 'outside-metadata')
+	os.write_file(target, manifest)!
+	mut siblings := []string{}
+	for index, metadata in ['inputs', 'unbuildable', 'unbuildable.inputs'] {
+		sibling := os.join_path(directory, 'vdemo-' + ['b', 'c', 'd'][index].repeat(64))
+		os.mkdir(sibling)!
+		siblings << sibling
+		if metadata == 'inputs' {
+			binary := os.join_path(sibling, 'vdemo' + tool_exe_suffix())
+			os.write_file(binary, 'compiled tool')!
+			os.chmod(binary, 0o755)!
+		} else {
+			os.write_file(os.join_path(sibling, 'unbuildable'), 'source error')!
+			os.write_file(os.join_path(sibling, 'unbuildable.inputs'), manifest)!
+			os.rm(os.join_path(sibling, metadata))!
+		}
+		os.symlink(target, os.join_path(sibling, metadata)) or {
+			eprintln('> skipping metadata symlink test: ${err}')
+			return
+		}
+	}
+
+	result := toolcache_prune_probe(directory)
+	assert result.exit_code == 0, result.output
+	for sibling in siblings {
+		assert !os.exists(sibling), 'metadata links must not make `${sibling}` fresh'
+	}
+	assert os.read_file(target)! == manifest, 'the metadata link target must remain untouched'
+}
+
+fn test_pruning_skips_foreign_entries_and_rejects_foreign_metadata() {
+	$if windows {
+		return
+	}
+	if os.getuid() != 0 {
+		eprintln('> skipping foreign-owner pruning test: changing ownership requires root')
+		return
+	}
+	directory := toolcache_test_dir('prune_foreign_metadata')
+	defer { os.rmdir_all(directory) or {} }
+	os.mkdir(os.join_path(directory, 'vdemo-' + 'a'.repeat(64)))!
+	foreign_entry := os.join_path(directory, 'vdemo-' + 'b'.repeat(64))
+	os.mkdir(foreign_entry)!
+	foreign_fifo := cmdexec.run('mkfifo', [os.join_path(foreign_entry, 'unbuildable')])
+	assert foreign_fifo.exit_code == 0, foreign_fifo.output
+	original_mode := os.stat(foreign_entry)!.mode
+	os.chown(foreign_entry, 1, -1)!
+	owned_entry := os.join_path(directory, 'vdemo-' + 'c'.repeat(64))
+	os.mkdir(owned_entry)!
+	manifest := '${tool_cache_manifest_version}\nstarted${tool_cache_field_separator}${time.now().unix()}\n'
+	os.write_file(os.join_path(owned_entry, 'unbuildable.inputs'), manifest)!
+	details := os.join_path(owned_entry, 'unbuildable')
+	os.write_file(details, 'source error')!
+	os.chown(details, 1, -1)!
+
+	result := toolcache_prune_probe(directory)
+	assert result.exit_code == 0, 'foreign entries must be skipped before reading: ${result.output}'
+	assert os.is_dir(foreign_entry), 'another account owns the entry and its cleanup'
+	assert os.stat(foreign_entry)!.mode == original_mode, 'ownership checks must precede chmod'
+	assert !os.exists(owned_entry), 'foreign metadata must not preserve a cached failure'
+}
+
 // The current entry path is predictable from the tool inputs. A shared cache must reject a
 // link planted there instead of staging the executable and manifest through it.
 fn test_building_rejects_a_symlinked_current_entry() {
@@ -555,7 +862,10 @@ fn test_pinned_entry_publication_cannot_be_redirected() {
 	outside := os.join_path(directory, 'outside')
 	os.mkdir(outside)!
 	if pathname_was_replaced {
-		os.symlink(outside, entry_dir)!
+		os.symlink(outside, entry_dir) or {
+			eprintln('> skipping ${@FN}: ${err}')
+			return
+		}
 	}
 	staged := os.join_path(directory, 'staged-inputs')
 	os.write_file(staged, 'the manifest')!
@@ -591,13 +901,35 @@ fn test_pinned_stale_pruning_cannot_be_redirected() {
 	must_survive := os.join_path(outside, 'must-survive')
 	os.write_file(must_survive, 'safe')!
 	if pathname_was_replaced {
-		os.symlink(outside, stale_dir)!
+		os.symlink(outside, stale_dir) or {
+			eprintln('> skipping ${@FN}: ${err}')
+			return
+		}
 	}
 
 	stale_entry.remove_all_contents()
 	assert os.read_file(must_survive)! == 'safe', 'recursive pruning must not follow a replacement symlink'
 	cleaned_dir := if pathname_was_replaced { original_dir } else { stale_dir }
 	assert os.ls(cleaned_dir)! == []
+}
+
+fn test_pinned_metadata_read_cannot_be_redirected() {
+	directory := toolcache_test_dir('pinned_metadata')
+	defer { os.rmdir_all(directory) or {} }
+	entry_dir := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	os.mkdir(entry_dir)!
+	os.write_file(os.join_path(entry_dir, 'inputs'), 'original manifest')!
+	cache_entry := open_tool_cache_entry_dir(entry_dir)!
+	defer { cache_entry.close() }
+	original_dir := entry_dir + '.original'
+	mut pathname_was_replaced := true
+	os.rename(entry_dir, original_dir) or { pathname_was_replaced = false }
+	if pathname_was_replaced {
+		os.mkdir(entry_dir)!
+		os.write_file(os.join_path(entry_dir, 'inputs'), 'replacement manifest')!
+	}
+	assert cache_entry.read_metadata('inputs')? == 'original manifest'
+	assert cache_entry.read_metadata('missing') == none
 }
 
 fn test_staging_directory_is_on_the_cache_filesystem() {
@@ -644,9 +976,9 @@ fn test_an_embedded_asset_is_recorded_and_invalidates_the_cache() {
 	os.write_file(source, "module main\n\nconst asset = \$embed_file('asset.txt')\n\nfn main() {\n\tprintln(asset.len)\n}\n")!
 
 	dumped := os.join_path(directory, 'sources.txt')
-	binary := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	binary := os.join_path(directory, 'vdemo-' + 'a'.repeat(64) + tool_exe_suffix())
 	build :=
-		os.execute('${os.quoted_path(vexe)} -dump-files ${os.quoted_path(dumped)} -o ${os.quoted_path(binary)} ${os.quoted_path(source)}')
+		os.exec([vexe, '-dump-files', '${dumped}', '-o', binary, source])
 	assert build.exit_code == 0, build.output
 
 	recorded := (os.read_file(dumped) or { '' }).split_into_lines().filter(it != '')
@@ -723,9 +1055,9 @@ fn test_a_native_input_is_recorded_and_invalidates_the_cache() {
 	os.write_file(source, 'module main\n\n#flag -I@VMODROOT\n#flag @VMODROOT/helper.c\n#include "helper.h"\n\nfn C.native_double(int) int\n\nfn main() {\n\tprintln(C.native_double(21))\n}\n')!
 
 	dumped := os.join_path(directory, 'sources.txt')
-	binary := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	binary := os.join_path(directory, 'vdemo-' + 'a'.repeat(64) + tool_exe_suffix())
 	build :=
-		os.execute('${os.quoted_path(vexe)} -dump-files ${os.quoted_path(dumped)} -o ${os.quoted_path(binary)} ${os.quoted_path(source)}')
+		os.exec([vexe, '-dump-files', '${dumped}', '-o', binary, source])
 	assert build.exit_code == 0, build.output
 
 	recorded := (os.read_file(dumped) or { '' }).split_into_lines().filter(it != '')
@@ -830,6 +1162,54 @@ fn test_a_non_sticky_shared_cache_cannot_hold_staged_outputs() {
 	assert tool_cache_root_can_stage(directory), 'a sticky shared cache protects user-owned staging directories'
 }
 
+// Regression test: with a umask like 002, the cache folder used to be group writable. The
+// cache then refused to use it, so `v doc`, `v fmt` etc. recompiled their tool on every run.
+fn test_a_group_writable_own_cache_root_is_made_private() {
+	$if windows {
+		return
+	}
+	directory := toolcache_test_dir('group_writable_root')
+	defer {
+		os.chmod(directory, 0o700) or {}
+		os.rmdir_all(directory) or {}
+	}
+	os.chmod(directory, 0o775)!
+	assert !tool_cache_root_can_stage(directory)
+	make_tool_cache_root_private(directory)
+	assert os.stat(directory)!.mode & 0o777 == 0o755
+	assert tool_cache_root_can_stage(directory)
+	os.chmod(directory, 0o1777)!
+	make_tool_cache_root_private(directory)
+	assert os.stat(directory)!.mode & 0o7777 == 0o1777, 'sticky shared roots are left alone'
+}
+
+// Someone who can write to the parent folder could replace the cache folder with a symlink
+// between the ownership check and the permission change. The repair must never follow such
+// a symlink, so the permissions of the unrelated target have to stay exactly as they were.
+fn test_making_a_cache_root_private_does_not_follow_a_replacing_symlink() {
+	$if windows {
+		return
+	}
+	directory := toolcache_test_dir('replaced_root')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	private_file := os.join_path(directory, 'private_file')
+	os.write_file(private_file, 'secret')!
+	os.chmod(private_file, 0o660)!
+	other_folder := os.join_path(directory, 'other_folder')
+	os.mkdir(other_folder)!
+	os.chmod(other_folder, 0o775)!
+	for target in [private_file, other_folder] {
+		before := os.stat(target)!.mode & 0o7777
+		root := os.join_path(directory, 'tools')
+		os.symlink(target, root)!
+		make_tool_cache_root_private(root)
+		os.rm(root)!
+		assert os.stat(target)!.mode & 0o7777 == before, 'the repair followed a symlink to `${target}`'
+	}
+}
+
 // `$pkgconfig(...)` and `#pkgconfig` select whole native branches, so the pkg-config
 // environment decides what a tool is built against without touching a single source stamp.
 fn test_the_cache_key_covers_the_pkgconfig_environment() {
@@ -876,7 +1256,7 @@ fn test_a_cached_tool_keeps_its_own_executable_name() {
 	defer {
 		os.unsetenv(tool_cache_dir_env)
 	}
-	run := os.execute('${os.quoted_path(vexe)} timeout 60 ${os.quoted_path(vexe)} version')
+	run := os.exec([vexe, 'timeout', '60', vexe, 'version'])
 	assert run.exit_code == 0, run.output
 
 	entries := cached_entry_dirs(cache, probe_tool)
@@ -1330,9 +1710,9 @@ fn test_a_missing_embedded_asset_is_recorded_and_invalidates_the_cache() {
 	assert !os.exists(asset), 'the asset must be absent for this build'
 
 	dumped := os.join_path(directory, 'sources.txt')
-	binary := os.join_path(directory, 'vdemo')
+	binary := os.join_path(directory, 'vdemo' + tool_exe_suffix())
 	build :=
-		os.execute('${os.quoted_path(vexe)} -prod -dump-files ${os.quoted_path(dumped)} -o ${os.quoted_path(binary)} ${os.quoted_path(source)}')
+		os.exec([vexe, '-prod', '-dump-files', '${dumped}', '-o', binary, source])
 	assert build.exit_code == 0, build.output
 
 	recorded := (os.read_file(dumped) or { '' }).split_into_lines().filter(it != '')
@@ -1413,4 +1793,413 @@ fn test_binary_identity_separates_two_builds() {
 	assert binary_identity(second) != identity, 'two builds must not share an identity'
 
 	assert binary_identity(os.join_path(directory, 'absent')) == file_stamp_missing
+}
+
+// trusted_toolcache_test_dir creates a private folder directly in the system temporary folder.
+// Default cache roots are only used when every folder above them is private too, which the
+// folders of the test runner are not, when they were created with a umask like 002.
+fn trusted_toolcache_test_dir(name string) ?string {
+	directory := os.join_path(os.temp_dir(), 'v_toolcache_${name}_${os.getpid()}')
+	os.rmdir_all(directory) or {}
+	os.mkdir(directory, mode: 0o700) or { return none }
+	if !tool_cache_parents_are_trusted(directory) {
+		os.rmdir_all(directory) or {}
+		return none
+	}
+	return directory
+}
+
+// with_default_tool_cache_roots points all default cache folders into `directory`, by way of
+// `XDG_CACHE_HOME`, `VTMP`, and `HOME`, while `body` runs. `body` gets V`s own folder, `<directory>/xdg/v`.
+fn with_default_tool_cache_roots(directory string, body fn (string) !) ! {
+	names := ['XDG_CACHE_HOME', 'VTMP', 'HOME', 'USERPROFILE', tool_cache_dir_env,
+		tool_cache_disable_env]
+	mut previous := map[string]?string{}
+	for name in names {
+		previous[name] = os.getenv_opt(name)
+	}
+	defer {
+		for name, value in previous {
+			if v := value {
+				os.setenv(name, v, true)
+			} else {
+				os.unsetenv(name)
+			}
+		}
+	}
+	xdg := os.join_path(directory, 'xdg')
+	vtmp := os.join_path(directory, 'vtmp')
+	home := os.join_path(directory, 'home')
+	os.mkdir(xdg, mode: 0o700)!
+	os.mkdir(vtmp, mode: 0o700)!
+	os.mkdir(home, mode: 0o700)!
+	os.setenv('XDG_CACHE_HOME', xdg, true)
+	os.setenv('VTMP', vtmp, true)
+	os.setenv('HOME', home, true)
+	os.setenv('USERPROFILE', home, true)
+	os.unsetenv(tool_cache_dir_env)
+	os.unsetenv(tool_cache_disable_env)
+	body(os.join_path(xdg, 'v'))!
+}
+
+// A default cache folder that others could write to may contain entries that someone else
+// planted. It must be moved aside and replaced by a new, empty and private folder, and V's own
+// parent folder must be made private too, so that the new folder can not be swapped later.
+fn test_a_formerly_writable_default_cache_root_is_replaced_not_reused() {
+	$if windows {
+		return
+	}
+	directory := trusted_toolcache_test_dir('formerly_writable_root') or {
+		eprintln('> skipping, the system temporary folder is not private enough')
+		return
+	}
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	with_default_tool_cache_roots(directory, fn (v_dir string) ! {
+		old_root := os.join_path(v_dir, 'tools')
+		os.mkdir_all(os.join_path(old_root, 'planted'))!
+		os.chmod(v_dir, 0o775)!
+		os.chmod(old_root, 0o775)!
+		chosen := tool_cache_dir() or { panic('no usable tool cache directory') }
+		assert chosen == os.real_path(old_root), 'the default location should still be used'
+		assert os.ls(chosen)! == [], 'the new cache folder must start empty'
+		assert os.stat(chosen)!.mode & 0o777 == 0o700
+		assert os.stat(v_dir)!.mode & 0o777 == 0o755, 'V`s own parent folder must be private'
+		moved := os.ls(v_dir)!.filter(it.starts_with('tools.untrusted-'))
+		assert moved.len == 1, 'the old folder must be moved aside, got ${os.ls(v_dir)!}'
+		assert os.is_dir(os.join_path(v_dir, moved[0], 'planted'))
+		// A private folder is trusted from then on, and is reused as it is.
+		assert tool_cache_dir() or { '' } == chosen
+		assert os.ls(v_dir)!.filter(it.starts_with('tools.untrusted-')).len == 1
+	})!
+}
+
+// A default cache folder that is a symlink may have been planted while V's own folder was
+// writable by others. Its target is private, but a folder above the target is not, so someone
+// else could swap the target at any time. The symlink must be moved aside, not followed.
+fn test_a_symlinked_default_cache_root_is_replaced_not_followed() {
+	$if windows {
+		return
+	}
+	directory := trusted_toolcache_test_dir('symlinked_root') or {
+		eprintln('> skipping, the system temporary folder is not private enough')
+		return
+	}
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	with_default_tool_cache_roots(directory, fn [directory] (v_dir string) ! {
+		writable := os.join_path(directory, 'gw')
+		victim := os.join_path(writable, 'victimdir')
+		os.mkdir(writable)!
+		os.chmod(writable, 0o777)!
+		os.mkdir(victim, mode: 0o700)!
+		os.chmod(victim, 0o700)!
+		os.mkdir(v_dir)!
+		os.chmod(v_dir, 0o775)!
+		link := os.join_path(v_dir, 'tools')
+		os.symlink(victim, link)!
+		chosen := tool_cache_dir() or { panic('no usable tool cache directory') }
+		assert chosen != os.real_path(victim), 'the symlinked cache folder must not be followed'
+		assert !os.is_link(link)
+		assert chosen == os.real_path(link), 'the default location should still be used'
+		assert os.dir(chosen) == os.real_path(v_dir)
+		assert os.stat(chosen)!.mode & 0o777 == 0o700
+		assert os.stat(v_dir)!.mode & 0o777 == 0o755, 'V`s own parent folder must be private'
+		moved := os.ls(v_dir)!.filter(it.starts_with('tools.untrusted-'))
+		assert moved.len == 1, 'the symlink must be moved aside, got ${os.ls(v_dir)!}'
+		assert os.is_link(os.join_path(v_dir, moved[0]))
+		assert os.ls(victim)! == [], 'nothing may be written through the symlink'
+	})!
+}
+
+// When V's own folder is a symlink, the folder holding that symlink must be private too, or
+// someone else could point the symlink at their own folder at any time. Checking only the
+// folders above the symlink's target is not enough.
+fn test_a_symlinked_v_folder_inside_a_writable_cache_folder_is_not_used() {
+	$if windows {
+		return
+	}
+	directory := trusted_toolcache_test_dir('symlinked_v_folder') or {
+		eprintln('> skipping, the system temporary folder is not private enough')
+		return
+	}
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	with_default_tool_cache_roots(directory, fn [directory] (v_dir string) ! {
+		target := os.join_path(directory, 'private_v')
+		os.mkdir(target, mode: 0o700)!
+		os.chmod(target, 0o700)!
+		os.symlink(target, v_dir)!
+		cache := os.dir(v_dir)
+		os.chmod(cache, 0o777)!
+		chosen := tool_cache_dir() or { panic('no usable tool cache directory') }
+		assert chosen == os.real_path(os.join_path(directory, 'vtmp', 'tools')), 'the symlinked V folder must not be used'
+		assert os.ls(target)! == [], 'nothing may be written through the symlink'
+		assert os.stat(cache)!.mode & 0o777 == 0o777, 'a folder that is not V`s own must be left as it is'
+		// With a private folder holding it, the symlinked V folder is used as before.
+		os.chmod(cache, 0o700)!
+		assert tool_cache_dir() or { '' } == os.real_path(os.join_path(target, 'tools'))
+	})!
+}
+
+// When both `~/.cache` and `VTMP` live under untrusted parents, `~/.v/tools` directly under a
+// private `$HOME` provides a usable default cache without modifying `~/.cache`.
+fn test_home_dot_v_tools_is_used_when_cache_and_vtmp_are_untrusted() {
+	candidates := tool_cache_default_candidates()
+	assert candidates.len == 4
+	assert candidates[2].ends_with('.vtools')
+	assert candidates[3].ends_with(os.join_path('.v', 'tools'))
+	$if windows {
+		return
+	}
+	directory := trusted_toolcache_test_dir('home_dot_v_fallback') or {
+		eprintln('> skipping, the system temporary folder is not private enough')
+		return
+	}
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	with_default_tool_cache_roots(directory, fn [directory] (v_dir string) ! {
+		cache := os.dir(v_dir)
+		vtmp := os.join_path(directory, 'vtmp')
+		home := os.join_path(directory, 'home')
+		os.chmod(cache, 0o775)!
+		os.chmod(vtmp, 0o775)!
+		os.write_file(os.join_path(home, '.vtools'), 'occupied')!
+		dot_v := os.join_path(home, '.v')
+		os.mkdir_all(dot_v)!
+		os.chmod(dot_v, 0o775)!
+		chosen := tool_cache_dir() or { panic('no usable tool cache directory') }
+		expected := os.real_path(os.join_path(dot_v, 'tools'))
+		assert chosen == expected, 'expected `${expected}`, got `${chosen}`'
+		assert os.stat(dot_v)!.mode & 0o777 == 0o755, '`~/.v` is V`s own folder and must be tightened'
+		assert os.stat(chosen)!.mode & 0o777 == 0o700
+		assert os.stat(cache)!.mode & 0o777 == 0o775, '`~/.cache` must be left as it is'
+	})!
+}
+
+// When every candidate fails, `tool_cache_entry` lists each rejected candidate and
+// shows how to configure a private `VTOOLS_CACHE_DIR`.
+fn test_tool_cache_unavailable_error_lists_rejected_candidates_and_workaround() {
+	formatted := tool_cache_unavailable_message([
+		ToolCacheRejection{ candidate: '/home/user/.cache/v/tools', problems: ['is writable by group/others without the sticky bit'] },
+		ToolCacheRejection{ candidate: '/tmp/v_1000/tools', problems: ['is owned by user id 65534, not by the current user or root'] },
+	])
+	assert formatted.contains('no usable tool cache folder was found:')
+	assert formatted.contains('is writable by group/others without the sticky bit')
+	assert formatted.contains('is owned by user id 65534, not by the current user or root')
+	assert formatted.contains('export VTOOLS_CACHE_DIR="\$HOME/.vtools"')
+	$if windows {
+		return
+	}
+	directory := trusted_toolcache_test_dir('unavailable_diagnostics') or {
+		eprintln('> skipping, the system temporary folder is not private enough')
+		return
+	}
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	with_default_tool_cache_roots(directory, fn [directory] (v_dir string) ! {
+		cache := os.dir(v_dir)
+		vtmp := os.join_path(directory, 'vtmp')
+		home := os.join_path(directory, 'home')
+		os.chmod(cache, 0o775)!
+		os.chmod(vtmp, 0o775)!
+		os.chmod(home, 0o775)!
+		if entry := tool_cache_entry('v', directory, 'v3_ownership', directory, []) {
+			assert false, 'expected no usable cache, got `${entry.dir}`'
+		} else {
+			message := err.msg()
+			assert message.contains('no usable tool cache folder was found:'), message
+			assert message.contains(os.join_path(v_dir, 'tools')), message
+			assert message.contains(os.join_path(vtmp, 'tools')), message
+			assert message.contains(os.join_path(home, '.v', 'tools')), message
+			assert message.contains('without the sticky bit'), message
+			assert message.contains('export VTOOLS_CACHE_DIR="\$HOME/.vtools"'), message
+		}
+	})!
+}
+
+// An entry planted in a formerly writable cache folder, under the exact name and with a manifest
+// that looks fresh, must never be executed. The real tool must be built and reused instead.
+fn test_an_entry_planted_in_a_formerly_writable_root_is_never_executed() {
+	$if windows {
+		return
+	}
+	vexe := os.real_path(@VEXE)
+	if !os.is_executable(vexe) {
+		eprintln('> skipping, no V executable at `${vexe}`')
+		return
+	}
+	vroot := find_vroot(vexe) or {
+		eprintln('> skipping, no V source tree for `${vexe}`')
+		return
+	}
+	source := find_external_tool_source(os.join_path(vroot, 'cmd', 'tools', probe_tool)) or {
+		panic('cannot find the `${probe_tool}` source')
+	}
+	directory := trusted_toolcache_test_dir('planted_entry') or {
+		eprintln('> skipping, the system temporary folder is not private enough')
+		return
+	}
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	marker := os.join_path(directory, 'planted_entry_was_executed')
+	with_default_tool_cache_roots(directory, fn [vexe, source, marker] (v_dir string) ! {
+		old_root := os.join_path(v_dir, 'tools')
+		os.mkdir_all(old_root)!
+		os.chmod(v_dir, 0o775)!
+		os.chmod(old_root, 0o775)!
+		key := tool_cache_key(vexe, probe_tool, tool_key_sources(source), external_tool_build_args(probe_tool,
+			[]))
+		entry_dir := tool_cache_entry_dir_for_uid(old_root, probe_tool, key, os.getuid())
+		os.mkdir(entry_dir)!
+		planted := os.join_path(entry_dir, probe_tool)
+		os.write_file(planted, '#!/bin/sh\necho planted > ${os.quoted_path(marker)}\n')!
+		os.chmod(planted, 0o755)!
+		os.write_file(os.join_path(entry_dir, 'inputs'), '${tool_cache_manifest_version}\nstarted${tool_cache_field_separator}1\n')!
+
+		first := os.exec([vexe, 'timeout', '60', vexe, 'version'])
+		assert first.exit_code == 0, first.output
+		assert !os.exists(marker), 'the planted entry was executed'
+		os.setenv(tool_cache_verbose_env, '1', true)
+		defer {
+			os.unsetenv(tool_cache_verbose_env)
+		}
+		second := os.exec([vexe, 'timeout', '60', vexe, 'version'])
+		assert second.exit_code == 0, second.output
+		assert second.output.contains('> reusing the cached `${probe_tool}`'), second.output
+		assert !os.exists(marker), 'the planted entry was executed'
+	})!
+}
+
+fn test_windows_entry_pin_blocks_rename_until_handle_is_closed() {
+	$if !windows {
+		return
+	}
+	directory := toolcache_test_dir('windows_entry_pin')
+	defer { os.rmdir_all(directory) or {} }
+	entry_dir := os.join_path(directory, 'vdemo-' + 'a'.repeat(64))
+	os.mkdir(entry_dir)!
+	entry := open_tool_cache_entry_dir(entry_dir)!
+	moved_dir := entry_dir + '.moved'
+	mut renamed_while_open := true
+	os.rename(entry_dir, moved_dir) or { renamed_while_open = false }
+	entry.close()
+	assert !renamed_while_open, 'an open tool-cache entry must deny rename access'
+	os.rename(entry_dir, moved_dir)!
+	assert os.is_dir(moved_dir)
+	assert !os.exists(entry_dir)
+}
+
+fn test_wipe_cache_options_and_selective_cleanup() {
+	default_opts := parse_wipe_cache_options([], [])!
+	assert default_opts.vcache && default_opts.vtmp && default_opts.v3cache && default_opts.tools
+	assert !default_opts.dry_run && !default_opts.verbose && !default_opts.show_help
+
+	selective_opts := parse_wipe_cache_options(['-v'], ['--tools', '-n'])!
+	assert selective_opts.tools && !selective_opts.vcache && !selective_opts.vtmp
+		&& !selective_opts.v3cache
+	assert selective_opts.dry_run && selective_opts.verbose
+
+	if _ := parse_wipe_cache_options([], ['--unknown-flag']) {
+		assert false, 'expected unknown option error'
+	} else {
+		assert err.msg().contains('unknown option `--unknown-flag`')
+	}
+
+	directory := toolcache_test_dir('wipe_cache')
+	defer {
+		os.rmdir_all(directory) or {}
+	}
+	vcache_dir := os.join_path(directory, 'vcache')
+	v3cache_dir := os.join_path(directory, 'v3cache')
+	previous_vcache := os.getenv_opt('VCACHE')
+	previous_v3cache := os.getenv_opt('V3CACHE')
+	defer {
+		if v := previous_vcache {
+			os.setenv('VCACHE', v, true)
+		} else {
+			os.unsetenv('VCACHE')
+		}
+		if v := previous_v3cache {
+			os.setenv('V3CACHE', v, true)
+		} else {
+			os.unsetenv('V3CACHE')
+		}
+	}
+	os.setenv('VCACHE', vcache_dir, true)
+	os.setenv('V3CACHE', v3cache_dir, true)
+
+	with_default_tool_cache_roots(directory, fn [directory, vcache_dir, v3cache_dir] (_ string) ! {
+		cache_v_dir := os.join_path(os.cache_dir(), 'v')
+		vtmp_dir := os.join_path(directory, 'vtmp')
+		home_dir := os.join_path(directory, 'home')
+		cache_tools := os.join_path(cache_v_dir, 'tools')
+		home_tools := os.join_path(home_dir, '.v', 'tools')
+		untrusted_tools := os.join_path(cache_v_dir, 'tools.untrusted-12345')
+
+		os.mkdir_all(vcache_dir)!
+		os.write_file(os.join_path(vcache_dir, 'obj.o'), 'x')!
+		os.mkdir_all(v3cache_dir)!
+		os.write_file(os.join_path(v3cache_dir, 'mod.o'), 'x')!
+		os.mkdir_all(os.join_path(vtmp_dir, 'v3_module_cache_deadbeef'))!
+		os.write_file(os.join_path(vtmp_dir, 'keep.txt'), 'keep')!
+		os.mkdir_all(cache_tools)!
+		os.write_file(os.join_path(cache_tools, 'vfmt'), 'bin')!
+		os.mkdir_all(home_tools)!
+		os.write_file(os.join_path(home_tools, 'vvet'), 'bin')!
+		os.mkdir_all(untrusted_tools)!
+		os.write_file(os.join_path(untrusted_tools, 'old'), 'bin')!
+
+		// 1. `--dry-run --verbose` reports targets and candidates without deleting anything.
+		dry_opts := parse_wipe_cache_options([], ['--dry-run', '--verbose'])!
+		dry_output := wipe_caches(dry_opts).join('\n')
+		assert dry_output.contains('Tool cache candidates:'), dry_output
+		assert dry_output.contains('Would wipe V cache folder ${vcache_dir}.'), dry_output
+		assert dry_output.contains('Would wipe V tool cache folder ${cache_tools}.'), dry_output
+		assert dry_output.contains('Would wipe Moved-aside V tool cache folder ${untrusted_tools}.'), dry_output
+		assert os.is_file(os.join_path(cache_tools, 'vfmt'))
+		assert os.is_file(os.join_path(home_tools, 'vvet'))
+		assert os.is_file(os.join_path(untrusted_tools, 'old'))
+
+		// 2. `--tools` wipes only tool caches and `.untrusted-*` folders.
+		tools_opts := parse_wipe_cache_options([], ['--tools'])!
+		tools_output := wipe_caches(tools_opts).join('\n')
+		assert tools_output.contains('V tool cache folder ${cache_tools} was wiped.'), tools_output
+		assert tools_output.contains('V tool cache folder ${home_tools} was wiped.'), tools_output
+		assert tools_output.contains('Moved-aside V tool cache folder ${untrusted_tools} was wiped.'), tools_output
+		assert !os.exists(cache_tools)
+		assert !os.exists(home_tools)
+		assert !os.exists(untrusted_tools)
+		assert os.is_file(os.join_path(vcache_dir, 'obj.o'))
+		assert os.is_file(os.join_path(v3cache_dir, 'mod.o'))
+		assert os.is_file(os.join_path(vtmp_dir, 'keep.txt'))
+
+		// 3. `--v3cache` with `V3CACHE` unset wipes only `v3_*` directories inside `VTMP`.
+		os.unsetenv('V3CACHE')
+		v3_opts := parse_wipe_cache_options([], ['--v3cache'])!
+		v3_output := wipe_caches(v3_opts).join('\n')
+		assert v3_output.contains('V3 cache folder ${os.join_path(vtmp_dir, 'v3_module_cache_deadbeef')} was wiped.'), v3_output
+		assert !os.exists(os.join_path(vtmp_dir, 'v3_module_cache_deadbeef'))
+		assert os.is_file(os.join_path(vtmp_dir, 'keep.txt'))
+
+		// 4. Default `wipe-cache` wipes all remaining caches.
+		os.setenv('V3CACHE', v3cache_dir, true)
+		os.mkdir_all(cache_tools)!
+		all_opts := parse_wipe_cache_options([], [])!
+		all_output := wipe_caches(all_opts).join('\n')
+		assert all_output.contains('V cache folder ${vcache_dir} was wiped.'), all_output
+		assert all_output.contains('V tmp.c and tests folder ${vtmp_dir} was wiped.'), all_output
+		assert all_output.contains('V3 cache folder ${v3cache_dir} was wiped.'), all_output
+		assert all_output.contains('V tool cache folder ${cache_tools} was wiped.'), all_output
+		assert !os.exists(os.join_path(vcache_dir, 'obj.o'))
+		assert !os.exists(os.join_path(vtmp_dir, 'keep.txt'))
+		assert !os.exists(os.join_path(v3cache_dir, 'mod.o'))
+		assert !os.exists(cache_tools)
+	})!
 }

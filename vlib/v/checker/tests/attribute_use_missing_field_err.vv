@@ -1,0 +1,12 @@
+@[attribute]
+struct Route {
+	path   string
+	method string
+}
+
+@[Route('/a')]
+fn index() {
+}
+
+fn main() {
+}

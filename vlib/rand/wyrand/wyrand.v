@@ -32,7 +32,7 @@ pub fn (mut rng WyRandRNG) seed(seed_data []u32) {
 	rng.buffer = 0
 }
 
-// byte returns a uniformly distributed pseudorandom 8-bit unsigned positive `byte`.
+// u8 returns a uniformly distributed pseudorandom 8-bit unsigned positive `u8`.
 @[inline]
 pub fn (mut rng WyRandRNG) u8() u8 {
 	// Can we extract a value from the buffer?

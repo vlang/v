@@ -713,7 +713,7 @@ fn parse_scalar(text string) !Any {
 		return Any(numeric.parse_uint(0, 64)!)
 	}
 	if is_float(numeric) {
-		return Any(strconv.atof64(numeric)!)
+		return Any(strconv.atof64(numeric, allow_overflow: true)!)
 	}
 	return Any(value)
 }
@@ -779,9 +779,24 @@ fn parse_quoted_string(src string) !string {
 				if i + 4 >= inner.len {
 					return error('yaml: invalid unicode escape')
 				}
-				code := inner[i + 1..i + 5]
-				r := rune(code.parse_uint(16, 32)!)
-				out << r.str().bytes()
+				mut codepoint := u32(inner[i + 1..i + 5].parse_uint(16, 32)!)
+				if codepoint >= 0xd800 && codepoint <= 0xdbff {
+					// A character outside the BMP may be escaped as a UTF-16
+					// surrogate pair, which has to be combined into one code
+					// point (RFC 8259 section 7).
+					if i + 10 >= inner.len || inner[i + 5] != `\\` || inner[i + 6] != `u` {
+						return error('yaml: high surrogate must be followed by a low surrogate')
+					}
+					low := u32(inner[i + 7..i + 11].parse_uint(16, 32)!)
+					if low < 0xdc00 || low > 0xdfff {
+						return error('yaml: invalid low surrogate')
+					}
+					codepoint = 0x10000 + ((codepoint - 0xd800) << 10) + (low - 0xdc00)
+					i += 6
+				} else if codepoint >= 0xdc00 && codepoint <= 0xdfff {
+					return error('yaml: unexpected low surrogate')
+				}
+				out << rune(codepoint).str().bytes()
 				i += 4
 			}
 			else {
@@ -980,7 +995,10 @@ fn strip_comments(line string) string {
 				}
 			}
 			`#` {
-				if bracket_depth == 0 && brace_depth == 0 {
+				// a comment starts at a `#` that begins the line or follows white space;
+				// elsewhere (`a#b`, `file.arxml#Cluster`) it is part of the scalar
+				if bracket_depth == 0 && brace_depth == 0
+					&& (i == 0 || line[i - 1] == ` ` || line[i - 1] == `\t`) {
 					return line[..i].trim_right(' \t')
 				}
 			}
@@ -1058,7 +1076,7 @@ fn is_float(value string) bool {
 	if !value.contains('.') && !value.contains('e') && !value.contains('E') {
 		return false
 	}
-	strconv.atof64(value) or { return false }
+	strconv.atof64(value, allow_overflow: true) or { return false }
 	return true
 }
 

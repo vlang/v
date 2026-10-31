@@ -1,0 +1,49 @@
+vlib/v/checker/tests/sum_type_named_variant_err.vv:4:18: error: invalid payload for `Expr.Count`: expected `int`, not `string`
+    2 | 
+    3 | fn main() {
+    4 |     a := Expr.Count('x')
+      |                     ~~~~
+    5 |     b := Expr.Void(3)
+    6 |     c := Expr.Count
+vlib/v/checker/tests/sum_type_named_variant_err.vv:5:7: error: `Expr.Void` has no payload; write it without a value: `Expr.Void`
+    3 | fn main() {
+    4 |     a := Expr.Count('x')
+    5 |     b := Expr.Void(3)
+      |          ~~~~~~~~~~~~
+    6 |     c := Expr.Count
+    7 |     d := Expr.Nope(1)
+vlib/v/checker/tests/sum_type_named_variant_err.vv:6:7: error: `Expr.Count` needs a payload of type `int`, e.g. `Expr.Count(value)`
+    4 |     a := Expr.Count('x')
+    5 |     b := Expr.Void(3)
+    6 |     c := Expr.Count
+      |          ~~~~~~~~~~
+    7 |     d := Expr.Nope(1)
+    8 |     println('${b} ${c} ${d}')
+vlib/v/checker/tests/sum_type_named_variant_err.vv:7:7: error: `Expr` has no variant `Nope`; its variants are: `IntLit`, `Count`, `Void`
+    5 |     b := Expr.Void(3)
+    6 |     c := Expr.Count
+    7 |     d := Expr.Nope(1)
+      |          ~~~~~~~~~~~~
+    8 |     println('${b} ${c} ${d}')
+    9 |     match a {
+vlib/v/checker/tests/sum_type_named_variant_err.vv:11:13: error: `Expr.Void` has no payload to bind to `v`
+    9 |     match a {
+   10 |         Expr.IntLit(n) { println(n) }
+   11 |         Expr.Void(v) { println(v) }
+      |                   ^
+   12 |     }
+   13 |     mut m := Expr.Count(2)
+vlib/v/checker/tests/sum_type_named_variant_err.vv:9:2: error: match must be exhaustive (add match branches for: `Expr.Count` or `else {}` at the end)
+    7 |     d := Expr.Nope(1)
+    8 |     println('${b} ${c} ${d}')
+    9 |     match a {
+      |     ~~~~~~~~~
+   10 |         Expr.IntLit(n) { println(n) }
+   11 |         Expr.Void(v) { println(v) }
+vlib/v/checker/tests/sum_type_named_variant_err.vv:15:18: error: the payload binding `n` cannot be mutable; it is a copy of the payload, assign a new variant value to change it
+   13 |     mut m := Expr.Count(2)
+   14 |     match mut m {
+   15 |         Expr.Count(mut n) { println(n) }
+      |                        ^
+   16 |         else {}
+   17 |     }

@@ -4,11 +4,9 @@ import os
 import v.flat
 import v.types
 
-// gen.v is the v3 WebAssembly backend. Like the C backend's FlatGen it walks
-// the flat AST directly (WASM has structured control flow, so no SSA/relooping
-// is needed), and like the arm64 backend it emits a binary module. Generics,
-// strings-as-values, structs, arrays and maps are out of scope for now; the
-// backend targets the integer/float core plus WASI `print`/`println`.
+// gen.v retains the WebAssembly backend's source metadata and WASI helpers.
+// The compiler uses ssa_gen.v for instruction emission from the shared SSA IR.
+// Source metadata preserves export names and module initialization order.
 
 // Fixed low-memory scratch layout (bytes):
 //   [0..3]   nwritten result for fd_write
@@ -107,6 +105,189 @@ pub fn Gen.new(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool)
 		tc:       tc
 		used_fns: used_fns
 		mod:      Module.new()
+	}
+}
+
+// WasmImport is a host function that V source declared with
+// `@[wasm_import_namespace]` on a body-less fn in a `.wasm.v` file. To the
+// checker and to SSA it is an ordinary C extern; resolving it into a real wasm
+// module import happens here, because this is the only layer that still sees the
+// signature spelled in V types. A pointer parameter or result is an offset into
+// the module's linear memory, which is the only representation wasm32 has.
+pub struct WasmImport {
+pub:
+	namespace string
+	name      string // the name the host exports
+	qualified string // the SSA name of the extern declaration behind it
+	params    []u8
+	results   []u8
+}
+
+// SSAConfiguration carries source-level entry points and export names into SSA code generation.
+pub struct SSAConfiguration {
+pub:
+	exports        map[string]string
+	init_fns       []string
+	main_fn        string
+	used_fns       map[string]bool
+	source_modules map[string]string
+	source_imports map[string]map[string]string
+	imports        []WasmImport
+}
+
+// ssa_configuration collects export and initialization metadata without emitting instructions.
+pub fn (mut g Gen) ssa_configuration() !SSAConfiguration {
+	g.collect_imports()
+	fns := g.collect_user_fns()
+	imports := g.collect_wasm_imports()!
+	mut exports := map[string]string{}
+	// SSA supplies its own runtime helpers. AST reachability includes C runtime
+	// implementations that are not dependencies of the selected WASM functions.
+	mut used := map[string]bool{}
+	mut module_init := map[string]string{}
+	mut main_fn := ''
+	mut source_modules := map[string]string{}
+	mut source_imports := g.file_aliases.clone()
+	mut file := ''
+	for node in g.a.nodes {
+		if node.kind == .file {
+			file = node.value
+			// Flat ASTs include a trailing file node after each file's declarations.
+			// Preserve the module recorded between the opening and closing nodes.
+			if file !in source_modules {
+				source_modules[file] = ''
+			}
+		} else if node.kind == .module_decl && node.value !in ['', 'main', 'builtin'] {
+			source_modules[file] = g.module_path_for_file(file)
+		} else if node.kind == .import_decl && node.value.len > 0 {
+			alias := if node.typ != 0 {
+				node.typ_text()
+			} else {
+				node.value.all_after_last('.')
+			}
+			source_imports[file][alias] = node.value
+		}
+	}
+	for f in fns {
+		key := qualified_fn_key(f.module, f.name)
+		exports[key] = g.explicit_export_fn_name(f) or { export_fn_name(f.module, f.name) }
+		used[key] = true
+		if f.name == 'main' && f.module in ['', 'main'] {
+			main_fn = key
+		} else if f.name == 'init' && f.params.len == 0 {
+			module_init[f.module] = key
+		}
+	}
+	mut init_fns := []string{}
+	mut visited := map[string]bool{}
+	g.ssa_init_order('', module_init, mut visited, mut init_fns)
+	return SSAConfiguration{
+		exports:        exports
+		init_fns:       init_fns
+		main_fn:        main_fn
+		used_fns:       used
+		source_modules: source_modules
+		source_imports: source_imports
+		imports:        imports
+	}
+}
+
+// collect_wasm_imports resolves every `@[wasm_import_namespace]` declaration
+// into a wasm import. The attribute is read from the `directive` node the parser
+// emits directly after the declaration it names, rather than from the checker's
+// own index of them, because that index is keyed by pre-transform ids and this
+// runs on the transformed tree the backend lowers.
+fn (mut g Gen) collect_wasm_imports() ![]WasmImport {
+	mut imports := []WasmImport{}
+	for node in g.a.nodes {
+		if node.kind != .directive || !node.value.starts_with('@attributes:') {
+			continue
+		}
+		namespace := declaration_import_namespace(node) or { continue }
+		id := node.value['@attributes:'.len..].int()
+		if id < 0 || id >= g.a.nodes.len {
+			continue
+		}
+		decl := g.a.nodes[id]
+		if decl.kind != .c_fn_decl {
+			continue
+		}
+		imports << g.wasm_import(namespace, decl)!
+	}
+	return imports
+}
+
+// wasm_import maps one declaration's V signature onto wasm value types.
+fn (mut g Gen) wasm_import(namespace string, decl flat.Node) !WasmImport {
+	// A body-less `fn Mod.f()` reaches here as `Mod@static@f`, so the name the
+	// host exports is the part after the marker.
+	name := decl.value.all_after_last('@static@')
+	imp := '${namespace}.${name}'
+	mut params := []u8{}
+	for ci in 0 .. decl.children_count {
+		p := g.a.child_node(&decl, ci)
+		if p.kind != .param || p.value.len == 0 {
+			continue
+		}
+		params << g.import_valtype(imp, p.value, p.typ)!
+	}
+	mut results := []u8{}
+	if decl.typ != 0 && decl.typ != flat.source_type_void {
+		results << g.import_valtype(imp, '', decl.typ)!
+	}
+	return WasmImport{
+		namespace: namespace
+		name:      name
+		qualified: 'C.${decl.value}'
+		params:    params
+		results:   results
+	}
+}
+
+// import_valtype is the wasm value type of one parameter, or of the result when
+// `param` is empty. Anything the backend cannot represent as a single wasm value
+// is refused here rather than widened, so a signature the host cannot satisfy is
+// never emitted.
+fn (mut g Gen) import_valtype(imp string, param string, source_id u32) !u8 {
+	t := unalias(g.tc.parse_type(source_id))
+	if t is types.Pointer {
+		return valtype_i32
+	}
+	role := if param.len == 0 { 'result' } else { 'parameter `${param}`' }
+	w := prim_wtype(t) or {
+		text := flat.source_type_name(source_id)
+		return error('wasm: import `${imp}`: ${role} type `${text}` is not a value type')
+	}
+	return wt_valtype(w)
+}
+
+// declaration_import_namespace reads the namespace an `@[wasm_import_namespace]`
+// attribute names, or none when it names another one.
+fn declaration_import_namespace(node flat.Node) ?string {
+	for raw in node.generic_params() {
+		if raw.all_before(':').trim_space() != 'wasm_import_namespace' || !raw.contains(':') {
+			continue
+		}
+		value := raw.all_after(':').trim_space()
+		if value.len >= 2 && ((value[0] == `'` && value[value.len - 1] == `'`)
+			|| (value[0] == `"` && value[value.len - 1] == `"`)) {
+			return value[1..value.len - 1]
+		}
+		return value
+	}
+	return none
+}
+
+fn (g &Gen) ssa_init_order(mod string, module_init map[string]string, mut visited map[string]bool, mut order []string) {
+	if visited[mod] {
+		return
+	}
+	visited[mod] = true
+	for dep in g.module_imports[mod] {
+		g.ssa_init_order(dep, module_init, mut visited, mut order)
+	}
+	if key := module_init[mod] {
+		order << key
 	}
 }
 
@@ -283,6 +464,33 @@ fn (mut g Gen) collect_user_fns() []FnInfo {
 			work << key
 		}
 	}
+	// SSA synthesizes main from executable file children. Treat its statements
+	// as roots too, using the file's imports to resolve calls and fn references.
+	mut script_keys := []string{}
+	for file_idx, file_node in g.a.nodes {
+		if file_idx < g.a.user_code_start || file_node.kind != .file
+			|| file_node.children_count == 0 {
+			continue
+		}
+		for i in 0 .. file_node.children_count {
+			child_id := g.a.child(&file_node, i)
+			if int(child_id) < g.a.user_code_start {
+				continue
+			}
+			child := g.a.nodes[int(child_id)]
+			// Keep the statement kinds aligned with SSA's top_level_stmt_ids.
+			if child.kind in [.expr_stmt, .assign, .decl_assign, .selector_assign, .index_assign,
+				.for_stmt, .for_in_stmt, .if_expr, .assert_stmt, .defer_stmt, .block] {
+				g.collect_call_keys(child_id, '', file_node.value, candidates, mut script_keys)
+			}
+		}
+	}
+	for key in script_keys {
+		if key !in reached {
+			reached[key] = true
+			work << key
+		}
+	}
 	// `init` functions are entry points (run before main), like the C path's
 	// _vinit. Every imported module runs its init regardless of whether any of
 	// its other functions are called, so seed the init of main and of every
@@ -319,16 +527,24 @@ fn (mut g Gen) collect_user_fns() []FnInfo {
 	return out
 }
 
-// called_candidate_keys returns the qualified keys of the candidate functions
-// directly called inside f's body (calls to non-candidates such as intercepted
-// builtins are ignored).
+// called_candidate_keys returns the qualified keys of candidate functions called
+// or referenced inside f's body. Runtime functions outside candidates are ignored.
 fn (g &Gen) called_candidate_keys(f FnInfo, candidates map[string]FnInfo) []string {
 	mut keys := []string{}
-	g.collect_call_keys(g.a.nodes[int(f.node_id)], f.module, f.file, candidates, mut keys)
+	g.collect_call_keys(f.node_id, f.module, f.file, candidates, mut keys)
 	return keys
 }
 
-fn (g &Gen) collect_call_keys(node flat.Node, cur_mod string, cur_file string, candidates map[string]FnInfo, mut keys []string) {
+fn (g &Gen) collect_call_keys(id flat.NodeId, cur_mod string, cur_file string, candidates map[string]FnInfo, mut keys []string) {
+	node := g.a.nodes[int(id)]
+	if name := g.tc.resolved_fn_value_name(id) {
+		for key in [name, name.replace('__', '.'), qualified_fn_key(cur_mod, name)] {
+			if key in candidates {
+				keys << key
+				break
+			}
+		}
+	}
 	if node.kind == .call && node.children_count > 0 {
 		for key in g.resolve_call_keys(g.a.child_node(&node, 0), cur_mod, cur_file) {
 			if key in candidates {
@@ -340,13 +556,63 @@ fn (g &Gen) collect_call_keys(node flat.Node, cur_mod string, cur_file string, c
 	for i in 0 .. node.children_count {
 		cid := g.a.child(&node, i)
 		if int(cid) >= 0 {
-			g.collect_call_keys(g.a.nodes[int(cid)], cur_mod, cur_file, candidates, mut keys)
+			g.collect_call_keys(cid, cur_mod, cur_file, candidates, mut keys)
 		}
 	}
 }
 
 // fn_info extracts a compilable signature, or none if the function uses types
 // the backend does not handle yet (strings, structs, arrays, pointers, ...).
+// wasm_param_may_be_aggregate reports whether an aggregate parameter can be
+// passed as a pointer. It admits a struct whose fields all lower, mirroring the
+// driver's struct-literal rule, and refuses everything else so an unsupported
+// type is still refused loudly rather than silently collapsing into an i32 it
+// cannot use. The rule lives here rather than in the driver because the driver
+// imports this package, so the reverse import would be a cycle.
+fn (g &Gen) wasm_param_may_be_aggregate(t types.Type) bool {
+	return wasm_aggregate_param_ok(g.tc, t, 0)
+}
+
+fn wasm_aggregate_param_ok(tc &types.TypeChecker, typ types.Type, depth int) bool {
+	if depth > 8 {
+		return false
+	}
+	match typ {
+		types.Primitive, types.Char, types.Rune, types.ISize, types.USize, types.Enum,
+		types.String {
+			return true
+		}
+		types.Alias {
+			return wasm_aggregate_param_ok(tc, typ.base_type, depth)
+		}
+		types.Struct {
+			st := tc.structs[typ.source_type_id()] or { return false }
+			for f in st {
+				if !wasm_aggregate_param_ok(tc, f.typ, depth + 1) {
+					return false
+				}
+			}
+			return true
+		}
+		types.Pointer {
+			return wasm_aggregate_param_ok(tc, typ.base_type, depth + 1)
+		}
+		// An option or a result is a struct_t in SSA with a leading `ok`, so it
+		// travels the same way a struct does. Its payload decides whether the
+		// whole thing lowers, which is what makes `?int` and `!int` representable
+		// while `?map[string]int` stays refused.
+		types.OptionType {
+			return wasm_aggregate_param_ok(tc, typ.base_type, depth + 1)
+		}
+		types.ResultType {
+			return wasm_aggregate_param_ok(tc, typ.base_type, depth + 1)
+		}
+		else {
+			return false
+		}
+	}
+}
+
 fn (mut g Gen) fn_info(node flat.Node, id flat.NodeId, module_ string, file string) ?FnInfo {
 	mut params := []WType{}
 	for i in 0 .. node.children_count {
@@ -355,13 +621,37 @@ fn (mut g Gen) fn_info(node flat.Node, id flat.NodeId, module_ string, file stri
 			continue
 		}
 		pt := g.tc.parse_type(p.typ)
-		w := prim_wtype(pt) or { return none }
+		// Aggregate parameters travel as pointers; supported aggregate returns
+		// use the hidden sret slot handled below.
+		w := prim_wtype(pt) or {
+			if g.wasm_param_may_be_aggregate(pt) {
+				WType.i32
+			} else {
+				return none
+			}
+		}
 		params << w
 	}
 	mut ret := WType.void
-	if node.typ.len > 0 && node.typ != 'void' {
+	mut hidden_sret := false
+	if node.typ != 0 && node.typ != flat.source_type_void {
 		rt := g.tc.parse_type(node.typ)
-		ret = prim_wtype(rt) or { return none }
+		// A struct return is passed through a hidden pointer: the caller supplies
+		// the slot and the function's own result type is void. So the signature
+		// gains a leading i32 and the result becomes void, which is what the SSA
+		// sret path already describes. Options and results take the same shape,
+		// because both are struct_t values in SSA.
+		if w := prim_wtype(rt) {
+			ret = w
+		} else if g.wasm_param_may_be_aggregate(rt) {
+			ret = WType.void
+			hidden_sret = true
+		} else {
+			return none
+		}
+	}
+	if hidden_sret {
+		params.prepend(WType.i32)
 	}
 	return FnInfo{
 		name:    node.value
@@ -794,13 +1084,13 @@ fn (g &Gen) global_key(name string) string {
 }
 
 // decl_width resolves the declared sub-32-bit width (8/16) of an initializer.
-fn (mut g Gen) decl_width(rhs_id flat.NodeId, fallback_typ string) int {
+fn (mut g Gen) decl_width(rhs_id flat.NodeId, fallback_typ_id u32) int {
 	w := narrow_width(g.tc.resolve_type(rhs_id))
 	if w != 32 {
 		return w
 	}
-	if fallback_typ.len > 0 {
-		return narrow_width(g.tc.parse_type(fallback_typ))
+	if fallback_typ_id != 0 {
+		return narrow_width(g.tc.parse_type(fallback_typ_id))
 	}
 	return 32
 }
@@ -963,7 +1253,7 @@ fn (mut g Gen) gen_expr(id flat.NodeId) WType {
 	match node.kind {
 		.int_literal {
 			val := parse_int_literal(node.value)
-			mut w := g.expr_wtype(id, '')
+			mut w := g.expr_wtype(id, u32(0))
 			// Promote to i64 when the literal does not fit in i32: the checker
 			// types untyped literals as plain `int`, which would truncate.
 			if w == .i32 && (val > 2147483647 || val < -2147483648) {
@@ -986,7 +1276,7 @@ fn (mut g Gen) gen_expr(id flat.NodeId) WType {
 			return .i32
 		}
 		.float_literal {
-			w := g.expr_wtype(id, '')
+			w := g.expr_wtype(id, u32(0))
 			fv := node.value.replace('_', '').f64()
 			if w == .f32 {
 				g.cur.f32_const(f32(fv))
@@ -1093,7 +1383,7 @@ fn (g &Gen) const_value_node(name string) ?flat.NodeId {
 // gen_if_value emits an `if` used as an expression, leaving the selected
 // branch's value on the stack (e.g. `x := if c { 1 } else { 2 }`).
 fn (mut g Gen) gen_if_value(id flat.NodeId, node flat.Node) WType {
-	result_w := g.expr_wtype(id, '')
+	result_w := g.expr_wtype(id, u32(0))
 	g.gen_if_value_typed(node, result_w)
 	return result_w
 }
@@ -1208,7 +1498,7 @@ fn (mut g Gen) gen_infix(id flat.NodeId, node flat.Node) WType {
 	if op in [.left_shift, .right_shift, .right_shift_unsigned] {
 		// V keeps the result type/width from the left operand and permits a
 		// wider shift count, so the width comes from the lhs, not both operands.
-		mut value_w := g.expr_wtype(lhs_id, '')
+		mut value_w := g.expr_wtype(lhs_id, u32(0))
 		if value_w !in [WType.i32, WType.i64] {
 			value_w = .i32
 		}
@@ -1359,7 +1649,7 @@ fn (mut g Gen) gen_prefix(id flat.NodeId, node flat.Node) WType {
 				g.narrow_result(id)
 				return .i32
 			}
-			w := g.expr_wtype(child_id, '')
+			w := g.expr_wtype(child_id, u32(0))
 			match w {
 				.f64 {
 					g.gen_expr(child_id)
@@ -1460,7 +1750,7 @@ fn (mut g Gen) emit_inc(w WType, inc bool) {
 
 fn (mut g Gen) gen_cast(node flat.Node) WType {
 	child_id := g.a.child(&node, 0)
-	tt := g.tc.parse_type(node.value)
+	tt := g.tc.parse_type(node.source_value_id())
 	target := prim_wtype(tt) or { WType.i32 }
 	child := g.a.nodes[int(child_id)]
 	if target in [WType.f32, WType.f64] && child.kind == .int_literal {
@@ -1526,11 +1816,11 @@ fn (mut g Gen) collect_imports() {
 			cur_file = node.value
 		} else if node.kind == .import_decl && node.value.len > 0 {
 			g.import_paths << node.value
-			if node.typ.len > 0 {
+			if node.typ != 0 {
 				if cur_file !in g.file_aliases {
 					g.file_aliases[cur_file] = map[string]string{}
 				}
-				g.file_aliases[cur_file][node.typ] = node.value
+				g.file_aliases[cur_file][node.typ_text()] = node.value
 			}
 		}
 	}
@@ -1596,7 +1886,7 @@ fn (mut g Gen) collect_globals() {
 			}
 			// Type from the declaration, or inferred from the initializer.
 			mut t := types.Type(types.Void{})
-			if f.typ.len > 0 {
+			if f.typ != 0 {
 				t = g.tc.parse_type(f.typ)
 			} else if f.children_count > 0 {
 				t = g.tc.resolve_type(g.a.child(f, 0))
@@ -1717,7 +2007,11 @@ fn (g &Gen) fold_const_int(id flat.NodeId) i64 {
 				// Apply the cast target's own width/signedness so a nested narrow
 				// cast keeps its value even when the enclosing global is wider
 				// (e.g. `int(u8(300))` -> 44, not 300).
-				return if n.value.len > 0 { g.fold_cast_int(cv, n.value) } else { cv }
+				return if n.source_value_id() != 0 {
+					g.fold_cast_int(cv, n.source_value_id())
+				} else {
+					cv
+				}
 			}
 		}
 		else {}
@@ -1833,8 +2127,8 @@ fn bool_to_i64(b bool) i64 {
 
 // fold_cast_int wraps a folded constant to a numeric cast target's width and
 // signedness, the compile-time form of gen_cast's narrowing.
-fn (g &Gen) fold_cast_int(v i64, type_name string) i64 {
-	return narrow_to_type(v, g.tc.parse_type(type_name))
+fn (g &Gen) fold_cast_int(v i64, type_name_id u32) i64 {
+	return narrow_to_type(v, g.tc.parse_type(type_name_id))
 }
 
 // narrow_to_type wraps a folded constant to an integer type's width and
@@ -1928,11 +2222,11 @@ fn (g &Gen) fold_const_float(id flat.NodeId) f64 {
 		.cast_expr {
 			if n.children_count > 0 {
 				cid := g.a.child(&n, 0)
-				tw := prim_wtype(g.tc.parse_type(n.value)) or { WType.f64 }
+				tw := prim_wtype(g.tc.parse_type(n.source_value_id())) or { WType.f64 }
 				if tw !in [WType.f32, WType.f64] {
 					// Cast to an integer type inside a float context: fold and
 					// narrow as an int, then widen to float.
-					return f64(g.fold_cast_int(g.fold_const_int(cid), n.value))
+					return f64(g.fold_cast_int(g.fold_const_int(cid), n.source_value_id()))
 				}
 				child := g.a.nodes[int(cid)]
 				mut fv := if child.kind == .int_literal {
@@ -2078,7 +2372,7 @@ fn (mut g Gen) gen_print_call(node flat.Node, name string) {
 		}
 	}
 	// integer expression passed directly (e.g. print(x))
-	w := g.expr_wtype(arg_id, '')
+	w := g.expr_wtype(arg_id, u32(0))
 	if w in [WType.i32, WType.i64] {
 		g.emit_print_int(arg_id, fd, newline, !g.is_unsigned(arg_id))
 		return
@@ -2255,7 +2549,7 @@ fn (mut g Gen) intern_data(bytes []u8) int {
 
 // ---- type helpers ----
 
-fn (mut g Gen) expr_wtype(id flat.NodeId, fallback_typ string) WType {
+fn (mut g Gen) expr_wtype(id flat.NodeId, fallback_typ_id u32) WType {
 	if int(id) >= 0 {
 		node := g.a.nodes[int(id)]
 		// Locals are authoritative: our own table is more reliable than the
@@ -2270,10 +2564,10 @@ fn (mut g Gen) expr_wtype(id flat.NodeId, fallback_typ string) WType {
 			}
 		}
 		if node.kind == .paren && node.children_count > 0 {
-			return g.expr_wtype(g.a.child(&node, 0), fallback_typ)
+			return g.expr_wtype(g.a.child(&node, 0), fallback_typ_id)
 		}
-		if node.kind == .cast_expr && node.value.len > 0 {
-			if w := prim_wtype(g.tc.parse_type(node.value)) {
+		if node.kind == .cast_expr && node.source_value_id() != 0 {
+			if w := prim_wtype(g.tc.parse_type(node.source_value_id())) {
 				return w
 			}
 		}
@@ -2283,16 +2577,16 @@ fn (mut g Gen) expr_wtype(id flat.NodeId, fallback_typ string) WType {
 			}
 			if node.op in [.left_shift, .right_shift, .right_shift_unsigned] {
 				// Shift result width follows the lhs, not the (possibly wider) count.
-				return g.expr_wtype(g.a.child(&node, 0), '')
+				return g.expr_wtype(g.a.child(&node, 0), u32(0))
 			}
-			return combine_wtype(g.expr_wtype(g.a.child(&node, 0), ''), g.expr_wtype(g.a.child(&node,
-				1), ''))
+			return combine_wtype(g.expr_wtype(g.a.child(&node, 0), u32(0)), g.expr_wtype(g.a.child(&node,
+				1), u32(0)))
 		}
 		if node.kind == .prefix && node.children_count >= 1 {
 			if node.op == .not {
 				return .i32
 			}
-			return g.expr_wtype(g.a.child(&node, 0), fallback_typ)
+			return g.expr_wtype(g.a.child(&node, 0), fallback_typ_id)
 		}
 	}
 	t := g.tc.resolve_type(id)
@@ -2301,8 +2595,8 @@ fn (mut g Gen) expr_wtype(id flat.NodeId, fallback_typ string) WType {
 			return w
 		}
 	}
-	if fallback_typ.len > 0 && fallback_typ != 'void' {
-		if w := prim_wtype(g.tc.parse_type(fallback_typ)) {
+	if fallback_typ_id != 0 && fallback_typ_id != flat.source_type_void {
+		if w := prim_wtype(g.tc.parse_type(fallback_typ_id)) {
 			return w
 		}
 	}
@@ -2310,7 +2604,7 @@ fn (mut g Gen) expr_wtype(id flat.NodeId, fallback_typ string) WType {
 }
 
 fn (mut g Gen) operand_wtype(lhs_id flat.NodeId, rhs_id flat.NodeId) WType {
-	return combine_wtype(g.expr_wtype(lhs_id, ''), g.expr_wtype(rhs_id, ''))
+	return combine_wtype(g.expr_wtype(lhs_id, u32(0)), g.expr_wtype(rhs_id, u32(0)))
 }
 
 // combine_wtype picks the widest of two value types (float beats int, 64 beats
@@ -2343,20 +2637,20 @@ fn (mut g Gen) is_unsigned(id flat.NodeId) bool {
 		if node.kind == .paren && node.children_count > 0 {
 			return g.is_unsigned(g.a.child(&node, 0))
 		}
-		if node.kind == .cast_expr && node.value.len > 0 {
-			return type_is_unsigned(g.tc.parse_type(node.value))
+		if node.kind == .cast_expr && node.source_value_id() != 0 {
+			return type_is_unsigned(g.tc.parse_type(node.source_value_id()))
 		}
 	}
 	return type_is_unsigned(g.tc.resolve_type(id))
 }
 
 // decl_is_unsigned resolves the signedness of a declared variable's initializer.
-fn (mut g Gen) decl_is_unsigned(rhs_id flat.NodeId, fallback_typ string) bool {
+fn (mut g Gen) decl_is_unsigned(rhs_id flat.NodeId, fallback_typ_id u32) bool {
 	if g.is_unsigned(rhs_id) {
 		return true
 	}
-	if fallback_typ.len > 0 {
-		return type_is_unsigned(g.tc.parse_type(fallback_typ))
+	if fallback_typ_id != 0 {
+		return type_is_unsigned(g.tc.parse_type(fallback_typ_id))
 	}
 	return false
 }
@@ -2439,7 +2733,7 @@ fn (mut g Gen) emit_arith(op flat.Op, w WType, signed bool) {
 // its natural width and emits the shift. The result keeps the value's width
 // while V permits a wider shift count, so value and count widths may differ.
 fn (mut g Gen) emit_shift_with_count(op flat.Op, value_w WType, rhs_id flat.NodeId, signed bool) {
-	count_w := if g.expr_wtype(rhs_id, '') == .i64 { WType.i64 } else { WType.i32 }
+	count_w := if g.expr_wtype(rhs_id, u32(0)) == .i64 { WType.i64 } else { WType.i32 }
 	g.gen_expr_as(rhs_id, count_w)
 	g.emit_shift_op(op, value_w, count_w, signed)
 }
@@ -2539,6 +2833,17 @@ fn wt_valtype(w WType) u8 {
 	}
 }
 
+// valtype_wtype is the inverse of wt_valtype, for the one place that works from
+// a declared wasm value type back to the value the backend emits.
+fn valtype_wtype(v u8) WType {
+	return match v {
+		valtype_i64 { WType.i64 }
+		valtype_f32 { WType.f32 }
+		valtype_f64 { WType.f64 }
+		else { WType.i32 }
+	}
+}
+
 // qualified_fn_key keys fn_index/fn_ret/fn_params: a bare name for the main
 // module, `module.name` for imported modules (matching call-site selectors).
 fn qualified_fn_key(mod string, name string) string {
@@ -2606,10 +2911,10 @@ fn prim_wtype(t_ types.Type) ?WType {
 }
 
 const signed_int_format_fns = ['strconv__format_int', 'int_str', 'i64_str', 'i8_str', 'i16_str',
-	'i32_str', 'isize_str']
+	'i32_str', 'isize_str', 'int.str', 'i8.str', 'i16.str', 'i32.str', 'i64.str', 'isize.str']
 
 const unsigned_int_format_fns = ['strconv__format_uint', 'u8_str', 'u16_str', 'u32_str', 'u64_str',
-	'usize_str']
+	'usize_str', 'u8.str', 'u16.str', 'u32.str', 'u64.str', 'uint.str']
 
 const bool_format_fns = ['bool.str', 'bool__str', 'bool_str']
 

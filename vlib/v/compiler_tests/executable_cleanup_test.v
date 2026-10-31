@@ -11,9 +11,9 @@ fn executable_cleanup_compile_and_run(v3_bin string, root string, name string, s
 	source_path := os.join_path(root, '${name}${suffix}')
 	output_path := os.join_path(root, name)
 	compile :=
-		os.execute('${os.quoted_path(v3_bin)} -nocache -o ${os.quoted_path(output_path)} ${os.quoted_path(source_path)}')
+		os.exec([v3_bin, '-nocache', '-o', output_path, source_path])
 	assert compile.exit_code == 0, compile.output
-	return os.execute(os.quoted_path(output_path)), generated_c
+	return os.exec([output_path]), generated_c
 }
 
 fn executable_cleanup_generate_c(v3_bin string, root string, name string, suffix string,
@@ -22,7 +22,8 @@ fn executable_cleanup_generate_c(v3_bin string, root string, name string, suffix
 	c_path := os.join_path(root, '${name}.c')
 	os.write_file(source_path, source) or { panic(err) }
 	generate :=
-		os.execute('${os.quoted_path(v3_bin)} -nocache ${flags} -o ${os.quoted_path(c_path)} ${os.quoted_path(source_path)}')
+		os.exec([v3_bin, '-nocache', ...(os.split_args(flags) or { panic(err) }), '-o', c_path,
+			source_path])
 	assert generate.exit_code == 0, generate.output
 	return os.read_file(c_path) or { panic(err) }
 }
@@ -43,7 +44,7 @@ fn test_executable_mains_invoke_module_cleanup() {
 		os.rmdir_all(root) or {}
 	}
 	build :=
-		os.execute('${os.quoted_path(executable_cleanup_vexe)} -gc none -o ${os.quoted_path(v3_bin)} ${os.quoted_path(executable_cleanup_v3_src)}')
+		os.exec([executable_cleanup_vexe, '-gc', 'none', '-o', v3_bin, executable_cleanup_v3_src])
 	assert build.exit_code == 0, build.output
 
 	main_run, main_c := executable_cleanup_compile_and_run(v3_bin, root, 'user_main', '.v', "fn init() {
@@ -144,16 +145,19 @@ pub fn answer() int {
 }
 ")!
 	generate_no_main :=
-		os.execute('${os.quoted_path(v3_bin)} -nocache -o ${os.quoted_path(no_main_c_path)} ${os.quoted_path(no_main_source)}')
+		os.exec([v3_bin, '-nocache', '-o', no_main_c_path, no_main_source])
 	assert generate_no_main.exit_code == 0, generate_no_main.output
 	no_main_c := os.read_file(no_main_c_path)!
 	assert no_main_c.contains('static void _vno_main_init_caller(void) {'), no_main_c
-	assert no_main_c.contains('i64 exported_answer(void)'), no_main_c
+	// The export presents the C ABI: V's 64-bit `int` stays C `int` there.
+	assert no_main_c.contains('int exported_answer(void)'), no_main_c
 	assert_cleanup_registered_after_init(no_main_c)
 
-	// A natural-name export (export name equal to the C symbol) is emitted directly
-	// with no wrapper, so its own body must run the guarded initializer; otherwise a
-	// host calling it observes uninitialized globals and skipped module init().
+	// A natural-name export (export name equal to the C symbol) whose C ABI matches
+	// its V signature is emitted directly with no wrapper, so its own body must run
+	// the guarded initializer; otherwise a host calling it observes uninitialized
+	// globals and skipped module init(). With a platform `int` in the signature the
+	// export is a C ABI wrapper, which runs the initializer instead.
 	direct_export_source := os.join_path(root, 'direct_export.v')
 	direct_export_c_path := os.join_path(root, 'direct_export.c')
 	os.write_file(direct_export_source, "module main
@@ -170,14 +174,23 @@ fn init() {
 pub fn start() int {
 	return direct_export_counter
 }
+
+@[export: 'start_wide']
+pub fn start_wide() i64 {
+	return direct_export_counter
+}
 ")!
-	generate_direct :=
-		os.execute('${os.quoted_path(v3_bin)} -nocache -o ${os.quoted_path(direct_export_c_path)} ${os.quoted_path(direct_export_source)}')
+	generate_direct := os.exec([v3_bin, '-nocache', '-enable-globals', '-o', direct_export_c_path,
+		direct_export_source])
 	assert generate_direct.exit_code == 0, generate_direct.output
 	direct_export_c := os.read_file(direct_export_c_path)!
 	assert direct_export_c.contains('int start(void) {'), direct_export_c
 	direct_start_body := direct_export_c.all_after('int start(void) {').all_before('}')
 	assert direct_start_body.contains('_vno_main_init_caller();'), direct_export_c
+	assert direct_export_c.contains('i64 start_wide(void) {'), direct_export_c
+	direct_wide_body := direct_export_c.all_after('i64 start_wide(void) {').all_before('}')
+	assert direct_wide_body.contains('_vno_main_init_caller();'), direct_export_c
+	assert !direct_export_c.contains('main__start_wide'), direct_export_c
 
 	explicit_main_no_main_c := executable_cleanup_generate_c(v3_bin, root, 'explicit_main_no_main',
 		'.v', '-d no_main', "fn main() {

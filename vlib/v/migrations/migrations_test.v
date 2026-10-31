@@ -3083,3 +3083,118 @@ fn test_duplicate_migration_names_are_rejected() {
 	}
 	assert false
 }
+
+fn test_add_index_with_where_pg() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .pg)
+	ctx.add_index(Index{
+		table:   'users'
+		columns: ['email']
+		unique:  true
+		name:    'users_email_idx'
+		where:   'active = true'
+	})!
+	assert recorder.queries == [
+		'CREATE UNIQUE INDEX "users_email_idx" ON "users" ("email") WHERE active = true;',
+	]
+}
+
+fn test_add_index_with_where_sqlite() {
+	index := Index{
+		table:   'orders'
+		columns: ['user_id']
+		name:    'orders_user_id_idx'
+		where:   '"deleted_at" IS NULL'
+	}
+
+	mut recorder := &RecordingConnection{ sqlite_version: '3.8.0' }
+	mut ctx := new_context(recorder, .sqlite)
+	ctx.add_index(index)!
+	assert recorder.queries.len == 5
+	assert recorder.queries[4] == 'CREATE INDEX "main"."orders_user_id_idx" ON "orders" ("user_id") WHERE "deleted_at" IS NULL;'
+
+	// check unsupported version
+	mut error_message := ''
+	mut old_recorder := &RecordingConnection{ sqlite_version: '3.7.17' }
+	mut old_ctx := new_context(old_recorder, .sqlite)
+	old_ctx.add_index(index) or { error_message = err.msg() }
+	assert error_message == 'SQLite add_index with WHERE requires SQLite 3.8.0 or newer'
+}
+
+fn test_add_index_with_where_mysql() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .mysql)
+	mut error_message := ''
+	ctx.add_index(Index{
+		table:   'users'
+		columns: ['email']
+		name:    'users_email_idx'
+		where:   'active = true'
+	}) or { error_message = err.msg() }
+	assert error_message == 'MySQL does not support partial indexes with WHERE'
+}
+
+fn test_create_table_with_options_sqlite() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .sqlite)
+	ctx.create_table(Table{
+		name:    'users'
+		options: 'STRICT'
+	})!
+	// SQLite rejects AUTOINCREMENT on WITHOUT ROWID tables, so that option
+	// needs an explicit non-autoincrement primary key.
+	ctx.create_table(Table{
+		name:    'kv'
+		id:      false
+		options: 'WITHOUT ROWID, STRICT'
+		columns: [
+			Column{
+				name:        'k'
+				kind:        .text
+				primary_key: true
+			},
+		]
+	})!
+	assert recorder.queries == [
+		'CREATE TABLE "users" ("id" INTEGER PRIMARY KEY AUTOINCREMENT) STRICT;',
+		'CREATE TABLE "kv" ("k" TEXT PRIMARY KEY NOT NULL) WITHOUT ROWID, STRICT;',
+	]
+}
+
+fn test_create_table_with_options_pg() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .pg)
+	ctx.create_table(Table{
+		name:    'users'
+		options: 'WITH (fillfactor = 80)'
+	})!
+	assert recorder.queries == [
+		'CREATE TABLE "users" ("id" BIGSERIAL PRIMARY KEY) WITH (fillfactor = 80);',
+	]
+}
+
+fn test_create_table_with_options_mysql() {
+	mut recorder := &RecordingConnection{}
+	mut ctx := new_context(recorder, .mysql)
+	ctx.create_table(Table{
+		name:    'users'
+		options: 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+	})!
+	assert recorder.queries == [
+		'CREATE TABLE `users` (`id` BIGINT AUTO_INCREMENT PRIMARY KEY) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;',
+	]
+}
+
+fn test_create_table_with_options_empty_string_is_omitted() {
+	for dialect in [Dialect.sqlite, .pg, .mysql] {
+		mut recorder := &RecordingConnection{}
+		mut ctx := new_context(recorder, dialect)
+		ctx.create_table(Table{ name: 'users', options: '' })!
+		expected := match dialect {
+			.sqlite { 'CREATE TABLE "users" ("id" INTEGER PRIMARY KEY AUTOINCREMENT);' }
+			.pg { 'CREATE TABLE "users" ("id" BIGSERIAL PRIMARY KEY);' }
+			.mysql { 'CREATE TABLE `users` (`id` BIGINT AUTO_INCREMENT PRIMARY KEY);' }
+		}
+		assert recorder.queries == [expected]
+	}
+}

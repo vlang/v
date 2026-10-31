@@ -22,7 +22,8 @@ ls -la vtcc/vtcc
 ./vtcc/vtcc --version
 
 show "Generate the C file, for the current V version"
-./v -o vlang.c cmd/v
+# vtcc only targets x86_64, even when the host running it is arm64.
+./v -arch amd64 -o vlang.c cmd/v
 ls -la vlang.c
 
 if [[ "$(uname)" == "Darwin" ]]; then

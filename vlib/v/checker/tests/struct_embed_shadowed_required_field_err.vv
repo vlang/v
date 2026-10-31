@@ -1,0 +1,25 @@
+struct Inner {}
+
+struct Base {
+	n int @[required]
+	p &Inner
+}
+
+struct Middle {
+	Base
+}
+
+struct Outer {
+	Base
+	Middle
+}
+
+fn main() {
+	value := Outer{
+		Base: Base{
+			n: 1
+			p: &Inner{}
+		}
+	}
+	println(value.Middle.n)
+}

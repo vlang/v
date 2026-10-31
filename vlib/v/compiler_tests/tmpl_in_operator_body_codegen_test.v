@@ -11,7 +11,8 @@ fn optmpl_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_tmpl_operator_body_test_${pid}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${optmpl_vexe} -gc none -path "${optmpl_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${optmpl_v3_src}')
+		os.exec([optmpl_vexe, '-gc', 'none', '-path', '${optmpl_vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${optmpl_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -31,10 +32,10 @@ fn test_operator_body_lowers_veb_template() {
 	source := "module main\n\nstruct Box {\n\tn int\n}\n\nfn (b Box) + (o Box) string {\n\treturn \$tmpl('row.txt')\n}\n\nfn main() {\n\tprintln((Box{n: 3} + Box{n: 9}).replace('\\n', ''))\n}\n"
 	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
 	bin := os.join_path(os.temp_dir(), 'v3_tmpl_operator_body_bin_${pid}')
-	compile := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${bin}')
+	compile := os.exec([v3_bin, os.join_path(root, 'main.v'), '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	// The template read the left operand's field, so no `.veb_template` leaked.
 	assert run.output.trim_space() == 'sum=3', run.output

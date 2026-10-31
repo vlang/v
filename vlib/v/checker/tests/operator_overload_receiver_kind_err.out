@@ -1,0 +1,42 @@
+vlib/v/checker/tests/operator_overload_receiver_kind_err.vv:7:17: notice: unused parameter: `b`
+    5 | }
+    6 | 
+    7 | fn (a Color) + (b Color) Color {
+      |                 ^
+    8 |     return .blue
+    9 | }
+vlib/v/checker/tests/operator_overload_receiver_kind_err.vv:11:18: notice: unused parameter: `b`
+    9 | }
+   10 | 
+   11 | fn (a Color) ** (b Color) Color {
+      |                  ^
+   12 |     return .blue
+   13 | }
+vlib/v/checker/tests/operator_overload_receiver_kind_err.vv:33:15: notice: unused parameter: `b`
+   31 | type Hue = Color
+   32 | 
+   33 | fn (a Hue) + (b Hue) Hue {
+      |               ^
+   34 |     return Hue(Color.blue)
+   35 | }
+vlib/v/checker/tests/operator_overload_receiver_kind_err.vv:7:1: error: operator methods are only allowed for struct and type alias
+    5 | }
+    6 | 
+    7 | fn (a Color) + (b Color) Color {
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    8 |     return .blue
+    9 | }
+vlib/v/checker/tests/operator_overload_receiver_kind_err.vv:11:1: error: operator methods are only allowed for struct and type alias
+    9 | }
+   10 | 
+   11 | fn (a Color) ** (b Color) Color {
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   12 |     return .blue
+   13 | }
+vlib/v/checker/tests/operator_overload_receiver_kind_err.vv:26:1: error: operator methods are only allowed for struct and type alias
+   24 | }
+   25 | 
+   26 | fn (a Shape) < (b Shape) bool {
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   27 |     return a.area() < b.area()
+   28 | }

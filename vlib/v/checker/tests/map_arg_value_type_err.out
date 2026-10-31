@@ -1,0 +1,56 @@
+vlib/v/checker/tests/map_arg_value_type_err.vv:60:24: error: cannot use `map[string]FooBar` as `map[string]string` in argument 1 to `accept_map_of_strings`
+   58 |         'bar': FooBar{2}
+   59 |     }
+   60 |     accept_map_of_strings(mymap)
+      |                           ~~~~~
+   61 |     accept_map_of_ints(mymap)
+   62 |     accept_nested_map(mymap)
+vlib/v/checker/tests/map_arg_value_type_err.vv:61:21: error: cannot use `map[string]FooBar` as `map[string]int` in argument 1 to `accept_map_of_ints`
+   59 |     }
+   60 |     accept_map_of_strings(mymap)
+   61 |     accept_map_of_ints(mymap)
+      |                        ~~~~~
+   62 |     accept_nested_map(mymap)
+   63 |     accept_map_ptr(&mymap)
+vlib/v/checker/tests/map_arg_value_type_err.vv:62:20: error: cannot use `map[string]FooBar` as `map[string]map[string]int` in argument 1 to `accept_nested_map`
+   60 |     accept_map_of_strings(mymap)
+   61 |     accept_map_of_ints(mymap)
+   62 |     accept_nested_map(mymap)
+      |                       ~~~~~
+   63 |     accept_map_ptr(&mymap)
+   64 |     accept_right_type({
+vlib/v/checker/tests/map_arg_value_type_err.vv:63:17: error: cannot use `&map[string]FooBar` as `&map[string]string` in argument 1 to `accept_map_ptr`
+   61 |     accept_map_of_ints(mymap)
+   62 |     accept_nested_map(mymap)
+   63 |     accept_map_ptr(&mymap)
+      |                    ~~~~~~
+   64 |     accept_right_type({
+   65 |         'a': 1
+vlib/v/checker/tests/map_arg_value_type_err.vv:68:20: error: cannot use `?map[string]int` as `?map[string]string` in argument 1 to `accept_option_map`
+   66 |     })
+   67 |     ch := chan map[string]int{cap: 1}
+   68 |     accept_option_map(option_map_of_ints())
+      |                       ~~~~~~~~~~~~~~~~~~~~
+   69 |     accept_chan_map(ch)
+   70 |     accept_option_array(?[]int([1]))
+vlib/v/checker/tests/map_arg_value_type_err.vv:69:18: error: cannot use `chan map[string]int` as `chan map[string]string` in argument 1 to `accept_chan_map`
+   67 |     ch := chan map[string]int{cap: 1}
+   68 |     accept_option_map(option_map_of_ints())
+   69 |     accept_chan_map(ch)
+      |                     ~~
+   70 |     accept_option_array(?[]int([1]))
+   71 |     accept_chan_array(chan []int{cap: 1})
+vlib/v/checker/tests/map_arg_value_type_err.vv:70:22: error: cannot use `?[]int` as `?[]string` in argument 1 to `accept_option_array`
+   68 |     accept_option_map(option_map_of_ints())
+   69 |     accept_chan_map(ch)
+   70 |     accept_option_array(?[]int([1]))
+      |                         ~~~~~~~~~~~
+   71 |     accept_chan_array(chan []int{cap: 1})
+   72 |     accept_right_option_map(option_map_of_ints())
+vlib/v/checker/tests/map_arg_value_type_err.vv:71:20: error: cannot use `chan []int` as `chan []string` in argument 1 to `accept_chan_array`
+   69 |     accept_chan_map(ch)
+   70 |     accept_option_array(?[]int([1]))
+   71 |     accept_chan_array(chan []int{cap: 1})
+      |                       ~~~~~~~~~~~~~~~~~~
+   72 |     accept_right_option_map(option_map_of_ints())
+   73 |     accept_right_chan_map(ch)

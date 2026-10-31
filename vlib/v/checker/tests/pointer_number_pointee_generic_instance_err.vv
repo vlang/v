@@ -1,0 +1,20 @@
+fn as_wide[T](p &T) &u64 {
+	return p
+}
+
+fn read_wide[T](p &T) u64 {
+	return take(p)
+}
+
+fn take(p &u64) u64 {
+	return *p
+}
+
+fn main() {
+	small := u8(7)
+	wide := u64(1)
+	println(*as_wide(&small))
+	println(*as_wide(&wide))
+	println(read_wide(&small))
+	println(read_wide(&wide))
+}

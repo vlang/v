@@ -13,8 +13,15 @@ pub fn input_character() int {
 	} $else {
 		ch = C.getchar()
 		if ch == C.EOF {
+			$if race ? {
+				// The end of the input is a read that did not fail too.
+				if C.feof(C.stdin) != 0 {
+					race_stdio_read()
+				}
+			}
 			return -1
 		}
+		race_stdio_read()
 	}
 	return ch
 }
@@ -26,7 +33,7 @@ pub fn input_character() int {
 // to output many characters one by one. If you instead want to print entire
 // strings at once, use `print(your_string)`.
 pub fn print_character(ch u8) int {
-	$if android && !termux {
+	$if android && !termux && !cross ? {
 		C.android_print(C.stdout, c'%.*s', 1, voidptr(&ch))
 	} $else $if freestanding {
 		bare_print(voidptr(&ch), u64(1))
@@ -34,6 +41,7 @@ pub fn print_character(ch u8) int {
 		// TODO
 		return 0
 	} $else {
+		race_stdio_write()
 		x := C.putchar(ch)
 		if x == C.EOF {
 			return -1

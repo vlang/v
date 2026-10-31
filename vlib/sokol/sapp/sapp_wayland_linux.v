@@ -347,7 +347,7 @@ $if sokol_wayland ? {
 
 			mut buf := [8]u8{}
 			count := C.xkb_state_key_get_utf8(g_sapp_state.wl.xkb_state,
-				g_sapp_state.wl.key_repeat_keycode, &char(&buf[0]), usize(buf.len))
+				g_sapp_state.wl.key_repeat_keycode, &char(&buf[0]), uint(buf.len))
 			if count > 0 && count < buf.len {
 				codepoint := utf8_decode(&buf[0], count)
 				if codepoint > 0 && codepoint < 0x110000 {
@@ -368,7 +368,7 @@ $if sokol_wayland ? {
 			C.close(fd)
 			return
 		}
-		map_str := C.mmap(unsafe { nil }, usize(size), prot_read, map_private, fd, 0)
+		map_str := C.mmap(unsafe { nil }, uint(size), prot_read, map_private, fd, 0)
 		if map_str == map_failed {
 			C.close(fd)
 			return
@@ -378,7 +378,7 @@ $if sokol_wayland ? {
 		}
 		g_sapp_state.wl.xkb_keymap = C.xkb_keymap_new_from_string(g_sapp_state.wl.xkb_context,
 			map_str, xkb_keymap_format_text_v1, xkb_keymap_compile_no_flags)
-		C.munmap(map_str, usize(size))
+		C.munmap(map_str, uint(size))
 		C.close(fd)
 
 		if g_sapp_state.wl.xkb_keymap == unsafe { nil } {
@@ -434,7 +434,7 @@ $if sokol_wayland ? {
 		if state == wl_keyboard_key_state_pressed {
 			mut buf := [8]u8{}
 			count := C.xkb_state_key_get_utf8(g_sapp_state.wl.xkb_state, keycode, &char(&buf[0]),
-				usize(buf.len))
+				uint(buf.len))
 			if count > 0 && count < buf.len {
 				codepoint := utf8_decode(&buf[0], count)
 				if codepoint > 0 && codepoint < 0x110000 {
@@ -795,12 +795,20 @@ $if sokol_wayland ? {
 	fn wl_data_device_motion(data voidptr, device &C.wl_data_device, time u32, x i32, y i32) {
 	}
 
+	// pipe() writes two C ints, not two platform-width V ints.
+	fn wl_create_drop_pipe() ![2]i32 {
+		mut fds := [2]i32{init: -1}
+		if C.pipe(&fds[0]) == -1 {
+			return error('sokol_app: failed to create Wayland drop pipe')
+		}
+		return fds
+	}
+
 	fn wl_data_device_drop(data voidptr, device &C.wl_data_device) {
 		if g_sapp_state.wl.data_offer == unsafe { nil } {
 			return
 		}
-		mut fds := [2]int{}
-		if C.pipe(&fds[0]) == -1 {
+		fds := wl_create_drop_pipe() or {
 			C.wl_data_offer_destroy(g_sapp_state.wl.data_offer)
 			g_sapp_state.wl.data_offer = unsafe { nil }
 			return
@@ -810,15 +818,15 @@ $if sokol_wayland ? {
 		C.wl_display_flush(g_sapp_state.wl.display)
 
 		mut buffer := [8192]u8{}
-		mut total_read := isize(0)
+		mut total_read := int(0)
 		for {
-			n := C.read(fds[0], unsafe { &buffer[0] + total_read }, usize(buffer.len -
+			n := C.read(fds[0], unsafe { &buffer[0] + total_read }, uint(buffer.len -
 				int(total_read) - 1))
 			if n <= 0 {
 				break
 			}
 			total_read += n
-			if total_read >= isize(buffer.len - 1) {
+			if total_read >= int(buffer.len - 1) {
 				break
 			}
 		}
@@ -830,7 +838,7 @@ $if sokol_wayland ? {
 			}
 			// Clear drop buffer
 			if g_sapp_state.drop.buffer != unsafe { nil } {
-				unsafe { C.memset(g_sapp_state.drop.buffer, 0, usize(g_sapp_state.drop.buf_size)) }
+				unsafe { C.memset(g_sapp_state.drop.buffer, 0, uint(g_sapp_state.drop.buf_size)) }
 			}
 			g_sapp_state.drop.num_files = 0
 
@@ -847,7 +855,7 @@ $if sokol_wayland ? {
 				// URL decode into drop buffer
 				mut dst := sapp_dropped_file_path_ptr(g_sapp_state.drop.num_files)
 				dst_end := unsafe { dst + (g_sapp_state.drop.max_path_length - 1) }
-				mut i := usize(0)
+				mut i := uint(0)
 				for unsafe { file_path[i] } != 0 && dst < dst_end {
 					ch := unsafe { u8(file_path[i]) }
 					if ch == `%` && unsafe { file_path[i + 1] } != 0

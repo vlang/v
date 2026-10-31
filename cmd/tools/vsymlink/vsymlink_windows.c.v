@@ -22,6 +22,7 @@ fn setup_symlink(custom_link_dir string) {
 			if os.exists(vsymlink) {
 				os.rm(vsymlink) or { panic(err) }
 			}
+			remove_shell_shim(vsymlinkdir)
 			vsymlink = os.join_path(vsymlinkdir, 'v.exe')
 		}
 	}
@@ -37,6 +38,7 @@ fn setup_symlink(custom_link_dir string) {
 		}
 		os.write_file(vsymlink, '@echo off\n"${vexe}" %*') or { panic(err) }
 		eprintln('${vsymlink} file written.')
+		write_shell_shim(vsymlinkdir, vexe)
 	}
 	if !os.exists(vsymlink) {
 		warn_and_exit('Could not create ${vsymlink}')
@@ -103,6 +105,22 @@ fn symlink_path(link_dir string) string {
 	return os.join_path(link_dir, 'v.exe')
 }
 
+fn write_shell_shim(link_dir string, vexe_path string) {
+	vshim := os.join_path(link_dir, 'v')
+	if os.exists(vshim) {
+		os.rm(vshim) or { panic(err) }
+	}
+	os.write_file(vshim, shell_shim_content(vexe_path)) or { panic(err) }
+	eprintln('${vshim} file written.')
+}
+
+fn remove_shell_shim(link_dir string) {
+	vshim := os.join_path(link_dir, 'v')
+	if os.exists(vshim) {
+		os.rm(vshim) or { panic(err) }
+	}
+}
+
 fn append_path_entry(path_value string, entry string, delimiter string, case_insensitive bool) string {
 	target := normalized_path_entry(entry, case_insensitive)
 	for current_entry in path_value.split(delimiter) {
@@ -156,7 +174,7 @@ fn get_reg_value(reg_env_key voidptr, key string) !string {
 	}
 	reg_value_cap := int((reg_value_size + u32(sizeof(u16)) - 1) / u32(sizeof(u16)))
 	mut reg_value := []u16{len: reg_value_cap + 1}
-	read_result := C.RegQueryValueExW(reg_env_key, key.to_wide(), 0, 0, &u8(reg_value.data),
+	read_result := C.RegQueryValueExW(reg_env_key, key.to_wide(), 0, 0, unsafe { &u8(reg_value.data) },
 		voidptr(&reg_value_size))
 	if read_result != 0 {
 		return error('Unable to get registry value for "${key}" (error ${read_result}).')
@@ -168,7 +186,7 @@ fn get_reg_value(reg_env_key voidptr, key string) !string {
 fn set_reg_value(reg_key voidptr, key string, value string) !bool {
 	wide_value := value.to_wide()
 	wide_value_size := u32((C.wcslen(wide_value) + 1) * sizeof(u16))
-	if C.RegSetValueExW(reg_key, key.to_wide(), 0, C.REG_EXPAND_SZ, voidptr(wide_value),
+	if C.RegSetValueExW(reg_key, key.to_wide(), 0, u32(C.REG_EXPAND_SZ), voidptr(wide_value),
 		wide_value_size) != 0 {
 		return error('Unable to set registry value for "${key}". %PATH% may be too long.')
 	}
@@ -179,8 +197,8 @@ fn set_reg_value(reg_key voidptr, key string, value string) !bool {
 // letting them know that the system environment has changed and should be reloaded
 fn send_setting_change_msg(message_data string) !bool {
 	message_data_wide := message_data.to_wide()
-	if C.SendMessageTimeoutW(os.hwnd_broadcast, os.wm_settingchange, 0,
-		unsafe { &u32(message_data_wide) }, os.smto_abortifhung, 5000, 0) == 0 {
+	if C.SendMessageTimeoutW(os.hwnd_broadcast, u32(os.wm_settingchange), 0,
+		unsafe { &u32(message_data_wide) }, u32(os.smto_abortifhung), 5000, 0) == 0 {
 		return error('Could not broadcast WM_SETTINGCHANGE')
 	}
 	return true

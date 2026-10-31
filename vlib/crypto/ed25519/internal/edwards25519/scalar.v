@@ -104,13 +104,8 @@ pub fn (mut s Scalar) set_canonical_bytes(x []u8) !Scalar {
 	if x.len != 32 {
 		return error('invalid scalar length')
 	}
-	// mut bb := []u8{len:32}
 	mut ss := Scalar{}
-	for i, item in x {
-		ss.s[i] = item
-	}
-
-	//_ := copy(mut ss.s[..], x) //its not working
+	copy(mut ss.s, x)
 	if !is_reduced(ss) {
 		return error('invalid scalar encoding')
 	}
@@ -1111,50 +1106,21 @@ fn generate_scalar(_ int) !Scalar {
 			s = sc_minus_one
 		}
 		diceroll < 5 {
-			// rand.Read(s.s[:16]) // read random bytes and fill buf
-			// using builtin rand.read([]buf)
-			rand.read(mut s.s[..16])
-			// buf := rand.read(s.s[..16].len)!
-			// copy(mut s.s[..16], buf)
-
-			/*
-			for i, item in buf {
-				s.s[i] = item
-			}
-			*/
-			s.s[15] &= (1 * 32) - 1
 			// generate a low scalar in [0, 2^125).
+			rand.read(mut s.s[..16])
+			s.s[15] &= (1 * 32) - 1
 		}
 		diceroll < 10 {
 			// generate a high scalar in [2^252, 2^252 + 2^124).
 			s.s[31] = 1 * 16
-			// Read generates len(p) random bytes and writes them into p
-			// rand.Read(s.s[:16])
 			rand.read(mut s.s[..16])
-			// buf := rand.read(s.s[..16].len)!
-			// copy(mut s.s[..16], buf)
-
-			/*
-			for i, item in buf {
-				s.s[i] = item
-			}
-			*/
 			s.s[15] &= (1 * 16) - 1
 		}
 		else {
 			// generate a valid scalar in [0, l) by returning [0, 2^252) which has a
 			// negligibly different distribution (the former has a 2^-127.6 chance
 			// of being out of the latter range).
-			// rand.Read(s.s[:])
 			rand.read(mut s.s[..])
-			// buf := crand.read(s.s.len)!
-			// copy(mut s.s[..], buf)
-
-			/*
-			for i, item in buf {
-				s.s[i] = item
-			}
-			*/
 			s.s[31] &= (1 * 16) - 1
 		}
 	}

@@ -13,6 +13,21 @@ The signatures range from `±8K - ±50K` depending on the type chosen.
 > to build and install latest OpenSSL library on unix-like box, 
 > see [install-latest-ssl.md](https://github.com/vlang/v/blob/master/vlib/x/crypto/slhdsa/install-latest-ssl.md)
 
+## OpenSSL dependency
+
+OpenSSL 3.5 or newer is a required dependency, including when a program only imports this
+module. Install its development headers and the `libcrypto` library before compiling.
+The `has_modern_openssl` condition skips this module's tests when that dependency is absent;
+it does not make OpenSSL optional for programs importing `x.crypto.slhdsa`.
+
+### Windows installations
+
+The module searches `C:/Program Files/OpenSSL-Win64` and `C:/Program Files/OpenSSL`.
+Its include and library flags quote these paths so the space in `Program Files` stays
+within one compiler argument. If you add custom `-I` or `-L` flags for another
+installation, quote paths containing spaces too. Install OpenSSL 3.5 or newer,
+including its headers and libraries, before building this module.
+
 ## Basic
 SLH-DSA signature scheme is constructed using other hash-based signature schemes as components. 
 SLH-DSA was comes with set of predefined parameter that describes security categories, ie:<br>

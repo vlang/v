@@ -10,7 +10,8 @@ fn inline_header_build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_inline_header_context_test_${os.getpid()}')
 	os.rm(v3_bin) or {}
 	build :=
-		os.execute('${inline_header_vexe} -gc none -path "${inline_header_vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${inline_header_v3_src}')
+		os.exec([inline_header_vexe, '-gc', 'none', '-path',
+			'${inline_header_vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin, '${inline_header_v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -86,12 +87,16 @@ scanned as an active include:
 static inline int optional_backend_value(void) { return 9; }
 #endif
 ')
-	c_out := os.join_path(root, 'out.c')
-	result := os.execute('${v3_bin} ${os.join_path(root, 'main.v')} -b c -o ${c_out}')
+	// The C preprocessor handles comments and inactive nested includes, including for -cross.
+	bin_out := os.join_path(root, 'out')
+	result := os.exec([v3_bin, '-cross', '-b', 'c', '-o', bin_out, os.join_path(root, 'main.v')])
 	assert result.exit_code == 0, result.output
-	c_code := os.read_file(c_out) or { panic(err) }
-	assert c_code.contains('#include "comment_only.h"'), c_code
-	assert c_code.contains('#include "missing_optional_backend.h"'), c_code
-	assert include_occurrences_are_under_guard(c_code, '#include "missing_optional_backend.h"',
-		'USE_OPTIONAL_BACKEND'), c_code
+	run := os.exec([bin_out])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '1', run.output
+	c_code := os.read_file(bin_out + '.c') or { panic(err) }
+	outer := os.real_path(os.join_path(root, 'wrapper', 'outer.h')).replace('\\', '/')
+	assert c_code.contains('#include "${outer}"')
+	assert !c_code.contains('#include "comment_only.h"')
+	assert !c_code.contains('#include "missing_optional_backend.h"')
 }

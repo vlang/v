@@ -76,6 +76,7 @@ fn test_avcp_1() ! {
 	out := g.encrypt(pt, iv, aad)!
 
 	// ciphertext only contains the tag
+	assert out[..pt.len] == ct
 	assert out == tag
 }
 

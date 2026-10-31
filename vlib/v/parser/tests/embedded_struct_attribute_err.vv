@@ -1,4 +1,4 @@
-import json
+import json2
 
 struct Size {
 	width int
@@ -10,5 +10,5 @@ struct Button {
 
 fn main() {
 	a := Button{}
-	println(json.encode(a)) // {"size":{"width":0}}
+	println(json2.encode(a)) // {"size":{"width":0}}
 }

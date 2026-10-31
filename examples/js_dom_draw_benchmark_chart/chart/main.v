@@ -64,7 +64,7 @@ fn main() {
 }
 
 pub fn (app &App) before_request(mut ctx Context) {
-	os.execute_or_panic('v -b js_browser draw.js.v ')
+	os.exec_or_panic(['v', '-b', 'js_browser', 'draw.js.v'])
 }
 
 @['/'; get]

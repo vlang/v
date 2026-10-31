@@ -35,11 +35,11 @@ pub mut:
 	height f64
 }
 
-pub const assoc_assign = usize(0)
-pub const assoc_retain_nonatomic = usize(1)
-pub const assoc_copy_nonatomic = usize(3)
-pub const assoc_retain = usize(0o1401)
-pub const assoc_copy = usize(0o1403)
+pub const assoc_assign = uint(0)
+pub const assoc_retain_nonatomic = uint(1)
+pub const assoc_copy_nonatomic = uint(3)
+pub const assoc_retain = uint(0o1401)
+pub const assoc_copy = uint(0o1403)
 pub const run_loop_default_mode = 'kCFRunLoopDefaultMode'
 
 fn C.macos_objc_msg_id0(obj Id, selector Sel) Id
@@ -85,6 +85,8 @@ fn C.macos_objc_msg_void_id_id_range(obj Id, selector Sel, a0 Id, a1 Id, range R
 fn C.macos_objc_msg_void_range(obj Id, selector Sel, range Range)
 fn C.macos_objc_msg_void_rect_id(obj Id, selector Sel, rect Rect, a1 Id)
 fn C.macos_objc_msg_void_point(obj Id, selector Sel, point Point)
+fn C.macos_objc_msg_void_point_id(obj Id, selector Sel, point Point, a1 voidptr)
+fn C.macos_objc_msg_point_id(obj Id, selector Sel, a0 voidptr) Point
 fn C.macos_objc_msg_void_id_sel_id_id(obj Id, selector Sel, a0 Id, a1 Sel, a2 Id, a3 Id)
 fn C.macos_objc_msg_void_sel_id_bool(obj Id, selector Sel, a0 Sel, a1 Id, a2 bool)
 fn C.macos_objc_msg_bool0(obj Id, selector Sel) bool
@@ -95,15 +97,15 @@ fn C.macos_objc_msg_f64(obj Id, selector Sel) f64
 fn C.macos_objc_msg_rect(obj Id, selector Sel) Rect
 fn C.macos_objc_get_class(const_name &char) Class
 fn C.macos_sel_register_name(const_name &char) Sel
-fn C.macos_objc_allocate_class_pair(superclass Class, const_name &char, extra_bytes usize) Class
+fn C.macos_objc_allocate_class_pair(superclass Class, const_name &char, extra_bytes uint) Class
 fn C.macos_objc_register_class_pair(cls Class)
 fn C.macos_class_add_method(cls Class, name Sel, imp voidptr, const_types &char) bool
-fn C.macos_class_add_ivar(cls Class, const_name &char, size usize, alignment u8, const_types &char) bool
+fn C.macos_class_add_ivar(cls Class, const_name &char, size uint, alignment u8, const_types &char) bool
 fn C.macos_objc_get_protocol(const_name &char) Protocol
 fn C.macos_class_add_protocol(cls Class, protocol Protocol) bool
 fn C.macos_objc_set_ptr_ivar(obj Id, const_name &char, value voidptr)
 fn C.macos_objc_get_ptr_ivar(obj Id, const_name &char) voidptr
-fn C.macos_set_associated_object(obj Id, const_key voidptr, value Id, policy usize)
+fn C.macos_set_associated_object(obj Id, const_key voidptr, value Id, policy uint)
 fn C.macos_get_associated_object(obj Id, const_key voidptr) Id
 
 @[inline]
@@ -401,6 +403,16 @@ pub fn msg_void_point(obj Id, selector string, value Point) {
 	C.macos_objc_msg_void_point(obj, sel(selector), value)
 }
 
+@[inline]
+pub fn msg_void_point_id(obj Id, selector string, point Point, a1 Id) {
+	C.macos_objc_msg_void_point_id(obj, sel(selector), point, a1)
+}
+
+@[inline]
+pub fn msg_point_id(obj Id, selector string, a0 Id) Point {
+	return C.macos_objc_msg_point_id(obj, sel(selector), a0)
+}
+
 // msg_void_id_sel_id_id sends a void message with an object, a selector, and two objects.
 @[inline]
 pub fn msg_void_id_sel_id_id(obj Id, selector string, a0 Id, a1 Sel, a2 Id, a3 Id) {
@@ -491,8 +503,9 @@ pub fn autorelease_pool_new() Id {
 	return new('NSAutoreleasePool')
 }
 
+// set_associated_object associates value with obj and key using policy.
 @[inline]
-pub fn set_associated_object(obj Id, key voidptr, value Id, policy usize) {
+pub fn set_associated_object(obj Id, key voidptr, value Id, policy uint) {
 	C.macos_set_associated_object(obj, key, value, policy)
 }
 

@@ -78,20 +78,20 @@ fn C.EVP_PKEY_public_check(ctx &C.EVP_PKEY_CTX) i32
 fn C.EVP_PKEY_dup(key &C.EVP_PKEY) &C.EVP_PKEY
 fn C.EVP_PKEY_set_bn_param(pkey &C.EVP_PKEY, const_key_name &char, const_bn &C.BIGNUM) i32
 
-fn C.EVP_PKEY_get_group_name(pkey &C.EVP_PKEY, gname &u8, gname_sz u32, gname_len &usize) i32
-fn C.EVP_PKEY_get1_encoded_public_key(pkey &C.EVP_PKEY, ppub &&u8) usize
+fn C.EVP_PKEY_get_group_name(pkey &C.EVP_PKEY, gname &u8, gname_sz u32, gname_len &uint) i32
+fn C.EVP_PKEY_get1_encoded_public_key(pkey &C.EVP_PKEY, ppub &&u8) uint
 fn C.EVP_PKEY_get_bn_param(pkey &C.EVP_PKEY, key_name &char, bn &&C.BIGNUM) i32
 fn C.EVP_PKEY_fromdata_init(ctx &C.EVP_PKEY_CTX) i32
 fn C.EVP_PKEY_fromdata(ctx &C.EVP_PKEY_CTX, ppkey &&C.EVP_PKEY, selection i32, params &C.OSSL_PARAM) i32
 
 // no-prehash signing (verifying)
-fn C.EVP_PKEY_sign(ctx &C.EVP_PKEY_CTX, sig &u8, siglen &usize, tbs &u8, tbslen usize) i32
+fn C.EVP_PKEY_sign(ctx &C.EVP_PKEY_CTX, sig &u8, siglen &uint, tbs &u8, tbslen uint) i32
 fn C.EVP_PKEY_sign_init(ctx &C.EVP_PKEY_CTX) i32
 fn C.EVP_PKEY_verify_init(ctx &C.EVP_PKEY_CTX) i32
-fn C.EVP_PKEY_verify(ctx &C.EVP_PKEY_CTX, sig &u8, siglen usize, tbs &u8, tbslen usize) i32
+fn C.EVP_PKEY_verify(ctx &C.EVP_PKEY_CTX, sig &u8, siglen uint, tbs &u8, tbslen uint) i32
 
 // single shoot digest signing (verifying) routine
-fn C.EVP_DigestSign(ctx &C.EVP_MD_CTX, sig &u8, siglen &usize, tbs &u8, tbslen i32) i32
+fn C.EVP_DigestSign(ctx &C.EVP_MD_CTX, sig &u8, siglen &uint, tbs &u8, tbslen i32) i32
 fn C.EVP_DigestVerify(ctx &C.EVP_MD_CTX, sig &u8, siglen i32, tbs &u8, tbslen i32) i32
 
 // Message digest routines
@@ -102,7 +102,7 @@ fn C.EVP_DigestFinal(ctx &C.EVP_MD_CTX, md &u8, s &u32) i32
 // Recommended hashed signing/verifying routines
 fn C.EVP_DigestSignInit(ctx &C.EVP_MD_CTX, pctx &&C.EVP_PKEY_CTX, tipe &C.EVP_MD, e &C.ENGINE, pkey &C.EVP_PKEY) i32
 fn C.EVP_DigestSignUpdate(ctx &C.EVP_MD_CTX, d voidptr, cnt i32) i32
-fn C.EVP_DigestSignFinal(ctx &C.EVP_MD_CTX, sig &u8, siglen &usize) i32
+fn C.EVP_DigestSignFinal(ctx &C.EVP_MD_CTX, sig &u8, siglen &uint) i32
 fn C.EVP_DigestVerifyInit(ctx &C.EVP_MD_CTX, pctx &&C.EVP_PKEY_CTX, tipe &C.EVP_MD, e &C.ENGINE, pkey &C.EVP_PKEY) i32
 fn C.EVP_DigestVerifyUpdate(ctx &C.EVP_MD_CTX, d voidptr, cnt i32) i32
 fn C.EVP_DigestVerifyFinal(ctx &C.EVP_MD_CTX, sig &u8, siglen i32) i32
@@ -122,7 +122,7 @@ fn C.EVP_PKEY_CTX_free(ctx &C.EVP_PKEY_CTX)
 // ECDH key agreement (used to derive TLS 1.3's P-256 ECDHE shared secret).
 fn C.EVP_PKEY_derive_init(ctx &C.EVP_PKEY_CTX) i32
 fn C.EVP_PKEY_derive_set_peer(ctx &C.EVP_PKEY_CTX, peer &C.EVP_PKEY) i32
-fn C.EVP_PKEY_derive(ctx &C.EVP_PKEY_CTX, key &u8, keylen &usize) i32
+fn C.EVP_PKEY_derive(ctx &C.EVP_PKEY_CTX, key &u8, keylen &uint) i32
 
 fn C.EVP_PKEY_get_bits(pkey &C.EVP_PKEY) i32
 
@@ -150,7 +150,7 @@ struct C.EC_POINT {}
 
 fn C.EC_POINT_new(group &C.EC_GROUP) &C.EC_POINT
 fn C.EC_POINT_mul(group &C.EC_GROUP, r &C.EC_POINT, n &C.BIGNUM, q &C.EC_POINT, m &C.BIGNUM, ctx &C.BN_CTX) i32
-fn C.EC_POINT_point2buf(group &C.EC_GROUP, point &C.EC_POINT, form i32, pbuf &&u8, ctx &C.BN_CTX) usize
+fn C.EC_POINT_point2buf(group &C.EC_GROUP, point &C.EC_POINT, form i32, pbuf &&u8, ctx &C.BN_CTX) uint
 fn C.EC_POINT_free(point &C.EC_POINT)
 
 // Elliptic group (curve) related declarations.
@@ -205,7 +205,7 @@ struct C.OSSL_PARAM_BLD {}
 fn C.OSSL_PARAM_free(params &C.OSSL_PARAM)
 fn C.OSSL_PARAM_BLD_free(param_bld &C.OSSL_PARAM_BLD)
 fn C.OSSL_PARAM_BLD_new() &C.OSSL_PARAM_BLD
-fn C.OSSL_PARAM_BLD_push_utf8_string(bld &C.OSSL_PARAM_BLD, const_key &char, const_buf &char, bsize usize) i32
+fn C.OSSL_PARAM_BLD_push_utf8_string(bld &C.OSSL_PARAM_BLD, const_key &char, const_buf &char, bsize uint) i32
 fn C.OSSL_PARAM_BLD_push_BN(bld &C.OSSL_PARAM_BLD, const_key &char, const_bn &C.BIGNUM) i32
-fn C.OSSL_PARAM_BLD_push_octet_string(bld &C.OSSL_PARAM_BLD, const_key &char, const_buf voidptr, bsize usize) i32
+fn C.OSSL_PARAM_BLD_push_octet_string(bld &C.OSSL_PARAM_BLD, const_key &char, const_buf voidptr, bsize uint) i32
 fn C.OSSL_PARAM_BLD_to_param(bld &C.OSSL_PARAM_BLD) &C.OSSL_PARAM

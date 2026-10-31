@@ -1,0 +1,68 @@
+struct Context {
+mut:
+	value int
+}
+
+struct Other {
+mut:
+	x int
+}
+
+struct App {}
+
+fn (_ App) by_value(mut ctx Context) {
+	ctx.value++
+}
+
+fn (_ App) by_ref(mut ctx &Context) {
+	ctx.value += 10
+}
+
+fn pass_string(app App) {
+	mut name := 'x'
+	$for method in App.methods {
+		if method.name == 'by_value' {
+			app.$method(mut name)
+		}
+	}
+}
+
+fn pass_other(app App, mut other Other) {
+	mut o := Other{}
+	$for method in App.methods {
+		if method.name == 'by_value' {
+			app.$method(mut o)
+			app.$method(mut other)
+		}
+	}
+}
+
+fn pass_other_ref(app App) {
+	mut o := &Other{}
+	$for method in App.methods {
+		if method.name == 'by_ref' {
+			app.$method(mut o)
+		}
+	}
+}
+
+fn pass_ref_ref_ref(app App, mut ctx Context) {
+	mut p := &ctx
+	mut pp := &p
+	mut ppp := &pp
+	$for method in App.methods {
+		if method.name == 'by_ref' {
+			app.$method(mut ppp)
+		}
+	}
+}
+
+fn main() {
+	app := App{}
+	mut ctx := Context{}
+	mut other := Other{}
+	pass_string(app)
+	pass_other(app, mut other)
+	pass_other_ref(app)
+	pass_ref_ref_ref(app, mut ctx)
+}

@@ -5,7 +5,7 @@ struct User {
 }
 
 fn to_json(u User) string {
-	return json2.encode(u, escape_unicode: true)
+	return json2.encode(u, escape_unicode: true, time_as_unix: true)
 }
 
 fn any_of(s string) Any {

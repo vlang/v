@@ -5,7 +5,7 @@ vlib/v/checker/tests/mut_arg_different_muls_err.vv:29:14: notice: unused paramet
       |              ~~~~~~
    30 |     println(' ${w} ${h}')
    31 | }
-vlib/v/checker/tests/mut_arg_different_muls_err.vv:26:21: error: cannot use `&Window` as `&&Window` in argument 1 to `window_resized`
+vlib/v/checker/tests/mut_arg_different_muls_err.vv:26:21: error: function `window_resized` parameter `w` is `mut w &Window`, a mutable reference to a `&Window`: pass `mut` of a `&Window` variable (e.g. `mut p := &w`, then `mut p`), or declare it `mut w Window`
    24 | 
    25 | fn on_event(mut w Window) {
    26 |     window_resized(mut w)

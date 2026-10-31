@@ -9,7 +9,8 @@ const v3_src = os.join_path(v3_dir, 'v.v')
 fn build_v3() string {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_operator_result_method_checker_test')
 	build :=
-		os.execute('${vexe} -gc none -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
+			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -55,7 +56,7 @@ fn check_to_c(v3_bin string, name string, main_src string) os.Result {
 	main_path := write_clock_project(name, main_src)
 	c_path := os.join_path(os.temp_dir(), 'v3_operator_result_method_${name}.c')
 	os.rm(c_path) or {}
-	return os.execute('${v3_bin} ${main_path} -b c -o ${c_path}')
+	return os.exec([v3_bin, main_path, '-b', 'c', '-o', c_path])
 }
 
 fn check_standalone_to_c(v3_bin string, name string, main_src string) os.Result {
@@ -63,7 +64,7 @@ fn check_standalone_to_c(v3_bin string, name string, main_src string) os.Result 
 	os.write_file(main_path, main_src) or { panic(err) }
 	c_path := os.join_path(os.temp_dir(), 'v3_${name}.c')
 	os.rm(c_path) or {}
-	return os.execute('${v3_bin} ${main_path} -b c -o ${c_path}')
+	return os.exec([v3_bin, main_path, '-b', 'c', '-o', c_path])
 }
 
 fn run_standalone(v3_bin string, name string, main_src string) string {
@@ -72,10 +73,10 @@ fn run_standalone(v3_bin string, name string, main_src string) string {
 	bin_path := os.join_path(os.temp_dir(), 'v3_${name}')
 	os.rm(bin_path) or {}
 	os.rm(bin_path + '.c') or {}
-	compile := os.execute('${v3_bin} ${main_path} -b c -o ${bin_path}')
+	compile := os.exec([v3_bin, main_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
-	run := os.execute(bin_path)
+	run := os.exec([bin_path])
 	assert run.exit_code == 0, run.output
 	return run.output.trim_space()
 }

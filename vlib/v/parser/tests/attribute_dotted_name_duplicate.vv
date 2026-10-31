@@ -1,0 +1,9 @@
+// vfmt off
+@[moda.A]
+@[moda.A('/x')]
+struct Both {
+	field string @[moda.B; moda.B('y')]
+}
+// vfmt on
+
+fn main() {}

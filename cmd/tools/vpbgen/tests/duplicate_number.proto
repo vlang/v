@@ -1,0 +1,11 @@
+// Two fields on one number. protoc rejects this, and the generated code would
+// otherwise hold two identical `match` arms with one of them unreachable.
+
+syntax = "proto3";
+
+package dup;
+
+message M {
+  int32 first = 1;
+  int32 second = 1;
+}

@@ -1,0 +1,14 @@
+vlib/v/checker/tests/generated_module_c_name_collisions_err.vv:14:1: error: function name `point__area` cannot contain `__`, V uses it to build C names
+   12 | }
+   13 | 
+   14 | fn point__area(p point) int {
+      | ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+   15 |     return p.x + 2
+   16 | }
+vlib/v/checker/tests/generated_module_c_name_collisions_err.vv:23:6: error: enum name `e_` cannot end with `_`, V uses `__` to build the C names of its members
+   21 | }
+   22 | 
+   23 | enum e_ {
+      |      ~~
+   24 |     x
+   25 |     z

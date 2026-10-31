@@ -1,0 +1,28 @@
+vlib/v/checker/tests/unused_fn_used_only_in_skipped_comptime_branch.vv:15:4: notice: unused function: `unused_fn`
+   13 | }
+   14 | 
+   15 | fn unused_fn() int {
+      |    ~~~~~~~~~
+   16 |     return 2
+   17 | }
+vlib/v/checker/tests/unused_fn_used_only_in_skipped_comptime_branch.vv:60:7: notice: unused constant: `unused_const`
+   58 | }
+   59 | 
+   60 | const unused_const = 9
+      |       ~~~~~~~~~~~~~~~~
+   61 | 
+   62 | fn select() int {
+vlib/v/checker/tests/unused_fn_used_only_in_skipped_comptime_branch.vv:85:4: notice: unused function: `shadowed_by_member`
+   83 | 
+   84 | // A member after a dot is not this module's same-named fn or const.
+   85 | fn shadowed_by_member() int {
+      |    ~~~~~~~~~~~~~~~~~~
+   86 |     return 10
+   87 | }
+vlib/v/checker/tests/unused_fn_used_only_in_skipped_comptime_branch.vv:89:7: notice: unused constant: `shadowed_const_member`
+   87 | }
+   88 | 
+   89 | const shadowed_const_member = 11
+      |       ~~~~~~~~~~~~~~~~~~~~~~~~~~
+   90 | 
+   91 | const selected_member = $if never_defined ? { dep.shadowed_const_member } $else { 0 }

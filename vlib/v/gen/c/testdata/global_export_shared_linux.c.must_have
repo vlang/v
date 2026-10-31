@@ -1,0 +1,2 @@
+__attribute__((visibility("default"))) string global_exported = {0};
+__attribute__((visibility("default"))) i64 counter = 7;

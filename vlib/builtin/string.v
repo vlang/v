@@ -341,12 +341,13 @@ fn (a string) option_clone_static() ?string {
 }
 
 // clone returns a copy of the V string `a`.
+@[inline]
 pub fn (a string) clone() string {
 	if a.len <= 0 {
 		return ''
 	}
 	mut b := string{
-		str: unsafe { malloc_noscan(a.len + 1) }
+		str: unsafe { malloc_string_buffer(a.len + 1) }
 		len: a.len
 	}
 	unsafe {
@@ -357,7 +358,11 @@ pub fn (a string) clone() string {
 }
 
 // replace_once replaces the first occurrence of `rep` with the string passed in `with`.
+// An empty `rep` inserts `with` at the start of `s`.
 pub fn (s string) replace_once(rep string, with string) string {
+	if rep.len == 0 {
+		return with + s
+	}
 	idx := s.index_(rep)
 	if idx == -1 {
 		return s.clone()
@@ -412,7 +417,7 @@ pub fn (s string) replace(rep string, with string) string {
 	}
 	// Now we know the number of replacements we need to do and we can calc the len of the new string
 	new_len := s.len + pidxs_len * (with.len - rep.len)
-	mut b := unsafe { malloc_noscan(new_len + 1) } // add space for the null byte at the end
+	mut b := unsafe { malloc_string_buffer(new_len + 1) } // add space for the null byte at the end
 	// Fill the new string
 	mut b_i := 0
 	mut s_idx := 0
@@ -443,6 +448,7 @@ struct RepIndex {
 }
 
 // replace_each replaces all occurrences of the string pairs given in `vals`.
+// Pairs with an empty search string are ignored; empty replacement strings remove matches.
 // Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
 @[direct_array_access]
 pub fn (s string) replace_each(vals []string) string {
@@ -466,6 +472,11 @@ pub fn (s string) replace_each(vals []string) string {
 		// vals: ['rep1, 'with1', 'rep2', 'with2']
 		rep := vals[rep_i]
 		with := vals[rep_i + 1]
+		if rep.len == 0 {
+			// an empty needle matches at every position without advancing
+			// the scan below, so skip it instead of looping forever
+			continue
+		}
 
 		for {
 			idx = s_.index_after_(rep, idx)
@@ -496,7 +507,7 @@ pub fn (s string) replace_each(vals []string) string {
 		return s.clone()
 	}
 	idxs.sort(a.idx < b.idx)
-	mut buf := unsafe { malloc_noscan(new_len + 1) } // add space for 0 terminator
+	mut buf := unsafe { malloc_string_buffer(new_len + 1) } // add space for 0 terminator
 	// Fill the new string
 	mut idx_pos := 0
 	mut cur_idx := idxs[idx_pos]
@@ -619,7 +630,7 @@ pub fn (s string) replace_char(rep u8, with u8, repeat int) string {
 	}
 	// Now we know the number of replacements we need to do and we can calc the len of the new string
 	new_len := s.len + idxs.len * (repeat - 1)
-	mut b := unsafe { malloc_noscan(new_len + 1) } // add space for the null byte at the end
+	mut b := unsafe { malloc_string_buffer(new_len + 1) } // add space for the null byte at the end
 	// Fill the new string
 	mut b_i := 0
 	mut s_idx := 0
@@ -693,46 +704,63 @@ pub fn (s string) bool() bool {
 	return s == 'true' || s == 't' // TODO: t for pg, remove
 }
 
+// string_int_base preserves decimal leading zeros in numeric conveniences,
+// while explicit integer prefixes still select binary, octal, or hexadecimal.
+@[inline]
+fn string_int_base(s string) int {
+	start := if s.len > 0 && s[0] in [`+`, `-`] { 1 } else { 0 }
+	if s.len - start >= 2 && s[start] == `0`
+		&& s[start + 1] in [`b`, `B`, `o`, `O`, `x`, `X`] {
+		return 0
+	}
+	return 10
+}
+
 // i8 returns the value of the string as i8 `'1'.i8() == i8(1)`.
+// Bare leading zeros remain decimal; use an explicit 0b, 0o, or 0x prefix for other bases.
 @[inline]
 pub fn (s string) i8() i8 {
-	return i8(strconv.common_parse_int(s, 0, 8, false, false) or { 0 })
+	return i8(strconv.common_parse_int(s, string_int_base(s), 8, false, false) or { 0 })
 }
 
 // i16 returns the value of the string as i16 `'1'.i16() == i16(1)`.
+// Bare leading zeros remain decimal; use an explicit 0b, 0o, or 0x prefix for other bases.
 @[inline]
 pub fn (s string) i16() i16 {
-	return i16(strconv.common_parse_int(s, 0, 16, false, false) or { 0 })
+	return i16(strconv.common_parse_int(s, string_int_base(s), 16, false, false) or { 0 })
 }
 
 // i32 returns the value of the string as i32 `'1'.i32() == i32(1)`.
+// Bare leading zeros remain decimal; use an explicit 0b, 0o, or 0x prefix for other bases.
 @[inline]
 pub fn (s string) i32() i32 {
-	return i32(strconv.common_parse_int(s, 0, 32, false, false) or { 0 })
+	return i32(strconv.common_parse_int(s, string_int_base(s), 32, false, false) or { 0 })
 }
 
 // int returns the value of the string as an integer `'1'.int() == 1`.
+// Bare leading zeros remain decimal; use an explicit 0b, 0o, or 0x prefix for other bases.
 @[inline]
 pub fn (s string) int() int {
-	return int(strconv.common_parse_int(s, 0, 32, false, false) or { 0 })
+	return int(strconv.common_parse_int(s, string_int_base(s), 32, false, false) or { 0 })
 }
 
 // i64 returns the value of the string as i64 `'1'.i64() == i64(1)`.
+// Bare leading zeros remain decimal; use an explicit 0b, 0o, or 0x prefix for other bases.
 @[inline]
 pub fn (s string) i64() i64 {
-	return strconv.common_parse_int(s, 0, 64, false, false) or { 0 }
+	return strconv.common_parse_int(s, string_int_base(s), 64, false, false) or { 0 }
 }
 
 // f32 returns the value of the string as f32 `'1.0'.f32() == f32(1)`.
 @[inline]
 pub fn (s string) f32() f32 {
-	return f32(strconv.atof64(s, allow_extra_chars: true) or { 0 })
+	return f32(strconv.atof64(s, allow_extra_chars: true, allow_overflow: true) or { 0 })
 }
 
 // f64 returns the value of the string as f64 `'1.0'.f64() == f64(1)`.
 @[inline]
 pub fn (s string) f64() f64 {
-	return strconv.atof64(s, allow_extra_chars: true) or { 0 }
+	return strconv.atof64(s, allow_extra_chars: true, allow_overflow: true) or { 0 }
 }
 
 // u8_array returns the value of the hex/bin string as u8 array.
@@ -789,27 +817,31 @@ pub fn (s string) u8_array() []u8 {
 }
 
 // u8 returns the value of the string as u8 `'1'.u8() == u8(1)`.
+// Bare leading zeros remain decimal; use an explicit 0b, 0o, or 0x prefix for other bases.
 @[inline]
 pub fn (s string) u8() u8 {
-	return u8(strconv.common_parse_uint(s, 0, 8, false, false) or { 0 })
+	return u8(strconv.common_parse_uint(s, string_int_base(s), 8, false, false) or { 0 })
 }
 
 // u16 returns the value of the string as u16 `'1'.u16() == u16(1)`.
+// Bare leading zeros remain decimal; use an explicit 0b, 0o, or 0x prefix for other bases.
 @[inline]
 pub fn (s string) u16() u16 {
-	return u16(strconv.common_parse_uint(s, 0, 16, false, false) or { 0 })
+	return u16(strconv.common_parse_uint(s, string_int_base(s), 16, false, false) or { 0 })
 }
 
 // u32 returns the value of the string as u32 `'1'.u32() == u32(1)`.
+// Bare leading zeros remain decimal; use an explicit 0b, 0o, or 0x prefix for other bases.
 @[inline]
 pub fn (s string) u32() u32 {
-	return u32(strconv.common_parse_uint(s, 0, 32, false, false) or { 0 })
+	return u32(strconv.common_parse_uint(s, string_int_base(s), 32, false, false) or { 0 })
 }
 
 // u64 returns the value of the string as u64 `'1'.u64() == u64(1)`.
+// Bare leading zeros remain decimal; use an explicit 0b, 0o, or 0x prefix for other bases.
 @[inline]
 pub fn (s string) u64() u64 {
-	return strconv.common_parse_uint(s, 0, 64, false, false) or { 0 }
+	return strconv.common_parse_uint(s, string_int_base(s), 64, false, false) or { 0 }
 }
 
 // parse_uint is like `parse_int` but for unsigned numbers
@@ -843,7 +875,7 @@ pub fn (s string) parse_int(_base int, _bit_size int) !i64 {
 	return strconv.parse_int(s, _base, _bit_size)
 }
 
-@[direct_array_access]
+@[direct_array_access; inline]
 fn (s string) == (a string) bool {
 	if s.str == 0 {
 		// Nil string: equal only to another nil/empty string.
@@ -853,21 +885,24 @@ fn (s string) == (a string) bool {
 	if s.len != a.len {
 		return false
 	}
-	unsafe {
-		return vmemcmp(s.str, a.str, a.len) == 0
+	if s.str == a.str {
+		return true
 	}
+	$if prod && !tinyc && !msvc && !native {
+		return string_content_equal(s.str, a.str, a.len)
+	}
+	return unsafe { vmemcmp(s.str, a.str, a.len) == 0 }
 }
 
 // compare returns -1 if `s` < `a`, 0 if `s` == `a`, and 1 if `s` > `a`
 @[direct_array_access]
 pub fn (s string) compare(a string) int {
 	min_len := if s.len < a.len { s.len } else { a.len }
-	for i in 0 .. min_len {
-		if s[i] < a[i] {
-			return -1
-		}
-		if s[i] > a[i] {
-			return 1
+	if min_len > 0 {
+		// memcmp orders bytes as unsigned, exactly like comparing the u8 elements.
+		cmp := unsafe { vmemcmp(s.str, a.str, min_len) }
+		if cmp != 0 {
+			return if cmp < 0 { -1 } else { 1 }
 		}
 	}
 	if s.len < a.len {
@@ -881,26 +916,30 @@ pub fn (s string) compare(a string) int {
 
 @[direct_array_access]
 fn (s string) < (a string) bool {
-	for i in 0 .. s.len {
-		if i >= a.len || s[i] > a[i] {
-			return false
-		} else if s[i] < a[i] {
-			return true
+	min_len := if s.len < a.len { s.len } else { a.len }
+	if min_len > 0 {
+		// memcmp orders bytes as unsigned, exactly like comparing the u8 elements;
+		// sorted symbol names share long prefixes that a byte loop walks slowly.
+		cmp := unsafe { vmemcmp(s.str, a.str, min_len) }
+		if cmp != 0 {
+			return cmp < 0
 		}
 	}
-	if s.len < a.len {
-		return true
-	}
-	return false
+	return s.len < a.len
 }
 
-@[direct_array_access]
+@[direct_array_access; inline]
 fn (s string) + (a string) string {
+	return string_concat_pair(s, a)
+}
+
+@[direct_array_access; inline]
+fn string_concat_pair(s string, a string) string {
 	slen := if s.len > 0 { s.len } else { 0 }
 	alen := if a.len > 0 { a.len } else { 0 }
 	new_len := alen + slen
 	mut res := string{
-		str: unsafe { malloc_noscan(new_len + 1) }
+		str: unsafe { malloc_string_buffer(new_len + 1) }
 		len: new_len
 	}
 	unsafe {
@@ -916,15 +955,28 @@ fn (s string) + (a string) string {
 }
 
 // string_plus_many concatenates several strings with a single allocation.
-@[direct_array_access; markused]
+@[direct_array_access; inline; markused]
 fn string_plus_many(data_len int, input_base &string) string {
+	// Most interpolation and qualified-name joins have two or three parts.
+	// Keep their lengths and copies straight-line, without two dynamic loops.
+	if data_len == 3 {
+		return unsafe { input_base[0].plus_two(input_base[1], input_base[2]) }
+	}
+	if data_len == 2 {
+		return unsafe { string_concat_pair(input_base[0], input_base[1]) }
+	}
+	return string_plus_many_general(data_len, input_base)
+}
+
+@[direct_array_access]
+fn string_plus_many_general(data_len int, input_base &string) string {
 	mut new_len := 0
 	for i := 0; i < data_len; i++ {
 		part := unsafe { input_base[i] }
 		new_len += if part.len > 0 { part.len } else { 0 }
 	}
 	mut res := string{
-		str: unsafe { malloc_noscan(new_len + 1) }
+		str: unsafe { malloc_string_buffer(new_len + 1) }
 		len: new_len
 	}
 	mut offset := 0
@@ -943,14 +995,14 @@ fn string_plus_many(data_len int, input_base &string) string {
 }
 
 // for `s + s2 + s3`, an optimization (faster than string_plus(string_plus(s1, s2), s3))
-@[direct_array_access]
+@[direct_array_access; inline]
 fn (s string) plus_two(a string, b string) string {
 	slen := if s.len > 0 { s.len } else { 0 }
 	alen := if a.len > 0 { a.len } else { 0 }
 	blen := if b.len > 0 { b.len } else { 0 }
 	new_len := alen + blen + slen
 	mut res := string{
-		str: unsafe { malloc_noscan(new_len + 1) }
+		str: unsafe { malloc_string_buffer(new_len + 1) }
 		len: new_len
 	}
 	unsafe {
@@ -968,7 +1020,7 @@ fn (s string) plus_two(a string, b string) string {
 	return res
 }
 
-// split_any splits the string to an array by any of the `delim` chars.
+// split_any splits the string to an array by any of the UTF-8 runes in `delim`.
 // If the delimiter string is empty then `.split()` is used.
 // Example: assert "first row\nsecond row".split_any(" \n") == ['first', 'row', 'second', 'row']
 @[direct_array_access]
@@ -983,14 +1035,22 @@ pub fn (s string) split_any(delim string) []string {
 		if delim.len <= 0 {
 			return s.split('')
 		}
-		for index, ch in s {
-			for delim_ch in delim {
-				if ch == delim_ch {
-					res << s[i..index]
-					i = index + 1
+		delim_runes := delim.runes()
+		mut j := 0
+		for j < s.len {
+			r, char_len := utf8_decode_rune(unsafe { &s.str[j] }, s.len - j)
+			mut is_delim := false
+			for delim_rune in delim_runes {
+				if r == delim_rune {
+					is_delim = true
 					break
 				}
 			}
+			if is_delim {
+				res << s[i..j]
+				i = j + char_len
+			}
+			j += char_len
 		}
 		if i < s.len {
 			res << s[i..]
@@ -999,7 +1059,7 @@ pub fn (s string) split_any(delim string) []string {
 	return res
 }
 
-// rsplit_any splits the string to an array by any of the `delim` chars in reverse order.
+// rsplit_any splits the string by UTF-8 runes in `delim`, in reverse order.
 // If the delimiter string is empty then `.rsplit()` is used.
 // Example: assert "first row\nsecond row".rsplit_any(" \n") == ['row', 'second', 'row', 'first']
 @[direct_array_access]
@@ -1013,15 +1073,31 @@ pub fn (s string) rsplit_any(delim string) []string {
 			return s.rsplit('')
 		}
 		mut rbound := s.len
+		delim_runes := delim.runes()
 		for i >= 0 {
-			for delim_ch in delim {
-				if s[i] == delim_ch {
-					res << s[i + 1..rbound]
-					rbound = i
+			// find the start of the rune ending at byte `i`
+			mut start := i
+			for start > 0 && i - start < 3 && utf8_is_continuation(s[start]) {
+				start--
+			}
+			mut r, mut char_len := utf8_decode_rune(unsafe { &s.str[start] }, s.len - start)
+			if start + char_len != i + 1 {
+				// Decode exactly one in-bounds byte of the malformed suffix as a replacement.
+				start = i
+				r, char_len = utf8_decode_rune(unsafe { &s.str[start] }, 1)
+			}
+			mut is_delim := false
+			for delim_rune in delim_runes {
+				if r == delim_rune {
+					is_delim = true
 					break
 				}
 			}
-			i--
+			if is_delim {
+				res << s[start + char_len..rbound]
+				rbound = start
+			}
+			i = start - 1
 		}
 		if rbound > 0 {
 			res << s[..rbound]
@@ -1094,6 +1170,9 @@ pub fn (s string) split_n(delim string, n int) []string {
 // It returns the first Nth parts. When N=0, return all the splits.
 // The last returned element has the remainder of the string, even if
 // the remainder contains more `delim` substrings.
+// With an empty `delim` each part is one rune, not one byte, so a multi-byte
+// character is never split across parts; see https://github.com/vlang/v/issues/29834 .
+// Example: assert 'αβγ'.split('') == ['α', 'β', 'γ']
 @[direct_array_access]
 pub fn (s string) split_nth(delim string, nth int) []string {
 	mut res := []string{}
@@ -1101,12 +1180,22 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 	defer { unsafe { res.flags.clear(.noslices) } }
 	match delim.len {
 		0 {
-			for i, ch in s {
+			// Walk runes, keeping the byte offset of each, so a part is always a
+			// whole character and the `nth` remainder slots on a rune boundary.
+			mut i := 0
+			for i < s.len {
+				_, mut char_len := utf8_decode_rune(unsafe { &s.str[i] }, s.len - i)
+				if char_len < 1 {
+					// Should not happen for valid UTF-8, but a zero or negative
+					// step would loop for ever, so advance defensively.
+					char_len = 1
+				}
 				if nth > 0 && res.len == nth - 1 {
 					res << s[i..]
 					break
 				}
-				res << ch.ascii_str()
+				res << s[i..i + char_len]
+				i += char_len
 			}
 		}
 		1 {
@@ -1150,10 +1239,12 @@ pub fn (s string) split_nth(delim string, nth int) []string {
 	return res
 }
 
-// rsplit_nth splits the string based on the passed `delim` substring in revese order.
+// rsplit_nth splits the string based on the passed `delim` substring in reverse order.
 // It returns the first Nth parts. When N=0, return all the splits.
 // The last returned element has the remainder of the string, even if
 // the remainder contains more `delim` substrings.
+// When splitting at a nonempty delimiter, an end match produces an empty first part.
+// An empty delimiter splits complete UTF-8 runes in reverse order.
 @[direct_array_access]
 pub fn (s string) rsplit_nth(delim string, nth int) []string {
 	mut res := []string{}
@@ -1161,12 +1252,26 @@ pub fn (s string) rsplit_nth(delim string, nth int) []string {
 	defer { unsafe { res.flags.clear(.noslices) } }
 	match delim.len {
 		0 {
-			for i := s.len - 1; i >= 0; i-- {
+			// Collect the rune boundaries forward, then walk them back, so the
+			// `nth` remainder is the leading runes rather than a byte prefix.
+			mut starts := []int{cap: 8}
+			mut ends := []int{cap: 8}
+			mut i := 0
+			for i < s.len {
+				_, mut char_len := utf8_decode_rune(unsafe { &s.str[i] }, s.len - i)
+				if char_len < 1 {
+					char_len = 1
+				}
+				starts << i
+				ends << i + char_len
+				i += char_len
+			}
+			for j := ends.len - 1; j >= 0; j-- {
 				if nth > 0 && res.len == nth - 1 {
-					res << s[..i + 1]
+					res << s[..ends[j]]
 					break
 				}
-				res << s[i].ascii_str()
+				res << s[starts[j]..ends[j]]
 			}
 		}
 		1 {
@@ -1187,15 +1292,16 @@ pub fn (s string) rsplit_nth(delim string, nth int) []string {
 		}
 		else {
 			mut rbound := s.len
-			for i := s.len - 1; i >= 0; i-- {
-				is_delim := i - delim.len >= 0 && s[i - delim.len..i] == delim
-				if is_delim {
+			for i := s.len - delim.len; i >= 0; i-- {
+				if unsafe { s.substr_unsafe(i, i + delim.len) } == delim {
 					if nth > 0 && res.len == nth - 1 {
 						break
 					}
-					res << s[i..rbound]
-					i -= delim.len
+					res << s[i + delim.len..rbound]
 					rbound = i
+					// Step past the delimiter; the loop's own `i--`
+					// then lands on the next non-overlapping start.
+					i -= delim.len - 1
 				}
 			}
 			if nth < 1 || res.len < nth {
@@ -1259,14 +1365,13 @@ pub fn (s string) split_by_space() []string {
 
 // substr returns the string between index positions `start` and `end`.
 // Example: assert 'ABCD'.substr(1,3) == 'BC'
-@[direct_array_access]
+@[direct_array_access; inline]
 pub fn (s string) substr(start int, _end int) string {
 	// WARNNING: The is a temp solution for bootstrap!
 	end := if _end == max_i64 || _end == max_i32 { s.len } else { _end } // max_int
 	$if !no_bounds_checking {
 		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
-			panic('substr(' + impl_i64_to_string(start) + ', ' + impl_i64_to_string(end) +
-				') out of bounds (len=' + impl_i64_to_string(s.len) + ') s=' + s)
+			s.substr_panic(start, end)
 		}
 	}
 	len := end - start
@@ -1274,7 +1379,7 @@ pub fn (s string) substr(start int, _end int) string {
 		return s.clone()
 	}
 	mut res := string{
-		str: unsafe { malloc_noscan(len + 1) }
+		str: unsafe { malloc_string_buffer(len + 1) }
 		len: len
 	}
 	unsafe {
@@ -1282,6 +1387,28 @@ pub fn (s string) substr(start int, _end int) string {
 		res.str[len] = 0
 	}
 	return res
+}
+
+@[noinline; noreturn]
+fn (s string) substr_panic(start int, end int) {
+	panic('substr(' + impl_i64_to_string(start) + ', ' + impl_i64_to_string(end) +
+		') out of bounds (len=' + impl_i64_to_string(s.len) + ') s=' + s)
+}
+
+// substr_borrowed supplies the checked, non-owning view used by addressed ranges.
+@[inline]
+fn (s string) substr_borrowed(start int, _end int) string {
+	end := if _end == max_i64 || _end == max_i32 { s.len } else { _end }
+	$if !no_bounds_checking {
+		if start > end || start > s.len || end > s.len || start < 0 || end < 0 {
+			s.substr_panic(start, end)
+		}
+	}
+	return string{
+		str:    unsafe { s.str + start }
+		len:    end - start
+		is_lit: 1
+	}
 }
 
 // substr_unsafe works like substr(), but doesn't copy (allocate) the substring
@@ -1324,7 +1451,7 @@ pub fn (s string) substr_with_check(start int, _end int) !string {
 		return s.clone()
 	}
 	mut res := string{
-		str: unsafe { malloc_noscan(len + 1) }
+		str: unsafe { malloc_string_buffer(len + 1) }
 		len: len
 	}
 	unsafe {
@@ -1368,7 +1495,7 @@ pub fn (s string) substr_ni(_start int, _end int) string {
 
 	// string copy
 	mut res := string{
-		str: unsafe { malloc_noscan(len + 1) }
+		str: unsafe { malloc_string_buffer(len + 1) }
 		len: len
 	}
 	unsafe {
@@ -1379,31 +1506,61 @@ pub fn (s string) substr_ni(_start int, _end int) string {
 }
 
 // index_ returns the position of the first character of the input string.
-// It will return `-1` if the input string can't be found.
-@[direct_array_access]
+// It will return `-1` if the input string can't be found, or `0` for an empty input string.
+@[direct_array_access; inline]
 pub fn (s string) index_(p string) int {
-	if p.len > s.len || p.len == 0 || u64(s.str) <= 0xFFFF || u64(p.str) <= 0xFFFF {
+	if p.len == 0 {
+		return 0
+	}
+	if p.len > s.len || uint(s.str) <= 0xFFFF || uint(p.str) <= 0xFFFF {
 		return -1
 	}
-	if p.len > 2 {
+	if p.len == 1 {
+		return string_index_byte(s.str, s.len, unsafe { p.str[0] })
+	}
+	return s.index_multibyte(p)
+}
+
+@[direct_array_access]
+fn (s string) index_multibyte(p string) int {
+	if p.len > max_direct_index_needle_len {
 		return s.index_kmp(p)
 	}
-	mut i := 0
-	for i < s.len {
-		mut j := 0
-		for j < p.len && unsafe { s.str[i + j] == p.str[j] } {
-			j++
+	if p.len == 2 {
+		return s.index_two_bytes(p)
+	}
+	// Short needles: scanning for the first byte and comparing the rest in place
+	// needs no prefix table, and costs at most p.len compares per position.
+	first := unsafe { p.str[0] }
+	last_start := s.len - p.len
+	for i := 0; i <= last_start; i++ {
+		if unsafe { s.str[i] } != first {
+			next := string_index_byte(unsafe { s.str + i + 1 }, last_start - i, first)
+			if next < 0 {
+				return -1
+			}
+			i += next + 1
 		}
-		if j == p.len {
+		// The first byte already matched; compare only the remaining bytes.
+		if string_bytes_equal(unsafe { s.str + i + 1 }, unsafe { p.str + 1 }, p.len - 1) {
 			return i
 		}
-		i++
 	}
 	return -1
 }
 
+@[direct_array_access]
+fn (s string) index_two_bytes(p string) int {
+	return string_index_pair(s.str, s.len, unsafe { p.str[0] }, unsafe { p.str[1] })
+}
+
+// Needles up to this length are searched directly; longer ones use KMP, which
+// keeps the search linear in `s.len` whatever the needle.
+const max_direct_index_needle_len = 16
+
 // index returns the position of the first character of the first occurrence of the `needle` string in `s`.
 // It will return `none` if the `needle` string can't be found in `s`.
+// An empty needle is found at position `0`, including in an empty `s`.
 pub fn (s string) index(p string) ?int {
 	idx := s.index_(p)
 	if idx == -1 {
@@ -1413,6 +1570,7 @@ pub fn (s string) index(p string) ?int {
 }
 
 // last_index returns the position of the first character of the *last* occurrence of the `needle` string in `s`.
+// An empty needle is found at position `s.len`, including in an empty `s`.
 @[inline]
 pub fn (s string) last_index(needle string) ?int {
 	idx := s.index_last_(needle)
@@ -1484,19 +1642,25 @@ pub fn (s string) index_any(chars string) int {
 // index_last_ returns the position of the last occurrence of the given string `p` in `s`.
 @[direct_array_access]
 fn (s string) index_last_(p string) int {
-	if p.len > s.len || p.len == 0 {
+	if p.len == 0 {
+		return s.len
+	}
+	if p.len > s.len {
 		return -1
 	}
-	mut i := s.len - p.len
-	for i >= 0 {
-		mut j := 0
-		for j < p.len && unsafe { s.str[i + j] == p.str[j] } {
-			j++
+	if p.len == 1 {
+		return s.last_index_u8(unsafe { p.str[0] })
+	}
+	mut end := s.len - p.len + 1
+	for end > 0 {
+		i := string_last_index_byte(s.str, end, unsafe { p.str[0] })
+		if i < 0 {
+			return -1
 		}
-		if j == p.len {
+		if string_bytes_equal(unsafe { s.str + i }, p.str, p.len) {
 			return i
 		}
-		i--
+		end = i
 	}
 	return -1
 }
@@ -1504,82 +1668,43 @@ fn (s string) index_last_(p string) int {
 // index_after returns the position of the input string, starting search from `start` position.
 @[direct_array_access]
 pub fn (s string) index_after(p string, start int) ?int {
-	if p.len > s.len {
+	i := s.index_after_(p, start)
+	if i < 0 {
 		return none
 	}
-	mut strt := start
-	if start < 0 {
-		strt = 0
-	}
-	if start >= s.len {
-		return none
-	}
-	mut i := strt
-	for i < s.len {
-		mut j := 0
-		mut ii := i
-		for j < p.len && unsafe { s.str[ii] == p.str[j] } {
-			j++
-			ii++
-		}
-		if j == p.len {
-			return i
-		}
-		i++
-	}
-	return none
+	return i
 }
 
 // index_after_ returns the position of the input string, starting search from `start` position.
 @[direct_array_access]
 pub fn (s string) index_after_(p string, start int) int {
-	if p.len > s.len {
-		return -1
-	}
 	mut strt := start
 	if start < 0 {
 		strt = 0
 	}
-	if start >= s.len {
+	if strt >= s.len {
 		return -1
 	}
-	mut i := strt
-	for i < s.len {
-		mut j := 0
-		mut ii := i
-		for j < p.len && unsafe { s.str[ii] == p.str[j] } {
-			j++
-			ii++
-		}
-		if j == p.len {
-			return i
-		}
-		i++
+	if p.len > s.len - strt {
+		return -1
 	}
-	return -1
+	// Borrow only the remaining bytes; the search never examines the backing tail.
+	remaining := unsafe { tos(s.str + strt, s.len - strt) }
+	i := remaining.index_(p)
+	return if i < 0 { -1 } else { strt + i }
 }
 
 // index_u8 returns the index of byte `c` if found in the string.
 // index_u8 returns -1 if the byte can not be found.
-@[direct_array_access]
+@[direct_array_access; inline]
 pub fn (s string) index_u8(c u8) int {
-	for i, b in s {
-		if b == c {
-			return i
-		}
-	}
-	return -1
+	return string_index_byte(s.str, s.len, c)
 }
 
 // last_index_u8 returns the index of the last occurrence of byte `c` if it was found in the string.
 @[direct_array_access; inline]
 pub fn (s string) last_index_u8(c u8) int {
-	for i := s.len - 1; i >= 0; i-- {
-		if s[i] == c {
-			return i
-		}
-	}
-	return -1
+	return string_last_index_byte(s.str, s.len, c)
 }
 
 // count returns the number of occurrences of `substr` in the string.
@@ -1621,17 +1746,14 @@ pub fn (s string) count(substr string) int {
 
 // contains_u8 returns `true` if the string contains the byte value `x`.
 // See also: [`string.index_u8`](#string.index_u8) , to get the index of the byte as well.
+@[inline]
 pub fn (s string) contains_u8(x u8) bool {
-	for c in s {
-		if x == c {
-			return true
-		}
-	}
-	return false
+	return string_contains_byte(s.str, s.len, x)
 }
 
 // contains returns `true` if the string contains `substr`.
 // See also: [`string.index`](#string.index)
+@[inline]
 pub fn (s string) contains(substr string) bool {
 	if substr.len == 0 {
 		return true
@@ -1683,25 +1805,21 @@ pub fn (s string) contains_any_substr(substrs []string) bool {
 }
 
 // starts_with returns `true` if the string starts with `p`.
-@[direct_array_access]
+@[direct_array_access; inline]
 pub fn (s string) starts_with(p string) bool {
-	if p.len > s.len || u64(s.str) <= 0xFFFF || u64(p.str) <= 0xFFFF {
+	if p.len > s.len || uint(s.str) <= 0xFFFF || uint(p.str) <= 0xFFFF {
 		return false
-	} else if unsafe { vmemcmp(s.str, p.str, p.len) == 0 } {
-		return true
 	}
-	return false
+	return string_content_equal(s.str, p.str, p.len)
 }
 
 // ends_with returns `true` if the string ends with `p`.
-@[direct_array_access]
+@[direct_array_access; inline]
 pub fn (s string) ends_with(p string) bool {
-	if p.len > s.len || u64(s.str) <= 0xFFFF || u64(p.str) <= 0xFFFF {
+	if p.len > s.len || uint(s.str) <= 0xFFFF || uint(p.str) <= 0xFFFF {
 		return false
-	} else if unsafe { vmemcmp(s.str + s.len - p.len, p.str, p.len) == 0 } {
-		return true
 	}
-	return false
+	return string_content_equal(unsafe { s.str + s.len - p.len }, p.str, p.len)
 }
 
 // to_lower_ascii returns the string in all lowercase characters.
@@ -1711,7 +1829,7 @@ pub fn (s string) ends_with(p string) bool {
 @[direct_array_access]
 pub fn (s string) to_lower_ascii() string {
 	unsafe {
-		mut b := malloc_noscan(s.len + 1)
+		mut b := malloc_string_buffer(s.len + 1)
 		for i in 0 .. s.len {
 			if s.str[i] >= `A` && s.str[i] <= `Z` {
 				b[i] = s.str[i] + 32
@@ -1738,20 +1856,25 @@ pub fn (s string) to_lower() string {
 	return runes.string()
 }
 
-// is_lower returns `true`, if all characters in the string are lowercase.
+// is_lower returns `true` if all ASCII letters in the string are lowercase,
+// and the string contains at least one lowercase ASCII letter.
 // It only works when the input is composed entirely from ASCII characters.
 // Example: assert 'hello developer'.is_lower() == true
 @[direct_array_access]
 pub fn (s string) is_lower() bool {
-	if s == '' || s[0].is_digit() {
+	if s == '' {
 		return false
 	}
+	mut has_lower := false
 	for i in 0 .. s.len {
 		if s[i] >= `A` && s[i] <= `Z` {
 			return false
 		}
+		if s[i] >= `a` && s[i] <= `z` {
+			has_lower = true
+		}
 	}
-	return true
+	return has_lower
 }
 
 // to_upper_ascii returns the string in all UPPERCASE characters.
@@ -1761,7 +1884,7 @@ pub fn (s string) is_lower() bool {
 @[direct_array_access]
 pub fn (s string) to_upper_ascii() string {
 	unsafe {
-		mut b := malloc_noscan(s.len + 1)
+		mut b := malloc_string_buffer(s.len + 1)
 		for i in 0 .. s.len {
 			if s.str[i] >= `a` && s.str[i] <= `z` {
 				b[i] = s.str[i] - 32
@@ -1791,7 +1914,7 @@ pub fn (s string) to_upper() string {
 // is_upper returns `true` if all ASCII letters in the string are uppercase,
 // and the string contains at least one uppercase ASCII letter.
 // It only works when the input is composed entirely from ASCII characters.
-// See also: [`byte.is_capital`](#byte.is_capital)
+// See also: [`u8.is_capital`](#u8.is_capital)
 // Example: assert 'HELLO V'.is_upper() == true
 @[direct_array_access]
 pub fn (s string) is_upper() bool {
@@ -1905,7 +2028,7 @@ pub fn (s string) is_title() bool {
 // Example: assert 'hey [man] how you doin'.find_between('[', ']') == 'man'
 pub fn (s string) find_between(start string, end string) string {
 	start_pos := s.index_(start)
-	if start_pos == -1 {
+	if start_pos == -1 || start.len == 0 {
 		return ''
 	}
 	// First get everything to the right of 'start'
@@ -2167,6 +2290,7 @@ pub fn (s string) str() string {
 
 // at returns the byte at index `idx`.
 // Example: assert 'ABC'.at(1) == u8(`B`)
+@[markused]
 fn (s string) at(idx int) u8 {
 	$if !no_bounds_checking {
 		if idx < 0 || idx >= s.len {
@@ -2213,29 +2337,31 @@ fn (s string) at_with_check(idx int) ?u8 {
 	}
 }
 
-@[markused]
-fn (s string) at_with_check_i64(idx i64) ?u8 {
-	if idx < 0 || idx >= i64(s.len) {
-		return none
+$if !v3_backend ? {
+	@[markused]
+	fn (s string) at_with_check_i64(idx i64) ?u8 {
+		if idx < 0 || idx >= i64(s.len) {
+			return none
+		}
+		unsafe {
+			return s.str[int(idx)]
+		}
 	}
-	unsafe {
-		return s.str[int(idx)]
-	}
-}
 
-@[markused]
-fn (s string) at_with_check_u64(idx u64) ?u8 {
-	if idx >= u64(s.len) {
-		return none
+	@[markused]
+	fn (s string) at_with_check_u64(idx u64) ?u8 {
+		if idx >= u64(s.len) {
+			return none
+		}
+		unsafe {
+			return s.str[int(idx)]
+		}
 	}
-	unsafe {
-		return s.str[int(idx)]
-	}
-}
 
-@[markused]
-fn (s string) at_with_check_ni(idx int) ?u8 {
-	return s.at_with_check(v_ni_index(idx, s.len))
+	@[markused]
+	fn (s string) at_with_check_ni(idx int) ?u8 {
+		return s.at_with_check(v_ni_index(idx, s.len))
+	}
 }
 
 // Check if a string is an octal value. Returns 'true' if it is, or 'false' if it is not
@@ -2261,7 +2387,7 @@ pub fn (str string) is_oct() bool {
 		return false
 	}
 
-	if i < str.len && str[i] == `o` {
+	if i < str.len && (str[i] == `o` || str[i] == `O`) {
 		i++
 	} else {
 		return false
@@ -2304,7 +2430,7 @@ pub fn (str string) is_bin() bool {
 		return false
 	}
 
-	if i < str.len && str[i] == `b` {
+	if i < str.len && (str[i] == `b` || str[i] == `B`) {
 		i++
 	} else {
 		return false
@@ -2347,7 +2473,7 @@ pub fn (str string) is_hex() bool {
 		return false
 	}
 
-	if i < str.len && str[i] == `x` {
+	if i < str.len && (str[i] == `x` || str[i] == `X`) {
 		i++
 	} else {
 		return false
@@ -2487,7 +2613,7 @@ pub fn (s &string) free() {
 // TODO: deprecate and remove either .before or .all_before
 pub fn (s string) before(sub string) string {
 	pos := s.index_(sub)
-	if pos == -1 {
+	if pos == -1 || sub.len == 0 {
 		return s.clone()
 	}
 	return s[..pos]
@@ -2500,7 +2626,7 @@ pub fn (s string) before(sub string) string {
 pub fn (s string) all_before(sub string) string {
 	// TODO: remove dup method
 	pos := s.index_(sub)
-	if pos == -1 {
+	if pos == -1 || sub.len == 0 {
 		return s.clone()
 	}
 	return s[..pos]
@@ -2512,7 +2638,7 @@ pub fn (s string) all_before(sub string) string {
 // Example: assert 'abcd'.all_before_last('.') == 'abcd'
 pub fn (s string) all_before_last(sub string) string {
 	pos := s.index_last_(sub)
-	if pos == -1 {
+	if pos == -1 || sub.len == 0 {
 		return s.clone()
 	}
 	return s[..pos]
@@ -2524,7 +2650,7 @@ pub fn (s string) all_before_last(sub string) string {
 // Example: assert 'abcd'.all_after('z') == 'abcd'
 pub fn (s string) all_after(sub string) string {
 	pos := s.index_(sub)
-	if pos == -1 {
+	if pos == -1 || sub.len == 0 {
 		return s.clone()
 	}
 	return s[pos + sub.len..]
@@ -2536,7 +2662,7 @@ pub fn (s string) all_after(sub string) string {
 // Example: assert 'abcd'.all_after_last('z') == 'abcd'
 pub fn (s string) all_after_last(sub string) string {
 	pos := s.index_last_(sub)
-	if pos == -1 {
+	if pos == -1 || sub.len == 0 {
 		return s.clone()
 	}
 	return s[pos + sub.len..]
@@ -2548,7 +2674,7 @@ pub fn (s string) all_after_last(sub string) string {
 // Example: assert 'abcd'.all_after_first('z') == 'abcd'
 pub fn (s string) all_after_first(sub string) string {
 	pos := s.index_(sub)
-	if pos == -1 {
+	if pos == -1 || sub.len == 0 {
 		return s.clone()
 	}
 	return s[pos + sub.len..]
@@ -2595,7 +2721,7 @@ pub fn (a []string) join(sep string) string {
 	len -= sep.len
 	// Allocate enough memory
 	mut res := string{
-		str: unsafe { malloc_noscan(len + 1) }
+		str: unsafe { malloc_string_buffer(len + 1) }
 		len: len
 	}
 	mut idx := 0
@@ -2632,7 +2758,7 @@ pub fn (s string) reverse() string {
 		return s.clone()
 	}
 	mut res := string{
-		str: unsafe { malloc_noscan(s.len + 1) }
+		str: unsafe { malloc_string_buffer(s.len + 1) }
 		len: s.len
 	}
 	for i := s.len - 1; i >= 0; i-- {
@@ -2647,9 +2773,13 @@ pub fn (s string) reverse() string {
 }
 
 // limit returns a portion of the string, starting at `0` and extending for a given number of characters afterward.
+// A non-positive limit returns an empty string.
 // 'hello'.limit(2) => 'he'
 // 'hi'.limit(10) => 'hi'
 pub fn (s string) limit(max int) string {
+	if max <= 0 {
+		return ''
+	}
 	u := s.runes()
 	if u.len <= max {
 		return s.clone()
@@ -2686,7 +2816,7 @@ pub fn (s string) repeat(count int) string {
 	} else if count == 1 {
 		return s.clone()
 	}
-	mut ret := unsafe { malloc_noscan(s.len * count + 1) }
+	mut ret := unsafe { malloc_string_buffer(s.len * count + 1) }
 	for i in 0 .. count {
 		unsafe {
 			vmemcpy(ret + i * s.len, s.str, s.len)
@@ -2757,7 +2887,9 @@ pub fn (s string) strip_margin() string {
 	return s.strip_margin_custom(`|`)
 }
 
-// strip_margin_custom does the same as `strip_margin` but will use `del` as delimiter instead of `|`
+// strip_margin_custom does the same as `strip_margin` but will use `del` as delimiter instead of `|`.
+// The first line also drops its prefix through the delimiter, when present.
+// A trailing region without a delimiter is retained, except for its final whitespace-only lines.
 @[direct_array_access]
 pub fn (s string) strip_margin_custom(del u8) string {
 	mut sep := del
@@ -2768,9 +2900,21 @@ pub fn (s string) strip_margin_custom(del u8) string {
 	}
 	// don't know how much space the resulting string will be, but the max it
 	// can be is this big
-	mut ret := unsafe { malloc_noscan(s.len + 1) }
+	mut ret := unsafe { malloc_string_buffer(s.len + 1) }
 	mut count := 0
-	for i := 0; i < s.len; i++ {
+	mut exhausted := false
+	mut tail_content_end := s.len - 1
+	// The first line drops everything up to its delimiter like every other
+	// line does; without one it is kept whole.
+	mut start := 0
+	mut j := 0
+	for j < s.len && s[j] != sep && s[j] != 10 && s[j] != 13 {
+		j++
+	}
+	if j < s.len && s[j] == sep {
+		start = j + 1
+	}
+	for i := start; i < s.len; i++ {
 		if s[i] in [10, 13] {
 			unsafe {
 				ret[count] = s[i]
@@ -2784,11 +2928,24 @@ pub fn (s string) strip_margin_custom(del u8) string {
 				count++
 				i++
 			}
-			for s[i] != sep {
-				i++
-				if i >= s.len {
-					break
+			if !exhausted {
+				mut j := i + 1
+				for j < s.len && s[j] != sep {
+					j++
 				}
+				if j < s.len {
+					// Keep the established removal of lines before the next delimiter.
+					i = j
+					continue
+				}
+				// Search the unmarked tail only once, even when it contains many lines.
+				exhausted = true
+				for tail_content_end > i && s[tail_content_end] in [u8(9), 10, 13, 32] {
+					tail_content_end--
+				}
+			}
+			if i >= tail_content_end {
+				i = s.len
 			}
 		} else {
 			unsafe {
@@ -3032,7 +3189,7 @@ pub fn (s string) camel_to_snake() string {
 	if s.len == 1 {
 		return s.to_lower_ascii()
 	}
-	mut b := unsafe { malloc_noscan(2 * s.len + 1) }
+	mut b := unsafe { malloc_string_buffer(2 * s.len + 1) }
 	// Rather than checking whether the iterator variable is > 1 inside the loop,
 	// handle the first two chars separately to reduce load.
 	mut pos := 2
@@ -3126,7 +3283,7 @@ pub fn (s string) snake_to_camel() string {
 	}
 	mut need_upper := true
 	mut upper_c := `_`
-	mut b := unsafe { malloc_noscan(s.len + 1) }
+	mut b := unsafe { malloc_string_buffer(s.len + 1) }
 	mut i := 0
 	for c in s {
 		upper_c = if c >= `a` && c <= `z` { c - 32 } else { c }
@@ -3197,7 +3354,7 @@ pub fn (s string) hex() string {
 
 @[unsafe]
 fn data_to_hex_string(data &u8, len int) string {
-	mut hex := malloc_noscan(u64(len) * 2 + 1)
+	mut hex := malloc_string_buffer(u64(len) * 2 + 1)
 	mut dst := 0
 	for c in 0 .. len {
 		b := data[c]
@@ -3236,4 +3393,36 @@ pub fn (mut ri RunesIterator) next() ?rune {
 	r, char_len := utf8_decode_rune(unsafe { &ri.s.str[ri.i] }, ri.s.len - ri.i)
 	ri.i += if char_len > 0 { char_len } else { 1 }
 	return r
+}
+
+// rpad pads right side of the string using the value * times supplied
+@[inline]
+pub fn (s string) rpad(value string, times int) string {
+	if times <= 0 { return s.clone() }
+	return s + value.repeat(times)
+}
+
+// lpad pads left side of the string using the value * times supplied
+@[inline]
+pub fn (s string) lpad(value string, times int) string {
+	if times <= 0 { return s.clone() }
+	return value.repeat(times) + s
+}
+
+// rfill fills the right side of the string with the rune till max_len
+@[inline]
+pub fn (s string) rfill(value rune, max_len int) string {
+	if max_len <= 0 { return s.clone() }
+	len := s.runes().len
+	if len >= max_len { return s }
+	return s + value.str().repeat(max_len - len)
+}
+
+// lfill fills the left side of the string with the rune till max_len
+@[inline]
+pub fn (s string) lfill(value rune, max_len int) string {
+	if max_len <= 0 { return s.clone() }
+	len := s.runes().len
+	if len >= max_len { return s }
+	return value.str().repeat(max_len - len) + s
 }

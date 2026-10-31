@@ -1,0 +1,11 @@
+Verify the formatting of every .v file in the V repository.
+
+Usage:
+  v test-fmt [compiler flags...]
+
+The command runs `v fmt` over all .v files found in the checkout,
+excluding a small list of known exceptions, and reports every file,
+that is not correctly formatted.
+
+Use `v fmt -w <file>` to format just your own files; this command is
+mostly used to verify a whole checkout, before submitting PRs.

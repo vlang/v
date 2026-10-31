@@ -14,61 +14,6 @@ on:
       - 'ci/openbsd_ci.vsh'
       - 'cmd/tools/builders/**.v'
       - 'cmd/tools/vwatch_stdin_test.v'
-  pull_request:
-    paths:
-      - 'cmd/v/**'
-      - 'cmd/tools/builders/**.v'
-      - 'cmd/tools/vwatch_stdin_test.v'
-      # cmd/tools essentials synced with cmd/tools/vtest-self.v:essential_list
-      - 'cmd/tools/vvet/**'
-      - 'cmd/tools/vdoc/**'
-      # vlib essentials synced with cmd/tools/vtest-self.v:essential_list
-      - 'vlib/arrays/**'
-      - 'vlib/bitfield/**'
-      - 'vlib/builtin/**'
-      - 'vlib/cli/**'
-      - 'vlib/crypto/md5/**'
-      - 'vlib/dl/**'
-      - 'vlib/encoding/**'
-      - 'vlib/flag/**'
-      - 'vlib/io/**'
-      - 'vlib/json/**'
-      - 'vlib/json2/**'
-      - 'vlib/math/**'
-      - 'vlib/net/**'
-      - 'vlib/os/**'
-      - 'vlib/rand/**'
-      - 'vlib/runtime/**'
-      - 'vlib/semver/**'
-      - 'vlib/strconv/**'
-      - 'vlib/strings/**'
-      - 'vlib/sync/**'
-      - 'vlib/time/**'
-      - 'vlib/toml/**'
-      - 'vlib/v/**'
-      # build-examples / DB / Sokol deps exercised by ci/openbsd_ci.vsh
-      - 'vlib/compress/**'
-      - 'vlib/crypto/rand/**'
-      - 'vlib/db/**'
-      - 'vlib/fontstash/**'
-      - 'vlib/gg/**'
-      - 'vlib/gx/**'
-      - 'vlib/picoev/**'
-      - 'vlib/sokol/**'
-      - 'vlib/term/**'
-      - 'vlib/veb/**'
-      - 'thirdparty/**'
-      - 'vc/**'
-      - 'v.mod'
-      - 'ci/openbsd_ci.vsh'
-      - 'ci/common/**'
-      - 'GNUmakefile'
-      - 'Makefile'
-      - '.github/problem-matchers/**'
-      # Negated patterns MUST stay after all positive patterns (GitHub path-filter ordering).
-      - '!**.md'
-      - '!**.yml'
-      - '.github/workflows/openbsd_ci.yml'
 
 concurrency:
   group: openbsd-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -77,16 +22,22 @@ concurrency:
 ### See https://github.com/cross-platform-actions/action
 ### for a description of the used fields here
 
+permissions:
+  contents: read
+
 jobs:
   tcc-openbsd:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Start OpenBSD VM for tcc
         id: vm-openbsd-tcc
-        uses: cross-platform-actions/action@v1.6.0
+        uses: cross-platform-actions/action@82668f1fbd89d9c99487604f822cbf6716f124d3 # v1.7.0
         with:
           operating_system: openbsd
           version: '7.8'
@@ -121,14 +72,17 @@ jobs:
           ./v run ci/openbsd_ci.vsh all
 
   clang-openbsd:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Start OpenBSD VM for clang
         id: vm-openbsd-clang
-        uses: cross-platform-actions/action@v1.6.0
+        uses: cross-platform-actions/action@82668f1fbd89d9c99487604f822cbf6716f124d3 # v1.7.0
         with:
           operating_system: openbsd
           version: '7.8'

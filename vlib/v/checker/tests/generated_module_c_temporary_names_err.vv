@@ -1,0 +1,17 @@
+@[generated]
+module main
+
+// The generated C code names its temporaries `_t1`, `_t2`, ..., so generated
+// code cannot use such names: `_t1 / _t2` would read the temporaries instead.
+fn divide(_t1 int, _t2 int) int {
+	return _t1 / _t2
+}
+
+fn main() {
+	_t1 := 10
+	_t2 := 3
+	println(_t1 / _t2)
+	println(divide(20, 4))
+	_zbr_t1 := 1
+	println(_zbr_t1)
+}

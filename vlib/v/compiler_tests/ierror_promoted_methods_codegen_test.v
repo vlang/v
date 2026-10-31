@@ -7,12 +7,13 @@ const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
 
 fn build_v3() string {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_promoted_methods_test_${os.getpid()}')
+	v3_bin := os.join_path(os.temp_dir(), 'v3_ierror_promoted_methods_test_${os.getpid()}') + $if windows { '.exe' } $else { '' }
 	if os.exists(v3_bin) {
 		return v3_bin
 	}
 	build :=
-		os.execute('${vexe} -gc none -no-parallel -path "${vlib_dir}|@vlib|@vmodules" -o ${v3_bin} ${v3_src}')
+		os.exec([vexe, '-gc', 'none', '-no-parallel', '-path', '${vlib_dir}' + '|@vlib|@vmodules',
+			'-o', v3_bin, '${v3_src}'])
 	assert build.exit_code == 0, build.output
 	return v3_bin
 }
@@ -63,7 +64,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_ierror_promoted_methods_out_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -71,7 +72,7 @@ fn main() {
 	assert c_code.contains('BaseErr__msg(((main__WrapErr*)i->_object)->BaseErr)'), c_code
 	assert c_code.contains('helper_msg'), c_code
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'promoted:42'
 }
@@ -152,7 +153,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_ierror_promoted_pointer_methods_out_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -160,11 +161,12 @@ fn main() {
 	assert c_code.contains('PtrErr__msg(&(((main__PointerWrapErr*)i->_object)->PtrErr))'), c_code
 	assert c_code.contains('InnerErr__msg((((main__NestedWrapErr*)i->_object)->PointerInner).InnerErr)'), c_code
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
 
+// Embedded structs must come first in a struct body.
 fn test_interface_dispatch_uses_nested_promoted_receiver_path() {
 	v3_bin := build_v3()
 
@@ -184,13 +186,13 @@ fn (inner Inner) m() int {
 }
 
 struct Mid {
-	pad int
 	Inner
+	pad int
 }
 
 struct Outer {
-	tag int
 	Mid
+	tag int
 }
 
 fn use(item HasNumber) int {
@@ -214,14 +216,14 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_interface_nested_promoted_receiver_out_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	c_code := os.read_file('${bin}.c') or { '' }
 	assert c_code.contains('Inner__m((((main__Outer*)i->_object)->Mid).Inner)'), c_code
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == '42'
 }
@@ -264,7 +266,7 @@ fn main() {
 
 	bin := os.join_path(os.temp_dir(), 'v3_ierror_embed_method_deps_out_${os.getpid()}')
 	// The assertions below inspect implementation bodies in monolithic C output.
-	compile := os.execute('${v3_bin} -nocache ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '-nocache', '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -272,7 +274,7 @@ fn main() {
 	assert c_code.contains('GhostError__msg'), c_code
 	assert c_code.contains('string ghost_msg_part('), c_code
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -320,17 +322,18 @@ fn main() {
 
 	bin := os.join_path(os.temp_dir(), 'v3_ierror_unused_method_deps_out_${os.getpid()}')
 	// The assertions below inspect implementation bodies in monolithic C output.
-	compile := os.execute('${v3_bin} -nocache ${root} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '-nocache', root, '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
 	c_code := os.read_file('${bin}.c') or { '' }
 	assert c_code.contains('string dead__DeadErr__msg(dead__DeadErr err)'), c_code
 	assert c_code.contains('string dead__Helper__text(dead__Helper h)'), c_code
-	assert c_code.contains('return dead__Helper__text((dead__Helper){0});'), c_code
+	// An empty struct literal is `{E_STRUCT}` since empty structs are zero-sized.
+	assert c_code.contains('return dead__Helper__text((dead__Helper){E_STRUCT});'), c_code
 	assert !c_code.contains('dead__unrelated_dead_fn'), c_code
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
@@ -385,7 +388,7 @@ fn main() {
 	}
 
 	bin := os.join_path(os.temp_dir(), 'v3_ierror_bad_direct_promoted_out_${os.getpid()}')
-	compile := os.execute('${v3_bin} ${src} -b c -o ${bin}')
+	compile := os.exec([v3_bin, '${src}', '-b', 'c', '-o', bin])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 
@@ -395,7 +398,7 @@ fn main() {
 	assert !c_code.contains('return WrapErr__msg(*(main__WrapErr*)i->_object)'), c_code
 	assert !c_code.contains('return WrapErr__code(*(main__WrapErr*)i->_object)'), c_code
 
-	run := os.execute(bin)
+	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'embedded:7'
 }

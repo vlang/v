@@ -11,7 +11,7 @@ enum Flags {
 }
 
 fn (f Flags) has(f2 Flags) bool {
-	return f & f2 > 0
+	return int(f & f2) > 0
 }
 
 fn main() {}

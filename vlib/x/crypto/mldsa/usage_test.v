@@ -1,4 +1,3 @@
-// vtest build: has_modern_openssl?
 module mldsa_test
 
 import x.crypto.mldsa
