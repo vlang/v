@@ -1,0 +1,121 @@
+name: Windows tool-cache ownership diagnostic
+
+on:
+  push:
+    branches: [ci/diagnose-windows-toolcache-20261031]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-toolcache-diagnostic-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-cache:
+    if: github.ref == 'refs/heads/ci/diagnose-windows-toolcache-20261031'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            bootstrap: default
+          - os: windows-2025
+            bootstrap: gcc
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    env:
+      VFLAGS: ''
+      VJOBS: '2'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Build the selected V source
+        id: build
+        shell: pwsh
+        run: |
+          if ('${{ matrix.bootstrap }}' -eq 'gcc') {
+            & .\makev.bat -gcc
+          } else {
+            & .\makev.bat
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          .\v.exe version
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Inspect owners and ACEs with the unchanged native helper
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $logs = Join-Path $env:GITHUB_WORKSPACE 'ci-probes/windows-cache'
+          New-Item -ItemType Directory -Force $logs | Out-Null
+          $fresh = Join-Path $env:RUNNER_TEMP 'v-toolcache-owner-probe'
+          New-Item -ItemType Directory -Force $fresh | Out-Null
+          $paths = @(
+            $fresh,
+            (Join-Path $env:USERPROFILE '.cache/v/tools'),
+            (Join-Path $env:LOCALAPPDATA 'Temp/v_0/tools'),
+            (Join-Path $env:USERPROFILE '.vtools')
+          )
+          $failed = $false
+          foreach ($cc in @('tcc', 'gcc')) {
+            $compiler = if ($cc -eq 'tcc') { '.\thirdparty\tcc\tcc.exe' } else { 'gcc' }
+            $binary = Join-Path $logs "probe-$cc.exe"
+            & $compiler -I . -o $binary .github/ci-validation/windows_toolcache_acl_probe.c -ladvapi32 2>&1 |
+              Tee-Object -FilePath (Join-Path $logs "build-$cc.txt")
+            if ($LASTEXITCODE -ne 0) { $failed = $true; continue }
+            $index = 0
+            foreach ($path in $paths) {
+              if (Test-Path -LiteralPath $path -PathType Container) {
+                & $binary $path 2>&1 | Tee-Object -FilePath (Join-Path $logs "acl-$cc-$index.txt")
+                if ($LASTEXITCODE -ne 0) { $failed = $true }
+              }
+              $index++
+            }
+          }
+          if ($failed) { exit 1 }
+
+      - name: Probe the full compiler cache without a WASM runtime dependency
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          $logs = Join-Path $env:GITHUB_WORKSPACE 'ci-probes/windows-cache'
+          New-Item -ItemType Directory -Force $logs | Out-Null
+          $env:VTOOLS_CACHE_DIR = Join-Path $env:RUNNER_TEMP 'v-toolcache-owner-probe'
+          New-Item -ItemType Directory -Force $env:VTOOLS_CACHE_DIR | Out-Null
+          $source = Join-Path $logs 'cache_probe.v'
+          [System.IO.File]::WriteAllText($source, "fn main() {}`n", [System.Text.UTF8Encoding]::new($false))
+          .\v.exe -new-compiler -no-retry-compilation -b wasm -o (Join-Path $logs 'cache_probe.wasm') $source 2>&1 |
+            Tee-Object -FilePath (Join-Path $logs 'wasm-cache.txt')
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run compiler preference alias regressions
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          .\v.exe -new-compiler -no-retry-compilation -cc gcc vlib/v/pref/ccompiler_test.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run the launcher TinyCC alias regression
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          .\v.exe -new-compiler -no-retry-compilation -cc gcc test -run-only test_prod_refuses_tinycc_under_another_name_once_it_resolves cmd/v/launcher_test.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Run the original compiled-tool cache reuse regression
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        shell: pwsh
+        run: |
+          .\v.exe -new-compiler -no-retry-compilation -cc gcc test -run-only test_a_second_invocation_of_a_tool_reuses_the_compiled_binary cmd/v/toolcache_test.v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Retain diagnostic text
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: windows-cache-${{ matrix.os }}-${{ matrix.bootstrap }}
+          if-no-files-found: warn
+          path: ci-probes/windows-cache/*.txt
