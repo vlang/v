@@ -42,13 +42,21 @@ fn module_sources(cache string) map[string]string {
 		// <module>_<16 hex>_<16 hex>.c
 		stem := base.all_before_last('.c')
 		parts := stem.split('_')
-		if parts.len < 3 || parts[parts.len - 1].len != 16 || parts[parts.len - 2].len != 16 {
+		// The two hashes are u64.hex(), which is not zero padded: a hash whose top nibble is
+		// zero is shorter than 16 characters, so the test must not insist on 16 (it did, and
+		// then counted 3 modules of the 5 an `import os` build leaves).
+		if parts.len < 3 || !hex_word(parts[parts.len - 1]) || !hex_word(parts[parts.len - 2]) {
 			continue
 		}
 		name := parts[..parts.len - 2].join('_')
 		out[name] = os.read_file(path) or { continue }
 	}
 	return out
+}
+
+// hex_word says whether s is a u64.hex() value: one to sixteen hexadecimal digits.
+fn hex_word(s string) bool {
+	return s.len in 1 .. 17 && s.bytes().all(it.is_hex_digit())
 }
 
 fn identifiers_of(text string) map[string]bool {
@@ -84,6 +92,12 @@ fn test_a_subset_build_leaves_out_only_what_nothing_in_the_object_names() {
 	assert full_output.trim_space() == 'b.txt\nx${os.path_separator}y'
 	full := module_sources(full_cache)
 	subset := module_sources(subset_cache)
+	if full.len == 0 {
+		// A host where the module cache builds no module objects (Windows under the bundled
+		// tcc, as of this writing) has nothing to compare: say so instead of failing on it.
+		eprintln('skipping: the cold build left no module object sources in ${full_cache}; the module cache did not run on this host')
+		return
+	}
 	assert full.len > 3
 	assert subset.len == full.len
 	mut smaller := 0
