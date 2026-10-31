@@ -59,6 +59,9 @@ $if !skip_ppc64le ? {
 $if !skip_arm32 ? {
 	import v.gen.arm32
 }
+$if !skip_s390x ? {
+	import v.gen.s390x
+}
 
 $if !skip_ssa ? {
 	import v.ssa
@@ -10564,7 +10567,7 @@ pub fn run(args []string) {
 		no_cache = true
 	}
 	should_run = should_run && !skip_running
-	native_linux_object := (backend in ['arm64', 'riscv64', 'loongarch64', 'ppc64le', 'arm32'] && target_os == 'linux' && explicit_output) || (backend == 'x64' && target_os in [
+	native_linux_object := (backend in ['arm64', 'riscv64', 'loongarch64', 'ppc64le', 'arm32', 's390x'] && target_os == 'linux' && explicit_output) || (backend == 'x64' && target_os in [
 		'linux',
 		'macos',
 		'windows',
@@ -10748,9 +10751,9 @@ pub fn run(args []string) {
 	if ownership_mode {
 		record_user_define(mut user_defines, mut compile_values, 'ownership')
 	}
-	if backend !in ['c', 'fastc', 'arm64', 'arm32', 'x64', 'riscv64', 'ppc64le', 'loongarch64', 'wasm', 'eval']
+	if backend !in ['c', 'fastc', 'arm64', 'arm32', 'x64', 'riscv64', 'ppc64le', 's390x', 'loongarch64', 'wasm', 'eval']
 		&& !(backend == 'js' && is_checker_fixture) {
-		eprintln('unknown backend `${backend}`; expected c, fastc, arm64, arm32, x64, riscv64, ppc64le, loongarch64, wasm, or eval')
+		eprintln('unknown backend `${backend}`; expected c, fastc, arm64, arm32, x64, riscv64, ppc64le, s390x, loongarch64, wasm, or eval')
 		exit(1)
 	}
 	if hot_fn != '' && backend != 'arm64' {
@@ -10844,6 +10847,10 @@ pub fn run(args []string) {
 	}
 	if backend == 'arm32' && (target.os != 'linux' || target.arch != 'arm32') {
 		eprintln('the arm32 backend currently supports only linux/arm')
+		exit(1)
+	}
+	if backend == 's390x' && (target.os != 'linux' || target.arch != 's390x') {
+		eprintln('the s390x backend currently supports only linux/s390x')
 		exit(1)
 	}
 	if backend == 'x64' {
@@ -11013,6 +11020,7 @@ pub fn run(args []string) {
 	mut include_loongarch64 := all_backends
 	mut include_ppc64le := all_backends
 	mut include_arm32 := all_backends
+	mut include_s390x := all_backends
 	mut include_wasm := all_backends
 	mut include_eval := all_backends
 	for cb in compile_backends {
@@ -11067,6 +11075,9 @@ pub fn run(args []string) {
 		'arm32', 'arm' {
 			include_arm32 = true
 		}
+		's390x' {
+			include_s390x = true
+		}
 		'wasm' {
 			include_wasm = true
 		}
@@ -11096,6 +11107,9 @@ pub fn run(args []string) {
 	}
 	if !include_arm32 {
 		user_defines << 'skip_arm32'
+	}
+	if !include_s390x {
+		user_defines << 'skip_s390x'
 	}
 	if !include_wasm {
 		user_defines << 'skip_wasm'
@@ -14777,6 +14791,43 @@ pub fn run(args []string) {
 		} $else {
 			eprintln('arm32 support is not compiled into this executable')
 			eprintln('Rebuild with `v -compile-backend arm32 self`.')
+			exit(1)
+		}
+	} else if backend == 's390x' {
+		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
+			eprintln(msg)
+			exit(1)
+		}
+		$if !skip_s390x ? {
+			mut m := ssa.build_with_options(a, used_fns, pre_tc, ssa.BuildOptions{
+				track_uses:        false
+				thread_stack_size: prefs.thread_stack_size
+				test_files:        test_files
+				test_run_only:     run_only
+				exact_used_fns:    true
+				target:            ssa.TargetData{ ptr_size: 8, endian_little: false, os_is_linux: true }
+			})
+			b.step('ssa build')
+
+			mut g := s390x.Gen.new(m)
+			g.gen()
+			b.step('s390x gen')
+
+			if !is_o {
+				eprintln('the experimental s390x backend supports object output only; use -o file.o.')
+				exit(1)
+			}
+			obj_file := os.join_path(os.vtmp_dir(), 'v3_s390x_${os.getpid()}_${tempname.unique_token()}.o')
+			g.write_file(obj_file)
+			b.step('s390x object')
+			os.mv(obj_file, bin_file) or {
+				eprintln(err.msg())
+				exit(1)
+			}
+			b.step('link')
+		} $else {
+			eprintln('s390x support is not compiled into this executable')
+			eprintln('Rebuild with `v -compile-backend s390x self`.')
 			exit(1)
 		}
 	} else if backend == 'arm64' {
@@ -21617,6 +21668,9 @@ fn skipped_backend_modules(prefs &pref.Preferences) map[string]bool {
 	}
 	if 'skip_arm32' in prefs.user_defines {
 		skipped['v.gen.arm32'] = true
+	}
+	if 'skip_s390x' in prefs.user_defines {
+		skipped['v.gen.s390x'] = true
 	}
 	if 'skip_wasm' in prefs.user_defines {
 		skipped['v.gen.wasm'] = true
