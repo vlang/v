@@ -1,0 +1,35 @@
+vlib/v/checker/tests/assert_side_effect.vv:13:9: notice: assert contains a channel receive, which a `-prod` build drops together with the assert; bind the value first (`value := ...`) and assert on `value`
+   11 |     ch <- 3
+   12 |     // the receive is not done by a build that removes the assert (`-prod`)
+   13 |     assert <-ch == 1
+      |            ~~~~
+   14 |     assert (<-ch) + 0 == 2
+   15 |     mut n := 0
+vlib/v/checker/tests/assert_side_effect.vv:14:10: notice: assert contains a channel receive, which a `-prod` build drops together with the assert; bind the value first (`value := ...`) and assert on `value`
+   12 |     // the receive is not done by a build that removes the assert (`-prod`)
+   13 |     assert <-ch == 1
+   14 |     assert (<-ch) + 0 == 2
+      |             ~~~~
+   15 |     mut n := 0
+   16 |     assert n++ == 0
+vlib/v/checker/tests/assert_side_effect.vv:16:9: notice: assert contains an increment, which a `-prod` build drops together with the assert; bind the value first (`value := ...`) and assert on `value`
+   14 |     assert (<-ch) + 0 == 2
+   15 |     mut n := 0
+   16 |     assert n++ == 0
+      |            ~~~
+   17 |     assert '${n--}' == '1'
+   18 |     t := spawn fn () int {
+vlib/v/checker/tests/assert_side_effect.vv:17:12: notice: assert contains an increment, which a `-prod` build drops together with the assert; bind the value first (`value := ...`) and assert on `value`
+   15 |     mut n := 0
+   16 |     assert n++ == 0
+   17 |     assert '${n--}' == '1'
+      |               ~~~
+   18 |     t := spawn fn () int {
+   19 |         return 7
+vlib/v/checker/tests/assert_side_effect.vv:21:9: notice: assert contains a `wait()` call, which a `-prod` build drops together with the assert; bind the value first (`value := ...`) and assert on `value`
+   19 |         return 7
+   20 |     }()
+   21 |     assert t.wait() == 7
+      |            ~~~~~~~~
+   22 |     // these have no effect: no notice
+   23 |     assert n == 0
