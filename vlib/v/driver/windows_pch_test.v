@@ -1,6 +1,7 @@
 module driver
 
 import os
+import time
 import v.modulecache
 
 // The prelude of a module object of a Windows `-prod` build, as the generator
@@ -81,6 +82,8 @@ fn test_windows_pch_does_not_apply_to_a_prelude_that_configures_the_headers_diff
 	assert !v3_windows_pch_applies(prelude.replace('#include <io.h>', '#define _WIN32_WINNT 0x0A00\n#include <io.h>'))
 	assert !v3_windows_pch_applies(prelude.replace('#include <windows.h>', '#define NOGDI\n#include <windows.h>'))
 	assert !v3_windows_pch_applies(prelude.replace('#define PSAPI_VERSION 2\n#include <psapi.h>', '#define PSAPI_VERSION 1\n#include <psapi.h>'))
+	assert !v3_windows_pch_applies(prelude.replace('#define PSAPI_VERSION 2\n#include <psapi.h>', '#include <psapi.h>\n#define PSAPI_VERSION 2'))
+	assert !v3_windows_pch_applies(prelude.replace('#define PSAPI_VERSION 2\n#include <psapi.h>', '#undef PSAPI_VERSION 2\n#include <psapi.h>'))
 	// Another header first, as a `#preinclude` puts it, or the SDK headers in another order.
 	assert !v3_windows_pch_applies(prelude.replace('#include <io.h>', '#include "user.h"\n#include <io.h>'))
 	assert !v3_windows_pch_applies(prelude.replace('#include <winsock2.h>\n', '').replace('#include <windows.h>', '#include <windows.h>\n#include <winsock2.h>'))
@@ -136,6 +139,31 @@ fn test_windows_pch_needs_a_compiler_identity_and_a_native_target() {
 	assert os.ls(root)! == []
 }
 
+fn test_windows_pch_is_reused_without_a_compiler_once_it_exists() {
+	$if !windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'windows_pch_reuse_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	compiler := V3CachedObjectCompiler{
+		path:     os.join_path(root, 'no_such_clang.exe')
+		identity: 'clang 23'
+	}
+	// A precompiled header with its header is handed out as is: nothing is built.
+	base := os.join_path(root, 'windows_sdk_${v3_windows_pch_key(compiler.identity, ['-O2'])}')
+	os.write_file(base + '.pch', 'stub')!
+	os.write_file(base + '.h', v3_windows_pch_header)!
+	assert v3_windows_pch(compiler, ['-O2'], root)? == base + '.pch'
+	assert os.read_file(base + '.pch')! == 'stub'
+	assert !os.is_file(base + '.failed')
+	// Without the header a build is attempted, which this compiler cannot do.
+	os.rm(base + '.h')!
+	assert v3_windows_pch(compiler, ['-O2'], root) == none
+	assert os.is_file(base + '.failed')
+	assert os.read_file(base + '.h')! == v3_windows_pch_header
+}
+
 fn test_windows_pch_flags_configure_sdk() {
 	assert v3_windows_pch_flags_configure_sdk(['-DWIN32_FULL'])
 	assert v3_windows_pch_flags_configure_sdk(['-O2', '-D', 'WIN32_FULL'])
@@ -150,6 +178,16 @@ fn test_windows_pch_flags_configure_sdk() {
 	// The guards of the prelude test _WIN32, which the predefined macros provide.
 	assert v3_windows_pch_flags_configure_sdk(['-U_WIN32'])
 	assert v3_windows_pch_flags_configure_sdk(['-undef'])
+	// The long spellings Clang takes for the same, and a function-like macro.
+	assert v3_windows_pch_flags_configure_sdk(['--define-macro=WIN32_FULL'])
+	assert v3_windows_pch_flags_configure_sdk(['--define-macro', 'WIN32_FULL'])
+	assert v3_windows_pch_flags_configure_sdk(['--undefine-macro=UNICODE'])
+	assert v3_windows_pch_flags_configure_sdk(['--undefine-macro', '_WIN32'])
+	assert v3_windows_pch_flags_configure_sdk(['--include=full.h'])
+	assert v3_windows_pch_flags_configure_sdk(['--imacros', 'full.h'])
+	assert v3_windows_pch_flags_configure_sdk(['-DWIN32_FULL()='])
+	assert v3_windows_pch_flags_configure_sdk(['-D', 'WIN32_FULL(x)=1'])
+	assert !v3_windows_pch_flags_configure_sdk(['--define-macro=GC_THREADS=1'])
 	assert !v3_windows_pch_flags_configure_sdk(['-DWIN32_FULLER'])
 	assert !v3_windows_pch_flags_configure_sdk(['-DGC_THREADS=1', '-I', 'x', '-D'])
 }
@@ -166,9 +204,11 @@ fn test_windows_pch_is_built_once_and_a_rejected_one_is_compiled_without() ! {
 		object:   os.join_path(root, 'sample.o')
 		c_source: os.join_path(root, 'sample.c')
 	}
+	// The identity is part of the key of the shared object pool beside `root`,
+	// which outlives this test: with one of its own, every unit here compiles.
 	compiler := V3CachedObjectCompiler{
 		path:     clang
-		identity: 'test clang'
+		identity: 'test clang ${os.getpid()}'
 	}
 	state := V3ModuleCacheState{ silent: true }
 	unit := fn (value int) string {
@@ -204,9 +244,20 @@ fn test_windows_pch_is_built_once_and_a_rejected_one_is_compiled_without() ! {
 	os.write_file(failed, 'out of disk space')!
 	assert compile_v3_cached_object(compiler, entry, unit(8), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, &state, 'sample')!
 	assert !os.is_file(pch)
-	os.rm(failed)!
+	// One that failed a while ago is tried again, and the record goes.
+	old := time.now().unix() - 2 * v3_windows_pch_failed_retry
+	os.utime(failed, old, old)!
 	assert compile_v3_cached_object(compiler, entry, unit(9), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, &state, 'sample')!
 	assert os.is_file(pch)
+	assert !os.is_file(failed)
+	// A precompiled header another build published first stays, whatever a
+	// build of this one would make of it.
+	args := ['-std=gnu11', '-O3']
+	first := os.join_path(root, 'windows_sdk_${v3_windows_pch_key(compiler.identity, args)}.pch')
+	os.write_file(first, 'published first')!
+	assert v3_windows_pch(compiler, args, root)? == first
+	assert os.read_file(first)! == 'published first'
+	assert os.read_file(first.all_before_last('.pch') + '.h')! == v3_windows_pch_header
 	// A unit with an error of its own fails with that error, not the header's,
 	// and the header stays for the other units.
 	compile_v3_cached_object(compiler, entry, unit(7) + 'int broken(void) { return missing; }\n', '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, &state, 'sample') or {
