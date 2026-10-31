@@ -5,6 +5,7 @@
 @[has_globals]
 module builtin
 
+@[unsafe]
 fn C.v3_vgc_mark_global_arrays()
 fn C.vgc_data_ranges(lo &uint, hi &uint, max int) int
 
@@ -162,6 +163,7 @@ fn vgc_gc_run(_ voidptr, regs voidptr) {
 // ============================================================
 
 // Clear all mark bits before a new GC cycle
+@[unsafe]
 fn vgc_clear_mark_bits() {
 	// Keep the arena table still while walking it.
 	C.vgc_mutex_lock(&vgc_heap.lock)
@@ -264,6 +266,7 @@ fn vgc_scan_range(lo uint, hi uint) {
 
 // Shade marks an object grey (discovered but not yet scanned).
 // Translated from Go's shade() in mgcmark.go.
+@[unsafe]
 fn vgc_shade(addr uint) {
 	if addr < vgc_arena_lo || addr >= vgc_arena_hi {
 		return
@@ -314,6 +317,7 @@ fn vgc_parallel_mark() {
 // Drain the mark work queue - scan grey objects and mark their referents.
 // Uses precise pointer maps when available (from vgc_malloc_typed),
 // falls back to conservative scanning otherwise.
+@[unsafe]
 fn vgc_drain_mark_work() {
 	for {
 		obj_addr := vgc_work_get()
@@ -389,6 +393,7 @@ fn vgc_can_use_work_fastpath() bool {
 }
 
 // Add a pointer to the mark work queue
+@[unsafe]
 fn vgc_work_put(addr uint) {
 	if vgc_can_use_work_fastpath() {
 		mut buf := vgc_heap.work_full
@@ -452,6 +457,7 @@ fn vgc_work_put(addr uint) {
 }
 
 // Get a pointer from the mark work queue
+@[unsafe]
 fn vgc_work_get() uint {
 	if vgc_can_use_work_fastpath() {
 		mut buf := vgc_heap.work_full
@@ -500,6 +506,7 @@ fn vgc_work_get() uint {
 
 // Write barrier: called when a pointer field is written during mark phase.
 // Uses Dijkstra-style insertion barrier - shade the new pointer.
+@[unsafe]
 fn vgc_write_barrier(new_val voidptr) {
 	if C.vgc_atomic_load_u32(&vgc_heap.wb_enabled) == 0 {
 		return
@@ -534,6 +541,7 @@ fn vgc_do_sweep() {
 }
 
 // vgc_sweep_spans sweeps and files every span that the current sweep has not handled yet.
+@[unsafe]
 fn vgc_sweep_spans() {
 	// Keep the arena table still while walking it.
 	C.vgc_mutex_lock(&vgc_heap.lock)
@@ -574,6 +582,7 @@ fn vgc_sweep_and_file_span(span &VGC_Span) {
 
 // Sweep a single span: free unmarked objects.
 // Translated from Go's mspan.sweep() in mgcsweep.go.
+@[unsafe]
 fn vgc_sweep_span(span &VGC_Span) {
 	if span.alloc_bits == unsafe { nil } || span.mark_bits == unsafe { nil } {
 		return
@@ -633,6 +642,7 @@ fn vgc_sweep_finish() {
 // ============================================================
 
 // Count total marked bytes across all spans using byte-level popcount
+@[unsafe]
 fn vgc_count_marked() u64 {
 	mut total := u64(0)
 	C.vgc_mutex_lock(&vgc_heap.lock)

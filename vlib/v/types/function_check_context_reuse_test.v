@@ -5,6 +5,7 @@ import v.flat
 import v.parser
 import v.pref
 
+@[unsafe]
 fn test_function_check_context_reset_detaches_shared_arrays_and_clears_semantic_state() {
 	mut scope := new_scope(unsafe { nil })
 	owner := scope.insert_with_owner('value', builtin_int_type)

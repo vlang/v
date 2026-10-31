@@ -1,3 +1,4 @@
+@[unsafe]
 fn sum_borrowed_f32(values &f32, count int) f32 {
 	if values == unsafe { nil } {
 		return -1

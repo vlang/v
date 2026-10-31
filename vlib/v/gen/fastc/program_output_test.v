@@ -335,6 +335,7 @@ pub:
 	assert output == expected, output
 }
 
+@[unsafe]
 fn test_fastc_prints_pointers_and_options_like_cgen() {
 	$if !macos && !linux {
 		return

@@ -7,7 +7,7 @@ struct FastcTokenSource {
 	text string
 }
 
-@[inline]
+@[inline; unsafe]
 fn fastc_token_source(text string) &FastcTokenSource {
 	if text.len == 0 { return unsafe { nil } }
 	return &FastcTokenSource{ text: text }

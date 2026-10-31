@@ -191,6 +191,7 @@ fn main() {
 	assert run.output.trim_space() == 'initialized', run.output
 }
 
+@[unsafe]
 fn test_fastc_linux_backtrace_accepts_erased_pointer_arguments() {
 	$if !linux || !glibc {
 		return
@@ -323,6 +324,7 @@ fn test_fastc_linux_prealloc_without_spawn_requires_pthread_linking() {
 	assert generation.uses_threads
 }
 
+@[unsafe]
 fn test_fastc_backtrace_symbols_accept_erased_frames() {
 	$if !macos && !(linux && glibc) {
 		return

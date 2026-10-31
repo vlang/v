@@ -19,6 +19,7 @@ fn check_nil_interface_fields(config NilFieldConfig) {
 	assert alias_bytes.all(it == 0)
 }
 
+@[unsafe]
 fn test_interface_fields_are_zeroed_by_unsafe_nil() {
 	check_nil_interface_fields(reader: unsafe { nil }, alias: (unsafe { nil }))
 	check_nil_interface_fields(NilFieldConfig{

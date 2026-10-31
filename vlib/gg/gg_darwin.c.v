@@ -58,6 +58,7 @@ fn cgcolor(c Color) voidptr {
 	return color
 }
 
+@[unsafe]
 fn current_cg_context() voidptr {
 	ns_context := macos.msg_id(macos.get_class('NSGraphicsContext'), 'currentContext')
 	if ns_context == unsafe { nil } {
@@ -134,6 +135,7 @@ pub fn darwin_draw_string(x int, y int, s string, cfg TextCfg) {
 }
 
 // darwin_draw_rect fills a rectangle in the current macOS graphics context.
+@[unsafe]
 pub fn darwin_draw_rect(x f32, y f32, width f32, height f32, c Color) {
 	if width <= 0 || height <= 0 {
 		return
@@ -151,6 +153,7 @@ pub fn darwin_draw_rect(x f32, y f32, width f32, height f32, c Color) {
 }
 
 // darwin_stroke_line draws a one-point line in native graphics coordinates.
+@[unsafe]
 fn darwin_stroke_line(context voidptr, x f32, y f32, x2 f32, y2 f32, c Color) {
 	if context == unsafe { nil } {
 		return
@@ -167,6 +170,7 @@ fn darwin_stroke_line(context voidptr, x f32, y f32, x2 f32, y2 f32, c Color) {
 	C.CGContextStrokePath(context)
 }
 
+@[unsafe]
 fn mark_view_tree_needs_display(view macos.Id) {
 	if view == unsafe { nil } {
 		return
@@ -180,7 +184,7 @@ fn mark_view_tree_needs_display(view macos.Id) {
 	}
 }
 
-@[export: 'darwin_window_refresh_cb']
+@[export: 'darwin_window_refresh_cb'; unsafe]
 fn darwin_window_refresh_cb(ctx voidptr) {
 	_ = ctx
 	mut window := macos.msg_id(C.gg_darwin_application(), 'mainWindow')
@@ -198,12 +202,14 @@ fn darwin_window_refresh_cb(ctx voidptr) {
 	macos.msg_void(window, 'displayIfNeeded')
 }
 
+@[unsafe]
 pub fn darwin_window_refresh() {
 	queue := C.dispatch_get_main_queue()
 	C.dispatch_async_f(queue, unsafe { nil }, voidptr(darwin_window_refresh_cb))
 }
 
 // gg_get_screen_size returns the size of the current window's screen, or the main screen.
+@[unsafe]
 pub fn gg_get_screen_size() Size {
 	mut current_screen := macos.Id(unsafe { nil })
 	main_window := macos.msg_id(C.gg_darwin_application(), 'mainWindow')
@@ -238,6 +244,7 @@ pub fn gg_get_screen_size() Size {
 	return Size{ width: int(display_size.x), height: int(display_size.y) }
 }
 
+@[unsafe]
 pub fn gg_macos_resize_window(window_ptr voidptr, width int, height int) {
 	if window_ptr == unsafe { nil } || width <= 0 || height <= 0 {
 		return
@@ -246,6 +253,7 @@ pub fn gg_macos_resize_window(window_ptr voidptr, width int, height int) {
 	macos.msg_void_point(ns_window, 'setContentSize:', macos.point(f64(width), f64(height)))
 }
 
+@[unsafe]
 pub fn gg_macos_set_window_resizable(window_ptr voidptr, resizable bool) {
 	if window_ptr == unsafe { nil } {
 		return
@@ -281,6 +289,7 @@ pub fn darwin_draw_image(x f32, y f32, w f32, h f32, img &Image) {
 }
 
 // darwin_draw_circle fills a circle in the current macOS graphics context.
+@[unsafe]
 pub fn darwin_draw_circle(x f32, y f32, d f32, color Color) {
 	if d <= 0 {
 		return
@@ -298,6 +307,7 @@ pub fn darwin_draw_circle(x f32, y f32, d f32, color Color) {
 }
 
 // darwin_draw_circle_empty draws a circle outline in the current macOS graphics context.
+@[unsafe]
 pub fn darwin_draw_circle_empty(x f32, y f32, d f32, color Color) {
 	if d <= 0 {
 		return

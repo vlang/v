@@ -14,6 +14,7 @@ fn reject_entropy(_ voidptr, _ &u8, _ uint) int {
 	return -1
 }
 
+@[unsafe]
 fn test_seed_callback_preserves_entropy_failure() {
 	mut generator := C.mbedtls_ctr_drbg_context{}
 	C.mbedtls_ctr_drbg_init(&generator)

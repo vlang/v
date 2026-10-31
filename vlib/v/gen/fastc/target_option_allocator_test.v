@@ -58,7 +58,7 @@ fn choose(size uint) ?BlockRef {
 fn optional_copy(value ?BlockRef) ?BlockRef { return value }
 fn result_copy(value BlockRef) !BlockRef { return value }
 fn result_forward(value BlockRef) !BlockRef { return result_copy(value)! }
-@[export: "test_allocator"]
+@[export: "test_allocator"; unsafe]
 fn allocator(size uint) voidptr {
 	C.enter_allocator()
 	callback := Choose(choose)
@@ -76,6 +76,7 @@ fn allocator(size uint) voidptr {
 fn wide() ?u64 { return C.next_wide() }
 fn zero() ?u64 { return u64(0) }
 fn missing() ?u64 { return none }
+@[unsafe]
 fn null_pointer() ?voidptr { return unsafe { nil } }
 fn result_wide() !u64 { return C.next_wide() }
 fn result_missing() !u64 { return error_sentinel }
@@ -85,6 +86,7 @@ fn small() ?Small { return Small{value: 7} }
 fn branch(take bool) ?u64 { return if take { u64(17) } else { u64(19) } }
 fn matched(value int) ?u64 { return match value { 0 { u64(23) } else { u64(29) } } }
 fn optional_callback(value u64) ?u64 { return value + 1 }
+@[unsafe]
 fn main() {
 	C._vinit(0, unsafe { nil })
 	before := C.allocation_count()

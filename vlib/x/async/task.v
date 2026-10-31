@@ -37,6 +37,7 @@ pub fn run[T](f TaskFn[T]) !&Task[T] {
 // Cancellation is cooperative. If parent is canceled, f must observe ctx.done()
 // and return. The result channel is buffered so f can publish its single result
 // even if the owner has not called wait() yet.
+@[unsafe]
 pub fn run_with_context[T](parent context.Context, f TaskFn[T]) !&Task[T] {
 	if f == unsafe { nil } {
 		return error(err_nil_job)

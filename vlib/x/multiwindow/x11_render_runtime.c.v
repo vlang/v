@@ -6,6 +6,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 
 $if gg_multiwindow ?|| x_multiwindow_render ? {
 	$if linux && x_multiwindow_x11 ? {
+		@[unsafe]
 		fn C.v_multiwindow_x11_render_snapshot(connection voidptr, window X11NativeWindow, out_width &int, out_height &int, out_viewable &int) int
 	}
 }

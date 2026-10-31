@@ -480,6 +480,7 @@ const max_error_code = 15841
 
 // ptr_win_get_error_msg return string (voidptr)
 // representation of error, only for windows.
+@[unsafe]
 fn ptr_win_get_error_msg(code u32) voidptr {
 	mut buf := voidptr(unsafe { nil })
 	// Check for code overflow
@@ -606,6 +607,7 @@ fn raw_execute_shell(cmd string) Result {
 	return windows_execute_command_line(pcmd, '', cmd, true)
 }
 
+@[unsafe]
 fn windows_execute_command_line(command_line_text string, application_name string, display_cmd string, expand_environment bool) Result {
 	mut child_stdin := &u32(unsafe { nil })
 	mut child_stdout_read := &u32(unsafe { nil })
@@ -732,6 +734,7 @@ pub fn readlink(path string) !string {
 }
 
 // link creates a hard link and preserves the Win32 error code on failure.
+@[unsafe]
 pub fn link(origin string, target string) ! {
 	res := C.CreateHardLinkW(target.to_wide(), origin.to_wide(), unsafe { nil })
 	// 1 = success, != 1 failure => https://stackoverflow.com/questions/33010440/createsymboliclink-on-windows-10
@@ -744,6 +747,7 @@ pub fn link(origin string, target string) ! {
 	}
 }
 
+@[unsafe]
 pub fn (mut f File) close() {
 	if !f.is_opened {
 		return
@@ -923,6 +927,7 @@ pub fn page_size() int {
 }
 
 // disk_usage returns disk usage of `path`.
+@[unsafe]
 pub fn disk_usage(path string) !DiskUsage {
 	mut free_bytes_available_to_caller := C.ULARGE_INTEGER{}
 	mut total := C.ULARGE_INTEGER{}

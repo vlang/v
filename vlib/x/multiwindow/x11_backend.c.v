@@ -569,12 +569,14 @@ fn (backend &X11Backend) cursor_support(shape CursorShape) ServiceSupportLevel {
 	}
 }
 
+@[unsafe]
 fn (record &X11WindowRecord) retains_native_ownership() bool {
 	return record.window != X11NativeWindow(0) || record.colormap != X11NativeColormap(0)
 		|| record.xic != unsafe { nil } || record.cursor != X11NativeCursor(0)
 		|| record.egl_surface != unsafe { nil } || record.egl_surface_ticket != 0
 }
 
+@[unsafe]
 fn (backend &X11Backend) retains_native_ownership_except_display() bool {
 	mut live_tickets := false
 	if backend.native_operations != unsafe { nil } {
@@ -589,11 +591,13 @@ fn (backend &X11Backend) retains_native_ownership_except_display() bool {
 		|| backend.egl_thread_ticket != 0 || live_tickets
 }
 
+@[unsafe]
 fn (backend &X11Backend) retains_native_ownership() bool {
 	return backend.display != unsafe { nil } || backend.checked_connection != unsafe { nil }
 		|| backend.retains_native_ownership_except_display()
 }
 
+@[unsafe]
 fn (backend &X11Backend) retains_egl_ownership() bool {
 	if backend.native_operations != unsafe { nil }
 		&& backend.native_operations.has_live_lifetime_tickets() {
@@ -661,6 +665,7 @@ fn (mut backend X11Backend) close_start_attempt() string {
 	return close_error
 }
 
+@[unsafe]
 fn (mut backend X11Backend) probe_renderer_capabilities() !Capabilities {
 	$if linux && x_multiwindow_x11 ? {
 		if !backend.start_attempt_closed() {
@@ -705,6 +710,7 @@ fn (mut backend X11Backend) probe_renderer_capabilities() !Capabilities {
 	}
 }
 
+@[unsafe]
 fn (mut backend X11Backend) start(require_renderer bool) ! {
 	$if linux && x_multiwindow_x11 ? {
 		if backend.started {
@@ -817,6 +823,7 @@ fn (mut backend X11Backend) rollback_pending_window_creation(original_error stri
 	return merge_backend_errors(original_error, cleanup_error)
 }
 
+@[unsafe]
 fn (mut backend X11Backend) create_window(id WindowId, config WindowConfig) !WindowSize {
 	$if linux && x_multiwindow_x11 ? {
 		if !backend.started || backend.display == unsafe { nil } {
@@ -937,6 +944,7 @@ fn (mut backend X11Backend) finish_window_teardown(id WindowId) ! {
 	}
 }
 
+@[unsafe]
 fn (mut backend X11Backend) set_window_title(id WindowId, title string) ! {
 	$if linux && x_multiwindow_x11 ? {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -956,6 +964,7 @@ fn (mut backend X11Backend) set_window_title(id WindowId, title string) ! {
 	}
 }
 
+@[unsafe]
 fn (mut backend X11Backend) resize_window(id WindowId, width int, height int) !WindowSize {
 	$if linux && x_multiwindow_x11 ? {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -1000,6 +1009,7 @@ fn (mut backend X11Backend) resize_window(id WindowId, width int, height int) !W
 	}
 }
 
+@[unsafe]
 fn (mut backend X11Backend) set_window_cursor(id WindowId, shape CursorShape) ! {
 	$if linux && x_multiwindow_x11 ? {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -1095,6 +1105,7 @@ fn (mut backend X11Backend) queued_ewmh_capability_events() []QueuedEvent {
 	return events
 }
 
+@[unsafe]
 fn (backend &X11Backend) service_window_capture_available(id WindowId) bool {
 	$if linux && x_multiwindow_x11 ? {
 		index := backend.window_record_index(id) or { return false }
@@ -1190,6 +1201,7 @@ fn (backend &X11Backend) service_operation_capability(id WindowId, operation Ser
 	}
 }
 
+@[unsafe]
 fn (backend &X11Backend) service_window_state(id WindowId) !ServiceWindowState {
 	$if linux && x_multiwindow_x11 ? {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -1494,6 +1506,7 @@ fn (mut backend X11Backend) service_set_mouse_lock(id WindowId, enabled bool) !S
 	}
 }
 
+@[unsafe]
 fn (mut backend X11Backend) recenter_locked_pointer(index int, clear_delta bool) bool {
 	$if linux && x_multiwindow_x11 ? {
 		if index < 0 || index >= backend.windows.len || !backend.windows[index].mouse_locked
@@ -1536,6 +1549,7 @@ fn (mut backend X11Backend) release_mouse_lock(index int) {
 	}
 }
 
+@[unsafe]
 fn (backend &X11Backend) service_native_window_borrow(id WindowId) !BackendNativeWindowBorrow {
 	index := backend.window_record_index(id) or { return error(err_window_not_found) }
 	if backend.display == unsafe { nil } || backend.windows[index].window == X11NativeWindow(0) {
@@ -1584,6 +1598,7 @@ fn x11_intersect_monitor_work_area(monitor ServiceRect, work_area ServiceRect) S
 	}
 }
 
+@[unsafe]
 fn (mut backend X11Backend) service_monitor_snapshot(app_instance u64) ![]ServiceMonitorInfo {
 	$if linux && x_multiwindow_x11 ? {
 		if !backend.started || backend.display == unsafe { nil } {
@@ -1676,6 +1691,7 @@ fn (mut backend X11Backend) service_monitor_snapshot(app_instance u64) ![]Servic
 	}
 }
 
+@[unsafe]
 fn (mut backend X11Backend) queued_randr_monitor_events() ![]QueuedEvent {
 	app_instance := if backend.native_operations == unsafe { nil } {
 		u64(0)
@@ -1689,6 +1705,7 @@ fn (mut backend X11Backend) queued_randr_monitor_events() ![]QueuedEvent {
 	return backend.queued_monitor_snapshot_events(monitors)
 }
 
+@[unsafe]
 fn (backend &X11Backend) queued_monitor_snapshot_events(monitors []ServiceMonitorInfo) []QueuedEvent {
 	app_instance := if backend.native_operations == unsafe { nil } {
 		u64(0)
@@ -1826,6 +1843,7 @@ fn (backend &X11Backend) clipboard_incremental_reservation_after_chunk(item_coun
 	return next_reserved
 }
 
+@[unsafe]
 fn (mut backend X11Backend) service_set_clipboard_text(id WindowId, request ServiceRequestId, text string) !BackendClipboardStart {
 	$if linux && x_multiwindow_x11 ? {
 		_ = request
@@ -1860,6 +1878,7 @@ fn (mut backend X11Backend) service_set_clipboard_text(id WindowId, request Serv
 	}
 }
 
+@[unsafe]
 fn (mut backend X11Backend) service_request_clipboard_text(id WindowId, request ServiceRequestId) !BackendClipboardStart {
 	$if linux && x_multiwindow_x11 ? {
 		_ = backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -2074,6 +2093,7 @@ fn (backend &X11Backend) service_shared_connection_usable_for_test() bool {
 	return false
 }
 
+@[unsafe]
 fn (mut backend X11Backend) service_close_checked_connection_for_test() {
 	$if linux && x_multiwindow_x11 ? {
 		C.v_multiwindow_x11_close_checked_connection(backend.checked_connection)
@@ -2278,6 +2298,7 @@ $if test {
 		return error(err_backend_unsupported)
 	}
 
+	@[unsafe]
 	fn (mut backend X11Backend) service_queue_clipboard_incr_terminal_for_test(text string) ! {
 		$if linux && x_multiwindow_x11 ? {
 			if backend.clipboard_reads.len == 0 {
@@ -2335,6 +2356,7 @@ $if test {
 		return error(err_backend_unsupported)
 	}
 
+	@[unsafe]
 	fn (mut backend X11Backend) service_queue_clipboard_incr_chunk_for_test(payload []u8) ! {
 		$if linux && x_multiwindow_x11 ? {
 			if backend.clipboard_reads.len == 0 || !backend.clipboard_reads[0].incremental {
@@ -2456,6 +2478,7 @@ $if test {
 		return error(err_backend_unsupported)
 	}
 
+	@[unsafe]
 	fn (mut backend X11Backend) service_queue_xdnd_chunk_for_test(payload []u8, relevant bool, valid_type bool, format int) ! {
 		$if linux && x_multiwindow_x11 ? {
 			if format != 8 && payload.len > 0 {
@@ -2499,6 +2522,7 @@ $if test {
 		return error(err_backend_unsupported)
 	}
 
+	@[unsafe]
 	fn (mut backend X11Backend) service_set_xdnd_property_without_event_for_test(payload []u8) ! {
 		$if linux && x_multiwindow_x11 ? {
 			if !backend.xdnd_drop_state.active {
@@ -2522,6 +2546,7 @@ $if test {
 		return error(err_backend_unsupported)
 	}
 
+	@[unsafe]
 	fn (mut backend X11Backend) service_queue_stale_xdnd_selection_for_test(payload []u8) ! {
 		$if linux && x_multiwindow_x11 ? {
 			if backend.xdnd_drop_state.active || backend.xdnd_last_requestor == X11NativeWindow(0)
@@ -2557,6 +2582,7 @@ $if test {
 		return error(err_backend_unsupported)
 	}
 
+	@[unsafe]
 	fn (mut backend X11Backend) service_queue_stale_xdnd_property_for_test(payload []u8) ! {
 		$if linux && x_multiwindow_x11 ? {
 			if backend.xdnd_drop_state.active || backend.xdnd_last_requestor == X11NativeWindow(0)
@@ -2633,6 +2659,7 @@ $if test {
 		}
 	}
 
+	@[unsafe]
 	fn (backend &X11Backend) service_xdnd_property_exists_for_test() bool {
 		$if linux && x_multiwindow_x11 ? {
 			requestor := if backend.xdnd_drop_state.active {
@@ -2734,6 +2761,7 @@ $if test {
 	}
 }
 
+@[unsafe]
 fn (mut backend X11Backend) poll_queued_events() ![]QueuedEvent {
 	mut events := []QueuedEvent{}
 	$if linux && x_multiwindow_x11 ? {
@@ -3336,6 +3364,7 @@ $if linux && x_multiwindow_x11 ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend X11Backend) queued_clipboard_selection_events(event &C.XEvent) []QueuedEvent {
 		if backend.clipboard_reads.len == 0 {
 			return []QueuedEvent{}
@@ -3408,6 +3437,7 @@ $if linux && x_multiwindow_x11 ? {
 		return backend.finish_clipboard_read(.ready, text, '')
 	}
 
+	@[unsafe]
 	fn (mut backend X11Backend) queued_clipboard_property_events(event &C.XEvent) []QueuedEvent {
 		window := unsafe { event.xproperty.window }
 		property := unsafe { event.xproperty.atom }
@@ -3484,6 +3514,7 @@ $if linux && x_multiwindow_x11 ? {
 		})
 	}
 
+	@[unsafe]
 	fn (mut backend X11Backend) destroy_clipboard_requestor(requestor X11NativeWindow) {
 		if requestor != X11NativeWindow(0) && backend.display != unsafe { nil } {
 			C.XDestroyWindow(backend.display, requestor)
@@ -3637,6 +3668,7 @@ $if linux && x_multiwindow_x11 ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend X11Backend) advance_clipboard_transfer(requestor X11NativeWindow, property X11NativeAtom, queue X11ClipboardTransferQueue) {
 		for index, transfer in backend.clipboard_transfers {
 			if transfer.requestor != requestor || transfer.property != property
@@ -3806,6 +3838,7 @@ $if linux && x_multiwindow_x11 ? {
 		backend.update_mouse_position(index, root_x, root_y, false)
 	}
 
+	@[unsafe]
 	fn (mut backend X11Backend) queued_xdnd_selection_events(event &C.XEvent) []QueuedEvent {
 		requestor := unsafe { event.xselection.requestor }
 		selection := unsafe { event.xselection.selection }
@@ -3886,6 +3919,7 @@ $if linux && x_multiwindow_x11 ? {
 		return backend.finish_xdnd_payload()
 	}
 
+	@[unsafe]
 	fn (mut backend X11Backend) queued_xdnd_property_events(event &C.XEvent) []QueuedEvent {
 		property_state := unsafe { event.xproperty.state }
 		requestor := unsafe { event.xproperty.window }
@@ -4030,6 +4064,7 @@ $if linux && x_multiwindow_x11 ? {
 		C.XFlush(backend.display)
 	}
 
+	@[unsafe]
 	fn (mut backend X11Backend) send_xdnd_finished_to(source X11NativeWindow, requestor X11NativeWindow, version X11NativeLong, accepted bool) {
 		backend.xdnd_finished_count++
 		backend.xdnd_terminal_order_sequence++
@@ -4104,6 +4139,7 @@ $if linux && x_multiwindow_x11 ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend X11Backend) delete_xdnd_property_if_live(requestor X11NativeWindow, property X11NativeAtom) {
 		if backend.display == unsafe { nil } || property == X11NativeAtom(0) {
 			return
@@ -4119,6 +4155,7 @@ $if linux && x_multiwindow_x11 ? {
 		C.XFlush(backend.display)
 	}
 
+	@[unsafe]
 	fn (mut backend X11Backend) delete_xdnd_property_and_sync_if_live(requestor X11NativeWindow, property X11NativeAtom) {
 		if backend.display == unsafe { nil } || property == X11NativeAtom(0) {
 			return
@@ -4155,6 +4192,7 @@ fn x11_signed_16(value u32) int {
 	return result
 }
 
+@[unsafe]
 fn (mut backend X11Backend) stop() ! {
 	$if linux && x_multiwindow_x11 ? {
 		mut cleanup_error := ''
@@ -4249,6 +4287,7 @@ fn (backend &X11Backend) window_id_for_native(window X11NativeWindow) ?WindowId 
 	return none
 }
 
+@[unsafe]
 fn (backend &X11Backend) renderer_ready() bool {
 	return backend.egl_display != unsafe { nil } && backend.egl_config != unsafe { nil }
 		&& backend.egl_context != unsafe { nil } && backend.egl_display_ticket != 0
@@ -4256,6 +4295,7 @@ fn (backend &X11Backend) renderer_ready() bool {
 		&& backend.render_health == .ready
 }
 
+@[unsafe]
 fn (mut backend X11Backend) init_renderer() ! {
 	$if linux && x_multiwindow_x11 ? {
 		if backend.renderer_ready() {
@@ -4474,6 +4514,7 @@ fn (mut backend X11Backend) accept_egl_binding_query(context NativeOperationCont
 }
 
 $if linux && x_multiwindow_x11 ? {
+	@[unsafe]
 	fn (mut backend X11Backend) release_egl_surface_ticket(ticket_id u64, surface voidptr) NativeLifetimeReleaseAttempt {
 		if ticket_id == 0 || surface == unsafe { nil }
 			|| backend.native_operations == unsafe { nil } {
@@ -4502,6 +4543,7 @@ fn (mut backend X11Backend) abandon_renderer_ownership() {
 	}
 }
 
+@[unsafe]
 fn (mut backend X11Backend) release_egl_lifetime() {
 	if backend.native_operations == unsafe { nil } {
 		return
@@ -4753,6 +4795,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend X11Backend) make_current(index int, scope NativeRenderScope, boundary_seed NativeOperationSeed) NativeRenderResult {
 		$if linux && x_multiwindow_x11 ? {
 			if backend.render_health.blocks_graphics() {
@@ -4792,6 +4835,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend X11Backend) ensure_window_render_surface(index int, boundary_seed NativeOperationSeed) NativeRenderResult {
 		$if linux && x_multiwindow_x11 ? {
 			if backend.render_health.blocks_graphics() {
@@ -4880,6 +4924,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend X11Backend) handle_window_egl_failure(index int, result NativeRenderResult, desired EglBindingIdentity) NativeRenderResult {
 		if index < 0 || index >= backend.windows.len {
 			return native_render_outcome(.none, result.operation, .window_target,
@@ -4918,6 +4963,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 	}
 }
 
+@[unsafe]
 fn (mut backend X11Backend) free_cursor_for_record(index int) {
 	$if linux && x_multiwindow_x11 ? {
 		if index < 0 || index >= backend.windows.len {
@@ -4939,6 +4985,7 @@ fn (mut backend X11Backend) release_window_resources(record X11WindowRecord, des
 	backend.release_window_record_resources(mut &owned_record, destroy_native)!
 }
 
+@[unsafe]
 fn (mut backend X11Backend) release_window_record_resources(mut record &X11WindowRecord, destroy_native bool) ! {
 	$if linux && x_multiwindow_x11 ? {
 		if record.egl_surface != unsafe { nil } {

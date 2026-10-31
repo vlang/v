@@ -286,6 +286,7 @@ pub fn capabilities_for_backend_with_renderer(backend MultiWindowBackend) !Capab
 }
 
 // create_window creates a window managed by this app.
+@[unsafe]
 pub fn (mut app App) create_window(config WindowConfig) !WindowId {
 	app.ensure_initialized()!
 	app.assert_owner_thread()!
@@ -480,6 +481,7 @@ pub fn (app &App) supports_window_cursor(id WindowId, shape WindowCursorShape) !
 
 // with_native_window borrows a live native window only for the callback. The
 // lease and nested backend handles must not escape or be retained.
+@[unsafe]
 pub fn (mut app App) with_native_window(id WindowId, f NativeWindowBorrowFn) ! {
 	app.ensure_initialized()!
 	app.assert_owner_thread()!
@@ -633,6 +635,7 @@ pub fn (mut app App) drain_window_queued_events() ![]WindowQueuedEvent {
 }
 
 // with_win32 exposes the borrowed HWND only during f.
+@[unsafe]
 pub fn (mut lease NativeWindowLease) with_win32(f Win32NativeWindowFn) ! {
 	lease.validate_native_backend(.win32)!
 	if f == unsafe { nil } {
@@ -642,6 +645,7 @@ pub fn (mut lease NativeWindowLease) with_win32(f Win32NativeWindowFn) ! {
 }
 
 // with_appkit exposes the borrowed NSWindow pointer only during f.
+@[unsafe]
 pub fn (mut lease NativeWindowLease) with_appkit(f AppKitNativeWindowFn) ! {
 	lease.validate_native_backend(.appkit)!
 	if f == unsafe { nil } {
@@ -651,6 +655,7 @@ pub fn (mut lease NativeWindowLease) with_appkit(f AppKitNativeWindowFn) ! {
 }
 
 // with_x11 exposes borrowed Display and Window handles only during f.
+@[unsafe]
 pub fn (mut lease NativeWindowLease) with_x11(f X11NativeWindowFn) ! {
 	lease.validate_native_backend(.x11)!
 	if f == unsafe { nil } {
@@ -660,6 +665,7 @@ pub fn (mut lease NativeWindowLease) with_x11(f X11NativeWindowFn) ! {
 }
 
 // with_wayland exposes borrowed wl_display and wl_surface pointers only during f.
+@[unsafe]
 pub fn (mut lease NativeWindowLease) with_wayland(f WaylandNativeWindowFn) ! {
 	lease.validate_native_backend(.wayland)!
 	if f == unsafe { nil } {
@@ -668,6 +674,7 @@ pub fn (mut lease NativeWindowLease) with_wayland(f WaylandNativeWindowFn) ! {
 	f(lease.primary, unsafe { voidptr(lease.secondary) })!
 }
 
+@[unsafe]
 fn (mut lease NativeWindowLease) validate_native_backend(expected MultiWindowBackend) ! {
 	if lease.app == unsafe { nil } || lease.app_instance != lease.app.app_instance {
 		return error(err_multiwindow_service_unavailable)
@@ -690,6 +697,7 @@ pub fn (mut app App) poll_events() !int {
 }
 
 // post submits a short callback to be executed when owner-side work is drained.
+@[unsafe]
 pub fn (mut app App) post(f AppJobFn) ! {
 	app.ensure_initialized()!
 	if f == unsafe { nil } {
@@ -699,6 +707,7 @@ pub fn (mut app App) post(f AppJobFn) ! {
 }
 
 // try_post submits a short callback without waiting for queue capacity.
+@[unsafe]
 pub fn (mut app App) try_post(f AppJobFn) ! {
 	app.ensure_initialized()!
 	if f == unsafe { nil } {
@@ -759,6 +768,7 @@ pub fn (context &WindowContext) window_id() WindowId {
 }
 
 // exists reports whether this context still targets a live window.
+@[unsafe]
 pub fn (context &WindowContext) exists() bool {
 	if context.app == unsafe { nil } {
 		return false
@@ -791,6 +801,7 @@ pub fn (context &WindowContext) size() Size {
 
 // draw_rect_filled draws a filled rectangle into this window's current draw frame.
 // Coordinates are in window framebuffer pixels with top-left origin.
+@[unsafe]
 pub fn (context &WindowContext) draw_rect_filled(x f32, y f32, w f32, h f32, color Color) {
 	if context.app == unsafe { nil } {
 		panic(err_multiwindow_render_stale_lease)
@@ -809,6 +820,7 @@ pub fn (context &WindowContext) draw_rect_filled(x f32, y f32, w f32, h f32, col
 
 // draw_rect_empty draws a one-pixel outline rectangle into this window's current draw frame.
 // Coordinates are in window framebuffer pixels with top-left origin.
+@[unsafe]
 pub fn (context &WindowContext) draw_rect_empty(x f32, y f32, w f32, h f32, color Color) {
 	if context.app == unsafe { nil } {
 		panic(err_multiwindow_render_stale_lease)
@@ -1137,6 +1149,7 @@ fn (mut app App) owner_token() voidptr {
 	return unsafe { voidptr(&app) }
 }
 
+@[unsafe]
 fn (app &App) initialized() bool {
 	return app.core != unsafe { nil }
 }
@@ -1195,6 +1208,7 @@ fn (config WindowConfig) to_core() multiwindow.WindowConfig {
 	return config.to_core_with_workload(false)
 }
 
+@[unsafe]
 fn (config WindowConfig) to_core_with_workload(legacy_render_mode bool) multiwindow.WindowConfig {
 	mut owner := ?multiwindow.WindowId(none)
 	if configured_owner := config.owner {

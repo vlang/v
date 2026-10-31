@@ -52,7 +52,7 @@ pub:
 	is_local   bool // used to make time.now().local().local() == time.now().local()
 }
 
-@[inline]
+@[inline; unsafe]
 fn (t Time) has_location() bool {
 	// V requires unsafe to construct the nil reference used by loc's sentinel.
 	return t.loc != unsafe { nil }

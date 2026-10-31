@@ -554,6 +554,7 @@ fn serve_static_route[X](sh StaticHandler, mut user_context X, url urllib.URL, h
 // dispatch_route shares request processing across controllers with the same context.
 // Route selection and argument preparation use metadata; only the selected
 // route's callback invokes a concrete controller method.
+@[unsafe]
 fn dispatch_route[X](mut user_context X, url urllib.URL, host string, routes &map[string]Route, dispatch RouteDispatch) {
 	mut route := Route{}
 	mut middleware_has_sent_response := false
@@ -726,6 +727,7 @@ fn handle_route_panic[X](mut user_context X, path string, msg string) {
 }
 
 // finish_route runs after-handlers once per request, shared by context type.
+@[unsafe]
 fn finish_route[X](dispatch RouteDispatch, mut user_context X, route Route, path string, not_found bool, middleware_has_sent_response bool) {
 	// execute middleware functions after veb is done and before the response is send
 	mut was_done := true
@@ -1120,6 +1122,7 @@ fn static_handler_config(static_files map[string]string, static_mime_types map[s
 }
 
 // send a string over `conn`
+@[unsafe]
 fn send_string(mut conn net.TcpConn, s string) ! {
 	$if trace_send_string_conn ? {
 		eprintln('> send_string: conn: ${ptr_str(conn)}')

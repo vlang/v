@@ -849,6 +849,7 @@ fn test_capabilities_for_backend_uses_backend_seam_without_app() {
 	assert caps.readback
 }
 
+@[unsafe]
 fn test_mock_opaque_renderer_start_reports_renderer_unsupported() {
 	$if gg_multiwindow ?|| x_multiwindow_render ? {
 		mut app := new_app()!
@@ -3432,6 +3433,7 @@ fn test_wayland_initial_size_is_clamped_before_mapping() {
 		'C.wl_surface_commit(surface)')
 }
 
+@[unsafe]
 fn test_wayland_server_side_decorations_are_requested_source_guard() {
 	wayland_source := multiwindow_source_file('wayland_backend.c.v')
 	wayland_helper_source := multiwindow_source_file('wayland_backend_helpers.h')
@@ -4070,6 +4072,7 @@ fn test_wayland_input_support_is_queued_with_xkb_text_and_touch_source_guard() {
 	assert wayland_source.contains('97 { 345 }')
 }
 
+@[unsafe]
 fn test_wayland_registry_global_remove_and_optional_callbacks_are_guarded_source_guard() {
 	wayland_source := multiwindow_source_file('wayland_backend.c.v')
 	wayland_helper_source := multiwindow_source_file('wayland_backend_helpers.h')

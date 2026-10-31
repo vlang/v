@@ -2320,6 +2320,7 @@ fn test_parenthesized_pointer_cast_deref_is_not_dropped() {
 	assert out == 'VinixV3!'
 }
 
+@[unsafe]
 fn test_generic_mut_pointer_cast_keeps_slot_address() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'generic_mut_pointer_cast_slot_address', 'fn address[T](mut value T) voidptr {\n\tif sizeof(T) == 8 {\n\t\treturn voidptr(value)\n\t}\n\treturn unsafe { nil }\n}\n\nfn main() {\n\tmut n := 7\n\tmut pointers := unsafe { [1]&int{} }\n\tpointers[0] = &n\n\tresult := address[&int](mut &pointers[0])\n\tprintln(result == voidptr(&pointers[0]))\n\tprintln(result == voidptr(pointers[0]))\n}\n')
@@ -2673,6 +2674,7 @@ fn main() {
 	assert out == 'true'
 }
 
+@[unsafe]
 fn test_channel_alias_close_method_wins_over_builtin() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'channel_alias_close_method_before_builtin', 'type MyChan = chan int\n\nfn (c MyChan) close() int {\n\treturn 71\n}\n\nfn main() {\n\tch := MyChan(unsafe { nil })\n\tprintln(int_str(ch.close()))\n}\n')
@@ -3549,6 +3551,7 @@ fn main() {
 	assert out == 'Foo{\n    bar: value:7\n    baz: ptr:9\n}'
 }
 
+@[unsafe]
 fn test_implicit_interface_str_dispatch_preserves_pointer_alias_custom_str() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'implicit_interface_str_dispatch_pointer_alias_custom_str', 'interface Printable {
@@ -3632,6 +3635,7 @@ fn main() {
 	assert out == 'Foo{\n    ref: ref:7\n    refbox: refbox:9\n}'
 }
 
+@[unsafe]
 fn test_implicit_interface_str_dispatch_dereferences_pointer_struct_fields() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'implicit_interface_str_dispatch_pointer_struct_fields', 'interface Printable {
@@ -3661,6 +3665,7 @@ fn main() {
 	assert out == 'Foo{\n    bar: Bar{\n        x: 7\n    }\n    empty: &nil\n}'
 }
 
+@[unsafe]
 fn test_implicit_interface_str_dispatch_treats_pointer_alias_fields_as_pointers() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'implicit_interface_str_dispatch_pointer_alias_struct_fields', 'interface Printable {
@@ -3879,6 +3884,7 @@ fn test_empty_interface_box_preserves_enum_type_id() {
 	assert out == 'true\nfalse'
 }
 
+@[unsafe]
 fn test_interface_cast_rejects_pointer_shape_mismatch() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'interface_pointer_shape_mismatch', 'interface Sink {\n\tput(x &int)\n}\n\nstruct Bad {}\n\nfn (b Bad) put(x int) {}\n\nfn main() {\n\t_ := Sink(Bad{})\n}\n', 'does not implement interface')
@@ -4149,6 +4155,7 @@ fn test_pointer_interface_cast_heap_copies_converted_interface_source() {
 	assert out == '11'
 }
 
+@[unsafe]
 fn test_c_atomic_pointer_load_store_preserves_pointer_width() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'c_atomic_pointer_load_store', 'fn C.atomic_load_ptr(voidptr) voidptr\nfn C.atomic_store_ptr(voidptr, voidptr)\n\nfn main() {\n\tvalue := 9\n\tmut slot := unsafe { nil }\n\tC.atomic_store_ptr(voidptr(&slot), voidptr(&value))\n\tprintln((C.atomic_load_ptr(voidptr(&slot)) == voidptr(&value)).str())\n}\n')
@@ -6045,6 +6052,7 @@ fn test_cached_native_root_uses_generated_pre_and_postinclude_order() {
 	assert out == '74'
 }
 
+@[unsafe]
 fn test_cached_native_parameter_name_does_not_suppress_c_type() {
 	v3_bin := build_v3()
 	out := run_good_project(v3_bin, 'cached_native_parameter_type_name', {
@@ -6140,6 +6148,7 @@ fn main() {
 	assert out == 'true\ntrue\ntrue'
 }
 
+@[unsafe]
 fn test_followup_review_pointer_call_and_equality_semantics() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'c_voidptr_does_not_auto_address', 'fn C.take(voidptr)
@@ -10094,6 +10103,7 @@ fn main() {
 	assert out == '2\n2\n2'
 }
 
+@[unsafe]
 fn test_unsafe_block_pointer_to_interface_preserves_object_identity() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'unsafe_block_pointer_interface_identity', 'interface Resource {

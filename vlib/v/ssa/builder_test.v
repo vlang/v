@@ -93,6 +93,7 @@ fn test_bench_runtime_stubs_include_macos_rss_helper() {
 	}
 }
 
+@[unsafe]
 fn test_bench_runtime_stubs_preserve_user_functions() {
 	path := os.join_path(os.vtmp_dir(), 'ssa_user_rss_helpers_${os.getpid()}.v')
 	defer { os.rm(path) or {} }
@@ -148,6 +149,7 @@ fn test_char_literal_value_decodes_unicode_and_escapes() {
 	}
 }
 
+@[unsafe]
 fn test_rune_literals_use_rune_width() {
 	path := os.join_path(os.vtmp_dir(), 'ssa_rune_literals_${os.getpid()}.v')
 	defer { os.rm(path) or {} }
@@ -331,6 +333,7 @@ fn test_map_clone_uses_the_runtime_pointer_abi() {
 	assert false, 'missing native map clone helper'
 }
 
+@[unsafe]
 fn test_native_map_stubs_replace_only_builtin_map_data_methods() ! {
 	root := os.join_path(os.vtmp_dir(), 'ssa_map_runtime_${os.getpid()}')
 	os.mkdir_all(root)!
@@ -383,6 +386,7 @@ fn test_release_codegen_analysis_metadata_keeps_codegen_data() {
 }
 
 // test_build_can_skip_optimizer_use_lists validates this v3 regression case.
+@[unsafe]
 fn test_build_can_skip_optimizer_use_lists() {
 	a := &flat.FlatAst{}
 	m := build_with_options(a, map[string]bool{}, unsafe { nil }, BuildOptions{
@@ -392,6 +396,7 @@ fn test_build_can_skip_optimizer_use_lists() {
 	assert m.values.all(it.uses.len == 0)
 }
 
+@[unsafe]
 fn test_wasm32_and_native_string_layouts() {
 	a := &flat.FlatAst{}
 	for pointer_size in [4, 8] {
@@ -730,6 +735,7 @@ fn test_used_function_alias_lookups_are_precomputed() {
 	}
 }
 
+@[unsafe]
 fn test_used_function_names_preserve_method_receivers() ! {
 	mut b := Builder{
 		used_fns: {
@@ -902,6 +908,7 @@ fn main() { job := spawn stop(); job.wait() }
 	assert checked_call
 }
 
+@[unsafe]
 fn test_native_c_opaque_pointer_local_supplies_its_value() {
 	m := native_thread_test_module('opaque_pointer', "module main
 fn C.strtol(&char, &&char, int) i64

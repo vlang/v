@@ -2,6 +2,7 @@ import os
 
 const thunk_vexe = @VEXE
 
+@[unsafe]
 fn thunk_write_project() string {
 	root := os.join_path(os.vtmp_dir(), 'v3_c_callback_abi_thunk_${os.getpid()}')
 	os.rmdir_all(root) or {}

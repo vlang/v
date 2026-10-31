@@ -129,6 +129,7 @@ pub fn (original &EmbedFileData) to_bytes() []u8 {
 }
 
 // data returns the embedded bytes, loading or decompressing them on the first call if needed.
+@[unsafe]
 pub fn (original &EmbedFileData) data() &u8 {
 	if original.uncompressed != unsafe { nil } {
 		return original.uncompressed

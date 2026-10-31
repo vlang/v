@@ -2,6 +2,7 @@ module builtin
 
 $if !i386 {
 	// vlibc_fork creates a child process, returning its PID to the parent and zero to the child.
+	@[unsafe]
 	pub fn vlibc_fork() i64 {
 		$if arm64 {
 			return vlibc_sys_clone(0x00000011, unsafe { nil }, unsafe { nil }, unsafe { nil }, unsafe { nil })
@@ -12,6 +13,7 @@ $if !i386 {
 	}
 
 	// vlibc_execve replaces the process image using string argument and environment arrays.
+	@[unsafe]
 	pub fn vlibc_execve(path string, argv []string, envp []string) int {
 		// convert []string to []&u8 for execve
 		mut a := []&u8{cap: argv.len + 1}
@@ -28,6 +30,7 @@ $if !i386 {
 	}
 
 	// vlibc_waitpid waits for pid to exit and returns the reaped process id.
+	@[unsafe]
 	pub fn vlibc_waitpid(pid i64) (i64, VlibcErrno) {
 		mut status := i32(0)
 		for {

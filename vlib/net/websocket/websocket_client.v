@@ -99,6 +99,7 @@ pub:
 }
 
 // new_client instance a new websocket client
+@[unsafe]
 pub fn new_client(address string, opt ClientOpt) !&Client {
 	uri := parse_uri(address)!
 	return &Client{

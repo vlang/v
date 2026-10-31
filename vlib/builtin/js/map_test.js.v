@@ -159,6 +159,7 @@ fn test_large_map() {
 	// println(time.ticks() - ticks)
 }
 
+@[unsafe]
 fn test_various_map_value() {
 	mut m1 := map[string]int{}
 	m1['test'] = 1

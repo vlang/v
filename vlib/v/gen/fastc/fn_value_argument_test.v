@@ -6,6 +6,7 @@ import v.cmdexec
 // A function value, spelled `fn (...)` or through an alias, is already a pointer. Where a
 // `voidptr` is expected (`isnil`, a fn-typed parameter) it is passed as it is, not boxed
 // into fresh storage, which would make `isnil` false for a nil hook.
+@[unsafe]
 fn test_fastc_function_values_are_passed_as_pointers() {
 	$if !macos && !linux {
 		return

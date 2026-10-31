@@ -2255,7 +2255,7 @@ fn interface_box_scan_reads_kind(kind flat.NodeKind) bool {
 	}
 }
 
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn (mut t Transformer) collect_interface_boxed_types_range(start int, end int) {
 	limit := if end < t.a.nodes.len { end } else { t.a.nodes.len }
 	own_cache := isnil(t.box_type_text_cache)
@@ -7670,6 +7670,7 @@ fn (mut t Transformer) append_missing_specialized_params_struct_args(mut childre
 	}
 }
 
+@[unsafe]
 fn (mut t Transformer) clear_resolved_call(id flat.NodeId) {
 	if isnil(t.tc) {
 		return

@@ -302,6 +302,7 @@ fn pg_stmt_match_array[T](mut types []u32, mut vals []&char, mut lens []i32, mut
 	}
 }
 
+@[unsafe]
 fn pg_stmt_match(mut types []u32, mut vals []&char, mut lens []i32, mut formats []i32, data orm.Primitive) {
 	match data {
 		bool {

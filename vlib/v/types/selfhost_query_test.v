@@ -382,6 +382,7 @@ fn selfhost_smartcast_index(mut a flat.FlatAst) flat.NodeId {
 	})
 }
 
+@[unsafe]
 fn test_empty_lexical_smartcast_filter_preserves_dynamic_types_and_range() {
 	mut a := flat.FlatAst.new()
 	id := selfhost_smartcast_index(mut a)

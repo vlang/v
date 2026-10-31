@@ -66,6 +66,7 @@ fn test_literal_string_call_retains_receiver_while_arguments_grow_ast() {
 	assert a.node(receiver).value == 'abc'
 }
 
+@[unsafe]
 fn test_call_param_type_name_memo_preserves_composites_and_module_locks() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
@@ -1468,6 +1469,7 @@ fn test_pending_generic_specialization_keys_are_private_initialized_maps() {
 	assert !master.pending_generic_fn_spec_keys.contains(generic_fn_spec_key('worker', []u32{}))
 }
 
+@[unsafe]
 fn test_absorb_scoped_batch_replays_overlay_into_master_checker() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

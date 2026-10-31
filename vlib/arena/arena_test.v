@@ -387,6 +387,7 @@ fn test_arena_memory_is_reused_in_loops() {
 	assert warm_capacity <= 256 * 1024
 }
 
+@[unsafe]
 fn test_gc_objects_referenced_from_arena_memory_survive() {
 	mut a := arena.new()
 	defer {

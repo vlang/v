@@ -366,6 +366,7 @@ fn node_payload_with_types(generic_params []string, generic_constraints TypeText
 
 // node_payload_at resolves a payload id registered by node_payload; 0 yields nil.
 // canonical_comptime_type_payload yields a static empty payload that outlives all arenas.
+@[unsafe]
 pub fn node_payload_at(id u32) &NodePayload {
 	if id == canonical_comptime_type_payload {
 		return &g_canonical_comptime_payload
@@ -989,6 +990,7 @@ pub mut:
 }
 
 // close_workers stops the compilation-owned persistent worker pool.
+@[unsafe]
 pub fn (mut a FlatAst) close_workers() {
 	if !isnil(a.worker_pool) {
 		mut pool := a.worker_pool

@@ -20,6 +20,7 @@ fn man_cmd() Command {
 }
 
 // print_manpage_for_command prints the manpage for the command or subcommand in `man_cmd` to stdout.
+@[unsafe]
 pub fn print_manpage_for_command(cmd Command) ! {
 	if cmd.args.len > 0 {
 		for sub_cmd in cmd.commands {

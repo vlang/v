@@ -390,6 +390,7 @@ struct C.MEMORY_BASIC_INFORMATION {
 	AllocationBase voidptr
 }
 
+@[unsafe]
 fn C.VirtualQuery(address voidptr, buffer &C.MEMORY_BASIC_INFORMATION, length uint) uint
 
 fn C.GetModuleHandleW(name &u16) voidptr
@@ -429,6 +430,7 @@ const format_message_from_system = 0x00001000
 const format_message_ignore_inserts = 0x00000200
 
 // return an error message generated from WinAPI's `LastError`
+@[unsafe]
 pub fn winapi_lasterr_str() string {
 	err_msg_id := C.GetLastError()
 	if err_msg_id == 8 {

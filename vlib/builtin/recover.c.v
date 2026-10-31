@@ -92,7 +92,7 @@ fn panic_frame_push(frame voidptr) {
 // normally; for a `defer(fn)` block, that is its last pending run. A `defer(fn)`
 // frame lives until its function returns, so a block deferred before it inside
 // a loop can be unlinked from below it.
-@[markused]
+@[markused; unsafe]
 fn panic_frame_pop(frame voidptr) {
 	f := unsafe { &PanicFrame(frame) }
 	if g_panic_state.top == f {
@@ -146,7 +146,7 @@ fn panic_recover_frame(frame voidptr) ?string {
 // panic_frame_done is called by the landing pad of `frame` after its deferred
 // block ran. It only returns once the panic was recovered and no other frame of
 // the same function call is left; the landing pad then returns the zero value.
-@[markused]
+@[markused; unsafe]
 fn panic_frame_done(frame voidptr) {
 	f := unsafe { &PanicFrame(frame) }
 	mut rec := panic_record(g_panic_state.len - 1)
@@ -167,6 +167,7 @@ fn panic_frame_done(frame voidptr) {
 	}
 }
 
+@[unsafe]
 fn panic_record_drop() {
 	g_panic_state.len--
 	mut rec := panic_record(g_panic_state.len)
@@ -186,7 +187,7 @@ fn panic_record_drop() {
 // panic_frames_reset forgets all frames and panics of the thread. The test
 // runner calls it after each test, since a failed assert jumps out of the test
 // without running its deferred blocks.
-@[markused]
+@[markused; unsafe]
 fn panic_frames_reset() {
 	g_panic_state.top = unsafe { nil }
 	for g_panic_state.len > 0 {
@@ -195,7 +196,7 @@ fn panic_frames_reset() {
 }
 
 // panic_unwind starts unwinding the stack for a panic, when there are frames.
-@[noreturn]
+@[noreturn; unsafe]
 fn panic_unwind(msg string, debug PanicDebugInfo) {
 	if g_panic_state.len == g_panic_state.cap {
 		new_cap := if g_panic_state.cap == 0 { 4 } else { g_panic_state.cap * 2 }
@@ -234,7 +235,7 @@ fn panic_unwind(msg string, debug PanicDebugInfo) {
 }
 
 // panic_jump_next runs the next deferred block for the newest panic.
-@[noreturn]
+@[noreturn; unsafe]
 fn panic_jump_next() {
 	frame := g_panic_state.top
 	// Leaving the block that runs for an older panic aborts that panic, like in Go.

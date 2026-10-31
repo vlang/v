@@ -30,6 +30,7 @@ mut:
 	reply_to ?&OptionalPointerRegressionMessage
 }
 
+@[unsafe]
 fn test_decode_struct_with_reference_field() {
 	decoded := json2.decode[Issue24950Wrapper]('{"gate":{"exit":"north"}}')!
 
@@ -37,6 +38,7 @@ fn test_decode_struct_with_reference_field() {
 	assert decoded.gate.exit == 'north'
 }
 
+@[unsafe]
 fn test_decode_embedded_struct_with_reference_field() {
 	empty_json2 := json2.decode[Issue24950Record]('{}')!
 	assert empty_json2.Issue24950RecordBase.gate == unsafe { nil }
@@ -46,6 +48,7 @@ fn test_decode_embedded_struct_with_reference_field() {
 	assert populated_json2.Issue24950RecordBase.gate.exit == 'north'
 }
 
+@[unsafe]
 fn test_decode_top_level_reference_to_primitive() {
 	decoded := json2.decode[&int]('1')!
 
@@ -53,12 +56,14 @@ fn test_decode_top_level_reference_to_primitive() {
 	assert *decoded == 1
 }
 
+@[unsafe]
 fn test_decode_top_level_reference_to_primitive_null() {
 	decoded := json2.decode[&int]('null')!
 
 	assert decoded == unsafe { nil }
 }
 
+@[unsafe]
 fn test_decode_top_level_reference_to_struct() {
 	decoded := json2.decode[&Issue25614Node]('{"value":1}')!
 
@@ -66,6 +71,7 @@ fn test_decode_top_level_reference_to_struct() {
 	assert decoded.value == 1
 }
 
+@[unsafe]
 fn test_decode_struct_with_array_of_references() {
 	decoded := json2.decode[Issue25614Node]('{"children":[{"value":1},{"value":2}]}')!
 

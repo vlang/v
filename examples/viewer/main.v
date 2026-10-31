@@ -159,6 +159,7 @@ fn min_f32(a f32, b f32) f32 {
 // is immutable (created with its data), which is the path that reliably
 // displays on every sokol backend (D3D11 skips the initial upload for
 // dynamic images, leaving them black until the first update).
+@[unsafe]
 fn make_rgba_texture(w int, h int, rgba []u8) gfx.Image {
 	mut desc := gfx.ImageDesc{
 		width:       w

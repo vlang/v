@@ -68,6 +68,7 @@ fn test_unused_android_asset_sdk_stays_out_of_core_programs() {
 	}
 }
 
+@[unsafe]
 fn test_android_asset_type_enum_and_function_uses_keep_sdk_headers() {
 	for program in [
 		'import os\nfn keep(activity &os.NativeActivity) {}\nfn main() {}',

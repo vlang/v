@@ -425,6 +425,7 @@ fn gc_report_fatal_errors_on_stderr() {
 
 // internal_gc_abort_to_stderr prints a fatal Boehm error on stderr, as Boehm does
 // on Linux and macOS. Windows reporting avoids allocating or locking CRT stdio.
+@[unsafe]
 fn internal_gc_abort_to_stderr(const_msg &char) {
 	// Print before chaining: with GC_LOOP_ON_ABORT set the default handler never
 	// returns. Boehm's own handler also prints first and loops last.

@@ -172,6 +172,7 @@ fn test_file_names_raw_helpers_reject_malformed_records_and_capacity() {
 	assert t2c_file_names_decode_code(alpha, u64(alpha.len), 5) == -6
 }
 
+@[unsafe]
 fn t2c_windows_directory_entries(handle voidptr, maximum int) ![]string {
 	assert maximum >= 0 && maximum <= 1056
 	$if windows {
@@ -203,6 +204,7 @@ fn t2c_windows_directory_entries(handle voidptr, maximum int) ![]string {
 	}
 }
 
+@[unsafe]
 fn t2c_primitive_directory_entry_count(path string, maximum int) !int {
 	assert maximum >= 0 && maximum <= 1056
 	$if windows {
@@ -269,6 +271,7 @@ fn t2c_read_posix_child(parent_fd int, name string) !string {
 	return buffer[..int(read)].bytestr()
 }
 
+@[unsafe]
 fn t2c_read_windows_child(parent voidptr, name string) !string {
 	$if windows {
 		wide_name := name.to_wide()
@@ -2432,6 +2435,7 @@ fn test_native_validation_capsule_closes_per_file_and_total_byte_bounds() {
 	assert t2c_capsule_error(fixture.automation_root, authenticated, subject, oversized_total_root) == 'native validation capsule exceeds its strict total byte bound'
 }
 
+@[unsafe]
 fn test_native_validation_native_handles_anchor_root_and_evidence_swaps() {
 	base := os.join_path(os.temp_dir(), 'tccbin-native-validation-swaps-${os.getpid()}')
 	os.rmdir_all(base) or {}

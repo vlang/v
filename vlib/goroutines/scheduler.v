@@ -34,6 +34,7 @@ pub fn goroutine_create(f voidptr, arg voidptr, arg_size int) {
 
 // newproc1 allocates and initializes a new G.
 // Translated from Go's newproc1 in proc.go.
+@[unsafe]
 fn newproc1(f voidptr, arg voidptr, arg_size int) &Goroutine {
 	// Try to get a dead G from the local P's free list first
 	mut pp := get_current_p()
@@ -83,6 +84,7 @@ fn newproc1(f voidptr, arg voidptr, arg_size int) &Goroutine {
 // goroutine_trampoline is the entry point for all goroutines.
 // It calls the user function, then cleans up and returns to the scheduler.
 // Equivalent to Go's goexit -> goexit0.
+@[unsafe]
 fn goroutine_trampoline(arg voidptr) {
 	mut gp := unsafe { &Goroutine(arg) }
 
@@ -105,6 +107,7 @@ fn call_goroutine_fn(fn_ptr voidptr, arg voidptr) {
 
 // goexit0 handles goroutine cleanup after the user function returns.
 // Translated from Go's goexit0 in proc.go.
+@[unsafe]
 fn goexit0(mut gp Goroutine) {
 	if gp.status == .dead {
 		panic('goroutines: double goexit')
@@ -143,6 +146,7 @@ fn goexit0(mut gp Goroutine) {
 // schedule is the main scheduler entry point.
 // Finds a runnable goroutine and executes it. Never returns.
 // Translated from Go's schedule() in proc.go.
+@[unsafe]
 pub fn schedule() {
 	mut mp := get_current_m()
 	if mp == unsafe { nil } {
@@ -169,6 +173,7 @@ pub fn schedule() {
 // find_runnable finds a runnable goroutine to execute.
 // Tries: local queue, global queue, work stealing from other P's.
 // Translated from Go's findRunnable() in proc.go.
+@[unsafe]
 fn find_runnable(mut mp Machine, mut pp Processor) (&Goroutine, bool) {
 	// Check global queue every Nth tick for fairness (Go uses 61)
 	if pp.sched_tick % global_queue_check_interval == 0 {
@@ -201,6 +206,7 @@ fn find_runnable(mut mp Machine, mut pp Processor) (&Goroutine, bool) {
 
 // execute runs a goroutine on the current M.
 // Translated from Go's execute() in proc.go.
+@[unsafe]
 fn execute(mut mp Machine, mut pp Processor, gp &Goroutine) {
 	if gp == unsafe { nil } {
 		panic('goroutines: execute called with nil G')
@@ -251,6 +257,7 @@ fn execute(mut mp Machine, mut pp Processor, gp &Goroutine) {
 
 // wake_p tries to wake an idle P to run goroutines.
 // Translated from Go's wakep() in proc.go.
+@[unsafe]
 fn wake_p() {
 	// Check if there's an idle P
 	gsched.mu.acquire()
@@ -276,6 +283,7 @@ fn wake_p() {
 }
 
 // park_m parks the current M - it goes to sleep waiting for work.
+@[unsafe]
 fn park_m(mut mp Machine) {
 	// Release P and add M to idle list under lock
 	gsched.mu.acquire()
@@ -309,6 +317,7 @@ fn park_m(mut mp Machine) {
 }
 
 // acquire_p tries to get an idle P for the given M.
+@[unsafe]
 fn acquire_p(mut mp Machine) {
 	gsched.mu.acquire()
 	mut pp := pid_get()
@@ -327,6 +336,7 @@ fn wire_p(mut mp Machine, mut pp Processor) {
 
 // start_m starts or wakes an M to run the given P.
 // Translated from Go's startm() in proc.go.
+@[unsafe]
 fn start_m(pp &Processor) {
 	gsched.mu.acquire()
 
@@ -401,6 +411,7 @@ fn m_thread_entry(mut mp Machine) {
 }
 
 // schedule_loop is the main loop for an M. It repeatedly finds and runs goroutines.
+@[unsafe]
 fn schedule_loop(mut mp Machine) {
 	for {
 		if gsched.stopped {
@@ -460,6 +471,7 @@ fn schedule_loop(mut mp Machine) {
 
 // steal_work tries to steal goroutines from other P's run queues.
 // Translated from Go's stealWork() in proc.go.
+@[unsafe]
 fn steal_work(mut thisp Processor) &Goroutine {
 	n := gsched.allp.len
 	if n <= 1 {
@@ -485,6 +497,7 @@ fn steal_work(mut thisp Processor) &Goroutine {
 
 // runq_steal steals half of pp's local run queue.
 // Translated from Go's runqgrab/runqsteal in proc.go.
+@[unsafe]
 fn runq_steal(mut pp Processor, mut thisp Processor) &Goroutine {
 	h := C.goroutines_atomic_load_u32(&pp.runq_head)
 	t := C.goroutines_atomic_load_u32(&pp.runq_tail)
@@ -536,6 +549,7 @@ fn glob_runq_get() &Goroutine {
 // runq_put puts a G on the local run queue.
 // If next is true, it goes into runnext for immediate scheduling.
 // Translated from Go's runqput() in proc.go.
+@[unsafe]
 fn runq_put(mut pp Processor, gp &Goroutine, next bool) {
 	if next {
 		old := unsafe { &Goroutine(C.goroutines_atomic_exchange_ptr(voidptr(&pp.runnext), voidptr(gp))) }
@@ -560,6 +574,7 @@ fn runq_put(mut pp Processor, gp &Goroutine, next bool) {
 // runq_put_slow moves half the local queue to the global queue.
 // Translated from Go's runqputslow() in proc.go.
 // Copy handles before advancing head, and link them only after winning the claim.
+@[unsafe]
 fn runq_put_slow(mut pp Processor, gp &Goroutine, _h u32, _t u32) {
 	mut batch := GoroutineQueue{}
 	for {
@@ -599,6 +614,7 @@ fn runq_put_slow(mut pp Processor, gp &Goroutine, _h u32, _t u32) {
 
 // runq_get gets a G from the local run queue.
 // Translated from Go's runqget() in proc.go.
+@[unsafe]
 fn runq_get(mut pp Processor) (&Goroutine, bool) {
 	// Check runnext first (fast path). Claim it with CAS, so a concurrent
 	// runq_put to this P cannot make us both take the same goroutine.
@@ -626,6 +642,7 @@ fn runq_get(mut pp Processor) (&Goroutine, bool) {
 }
 
 // Idle P list operations
+@[unsafe]
 fn pid_get() &Processor {
 	pp := gsched.pidle
 	if pp != unsafe { nil } {
@@ -638,6 +655,7 @@ fn pid_get() &Processor {
 	return pp
 }
 
+@[unsafe]
 fn pid_put(pp &Processor) {
 	mut p := unsafe { pp }
 	p.status = .idle
@@ -648,6 +666,7 @@ fn pid_put(pp &Processor) {
 }
 
 // G free list operations (translated from Go's gfput/gfget)
+@[unsafe]
 fn gfput(mut pp Processor, gp &Goroutine) {
 	mut g := unsafe { gp }
 	g.status = .dead
@@ -668,6 +687,7 @@ fn gfput_global(gp &Goroutine) {
 	gsched.g_free_mu.release()
 }
 
+@[unsafe]
 fn gfget_global() &Goroutine {
 	gsched.g_free_mu.acquire()
 	gp := gsched.g_free.pop()
@@ -680,6 +700,7 @@ fn gfget_global() &Goroutine {
 
 // assign_goid allocates a unique goroutine ID.
 // Uses per-P caching to avoid contention (like Go's goidcache).
+@[unsafe]
 fn assign_goid() u64 {
 	mut pp := get_current_p()
 	if pp != unsafe { nil } && pp.goid_cache < pp.goid_cache_end {
@@ -729,6 +750,7 @@ fn set_current_m(mp &Machine) {
 }
 
 // get_current_p returns the P for the current OS thread's M.
+@[unsafe]
 fn get_current_p() &Processor {
 	mp := get_current_m()
 	if mp == unsafe { nil } {
@@ -738,6 +760,7 @@ fn get_current_p() &Processor {
 }
 
 // get_current_g returns the currently running G.
+@[unsafe]
 pub fn get_current_g() &Goroutine {
 	mp := get_current_m()
 	if mp == unsafe { nil } {

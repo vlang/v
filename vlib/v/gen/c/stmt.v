@@ -666,6 +666,7 @@ fn (mut g FlatGen) take_loop_control_ownership_drops() []types.OwnershipDropEntr
 	return entries
 }
 
+@[unsafe]
 fn (mut g FlatGen) gen_loop_control_cleanup(label string, defer_end int) {
 	mut entries := g.take_loop_control_ownership_drops()
 	if !g.tc.autofree_mode {
@@ -2726,6 +2727,7 @@ fn (mut g FlatGen) gen_select_receive_map_value(expr string, actual types.Type, 
 	return true
 }
 
+@[unsafe]
 fn (mut g FlatGen) gen_select_receive_interface_value(expr string, actual types.Type, expected types.Type) bool {
 	iface_type := if expected is types.Alias { *expected.base_type } else { expected }
 	if iface_type !is types.Interface {
@@ -6557,7 +6559,7 @@ fn cgen_type_contains_unknown(typ types.Type) bool {
 // body_context_type_memo returns the active body memo while the generator is in
 // that body's own declaration context, or nil (const initializers and struct
 // defaults resolve names in another context).
-@[inline]
+@[inline; unsafe]
 fn (g &FlatGen) body_context_type_memo() &UsableExprTypeMemo {
 	memo := g.usable_expr_type_memo
 	if isnil(memo) || !memo.active || g.const_init_depth > 0 || g.struct_default_module.len > 0
@@ -6569,6 +6571,7 @@ fn (g &FlatGen) body_context_type_memo() &UsableExprTypeMemo {
 
 // declared_call_return_type_uncached also returns the canonical interned reference of
 // the result when the lookup already holds one (declared fns), else nil.
+@[unsafe]
 fn (g &FlatGen) declared_call_return_type_uncached(call_id flat.NodeId) (types.Type, &types.Type) {
 	if int(call_id) < 0 {
 		return types.Type(types.void_), unsafe { nil }

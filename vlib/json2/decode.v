@@ -556,6 +556,7 @@ fn (mut decoder Decoder) decode_option_payload[P](_ ?P) !P {
 	}
 }
 
+@[unsafe]
 fn create_decoded_ptr[T](_ &T) &T {
 	$if T is $interface {
 		return unsafe { nil }

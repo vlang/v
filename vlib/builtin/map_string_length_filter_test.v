@@ -34,6 +34,7 @@ fn length_filter_first_byte_clone(destination voidptr, source voidptr) {
 	unsafe { (&string(destination)).str[0] = u8(255) }
 }
 
+@[unsafe]
 fn assert_length_filter_read(values &map, key string, expected int) {
 	assert values.exists(&key) == (expected >= 0)
 	found := values.get_check(&key)
@@ -375,6 +376,7 @@ fn test_map_string_length_filter_seeds_only_live_provided_dense_keys() {
 	}
 }
 
+@[unsafe]
 fn length_filter_read_worker(values &map, keys []string, worker_id int) int {
 	$if v3_backend ? {
 		missing := 'absent-length'

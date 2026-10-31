@@ -374,6 +374,7 @@ fn (mut z Zip) read_current_data() ![]u8 {
 	return decoded
 }
 
+@[unsafe]
 pub fn (mut z Zip) read_entry_buf(buf voidptr, in_bsize int) !int {
 	data := z.read_current_data() or { return error('szip: ${err.msg()}') }
 	if in_bsize < data.len || (data.len > 0 && buf == unsafe { nil }) {

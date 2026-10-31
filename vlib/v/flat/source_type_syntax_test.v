@@ -2404,6 +2404,7 @@ fn test_source_type_syntax_recent_zero_and_out_of_range_ids() {
 	}
 }
 
+@[unsafe]
 fn test_source_type_syntax_recent_collisions_keep_authoritative_entries() {
 	first_id := source_type_id('RecentSyntaxCollisionFirstFresh8612')
 	mut second_id := u32(0)
@@ -2447,6 +2448,7 @@ fn test_source_type_syntax_recent_collisions_keep_authoritative_entries() {
 	assert source_type_syntax(second_id) == second
 }
 
+@[unsafe]
 fn test_source_type_syntax_recent_publication_outlives_worker_arenas() {
 	raw := 'RecentSyntaxArenaFresh8614.Pair[[]T, fn (U) V]'
 	id := source_type_id(raw)

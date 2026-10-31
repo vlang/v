@@ -14,6 +14,7 @@ fn v_os_execute_mutex_ptr() voidptr {
 	return unsafe { voidptr(&g_v_os_execute_mutex_storage[0]) }
 }
 
+@[unsafe]
 fn init() {
 	C.pthread_mutex_init(v_os_execute_mutex_ptr(), unsafe { nil })
 }

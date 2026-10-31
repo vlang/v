@@ -23,6 +23,7 @@ fn first_string_buffer_byte(buffer &u8) u8 {
 	return unsafe { buffer[0] }
 }
 
+@[unsafe]
 fn test_string_literal_str_field_can_be_returned_as_char_pointer() {
 	assert empty_literal_cstr() != unsafe { nil }
 	assert nonempty_literal_cstr() != unsafe { nil }
@@ -30,6 +31,7 @@ fn test_string_literal_str_field_can_be_returned_as_char_pointer() {
 	assert empty_parenthesized_cstr() != unsafe { nil }
 }
 
+@[unsafe]
 fn test_string_literal_str_field_points_to_the_literal_bytes() {
 	empty := c''
 	assert empty != unsafe { nil }

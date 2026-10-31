@@ -2,6 +2,7 @@ module gg
 
 import macos
 
+@[unsafe]
 fn C.CGColorSpaceCreateDeviceRGB() voidptr
 fn C.CGColorSpaceRelease(color_space voidptr)
 fn C.CGBitmapContextCreate(data voidptr, width uint, height uint, bits_per_component uint, bytes_per_row uint, color_space voidptr, bitmap_info u32) voidptr
@@ -28,6 +29,7 @@ fn test_darwin_rectangle_bridge_uses_sdk_geometry() {
 	assert pixels[20..24] != [u8(0), 0, 0, 0]
 }
 
+@[unsafe]
 fn test_darwin_ellipse_bridges_use_sdk_geometry() {
 	mut pixels := [2304]u8{}
 	color_space := C.CGColorSpaceCreateDeviceRGB()
@@ -55,6 +57,7 @@ fn test_darwin_ellipse_bridges_use_sdk_geometry() {
 	assert pixels[stroke_edge..stroke_edge + 4] != [u8(0), 0, 0, 0]
 }
 
+@[unsafe]
 fn test_darwin_attribute_bridge_returns_objects() {
 	for key in [C.gg_darwin_color_attribute(), C.gg_darwin_font_attribute(), C.gg_darwin_device_size()] {
 		assert key != unsafe { nil }
@@ -62,6 +65,7 @@ fn test_darwin_attribute_bridge_returns_objects() {
 	}
 }
 
+@[unsafe]
 fn test_darwin_diagonal_lines_stay_on_the_native_surface() {
 	mut pixels := [4096]u8{}
 	color_space := C.CGColorSpaceCreateDeviceRGB()

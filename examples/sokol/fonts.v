@@ -13,6 +13,7 @@ mut:
 	font_normal  int
 }
 
+@[unsafe]
 fn main() {
 	state := &AppState{
 		pass_action:  gfx.create_clear_pass_action(0.3, 0.3, 0.32, 1.0)

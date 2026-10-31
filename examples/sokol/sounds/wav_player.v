@@ -121,6 +121,7 @@ struct RIFFFormat {
 	sub_format            [16]u8 // GUID
 }
 
+@[unsafe]
 fn read_wav_file_samples(fpath string) ![]f32 {
 	mut res := []f32{}
 	// eprintln('> read_wav_file_samples: ${fpath} -------------------------------------------------')

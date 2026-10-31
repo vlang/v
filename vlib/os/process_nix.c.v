@@ -55,6 +55,7 @@ struct UnixSpawnPlan {
 // calls. It never fails: a failure to resolve the executable is turned into the
 // message that the child prints on its (already redirected) stderr, keeping the
 // previous observable behaviour of a child that exits with code 1.
+@[unsafe]
 fn (p &Process) unix_prepare_spawn() UnixSpawnPlan {
 	mut exe := ''
 	mut resolve_error := ''

@@ -10,6 +10,7 @@ fn init_vm1(mut head &Client) {
 	}
 }
 
+@[unsafe]
 fn init_vm2(mut head &Client) {
 	for c := head; c == unsafe { nil }; c = c.next {
 	}

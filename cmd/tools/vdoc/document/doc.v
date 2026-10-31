@@ -583,6 +583,7 @@ fn closing_index(s string, start int) int {
 	return s.len - 1
 }
 
+@[unsafe]
 fn (mut d Doc) parse_file(path string) ! {
 	source := os.read_file(path)!
 	mut assigned_comments := map[int]bool{}
@@ -1490,6 +1491,7 @@ fn collect_module_subdirs(root string, dir string, mut active map[string]bool, m
 }
 
 // generate populates this Doc from its input directory.
+@[unsafe]
 pub fn (mut d Doc) generate() ! {
 	d.base_path = if os.is_dir(d.base_path) {
 		d.base_path
@@ -1542,6 +1544,7 @@ pub fn (mut d Doc) generate() ! {
 }
 
 // generate documents a file or directory.
+@[unsafe]
 pub fn generate(input_path string, pub_only bool, with_comments bool, platform Platform, filter_symbol_names ...string) !Doc {
 	return generate_with_subdir_filter(input_path, unsafe { nil }, pub_only, with_comments,
 		platform, ...filter_symbol_names)

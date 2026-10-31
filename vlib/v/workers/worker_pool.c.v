@@ -161,6 +161,7 @@ mut:
 	generation             int // the fork generation the threads belong to
 }
 
+@[unsafe]
 fn pool_worker(arg voidptr) voidptr {
 	name_worker_thread()
 	mut pool := unsafe { &Pool(arg) }
@@ -276,6 +277,7 @@ fn register_open_pool(pool &Pool) {
 	}
 }
 
+@[unsafe]
 fn unregister_open_pool(pool &Pool) {
 	for i in 0 .. v3_open_pools_len {
 		if v3_open_pools[i] == voidptr(pool) {

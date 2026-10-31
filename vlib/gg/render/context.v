@@ -212,6 +212,7 @@ fn st_make_default_pipeline(st &State) Pipeline {
 	return p
 }
 
+@[unsafe]
 fn commit_listener_fn(user_data voidptr) {
 	ctx := &Context(user_data)
 	if ctx == unsafe { nil } {
@@ -236,6 +237,7 @@ fn pack_rgba_f(r f32, g f32, b f32, a f32) u32 {
 	return u32(rr) | (u32(gg) << 8) | (u32(bb) << 16) | (u32(aa) << 24)
 }
 
+@[unsafe]
 pub fn (ctx &Context) register_image(id int, data voidptr, width int, height int, channels int, filter int) {
 	mut st := ctx.st
 	ch := if channels > 0 { channels } else { 4 }
@@ -262,6 +264,7 @@ pub fn (ctx &Context) is_image_registered(id int) bool {
 // update_image_region refreshes a sub-rectangle of an already registered image.
 // Only the CPU rasterizer uses the registry, so callers should skip this on the
 // GPU path. It avoids copying a whole atlas for every small dirty rectangle.
+@[unsafe]
 pub fn (ctx &Context) update_image_region(id int, data voidptr, x int, y int, w int, h int, channels int) {
 	if data == unsafe { nil } || w <= 0 || h <= 0 {
 		return
@@ -296,6 +299,7 @@ pub fn (ctx &Context) update_image_region(id int, data voidptr, x int, y int, w 
 // It must be called before `gfx.shutdown()`. Pipelines created with
 // `make_pipeline` are owned by the caller and stay alive until
 // `destroy_pipeline` is called for them.
+@[unsafe]
 pub fn (ctx &Context) destroy() {
 	if ctx == unsafe { nil } || ctx.st == unsafe { nil } {
 		return

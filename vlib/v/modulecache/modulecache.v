@@ -535,6 +535,7 @@ struct SourceSignatureDetails {
 	cacheable      bool
 }
 
+@[unsafe]
 fn source_signature_details(source_files []string, build_pseudo_values string, version_pseudo_values string) SourceSignatureDetails {
 	return source_signature_details_probed(source_files, build_pseudo_values, version_pseudo_values,
 		'', unsafe { nil })

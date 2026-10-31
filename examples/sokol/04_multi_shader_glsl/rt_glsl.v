@@ -20,6 +20,7 @@ import time
 #include "@VMODROOT/rt_glsl_march.h" # It should be generated with `v shader .` (see the instructions at the top of this file)
 #include "@VMODROOT/rt_glsl_puppy.h" # It should be generated with `v shader .` (see the instructions at the top of this file)
 
+@[unsafe]
 fn C.rt_march_shader_desc(gfx.Backend) &gfx.ShaderDesc
 fn C.rt_puppy_shader_desc(gfx.Backend) &gfx.ShaderDesc
 

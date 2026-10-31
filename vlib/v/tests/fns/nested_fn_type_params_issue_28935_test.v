@@ -35,11 +35,13 @@ fn mul(a int, b int) int {
 	return a * b
 }
 
+@[unsafe]
 fn real(x int, cb Inner, p voidptr) int {
 	extra := if p == unsafe { nil } { 0 } else { 1000 }
 	return x + cb(x, 10) + extra
 }
 
+@[unsafe]
 fn real_inline(x int, cb fn (int, int) int, p voidptr) int {
 	extra := if p == unsafe { nil } { 0 } else { 1000 }
 	return x + cb(x, 10) + extra
@@ -113,6 +115,7 @@ fn twice_generic[T](f fn (T, T) T, x T) T {
 	return f(x, x)
 }
 
+@[unsafe]
 fn test_issue_repro_local() {
 	f := Outer(real)
 	assert f(1, add, unsafe { nil }) == 12
@@ -121,6 +124,7 @@ fn test_issue_repro_local() {
 	assert f(3, add, &x) == 1016
 }
 
+@[unsafe]
 fn test_struct_fields() {
 	h := Holder{
 		outer:  real
@@ -130,6 +134,7 @@ fn test_struct_fields() {
 	assert h.inline(2, mul, unsafe { nil }) == 22
 }
 
+@[unsafe]
 fn test_inline_inner_param_positions() {
 	f := OuterInline(real_inline)
 	assert f(5, add, unsafe { nil }) == 20
@@ -195,6 +200,7 @@ fn test_generic_nested_fn_params() {
 	}, 1.5) == 3.0
 }
 
+@[unsafe]
 fn test_closure_capturing_nested_fn_value() {
 	base := 100
 	f := Outer(real)

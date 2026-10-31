@@ -6,6 +6,7 @@ import sokol.memory
 pub const version = 1
 
 // setup initialises the SOKOL's gfx library, based on the information passed in `desc`
+@[unsafe]
 pub fn setup(desc &Desc) {
 	if desc.allocator.alloc_fn == unsafe { nil } && desc.allocator.free_fn == unsafe { nil } {
 		unsafe {
