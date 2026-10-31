@@ -2675,33 +2675,33 @@ fn rv_ld(rd int, rs1 int, imm int) u32 {
 }
 
 fn rv_lw(rd int, rs1 int, imm int) u32 {
-	uimm := u32(imm) & 0xfff
-	return 0x28800000 | (uimm << 10) | (u32(rs1) << 5) | u32(rd)
+	uimm := u32(imm) & 0xffff
+	return (32 << 26) | (u32(rd) << 21) | (u32(rs1) << 16) | uimm
 }
 
 fn rv_lh(rd int, rs1 int, imm int) u32 {
-	uimm := u32(imm) & 0xfff
-	return 0x28400000 | (uimm << 10) | (u32(rs1) << 5) | u32(rd)
+	uimm := u32(imm) & 0xffff
+	return (42 << 26) | (u32(rd) << 21) | (u32(rs1) << 16) | uimm
 }
 
 fn rv_lb(rd int, rs1 int, imm int) u32 {
-	uimm := u32(imm) & 0xfff
-	return 0x28000000 | (uimm << 10) | (u32(rs1) << 5) | u32(rd)
+	uimm := u32(imm) & 0xffff
+	return (34 << 26) | (u32(rd) << 21) | (u32(rs1) << 16) | uimm
 }
 
 fn rv_lwu(rd int, rs1 int, imm int) u32 {
-	uimm := u32(imm) & 0xfff
-	return 0x2a800000 | (uimm << 10) | (u32(rs1) << 5) | u32(rd)
+	uimm := u32(imm) & 0xffff
+	return (32 << 26) | (u32(rd) << 21) | (u32(rs1) << 16) | uimm
 }
 
 fn rv_lhu(rd int, rs1 int, imm int) u32 {
-	uimm := u32(imm) & 0xfff
-	return 0x2a400000 | (uimm << 10) | (u32(rs1) << 5) | u32(rd)
+	uimm := u32(imm) & 0xffff
+	return (40 << 26) | (u32(rd) << 21) | (u32(rs1) << 16) | uimm
 }
 
 fn rv_lbu(rd int, rs1 int, imm int) u32 {
-	uimm := u32(imm) & 0xfff
-	return 0x2a000000 | (uimm << 10) | (u32(rs1) << 5) | u32(rd)
+	uimm := u32(imm) & 0xffff
+	return (38 << 26) | (u32(rd) << 21) | (u32(rs1) << 16) | uimm
 }
 
 fn rv_sd(rd int, rs1 int, imm int) u32 {
@@ -2710,18 +2710,18 @@ fn rv_sd(rd int, rs1 int, imm int) u32 {
 }
 
 fn rv_sw(rd int, rs1 int, imm int) u32 {
-	uimm := u32(imm) & 0xfff
-	return 0x29800000 | (uimm << 10) | (u32(rs1) << 5) | u32(rd)
+	uimm := u32(imm) & 0xffff
+	return (36 << 26) | (u32(rd) << 21) | (u32(rs1) << 16) | uimm
 }
 
 fn rv_sh(rd int, rs1 int, imm int) u32 {
-	uimm := u32(imm) & 0xfff
-	return 0x29400000 | (uimm << 10) | (u32(rs1) << 5) | u32(rd)
+	uimm := u32(imm) & 0xffff
+	return (44 << 26) | (u32(rd) << 21) | (u32(rs1) << 16) | uimm
 }
 
 fn rv_sb(rd int, rs1 int, imm int) u32 {
-	uimm := u32(imm) & 0xfff
-	return 0x29000000 | (uimm << 10) | (u32(rs1) << 5) | u32(rd)
+	uimm := u32(imm) & 0xffff
+	return (38 << 26) | (u32(rd) << 21) | (u32(rs1) << 16) | uimm
 }
 
 fn rv_lui(rd int, imm u32) u32 {
