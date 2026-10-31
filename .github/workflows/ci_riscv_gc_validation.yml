@@ -57,11 +57,22 @@ jobs:
           # then make ordinary test compilation fail instead of silently retrying V1.
           export V_MACOS_V3_NO_FALLBACK=1
           export VJOBS=2
-          ./v test vlib/builtin/gc_warn_proc_test.v vlib/builtin/input_rune_iterator_test.v vlib/os/exec_helpers_test.v
-          ./v -new-compiler -no-retry-compilation -cc cc -gc boehm run vlib/builtin/testdata/gc_handle_fork.c.v
-          ./v test vlib/builtin vlib/os vlib/encoding/binary
-          ./v test vlib/v/slow_tests/assembly
-          VTEST_ONLY=closure ./v test vlib/v/tests
+          mkdir -p riscv-gc-validation
+          validation_status=0
+          ./v test vlib/builtin/gc_warn_proc_test.v vlib/builtin/input_rune_iterator_test.v vlib/os/exec_helpers_test.v 2>&1 | tee riscv-gc-validation/focused-gc.log || validation_status=1
+          ./v -new-compiler -no-retry-compilation -cc cc -gc boehm run vlib/builtin/testdata/gc_handle_fork.c.v 2>&1 | tee riscv-gc-validation/gc-fork.log || validation_status=1
+          ./v test vlib/builtin vlib/os vlib/encoding/binary 2>&1 | tee riscv-gc-validation/original-suites.log || validation_status=1
+          ./v test vlib/v/slow_tests/assembly 2>&1 | tee riscv-gc-validation/assembly.log || validation_status=1
+          VTEST_ONLY=closure ./v test vlib/v/tests 2>&1 | tee riscv-gc-validation/closures.log || validation_status=1
+          exit "$validation_status"
+    - name: Preserve validation logs
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: riscv-gc-validation
+        path: riscv-gc-validation
+        if-no-files-found: warn
+        retention-days: 7
 'on':
   push:
     branches:
