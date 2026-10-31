@@ -3720,6 +3720,32 @@ fn v3_tcc_host_system_flags(target_os string, macos_sdk_root string) []string {
 	return flags
 }
 
+// v3_tcc_cpp_runtime_flags lets native Linux TinyCC links find the platform C++
+// runtime, which distributions install in the versioned GCC library directory.
+fn v3_tcc_cpp_runtime_flags(flags []string, target pref.Target) []string {
+	if target.os != 'linux' || os.user_os() != 'linux' || target.arch != pref.host_arch()
+		|| '-lstdc++' !in flags {
+		return flags
+	}
+	compiler := os.find_abs_path_of_executable('c++') or { return flags }
+	result := cmdexec.run(compiler, ['-print-file-name=libstdc++.so'])
+	path := result.output.trim_space()
+	if result.exit_code != 0 || !os.is_abs_path(path) || !os.is_file(path) {
+		return flags
+	}
+	search := '-L${os.dir(path)}'
+	mut resolved := flags.clone()
+	// Keep explicit user search directories ahead of this platform default.
+	if search !in resolved {
+		resolved << search
+	}
+	// Native C++ objects call the unwinder directly, even when libstdc++ also uses it.
+	if '-lgcc_s' !in resolved {
+		resolved << '-lgcc_s'
+	}
+	return resolved
+}
+
 // v3_tcc_macos_framework_flags replaces the `-framework` link flags that TCC
 // does not support with the file ld would link for them: the SDK's `.tbd` stub,
 // or the framework binary found through `-F` or in /Library/Frameworks. It drops
@@ -7536,6 +7562,7 @@ fn v3_implicit_tcc_preflight(vroot string, tcc_path string, bundled_tcc string, 
 	probe_args << ['-o', 'probe.exe', 'probe.c']
 	probe_args << link_flags
 	probe_args = v3_tcc_macos_framework_flags(probe_args, target.os, sdk_root)
+	probe_args = v3_tcc_cpp_runtime_flags(probe_args, target)
 	result := cmdexec.run_in(tcc_path, probe_args, dir)
 	if result.exit_code == 0 {
 		v3_record_tcc_probe(marker)
@@ -15964,6 +15991,7 @@ pub fn run(args []string) {
 			}
 			tcc_args = v3_tcc_macos_framework_flags(tcc_args, prefs.normalized_target_os(),
 				tcc_sdk_root)
+			tcc_args = v3_tcc_cpp_runtime_flags(tcc_args, prefs.target)
 			program_source_identity := '${prefix_source_identity}\n${modulecache.file_signature(tcc_main_file)}\n${if cached_program_body_source.len > 0 {
 				modulecache.file_signature(cached_program_body_source)
 			} else {
@@ -16045,6 +16073,7 @@ pub fn run(args []string) {
 			mut tcc_args := c_flag_plan.compiler_args(cc_output_name, [tcc_source], tcc_support_inputs)
 			tcc_args = v3_tcc_macos_framework_flags(tcc_args, prefs.normalized_target_os(),
 				tcc_sdk_root)
+			tcc_args = v3_tcc_cpp_runtime_flags(tcc_args, prefs.target)
 			if verbose || show_cc {
 				println('  > ${cmdexec.display(tcc_path, tcc_args)}')
 			}
