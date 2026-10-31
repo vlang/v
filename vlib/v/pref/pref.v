@@ -199,6 +199,13 @@ pub fn default_thread_stack_size_for_bits(pointer_bits int) int {
 	return if pointer_bits == 32 { 2 * 1024 * 1024 } else { 8 * 1024 * 1024 }
 }
 
+// is_supported_arch reports whether `arch` is a canonical architecture name that a target
+// can be built for; spellings such as `x86_64` must be passed through normalized_arch first.
+pub fn is_supported_arch(arch string) bool {
+	return arch in ['amd64', 'arm64', 'x86', 'arm32', 'riscv32', 'riscv64', 'ppc', 'ppc64', 'ppc64le',
+		's390x', 'loongarch64', 'sparc64', 'wasm32']
+}
+
 // target_from validates and canonicalizes an OS/architecture pair.
 pub fn target_from(os_name string, arch_name string) !Target {
 	target_os := normalized_os(os_name.trim_space().to_lower())
@@ -207,8 +214,7 @@ pub fn target_from(os_name string, arch_name string) !Target {
 		'android', 'termux', 'ios', 'solaris', 'qnx', 'haiku', 'serenity', 'vinix', 'wasm32_emscripten'] {
 		return error('unsupported target OS `${os_name}`')
 	}
-	if target_arch !in ['amd64', 'arm64', 'x86', 'arm32', 'riscv32', 'riscv64', 'ppc', 'ppc64',
-		'ppc64le', 's390x', 'loongarch64', 'sparc64', 'wasm32'] {
+	if !is_supported_arch(target_arch) {
 		return error('unsupported target architecture `${arch_name}`')
 	}
 	if target_os == 'wasm32_emscripten' && target_arch != 'wasm32' {

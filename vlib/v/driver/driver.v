@@ -67,7 +67,11 @@ const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
 const macos_v3_vcurrent_hash_env = 'V_MACOS_V3_VCURRENT_HASH'
 const macos_v3_compat_c99_flag = '-macos-v3-compat-c99'
 const macos_v3_internal_quiet_flag = '-macos-v3-internal-quiet'
-const macos_v3_inline_asm_diagnostic = 'inline assembly is not supported by the selected V3 backend'
+// macos_v3_inline_asm_diagnostic_prefix starts every parser diagnostic for an inline assembly
+// block that the selected backend cannot lower. In a build the C backend can lower, a block for
+// another architecture reports a target mismatch instead and is not retried, because no compiler
+// can lower it either.
+const macos_v3_inline_asm_diagnostic_prefix = 'inline assembly is not supported by the'
 const macos_v3_inline_asm_fallback = 'inline_asm'
 const macos_v3_compiler_error_fallback = 'compiler_error'
 const macos_v3_c_error_fallback = 'c_compilation_error'
@@ -8291,7 +8295,7 @@ fn macos_v3_fallback_suppresses_diagnostics(fallback_file string) bool {
 
 fn request_macos_v3_compatibility_fallback(diagnostics []parser.Diagnostic, fallback_file string) bool {
 	if fallback_file == '' || os.getenv(macos_v3_no_fallback_env) == '1'
-		|| !diagnostics.any(it.message == macos_v3_inline_asm_diagnostic) {
+		|| !diagnostics.any(it.message.starts_with(macos_v3_inline_asm_diagnostic_prefix)) {
 		return false
 	}
 	os.write_file(fallback_file, macos_v3_inline_asm_fallback) or { return false }
