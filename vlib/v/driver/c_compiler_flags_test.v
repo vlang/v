@@ -1358,11 +1358,24 @@ fn test_v3_implicit_tcc_cpp_native_object_uses_platform_headers() {
 			os.setenv('VFLAGS', value, true)
 		}
 	}
-	build := cmdexec.run_in(v3_driver_test_executable(), ['-new-compiler', '-nocache',
+	no_retry := cmdexec.run_in(v3_driver_test_executable(), ['-new-compiler', '-nocache',
 		'-no-retry-compilation', '-o', output, v_source], root)
+	assert !no_retry.output.contains('failed to build C object'), no_retry.output
+	if no_retry.exit_code != 0 {
+		// TinyCC may not find the platform C++ runtime without its compiler's search paths.
+		runtime := $if macos { 'c++' } $else { 'stdc++' }
+		assert no_retry.output.contains('C compilation error: implicit tcc could not be used for this build')
+			|| (no_retry.output.contains('C compilation error (from ')
+				&& no_retry.output.contains("tcc: error: library '${runtime}' not found")), no_retry.output
+		assert !no_retry.output.contains('regenerating it with'), no_retry.output
+	}
+	// The normal implicit-TinyCC policy must still compile and run the native helper.
+	build := cmdexec.run_in(v3_driver_test_executable(), ['-new-compiler', '-nocache', '-o', output,
+		v_source], root)
 	assert !build.output.contains('failed to build C object'), build.output
-	assert build.exit_code == 0
-		|| build.output.contains('implicit tcc could not be used for this build'), build.output
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run_in(output, [], root)
+	assert run.exit_code == 0, run.output
 }
 
 fn test_v3_system_tcc_runtime_requires_windows_openlibm() {
