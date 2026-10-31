@@ -1,9 +1,8 @@
 module driver
 
-import v.pref
-
 // vfmt off
 $if !skip_fastc ? {
+	import v.pref
 	import v.gen.fastc
 }
 // vfmt on
