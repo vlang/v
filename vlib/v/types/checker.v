@@ -17160,7 +17160,8 @@ fn (mut tc TypeChecker) check_type_string_for_unsupported_generics(typ_id u32, n
 			return
 		}
 	}
-	if syntax.named_type() && tc.record_invalid_type_module_qualifier(clean, node_id) {
+	if syntax.named_type() && !tc.struct_init_is_synthetic_embed_file(node_id)
+		&& tc.record_invalid_type_module_qualifier(clean, node_id) {
 		return
 	}
 	if syntax.named_type() && !tc.type_name_known(clean_id) {
