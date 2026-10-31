@@ -21078,6 +21078,9 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 					if ci := tc.resolve_generic_struct_method(clean_type.source_type_id(), fn_node.value) {
 						return ci.return_type
 					}
+					if ci := tc.embedded_method_call_info(clean_type.source_type_id(), fn_node.value) {
+						return ci.return_type
+					}
 				}
 				if clean_type is Interface {
 					mname := '${clean_type.name()}.${fn_node.value}'
