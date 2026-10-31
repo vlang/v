@@ -798,11 +798,20 @@ fn (mut tc TypeChecker) inline_asm_raw_att_operand_types(node flat.Node, block s
 		ios := inline_asm_ios(block, sections[index])
 		for io_index, io in ios {
 			child_index := child_offset + io_index
-			if io.alias.len > 0 && inline_asm_is_ident(io.expr)
-				&& inline_asm_raw_gpr_constraint(io.constraint)
-				&& child_index < int(node.children_count) {
-				types[io.alias] = tc.resolve_type(tc.a.child(&node, child_index))
+			if !inline_asm_raw_gpr_constraint(io.constraint)
+				|| child_index >= int(node.children_count) {
+				continue
 			}
+			// Only a named variable has a V type to width-check, as for aliases.
+			if !inline_asm_is_ident(io.expr) {
+				continue
+			}
+			typ := tc.resolve_type(tc.a.child(&node, child_index))
+			if io.alias.len > 0 {
+				types[io.alias] = typ
+			}
+			// `%N` counts outputs, then inputs, from zero, as GCC does.
+			types[child_index.str()] = typ
 		}
 		child_offset += ios.len
 	}

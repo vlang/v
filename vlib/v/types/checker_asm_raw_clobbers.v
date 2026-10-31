@@ -87,14 +87,18 @@ fn inline_asm_raw_fixed_output_registers(block string, section InlineAsmRange) [
 	return registers
 }
 
-// inline_asm_raw_byte_mul_form reports whether a mul, imul, div or idiv works on 8-bit operands,
-// which write AX (AL and AH) and never DX: a `b` suffix, or a last operand that is 8 bits wide.
-fn inline_asm_raw_byte_mul_form(name string, width int) bool {
-	if name.len > 1 && name[name.len - 1] == `b` && name[..name.len - 1] in ['mul', 'imul', 'div',
-		'idiv'] {
+// inline_asm_raw_mul_writes_dx reports whether a mul, imul, div or idiv is proven to write DX.
+// A `b` suffix never does. A `w`, `l` or `q` suffix does, and so does a resolved operand width of
+// 16, 32 or 64 bits. An unresolved width proves nothing, so the check stays silent.
+fn inline_asm_raw_mul_writes_dx(name string, width int) bool {
+	if name.len > 1 && name[name.len - 1] == `b` {
+		return false
+	}
+	if name.len > 1 && name[name.len - 1] in [`w`, `l`, `q`]
+		&& name[..name.len - 1] in ['mul', 'imul', 'div', 'idiv'] {
 		return true
 	}
-	return width == 8
+	return width == 16 || width == 32 || width == 64
 }
 
 // check_inline_asm_raw_clobbers reports a GNU x86 raw template that writes a general-purpose
@@ -141,10 +145,9 @@ fn (mut tc TypeChecker) check_inline_asm_raw_clobbers(id flat.NodeId, node flat.
 		if mul_family.len > 0 && instruction.operands.len > 0 && (mul_family == 'div'
 			|| mul_family == 'idiv' || instruction.operands.len == 1) {
 			written['rax'] = true
-			// The 8-bit forms write AX (AL and AH) and leave DX alone.
 			last := instruction.operands[instruction.operands.len - 1]
 			width := tc.inline_asm_att_operand_width(last, types, arch_bits)
-			if !inline_asm_raw_byte_mul_form(name, width) {
+			if inline_asm_raw_mul_writes_dx(name, width) {
 				written['rdx'] = true
 			}
 		}
