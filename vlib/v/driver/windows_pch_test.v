@@ -187,8 +187,30 @@ fn test_windows_pch_flags_configure_sdk() {
 	assert v3_windows_pch_flags_configure_sdk(['--imacros', 'full.h'])
 	assert v3_windows_pch_flags_configure_sdk(['-DWIN32_FULL()='])
 	assert v3_windows_pch_flags_configure_sdk(['-D', 'WIN32_FULL(x)=1'])
+	// Options read from a file, and a definition that is more than a plain name.
+	assert v3_windows_pch_flags_configure_sdk(['--config=S:/x/cfg.cfg'])
+	assert v3_windows_pch_flags_configure_sdk(['--config', 'cfg.cfg'])
+	assert v3_windows_pch_flags_configure_sdk(['-DWIN32_FULL/**/'])
+	assert v3_windows_pch_flags_configure_sdk(['-DWIN32_FULL,1'])
+	assert v3_windows_pch_flags_configure_sdk(['-D', 'WIN32_FULL\\(\\)='])
+	assert v3_windows_pch_flags_configure_sdk(['-DX/**/'])
+	// Any flag not known to leave the headers alone.
+	assert v3_windows_pch_flags_configure_sdk(['-nostdinc'])
+	assert v3_windows_pch_flags_configure_sdk(['-ansi'])
+	assert v3_windows_pch_flags_configure_sdk(['-x', 'c'])
+	// The flags of a module object of a `-prod` build, and the known families.
+	assert !v3_windows_pch_flags_configure_sdk(['-std=gnu11', '-O3', '-w',
+		'-Wno-incompatible-function-pointer-types', '-fwrapv', '-Wno-int-conversion', '-DGC_THREADS=1',
+		'-DTHREAD_LOCAL_ALLOC=1', '-DGC_NOT_DLL=1', '-DGC_WIN32_THREADS=1', '-DNO_MSGBOX_ON_ERROR=1',
+		'-DCONSOLE_LOG=1', '-DGC_BUILTIN_ATOMIC=1', '-I', 'S:/repo/vlang/thirdparty/libgc/include',
+		'-DALL_INTERIOR_POINTERS=1', '-DV_GCBOEHM_NATIVE', '-I',
+		'S:/repo/vlang/thirdparty/stdatomic/win'])
+	assert !v3_windows_pch_flags_configure_sdk(['-O0', '-g', '-gdwarf-4', '-municode', '-m64',
+		'-fuse-ld=lld', '-fPIC', '-flto', '-pipe', '-pthread', '-Werror', '-Wall', '-Ix', '-isystem',
+		'S:/sdk', '-idirafter', 'S:/x', '-iquote', 'S:/y'])
 	assert !v3_windows_pch_flags_configure_sdk(['--define-macro=GC_THREADS=1'])
 	assert !v3_windows_pch_flags_configure_sdk(['-DWIN32_FULLER'])
+	assert !v3_windows_pch_flags_configure_sdk(['-DV_X(a)=1', '-U', 'V_Y'])
 	assert !v3_windows_pch_flags_configure_sdk(['-DGC_THREADS=1', '-I', 'x', '-D'])
 }
 

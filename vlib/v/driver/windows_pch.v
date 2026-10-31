@@ -173,37 +173,77 @@ fn v3_windows_pch_guard_of(directive string, name string) bool {
 		&& directive == 'if defined(_WIN32) && !defined(WIN32_FULL) && !defined(WIN32_LEAN_AND_MEAN)'
 }
 
-// v3_windows_pch_flags_configure_sdk reports whether a compile flag defines or
-// undefines a macro the SDK headers read and the prelude sets: with
-// `-DWIN32_FULL` a unit leaves WIN32_LEAN_AND_MEAN undefined and parses the
-// whole of windows.h, which the precompiled header did not. A flag that can
-// carry any macro out of sight (a file included ahead of the unit, or one
-// passed on to the preprocessor, which Clang does not check against the
-// precompiled header) counts as configuring them too.
+// v3_windows_pch_flags_configure_sdk reports whether a compile flag could make
+// the SDK headers declare other names than the precompiled header has, or is
+// not known not to. A `-D` or `-U` of a macro the prelude sets or its guards
+// test does: with `-DWIN32_FULL` a unit leaves WIN32_LEAN_AND_MEAN undefined
+// and parses the whole of windows.h, which the header did not. So does any
+// flag that can carry a macro out of sight (a file included ahead of the unit,
+// options passed on to the preprocessor or read from a file), which Clang does
+// not check against the precompiled header. Only flags of a known shape pass:
+// the definition of a macro by a plain identifier, an include directory, and
+// the families that select the language standard, optimization, code
+// generation and warnings.
 fn v3_windows_pch_flags_configure_sdk(args []string) bool {
-	for i, arg in args {
-		if arg.starts_with('-include') || arg.starts_with('-imacros') || arg.starts_with('--include')
-			|| arg.starts_with('--imacros') || arg.starts_with('-Wp,') || arg.starts_with('@')
-			|| arg in ['-Xpreprocessor', '-Xclang', '-undef'] {
-			return true
-		}
-		// The macro of `-DX`, `-D X`, `--define-macro=X`, `--define-macro X`
-		// and their `-U` forms, without a value or a parameter list.
-		mut macro := ''
-		if arg in ['-D', '-U', '--define-macro', '--undefine-macro'] {
-			if i + 1 < args.len {
-				macro = args[i + 1]
+	mut operand_of := ''
+	for arg in args {
+		if operand_of != '' {
+			option := operand_of
+			operand_of = ''
+			if option in v3_windows_pch_macro_options && !v3_windows_pch_plain_macro(arg) {
+				return true
 			}
-		} else if arg.starts_with('-D') || arg.starts_with('-U') {
-			macro = arg[2..]
-		} else if arg.starts_with('--define-macro=') || arg.starts_with('--undefine-macro=') {
-			macro = arg.all_after('=')
+			continue
 		}
-		if macro.all_before('=').all_before('(') in v3_windows_pch_sdk_macros {
-			return true
+		if arg in v3_windows_pch_macro_options || arg in ['-I', '-isystem', '-idirafter', '-iquote'] {
+			operand_of = arg
+			continue
 		}
+		if arg.starts_with('-D') || arg.starts_with('-U') {
+			if !v3_windows_pch_plain_macro(arg[2..]) {
+				return true
+			}
+			continue
+		}
+		if arg.starts_with('--define-macro=') || arg.starts_with('--undefine-macro=') {
+			if !v3_windows_pch_plain_macro(arg.all_after('=')) {
+				return true
+			}
+			continue
+		}
+		if arg.starts_with('-I') || arg.starts_with('-O') || arg.starts_with('-std=')
+			|| arg.starts_with('-f') || arg.starts_with('-m') || arg.starts_with('-g')
+			|| arg in ['-w', '-pipe', '-pthread'] {
+			continue
+		}
+		if arg.starts_with('-W') && !arg.starts_with('-Wp,') && !arg.starts_with('-Wa,')
+			&& !arg.starts_with('-Wl,') {
+			continue
+		}
+		return true
 	}
+	// An option left without its operand fails the compile with or without the header.
 	return false
+}
+
+// The options that take the definition of a macro as their operand.
+const v3_windows_pch_macro_options = ['-D', '-U', '--define-macro', '--undefine-macro']
+
+// v3_windows_pch_plain_macro reports whether `definition`, the operand of a
+// `-D` or `-U`, names by a plain identifier a macro the SDK headers do not
+// read. The name runs to the `=` of a value or the `(` of parameters; Clang
+// defines a macro from anything else there as well (`WIN32_FULL/**/`,
+// `WIN32_FULL,1`), so no such definition passes.
+fn v3_windows_pch_plain_macro(definition string) bool {
+	mut end := 0
+	for end < definition.len && (definition[end].is_alnum() || definition[end] == `_`) {
+		end++
+	}
+	name := definition[..end]
+	if name == '' || name in v3_windows_pch_sdk_macros {
+		return false
+	}
+	return end == definition.len || definition[end] in [`=`, `(`]
 }
 
 // v3_windows_pch_prelude_conditional reports whether `directive` is one of the
