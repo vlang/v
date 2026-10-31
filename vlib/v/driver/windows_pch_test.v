@@ -54,6 +54,12 @@ fn test_windows_pch_header_lists_its_includes_and_defines() {
 	defines := lines.filter(it.starts_with('#define')).map(it.all_after('#define ').all_before(' '))
 	assert defines == ['UNICODE', '_UNICODE', 'WIN32_LEAN_AND_MEAN', 'PSAPI_VERSION']
 	assert defines[..3] == v3_windows_pch_defines
+	// The macros are defined under the generator's own guards, line for line,
+	// so that a macro the compiler predefines keeps its value.
+	generated := generated_windows_prelude.split_into_lines()
+	start := generated.index('#if defined(_WIN32)')
+	end := generated.index('#include <io.h>')
+	assert lines[..lines.index('#include <io.h>')] == generated[start..end]
 }
 
 fn test_windows_pch_applies_to_the_generated_prelude() {
@@ -98,6 +104,10 @@ fn test_windows_pch_does_not_apply_to_a_prelude_that_configures_the_headers_diff
 	// Or one of the generator's own guards around a header once the includes started.
 	assert !v3_windows_pch_applies(prelude.replace('#include <windows.h>\n', '#ifndef V_NO_WINDOWS\n#include <windows.h>\n#endif\n'))
 	assert !v3_windows_pch_applies(prelude.replace('#include <windows.h>\n', '#if defined(_WIN32)\n#include <windows.h>\n#endif\n'))
+	// A macro with a leading underscore the C headers read is not one of V's.
+	assert !v3_windows_pch_applies(prelude.replace('#include <io.h>', '#define _VA_LIST_DEFINED\n#include <io.h>'))
+	assert !v3_windows_pch_applies(prelude.replace('#include <io.h>', '#define _VA_LIST\n#include <io.h>'))
+	assert v3_windows_pch_applies(prelude.replace('#include <io.h>', '#define _VPROFILE (1)\n#include <io.h>'))
 	// Only a directive may precede the headers.
 	assert !v3_windows_pch_applies(prelude.replace('#include <io.h>', 'int early;\n#include <io.h>'))
 	assert !v3_windows_pch_applies(prelude.replace('#include <io.h>', '#pragma once\n#include <io.h>'))
