@@ -6320,7 +6320,7 @@ fn (g &FlatGen) core_native_source_header_is_redeclared(root string, source stri
 				|| normalized_c_include_arg_path(include_arg) == root + '/vlib/time/ticks_windows_api.h'
 		}
 		'sync/sync_windows.c.v' { return include_arg in ['<synchapi.h>', '<time.h>'] }
-		'runtime/used_memory_windows.c.v' { return include_arg == '<psapi.h>' }
+		'runtime/used_memory_windows.c.v' { return include_arg in ['<windows.h>', '<psapi.h>'] }
 		'crypto/rand/internal/rand_windows.c.v' { return include_arg == '<bcrypt.h>' }
 		'time/timerfd.c.v' { return include_arg == '<sys/timerfd.h>' }
 		'v/workers/thread_nix.c.v' {
