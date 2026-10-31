@@ -2021,13 +2021,14 @@ fn main() {
 			interrupted_run.close()
 			assert false, 'interrupted run did not start: ${run_error}'
 		}
-		interrupt := os.exec(['kill', '-INT', '-' + '${interrupted_run.pid}'])
-		if interrupt.exit_code != 0 {
+		// Signal the group directly: external kill utilities parse negative IDs differently.
+		if C.kill(-interrupted_run.pid, int(os.Signal.int)) != 0 {
+			interrupt_error := os.last_error()
 			os.exec(['kill', '-KILL', '${program_pid}'])
 			interrupted_run.signal_pgkill()
 			interrupted_run.wait()
 			interrupted_run.close()
-			assert false, interrupt.output
+			assert false, interrupt_error.msg()
 		}
 		// The program runs in its own process group, so killing the group of the
 		// driver does not stop it: kill it by its pid if the interrupt is lost.
