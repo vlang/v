@@ -1,0 +1,153 @@
+name: C2V callback union validation
+
+on:
+  push:
+    branches:
+      - ci/verify-c2v-callback-20261031
+
+concurrency:
+  group: c2v-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  C2V_CI_SHA: 8bf7ac950d68c26889d6a651fd07c1db8d970ebc
+
+jobs:
+  build-doom:
+    if: github.ref == 'refs/heads/ci/verify-c2v-callback-20261031'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/cache-apt-packages-action
+      - name: Build V
+        run: make && ./v symlink
+
+      - name: Set 8.8.8.8 as dns server
+        run: |
+          sudo sed -i 's/#DNS=/DNS=8.8.8.8 8.8.4.4/g' /etc/systemd/resolved.conf
+          sudo systemctl daemon-reload
+          sudo systemctl restart systemd-networkd
+          sudo systemctl restart systemd-resolved
+          dig distro.ibiblio.org
+
+      - name: Install C2V
+        run: |
+          mkdir -p "$HOME/.vmodules"
+          v retry -- git clone --filter=blob:none https://github.com/vlang/c2v "$HOME/.vmodules/c2v"
+          git -C "$HOME/.vmodules/c2v" checkout --detach "$C2V_CI_SHA"
+          test "$(git -C "$HOME/.vmodules/c2v" rev-parse HEAD)" = "$C2V_CI_SHA"
+          v -g -o "$HOME/.vmodules/c2v/c2v" "$HOME/.vmodules/c2v"
+      - name: Install dependencies
+        run: |
+          if [ "${{ runner.os }}" == "Linux" ]; then
+            .github/workflows/disable_azure_mirror.sh
+            v retry -- sudo apt update -y -qq
+            v retry -- sudo apt install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
+          else
+            v retry -- brew install sdl2 sdl2_mixer sdl2_net libpng libsamplerate
+          fi
+      - name: Build original Chocolate Doom
+        run: |
+          v retry -- git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
+          cd ~/code/doom/chocolate-doom
+          cmake -DCMAKE_BUILD_TYPE=Debug .
+          make chocolate-doom
+      - name: Translate the whole game in project/folder mode and compile it
+        run: |
+          touch ~/DOOM1.WAD
+          WAD_FILE=~/DOOM1.WAD ~/code/doom/build_whole_project.sh
+
+  test-regression:
+    if: github.ref == 'refs/heads/ci/verify-c2v-callback-20261031'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      VFLAGS: -cc tcc
+      DISPLAY: :99
+      LIBGL_ALWAYS_SOFTWARE: true
+      VTMP: /tmp
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/cache-apt-packages-action
+      - name: Build V
+        run: make && ./v symlink
+
+      - name: Set 8.8.8.8 as dns server
+        run: |
+          sudo sed -i 's/#DNS=/DNS=8.8.8.8 8.8.4.4/g' /etc/systemd/resolved.conf
+          sudo systemctl daemon-reload
+          sudo systemctl restart systemd-networkd
+          sudo systemctl restart systemd-resolved
+          dig distro.ibiblio.org
+
+      - name: Install C2V
+        run: |
+          mkdir -p "$HOME/.vmodules"
+          v retry -- git clone --filter=blob:none https://github.com/vlang/c2v "$HOME/.vmodules/c2v"
+          git -C "$HOME/.vmodules/c2v" checkout --detach "$C2V_CI_SHA"
+          test "$(git -C "$HOME/.vmodules/c2v" rev-parse HEAD)" = "$C2V_CI_SHA"
+          v -g -o "$HOME/.vmodules/c2v/c2v" "$HOME/.vmodules/c2v"
+      - name: Install dependencies
+        run: |
+          .github/workflows/disable_azure_mirror.sh		  
+          v retry -- sudo apt update -y -qq
+          v retry -- sudo apt install libsdl2-dev libsdl2-mixer-dev libsdl2-net-dev libpng-dev libsamplerate0-dev
+          # c2v / DOOM dependencies
+          # vgret dependencies
+          # imagemagick              : convert, mogrify, import
+          # xvfb                     : For starting X11 Virtual FrameBuffers
+          # openimageio-tools        : idiff
+          # libgl1-mesa-dri          : For headless rendering / software DRI driver (LIBGL_ALWAYS_SOFTWARE=true)
+          # freeglut3-dev            : Fixes graphic apps compilation with tcc
+          v retry -- sudo apt install imagemagick openimageio-tools freeglut3-dev libgl1-mesa-dri xvfb xsel xclip
+      - name: Setup test tools
+        run: |
+          # Fetch the free shareware DOOM1.WAD from NetBSD's pkgsrc distfile mirror
+          v retry -- v download https://cdn.NetBSD.org/pub/pkgsrc/distfiles/doom1-1.9/shareware_doom_iwad.zip
+          echo '9fe5a32a24efa622ff7017303d3c8fdc7b4e6c4ec548e50bea402bfa9a1f320ce3f316f4a7f62e64786af876776d51b20fc7688f497896aa176f97b85ada30f9  shareware_doom_iwad.zip' | sha512sum --check
+          unzip -p shareware_doom_iwad.zip DOOM1.WAD > ~/doom1.wad
+          rm shareware_doom_iwad.zip
+          # Get regression images to test against
+          v retry -- git clone https://github.com/Larpon/doom-regression-images
+      - name: Build original Chocolate Doom
+        run: |
+          v retry -- git clone --quiet --depth 1 https://github.com/vlang/doom ~/code/doom
+          cd ~/code/doom/chocolate-doom
+          cmake -DCMAKE_BUILD_TYPE=Debug .
+          make chocolate-doom
+      - name: Translate the whole game in project/folder mode
+        run: WAD_FILE=~/doom1.wad ~/code/doom/build_whole_project.sh
+      - name: Sample and compare with vgret
+        id: compare
+        continue-on-error: true
+        run: |
+          Xvfb "$DISPLAY" -screen 0 800x600x24 -fbdir /var/tmp/ &
+          sleep 2; while [ ! -f /var/tmp/Xvfb_screen0 ]; do sleep 0.5; done # give xvfb time to start, even on slow CI runs
+          sleep 5
+          v gret -r ~/code/doom -t ./doom-regression-images/vgret.doom.toml -v ./doom-sample_images ./doom-regression-images || {
+            echo "First vgret comparison failed, retrying once with fresh screenshots..."
+            rm -rf ./doom-sample_images
+            sleep 5
+            v gret -r ~/code/doom -t ./doom-regression-images/vgret.doom.toml -v ./doom-sample_images ./doom-regression-images
+          }
+      - name: Preserve comparison evidence
+        if: always() && steps.compare.outcome != 'skipped'
+        uses: actions/upload-artifact@v7
+        with:
+          name: c2v-native-runtime-regression-images
+          if-no-files-found: ignore
+          path: |
+            doom-sample_images
+            /tmp/fail.png
+            /tmp/diff.png
+      - name: Require successful regression comparison
+        if: steps.compare.outcome == 'failure'
+        run: exit 1
