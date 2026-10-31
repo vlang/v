@@ -5378,7 +5378,12 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		target_name := flat.source_type_name(target_name_id)
 		target_base := unalias_type(target_pointer.base_type)
 		if target_base is SumType && !fn_param_is_voidptr_type(actual)
-			&& tc.sum_type_contains_variant(target_base, unalias_type(actual)) {
+			&& tc.sum_type_contains_variant(target_base, unalias_type(actual))
+			&& !(actual is SumType) {
+			return
+		}
+		if target_base is SumType && actual is SumType {
+			tc.record_error_at(.assignment_mismatch, 'cannot cast `${actual.name()}` to `${target.name()}`', id, node.pos)
 			return
 		}
 		alias_name_id := flat.source_type_syntax(target_name_id).pointer_raw_base()
