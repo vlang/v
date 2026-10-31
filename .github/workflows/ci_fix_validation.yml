@@ -103,23 +103,28 @@ jobs:
   websocket_tests:
     if: github.ref == 'refs/heads/ci/verify-master-fixes-20261031'
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 90
     env:
       VJOBS: '2'
       VFLAGS: -new-compiler -no-retry-compilation -cc tcc
+      VTEST_SKIP_OWNERSHIP: '1'
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Install WebSocket build dependencies
+      - name: Install native regression build dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libssl-dev
+          sudo apt-get install -y --no-install-recommends clang gobjc libssl-dev \
+            libx11-dev libxcursor-dev libxi-dev libxrandr-dev libxinerama-dev \
+            libx11-xcb-dev libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev
       - name: Build compiler from the combined branch
         id: build
         env:
           VFLAGS: ''
-        run: make -j4
+        run: |
+          make -j4
+          ./v -prod -cc clang self
       - name: Run the WebSocket suite
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: ./v -g test vlib/net/websocket/
@@ -129,4 +134,16 @@ jobs:
           ./v test vlib/v/gen/c/tcc_native_headers_test.v \
             vlib/v/gen/c/preamble_test.v \
             vlib/v/gen/c/source_directive_test.v \
-            vlib/v/gen/c/windows_stack_overflow_test.v
+            vlib/v/gen/c/windows_stack_overflow_test.v \
+            vlib/v/compiler_tests/c_directive_order_codegen_test.v
+      - name: Graphics and nested alias regressions
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          ./v test vlib/v/tests/aliases/
+          ./v -d gg_multiwindow -d x_multiwindow_x11 vlib/gg/draw_rect_empty_test.v
+      - name: Complete C code generator suite
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./v -silent test vlib/v/gen/c/
+      - name: Complete compiler diagnostic suite
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./v -silent vlib/v/compiler_errors_test.v

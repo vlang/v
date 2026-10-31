@@ -3785,7 +3785,8 @@ fn (g &FlatGen) assert_operand_is_constant(id flat.NodeId) bool {
 fn (mut g FlatGen) assert_capture_c_type(id flat.NodeId) ?(string, bool) {
 	typ := g.usable_expr_type(id)
 	clean := g.value_unalias_type(typ)
-	is_number := clean.is_integer() || clean.is_float()
+	// Wide integers can be C structs; copy their values without a scalar cast.
+	is_number := (clean.is_integer() || clean.is_float()) && int128_signedness(clean) == none
 	match clean {
 		types.Primitive, types.String, types.Char, types.Rune, types.ISize, types.USize,
 		types.Enum, types.Struct, types.Array, types.Map, types.SumType, types.Interface,
