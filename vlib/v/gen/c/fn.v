@@ -825,10 +825,8 @@ fn (mut g FlatGen) gen_no_main_runtime_init_caller() {
 	g.writeln('${storage}void _vno_main_init_caller(void) {')
 	g.writeln('\tif (_v3_no_main_initialized) { return; }')
 	g.writeln('\t_v3_no_main_initialized = true;')
-	if g.has_builtins {
-		g.writeln('\tg_main_argc = 0;')
-		g.writeln('\tg_main_argv = NULL;')
-	}
+	// The argument globals are already zero-initialized for library callers.
+	// A script main can reach this helper after setting its process arguments.
 	g.gen_trace_startup()
 	g.gen_profile_startup_enable()
 	if g.runtime_init_is_needed() {
