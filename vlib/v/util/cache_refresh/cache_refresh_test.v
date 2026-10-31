@@ -603,7 +603,7 @@ fn test_refresh_uses_recorded_directory_for_relative_compile_inputs() ! {
 	assert os.getwd() == root
 }
 
-fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() ! {
+fn test_forced_headers_bypass_refresh_inventory_for_each_compiler_and_mode() ! {
 	$if windows {
 		return
 	}
@@ -804,118 +804,18 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 		assert result.exit_code == 0, result.output
 	}
 	requests := collect(vroot, @VEXE)!.filter(it.module.starts_with(import_root + '.'))
-	assert initial.len > 0 && initial.all(it !in requests), requests.str()
-	assert requests.len > 0
-	assert collect(vroot, os.executable())!.filter(it.module.starts_with(import_root + '.')).len == 0
-	// Compiler aliases can share a configuration and restore its program before
-	// reaching the inventory writer; its existing record already covers the cache.
-	assert requests.len >= 2 && requests.len <= (builds.len * 2 + test_builds.len) * 2, requests.str()
-	// Assertion statistics compile instrumented test bodies without the module cache.
-	assert !requests.any(it.is_test && it.show_test_stats), requests.str()
-	for index, flags in test_builds {
-		if assert_modes[index] { continue }
-		selector := flags[flags.index('-run-only') + 1]
-		assert requests.any(it.is_test && it.show_test_stats == assert_modes[index] && selector in it.args && ('-prod' in flags) == ('-prod' in it.args)), flags.str()
-	}
-	for mode in supported_modes {
-		assert requests.any(mode in it.args), mode
-	}
-	for request in requests {
-		assert request.entry == if request.is_test { '' } else { main_file }, request.str()
-		list_index := request.args.index('-file-list')
-		if request.is_test {
-			assert list_index < 0, request.str()
-		} else {
-			assert list_index >= 0, request.str()
-			assert request.args[list_index + 1].split(',') == [support_file,
-				os.join_path(root, 'implementers')], request.str()
-			assert support_file in request.compile_inputs && sink_file !in request.compile_inputs, request.str()
-		}
-		mut project_flags := []string{}
-		for group in request.project_flags { project_flags << group.flags }
-		assert '-DREFRESH_PROJECT' in project_flags, request.str()
-		assert !project_flags.any(it.starts_with('-DREFRESH_DEPENDENCY')), request.str()
-		assert forced_header in project_flags, request.str()
-		assert !project_flags.any(it.contains('../libs') || it.contains('-lanswer')), request.str()
-		assert '${import_root}.probe' in request.imports, request.str()
-		assert request.cwd == project, request.str()
-		assert '-ldflags' !in request.args, request.str()
-		path_index := request.args.index('-path')
-		assert path_index >= 0, request.str()
-		assert request.args[path_index + 1] == [
-			if request.is_test { os.join_path(project, 'modules') } else { new_search },
-			os.join_path(vroot, 'vlib'),
-		].join('|'), request.str()
-		if !request.is_test {
-			assert os.dir(new_module_source) in request.entry_sources, request.str()
-		}
-		cc_index := request.args.index('-cc')
-		assert cc_index >= 0 && os.is_abs_path(request.args[cc_index + 1]), request.str()
-		assert !request.args.any(it.contains('../libs') || it.contains('-lanswer')), request.str()
-	}
-	// Run the refresh in another directory and capture its streams separately.
-	// Its importers must warm the same absolute-path cache configuration, and
-	// cannot link against this project's output-relative library.
-	os.chdir(previous_dir)!
-	refresh_source := os.join_path(root, 'refresh_helper.v')
-	refresh_exe := os.join_path(root, 'refresh_helper')
-	os.write_file(refresh_source, 'import os\nimport v.util.cache_refresh\n' +
-		'fn main() {\n' +
-		'\trequests := cache_refresh.collect(os.dir(@VEXE), @VEXE)!.filter(it.module.starts_with("${import_root}."))\n' +
-		'\tcache_refresh.refresh(@VEXE, requests)!\n}\n')!
-	helper := os.exec([@VEXE, '-cc', 'cc', '-gc', 'none', '-nocache', '-o', refresh_exe,
-		refresh_source])
-	assert helper.exit_code == 0, helper.output
-	// Change PATH after creating the inventory: compiler names now point at
-	// unusable stand-ins, while the recorded absolute commands still work.
-	changed_path := os.join_path(root, 'changed_path')
-	os.mkdir_all(changed_path)!
-	for name in ['cc', 'clang', 'gcc'] {
-		path := os.join_path(changed_path, name)
-		os.write_file(path, '#!/bin/sh\necho wrong compiler >&2\nexit 1\n')!
-		os.chmod(path, 0o755)!
-	}
-	os.setenv('PATH', changed_path + os.path_delimiter + saved['PATH'], true)
-	os.setenv('VTEST_ONLY_FN', 'ambient_selector_must_not_override_inventory', true)
-	os.setenv('VTEST_SHOW_ASSERTS', 'ambient_assert_mode_must_not_override_inventory', true)
-	// Add, change and remove module directives along with its implementation.
-	// Deleting its old forced header makes stale flag replay fail immediately.
+	// Forced headers have no native ownership contract. Every configuration
+	// builds correctly, but none may publish a refreshable module inventory.
+	assert initial.len == 0 && requests.len == 0, requests.str()
 	os.write_file(new_module_header, '#define REFRESH_MODULE_INPUT 2\n')!
 	os.rm(old_module_header)!
 	os.write_file(dependency, 'module dependency\n#flag -DREFRESH_DEPENDENCY=new\n' +
 		'#flag -DREFRESH_ADDED\n#flag -include "${new_module_header}"\n' +
 		'pub interface Reader { read() int }\n' +
 		'pub fn value() int { return 43 }\n')!
-	mut refresher := os.new_process(refresh_exe)
-	refresher.set_redirect_stdio()
-	refresher.run()
-	stdout := refresher.stdout_slurp()
-	stderr := refresher.stderr_slurp()
-	refresher.wait()
-	assert refresher.code == 0, '${stdout}\n${stderr}'
-	refresher.close()
-	assert stdout.contains('Caching module ${import_root}.dependency...'), stdout
-	assert !stderr.contains('Caching module '), stderr
-	os.setenv('PATH', saved['PATH'], true)
-	os.unsetenv('VTEST_ONLY_FN')
-	os.unsetenv('VTEST_SHOW_ASSERTS')
-	os.chdir(project)!
-	// Invalidate only program Cgen entries. The module aliases must still match
-	// the project's Sink implementer of the vlib-owned Reader interface.
-	os.write_file(main_file, os.read_file(main_file)! + '\nfn after_refresh_marker() {}\n')!
-	os.write_file(test_file, os.read_file(test_file)! + '\nfn after_refresh_marker() {}\n')!
-	os.setenv('V3_CACHE_TRACE', '1', true)
 	for flags in builds {
-		result := os.exec([@VEXE, ...flags, '-show-timings', '-o', os.join_path(root, 'program'),
-			main_file])
+		result := os.exec([@VEXE, ...flags, '-o', os.join_path(root, 'program'), main_file])
 		assert result.exit_code == 0, result.output
-		assert !result.output.contains('Caching module '), '${flags}: ${result.output}'
-		assert !result.output.contains('V3 module cache object miss'), result.output
-		assert !result.output.contains('V3 module cache fallback'), result.output
-		if '-silent' !in flags {
-			parsed := result.output.split_into_lines().filter(it.contains('parsed .v files'))
-			assert parsed.len == 1 && parsed[0].all_after('parsed .v files').trim_space().all_before(' ').int() == 5, result.output
-		}
 		run := os.exec([os.join_path(root, 'program')])
 		assert run.exit_code == 0, run.output
 		assert run.output.trim_space() == if '-prod' in flags { '45' } else { '43' }, run.output
@@ -926,25 +826,10 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 		} else {
 			os.unsetenv('VTEST_SHOW_ASSERTS')
 		}
-		selector := flags.index('-run-only')
-		os.setenv('VTEST_ONLY_FN', flags[selector + 1], true)
-		result := os.exec([@VEXE, ...flags[..selector], '-skip-running', '-o',
-			os.join_path(root, 'test_program'), test_file])
+		result := os.exec([@VEXE, ...flags, '-o', os.join_path(root, 'test_program'), test_file])
 		assert result.exit_code == 0, result.output
-		assert !result.output.contains('Caching module '), '${flags}: ${result.output}'
-		assert !result.output.contains('V3 module cache object miss'), result.output
-		assert !result.output.contains('V3 module cache fallback'), result.output
 	}
-	// A vanished listed source retires the live-entry record both at collection
-	// and when replaying a snapshot taken before the file was removed.
-	support_content := os.read_file(support_file)!
-	os.rm(support_file)!
-	assert !collect(vroot, @VEXE)!.any(it.module.starts_with(import_root + '.') && !it.is_test)
-	refresh(@VEXE, requests.filter(!it.is_test))!
-	os.write_file(support_file, support_content)!
-	os.rmdir_all(os.join_path(root, 'implementers'))!
-	assert !collect(vroot, @VEXE)!.any(it.module.starts_with(import_root + '.') && !it.is_test)
-	refresh(@VEXE, requests.filter(!it.is_test))!
+	assert collect(vroot, @VEXE)!.all(!it.module.starts_with(import_root + '.'))
 }
 
 fn test_inventory_and_refresh_skip_replaced_compile_inputs() ! {

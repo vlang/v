@@ -3,7 +3,7 @@ module fastc
 import os
 import v.cmdexec
 
-fn test_fastc_macos_default_and_explicit_tcc_keep_cocoa_on_tcc() {
+fn test_fastc_macos_cocoa_uses_native_compiler_without_header_projection() {
 	$if !macos {
 		return
 	}
@@ -35,13 +35,18 @@ fn test_fastc_macos_default_and_explicit_tcc_keep_cocoa_on_tcc() {
 			if mode == 'no_retry' { args << '-no-retry-compilation' }
 			args << root
 			build := cmdexec.run(@VEXE, args)
+			if cocoa && mode == 'no_retry' {
+				assert build.exit_code != 0, build.output
+				assert build.output.contains('FastC Objective-C inputs require Clang'), build.output
+				continue
+			}
 			assert build.exit_code == 0, build.output
-			assert build.output.contains('tcc.exe'), build.output
+			assert build.output.contains(if cocoa { 'clang' } else { 'tcc.exe' }), build.output
 			assert !build.output.contains('regenerating it with'), build.output
 			assert !build.output.contains('redefined'), build.output
 			run := cmdexec.run(program, [])
 			assert run.exit_code == 0, run.output
-			assert run.output.trim_space() == 'tinyc\ntinyc', run.output
+			assert run.output.trim_space() == if cocoa { 'clang\nclang' } else { 'tinyc\ntinyc' }, run.output
 		}
 	}
 	os.write_file(source, '#error fastc_tcc_failure\n' + body) or { panic(err) }
@@ -119,6 +124,11 @@ fn main() {
 		if mode == 'prod' { args << '-prod' }
 		args << root
 		build := cmdexec.run(@VEXE, args)
+		if mode == 'no_retry' {
+			assert build.exit_code != 0, build.output
+			assert build.output.contains('FastC Objective-C inputs require Clang'), build.output
+			continue
+		}
 		assert build.exit_code == 0, build.output
 		run := cmdexec.run(program, [])
 		assert run.exit_code == 0, run.output
@@ -130,8 +140,8 @@ fn main() {
 	source := os.read_file(source_path) or { panic(err) }
 	os.write_file(source_path, source.replace('== 8', '== 9').replace('== 42', '== 43')) or { panic(err) }
 	program := os.join_path(root, 'program_changed')
-	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-cc', 'tcc', '-no-retry-compilation', '-o', program,
-		root])
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-cc', 'clang', '-no-retry-compilation', '-o',
+		program, root])
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output

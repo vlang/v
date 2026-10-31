@@ -301,3 +301,9 @@ fn test_implicit_tcc_builds_programs_using_the_macos_module() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'NSString'
 }
+
+fn test_tcc_failure_recognizes_the_bundled_executable_name() {
+	assert v3_is_tcc_compilation_failure('/tools/tcc.exe', 'file.c:2: error: expression expected before @')
+	assert v3_is_tcc_compilation_failure('/tools/tinyc.exe', 'file.c:2: error: unsupported syntax')
+	assert !v3_is_tcc_compilation_failure('/tools/clang', 'file.c:2: error: unsupported syntax')
+}
