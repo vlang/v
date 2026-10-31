@@ -10558,7 +10558,11 @@ pub fn run(args []string) {
 		no_cache = true
 	}
 	should_run = should_run && !skip_running
-	native_linux_object := backend in ['arm64', 'riscv64', 'loongarch64'] && target_os == 'linux' && explicit_output
+	native_linux_object := (backend in ['arm64', 'riscv64', 'loongarch64'] && target_os == 'linux' && explicit_output) || (backend == 'x64' && target_os in [
+		'linux',
+		'macos',
+		'windows',
+	] && explicit_output)
 		&& output_file.ends_with('.o')
 	if is_o && !native_linux_object && (backend !in ['c', 'fastc'] || !explicit_output
 		|| (!output_file.ends_with('.c') && !output_file.ends_with('.o'))) {
@@ -10829,10 +10833,7 @@ pub fn run(args []string) {
 		exit(1)
 	}
 	if backend == 'x64' {
-		$if !linux || !amd64 {
-			eprintln('the x64 backend currently requires a linux/amd64 host')
-			exit(1)
-		}
+		// Allow cross-compilation from any host; x64 codegen is platform-independent.
 	}
 	if backend == 'x64' && is_shared {
 		eprintln('the x64 backend does not support `-shared` yet')
@@ -14419,7 +14420,7 @@ pub fn run(args []string) {
 				exit(1)
 			}
 			mut m := ssa.build_with_options(a, config.used_fns, pre_tc, ssa.BuildOptions{
-				target:         ssa.TargetData{ ptr_size: 4 }
+				target:         ssa.TargetData{ ptr_size: 4, os_is_linux: target.os == 'linux' }
 				track_uses:     is_prod
 				exact_used_fns: true
 				source_modules: config.source_modules
@@ -14482,6 +14483,7 @@ pub fn run(args []string) {
 				test_run_only:        run_only
 				exact_used_fns:       true
 				use_native_c_sources: true
+				target:               ssa.TargetData{ ptr_size: 8, endian_little: true, os_is_linux: target.os == 'linux' }
 			})
 			b.step('ssa build')
 			b.metric('SSA values before optimize', m.values.len, 'values')
@@ -14516,67 +14518,85 @@ pub fn run(args []string) {
 				g.write_file(obj_file)
 			}
 			b.step('x64 object')
-			x64_object_optimization_flags := v3_prod_c_object_optimization_flags(is_prod,
-				no_prod_options, false, parallel_cc, false)
-			native_support := x64_native_support_object(a, prefs, user_c_flags,
-				x64_object_optimization_flags, c_compiler) or {
-				os.rm(obj_file) or {}
-				eprintln(err.msg())
-				exit(1)
+			// Object-only mode: skip linking for cross-compilation (host != target)
+			x64_cross_compile := is_o && (pref.host_target().os != target.os || pref.host_target().arch != target.arch)
+			if x64_cross_compile {
+				os.mv(obj_file, bin_file) or {
+					eprintln(err.msg())
+					exit(1)
+				}
+				b.step('link')
+				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			}
+			if !x64_cross_compile {
+				x64_object_optimization_flags := v3_prod_c_object_optimization_flags(is_prod,
+					no_prod_options, false, parallel_cc, false)
+				native_support := x64_native_support_object(a, prefs, user_c_flags,
+					x64_object_optimization_flags, c_compiler) or {
+					os.rm(obj_file) or {}
+					eprintln(err.msg())
+					exit(1)
+				}
 
-			mut linker_args := ['-no-pie', obj_file, '-o', bin_file]
-			if native_support.object.len > 0 {
-				linker_args << native_support.object
-			}
-			linker := if c_compiler in ['', 'tinyc', 'tcc'] { 'cc' } else { c_compiler }
-			mut native_link_flags := x64_native_link_flags(native_support.flags)
-			if native_link_flags.len > 0 {
-				target_args := c_compiler_target_args(prefs.target, linker, c_compiler_explicit,
-					'') or {
-					eprintln(err.msg())
+				mut linker_args := ['-no-pie', obj_file, '-o', bin_file]
+				if native_support.object.len > 0 {
+					linker_args << native_support.object
+				}
+				linker := if c_compiler in ['', 'tinyc', 'tcc'] { 'cc' } else { c_compiler }
+				mut native_link_flags := x64_native_link_flags(native_support.flags)
+				if native_link_flags.len > 0 {
+					target_args := c_compiler_target_args(prefs.target, linker, c_compiler_explicit,
+						'') or {
+						eprintln(err.msg())
+						exit(1)
+					}
+					mut native_object_stats := CObjectCacheStats{}
+					native_link_flags = prepare_c_flags_for_link(native_link_flags,
+						environment_c_flags, []string{}, x64_object_optimization_flags, c99, no_std,
+						'', target_args, prefs.target, linker, false, os.vtmp_dir(),
+						mut native_object_stats) or {
+						eprintln(err.msg())
+						exit(1)
+					}
+				}
+				linker_args << native_link_flags
+				if target.os == 'linux' {
+					linker_args << ['-lm', '-ldl', '-lpthread']
+				} else if target.os == 'macos' {
+					linker_args << ['-lm', '-lpthread']
+				} else {
+					linker_args << ['-lm']
+				}
+				linker_args << link_ld_flags
+				if show_cc {
+					println('${linker} ${linker_args.join(' ')}')
+				}
+				link_result := cmdexec.run(linker, linker_args)
+				os.rm(obj_file) or {}
+				os.rm(native_support.source) or {}
+				os.rm(native_support.object) or {}
+				if link_result.exit_code != 0 {
+					if link_result.output.len > 0 {
+						eprintln(link_result.output)
+					}
+					eprintln('x64 link failed with `${linker}`')
 					exit(1)
 				}
-				mut native_object_stats := CObjectCacheStats{}
-				native_link_flags = prepare_c_flags_for_link(native_link_flags,
-					environment_c_flags, []string{}, x64_object_optimization_flags, c99, no_std,
-					'', target_args, prefs.target, linker, false, os.vtmp_dir(),
-					mut native_object_stats) or {
-					eprintln(err.msg())
-					exit(1)
+				b.step('link')
+				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+				if should_run {
+					run_result := run_binary(bin_file, run_args, remove_binary_after_run)
+					if run_result != 0 {
+						exit(run_result)
+					}
+					b.step('run')
+				} else if test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
+					test_result := run_test_binary(bin_file, explicit_output)
+					if test_result != 0 {
+						exit(test_result)
+					}
+					b.step('test')
 				}
-			}
-			linker_args << native_link_flags
-			linker_args << ['-lm', '-ldl', '-lpthread']
-			linker_args << link_ld_flags
-			if show_cc {
-				println('${linker} ${linker_args.join(' ')}')
-			}
-			link_result := cmdexec.run(linker, linker_args)
-			os.rm(obj_file) or {}
-			os.rm(native_support.source) or {}
-			os.rm(native_support.object) or {}
-			if link_result.exit_code != 0 {
-				if link_result.output.len > 0 {
-					eprintln(link_result.output)
-				}
-				eprintln('x64 link failed with `${linker}`')
-				exit(1)
-			}
-			b.step('link')
-			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
-			if should_run {
-				run_result := run_binary(bin_file, run_args, remove_binary_after_run)
-				if run_result != 0 {
-					exit(run_result)
-				}
-				b.step('run')
-			} else if test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
-				test_result := run_test_binary(bin_file, explicit_output)
-				if test_result != 0 {
-					exit(test_result)
-				}
-				b.step('test')
 			}
 		} $else {
 			eprintln('x64 support is not compiled into this executable')
@@ -14595,6 +14615,7 @@ pub fn run(args []string) {
 				test_files:        test_files
 				test_run_only:     run_only
 				exact_used_fns:    true
+				target:            ssa.TargetData{ ptr_size: 8, endian_little: true, os_is_linux: true }
 			})
 			b.step('ssa build')
 
@@ -14632,6 +14653,7 @@ pub fn run(args []string) {
 				test_files:        test_files
 				test_run_only:     run_only
 				exact_used_fns:    true
+				target:            ssa.TargetData{ ptr_size: 8, endian_little: true, os_is_linux: true }
 			})
 			b.step('ssa build')
 
@@ -25824,4 +25846,3 @@ fn module_subdir_has_v_sources(module_root string, dir string, prefs &pref.Prefe
 	}
 	return false
 }
-

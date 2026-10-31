@@ -14608,7 +14608,13 @@ fn (mut b Builder) register_builtin_method_stub(name string, call_id flat.NodeId
 		}
 	}
 	ret_type := b.call_expr_result_type(call_id, node)
-	return b.register_synthetic_function(name, ret_type, params)
+	func_id := b.register_synthetic_function(name, ret_type, params)
+	if name.contains('Channel.') && (name.contains('try_') || name.ends_with('.pop')) {
+		mut f := b.m.funcs[func_id]
+		f.is_c_extern = true
+		b.m.funcs[func_id] = f
+	}
+	return func_id
 }
 
 // register_missing_call_stub materializes a checker-validated call whose native

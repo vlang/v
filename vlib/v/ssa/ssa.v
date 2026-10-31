@@ -405,6 +405,7 @@ pub struct TargetData {
 pub:
 	ptr_size      int  = 8
 	endian_little bool = true
+	os_is_linux   bool = false
 }
 
 // Module represents module data used by ssa.
