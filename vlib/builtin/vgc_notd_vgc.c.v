@@ -4,34 +4,42 @@ module builtin
 // because of the missing definitions in $if vgc ? { } blocks.
 // Note: they will NOT be called, since calls to them are wrapped with `$if vgc ? { }`.
 
+@[unsafe]
 fn vgc_malloc(n uint) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn vgc_malloc_noscan(n uint) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn vgc_malloc_typed_opts(n uint, ptrmap u64, ptr_words u8, zero_fill bool) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn vgc_malloc_noscan_opts(n uint, zero_fill bool) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn vgc_memdup(src voidptr, n int) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn vgc_memdup_noscan(src voidptr, n int) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn vgc_realloc(old_ptr voidptr, new_size uint) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn vgc_calloc(n uint) voidptr {
 	return unsafe { nil }
 }

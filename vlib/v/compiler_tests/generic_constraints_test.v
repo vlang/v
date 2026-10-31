@@ -1638,6 +1638,7 @@ fn main() {}
 	], res.output
 }
 
+@[unsafe]
 fn test_a_generic_type_written_in_an_expression_is_checked() {
 	// Explicit type arguments of a call, map, array and channel literals, `sizeof`,
 	// `typeof`, `isreftype`, casts to a pointer or an option, and a function literal's

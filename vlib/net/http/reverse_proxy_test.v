@@ -131,6 +131,7 @@ fn (mut h UpstreamBackendHandler) handle(req Request) Response {
 	}
 }
 
+@[unsafe]
 fn test_reverse_proxy_end_to_end() {
 	// Start an upstream backend server on an ephemeral port
 	mut upstream := &Server{

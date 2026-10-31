@@ -59,6 +59,7 @@ fn listen_ssl_tcp(saddr string, family net.AddrFamily, options net.ListenOptions
 	return error('net.openssl SSLListener.init, no addresses resolved for ${saddr}')
 }
 
+@[unsafe]
 fn (mut l SSLListener) init() ! {
 	if l.config.cert == '' || l.config.cert_key == '' {
 		return error('net.openssl SSLListener.init, no certificate or key provided')
@@ -163,6 +164,7 @@ pub fn (mut l SSLListener) accept() !&SSLConn {
 }
 
 // accept_without_handshake accepts a new TCP connection but does not perform the handshake yet.
+@[unsafe]
 pub fn (mut l SSLListener) accept_without_handshake() !&SSLConn {
 	mut tcp_conn := l.tcp_listener.accept()!
 
@@ -230,6 +232,7 @@ pub fn (mut conn SSLConn) accept_handshake() ! {
 }
 
 // shutdown shuts down the SSL listener and releases the context.
+@[unsafe]
 pub fn (mut l SSLListener) shutdown() ! {
 	if l.sslctx != 0 {
 		C.SSL_CTX_free(l.sslctx)

@@ -167,6 +167,7 @@ fn main() {
 	}
 }
 
+@[unsafe]
 fn test_sumtype_zero_reassignment_keeps_scalar_variant() {
 	dir := os.join_path(os.vtmp_dir(), 'sumtype_zero_${os.getpid()}')
 	os.mkdir_all(dir)!

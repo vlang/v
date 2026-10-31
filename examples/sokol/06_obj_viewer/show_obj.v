@@ -34,6 +34,7 @@ import obj
 
 #include "@VMODROOT/gouraud.h" # It should be generated with `v shader .` (see the instructions at the top of this file)
 
+@[unsafe]
 fn C.gouraud_shader_desc(gfx.Backend) &gfx.ShaderDesc
 
 const win_width = 600

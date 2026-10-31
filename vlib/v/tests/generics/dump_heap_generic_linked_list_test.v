@@ -27,6 +27,7 @@ fn dump_heap_generic_deref_element[T](a &T) T {
 	return T{}
 }
 
+@[unsafe]
 fn test_dump_does_not_corrupt_heap_generic_linked_list() {
 	n3 := {
 		'name': DumpHeapGenericNode('3')

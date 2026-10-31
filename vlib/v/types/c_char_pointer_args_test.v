@@ -12,6 +12,7 @@ fn c_char_pointer_check(name string, files map[string]string) os.Result {
 	return os.exec([@VEXE, '-new-compiler', '-check', root])
 }
 
+@[unsafe]
 fn test_c_calls_accept_character_pointers_of_the_same_depth() {
 	result := c_char_pointer_check('args', {
 		'main.v': 'module main
@@ -47,6 +48,7 @@ fn main() {
 	assert result.output.contains('cannot use `&&i8` as `&char` in argument 1 to `C.strlen`'), result.output
 }
 
+@[unsafe]
 fn test_translated_code_stores_character_pointer_results() {
 	source := "struct Holder {
 mut:

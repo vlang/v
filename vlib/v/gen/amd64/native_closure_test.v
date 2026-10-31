@@ -10,6 +10,7 @@ $if linux && amd64 {
 	import v.types
 }
 
+@[unsafe]
 fn test_native_spawn_noreturn_worker_preserves_parent_execution() {
 	$if linux && amd64 {
 		for building_v in [false, true] {

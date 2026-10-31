@@ -11,6 +11,7 @@ mut:
 	next &ListNode[T] = unsafe { nil }
 }
 
+@[unsafe]
 fn create[T](arr []T) &List[T] {
 	assert arr.len > 0
 	mut n := &ListNode[T]{

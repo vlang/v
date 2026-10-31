@@ -180,6 +180,7 @@ fn test_appkit_common_monitor_identity_reconciliation() {
 	assert third[1].id.generation == 1
 }
 
+@[unsafe]
 fn test_appkit_common_clipboard_owner_borrow_and_titlebar_contracts() {
 	assert appkit_clipboard_length_is_valid(0)
 	assert appkit_clipboard_length_is_valid(service_appkit_clipboard_max_bytes)

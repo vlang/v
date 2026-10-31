@@ -13,6 +13,7 @@ fn get_value_from_ref[T](val &T) T {
 	return *val
 }
 
+@[unsafe]
 fn (e &Encoder) encode_struct[U](val U, mut wr Writer) ! {
 	$for field in U.fields {
 		$if field.typ is &Association {
@@ -24,6 +25,7 @@ fn (e &Encoder) encode_struct[U](val U, mut wr Writer) ! {
 	}
 }
 
+@[unsafe]
 fn test_main() {
 	e := Encoder{}
 	mut sb := Writer{}

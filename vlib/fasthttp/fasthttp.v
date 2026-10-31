@@ -127,6 +127,7 @@ fn (mut resp HttpResponse) take_or_clone_content() []u8 {
 	return resp.content.clone()
 }
 
+@[unsafe]
 fn end_request_arena_current_thread(request_arena voidptr) {
 	$if prealloc {
 		if request_arena != unsafe { nil } {
@@ -135,6 +136,7 @@ fn end_request_arena_current_thread(request_arena voidptr) {
 	}
 }
 
+@[unsafe]
 fn leave_request_arena_current_thread(request_arena voidptr) {
 	$if prealloc {
 		if request_arena != unsafe { nil } {
@@ -143,6 +145,7 @@ fn leave_request_arena_current_thread(request_arena voidptr) {
 	}
 }
 
+@[unsafe]
 fn abandon_request_arena_current_thread(request_arena voidptr) {
 	$if prealloc {
 		if request_arena != unsafe { nil } {
@@ -151,22 +154,26 @@ fn abandon_request_arena_current_thread(request_arena voidptr) {
 	}
 }
 
+@[unsafe]
 fn (mut resp HttpResponse) attach_request_arena_if_empty(request_arena voidptr) {
 	if resp.request_arena == unsafe { nil } {
 		resp.request_arena = request_arena
 	}
 }
 
+@[unsafe]
 fn (mut resp HttpResponse) end_request_arena_current_thread() {
 	end_request_arena_current_thread(resp.request_arena)
 	resp.request_arena = unsafe { nil }
 }
 
+@[unsafe]
 fn (mut resp HttpResponse) abandon_request_arena_current_thread() {
 	abandon_request_arena_current_thread(resp.request_arena)
 	resp.request_arena = unsafe { nil }
 }
 
+@[unsafe]
 fn (mut resp HttpResponse) take_request_arena() voidptr {
 	request_arena := resp.request_arena
 	resp.request_arena = unsafe { nil }
@@ -292,6 +299,7 @@ pub fn (s &Server) handle() ServerHandle {
 }
 
 // wait_till_running waits until the server transitions to its serving state.
+@[unsafe]
 pub fn (h ServerHandle) wait_till_running(params WaitTillRunningParams) !int {
 	if h.ptr == unsafe { nil } {
 		return error('server handle is not initialized')
@@ -305,6 +313,7 @@ pub fn (h ServerHandle) wait_till_running(params WaitTillRunningParams) !int {
 }
 
 // shutdown gracefully stops accepting new requests and waits for active requests to finish.
+@[unsafe]
 pub fn (h ServerHandle) shutdown(params ShutdownParams) ! {
 	if h.ptr == unsafe { nil } {
 		return error('server handle is not initialized')

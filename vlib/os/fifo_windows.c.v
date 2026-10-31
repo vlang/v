@@ -20,6 +20,7 @@ fn fifo_pipe_name(path string) string {
 // fifo_server_windows creates the named pipe and blocks in ConnectNamedPipe
 // until a client connects. A client that connected first (error 535) counts
 // as connected.
+@[unsafe]
 fn fifo_server_windows(path string) !&Fifo {
 	name := fifo_pipe_name(path)
 	h := C.CreateNamedPipeW(name.to_wide(), fifo_pipe_access_duplex, 0, 1, 65536,
@@ -40,6 +41,7 @@ fn fifo_server_windows(path string) !&Fifo {
 }
 
 // fifo_client_windows connects to the named pipe for writing.
+@[unsafe]
 fn fifo_client_windows(path string) !&Fifo {
 	name := fifo_pipe_name(path)
 	h := C.CreateFileW(name.to_wide(), 0x40000000, 0, unsafe { nil }, 3, 0x80,
@@ -53,6 +55,7 @@ fn fifo_client_windows(path string) !&Fifo {
 }
 
 // fifo_read_windows reads up to buf.len bytes.
+@[unsafe]
 fn fifo_read_windows(h voidptr, mut buf []u8) !int {
 	if h == unsafe { nil } { return error_file_not_opened() }
 	if buf.len == 0 { return Eof{} }
@@ -66,6 +69,7 @@ fn fifo_read_windows(h voidptr, mut buf []u8) !int {
 }
 
 // fifo_write_windows writes buf.
+@[unsafe]
 fn fifo_write_windows(h voidptr, buf []u8) !int {
 	if h == unsafe { nil } { return error_file_not_opened() }
 	mut wrote := u32(0)
@@ -76,6 +80,7 @@ fn fifo_write_windows(h voidptr, buf []u8) !int {
 }
 
 // fifo_close_windows disconnects (servers) and closes the handle.
+@[unsafe]
 fn fifo_close_windows(h voidptr, is_server bool) {
 	if h == unsafe { nil } {
 		return

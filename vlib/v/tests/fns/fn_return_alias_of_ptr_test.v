@@ -8,6 +8,7 @@ fn get_ptr(arg ExampleStruct) voidptr {
 	return arg.handle
 }
 
+@[unsafe]
 fn test_fn_return_alias_of_ptr() {
 	h := ExampleStruct{}
 	r := get_ptr(h)

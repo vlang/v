@@ -488,7 +488,7 @@ fn scalar_plain_alias_wrapper(seed int) bool {
 	return scalar_consume_carrier(carrier) or { false }
 }
 
-@[noinline]
+@[noinline; unsafe]
 fn scalar_plain_reassigned_wrapper(seed int) bool {
 	local := EncodedAddressValue{seed}
 	mut carrier := ScalarCarrier{unsafe { nil }}

@@ -4,6 +4,7 @@ import net
 
 // idle_tcp_closed checks for peer EOF without consuming data or waiting. The
 // connection is checked out exclusively, so no other reader can race the peek.
+@[unsafe]
 fn (c &H1PooledConn) idle_tcp_closed() bool {
 	if c.tcp == unsafe { nil } {
 		return false

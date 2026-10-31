@@ -1,3 +1,4 @@
+@[unsafe]
 fn encode[T](t T) {
 	$if T is voidptr {
 		assert true
@@ -9,6 +10,7 @@ fn encode[T](t T) {
 }
 
 // vfmt off
+@[unsafe]
 fn test_main() {
 	encode(unsafe { voidptr(0) })
 	encode(unsafe { nil })

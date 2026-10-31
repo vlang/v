@@ -26,6 +26,7 @@ fn egl_window_binding(id WindowId, generation u64, surface voidptr) EglBindingId
 	}
 }
 
+@[unsafe]
 fn egl_binding_is_exact(actual EglBindingIdentity, expected EglBindingIdentity) bool {
 	return actual.kind == expected.kind && actual.window == expected.window
 		&& actual.target_generation == expected.target_generation
@@ -36,6 +37,7 @@ fn egl_binding_scope(binding EglBindingIdentity) NativeRenderScope {
 	return if binding.kind == .window { .window_target } else { .anchor }
 }
 
+@[unsafe]
 fn egl_result_has_current_identity(result NativeRenderResult, context voidptr) bool {
 	return context != unsafe { nil } && result.current_context == context
 		&& result.current_draw_surface != unsafe { nil }

@@ -5,6 +5,7 @@ import macos
 #flag darwin -framework Cocoa
 
 // on_action is the Objective-C IMP for NSMenuItem clicks.
+@[unsafe]
 fn on_action(_ macos.Id, _ macos.Sel, sender macos.Id) {
 	controller := macos.msg_id(sender, 'target')
 	params_ptr := macos.get_associated_object(controller, controller)
@@ -18,6 +19,7 @@ fn on_action(_ macos.Id, _ macos.Sel, sender macos.Id) {
 	}
 }
 
+@[unsafe]
 fn ensure_controller_class() macos.Id {
 	cls := macos.get_class('VTrayController')
 	if cls != unsafe { nil } {
@@ -84,6 +86,7 @@ pub fn tray_app_init(params TrayParams) &TrayInfo {
 }
 
 // tray_app_loop processes a single NSEvent, blocking until one arrives.
+@[unsafe]
 pub fn tray_app_loop(info &TrayInfo) {
 	app := macos.Id(info.app)
 	until := macos.msg_id(macos.get_class('NSDate'), 'distantFuture')

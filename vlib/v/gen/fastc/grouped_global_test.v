@@ -4,6 +4,7 @@ import os
 import v.cmdexec
 import v.pref
 
+@[unsafe]
 fn test_fastc_same_line_grouped_globals_preserve_types_initializers_and_callbacks() {
 	$if !macos && !linux {
 		return

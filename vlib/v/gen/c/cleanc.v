@@ -313,6 +313,7 @@ fn (g &FlatGen) cached_file_import(file string, alias string) ?string {
 	return module_name
 }
 
+@[unsafe]
 fn cgen_worker_scope_begin(enabled bool) voidptr {
 	$if prealloc {
 		if enabled {
@@ -329,6 +330,7 @@ const cgen_chunk_arena_keep_bytes = int($d('cgen_chunk_arena_keep_mb', 1)) * 102
 // cgen_worker_scope_reenter makes a chunk arena that was left current again,
 // rewound, for the next chunk, keeping up to `keep_bytes` of it mapped.
 // False means the caller needs a new arena.
+@[unsafe]
 fn cgen_worker_scope_reenter(scope voidptr, keep_bytes int) bool {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -338,6 +340,7 @@ fn cgen_worker_scope_reenter(scope voidptr, keep_bytes int) bool {
 	return false
 }
 
+@[unsafe]
 fn cgen_worker_scope_leave(scope voidptr) {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -370,6 +373,7 @@ fn cgen_worker_scope_resume(scope voidptr, state voidptr) {
 	}
 }
 
+@[unsafe]
 fn cgen_worker_scope_free(scope voidptr) {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -395,7 +399,7 @@ fn clone_cgen_string_bool_lookup(values map[string]bool) map[string]bool {
 	return cloned
 }
 
-@[inline]
+@[inline; unsafe]
 fn cgen_scope_owns(scope voidptr, ptr voidptr) bool {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -10671,6 +10675,7 @@ const c_source_non_fn_keywords = ['if', 'for', 'while', 'switch', 'catch', 'retu
 // c_source_defined_fn_names returns the names of the functions that a C, C++ or
 // Objective-C source defines: an identifier directly followed by a parameter list
 // and then a body. Calls and prototypes are not followed by `{`.
+@[unsafe]
 fn c_source_defined_fn_names(text string) []string {
 	src := c_strip_comments(text)
 	mut names := []string{}

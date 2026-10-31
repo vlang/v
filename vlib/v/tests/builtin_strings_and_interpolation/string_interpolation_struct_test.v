@@ -81,6 +81,7 @@ fn test_autostr_address_guard_bounds_cycles_beyond_stack_capacity() {
 	assert s.len < 20_000
 }
 
+@[unsafe]
 fn render_circular_concurrently() bool {
 	for _ in 0 .. 200 {
 		mut elem := &Circular{unsafe { nil }}
@@ -141,6 +142,7 @@ fn test_autostr_address_guard_distinguishes_first_field_type() {
 	assert s == 'AddressOuter{|    child: AddressChild{|        value: 7|    }|    ref: &AddressChild{|        value: 7|    }|}'
 }
 
+@[unsafe]
 fn test_stack_circular_elem_auto_str() {
 	mut elem := Circular{unsafe { nil }}
 	elem.next = &elem
@@ -148,6 +150,7 @@ fn test_stack_circular_elem_auto_str() {
 	assert s == 'Circular{|    next: &<circular>|}'
 }
 
+@[unsafe]
 fn test_heap_circular_elem_auto_str() {
 	mut elem := &Circular{unsafe { nil }}
 	elem.next = elem

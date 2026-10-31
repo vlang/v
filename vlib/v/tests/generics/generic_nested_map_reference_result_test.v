@@ -2,6 +2,7 @@ fn nested_map_get[K, V](m &map[K]V, k K, zero V) V {
 	return (*m)[k] or { zero }
 }
 
+@[unsafe]
 fn nested_map_nil_ref[T]() &T {
 	return unsafe { nil }
 }

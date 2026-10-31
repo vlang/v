@@ -194,7 +194,7 @@ fn no_race_return(c chan int) (int, int) {
 	return a.v, 10
 }
 
-@[markused]
+@[markused; unsafe]
 fn issue5431() {
 	p := &&InlType(unsafe { nil })
 	if inlinetest(p).x && inlinetest(p).y {

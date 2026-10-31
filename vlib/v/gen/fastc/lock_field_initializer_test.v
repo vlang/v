@@ -3,6 +3,7 @@ module fastc
 import os
 import v.cmdexec
 
+@[unsafe]
 fn test_fastc_lock_named_fields_preserve_explicit_initializers() {
 	$if !macos && !linux {
 		return

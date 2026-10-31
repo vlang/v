@@ -58,7 +58,7 @@ fn request_head_error_response(err IError) []u8 {
 // The va_scope_* helpers wrap V's -prealloc request-arena API so the append
 // handler can keep the same per-request bump-allocation behavior the legacy
 // fasthttp reactor provided. They compile to nothing without -prealloc.
-@[inline]
+@[inline; unsafe]
 fn va_scope_begin() voidptr {
 	$if prealloc {
 		return unsafe { prealloc_scope_begin() }
@@ -66,7 +66,7 @@ fn va_scope_begin() voidptr {
 	return unsafe { nil }
 }
 
-@[inline]
+@[inline; unsafe]
 fn va_scope_leave(arena voidptr) {
 	$if prealloc {
 		if arena != unsafe { nil } {
@@ -75,7 +75,7 @@ fn va_scope_leave(arena voidptr) {
 	}
 }
 
-@[inline]
+@[inline; unsafe]
 fn va_scope_free_after(arena voidptr) {
 	$if prealloc {
 		if arena != unsafe { nil } {
@@ -84,7 +84,7 @@ fn va_scope_free_after(arena voidptr) {
 	}
 }
 
-@[inline]
+@[inline; unsafe]
 fn va_scope_end(arena voidptr) {
 	$if prealloc {
 		if arena != unsafe { nil } {
@@ -93,7 +93,7 @@ fn va_scope_end(arena voidptr) {
 	}
 }
 
-@[inline]
+@[inline; unsafe]
 fn va_scope_abandon(arena voidptr) {
 	$if prealloc {
 		if arena != unsafe { nil } {

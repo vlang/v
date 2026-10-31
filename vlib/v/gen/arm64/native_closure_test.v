@@ -10,6 +10,7 @@ $if macos && arm64 {
 	import v.types
 }
 
+@[unsafe]
 fn test_native_spawn_noreturn_worker_preserves_parent_execution() {
 	$if macos && arm64 {
 		for building_v in [false, true] {

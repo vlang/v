@@ -136,6 +136,7 @@ pub mut:
 }
 
 // https://www.sqlite.org/c3ref/vfs_find.html
+@[unsafe]
 fn C.sqlite3_vfs_find(&char) &C.sqlite3_vfs
 fn C.sqlite3_vfs_register(&C.sqlite3_vfs, i32) i32
 fn C.sqlite3_vfs_unregister(&C.sqlite3_vfs) i32
@@ -151,6 +152,7 @@ pub fn get_vfs(name string) !&Sqlite3_vfs {
 }
 
 // get_default_vfs Asks sqlite for default VFS instance
+@[unsafe]
 pub fn get_default_vfs() !&Sqlite3_vfs {
 	res := C.sqlite3_vfs_find(unsafe { nil })
 	if res != unsafe { nil } {
@@ -200,6 +202,7 @@ pub enum OpenModeFlag {
 // Flags give control over readonly and create decisions. Specific VFS can be chosen.
 // Pass '' for vfs_name, if you want to use the default VFS for the current platform,
 // (which is equivalent to 'win32' on Windows, and 'unix' on !Windows systems).
+@[unsafe]
 pub fn connect_full(path string, mode_flags []OpenModeFlag, vfs_name string) !DB {
 	db := &C.sqlite3(unsafe { nil })
 	path_cstr := sqlite_cstring(path)

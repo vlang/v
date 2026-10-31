@@ -38,6 +38,7 @@ fn (mut pre MarkusedPrecollect) finish() []BodyCalls {
 
 fn (mut pre MarkusedPrecollect) release() {}
 
+@[unsafe]
 fn markused_worker_scope_begin(_ bool) voidptr {
 	return unsafe { nil }
 }

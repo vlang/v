@@ -4,6 +4,7 @@ import os
 import v.cmdexec
 import v.pref
 
+@[unsafe]
 fn test_fastc_option_void_callback_fields_aliases_and_globals() {
 	$if !macos && !linux {
 		return

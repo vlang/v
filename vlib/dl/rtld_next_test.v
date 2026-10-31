@@ -2,6 +2,7 @@ import dl
 
 type RealOpen = fn (charptr, int, int) int
 
+@[unsafe]
 fn test_rtld_next() {
 	$if windows {
 		println('skipping test_rtld_next on windows')

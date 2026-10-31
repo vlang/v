@@ -18,7 +18,7 @@ $if windows {
 	#include <sys/resource.h>
 }
 
-@[inline]
+@[inline; unsafe]
 fn get_time() i64 {
 	// time.now() is slow
 	return i64(C.time(unsafe { nil }))

@@ -249,6 +249,7 @@ struct FreshMapField {
 // track_fresh_map_field_assignment records `alias.field = m.clone()`: until its block
 // ends or `alias` (or the field) is assigned again, entry writes to `alias.field`
 // reach only the fresh map, not the immutable value `alias` was copied from.
+@[unsafe]
 fn (mut tc TypeChecker) track_fresh_map_field_assignment(op flat.Op, lhs_id flat.NodeId, rhs_id flat.NodeId) {
 	key := tc.expr_key(lhs_id)
 	if key.len == 0 {
@@ -300,6 +301,7 @@ fn (tc &TypeChecker) map_field_holder_is_local_value(id flat.NodeId) bool {
 // map_field_has_fresh_storage reports whether the map field `id` was assigned a fresh
 // clone earlier in this block, or in an enclosing block of the same loop iteration
 // (see track_fresh_map_field_assignment), and nothing in between could rebind it.
+@[unsafe]
 fn (mut tc TypeChecker) map_field_has_fresh_storage(id flat.NodeId) bool {
 	if tc.fn_context.fresh_map_fields.len == 0 || !tc.valid_node_id(id)
 		|| tc.a.node(id).kind != .selector {

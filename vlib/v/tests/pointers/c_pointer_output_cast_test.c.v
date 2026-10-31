@@ -1,6 +1,7 @@
 #flag -I @VEXEROOT/vlib/v/tests/pointers
 #include "c_pointer_output_cast.h"
 
+@[unsafe]
 fn C.pointer_output_cast_probe(&voidptr)
 fn C.pointer_output_pair_cast_probe(&voidptr, &voidptr) bool
 fn C.pointer_output_pair_cast_valid(voidptr, voidptr) bool
@@ -11,6 +12,7 @@ mut:
 	child_stdout_write &u32 = unsafe { nil }
 }
 
+@[unsafe]
 fn test_c_pointer_output_cast_updates_caller_storage() {
 	mut output := voidptr(unsafe { nil })
 	C.pointer_output_cast_probe(voidptr(&output))
@@ -20,6 +22,7 @@ fn test_c_pointer_output_cast_updates_caller_storage() {
 	}
 }
 
+@[unsafe]
 fn test_c_pointer_output_pair_cast_updates_local_handles() {
 	mut read_handle := voidptr(unsafe { nil })
 	mut write_handle := voidptr(unsafe { nil })

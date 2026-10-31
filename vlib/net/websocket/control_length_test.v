@@ -74,6 +74,7 @@ fn test_control_boundaries_preserve_wire_payload_and_masking() ! {
 	}
 }
 
+@[unsafe]
 fn test_write_control_rejects_before_dereferencing_socket() {
 	mut ws := Client{}
 	for opcode in [OPCode.ping, .pong, .close] {

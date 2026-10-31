@@ -796,6 +796,7 @@ fn test_typed_openapi_json_null_attribute_allows_null_without_global_option() {
 	assert encoded['state']! is json2.Null
 }
 
+@[unsafe]
 fn test_typed_openapi_pointer_nullability_covers_containers_and_responses() {
 	mut doc := new_openapi(title: 'Nil pointers')!
 	pointer := &int(unsafe { nil })

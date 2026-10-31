@@ -305,6 +305,7 @@ fn vls_decl_start(source string, node flat.Node) int {
 
 // vls_decl_contains_offset bounds a declaration whose node only spans its name.
 // Signatures and brace-delimited bodies remain in scope; following declarations do not.
+@[unsafe]
 fn (tc &TypeChecker) vls_decl_contains_offset(decl flat.Node, offset int) bool {
 	if decl.kind != .fn_decl {
 		return offset <= int(decl.pos.end)
@@ -436,6 +437,7 @@ fn vls_word_start(source string, offset int) int {
 // vls_offset_is_code reports whether the byte `offset` of `source` is code: not
 // in a comment, nor in the text of a string or of a character literal. An
 // expression interpolated in a string is code.
+@[unsafe]
 fn vls_offset_is_code(source string, offset int) bool {
 	mut s := scanner.new_scanner(&pref.Preferences{}, .scan_comments)
 	s.init(unsafe { nil }, source)

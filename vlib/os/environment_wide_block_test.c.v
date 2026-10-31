@@ -19,6 +19,7 @@ fn test_environment_wide_block_keeps_non_ascii_and_following_entries() {
 	assert variables['empty'] == ''
 }
 
+@[unsafe]
 fn test_environment_wide_block_handles_null_and_empty() {
 	assert environ_from_wide_block(unsafe { nil }).len == 0
 	zero := [u16(0), 0]!

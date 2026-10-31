@@ -326,6 +326,7 @@ fn (c &H2ServerConn) classify_stream(stream_id u32) H2StreamState {
 // serve_h2_conn drives a single HTTP/2 server-side connection until the
 // transport closes or a protocol error forces a GOAWAY. `handler` is invoked
 // once per fully-received request stream.
+@[unsafe]
 fn serve_h2_conn(mut transport H2Transport, mut handler Handler, remote_addr string) ! {
 	serve_h2_conn_with_idle_tracker(mut transport, mut handler, unsafe { nil }, 0, remote_addr)!
 }
@@ -378,6 +379,7 @@ fn (mut c H2ServerConn) serve(mut handler Handler) ! {
 	}
 }
 
+@[unsafe]
 fn (mut c H2ServerConn) should_track_idle_read() bool {
 	return c.idle_handle > 0 && c.idle_conns != unsafe { nil }
 }

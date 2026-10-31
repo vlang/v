@@ -4,6 +4,7 @@ import os
 import v.parser
 import v.pref
 
+@[unsafe]
 fn test_typed_global_initializers_reject_direct_null_reference_constants() {
 	path := os.join_path(os.vtmp_dir(), 'null_global_reference_${os.getpid()}.v')
 	os.write_file(path, 'struct Item { id int }

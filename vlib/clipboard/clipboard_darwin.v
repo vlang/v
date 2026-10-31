@@ -19,6 +19,7 @@ fn new_clipboard() &Clipboard {
 	}
 }
 
+@[unsafe]
 pub fn (cb &Clipboard) check_availability() bool {
 	return cb.pb != unsafe { nil }
 }
@@ -40,6 +41,7 @@ pub fn (cb &Clipboard) has_ownership() bool {
 	return false
 }
 
+@[unsafe]
 pub fn (mut cb Clipboard) set_text(text string) bool {
 	if cb.pb == unsafe { nil } {
 		return false
@@ -57,6 +59,7 @@ pub fn new_primary() &Clipboard {
 	panic('Primary clipboard is not supported on non-Linux systems.')
 }
 
+@[unsafe]
 pub fn (mut cb Clipboard) get_text() string {
 	cb.foo = 0
 	if cb.pb == unsafe { nil } {

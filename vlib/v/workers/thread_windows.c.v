@@ -19,6 +19,7 @@ struct WorkerThread {
 // callback runs behind a WINAPI thunk, so its C calling convention never has
 // to match the thread start routine's. A non-zero result means the thread
 // (or its thunk context) could not be created.
+@[unsafe]
 fn worker_thread_create(stack_size uint, start_routine fn (voidptr) voidptr, arg voidptr) (WorkerThread, int) {
 	mut id := u32(0)
 	handle := C.v3_win_thread_create(stack_size, start_routine, arg, &id)

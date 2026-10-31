@@ -12,6 +12,7 @@ mut:
 	charp  &char             = null_ptr
 }
 
+@[unsafe]
 fn test_ref_field_with_nil_const_default() {
 	c := RefDefaultCtx{}
 	assert c.window == unsafe { nil }

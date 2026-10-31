@@ -1,5 +1,6 @@
 module main
 
+@[unsafe]
 fn get_key_refcount() u32 {
 	key := &C._gpgme_key(unsafe { nil })
 	return key._refs

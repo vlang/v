@@ -5,6 +5,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 }
 
 $if gg_multiwindow ?|| x_multiwindow_render ? {
+	@[unsafe]
 	fn (mut backend AppKitBackend) create_renderer_anchor() ! {
 		$if darwin {
 			if backend.anchor_state != unsafe { nil } || backend.anchor_state_ticket != 0
@@ -106,6 +107,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend AppKitBackend) destroy_renderer_anchor() ! {
 		$if darwin {
 			backend.invalidate_readback_hook_generation()
@@ -138,6 +140,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend AppKitBackend) renderer_environment() !gfx.Environment {
 		$if darwin {
 			if backend.anchor_state == unsafe { nil } || backend.anchor_state_ticket == 0
@@ -159,6 +162,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend AppKitBackend) begin_renderer_anchor() !RenderFrame {
 		$if darwin {
 			if backend.render_health.blocks_graphics() || backend.anchor_state == unsafe { nil }
@@ -246,6 +250,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend AppKitBackend) end_renderer_anchor(frame RenderFrame) ! {
 		$if darwin {
 			drawable := frame.swapchain.metal.current_drawable
@@ -295,6 +300,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend AppKitBackend) abort_renderer_anchor(frame RenderFrame) ! {
 		$if darwin {
 			drawable := frame.swapchain.metal.current_drawable
@@ -344,6 +350,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend AppKitBackend) activate_render_frame(frame RenderFrame) BackendFrameAttempt {
 		$if darwin {
 			if backend.render_health != .ready || backend.batch_autorelease_pool == unsafe { nil }
@@ -495,6 +502,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend AppKitBackend) prove_renderer_shutdown_anchor() RendererShutdownProof {
 		$if darwin {
 			if backend.renderer_ready() && backend.anchor_state != unsafe { nil }

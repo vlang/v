@@ -16,6 +16,7 @@ fn overwrite_stack() int {
 	return filler[7]
 }
 
+@[unsafe]
 fn larger_binding(v int) &int {
 	return if a, b := maybe_pair(v) {
 		p := if a > b { &a } else { &b }
@@ -25,6 +26,7 @@ fn larger_binding(v int) &int {
 	}
 }
 
+@[unsafe]
 fn second_binding_changed_after_address(v int) &int {
 	return if a, mut b := maybe_pair(v) {
 		p := &b

@@ -574,6 +574,7 @@ fn (mut resources WindowResourceContext) retire_managed(key MultiWindowResourceK
 	runtime.mutex.unlock()
 }
 
+@[unsafe]
 fn (resources &WindowResourceContext) validate_managed_retire_context() ! {
 	if resources.app == unsafe { nil } || resources.app_instance != resources.app.app_instance {
 		return error(err_multiwindow_render_stale_lease)
@@ -582,6 +583,7 @@ fn (resources &WindowResourceContext) validate_managed_retire_context() ! {
 	resources.app.render_runtime.validate_resource_context(resources, .retire)!
 }
 
+@[unsafe]
 fn (resources &WindowResourceContext) validate_managed_resource_context(operation MultiWindowResourceOperation) ! {
 	if resources.app == unsafe { nil } || resources.app_instance != resources.app.app_instance {
 		return error(err_multiwindow_render_stale_lease)
@@ -614,6 +616,7 @@ fn (app &App) note_managed_retirement_boundary(batch_epoch u64) ! {
 	}
 }
 
+@[unsafe]
 fn validate_managed_range(data &gfx.Range) ! {
 	if data == unsafe { nil } || data.ptr == unsafe { nil } || data.size == 0 {
 		return error(err_multiwindow_render_invalid_descriptor)
@@ -729,6 +732,7 @@ fn (app &App) managed_image_sampler(image_id WindowImageId, sampler_id WindowSam
 	return image, sampler
 }
 
+@[unsafe]
 fn copy_managed_buffer_desc(desc &gfx.BufferDesc) !ManagedBufferDescCopy {
 	if desc == unsafe { nil } {
 		return error(err_multiwindow_render_invalid_descriptor)
@@ -763,6 +767,7 @@ fn copy_managed_buffer_desc(desc &gfx.BufferDesc) !ManagedBufferDescCopy {
 	return result
 }
 
+@[unsafe]
 fn validate_raw_buffer_desc(desc &gfx.BufferDesc) ! {
 	if desc == unsafe { nil } {
 		return error(err_multiwindow_render_invalid_descriptor)
@@ -790,6 +795,7 @@ fn validate_raw_buffer_desc(desc &gfx.BufferDesc) ! {
 	}
 }
 
+@[unsafe]
 fn validate_effective_buffer_desc(desc gfx.BufferDesc) ! {
 	if desc.size == 0 || desc.size > uint(0x7fffffff) || desc.data.size > uint(0x7fffffff) {
 		return error(err_multiwindow_render_invalid_descriptor)
@@ -814,6 +820,7 @@ fn validate_effective_buffer_desc(desc gfx.BufferDesc) ! {
 	}
 }
 
+@[unsafe]
 fn copy_managed_image_desc(desc &gfx.ImageDesc) !ManagedImageDescCopy {
 	if desc == unsafe { nil } {
 		return error(err_multiwindow_render_invalid_descriptor)
@@ -857,6 +864,7 @@ fn copy_managed_image_desc(desc &gfx.ImageDesc) !ManagedImageDescCopy {
 	return result
 }
 
+@[unsafe]
 fn validate_effective_image_desc(desc gfx.ImageDesc) ! {
 	if desc.width <= 0 || desc.height <= 0 || desc.sample_count <= 0 {
 		return error(err_multiwindow_render_invalid_descriptor)
@@ -875,6 +883,7 @@ fn validate_effective_image_desc(desc gfx.ImageDesc) ! {
 	}
 }
 
+@[unsafe]
 fn copy_managed_sampler_desc(desc &gfx.SamplerDesc) !ManagedSamplerDescCopy {
 	if desc == unsafe { nil } {
 		return error(err_multiwindow_render_invalid_descriptor)
@@ -896,6 +905,7 @@ fn copy_managed_sampler_desc(desc &gfx.SamplerDesc) !ManagedSamplerDescCopy {
 	return result
 }
 
+@[unsafe]
 fn copy_managed_pipeline_desc(desc &gfx.PipelineDesc) !ManagedPipelineDescCopy {
 	if desc == unsafe { nil } {
 		return error(err_multiwindow_render_invalid_descriptor)
@@ -917,6 +927,7 @@ fn copy_managed_pipeline_desc(desc &gfx.PipelineDesc) !ManagedPipelineDescCopy {
 	return result
 }
 
+@[unsafe]
 fn copy_managed_shader_desc(desc &gfx.ShaderDesc) !ManagedShaderDescCopy {
 	if desc == unsafe { nil } {
 		return error(err_multiwindow_render_invalid_descriptor)
@@ -942,6 +953,7 @@ fn copy_managed_shader_desc(desc &gfx.ShaderDesc) !ManagedShaderDescCopy {
 	return result
 }
 
+@[unsafe]
 fn copy_managed_shader_stage(mut stage gfx.ShaderStageDesc, mut strings []string, mut bytes [][]u8) ! {
 	stage.source = copy_managed_cstring(stage.source, mut strings)!
 	stage.entry = copy_managed_cstring(stage.entry, mut strings)!
@@ -971,6 +983,7 @@ fn copy_managed_shader_stage(mut stage gfx.ShaderStageDesc, mut strings []string
 	}
 }
 
+@[unsafe]
 fn copy_managed_cstring(value &char, mut owned []string) !&char {
 	if value == unsafe { nil } {
 		return unsafe { nil }
@@ -1002,6 +1015,7 @@ fn pointer_free_buffer_desc(desc gfx.BufferDesc) gfx.BufferDesc {
 	}
 }
 
+@[unsafe]
 fn pointer_free_shader_desc(desc gfx.ShaderDesc) gfx.ShaderDesc {
 	mut clean := desc
 	clean.label = unsafe { nil }
@@ -1014,6 +1028,7 @@ fn pointer_free_shader_desc(desc gfx.ShaderDesc) gfx.ShaderDesc {
 	return clean
 }
 
+@[unsafe]
 fn pointer_free_shader_stage(mut stage gfx.ShaderStageDesc) {
 	stage.source = unsafe { nil }
 	stage.bytecode = gfx.Range{}
@@ -1029,6 +1044,7 @@ fn pointer_free_shader_stage(mut stage gfx.ShaderStageDesc) {
 	}
 }
 
+@[unsafe]
 fn pointer_free_pipeline_desc(desc gfx.PipelineDesc) gfx.PipelineDesc {
 	mut clean := desc
 	clean.shader = gfx.Shader{}
@@ -1052,6 +1068,7 @@ fn pointer_free_sampler_desc(desc gfx.SamplerDesc) gfx.SamplerDesc {
 	}
 }
 
+@[unsafe]
 fn validate_image_data(data &gfx.ImageData, require_data bool) ! {
 	if data == unsafe { nil } {
 		return error(err_multiwindow_render_invalid_descriptor)

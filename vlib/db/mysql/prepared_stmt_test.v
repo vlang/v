@@ -1,6 +1,7 @@
 // vtest build: started_mysqld?
 import db.mysql
 
+@[unsafe]
 fn test_bind_res_keeps_legacy_array_types() {
 	mut stmt := mysql.Stmt{}
 	stmt.bind_res(unsafe { nil }, []&u8{}, []u32{}, []bool{}, 0)

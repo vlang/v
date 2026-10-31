@@ -140,6 +140,7 @@ pub fn csv_sequential_reader(cfg SequentialReaderConfig) !&SequentialReader {
 }
 
 // dispose_csv_reader release the resources used by the csv_reader
+@[unsafe]
 pub fn (mut cr SequentialReader) dispose_csv_reader() {
 	if cr.mem_buf_type == ram_csv {
 		// do nothing, ram buffer is static

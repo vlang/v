@@ -50,6 +50,7 @@ fn allocate_comptime_typeof_idx_ptrs[T](mut s T) {
 	}
 }
 
+@[unsafe]
 fn test_comptime_typeof_idx_struct_init() {
 	mut outer := ComptimeTypeofIdxOuter{}
 	allocate_comptime_typeof_idx_ptrs(mut outer)
