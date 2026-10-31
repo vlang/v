@@ -9,7 +9,7 @@ concurrency:
   group: final-compiler-gates-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  ubuntu-tcc:
+  tcc-linux:
     if: github.ref == 'refs/heads/ci/verify-final-gates-20261031'
     runs-on: ubuntu-24.04
     timeout-minutes: 40
