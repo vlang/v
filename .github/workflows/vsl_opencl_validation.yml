@@ -1,0 +1,91 @@
+name: VSL OpenCL runtime validation
+
+on:
+  push:
+    branches:
+      - ci/verify-vsl-opencl-runtime-20261031
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vsl-opencl-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ubuntu-opencl:
+    if: github.repository == 'vlang/v' && github.ref == 'refs/heads/ci/verify-vsl-opencl-runtime-20261031'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      VFLAGS: ''
+      VJOBS: 2
+      VMODULES: ${{ github.workspace }}/.ci-modules
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Check out pinned VSL main
+        uses: actions/checkout@v7
+        with:
+          repository: vlang/vsl
+          ref: 608ff6adb438ddfc67c539acffeb356d73876160
+          path: .ci-modules/vsl
+          persist-credentials: false
+      - name: Build V
+        run: make -j4
+      - name: Install the existing OpenCL header dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y opencl-headers
+      - name: Reproduce the original loader failure
+        run: |
+          python3 - <<'PY'
+          import ctypes
+          try:
+              ctypes.CDLL('libOpenCL.so')
+          except OSError as error:
+              print(f'Baseline loader unavailable: {error}')
+          else:
+              raise SystemExit('Expected the original header-only environment to lack libOpenCL.so')
+          PY
+          baseline_log="$RUNNER_TEMP/vsl-opencl-baseline.log"
+          if ./v -no-parallel -d vsl_vcl_dlopencl -cc gcc test \
+            .ci-modules/vsl/vcl/compute > "$baseline_log" 2>&1; then
+            cat "$baseline_log"
+            echo 'Expected the original VSL compute test to fail without the loader'
+            exit 1
+          fi
+          cat "$baseline_log"
+          grep -F 'vcl_cl_dl: Not Found Dl Library' "$baseline_log"
+      - name: Install the loader and CPU implementation
+        run: sudo apt-get install -y ocl-icd-opencl-dev pocl-opencl-icd
+      - name: Require an actual OpenCL CPU device
+        run: |
+          python3 - <<'PY'
+          import ctypes as c
+          lib = c.CDLL('libOpenCL.so')
+          lib.clGetPlatformIDs.argtypes = [c.c_uint, c.POINTER(c.c_void_p), c.POINTER(c.c_uint)]
+          lib.clGetPlatformIDs.restype = c.c_int
+          lib.clGetDeviceIDs.argtypes = [c.c_void_p, c.c_uint64, c.c_uint,
+                                        c.POINTER(c.c_void_p), c.POINTER(c.c_uint)]
+          lib.clGetDeviceIDs.restype = c.c_int
+          count = c.c_uint()
+          assert lib.clGetPlatformIDs(0, None, c.byref(count)) == 0
+          assert count.value > 0, 'No OpenCL platforms registered'
+          platforms = (c.c_void_p * count.value)()
+          assert lib.clGetPlatformIDs(count.value, platforms, None) == 0
+          cpu_count = 0
+          for platform in platforms:
+              devices = c.c_uint()
+              status = lib.clGetDeviceIDs(platform, 2, 0, None, c.byref(devices))
+              assert status in (0, -1), f'CPU enumeration failed: {status}'
+              if status == 0:
+                  cpu_count += devices.value
+          assert cpu_count > 0, 'No CPU device available; VSL tests must execute kernels'
+          print(f'OpenCL CPU devices: {cpu_count}')
+          PY
+      - name: Run the actual VSL compute tests with the runtime installed
+        run: |
+          ./v -no-parallel -d vsl_vcl_dlopencl -cc gcc test \
+            .ci-modules/vsl/vcl/compute
