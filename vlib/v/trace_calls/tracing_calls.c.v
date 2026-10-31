@@ -8,7 +8,7 @@ __global g_stack_base &u8
 @[markused]
 __global g_start_time u64
 
-@[markused]
+@[markused; unsafe]
 pub fn on_call(fname string) {
 	mut volatile pfbase := &u8(unsafe { nil })
 	volatile fbase := u8(0)

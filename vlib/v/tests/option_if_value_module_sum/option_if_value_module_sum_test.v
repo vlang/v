@@ -21,6 +21,7 @@ fn (mut video Video) set_current_frame(width ?int) {
 	})
 }
 
+@[unsafe]
 fn initiator_scheme(document &ifoptdom.Document) string {
 	initiator_origin := if document != unsafe { nil } {
 		?ifoptdom.Origin(document.origin())
@@ -57,6 +58,7 @@ fn test_if_option_pointer_named_like_a_sum_type() {
 	assert ifoptstyle.lookup(values, 2) == -1
 }
 
+@[unsafe]
 fn test_if_option_struct_named_like_another_modules_sum_type() {
 	document := &ifoptdom.Document{
 		origin_: ifoptdom.Origin{'https'}

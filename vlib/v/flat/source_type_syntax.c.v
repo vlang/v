@@ -2274,6 +2274,7 @@ fn source_type_syntax_underscore_ids(id u32, suffix bool) []u32 {
 	return source_type_syntax_underscore_miss(slot, id, suffix)
 }
 
+@[unsafe]
 fn source_type_syntax_underscore_miss(slot int, id u32, suffix bool) []u32 {
 	// Temporary render buffers and numeric arrays have been copied before return.
 	mut scratch_scope := voidptr(unsafe { nil })
@@ -2355,6 +2356,7 @@ fn source_type_syntax_underscore_head(slot int) &SourceTypeUnderscoreEntry {
 	}
 }
 
+@[unsafe]
 fn source_type_syntax_underscore_find(slot int, id u32, suffix bool) &SourceTypeUnderscoreEntry {
 	mut entry := source_type_syntax_underscore_head(slot)
 	for !isnil(entry) {
@@ -2396,6 +2398,7 @@ fn source_type_syntax_lexical_head(slot int) &SourceTypeLexicalEntry {
 	return unsafe { &SourceTypeLexicalEntry(source_type_syntax_pointer_load(voidptr(&g_source_type_lexical_views[slot]))) }
 }
 
+@[unsafe]
 fn source_type_syntax_lexical_find(slot int, id u32, kind SourceTypeLexicalKind) &SourceTypeLexicalEntry {
 	mut entry := source_type_syntax_lexical_head(slot)
 	for !isnil(entry) {
@@ -2412,6 +2415,7 @@ fn source_type_syntax_lexical(id u32, kind SourceTypeLexicalKind) &SourceTypeLex
 	return source_type_syntax_lexical_miss(slot, id, kind)
 }
 
+@[unsafe]
 fn source_type_syntax_lexical_miss(slot int, id u32, kind SourceTypeLexicalKind) &SourceTypeLexicalEntry {
 	// Temporary render buffers and numeric arrays have been copied before return.
 	mut scratch_scope := voidptr(unsafe { nil })
@@ -2533,6 +2537,7 @@ fn source_type_syntax_flattened_receiver_ids(id u32) []u32 {
 	return source_type_syntax_flattened_receiver_miss(slot, id)
 }
 
+@[unsafe]
 fn source_type_syntax_flattened_receiver_miss(slot int, id u32) []u32 {
 	// Temporary render buffers and numeric arrays have been copied before return.
 	mut scratch_scope := voidptr(unsafe { nil })
@@ -2594,6 +2599,7 @@ fn source_type_syntax_flattened_receiver_head(slot int) &SourceTypeFlattenedRece
 	return unsafe { &SourceTypeFlattenedReceiverEntry(source_type_syntax_pointer_load(voidptr(&g_source_type_flattened_receivers[slot]))) }
 }
 
+@[unsafe]
 fn source_type_syntax_flattened_receiver_find(slot int, id u32) &SourceTypeFlattenedReceiverEntry {
 	mut entry := source_type_syntax_flattened_receiver_head(slot)
 	for !isnil(entry) {
@@ -2665,6 +2671,7 @@ fn source_type_capture_head(slot int) &SourceTypeCaptureEntry {
 	}
 }
 
+@[unsafe]
 fn source_type_capture_find(slot int, actual u32, prefix u32, suffix u32) &SourceTypeCaptureEntry {
 	mut entry := source_type_capture_head(slot)
 	for !isnil(entry) {
@@ -2738,6 +2745,7 @@ fn source_type_encoded_prefix_head(slot int) &SourceTypeEncodedPrefixEntry {
 	}
 }
 
+@[unsafe]
 fn source_type_encoded_prefix_find(slot int, actual u32, base u32) &SourceTypeEncodedPrefixEntry {
 	mut entry := source_type_encoded_prefix_head(slot)
 	for !isnil(entry) {
@@ -2840,6 +2848,7 @@ fn source_type_predicate_head(slot int) &SourceTypePredicateEntry {
 	}
 }
 
+@[unsafe]
 fn source_type_predicate_find(slot int, actual u32, parameter u32, kind SourceTypePredicate) &SourceTypePredicateEntry {
 	mut entry := source_type_predicate_head(slot)
 	for !isnil(entry) {
@@ -2880,7 +2889,7 @@ fn source_type_syntax_pointer_store(slot voidptr, value voidptr) {
 	}
 }
 
-@[direct_array_access; inline]
+@[direct_array_access; inline; unsafe]
 fn source_type_syntax_find(id u32) &SourceTypeSyntaxEntry {
 	if id == 0 {
 		return unsafe { &SourceTypeSyntaxEntry(source_type_syntax_pointer_load(voidptr(&g_source_type_syntax_empty))) }
@@ -4108,6 +4117,7 @@ fn source_type_syntax_parse(id u32, raw string) SourceTypeSyntaxParsed {
 
 // The caller keeps a general parser's arena alive until all array values are copied.
 // Direct parser checks use the unscoped wrapper and retain their existing lifetime.
+@[unsafe]
 fn source_type_syntax_parse_scoped(id u32, raw string, scoped bool) (SourceTypeSyntaxParsed, voidptr) {
 	mut simple := raw.len > 0
 	mut qualified := raw.len > 0

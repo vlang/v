@@ -35,6 +35,7 @@ fn decompress_error(data []u8) string {
 
 // callback_error returns the error message of decompress_with_callback() for `data`,
 // '' for no error.
+@[unsafe]
 fn callback_error(data []u8) string {
 	decompress_with_callback(data, fn (chunk []u8, _ voidptr) int {
 		return chunk.len
@@ -271,6 +272,7 @@ fn test_gzip_decompress_callback() {
 	assert decoded == uncompressed.len
 }
 
+@[unsafe]
 fn test_gzip_decompress_callback_rejects_non_gzip() {
 	z := [u8(0x78), 0x9c, 0x03, 0x00, 0x00, 0x00, 0x01]
 	decompress_with_callback(z, fn (chunk []u8, _ voidptr) int {

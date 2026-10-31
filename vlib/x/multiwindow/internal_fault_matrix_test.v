@@ -458,6 +458,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		multiwindow_probe_gate.await_parent_release(2 * time.second)!
 	}
 
+	@[unsafe]
 	fn renderer_fault_exercise_start_stage(stage InternalFaultStage) ! {
 		mut app := renderer_fault_new_app_for_test()!
 		message := 'fault:${stage}:operation'
@@ -559,6 +560,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		return app
 	}
 
+	@[unsafe]
 	fn renderer_fault_admit_appkit_window_for_test(app &App, window WindowId) ! {
 		$if darwin {
 			app.assert_owner_thread()!
@@ -650,6 +652,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		return state
 	}
 
+	@[unsafe]
 	fn renderer_fault_trace_binding_for_test(app &App) RendererFaultTraceBindingSnapshot {
 		app.state_mutex.lock()
 		defer {
@@ -665,6 +668,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn renderer_fault_state_snapshot_for_test(app &App, id WindowId) !RendererFaultStateSnapshot {
 		app.state_mutex.lock()
 		index := app.render_window_index_locked(id) or {
@@ -869,6 +873,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn renderer_fault_native_proof_capture_for_test(app &App) RendererFaultNativeProofCapture {
 		proof := app.backend.native_operations.proof
 		if proof == unsafe { nil } {
@@ -912,6 +917,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		return authority
 	}
 
+	@[unsafe]
 	fn renderer_fault_window_teardown_authority_for_test(app &App, window WindowId) RendererFaultWindowTeardownAuthority {
 		match app.backend.kind {
 			.x11 {
@@ -1028,6 +1034,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn renderer_fault_native_proof_snapshot_for_test(app &App) RendererFaultNativeProofSnapshot {
 		assert app.backend.native_operations.proof != unsafe { nil }
 		proof := app.backend.native_operations.proof
@@ -1891,6 +1898,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		return expected_trace_len
 	}
 
+	@[unsafe]
 	fn renderer_fault_segmented_normal_stop_for_test(mut app App, window WindowId, before_stop RendererFaultStateSnapshot) ! {
 		assert app.backend.native_operations.proof != unsafe { nil }
 		assert app.status() == .running
@@ -2295,6 +2303,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		assert app.backend.native_operations.disarm_proof()
 	}
 
+	@[unsafe]
 	fn renderer_fault_exercise_anchor_begin_for_test() ! {
 		mut app := renderer_fault_started_app_for_test()!
 		window := renderer_fault_window_or_fail_for_test(mut app, 'renderer anchor begin fault') or {
@@ -2343,6 +2352,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		assert app.backend.native_operations.disarm_proof()
 	}
 
+	@[unsafe]
 	fn renderer_fault_exercise_precommit_for_test() ! {
 		mut app := renderer_fault_started_app_for_test()!
 		window := renderer_fault_window_or_fail_for_test(mut app, 'renderer precommit fault') or {
@@ -2395,6 +2405,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		assert app.backend.native_operations.disarm_proof()
 	}
 
+	@[unsafe]
 	fn renderer_fault_exercise_submission_finalize_for_test() ! {
 		mut app := renderer_fault_started_app_for_test()!
 		window := renderer_fault_window_or_fail_for_test(mut app,
@@ -2496,6 +2507,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		renderer_fault_segmented_normal_stop_for_test(mut app, window, before_stop)!
 	}
 
+	@[unsafe]
 	fn renderer_fault_exercise_submission_finalize_shutdown_replay_for_test() ! {
 		mut app := renderer_fault_started_app_for_test()!
 		window := renderer_fault_window_for_test(mut app,
@@ -4299,6 +4311,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		assert index == proof.trace_len
 	}
 
+	@[unsafe]
 	fn renderer_fault_native_proof_for_test(app &App) &NativeOperationProofState {
 		assert app.backend.native_operations.proof != unsafe { nil }
 		proof := app.backend.native_operations.proof
@@ -4344,6 +4357,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		assert proof.trace_len == 0
 	}
 
+	@[unsafe]
 	fn renderer_fault_native_submission_count_for_test(app &App) int {
 		assert app.backend.native_operations.proof != unsafe { nil }
 		proof := app.backend.native_operations.proof

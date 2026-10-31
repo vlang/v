@@ -21,6 +21,7 @@ fn make_pointer[P](_ P) P {
 	}
 }
 
+@[unsafe]
 fn test_generic_recursion_over_pointer_depth() {
 	two := make_pointer(&&int(unsafe { nil }))
 	assert **two == 42

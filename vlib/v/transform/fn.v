@@ -3904,6 +3904,7 @@ fn (mut t Transformer) call_param_types_from_decl(call_name string) ?[]types.Typ
 	return params
 }
 
+@[unsafe]
 fn (mut t Transformer) ensure_call_param_types_decl_index() {
 	if t.call_param_types_index_ready {
 		return
@@ -3999,6 +4000,7 @@ fn (mut t Transformer) prepare_parallel_call_param_types() {
 	t.call_param_types_decl_shared = true
 }
 
+@[unsafe]
 fn (mut t Transformer) add_call_param_types_decl_key(key string, idx int, file string, module_name string) {
 	if key == '' {
 		return
@@ -4530,7 +4532,7 @@ fn (t &Transformer) pointer_type_depth_and_base(typ u32) (int, u32) {
 }
 
 // transform_call_arg_for_param transforms transform call arg for param data for transform.
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn (mut t Transformer) transform_call_arg_for_param(arg_id flat.NodeId, param_type_id u32) flat.NodeId {
 
 	// Only the call result is returned. Argument conversions keep their call-site

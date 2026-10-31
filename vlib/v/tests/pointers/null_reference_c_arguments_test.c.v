@@ -1,4 +1,5 @@
 // C function parameters accept null pointer constants for C interoperability.
+@[unsafe]
 fn test_c_function_arguments() {
 	// `fflush(NULL)` flushes every open output stream.
 	assert C.fflush(voidptr(0)) == 0

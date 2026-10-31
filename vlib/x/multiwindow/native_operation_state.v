@@ -91,6 +91,7 @@ mut:
 	lifetime_tickets       []NativeLifetimeReleaseTicket
 }
 
+@[unsafe]
 fn (mut authority NativeOperationAuthority) arm_proof() bool {
 	if !authority.owner_thread_is_current() {
 		return false
@@ -107,6 +108,7 @@ fn (mut authority NativeOperationAuthority) arm_proof() bool {
 	return authority.reset_proof()
 }
 
+@[unsafe]
 fn (mut authority NativeOperationAuthority) reset_proof() bool {
 	if !authority.owner_thread_is_current() || authority.proof == unsafe { nil } {
 		return false
@@ -130,6 +132,7 @@ fn (mut authority NativeOperationAuthority) reset_proof() bool {
 	return true
 }
 
+@[unsafe]
 fn (mut authority NativeOperationAuthority) disarm_proof() bool {
 	if !authority.owner_thread_is_current() {
 		return false
@@ -217,6 +220,7 @@ fn (authority &NativeOperationAuthority) authority_scope_is_current(scope Native
 	return authority.app_identity != 0 && token != 0 && authority.authority_token(scope) == token
 }
 
+@[unsafe]
 fn (mut authority NativeOperationAuthority) reserve_ordinals_for(scope NativeOperationAuthorityScope, count u64) !NativeOrdinalRange {
 	if !authority.owner_thread_is_current() {
 		return error(err_render_native_renderer_unavailable)
@@ -270,6 +274,7 @@ fn (mut authority NativeOperationAuthority) reserve_ordinals(count u64) !NativeO
 	return authority.reserve_renderer_attempt_ordinals(count)
 }
 
+@[unsafe]
 fn (mut reservation NativeOrdinalRange) materialize(authority &NativeOperationAuthority, domain NativeRenderDomain, operation NativeRenderOperation, seed NativeOperationSeed) !NativeOperationContext {
 	if !authority.owner_thread_is_current() || reservation.owner_thread_identity == 0
 		|| reservation.owner_thread_identity != authority.owner_thread_identity
@@ -389,6 +394,7 @@ fn (authority &NativeOperationAuthority) lifetime_ticket_index(ticket_id u64) ?i
 	return none
 }
 
+@[unsafe]
 fn (authority &NativeOperationAuthority) has_pending_native_plans() bool {
 	if authority.proof == unsafe { nil } {
 		return false
@@ -402,6 +408,7 @@ fn (authority &NativeOperationAuthority) has_pending_native_plans() bool {
 	return false
 }
 
+@[unsafe]
 fn (authority &NativeOperationAuthority) has_pending_native_plans_for_scope(scope NativeOperationAuthorityScope, token u64) bool {
 	if authority.proof == unsafe { nil } || token == 0 {
 		return false
@@ -440,6 +447,7 @@ fn (authority &NativeOperationAuthority) has_live_tickets_for_proof_generation(g
 	return false
 }
 
+@[unsafe]
 fn (authority &NativeOperationAuthority) proof_accepts_context(context NativeOperationContext) bool {
 	if authority.proof == unsafe { nil } || !authority.proof.accepting_plans
 		|| authority.proof.generation == 0 || context.ordinal == 0
@@ -466,6 +474,7 @@ fn native_operation_context_matches_seed(context NativeOperationContext, seed Na
 		&& context.target_lease_epoch == seed.target_lease_epoch
 }
 
+@[unsafe]
 fn (authority &NativeOperationAuthority) lifetime_acquisition_proof_generation_is_current(ticket NativeLifetimeReleaseTicket) bool {
 	current_generation := if authority.proof == unsafe { nil } {
 		u64(0)
@@ -606,6 +615,7 @@ fn (authority &NativeOperationAuthority) lifetime_acquisition_claim_matches_tick
 	return true
 }
 
+@[unsafe]
 fn (mut authority NativeOperationAuthority) begin_lifetime_acquisition(acquisition_context NativeOperationContext, release_context NativeOperationContext, release_kind NativeLifetimeReleaseKind, required_parent_identity u64, owner_seed NativeOperationSeed) !NativeLifetimeAcquisitionTransaction {
 	seed := owner_seed.without_target_identity()
 	if !authority.owner_thread_is_current() || authority.app_identity == 0
@@ -776,6 +786,7 @@ fn (mut authority NativeOperationAuthority) retire_provisional_lifetime_release(
 	return true
 }
 
+@[unsafe]
 fn (mut authority NativeOperationAuthority) reserve_lifetime_ticket(context NativeOperationContext, release_kind NativeLifetimeReleaseKind, owner_seed NativeOperationSeed) !u64 {
 	if !authority.owner_thread_is_current() || authority.has_provisional_lifetime_acquisition()
 		|| context.ordinal == 0 || context.app_identity != authority.app_identity
@@ -1194,6 +1205,7 @@ fn native_operation_contexts_identical(left NativeOperationContext, right Native
 		&& left.target_lease_epoch == right.target_lease_epoch && left.ordinal == right.ordinal
 }
 
+@[unsafe]
 fn (mut authority NativeOperationAuthority) inject(context NativeOperationContext, actual NativePrimitiveEvidence) NativePrimitiveEvidence {
 	if !authority.owner_thread_is_current() || authority.proof == unsafe { nil } {
 		return actual
@@ -1340,6 +1352,7 @@ fn (mut authority NativeOperationAuthority) queue_listener_registration_injectio
 	return false
 }
 
+@[unsafe]
 fn (mut authority NativeOperationAuthority) arm_listener_registration(context NativeOperationContext) bool {
 	if !authority.owner_thread_is_current() || authority.proof == unsafe { nil }
 		|| authority.proof.generation == 0 || context.app_identity != authority.app_identity
@@ -1396,6 +1409,7 @@ fn (mut authority NativeOperationAuthority) record_health_latch(context NativeOp
 	})
 }
 
+@[unsafe]
 fn (mut authority NativeOperationAuthority) record_entry(entry NativeOperationTraceEntry) {
 	if !authority.owner_thread_is_current() || authority.proof == unsafe { nil } {
 		return

@@ -19,6 +19,7 @@ fn regression_handler(_ HttpRequest) !HttpResponse {
 	}
 }
 
+@[unsafe]
 fn new_regression_worker(server &Server, epoll_fd int) Worker {
 	mut w := Worker{
 		epoll_fd:  epoll_fd
@@ -522,6 +523,7 @@ fn record_sigpipe_handler(_ os.Signal) {
 	os.setenv(sigpipe_handler_probe, 'called', true)
 }
 
+@[unsafe]
 fn current_thread_blocks_sigpipe() bool {
 	mut current_mask := C.sigset_t{}
 	if C.pthread_sigmask(C.SIG_SETMASK, unsafe { nil }, &current_mask) != 0 {
@@ -786,6 +788,7 @@ fn test_closed_and_detached_connection_pools_are_bounded() ! {
 	}
 }
 
+@[unsafe]
 fn test_prealloc_reuses_states_and_buffers_after_repeated_bursts() {
 	$if prealloc {
 		count := max_pooled_conns + 4

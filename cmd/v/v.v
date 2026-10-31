@@ -898,6 +898,7 @@ fn clean_compiler_selection_flags(args []string) []string {
 	return result
 }
 
+@[unsafe]
 fn retry_with_v1_at_exit() {
 	state := unsafe { retry_state(nil) }
 	if state == unsafe { nil } || !os.is_file(state.fallback_file) {

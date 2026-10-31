@@ -295,6 +295,7 @@ fn (g &FlatGen) cached_file_import(file string, alias string) ?string {
 	return module_name
 }
 
+@[unsafe]
 fn cgen_worker_scope_begin(enabled bool) voidptr {
 	$if prealloc {
 		if enabled {
@@ -311,6 +312,7 @@ const cgen_chunk_arena_keep_bytes = int($d('cgen_chunk_arena_keep_mb', 1)) * 102
 // cgen_worker_scope_reenter makes a chunk arena that was left current again,
 // rewound, for the next chunk, keeping up to `keep_bytes` of it mapped.
 // False means the caller needs a new arena.
+@[unsafe]
 fn cgen_worker_scope_reenter(scope voidptr, keep_bytes int) bool {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -320,6 +322,7 @@ fn cgen_worker_scope_reenter(scope voidptr, keep_bytes int) bool {
 	return false
 }
 
+@[unsafe]
 fn cgen_worker_scope_leave(scope voidptr) {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -328,6 +331,7 @@ fn cgen_worker_scope_leave(scope voidptr) {
 	}
 }
 
+@[unsafe]
 fn cgen_worker_scope_free(scope voidptr) {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -353,7 +357,7 @@ fn clone_cgen_string_bool_lookup(values map[string]bool) map[string]bool {
 	return cloned
 }
 
-@[inline]
+@[inline; unsafe]
 fn cgen_scope_owns(scope voidptr, ptr voidptr) bool {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -393,6 +397,7 @@ struct CgenScopedAppend {
 	original_sb strings.Builder
 }
 
+@[unsafe]
 fn (mut g FlatGen) begin_scoped_append() CgenScopedAppend {
 	original_sb := g.sb
 	scope := cgen_worker_scope_begin(g.scope_parallel_workers)
@@ -405,6 +410,7 @@ fn (mut g FlatGen) begin_scoped_append() CgenScopedAppend {
 	}
 }
 
+@[unsafe]
 fn (mut g FlatGen) finish_scoped_append(state CgenScopedAppend) {
 	if state.scope == unsafe { nil } {
 		return
@@ -1401,6 +1407,7 @@ fn (mut g FlatGen) pop_scope() {
 	}
 }
 
+@[unsafe]
 fn (mut g FlatGen) enter_conditional_branch(has_scope bool) {
 	g.conditional_branch_depth++
 	if has_scope && g.tc != unsafe { nil } && g.tc.cur_scope != unsafe { nil } {
@@ -1465,6 +1472,7 @@ fn (mut g FlatGen) assign_ierror_pointer_alias(name string, needs_copy bool) {
 	g.declare_ierror_pointer_alias(name, needs_copy)
 }
 
+@[unsafe]
 fn (g &FlatGen) ierror_pointer_alias_scope_index(name string) ?int {
 	if name.len == 0 {
 		return none
@@ -1577,6 +1585,7 @@ fn (mut g FlatGen) declare_local_pointer_alias_source_kind(owner types.ScopeBind
 	}
 }
 
+@[unsafe]
 fn (g &FlatGen) local_storage_owner(name string) ?types.ScopeBindingOwner {
 	if g.tc == unsafe { nil } || g.tc.cur_scope == unsafe { nil } {
 		return none
@@ -1699,6 +1708,7 @@ fn (g &FlatGen) local_storage_is_shared(name string) bool {
 	return g.binding_storage_is_shared(name, owner)
 }
 
+@[unsafe]
 fn (g &FlatGen) binding_storage_is_shared(name string, owner types.ScopeBindingOwner) bool {
 	// Most functions declare no shared locals; skip hashing the owner key then.
 	if g.local_shared_storage_by_owner.len > 0
@@ -1719,6 +1729,7 @@ fn (g &FlatGen) binding_storage_is_shared(name string, owner types.ScopeBindingO
 }
 
 // shared_storage_ident_c_name qualifies shared globals while preserving local storage names.
+@[unsafe]
 fn (g &FlatGen) shared_storage_ident_c_name(name string) string {
 	owner := g.local_storage_owner(name) or { return g.cname(name) }
 	if g.tc.file_scope != unsafe { nil } && owner.belongs_to_scope(g.tc.file_scope) {
@@ -3514,6 +3525,7 @@ pub fn (mut g FlatGen) take_parallel_worker_scopes() []voidptr {
 
 // free_cgen_worker_scopes releases arenas taken with take_parallel_worker_scopes.
 // They are detached from every thread, so any thread can release them.
+@[unsafe]
 pub fn free_cgen_worker_scopes(scopes []voidptr) {
 	$if prealloc {
 		for scope in scopes {
@@ -3606,6 +3618,7 @@ fn (mut g FlatGen) flush_and_restart_scoped_output(path string, append bool, sco
 	return g.start_scoped_output_builder(cap)
 }
 
+@[unsafe]
 fn (mut g FlatGen) release_scoped_fn_items() {
 	if g.object_file_mode {
 		// Export wrappers are emitted after the object-local linkage pragma is
@@ -3744,6 +3757,7 @@ fn (g &FlatGen) cleanup_scoped_output_files(stream_path string, fn_stream_path s
 }
 
 // gen_with_used_options emits with used options output for c.
+@[unsafe]
 pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[string]bool, tc &types.TypeChecker, no_parallel bool) string {
 	g.a = a
 	g.literal_output_only = false
@@ -10017,6 +10031,7 @@ const c_source_non_fn_keywords = ['if', 'for', 'while', 'switch', 'catch', 'retu
 // c_source_defined_fn_names returns the names of the functions that a C, C++ or
 // Objective-C source defines: an identifier directly followed by a parameter list
 // and then a body. Calls and prototypes are not followed by `{`.
+@[unsafe]
 fn c_source_defined_fn_names(text string) []string {
 	src := c_strip_comments(text)
 	mut names := []string{}

@@ -23,6 +23,7 @@ mut:
 	body []&Node
 }
 
+@[unsafe]
 pub fn (mut i Item) init(ui &UI) ! {
 	assert i != unsafe { nil } // This assert generates a C gen error
 	i.ui = ui
@@ -31,6 +32,7 @@ pub fn (mut i Item) init(ui &UI) ! {
 	}
 }
 
+@[unsafe]
 pub fn (i &Item) draw() {
 	assert i != unsafe { nil }
 	for child in i.body {
@@ -45,6 +47,7 @@ pub mut:
 	field f32
 }
 
+@[unsafe]
 pub fn (r &Rectangle) draw() {
 	assert r != unsafe { nil }
 	r.ui.draw_rect()

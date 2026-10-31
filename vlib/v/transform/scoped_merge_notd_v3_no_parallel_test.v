@@ -86,6 +86,7 @@ fn test_clone_scoped_worker_node_publishes_indirect_generic_names() {
 	}
 }
 
+@[unsafe]
 fn test_scoped_text_scan_finds_borrowed_text_in_unscoped_payloads() {
 	$if prealloc {
 		mut node := flat.Node{ kind: .fn_decl, value: 'unscoped' }
@@ -146,6 +147,7 @@ fn test_generic_batch_publishes_indirect_base_writes_and_new_nodes() {
 	assert a.nodes[int(added)].value == 'appended'
 }
 
+@[unsafe]
 fn test_helper_merge_releases_bookkeeping_and_preserves_published_text() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

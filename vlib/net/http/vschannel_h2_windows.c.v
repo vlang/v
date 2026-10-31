@@ -8,6 +8,7 @@ module http
 // HTTP/2 client (h2_conn.v / h2_client.v), mirroring what net_ssl_do does with
 // net.ssl on the other platforms. See vlang/v#27383.
 
+@[unsafe]
 fn C.vschannel_h2_connect(tls_ctx &C.TlsContext, iport int, host &u16) int
 fn C.vschannel_write(tls_ctx &C.TlsContext, buf &char, len int) int
 fn C.vschannel_read(tls_ctx &C.TlsContext, buf &char, cap int) int

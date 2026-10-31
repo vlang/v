@@ -24,6 +24,7 @@ mut:
 	frame [64]int
 }
 
+@[unsafe]
 fn pointer_receiver_collect(element PointerReceiverElement) []PointerReceiverElement {
 	mut out := []PointerReceiverElement{}
 	if element.node != unsafe { nil } {
@@ -32,6 +33,7 @@ fn pointer_receiver_collect(element PointerReceiverElement) []PointerReceiverEle
 	return out
 }
 
+@[unsafe]
 fn pointer_receiver_record(element PointerReceiverElement) ! {
 	if element.node != unsafe { nil } {
 		mut node := element.node

@@ -194,6 +194,7 @@ __global global_filled_aligned_array = &[2]GlobalAlignedArrayPointerCell{init: G
 	value: index + 5
 }}
 
+@[unsafe]
 fn test_global_fixed_array_pointers_are_initialized() {
 	assert unsafe { voidptr(global_zero_array) } != unsafe { nil }
 	assert unsafe { voidptr(global_unsafe_array) } != unsafe { nil }

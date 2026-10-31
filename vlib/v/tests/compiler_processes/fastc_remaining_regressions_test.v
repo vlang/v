@@ -10,6 +10,7 @@ struct FastcRemainingCase {
 	bootstrap bool
 }
 
+@[unsafe]
 fn test_fastc_remaining_pointer_array_and_default_regressions() {
 	$if !macos && !linux {
 		return

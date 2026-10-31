@@ -9,10 +9,12 @@ fn test_transform_scope_retention_budget_bounds_allocation_size() {
 	assert !transform_scope_size_is_bounded(~uint(0))
 }
 
+@[unsafe]
 fn test_transform_scope_retention_requires_an_actual_arena() {
 	assert !transform_scope_fits_retention_budget(unsafe { nil })
 }
 
+@[unsafe]
 fn test_helper_scope_retention_checks_the_combined_budget() {
 	assert !transform_helper_scopes_fit_retention_budget([]voidptr{})
 	assert !transform_helper_scopes_fit_retention_budget([voidptr(unsafe { nil })])

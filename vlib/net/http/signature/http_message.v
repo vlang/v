@@ -365,6 +365,7 @@ fn validate_stable_signature_components(components []string) ! {
 	}
 }
 
+@[unsafe]
 fn validate_request_component_coverage(req http.Request, components []string, default_scheme string) ! {
 	if (req.disable_connection_reuse || req.proxy != unsafe { nil })
 		&& components.any(it.to_lower() == 'connection') {

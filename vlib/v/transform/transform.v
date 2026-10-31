@@ -1623,6 +1623,7 @@ mut:
 	known_states [512]i8
 }
 
+@[unsafe]
 fn new_fn_return_name_cache() &FnReturnNameCache {
 	$if autofree ? {
 		return unsafe { nil }
@@ -1724,6 +1725,7 @@ pub fn (mut p PreparedSelfhostTransform) set_keeps_scope_without_regions(keeps b
 }
 
 // add_prescan_scope records a helper-index arena returned by a pre-scan thread.
+@[unsafe]
 fn (mut t Transformer) add_prescan_scope(scope voidptr) {
 	if scope != unsafe { nil } {
 		t.prescan_scopes << scope
@@ -1741,6 +1743,7 @@ pub fn (mut prepared PreparedSelfhostTransform) take_prescan_scopes() []voidptr 
 
 // take_scope transfers ownership of the preparation arena to the driver. The
 // arena can back lowered AST text, so it must remain alive through codegen.
+@[unsafe]
 pub fn (mut prepared PreparedSelfhostTransform) take_scope() voidptr {
 	scope := prepared.scope
 	prepared.scope = unsafe { nil }
@@ -1750,6 +1753,7 @@ pub fn (mut prepared PreparedSelfhostTransform) take_scope() voidptr {
 // prepare_selfhost_transform builds the immutable transform indexes on a
 // helper-local arena. The caller keeps the returned value alive until
 // transform_prepared_selfhost_owned consumes it.
+@[unsafe]
 pub fn prepare_selfhost_transform(a &flat.FlatAst, tc &types.TypeChecker, enabled bool) &PreparedSelfhostTransform {
 	mut prepared := &PreparedSelfhostTransform{}
 	if !enabled {
@@ -1843,6 +1847,7 @@ pub fn transform_with_used_opt_config_scoped_workers(mut a flat.FlatAst, tc &typ
 
 // transform_with_used_opt_config_scoped_workers_checked also returns diagnostics selected while
 // normal comptime reflection loops are unrolled.
+@[unsafe]
 pub fn transform_with_used_opt_config_scoped_workers_checked(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, want_parallel bool, skip_generics bool, scope_parallel_workers bool, building_v bool) (map[string]bool, bool, []string) {
 	augmented, was_parallel, errors, _, _ := transform_with_used_opt_config_scoped_workers_checked_impl(mut a, tc, used_fns, want_parallel, skip_generics, scope_parallel_workers, building_v, false, unsafe { nil })
 	return augmented, was_parallel, errors
@@ -2030,6 +2035,7 @@ fn transform_after_prepare(mut t Transformer, mut a flat.FlatAst, _used_fns map[
 	return t.used_fns, was_parallel, t.monomorph_errors, owned_base_nodes, t.retained_worker_regions
 }
 
+@[unsafe]
 fn (mut t Transformer) release_finished_scratch() {
 	t.fn_return_name_cache = unsafe { nil }
 	t.call_param_types_recent = unsafe { nil }
@@ -2071,6 +2077,7 @@ fn (t &Transformer) scoped_owned_base_node_ids() []int {
 	return nodes
 }
 
+@[unsafe]
 fn (mut t Transformer) retain_current_worker_scope_all() {
 	if !t.retain_worker_results || t.worker_scope == unsafe { nil } {
 		return
@@ -2233,6 +2240,7 @@ struct TransformByteCopy {
 	bytes u64
 }
 
+@[unsafe]
 fn transform_byte_copy_thread(arg voidptr) voidptr {
 	c := unsafe { &TransformByteCopy(arg) }
 	unsafe { vmemcpy(c.dst, c.src, int(c.bytes)) }
@@ -2241,6 +2249,7 @@ fn transform_byte_copy_thread(arg voidptr) voidptr {
 
 // transform_worker_scope_begin starts a helper-local disposable arena in
 // prealloc self-host builds. Ordinary builds retain their existing allocator.
+@[unsafe]
 fn transform_worker_scope_begin(enabled bool) voidptr {
 	$if prealloc {
 		if enabled {
@@ -2266,6 +2275,7 @@ const transform_sole_batch_arena_keep_bytes = int($d('transform_sole_batch_arena
 // transform_worker_scope_reenter makes a helper arena that was left current
 // again, rewound, for the next batch, with at most `keep_bytes` of it still
 // mapped. False means the caller needs a new arena.
+@[unsafe]
 fn transform_worker_scope_reenter(scope voidptr, keep_bytes int) bool {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -2275,6 +2285,7 @@ fn transform_worker_scope_reenter(scope voidptr, keep_bytes int) bool {
 	return false
 }
 
+@[unsafe]
 fn transform_worker_scope_leave(scope voidptr) {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -2283,6 +2294,7 @@ fn transform_worker_scope_leave(scope voidptr) {
 	}
 }
 
+@[unsafe]
 fn transform_worker_scope_free(scope voidptr) {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -2291,6 +2303,7 @@ fn transform_worker_scope_free(scope voidptr) {
 	}
 }
 
+@[unsafe]
 fn transform_stage_scope_suspend(scope voidptr) voidptr {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -2300,6 +2313,7 @@ fn transform_stage_scope_suspend(scope voidptr) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn transform_stage_scope_resume(scope voidptr, state voidptr) {
 	$if prealloc {
 		if scope != unsafe { nil } && state != unsafe { nil } {
@@ -2588,6 +2602,7 @@ pub fn monomorphize_with_used_checked(mut a flat.FlatAst, tc &types.TypeChecker,
 
 // monomorphize_with_used_checked_config controls whether independent generic
 // specializations can be cloned concurrently.
+@[unsafe]
 pub fn monomorphize_with_used_checked_config(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, parallel bool) (map[string]bool, []string) {
 	return monomorphize_with_used_checked_config_scoped(mut a, tc, used_fns, parallel, unsafe { nil })
 }
@@ -2609,6 +2624,7 @@ pub fn monomorphize_with_used_checked_config_scoped(mut a flat.FlatAst, tc &type
 // body, or, in an incremental rebuild, left it to the cached build. Only the
 // functions that a specialization makes reachable are then lowered here. A
 // check monomorphizes the tree as it was parsed and passes false.
+@[unsafe]
 pub fn monomorphize_with_used_checked_config_scoped_cached(mut a flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, parallel bool, stage_scope voidptr, cached_specs []MonomorphCacheSpec, after_transform bool) (map[string]bool, []string, []MonomorphCacheSpec) {
 	debug_started := time.ticks()
 	mut t := new_transformer(mut a, tc, used_fns)
@@ -2734,6 +2750,7 @@ fn (mut t Transformer) mark_used_fn_bodies_lowered() {
 	}
 }
 
+@[unsafe]
 fn (mut t Transformer) release_monomorph_worker_scopes() {
 	t.call_param_types_recent = unsafe { nil }
 	t.clear_fn_return_name_cache()
@@ -3639,6 +3656,7 @@ fn (mut t Transformer) flush_deferred_base_writes() {
 	t.deferred_base_writes = []DeferredBaseWrite{}
 }
 
+@[unsafe]
 fn (mut t Transformer) clear_struct_field_type_cache() {
 	if isnil(t.struct_field_type_cache) {
 		return
@@ -5552,6 +5570,7 @@ fn (t &Transformer) fork_worker_config(ast &flat.FlatAst, wtc &types.TypeChecker
 // fork_worker_with_state is fork_worker_config with the copy of the used set,
 // which a worker without one reads through its parent, chosen independently of
 // the copy of the generic specialization state.
+@[unsafe]
 fn (t &Transformer) fork_worker_with_state(ast &flat.FlatAst, wtc &types.TypeChecker, copy_used_fns bool, copy_generic_state bool) &Transformer {
 	used := if copy_used_fns {
 		t.used_fns
@@ -5718,6 +5737,7 @@ fn (t &Transformer) fork_worker_with_state(ast &flat.FlatAst, wtc &types.TypeChe
 // writes them) and does not clone used_fns — the scan filters against the
 // caller's `used` snapshot and never marks names — so forking costs almost
 // nothing even with one fork per scan thread.
+@[unsafe]
 fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	mut w := t.fork_program_view(t.a, wtc, map[string]bool{}, false)
 	w.alias_cache = &AliasCache{}
@@ -5843,6 +5863,7 @@ fn fork_prepared_type_bindings(bindings &flat.TypeTextBindings) flat.TypeTextBin
 // All fields omitted here come from new_transformer_view as fresh worker-local
 // state, so adding a mutable Transformer field cannot silently share its backing
 // storage with a helper thread.
+@[unsafe]
 fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker, used_fns map[string]bool, copy_generic_state bool) Transformer {
 	// The pre-scan freezes the boxed-type set before skip-generics workers
 	// start, so sharing it below is read-only and avoids one map clone per worker.
@@ -6061,6 +6082,7 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 	}
 }
 
+@[unsafe]
 fn (mut t Transformer) merge_worker_used_fns(w &Transformer) {
 	t.merge_worker_signatures(w)
 	t.merge_worker_capture_contexts(w)
@@ -6197,6 +6219,7 @@ fn (mut t Transformer) merge_worker_capture_contexts(w &Transformer) {
 
 // merge_worker_signatures publishes declarations synthesized by a private
 // transform worker before its disposable arena is released.
+@[unsafe]
 fn (mut t Transformer) merge_worker_signatures(w &Transformer) {
 	t.call_param_types_recent = unsafe { nil }
 	t.clear_fn_return_name_cache()
@@ -6440,6 +6463,7 @@ fn (mut t Transformer) absorb_region_into(node_start int, node_end int, child_st
 // reference to a worker-local new node or new children block is shifted by the
 // distance the block moved. `items` lists the function indices this worker owned, so
 // their rewritten top-level nodes can be copied into place.
+@[unsafe]
 fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nodes int, base_children int, clear_node_caches bool) {
 	// Absorbed regions were written straight into the master arrays, which are
 	// already grown to their final length, so the shifts come from the absorb
@@ -6829,6 +6853,7 @@ fn (mut t Transformer) record_refined_node_type(idx int, type_id u32) {
 // clear_typechecker_node_cache_range is clear_typechecker_node_cache for a
 // contiguous id range: the bool sets become memsets and the range-level guards
 // replace one branch per node per table.
+@[unsafe]
 fn (mut t Transformer) clear_typechecker_node_cache_range(start int, end int) {
 	if isnil(t.tc) || start >= end || start < 0 {
 		return
@@ -6871,6 +6896,7 @@ fn (mut t Transformer) clear_typechecker_node_cache_range(start int, end int) {
 	}
 }
 
+@[unsafe]
 fn (mut t Transformer) clear_typechecker_node_cache(idx int) {
 	if isnil(t.tc) || idx < 0 {
 		return
@@ -33359,6 +33385,7 @@ fn (mut cache EnumExpectedCache) key(typ u32, owner_module string, current_modul
 
 // collect_live_functions records @[live] function metadata and whether the
 // generated native live-reload runtime is present in this AST.
+@[unsafe]
 fn (mut t Transformer) collect_live_functions() {
 	t.live_metadata = unsafe { nil }
 	t.live_reload_runtime = false

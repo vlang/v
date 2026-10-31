@@ -67,6 +67,7 @@ fn vpt_hammer_writer(mut t VSchannelPooledTransport) int {
 	return writes
 }
 
+@[unsafe]
 fn vpt_start_listener() (int, &mbedtls.SSLListener) {
 	mut port_listener := net.listen_tcp(.ip, '127.0.0.1:0') or {
 		assert false, 'port: ${err}'

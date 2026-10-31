@@ -24,6 +24,7 @@ fn paren_address(mut hdr ParenHeader) u64 {
 	return u64((hdr))
 }
 
+@[unsafe]
 fn paren_is_nil(mut hdr ParenHeader) bool {
 	return (hdr) == unsafe { nil }
 }

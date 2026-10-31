@@ -9,6 +9,7 @@ module builtin
 #include "vgc_platform.h"
 
 // C interop declarations for platform header
+@[unsafe]
 fn C.vgc_get_cache_idx() int
 fn C.vgc_set_cache_idx(idx int)
 fn C.vgc_atomic_load_u32(ptr &u32) u32
@@ -355,6 +356,7 @@ fn vgc_on_thread_exit(value voidptr) {
 // vgc_unregister_thread frees the slot of an exiting thread, so that the collector no longer
 // scans its stack, which the system is about to unmap. The spans that the thread had cached
 // stay in use until a sweep finds them empty, like the spans that a thread filled.
+@[unsafe]
 fn vgc_unregister_thread(idx int) {
 	if idx < 0 || idx >= vgc_max_threads {
 		return
@@ -469,6 +471,7 @@ fn vgc_refresh_stack_range_for_sp(cache_idx int, sp uint) {
 // ============================================================
 
 // Try to get a recycled span from the free list
+@[unsafe]
 fn vgc_get_free_span(npages u32, owner int) &VGC_Span {
 	mut span := vgc_take_free_span(npages, owner)
 	if span == unsafe { nil } {
@@ -484,6 +487,7 @@ fn vgc_get_free_span(npages u32, owner int) &VGC_Span {
 	return span
 }
 
+@[unsafe]
 fn vgc_take_free_span(npages u32, owner int) &VGC_Span {
 	if npages == 0 {
 		return unsafe { nil }
@@ -533,6 +537,7 @@ fn vgc_take_free_span(npages u32, owner int) &VGC_Span {
 }
 
 // Return a fully-empty span to the free list for reuse
+@[unsafe]
 fn vgc_put_free_span(mut span VGC_Span) {
 	npages := span.npages
 	if npages == 0 {
@@ -580,6 +585,7 @@ fn vgc_push_free_span(mut span VGC_Span) {
 
 // Allocate a new span with the given number of pages. `owner` is the cache index + 1 of the
 // thread that sets it up: the sweep leaves the span alone until that thread is done with it.
+@[unsafe]
 fn vgc_span_alloc(npages u32, owner int) &VGC_Span {
 	// First try to reuse a free span
 	recycled := vgc_get_free_span(npages, owner)
@@ -649,6 +655,7 @@ fn vgc_span_alloc(npages u32, owner int) &VGC_Span {
 
 // vgc_new_arena gets an arena for a span of nbytes from the OS: vgc_arena_size bytes, or
 // nbytes for a larger object. The caller holds vgc_heap.lock.
+@[unsafe]
 fn vgc_new_arena(nbytes uint) &VGC_Arena {
 	if vgc_heap.narenas == vgc_heap.arenas_cap {
 		new_cap := if vgc_heap.arenas_cap == 0 { 8 } else { vgc_heap.arenas_cap * 2 }
@@ -702,6 +709,7 @@ fn vgc_new_arena(nbytes uint) &VGC_Arena {
 // vgc_arena_map_add enters an arena in the arena map. It returns false when the arena lies above
 // the map, or a chunk of the map cannot be allocated; vgc_find_arena then searches the table for
 // it. The caller holds vgc_heap.lock.
+@[unsafe]
 fn vgc_arena_map_add(arena &VGC_Arena) bool {
 	first := arena.base >> vgc_granule_shift
 	last := (arena.base + arena.size - 1) >> vgc_granule_shift
@@ -734,6 +742,7 @@ fn vgc_arena_map_add(arena &VGC_Arena) bool {
 // freed, so the metadata comes from large chunks; a page of its own for each span (and one for
 // each of its two bitmaps) used more memory than the span's objects. The caller holds
 // vgc_heap.lock.
+@[unsafe]
 fn vgc_meta_alloc(size uint) voidptr {
 	n := (size + 15) & ~uint(15)
 	if vgc_heap.meta_left < n {
@@ -780,6 +789,7 @@ fn vgc_span_set_bitmaps(mut span VGC_Span) {
 }
 
 // Find a free slot in a span and allocate it
+@[unsafe]
 fn vgc_span_alloc_obj(mut span VGC_Span) voidptr {
 	if span.alloc_bits == unsafe { nil } {
 		return unsafe { nil }
@@ -827,6 +837,7 @@ fn vgc_span_alloc_obj(mut span VGC_Span) voidptr {
 // ============================================================
 
 // Get a span with free objects for the given span class, for the cache with index owner - 1.
+@[unsafe]
 fn vgc_central_get_span(span_class int, owner int) &VGC_Span {
 	central := unsafe { &vgc_heap.central[span_class] }
 	C.vgc_mutex_lock(&central.lock)
@@ -882,6 +893,7 @@ fn vgc_central_return_span(span_class int, mut span VGC_Span) {
 
 // vgc_central_file_span puts a span that no thread allocates from on the partial or the full
 // list of its class. The caller holds the central lock.
+@[unsafe]
 fn vgc_central_file_span(span_class int, mut span VGC_Span) {
 	if span.alloc_count < span.nelems {
 		// Has free objects - add to partial
@@ -918,6 +930,7 @@ fn vgc_central_file_span(span_class int, mut span VGC_Span) {
 // Cache operations (translated from Go's mcache)
 // ============================================================
 
+@[unsafe]
 fn vgc_cache_get_span(cache_idx int, span_class int) &VGC_Span {
 	span := unsafe { vgc_heap.caches[cache_idx].alloc[span_class] }
 	if span != unsafe { nil } {
@@ -955,6 +968,7 @@ fn vgc_malloc_typed(n uint, ptrmap u64, ptr_words u8) voidptr {
 	return vgc_malloc_typed_opts(n, ptrmap, ptr_words, true)
 }
 
+@[unsafe]
 fn vgc_malloc_typed_opts(n uint, ptrmap u64, ptr_words u8, zero_fill bool) voidptr {
 	if n == 0 {
 		return unsafe { nil }
@@ -1024,6 +1038,7 @@ fn vgc_malloc_noscan(n uint) voidptr {
 	return vgc_malloc_noscan_opts(n, true)
 }
 
+@[unsafe]
 fn vgc_malloc_noscan_opts(n uint, zero_fill bool) voidptr {
 	if n == 0 {
 		return unsafe { nil }
@@ -1117,6 +1132,7 @@ fn vgc_malloc_noscan_opts(n uint, zero_fill bool) voidptr {
 }
 
 // Allocate a large object (> 32KB) with its own span
+@[unsafe]
 fn vgc_alloc_large(n uint, noscan bool, zero_fill bool, cache_idx int) voidptr {
 	npages := u32((n + vgc_page_size - 1) / vgc_page_size)
 	span := vgc_span_alloc(npages, cache_idx + 1)
@@ -1157,6 +1173,7 @@ fn vgc_alloc_large(n uint, noscan bool, zero_fill bool, cache_idx int) voidptr {
 }
 
 // Realloc for VGC-managed memory
+@[unsafe]
 fn vgc_realloc(old_ptr voidptr, new_size uint) voidptr {
 	if old_ptr == unsafe { nil } {
 		return vgc_malloc(new_size)
@@ -1191,6 +1208,7 @@ fn vgc_realloc(old_ptr voidptr, new_size uint) voidptr {
 }
 
 // Free is mostly a no-op for GC, but can hint at deallocation
+@[unsafe]
 fn vgc_free(ptr voidptr) {
 	if ptr == unsafe { nil } {
 		return
@@ -1233,6 +1251,7 @@ fn vgc_free(ptr voidptr) {
 }
 
 // vgc_free_obj frees the object at ptr for the thread with cache index cache_idx.
+@[unsafe]
 fn vgc_free_obj(span &VGC_Span, ptr voidptr, cache_idx int) {
 	obj_idx := u32((uint(ptr) - span.base) / uint(span.elem_size))
 	if obj_idx < span.nelems && span.alloc_bits != unsafe { nil } {
@@ -1257,7 +1276,7 @@ fn vgc_calloc(n uint) voidptr {
 
 // Typed memdup: allocate with pointer map and copy source data.
 // Used by HEAP_vgc() macro for struct allocations with known layout.
-@[markused]
+@[markused; unsafe]
 fn vgc_memdup_typed(src voidptr, n int, ptrmap u64, ptr_words u8) voidptr {
 	if src == unsafe { nil } || n <= 0 {
 		return unsafe { nil }
@@ -1270,7 +1289,7 @@ fn vgc_memdup_typed(src voidptr, n int, ptrmap u64, ptr_words u8) voidptr {
 }
 
 // Memdup variants that skip zero-fill when the destination will be overwritten.
-@[markused]
+@[markused; unsafe]
 fn vgc_memdup(src voidptr, n int) voidptr {
 	if src == unsafe { nil } || n <= 0 {
 		return unsafe { nil }
@@ -1282,7 +1301,7 @@ fn vgc_memdup(src voidptr, n int) voidptr {
 	return mem
 }
 
-@[markused]
+@[markused; unsafe]
 fn vgc_memdup_noscan(src voidptr, n int) voidptr {
 	if src == unsafe { nil } || n <= 0 {
 		return unsafe { nil }
@@ -1303,6 +1322,7 @@ fn vgc_memdup_noscan(src voidptr, n int) voidptr {
 // a recycled span keeps its page count, so the page map holds every span exactly once. The
 // position is returned rather than kept in an iterator, because the compiler may move a local
 // whose address is taken to the heap, and the collector must not allocate.
+@[unsafe]
 fn vgc_next_span(arena int, page uint) (&VGC_Span, int, uint) {
 	mut ai := arena
 	mut p := page
@@ -1323,7 +1343,7 @@ fn vgc_next_span(arena int, page uint) (&VGC_Span, int, uint) {
 	return unsafe { nil }, ai, p
 }
 
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn vgc_find_span(ptr voidptr) &VGC_Span {
 	addr := uint(ptr)
 	// Fast reject: most probed words are not heap pointers at all.
@@ -1358,7 +1378,7 @@ fn vgc_find_span(ptr voidptr) &VGC_Span {
 }
 
 // vgc_find_arena returns the arena that holds addr, or nil.
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn vgc_find_arena(addr uint) &VGC_Arena {
 	g := addr >> vgc_granule_shift
 	if g < vgc_arena_map_granules {
@@ -1390,6 +1410,7 @@ fn vgc_find_arena(addr uint) &VGC_Arena {
 }
 
 // Get the allocation size of an object
+@[unsafe]
 fn vgc_get_obj_size(ptr voidptr) uint {
 	span := vgc_find_span(ptr)
 	if span == unsafe { nil } {
@@ -1399,6 +1420,7 @@ fn vgc_get_obj_size(ptr voidptr) uint {
 }
 
 // Check if an address is within the GC heap - O(1) with fast bounds reject
+@[unsafe]
 fn vgc_is_heap_ptr(addr uint) bool {
 	// Fast reject: most words on the stack are NOT heap pointers
 	if addr < vgc_arena_lo || addr >= vgc_arena_hi {

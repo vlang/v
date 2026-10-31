@@ -39,6 +39,7 @@ fn churn_stack() u64 {
 	return total
 }
 
+@[unsafe]
 fn test_pointer_sumtype_from_value_variant_keeps_variant_data_alive() {
 	tree := make_tree()
 	assert churn_stack() != 0

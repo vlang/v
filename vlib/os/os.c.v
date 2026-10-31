@@ -377,6 +377,7 @@ pub fn cp(src string, dst string, config CopyParams) ! {
 // vfopen returns an opened C file, given its path and open mode.
 // Note: os.vfopen is useful for compatibility with C libraries, that expect `FILE *`.
 // If you write pure V code, os.create or os.open are more convenient.
+@[unsafe]
 pub fn vfopen(path string, mode string) !&C.FILE {
 	if path == '' {
 		return error('vfopen called with ""')
@@ -689,7 +690,7 @@ fn print_c_errno() {
 }
 
 // get_raw_line returns a one-line string from stdin along with `\n` if there is any.
-@[manualfree]
+@[manualfree; unsafe]
 pub fn get_raw_line() string {
 	$if windows {
 		is_console := is_atty(0) > 0
@@ -783,6 +784,7 @@ pub fn get_raw_line() string {
 }
 
 // get_raw_stdin will get the raw input from stdin.
+@[unsafe]
 pub fn get_raw_stdin() []u8 {
 	$if windows {
 		unsafe {
@@ -868,7 +870,7 @@ pub fn read_file_array[T](path string) []T {
 
 // executable returns the path name of the executable that started the current
 // process.
-@[manualfree]
+@[manualfree; unsafe]
 pub fn executable() string {
 	mut result := [max_path_buffer_size]u8{}
 	$if windows {
@@ -1045,6 +1047,7 @@ fn working_directory_is(path &char) bool {
 // as a C string, and returns the length of the directory's path in it. It returns 0 when
 // the working directory is not known as an absolute path, when that path no longer names
 // it, or when the result does not fit in `size` bytes. Only real_path on macOS needs it.
+@[unsafe]
 fn relative_path_from_cwd(fpath string, buf voidptr, size int) int {
 	$if !macos {
 		return 0
@@ -1090,7 +1093,7 @@ fn relative_path_from_cwd(fpath string, buf voidptr, size int) int {
 // On Windows, extended-length path prefixes like `\\?\` and `\\?\UNC\` are normalized back
 // to standard DOS and UNC paths.
 // Note: this particular rabbit hole is *deep* ...
-@[manualfree]
+@[manualfree; unsafe]
 pub fn real_path(fpath string) string {
 	mut fullpath := [max_path_buffer_size]u8{}
 	mut res := ''
@@ -1300,6 +1303,7 @@ pub fn open_append(path string) !File {
 // The arguments, that will be passed to it are in `args`.
 // Note: this function will NOT return when successful, since
 // the child process will take control over execution.
+@[unsafe]
 pub fn execvp(cmdpath string, cmdargs []string) ! {
 	mut cargs := []&char{}
 	cargs << &char(cmdpath.str)
@@ -1328,6 +1332,7 @@ pub fn execvp(cmdpath string, cmdargs []string) ! {
 // You can pass environment variables to through `envs`.
 // Note: this function will NOT return when successful, since
 // the child process will take control over execution.
+@[unsafe]
 pub fn execve(cmdpath string, cmdargs []string, envs []string) ! {
 	mut cargv := []&char{}
 	mut cenvs := []&char{}

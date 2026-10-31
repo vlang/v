@@ -2,6 +2,7 @@ import os
 import strings
 import v.cmdexec
 
+@[unsafe]
 fn recursive_type_graph_source() string {
 	mut source := strings.new_builder(4096)
 	source.write_string('module main

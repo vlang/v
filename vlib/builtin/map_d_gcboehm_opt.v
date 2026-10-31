@@ -14,7 +14,7 @@ fn __malloc_at_least_one(how_many_bytes u64, noscan bool) &u8 {
 	return unsafe { malloc(__at_least_one(how_many_bytes)) }
 }
 
-@[inline]
+@[inline; unsafe]
 fn new_dense_array_noscan(key_bytes int, key_noscan bool, value_bytes int, value_noscan bool) DenseArray {
 	cap := 8
 	return DenseArray{

@@ -38,6 +38,7 @@ mut:
 // background loop. The first iteration runs after one interval. Iterations never
 // overlap; a slow job delays the next interval. Cancellation is cooperative, so
 // a running job must observe `ctx.done()` if it needs to stop before returning.
+@[unsafe]
 pub fn every(parent context.Context, interval time.Duration, f JobFn) ! {
 	if interval.nanoseconds() <= 0 {
 		return error(err_interval_invalid)
@@ -94,6 +95,7 @@ pub fn every(parent context.Context, interval time.Duration, f JobFn) ! {
 // The first iteration runs after one interval. Iterations never overlap; a slow
 // job delays the next interval. The returned handle must be stopped and waited
 // on by its owner, otherwise the detached loop can keep running.
+@[unsafe]
 pub fn start_every(parent context.Context, interval time.Duration, f JobFn) !&PeriodicHandle {
 	if interval.nanoseconds() <= 0 {
 		return error(err_interval_invalid)

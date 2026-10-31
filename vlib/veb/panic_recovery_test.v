@@ -175,6 +175,7 @@ fn test_panic_does_not_replace_a_taken_over_response() {
 	}
 }
 
+@[unsafe]
 fn test_panic_response_writer_does_not_stream_the_prepared_file() {
 	mut app := PanickingApp{}
 	routes := generate_routes[PanickingApp, PanickingContext](app) or { panic(err) }

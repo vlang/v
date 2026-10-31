@@ -18,6 +18,7 @@ fn drop_owned_interface[T](value T) {
 	}
 }
 
+@[unsafe]
 fn drop_owned_result_error_interface(err IError) {
 	mut owned := err
 	payload := unsafe { (&OwnershipRegularInterfacePayload(&owned)).payload }

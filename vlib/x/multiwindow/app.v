@@ -106,6 +106,7 @@ pub fn (app &App) capabilities() Capabilities {
 }
 
 // create_window creates a backend window and returns its generation-checked id.
+@[unsafe]
 pub fn (mut app App) create_window(config WindowConfig) !WindowId {
 	app.assert_owner_thread()!
 	validate_window_config(config)!
@@ -768,6 +769,7 @@ pub fn (mut app App) post(f AppJobFn) ! {
 // try_post submits a short owner-thread callback without waiting for capacity.
 // It follows x.executor's ! contract: queue-full and closed-queue states are
 // returned as errors instead of a bool.
+@[unsafe]
 pub fn (mut app App) try_post(f AppJobFn) ! {
 	if f == unsafe { nil } {
 		return error(err_nil_job)

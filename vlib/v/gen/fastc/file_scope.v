@@ -9,6 +9,7 @@ mut:
 	scope voidptr
 }
 
+@[unsafe]
 fn (mut scratch FastcFileScratch) generate(ctx &FastcFileGenContext, source FastcSourceFile) FastcFileGenOutput {
 	$if prealloc {
 		if scratch.scope == unsafe { nil }
@@ -23,6 +24,7 @@ fn (mut scratch FastcFileScratch) generate(ctx &FastcFileGenContext, source Fast
 	return fastc_generate_single_file(ctx, source)
 }
 
+@[unsafe]
 fn (mut scratch FastcFileScratch) free() {
 	$if prealloc {
 		if scratch.scope != unsafe { nil } {

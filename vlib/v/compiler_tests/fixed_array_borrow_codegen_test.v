@@ -78,6 +78,7 @@ fn main() {
 	assert warnings.output.contains('local moved to the heap: its fixed array storage may escape'), warnings.output
 }
 
+@[unsafe]
 fn test_fixed_array_borrow_summary_does_not_follow_shadowed_function_names() {
 	root := os.join_path(os.vtmp_dir(), 'fixed_array_borrow_shadow_${os.getpid()}')
 	os.mkdir_all(root)!
@@ -152,6 +153,7 @@ fn main() {
 	assert run.output.trim_space() == 'OK', run.output
 }
 
+@[unsafe]
 fn test_element_addresses_handed_to_borrowing_pointer_params_stay_on_the_stack() {
 	root := os.join_path(os.vtmp_dir(), 'fixed_array_borrow_elem_${os.getpid()}')
 	os.mkdir_all(root)!
@@ -251,6 +253,7 @@ fn main() {
 	assert run.output.trim_space() == 'OK', run.output
 }
 
+@[unsafe]
 fn test_elements_passed_by_mut_or_copied_by_value_stay_on_the_stack() {
 	root := os.join_path(os.vtmp_dir(), 'fixed_array_borrow_elem_mut_${os.getpid()}')
 	os.mkdir_all(root)!
@@ -306,6 +309,7 @@ fn main() {
 	assert run.output.trim_space() == 'OK', run.output
 }
 
+@[unsafe]
 fn test_an_index_through_a_method_is_a_call_that_receives_the_storage() {
 	root := os.join_path(os.vtmp_dir(), 'fixed_array_borrow_index_method_${os.getpid()}')
 	os.mkdir_all(root)!

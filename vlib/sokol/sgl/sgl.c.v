@@ -8,6 +8,7 @@ pub const version = gfx.version + 1
 pub const context = Context{0x00010001} // C.SGL_DEFAULT_CONTEXT = { 0x00010001 }
 
 // setup/shutdown/misc
+@[unsafe]
 pub fn setup(desc &Desc) {
 	if desc.allocator.alloc_fn == unsafe { nil } && desc.allocator.free_fn == unsafe { nil } {
 		unsafe {

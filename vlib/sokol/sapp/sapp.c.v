@@ -235,6 +235,7 @@ pub fn get_clipboard_string() &char {
 }
 
 // special run-function for SOKOL_NO_ENTRY (in standard mode this is an empty stub)
+@[unsafe]
 pub fn run(desc &Desc) {
 	if desc.allocator.alloc_fn == unsafe { nil } && desc.allocator.free_fn == unsafe { nil } {
 		unsafe {

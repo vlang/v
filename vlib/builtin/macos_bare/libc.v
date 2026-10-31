@@ -190,6 +190,7 @@ fn sys_exit(ec int) {
 	for {}
 }
 
+@[unsafe]
 fn system_alloc(_ voidptr, size uint) (voidptr, uint, u32) {
 	a, e := sys_mmap(unsafe { nil }, u64(size), 3, 0x1002, -1, 0)
 	if e == .enoerror {
@@ -198,6 +199,7 @@ fn system_alloc(_ voidptr, size uint) (voidptr, uint, u32) {
 	return unsafe { nil }, 0, 0
 }
 
+@[unsafe]
 fn sys_mmap(addr voidptr, len u64, prot int, flags int, fd i64, off u64) (voidptr, VlibcErrno) {
 	rc, er := sys_call6(mac_nr_mmap, u64(addr), len, u64(prot), u64(flags), u64(fd), off)
 	if er != 0 {
@@ -214,6 +216,7 @@ fn sys_munmap(addr voidptr, len u64) VlibcErrno {
 	return unsafe { VlibcErrno(er) }
 }
 
+@[unsafe]
 fn system_remap(_ voidptr, ptr voidptr, oldsize uint, newsize uint, can_move bool) voidptr {
 	return unsafe { nil }
 }
@@ -238,6 +241,7 @@ fn system_page_size(_ voidptr) uint {
 	return 4096
 }
 
+@[unsafe]
 fn get_bsd_allocator() dlmalloc.Allocator {
 	return dlmalloc.Allocator{
 		alloc:            system_alloc

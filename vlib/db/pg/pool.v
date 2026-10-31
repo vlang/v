@@ -145,6 +145,7 @@ fn (mut p Pool) acquire() !&Conn {
 	return error('pg: unreachable')
 }
 
+@[unsafe]
 fn (mut p Pool) release(conn &Conn) {
 	if isnil(conn) {
 		return
@@ -289,6 +290,7 @@ fn (mut p Pool) stats() PoolStats {
 	return stats
 }
 
+@[unsafe]
 fn (mut p Pool) set_max_open(n int) {
 	mut nn := n
 	if nn < 0 {

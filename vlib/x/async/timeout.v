@@ -18,6 +18,7 @@ pub fn with_timeout(timeout time.Duration, f JobFn) ! {
 // If timeout expires before f returns, this returns `async: timeout` and
 // cancels the derived context. The job must observe the context to stop early;
 // x.async does not kill spawned work.
+@[unsafe]
 pub fn with_timeout_context(parent context.Context, timeout time.Duration, f JobFn) ! {
 	if f == unsafe { nil } {
 		return error(err_nil_job)

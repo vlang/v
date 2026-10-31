@@ -290,6 +290,7 @@ fn is_request_cookie_name_writable(name string) bool {
 
 // do will send the HTTP request and returns `http.Response` as soon as the response is received
 // It returns a `HeaderValueError` if `user_agent` contains CR, LF or NUL
+@[unsafe]
 pub fn (req &Request) do() !Response {
 	mut rurl := urllib.parse(req.url) or { return error('http.Request.do: invalid url ${req.url}') }
 	mut resp := Response{}
@@ -408,6 +409,7 @@ fn redirected_method(method Method, status Status) Method {
 	}
 }
 
+@[unsafe]
 fn (req &Request) method_and_url_to_response(method Method, url urllib.URL, data string, header Header) !Response {
 	host_name := url.hostname()
 	scheme := url.scheme
@@ -570,6 +572,7 @@ fn (req &Request) build_request_cookies_header_with_header(header Header) string
 	return 'Cookie: ${value}\r\n'
 }
 
+@[unsafe]
 fn (req &Request) http_do(host string, method Method, path string, data string, header Header) !Response {
 	host_name, port := net.split_address(host)!
 	s := req.build_request_headers_with(method, host_name, port, 80, path, data, header)!
@@ -601,6 +604,7 @@ fn (req &Request) http_do(host string, method Method, path string, data string, 
 // connection and reads one response, leaving the connection open. The bool
 // result reports whether the response was precisely framed, so the connection
 // can safely carry another request (see ReceivedResponseInfo.reusable).
+@[unsafe]
 fn (req &Request) h1_exchange_tcp(mut client net.TcpConn, raw string) !(Response, bool) {
 	client.write(raw.bytes()) or {
 		return error('http.transport: connection write failed: ${err.msg()}')
@@ -816,6 +820,7 @@ fn validate_received_response_completion(has_content_length bool, expected_size 
 	}
 }
 
+@[unsafe]
 fn (req &Request) receive_all_data_from_cb_in_builder(mut content strings.Builder, con voidptr, receive_chunk_cb FnReceiveChunk) !ReceivedResponseInfo {
 	mut buff := [bufsize]u8{}
 	bp := unsafe { &buff[0] }

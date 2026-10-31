@@ -192,6 +192,7 @@ pub struct C.mbedtls_x509_crt {}
 @[typedef]
 pub struct C.mbedtls_x509_crl {}
 
+@[unsafe]
 fn C.mbedtls_net_init(&C.mbedtls_net_context)
 fn C.mbedtls_net_connect(&C.mbedtls_net_context, &char, &char, i32) i32
 fn C.mbedtls_net_bind(&C.mbedtls_net_context, &char, &char, i32) i32

@@ -90,6 +90,7 @@ fn test_alias_of_pointer() {
 	assert '${handle}' == '0'
 }
 
+@[unsafe]
 fn get_handle() HANDLE {
 	return unsafe { nil }
 }

@@ -19,6 +19,7 @@ fn testsuite_end() {
 	gc_enable()
 }
 
+@[unsafe]
 fn worker_set_flag(arg voidptr) {
 	if arg == unsafe { nil } {
 		return
@@ -115,6 +116,7 @@ fn test_windows_buffered_channel() {
 	time.sleep(200 * time.millisecond)
 }
 
+@[unsafe]
 fn test_windows_fiber_lifecycle() {
 	mut ctx := Context{}
 	assert ctx.uctx == unsafe { nil }
@@ -217,6 +219,7 @@ fn test_windows_waitq() {
 	assert q.empty()
 }
 
+@[unsafe]
 fn test_windows_scheduler_init() {
 	gsched.mu.acquire()
 	defer {
@@ -236,6 +239,7 @@ fn test_windows_scheduler_init() {
 	assert idle_count == int(gsched.npidle)
 }
 
+@[unsafe]
 fn test_windows_nonblocking_empty() {
 	c := chan_make(int(sizeof(int)), 0)
 	// Unbuffered with no peer: non-blocking ops must fail, not park.

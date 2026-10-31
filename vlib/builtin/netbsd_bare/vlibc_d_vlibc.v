@@ -353,6 +353,7 @@ $if !i386 {
 	}
 
 	// vlibc_sys_mmap maps memory using native protection and mapping flags.
+	@[unsafe]
 	pub fn vlibc_sys_mmap(addr voidptr, len u64, prot int, flags int, fd i64, off u64) (voidptr, VlibcErrno) {
 		rc, er := sys_call7(nb_nr_mmap, u64(addr), len, u64(prot), u64(flags), u64(fd), 0, off)
 		if er != 0 {
@@ -464,11 +465,13 @@ $if !i386 {
 	}
 
 	// vlibc_sleep_ns requests a sleep duration in nanoseconds; signals may interrupt it.
+	@[unsafe]
 	pub fn vlibc_sleep_ns(nsec u64) {
 		mut ts := VlibcTimespec{ sec: i64(nsec / 1_000_000_000), nsec: i64(nsec % 1_000_000_000) }
 		vlibc_sys_nanosleep(&ts, unsafe { nil })
 	}
 
+	@[unsafe]
 	fn vlibc_sysctl_string(mib0 int, mib1 int) string {
 		mut mib := [2]i32{}
 		mib[0] = i32(mib0)
@@ -772,6 +775,7 @@ $if !i386 {
 	}
 
 	// vlibc_execve replaces the current process with the requested executable.
+	@[unsafe]
 	pub fn vlibc_execve(path string, argv []string, envp []string) int {
 		mut a := []&u8{cap: argv.len + 1}
 		for s in argv {
@@ -788,6 +792,7 @@ $if !i386 {
 	}
 
 	// vlibc_waitpid waits for a child and returns its process ID.
+	@[unsafe]
 	pub fn vlibc_waitpid(pid i64) (i64, VlibcErrno) {
 		mut status := i32(0)
 		for {
@@ -897,6 +902,7 @@ $if !i386 {
 	}
 
 	// vlibc_accept accepts a connection and returns its descriptor.
+	@[unsafe]
 	pub fn vlibc_accept(fd i64) (i64, VlibcErrno) {
 		return vlibc_sys_accept(fd, unsafe { nil }, unsafe { nil })
 	}
@@ -912,6 +918,7 @@ $if !i386 {
 	}
 
 	// vlibc_send sends bytes on a connected socket and returns the number sent and any error.
+	@[unsafe]
 	pub fn vlibc_send(fd i64, data []u8, flags int) (i64, VlibcErrno) {
 		if data.len == 0 {
 			return 0, VlibcErrno.enoerror
@@ -920,6 +927,7 @@ $if !i386 {
 	}
 
 	// vlibc_recv receives bytes into buf and returns the number read and any error.
+	@[unsafe]
 	pub fn vlibc_recv(fd i64, buf []u8, flags int) (i64, VlibcErrno) {
 		if buf.len == 0 {
 			return 0, VlibcErrno.enoerror
@@ -1084,6 +1092,7 @@ $if !i386 {
 	}
 
 	// vlibc_thread_spawn starts a worker with its own argument and stack state.
+	@[unsafe]
 	pub fn vlibc_thread_spawn(fn_ptr VlibcThreadFn, arg u64) (VlibcThread, VlibcErrno) {
 		mut t := VlibcThread{}
 		t.fn_ptr = fn_ptr
@@ -1114,6 +1123,7 @@ $if !i386 {
 	}
 
 	// vlibc_thread_join reaps the shared-VM child before releasing its stack.
+	@[unsafe]
 	pub fn vlibc_thread_join(mut t VlibcThread) VlibcErrno {
 		_, er := vlibc_waitpid(t.tid)
 		if er != .enoerror { return er }

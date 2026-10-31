@@ -4,6 +4,7 @@ import os
 import v.flat
 import v.types
 
+@[unsafe]
 fn test_expansion_type_memo_preserves_estimates_and_does_not_survive_context_changes() {
 	saved_disable := os.getenv('V3_NO_NODE_TYPE_MEMO')
 	os.unsetenv('V3_NO_NODE_TYPE_MEMO')

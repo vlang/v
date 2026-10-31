@@ -125,6 +125,7 @@ mut:
 	scope      voidptr
 }
 
+@[unsafe]
 fn fn_signature_registration_thread(arg voidptr) voidptr {
 	a := unsafe { &FnSignatureRegistrationArgs(arg) }
 	mut g := unsafe { &FlatGen(a.g) }
@@ -140,6 +141,7 @@ fn fn_signature_registration_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn flat_cgen_select_thread(arg voidptr) voidptr {
 	mut a := unsafe { &FlatCgenSelectArgs(arg) }
 	a.scope = cgen_worker_scope_begin(true)
@@ -151,6 +153,7 @@ fn flat_cgen_select_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn collect_gen_info_fn_prep_thread(arg voidptr) voidptr {
 	a := unsafe { &CollectGenInfoFnPrepArgs(arg) }
 	master := unsafe { &FlatGen(a.g) }
@@ -187,7 +190,7 @@ fn collect_gen_info_fn_prep_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn collect_gen_info_scan_count_thread(arg voidptr) voidptr {
 	mut a := unsafe { &CollectGenInfoScanArgs(arg) }
 	g := unsafe { &FlatGen(a.g) }
@@ -251,7 +254,7 @@ fn collect_gen_info_scan_count_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn collect_gen_info_scan_fill_thread(arg voidptr) voidptr {
 	mut a := unsafe { &CollectGenInfoScanArgs(arg) }
 	g := unsafe { &FlatGen(a.g) }
@@ -296,6 +299,7 @@ fn collect_gen_info_scan_fill_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn flat_cgen_cost_thread(arg voidptr) voidptr {
 	mut a := unsafe { &FlatCgenCostArgs(arg) }
 	// Costs are written into the shared item array; the collected refs and
@@ -395,6 +399,7 @@ mut:
 	output string
 }
 
+@[unsafe]
 fn forward_decl_lane_thread(arg voidptr) voidptr {
 	mut a := unsafe { &ForwardDeclLaneArgs(arg) }
 	mut w := unsafe { &FlatGen(a.worker) }
@@ -462,6 +467,7 @@ fn forward_decl_lane_bounds(a &flat.FlatAst, items []FlatFnGenItem) []int {
 	return bounds
 }
 
+@[unsafe]
 fn parallel_type_decls_thread(arg voidptr) voidptr {
 	mut w := unsafe { &FlatGen(arg) }
 	// Body dispatchers fork from the master's checker while this task resolves
@@ -557,6 +563,7 @@ fn parallel_type_decls_thread(arg voidptr) voidptr {
 // fixed_storage_scan_thread runs the fixed-storage-const use scan (a full
 // post-transform AST pass) on a private fork while the master collects the
 // fn work items and pre-seeds the parallel tables.
+@[unsafe]
 fn fixed_storage_scan_thread(arg voidptr) voidptr {
 	mut w := unsafe { &FlatGen(arg) }
 	mut fssw := time.new_stopwatch()
@@ -573,6 +580,7 @@ fn fixed_storage_scan_thread(arg voidptr) voidptr {
 
 // fixed_array_support_thread moves the independent whole-AST fixed-array
 // discovery out of the serial type-declaration task.
+@[unsafe]
 fn fixed_array_support_thread(arg voidptr) voidptr {
 	mut w := unsafe { &FlatGen(arg) }
 	fsw := time.new_stopwatch()
@@ -586,6 +594,7 @@ fn fixed_array_support_thread(arg voidptr) voidptr {
 
 // Declaration signatures and unresolved calls use independent read-only inputs;
 // collect their optional typedefs on separate lanes and join before dispatch.
+@[unsafe]
 fn optional_support_thread(arg voidptr) voidptr {
 	mut w := unsafe { &FlatGen(arg) }
 	osw := time.new_stopwatch()
@@ -603,6 +612,7 @@ struct OptionalSelectionArgs {
 	items  chan []FlatFnGenItem
 }
 
+@[unsafe]
 fn checker_signature_support_thread(arg voidptr) voidptr {
 	mut w := unsafe { &FlatGen(arg) }
 	scope := cgen_worker_scope_begin(w.scope_parallel_workers)
@@ -614,6 +624,7 @@ fn checker_signature_support_thread(arg voidptr) voidptr {
 
 // Start declaration discovery while the master selects functions. The channel
 // publishes a stable snapshot before this lane reads the selected signatures.
+@[unsafe]
 fn optional_support_selection_thread(arg voidptr) voidptr {
 	a := unsafe { &OptionalSelectionArgs(arg) }
 	mut w := unsafe { &FlatGen(a.worker) }
@@ -674,6 +685,7 @@ mut:
 	keys []FlatFnGenItemSortKey
 }
 
+@[unsafe]
 fn fn_gen_item_key_sort_thread(arg voidptr) voidptr {
 	mut a := unsafe { &FnGenItemKeySortArgs(arg) }
 	a.keys.sort(a.c_name < b.c_name)
@@ -778,6 +790,7 @@ mut:
 	type_names  &TypeNameShortIndex   = unsafe { nil }
 }
 
+@[unsafe]
 fn type_index_thread(arg voidptr) voidptr {
 	mut a := unsafe { &TypeIndexArgs(arg) }
 	a.scope = cgen_worker_scope_begin(true)
@@ -801,6 +814,7 @@ fn (mut g FlatGen) start_type_indexes(no_parallel bool) (&TypeIndexArgs, []threa
 	return args, threads
 }
 
+@[unsafe]
 fn (mut g FlatGen) finish_type_indexes(args &TypeIndexArgs, threads []thread voidptr) {
 	if threads.len == 0 {
 		return
@@ -823,6 +837,7 @@ mut:
 	param_types_by_short map[string][]types.Type
 }
 
+@[unsafe]
 fn param_type_index_thread(arg voidptr) voidptr {
 	mut a := unsafe { &ParamTypeIndexArgs(arg) }
 	a.scope = cgen_worker_scope_begin(true)
@@ -831,6 +846,7 @@ fn param_type_index_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn unresolved_call_optional_thread(arg voidptr) voidptr {
 	mut w := unsafe { &FlatGen(arg) }
 	usw := time.new_stopwatch()
@@ -852,6 +868,7 @@ mut:
 	found []i32
 }
 
+@[unsafe]
 fn interface_boxing_scan_thread(arg voidptr) voidptr {
 	mut a := unsafe { &InterfaceBoxingScanArgs(arg) }
 	a.found = interface_boxing_candidates_in(a.a, a.ids, a.start, a.end)
@@ -908,6 +925,7 @@ fn interface_impl_scan_thread(arg voidptr) voidptr {
 	return arg
 }
 
+@[unsafe]
 fn fixed_array_ret_wrappers_thread(arg voidptr) voidptr {
 	mut w := unsafe { &FlatGen(arg) }
 	scope := cgen_worker_scope_begin(w.scope_parallel_workers)
@@ -917,6 +935,7 @@ fn fixed_array_ret_wrappers_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn cgen_support_precompute_thread(arg voidptr) voidptr {
 	mut w := unsafe { &FlatGen(arg) }
 	scope := cgen_worker_scope_begin(w.scope_parallel_workers)
@@ -927,6 +946,7 @@ fn cgen_support_precompute_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn pre_dispatch_master_thread(arg voidptr) voidptr {
 	mut g := unsafe { &FlatGen(arg) }
 	g.prepare_pre_dispatch_master()
@@ -934,6 +954,7 @@ fn pre_dispatch_master_thread(arg voidptr) voidptr {
 }
 
 // flat_cgen_chunk_thread supports flat cgen chunk thread handling for c.
+@[unsafe]
 fn flat_cgen_chunk_thread(arg voidptr) voidptr {
 	a := unsafe { &FlatCgenChunkArgs(arg) }
 	mut w := unsafe { &FlatGen(a.worker) }
@@ -950,6 +971,7 @@ fn flat_cgen_chunk_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn flat_cgen_dynamic_thread(arg voidptr) voidptr {
 	mut a := unsafe { &FlatCgenDynamicArgs(arg) }
 	mut w := unsafe { &FlatGen(a.worker) }
@@ -958,6 +980,7 @@ fn flat_cgen_dynamic_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn (mut g FlatGen) collect_fn_gen_candidates_parallel(direct_array_access_fns DirectArrayAccessFns, ignore_overflow_fns DirectArrayAccessFns, program_modules map[string]bool) []FlatFnGenCandidate {
 	nodes := g.top_level_nodes()
 	if isnil(g.a.worker_pool) || g.a.worker_pool.size() == 0 || nodes.len < 2048 {
@@ -1218,6 +1241,7 @@ fn (mut g FlatGen) start_fixed_array_ret_wrappers() ([]&FlatGen, []thread voidpt
 	return [worker, support_worker], threads
 }
 
+@[unsafe]
 fn (mut g FlatGen) finish_fixed_array_ret_wrappers(mut wrapper_workers []&FlatGen, threads []thread voidptr) {
 	for t in threads {
 		_ = t.wait()
@@ -1336,6 +1360,7 @@ fn (mut g FlatGen) finish_pending_item_prep_serial() {
 	}
 }
 
+@[unsafe]
 fn (mut g FlatGen) refine_fn_item_costs(no_parallel bool, reserve_worker bool) {
 	if no_parallel || g.fn_gen_items.len < min_flat_cgen_parallel_items {
 		g.finish_pending_item_prep_serial()
@@ -1703,6 +1728,7 @@ fn (mut g FlatGen) write_scoped_cgen_batch_output(batch &FlatGen) bool {
 
 // cgen_publish_builder_text copies a helper builder's text into the arena that
 // encloses `scope` and releases the builder's scoped storage.
+@[unsafe]
 fn cgen_publish_builder_text(mut sb strings.Builder, scope voidptr) string {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -1945,6 +1971,7 @@ fn (mut g FlatGen) gen_fn_items_scoped_batches(items []FlatFnGenItem) {
 	cgen_worker_scope_leave(result_scope)
 }
 
+@[unsafe]
 fn (mut g FlatGen) gen_fn_chunks_scoped_dynamic(
 	chunks [][]FlatFnGenItem,
 	chunk_queue chan int,
@@ -2012,6 +2039,7 @@ fn (mut g FlatGen) absorb_dispatch_chunk(batch &FlatGen, chunk_idx int) {
 // gen_fn_items_scoped_master_batches publishes each caller-thread batch
 // directly into the already-scoped master generator, so its temporary caches
 // do not remain resident for the rest of cgen.
+@[unsafe]
 fn (mut g FlatGen) gen_fn_items_scoped_master_batches(items []FlatFnGenItem) {
 	mut total_cost := i64(items.len)
 	for item in items {
@@ -2064,6 +2092,7 @@ fn clone_embedded_fields_by_type(values map[u32][]types.StructField) map[u32][]t
 	return cloned
 }
 
+@[unsafe]
 fn (mut g FlatGen) publish_fixed_storage_scan(mut fs_worker FlatGen) {
 	for opt_name, val_type_id in fs_worker.needed_optional_types.ids {
 		g.needed_optional_types.set_id(opt_name.clone(), val_type_id)
@@ -2117,6 +2146,7 @@ fn clone_cgen_fixed_array_typedef_map(values map[string]FixedArrayTypedefInfo) m
 	return cloned
 }
 
+@[unsafe]
 fn (mut g FlatGen) publish_fixed_array_support(mut worker FlatGen) {
 	g.fixed_array_typedefs_ready = worker.fixed_array_typedefs_ready
 	if worker.worker_scope != unsafe { nil } {
@@ -2130,6 +2160,7 @@ fn (mut g FlatGen) publish_fixed_array_support(mut worker FlatGen) {
 	g.fixed_array_typedefs_needed = worker.fixed_array_typedefs_needed.move()
 }
 
+@[unsafe]
 fn (mut g FlatGen) publish_optional_support(mut worker FlatGen) {
 	g.optional_types_ready = worker.optional_types_ready
 	g.multi_return_types_ready = worker.multi_return_types_ready
@@ -2154,6 +2185,7 @@ fn (mut g FlatGen) publish_optional_support(mut worker FlatGen) {
 	g.multi_return_type_names = worker.multi_return_type_names.move()
 }
 
+@[unsafe]
 fn (mut g FlatGen) publish_unresolved_call_optional_types(mut worker FlatGen) {
 	for name, payload_id in worker.needed_optional_types.ids {
 		// This scan follows declarations in the serial pipeline, including when
@@ -2168,6 +2200,7 @@ fn (mut g FlatGen) publish_unresolved_call_optional_types(mut worker FlatGen) {
 	worker.worker_scope = unsafe { nil }
 }
 
+@[unsafe]
 fn (mut g FlatGen) publish_interface_impl_scan(mut worker FlatGen) {
 	for name, methods in worker.interfaces {
 		if name !in g.interfaces {
@@ -2201,6 +2234,7 @@ fn clone_cgen_source_type_list_map(values map[u32][]u32) map[u32][]u32 {
 }
 
 // gen_fns_dispatch emits fns dispatch output for c.
+@[unsafe]
 fn (mut g FlatGen) gen_fns_dispatch(no_parallel bool) {
 	g.gen_test_failure_global()
 	if no_parallel {
@@ -3816,6 +3850,7 @@ fn (mut g FlatGen) merge_parallel_worker_ordered(w &FlatGen, mut ordered []strin
 	g.merge_parallel_worker_into(w, mut ordered, mut ordered_wrapper_defs)
 }
 
+@[unsafe]
 fn (mut g FlatGen) merge_parallel_worker_into(w &FlatGen, mut ordered []string, mut ordered_wrapper_defs []ParallelChunkWrapperDefs) {
 	mut ww := unsafe { w }
 	if w.callback_identity_used {
@@ -3996,6 +4031,7 @@ fn retain_cgen_result_scopes() bool {
 // finish_parallel_worker_scope either releases a joined result arena
 // immediately (oracle fallback) or retains it until FlatGen has written every
 // borrowed function segment.
+@[unsafe]
 fn (mut g FlatGen) finish_parallel_worker_scope(mut w FlatGen) {
 	if w.worker_scope == unsafe { nil } {
 		return
@@ -4024,6 +4060,7 @@ fn (mut g FlatGen) replay_ordered_parallel_wrapper_defs(wrapper_defs []ParallelC
 // the fn work items and pre-seeds the string/fn-ptr tables the workers need.
 // Returns false when the parallel path is not applicable (the caller then
 // runs the serial order).
+@[unsafe]
 fn (mut g FlatGen) run_pre_dispatch_parallel(no_parallel bool) bool {
 	if no_parallel {
 		return false

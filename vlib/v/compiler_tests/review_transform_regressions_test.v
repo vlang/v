@@ -1483,6 +1483,7 @@ fn test_nested_shared_field_lock_rejects_aliased_index_mutation() {
 	assert out == '7'
 }
 
+@[unsafe]
 fn test_nested_shared_field_lock_rejects_promoted_field_alias_mutation() {
 	v3_bin := build_v3_review_transform()
 	run_bad(v3_bin, 'nested_shared_field_lock_promoted_field_alias_mutation', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Holder {\nmut:\n\tcurrent &Coordinator = unsafe { nil }\n}\n\nstruct Wrapper {\n\tHolder\n}\n\nfn main() {\n\tmut first := Coordinator{}\n\tmut replacement := Coordinator{}\n\tmut wrapper := Wrapper{}\n\twrapper.Holder.current = &first\n\tlock wrapper.current.state {\n\t\twrapper.Holder.current = &replacement\n\t\twrapper.current.state.value++\n\t}\n}\n', 'used to locate locked shared value `wrapper.current.state`')
@@ -1611,6 +1612,7 @@ fn test_nested_shared_field_lock_rejects_overloaded_index() {
 	run_bad(v3_bin, 'nested_shared_field_lock_overloaded_index', 'struct State {\nmut:\n\tvalue int\n}\n\nstruct Coordinator {\n\tstate shared State\n}\n\nstruct Registry {\n\tentries []&Coordinator\n}\n\nfn (registry Registry) [] (key int) &Coordinator {\n\treturn registry.entries[key]\n}\n\nfn main() {\n\tmut coordinator := Coordinator{}\n\tmut registry := Registry{\n\t\tentries: [&coordinator]\n\t}\n\tkey := 0\n\tlock registry[key].state {\n\t\tregistry[key].state.value = 7\n\t}\n}\n', 'selector bases and indices must be stable expressions')
 }
 
+@[unsafe]
 fn test_reassigned_nil_pointer_can_be_dereferenced() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'reassigned_nil_pointer', 'fn main() {\n\tmut pointer := &int(unsafe { nil })\n\tmut value := 7\n\tpointer = &value\n\tprintln(int_str(*pointer))\n}\n')
@@ -2742,6 +2744,7 @@ fn main() {
 	assert out == '1250025000'
 }
 
+@[unsafe]
 fn test_scope_owned_pointer_reassignment_keeps_field_closure_cleanup() {
 	v3_bin := build_v3_review_transform()
 	source := '@[heap]
@@ -2768,6 +2771,7 @@ fn main() {
 	assert run_good(v3_bin, 'fresh_pointer_reassignment_closure', source) == '3'
 }
 
+@[unsafe]
 fn test_scope_owned_indexed_pointer_field_keeps_closure_cleanup() {
 	v3_bin := build_v3_review_transform()
 	source := '@[heap]
@@ -4315,6 +4319,7 @@ fn main() {
 	assert out == '9'
 }
 
+@[unsafe]
 fn test_return_address_of_pointer_backed_field_preserves_identity() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'return_pointer_backed_field_address', 'struct Node[T] {\nmut:\n\tvalue T\n}\n\nstruct List[T] {\nmut:\n\ttail &Node[T] = unsafe { nil }\n}\n\nfn (list &List[T]) last() &T {\n\treturn &list.tail.value\n}\n\nfn main() {\n\tmut node := &Node[int]{\n\t\tvalue: 1\n\t}\n\tlist := List[int]{\n\t\ttail: node\n\t}\n\tmut last := list.last()\n\tunsafe {\n\t\t*last = 9\n\t}\n\tprintln(int_str(node.value))\n}\n')
@@ -4763,6 +4768,7 @@ fn test_nested_comptime_field_names_do_not_replace_each_other() {
 	assert out == '1'
 }
 
+@[unsafe]
 fn test_struct_equality_compares_pointer_fields_as_pointers() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'struct_eq_pointer_field', 'struct Node {\n\tvalue int\n\tnext &Node\n}\n\nfn main() {\n\tleft := Node{\n\t\tvalue: 7\n\t\tnext: unsafe { nil }\n\t}\n\tright := Node{\n\t\tvalue: 7\n\t\tnext: unsafe { nil }\n\t}\n\tprintln([left] == [right])\n}\n')
@@ -5723,6 +5729,7 @@ fn test_comptime_pointer_field_generic_local_uses_call_return_type() {
 	assert out == '42'
 }
 
+@[unsafe]
 fn test_imported_struct_default_qualifies_function_alias_cast() {
 	v3_bin := build_v3_review_transform()
 	c_source := gen_c_from_project(v3_bin, 'imported_struct_default_fn_alias', {
@@ -5895,6 +5902,7 @@ fn test_json2_decode_any_map_keeps_sum_value_type() {
 	assert out == 'true'
 }
 
+@[unsafe]
 fn test_json2_callback_field_keeps_declaring_module_and_pointer_depth() {
 	v3_bin := build_v3_review_transform()
 	out := run_good_project(v3_bin, 'json2_callback_field_module', {
@@ -9853,6 +9861,7 @@ fn make_items() []Item {
 	}]
 }
 
+@[unsafe]
 fn first_item() &Item {
 	_ := make_items().map(match true {
 		true {
@@ -13286,6 +13295,7 @@ fn test_imported_generic_default_uses_main_struct_defaults_after_short_name_coll
 	assert out == '0'
 }
 
+@[unsafe]
 fn test_address_of_nil_pointer_cast_provides_pointer_value_storage() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'address_of_nil_pointer_cast_storage', 'struct Holder {
@@ -13302,6 +13312,7 @@ fn main() {
 	assert out == 'true'
 }
 
+@[unsafe]
 fn test_later_block_call_arg_does_not_capture_earlier_sum_temporary() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'call_arg_sum_temp_before_block', 'struct Item {}
@@ -13595,6 +13606,7 @@ fn main() {
 	assert out == '7'
 }
 
+@[unsafe]
 fn test_unsafe_postfix_and_pointer_to_pointer_type_parse() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'unsafe_postfix_pointer_to_pointer', 'struct Item {
@@ -13865,6 +13877,7 @@ fn main() {
 	assert out == 'yes:16:1'
 }
 
+@[unsafe]
 fn test_adjacent_bound_method_params_struct_fields_keep_function_types() {
 	v3_bin := build_v3_review_transform()
 	out := run_good(v3_bin, 'params_struct_bound_method_values', 'type Callback = fn (voidptr)

@@ -105,6 +105,7 @@ pub mut:
 	logger    C.saudio_logger
 }
 
+@[unsafe]
 fn C.saudio_setup(const_desc &C.saudio_desc)
 
 fn C.saudio_shutdown()

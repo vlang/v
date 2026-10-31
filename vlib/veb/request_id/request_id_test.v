@@ -8,6 +8,7 @@ struct TestContext {
 	RequestIdContext
 }
 
+@[unsafe]
 fn test_config_default() {
 	default_config := Config{}
 	assert default_config.header == 'X-Request-ID'

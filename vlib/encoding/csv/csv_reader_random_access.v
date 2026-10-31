@@ -189,6 +189,7 @@ pub fn csv_reader(cfg RandomAccessReaderConfig) !&RandomAccessReader {
 }
 
 // dispose_csv_reader release the resources used by the csv_reader
+@[unsafe]
 pub fn (mut cr RandomAccessReader) dispose_csv_reader() {
 	if cr.mem_buf_type == ram_csv {
 		// do nothing, ram buffer is static

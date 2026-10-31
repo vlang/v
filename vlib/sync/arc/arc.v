@@ -42,6 +42,7 @@ pub fn ptr_eq[T](a &Arc[T], b &Arc[T]) bool {
 }
 
 // drop releases one strong reference and destroys `T` after the last release.
+@[unsafe]
 pub fn (mut a Arc[T]) drop() {
 	if isnil(a.inner) {
 		return

@@ -422,7 +422,7 @@ pub fn realloc_data(old_data &u8, old_size int, new_size int) &u8 {
 // vcalloc dynamically allocates a zeroed `n` bytes block of memory on the heap.
 // vcalloc returns a `byteptr` pointing to the memory address of the allocated space.
 // vcalloc checks for negative values given in `n`.
-@[inline]
+@[inline; unsafe]
 pub fn vcalloc(n int) &u8 {
 	$if trace_vcalloc ? {
 		total_m += n
@@ -472,7 +472,7 @@ pub fn vcalloc(n int) &u8 {
 
 // special versions of the above that allocate memory which is not scanned
 // for pointers (but is collected) when the Boehm garbage collection is used
-@[inline]
+@[inline; unsafe]
 pub fn vcalloc_noscan(n int) &u8 {
 	$if trace_vcalloc ? {
 		total_m += n

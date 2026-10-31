@@ -49,6 +49,7 @@ fn test_serial_collection_builds_complete_name_and_field_indexes() {
 	assert incremental.ident_may_name_type('missing')
 }
 
+@[unsafe]
 fn test_value_c_type_alias_filter_preserves_c_spelling_main_prefix_and_long_keys() {
 	for prefix in ['', 'main.'] {
 		for suffix in ['Value', 'Value' + 'x'.repeat(600)] {

@@ -5,6 +5,7 @@ import strconv
 import time
 
 // select is used internally by V's ORM for processing `SELECT ` queries.
+@[unsafe]
 pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.QueryData) ![][]orm.Primitive {
 	where_with_tenant := orm.apply_tenant_filter(config.table, where)
 	query := orm.orm_select_gen(config, '`', false, '?', 0, where_with_tenant)
@@ -197,6 +198,7 @@ pub fn (db DB) drop(table orm.Table) ! {
 
 // execute runs a raw SQL query and returns result rows as driver-agnostic orm.Row values,
 // with column names populated from the result metadata.
+@[unsafe]
 pub fn (db DB) execute(query string) ![]orm.Row {
 	mut guard := db.acquire_connection_guard()!
 	defer {

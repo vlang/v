@@ -25,6 +25,7 @@ fn get_or_create_loader(name string, paths []string) !&loader.DynamicLibLoader {
 	)
 }
 
+@[unsafe]
 fn run_test_invalid_lib_linux() ! {
 	// ensure a not-existing dl won't be loaded
 	mut dl_loader := get_or_create_loader(@MOD + '.' + @FN + '.' + 'lib', [
@@ -37,6 +38,7 @@ fn run_test_invalid_lib_linux() ! {
 	assert isnil(h)
 }
 
+@[unsafe]
 fn run_test_invalid_lib_windows() ! {
 	// ensure a not-existing dl won't be loaded
 	mut dl_loader := get_or_create_loader(@MOD + '.' + @FN + '.' + 'lib', [
@@ -49,6 +51,7 @@ fn run_test_invalid_lib_windows() ! {
 	assert isnil(h)
 }
 
+@[unsafe]
 fn run_test_valid_lib_windows() ! {
 	mut dl_loader := get_or_create_loader(@MOD + '.' + @FN + '.' + 'lib', [
 		'not-existing-dynamic-link-library',
@@ -61,6 +64,7 @@ fn run_test_valid_lib_windows() ! {
 	assert !isnil(h)
 }
 
+@[unsafe]
 fn run_test_invalid_sym_windows() ! {
 	mut dl_loader := get_or_create_loader(@MOD + '.' + @FN + '.' + 'lib', ['shell32'])!
 	defer {
@@ -70,6 +74,7 @@ fn run_test_invalid_sym_windows() ! {
 	assert isnil(proc)
 }
 
+@[unsafe]
 fn run_test_valid_sym_windows() ! {
 	mut dl_loader := get_or_create_loader(@MOD + '.' + @FN + '.' + 'lib', [
 		'not-existing-dynamic-link-library',

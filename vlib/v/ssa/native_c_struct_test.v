@@ -4,6 +4,7 @@ import os
 import v.parser
 import v.pref
 
+@[unsafe]
 fn test_native_uname_layout_preserves_host_abi_fields_without_changing_wasm32() {
 	path := os.join_path(os.vtmp_dir(), 'ssa_utsname_${os.getpid()}.v')
 	defer { os.rm(path) or {} }

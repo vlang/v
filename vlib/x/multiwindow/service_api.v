@@ -1456,6 +1456,7 @@ pub fn (mut app App) service_complete_readback(id WindowId, width int, height in
 }
 
 // with_native_window_for_gg is an internal gg-facade bridge; not user API.
+@[unsafe]
 pub fn (mut app App) with_native_window_for_gg(id WindowId, callback NativeWindowBorrowCallback) ! {
 	app.assert_owner_thread()!
 	if callback == unsafe { nil } {
@@ -1479,6 +1480,7 @@ pub fn (mut app App) with_native_window_for_gg(id WindowId, callback NativeWindo
 	app.with_native_window_borrow(id, borrow.backend, borrow.primary, borrow.secondary, callback)!
 }
 
+@[unsafe]
 fn (mut app App) with_native_window_borrow_for_test(id WindowId, callback NativeWindowBorrowCallback) ! {
 	app.with_native_window_borrow(id, .mock, unsafe { nil }, 0, callback)!
 }
@@ -1491,6 +1493,7 @@ $if test {
 	}
 }
 
+@[unsafe]
 fn (mut app App) with_native_window_borrow(id WindowId, backend NativeWindowBackend, primary voidptr, secondary u64, callback NativeWindowBorrowCallback) ! {
 	app.assert_owner_thread()!
 	if callback == unsafe { nil } {

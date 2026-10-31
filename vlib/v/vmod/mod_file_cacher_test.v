@@ -4,6 +4,7 @@ import os
 
 // The module shares one private cacher, so every lookup in the process sees the
 // same answer for the same folder, and a fresh one must not inherit that.
+@[unsafe]
 fn test_get_cache_returns_the_shared_cacher() {
 	first := get_cache()
 	assert first != unsafe { nil }

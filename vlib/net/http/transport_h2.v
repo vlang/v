@@ -49,6 +49,7 @@ fn new_h2_dial_call() &H2DialCall {
 // ALPN-probing dial (h2_dial_and_do), which itself falls back to the ordinary
 // pooled http/1.1 path when the origin turns out not to speak h2 — so this
 // always returns a complete result, never a "not handled, try h1" signal.
+@[unsafe]
 fn (mut t Transport) h2_round_trip(req &Request, key string, raw string, method Method, host string, port int, path string, data string, header Header) !Response {
 	for _ in 0 .. h2_round_trip_attempts {
 		t.mu.lock()
@@ -213,6 +214,7 @@ fn (mut t Transport) h2_fallback_h1(req &Request, key string, raw string, method
 //     call to the existing pooled http/1.1 path.
 //   - the dial itself fails outright: every waiter (this caller included)
 //     observes that same failure.
+@[unsafe]
 fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method Method, host string, port int, path string, data string, header Header) !Response {
 	t.mu.lock()
 	if mut existing := t.dialing[key] {
@@ -478,6 +480,7 @@ fn (mut t Transport) h2_await_dial(mut call H2DialCall, req &Request, key string
 // h2_dial_and_do's own registration-time recheck, so both paths treat a
 // known-h1 origin identically (Codex P2, vlang/v#27643
 // pullrequestreview-4631763931, discussion 3525390892).
+@[unsafe]
 fn (mut t Transport) h2_use_h1_pool_or_dial(req &Request, key string, raw string, method Method, host string, port int, path string, data string, header Header) !Response {
 	mut h1conn := t.checkout(key)
 	if h1conn == unsafe { nil } {
@@ -504,6 +507,7 @@ fn (mut t Transport) h2_use_h1_pool_or_dial(req &Request, key string, raw string
 // h2_exchange's streaming-callback wiring and its req.on_finish call on
 // success; this is duplicated rather than shared because h2_exchange's
 // signature is tied to the concrete H2Conn type.
+@[unsafe]
 fn do_h2(req &Request, mut conn H2MuxConn, method Method, host string, port int, path string, data string, header Header) !Response {
 	base := req.to_h2_request(method, h2_authority(host, port), path, data, header)
 	on_progress := req.on_progress

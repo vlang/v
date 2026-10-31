@@ -45,6 +45,7 @@ pub fn (d &DataBuilder) build() []u8 {
 	return b
 }
 
+@[unsafe]
 fn new_data_builder() DataBuilder {
 	return DataBuilder{
 		func: unsafe { nil }

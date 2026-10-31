@@ -4,6 +4,7 @@ fn element_or_default(items []int, i int) int {
 	return if x := items[i] { x + 1 } else { -1 }
 }
 
+@[unsafe]
 fn element_address(items []int, i int) &int {
 	return if mut x := items[i] {
 		p := &x

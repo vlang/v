@@ -63,6 +63,7 @@ mut:
 // prepare_collect collects `a`, the code parsed so far, and keeps what
 // collect_continue needs to collect the code parsed after it. False when the
 // prepared code has diagnostics of its own: a check reports those in order.
+@[unsafe]
 pub fn (mut tc TypeChecker) prepare_collect(a &flat.FlatAst) bool {
 	mut prepared := &PreparedCollect{}
 	tc.prepared_collect = prepared

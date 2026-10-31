@@ -18,6 +18,7 @@ struct IntegerLiteral {
 	val string
 }
 
+@[unsafe]
 fn test_sum_type_match() {
 	// TODO: Remove these casts
 	assert is_gt_simple('3', int(2))
@@ -478,6 +479,7 @@ fn (c CommonType) str() string {
 	}
 }
 
+@[unsafe]
 fn sumtype_match_with_string_interpolation(code int) string {
 	match code {
 		1 {

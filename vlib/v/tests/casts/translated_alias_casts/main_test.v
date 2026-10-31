@@ -44,6 +44,7 @@ mut:
 	value int
 }
 
+@[unsafe]
 fn test_translated_lowercase_pointer_casts() {
 	zero := &debug_info(0)
 	assert zero == unsafe { nil }

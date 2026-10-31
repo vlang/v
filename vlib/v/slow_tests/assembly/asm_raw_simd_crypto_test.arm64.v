@@ -258,6 +258,7 @@ $if macos {
 	#include <sys/sysctl.h>
 }
 
+@[unsafe]
 fn C.sysctlbyname(name &char, oldp voidptr, oldlenp &uint, newp voidptr, newlen uint) int
 
 fn C.IsProcessorFeaturePresent(feature u32) int

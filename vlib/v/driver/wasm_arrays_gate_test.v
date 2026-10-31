@@ -59,6 +59,7 @@ fn test_wasm_gate_admits_string_arrays() {
 // lets lesson pages with structs run client-side. The rejection direction is
 // still pinned: a struct holding a map has no field-wise wasm lowering, so it
 // must be refused rather than miscompiled.
+@[unsafe]
 fn test_wasm_gate_admits_structs_with_supported_fields() {
 	assert wasm_gate_check('module main\nstruct P {\n\tx int\n\ty int\n}\nfn main() {\n\tp := P{\n\t\tx: 1,\n\t\ty: 2\n\t}\n\tprintln(p.x)\n}\n') == ''
 	assert wasm_gate_check("module main\nstruct Name {\n\ts string\n}\nstruct P {\n\tname Name\n\tn    int\n}\nfn main() {\n\tp := P{\n\t\tname: Name{\n\t\t\ts: 'a'\n\t\t},\n\t\tn:    2\n\t}\n\tprintln(p.n)\n}\n") == ''

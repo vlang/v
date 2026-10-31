@@ -1478,6 +1478,7 @@ fn test_formatter_preserves_comptime_match() {
 	assert vfmt('comptime_match_twice', out) == out
 }
 
+@[unsafe]
 fn test_formatter_preserves_inclusive_match_ranges() {
 	source := "fn classify(value int) string {\n\treturn match value {\n\t\t32...126 { 'printable' }\n\t\telse { 'other' }\n\t}\n}\n"
 	out := vfmt('inclusive_match_range', source)

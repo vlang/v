@@ -32,6 +32,7 @@ $if !i386 {
 	}
 
 	// vlibc_sleep_ns requests a sleep duration in nanoseconds; signals may interrupt it.
+	@[unsafe]
 	pub fn vlibc_sleep_ns(nsec u64) {
 		mut ts := VlibcTimespec{ sec: i64(nsec / 1_000_000_000), nsec: i64(nsec % 1_000_000_000) }
 		vlibc_sys_nanosleep(&ts, unsafe { nil })

@@ -15,6 +15,7 @@ fn (mut host Host) reject(e IError) !voidptr {
 	return voidptr(&host.value)
 }
 
+@[unsafe]
 fn (mut host Host) decode(ok bool) !voidptr {
 	if !ok {
 		return error('decode failed')
@@ -48,6 +49,7 @@ fn either(a bool, b bool) !int {
 	}
 }
 
+@[unsafe]
 fn test_returned_or_block_result_tail() {
 	mut host := Host{}
 	assert run(mut host, true)! == unsafe { nil }

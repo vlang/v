@@ -50,6 +50,7 @@ fn test_win32_gg_public_facade_capabilities_are_distinct_and_complete_red() {
 	}
 }
 
+@[unsafe]
 fn test_win32_gg_public_borrow_is_live_callback_bounded_stale_and_defers_teardown_red() {
 	$if windows {
 		eprintln('PACKAGE2_RED_TEST=test_win32_gg_public_borrow_is_live_callback_bounded_stale_and_defers_teardown_red')

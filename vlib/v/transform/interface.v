@@ -249,6 +249,7 @@ fn (t &Transformer) interface_type_with_pointer_depth(source_type_id u32, interf
 // `share_source` makes the boxed `_object` point at the source lvalue instead of a
 // heap copy; it is only safe when the source is guaranteed to outlive the box
 // (mut/reference call arguments, global initializers).
+@[unsafe]
 fn (mut t Transformer) transform_interface_value_for_type(id flat.NodeId, target_type_id u32, share_source bool) ?flat.NodeId {
 	if int(id) < 0 || target_type_id == u32(0) || isnil(t.tc) {
 		return none

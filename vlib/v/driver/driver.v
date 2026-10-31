@@ -2969,12 +2969,14 @@ fn (plan &V3CCompilerFlagPlan) all_flags(support_inputs []string) []string {
 	return flags
 }
 
+@[unsafe]
 fn run_v3_parallel_c_compile_task(raw_task voidptr) voidptr {
 	mut task := unsafe { &V3ParallelCCompileTask(raw_task) }
 	task.result = cmdexec.run_in(task.compiler, task.args, task.dir)
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn run_v3_parallel_c_dependency_task(raw_task voidptr) voidptr {
 	mut task := unsafe { &V3ParallelCCompileTask(raw_task) }
 	task.dependencies = c_object_dependencies_in(task.compiler, task.dependency_args, task.source_path, task.dir)
@@ -4520,6 +4522,7 @@ fn ownership_checker_compiled() bool {
 }
 
 // prealloc_scope_begin_for_v3 starts a disposable prealloc scope when available.
+@[unsafe]
 fn prealloc_scope_begin_for_v3() voidptr {
 	$if prealloc {
 		return unsafe { prealloc_scope_begin() }
@@ -4545,6 +4548,7 @@ fn prealloc_scope_free_for_v3(scope voidptr) {
 // free_retained_scopes releases the stage arenas kept alive
 // through code generation. Unmapping multi-gigabyte arenas is slow enough to be
 // worth overlapping with the C compiler, which reads only the generated file.
+@[unsafe]
 fn free_retained_scopes(transform_scope voidptr, prepare_scope voidptr) {
 	if transform_scope != unsafe { nil } {
 		prealloc_scope_free_for_v3(transform_scope)
@@ -6743,11 +6747,12 @@ fn clone_flat_node_owned(node flat.Node) flat.Node {
 	return node.clone_owned()
 }
 
+@[unsafe]
 fn clone_flat_ast_after_transform(ast &flat.FlatAst) &flat.FlatAst {
 	return clone_flat_ast_after_transform_from_scope(ast, unsafe { nil })
 }
 
-@[manualfree]
+@[manualfree; unsafe]
 fn clone_flat_ast_after_transform_from_scope(ast &flat.FlatAst, scope voidptr) &flat.FlatAst {
 	mut nodes := []flat.Node{cap: ast.nodes.len}
 	if scope == unsafe { nil } {
@@ -17573,6 +17578,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 
 // cache_record_closure_dependencies preserves the runtime imports of compiled
 // bodies, which declaration-only headers cannot rediscover by scanning syntax.
+@[unsafe]
 fn cache_record_closure_dependencies(bodies map[string]string, prefix string, scope voidptr, mut state V3ModuleCacheState) {
 	closure_module := cache_state_module_name(state, 'builtin.closure') or { return }
 	mut declarations := ''
@@ -21329,6 +21335,7 @@ fn v3_library_source_files(a &flat.FlatAst, tc &types.TypeChecker, vroot string)
 
 // v3_mark_used_for_program runs markused as a plain build of a program does, in a
 // scope of its own when the stage scopes its scratch memory.
+@[unsafe]
 fn v3_mark_used_for_program(a &flat.FlatAst, mut tc types.TypeChecker, scoped bool, full_runtime bool, verbose bool, decl_cache &markused.MarkusedDeclCache) (map[string]bool, bool) {
 	mut scope := unsafe { nil }
 	mut markused_tc := unsafe { &tc }
@@ -23416,6 +23423,7 @@ struct TypeCheckerConfig {
 	missing_imports             int
 }
 
+@[unsafe]
 fn configure_type_checker(mut tc types.TypeChecker, prefs &pref.Preferences, cfg TypeCheckerConfig) {
 	tc.compiler_vroot = prefs.vroot
 	tc.module_search_paths = prefs.module_search_paths.clone()
@@ -23830,12 +23838,14 @@ mut:
 	identity string
 }
 
+@[unsafe]
 fn eager_selfhost_scan_thread(arg voidptr) voidptr {
 	mut scan := unsafe { &EagerSelfhostScanArgs(arg) }
 	scan.scan()
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn eager_selfhost_resolve_thread(arg voidptr) voidptr {
 	mut result := unsafe { &EagerSelfhostResolveArgs(arg) }
 	prefs := unsafe { &pref.Preferences(result.prefs) }
@@ -24208,6 +24218,7 @@ fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, fir
 
 // resolve_imports parses the modules that the parsed code imports, wave by wave.
 // It continues `implicit_imports`, the scan of seed_implicit_imports.
+@[unsafe]
 fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string, allow_parallel bool, skip_closure_runtime bool, check_overflow bool, mut cache_state V3ModuleCacheState, mut parse_timing V3ParseTiming, mut implicit_imports ImplicitImportScan, mut prepared PreparedImports) bool {
 	initial_deferred_imports := p.resolve_comptime_string_declarations()
 	mut parsed_modules := map[string]bool{}

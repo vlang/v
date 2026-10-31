@@ -148,6 +148,7 @@ fn sqlite_cstring(s string) &char {
 }
 
 //
+@[unsafe]
 fn C.sqlite3_open(&char, &&C.sqlite3) i32
 
 fn C.sqlite3_close(&C.sqlite3) i32
@@ -249,6 +250,7 @@ pub fn (db &DB) get_affected_rows_count() int {
 }
 
 // q_int returns a single integer value, from the first column of the result of executing `query`, or an error on failure
+@[unsafe]
 pub fn (db &DB) q_int(query string) !int {
 	$if trace_sqlite ? {
 		eprintln('> q_int query: "${query}"')
@@ -270,6 +272,7 @@ pub fn (db &DB) q_int(query string) !int {
 }
 
 // q_string returns a single string value, from the first column of the result of executing `query`, or an error on failure
+@[unsafe]
 pub fn (db &DB) q_string(query string) !string {
 	$if trace_sqlite ? {
 		eprintln('> q_string query: "${query}"')
@@ -291,6 +294,7 @@ pub fn (db &DB) q_string(query string) !string {
 }
 
 // exec_map executes the query on the given `db`, and returns an array of maps of strings, or an error on failure
+@[unsafe]
 pub fn (db &DB) exec_map(query string) ![]map[string]string {
 	$if trace_sqlite ? {
 		eprintln('> exec_map query: "${query}"')
@@ -326,6 +330,7 @@ pub fn (db &DB) exec_map(query string) ![]map[string]string {
 	return rows
 }
 
+@[unsafe]
 fn C.sqlite3_memory_used() i64
 
 // exec executes the query on the given `db`, and returns an array of all the results, or an error on failure
@@ -403,6 +408,7 @@ pub fn (db &DB) error_message(code int, query string) IError {
 // exec_none executes a query, and returns the integer SQLite result code.
 // Use it, in case you don't expect any row results, but still want a result code.
 // e.g. for queries like these: `INSERT INTO ... VALUES (...)`
+@[unsafe]
 pub fn (db &DB) exec_none(query string) int {
 	$if trace_sqlite ? {
 		eprintln('> exec_none query: "${query}"')
@@ -421,6 +427,7 @@ pub fn (db &DB) exec_none(query string) int {
 
 // exec_param_many executes a query with parameters provided as ?,
 // and returns either an error on failure, or the full result set on success
+@[unsafe]
 pub fn (db &DB) exec_param_many(query string, params Params) ![]Row {
 	$if trace_sqlite ? {
 		eprintln('> exec_param_many query: "${query}", params: ${params}')

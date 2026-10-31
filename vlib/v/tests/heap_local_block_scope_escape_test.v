@@ -21,6 +21,7 @@ mut:
 	v Sym
 }
 
+@[unsafe]
 fn node_depth(n Node) int {
 	if n.next == unsafe { nil } {
 		return 0
@@ -125,6 +126,7 @@ fn test_multi_assignment_pairs() {
 	assert saved.next.next.factor == 2
 }
 
+@[unsafe]
 fn holder_depth(h Holder) int {
 	if h.next == unsafe { nil } {
 		return 0
@@ -215,6 +217,7 @@ fn test_named_variant_payload_binding() {
 	assert node_depth(cur) == 3
 }
 
+@[unsafe]
 fn chain_depth(n &Node) int {
 	if n == unsafe { nil } {
 		return 0
@@ -396,6 +399,7 @@ fn test_address_stored_through_dump() {
 	assert holder_depth(saved) == 3
 }
 
+@[unsafe]
 fn test_block_local_kept_by_a_declaration_initializer_is_heap_allocated() {
 	// `holder` is only read later in the same frame, where a reused slot is not reliably
 	// observable at run time: check that `x` gets storage of its own.

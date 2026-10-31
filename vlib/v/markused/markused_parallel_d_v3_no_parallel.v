@@ -13,6 +13,7 @@ fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules [
 	return results
 }
 
+@[unsafe]
 fn markused_worker_scope_begin(_ bool) voidptr {
 	return unsafe { nil }
 }
