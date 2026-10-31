@@ -11002,6 +11002,75 @@ fn (mut tc TypeChecker) record_null_constant_reference_error(kind TypeErrorKind,
 	return true
 }
 
+// unsafe_null_pointer_expr_text reports whether `id` is an `unsafe` block or expression that
+// yields a null pointer (`nil`, `0` or `voidptr(0)`). Anything else yields an empty string.
+fn (tc &TypeChecker) unsafe_null_pointer_expr_text(id flat.NodeId) string {
+	value_id := tc.unwrap_paren_expr_id(id)
+	if !tc.valid_node_id(value_id) {
+		return ''
+	}
+	value := tc.a.node(value_id)
+	if value.kind != .block || value.value != 'unsafe' {
+		return ''
+	}
+	tail_id := tc.branch_tail_expr_id(value_id)
+	if !tc.valid_node_id(tail_id) {
+		return ''
+	}
+	text := tc.null_constant_expr_text(tail_id)
+	if text != '' {
+		return 'unsafe { ' + text + ' }'
+	}
+	nested := tc.unsafe_null_pointer_expr_text(tail_id)
+	if nested != '' {
+		return nested
+	}
+	return ''
+}
+
+fn (tc &TypeChecker) is_unsafe_null_pointer_expr(id flat.NodeId) bool {
+	return tc.unsafe_null_pointer_expr_text(id) != ''
+}
+
+fn (tc &TypeChecker) current_function_is_unsafe() bool {
+	fn_id := flat.NodeId(tc.fn_context.node_id)
+	if !tc.valid_node_id(fn_id) {
+		return false
+	}
+	fn_node := tc.a.node(fn_id)
+	if fn_node.kind != .fn_decl {
+		return false
+	}
+	return fn_node.value in tc.unsafe_fns
+}
+
+// record_unsafe_null_return_error rejects an `unsafe { nil }` (or equivalent) pointer that is
+// returned by a safe (non-`@[unsafe]`) function with a non-optional reference return type.
+// `unsafe { nil }` remains valid inside an `unsafe` block or an `@[unsafe]` function.
+fn (mut tc TypeChecker) record_unsafe_null_return_error(kind TypeErrorKind, expr_id flat.NodeId, expected Type) bool {
+	if tc.unsafe_depth > 0 || tc.expr_is_inside_unsafe_block(expr_id) {
+		return false
+	}
+	if unalias_type(expected) !is Pointer {
+		return false
+	}
+	if fn_param_is_voidptr_type(expected) {
+		return false
+	}
+	if tc.translated_files[tc.cur_file] || tc.cur_file.ends_with('.c.v') {
+		return false
+	}
+	if tc.current_function_is_unsafe() {
+		return false
+	}
+	if !tc.is_unsafe_null_pointer_expr(expr_id) {
+		return false
+	}
+	msg := 'cannot return a null pointer from a safe function; use `?&T` or mark the function `@[unsafe]`'
+	tc.record_error_at(kind, msg, expr_id, tc.a.node(expr_id).pos)
+	return true
+}
+
 // fn_value_type supports fn value type handling for TypeChecker.
 fn (tc &TypeChecker) fn_value_type(name string) ?Type {
 	if local_name := tc.local_bare_fn_key(name) {

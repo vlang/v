@@ -2909,6 +2909,8 @@ fn (mut tc TypeChecker) record_null_constant_return_errors(node flat.Node, expec
 			for i in 0 .. node.children_count {
 				tc.record_null_constant_reference_error(.return_mismatch, tc.a.child(&node, i),
 					multi.types[i])
+				tc.record_unsafe_null_return_error(.return_mismatch, tc.a.child(&node, i),
+					multi.types[i])
 			}
 		}
 		return false
@@ -2917,8 +2919,11 @@ fn (mut tc TypeChecker) record_null_constant_return_errors(node flat.Node, expec
 		return false
 	}
 	payload := if expected is ResultType { *expected.base_type } else { expected }
-	return tc.record_null_constant_reference_error(.return_mismatch, tc.a.child(&node, 0),
-		payload)
+	child_id := tc.a.child(&node, 0)
+	if tc.record_null_constant_reference_error(.return_mismatch, child_id, payload) {
+		return true
+	}
+	return tc.record_unsafe_null_return_error(.return_mismatch, child_id, payload)
 }
 
 // check_return validates check return state for types.
