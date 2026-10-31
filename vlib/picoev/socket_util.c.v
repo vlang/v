@@ -41,8 +41,8 @@ fn close_socket(fd int) {
 
 @[inline]
 fn setup_sock(fd int) ! {
-	flag := 1
-	if C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_NODELAY, &flag, sizeof(int)) < 0 {
+	flag := i32(1)
+	if C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_NODELAY, &flag, sizeof(flag)) < 0 {
 		return error('setup_sock.setup_sock failed')
 	}
 	$if freebsd || macos || ios || netbsd || dragonfly {
@@ -51,7 +51,7 @@ fn setup_sock(fd int) ! {
 		// returning EPIPE. Belt to the process-wide signal_ignore braces in new()
 		// — either alone suffices, together they survive callers that re-arm
 		// SIGPIPE handlers.
-		if C.setsockopt(fd, C.SOL_SOCKET, C.SO_NOSIGPIPE, &flag, sizeof(int)) < 0 {
+		if C.setsockopt(fd, C.SOL_SOCKET, C.SO_NOSIGPIPE, &flag, sizeof(flag)) < 0 {
 			return error('setup_sock: SO_NOSIGPIPE failed')
 		}
 	}
@@ -107,24 +107,25 @@ fn listen(config Config) !int {
 	}
 	trace_fd('listen: ${fd}')
 	// Setting flags for socket
-	flag := 1
-	flag_zero := 0
-	net.socket_error(C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEADDR, &flag, sizeof(int)))!
+	flag := i32(1)
+	flag_zero := i32(0)
+	net.socket_error(C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEADDR, &flag, sizeof(flag)))!
 	if config.family == .ip6 {
 		// set socket to dualstack so connections to both ipv4 and ipv6 addresses
 		// can be accepted
-		net.socket_error(C.setsockopt(fd, C.IPPROTO_IPV6, C.IPV6_V6ONLY, &flag_zero, sizeof(int)))!
+		net.socket_error(C.setsockopt(fd, C.IPPROTO_IPV6, C.IPV6_V6ONLY, &flag_zero, sizeof(flag_zero)))!
 	}
 	$if linux || termux {
 		// epoll socket options
-		net.socket_error(C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEPORT, &flag, sizeof(int)))!
-		net.socket_error(C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_QUICKACK, &flag, sizeof(int)))!
+		net.socket_error(C.setsockopt(fd, C.SOL_SOCKET, C.SO_REUSEPORT, &flag, sizeof(flag)))!
+		net.socket_error(C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_QUICKACK, &flag, sizeof(flag)))!
 		$if !support_wsl1 ? {
+			timeout_secs := i32(config.timeout_secs)
 			net.socket_error(C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_DEFER_ACCEPT,
-				&config.timeout_secs, sizeof(int)))!
-			queue_len := max_queue
+				&timeout_secs, sizeof(timeout_secs)))!
+			queue_len := i32(max_queue)
 			net.socket_error(C.setsockopt(fd, C.IPPROTO_TCP, C.TCP_FASTOPEN, &queue_len,
-				sizeof(int)))!
+				sizeof(queue_len)))!
 		}
 	}
 	// addr settings

@@ -19,9 +19,13 @@ fn test_response_end_suppresses_sigpipe_per_send() {
 	assert pid >= 0
 	if pid == 0 {
 		C.signal(C.SIGPIPE, C.SIG_DFL)
-		mut sockets := [2]int{}
+		// `socketpair` fills a C `int[2]`, which is a V `[2]i32`, not a `[2]int`.
+		mut sockets := [2]i32{}
 		if C.socketpair(C.AF_UNIX, C.SOCK_STREAM, 0, &sockets[0]) != 0 {
 			C._exit(1)
+		}
+		if sockets[0] <= 0 || sockets[1] <= 0 || sockets[0] > 0xffff || sockets[1] > 0xffff {
+			C._exit(2)
 		}
 		if C.shutdown(sockets[0], C.SHUT_WR) != 0 {
 			C._exit(1)
@@ -29,7 +33,7 @@ fn test_response_end_suppresses_sigpipe_per_send() {
 		C.close(sockets[1])
 		mut payload := [u8(`x`)]
 		mut response := Response{
-			fd:        sockets[0]
+			fd:        int(sockets[0])
 			buf_start: unsafe { &payload[0] }
 			buf:       unsafe { &payload[0] + 1 }
 		}

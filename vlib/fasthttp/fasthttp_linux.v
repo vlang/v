@@ -180,8 +180,8 @@ fn create_server_socket(addr net.Addr) !int {
 
 	set_blocking(server_fd, false)
 
-	// Enable SO_REUSEADDR and SO_REUSEPORT
-	opt := 1
+	// Enable SO_REUSEADDR and SO_REUSEPORT. The option is a C `int`.
+	opt := i32(1)
 	if C.setsockopt(server_fd, C.SOL_SOCKET, C.SO_REUSEADDR, &opt, sizeof(opt)) < 0 {
 		eprintln(@LOCATION)
 		C.perror(c'setsockopt SO_REUSEADDR failed')
@@ -971,7 +971,7 @@ fn handle_accept_loop(mut w Worker) {
 			break
 		}
 		// Enable TCP_NODELAY for lower latency.
-		opt := 1
+		opt := i32(1)
 		C.setsockopt(client_fd, C.IPPROTO_TCP, C.TCP_NODELAY, &opt, sizeof(opt))
 		if add_fd_to_epoll(w.epoll_fd, client_fd, u32(C.EPOLLIN | C.EPOLLET)) == -1 {
 			close_socket(client_fd)
