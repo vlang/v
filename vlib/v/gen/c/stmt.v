@@ -5008,7 +5008,12 @@ fn split_c_inline_asm_operands(source string) []string {
 fn lower_c_inline_asm_operand(source string, arch string, aliases map[string]bool, is_extended bool, is_directive bool) string {
 	operand := source.trim_space()
 	if operand.len >= 2 && operand[0] == `\`` && operand[operand.len - 1] == `\`` {
-		return "'${operand[1..operand.len - 1]}'"
+		literal := "'${operand[1..operand.len - 1]}'"
+		return if !is_directive && is_c_inline_asm_x86_arch(arch) {
+			'\$${literal}'
+		} else {
+			literal
+		}
 	}
 	if label := c_inline_asm_local_label_reference(operand) {
 		return label

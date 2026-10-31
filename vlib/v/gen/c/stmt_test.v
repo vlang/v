@@ -39,9 +39,13 @@ fn test_inline_asm_quoted_numbered_operands_drop_v_quotes() {
 
 fn test_inline_asm_character_tokens_use_assembly_quotes() {
 	aliases := map[string]bool{}
-	assert lower_c_inline_asm_template('mov rax, `A`', 'amd64', aliases, false) == "mov 'A', %rax"
-	assert lower_c_inline_asm_template('mov rax, `,`', 'amd64', aliases, false) == "mov ',', %rax"
+	assert lower_c_inline_asm_template('mov rax, `A`', 'amd64', aliases, false) == "mov \$'A', %rax"
+	assert lower_c_inline_asm_template('mov rax, `,`', 'amd64', aliases, false) == "mov \$',', %rax"
+	assert lower_c_inline_asm_template('mov eax, `A`', 'i386', aliases, false) == "mov \$'A', %eax"
+	assert lower_c_inline_asm_template('.byte `A`', 'amd64', aliases, false) == ".byte 'A'"
 	assert lower_c_inline_asm_template('mov x0, `A`', 'arm64', aliases, false) == "mov x0, 'A'"
+	assert lower_c_inline_asm_template('mov x0, `A`', 'aarch64', aliases, false) == "mov x0, 'A'"
+	assert lower_c_inline_asm_intel_template('mov rax, `A`', aliases, false) == "mov rax, 'A'"
 }
 
 fn test_inline_asm_aarch64_alias_uses_arm64_operand_lowering() {
