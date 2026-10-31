@@ -8424,10 +8424,10 @@ fn (mut tc TypeChecker) enter_module(name string) {
 		// `module_decl` after this file's marker without an intervening file marker of
 		// their own; without this guard that would rebind `cur_file` to the foreign
 		// module and mis-resolve same-named types (`main.Context` -> `veb.Context`).
-		if existing := tc.file_modules[tc.cur_file] {
-			if existing != name {
-				return
-			}
+		// Collection already fixed this mapping. Even writing the same value would
+		// race with semantic workers and overlapping declaration preparation.
+		if tc.cur_file in tc.file_modules {
+			return
 		}
 		tc.file_modules[tc.cur_file] = name
 	}
@@ -15696,7 +15696,9 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 			if int(grandchild_id) < 0 {
 				continue
 			}
-			grandchild := tc.a.nodes[int(grandchild_id)]
+			// Body workers can update call flags while signatures are checked.
+			// Borrow only the type operands instead of copying the mutable flags.
+			grandchild := &tc.a.nodes[int(grandchild_id)]
 			if grandchild.kind in [.comptime_for, .offsetof_expr] {
 				continue
 			}

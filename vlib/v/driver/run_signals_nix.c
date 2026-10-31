@@ -456,11 +456,17 @@ int v3_run_signals_set_pid(int child_pid) {
     int result = 0;
     if (child_pid <= 0) {
         result = -1;
-    } else if (v3_run_setpgid(child_pid, child_pid)) {
-        int set_error = errno;
-        int group = v3_run_getpgid(child_pid);
-        if (group != child_pid && set_error != ESRCH && !(group < 0 && errno == ESRCH)) {
+    } else {
+        for (int attempt = 0; attempt < 2; attempt++) {
+            if (!v3_run_setpgid(child_pid, child_pid)) break;
+            int set_error = errno;
+            int group = v3_run_getpgid(child_pid);
+            if (group == child_pid || set_error == ESRCH || (group < 0 && errno == ESRCH)) break;
+            /* Darwin can report EPERM while the child creates this same group.
+             * Retry once, still verifying the group before publishing it. */
+            if (set_error == EPERM && attempt == 0) continue;
             result = -1;
+            break;
         }
     }
     if (!result) {

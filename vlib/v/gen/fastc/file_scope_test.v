@@ -1,6 +1,8 @@
 module fastc
 
-import v.flat
+$if prealloc {
+	import v.flat
+}
 
 fn test_fastc_constant_output_survives_initializer_scope_release() {
 	$if prealloc {

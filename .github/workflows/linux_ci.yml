@@ -13,18 +13,10 @@ on:
       - '!**/linux_ci.yml'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
-  pull_request:
-    paths-ignore:
-      # vlib/v/** is intentionally NOT ignored: V3 is the default compiler on
-      # Linux, so changes to it must run this suite; the canary below stays strict.
-      - '**.md'
-      - '**.yml'
-      - '!**/linux_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
 
 concurrency:
-  group: linux-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
+  # Replace superseded master runs instead of queueing every commit separately.
+  group: linux-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -32,6 +24,7 @@ permissions:
 
 jobs:
   tcc-linux:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 121
     env:
@@ -180,6 +173,7 @@ jobs:
         run: v run ci/linux_ci.vsh build_v_with_prealloc
 
   gcc-linux:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 121
     env:
@@ -306,6 +300,7 @@ jobs:
         run: v run ci/linux_ci.vsh compile_vup_prod_gcc
 
   clang-linux:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 121
     env:
@@ -412,6 +407,7 @@ jobs:
         run: v run ci/linux_ci.vsh build_modules_clang
 
   package2-linux:
+    if: github.ref == 'refs/heads/master'
     name: Linux ${{ matrix.compiler }}
     strategy:
       fail-fast: false

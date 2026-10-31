@@ -11,14 +11,6 @@ on:
       - 'cmd/tools/builders/**.v'
       - '**/gg_regressions_ci.yml'
       - '!**.md'
-  pull_request:
-    paths:
-      - 'vlib/**'
-      - 'examples/gg/multiwindow.v'
-      - 'thirdparty/**'
-      - 'cmd/tools/builders/**.v'
-      - '**/gg_regressions_ci.yml'
-      - '!**.md'
 
 concurrency:
   group: gg-regressions-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}

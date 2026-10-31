@@ -3027,8 +3027,8 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 		}
 	}
 	mut fields_by_name := flat.TypeTextBindings{}
-	if c_name in struct_fields {
-		fields_by_name = struct_fields[c_name].clone()
+	if fields := struct_fields[c_name] {
+		fields_by_name = fields.clone()
 	}
 	mut field_info := []FastcStructField{}
 	if c_name in struct_field_info {
@@ -3912,8 +3912,8 @@ fn fastc_emit_alias_declaration(mut scan scanner.Scanner, source_file FastcSourc
 		}
 		mut alias_fields := flat.TypeTextBindings{}
 		mut alias_field_info := []FastcStructField{}
-		if layout_type in struct_fields {
-			alias_fields = struct_fields[layout_type].clone()
+		if fields := struct_fields[layout_type] {
+			alias_fields = fields.clone()
 		}
 		if layout_type in struct_field_info {
 			alias_field_info = struct_field_info[layout_type].clone()

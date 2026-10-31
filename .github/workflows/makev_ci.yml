@@ -7,6 +7,10 @@ on:
       - 'makev.bat'
       - 'cmd/tools/makev_test.py'
       - 'cmd/tools/windows_ci_test.py'
+      - 'cmd/tools/install_v1_fallback.sh'
+      - 'vlib/v/pref/pkgconfig_test.v'
+      - 'vlib/v/tests/comptime/comptime_if_pkgconfig_test.v'
+      - '.github/workflows/setup_windows_tool_cache.ps1'
       - '.github/workflows/windows_ci_gcc.yml'
       - '.github/workflows/windows_ci_msvc.yml'
       - '.github/workflows/windows_ci_tcc.yml'
@@ -23,28 +27,24 @@ on:
       - 'vlib/x/multiwindow/service_native_win32_contract_red_test.v'
       - 'vlib/gg/multiwindow_win32_public_services_contract_windows_test.v'
       - 'vlib/x/multiwindow/event_sequence_exhaustion_test.v'
-      - '.github/workflows/makev_ci.yml'
-  pull_request:
-    paths:
-      - 'makev.bat'
-      - 'cmd/tools/makev_test.py'
-      - 'cmd/tools/windows_ci_test.py'
-      - '.github/workflows/windows_ci_gcc.yml'
-      - '.github/workflows/windows_ci_msvc.yml'
-      - '.github/workflows/windows_ci_tcc.yml'
-      - '.github/workflows/run_multiwindow_win32_w3_green.ps1'
-      - '.github/workflows/run_multiwindow_win32_w4.ps1'
-      - 'cmd/tools/windows_w4_ci_test.py'
-      - 'vlib/x/multiwindow/testdata/win32_nonreadback_test_oracle.h'
-      - 'vlib/gg/testdata/multiwindow_win32_clipboard_no_optin_probe.v'
-      - 'vlib/x/multiwindow/service_backend.v'
-      - 'vlib/x/multiwindow/event_delivery.v'
-      - 'vlib/x/multiwindow/win32_backend.c.v'
-      - 'vlib/x/multiwindow/win32_service_backend.c.v'
-      - 'vlib/x/multiwindow/win32_service_native.h'
-      - 'vlib/x/multiwindow/service_native_win32_contract_red_test.v'
-      - 'vlib/gg/multiwindow_win32_public_services_contract_windows_test.v'
-      - 'vlib/x/multiwindow/event_sequence_exhaustion_test.v'
+      - 'vlib/gg/testdata/multiwindow_sokol_trace/shader_fixture_helpers.h'
+      - 'vlib/gg/testdata/multiwindow_win32_raw_input_w5_a1_public_red_test.v'
+      - 'vlib/x/multiwindow/testdata/win32_raw_input_w5_a1_oracle.h'
+      - 'vlib/x/multiwindow/testdata/win32_raw_input_w5_preflight.h'
+      - 'vlib/x/multiwindow/testdata/win32_raw_input_w5_preflight.c'
+      - '.github/workflows/run_multiwindow_win32_w5_a0.ps1'
+      - 'vlib/gg/multiwindow_d_gg_multiwindow.v'
+      - 'vlib/gg/multiwindow_notd_gg_multiwindow.v'
+      - 'vlib/gg/multiwindow_service_types.v'
+      - 'vlib/x/multiwindow/app.v'
+      - 'vlib/x/multiwindow/types.v'
+      - 'vlib/x/multiwindow/backend.v'
+      - 'vlib/x/multiwindow/service_api.v'
+      - 'vlib/x/multiwindow/service_types.v'
+      - 'vlib/x/multiwindow/service_registry.v'
+      - 'vlib/x/multiwindow/event_dispatch_d_gg_multiwindow.v'
+      - 'vlib/x/multiwindow/win32_backend_helpers.h'
+      - '.github/workflows/run_multiwindow_win32_w5_a1.ps1'
       - '.github/workflows/makev_ci.yml'
   workflow_dispatch:
 
@@ -57,6 +57,7 @@ permissions:
 
 jobs:
   bootstrap-contracts:
+    if: github.ref == 'refs/heads/master'
     strategy:
       fail-fast: false
       matrix:

@@ -192,7 +192,6 @@ pub fn (sk SymbolKind) str() string {
 	}
 }
 
-@[minify]
 pub struct Doc {
 pub mut:
 	base_path           string
@@ -231,7 +230,6 @@ mut:
 	child_indices map[string][]int
 }
 
-@[minify]
 pub struct DocNode {
 pub mut:
 	name        string

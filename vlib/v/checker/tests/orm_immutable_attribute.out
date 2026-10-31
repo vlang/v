@@ -2,31 +2,31 @@ vlib/v/checker/tests/orm_immutable_attribute.vv:1:3: error: attribute `immutable
     1 | @[immutable]
       |   ~~~~~~~~~
     2 | module main
-    3 | @[immutable]
-vlib/v/checker/tests/orm_immutable_attribute.vv:3:3: error: attribute `immutable` can only be applied to struct fields
-    1 | @[immutable]
+    3 |
+vlib/v/checker/tests/orm_immutable_attribute.vv:4:3: error: attribute `immutable` can only be applied to struct fields
     2 | module main
-    3 | @[immutable]
+    3 | 
+    4 | @[immutable]
       |   ~~~~~~~~~
-    4 | struct InvalidModel {
-    5 |     id int
-vlib/v/checker/tests/orm_immutable_attribute.vv:8:11: error: attribute `immutable` does not accept arguments
-    6 | }
-    7 | struct InvalidArgument {
-    8 |     id int @[immutable: true]
+    5 | struct InvalidModel {
+    6 |     id int
+vlib/v/checker/tests/orm_immutable_attribute.vv:10:11: error: attribute `immutable` does not accept arguments
+    8 | 
+    9 | struct InvalidArgument {
+   10 |     id int @[immutable: true]
       |              ~~~~~~~~~
-    9 | }
-   10 | @[immutable]
-vlib/v/checker/tests/orm_immutable_attribute.vv:10:3: error: attribute `immutable` can only be applied to struct fields
-    8 |     id int @[immutable: true]
-    9 | }
-   10 | @[immutable]
+   11 | }
+   12 |
+vlib/v/checker/tests/orm_immutable_attribute.vv:13:3: error: attribute `immutable` can only be applied to struct fields
+   11 | }
+   12 | 
+   13 | @[immutable]
       |   ~~~~~~~~~
-   11 | const invalid_constant = 1
-   12 | @[immutable]
-vlib/v/checker/tests/orm_immutable_attribute.vv:12:3: error: attribute `immutable` can only be applied to struct fields
-   10 | @[immutable]
-   11 | const invalid_constant = 1
-   12 | @[immutable]
+   14 | const invalid_constant = 1
+   15 |
+vlib/v/checker/tests/orm_immutable_attribute.vv:16:3: error: attribute `immutable` can only be applied to struct fields
+   14 | const invalid_constant = 1
+   15 | 
+   16 | @[immutable]
       |   ~~~~~~~~~
-   13 | fn main() { println(invalid_constant) }
+   17 | fn main() { println(invalid_constant) }

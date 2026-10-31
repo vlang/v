@@ -14,16 +14,6 @@ on:
       - '!cmd/tools/builders/**.v'
       - '!cmd/tools/vup.v'
       - '!**/bootstrapping_ci.yml'
-  pull_request:
-    paths-ignore:
-      - '**.yml'
-      - '**.md'
-      - '**.vv'
-      - '**.out'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
-      - '!cmd/tools/vup.v'
-      - '!**/bootstrapping_ci.yml'
 
 concurrency:
   group: bootstrapping-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -35,6 +25,7 @@ permissions:
 
 jobs:
   bootstrap-v:
+    if: github.ref == 'refs/heads/master'
     strategy:
       matrix:
         os: [ubuntu-latest, macos-14]

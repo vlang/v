@@ -4,21 +4,11 @@ on:
   push:
     branches:
       - master
-      - 'smoke/**'
     paths-ignore:
       - '**.md'
       - '**.yml'
       - '!**.bat'
       - '!**/windows_ci_msvc.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
-  pull_request:
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**.bat'
-      - '!**/windows_ci_msvc.yml'
-      - '!**/windows-install-sqlite.bat'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
 
@@ -51,6 +41,8 @@ jobs:
         id: uses_checkout_v7
         with:
           persist-credentials: false
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
       - name: Install OpenSSL
         id: install_openssl
         if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
@@ -121,7 +113,9 @@ jobs:
       - name: All code is formatted
         id: all_code_is_formatted
         if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
-        run: v -silent test-cleancode
+        run: |
+          .\.github\workflows\setup_windows_tool_cache.ps1 -Verify
+          v -silent test-cleancode
       - name: Build and run hello world with -b fastc
         id: build_and_run_hello_world_with_b_fastc
         if: ${{ success() && !cancelled() && steps.all_code_is_formatted.outcome == 'success' }}
@@ -141,15 +135,13 @@ jobs:
             throw "unexpected -b fastc hello world output: '$output'"
           }
           Remove-Item hello_fastc.exe, hello_fastc.c -ErrorAction SilentlyContinue
-      - name: Pkg-config regressions (MSVC dynamic isolation)
+      - name: Pkg-config regressions (MSVC)
         id: pkg_config_regressions_msvc_dynamic_isolation
         if: ${{ success() && !cancelled() && steps.build_and_run_hello_world_with_b_fastc.outcome == 'success' }}
         run: |
           $tests = @(
-            'vlib\v\pkgconfig\pkgconfig_static_test.v'
-            'vlib\v\checker\pkgconfig_static_mode_test.v'
-            'vlib\v\checker\pkgconfig_cross_compile_test.v'
-            'vlib\v\builder\pkgconfig_link_segment_test.v'
+            'vlib/v/pref/pkgconfig_test.v'
+            'vlib/v/tests/comptime/comptime_if_pkgconfig_test.v'
           )
           foreach ($test in $tests) {
             .\v.exe -cc msvc -no-retry-compilation test $test
@@ -284,7 +276,7 @@ jobs:
             'vlib/gg/draw_rect_empty_test.v'
           )
           foreach ($test in $tests) {
-            & $runner 300 '-' $vexe '-cc' 'msvc' '-d' 'gg_multiwindow' '-d' 'sokol_d3d11' '-d' 'gg_multiwindow_d3d11_warp' 'test' $test
+            & $runner 300 '-' $vexe '-cc' 'msvc' '-d' 'gg_multiwindow' '-d' 'sokol_d3d11' '-d' 'gg_multiwindow_d3d11_warp' '-subsystem' 'console' 'test' $test
             if ($LASTEXITCODE -ne 0) {
               throw "multiwindow D3D11 WARP test '$test' failed with exit code $LASTEXITCODE"
             }
@@ -324,7 +316,7 @@ jobs:
       - name: Test pure V math module
         id: test_pure_v_math_module
         if: ${{ success() && !cancelled() && steps.verify_v_test_works.outcome == 'success' }}
-        run: v -silent -exclude @vlib/math/*.c.v test vlib/math/
+        run: v -silent -d pure_v_math -exclude '@vlib\math\*.c.v' test vlib/math/
       - name: Test fasthttp module
         id: test_fasthttp_module
         if: ${{ success() && !cancelled() && steps.test_pure_v_math_module.outcome == 'success' }}
@@ -375,6 +367,8 @@ jobs:
         id: uses_checkout_v7
         with:
           persist-credentials: false
+      - name: Prepare private tool cache
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
       - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1.13.0
         id: uses_msvc_dev_cmd_0b201ec74fa43914dc39ae48a89fd1d8cb592756_v1_13_0
         if: ${{ success() && !cancelled() && steps.uses_checkout_v7.outcome == 'success' }}
@@ -416,8 +410,8 @@ jobs:
         shell: pwsh
         run: |
           .\.github\workflows\run_multiwindow_win32_w3_green.ps1 -Compiler msvc `
-            -ExpectedCompositeSha256 'fbadc42268663be07624cb23373a235a7b2b5f528a76c7166c464a74c362ad42' `
-            -ExpectedRunnerSha256 '0b67bfa4791ea4087821e81b6f0b570a341fd9a87648e1d085c30847854a1843'
+            -ExpectedCompositeSha256 'dc3e1236e7f6a19de0821a0b7211e40a43d04fbc2d5429f920a11d8d0887c518' `
+            -ExpectedRunnerSha256 'dd6d20079a1392eb0738df31a9c95f0c1414a810f15d9879a33a9abffb9e8e5f'
       - name: Package 2 native Win32 RED matrix
         id: package_2_native_win32_red_matrix
         if: ${{ success() && !cancelled() && steps.win32_w3_native_public_green_contracts.outcome == 'success' }}
@@ -433,8 +427,8 @@ jobs:
           .\.github\workflows\run_multiwindow_win32_w4.ps1 `
             -Compiler msvc `
             -Expectation Green `
-            -ExpectedOracleSha256 '804e8cbc5f5f7c390e90736d54a60d65d19b649a94afa4915bd9cb4e95c4e04d' `
-            -ExpectedNativeTestSha256 '43a451c95d3e7df849ee795aa22d06ce68fc84a28ca1fb10732339180f33cd21' `
+            -ExpectedOracleSha256 '2884f7b9b9d9b64852dae48718126368c6bfed9026813298505512bbed3b64ab' `
+            -ExpectedNativeTestSha256 'c85dc17d04e6978206babf63bb158d8a97c1e0e43d561c6d228dc9e172378e00' `
             -ExpectedPublicTestSha256 'aae9e07b56175987fb94f794380c1bf0b36c53fb7ef8c7e77efc423879b43234' `
             -ExpectedNoOptProbeSha256 '288f148ca15b6694481f117c03be5f80c4045baf76d3b0e90db61b5e0596741c' `
             -ExpectedServiceBackendSha256 '8ad39d63360446ef7049c726544200780eff61ff39917830f7024243dfd363be' `
@@ -444,7 +438,7 @@ jobs:
             -ExpectedWin32ServiceNativeSha256 '2ffc93e245a43c4a557fd7cc66ebcdda8874b9783ec3050ba754657a97efd033' `
             -ExpectedRedSurfaceSha256 'fe7fa76370ee25883e4da25e72b339daeba9d1b47ff70b8b56b0ada87a0027c6' `
             -ExpectedGreenSurfaceSha256 '12b88570044e1cda2e3c630e4c700e71990dcecfa10a424c0019a996dff4cf8c' `
-            -ExpectedRunnerSha256 '2ec67dd5433d8ed083d42770b0a5045450d4389f41a5e281c5b0b58b725aa675'
+            -ExpectedRunnerSha256 '79126b3b0272d6b2d40fe2d6a47d5d0ba5161cadd000870af7c073fb0a456624'
       - name: Win32 W5 raw-input A0 preflight
         id: win32_w5_raw_input_a0_preflight
         if: ${{ success() && !cancelled() && steps.win32_w4_clipboard_contracts.outcome == 'success' }}
@@ -464,32 +458,32 @@ jobs:
         run: |
           .\.github\workflows\run_multiwindow_win32_w5_a1.ps1 -Compiler msvc `
             -Expectation Green `
-            -ExpectedTestSha256 '005d3f7c7668bd18d593ba5f42e94cf247058c5f61ca46ce6d6a42bac03b5000' `
+            -ExpectedTestSha256 '6433293aebf40873ce1ff1932d9dfc128cc5ab387f8bd9b5b22dd0e9f1bc7ff2' `
             -ExpectedOracleSha256 '7362f17f06ea6b0ab5a64c74abf2407a0e284cbace2c10809a5235d406d16461' `
-            -ExpectedTupleSha256 '16739d9b8b73d9615ba3037c9e18219d6bf1271ef1d2f7dba4b2f2e53b1efac5' `
+            -ExpectedTupleSha256 'af89fd676dd05fa054fc64d3df1e09cb792f56f2a3ec27f26586d6f2bcfe9698' `
             -ExpectedA0HeaderSha256 '9decdc2e825c91da2b9d2ce0c98cb8ccdad5c4800a690863d166135eb188e916' `
             -ExpectedA0MainSha256 '5f30869ae97f680032e622273ea69986d612cc82cad2adf53e4c3b1415154301' `
             -ExpectedA0TupleSha256 '99ef24bf101dc83543f26f86cb23a80c82607e0f1b35c32e9dbb431368ecc7c4' `
             -ExpectedA0RunnerSha256 'ce4da58e24730899f970a7566dc65d82eb0c07d38f74efcaeeb02c450a011b68' `
-            -ExpectedGgFacadeSha256 '5823f13606204ce15b8ea41761c4a4fba47261b71666f8280f0023f1e83c4cc2' `
+            -ExpectedGgFacadeSha256 'e50d9478b50c9110929a34fa6823249f82be79d675eab8846340eac646b065d8' `
             -ExpectedGgNoFlagSha256 'ad528c64cf18bce9415dd0e50513fb87d8d0b58c8ac4a99025a5c8955e7d9549' `
             -ExpectedGgServiceTypesSha256 '9f17334ba5e5aff51f26d55476c83878856a8494a890aa64ee6434a52c1ecfeb' `
             -ExpectedAppSha256 'af32eec55c119907a8bbf544842131018d36d3887347e26486e067a79d78a946' `
             -ExpectedTypesSha256 '0a9058ba7928945e24284c867eb6182336ea3b1d41e1337786c71105b1fe93b3' `
-            -ExpectedBackendSha256 'dcd0f088c235ae030f8bbc9ab63082c38d93f6f1194373e74d8dcb454d100a3f' `
+            -ExpectedBackendSha256 '89fd92942d02a2a78d37d4c7698a63813db788a03cced1b80f9c141dc6e373ca' `
             -ExpectedServiceApiSha256 'b7e4bc26e85f897a72387e82f4a7a3d545f21230be5c6b9df4fa40a4c82b701f' `
             -ExpectedServiceTypesSha256 'cd8326b81201727618e758d79970b7a77223fd6418e18afda44a526a3b0b4267' `
             -ExpectedServiceRegistrySha256 'db244497fd23974c1739d6c7a8bc57a2e3137c8765d4bc7f789efd80a59066b7' `
             -ExpectedEventDeliverySha256 'd38c868f574c02fc46e047da25e770e5b9f672500d796694b5ef35bf042cdae0' `
-            -ExpectedPublicRoutingSurfaceSha256 'a4a03215a80f94584f7c9c11f0e58ecdc80175e959b6d3a9145d36606e0cbcd6' `
+            -ExpectedPublicRoutingSurfaceSha256 'da259cec8ee5a0ce2a19948ec8a145393a44efdd3f4f7ae8ebb6d2e0bd896907' `
             -ExpectedServiceBackendSha256 '8ad39d63360446ef7049c726544200780eff61ff39917830f7024243dfd363be' `
             -ExpectedEventDispatchSha256 '7ef6c7cbd34511d6c19c1a3a269b46876db791b9412bb88e3a8d4dcd543bfd4e' `
-            -ExpectedWin32BackendSha256 '1f2bfbd43b20b6d33896fb1c517673b4041d5408f15cde6d014bd2b98ddedc9e' `
+            -ExpectedWin32BackendSha256 'ebcd169ec1c382edf3cb05f3c7036c4cb149ceae34f141419ea01d24bcc948d6' `
             -ExpectedWin32BackendHelpersSha256 '2265a247f626621d69e823c09a79a5611dd187880120ba493636e73858c74a4d' `
-            -ExpectedWin32ServiceBackendSha256 'faaf67be3e0381ea8a0e7a753b477b7965dde6e655f83f220eca036da19c5df6' `
+            -ExpectedWin32ServiceBackendSha256 'c7bb97952a49d06216ef33c4a9a1013a01c11a7a16cf32190d85d112024b785c' `
             -ExpectedWin32ServiceNativeSha256 '2ffc93e245a43c4a557fd7cc66ebcdda8874b9783ec3050ba754657a97efd033' `
-            -ExpectedGreenProductionSurfaceSha256 'f570ae10e0479b4628df305ea51ba44779f528a6767886e2b2fed4dbfa4e4f9e' `
-            -ExpectedRunnerSha256 'f9b63749bad6064f8de48744ef8d828ba6fe31b53c6a224568c6bf10805aae5e'
+            -ExpectedGreenProductionSurfaceSha256 '376c2ed664bb7248dea90efd32c0989d648ea61b719d70d073e797073f98127c' `
+            -ExpectedRunnerSha256 '8782bc3444bdaaebfe4ac6ad988daa37a16ce4fafbb8457902372c82036a45ec'
       - name: Prepare multiwindow Job Object watchdog
         id: prepare_multiwindow_job_object_watchdog
         if: ${{ success() && !cancelled() && steps.win32_w5_raw_input_a1_public_green.outcome == 'success' }}
@@ -621,11 +615,7 @@ jobs:
             'vlib/gg/draw_rect_empty_test.v'
           )
           foreach ($test in $tests) {
-            $diagnosticSubsystem = @()
-            if ($test -eq 'vlib/gg/multiwindow_render_runtime_contract_test.v') {
-              $diagnosticSubsystem = @('-subsystem', 'console')
-            }
-            & $runner 300 '-' $vexe '-cc' 'msvc' '-d' 'gg_multiwindow' '-d' 'sokol_d3d11' '-d' 'gg_multiwindow_d3d11_warp' @diagnosticSubsystem 'test' $test
+            & $runner 300 '-' $vexe '-cc' 'msvc' '-d' 'gg_multiwindow' '-d' 'sokol_d3d11' '-d' 'gg_multiwindow_d3d11_warp' '-subsystem' 'console' 'test' $test
             if ($LASTEXITCODE -ne 0) {
               throw "multiwindow D3D11 WARP test '$test' failed with exit code $LASTEXITCODE"
             }

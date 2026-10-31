@@ -181,10 +181,11 @@ class W4Tests(unittest.TestCase):
         workflow = (ROOT / WORKFLOW).read_text(encoding='utf-8')
         surface = parse_surface(self.text)
         paths = surface.paths + surface.production_paths + [W4, W3, 'cmd/tools/windows_w4_ci_test.py']
-        for event in ('push', 'pull_request'):
-            body = one(r'^  ' + event + r':\n(.*?)(?=^  \w|\Z)', workflow)
-            for path in paths:
-                self.assertIn(f"      - '{path}'\n", body, (event, path))
+        body = one(r'^  push:\n(.*?)(?=^  \w|\Z)', workflow)
+        self.assertIn('    branches: [master]\n', body)
+        self.assertNotRegex(workflow, r'(?m)^  (pull_request|merge_group):')
+        for path in paths:
+            self.assertIn(f"      - '{path}'\n", body, path)
         self.assertIn('run: python cmd/tools/windows_w4_ci_test.py', workflow)
         self.assertIn('run: python cmd/tools/windows_ci_test.py', workflow)
         self.assertIn('run: python cmd/tools/makev_test.py', workflow)

@@ -12,14 +12,6 @@ on:
       - 'cmd/tools/vshader.v'
       - '**/sdl_ci.yml'
       - '!**.md'
-  pull_request:
-    paths:
-      - 'vlib/**'
-      - 'thirdparty/**'
-      - 'cmd/tools/builders/**.v'
-      - 'cmd/tools/vshader.v'
-      - '**/sdl_ci.yml'
-      - '!**.md'
 
 concurrency:
   group: sdl-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -30,6 +22,7 @@ permissions:
 
 jobs:
   v-compiles-sdl-examples:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:

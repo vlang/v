@@ -169,10 +169,10 @@ struct MultiWindowCleanupTerminalProof {
 	renderer_device_available bool
 	renderer_terminal_failure bool
 	terminal_error            string
-	sgl_contexts              int
-	sgl_context_targets       int
+	render_contexts           int
+	render_context_targets    int
 	window_sgl_targets        int
-	deferred_sgl_targets      int
+	deferred_render_targets   int
 	active_render_snapshots   int
 	active_drawn_windows      int
 	active_batch_epoch        u64
@@ -826,10 +826,10 @@ fn multiwindow_cleanup_terminal_proof(app &App) !MultiWindowCleanupTerminalProof
 		renderer_device_available: app.core.renderer_device_available_for_gg()
 		renderer_terminal_failure: app.renderer_terminal_failure
 		terminal_error:            app.terminal_error
-		sgl_contexts:              app.sgl_contexts.len
-		sgl_context_targets:       app.sgl_context_targets.len
+		render_contexts:           app.render_contexts.len
+		render_context_targets:    app.render_context_targets.len
 		window_sgl_targets:        app.window_sgl_targets.len
-		deferred_sgl_targets:      app.deferred_sgl_targets.len
+		deferred_render_targets:   app.deferred_render_targets.len
 		active_render_snapshots:   app.active_render_snapshots.len
 		active_drawn_windows:      app.active_drawn_windows.len
 		active_batch_epoch:        app.active_batch_epoch
@@ -866,10 +866,10 @@ fn multiwindow_assert_native_cleanup_terminal(proof MultiWindowCleanupTerminalPr
 	assert !proof.renderer_device_available
 	assert !proof.renderer_terminal_failure
 	assert proof.terminal_error == ''
-	assert proof.sgl_contexts == 0
-	assert proof.sgl_context_targets == 0
+	assert proof.render_contexts == 0
+	assert proof.render_context_targets == 0
 	assert proof.window_sgl_targets == 0
-	assert proof.deferred_sgl_targets == 0
+	assert proof.deferred_render_targets == 0
 	assert proof.active_render_snapshots == 0
 	assert proof.active_drawn_windows == 0
 	assert proof.active_batch_epoch == 0

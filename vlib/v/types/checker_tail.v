@@ -5485,6 +5485,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			}
 		}
 		tc.record_uninferred_generic_method_type(id, node, info0)
+		tc.record_uninferable_generic_function_type(id, node, info0)
 		tc.record_chained_bare_generic_struct_method_inference_error(id, node, info)
 		if info.name.len > 0 && !is_array_dsl_call_name(info.name) {
 			tc.remember_resolved_call(id, info.name)
@@ -6188,6 +6189,46 @@ fn (tc &TypeChecker) chained_bare_struct_call_uses_open_param(call flat.Node) bo
 		}
 	}
 	return false
+}
+
+// record_uninferable_generic_function_type rejects parameters with no inference
+// source. Return types and constraints can bind parameters during transformation.
+fn (mut tc TypeChecker) record_uninferable_generic_function_type(id flat.NodeId, node flat.Node, info CallInfo) {
+	if info.has_receiver || tc.call_has_explicit_generic_args(node) || node.children_count == 0 {
+		return
+	}
+	generic_params := tc.fn_generic_params[info.name] or { return }
+	if generic_params.len == 0 {
+		return
+	}
+	param_texts := tc.fn_param_type_texts.type_ids(info.name) or { return }
+	return_text := tc.fn_ret_type_texts.type_id(info.name) or { u32(0) }
+	for param in generic_params {
+		if param in flat.source_type_syntax(return_text).symbols()
+			|| param_texts.any(param in flat.source_type_syntax(it).symbols())
+			|| (info.is_variadic && param_texts.len > 0
+				&& param in flat.source_type_syntax(generic_variadic_elem_param_text(param_texts.last())).symbols()) {
+			continue
+		}
+		decl_module := tc.fn_type_modules[info.name] or { tc.cur_module }
+		if decl := tc.visible_mutation_fn_decl(info.name, decl_module) {
+			constraints := tc.a.node(flat.NodeId(decl.idx)).generic_constraint_ids()
+			if constraints.any(param in flat.source_type_syntax(it).symbols()) {
+				continue
+			}
+		}
+		callee := tc.a.child_node(&node, 0)
+		if callee.kind !in [.ident, .selector] {
+			return
+		}
+		name_pos := if callee.kind == .selector {
+			tc.method_call_name_pos(node, callee)
+		} else {
+			callee.pos
+		}
+		tc.record_error_at(.unsupported_generic, 'could not infer generic type `${flat.source_type_name(param)}` in call to `${info.name}`', id, token.new_span(name_pos.id, name_pos.offset, node.pos.end))
+		return
+	}
 }
 
 fn (mut tc TypeChecker) record_uninferred_generic_method_type(id flat.NodeId, node flat.Node, info CallInfo) {
@@ -11182,14 +11223,6 @@ fn (mut tc TypeChecker) resolve_generic_call_info(id flat.NodeId, fn_node flat.N
 		}
 		return none
 	}
-	if is_veb_run_at_call_name(call_name) {
-		return CallInfo{
-			name:         call_name
-			params:       []Type{}
-			return_type:  Type(ResultType{})
-			params_known: false
-		}
-	}
 	if call_name !in tc.fn_ret_types {
 		return none
 	}
@@ -11684,10 +11717,6 @@ fn (tc &TypeChecker) decode_call_info_from_type_arg(node flat.Node, name string,
 	}
 }
 
-fn is_veb_run_at_call_name(name string) bool {
-	return name == 'veb.run_at'
-}
-
 fn (tc &TypeChecker) generic_call_base_name(base_node flat.Node) ?string {
 	if base_node.kind == .ident {
 		if local_name := tc.local_bare_fn_key(base_node.value) {
@@ -11709,9 +11738,6 @@ fn (tc &TypeChecker) generic_call_base_name(base_node flat.Node) ?string {
 			}
 			mod_name := tc.resolve_import_alias(inner.value) or { inner.value }
 			full_name := '${mod_name}.${base_node.value}'
-			if is_veb_run_at_call_name(full_name) {
-				return full_name
-			}
 			if full_name in tc.fn_ret_types {
 				return full_name
 			}
@@ -21705,26 +21731,21 @@ fn (tc &TypeChecker) method_value_type(receiver_name_id u32, method string) ?Typ
 		if ci := tc.resolve_generic_struct_method(receiver_name_id, method) {
 			signature = ci.name
 			ret_type = ci.return_type
-			params = ci.params.clone()
+			params = ci.params
 		} else if ci := tc.interface_receiver_method_call_info(receiver_name_id, method) {
 			signature = tc.interface_method_signature_key(receiver_name_id, method) or { ci.name }
 			ret_type = ci.return_type
-			params = ci.params.clone()
+			params = ci.params
 		} else {
 			owner_id := tc.embedded_method_value_owner(receiver_name_id, method) or { return none }
 			return tc.method_value_type(owner_id, method)
 		}
 	}
-	mut bound_params := []Type{}
-	mut bound_params_mut := []bool{}
-	if params.len > 1 {
-		bound_params = params[1..].clone()
-		params_mut := tc.declaration_param_mutability[signature] or { []bool{} }
-		if params_mut.len > 1 {
-			bound_params_mut = params_mut[1..].clone()
-		}
-	}
-	return Type(tc.variadic_fn_type(bound_params, tc.intern_type_reference(ret_type), bound_params_mut, tc.fn_variadic[signature] or { false }))
+	// Read the bound signature directly: slicing shared declaration arrays
+	// writes their buffer headers, and intermediate copies are unnecessary.
+	params_mut := tc.declaration_param_mutability[signature] or { []bool{} }
+	start := if params.len > 0 { 1 } else { 0 }
+	return Type(tc.variadic_fn_type_from(params, tc.intern_type_reference(ret_type), params_mut, tc.fn_variadic[signature] or { false }, start))
 }
 
 fn (mut tc TypeChecker) check_pointer_receiver_method_value_safety(id flat.NodeId, node flat.Node, base_type Type) {
