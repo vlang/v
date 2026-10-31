@@ -1071,3 +1071,17 @@ fn unhex(c u8) u8 {
 	}
 	return 0
 }
+
+// join_host_port joins host and port into a network address of the form
+// `host:port`. The port may be empty. IPv6 addresses are bracketed.
+// Mirrors Go's net.JoinHostPort.
+pub fn join_host_port(host string, port string) string {
+	mut h := host
+	if h.contains(':') && !h.starts_with('[') {
+		h = '[' + h + ']'
+	}
+	if port == '' {
+		return h
+	}
+	return h + ':' + port
+}
