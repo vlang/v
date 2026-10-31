@@ -1,0 +1,50 @@
+name: GNU C++ self compilation validation
+on:
+  push:
+    branches:
+      - ci/verify-gnu-cpp-20261031
+permissions:
+  contents: read
+concurrency:
+  group: gnu-cpp-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  self-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: g++-9
+            standard: c++11
+          - compiler: g++-10
+            standard: c++20
+    env:
+      VFLAGS: -cc tcc -no-retry-compilation
+      V_MACOS_V3_NO_FALLBACK: '1'
+      VJOBS: '2'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: Install the original CI compiler version
+        run: |
+          .github/workflows/disable_azure_mirror.sh
+          ./v retry -- sudo apt update
+          ./v retry -- sudo apt install --quiet -y ${{ matrix.compiler }}
+          ${{ matrix.compiler }} --version
+      - name: Repeat both original self compilation stages
+        run: |
+          ./v -cc ${{ matrix.compiler }} -no-std -cflags -std=${{ matrix.standard }} -o v2 cmd/v
+          ./v2 -cc ${{ matrix.compiler }} -no-std -cflags -std=${{ matrix.standard }} -o v3 cmd/v
+      - name: Execute code produced by each resulting compiler
+        run: |
+          ./v2 -cc ${{ matrix.compiler }} -no-std -cflags -std=${{ matrix.standard }} -o cpp-runtime-v2 vlib/v/gen/c/testdata/cpp_compat_runtime.vv
+          ./cpp-runtime-v2
+          ./v3 -cc ${{ matrix.compiler }} -no-std -cflags -std=${{ matrix.standard }} -o cpp-runtime-v3 vlib/v/gen/c/testdata/cpp_compat_runtime.vv
+          ./cpp-runtime-v3
+      - name: Verify initializer lifetime and C compatibility regressions
+        run: ./v test vlib/v/gen/c/cpp_compat_test.v vlib/v/transform/sum_reference_rvalue_test.v vlib/v/gen/c/naming
