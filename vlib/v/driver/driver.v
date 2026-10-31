@@ -2470,7 +2470,9 @@ fn resolve_v3_version_executable(version_name string) !string {
 	}
 	for name in names {
 		if found_path := os.find_abs_path_of_executable(name) {
-			return found_path
+			// Resolve symlinks so the delegated compiler receives its real
+			// location and can find its own vlib (see issue #31351).
+			return os.real_path(found_path)
 		}
 	}
 	normalized := normalize_v3_vvmrc_version(raw_version)
@@ -2479,13 +2481,18 @@ fn resolve_v3_version_executable(version_name string) !string {
 	for env_name in ['VVM_HOME', 'VVM_DIR'] {
 		vvm_root := os.getenv(env_name).trim_space()
 		if vvm_root.len > 0 {
-			paths << os.join_path(vvm_root, normalized, 'bin', 'v')
-			paths << os.join_path(vvm_root, 'versions', normalized, 'bin', 'v')
+			$if windows {
+				paths << os.join_path(vvm_root, normalized, 'bin', 'v.exe')
+				paths << os.join_path(vvm_root, 'versions', normalized, 'bin', 'v.exe')
+			} $else {
+				paths << os.join_path(vvm_root, normalized, 'bin', 'v')
+				paths << os.join_path(vvm_root, 'versions', normalized, 'bin', 'v')
+			}
 		}
 	}
 	for path in paths {
 		if os.is_file(path) {
-			return path
+			return os.real_path(path)
 		}
 	}
 	return error('V executable for `${raw_version}` was not found')
@@ -10552,7 +10559,7 @@ pub fn run(args []string) {
 		no_cache = true
 	}
 	should_run = should_run && !skip_running
-	native_linux_object := backend == 'arm64' && target_os == 'linux' && explicit_output
+	native_linux_object := (backend == 'arm64' || backend == 'x64') && target_os == 'linux' && explicit_output
 		&& output_file.ends_with('.o')
 	if is_o && !native_linux_object && (backend !in ['c', 'fastc'] || !explicit_output
 		|| (!output_file.ends_with('.c') && !output_file.ends_with('.o'))) {
@@ -10810,8 +10817,8 @@ pub fn run(args []string) {
 		// module cache, including the native-code bridge used by macOS TCC.
 		no_cache = true
 	}
-	if backend == 'x64' && (target.os != 'linux' || target.arch != 'amd64') {
-		eprintln('the x64 backend currently supports only linux/amd64')
+	if backend == 'x64' && (target.arch != 'amd64' || (target.os != 'linux' && target.os != 'macos' && target.os != 'windows')) {
+		eprintln('the x64 backend currently supports only linux/amd64, macos/amd64 and windows/amd64')
 		exit(1)
 	}
 	if backend == 'x64' {
@@ -14465,6 +14472,7 @@ pub fn run(args []string) {
 
 			mut g := x64.Gen.new_with_options(m, x64.GenOptions{
 				optimize_runtime: is_prod
+				target_os:        target.os
 			})
 			g.validate_c_extern_calls() or {
 				eprintln(err.msg())
@@ -14474,7 +14482,13 @@ pub fn run(args []string) {
 			b.step('x64 gen')
 
 			obj_file := os.join_path(os.vtmp_dir(), 'v3_x64_${os.getpid()}_${tempname.unique_token()}.o')
-			g.write_file(obj_file)
+			if target.os == 'macos' {
+				x64.write_macho_from_elf(g.elf, obj_file)
+			} else if target.os == 'windows' {
+				x64.write_pe_from_elf(g.elf, obj_file)
+			} else {
+				g.write_file(obj_file)
+			}
 			b.step('x64 object')
 			x64_object_optimization_flags := v3_prod_c_object_optimization_flags(is_prod,
 				no_prod_options, false, parallel_cc, false)
