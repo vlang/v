@@ -1655,7 +1655,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 			if g.tok == .key_for {
 				g.pending_loop_label = name
 			} else {
-				g.write_line('${fastc_c_identifier(name)}:')
+				g.write_line('${fastc_c_identifier(name)}:;')
 			}
 			return
 		}
