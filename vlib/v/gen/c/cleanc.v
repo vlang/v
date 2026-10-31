@@ -4499,9 +4499,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	}
 	g.emit_postinclude_directives()
 	if g.object_file_mode {
-		g.writeln('#if defined(__clang__)')
-		g.writeln('#pragma clang attribute pop')
-		g.writeln('#endif')
+		g.emit_object_file_internal_linkage(false)
 		g.emit_object_file_export_wrappers()
 	}
 	if g.cache_split {
@@ -4632,12 +4630,21 @@ fn (mut g FlatGen) emit_c_source_directives_scoped() {
 	g.finish_scoped_append(state)
 }
 
-fn (mut g FlatGen) gen_global_declaration_block() {
-	if g.object_file_mode {
-		g.writeln('#if defined(__clang__)')
-		g.writeln('#pragma clang attribute push(__attribute__((internal_linkage)), apply_to = any(function, variable(is_global)))')
-		g.writeln('#endif')
+fn (mut g FlatGen) emit_object_file_internal_linkage(enabled bool) {
+	if !g.object_file_mode {
+		return
 	}
+	g.writeln('#if defined(__clang__)')
+	if enabled {
+		g.writeln('#pragma clang attribute push(__attribute__((internal_linkage)), apply_to = any(function, variable(is_global)))')
+	} else {
+		g.writeln('#pragma clang attribute pop')
+	}
+	g.writeln('#endif')
+}
+
+fn (mut g FlatGen) gen_global_declaration_block() {
+	g.emit_object_file_internal_linkage(true)
 	g.builtin_abi_decls()
 	g.test_failure_helpers()
 	g.global_decls()
@@ -25103,6 +25110,7 @@ fn (mut g FlatGen) global_initializer_is_static(id flat.NodeId, typ types.Type) 
 fn (mut g FlatGen) global_decls() {
 	old_module := g.tc.cur_module
 	old_file := g.tc.cur_file
+	mut internal_linkage := g.object_file_mode
 	for name, typ in g.global_types {
 		if mod := g.global_modules[name] {
 			g.tc.cur_module = mod
@@ -25116,7 +25124,16 @@ fn (mut g FlatGen) global_decls() {
 		}
 		decl_typ := g.global_storage_type(name, typ)
 		is_thread_local := g.global_is_thread_local(name)
-		export_attr := if name in g.export_global_names || g.cname(name) in g.export_global_names {
+		is_exported := name in g.export_global_names || g.cname(name) in g.export_global_names
+		if g.object_file_mode {
+			// Exported storage must remain visible to the native object consumer.
+			needs_internal_linkage := !is_exported
+			if internal_linkage != needs_internal_linkage {
+				g.emit_object_file_internal_linkage(needs_internal_linkage)
+				internal_linkage = needs_internal_linkage
+			}
+		}
+		export_attr := if is_exported {
 			g.exported_symbol_attribute()
 		} else {
 			''
@@ -25222,6 +25239,9 @@ fn (mut g FlatGen) global_decls() {
 			continue
 		}
 		g.writeln('${section_prefix}${vq}${ct} ${g.global_c_name(name)}${init};')
+	}
+	if g.object_file_mode && !internal_linkage {
+		g.emit_object_file_internal_linkage(true)
 	}
 	g.tc.cur_module = old_module
 	g.tc.cur_file = old_file
