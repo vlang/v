@@ -275,6 +275,7 @@ TinyCC may therefore accept source that the regular V checker rejects through C 
 conversions. Use the regular backend when semantic type validation is required. Range bounds are
 evaluated once, from left to right. The parser still rejects mutation of immutable or unknown local
 names instead of relying on C's weaker assignment rules.
+With the builtin runtime, collection string conversion preserves the target's integer width.
 
 Syntax without a direct FastC lowering is rejected. In ordinary non-selfhost builds this includes
 float printing, C-string and embedded-NUL string literals, runes, assertions, `sizeof`, shift,
