@@ -1,0 +1,28 @@
+diff --git a/lsp/initialize.v b/lsp/initialize.v
+index ada1b1d..a742641 100644
+--- a/lsp/initialize.v
++++ b/lsp/initialize.v
+@@ -7,7 +7,7 @@ type LSPAny = []LSPAny | map[string]LSPAny | f64 | bool | string
+ // response: InitializeResult
+ pub struct InitializeParams {
+ pub mut:
+-	process_id  int = -2         @[json: processId]
++	process_id  int = -2    @[json: processId]
+ 	client_info ClientInfo  @[json: clientInfo]
+ 	root_uri    DocumentUri @[json: rootUri]
+ 	root_path   DocumentUri @[json: rootPath]
+diff --git a/tree_sitter_v/bindings/bindings.v b/tree_sitter_v/bindings/bindings.v
+index 23fcb8c..0848af3 100644
+--- a/tree_sitter_v/bindings/bindings.v
++++ b/tree_sitter_v/bindings/bindings.v
+@@ -7,8 +7,8 @@ pub const language = unsafe { &TSLanguage(C.tree_sitter_v()) }
+ 
+ pub struct Parser[T] {
+ mut:
+-	raw_parser   &TSParser = unsafe { nil }          @[required]
+-	type_factory NodeTypeFactory[T] @[required]
++	raw_parser   &TSParser = unsafe { nil } @[required]
++	type_factory NodeTypeFactory[T]         @[required]
+ }
+ 
+ pub fn new_parser[T](type_factory NodeTypeFactory[T]) &Parser[T] {

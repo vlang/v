@@ -1,0 +1,1235 @@
+diff --git a/analyzer/psi/PsiElementImpl.v b/analyzer/psi/PsiElementImpl.v
+index a257bd1..072b5ce 100644
+--- a/analyzer/psi/PsiElementImpl.v
++++ b/analyzer/psi/PsiElementImpl.v
+@@ -20,7 +20,8 @@ pub fn new_psi_node(containing_file ?&PsiFile, node AstNode) PsiElementImpl {
+ 
+ fn new_psi_node_from_stub(id StubId, stubs_list &StubList) PsiElementImpl {
+ 	return PsiElementImpl{
+-		node:            AstNode{}
++		node:            bindings.new_tsnode[bindings.NodeType](bindings.type_factory,
++			bindings.TSNode{})
+ 		containing_file: new_stub_psi_file(stubs_list.path, stubs_list)
+ 		stub_id:         id
+ 		stubs_list:      stubs_list
+diff --git a/analyzer/psi/ReferenceImpl.v b/analyzer/psi/ReferenceImpl.v
+index 06510ab..96d57e2 100644
+--- a/analyzer/psi/ReferenceImpl.v
++++ b/analyzer/psi/ReferenceImpl.v
+@@ -765,8 +765,8 @@ pub fn (r &SubResolver) process_owner_generic_ts(mut processor PsiScopeProcessor
+ 	return true
+ }
+ 
+-pub fn (_ &SubResolver) find_function(stubs_index StubIndex, name string) ?&FunctionOrMethodDeclaration {
+-	found := stubs_index.get_elements_by_name(.functions, name)
++pub fn (_ &SubResolver) find_function(index StubIndex, name string) ?&FunctionOrMethodDeclaration {
++	found := index.get_elements_by_name(.functions, name)
+ 	if found.len != 0 {
+ 		first := found.first()
+ 		if first is FunctionOrMethodDeclaration {
+@@ -776,8 +776,8 @@ pub fn (_ &SubResolver) find_function(stubs_index StubIndex, name string) ?&Func
+ 	return none
+ }
+ 
+-pub fn (_ &SubResolver) find_struct(stubs_index StubIndex, name string) ?&StructDeclaration {
+-	found := stubs_index.get_elements_by_name(.structs, name)
++pub fn (_ &SubResolver) find_struct(index StubIndex, name string) ?&StructDeclaration {
++	found := index.get_elements_by_name(.structs, name)
+ 	if found.len != 0 {
+ 		first := found.first()
+ 		if first is StructDeclaration {
+@@ -787,8 +787,8 @@ pub fn (_ &SubResolver) find_struct(stubs_index StubIndex, name string) ?&Struct
+ 	return none
+ }
+ 
+-pub fn (_ &SubResolver) find_interface(stubs_index StubIndex, name string) ?&InterfaceDeclaration {
+-	found := stubs_index.get_elements_by_name(.interfaces, name)
++pub fn (_ &SubResolver) find_interface(index StubIndex, name string) ?&InterfaceDeclaration {
++	found := index.get_elements_by_name(.interfaces, name)
+ 	if found.len != 0 {
+ 		first := found.first()
+ 		if first is InterfaceDeclaration {
+@@ -798,8 +798,8 @@ pub fn (_ &SubResolver) find_interface(stubs_index StubIndex, name string) ?&Int
+ 	return none
+ }
+ 
+-pub fn (_ &SubResolver) find_enum(stubs_index StubIndex, name string) ?&EnumDeclaration {
+-	found := stubs_index.get_elements_by_name(.enums, name)
++pub fn (_ &SubResolver) find_enum(index StubIndex, name string) ?&EnumDeclaration {
++	found := index.get_elements_by_name(.enums, name)
+ 	if found.len != 0 {
+ 		first := found.first()
+ 		if first is EnumDeclaration {
+@@ -809,8 +809,8 @@ pub fn (_ &SubResolver) find_enum(stubs_index StubIndex, name string) ?&EnumDecl
+ 	return none
+ }
+ 
+-pub fn (_ &SubResolver) find_constant(stubs_index StubIndex, name string) ?&ConstantDefinition {
+-	found := stubs_index.get_elements_by_name(.constants, name)
++pub fn (_ &SubResolver) find_constant(index StubIndex, name string) ?&ConstantDefinition {
++	found := index.get_elements_by_name(.constants, name)
+ 	if found.len != 0 {
+ 		first := found.first()
+ 		if first is ConstantDefinition {
+@@ -820,8 +820,8 @@ pub fn (_ &SubResolver) find_constant(stubs_index StubIndex, name string) ?&Cons
+ 	return none
+ }
+ 
+-pub fn (_ &SubResolver) find_type_alias(stubs_index StubIndex, name string) ?&TypeAliasDeclaration {
+-	found := stubs_index.get_elements_by_name(.type_aliases, name)
++pub fn (_ &SubResolver) find_type_alias(index StubIndex, name string) ?&TypeAliasDeclaration {
++	found := index.get_elements_by_name(.type_aliases, name)
+ 	if found.len != 0 {
+ 		first := found.first()
+ 		if first is TypeAliasDeclaration {
+@@ -831,8 +831,8 @@ pub fn (_ &SubResolver) find_type_alias(stubs_index StubIndex, name string) ?&Ty
+ 	return none
+ }
+ 
+-pub fn (_ &SubResolver) find_global_variable(stubs_index StubIndex, name string) ?&GlobalVarDefinition {
+-	found := stubs_index.get_elements_by_name(.global_variables, name)
++pub fn (_ &SubResolver) find_global_variable(index StubIndex, name string) ?&GlobalVarDefinition {
++	found := index.get_elements_by_name(.global_variables, name)
+ 	if found.len != 0 {
+ 		first := found.first()
+ 		if first is GlobalVarDefinition {
+@@ -842,8 +842,8 @@ pub fn (_ &SubResolver) find_global_variable(stubs_index StubIndex, name string)
+ 	return none
+ }
+ 
+-pub fn (_ &SubResolver) find_attribute(stubs_index StubIndex, name string) ?&StructDeclaration {
+-	found := stubs_index.get_elements_by_name(.attributes, name)
++pub fn (_ &SubResolver) find_attribute(index StubIndex, name string) ?&StructDeclaration {
++	found := index.get_elements_by_name(.attributes, name)
+ 	if found.len != 0 {
+ 		first := found.first()
+ 		if first is StructDeclaration {
+diff --git a/analyzer/psi/StubIndex.v b/analyzer/psi/StubIndex.v
+index ff578d4..56b7a3a 100644
+--- a/analyzer/psi/StubIndex.v
++++ b/analyzer/psi/StubIndex.v
+@@ -360,11 +360,13 @@ pub fn get_all_modules() []string {
+ }
+ 
+ fn (_ &StubIndex) get_all_elements_from_sink_by_key(key StubIndexKey, sink StubIndexSink) []PsiElement {
+-	data := sink.data[int(key)] or { return [] }
++	if int(key) !in sink.data {
++		return []
++	}
+ 
+ 	element_type := StubbedElementType{}
+-	mut elements := []PsiElement{cap: data.len}
+-	for _, stub_ids in data {
++	mut elements := []PsiElement{cap: sink.data[int(key)].len}
++	for _, stub_ids in sink.data[int(key)] {
+ 		for stub_id in stub_ids {
+ 			stub := sink.stub_list.index_map[stub_id] or { continue }
+ 			elements << element_type.create_psi(stub) or { continue }
+diff --git a/analyzer/psi/StubbedElementTypeImpl.v b/analyzer/psi/StubbedElementTypeImpl.v
+index 8e3922f..9f993df 100644
+--- a/analyzer/psi/StubbedElementTypeImpl.v
++++ b/analyzer/psi/StubbedElementTypeImpl.v
+@@ -475,65 +475,65 @@ pub fn (s &StubbedElementType) create_stub(psi PsiElement, parent_stub &StubBase
+ 	}
+ 
+ 	if psi is InterfaceDeclaration {
+-		return declaration_stub(*psi, parent_stub, .interface_declaration)
++		return declaration_stub(psi, parent_stub, .interface_declaration)
+ 	}
+ 
+ 	if psi is InterfaceMethodDeclaration {
+-		return declaration_stub(*psi, parent_stub, .interface_method_declaration,
++		return declaration_stub(psi, parent_stub, .interface_method_declaration,
+ 			additional: psi.fingerprint()
+ 		)
+ 	}
+ 
+ 	if psi is StaticReceiver {
+-		return declaration_stub(*psi, parent_stub, .static_receiver, include_text: true)
++		return declaration_stub(psi, parent_stub, .static_receiver, include_text: true)
+ 	}
+ 
+ 	if psi is Receiver {
+-		return declaration_stub(*psi, parent_stub, .receiver, include_text: true)
++		return declaration_stub(psi, parent_stub, .receiver, include_text: true)
+ 	}
+ 
+ 	if psi is Signature {
+-		return text_based_stub(*psi, parent_stub, .signature)
++		return text_based_stub(psi, parent_stub, .signature)
+ 	}
+ 
+ 	if psi is ParameterList {
+-		return text_based_stub(*psi, parent_stub, .parameter_list)
++		return text_based_stub(psi, parent_stub, .parameter_list)
+ 	}
+ 
+ 	if psi is ParameterDeclaration {
+-		return declaration_stub(*psi, parent_stub, .parameter_declaration, include_text: true)
++		return declaration_stub(psi, parent_stub, .parameter_declaration, include_text: true)
+ 	}
+ 
+ 	if psi is EnumDeclaration {
+-		return declaration_stub(*psi, parent_stub, .enum_declaration)
++		return declaration_stub(psi, parent_stub, .enum_declaration)
+ 	}
+ 
+ 	if psi is EnumFieldDeclaration {
+ 		if expression := psi.last_child() {
+ 			text := expression.get_text()
+-			return declaration_stub(*psi, parent_stub, .enum_field_definition, additional: text)
++			return declaration_stub(psi, parent_stub, .enum_field_definition, additional: text)
+ 		}
+-		return declaration_stub(*psi, parent_stub, .enum_field_definition)
++		return declaration_stub(psi, parent_stub, .enum_field_definition)
+ 	}
+ 
+ 	if psi is FieldDeclaration {
+-		return declaration_stub(*psi, parent_stub, .field_declaration)
++		return declaration_stub(psi, parent_stub, .field_declaration)
+ 	}
+ 
+ 	if psi is ConstantDefinition {
+ 		if expression := psi.last_child() {
+ 			text := expression.get_text()
+-			return declaration_stub(*psi, parent_stub, .constant_declaration, additional: text)
++			return declaration_stub(psi, parent_stub, .constant_declaration, additional: text)
+ 		}
+-		return declaration_stub(*psi, parent_stub, .constant_declaration)
++		return declaration_stub(psi, parent_stub, .constant_declaration)
+ 	}
+ 
+ 	if psi is TypeAliasDeclaration {
+-		return declaration_stub(*psi, parent_stub, .type_alias_declaration)
++		return declaration_stub(psi, parent_stub, .type_alias_declaration)
+ 	}
+ 
+ 	if psi is StructFieldScope {
+-		return text_based_stub(*psi, parent_stub, .struct_field_scope)
++		return text_based_stub(psi, parent_stub, .struct_field_scope)
+ 	}
+ 
+ 	if psi is Attributes {
+@@ -542,23 +542,23 @@ pub fn (s &StubbedElementType) create_stub(psi PsiElement, parent_stub &StubBase
+ 	}
+ 
+ 	if psi is Attribute {
+-		return text_based_stub(*psi, parent_stub, .attribute)
++		return text_based_stub(psi, parent_stub, .attribute)
+ 	}
+ 
+ 	if psi is AttributeExpression {
+-		return text_based_stub(*psi, parent_stub, .attribute_expression)
++		return text_based_stub(psi, parent_stub, .attribute_expression)
+ 	}
+ 
+ 	if psi is ValueAttribute {
+-		return text_based_stub(*psi, parent_stub, .value_attribute)
++		return text_based_stub(psi, parent_stub, .value_attribute)
+ 	}
+ 
+ 	if psi is VisibilityModifiers {
+-		return text_based_stub(*psi, parent_stub, .visibility_modifiers)
++		return text_based_stub(psi, parent_stub, .visibility_modifiers)
+ 	}
+ 
+ 	if psi is ModuleClause {
+-		return declaration_stub(*psi, parent_stub, .module_clause)
++		return declaration_stub(psi, parent_stub, .module_clause)
+ 	}
+ 
+ 	node_type := psi.node().type_name
+@@ -568,7 +568,7 @@ pub fn (s &StubbedElementType) create_stub(psi PsiElement, parent_stub &StubBase
+ 	}
+ 
+ 	if psi is ImportSpec {
+-		return declaration_stub(*psi, parent_stub, .import_spec, include_text: true)
++		return declaration_stub(psi, parent_stub, .import_spec, include_text: true)
+ 	}
+ 
+ 	if node_type in [
+@@ -590,23 +590,23 @@ pub fn (s &StubbedElementType) create_stub(psi PsiElement, parent_stub &StubBase
+ 	}
+ 
+ 	if psi is ReferenceExpression {
+-		return text_based_stub(*psi, parent_stub, .reference_expression)
++		return text_based_stub(psi, parent_stub, .reference_expression)
+ 	}
+ 
+ 	if psi is GenericParameters {
+-		return text_based_stub(*psi, parent_stub, .generic_parameters)
++		return text_based_stub(psi, parent_stub, .generic_parameters)
+ 	}
+ 
+ 	if psi is GenericParameter {
+-		return declaration_stub(*psi, parent_stub, .generic_parameter)
++		return declaration_stub(psi, parent_stub, .generic_parameter)
+ 	}
+ 
+ 	if psi is GlobalVarDefinition {
+-		return declaration_stub(*psi, parent_stub, .global_variable)
++		return declaration_stub(psi, parent_stub, .global_variable)
+ 	}
+ 
+ 	if psi is EmbeddedDefinition {
+-		return declaration_stub(*psi, parent_stub, .embedded_definition)
++		return declaration_stub(psi, parent_stub, .embedded_definition)
+ 	}
+ 
+ 	return none
+diff --git a/analyzer/psi/TypeInferer.v b/analyzer/psi/TypeInferer.v
+index ecb3874..cefd00a 100644
+--- a/analyzer/psi/TypeInferer.v
++++ b/analyzer/psi/TypeInferer.v
+@@ -61,10 +61,17 @@ pub fn (t &TypeInferer) infer_type_impl(elem ?PsiElement) types.Type {
+ 		UnaryExpression {
+ 			return t.infer_unary_expression_type(element)
+ 		}
+-		OrBlockExpression, ResultPropagationExpression, OptionPropagationExpression {
++		OrBlockExpression {
+ 			expr := element.expression() or { return types.unknown_type }
+-			expr_type := t.infer_type(expr)
+-			return types.unwrap_result_or_option_type(expr_type)
++			return types.unwrap_result_or_option_type(t.infer_type(expr))
++		}
++		ResultPropagationExpression {
++			expr := element.expression() or { return types.unknown_type }
++			return types.unwrap_result_or_option_type(t.infer_type(expr))
++		}
++		OptionPropagationExpression {
++			expr := element.expression() or { return types.unknown_type }
++			return types.unwrap_result_or_option_type(t.infer_type(expr))
+ 		}
+ 		IndexExpression {
+ 			return t.infer_index_expression_type(element)
+@@ -131,7 +138,13 @@ pub fn (t &TypeInferer) infer_type_impl(elem ?PsiElement) types.Type {
+ 			signature := element.signature() or { return types.unknown_type }
+ 			return t.process_signature(signature)
+ 		}
+-		EnumDeclaration, EnumFieldDeclaration, ConstantDefinition {
++		EnumDeclaration {
++			return element.get_type()
++		}
++		EnumFieldDeclaration {
++			return element.get_type()
++		}
++		ConstantDefinition {
+ 			return element.get_type()
+ 		}
+ 		TypeReferenceExpression {
+@@ -209,7 +222,7 @@ pub fn (t &TypeInferer) infer_slice_expression_type(element SliceExpression) typ
+ 
+ pub fn (t &TypeInferer) infer_compile_time_if_expression_type(element CompileTimeIfExpression) types.Type {
+ 	block := element.block()
+-	block_type := t.infer_type(block)
++	block_type := if b := block { t.infer_type(PsiElement(b)) } else { types.unknown_type }
+ 	if block_type is types.UnknownType {
+ 		else_branch := element.else_branch() or { return types.unknown_type }
+ 		return t.infer_type(else_branch)
+@@ -358,7 +371,7 @@ pub fn (t &TypeInferer) infer_reference_expression_type(element ReferenceExpress
+ 
+ pub fn (t &TypeInferer) infer_if_expression_type(element IfExpression) types.Type {
+ 	block := element.block()
+-	block_type := t.infer_type(block)
++	block_type := if b := block { t.infer_type(PsiElement(b)) } else { types.unknown_type }
+ 	if block_type is types.UnknownType {
+ 		else_branch := element.else_branch() or { return types.unknown_type }
+ 		return t.infer_type(else_branch)
+@@ -368,7 +381,7 @@ pub fn (t &TypeInferer) infer_if_expression_type(element IfExpression) types.Typ
+ 
+ pub fn (t &TypeInferer) infer_unsafe_expression_type(element UnsafeExpression) types.Type {
+ 	block := element.block()
+-	return t.infer_type(block)
++	return if b := block { t.infer_type(PsiElement(b)) } else { types.unknown_type }
+ }
+ 
+ pub fn (t &TypeInferer) infer_type_initializer_type(element TypeInitializer, mut visited map[string]types.Type) types.Type {
+diff --git a/analyzer/psi/doc_comment_extractor.v b/analyzer/psi/doc_comment_extractor.v
+index 2c70e86..796a74a 100644
+--- a/analyzer/psi/doc_comment_extractor.v
++++ b/analyzer/psi/doc_comment_extractor.v
+@@ -11,7 +11,7 @@ pub fn extract_doc_comment(el PsiElement) string {
+ 
+ 	mut comments := []PsiElement{}
+ 
+-	for comment is LineComment {
++	for is_line_comment(comment) {
+ 		comment_start_line := comment.node().start_point().row
+ 
+ 		if comment_start_line + 1 + u32(comments.len) != el_start_line {
+@@ -103,3 +103,9 @@ pub fn extract_doc_comment(el PsiElement) string {
+ 	res_str := res.str() + if field_eol_comment != '' { '\n\n... ' + field_eol_comment } else { '' }
+ 	return res_str
+ }
++
++// is_line_comment is used as a loop condition so that the loop variable,
++// which is reassigned in the loop body, is not smart cast.
++fn is_line_comment(el PsiElement) bool {
++	return el is LineComment
++}
+diff --git a/jsonrpc/jsonrpc.v b/jsonrpc/jsonrpc.v
+index ad134e7..d6e73da 100644
+--- a/jsonrpc/jsonrpc.v
++++ b/jsonrpc/jsonrpc.v
+@@ -3,7 +3,7 @@
+ // that can be found in the LICENSE file.
+ module jsonrpc
+ 
+-import json
++import json2
+ import strings
+ import io
+ 
+@@ -40,6 +40,14 @@ pub const error_codes = [
+ 	unknown_error.code(),
+ ]
+ 
++// NullResult is returned by a handler to make the server reply with a `null`
++// result. It replaces returning `none` from a `!` function, which V no longer allows.
++pub struct NullResult {
++	Error
++}
++
++pub const null_result = NullResult{}
++
+ // Null represents the null value in JSON.
+ pub struct Null {}
+ 
+@@ -64,7 +72,7 @@ pub fn (req Request) json() string {
+ 
+ // decode_params decodes the parameters of a Request.
+ pub fn (req Request) decode_params[T]() !T {
+-	return json.decode(T, req.params) or { return err }
++	return json2.decode[T](req.params) or { return err }
+ }
+ 
+ // Response is a representation of server reply after an rpc call was made.
+@@ -102,7 +110,7 @@ fn encode_response[T](resp Response[T], mut writer io.Writer) {
+ 		writer.write(resp.id.bytes()) or {}
+ 	}
+ 	if resp.error.code != 0 {
+-		err := json.encode(resp.error)
++		err := json2.encode(resp.error, escape_unicode: true, time_as_unix: true)
+ 		writer.write(error_field_in_u8) or {}
+ 		writer.write(err.bytes()) or {}
+ 	} else {
+@@ -110,7 +118,7 @@ fn encode_response[T](resp Response[T], mut writer io.Writer) {
+ 		$if T is Null {
+ 			writer.write(null_in_u8) or {}
+ 		} $else {
+-			res := json.encode(resp.result)
++			res := json2.encode(resp.result, escape_unicode: true, time_as_unix: true)
+ 			writer.write(res.bytes()) or {}
+ 		}
+ 	}
+@@ -147,7 +155,7 @@ fn encode_notification[T](notif NotificationMessage[T], mut writer io.Writer) {
+ 	$if T is Null {
+ 		writer.write(null_in_u8) or {}
+ 	} $else {
+-		res := json.encode(notif.params)
++		res := json2.encode(notif.params, escape_unicode: true, time_as_unix: true)
+ 		writer.write(res.bytes()) or {}
+ 	}
+ 	writer.write([u8(`}`)]) or {}
+@@ -158,7 +166,7 @@ fn encode_request[T](notif NotificationMessage[T], mut writer io.Writer) {
+ 	$if T is Null {
+ 		writer.write(null_in_u8) or {}
+ 	} $else {
+-		res := json.encode(notif.params)
++		res := json2.encode(notif.params, escape_unicode: true, time_as_unix: true)
+ 		writer.write(res.bytes()) or {}
+ 	}
+ 	writer.write([u8(`}`)]) or {}
+diff --git a/jsonrpc/server.v b/jsonrpc/server.v
+index e0f1423..92fcbd9 100644
+--- a/jsonrpc/server.v
++++ b/jsonrpc/server.v
+@@ -4,7 +4,7 @@
+ module jsonrpc
+ 
+ import io
+-import json
++import json2
+ import sync
+ import strings
+ 
+@@ -59,7 +59,7 @@ pub fn (mut s Server) dispatch_event(event_name string, data InterceptorData) !
+ // process_raw_request decodes the raw request string into JSONRPC request.
+ fn (_ Server) process_raw_request(raw_request string) !Request {
+ 	json_payload := raw_request.all_after('\r\n\r\n')
+-	return json.decode(Request, json_payload) or { return err }
++	return json2.decode[Request](json_payload) or { return err }
+ }
+ 
+ // respond executes the incoming request into a response.
+@@ -100,7 +100,7 @@ fn (mut s Server) internal_respond(mut base_rw ResponseWriter) ! {
+ 	s.handler.handle_jsonrpc(&req, mut rw) or {
+ 		// do not send response error if request is a notification
+ 		if req.id.len != 0 {
+-			if err is none {
++			if err is none || err is NullResult {
+ 				rw.write(null)
+ 			} else if err is ResponseError {
+ 				rw.write_error(err)
+diff --git a/jsonrpc/server_test.v b/jsonrpc/server_test.v
+index bcb3357..f39b7bb 100644
+--- a/jsonrpc/server_test.v
++++ b/jsonrpc/server_test.v
+@@ -32,6 +32,9 @@ fn (mut _ TestHandler) handle_jsonrpc(req &jsonrpc.Request, mut wr jsonrpc.Respo
+ 		'hello' {
+ 			wr.write(RpcResult[string]{'Hello world!'})
+ 		}
++		'empty' {
++			return jsonrpc.null_result
++		}
+ 		'trigger' {
+ 			wr.server.dispatch_event('record', 'dispatched!')!
+ 			wr.write(RpcResult[string]{'triggered'})
+@@ -71,6 +74,37 @@ fn test_server() {
+ 	client.send[[]string, RpcResult[string]]('mirror', ['0']) or { assert err is io.Eof }
+ }
+ 
++fn test_handler_null_result_preserves_request_and_notification_behavior() {
++	mut stream := &TestStream{}
++	mut server := &jsonrpc.Server{
++		handler: &TestHandler{}
++		stream:  stream
++	}
++	stream.send(jsonrpc.Request{
++		id:     '23'
++		method: 'empty'
++		params: '{}'
++	})
++	mut request_returned_null := false
++	server.respond() or {
++		assert err is jsonrpc.NullResult
++		request_returned_null = true
++	}
++	assert request_returned_null
++	assert stream.response_text('23') == 'null'
++	stream.send(jsonrpc.Request{
++		method: 'empty'
++		params: '{}'
++	})
++	mut notification_returned_null := false
++	server.respond() or {
++		assert err is jsonrpc.NullResult
++		notification_returned_null = true
++	}
++	assert notification_returned_null
++	assert stream.response_text('') == ''
++}
++
+ struct TestInterceptor {
+ mut:
+ 	methods_recv []string
+diff --git a/jsonrpc/server_test_utils/server_test_utils.v b/jsonrpc/server_test_utils/server_test_utils.v
+index c531478..9b7517d 100644
+--- a/jsonrpc/server_test_utils/server_test_utils.v
++++ b/jsonrpc/server_test_utils/server_test_utils.v
+@@ -5,7 +5,7 @@ module server_test_utils
+ 
+ import io
+ import jsonrpc
+-import json
++import json2
+ import datatypes
+ 
+ // new_test_client creates a test client to be used for observing responses
+@@ -44,7 +44,7 @@ pub mut:
+ 
+ // send sends a request and receives a decoded response result.
+ pub fn (mut tc TestClient) send[T, U](method string, params T) !U {
+-	params_json := json.encode(params)
++	params_json := json2.encode(params, escape_unicode: true, time_as_unix: true)
+ 	req := jsonrpc.Request{
+ 		id:     '${tc.id}'
+ 		method: method
+@@ -58,14 +58,14 @@ pub fn (mut tc TestClient) send[T, U](method string, params T) !U {
+ 		return IError(io.Eof{})
+ 	}
+ 	println(raw_json_content)
+-	return json.decode(U, raw_json_content)!
++	return json2.decode[U](raw_json_content)!
+ }
+ 
+ // notify is a version of send but instead of returning a response,
+ // it only notifies the server. Effectively sending a request as a
+ // notification.
+ pub fn (mut tc TestClient) notify[T](method string, params T) ! {
+-	params_json := json.encode(params)
++	params_json := json2.encode(params, escape_unicode: true, time_as_unix: true)
+ 	req := jsonrpc.Request{
+ 		id:     ''
+ 		method: method
+@@ -99,7 +99,7 @@ pub fn (mut rw TestStream) read(mut buf []u8) !int {
+ pub fn (mut rw TestStream) write(buf []u8) !int {
+ 	raw_json_content := buf.bytestr().all_after('\r\n\r\n')
+ 	if raw_json_content.contains('"result":') {
+-		resp := json.decode(TestResponse, raw_json_content) or { return err }
++		resp := json2.decode[TestResponse](raw_json_content) or { return err }
+ 		rw.resp_buf[resp.raw_id] = resp
+ 	} else if raw_json_content.contains('"params":') {
+ 		idx := rw.notif_idx % 20
+@@ -130,7 +130,7 @@ pub fn (rw &TestStream) response_text(raw_id string) string {
+ // notification_at returns the jsonrpc.Notification<T> in a given index.
+ pub fn (rw &TestStream) notification_at[T](idx int) !jsonrpc.NotificationMessage[T] {
+ 	raw_json_content := rw.notif_buf[idx].bytestr().all_after('\r\n\r\n')
+-	return json.decode(jsonrpc.NotificationMessage[T], raw_json_content)!
++	return json2.decode[jsonrpc.NotificationMessage[T]](raw_json_content)!
+ }
+ 
+ // last_notification_at_method returns the last jsonrpc.Notification<T> from the given method name.
+diff --git a/loglib/Entry.v b/loglib/Entry.v
+index d22a3e0..7c3682c 100644
+--- a/loglib/Entry.v
++++ b/loglib/Entry.v
+@@ -14,9 +14,9 @@ pub mut:
+ 	message string
+ }
+ 
+-pub fn new_entry(logger &Logger) &Entry {
++pub fn new_entry(lg &Logger) &Entry {
+ 	return &Entry{
+-		logger: logger
++		logger: lg
+ 	}
+ }
+ 
+diff --git a/lsp/log/log_test.v b/lsp/log/log_test.v
+index 4e61dcd..66e1c6a 100644
+--- a/lsp/log/log_test.v
++++ b/lsp/log/log_test.v
+@@ -1,6 +1,6 @@
+ module log
+ 
+-import json
++import json2
+ 
+ struct TestLogItem {
+ 	kind    string
+@@ -12,7 +12,7 @@ fn test_notification_send() {
+ 
+ 	lg.log(kind: .send_notification, payload: '"Hello!"'.bytes())
+ 	buf := lg.buffer.str()
+-	result := json.decode(TestLogItem, buf)!
++	result := json2.decode[TestLogItem](buf)!
+ 
+ 	assert result.kind == 'send-notification'
+ 	assert result.payload == 'Hello!'
+@@ -23,7 +23,7 @@ fn test_notification_receive() {
+ 
+ 	lg.log(kind: .recv_notification, payload: '"Received!"'.bytes())
+ 	buf := lg.buffer.str()
+-	result := json.decode(TestLogItem, buf)!
++	result := json2.decode[TestLogItem](buf)!
+ 
+ 	assert result.kind == 'recv-notification'
+ 	assert result.payload == 'Received!'
+@@ -34,7 +34,7 @@ fn test_request_send() {
+ 
+ 	lg.log(kind: .recv_request, payload: '"Request sent."'.bytes())
+ 	buf := lg.buffer.str()
+-	result := json.decode(TestLogItem, buf)!
++	result := json2.decode[TestLogItem](buf)!
+ 
+ 	assert result.kind == 'recv-request'
+ 	assert result.payload == 'Request sent.'
+@@ -45,7 +45,7 @@ fn test_request_receive() {
+ 
+ 	lg.log(kind: .recv_request, payload: '"Request received."'.bytes())
+ 	buf := lg.buffer.str()
+-	result := json.decode(TestLogItem, buf)!
++	result := json2.decode[TestLogItem](buf)!
+ 
+ 	assert result.kind == 'recv-request'
+ 	assert result.payload == 'Request received.'
+@@ -56,7 +56,7 @@ fn test_response_send() {
+ 
+ 	lg.log(kind: .send_response, payload: '"Response sent."'.bytes())
+ 	buf := lg.buffer.str()
+-	result := json.decode(TestLogItem, buf)!
++	result := json2.decode[TestLogItem](buf)!
+ 
+ 	assert result.kind == 'send-response'
+ 	assert result.payload == 'Response sent.'
+@@ -67,7 +67,7 @@ fn test_response_receive() {
+ 
+ 	lg.log(kind: .send_response, payload: '"Response received."'.bytes())
+ 	buf := lg.buffer.str()
+-	result := json.decode(TestLogItem, buf)!
++	result := json2.decode[TestLogItem](buf)!
+ 
+ 	assert result.kind == 'send-response'
+ 	assert result.payload == 'Response received.'
+diff --git a/project/flavors/WinToolchainFlavor.v b/project/flavors/WinToolchainFlavor.v
+index bd7b8b4..375ac39 100644
+--- a/project/flavors/WinToolchainFlavor.v
++++ b/project/flavors/WinToolchainFlavor.v
+@@ -6,7 +6,7 @@ pub struct WinToolchainFlavor {}
+ 
+ fn (s &WinToolchainFlavor) get_home_page_candidates() []string {
+ 	mut res := []string{}
+-	result := os.execute('where v')
++	result := os.exec(['where', 'v'])
+ 	if result.exit_code == 0 {
+ 		res << os.dir(result.output.trim_space())
+ 	}
+diff --git a/server/ResponseWriter.v b/server/ResponseWriter.v
+index 3d3d173..b8eb63a 100644
+--- a/server/ResponseWriter.v
++++ b/server/ResponseWriter.v
+@@ -6,11 +6,11 @@ import lsp
+ pub type ResponseWriter = jsonrpc.ResponseWriter
+ 
+ fn (mut wr ResponseWriter) wrap_error(err IError) IError {
+-	if err is none {
+-		return err
++	if err is none || err is jsonrpc.NullResult {
++		return jsonrpc.null_result
+ 	}
+ 	wr.log_message(err.msg(), .error)
+-	return none
++	return jsonrpc.null_result
+ }
+ 
+ // log_message sends a window/logMessage notification to the client
+diff --git a/server/code_lens/CodeLensVisitor.v b/server/code_lens/CodeLensVisitor.v
+index a48100b..e003a82 100644
+--- a/server/code_lens/CodeLensVisitor.v
++++ b/server/code_lens/CodeLensVisitor.v
+@@ -2,7 +2,7 @@ module code_lens
+ 
+ import lsp
+ import config
+-import json
++import json2
+ import server.tform
+ import analyzer.psi
+ import analyzer.psi.search
+@@ -145,11 +145,11 @@ pub fn (mut v CodeLensVisitor) add_interface_implementations_lens(node psi.AstNo
+ 			command:   'v-analyzer.showReferences'
+ 			arguments: [
+ 				v.uri.path(),
+-				json.encode(lsp.Position{
++				json2.encode(lsp.Position{
+ 					line:      identifier_text_range.line
+ 					character: identifier_text_range.column
+-				}),
+-				json.encode(locations),
++				}, escape_unicode: true, time_as_unix: true),
++				json2.encode(locations, escape_unicode: true, time_as_unix: true),
+ 			]
+ 		})
+ 	}
+@@ -178,11 +178,11 @@ pub fn (mut v CodeLensVisitor) add_super_interfaces_lens(node psi.AstNode) {
+ 			command:   'v-analyzer.showReferences'
+ 			arguments: [
+ 				v.uri.path(),
+-				json.encode(lsp.Position{
++				json2.encode(lsp.Position{
+ 					line:      identifier_text_range.line
+ 					character: identifier_text_range.column
+-				}),
+-				json.encode(locations),
++				}, escape_unicode: true, time_as_unix: true),
++				json2.encode(locations, escape_unicode: true, time_as_unix: true),
+ 			]
+ 		})
+ 	}
+diff --git a/server/completion/providers/JsonAttributeCompletionProvider.v b/server/completion/providers/JsonAttributeCompletionProvider.v
+index 8b33b30..1f0a61c 100644
+--- a/server/completion/providers/JsonAttributeCompletionProvider.v
++++ b/server/completion/providers/JsonAttributeCompletionProvider.v
+@@ -4,7 +4,6 @@ import analyzer.psi
+ import server.completion
+ import lsp
+ import utils
+-import v.token
+ 
+ pub struct JsonAttributeCompletionProvider {}
+ 
+@@ -35,7 +34,7 @@ fn (mut p JsonAttributeCompletionProvider) add_completion(ctx &completion.Comple
+ 
+ fn (mut p JsonAttributeCompletionProvider) json_name(field_name string) string {
+ 	without_underscore_and_at := field_name.trim_string_right('_').trim_string_left('@')
+-	name_to_camelize := if token.is_key(without_underscore_and_at) {
++	name_to_camelize := if without_underscore_and_at in v_keywords {
+ 		without_underscore_and_at
+ 	} else {
+ 		field_name
+@@ -43,3 +42,10 @@ fn (mut p JsonAttributeCompletionProvider) json_name(field_name string) string {
+ 
+ 	return utils.snake_case_to_camel_case(name_to_camelize)
+ }
++
++// v_keywords lists V's reserved words. `v.token` no longer exposes a lookup by name.
++const v_keywords = ['as', 'asm', 'assert', 'atomic', 'break', 'const', 'continue', 'defer', 'dump',
++	'else', 'enum', 'false', 'fn', 'for', '__global', 'go', 'goto', 'if', 'import', 'in', 'interface',
++	'is', 'isreftype', '_likely_', 'lock', 'match', 'module', 'mut', 'nil', 'none', '__offsetof',
++	'or', 'pub', 'return', 'rlock', 'select', 'shared', 'sizeof', 'spawn', 'static', 'struct',
++	'true', 'type', 'typeof', 'union', '_unlikely_', 'unsafe', 'volatile']
+diff --git a/server/completion/providers/StructLiteralCompletion.v b/server/completion/providers/StructLiteralCompletion.v
+index 9ebf0ba..95b416a 100644
+--- a/server/completion/providers/StructLiteralCompletion.v
++++ b/server/completion/providers/StructLiteralCompletion.v
+@@ -33,7 +33,7 @@ pub fn (s &StructLiteralCompletion) allowed_variants(ctx &completion.CompletionC
+ 	element := ref as psi.PsiElement
+ 
+ 	mut parent := element.parent() or { return .none_ }
+-	for parent is psi.UnaryExpression {
++	for is_unary_expression(parent) {
+ 		parent = parent.parent() or { return .none_ }
+ 	}
+ 
+@@ -102,3 +102,9 @@ pub fn (s &StructLiteralCompletion) get_field_initializers(element psi.PsiElemen
+ 
+ 	return []
+ }
++
++// is_unary_expression is used as a loop condition so that the loop variable,
++// which is reassigned in the loop body, is not smart cast.
++fn is_unary_expression(el psi.PsiElement) bool {
++	return el is psi.UnaryExpression
++}
+diff --git a/server/features_code_actions.v b/server/features_code_actions.v
+index cdda6fb..342a2de 100644
+--- a/server/features_code_actions.v
++++ b/server/features_code_actions.v
+@@ -1,7 +1,7 @@
+ module server
+ 
+ import lsp
+-import json
++import json2
+ import server.intentions
+ 
+ pub fn (mut ls LanguageServer) code_actions(params lsp.CodeActionParams) ?[]lsp.CodeAction {
+@@ -24,10 +24,10 @@ pub fn (mut ls LanguageServer) code_actions(params lsp.CodeActionParams) ?[]lsp.
+ 				title:     intention.name
+ 				command:   intention.id
+ 				arguments: [
+-					json.encode(IntentionData{
++					json2.encode(IntentionData{
+ 						file_uri: uri
+ 						position: params.range.start
+-					}),
++					}, escape_unicode: true, time_as_unix: true),
+ 				]
+ 			}
+ 		}
+@@ -49,10 +49,10 @@ pub fn (mut ls LanguageServer) code_actions(params lsp.CodeActionParams) ?[]lsp.
+ 				title:     intention.name
+ 				command:   intention.id
+ 				arguments: [
+-					json.encode(IntentionData{
++					json2.encode(IntentionData{
+ 						file_uri: uri
+ 						position: params.range.start
+-					}),
++					}, escape_unicode: true, time_as_unix: true),
+ 				]
+ 			}
+ 		}
+diff --git a/server/features_execute_command.v b/server/features_execute_command.v
+index 9e0c02b..8e698b1 100644
+--- a/server/features_execute_command.v
++++ b/server/features_execute_command.v
+@@ -2,7 +2,7 @@ module server
+ 
+ import lsp
+ import loglib
+-import json
++import json2
+ import server.intentions
+ 
+ pub struct IntentionData {
+@@ -14,9 +14,9 @@ pub:
+ pub fn (mut ls LanguageServer) execute_command(params lsp.ExecuteCommandParams) ? {
+ 	mut intention := ls.find_intention_or_quickfix(params.command)?
+ 
+-	arguments := json.decode([]string, params.arguments) or { []string{} }
++	arguments := json2.decode[[]string](params.arguments) or { []string{} }
+ 
+-	argument := json.decode(IntentionData, arguments[0]) or {
++	argument := json2.decode[IntentionData](arguments[0]) or {
+ 		loglib.with_fields({
+ 			'command':  params.command
+ 			'argument': params.arguments
+diff --git a/server/inspections/compiler/utils.v b/server/inspections/compiler/utils.v
+index c54d0b4..5bf0829 100644
+--- a/server/inspections/compiler/utils.v
++++ b/server/inspections/compiler/utils.v
+@@ -63,7 +63,7 @@ fn exec_compiler_diagnostics(compiler_path string, uri lsp.DocumentUri, project_
+ 	is_script := filepath.ends_with('.vsh') || filepath.ends_with('.vv')
+ 
+ 	check_target := if is_script { filepath } else { project_root }
+-	res := os.execute('${compiler_path} -enable-globals -shared -check ${check_target}')
++	res := os.exec([compiler_path, '-enable-globals', '-shared', '-check', check_target])
+ 
+ 	if res.exit_code == 0 {
+ 		return none
+diff --git a/server/language_server.v b/server/language_server.v
+index 8a9e3d0..683abc2 100644
+--- a/server/language_server.v
++++ b/server/language_server.v
+@@ -1,6 +1,6 @@
+ module server
+ 
+-import json
++import json2
+ import jsonrpc
+ import lsp
+ import time
+@@ -146,7 +146,7 @@ pub fn (mut ls LanguageServer) handle_jsonrpc(request &jsonrpc.Request, mut rw j
+ 
+ 	if ls.status != .initialized {
+ 		if request.method == 'initialize' {
+-			params := json.decode(lsp.InitializeParams, request.params) or { return err }
++			params := json2.decode[lsp.InitializeParams](request.params) or { return err }
+ 			w.write(ls.initialize(params, mut rw))
+ 		} else if ls.status == .shutdown {
+ 			return jsonrpc.invalid_request
+@@ -166,19 +166,19 @@ pub fn (mut ls LanguageServer) handle_jsonrpc(request &jsonrpc.Request, mut rw j
+ 			ls.initialized(mut rw)
+ 		}
+ 		'textDocument/didOpen' {
+-			params := json.decode(lsp.DidOpenTextDocumentParams, request.params) or { return err }
++			params := json2.decode[lsp.DidOpenTextDocumentParams](request.params) or { return err }
+ 			ls.did_open(params)
+ 		}
+ 		'textDocument/didSave' {
+-			params := json.decode(lsp.DidSaveTextDocumentParams, request.params) or { return err }
++			params := json2.decode[lsp.DidSaveTextDocumentParams](request.params) or { return err }
+ 			ls.did_save(params)
+ 		}
+ 		'textDocument/didChange' {
+-			params := json.decode(lsp.DidChangeTextDocumentParams, request.params) or { return err }
++			params := json2.decode[lsp.DidChangeTextDocumentParams](request.params) or { return err }
+ 			ls.did_change(params)
+ 		}
+ 		'textDocument/didClose' {
+-			params := json.decode(lsp.DidCloseTextDocumentParams, request.params) or { return err }
++			params := json2.decode[lsp.DidCloseTextDocumentParams](request.params) or { return err }
+ 			ls.did_close(params)
+ 		}
+ 		'textDocument/willSave' {
+@@ -188,37 +188,37 @@ pub fn (mut ls LanguageServer) handle_jsonrpc(request &jsonrpc.Request, mut rw j
+ 			// ls.will_save(params)
+ 		}
+ 		'textDocument/formatting' {
+-			params := json.decode(lsp.DocumentFormattingParams, request.params) or {
++			params := json2.decode[lsp.DocumentFormattingParams](request.params) or {
+ 				return w.wrap_error(err)
+ 			}
+ 			w.write(ls.formatting(params) or { return w.wrap_error(err) })
+ 		}
+ 		'textDocument/documentSymbol' {
+-			params := json.decode(lsp.DocumentSymbolParams, request.params) or {
++			params := json2.decode[lsp.DocumentSymbolParams](request.params) or {
+ 				return w.wrap_error(err)
+ 			}
+ 			w.write(ls.document_symbol(params) or { return w.wrap_error(err) })
+ 		}
+ 		'workspace/symbol' {
+-			params := json.decode(lsp.WorkspaceSymbolParams, request.params) or {
++			params := json2.decode[lsp.WorkspaceSymbolParams](request.params) or {
+ 				return w.wrap_error(err)
+ 			}
+-			w.write(ls.workspace_symbol(params) or { return w.wrap_error(err) })
++			w.write(ls.workspace_symbol(params) or { return jsonrpc.null_result })
+ 		}
+ 		'textDocument/signatureHelp' {
+-			params := json.decode(lsp.SignatureHelpParams, request.params) or {
++			params := json2.decode[lsp.SignatureHelpParams](request.params) or {
+ 				return w.wrap_error(err)
+ 			}
+-			w.write(ls.signature_help(params) or { return w.wrap_error(err) })
++			w.write(ls.signature_help(params) or { return jsonrpc.null_result })
+ 		}
+ 		'textDocument/completion' {
+-			params := json.decode(lsp.CompletionParams, request.params) or {
++			params := json2.decode[lsp.CompletionParams](request.params) or {
+ 				return w.wrap_error(err)
+ 			}
+ 			w.write(ls.completion(params) or { return w.wrap_error(err) })
+ 		}
+ 		'textDocument/hover' {
+-			params := json.decode(lsp.HoverParams, request.params) or { return w.wrap_error(err) }
++			params := json2.decode[lsp.HoverParams](request.params) or { return w.wrap_error(err) }
+ 			hover_data := ls.hover(params) or {
+ 				w.write_empty()
+ 				return
+@@ -226,101 +226,101 @@ pub fn (mut ls LanguageServer) handle_jsonrpc(request &jsonrpc.Request, mut rw j
+ 			w.write(hover_data)
+ 		}
+ 		'textDocument/foldingRange' {
+-			params := json.decode(lsp.FoldingRangeParams, request.params) or {
++			params := json2.decode[lsp.FoldingRangeParams](request.params) or {
+ 				return w.wrap_error(err)
+ 			}
+-			w.write(ls.folding_range(params) or { return w.wrap_error(err) })
++			w.write(ls.folding_range(params) or { return jsonrpc.null_result })
+ 		}
+ 		'textDocument/definition' {
+-			params := json.decode(lsp.TextDocumentPositionParams, request.params) or {
++			params := json2.decode[lsp.TextDocumentPositionParams](request.params) or {
+ 				return w.wrap_error(err)
+ 			}
+-			w.write(ls.definition(params) or { return w.wrap_error(err) })
++			w.write(ls.definition(params) or { return jsonrpc.null_result })
+ 		}
+ 		'textDocument/typeDefinition' {
+-			params := json.decode(lsp.TextDocumentPositionParams, request.params) or {
++			params := json2.decode[lsp.TextDocumentPositionParams](request.params) or {
+ 				return w.wrap_error(err)
+ 			}
+-			w.write(ls.type_definition(params) or { return w.wrap_error(err) })
++			w.write(ls.type_definition(params) or { return jsonrpc.null_result })
+ 		}
+ 		'textDocument/references' {
+-			params := json.decode(lsp.ReferenceParams, request.params) or {
++			params := json2.decode[lsp.ReferenceParams](request.params) or {
+ 				return w.wrap_error(err)
+ 			}
+ 			w.write(ls.references(params))
+ 		}
+ 		'textDocument/implementation' {
+-			params := json.decode(lsp.TextDocumentPositionParams, request.params) or {
++			params := json2.decode[lsp.TextDocumentPositionParams](request.params) or {
+ 				return w.wrap_error(err)
+ 			}
+-			w.write(ls.implementation(params) or { return w.wrap_error(err) })
++			w.write(ls.implementation(params) or { return jsonrpc.null_result })
+ 		}
+ 		'workspace/didChangeWatchedFiles' {
+-			params := json.decode(lsp.DidChangeWatchedFilesParams, request.params) or { return err }
++			params := json2.decode[lsp.DidChangeWatchedFilesParams](request.params) or { return err }
+ 			ls.did_change_watched_files(params)
+ 		}
+ 		'textDocument/codeLens' {
+-			params := json.decode(lsp.CodeLensParams, request.params) or {
++			params := json2.decode[lsp.CodeLensParams](request.params) or {
+ 				return w.wrap_error(err)
+ 			}
+-			w.write(ls.code_lens(params) or { return w.wrap_error(err) })
++			w.write(ls.code_lens(params) or { return jsonrpc.null_result })
+ 		}
+ 		'textDocument/inlayHint' {
+-			params := json.decode(lsp.InlayHintParams, request.params) or {
++			params := json2.decode[lsp.InlayHintParams](request.params) or {
+ 				return w.wrap_error(err)
+ 			}
+-			w.write(ls.inlay_hints(params) or { return w.wrap_error(err) })
++			w.write(ls.inlay_hints(params) or { return jsonrpc.null_result })
+ 		}
+ 		'textDocument/prepareRename' {
+-			params := json.decode(lsp.PrepareRenameParams, request.params) or {
++			params := json2.decode[lsp.PrepareRenameParams](request.params) or {
+ 				return w.wrap_error(err)
+ 			}
+ 			w.write(ls.prepare_rename(params) or { return w.wrap_error(err) })
+ 		}
+ 		'textDocument/rename' {
+-			params := json.decode(lsp.RenameParams, request.params) or { return w.wrap_error(err) }
++			params := json2.decode[lsp.RenameParams](request.params) or { return w.wrap_error(err) }
+ 			w.write(ls.rename(params) or { return w.wrap_error(err) })
+ 		}
+ 		'textDocument/documentLink' {}
+ 		'textDocument/semanticTokens/full' {
+-			params := json.decode(lsp.SemanticTokensParams, request.params) or {
++			params := json2.decode[lsp.SemanticTokensParams](request.params) or {
+ 				return w.wrap_error(err)
+ 			}
+ 			w.write(ls.semantic_tokens(params.text_document, lsp.Range{}) or {
+-				return w.wrap_error(err)
++				return jsonrpc.null_result
+ 			})
+ 		}
+ 		'textDocument/semanticTokens/range' {
+-			params := json.decode(lsp.SemanticTokensRangeParams, request.params) or {
++			params := json2.decode[lsp.SemanticTokensRangeParams](request.params) or {
+ 				return w.wrap_error(err)
+ 			}
+ 			w.write(ls.semantic_tokens(params.text_document, params.range) or {
+-				return w.wrap_error(err)
++				return jsonrpc.null_result
+ 			})
+ 		}
+ 		'textDocument/documentHighlight' {
+-			params := json.decode(lsp.TextDocumentPositionParams, request.params) or {
++			params := json2.decode[lsp.TextDocumentPositionParams](request.params) or {
+ 				return w.wrap_error(err)
+ 			}
+-			w.write(ls.document_highlight(params) or { return w.wrap_error(err) })
++			w.write(ls.document_highlight(params) or { return jsonrpc.null_result })
+ 		}
+ 		'textDocument/codeAction' {
+-			params := json.decode(lsp.CodeActionParams, request.params) or {
++			params := json2.decode[lsp.CodeActionParams](request.params) or {
+ 				return w.wrap_error(err)
+ 			}
+-			w.write(ls.code_actions(params) or { return w.wrap_error(err) })
++			w.write(ls.code_actions(params) or { return jsonrpc.null_result })
+ 		}
+ 		'workspace/executeCommand' {
+-			params := json.decode(lsp.ExecuteCommandParams, request.params) or {
++			params := json2.decode[lsp.ExecuteCommandParams](request.params) or {
+ 				return w.wrap_error(err)
+ 			}
+ 			ls.execute_command(params)
+ 		}
+ 		'v-analyzer/viewStubTree' {
+-			params := json.decode(lsp.TextDocumentIdentifier, request.params) or {
++			params := json2.decode[lsp.TextDocumentIdentifier](request.params) or {
+ 				return w.wrap_error(err)
+ 			}
+-			w.write(ls.view_stub_tree(params) or { return w.wrap_error(err) })
++			w.write(ls.view_stub_tree(params) or { return jsonrpc.null_result })
+ 		}
+ 		'$/cancelRequest' {
+ 			loglib.info('got $/cancelRequest request')
+diff --git a/testing/client/TestClient.v b/testing/client/TestClient.v
+index fefe1f2..e43187f 100644
+--- a/testing/client/TestClient.v
++++ b/testing/client/TestClient.v
+@@ -1,7 +1,7 @@
+ module client
+ 
+ import jsonrpc
+-import json
++import json2
+ import io
+ import datatypes
+ 
+@@ -41,7 +41,7 @@ pub mut:
+ 
+ // send sends a request and receives a decoded response result.
+ pub fn (mut tc TestClient) send[T, U](method string, params T) !U {
+-	params_json := json.encode(params)
++	params_json := json2.encode(params, escape_unicode: true, time_as_unix: true)
+ 	req := jsonrpc.Request{
+ 		id:     '${tc.id}'
+ 		method: method
+@@ -55,14 +55,14 @@ pub fn (mut tc TestClient) send[T, U](method string, params T) !U {
+ 		return IError(io.Eof{})
+ 	}
+ 	// println(raw_json_content)
+-	return json.decode(U, raw_json_content)!
++	return json2.decode[U](raw_json_content)!
+ }
+ 
+ // notify is a version of send but instead of returning a response,
+ // it only notifies the server. Effectively sending a request as a
+ // notification.
+ pub fn (mut tc TestClient) notify[T](method string, params T) ! {
+-	params_json := json.encode(params)
++	params_json := json2.encode(params, escape_unicode: true, time_as_unix: true)
+ 	req := jsonrpc.Request{
+ 		id:     ''
+ 		method: method
+@@ -96,7 +96,7 @@ pub fn (mut rw TestStream) read(mut buf []u8) !int {
+ pub fn (mut rw TestStream) write(buf []u8) !int {
+ 	raw_json_content := buf.bytestr().all_after('\r\n\r\n')
+ 	if raw_json_content.contains('"result":') {
+-		resp := json.decode(TestResponse, raw_json_content) or { return err }
++		resp := json2.decode[TestResponse](raw_json_content) or { return err }
+ 		rw.resp_buf[resp.raw_id] = resp
+ 	} else if raw_json_content.contains('"params":') {
+ 		idx := rw.notif_idx % 20
+@@ -127,7 +127,7 @@ pub fn (rw &TestStream) response_text(raw_id string) string {
+ // notification_at returns the jsonrpc.Notification<T> in a given index.
+ pub fn (rw &TestStream) notification_at[T](idx int) !jsonrpc.NotificationMessage[T] {
+ 	raw_json_content := rw.notif_buf[idx].bytestr().all_after('\r\n\r\n')
+-	return json.decode(jsonrpc.NotificationMessage[T], raw_json_content)!
++	return json2.decode[jsonrpc.NotificationMessage[T]](raw_json_content)!
+ }
+ 
+ // last_notification_at_method returns the last jsonrpc.Notification<T> from the given method name.
+diff --git a/tree_sitter_v/bindings/bindings.c.v b/tree_sitter_v/bindings/bindings.c.v
+index 3b07687..c865657 100644
+--- a/tree_sitter_v/bindings/bindings.c.v
++++ b/tree_sitter_v/bindings/bindings.c.v
+@@ -57,7 +57,7 @@ fn new_ts_parser() &C.TSParser {
+ 
+ @[inline]
+ fn (mut p C.TSParser) parse(old_tree &TSTree, input C.TSInput) &TSTree {
+-	return &TSTree(C.ts_parser_parse(p, voidptr(old_tree), input))
++	return unsafe { &TSTree(C.ts_parser_parse(p, voidptr(old_tree), input)) }
+ }
+ 
+ @[inline]
+@@ -82,7 +82,7 @@ fn (mut p C.TSParser) parse_string_with_old_tree(content string, old_tree &TSTre
+ 
+ @[inline]
+ fn (mut p C.TSParser) parse_string_with_old_tree_and_len(content string, old_tree &TSTree, len u32) &TSTree {
+-	return &TSTree(C.ts_parser_parse_string(p, voidptr(old_tree), &char(content.str), len))
++	return unsafe { &TSTree(C.ts_parser_parse_string(p, voidptr(old_tree), &char(content.str), len)) }
+ }
+ 
+ @[inline]
+@@ -91,7 +91,7 @@ fn (mut p C.TSParser) parse_bytes(content []u8) &TSTree {
+ }
+ 
+ fn byte_array_input_read(pl voidptr, byte_index u32, position C.TSPoint, bytes_read &u32) &char {
+-	payload := *(&[]u8(pl))
++	payload := unsafe { *(&[]u8(pl)) }
+ 	if byte_index >= u32(payload.len) {
+ 		unsafe {
+ 			*bytes_read = 0
+@@ -140,22 +140,23 @@ fn C.ts_tree_get_changed_ranges(old_tree &C.TSTree, new_tree &C.TSTree, count &u
+ 
+ @[inline]
+ fn (tree &TSTree) copy() &TSTree {
+-	return &TSTree(C.ts_tree_copy(voidptr(tree)))
++	return unsafe { &TSTree(C.ts_tree_copy(voidptr(tree))) }
+ }
+ 
+ @[inline]
+ fn (tree &TSTree) root_node() C.TSNode {
+-	return C.ts_tree_root_node(&C.TSTree(tree))
++	return C.ts_tree_root_node(unsafe { &C.TSTree(tree) })
+ }
+ 
+ @[inline]
+ fn (tree &TSTree) edit(input_edit &C.TSInputEdit) {
+-	C.ts_tree_edit(&C.TSTree(tree), input_edit)
++	C.ts_tree_edit(unsafe { &C.TSTree(tree) }, input_edit)
+ }
+ 
+ fn (tree &TSTree) get_changed_ranges(new_tree &TSTree) []C.TSRange {
+ 	mut len := u32(0)
+-	buf := C.ts_tree_get_changed_ranges(&C.TSTree(tree), &C.TSTree(new_tree), &len)
++	buf := C.ts_tree_get_changed_ranges(unsafe { &C.TSTree(tree) }, unsafe { &C.TSTree(new_tree) },
++		&len)
+ 	element_size := int(sizeof(C.TSRange))
+ 
+ 	return unsafe {
+diff --git a/utils.v b/utils.v
+index bf4ffef..e747d03 100644
+--- a/utils.v
++++ b/utils.v
+@@ -42,19 +42,15 @@ pub fn download_install_vsh() ! {
+ }
+ 
+ pub fn call_install_vsh(cmd string) !int {
++	mut args := ['v', analyzer_install_script_path]
++	args << cmd.fields()
+ 	$if windows {
+-		// On Windows we cannot use `os.Command` because it doesn't support Windows
+-		res := os.execute('v ${analyzer_install_script_path} ${cmd}')
++		res := os.exec(args)
+ 		println(res.output)
+ 		return res.exit_code
+ 	}
+ 
+-	mut command := os.Command{
+-		path:            'v ${analyzer_install_script_path} ${cmd}'
+-		redirect_stdout: true
+-	}
+-
+-	command.start()!
++	mut command := os.start_new_command_args(args)!
+ 
+ 	for !command.eof {
+ 		println(command.read_line())
