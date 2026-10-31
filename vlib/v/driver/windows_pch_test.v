@@ -77,6 +77,11 @@ fn test_windows_pch_does_not_apply_to_a_prelude_that_configures_the_headers_diff
 	// A conditional the generator does not emit could leave a macro or header out.
 	assert !v3_windows_pch_applies(prelude.replace('#define UNICODE\n', '#if 0\n#define UNICODE\n#endif\n'))
 	assert !v3_windows_pch_applies(prelude.replace('#include <windows.h>\n', '#ifdef X\n#include <windows.h>\n#endif\n'))
+	// So could a guard on one of V's own macros around them, or one left open at the headers.
+	assert !v3_windows_pch_applies(prelude.replace('#define WIN32_LEAN_AND_MEAN\n', '#ifndef V_FULL\n#define WIN32_LEAN_AND_MEAN\n#endif\n'))
+	assert !v3_windows_pch_applies(prelude.replace('#ifndef UNICODE\n', '#ifndef V_ANSI\n#ifndef UNICODE\n').replace('#define UNICODE\n#endif\n', '#define UNICODE\n#endif\n#endif\n'))
+	assert !v3_windows_pch_applies(prelude.replace('#include <io.h>', '#ifndef V_NO_SDK\n#include <io.h>'))
+	assert !v3_windows_pch_applies(prelude.replace('#include <io.h>', '#endif\n#include <io.h>'))
 	// Only a directive may precede the headers.
 	assert !v3_windows_pch_applies(prelude.replace('#include <io.h>', 'int early;\n#include <io.h>'))
 	assert !v3_windows_pch_applies(prelude.replace('#include <io.h>', '#pragma once\n#include <io.h>'))
@@ -110,7 +115,20 @@ fn test_windows_pch_needs_a_compiler_identity_and_a_native_target() {
 	assert v3_windows_pch(V3CachedObjectCompiler{ path: 'clang' }, ['-O2'], root) == none
 	assert v3_windows_pch(V3CachedObjectCompiler{ path: 'gcc', identity: 'gcc 15' }, ['-O2'], root) == none
 	assert v3_windows_pch(V3CachedObjectCompiler{ path: 'clang', identity: 'clang 23' }, ['--target=x86_64-linux-gnu'], root) == none
+	// A flag that configures the SDK headers differently from the prelude.
+	for flags in [['-DWIN32_FULL'], ['-D', 'WIN32_FULL'], ['-DWIN32_FULL=1'],
+		['-UWIN32_LEAN_AND_MEAN'], ['-DPSAPI_VERSION=1'], ['-UUNICODE']] {
+		assert v3_windows_pch(V3CachedObjectCompiler{ path: 'clang', identity: 'clang 23' }, flags, root) == none, flags.str()
+	}
 	assert os.ls(root)! == []
+}
+
+fn test_windows_pch_flags_configure_sdk() {
+	assert v3_windows_pch_flags_configure_sdk(['-DWIN32_FULL'])
+	assert v3_windows_pch_flags_configure_sdk(['-O2', '-D', 'WIN32_FULL'])
+	assert v3_windows_pch_flags_configure_sdk(['-UUNICODE'])
+	assert !v3_windows_pch_flags_configure_sdk(['-DWIN32_FULLER'])
+	assert !v3_windows_pch_flags_configure_sdk(['-DGC_THREADS=1', '-I', 'x', '-D'])
 }
 
 fn test_windows_pch_is_built_once_and_a_rejected_one_is_compiled_without() ! {
@@ -157,9 +175,11 @@ fn test_windows_pch_is_built_once_and_a_rejected_one_is_compiled_without() ! {
 	os.write_file(header, v3_windows_pch_header)!
 	assert compile_v3_cached_object(compiler, entry, unit(6), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, &state, 'sample')!
 	assert os.is_file(pch)
-	// A unit with an error of its own fails with that error, not the header's.
+	// A unit with an error of its own fails with that error, not the header's,
+	// and the header stays for the other units.
 	compile_v3_cached_object(compiler, entry, unit(7) + 'int broken(void) { return missing; }\n', '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, &state, 'sample') or {
 		assert err.msg().contains('missing'), err.msg()
+		assert os.is_file(pch)
 		return
 	}
 	assert false, 'a unit with an undeclared identifier compiled'
