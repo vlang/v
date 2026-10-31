@@ -1173,6 +1173,16 @@ fn c_dylib_force_loaded_static_archive_inputs(link_flags []string) []string {
 	return result
 }
 
+// Sokol's implementation and backend selection belong to the native cache
+// owner. Public configuration, including trace hooks and API declarations,
+// must also reach the consumer's headers and inline helpers.
+fn tcc_cached_main_native_sokol_define(value string) bool {
+	name := value.trim_space().all_before('=')
+	return (name.starts_with('SOKOL_') && name.ends_with('_IMPL'))
+		|| name in ['SOKOL_GLCORE', 'SOKOL_GLCORE33', 'SOKOL_GLES2', 'SOKOL_GLES3', 'SOKOL_D3D11',
+			'SOKOL_METAL', 'SOKOL_WGPU', 'SOKOL_VULKAN', 'SOKOL_DUMMY_BACKEND', 'SOKOL_NOAPI']
+}
+
 fn tcc_cached_main_flags(flags []string) []string {
 	mut compile_flags := []string{}
 	mut i := 0
@@ -1183,14 +1193,14 @@ fn tcc_cached_main_flags(flags []string) []string {
 			'-iprefix', '-iwithprefix', '-iwithprefixbefore', '-isysroot', '--sysroot'] {
 			if i + 1 < flags.len {
 				value := flags[i + 1]
-				if !(clean == '-D' && value.trim_space().starts_with('SOKOL_')) {
+				if !(clean == '-D' && tcc_cached_main_native_sokol_define(value)) {
 					compile_flags << [flag, value]
 				}
 			}
 			i += 2
 			continue
 		}
-		if clean.starts_with('-DSOKOL_') {
+		if clean.starts_with('-D') && tcc_cached_main_native_sokol_define(clean[2..]) {
 			i++
 			continue
 		}
