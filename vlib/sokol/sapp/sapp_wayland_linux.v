@@ -555,7 +555,7 @@ $if sokol_wayland ? {
 		// Keyboard
 		if (caps & wl_seat_capability_keyboard) != 0 && g_sapp_state.wl.keyboard == unsafe { nil } {
 			g_sapp_state.wl.keyboard = C.wl_seat_get_keyboard(seat)
-			C.wl_keyboard_add_listener(g_sapp_state.wl.keyboard, &wl_keyboard_listener,
+			C.wl_keyboard_add_listener(g_sapp_state.wl.keyboard, voidptr(&wl_keyboard_listener),
 				unsafe { nil })
 		} else if (caps & wl_seat_capability_keyboard) == 0
 			&& g_sapp_state.wl.keyboard != unsafe { nil } {
@@ -566,7 +566,7 @@ $if sokol_wayland ? {
 		// Pointer
 		if (caps & wl_seat_capability_pointer) != 0 && g_sapp_state.wl.pointer == unsafe { nil } {
 			g_sapp_state.wl.pointer = C.wl_seat_get_pointer(seat)
-			C.wl_pointer_add_listener(g_sapp_state.wl.pointer, &wl_pointer_listener, unsafe { nil })
+			C.wl_pointer_add_listener(g_sapp_state.wl.pointer, voidptr(&wl_pointer_listener), unsafe { nil })
 
 			if g_sapp_state.wl.cursor_shape_manager != unsafe { nil }
 				&& g_sapp_state.wl.cursor_shape_device == unsafe { nil } {
@@ -583,7 +583,7 @@ $if sokol_wayland ? {
 				g_sapp_state.wl.data_device =
 					C.wl_data_device_manager_get_data_device(g_sapp_state.wl.data_device_manager, seat)
 				C.wl_data_device_add_listener(g_sapp_state.wl.data_device,
-					&wl_data_device_listener, unsafe { nil })
+					voidptr(&wl_data_device_listener), unsafe { nil })
 			}
 		} else if (caps & wl_seat_capability_pointer) == 0
 			&& g_sapp_state.wl.pointer != unsafe { nil } {
@@ -628,7 +628,7 @@ $if sokol_wayland ? {
 			} else if C.strcmp(iface, c'wl_seat') == 0 {
 				g_sapp_state.wl.seat = &C.wl_seat(C.wl_registry_bind(registry, name,
 					&C.wl_seat_interface, 5))
-				C.wl_seat_add_listener(g_sapp_state.wl.seat, &wl_seat_listener, nil)
+				C.wl_seat_add_listener(g_sapp_state.wl.seat, voidptr(&wl_seat_listener), nil)
 			} else if C.strcmp(iface, c'wl_shm') == 0 {
 				g_sapp_state.wl.shm = &C.wl_shm(C.wl_registry_bind(registry, name,
 					&C.wl_shm_interface, 1))
@@ -774,7 +774,7 @@ $if sokol_wayland ? {
 	}
 
 	fn wl_data_device_data_offer(data voidptr, device &C.wl_data_device, offer &C.wl_data_offer) {
-		C.wl_data_offer_add_listener(offer, &wl_data_offer_listener, unsafe { nil })
+		C.wl_data_offer_add_listener(offer, voidptr(&wl_data_offer_listener), unsafe { nil })
 	}
 
 	fn wl_data_device_enter(data voidptr, device &C.wl_data_device, serial u32, surface &C.wl_surface, x i32, y i32, offer &C.wl_data_offer) {
@@ -1013,7 +1013,7 @@ $if sokol_wayland ? {
 
 		// Get registry and bind global objects
 		g_sapp_state.wl.registry = C.wl_display_get_registry(g_sapp_state.wl.display)
-		C.wl_registry_add_listener(g_sapp_state.wl.registry, &wl_registry_listener, unsafe { nil })
+		C.wl_registry_add_listener(g_sapp_state.wl.registry, voidptr(&wl_registry_listener), unsafe { nil })
 		C.wl_display_roundtrip(g_sapp_state.wl.display)
 
 		if g_sapp_state.wl.compositor == unsafe { nil }
@@ -1061,11 +1061,11 @@ $if sokol_wayland ? {
 		// Create XDG surface and toplevel
 		g_sapp_state.wl.xdg_surface = C.xdg_wm_base_get_xdg_surface(g_sapp_state.wl.xdg_wm_base,
 			g_sapp_state.wl.surface)
-		C.xdg_surface_add_listener(g_sapp_state.wl.xdg_surface, &wl_xdg_surface_listener,
+		C.xdg_surface_add_listener(g_sapp_state.wl.xdg_surface, voidptr(&wl_xdg_surface_listener),
 			unsafe { nil })
 
 		g_sapp_state.wl.xdg_toplevel = C.xdg_surface_get_toplevel(g_sapp_state.wl.xdg_surface)
-		C.xdg_toplevel_add_listener(g_sapp_state.wl.xdg_toplevel, &wl_xdg_toplevel_listener,
+		C.xdg_toplevel_add_listener(g_sapp_state.wl.xdg_toplevel, voidptr(&wl_xdg_toplevel_listener),
 			unsafe { nil })
 		C.xdg_toplevel_set_title(g_sapp_state.wl.xdg_toplevel, &char(&g_sapp_state.window_title[0]))
 
@@ -1085,7 +1085,7 @@ $if sokol_wayland ? {
 				g_sapp_state.wl.surface)
 			if g_sapp_state.wl.fractional_scale != unsafe { nil } {
 				C.wp_fractional_scale_v1_add_listener(g_sapp_state.wl.fractional_scale,
-					&wl_fractional_scale_listener, unsafe { nil })
+					voidptr(&wl_fractional_scale_listener), unsafe { nil })
 			}
 		}
 
