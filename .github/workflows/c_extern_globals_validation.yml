@@ -1,0 +1,37 @@
+name: Declared C globals validation
+'on':
+  push:
+    branches: [ci/verify-c-extern-globals-20261031]
+permissions:
+  contents: read
+concurrency:
+  group: c-extern-globals-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  tcc-linux:
+    if: github.ref == 'refs/heads/ci/verify-c-extern-globals-20261031'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [types, diagnostics]
+    env:
+      VFLAGS: ''
+      VJOBS: '4'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install native fixture dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang gobjc libssl-dev libsqlite3-dev libpq-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libxinerama-dev libx11-xcb-dev libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev
+      - name: Build the patched compiler
+        run: make -j4
+      - name: Run the complete types suite
+        if: matrix.suite == 'types'
+        run: ./v -new-compiler -no-retry-compilation -silent test vlib/v/types/
+      - name: Run normal compiler diagnostics
+        if: matrix.suite == 'diagnostics'
+        run: ./v -silent vlib/v/compiler_errors_test.v
