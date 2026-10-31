@@ -1603,13 +1603,13 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 			return p.is_test
 		}
 		'native', 'builtin_write_buf_to_fd_should_use_c_write' {
-			return p.backend in ['arm64', 'x64', 'riscv64', 'loongarch64']
+			return p.backend in ['arm64', 'x64', 'riscv64', 'loongarch64', 'ppc64le']
 		}
 		'gcc', 'clang', 'mingw', 'msvc', 'cplusplus' {
 			return p.backend == 'c' && p.ccompiler == name
 		}
 		'tinyc' {
-			return p.backend in ['arm64', 'x64', 'riscv64', 'loongarch64']
+			return p.backend in ['arm64', 'x64', 'riscv64', 'loongarch64', 'ppc64le']
 				|| (p.backend in ['c', 'fastc'] && p.ccompiler == 'tinyc')
 		}
 		'no_backtrace' {
@@ -1666,6 +1666,7 @@ pub const cross_target_c_macros = {
 	'ppc64':             '__V_ppc64'
 	'ppc':               '__V_ppc'
 	'loongarch64':       '__V_loongarch64'
+	'ppc64le':           '__V_ppc64le'
 	'sparc64':           '__V_sparc64'
 	'x64':               'TARGET_IS_64BIT'
 	'x32':               'TARGET_IS_32BIT'
@@ -1741,7 +1742,7 @@ pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
 	if name == 'new_int' {
 		// SSA currently lowers `int` to i32, including array and string headers.
 		// Its builtin limits must use that width even on a 64-bit target.
-		if p.backend in ['arm64', 'x64', 'riscv64', 'loongarch64'] {
+		if p.backend in ['arm64', 'x64', 'riscv64', 'loongarch64', 'ppc64le'] {
 			return false
 		}
 		// The C backend lowers `int` to the target pointer width.
