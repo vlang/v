@@ -1,0 +1,128 @@
+// Raw x86 templates that write a register or set the flags without declaring them.
+fn raw_writes_rax_undeclared(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"movq $1, %%rax\n\t"
+		"addq %%rax, %[y]"
+		; [y] "+r" (y)
+		;
+		; cc
+	}
+	return y
+}
+
+fn raw_sets_flags_without_cc(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"addq $1, %[y]"
+		; [y] "+r" (y)
+		;
+		;
+	}
+	return y
+}
+
+fn raw_mul_writes_rdx_undeclared(x u64, z u64) u64 {
+	mut y := x
+	mut w := z
+	asm amd64 raw {
+		"mulq %[w]"
+		; [y] "+a" (y)
+		  [w] "r" (w)
+		;
+		; cc
+	}
+	return y
+}
+
+fn raw_cqo_writes_rdx_undeclared(x i64) i64 {
+	mut y := x
+	asm amd64 raw {
+		"cqo"
+		; [y] "+a" (y)
+		;
+		;
+	}
+	return y
+}
+
+fn raw_rep_writes_rcx_undeclared(n u64) u64 {
+	mut c := n
+	asm amd64 raw {
+		"rep stosb"
+		; [c] "r" (c)
+		;
+		; cc
+	}
+	return c
+}
+
+fn raw_movsx_writes_rax_undeclared(x u64) u64 {
+	mut src := x
+	asm amd64 raw {
+		"movsbq %%cl, %%rax"
+		; [src] "+c" (src)
+		;
+		; cc
+	}
+	return src
+}
+
+fn raw_test_sets_flags_without_cc(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"testq %%rax, %%rax"
+		; [y] "+r" (y)
+		;
+		;
+	}
+	return y
+}
+
+fn raw_unsuffixed_mul_writes_rdx_undeclared(x u64) u64 {
+	mut acc := x
+	asm amd64 raw {
+		"mul %%rbx"
+		; [acc] "+a" (acc)
+		;
+		; cc
+	}
+	return acc
+}
+
+fn raw_positional_wide_mul_writes_rdx_undeclared(x u64) u64 {
+	mut acc := x
+	asm amd64 raw {
+		"mul %1"
+		; "+a" (acc)
+		; "r" (acc)
+		; cc
+	}
+	return acc
+}
+
+fn raw_suffixed_memory_mul_writes_rdx_undeclared(x u64) u64 {
+	mut acc := x
+	mut addr := x
+	asm amd64 raw {
+		"mulq (%%rbx)"
+		; [acc] "+a" (acc)
+		  [addr] "r" (addr)
+		;
+		; cc
+	}
+	return acc
+}
+
+fn main() {
+	println(raw_writes_rax_undeclared(1))
+	println(raw_sets_flags_without_cc(1))
+	println(raw_mul_writes_rdx_undeclared(2, 3))
+	println(raw_cqo_writes_rdx_undeclared(1))
+	println(raw_rep_writes_rcx_undeclared(1))
+	println(raw_movsx_writes_rax_undeclared(1))
+	println(raw_test_sets_flags_without_cc(1))
+	println(raw_unsuffixed_mul_writes_rdx_undeclared(1))
+	println(raw_positional_wide_mul_writes_rdx_undeclared(1))
+	println(raw_suffixed_memory_mul_writes_rdx_undeclared(1))
+}

@@ -1,0 +1,152 @@
+// Raw x86 templates that write registers and set flags with every write declared, bound
+// through an output constraint, or only read.
+fn raw_writes_declared(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"movq $1, %%rax\n\t"
+		"addq %%rax, %[y]"
+		; [y] "+r" (y)
+		;
+		; rax
+		  cc
+	}
+	return y
+}
+
+fn raw_output_binds_rax(x u64) u64 {
+	mut y := u64(0)
+	mut v := x
+	asm amd64 raw {
+		"movq %[v], %%rax\n\t"
+		"addq $1, %%rax"
+		; [y] "=a" (y)
+		  [v] "r" (v)
+		;
+		;
+		  cc
+	}
+	return y
+}
+
+fn raw_reads_only(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"cmpq %[y], %%rax"
+		; [y] "+r" (y)
+		;
+		;
+		  cc
+	}
+	return y
+}
+
+fn raw_byte_mul_writes_ax_only(x u64, c u64) u64 {
+	mut y := x
+	mut w := c
+	asm amd64 raw {
+		"mulb %[w]"
+		; [y] "+a" (y)
+		  [w] "r" (w)
+		;
+		;
+		  cc
+	}
+	return y
+}
+
+fn raw_repz_ret_does_not_write_rcx(x u64) u64 {
+	mut y := x
+	asm amd64 raw {
+		"repz ret"
+		; [y] "+r" (y)
+		;
+		;
+		  cc
+	}
+	return y
+}
+
+asm amd64 raw {
+	".text\n\t"
+	".globl raw_answer_declared\n\t"
+	"raw_answer_declared:\n\t"
+	"xorl %eax, %eax\n\t"
+	"ret"
+}
+
+fn C.raw_answer_declared() u64
+
+fn raw_flag_output_declares_flags(a u64, b u64) bool {
+	mut same := false
+	asm amd64 raw {
+		"cmpq %[a], %[b]"
+		; [same] "=@ccz" (same)
+		; [a] "r" (a)
+		  [b] "r" (b)
+	}
+	return same
+}
+
+fn raw_byte_operand_mul_writes_ax_only(x u16, b u8) u16 {
+	mut acc := x
+	mut byte := b
+	asm amd64 raw {
+		"mul %[byte]"
+		; [acc] "+a" (acc)
+		;
+		  [byte] "q" (byte)
+		;
+		  cc
+	}
+	return acc
+}
+
+fn raw_r10b_mul_writes_ax_only(x u16) u16 {
+	mut acc := x
+	asm amd64 raw {
+		"movb $5, %%r10b\n\t"
+		"mul %%r10b"
+		; [acc] "+a" (acc)
+		;
+		; r10 cc
+	}
+	return acc
+}
+
+fn raw_positional_byte_mul_writes_ax_only(x u16, b u8) u16 {
+	mut acc := x
+	mut byte := b
+	asm amd64 raw {
+		"mul %1"
+		; "+a" (acc)
+		; "q" (byte)
+		; cc
+	}
+	return acc
+}
+
+fn raw_literal_positional_operand_is_not_width_checked() u32 {
+	mut out := u32(0)
+	asm amd64 raw {
+		"movl %1, %0"
+		; "=r" (out)
+		; "r" (5)
+		;
+	}
+	return out
+}
+
+fn main() {
+	println(raw_writes_declared(1))
+	println(raw_output_binds_rax(2))
+	println(raw_reads_only(3))
+	println(raw_byte_mul_writes_ax_only(4, 5))
+	println(raw_repz_ret_does_not_write_rcx(6))
+	println(raw_flag_output_declares_flags(1, 1))
+	println(raw_byte_operand_mul_writes_ax_only(7, 5))
+	println(raw_r10b_mul_writes_ax_only(7))
+	println(C.raw_answer_declared())
+	println(raw_positional_byte_mul_writes_ax_only(7, 5))
+	println(raw_literal_positional_operand_is_not_width_checked())
+	println(undefined_total)
+}

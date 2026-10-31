@@ -1,0 +1,70 @@
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:5:13: error: `movq` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+    3 |     mut y := x
+    4 |     asm amd64 raw {
+    5 |         "movq $1, %%rax\n\t"
+      |                   ~~~~~
+    6 |         "addq %%rax, %[y]"
+    7 |         ; [y] "+r" (y)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:17:4: error: `addq` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+   15 |     mut y := x
+   16 |     asm amd64 raw {
+   17 |         "addq $1, %[y]"
+      |          ~~~~
+   18 |         ; [y] "+r" (y)
+   19 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:29:4: error: `mulq` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+   27 |     mut w := z
+   28 |     asm amd64 raw {
+   29 |         "mulq %[w]"
+      |          ~~~~
+   30 |         ; [y] "+a" (y)
+   31 |           [w] "r" (w)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:41:4: error: `cqo` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+   39 |     mut y := x
+   40 |     asm amd64 raw {
+   41 |         "cqo"
+      |          ~~~
+   42 |         ; [y] "+a" (y)
+   43 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:52:4: error: `rep stosb` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+   50 |     mut c := n
+   51 |     asm amd64 raw {
+   52 |         "rep stosb"
+      |          ~~~~~~~~~
+   53 |         ; [c] "r" (c)
+   54 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:63:17: error: `movsbq` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+   61 |     mut src := x
+   62 |     asm amd64 raw {
+   63 |         "movsbq %%cl, %%rax"
+      |                       ~~~~~
+   64 |         ; [src] "+c" (src)
+   65 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:74:4: error: `testq` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+   72 |     mut y := x
+   73 |     asm amd64 raw {
+   74 |         "testq %%rax, %%rax"
+      |          ~~~~~
+   75 |         ; [y] "+r" (y)
+   76 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:85:4: error: `mul` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+   83 |     mut acc := x
+   84 |     asm amd64 raw {
+   85 |         "mul %%rbx"
+      |          ~~~
+   86 |         ; [acc] "+a" (acc)
+   87 |         ;
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:96:4: error: `mul` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+   94 |     mut acc := x
+   95 |     asm amd64 raw {
+   96 |         "mul %1"
+      |          ~~~
+   97 |         ; "+a" (acc)
+   98 |         ; "r" (acc)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:108:4: error: `mulq` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+  106 |     mut addr := x
+  107 |     asm amd64 raw {
+  108 |         "mulq (%%rbx)"
+      |          ~~~~
+  109 |         ; [acc] "+a" (acc)
+  110 |           [addr] "r" (addr)

@@ -1,0 +1,6 @@
+vlib/v/checker/tests/asm_raw_clobber_declared.vv:151:10: error: undefined ident: `undefined_total`
+  149 |     println(raw_positional_byte_mul_writes_ax_only(7, 5))
+  150 |     println(raw_literal_positional_operand_is_not_width_checked())
+  151 |     println(undefined_total)
+      |             ~~~~~~~~~~~~~~~
+  152 | }
