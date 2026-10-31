@@ -217,9 +217,12 @@ fn test_h3_server_drops_te_from_response_headers_and_trailers() {
 fn test_h3_server_filters_forbidden_response_header_values() {
 	mut header := new_header()
 	header.add_custom('x-good', 'kept')!
-	header.add_custom('x-nul', 'bad\x00value')!
-	header.add_custom('x-cr', 'bad\rvalue')!
-	header.add_custom('x-lf', 'bad\nvalue')!
+	// Header's public setters now reject or sanitize CR, LF and NUL, so these
+	// values are stored with the internal `append` to keep exercising the
+	// H3 response filter's own defense-in-depth check.
+	assert header.append('x-nul', 'bad\x00value')
+	assert header.append('x-cr', 'bad\rvalue')
+	assert header.append('x-lf', 'bad\nvalue')
 	fields := h3_outbound_response_fields(200, .get, 0, header)
 	assert fields.any(it.name == 'x-good' && it.value == 'kept')
 	assert !fields.any(it.name == 'x-nul')
@@ -282,7 +285,7 @@ struct H3ServerTestConcurrentHandler {
 fn (mut h H3ServerTestConcurrentHandler) handle(req Request) Response {
 	if req.url == '/slow' {
 		h.slow_started <- true
-		<-h.release_slow
+		_ := <-h.release_slow
 	}
 	return Response{
 		status_code: 200
