@@ -19500,18 +19500,22 @@ fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.E
 	compile_args << flags
 	mut result := cmdexec.run(compiler.path, compile_args)
 	if result.exit_code != 0 && pch != '' {
-		// The compiler rejected the precompiled header (the SDK or the compiler
-		// changed under it, or this unit does not fit it after all): the unit
-		// compiles the headers itself, and the next compile rebuilds the header.
+		// The compiler may have rejected the precompiled header (the SDK or the
+		// compiler changed under it, or this unit does not fit it after all): the
+		// unit compiles the headers itself. When that compiles, the header was at
+		// fault and is dropped, so that the next compile rebuilds it; a unit that
+		// fails either way keeps the header for the others.
 		if os.getenv('V3_CACHE_TRACE') != '' {
 			eprintln('  V3 module cache: compiling ${os.file_name(entry.c_source)} without the Windows SDK precompiled header:\n${result.output}')
 		}
-		v3_windows_pch_discard(pch)
 		os.rm(tmp_object) or {}
 		compile_args = args.clone()
 		compile_args << ['-c', '-o', tmp_object, tmp_source]
 		compile_args << flags
 		result = cmdexec.run(compiler.path, compile_args)
+		if result.exit_code == 0 {
+			v3_windows_pch_discard(pch)
+		}
 	}
 	if result.exit_code != 0 {
 		os.rm(tmp_object) or {}

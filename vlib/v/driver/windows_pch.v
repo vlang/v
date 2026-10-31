@@ -50,6 +50,12 @@ const v3_windows_pch_includes = [
 // unit has to define each of them, as the header does, before its first include.
 const v3_windows_pch_defines = ['UNICODE', '_UNICODE', 'WIN32_LEAN_AND_MEAN']
 
+// The macros of the prelude that the SDK headers read, with the one that turns
+// the WIN32_LEAN_AND_MEAN guard of the generator off: a compile flag that sets
+// or unsets any of them configures the headers differently from the prelude.
+const v3_windows_pch_sdk_macros = ['UNICODE', '_UNICODE', 'WIN32_LEAN_AND_MEAN', 'WIN32_FULL',
+	'PSAPI_VERSION']
+
 const v3_windows_pch_format = 'v3-windows-pch-v1'
 
 // How much of a unit v3_windows_pch_applies reads: the generated prelude is
@@ -67,6 +73,10 @@ const v3_windows_pch_prelude_limit = 16 * 1024
 fn v3_windows_pch_applies(source string) bool {
 	mut defines := map[string]bool{}
 	mut next_include := 0
+	// The open conditionals, innermost last: a macro counts only when every
+	// conditional around it is the generator's own guard on it or on the target,
+	// and no conditional may still be open at the first include.
+	mut open := []string{}
 	// The prelude is the first few kilobytes of a unit that can run to megabytes.
 	// A prelude cut short here does not complete the sequence, which is the answer
 	// for a unit whose first include comes that late anyway.
@@ -85,7 +95,7 @@ fn v3_windows_pch_applies(source string) bool {
 		}
 		directive := trimmed[1..].trim_left(' \t')
 		if directive.starts_with('include') {
-			if next_include == 0 && defines.len != v3_windows_pch_defines.len {
+			if next_include == 0 && (defines.len != v3_windows_pch_defines.len || open.len != 0) {
 				return false
 			}
 			if trimmed != v3_windows_pch_includes[next_include] {
@@ -108,6 +118,10 @@ fn v3_windows_pch_applies(source string) bool {
 				if directive.starts_with('undef') || rest != name {
 					return false
 				}
+				// Under any other conditional, a macro of a build could be left out.
+				if open.any(!v3_windows_pch_guard_of(it, name)) {
+					return false
+				}
 				defines[name] = true
 				continue
 			}
@@ -120,9 +134,49 @@ fn v3_windows_pch_applies(source string) bool {
 			continue
 		}
 		if next_include == 0 && v3_windows_pch_prelude_conditional(directive) {
+			if directive == 'endif' {
+				if open.len == 0 {
+					return false
+				}
+				open.pop()
+			} else {
+				open << directive
+			}
 			continue
 		}
 		return false
+	}
+	return false
+}
+
+// v3_windows_pch_guard_of reports whether the conditional `directive` is one
+// the generator puts around the definition of `name`: the guard on the Windows
+// target, or the guard on the macro itself.
+fn v3_windows_pch_guard_of(directive string, name string) bool {
+	if directive == 'if defined(_WIN32)' || directive == 'ifndef ${name}' {
+		return true
+	}
+	return name == 'WIN32_LEAN_AND_MEAN'
+		&& directive == 'if defined(_WIN32) && !defined(WIN32_FULL) && !defined(WIN32_LEAN_AND_MEAN)'
+}
+
+// v3_windows_pch_flags_configure_sdk reports whether a compile flag defines or
+// undefines a macro the SDK headers read and the prelude sets: with
+// `-DWIN32_FULL` a unit leaves WIN32_LEAN_AND_MEAN undefined and parses the
+// whole of windows.h, which the precompiled header did not.
+fn v3_windows_pch_flags_configure_sdk(args []string) bool {
+	for i, arg in args {
+		mut macro := ''
+		if arg in ['-D', '-U'] {
+			if i + 1 < args.len {
+				macro = args[i + 1]
+			}
+		} else if arg.starts_with('-D') || arg.starts_with('-U') {
+			macro = arg[2..]
+		}
+		if macro.all_before('=') in v3_windows_pch_sdk_macros {
+			return true
+		}
 	}
 	return false
 }
@@ -176,8 +230,9 @@ fn v3_windows_pch_key(identity string, args []string) string {
 // `compiler` with `args` (everything on its command line but `-c`, the output
 // and the source), building it in `cache_dir` when this flag set has none yet.
 // It returns none when the compile cannot use one: another host or compiler, a
-// cross target, a compiler without an identity, or a header whose build failed
-// (recorded beside it, so the build is not retried for every unit). Building
+// cross target, a compiler without an identity, a flag that configures the SDK
+// headers (`-DWIN32_FULL`), or a header whose build failed (recorded beside it,
+// so the build is not retried for every unit). Building
 // is the compile of the header with the same arguments, so an SDK or compiler
 // that changes under the cache gives a header its compiles reject; the
 // compile's caller then drops it with v3_windows_pch_discard.
@@ -186,7 +241,7 @@ fn v3_windows_pch(compiler V3CachedObjectCompiler, args []string, cache_dir stri
 		return none
 	}
 	if compiler.identity == '' || !v3_windows_pch_compiler(compiler.path)
-		|| v3_c_flags_retarget_clang(args) {
+		|| v3_c_flags_retarget_clang(args) || v3_windows_pch_flags_configure_sdk(args) {
 		return none
 	}
 	base := os.join_path(cache_dir, 'windows_sdk_${v3_windows_pch_key(compiler.identity, args)}')
