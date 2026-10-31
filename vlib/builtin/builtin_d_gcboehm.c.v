@@ -1,5 +1,11 @@
 module builtin
 
+$if windows && !msvc {
+	// On Windows GCC/TCC, Boehm's WRAP_MARK_SOME path calls signal() while the
+	// world is stopped, which can deadlock with the C heap (#31518).
+	#flag -DNO_WRAP_MARK_SOME=1
+}
+
 $if macos || linux {
 	// The bundled amalgamation otherwise enables unmapping only with HAVE_CONFIG_H.
 	// Unmapping requires the mmap-based heap. libgc selects it on its own only on
