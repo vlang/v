@@ -34,22 +34,26 @@ jobs:
           mkdir -p ci-probes
           for compiler in gcc tcc
           do
-            for collector in boehm none
+            for collector in boehm none vgc
             do
               label="${compiler}_${collector}"
-              if ./v -new-compiler -no-retry-compilation -cc "$compiler" -gc "$collector" -keepc -g -o "ci-probes/map_$label" vlib/builtin/map_clone_alignment_test.v > "ci-probes/map_$label.log" 2>&1
+              if ./v -new-compiler -no-retry-compilation -cc "$compiler" -gc "$collector" -keepc -cg -o "ci-probes/map_$label" vlib/builtin/map_clone_alignment_test.v > "ci-probes/map_$label.log" 2>&1
               then
-                printf 'ALIGNMENT %s PASS\n' "$label"
-              else
-                status=$?
-                printf 'ALIGNMENT %s FAIL %s\n' "$label" "$status"
-                cat "ci-probes/map_$label.log"
-                if test -f "ci-probes/map_$label"
+                if "./ci-probes/map_$label" >> "ci-probes/map_$label.log" 2>&1
                 then
+                  printf 'ALIGNMENT %s RUN PASS\n' "$label"
+                else
+                  status=$?
+                  printf 'ALIGNMENT %s RUN FAIL %s\n' "$label" "$status"
+                  cat "ci-probes/map_$label.log"
                   gdb --batch -ex 'set pagination off' -ex 'handle SIGSEGV stop print nopass' -ex run -ex 'bt full' -ex 'info registers' --args "ci-probes/map_$label" > "ci-probes/gdb_$label.log" 2>&1 || true
                   cat "ci-probes/gdb_$label.log"
                 fi
+              else
+                printf 'ALIGNMENT %s COMPILE FAIL\n' "$label"
+                cat "ci-probes/map_$label.log"
               fi
+              ./v -new-compiler -no-retry-compilation -cc "$compiler" -gc "$collector" -o "ci-probes/map_$label.c" vlib/builtin/map_clone_alignment_test.v || true
               if ./v -new-compiler -no-retry-compilation -cc "$compiler" -gc "$collector" -keepc -g -o "ci-probes/args_$label" vlib/v/slow_tests/inout/oneliner_with_semicolons.vv > "ci-probes/args_$label.log" 2>&1
               then
                 printf 'SCRIPT ARGS %s\n' "$label"
@@ -60,6 +64,8 @@ jobs:
               fi
             done
           done
+          ./v -new-compiler -no-retry-compilation -cc gcc -o ci-probes/args.c vlib/v/slow_tests/inout/oneliner_with_semicolons.vv
+          grep -n -A8 -B3 '_vno_main_init_caller(void) {' ci-probes/args.c
       - name: Preserve generated source and debugger evidence
         if: always()
         uses: actions/upload-artifact@v7
