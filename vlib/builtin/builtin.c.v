@@ -53,6 +53,11 @@ pub fn at_exit(cb FnExitCb) ! {
 }
 
 fn v_segmentation_fault_handler(signal_number i32) {
+	// If the fault happens while panic() is printing its backtrace, keep the
+	// panic's exit code of 1 (see issue #31422).
+	if g_printing_backtrace {
+		exit(1)
+	}
 	$if v2_native_windows_pe_minimal ? {
 		eprintln('signal 11: segmentation fault')
 		exit(128 + signal_number)

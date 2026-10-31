@@ -49,10 +49,13 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 			$if panics_break_into_debugger ? {
 				break_if_debugger_attached()
 			} $else {
+				g_printing_backtrace = true
 				C.tcc_backtrace(c'Backtrace')
+				g_printing_backtrace = false
 			}
 			C.exit(1)
 		} $else {
+			g_printing_backtrace = true
 			$if use_libbacktrace ?&& !tinyc {
 				$if openbsd {
 					print_backtrace_skipping_top_frames(1)
@@ -62,6 +65,7 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 			} $else {
 				print_backtrace_skipping_top_frames(1)
 			}
+			g_printing_backtrace = false
 			$if panics_break_into_debugger ? {
 				break_if_debugger_attached()
 			}
@@ -85,6 +89,10 @@ pub fn panic_option_not_set(s string) {
 pub fn panic_result_not_set(s string) {
 	panic('result not set (' + s + ')')
 }
+
+// g_printing_backtrace is true while panic() is emitting its backtrace. A crash
+// there must not override the panic's exit code of 1 (see issue #31422).
+__global g_printing_backtrace = false
 
 // panic prints a nice error message, then exits the process with exit code of 1.
 // It also shows a backtrace on most platforms.
