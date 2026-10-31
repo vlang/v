@@ -1,3 +1,5 @@
+// vtest vflags: -w
+// Deliberate deprecated-type coverage must also run in suites using -W.
 module json2
 
 import json2.decoder2
