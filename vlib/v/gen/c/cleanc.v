@@ -11513,7 +11513,8 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 	if use_system_libc && !has_mach_headers && (refs['C.task_info'] || refs['task_info'] || refs['C.mach_task_self'] || refs['mach_task_self']) {
 		g.writeln('#ifdef __APPLE__')
 		g.emit_preserved_c_directive('#include <mach/mach.h>')
-		g.emit_preserved_c_directive('#include <mach/task.h>')
+		// This inferred SDK block is Apple-only; keep Linux libc shims outside it.
+		g.writeln('#include <mach/task.h>')
 		g.writeln('#endif')
 		emitted = true
 	}
