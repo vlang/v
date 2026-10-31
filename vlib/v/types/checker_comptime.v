@@ -9409,11 +9409,16 @@ fn (mut tc TypeChecker) check_infix(id flat.NodeId, node flat.Node) {
 		} else {
 			tc.integer_shift_bit_size(lhs_type)
 		}
+		// A literal takes the width of the type it ends up in, which can be 64 bits; no type is
+		// wider, so a literal shifted by 64 or more is 0 (or undefined in C) in every context.
+		lhs_is_literal := lhs_node.kind == .int_literal
+		checked_bit_size := if lhs_is_literal { 64 } else { bit_size }
 		if !skip_inactive_compact_else && node.op != .right_shift_unsigned && bit_size > 0
-			&& lhs_node.kind != .int_literal && rhs_node.kind == .int_literal {
+			&& rhs_node.kind == .int_literal {
 			if shift_count := v_int_literal_value(rhs_node.value) {
-				if shift_count >= bit_size {
-					tc.record_error_at(.assignment_mismatch, 'shift count for type `${lhs_type.name()}` too large (maximum: ${bit_size - 1} bits)', rhs_id, rhs_node.pos)
+				if shift_count >= checked_bit_size {
+					lhs_name := if lhs_is_literal { 'int literal' } else { lhs_type.name() }
+					tc.record_error_at(.assignment_mismatch, 'shift count for type `${lhs_name}` too large (maximum: ${checked_bit_size - 1} bits)', rhs_id, rhs_node.pos)
 				}
 			}
 		}
