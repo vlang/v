@@ -59,10 +59,59 @@ fn hex_word(s string) bool {
 	return s.len in 1 .. 17 && s.bytes().all(it.is_hex_digit())
 }
 
-fn identifiers_of(text string) map[string]bool {
+// code_identifiers collects the identifiers of C text outside its string and character
+// literals and its comments. The subset's own scan reads those too, which only keeps more;
+// this test reads them as uses, and a dropped declaration's name inside a kept literal is
+// none: on Windows the header declares the CRT's `remove`, the os module never calls it,
+// and a kept literal says "Failed to remove".
+fn code_identifiers(text string) map[string]bool {
+	mut code := []u8{cap: text.len}
+	mut i := 0
+	for i < text.len {
+		c := text[i]
+		if c == `/` && i + 1 < text.len && text[i + 1] == `/` {
+			for i < text.len && text[i] != `\n` {
+				i++
+			}
+			continue
+		}
+		if c == `/` && i + 1 < text.len && text[i + 1] == `*` {
+			i += 2
+			for i + 1 < text.len && !(text[i] == `*` && text[i + 1] == `/`) {
+				i++
+			}
+			i += 2
+			code << ` `
+			continue
+		}
+		if c == `"` || c == `'` {
+			i++
+			for i < text.len && text[i] != c {
+				if text[i] == `\\` {
+					i++
+				}
+				i++
+			}
+			i++
+			code << ` `
+			continue
+		}
+		code << c
+		i++
+	}
 	mut ids := map[string]bool{}
-	collect_identifiers(text, mut ids)
+	collect_identifiers(code.bytestr(), mut ids)
 	return ids
+}
+
+fn test_code_identifiers_read_outside_literals_and_comments() {
+	ids := code_identifiers('int remove(const char *p); /* unlink */ // rm\nstatic const string s = {"Failed to remove \\"", 18, 1}; char c = \'x\';')
+	assert 'remove' in ids
+	assert 's' in ids
+	assert 'unlink' !in ids
+	assert 'rm' !in ids
+	assert 'Failed' !in ids
+	assert 'x' !in ids
 }
 
 fn test_a_subset_build_leaves_out_only_what_nothing_in_the_object_names() {
@@ -107,7 +156,7 @@ fn test_a_subset_build_leaves_out_only_what_nothing_in_the_object_names() {
 			assert false, 'module ${name} missing from the subset build'
 			''
 		}
-		sub_ids := identifiers_of(sub_text)
+		sub_ids := code_identifiers(sub_text)
 		full_lines := full_text.split_into_lines()
 		sub_lines := sub_text.split_into_lines()
 		// the subset is a subsequence of the full text: nothing is added or moved
