@@ -5,7 +5,7 @@ module ppc64le
 import v.ssa
 import v.gen.elf
 
-// Register constants
+// PowerPC64 LE register constants
 const reg_r0 = 0
 const reg_r1 = 1 // sp
 const reg_r2 = 2 // toc
@@ -20,9 +20,6 @@ const reg_r10 = 10
 const reg_r11 = 11
 const reg_r12 = 12
 const reg_r31 = 31 // frame pointer
-
-// ELF relocation types for PPC64
-const r_ppc64_rel24 = 10 // R_PPC64_REL24
 
 pub struct Gen {
 	m   &ssa.Module
@@ -46,7 +43,8 @@ pub fn (mut g Gen) gen() {
 		fn_start := g.text_offset()
 		g.elf.add_symbol(func.name, u64(fn_start), true, 1)
 		if func.blocks.len == 0 {
-			g.emit32(0x4e800020) // blr
+			// blr (return)
+			g.emit32(0x4e800020)
 			continue
 		}
 		// Minimal: emit li r3, 0; blr
