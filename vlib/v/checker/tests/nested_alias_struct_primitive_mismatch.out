@@ -1,0 +1,13 @@
+vlib/v/checker/tests/nested_alias_struct_primitive_mismatch.vv:14:14: error: cannot assign to field `value`: expected `u32`, not `NativeHandle`
+   12 | fn main() {
+   13 |     value := NativeHandle(7)
+   14 |     _ := Narrow{value: value}
+      |                 ~~~~~~~~~~~~
+   15 |     _ := Signed{value: value}
+   16 | }
+vlib/v/checker/tests/nested_alias_struct_primitive_mismatch.vv:15:14: error: cannot assign to field `value`: expected `i64`, not `NativeHandle`
+   13 |     value := NativeHandle(7)
+   14 |     _ := Narrow{value: value}
+   15 |     _ := Signed{value: value}
+      |                 ~~~~~~~~~~~~
+   16 | }
