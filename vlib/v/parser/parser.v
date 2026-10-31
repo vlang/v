@@ -8353,7 +8353,7 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 		return p.add_val_id(5, env_val)
 	}
 	if p.tok == .name && p.lit == 'embed_file' {
-		return p.parse_embed_file_expr()
+		return p.parse_embed_file_expr(dollar_pos)
 	}
 	if p.tok == .name && p.lit == 'vml' {
 		return p.parse_removed_vml_expr(dollar_pos)
@@ -8665,8 +8665,7 @@ fn (mut p Parser) comptime_type_arg_has_empty_literal_suffix() bool {
 	return false
 }
 
-fn (mut p Parser) parse_embed_file_expr() flat.NodeId {
-	embed_start := int_max(0, p.span_start() - 1)
+fn (mut p Parser) parse_embed_file_expr(embed_start int) flat.NodeId {
 	p.next() // skip embed_file
 	if p.tok != .lpar {
 		return flat.empty_node
