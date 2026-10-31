@@ -4684,7 +4684,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 			spread_fields := tc.struct_fields_for_init(spread_struct.source_type_id())
 			mut compatible := true
 			for target_field in fields {
-				if supplied_fields[target_field.name] {
+				if supplied_fields[target_field.name]
+					|| tc.struct_spread_embed_fully_supplied(init_name_id, target_field, supplied_fields, []u32{}) {
 					continue
 				}
 				mut found := false
@@ -6134,6 +6135,56 @@ fn (tc &TypeChecker) fn_assignment_mismatch_details(expected_id u32, expected_al
 		]
 	}
 	return []string{}
+}
+
+// struct_spread_embed_fully_supplied recognizes an embedded field whose members
+// are all initialized explicitly through their promoted names. Direct fields at
+// each enclosing level shadow those names, and earlier embeddings own duplicate
+// promoted names, just as in struct-literal lowering. Every remaining member must
+// still be supplied rather than silently defaulted by a cross-struct spread.
+fn (tc &TypeChecker) struct_spread_embed_fully_supplied(owner_id u32, field StructField, supplied map[string]bool, path_ids []u32) bool {
+	embedded_type := embedded_field_type(field) or { return false }
+	embedded_struct := struct_type_from_type(unwrap_pointer(embedded_type)) or { return false }
+	embedded_id := embedded_struct.source_type_id()
+	if embedded_id == 0 || embedded_id in path_ids {
+		return false
+	}
+	embedded_fields := tc.struct_fields_for_init(embedded_id)
+	if embedded_fields.len == 0 {
+		return false
+	}
+	mut promoted := supplied.clone()
+	for owner_field in tc.struct_fields_for_init(owner_id) {
+		promoted.delete(owner_field.name)
+		if owner_embed := embedded_field_type(owner_field) {
+			owner_embed_id := method_type_name(unwrap_pointer(owner_embed))
+			owner_base_id := flat.source_type_syntax(owner_embed_id).generic_base()
+			promoted.delete(flat.source_type_name(flat.source_type_syntax(owner_base_id).unqualified()))
+		}
+	}
+	for owner_field in tc.struct_fields_for_init(owner_id) {
+		if owner_field.name == field.name {
+			break
+		}
+		previous_type := embedded_field_type(owner_field) or { continue }
+		previous_struct := struct_type_from_type(unwrap_pointer(previous_type)) or { continue }
+		for name, _ in supplied {
+			if tc.struct_field_type(previous_struct.source_type_id(), name) != none {
+				promoted.delete(name)
+			}
+		}
+	}
+	mut next_path := path_ids.clone()
+	next_path << embedded_id
+	for embedded_field in embedded_fields {
+		if promoted[embedded_field.name] {
+			continue
+		}
+		if !tc.struct_spread_embed_fully_supplied(embedded_id, embedded_field, promoted, next_path) {
+			return false
+		}
+	}
+	return true
 }
 
 // supplied_fields_for_embeds returns the names in `supplied` that can still refer to a
