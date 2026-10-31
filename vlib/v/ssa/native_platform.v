@@ -105,7 +105,7 @@ fn native_darwin_constant(name string) ?i64 {
 // native_errno_addr accesses the host libc's thread-local errno.
 fn (mut b Builder) native_errno_addr() ValueID {
 	ptr_i32 := b.m.type_store.get_ptr(b.i32_type)
-	symbol := $if linux { '__errno_location' } $else { '__error' }
+	symbol := if b.m.target.os_is_linux { '__errno_location' } else { '__error' }
 	if symbol !in b.fn_ids {
 		b.register_extern(symbol, ptr_i32, [])
 	}

@@ -285,6 +285,10 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 	if func.is_c_extern {
 		return
 	}
+	// Channel methods are implemented in the V runtime's C code, not in SSA.
+	if func.name.contains('Channel.') && (func.name.contains('try_') || func.name.ends_with('.pop') || func.name.ends_with('.push') || func.name.ends_with('.close')) {
+		return
+	}
 	dump_filter := os.getenv('V_X64_DUMP_SSA')
 	if dump_filter.len > 0 && func.name.contains(dump_filter) {
 		g.dump_function(func)
@@ -1931,8 +1935,16 @@ fn (g &Gen) call_is_c_extern(instr ssa.Instruction) bool {
 		return false
 	}
 	callee := g.m.values[instr.operands[0]]
-	return callee.kind == .func_ref && callee.index >= 0 && callee.index < g.m.funcs.len
-		&& g.m.funcs[callee.index].is_c_extern
+	if !(callee.kind == .func_ref && callee.index >= 0 && callee.index < g.m.funcs.len) {
+		return false
+	}
+	func := g.m.funcs[callee.index]
+	if func.is_c_extern {
+		return true
+	}
+	// Channel methods are implemented in the V runtime's C code.
+	// Treat them as C externs so the x64 backend emits a proper call.
+	return func.name.contains('Channel.') && (func.name.contains('try_') || func.name.ends_with('.pop') || func.name.ends_with('.push') || func.name.ends_with('.close'))
 }
 
 // gen_c_extern_call applies the SysV scalar argument convention used by C
@@ -2028,7 +2040,8 @@ fn (mut g Gen) gen_c_extern_call(val_id int, instr ssa.Instruction) {
 		asm_call_r10(mut g)
 	} else {
 		asm_call_rel32(mut g)
-		sym_idx := g.elf.add_undefined(fn_val.name)
+		sym_name := fn_val.name.replace('.', '__')
+		sym_idx := g.elf.add_undefined(sym_name)
 		g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, r_x86_64_plt32, -4)
 		g.emit_u32(0)
 	}
