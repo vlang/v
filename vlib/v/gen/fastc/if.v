@@ -891,7 +891,7 @@ fn (mut g Parser) parse_if() !bool {
 				g.member_smartcasts[opt_name] = FastcMemberSmartcast{
 					typ:    base_source_id
 					source: if g.prefs.target_libc_headers {
-						'(*V_FASTC_OPTION_STORAGE(${fastc_output_c_type(flat.source_type_name(base))}, (${fastc_c_identifier(opt_name)})))'
+						'(V_FASTC_OPTION_STORAGE(${fastc_output_c_type(flat.source_type_name(base))}, (${fastc_c_identifier(opt_name)}))->value)'
 					} else {
 						'(*((${fastc_output_c_type(flat.source_type_name(base))} *)${fastc_c_identifier(opt_name)}.data))'
 					}
