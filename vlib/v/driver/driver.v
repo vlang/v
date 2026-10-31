@@ -14731,7 +14731,7 @@ pub fn run(args []string) {
 				test_files:        test_files
 				test_run_only:     run_only
 				exact_used_fns:    true
-				target:            ssa.TargetData{ ptr_size: 8, endian_little: true, os_is_linux: true }
+				target:            ssa.TargetData{ ptr_size: 8, endian_little: true, os_is_linux: true, backend: "ppc64le" }
 			})
 			b.step('ssa build')
 

@@ -406,6 +406,7 @@ pub:
 	ptr_size      int  = 8
 	endian_little bool = true
 	os_is_linux   bool = false
+	backend       string = ''
 }
 
 // Module represents module data used by ssa.
