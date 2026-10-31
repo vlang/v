@@ -1,6 +1,7 @@
 module driver
 
 import os
+import time
 import v.cmdexec
 import v.tempname
 
@@ -57,6 +58,10 @@ const v3_windows_pch_sdk_macros = ['UNICODE', '_UNICODE', 'WIN32_LEAN_AND_MEAN',
 	'PSAPI_VERSION']
 
 const v3_windows_pch_format = 'v3-windows-pch-v1'
+
+// How long a failed build of the header, recorded beside it, keeps the header
+// from being built again, in seconds.
+const v3_windows_pch_failed_retry = i64(60 * 60)
 
 // How much of a unit v3_windows_pch_applies reads: the generated prelude is
 // well under 4 KiB.
@@ -163,9 +168,16 @@ fn v3_windows_pch_guard_of(directive string, name string) bool {
 // v3_windows_pch_flags_configure_sdk reports whether a compile flag defines or
 // undefines a macro the SDK headers read and the prelude sets: with
 // `-DWIN32_FULL` a unit leaves WIN32_LEAN_AND_MEAN undefined and parses the
-// whole of windows.h, which the precompiled header did not.
+// whole of windows.h, which the precompiled header did not. A flag that can
+// carry any macro out of sight (a file included ahead of the unit, or one
+// passed on to the preprocessor, which Clang does not check against the
+// precompiled header) counts as configuring them too.
 fn v3_windows_pch_flags_configure_sdk(args []string) bool {
 	for i, arg in args {
+		if arg.starts_with('-include') || arg.starts_with('-imacros') || arg.starts_with('-Wp,')
+			|| arg.starts_with('@') || arg in ['-Xpreprocessor', '-Xclang'] {
+			return true
+		}
 		mut macro := ''
 		if arg in ['-D', '-U'] {
 			if i + 1 < args.len {
@@ -231,8 +243,8 @@ fn v3_windows_pch_key(identity string, args []string) string {
 // and the source), building it in `cache_dir` when this flag set has none yet.
 // It returns none when the compile cannot use one: another host or compiler, a
 // cross target, a compiler without an identity, a flag that configures the SDK
-// headers (`-DWIN32_FULL`), or a header whose build failed (recorded beside it,
-// so the build is not retried for every unit). Building
+// headers (`-DWIN32_FULL`, `-include`), or a header whose build failed within
+// the hour (recorded beside it, so the build is not retried for every unit). Building
 // is the compile of the header with the same arguments, so an SDK or compiler
 // that changes under the cache gives a header its compiles reject; the
 // compile's caller then drops it with v3_windows_pch_discard.
@@ -252,7 +264,12 @@ fn v3_windows_pch(compiler V3CachedObjectCompiler, args []string, cache_dir stri
 		return pch
 	}
 	if os.is_file(failed) {
-		return none
+		// A build that failed for a passing reason (a disk that was full, a
+		// scanner holding the output) is tried again after a while.
+		if time.now().unix() - os.file_last_mod_unix(failed) < v3_windows_pch_failed_retry {
+			return none
+		}
+		os.rm(failed) or {}
 	}
 	unique := tempname.unique_token()
 	tmp_pch := '${pch}.tmp.${unique}'
@@ -261,9 +278,14 @@ fn v3_windows_pch(compiler V3CachedObjectCompiler, args []string, cache_dir stri
 		// Clang records the header's path and modification time in the
 		// precompiled header and checks them at every use, so the header stays
 		// where it was compiled and is written once: its text never changes.
+		// Another build that wrote it first wins, so that its compiler, which
+		// may be reading it, never finds it gone.
 		tmp_header := '${header}.tmp.${unique}'
-		os.write_file(tmp_header, v3_windows_pch_header) or { return none }
-		os.mv(tmp_header, header) or {
+		os.write_file(tmp_header, v3_windows_pch_header) or {
+			os.rm(tmp_header) or {}
+			return none
+		}
+		os.mv(tmp_header, header, overwrite: false) or {
 			os.rm(tmp_header) or {}
 			if !os.is_file(header) {
 				return none
@@ -284,7 +306,9 @@ fn v3_windows_pch(compiler V3CachedObjectCompiler, args []string, cache_dir stri
 		os.write_file(failed, result.output) or {}
 		return none
 	}
-	os.mv(tmp_pch, pch) or {
+	// One of the same flag set that another build published meanwhile is the
+	// same header for the same compiler; it stays.
+	os.mv(tmp_pch, pch, overwrite: false) or {
 		if !os.is_file(pch) {
 			return none
 		}
