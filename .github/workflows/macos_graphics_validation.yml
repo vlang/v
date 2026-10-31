@@ -1,0 +1,45 @@
+name: macOS cached graphics validation
+
+on:
+  push:
+    branches:
+      - ci/verify-macos-graphics-20261031
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-graphics-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clang-macos-graphics:
+    if: github.ref == 'refs/heads/ci/verify-macos-graphics-20261031'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-15, macos-26]
+    env:
+      VFLAGS: -cc clang
+      VJOBS: '3'
+      VTEST_FAIL_FAST: '1'
+      V_MACOS_V3_NO_FALLBACK: '1'
+      V_MACOS_MULTIWINDOW_TESTS: '0'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V
+        id: build
+        run: make -j4 && ./v symlink
+      - name: Verify cached C declaration ownership
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./v -new-compiler -no-retry-compilation -no-memory-limit test vlib/v/gen/c/cached_c_struct_source_test.v vlib/v/modulecache/c_struct_source_test.v
+      - name: Run the original gg import-isolation fixture
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./v -new-compiler -no-retry-compilation -no-memory-limit test vlib/gg/legacy_import_multiwindow_isolation_test.v
+      - name: Run the original font-atlas GPU fixture
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./v -new-compiler -no-retry-compilation -no-memory-limit test vlib/gg/text_atlas_upload_test.v
