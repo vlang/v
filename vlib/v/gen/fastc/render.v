@@ -1758,6 +1758,7 @@ fn fastc_has_top_level_bitwise_operator(tokens []FastcExpressionToken) bool {
 	return false
 }
 
+@[unsafe]
 fn (g &Parser) render_overloaded_comparison_expression(left_tokens []FastcExpressionToken, right_tokens []FastcExpressionToken, operator token.Token) ?FastcRenderedExpression {
 	if operator in [.eq, .ne] {
 		pointer_type := g.borrowed_object_pointer_comparison_type(left_tokens, right_tokens) or {

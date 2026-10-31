@@ -101,7 +101,7 @@ fn new_block() voidptr {
 }
 
 // misaligned_slot keeps a block only at an odd offset of a stack buffer.
-@[noinline]
+@[noinline; unsafe]
 fn misaligned_slot() bool {
 	mut slot := [24]u8{}
 	mut p := new_block()

@@ -85,6 +85,7 @@ pub fn unsetenv(name string) int {
 // See: https://linux.die.net/man/5/environ for Unix platforms.
 // See: https://docs.microsoft.com/bg-bg/windows/win32/api/processenv/nf-processenv-getenvironmentstrings
 // for Windows OS.
+@[unsafe]
 pub fn environ() map[string]string {
 	// TODO how to declare Virtual C globals?
 	// const C.environ &&char
@@ -116,6 +117,7 @@ pub fn environ() map[string]string {
 }
 
 // environ_from_wide_block reads a NUL-separated Windows UTF-16 environment block.
+@[unsafe]
 fn environ_from_wide_block(block &u16) map[string]string {
 	mut res := map[string]string{}
 	if block == unsafe { nil } {

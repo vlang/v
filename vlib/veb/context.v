@@ -157,6 +157,7 @@ pub fn (mut ctx Context) set_custom_header(key string, value string) ! {
 
 // send_response_to_client finalizes the response headers and sets Content-Type to `mimetype`
 // and the response body to `response`
+@[unsafe]
 pub fn (mut ctx Context) send_response_to_client(mimetype string, response string) Result {
 	if ctx.done && ctx.takeover_mode == .none {
 		eprintln('[veb] a response cannot be sent twice over one connection')
@@ -659,6 +660,7 @@ pub fn (mut ctx Context) takeover_conn() {
 	ctx.prepare_takeover_conn()
 }
 
+@[unsafe]
 fn (mut ctx Context) prepare_takeover_conn() {
 	if ctx.conn == unsafe { nil } && ctx.client_fd >= 0 {
 		// For the fasthttp backend: create a TcpConn from the raw fd on demand.
@@ -763,6 +765,7 @@ fn resolved_client_ip(peer string, forwarded_for string, trusted_proxies []strin
 // until the nearest untrusted address. Only when it is absent are
 // CF-Connecting-IP and then X-Real-Ip used; trusted proxies must overwrite
 // or remove these single-address headers received from untrusted clients.
+@[unsafe]
 pub fn (ctx &Context) ip() string {
 	mut peer := ''
 	if ctx.conn != unsafe { nil } {

@@ -98,6 +98,7 @@ fn test_contains_of_strings() {
 	assert !['a', 'b', 'c']!.contains('v')
 }
 
+@[unsafe]
 fn test_contains_of_voidptrs() {
 	pa := [voidptr(123), voidptr(45), voidptr(99)]!
 	mut pi := pa.contains(voidptr(45))
@@ -150,6 +151,7 @@ fn test_index_of_strings() {
 	assert ['a', 'b', 'c']!.index('v') == -1
 }
 
+@[unsafe]
 fn test_index_of_voidptrs() {
 	pa := [voidptr(123), voidptr(45), voidptr(99)]!
 	mut pi := pa.index(voidptr(45))

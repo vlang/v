@@ -4,6 +4,7 @@ import os
 
 #include <windows.h>
 
+@[unsafe]
 fn C.LoadLibraryExW(file_name &u16, file voidptr, flags u32) voidptr
 fn C.FindResourceW(module_handle voidptr, name voidptr, type_ voidptr) voidptr
 fn C.FreeLibrary(module_handle voidptr) bool

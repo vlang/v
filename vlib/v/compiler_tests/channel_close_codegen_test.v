@@ -54,6 +54,7 @@ fn channel_close_gen_c(v3_bin string, name string, src string) string {
 	return os.read_file(c_path) or { panic(err) }
 }
 
+@[unsafe]
 fn test_channel_alias_close_method_wins_over_runtime_lowering() {
 	v3_bin := channel_close_build_v3()
 	out := channel_close_run_good(v3_bin, 'channel_alias_close_method',

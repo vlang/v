@@ -5,6 +5,7 @@ struct OwnershipIErrorPayload {
 	payload voidptr
 }
 
+@[unsafe]
 fn drop_owned_result_error(err IError) {
 	raw_err := unsafe { &OwnershipIErrorPayload(&err) }
 	none_err := unsafe { &OwnershipIErrorPayload(&none__) }

@@ -752,6 +752,7 @@ fn (mut c H3MuxConn) start_request(mut p PendingH3Request) {
 // error and returned), so once a stream is ended, every later data-
 // carrying event for it is a deliberate no-op rather than clobbering
 // fields nobody will read.
+@[unsafe]
 fn (mut c H3MuxConn) dispatch_h3_event(ev quic.H3Event) {
 	match ev.kind {
 		.settings_received {}
@@ -870,6 +871,7 @@ fn (mut c H3MuxConn) dispatch_h3_event(ev quic.H3Event) {
 // lookup_stream returns the H3MuxStream registered for `stream_id`, or a
 // nil pointer if none is (e.g. an event for a stream this connection never
 // admitted, or one that already finished and was deregistered).
+@[unsafe]
 fn (mut c H3MuxConn) lookup_stream(stream_id u64) &H3MuxStream {
 	c.qmu.lock()
 	defer {
@@ -893,6 +895,7 @@ fn (mut c H3MuxConn) lookup_stream(stream_id u64) &H3MuxStream {
 // forever the instant a fatal error lands in that exact window (the
 // approved Phase 12 plan's own top-ranked risk callout for this
 // sub-phase).
+@[unsafe]
 fn (mut c H3MuxConn) fail_conn(msg string) {
 	c.qmu.lock()
 	if c.closed {

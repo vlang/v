@@ -4,6 +4,7 @@ import os
 import v.cmdexec
 import v.pref
 
+@[unsafe]
 fn test_fastc_target_static_globals_survive_early_entry_and_dynamic_init_runs_late() {
 	$if !macos && !linux {
 		return

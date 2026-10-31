@@ -466,6 +466,7 @@ fn main() {
 	assert c_source.contains('println(shared)'), c_source
 }
 
+@[unsafe]
 fn test_selfhost_mut_static_pointer_survives_later_calls() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -3279,6 +3280,7 @@ fn test_global_declarations_require_enable_globals_or_module_attribute() {
 	assert enabled_source.contains('static int answer;'), enabled_source
 }
 
+@[unsafe]
 fn test_translated_pointer_writes_accept_immutable_roots() {
 	prefs := pref.new_preferences()
 	source := 'module main\nstruct State {\nmut:\n count int\n}\nfn bump(state &State) { state.count = 1 }\nfn main() {}\n'
@@ -3312,6 +3314,7 @@ fn test_translated_pointer_writes_accept_immutable_roots() {
 	assert dereference_write.contains('*target=value;'), dereference_write
 }
 
+@[unsafe]
 fn test_translated_alias_pointer_call_field_writes() {
 	for selfhost in [false, true] {
 		mut prefs := pref.new_preferences()
@@ -5512,6 +5515,7 @@ fn main() {
 	assert c_source.contains('builtin__new_array_from_c_array(2, 2, sizeof(${fastc_output_c_type('int')})'), c_source
 }
 
+@[unsafe]
 fn test_undeclared_function_signature_types_are_rejected() {
 	prefs := pref.new_preferences()
 	for source, undeclared_type in {
@@ -8144,6 +8148,7 @@ fn main() {
 	assert c_source.contains('f();'), c_source
 }
 
+@[unsafe]
 fn test_selfhost_function_alias_local_call_is_a_statement() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -11202,6 +11207,7 @@ fn main() {
 	assert c_source.contains('builtin__string_plus'), c_source
 }
 
+@[unsafe]
 fn test_selfhost_function_typed_struct_field_with_mut_argument() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -11870,6 +11876,7 @@ fn main() {
 	assert c_source.contains('.values[1], sizeof('), c_source
 }
 
+@[unsafe]
 fn test_selfhost_assign_concrete_value_to_option_local() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -13393,6 +13400,7 @@ fn main() {
 	assert c_source.len > 0, 'expected generated C'
 }
 
+@[unsafe]
 fn test_selfhost_lowercase_c_struct_pointer_cast_keeps_member_type() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -13916,6 +13924,7 @@ fn main() {
 	assert !c_source.contains('util__pair_mono_'), c_source
 }
 
+@[unsafe]
 fn test_selfhost_user_voidptr_generic_method_named_check_element_type_valid_keeps_body() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -14025,6 +14034,7 @@ fn main() {
 	assert c_source.contains('__vf_array_literal[0] = ((Pair){_S("left"),_S("right")});'), c_source
 }
 
+@[unsafe]
 fn test_selfhost_nil_pointer_struct_field_is_cast_without_address_of() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -14105,6 +14115,7 @@ fn main() {
 	assert !c_source.contains('.label()'), c_source
 }
 
+@[unsafe]
 fn test_selfhost_address_of_mut_parameter_keeps_parameter_pointer() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true

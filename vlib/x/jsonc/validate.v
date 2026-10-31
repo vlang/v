@@ -136,6 +136,7 @@ fn check_token(cur json2.Json5Token, prev json2.Json5TokenKind, next json2.Json5
 // Callers run the JSON5 parser first, so the text is well formed and the scanner
 // cannot fail; the error arm below is unreachable in practice and reports no
 // violation rather than inventing one.
+@[unsafe]
 fn validate(text string, opts ParseOpts) &ParseError {
 	scanner := json2.new_json5_scanner(text)
 	mut stack := []Container{}

@@ -81,6 +81,7 @@ pub fn (mut list LinkedList[T]) push_many(elements []T) {
 }
 
 // pop removes the last element of the linked list
+@[unsafe]
 pub fn (mut list LinkedList[T]) pop() !T {
 	if list.is_empty() {
 		return error('Linked list is empty')
@@ -106,6 +107,7 @@ pub fn (mut list LinkedList[T]) pop() !T {
 }
 
 // shift removes the first element of the linked list
+@[unsafe]
 pub fn (mut list LinkedList[T]) shift() !T {
 	if list.is_empty() {
 		return error('Linked list is empty')
@@ -179,6 +181,7 @@ pub fn (list LinkedList[T]) array() []T {
 
 // next implements the iteration interface to use LinkedList
 // with V's `for` loop syntax.
+@[unsafe]
 pub fn (mut list LinkedList[T]) next() ?T {
 	if isnil(list.iter) {
 		// initialize new iter object

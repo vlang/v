@@ -91,6 +91,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		fault_trace_token           u64
 	}
 
+	@[unsafe]
 	pub fn (mut app App) start_renderer(config RendererConfig) !RendererInfo {
 		app.assert_owner_thread()!
 		app.state_mutex.lock()
@@ -246,6 +247,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		app.destroy_renderer_anchor_with_fault_trace(trace_token) or {}
 	}
 
+	@[unsafe]
 	pub fn (mut app App) shutdown_renderer() ! {
 		app.assert_owner_thread()!
 		app.state_mutex.lock()
@@ -321,6 +323,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	pub fn (app &App) renderer_is_usable() bool {
 		if app.render_bridge == unsafe { nil } {
 			return false
@@ -336,6 +339,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 
 	// renderer_device_available_for_gg distinguishes a terminal scheduler from
 	// genuine device/context loss without exposing graphics handles.
+	@[unsafe]
 	pub fn (app &App) renderer_device_available_for_gg() bool {
 		if app.render_bridge == unsafe { nil } {
 			return false
@@ -396,6 +400,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 
 	// abandon_renderer_for_gg invalidates this renderer instance without
 	// invoking Sokol after a confirmed device/context loss.
+	@[unsafe]
 	pub fn (mut app App) abandon_renderer_for_gg() ! {
 		app.assert_owner_thread()!
 		app.state_mutex.lock()
@@ -591,6 +596,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	pub fn (mut app App) with_render_target_pass(target RenderTargetLease, action gfx.PassAction, f RenderPassFn) ! {
 		if f == unsafe { nil } {
 			return error(err_render_nil_pass_callback)
@@ -962,6 +968,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		return outcome
 	}
 
+	@[unsafe]
 	fn (mut app App) abort_backend_render_batch(batch RenderBatchLease, failure string) string {
 		mut errors := []string{}
 		if failure != '' {
@@ -1030,6 +1037,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		return terminal
 	}
 
+	@[unsafe]
 	fn (app &App) render_backend_state() !&RenderBackendState {
 		if app.render_bridge == unsafe { nil } {
 			return error(err_renderer_unsupported)
@@ -1058,6 +1066,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		return state
 	}
 
+	@[unsafe]
 	fn (app &App) validate_backend_batch_epilogue(batch RenderBatchLease) !&RenderBackendState {
 		if batch.app_instance != app.instance_id {
 			return error(err_app_identity_mismatch)
@@ -1075,6 +1084,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		return state
 	}
 
+	@[unsafe]
 	fn (mut app App) mark_renderer_terminal(message string) {
 		if app.render_bridge != unsafe { nil } {
 			mut state := unsafe { &RenderBackendState(app.render_bridge) }

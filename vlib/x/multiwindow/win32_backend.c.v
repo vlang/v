@@ -224,6 +224,7 @@ fn (mut backend Win32Backend) finish_renderer_shutdown_health() {
 	backend.render_health = .abandoned
 }
 
+@[unsafe]
 fn (mut backend Win32Backend) record_native_input_release_error(state voidptr, message string) {
 	if state == unsafe { nil } {
 		return
@@ -243,6 +244,7 @@ fn (mut backend Win32Backend) record_native_input_release_error(state voidptr, m
 	}
 }
 
+@[unsafe]
 fn (mut backend Win32Backend) resolve_native_input_release_error(state voidptr) {
 	if state == unsafe { nil } {
 		return
@@ -279,6 +281,7 @@ fn (backend &Win32Backend) renderer_probe_error(operation_error string) string {
 }
 
 $if windows {
+	@[unsafe]
 	fn C.v_multiwindow_win32_register_class() int
 	fn C.v_multiwindow_win32_create_window(title &u16, width int, height int, min_width int, min_height int, resizable int, high_dpi int, borderless int, fullscreen int, visible int, owner voidptr, data voidptr) voidptr
 	fn C.v_multiwindow_win32_show_created_window(hwnd voidptr, fullscreen int) int
@@ -925,6 +928,7 @@ fn (backend &Win32Backend) capabilities() Capabilities {
 	}
 }
 
+@[unsafe]
 fn (backend &Win32Backend) start_attempt_closed() bool {
 	live_tickets := backend.native_operations != unsafe { nil }
 		&& backend.native_operations.has_live_lifetime_tickets()
@@ -1028,6 +1032,7 @@ fn (mut backend Win32Backend) start(require_renderer bool) ! {
 	}
 }
 
+@[unsafe]
 fn (mut backend Win32Backend) create_window(id WindowId, config WindowConfig) !WindowSize {
 	$if windows {
 		if !backend.started {
@@ -1155,6 +1160,7 @@ fn (mut backend Win32Backend) destroy_window(id WindowId) ! {
 	backend.finish_window_teardown(id)!
 }
 
+@[unsafe]
 fn (mut backend Win32Backend) finish_window_teardown(id WindowId) ! {
 	$if windows {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -1204,6 +1210,7 @@ fn (mut backend Win32Backend) finish_window_teardown(id WindowId) ! {
 	}
 }
 
+@[unsafe]
 fn (mut backend Win32Backend) set_window_title(id WindowId, title string) ! {
 	$if windows {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -1224,6 +1231,7 @@ fn (mut backend Win32Backend) set_window_title(id WindowId, title string) ! {
 	}
 }
 
+@[unsafe]
 fn (mut backend Win32Backend) resize_window(id WindowId, width int, height int) !WindowSize {
 	$if windows {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -1267,6 +1275,7 @@ fn (mut backend Win32Backend) resize_window(id WindowId, width int, height int) 
 	}
 }
 
+@[unsafe]
 fn (mut backend Win32Backend) set_window_cursor(id WindowId, shape CursorShape) ! {
 	$if windows {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -1285,6 +1294,7 @@ fn (mut backend Win32Backend) set_window_cursor(id WindowId, shape CursorShape) 
 	}
 }
 
+@[unsafe]
 fn (mut backend Win32Backend) poll_queued_events() ![]QueuedEvent {
 	mut native_events := []Win32NativeQueuedEvent{}
 	$if windows {
@@ -1361,6 +1371,7 @@ fn (mut backend Win32Backend) event_sequence_terminal_error() string {
 	return backend.event_sequence_terminal
 }
 
+@[unsafe]
 fn (mut backend Win32Backend) stop() ! {
 	$if windows {
 		backend.purge_all_clipboard_requests()
@@ -1456,6 +1467,7 @@ fn (backend &Win32Backend) has_retained_child(owner WindowId) bool {
 	return false
 }
 
+@[unsafe]
 fn (mut backend Win32Backend) activate_modal(index int) ! {
 	$if windows {
 		if index < 0 || index >= backend.windows.len {
@@ -1494,6 +1506,7 @@ fn (mut backend Win32Backend) activate_modal(index int) ! {
 	}
 }
 
+@[unsafe]
 fn (mut backend Win32Backend) release_modal(index int) ! {
 	$if windows {
 		if index < 0 || index >= backend.windows.len {
@@ -1624,6 +1637,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 			}
 		}
 
+		@[unsafe]
 		fn (mut backend Win32Backend) end_render(frame RenderFrame) BackendFinalizeAttempt {
 			$if windows {
 				index := backend.window_record_index(frame.window_id) or {
@@ -1690,6 +1704,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 			}
 		}
 
+		@[unsafe]
 		fn (backend &Win32Backend) renderer_ready() bool {
 			return backend.device != unsafe { nil } && backend.device_context != unsafe { nil }
 				&& backend.factory != unsafe { nil } && backend.device_ticket != 0
@@ -1856,6 +1871,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 			}
 		}
 
+		@[unsafe]
 		fn (mut backend Win32Backend) init_renderer() ! {
 			$if windows {
 				if backend.renderer_ready() {
@@ -2102,6 +2118,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 			backend.finish_renderer_shutdown_health()
 		}
 
+		@[unsafe]
 		fn (mut backend Win32Backend) create_window_views(index int, width int, height int, seed NativeOperationSeed) NativeRenderResult {
 			$if windows {
 				mut record := backend.windows[index]
@@ -2352,6 +2369,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 			return swapchain.ticket_retired
 		}
 
+		@[unsafe]
 		fn (mut backend Win32Backend) ensure_window_render_target(index int, seed NativeOperationSeed) NativeRenderResult {
 			$if windows {
 				if !backend.renderer_ready() {
@@ -2761,6 +2779,7 @@ fn (mut backend Win32Backend) reserve_com_lifetime_ticket(mut cleanup NativeOrdi
 		seed.without_target_identity())
 }
 
+@[unsafe]
 fn (mut backend Win32Backend) bind_or_burn_com_lifetime_ticket(ticket_id u64, value voidptr) {
 	if value == unsafe { nil } {
 		backend.native_operations.burn_lifetime_ticket(ticket_id)
@@ -2769,6 +2788,7 @@ fn (mut backend Win32Backend) bind_or_burn_com_lifetime_ticket(ticket_id u64, va
 	backend.native_operations.bind_lifetime_ticket(ticket_id, native_identity(value), 0)
 }
 
+@[unsafe]
 fn (mut backend Win32Backend) release_identity(value voidptr, ticket_id u64, seed NativeOperationSeed) NativeLifetimeReleaseResult {
 	pending := NativeLifetimeReleaseResult{
 		value:     value

@@ -115,6 +115,7 @@ fn test_interpolation_string_prefix_expr() {
 	assert '>${js + c} ${js + r == c}<' == '>3 true<'
 }
 
+@[unsafe]
 fn test_inttypes_string_interpolation() {
 	c := i8(-103) // -0x67
 	uc := u8(217) // 0xD9

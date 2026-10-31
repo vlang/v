@@ -80,6 +80,7 @@ fn (req &Request) h2_do(mut ssl_conn ssl.SSLConn, method Method, host_name strin
 // `h2` transport (net.ssl on most platforms, SChannel on default Windows) and
 // for tearing it down afterwards. The request's streaming callbacks and stop
 // limits are adapted onto the H2 chunk hook, as documented on h2_do.
+@[unsafe]
 fn (req &Request) h2_exchange(mut conn H2Conn, method Method, host_name string, port int, path string, data string, header Header) !Response {
 	base := req.to_h2_request(method, h2_authority(host_name, port), path, data, header)
 	on_progress := req.on_progress
@@ -118,6 +119,7 @@ fn read_from_ssl_connection_cb(con voidptr, buf &u8, bufsize int) !int {
 	return ssl_conn.socket_read_into_ptr(buf, bufsize)
 }
 
+@[unsafe]
 fn (req &Request) do_request(req_headers string, mut ssl_conn ssl.SSLConn) !Response {
 	defer {
 		ssl_conn.shutdown() or {}
@@ -143,6 +145,7 @@ fn (req &Request) do_request(req_headers string, mut ssl_conn ssl.SSLConn) !Resp
 // do_request, which shuts the connection down). The bool result reports
 // whether the response was precisely framed, so the connection can safely
 // carry another request (see ReceivedResponseInfo.reusable).
+@[unsafe]
 fn (req &Request) h1_exchange_ssl(mut ssl_conn ssl.SSLConn, raw string) !(Response, bool) {
 	ssl_conn.write_string(raw) or {
 		return error('http.transport: TLS connection write failed: ${err.msg()}')

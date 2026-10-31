@@ -78,6 +78,7 @@ fn (req &Request) vschannel_h1_on_open(ctx &C.TlsContext, method Method, host_na
 
 // vschannel_finish_response turns the raw response buffer produced by the C
 // request paths into a parsed Response, firing the progress/finish callbacks.
+@[unsafe]
 fn (req &Request) vschannel_finish_response(buff &u8, length int, err_code int) !Response {
 	if length <= 0 {
 		if err_code != 0 {

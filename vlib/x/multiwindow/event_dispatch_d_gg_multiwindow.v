@@ -4,6 +4,7 @@ const err_event_dispatch_callback_nil = 'multiwindow: managed event dispatch cal
 
 // dispatch_events_for_gg gives one callback-scoped delivery cut to gg while
 // App retains all acknowledgement and replay authority.
+@[unsafe]
 pub fn (mut app App) dispatch_events_for_gg(callback fn (QueuedEvent) !bool) !(int, bool) {
 	app.assert_owner_thread()!
 	if callback == unsafe { nil } {

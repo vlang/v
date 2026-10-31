@@ -93,6 +93,7 @@ fn audit_direct(value int) &int {
 	return audit_storage(&payload)
 }
 
+@[unsafe]
 fn audit_payload_assignment(value int) &int {
 	local := value
 	mut payload := AuditEnvelope{ inner: AuditPayload{ pointer: unsafe { nil } } }

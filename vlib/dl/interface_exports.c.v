@@ -28,6 +28,7 @@ mut:
 
 __global g_dl_interface_exports = &InterfaceExportTable(unsafe { nil })
 
+@[unsafe]
 fn interface_exports_of(handle voidptr) &InterfaceExport {
 	entries := sym(handle, interface_exports_symbol)
 	if entries == unsafe { nil } {
@@ -38,6 +39,7 @@ fn interface_exports_of(handle voidptr) &InterfaceExport {
 	return unsafe { &InterfaceExport(entries) }
 }
 
+@[unsafe]
 fn register_interface_exports(handle voidptr) {
 	entries := interface_exports_of(handle)
 	if entries == unsafe { nil } {
@@ -58,6 +60,7 @@ fn register_interface_exports(handle voidptr) {
 	}
 }
 
+@[unsafe]
 fn unregister_interface_exports(handle voidptr) {
 	entries := interface_exports_of(handle)
 	if entries == unsafe { nil } {
@@ -86,6 +89,7 @@ fn unregister_interface_exports(handle voidptr) {
 // interface_export_find returns the dispatcher that a loaded shared library
 // exports for `method` of `iface` on values tagged `typ`, or nil. Generated
 // interface dispatchers call it for type tags the program does not implement.
+@[unsafe]
 fn interface_export_find(iface &char, method &char, typ u32) voidptr {
 	mut table := g_dl_interface_exports
 	for table != unsafe { nil } {

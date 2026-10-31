@@ -20,6 +20,7 @@ pub fn (mut app App) before_accept_loop() {
 	app.started <- true
 }
 
+@[unsafe]
 pub fn (mut app App) index(mut ctx Context) veb.Result {
 	return ctx.text('ip=${ctx.ip()} conn_nil=${ctx.conn == unsafe { nil }}')
 }

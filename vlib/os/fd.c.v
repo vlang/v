@@ -101,6 +101,7 @@ $if !windows {
 }
 
 $if windows {
+	@[unsafe]
 	fn C._get_osfhandle(fd int) voidptr
 	fn C.PeekNamedPipe(hNamedPipe voidptr, lpBuffer voidptr, nBufferSize i32, lpBytesRead voidptr, lpTotalBytesAvail voidptr, lpBytesLeftThisMessage voidptr) bool
 }

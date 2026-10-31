@@ -1,5 +1,6 @@
 type Handle = voidptr
 
+@[unsafe]
 fn (mut h Handle) clear() {
 	h = Handle(unsafe { nil })
 }
@@ -10,6 +11,7 @@ fn clear_mut_handle_param(mut h Handle) {
 	h.clear()
 }
 
+@[unsafe]
 fn test_mut_pointer_alias_param_forwarded_to_mut_receiver() {
 	mut h := Handle(voidptr(u64(0x1234)))
 	clear_mut_handle_param(mut h)

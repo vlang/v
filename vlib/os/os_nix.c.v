@@ -324,7 +324,7 @@ pub fn loginname() !string {
 //     }
 //   }
 // ```
-@[manualfree]
+@[manualfree; unsafe]
 pub fn ls(path string) ![]string {
 	if path == '' {
 		return error('ls() expects a folder, not an empty string')
@@ -408,6 +408,7 @@ fn execute_shell(cmd string) Result {
 }
 
 // exec starts the specified command with arguments, waits for it to complete, and returns its output.
+@[unsafe]
 pub fn exec(args []string) Result {
 	if args.len == 0 {
 		return Result{
@@ -534,6 +535,7 @@ pub fn get_error_msg(code int) string {
 	return posix_get_error_msg(code)
 }
 
+@[unsafe]
 pub fn (mut f File) close() {
 	if !f.is_opened {
 		return

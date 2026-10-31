@@ -7,6 +7,7 @@ mut:
 	name ?&string
 }
 
+@[unsafe]
 fn test_1() {
 	_ := Foo{
 		name: unsafe { nil }

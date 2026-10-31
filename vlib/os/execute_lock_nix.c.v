@@ -16,6 +16,7 @@ fn v_os_execute_mutex_ptr() voidptr {
 	return unsafe { voidptr(&g_v_os_execute_mutex_storage[0]) }
 }
 
+@[unsafe]
 fn init() {
 	$if vlibc ? {
 		$if linux && freestanding {

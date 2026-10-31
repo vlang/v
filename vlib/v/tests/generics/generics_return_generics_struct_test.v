@@ -135,6 +135,7 @@ fn (mut node ListNode[T]) test() &ListNode[T] {
 	return node.next
 }
 
+@[unsafe]
 fn test_generics_return_generic_struct_field() {
 	mut node1 := &ListNode[int]{100, unsafe { nil }}
 	mut node2 := &ListNode[int]{200, unsafe { nil }}

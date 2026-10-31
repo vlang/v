@@ -20,6 +20,7 @@ fn ast_snapshots_supported() bool {
 	}
 }
 
+@[unsafe]
 fn snapshot_ast_buffer(data voidptr, len u64, capacity u64) ?AstBufferSnapshot {
 	$if cross ? {
 		return none

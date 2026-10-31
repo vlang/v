@@ -66,6 +66,7 @@ fn test_pointer_conditions_reject_plain_if_and_for() {
 		'if condition must be `bool`, not `&int`')
 }
 
+@[unsafe]
 fn test_c_style_for_accepts_pointer_condition() {
 	v3_bin := build_v3_for_in_review()
 	out := for_in_review_run_good(v3_bin, 'c_style_pointer_condition',

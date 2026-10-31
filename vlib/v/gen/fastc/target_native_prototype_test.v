@@ -42,6 +42,7 @@ fn test_fastc_native_context_preserves_declaration_origins_and_order() {
 	}
 }
 
+@[unsafe]
 fn test_fastc_target_native_prototypes_follow_declaring_source_header_ownership() {
 	mut prefs := pref.new_preferences()
 	prefs.target_libc_headers = true
@@ -223,6 +224,7 @@ fn C.v3_helper() int
 	assert defines.has_header
 }
 
+@[unsafe]
 fn test_fastc_target_native_header_macro_signature_is_left_to_c_compiler() {
 	$if !macos && !linux {
 		return

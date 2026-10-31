@@ -185,6 +185,7 @@ fn iocp_gc_post_test_write(mut conn IocpConn) bool {
 	return true
 }
 
+@[unsafe]
 fn iocp_gc_cleanup_test_conn(mut conn IocpConn, iocp voidptr, completed voidptr) {
 	mut pending_op := conn.pending_op
 	raw_pending := pending_op.load()
@@ -229,6 +230,7 @@ fn iocp_gc_cleanup_test_conn(mut conn IocpConn, iocp voidptr, completed voidptr)
 	close_conn(mut conn)
 }
 
+@[unsafe]
 fn test_iocp_write_operation_remains_reachable_after_submission() {
 	mut test_server := new_server(
 		family:  .ip
