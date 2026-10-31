@@ -2809,13 +2809,14 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 			variant_type := unalias_type(g.tc.parse_type(variant))
 			ct := g.value_c_type(clean_typ)
 			variant_field := string(sum_field_name(flat.source_type_name(variant)))
+			g.write(g.sum_initializer_prefix(sum_name_id, ct, g.sum_type_index(sum_name_id, variant), variant_field, false))
 			if variant_type is types.Pointer {
-				g.write('(${ct}){.typ = ${g.sum_type_index(sum_name_id, variant)}, .${variant_field} = NULL}')
+				g.write('NULL')
+				g.write(g.sum_initializer_suffix(false))
 				return
 			}
-			g.write('(${ct}){.typ = ${g.sum_type_index(sum_name_id, variant)}, .${variant_field} = ')
 			g.gen_default_value_for_type(variant_type)
-			g.write('}')
+			g.write(g.sum_initializer_suffix(false))
 			return
 		}
 	}
