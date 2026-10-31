@@ -292,7 +292,8 @@ fn v3_windows_pch_compiler(compiler string) bool {
 // v3_windows_pch_key names the precompiled header of one compiler and one
 // compile-flag set. Any difference in either gives a different header, so a
 // changed flag never meets a precompiled header built without it: Clang rejects
-// a header whose language standard, optimization level, or macros differ.
+// a header whose language standard or optimization level differ, but checks a
+// command-line macro only when the header used it.
 fn v3_windows_pch_key(identity string, args []string) string {
 	mut hash := u64(1469598103934665603)
 	for part in [v3_windows_pch_format, identity, v3_windows_pch_header, args.join('\x00')] {
