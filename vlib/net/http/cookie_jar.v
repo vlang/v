@@ -21,23 +21,26 @@ fn jar_host_of(raw_url string) string {
 	mut host := u.host
 	if host.starts_with('[') {
 		if idx := host.index(']') {
-			return host[..idx + 1]
+			return host[..idx + 1].to_lower()
 		}
-		return host
+		return host.to_lower()
 	}
 	if idx := host.last_index(':') {
-		return host[..idx]
+		return host[..idx].to_lower()
 	}
-	return host
+	return host.to_lower()
 }
 
 // path_of returns the path part of `raw_url`, defaulting to "/".
+// The escaped form is used so encoded characters (especially encoded
+// slashes) keep their meaning for cookie path matching (RFC 6265).
 fn jar_path_of(raw_url string) string {
 	u := urllib.parse(raw_url) or { return '/' }
-	if u.path == '' {
+	p := u.escaped_path()
+	if p == '' {
 		return '/'
 	}
-	return u.path
+	return p
 }
 
 // scheme_of returns the scheme of `raw_url`.
@@ -51,11 +54,12 @@ fn domain_matches(host string, domain string) bool {
 	if domain == '' {
 		return true
 	}
-	d := domain.trim_left('.')
-	if host == d {
+	d := domain.trim_left('.').to_lower()
+	h := host.to_lower()
+	if h == d {
 		return true
 	}
-	return host.ends_with('.' + d)
+	return h.ends_with('.' + d)
 }
 
 // path_matches reports whether `request_path` matches the cookie's path.
@@ -84,11 +88,24 @@ pub fn (mut j CookieJar) set_cookies(raw_url string, cookies []Cookie) {
 	now := time.now()
 	for c in cookies {
 		mut cookie := c
-		if cookie.domain == '' {
-			cookie.domain = host
+		// RFC 6265 §5.3 step 6: an explicit Domain must domain-match the
+		// response host, otherwise the cookie is ignored (before any mutation).
+		if cookie.domain != '' {
+			if !domain_matches(host, cookie.domain) {
+				continue
+			}
 		}
-		if cookie.path == '' {
-			// default path: up to last '/'
+		if cookie.domain == '' {
+			// host-only cookie: scope is the exact response host.
+			cookie.domain = host
+			cookie.host_only = true
+		} else {
+			// canonicalize: drop a leading dot, lowercase.
+			cookie.domain = cookie.domain.trim_left('.').to_lower()
+			cookie.host_only = false
+		}
+		if cookie.path == '' || !cookie.path.starts_with('/') {
+			// default path: up to last '/' (RFC 6265 §5.2.4)
 			if idx := req_path.last_index('/') {
 				if idx == 0 {
 					cookie.path = '/'
@@ -127,7 +144,11 @@ pub fn (j CookieJar) cookies(raw_url string) []Cookie {
 	now := time.now()
 	mut out := []Cookie{}
 	for c in j.cookies {
-		if !domain_matches(host, c.domain) {
+		if c.host_only {
+			if host != c.domain {
+				continue
+			}
+		} else if !domain_matches(host, c.domain) {
 			continue
 		}
 		if !path_matches(req_path, c.path) {
@@ -149,7 +170,10 @@ pub fn (j CookieJar) cookies_header(raw_url string) string {
 	cs := j.cookies(raw_url)
 	mut parts := []string{}
 	for c in cs {
-		parts << '${c.name}=${c.value}'
+		if !is_request_cookie_name_writable(c.name) {
+			continue
+		}
+		parts << '${c.name}=${sanitize_cookie_value(c.value)}'
 	}
 	return parts.join('; ')
 }
