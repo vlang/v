@@ -17,6 +17,12 @@ const elfdata2lsb = 1
 const ev_current = 1
 const et_rel = 1 // Relocatable file
 pub const em_x86_64 = u16(62)
+// Additional ELF machine types for native backends.
+pub const em_arm = u16(40)
+pub const em_ppc64 = u16(21)
+pub const em_s390 = u16(22)
+pub const em_riscv = u16(243)
+pub const em_loongarch = u16(258)
 
 const sht_progbits = 1
 const sht_symtab = 2
@@ -35,6 +41,8 @@ pub mut:
 	data_data []u8
 	rodata    []u8
 
+	elf_flags u32
+
 	// Symbol Table
 	symbols        []ElfSymbol
 	symbol_by_name map[string]int
@@ -47,7 +55,7 @@ pub mut:
 	shstr_table []u8
 }
 
-struct ElfSymbol {
+pub struct ElfSymbol {
 pub mut:
 	name     string
 	name_idx int
@@ -57,7 +65,8 @@ pub mut:
 	size     u64
 }
 
-struct ElfRela {
+pub struct ElfRela {
+pub mut:
 	offset u64
 	info   u64
 	addend i64
@@ -258,7 +267,7 @@ pub fn (mut e ElfObject) write(path string) {
 	write_u64_le(mut buf, 0) // Entry
 	write_u64_le(mut buf, 0) // Phdr off
 	write_u64_le(mut buf, u64(off_shdrs))
-	write_u32_le(mut buf, 0) // Flags
+	write_u32_le(mut buf, e.elf_flags)
 	write_u16_le(mut buf, u16(ehdr_size))
 	write_u16_le(mut buf, 0) // Phdr entry size
 	write_u16_le(mut buf, 0) // Phdr num
