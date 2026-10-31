@@ -555,3 +555,8 @@ pub fn (t Time) as_utc() Time {
 pub fn (t Time) is_utc() bool {
 	return !t.is_local && t.location() == none
 }
+
+// until returns the duration until t.
+pub fn until(t Time) Duration {
+	return t - now()
+}
