@@ -7,6 +7,9 @@ fn (mut b Builder) build_native_initialization() {
 	if b.skip_fn_bodies || b.hot_fn.len > 0 {
 		return
 	}
+	if b.m.target.backend == "ppc64le" {
+		return
+	}
 	main_id := b.fn_ids['main'] or { return }
 	if b.m.funcs[main_id].blocks.len == 0 {
 		return
