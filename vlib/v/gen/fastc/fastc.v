@@ -310,10 +310,11 @@ const c_target_option_runtime = r'
     __vf_inline_payload; \
 })
 /* Narrowed optional members can also be mutated. This accessor takes only
-   original wrapper storage, never the temporary used by OPTION_VALUE. */
+   original wrapper storage, never the temporary used by OPTION_VALUE.
+   Put may_alias on a new wrapper: GCC ignores it on an already-defined aggregate. */
 #define V_FASTC_OPTION_STORAGE(type, expression) ({ \
     __typeof__(&(expression)) __vf_inline_storage = &(expression); \
-    typedef type __vf_inline_alias __attribute__((__may_alias__)); \
+    typedef struct __attribute__((__may_alias__)) { type value; } __vf_inline_alias; \
     (__vf_inline_alias *)(__vf_inline_storage->is_inline ? (void *)&__vf_inline_storage->inline_bits : __vf_inline_storage->data); \
 })
 
