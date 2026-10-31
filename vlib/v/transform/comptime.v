@@ -4212,7 +4212,10 @@ fn (mut t Transformer) comptime_field_call_generic_args(node flat.Node, mut chil
 			|| flat.source_type_query(arg_type).has(.generic_fn_name) {
 			arg_type = fm.comptime_typ
 		}
-		mut inference_type := t.comptime_normalize_type_alias_chain(arg_type)
+		// Preserve alias identity for generic inference so that a field of an
+		// alias type (e.g. `type Quoted = Base`) instantiates the generic with
+		// the alias, matching a direct call (see issue #31284).
+		mut inference_type := arg_type
 		if inference_type == 0 {
 			inference_type = fm.comptime_unaliased
 		}
