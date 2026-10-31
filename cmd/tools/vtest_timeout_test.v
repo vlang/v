@@ -4,22 +4,29 @@ import time
 const vexe = @VEXE
 const timeout_root = os.join_path(os.vtmp_dir(), 'vtest_timeout_${os.getpid()}')
 
+// The program the test starts that outlives it: `/bin/sleep 600`, and on Windows `PING.EXE -n 600
+// 127.0.0.1`, which waits as long.
+const child_program = $if windows { r'C:\Windows\System32\PING.EXE' } $else { '/bin/sleep' }
+const child_args = $if windows { "['-n', '600', '127.0.0.1']" } $else { "['600']" }
+
 // The test program: counts its runs in `runs.txt`, starts a child that outlives it, writes the
 // child's pid to `child.pid`, and then hangs.
-const hanging_test_source = "import os
+fn hanging_test_source() string {
+	return "import os
 import time
 
 fn test_hangs_with_a_child_process() {
 	mut runs := os.open_append(os.join_path(os.dir(@FILE), 'runs.txt'))!
 	runs.write_string('x')!
 	runs.close()
-	mut child := os.new_process('/bin/sleep')
-	child.set_args(['600'])
+	mut child := os.new_process(r'${child_program}')
+	child.set_args(${child_args})
 	child.run()
 	os.write_file(os.join_path(os.dir(@FILE), 'child.pid'), child.pid.str())!
 	time.sleep(600 * time.second)
 }
 "
+}
 
 fn testsuite_end() {
 	os.rmdir_all(timeout_root) or {}
@@ -29,16 +36,22 @@ fn new_hanging_test(name string) string {
 	dir := os.join_path(timeout_root, name)
 	os.mkdir_all(dir) or { panic(err) }
 	file := os.join_path(dir, 'hang_test.v')
-	os.write_file(file, hanging_test_source) or { panic(err) }
+	os.write_file(file, hanging_test_source()) or { panic(err) }
 	return file
 }
 
-// process_is_alive is false for a process that is gone, and for one that is dead and waits to be
-// reaped by its new parent (state Z), which a killed process tree leaves until init collects it.
+// process_is_alive is false for a process that is gone, and (not on Windows) for one that is dead
+// and waits to be reaped by its new parent (state Z), which a killed process tree leaves until
+// init collects it. On Windows `tasklist` lists the process by pid or says that there is none.
 fn process_is_alive(pid int) bool {
-	result := os.exec(['ps', '-o', 'stat=', '-p', pid.str()])
-	state := result.output.trim_space()
-	return result.exit_code == 0 && state != '' && !state.starts_with('Z')
+	$if windows {
+		result := os.exec(['tasklist', '/fi', 'PID eq ${pid}', '/fo', 'csv', '/nh'])
+		return result.output.contains('"${pid}"')
+	} $else {
+		result := os.exec(['ps', '-o', 'stat=', '-p', pid.str()])
+		state := result.output.trim_space()
+		return result.exit_code == 0 && state != '' && !state.starts_with('Z')
+	}
 }
 
 fn run_v_test(args []string, env map[string]string) (os.Result, time.Duration) {
@@ -60,9 +73,6 @@ fn run_v_test(args []string, env map[string]string) (os.Result, time.Duration) {
 }
 
 fn test_a_hanging_test_fails_by_name_within_the_limit() {
-	$if windows {
-		return
-	}
 	file := new_hanging_test('limit_option')
 	result, elapsed := run_v_test(['-timeout', '3', file], {})
 	assert result.exit_code == 1, result.output
@@ -82,9 +92,6 @@ fn test_a_hanging_test_fails_by_name_within_the_limit() {
 }
 
 fn test_the_limit_can_come_from_the_environment() {
-	$if windows {
-		return
-	}
 	file := new_hanging_test('limit_env')
 	result, _ := run_v_test([file], {
 		'VTEST_TIMEOUT': '2'
@@ -94,9 +101,6 @@ fn test_the_limit_can_come_from_the_environment() {
 }
 
 fn test_a_timeout_is_retried_only_when_asked_for() {
-	$if windows {
-		return
-	}
 	file := new_hanging_test('retry_timeouts')
 	result, _ := run_v_test(['-timeout', '2', '-retry-timeouts', file], {})
 	assert result.exit_code == 1, result.output

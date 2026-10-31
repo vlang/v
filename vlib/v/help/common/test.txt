@@ -23,6 +23,9 @@ limit off. The environment variable VTEST_TIMEOUT sets it too (the option wins).
 A test that timed out is not run again, as a failed test with no output would
 be; pass `-retry-timeouts`, or set VTEST_RETRY_TIMEOUT=1, to retry it.
 The limit covers running the compiled test, not compiling it.
+On Windows the test and the processes it started share a job object, which is what ends them
+together; when Windows refuses the job (inside another job, on a system older than Windows 8),
+only the test program itself is killed.
 
 NB 1: very frequently, when you work on a module you can cd into its folder,
 and then you can perform:
