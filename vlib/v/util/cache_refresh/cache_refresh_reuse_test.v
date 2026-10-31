@@ -304,7 +304,7 @@ fn test_synthetic_refresh_replays_each_import_sequence_once() ! {
 	assert after.count('fn test_cache_refresh() {}') == 1, after
 }
 
-fn test_refresh_preserves_ordered_module_include_paths() ! {
+fn test_opaque_headers_preserve_ordered_include_paths_without_refresh() ! {
 	$if windows {
 		return
 	}
@@ -362,11 +362,9 @@ fn test_refresh_preserves_ordered_module_include_paths() ! {
 		assert run.exit_code == 0 && run.output.trim_space() == if i == 0 { '42' } else { '84' }, run.output
 	}
 	requests := collect(vroot, @VEXE)!.filter(it.module.starts_with(name + '.'))
-	assert requests.len == 4, requests.str()
-	assert requests.any(it.imports.index('${name}.z_first') < it.imports.index('${name}.a_second'))
-	assert requests.any(it.imports.index('${name}.a_second') < it.imports.index('${name}.z_first'))
+	// Header ownership is opaque, so these builds publish no refresh inventory.
+	assert requests.len == 0, requests.str()
 	os.write_file(headers[0], 'static inline int vup_order_value(void) { return 31; }\n')!
-	refresh(@VEXE, requests)!
 	for i, entry in entries {
 		warm := os.exec([@VEXE, '-cc', 'clang', '-gc', 'none', '-show-timings', '-o',
 			os.join_path(root, 'program'), entry])
