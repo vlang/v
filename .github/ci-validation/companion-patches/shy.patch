@@ -1,0 +1,346 @@
+diff --git a/lib/event.b.v b/lib/event.b.v
+index 44e0aa4..8548a08 100644
+--- a/lib/event.b.v
++++ b/lib/event.b.v
+@@ -191,7 +191,7 @@ pub fn (mut e Events) send(ev Event) ! {
+ 	analyse.max('${@MOD}.${@STRUCT}.queue.len', e.queue.len + 1)
+ 	if e.state == .record {
+ 		window := e.shy.window(ev.window_id) or {
+-			return error('${@STRUCT}.${@FN}: could not get window (${ev.window_id}): ${err}')
++			return error('${@STRUCT}.${@FN}: could not get window (${ev.window_id})')
+ 		}
+ 		e.recorded << RecordedEvent{
+ 			event: ev
+diff --git a/lib/input.b.v b/lib/input.b.v
+index 88da6eb..536cb9c 100644
+--- a/lib/input.b.v
++++ b/lib/input.b.v
+@@ -277,7 +277,7 @@ fn (ip Input) sdl_to_shy_event(sdl_event sdl.Event) Event {
+ 			win := s.window(shy_window_id) or {
+ 				// TODO: find out why the following shows up with `sdl_compat` only?
+ 				$if !sdl_compat ? {
+-					s.log.gerror('${@STRUCT}.${@FN}', 'unable to locate SDL/Shy window ${sdl_event.window.windowID}/${shy_window_id}: ${err}')
++					s.log.gerror('${@STRUCT}.${@FN}', 'unable to locate SDL/Shy window ${sdl_event.window.windowID}/${shy_window_id}')
+ 					s.log.gwarn('${@STRUCT}.${@FN}', 'dropping handling of window event ${sdl_event.window.windowID}/${shy_window_id}, returning unknown...')
+ 				}
+ 				// panic('${@STRUCT}.${@FN} unable locate SDL/Shy window ${sdl_event.window.windowID}/${shy_window_id}: ${err}')
+@@ -447,7 +447,9 @@ fn (ip Input) sdl_to_shy_event(sdl_event sdl.Event) Event {
+ 			} else {
+ 				.flipped
+ 			}
+-			mouse := ip.mouse(default_mouse_id) or { panic(err) }
++			mouse := ip.mouse(default_mouse_id) or {
++				panic('${@STRUCT}.${@FN}: missing mouse ${default_mouse_id}')
++			}
+ 			shy_window_id := Window.map_sdl_window_id_to_shy_window_id(sdl_event.wheel.windowID)
+ 			shy_event = MouseWheelEvent{
+ 				timestamp: timestamp
+diff --git a/lib/window.sdl.c.v b/lib/window.sdl.c.v
+index 11b3a11..fdd9810 100644
+--- a/lib/window.sdl.c.v
++++ b/lib/window.sdl.c.v
+@@ -108,7 +108,7 @@ fn (w Window) dump_pixels(rect Rect) &Screenshot {
+ 	img_height := int(rect.height)
+ 	img_size := img_width * img_height * 4
+ 	img_pixels := unsafe { &u8(malloc(img_size)) }
+-	C.shy_gl_read_rgba_pixels(rect.x, rect.y, img_width, img_height, img_pixels)
++	C.shy_gl_read_rgba_pixels(int(rect.x), int(rect.y), img_width, img_height, img_pixels)
+ 	return &Screenshot{
+ 		width:  img_width
+ 		height: img_height
+diff --git a/log/log.v b/log/log.v
+index 3bece40..a1ec84c 100644
+--- a/log/log.v
++++ b/log/log.v
+@@ -138,27 +138,25 @@ pub fn (l &Log) has(flags Flag) bool {
+ 	return l.flags.has(flags)
+ }
+ 
+-pub fn (l &Log) set(flags Flag) {
+-	unsafe { l.flags.set(flags) }
++pub fn (mut l Log) set(flags Flag) {
++	l.flags.set(flags)
+ }
+ 
+-pub fn (l &Log) clear_and_set(flags Flag) {
+-	unsafe {
+-		l.flags = Flag(0) // clear all flags
+-		l.flags.set(flags)
+-	}
++pub fn (mut l Log) clear_and_set(flags Flag) {
++	l.flags = unsafe { Flag(0) } // clear all flags
++	l.flags.set(flags)
+ }
+ 
+-pub fn (l &Log) on(flag Flag) {
++pub fn (mut l Log) on(flag Flag) {
+ 	if !l.has(flag) {
+-		unsafe { l.flags.set(flag) }
++		l.flags.set(flag)
+ 		l.debug(flag.clean_str() + '${l.changes(flag)}')
+ 	}
+ }
+ 
+-pub fn (l &Log) off(flag Flag) {
++pub fn (mut l Log) off(flag Flag) {
+ 	if l.has(flag) {
+-		unsafe { l.flags.clear(flag) }
++		l.flags.clear(flag)
+ 		if flag == .log {
+ 			// A last goodbye
+ 			maybe_colored := l.colorize('bright_magenta', 'DEBUG ')
+@@ -169,8 +167,8 @@ pub fn (l &Log) off(flag Flag) {
+ 	}
+ }
+ 
+-pub fn (l &Log) toggle(flag Flag) {
+-	unsafe { l.flags.toggle(flag) }
++pub fn (mut l Log) toggle(flag Flag) {
++	l.flags.toggle(flag)
+ 	l.debug(flag.clean_str() + '${l.changes(flag)}')
+ }
+ 
+diff --git a/log/log_test.v b/log/log_test.v
+new file mode 100644
+index 0000000..af8efc9
+--- /dev/null
++++ b/log/log_test.v
+@@ -0,0 +1,26 @@
++module log
++
++fn test_flag_mutators_preserve_and_clear_categories() {
++	mut logger := Log{}
++	logger.clear_and_set(.info)
++	assert logger.has(.info)
++	assert !logger.has(.log)
++	logger.set(.warn | .error)
++	assert logger.all(.info | .warn | .error)
++	logger.on(.debug)
++	logger.on(.debug)
++	assert logger.has(.debug)
++	logger.off(.warn)
++	logger.off(.warn)
++	assert !logger.has(.warn)
++	assert logger.all(.info | .error | .debug)
++	logger.toggle(.debug)
++	assert !logger.has(.debug)
++	logger.toggle(.debug)
++	assert logger.has(.debug)
++	logger.clear_and_set(.critical)
++	assert logger.has(.critical)
++	assert !logger.has(.info)
++	assert !logger.has(.error)
++	assert !logger.has(.debug)
++}
+diff --git a/tests/native_allocators_test.v b/tests/native_allocators_test.v
+new file mode 100644
+index 0000000..cb34481
+--- /dev/null
++++ b/tests/native_allocators_test.v
+@@ -0,0 +1,29 @@
++import os
++
++fn test_native_bindings_and_allocators_with_and_without_boehm() {
++	root := os.join_path(os.vtmp_dir(), 'shy_native_allocators_${os.getpid()}')
++	os.mkdir_all(root) or { panic(err) }
++	defer { os.rmdir_all(root) or {} }
++	source := os.join_path(@VMODROOT, 'tests', 'testdata', 'native_allocators')
++	client := os.join_path(root, 'client')
++	os.cp_all(source, client, false) or { panic(err) }
++	os.write_file(os.join_path(client, 'v.mod'), "Module { name: 'shy_native_allocators' }\n") or {
++		panic(err)
++	}
++	binary := os.join_path(root, 'probe' + $if windows { '.exe' } $else { '' })
++	mut compilers := [[]string{}]
++	if _ := os.find_abs_path_of_executable('clang') {
++		compilers << ['-cc', 'clang']
++	}
++	for flags in compilers {
++		for mode in ['boehm', 'none'] {
++			mut args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', mode]
++			args << flags
++			args << ['-o', binary, client]
++			built := os.exec(args)
++			assert built.exit_code == 0, '${flags}, ${mode}: ${built.output}'
++			ran := os.exec([binary])
++			assert ran.exit_code == 0, '${flags}, ${mode}: ${ran.output}'
++		}
++	}
++}
+diff --git a/tests/testdata/native_allocators/main.c.v b/tests/testdata/native_allocators/main.c.v
+new file mode 100644
+index 0000000..6b3a28d
+--- /dev/null
++++ b/tests/testdata/native_allocators/main.c.v
+@@ -0,0 +1,66 @@
++import shy.wraps.fontstash
++import shy.wraps.miniaudio as ma
++import shy.wraps.sokol.gl
++import shy.wraps.sokol.sfons
++
++fn verify_public_native_aliases() {
++	_ := ma.Engine{}
++	_ := ma.Sound{}
++	_ := ma.Decoder{}
++	context := gl.ContextDesc{
++		max_vertices: 32
++		max_commands: 16
++	}
++	assert context.max_vertices == 32
++	assert context.max_commands == 16
++	descriptor := gl.Desc{
++		max_vertices:       64
++		max_commands:       24
++		context_pool_size:  2
++		pipeline_pool_size: 4
++	}
++	assert descriptor.max_vertices == 64
++	assert descriptor.context_pool_size == 2
++	font := sfons.Desc{
++		width:  128
++		height: 256
++	}
++	assert font.width == 128
++	assert font.height == 256
++}
++
++fn verify_fontstash_allocations() {
++	params := C.FONSparams{
++		width:  16
++		height: 16
++	}
++	context := fontstash.create_internal(&params)
++	assert !isnil(context)
++	assert context.expand_atlas(32, 64) == 1
++	assert context.reset_atlas(16, 16) == 1
++	fontstash.delete_internal(context)
++}
++
++fn verify_miniaudio_allocations() {
++	mut data := &u8(ma.malloc(32, unsafe { nil }))
++	assert !isnil(data)
++	unsafe {
++		for i in 0 .. 32 {
++			data[i] = u8(i + 1)
++		}
++	}
++	data = &u8(ma.realloc(data, 128, unsafe { nil }))
++	assert !isnil(data)
++	unsafe {
++		for i in 0 .. 32 {
++			assert data[i] == u8(i + 1)
++		}
++	}
++	ma.free(data, unsafe { nil })
++}
++
++fn main() {
++	verify_public_native_aliases()
++	verify_fontstash_allocations()
++	verify_miniaudio_allocations()
++}
+diff --git a/wraps/fontstash/fontstash.c.v b/wraps/fontstash/fontstash.c.v
+index 4d6bec7..50340f7 100644
+--- a/wraps/fontstash/fontstash.c.v
++++ b/wraps/fontstash/fontstash.c.v
+@@ -2,11 +2,14 @@ module fontstash
+ 
+ #flag -I @VMODROOT/thirdparty/fontstash
+ #define FONTSTASH_IMPLEMENTATION
++
+ $if gcboehm ? {
++	#include <gc/gc.h>
+ 	#define FONTSTASH_MALLOC GC_MALLOC
+ 	#define FONTSTASH_REALLOC GC_REALLOC
+ 	#define FONTSTASH_FREE GC_FREE
+ }
++
+ #include "fontstash.h"
+ #flag darwin -I/usr/local/Cellar/freetype/2.10.2/include/freetype2
+ 
+diff --git a/wraps/miniaudio/c/miniaudio.c.v b/wraps/miniaudio/c/miniaudio.c.v
+index 3ff2d9f..fca447c 100644
+--- a/wraps/miniaudio/c/miniaudio.c.v
++++ b/wraps/miniaudio/c/miniaudio.c.v
+@@ -7,6 +7,7 @@ module c
+ pub const used_import = 1
+ 
+ #flag -I @VMODROOT/miniaudio
++
+ $if linux {
+ 	#flag -lpthread -lm -ldl
+ }
+@@ -26,6 +27,7 @@ $if debug {
+ }
+ 
+ $if gcboehm ? {
++	#include <gc/gc.h>
+ 	#define MA_MALLOC GC_MALLOC
+ 	#define MA_REALLOC GC_REALLOC
+ 	#define MA_FREE GC_FREE
+diff --git a/wraps/miniaudio/miniaudio.auto.c.v b/wraps/miniaudio/miniaudio.auto.c.v
+index 6ecbd96..1027e7b 100644
+--- a/wraps/miniaudio/miniaudio.auto.c.v
++++ b/wraps/miniaudio/miniaudio.auto.c.v
+@@ -8122,7 +8122,7 @@ pub mut:
+ pub type DecoderConfig = C.ma_decoder_config
+ 
+ @[typedef]
+-struct C.ma_decoder {
++pub struct C.ma_decoder {
+ pub mut:
+ 	ds                     DataSourceBase
+ 	pBackend               voidptr // The decoding backend we'll be pulling data from.
+@@ -10535,7 +10535,7 @@ pub fn sound_config_init_2(p_engine &Engine) SoundConfig {
+ }
+ 
+ @[typedef]
+-struct C.ma_sound {
++pub struct C.ma_sound {
+ pub mut:
+ 	engineNode  EngineNode // Must be the first member for compatibility with the ma_node API.
+ 	pDataSource voidptr
+@@ -10607,7 +10607,7 @@ pub fn engine_config_init() EngineConfig {
+ }
+ 
+ @[typedef]
+-struct C.ma_engine {
++pub struct C.ma_engine {
+ pub mut:
+ 	nodeGraph NodeGraph // An engine is a node graph. It should be able to be plugged into any ma_node_graph API (with a cast) which means this must be the first member of this struct.
+ 	// TODO #if !defined(MA_NO_RESOURCE_MANAGER) ma_resource_manager* pResourceManager
+diff --git a/wraps/sokol/gl/sgl_structs.c.v b/wraps/sokol/gl/sgl_structs.c.v
+index 4834967..5551a4f 100644
+--- a/wraps/sokol/gl/sgl_structs.c.v
++++ b/wraps/sokol/gl/sgl_structs.c.v
+@@ -25,7 +25,7 @@ pub type Context = C.sgl_context
+ pub type ContextDesc = C.sgl_context_desc_t
+ 
+ @[typedef]
+-struct C.sgl_context_desc_t {
++pub struct C.sgl_context_desc_t {
+ 	max_vertices int             // default: 64k
+ 	max_commands int             // default: 16k
+ 	color_format gfx.PixelFormat // C.sg_pixel_format
+@@ -36,7 +36,7 @@ struct C.sgl_context_desc_t {
+ pub type Desc = C.sgl_desc_t
+ 
+ @[typedef]
+-struct C.sgl_desc_t {
++pub struct C.sgl_desc_t {
+ 	max_vertices       int             // size for vertex buffer
+ 	max_commands       int             // size of uniform- and command-buffers
+ 	context_pool_size  int             // max number of contexts (including default context), default: 4
+diff --git a/wraps/sokol/sfons/sfons.c.v b/wraps/sokol/sfons/sfons.c.v
+index 2395544..010c542 100644
+--- a/wraps/sokol/sfons/sfons.c.v
++++ b/wraps/sokol/sfons/sfons.c.v
+@@ -35,7 +35,7 @@ struct C.sfons_allocator_t {
+ pub type Allocator = C.sfons_allocator_t
+ 
+ @[typedef]
+-struct C.sfons_desc_t {
++pub struct C.sfons_desc_t {
+ 	width     int // initial width of font atlas texture (default: 512, must be power of 2)
+ 	height    int // initial height of font atlas texture (default: 512, must be power of 2)
+ 	allocator Allocator = default_allocator // optional memory allocation overrides

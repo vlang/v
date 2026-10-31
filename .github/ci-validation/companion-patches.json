@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "note": "Review-ready companion-repository patches retained because the current GitHub integration denies writes to those repositories. Apply each patch to its listed base; these are not changes proposed for V source.",
+  "note": "Review-ready companion patches. Each write attempt to its destination repository was denied by the integration. Apply each to its listed base and retain the stated dependencies; these are not proposed V source changes.",
   "patches": [
     {
       "repository": "vlang/sdl",
@@ -107,6 +107,34 @@
       "validation": "Original debug GCC and static release builds, strict checking, JSON-RPC null behavior, tree-sitter/log tests and composed exact formatter passed.",
       "attribution": "Scoped backport of five07/port-latest-v changes, with a JSON-RPC null-result regression.",
       "related_pr": "https://github.com/vlang/v-analyzer/pull/187"
+    },
+    {
+      "repository": "medvednikov/shy",
+      "base_branch": "master",
+      "base_commit": "2ac7d5ac89287717964cccb2013b68a864849c79",
+      "patch": ".github/ci-validation/companion-patches/shy.patch",
+      "publication": "First blob upload denied HTTP403 Resource not accessible by integration; no PR/branch/commit created and no alternate write attempted.",
+      "validation": "Exact12-file patch: native allocator client passes TinyCC and Clang with Boehm and gc-none; logger regression passes; composed97-source Puzzle Vibes checking passes. Full native app currently exposes a separate compiler embedded-method recursion failure."
+    },
+    {
+      "repository": "medvednikov/puzzle_vibes",
+      "base_branch": "master",
+      "base_commit": "b3c3a79bdad484067c234d1718a35643a3d038f1",
+      "patch": ".github/ci-validation/companion-patches/puzzle-vibes.patch",
+      "publication": "First blob upload denied HTTP403 Resource not accessible by integration; no PR/branch/commit created and no alternate write attempted.",
+      "validation": "Three-line parameter rename resolves the original parser failure; formatting, independent review and composed97-source full-project checking pass. Full native app still has a separately reproduced compiler recursion failure."
+    },
+    {
+      "repository": "vlang/msgpack",
+      "base_branch": "master",
+      "base_commit": "dd4f46dc04a61b112e7a247602db036081aabc59",
+      "patch": ".github/ci-validation/companion-patches/msgpack-json2.patch",
+      "publication": "First blob upload denied HTTP403 Resource not accessible by integration; no PR/branch/commit created and no alternate write attempted.",
+      "validation": "Independent affected-master test check passes. Exact existing PR16 headf8c9f971a4cc489f401cff062367e900f43f2f15 plus these two JSON2 hunks and V31579 passes shared build, all13 test files and both examples.",
+      "dependencies": [
+        "https://github.com/vlang/msgpack/pull/16",
+        "https://github.com/vlang/v/pull/31579"
+      ]
     }
   ]
 }

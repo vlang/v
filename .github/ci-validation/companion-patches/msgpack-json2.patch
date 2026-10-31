@@ -1,0 +1,21 @@
+diff --git a/issues_test.v b/issues_test.v
+index 0b5182a..3eb53b8 100644
+--- a/issues_test.v
++++ b/issues_test.v
+@@ -1,6 +1,6 @@
+ module main
+ 
+-import json
++import json2
+ import msgpack
+ import encoding.hex
+ 
+@@ -93,7 +93,7 @@ fn test_msgpack_12_struct_decode_round_trip() {
+ // json.decode → msgpack.encode → msgpack.decode pipeline the reporter used.
+ fn test_msgpack_12_json_to_msgpack_round_trip() {
+ 	data := '{"used_ids": 1}'
+-	json_data := json.decode(UsedIdsMap, data)!
++	json_data := json2.decode[UsedIdsMap](data)!
+ 	encoded := msgpack.encode[UsedIdsMap](json_data)
+ 	decoded := msgpack.decode[UsedIdsMap](encoded)!
+ 	assert decoded == UsedIdsMap{

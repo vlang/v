@@ -1,0 +1,25 @@
+diff --git a/toast.v b/toast.v
+index 1123f5a..8660961 100644
+--- a/toast.v
++++ b/toast.v
+@@ -16,9 +16,9 @@ mut:
+ 	fader &shy.Animator[f32] = shy.null
+ }
+ 
+-pub fn (mut a App) show_toast(toast Toast) {
++pub fn (mut a App) show_toast(new_toast Toast) {
+ 	mut timer := a.shy.new_timer(
+-		duration: u64(toast.duration * 1000 * (a.toasts.len + 1)) // NOTE * (a.toasts.len+1) is a poor man's queue system...
++		duration: u64(new_toast.duration * 1000 * (a.toasts.len + 1)) // NOTE * (a.toasts.len+1) is a poor man's queue system...
+ 	)
+ 	tid := timer.id
+ 	timer.callback = fn (t &shy.Timer) {
+@@ -57,7 +57,7 @@ pub fn (mut a App) show_toast(toast Toast) {
+ 	timer.run()
+ 
+ 	t := Toast{
+-		...toast
++		...new_toast
+ 		id:    tid
+ 		timer: timer
+ 	}
