@@ -54,6 +54,19 @@ fn module_sources(cache string) map[string]string {
 	return out
 }
 
+// defined_names returns the names that the items of a piece of C define: functions, variables,
+// types, enum constants, constant macros, generated literals.
+fn defined_names(text string) map[string]bool {
+	idx := new_typed_index(text, .declarations)
+	mut names := map[string]bool{}
+	for item in idx.items {
+		for name in item.defs {
+			names[name] = true
+		}
+	}
+	return names
+}
+
 // hex_word says whether s is a u64.hex() value: one to sixteen hexadecimal digits.
 fn hex_word(s string) bool {
 	return s.len in 1 .. 17 && s.bytes().all(it.is_hex_digit())
@@ -170,19 +183,18 @@ fn test_a_subset_build_leaves_out_only_what_nothing_in_the_object_names() {
 			}
 		}
 		assert j == sub_lines.len, 'module ${name}: the subset is not a subsequence of the full text'
-		for line in dropped {
-			declared := droppable_declaration_name(line)
-			if declared != '' {
-				assert declared !in sub_ids, 'module ${name}: ${declared} is declared in a dropped line and still named in the module object'
-			} else if line.trim_space().starts_with('"') {
-				// the continuation of a dropped literal definition
-			} else {
-				symbols := generated_string_symbols(line)
-				assert symbols.len > 0 && line.trim_space().starts_with('static'), 'module ${name}: a dropped line that is no declaration and no literal: ${line}'
-				for symbol in symbols {
-					assert symbol !in sub_ids, 'module ${name}: ${symbol} is defined in a dropped line and still named in the module object'
-				}
-			}
+		// What went is whole items of the header (a declaration, a literal, a struct or union or
+		// enum definition, a typedef, a forward declaration, a constant macro), and no name that
+		// they define is still named by the module object, unless another item of the object
+		// defines it again.
+		dropped_names := defined_names(dropped.join('
+'))
+		if dropped.len > 0 {
+			assert dropped_names.len > 0, 'module ${name}: dropped lines that define nothing: ${dropped[0]}'
+		}
+		sub_defined := defined_names(sub_text)
+		for dropped_name, _ in dropped_names {
+			assert dropped_name !in sub_ids || dropped_name in sub_defined, 'module ${name}: ${dropped_name} is defined in a dropped item and still named in the module object'
 		}
 		dropped_total += dropped.len
 		if sub_text.len < full_text.len {

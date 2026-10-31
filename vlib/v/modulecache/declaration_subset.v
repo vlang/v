@@ -32,6 +32,27 @@ pub:
 	joined  string
 	starts  []int // per unit: where it starts in joined
 	drop_at []int // the units that can go, in order
+	// typed is the closure index of the types layer (declaration_types.v), set when the
+	// index was made by new_declaration_index_at.
+	typed &TypedIndex = unsafe { nil }
+}
+
+// new_declaration_index_at splits `header` for the given layer; with the declarations layer
+// it is new_declaration_index.
+pub fn new_declaration_index_at(header string, layer HeaderLayer) DeclarationIndex {
+	if layer == .declarations {
+		return new_declaration_index(header)
+	}
+	typed := new_typed_index(header, layer)
+	return DeclarationIndex{
+		total_bytes: header.len
+		typed:       &typed
+	}
+}
+
+// is_built tells whether the index was made from a header.
+pub fn (idx &DeclarationIndex) is_built() bool {
+	return idx.units.len > 0 || !isnil(idx.typed)
 }
 
 const droppable_prefix_keywords = ['typedef', 'return', 'else', 'goto', 'case', 'default', 'do',
@@ -159,6 +180,9 @@ fn has_token_paste(text string) bool {
 // neither `code` nor the units that stay mention. The order of the units that stay is the
 // header's. A module whose code pastes tokens is given the whole header.
 pub fn (idx &DeclarationIndex) subset(code string) string {
+	if !isnil(idx.typed) {
+		return idx.typed.subset(code, idx.total_bytes)
+	}
 	if idx.drop_at.len == 0 || has_token_paste(code) {
 		return idx.joined
 	}

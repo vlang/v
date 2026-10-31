@@ -19271,7 +19271,16 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 	mut has_declarations := false
 	// Each module object is given the declarations its code names, not the whole header:
 	// see modulecache.DeclarationIndex. V3_CACHE_FULL_HEADER=1 gives it the whole header.
+	// V3_CACHE_HEADER_LAYER=declarations|types|macros|statics picks how much may be left out
+	// (default macros; statics changes the objects, see modulecache.HeaderLayer).
 	full_header := os.getenv('V3_CACHE_FULL_HEADER') != ''
+	header_layer := match os.getenv('V3_CACHE_HEADER_LAYER') {
+		'declarations' { modulecache.HeaderLayer.declarations }
+		'types' { modulecache.HeaderLayer.types }
+		'statics' { modulecache.HeaderLayer.statics }
+		'macros' { modulecache.HeaderLayer.macros }
+		else { modulecache.HeaderLayer.macros }
+	}
 	mut raw_index := modulecache.DeclarationIndex{}
 	mut declarations_index := modulecache.DeclarationIndex{}
 	scopes := parse_v3_interface_scopes(interface_impl_signature)
@@ -19470,14 +19479,14 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 				declarations = cache_source_without_cached_native_inputs(raw_declarations, state, false)
 				has_declarations = true
 			}
-			if !full_header && raw_index.units.len == 0 {
+			if !full_header && !raw_index.is_built() {
 				// The first module to be compiled builds the indexes (the bundle may have made
 				// the header already).
-				raw_index = modulecache.new_declaration_index(raw_declarations)
+				raw_index = modulecache.new_declaration_index_at(raw_declarations, header_layer)
 				declarations_index = if declarations == raw_declarations {
 					raw_index
 				} else {
-					modulecache.new_declaration_index(declarations)
+					modulecache.new_declaration_index_at(declarations, header_layer)
 				}
 			}
 			clock.lap(.declaration_header)
