@@ -1,0 +1,39 @@
+name: macOS terminal interrupt validation
+
+on:
+  push:
+    branches:
+      - ci/verify-macos-pty-20261031
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-pty-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  VFLAGS: ''
+  VJOBS: '2'
+
+jobs:
+  clang-macos-pty:
+    if: github.ref == 'refs/heads/ci/verify-macos-pty-20261031'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, macos-26]
+    env:
+      CC: clang
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V and verify Python is available
+        run: |
+          python3 --version
+          make -j4
+      - name: Run complete native terminal and process termination tests
+        run: ./v -new-compiler -no-retry-compilation -cc clang vlib/v/tests/compiler_processes/run_termination_nix_test.c.v
