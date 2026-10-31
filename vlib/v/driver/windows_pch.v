@@ -8,14 +8,24 @@ import v.tempname
 // The Windows SDK prelude of a generated C unit, as a header: what the unit
 // defines and includes before anything of its own (see
 // `FlatGen.emit_translation_unit_include_directives` and the lifted system
-// includes that follow it). Compiled once per compile-flag set, it saves every
+// includes that follow it), under the same guards, so that a macro the
+// compiler predefines (`-municode` is `-DUNICODE`) keeps the value it has in
+// the unit. Compiled once per compile-flag set, it saves every
 // module object of a Windows Clang build the parse of the SDK headers, which
 // is most of the time a small unit takes. A unit uses it only when its own
 // prelude is this text line for line (`v3_windows_pch_applies`), so the unit
 // sees exactly the declarations and macros it would have parsed itself.
-const v3_windows_pch_header = '#define UNICODE
+const v3_windows_pch_header = '#if defined(_WIN32)
+#ifndef UNICODE
+#define UNICODE
+#endif
+#ifndef _UNICODE
 #define _UNICODE
+#endif
+#endif
+#if defined(_WIN32) && !defined(WIN32_FULL) && !defined(WIN32_LEAN_AND_MEAN)
 #define WIN32_LEAN_AND_MEAN
+#endif
 #include <io.h>
 #include <fcntl.h>
 #include <winsock2.h>

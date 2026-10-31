@@ -208,6 +208,11 @@ fn test_windows_pch_flags_configure_sdk() {
 	assert !v3_windows_pch_flags_configure_sdk(['-O0', '-g', '-gdwarf-4', '-municode', '-m64',
 		'-fuse-ld=lld', '-fPIC', '-flto', '-pipe', '-pthread', '-Werror', '-Wall', '-Ix', '-isystem',
 		'S:/sdk', '-idirafter', 'S:/x', '-iquote', 'S:/y'])
+	assert v3_windows_pch_flags_configure_sdk(['--define-macro=V_X/**/'])
+	assert v3_windows_pch_flags_configure_sdk(['-D=1'])
+	assert v3_windows_pch_flags_configure_sdk(['-U', '(x)'])
+	assert v3_windows_pch_flags_configure_sdk(['-Wl,--stack=8388608'])
+	assert v3_windows_pch_flags_configure_sdk(['-Wa,-mbig-obj'])
 	assert !v3_windows_pch_flags_configure_sdk(['--define-macro=GC_THREADS=1'])
 	assert !v3_windows_pch_flags_configure_sdk(['-DWIN32_FULLER'])
 	assert !v3_windows_pch_flags_configure_sdk(['-DV_X(a)=1', '-U', 'V_Y'])
@@ -280,6 +285,18 @@ fn test_windows_pch_is_built_once_and_a_rejected_one_is_compiled_without() ! {
 	assert v3_windows_pch(compiler, args, root)? == first
 	assert os.read_file(first)! == 'published first'
 	assert os.read_file(first.all_before_last('.pch') + '.h')! == v3_windows_pch_header
+	// A macro the compiler predefines (`-municode` is `-DUNICODE`) has the
+	// value of the unit in the precompiled header as well: the unit compiles
+	// with it, and the header stays.
+	count := fn [root] () int {
+		return (os.ls(root) or { [] }).filter(it.starts_with('windows_sdk_') && it.ends_with('.pch')).len
+	}
+	before := count()
+	assert compile_v3_cached_object(compiler, entry, unit(11) + '_Static_assert(UNICODE == 1, "UNICODE of the unit");\n', '-std=gnu11', '-O2', '', '-w', [
+		'-fwrapv',
+		'-municode',
+	], false, {}, &state, 'sample')!
+	assert count() == before + 1
 	// A unit with an error of its own fails with that error, not the header's,
 	// and the header stays for the other units.
 	compile_v3_cached_object(compiler, entry, unit(7) + 'int broken(void) { return missing; }\n', '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, &state, 'sample') or {
