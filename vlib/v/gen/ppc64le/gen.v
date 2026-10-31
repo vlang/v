@@ -1338,41 +1338,63 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 			lhs_reg := g.load_val(lhs_id, rv_reg_t0)
 			rhs_reg := g.load_val(rhs_id, rv_reg_t1)
+			is_unsigned := instr.op in [.ult, .ugt, .ule, .uge]
 			match instr.op {
 				.eq {
-					g.emit32(rv_xor(rv_reg_t0, lhs_reg, rhs_reg))
-					g.emit32(rv_sltiu(rv_reg_t0, rv_reg_t0, 1))
+					if is_unsigned {
+						g.emit32((31 << 26) | (0 << 21) | (1 << 22) | (u32(lhs_reg) << 16) | (u32(rhs_reg) << 11) | (1 << 6))
+					} else {
+						g.emit32((31 << 26) | (0 << 21) | (1 << 22) | (u32(lhs_reg) << 16) | (u32(rhs_reg) << 11))
+					}
+					g.emit32(rv_addi(rv_reg_t6, rv_reg_zero, 1))
+					g.emit32((31 << 26) | (u32(rv_reg_t0) << 21) | (u32(rv_reg_t6) << 16) | (u32(rv_reg_zero) << 11) | (0x9E << 1))
 				}
 				.ne {
-					g.emit32(rv_xor(rv_reg_t0, lhs_reg, rhs_reg))
-					g.emit32(rv_sltu(rv_reg_t0, rv_reg_zero, rv_reg_t0))
-				}
-				.lt {
-					g.emit32(rv_slt(rv_reg_t0, lhs_reg, rhs_reg))
-				}
-				.gt {
-					g.emit32(rv_slt(rv_reg_t0, rhs_reg, lhs_reg))
-				}
-				.le {
-					g.emit32(rv_slt(rv_reg_t0, rhs_reg, lhs_reg))
+					if is_unsigned {
+						g.emit32((31 << 26) | (0 << 21) | (1 << 22) | (u32(lhs_reg) << 16) | (u32(rhs_reg) << 11) | (1 << 6))
+					} else {
+						g.emit32((31 << 26) | (0 << 21) | (1 << 22) | (u32(lhs_reg) << 16) | (u32(rhs_reg) << 11))
+					}
+					g.emit32(rv_addi(rv_reg_t6, rv_reg_zero, 1))
+					g.emit32((31 << 26) | (u32(rv_reg_t0) << 21) | (u32(rv_reg_t6) << 16) | (u32(rv_reg_zero) << 11) | (0x9E << 1))
 					g.emit32(rv_xori(rv_reg_t0, rv_reg_t0, 1))
 				}
-				.ge {
-					g.emit32(rv_slt(rv_reg_t0, lhs_reg, rhs_reg))
+				.lt, .ult {
+					if is_unsigned {
+						g.emit32((31 << 26) | (0 << 21) | (1 << 22) | (u32(lhs_reg) << 16) | (u32(rhs_reg) << 11) | (1 << 6))
+					} else {
+						g.emit32((31 << 26) | (0 << 21) | (1 << 22) | (u32(lhs_reg) << 16) | (u32(rhs_reg) << 11))
+					}
+					g.emit32(rv_addi(rv_reg_t6, rv_reg_zero, 1))
+					g.emit32((31 << 26) | (u32(rv_reg_t0) << 21) | (u32(rv_reg_t6) << 16) | (u32(rv_reg_zero) << 11) | (0x1E << 1))
+				}
+				.gt, .ugt {
+					if is_unsigned {
+						g.emit32((31 << 26) | (0 << 21) | (1 << 22) | (u32(rhs_reg) << 16) | (u32(lhs_reg) << 11) | (1 << 6))
+					} else {
+						g.emit32((31 << 26) | (0 << 21) | (1 << 22) | (u32(rhs_reg) << 16) | (u32(lhs_reg) << 11))
+					}
+					g.emit32(rv_addi(rv_reg_t6, rv_reg_zero, 1))
+					g.emit32((31 << 26) | (u32(rv_reg_t0) << 21) | (u32(rv_reg_t6) << 16) | (u32(rv_reg_zero) << 11) | (0x1E << 1))
+				}
+				.le, .ule {
+					if is_unsigned {
+						g.emit32((31 << 26) | (0 << 21) | (1 << 22) | (u32(rhs_reg) << 16) | (u32(lhs_reg) << 11) | (1 << 6))
+					} else {
+						g.emit32((31 << 26) | (0 << 21) | (1 << 22) | (u32(rhs_reg) << 16) | (u32(lhs_reg) << 11))
+					}
+					g.emit32(rv_addi(rv_reg_t6, rv_reg_zero, 1))
+					g.emit32((31 << 26) | (u32(rv_reg_t0) << 21) | (u32(rv_reg_t6) << 16) | (u32(rv_reg_zero) << 11) | (0x1E << 1))
 					g.emit32(rv_xori(rv_reg_t0, rv_reg_t0, 1))
 				}
-				.ult {
-					g.emit32(rv_sltu(rv_reg_t0, lhs_reg, rhs_reg))
-				}
-				.ugt {
-					g.emit32(rv_sltu(rv_reg_t0, rhs_reg, lhs_reg))
-				}
-				.ule {
-					g.emit32(rv_sltu(rv_reg_t0, rhs_reg, lhs_reg))
-					g.emit32(rv_xori(rv_reg_t0, rv_reg_t0, 1))
-				}
-				.uge {
-					g.emit32(rv_sltu(rv_reg_t0, lhs_reg, rhs_reg))
+				.ge, .uge {
+					if is_unsigned {
+						g.emit32((31 << 26) | (0 << 21) | (1 << 22) | (u32(lhs_reg) << 16) | (u32(rhs_reg) << 11) | (1 << 6))
+					} else {
+						g.emit32((31 << 26) | (0 << 21) | (1 << 22) | (u32(lhs_reg) << 16) | (u32(rhs_reg) << 11))
+					}
+					g.emit32(rv_addi(rv_reg_t6, rv_reg_zero, 1))
+					g.emit32((31 << 26) | (u32(rv_reg_t0) << 21) | (u32(rv_reg_t6) << 16) | (u32(rv_reg_zero) << 11) | (0x1E << 1))
 					g.emit32(rv_xori(rv_reg_t0, rv_reg_t0, 1))
 				}
 				else {
