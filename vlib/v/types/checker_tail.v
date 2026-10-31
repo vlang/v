@@ -21716,7 +21716,7 @@ fn wrapped_fn_type_from_type(typ Type) ?FnType {
 	return fn_type_from_type(payload)
 }
 
-fn (tc &TypeChecker) method_value_type(receiver_name_id u32, method string) ?Type {
+pub fn (tc &TypeChecker) method_value_type(receiver_name_id u32, method string) ?Type {
 	receiver_name := flat.source_type_name(receiver_name_id)
 	method_name := '${receiver_name}.${method}'
 	mut signature := method_name

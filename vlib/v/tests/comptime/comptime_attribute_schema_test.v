@@ -109,6 +109,51 @@ fn test_attribute_schema_fields_override_metadata_only_when_narrowed() {
 	assert seen
 }
 
+@[attribute]
+struct TestDefaults {
+	path   string = '/default'
+	count  int    = 7
+	active bool   = true
+}
+
+@[TestDefaults]
+fn test_defaults_fn() {}
+
+fn test_attribute_schema_default_values() {
+	$for attr in test_defaults_fn.attributes {
+		$if attr is TestDefaults {
+			assert attr.path == '/default'
+			assert attr.count == 7
+			assert attr.active == true
+		}
+	}
+}
+
+@[attribute]
+struct TestMethodSchema {
+	path string
+}
+
+fn (m TestMethodSchema) key() string {
+	return 'KEY:' + m.path
+}
+
+fn (m TestMethodSchema) with_prefix(p string) string {
+	return p + m.path
+}
+
+@[TestMethodSchema('/idx')]
+fn test_method_fn() {}
+
+fn test_attribute_schema_method_calls() {
+	$for attr in test_method_fn.attributes {
+		$if attr is TestMethodSchema {
+			assert attr.key() == 'KEY:/idx'
+			assert attr.with_prefix('/api') == '/api/idx'
+			assert attr.path == '/idx'
+		}
+	}
+}
 type SchemaPath = string
 type SchemaNumber = uint
 type SchemaBoolean = bool
