@@ -1,13 +1,6 @@
 name: Build Vinix
 
 on:
-  workflow_call:
-  pull_request:
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/vinix_ci.yml'
-      - 'cmd/tools/vrepl.v'
   push:
     branches:
       - master

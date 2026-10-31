@@ -1259,7 +1259,9 @@ fn (g &Parser) struct_field_metadata(receiver_type u32, field_name string) ?&Fas
 	}
 	if field := g.struct_field_metadata_impl(receiver_type, field_name) {
 		stored := &FastcStructField{ ...field }
-		w.field_memo[receiver_type][field_name] = stored
+		if mut memo := w.field_memo[receiver_type] {
+			memo[field_name] = stored
+		}
 		w.last_field_receiver = receiver_type
 		w.last_field_name = field_name
 		w.last_field = stored
@@ -1267,7 +1269,9 @@ fn (g &Parser) struct_field_metadata(receiver_type u32, field_name string) ?&Fas
 		return stored
 	}
 	miss := unsafe { &FastcStructField(nil) }
-	w.field_memo[receiver_type][field_name] = miss
+	if mut memo := w.field_memo[receiver_type] {
+		memo[field_name] = miss
+	}
 	w.last_field_receiver = receiver_type
 	w.last_field_name = field_name
 	w.last_field = miss

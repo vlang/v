@@ -10,13 +10,6 @@ on:
       - '!**/vsl_and_vtl_compile_ci.yml'
       - 'examples/**'
       - 'cmd/tools/vrepl.v'
-  pull_request:
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/vsl_and_vtl_compile_ci.yml'
-      - 'examples/**'
-      - 'cmd/tools/vrepl.v'
 
 concurrency:
   group: vsl-vtl-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}

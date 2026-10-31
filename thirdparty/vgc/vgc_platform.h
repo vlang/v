@@ -599,7 +599,9 @@ static inline uint8_t vgc_size_class(uint32_t size) {
 // ============================================================
 // Pause / yield for spinlocks
 // ============================================================
-#if defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
+#if defined(_MSC_VER)
+  #define vgc_cpu_pause() YieldProcessor()
+#elif defined(__x86_64__) || defined(__i386__) || defined(_M_X64) || defined(_M_IX86)
   #define vgc_cpu_pause() __asm__ __volatile__("pause")
 #elif (defined(__aarch64__) || defined(_M_ARM64)) && !defined(__TINYC__)
   #define vgc_cpu_pause() __asm__ __volatile__("yield")

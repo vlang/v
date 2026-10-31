@@ -11,6 +11,7 @@ concurrency:
 
 jobs:
   debug-msvc:
+    if: github.ref == 'refs/heads/master'
     runs-on: windows-2025
     timeout-minutes: 121
     env:

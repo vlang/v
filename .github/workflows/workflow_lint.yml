@@ -12,9 +12,6 @@ on:
       - master
     paths:
       - '**.yml'
-  pull_request:
-    paths:
-      - '**.yml'
 
 concurrency:
   group: workflow-lint-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}

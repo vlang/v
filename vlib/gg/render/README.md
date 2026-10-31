@@ -2,6 +2,11 @@
 
 V implementation of sokol-gl for gg.
 
+Call `Context.destroy()` before graphics shutdown to release its vertex buffer,
+default pipelines, image, sampler, shader, and commit listener. Repeated calls are safe.
+Pipelines returned by `Context.make_pipeline()` remain owned by the caller; release
+them with `Context.destroy_pipeline()` before destroying their shaders.
+
 `Context.load_pipeline()` selects the pipeline for subsequent batches until another pipeline is
 loaded or a saved selection is restored with `Context.pop_pipeline()`. `Context.current_pipeline()`
 returns that selection so callers can save and restore it without consuming pipeline stack space.

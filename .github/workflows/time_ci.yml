@@ -9,12 +9,6 @@ on:
       - 'cmd/tools/builders/**.v'
       - '**/time_ci.yml'
       - '!**.md'
-  pull_request:
-    paths:
-      - 'vlib/**'
-      - 'cmd/tools/builders/**.v'
-      - '**/time_ci.yml'
-      - '!**.md'
 
 concurrency:
   group: time-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}

@@ -23,14 +23,6 @@ on:
       - 'doc/docs.md'
       - '**/docs_site_ci.yml'
       - '.github/docs_site_generator.patch'
-  pull_request:
-    paths:
-      - 'doc/docs.md'
-      - '**/docs_site_ci.yml'
-      - '.github/docs_site_generator.patch'
-      - '**/*.v'
-      - 'Makefile'
-      - 'GNUmakefile'
 
 # Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
 # However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
@@ -43,6 +35,7 @@ permissions:
 
 jobs:
   deploy-docs-site:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

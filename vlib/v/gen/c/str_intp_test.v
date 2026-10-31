@@ -174,8 +174,10 @@ fn main() {
 		compiled := cmdexec.run(@VEXE, args)
 		assert compiled.exit_code == 0, '${mode}: ${compiled.output}'
 		if '-parallel-cc' in mode {
-			assert compiled.output.contains('unit_0.c'), compiled.output
-			assert compiled.output.contains('unit_1.c'), compiled.output
+			// Opaque header ownership requires the single-unit fallback.
+			assert compiled.output.contains('src.c'), compiled.output
+			assert !compiled.output.contains('unit_0.c'), compiled.output
+			assert !compiled.output.contains('unit_1.c'), compiled.output
 		}
 		run := cmdexec.run(binary, [])
 		assert run.exit_code == 0, run.output

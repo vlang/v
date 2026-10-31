@@ -31,6 +31,21 @@ legacy_uint && !native_uint {
 	sub(/long long/, "i64")
 }
 
+# Snapshots retain native includes rather than embedding headers. Relocate only
+# V-owned include paths in generated C to the checkout doing the bootstrap.
+# Never open or expand the included files here.
+/^[ \t]*#[ \t]*include[ \t]+"/ && ENVIRON["V_BOOTSTRAP_VROOT"] != "" {
+	path = $0
+	sub(/^[^"]*"/, "", path)
+	sub(/".*/, "", path)
+	gsub(/\\/, "/", path)
+	if (path ~ /^(\/|[A-Za-z]:\/)/ && match(path, /\/(vlib|thirdparty|cmd)\//)) {
+		root = ENVIRON["V_BOOTSTRAP_VROOT"]
+		gsub(/\\/, "/", root)
+		$0 = substr($0, 1, index($0, "\"")) root "/" substr(path, RSTART + 1) "\""
+	}
+}
+
 # Bootstrap compatibility for vc snapshots predating the diagserver prctl guards.
 /^[ \t]*#include[ \t]+<sys\/prctl.h>[ \t]*$/ {
 	print "#if defined(__linux__) && !defined(__ANDROID__)"
