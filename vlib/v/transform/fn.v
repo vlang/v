@@ -4832,6 +4832,13 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 		}
 		if !has_smartcast
 			&& t.resolve_sum_name(t.normalize_type_alias(t.trim_pointer_type(arg_type_source_id_3))) == resolved_target_sum {
+			// A returned reference can borrow this argument past the call. Reuse
+			// ordinary scoped storage instead of a C++ full-expression temporary.
+			if !t.in_spawn_expr {
+				if stable := t.transform_pointer_rvalue_arg(arg_id, *arg_node, param_type_id) {
+					return stable
+				}
+			}
 			return t.transform_expr(arg_id)
 		}
 		if arg_node.kind == .prefix && arg_node.op == .amp && arg_node.children_count > 0 {
@@ -4851,6 +4858,11 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 			inner_type_source_id := t.node_type(inner_id)
 
 			if t.resolve_sum_name(t.normalize_type_alias(t.trim_pointer_type(inner_type_source_id))) == resolved_target_sum {
+				if !t.in_spawn_expr {
+					if stable := t.transform_pointer_rvalue_arg(arg_id, *arg_node, param_type_id) {
+						return stable
+					}
+				}
 				return t.transform_expr(arg_id)
 			}
 		}
@@ -14843,7 +14855,13 @@ fn (mut t Transformer) try_lower_smartcast_target_receiver_method_call(_call_id 
 				target_source_id := t.trim_pointer_type(t.smartcast_target_type(sc))
 
 				if aggregate_source_id := t.stringify_aggregate_type_name(target_source_id) {
-					value_ptr := t.make_prefix(.amp, args[0])
+					// Interface smartcasts already retain the concrete object's address.
+					// Only take an address when the transformed receiver is still a value.
+					value_ptr := if flat.source_type_shape(t.node_type(args[0])).has(.pointer) {
+						args[0]
+					} else {
+						t.make_prefix(.amp, args[0])
+					}
 					t.set_node_typ(int(value_ptr), flat.source_type_composition_one(.pointer, aggregate_source_id))
 					interface_expr := t.make_plain_expr_for_smartcast(base_id)
 					return t.lower_interface_smartcast_ref_str(value_ptr, interface_expr, aggregate_source_id, method_name)

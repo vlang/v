@@ -984,6 +984,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		[]int{}
 	}
 	interface_fixed_tmp := if interface_fixed_fields.len > 0 { g.tmp_name() } else { '' }
+	cpp_start := g.sb.len
 	if interface_fixed_fields.len > 0 {
 		g.write('({${name} ${interface_fixed_tmp} = ')
 	}
@@ -1178,6 +1179,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		}
 		g.write(' ${interface_fixed_tmp};})')
 	}
+	g.cpp_order_struct_initializer(cpp_start, name, lookup_name)
 }
 
 // interface_init_fixed_array_fields returns the positions of the fields of an
@@ -1554,6 +1556,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields(node flat.Node, name 
 // compound literal). When `heap`, the temp is `memdup`'d and a pointer returned,
 // for `&Struct{...}` initializers.
 fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, name string, init_module string, heap bool) {
+	cpp_start := g.sb.len
 	tmp := g.tmp_name()
 	if heap {
 		g.write('(${name}*)')
@@ -1745,6 +1748,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 	} else {
 		g.write(' ${tmp};})')
 	}
+	g.cpp_order_struct_initializer(cpp_start, name, lookup_name)
 }
 
 // gen_fixed_array_copy_source emits a `memcpy` source for assigning into a fixed
@@ -1757,7 +1761,7 @@ fn (mut g FlatGen) gen_fixed_array_copy_source(value_id flat.NodeId, field_type 
 		if fixed := array_fixed_type(field_type) {
 			literal := g.fixed_array_compound_literal_expr(value_id, fixed)
 			if trimmed_space(literal).len > 0 {
-				g.write(literal)
+				g.write(g.cpp_copy_source(literal))
 				return
 			}
 			g.gen_fixed_array_data_arg(value_id, fixed)
@@ -1935,6 +1939,7 @@ fn channel_init_field(node flat.Node, a &flat.FlatAst, name string) ?flat.NodeId
 
 // gen_heap_struct_init emits heap struct init output for c.
 fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
+	cpp_start := g.sb.len
 	canonical_value_id := g.canonical_import_alias_type_text_in_file(node.source_value_id(), g.node_source_file(&node))
 	canonical_base := flat.source_type_syntax(flat.source_type_syntax(canonical_value_id).source_wrapper_base()).generic_base()
 	if canonical_value_id != node.source_value_id() && g.exact_known_import_type_text(canonical_base) != none {
@@ -2205,6 +2210,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	} else {
 		g.write('}, sizeof(${name}))')
 	}
+	g.cpp_order_struct_initializer(cpp_start, name, lookup_name)
 }
 
 fn (g &FlatGen) struct_init_has_named_field(node flat.Node, name string) bool {
@@ -2822,6 +2828,7 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 	if clean_typ is types.Struct
 		&& (!flat.source_type_query(clean_typ.source_type_id()).has(.c_prefix) || g.struct_needs_default_init(clean_typ.source_type_id())) {
 		ct := g.tc.c_type(raw_typ)
+		cpp_start := g.sb.len
 		g.write('(${ct}){')
 		mut set_fields := map[string]bool{}
 		mut has_field := g.gen_struct_default_fields(clean_typ.source_type_id(), mut set_fields, false)
@@ -2847,6 +2854,7 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 			})
 		}
 		g.write('}')
+		g.cpp_order_struct_initializer(cpp_start, ct, sname_id)
 		return
 	}
 	ct := g.value_c_type(clean_typ)
@@ -3262,10 +3270,13 @@ fn (g &FlatGen) scalar_zero_init(c_type string) string {
 
 // StructDeclInfo stores struct decl info metadata used by c.
 struct StructDeclInfo {
-	node          flat.Node
-	node_id       int
-	module        string
-	file          string
+	node    flat.Node
+	node_id int
+	module  string
+	file    string
+	// Native ownership follows the original V declaration, while file keeps the
+	// parsed header's import context for expressions such as field defaults.
+	original_file string
 	full_name     u32
 	shared_fields []flat.NodeId
 }
@@ -6800,6 +6811,7 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 		}
 		if name_id := flat.source_type_existing_id(name) {
 			if info := g.struct_decl_infos[name_id] {
+				source_file := info.c_source_file()
 				// Headerless vlib bindings supply their own complete C layouts.
 				// Keep externally supplied types opaque when headers own their definitions.
 				// A c_struct_header_guards type is V's to lay out: the generated C includes its
@@ -6807,8 +6819,8 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 				// unless the program's C can follow the type block, where the guard cannot see a
 				// header it includes; such a program keeps this rule (can_emit_c_after_types).
 				if !(name in c_struct_header_guards && !g.can_emit_c_after_types())
-					&& (info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file))
-					&& (g.c_directives_use_system_libc() || !g.c_source_file_is_in_vlib(info.file)) {
+					&& (source_file.ends_with('.c.v') || c_source_looks_header_backed(source_file))
+					&& (g.c_directives_use_system_libc() || !g.c_source_file_is_in_vlib(source_file)) {
 					return true
 				}
 			}
@@ -6991,6 +7003,10 @@ fn c_source_looks_header_backed(path string) bool {
 		}
 	}
 	return false
+}
+
+fn (info &StructDeclInfo) c_source_file() string {
+	return if info.original_file.len > 0 { info.original_file } else { info.file }
 }
 
 fn (g &FlatGen) struct_decl_head(name string) string {
@@ -7804,7 +7820,8 @@ fn (g &FlatGen) header_c_struct_needs_compat_typedef(name string) bool {
 		return true
 	}
 	if info := g.struct_decl_infos[flat.source_type_id(name)] {
-		return info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file)
+		source_file := info.c_source_file()
+		return source_file.ends_with('.c.v') || c_source_looks_header_backed(source_file)
 	}
 	return false
 }
@@ -7877,7 +7894,8 @@ fn (g &FlatGen) soa_companion_has_c_typedef(soa_name string) bool {
 		return true
 	}
 	if info := g.struct_decl_infos[c_decl_id] {
-		return info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file)
+		source_file := info.c_source_file()
+		return source_file.ends_with('.c.v') || c_source_looks_header_backed(source_file)
 	}
 	return false
 }

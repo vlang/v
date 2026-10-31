@@ -1,0 +1,22 @@
+diff --git a/build_whole_project.sh b/build_whole_project.sh
+index 821fdb0..155897b 100755
+--- a/build_whole_project.sh
++++ b/build_whole_project.sh
+@@ -27,13 +27,16 @@ cd $DOOM_FOLDER/chocolate-doom/src/doom ;
+ ## compile the produced V source code to an .o file that can be linked to the rest:
+ v -cc $CC -o doom_v/doom.o -w -translated doom_v/
+ 
++# The V object uses its compiler's default Boehm collector.
++DOOM_VROOT="$(v -e 'println(@VEXEROOT)')"
+ $CC -o doomv \
+   $DOOM_FOLDER/chocolate-doom/src/CMakeFiles/chocolate-doom.dir/*.o \
+   $DOOM_FOLDER/chocolate-doom/textscreen/CMakeFiles/textscreen.dir/*.o \
+   $DOOM_FOLDER/chocolate-doom/pcsound/CMakeFiles/pcsound.dir/*.o \
+   $DOOM_FOLDER/chocolate-doom/opl/CMakeFiles/opl.dir/*.o \
+   $DOOM_FOLDER/chocolate-doom/src/doom/doom_v/doom.o \
+-  $(sdl2-config --libs) -lSDL2_mixer -lSDL2_net -lpng -lsamplerate -lm
++  "$DOOM_VROOT/thirdparty/tcc/lib/libgc.a" \
++  $(sdl2-config --libs) -lSDL2_mixer -lSDL2_net -lpng -lsamplerate -lm -lpthread -ldl
+ 
+ cp $WAD_FILE .
+ 

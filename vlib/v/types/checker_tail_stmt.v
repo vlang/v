@@ -5237,7 +5237,9 @@ fn (tc &TypeChecker) struct_init_has_positional_fields(node flat.Node) bool {
 
 fn (tc &TypeChecker) distinct_alias_primitive_mismatch(actual &Type, expected &Type) bool {
 	if actual is Alias && unalias_type(expected) is Primitive {
-		return actual.base_type.source_type_id() != unalias_type(expected).source_type_id()
+		// Compare the primitive at the end of both alias chains, not an
+		// intermediate alias name against the expected primitive.
+		return unalias_type(actual).source_type_id() != unalias_type(expected).source_type_id()
 	}
 	return false
 }
@@ -21768,7 +21770,7 @@ fn (tc &TypeChecker) resolve_index_type(node flat.Node) Type {
 		return generic_fn_type
 	}
 	base_id := tc.a.child(&node, 0)
-	base_type0 := tc.resolve_type(base_id)
+	mut base_type0 := tc.resolve_type(base_id)
 	if node.value == 'range' {
 		if sliced_alias := range_slice_alias_type(base_type0) {
 			return sliced_alias
@@ -21780,7 +21782,10 @@ fn (tc &TypeChecker) resolve_index_type(node flat.Node) Type {
 		// and indexing it indexes that value: `word[0]` is a byte of the string.
 		if mut_base := tc.mut_param_expr_base(base_id, base_type0) {
 			if unalias_type(mut_base) !is Pointer {
-				base_type = unalias_type(mut_base)
+				// unalias_type can return its argument; retain the value outside
+				// this optional-binding scope before keeping a reference to it.
+				base_type0 = mut_base
+				base_type = unalias_type(base_type0)
 			}
 		}
 	}

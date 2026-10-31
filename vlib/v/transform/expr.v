@@ -4912,10 +4912,12 @@ fn (mut t Transformer) mark_prelude_helper_callees(helper string) {
 		}
 		'v3_map_str', 'v3_map_str_piece' {
 			// The map formatter has a branch for every scalar kind, whatever the
-			// map's own key and value types are.
+			// map's own key and value types are, except floats in -nofloat builds.
 			t.mark_fn_used('i64.str')
 			t.mark_fn_used('u64.str')
-			t.mark_fn_used('f64.str')
+			if !t.tc.nofloat {
+				t.mark_fn_used('f64.str')
+			}
 			t.mark_fn_used('rune.str')
 		}
 		'v3_char_string' {
