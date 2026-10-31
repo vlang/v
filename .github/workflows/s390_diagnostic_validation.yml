@@ -1,0 +1,244 @@
+name: s390x compiler crash diagnosis
+'on':
+  push:
+    branches:
+    - ci/diagnose-s390x-20261031
+concurrency:
+  group: s390-diagnostics-${{ github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+  packages: write
+jobs:
+  s390x_linux:
+    if: github.repository == 'vlang/v' && github.ref == 'refs/heads/ci/diagnose-s390x-20261031'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+    - name: Run bounded probes in the original s390x environment
+      uses: uraimo/run-on-arch-action@1e2c619f81e6d8609845ea1d2f443a778df1ac68
+      with:
+        arch: s390x
+        distro: ubuntu22.04
+        base_image: --platform=linux/s390x s390x/ubuntu:22.04
+        githubToken: ${{ github.token }}
+        shell: /bin/bash
+        install: |
+          apt-get update -q -y
+          apt-get install -q -y make gcc git file coreutils binutils
+        run: |+
+          set +e
+          set -u -o pipefail
+          s390_repo="$PWD"
+          s390_diag="$s390_repo/s390-diagnostics"
+          s390_tmp="$s390_repo/.s390-diagnostic-tmp"
+          s390_tool_cache="$s390_repo/.s390-diagnostic-tools"
+          s390_deadline=$((SECONDS + 6000))
+          s390_failed=0
+          s390_core_count=0
+          s390_note_bytes=0
+          s390_note_count=0
+          s390_first_sigill=()
+          mkdir -p "$s390_diag/bin" "$s390_diag/runs" "$s390_diag/generated" "$s390_tmp"
+          printf 'probe\texit_status\n' > "$s390_diag/status.tsv"
+
+          collect_cores() {
+            local label="$1" core kind offset vaddr paddr size rest prefix segment
+            local candidates=()
+            mkdir -p "$s390_diag/runs/$label"
+            for core in "$s390_repo"/core "$s390_repo"/core.[0-9]* "$s390_repo"/qemu_*.core; do
+              [ -f "$core" ] && candidates+=("$core")
+            done
+            while IFS= read -r -d '' core; do candidates+=("$core"); done < <(
+              find "$s390_diag/bin" "$s390_tmp" "$s390_tool_cache" -type f \
+                \( -name core -o -name 'core.[0-9]*' -o -name '*.core' \) -print0 2>/dev/null
+            )
+            for core in "${candidates[@]}"; do
+              [ -f "$core" ] || continue
+              s390_core_count=$((s390_core_count + 1))
+              prefix="$s390_diag/runs/$label/core_note_$s390_core_count"
+              printf '%s\n' "$core" > "$prefix.source.txt"
+              readelf -W -h -l -n "$core" 2>&1 | head -c 1048576 > "$prefix.readelf.txt"
+              segment=0
+              while read -r kind offset vaddr paddr size rest; do
+                [ "$kind" = NOTE ] || continue
+                [[ "$offset" =~ ^0x[0-9a-fA-F]+$ && "$size" =~ ^0x[0-9a-fA-F]+$ ]] || continue
+                offset=$((offset))
+                size=$((size))
+                if [ "$size" -le 0 ] || [ "$size" -gt 1048576 ] || \
+                   [ "$s390_note_count" -ge 32 ] || [ $((s390_note_bytes + size)) -gt 8388608 ]; then
+                  printf 'ELF note omitted by limit: %s offset=%s size=%s\n' "$core" "$offset" "$size" >> "$s390_diag/note-limits.log"
+                  continue
+                fi
+                segment=$((segment + 1))
+                dd if="$core" of="$prefix.segment_$segment.bin" bs=64K \
+                  iflag=skip_bytes,count_bytes skip="$offset" count="$size" status=none
+                s390_note_count=$((s390_note_count + 1))
+                s390_note_bytes=$((s390_note_bytes + size))
+                printf '%s\t%s\t%s\n' "$segment" "$offset" "$size" >> "$prefix.segments.tsv"
+              done < <(readelf -W -l "$core" 2>/dev/null)
+              # Never upload process memory; only the bounded PT_NOTE records are retained.
+              rm -f -- "$core"
+            done
+          }
+
+          run_probe() {
+            local label="$1" limit="$2" remaining status
+            shift 2
+            mkdir -p "$s390_diag/runs/$label"
+            printf '%q ' "$@" > "$s390_diag/runs/$label/command.txt"
+            printf '\n' >> "$s390_diag/runs/$label/command.txt"
+            remaining=$((s390_deadline - SECONDS))
+            if [ "$remaining" -le 0 ]; then
+              printf '%s\t125\n' "$label" >> "$s390_diag/status.tsv"
+              s390_failed=1
+              return
+            fi
+            [ "$limit" -le "$remaining" ] || limit="$remaining"
+            echo "PROBE: $label (limit ${limit}s)"
+            (ulimit -c 65536; timeout --signal=TERM --kill-after=30s "$limit" "$@") \
+              > "$s390_diag/runs/$label/output.log" 2>&1
+            status=$?
+            printf '%s\t%s\n' "$label" "$status" >> "$s390_diag/status.tsv"
+            printf '%s\n' "$status" > "$s390_diag/runs/$label/exit-status.txt"
+            tail -n 70 "$s390_diag/runs/$label/output.log"
+            if [ "$status" -ne 0 ]; then s390_failed=1; fi
+            if [ "$status" -eq 132 ] && [ "${#s390_first_sigill[@]}" -eq 0 ]; then
+              s390_first_sigill=("$@")
+              printf '%s\n' "$label" > "$s390_diag/first-sigill.txt"
+            fi
+            collect_cores "$label"
+          }
+
+          collect_artifacts() {
+            trap - EXIT
+            set +e
+            local source size saved count=0 total=0 binary symbol
+            collect_cores final
+            while IFS= read -r -d '' source; do
+              size=$(stat -c %s "$source")
+              if [ "$count" -ge 24 ] || [ $((total + size)) -gt 134217728 ]; then
+                printf 'Generated C omitted by artifact limit: %s (%s bytes)\n' "$source" "$size" >> "$s390_diag/source-limits.log"
+                continue
+              fi
+              count=$((count + 1))
+              total=$((total + size))
+              saved=$(printf '%02d_%s' "$count" "$(basename "$source")")
+              cp "$source" "$s390_diag/generated/$saved"
+              printf '%s\t%s\n' "$saved" "$source" >> "$s390_diag/generated/sources.tsv"
+            done < <(find "$s390_tmp" "$s390_diag/bin" -type f -name '*.c' -print0)
+            if [ -d "$s390_tool_cache" ]; then
+              while IFS= read -r -d '' binary; do
+                cp "$binary" "$s390_diag/bin/vtest-cached"
+                break
+              done < <(find "$s390_tool_cache" -type f -name vtest -print0)
+            fi
+            for binary in "$s390_diag/bin"/*; do
+              [ -f "$binary" ] || continue
+              file "$binary" | grep -q 'ELF' || continue
+              readelf -h -l -d -n "$binary" > "$binary.elf.txt" 2>&1
+              nm -n "$binary" > "$binary.symbols.txt" 2>&1
+              for symbol in main main__main main__exec_cached_tool GC_init; do
+                objdump -d --disassemble="$symbol" "$binary" > "$binary.$symbol.disassembly.txt" 2>&1
+              done
+            done
+            chmod -R a+rX "$s390_diag"
+            cat "$s390_diag/status.tsv"
+          }
+          trap collect_artifacts EXIT
+
+          {
+            uname -a
+            make --version
+            gcc --version
+            gcc -Q --help=target
+            cat /proc/sys/kernel/core_pattern
+            cat /proc/sys/fs/binfmt_misc/qemu-s390x 2>/dev/null
+            git rev-parse HEAD
+          } > "$s390_diag/environment.log" 2>&1
+          run_probe bootstrap 2700 make
+          if [ ! -x ./v ] || [ "$(cat "$s390_diag/runs/bootstrap/exit-status.txt" 2>/dev/null)" != 0 ]; then
+            exit 1
+          fi
+          cp ./v "$s390_diag/bin/v.compiler"
+          {
+            file ./v
+            ls -l ./v thirdparty/tcc/lib/libgc.a
+            if [ -f thirdparty/tcc/.git/vlang-compatible-tcc/metadata ]; then
+              cat thirdparty/tcc/.git/vlang-compatible-tcc/metadata
+            fi
+            if [ -f thirdparty/tcc/lib/libgc.a ]; then ar t thirdparty/tcc/lib/libgc.a; fi
+          } > "$s390_diag/bootstrap-inventory.log" 2>&1
+
+          # Keep the original strict compiler routing; use isolated output locations only.
+          export V_MACOS_V3_NO_FALLBACK=1
+          export VJOBS=1
+          export VTMP="$s390_tmp"
+          export VTOOLS_CACHE_DIR="$s390_tool_cache"
+          export VTOOLS_CACHE_VERBOSE=1
+          cat > "$s390_diag/smoke.v" <<'V'
+          fn main() {
+              values := [1, 2, 3]
+              assert values[1] == 2
+              println('s390 smoke passed')
+          }
+          V
+          cat > "$s390_diag/smoke_test.v" <<'V'
+          fn test_s390_smoke() {
+              values := [1, 2, 3]
+              assert values[1] == 2
+          }
+          V
+
+          run_probe compiler-version 60 "$s390_repo/v" -version
+          # Preserve the launcher route before the direct builds can warm its inputs.
+          run_probe cached-launcher-original 900 "$s390_repo/v" test "$s390_diag/smoke_test.v"
+          for mode in none default; do
+            gc_flags=()
+            if [ "$mode" = none ]; then gc_flags=(-gc none); fi
+            run_probe "smoke-$mode-compile" 300 "$s390_repo/v" -cc cc -showcc -keepc \
+              "${gc_flags[@]}" -o "$s390_diag/bin/smoke-$mode" "$s390_diag/smoke.v"
+            if [ -x "$s390_diag/bin/smoke-$mode" ]; then
+              run_probe "smoke-$mode-run" 30 "$s390_diag/bin/smoke-$mode"
+            fi
+          done
+          for mode in none default; do
+            gc_flags=()
+            if [ "$mode" = none ]; then gc_flags=(-gc none); fi
+            run_probe "vtest-$mode-compile" 900 "$s390_repo/v" -cc cc -showcc -keepc \
+              "${gc_flags[@]}" -o "$s390_diag/bin/vtest-$mode" "$s390_repo/cmd/tools/vtest.v"
+            if [ -x "$s390_diag/bin/vtest-$mode" ]; then
+              run_probe "vtest-$mode-startup" 60 "$s390_diag/bin/vtest-$mode" test
+              run_probe "vtest-$mode-smoke" 300 env VEXE="$s390_repo/v" \
+                "$s390_diag/bin/vtest-$mode" -cc cc -showcc -keepc "${gc_flags[@]}" test "$s390_diag/smoke_test.v"
+            fi
+          done
+
+          # Replay only the first SIGILL for a syscall tail, never instruction tracing.
+          if [ "${#s390_first_sigill[@]}" -gt 0 ] && [ "$SECONDS" -lt "$s390_deadline" ]; then
+            trace_limit=$((s390_deadline - SECONDS))
+            [ "$trace_limit" -le 180 ] || trace_limit=180
+            (ulimit -c 0; timeout --signal=TERM --kill-after=30s "$trace_limit" \
+              env QEMU_STRACE=1 "${s390_first_sigill[@]}") 2>&1 | \
+              tail -c 8388608 > "$s390_diag/first-sigill-strace.tail.log"
+            trace_status=${PIPESTATUS[0]}
+            printf 'first-sigill-strace\t%s\n' "$trace_status" >> "$s390_diag/status.tsv"
+          fi
+          exit "$s390_failed"
+
+    - name: Preserve diagnostic evidence
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: s390x-compiler-diagnostics
+        path: |
+          s390-diagnostics
+          !s390-diagnostics/**/core
+          !s390-diagnostics/**/core.[0-9]*
+          !s390-diagnostics/**/*.core
+        if-no-files-found: warn
+        retention-days: 7
+        compression-level: 1
