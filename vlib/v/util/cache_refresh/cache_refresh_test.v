@@ -765,6 +765,10 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 				}
 				result := os.exec(command)
 				assert result.exit_code == 0, result.output
+				if show_asserts && !through_vtest {
+					assert result.output.contains(' | main.test_selected_one()'), result.output
+					assert result.output.contains(' | main.test_selected_two()'), result.output
+				}
 				flags << ['-run-only', selector]
 				test_builds << flags
 				assert_modes << show_asserts
@@ -806,7 +810,10 @@ fn test_refresh_rebuilds_changed_vlib_dependencies_for_each_compiler_and_mode() 
 	// Compiler aliases can share a configuration and restore its program before
 	// reaching the inventory writer; its existing record already covers the cache.
 	assert requests.len >= 2 && requests.len <= (builds.len * 2 + test_builds.len) * 2, requests.str()
+	// Assertion statistics compile instrumented test bodies without the module cache.
+	assert !requests.any(it.is_test && it.show_test_stats), requests.str()
 	for index, flags in test_builds {
+		if assert_modes[index] { continue }
 		selector := flags[flags.index('-run-only') + 1]
 		assert requests.any(it.is_test && it.show_test_stats == assert_modes[index] && selector in it.args && ('-prod' in flags) == ('-prod' in it.args)), flags.str()
 	}
