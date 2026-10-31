@@ -5374,6 +5374,7 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	mut cur_module := 'main'
 	mut cur_file := ''
 	mut seen_import_in_file := false
+	mut cached_c_struct_sources := map[string]string{}
 	mut nonshared_fn_short_names := []string{cap: 1024}
 	mut nonshared_fn_modules := []string{cap: 1024}
 	mut fn_node_regs := []FnDeclNodeReg{cap: 16_384}
@@ -5417,6 +5418,11 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 		}
 		if kind_id == 77 {
 			cur_file = node.value
+			cached_c_struct_sources = if cur_file in g.a.cached_header_sources {
+				modulecache.header_c_struct_sources(os.read_file(cur_file) or { '' })
+			} else {
+				map[string]string{}
+			}
 			g.note_compiler_source_file(node.value)
 			cur_module = 'main'
 			g.tc.cur_module = cur_module
@@ -5553,7 +5559,8 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 			full_name := qualify_name_in_module(cur_module, node.value)
 			g.tc.cur_file = cur_file
 			g.tc.cur_module = cur_module
-			g.register_struct_decl_info_at(node_idx, node.value, full_name, cur_module, cur_file, node)
+			original_file := cached_c_struct_sources[node.value] or { cur_file }
+			g.register_struct_decl_info_at(node_idx, node.value, full_name, cur_module, cur_file, original_file, node)
 			continue
 		}
 		if kind_id == 64 {
@@ -12740,10 +12747,10 @@ fn (mut g FlatGen) index_c_decl_attributes(target_idx int, module_name string, a
 
 // register_struct_decl_info updates register struct decl info state for c.
 fn (mut g FlatGen) register_struct_decl_info(name string, full_name string, module_name string, source_file string, node flat.Node) {
-	g.register_struct_decl_info_at(-1, name, full_name, module_name, source_file, node)
+	g.register_struct_decl_info_at(-1, name, full_name, module_name, source_file, source_file, node)
 }
 
-fn (mut g FlatGen) register_struct_decl_info_at(node_id int, name string, full_name string, module_name string, source_file string, node flat.Node) {
+fn (mut g FlatGen) register_struct_decl_info_at(node_id int, name string, full_name string, module_name string, source_file string, original_file string, node flat.Node) {
 	// These declarations are immutable during codegen. Most structs have no
 	// shared fields, so avoid rescanning their ordinary fields at every selector.
 	mut shared_fields := []flat.NodeId{}
@@ -12759,6 +12766,7 @@ fn (mut g FlatGen) register_struct_decl_info_at(node_id int, name string, full_n
 		node_id:       node_id
 		module:        module_name
 		file:          source_file
+		original_file: original_file
 		full_name:     flat.source_type_id(full_name)
 		shared_fields: shared_fields
 	}
