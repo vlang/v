@@ -147,6 +147,9 @@ fn test_windows_pch_flags_configure_sdk() {
 	assert v3_windows_pch_flags_configure_sdk(['-Xpreprocessor', '-DWIN32_FULL'])
 	assert v3_windows_pch_flags_configure_sdk(['-Xclang', '-DWIN32_FULL'])
 	assert v3_windows_pch_flags_configure_sdk(['@flags.rsp'])
+	// The guards of the prelude test _WIN32, which the predefined macros provide.
+	assert v3_windows_pch_flags_configure_sdk(['-U_WIN32'])
+	assert v3_windows_pch_flags_configure_sdk(['-undef'])
 	assert !v3_windows_pch_flags_configure_sdk(['-DWIN32_FULLER'])
 	assert !v3_windows_pch_flags_configure_sdk(['-DGC_THREADS=1', '-I', 'x', '-D'])
 }

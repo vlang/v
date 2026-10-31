@@ -51,11 +51,12 @@ const v3_windows_pch_includes = [
 // unit has to define each of them, as the header does, before its first include.
 const v3_windows_pch_defines = ['UNICODE', '_UNICODE', 'WIN32_LEAN_AND_MEAN']
 
-// The macros of the prelude that the SDK headers read, with the one that turns
-// the WIN32_LEAN_AND_MEAN guard of the generator off: a compile flag that sets
-// or unsets any of them configures the headers differently from the prelude.
+// The macros of the prelude that the SDK headers read, with the ones the
+// generator's guards test (WIN32_FULL turns the WIN32_LEAN_AND_MEAN guard off,
+// _WIN32 every guard): a compile flag that sets or unsets any of them
+// configures the headers differently from the prelude.
 const v3_windows_pch_sdk_macros = ['UNICODE', '_UNICODE', 'WIN32_LEAN_AND_MEAN', 'WIN32_FULL',
-	'PSAPI_VERSION']
+	'PSAPI_VERSION', '_WIN32']
 
 const v3_windows_pch_format = 'v3-windows-pch-v1'
 
@@ -175,7 +176,7 @@ fn v3_windows_pch_guard_of(directive string, name string) bool {
 fn v3_windows_pch_flags_configure_sdk(args []string) bool {
 	for i, arg in args {
 		if arg.starts_with('-include') || arg.starts_with('-imacros') || arg.starts_with('-Wp,')
-			|| arg.starts_with('@') || arg in ['-Xpreprocessor', '-Xclang'] {
+			|| arg.starts_with('@') || arg in ['-Xpreprocessor', '-Xclang', '-undef'] {
 			return true
 		}
 		mut macro := ''
