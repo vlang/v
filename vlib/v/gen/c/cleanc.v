@@ -20070,6 +20070,11 @@ fn (mut g FlatGen) preamble() {
 		g.writeln('#endif')
 	}
 	g.platform_int_typedefs()
+	// Older TinyCC bundles do not predeclare alloca. Its implicit int return
+	// truncates the stack address used for over-aligned local values on 64-bit hosts.
+	g.writeln('#ifdef __TINYC__')
+	g.writeln('void* alloca(size_t);')
+	g.writeln('#endif')
 	if !use_system_libc && !g.target_libc_headers {
 		g.writeln('#if !defined(_TIME_T) && !defined(_TIME_T_DEFINED) && !defined(__time_t_defined) && !defined(_BSD_TIME_T_DEFINED_) && !defined(_TIME_T_DECLARED)')
 		g.writeln('typedef long long time_t;')
