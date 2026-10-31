@@ -770,6 +770,11 @@ fn test_prod_refuses_tinycc_under_another_name_once_it_resolves() {
 	// The name has no `tcc`, so only the resolved compiler gives it away.
 	alias_path := os.join_path(dir, 'cc_alias.exe')
 	os.cp(bundled, alias_path) or { panic(err) }
+	// Shared TinyCC builds need their adjacent DLL even to print the version.
+	libtcc := os.join_path(os.dir(bundled), 'libtcc.dll')
+	if os.is_file(libtcc) {
+		os.cp(libtcc, os.join_path(dir, 'libtcc.dll')) or { panic(err) }
+	}
 	source := os.join_path(dir, 'main.v')
 	os.write_file(source, 'fn main() {\n\tprintln(1)\n}\n') or { panic(err) }
 	// `-old-compiler` must refuse the alias too, before the compatibility compiler is started.
