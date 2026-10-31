@@ -167,7 +167,7 @@ pub fn serve() Request {
 	work_dir := os.getwd()
 	// A child that ended between two queries closed the pipe the server sends
 	// the next one to: writing there must not end the server.
-	C.signal(C.SIGPIPE, C.SIG_IGN)
+	unsafe { C.signal(C.SIGPIPE, C.SIG_IGN) }
 	// What a check leaves for the next check of the program, in a file that
 	// every child sees and that ends with the server.
 	record_fd := if shares_children {
@@ -242,7 +242,7 @@ pub fn serve() Request {
 			}
 			// The client reads a single stream: diagnostics go where the answer goes.
 			C.dup2(1, 2)
-			C.signal(C.SIGPIPE, C.SIG_DFL)
+			unsafe { C.signal(C.SIGPIPE, C.SIG_DFL) }
 			// Nobody reads what a child prints once the server is gone. The kernel
 			// ends the child with the server only if the server is still there when
 			// the child asks: one that ended since the fork left the child to another
