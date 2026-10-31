@@ -11696,7 +11696,7 @@ pub fn run(args []string) {
 			bin_file) {
 			$if windows {
 				if target.os == 'windows' {
-					ensure_windows_long_path_manifest(bin_file, c_compiler_is_msvc(c_compiler), verbose || show_cc)
+					ensure_windows_long_path_manifest(bin_file, c_compiler_is_msvc(c_compiler), verbose || show_cc, verbose || show_cc)
 				}
 			}
 			if os.getenv('V3_CACHE_TRACE') != '' {
@@ -16390,7 +16390,7 @@ Please install the corresponding development package/libraries and make sure the
 			// MSVC's startup dbghelp.dll hangs with a long TMP in a longPathAware
 			// process, before V can shorten it, so leave its manifest unchanged.
 			if target.os == 'windows' && !is_o && !is_shared {
-				ensure_windows_long_path_manifest(bin_file, c_compiler_is_msvc(c_compiler), verbose || show_cc || cc_dir_moved)
+				ensure_windows_long_path_manifest(bin_file, c_compiler_is_msvc(c_compiler), verbose || show_cc || cc_dir_moved, verbose || show_cc)
 			}
 		}
 
