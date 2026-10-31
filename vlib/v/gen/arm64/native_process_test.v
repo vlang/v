@@ -69,6 +69,7 @@ fn main() {
 	assert result.exit_code == 0, result.output
 }
 
+@[unsafe]
 fn test_native_process_capture_preserves_output_arguments_exit_status_and_errors() {
 	$if macos && arm64 {
 		path := os.join_path(os.vtmp_dir(), 'arm64_process_capture_${os.getpid()}.v')

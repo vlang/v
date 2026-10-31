@@ -400,6 +400,7 @@ fn test_option_c_struct_gen() {
 // For issue #16062: checker disallowed the return of voidptr(nil) in or block
 struct Bar {}
 
+@[unsafe]
 fn get_bar(should_return_value bool) ?&Bar {
 	if should_return_value {
 		return unsafe { nil }
@@ -407,6 +408,7 @@ fn get_bar(should_return_value bool) ?&Bar {
 	return none
 }
 
+@[unsafe]
 fn test_allow_returning_an_optional_pointer_to_a_struct() {
 	a := get_bar(true)?
 	assert a == unsafe { nil }

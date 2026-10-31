@@ -11,6 +11,7 @@ mut:
 	last_valid bool
 }
 
+@[unsafe]
 fn scratch_type_name_lookup_cache(cache &TypeNameLookupCache) &TypeNameLookupCache {
 	if isnil(cache) {
 		return unsafe { nil }

@@ -16,6 +16,7 @@ fn x11_alias_build_v3() string {
 	return v3_bin
 }
 
+@[unsafe]
 fn x11_alias_write_project() string {
 	root := os.join_path(os.temp_dir(), 'v3_x11_alias_${os.getpid()}')
 	os.rmdir_all(root) or {}

@@ -3,6 +3,7 @@ module sqlite
 const sqlite_text = 3
 const sqlite_null = 5
 
+@[unsafe]
 fn C.sqlite3_bind_null(&C.sqlite3_stmt, i32) i32
 fn C.sqlite3_bind_double(&C.sqlite3_stmt, i32, f64) i32
 fn C.sqlite3_bind_int(&C.sqlite3_stmt, i32, i32) i32
@@ -77,6 +78,7 @@ fn (stmt &Stmt) get_f64(idx int) ?f64 {
 	}
 }
 
+@[unsafe]
 fn (stmt &Stmt) get_text(idx int) ?string {
 	if C.sqlite3_column_type(stmt.stmt, idx) == sqlite_null {
 		return none

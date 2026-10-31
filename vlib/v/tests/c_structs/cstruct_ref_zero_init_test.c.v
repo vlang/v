@@ -9,6 +9,7 @@ mut:
 	private_data voidptr
 }
 
+@[unsafe]
 fn test_c_struct_zero_init_with_ref_fields() {
 	s := C.MyRefStruct{}
 	assert s.format == unsafe { nil }

@@ -593,6 +593,7 @@ typedef struct {
 	return os.read_file(bin_out + '.c') or { panic(err) }
 }
 
+@[unsafe]
 fn directive_order_gen_c_unresolved_system_include(v3_bin string) string {
 	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_unresolved_system_include_project')
 	os.rmdir_all(root) or {}
@@ -780,6 +781,7 @@ fn main() {
 	return os.read_file(c_out) or { panic(err) }
 }
 
+@[unsafe]
 fn directive_order_gen_c_sdk_timerfd_header(v3_bin string) string {
 	root := os.join_path(directive_order_temp_dir(), 'v3_c_directive_order_timerfd_project')
 	os.rmdir_all(root) or {}

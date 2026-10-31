@@ -697,6 +697,7 @@ fn windows_gui_stdio_setup(force_console bool) string {
 	return '\tBOOL con_valid = FALSE;\n' + console_setup + '\tFILE* res_fp = 0;\n' + '\terrno_t err;\n' + '\tif (con_valid) {\n' + '\t\terr = freopen_s(&res_fp, "CON", "w", stdout);\n' + '\t\terr = freopen_s(&res_fp, "CON", "w", stderr);\n' + '\t} else {\n' + '\t\terr = freopen_s(&res_fp, "NUL", "w", stdout);\n' + '\t\terr = freopen_s(&res_fp, "NUL", "w", stderr);\n' + '\t}\n' + '\t(void)err;'
 }
 
+@[unsafe]
 fn (mut g FlatGen) c_main_declaration(force_main_console bool) string {
 	if g.target.os != 'windows' {
 		return 'int main(int argc, char** argv) {'
@@ -11805,6 +11806,7 @@ fn (g &FlatGen) call_declared_return_type_text(id flat.NodeId, node flat.Node) ?
 
 // current_param_is_mut returns true when a current param originated from `mut name T`
 // and the identifier still resolves to that parameter (not a shadowing local).
+@[unsafe]
 fn (g &FlatGen) current_param_is_mut(name string) bool {
 	if g.cur_mut_params.len == 0 {
 		return false
@@ -11826,6 +11828,7 @@ fn (g &FlatGen) current_param_is_mut_pointer(name string) bool {
 	return g.current_param_is_mut(name) && (g.cur_mut_pointer_params[name] or { false })
 }
 
+@[unsafe]
 fn (g &FlatGen) current_mut_param_binding_is_shadowed(name string) bool {
 	if g.cur_mut_params.len == 0 {
 		return false
@@ -12139,6 +12142,7 @@ fn c_fn_lookup_has_explicit_name(name string, fallback string) bool {
 		|| fallback.contains('C__')
 }
 
+@[unsafe]
 fn (g &FlatGen) module_c_fn_param_types(name string, fallback string) ?[]types.Type {
 	if g.tc == unsafe { nil } || !c_fn_lookup_has_explicit_name(name, fallback) {
 		return none
@@ -12158,6 +12162,7 @@ fn (g &FlatGen) module_c_fn_param_types(name string, fallback string) ?[]types.T
 	return none
 }
 
+@[unsafe]
 fn (g &FlatGen) module_c_fn_variadic(name string, fallback string) ?bool {
 	if g.tc == unsafe { nil } {
 		return none
@@ -12221,6 +12226,7 @@ fn (g &FlatGen) fn_decl_variadic_entry(name string) ?bool {
 	return none
 }
 
+@[unsafe]
 fn (g &FlatGen) import_resolved_fn_decl_variadic(name string) ?bool {
 	if !name.contains('.') {
 		return none
@@ -12241,6 +12247,7 @@ fn (g &FlatGen) import_resolved_fn_decl_variadic(name string) ?bool {
 	return none
 }
 
+@[unsafe]
 fn (g &FlatGen) local_or_unique_short_fn_decl_variadic(name string) ?bool {
 	if g.tc != unsafe { nil } {
 		module_key := fn_decl_module_key(g.tc.cur_module, name)

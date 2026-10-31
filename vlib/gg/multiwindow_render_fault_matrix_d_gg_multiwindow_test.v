@@ -2590,6 +2590,7 @@ fn multiwindow_assert_desc_semantically_equal[T](actual_bytes []u8, expected &T)
 	assert actual == *expected
 }
 
+@[unsafe]
 fn multiwindow_fault_matrix_sampler_desc_snapshot(desc gfx.SamplerDesc) MultiWindowSamplerDescSnapshot {
 	return MultiWindowSamplerDescSnapshot{
 		start_canary:        desc._start_canary

@@ -1015,6 +1015,7 @@ fn test_scratch_lookup_caches_keep_batch_entries_out_of_the_generator() {
 
 // test_scratch_lookup_caches_leave_disabled_caches_disabled keeps the swap about
 // where entries are written, never about whether a generator memoizes at all.
+@[unsafe]
 fn test_scratch_lookup_caches_leave_disabled_caches_disabled() {
 	mut g := FlatGen.new()
 	g.import_type_cache = unsafe { nil }
@@ -1393,6 +1394,7 @@ fn test_local_c_function_shadow_tracks_current_calls() {
 	assert !g.local_name_shadows_c_function('malloc')
 }
 
+@[unsafe]
 fn test_ident_function_value_keeps_local_type_precedence_and_void_fallback() {
 	mut a := flat.FlatAst.new()
 	id := a.add_val(.ident, 'handler')
@@ -1542,6 +1544,7 @@ fn test_referenced_c_struct_type_operands_preserve_ast_and_checker_context() {
 	}
 }
 
+@[unsafe]
 fn ordinary_local_ident_output(name string, mode string, fast bool) string {
 	mut a := flat.FlatAst.new()
 	id := a.add_val(.ident, name)
@@ -1592,6 +1595,7 @@ fn test_ordinary_local_ident_keeps_storage_rename_and_placeholder_output() {
 	}
 }
 
+@[unsafe]
 fn test_ordinary_local_ident_ignores_outer_binding_storage_and_unrelated_c_calls() {
 	mut a := flat.FlatAst.new()
 	id := a.add_val(.ident, 'value')
@@ -1627,6 +1631,7 @@ fn test_ordinary_local_ident_ignores_outer_binding_storage_and_unrelated_c_calls
 	assert g.ordinary_local_cname('value', inner)? == 'value'
 }
 
+@[unsafe]
 fn test_local_name_exceptions_preserve_raw_and_emitted_names_and_rebuilds() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

@@ -9,6 +9,7 @@ pub fn mm_pages(size u64) u32 {
 	return u32(pages)
 }
 
+@[unsafe]
 pub fn mm_alloc(size u64) (&u8, Errno) {
 	pages := mm_pages(size)
 	n_bytes := u64(pages * u32(Linux_mem.page_size))

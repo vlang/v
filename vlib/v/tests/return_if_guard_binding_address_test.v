@@ -43,14 +43,17 @@ fn overwrite_stack() int {
 	return filler[7]
 }
 
+@[unsafe]
 fn option_binding(v int) &Counter {
 	return if x := maybe_counter(v) { &x } else { &Counter(unsafe { nil }) }
 }
 
+@[unsafe]
 fn result_binding(v int) &Counter {
 	return if x := checked_counter(v) { &x } else { &Counter(unsafe { nil }) }
 }
 
+@[unsafe]
 fn option_binding_changed_after_address(v int) &Counter {
 	return if mut x := maybe_counter(v) {
 		p := &x
@@ -61,6 +64,7 @@ fn option_binding_changed_after_address(v int) &Counter {
 	}
 }
 
+@[unsafe]
 fn result_binding_changed_after_address(v int) &Counter {
 	return if mut x := checked_counter(v) {
 		p := &x
@@ -71,6 +75,7 @@ fn result_binding_changed_after_address(v int) &Counter {
 	}
 }
 
+@[unsafe]
 fn option_int_changed_after_address(v int) &int {
 	return if mut x := maybe_int(v) {
 		p := &x
@@ -81,6 +86,7 @@ fn option_int_changed_after_address(v int) &int {
 	}
 }
 
+@[unsafe]
 fn result_int_changed_after_address(v int) &int {
 	return if mut x := checked_int(v) {
 		p := &x
@@ -91,6 +97,7 @@ fn result_int_changed_after_address(v int) &int {
 	}
 }
 
+@[unsafe]
 fn else_if_binding(v int) &int {
 	return if v < 0 {
 		&int(unsafe { nil })
@@ -103,6 +110,7 @@ fn else_if_binding(v int) &int {
 	}
 }
 
+@[unsafe]
 fn binding_beside_another_value(v int) (&int, int) {
 	return if mut x := maybe_int(v) {
 		p := &x

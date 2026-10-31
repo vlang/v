@@ -102,6 +102,7 @@ struct RegionRelocateArgs {
 	child_shift i32
 }
 
+@[unsafe]
 fn region_relocate_thread(arg voidptr) voidptr {
 	a := unsafe { &RegionRelocateArgs(arg) }
 	mut w := unsafe { &Transformer(a.worker) }
@@ -160,6 +161,7 @@ mut:
 	child_size    uint
 }
 
+@[unsafe]
 fn region_compact_thread(arg voidptr) voidptr {
 	c := unsafe { &RegionCompaction(arg) }
 	if c.node_len > 0 && c.node_dst != c.node_src {
@@ -281,6 +283,7 @@ mut:
 	dst_children voidptr
 }
 
+@[unsafe]
 fn region_absorb_thread(arg voidptr) voidptr {
 	a := unsafe { &RegionAbsorbArgs(arg) }
 	mut w := unsafe { &Transformer(a.worker) }
@@ -288,6 +291,7 @@ fn region_absorb_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn transform_clone_storage_free_thread(arg voidptr) voidptr {
 	storage := unsafe { &TransformCloneStorage(arg) }
 	release_transform_clone_storage(storage)
@@ -385,6 +389,7 @@ fn transform_pre_scan_index_thread(arg voidptr) voidptr {
 // The scan worker only reads the immutable AST and post-check tc tables,
 // plus its own private const-suffix map, so it never observes the maps the
 // master is concurrently building.
+@[unsafe]
 fn transform_const_fixed_scan_thread(arg voidptr) voidptr {
 	mut w := unsafe { &Transformer(arg) }
 	scope := transform_worker_scope_begin(w.scope_parallel_workers)
@@ -413,6 +418,7 @@ struct TransformChunkArgs {
 }
 
 // transform_chunk_thread runs one worker's chunk of function bodies.
+@[unsafe]
 fn transform_chunk_thread(arg voidptr) voidptr {
 	a := unsafe { &TransformChunkArgs(arg) }
 	mut w := unsafe { &Transformer(a.worker) }
@@ -455,6 +461,7 @@ fn shared_helper_batch_count(items []FnWorkItem, building_v bool) int {
 
 // shared_chunk_thread runs one shared-base worker's chunk. No clone, no
 // chain: every worker was fully built by the master before spawning.
+@[unsafe]
 fn shared_chunk_thread(arg voidptr) voidptr {
 	mut a := unsafe { &SharedChunkArgs(arg) }
 	mut w := unsafe { &Transformer(a.worker) }
@@ -507,6 +514,7 @@ fn (mut t Transformer) lookup_worker_call_names(worker_ptrs []voidptr) {
 	t.a.worker_pool.run(tasks)
 }
 
+@[unsafe]
 fn worker_call_canon_thread(arg voidptr) voidptr {
 	a := unsafe { &CallCanonArgs(arg) }
 	master := unsafe { &Transformer(a.master) }
@@ -629,6 +637,7 @@ fn scopes_address_range(scopes []voidptr) (uint, uint) {
 // scoped_text_scan_thread flags this worker's node range. Pure reads plus
 // byte writes into a disjoint flag range: no allocations, so it is safe to
 // run on pool threads regardless of their arena state.
+@[unsafe]
 fn scoped_text_scan_thread(arg voidptr) voidptr {
 	a := unsafe { &ScopedTextScanArgs(arg) }
 	flags := unsafe { &u8(a.flags) }
@@ -662,6 +671,7 @@ struct TopLevelKindScanArgs {
 // nibble is also a cheap transform-cost weight used to balance fn workers.
 // Genuine top-level boundaries are marked by the master after the scan: node
 // kind alone cannot distinguish a top-level type from a local type declaration.
+@[unsafe]
 fn literal_decl_scan_thread(arg voidptr) voidptr {
 	a := unsafe { &TopLevelKindScanArgs(arg) }
 	flags := unsafe { &u8(a.flags) }
@@ -739,6 +749,7 @@ fn literal_decl_scan_thread(arg voidptr) voidptr {
 // disjoint flag range: no allocations, so it is safe on pool threads in any
 // arena state. Candidate detection uses only the state-free placeholder
 // prescreen, a strict superset of generic_fn_decl_needs_erasure_scan.
+@[unsafe]
 fn top_level_kind_scan_thread(arg voidptr) voidptr {
 	a := unsafe { &TopLevelKindScanArgs(arg) }
 	flags := unsafe { &u8(a.flags) }
@@ -767,6 +778,7 @@ struct AnonymousStructInitScanArgs {
 
 // anonymous_struct_init_scan_thread flags the anonymous struct literals in its
 // range. It only reads nodes and writes its own flag bytes.
+@[unsafe]
 fn anonymous_struct_init_scan_thread(arg voidptr) voidptr {
 	a := unsafe { &AnonymousStructInitScanArgs(arg) }
 	flags := unsafe { &u8(a.flags) }
@@ -958,6 +970,7 @@ struct ScopedTextPromoteArgs {
 // worker's id range: text-table hits reuse the canonical entry (read-only
 // map probe), misses clone into the worker's persistent arena. Node slot
 // writes are range-disjoint, so no synchronization is needed.
+@[unsafe]
 fn scoped_text_promote_thread(arg voidptr) voidptr {
 	a := unsafe { &ScopedTextPromoteArgs(arg) }
 	mut ast := unsafe { &flat.FlatAst(voidptr(a.a)) }
@@ -1073,6 +1086,7 @@ struct CheckerCachePromoteArgs {
 	generated_start int
 }
 
+@[unsafe]
 fn worker_scope_free_thread(arg voidptr) voidptr {
 	a := unsafe { &WorkerScopeFreeArgs(arg) }
 	for i in a.start .. a.end {
@@ -1085,6 +1099,7 @@ fn worker_scope_free_thread(arg voidptr) voidptr {
 // fn-value strings and clones generated-range expression types for this
 // worker's id range. Slot writes are range-disjoint; clones allocate in the
 // worker's persistent arena, which is never released.
+@[unsafe]
 fn checker_cache_promote_thread(arg voidptr) voidptr {
 	a := unsafe { &CheckerCachePromoteArgs(arg) }
 	mut tc := unsafe { &types.TypeChecker(a.tc) }
@@ -1267,6 +1282,7 @@ mut:
 	remaining   int
 }
 
+@[unsafe]
 fn monomorph_scan_thread(arg voidptr) voidptr {
 	mut scan := unsafe { &MonomorphScanArgs(arg) }
 	mut nodes := []int{cap: (scan.end - scan.start) / 16}
@@ -1279,6 +1295,7 @@ fn monomorph_scan_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn monomorph_chunk_thread(arg voidptr) voidptr {
 	mut a := unsafe { &MonomorphChunkArgs(arg) }
 	mut w := unsafe { &Transformer(a.worker) }
@@ -1396,6 +1413,7 @@ mut:
 	scope  voidptr
 }
 
+@[unsafe]
 fn interface_box_scan_thread(arg voidptr) voidptr {
 	mut a := unsafe { &InterfaceBoxScanArgs(arg) }
 	source := unsafe { &Transformer(a.source) }
@@ -1503,6 +1521,7 @@ fn (mut t Transformer) run_parallel_monomorphize_specs(specs []PendingGenericFnS
 		mut generated, true)
 }
 
+@[unsafe]
 fn (mut t Transformer) run_parallel_monomorphize_specs_impl(specs []PendingGenericFnSpec, struct_decls map[u32]GenericStructDecl, sum_decls map[u32]GenericSumDecl, mut emitted GenericFnSpecBoolMap, mut generated []string, allow_direct bool) bool {
 	if specs.len == 0 {
 		return false
@@ -1843,6 +1862,7 @@ fn clone_monomorph_worker_decl(decl GenericFnDecl) GenericFnDecl {
 // run_scoped_monomorphize_specs emits a bounded number of specializations in a
 // private AST/checker view, merges their persistent output, and releases all
 // per-specialization scratch before continuing with the next batch.
+@[unsafe]
 fn (mut t Transformer) run_scoped_monomorphize_specs(specs []PendingGenericFnSpec, mut emitted GenericFnSpecBoolMap, mut generated []string) bool {
 	if specs.len == 0 {
 		return false
@@ -2575,6 +2595,7 @@ fn (mut t Transformer) promote_scoped_specialization_maps(scope voidptr, nodes_l
 // string values bitwise, and a batch can record names from its own
 // declaration-context table, which is rebuilt inside the scratch arena
 // (vlang/v#28897).
+@[unsafe]
 fn promote_scoped_specialization_texts(values map[int]string, scope voidptr) map[int]string {
 	mut promoted := values.clone()
 	if scope == unsafe { nil } {
@@ -2590,6 +2611,7 @@ fn promote_scoped_specialization_texts(values map[int]string, scope voidptr) map
 
 // absorb_scoped_batch publishes one batch's observable state into the helper's
 // result arena before its large scratch arena is released.
+@[unsafe]
 fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, new_node_start int) {
 	t.call_param_types_recent = unsafe { nil }
 	t.clear_fn_return_name_cache()
@@ -2733,6 +2755,7 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 // scratch lifetime within each helper. A fresh Transformer/TypeChecker fork per
 // batch prevents caches from retaining pointers into the released arena.
 // `alone` says that no other helper runs batches at the same time.
+@[unsafe]
 fn (mut t Transformer) transform_scoped_helper_batches(items []FnWorkItem, max_batches int, alone bool) {
 	_ = t.cached_generic_fn_decls()
 	t.retain_current_worker_scope_all()
@@ -2993,6 +3016,7 @@ fn (mut t Transformer) clone_deferred_worker_writes_from(start int) {
 // run_parallel_transform transforms the closure-free function bodies across
 // threads when there is enough work, otherwise serially. Returns whether threads
 // were actually used.
+@[unsafe]
 fn (mut t Transformer) run_parallel_transform(items []FnWorkItem, base_nodes int, base_children int) bool {
 	_ = t.cached_generic_fn_decls()
 
@@ -3319,6 +3343,7 @@ fn (mut t Transformer) bound_shared_expansion(items []FnWorkItem, node_pool int,
 // region; the master then compacts the regions into the final sequential
 // layout with the same shift arithmetic merge_worker always used (a region
 // start plays the role the clone base played).
+@[unsafe]
 fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_nodes int, base_children int, n_jobs int) bool {
 	mut ttsw := time.new_stopwatch()
 	// The tail reserved for monomorphization is not this pool's.
@@ -3624,6 +3649,7 @@ mut:
 // borrow_prescan_thread analyses one contiguous range of borrow candidates on
 // a private transformer. The results stay in the thread's arena until the
 // fixed point has read them (see BorrowPrescan.free).
+@[unsafe]
 fn borrow_prescan_thread(arg voidptr) voidptr {
 	mut a := unsafe { &BorrowPrescanArgs(arg) }
 	mut w := unsafe { &Transformer(a.worker) }
@@ -3646,6 +3672,7 @@ fn borrow_prescan_thread(arg voidptr) voidptr {
 // threads before the serial fixed point, with no summary proven. While none of
 // the summaries an analysis read is proven, the serial analysis would take the
 // same path, so the fixed point reuses the result (see BorrowBodyResult).
+@[unsafe]
 fn (mut t Transformer) prescan_fixed_array_borrow_bodies(candidates []BorrowCandidate) BorrowPrescan {
 	n_jobs := int_min(runtime.nr_jobs(), max_borrow_prescan_jobs)
 	if n_jobs < 2 || candidates.len < min_borrow_prescan_candidates || isnil(t.tc)
@@ -3757,6 +3784,7 @@ struct LateScanChunkArgs {
 }
 
 // late_scan_chunk_thread runs one worker's candidate range of the late-name scan.
+@[unsafe]
 fn late_scan_chunk_thread(arg voidptr) voidptr {
 	args := unsafe { &LateScanChunkArgs(arg) }
 	mut w := unsafe { &Transformer(args.worker) }
@@ -3774,6 +3802,7 @@ fn late_scan_chunk_thread(arg voidptr) voidptr {
 // gets a forked TypeChecker for its private memoization), and the per-range
 // results are concatenated in range order. The downstream late-work queue
 // deduplicates matching names.
+@[unsafe]
 fn (mut t Transformer) scan_late_call_names_dispatch(cands []LateFnCandidate, used &map[string]bool, candidate_names &map[string]bool) []string {
 	gate := t.new_late_scan_gate(candidate_names)
 	if !t.parallel_enabled {
@@ -3938,6 +3967,7 @@ fn transform_job_count(n_runtime_jobs int, n_items int, scoped_selfhost bool) in
 // classification (a full post-markused AST pass) proceeds on a helper thread.
 // The scan publishes into the master cache before this function returns, so
 // transform_all_dispatch's precompute call becomes a no-op.
+@[unsafe]
 fn (mut t Transformer) prepare_with_pre_scans() {
 	if !t.parallel_enabled || !t.skip_generics || !t.scope_parallel_workers || isnil(t.tc) {
 		t.prepare()

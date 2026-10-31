@@ -1133,6 +1133,7 @@ fn (mut g Parser) parse_if_multi_return_guard(names []string) !bool {
 	return then_terminates && else_terminates
 }
 
+@[unsafe]
 fn (g &Parser) if_starts_final_block_expression() bool {
 	// Interpolation braces belong to the string, not the condition's branch block.
 	mut lookahead := scanner.new_scanner(g.prefs, .skip_interpolation)

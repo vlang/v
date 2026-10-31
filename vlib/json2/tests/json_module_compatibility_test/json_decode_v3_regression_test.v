@@ -185,6 +185,7 @@ fn test_json_decode_v3_sum_constructs_only_selected_variant() {
 	assert decode_v3_sum_default_calls <= 1
 }
 
+@[unsafe]
 fn test_json_decode_v3_recursive_pointer_and_generic_fixed_array() {
 	node := json2.decode[DecodeV3Node]('{"value":1,"next":{"value":2,"next":{"value":3}}}')!
 	assert node.next.next.value == 3
@@ -195,6 +196,7 @@ fn test_json_decode_v3_recursive_pointer_and_generic_fixed_array() {
 	assert box.hidden == ''
 }
 
+@[unsafe]
 fn test_json_decode_v3_recursive_pointer_has_no_static_depth_cap() {
 	mut source := 'null'
 	for i := 47; i >= 0; i-- {

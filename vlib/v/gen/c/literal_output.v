@@ -129,6 +129,7 @@ fn (mut g FlatGen) literal_output_program() ?string {
 	return out.str()
 }
 
+@[unsafe]
 fn (mut g FlatGen) literal_output_c_flags() []string {
 	mut flags := g.initial_c_flags.clone()
 	if g.target.os == 'android' {

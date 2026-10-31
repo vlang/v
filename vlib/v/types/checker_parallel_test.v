@@ -274,6 +274,7 @@ fn test_visibility_index_preserves_file_context_and_builtin_aliases() {
 	assert tc.file_modules.len == 0
 }
 
+@[unsafe]
 fn test_checker_type_promotion_survives_batch_arena_release() {
 	$if prealloc {
 		for compatibility in [false, true] {
@@ -348,6 +349,7 @@ fn test_pass2_type_promotion_copies_nested_metadata_out_of_worker_arena() {
 	}
 }
 
+@[unsafe]
 fn test_pass2_type_promotion_distinguishes_equal_hashes() {
 	mut promotion := Pass2TypePromotion{}
 	immutable := Type(Channel{ elem_type: &Type(string_), is_mut: false })

@@ -45,6 +45,7 @@ fn worker_thread_create(stack_size uint, start_routine fn (voidptr) voidptr, arg
 
 // worker_thread_join waits for the worker to exit. A non-zero result is the
 // pthread error code.
+@[unsafe]
 fn worker_thread_join(worker WorkerThread) int {
 	return C.pthread_join(worker.id, unsafe { nil })
 }

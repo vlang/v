@@ -10,6 +10,7 @@ $if !native && !no_segfault_handler ?&& !freestanding && !vinix {
 	}
 }
 
+@[unsafe]
 fn C.v_install_segfault_handler(fallback voidptr, main_argv voidptr)
 
 @[markused]

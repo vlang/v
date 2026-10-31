@@ -34,6 +34,7 @@ fn check(e VlibcErrno) {
 	if e != .enoerror { exit(80) }
 }
 
+@[unsafe]
 fn main() {
 	mut words := [u32(0x11223344), u32(0), u32(0xaabbccdd), u32(0)]!
 	vlibc_store_u32(&words[1], 7)

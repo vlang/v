@@ -169,6 +169,7 @@ pub fn (mut p Pool) acquire() !&Conn {
 
 // release detaches the handle, resets its session, and returns or closes the connection.
 // Releasing a handle again is harmless; handles belonging to another pool are ignored.
+@[unsafe]
 pub fn (mut p Pool) release(conn &Conn) {
 	if isnil(conn) {
 		return

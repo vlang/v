@@ -67,6 +67,7 @@ fn read_from_h1stream_cb(con voidptr, buf &u8, bufsize int) !int {
 // h1_exchange_stream runs one request/response over a pooled H1StreamConn,
 // leaving it open. Mirrors h1_exchange_ssl/h1_exchange_tcp exactly, sharing
 // the same response-framing implementation via receive_all_data_from_cb_in_builder.
+@[unsafe]
 fn (req &Request) h1_exchange_stream(mut conn H1StreamConn, raw string) !(Response, bool) {
 	conn.write(raw.bytes()) or {
 		return error('http.transport: connection write failed: ${err.msg()}')
@@ -104,6 +105,7 @@ mut:
 }
 
 // close_conn shuts the underlying connection down and clears it.
+@[unsafe]
 fn (mut c H1PooledConn) close_conn() {
 	if c.ssl != unsafe { nil } {
 		c.ssl.shutdown() or {}
@@ -121,6 +123,7 @@ fn (mut c H1PooledConn) close_conn() {
 
 // refresh_timeouts applies the current request's timeouts to a pooled
 // connection, which may have been dialled by a request with different ones.
+@[unsafe]
 fn (mut c H1PooledConn) refresh_timeouts(req &Request) {
 	if c.tcp != unsafe { nil } {
 		c.tcp.set_read_timeout(req.read_timeout)
@@ -144,6 +147,7 @@ fn (mut c H1PooledConn) refresh_timeouts(req &Request) {
 // exchange runs one request/response over the pooled connection, leaving it
 // open. The bool result reports whether the response was precisely framed, so
 // the connection can safely carry another request.
+@[unsafe]
 fn (mut c H1PooledConn) exchange(req &Request, raw string) !(Response, bool) {
 	if c.ssl != unsafe { nil } {
 		return req.h1_exchange_ssl(mut c.ssl, raw)
@@ -361,6 +365,7 @@ fn response_allows_reuse(resp &Response) bool {
 
 // checkout pops the most recently used idle connection for `key`, discarding
 // any that sat idle past the timeout. Returns nil when the pool has none.
+@[unsafe]
 fn (mut t Transport) checkout(key string) &H1PooledConn {
 	mut expired := []&H1PooledConn{}
 	mut found := &H1PooledConn(unsafe { nil })
@@ -390,6 +395,7 @@ fn (mut t Transport) checkout(key string) &H1PooledConn {
 // per-host pool is already at capacity. Adding it may push the total idle count
 // over max_idle_conns, in which case the least-recently-used idle connection
 // across all pools (h1, h2, and h3) is evicted and closed.
+@[unsafe]
 fn (mut t Transport) checkin(mut conn H1PooledConn) {
 	conn.idle_since = time.now()
 	t.mu.lock()
@@ -563,6 +569,7 @@ enum EvictionSource {
 // `just_registered_h3_key` mirrors `just_registered_h2_key` exactly, for
 // Phase 12d's own h3_dial_and_do (transport_h3.v), which registers a new
 // h3_conns entry in the same locked section it calls this from.
+@[unsafe]
 fn (mut t Transport) evict_oldest_idle_locked(just_registered_h2_key string, just_registered_h3_key string) EvictedIdleConn {
 	if t.max_idle_conns <= 0 {
 		return EvictedIdleConn{}
@@ -705,6 +712,7 @@ fn (mut t Transport) maybe_checkin(mut conn H1PooledConn, header Header, reusabl
 // an idle connection for the request's pool key when one exists (transparently
 // retrying once on a connection that turned out to be stale), dials otherwise,
 // and returns healthy connections to the pool afterwards.
+@[unsafe]
 fn (mut t Transport) round_trip(req &Request, method Method, scheme string, host string, port int, path string, data string, header Header) !Response {
 	key := transport_pool_key(req, scheme, host, port)
 	if scheme == 'https' && req.enable_http3 {

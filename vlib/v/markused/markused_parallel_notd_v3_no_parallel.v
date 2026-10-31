@@ -31,7 +31,7 @@ mut:
 }
 
 // markused_chunk_thread runs one worker's range of bodies.
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn markused_chunk_thread(arg voidptr) voidptr {
 	mut args := unsafe { &MarkusedChunkArgs(arg) }
 	args.scope = markused_worker_scope_begin(args.scope_enabled)
@@ -66,7 +66,7 @@ fn markused_chunk_thread(arg voidptr) voidptr {
 // collect_bodies_scoped_batches keeps call lists in the worker's result arena,
 // while repeatedly releasing the much larger checker and local-analysis
 // scratch state used to discover them.
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn (c &CallCollector) collect_bodies_scoped_batches(body_ids []int, body_modules []string, body_import_contexts []int, range_start int, range_end int, mut results []BodyCalls) {
 	item_count := range_end - range_start
 	if item_count <= 0 {
@@ -106,6 +106,7 @@ const markused_batch_arena_keep_bytes = int(8) * 1024 * 1024
 
 // markused_worker_scope_reenter makes a left batch arena current again, rewound.
 // False means the caller needs a new arena.
+@[unsafe]
 fn markused_worker_scope_reenter(scope voidptr) bool {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -115,6 +116,7 @@ fn markused_worker_scope_reenter(scope voidptr) bool {
 	return false
 }
 
+@[unsafe]
 fn markused_worker_scope_begin(enabled bool) voidptr {
 	$if prealloc {
 		if enabled {
@@ -124,6 +126,7 @@ fn markused_worker_scope_begin(enabled bool) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn markused_worker_scope_leave(scope voidptr) {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -132,6 +135,7 @@ fn markused_worker_scope_leave(scope voidptr) {
 	}
 }
 
+@[unsafe]
 fn markused_worker_scope_free(scope voidptr) {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -164,6 +168,7 @@ fn markused_can_parallel_precollect(collector &CallCollector) bool {
 
 // precollect_body_calls analyzes every fn_decl body, across threads when there
 // is enough work.
+@[unsafe]
 fn precollect_body_calls(collector CallCollector, body_ids []int, body_modules []string, body_import_contexts []int) []BodyCalls {
 	mut results := []BodyCalls{len: body_ids.len}
 	mut ast := unsafe { collector.a }

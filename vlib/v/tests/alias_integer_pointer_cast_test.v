@@ -18,6 +18,7 @@ fn end_pointer(n int, z &U8) &U8 {
 	return z_term
 }
 
+@[unsafe]
 fn test_pointer_cast_to_an_alias_of_an_integer_type() {
 	all_ones := &U8(-1)
 	assert uint(all_ones) == ~uint(0)

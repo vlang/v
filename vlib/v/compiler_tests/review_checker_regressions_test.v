@@ -1857,6 +1857,7 @@ fn main() {}
 		'when forwarding a variadic variable, it must be the final argument')
 }
 
+@[unsafe]
 fn test_mut_pointer_local_after_mut_pointer_loop_keeps_pointer_type() {
 	v3_bin := build_v3_review_checker()
 	out := run_good(v3_bin, 'mut_pointer_local_after_mut_pointer_loop', 'struct Item {

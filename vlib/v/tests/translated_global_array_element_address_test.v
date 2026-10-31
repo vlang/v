@@ -9,6 +9,7 @@ fn pick(z &i8) &i8 {
 	return if !isnil(z) { z } else { &name_bytes[0] }
 }
 
+@[unsafe]
 fn test_address_of_a_global_array_element_in_a_translated_file() {
 	p := pick(unsafe { nil })
 	assert unsafe { cstring_to_vstring(&char(p)) } == 'BI'

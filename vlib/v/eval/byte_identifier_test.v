@@ -500,6 +500,7 @@ fn main() {}
 	assert e.enum_types[flat.source_type_id('Marked')].target == flat.source_type_i32
 }
 
+@[unsafe]
 fn test_eval_sizeof_fixed_array_aggregate_elements_matches_compiler() {
 	code := '
 struct Tiny { x u8 }
@@ -590,6 +591,7 @@ fn main() {
 	assert e.stdout() == '8\n8\n16\n'
 }
 
+@[unsafe]
 fn test_eval_sizeof_builtin_aggregate_fields_matches_compiler() {
 	code := '
 struct Fields { head u8; text string; values []u8; lookup map[string]u8 }
@@ -619,6 +621,7 @@ fn main() {
 	assert_eval_sizeof_matches_compiler(code)
 }
 
+@[unsafe]
 fn test_eval_sizeof_imported_aggregate_fields_preserves_file_aliases() {
 	dir := os.join_path(os.vtmp_dir(), 'eval_sizeof_imported_layout_${os.getpid()}')
 	os.mkdir_all(dir) or { panic(err) }
@@ -745,6 +748,7 @@ fn main() { println(sizeof(byte)) }
 	assert e.stdout() == '2\n'
 }
 
+@[unsafe]
 fn test_eval_sizeof_generic_aggregate_elements_matches_compiler() {
 	code := '
 struct Tiny[T] { x T }

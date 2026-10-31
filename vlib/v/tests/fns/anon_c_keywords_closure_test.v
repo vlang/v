@@ -1,3 +1,4 @@
+@[unsafe]
 fn test_main() {
 	mut stderr := 0
 	mut stdout := 0

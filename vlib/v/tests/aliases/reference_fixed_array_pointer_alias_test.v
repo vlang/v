@@ -7,6 +7,7 @@ type FA = [8]int
 
 type PtrFA = &FA
 
+@[unsafe]
 fn get_ref(p PtrFA) bool {
 	q := &p
 	return q != unsafe { nil }

@@ -197,6 +197,7 @@ fn fastc_libtcc_add_input(mut link FastcPreparedLink, input_path string) ! {
 	}
 }
 
+@[unsafe]
 fn fastc_finish_libtcc_link(mut link FastcPreparedLink, input_paths []string, final_args []string, output string) os.Result {
 	state := fastc_libtcc_state(&link)
 	if isnil(state) || isnil(link.diagnostics) {
@@ -299,6 +300,7 @@ fn fastc_finish_libtcc_link(mut link FastcPreparedLink, input_paths []string, fi
 	}
 }
 
+@[unsafe]
 fn fastc_discard_libtcc_link(mut link FastcPreparedLink) {
 	state := fastc_libtcc_state(&link)
 	if !isnil(state) {

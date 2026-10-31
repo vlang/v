@@ -91,6 +91,7 @@ mut:
 // })!
 // assert server.mechanism_name() == 'SCRAM-SHA-256'
 // ```
+@[unsafe]
 pub fn new_server(config ServerConfig) !&Server {
 	nonce := if config.nonce == '' { generate_nonce()! } else { config.nonce }
 	validate_nonce(nonce)!

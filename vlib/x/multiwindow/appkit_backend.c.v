@@ -586,6 +586,7 @@ fn appkit_hide_requires_rollback(status int) bool {
 	return status == service_appkit_result_failed
 }
 
+@[unsafe]
 fn appkit_owner_native_state(owner WindowId, records []AppKitWindowRecord) !voidptr {
 	for record in records {
 		if record.id == owner {
@@ -598,6 +599,7 @@ fn appkit_owner_native_state(owner WindowId, records []AppKitWindowRecord) !void
 	return error(err_window_not_found)
 }
 
+@[unsafe]
 fn appkit_native_window_borrow_from_pointer(native_window voidptr) !BackendNativeWindowBorrow {
 	if native_window == unsafe { nil } {
 		return error(err_capability_unsupported)
@@ -801,6 +803,7 @@ $if darwin {
 	}
 }
 
+@[unsafe]
 fn (backend &AppKitBackend) ensure_service_bridge(id WindowId) !int {
 	$if darwin {
 		if backend.native_operations == unsafe { nil }
@@ -820,6 +823,7 @@ fn (backend &AppKitBackend) ensure_service_bridge(id WindowId) !int {
 	}
 }
 
+@[unsafe]
 fn (backend &AppKitBackend) service_operation_capability(id WindowId, operation ServiceOperation) ServiceOperationCapability {
 	$if darwin {
 		if !backend.service_bridge_ready() {
@@ -867,6 +871,7 @@ $if darwin {
 	}
 }
 
+@[unsafe]
 fn (backend &AppKitBackend) service_window_state(id WindowId) !ServiceWindowState {
 	index := backend.ensure_service_bridge(id)!
 	raw := backend.service_raw_window_state(index)!
@@ -1107,6 +1112,7 @@ fn (mut backend AppKitBackend) service_set_titlebar_appearance(id WindowId, appe
 }
 
 $if gg_multiwindow ?|| x_multiwindow_render ? {
+	@[unsafe]
 	fn appkit_service_image_texture(image_id u32) voidptr {
 		$if darwin {
 			$if darwin_sokol_glcore33 ? {
@@ -1130,6 +1136,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 } $else {
+	@[unsafe]
 	fn appkit_service_image_texture(image_id u32) voidptr {
 		_ = image_id
 		return unsafe { nil }
@@ -1151,6 +1158,7 @@ fn (mut backend AppKitBackend) service_stage_window_readback(readback ServiceRea
 	return error(err_backend_unsupported)
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) service_stage_image_readback(readback ServiceReadbackId, image_id u32, x int, y int, width int, height int, producing_frame u64) ! {
 	if backend.readback_hook_rearm_required {
 		return error(err_capability_unsupported)
@@ -1170,6 +1178,7 @@ fn (mut backend AppKitBackend) service_stage_image_readback(readback ServiceRead
 	return error(err_backend_unsupported)
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) service_arm_image_readback_pass(id WindowId, image_id u32, pass_serial u64, producing_frame u64) ! {
 	if backend.readback_hook_rearm_required {
 		return error(err_capability_unsupported)
@@ -1256,6 +1265,7 @@ fn appkit_backend_finalize_readback_release(result BackendReadbackResult, releas
 	}
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) service_take_readback_results() ![]BackendReadbackResult {
 	mut results := []BackendReadbackResult{}
 	if backend.readback_hook_rearm_required {
@@ -1355,6 +1365,7 @@ fn (backend &AppKitBackend) ensure_supported() ! {
 	}
 }
 
+@[unsafe]
 fn (backend &AppKitBackend) prevalidate_start_attempt() ! {
 	$if darwin {
 		if backend.native_operations == unsafe { nil }
@@ -1450,6 +1461,7 @@ fn (mut backend AppKitBackend) probe_renderer_capabilities() !Capabilities {
 	return caps
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) close_start_attempt() string {
 	$if darwin {
 		backend.release_pending_start_device()
@@ -1467,6 +1479,7 @@ fn (mut backend AppKitBackend) close_start_attempt() string {
 	}
 }
 
+@[unsafe]
 fn (backend &AppKitBackend) start_attempt_closed() bool {
 	mut native_operations_closed := backend.native_operations == unsafe { nil }
 	if !native_operations_closed {
@@ -1482,11 +1495,13 @@ fn (backend &AppKitBackend) start_attempt_closed() bool {
 		&& native_operations_closed
 }
 
+@[unsafe]
 fn (backend &AppKitBackend) renderer_ready() bool {
 	return appkit_metal_supported() && backend.device != unsafe { nil }
 		&& backend.device_ticket != 0 && backend.render_health == .ready
 }
 
+@[unsafe]
 fn (backend &AppKitBackend) provisional_renderer_ready() bool {
 	return appkit_metal_supported() && backend.pending_start_device.value != unsafe { nil }
 		&& backend.pending_start_device.transaction.ticket_id != 0
@@ -1586,6 +1601,7 @@ fn (mut backend AppKitBackend) acquire_pending_start_device() ! {
 	}
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) commit_pending_start_device() bool {
 	transaction := backend.pending_start_device.transaction
 	if backend.pending_start_device.value == unsafe { nil } || transaction.native_identity == 0
@@ -1605,6 +1621,7 @@ fn (mut backend AppKitBackend) commit_pending_start_device() bool {
 	return true
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) release_unbound_pending_start_device_after_bind_rejection() {
 	$if darwin {
 		transaction := backend.pending_start_device.transaction
@@ -1630,6 +1647,7 @@ fn (mut backend AppKitBackend) release_unbound_pending_start_device_after_bind_r
 	}
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) release_pending_start_device() {
 	$if darwin {
 		transaction := backend.pending_start_device.transaction
@@ -1700,6 +1718,7 @@ fn (mut backend AppKitBackend) release_pending_start_device() {
 	}
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) configure_window_for_device(record AppKitWindowRecord, device voidptr) ! {
 	$if darwin {
 		if device == unsafe { nil } || backend.render_health.blocks_graphics() {
@@ -1742,6 +1761,7 @@ fn (mut backend AppKitBackend) configure_existing_windows_for_device(device void
 	}
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) invalidate_readback_hook_generation() {
 	if backend.readback_hook_rearm_required {
 		return
@@ -1776,6 +1796,7 @@ fn (mut backend AppKitBackend) rearm_readback_hook_for_device(device voidptr) ! 
 	backend.readback_hook_rearm_required = false
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) configure_window_owner_relation(id WindowId, config WindowConfig) ! {
 	if config.owner == none && !config.modal {
 		return
@@ -1797,6 +1818,7 @@ fn (mut backend AppKitBackend) configure_window_owner_relation(id WindowId, conf
 	}
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) create_window(id WindowId, config WindowConfig) !WindowSize {
 	$if darwin {
 		if !backend.started || backend.render_health.blocks_graphics() {
@@ -1909,6 +1931,7 @@ fn (mut backend AppKitBackend) destroy_window(id WindowId) ! {
 	backend.finish_window_teardown(id)!
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) finish_window_teardown(id WindowId) ! {
 	$if darwin {
 		index := backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -2023,7 +2046,7 @@ $if darwin {
 		}
 	}
 
-	@[markused]
+	@[markused; unsafe]
 	fn appkit_dropped_files_from_native(native_event C.VMultiwindowAppKitQueuedEvent) []string {
 		if native_event.dropped_file_count <= 0 || native_event.dropped_files == unsafe { nil } {
 			return []string{}
@@ -2234,7 +2257,7 @@ fn (mut backend AppKitBackend) poll_queued_events() ![]QueuedEvent {
 }
 
 $if darwin {
-	@[markused]
+	@[markused; unsafe]
 	fn (mut backend AppKitBackend) observed_service_events(index int, native_event C.VMultiwindowAppKitQueuedEvent) ![]QueuedEvent {
 		if !backend.service_bridge_ready() || index < 0 || index >= backend.windows.len {
 			return []QueuedEvent{}
@@ -2297,6 +2320,7 @@ fn appkit_service_metrics_event_already_queued(events []QueuedEvent, candidate Q
 	return false
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) monitor_change_event() ![]QueuedEvent {
 	$if darwin {
 		if !backend.service_bridge_ready() {
@@ -2368,6 +2392,7 @@ fn append_appkit_stop_error(mut errors []string, message string) {
 	}
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) stop() ! {
 	$if darwin {
 		mut errors := []string{}
@@ -2440,6 +2465,7 @@ fn (mut backend AppKitBackend) stop() ! {
 }
 
 $if gg_multiwindow ?|| x_multiwindow_render ? {
+	@[unsafe]
 	fn (mut backend AppKitBackend) begin_render_batch(boundary_seed NativeOperationSeed) ! {
 		$if darwin {
 			if backend.batch_autorelease_pool != unsafe { nil }
@@ -2527,6 +2553,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend AppKitBackend) render_environment(id WindowId) !gfx.Environment {
 		$if darwin {
 			index := backend.window_record_index(id) or { return error(err_window_not_found) }
@@ -2553,6 +2580,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend AppKitBackend) begin_render(id WindowId, candidate RenderWindowSnapshot, native_attempt NativeTargetAttempt) BackendFrameAttempt {
 		$if darwin {
 			index := backend.window_record_index(id) or {
@@ -2654,6 +2682,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend AppKitBackend) end_render(frame RenderFrame) BackendFinalizeAttempt {
 		$if darwin {
 			if !appkit_metal_supported() || backend.render_health.blocks_graphics() {
@@ -2739,6 +2768,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend AppKitBackend) abort_render(frame RenderFrame) ! {
 		$if darwin {
 			if !appkit_metal_supported() || backend.render_health.blocks_graphics() {
@@ -2832,6 +2862,7 @@ fn (mut backend AppKitBackend) append_release_diagnostic(message string) {
 	}
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) release_appkit_lifetime_identity(value voidptr, ticket_id u64, release_kind NativeLifetimeReleaseKind, parent_identity u64, error_text string) NativeLifetimeReleaseResult {
 	pending := NativeLifetimeReleaseResult{
 		value:     value
@@ -2943,14 +2974,17 @@ fn (mut backend AppKitBackend) complete_appkit_drawable_release(claim NativeLife
 	}, accepted.result
 }
 
+@[unsafe]
 fn appkit_lifetime_pair_is_empty(value voidptr, ticket_id u64) bool {
 	return value == unsafe { nil } && ticket_id == 0
 }
 
+@[unsafe]
 fn appkit_pending_start_device_is_empty(pending AppKitPendingStartDevice) bool {
 	return pending.value == unsafe { nil } && pending.transaction.ticket_id == 0
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) release_window_drawable_lifetime(mut record AppKitWindowRecord, mode AppKitWindowDrawableReleaseMode, error_text string) bool {
 	if appkit_lifetime_pair_is_empty(record.active_drawable, record.active_drawable_ticket) {
 		if mode == .close_frame {
@@ -2982,6 +3016,7 @@ fn (mut backend AppKitBackend) release_window_drawable_lifetime(mut record AppKi
 	return true
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) release_anchor_drawable_lifetime(error_text string) bool {
 	if appkit_lifetime_pair_is_empty(backend.active_anchor_drawable,
 		backend.active_anchor_drawable_ticket)
@@ -3030,6 +3065,7 @@ fn (mut backend AppKitBackend) release_active_frames_lifetime() bool {
 	}
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) release_batch_pool_lifetime(seed NativeOperationSeed) bool {
 	$if darwin {
 		_ = seed
@@ -3053,6 +3089,7 @@ fn (mut backend AppKitBackend) release_batch_pool_lifetime(seed NativeOperationS
 	}
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) release_pending_window_state_lifetime() bool {
 	pending := backend.pending_window_state
 	if appkit_lifetime_pair_is_empty(pending.state, pending.state_ticket) {
@@ -3077,6 +3114,7 @@ fn (mut backend AppKitBackend) release_pending_window_state_lifetime() bool {
 	return true
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) prepare_window_native_destroy(mut record AppKitWindowRecord, seed NativeOperationSeed) bool {
 	$if darwin {
 		if record.native_destroyed {
@@ -3120,6 +3158,7 @@ fn (mut backend AppKitBackend) prepare_window_native_destroy(mut record AppKitWi
 	}
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) release_window_resources(mut record AppKitWindowRecord, seed NativeOperationSeed) bool {
 	$if darwin {
 		if !backend.release_window_services(mut record) {
@@ -3154,6 +3193,7 @@ fn (mut backend AppKitBackend) release_window_resources(mut record AppKitWindowR
 	}
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) release_window_services(mut record AppKitWindowRecord) bool {
 	if record.services_released {
 		return true
@@ -3189,6 +3229,7 @@ fn (mut backend AppKitBackend) release_window_services(mut record AppKitWindowRe
 	}
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) prepare_anchor_native_destroy(seed NativeOperationSeed) bool {
 	$if darwin {
 		if backend.anchor_native_destroyed {
@@ -3231,6 +3272,7 @@ fn (mut backend AppKitBackend) prepare_anchor_native_destroy(seed NativeOperatio
 	}
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) release_anchor_state_lifetime(seed NativeOperationSeed) bool {
 	if backend.has_active_frames()
 		|| !appkit_lifetime_pair_is_empty(backend.batch_autorelease_pool, backend.batch_autorelease_pool_ticket) {
@@ -3271,6 +3313,7 @@ fn (backend &AppKitBackend) has_device_lifetime_dependents() bool {
 	return false
 }
 
+@[unsafe]
 fn (mut backend AppKitBackend) release_device_lifetime() bool {
 	if appkit_lifetime_pair_is_empty(backend.device, backend.device_ticket) {
 		return true
@@ -3285,6 +3328,7 @@ fn (mut backend AppKitBackend) release_device_lifetime() bool {
 	return released.ticket_retired
 }
 
+@[unsafe]
 fn (backend &AppKitBackend) retains_native_ownership() bool {
 	if backend.native_operations != unsafe { nil }
 		&& backend.native_operations.has_live_lifetime_tickets() {
@@ -3337,6 +3381,7 @@ fn (mut backend AppKitBackend) release_renderer_lifetime() bool {
 	}
 }
 
+@[unsafe]
 fn (backend &AppKitBackend) has_active_frames() bool {
 	if backend.active_anchor_lease != 0 || backend.active_anchor_drawable != unsafe { nil }
 		|| backend.active_anchor_drawable_ticket != 0 {

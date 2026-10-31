@@ -105,6 +105,7 @@ pub fn close(handle int) ! {
 }
 
 // Select waits for an io operation (specified by parameter `test`) to be available
+@[unsafe]
 fn select(handle int, test Select, timeout time.Duration) !bool {
 	set := C.fd_set{}
 

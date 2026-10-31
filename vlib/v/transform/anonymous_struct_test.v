@@ -152,6 +152,7 @@ fn test_inferred_anonymous_struct_name_does_not_replace_user_struct() {
 	assert tc.structs[flat.source_type_id(generated_name)][0].name == 'item'
 }
 
+@[unsafe]
 fn test_prepared_selfhost_transform_materializes_before_preparing() {
 	mut a := flat.FlatAst.new()
 	main_file := '/tmp/project/main.v'

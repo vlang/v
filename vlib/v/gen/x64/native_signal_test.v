@@ -6,6 +6,7 @@ import v.pref
 import v.ssa
 import v.types
 
+@[unsafe]
 fn test_native_signal_handler_calls_fallback_on_alternate_stack() {
 	$if linux && amd64 {
 		run_native_signal_fixture('alternate', 'module main
@@ -34,6 +35,7 @@ fn main() {
 	}
 }
 
+@[unsafe]
 fn test_native_signal_installation_preserves_existing_handler() {
 	$if linux && amd64 {
 		run_native_signal_fixture('preserve', 'module main

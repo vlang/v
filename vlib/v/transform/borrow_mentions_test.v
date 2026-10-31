@@ -16,6 +16,7 @@ fn borrow_mentions_decl(mut a flat.FlatAst, names []string, body flat.NodeId) fl
 	return a.add_node(flat.Node{ kind: .fn_decl, children_start: start, children_count: names.len + 1 })
 }
 
+@[unsafe]
 fn test_borrow_mentions_preserves_parameter_bits_contexts_and_slot_collisions() {
 	mut a := flat.FlatAst.new()
 	left := a.add_val(.ident, 'left')

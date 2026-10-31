@@ -17,7 +17,7 @@ fn alloc_array_data_noscan_uninit(total_size u64) voidptr {
 	return init_array_data(raw)
 }
 
-@[inline]
+@[inline; unsafe]
 fn (mut a array) clone_shallow_to_cap_noscan(new_cap int) {
 	if new_cap <= 0 {
 		unsafe { a.flags.clear(.managed | .noscan_data | .is_slice) }
@@ -39,6 +39,7 @@ fn (mut a array) clone_shallow_to_cap_noscan(new_cap int) {
 	a.set_managed_flags(false)
 }
 
+@[unsafe]
 fn __new_array_noscan(mylen int, cap int, elm_size int) array {
 	panic_on_negative_len(mylen)
 	panic_on_negative_cap(cap)
@@ -60,6 +61,7 @@ fn __new_array_noscan(mylen int, cap int, elm_size int) array {
 	return arr
 }
 
+@[unsafe]
 fn __new_array_with_default_noscan(mylen int, cap int, elm_size int, val voidptr) array {
 	panic_on_negative_len(mylen)
 	panic_on_negative_cap(cap)
@@ -91,6 +93,7 @@ fn __new_array_with_default_noscan(mylen int, cap int, elm_size int, val voidptr
 	return arr
 }
 
+@[unsafe]
 fn __new_array_with_multi_default_noscan(mylen int, cap int, elm_size int, val voidptr) array {
 	panic_on_negative_len(mylen)
 	panic_on_negative_cap(cap)
@@ -150,6 +153,7 @@ fn new_array_from_c_array_noscan(len int, cap int, elm_size int, c_array voidptr
 }
 
 // Private function. Doubles array capacity if needed.
+@[unsafe]
 fn (mut a array) ensure_cap_noscan(required int) {
 	if required <= a.cap {
 		return

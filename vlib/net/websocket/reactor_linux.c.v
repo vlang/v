@@ -578,6 +578,7 @@ fn (mut r Reactor) read_ready(mut socket ReactorSocket) {
 	}
 }
 
+@[unsafe]
 fn (mut r Reactor) remove(key u64, code int, reason string) {
 	mut socket := r.sockets[key] or { return }
 	r.sockets.delete(key)

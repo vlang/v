@@ -356,6 +356,7 @@ fn closure_register_page(exec_page_start voidptr) {
 	}
 }
 
+@[unsafe]
 fn closure_is_managed(exec_ptr voidptr) bool {
 	if isnil(exec_ptr) {
 		return false
@@ -631,6 +632,7 @@ fn (mut lifetime Lifetime) begin_frame() !FrameToken {
 	}
 }
 
+@[unsafe]
 fn (mut lifetime Lifetime) end_frame(token FrameToken) ! {
 	if isnil(token.state) {
 		return error('invalid closure lifetime frame token')
@@ -700,6 +702,7 @@ pub fn (mut lifetime Lifetime) reclaim_all() ! {
 }
 
 // dispose releases all tracked closure callbacks and invalidates this lifetime.
+@[unsafe]
 pub fn (mut lifetime Lifetime) dispose() ! {
 	mut state := lifetime.ensure_state()!
 	thread_id := closure_current_thread_id_platform()
@@ -786,6 +789,7 @@ fn closure_init() {
 	closure_ensure_initialized()
 }
 
+@[unsafe]
 fn closure_init_body() {
 	// Determine system page size
 	mut page_size := get_page_size_platform()
@@ -837,7 +841,7 @@ fn closure_create(func voidptr, data voidptr) voidptr {
 }
 
 // closure_create_with_data creates closure objects with explicit context ownership(INTERNAL COMPILER USE ONLY).
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn closure_create_with_data(func voidptr, data voidptr, owns_data bool) voidptr {
 	return closure_create_with_data_and_drop(func, data, owns_data, unsafe { nil })
 }

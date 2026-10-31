@@ -648,6 +648,7 @@ mut:
 	tail_decl_end   int = -1
 }
 
+@[unsafe]
 fn new_type_cache(parse_enabled bool) &TypeCache {
 	// Allocate the fixed caches in place instead of copying a large temporary.
 	// Their owned map/array payloads need a scanned allocation under a GC.
@@ -735,6 +736,7 @@ fn (mut cache TypeCache) set_lexical_smartcast_state(idx int, state u32) {
 	cache.lexical_smartcast_pages[page][idx & 1023] = state
 }
 
+@[unsafe]
 fn (mut cache TypeCache) clear_c_type_entries() {
 	cache.indexed_types = unsafe { nil }
 	cache.c_entries.clear()
@@ -872,6 +874,7 @@ fn new_function_check_context() FunctionCheckContext {
 }
 
 // reset_for_sibling_check retains private map storage within one check batch.
+@[unsafe]
 fn (mut ctx FunctionCheckContext) reset_for_sibling_check() {
 	ctx.method_value_locals.clear()
 	ctx.method_value_local_owners.clear()
@@ -1690,6 +1693,7 @@ pub fn (tc &TypeChecker) scoped_parallel_workers_enabled() bool {
 }
 
 // TypeChecker.new creates a TypeChecker value for types.
+@[unsafe]
 pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 	fs := new_scope(unsafe { nil })
 	type_interner := new_type_interner()
@@ -2100,6 +2104,7 @@ pub fn (mut tc TypeChecker) reset_codegen_smartcasts() {
 
 // fork_for_parallel_codegen returns a complete read-only semantic view with
 // private scope and memoization state for one C-generation worker.
+@[unsafe]
 pub fn (tc &TypeChecker) fork_for_parallel_codegen() &TypeChecker {
 	mut forked := tc.fork_program_view(tc.a, map[int][]SymbolId{})
 	// Cgen resolves locals in child scopes but must keep the checked file scope
@@ -2184,6 +2189,7 @@ const overlay_range_enabled = os.getenv('V3_NO_OVERLAY_RANGE') == ''
 // worker its own cache makes concurrent use race-free without cloning the large
 // semantic maps. `ast` must be the worker's own (cloned) FlatAst so that any
 // expr_type lookup on a freshly-created node id indexes a valid array.
+@[unsafe]
 pub fn (tc &TypeChecker) fork_for_parallel_transform(ast &flat.FlatAst) &TypeChecker {
 	mut forked := tc.fork_program_view(ast, map[int][]SymbolId{})
 	// Most transform workers only read signatures. Share the immutable base and
@@ -2408,6 +2414,7 @@ pub fn (tc &TypeChecker) discard_type_cache_overlay_after_forks() {
 // set_fresh_type_cache attaches a new empty TypeCache. Parallel-cgen worker
 // checkers use this so the lazily-built lookup indexes and memoizations work
 // per worker instead of falling back to their uncached full scans.
+@[unsafe]
 pub fn (mut tc TypeChecker) set_fresh_type_cache(parse_enabled bool) {
 	tc.lexical_parent_memo = unsafe { nil }
 	// The import index can hold keys allocated in the same disposable stage arena.
@@ -2464,6 +2471,7 @@ pub fn (mut tc TypeChecker) set_fresh_type_cache(parse_enabled bool) {
 
 // reset_type_interners replaces semantic interners whose backing storage may
 // have grown inside a disposable compiler-stage arena.
+@[unsafe]
 pub fn (mut tc TypeChecker) reset_type_interners() {
 	if !isnil(tc.type_cache) {
 		tc.type_cache.parsed_scalars = unsafe { nil }
@@ -2478,6 +2486,7 @@ pub fn (mut tc TypeChecker) reset_type_interners() {
 // read-only to `src`'s frozen base cache (see freeze_type_cache_for_forks), so
 // parallel-cgen workers start with every type memoized by the check/transform
 // phases instead of re-deriving them from a cold cache.
+@[unsafe]
 pub fn (mut tc TypeChecker) set_fresh_type_cache_based_on(src &TypeChecker, parse_enabled bool) {
 	tc.lexical_parent_memo = unsafe { nil }
 	tc.selective_import_index = &SelectiveImportIndex{}
@@ -2539,6 +2548,7 @@ pub fn (tc &TypeChecker) clear_interface_impl_cache() {
 
 // free_parallel_transform_caches releases private memoization maps owned by a forked
 // transform checker and leaves it valid if it is accidentally read again.
+@[unsafe]
 pub fn (mut tc TypeChecker) free_parallel_transform_caches() {
 	parse_enabled := if tc.type_cache != unsafe { nil } {
 		tc.type_cache.parse_enabled
@@ -2580,6 +2590,7 @@ fn (mut tc TypeChecker) reset_sparse_fn_values() {
 }
 
 // Independent arrays can be initialized on separate persistent worker arenas.
+@[unsafe]
 fn (mut tc TypeChecker) reset_node_cache_group(n int, group int) {
 	if group == 0 {
 		if !isnil(tc.type_cache) {
@@ -2613,6 +2624,7 @@ fn new_zeroed_name_cache(n int) []&CachedName {
 	return values
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
 	tc.invalidate_lexical_parent_memo()
 	tc.direct_parent_ids = flat.empty_node_ids(a.nodes.len)
@@ -3447,6 +3459,7 @@ pub fn (mut tc TypeChecker) begin_sparse_transform_node_caches(base_nodes int) {
 
 // promote_scoped_transform_interners moves additions made by a scoped
 // transform into the current compilation arena before that scope is freed.
+@[unsafe]
 pub fn (mut tc TypeChecker) promote_scoped_transform_interners(type_start int, symbol_start int, scope voidptr) {
 	if !isnil(tc.type_cache) {
 		tc.type_cache.parsed_scalars = unsafe { nil }
@@ -3511,6 +3524,7 @@ pub fn (mut tc TypeChecker) push_scope() {
 }
 
 // pop_scope updates pop scope state for TypeChecker.
+@[unsafe]
 pub fn (mut tc TypeChecker) pop_scope() {
 	if tc.cur_scope == unsafe { nil } {
 		return
@@ -4254,6 +4268,7 @@ fn (mut tc TypeChecker) collect_index_child(a &flat.FlatAst, i int, idx_file str
 }
 
 // collect indexes source declarations and resolves their types before body checking.
+@[unsafe]
 pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	mut ck_c_sw := time.new_stopwatch()
 	mut ck_part_sw := time.new_stopwatch()
@@ -7291,6 +7306,7 @@ pub fn (mut tc TypeChecker) reset_resolution_type_view_cache() {
 
 // disable_resolution_type_view_cache prevents a scoped cache from escaping the
 // phase that allocated it.
+@[unsafe]
 pub fn (mut tc TypeChecker) disable_resolution_type_view_cache() {
 	tc.resolution_type_views = unsafe { nil }
 }
@@ -7486,6 +7502,7 @@ fn removed_json_module_message(file string) string {
 		'`json.encode_pretty(x)` with `json2.encode(x, prettify: true, legacy_layout: true, escape_unicode: true, time_as_unix: true)`.'
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) check_import_diagnostics() {
 	// The module identity of each file asks the file system the same questions
 	// about the same few directories; remember the answers for this pass.
@@ -11532,7 +11549,7 @@ fn (tc &TypeChecker) cached_expr_type(id flat.NodeId) ?Type {
 // Dense slots point at immutable canonical types. Sparse map values need stable
 // copies because later insertions can move the map backing storage. A nil pointer
 // represents a cache miss without an optional-result wrapper on this hot path.
-@[direct_array_access; inline]
+@[direct_array_access; inline; unsafe]
 fn (tc &TypeChecker) cached_expr_type_ref(id flat.NodeId) &Type {
 	idx := int(id)
 	if isnil(tc.storage_query_probe) && (!tc.parallel_check_sparse || tc.in_check_range(idx)) {
@@ -11550,7 +11567,7 @@ fn (tc &TypeChecker) cached_expr_type_ref(id flat.NodeId) &Type {
 	return sparse
 }
 
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn (tc &TypeChecker) cached_expr_type_ref_sparse(id flat.NodeId) &Type {
 	idx := int(id)
 	if !isnil(tc.storage_query_probe) {
@@ -14119,6 +14136,7 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns() {
 	check_worker_scope_free(scope)
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) collect_selected_file_called_fns_walk() {
 	saved_file := tc.cur_file
 	saved_module := tc.cur_module
@@ -14138,6 +14156,7 @@ fn (mut tc TypeChecker) collect_selected_file_called_fns_walk() {
 
 // collect_selected_file_root_called_fns seeds the called set and the worklist
 // from the top-level code and the functions of the selected files.
+@[unsafe]
 fn (mut tc TypeChecker) collect_selected_file_root_called_fns() {
 	tc.selected_file_called_fns = map[string]bool{}
 	tc.selected_file_worklist = []string{}
@@ -14179,6 +14198,7 @@ fn (mut tc TypeChecker) collect_selected_file_root_called_fns() {
 
 // collect_selected_decl_called_fns walks the body of `decl` for the functions it
 // calls, with the smartcast keys of its node range in `smartcast_keys`.
+@[unsafe]
 fn (mut tc TypeChecker) collect_selected_decl_called_fns(decl SelectedFnDecl, mut smartcast_keys SmartcastKeyFilter) {
 	tc.cur_file = decl.file
 	tc.cur_module = decl.mod
@@ -19542,6 +19562,7 @@ fn attribute_kind_word(kind AttributeFieldKind) string {
 }
 
 // check_struct_field_defaults validates check struct field defaults state for types.
+@[unsafe]
 fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node flat.Node) {
 	node_name_id := node.source_value_id()
 	node_short_id := flat.source_type_syntax(node_name_id).unqualified()
@@ -21311,6 +21332,7 @@ fn type_allows_implicit_return(typ &Type) bool {
 }
 
 // valid_node_id supports valid node id handling for TypeChecker.
+@[unsafe]
 fn (tc &TypeChecker) valid_node_id(id flat.NodeId) bool {
 	return int(id) >= 0 && tc.a != unsafe { nil } && int(id) < tc.a.nodes.len
 }
@@ -22056,6 +22078,7 @@ fn (mut tc TypeChecker) check_comptime_for_global_shadowing(id flat.NodeId, node
 	tc.record_global_shadow_error_at(id, parts[0], tc.comptime_for_variable_pos(node, parts[0]))
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.Node) {
 	parts := node.value.split('|')
 	if parts.len != 2 || parts[0].len == 0 || node.children_count == 0 {
@@ -22737,6 +22760,7 @@ fn (tc &TypeChecker) comptime_static_deferred_cases(source_id u32, loop_kind str
 	return ComptimeStaticValueCases{}
 }
 
+@[unsafe]
 fn (tc &TypeChecker) comptime_static_method_cases(source_id u32) ComptimeStaticValueCases {
 	base_type := tc.instance_type_text(tc.comptime_static_for_base_type(source_id))
 	clean_type_id := comptime_static_unwrap_type_id(base_type)

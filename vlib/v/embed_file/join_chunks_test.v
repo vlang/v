@@ -23,6 +23,7 @@ fn test_join_chunks_concatenates_the_chunks_in_order() {
 
 // A zero-length entry with no pointer is the end of the table, and a non-zero
 // offset with no further data is simply truncated there.
+@[unsafe]
 fn test_join_chunks_stops_at_the_terminator_and_truncates_to_the_requested_length() {
 	payload := [u8(9), 8, 7, 6]
 	chunks := [EmbedFileChunk{
@@ -44,6 +45,7 @@ fn test_join_chunks_stops_at_the_terminator_and_truncates_to_the_requested_lengt
 // The index is what `-usecache` looks the embed up in, and it ends with a
 // negative id: a lookup for a path that is not there must return that entry
 // rather than run past the table.
+@[unsafe]
 fn test_find_index_entry_by_path_matches_the_path_and_the_algorithm() {
 	first := 'module one'.bytes()
 	second := 'module two'.bytes()

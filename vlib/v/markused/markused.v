@@ -107,6 +107,7 @@ pub fn seeded_fn_names() []string {
 }
 
 // mark_used updates mark used state for markused.
+@[unsafe]
 pub fn mark_used(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
 	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil }, false)
 	return used
@@ -119,6 +120,7 @@ pub fn mark_used_for_tests(a &flat.FlatAst, tc &types.TypeChecker, test_files []
 
 // mark_used_with_generic_usage also reports whether reachable code uses a generic
 // function, struct, or sum type and therefore requires monomorphization.
+@[unsafe]
 pub fn mark_used_with_generic_usage(a &flat.FlatAst, tc &types.TypeChecker) (map[string]bool, bool) {
 	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil }, false)
 }
@@ -126,24 +128,28 @@ pub fn mark_used_with_generic_usage(a &flat.FlatAst, tc &types.TypeChecker) (map
 // mark_used_with_generic_usage_cached is mark_used_with_generic_usage that keeps
 // its declaration indexes in `decl_cache`, so a later pass over the same
 // declarations (after semantic checks of more library bodies) reuses them.
+@[unsafe]
 pub fn mark_used_with_generic_usage_cached(a &flat.FlatAst, tc &types.TypeChecker, decl_cache &MarkusedDeclCache) (map[string]bool, bool) {
 	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, true, unsafe { nil }, unsafe { nil }, false, decl_cache, false)
 }
 
 // mark_used_with_generic_usage_full_runtime_cached is the decl_cache variant of
 // mark_used_with_generic_usage_full_runtime.
+@[unsafe]
 pub fn mark_used_with_generic_usage_full_runtime_cached(a &flat.FlatAst, tc &types.TypeChecker, decl_cache &MarkusedDeclCache) (map[string]bool, bool) {
 	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, false, unsafe { nil }, unsafe { nil }, false, decl_cache, false)
 }
 
 // mark_used_with_generic_usage_full_runtime disables the literal-output shortcut so
 // compatibility fixtures retain helpers referenced by the complete builtin runtime.
+@[unsafe]
 pub fn mark_used_with_generic_usage_full_runtime(a &flat.FlatAst, tc &types.TypeChecker) (map[string]bool, bool) {
 	return mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, true, false, false, unsafe { nil }, unsafe { nil }, false, unsafe { nil }, false)
 }
 
 // mark_used_without_generic_detection is the self-host variant for inputs whose caller
 // already guarantees that monomorphization is unnecessary.
+@[unsafe]
 pub fn mark_used_without_generic_detection(a &flat.FlatAst, tc &types.TypeChecker) map[string]bool {
 	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, false, false, true, unsafe { nil }, unsafe { nil }, false, unsafe { nil }, false)
 	return used
@@ -151,6 +157,7 @@ pub fn mark_used_without_generic_detection(a &flat.FlatAst, tc &types.TypeChecke
 
 // mark_used_without_generic_detection_prepared consumes declaration indexes
 // built concurrently with checking for the no-generic self-host path.
+@[unsafe]
 pub fn mark_used_without_generic_detection_prepared(a &flat.FlatAst, tc &types.TypeChecker, mut prepared PreparedMarkusedDecls) map[string]bool {
 	used, _ := mark_used_with_test_files(a, tc, map[string]bool{}, map[string]bool{}, false, false, false, true, prepared, unsafe { nil }, false, unsafe { nil }, false)
 	return used
@@ -158,6 +165,7 @@ pub fn mark_used_without_generic_detection_prepared(a &flat.FlatAst, tc &types.T
 
 // mark_used_for_tests_with_generic_usage is the test-file-rooted variant of
 // mark_used_with_generic_usage.
+@[unsafe]
 pub fn mark_used_for_tests_with_generic_usage(a &flat.FlatAst, tc &types.TypeChecker, test_files []string) (map[string]bool, bool) {
 	mut file_map := map[string]bool{}
 	for file in test_files {
@@ -168,6 +176,7 @@ pub fn mark_used_for_tests_with_generic_usage(a &flat.FlatAst, tc &types.TypeChe
 
 // mark_used_for_native_tests_with_generic_usage roots test hooks and discovers
 // runtime helpers only in reachable bodies, avoiding unused unsupported native code.
+@[unsafe]
 pub fn mark_used_for_native_tests_with_generic_usage(a &flat.FlatAst, tc &types.TypeChecker, test_files []string) (map[string]bool, bool) {
 	mut file_map := map[string]bool{}
 	for file in test_files {
@@ -178,6 +187,7 @@ pub fn mark_used_for_native_tests_with_generic_usage(a &flat.FlatAst, tc &types.
 
 // mark_all_used_with_generic_usage roots every concrete function while preserving
 // ordinary generic reachability and test harness roots.
+@[unsafe]
 pub fn mark_all_used_with_generic_usage(a &flat.FlatAst, tc &types.TypeChecker, test_files []string) (map[string]bool, bool) {
 	mut file_map := map[string]bool{}
 	for file in test_files {
@@ -194,6 +204,7 @@ pub fn mark_used_for_cache(a &flat.FlatAst, tc &types.TypeChecker, test_files []
 
 // mark_used_for_cache_with_generic_usage roots cached module functions and reports whether
 // their reachable code requires monomorphization.
+@[unsafe]
 pub fn mark_used_for_cache_with_generic_usage(a &flat.FlatAst, tc &types.TypeChecker, test_files []string, source_modules map[string]bool) (map[string]bool, bool) {
 	mut file_map := map[string]bool{}
 	for file in test_files {
@@ -204,6 +215,7 @@ pub fn mark_used_for_cache_with_generic_usage(a &flat.FlatAst, tc &types.TypeChe
 
 // mark_used_for_cache_without_generic_detection is the self-host cache variant for inputs
 // whose caller already guarantees that monomorphization is unnecessary.
+@[unsafe]
 pub fn mark_used_for_cache_without_generic_detection(a &flat.FlatAst, tc &types.TypeChecker, test_files []string, source_modules map[string]bool) map[string]bool {
 	mut file_map := map[string]bool{}
 	for file in test_files {
@@ -216,6 +228,7 @@ pub fn mark_used_for_cache_without_generic_detection(a &flat.FlatAst, tc &types.
 // mark_used_checking_library_bodies checks each reached concrete library body before
 // collecting its calls, retaining the current reachability queue between frontiers.
 // The checker and reachability results belong to the caller's compilation arena.
+@[unsafe]
 pub fn mark_used_checking_library_bodies(a &flat.FlatAst, mut tc types.TypeChecker, parallel bool) (map[string]bool, bool) {
 	tc.library_body_convergence_complete = false
 	return mark_used_with_test_files(a, &tc, map[string]bool{}, map[string]bool{}, false, true,
@@ -544,6 +557,7 @@ pub fn new_markused_decl_cache() &MarkusedDeclCache {
 
 // release frees the cached declaration indexes. The caller must have copied
 // every reachability result that can name their strings.
+@[unsafe]
 pub fn (mut cache MarkusedDeclCache) release() {
 	scope := cache.scope
 	cache.scope = unsafe { nil }
@@ -604,7 +618,7 @@ fn markused_decl_scan(a &flat.FlatAst, tc &types.TypeChecker, cache_mode bool, c
 	return cache.scan
 }
 
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files map[string]bool, cache_modules map[string]bool, cache_mode bool, detect_generics bool, all_functions bool, allow_trivial_literal_output bool, prepared &PreparedMarkusedDecls, library_body_checker voidptr, library_check_parallel bool, decl_cache &MarkusedDeclCache, reachable_test_helpers bool) (map[string]bool, bool) {
 	mut mu_sw := time.new_stopwatch()
 	trivial_literal_output := allow_trivial_literal_output && !cache_mode && cache_modules.len == 0
@@ -2550,6 +2564,7 @@ pub fn prepare_markused_declarations(a &flat.FlatAst, tc &types.TypeChecker, ena
 
 // release frees the helper-local preparation arena after the caller has
 // published the used-name map into its compilation arena.
+@[unsafe]
 pub fn (mut prepared PreparedMarkusedDecls) release() {
 	scope := prepared.scope
 	prepared.scope = unsafe { nil }

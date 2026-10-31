@@ -23,6 +23,7 @@ fn check_callback_kind_tags(values &map, hash_kind u8, eq_kind u8) {
 	}
 }
 
+@[unsafe]
 fn check_callback_kind_reads(values &map, count int) {
 	for i in 0 .. count + 1 {
 		key := u64(i) << 40
@@ -86,6 +87,7 @@ fn test_map_callback_kinds_preserve_independent_custom_callbacks_and_clones() {
 	}
 }
 
+@[unsafe]
 fn test_map_callback_kinds_cover_standard_constructors_and_header_reset() {
 	mut strings := map[string]int{}
 	strings['one'] = 1

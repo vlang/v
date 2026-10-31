@@ -334,6 +334,7 @@ mut:
 // it would deadlock the blocked reader. That adapter is provided when the pooled
 // transport is wired up (see the HTTP connection-pooling Phase 3 work); until
 // then this type is exercised only over a full-duplex in-memory pipe in tests.
+@[unsafe]
 pub fn new_h2_mux_conn(transport H2Transport, close_transport fn ()) &H2MuxConn {
 	if close_transport == unsafe { nil } {
 		// The reader thread spawned below blocks in transport.read(); the
@@ -413,6 +414,7 @@ fn (mut c H2MuxConn) drop_ref() {
 // teardown_transport runs the close_transport callback exactly once. Calling it
 // while the reader is still blocked in transport.read() interrupts that read, so
 // the reader observes the closed transport and exits via fail_conn.
+@[unsafe]
 fn (mut c H2MuxConn) teardown_transport() {
 	c.smu.lock()
 	already := c.transport_torn_down
@@ -1018,6 +1020,7 @@ fn (mut c H2MuxConn) send_body_on_stream(mut s H2MuxStream, body []u8) ! {
 
 // wait_response drains the stream until it ends, honoring the request's
 // streaming callback and stop limits. Callbacks run on the requester's thread.
+@[unsafe]
 fn (mut c H2MuxConn) wait_response(mut s H2MuxStream, req H2ClientRequest) !H2ClientResponse {
 	mut resp := H2ClientResponse{}
 	mut body_expected := u64(0)
@@ -1376,6 +1379,7 @@ fn (mut c H2MuxConn) mux_fill_at_least(n int) ! {
 	}
 }
 
+@[unsafe]
 fn (mut c H2MuxConn) dispatch_frame(frame H2Frame) ! {
 	match frame {
 		H2SettingsFrame {
@@ -1647,6 +1651,7 @@ fn (mut c H2MuxConn) apply_peer_settings(settings []H2Setting) ! {
 // CONTINUATION frames inline — the reader owns the read path), decodes it,
 // and delivers it to the stream. Blocks for unknown streams are still decoded
 // to keep the connection's HPACK dynamic table in sync, then dropped.
+@[unsafe]
 fn (mut c H2MuxConn) on_response_headers(frame H2HeadersFrame) ! {
 	mut fragment := frame.fragment.clone()
 	if !frame.end_headers {
@@ -1811,6 +1816,7 @@ fn (mut c H2MuxConn) on_response_headers(frame H2HeadersFrame) ! {
 // cancelled/completed streams — keeps the connection-level flow-control
 // account exact by returning the credit directly (mirroring the server's
 // unknown-stream backstop).
+@[unsafe]
 fn (mut c H2MuxConn) on_response_data(frame H2DataFrame) ! {
 	// Padding (the pad-length byte + padding) counts toward flow control
 	// (RFC 7540 6.9.1) but is never delivered to the app, so credit it back
@@ -1947,6 +1953,7 @@ fn (mut c H2MuxConn) wake_send(mut s H2MuxStream) {
 // requester — used by the reader for a stream-level protocol/flow-control error.
 // Deregistering before the RST lets any in-flight late DATA hit the
 // unknown-stream backstop (which credits the connection window).
+@[unsafe]
 fn (mut c H2MuxConn) reset_stream(stream_id u32, code H2ErrorCode, reason string) {
 	c.smu.lock()
 	mut s := c.streams[stream_id] or { &H2MuxStream(unsafe { nil }) }
@@ -1987,6 +1994,7 @@ fn (mut c H2MuxConn) reset_stream(stream_id u32, code H2ErrorCode, reason string
 	}
 }
 
+@[unsafe]
 fn (mut c H2MuxConn) lookup_stream(stream_id u32) &H2MuxStream {
 	c.smu.lock()
 	defer {

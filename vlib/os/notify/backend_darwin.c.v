@@ -87,6 +87,7 @@ const kqueue_eof = u16(C.EV_EOF)
 const kqueue_error = u16(C.EV_ERROR)
 
 // ctl is a helper method for add, modify, and remove
+@[unsafe]
 fn (mut kn KqueueNotifier) ctl(fd int, filter i16, flags u16) ! {
 	event := [1]C.kevent{}
 	C.EV_SET(&event[0], uint(fd), filter, flags, 0, 0, unsafe { nil })
@@ -116,6 +117,7 @@ fn (mut kn KqueueNotifier) remove(fd int) ! {
 
 // wait waits to be notified of events on the watch list,
 // returns at most 512 events
+@[unsafe]
 fn (mut kn KqueueNotifier) wait(timeout time.Duration) []FdEvent {
 	// arbitrary 512 limit; events will round robin on successive
 	// waits if the number exceeds this

@@ -2,6 +2,7 @@ module sync
 
 import time
 
+@[unsafe]
 fn timer_thread_entry(args_ptr voidptr) voidptr {
 	args := unsafe { &TimerThreadArgs(args_ptr) }
 	$if prealloc {

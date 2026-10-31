@@ -5,6 +5,7 @@ import os
 $if windows {
 	#include <windows.h>
 
+	@[unsafe]
 	fn C.PeekNamedPipe(handle voidptr, buffer voidptr, size i32, bytes_read voidptr, bytes_available voidptr, bytes_left voidptr) bool
 } $else {
 	#include "@VMODROOT/vlib/v/cmdexec/cmdexec_poll.h"

@@ -79,6 +79,7 @@ fn vgc_test_garbage(n int, size int) {
 	}
 }
 
+@[unsafe]
 fn test_a_span_is_not_recycled_while_a_thread_allocates_from_it() {
 	$if vgc ? {
 		// Two objects of a size class that nothing else uses: their span is this thread's

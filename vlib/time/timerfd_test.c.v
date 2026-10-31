@@ -1,5 +1,6 @@
 import time
 
+@[unsafe]
 fn test_timerfd_periodic_expirations_are_counted() {
 	$if linux {
 		tfd := C.timerfd_create(C.CLOCK_MONOTONIC, C.TFD_CLOEXEC | C.TFD_NONBLOCK)

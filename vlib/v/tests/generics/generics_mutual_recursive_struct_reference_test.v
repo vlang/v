@@ -10,6 +10,7 @@ fn foo_new[T]() &Foo[T] {
 	return &Foo[T]{}
 }
 
+@[unsafe]
 fn test_mutual_recursive_generic_struct_reference() {
 	foo := foo_new[int]()
 	assert foo != unsafe { nil }
@@ -35,6 +36,7 @@ struct Issue26675Foo {
 	node &Issue26675ListNode[Issue26675Foo]
 }
 
+@[unsafe]
 fn test_recursive_generic_struct_instantiation_does_not_crash() {
 	node := Issue26675ListNode.new[Issue26675Foo]()
 	assert node != unsafe { nil }

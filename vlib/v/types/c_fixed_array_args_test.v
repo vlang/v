@@ -63,6 +63,7 @@ fn main() {
 	assert errors.any(it.msg.contains('cannot use `&f32` as `[16]f32`')), errors.str()
 }
 
+@[unsafe]
 fn test_c_fixed_array_arguments_require_c_integer_storage() {
 	previous_bits := platform_int_bits()
 	set_platform_int_bits(64)

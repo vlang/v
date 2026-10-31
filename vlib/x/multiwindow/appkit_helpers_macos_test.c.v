@@ -2,6 +2,7 @@ module multiwindow
 
 import macos
 
+@[unsafe]
 fn C.free(ptr voidptr)
 
 fn test_appkit_string_helpers_preserve_payload_and_copy_storage() {

@@ -211,6 +211,7 @@ pub:
 }
 
 // build supports build handling for ssa.
+@[unsafe]
 pub fn build(a_ &flat.FlatAst) &Module {
 	return build_with_used(a_, map[string]bool{}, unsafe { nil })
 }
@@ -399,6 +400,7 @@ fn (mut b Builder) canonicalize_internal_function_refs() {
 }
 
 // register_types updates register types state for ssa.
+@[unsafe]
 fn (mut b Builder) register_types() {
 	mut cur_module := ''
 	for node in b.a.nodes {
@@ -673,6 +675,7 @@ fn native_c_struct_field_type(struct_name string, field_name string) ?u32 {
 }
 
 // register_multi_return_types updates register multi return types state for ssa.
+@[unsafe]
 fn (mut b Builder) register_multi_return_types() {
 	if b.tc == unsafe { nil } {
 		return
@@ -917,6 +920,7 @@ fn (mut b Builder) register_checker_sum_type(name_id u32) TypeID {
 	return typ_id
 }
 
+@[unsafe]
 fn (b &Builder) source_is_sum_type(name string) bool {
 	if (b.sum_type_variants.type_ids(flat.source_type_id(name)) or { []u32{} }).len > 0 {
 		return true
@@ -1018,6 +1022,7 @@ fn (mut b Builder) register_struct_type_name(name u32, module_name string, typ_i
 
 // register_checker_interface materializes the runtime interface box used by
 // native method dispatch: {object pointer, concrete type id, boxed ownership}.
+@[unsafe]
 fn (mut b Builder) register_checker_interface(name_id u32) ?TypeID {
 	if b.tc == unsafe { nil } || name_id == 0 {
 		return none
@@ -1102,6 +1107,7 @@ fn (b &Builder) interface_concrete_type_id(source_type_id u32) TypeID {
 	return b.resolve_type(source_type_id)
 }
 
+@[unsafe]
 fn (b &Builder) interface_dispatch_id(interface_type TypeID, source_type_id u32) int {
 	if b.tc != unsafe { nil } {
 		if interface_name := b.interface_type_names[interface_type] {
@@ -1183,6 +1189,7 @@ fn (b &Builder) interface_object_concrete_type_name(id flat.NodeId) ?u32 {
 }
 
 // register_sum_type_name updates register sum type name state for ssa.
+@[unsafe]
 fn (mut b Builder) register_sum_type_name(name u32, module_name string, typ_id TypeID) {
 	qualified_id := qualify_type_name(name, module_name)
 	b.ssa_type_names[typ_id] = flat.source_type_name(qualified_id)
@@ -1536,6 +1543,7 @@ fn (mut b Builder) initialize_global(index int, id flat.NodeId) {
 	}
 }
 
+@[unsafe]
 fn (mut b Builder) global_constant_type(id flat.NodeId) TypeID {
 	if b.tc != unsafe { nil } {
 		return b.ssa_type_from_checker_type(b.tc.resolve_type(id))
@@ -1831,6 +1839,7 @@ fn (mut b Builder) ensure_runtime_global(name string, typ TypeID) {
 }
 
 // register_functions updates register functions state for ssa.
+@[unsafe]
 fn (mut b Builder) register_functions() {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	mut p1 := []TypeID{}
@@ -8868,6 +8877,7 @@ fn (mut b Builder) source_param_type_name(param flat.Node, fn_name string, modul
 }
 
 // checker_param_type_name supports checker param type name handling for Builder.
+@[unsafe]
 fn (b &Builder) checker_param_type_name(fn_name string, module_name string, idx int) ?u32 {
 	if b.tc == unsafe { nil } {
 		return none
@@ -8884,6 +8894,7 @@ fn (b &Builder) checker_param_type_name(fn_name string, module_name string, idx 
 }
 
 // checker_param_type returns the checker's concrete parameter type.
+@[unsafe]
 fn (b &Builder) checker_param_type(fn_name string, module_name string, idx int) ?types.Type {
 	if b.tc == unsafe { nil } {
 		return none
@@ -8901,6 +8912,7 @@ fn (b &Builder) checker_param_type(fn_name string, module_name string, idx int) 
 
 // checker_return_type_name returns the concrete return spelling for a
 // monomorphized function, including generic struct instances like `Box[int]`.
+@[unsafe]
 fn (b &Builder) checker_return_type_name(fn_name string, module_name string) ?u32 {
 	if b.tc == unsafe { nil } {
 		return none
@@ -8942,6 +8954,7 @@ fn checker_fn_name_candidates(fn_name string, module_name string) []string {
 }
 
 // checker_return_type supports checker return type handling for Builder.
+@[unsafe]
 fn (mut b Builder) checker_return_type(fn_name string, module_name string) ?TypeID {
 	if b.tc == unsafe { nil } {
 		return none
@@ -9076,6 +9089,7 @@ fn (b &Builder) source_fn_is_used(name string, module_name string) bool {
 
 // ownership_drop_intrinsic_name recognizes generic cleanup calls that backends lower
 // directly rather than materializing as source functions.
+@[unsafe]
 fn (b &Builder) ownership_drop_intrinsic_name(name string) bool {
 	if name in ['builtin.drop_owned', 'builtin__drop_owned']
 		|| name.starts_with('builtin.drop_owned_T_') || name.starts_with('builtin__drop_owned_T_') {
@@ -9291,6 +9305,7 @@ fn (b &Builder) is_terminator(val_id ValueID) bool {
 }
 
 // valid_node_id supports valid node id handling for Builder.
+@[unsafe]
 fn (b &Builder) valid_node_id(id flat.NodeId) bool {
 	return b.a != unsafe { nil } && int(id) >= 0 && int(id) < b.a.nodes.len
 }
@@ -9360,6 +9375,7 @@ fn ssa_pointer_base_source_type(type_id u32) u32 {
 }
 
 // for_in_container_type_name supports for in container type name handling for Builder.
+@[unsafe]
 fn (b &Builder) for_in_container_type_name(container_id flat.NodeId) u32 {
 	if b.tc != unsafe { nil } && b.valid_node_id(container_id) {
 		resolved_type := b.tc.resolve_type(container_id)
@@ -9444,6 +9460,7 @@ fn (b &Builder) result_error_type(typ_id TypeID) TypeID {
 	return TypeID(0)
 }
 
+@[unsafe]
 fn (b &Builder) is_error_result_expr(id flat.NodeId, value ValueID, result_type TypeID) bool {
 	err_type := b.result_error_type(result_type)
 	if err_type == 0 {
@@ -10074,6 +10091,7 @@ fn (mut b Builder) build_for_in_container_value(container_id flat.NodeId, contai
 }
 
 // build_array_for_in builds array for in data for ssa.
+@[unsafe]
 fn (mut b Builder) build_array_for_in(node flat.Node, key_id flat.NodeId, val_id flat.NodeId, container_id flat.NodeId, body_start int, container_type_id u32, label string) {
 	arr_val := b.build_for_in_container_value(container_id, b.array_type)
 	ptr_array := b.m.type_store.get_ptr(b.array_type)
@@ -10818,6 +10836,7 @@ fn (mut b Builder) build_match_condition(subject ValueID, branch flat.Node) Valu
 }
 
 // if_value_result_type supports if value result type handling for Builder.
+@[unsafe]
 fn (mut b Builder) if_value_result_type(id flat.NodeId, values []ValueID) TypeID {
 	if values.len > 0 {
 		first_type := b.value_type(values[0])
@@ -11221,6 +11240,7 @@ fn (mut b Builder) build_in_expr(node flat.Node) ValueID {
 }
 
 // build_enum_val builds enum val data for ssa.
+@[unsafe]
 fn (mut b Builder) build_enum_val(id flat.NodeId, node flat.Node) ValueID {
 	if node.typ != 0 {
 		if value := b.enum_value_for_type(node.typ, node.value_text()) {
@@ -11315,6 +11335,7 @@ fn (b &Builder) enum_field_value_for_type(type_name_id u32, member string, as_fl
 }
 
 // is_flag_enum_type_name reports whether is flag enum type name applies in ssa.
+@[unsafe]
 fn (b &Builder) is_flag_enum_type_name(type_name_id u32) bool {
 	clean_id := ssa_pointer_base_source_type(type_name_id)
 	if clean_id in b.flag_enum_types { return true }
@@ -11333,6 +11354,7 @@ fn (b &Builder) is_flag_enum_type_name(type_name_id u32) bool {
 }
 
 // checker_has_flag_enum converts checker has flag enum data for ssa.
+@[unsafe]
 fn (b &Builder) checker_has_flag_enum(type_name_id u32) bool {
 	if b.tc == unsafe { nil } { return false }
 	if type_name_id in b.tc.flag_enums { return true }
@@ -12010,6 +12032,7 @@ fn (mut b Builder) build_or_fallback_value(id flat.NodeId, result_type TypeID) V
 	return b.default_value_for_type(result_type)
 }
 
+@[unsafe]
 fn (mut b Builder) or_result_type(id flat.NodeId, fallback_type_id u32) TypeID {
 	if b.tc != unsafe { nil } {
 		if typ := b.tc.expr_type(id) {
@@ -12103,6 +12126,7 @@ fn (mut b Builder) wide_integer_type() TypeID {
 	return b.wide_int_type
 }
 
+@[unsafe]
 fn (mut b Builder) is_wide_integer_expr(id flat.NodeId) bool {
 	name := flat.source_type_name(b.checked_expr_type_name(id))
 	if name in ['u128', 'i128'] {
@@ -12119,6 +12143,7 @@ fn (mut b Builder) is_wide_integer_expr(id flat.NodeId) bool {
 	return false
 }
 
+@[unsafe]
 fn (mut b Builder) is_signed_wide_integer_expr(id flat.NodeId) bool {
 	if b.tc != unsafe { nil } {
 		typ := b.tc.resolve_type(id)
@@ -12345,6 +12370,7 @@ fn (mut b Builder) build_wide_integer_expr(node flat.Node) ?ValueID {
 	}
 }
 
+@[unsafe]
 fn (mut b Builder) build_infix(id flat.NodeId, node flat.Node) ValueID {
 	// Comparisons have a bool result, so the result-type wide dispatch cannot
 	// catch them. Never send either wide operand to a scalar instruction.
@@ -13099,6 +13125,7 @@ fn (b &Builder) canonical_sum_type_name(name_id u32) ?u32 {
 	return none
 }
 
+@[unsafe]
 fn (mut b Builder) sum_variant_for_expr(sum_name_id u32, expr_id flat.NodeId, value ValueID) ?u32 {
 	mut type_name := u32(0)
 	if b.tc != unsafe { nil } && int(expr_id) >= 0 && int(expr_id) < b.a.nodes.len {
@@ -14371,6 +14398,7 @@ fn (mut b Builder) fix_native_map_callback_args(mut args []ValueID) []ValueID {
 // callable SSA symbol. The native backends do not yet emit the C backend's
 // type-id dispatch switch, but keeping the method signature lets programs that
 // call through an interface compile and keeps later codegen deterministic.
+@[unsafe]
 fn (mut b Builder) register_interface_method_stub(name string, base_id flat.NodeId, method string) ?int {
 	if b.tc == unsafe { nil } {
 		return none
@@ -14638,6 +14666,7 @@ fn (mut b Builder) register_missing_call_stub(name string, call_id flat.NodeId, 
 	return b.register_synthetic_function(name, ret_type, params)
 }
 
+@[unsafe]
 fn (b &Builder) call_never_returns(id flat.NodeId, name string, is_c_call bool) bool {
 	if b.tc != unsafe { nil } && b.tc.resolved_call_never_returns(id) {
 		return true
@@ -15303,6 +15332,7 @@ fn (mut b Builder) build_indirect_call(id flat.NodeId, node flat.Node, callee_id
 	return b.build_indirect_call_value(id, node, callee_id, callee)
 }
 
+@[unsafe]
 fn (mut b Builder) build_indirect_call_value(id flat.NodeId, node flat.Node, callee_id flat.NodeId, callee ValueID) ValueID {
 	mut param_types := []TypeID{}
 	if b.m.target.ptr_size == 4 && b.tc != unsafe { nil } {
@@ -15871,6 +15901,7 @@ fn (b &Builder) declared_v_type_name(lhs_id flat.NodeId, rhs_id flat.NodeId) u32
 	return u32(0)
 }
 
+@[unsafe]
 fn (b &Builder) checked_expr_type_name(id flat.NodeId) u32 {
 	if int(id) < 0 {
 		return u32(0)
@@ -15964,6 +15995,7 @@ fn is_builder_method(method string) bool {
 		'write_runes', 'last_n', 'push_many']
 }
 
+@[unsafe]
 fn (b &Builder) resolved_call_name(id flat.NodeId) ?string {
 	if b.tc == unsafe { nil } {
 		return none
@@ -17206,6 +17238,7 @@ fn (b &Builder) struct_literal_type(name_id u32) (TypeID, u32) {
 
 // register_checker_generic_struct materializes a concrete generic struct layout
 // from the checker, which substitutes fields such as `[]T` with `[]int`.
+@[unsafe]
 fn (mut b Builder) register_checker_generic_struct(name string) ?TypeID {
 	if b.tc == unsafe { nil } || !name.contains('[') || name.starts_with('[]')
 		|| name.starts_with('map[')
@@ -17776,6 +17809,7 @@ fn (mut b Builder) resolve_c_decl_type(name_id u32) TypeID {
 	return b.resolve_type(name_id)
 }
 
+@[unsafe]
 fn (b &Builder) type_alias_target(name_id u32) ?u32 {
 	if b.tc == unsafe { nil } || name_id == 0 { return none }
 	if target_source_id := b.tc.type_aliases.type_id(name_id) {

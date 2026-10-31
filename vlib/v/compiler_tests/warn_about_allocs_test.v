@@ -36,6 +36,7 @@ fn run_warn_allocs_process(program string, args []string, environment map[string
 // interface without a cast, slices that copy, and locals lowering moves to
 // the heap. They were the leaks -warn-about-allocs missed in a kernel built
 // with -gc none.
+@[unsafe]
 fn test_warn_about_allocs_reports_implicit_allocations() {
 	root := os.join_path(os.vtmp_dir(), 'v3_warn_allocs_implicit_${os.getpid()}')
 	os.rmdir_all(root) or {}

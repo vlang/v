@@ -13,6 +13,7 @@ struct SendfileSignalState {
 	pending_sigpipe bool
 }
 
+@[unsafe]
 fn sendfile_signal_state(socket_fd int, file_fd int, keep_pending bool) SendfileSignalState {
 	mut sigpipe_set := C.sigset_t{}
 	mut previous_mask := C.sigset_t{}

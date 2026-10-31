@@ -8,6 +8,7 @@ fn string_length_equal(a voidptr, b voidptr) bool {
 	return unsafe { (&string(a)).len == (&string(b)).len }
 }
 
+@[unsafe]
 fn test_map_custom_callbacks_are_preserved() {
 	// Equal lengths intentionally identify different strings as the same key.
 	mut values := new_map(int(sizeof(string)), int(sizeof(int)), string_length_hash,
@@ -45,6 +46,7 @@ fn integer_mod_equal(a voidptr, b voidptr) bool {
 	return unsafe { *&u64(a) % 16 == *&u64(b) % 16 }
 }
 
+@[unsafe]
 fn test_map_custom_integer_callbacks_are_preserved() {
 	mut values := new_map(int(sizeof(u64)), int(sizeof(int)), integer_mod_hash,
 		integer_mod_equal, map_clone_int_8, map_free_nop)

@@ -26,6 +26,7 @@ fn c_mut_voidptr_clear_thunk(mut o voidptr) {
 	C.c_mut_voidptr_clear(o)
 }
 
+@[unsafe]
 fn test_mut_voidptr_param_passed_by_reference_to_c_fn() {
 	mut o := voidptr(u64(0x1234))
 	c_mut_voidptr_clear_thunk(mut o)

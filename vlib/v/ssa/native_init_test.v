@@ -120,6 +120,7 @@ fn main() {}
 	assert found
 }
 
+@[unsafe]
 fn test_native_process_argument_globals_keep_the_entry_abi_and_are_not_reinitialized() {
 	path := os.join_path(os.vtmp_dir(), 'native_argument_globals_${os.getpid()}.v')
 	defer {

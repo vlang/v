@@ -22,6 +22,7 @@ fn plus_two(_ voidptr, x int) int {
 
 // `&config.log` is the address of the field, `&local` that of the local: a
 // `&voidptr` (C's `void **`) parameter cannot take the function itself.
+@[unsafe]
 fn test_address_of_a_fn_field_passed_as_a_pointer_to_a_pointer() {
 	mut config := Config{}
 	C.store_callback(&config.log, plus_one, 0)

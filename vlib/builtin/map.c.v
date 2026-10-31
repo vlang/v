@@ -143,6 +143,7 @@ fn map_hash_int_16(pkey voidptr) u64 {
 	return C.wyhash64(halves[0], halves[1])
 }
 
+@[unsafe]
 fn map_enum_fn(kind int, esize int) voidptr {
 	if kind !in [1, 2, 3] {
 		panic('map_enum_fn: invalid kind')

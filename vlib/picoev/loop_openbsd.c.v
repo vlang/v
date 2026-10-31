@@ -84,6 +84,7 @@ fn backend_get_next_fd(backend int) int {
 
 // apply pending processes all changes for the file descriptors and updates `loop.changelist`
 // if `aplly_all` is `true` the changes are immediately applied.
+@[unsafe]
 fn (mut pv Picoev) apply_pending_changes(apply_all bool) int {
 	mut total, mut nevents := 0, 0
 

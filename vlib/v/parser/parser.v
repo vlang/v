@@ -444,6 +444,7 @@ fn (mut p Parser) begin_text_cache_batch(files int) {
 	}
 }
 
+@[unsafe]
 fn (mut p Parser) end_text_cache_batch() {
 	p.text_value_cache = unsafe { nil }
 	p.text_type_cache = unsafe { nil }

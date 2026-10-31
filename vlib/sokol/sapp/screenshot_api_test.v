@@ -29,6 +29,7 @@ fn main() {
 	assert result.exit_code == 0, result.output
 }
 
+@[unsafe]
 fn test_screenshot_pixels_field_stays_private_outside_sapp() {
 	result := compile_probe('write', 'import sokol.sapp
 

@@ -518,6 +518,7 @@ fn ownership_clone_state_for_parallel(src &OwnershipState) &OwnershipState {
 	}
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) ownership_fork_for_parallel_check(src &TypeChecker) {
 	if src.ownership == unsafe { nil } {
 		tc.ownership = unsafe { nil }
@@ -836,6 +837,7 @@ fn ownership_merge_drop_entries(existing []OwnershipDropEntry, extra []Ownership
 	return merged
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) ownership_merge_parallel_check_worker(w &TypeChecker) {
 	own_time_sw := time.new_stopwatch()
 	defer {
@@ -922,6 +924,7 @@ fn (mut tc TypeChecker) ownership_merge_parallel_check_worker(w &TypeChecker) {
 	}
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) ownership_state() &OwnershipState {
 	if tc.ownership == unsafe { nil } {
 		tc.ownership = new_ownership_state()
@@ -929,6 +932,7 @@ fn (mut tc TypeChecker) ownership_state() &OwnershipState {
 	return tc.ownership
 }
 
+@[unsafe]
 fn (tc &TypeChecker) ownership_checks_suppressed() bool {
 	return tc.ownership != unsafe { nil }
 		&& (tc.ownership.suppressed_checks > 0 || tc.ownership.library_body_depth > 0)
@@ -970,12 +974,14 @@ fn (tc &TypeChecker) ownership_fn_decl_file(node flat.Node) string {
 // ownership_fn_keeps_value_semantics reports whether the checker gave the body of `node` V's
 // value semantics (see ownership_file_keeps_value_semantics). Lowering then treats the body
 // like a `@[manualfree]` one and inserts no ownership cleanup into it.
+@[unsafe]
 pub fn (tc &TypeChecker) ownership_fn_keeps_value_semantics(node flat.Node) bool {
 	return tc.ownership != unsafe { nil } && tc.ownership.library_file_ids[int(node.pos.id)]
 }
 
 // ownership_enter_nested_library_body keeps a function literal or lambda inside a library
 // body in that body's value semantics; ownership_end_fn leaves it again.
+@[unsafe]
 fn (mut tc TypeChecker) ownership_enter_nested_library_body() bool {
 	if tc.ownership == unsafe { nil } || tc.ownership.library_body_depth == 0 {
 		return false
@@ -985,6 +991,7 @@ fn (mut tc TypeChecker) ownership_enter_nested_library_body() bool {
 	return true
 }
 
+@[unsafe]
 fn (tc &TypeChecker) ownership_effects_disabled() bool {
 	return tc.ownership_checks_suppressed()
 		|| (tc.ownership != unsafe { nil } && !tc.ownership.path_active)
@@ -1081,6 +1088,7 @@ fn (mut tc TypeChecker) ownership_should_defer_call_arg_aggregate_consumption(no
 	return expected !is Void && expected !is Pointer
 }
 
+@[unsafe]
 fn (tc &TypeChecker) ownership_aggregate_consumption_deferred(id flat.NodeId) bool {
 	if tc.ownership == unsafe { nil } {
 		return false
@@ -1419,6 +1427,7 @@ fn (mut tc TypeChecker) ownership_live_drop_entry(name string) ?OwnershipDropEnt
 
 // Already-owned values must release nested sum pointer storage even when the payload
 // has no custom Drop method. This does not change which values are owned.
+@[unsafe]
 fn (tc &TypeChecker) ownership_owned_storage_drop_target_for_type_name(type_name_id u32) ?OwnershipDropTarget {
 	if target := tc.ownership_drop_target_for_type_name(type_name_id) {
 		return target
@@ -1504,6 +1513,7 @@ fn (tc &TypeChecker) ownership_type_name_has_drop(type_name_id u32) bool {
 	return false
 }
 
+@[unsafe]
 fn (tc &TypeChecker) ownership_drop_target_for_type_name(type_name_id u32) ?OwnershipDropTarget {
 	if tc.ownership == unsafe { nil } || type_name_id == 0 {
 		return none
@@ -1573,6 +1583,7 @@ fn (tc &TypeChecker) ownership_drop_target_for_resolved_type(typ Type, optional_
 	return none
 }
 
+@[unsafe]
 fn (tc &TypeChecker) ownership_type_name_has_direct_drop(type_name_id u32) bool {
 	type_name_comparison_type_id_4 := type_name_id
 
@@ -1623,6 +1634,7 @@ fn ownership_clone_drop_requirements(src map[string]map[u64]bool) map[string]map
 
 // ownership_type_requires_drop reports whether `typ` has an explicit Drop
 // implementation or contains a field that does.
+@[unsafe]
 pub fn (tc &TypeChecker) ownership_type_requires_drop(typ Type) bool {
 	if tc.ownership == unsafe { nil } {
 		return false
@@ -1658,6 +1670,7 @@ pub fn (tc &TypeChecker) ownership_type_requires_destruction(typ Type) bool {
 
 // check_ownership_map_assignment_key rejects borrowed map keys that cannot be cloned
 // before map storage takes an independent ownership-bearing copy.
+@[unsafe]
 fn (mut tc TypeChecker) check_ownership_map_assignment_key(lhs_id flat.NodeId, op flat.Op) {
 	if tc.ownership == unsafe { nil } || !tc.valid_node_id(lhs_id) {
 		return
@@ -1696,6 +1709,7 @@ fn (mut tc TypeChecker) check_ownership_map_assignment_key(lhs_id flat.NodeId, o
 // check_ownership_uncloneable_overlapping_map_assignment rejects a moved map-derived RHS
 // whose dynamic storage may differ from the target at runtime. Without an independent clone,
 // lowering cannot both preserve same-slot moves and destroy a distinct overwritten target.
+@[unsafe]
 fn (mut tc TypeChecker) check_ownership_uncloneable_overlapping_map_assignment(lhs_id flat.NodeId, rhs_id flat.NodeId, lhs_type Type, op flat.Op, pos flat.NodeId) {
 	if tc.ownership == unsafe { nil } || !tc.ownership_lvalue_contains_map_index(lhs_id) {
 		return
@@ -1736,6 +1750,7 @@ fn (tc &TypeChecker) ownership_lvalue_contains_map_index(id flat.NodeId) bool {
 	return tc.ownership_lvalue_contains_map_index(base_id)
 }
 
+@[unsafe]
 fn (tc &TypeChecker) ownership_type_requires_destruction_inner(typ Type, depth int, mut seen map[u32]bool) bool {
 	if tc.ownership == unsafe { nil } || depth > 64 {
 		return false
@@ -1775,6 +1790,7 @@ fn (tc &TypeChecker) ownership_type_requires_destruction_inner(typ Type, depth i
 
 // ownership_default_clone_missing_method returns the first ownership-bearing type that a
 // compiler-provided IClone implementation cannot clone safely.
+@[unsafe]
 pub fn (tc &TypeChecker) ownership_default_clone_missing_method(typ Type) ?string {
 	if tc.ownership == unsafe { nil } || !tc.ownership_type_requires_destruction(typ) {
 		return none
@@ -6102,6 +6118,7 @@ fn (mut tc TypeChecker) ownership_note_lambda_local_binding(id flat.NodeId, mut 
 	}
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) ownership_end_fn() {
 	own_time_sw := time.new_stopwatch()
 	defer {
@@ -6308,6 +6325,7 @@ fn (tc &TypeChecker) ownership_expr_may_consume_array_element_method(expr_id fla
 		&& fn_node.value in ['first', 'last', 'pop', 'pop_left']
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) ownership_after_stmt_node(id flat.NodeId) {
 	if tc.ownership_checks_suppressed() || !tc.valid_node_id(id) {
 		return
@@ -8169,6 +8187,7 @@ fn (mut tc TypeChecker) ownership_fn_value_name_from_expr(id flat.NodeId) ?strin
 	return tc.fn_value_key(node)
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) ownership_fn_literal_call_info(fn_name string) ?CallInfo {
 	if tc.ownership == unsafe { nil } {
 		return none
@@ -10077,6 +10096,7 @@ fn (mut tc TypeChecker) ownership_consume_named_sum_drop_arg(call flat.Node, cal
 	return true
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) ownership_after_call(id flat.NodeId, node flat.Node, info CallInfo) {
 	if tc.ownership != unsafe { nil } && tc.ownership.library_body_depth > 0 {
 		if tc.ownership.suppressed_checks == 0 {
@@ -11848,6 +11868,7 @@ fn (tc &TypeChecker) ownership_expr_is_ownership_call_in_module(id flat.NodeId, 
 	return name.len > 0 && name in tc.ownership.ownership_fns
 }
 
+@[unsafe]
 fn (tc &TypeChecker) ownership_call_name_in_module(id flat.NodeId, module_name string) string {
 	call_id := tc.ownership_unwrap_expr(id)
 	idx := int(call_id)
@@ -11902,6 +11923,7 @@ fn (tc &TypeChecker) ownership_call_name_in_module(id flat.NodeId, module_name s
 }
 
 // Addressed ranges only own their header, so their bytes need a retained source owner.
+@[unsafe]
 fn (mut tc TypeChecker) check_ownership_addressed_string_range(id flat.NodeId, child_id flat.NodeId) {
 	if tc.ownership == unsafe { nil } {
 		return
@@ -12091,6 +12113,7 @@ fn (tc &TypeChecker) ownership_sum_value_creates_owner(id flat.NodeId, target_ty
 
 // ownership_fn_value_returns_owned reports whether invoking a function value produces a
 // fresh owner according to the ownership return analysis.
+@[unsafe]
 pub fn (tc &TypeChecker) ownership_fn_value_returns_owned(id flat.NodeId, enclosing_fn string, module_name string) bool {
 	if tc.ownership == unsafe { nil } || !tc.valid_node_id(id) {
 		return false
@@ -12120,6 +12143,7 @@ pub fn (tc &TypeChecker) ownership_fn_value_returns_owned(id flat.NodeId, enclos
 
 // ownership_call_result_source_args returns call arguments that the ownership return analysis
 // found may flow into the call result, either directly or into one of its descendants.
+@[unsafe]
 pub fn (mut tc TypeChecker) ownership_call_result_source_args(id flat.NodeId) []flat.NodeId {
 	if tc.ownership == unsafe { nil } {
 		return []flat.NodeId{}
@@ -12187,6 +12211,7 @@ fn (mut tc TypeChecker) ownership_call_result_source_args_with_info(projection O
 
 // ownership_call_result_sources returns the argument-to-result projection mappings found by
 // ownership return analysis.
+@[unsafe]
 pub fn (mut tc TypeChecker) ownership_call_result_sources(id flat.NodeId) []OwnershipCallResultSource {
 	if tc.ownership == unsafe { nil } {
 		return []OwnershipCallResultSource{}
@@ -12377,6 +12402,7 @@ pub fn (tc &TypeChecker) ownership_expr_moves_storage(source_id flat.NodeId, tar
 // borrows any indexed storage. The destination need not be the same slot: assigning a borrow
 // from `m[a]` to `m[b]` must still clone because `m[a]` remains an owner. It resolves local
 // alias chains such as `arr -> val -> m[k]` through the active alias set.
+@[unsafe]
 fn (tc &TypeChecker) ownership_rhs_borrows_indexed_storage(rhs_id flat.NodeId) bool {
 	if tc.ownership == unsafe { nil } {
 		return false
@@ -12398,6 +12424,7 @@ fn (tc &TypeChecker) ownership_rhs_may_borrow_storage(rhs_id flat.NodeId, lhs_id
 
 // ownership_expr_clones_borrowed_storage reports whether ownership analysis decided that
 // this indexed-alias read must be cloned before its assignment target is overwritten.
+@[unsafe]
 pub fn (tc &TypeChecker) ownership_expr_clones_borrowed_storage(id flat.NodeId) bool {
 	return int(id) >= 0 && tc.ownership != unsafe { nil }
 		&& tc.ownership.borrowed_storage_clone_reads[int(id)]
@@ -12511,6 +12538,7 @@ fn (tc &TypeChecker) ownership_expr_moves_named_storage(source_id flat.NodeId, t
 	return false
 }
 
+@[unsafe]
 fn (tc &TypeChecker) ownership_call_returns_param(fn_name string, param_idx int) bool {
 	if fn_name == '' || param_idx < 0 || tc.ownership == unsafe { nil } {
 		return false
@@ -12583,6 +12611,7 @@ fn (tc &TypeChecker) ownership_call_receiver_id(node flat.Node) ?flat.NodeId {
 	return tc.a.child(fn_node, 0)
 }
 
+@[unsafe]
 fn (tc &TypeChecker) ownership_call_name(id flat.NodeId) string {
 	call_id := tc.ownership_unwrap_expr(id)
 	idx := int(call_id)
@@ -12757,6 +12786,7 @@ fn (mut tc TypeChecker) ownership_mark_sum_move_read_in(id flat.NodeId, name str
 
 // ownership_sum_read_moves_value reports a consumed pointer-Sum field read.
 // Lowering clears its runtime owner flag after materializing the moved value.
+@[unsafe]
 pub fn (tc &TypeChecker) ownership_sum_read_moves_value(id flat.NodeId) bool {
 	return tc.ownership != unsafe { nil } && tc.ownership.sum_move_reads[int(id)]
 }
@@ -12779,12 +12809,14 @@ fn (mut tc TypeChecker) ownership_mark_index_move_read_in(id flat.NodeId, name s
 // ownership_index_read_moves_value reports whether ownership analysis consumed the
 // indexed storage at `id`. The transformer uses this to clear the source slot after
 // materializing the moved value.
+@[unsafe]
 pub fn (tc &TypeChecker) ownership_index_read_moves_value(id flat.NodeId) bool {
 	return int(id) >= 0 && tc.ownership != unsafe { nil } && tc.ownership.index_move_reads[int(id)]
 }
 
 // ownership_sum_drop_consumes_storage reports whether a verified builtin drop call
 // consumed the complete named sum owner at `id`, rather than a smartcast payload copy.
+@[unsafe]
 pub fn (tc &TypeChecker) ownership_sum_drop_consumes_storage(id flat.NodeId) bool {
 	return int(id) >= 0 && tc.ownership != unsafe { nil }
 		&& tc.ownership.owned_sum_drop_reads[int(id)]
@@ -12792,6 +12824,7 @@ pub fn (tc &TypeChecker) ownership_sum_drop_consumes_storage(id flat.NodeId) boo
 
 // ownership_receiver_alias_arg_is_cloned reports whether ownership analysis retained a
 // by-value argument because lowering clones it away from the pointer receiver it projects from.
+@[unsafe]
 pub fn (tc &TypeChecker) ownership_receiver_alias_arg_is_cloned(id flat.NodeId) bool {
 	return int(id) >= 0 && tc.ownership != unsafe { nil }
 		&& tc.ownership.receiver_alias_clone_reads[int(id)]
@@ -12800,6 +12833,7 @@ pub fn (tc &TypeChecker) ownership_receiver_alias_arg_is_cloned(id flat.NodeId) 
 // ownership_expr_is_borrowed_projection reports whether ownership checking selected an
 // independent clone for `id`. The transformer consumes this recorded decision instead of
 // re-resolving lexical names after checking has finished.
+@[unsafe]
 pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(id flat.NodeId) bool {
 	if tc.ownership == unsafe { nil } || !tc.valid_node_id(id) {
 		return false
@@ -12925,6 +12959,7 @@ fn (mut tc TypeChecker) ownership_expr_is_string_view(id flat.NodeId) bool {
 	return tc.ownership_string_view_source_id(id, mut visited) != flat.empty_node
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) ownership_string_view_source_id(id flat.NodeId, mut visited map[int]bool) flat.NodeId {
 	clean_id := tc.ownership_unwrap_expr(id)
 	if !tc.valid_node_id(clean_id) || visited[int(clean_id)]
@@ -13128,6 +13163,7 @@ fn (tc &TypeChecker) ownership_expr_is_smartcast_variant_ident(id flat.NodeId) b
 // ownership_expr_borrows_storage reports whether `id` reads storage another value keeps
 // owning and therefore cannot be moved. A field read of a directly-held value keeps its
 // Rust-like move semantics; cloneability is deliberately decided separately above.
+@[unsafe]
 fn (tc &TypeChecker) ownership_expr_borrows_storage(id flat.NodeId) bool {
 	if tc.ownership == unsafe { nil } {
 		return false
@@ -13371,6 +13407,7 @@ fn (tc &TypeChecker) ownership_projection_reads_through_pointer(id flat.NodeId) 
 // ownership_guard_read_moves_value reports whether an optional/result guard binding
 // consumed the addressable wrapper at `id`. The transformer clears that source after
 // materializing the moved wrapper so its storage cannot destroy the payload again.
+@[unsafe]
 pub fn (tc &TypeChecker) ownership_guard_read_moves_value(id flat.NodeId) bool {
 	return int(id) >= 0 && tc.ownership != unsafe { nil } && tc.ownership.guard_move_reads[int(id)]
 }
@@ -13378,6 +13415,7 @@ pub fn (tc &TypeChecker) ownership_guard_read_moves_value(id flat.NodeId) bool {
 // ownership_assignment_reinitializes_moved_value reports whether the previous value
 // was moved or is a borrowed string header. The transformer uses this to avoid
 // dropping storage owned by another value when the assignment replaces the binding.
+@[unsafe]
 pub fn (tc &TypeChecker) ownership_assignment_reinitializes_moved_value(id flat.NodeId) bool {
 	return int(id) >= 0 && tc.ownership != unsafe { nil }
 		&& tc.ownership.skip_drop_before_assign[int(id)]
@@ -13773,6 +13811,7 @@ fn (tc &TypeChecker) ownership_type_is_string(typ Type) bool {
 
 // ownership_drop_entries_at_return returns the destructor snapshot recorded
 // after the return value has been moved out of the current function.
+@[unsafe]
 pub fn (tc &TypeChecker) ownership_drop_entries_at_return(fn_name string, index int) []OwnershipDropEntry {
 	if tc.ownership == unsafe { nil } {
 		return []OwnershipDropEntry{}
@@ -13782,6 +13821,7 @@ pub fn (tc &TypeChecker) ownership_drop_entries_at_return(fn_name string, index 
 
 // ownership_has_return_node reports whether the checker recorded a drop list for this
 // return node. An empty list is still a recorded answer.
+@[unsafe]
 pub fn (tc &TypeChecker) ownership_has_return_node(fn_name string, id flat.NodeId) bool {
 	if tc.ownership == unsafe { nil } {
 		return false
@@ -13791,6 +13831,7 @@ pub fn (tc &TypeChecker) ownership_has_return_node(fn_name string, id flat.NodeI
 
 // ownership_drop_entries_at_return_node returns the destructor snapshot recorded
 // for the original return node, used by transformer-expanded return paths.
+@[unsafe]
 pub fn (tc &TypeChecker) ownership_drop_entries_at_return_node(fn_name string, id flat.NodeId) []OwnershipDropEntry {
 	if tc.ownership == unsafe { nil } {
 		return []OwnershipDropEntry{}
@@ -13801,6 +13842,7 @@ pub fn (tc &TypeChecker) ownership_drop_entries_at_return_node(fn_name string, i
 }
 
 // ownership_drop_entries_at_propagation returns the destructor snapshot recorded at a propagation site.
+@[unsafe]
 pub fn (tc &TypeChecker) ownership_drop_entries_at_propagation(fn_name string, index int) []OwnershipDropEntry {
 	if tc.ownership == unsafe { nil } {
 		return []OwnershipDropEntry{}
@@ -13811,6 +13853,7 @@ pub fn (tc &TypeChecker) ownership_drop_entries_at_propagation(fn_name string, i
 }
 
 // ownership_drop_entries_at_loop_control returns the destructor snapshot recorded for a loop-control transfer.
+@[unsafe]
 pub fn (tc &TypeChecker) ownership_drop_entries_at_loop_control(fn_name string, index int) []OwnershipDropEntry {
 	if tc.ownership == unsafe { nil } {
 		return []OwnershipDropEntry{}
@@ -13821,6 +13864,7 @@ pub fn (tc &TypeChecker) ownership_drop_entries_at_loop_control(fn_name string, 
 }
 
 // ownership_drop_entries_at_loop_iteration returns the destructor snapshot recorded at a loop-iteration boundary.
+@[unsafe]
 pub fn (tc &TypeChecker) ownership_drop_entries_at_loop_iteration(fn_name string, index int) []OwnershipDropEntry {
 	if tc.ownership == unsafe { nil } {
 		return []OwnershipDropEntry{}
@@ -13832,6 +13876,7 @@ pub fn (tc &TypeChecker) ownership_drop_entries_at_loop_iteration(fn_name string
 
 // ownership_drop_entries_at_scope_exit returns destructors for locals declared
 // in one lexical block and still owned at its normal exit.
+@[unsafe]
 pub fn (tc &TypeChecker) ownership_drop_entries_at_scope_exit(fn_name string, index int) []OwnershipDropEntry {
 	if tc.ownership == unsafe { nil } {
 		return []OwnershipDropEntry{}
@@ -13841,6 +13886,7 @@ pub fn (tc &TypeChecker) ownership_drop_entries_at_scope_exit(fn_name string, in
 
 // ownership_drop_entries_at_fn_exit returns destructors for parameters and
 // function-scope locals still owned at the implicit function exit.
+@[unsafe]
 pub fn (tc &TypeChecker) ownership_drop_entries_at_fn_exit(fn_name string) []OwnershipDropEntry {
 	if tc.ownership == unsafe { nil } {
 		return []OwnershipDropEntry{}
@@ -13850,6 +13896,7 @@ pub fn (tc &TypeChecker) ownership_drop_entries_at_fn_exit(fn_name string) []Own
 
 // ownership_drop_type_names returns source spelling IDs for concrete receiver types whose Drop
 // methods are referenced by compiler-generated destructor calls.
+@[unsafe]
 pub fn (tc &TypeChecker) ownership_drop_type_names() []u32 {
 	if tc.ownership == unsafe { nil } {
 		return []u32{}
@@ -13874,6 +13921,7 @@ fn ownership_group_drop_value_type_names(sites map[string][]OwnershipDropEntry, 
 
 // ownership_drop_value_type_names_by_fn groups source spelling IDs from cleanup sites under
 // the function referencing them, so a caller can skip the destructors only dead fns needed.
+@[unsafe]
 pub fn (tc &TypeChecker) ownership_drop_value_type_names_by_fn() map[string][]u32 {
 	mut result := map[string][]u32{}
 	if tc.ownership == unsafe { nil } {
@@ -13899,6 +13947,7 @@ fn ownership_drop_key_fn(key string) string {
 
 // inherit_ownership_codegen_metadata_from shares the immutable ownership
 // snapshots with a parallel code-generation checker fork.
+@[unsafe]
 pub fn (mut tc TypeChecker) inherit_ownership_codegen_metadata_from(src &TypeChecker) {
 	if src.ownership == unsafe { nil } {
 		tc.ownership = unsafe { nil }

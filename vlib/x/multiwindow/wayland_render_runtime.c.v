@@ -6,6 +6,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 
 $if gg_multiwindow ?|| x_multiwindow_render ? {
 	$if linux && sokol_wayland ? {
+		@[unsafe]
 		fn (backend &WaylandBackend) renderer_anchor_lifetime_absent() bool {
 			return backend.anchor_surface == unsafe { nil }
 				&& backend.anchor_wl_egl_window == unsafe { nil }
@@ -13,6 +14,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 				&& backend.anchor_wl_egl_window_ticket == 0 && backend.anchor_wl_surface_ticket == 0
 		}
 
+		@[unsafe]
 		fn (backend &WaylandBackend) renderer_anchor_lifetime_complete() bool {
 			return backend.anchor_surface != unsafe { nil }
 				&& backend.anchor_wl_egl_window != unsafe { nil }
@@ -20,6 +22,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 				&& backend.anchor_wl_egl_window_ticket != 0 && backend.anchor_wl_surface_ticket != 0
 		}
 
+		@[unsafe]
 		fn (mut backend WaylandBackend) create_private_renderer_anchor(mut ordinals NativeOrdinalRange, mut cleanup_ordinals NativeOrdinalRange, seed NativeOperationSeed) NativeRenderResult {
 			if !backend.transport_can_marshal() || backend.compositor == unsafe { nil }
 				|| backend.display == unsafe { nil } {
@@ -206,6 +209,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend WaylandBackend) destroy_renderer_anchor() ! {
 		$if linux && sokol_wayland ? {
 			if backend.anchor_surface == unsafe { nil } {
@@ -360,6 +364,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend WaylandBackend) make_renderer_anchor_current(call_site NativeRenderCallSite) NativeRenderResult {
 		$if linux && sokol_wayland ? {
 			if backend.render_health.blocks_graphics() {
@@ -523,6 +528,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		return EglBindingIdentity{}
 	}
 
+	@[unsafe]
 	fn (mut backend WaylandBackend) recover_bad_current_surface(desired EglBindingIdentity, failure NativeRenderResult, mut query_ordinals NativeOrdinalRange, boundary_seed NativeOperationSeed) NativeRenderResult {
 		$if linux && sokol_wayland ? {
 			if backend.egl_bad_current_recovery_used || desired.kind == .none
@@ -645,6 +651,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend WaylandBackend) invalidate_egl_anchor() {
 		$if linux && sokol_wayland ? {
 			if backend.anchor_surface != unsafe { nil }

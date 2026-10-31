@@ -209,6 +209,7 @@ pub fn new_ssl_listener(saddr string, config SSLConnectConfig, options SSLListen
 }
 
 // finish the listener and clean up resources
+@[unsafe]
 pub fn (mut l SSLListener) shutdown() ! {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
@@ -260,6 +261,7 @@ fn listen_ssl_tcp(saddr string, family net.AddrFamily, options net.ListenOptions
 }
 
 // internal function to init and bind the listener
+@[unsafe]
 fn (mut l SSLListener) init() ! {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
@@ -619,6 +621,7 @@ pub fn (mut s SSLConn) close() ! {
 }
 
 // shutdown releases the TLS context and any owned socket, including before a connection opens.
+@[unsafe]
 pub fn (mut s SSLConn) shutdown() ! {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
@@ -655,6 +658,7 @@ pub fn (mut s SSLConn) shutdown() ! {
 // negotiated_alpn returns the ALPN protocol selected during the TLS
 // handshake (e.g. 'h2' or 'http/1.1'), or an empty string if no protocol
 // was negotiated.
+@[unsafe]
 pub fn (s &SSLConn) negotiated_alpn() string {
 	// mbedtls_ssl_get_alpn_protocol returns a `const char *`; cast away const
 	// for V, since we only read from it (and copy it below).
@@ -689,6 +693,7 @@ fn system_ca_file() string {
 }
 
 // connect to server using mbedtls
+@[unsafe]
 fn (mut s SSLConn) init() ! {
 	$if trace_ssl ? {
 		eprintln(@METHOD)
@@ -1056,6 +1061,7 @@ pub fn (mut s SSLConn) write_string(str string) !int {
 }
 
 // Select waits for an io operation (specified by parameter `test`) to be available
+@[unsafe]
 fn select(handle int, test Select, timeout time.Duration) !bool {
 	$if trace_ssl ? {
 		eprintln('${@METHOD} handle: ${handle}, timeout: ${timeout}')

@@ -343,6 +343,7 @@ fn test_postfix_comment_newline_starts_next_parenthesized_statement() {
 // prefix and `(x)` are consumed, so they must span from the opening `[` — the
 // fixed-array variant builds its node directly on the flat AST and previously had
 // no span at all.
+@[unsafe]
 fn test_array_cast_spans_from_bracket() {
 	ast, src := parse_span_source('array_cast', 'fn main() {
 	p := unsafe { nil }
@@ -991,6 +992,7 @@ pub:
 	}
 }
 
+@[unsafe]
 fn test_struct_access_keyword_fields_keep_composite_types() {
 	ast, _ := parse_span_source('access_keyword_types', 'struct ArrayField { pub []int }
 struct MapField { pub map[string]int }

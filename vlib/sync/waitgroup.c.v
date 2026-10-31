@@ -41,6 +41,7 @@ mut:
 	prealloc_scope voidptr
 }
 
+@[unsafe]
 fn new_waitgroup_thread_args(wg &WaitGroup, f fn ()) &WaitGroupThreadArgs {
 	// Keep the wait group and captured callback context visible to tracing collectors.
 	mut args := unsafe { &WaitGroupThreadArgs(vcalloc(int(sizeof(WaitGroupThreadArgs)))) }

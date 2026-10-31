@@ -2,6 +2,7 @@ module builtin
 
 import dlmalloc
 
+@[unsafe]
 fn mm_alloc(size u64) (&u8, Errno) {
 	// BEGIN CONSTS
 	// the constants need to be here, since the initialization of other constants,
@@ -30,6 +31,7 @@ fn mm_free(addr &u8) Errno {
 	}
 }
 
+@[unsafe]
 fn system_alloc(_ voidptr, size uint) (voidptr, uint, u32) {
 	// BEGIN CONSTS
 	// the constants need to be here, since the initialization of other constants,
@@ -46,6 +48,7 @@ fn system_alloc(_ voidptr, size uint) (voidptr, uint, u32) {
 	return unsafe { nil }, 0, 0
 }
 
+@[unsafe]
 fn system_remap(_ voidptr, ptr voidptr, oldsize uint, newsize uint, can_move bool) voidptr {
 	return unsafe { nil }
 }
@@ -78,6 +81,7 @@ fn system_page_size(_ voidptr) uint {
 	return 4096
 }
 
+@[unsafe]
 fn get_linux_allocator() dlmalloc.Allocator {
 	return dlmalloc.Allocator{
 		alloc:            system_alloc

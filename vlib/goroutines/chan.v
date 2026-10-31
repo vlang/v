@@ -51,6 +51,7 @@ pub fn chan_make(elem_size int, buf_size int) &Chan {
 // If block is true, blocks until the send can proceed.
 // Returns true if the value was sent.
 // Translated from Go's chansend() in chan.go.
+@[unsafe]
 pub fn chan_send(c &Chan, ep voidptr, block bool) bool {
 	if c == unsafe { nil } {
 		if !block {
@@ -120,6 +121,7 @@ pub fn chan_send(c &Chan, ep voidptr, block bool) bool {
 // If block is true, blocks until a value is available.
 // Returns (received, ok). ok is false if channel is closed and empty.
 // Translated from Go's chanrecv() in chan.go.
+@[unsafe]
 pub fn chan_recv(c &Chan, ep voidptr, block bool) (bool, bool) {
 	if c == unsafe { nil } {
 		if !block {
@@ -187,6 +189,7 @@ pub fn chan_recv(c &Chan, ep voidptr, block bool) (bool, bool) {
 
 // chan_close closes the channel.
 // Translated from Go's closechan() in chan.go.
+@[unsafe]
 pub fn chan_close(c &Chan) {
 	if c == unsafe { nil } {
 		panic('close of nil channel')
@@ -230,6 +233,7 @@ pub fn chan_close(c &Chan) {
 
 // send_direct sends data directly from sender to a waiting receiver.
 // Translated from Go's send() in chan.go.
+@[unsafe]
 fn send_direct(sg &Sudog, ep voidptr, elem_size u16) {
 	if sg.elem != unsafe { nil } {
 		unsafe { C.memcpy(sg.elem, ep, elem_size) }
@@ -240,6 +244,7 @@ fn send_direct(sg &Sudog, ep voidptr, elem_size u16) {
 }
 
 // recv_direct receives data directly from a waiting sender.
+@[unsafe]
 fn recv_direct(ch &Chan, sg &Sudog, ep voidptr) {
 	if ch.dataqsiz == 0 {
 		// Unbuffered: copy directly from sender
@@ -273,6 +278,7 @@ fn chan_buf(c &Chan, i u32) voidptr {
 }
 
 // chan_len returns the number of elements in the channel buffer.
+@[unsafe]
 pub fn chan_len(c &Chan) int {
 	if c == unsafe { nil } {
 		return 0
@@ -281,6 +287,7 @@ pub fn chan_len(c &Chan) int {
 }
 
 // chan_cap returns the capacity of the channel buffer.
+@[unsafe]
 pub fn chan_cap(c &Chan) int {
 	if c == unsafe { nil } {
 		return 0

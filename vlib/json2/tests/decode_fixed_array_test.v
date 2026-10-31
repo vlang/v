@@ -55,6 +55,7 @@ fn test_fixed_array_null_in_strict_mode() {
 }
 
 // Outside of strict mode, fixed size arrays decode like the removed `json` module.
+@[unsafe]
 fn test_fixed_array_lenient_lengths() {
 	assert json.decode[[4]int]('[1, 2, 3]')! == [1, 2, 3, 0]!
 	assert json.decode[[2]int]('[1, 2, 3, {"skipped": [4]}]')! == [1, 2]!
@@ -68,6 +69,7 @@ fn test_fixed_array_lenient_lengths() {
 	assert short.grid == [[1, 0]!, [2, 3]!]!
 }
 
+@[unsafe]
 fn test_fixed_array_lenient_null() {
 	decoded := json.decode[FixedFields]('{"nums":null,"elems":null,"ptrs":[null,{"value":1}],"grid":[null,[3,4]]}')!
 	assert decoded.nums == [1, 2, 3]!

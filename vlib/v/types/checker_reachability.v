@@ -59,6 +59,7 @@ fn selected_fn_frontier_scan_batch(arg voidptr) {
 	return
 }
 
+@[unsafe]
 fn selected_fn_frontier_scan_thread(arg voidptr) voidptr {
 	args := unsafe { &SelectedFnFrontierWorkerArgs(arg) }
 	batches := unsafe { &[]SelectedFnFrontierScanArgs(args.batches) }

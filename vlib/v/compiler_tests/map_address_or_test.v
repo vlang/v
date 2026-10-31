@@ -1,6 +1,7 @@
 // vtest ownership
 import os
 
+@[unsafe]
 fn test_map_value_address_or_preserves_storage_and_handles_missing_keys() {
 	root := os.join_path(os.vtmp_dir(), 'map_address_or_${os.getpid()}')
 	os.mkdir_all(root)!

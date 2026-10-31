@@ -214,6 +214,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend Win32Backend) renderer_environment() !gfx.Environment {
 		$if windows && sokol_d3d11 ? {
 			if !backend.anchor_committed || backend.anchor_render_view == unsafe { nil }
@@ -236,6 +237,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend Win32Backend) begin_renderer_anchor() !RenderFrame {
 		$if windows && sokol_d3d11 ? {
 			if !backend.anchor_committed || backend.render_health.blocks_graphics()
@@ -263,6 +265,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend Win32Backend) prepare_renderer_anchor_context() ! {
 		if !backend.anchor_committed || backend.render_health.blocks_graphics()
 			|| backend.anchor_render_view == unsafe { nil }
@@ -271,6 +274,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn (mut backend Win32Backend) end_renderer_anchor(frame RenderFrame) ! {
 		if !backend.anchor_committed || backend.anchor_render_view == unsafe { nil }
 			|| frame.swapchain.d3d11.render_view != backend.anchor_render_view {
@@ -282,6 +286,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		backend.end_renderer_anchor(frame)!
 	}
 
+	@[unsafe]
 	fn (mut backend Win32Backend) activate_render_frame(frame RenderFrame) BackendFrameAttempt {
 		$if windows && sokol_d3d11 ? {
 			index := backend.window_record_index(frame.window_id) or {
@@ -336,6 +341,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		backend.window_record_index(frame.window_id) or { return error(err_window_not_found) }
 	}
 
+	@[unsafe]
 	fn (mut backend Win32Backend) prove_renderer_shutdown_anchor() RendererShutdownProof {
 		$if windows && sokol_d3d11 ? {
 			if !backend.anchor_committed || !backend.renderer_ready()
@@ -480,6 +486,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 	}
 }
 
+@[unsafe]
 fn (mut backend Win32Backend) collect_render_updates() ![]BackendRenderUpdate {
 	mut updates := []BackendRenderUpdate{}
 	$if gg_multiwindow ?|| x_multiwindow_render ? {

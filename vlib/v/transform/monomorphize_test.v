@@ -1154,6 +1154,7 @@ fn test_parameterized_typeof_value_display_preserves_source_names() {
 		'other.Payload') == 'other.Payload'
 }
 
+@[unsafe]
 fn test_monomorphize_after_transform_keeps_lowered_fn_bodies() {
 	path := os.join_path(os.vtmp_dir(), 'monomorphize_lowered_bodies_${os.getpid()}.v')
 	os.write_file(path, '@[heap]

@@ -28,6 +28,7 @@ const fixture_fs_entry = 'fixture_fs'
 
 $if gg_multiwindow ? {
 	// shader_descriptor is private testdata despite being exported from this helper module.
+	@[unsafe]
 	pub fn shader_descriptor() !gfx.ShaderDesc {
 		mut desc := gfx.ShaderDesc{}
 		desc.attrs[0].name = &char(fixture_position.str)

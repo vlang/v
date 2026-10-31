@@ -252,6 +252,7 @@ fn test_alias() {
 	assert json.encode(StructType[StructAlias]{ val: StructType[int]{1} }) == '{"val":{"val":1}}'
 }
 
+@[unsafe]
 fn test_pointer() {
 	mut string_initialized_with_reference := ''
 	assert json.encode(StructTypePointer[string]{ val: unsafe { nil } }) == '{}'

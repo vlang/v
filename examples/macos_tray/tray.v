@@ -34,6 +34,7 @@ fn (app &MyApp) on_menu_item_click(item TrayMenuItem) {
 	}
 }
 
+@[unsafe]
 fn main() {
 	mut my_app := &MyApp{
 		tray_info: unsafe { nil }

@@ -335,6 +335,7 @@ fn test_pool_waiter_discards_invalid_released_connection() {
 
 struct NilPoolFactory {}
 
+@[unsafe]
 fn (factory NilPoolFactory) connect() !&Driver {
 	return unsafe { nil }
 }

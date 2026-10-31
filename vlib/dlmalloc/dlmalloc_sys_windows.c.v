@@ -1,9 +1,11 @@
 module dlmalloc
 
+@[unsafe]
 fn system_alloc(_ voidptr, size uint) (voidptr, uint, u32) {
 	return unsafe { nil }, 0, 0
 }
 
+@[unsafe]
 fn system_remap(_ voidptr, ptr voidptr, oldsize uint, newsize uint, can_move bool) voidptr {
 	return unsafe { nil }
 }
@@ -29,6 +31,7 @@ fn system_page_size(_ voidptr) uint {
 }
 
 // get_system_allocator returns an allocator that uses the system allocator.
+@[unsafe]
 pub fn get_system_allocator() Allocator {
 	return Allocator{
 		alloc:            system_alloc

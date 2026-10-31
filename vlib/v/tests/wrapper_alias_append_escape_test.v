@@ -10,6 +10,7 @@ fn use_the_stack(n int) int {
 	return if n > 0 { use_the_stack(n - 1) + int(buf[n % 64]) } else { 0 }
 }
 
+@[unsafe]
 fn append_through_wrapper_aliases(mut values []&u64, data u64, c bool) {
 	first := data
 	p := unsafe {
@@ -78,6 +79,7 @@ fn append_from_lock_values(mut values []&u64, data u64) {
 	values << p
 }
 
+@[unsafe]
 fn append_from_comptime_values[T](mut values []&u64, data u64) {
 	local := data
 	values << $if T is int {

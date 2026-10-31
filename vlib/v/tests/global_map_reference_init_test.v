@@ -15,6 +15,7 @@ __global (
 	}
 )
 
+@[unsafe]
 fn test_global_map_references_are_initialized() {
 	assert empty_map_reference != unsafe { nil }
 	assert populated_map_reference != unsafe { nil }
@@ -32,6 +33,7 @@ fn test_global_map_references_are_initialized() {
 	assert (*populated_map_reference)['k1']
 }
 
+@[unsafe]
 fn test_global_block_map_references_are_initialized() {
 	assert block_empty_map_reference != unsafe { nil }
 	assert block_populated_map_reference != unsafe { nil }

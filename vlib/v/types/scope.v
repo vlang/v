@@ -157,6 +157,7 @@ pub fn (mut s Scope) reset(parent &Scope) {
 
 // contains reports whether this scope or a parent has a binding for `name`,
 // without copying its type or constructing a binding owner.
+@[unsafe]
 pub fn (s &Scope) contains(name string) bool {
 	if name.len == 0 {
 		return false
@@ -184,6 +185,7 @@ pub fn (s &Scope) contains(name string) bool {
 }
 
 // lookup returns the nearest visible type binding for `name`.
+@[unsafe]
 pub fn (s &Scope) lookup(name string) ?Type {
 	if name.len == 0 {
 		return none
@@ -216,6 +218,7 @@ pub fn (s &Scope) lookup(name string) ?Type {
 
 // lookup_before returns the nearest binding for `name` in the scopes from this one
 // up to, but not including, `stop` (the whole chain when `stop` is nil).
+@[unsafe]
 pub fn (s &Scope) lookup_before(name string, stop &Scope) ?Type {
 	if name.len == 0 {
 		return none
@@ -259,6 +262,7 @@ pub fn (s &Scope) binds_own(name string) bool {
 }
 
 // lookup_owner returns the nearest scope that owns a visible binding for `name`.
+@[unsafe]
 pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 	if name.len == 0 {
 		return none
@@ -305,7 +309,7 @@ pub fn (s &Scope) lookup_owner(name string) ?ScopeBindingOwner {
 
 // bound_type returns the current type of this binding while its scope is live.
 // It returns none after scope reuse or replacement of an ownership-mode binding.
-@[inline]
+@[inline; unsafe]
 pub fn (owner &ScopeBindingOwner) bound_type() ?Type {
 	if owner.scope == unsafe { nil } || owner.lifetime != owner.scope.lifetime
 		|| owner.index < 0 || owner.index >= owner.scope.types.len {
@@ -325,6 +329,7 @@ pub fn (owner &ScopeBindingOwner) bound_type() ?Type {
 }
 
 // storage_key returns a stable key for this binding owner while its scope is live.
+@[unsafe]
 pub fn (owner ScopeBindingOwner) storage_key() string {
 	if owner.scope == unsafe { nil } || owner.index < 0 {
 		return ''
@@ -401,6 +406,7 @@ fn write_storage_key_decimal(dst &u8, value int) int {
 }
 
 // belongs_to_scope reports whether this binding owner was declared directly in `scope`.
+@[unsafe]
 pub fn (owner ScopeBindingOwner) belongs_to_scope(scope &Scope) bool {
 	return owner.scope != unsafe { nil } && scope != unsafe { nil }
 		&& voidptr(owner.scope) == voidptr(scope) && owner.lifetime == scope.lifetime
@@ -408,6 +414,7 @@ pub fn (owner ScopeBindingOwner) belongs_to_scope(scope &Scope) bool {
 
 // belongs_to_scope_chain_until reports whether this binding owner was declared
 // between `scope` and `stop`, inclusive.
+@[unsafe]
 pub fn (owner ScopeBindingOwner) belongs_to_scope_chain_until(scope &Scope, stop &Scope) bool {
 	if owner.scope == unsafe { nil } || scope == unsafe { nil } || stop == unsafe { nil } {
 		return false
@@ -428,6 +435,7 @@ pub fn (owner ScopeBindingOwner) belongs_to_scope_chain_until(scope &Scope, stop
 
 // nearest_binding_owned_by reports whether the nearest visible binding for
 // `name` belongs to `owner`.
+@[unsafe]
 pub fn (s &Scope) nearest_binding_owned_by(name string, owner ScopeBindingOwner) bool {
 	if name.len == 0 || owner.scope == unsafe { nil } || owner.index < 0 {
 		return false

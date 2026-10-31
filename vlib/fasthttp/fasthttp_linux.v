@@ -56,6 +56,7 @@ mut:
 }
 
 // new_server creates and initializes a new Server instance.
+@[unsafe]
 pub fn new_server(config ServerConfig) !&Server {
 	if config.max_request_buffer_size <= 0 {
 		return error('max_request_buffer_size must be greater than 0')
@@ -235,6 +236,7 @@ fn mod_fd_in_epoll(epoll_fd int, fd int, events u32) int {
 }
 
 // remove_fd_from_epoll removes a file descriptor from the epoll instance
+@[unsafe]
 fn remove_fd_from_epoll(epoll_fd int, fd int) bool {
 	ret := C.epoll_ctl(epoll_fd, C.EPOLL_CTL_DEL, fd, unsafe { nil })
 	if ret == -1 {
@@ -247,7 +249,7 @@ fn remove_fd_from_epoll(epoll_fd int, fd int) bool {
 // state_for returns the ConnState for fd, creating it (with its persistent
 // buffers) on first use or reusing a pooled one. The table grows by doubling, so
 // fd indexing stays O(1) with no hashing.
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn state_for(mut w Worker, fd int) &ConnState {
 	if fd >= w.conns.len {
 		mut new_len := w.conns.len
@@ -295,7 +297,7 @@ fn clear_active(mut w Worker, mut cs ConnState) {
 // bounded per-worker free-list with normal-sized buffers retained.
 // Every field a fresh ConnState would have is reset so no stale state bleeds into
 // the next connection that reuses this slot.
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn close_conn(mut w Worker, fd int) {
 	if fd <= 0 {
 		return
@@ -340,7 +342,7 @@ fn close_conn(mut w Worker, fd int) {
 // detach_conn is like close_conn but does NOT close the fd or remove it from
 // epoll's DEL is still issued — used for `.manual` takeover where the handler now
 // owns the connection. The ConnState is pooled; the fd is left open.
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn detach_conn(mut w Worker, fd int) {
 	if fd <= 0 || fd >= w.conns.len {
 		return
@@ -458,6 +460,7 @@ fn drain_file(fd int, mut cs ConnState) int {
 // is reset (capacity kept) and the connection is either closed or kept alive.
 // Returns an explicit state so callers cannot mistake a blocked write for a
 // fully drained response and dispatch a later request out of order.
+@[unsafe]
 fn flush_batch(mut w Worker, fd int, mut cs ConnState) FlushResult {
 	// Phase 1: the buffered response bytes (status lines, headers, small bodies).
 	for cs.write_off < cs.write_buf.len {
@@ -600,7 +603,7 @@ fn open_deferred_file(mut cs ConnState, file_path string) {
 // drain_requests answers every complete request currently buffered in read_buf,
 // appending each response to write_buf so the whole burst goes out in one send.
 // Returns false if the connection was closed (the caller must not touch it).
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn drain_requests(mut w Worker, fd int, mut cs ConnState) bool {
 	mut pos := 0
 	// Header and body limits are independent; the framer rejects either before a
@@ -956,6 +959,7 @@ fn handle_writable(mut w Worker, fd int) {
 
 // handle_accept_loop accepts every pending connection (edge-triggered) and
 // registers each with this worker's epoll for readability.
+@[unsafe]
 fn handle_accept_loop(mut w Worker) {
 	for {
 		client_fd := C.accept4(w.listen_fd, unsafe { nil }, unsafe { nil }, C.SOCK_NONBLOCK)
@@ -1019,6 +1023,7 @@ fn close_worker_clients(mut w Worker) {
 	}
 }
 
+@[unsafe]
 fn process_events(server &Server, epoll_fd int, listen_fd int) {
 	mut w := Worker{
 		epoll_fd:  epoll_fd

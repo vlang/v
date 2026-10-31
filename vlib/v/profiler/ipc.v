@@ -29,6 +29,7 @@ pub fn write_snapshot() {
 }
 
 // write_snapshot_to writes profiler state to a specific path
+@[unsafe]
 pub fn write_snapshot_to(path string) {
 	if profiler_state.mu == unsafe { nil } {
 		return

@@ -37,6 +37,7 @@ pub mut:
 }
 
 // start an SSE connection
+@[unsafe]
 pub fn start_connection(mut ctx veb.Context) &SSEConnection {
 	if ctx.conn == unsafe { nil } {
 		eprintln('[veb.sse] WARNING: SSE requires a direct TCP connection (ctx.conn) which is not available. Use `ctx.takeover_conn()` before starting an SSE connection.')
@@ -74,6 +75,7 @@ pub fn (m SSEMessage) encode() string {
 
 // send_message sends a single message to the http client that listens for SSE.
 // It does not close the connection, so you can use it many times in a loop.
+@[unsafe]
 pub fn (mut sse SSEConnection) send_message(message SSEMessage) ! {
 	if sse.conn == unsafe { nil } {
 		return error('SSE connection is not available (no TCP connection)')
@@ -82,6 +84,7 @@ pub fn (mut sse SSEConnection) send_message(message SSEMessage) ! {
 }
 
 // send a 'close' event and close the tcp connection.
+@[unsafe]
 pub fn (mut sse SSEConnection) close() {
 	if sse.conn == unsafe { nil } {
 		return

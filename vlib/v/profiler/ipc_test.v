@@ -7,6 +7,7 @@ import time
 // A snapshot must round-trip file paths that contain commas: the record format
 // puts the path last and the reader rejoins the trailing fields, so a comma in
 // the path can no longer be mistaken for extra columns.
+@[unsafe]
 fn test_snapshot_roundtrips_file_paths_with_commas() {
 	init_profiler_state()
 	profiler_enable()

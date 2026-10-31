@@ -1,5 +1,6 @@
 module veb
 
+@[unsafe]
 fn C.sendfile(in_fd i32, out_fd i32, offset i64, count uint, hdtr voidptr, sent &i64, flags i32) i32
 
 fn sendfile(out_fd int, in_fd int, nr_bytes int) int {
