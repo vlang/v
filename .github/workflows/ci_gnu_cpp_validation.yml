@@ -40,13 +40,15 @@ jobs:
           ${{ matrix.compiler }} --version
       - name: Repeat both original self compilation stages
         run: |
-          ./v -cc ${{ matrix.compiler }} -no-std -cflags -std=${{ matrix.standard }} -o v2 cmd/v
-          ./v2 -cc ${{ matrix.compiler }} -no-std -cflags -std=${{ matrix.standard }} -o v3 cmd/v
+          ./v -new-compiler -no-retry-compilation -cc ${{ matrix.compiler }} -no-std -cflags -std=${{ matrix.standard }} -o v2 cmd/v
+          ./v2 -new-compiler -no-retry-compilation -cc ${{ matrix.compiler }} -no-std -cflags -std=${{ matrix.standard }} -o v3 cmd/v
       - name: Execute code produced by each resulting compiler
         run: |
-          ./v2 -cc ${{ matrix.compiler }} -no-std -cflags -std=${{ matrix.standard }} -o cpp-runtime-v2 vlib/v/gen/c/testdata/cpp_compat_runtime.vv
-          ./cpp-runtime-v2
-          ./v3 -cc ${{ matrix.compiler }} -no-std -cflags -std=${{ matrix.standard }} -o cpp-runtime-v3 vlib/v/gen/c/testdata/cpp_compat_runtime.vv
-          ./cpp-runtime-v3
+          for stage in 2 3; do
+            for fixture in cpp_compat_runtime cpp_nested_sum_runtime; do
+              "./v${stage}" -new-compiler -no-retry-compilation -cc ${{ matrix.compiler }} -no-std -cflags -std=${{ matrix.standard }} -o "cpp-runtime-${stage}-${fixture}" "vlib/v/gen/c/testdata/${fixture}.vv"
+              "./cpp-runtime-${stage}-${fixture}"
+            done
+          done
       - name: Verify initializer lifetime and C compatibility regressions
         run: ./v test vlib/v/gen/c/cpp_compat_test.v vlib/v/transform/sum_reference_rvalue_test.v vlib/v/gen/c/naming
