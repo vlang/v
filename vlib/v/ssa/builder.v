@@ -2231,7 +2231,7 @@ fn (mut b Builder) register_functions() {
 	if b.m.target.ptr_size == 8 { b.register_native_runtime_helpers() }
 	if b.m.target.ptr_size == 8 { b.register_native_allocation_helpers() }
 	if b.m.target.ptr_size == 8 { b.register_native_header_helpers() }
-	if b.m.target.ptr_size == 8 { b.register_native_signal_helpers() }
+	if b.m.target.ptr_size == 8 && b.m.target.backend != "ppc64le" { b.register_native_signal_helpers() }
 	if b.m.target.ptr_size == 8 { b.register_native_worker_helpers() }
 }
 
