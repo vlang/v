@@ -53,6 +53,61 @@ pub struct Marker { value int }
 	assert earliest < latest
 }
 
+fn test_header_const_order_keeps_stored_values_in_stable_declaration_slots() ! {
+	root := os.join_path(os.vtmp_dir(), 'v3_header_const_slots_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'stable.v')
+	os.write_file(source, 'module stable
+pub const startup = stored_value()
+pub fn stored_value() []int { return [7] }
+pub const later = read_earlier() + 1
+pub fn between() {}
+pub const fixed = [u8(1), 2]!
+const (
+	mixed_store = [u8(3), 4]!
+	mixed_value = 19
+)
+pub const earlier = 41
+pub fn read_earlier() int { return earlier }
+')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(source)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	// Rebuilding a dependency exposes helper bodies that warm headers omit.
+	// Only the ranks of values whose initializers are omitted may change here.
+	first_order := ['stable.startup', 'stable.earlier', 'stable.mixed_value', 'stable.fixed',
+		'stable.later', 'stable.mixed_store']
+	second_order := ['stable.mixed_store', 'stable.fixed', 'stable.earlier', 'stable.mixed_value',
+		'stable.later', 'stable.startup']
+	first := module_header_with_const_order(a, &tc, 'stable', root, map[string]string{}, first_order)
+	second := module_header_with_const_order(a, &tc, 'stable', root, map[string]string{}, second_order)
+	assert first == second, 'stored constant ranks changed the declaration header'
+	assert header_signature(first) == header_signature(second)
+	assert first.contains('pub const startup []int'), first
+	assert first.contains('pub const fixed [2]u8'), first
+	// A primitive expression retains its helper call in the header. Its required
+	// initialization order must still survive when the helper body is omitted.
+	assert first.contains('pub const later = read_earlier() + 1'), first
+	earlier := first.index('pub const earlier = 41') or { panic(first) }
+	later := first.index('pub const later = ') or { panic(first) }
+	assert earlier < later
+	assert !first.contains('return earlier'), first
+	header_path := os.join_path(root, 'stable.vh')
+	os.write_file(header_path, first)!
+	mut warm_parser := parser.Parser.new(pref.new_preferences())
+	warm_ast := warm_parser.parse_file(header_path)
+	assert warm_parser.diagnostics.len == 0, warm_parser.diagnostics.str()
+	mut warm_tc := types.TypeChecker.new(warm_ast)
+	warm_tc.collect(warm_ast)
+	warm := module_header_with_const_order(warm_ast, &warm_tc, 'stable', root,
+		map[string]string{}, ['stable.earlier', 'stable.mixed_value', 'stable.later'])
+	assert warm == first, 'typed cached constants changed the reserialized header'
+	assert header_signature(first.replace('earlier = 41', 'earlier = 43')) != header_signature(first)
+}
+
 fn test_header_selects_a_symbol_that_two_files_import_once() ! {
 	root := os.join_path(os.vtmp_dir(), 'v3_header_selective_imports_${os.getpid()}')
 	os.mkdir_all(root)!
