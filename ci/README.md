@@ -10,8 +10,11 @@ From the repository root of a built checkout on Linux, run:
 
 This runs the script tasks from `.github/workflows/linux_ci.yml` in workflow order:
 TCC, GCC, then Clang. It does not bootstrap V or run the workflow's separate shell
-canaries. The tasks include dependency installation with `sudo apt`; use the Ubuntu
-24.04 environment expected by the workflow, with all three C compilers available.
+canaries. The tasks include dependency installation with `sudo apt`; Ubuntu 24.04
+and Debian 13 are supported, with all three C compilers available. Wayland uses
+the runtime package `libwayland-egl1`. The wkhtmltox C interop library uses the
+guest's Debian package architecture, with the Jammy build on Ubuntu and the
+Bookworm build on Debian. Its dependencies are installed through APT.
 The command uses the workflow's compiler flags (`-cc tcc -no-retry-compilation`
 for TCC, the default compiler for GCC, and `-cc clang` for Clang), sets the
 corresponding `GITHUB_JOB`, and disables the compatibility compiler fallback.
