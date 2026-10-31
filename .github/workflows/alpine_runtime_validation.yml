@@ -1,0 +1,55 @@
+name: Alpine runtime fix validation
+
+'on':
+  push:
+    branches:
+      - ci/verify-alpine-runtime-20261031
+
+permissions:
+  contents: read
+
+concurrency:
+  group: alpine-runtime-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  alpine:
+    if: github.ref == 'refs/heads/ci/verify-alpine-runtime-20261031'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    container:
+      image: thevlang/vlang:alpine-build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cc: gcc
+            vflags: -cc gcc
+          - cc: tcc
+            vflags: ''
+    env:
+      V_CI_MUSL: '1'
+      VJOBS: '4'
+      VTEST_FAIL_FAST: '1'
+      VFLAGS: ${{ matrix.vflags }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install original Alpine dependencies
+        run: apk add musl-dev libatomic_ops-dev libatomic openssl libc6-compat gcompat gc gc-dev binutils diffutils elfutils
+      - name: Build V
+        run: make -j4
+      - name: Verify aligned map and array storage
+        run: ./v -new-compiler -no-retry-compilation -cc ${{ matrix.cc }} test vlib/builtin/map_clone_alignment_test.v vlib/builtin/array_alignment_test.v
+      - name: Verify the original script output
+        run: |
+          ./v -new-compiler -no-retry-compilation -cc ${{ matrix.cc }} -o /tmp/oneliner vlib/v/slow_tests/inout/oneliner_with_semicolons.vv
+          VEXE="$PWD/v" /tmp/oneliner > /tmp/oneliner.out
+          diff -u vlib/v/slow_tests/inout/oneliner_with_semicolons.out /tmp/oneliner.out
+      - name: Run original TCC builtin suite
+        if: matrix.cc == 'tcc'
+        run: ./v test vlib/builtin
+      - name: Run original GCC essential suite
+        if: matrix.cc == 'gcc'
+        run: VTEST_JUST_ESSENTIAL=1 ./v -silent test-self
