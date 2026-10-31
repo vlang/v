@@ -12,7 +12,7 @@ module png
 
 import hash.crc32
 import hash.adler32
-import hash.huffman
+import compress.huffman
 import math
 import image.decoders.common
 

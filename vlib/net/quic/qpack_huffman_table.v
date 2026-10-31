@@ -11,7 +11,7 @@ module quic
 // qpack_huffman_code_lens holds the bit length of each HPACK symbol's
 // Huffman code (1..30 bits). Index 0..255 are byte values; index 256 is the
 // EOS symbol. The codes themselves are canonical, so they are not stored:
-// they are rebuilt from these lengths at startup via hash.huffman (see
+// they are rebuilt from these lengths at startup via compress.huffman (see
 // qpack_huffman_table in qpack_huffman.v).
 const qpack_huffman_code_lens = [
 	u8(13),

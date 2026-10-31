@@ -96,7 +96,7 @@ fn test_huffman_known_vector() {
 
 fn test_huffman_codes_rebuilt_from_lengths() {
 	// The HPACK table now ships only the bit lengths; the canonical codes are
-	// rebuilt at startup via hash.huffman. Pin a few known codes from RFC 7541
+	// rebuilt at startup via compress.huffman. Pin a few known codes from RFC 7541
 	// Appendix B so a bad rebuild (or a future builder change) is caught.
 	assert h2_huffman_table.codes.len == 257
 	assert h2_huffman_table.lengths.len == 257

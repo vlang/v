@@ -1,6 +1,6 @@
 module deflate
 
-import hash.huffman
+import compress.huffman
 
 const deflate_hash_bits = 15
 const deflate_hash_size = 1 << deflate_hash_bits

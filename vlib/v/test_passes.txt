@@ -308,7 +308,7 @@ vlib/hash/adler32/adler32_test.v
 vlib/hash/crc32/crc32_test.v
 vlib/hash/crc64/crc64_test.v
 vlib/hash/fnv1a/fnv1a_test.v
-vlib/hash/huffman/huffman_test.v
+vlib/compress/huffman/huffman_test.v
 vlib/io/buffered_writer_test.v
 vlib/io/custom_string_reading_test.v
 vlib/io/fs/fs_test.v
