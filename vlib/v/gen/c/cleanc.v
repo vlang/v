@@ -20075,6 +20075,8 @@ fn (mut g FlatGen) preamble() {
 		g.writeln('#endif')
 	}
 	g.platform_int_typedefs()
+	g.cpp_runtime_helpers()
+
 	if !use_system_libc && !g.target_libc_headers {
 		g.writeln('#if !defined(_TIME_T) && !defined(_TIME_T_DEFINED) && !defined(__time_t_defined) && !defined(_BSD_TIME_T_DEFINED_) && !defined(_TIME_T_DECLARED)')
 		g.writeln('typedef long long time_t;')
@@ -23233,7 +23235,7 @@ fn (mut g FlatGen) libc_compat_decls() {
 			// it after `-is_o` pushes its `internal_linkage` attribute makes clang
 			// reject the second declaration, so only the headerless preamble needs it.
 			g.writeln('#ifndef V_MANUAL_STDLIB_HEADERS')
-			g.writeln('long syscall(long number, ...);')
+			g.writeln(g.cpp_c_linkage('long syscall(long number, ...);'))
 			g.writeln('#endif')
 		}
 		g.writeln('static inline u32 v3_gettid(void) {')
@@ -23507,7 +23509,7 @@ fn (mut g FlatGen) float_exponent_helpers() {
 // links on both: glibc keeps writer-preferring rwlocks, musl skips the call.
 fn (mut g FlatGen) headerless_linux_rwlockattr_setkind_np() {
 	g.writeln('#elif defined(__linux__) && !defined(__ANDROID__) && !defined(CUSTOM_DEFINE_glibc)')
-	g.writeln('int pthread_rwlockattr_setkind_np(void* attr, int kind) __attribute__((weak));')
+	g.writeln(g.cpp_c_linkage('int pthread_rwlockattr_setkind_np(void* attr, int kind) __attribute__((weak));'))
 	g.writeln('static inline int v3_pthread_rwlockattr_setkind_np(void* attr, int kind) { int (*setkind)(void*, int) = pthread_rwlockattr_setkind_np; return setkind != 0 ? setkind(attr, kind) : 0; }')
 	g.writeln('#define pthread_rwlockattr_setkind_np(attr, kind) v3_pthread_rwlockattr_setkind_np((attr), (kind))')
 }
@@ -23538,7 +23540,11 @@ fn (mut g FlatGen) builtin_abi_decls() {
 	// Empty array headers need no allocation. Keep this small wrapper inline so
 	// aggregate defaults fold to constants even when __new_array stays out of line.
 	g.writeln('array __new_array(${g.int_ct} len, ${g.int_ct} cap, ${g.int_ct} elem_size);')
-	g.writeln('static inline array __v3_internal_symbol_array_new(${g.int_ct} elem_size, ${g.int_ct} len, ${g.int_ct} cap) { if (len == 0 && cap == 0) return (array){.element_size = elem_size, .flags = ArrayFlags__managed}; return __new_array(len, cap, elem_size); }')
+	if g.ccompiler == 'cplusplus' {
+		g.writeln('static inline array __v3_internal_symbol_array_new(${g.int_ct} elem_size, ${g.int_ct} len, ${g.int_ct} cap) { if (len == 0 && cap == 0) return (array){.flags = ArrayFlags__managed, .element_size = elem_size}; return __new_array(len, cap, elem_size); }')
+	} else {
+		g.writeln('static inline array __v3_internal_symbol_array_new(${g.int_ct} elem_size, ${g.int_ct} len, ${g.int_ct} cap) { if (len == 0 && cap == 0) return (array){.element_size = elem_size, .flags = ArrayFlags__managed}; return __new_array(len, cap, elem_size); }')
+	}
 	g.writeln('#define array_new(elem_size, len, cap) __v3_internal_symbol_array_new((elem_size), (len), (cap))')
 	g.writeln('#define array_push array__push')
 	g.writeln('void array__push_many(array* a, void* val, ${g.int_ct} size);')
@@ -25212,9 +25218,7 @@ fn (mut g FlatGen) global_decls() {
 			cn := g.global_c_name(name)
 			g.emit_tinyc_windows_thread_local_slot(cn, ct, '')
 			g.emit_tinyc_pthread_pointer_slot(cn, ct)
-			g.writeln('#else')
-			g.writeln('_Thread_local ${ct} ${cn}${init};')
-			g.writeln('#endif')
+			g.emit_thread_local_decl_after_tinyc('${ct} ${cn}${init};')
 			continue
 		}
 		g.writeln('${section_prefix}${vq}${ct} ${g.global_c_name(name)}${init};')
@@ -25360,7 +25364,8 @@ fn (mut g FlatGen) global_struct_unset_field_value(struct_name_id u32, field_nam
 fn (mut g FlatGen) fixed_array_default_fill_stmt(target string, fixed types.ArrayFixed) string {
 	c_elem, dims := g.fixed_array_decl_parts(fixed)
 	initializer := g.empty_fixed_array_initializer_string(fixed)
-	return '\tmemmove(${target}, (${c_elem}${dims})${initializer}, sizeof(${target}));'
+	source := g.cpp_copy_source('(${c_elem}${dims})${initializer}')
+	return '\tmemmove(${target}, ${source}, sizeof(${target}));'
 }
 
 fn (mut g FlatGen) global_storage_type(name string, typ types.Type) types.Type {
@@ -25751,7 +25756,7 @@ fn (mut g FlatGen) global_fixed_array_fill_stmt(dst string, val_id flat.NodeId, 
 	}
 	literal := g.fixed_array_compound_literal_expr(val_id, fixed)
 	if trimmed_space(literal).len > 0 {
-		return 'memmove(${dst}, ${literal}, sizeof(${dst}));'
+		return 'memmove(${dst}, ${g.cpp_copy_source(literal)}, sizeof(${dst}));'
 	}
 	if node.kind == .postfix && node.children_count > 0 {
 		return g.global_fixed_array_fill_stmt(dst, g.a.child(&node, 0), fixed)
@@ -26708,7 +26713,11 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		// casts: GCC rejects the latter as non-constant when cached modules are
 		// linked separately.
 		g.writeln('MessageError ${object_name} = {.msg = ${message}};')
-		g.writeln('IError ${qname} = {._typ = ${type_id}, ._object = &${object_name}};')
+		if g.ccompiler == 'cplusplus' {
+			g.writeln('IError ${qname} = {._object = &${object_name}, ._typ = ${type_id}};')
+		} else {
+			g.writeln('IError ${qname} = {._typ = ${type_id}, ._object = &${object_name}};')
+		}
 		g.tc.cur_module = old_module
 		return
 	}
@@ -26943,7 +26952,7 @@ fn (mut g FlatGen) queue_const_fixed_array_runtime_init(target string, val_id fl
 fn (mut g FlatGen) fixed_array_runtime_copy_source_expr(val_id flat.NodeId, fixed types.ArrayFixed) string {
 	literal := g.fixed_array_compound_literal_expr(val_id, fixed)
 	if trimmed_space(literal).len > 0 {
-		return literal
+		return g.cpp_copy_source(literal)
 	}
 	return g.fixed_array_copy_source_string(val_id, types.Type(fixed))
 }
