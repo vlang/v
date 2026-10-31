@@ -346,3 +346,45 @@ fn test_invalid_registered_claims_are_rejected() {
 		}
 	}
 }
+
+fn test_rs256_sign_and_verify() {
+	priv_pem := r"-----BEGIN RSA PRIVATE KEY-----
+MIICXwIBAAKBgQCBrmdFbTz+kFP6FGDvThQG7a2pMnnjV1aU9Jyal5kC0t10x7ZI
+dmDutBgcDDsyL2hqwJN+Ndg8zX6aZgfFhQ3ddYt/ENiLmOg4zea/FaRS8vwFLijs
+KvZejpg6+mfNv/XLrNsQ6ucddUts3GqygupBQoz8pCF+GsoUIGTDF7lVpQIDAQAB
+AoGADAPUnaIZXJySq0DoGkPppxquVFbQ5DdbVkGzoL8a9iADVKaMRPpy0Kru8OpR
+Mb0it4FQKQlkF34SlMuPLGnVTXp+uEjIoeIOi15Fot/aTujS8bSfZZ1OSsZVoLU7
+0Mr41GNgmCr995b+PDb5tNnH4n2Gkvp749701zWsVHk8MKECRQCwkMls0G9iaiDL
+ZJlD5WuV8RBlfAXtlBCfGNtlgdj4z7CcU1Crv9YvUoM34TqbB3LDfSRCzx9aTjvA
+xiLpjMoDZucmSwI9ALwF6L0FO2k8eVr6fJ30NIZ/zXi8JK1sNPsSG6DEWBDfwfR7
+zHvw+tUILAY8SIxOToZbZdMXPsvm6yS9zwJEVAhkxTQifu1RtFupkiXjYVZ83j/7
+tknM61tyN8pn0GtQe+YvM762mokjyHmaYeRWm3G4y082dc1cJPBn9025a4sTIicC
+PCD3nEZAO5mJG/Iix2Teo7MNh5ZqzreFqIh5NVTr+FEFGrnmVwVITIK7yxRQz5ui
+Q0x1jBYGFmGkHIi1qwJEFvXww4oHg5nos+R4SQp/rIteRCFfeNgrmGlCXZhUjYkY
+g/k6dgEEvvfrb/FExmg1Bq67LqDqPDiymI9PGSi6hHIF6wU=
+-----END RSA PRIVATE KEY-----"
+	pub_pem := r"-----BEGIN RSA PUBLIC KEY-----
+MIGJAoGBAIGuZ0VtPP6QU/oUYO9OFAbtrakyeeNXVpT0nJqXmQLS3XTHtkh2YO60
+GBwMOzIvaGrAk3412DzNfppmB8WFDd11i38Q2IuY6DjN5r8VpFLy/AUuKOwq9l6O
+mDr6Z82/9cus2xDq5x11S2zcarKC6kFCjPykIX4ayhQgZMMXuVWlAgMBAAE=
+-----END RSA PUBLIC KEY-----"
+	claims := StandardClaims{
+		sub: 'alice'
+		iss: 'auth-server'
+		exp: time.now().unix() + 600
+	}
+	tok_str := sign_with_secret(claims, priv_pem, SignOptions{ algorithm: .rs256 })!
+	hdr := decode_header(tok_str)!
+	assert hdr.alg == 'RS256'
+	tok := verify_with_secret[StandardClaims](tok_str, pub_pem, VerifyOptions{
+		algorithm:       .rs256
+		expected_issuer: 'auth-server'
+	})!
+	assert tok.claims.sub or { '' } == 'alice'
+
+	if _ := verify_with_secret[StandardClaims](tok_str, priv_pem, VerifyOptions{ algorithm: .rs256 }) {
+		assert false
+	} else {
+		assert true
+	}
+}
