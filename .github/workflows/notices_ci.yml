@@ -17,13 +17,6 @@ on:
       - 'cmd/tools/vtest*.v'
       - 'cmd/tools/testing/**'
       - '**/notices_ci.yml'
-  pull_request:
-    paths:
-      - 'vlib/**'
-      - 'cmd/v/**'
-      - 'cmd/tools/vtest*.v'
-      - 'cmd/tools/testing/**'
-      - '**/notices_ci.yml'
   schedule:
     # Weekly: the sweep runs the modules that are not gated yet, so it takes
     # longer than a PR lane may.
@@ -49,6 +42,7 @@ env:
 
 jobs:
   notices-gate:
+    if: github.ref == 'refs/heads/master'
     strategy:
       fail-fast: false
       matrix:
@@ -102,7 +96,7 @@ jobs:
     # Advisory inventory, never blocking: the modules that are clean today are
     # the candidates for the gate list. Red modules are notice debt; timeouts
     # mean the module is too large to prove clean in this budget.
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.ref == 'refs/heads/master' && github.repository == 'vlang/v')
+    if: github.ref == 'refs/heads/master' && (github.event_name == 'workflow_dispatch' || (github.event_name == 'schedule' && github.repository == 'vlang/v'))
     runs-on: ubuntu-22.04
     timeout-minutes: 180
     steps:

@@ -1,17 +1,9 @@
 name: vab CI
 
 on:
-  workflow_call:
   push:
     branches:
       - master
-    paths:
-      - 'vlib/**'
-      - 'thirdparty/**'
-      - 'cmd/tools/builders/**.v'
-      - '**/vab_ci.yml'
-      - '!**.md'
-  pull_request:
     paths:
       - 'vlib/**'
       - 'thirdparty/**'

@@ -348,6 +348,15 @@ fn (g &Parser) fixed_array_uses_raw_storage(tokens []FastcExpressionToken) bool 
 }
 
 fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?FastcRenderedExpression {
+	if g.member_smartcasts.len > 0 {
+		if path := fastc_indexed_member_chain_path(tokens) {
+			if cast := g.member_smartcasts[path] {
+				if cast.variants.ids.len <= 1 {
+					return FastcRenderedExpression{ source: cast.source, typ: cast.typ }
+				}
+			}
+		}
+	}
 	// A pre-rendered synthetic base atom (e.g. a string interpolation `'${x}'[0]`, folded into
 	// one token carrying its C text in `.source`) is `.string`, not `.name`; accept it too so
 	// the index applies to the rendered string rather than reaching the raw renderer.
@@ -423,6 +432,10 @@ fn (g &Parser) render_array_access_expression(tokens []FastcExpressionToken) ?Fa
 		}
 	}
 	base_layout_type := g.underlying_alias_type(base_type)
+	if flat.source_type_query(fastc_trim_pointer_type(base_layout_type)).has(.c_map_prefix) {
+		// Pointer-to-map reads use map lookup, including compound keys in boolean operands.
+		return none
+	}
 	base_source := if is_reference_base {
 		'(*(${g.resolved_root_expression_name(base_tokens[0].lit)}))'
 	} else if base_tokens.len == 1 && base_tokens[0].has_source() {
@@ -991,6 +1004,14 @@ fn (g &Parser) render_leading_member_chain_promotion(tokens []FastcExpressionTok
 }
 
 fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?string {
+	return g.render_raw_expression_tokens_impl(tokens, false)
+}
+
+fn (g &Parser) render_raw_expression_prefix(tokens []FastcExpressionToken) ?string {
+	return g.render_raw_expression_tokens_impl(tokens, true)
+}
+
+fn (g &Parser) render_raw_expression_tokens_impl(tokens []FastcExpressionToken, allow_incomplete_casts bool) ?string {
 	if direct := g.render_raw_local_direct_member(tokens) { return direct }
 	if tokens.len == 1 {
 		item := tokens[0]
@@ -1122,7 +1143,10 @@ fn (g &Parser) render_raw_expression_tokens(tokens []FastcExpressionToken) ?stri
 					fastc_output_c_type(cast_type)
 				}
 				piece = '((${physical_cast_type}${pointer_suffix})('
-				close := fastc_matching_rpar(tokens, i + 1) or { return none }
+				close := fastc_matching_rpar(tokens, i + 1) or {
+					if !allow_incomplete_casts { return none }
+					tokens.len
+				}
 				cast_open = i + 1
 				cast_closes << close
 			} else {
@@ -1273,6 +1297,12 @@ fn fastc_token_is_prefix_operator(tokens []FastcExpressionToken, index int) bool
 }
 
 fn (g &Parser) array_initializer_type(tokens []FastcExpressionToken) ?u32 {
+	if tokens.len == 1 && tokens[0].tok == .name {
+		if typ := g.type_from_expression_tokens(tokens) {
+			query := flat.source_type_query(typ)
+			if query.has(.c_array_prefix) || query.has(.c_fixed_array_prefix) { return typ }
+		}
+	}
 	if tokens.len < 3 {
 		return none
 	}
@@ -1393,6 +1423,10 @@ fn (g &Parser) type_from_expression_tokens_bytes(tokens []FastcExpressionToken) 
 		return none
 	}
 	remaining := tokens[start..]
+	if remaining[0].tok == .question && remaining.len > 1 {
+		payload := g.type_from_expression_tokens(remaining[1..]) or { return none }
+		return fastc_typed_option_type(payload) + '*'.repeat(pointers)
+	}
 	if remaining.len >= 3 && remaining[0].tok == .lsbr && remaining[1].tok == .rsbr {
 		element_type := g.type_from_expression_tokens_bytes(remaining[2..]) or { return none }
 		return fastc_array_c_type(element_type) + '*'.repeat(pointers)
@@ -1423,10 +1457,22 @@ fn (g &Parser) type_from_expression_tokens_bytes(tokens []FastcExpressionToken) 
 		return fastc_thread_type_name(value_type) + '*'.repeat(pointers)
 	}
 	if remaining.len == 1 && remaining[0].tok == .name {
+		if fastc_callable_signature(flat.source_type_id(remaining[0].lit)) != none {
+			return remaining[0].lit + '*'.repeat(pointers)
+		}
 		mut base := fastc_primitive_c_type(remaining[0].lit) or { '' }
 		if base == '' {
-			type_key := g.resolve_declared_type_key(remaining[0].lit) or { return none }
-			base = fastc_c_declared_type_name(flat.source_type_name(type_key))
+			if type_key := g.resolve_declared_type_key(remaining[0].lit) {
+				base = fastc_c_declared_type_name(flat.source_type_name(type_key))
+			} else {
+				raw := flat.source_type_id(remaining[0].lit)
+				query := flat.source_type_query(raw)
+				if query.has(.c_array_prefix) || query.has(.c_map_prefix) || query.has(.c_fixed_array_prefix) || fastc_typed_option_payload(raw) != none {
+					base = remaining[0].lit
+				} else {
+					return none
+				}
+			}
 		}
 		return base + '*'.repeat(pointers)
 	}
@@ -1461,7 +1507,7 @@ fn fastc_array_initializer_c_type(array_type_id u32) string {
 	array_type := flat.source_type_name(array_type_id)
 	length := fastc_fixed_array_length_id(array_type_id) or { return array_type }
 	element_type := fastc_fixed_array_element_type(array_type_id) or { return array_type }
-	return 'FixedArray_${fastc_fixed_array_length_part(length)}_${flat.source_type_name(flat.source_type_composition_one(.fastc_composite_part, element_type))}'
+	return 'FixedArray_${fastc_fixed_array_length_part(length)}_${flat.source_type_name(fastc_composite_part_id(element_type))}'
 }
 
 // fastc_collect_referenced_fixed_array_types finds every `FixedArray_<len>_FASTC_ARRAY_OF_<elem>`

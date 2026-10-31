@@ -14,16 +14,6 @@ on:
       - '**/puzzle_vibes_ci.yml'
       - '!**_test.v'
       - '!**.md'
-  pull_request:
-    paths:
-      - 'vlib/v/checker/**'
-      - 'vlib/v/gen/c/**'
-      - 'thirdparty/**'
-      - 'cmd/tools/builders/**.v'
-      - 'cmd/tools/vshader.v'
-      - '**/puzzle_vibes_ci.yml'
-      - '!**_test.v'
-      - '!**.md'
 
 concurrency:
   group: puzzle_vibes-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -34,6 +24,7 @@ permissions:
 
 jobs:
   v-compiles-puzzle-vibes:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:

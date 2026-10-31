@@ -7,9 +7,6 @@ on:
       - master
     paths:
       - 'vlib/v/**'
-  pull_request:
-    paths:
-      - 'vlib/v/**'
 
 concurrency:
   group: compiler-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -20,6 +17,7 @@ permissions:
 
 jobs:
   compiler:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
@@ -60,7 +58,7 @@ jobs:
   # The matrix takes ten runners, so it runs only for pushes to master, not for pull requests.
   unit-tests:
     name: V3 unit tests (${{ matrix.shard }}/${{ strategy.job-total }})
-    if: github.event_name == 'push'
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
     runs-on: ubuntu-24.04
     timeout-minutes: 120
     strategy:

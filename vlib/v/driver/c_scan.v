@@ -1,9 +1,7 @@
 module driver
 
-// The driver looks into C text in several places: for the directives of a header,
-// for the identifiers of a line, for the parts of the name of a macro, for what a
-// macro left in preprocessed C. They all go by the rules of this file for what a
-// comment, a literal, a number and an identifier are.
+// Helpers for generated C, native source files, and compiler arguments.
+// Header contents and preprocessor output must never be passed here.
 
 // v3_c_skip_comment returns the position after the comment that starts at `start`
 // in `text`, or `start` when none starts there. A comment that does not end ends

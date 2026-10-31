@@ -643,6 +643,10 @@ fn (g &Parser) erase_mono_generic_type_arguments(source_file FastcSourceFile, sr
 			continue
 		}
 		first_name := scan.lit
+		if first_name == 'map' {
+			tok = scan.scan()
+			continue
+		}
 		mut type_key := fastc_resolve_declared_type_key(src.module_name, first_name, src.imports, g.declared_types) or { u32(0) }
 		tok = scan.scan()
 		if tok == .dot {

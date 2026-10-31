@@ -2,18 +2,6 @@ name: VC gen
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths-ignore:
-      - '**.vv'
-      - '**.out'
-      - '**.md'
-      - '**.yml'
-      - '!**/gen_vc_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
-      - '!cmd/tools/gen_vc/**'
-      - 'thirdparty/tccbin_automation/bootstrap/vc.lock'
-      - 'thirdparty/tccbin_automation/tests/workflow_contract_test.v'
   push:
     branches:
       - master
@@ -38,12 +26,12 @@ concurrency:
   group: gen_vc-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ !contains(github.ref, 'master')}}
 
-# Exactly one of the two jobs runs for each event. `deploy` publishes vlang/vc from vlang/v master
+# Exactly one of the two jobs runs for each master event. `deploy` publishes vlang/vc from vlang/v master
 # until the vcgen.vlang.io service takes over (see doc/vcgen_service.md): setting the repository
 # variable VCGEN_SERVICE to `live` hands publishing to the service, and `validate` runs instead.
 jobs:
   validate:
-    if: github.event_name == 'pull_request' || github.repository != 'vlang/v' || github.ref != 'refs/heads/master' || vars.VCGEN_SERVICE == 'live'
+    if: github.ref == 'refs/heads/master' && (github.repository != 'vlang/v' || vars.VCGEN_SERVICE == 'live')
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -58,7 +46,7 @@ jobs:
           ./gen_vc snapshot . vc_snapshot
 
   deploy:
-    if: github.event_name != 'pull_request' && github.repository == 'vlang/v' && github.ref == 'refs/heads/master' && vars.VCGEN_SERVICE != 'live'
+    if: github.ref == 'refs/heads/master' && github.repository == 'vlang/v' && vars.VCGEN_SERVICE != 'live'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:

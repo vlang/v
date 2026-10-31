@@ -2,6 +2,19 @@
 
 Select FastC with `v -b fastc run program.v`. It reads scanner tokens and emits C directly,
 without the regular parser, checker, or AST pipeline, then compiles with bundled TinyCC.
+Select `-cc clang` to compile the emitted C with Clang, including Objective-C interop on macOS.
+Ordinary default builds and explicit `-cc tcc` builds compile generated V code and link with
+TinyCC. FastC reports TinyCC compilation failures directly.
+On macOS, Objective-C interop uses Clang directly. V does not parse native headers or project a
+native interface for TinyCC. Default and explicit TinyCC builds regenerate their V branches for
+Clang when native inputs require it. With `-no-retry-compilation`, select `-cc clang` explicitly.
+Native implementation includes follow generated V types, while ordinary C headers precede them.
+Explicit macro directives retain their source-file order around native implementations.
+With `-o program.c`, FastC writes C without invoking a native compiler or linker.
+C output is published only after the buffered writes, final flush, and close succeed.
+Clang builds also accept `-prod`, apply C optimization, and retain wrapping signed arithmetic.
+Missing native objects named by `#flag` are built from adjacent C, C++, or Objective-C sources,
+as with the C backend.
 FastC is experimental and supports a subset of V. An unsupported construct produces an error
 with its source byte offset; FastC does not silently switch to the C backend.
 
@@ -82,11 +95,24 @@ Empty map initializers use their expected key and value storage, including map a
 On glibc Linux, thread IDs use the system call without requiring glibc 2.30. Generic
 parameter shadowing ends with its function and does not affect later constants.
 Function-pointer fields and parameters support mixed named and unnamed parameter types.
+Function aliases support nested callback parameter types, including callbacks taking callbacks.
+Field iteration supports `field.is_shared` and passing `field.attrs` to helper functions.
+Member and operator continuations can follow comments on a new line.
+`$zero(Type)` supports scalars, pointers, enums, structs, dynamic arrays, and maps.
+Optional collection elements preserve their payload types. Array guards and `or` fallbacks
+handle both missing indices and stored `none` elements. Struct equality compares optional,
+map, array, sum-type, and interface fields by value. Function values retain their signatures
+through options, collections, captures, and returned callbacks; `spawn` accepts callback fields.
+Project imports honor explicit `-path` search roots, including replacements for vlib modules.
+Embedded files can be stored or passed as `embed_file.EmbedFileData` values and read with
+`.data()`, `.to_string()`, or `.to_bytes()`. Their payloads are emitted once per file and remain
+available after the original files are removed; binary bytes and empty files are preserved.
 If a call reaches a generic placeholder without a concrete instance, it reports the function
 and exits with an error instead of returning a zero value.
 This path supports standard-library imports such as `os` and `toml`,
 composite sum-type tests, integer and floating point interpolation formats, anonymous functions,
-and immutable closure captures. Float formats support precision, width, left alignment, and the
+and closure captures. Mutable value captures retain their state across calls. Float formats support
+precision, width, left alignment, and the
 `f` suffix to retain trailing zeros. A single-file entry can select the same runtime with
 `-d fastc_real_builtin`. As with the C backend, a program file named on its own is compiled
 alone, while a test file also brings in the other files of its module.
@@ -131,8 +157,8 @@ Fixed and dynamic arrays of callbacks retain those signatures when indexed, incl
 Option/Result returns. Generic pointer arguments accept transparent `unsafe` expressions.
 Global arrays support appends, indexing, and mutable
 iteration across modules while retaining their original storage.
-Appending a borrowed string variable, field, or element copies its bytes so the array keeps
-its value after the source is freed. Call results and bulk appends retain their existing storage.
+Appending a string copies its descriptor and shares the byte storage, as with the C backend.
+Append `text.clone()` when independent byte storage is needed. Bulk appends also share storage.
 Module cycles retain every source and run each initialization and cleanup hook once in stable order.
 By-value parameters whose addresses escape to spawned workers retain shared storage after the
 function returns. Later writes and workers from the same invocation use that storage.
@@ -177,8 +203,9 @@ Spawned threads and arrays of threads support waiting for void and typed results
 `nil` can reset `voidptr` fields and locals. Typed pointer `nil` literals still
 require an `unsafe` block.
 
-The full-runtime path remains experimental. Mutable and expression closure captures and
-128-bit integers are unsupported. Disabled standalone `@[if flag ?]` calls omit their arguments.
+The full-runtime path remains experimental. Mutable pointer captures retain their pointee's
+identity. Rebinding those pointers, expression captures, and 128-bit integers are unsupported.
+Disabled standalone `@[if flag ?]` calls omit their arguments.
 
 Cross-target builds can emit C for an external compiler with `-o program.c`. This mode accepts
 `-prod`; the external compiler chooses the C optimization level. For freestanding targets,
@@ -198,6 +225,8 @@ packed structs, aligned structs, and volatile fields retain their C layout and q
 Local volatile declarations retain their storage qualifiers. Interface fields refer to the
 concrete object's storage, including chained mutations and mutable arguments.
 Mutable interfaces dispatch to compatible value-receiver and pointer-receiver implementations.
+Writing an indexed smartcast's index or key ends its captured projection; later reads select
+the current element. Nested narrowing scopes do not restore projections invalidated by a write.
 Architecture-filtered source trees keep their selected siblings. An explicitly imported module
 missing from a staged tree can resolve beside the original source files.
 The target runtime emits native prototypes for referenced C declarations in V files without
@@ -228,8 +257,8 @@ divisors. The ordinary FastC subset retains its division and modulo restrictions
 AMD64 and ARM64 C output supports GNU inline assembly, including named operands, read/write
 constraints, clobbers, local labels, raw templates, and `asm goto`. Structured Intel assembly
 supports register, immediate, and memory operands, including memory read/write constraints.
-Compile and link that output with the target toolchain; FastC executable builds still use the host
-target and bundled TinyCC.
+Compile and link that output with the target toolchain. FastC executable builds use the host
+target with bundled TinyCC by default, or Clang when selected with `-cc clang`.
 
 Build the full V compiler, including its regular C backend, directly from `cmd/v`.
 The default GC and cache settings are supported; no extra flags are required:

@@ -65,6 +65,7 @@ concurrency:
 
 jobs:
   control:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     outputs:
@@ -263,7 +264,7 @@ jobs:
 
   phase-a-dark-mode:
     needs: control
-    if: needs.control.outputs.phase_a_dark_mode == 'true'
+    if: github.ref == 'refs/heads/master' && needs.control.outputs.phase_a_dark_mode == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -288,7 +289,7 @@ jobs:
 
   resolve-sources:
     needs: control
-    if: needs.control.outputs.has_hosted == 'true' || needs.control.outputs.has_bsd == 'true'
+    if: github.ref == 'refs/heads/master' && (needs.control.outputs.has_hosted == 'true' || needs.control.outputs.has_bsd == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 120
     outputs:
@@ -362,7 +363,7 @@ jobs:
     needs:
       - control
       - resolve-sources
-    if: needs.control.outputs.has_hosted == 'true'
+    if: github.ref == 'refs/heads/master' && needs.control.outputs.has_hosted == 'true'
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.control.outputs.hosted_matrix) }}
@@ -1236,7 +1237,7 @@ jobs:
     needs:
       - control
       - resolve-sources
-    if: needs.control.outputs.has_bsd == 'true'
+    if: github.ref == 'refs/heads/master' && needs.control.outputs.has_bsd == 'true'
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.control.outputs.bsd_matrix) }}

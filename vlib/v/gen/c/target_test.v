@@ -470,50 +470,18 @@ fn test_cross_directive_target_prefix_conditions() {
 	assert c_directive_strip_target_prefix('<stdio.h>') == '<stdio.h>'
 }
 
-fn test_cross_embeds_transitive_local_includes() {
-	// A header embedded into portable output takes its own quoted includes with
-	// it: the generated C is compiled far from the source tree, where a sibling
-	// `#include "..."` would no longer resolve.
-	dir := os.join_path(os.vtmp_dir(), 'v3_cross_embed_${os.getpid()}')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	os.write_file(os.join_path(dir, 'sibling.h'), '#define SIBLING_MARKER 1\n') or { panic(err) }
-	os.write_file(os.join_path(dir, 'outer.h'), '#include "sibling.h"\n#include <stdio.h>\n#define OUTER_MARKER 1\n') or {
-		panic(err)
-	}
-
+fn test_cross_c_keeps_local_headers_for_the_c_compiler() ! {
+	dir := os.join_path(os.vtmp_dir(), 'v3_cross_headers_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	header := os.join_path(dir, 'outer.h')
+	os.write_file(header, '#include "missing.h"\n#define HEADER_CONTENT_SENTINEL 1\n')!
 	mut g := FlatGen.new()
 	g.set_output_cross_c(true)
-	embedded := g.cross_embedded_header_text(os.join_path(dir, 'outer.h'), []string{}) or {
-		panic('header not embedded')
-	}
-	assert embedded.contains('SIBLING_MARKER')
-	assert embedded.contains('OUTER_MARKER')
-	assert !embedded.contains('#include "sibling.h"')
-	// A system header stays an include; the consumer's C compiler supplies it.
-	assert embedded.contains('#include <stdio.h>')
-}
-
-fn test_cross_embedding_stops_at_an_include_cycle() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_cross_embed_cycle_${os.getpid()}')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	os.write_file(os.join_path(dir, 'a.h'), '#include "b.h"\n#define A_MARKER 1\n') or { panic(err) }
-	os.write_file(os.join_path(dir, 'b.h'), '#include "a.h"\n#define B_MARKER 1\n') or { panic(err) }
-
-	mut g := FlatGen.new()
-	g.set_output_cross_c(true)
-	embedded := g.cross_embedded_header_text(os.join_path(dir, 'a.h'), []string{}) or {
-		panic('header not embedded')
-	}
-	assert embedded.contains('A_MARKER')
-	assert embedded.contains('B_MARKER')
+	assert g.c_local_header_directive(header) == '#include "${header}"'
+	included := g.c_include_directive_text(-1, '', '"${header}"', os.join_path(dir, 'main.v'))
+	assert included == '#include "${header}"'
+	assert !included.contains('HEADER_CONTENT_SENTINEL')
 }
 
 // A `#flag` can name a native source or object outright -- `vlib/db/sqlite/sqlite.c.v` builds

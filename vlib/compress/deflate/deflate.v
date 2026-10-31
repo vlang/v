@@ -130,8 +130,8 @@ pub fn validate_gzip_header(data []u8) !GzipHeader {
 // compress compresses data as zlib, gzip, or raw DEFLATE.
 pub fn compress(data []u8, format CompressParams) ![]u8 {
 	return match format.format {
-		.zlib { compress_zlib(data) }
-		.gzip { compress_gzip(data) }
+		.zlib { compress_zlib(data)! }
+		.gzip { compress_gzip(data)! }
 		.raw_deflate { deflate_compress_fixed(data)! }
 	}
 }

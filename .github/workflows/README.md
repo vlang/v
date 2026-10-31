@@ -9,33 +9,38 @@ early compatibility feedback.
 
 ## CI lanes
 
-V's CI should keep fast contributor feedback while preserving the broad portability
-coverage needed for a compiler and runtime project. Prefer small, focused workflow
-changes, and avoid removing coverage without a replacement lane.
+CI runs only for commits on `master`. Pull requests, merge queues, tags, and pushes
+to other branches do not trigger CI. Existing path filters still select the checks
+needed for each `master` push.
+
+Manual and scheduled workflows keep a job condition requiring
+`github.ref == 'refs/heads/master'`. Select `master` when dispatching a workflow;
+jobs are skipped for any other ref. Workflow completion triggers must also filter
+their upstream runs to `master`. Reusable workflow triggers are disabled so callers
+cannot start these checks from a pull request or another branch.
 
 Use these lanes when adding, moving, or splitting checks:
 
 | Lane | Trigger | Blocking? | Purpose |
 | --- | --- | --- | --- |
-| Fast PR | every PR | yes | Quick build, formatting, docs, and critical smoke checks. |
-| Standard PR | every PR or broad code paths | usually | Main Linux, macOS, and Windows compiler coverage. |
-| Specialized PR | relevant paths | maybe | Domain checks such as docs, db, graphics, wasm, C2V, or VPM. |
-| Slow PR | label, manual, or high-risk paths | usually no | Expensive portability and deep regression checks. |
-| Master push | every merge to `master` | monitoring | Full confidence after merge and early regression detection. |
-| Scheduled | cron | no | Nightly or periodic portability, ecosystem, and performance sweeps. |
+| Master push | push to `master` | monitoring | Compiler, formatting, docs, and portability coverage. |
+| Specialized | relevant paths on `master` | monitoring | Domain checks such as db, graphics, wasm, or VPM. |
+| Scheduled | cron on `master` | no | Periodic portability, ecosystem, and performance sweeps. |
+| Manual | dispatch from `master` | no | Focused reruns, release publishing, and recovery. |
 
 When classifying a workflow:
 
-- Keep every PR covered by a small fast lane with clear failure signal.
-- Keep required branch protection checks stable unless maintainers intentionally change
-  the required check list at the same time.
+- Add only `master` to push branch filters; do not add pull request or merge queue triggers.
+- Guard every job in manual or scheduled workflows with the `master` ref condition,
+  including jobs using `always()`.
 - Prefer `paths` for workflows that only validate a subsystem, and include the workflow
   file itself in the path list so CI changes are self-tested.
 - Keep `workflow_dispatch` on slow or rare-platform workflows so maintainers can rerun
-  them directly.
-- Keep broad post-merge coverage on `master` before moving expensive PR checks to path,
-  label, manual, or scheduled execution.
-- Document exceptions in the workflow when a slow check must block every PR.
+  them directly from `master`.
+- Keep broad coverage on `master`, including slow portability and ecosystem checks.
+
+The issue voting information workflow is administrative automation and retains its
+`issues` trigger.
 
 Current slow-lane candidates include FreeBSD, OpenBSD, Termux, `riscv64`, `s390x`,
 the full sanitizer matrix, and full ecosystem compilation workflows. These checks are
@@ -84,6 +89,41 @@ Use different Windows versions only when the coverage difference is intentional.
 similar workflows use different Windows runner images, document why in the workflow or
 in this README.
 
+The Win32 W3, W4, and W5 runners pin exact test inputs and runner hashes. When changing
+those inputs, update the ordered manifests, composite hashes, and all three Windows
+workflow callers together. Keep backend-state assertions in V so test helpers use
+the compiler's current symbol names and integer types. Test C headers must include
+fallback definitions for Windows messages missing from TinyCC's bundled headers.
+The bootstrap contract checks W5 source hashes, ordered surfaces, test selection,
+and all three compiler callers so formatting or type migrations cannot leave stale pins.
+
+Windows compiler jobs create a private tool cache with the runner user as its owner.
+The cache uses a short path on the runner's temporary drive so MSVC's nested helper
+object paths stay below `MAX_PATH`. `VTMP` uses the same short root so test sessions
+and their isolated module caches also fit within the native tools' path limits.
+The main jobs verify that a second `v vet` invocation reuses its compiled tool before
+starting `test-cleancode`. A cache rejected because of directory ownership or permissions
+would otherwise rebuild the tool for every input until the job times out.
+
+Pkg-config steps run the current compiler's argument-query and compile-time detection
+tests. The bootstrap contract also checks that explicit source and test paths in the
+Windows workflows exist; archived V1 tests under `vlib/v/legacy_tests` are fixtures.
+Direct C compilation checks link V3's native runtime helpers, disable GC and FastC
+dependencies, and run the resulting compiler's version command.
+Cross-platform C-generation probes select a compiler for their target explicitly;
+the Windows job's `VFLAGS` must not select MSVC for macOS output.
+Compatibility-compiler installation gives checksum tools a valid null stdin, including
+when the parent compiler launches the installer without an input handle. The bootstrap
+contract exercises that closed-stdin case.
+D3D11 shader fixtures own their SM4 bytecode rather than depending on definitions
+from the retired `sokol_gl` renderer. The bootstrap contract validates their DXBC
+containers without including that renderer.
+The TCC tools step also runs `oldv` shell-command regressions, including native
+Windows quoting, variable expansion, loop syntax, and nonzero exit propagation.
+Pure V math steps use the `pure_v_math` define and a glob with Windows path
+separators. The glob excludes C overrides; the define selects the portable math
+test expectations and keeps that build separate from normal C math caches.
+
 ### macOS runners
 
 macOS runner names can imply both OS version and CPU architecture. For example, some
@@ -103,7 +143,7 @@ depend on hosted runner behavior plus containers, VMs, or emulation layers. Trea
 runner image as part of the tested environment.
 
 When changing these workflows, prefer small PRs and keep `workflow_dispatch` available
-so maintainers can rerun the lane directly.
+with the `master` job condition so maintainers can rerun the lane directly.
 
 ### Updating runner images
 
@@ -166,17 +206,25 @@ packages the workflow actually needs.
 
 ## Rebuilding release binaries
 
-`Release CI` normally builds and publishes the ZIPs when a `weekly.*` or `0.*` tag is pushed.
-To recover missing assets for an existing tag, dispatch the workflow from `master` and set
-`release_tag`, for example `weekly.2026.41`. It checks out and verifies that tag, builds all
-five platform archives, and attaches them to the corresponding release. Existing assets with
-the same filenames are replaced; release descriptions, names, and prerelease status are kept.
-The publishing job runs only after every platform build succeeds, and upload errors fail it.
+`Release CI` builds without publishing when its workflow file changes on `master`.
+To publish ZIPs for an existing `weekly.*` or `0.*` tag, dispatch the workflow from `master`
+and set `release_tag`, for example `weekly.2026.41`. It checks out and verifies that tag,
+builds all five platform archives, and attaches them to the corresponding release. Existing
+assets with the same filenames are replaced; release descriptions, names, and prerelease status
+are kept. The publishing job runs only after every platform build succeeds, and upload errors
+fail it. Tag pushes do not start workflows.
 
-Leaving `release_tag` empty keeps manual runs in build-only mode. Pull request runs also build
-without publishing. A branch named like a release cannot substitute for the requested tag.
+Leaving `release_tag` empty keeps manual runs in build-only mode. A branch named like a
+release cannot substitute for the requested tag.
 
 ```sh
-# After the workflow update is merged:
 gh workflow run release_ci.yml --ref master -f release_tag=weekly.2026.41
+```
+
+Docker release publishing and prebuilt binary smoke tests are also manual workflows
+dispatched from `master`:
+
+```sh
+gh workflow run hub_docker_ci.yml --ref master -f tag=weekly.2026.41
+gh workflow run prebuilt.yml --ref master
 ```

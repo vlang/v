@@ -24,12 +24,16 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	mut capture_types := []u32{}
 	mut capture_params := []string{}
 	mut capture_values := []string{}
+	mut mutable_pointer_captures := map[string]bool{}
+	mut capture_references := []bool{}
 	if g.tok == .lsbr {
 		if 'builtin.closure' !in g.imports.values() {
 			return g.unsupported('function literals and closures without the real builtin runtime')
 		}
 		g.next()
 		for g.tok != .rsbr {
+			is_mut_capture := g.tok == .key_mut
+			if is_mut_capture { g.next() }
 			if g.tok != .name {
 				return g.unsupported('mutable or expression closure captures')
 			}
@@ -37,17 +41,33 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 			local := g.locals[capture_name] or {
 				return g.unsupported('closure capture `${capture_name}` without a local value')
 			}
-			capture_type := fastc_normalize_inferred_type(local.typ)
-			capture_source_type := g.capture_type_source(capture_type) or {
-				return g.unsupported('closure capture `${capture_name}` of type `${flat.source_type_name(capture_type)}`')
+			mut capture_type := fastc_normalize_inferred_type(local.typ)
+			if local.fn_return_type != 0 || local.fn_signature_key != '' {
+				if signature := g.callable_signature_for_expression([FastcExpressionToken{ tok: .name, lit: capture_name }]) {
+					capture_type = flat.source_type_id(fastc_callable_type_name(FastcFunctionTypeInfo{ parameter_types: signature.parameter_types, return_type: signature.return_type, option_value_type: signature.option_type }))
+					fastc_register_composite_type(capture_type, mut g.composite_types)
+				}
+			}
+			is_pointer_capture := flat.source_type_query(capture_type).has(.c_pointer_suffix)
+			if is_mut_capture && is_pointer_capture {
+				mutable_pointer_captures[capture_name] = true
+			}
+			capture_is_function := fastc_callable_signature(capture_type) != none || flat.source_type_name(capture_type) in g.mono_functions || flat.source_type_name(capture_type) in g.functions
+			capture_references << is_mut_capture && !is_pointer_capture && !capture_is_function
+			capture_source_type := if capture_type == fastc_type_option && local.option_value_type != 0 {
+				'?' + (g.capture_type_source(local.option_value_type) or { return g.unsupported('optional closure capture payload `${flat.source_type_name(local.option_value_type)}`') })
+			} else {
+				g.capture_type_source(capture_type) or {
+					return g.unsupported('closure capture `${capture_name}` of type `${flat.source_type_name(capture_type)}`')
+				}
 			}
 			capture_names << capture_name
 			capture_types << capture_type
-			capture_params << '${capture_name} ${capture_source_type}'
+			capture_params << '${if is_mut_capture && !capture_is_function { 'mut ' } else { '' }}${capture_name} ${capture_source_type}'
 			capture_value := g.local_c_name(capture_name)
-			capture_values << if flat.source_type_query(capture_type).has(.c_map_prefix) {
+			capture_values << if !is_pointer_capture && flat.source_type_query(capture_type).has(.c_map_prefix) {
 				'builtin__map_clone(&(${capture_value}))'
-			} else if flat.source_type_query(capture_type).has(.c_array_prefix) {
+			} else if !is_pointer_capture && flat.source_type_query(capture_type).has(.c_array_prefix) {
 				'builtin__array_clone_to_depth(&(${capture_value}), 1)'
 			} else {
 				capture_value
@@ -73,7 +93,16 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	}
 	mut depth := 0
 	mut body_end := 0
+	mut previous_body_token := token.Token.unknown
 	for {
+		if g.tok == .name && g.lit in mutable_pointer_captures
+			&& previous_body_token !in [.dot, .mul] {
+			mut probe := g.s
+			next := probe.scan()
+			if next.is_assignment() || next in [.inc, .dec] {
+				return g.unsupported('rebinding mutable pointer closure capture `${g.lit}`')
+			}
+		}
 		if g.tok == .lcbr {
 			depth++
 		} else if g.tok == .rcbr {
@@ -87,9 +116,13 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 		} else if g.tok == .eof {
 			return g.unsupported('unfinished anonymous function body')
 		}
+		previous_body_token = g.tok
 		g.next()
 	}
-	name := '__vf_anon_${g.module_name.replace('.', '_')}_${os.file_name(g.path).replace('.', '_')}_${g.source_offset + anon_start}'
+	origin_offset := fastc_original_source_offset(g.source_origins, g.source_offset + anon_start)
+	// Compile-time iterations share source positions, but each literal has its own body.
+	literal_id := g.temporary_name('anon')
+	name := '__vf_anon_${g.module_name.replace('.', '_')}_${os.file_name(g.path).replace('.', '_')}_${origin_offset}_${fastc_name_key(g.current_function)}_${literal_id}'
 	// Rewrite `fn (...) ...` as `fn <name> (...) ...` so `parse_function` reads it as
 	// an ordinary declaration.
 	function_source := g.s.src[params_start..body_end]
@@ -144,6 +177,13 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	saved_scope_depth := g.local_scope_depth
 	saved_drain := g.in_mono_drain
 
+	saved_capture := g.capturing_defer
+	saved_capture_lines := g.captured_defer_lines.clone()
+	g.capturing_defer = false
+	defer {
+		g.capturing_defer = saved_capture
+		g.captured_defer_lines = saved_capture_lines.clone()
+	}
 	start := g.out.len
 	g.indent = 0
 	// Emit the hoisted function even though its synthetic name is not in the reachable
@@ -210,9 +250,9 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	mut call_args := []string{}
 	for i, capture_name in capture_names {
 		field_name := fastc_c_identifier(capture_name)
-		fields << '${flat.source_type_name(capture_types[i])} ${field_name};'
+		fields << '${fastc_output_c_type(flat.source_type_name(capture_types[i]))} ${field_name};'
 		initializers << '.${field_name}=(${capture_values[i]})'
-		call_args << '__vf_ctx->${field_name}'
+		call_args << '${if capture_references[i] { '&' } else { '' }}__vf_ctx->${field_name}'
 	}
 	for i, parameter_type in signature.parameter_types_text() {
 		wrapper_params << '${fastc_output_c_type(parameter_type)} __vf_arg_${i}'
@@ -305,6 +345,9 @@ fn (mut g Parser) add_local_closure_cleanup(name string) {
 }
 
 fn (g &Parser) capture_type_source(typ_id u32) ?string {
+	if payload := fastc_typed_option_payload(typ_id) {
+		return '?' + g.capture_type_source(payload)?
+	}
 	typ := flat.source_type_name(typ_id)
 	if flat.source_type_query(typ_id).has(.c_pointer_suffix) {
 		return '&' + g.capture_type_source(flat.source_type_syntax(typ_id).c_pointer_base())?
@@ -323,13 +366,32 @@ fn (g &Parser) capture_type_source(typ_id u32) ?string {
 	if fastc_primitive_c_type_id(typ_id) != none {
 		return typ
 	}
+	signature := g.functions[typ] or { g.mono_functions[typ] or { fastc_callable_signature(typ_id) or { FastcFunctionSignature{} } } }
+	if signature.return_type != 0 {
+		mut parameters := []string{}
+		for parameter in signature.parameter_types.ids {
+			parameters << g.capture_type_source(parameter)?
+		}
+		result := if signature.return_type == flat.source_type_void {
+			''
+		} else if signature.option_type != 0 {
+			(if signature.return_type == fastc_type_result { '!' } else { '?' }) + if signature.option_type == flat.source_type_void {
+				''
+			} else {
+				g.capture_type_source(signature.option_type)?
+			}
+		} else {
+			g.capture_type_source(signature.return_type)?
+		}
+		return 'fn (' + parameters.join(', ') + ')' + if result == '' { '' } else { ' ' + result }
+	}
 	key := g.semantic_type_key(typ_id)
 	if key !in g.declared_types {
 		return none
 	}
 	module_name := flat.source_type_name(flat.source_type_syntax(key).qualifier())
 	name := flat.source_type_name(flat.source_type_syntax(key).unqualified())
-	if module_name == g.module_name || flat.source_type_syntax(key).qualifier() == fastc_capture_builtin_module_source_type {
+	if !flat.source_type_shape(key).has(.dotted) || module_name == g.module_name || flat.source_type_syntax(key).qualifier() == fastc_capture_builtin_module_source_type {
 		return name
 	}
 	for alias, imported_module in g.imports {
@@ -337,5 +399,5 @@ fn (g &Parser) capture_type_source(typ_id u32) ?string {
 			return '${alias}.${name}'
 		}
 	}
-	return none
+	return typ
 }

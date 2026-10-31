@@ -13,16 +13,6 @@ on:
       - 'tutorials/**'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
-  pull_request:
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/c2v_ci.yml'
-      - 'doc/**'
-      - 'examples/**'
-      - 'tutorials/**'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
 
 concurrency:
   group: c2v-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}

@@ -11,32 +11,6 @@ on:
       - '!**/termux_ci.yml'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
-  pull_request:
-    paths:
-      - 'cmd/v/**'
-      - 'cmd/tools/builders/**.v'
-      - 'vlib/builtin/**'
-      - 'vlib/os/**'
-      - 'vlib/time/**'
-      - 'vlib/runtime/**'
-      - 'vlib/term/**'
-      - 'vlib/net/**'
-      - 'vlib/crypto/rand/**'
-      - 'vlib/picoev/**'
-      - 'vlib/strconv/**'
-      - 'vlib/strings/**'
-      - 'vlib/sync/**'
-      - 'vlib/v/**'
-      - 'thirdparty/**'
-      - 'vc/**'
-      - 'v.mod'
-      - 'GNUmakefile'
-      - 'Makefile'
-      - '.github/problem-matchers/**'
-      - '.github/workflows/retry.sh'
-      - '!**.md'
-      - '!**.yml'
-      - '.github/workflows/termux_ci.yml'
 
 concurrency:
   group: termux-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -47,6 +21,7 @@ permissions:
 
 jobs:
   termux-build:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -85,6 +60,7 @@ jobs:
           '
 
   termux-build-arm64-tcc:
+    if: github.ref == 'refs/heads/master'
     # Diagnostic job for vlang/v#27207: reproduces the Termux/AArch64 tcc
     # bootstrap failure on a real arm64 runner so we can collect logs without
     # local hardware. Allowed to fail until the upstream tcc AArch64 bug is

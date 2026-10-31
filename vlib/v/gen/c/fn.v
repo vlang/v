@@ -1986,7 +1986,7 @@ fn (mut g FlatGen) direct_call_name_for_call(id flat.NodeId, name string) string
 				return g.test_user_main_c_name()
 			}
 		}
-		return g.cname(name)
+		return g.c_extern_export_name(g.cname(name))
 	}
 	// Monomorphization has already selected this exact concrete method. Do not
 	// run overload-style candidate matching again: same-named types from two
@@ -8164,7 +8164,10 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 	}
 	if node.children_count == 2 && (call_name_is_isnil(fn_name, target_name)
 		|| call_name_is_isnil(resolved_target_name, '')) {
-		g.write('isnil(')
+		// ARC forbids passing an Objective-C pointer through isnil's void* parameter.
+		// Compare the original pointer directly without changing its ownership.
+		arc_nil_check := '-fobjc-arc' in g.c_flags
+		g.write(if arc_nil_check { '((' } else { 'isnil(' })
 		arg_id := g.a.child(node, 1)
 		arg_node := g.a.nodes[int(arg_id)]
 		if !g.gen_isnil_fn_value_arg(arg_id, arg_node) {
@@ -8174,7 +8177,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 				g.gen_call_args_for_callee('isnil', node, 1, callee_name, callee_fn_value_params)
 			}
 		}
-		g.write(')')
+		g.write(if arc_nil_check { ') == 0)' } else { ')' })
 		return
 	}
 	if node.children_count >= 2 && (fn_name == 'sync__Channel__close'
@@ -17312,7 +17315,6 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 			}
 		}
 		cfn := g.c_extern_export_name(mapped_cfn)
-		if g.is_native_function_alias(cfn) { continue }
 		shared_runtime_extern := g.needs_shared_runtime && cfn in c_shared_runtime_extern_symbols
 		if g.has_used_fn_filter() && !(g.needs_thread_runtime
 			&& cfn in c_spawn_runtime_extern_symbols) && !shared_runtime_extern
@@ -17325,7 +17327,7 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 		}
 		forced_extern := g.c_extern_forced_decls[raw_name] || g.c_extern_forced_decls[raw_cfn]
 			|| g.c_extern_forced_decls[cfn]
-		if !forced_extern && !g.should_emit_c_extern_decl_from_file(cfn, cur_file, cur_module) {
+		if !g.is_native_function_alias(cfn) && !forced_extern && !g.should_emit_c_extern_decl_from_file(cfn, cur_file, cur_module) {
 			continue
 		}
 		if cfn == 'syscall' {
@@ -17357,6 +17359,21 @@ fn (mut g FlatGen) c_extern_forward_decls() {
 		g.tc.cur_file = decl.file
 		g.tc.cur_module = decl.module_name
 		node := g.a.nodes[decl.node_idx]
+		if g.is_native_function_alias(name) {
+			original_name := name['v3_native_bridge_'.len..]
+			g.writeln('#ifdef V3CACHE_NATIVE_OWNER')
+			if g.c_extern_forced_decls[original_name] || g.c_extern_forced_decls['C.' + original_name]
+				|| g.should_emit_c_extern_decl_from_file(original_name, decl.file, decl.module_name) {
+				g.writeln(g.c_extern_decl_line(node, original_name))
+			}
+			// Generic and inline V support in the owner can call the pointer before
+			// its definition. Let the native compiler supply that declaration's type.
+			g.writeln('extern __typeof__(&' + original_name + ') ' + name + ';')
+			g.writeln('#else')
+			g.writeln('extern ' + g.c_extern_decl_line(node, '(*' + name + ')'))
+			g.writeln('#endif')
+			continue
+		}
 		line := c_macro_safe_extern_decl(name, g.c_extern_decl_line(node, name))
 		if g.c_extern_decl_is_cached_object_fallback(name) {
 			g.writeln('#ifndef V3CACHE_PROGRAM_UNIT')
@@ -17635,7 +17652,7 @@ fn c_macro_safe_extern_decl(cfn string, declaration string) string {
 }
 
 fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
-	if g.is_native_function_alias(cfn) { return false }
+	if g.is_native_function_alias(cfn) { return true }
 	if cfn.contains('.') {
 		return false
 	}

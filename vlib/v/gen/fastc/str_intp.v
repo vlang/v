@@ -490,9 +490,15 @@ fn (mut g Parser) read_interpolated_string() !string {
 	for g.tok == .str_dollar {
 		g.next()
 		g.expect(.lcbr)!
-		value := g.read_expression([token.Token.rcbr, token.Token.colon])!
+		mut value := g.read_expression([token.Token.rcbr, token.Token.colon])!
 		value_tokens := g.last_expression.clone()
-		value_type := fastc_normalize_inferred_type(g.last_expression_type)
+		mut value_type := fastc_normalize_inferred_type(g.last_expression_type)
+		if value_tokens.len >= 3 && value_tokens[value_tokens.len - 2].tok == .dot && value_tokens.last().lit == 'name' {
+			if type_value := g.type_from_expression_tokens(value_tokens[..value_tokens.len - 2]) {
+				value = '_S(' + fastc_c_string_value(flat.source_type_name(type_value)) + ')'
+				value_type = flat.source_type_string
+			}
+		}
 		value_key := g.semantic_type_key(value_type)
 		alias_has_str_method := g.declared_kinds[value_key] == .alias_ && '${flat.source_type_name(value_key)}.str' in g.functions
 		mut interpolation_type_id := if alias_has_str_method {
@@ -1098,6 +1104,16 @@ fn fastc_c_rune(literal string) !string {
 				else {
 					return error('unsupported fastc rune escape')
 				}
+			}
+			return '((rune)${value})'
+		}
+		if (content.len == 6 && content[1] == `u`) || (content.len == 10 && content[1] == `U`) {
+			mut value := u32(0)
+			for digit in content[2..] {
+				value = (value << 4) | u32(fastc_hex_digit_value(digit)!)
+			}
+			if value > 0x10ffff || (value >= 0xd800 && value <= 0xdfff) {
+				return error('invalid fastc Unicode rune escape')
 			}
 			return '((rune)${value})'
 		}

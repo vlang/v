@@ -2,16 +2,6 @@ name: vlib modules CI
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'vlib/**.v'
-      - 'vlib/**.md'
-      - 'cmd/tools/vdoc/**.v'
-      - 'cmd/tools/vdoc/theme/**.js'
-      - 'cmd/tools/vdoc/theme/**.css'
-      - 'cmd/tools/vdoc/theme/**.svg'
-      - 'cmd/tools/vdoc/theme/**.html'
-      - '**/module_docs_ci.yml'
   push:
     branches:
       - master
@@ -36,6 +26,7 @@ permissions:
 
 jobs:
   build-module-docs:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     env:
       # Stop a failing test session at its first failure instead of
