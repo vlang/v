@@ -26,3 +26,27 @@ pub fn error_response(msg string, code int) Response {
 	r.header.set(.content_type, 'text/plain; charset=utf-8')
 	return r
 }
+
+// StripPrefixHandler wraps a handler, stripping a prefix from the request URL.
+// Mirrors Go's http.StripPrefix.
+pub struct StripPrefixHandler {
+pub:
+	prefix  string
+	handler Handler
+}
+
+pub fn (mut s StripPrefixHandler) handle(req Request) Response {
+	mut r := req
+	if r.url.starts_with(s.prefix) {
+		r.url = r.url[s.prefix.len..]
+		if r.url == '' {
+			r.url = '/'
+		}
+	}
+	return s.handler.handle(r)
+}
+
+// strip_prefix wraps handler, stripping prefix from request URLs.
+pub fn strip_prefix(prefix string, handler Handler) StripPrefixHandler {
+	return StripPrefixHandler{ prefix: prefix, handler: handler }
+}
