@@ -158,6 +158,28 @@ fn main() { assert exported_value() == 41 }
 	assert !generated.contains('__v3_internal_symbol_cpp_operator(void) {')
 }
 
+fn test_cpp_nested_sum_initializers_preserve_values() {
+	$if !linux {
+		return
+	}
+	cpp := cpp_test_compiler() or { return }
+	root := os.join_path(os.vtmp_dir(), 'cgen_cpp_nested_sum_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.cp(os.join_path(@VMODROOT, 'vlib/v/gen/c/testdata/cpp_nested_sum_runtime.vv'), source)!
+	for standard in cpp_test_standards() {
+		result := cmdexec.run(@VEXE, ['-new-compiler', '-no-retry-compilation', '-gc', 'none',
+			'-cc', cpp, '-no-std', '-cflags', '-std=${standard}', 'run', source])
+		assert result.exit_code == 0, result.output
+	}
+	if cc := os.find_abs_path_of_executable('gcc') {
+		result := cmdexec.run(@VEXE, ['-new-compiler', '-no-retry-compilation', '-gc', 'none',
+			'-cc', cc, 'run', source])
+		assert result.exit_code == 0, result.output
+	}
+}
+
 fn test_cpp_interface_metadata_keeps_layout_lifetime_and_constant_initialization() {
 	$if !linux {
 		return
@@ -189,12 +211,22 @@ ${declarations.sb.str()}
 static int global_object;
 constexpr IError permanent = ${constant.sb.str()};
 constexpr IError permanent_error = ${static_error};
-static_assert(permanent._typ == 7 && !permanent._object_is_boxed, "constant borrowed interface");
-static_assert(permanent_error._typ == 9 && !permanent_error._object_is_boxed, "constant borrowed error");
 static_assert(permanent._object == &global_object, "constant object address");
+static_assert(permanent_error._object == &global_object, "constant error address");
 static_assert(sizeof(IError) == 2 * sizeof(void*), "interface size");
 static_assert(alignof(IError) == alignof(void*), "interface alignment");
 static_assert(offsetof(IError, _interface_meta) == sizeof(void*), "metadata offset");
+// constexpr above enforces constant initialization. GCC 10 cannot read these
+// anonymous bitfields in a constant expression, so observe them before main.
+static bool observed_static_metadata;
+struct ObserveStaticMetadata {
+    ObserveStaticMetadata() {
+        assert(permanent._typ == 7 && !permanent._object_is_boxed);
+        assert(permanent_error._typ == 9 && !permanent_error._object_is_boxed);
+        observed_static_metadata = true;
+    }
+};
+static ObserveStaticMetadata observer;
 static int effects;
 static int next(int value) { effects = effects * 10 + value; return value; }
 struct Watched { int* alive; int value; ~Watched() { --*alive; } };
@@ -204,6 +236,7 @@ static void consume(IError value) {
     assert(value._typ == 3 && value._object_is_boxed);
 }
 int main() {
+    assert(observed_static_metadata);
     int alive = 1;
     consume(${runtime.sb.str()});
     assert(alive == 0 && effects == 341);

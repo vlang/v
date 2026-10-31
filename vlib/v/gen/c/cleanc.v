@@ -16220,7 +16220,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 				field := sum_field_name(flat.source_type_name(variant_name))
 				inner_val := g.const_expr_to_string(inner_id, seen)
 				payload := if trimmed_space(inner_val).len == 0 { '0' } else { inner_val }
-				return '(${ct}){.typ = ${idx}, .${field} = ${payload}}'
+				return g.sum_initializer_prefix(target_type.source_type_id(), ct, idx, field, false) + payload + g.sum_initializer_suffix(false)
 			}
 			if target_type is types.Alias && target_type.base_type is types.String {
 				return g.const_expr_to_string(g.a.child(&node, 0), seen)
