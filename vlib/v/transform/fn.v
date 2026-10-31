@@ -4832,6 +4832,13 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 		}
 		if !has_smartcast
 			&& t.resolve_sum_name(t.normalize_type_alias(t.trim_pointer_type(arg_type_source_id_3))) == resolved_target_sum {
+			// A returned reference can borrow this argument past the call. Reuse
+			// ordinary scoped storage instead of a C++ full-expression temporary.
+			if !t.in_spawn_expr {
+				if stable := t.transform_pointer_rvalue_arg(arg_id, *arg_node, param_type_id) {
+					return stable
+				}
+			}
 			return t.transform_expr(arg_id)
 		}
 		if arg_node.kind == .prefix && arg_node.op == .amp && arg_node.children_count > 0 {
@@ -4851,6 +4858,11 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 			inner_type_source_id := t.node_type(inner_id)
 
 			if t.resolve_sum_name(t.normalize_type_alias(t.trim_pointer_type(inner_type_source_id))) == resolved_target_sum {
+				if !t.in_spawn_expr {
+					if stable := t.transform_pointer_rvalue_arg(arg_id, *arg_node, param_type_id) {
+						return stable
+					}
+				}
 				return t.transform_expr(arg_id)
 			}
 		}
