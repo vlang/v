@@ -5281,7 +5281,7 @@ fn module_header_const_storage_name(module_name string, name string) string {
 	return name
 }
 
-fn module_header_const_replacements(a &flat.FlatAst, module_name string, file_ids []flat.NodeId, const_order []string) (map[int]flat.NodeId, map[int]string) {
+fn module_header_const_replacements(a &flat.FlatAst, tc &types.TypeChecker, module_name string, file_ids []flat.NodeId, const_order []string) (map[int]flat.NodeId, map[int]string) {
 	mut replacements := map[int]flat.NodeId{}
 	mut files := map[int]string{}
 	if const_order.len == 0 {
@@ -5303,14 +5303,28 @@ fn module_header_const_replacements(a &flat.FlatAst, module_name string, file_id
 					continue
 				}
 				mut rank := const_order.len + declarations.len
+				mut has_initializer := false
 				for j in 0 .. node.children_count {
 					field := a.child_node(&node, j)
+					if field.children_count == 0 {
+						continue
+					}
+					expr_id := a.child(field, 0)
+					if const_initializer_is_stored(a, expr_id, tc.resolve_type(expr_id)) {
+						continue
+					}
+					has_initializer = true
 					name := module_header_const_storage_name(module_name, field.value)
 					if field_rank := ranks[name] {
 						if field_rank < rank {
 							rank = field_rank
 						}
 					}
+				}
+				// Stored constants have no initializer in the header. Keep their
+				// declaration slots stable when cached helper bodies change the ranks.
+				if !has_initializer {
+					continue
 				}
 				files[int(id)] = file_node.value
 				declarations << ModuleHeaderConstDecl{
@@ -5449,7 +5463,7 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 	mut seen := map[string]bool{}
 	mut seen_types := map[u64]bool{}
 	mut selected_imports := map[string]bool{}
-	const_replacements, const_files := module_header_const_replacements(a, module_name, file_ids, const_order)
+	const_replacements, const_files := module_header_const_replacements(a, tc, module_name, file_ids, const_order)
 	for file_id in file_ids {
 		file_node := a.node(file_id)
 		for i in 0 .. file_node.children_count {
@@ -7439,6 +7453,13 @@ fn cached_type_source_name(typ types.Type) string {
 	return typ.name()
 }
 
+fn const_initializer_is_stored(a &flat.FlatAst, expr_id flat.NodeId, typ types.Type) bool {
+	return typ is types.Array || typ is types.ArrayFixed || typ is types.Map
+		|| typ is types.Struct || typ is types.Pointer || typ is types.Interface
+		|| typ is types.SumType || typ is types.OptionType || typ is types.ResultType
+		|| (a.node(expr_id).kind == .call && typ !is types.FnType)
+}
+
 fn const_text(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node, source_is_public bool) string {
 	mut lines := []string{cap: node.children_count}
 	for i in 0 .. node.children_count {
@@ -7447,10 +7468,7 @@ fn const_text(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node, source_is_
 		if field.children_count > 0 {
 			expr_id := a.child(field, 0)
 			typ := tc.resolve_type(expr_id)
-			if typ is types.Array || typ is types.ArrayFixed || typ is types.Map
-				|| typ is types.Struct || typ is types.Pointer || typ is types.Interface
-				|| typ is types.SumType || typ is types.OptionType || typ is types.ResultType
-				|| (a.node(expr_id).kind == .call && typ !is types.FnType) {
+			if const_initializer_is_stored(a, expr_id, typ) {
 				// Stored constants belong to the module object. Its interface needs
 				// the checked type, not the table or the code that initializes it.
 				lines << '${line} ${cached_type_source_name(typ)}'
