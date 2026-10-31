@@ -21,7 +21,28 @@ permissions:
   contents: read
 
 jobs:
+  # The four jobs below all start from the same V: build it once here and hand the
+  # compiler and its bundled tcc to them as an artifact, instead of running `make` in each.
+  build-v:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V
+        run: make
+      - name: Pack V
+        run: tar -czf "$RUNNER_TEMP/v-linux-build.tgz" v thirdparty/tcc
+      - uses: actions/upload-artifact@v7
+        with:
+          name: v-linux-build
+          path: ${{ runner.temp }}/v-linux-build.tgz
+          retention-days: 1
+          if-no-files-found: error
+
   check-markdown:
+    needs: build-v
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -31,8 +52,13 @@ jobs:
       - uses: ./.github/actions/cache-apt-packages-action
         with:
           profile: docs
-      - name: Build V
-        run: make
+      - name: Get V
+        uses: actions/download-artifact@v8
+        with:
+          name: v-linux-build
+          path: ${{ runner.temp }}
+      - name: Unpack V
+        run: tar -xzf "$RUNNER_TEMP/v-linux-build.tgz" && ./v version
       - name: Install dependencies (some examples show how to use sqlite and the x11 clipboard)
         run: ./v retry -- sudo apt install --quiet -y libx11-dev libpq-dev libssl-dev sqlite3 libsqlite3-dev
       - name: Check markdown line length & code examples
@@ -41,6 +67,7 @@ jobs:
         ## thus real errors are easier to spot.
 
   report-missing-fn-doc:
+    needs: build-v
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     env:
@@ -49,8 +76,13 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Build V
-        run: make
+      - name: Get V
+        uses: actions/download-artifact@v8
+        with:
+          name: v-linux-build
+          path: ${{ runner.temp }}
+      - name: Unpack V
+        run: tar -xzf "$RUNNER_TEMP/v-linux-build.tgz" && ./v version
 
       - name: Checkout previous v
         uses: actions/checkout@v7
@@ -66,14 +98,20 @@ jobs:
           ./v missdoc $MOPTIONS pv/vlib vlib
 
   report-missing-dots-in-doc-comments:
+    needs: build-v
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Build V
-        run: make
+      - name: Get V
+        uses: actions/download-artifact@v8
+        with:
+          name: v-linux-build
+          path: ${{ runner.temp }}
+      - name: Unpack V
+        run: tar -xzf "$RUNNER_TEMP/v-linux-build.tgz" && ./v version
       - name: Check doc comment dots for some key modules
         run: ./v run cmd/tools/find_doc_comments_with_no_dots.v \
           vlib/builtin/ vlib/arrays/ vlib/flag/ \
@@ -83,14 +121,20 @@ jobs:
           vlib/os
 
   report-wrong-examples-in-doc-comments:
+    needs: build-v
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Build V
-        run: make
+      - name: Get V
+        uses: actions/download-artifact@v8
+        with:
+          name: v-linux-build
+          path: ${{ runner.temp }}
+      - name: Unpack V
+        run: tar -xzf "$RUNNER_TEMP/v-linux-build.tgz" && ./v version
       - name: Install markdown dependency
         run: ./v retry -- ./v install markdown
       - name: Check examples in the doc comments for all vlib modules
