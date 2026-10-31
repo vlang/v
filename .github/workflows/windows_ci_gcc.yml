@@ -438,8 +438,11 @@ jobs:
           .\.github\workflows\run_multiwindow_win32_w4.ps1 `
             -Compiler gcc `
             -Expectation Green `
-            -ExpectedOracleSha256 '2884f7b9b9d9b64852dae48718126368c6bfed9026813298505512bbed3b64ab' `
-            -ExpectedNativeTestSha256 'c85dc17d04e6978206babf63bb158d8a97c1e0e43d561c6d228dc9e172378e00' `
+            -ExpectedOracleSha256 '208b0e266b1c44e5b8d0275cf8ef309847e9571a74f164cfe366fb19754db6f9' `
+=======
+            -ExpectedOracleSha256 '0fc40cd0f6b82fe184d71f901e3659be08b77e8e577bd07813b22b3d4115bd1b' `
+            -ExpectedNativeTestSha256 '43a451c95d3e7df849ee795aa22d06ce68fc84a28ca1fb10732339180f33cd21' `
+>>>>>>> cb75fda8a5 (ci: update W4 integrity pins after header fix)
             -ExpectedPublicTestSha256 'aae9e07b56175987fb94f794380c1bf0b36c53fb7ef8c7e77efc423879b43234' `
             -ExpectedNoOptProbeSha256 '288f148ca15b6694481f117c03be5f80c4045baf76d3b0e90db61b5e0596741c' `
             -ExpectedServiceBackendSha256 '8ad39d63360446ef7049c726544200780eff61ff39917830f7024243dfd363be' `
@@ -449,7 +452,10 @@ jobs:
             -ExpectedWin32ServiceNativeSha256 '2ffc93e245a43c4a557fd7cc66ebcdda8874b9783ec3050ba754657a97efd033' `
             -ExpectedRedSurfaceSha256 'fe7fa76370ee25883e4da25e72b339daeba9d1b47ff70b8b56b0ada87a0027c6' `
             -ExpectedGreenSurfaceSha256 '12b88570044e1cda2e3c630e4c700e71990dcecfa10a424c0019a996dff4cf8c' `
-            -ExpectedRunnerSha256 '79126b3b0272d6b2d40fe2d6a47d5d0ba5161cadd000870af7c073fb0a456624'
+            -ExpectedRunnerSha256 'ae0bbcfd6d77e4ac21f77c4ea15e37a7b9cbb441126364eba7748f8111edde86'
+=======
+            -ExpectedRunnerSha256 '461d65e0d8671749a34ce4588afee8d489b3b89523b8ec80ac1de56842eb4fff'
+>>>>>>> e915696824 (ci: normalize header line endings and update W4 pins)
       - name: Win32 W5 raw-input A0 preflight
         id: win32_w5_raw_input_a0_preflight
         if: ${{ success() && !cancelled() && steps.win32_w4_clipboard_contracts.outcome == 'success' }}
@@ -471,7 +477,7 @@ jobs:
             -Expectation Green `
             -ExpectedTestSha256 '6433293aebf40873ce1ff1932d9dfc128cc5ab387f8bd9b5b22dd0e9f1bc7ff2' `
             -ExpectedOracleSha256 '7362f17f06ea6b0ab5a64c74abf2407a0e284cbace2c10809a5235d406d16461' `
-            -ExpectedTupleSha256 'af89fd676dd05fa054fc64d3df1e09cb792f56f2a3ec27f26586d6f2bcfe9698' `
+            -ExpectedTupleSha256 'e8fdea88867150278d9097dcf9090c71a84411b1c6efb3a92aedee32c8a17444' `
             -ExpectedA0HeaderSha256 '9decdc2e825c91da2b9d2ce0c98cb8ccdad5c4800a690863d166135eb188e916' `
             -ExpectedA0MainSha256 '5f30869ae97f680032e622273ea69986d612cc82cad2adf53e4c3b1415154301' `
             -ExpectedA0TupleSha256 '99ef24bf101dc83543f26f86cb23a80c82607e0f1b35c32e9dbb431368ecc7c4' `
@@ -493,8 +499,8 @@ jobs:
             -ExpectedWin32BackendHelpersSha256 '2265a247f626621d69e823c09a79a5611dd187880120ba493636e73858c74a4d' `
             -ExpectedWin32ServiceBackendSha256 'c7bb97952a49d06216ef33c4a9a1013a01c11a7a16cf32190d85d112024b785c' `
             -ExpectedWin32ServiceNativeSha256 '2ffc93e245a43c4a557fd7cc66ebcdda8874b9783ec3050ba754657a97efd033' `
-            -ExpectedGreenProductionSurfaceSha256 '376c2ed664bb7248dea90efd32c0989d648ea61b719d70d073e797073f98127c' `
-            -ExpectedRunnerSha256 '8782bc3444bdaaebfe4ac6ad988daa37a16ce4fafbb8457902372c82036a45ec'
+            -ExpectedGreenProductionSurfaceSha256 'f570ae10e0479b4628df305ea51ba44779f528a6767886e2b2fed4dbfa4e4f9e' `
+            -ExpectedRunnerSha256 '6febf7c663b18115e1327899edf7cbaccd3319461d6783400800ae6d92f1a868'
       - name: Setup MinGW-w64 D3D11 headers for GCC and Clang
         id: setup_mingw_w64_d3d11_headers_for_gcc_and_clang
         if: ${{ success() && !cancelled() && steps.win32_w5_raw_input_a1_public_green.outcome == 'success' }}

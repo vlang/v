@@ -12,6 +12,14 @@ on:
       - '!**.md'
       - '**/tools_ci.yml'
 
+  workflow_dispatch:
+    inputs:
+      batch_linux_compilers:
+        description: 'Run tcc/gcc/clang sequentially in one job (saves runners)'
+        required: false
+        default: false
+        type: boolean
+
 concurrency:
   group: tools-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
   cancel-in-progress: true
@@ -87,6 +95,44 @@ jobs:
             ## cmd="./v -silent -cc gcc -cflags -fsanitize=kernel-address test-self -asan-compiler cmd"
             ## echo "$cmd" && $cmd
           fi
+
+  tools-linux-batched:
+    name: Tools Linux (batched compilers)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.batch_linux_compilers == true }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      VTEST_FAIL_FAST: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V
+        run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
+      - name: Code in cmd/ is formatted
+        run: ./v fmt -verify cmd/
+      - name: Check build-tools
+        run: ./v -silent -N -W -check build-tools
+      - name: Test tools for each compiler
+        run: |
+          set -u
+          failed=0
+          for cc in tcc gcc clang; do
+            echo "===== compiler: $cc ====="
+            if ! ./v -silent -cc "$cc" test-self cmd; then
+              echo "::error title=tools::$cc: test-self cmd failed"
+              failed=1
+              [ "${VTEST_FAIL_FAST}" = "1" ] && break
+            fi
+            if [ "$cc" != "tcc" ]; then
+              if ! ./v -silent -cc "$cc" -W -cstrict test-self cmd; then
+                echo "::error title=tools::$cc: cstrict failed"
+                failed=1
+                [ "${VTEST_FAIL_FAST}" = "1" ] && break
+              fi
+            fi
+          done
+          exit $failed
 
   tools-macos:
     runs-on: macos-14

@@ -172,9 +172,12 @@ if !flag_local! NEQ 1 (
 )
 
 REM Teach pre-uint snapshots the new spelling without changing the download.
-powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0cmd\tools\vc_compat_uint.ps1" -Source "%V_C_FILE%" -Destination "%vc_dir%\v_win_compat.c"
-if !ERRORLEVEL! NEQ 0 goto :error
-set "V_C_FILE=%vc_dir%\v_win_compat.c"
+if exist "%~dp0cmd\tools\vc_compat_uint.ps1" (
+	powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0cmd\tools\vc_compat_uint.ps1" -Source "%V_C_FILE%" -Destination "%vc_dir%\v_win_compat.c"
+	if !ERRORLEVEL! NEQ 0 goto :error
+	set "V_C_FILE=%vc_dir%\v_win_compat.c"
+)
+
 
 echo Building V...
 if not [!compiler!] == [] goto :!compiler!_strap

@@ -122,7 +122,7 @@ $caseName = 'test_win32_public_mouse_lock_real_raw_delta_red'
 $family = 'mouse_lock_raw_delta_public'
 $knownTestSha256 = '6433293aebf40873ce1ff1932d9dfc128cc5ab387f8bd9b5b22dd0e9f1bc7ff2'
 $knownOracleSha256 = '7362f17f06ea6b0ab5a64c74abf2407a0e284cbace2c10809a5235d406d16461'
-$knownTupleSha256 = 'af89fd676dd05fa054fc64d3df1e09cb792f56f2a3ec27f26586d6f2bcfe9698'
+$knownTupleSha256 = 'e8fdea88867150278d9097dcf9090c71a84411b1c6efb3a92aedee32c8a17444'
 
 $a0Header = 'vlib/x/multiwindow/testdata/win32_raw_input_w5_preflight.h'
 $a0Main = 'vlib/x/multiwindow/testdata/win32_raw_input_w5_preflight.c'

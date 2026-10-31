@@ -123,8 +123,13 @@ fn test_stopwatch_restart_zeros_the_elapsed_time() {
 
 fn test_ticks_is_a_monotonic_millisecond_clock() {
 	first := time.ticks()
-	time.sleep(3 * time.millisecond)
-	second := time.ticks()
+	// Windows' default timer resolution is ~15.6 ms, so a short sleep may
+	// not advance the millisecond clock; loop until it does.
+	mut second := time.ticks()
+	for second <= first {
+		time.sleep(1 * time.millisecond)
+		second = time.ticks()
+	}
 	assert second > first
 }
 
