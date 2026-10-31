@@ -470,6 +470,10 @@ see also `v help build`.
       more useful than -g, since it will reduce the amount of context
       switching, that you need to do, while looking at .v and .c sources.
       This option is usually used in combination with `-keepc`.
+      The C debug information names the generated C sources, so the build keeps them in a
+      hidden directory beside the output, `.<output>.v3cc.cg`, and says so in the build
+      output. The next `-cg` build of the same output replaces it; delete it when you no
+      longer debug that binary.
 
    -keepc
       Do not remove the temporary .tmp.c and .tmp.c.rsp files.

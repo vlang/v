@@ -5067,6 +5067,19 @@ fn v3_short_build_dir_for(dir string, windows_host bool, root string) (string, b
 	return short, true
 }
 
+// v3_cc_dir_name returns the name of the hidden C build directory beside the output `base`.
+// A `-cg` build names the directory after the output alone: it is kept for the debugger, so
+// one directory per output is replaced by the next build instead of a new one piling up.
+// Other builds use `token`, and remove their directory after the link.
+fn v3_cc_dir_name(base string, is_c_debug bool, token string) string {
+	return if is_c_debug { '.${base}.v3cc.cg' } else { '.${base}.v3cc.${token}' }
+}
+
+// v3_c_debug_dir_note is the one line a `-cg` build prints to say where it keeps its C sources.
+fn v3_c_debug_dir_note(cc_dir string) string {
+	return 'note: -cg keeps the C sources for the debugger in ${cc_dir} (replaced by the next -cg build of this output)'
+}
+
 // v3_mkdir_all_shared creates `dir` and its parents, also when a concurrent build creates
 // one of those parents (such as the shared short root) at the same moment.
 fn v3_mkdir_all_shared(dir string) ! {
@@ -14678,7 +14691,8 @@ pub fn run(args []string) {
 		cc_output_name := c_compiler_output_name_for_target(prefs.normalized_target_os(), is_shared,
 			is_o)
 		if !c_only {
-			cc_dir = os.join_path_single(v3_output_dir(bin_file), '.${os.base(bin_file)}.v3cc.${tempname.unique_token()}')
+			cc_dir = os.join_path_single(v3_output_dir(bin_file), v3_cc_dir_name(os.base(bin_file),
+				is_c_debug, tempname.unique_token()))
 			// tcc.exe is not long-path aware, so a build dir near MAX_PATH cannot hold its files.
 			// Only a dir this long moves to the short root; shorter dirs keep their place,
 			// since moving them can break builds that work today. A flag with a relative path
@@ -14686,10 +14700,17 @@ pub fn run(args []string) {
 			if program_executable_output_dir.len == 0 {
 				cc_dir, cc_dir_moved = v3_short_build_dir(cc_dir)
 			}
+			if is_c_debug {
+				// The directory of an earlier `-cg` build of this output is replaced, not kept.
+				cleanup_c_build_dir(cc_dir)
+			}
 			// The output directory may not exist yet, and mkdir would fail on it.
 			v3_mkdir_all_shared(cc_dir) or {
 				eprintln('failed to create C build directory ${cc_dir}: ${err}')
 				exit(1)
+			}
+			if is_c_debug {
+				eprintln(v3_c_debug_dir_note(cc_dir))
 			}
 			cc_src = os.join_path_single(cc_dir, 'src.c')
 			cc_out = os.join_path_single(cc_dir, cc_output_name)
