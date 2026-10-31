@@ -1,0 +1,62 @@
+name: s390x execute mutex validation
+
+on:
+  push:
+    branches:
+      - ci/verify-s390-mutex-20261031
+
+concurrency:
+  group: s390-mutex-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  s390x_linux:
+    if: github.repository == 'vlang/v' && github.ref == 'refs/heads/ci/verify-s390-mutex-20261031'
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Validate aligned storage and the original s390x suites
+        uses: uraimo/run-on-arch-action@1e2c619f81e6d8609845ea1d2f443a778df1ac68
+        with:
+          arch: s390x
+          distro: ubuntu22.04
+          base_image: --platform=linux/s390x s390x/ubuntu:22.04
+          githubToken: ${{ github.token }}
+          shell: /bin/bash
+          install: |
+            apt-get update -q -y
+            apt-get install -q -y make gcc git file coreutils binutils
+          run: |
+            set -e -o pipefail
+            ulimit -c 0
+            mkdir -p s390-mutex-validation
+            uname -a
+            gcc --version
+            make 2>&1 | tee s390-mutex-validation/bootstrap.log
+            export V_MACOS_V3_NO_FALLBACK=1
+            export VJOBS=2
+            nm -n ./v | awk '$3 == "os__g_v_os_execute_mutex_storage" { print }' \
+              > s390-mutex-validation/mutex-symbol.txt
+            ./v -cc gcc vlib/os/execute_lock_alignment_nix_test.c.v \
+              2>&1 | tee s390-mutex-validation/native-alignment.log
+            ./v -gc none test vlib/os/execute_thread_test.c.v \
+              2>&1 | tee s390-mutex-validation/threads-no-gc.log
+            ./v test vlib/builtin vlib/os vlib/encoding/binary \
+              2>&1 | tee s390-mutex-validation/original-suites.log
+            ./v test vlib/v/tests/fns/closure_test.v \
+              2>&1 | tee s390-mutex-validation/closures.log
+      - name: Preserve validation logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: s390x-execute-mutex-validation
+          path: s390-mutex-validation
+          if-no-files-found: warn
+          retention-days: 7
