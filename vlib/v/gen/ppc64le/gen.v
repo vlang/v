@@ -304,11 +304,6 @@ fn rv_max_int(a int, b int) int {
 // generate pre pass output for riscv64.
 
 fn (mut g Gen) gen_pre_pass() {
-	wyp_offset := g.elf.data_data.len
-	for _ in 0 .. 8 {
-		g.elf.data_data << 0
-	}
-	g.elf.add_symbol('_wyp', u64(wyp_offset), false, 2)
 	mut data_offset := u64(0)
 	for gi in 0 .. g.m.globals.len {
 		if g.m.globals[gi].linkage == .external {
@@ -337,6 +332,12 @@ fn (mut g Gen) gen_post_pass() {
 			g.elf.data_data << 0
 		}
 	}
+	// Add _wyp stub at the end of data section
+	wyp_offset := g.elf.data_data.len
+	for _ in 0 .. 8 {
+		g.elf.data_data << 0
+	}
+	g.elf.add_symbol('_wyp', u64(wyp_offset), false, 2)
 }
 
 // ==================== Function layout ====================
