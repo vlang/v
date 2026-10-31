@@ -2090,13 +2090,14 @@ fn (mut g Gen) emit_copy_ptr_to_fp(src_ptr_reg int, dst_off int, size int) {
 fn (mut g Gen) emit_branch_to_block(blk_id int) {
 	if target := g.block_offset(blk_id) {
 		offset := target - g.text_offset()
-		g.emit32(rv_jal(rv_reg_zero, offset))
+		uoff := u32(offset)
+		g.emit32(0x50000000 | ((uoff & 0x3ffff) << 8))
 	} else {
 		g.pending_jmps << PendingJmp{
 			text_pos: g.text_offset()
 			block_id: blk_id
 		}
-		g.emit32(rv_jal(rv_reg_zero, 0))
+		g.emit32(0x50000000) // b (branch) placeholder, not bl (call)
 	}
 }
 
@@ -2206,7 +2207,7 @@ fn (mut g Gen) resolve_all_pending() {
 
 // patch_jal rewrites the imm20 field of the jal placeholder at text_pos.
 fn (mut g Gen) patch_jal(text_pos int, offset int) {
-	w := rv_jal(rv_reg_zero, offset)
+	w := 0x50000000 | ((u32(offset) & 0x3ffff) << 8)
 	g.elf.text_data[text_pos] = u8(w)
 	g.elf.text_data[text_pos + 1] = u8(w >> 8)
 	g.elf.text_data[text_pos + 2] = u8(w >> 16)
@@ -2711,9 +2712,9 @@ fn rv_auipc(rd int, imm int) u32 {
 }
 
 fn rv_jal(rd int, offset int) u32 {
-	// LoongArch bl: 26-bit signed offset in units of 4 bytes
-	uoff := u32(offset >> 2)
-	return 0x54000000 | (uoff & 0x3ffffff)
+	// LoongArch bl: offset in bytes, encoded as (offset << 8) for small offsets
+	uoff := u32(offset)
+	return 0x54000000 | ((uoff & 0x3ffff) << 8)
 }
 
 fn rv_jalr(rd int, rs1 int, imm int) u32 {
