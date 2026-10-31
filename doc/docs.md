@@ -144,6 +144,67 @@ Both `0.4.12` and `v0.4.12` are accepted. The special aliases `latest` and
 V searches for `.vvmrc` from the target path upward and stops at repository and
 project boundaries such as `.git`, `.hg`, `.svn`, and `.v.mod.stop`.
 
+### Pinning a project
+
+Create the pin from the running compiler:
+
+```sh
+v --version > .vvmrc
+```
+
+The file holds a single version line (`0.4.12`; `v0.4.12` is also accepted).
+Keep it to that one line, with no comments, so that `vlang/setup-v` can read
+the same file. The pin applies to the folder that holds `.vvmrc` and all of
+its subfolders, for every `v` command. Outside that scope the default V is
+used. The search stops at `.git`, `.hg`, `.svn`, and `.v.mod.stop`.
+
+When the pinned version is missing, `v` asks on a terminal and fails in CI.
+Set `V_SKIP_VVMRC=1` to bypass the pin.
+
+### Installing and switching versions
+
+Versions are resolved with `v --version` and `v --version <version>`.
+Installed compilers are looked up on `PATH` and under `VVM_HOME`
+(default `~/.vvm`); accepted values are releases, `weekly.*` tags and commits.
+`VVM_HOME` and `VVM_DIR` are both honoured. Remove an installed version by
+deleting its directory under `VVM_HOME`.
+
+### GitHub Actions
+
+`vlang/setup-v` already works with the pin file, with no extra steps:
+
+```yaml
+- uses: vlang/setup-v@v1.7
+  with:
+    version-file: .vvmrc
+```
+
+setup-v uses the prebuilt release for the runner's OS and architecture when
+one exists, and verifies pinned SHA-256s (0.5.1 and 0.5.2 today). Otherwise
+it builds from source.
+
+### Docker
+
+Install the pinned version into the image at build time, not when the
+container starts.
+
+### Prebuilt binaries by platform
+
+Checked on 2026-10-28 for 0.4.12, 0.5.1 and 0.5.2:
+
+- Assets: `v_linux.zip`, `v_linux_arm64.zip`, `v_macos_arm64.zip`,
+  `v_macos_x86_64.zip` and `v_windows.zip` (x64 only).
+- Linux: glibc distributions only. The 0.5.2 x64 binary needs glibc 2.34
+  or newer (Debian 12+, Ubuntu 22.04+). Alpine / musl is not supported.
+- macOS: 0.5.1 and 0.5.2 need macOS 15.0 or newer. 0.4.12 needs 13.0 on
+  x86_64 and 14.0 on arm64.
+- Every other platform builds from source.
+
+### Migrating from `oldv`
+
+`doc/docs.md` previously documented `oldv --command`. Prefer the built-in
+`.vvmrc` workflow above; `oldv` remains available for historic checkouts.
+
 ## The default compiler
 
 On every native platform, the top-level `v` executable contains the default
