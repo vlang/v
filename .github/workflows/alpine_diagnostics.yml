@@ -1,0 +1,70 @@
+name: Alpine failure diagnostics
+'on':
+  push:
+    branches:
+      - ci/diagnose-alpine-20261031
+permissions:
+  contents: read
+concurrency:
+  group: alpine-diagnostics-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  alpine:
+    if: github.ref == 'refs/heads/ci/diagnose-alpine-20261031'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    container:
+      image: thevlang/vlang:alpine-build
+    env:
+      V_CI_MUSL: '1'
+      VJOBS: '2'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install original dependencies and debugger
+        run: apk add musl-dev libatomic_ops-dev libatomic openssl libc6-compat gcompat gc gc-dev binutils diffutils elfutils gdb
+      - name: Build unchanged master compiler
+        run: |
+          make -j4
+          ./v -version
+          ./v doctor
+      - name: Diagnose aligned map clone and script arguments
+        run: |
+          mkdir -p ci-probes
+          for compiler in gcc tcc
+          do
+            for collector in boehm none
+            do
+              label="${compiler}_${collector}"
+              if ./v -new-compiler -no-retry-compilation -cc "$compiler" -gc "$collector" -keepc -g -o "ci-probes/map_$label" vlib/builtin/map_clone_alignment_test.v > "ci-probes/map_$label.log" 2>&1
+              then
+                printf 'ALIGNMENT %s PASS\n' "$label"
+              else
+                status=$?
+                printf 'ALIGNMENT %s FAIL %s\n' "$label" "$status"
+                cat "ci-probes/map_$label.log"
+                if test -f "ci-probes/map_$label"
+                then
+                  gdb --batch -ex 'set pagination off' -ex 'handle SIGSEGV stop print nopass' -ex run -ex 'bt full' -ex 'info registers' --args "ci-probes/map_$label" > "ci-probes/gdb_$label.log" 2>&1 || true
+                  cat "ci-probes/gdb_$label.log"
+                fi
+              fi
+              if ./v -new-compiler -no-retry-compilation -cc "$compiler" -gc "$collector" -keepc -g -o "ci-probes/args_$label" vlib/v/slow_tests/inout/oneliner_with_semicolons.vv > "ci-probes/args_$label.log" 2>&1
+              then
+                printf 'SCRIPT ARGS %s\n' "$label"
+                VEXE="$PWD/v" "./ci-probes/args_$label" || true
+              else
+                printf 'SCRIPT COMPILE FAIL %s\n' "$label"
+                cat "ci-probes/args_$label.log"
+              fi
+            done
+          done
+      - name: Preserve generated source and debugger evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: alpine-diagnostic-evidence
+          include-hidden-files: true
+          if-no-files-found: ignore
+          path: ci-probes
