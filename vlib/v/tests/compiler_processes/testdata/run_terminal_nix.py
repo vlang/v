@@ -26,7 +26,11 @@ int read_terminal_line(unsigned char *bytes, int capacity) {
         ssize_t count = read(0, &byte, 1);
         if (count < 0 && errno == EINTR) continue;
         if (count < 0) return -1;
-        if (!count || byte == '\n') return size;
+        /* Ctrl-C can close a pipeline peer before v run forwards the signal.
+         * Keep this interrupt fixture alive on EOF so its default SIGINT
+         * disposition, rather than an unrelated successful read, ends it. */
+        if (!count) { for (;;) pause(); }
+        if (byte == '\n') return size;
         bytes[size++] = byte;
     }
     return size;

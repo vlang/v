@@ -1,0 +1,16 @@
+type NativeWord = u64
+type NativeHandle = NativeWord
+
+struct Narrow {
+	value u32
+}
+
+struct Signed {
+	value i64
+}
+
+fn main() {
+	value := NativeHandle(7)
+	_ := Narrow{value: value}
+	_ := Signed{value: value}
+}

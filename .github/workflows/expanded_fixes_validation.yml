@@ -1,0 +1,58 @@
+name: Expanded CI fixes validation
+'on':
+  push:
+    branches: [ci/verify-expanded-fixes-20261031]
+permissions:
+  contents: read
+concurrency:
+  group: expanded-fixes-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  tcc-linux:
+    if: github.ref == 'refs/heads/ci/verify-expanded-fixes-20261031'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    env:
+      VJOBS: '4'
+      VFLAGS: ''
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install compiler and native fixture dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang gobjc libssl-dev libsqlite3-dev libpq-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libxinerama-dev libx11-xcb-dev libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev
+      - name: Build the combined compiler
+        id: build
+        run: |
+          make -j4
+          ./v -version
+      - name: Verify affected compiler, ABI, and cache regressions
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          ./v -new-compiler -no-retry-compilation test \
+            vlib/v/types/mut_index_lifetime_test.v \
+            vlib/v/modulecache/c_struct_source_test.v \
+            vlib/v/driver/tcc_cached_main_flags_test.v \
+            vlib/v/compiler_tests/vinix_selector_codegen_test.v \
+            vlib/v/compiler_tests/c_signature_typedef_cast_test.v \
+            vlib/v/markused/reachable_runtime_helpers_test.v \
+            vlib/v/transform/prelude_helper_callees_test.v \
+            vlib/v/tests/int128 \
+            vlib/v/tests/aliases/nested_alias_struct_init_test.v \
+            vlib/v/tests/interfaces/interface_smartcast_interpolation_test.v \
+            vlib/builtin/map_clone_alignment_test.v \
+            vlib/builtin/array_alignment_test.v
+      - name: Run the complete C generator suite
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./v -new-compiler -no-retry-compilation -silent test vlib/v/gen/c/
+      - name: Run normal compiler diagnostics
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: ./v -silent vlib/v/compiler_errors_test.v
+      - name: Verify repaired tool and CI fixtures
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          ./v -new-compiler -no-retry-compilation test cmd/tools/vgit/vgit_test.v cmd/tools/vmcp/vmcp_test.v thirdparty/tccbin_automation/tests/provenance_test.v thirdparty/tccbin_automation/tests/workflow_contract_test.v
+          V_CI_UBUNTU_MUSL=1 ./v -new-compiler -no-retry-compilation test cmd/tools/vtest_self_selection_test.v
+          ./v -W -cc gcc vlib/db/sqlite/sqlite_orm_test.v

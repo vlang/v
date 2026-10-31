@@ -5658,6 +5658,42 @@ fn (tc &TypeChecker) translated_named_cast_call_name_id(id flat.NodeId, node fla
 	return none
 }
 
+// C declarations name their parameter and return types even when a typedef's
+// representation is supplied only by its header. Keep those names without
+// reading the header, so a later C.Type(value) remains a cast.
+fn (mut tc TypeChecker) register_c_fn_referenced_type(typ Type) {
+	match typ {
+		Struct {
+			if flat.source_type_query(typ.source_type_id()).has(.c_prefix) {
+				tc.c_fn_referenced_types[typ.source_type_id()] = true
+			}
+		}
+		Pointer, Alias {
+			tc.register_c_fn_referenced_type(typ.base_type)
+		}
+		ArrayFixed {
+			tc.register_c_fn_referenced_type(typ.elem_type)
+		}
+		FnType {
+			tc.register_c_fn_referenced_type(typ.return_type)
+			for param in typ.params {
+				tc.register_c_fn_referenced_type(param.typ)
+			}
+		}
+		else {}
+	}
+}
+
+// c_type_cast_name_known reports whether a C call spelling names an alias or an
+// opaque type referenced by a C declaration, rather than a C function.
+pub fn (tc &TypeChecker) c_type_cast_name_known(name_id u32) bool {
+	if flat.source_type_name(name_id) in tc.fn_ret_types {
+		return false
+	}
+	return tc.type_aliases.contains(name_id)
+		|| (name_id in tc.c_fn_referenced_types && name_id !in tc.structs)
+}
+
 fn (mut tc TypeChecker) check_c_alias_cast_call(id flat.NodeId, node flat.Node, callee flat.Node) bool {
 	if callee.kind != .selector || callee.children_count == 0 || node.children_count != 2 {
 		return false
@@ -5667,7 +5703,7 @@ fn (mut tc TypeChecker) check_c_alias_cast_call(id flat.NodeId, node flat.Node, 
 		return false
 	}
 	type_name_id := flat.source_type_existing_id('C.${callee.value}') or { return false }
-	if !tc.type_aliases.contains(type_name_id) {
+	if !tc.c_type_cast_name_known(type_name_id) {
 		return false
 	}
 	cast_node := flat.Node{

@@ -2473,9 +2473,10 @@ fn (mut g FlatGen) interface_implicit_str_expr(typ types.Type, expr string, quot
 			}
 			if name_id in [cgen_u128_source_type, cgen_i128_source_type] {
 				// The 128-bit types have no `(u)64` spelling that can carry them, so
-				// they render through their own str method.
+				// they render through their own str method. Pass the value directly:
+				// a C cast to its own type is invalid for the portable struct form.
 				name := flat.source_type_name(name_id)
-				return '${name}__str((${name})(${expr}))'
+				return '${name}__str(${expr})'
 			}
 			return none
 		}
