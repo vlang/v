@@ -1,0 +1,64 @@
+name: Tool fix validation
+'on':
+  push:
+    branches:
+      - ci/verify-tool-fixes-20261031
+permissions:
+  contents: read
+concurrency:
+  group: tool-fixes-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  tool-tests:
+    if: github.ref == 'refs/heads/ci/verify-tool-fixes-20261031'
+    name: Tools (${{ matrix.os }}, ${{ matrix.cc }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            cc: gcc
+          - os: macos-14
+            cc: clang
+    defaults:
+      run:
+        shell: bash
+    env:
+      CC: ${{ matrix.cc }}
+      VJOBS: '2'
+      VFLAGS: ''
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Linux fixture compiler
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang
+      - name: Build V from the combined tool fixes
+        id: build
+        run: |
+          make -j4
+          ./v -version
+          "$CC" --version
+      - name: Run complete vgit unit tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          ./v -new-compiler -no-retry-compilation -cc "$CC" test cmd/tools/vgit/vgit_test.v
+      - name: Run complete vmcp unit tests
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: |
+          ./v -new-compiler -no-retry-compilation -cc "$CC" test cmd/tools/vmcp/vmcp_test.v
+      - name: Check TCC bundle automation contracts
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && runner.os == 'Linux' }}
+        run: |
+          ./v -new-compiler -no-retry-compilation -cc "$CC" test thirdparty/tccbin_automation/tests/provenance_test.v thirdparty/tccbin_automation/tests/workflow_contract_test.v
+      - name: Check musl self-test selection
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && runner.os == 'Linux' }}
+        env:
+          V_CI_UBUNTU_MUSL: '1'
+        run: |
+          ./v -new-compiler -no-retry-compilation -cc "$CC" test cmd/tools/vtest_self_selection_test.v
