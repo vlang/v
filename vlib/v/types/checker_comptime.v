@@ -13033,8 +13033,8 @@ fn (mut tc TypeChecker) check_sql_update_fields(id flat.NodeId, node flat.Node, 
 		}
 		for name in sql_update_assignment_fields(assignments) {
 			field := tc.sql_orm_update_source_field(table_name, name) or { continue }
-			if struct_field_has_attr(field, 'sql_insert_only') {
-				tc.record_sql_error_at(.assignment_mismatch, 'ORM: cannot update insert-only field `${table_name}.${field.value}` (@[sql_insert_only])', id,
+			if struct_field_has_attr(field, 'immutable') {
+				tc.record_sql_error_at(.assignment_mismatch, 'ORM: cannot update insert-only field `${table_name}.${field.value}` (@[immutable])', id,
 					tc.sql_expr_text_pos(source_node, name, 0, name.len))
 			} else if struct_field_has_attr(field, 'fkey') {
 				tc.record_sql_error_at(.assignment_mismatch, "ORM: `${field.value}` is a foreign column of `${table_name}`, it can't update here", id, tc.sql_expr_text_pos(node, 'update ${table_name}', 'update '.len, table_name.len))
