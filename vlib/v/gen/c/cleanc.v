@@ -11513,7 +11513,8 @@ fn (mut g FlatGen) emit_preserved_c_directives(windows_header_emitted bool) bool
 	if use_system_libc && !has_mach_headers && (refs['C.task_info'] || refs['task_info'] || refs['C.mach_task_self'] || refs['mach_task_self']) {
 		g.writeln('#ifdef __APPLE__')
 		g.emit_preserved_c_directive('#include <mach/mach.h>')
-		g.emit_preserved_c_directive('#include <mach/task.h>')
+		// This inferred SDK block is Apple-only; keep Linux libc shims outside it.
+		g.writeln('#include <mach/task.h>')
 		g.writeln('#endif')
 		emitted = true
 	}
@@ -11568,7 +11569,32 @@ fn (mut g FlatGen) emit_preserved_c_directive(directive string) {
 		g.writeln('#undef panic')
 		return
 	}
+	if g.target.os == 'linux' || g.output_cross_c {
+		// Stay inside each include's lifted macro context. Loading features.h
+		// before that context would lock in libc features before its #defines.
+		for line in directive.split_into_lines() {
+			if c_is_preserved_system_include_directive(trimmed_space(line)) {
+				g.tinyc_glibc_native_attributes()
+			}
+			g.writeln(line)
+		}
+		return
+	}
 	g.writeln(directive)
+}
+
+fn (mut g FlatGen) tinyc_glibc_native_attributes() {
+	if g.target_libc_headers {
+		return
+	}
+	// glibc's cdefs.h erases GNU attributes for compilers without __GNUC__,
+	// although TCC supports them. Native records such as epoll_event require
+	// those attributes to retain the kernel ABI's packing and alignment.
+	g.writeln('#if defined(__TINYC__) && defined(__linux__) && !defined(__ANDROID__)')
+	g.writeln('#include <features.h>')
+	g.writeln('#if defined(__GLIBC__)')
+	g.writeln('#undef __attribute__')
+	g.writeln('#endif\n#endif')
 }
 
 fn c_preserved_directive_needs_mach_panic_alias(directive string) bool {
@@ -20372,6 +20398,7 @@ fn (g &FlatGen) c_directives_use_system_libc() bool {
 }
 
 fn (mut g FlatGen) system_libc_headers() {
+	g.tinyc_glibc_native_attributes()
 	for header in ['assert.h', 'ctype.h', 'errno.h', 'float.h', 'inttypes.h', 'limits.h', 'math.h',
 		'setjmp.h', 'signal.h', 'stdbool.h', 'stddef.h', 'stdint.h', 'time.h'] {
 		g.writeln('#include <${header}>')
