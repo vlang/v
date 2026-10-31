@@ -11704,7 +11704,7 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 			&& comptime_flag_is_target_arch(asm_arch, p.prefs.target.arch))
 	if !p.prefs.is_fmt && !p.prefs.supports_inline_asm && !can_lower
 		&& (has_memory_clobber || has_unsupported_content) {
-		p.record_diagnostic('inline assembly is not supported by the selected V3 backend', asm_pos)
+		p.record_diagnostic(p.unsupported_inline_asm_message(asm_arch), asm_pos)
 	}
 	id := p.add_node(flat.Node{
 		kind:           .asm_stmt
@@ -11720,8 +11720,69 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	return id
 }
 
+// inline_asm_c_lowering_arches are the architectures whose inline assembly the C backend
+// lowers to GNU `asm()`.
+const inline_asm_c_lowering_arches = ['amd64', 'arm64', 'x86']
+
 fn (p &Parser) supports_c_inline_asm_lowering() bool {
-	return p.prefs.backend == 'c' && p.prefs.target.arch in ['amd64', 'arm64', 'x86']
+	return p.prefs.backend == 'c' && p.prefs.target.arch in inline_asm_c_lowering_arches
+}
+
+// inline_asm_comptime_flag returns the `$if` flag that is true only in a build for the
+// canonical architecture `arch`. The block header accepts more spellings than `$if` does
+// (`x86_64`, `i686`, `riscv64`), and `$if x64` tests the pointer width rather than the
+// architecture, so a hint cannot echo the spelling the block used.
+fn inline_asm_comptime_flag(arch string) string {
+	return match arch {
+		'x86' { 'i386' }
+		'riscv64' { 'rv64' }
+		'riscv32' { 'rv32' }
+		else { arch }
+	}
+}
+
+// unsupported_inline_asm_message explains why an inline assembly block cannot be lowered.
+// The C backend lowers a block for the build's own architecture, so a block for another
+// architecture is a mismatch with the target, not a missing feature; the message names the
+// `$if` guard and, where the C backend can lower that architecture, the `-arch` flag that
+// fixes it. Other backends do not lower inline assembly.
+fn (p &Parser) unsupported_inline_asm_message(asm_arch string) string {
+	target := p.prefs.target.arch
+	// `asm raw {` names a modifier where the architecture belongs.
+	named := asm_arch !in ['', 'raw', 'intel']
+	arch := pref.normalized_arch(asm_arch)
+	if named && !pref.is_supported_arch(arch) {
+		return 'unknown inline assembly architecture `${asm_arch}`'
+	}
+	// A guard only helps when it is false in this build.
+	guard := if named && arch != target {
+		'; guard the block with `\$if ${inline_asm_comptime_flag(arch)} {}`'
+	} else {
+		''
+	}
+	if !p.supports_c_inline_asm_lowering() {
+		if p.prefs.backend == 'c' {
+			return 'inline assembly is not supported by the C backend for the `${target}` target${guard}'
+		}
+		return 'inline assembly is not supported by the `${p.prefs.backend}` backend${guard}'
+	}
+	if !named {
+		return 'inline assembly must name its architecture, for example `asm ${target} { ... }`'
+	}
+	// `asm x32` names the x86 target by a spelling the block header does not accept.
+	accepted := comptime_flag_is_target_arch(asm_arch, arch)
+	if arch == target {
+		return '`asm ${asm_arch}` does not name the `${target}` target; write `asm ${target} { ... }`'
+	}
+	mut hint := guard
+	if arch in inline_asm_c_lowering_arches {
+		hint += if accepted {
+			' or build with `-arch ${arch}`'
+		} else {
+			', or write `asm ${arch} { ... }` and build with `-arch ${arch}`'
+		}
+	}
+	return '`asm ${asm_arch}` block in a build for the `${target}` target${hint}'
 }
 
 // ==================== expressions (Pratt parser) ====================
