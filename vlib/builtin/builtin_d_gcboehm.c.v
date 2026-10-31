@@ -94,8 +94,10 @@ $if dynamic_boehm ? {
 			#flag -DNO_MSGBOX_ON_ERROR=1
 			#flag -DCONSOLE_LOG=1
 			#flag -DGC_BUILTIN_ATOMIC=1
-			// Avoid signal()-based fault handling with the world stopped (#31518).
-			#flag -DNO_WRAP_MARK_SOME=1
+			$if windows && !msvc {
+				// Avoid signal()-based fault handling with the world stopped (#31518).
+				#flag -DNO_WRAP_MARK_SOME=1
+			}
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag -DALL_INTERIOR_POINTERS=1
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
@@ -231,8 +233,10 @@ $if dynamic_boehm ? {
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
 		} $else {
 			#flag -DGC_BUILTIN_ATOMIC=1
-			// Avoid signal()-based fault handling with the world stopped (#31518).
-			#flag -DNO_WRAP_MARK_SOME=1
+			$if windows && !msvc {
+				// Avoid signal()-based fault handling with the world stopped (#31518).
+				#flag -DNO_WRAP_MARK_SOME=1
+			}
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 			#flag -DALL_INTERIOR_POINTERS=1
 			#flag @VEXEROOT/thirdparty/libgc/gc.o
