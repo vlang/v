@@ -134,8 +134,7 @@ the column to be populated by a later update.
 
 This policy applies to model-aware ORM operations. Raw SQL and untyped `Connection.update`
 calls do not carry model field attributes; use database constraints or triggers when every
-database writer must enforce the invariant. The existing `@[immutable]` annotation has no
-ORM write-policy meaning.
+database writer must enforce the invariant.
 
 ## Queries in array callbacks
 
