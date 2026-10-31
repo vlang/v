@@ -1,0 +1,50 @@
+name: Index type lifetime sanitizer validation
+
+'on':
+  push:
+    branches:
+      - ci/verify-index-base-lifetime-20261031
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: index-base-lifetime-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clang-asan:
+    if: github.ref == 'refs/heads/ci/verify-index-base-lifetime-20261031'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      VFLAGS: -cc clang
+      VJOBS: '4'
+      V_MACOS_V3_NO_FALLBACK: '1'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Install Clang and its sanitizer runtime
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y clang libclang-rt-18-dev
+          clang --version
+      - name: Build V
+        run: make -j4
+      - name: Mutable index regression with default GC
+        run: ./v -silent vlib/v/types/mut_index_lifetime_test.v
+      - name: Build the Clang ASan compiler using the original flags
+        # These are the ASan build flags from run_sanitizers.sh, invoked by
+        # ci/linux_ci.vsh run_sanitizers_clang in the failing master job.
+        run: ./v -cc clang -keepc -cg -cflags -fno-omit-frame-pointer -o v5 cmd/v -cflags -fsanitize=address,pointer-compare,pointer-subtract
+      - name: Original ASan self-compilation
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: ./v5 -o v.c cmd/v
+      - name: Focused checker lifetime regression under Clang ASan
+        env:
+          ASAN_OPTIONS: detect_leaks=0
+        run: ./v -gc none -cc clang -keepc -cg -cflags '-fno-omit-frame-pointer -fsanitize=address,pointer-compare,pointer-subtract -fsanitize-address-use-after-scope' vlib/v/types/mut_index_lifetime_test.v
