@@ -14843,7 +14843,13 @@ fn (mut t Transformer) try_lower_smartcast_target_receiver_method_call(_call_id 
 				target_source_id := t.trim_pointer_type(t.smartcast_target_type(sc))
 
 				if aggregate_source_id := t.stringify_aggregate_type_name(target_source_id) {
-					value_ptr := t.make_prefix(.amp, args[0])
+					// Interface smartcasts already retain the concrete object's address.
+					// Only take an address when the transformed receiver is still a value.
+					value_ptr := if flat.source_type_shape(t.node_type(args[0])).has(.pointer) {
+						args[0]
+					} else {
+						t.make_prefix(.amp, args[0])
+					}
 					t.set_node_typ(int(value_ptr), flat.source_type_composition_one(.pointer, aggregate_source_id))
 					interface_expr := t.make_plain_expr_for_smartcast(base_id)
 					return t.lower_interface_smartcast_ref_str(value_ptr, interface_expr, aggregate_source_id, method_name)
