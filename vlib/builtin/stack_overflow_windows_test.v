@@ -92,7 +92,8 @@ fn test_windows_stack_overflow_in_main_and_spawned_threads() ! {
 	os.write_file(os.join_path(dir, 'windows_overflow.h'), windows_overflow_header)!
 	for build_mode in ['normal', 'no_backtrace', 'parallel'] {
 		binary := os.join_path(dir, 'child_${build_mode}.exe')
-		mut flags := [@VEXE, '-new-compiler', '-nocache']
+		// The test runner clears VFLAGS; keep child diagnostics on this compiler.
+		mut flags := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-cc', @CCOMPILER]
 		if build_mode == 'no_backtrace' {
 			flags << ['-d', 'no_backtrace']
 		} else if build_mode == 'parallel' {
