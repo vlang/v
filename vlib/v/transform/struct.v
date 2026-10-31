@@ -1519,7 +1519,16 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 
 	mut prelude := []flat.NodeId{}
 	transformed_base := t.transform_expr(base_id)
-	transformed_base_type_shape := flat.source_type_shape(t.node_type(transformed_base))
+	transformed_base_type := t.node_type(transformed_base)
+	if !isnil(t.tc) && transformed_base_type != 0 {
+		concrete_base := t.tc.parse_type(t.normalize_type_alias(transformed_base_type))
+		if types.unwrap_all_pointers(concrete_base) is types.Struct {
+			// A smartcast can turn an interface or sum source into a concrete pointer.
+			// Copy that value instead of keeping the original wrapper's declared type.
+			base_type = transformed_base_type
+		}
+	}
+	transformed_base_type_shape := flat.source_type_shape(transformed_base_type)
 	base_is_loaded_pointer_value := base_node.kind == .ident
 		&& t.pointer_value_rvalues[base_node.value]
 	base := if flat.source_type_shape(base_type).has(.pointer) && transformed_base_type_shape.has(.pointer)
