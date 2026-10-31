@@ -34,9 +34,11 @@ pub fn line_to_timestamp_and_commit(line string) (u64, string) {
 	return parts[0].u64(), parts[1]
 }
 
+// normalized_workpath_for_commit returns the resolved worktree path for a sanitized commit name.
 pub fn normalized_workpath_for_commit(workdir string, commit string) string {
 	nc := 'v_at_' + commit.replace('^', '_').replace('-', '_').replace('/', '_')
-	return os.real_path(workdir + os.path_separator + nc)
+	// Resolve the existing parent first; realpath can fail for a missing child.
+	return os.real_path(os.real_path(workdir) + os.path_separator + nc)
 }
 
 fn get_current_folder_commit_hash() string {
