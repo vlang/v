@@ -49,6 +49,16 @@ fn test_cut_unicode() {
 	assert !f2
 	assert b2 == 'café'
 	assert a2 == ''
+	// unicode separator
+	bu, au, fu := cut('αβγ—δε', '—')
+	assert fu
+	assert bu == 'αβγ'
+	assert au == 'δε'
+	// unicode separator absent
+	bu2, au2, fu2 := cut('αβγδε', '—')
+	assert !fu2
+	assert bu2 == 'αβγδε'
+	assert au2 == ''
 	// empty separator
 	be, ae, fe := cut('café', '')
 	assert fe
