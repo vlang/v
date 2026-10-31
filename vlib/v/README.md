@@ -284,6 +284,8 @@ cannot provide the required runtime behavior.
 FastC transports header paths, link inputs, frameworks, and preprocessor defines from `#flag`, and
 resolves `#pkgconfig` options into its fixed TinyCC invocation. Other compile options remain
 unsupported.
+Native C and object files shared by multiple imported modules are passed to the linker once.
+Archive and library flags keep their original order and repetitions.
 
 FastC requires exactly one `.v` entry file. Executables are host-target only; `-o file.c` also
 permits an explicit cross target and publishes its generated C without host TinyCC validation.
