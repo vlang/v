@@ -28,13 +28,19 @@ fn v3_shared_c_compiler_identity(compiler string) string {
 // Compiler-specific interfaces are regenerated before looking here. Sharing an
 // object requires identical C, C compiler, flags, and native dependency contents.
 fn v3_shared_module_object(entry modulecache.Entry, compiler V3CachedObjectCompiler, source string, compile_signature string, dependencies map[string]string) modulecache.Entry {
+	return v3_shared_module_object_for_hash(entry, compiler, sha256.hexhash(source), compile_signature, dependencies)
+}
+
+// v3_shared_module_object_for_hash is v3_shared_module_object for a caller that has
+// hashed the C already, and keeps the hash for v3_publish_shared_module_object.
+fn v3_shared_module_object_for_hash(entry modulecache.Entry, compiler V3CachedObjectCompiler, source_hash string, compile_signature string, dependencies map[string]string) modulecache.Entry {
 	identity := if compiler.identity != '' {
 		compiler.identity
 	} else {
 		v3_shared_c_compiler_identity(compiler.path)
 	}
-	mut inputs := ['shared-module-object-v1', os.file_name(entry.c_source), sha256.hexhash(source),
-		identity, compile_signature, os.getwd()]
+	mut inputs := ['shared-module-object-v1', os.file_name(entry.c_source), source_hash, identity,
+		compile_signature, os.getwd()]
 	mut paths := dependencies.keys()
 	paths.sort()
 	for path in paths {
@@ -65,15 +71,27 @@ fn v3_restore_shared_module_object(pooled modulecache.Entry, entry modulecache.E
 }
 
 fn v3_publish_shared_module_object(pooled modulecache.Entry, entry modulecache.Entry) {
+	v3_publish_shared_module_object_for_hash(pooled, entry, '')
+}
+
+// v3_publish_shared_module_object_for_hash publishes the pooled copy of a module object.
+// `source_hash` is the hash of the C that entry.c_source holds, when the caller knows it:
+// the pooled source is a link to that file, so the hash is the one the stamp records, and
+// the C (hundreds of KB) is not read and hashed a second time.
+fn v3_publish_shared_module_object_for_hash(pooled modulecache.Entry, entry modulecache.Entry, source_hash string) {
 	// This secondary index is optional: a failed publication must not invalidate
 	// the successfully compiled object in the current compiler's configuration.
 	os.mkdir_all(os.dir(pooled.object)) or { return }
 	v3_link_cache_artifact(entry.c_source, pooled.c_source) or { return }
 	v3_link_cache_artifact(entry.object, pooled.object) or { return }
 	object := os.read_file(pooled.object) or { return }
-	c_source := os.read_file(pooled.c_source) or { return }
+	mut recorded_source_hash := source_hash
+	if recorded_source_hash == '' {
+		c_source := os.read_file(pooled.c_source) or { return }
+		recorded_source_hash = sha256.hexhash(c_source)
+	}
 	tmp := '${pooled.object_stamp}.tmp.${tempname.unique_token()}'
-	os.write_file(tmp, 'object=${sha256.hexhash(object)}\nsource=${sha256.hexhash(c_source)}\n') or {
+	os.write_file(tmp, 'object=${sha256.hexhash(object)}\nsource=${recorded_source_hash}\n') or {
 		os.rm(tmp) or {}
 		return
 	}

@@ -19162,8 +19162,11 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 	if !state.manager.ensure_dir() {
 		return error('v3 module cache directory is unavailable')
 	}
+	mut clock := new_v3_plan_clock()
 	split := modulecache.split_generated_c(generated_source)!
+	clock.lap(.split)
 	cache_record_closure_dependencies(split.modules, split.prefix, scope, mut state)
+	clock.lap(.closure_dependencies)
 	mut parsed_modules := state.parsed_from_source.keys()
 	parsed_modules.sort()
 	mut parsed_short_module_counts := map[string]int{}
@@ -19177,6 +19180,11 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 	mut raw_declarations := ''
 	mut declarations := ''
 	mut has_declarations := false
+	// Each module object is given the declarations its code names, not the whole header:
+	// see modulecache.DeclarationIndex. V3_CACHE_FULL_HEADER=1 gives it the whole header.
+	full_header := os.getenv('V3_CACHE_FULL_HEADER') != ''
+	mut raw_index := modulecache.DeclarationIndex{}
+	mut declarations_index := modulecache.DeclarationIndex{}
 	scopes := parse_v3_interface_scopes(interface_impl_signature)
 	if resolve_flag_specific_cache_objects(mut state, tc.a, object_base, scopes) {
 		restart_v3_after_cache_invalidation(state.c_build_dir)
@@ -19228,6 +19236,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		}, main_body)
 		tcc_main = '#define V3CACHE_PROGRAM_UNIT 1\n' + tcc_declarations + main_body
 	}
+	clock.lap(.main_prefix)
 	mut object_paths := state.objects.clone()
 	common_visible := if !state.bundle_valid || parsed_modules.len > 0 {
 		cache_common_visible_modules(state, tc.a)
@@ -19319,6 +19328,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		}
 	}
 
+	clock.lap(.builtin_bundle)
 	for module_name in parsed_modules {
 		if module_is_builtin_bundle(state, tc.a, module_name) {
 			continue
@@ -19336,8 +19346,10 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			}
 		}
 		module_content := sha256.hexhash(body)
+		clock.lap(.hash_body)
 		module_signature := v3_cached_object_content_signature(object_base, module_content)
 		dependencies := cache_object_dependency_signatures(state, tc.a, [module_name])
+		clock.lap(.dependency_signatures)
 		entry := state.manager.object_entry(module_name, source_files, module_signature)
 		mut module_is_compiled := if _ := state.manager.reusable_object(module_name, source_files,
 			module_signature, dependencies)
@@ -19346,6 +19358,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		} else {
 			false
 		}
+		clock.lap(.reusable_check)
 		if !module_is_compiled {
 			if !has_declarations {
 				raw_declarations = modulecache.declaration_header(split.prefix)
@@ -19355,27 +19368,58 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 				declarations = cache_source_without_cached_native_inputs(raw_declarations, state, false)
 				has_declarations = true
 			}
+			if !full_header && raw_index.units.len == 0 {
+				// The first module to be compiled builds the indexes (the bundle may have made
+				// the header already).
+				raw_index = modulecache.new_declaration_index(raw_declarations)
+				declarations_index = if declarations == raw_declarations {
+					raw_index
+				} else {
+					modulecache.new_declaration_index(declarations)
+				}
+			}
+			clock.lap(.declaration_header)
 			module_compile_scope := prealloc_scope_begin_for_v3()
-			module_declarations := prune_cached_native_function_prototypes(raw_declarations, state, [
+			module_raw_declarations := if full_header {
+				raw_declarations
+			} else {
+				raw_index.subset(body)
+			}
+			module_header := if full_header {
+				declarations
+			} else {
+				declarations_index.subset(body)
+			}
+			clock.note_header_subset(declarations.len, module_header.len)
+			if clock.on {
+				eprintln('V3 declarations ${module_name}: code ${body.len} bytes, header ${declarations.len} bytes, given ${module_header.len} bytes')
+			}
+			clock.lap(.header_subset)
+			module_declarations := prune_cached_native_function_prototypes(module_raw_declarations, state, [
 				module_name,
 			])
+			clock.lap(.native_prototypes)
 			native := cache_source_with_cached_native_inputs(module_declarations, state, [
 				module_name,
 			])
+			clock.lap(.native_inputs)
 			module_source := if native.has_native {
 				'#define V3CACHE_PROGRAM_UNIT 1\n' + prune_foreign_program_wrappers(native.source, body) + '#undef V3CACHE_PROGRAM_UNIT\n' + native.remaining_includes + body
 			} else {
-				prune_foreign_program_wrappers(declarations, body) + body
+				prune_foreign_program_wrappers(module_header, body) + body
 			}
+			clock.lap(.module_source)
 			compiled := compile_v3_cached_object(state.object_compiler, entry, module_source, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c, dependencies, state, module_name) or {
 				prealloc_scope_leave_for_v3(module_compile_scope)
 				message := err.msg().clone()
 				prealloc_scope_free_for_v3(module_compile_scope)
 				return error(message)
 			}
+			clock.restart() // compile_v3_cached_object laps its own steps
 			if !compiled { module_is_compiled = true }
 			prealloc_scope_leave_for_v3(module_compile_scope)
 			prealloc_scope_free_for_v3(module_compile_scope)
+			clock.lap(.scope_free)
 		}
 		if header := state.headers[module_name] {
 			state.manager.write_header(module_name, source_files, header)!
@@ -19387,6 +19431,10 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		if !module_is_compiled {
 			newly_cached_modules[module_name] = true
 		}
+		clock.lap(.publish_cache_entry)
+	}
+	if clock.on {
+		eprintln(v3_plan_timing_report())
 	}
 	if os.getenv('V3_CACHE_REFRESH') == '1' {
 		// Publishing regenerated headers can invalidate an object loaded earlier.
@@ -19419,6 +19467,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 fn cache_record_closure_dependencies(bodies map[string]string, prefix string, scope voidptr, mut state V3ModuleCacheState) {
 	closure_module := cache_state_module_name(state, 'builtin.closure') or { return }
 	mut declarations := ''
+	mut wrapper_index := V3WrapperIndex{}
 	mut has_declarations := false
 	for raw_name, body in bodies {
 		module_name := cache_state_module_name(state, raw_name) or { continue }
@@ -19431,9 +19480,10 @@ fn cache_record_closure_dependencies(bodies map[string]string, prefix string, sc
 		} else if prefix.contains(v3_program_wrappers_begin) {
 			if !has_declarations {
 				declarations = modulecache.declaration_header(prefix)
+				wrapper_index = new_v3_wrapper_index(declarations)
 				has_declarations = true
 			}
-			retained := prune_foreign_program_wrappers(declarations, body)
+			retained := wrapper_index.prune(declarations, body)
 			for item in v3_program_wrapper_items(retained.split_into_lines()) {
 				if item.declares {
 					continue
@@ -19650,6 +19700,11 @@ fn prune_cached_native_function_prototypes(source string, state &V3ModuleCacheSt
 				declared_functions[name] = true
 			}
 		}
+	}
+	if declared_functions.len == 0 {
+		// no native source declares a function: nothing to take out, and the source is
+		// returned as it is instead of being copied line by line for every module
+		return source
 	}
 	lines := source.split_into_lines()
 	mut out := strings.new_builder(source.len)
@@ -21143,28 +21198,32 @@ fn v3_opaque_program_wrappers(source string) string {
 	return opaque.str()
 }
 
-// prune_foreign_program_wrappers drops, from the declarations that a module
-// object is compiled with, the wrappers that the code of the object does not
-// refer to. `body` is that code. A wrapper that a kept wrapper calls stays, and
-// `__v3_callback_identity` knows the wrappers that stay.
-// What a wrapper section holds besides `static` functions and declarations stays
-// in every object (see v3_opaque_program_wrappers), and can refer to a wrapper as
-// the code does: a function that is not `static` calls one, a variable is
-// initialized with one. Those wrappers stay too.
-fn prune_foreign_program_wrappers(declarations string, body string) string {
+// V3WrapperIndex is what prune_foreign_program_wrappers learns from a declaration header
+// before it looks at any code: its wrapper items, and which of them declare or define what.
+// It is built once per header, because the header is the same for every module of a build.
+struct V3WrapperIndex {
+	lines      []string
+	items      []V3ProgramWrapperItem
+	functions  map[string]int
+	prototypes map[string][]int
+	names      []string // every wrapper function of the header
+	retained   string   // what the wrapper sections hold besides static functions and declarations
+}
+
+fn new_v3_wrapper_index(declarations string) V3WrapperIndex {
 	if !declarations.contains(v3_program_wrappers_begin) {
-		return declarations
+		return V3WrapperIndex{}
 	}
 	lines := declarations.split_into_lines()
 	items := v3_program_wrapper_items(lines)
 	mut functions := map[string]int{}
 	mut prototypes := map[string][]int{}
-	mut pending := map[string]bool{}
+	mut names := []string{}
 	mut retained := strings.new_builder(128)
 	for i, item in items {
 		if item.function.len > 0 {
 			functions[item.function] = i
-			pending[item.function] = true
+			names << item.function
 		} else if !item.declares {
 			retained.writeln(item.text)
 		} else {
@@ -21174,12 +21233,44 @@ fn prune_foreign_program_wrappers(declarations string, body string) string {
 			}
 		}
 	}
-	if pending.len == 0 {
+	return V3WrapperIndex{
+		lines:      lines
+		items:      items
+		functions:  functions
+		prototypes: prototypes
+		names:      names
+		retained:   retained.str()
+	}
+}
+
+// prune_foreign_program_wrappers drops, from the declarations that a module
+// object is compiled with, the wrappers that the code of the object does not
+// refer to. `body` is that code. A wrapper that a kept wrapper calls stays, and
+// `__v3_callback_identity` knows the wrappers that stay.
+// What a wrapper section holds besides `static` functions and declarations stays
+// in every object (see v3_opaque_program_wrappers), and can refer to a wrapper as
+// the code does: a function that is not `static` calls one, a variable is
+// initialized with one. Those wrappers stay too.
+fn prune_foreign_program_wrappers(declarations string, body string) string {
+	return new_v3_wrapper_index(declarations).prune(declarations, body)
+}
+
+// prune is prune_foreign_program_wrappers for the header that the index was built from.
+fn (idx &V3WrapperIndex) prune(declarations string, body string) string {
+	if idx.names.len == 0 {
 		return declarations
 	}
+	lines := idx.lines
+	items := idx.items
+	functions := idx.functions
+	prototypes := idx.prototypes
+	mut pending := map[string]bool{}
+	for name in idx.names {
+		pending[name] = true
+	}
 	mut referring := [body]
-	if retained.len > 0 {
-		referring << retained.str()
+	if idx.retained.len > 0 {
+		referring << idx.retained
 	}
 	for pending.len > 0 {
 		mut added := strings.new_builder(256)
@@ -21315,10 +21406,17 @@ fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.E
 	} else {
 		generated_c_flags
 	}
+	mut clock := new_v3_plan_clock()
 	c_source := modulecache.prune_unreferenced_static_string_definitions(v3_cached_c_unit_source(source, false))
+	clock.lap(.prune_static_strings)
 	compile_signature := v3_cached_object_compile_signature(compiler, c_standard, opt_flag, pic_flag, warning_flags, module_flags, objective_c, '')
-	pooled := v3_shared_module_object(entry, compiler, c_source, compile_signature, dependencies)
-	if v3_restore_shared_module_object(pooled, entry) { return false }
+	c_source_hash := sha256.hexhash(c_source)
+	pooled := v3_shared_module_object_for_hash(entry, compiler, c_source_hash, compile_signature, dependencies)
+	if v3_restore_shared_module_object(pooled, entry) {
+		clock.lap(.pooled_signature)
+		return false
+	}
+	clock.lap(.pooled_signature)
 	state.print_module_cache_notice(module_name)
 	unique := tempname.unique_token()
 	// GCC records the input basename in otherwise-identical object files. Put the
@@ -21335,6 +21433,7 @@ fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.E
 		}
 	}
 	os.write_file(tmp_source, c_source)!
+	clock.lap(.write_source)
 	mut flags := c_object_compile_flags(module_flags)
 	flags = flags.filter(!c_flag_is_object_file(it))
 	tmp_object := '${entry.object}.tmp.${unique}'
@@ -21347,6 +21446,7 @@ fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.E
 	args << ['-Wno-int-conversion', '-c', '-o', tmp_object, tmp_source]
 	args << flags
 	result := cmdexec.run(compiler.path, args)
+	clock.lap(.c_compiler)
 	if result.exit_code != 0 {
 		os.rm(tmp_object) or {}
 		return error('failed to build cached module object ${entry.object}:\n${result.output}')
@@ -21362,7 +21462,8 @@ fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.E
 			return error('failed to publish cached module source ${entry.c_source}: ${err}')
 		}
 	}
-	v3_publish_shared_module_object(pooled, entry)
+	v3_publish_shared_module_object_for_hash(pooled, entry, c_source_hash)
+	clock.lap(.publish_object)
 	return true
 }
 
