@@ -4644,6 +4644,14 @@ fn (mut tc TypeChecker) check_prefix_expr(id flat.NodeId, node flat.Node) {
 			tc.record_error_at(.assignment_mismatch, 'cannot deference a `nil` pointer', id, tc.node_value_diagnostic_pos(child_id))
 			return
 		}
+		if tc.null_constant_expr_text(child_id) != '' || tc.is_unsafe_null_pointer_expr(child_id) {
+			tc.record_error_at(.assignment_mismatch, 'cannot deference a `nil` pointer', id, tc.node_value_diagnostic_pos(child_id))
+			return
+		}
+		if child.kind == .cast_expr && child.children_count == 1 && tc.cast_operand_is_zero(tc.a.child(child, 0)) {
+			tc.record_error_at(.assignment_mismatch, 'cannot deference a `nil` pointer', id, tc.node_value_diagnostic_pos(child_id))
+			return
+		}
 		if unalias_type(child_type.base_type) is Void {
 			tc.record_error_at(.assignment_mismatch, 'cannot dereference to void', id, tc.prefix_operator_pos(id, '*'))
 			return
