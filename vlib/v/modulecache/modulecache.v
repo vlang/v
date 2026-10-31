@@ -4623,6 +4623,23 @@ fn c_declaration_item(item string, has_brace bool, types_only bool, definition_p
 		return item
 	}
 	clean := trim_leading_c_comments(trimmed)
+	// Keep the ordinary declaration path immutable; GNU markers are uncommon.
+	if clean.len >= '__extension__'.len && clean[0] == `_`
+		&& clean.starts_with('__extension__')
+		&& (clean.len == '__extension__'.len
+			|| !c_generated_identifier_byte(clean['__extension__'.len])) {
+		mut rest := clean
+		for rest.starts_with('__extension__') {
+			tail := rest['__extension__'.len..]
+			if tail.len > 0 && c_generated_identifier_byte(tail[0]) {
+				break
+			}
+			rest = trim_leading_c_comments(tail.trim_space())
+		}
+		converted := c_declaration_item(rest, has_brace, types_only, definition_preserving_macros)
+		// Classification ignores the markers; unchanged declarations retain them.
+		return if converted == rest { item } else { converted }
+	}
 	if block := c_extern_c_block(item) {
 		inner_header, _, _, _, _, _ := c_declaration_header_mode(block.inner, types_only)
 		mut result := block.before
