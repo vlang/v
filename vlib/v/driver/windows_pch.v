@@ -79,6 +79,9 @@ const v3_windows_pch_prelude_limit = 16 * 1024
 fn v3_windows_pch_applies(source string) bool {
 	mut defines := map[string]bool{}
 	mut next_include := 0
+	// Whether `PSAPI_VERSION 2` has been defined: psapi.h declares other names
+	// without it, and the header defines it first.
+	mut psapi_version := false
 	// The open conditionals, innermost last: a macro counts only when every
 	// conditional around it is the generator's own guard on it or on the target,
 	// and no conditional may still be open at the first include.
@@ -111,6 +114,9 @@ fn v3_windows_pch_applies(source string) bool {
 				}
 				return false
 			}
+			if trimmed == '#include <psapi.h>' && !psapi_version {
+				return false
+			}
 			next_include++
 			if next_include == v3_windows_pch_includes.len {
 				return true
@@ -131,7 +137,8 @@ fn v3_windows_pch_applies(source string) bool {
 				defines[name] = true
 				continue
 			}
-			if rest == 'PSAPI_VERSION 2' {
+			if rest == 'PSAPI_VERSION 2' && directive.starts_with('define') {
+				psapi_version = true
 				continue
 			}
 			if !v3_windows_pch_own_macro(name) {
@@ -175,19 +182,24 @@ fn v3_windows_pch_guard_of(directive string, name string) bool {
 // precompiled header) counts as configuring them too.
 fn v3_windows_pch_flags_configure_sdk(args []string) bool {
 	for i, arg in args {
-		if arg.starts_with('-include') || arg.starts_with('-imacros') || arg.starts_with('-Wp,')
-			|| arg.starts_with('@') || arg in ['-Xpreprocessor', '-Xclang', '-undef'] {
+		if arg.starts_with('-include') || arg.starts_with('-imacros') || arg.starts_with('--include')
+			|| arg.starts_with('--imacros') || arg.starts_with('-Wp,') || arg.starts_with('@')
+			|| arg in ['-Xpreprocessor', '-Xclang', '-undef'] {
 			return true
 		}
+		// The macro of `-DX`, `-D X`, `--define-macro=X`, `--define-macro X`
+		// and their `-U` forms, without a value or a parameter list.
 		mut macro := ''
-		if arg in ['-D', '-U'] {
+		if arg in ['-D', '-U', '--define-macro', '--undefine-macro'] {
 			if i + 1 < args.len {
 				macro = args[i + 1]
 			}
 		} else if arg.starts_with('-D') || arg.starts_with('-U') {
 			macro = arg[2..]
+		} else if arg.starts_with('--define-macro=') || arg.starts_with('--undefine-macro=') {
+			macro = arg.all_after('=')
 		}
-		if macro.all_before('=') in v3_windows_pch_sdk_macros {
+		if macro.all_before('=').all_before('(') in v3_windows_pch_sdk_macros {
 			return true
 		}
 	}
