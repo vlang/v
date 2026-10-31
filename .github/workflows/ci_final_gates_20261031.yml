@@ -1,0 +1,39 @@
+name: Final compiler gate validation
+'on':
+  push:
+    branches:
+    - ci/verify-final-gates-20261031
+permissions:
+  contents: read
+concurrency:
+  group: final-compiler-gates-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  ubuntu-tcc:
+    if: github.ref == 'refs/heads/ci/verify-final-gates-20261031'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      VJOBS: '2'
+      VFLAGS: ''
+    steps:
+    - uses: actions/checkout@v7
+      with:
+        persist-credentials: false
+    - name: Install compiler diagnostic dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends clang gobjc libssl-dev libsqlite3-dev libpq-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev libxinerama-dev libx11-xcb-dev libgl1-mesa-dev libegl1-mesa-dev libgles2-mesa-dev
+    - name: Build combined compiler
+      id: build
+      run: |
+        make -j4
+        ./v -version
+    - name: Verify corrected startup and cleanup fixture
+      if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+      run: |
+        ./v -new-compiler -no-retry-compilation test vlib/v/gen/c/cached_startup_import_order_test.v
+    - name: Run complete compiler diagnostic suite with fixture-selected compilers
+      if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+      run: |
+        ./v -silent vlib/v/compiler_errors_test.v
