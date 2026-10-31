@@ -53,6 +53,9 @@ $if !skip_riscv64 ? {
 $if !skip_loongarch64 ? {
 	import v.gen.loongarch64
 }
+$if !skip_ppc64le ? {
+	import v.gen.ppc64le
+}
 
 $if !skip_ssa ? {
 	import v.ssa
@@ -10558,7 +10561,7 @@ pub fn run(args []string) {
 		no_cache = true
 	}
 	should_run = should_run && !skip_running
-	native_linux_object := (backend in ['arm64', 'riscv64', 'loongarch64'] && target_os == 'linux' && explicit_output) || (backend == 'x64' && target_os in [
+	native_linux_object := (backend in ['arm64', 'riscv64', 'loongarch64', 'ppc64le'] && target_os == 'linux' && explicit_output) || (backend == 'x64' && target_os in [
 		'linux',
 		'macos',
 		'windows',
@@ -10742,9 +10745,9 @@ pub fn run(args []string) {
 	if ownership_mode {
 		record_user_define(mut user_defines, mut compile_values, 'ownership')
 	}
-	if backend !in ['c', 'fastc', 'arm64', 'x64', 'riscv64', 'loongarch64', 'wasm', 'eval']
+	if backend !in ['c', 'fastc', 'arm64', 'x64', 'riscv64', 'ppc64le', 'loongarch64', 'wasm', 'eval']
 		&& !(backend == 'js' && is_checker_fixture) {
-		eprintln('unknown backend `${backend}`; expected c, fastc, arm64, x64, riscv64, loongarch64, wasm, or eval')
+		eprintln('unknown backend `${backend}`; expected c, fastc, arm64, x64, riscv64, ppc64le, loongarch64, wasm, or eval')
 		exit(1)
 	}
 	if hot_fn != '' && backend != 'arm64' {
@@ -10830,6 +10833,10 @@ pub fn run(args []string) {
 	}
 	if backend == 'loongarch64' && (target.os != 'linux' || target.arch != 'loongarch64') {
 		eprintln('the loongarch64 backend currently supports only linux/loongarch64')
+		exit(1)
+	}
+	if backend == 'ppc64le' && (target.os != 'linux' || target.arch != 'ppc64le') {
+		eprintln('the ppc64le backend currently supports only linux/ppc64le')
 		exit(1)
 	}
 	if backend == 'x64' {
@@ -10997,6 +11004,7 @@ pub fn run(args []string) {
 	mut include_x64 := all_backends
 	mut include_riscv64 := all_backends
 	mut include_loongarch64 := all_backends
+	mut include_ppc64le := all_backends
 	mut include_wasm := all_backends
 	mut include_eval := all_backends
 	for cb in compile_backends {
@@ -11045,6 +11053,9 @@ pub fn run(args []string) {
 		'loongarch64' {
 			include_loongarch64 = true
 		}
+		'ppc64le' {
+			include_ppc64le = true
+		}
 		'wasm' {
 			include_wasm = true
 		}
@@ -11069,6 +11080,9 @@ pub fn run(args []string) {
 	if !include_loongarch64 {
 		user_defines << 'skip_loongarch64'
 	}
+	if !include_ppc64le {
+		user_defines << 'skip_ppc64le'
+	}
 	if !include_wasm {
 		user_defines << 'skip_wasm'
 	}
@@ -11076,7 +11090,7 @@ pub fn run(args []string) {
 	// from the final skips, so an explicit `-d skip_wasm` also drops the
 	// driver's gated `v.ssa` import.
 	if 'skip_arm64' in user_defines && 'skip_x64' in user_defines
-		&& 'skip_riscv64' in user_defines && 'skip_wasm' in user_defines && 'skip_ssa' !in user_defines {
+		&& 'skip_riscv64' in user_defines && 'skip_ppc64le' in user_defines && 'skip_wasm' in user_defines && 'skip_ssa' !in user_defines {
 		user_defines << 'skip_ssa'
 	}
 	if !include_eval {
@@ -14675,6 +14689,43 @@ pub fn run(args []string) {
 			b.step('link')
 		} $else {
 			eprintln('loongarch64 support is not compiled into this executable')
+			exit(1)
+		}
+	} else if backend == 'ppc64le' {
+		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
+			eprintln(msg)
+			exit(1)
+		}
+		$if !skip_ppc64le ? {
+			mut m := ssa.build_with_options(a, used_fns, pre_tc, ssa.BuildOptions{
+				track_uses:        false
+				thread_stack_size: prefs.thread_stack_size
+				test_files:        test_files
+				test_run_only:     run_only
+				exact_used_fns:    true
+				target:            ssa.TargetData{ ptr_size: 8, endian_little: true, os_is_linux: true }
+			})
+			b.step('ssa build')
+
+			mut g := ppc64le.Gen.new(m)
+			g.gen()
+			b.step('ppc64le gen')
+
+			if !is_o {
+				eprintln('the experimental ppc64le backend supports object output only; use -o file.o.')
+				exit(1)
+			}
+			obj_file := os.join_path(os.vtmp_dir(), 'v3_ppc64le_${os.getpid()}_${tempname.unique_token()}.o')
+			g.write_file(obj_file)
+			b.step('ppc64le object')
+			os.mv(obj_file, bin_file) or {
+				eprintln(err.msg())
+				exit(1)
+			}
+			b.step('link')
+		} $else {
+			eprintln('ppc64le support is not compiled into this executable')
+			eprintln('Rebuild with `v -compile-backend ppc64le self`.')
 			exit(1)
 		}
 	} else if backend == 'arm64' {
@@ -21509,6 +21560,9 @@ fn skipped_backend_modules(prefs &pref.Preferences) map[string]bool {
 	}
 	if 'skip_x64' in prefs.user_defines {
 		skipped['v.gen.x64'] = true
+	}
+	if 'skip_ppc64le' in prefs.user_defines {
+		skipped['v.gen.ppc64le'] = true
 	}
 	if 'skip_wasm' in prefs.user_defines {
 		skipped['v.gen.wasm'] = true
