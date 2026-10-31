@@ -82,7 +82,7 @@ const v3_windows_pch_prelude_limit = 16 * 1024
 // v3_windows_pch_header precompiles: the three configuring macros, then the
 // header's includes in its order, with nothing in between that could change what
 // the SDK headers declare. Every macro the unit defines or undefines in that
-// span has to be one of V's own (`CUSTOM_DEFINE_*`, `V_*`, `V3*`, `_V*`, `v_*`),
+// span has to be one of V's own (`CUSTOM_DEFINE_*`, `V_*`, `V3*`, `v_*`, `_VPROFILE`),
 // one of the three above, or the `PSAPI_VERSION 2` the header sets. A unit that
 // defines anything else first, includes another header first, or includes the
 // SDK headers in another order parses them itself.
@@ -274,10 +274,11 @@ fn v3_windows_pch_prelude_conditional(directive string) bool {
 }
 
 // v3_windows_pch_own_macro reports whether `name` is a macro V emits for itself:
-// one the SDK headers never read.
+// one the SDK headers never read. Of the names with a leading underscore only
+// `_VPROFILE` is V's; the C headers read `_VA_LIST` and `_VA_LIST_DEFINED`.
 fn v3_windows_pch_own_macro(name string) bool {
 	return name.starts_with('CUSTOM_DEFINE_') || name.starts_with('V_') || name.starts_with('V3')
-		|| name.starts_with('_V') || name.starts_with('v_')
+		|| name.starts_with('v_') || name == '_VPROFILE'
 }
 
 // v3_windows_pch_compiler reports whether `compiler` is a Clang driver, which
