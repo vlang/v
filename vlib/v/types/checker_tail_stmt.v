@@ -3157,6 +3157,24 @@ fn (tc &TypeChecker) multi_interface_match_common_interface(subject Interface, b
 }
 
 fn (tc &TypeChecker) resolve_interface_match_pattern(pattern_id u32) ?u32 {
+	syntax := flat.source_type_syntax(trimmed_source_type_id(pattern_id))
+	if syntax.application_valid() {
+		// A concrete specialization is not necessarily registered as a type symbol
+		// until monomorphization. Resolve its declared base before qualifying it.
+		base_id := tc.resolve_interface_match_pattern(syntax.application_base())?
+		base_type_id := tc.parse_type(base_id).source_type_id()
+		kind, params := tc.generic_decl_kind_and_params(base_type_id)
+		args := syntax.application_args()
+		if kind == '' || params.len != args.len {
+			return none
+		}
+		for arg in args {
+			if !tc.interface_pattern_argument_known(arg) {
+				return none
+			}
+		}
+		return flat.source_type_composition_two(.concat, base_type_id, tc.qualified_generic_suffix(args))
+	}
 	for candidate_id in tc.interface_match_pattern_candidates(pattern_id) {
 		if interface_pattern_is_collapsed_container_id(candidate_id) {
 			container_type := tc.parse_type(candidate_id)
@@ -3176,6 +3194,39 @@ fn (tc &TypeChecker) resolve_interface_match_pattern(pattern_id u32) ?u32 {
 		}
 	}
 	return none
+}
+
+fn (tc &TypeChecker) interface_pattern_argument_known(type_id u32) bool {
+	clean_id := trimmed_source_type_id(type_id)
+	if tc.active_generic_param_id(clean_id) {
+		return true
+	}
+	shape := flat.source_type_shape(clean_id)
+	syntax := flat.source_type_syntax(clean_id)
+	if shape.has(.pointer) || shape.has(.optional) || shape.has(.array_type)
+		|| shape.has(.shared_type) || shape.has(.atomic_type) || shape.has(.mutable_type)
+		|| shape.has(.channel_type) || shape.has(.thread_type) {
+		return tc.interface_pattern_argument_known(syntax.raw_base())
+	}
+	if shape.has(.map_type) {
+		return syntax.bracket_closed()
+			&& tc.interface_pattern_argument_known(syntax.bracket_inner())
+			&& tc.interface_pattern_argument_known(syntax.bracket_suffix())
+	}
+	if shape.has(.leading_bracket) {
+		return syntax.bracket_closed()
+			&& tc.interface_pattern_argument_known(syntax.bracket_suffix())
+	}
+	if shape.has(.function_compact) || shape.has(.function_spaced) {
+		for param in syntax.function_params() {
+			if !tc.interface_pattern_argument_known(flat.source_type_syntax(param).parameter_type()) {
+				return false
+			}
+		}
+		return syntax.function_result() == 0
+			|| tc.interface_pattern_argument_known(syntax.function_result())
+	}
+	return tc.resolve_interface_match_pattern(clean_id) != none
 }
 
 fn interface_pattern_is_collapsed_container_id(pattern_id u32) bool {
