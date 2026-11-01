@@ -35,6 +35,9 @@ v ls --update
 
 # Run as a language server (stdio by default)
 vls
+
+# Single-file compile check (agent-friendly)
+vls check path/to/file.v
 ```
 
 VLS is usually launched by the editor (VS Code, etc.), not by hand. For agent
