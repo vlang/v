@@ -1566,6 +1566,14 @@ fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int
 	p.a.file_index_incomplete = p.a.file_index_incomplete || w.a.file_index_incomplete
 	p.a.debugger_stmts += w.a.debugger_stmts
 	p.a.has_vsh_source = p.a.has_vsh_source || w.a.has_vsh_source
+	for path in w.a.veb_template_paths {
+		if path !in p.a.veb_template_paths {
+			p.a.veb_template_paths << path
+		}
+	}
+	unsafe {
+		w.a.veb_template_paths.len = 0
+	}
 	if w.a.raw_vsh_file != '' {
 		p.a.raw_vsh_file = w.a.raw_vsh_file
 	}

@@ -4340,6 +4340,20 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 	for files in state.module_sources.values() {
 		for file in files {
 			source_paths[os.real_path(file)] = true
+			for path in modulecache.veb_template_source_paths(file, state.manager.dir) {
+				source_paths[os.real_path(path)] = true
+			}
+			for path in modulecache.embedded_source_paths(file, state.manager.dir) {
+				source_paths[os.real_path(path)] = true
+			}
+		}
+	}
+	for file in user_files {
+		for path in modulecache.veb_template_source_paths(file, state.manager.dir) {
+			source_paths[os.real_path(path)] = true
+		}
+		for path in modulecache.embedded_source_paths(file, state.manager.dir) {
+			source_paths[os.real_path(path)] = true
 		}
 	}
 	mut sources := source_paths.keys()
@@ -4662,6 +4676,13 @@ fn v3_cgen_cache_input(a &flat.FlatAst, state &V3ModuleCacheState, user_files []
 	for path in embedded_resources {
 		embedded_resource_set[os.real_path(path)] = true
 	}
+	for path in a.veb_template_paths {
+		real_path := os.real_path(path)
+		if !embedded_resource_set[real_path] {
+			embedded_resource_set[real_path] = true
+			embedded_resources << real_path
+		}
+	}
 	for module_files in state.module_sources.values() {
 		for source_file in module_files {
 			for path in modulecache.embedded_source_paths(source_file, vroot) {
@@ -4670,6 +4691,22 @@ fn v3_cgen_cache_input(a &flat.FlatAst, state &V3ModuleCacheState, user_files []
 					embedded_resource_set[real_path] = true
 					embedded_resources << real_path
 				}
+			}
+			for path in modulecache.veb_template_source_paths(source_file, vroot) {
+				real_path := os.real_path(path)
+				if !embedded_resource_set[real_path] {
+					embedded_resource_set[real_path] = true
+					embedded_resources << real_path
+				}
+			}
+		}
+	}
+	for source_file in user_files {
+		for path in modulecache.veb_template_source_paths(source_file, vroot) {
+			real_path := os.real_path(path)
+			if !embedded_resource_set[real_path] {
+				embedded_resource_set[real_path] = true
+				embedded_resources << real_path
 			}
 		}
 	}
@@ -10572,7 +10609,8 @@ pub fn run(args []string) {
 		no_cache = true
 	}
 	should_run = should_run && !skip_running
-	native_linux_object := (backend in ['arm64', 'riscv64', 'loongarch64', 'ppc64le', 'arm32', 's390x'] && target_os == 'linux' && explicit_output) || (backend == 'x64' && target_os in [
+	native_linux_object := (backend in ['arm64', 'riscv64', 'loongarch64', 'ppc64le', 'arm32',
+		's390x'] && target_os == 'linux' && explicit_output) || (backend == 'x64' && target_os in [
 		'linux',
 		'macos',
 		'windows',
@@ -10756,7 +10794,8 @@ pub fn run(args []string) {
 	if ownership_mode {
 		record_user_define(mut user_defines, mut compile_values, 'ownership')
 	}
-	if backend !in ['c', 'fastc', 'arm64', 'arm32', 'x64', 'riscv64', 'ppc64le', 's390x', 'loongarch64', 'wasm', 'eval']
+	if backend !in ['c', 'fastc', 'arm64', 'arm32', 'x64', 'riscv64', 'ppc64le', 's390x', 'loongarch64',
+		'wasm', 'eval']
 		&& !(backend == 'js' && is_checker_fixture) {
 		eprintln('unknown backend `${backend}`; expected c, fastc, arm64, arm32, x64, riscv64, ppc64le, s390x, loongarch64, wasm, or eval')
 		exit(1)
@@ -14736,7 +14775,7 @@ pub fn run(args []string) {
 				test_files:        test_files
 				test_run_only:     run_only
 				exact_used_fns:    true
-				target:            ssa.TargetData{ ptr_size: 8, endian_little: true, os_is_linux: true, backend: "ppc64le" }
+				target:            ssa.TargetData{ ptr_size: 8, endian_little: true, os_is_linux: true, backend: 'ppc64le' }
 			})
 			b.step('ssa build')
 
