@@ -193,3 +193,52 @@ fn main() {
 	}, true)
 	assert result.exit_code == 0, result.output
 }
+
+fn test_cross_struct_spread_without_copied_fields_preserves_evaluation() {
+	result := spread_promoted_project('no_copied_fields', {
+		'main.v': 'struct Link { token int = unused_default() }
+struct Owner { Link }
+struct FlatOwner { token int = unused_default() }
+struct Config { width int }
+struct Counter {
+mut:
+	calls int
+	order int
+}
+fn unused_default() int {
+	panic("overridden defaults must not run")
+}
+fn make_config(mut counter Counter) Config {
+	counter.calls++
+	counter.order = counter.order * 10 + 1
+	return Config{width: 31}
+}
+fn make_token(mut counter Counter) int {
+	counter.order = counter.order * 10 + 2
+	return 9
+}
+fn main() {
+	config := Config{width: 31}
+	owner := Owner{...config, token: 9}
+	assert owner.token == 9
+	assert config.width == 31
+	mut counter := Counter{}
+	called := Owner{...make_config(mut counter), token: make_token(mut counter)}
+	assert called.token == 9
+	assert counter.calls == 1
+	assert counter.order == 12
+	counter = Counter{}
+	heap := &Owner{...make_config(mut counter), token: make_token(mut counter)}
+	assert heap.token == 9
+	assert counter.calls == 1
+	assert counter.order == 12
+	counter = Counter{}
+	flat := FlatOwner{...make_config(mut counter), token: make_token(mut counter)}
+	assert flat.token == 9
+	assert counter.calls == 1
+	assert counter.order == 12
+}
+'
+	}, true)
+	assert result.exit_code == 0, result.output
+}
