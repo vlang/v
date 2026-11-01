@@ -590,6 +590,21 @@ fn v3_windows_pch_place(dir string, name string) string {
 // can start a directive, so that no file the compiler may look for goes
 // without a place.
 fn v3_windows_pch_include_names(source string) ?([]string, []string) {
+	// Splices the compiler makes that v3_windows_pch_code does not: past
+	// blanks after the backslash, and with the trigraph `??/` (ISO C modes,
+	// -ftrigraphs).
+	if source.contains('??/') {
+		return none
+	}
+	for k := source.index_u8(`\\`); k >= 0; k = source.index_after_('\\', k + 1) {
+		mut next := k + 1
+		for next < source.len && source[next] in [` `, `\t`, `\f`, `\v`] {
+			next++
+		}
+		if next > k + 1 && next < source.len && source[next] in [`\n`, `\r`] {
+			return none
+		}
+	}
 	text := v3_windows_pch_code(source)
 	mut angled := []string{}
 	mut quoted := []string{}
@@ -597,7 +612,13 @@ fn v3_windows_pch_include_names(source string) ?([]string, []string) {
 	for i < text.len {
 		c := text[i]
 		if c == `"` || c == `'` {
-			i = v3_c_skip_literal(text, i)
+			// A pragma in a string, for _Pragma directly or through a macro, is
+			// skipped with it: one that aliases an included name names a file.
+			close := v3_c_skip_literal(text, i)
+			if text[i..close].contains('include_alias') {
+				return none
+			}
+			i = if close > i { close } else { i + 1 }
 			continue
 		}
 		if (c == `%` && i + 1 < text.len && text[i + 1] == `:`)
@@ -668,21 +689,13 @@ fn v3_windows_pch_include_names(source string) ?([]string, []string) {
 			'include_alias', 'embed', '__has_embed' {
 				return none
 			}
-			'_Pragma' {
-				// Its pragma is in a string, which is skipped as a literal:
-				// one that aliases an included name names a file.
-				mut open := i
-				for open < text.len && text[open] in [` `, `\t`, `(`] {
-					open++
-				}
-				if open < text.len && text[open] == `"` {
-					close := v3_c_skip_literal(text, open)
-					if text[open..close].contains('include_alias') {
-						return none
-					}
+			else {
+				// A raw string, which a scan of literals cannot end where the
+				// compiler does.
+				if i < text.len && text[i] == `"` && word in ['R', 'LR', 'uR', 'UR', 'u8R'] {
+					return none
 				}
 			}
-			else {}
 		}
 	}
 	return angled, quoted

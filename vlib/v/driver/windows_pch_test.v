@@ -569,7 +569,13 @@ fn test_windows_pch_places_come_from_the_names_the_headers_include() ! {
 	for text in ['%:include <x.h>\n', '??=include <x.h>\n',
 		'#define HI __has_include\n#if HI(<x.h>)\n#endif\n', '#pragma include_alias(<a.h>, <b.h>)\n',
 		'#embed <x.bin>\n', '#if __has_embed(<x.bin>)\n#endif\n', '#include\n',
-		'_Pragma("include_alias(<a.h>, <b.h>)")\n'] {
+		'_Pragma("include_alias(<a.h>, <b.h>)")\n', '_Pragma(L"include_alias(<a.h>, <b.h>)")\n',
+		'#define ALIAS "include_alias(<a.h>, <b.h>)"\n_Pragma(ALIAS)\n', 
+		// A splice Clang makes past blanks or with a trigraph, and a raw string,
+		// which can hide what follows from a scan that reads it as a literal.
+		'#incl\\ \t\nude <x.h>\n', '#incl??/\nude <x.h>\n',
+		'const char *s = R"x(")/*)x";\n#include <x.h>\n',
+		'const char *s = u8R"x(")/*)x";\n#include <x.h>\n'] {
 		// Of the text alone: a file written just now would be refused as new.
 		assert v3_windows_pch_include_names('#include <ok.h>\n' + text) == none, text
 	}
