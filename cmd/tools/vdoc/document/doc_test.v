@@ -157,6 +157,15 @@ fn test_merge_doc_comments_keeps_blockquotes_on_separate_lines() {
 	assert doc.merge_doc_comments(comments).trim_space() == '> **Note**\n> line one\n> line two'
 }
 
+fn test_merge_doc_comments_starts_a_list_after_text_on_a_new_line() {
+	comments := [
+		doc.DocComment{
+			text: 'The fields are:\n- `a` is a\n- `b` is b\nSearch order:\n1. first\n2. second'
+		},
+	]
+	assert doc.merge_doc_comments(comments).trim_space() == 'The fields are:\n- `a` is a\n- `b` is b\nSearch order:\n1. first\n2. second'
+}
+
 fn test_merge_doc_comments_preserves_readme_markdown() {
 	readme := '# Description
 

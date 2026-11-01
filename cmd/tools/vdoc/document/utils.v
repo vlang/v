@@ -68,6 +68,9 @@ pub fn merge_doc_comments(comments []DocComment) string {
 			line_before_spaces := l.before(' ')
 			if is_list || (l.starts_with('|') && l.ends_with('|'))
 				|| (l.starts_with('#') && line_before_spaces.count('#') == line_before_spaces.len) {
+				if comment != '' && !last_ends_with_lb {
+					comment += '\n'
+				}
 				comment += l + '\n'
 				next_on_newline = true
 				continue
