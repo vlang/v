@@ -69,8 +69,7 @@ const cached_module_function_names = ['debug.after_call_hook', 'debug.before_cal
 	'os.posix_get_error_msg', 'os.quoted_path', 'os.read_bytes', 'os.read_file', 'os.real_path',
 	'os.walk', 'os.win_volume_len', 'overflow.add_i8', 'rand.init', 'sync.channel_select',
 	'sync.channel_select_lang', 'sync.cpanic', 'sync.cpanic_errno', 'sync.new_channel_st',
-	'sync.should_be_zero', 'time.now', 'time.sleep', 'time.ticks', 'time.vpc_now', 'time.vpc_now_darwin',
-	'veb.run_at']
+	'sync.should_be_zero', 'time.now', 'time.sleep', 'time.ticks', 'time.vpc_now', 'time.vpc_now_darwin']
 
 // cached_function_name_patterns are the names that a stage of the compiler puts
 // together when it runs, as far as its string literals show them: a name with
