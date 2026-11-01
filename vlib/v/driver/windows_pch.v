@@ -296,12 +296,13 @@ fn v3_windows_pch_compiler(compiler string) bool {
 // differ, but checks a command-line macro only when the header used it, and the
 // SDK headers it read only while they are where it found them. So the key holds
 // what sends the compiler to other headers: the variables of
-// v3_link_environment_names (CPATH, C_INCLUDE_PATH, ...) and the directory that
-// relative include directories are found from.
+// v3_link_environment_names (CPATH, C_INCLUDE_PATH, ...), PATH (a MinGW Clang
+// without a sysroot of its own takes the headers of the first MinGW GCC on it),
+// and the directory that relative include directories are found from.
 fn v3_windows_pch_key(identity string, args []string) string {
 	mut hash := u64(1469598103934665603)
 	for part in [v3_windows_pch_format, identity, v3_windows_pch_header, args.join('\x00'),
-		v3_link_environment_signature(), os.getwd()] {
+		v3_link_environment_signature(), 'PATH=${os.getenv('PATH')}', os.getwd()] {
 		hash = c_hash_bytes(hash, part.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
 	}

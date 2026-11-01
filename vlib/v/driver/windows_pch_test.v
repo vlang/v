@@ -161,6 +161,13 @@ fn test_windows_pch_key_follows_the_include_environment() {
 	os.setenv('C_INCLUDE_PATH', 'S:/sdk1', true)
 	assert v3_windows_pch_key('clang 23', ['-O2', '-Isdk']) !in [base, cpath]
 	os.unsetenv('C_INCLUDE_PATH')
+	// Another MinGW GCC first on PATH, whose headers a Clang without a sysroot takes.
+	saved_path := os.getenv('PATH')
+	os.setenv('PATH', 'S:/gccB/bin${os.path_delimiter}${saved_path}', true)
+	path_key := v3_windows_pch_key('clang 23', ['-O2', '-Isdk'])
+	os.setenv('PATH', saved_path, true)
+	assert path_key != base
+	assert v3_windows_pch_key('clang 23', ['-O2', '-Isdk']) == base
 	// Another directory for the relative `-Isdk`.
 	os.chdir(os.vtmp_dir())!
 	assert v3_windows_pch_key('clang 23', ['-O2', '-Isdk']) != base
