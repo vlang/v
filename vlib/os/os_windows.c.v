@@ -598,12 +598,10 @@ fn raw_execute_shell(cmd string) Result {
 	if cmd.contains('./') {
 		pcmd = pcmd.replace('./', '.\\')
 	}
-	if cmd.contains('2>') {
-		pcmd = 'cmd /c "${pcmd}"'
-	} else {
-		pcmd = 'cmd /c "${pcmd} 2>&1"'
-	}
-	return windows_execute_command_line(pcmd, '', cmd, true)
+	// Both standard handles already point to the capture pipe. Appending a
+	// redirection changes echo output and overrides the caller's stdout redirection.
+	// /s removes only this wrapper's outer quotes, preserving the command inside.
+	return windows_execute_command_line('cmd /s /c "${pcmd}"', '', cmd, true)
 }
 
 fn windows_execute_command_line(command_line_text string, application_name string, display_cmd string, expand_environment bool) Result {
