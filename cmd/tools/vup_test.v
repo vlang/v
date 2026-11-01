@@ -283,6 +283,53 @@ fn test_vup_reports_real_cache_filesystem_failures() ! {
 	}
 }
 
+fn test_vup_requests_deferred_windows_cleanup_only_after_success() ! {
+	$if windows {
+		return
+	}
+	root, home, _, bin_dir := vup_report_fixture()!
+	defer { os.rmdir_all(root) or {} }
+	// Exercise the Windows finish path on this host; the cross-generation test
+	// separately checks that the unmodified Windows source compiles.
+	source := os.read_file(os.join_path(vroot, 'cmd', 'tools', 'vup.v'))!
+	assert source.count('defer_cleanup := $if windows {') == 1
+	modified := source.replace('defer_cleanup := $if windows {', 'defer_cleanup := $if !windows {')
+	file := os.join_path(root, 'vup_deferred.v')
+	os.write_file(file, modified)!
+	tool := os.join_path(root, 'vup_deferred')
+	build := os.exec([vexe, '-o', tool, file])
+	assert build.exit_code == 0, build.output
+	install(root, os.join_path(home, '.agents', 'skills'), 'alpha')!
+	rebundle(root, 'alpha')!
+	log := os.join_path(root, 'calls.log')
+	for options in [[]string{}, ['-skip_current'], ['-prod'], ['-h'], ['--unknown']] {
+		os.write_file(log, '')!
+		result := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v'),
+			'VUP_DEFER_CACHE_WIPE=1', tool, ...options])
+		expected := if '-h' in options {
+			0
+		} else if '--unknown' in options {
+			1
+		} else {
+			80
+		}
+		assert result.exit_code == expected, result.output
+		calls := os.read_file(log)!
+		assert !calls.contains('wipe-cache'), calls
+		if expected == 80 {
+			assert result.output.contains('Current V version:'), result.output
+			assert result.output.contains('skills: can be refreshed: alpha'), result.output
+		} else {
+			assert calls == '', calls
+		}
+	}
+	write_executable(os.join_path(bin_dir, 'make'), '#!/bin/sh\nexit 9\n')!
+	failed := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v'),
+		'VUP_DEFER_CACHE_WIPE=1', tool])
+	assert failed.exit_code == 1, failed.output
+	assert !failed.output.contains('Current V version:') || failed.output.contains('Updating TCC *failed*.'), failed.output
+}
+
 fn test_vup_reports_cache_wipe_failures() ! {
 	$if windows {
 		return

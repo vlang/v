@@ -13,10 +13,26 @@ import v.util
 const probe_tool = 'vtimeout'
 const toolcache_prune_probe_env = 'VTEST_TOOLCACHE_PRUNE_PROBE'
 const toolcache_sidecar_probe_env = 'VTEST_TOOLCACHE_SIDECAR_PROBE'
+const toolcache_updater_probe_env = 'VTEST_TOOLCACHE_UPDATER_PROBE'
+const vup_defer_cache_wipe_env = 'VUP_DEFER_CACHE_WIPE'
+const vup_deferred_wipe_exit_code = 80
 
 // Reuse the test executable for a bounded pruning probe. Reading a planted FIFO used to
 // block indefinitely while holding the tool's lock, so run that work in a child process.
 fn testsuite_begin() {
+	if mode := os.getenv_opt(toolcache_updater_probe_env) {
+		if mode == 'ordinary' {
+			assert os.getenv(vup_defer_cache_wipe_env) == ''
+			exit(vup_deferred_wipe_exit_code)
+		}
+		assert os.getenv(vup_defer_cache_wipe_env) == '1'
+		assert os.is_file(os.executable())
+		match mode {
+			'help' { exit(0) }
+			'failure' { exit(7) }
+			else { exit(vup_deferred_wipe_exit_code) }
+		}
+	}
 	if mode := os.getenv_opt(toolcache_sidecar_probe_env) {
 		// Act as a compiler that produces an executable and optionally a sidecar.
 		mut output := ''
@@ -2201,5 +2217,57 @@ fn test_wipe_cache_options_and_selective_cleanup() {
 		assert !os.exists(os.join_path(vtmp_dir, 'keep.txt'))
 		assert !os.exists(os.join_path(v3cache_dir, 'mod.o'))
 		assert !os.exists(cache_tools)
+	})!
+}
+
+// This runs on every host; on Windows the copied child holds the actual image lock.
+fn test_cached_updater_wipes_caches_only_after_a_successful_child_exits() ! {
+	directory := toolcache_test_dir('deferred_updater_wipe')
+	defer { os.rmdir_all(directory) or {} }
+	mut previous := map[string]?string{}
+	for name in ['VCACHE', 'V3CACHE', vup_defer_cache_wipe_env, toolcache_updater_probe_env] {
+		previous[name] = os.getenv_opt(name)
+	}
+	defer {
+		for name, value in previous {
+			if v := value { os.setenv(name, v, true) } else { os.unsetenv(name) }
+		}
+	}
+	os.unsetenv(vup_defer_cache_wipe_env)
+	with_default_tool_cache_roots(directory, fn [directory] (_ string) ! {
+		cache := os.join_path(directory, 'modules')
+		os.setenv('VCACHE', cache, true)
+		os.setenv('V3CACHE', os.join_path(directory, 'v3cache'), true)
+		// In particular, VTMP cleanup must not run while its cached child is alive.
+		updater := os.join_path(os.vtmp_dir(), 'tools', 'cached-updater', 'vup.exe')
+		for mode in ['help', 'failure', 'request'] {
+			os.mkdir_all(os.dir(updater))!
+			os.cp(os.executable(), updater)!
+			os.chmod(updater, 0o755)!
+			os.mkdir_all(cache)!
+			marker := os.join_path(cache, 'object.o')
+			os.write_file(marker, 'cached object')!
+			os.setenv(toolcache_updater_probe_env, mode, true)
+			code := run_windows_cached_tool(updater, [])
+			assert code == if mode == 'failure' { 7 } else { 0 }
+			assert os.exists(updater) == (mode != 'request')
+			assert os.exists(marker) == (mode != 'request')
+		}
+		// A real cleanup failure must still reach the launcher's exit status.
+		os.mkdir_all(os.dir(updater))!
+		os.cp(os.executable(), updater)!
+		os.chmod(updater, 0o755)!
+		blocker := os.join_path(directory, 'not_a_directory')
+		os.write_file(blocker, 'file')!
+		os.setenv('VCACHE', os.join_path(blocker, 'cache'), true)
+		assert run_windows_cached_tool(updater, []) == 1
+		assert os.exists(updater)
+		// Other cached tools retain their exit status and do not request cleanup.
+		ordinary := os.join_path(directory, 'vtimeout.exe')
+		os.cp(os.executable(), ordinary)!
+		os.chmod(ordinary, 0o755)!
+		os.setenv(toolcache_updater_probe_env, 'ordinary', true)
+		assert run_windows_cached_tool(ordinary, []) == vup_deferred_wipe_exit_code
+		assert os.exists(updater)
 	})!
 }

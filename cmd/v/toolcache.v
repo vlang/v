@@ -1366,12 +1366,7 @@ fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 @[noreturn]
 fn exec_cached_tool(executable string, tool_args []string) {
 	$if windows {
-		mut process := os.new_process(executable)
-		process.set_args(tool_args)
-		process.wait()
-		code := process.code
-		process.close()
-		exit(code)
+		exit(run_windows_cached_tool(executable, tool_args))
 	} $else {
 		os.execvp(executable, tool_args) or {
 			eprintln('cannot start `${executable}`: ${err}')
@@ -1382,6 +1377,40 @@ fn exec_cached_tool(executable string, tool_args []string) {
 	// The explicit exit keeps both the current and the bootstrap compiler satisfied that
 	// every path out of this `@[noreturn]` function ends in one.
 	exit(1)
+}
+
+// run_windows_cached_tool waits for the child before wiping caches, so a cached vup.exe
+// has released its image lock. Only a successful updater requests the private exit code.
+fn run_windows_cached_tool(executable string, tool_args []string) int {
+	// Private handshake; keep in sync with cmd/tools/vup.v.
+	deferred_wipe_exit_code := 80
+	is_updater := os.file_name(executable).to_lower_ascii() == 'vup.exe'
+	mut process := os.new_process(executable)
+	process.set_args(tool_args)
+	if is_updater {
+		mut environment := os.environ()
+		environment['VUP_DEFER_CACHE_WIPE'] = '1'
+		process.set_environment(environment)
+	}
+	process.wait()
+	code := process.code
+	process.close()
+	if !is_updater || code != deferred_wipe_exit_code {
+		return code
+	}
+	// This process retains the caller's working directory and cache environment.
+	opts := parse_wipe_cache_options([], []) or {
+		eprintln(err.msg())
+		return 1
+	}
+	lines := wipe_caches(opts) or {
+		eprintln('v up: wiping caches failed: ${err}')
+		return 1
+	}
+	for line in lines {
+		println(line)
+	}
+	return 0
 }
 
 struct WipeCacheOptions {

@@ -129,10 +129,7 @@ fn main() {
 				exit(1)
 			}
 		}
-		app.show_current_v_version()
-		app.wipe_cache()
-		app.report_skills()
-		app.report_fmt_hook()
+		app.finish_update()
 		return
 	}
 	if os.user_os() == 'windows' {
@@ -154,10 +151,27 @@ fn main() {
 		eprintln('`v up` failed. Run `cd ${os.quoted_path(app.vroot)} && ${v_upstream_pull_command()} && ${get_make_cmd_name()}` to finish updating V.')
 		exit(1)
 	}
+	app.finish_update()
+}
+
+// finish_update lets the Windows launcher clean caches after this executable exits.
+fn (app App) finish_update() {
+	// Private handshake; keep in sync with cmd/v/toolcache.v.
+	deferred_wipe_exit_code := 80
 	app.show_current_v_version()
-	app.wipe_cache()
+	defer_cleanup := $if windows {
+		os.getenv('VUP_DEFER_CACHE_WIPE') == '1'
+	} $else {
+		false
+	}
+	if !defer_cleanup {
+		app.wipe_cache()
+	}
 	app.report_skills()
 	app.report_fmt_hook()
+	if defer_cleanup {
+		exit(deferred_wipe_exit_code)
+	}
 }
 
 fn (app App) wipe_cache() {

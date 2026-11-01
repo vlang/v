@@ -14,6 +14,9 @@ temporary, and compiled tool caches, including VCACHE, VTMP, V3CACHE, and
 VTOOLS_CACHE_DIR. This also runs when V is already up to date. Subsequent builds
 recreate the caches they need. Previously recorded build configurations and test
 selectors are not replayed. A failed cache cleanup makes the update fail.
+On Windows, the cached updater exits before its launcher wipes the caches,
+so the running executable does not block cleanup. Cleanup failures are returned
+by the launcher.
 
 It also reports the agent skills installed for this user, in ~/.agents/skills,
 that the new revision left behind. Skills with local changes, and skills

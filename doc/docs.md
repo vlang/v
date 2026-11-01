@@ -65,6 +65,9 @@ temporary, and compiled tool caches, even when V is already up to date.
 Subsequent builds recreate the caches they need. Previously recorded build
 configurations and test selectors are not replayed. A failed cache cleanup
 makes `v up` fail.
+On Windows, the cached updater exits before its launcher wipes the caches,
+so the running executable does not block cleanup. Cleanup failures are returned
+by the launcher.
 
 `make` also warms the default test configuration's builtin module bundle, including
 `strings`, `strconv`, `hash` and `bits`. Compatible test builds reuse these objects
