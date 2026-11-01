@@ -2,6 +2,7 @@ module driver
 
 import os
 import time
+import v.cmdexec
 import v.modulecache
 
 // The prelude of a module object of a Windows `-prod` build, as the generator
@@ -263,6 +264,7 @@ fn test_windows_pch_is_not_rebuilt_every_build_when_its_headers_cannot_be_told()
 	assert failed.len == 1, os.ls(root)!.str()
 	// The next build within the hour does not build it again.
 	marker := os.join_path(root, failed[0])
+	assert os.read_file(marker)!.contains('cannot be told apart'), os.read_file(marker)!
 	old := time.now().unix() - 600
 	os.utime(marker, old, old)!
 	marked := os.file_last_mod_unix(marker)
@@ -397,6 +399,68 @@ fn test_windows_pch_refuses_a_header_that_came_by_a_directory_during_the_build()
 	os.mv(stage + '/sub', early + '/sub')!
 	assert v3_windows_pch_inputs(read, search, header, before)?.files.contains(early + '/sub/inc.h')
 	assert !v3_windows_pch_reads_the_same(clang, args, header, read)
+}
+
+// A compiler that moves a directory into an earlier include directory while it
+// precompiles: what a build that publishes a header it would not read now looks
+// like. The directories come from the environment.
+const windows_pch_moving_clang = 'import os
+
+fn main() {
+	mut p := os.new_process(os.getenv("MOVING_CLANG_REAL"))
+	p.set_args(os.args[1..])
+	p.run()
+	p.wait()
+	if "-MD" in os.args && os.exists(os.getenv("MOVING_CLANG_FROM")) {
+		os.mv(os.getenv("MOVING_CLANG_FROM"), os.getenv("MOVING_CLANG_TO")) or { exit(3) }
+	}
+	exit(p.code)
+}
+'
+
+fn test_windows_pch_is_not_recorded_when_its_headers_moved_while_it_built() ! {
+	$if !windows {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'windows_pch_moving_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+		os.unsetenv('MOVING_CLANG_REAL')
+		os.unsetenv('MOVING_CLANG_FROM')
+		os.unsetenv('MOVING_CLANG_TO')
+	}
+	wrapper := os.join_path(root, 'movingclang.exe')
+	os.write_file(os.join_path(root, 'movingclang.v'), windows_pch_moving_clang)!
+	built := cmdexec.run(@VEXE, ['-o', wrapper, os.join_path(root, 'movingclang.v')])
+	assert built.exit_code == 0, built.output
+	early := v3_windows_pch_path(os.join_path(root, 'early'))
+	stage := v3_windows_pch_path(os.join_path(root, 'stage'))
+	os.mkdir_all(early)!
+	os.mkdir_all(stage + '/sys')!
+	os.write_file(stage + '/sys/stat.h', '#include_next <sys/stat.h>\n')!
+	time.sleep(2 * time.second)
+	os.setenv('MOVING_CLANG_REAL', clang, true)
+	os.setenv('MOVING_CLANG_FROM', stage + '/sys', true)
+	os.setenv('MOVING_CLANG_TO', early + '/sys', true)
+	cache := os.join_path(root, 'cache')
+	os.mkdir_all(cache)!
+	compiler := V3CachedObjectCompiler{
+		path:     wrapper
+		identity: 'test clang moving ${os.getpid()}'
+	}
+	args := ['-std=gnu11', '-O2', '-I', early]
+	mut known := map[string]string{}
+	// The build read the SDK's sys/stat.h; early/sys/stat.h came in after it
+	// looked, with the times it had: the header is not published.
+	assert v3_windows_pch(compiler, args, cache, mut known) == none
+	assert os.is_file(early + '/sys/stat.h')
+	assert (os.ls(cache)!).filter(it.ends_with('.inputs') || it.ends_with('.pch')) == []
+	// The next build, with the directory in place, makes one that holds.
+	known = map[string]string{}
+	os.setenv('MOVING_CLANG_FROM', stage + '/none', true)
+	assert v3_windows_pch(compiler, args, cache, mut known) or { '' } != ''
 }
 
 fn test_windows_pch_record_holds_while_its_inputs_do() ! {
@@ -593,7 +657,11 @@ fn test_windows_pch_flags_configure_sdk() {
 		'S:/repo/vlang/thirdparty/stdatomic/win'])
 	assert !v3_windows_pch_flags_configure_sdk(['-O0', '-g', '-gdwarf-4', '-municode', '-m64',
 		'-fuse-ld=lld', '-fPIC', '-flto', '-pipe', '-pthread', '-Werror', '-Wall', '-Ix', '-isystem',
-		'S:/sdk', '-idirafter', 'S:/x', '-iquote', 'S:/y'])
+		'S:/sdk', '-idirafter', 'S:/x'])
+	// A directory searched for `#include "..."` alone stands in the search list
+	// clang prints once for both forms, where the record cannot tell its place.
+	assert v3_windows_pch_flags_configure_sdk(['-iquote', 'S:/y'])
+	assert v3_windows_pch_flags_configure_sdk(['-Ix', '-I-'])
 	assert v3_windows_pch_flags_configure_sdk(['--define-macro=V_X/**/'])
 	assert v3_windows_pch_flags_configure_sdk(['-D=1'])
 	assert v3_windows_pch_flags_configure_sdk(['-U', '(x)'])

@@ -194,7 +194,10 @@ fn v3_windows_pch_guard_of(directive string, name string) bool {
 // not check against the precompiled header. Only flags of a known shape pass:
 // the definition of a macro by a plain identifier, an include directory, and
 // the families that select the language standard, optimization, code
-// generation and warnings.
+// generation and warnings. A directory searched for `#include "..."` alone
+// (`-iquote`, or `-I` before `-I-`) is refused as well: Clang prints the
+// directories of both searches as one list, where the record would place it
+// before directories it is searched after (see v3_windows_pch_inputs).
 fn v3_windows_pch_flags_configure_sdk(args []string) bool {
 	mut operand_of := ''
 	for arg in args {
@@ -206,9 +209,12 @@ fn v3_windows_pch_flags_configure_sdk(args []string) bool {
 			}
 			continue
 		}
-		if arg in v3_windows_pch_macro_options || arg in ['-I', '-isystem', '-idirafter', '-iquote'] {
+		if arg in v3_windows_pch_macro_options || arg in ['-I', '-isystem', '-idirafter'] {
 			operand_of = arg
 			continue
+		}
+		if arg == '-I-' {
+			return true
 		}
 		if arg.starts_with('-D') || arg.starts_with('-U') {
 			if !v3_windows_pch_plain_macro(arg[2..]) {
