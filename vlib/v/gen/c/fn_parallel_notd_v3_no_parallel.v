@@ -3578,6 +3578,7 @@ fn (g &FlatGen) clone_parallel_type_checker_legacy() &types.TypeChecker {
 		fn_param_types:                        g.tc.fn_param_types
 		c_fn_module_ret_types:                 g.tc.c_fn_module_ret_types
 		c_fn_module_param_types:               g.tc.c_fn_module_param_types
+		c_fn_referenced_types:                 g.tc.c_fn_referenced_types
 		c_fn_module_variadic:                  g.tc.c_fn_module_variadic
 		fn_ret_type_texts:                     g.tc.fn_ret_type_texts
 		fn_param_type_texts:                   g.tc.fn_param_type_texts

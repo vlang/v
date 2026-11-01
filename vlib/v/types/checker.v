@@ -1206,6 +1206,7 @@ pub mut:
 	v_fn_semantic_names              map[string]bool
 	c_fn_module_ret_types            map[string]Type
 	c_fn_module_param_types          map[string][]Type
+	c_fn_referenced_types            map[u32]bool
 	c_fn_module_variadic             map[string]bool
 	c_fn_abi_variadic_prefixes       map[string]int
 	fn_shared_params                 map[string][]bool
@@ -1706,6 +1707,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		fn_param_types:                          map[string][]Type{}
 		c_fn_module_ret_types:                   map[string]Type{}
 		c_fn_module_param_types:                 map[string][]Type{}
+		c_fn_referenced_types:                   map[u32]bool{}
 		c_fn_module_variadic:                    map[string]bool{}
 		c_fn_abi_variadic_prefixes:              map[string]int{}
 		fn_shared_params:                        map[string][]bool{}
@@ -1874,6 +1876,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		fn_param_types:                        tc.fn_param_types
 		c_fn_module_ret_types:                 tc.c_fn_module_ret_types
 		c_fn_module_param_types:               tc.c_fn_module_param_types
+		c_fn_referenced_types:                 tc.c_fn_referenced_types
 		c_fn_module_variadic:                  tc.c_fn_module_variadic
 		c_fn_abi_variadic_prefixes:            tc.c_fn_abi_variadic_prefixes
 		fn_shared_params:                      tc.fn_shared_params
@@ -5196,6 +5199,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 				}
 				tc.register_visible_mutation_fn_decl(tl_idx, tc.cur_module, c_name, c_name)
 				ret_type := tc.parse_type(node.typ)
+				tc.register_c_fn_referenced_type(ret_type)
 				mut ptypes := []Type{}
 				mut is_variadic := false
 				for i in 0 .. node.children_count {
@@ -5210,6 +5214,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 						is_variadic = true
 					}
 					parsed_param_type := tc.parse_type(child.typ)
+					tc.register_c_fn_referenced_type(parsed_param_type)
 					ptypes << if child.is_mut {
 						mut_param_semantic_type(*parsed_param_type)
 					} else {
