@@ -242,3 +242,23 @@ readings to measure elapsed time; the value is not a Unix timestamp or a portabl
 
 Darwin clock initialization retains its native function declarations in cached and uncached C
 builds, preserving headerless output without adding a Mach SDK include to the module.
+
+## Tickers
+
+`time.new_ticker(d)` sends periodic time values on `ticker.c`. The duration must be positive;
+zero and negative durations panic. The channel holds at most one tick. A slow receiver causes
+ticks to be dropped, while later ticks continue on the original monotonic schedule.
+
+Call `ticker.stop()` when finished to release its waiting worker, even for a long interval.
+It waits for the worker to finish and removes any buffered tick. The channel stays open,
+and repeated or concurrent calls to `stop()` are safe.
+
+```v
+import time
+
+mut ticker := time.new_ticker(10 * time.millisecond)
+defer { ticker.stop() }
+for _ in 0 .. 3 {
+	println(<-ticker.c)
+}
+```
