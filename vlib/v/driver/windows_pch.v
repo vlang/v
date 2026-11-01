@@ -1,6 +1,7 @@
 module driver
 
 import os
+import strings
 import time
 import v.cmdexec
 import v.modulecache
@@ -562,80 +563,174 @@ fn v3_windows_pch_inputs(read []string, search []string, header string, before i
 	return inputs
 }
 
-// v3_windows_pch_include_names returns the names the C `text` includes in angle
-// brackets, and those it includes in quotation marks or asks `__has_include`
-// about, each as it writes them, or none when it includes or asks about a name
-// a macro gives. Every directive of the text counts, the ones a conditional
-// leaves out as well.
-fn v3_windows_pch_include_names(text string) ?([]string, []string) {
+// v3_windows_pch_include_names returns the names the C `source` includes in
+// angle brackets, and those it includes in quotation marks or asks
+// `__has_include` about, each as it writes them. Every directive of the text
+// counts, the ones a conditional leaves out as well. The text is read as the
+// compiler reads it (v3_windows_pch_code), and every word that can name a file
+// has to be one of those, spelled out: it returns none for a name a macro
+// gives, any other use of such a word (`#pragma include_alias`, `#embed`,
+// `__has_include` through another macro), and the digraph and trigraph that
+// can start a directive, so that no file the compiler may look for goes
+// without a place.
+fn v3_windows_pch_include_names(source string) ?([]string, []string) {
+	text := v3_windows_pch_code(source)
 	mut angled := []string{}
 	mut quoted := []string{}
-	for line in text.split_into_lines() {
-		trimmed := line.trim_space()
-		if !trimmed.starts_with('#') {
+	mut i := 0
+	for i < text.len {
+		c := text[i]
+		if c == `"` || c == `'` {
+			i = v3_c_skip_literal(text, i)
 			continue
 		}
-		directive := trimmed[1..].trim_left(' \t')
-		for keyword in ['include_next', 'include', 'import'] {
-			if !directive.starts_with(keyword) {
-				continue
-			}
-			rest := directive[keyword.len..].trim_left(' \t')
-			close := if rest.starts_with('<') {
-				'>'
-			} else if rest.starts_with('"') {
-				'"'
-			} else {
-				return none
-			}
-			end := rest.index_after_(close, 1)
-			if end <= 1 {
-				return none
-			}
-			name := rest[1..end]
-			if close == '>' {
-				if name !in angled {
-					angled << name
-				}
-			} else if name !in quoted {
-				quoted << name
-			}
-			break
-		}
-	}
-	// `__has_include(` followed by anything but a written name asks about one a
-	// macro gives.
-	mut pos := 0
-	for {
-		found := text.index_after_('__has_include', pos)
-		if found < 0 {
-			break
-		}
-		pos = found + '__has_include'.len
-		mut next := pos
-		if text[next..].starts_with('_next') {
-			next += '_next'.len
-		}
-		for next < text.len && text[next] in [` `, `\t`] {
-			next++
-		}
-		if next >= text.len || text[next] != `(` {
-			continue
-		}
-		next++
-		for next < text.len && text[next] in [` `, `\t`] {
-			next++
-		}
-		if next >= text.len || text[next] !in [`<`, `"`] {
+		if (c == `%` && i + 1 < text.len && text[i + 1] == `:`)
+			|| (c == `?` && i + 2 < text.len && text[i + 1] == `?` && text[i + 2] == `=`) {
 			return none
 		}
-	}
-	for name in v3_has_include_names(text) {
-		if name !in quoted {
-			quoted << name
+		if c.is_digit() {
+			i = v3_c_skip_number(text, i)
+			continue
+		}
+		end := v3_c_identifier_end(text, i)
+		if end == i {
+			i++
+			continue
+		}
+		word := text[i..end]
+		start := i
+		i = end
+		match word {
+			'warning', 'error' {
+				// The message of `#warning` and `#error` is text, not tokens.
+				if v3_windows_pch_directive(text, start) {
+					line_end := text.index_after_('\n', i)
+					i = if line_end < 0 { text.len } else { line_end }
+				}
+			}
+			'include', 'include_next', 'import' {
+				if !v3_windows_pch_directive(text, start) {
+					return none
+				}
+				name, angle, after := v3_windows_pch_written_name(text, i)?
+				if angle {
+					if name !in angled {
+						angled << name
+					}
+				} else if name !in quoted {
+					quoted << name
+				}
+				i = after
+			}
+			'__has_include', '__has_include_next' {
+				mut next := i
+				for next < text.len && text[next] in [` `, `\t`] {
+					next++
+				}
+				if next < text.len && text[next] == `(` {
+					name, _, after := v3_windows_pch_written_name(text, next + 1)?
+					if name !in quoted {
+						quoted << name
+					}
+					i = after
+					continue
+				}
+				// A test whether it is there: `defined(__has_include)`,
+				// `#ifdef __has_include`.
+				mut back := start - 1
+				for back >= 0 && text[back] in [` `, `\t`, `(`] {
+					back--
+				}
+				mut first := back
+				for first >= 0 && (text[first] == `_` || text[first].is_alnum()) {
+					first--
+				}
+				if text[first + 1..back + 1] !in ['defined', 'ifdef', 'ifndef'] {
+					return none
+				}
+			}
+			'include_alias', 'embed', '__has_embed' {
+				return none
+			}
+			else {}
 		}
 	}
 	return angled, quoted
+}
+
+// v3_windows_pch_directive reports whether the word at `start` in `text` names a
+// directive: `#` is the first thing on its line, and the word the next.
+fn v3_windows_pch_directive(text string, start int) bool {
+	mut hash := start - 1
+	for hash >= 0 && text[hash] in [` `, `\t`] {
+		hash--
+	}
+	mut line := hash - 1
+	for line >= 0 && text[line] in [` `, `\t`] {
+		line--
+	}
+	return hash >= 0 && text[hash] == `#` && (line < 0 || text[line] == `\n`)
+}
+
+// v3_windows_pch_written_name returns the name written at `start` in `text`,
+// after blanks: in angle brackets or quotation marks on one line, whether it is
+// in angle brackets, and the position after it; none for anything else.
+fn v3_windows_pch_written_name(text string, start int) ?(string, bool, int) {
+	mut i := start
+	for i < text.len && text[i] in [` `, `\t`] {
+		i++
+	}
+	if i >= text.len || text[i] !in [`<`, `"`] {
+		return none
+	}
+	close := if text[i] == `<` { `>` } else { `"` }
+	mut end := i + 1
+	for end < text.len && text[end] != close && text[end] != `\n` {
+		end++
+	}
+	if end >= text.len || text[end] != close || end == i + 1 {
+		return none
+	}
+	return text[i + 1..end], close == `>`, end + 1
+}
+
+// v3_windows_pch_code returns the C `source` as the compiler reads it before it
+// takes tokens: without a byte order mark, with every line that ends in a
+// backslash joined to the next, and with a space for every comment, which keeps
+// the lines of a comment that spans them.
+fn v3_windows_pch_code(source string) string {
+	mut text := source
+	if text.starts_with('\xef\xbb\xbf') {
+		text = text[3..]
+	}
+	text = text.replace('\\\r\n', '').replace('\\\n', '')
+	mut out := strings.new_builder(text.len)
+	mut i := 0
+	for i < text.len {
+		c := text[i]
+		if c == `"` || c == `'` {
+			end := v3_c_skip_literal(text, i)
+			out.write_string(text[i..end])
+			i = if end > i { end } else { i + 1 }
+			continue
+		}
+		if c == `/` {
+			after := v3_c_skip_comment(text, i)
+			if after > i {
+				out.write_u8(` `)
+				for ch in text[i..after] {
+					if ch == `\n` {
+						out.write_u8(`\n`)
+					}
+				}
+				i = after
+				continue
+			}
+		}
+		out.write_u8(c)
+		i++
+	}
+	return out.str()
 }
 
 // v3_windows_pch_reads returns the headers that `compiler`, preprocessing

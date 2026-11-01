@@ -367,7 +367,10 @@ fn test_windows_pch_is_rebuilt_when_the_compiler_would_find_other_headers() ! {
 	assert sixth.len == 1 && sixth != fifth, '${fifth} ${sixth}'
 }
 
-fn test_windows_pch_refuses_a_header_that_came_by_a_directory_during_the_build() ! {
+// What test_windows_pch_is_not_recorded_when_its_headers_moved_while_it_built
+// relies on: a header that came with a directory passes for one the build
+// passed over, and only the compiler tells that it reads it now.
+fn test_windows_pch_takes_a_header_that_came_by_a_directory_for_one_passed_over() ! {
 	$if !windows {
 		return
 	}
@@ -531,6 +534,27 @@ fn test_windows_pch_places_come_from_the_names_the_headers_include() ! {
 	for place in [early + '/x.h', v3_windows_pch_path(root + '/İa/shared/y.h'),
 		early + '/specstrings.h', early + '/SpecStrings.h'] {
 		assert place in inputs.missing, '${place} not in ${inputs.missing}'
+	}
+	// Names Clang finds as it reads the text: after a comment, across a line
+	// splice, after a byte order mark, and asked of __has_include across a
+	// comment or a splice; a test for __has_include itself asks about none, and
+	// neither does the text of a #warning or #error (winsock2.h warns to
+	// "include winsock2.h before windows.h").
+	os.write_file(shared + '/y.h', '/* c */ #include <w1.h>\n#inc\\\nlude <w2.h>\n#if __has_include /**/ (<w4.h>) || __has_include\\\n(<w5.h>)\n#endif\n#if defined(__has_include) && defined __has_include_next\n#endif\n#ifdef __has_include\n#endif\n#warning Please include w1.h first\n#error include nothing\n')!
+	os.write_file(late + '/x.h', '\xef\xbb\xbf#include <w3.h>\n#include <specstrings.h>\n#include <SpecStrings.h>\n')!
+	time.sleep(2 * time.second)
+	spelled := v3_windows_pch_inputs(read, search, header, time.utc().unix() - 1)?
+	for name in ['w1.h', 'w2.h', 'w3.h', 'w4.h', 'w5.h'] {
+		assert early + '/' + name in spelled.missing, '${name} not in ${spelled.missing}'
+	}
+	// Any other way to name a file, or a name Clang could be given that the
+	// text does not spell, leaves the places unknown.
+	for text in ['%:include <x.h>\n', '??=include <x.h>\n',
+		'#define HI __has_include\n#if HI(<x.h>)\n#endif\n', '#pragma include_alias(<a.h>, <b.h>)\n',
+		'#embed <x.bin>\n', '#if __has_embed(<x.bin>)\n#endif\n', '#include\n'] {
+		os.write_file(shared + '/y.h', text)!
+		time.sleep(1100 * time.millisecond)
+		assert v3_windows_pch_inputs(read, search, header, time.utc().unix() - 1) == none, text
 	}
 	// A name a macro gives is not known: no record can say where it was looked for.
 	os.write_file(shared + '/y.h', '#define Y_NEXT "z.h"\n#include Y_NEXT\n')!
