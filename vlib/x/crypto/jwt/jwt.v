@@ -18,6 +18,12 @@ pub enum Algorithm {
 	hs384
 	hs512
 	eddsa
+	rs256
+	rs384
+	rs512
+	ps256
+	ps384
+	ps512
 }
 
 // str returns the standard string identifier (e.g. 'HS256', 'EdDSA') for the algorithm.
@@ -27,6 +33,12 @@ pub fn (a Algorithm) str() string {
 		.hs384 { 'HS384' }
 		.hs512 { 'HS512' }
 		.eddsa { 'EdDSA' }
+		.rs256 { 'RS256' }
+		.rs384 { 'RS384' }
+		.rs512 { 'RS512' }
+		.ps256 { 'PS256' }
+		.ps384 { 'PS384' }
+		.ps512 { 'PS512' }
 	}
 }
 
@@ -37,6 +49,12 @@ pub fn parse_algorithm(name string) !Algorithm {
 		'HS384' { Algorithm.hs384 }
 		'HS512' { Algorithm.hs512 }
 		'EdDSA' { Algorithm.eddsa }
+		'RS256' { Algorithm.rs256 }
+		'RS384' { Algorithm.rs384 }
+		'RS512' { Algorithm.rs512 }
+		'PS256' { Algorithm.ps256 }
+		'PS384' { Algorithm.ps384 }
+		'PS512' { Algorithm.ps512 }
 		else { error('unsupported or invalid JWT algorithm: ${name}') }
 	}
 }
@@ -52,13 +70,89 @@ pub mut:
 // StandardClaims contains the standard registered claims defined in RFC 7519 section 4.1.
 pub struct StandardClaims {
 pub mut:
-	iss ?string // Issuer
-	sub ?string // Subject
-	aud ?string // Audience
-	exp ?i64    // Expiration Time (Unix timestamp in seconds)
-	nbf ?i64    // Not Before (Unix timestamp in seconds)
-	iat ?i64    // Issued At (Unix timestamp in seconds)
-	jti ?string // JWT ID
+	iss ?string   // Issuer
+	sub ?string   // Subject
+	aud ?Audience // Audience: one or several recipients
+	exp ?i64      // Expiration Time (Unix timestamp in seconds)
+	nbf ?i64      // Not Before (Unix timestamp in seconds)
+	iat ?i64      // Issued At (Unix timestamp in seconds)
+	jti ?string   // JWT ID
+}
+
+// Audience is the value of the `aud` claim: the recipients a token is meant for.
+// RFC 7519 §4.1.3 allows it as a single string or an array of strings; both
+// decode into `values`, and an audience with one recipient encodes as a string.
+pub struct Audience {
+pub mut:
+	values []string
+}
+
+// Audience.new returns the audience made of `values`.
+pub fn Audience.new(values ...string) Audience {
+	return Audience{
+		values: values
+	}
+}
+
+// contains reports whether `recipient` is one of the audiences.
+pub fn (a Audience) contains(recipient string) bool {
+	return recipient in a.values
+}
+
+// from_json decodes the `aud` claim, a string or an array of strings. It
+// implements `json2.ValueDecoder`, and keeps only the strings of other values:
+// `verify` and `decode` reject an `aud` of any other form before decoding.
+pub fn (mut a Audience) from_json(value json2.Any) {
+	a.values = []string{}
+	if value is string {
+		a.values << value
+	} else if value is []json2.Any {
+		for item in value {
+			if item is string {
+				a.values << item
+			}
+		}
+	}
+}
+
+// to_json encodes the audience as a string when it has one recipient, and as an
+// array of strings otherwise. It implements `json2.JsonEncoder`.
+pub fn (a Audience) to_json() string {
+	if a.values.len == 1 {
+		return json2.encode(a.values[0], escape_unicode: true)
+	}
+	return json2.encode(a.values, escape_unicode: true)
+}
+
+// RegisteredClaims holds the registered claims that verification checks, except
+// `aud`, which can be a string or an array of strings and is read separately.
+struct RegisteredClaims {
+	iss ?string
+	sub ?string
+	exp ?i64
+	nbf ?i64
+	iat ?i64
+	jti ?string
+}
+
+// audience_values returns the audiences of the `aud` claim, which RFC 7519
+// §4.1.3 allows as a single string or an array of strings.
+fn audience_values(claims map[string]json2.Any) ![]string {
+	value := claims['aud'] or { return []string{} }
+	if value is string {
+		return [value]
+	}
+	if value is []json2.Any {
+		mut audiences := []string{cap: value.len}
+		for item in value {
+			if item !is string {
+				return error('invalid JWT claim: aud must be a string or an array of strings')
+			}
+			audiences << item as string
+		}
+		return audiences
+	}
+	return error('invalid JWT claim: aud must be a string or an array of strings')
 }
 
 // is_expired returns true if `exp` is defined and `now` is at or past `exp`.
@@ -135,10 +229,7 @@ pub fn sign_with_secret[T](claims T, secret string, options SignOptions) !string
 // sign_raw signs an arbitrary raw JSON payload string using `header` and `key`.
 pub fn sign_raw(header Header, payload_json string, key []u8) !string {
 	alg := parse_algorithm(header.alg)!
-	header_json := json2.encode(header, escape_unicode: true)
-	encoded_header := base64.url_encode(header_json.bytes())
-	encoded_payload := base64.url_encode(payload_json.bytes())
-	signing_input := '${encoded_header}.${encoded_payload}'
+	signing_input := encode_signing_input(header, payload_json)
 
 	sig := match alg {
 		.hs256 {
@@ -156,9 +247,21 @@ pub fn sign_raw(header Header, payload_json string, key []u8) !string {
 			}
 			ed25519.sign(key, signing_input.bytes())!
 		}
+		.rs256, .rs384, .rs512, .ps256, .ps384, .ps512 {
+			rsa_sign(alg, key, signing_input.bytes())!
+		}
 	}
 	encoded_sig := base64.url_encode(sig)
 	return '${signing_input}.${encoded_sig}'
+}
+
+// encode_signing_input returns the JWS signing input: the base64url-encoded
+// header and payload, joined by a dot.
+fn encode_signing_input(header Header, payload_json string) string {
+	header_json := json2.encode(header, escape_unicode: true)
+	encoded_header := base64.url_encode(header_json.bytes())
+	encoded_payload := base64.url_encode(payload_json.bytes())
+	return '${encoded_header}.${encoded_payload}'
 }
 
 // verify validates token signature, header, standard claims, and decodes claims into `T`.
@@ -235,6 +338,11 @@ pub fn verify_raw(token string, key []u8, options VerifyOptions) !string {
 				return error('invalid token signature')
 			}
 		}
+		.rs256, .rs384, .rs512, .ps256, .ps384, .ps512 {
+			if !rsa_verify(alg, key, signing_input.bytes(), expected_sig)! {
+				return error('invalid token signature')
+			}
+		}
 	}
 
 	// Validate standard claims without JSON coercions or ambiguous duplicate fields.
@@ -244,12 +352,13 @@ pub fn verify_raw(token string, key []u8, options VerifyOptions) !string {
 			if value is json2.Null {
 				return error('invalid JWT claim: ${name} cannot be null')
 			}
-			if name in ['iss', 'sub', 'aud', 'jti'] && value !is string {
+			if name in ['iss', 'sub', 'jti'] && value !is string {
 				return error('invalid JWT claim: ${name} must be a string')
 			}
 		}
 	}
-	std_claims := json2.decode[StandardClaims](payload_json, strict: true) or {
+	audiences := audience_values(claim_values)!
+	std_claims := json2.decode[RegisteredClaims](payload_json, strict: true) or {
 		return error('invalid JWT claims: ${err.msg()}')
 	}
 	if options.leeway < 0 {
@@ -284,12 +393,11 @@ pub fn verify_raw(token string, key []u8, options VerifyOptions) !string {
 	}
 
 	if expected_aud := options.expected_audience {
-		if aud := std_claims.aud {
-			if aud != expected_aud {
-				return error('token audience mismatch: expected "${expected_aud}", got "${aud}"')
-			}
-		} else {
+		if audiences.len == 0 {
 			return error('token missing required audience claim ("aud")')
+		}
+		if expected_aud !in audiences {
+			return error('token audience mismatch: expected "${expected_aud}", got "${audiences.join('", "')}"')
 		}
 	}
 
@@ -339,6 +447,8 @@ pub fn decode[T](token string) !Token[T] {
 		return error('invalid token format: expected 3 dot-separated parts')
 	}
 	header, payload_json := decode_raw(token)!
+	// The audience must have one of its two forms, as when verifying.
+	audience_values(decode_object(payload_json, 'claims')!)!
 	claims := json2.decode[T](payload_json, strict: true) or {
 		return error('failed to decode claims into requested type: ${err.msg()}')
 	}
