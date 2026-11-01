@@ -49,6 +49,7 @@ MCP tools exposed:
 - `vls_definition`: go to definition at a position.
 - `vls_references`: find references at a position.
 - `vls_rename`: rename a symbol at a position.
+- `vls_symbols`: list document symbols in a file.
 
 VLS is usually launched by the editor (VS Code, etc.), not by hand. For agent
 use, invoke `vls` over stdio with LSP framing, or use the editor's LSP client.
