@@ -225,6 +225,30 @@ timestamps, keeping `Time.nanosecond` in `0 .. 999_999_999`. `unix_nanosecond` a
 `unix_microsecond` carry out-of-range subsecond arguments into the seconds component.
 `Location.unix_nanosecond_to_local` applies the same normalization before choosing the zone.
 
+## Timers
+
+`time.new_timer(d)` sends the current time once on `timer.c` after at least `d`.
+The channel has capacity one, and nonpositive durations expire immediately.
+Call `timer.stop()` when abandoning a timer to release its waiting worker.
+
+`stop()` cancels an active expiration, waits for its worker to finish, and removes any buffered
+value. It returns `true` when it canceled an active worker and `false` after the timer had sent
+its value or was already stopped. It leaves `timer.c` open.
+
+`reset(d)` cancels the previous expiration, removes any buffered value, and starts a new wait.
+It returns whether the previous timer was active, using the same definition as `stop()`.
+Receives begun after `reset()` returns cannot receive a value from the previous expiration.
+Calls to `stop()` and `reset()` on the same timer are safe from concurrent threads.
+
+```v
+import time
+
+mut timer := time.new_timer(time.second)
+defer { timer.stop() }
+timer.reset(10 * time.millisecond)
+println(<-timer.c)
+```
+
 ## Calendar arithmetic and monotonic readings
 
 `Time.weekday()` returns a `Weekday` enum using ISO numbering: Monday is 1 and Sunday is 7.
