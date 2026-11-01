@@ -2800,11 +2800,19 @@ fn c_add_cache_native_source_root(mut native_source_roots map[string][]string, m
 	return true
 }
 
-// cache_native_inputs_need_objective_c reports whether cgen must implicitly
-// compile the generated translation unit as Objective-C because of a native
-// input rather than an explicit compiler flag.
+// cache_native_inputs_need_objective_c reports whether native inputs need an
+// Objective-C-capable toolchain, including sources compiled in separate wrappers.
 pub fn cache_native_inputs_need_objective_c(a &flat.FlatAst, vroot string, c_flags []string, c99_mode bool, ccompiler string, target pref.Target) bool {
 	return cache_native_inputs_language(a, vroot, c_flags, c99_mode, ccompiler, target) in [
+		'objective-c',
+		'objective-c++',
+	]
+}
+
+// generated_c_unit_needs_objective_c excludes ordinary .mm includes, which cgen
+// compiles in separate Objective-C++ wrappers rather than in the generated unit.
+pub fn generated_c_unit_needs_objective_c(a &flat.FlatAst, vroot string, c_flags []string, c99_mode bool, ccompiler string, target pref.Target) bool {
+	return native_inputs_language(a, vroot, c_flags, c99_mode, ccompiler, target, true) in [
 		'objective-c',
 		'objective-c++',
 	]
@@ -2880,6 +2888,10 @@ pub fn cache_native_dependency_directives(a &flat.FlatAst, vroot string, flags [
 // definitely inactive is skipped: cgen omits such an include too, so it must not
 // force the generated unit into Objective-C or rule out TCC.
 pub fn cache_native_inputs_language(a &flat.FlatAst, vroot string, c_flags []string, c99_mode bool, ccompiler string, target pref.Target) string {
+	return native_inputs_language(a, vroot, c_flags, c99_mode, ccompiler, target, false)
+}
+
+fn native_inputs_language(a &flat.FlatAst, vroot string, c_flags []string, c99_mode bool, ccompiler string, target pref.Target, for_generated_unit bool) string {
 	include_dirs := c_flag_include_dirs(c_flags)
 	mut contexts := CacheNativeSourceContexts{}
 	mut need_objc := false
@@ -2906,6 +2918,12 @@ pub fn cache_native_inputs_language(a &flat.FlatAst, vroot string, c_flags []str
 		}
 		if c_include_arg_is_source_file(include_arg) {
 			for path in c_include_file_paths(include_arg, vroot, cur_file, include_dirs) {
+				// Match collect_c_directive_at's resolved source path when deciding
+				// whether this include is compiled in a separate wrapper.
+				if for_generated_unit && node.value == 'include'
+					&& os.real_path(path).ends_with('.mm') {
+					continue
+				}
 				language := cache_native_input_language(path, c_flags, c99_mode, target)
 				if node.value == 'include' && (path.ends_with('.m') || path.ends_with('.mm')) {
 					if !contexts.ready {

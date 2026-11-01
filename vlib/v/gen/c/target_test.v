@@ -361,6 +361,25 @@ fn test_cache_native_input_language_reports_source_language() {
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(mm_program)
 	assert cache_native_inputs_language(a, '', []string{}, false, 'clang', prefs.target) == 'objective-c++'
+	assert cache_native_inputs_need_objective_c(a, '', []string{}, false, 'clang', prefs.target)
+	assert !generated_c_unit_needs_objective_c(a, '', []string{}, false, 'clang', prefs.target)
+	// Only ordinary includes use separate wrappers. Explicit insertion still
+	// contributes the source language to the generated translation unit.
+	for directive in ['insert', 'preinclude', 'postinclude'] {
+		program := os.join_path(dir, '${directive}_program.v')
+		os.write_file(program, 'module sample\n#${directive} "impl.mm"\n')!
+		mut explicit_parser := parser.Parser.new(prefs)
+		explicit_ast := explicit_parser.parse_file(program)
+		assert generated_c_unit_needs_objective_c(explicit_ast, '', []string{}, false,
+			'clang', prefs.target), directive
+	}
+	// An active .m include still lives in the generated unit, even beside .mm.
+	mixed_program := os.join_path(dir, 'mixed_program.v')
+	os.write_file(mixed_program, 'module sample\n#include "impl.mm"\n#include "impl.m"\n')!
+	mut mixed_parser := parser.Parser.new(prefs)
+	mixed_ast := mixed_parser.parse_file(mixed_program)
+	assert generated_c_unit_needs_objective_c(mixed_ast, '', []string{}, false, 'clang',
+		prefs.target)
 }
 
 // Darwin header directives select Objective-C without opening the headers, while
@@ -385,6 +404,7 @@ fn test_cache_native_inputs_language_uses_objective_c_for_darwin_headers() {
 	mut p1 := parser.Parser.new(macos_prefs)
 	a1 := p1.parse_file(objc_program)
 	assert cache_native_inputs_language(a1, '', []string{}, false, 'clang', macos_prefs.target) == 'objective-c'
+	assert generated_c_unit_needs_objective_c(a1, '', []string{}, false, 'clang', macos_prefs.target)
 	assert cache_native_inputs_language(a1, '', []string{}, false, 'clang', ios) == 'objective-c'
 	assert cache_native_inputs_language(a1, '', []string{}, false, 'tinyc', macos_prefs.target) == 'c'
 	assert cache_native_inputs_language(a1, '', []string{}, false, 'clang', linux) == 'c'
