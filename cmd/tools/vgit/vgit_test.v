@@ -51,6 +51,27 @@ fn test_normalized_workpath_for_commit_resolves_the_base_dir() {
 	assert os.is_dir(workdir)
 }
 
+fn test_normalized_workpath_for_commit_resolves_symlinks_before_the_child_exists() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'vgit_workpath_symlink_${os.getpid()}')
+	workdir := os.join_path(root, 'workdir')
+	os.mkdir_all(workdir)!
+	defer { os.rmdir_all(root) or {} }
+	link := os.join_path(root, 'link')
+	os.symlink(workdir, link)!
+	child := os.join_path(workdir, 'v_at_master')
+	assert !os.exists(child)
+	assert normalized_workpath_for_commit(link, 'master') == os.join_path(os.real_path(workdir),
+		'v_at_master')
+	// Existing worktree symlinks must still resolve to their targets.
+	target := os.join_path(root, 'target')
+	os.mkdir_all(target)!
+	os.symlink(target, child)!
+	assert normalized_workpath_for_commit(link, 'master') == os.real_path(target)
+}
+
 fn test_check_v_commit_timestamp_before_self_rebuilding_returns_for_both_eras() {
 	// The warning branch only prints; neither branch is allowed to exit.
 	check_v_commit_timestamp_before_self_rebuilding(1561805697)
