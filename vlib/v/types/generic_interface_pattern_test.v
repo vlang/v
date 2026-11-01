@@ -21,6 +21,28 @@ fn test_generic_interface_pattern_names_keep_the_declared_base_and_arguments() {
 	}
 }
 
+fn test_generic_interface_pointer_patterns_preserve_wrappers() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_module = 'animation'
+	tc.cur_file = 'animation.v'
+	tc.structs[flat.source_type_id('animation.Animator')] = []StructField{}
+	tc.struct_generic_params[flat.source_type_id('animation.Animator')] = generic_param_ids(['T'])
+	tc.structs[flat.source_type_id('animation.Plain')] = []StructField{}
+	for prefix in ['&', '&&'] {
+		for name in ['Animator', 'animation.Animator'] {
+			pattern := tc.resolve_interface_match_pattern(flat.source_type_id('${prefix}${name}[f32]')) or {
+				panic('unresolved pattern ${prefix}${name}[f32]')
+			}
+			assert pattern == flat.source_type_id('${prefix}animation.Animator[f32]')
+		}
+		plain := tc.resolve_interface_match_pattern(flat.source_type_id('${prefix}Plain')) or {
+			panic('unresolved pattern ${prefix}Plain')
+		}
+		assert plain == flat.source_type_id('${prefix}animation.Plain')
+	}
+}
+
 const generic_interface_pattern_source = 'module animation
 
 pub interface Motion {
@@ -100,8 +122,15 @@ fn generic_interface_pattern_fixture(name string) string {
 }
 
 fn test_imported_generic_interface_patterns_preserve_pointer_identity() {
-	root := generic_interface_pattern_fixture('runtime')
+	verify_imported_generic_interface_pattern_pointer_identity('')
+	verify_imported_generic_interface_pattern_pointer_identity('&')
+}
+
+fn verify_imported_generic_interface_pattern_pointer_identity(pointer_prefix string) {
+	root := generic_interface_pattern_fixture('runtime_${pointer_prefix.len}')
 	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'animation', 'animation.v'), generic_interface_pattern_source.replace('is Animator[',
+		'is ${pointer_prefix}Animator[')) or { panic(err) }
 	os.write_file(os.join_path(root, 'main.v'), 'import animation
 fn main() { animation.verify_pool() }
 ') or { panic(err) }
@@ -126,15 +155,19 @@ fn test_interface_generic_patterns_still_require_known_compatible_types() {
 	defer { os.rmdir_all(root) or {} }
 	for pattern in [
 		'Missing[f32]',
+		'&Missing[f32]',
 		'Animator[Missing]',
+		'&Animator[Missing]',
 		'Animator[[]Missing]',
 		'Animator[map[string]Missing]',
 		'Animator[Animator[f32, f64]]',
 		'Animator[[]Animator[f32, f64]]',
 		'Animator[map[string]Animator[f32, f64]]',
 		'Animator[f32, f64]',
+		'&Animator[f32, f64]',
 		'Plain[f32]',
 		'Wrong[f32]',
+		'&Wrong[f32]',
 	] {
 		os.write_file(os.join_path(root, 'animation', 'invalid.v'), 'module animation
 pub fn invalid(mut value Motion) {

@@ -3157,7 +3157,12 @@ fn (tc &TypeChecker) multi_interface_match_common_interface(subject Interface, b
 }
 
 fn (tc &TypeChecker) resolve_interface_match_pattern(pattern_id u32) ?u32 {
-	syntax := flat.source_type_syntax(trimmed_source_type_id(pattern_id))
+	clean_id := trimmed_source_type_id(pattern_id)
+	syntax := flat.source_type_syntax(clean_id)
+	if flat.source_type_shape(clean_id).has(.pointer) {
+		base_id := tc.resolve_interface_match_pattern(syntax.raw_base())?
+		return flat.source_type_composition_one(.pointer, base_id)
+	}
 	if syntax.application_valid() {
 		// A concrete specialization is not necessarily registered as a type symbol
 		// until monomorphization. Resolve its declared base before qualifying it.
