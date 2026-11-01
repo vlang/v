@@ -15875,6 +15875,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 		outer_defer_result_allowed := p.defer_result_allowed
 		outer_nested_block_depth := p.nested_block_depth
 		outer_active_lambda_param_counts := p.active_lambda_param_counts.clone()
+		outer_local_binding_counts := p.local_binding_counts
 		// Skipped compile-time bodies in this literal belong to its node, not to
 		// the enclosing named function or literal.
 		p.cur_fn_offset = fn_start
@@ -15882,6 +15883,9 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 		p.defer_result_allowed = false
 		p.nested_block_depth = 0
 		p.active_lambda_param_counts.clear()
+		// Only parameters and explicit captures enter an anonymous function's local scope.
+		// Uncaptured enclosing locals must not shadow names declared in its body.
+		p.local_binding_counts = map[string]int{}
 		body_start := p.tok_pos
 		p.push_local_type_scope(p.fn_literal_local_type_scope(fn_start))
 		p.begin_comptime_value_scope()
@@ -15916,6 +15920,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 		}
 		p.check(.rcbr)
 		p.end_local_binding_scope()
+		p.local_binding_counts = outer_local_binding_counts
 		p.end_comptime_value_scope()
 		p.pop_local_type_scope()
 		p.cur_fn_offset = prev_fn_offset
