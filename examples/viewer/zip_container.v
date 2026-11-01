@@ -104,7 +104,8 @@ fn zip_format_hint(path string) string {
 fn (mut il Item_list) scan_zip(orig_path string, in_index int) ! {
 	println('Scanning ZIP [${orig_path}]')
 	path := ensure_ascii_zip(orig_path)!
-	mut zp := szip.open(path, szip.CompressionLevel.no_compression, szip.OpenMode.read_only) or {
+	// Lazy open: only the central directory is parsed, no entry is decoded.
+	mut zp := szip.open_lazy(path) or {
 		return error('${err}${zip_format_hint(orig_path)}')
 	}
 	n_entries := zp.total()!
@@ -163,13 +164,13 @@ fn (mut app App) load_current_bytes() ![]u8 {
 
 	// Reopen the zip only when the selected item belongs to a different archive
 	// than the one currently open. `item.path` is already ASCII-safe (set by
-	// scan_zip), so miniz can open it on Windows.
+	// scan_zip), so miniz can open it on Windows. The lazy open decodes only
+	// the entry that is actually read, not the whole archive.
 	if app.zip_index != item.container_index {
 		if app.zip_index >= 0 {
 			app.zip.close()
 		}
-		app.zip = szip.open(item.path, szip.CompressionLevel.no_compression,
-			szip.OpenMode.read_only)!
+		app.zip = szip.open_lazy(item.path)!
 		app.zip_index = item.container_index
 	}
 

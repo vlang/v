@@ -22,6 +22,7 @@ module main
 // and zip archives are scanned by `file_scan.v` / `zip_container.v`.
 
 import os
+import time
 import gg
 import sokol.gfx
 import sokol.sapp
@@ -756,9 +757,11 @@ fn run_scan_check(paths []string) {
 		return
 	}
 	mut il := Item_list{}
+	t0 := time.clock()
 	il.get_items_list(paths)
+	elapsed := time.clock() - t0
 	println('--- scan report ---')
-	println('drawable images: ${il.n_item}')
+	println('drawable images: ${il.n_item}  (scan ${elapsed} ms)')
 	for it in il.lst {
 		if it.drawable {
 			// Every branch interpolates so `src` is always an owned string
