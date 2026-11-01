@@ -132,7 +132,7 @@ fn C.v_net_openssl_SSL_CTX_client_CA_names_count(ctx &C.SSL_CTX) int
 
 fn C.SSL_new(&C.SSL_CTX) &C.SSL
 
-fn C.SSL_set_fd(ssl &C.SSL, fd i32) i32
+fn C.v_net_openssl_SSL_set_fd(ssl &C.SSL, fd i32) i32
 
 fn C.SSL_connect(&C.SSL) i32
 

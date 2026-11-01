@@ -1349,7 +1349,7 @@ fn test_v3_implicit_tcc_cpp_native_object_uses_platform_headers() {
 	cpp_object := os.join_path(root, 'native.o')
 	v_source := os.join_path(root, 'main.v')
 	output := os.join_path(root, 'main')
-	os.write_file(cpp_source, '#include <cstddef>\nextern "C" size_t v3_cpp_object_probe(void) { return sizeof(std::max_align_t); }\n')!
+	os.write_file(cpp_source, '#include <cstddef>\n#include <string>\nextern "C" size_t v3_cpp_object_probe(void) { return sizeof(std::max_align_t) + std::string("native").size(); }\n')!
 	os.write_file(v_source, '#flag ${cpp_object}\n\nfn C.v3_cpp_object_probe() uint\n\nfn main() {\n\tassert C.v3_cpp_object_probe() > 0\n}\n')!
 	old_vflags := os.getenv_opt('VFLAGS')
 	os.unsetenv('VFLAGS')

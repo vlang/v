@@ -1,3 +1,7 @@
+On Linux, TLS socket writes suppress SIGPIPE for each send. A closed peer produces
+an I/O error without changing the application's SIGPIPE handler. This also applies
+to writes performed during TLS handshakes, reads and shutdown.
+
 ## Upgrade an accepted TCP connection to TLS
 
 `new_ssl_server_conn(mut tcp_conn, config)` performs a server TLS handshake on an
