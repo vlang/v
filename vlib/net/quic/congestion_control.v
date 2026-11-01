@@ -85,6 +85,14 @@ pub fn (mut c NewRenoCongestionControl) on_packet_sent_cc(sent_bytes u64) {
 	c.bytes_in_flight += sent_bytes
 }
 
+// discard_packets removes packets whose keys were discarded from bytes in
+// flight without treating them as acknowledged or lost (RFC 9002 §6.4).
+pub fn (mut c NewRenoCongestionControl) discard_packets(packets []SentPacketInfo) {
+	for p in packets {
+		c.remove_from_bytes_in_flight(p.sent_bytes)
+	}
+}
+
 fn (mut c NewRenoCongestionControl) remove_from_bytes_in_flight(sent_bytes u64) {
 	if c.bytes_in_flight >= sent_bytes {
 		c.bytes_in_flight -= sent_bytes
