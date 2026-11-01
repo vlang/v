@@ -223,6 +223,11 @@ These arguments are literal on Windows too: `%PATH%` stays `%PATH%`, and quotes
 and trailing backslashes are preserved. Expand environment variables explicitly
 with `os.getenv()` when that is intended.
 
+The deprecated `os.execute` and `os.raw_execute` APIs capture both standard streams
+without adding shell redirections to the command. Explicit redirections control each stream:
+`>file` redirects stdout while stderr remains captured; `>file 2>&1` sends both to the file.
+Windows shell output retains significant trailing spaces, including those produced by `echo`.
+
 Call `process.wait()` before `process.close()`, including after `process.signal_kill()`.
 On POSIX systems, waiting reaps the killed child and records its signal exit status.
 Repeated waits preserve the exit status already collected by `wait()` or `is_alive()`.
