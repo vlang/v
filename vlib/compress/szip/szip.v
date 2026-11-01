@@ -176,16 +176,47 @@ fn (mut z Zip) parse(cache_payloads bool) ! {
 	// Tolerant fallback: real-world archives sometimes carry a few trailing
 	// bytes after the end record (interrupted downloads, appended markers);
 	// WinRAR and 7-Zip accept them. Take the candidate closest to the end
-	// whose declared comment fits; the central-directory validation below
-	// still rejects accidental signature matches inside compressed data.
+	// whose declared comment fits AND that plausibly describes this archive:
+	// a signature found inside stored data (an embedded empty zip, random
+	// bytes) must not mask the real end record nor fake an empty archive.
 	if eocd_pos < 0 {
 		for i := data.len - 22; i >= 0 && i >= data.len - 65557; i-- {
 			if data[i..i + 4] == [u8(0x50), 0x4b, 0x05, 0x06] {
 				comment_len := int(u16(data[i + 20]) | (u16(data[i + 21]) << 8))
-				if i + 22 + comment_len <= data.len {
+				if i + 22 + comment_len > data.len {
+					continue
+				}
+				n_cand := int(u16(data[i + 10]) | (u16(data[i + 11]) << 8))
+				cd_size_cand := u32(data[i + 12]) | (u32(data[i + 13]) << 8)
+					| (u32(data[i + 14]) << 16) | (u32(data[i + 15]) << 24)
+				cd_off_cand := u32(data[i + 16]) | (u32(data[i + 17]) << 8)
+					| (u32(data[i + 18]) << 16) | (u32(data[i + 19]) << 24)
+				if n_cand == 0xffff || cd_size_cand == 0xffffffff || cd_off_cand == 0xffffffff {
+					// ZIP64 sentinel: accept so the dedicated ZIP64 check below
+					// reports it properly instead of 'missing end record'.
 					eocd_pos = i
 					break
 				}
+				if n_cand == 0 && cd_size_cand == 0 && cd_off_cand == 0 {
+					// A truly empty archive is exactly the 22-byte end record
+					// (+ optional trailing bytes): the record must sit at the
+					// very start of the file. Anywhere else the signature came
+					// from an embedded empty zip, not from this archive.
+					if i != 0 {
+						continue
+					}
+				} else {
+					// The central directory must fit before the end record and
+					// really start with a central-directory entry signature.
+					if u64(cd_off_cand) + u64(cd_size_cand) > u64(i) {
+						continue
+					}
+					if data[int(cd_off_cand)..int(cd_off_cand) + 4] != [u8(0x50), 0x4b, 0x01, 0x02] {
+						continue
+					}
+				}
+				eocd_pos = i
+				break
 			}
 		}
 	}
