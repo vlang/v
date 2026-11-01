@@ -1,6 +1,7 @@
 import os
 import time
 import v.cmdexec
+import v.compiler_tests.driver_signals
 import v.pref
 import v.util
 
@@ -2022,13 +2023,12 @@ fn main() {
 			assert false, 'interrupted run did not start: ${run_error}'
 		}
 		// Signal the group directly: external kill utilities parse negative IDs differently.
-		if C.kill(-interrupted_run.pid, int(os.Signal.int)) != 0 {
-			interrupt_error := os.last_error()
+		driver_signals.interrupt_process_group(interrupted_run.pid) or {
 			os.exec(['kill', '-KILL', '${program_pid}'])
 			interrupted_run.signal_pgkill()
 			interrupted_run.wait()
 			interrupted_run.close()
-			assert false, interrupt_error.msg()
+			assert false, err.msg()
 		}
 		// The program runs in its own process group, so killing the group of the
 		// driver does not stop it: kill it by its pid if the interrupt is lost.
