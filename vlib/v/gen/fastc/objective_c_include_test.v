@@ -148,3 +148,108 @@ fn main() {
 		assert run.exit_code == 0, run.output
 	}
 }
+
+fn test_fastc_native_bridge_preserves_executable_linker_options() ! {
+	$if !macos {
+		return
+	}
+	if !os.is_file(os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe'))
+		|| os.find_abs_path_of_executable('clang') == none {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_native_link_flags_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.c.v')
+	for native in [false, true] {
+		prefix := if native {
+			'#flag darwin -framework Foundation\n#flag darwin -fobjc-arc\n#include <Foundation/Foundation.h>\n'
+		} else {
+			''
+		}
+		os.write_file(source, prefix + 'fn main() { println(@CCOMPILER) }\n')!
+		program := os.join_path(root, 'program_${native}')
+		built := cmdexec.run('env', ['LDFLAGS=-Wl,--export-dynamic', @VEXE, '-b', 'fastc', '-cc',
+			'tcc', '-no-retry-compilation', '-nocache', '-showcc', '-ldflags', '-rdynamic', '-o',
+			program, root])
+		assert built.exit_code == 0, built.output
+		assert built.output.contains('tcc.exe'), built.output
+		environment_option := built.output.index('-Wl,--export-dynamic') or { panic(built.output) }
+		command_option := built.output.index('-rdynamic') or { panic(built.output) }
+		assert environment_option < command_option, built.output
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == 'tinyc', run.output
+	}
+	// An executable-only option must reach TinyCC even when TinyCC cannot implement it.
+	// Clang's native dylib invocation must not receive the executable's stack size.
+	for origin in ['command', 'environment'] {
+		program := os.join_path(root, 'unsupported_${origin}')
+		mut args := [
+			'LDFLAGS=' + if origin == 'environment' { '-Wl,-stack_size,0x4000000' } else { '' },
+			@VEXE,
+			'-b',
+			'fastc',
+			'-cc',
+			'tcc',
+			'-no-retry-compilation',
+			'-nocache',
+			'-o',
+			program,
+		]
+		if origin == 'command' { args << ['-ldflags', '-Wl,-stack_size,0x4000000'] }
+		args << root
+		built := cmdexec.run('env', args)
+		assert built.exit_code != 0, built.output
+		assert built.output.contains("unsupported linker option '-stack_size'"), built.output
+		assert !built.output.contains('only be used when linking a main executable'), built.output
+		assert !os.exists(program)
+	}
+}
+
+fn test_fastc_native_cache_tracks_named_and_force_loaded_archives() ! {
+	$if !macos {
+		return
+	}
+	if !os.is_file(os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe'))
+		|| os.find_abs_path_of_executable('clang') == none {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_native_archives_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for mode in ['named', 'force_loaded'] {
+		project := os.join_path(root, mode)
+		lib := os.join_path(project, 'lib')
+		os.mkdir_all(lib)!
+		os.write_file(os.join_path(project, 'v.mod'), "Module { name: 'archive_cache' }")!
+		archive := os.join_path(lib, 'libfastc_archive.a')
+		c_source := os.join_path(lib, 'archive.c')
+		object := os.join_path(lib, 'archive.o')
+		link_flags := if mode == 'named' {
+			'#flag -L @VMODROOT/lib\n#flag -lfastc_archive\n'
+		} else {
+			'#flag -Wl,-force_load,@VMODROOT/lib/libfastc_archive.a\n'
+		}
+		os.write_file(os.join_path(project, 'owner.m'),
+			'int archive_value(void);\nint native_value(void) { return archive_value(); }\n')!
+		os.write_file(os.join_path(project, 'main.c.v'),
+			'#flag darwin -framework Foundation\n' + link_flags +
+				'#include "@VMODROOT/owner.m"\nfn C.native_value() int\n' +
+				'fn main() { println(C.native_value()) }\n')!
+		for value in [17, 29] {
+			os.write_file(c_source, 'int archive_value(void) { return ${value}; }\n')!
+			compiled := cmdexec.run('clang', ['-c', c_source, '-o', object])
+			assert compiled.exit_code == 0, compiled.output
+			archived := cmdexec.run('ar', ['rcs', archive, object])
+			assert archived.exit_code == 0, archived.output
+			program := os.join_path(project, 'program')
+			built := cmdexec.run(@VEXE, ['-b', 'fastc', '-cc', 'tcc', '-no-retry-compilation',
+				'-o', program, project])
+			assert built.exit_code == 0, built.output
+			run := cmdexec.run(program, [])
+			assert run.exit_code == 0, run.output
+			assert run.output.trim_space() == value.str(), '${mode}: ${run.output}'
+		}
+	}
+}

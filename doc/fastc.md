@@ -11,6 +11,8 @@ Generated V code and the executable link remain on TinyCC, including with
 declarations from native headers. Dependency manifests produced by the native compiler
 validate the library cache, including transitive headers and native link inputs. A changed or
 unverifiable native input requires rebuilding the native library.
+`-ldflags` and `LDFLAGS` apply to the executable link, including with the native library.
+TinyCC reports executable linker options it does not support.
 Native implementation includes follow generated V types, while ordinary C headers precede them.
 Explicit macro directives retain their source-file order around native implementations.
 With `-o program.c`, FastC writes C without invoking a native compiler or linker.

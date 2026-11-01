@@ -18,7 +18,7 @@ $if !skip_fastc ? {
 		mut flags := environment_flags.clone()
 		flags << generation.c_flags
 		flags << user_flags
-		flags << link_flags
+		// Executable linker options must not affect the native owner or its cache key.
 		if prefs.normalized_target_os() == 'macos' && prefs.ccompiler == 'tinyc'
 			&& (c_flags_need_objective_c(flags) || '-framework' in flags
 				|| generation.c_pieces[..generation.units.head_end].any(it.starts_with('#include ') && (it.contains('.m"') || it.contains('.mm"')))) {
@@ -41,7 +41,7 @@ $if !skip_fastc ? {
 			// TinyCC must reopen its own selected header branches on every build.
 			// The native owner's dependency manifest validates only the native library.
 
-			return compile_v3_fastc_source(pieces, generation.units, bin_file, prefs, [], program_flags, [], [], sdk, is_debug, generation.uses_threads, false, mut prestarted)
+			return compile_v3_fastc_source(pieces, generation.units, bin_file, prefs, [], program_flags, [], link_flags, sdk, is_debug, generation.uses_threads, false, mut prestarted)
 		}
 		return compile_v3_fastc_source(generation.c_pieces, generation.units, bin_file, prefs, environment_flags, generation.c_flags, user_flags, link_flags, sdk, is_debug, generation.uses_threads, cache_enabled, mut prestarted)
 	}
@@ -88,8 +88,17 @@ $if !skip_fastc ? {
 		mut native_flags := v3_tcc_dylib_native_flags(flags)
 		if sdk != '' { native_flags << ['-isysroot', sdk] }
 		prepared := prepare_c_flags_for_link(native_flags, [], [], ['-O0'], true, false, '', [], prefs.target, '/usr/bin/clang', true, dir, mut stats)!
-		mut hash := c_hash_bytes(u64(1469598103934665603), owner.bytes())
+		link_flags := c_dylib_link_flags(prepared)
+		mut archives := c_dylib_named_static_archive_inputs(link_flags)
+		for archive in c_dylib_force_loaded_static_archive_inputs(link_flags) {
+			if archive !in archives { archives << archive }
+		}
+		// Invalidate manifests written before archives were tracked. Include their
+		// resolved paths so a changed library search result cannot reuse an old owner.
+		mut hash := c_hash_bytes(u64(1469598103934665603), 'v3-fastc-native-v2'.bytes())
+		hash = c_hash_bytes(hash, owner.bytes())
 		hash = c_hash_bytes(hash, prepared.join('\x00').bytes())
+		hash = c_hash_bytes(hash, archives.join('\x00').bytes())
 		key := hash.hex()
 		path := os.join_path(dir, key + '.m')
 		if !os.is_file(path) {
@@ -110,6 +119,9 @@ $if !skip_fastc ? {
 			return error('FastC native dependency manifest is unavailable: ' + path)
 		}
 		mut dependencies := deps.files.clone()
+		for archive in archives {
+			if archive !in dependencies { dependencies << archive }
+		}
 		for input in prepared {
 			if !c_flag_is_existing_file(input) { continue }
 			if input !in dependencies { dependencies << input }
@@ -138,7 +150,7 @@ $if !skip_fastc ? {
 			args << ['-dynamiclib', '-undefined', 'dynamic_lookup', '-Wl,-install_name,' + library,
 				path, '-o', staged, '-x', 'none']
 			args << prepared.filter(c_flag_is_c_source_file(it))
-			args << c_dylib_link_flags(prepared)
+			args << link_flags
 			result := cmdexec.run('/usr/bin/clang', args)
 			if result.exit_code != 0 { return error(result.output) }
 			for i, dependency in dependencies {
