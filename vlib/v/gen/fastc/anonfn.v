@@ -122,7 +122,10 @@ fn (mut g Parser) parse_anonymous_function() !(string, string, bool) {
 	origin_offset := fastc_original_source_offset(g.source_origins, g.source_offset + anon_start)
 	// Compile-time iterations share source positions, but each literal has its own body.
 	literal_id := g.temporary_name('anon')
-	name := '__vf_anon_${g.module_name.replace('.', '_')}_${os.file_name(g.path).replace('.', '_')}_${origin_offset}_${fastc_name_key(g.current_function)}_${literal_id}'
+	// Nested literal names must not grow recursively: TinyCC truncates long
+	// native symbols, which can merge distinct callbacks at link time.
+	owner_id := fastc_fnv_hash(u64(1469598103934665603), g.current_function).hex()
+	name := '__vf_anon_${g.module_name.replace('.', '_')}_${os.file_name(g.path).replace('.', '_')}_${origin_offset}_${owner_id}_${literal_id}'
 	// Rewrite `fn (...) ...` as `fn <name> (...) ...` so `parse_function` reads it as
 	// an ordinary declaration.
 	function_source := g.s.src[params_start..body_end]

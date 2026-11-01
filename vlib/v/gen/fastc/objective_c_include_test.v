@@ -3,7 +3,7 @@ module fastc
 import os
 import v.cmdexec
 
-fn test_fastc_macos_cocoa_uses_native_compiler_without_header_projection() {
+fn test_fastc_macos_cocoa_keeps_tcc_without_header_projection() {
 	$if !macos {
 		return
 	}
@@ -35,18 +35,14 @@ fn test_fastc_macos_cocoa_uses_native_compiler_without_header_projection() {
 			if mode == 'no_retry' { args << '-no-retry-compilation' }
 			args << root
 			build := cmdexec.run(@VEXE, args)
-			if cocoa && mode == 'no_retry' {
-				assert build.exit_code != 0, build.output
-				assert build.output.contains('FastC Objective-C inputs require Clang'), build.output
-				continue
-			}
+
 			assert build.exit_code == 0, build.output
-			assert build.output.contains(if cocoa { 'clang' } else { 'tcc.exe' }), build.output
+			assert build.output.contains('tcc.exe'), build.output
 			assert !build.output.contains('regenerating it with'), build.output
 			assert !build.output.contains('redefined'), build.output
 			run := cmdexec.run(program, [])
 			assert run.exit_code == 0, run.output
-			assert run.output.trim_space() == if cocoa { 'clang\nclang' } else { 'tinyc\ntinyc' }, run.output
+			assert run.output.trim_space() == 'tinyc\ntinyc', run.output
 		}
 	}
 	os.write_file(source, '#error fastc_tcc_failure\n' + body) or { panic(err) }
@@ -83,21 +79,27 @@ fn test_fastc_objective_c_include_can_use_v_types() {
 		'        return [text length] + NATIVE_LENGTH_OFFSET + TEST_NATIVE_EXTRA;\n' +
 		'    }\n}\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'native.h'), 'int native_answer(void);\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'included.c'), 'int included_answer(void) { return 17; }\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'consumer.h'), '#include <CoreFoundation/CoreFoundation.h>\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'native.cpp'), 'extern "C" int native_answer() { return 42; }\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'main.c.v'), r'module main
 
 #flag darwin -framework Foundation
 #flag darwin -framework Cocoa
 #flag darwin -framework CoreGraphics
+#flag darwin -framework CoreFoundation
 #flag darwin -fobjc-arc
 #flag @VMODROOT/native.o
 #define NATIVE_LENGTH_OFFSET 3
 #include "@VMODROOT/helper.m"
 #undef NATIVE_LENGTH_OFFSET
 #include "@VMODROOT/native.h"
+#include "@VMODROOT/included.c"
+#include "@VMODROOT/consumer.h"
 
 fn C.native_length(value string) int
 fn C.native_answer() int
+fn C.included_answer() int
 fn C.CGColorCreateGenericRGB(r f64, g f64, b f64, a f64) voidptr
 fn C.CGColorRelease(color voidptr)
 
@@ -110,6 +112,8 @@ fn main() {
 	assert C.native_length("hello") == 8
 	assert invoke_length(C.native_length) == 8
 	assert C.native_answer() == 42
+	assert C.included_answer() == 17
+	assert C.kCFBooleanTrue != unsafe { nil }
 	color := C.CGColorCreateGenericRGB(0, 0, 0, 1)
 	assert color != unsafe { nil }
 	C.CGColorRelease(color)
@@ -124,11 +128,7 @@ fn main() {
 		if mode == 'prod' { args << '-prod' }
 		args << root
 		build := cmdexec.run(@VEXE, args)
-		if mode == 'no_retry' {
-			assert build.exit_code != 0, build.output
-			assert build.output.contains('FastC Objective-C inputs require Clang'), build.output
-			continue
-		}
+
 		assert build.exit_code == 0, build.output
 		run := cmdexec.run(program, [])
 		assert run.exit_code == 0, run.output
@@ -139,10 +139,12 @@ fn main() {
 	source_path := os.join_path(root, 'main.c.v')
 	source := os.read_file(source_path) or { panic(err) }
 	os.write_file(source_path, source.replace('== 8', '== 9').replace('== 42', '== 43')) or { panic(err) }
-	program := os.join_path(root, 'program_changed')
-	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-cc', 'clang', '-no-retry-compilation', '-o',
-		program, root])
-	assert build.exit_code == 0, build.output
-	run := cmdexec.run(program, [])
-	assert run.exit_code == 0, run.output
+	for compiler in ['tcc', 'clang'] {
+		program := os.join_path(root, 'program_changed_' + compiler)
+		build := cmdexec.run(@VEXE, ['-b', 'fastc', '-cc', compiler, '-no-retry-compilation', '-o',
+			program, root])
+		assert build.exit_code == 0, build.output
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+	}
 }
