@@ -16264,6 +16264,10 @@ fn (mut b Builder) build_selector(node flat.Node) ValueID {
 		return b.m.get_or_add_const(b.i64_type, '0')
 	}
 
+	if base.kind == .ident && base.value_text() == 'ch' && field_name == 'cap' {
+	}
+	if base.kind == .ident && base.value_text() == 'ch' {
+	}
 	if base.kind == .ident {
 		const_name := base.value_text() + '.' + field_name
 		if expr_id := b.lookup_const_expr(const_name) {
@@ -16310,10 +16314,21 @@ fn (mut b Builder) build_selector(node flat.Node) ValueID {
 	if base_typ > 0 && base_typ < b.m.type_store.types.len {
 		base_type := b.m.type_store.types[base_typ]
 		if base_type.kind == .ptr_t && base_type.elem_type > 0
-			&& base_type.elem_type < b.m.type_store.types.len
-			&& b.m.type_store.types[base_type.elem_type].kind == .struct_t {
-			field_ptr := b.get_field_ptr(base_val, field_name)
-			return b.load_selector_field(node, base_type.elem_type, field_ptr)
+			&& base_type.elem_type < b.m.type_store.types.len {
+			elem_type := b.m.type_store.types[base_type.elem_type]
+			// Handle double-pointer (reference types like channels)
+			if elem_type.kind == .ptr_t && elem_type.elem_type > 0
+				&& elem_type.elem_type < b.m.type_store.types.len
+				&& b.m.type_store.types[elem_type.elem_type].kind == .struct_t {
+				// Dereference once to get the struct pointer
+				deref_val := b.emit1(.load, base_type.elem_type, base_val)
+				field_ptr := b.get_field_ptr(deref_val, field_name)
+				return b.load_selector_field(node, elem_type.elem_type, field_ptr)
+			}
+			if elem_type.kind == .struct_t {
+				field_ptr := b.get_field_ptr(base_val, field_name)
+				return b.load_selector_field(node, base_type.elem_type, field_ptr)
+			}
 		}
 	}
 	if base_typ > 0 && base_typ < b.m.type_store.types.len
