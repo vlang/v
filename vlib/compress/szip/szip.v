@@ -110,7 +110,7 @@ pub fn open(name string, level CompressionLevel, mode OpenMode) !&Zip {
 				return error('szip: cannot open archive')
 			}
 			z.filedata = os.read_bytes(name) or { return error('szip: cannot read archive') }
-			z.parse() or { return error('szip: cannot parse archive: ${err.msg()}') }
+			z.parse(true) or { return error('szip: cannot parse archive: ${err.msg()}') }
 		}
 		.write {
 			// create/overwrite
@@ -120,13 +120,31 @@ pub fn open(name string, level CompressionLevel, mode OpenMode) !&Zip {
 		.append {
 			if os.exists(name) {
 				z.filedata = os.read_bytes(name) or { return error('szip: cannot read archive') }
-				z.parse() or { return error('szip: cannot parse archive: ${err.msg()}') }
+				z.parse(true) or { return error('szip: cannot parse archive: ${err.msg()}') }
 			} else {
 				z.filedata = []u8{}
 				z.entries = []ZipEntry{}
 			}
 		}
 	}
+	return z
+}
+
+// open_lazy opens a readable archive without decompressing and caching the
+// payload of every entry. Listing entries (total/name/size/is_dir) only
+// needs the central directory, so scanning large archives stays fast; an
+// entry is decoded (and validated) on demand when it is actually read.
+pub fn open_lazy(name string) !&Zip {
+	if !os.exists(name) {
+		return error('szip: cannot open archive')
+	}
+	mut z := &Zip{
+		path:  name
+		mode:  .read_only
+		level: .no_compression
+	}
+	z.filedata = os.read_bytes(name) or { return error('szip: cannot read archive') }
+	z.parse(false) or { return error('szip: cannot parse archive: ${err.msg()}') }
 	return z
 }
 
@@ -142,7 +160,7 @@ pub fn (mut z Zip) close() {
 // Parse (read mode)
 // ---------------------------------------------------------------------------
 
-fn (mut z Zip) parse() ! {
+fn (mut z Zip) parse(cache_payloads bool) ! {
 	data := z.filedata
 	mut eocd_pos := -1
 	// The end record may be followed only by its declared archive comment.
@@ -229,13 +247,18 @@ fn (mut z Zip) parse() ! {
 	if pos != cd_end {
 		return error('central directory size mismatch')
 	}
-	// Cache validated payloads so reads and append mode do not decompress entries twice.
-	for i in 0 .. z.entries.len {
-		z.current = i
-		z.entries[i].data = z.read_current_data()!
+	// Cache validated payloads so reads and append mode do not decompress
+	// entries twice. In lazy mode (cache_payloads == false) this step is
+	// skipped: read_current_data() decodes and validates each entry on
+	// demand, so listing a large archive never touches the entry bodies.
+	if cache_payloads {
+		for i in 0 .. z.entries.len {
+			z.current = i
+			z.entries[i].data = z.read_current_data()!
+		}
+		z.validated = true
 	}
 	z.current = -1
-	z.validated = true
 }
 
 // ---------------------------------------------------------------------------
