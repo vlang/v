@@ -5237,7 +5237,9 @@ fn (tc &TypeChecker) struct_init_has_positional_fields(node flat.Node) bool {
 
 fn (tc &TypeChecker) distinct_alias_primitive_mismatch(actual &Type, expected &Type) bool {
 	if actual is Alias && unalias_type(expected) is Primitive {
-		return actual.base_type.source_type_id() != unalias_type(expected).source_type_id()
+		// Compare the primitive at the end of both alias chains, not an
+		// intermediate alias name against the expected primitive.
+		return unalias_type(actual).source_type_id() != unalias_type(expected).source_type_id()
 	}
 	return false
 }
