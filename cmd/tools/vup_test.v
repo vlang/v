@@ -199,6 +199,90 @@ fn test_vup_resolves_relative_cache_paths_before_entering_checkout() ! {
 	}
 }
 
+fn test_vup_wipes_default_cache_from_relative_vmodules() ! {
+	$if windows {
+		return
+	}
+	root, home, tool, bin_dir := vup_report_fixture()!
+	previous_dir := os.getwd()
+	defer {
+		os.chdir(previous_dir) or {}
+		os.rmdir_all(root) or {}
+	}
+	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
+		'if [ "\$1" = "wipe-cache" ]; then exec ' + os.quoted_path(vexe) + ' wipe-cache; fi\n' +
+		'echo "V 0.5.2 abcdef0"\nexit 0\n')!
+	project := os.join_path(root, 'project')
+	os.mkdir_all(project)!
+	os.chdir(project)!
+	caller_cache := os.join_path(project, '.vmodules with spaces', '.cache')
+	checkout_cache := os.join_path(root, '.vmodules with spaces', '.cache')
+	for options in [[]string{}, ['-skip_current']] {
+		for cache in [caller_cache, checkout_cache] {
+			os.mkdir_all(cache)!
+			os.write_file(os.join_path(cache, 'stale'), 'cached object')!
+		}
+		result := os.exec(['env', '-u', 'VCACHE', 'PATH=${bin_dir}', 'HOME=${home}',
+			'XDG_CACHE_HOME=' + os.join_path(home, '.cache'), 'VEXE=' + os.join_path(root, 'v'),
+			'VMODULES=.vmodules with spaces${os.path_delimiter}.other modules',
+			'VTMP=' + os.join_path(root, 'tmp'), 'V3CACHE=' + os.join_path(root, 'v3cache'),
+			'VTOOLS_CACHE_DIR=' + os.join_path(root, 'tools'), tool, ...options])
+		assert result.exit_code == 0, result.output
+		assert !os.exists(os.join_path(caller_cache, 'stale')), result.output
+		assert os.read_file(os.join_path(checkout_cache, 'stale'))! == 'cached object'
+		assert result.output.contains('V cache folder ${caller_cache} was wiped.'), result.output
+	}
+}
+
+fn test_vup_reports_real_cache_filesystem_failures() ! {
+	$if windows {
+		return
+	}
+	root, home, tool, bin_dir := vup_report_fixture()!
+	locked := os.join_path(root, 'cache', 'locked')
+	defer {
+		os.chmod(locked, 0o700) or {}
+		os.rmdir_all(root) or {}
+	}
+	wipe_tool := os.join_path(root, 'vwipe-cache')
+	build := os.exec([vexe, '-o', wipe_tool, os.join_path(vroot, 'cmd', 'tools', 'vwipe-cache.v')])
+	assert build.exit_code == 0, build.output
+	// Exercise both the compiler's built-in command and the standalone tool.
+	for cleanup in [vexe, wipe_tool] {
+		write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
+			'if [ "\$1" = "wipe-cache" ]; then exec ' + os.quoted_path(cleanup) + ' wipe-cache; fi\n' +
+			'echo "V 0.5.2 abcdef0"\nexit 0\n')!
+		for operation in ['remove', 'create'] {
+			if operation == 'remove' && os.getuid() == 0 { continue }
+			cache := if operation == 'remove' {
+				os.mkdir_all(locked)!
+				os.write_file(os.join_path(locked, 'object.o'), 'cached object')!
+				os.chmod(locked, 0o500)!
+				os.dir(locked)
+			} else {
+				blocker := os.join_path(root, 'not_a_directory')
+				os.write_file(blocker, 'a file cannot contain a cache directory')!
+				os.join_path(blocker, 'cache')
+			}
+			for options in [[]string{}, ['-skip_current']] {
+				result := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}',
+					'XDG_CACHE_HOME=' + os.join_path(home, '.cache'),
+					'VEXE=' + os.join_path(root, 'v'), 'VCACHE=${cache}',
+					'VTMP=' + os.join_path(root, 'tmp'), 'V3CACHE=' + os.join_path(root, 'v3cache'),
+					'VTOOLS_CACHE_DIR=' + os.join_path(root, 'tools'), tool, ...options])
+				assert result.exit_code != 0, result.output
+				assert result.output.contains('could not ${operation} V cache folder ${cache}:'), result.output
+				assert result.output.contains('v up: wiping caches failed'), result.output
+				assert !result.output.contains('V cache folder ${cache} was wiped.'), result.output
+			}
+			if operation == 'remove' {
+				assert os.read_file(os.join_path(locked, 'object.o'))! == 'cached object'
+				os.chmod(locked, 0o700)!
+			}
+		}
+	}
+}
+
 fn test_vup_reports_cache_wipe_failures() ! {
 	$if windows {
 		return

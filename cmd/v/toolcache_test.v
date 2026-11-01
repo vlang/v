@@ -2158,7 +2158,7 @@ fn test_wipe_cache_options_and_selective_cleanup() {
 
 		// 1. `--dry-run --verbose` reports targets and candidates without deleting anything.
 		dry_opts := parse_wipe_cache_options([], ['--dry-run', '--verbose'])!
-		dry_output := wipe_caches(dry_opts).join('\n')
+		dry_output := wipe_caches(dry_opts)!.join('\n')
 		assert dry_output.contains('Tool cache candidates:'), dry_output
 		assert dry_output.contains('Would wipe V cache folder ${vcache_dir}.'), dry_output
 		assert dry_output.contains('Would wipe V tool cache folder ${cache_tools}.'), dry_output
@@ -2169,7 +2169,7 @@ fn test_wipe_cache_options_and_selective_cleanup() {
 
 		// 2. `--tools` wipes only tool caches and `.untrusted-*` folders.
 		tools_opts := parse_wipe_cache_options([], ['--tools'])!
-		tools_output := wipe_caches(tools_opts).join('\n')
+		tools_output := wipe_caches(tools_opts)!.join('\n')
 		assert tools_output.contains('V tool cache folder ${cache_tools} was wiped.'), tools_output
 		assert tools_output.contains('V tool cache folder ${home_tools} was wiped.'), tools_output
 		assert tools_output.contains('Moved-aside V tool cache folder ${untrusted_tools} was wiped.'), tools_output
@@ -2183,7 +2183,7 @@ fn test_wipe_cache_options_and_selective_cleanup() {
 		// 3. `--v3cache` with `V3CACHE` unset wipes only `v3_*` directories inside `VTMP`.
 		os.unsetenv('V3CACHE')
 		v3_opts := parse_wipe_cache_options([], ['--v3cache'])!
-		v3_output := wipe_caches(v3_opts).join('\n')
+		v3_output := wipe_caches(v3_opts)!.join('\n')
 		assert v3_output.contains('V3 cache folder ${os.join_path(vtmp_dir, 'v3_module_cache_deadbeef')} was wiped.'), v3_output
 		assert !os.exists(os.join_path(vtmp_dir, 'v3_module_cache_deadbeef'))
 		assert os.is_file(os.join_path(vtmp_dir, 'keep.txt'))
@@ -2192,7 +2192,7 @@ fn test_wipe_cache_options_and_selective_cleanup() {
 		os.setenv('V3CACHE', v3cache_dir, true)
 		os.mkdir_all(cache_tools)!
 		all_opts := parse_wipe_cache_options([], [])!
-		all_output := wipe_caches(all_opts).join('\n')
+		all_output := wipe_caches(all_opts)!.join('\n')
 		assert all_output.contains('V cache folder ${vcache_dir} was wiped.'), all_output
 		assert all_output.contains('V tmp.c and tests folder ${vtmp_dir} was wiped.'), all_output
 		assert all_output.contains('V3 cache folder ${v3cache_dir} was wiped.'), all_output

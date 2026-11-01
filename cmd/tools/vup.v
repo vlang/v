@@ -88,7 +88,11 @@ fn main() {
 	app := new_app()
 	recompilation.must_be_enabled(app.vroot, 'Please install V from source, to use `v up` .')
 	// Keep caller-relative cache locations stable for wipe-cache after entering the checkout.
-	for name in ['VCACHE', 'V3CACHE', 'VTOOLS_CACHE_DIR'] {
+	vcache := os.getenv_opt('VCACHE') or { os.join_path(os.vmodules_dir(), '.cache') }
+	if vcache.trim_space() != '' {
+		os.setenv('VCACHE', os.abs_path(vcache), true)
+	}
+	for name in ['V3CACHE', 'VTOOLS_CACHE_DIR'] {
 		if cache := os.getenv_opt(name) {
 			if cache.trim_space() != '' {
 				os.setenv(name, os.abs_path(cache), true)
