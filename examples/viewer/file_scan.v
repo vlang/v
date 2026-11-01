@@ -179,6 +179,12 @@ mut:
 	n_workers int
 }
 
+// scan_progress_flush is how many folder entries a worker walks before
+// reporting progress to the shared counters. The lock stays off the hot
+// path (one lock per 512 entries) while the bar still advances smoothly;
+// zip jobs report per entry because each entry already costs file I/O.
+const scan_progress_flush = 512
+
 // scan_worker_count is how many worker threads a scan uses: every logical
 // CPU core but two, so the UI and whatever else is running keep their cores.
 // At least one worker is always used.
@@ -446,7 +452,15 @@ fn run_folder_job(mut p &Scan_pool, job Scan_job) {
 		path: job.path
 	}
 	sep := path_sep()
+	// Progress advances as the listing is walked (in batches), like the
+	// old chunked main-thread engine did, so a huge folder animates the
+	// bar instead of jumping when the job ends.
+	mut flushed := 0
 	for c, x in entries {
+		if c - flushed >= scan_progress_flush {
+			p.add_progress(c - flushed, 0)
+			flushed = c
+		}
 		pt := '${job.path}${sep}${x}'
 		st := os.stat(pt) or {
 			// The entry vanished between ls and stat: counted, skipped.
@@ -484,18 +498,18 @@ fn run_folder_job(mut p &Scan_pool, job Scan_job) {
 			}
 		}
 	}
-	p.add_progress(entries.len, 0)
+	p.add_progress(entries.len - flushed, 0)
 	p.results <- res
 }
 
 // run_zip_job scans one archive and hands the result to the main thread.
-// A corrupt or unreadable archive is a warning, never an abort.
+// A corrupt or unreadable archive is a warning, never an abort. Progress
+// is reported inside scan_zip_items while the entries are enumerated.
 fn run_zip_job(mut p &Scan_pool, job Scan_job) {
 	zr := scan_zip_items(mut p, job.path, job.id) or {
 		p.add_scan_warning('zip `${job.path}`: ${err}')
 		return
 	}
-	p.add_progress(zr.n_total, zr.n_total)
 	p.results <- zr
 }
 

@@ -111,6 +111,10 @@ fn scan_zip_items(mut p &Scan_pool, orig_path string, uid int) !Job_result {
 		return error('${err}${zip_format_hint(orig_path)}')
 	}
 	n_entries := zp.total()!
+	// Progress accounting: the archive's entries become known now (the
+	// total grows) and are reported one by one as they are enumerated, so
+	// even a huge archive animates the bar instead of jumping at the end.
+	p.add_progress(0, n_entries)
 	mut res := Job_result{
 		is_zip:   true
 		key:      orig_path.clone()
@@ -121,6 +125,7 @@ fn scan_zip_items(mut p &Scan_pool, orig_path string, uid int) !Job_result {
 		scan_zip_entry(mut zp, index, path, mut res) or {
 			p.add_scan_warning('zip entry ${index} in `${orig_path}`: ${err}')
 		}
+		p.add_progress(1, 0)
 	}
 	zp.close()
 	return res
