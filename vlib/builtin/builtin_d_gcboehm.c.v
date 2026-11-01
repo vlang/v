@@ -68,10 +68,15 @@ $if !no_gc_threads ? {
 }
 
 $if use_bundled_libgc ? {
-	#flag -DGC_BUILTIN_ATOMIC=1
 	#flag -I @VEXEROOT/thirdparty/libgc/include
 	#flag -DALL_INTERIOR_POINTERS=1
-	#flag @VEXEROOT/thirdparty/libgc/gc.o
+	$if windows && tinyc {
+		#flag -I @VEXEROOT/thirdparty/libatomic_ops
+		#flag @VEXEROOT/vlib/builtin/gc_tinyc_windows.o
+	} $else {
+		#flag -DGC_BUILTIN_ATOMIC=1
+		#flag @VEXEROOT/thirdparty/libgc/gc.o
+	}
 }
 
 $if dynamic_boehm ? {
@@ -209,9 +214,9 @@ $if dynamic_boehm ? {
 		#flag -DCONSOLE_LOG=1
 		#flag -luser32
 		$if tinyc {
-			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 			$if !use_bundled_libgc ? {
+				#flag -DGC_BUILTIN_ATOMIC=1
 				#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
 			}
 		} $else $if msvc {
