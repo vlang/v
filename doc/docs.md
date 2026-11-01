@@ -11560,6 +11560,11 @@ must be on the same source line. It may precede `add`, `adc`, `and`, `btc`, `btr
 `The lock prefix cannot be used on this instruction`. A same-line `lock:` remains valid as a
 label; a newline inside a comment also separates the prefix, instruction, or label colon.
 
+The C backend lowers `rv64` and `riscv64` blocks when building for `-arch riscv64`.
+Structured RISC-V assembly keeps destination-first operand order and lowers `[base]` and
+`[base + displacement]` to GNU memory operands. Floating-point registers such as `f1` retain
+their register names; quote a forward numeric label as `'1f'` to distinguish it from a register.
+
 The C backend also supports raw GNU assembly templates. In a `raw` block, V passes each
 double-quoted template string through unchanged and still checks the output, input, and clobber
 lists. Operands can use GNU's named form or V's `constraint (expression) as alias` form:

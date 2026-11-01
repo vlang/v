@@ -5016,6 +5016,11 @@ fn lower_c_inline_asm_operand(source string, arch string, aliases map[string]boo
 			literal
 		}
 	}
+	// RISC-V's floating-point registers overlap V's forward-label spelling (`f1`).
+	if arch in ['rv64', 'riscv64'] && operand.len > 1 && operand[0] == `f`
+		&& operand[1..].bytes().all(it.is_digit()) && operand[1..].int() < 32 {
+		return lower_c_inline_asm_atoms(operand, arch, aliases, is_extended)
+	}
 	if label := c_inline_asm_local_label_reference(operand) {
 		return label
 	}
@@ -5092,7 +5097,7 @@ fn lower_c_inline_asm_address(source string, arch string, aliases map[string]boo
 	if arch in ['arm64', 'aarch64'] {
 		return '[${lower_c_inline_asm_atoms(source.trim_space(), arch, aliases, is_extended)}]'
 	}
-	if !is_c_inline_asm_x86_arch(arch) {
+	if !is_c_inline_asm_x86_arch(arch) && arch !in ['rv64', 'riscv64'] {
 		return '[${source}]'
 	}
 	parts := source.split('+')

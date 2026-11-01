@@ -64,3 +64,21 @@ fn test_inline_asm_rv64() {
 	}
 	assert l == 7
 }
+
+fn test_inline_asm_rv64_float_registers_and_memory_offsets() {
+	values := [2.5, 4.5]!
+	// The assembly reads this stack array before the function returns.
+	ptr := unsafe { &values[0] }
+	mut sum := 0.0
+	asm riscv64 {
+		fld f0, [ptr]
+		fld f1, [ptr + 8]
+		fadd.d sum, f0, f1
+		; =f (sum)
+		; r (ptr)
+		; f0
+		  f1
+		  memory
+	}
+	assert sum == 7.0
+}

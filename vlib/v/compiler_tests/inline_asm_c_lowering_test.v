@@ -998,12 +998,12 @@ fn test_asm_arch_hints_use_spellings_that_compile() {
 	assert generate.exit_code != 0, generate.output
 	assert generate.output.contains('`asm x86_64` block in a build for the `arm64` target; guard the block with `\$if amd64 {}` or build with `-arch amd64`'), generate.output
 	assert generate.output.contains('`asm ia-32` block in a build for the `arm64` target; guard the block with `\$if i386 {}` or build with `-arch x86`'), generate.output
+	assert generate.output.contains('`asm rv64` block in a build for the `arm64` target; guard the block with `\$if rv64 {}` or build with `-arch riscv64`'), generate.output
 	// The C backend does not lower these, so `-arch` is not offered.
-	assert generate.output.contains('`asm rv64` block in a build for the `arm64` target; guard the block with `\$if rv64 {}`\n'), generate.output
 	assert generate.output.contains('`asm riscv32` block in a build for the `arm64` target; guard the block with `\$if rv32 {}`\n'), generate.output
 	assert generate.output.contains('`asm arm32` block in a build for the `arm64` target; guard the block with `\$if arm32 {}`\n'), generate.output
 	assert generate.output.contains('`asm ppc64le` block in a build for the `arm64` target; guard the block with `\$if ppc64le {}`\n'), generate.output
-	assert !generate.output.contains('-arch riscv'), generate.output
+	assert !generate.output.contains('-arch riscv32'), generate.output
 	// `x32` is not a spelling the header accepts for x86, so `-arch x86` alone would not help.
 	assert generate.output.contains('`asm x32` block in a build for the `arm64` target; guard the block with `\$if i386 {}`, or write `asm x86 { ... }` and build with `-arch x86`'), generate.output
 	for arch in ['amd64', 'x86', 'riscv64'] {
@@ -1027,7 +1027,7 @@ fn test_asm_arch_hints_use_spellings_that_compile() {
 }
 ', arch)
 		assert guarded.exit_code == 0, '${arch}: ${guarded.output}'
-		assert c_source.contains('"nop\\n\\t"') == (arch != 'riscv64'), '${arch}: ${c_source}'
+		assert c_source.contains('"nop\\n\\t"'), '${arch}: ${c_source}'
 	}
 }
 
@@ -1054,19 +1054,19 @@ fn test_asm_for_an_unknown_arch_is_not_a_target_mismatch() {
 }
 
 fn test_asm_on_a_c_target_without_lowering_names_the_target() {
-	generate, _ := generate_inline_asm_c_for_arch('riscv_target_program', 'fn main() {
-	asm riscv64 {
+	generate, _ := generate_inline_asm_c_for_arch('riscv32_target_program', 'fn main() {
+	asm riscv32 {
 		nop
 	}
 	asm amd64 {
 		nop
 	}
 }
-', 'riscv64')
+', 'riscv32')
 	assert generate.exit_code != 0, generate.output
 	// A guard for the build's own architecture would be circular, so none is suggested.
-	assert generate.output.contains('inline assembly is not supported by the C backend for the `riscv64` target\n'), generate.output
-	assert generate.output.contains('inline assembly is not supported by the C backend for the `riscv64` target; guard the block with `\$if amd64 {}`'), generate.output
+	assert generate.output.contains('inline assembly is not supported by the C backend for the `riscv32` target\n'), generate.output
+	assert generate.output.contains('inline assembly is not supported by the C backend for the `riscv32` target; guard the block with `\$if amd64 {}`'), generate.output
 }
 
 fn test_asm_for_another_arch_is_skipped_under_its_guard() {
