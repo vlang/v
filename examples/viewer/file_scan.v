@@ -74,7 +74,42 @@ pub mut:
 	// The scan always continues past such entries; the overlay shows the count
 	// and `W` toggles the full list.
 	scan_warnings []string
+	// Incremental scan state. `scanning` is true from scan_begin() until
+	// scan_finish(). Progress is reported as scan_done/scan_total entries:
+	// every filesystem entry (file, folder, archive) and archive entry
+	// discovered so far counts once in each counter.
+	scanning   bool
+	scan_done  int
+	scan_total int
+	scan_jobs  []Scan_job
 }
+
+// Scan_job is one resumable unit of the incremental scan: either a directory
+// listing that can be processed in chunks (folder) or a single zip archive
+// pass (zip). Jobs live in a LIFO stack so the produced item order matches
+// the old recursive depth-first scan exactly.
+struct Scan_job {
+mut:
+	is_zip bool
+	path   string // directory or archive to scan
+	in_index int  // container index of the listing (folder) / zip item
+	// Sub-folder jobs create their folder Item when popped, exactly where
+	// the old recursive scan created it (just before descending).
+	pending_item bool
+	item_path    string
+	item_name    string
+	item_in      int
+	item_mtime   i64
+	// Resumable listing state (folder jobs only).
+	entries []string
+	listed  bool
+	pos     int
+	subdirs []string
+}
+
+// scan_chunk_entries is how many directory entries one scan_step() pass
+// processes before yielding, so huge folders cannot stall a frame.
+const scan_chunk_entries = 512
 
 // add_scan_warning records a non-fatal scan problem. The report is capped so
 // a pathological tree (thousands of unreadable entries) cannot grow it
@@ -165,74 +200,23 @@ fn (il &Item_list) get_file_path() string {
 	return it.name
 }
 
-// scan_folder walks a directory, adding images directly and recursing into
-// sub-folders and zip archives.
-fn (mut il Item_list) scan_folder(path string, in_index int) ! {
-	println('Scanning [${path}]')
-	mut folder_list := []string{}
-	lst := os.ls(path)!
-
-	for c, x in lst {
-		pt := '${path}${il.path_sep}${x}'
-		mut item := Item{
-			path:                 path
-			name:                 x
-			container_index:      in_index
-			container_item_index: c
-		}
-		if os.is_dir(pt) {
-			folder_list << x
-			continue
-		}
-		ext := get_extension(x)
-		if ext == .zip {
-			item.i_type = .zip
-			item.mtime = os.file_last_mod_unix(pt)
-			il.lst << item
-			// A corrupt or unreadable archive must not abort the scan of the
-			// remaining folder entries: record the problem and continue.
-			il.scan_zip(pt, il.lst.len - 1) or {
-				il.add_scan_warning('zip `${pt}`: ${err}')
-			}
-			continue
-		}
-		if is_image(ext) {
-			il.n_item += 1
-			item.n_item = il.n_item
-			item.i_type = ext
-			item.drawable = true
-			item.mtime = os.file_last_mod_unix(pt)
-			il.lst << item
-		}
-	}
-
-	for x in folder_list {
-		pt := '${path}${il.path_sep}${x}'
-		il.lst << Item{
-			path:            path
-			name:            x
-			i_type:          .folder
-			container_index: in_index
-			mtime:           os.file_last_mod_unix(pt)
-		}
-		// One unreadable subfolder (permissions, locked, deleted mid-scan)
-		// must not abort the scan of its siblings: record and continue.
-		il.scan_folder(pt, il.lst.len - 1) or {
-			il.add_scan_warning('folder `${pt}`: ${err}')
-		}
-	}
-}
-
-// get_items_list builds the list from the command-line / dropped paths.
-fn (mut il Item_list) get_items_list(args []string) {
+// scan_begin starts an incremental scan of the given paths. It only
+// validates and enqueues the top-level paths (fast); the actual walking is
+// done by repeated scan_step() calls so a UI stays responsive and can show
+// progress. scan_finish() must be called once scan_step() reports done.
+fn (mut il Item_list) scan_begin(args []string) {
 	il.loaded = false
+	il.scanning = true
 	il.path_sep = $if windows { '\\' } $else { '/' }
+	il.scan_done = 0
+	il.scan_total = args.len
 	for x in args {
 		// Explicitly passed paths that vanished (or were mistyped) are reported
 		// instead of being silently ignored.
 		if !os.exists(x) {
 			il.last_error = 'missing path `${x}`'
 			il.add_scan_warning('missing path `${x}`')
+			il.scan_done += 1
 			continue
 		}
 		if os.is_dir(x) {
@@ -243,12 +227,8 @@ fn (mut il Item_list) get_items_list(args []string) {
 				i_type:          .folder
 				mtime:           os.file_last_mod_unix(x)
 			}
-			il.scan_folder(x, il.lst.len - 1) or {
-				il.last_error = 'scan folder `${x}`: ${err}'
-				il.add_scan_warning('scan folder `${x}`: ${err}')
-				eprintln('ERROR: ${il.last_error}')
-				continue
-			}
+			il.scan_jobs << Scan_job{ path: x.clone(), in_index: il.lst.len - 1 }
+			il.scan_done += 1
 			continue
 		}
 		mut item := Item{
@@ -261,12 +241,8 @@ fn (mut il Item_list) get_items_list(args []string) {
 			item.i_type = .zip
 			item.mtime = os.file_last_mod_unix(x)
 			il.lst << item
-			il.scan_zip(x, il.lst.len - 1) or {
-				il.last_error = 'scan zip `${x}`: ${err}'
-				il.add_scan_warning('scan zip `${x}`: ${err}')
-				eprintln('ERROR: ${il.last_error}')
-				continue
-			}
+			il.scan_jobs << Scan_job{ is_zip: true, path: x.clone(), in_index: il.lst.len - 1 }
+			il.scan_done += 1
 			continue
 		}
 		if is_image(ext) {
@@ -281,15 +257,148 @@ fn (mut il Item_list) get_items_list(args []string) {
 			// scanned folders are skipped silently: that is normal).
 			il.add_scan_warning('skipped, not a supported image: `${x}`')
 		}
+		il.scan_done += 1
 	}
-	// Record the original load position so the "as loaded" sort can restore it
-	// even after the list has been reordered.
+}
+
+// free_job_scratch releases a finished job's scratch arrays. Only the array
+// backings are freed: the Items already copied the string headers they keep
+// (the per-entry strings themselves leak exactly like the old recursive
+// scan did under `-gc none`).
+fn free_job_scratch(mut job Scan_job) {
+	unsafe { job.entries.free() }
+	unsafe { job.subdirs.free() }
+}
+
+// scan_step processes one chunk of the pending scan work and reports whether
+// more work remains. Folder listings are cut every scan_chunk_entries
+// entries; a zip found mid-listing suspends its folder so the archive's
+// entries land right after the zip item, preserving the old recursive order.
+fn (mut il Item_list) scan_step() bool {
+	if il.scan_jobs.len == 0 {
+		return false
+	}
+	mut job := il.scan_jobs.pop()
+	if job.is_zip {
+		// A corrupt or unreadable archive must not abort the scan of the
+		// remaining entries: record the problem and continue.
+		il.scan_zip(job.path, job.in_index) or {
+			il.add_scan_warning('zip `${job.path}`: ${err}')
+		}
+		free_job_scratch(mut job)
+		return il.scan_jobs.len > 0
+	}
+	if job.pending_item {
+		il.lst << Item{
+			path:            job.item_path
+			name:            job.item_name
+			i_type:          .folder
+			container_index: job.item_in
+			mtime:           job.item_mtime
+		}
+		job.in_index = il.lst.len - 1
+	}
+	if !job.listed {
+		println('Scanning [${job.path}]')
+		// One unreadable folder (permissions, locked, deleted mid-scan) must
+		// not abort the scan of its siblings: record and continue.
+		mut ls_failed := false
+		entries := os.ls(job.path) or {
+			ls_failed = true
+			il.add_scan_warning('folder `${job.path}`: ${err}')
+			[]string{}
+		}
+		if ls_failed {
+			free_job_scratch(mut job)
+			return il.scan_jobs.len > 0
+		}
+		job.entries = entries
+		job.listed = true
+		il.scan_total += job.entries.len
+	}
+	mut processed := 0
+	for job.pos < job.entries.len && processed < scan_chunk_entries {
+		x := job.entries[job.pos]
+		c := job.pos
+		job.pos += 1
+		processed += 1
+		il.scan_done += 1
+		pt := '${job.path}${il.path_sep}${x}'
+		mut item := Item{
+			path:                 job.path
+			name:                 x
+			container_index:      job.in_index
+			container_item_index: c
+		}
+		if os.is_dir(pt) {
+			job.subdirs << x
+			continue
+		}
+		ext := get_extension(x)
+		if ext == .zip {
+			item.i_type = .zip
+			item.mtime = os.file_last_mod_unix(pt)
+			il.lst << item
+			// Suspend the folder: the archive entries must be appended
+			// immediately after the zip item, before the next sibling.
+			il.scan_jobs << job
+			il.scan_jobs << Scan_job{ is_zip: true, path: pt, in_index: il.lst.len - 1 }
+			return true
+		}
+		if is_image(ext) {
+			il.n_item += 1
+			item.n_item = il.n_item
+			item.i_type = ext
+			item.drawable = true
+			item.mtime = os.file_last_mod_unix(pt)
+			il.lst << item
+		}
+	}
+	if job.pos < job.entries.len {
+		il.scan_jobs << job // suspended mid-listing
+		return true
+	}
+	// All entries done: enqueue the sub-folders. Push in reverse so the
+	// stack pops the first sub-folder first, like the old recursion did.
+	// (A plain `len - 1 .. -1` range is deliberately avoided: it does not
+	// iterate when the end bound is negative.)
+	mut si := job.subdirs.len - 1
+	for si >= 0 {
+		x := job.subdirs[si]
+		si--
+		pt := '${job.path}${il.path_sep}${x}'
+		il.scan_jobs << Scan_job{
+			pending_item: true
+			path:         pt
+			item_path:    job.path
+			item_name:    x
+			item_in:      job.in_index
+			item_mtime:   os.file_last_mod_unix(pt)
+		}
+	}
+	free_job_scratch(mut job)
+	return il.scan_jobs.len > 0
+}
+
+// scan_finish closes an incremental scan: records the original load order
+// (so the "as loaded" sort can restore it even after reordering), selects the
+// first item and marks the list loaded.
+fn (mut il Item_list) scan_finish() {
 	for i in 0 .. il.lst.len {
 		il.lst[i].orig_index = i
 	}
 	println('Items: ${il.n_item}')
 	il.get_next_item(1)
 	il.loaded = true
+	il.scanning = false
+}
+
+// get_items_list builds the list from the command-line / dropped paths,
+// synchronously: it drives the same incremental engine the GUI scan uses.
+fn (mut il Item_list) get_items_list(args []string) {
+	il.scan_begin(args)
+	for il.scan_step() {}
+	il.scan_finish()
 }
 
 // get_next_item advances the selection by `in_inc`, skipping non-drawable

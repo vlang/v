@@ -109,11 +109,15 @@ fn (mut il Item_list) scan_zip(orig_path string, in_index int) ! {
 		return error('${err}${zip_format_hint(orig_path)}')
 	}
 	n_entries := zp.total()!
+	// Progress accounting: the archive's entries become known now and are
+	// all consumed by the loop below (per-entry failures only warn).
+	il.scan_total += n_entries
 	for index in 0 .. n_entries {
 		il.scan_zip_entry(mut zp, index, path, in_index) or {
 			il.add_scan_warning('zip entry ${index} in `${orig_path}`: ${err}')
 		}
 	}
+	il.scan_done += n_entries
 	zp.close()
 }
 
