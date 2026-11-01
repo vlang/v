@@ -41,6 +41,9 @@ vls check path/to/file.v
 
 # MCP mode (experimental): speaks MCP over stdio
 vls --mcp
+
+# Print MCP client config snippet
+vls mcp install
 ```
 
 MCP tools exposed:
