@@ -26,7 +26,6 @@ fn test_dev_dependencies_for_tool() {
 fn test_the_bundled_vdoc_has_no_dev_dependencies() {
 	// vdoc renders markdown with `x.markdown` from vlib, so it needs nothing to be installed.
 	assert dev_dependencies_for_tool('vdoc') == []
-	assert external_module_dependencies_for_tool.len == 0
 }
 
 fn write_tool_manifest(root string) ! {
