@@ -131,6 +131,11 @@ mut:
 	// window exists) so the progress bar is visible while they are scanned.
 	scan_pending []string
 
+	// true on the very first launch (no placement file yet): only then the
+	// 1/3 x 1/2 centered default is applied in app_init; afterwards Windows
+	// restores the previous placement by itself.
+	place_first bool
+
 	// view transform (window pixel space, y-down)
 	win_w f32
 	win_h f32
@@ -636,6 +641,19 @@ fn C.MonitorFromRect(voidptr, u32) voidptr
 fn C.MonitorFromWindow(voidptr, u32) voidptr
 fn C.GetMonitorInfoW(voidptr, voidptr) bool
 fn C.GetSystemMetrics(int) int
+
+// gg already declares C.RECT and C.GetWindowRect with these exact
+// signatures; repeating them identically keeps V's cross-module
+// deduplication happy.
+@[typedef]
+struct C.RECT {
+	left   i32
+	top    i32
+	right  i32
+	bottom i32
+}
+
+fn C.GetWindowRect(hwnd voidptr, rect &C.RECT) int
 fn C.SetWindowPos(hwnd voidptr, hwnd_insert_after voidptr, x int, y int, cx int, cy int, flags u32) int
 }
 
@@ -680,10 +698,56 @@ fn startup_window_size() (int, int) {
 	return mw / 3, mh / 2
 }
 
-// resize_startup_window sizes the window to 1/3 x 1/2 of the monitor it was
-// created on and centers it there. Runs in app_init, after sokol created the
-// window. No-op off Windows (the gg default size is kept).
-fn resize_startup_window() {
+// window_settings_path returns the file that remembers the window placement
+// (written on exit, read at startup). Empty on platforms without placement
+// persistence.
+fn window_settings_path() string {
+	$if windows {
+		// os.getenv returns a plain string in this V version: empty means unset.
+		appdata := os.getenv('APPDATA')
+		dir_base := if appdata != '' { appdata } else { os.home_dir() }
+		dir := os.join_path(dir_base, 'vviewer')
+		return os.join_path(dir, 'window.txt')
+	} $else {
+		return ''
+	}
+}
+
+// placement_save stores the current window rect ("left top width height")
+// so the next launch reopens where the user left it. Skipped in fullscreen:
+// the fullscreen rect is not a placement worth restoring.
+fn placement_save() {
+	$if windows {
+		if sapp.is_fullscreen() {
+			return
+		}
+		hwnd := sapp.win32_get_hwnd()
+		if hwnd == unsafe { nil } {
+			return
+		}
+		mut rc := C.RECT{}
+		if C.GetWindowRect(hwnd, &rc) == 0 {
+			return
+		}
+		settings := window_settings_path()
+		os.mkdir_all(os.dir(settings)) or { return }
+		txt := '${rc.left} ${rc.top} ${rc.right - rc.left} ${rc.bottom - rc.top}'
+		os.write_file(settings, txt) or {}
+	}
+}
+
+// window_is_first_launch reports whether the viewer never completed a run
+// on this account (no placement file). Only then the 1/3 x 1/2 centered
+// default is applied: on every later launch Windows itself restores the
+// previous window placement, and touching it would fight that memory.
+fn window_is_first_launch() bool {
+	return !os.exists(window_settings_path())
+}
+
+// apply_first_launch_placement sizes the window to 1/3 x 1/2 of the monitor
+// it was created on and centers it there. Runs in app_init on the first
+// launch only. No-op off Windows (the gg default size is kept).
+fn apply_first_launch_placement() {
 	$if windows {
 		hwnd := sapp.win32_get_hwnd()
 		if hwnd == unsafe { nil } {
@@ -717,7 +781,9 @@ fn app_init(mut app App) {
 		wrap_v:     .clamp_to_edge
 	}
 	app.sampler = gfx.make_sampler(&sd)
-	resize_startup_window()
+	if app.place_first {
+		apply_first_launch_placement()
+	}
 	if app.scan_pending.len > 0 {
 		// Command-line paths are scanned incrementally now that the window
 		// (and its progress bar) exists.
@@ -782,6 +848,7 @@ fn (mut app App) set_sort(mode Sort_mode) {
 // my_event handles keyboard / mouse / drag-and-drop input.
 fn my_event(mut ev gg.Event, mut app App) {
 	if ev.typ == .quit_requested {
+		placement_save()
 		exit(0)
 	}
 
@@ -862,6 +929,7 @@ fn my_event(mut ev gg.Event, mut app App) {
 	// keyboard commands (same bindings as the example viewer)
 	if ev.typ == .key_down {
 		if ev.key_code == .escape || ev.key_code == .q {
+			placement_save()
 			exit(0)
 		}
 		if ev.key_code == .i {
@@ -980,6 +1048,10 @@ fn main() {
 	// Command-line paths are scanned after the window opens (see app_init)
 	// so the scan progress bar is visible for them too.
 	app.scan_pending = os.args[1..]
+	// First launch: 1/3 x 1/2 of the monitor, centered (applied in app_init).
+	// Later launches: Windows restores the previous placement by itself, so
+	// the window must not be touched.
+	app.place_first = window_is_first_launch()
 	win_w, win_h := startup_window_size()
 
 	app.gg = gg.new_context(
