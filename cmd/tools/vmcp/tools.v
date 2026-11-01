@@ -63,6 +63,7 @@ pub fn tool_specs() []ToolSpec {
 		specs << spec_vls_references()
 		specs << spec_vls_rename()
 		specs << spec_vls_symbols()
+		specs << spec_vls_completion()
 	}
 	// Running code.
 	specs << spec_run()

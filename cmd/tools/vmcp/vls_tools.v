@@ -205,6 +205,41 @@ fn tool_vls_symbols(ws &Workspace, arguments string) string {
 	return run.output
 }
 
+fn spec_vls_completion() ToolSpec {
+	return read_only_spec('v_vls_completion',
+		'Completion candidates at a position using VLS.',
+		input_schema(['path', 'line', 'character'], {
+			'path': SchemaProperty{
+				kind:        'string'
+				description: 'The .v file.'
+			}
+			'line': SchemaProperty{
+				kind:        'integer'
+				description: 'Zero-based line number.'
+			}
+			'character': SchemaProperty{
+				kind:        'integer'
+				description: 'Zero-based character offset.'
+			}
+		}), tool_vls_completion)
+}
+
+fn tool_vls_completion(ws &Workspace, arguments string) string {
+	args := decode_args(arguments)
+	path := ws.resolve_arg(args, 'path') or { return error_json(err.msg()) }
+	if !os.exists(path) {
+		return error_json('`${path}` does not exist')
+	}
+	line := args.int('line', 0)
+	col := args.int('character', 0)
+	vls := find_vls_binary() or { return error_json('vls not found on PATH') }
+	run := os.exec([vls, 'completion', path, line.str(), col.str()])
+	if run.exit_code != 0 {
+		return error_json('vls completion failed: ${run.output}')
+	}
+	return run.output
+}
+
 fn find_vls_binary() ?string {
 	p := os.getenv('VLS_PATH')
 	if p != '' && os.exists(p) {
