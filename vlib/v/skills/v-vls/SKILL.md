@@ -51,6 +51,9 @@ vls references path/to/file.v 10 5
 # List document symbols
 vls symbols path/to/file.v
 
+# Completion candidates at a position
+vls completion path/to/file.v 10 5
+
 # MCP mode (experimental): speaks MCP over stdio
 vls --mcp
 
