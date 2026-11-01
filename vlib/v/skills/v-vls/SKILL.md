@@ -48,6 +48,9 @@ vls definition path/to/file.v 10 5
 # Find references at a position
 vls references path/to/file.v 10 5
 
+# List document symbols
+vls symbols path/to/file.v
+
 # MCP mode (experimental): speaks MCP over stdio
 vls --mcp
 
