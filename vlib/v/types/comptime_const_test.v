@@ -502,3 +502,38 @@ fn test_comptime_const_left_shift_does_not_widen_translated_literals() ! {
 	}
 	assert false, 'missing shift expression'
 }
+
+fn test_comptime_const_selector_locals_precede_merged_header_imports() ! {
+	root := os.join_path(os.vtmp_dir(), 'comptime_const_selector_scope_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	dep := os.join_path(root, 'dep.v')
+	cache := os.join_path(root, 'v3_module_cache_fixture')
+	os.mkdir_all(cache)!
+	helper := os.join_path(cache, 'helper.vh')
+	main := os.join_path(root, 'main.v')
+	os.write_file(dep, 'module dep\npub const value = 2')!
+	// Cached headers combine imports and annotated bodies from sibling files.
+	os.write_file(helper, 'module helper\nimport dep as item\nconst value = 3\npub struct Cell { pub: value int }\n@[comptime]\npub fn local_value() int { item := Cell{value: 7} return item.value }\n@[comptime]\npub fn parameter_value(item Cell) int { return item.value }\n@[comptime]\npub fn imported_value() int { return item.value }\n@[comptime]\npub fn module_shadow() int { helper := Cell{value: 13} return helper.value }')!
+	os.write_file(main, 'module main\nimport helper\nconst local_result = helper.local_value()\nconst parameter_result = helper.parameter_value(helper.Cell{value: 11})\nconst imported_result = helper.imported_value()\nconst module_shadow_result = helper.module_shadow()\nfn main() { _ = local_result _ = parameter_result _ = imported_result _ = module_shadow_result }')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_files([dep, helper, main])
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	assert tc.comptime_const_values['local_result']!.integer == 7
+	assert tc.comptime_const_values['parameter_result']!.integer == 11
+	assert tc.comptime_const_values['imported_result']!.integer == 2
+	assert tc.comptime_const_values['module_shadow_result']!.integer == 13
+}
+
+fn test_comptime_const_reads_current_module_qualified_constants() {
+	for module_name in ['helper', 'main', 'builtin'] {
+		tc := comptime_const_checker('module ${module_name}\nconst n = 2\n@[comptime]\nfn qualified() int { return ${module_name}.n }\nconst qualified_result = qualified()\nfn main() { _ = qualified_result }')
+		assert tc.errors.len == 0, tc.errors.str()
+		key_prefix := if module_name in ['main', 'builtin'] { '' } else { '${module_name}.' }
+		assert tc.comptime_const_values['${key_prefix}qualified_result']!.integer == 2
+	}
+}

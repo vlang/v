@@ -520,11 +520,19 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 			return container.elements[int(index.integer)]
 		}
 		.selector {
-			// Imported constants use the source file's import bindings.
-			if e.tc.a.child_node(node, 0).kind == .ident && e.tc.resolve_import_alias(e.tc.a.child_node(node, 0).value) != none {
-				alias := e.tc.a.child_node(node, 0).value
-				module_name := e.tc.resolve_import_alias(alias) or { return error('unknown module') }
-				return e.constant('${module_name}.${node.value}')
+			base_node := e.tc.a.child_node(node, 0)
+			// A cached header combines sibling imports. Executing locals still
+			// take precedence, even though the checker view has no function scope.
+			if base_node.kind == .ident && e.local(base_node.value) == none
+				&& e.tc.is_namespace_selector(node, base_node) {
+				if module_name := e.tc.resolve_import_alias(base_node.value) {
+					return e.constant('${module_name}.${node.value}')
+				}
+				if base_node.value == e.tc.cur_module || base_node.value == short_name_view(e.tc.cur_module)
+					|| (base_node.value == 'main' && is_main_module_name(e.tc.cur_module)) {
+					// Current-module lookup also handles main/builtin's bare keys.
+					return e.constant(node.value)
+				}
 			}
 			container := e.expr(e.tc.a.child(node, 0))!
 			base := unalias_type(container.typ)

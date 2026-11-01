@@ -353,6 +353,19 @@ fn test_comptime_struct_and_shift_parity() {
 	assert computed_large_literal_shifts == const_large_literal_shifts()
 }
 
+const computed_selector_local = evaluated.local_selector()
+const computed_selector_parameter = evaluated.parameter_selector(evaluated.SelectorCell{ value: 11 })
+const computed_selector_qualified = evaluated.qualified_selector()
+
+fn test_comptime_selector_namespace_parity() {
+	assert computed_selector_local == 7
+	assert computed_selector_local == evaluated.local_selector()
+	assert computed_selector_parameter == 11
+	assert computed_selector_parameter == evaluated.parameter_selector(evaluated.SelectorCell{ value: 11 })
+	assert computed_selector_qualified == 7
+	assert computed_selector_qualified == evaluated.qualified_selector()
+}
+
 fn test_comptime_constants_match_runtime() {
 	assert imported_pair == evaluated.make_pair(10)
 	assert imported_pair == [u32(10), 17]!
