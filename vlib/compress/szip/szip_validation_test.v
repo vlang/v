@@ -37,7 +37,8 @@ fn test_invalid_archive_metadata_and_payload_return_errors() {
 	}
 	// Entries are only read when asked for, so damage to the local header or
 	// the payload is reported when the entry is read.
-	for pos in [0, 30 + 'entry.txt'.len] {
+	payload_start := 30 + int(validation_u16(original, 26)) + int(validation_u16(original, 28))
+	for pos in [0, payload_start] {
 		mut bytes := original.clone()
 		bytes[pos] ^= 0xff
 		os.write_file_array(path, bytes)!

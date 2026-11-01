@@ -10,7 +10,8 @@ module szip
 //
 // The entry count and the name, extra field and comment sizes are checked when
 // the archive is opened. The size and ratio bounds are checked when an entry is
-// read, so one hostile entry does not make the rest of the archive unreadable.
+// read, before anything is allocated for it, so one hostile entry does not make
+// the rest of the archive unreadable.
 @[params]
 pub struct Limits {
 pub:
@@ -19,6 +20,9 @@ pub:
 	// max_entry_size bounds the uncompressed size of a single entry. It is what
 	// stops a small entry that announces, truthfully, a huge expansion.
 	max_entry_size u64 = u64(1) << 32
+	// max_compressed_size bounds the compressed size of a single entry, which
+	// is read into memory before it is decompressed.
+	max_compressed_size u64 = u64(1) << 32
 	// max_total_size bounds the uncompressed size of everything read from one
 	// archive, which stops bombs that spread their expansion over many entries.
 	max_total_size u64 = u64(8) << 30
@@ -97,6 +101,14 @@ fn (l &Limits) check_header_sizes(name_len int, extra_len int, comment_len int) 
 // check_entry checks the declared sizes of an entry before it is decompressed,
 // and the running total of everything read from the archive with it.
 fn (l &Limits) check_entry(name string, compressed u64, uncompressed u64, total u64) ! {
+	if compressed > l.max_compressed_size {
+		return LimitExceeded{
+			limit:   'max_compressed_size'
+			value:   compressed
+			allowed: l.max_compressed_size
+			entry:   name
+		}
+	}
 	if uncompressed > l.max_entry_size {
 		return LimitExceeded{
 			limit:   'max_entry_size'
