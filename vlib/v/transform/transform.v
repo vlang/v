@@ -32838,7 +32838,8 @@ fn (t &Transformer) resolve_interface_pattern(pattern_id u32, subject_type_id u3
 				return target_iface_source_id
 			}
 		} else if t.tc.named_type_implements_interface(candidate_source_id_4, iface) {
-			return candidate_source_id_4
+			// Use the canonical type ID registered for interface implementations.
+			return t.tc.parse_resolution_type_in_file(candidate_source_id_4, t.cur_file).source_type_id()
 		}
 	}
 	return none

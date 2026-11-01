@@ -1088,11 +1088,20 @@ fn test_generic_unresolved_function_type_checks_parameters_and_return() {
 	mut tc := types.TypeChecker.new(&a)
 	t := new_transformer(mut a, &tc, map[string]bool{})
 	for typ in ['fn () T', 'fn (T) int', 'fn (value []T) string', 'fn (fn () T) int', 'Cell[fn () T]',
-		'fn () unknown'] {
+		'fn () unknown', 'fn () !T', 'fn () ?T', 'fn (T) !', 'fn (...T) ?', 'fn (fn (...T) !) ?',
+		'', '!', '?', '!void', '?void'] {
 		assert t.generic_arg_is_unresolved(flat.source_type_id(typ)), typ
 	}
-	for typ in ['fn ()', 'fn () int', 'fn (string) int', 'Cell[fn () int]'] {
+	for typ in ['fn ()', 'fn () int', 'fn (string) int', 'Cell[fn () int]', 'fn () !', 'fn () ?',
+		'Cell[fn () !]', 'Cell[fn () ?]', 'fn (fn (...string) !) ?', 'fn () !void', 'fn () ?void',
+		'Cell[fn () !void]', 'Cell[fn () ?void]', 'fn () !voidptr', 'fn () ?voidptr'] {
 		assert !t.generic_arg_is_unresolved(flat.source_type_id(typ)), typ
+	}
+	for marker in ['!', '?'] {
+		callback := flat.source_type_id('fn () ${marker}')
+		canonical_callback := flat.source_type_id('fn () ${marker}void')
+		assert t.canonical_generic_specialization_arg(callback) == canonical_callback
+		assert t.normalize_type_in_module(callback, 'main') == canonical_callback
 	}
 }
 

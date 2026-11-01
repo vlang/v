@@ -7452,7 +7452,13 @@ fn (tc &TypeChecker) qualify_fn_type_text(typ_id u32, resolution bool, generic_p
 		}
 	}
 	if syntax.function_result() != 0 {
-		params << tc.qualify_type_text_impl(syntax.function_result(), resolution, generic_params)
+		result := syntax.function_result()
+		// Keep payload-free callbacks identical to parsed FnType specializations.
+		params << if result in [checker_source_option_marker, checker_source_result_marker] {
+			tc.parse_type(result).source_type_id()
+		} else {
+			tc.qualify_type_text_impl(result, resolution, generic_params)
+		}
 		return flat.source_type_composition(.function_type, params)
 	}
 	return flat.source_type_composition(.void_function_type, params)
