@@ -11,7 +11,7 @@ fn (mut b Buf) read(mut buf []u8) !int {
 	if !(b.i < b.bytes.len) {
 		return Eof{}
 	}
-	n := copy(mut buf, b.bytes[b.i..])
+	n := copy_bytes(mut buf, b.bytes[b.i..])
 	b.i += n
 	return n
 }
@@ -47,7 +47,7 @@ fn (mut r ZeroReadAfterDataReader) read(mut buf []u8) !int {
 	match r.call_count {
 		0 {
 			r.call_count++
-			return copy(mut buf, 'hello'.bytes())
+			return copy_bytes(mut buf, 'hello'.bytes())
 		}
 		1 {
 			r.call_count++
@@ -79,7 +79,7 @@ fn (mut s StringReaderTest) read(mut buf []u8) !int {
 	if s.place >= s.text.len {
 		return Eof{}
 	}
-	read := copy(mut buf, s.text[s.place..].bytes())
+	read := copy_bytes(mut buf, s.text[s.place..].bytes())
 	s.place += read
 	return read
 }
@@ -103,7 +103,7 @@ fn (mut s ZeroThenDataReader) read(mut buf []u8) !int {
 	if s.place >= s.text.len {
 		return Eof{}
 	}
-	read := copy(mut buf, s.text[s.place..].bytes())
+	read := copy_bytes(mut buf, s.text[s.place..].bytes())
 	s.place += read
 	return read
 }
