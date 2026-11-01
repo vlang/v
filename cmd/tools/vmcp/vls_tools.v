@@ -180,6 +180,31 @@ fn tool_vls_rename(ws &Workspace, arguments string) string {
 	return run.output
 }
 
+fn spec_vls_symbols() ToolSpec {
+	return read_only_spec('v_vls_symbols',
+		'List document symbols in a V source file using VLS.',
+		input_schema(['path'], {
+			'path': SchemaProperty{
+				kind:        'string'
+				description: 'The .v file.'
+			}
+		}), tool_vls_symbols)
+}
+
+fn tool_vls_symbols(ws &Workspace, arguments string) string {
+	args := decode_args(arguments)
+	path := ws.resolve_arg(args, 'path') or { return error_json(err.msg()) }
+	if !os.exists(path) {
+		return error_json('`${path}` does not exist')
+	}
+	vls := find_vls_binary() or { return error_json('vls not found on PATH') }
+	run := os.exec([vls, 'symbols', path])
+	if run.exit_code != 0 {
+		return error_json('vls symbols failed: ${run.output}')
+	}
+	return run.output
+}
+
 fn find_vls_binary() ?string {
 	p := os.getenv('VLS_PATH')
 	if p != '' && os.exists(p) {
