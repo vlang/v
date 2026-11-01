@@ -12358,7 +12358,36 @@ fn (tc &TypeChecker) flag_enum_receiver_is_mutable_lvalue(recv_id flat.NodeId) b
 	if !tc.expr_can_take_address(recv_id) {
 		return false
 	}
-	return tc.expr_root_is_mutable_lvalue(recv_id)
+	if tc.expr_root_is_mutable_lvalue(recv_id) {
+		return true
+	}
+	if tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(recv_id) {
+		return false
+	}
+	// Follow the same storage-preserving wrappers as expr_can_take_address.
+	mut current := recv_id
+	for tc.valid_node_id(current) {
+		node := tc.a.node(current)
+		if node.kind == .ident {
+			return tc.expr_root_constant_name(current) == none
+		}
+		if node.children_count == 0 {
+			break
+		}
+		base := tc.a.child_node(node, 0)
+		if node.kind == .selector && base.kind == .ident
+			&& !tc.ident_resolves_to_value(base.value) && tc.const_type_for_selector(*node) != none {
+			return false
+		}
+		if node.kind in [.block, .expr_stmt] {
+			current = tc.a.child(node, node.children_count - 1)
+		} else if node.kind in [.index, .selector, .paren, .or_expr, .postfix] {
+			current = tc.a.child(node, 0)
+		} else {
+			break
+		}
+	}
+	return true
 }
 
 fn (tc &TypeChecker) mut_receiver_expr_is_mutable_lvalue(id flat.NodeId) bool {

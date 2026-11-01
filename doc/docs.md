@@ -8427,6 +8427,10 @@ fn main() {
 }
 ```
 
+Flag mutators require a mutable receiver in safe code. An `unsafe` block can mutate an
+addressable flag value through an immutable reference or binding. Named constants and
+expressions without addressable storage remain invalid receivers.
+
 ```v
 // @[_allow_multiple_values] allows an enum to have multiple duplicate values.
 // Use it carefully, only when you really need it.
