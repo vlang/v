@@ -2,6 +2,19 @@
 
 `io` provides common interfaces for buffered reading/writing of data.
 
+## Discarding output
+
+`Discard` implements `Writer` by accepting every byte without storing data. Writes never
+fail and return the input length, including zero for an empty input. Copy `io.discard`
+to a mutable local, or construct `io.Discard{}`, when a writer is required.
+
+```v
+import io
+
+mut sink := io.discard
+assert sink.write('ignored'.bytes())! == 7
+```
+
 ## ByteBuffer
 
 `new_byte_buffer(capacity)` creates a growable cursor-based buffer. `put_u8`,
