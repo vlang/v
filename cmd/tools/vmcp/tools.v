@@ -58,10 +58,7 @@ pub fn tool_specs() []ToolSpec {
 	// VLS delegation, only when vls is installed.
 	if find_vls_binary() != none {
 		specs << spec_vls_check()
-	}
-	// VLS delegation, only when vls is installed.
-	if find_vls_binary() != none {
-		specs << spec_vls_check()
+		specs << spec_vls_hover()
 	}
 	// Running code.
 	specs << spec_run()

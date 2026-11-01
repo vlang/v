@@ -18,6 +18,25 @@ fn spec_vls_check() ToolSpec {
 		}), tool_vls_check)
 }
 
+fn spec_vls_hover() ToolSpec {
+	return read_only_spec('v_vls_hover',
+		'Hover information at a position in a V source file using VLS. Only available when `vls` is installed.',
+		input_schema(['path', 'line', 'character'], {
+			'path': SchemaProperty{
+				kind:        'string'
+				description: 'The .v file.'
+			}
+			'line': SchemaProperty{
+				kind:        'integer'
+				description: 'Zero-based line number.'
+			}
+			'character': SchemaProperty{
+				kind:        'integer'
+				description: 'Zero-based character offset.'
+			}
+		}), tool_vls_hover)
+}
+
 fn tool_vls_check(ws &Workspace, arguments string) string {
 	args := decode_args(arguments)
 	path := ws.resolve_arg(args, 'path') or { return error_json(err.msg()) }
@@ -28,6 +47,22 @@ fn tool_vls_check(ws &Workspace, arguments string) string {
 	run := os.exec([vls, 'check', path])
 	if run.exit_code != 0 {
 		return error_json('vls check failed: ${run.output}')
+	}
+	return run.output
+}
+
+fn tool_vls_hover(ws &Workspace, arguments string) string {
+	args := decode_args(arguments)
+	path := ws.resolve_arg(args, 'path') or { return error_json(err.msg()) }
+	if !os.exists(path) {
+		return error_json('`${path}` does not exist')
+	}
+	line := args.int('line', 0)
+	col := args.int('character', 0)
+	vls := find_vls_binary() or { return error_json('vls not found on PATH') }
+	run := os.exec([vls, 'hover', path, line.str(), col.str()])
+	if run.exit_code != 0 {
+		return error_json('vls hover failed: ${run.output}')
 	}
 	return run.output
 }
