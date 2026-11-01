@@ -134,6 +134,113 @@ fn test_windows_pch_key_follows_the_compiler_and_the_flags() {
 	assert base != v3_windows_pch_key('clang 23', ['-std=gnu11', '-O3', '-fwrapv', '-DX=1'])
 }
 
+fn test_windows_pch_key_follows_the_include_environment() {
+	saved_dir := os.getwd()
+	saved := ['CPATH', 'C_INCLUDE_PATH'].map(os.getenv_opt(it))
+	defer {
+		os.chdir(saved_dir) or {}
+		for i, name in ['CPATH', 'C_INCLUDE_PATH'] {
+			if value := saved[i] {
+				os.setenv(name, value, true)
+			} else {
+				os.unsetenv(name)
+			}
+		}
+	}
+	os.unsetenv('CPATH')
+	os.unsetenv('C_INCLUDE_PATH')
+	base := v3_windows_pch_key('clang 23', ['-O2', '-Isdk'])
+	assert base == v3_windows_pch_key('clang 23', ['-O2', '-Isdk'])
+	// Other directories searched for the SDK headers.
+	os.setenv('CPATH', 'S:/sdk1', true)
+	cpath := v3_windows_pch_key('clang 23', ['-O2', '-Isdk'])
+	assert cpath != base
+	os.setenv('CPATH', 'S:/sdk2', true)
+	assert v3_windows_pch_key('clang 23', ['-O2', '-Isdk']) !in [base, cpath]
+	os.unsetenv('CPATH')
+	os.setenv('C_INCLUDE_PATH', 'S:/sdk1', true)
+	assert v3_windows_pch_key('clang 23', ['-O2', '-Isdk']) !in [base, cpath]
+	os.unsetenv('C_INCLUDE_PATH')
+	// Another directory for the relative `-Isdk`.
+	os.chdir(os.vtmp_dir())!
+	assert v3_windows_pch_key('clang 23', ['-O2', '-Isdk']) != base
+	os.chdir(saved_dir)!
+	assert v3_windows_pch_key('clang 23', ['-O2', '-Isdk']) == base
+}
+
+fn test_windows_pch_follows_the_include_environment() ! {
+	$if !windows {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'windows_pch_cpath_${os.getpid()}')
+	os.mkdir_all(root)!
+	saved := os.getenv_opt('CPATH')
+	defer {
+		if value := saved {
+			os.setenv('CPATH', value, true)
+		} else {
+			os.unsetenv('CPATH')
+		}
+		os.rmdir_all(root) or {}
+	}
+	// Two SDKs that differ in a value, both in place throughout.
+	for abi in [1, 2] {
+		dir := os.join_path(root, 'sdk${abi}')
+		os.mkdir_all(dir)!
+		os.write_file(os.join_path(dir, 'io.h'), '#include_next <io.h>\n#define SDK_ABI ${abi}\n')!
+	}
+	cache := os.join_path(root, 'cache')
+	os.mkdir_all(cache)!
+	entry := modulecache.Entry{
+		object:   os.join_path(cache, 'sample.o')
+		c_source: os.join_path(cache, 'sample.c')
+	}
+	compiler := V3CachedObjectCompiler{
+		path:     clang
+		identity: 'test clang cpath ${os.getpid()}'
+	}
+	state := V3ModuleCacheState{ silent: true }
+	pchs := fn [cache] () []string {
+		return (os.ls(cache) or { [] }).filter(it.starts_with('windows_sdk_') && it.ends_with('.pch'))
+	}
+	os.setenv('CPATH', os.join_path(root, 'sdk1'), true)
+	assert compile_v3_cached_object(compiler, entry, generated_windows_prelude + '_Static_assert(SDK_ABI == 1, "sdk1");\n', '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, &state, 'sample')!
+	first := pchs()
+	assert first.len == 1, first.str()
+	// A new unit in the other environment gets a header of its own, and the
+	// first one stays for the first environment.
+	os.setenv('CPATH', os.join_path(root, 'sdk2'), true)
+	assert compile_v3_cached_object(compiler, entry, generated_windows_prelude + '_Static_assert(SDK_ABI == 2, "sdk2");\n', '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, &state, 'sample')!
+	both := pchs()
+	assert both.len == 2, both.str()
+	assert first[0] in both
+}
+
+fn test_windows_pch_is_off_under_ccc_override_options() {
+	$if !windows {
+		return
+	}
+	saved := os.getenv_opt('CCC_OVERRIDE_OPTIONS')
+	defer {
+		if value := saved {
+			os.setenv('CCC_OVERRIDE_OPTIONS', value, true)
+		} else {
+			os.unsetenv('CCC_OVERRIDE_OPTIONS')
+		}
+	}
+	root := os.join_path(os.vtmp_dir(), 'windows_pch_ccc_${os.getpid()}')
+	os.mkdir_all(root) or {}
+	defer { os.rmdir_all(root) or {} }
+	compiler := V3CachedObjectCompiler{
+		path:     os.join_path(root, 'no_such_clang.exe')
+		identity: 'clang 23'
+	}
+	os.setenv('CCC_OVERRIDE_OPTIONS', '+-DWIN32_FULL', true)
+	assert v3_windows_pch(compiler, ['-O2'], root) == none
+	assert os.ls(root) or { [] } == []
+}
+
 fn test_windows_pch_needs_a_compiler_identity_and_a_native_target() {
 	root := os.join_path(os.vtmp_dir(), 'windows_pch_none_${os.getpid()}')
 	os.mkdir_all(root) or {}

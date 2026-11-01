@@ -289,14 +289,19 @@ fn v3_windows_pch_compiler(compiler string) bool {
 	return name.contains('clang') && !name.contains('clang-cl')
 }
 
-// v3_windows_pch_key names the precompiled header of one compiler and one
-// compile-flag set. Any difference in either gives a different header, so a
-// changed flag never meets a precompiled header built without it: Clang rejects
-// a header whose language standard or optimization level differ, but checks a
-// command-line macro only when the header used it.
+// v3_windows_pch_key names the precompiled header of one compiler, one
+// compile-flag set and the environment they compile in. Any difference gives a
+// different header, so a change never meets a precompiled header made without
+// it: Clang rejects a header whose language standard or optimization level
+// differ, but checks a command-line macro only when the header used it, and the
+// SDK headers it read only while they are where it found them. So the key holds
+// what sends the compiler to other headers: the variables of
+// v3_link_environment_names (CPATH, C_INCLUDE_PATH, ...) and the directory that
+// relative include directories are found from.
 fn v3_windows_pch_key(identity string, args []string) string {
 	mut hash := u64(1469598103934665603)
-	for part in [v3_windows_pch_format, identity, v3_windows_pch_header, args.join('\x00')] {
+	for part in [v3_windows_pch_format, identity, v3_windows_pch_header, args.join('\x00'),
+		v3_link_environment_signature(), os.getwd()] {
 		hash = c_hash_bytes(hash, part.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
 	}
@@ -308,7 +313,7 @@ fn v3_windows_pch_key(identity string, args []string) string {
 // and the source), building it in `cache_dir` when this flag set has none yet.
 // It returns none when the compile cannot use one: another host or compiler, a
 // cross target, a compiler without an identity, a flag that configures the SDK
-// headers (`-DWIN32_FULL`, `-include`), or a header whose build failed within
+// headers (`-DWIN32_FULL`, `-include`, CCC_OVERRIDE_OPTIONS), or a header whose build failed within
 // the hour (recorded beside it, so the build is not retried for every unit). Building
 // is the compile of the header with the same arguments, so an SDK or compiler
 // that changes under the cache gives a header its compiles reject; the
@@ -317,8 +322,10 @@ fn v3_windows_pch(compiler V3CachedObjectCompiler, args []string, cache_dir stri
 	$if !windows {
 		return none
 	}
+	// CCC_OVERRIDE_OPTIONS edits the command line out of sight, as `--config` does.
 	if compiler.identity == '' || !v3_windows_pch_compiler(compiler.path)
-		|| v3_c_flags_retarget_clang(args) || v3_windows_pch_flags_configure_sdk(args) {
+		|| v3_c_flags_retarget_clang(args) || v3_windows_pch_flags_configure_sdk(args)
+		|| os.getenv('CCC_OVERRIDE_OPTIONS') != '' {
 		return none
 	}
 	base := os.join_path(cache_dir, 'windows_sdk_${v3_windows_pch_key(compiler.identity, args)}')
