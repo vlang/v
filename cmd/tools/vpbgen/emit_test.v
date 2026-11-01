@@ -795,7 +795,7 @@ fn test_write_generated_normalises_trailing_newlines() {
 
 fn test_generated_files_survive_formatting() {
 	mut paths := []string{}
-	for name in ['enum', 'demo', 'naming', 'spelled_out', 'kv'] {
+	for name in ['enum', 'enum_comments', 'demo', 'naming', 'spelled_out', 'kv'] {
 		res := generate_res(fixture('${name}.proto'), name)!
 		path := os.join_path(work_dir, '${name}_formatted.v')
 		write_outputs(PbgenOptions{ codec_out: path }, res)!
