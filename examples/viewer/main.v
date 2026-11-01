@@ -453,23 +453,29 @@ fn draw_help(app &App) {
 // draw_scan_progress paints the centered scan progress bar: a horizontal
 // bar that fills as entries are processed, with the current/total entry
 // count and the completion percentage below it.
+// Note: gg's drawing API works in DPI-logical units (it multiplies the
+// coordinates by ctx.scale internally), while win_w/win_h are physical
+// framebuffer pixels, so they must be divided by the DPI scale first.
 fn draw_scan_progress(app &App) {
-	mut bw := app.win_w * 0.5
+	sc := gg.dpi_scale()
+	lw := app.win_w / sc
+	lh := app.win_h / sc
+	mut bw := lw * 0.5
 	if bw < 300 {
 		bw = 300
 	}
 	if bw > 800 {
 		bw = 800
 	}
-	if bw > app.win_w - 20 {
-		bw = app.win_w - 20
+	if bw > lw - 20 {
+		bw = lw - 20
 	}
 	if bw < 40 {
 		bw = 40
 	}
 	bh := f32(26)
-	x := (app.win_w - bw) / 2
-	y := (app.win_h - bh) / 2
+	x := (lw - bw) / 2
+	y := (lh - bh) / 2
 	total := app.item_list.scan_total
 	done := app.item_list.scan_done
 	pct := if total > 0 { f32(done) * 100.0 / f32(total) } else { 0.0 }
@@ -486,7 +492,7 @@ fn draw_scan_progress(app &App) {
 		size:  18
 	}
 	line := 'Scanning... ${done}/${total}  (${pct:.0}%)'
-	app.gg.draw_text(int(app.win_w / 2), int(y + bh + 10), line, cfg)
+	app.gg.draw_text(int(lw / 2), int(y + bh + 10), line, cfg)
 	unsafe { line.free() }
 }
 
