@@ -69,37 +69,49 @@ fn ensure_ascii_zip(path string) !string {
 // scan_zip enumerates the image entries of a zip archive and adds them to the
 // item list as extractable (need_extract) drawables. The stored `path` is an
 // ASCII-safe path so later extraction can reopen the archive on Windows.
+// A single bad entry is recorded as a warning and skipped; it never aborts the
+// scan of the remaining entries.
 fn (mut il Item_list) scan_zip(orig_path string, in_index int) ! {
 	println('Scanning ZIP [${orig_path}]')
 	path := ensure_ascii_zip(orig_path)!
 	mut zp := szip.open(path, szip.CompressionLevel.no_compression, szip.OpenMode.read_only)!
 	n_entries := zp.total()!
 	for index in 0 .. n_entries {
-		zp.open_entry_by_index(index)!
-		is_dir := zp.is_dir()!
-		name := zp.name()
-		size := zp.size()
-		if !is_dir {
-			ext := get_extension(name)
-			if is_image(ext) {
-				il.n_item += 1
-				il.lst << Item{
-					need_extract:         true
-					path:                 path
-					name:                 name.clone()
-					container_index:      in_index
-					container_item_index: index
-					i_type:               ext
-					n_item:               il.n_item
-					drawable:             true
-					size:                 size
-				}
-			}
+		il.scan_zip_entry(mut zp, index, path, in_index) or {
+			il.add_scan_warning('zip entry ${index} in `${orig_path}`: ${err}')
 		}
-		// Keep the entry open until we are done reading it later.
-		zp.close_entry()
 	}
 	zp.close()
+}
+
+// scan_zip_entry reads one archive entry and adds it to the item list when it
+// is a viewable image. Errors are returned so the caller can skip the single
+// bad entry (encrypted, truncated header, ...) and keep scanning.
+fn (mut il Item_list) scan_zip_entry(mut zp &szip.Zip, index int, path string, in_index int) ! {
+	zp.open_entry_by_index(index)!
+	is_dir := zp.is_dir()!
+	name := zp.name()
+	size := zp.size()
+	// The entry is re-opened by index when its bytes are actually needed.
+	zp.close_entry()
+	if is_dir {
+		return
+	}
+	ext := get_extension(name)
+	if is_image(ext) {
+		il.n_item += 1
+		il.lst << Item{
+			need_extract:         true
+			path:                 path
+			name:                 name.clone()
+			container_index:      in_index
+			container_item_index: index
+			i_type:               ext
+			n_item:               il.n_item
+			drawable:             true
+			size:                 size
+		}
+	}
 }
 
 // load_current_bytes returns the raw bytes of the currently selected item,

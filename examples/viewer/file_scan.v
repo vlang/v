@@ -70,6 +70,19 @@ pub mut:
 	loaded     bool   // true once scanning finished
 	last_error string // last scan error (shown in the overlay; eprintln is invisible in a GUI exe)
 	sort_mode  Sort_mode = .loaded
+	// Non-fatal scan problems (unreadable subfolder, corrupt zip entry, ...).
+	// The scan always continues past such entries; the overlay shows the count
+	// and `W` toggles the full list.
+	scan_warnings []string
+}
+
+// add_scan_warning records a non-fatal scan problem. The report is capped so
+// a pathological tree (thousands of unreadable entries) cannot grow it
+// without bound.
+fn (mut il Item_list) add_scan_warning(msg string) {
+	if il.scan_warnings.len < 100 {
+		il.scan_warnings << msg
+	}
 }
 
 @[inline]
@@ -176,7 +189,11 @@ fn (mut il Item_list) scan_folder(path string, in_index int) ! {
 			item.i_type = .zip
 			item.mtime = os.file_last_mod_unix(pt)
 			il.lst << item
-			il.scan_zip(pt, il.lst.len - 1)!
+			// A corrupt or unreadable archive must not abort the scan of the
+			// remaining folder entries: record the problem and continue.
+			il.scan_zip(pt, il.lst.len - 1) or {
+				il.add_scan_warning('zip `${pt}`: ${err}')
+			}
 			continue
 		}
 		if is_image(ext) {
@@ -198,7 +215,11 @@ fn (mut il Item_list) scan_folder(path string, in_index int) ! {
 			container_index: in_index
 			mtime:           os.file_last_mod_unix(pt)
 		}
-		il.scan_folder(pt, il.lst.len - 1)!
+		// One unreadable subfolder (permissions, locked, deleted mid-scan)
+		// must not abort the scan of its siblings: record and continue.
+		il.scan_folder(pt, il.lst.len - 1) or {
+			il.add_scan_warning('folder `${pt}`: ${err}')
+		}
 	}
 }
 
@@ -207,6 +228,13 @@ fn (mut il Item_list) get_items_list(args []string) {
 	il.loaded = false
 	il.path_sep = $if windows { '\\' } $else { '/' }
 	for x in args {
+		// Explicitly passed paths that vanished (or were mistyped) are reported
+		// instead of being silently ignored.
+		if !os.exists(x) {
+			il.last_error = 'missing path `${x}`'
+			il.add_scan_warning('missing path `${x}`')
+			continue
+		}
 		if os.is_dir(x) {
 			il.lst << Item{
 				path:            x
@@ -217,6 +245,7 @@ fn (mut il Item_list) get_items_list(args []string) {
 			}
 			il.scan_folder(x, il.lst.len - 1) or {
 				il.last_error = 'scan folder `${x}`: ${err}'
+				il.add_scan_warning('scan folder `${x}`: ${err}')
 				eprintln('ERROR: ${il.last_error}')
 				continue
 			}
@@ -234,6 +263,7 @@ fn (mut il Item_list) get_items_list(args []string) {
 			il.lst << item
 			il.scan_zip(x, il.lst.len - 1) or {
 				il.last_error = 'scan zip `${x}`: ${err}'
+				il.add_scan_warning('scan zip `${x}`: ${err}')
 				eprintln('ERROR: ${il.last_error}')
 				continue
 			}
@@ -246,6 +276,10 @@ fn (mut il Item_list) get_items_list(args []string) {
 			item.drawable = true
 			item.mtime = os.file_last_mod_unix(x)
 			il.lst << item
+		} else {
+			// A top-level path the viewer cannot show (files found inside
+			// scanned folders are skipped silently: that is normal).
+			il.add_scan_warning('skipped, not a supported image: `${x}`')
 		}
 	}
 	// Record the original load position so the "as loaded" sort can restore it

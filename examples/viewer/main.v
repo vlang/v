@@ -43,6 +43,7 @@ const help_text_rows = [
 	'I - Toggle the info text',
 	'P - Pause/play animation',
 	'H - Toggle this help',
+	'W - Toggle scan warnings',
 	'',
 	'1 - Sort hierarchy by file name',
 	'2 - Sort hierarchy by file date',
@@ -143,6 +144,7 @@ mut:
 	last_zy        f32
 	show_info_flag bool
 	show_help_flag bool
+	show_warn_flag bool
 
 	status string
 }
@@ -480,6 +482,28 @@ fn draw_overlay(app &App) {
 		unsafe { scan_line.free() }
 		y += 22
 	}
+	// Scan warnings: one line with the count; `W` toggles the full list
+	// (capped at 20 visible rows). Same per-frame free rule as above.
+	if app.item_list.scan_warnings.len > 0 {
+		warn_line := 'scan warnings: ${app.item_list.scan_warnings.len}  [W]'
+		app.gg.draw_text(10, y, warn_line, cfg)
+		unsafe { warn_line.free() }
+		y += 22
+		if app.show_warn_flag {
+			for wi, w in app.item_list.scan_warnings {
+				if wi >= 20 {
+					more_line := '  ... ${app.item_list.scan_warnings.len - 20} more'
+					app.gg.draw_text(10, y, more_line, cfg)
+					unsafe { more_line.free() }
+					break
+				}
+				row := '  ${w}'
+				app.gg.draw_text(10, y, row, cfg)
+				unsafe { row.free() }
+				y += 22
+			}
+		}
+	}
 	if app.status != '' {
 		app.gg.draw_text(10, y, app.status, cfg)
 	}
@@ -664,6 +688,9 @@ fn my_event(mut ev gg.Event, mut app App) {
 		if ev.key_code == .h {
 			app.show_help_flag = !app.show_help_flag
 		}
+		if ev.key_code == .w {
+			app.show_warn_flag = !app.show_warn_flag
+		}
 		if app.item_list.loaded {
 			if ev.key_code == ._1 {
 				app.set_sort(.name)
@@ -719,7 +746,49 @@ fn my_event(mut ev gg.Event, mut app App) {
 	}
 }
 
+// run_scan_check implements `viewer --check <paths...>`: a headless scan
+// that prints the drawable items found and every scan warning, then exits
+// without opening a window. Used to verify a folder/zip tree (and to see
+// exactly what was skipped) from a console.
+fn run_scan_check(paths []string) {
+	if paths.len == 0 {
+		println('usage: viewer --check <file|folder|zip> ...')
+		return
+	}
+	mut il := Item_list{}
+	il.get_items_list(paths)
+	println('--- scan report ---')
+	println('drawable images: ${il.n_item}')
+	for it in il.lst {
+		if it.drawable {
+			// Every branch interpolates so `src` is always an owned string
+			// that can be freed under the no-GC build.
+			src := if it.need_extract {
+				'zip: ${it.path} :: ${it.name}'
+			} else if it.path != '' {
+				'${it.path}${il.path_sep}${it.name}'
+			} else {
+				'${it.name}'
+			}
+			println('  ${src}')
+			unsafe { src.free() }
+		}
+	}
+	for w in il.scan_warnings {
+		println('warning: ${w}')
+	}
+	if il.last_error != '' {
+		println('error: ${il.last_error}')
+	}
+}
+
 fn main() {
+	// Headless scan check mode: no window, no sokol context.
+	check_idx := os.args.index('--check')
+	if check_idx >= 0 {
+		run_scan_check(os.args[check_idx+1..])
+		return
+	}
 	mut app := &App{ player: NullPlayer{} }
 	app.item_list.get_items_list(os.args[1..])
 
