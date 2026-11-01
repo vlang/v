@@ -89,6 +89,41 @@ Use different Windows versions only when the coverage difference is intentional.
 similar workflows use different Windows runner images, document why in the workflow or
 in this README.
 
+The Win32 W3, W4, and W5 runners pin exact test inputs and runner hashes. When changing
+those inputs, update the ordered manifests, composite hashes, and all three Windows
+workflow callers together. Keep backend-state assertions in V so test helpers use
+the compiler's current symbol names and integer types. Test C headers must include
+fallback definitions for Windows messages missing from TinyCC's bundled headers.
+The bootstrap contract checks W5 source hashes, ordered surfaces, test selection,
+and all three compiler callers so formatting or type migrations cannot leave stale pins.
+
+Windows compiler jobs create a private tool cache with the runner user as its owner.
+The cache uses a short path on the runner's temporary drive so MSVC's nested helper
+object paths stay below `MAX_PATH`. `VTMP` uses the same short root so test sessions
+and their isolated module caches also fit within the native tools' path limits.
+The main jobs verify that a second `v vet` invocation reuses its compiled tool before
+starting `test-cleancode`. A cache rejected because of directory ownership or permissions
+would otherwise rebuild the tool for every input until the job times out.
+
+Pkg-config steps run the current compiler's argument-query and compile-time detection
+tests. The bootstrap contract also checks that explicit source and test paths in the
+Windows workflows exist; archived V1 tests under `vlib/v/legacy_tests` are fixtures.
+Direct C compilation checks link V3's native runtime helpers, disable GC and FastC
+dependencies, and run the resulting compiler's version command.
+Cross-platform C-generation probes select a compiler for their target explicitly;
+the Windows job's `VFLAGS` must not select MSVC for macOS output.
+Compatibility-compiler installation gives checksum tools a valid null stdin, including
+when the parent compiler launches the installer without an input handle. The bootstrap
+contract exercises that closed-stdin case.
+D3D11 shader fixtures own their SM4 bytecode rather than depending on definitions
+from the retired `sokol_gl` renderer. The bootstrap contract validates their DXBC
+containers without including that renderer.
+The TCC tools step also runs `oldv` shell-command regressions, including native
+Windows quoting, variable expansion, loop syntax, and nonzero exit propagation.
+Pure V math steps use the `pure_v_math` define and a glob with Windows path
+separators. The glob excludes C overrides; the define selects the portable math
+test expectations and keeps that build separate from normal C math caches.
+
 ### macOS runners
 
 macOS runner names can imply both OS version and CPU architecture. For example, some

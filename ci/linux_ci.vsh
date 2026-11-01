@@ -18,7 +18,7 @@ fn verify_v_test_works() {
 }
 
 fn test_pure_v_math_module() {
-	exec_args(['v', '-exclude', '@vlib/math/*.c.v', 'test', 'vlib/math/'])
+	exec_args(['v', '-d', 'pure_v_math', '-exclude', '@vlib/math/*.c.v', 'test', 'vlib/math/'])
 }
 
 fn self_tests() {
@@ -60,24 +60,22 @@ fn build_v_with_prealloc() {
 
 // TCC job tasks
 fn install_dependencies_for_examples_and_tools_tcc() {
-	if common.is_github_job {
+	if common.is_github_job && os.exists('/etc/apt/apt-mirrors.txt') {
 		exec_args(['.github/workflows/disable_azure_mirror.sh'])
 	}
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'update'])
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libssl-dev', 'sqlite3',
-		'libsqlite3-dev', 'valgrind'])
+		'libsqlite3-dev', 'valgrind', 'nodejs'])
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libfreetype6-dev',
 		'libxi-dev', 'libxcursor-dev', 'libgl-dev', 'libxrandr-dev', 'libasound2-dev', 'libegl-dev',
 		'libx11-xcb-dev'])
 	// Wayland development libraries for sokol Wayland support
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libwayland-dev',
-		'libxkbcommon-dev', 'libwayland-egl1-mesa', 'libxkbcommon-x11-dev'])
-	// The following is needed for examples/wkhtmltopdf.v
+		'libxkbcommon-dev', 'libwayland-egl1', 'libxkbcommon-x11-dev'])
+	// The following is needed for examples/c_interop_wkhtmltopdf.v.
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'xfonts-75dpi',
 		'xfonts-base', 'expect'])
-	exec_args(['v', 'retry', '--', 'wget', '--quiet',
-		'https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.jammy_amd64.deb'])
-	exec_args(['v', 'retry', '--', 'sudo', 'dpkg', '-i', 'wkhtmltox_0.12.6.1-2.jammy_amd64.deb'])
+	exec_args(['v', 'retry', '--', 'sh', 'ci/install_wkhtmltox.sh'])
 }
 
 fn test_v_to_c_tcc() {
@@ -186,7 +184,7 @@ fn test_leak_detector_tcc() {
 fn test_leak_detector_not_active_tcc() {
 	exec_args(['v', '-o', 'testcase_leak', 'vlib/v/tests/testcase_leak.vv'])
 	exec_args(['sh', '-c', './testcase_leak 2>leaks.txt'])
-	exec_args(['[', '\$(stat -c %s leaks.txt)', '=', '0', ']'])
+	assert os.file_size('leaks.txt') == 0, os.read_file('leaks.txt') or { err.msg() }
 }
 
 // GCC job tasks
@@ -195,18 +193,17 @@ fn all_code_is_formatted_gcc() {
 }
 
 fn install_dependencies_for_examples_and_tools_gcc() {
-	if common.is_github_job {
+	if common.is_github_job && os.exists('/etc/apt/apt-mirrors.txt') {
 		exec_args(['.github/workflows/disable_azure_mirror.sh'])
 	}
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'update'])
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'postgresql', 'libpq-dev',
-		'libssl-dev', 'sqlite3', 'libsqlite3-dev', 'valgrind'])
+		'libssl-dev', 'sqlite3', 'libsqlite3-dev', 'valgrind', 'nodejs'])
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libfreetype6-dev',
 		'libxi-dev', 'libxcursor-dev', 'libgl-dev', 'libxrandr-dev', 'libasound2-dev'])
 	// Wayland development libraries for sokol Wayland support
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libwayland-dev',
-		'libxkbcommon-dev', 'libwayland-egl1-mesa', 'libxkbcommon-x11-dev', 'wayland-protocols',
-		'libegl-dev'])
+		'libxkbcommon-dev', 'libwayland-egl1', 'libxkbcommon-x11-dev', 'wayland-protocols', 'libegl-dev'])
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libx11-dev',
 		'libx11-xcb-dev', 'libgl1-mesa-dri', 'xauth', 'xvfb'])
 }
@@ -346,18 +343,17 @@ fn all_code_is_formatted_clang() {
 }
 
 fn install_dependencies_for_examples_and_tools_clang() {
-	if common.is_github_job {
+	if common.is_github_job && os.exists('/etc/apt/apt-mirrors.txt') {
 		exec_args(['.github/workflows/disable_azure_mirror.sh'])
 	}
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'update'])
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'postgresql', 'libpq-dev',
-		'libssl-dev', 'sqlite3', 'libsqlite3-dev', 'valgrind'])
+		'libssl-dev', 'sqlite3', 'libsqlite3-dev', 'valgrind', 'nodejs'])
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libfreetype6-dev',
 		'libxi-dev', 'libxcursor-dev', 'libgl-dev', 'libxrandr-dev', 'libasound2-dev'])
 	// Wayland development libraries for sokol Wayland support
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'libwayland-dev',
-		'libxkbcommon-dev', 'libwayland-egl1-mesa', 'libxkbcommon-x11-dev', 'wayland-protocols',
-		'libegl-dev'])
+		'libxkbcommon-dev', 'libwayland-egl1', 'libxkbcommon-x11-dev', 'wayland-protocols', 'libegl-dev'])
 	exec_args(['v', 'retry', '--', 'sudo', 'apt', 'install', '--quiet', '-y', 'clang', 'libx11-xcb-dev'])
 }
 

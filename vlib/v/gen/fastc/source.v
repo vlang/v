@@ -66,7 +66,8 @@ fn fastc_sources_with_self_module_qualifiers(sources []FastcSourceFile, prefs &p
 		collect_global_names(source.source, source.path, source.header, prefs,
 			source.header.body_spans, mut globals, mut public_globals, mut global_paths,
 			mut declarations, mut declaration_origins)!
-		declarations.free()
+		// Only the collected names survive this scan; the declaration text is discarded.
+		unsafe { declarations.free() }
 	}
 	mut result := []FastcSourceFile{cap: sources.len}
 	for source in sources {

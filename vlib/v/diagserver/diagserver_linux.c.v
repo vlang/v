@@ -20,15 +20,20 @@ import v.workers
 $if linux {
 	#include <sys/prctl.h>
 	#include <sys/syscall.h>
-	#flag @VEXEROOT/vlib/v/diagserver/syscalls_linux.o
+	// v.workers links the shared syscall helpers.
 }
 
 fn C.waitpid(pid int, status &int, options int) int
 fn C.dup2(oldfd int, newfd int) int
 fn C._exit(code int)
 fn C.kill(pid int, sig int) int
+
+@[c_extern]
 fn C.v3_linux_parent_death_signal(signal_number int) int
+
+@[c_extern]
 fn C.v3_linux_memory_file(name &char) int
+
 fn C.lseek(fd int, offset i64, whence int) i64
 fn C.flock(i32, i32) i32
 fn C.pread(fd int, buf voidptr, count uint, offset i64) C.ptrdiff_t
@@ -66,13 +71,15 @@ mut:
 	partials bool
 	// partial prints what the check found before the grandchild went on, and
 	// returns the exit code it gives.
-	partial fn () int = unsafe { nil }
+	partial         fn (voidptr) int = unsafe { nil }
+	partial_context voidptr
 	// record_fd holds what the last check that recorded one left for the next
 	// check of the program (see keep_incremental_record).
 	record_fd int = -1
 	// idle does part of the work the child can do while it waits for a question,
 	// and reports whether some remains (see keep_busy_with).
-	idle fn () bool = unsafe { nil }
+	idle         fn (voidptr) bool = unsafe { nil }
+	idle_context voidptr
 }
 
 // check_question is what the server sends a child that answers checks, for
@@ -165,7 +172,7 @@ pub fn serve() Request {
 	work_dir := os.getwd()
 	// A child that ended between two queries closed the pipe the server sends
 	// the next one to: writing there must not end the server.
-	C.signal(C.SIGPIPE, C.SIG_IGN)
+	unsafe { C.signal(C.SIGPIPE, C.SIG_IGN) }
 	// What a check leaves for the next check of the program, in a file that
 	// every child sees and that ends with the server.
 	record_fd := if shares_children {
@@ -240,7 +247,7 @@ pub fn serve() Request {
 			}
 			// The client reads a single stream: diagnostics go where the answer goes.
 			C.dup2(1, 2)
-			C.signal(C.SIGPIPE, C.SIG_DFL)
+			unsafe { C.signal(C.SIGPIPE, C.SIG_DFL) }
 			// Nobody reads what a child prints once the server is gone. The kernel
 			// ends the child with the server only if the server is still there when
 			// the child asks: one that ended since the fork left the child to another
@@ -321,8 +328,10 @@ pub fn (r &Request) shares_checks() bool {
 
 // print_partial_with sets what prints the diagnostics the check found before
 // the grandchild went on, and returns the exit code they give: a check whose
-// grandchild takes long sends them first (see print_diagnostics).
-pub fn (mut r Request) print_partial_with(print fn () int) {
+// grandchild takes long sends them first (see print_diagnostics). The callback's
+// context must remain alive while the request can print a partial answer.
+pub fn (mut r Request) print_partial_with(print fn (voidptr) int, context voidptr) {
+	r.partial_context = context
 	r.partial = print
 }
 
@@ -398,8 +407,10 @@ fn memory_file(name &char) int {
 
 // keep_busy_with has the child call `step` while it waits for its next
 // question, until `step` returns false or a question comes: the work its next
-// answers need, done before they are asked.
-pub fn (mut r Request) keep_busy_with(step fn () bool) {
+// answers need, done before they are asked. The callback's context must remain
+// alive until the work ends or the request stops answering questions.
+pub fn (mut r Request) keep_busy_with(step fn (voidptr) bool, context voidptr) {
+	r.idle_context = context
 	r.idle = step
 }
 
@@ -416,7 +427,7 @@ pub fn (mut r Request) print_diagnostics() int {
 		mut code := 0
 		if r.partials && r.partial != unsafe { nil } && r.token != '' {
 			code = exit_code_within(r.diagnostics.pid, partial_answer_ms) or {
-				partial_code := r.partial()
+				partial_code := r.partial(r.partial_context)
 				flush_stdout()
 				flush_stderr()
 				os.fd_write(1, '\nv-diagnostics-server: partial ${partial_code} ${r.token}\n')
@@ -538,8 +549,10 @@ fn read_from_start(fd int) string {
 // resolving to the directory it was read from. It notes the names in their
 // directories already. A quick sum is what the check read: the file is read
 // again only for the next question. A file known by its SHA-256 is read again
-// once the first answer is out, as the client does not wait for that.
-pub fn (mut r Request) keep_inputs(digests map[string]string, imports_hold fn () bool) {
+// once the first answer is out, as the client does not wait for that. The import
+// callback's context must remain alive while the child can answer questions.
+pub fn (mut r Request) keep_inputs(digests map[string]string, imports_hold fn (voidptr) bool, context voidptr) {
+	r.inputs.imports_context = context
 	r.inputs.imports_hold = imports_hold
 	r.current = r.inputs.note_dirs(digests, mut r.buffer)
 	for path, digest in digests {
@@ -587,8 +600,9 @@ pub fn (mut r Request) next_question(code int) ?string {
 		r.digests = map[string]string{}
 	}
 	for r.idle != unsafe { nil } && !r.questions.has_input() {
-		if !r.idle() {
+		if !r.idle(r.idle_context) {
 			r.idle = unsafe { nil }
+			r.idle_context = unsafe { nil }
 		}
 	}
 	for {
@@ -838,9 +852,10 @@ fn (mut w Warm) answered(line string) ?int {
 // that one changes no file that was read, nor any of their directories.
 struct Inputs {
 mut:
-	files        []InputFile
-	dirs         []InputDir
-	imports_hold fn () bool = unsafe { nil }
+	files           []InputFile
+	dirs            []InputDir
+	imports_hold    fn (voidptr) bool = unsafe { nil }
+	imports_context voidptr
 }
 
 struct InputFile {
@@ -932,7 +947,7 @@ fn (i &Inputs) changed(mut buffer []u8) bool {
 			return true
 		}
 	}
-	return i.imports_hold != unsafe { nil } && !i.imports_hold()
+	return i.imports_hold != unsafe { nil } && !i.imports_hold(i.imports_context)
 }
 
 fn quick_sum(buffer []u8, size int) u64 {
@@ -942,7 +957,8 @@ fn quick_sum(buffer []u8, size int) u64 {
 // read_whole reads the file `path` into `buffer`, which it makes larger than
 // the file when needed, and returns its size.
 fn read_whole(path string, mut buffer []u8) ?int {
-	want := int((os.stat(path) or { return none }).size)
+	info := os.stat(path) or { return none }
+	want := int(info.size)
 	if buffer.len <= want {
 		buffer = []u8{len: want * 2 + 4096}
 	}

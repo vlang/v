@@ -84,6 +84,26 @@ fn test_interface_smartcast_interpolation_with_custom_str() {
 	}
 }
 
+fn custom_str_through_interface_pointer(item &InterpolationNamed) string {
+	return match item {
+		InterpolationCustom { item.str() }
+		else { '' }
+	}
+}
+
+fn test_interface_smartcast_custom_str_preserves_boxing() {
+	for i, item in [InterpolationNamed(&InterpolationCustom{ label: 'pointer' }),
+		InterpolationNamed(InterpolationCustom{ label: 'value' })] {
+		expected := if i == 0 { '&custom(pointer)' } else { 'custom(value)' }
+		assert custom_str_through_interface_pointer(&item) == expected
+		if item is InterpolationCustom {
+			assert item.str() == expected
+		} else {
+			assert false
+		}
+	}
+}
+
 fn test_interface_scalar_smartcast_interpolation() {
 	item := InterpolationAny('value')
 	if item is string {
@@ -103,6 +123,9 @@ fn test_interface_smartcast_interpolation_keeps_single_pointer_in_c() {
 	os.write_file(source, 'interface Named { name() string }
 struct Record { label string }
 fn (r &Record) name() string { return r.label }
+struct CustomRecord { label string }
+fn (r &CustomRecord) name() string { return r.label }
+fn (r &CustomRecord) str() string { return r.label }
 fn render_if(item Named) string {
 	if item is Record { return "\${item}" }
 	return ""
@@ -121,12 +144,20 @@ fn render_match(item Named) string {
 		else { "" }
 	}
 }
+fn render_custom_str(item &Named) string {
+	return match item {
+		CustomRecord { item.str() }
+		else { "" }
+	}
+}
 fn main() {
 	item := Named(&Record{ label: "record" })
 	println(render_if(item))
 	println(render_explicit(item))
 	println(render_assert(item))
 	println(render_match(item))
+	custom := Named(&CustomRecord{ label: "custom" })
+	println(render_custom_str(&custom))
 }
 ')!
 	result := os.exec([@VEXE, '-o', output, source])
@@ -135,4 +166,6 @@ fn main() {
 	// The stringifier needs the stored object pointer, not an address of that pointer.
 	assert generated.contains('(main__Record*)(item._object)')
 	assert !generated.contains('(main__Record**)')
+	assert generated.contains('(main__CustomRecord*)(item->_object)')
+	assert !generated.contains('(main__CustomRecord**)')
 }

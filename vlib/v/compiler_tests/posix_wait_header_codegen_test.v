@@ -168,6 +168,8 @@ fn wait_header_has_include_directive(c_code string) bool {
 	for line in c_code.split_into_lines() {
 		trimmed := line.trim_space()
 		if trimmed.starts_with('#include') {
+			// Bundled runtime headers remain C toolchain inputs.
+			if trimmed.ends_with('/vlib/builtin/track_heap_checks.h"') { continue }
 			return true
 		}
 	}

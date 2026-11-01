@@ -100,6 +100,13 @@ To start, you must import the module `veb` and define a structure which will
 represent your app and a structure which will represent the context of a request.
 These structures must be declared with the `pub` keyword.
 
+Pass both types explicitly when starting the server: `veb.run[App, Context](mut app, 8080)` or
+`veb.run_at[App, Context](mut app, port: 8080)!`. The context type cannot be inferred from the
+application argument; omitting the type arguments reports a generic type inference error.
+Using only `[App]` is also incomplete: pass `[App, Context]` to supply the request context type.
+
+Declare a route with separate path and HTTP method attributes, for example `@['/'; get]`.
+
 **Example:**
 
 ```v

@@ -7,7 +7,7 @@ import math
 #flag darwin -framework CoreGraphics
 #flag darwin -framework Foundation
 
-#include "gg_darwin_force_mono.h"
+#include "gg_darwin_force_mono.m"
 
 fn C.gg_darwin_application() macos.Id
 fn C.gg_darwin_color_attribute() macos.Id

@@ -37,7 +37,7 @@ fn (g &Parser) render_missing_call_arguments(tokens []FastcExpressionToken) ?Fas
 	call_name := if signature.is_global && !(name_index == 0 && tokens[0].lit in g.locals) {
 		g.globals[function_key]
 	} else if function_key.starts_with('C.') {
-		function_key.all_after_last('.')
+		g.c_function_name_for_key(function_key)
 	} else if name_index == 0 && tokens[0].lit in g.locals {
 		local := g.locals[tokens[0].lit]
 		local_name := g.local_c_name(tokens[0].lit)

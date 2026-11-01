@@ -990,7 +990,7 @@ fn (g &Parser) print_value_string_expression(value string, value_type u32, value
 		} else {
 			'(${value}).data'
 		}
-		return '${helper}((${flat.source_type_name(element_type)} *)(${data_source}))'
+		return '${helper}((${w.collection_storage_type(element_type)} *)(${data_source}))'
 	}
 	return w.fastc_struct_field_str_expression(value, type_name_id)
 }
@@ -5347,7 +5347,6 @@ fn (g &Parser) render_array_literal_argument(tokens []FastcExpressionToken, expe
 }
 
 fn (g &Parser) render_selfhost_simple_array_literal_item(tokens []FastcExpressionToken, expected_type_source_id u32) ?string {
-	expected_type := flat.source_type_name(expected_type_source_id)
 	if !g.selfhost || expected_type_source_id in [fastc_type_option, fastc_type_result,
 		flat.source_type_voidptr] {
 		return none
@@ -5421,7 +5420,11 @@ fn (g &Parser) render_function_value_expression(tokens []FastcExpressionToken) ?
 		// the value of that name outside a call.
 		return none
 	}
-	return '&${g.c_function_name_for_key(function_key)}'
+	name := g.c_function_name_for_key(function_key)
+	if function_key.starts_with('C.') && name == 'v3_native_bridge_' + function_key[2..] {
+		return name
+	}
+	return '&${name}'
 }
 
 fn (g &Parser) render_method_value_expression(tokens []FastcExpressionToken) ?string {

@@ -14,6 +14,8 @@ in source order even when the importer has no `init()` function of its own.
 
 Declaration headers preserve macros that define static storage, including generated string literals.
 Parallel C compilation can include these definitions in each translation unit.
+GNU `__extension__` markers remain on typedefs and external declarations. Replication checks
+recognize these type declarations while continuing to reject external definitions and static state.
 
 Cleanup hooks follow the reverse dependency order, including through modules without
 initialization or cleanup hooks. Cleanup-only modules remain included when no startup or

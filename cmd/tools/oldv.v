@@ -3,6 +3,10 @@ import flag
 import scripting
 import vgit
 
+$if windows {
+	import v.tempname
+}
+
 const tool_version = '0.0.4'
 const tool_description = '  Checkout an old version of V and compile it as it was on a specific commit.
 |     This tool is useful when you want to discover when something broke.
@@ -107,6 +111,37 @@ fn oldv_required_tools(use_cache bool, cc string) []string {
 	return tools
 }
 
+fn run_oldv_command(command string) os.Result {
+	$if windows {
+		// Pass shell code through delayed expansion in a fixed launcher, then let
+		// a fresh cmd parse it. Writing the command itself into a batch file would
+		// change quoting, percent expansion, and the syntax of `for %i` loops.
+		path := os.join_path(os.vtmp_dir(), 'oldv command ${tempname.unique_token()}.cmd')
+		os.write_file(path, '@echo off\r\nsetlocal EnableDelayedExpansion\r\n' +
+			'cmd.exe /d /v:off /s /c "!V_OLDV_SHELL_COMMAND!"\r\n') or {
+			return os.Result{
+				exit_code: 1
+				output:    err.msg()
+			}
+		}
+		defer {
+			os.rm(path) or {}
+		}
+		previous := os.getenv_opt('V_OLDV_SHELL_COMMAND')
+		os.setenv('V_OLDV_SHELL_COMMAND', command.replace('./', '.\\'), true)
+		defer {
+			if value := previous {
+				os.setenv('V_OLDV_SHELL_COMMAND', value, true)
+			} else {
+				os.unsetenv('V_OLDV_SHELL_COMMAND')
+			}
+		}
+		return os.exec(['cmd.exe', '/d', '/c', path])
+	} $else {
+		return os.exec(['sh', '-c', command])
+	}
+}
+
 fn main() {
 	// Resetting VEXE here allows for `v run cmd/tools/oldv.v'.
 	// the parent V would have set VEXE, which later will
@@ -194,12 +229,7 @@ fn main() {
 	scripting.cprintln('#     v commit hash: ${shorter_hash} | folder: ${context.path_v}')
 	if context.cmd_to_run.len > 0 {
 		scripting.cprintln_strong('#           command: ${context.cmd_to_run:-34s}')
-		cmdres := $if windows {
-			// --command is explicitly shell code; preserve cmd.exe's native quoting.
-			unsafe { os.raw_execute(context.cmd_to_run) }
-		} $else {
-			os.exec(['sh', '-c', context.cmd_to_run])
-		}
+		cmdres := run_oldv_command(context.cmd_to_run)
 		if cmdres.exit_code != 0 {
 			scripting.cprintln_strong('#         exit code: ${cmdres.exit_code:-4d}')
 		}

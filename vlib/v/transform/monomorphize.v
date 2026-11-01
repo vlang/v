@@ -16470,9 +16470,9 @@ fn (t &Transformer) canonical_generic_specialization_arg(arg_id u32) u32 {
 		for param in syntax.function_params() {
 			parts << t.canonical_generic_specialization_arg(flat.source_type_syntax(param).legacy_parameter_mut_type())
 		}
-		ret := t.canonical_generic_specialization_arg(syntax.function_result())
-		if ret != 0 {
-			parts << ret
+		if syntax.function_result() != 0 {
+			ret := fn_type_return_type_text(clean_id) or { syntax.function_result() }
+			parts << t.canonical_generic_specialization_arg(ret)
 			return flat.source_type_composition(.function_type_spaced, parts)
 		}
 		return flat.source_type_composition(.void_function_type_spaced, parts)
@@ -17002,7 +17002,14 @@ fn (t &Transformer) generic_arg_is_unresolved_uncached(arg_id u32) bool {
 				return true
 			}
 		}
-		return syntax.function_result() != 0 && t.generic_arg_is_unresolved(syntax.function_result())
+		result := syntax.function_result()
+		if flat.source_type_shape(result).has(.optional)
+			&& flat.source_type_syntax(result).raw_base() == flat.source_type_void {
+			return false
+		}
+		return result != 0 && result !in [transform_identity_bare_result,
+			transform_identity_bare_option]
+			&& t.generic_arg_is_unresolved(result)
 	}
 	if syntax.generic_app_valid() {
 		for nested_id in syntax.generic_app_args() {

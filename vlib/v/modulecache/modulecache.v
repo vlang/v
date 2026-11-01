@@ -13,7 +13,7 @@ import v.util.cache_refresh
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-57'
+const cache_format = 'v3-module-cache-58'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -28,6 +28,7 @@ const source_body_marker = '// v3cache: source bodies required'
 // `recover()`. A header has the declarations of a module and not its code, so a
 // build that reads it cannot tell otherwise that the program reaches that call.
 const recover_call_marker = '// v3cache: calls recover'
+const c_struct_source_marker = '// v3cache: c struct source '
 const source_signature_cache_format = 'v3-source-signature-cache-12'
 const program_executable_format = 'v3-program-executable-2'
 const source_type_void_pointer_head = flat.source_type_id('&void')
@@ -1448,6 +1449,25 @@ pub fn header_calls_recover(entry Entry) bool {
 // header_text_calls_recover is header_calls_recover for the text of a header.
 pub fn header_text_calls_recover(header string) bool {
 	return header.contains('\n${recover_call_marker}\n')
+}
+
+// header_c_struct_sources recovers the original V source of each C struct in a
+// compiler-generated module header. Native headers remain opaque: these records
+// come only from the V declarations serialized into the cache.
+pub fn header_c_struct_sources(header string) map[string]string {
+	mut sources := map[string]string{}
+	for line in header.split_into_lines() {
+		if !line.starts_with(c_struct_source_marker) {
+			continue
+		}
+		entry := line[c_struct_source_marker.len..]
+		name := entry.all_before(' ')
+		source := entry.all_after(' ')
+		if name.starts_with('C.') && source.len > 0 && source != entry {
+			sources[name] = cached_unescape_v_string(source)
+		}
+	}
+	return sources
 }
 
 // valid_object reports whether a cached object matches the supplied sources.
@@ -4603,6 +4623,23 @@ fn c_declaration_item(item string, has_brace bool, types_only bool, definition_p
 		return item
 	}
 	clean := trim_leading_c_comments(trimmed)
+	// Keep the ordinary declaration path immutable; GNU markers are uncommon.
+	if clean.len >= '__extension__'.len && clean[0] == `_`
+		&& clean.starts_with('__extension__')
+		&& (clean.len == '__extension__'.len
+			|| !c_generated_identifier_byte(clean['__extension__'.len])) {
+		mut rest := clean
+		for rest.starts_with('__extension__') {
+			tail := rest['__extension__'.len..]
+			if tail.len > 0 && c_generated_identifier_byte(tail[0]) {
+				break
+			}
+			rest = trim_leading_c_comments(tail.trim_space())
+		}
+		converted := c_declaration_item(rest, has_brace, types_only, definition_preserving_macros)
+		// Classification ignores the markers; unchanged declarations retain them.
+		return if converted == rest { item } else { converted }
+	}
 	if block := c_extern_c_block(item) {
 		inner_header, _, _, _, _, _ := c_declaration_header_mode(block.inner, types_only)
 		mut result := block.before
@@ -5281,7 +5318,7 @@ fn module_header_const_storage_name(module_name string, name string) string {
 	return name
 }
 
-fn module_header_const_replacements(a &flat.FlatAst, module_name string, file_ids []flat.NodeId, const_order []string) (map[int]flat.NodeId, map[int]string) {
+fn module_header_const_replacements(a &flat.FlatAst, tc &types.TypeChecker, module_name string, file_ids []flat.NodeId, const_order []string) (map[int]flat.NodeId, map[int]string) {
 	mut replacements := map[int]flat.NodeId{}
 	mut files := map[int]string{}
 	if const_order.len == 0 {
@@ -5303,14 +5340,28 @@ fn module_header_const_replacements(a &flat.FlatAst, module_name string, file_id
 					continue
 				}
 				mut rank := const_order.len + declarations.len
+				mut has_initializer := false
 				for j in 0 .. node.children_count {
 					field := a.child_node(&node, j)
+					if field.children_count == 0 {
+						continue
+					}
+					expr_id := a.child(field, 0)
+					if const_initializer_is_stored(a, expr_id, tc.resolve_type(expr_id)) {
+						continue
+					}
+					has_initializer = true
 					name := module_header_const_storage_name(module_name, field.value)
 					if field_rank := ranks[name] {
 						if field_rank < rank {
 							rank = field_rank
 						}
 					}
+				}
+				// Stored constants have no initializer in the header. Keep their
+				// declaration slots stable when cached helper bodies change the ranks.
+				if !has_initializer {
+					continue
 				}
 				files[int(id)] = file_node.value
 				declarations << ModuleHeaderConstDecl{
@@ -5449,9 +5500,19 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 	mut seen := map[string]bool{}
 	mut seen_types := map[u64]bool{}
 	mut selected_imports := map[string]bool{}
-	const_replacements, const_files := module_header_const_replacements(a, module_name, file_ids, const_order)
+	const_replacements, const_files := module_header_const_replacements(a, tc, module_name, file_ids, const_order)
 	for file_id in file_ids {
 		file_node := a.node(file_id)
+		cached_struct_sources := if file_node.value in a.cached_header_sources {
+			cached_header := source_cache[file_node.value] or {
+				loaded := os.read_file(file_node.value) or { '' }
+				source_cache[file_node.value] = loaded
+				loaded
+			}
+			header_c_struct_sources(cached_header)
+		} else {
+			map[string]string{}
+		}
 		for i in 0 .. file_node.children_count {
 			mut decl_ids := []flat.NodeId{}
 			append_declaration_nodes(a, a.child(file_node, i), mut decl_ids)
@@ -5518,6 +5579,10 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 					seen_types[type_key] = true
 				} else if key.len > 0 {
 					seen[key] = true
+				}
+				if node.kind == .struct_decl && node.value.starts_with('C.') {
+					origin := cached_struct_sources[node.value] or { source_file }
+					out.writeln('${c_struct_source_marker}${node.value} ${escape_v_string(origin)}')
 				}
 				out.writeln(text)
 				out.writeln('')
@@ -7439,6 +7504,13 @@ fn cached_type_source_name(typ types.Type) string {
 	return typ.name()
 }
 
+fn const_initializer_is_stored(a &flat.FlatAst, expr_id flat.NodeId, typ types.Type) bool {
+	return typ is types.Array || typ is types.ArrayFixed || typ is types.Map
+		|| typ is types.Struct || typ is types.Pointer || typ is types.Interface
+		|| typ is types.SumType || typ is types.OptionType || typ is types.ResultType
+		|| (a.node(expr_id).kind == .call && typ !is types.FnType)
+}
+
 fn const_text(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node, source_is_public bool) string {
 	mut lines := []string{cap: node.children_count}
 	for i in 0 .. node.children_count {
@@ -7447,10 +7519,7 @@ fn const_text(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node, source_is_
 		if field.children_count > 0 {
 			expr_id := a.child(field, 0)
 			typ := tc.resolve_type(expr_id)
-			if typ is types.Array || typ is types.ArrayFixed || typ is types.Map
-				|| typ is types.Struct || typ is types.Pointer || typ is types.Interface
-				|| typ is types.SumType || typ is types.OptionType || typ is types.ResultType
-				|| (a.node(expr_id).kind == .call && typ !is types.FnType) {
+			if const_initializer_is_stored(a, expr_id, typ) {
 				// Stored constants belong to the module object. Its interface needs
 				// the checked type, not the table or the code that initializes it.
 				lines << '${line} ${cached_type_source_name(typ)}'

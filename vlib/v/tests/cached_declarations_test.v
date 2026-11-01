@@ -2,9 +2,9 @@ import os
 import time
 
 // A build that reads its modules from their cached interfaces leaves the functions
-// that the program cannot name out of its stages, and gives TinyCC the headers of
-// its unit in preprocessed form. These tests build programs both ways: what a build
-// leaves out must not change what it makes.
+// that the program cannot name out of its stages. Native headers remain inputs
+// of the C compiler. These tests check declaration pruning and native macro
+// behavior without a preprocessed-header cache.
 
 struct SavedEnv {
 	name    string
@@ -34,8 +34,7 @@ fn (s SavedEnv) restore() {
 }
 
 const pinned_names = ['VTMP', 'V3CACHE', 'VFLAGS', 'V3_CACHE_FORCE_SOURCE', 'V3_CACHE_TRACE', 'VMODULES',
-	'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE', 'V3_CACHE_ALL_DECLARATIONS', 'V3_TCC_NO_PRELUDE_CACHE',
-	'V3_TCC_PRELUDE_VERIFY']
+	'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE', 'V3_CACHE_ALL_DECLARATIONS']
 
 // pin_module_cache points the module cache at `dir`, whatever the runner exports,
 // makes the compiler say what it leaves out, and makes every build a build: none
@@ -313,7 +312,7 @@ fn test_errors_of_a_program_are_those_of_a_build_with_every_declaration() {
 	}
 }
 
-fn test_tcc_compiles_the_headers_of_a_program_from_their_preprocessed_form() {
+fn test_tcc_keeps_native_headers_out_of_preprocessed_cache() {
 	$if windows {
 		return
 	}
@@ -336,53 +335,30 @@ fn test_tcc_compiles_the_headers_of_a_program_from_their_preprocessed_form() {
 	defer {
 		restore_cpath(saved_cpath)
 	}
-	settle_headers()
 	header_program := '#include <v_cached_headers_contract.h>\n' +
 		program.replace('struct Point {', 'fn C.review_cached_headers_value() int\n\nstruct Point {').replace('fn main() {',
 			'fn main() {\n\tassert C.review_cached_headers_value() == 37')
 	main_file := os.join_path(root, 'main.v')
 	os.write_file(main_file, header_program)!
 	build(root, flags, main_file, 'cold')
-	mut preprocessed := 0
 	for i in 0 .. 3 {
 		os.write_file(main_file, header_program + '\nfn added_${i}() int {\n\treturn ${i}\n}\n')!
 		// The object of the unit is the one that its headers give.
-		os.setenv('V3_TCC_PRELUDE_VERIFY', '1', true)
 		warm := build(root, flags, main_file, 'warm')
-		os.unsetenv('V3_TCC_PRELUDE_VERIFY')
-		assert !warm.contains('V3 TinyCC prelude: not used'), warm
-		if warm.contains('V3 TinyCC prelude: preprocessed') {
-			preprocessed++
-		}
+		assert !warm.contains('V3 TinyCC prelude'), warm
 		assert run_built(root, 'warm') == program_output
-		os.setenv('V3_TCC_NO_PRELUDE_CACHE', '1', true)
 		plain := build(root, flags, main_file, 'plain')
-		os.unsetenv('V3_TCC_NO_PRELUDE_CACHE')
 		assert !plain.contains('V3 TinyCC prelude'), plain
 		assert os.read_bytes(os.join_path(root, 'warm'))! == os.read_bytes(os.join_path(root,
 			'plain'))!
 	}
-	// The headers of the three programs are the same: they are preprocessed once,
-	// by the first of them or by a build of another test.
-	assert preprocessed <= 1
-	preludes := os.walk_ext(cache_dir(flags), '.i').filter(os.file_name(it).starts_with('tcc_prelude_'))
-	assert preludes.len >= 1
-	// A header that is no longer what it was is read again.
-	for prelude in preludes {
-		stamp := prelude + '.stamp'
-		text := os.read_file(stamp)!
-		assert text.contains('\nfile=') && text.contains('\nmissing='), text
-		os.write_file(stamp, text.replace_once('\nfile=', '\nfile=/nonexistent/v_cached_declarations_test.h\tabsent\nfile='))!
-	}
-	os.write_file(main_file, header_program + '\nfn added_again() {}\n')!
+	assert os.walk_ext(cache_dir(flags), '.i').len == 0
+	// An edited header is compiled directly without any V-owned header form.
+	os.write_file(header, 'static inline int review_cached_headers_value(void) { return 38; }\n')!
+	os.write_file(main_file, header_program.replace('== 37', '== 38'))!
 	again := build(root, flags, main_file, 'again')
-	assert again.contains('V3 TinyCC prelude: a header changed'), again
-	assert again.contains('V3 TinyCC prelude: preprocessed'), again
+	assert !again.contains('V3 TinyCC prelude'), again
 	assert run_built(root, 'again') == program_output
-	os.write_file(main_file, header_program + '\nfn added_once_more() {}\n')!
-	once_more := build(root, flags, main_file, 'once_more')
-	assert !once_more.contains('V3 TinyCC prelude'), once_more
-	assert run_built(root, 'once_more') == program_output
 }
 
 // cpath_headers makes TinyCC and the system compiler search `dirs` for headers, and
@@ -401,14 +377,7 @@ fn restore_cpath(saved ?string) {
 	}
 }
 
-// settle_headers waits until headers that were just written are old enough for a
-// preprocessed prelude to be kept of them: one that is as new as the preprocessor
-// run may be another file than the run read.
-fn settle_headers() {
-	time.sleep(2200 * time.millisecond)
-}
-
-fn test_preprocessed_headers_are_the_c_that_the_preprocessor_made_of_them() {
+fn test_tcc_native_header_macros_keep_their_original_expansion() {
 	$if windows {
 		return
 	}
@@ -441,44 +410,37 @@ static inline int review_value(void) { return review_next(1); }
 	os.write_file(main_file, source)!
 	build(root, flags, main_file, 'cold')
 	assert run_built(root, 'cold') == '2'
-	settle_headers()
-	mut preprocessed := 0
 	for i in 0 .. 2 {
 		os.write_file(main_file, source + '\nfn added_${i}() {}\n')!
 		warm := build(root, flags, main_file, 'warm')
-		assert !warm.contains('V3 TinyCC prelude: not'), warm
-		if warm.contains('V3 TinyCC prelude: preprocessed') {
-			preprocessed++
-		}
+		assert !warm.contains('V3 TinyCC prelude'), warm
 		assert run_built(root, 'warm') == '2'
 	}
-	assert preprocessed == 1
+	assert os.walk_ext(cache_dir(flags), '.i').len == 0
 	// The macro is there for the rest of the unit, as the header left it.
 	os.write_file(main_file, '#include <v_prelude_macro_test.h>\n\nfn C.review_value() int\n\nfn C.review_next(n int) int\n\nfn main() {\n\tprintln(C.review_value() + C.review_next(10))\n}\n')!
 	used := build(root, flags, main_file, 'used')
 	assert !used.contains('V3 TinyCC prelude: not'), used
 	assert run_built(root, 'used') == '13'
 
-	// A macro of the compiler that a header takes away, to use its name for
-	// something else: where the preprocessed C is read, the macro is back. Such a
-	// prelude is compiled as it is, and is not preprocessed again to find that out.
+	// A header can replace a compiler macro with a function. Its source is
+	// compiled directly, preserving the undefinition.
 	os.write_file(header, '#undef __STDC_HOSTED__
 static inline int __STDC_HOSTED__(void) { return 7; }
 static inline int review_value(void) { return __STDC_HOSTED__(); }
 ')!
-	settle_headers()
 	os.write_file(main_file, source)!
 	unusable := build(root, flags, main_file, 'unusable')
-	assert unusable.contains('V3 TinyCC prelude: not used: its macros change the C'), unusable
+	assert !unusable.contains('V3 TinyCC prelude'), unusable
 	assert run_built(root, 'unusable') == '7'
 	os.write_file(main_file, source + '\nfn added_later() {}\n')!
 	recorded := build(root, flags, main_file, 'recorded')
-	assert recorded.contains('V3 TinyCC prelude: not used: its macros change the C'), recorded
+	assert !recorded.contains('V3 TinyCC prelude'), recorded
 	assert !recorded.contains('V3 TinyCC prelude: a header'), recorded
 	assert run_built(root, 'recorded') == '7'
 }
 
-fn test_preprocessed_headers_keep_what_the_preprocessor_does_not_print() {
+fn test_tcc_compiles_variadic_and_conditional_header_macros_directly() {
 	$if windows {
 		return
 	}
@@ -499,9 +461,7 @@ fn test_preprocessed_headers_keep_what_the_preprocessor_does_not_print() {
 	defer {
 		restore_cpath(saved_cpath)
 	}
-	// TinyCC prints the definition of a macro without what says that it takes any
-	// number of arguments, and the rest of a unit follows its headers at the line
-	// where it was.
+	// Variadic macros and source line macros remain entirely under TinyCC.
 	header := os.join_path(headers, 'v_prelude_lossy_test.h')
 	os.write_file(header, 'static inline int review_sum3(int a, int b, int c) { return a + b + c; }
 #define REVIEW_SUM(first, ...) review_sum3(first, __VA_ARGS__)
@@ -513,42 +473,15 @@ fn test_preprocessed_headers_keep_what_the_preprocessor_does_not_print() {
 	os.write_file(main_file, source)!
 	build(root, flags, main_file, 'cold')
 	assert run_built(root, 'cold').starts_with('66\n')
-	settle_headers()
-	mut preprocessed := 0
 	for i in 0 .. 2 {
 		os.write_file(main_file, source + '\nfn added_${i}() {}\n')!
 		warm := build(root, flags, main_file, 'warm')
-		assert !warm.contains('V3 TinyCC prelude: not'), warm
-		if warm.contains('V3 TinyCC prelude: preprocessed') {
-			preprocessed++
-		}
-		os.setenv('V3_TCC_NO_PRELUDE_CACHE', '1', true)
+		assert !warm.contains('V3 TinyCC prelude'), warm
 		build(root, flags, main_file, 'plain')
-		os.unsetenv('V3_TCC_NO_PRELUDE_CACHE')
 		assert run_built(root, 'warm') == run_built(root, 'plain')
 		assert run_built(root, 'warm').starts_with('66\n')
 	}
-	assert preprocessed == 1
-
-	// A unit that does not compile with the preprocessed headers, and does with
-	// the headers themselves, is the last one that reads them preprocessed.
-	mut broken_forms := 0
-	for form in os.walk_ext(cache_dir(flags), '.i') {
-		if (os.read_file(form + '.stamp') or { '' }).contains('v_prelude_lossy_test.h') {
-			os.write_file(form, 'this is no C\n')!
-			broken_forms++
-		}
-	}
-	assert broken_forms == 1
-	os.write_file(main_file, source + '\nfn added_after() {}\n')!
-	broken := build(root, flags, main_file, 'broken')
-	assert broken.contains('V3 TinyCC prelude: not used from now on: TinyCC does not compile a unit that reads it'), broken
-	assert run_built(root, 'broken').starts_with('66\n')
-	os.write_file(main_file, source + '\nfn added_later() {}\n')!
-	rejected := build(root, flags, main_file, 'rejected')
-	assert rejected.contains('V3 TinyCC prelude: not used: TinyCC does not compile a unit that reads it'), rejected
-	assert !rejected.contains('from now on'), rejected
-	assert run_built(root, 'rejected').starts_with('66\n')
+	assert os.walk_ext(cache_dir(flags), '.i').len == 0
 
 	// TinyCC defines some macros when it compiles and not when it preprocesses: a
 	// header that asks about one is read as the compiler reads it.
@@ -558,17 +491,12 @@ static inline int review_value(void) { return 1; }
 static inline int review_value(void) { return 2; }
 #endif
 ')!
-	settle_headers()
 	value_source := '#include <v_prelude_lossy_test.h>\n\nfn C.review_value() int\n\nfn main() {\n\tprintln(C.review_value())\n}\n'
 	os.write_file(main_file, value_source)!
 	asked := build(root, flags, main_file, 'asked')
-	os.setenv('V3_TCC_NO_PRELUDE_CACHE', '1', true)
 	build(root, flags, main_file, 'asked_plain')
-	os.unsetenv('V3_TCC_NO_PRELUDE_CACHE')
 	assert run_built(root, 'asked') == run_built(root, 'asked_plain')
-	if run_built(root, 'asked_plain') == '1' {
-		assert asked.contains('V3 TinyCC prelude: not used: its headers ask about `__builtin_offsetof`'), asked
-	}
+	assert !asked.contains('V3 TinyCC prelude'), asked
 
 	// The question can be in a macro that a condition expands.
 	os.write_file(header, '#define REVIEW_HAS_OFFSETOF defined(__builtin_offsetof)
@@ -578,31 +506,24 @@ static inline int review_value(void) { return 1; }
 static inline int review_value(void) { return 2; }
 #endif
 ')!
-	settle_headers()
 	os.write_file(main_file, value_source + '\nfn added_indirect() {}\n')!
 	indirect := build(root, flags, main_file, 'indirect')
-	os.setenv('V3_TCC_NO_PRELUDE_CACHE', '1', true)
 	build(root, flags, main_file, 'indirect_plain')
-	os.unsetenv('V3_TCC_NO_PRELUDE_CACHE')
 	assert run_built(root, 'indirect') == run_built(root, 'indirect_plain')
-	if run_built(root, 'indirect_plain') == '1' {
-		assert indirect.contains('V3 TinyCC prelude: not used: its headers ask about `__builtin_offsetof`'), indirect
-	}
+	assert !indirect.contains('V3 TinyCC prelude'), indirect
 
-	// A macro that the headers define with and without a variable number of
-	// arguments cannot be told from what TinyCC prints.
+	// Redefining a variadic macro as a fixed-arity macro must keep its C meaning.
 	os.write_file(header, '#define REVIEW_NAMED(rest...) review_count(rest)
 #undef REVIEW_NAMED
 #define REVIEW_NAMED(rest) (rest)
 ')!
-	settle_headers()
 	os.write_file(main_file, '#include <v_prelude_lossy_test.h>\n\nfn C.REVIEW_NAMED(a int) int\n\nfn main() {\n\tprintln(C.REVIEW_NAMED(5))\n}\n')!
 	both := build(root, flags, main_file, 'both')
-	assert both.contains('V3 TinyCC prelude: not used: the macro `REVIEW_NAMED` is defined with and without'), both
+	assert !both.contains('V3 TinyCC prelude'), both
 	assert run_built(root, 'both') == '5'
 }
 
-fn test_preprocessed_headers_follow_a_header_that_appears_earlier_in_the_search() {
+fn test_tcc_resolves_new_and_shadowed_headers_without_v_expansion() {
 	$if windows {
 		return
 	}
@@ -631,16 +552,15 @@ fn test_preprocessed_headers_follow_a_header_that_appears_earlier_in_the_search(
 	os.write_file(main_file, source)!
 	build(root, flags, main_file, 'cold')
 	assert run_built(root, 'cold') == '1'
-	settle_headers()
 	os.write_file(main_file, source + '\nfn added_0() {}\n')!
 	warm := build(root, flags, main_file, 'warm')
-	assert warm.contains('V3 TinyCC prelude: preprocessed'), warm
+	assert !warm.contains('V3 TinyCC prelude'), warm
 	assert run_built(root, 'warm') == '1'
 	// The environment is what it was, and so is every header that was read.
 	os.write_file(os.join_path(first, 'v_prelude_choice_test.h'), 'static inline int review_choice(void) { return 2; }\n')!
 	os.write_file(main_file, source + '\nfn added_1() {}\n')!
 	shadowed := build(root, flags, main_file, 'shadowed')
-	assert shadowed.contains('V3 TinyCC prelude: a header appeared'), shadowed
+	assert !shadowed.contains('V3 TinyCC prelude'), shadowed
 	assert run_built(root, 'shadowed') == '2'
 
 	// A header includes another in quotation marks: the directory of the header is
@@ -650,14 +570,13 @@ fn test_preprocessed_headers_follow_a_header_that_appears_earlier_in_the_search(
 	os.write_file(os.join_path(later, 'v_prelude_inner_test.h'), 'static inline int review_choice(void) { return 1; }\n')!
 	nested_source := source.replace('v_prelude_choice_test.h', 'nested/v_prelude_outer_test.h')
 	os.write_file(main_file, nested_source)!
-	settle_headers()
 	nested := build(root, flags, main_file, 'nested')
-	assert nested.contains('V3 TinyCC prelude: preprocessed'), nested
+	assert !nested.contains('V3 TinyCC prelude'), nested
 	assert run_built(root, 'nested') == '1'
 	os.write_file(os.join_path(first, 'nested', 'v_prelude_inner_test.h'), 'static inline int review_choice(void) { return 2; }\n')!
 	os.write_file(main_file, nested_source + '\nfn added_2() {}\n')!
 	nested_shadowed := build(root, flags, main_file, 'nested_shadowed')
-	assert nested_shadowed.contains('V3 TinyCC prelude: a header appeared'), nested_shadowed
+	assert !nested_shadowed.contains('V3 TinyCC prelude'), nested_shadowed
 	assert run_built(root, 'nested_shadowed') == '2'
 }
 
