@@ -7383,10 +7383,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	if tc.check_unbound_instance_method_value(id, node) {
 		return
 	}
-	if typ := tc.enum_selector_type(&node) {
-		tc.register_synth_type(id, typ)
-		return
-	}
+	// Check imported enum visibility before resolving a valid member.
 	base_id := tc.a.child(&node, 0)
 	base := tc.a.nodes[int(base_id)]
 	if base.kind == .selector && base.children_count > 0 {
