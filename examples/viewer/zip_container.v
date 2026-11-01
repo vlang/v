@@ -66,6 +66,36 @@ fn ensure_ascii_zip(path string) !string {
 	return tmp
 }
 
+// zip_format_hint inspects the first bytes of a file that failed to open as
+// a zip archive and names a known foreign format, so the scan warning says
+// what the file actually is (empty, RAR, 7-Zip) instead of only why the
+// zip parse failed.
+fn zip_format_hint(path string) string {
+	size := os.file_size(path)
+	if size == 0 {
+		return ' [empty file]'
+	}
+	if size < 8 {
+		return ''
+	}
+	mut f := os.open(path) or {
+		return ''
+	}
+	defer {
+		f.close()
+	}
+	head := f.read_raw_at[[8]u8](0) or {
+		return ''
+	}
+	if head[0] == 0x52 && head[1] == 0x61 && head[2] == 0x72 && head[3] == 0x21 {
+		return ' [actually a RAR archive]'
+	}
+	if head[0] == 0x37 && head[1] == 0x7a && head[2] == 0xbc && head[3] == 0xaf {
+		return ' [actually a 7-Zip archive]'
+	}
+	return ''
+}
+
 // scan_zip enumerates the image entries of a zip archive and adds them to the
 // item list as extractable (need_extract) drawables. The stored `path` is an
 // ASCII-safe path so later extraction can reopen the archive on Windows.
@@ -74,7 +104,9 @@ fn ensure_ascii_zip(path string) !string {
 fn (mut il Item_list) scan_zip(orig_path string, in_index int) ! {
 	println('Scanning ZIP [${orig_path}]')
 	path := ensure_ascii_zip(orig_path)!
-	mut zp := szip.open(path, szip.CompressionLevel.no_compression, szip.OpenMode.read_only)!
+	mut zp := szip.open(path, szip.CompressionLevel.no_compression, szip.OpenMode.read_only) or {
+		return error('${err}${zip_format_hint(orig_path)}')
+	}
 	n_entries := zp.total()!
 	for index in 0 .. n_entries {
 		il.scan_zip_entry(mut zp, index, path, in_index) or {
