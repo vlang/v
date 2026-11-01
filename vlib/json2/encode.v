@@ -36,7 +36,7 @@ mut:
 	level  int
 	prefix string
 
-	output strings.Builder = strings.new_builder(2048)
+	output strings.Builder = strings.new_builder(128)
 }
 
 // encode encodes a value as JSON, or JSON5 with `json5: true`.
