@@ -4,15 +4,29 @@ import os
 import time
 
 fn test_dev_dependencies_for_tool() {
-	// vdoc declares its own dependency in its own `v.mod`, so this reads the tool
+	base := os.join_path(os.vtmp_dir(), 'util_module_deps_manifest_${os.getpid()}')
+	os.rmdir_all(base) or {}
+	old_vexe := os.getenv_opt('VEXE')
+	os.setenv('VEXE', os.join_path(base, 'v'), true)
+	write_tool_manifest(base)!
+	defer {
+		restore_env('VEXE', old_vexe)
+		os.rmdir_all(base) or {}
+	}
+	// A tool declares its dependencies in its own `v.mod`, so this reads the tool
 	// rather than a table the compiler carries.
 	assert dev_dependencies_for_tool('vdoc') == ['markdown']
-	// A tool with no `dev_dependencies` entry, and a name that is not a tool.
+	assert external_modules_for_tool('vdoc') == ['markdown']
+	// A tool with no `v.mod`, and a name that is not a tool.
 	assert dev_dependencies_for_tool('vfmt') == []
 	assert dev_dependencies_for_tool('') == []
 	assert dev_dependencies_for_tool('../vdoc') == []
-	assert external_modules_for_tool('vdoc') == ['markdown']
-	assert external_module_dependencies_for_tool['vdoc'] == ['markdown']
+}
+
+fn test_the_bundled_vdoc_has_no_dev_dependencies() {
+	// vdoc renders markdown with `x.markdown` from vlib, so it needs nothing to be installed.
+	assert dev_dependencies_for_tool('vdoc') == []
+	assert external_module_dependencies_for_tool.len == 0
 }
 
 fn write_tool_manifest(root string) ! {
