@@ -10127,6 +10127,16 @@ fn (mut tc TypeChecker) annotate_node(id flat.NodeId) {
 						} else {
 							raw_type := tc.resolve_type(rhs_id)
 							typ = tc.mut_param_expr_base(rhs_id, raw_type) or { raw_type }
+							// The condition of `if x := opt {` binds the value it unwraps,
+							// as in check_if_guard.
+							parent_id := tc.direct_parent_id(current_id)
+							if tc.valid_node_id(parent_id) && tc.a.node(parent_id).kind == .if_expr
+								&& tc.a.child(tc.a.node(parent_id), 0) == current_id {
+								payload := tc.if_guard_payload_type(rhs_id, typ)
+								if payload !is Void {
+									typ = payload
+								}
+							}
 						}
 						if typ !is MultiReturn && typ !is Void {
 							owner := tc.cur_scope.insert_with_owner(lhs.value, typ)
