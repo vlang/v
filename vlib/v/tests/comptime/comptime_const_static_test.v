@@ -186,6 +186,52 @@ fn const_unsigned_range(low u64, high u64) u64 {
 
 const computed_unsigned_range = const_unsigned_range(0xfffffffffffffffd, 0xffffffffffffffff)
 
+const stored_byte = u8(250) + u8(10)
+const stored_chain = stored_byte + u8(253)
+
+@[comptime]
+fn const_read_stored_values() int {
+	return int(stored_byte) * 1000 + int(stored_chain)
+}
+
+const computed_stored_values = const_read_stored_values()
+
+@[comptime]
+fn const_wide_seed() int {
+	return 256
+}
+
+const computed_direct_bound = u8(const_wide_seed()) + 1
+const computed_bound_source = const_wide_seed()
+const computed_indirect_bound = u8(computed_bound_source) + 1
+const computed_bound_alias = computed_indirect_bound
+const computed_bound_quotient = 256 / (256 - u8(computed_bound_source))
+
+@[comptime]
+fn const_symbolic_lengths() int {
+	a := [computed_direct_bound]u8{}
+	b := [computed_indirect_bound + 1]u8{}
+	c := [(computed_bound_alias)]u8{}
+	return a.len + b.len + c.len
+}
+
+const computed_symbolic_lengths = const_symbolic_lengths()
+const imported_symbolic_length = evaluated.symbolic_length()
+
+@[comptime]
+fn const_else_if_division(flag int) u64 {
+	return (if flag == 0 {
+		u64(0)
+	} else if flag == 1 {
+		u64(0xffffffffffffffff)
+	} else {
+		0xffffffffffffffff
+	}) / 3
+}
+
+const computed_else_if_middle = const_else_if_division(1)
+const computed_else_if_final = const_else_if_division(2)
+
 fn test_comptime_constants_match_runtime() {
 	assert imported_pair == evaluated.make_pair(10)
 	assert imported_pair == [u32(10), 17]!
@@ -233,4 +279,27 @@ fn test_comptime_constants_match_runtime() {
 	assert computed_conditional_division == const_conditional_division(false)
 	assert computed_alias == const_alias(ConstInteger(3))
 	assert computed_alias == ConstInteger(-5)
+	assert computed_stored_values == 4001
+	assert computed_stored_values == const_read_stored_values()
+	assert computed_direct_bound == 1
+	assert [computed_direct_bound]u8{}.len == computed_direct_bound
+	assert computed_indirect_bound == 1
+	assert [computed_indirect_bound]u8{}.len == computed_indirect_bound
+	assert [computed_bound_alias]u8{}.len == 1
+	assert computed_bound_quotient == 1
+	assert [computed_bound_quotient]u8{}.len == computed_bound_quotient
+	assert computed_symbolic_lengths == 4
+	assert computed_symbolic_lengths == const_symbolic_lengths()
+	assert imported_symbolic_length == 8
+	assert imported_symbolic_length == evaluated.symbolic_length()
+	cast_before_required := [u8(250 + 50) + computed_bound_source]u8{}
+	assert cast_before_required.len == 300
+	quotient_before_required := [256 / (256 - u8(250 + 6)) + computed_bound_source]u8{}
+	assert quotient_before_required.len == 257
+	imported_bound := [evaluated.symbolic_bound]u8{}
+	assert imported_bound.len == 1
+	assert computed_else_if_middle == u64(6148914691236517205)
+	assert computed_else_if_middle == const_else_if_division(1)
+	assert computed_else_if_final == u64(6148914691236517205)
+	assert computed_else_if_final == const_else_if_division(2)
 }

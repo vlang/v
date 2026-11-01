@@ -29,6 +29,14 @@ struct ConstEvalFlow {
 	value ComptimeConstValue
 }
 
+// Integer lookup creates an evaluator only when it encounters required evaluation.
+// Symbolic array bounds borrow the current evaluator, including its guards.
+struct ConstIntContext {
+mut:
+	evaluator &ConstEval = unsafe { nil }
+	failure   string
+}
+
 // requires_comptime_const reports an explicit opt-in in a constant initializer.
 pub fn (tc &TypeChecker) requires_comptime_const(id flat.NodeId) bool {
 	if !tc.has_comptime_functions || !tc.valid_node_id(id) { return false }
@@ -47,6 +55,11 @@ pub fn (tc &TypeChecker) requires_comptime_const(id flat.NodeId) bool {
 // eval_comptime_const evaluates one expression without running module initializers.
 // The evaluator shares the enum evaluator's integer conversions and promotions.
 pub fn (tc &TypeChecker) eval_comptime_const(id flat.NodeId) !ComptimeConstValue {
+	mut e := tc.new_comptime_const_eval(id)!
+	return e.expr(id)
+}
+
+fn (tc &TypeChecker) new_comptime_const_eval(id flat.NodeId) !&ConstEval {
 	if tc.cross_target_prefs != unsafe { nil } {
 		return error('required evaluation needs a concrete target; portable C is not supported')
 	}
@@ -56,8 +69,37 @@ pub fn (tc &TypeChecker) eval_comptime_const(id flat.NodeId) !ComptimeConstValue
 		tc.cur_file
 	}
 	view := if file == tc.cur_file { tc } else { tc.fork_type_parse_view(file, tc.cur_module) }
-	mut e := ConstEval{ tc: view, scopes: [map[string]ComptimeConstValue{}] }
-	return e.expr(id)
+	return &ConstEval{ tc: view, scopes: [map[string]ComptimeConstValue{}] }
+}
+
+fn (mut context ConstIntContext) start(tc &TypeChecker, id flat.NodeId) bool {
+	if context.failure.len > 0 { return false }
+	if context.evaluator == unsafe { nil } {
+		context.evaluator = tc.new_comptime_const_eval(id) or {
+			context.failure = err.msg()
+			return false
+		}
+	}
+	return true
+}
+
+fn (mut context ConstIntContext) expression(tc &TypeChecker, id flat.NodeId, module_name string) ?int {
+	file := if source := tc.a.source_files[tc.a.node(id).pos.id] {
+		source.name
+	} else {
+		tc.cur_file
+	}
+	view := tc.fork_type_parse_view(file, module_name)
+	if !context.start(view, id) { return none }
+	old_tc := context.evaluator.tc
+	context.evaluator.tc = view
+	defer { context.evaluator.tc = old_tc }
+	value := context.evaluator.expr(id) or {
+		context.failure = err.msg()
+		return none
+	}
+	if !unalias_type(value.typ).is_integer() { return none }
+	return int(value.integer)
 }
 
 fn (mut e ConstEval) tick() ! {
@@ -153,7 +195,18 @@ fn (mut e ConstEval) zero(typ Type) !ComptimeConstValue {
 		return ComptimeConstValue{ typ: typ }
 	}
 	if base is ArrayFixed {
-		n := e.tc.fixed_array_len_value(base) or { return error('unknown fixed-array length') }
+		mut context := ConstIntContext{ evaluator: &e }
+		n := if base.len > 0 {
+			base.len
+		} else {
+			e.tc.const_int_value_with_context(base.len_expr, e.tc.cur_module, []string{}, mut context) or {
+				return error(if context.failure.len > 0 {
+					context.failure
+				} else {
+					'unknown fixed-array length'
+				})
+			}
+		}
 		e.reserve(n)!
 		mut elements := []ComptimeConstValue{cap: n}
 		for _ in 0 .. n { elements << e.zero(base.elem_type)! }
@@ -180,8 +233,19 @@ fn (mut e ConstEval) zero(typ Type) !ComptimeConstValue {
 
 fn (mut e ConstEval) constant(name string) !ComptimeConstValue {
 	resolved := e.tc.resolve_selective_import_symbol(name) or { name }
-	key := e.tc.const_key_for_name(resolved) or { return error('cannot read runtime state `${name}`') }
+	key := e.tc.const_key_for_name(resolved) or {
+		e.tc.const_main_qualified_key(resolved) or { return error('cannot read runtime state `${name}`') }
+	}
+	return e.constant_value(key)
+}
+
+fn (mut e ConstEval) constant_value(key string) !ComptimeConstValue {
 	if e.active[key] { return error('cycle in constant `${key}`') }
+	// Completed values remain authoritative after transform has lowered their
+	// initializers and helper bodies. Reads still apply the declared storage type.
+	if value := e.tc.comptime_const_values[key] {
+		return const_eval_convert(value, e.tc.const_types[key] or { value.typ })
+	}
 	id := e.tc.const_exprs[key] or { return error('constant `${key}` has no initializer') }
 	e.active[key] = true
 	old_tc := e.tc
@@ -193,7 +257,19 @@ fn (mut e ConstEval) constant(name string) !ComptimeConstValue {
 		e.scopes = old_scopes
 		e.active.delete(key)
 	}
-	return e.expr(id)
+	value := e.expr(id)!
+	return const_eval_convert(value, e.tc.const_types[key] or { value.typ })
+}
+
+// Transform qualifies main constants, whose semantic table keys remain bare.
+fn (tc &TypeChecker) const_main_qualified_key(name string) ?string {
+	if name.starts_with('main.') {
+		key := name[5..]
+		if key in tc.const_exprs && is_main_module_name(tc.const_modules[key] or { '' }) {
+			return key
+		}
+	}
+	return none
 }
 
 fn (mut e ConstEval) expr(id flat.NodeId) !ComptimeConstValue {
@@ -263,15 +339,21 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 		.if_expr, .comptime_if {
 			branch := e.branch(node)!
 			if branch < 0 { return error('conditional has no value') }
-			flow := e.scope(e.tc.a.node(branch), 0)!
-			if flow.kind != .empty {
-				return error('control flow in a value expression is not supported')
+			branch_node := e.tc.a.node(branch)
+			value := if branch_node.kind in [.if_expr, .comptime_if] {
+				e.expr(branch)!
+			} else {
+				flow := e.scope(branch_node, 0)!
+				if flow.kind != .empty {
+					return error('control flow in a value expression is not supported')
+				}
+				flow.value
 			}
 			if node.kind == .if_expr {
 				typ := e.expr_types[int(id)] or { e.if_result_type(id)! }
-				return const_eval_convert(flow.value, typ)
+				return const_eval_convert(value, typ)
 			}
-			return flow.value
+			return value
 		}
 		.postfix {
 			child := e.tc.a.child_node(node, 0)

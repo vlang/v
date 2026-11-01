@@ -12066,6 +12066,38 @@ fn const_eval_plain_identifier(name string) bool {
 
 // const_int_value_in_module supports const int value handling for a specific module.
 pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name string, seen []string) ?int {
+	mut context := ConstIntContext{}
+	return tc.const_int_value_with_context(name, module_name, seen, mut context)
+}
+
+fn (tc &TypeChecker) const_int_initializer(key string, id flat.NodeId, module_name string, seen []string, mut context ConstIntContext) ?int {
+	if context.failure.len > 0 { return none }
+	view := if context.evaluator == unsafe { nil } && (tc.has_comptime_functions || tc.comptime_const_values.len > 0) {
+		tc.fork_type_parse_view(tc.const_files[key] or { tc.cur_file }, module_name)
+	} else {
+		tc
+	}
+	if context.evaluator == unsafe { nil } && (key in tc.comptime_const_values || view.requires_comptime_const(id)) {
+		if !context.start(view, id) { return none }
+	}
+	if context.evaluator == unsafe { nil } {
+		if value := view.const_int_expr_with_context(id, module_name, seen, mut context) {
+			if context.evaluator == unsafe { nil } { return value }
+		}
+		// A referenced constant can require evaluation even when this initializer
+		// has no annotated call. Re-evaluate its complete expression and conversion.
+	}
+	if context.evaluator == unsafe { nil } || context.failure.len > 0 { return none }
+	value := context.evaluator.constant_value(key) or {
+		context.failure = err.msg()
+		return none
+	}
+	if !unalias_type(value.typ).is_integer() { return none }
+	return int(value.integer)
+}
+
+fn (tc &TypeChecker) const_int_value_with_context(name string, module_name string, seen []string, mut context ConstIntContext) ?int {
+	if context.failure.len > 0 { return none }
 	if name in seen {
 		return none
 	}
@@ -12090,7 +12122,7 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 				mut next_seen := seen.clone()
 				next_seen << key
 				const_module := tc.const_modules[key] or { module_name }
-				return tc.const_int_expr(expr_id, const_module, next_seen)
+				return tc.const_int_initializer(key, expr_id, const_module, next_seen, mut context)
 			}
 		}
 	}
@@ -12104,6 +12136,9 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 		if alias_key.len > 0 {
 			// An import alias takes precedence over a module with the same name.
 			candidates << alias_key
+		}
+		if key := tc.const_main_qualified_key(name) {
+			candidates << key
 		}
 	}
 	if key := tc.shadowed_builtin_const_key_in_module(name, module_name) {
@@ -12127,15 +12162,16 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 			mut next_seen := seen.clone()
 			next_seen << key
 			const_module := tc.const_modules[key] or { module_name }
-			return tc.const_int_expr(expr_id, const_module, next_seen)
+			return tc.const_int_initializer(key, expr_id, const_module, next_seen, mut context)
 		}
 	}
 	if v := v_int_literal_value(name) {
 		return v
 	}
-	if v := tc.const_int_cast_text_value(name, module_name, seen) {
+	if v := tc.const_int_cast_text_value(name, module_name, seen, mut context) {
 		return v
 	}
+	if context.failure.len > 0 { return none }
 	if v := tc.const_int_enum_selector_value(name) {
 		return v
 	}
@@ -12149,7 +12185,7 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 	// (unary) leaves an empty lhs and is skipped.
 	expr := trimmed_space(name)
 	if const_expr_paren_wraps_whole(expr) {
-		return tc.const_int_value(trimmed_space(expr[1..expr.len - 1]), seen)
+		return tc.const_int_value_with_context(trimmed_space(expr[1..expr.len - 1]), module_name, seen, mut context)
 	}
 	// Without an operator character neither the split below nor a leading sign can
 	// apply. Most texts that get here are plain names; skip the per-character scan.
@@ -12233,8 +12269,26 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 				return none
 			}
 		}
-		l := tc.const_int_value_in_module(lhs_text, module_name, seen) or { return none }
-		r := tc.const_int_value_in_module(rhs, module_name, seen) or { return none }
+		had_evaluator := context.evaluator != unsafe { nil }
+		mut l := 0
+		mut left_resolved := false
+		if value := tc.const_int_value_with_context(lhs_text, module_name, seen, mut context) {
+			l = value
+			left_resolved = true
+		}
+		mut r := 0
+		mut right_resolved := false
+		if value := tc.const_int_value_with_context(rhs, module_name, seen, mut context) {
+			r = value
+			right_resolved = true
+		}
+		if context.failure.len > 0 { return none }
+		// Either operand can introduce required evaluation, including after an
+		// ignored cast made the legacy evaluation of the other operand fail.
+		if !had_evaluator && context.evaluator != unsafe { nil } {
+			return tc.const_int_value_with_context(expr, module_name, seen, mut context)
+		}
+		if !left_resolved || !right_resolved { return none }
 		if (op == '/' || op == '%') && r == 0 {
 			return none
 		}
@@ -12258,7 +12312,7 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 		return if op == '**' && power_sign < 0 { -value } else { value }
 	}
 	if expr.len > 1 && expr[0] in [`+`, `-`] {
-		value := tc.const_int_value_in_module(trimmed_space(expr[1..]), module_name, seen) or {
+		value := tc.const_int_value_with_context(trimmed_space(expr[1..]), module_name, seen, mut context) or {
 			return none
 		}
 		return if expr[0] == `-` { -value } else { value }
@@ -12278,7 +12332,7 @@ fn const_int_text_has_operator(expr string) bool {
 	return false
 }
 
-fn (tc &TypeChecker) const_int_cast_text_value(text string, module_name string, seen []string) ?int {
+fn (tc &TypeChecker) const_int_cast_text_value(text string, module_name string, seen []string, mut context ConstIntContext) ?int {
 	expr := trimmed_space(text)
 	if !expr.ends_with(')') {
 		return none
@@ -12299,7 +12353,12 @@ fn (tc &TypeChecker) const_int_cast_text_value(text string, module_name string, 
 	if inner.len == 0 {
 		return none
 	}
-	return tc.const_int_value_in_module(inner, module_name, seen)
+	value := tc.const_int_value_with_context(inner, module_name, seen, mut context) or { return none }
+	return if context.evaluator == unsafe { nil } {
+		value
+	} else {
+		int(const_eval_integer_cast(value, cast_type))
+	}
 }
 
 fn (tc &TypeChecker) const_int_enum_selector_value(text string) ?int {
@@ -12329,6 +12388,20 @@ fn (tc &TypeChecker) const_int_enum_selector_value(text string) ?int {
 
 // const_int_expr supports const int expr handling for TypeChecker.
 fn (tc &TypeChecker) const_int_expr(id flat.NodeId, module_name string, seen []string) ?int {
+	mut context := ConstIntContext{}
+	if tc.has_comptime_functions && tc.valid_node_id(id) {
+		view := tc.fork_type_parse_view(tc.cur_file, module_name)
+		if view.requires_comptime_const(id) { return context.expression(tc, id, module_name) }
+	}
+	if value := tc.const_int_expr_with_context(id, module_name, seen, mut context) {
+		if context.evaluator == unsafe { nil } { return value }
+	}
+	if context.evaluator == unsafe { nil } || context.failure.len > 0 { return none }
+	return context.expression(tc, id, module_name)
+}
+
+fn (tc &TypeChecker) const_int_expr_with_context(id flat.NodeId, module_name string, seen []string, mut context ConstIntContext) ?int {
+	if context.failure.len > 0 { return none }
 	if int(id) < 0 {
 		return none
 	}
@@ -12343,19 +12416,17 @@ fn (tc &TypeChecker) const_int_expr(id flat.NodeId, module_name string, seen []s
 			if !tc.has_comptime_functions { return none }
 			view := tc.fork_type_parse_view(tc.cur_file, module_name)
 			if !view.requires_comptime_const(id) { return none }
-			value := view.eval_comptime_const(id) or { return none }
-			if !unalias_type(value.typ).is_integer() { return none }
-			return int(value.integer)
+			return context.expression(tc, id, module_name)
 		}
 		.char_literal {
 			return match_char_literal_value(node.value)
 		}
 		.ident {
-			return tc.const_int_value_in_module(node.value, module_name, seen)
+			return tc.const_int_value_with_context(node.value, module_name, seen, mut context)
 		}
 		.paren {
 			if node.children_count > 0 {
-				return tc.const_int_expr(tc.a.child(&node, 0), module_name, seen)
+				return tc.const_int_expr_with_context(tc.a.child(&node, 0), module_name, seen, mut context)
 			}
 		}
 		.cast_expr {
@@ -12366,14 +12437,26 @@ fn (tc &TypeChecker) const_int_expr(id flat.NodeId, module_name string, seen []s
 			if !cast_type.is_integer() {
 				return none
 			}
-			return tc.const_int_expr(tc.a.child(&node, 0), module_name, seen)
+			return tc.const_int_expr_with_context(tc.a.child(&node, 0), module_name, seen, mut context)
 		}
 		.enum_val {
 			return tc.const_int_enum_selector_value(node.value)
 		}
 		.selector {
-			return tc.const_int_value_in_module(tc.source_text_for_node(id), module_name,
-				seen)
+			base := tc.a.child_node(&node, 0)
+			if base.kind == .ident {
+				if imported_module := tc.resolve_import_alias(base.value) {
+					key := '${imported_module}.${node.value}'
+					if key in seen { return none }
+					if expr_id := tc.const_exprs[key] {
+						mut next_seen := seen.clone()
+						next_seen << key
+						return tc.const_int_initializer(key, expr_id, imported_module, next_seen, mut context)
+					}
+				}
+			}
+			return tc.const_int_value_with_context(tc.source_text_for_node(id), module_name,
+				seen, mut context)
 		}
 		.sizeof_expr {
 			return tc.const_sizeof_type_value(node.source_value_id())
@@ -12382,7 +12465,7 @@ fn (tc &TypeChecker) const_int_expr(id flat.NodeId, module_name string, seen []s
 			if node.children_count == 0 {
 				return none
 			}
-			value := tc.const_int_expr(tc.a.child(&node, 0), module_name, seen) or { return none }
+			value := tc.const_int_expr_with_context(tc.a.child(&node, 0), module_name, seen, mut context) or { return none }
 			return match node.op {
 				.minus { -value }
 				.plus { value }
@@ -12394,8 +12477,14 @@ fn (tc &TypeChecker) const_int_expr(id flat.NodeId, module_name string, seen []s
 			if node.children_count < 2 {
 				return none
 			}
-			left := tc.const_int_expr(tc.a.child(&node, 0), module_name, seen) or { return none }
-			right := tc.const_int_expr(tc.a.child(&node, 1), module_name, seen) or { return none }
+			mut left := 0
+			mut left_resolved := false
+			if value := tc.const_int_expr_with_context(tc.a.child(&node, 0), module_name, seen, mut context) {
+				left = value
+				left_resolved = true
+			}
+			right := tc.const_int_expr_with_context(tc.a.child(&node, 1), module_name, seen, mut context) or { return none }
+			if !left_resolved { return none }
 			match node.op {
 				.plus {
 					return left + right

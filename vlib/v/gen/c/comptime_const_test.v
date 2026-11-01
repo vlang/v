@@ -103,3 +103,36 @@ fn test_cli_comptime_values_remain_static_after_parent_index_refresh() {
 		assert !generated.contains('main__name = label(')
 	}
 }
+
+fn test_comptime_integer_lengths_survive_transform() {
+	path := os.join_path(os.vtmp_dir(), 'comptime_lengths_${os.getpid()}.v')
+	os.write_file(path, '@[comptime]\nfn seed() int { return 256 }\nconst source = seed()\nconst indirect = u8(source) + 1\nconst alias = indirect\n@[comptime]\nfn measure() int { a := [indirect + 1]u8{} b := [(alias)]u8{} return a.len + b.len }\nconst measured = measure()\nfn main() { _ = measured }')!
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(path)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	for stage in ['before transform', 'after transform'] {
+		if stage == 'after transform' {
+			transform.transform(mut a, &tc)
+			tc.annotate_types()
+		}
+		for expression, expected in {
+			'indirect':     1
+			'(alias)':      1
+			'indirect + 1': 2
+		} {
+			actual := tc.const_int_value(expression, []) or { -1 }
+			if actual != expected {
+				detail := if value := tc.eval_comptime_const(tc.const_exprs['indirect']!) {
+					value.str()
+				} else {
+					err.msg()
+				}
+				assert false, '${stage}: ${expression} = ${actual}; ${detail}'
+			}
+		}
+	}
+}

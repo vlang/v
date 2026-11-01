@@ -247,3 +247,57 @@ fn test_comptime_const_unary_literal_operations_use_c_integer_widths() {
 		assert tc.comptime_const_values['n']!.integer == 1
 	}
 }
+
+fn test_comptime_const_reads_apply_each_constants_storage_type() {
+	tc := comptime_const_checker('const byte_value = u8(250) + u8(10)\nconst chained_value = byte_value + u8(253)\n@[comptime]\nfn read_values() int { return int(byte_value) * 1000 + int(chained_value) }\nconst result = read_values()\nfn main() { _ = result }')
+	assert tc.errors.len == 0, tc.errors.str()
+	assert tc.comptime_const_values['result']!.integer == 4001
+	assert tc.const_int_value('result', [])? == 4001
+}
+
+fn test_comptime_const_completed_reads_apply_the_storage_type() {
+	tc := comptime_const_checker('@[comptime]\nfn byte_seed() u8 { return 250 }\nconst byte_value = byte_seed() + u8(10)\n@[comptime]\nfn read_value() int { return int(byte_value) }\nconst result = read_value()\nfn main() { _ = result }')
+	assert tc.errors.len == 0, tc.errors.str()
+	assert tc.comptime_const_values['result']!.integer == 4
+	assert tc.const_int_value('byte_value', [])? == 4
+}
+
+fn test_comptime_const_integer_lengths_evaluate_whole_initializers() {
+	tc := comptime_const_checker('@[comptime]\nfn seed() int { return 256 }\nconst direct = u8(seed()) + 1\nconst source = seed()\nconst indirect = u8(source) + 1\nconst alias = indirect\nconst quotient = 256 / (256 - u8(source))\nfn main() { _ = [direct]u8{} _ = [indirect]u8{} _ = [alias]u8{} _ = [quotient]u8{} }')
+	assert tc.errors.len == 0, tc.errors.str()
+	assert tc.comptime_const_values['direct']!.integer == 1
+	for name in ['direct', 'indirect', 'alias', 'quotient'] {
+		assert tc.const_int_value(name, [])? == 1, name
+		assert tc.const_int_expr(tc.const_exprs[name]!, tc.cur_module, [])? == 1, name
+	}
+}
+
+fn test_comptime_const_else_if_values_keep_their_branch_result_type() {
+	for flag in [1, 2] {
+		tc := comptime_const_checker('@[comptime]\nfn choose(flag int) u64 { return (if flag == 0 { u64(0) } else if flag == 1 { u64(0xffffffffffffffff) } else { 0xffffffffffffffff }) / 3 }\nconst result = choose(${flag})\nfn main() { _ = result }')
+		assert tc.errors.len == 0, tc.errors.str()
+		assert u64(tc.comptime_const_values['result']!.integer) == u64(6148914691236517205)
+	}
+}
+
+fn test_comptime_const_symbolic_array_lengths_keep_the_evaluator_context() {
+	tc := comptime_const_checker('@[comptime]\nfn seed() int { return 3 }\nconst n = seed()\n@[comptime]\nfn measure() int { a := [(n)]u8{} b := [n + 1]u8{} c := [int(n)]u8{} return a.len + b.len + c.len }\nconst total = measure()\nfn main() { _ = total }')
+	assert tc.errors.len == 0, tc.errors.str()
+	assert tc.comptime_const_values['total']!.integer == 10
+}
+
+fn test_comptime_const_symbolic_array_length_cycles_are_diagnosed() {
+	for length in ['n', 'n + 1', '(n)', 'int(n)', '(int(n) + 1)', 'indirect'] {
+		tc := comptime_const_checker('const n = size()\nconst indirect = n\n@[comptime]\nfn size() int { return [${length}]u8{}.len }\nfn main() { _ = n }')
+		assert tc.errors.any(it.msg.contains('cannot evaluate const `n`') && it.msg.contains('cycle in constant')), '${length}: ${tc.errors}'
+	}
+}
+
+fn test_comptime_const_symbolic_lengths_revisit_earlier_legacy_operands() {
+	tc := comptime_const_checker('@[comptime]\nfn seed() int { return 256 }\nconst source = seed()\nconst left_quotient = 256 / (256 - u8(250 + 6)) + source\nfn main() { _ = source }')
+	assert tc.errors.len == 0, tc.errors.str()
+	assert tc.const_int_value('u8(250 + 50) + source', [])? == 300
+	assert tc.const_int_value('256 / (256 - u8(250 + 6)) + source', [])? == 257
+	assert tc.const_int_value('left_quotient', [])? == 257
+	assert tc.const_int_expr(tc.const_exprs['left_quotient']!, tc.cur_module, [])? == 257
+}
