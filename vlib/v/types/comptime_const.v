@@ -75,7 +75,14 @@ fn (tc &TypeChecker) new_comptime_const_eval(id flat.NodeId) !&ConstEval {
 		tc.cur_file
 	}
 	view := if file == tc.cur_file { tc } else { tc.fork_type_parse_view(file, tc.cur_module) }
+	view.check_comptime_const_context()!
 	return &ConstEval{ tc: view, scopes: [map[string]ComptimeConstValue{}] }
+}
+
+fn (tc &TypeChecker) check_comptime_const_context() ! {
+	if tc.translated_files[tc.cur_file] {
+		return error('required evaluation of translated code is not supported')
+	}
 }
 
 fn (mut context ConstIntContext) start(tc &TypeChecker, id flat.NodeId) bool {
@@ -241,6 +248,7 @@ fn (mut e ConstEval) resolved_storage_type(typ Type) !Type {
 		old_tc := e.tc
 		e.tc = e.tc.fork_type_parse_view(file, module_name)
 		defer { e.tc = old_tc }
+		e.tc.check_comptime_const_context()!
 		base := e.resolved_storage_type(typ.base_type)!
 		return Type(Alias{ name_id: typ.name_id, base_type: e.tc.intern_type_reference(base) })
 	}
@@ -326,6 +334,7 @@ fn (mut e ConstEval) zero(destination Type) !ComptimeConstValue {
 			e.tc.fork_type_parse_view(file, module_name)
 		}
 		defer { e.tc = old_tc }
+		e.tc.check_comptime_const_context()!
 		mut fields := map[string]ComptimeConstValue{}
 		for field in e.tc.structs[base.name_id] {
 			if field.has_default || field.is_embed {
@@ -358,6 +367,7 @@ fn (mut e ConstEval) constant_value(key string) !ComptimeConstValue {
 		e.scopes = old_scopes
 		e.active.delete(key)
 	}
+	e.tc.check_comptime_const_context()!
 	// Completed values remain authoritative after transform has lowered their
 	// initializers and helper bodies. Their storage types can still have bounds
 	// that must resolve in the declaration's scope under the active cycle guard.
@@ -386,6 +396,7 @@ fn (mut e ConstEval) expr(id flat.NodeId) !ComptimeConstValue {
 	defer { e.depth-- }
 	if e.depth > 128 { return error('evaluation exceeded recursion limit') }
 	if !e.tc.valid_node_id(id) { return error('missing constant expression') }
+	e.tc.check_comptime_const_context()!
 	value := e.expr_value(id)!
 	e.expr_types[int(id)] = value.typ
 	return value
@@ -468,12 +479,12 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 			if node.op != .not || child.kind != .array_literal {
 				return error('unsupported postfix expression')
 			}
-			if typ := e.tc.expr_type(id) { return e.array_value(child, typ) }
+			if typ := e.tc.expr_type(id) { return e.array_value(child, typ, none) }
 			if child.children_count == 0 { return error('unknown fixed-array type') }
 			first := e.expr(e.tc.a.child(child, 0))!
 			elem_type := e.tc.intern_type_reference(first.typ)
 			typ := Type(ArrayFixed{ elem_type: elem_type, len: child.children_count })
-			return e.array_value(child, typ)
+			return e.array_value(child, typ, first)
 		}
 		.array_init, .array_literal {
 			typ := e.tc.expr_type(id) or {
@@ -483,7 +494,7 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 					node.source_value_id()
 				})
 			}
-			return e.array_value(node, typ)
+			return e.array_value(node, typ, none)
 		}
 		.struct_init {
 			typ := e.tc.expr_type(id) or { *e.tc.parse_type(node.source_value_id()) }
@@ -567,7 +578,7 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 	}
 }
 
-fn (mut e ConstEval) array_value(node flat.Node, typ Type) !ComptimeConstValue {
+fn (mut e ConstEval) array_value(node flat.Node, typ Type, first ?ComptimeConstValue) !ComptimeConstValue {
 	base := unalias_type(typ)
 	if base !is ArrayFixed { return error('only fixed arrays are supported') }
 	mut value := e.zero(typ)!
@@ -577,7 +588,9 @@ fn (mut e ConstEval) array_value(node flat.Node, typ Type) !ComptimeConstValue {
 		if e.tc.a.node(child).kind == .field_init {
 			return error('array init fields are not supported')
 		}
-		value.elements[i] = e.convert(e.expr(child)!, value.elements[i].typ)!
+		// The inferred postfix path already evaluated element zero for its type.
+		item := if i == 0 { first or { e.expr(child)! } } else { e.expr(child)! }
+		value.elements[i] = e.convert(item, value.elements[i].typ)!
 	}
 	return value
 }
@@ -781,7 +794,10 @@ fn (e &ConstEval) binary_result_type(id flat.NodeId, op flat.Op, left Type, righ
 	// A compound assignment uses the stored lvalue type, not a pre-check query
 	// of its index/selector. Ordinary expressions use their evaluated operands.
 	if node.kind != .infix { return left }
-	if op == .right_shift_unsigned { return unsigned_shift_result_type(left) }
+	if op == .right_shift_unsigned {
+		if e.tc.integer_literal_source(e.tc.a.child(node, 0)) != none { return builtin_u32_type }
+		return unsigned_shift_result_type(left)
+	}
 	if op in [.left_shift, .right_shift] { return left }
 	left_id := e.tc.a.child(node, 0)
 	right_id := e.tc.a.child(node, 1)
@@ -849,6 +865,8 @@ fn (mut e ConstEval) binary(id flat.NodeId, op flat.Op, left ComptimeConstValue,
 	if op in [.left_shift, .right_shift, .right_shift_unsigned] {
 		shift_type := if op == .left_shift {
 			e.integer_c_expression_type(id, typ)!
+		} else if op == .right_shift_unsigned {
+			typ
 		} else {
 			left.typ
 		}
@@ -950,10 +968,10 @@ fn (mut e ConstEval) binary(id flat.NodeId, op flat.Op, left ComptimeConstValue,
 			}
 		}
 		.right_shift_unsigned {
-			shift_type := if const_eval_integer_width(left.typ) == 32 {
+			shift_type := if const_eval_integer_width(typ) == 32 {
 				flat.source_type_u32
 			} else {
-				unalias_type(left.typ).source_type_id()
+				unalias_type(typ).source_type_id()
 			}
 			comptime_enum_unsigned_right_shift(l, r, shift_type)
 		}
@@ -991,6 +1009,7 @@ fn (mut e ConstEval) call(id flat.NodeId) !ComptimeConstValue {
 		e.tc = old_tc
 		e.scopes = old_scopes
 	}
+	e.tc.check_comptime_const_context()!
 	mut param_index := 0
 	for i in 0 .. f.children_count {
 		param := e.tc.a.child_node(f, i)

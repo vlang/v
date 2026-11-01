@@ -484,23 +484,25 @@ fn test_comptime_const_left_shift_count_keeps_cycle_guards() {
 	assert tc.errors.any(it.msg.contains('cannot evaluate const `count`') && it.msg.contains('cycle in constant')), tc.errors.str()
 }
 
-fn test_comptime_const_left_shift_does_not_widen_translated_literals() ! {
+fn test_comptime_const_rejects_translated_context_after_metadata_update() ! {
 	original_bits := platform_int_bits()
 	defer { set_platform_int_bits(original_bits) }
 	set_platform_int_bits(64)
 	mut tc := comptime_const_checker('@[comptime]\nfn above(bound int) bool { return (1 << 31) > bound }\nconst result = above(-1)\nfn main() { _ = result }')
 	assert tc.errors.len == 0, tc.errors.str()
 	assert tc.comptime_const_values['result']!.integer == 0
-	for _, file in tc.a.source_files { tc.translated_files[file.name] = true }
 	mut evaluator := tc.new_comptime_const_eval(tc.const_exprs['result']!)!
-	for i, node in tc.a.nodes {
-		if node.kind == .infix && node.op == .left_shift {
-			c_type := evaluator.integer_c_expression_type(flat.NodeId(i), builtin_int_type)!
-			assert c_type.source_type_id() == builtin_int_type.source_type_id()
-			return
-		}
+	for _, file in tc.a.source_files { tc.translated_files[file.name] = true }
+	if _ := tc.eval_comptime_const(tc.const_exprs['result']!) {
+		assert false, 'translated evaluation succeeded'
+	} else {
+		assert err.msg().contains('required evaluation of translated code is not supported')
 	}
-	assert false, 'missing shift expression'
+	if _ := evaluator.expr(tc.const_exprs['result']!) {
+		assert false, 'existing evaluator accepted translated context'
+	} else {
+		assert err.msg().contains('required evaluation of translated code is not supported')
+	}
 }
 
 fn test_comptime_const_selector_locals_precede_merged_header_imports() ! {
@@ -535,5 +537,93 @@ fn test_comptime_const_reads_current_module_qualified_constants() {
 		assert tc.errors.len == 0, tc.errors.str()
 		key_prefix := if module_name in ['main', 'builtin'] { '' } else { '${module_name}.' }
 		assert tc.comptime_const_values['${key_prefix}qualified_result']!.integer == 2
+	}
+}
+
+fn test_comptime_const_translated_declaration_contexts_and_native_controls() ! {
+	root := os.join_path(os.vtmp_dir(), 'comptime_const_translated_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	helper := os.join_path(root, 'helper.v')
+	main := os.join_path(root, 'main.v')
+	for translated in [false, true] {
+		prefix := if translated { '@[translated]\n' } else { '' }
+		os.write_file(helper, '${prefix}module helper\npub const value = u8(250 + 10)\npub struct Box { pub: value int }\npub type Pair = [2]u8\n@[comptime]\npub fn negate(a u8) int { value := -a return int(value) }')!
+		for name, body in {
+			'call':   'return helper.negate(250)'
+			'const':  'return int(helper.value)'
+			'cached': 'return int(helper.value)'
+			'struct': 'return helper.Box{}.value'
+			'alias':  'return helper.Pair([u8(1), 2]!).len'
+			'unused': 'return if false { helper.negate(250) } else { 7 }'
+		} {
+			os.write_file(main, 'module main\nimport helper\n@[comptime]\nfn outer() int { ${body} }\nconst result = outer()\nfn main() { _ = result }')!
+			mut p := parser.Parser.new(pref.new_preferences())
+			a := p.parse_files([helper, main])
+			assert p.diagnostics.len == 0, p.diagnostics.str()
+			mut tc := TypeChecker.new(a)
+			tc.collect(a)
+			if name == 'cached' {
+				tc.comptime_const_values['helper.value'] = ComptimeConstValue{ typ: u8_, integer: 9 }
+			}
+			tc.check_semantics()
+			if translated && name != 'unused' {
+				assert tc.errors.any(it.msg.contains('cannot evaluate const `result`') && it.msg.contains('required evaluation of translated code is not supported')), '${name}: ${tc.errors}'
+			} else {
+				assert tc.errors.len == 0, '${name}: ${tc.errors}'
+				expected := match name {
+					'call' { 6 }
+					'const' { 4 }
+					'cached' { 9 }
+					'struct' { 0 }
+					'alias' { 2 }
+					else { 7 }
+				}
+				assert tc.comptime_const_values['result']!.integer == expected, name
+			}
+		}
+	}
+}
+
+fn test_comptime_const_literal_logical_shift_uses_u32() {
+	original_bits := platform_int_bits()
+	defer { set_platform_int_bits(original_bits) }
+	for bits in [32, 64] {
+		set_platform_int_bits(bits)
+		wide := if bits == 32 { u64(2147483645) } else { u64(9223372036854775805) }
+		for body, expected in {
+			'n := -5 >>> 1 return u64(n)':    u64(2147483645)
+			'return u64(((-5)) >>> count)':   u64(2147483645)
+			'return u64(-5 >>> named_count)': u64(2147483645)
+			'return u64(-5 >>> 0)':           u64(4294967291)
+			'return u64(-5 >>> 31)':          u64(1)
+			'return u64(-5 >>> 32)':          u64(0)
+			'return u64(-5 >>> -1)':          u64(0)
+			'return u64(~(5 >>> 1))':         u64(4294967293)
+			'return u64(-(5) >>> 1)':         wide
+			'return u64(int(-5) >>> 1)':      wide
+			'n := -5 return u64(n >>> 1)':    wide
+			'return u64((-5 + 0) >>> 1)':     wide
+			'return u64(i64(-5) >>> 1)':      u64(9223372036854775805)
+			'return u64(i32(-5) >>> 1)':      u64(2147483645)
+			'return u64(i8(-5) >>> 1)':       u64(125)
+		} {
+			tc := comptime_const_checker('const named_count = 1\nconst result = compute(1)\n@[comptime]\nfn compute(count int) u64 { ${body} }\nfn main() { _ = result }')
+			assert tc.errors.len == 0, '${bits}: ${body}: ${tc.errors}'
+			assert u64(tc.comptime_const_values['result']!.integer) == expected, '${bits}: ${body}'
+		}
+	}
+}
+
+fn test_comptime_const_inferred_array_evaluates_elements_once_in_order() {
+	for body, expected in {
+		'mut n := 0 a := [if true { n += 1 n } else { 0 }]! return a[0]':                                                        1
+		'mut n := 0 a := [if true { n += 1 n } else { 0 }, if true { n += 1 n } else { 0 }]! return a[0] * 100 + a[1] * 10 + n': 122
+		'mut n := 0 a := [[if true { n += 1 n } else { 0 }]!]! return a[0][0] * 10 + n':                                         11
+		'n := u8(128) a := [~n]! return int(a[0])':                                                                              127
+	} {
+		tc := comptime_const_checker('const result = compute()\n@[comptime]\nfn compute() int { ${body} }\nfn main() { _ = result }')
+		assert tc.errors.len == 0, tc.errors.str()
+		assert tc.comptime_const_values['result']!.integer == expected, body
 	}
 }

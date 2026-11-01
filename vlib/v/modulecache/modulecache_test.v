@@ -1724,3 +1724,40 @@ fn test_module_header_keeps_constant_call_initializers() {
 	assert header.contains('pub const value = make()'), header
 	assert !header.contains(source_body_marker), header
 }
+
+fn test_module_headers_keep_mixed_translated_file_contexts() ! {
+	root := os.join_path(os.vtmp_dir(), 'v3_header_translated_contexts_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for functions in [false, true] {
+		for translated in [[false, false], [true, true], [false, true], [true, false]] {
+			mut paths := []string{}
+			for i in 0 .. 2 {
+				path := os.join_path(root, 'helper_${i}.v')
+				prefix := if translated[i] { '@[translated]\n' } else { '' }
+				declaration := if functions {
+					'@[comptime]\npub fn value_${i}() int { return ${i + 1} }'
+				} else {
+					'pub const value_${i} = ${i + 1}'
+				}
+				os.write_file(path, '${prefix}module helpers\n${declaration}\n')!
+				paths << path
+			}
+			mut p := parser.Parser.new(pref.new_preferences())
+			a := p.parse_files(paths)
+			assert p.diagnostics.len == 0, p.diagnostics.str()
+			mut tc := vtypes.TypeChecker.new(a)
+			tc.collect(a)
+			header := module_header(a, &tc, 'helpers', root, map[string]string{})
+			mixed := translated[0] != translated[1]
+			assert header.contains(source_body_marker) == mixed, header
+			if functions {
+				assert header.contains('return 1') == !mixed, header
+				assert header.contains('return 2') == !mixed, header
+			} else {
+				assert header.contains('pub const value_0 = 1'), header
+				assert header.contains('pub const value_1 = 2'), header
+			}
+		}
+	}
+}

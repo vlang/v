@@ -136,3 +136,30 @@ fn test_comptime_integer_lengths_survive_transform() {
 		}
 	}
 }
+
+fn test_cli_comptime_rejects_translated_evaluation_but_keeps_runtime_calls() ! {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_translated_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	program := '@[comptime]\nfn negate(a u8) int { value := -a return int(value) }\nconst result = negate(250)\nfn main() { println(result) println(negate(250)) }'
+	args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none', '-cc',
+		'tcc']
+	os.write_file(source, program)!
+	native := os.exec([...args, 'run', source])
+	assert native.exit_code == 0, native.output
+	assert native.output.trim_space() == '6\n6', native.output
+	global := os.exec([...args, '-translated', '-o', os.join_path(root, 'global'), source])
+	assert global.exit_code != 0, global.output
+	assert global.output.contains('required evaluation of translated code is not supported'), global.output
+	os.write_file(source, '@[translated]\nmodule main\n' + program)!
+	per_file := os.exec([...args, '-o', os.join_path(root, 'per_file'), source])
+	assert per_file.exit_code != 0, per_file.output
+	assert per_file.output.contains('required evaluation of translated code is not supported'), per_file.output
+	runtime_program := program.replace('const result = negate(250)\n', '').replace('fn main() {',
+		'fn main() { result := negate(250)\n')
+	os.write_file(source, runtime_program)!
+	runtime := os.exec([...args, '-translated', 'run', source])
+	assert runtime.exit_code == 0, runtime.output
+	assert runtime.output.trim_space() == '-250\n-250', runtime.output
+}

@@ -16195,7 +16195,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 				// are constant expressions, so repeating the rhs in the clamp
 				// is side-effect free (statement expressions are not valid in
 				// static initializers).
-				ut, bits := g.unsigned_shift_type_parts(g.usable_expr_type(g.a.child(&node, 0)))
+				ut, bits := g.unsigned_shift_type_parts(g.usable_expr_type(id))
 				'((u64)(${rhs}) >= ${bits} ? (${ut})0 : (${ut})((${ut})(${lhs}) >> (${rhs})))'
 			} else {
 				'(${lhs}) ${g.op_str(node.op)} (${rhs})'

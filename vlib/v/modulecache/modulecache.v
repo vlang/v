@@ -13,7 +13,7 @@ import v.util.cache_refresh
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-60'
+const cache_format = 'v3-module-cache-61'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -5467,9 +5467,22 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 	}
 	out.writeln('module ${module_name.all_after_last('.')}')
 	file_ids := index.files[module_name]
+	mut has_translated_file := false
+	mut has_native_file := false
+	for file_id in file_ids {
+		if tc.translated_files[a.node(file_id).value] {
+			has_translated_file = true
+		} else {
+			has_native_file = true
+		}
+	}
+	// One merged module attribute cannot preserve distinct file semantics,
+	// including the declaration context of constants in data-only modules.
+	keep_file_contexts := has_translated_file && has_native_file
 	generic_specialization_callees := index.generic_callees
-	needs_source_bodies := module_needs_source_bodies(a, tc, file_ids, generic_specialization_callees, declaration_attrs)
+	needs_source_bodies := keep_file_contexts || module_needs_source_bodies(a, tc, file_ids, generic_specialization_callees, declaration_attrs)
 	embed_source_bodies := needs_source_bodies
+		&& !keep_file_contexts
 		&& !module_has_conflicting_import_bindings(a, file_ids)
 		&& module_source_bodies_are_embeddable(a, tc, file_ids, generic_specialization_callees, declaration_attrs, mut source_cache)
 	if needs_source_bodies && !embed_source_bodies {

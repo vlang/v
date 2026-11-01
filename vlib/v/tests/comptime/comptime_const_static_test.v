@@ -366,6 +366,74 @@ fn test_comptime_selector_namespace_parity() {
 	assert computed_selector_qualified == evaluated.qualified_selector()
 }
 
+const computed_literal_logical_shifts = const_literal_logical_shifts(1)
+const ordinary_literal_logical_shift = -5 >>> 1
+const ordinary_literal_logical_table = [u64(-5 >>> 0), u64(-5 >>> 31), u64(-5 >>> 32)]!
+
+@[comptime]
+fn const_literal_logical_shifts(count int) [12]u64 {
+	stored := -5 >>> 1
+	named := -5
+	return [u64(stored), u64((-5) >>> count), u64(-5 >>> 0), u64(-5 >>> 31), u64(-5 >>> 32),
+		u64(-5 >>> -1), u64(~(5 >>> 1)), u64(int(-5) >>> 1), u64(named >>> 1), u64(i64(-5) >>> 1),
+		u64(i32(-5) >>> 1), u64(i8(-5) >>> 1)]!
+}
+
+const computed_array_once = const_array_once()
+const computed_nested_array_once = const_nested_array_once()
+const computed_array_narrowing = const_array_narrowing()
+
+@[comptime]
+fn const_array_once() [3]int {
+	mut n := 0
+	a := [if true {
+		n += 1
+		n
+	} else {
+		0
+	}, if true {
+		n += 1
+		n
+	} else {
+		0
+	}]!
+	return [a[0], a[1], n]!
+}
+
+@[comptime]
+fn const_nested_array_once() int {
+	mut n := 0
+	a := [[if true {
+		n += 1
+		n
+	} else {
+		0
+	}]!]!
+	return a[0][0] * 10 + n
+}
+
+@[comptime]
+fn const_array_narrowing() int {
+	n := u8(128)
+	a := [~n]!
+	return int(a[0])
+}
+
+fn test_comptime_literal_shifts_and_array_evaluation_order() {
+	assert computed_literal_logical_shifts[0] == u64(2147483645)
+	assert computed_literal_logical_shifts[4] == 0
+	assert computed_literal_logical_shifts[6] == u64(4294967293)
+	assert computed_literal_logical_shifts == const_literal_logical_shifts(1)
+	assert ordinary_literal_logical_shift == u32(2147483645)
+	assert ordinary_literal_logical_table == [u64(4294967291), 1, 0]!
+	assert computed_array_once == [1, 2, 2]!
+	assert computed_array_once == const_array_once()
+	assert computed_nested_array_once == 11
+	assert computed_nested_array_once == const_nested_array_once()
+	assert computed_array_narrowing == 127
+	assert computed_array_narrowing == const_array_narrowing()
+}
+
 fn test_comptime_constants_match_runtime() {
 	assert imported_pair == evaluated.make_pair(10)
 	assert imported_pair == [u32(10), 17]!

@@ -4295,6 +4295,10 @@ computed value as static data, with no initializer call, allocation, or copy at 
 conversions use the target's widths, including platform-width `int`. Unsupported target-dependent
 operations produce an error; required evaluation needs a concrete target and rejects portable C
 (`-os cross`). Required evaluation with `-check-overflow` or `-check-casts` is not yet supported.
+Required evaluation of translated code (`-translated` or files marked `@[translated]`) is also
+unsupported. This includes entering a translated helper or evaluating a constant declared in a
+translated file from native V code. Ordinary runtime calls remain supported. Mixed native and
+translated modules retain their separate source-file contexts when loaded from the module cache.
 
 Evaluation cannot read mutable globals or perform runtime I/O. Every executed helper call must be
 marked `@[comptime]`. Unsupported operations, reached panics, dependency cycles, and exhausted
