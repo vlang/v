@@ -241,19 +241,25 @@ fn test_inline_asm_c_lowering_preserves_named_operands_and_runs() {
 	} $else $if amd64 {
 		assert c_source.contains('"mov %[a], %%rax\\n\\t"'), c_source
 		assert c_source.contains('"movq \$7, (%[ptr])\\n\\t"'), c_source
-		assert c_source.contains('"mov \'A\', %[character]\\n\\t"'), c_source
+		assert c_source.contains('"mov \$\'A\', %[character]\\n\\t"'), 'x86 characters must be immediate operands'
 		assert c_source.contains('"movq 0(%[base], %[index], 1), %[indexed]\\n\\t"'), c_source
 		assert c_source.contains('".byte 0x27, 0x35, 0x0f, 0x48\\n\\t"'), c_source
 		assert !c_source.contains('.byte \\\$0x27'), c_source
 	}
-	compile := os.exec([v3_bin, '-enable-globals', '-cc', 'clang', '-o', bin_path, source_path])
-	assert compile.exit_code == 0, compile.output
-	run := os.exec([bin_path])
-	assert run.exit_code == 0, run.output
-	$if arm64 {
-		assert run.output.trim_space() == '8\n10\n6\n7\n65\n25\n100'
-	} $else $if amd64 {
-		assert run.output.trim_space() == '8\n10\n6\n7\n65\n22\n25\n100'
+	mut compilers := ['clang']
+	if _ := os.find_abs_path_of_executable('gcc') {
+		compilers << 'gcc'
+	}
+	for compiler in compilers {
+		compile := os.exec([v3_bin, '-enable-globals', '-cc', compiler, '-o', bin_path, source_path])
+		assert compile.exit_code == 0, compile.output
+		run := os.exec([bin_path])
+		assert run.exit_code == 0, run.output
+		$if arm64 {
+			assert run.output.trim_space() == '8\n10\n6\n7\n65\n25\n100'
+		} $else $if amd64 {
+			assert run.output.trim_space() == '8\n10\n6\n7\n65\n22\n25\n100'
+		}
 	}
 }
 
