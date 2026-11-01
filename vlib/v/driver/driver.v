@@ -11075,7 +11075,7 @@ pub fn run(args []string) {
 	// from the final skips, so an explicit `-d skip_wasm` also drops the
 	// driver's gated `v.ssa` import.
 	if 'skip_arm64' in user_defines && 'skip_x64' in user_defines
-		&& 'skip_riscv64' in user_defines && 'skip_wasm' in user_defines && 'skip_ssa' !in user_defines {
+		&& 'skip_riscv64' in user_defines && 'skip_arm32' in user_defines && 'skip_wasm' in user_defines && 'skip_ssa' !in user_defines {
 		user_defines << 'skip_ssa'
 	}
 	if !include_eval {
