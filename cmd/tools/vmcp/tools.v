@@ -59,6 +59,8 @@ pub fn tool_specs() []ToolSpec {
 	if find_vls_binary() != none {
 		specs << spec_vls_check()
 		specs << spec_vls_hover()
+		specs << spec_vls_definition()
+		specs << spec_vls_references()
 	}
 	// Running code.
 	specs << spec_run()
