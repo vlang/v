@@ -3339,6 +3339,46 @@ user = register(user)
 println(user)
 ```
 
+A struct update can also spread a different struct type when the source supplies compatible
+fields for every target field that is not explicitly initialized. An embedded struct can be
+supplied by explicitly initializing all of its members through their promoted field names:
+
+```v
+struct Position {
+	x int
+	y int
+}
+
+struct ButtonConfig {
+	width int
+}
+
+struct Button {
+	Position
+	width int
+}
+
+config := ButtonConfig{
+	width: 80
+}
+button := Button{
+	...config
+	x: 10
+	y: 20
+}
+assert button.width == 80
+assert button.Position.x == 10
+assert button.Position.y == 20
+```
+
+Here `config` supplies `width`, while `x` and `y` fully initialize `Position`. If either member
+is omitted, the source must instead supply a compatible `Position` field. Declared defaults do
+not count as explicit initializers for this requirement. The same rule applies to nested embeds.
+
+Only the embedded field that a promoted name refers to counts as supplied. A direct field
+shadows an embedded field of the same name, and a name owned by an earlier embedding cannot also
+initialize a later embedding. Use an explicit embedded-struct initializer for shadowed members.
+
 ### Trailing struct literal arguments
 
 V doesn't have default function arguments or named arguments, for that trailing struct
