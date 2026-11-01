@@ -3,8 +3,8 @@ module http
 import net.urllib
 import time
 
-// CookieJar stores HTTP cookies and applies them to requests, following
-// RFC 6265 (domain/path matching, expiry, Secure).
+// CookieJar stores HTTP cookies with domain/path matching, expiry and Secure handling.
+// It does not check a public suffix list.
 pub struct CookieJar {
 mut:
 	cookies []Cookie
@@ -15,23 +15,30 @@ pub fn new_cookie_jar() CookieJar {
 	return CookieJar{}
 }
 
-// host_of returns the host part of `raw_url` without a port number.
+// jar_host_of returns the canonical host of an absolute HTTP(S) URL, or an empty string.
 fn jar_host_of(raw_url string) string {
 	u := urllib.parse(raw_url) or { return '' }
-	mut host := u.host
-	if host.starts_with('[') {
-		if idx := host.index(']') {
-			return host[..idx + 1].to_lower()
-		}
-		return host.to_lower()
+	if u.scheme != 'http' && u.scheme != 'https' {
+		return ''
 	}
-	if idx := host.last_index(':') {
-		return host[..idx].to_lower()
+	host := u.hostname()
+	if host.contains(':') {
+		return jar_lower_host(host)
+	}
+	return host.trim_string_right('.').to_lower()
+}
+
+// jar_lower_host preserves the case-sensitive zone identifier of a scoped IPv6 address.
+fn jar_lower_host(host string) string {
+	if host.contains(':') {
+		if zone := host.index('%') {
+			return host[..zone].to_lower() + host[zone..]
+		}
 	}
 	return host.to_lower()
 }
 
-// path_of returns the path part of `raw_url`, defaulting to "/".
+// jar_path_of returns the path part of `raw_url`, defaulting to "/".
 // The escaped form is used so encoded characters (especially encoded
 // slashes) keep their meaning for cookie path matching (RFC 6265).
 fn jar_path_of(raw_url string) string {
@@ -43,23 +50,21 @@ fn jar_path_of(raw_url string) string {
 	return p
 }
 
-// scheme_of returns the scheme of `raw_url`.
+// jar_scheme_of returns the scheme of `raw_url`.
 fn jar_scheme_of(raw_url string) string {
 	u := urllib.parse(raw_url) or { return '' }
 	return u.scheme
 }
 
-// domain_matches reports whether `host` matches the cookie's domain.
+// domain_matches compares canonical hosts and domains; IP addresses never suffix-match.
 fn domain_matches(host string, domain string) bool {
-	if domain == '' {
+	if host == '' || domain == '' {
+		return false
+	}
+	if host == domain {
 		return true
 	}
-	d := domain.trim_left('.').to_lower()
-	h := host.to_lower()
-	if h == d {
-		return true
-	}
-	return h.ends_with('.' + d)
+	return !is_ipv4_literal(host) && !host.contains_any(':%') && host.ends_with('.' + domain)
 }
 
 // path_matches reports whether `request_path` matches the cookie's path.
@@ -82,27 +87,38 @@ fn path_matches(request_path string, cookie_path string) bool {
 
 // set_cookies stores the cookies returned for `raw_url`. Existing cookies
 // with the same name, domain and path are replaced.
+// Invalid, hostless and non-HTTP(S) URLs are ignored, as are invalid or unrelated domains.
 pub fn (mut j CookieJar) set_cookies(raw_url string, cookies []Cookie) {
 	host := jar_host_of(raw_url)
+	if host == '' {
+		return
+	}
 	req_path := jar_path_of(raw_url)
 	now := time.now()
 	for c in cookies {
 		mut cookie := c
-		// RFC 6265 §5.3 step 6: an explicit Domain must domain-match the
-		// response host, otherwise the cookie is ignored (before any mutation).
-		if cookie.domain != '' {
-			if !domain_matches(host, cookie.domain) {
-				continue
-			}
-		}
 		if cookie.domain == '' {
 			// host-only cookie: scope is the exact response host.
 			cookie.domain = host
 			cookie.host_only = true
 		} else {
-			// canonicalize: drop a leading dot, lowercase.
-			cookie.domain = cookie.domain.trim_left('.').to_lower()
-			cookie.host_only = false
+			// Remove only the single optional leading dot. Reject malformed domains
+			// before replacement or deletion can mutate an existing cookie.
+			cookie.domain = jar_lower_host(cookie.domain.trim_string_left('.'))
+			if cookie.domain == '' || cookie.domain.starts_with('.') || cookie.domain.ends_with('.') {
+				continue
+			}
+			if is_ipv4_literal(host) || host.contains(':') {
+				if cookie.domain != host {
+					continue
+				}
+				cookie.host_only = true
+			} else {
+				if !valid_cookie_domain(cookie.domain) || !domain_matches(host, cookie.domain) {
+					continue
+				}
+				cookie.host_only = false
+			}
 		}
 		if cookie.path == '' || !cookie.path.starts_with('/') {
 			// default path: up to last '/' (RFC 6265 §5.2.4)
@@ -129,7 +145,7 @@ pub fn (mut j CookieJar) set_cookies(raw_url string, cookies []Cookie) {
 		// remove existing
 		j.cookies = j.cookies.filter(!(it.name == cookie.name
 			&& it.domain == cookie.domain && it.path == cookie.path))
-		// secure check: only store secure cookies for https? Store anyway; filter on read.
+		// Secure controls transmission; cookies are filtered when read.
 		j.cookies << cookie
 	}
 	// drop expired
@@ -137,8 +153,12 @@ pub fn (mut j CookieJar) set_cookies(raw_url string, cookies []Cookie) {
 }
 
 // cookies returns the cookies that should be sent with a request to `raw_url`.
+// Invalid, hostless and non-HTTP(S) URLs return no cookies.
 pub fn (j CookieJar) cookies(raw_url string) []Cookie {
 	host := jar_host_of(raw_url)
+	if host == '' {
+		return []
+	}
 	req_path := jar_path_of(raw_url)
 	scheme := jar_scheme_of(raw_url)
 	now := time.now()
