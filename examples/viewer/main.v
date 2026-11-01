@@ -127,6 +127,10 @@ mut:
 	zip       &szip.Zip = unsafe { nil }
 	zip_index int       = -1
 
+	// paths given on the command line; the scan starts in app_init (once the
+	// window exists) so the progress bar is visible while they are scanned.
+	scan_pending []string
+
 	// view transform (window pixel space, y-down)
 	win_w f32
 	win_h f32
@@ -303,9 +307,32 @@ fn (mut app App) tick_animation(ms f64) {
 	}
 }
 
-// app_update is the gg update callback: it drives GIF animation timing
-// with the per-frame delta time (seconds) reported by sokol.
+// scan_frame_budget_ms caps how long the incremental scan may run inside a
+// single update, so the window keeps redrawing (and the progress bar keeps
+// advancing) while a huge tree is walked.
+const scan_frame_budget_ms = 8
+
+// app_update is the gg update callback: it drives the incremental scan
+// (within a small per-frame time budget) and the GIF animation timing with
+// the per-frame delta time (seconds) reported by sokol.
 fn app_update(dt f32, mut app App) {
+	if app.item_list.scanning {
+		t0 := time.clock()
+		mut more := true
+		for more {
+			more = app.item_list.scan_step()
+			if !more || time.clock() - t0 >= scan_frame_budget_ms {
+				break
+			}
+		}
+		if !more {
+			app.item_list.scan_finish()
+			if app.item_list.n_item == 0 && app.item_list.last_error == '' {
+				app.item_list.last_error = 'no supported images found'
+			}
+			app.load_current_image()
+		}
+	}
 	app.tick_animation(f64(dt) * 1000.0)
 }
 
@@ -423,6 +450,46 @@ fn draw_help(app &App) {
 	}
 }
 
+// draw_scan_progress paints the centered scan progress bar: a horizontal
+// bar that fills as entries are processed, with the current/total entry
+// count and the completion percentage below it.
+fn draw_scan_progress(app &App) {
+	mut bw := app.win_w * 0.5
+	if bw < 300 {
+		bw = 300
+	}
+	if bw > 800 {
+		bw = 800
+	}
+	if bw > app.win_w - 20 {
+		bw = app.win_w - 20
+	}
+	if bw < 40 {
+		bw = 40
+	}
+	bh := f32(26)
+	x := (app.win_w - bw) / 2
+	y := (app.win_h - bh) / 2
+	total := app.item_list.scan_total
+	done := app.item_list.scan_done
+	pct := if total > 0 { f32(done) * 100.0 / f32(total) } else { 0.0 }
+	// Frame: light border rectangle, dark inset track, green fill.
+	app.gg.draw_rect_filled(x - 2, y - 2, bw + 4, bh + 4, gg.light_gray)
+	app.gg.draw_rect_filled(x, y, bw, bh, gg.dark_gray)
+	fill := bw * pct / 100.0
+	if fill > 0 {
+		app.gg.draw_rect_filled(x, y, fill, bh, gg.green)
+	}
+	mut cfg := gg.TextCfg{
+		color: gg.white
+		align: .center
+		size:  18
+	}
+	line := 'Scanning... ${done}/${total}  (${pct:.0}%)'
+	app.gg.draw_text(int(app.win_w / 2), int(y + bh + 10), line, cfg)
+	unsafe { line.free() }
+}
+
 // draw_overlay paints the info line (and any status/error message).
 //
 // Memory note: this runs EVERY frame. The interpolated strings below are
@@ -466,7 +533,7 @@ fn draw_overlay(app &App) {
 			// Single interpolation: `a + b` of two interpolated parts
 			// would leak the left temporary.
 			line = '${it.name}   ${app.item_list.item_index + 1}/${app.item_list.n_item}   ${app.img_w}x${app.img_h}   ${anim_part}zoom ${app.zoom:.2}   [${src}]'
-		} else {
+		} else if !app.item_list.scanning {
 			line = 'No image. Pass a file/folder/zip path, or drop files.  [esc] quit'
 		}
 		app.gg.draw_text(10, y, line, cfg)
@@ -508,6 +575,9 @@ fn draw_overlay(app &App) {
 	if app.status != '' {
 		app.gg.draw_text(10, y, app.status, cfg)
 	}
+	if app.item_list.scanning {
+		draw_scan_progress(app)
+	}
 	if app.show_help_flag {
 		draw_help(app)
 	}
@@ -530,6 +600,108 @@ fn frame(mut app App) {
 	app.gg.end()
 }
 
+// Win32 queries used to size and place the startup window on the monitor
+// the app opens on. Declared here because this V checkout has no win32 vlib.
+// The structs are plain V structs with the exact C layouts, passed through
+// `voidptr` (implicit conversion in C): re-declaring the C tag types would
+// collide with the windows.h definitions.
+$if windows {
+struct WinPoint {
+	x i32
+	y i32
+}
+
+struct WinRect {
+	left   i32
+	top    i32
+	right  i32
+	bottom i32
+}
+
+struct WinMonitorInfo {
+	cb         u32
+	rc_monitor WinRect
+	rc_work    WinRect
+	flags      u32
+}
+
+fn C.GetCursorPos(voidptr) bool
+fn C.MonitorFromRect(voidptr, u32) voidptr
+fn C.MonitorFromWindow(voidptr, u32) voidptr
+fn C.GetMonitorInfoW(voidptr, voidptr) bool
+fn C.GetSystemMetrics(int) int
+fn C.SetWindowPos(hwnd voidptr, hwnd_insert_after voidptr, x int, y int, cx int, cy int, flags u32) int
+}
+
+// monitor_rect returns the pixel rect (x, y, w, h) of the monitor the app
+// should open on: the monitor under the mouse cursor, falling back to the
+// primary display. Returns zeros where the query is unavailable.
+fn monitor_rect() (int, int, int, int) {
+	$if windows {
+		mut pt := WinPoint{}
+		if C.GetCursorPos(voidptr(&pt)) {
+			// A zero-size rect at the cursor makes MonitorFromRect behave
+			// exactly like MonitorFromPoint.
+			rc := WinRect{
+				left:   pt.x
+				top:    pt.y
+				right:  pt.x
+				bottom: pt.y
+			}
+			// MONITOR_DEFAULTTONEAREST == 2
+			hmon := C.MonitorFromRect(voidptr(&rc), 2)
+			mut mi := WinMonitorInfo{ cb: u32(unsafe { sizeof(WinMonitorInfo) }) }
+			if hmon != unsafe { nil } && C.GetMonitorInfoW(hmon, voidptr(&mi)) {
+				return mi.rc_monitor.right - mi.rc_monitor.left, mi.rc_monitor.top,
+					mi.rc_monitor.right - mi.rc_monitor.left, mi.rc_monitor.bottom - mi.rc_monitor.top
+			}
+		}
+		// SM_CXSCREEN == 0, SM_CYSCREEN == 1 (primary display fallback)
+		return 0, 0, C.GetSystemMetrics(0), C.GetSystemMetrics(1)
+	} $else {
+		return 0, 0, 0, 0
+	}
+}
+
+// startup_window_size returns the initial window size: one third of the
+// monitor width and one half of its height. Falls back to the historical
+// 1024x768 where the monitor query is unavailable.
+fn startup_window_size() (int, int) {
+	_, _, mw, mh := monitor_rect()
+	if mw <= 0 || mh <= 0 {
+		return 1024, 768
+	}
+	return mw / 3, mh / 2
+}
+
+// resize_startup_window sizes the window to 1/3 x 1/2 of the monitor it was
+// created on and centers it there. Runs in app_init, after sokol created the
+// window. No-op off Windows (the gg default size is kept).
+fn resize_startup_window() {
+	$if windows {
+		hwnd := sapp.win32_get_hwnd()
+		if hwnd == unsafe { nil } {
+			return
+		}
+		mut mi := WinMonitorInfo{ cb: u32(unsafe { sizeof(WinMonitorInfo) }) }
+		// MONITOR_DEFAULTTONEAREST == 2
+		if !C.GetMonitorInfoW(C.MonitorFromWindow(hwnd, 2), voidptr(&mi)) {
+			return
+		}
+		mw := mi.rc_monitor.right - mi.rc_monitor.left
+		mh := mi.rc_monitor.bottom - mi.rc_monitor.top
+		if mw <= 0 || mh <= 0 {
+			return
+		}
+		ww := mw / 3
+		wh := mh / 2
+		wx := mi.rc_monitor.left + (mw - ww) / 2
+		wy := mi.rc_monitor.top + (mh - wh) / 2
+		// SWP_NOZORDER == 0x0004
+		C.SetWindowPos(hwnd, unsafe { nil }, wx, wy, ww, wh, 0x0004)
+	}
+}
+
 // app_init runs once after sokol is set up.
 fn app_init(mut app App) {
 	mut sd := gfx.SamplerDesc{
@@ -539,7 +711,15 @@ fn app_init(mut app App) {
 		wrap_v:     .clamp_to_edge
 	}
 	app.sampler = gfx.make_sampler(&sd)
-	app.load_current_image()
+	resize_startup_window()
+	if app.scan_pending.len > 0 {
+		// Command-line paths are scanned incrementally now that the window
+		// (and its progress bar) exists.
+		app.item_list.scan_begin(app.scan_pending)
+	}
+	if !app.item_list.scanning {
+		app.load_current_image()
+	}
 }
 
 // next / prev / rotate_view drive navigation and reload the texture.
@@ -726,7 +906,9 @@ fn my_event(mut ev gg.Event, mut app App) {
 		}
 	}
 
-	// drag & drop: rebuild the list from the dropped paths
+	// drag & drop: restart the scan with the dropped paths (dropping while a
+	// scan is running cancels the previous one). The list is then filled
+	// incrementally by app_update, with the progress bar visible.
 	if ev.typ == .files_dropped {
 		if app.zip_index >= 0 {
 			app.zip.close()
@@ -739,11 +921,7 @@ fn my_event(mut ev gg.Event, mut app App) {
 			paths << sapp.get_dropped_file_path(i)
 		}
 		app.item_list = Item_list{}
-		app.item_list.get_items_list(paths)
-		if app.item_list.n_item == 0 && app.item_list.last_error == '' {
-			app.item_list.last_error = 'no supported images found in drop'
-		}
-		app.load_current_image()
+		app.item_list.scan_begin(paths)
 	}
 }
 
@@ -793,11 +971,14 @@ fn main() {
 		return
 	}
 	mut app := &App{ player: NullPlayer{} }
-	app.item_list.get_items_list(os.args[1..])
+	// Command-line paths are scanned after the window opens (see app_init)
+	// so the scan progress bar is visible for them too.
+	app.scan_pending = os.args[1..]
+	win_w, win_h := startup_window_size()
 
 	app.gg = gg.new_context(
-		width:             1024
-		height:            768
+		width:             win_w
+		height:            win_h
 		create_window:     true
 		window_title:      'V Image Viewer'
 		user_data:         app
