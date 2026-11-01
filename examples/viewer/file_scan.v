@@ -359,7 +359,7 @@ fn (mut il Item_list) scan_begin(args []string) {
 			id := p.new_job_id()
 			p.push_job(Scan_job{ id: id, path: x.clone() })
 			il.roots << Root_entry{
-				id: id
+				id:   id
 				item: Item{
 					path:   x
 					name:   x
@@ -644,9 +644,9 @@ fn (mut il Item_list) scan_abort() {
 		// that is mid-job still finishes it (a listing or an archive parse
 		// cannot be interrupted) and then drops its result. Drain whatever
 		// the workers publish meanwhile and wait for every exit signal.
-		mut exited  := 0
-		mut code    := 0
-		mut r       := Job_result{}
+		mut exited := 0
+		mut code := 0
+		mut r := Job_result{}
 		for exited < n {
 			for p.results.try_pop(mut r) == .success {
 				free_job_result(mut r)
@@ -684,6 +684,11 @@ fn (mut il Item_list) reset() {
 	il.scan_done = 0
 	il.scan_total = 0
 	il.last_error = ''
+	// A replacement scan always rebuilds the list in "as loaded" order, so the
+	// sort mode must match it. Without this, App.set_sort() would early-return
+	// when the user re-selects the stale mode (e.g. sort by name, drop a new
+	// folder, press `1` again: the new list would stay unsorted).
+	il.sort_mode = .loaded
 }
 
 // free_job_result releases one finished job's scratch arrays. Only the array

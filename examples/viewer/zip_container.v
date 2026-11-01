@@ -189,13 +189,6 @@ fn (mut app App) load_current_bytes() ![]u8 {
 	// than the one currently open. `item.path` is already ASCII-safe (set by
 	// scan_zip), so miniz can open it on Windows. The lazy open decodes only
 	// the entry that is actually read, not the whole archive.
-	//
-	// The size bound is checked before allocating: the lazy open validated
-	// nothing, and a corrupt central directory can declare a huge entry over
-	// a small payload (int() also guards the 32-bit truncation).
-	if item.size > max_image_bytes || int(item.size) < 0 {
-		return error('zip entry `${item.name}`: implausible size ${item.size}')
-	}
 	if app.zip_index != item.container_index {
 		if app.zip_index >= 0 {
 			app.zip.close()
@@ -204,9 +197,17 @@ fn (mut app App) load_current_bytes() ![]u8 {
 		app.zip_index = item.container_index
 	}
 
+	// The destination buffer is NOT sized from the untrusted central-directory
+	// `item.size`: a corrupt archive can declare a plausible size there while
+	// its local header disagrees, and allocating from it before validation is
+	// what let a crafted archive exhaust the address space. read_entry_bytes()
+	// validates the entry against its local header, decompresses and verifies
+	// the checksum first, and only then allocates the real decoded length.
 	app.zip.open_entry_by_index(item.container_item_index)!
-	mut buf := []u8{len: int(item.size)}
-	app.zip.read_entry_buf(buf.data, buf.len)!
+	buf := app.zip.read_entry_bytes() or {
+		app.zip.close_entry()
+		return error('zip entry `${item.name}`: ${err}')
+	}
 	app.zip.close_entry()
 	return buf
 }

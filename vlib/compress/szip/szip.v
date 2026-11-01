@@ -187,10 +187,10 @@ fn (mut z Zip) parse(cache_payloads bool) ! {
 					continue
 				}
 				n_cand := int(u16(data[i + 10]) | (u16(data[i + 11]) << 8))
-				cd_size_cand := u32(data[i + 12]) | (u32(data[i + 13]) << 8)
-					| (u32(data[i + 14]) << 16) | (u32(data[i + 15]) << 24)
-				cd_off_cand := u32(data[i + 16]) | (u32(data[i + 17]) << 8)
-					| (u32(data[i + 18]) << 16) | (u32(data[i + 19]) << 24)
+				cd_size_cand := u32(data[i + 12]) | (u32(data[i + 13]) << 8) |
+					(u32(data[i + 14]) << 16) | (u32(data[i + 15]) << 24)
+				cd_off_cand := u32(data[i + 16]) | (u32(data[i + 17]) << 8) |
+					(u32(data[i + 18]) << 16) | (u32(data[i + 19]) << 24)
 				if n_cand == 0xffff || cd_size_cand == 0xffffffff || cd_off_cand == 0xffffffff {
 					// ZIP64 sentinel: accept so the dedicated ZIP64 check below
 					// reports it properly instead of 'missing end record'.
@@ -459,6 +459,16 @@ pub fn (mut z Zip) read_entry_buf(buf voidptr, in_bsize int) !int {
 		}
 	}
 	return n
+}
+
+// read_entry_bytes returns the fully validated, decompressed bytes of the
+// current entry. Unlike read_entry_buf, the caller does not have to
+// preallocate from the untrusted central-directory size: the entry is checked
+// against its local header, decompressed and checksum-verified first, and the
+// returned buffer is sized from the actual decoded length. The caller owns
+// the returned array and must free it.
+pub fn (mut z Zip) read_entry_bytes() ![]u8 {
+	return z.read_current_data()
 }
 
 // read_entry allocates the current entry's bytes; the caller must free the returned buffer.
