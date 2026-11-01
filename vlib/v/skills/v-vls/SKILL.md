@@ -43,6 +43,10 @@ vls check path/to/file.v
 vls --mcp
 ```
 
+MCP tools exposed:
+- `vls_check`: compile-check a file, returns diagnostics.
+- `vls_hover`: hover information at a position.
+
 VLS is usually launched by the editor (VS Code, etc.), not by hand. For agent
 use, invoke `vls` over stdio with LSP framing, or use the editor's LSP client.
 
