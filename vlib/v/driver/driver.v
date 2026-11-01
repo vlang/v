@@ -4494,6 +4494,20 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 	for files in state.module_sources.values() {
 		for file in files {
 			source_paths[os.real_path(file)] = true
+			for path in modulecache.veb_template_source_paths(file, state.manager.dir) {
+				source_paths[os.real_path(path)] = true
+			}
+			for path in modulecache.embedded_source_paths(file, state.manager.dir) {
+				source_paths[os.real_path(path)] = true
+			}
+		}
+	}
+	for file in user_files {
+		for path in modulecache.veb_template_source_paths(file, state.manager.dir) {
+			source_paths[os.real_path(path)] = true
+		}
+		for path in modulecache.embedded_source_paths(file, state.manager.dir) {
+			source_paths[os.real_path(path)] = true
 		}
 	}
 	mut sources := source_paths.keys()
@@ -4814,6 +4828,13 @@ fn v3_cgen_cache_input(a &flat.FlatAst, state &V3ModuleCacheState, user_files []
 	for path in embedded_resources {
 		embedded_resource_set[os.real_path(path)] = true
 	}
+	for path in a.veb_template_paths {
+		real_path := os.real_path(path)
+		if !embedded_resource_set[real_path] {
+			embedded_resource_set[real_path] = true
+			embedded_resources << real_path
+		}
+	}
 	for module_files in state.module_sources.values() {
 		for source_file in module_files {
 			for path in modulecache.embedded_source_paths(source_file, vroot) {
@@ -4822,6 +4843,22 @@ fn v3_cgen_cache_input(a &flat.FlatAst, state &V3ModuleCacheState, user_files []
 					embedded_resource_set[real_path] = true
 					embedded_resources << real_path
 				}
+			}
+			for path in modulecache.veb_template_source_paths(source_file, vroot) {
+				real_path := os.real_path(path)
+				if !embedded_resource_set[real_path] {
+					embedded_resource_set[real_path] = true
+					embedded_resources << real_path
+				}
+			}
+		}
+	}
+	for source_file in user_files {
+		for path in modulecache.veb_template_source_paths(source_file, vroot) {
+			real_path := os.real_path(path)
+			if !embedded_resource_set[real_path] {
+				embedded_resource_set[real_path] = true
+				embedded_resources << real_path
 			}
 		}
 	}
@@ -8562,6 +8599,7 @@ fn clone_flat_ast_after_transform_from_scope(ast &flat.FlatAst, scope voidptr) &
 		source_paths_frozen:           ast.source_paths_frozen
 		template_call_sites:           ast.template_call_sites.clone()
 		template_actions:              clone_int_string_map(ast.template_actions)
+		veb_template_paths:            ast.veb_template_paths.clone()
 		source_buffers:                ast.source_buffers
 		text_values:                   text_values
 		text_ids:                      text_ids

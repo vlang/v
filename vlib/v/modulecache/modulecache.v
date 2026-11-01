@@ -6086,6 +6086,123 @@ pub fn embedded_source_paths(source_file string, vroot string) []string {
 	return paths
 }
 
+// veb_template_source_paths lists the resolved `$tmpl` / `$veb.html` template
+// paths in one source file, mirroring embedded_source_paths for `$embed_file`.
+pub fn veb_template_source_paths(source_file string, vroot string) []string {
+	source := os.read_file(source_file) or { return [] }
+	mut paths := []string{}
+	mut pos := 0
+	for pos < source.len {
+		if source[pos] != `$` {
+			pos++
+			continue
+		}
+		if pos + 1 + 'tmpl'.len <= source.len
+			&& source[pos + 1..pos + 1 + 'tmpl'.len] == 'tmpl' {
+			after := pos + 1 + 'tmpl'.len
+			if !(after < source.len && (source[after].is_alnum() || source[after] == `_`)) {
+				value, end, ok, is_raw := signature_string_call_arg_prefix(source, after)
+				if ok {
+					raw_path := if is_raw { value } else { cached_unescape_v_string(value) }
+					if resolved := cached_resolve_veb_template_source_path(raw_path, vroot, source_file) {
+						if resolved !in paths {
+							paths << resolved
+						}
+					}
+					pos = if end > pos { end } else { after }
+					continue
+				}
+			}
+			pos++
+			continue
+		}
+		if pos + 1 + 'veb'.len <= source.len
+			&& source[pos + 1..pos + 1 + 'veb'.len] == 'veb' {
+			veb_end := pos + 1 + 'veb'.len
+			if !(veb_end < source.len && (source[veb_end].is_alnum() || source[veb_end] == `_`)) {
+				mut p := veb_end
+				for p < source.len && source[p].is_space() {
+					p++
+				}
+				if p < source.len && source[p] == `.` {
+					p++
+					for p < source.len && source[p].is_space() {
+						p++
+					}
+					if p + 'html'.len <= source.len
+						&& source[p..p + 'html'.len] == 'html' {
+						html_end := p + 'html'.len
+						if !(html_end < source.len && (source[html_end].is_alnum() || source[html_end] == `_`)) {
+							value, end, ok, is_raw := signature_string_call_arg_prefix(source, html_end)
+							if ok {
+								raw_path := if is_raw {
+									value
+								} else {
+									cached_unescape_v_string(value)
+								}
+								if resolved := cached_resolve_veb_template_source_path(raw_path, vroot, source_file) {
+									if resolved !in paths {
+										paths << resolved
+									}
+								}
+								pos = if end > pos { end } else { html_end }
+								continue
+							}
+						}
+					}
+				}
+			}
+			pos++
+			continue
+		}
+		pos++
+	}
+	return paths
+}
+
+fn cached_resolve_veb_template_source_path(path string, vroot string, source_file string) ?string {
+	if path.len == 0 || source_file.len == 0 {
+		return none
+	}
+	mut resolved := path
+	if resolved.starts_with('@VEXEROOT') && vroot.len > 0 {
+		resolved = vroot + resolved['@VEXEROOT'.len..]
+	}
+	if resolved.starts_with('@VROOT') {
+		resolved = '@VMODROOT' + resolved['@VROOT'.len..]
+	}
+	if resolved.starts_with('@VMODROOT') {
+		resolved = cached_vmod_root(source_file) + resolved['@VMODROOT'.len..]
+	}
+	dir := os.dir(os.real_path(source_file))
+	root, _ := signature_vmod_root(source_file)
+	if os.is_abs_path(resolved) {
+		if os.exists(resolved) {
+			return os.real_path(resolved)
+		}
+		return none
+	}
+	direct := os.join_path_single(dir, resolved)
+	if os.exists(direct) {
+		return os.real_path(direct)
+	}
+	in_templates := os.join_path(dir, 'templates', resolved)
+	if os.exists(in_templates) {
+		return os.real_path(in_templates)
+	}
+	if root.len > 0 && root != dir {
+		vmod_direct := os.join_path_single(root, resolved)
+		if os.exists(vmod_direct) {
+			return os.real_path(vmod_direct)
+		}
+		vmod_templates := os.join_path(root, 'templates', resolved)
+		if os.exists(vmod_templates) {
+			return os.real_path(vmod_templates)
+		}
+	}
+	return none
+}
+
 fn cached_unescape_v_string(value string) string {
 	if !value.contains('\\') {
 		return value

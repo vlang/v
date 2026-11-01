@@ -959,6 +959,10 @@ pub mut:
 	// the text of a parsed file takes it from here instead of reading the file
 	// again; a file that is not in the table is read from disk as before.
 	source_texts map[int]string
+	// veb_template_paths records the resolved files referenced by `$tmpl(...)` and
+	// `$veb.html(...)` during parsing. The compiler cache keys on these paths so a
+	// change to a template invalidates cached objects and executables.
+	veb_template_paths []string
 	// text_values/text_ids own one canonical copy of every non-empty string
 	// stored in a node payload. Nodes keep string compatibility views while
 	// semantic/compiler caches can use compact TextId identities.

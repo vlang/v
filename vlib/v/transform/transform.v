@@ -5522,6 +5522,7 @@ fn (t &Transformer) ast_base_clone_with_storage(nodes []flat.Node, children []fl
 		source_files:                  t.a.source_files
 		template_call_sites:           t.a.template_call_sites
 		template_actions:              t.a.template_actions
+		veb_template_paths:            t.a.veb_template_paths
 		source_buffers:                t.a.source_buffers
 		text_values:                   t.a.text_values
 		text_ids:                      t.a.text_ids
