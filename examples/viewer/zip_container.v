@@ -52,14 +52,16 @@ fn ascii_temp_dir() string {
 // ensure_ascii_zip returns a path that miniz can open. If `path` is already
 // ASCII it is returned unchanged; otherwise the bytes are copied (via the
 // Unicode-safe `os.read_bytes`) to an ASCII temp file and that path returned.
-fn ensure_ascii_zip(path string) !string {
+// `uid` makes the temp name unique per scan job: two workers copying the
+// same non-ASCII archive within the same nanosecond must not collide.
+fn ensure_ascii_zip(path string, uid int) !string {
 	if is_ascii(path) {
 		return path
 	}
 	data := os.read_bytes(path) or {
 		return error('cannot read zip `${path}`: ${err}')
 	}
-	tmp := os.join_path(ascii_temp_dir(), 'vviewer_${os.getpid()}_${time.now().unix_nano()}.zip')
+	tmp := os.join_path(ascii_temp_dir(), 'vviewer_${os.getpid()}_${time.now().unix_nano()}_${uid}.zip')
 	os.write_bytes(tmp, data) or {
 		return error('cannot write temp zip `${tmp}`: ${err}')
 	}
@@ -96,35 +98,38 @@ fn zip_format_hint(path string) string {
 	return ''
 }
 
-// scan_zip enumerates the image entries of a zip archive and adds them to the
-// item list as extractable (need_extract) drawables. The stored `path` is an
-// ASCII-safe path so later extraction can reopen the archive on Windows.
-// A single bad entry is recorded as a warning and skipped; it never aborts the
-// scan of the remaining entries.
-fn (mut il Item_list) scan_zip(orig_path string, in_index int) ! {
+// scan_zip_items enumerates the image entries of a zip archive into a pure
+// Job_result: it touches no shared viewer state because it runs on a worker
+// thread. The stored `path` is an ASCII-safe path so later extraction can
+// reopen the archive on Windows. A single bad entry is recorded as a warning
+// and skipped; it never aborts the scan of the remaining entries.
+fn scan_zip_items(mut p &Scan_pool, orig_path string, uid int) !Job_result {
 	println('Scanning ZIP [${orig_path}]')
-	path := ensure_ascii_zip(orig_path)!
+	path := ensure_ascii_zip(orig_path, uid)!
 	// Lazy open: only the central directory is parsed, no entry is decoded.
 	mut zp := szip.open_lazy(path) or {
 		return error('${err}${zip_format_hint(orig_path)}')
 	}
 	n_entries := zp.total()!
-	// Progress accounting: the archive's entries become known now and are
-	// all consumed by the loop below (per-entry failures only warn).
-	il.scan_total += n_entries
+	mut res := Job_result{
+		is_zip:   true
+		key:      orig_path.clone()
+		zip_path: path
+		n_total:  n_entries
+	}
 	for index in 0 .. n_entries {
-		il.scan_zip_entry(mut zp, index, path, in_index) or {
-			il.add_scan_warning('zip entry ${index} in `${orig_path}`: ${err}')
+		scan_zip_entry(mut zp, index, path, mut res) or {
+			p.add_scan_warning('zip entry ${index} in `${orig_path}`: ${err}')
 		}
 	}
-	il.scan_done += n_entries
 	zp.close()
+	return res
 }
 
-// scan_zip_entry reads one archive entry and adds it to the item list when it
-// is a viewable image. Errors are returned so the caller can skip the single
-// bad entry (encrypted, truncated header, ...) and keep scanning.
-fn (mut il Item_list) scan_zip_entry(mut zp &szip.Zip, index int, path string, in_index int) ! {
+// scan_zip_entry reads one archive entry and appends it to the job result
+// when it is a viewable image. Errors are returned so the caller can skip
+// the single bad entry (encrypted, truncated header, ...) and keep scanning.
+fn scan_zip_entry(mut zp &szip.Zip, index int, path string, mut res Job_result) ! {
 	zp.open_entry_by_index(index)!
 	is_dir := zp.is_dir()!
 	name := zp.name()
@@ -136,15 +141,12 @@ fn (mut il Item_list) scan_zip_entry(mut zp &szip.Zip, index int, path string, i
 	}
 	ext := get_extension(name)
 	if is_image(ext) {
-		il.n_item += 1
-		il.lst << Item{
+		res.items << Item{
 			need_extract:         true
 			path:                 path
 			name:                 name.clone()
-			container_index:      in_index
 			container_item_index: index
 			i_type:               ext
-			n_item:               il.n_item
 			drawable:             true
 			size:                 size
 		}
