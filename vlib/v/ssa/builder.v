@@ -12347,7 +12347,13 @@ fn (mut b Builder) build_wide_integer_expr(node flat.Node) ?ValueID {
 
 fn (mut b Builder) build_infix(id flat.NodeId, node flat.Node) ValueID {
 	// Comparisons have a bool result, so the result-type wide dispatch cannot
-	// catch them. Never send either wide operand to a scalar instruction.
+	// catch them. Compare the two 64-bit limbs instead of sending an aggregate
+	// to a scalar instruction.
+	if node.children_count >= 2 && node.op in [.eq, .ne, .lt, .le, .gt, .ge]
+		&& (b.is_wide_integer_expr(b.a.child(&node, 0))
+			|| b.is_wide_integer_expr(b.a.child(&node, 1))) {
+		return b.build_wide_integer_comparison(node)
+	}
 	if node.children_count >= 2
 		&& (b.is_wide_integer_expr(b.a.child(&node, 0))
 			|| b.is_wide_integer_expr(b.a.child(&node, 1))) {
@@ -12610,6 +12616,64 @@ fn (mut b Builder) build_infix(id flat.NodeId, node flat.Node) ValueID {
 	}
 	result_type := if node.op in [.eq, .ne, .lt, .gt, .le, .ge] { b.i1_type } else { lhs_type }
 	return b.emit2(op, result_type, lhs, rhs)
+}
+
+fn (mut b Builder) build_wide_integer_comparison(node flat.Node) ValueID {
+	lhs_id := b.a.child(&node, 0)
+	rhs_id := b.a.child(&node, 1)
+	lhs := b.wide_integer_operand(lhs_id)
+	rhs := b.wide_integer_operand(rhs_id)
+	lhs_low, lhs_high := b.wide_integer_limbs(b.cur_block, lhs)
+	rhs_low, rhs_high := b.wide_integer_limbs(b.cur_block, rhs)
+	match node.op {
+		.eq {
+			low_equal := b.block_instr2(.eq, b.cur_block, b.i1_type, lhs_low, rhs_low)
+			high_equal := b.block_instr2(.eq, b.cur_block, b.i1_type, lhs_high, rhs_high)
+			return b.block_instr2(.and_, b.cur_block, b.i1_type, low_equal, high_equal)
+		}
+		.ne {
+			low_not_equal := b.block_instr2(.ne, b.cur_block, b.i1_type, lhs_low, rhs_low)
+			high_not_equal := b.block_instr2(.ne, b.cur_block, b.i1_type, lhs_high, rhs_high)
+			return b.block_instr2(.or_, b.cur_block, b.i1_type, low_not_equal,
+				high_not_equal)
+		}
+		.lt, .le, .gt, .ge {
+			high_equal := b.block_instr2(.eq, b.cur_block, b.i1_type, lhs_high, rhs_high)
+			signed := b.is_signed_wide_integer_expr(lhs_id)
+				|| b.is_signed_wide_integer_expr(rhs_id)
+			low_op := match node.op {
+				.lt { OpCode.ult }
+				.le { OpCode.ule }
+				.gt { OpCode.ugt }
+				.ge { OpCode.uge }
+				else { OpCode.eq }
+			}
+			high_op := if signed {
+				match node.op {
+					.lt { OpCode.lt }
+					.le { OpCode.le }
+					.gt { OpCode.gt }
+					.ge { OpCode.ge }
+					else { OpCode.eq }
+				}
+			} else {
+				match node.op {
+					.lt { OpCode.ult }
+					.le { OpCode.ule }
+					.gt { OpCode.ugt }
+					.ge { OpCode.uge }
+					else { OpCode.eq }
+				}
+			}
+			low_result := b.block_instr2(low_op, b.cur_block, b.i1_type, lhs_low, rhs_low)
+			high_result := b.block_instr2(high_op, b.cur_block, b.i1_type, lhs_high, rhs_high)
+			return b.block_instr3(.select, b.cur_block, b.i1_type, high_equal, low_result,
+				high_result)
+		}
+		else {
+			panic('ssa: unsupported 128-bit integer comparison: ${node.op}')
+		}
+	}
 }
 
 fn (mut b Builder) build_mixed_integer_comparison(op flat.Op, lhs ValueID, rhs ValueID) ValueID {
