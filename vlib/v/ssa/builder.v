@@ -616,6 +616,12 @@ fn native_c_struct_abi(struct_name string, pointer_size int) ?NativeCStructAbi {
 				'[256]char', '[256]char'])
 		}
 	}
+	if struct_name == 'C.sem_t' {
+		return NativeCStructAbi{
+			field_names: ['opaque']
+			field_types: flat.TypeTextList.from_names(['[16]u64'])
+		}
+	}
 	if struct_name == 'C.pthread_mutex_t' {
 		return NativeCStructAbi{
 			field_names: ['opaque']
