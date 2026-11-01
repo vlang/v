@@ -436,6 +436,8 @@ fn test_windows_pch_record_holds_while_its_inputs_do() ! {
 	// Its time of writing (from its identity: os.stat is an hour off at the end
 	// of daylight saving time) is older than the build.
 	written := modulecache.file_metadata_signature(early + '/x.h').split(':')
+	assert written.len >= 4 && written[written.len - 4].len > 0
+		&& written[written.len - 4].bytes().all(it.is_digit())
 	assert written[written.len - 4].i64() < time.utc().unix() - 1
 	assert v3_windows_pch_inputs(read, search, header, time.utc().unix() - 1) == none
 	os.rm(early + '/x.h')!
