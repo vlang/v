@@ -392,18 +392,18 @@ fn test_windows_pch_refuses_a_header_that_came_by_a_directory_during_the_build()
 	before := time.utc().unix() - 1
 	// What the build read, while early had no sub/.
 	read := [late + '/sub/inc.h']
-	assert v3_windows_pch_reads_the_same(clang, args, header, read)
+	assert v3_windows_pch_reads(clang, args, header)? == read
 	// A directory moved in while it built: the header inside keeps every time
 	// it had, so its place is taken for one the build passed over, and only
 	// asking the compiler again tells that it would read it now.
 	os.mv(stage + '/sub', early + '/sub')!
 	assert v3_windows_pch_inputs(read, search, header, before)?.files.contains(early + '/sub/inc.h')
-	assert !v3_windows_pch_reads_the_same(clang, args, header, read)
+	assert v3_windows_pch_reads(clang, args, header)? != read
 }
 
-// A compiler that moves a directory into an earlier include directory while it
-// precompiles: what a build that publishes a header it would not read now looks
-// like. The directories come from the environment.
+// A compiler that moves directories around once it has precompiled (the moves
+// `from>to`, separated by `|`, in MOVING_CLANG_STEPS; a move whose source is
+// gone is skipped): what an install or upgrade during a build looks like.
 const windows_pch_moving_clang = 'import os
 
 fn main() {
@@ -411,12 +411,31 @@ fn main() {
 	p.set_args(os.args[1..])
 	p.run()
 	p.wait()
-	if "-MD" in os.args && os.exists(os.getenv("MOVING_CLANG_FROM")) {
-		os.mv(os.getenv("MOVING_CLANG_FROM"), os.getenv("MOVING_CLANG_TO")) or { exit(3) }
+	if "-MD" in os.args {
+		for step in os.getenv("MOVING_CLANG_STEPS").split("|") {
+			from := step.all_before(">")
+			if from.len > 0 && os.exists(from) {
+				os.mv(from, step.all_after(">")) or { exit(3) }
+			}
+		}
 	}
 	exit(p.code)
 }
 '
+
+// windows_pch_moving_compiler builds windows_pch_moving_clang in `root` around
+// `clang`.
+fn windows_pch_moving_compiler(root string, clang string) !V3CachedObjectCompiler {
+	wrapper := os.join_path(root, 'movingclang.exe')
+	os.write_file(os.join_path(root, 'movingclang.v'), windows_pch_moving_clang)!
+	built := cmdexec.run(@VEXE, ['-o', wrapper, os.join_path(root, 'movingclang.v')])
+	assert built.exit_code == 0, built.output
+	os.setenv('MOVING_CLANG_REAL', clang, true)
+	return V3CachedObjectCompiler{
+		path:     wrapper
+		identity: 'test clang moving ${os.getpid()} ${root}'
+	}
+}
 
 fn test_windows_pch_is_not_recorded_when_its_headers_moved_while_it_built() ! {
 	$if !windows {
@@ -428,28 +447,18 @@ fn test_windows_pch_is_not_recorded_when_its_headers_moved_while_it_built() ! {
 	defer {
 		os.rmdir_all(root) or {}
 		os.unsetenv('MOVING_CLANG_REAL')
-		os.unsetenv('MOVING_CLANG_FROM')
-		os.unsetenv('MOVING_CLANG_TO')
+		os.unsetenv('MOVING_CLANG_STEPS')
 	}
-	wrapper := os.join_path(root, 'movingclang.exe')
-	os.write_file(os.join_path(root, 'movingclang.v'), windows_pch_moving_clang)!
-	built := cmdexec.run(@VEXE, ['-o', wrapper, os.join_path(root, 'movingclang.v')])
-	assert built.exit_code == 0, built.output
+	compiler := windows_pch_moving_compiler(root, clang)!
 	early := v3_windows_pch_path(os.join_path(root, 'early'))
 	stage := v3_windows_pch_path(os.join_path(root, 'stage'))
 	os.mkdir_all(early)!
 	os.mkdir_all(stage + '/sys')!
 	os.write_file(stage + '/sys/stat.h', '#include_next <sys/stat.h>\n')!
 	time.sleep(2 * time.second)
-	os.setenv('MOVING_CLANG_REAL', clang, true)
-	os.setenv('MOVING_CLANG_FROM', stage + '/sys', true)
-	os.setenv('MOVING_CLANG_TO', early + '/sys', true)
+	os.setenv('MOVING_CLANG_STEPS', '${stage}/sys>${early}/sys', true)
 	cache := os.join_path(root, 'cache')
 	os.mkdir_all(cache)!
-	compiler := V3CachedObjectCompiler{
-		path:     wrapper
-		identity: 'test clang moving ${os.getpid()}'
-	}
 	args := ['-std=gnu11', '-O2', '-I', early]
 	mut known := map[string]string{}
 	// The build read the SDK's sys/stat.h; early/sys/stat.h came in after it
@@ -459,8 +468,58 @@ fn test_windows_pch_is_not_recorded_when_its_headers_moved_while_it_built() ! {
 	assert (os.ls(cache)!).filter(it.ends_with('.inputs') || it.ends_with('.pch')) == []
 	// The next build, with the directory in place, makes one that holds.
 	known = map[string]string{}
-	os.setenv('MOVING_CLANG_FROM', stage + '/none', true)
 	assert v3_windows_pch(compiler, args, cache, mut known) or { '' } != ''
+}
+
+fn test_windows_pch_is_not_recorded_when_a_read_header_was_swapped_while_it_built() ! {
+	$if !windows {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'windows_pch_swapping_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+		os.unsetenv('MOVING_CLANG_REAL')
+		os.unsetenv('MOVING_CLANG_STEPS')
+	}
+	compiler := windows_pch_moving_compiler(root, clang)!
+	sdk := v3_windows_pch_path(os.join_path(root, 'sdk'))
+	stage := v3_windows_pch_path(os.join_path(root, 'stage'))
+	old := v3_windows_pch_path(os.join_path(root, 'old'))
+	os.mkdir_all(sdk)!
+	os.mkdir_all(stage)!
+	os.write_file(sdk + '/io.h', '#include_next <io.h>\ntypedef int sdk_t;\n')!
+	os.write_file(stage + '/io.h', '#include_next <io.h>\ntypedef long long sdk_t;\n')!
+	time.sleep(2 * time.second)
+	// An upgrade that swaps the directory of a header the build read: the
+	// file now at its path is another one, with times older than the build.
+	os.setenv('MOVING_CLANG_STEPS', '${sdk}>${old}|${stage}>${sdk}', true)
+	cache := os.join_path(root, 'cache')
+	os.mkdir_all(cache)!
+	args := ['-std=gnu11', '-O2', '-isystem', sdk]
+	mut known := map[string]string{}
+	assert v3_windows_pch(compiler, args, cache, mut known) == none
+	assert os.read_file(sdk + '/io.h')!.contains('long long')
+	assert (os.ls(cache)!).filter(it.ends_with('.inputs') || it.ends_with('.pch')) == []
+	// The next build, after the upgrade, makes one that holds.
+	os.setenv('MOVING_CLANG_STEPS', '', true)
+	known = map[string]string{}
+	assert v3_windows_pch(compiler, args, cache, mut known) or { '' } != ''
+}
+
+fn test_windows_pch_places_follow_the_search_whatever_letters_its_paths_have() ! {
+	root := os.join_path(os.vtmp_dir(), 'windows_pch_letters_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	// `İ` lowers to more bytes than it has: the name below a directory is cut
+	// from the path as it is, not from a lowered copy.
+	early := v3_windows_pch_path(os.join_path(root, 'İearly'))
+	late := v3_windows_pch_path(os.join_path(root, 'İlate'))
+	os.mkdir_all(late)!
+	os.write_file(late + '/x.h', '')!
+	time.sleep(2 * time.second)
+	inputs := v3_windows_pch_inputs([late + '/x.h'], [early, late], root + '/p.h', time.utc().unix() - 1)?
+	assert early + '/x.h' in inputs.missing, inputs.missing.str()
 }
 
 fn test_windows_pch_record_holds_while_its_inputs_do() ! {

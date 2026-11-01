@@ -403,9 +403,26 @@ fn v3_windows_pch_of(compiler V3CachedObjectCompiler, args []string, base string
 	defer { os.rm(deps) or {} }
 	// Whole seconds, and one to spare for a file system that rounds them.
 	before := time.utc().unix() - 1
+	trace := os.getenv('V3_CACHE_TRACE') != ''
+	// The headers the compiler reads, and which files they are, before it
+	// builds: a file put at the path of one of them while it builds (a directory
+	// swapped in by an upgrade) keeps its times, but is another file.
+	first := v3_windows_pch_reads(compiler.path, args, header) or { return none }
+	mut was := map[string]string{}
+	for path in first {
+		was[path] = v3_windows_pch_identity_from_before(path, before) or {
+			if trace {
+				eprintln('  V3 module cache: the Windows SDK headers for ${pch} cannot be told apart from newer ones')
+			}
+			// On a file system that keeps no identity of a file (FAT, some network
+			// shares) every build would build it again for nothing: this is
+			// recorded as a failed build is, and tried again after a while.
+			os.write_file(failed, 'the headers read cannot be told apart from newer ones\n') or {}
+			return none
+		}
+	}
 	mut build_args := args.clone()
 	build_args << ['-x', 'c-header', header, '-o', pch, '-MD', '-MF', deps]
-	trace := os.getenv('V3_CACHE_TRACE') != ''
 	if trace {
 		eprintln('  V3 module cache: precompiling Windows SDK headers: ${cmdexec.display(compiler.path, build_args)}')
 	}
@@ -419,22 +436,19 @@ fn v3_windows_pch_of(compiler V3CachedObjectCompiler, args []string, base string
 		return none
 	}
 	own := v3_windows_pch_path(header)
-	read := v3_parse_dependency_file(os.read_file(deps) or { '' }).map(v3_windows_pch_path(it)).filter(it != own)
-	// A header that changed while it was read, or one the compiler did not say
-	// it read, leaves the header unknown: this build compiles without it.
+	mut read := v3_parse_dependency_file(os.read_file(deps) or { '' }).map(v3_windows_pch_path(it)).filter(it != own)
+	read.sort()
+	// A header that changed or moved while it was read, or one the compiler
+	// did not say it read, leaves the header unknown: this build compiles
+	// without it. The places of the record are taken first, and the compiler is
+	// asked again after: a header that came where it looks while it built, as a
+	// file or with a directory or a link moved there, keeps the times it had and
+	// cannot be told from one it passed over, and one that comes after this is
+	// recorded where none was.
 	inputs := v3_windows_pch_inputs(read, search, header, before) or { V3HeaderInputs{} }
-	if inputs.files.len == 0 {
-		if trace {
-			eprintln('  V3 module cache: the Windows SDK headers read for ${pch} cannot be told apart from newer ones')
-		}
-		os.rm(pch) or {}
-		// On a file system that keeps no identity of a file (FAT, some network
-		// shares) every build would build it again for nothing: this is recorded
-		// as a failed build is, and tried again after a while.
-		os.write_file(failed, 'the headers read cannot be told apart from newer ones\n') or {}
-		return none
-	}
-	if !v3_windows_pch_reads_the_same(compiler.path, args, header, read) {
+	after := v3_windows_pch_reads(compiler.path, args, header) or { []string{} }
+	if inputs.files.len == 0 || read != first || after != first
+		|| inputs.files.any(it in was && was[it] != inputs.identities[inputs.files.index(it)]) {
 		if trace {
 			eprintln('  V3 module cache: the Windows SDK headers changed while ${pch} was built')
 		}
@@ -501,9 +515,11 @@ fn v3_windows_pch_inputs(read []string, search []string, header string, before i
 	mut quoted := []string{}
 	mut asked := []string{}
 	for path in read {
-		lower := path.to_lower()
+		// The name below a directory is cut from the path at the length of the
+		// directory, so the case is folded where that keeps lengths: ASCII.
+		lower := path.to_lower_ascii()
 		for k, dir in search {
-			prefix := dir.trim_right('/').to_lower() + '/'
+			prefix := dir.trim_right('/').to_lower_ascii() + '/'
 			if !lower.starts_with(prefix) {
 				continue
 			}
@@ -544,27 +560,20 @@ fn v3_windows_pch_inputs(read []string, search []string, header string, before i
 	return inputs
 }
 
-// v3_windows_pch_reads_the_same reports whether `compiler`, preprocessing
-// `header` with `args` now, reads the headers `read` that it read when it
-// precompiled it. A header that came where it looks while it built, as a file
-// or with a directory or a link moved there, keeps the times it had and cannot
-// be told from one it passed over; this asks the compiler instead. The places
-// of the record are taken before, so one that comes after this is recorded
-// where none was.
-fn v3_windows_pch_reads_the_same(compiler string, args []string, header string, read []string) bool {
+// v3_windows_pch_reads returns the headers that `compiler`, preprocessing
+// `header` with `args` now, reads, as v3_windows_pch_path spells them, sorted.
+fn v3_windows_pch_reads(compiler string, args []string, header string) ?[]string {
 	deps := '${header}.check.${tempname.unique_token().replace('.', '_')}.d'
 	defer { os.rm(deps) or {} }
 	mut check_args := args.clone()
 	check_args << ['-x', 'c-header', header, '-M', '-MF', deps]
 	if cmdexec.run(compiler, check_args).exit_code != 0 {
-		return false
+		return none
 	}
 	own := v3_windows_pch_path(header)
-	mut now := v3_parse_dependency_file(os.read_file(deps) or { return false }).map(v3_windows_pch_path(it)).filter(it != own)
-	mut then := read.clone()
-	now.sort()
-	then.sort()
-	return now == then
+	mut read := v3_parse_dependency_file(os.read_file(deps) or { return none }).map(v3_windows_pch_path(it)).filter(it != own)
+	read.sort()
+	return read
 }
 
 // add_windows_pch_place takes the place `path` into `inputs`: the file that is
