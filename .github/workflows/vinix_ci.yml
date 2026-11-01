@@ -32,7 +32,7 @@ jobs:
         run: |
           .github/workflows/disable_azure_mirror.sh
           v retry -- sudo apt update
-          v retry -- sudo apt install build-essential -y
+          v retry -- sudo apt install build-essential libarchive-dev -y
 
       - name: Clone current Vinix
         run: v retry -- git clone --depth=1 --branch master https://github.com/vlang/vinix.git

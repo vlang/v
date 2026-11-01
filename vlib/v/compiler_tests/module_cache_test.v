@@ -2729,9 +2729,9 @@ fn main() {
 
 	write_module_cache_file(root, 'main.v', 'module main
 
-#flag -DV3_CACHE_RESTART_STDIO_PROBE
-
 import wrapper
+
+#flag -DV3_CACHE_RESTART_STDIO_PROBE
 
 fn C.v3_missing_restart_stdio_symbol() int
 

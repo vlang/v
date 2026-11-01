@@ -56,19 +56,18 @@ To do so, run the command `v up`.
 This also refreshes the bundled TCC binaries used for fast C compilation.
 On Linux, an older compatible TCC bundle stays in place while its upstream revision
 is unchanged and it still passes the host compatibility check. Repeated updates
-preserve its file metadata so cached modules can reuse their objects.
+preserve its file metadata.
 On macOS, TCC builds use its runtime thread fence directly, including when
 preprocessed C identifies ARM64 with `__arm64__` alone.
 
-After updating, `v up` refreshes previously cached vlib modules with the compiler
-and flags used to cache them, including normal and `-prod` builds. Unchanged
-modules are reused. Each module being cached is printed to standard output as
-`Caching module <name>...`. A failed cache refresh makes `v up` fail.
-The final configuration count includes checks that reused every cached object.
-Different build flags, program or test modes, and import sequences can require
-separate checks. Pass `v up -v` to see each checked configuration.
-Cached module headers preserve struct field attribute groups, so valid deprecation
-attributes do not introduce warnings during refresh.
+After a successful update, `v up` runs `v wipe-cache` to clear module, object,
+temporary, and compiled tool caches, even when V is already up to date.
+Subsequent builds recreate the caches they need. Previously recorded build
+configurations and test selectors are not replayed. A failed cache cleanup
+makes `v up` fail.
+On Windows, the cached updater exits before its launcher wipes the caches,
+so the running executable does not block cleanup. Cleanup failures are returned
+by the launcher.
 
 `make` also warms the default test configuration's builtin module bundle, including
 `strings`, `strconv`, `hash` and `bits`. Compatible test builds reuse these objects
@@ -80,39 +79,12 @@ modules. Ignored local names remain stable when cached headers replace source fi
 reparsed modules can reuse identical C objects. Compiler flags, source changes and dependency
 changes still invalidate the affected objects.
 
-Ordinary builds report cache progress on standard error. Refreshes retain absolute
-module search paths, resolved C compiler commands, and build modes. They omit
-linker-only flags, including operands embedded in `-cflags`. Relative `V3CACHE`
-and `VTMP` paths are resolved against the directory where `v up` was invoked.
-Refreshes retain each build's working directory for relative C compilation inputs
-and its effective `-run-only` test selectors and assertion display mode.
-Object flags include source `#flag` directives. Records with vanished project
-directories or required compile inputs are skipped. Builds without relative inputs
-or project interface scopes share refresh records across projects.
-Project directives are merged with flags from the updated modules, so changes to
-vlib `#flag` directives take effect during refresh. Cached TCC production builds
-apply the production optimization flags to both module objects and the program.
-Refreshes use the original entry when needed to preserve project interface
-implementers, stopping before linking or running the program. Refreshes
-retain absolute `-file-list` operands for live entries, re-expanding directories
-to include their current sources. Records whose listed files or directories vanished
-are skipped. Historical records sharing the same live command, working directory,
-entry and assertion display mode refresh once. Synthetic refreshes
-also replay source C driver options such as sanitizers at link time. Records for
-unavailable C compilers are skipped.
-Unreadable, truncated, and unsupported inventory files are skipped. Live entries
-retain their project source identity; after the project input changes, obsolete
-configurations are skipped until a successful build records the current inputs.
-Older live records without source identities require rebuilding the project once.
-Isolated test caches use the primary V compiler executable, including when
-`v up` runs through the fallback compiler or as a separate tool, or a build uses
-the delegated ownership compiler. Ownership dispatch preserves the primary path
-through `V3_PRIMARY_VEXE`, independently of the helper's `VEXE`.
-
-For caches created before V recorded their build settings, `v up` identifies the
-cached vlib modules and refreshes them in both modes for the available C compilers,
-for programs and tests. Successful migrations mark the old headers so subsequent
-updates use the new inventory without repeating the fallback matrix.
+Relative cache paths are resolved against the directory where `v up` was invoked.
+When `VCACHE` is unset, this includes the `.cache` directory under the first
+`VMODULES` entry, or `~/.vmodules/.cache` by default. Cleanup stops and returns a
+nonzero status if a cache folder cannot be removed or recreated.
+The separate [module cache refresh utility](../vlib/v/util/cache_refresh/README.md)
+documents its inventory and replay APIs.
 
 `v up` reports the agent skills that the new revision left behind, since a new
 revision may ship updated copies of them. It writes nothing: the skills belong to
@@ -3367,6 +3339,46 @@ user = register(user)
 println(user)
 ```
 
+A struct update can also spread a different struct type when the source supplies compatible
+fields for every target field that is not explicitly initialized. An embedded struct can be
+supplied by explicitly initializing all of its members through their promoted field names:
+
+```v
+struct Position {
+	x int
+	y int
+}
+
+struct ButtonConfig {
+	width int
+}
+
+struct Button {
+	Position
+	width int
+}
+
+config := ButtonConfig{
+	width: 80
+}
+button := Button{
+	...config
+	x: 10
+	y: 20
+}
+assert button.width == 80
+assert button.Position.x == 10
+assert button.Position.y == 20
+```
+
+Here `config` supplies `width`, while `x` and `y` fully initialize `Position`. If either member
+is omitted, the source must instead supply a compatible `Position` field. Declared defaults do
+not count as explicit initializers for this requirement. The same rule applies to nested embeds.
+
+Only the embedded field that a promoted name refers to counts as supplied. A direct field
+shadows an embedded field of the same name, and a name owned by an earlier embedding cannot also
+initialize a later embedding. Use an explicit embedded-struct initializer for shadowed members.
+
 ### Trailing struct literal arguments
 
 V doesn't have default function arguments or named arguments, for that trailing struct
@@ -3991,6 +4003,9 @@ functions referenced only from the callback body.
 V supports closures too.
 This means that anonymous functions can inherit variables from the scope they were created in.
 They must do so explicitly by listing all variables that are inherited.
+
+Each anonymous function has its own local scope. Locals, including `for` iteration variables,
+may reuse names of enclosing variables that are not captured.
 
 ```v oksyntax
 my_int := 1
@@ -11191,6 +11206,8 @@ Calls see methods from directly imported modules by their full module path.
 If a V alias of that C struct declares the same method, calls on the alias use its own method.
 
 C-backed struct aliases can also initialize constants, including when compiling with MSVC.
+A public V alias of a C struct can be initialized from another module without making the
+underlying C declaration public. Private alias names retain their usual visibility restrictions.
 
 Ordinary zero terminated C strings can be converted to V strings with
 `unsafe { &char(cstring).vstring() }` or if you know their length already with
