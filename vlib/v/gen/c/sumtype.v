@@ -28,6 +28,24 @@ fn (g &FlatGen) sum_has_pointer_variant(sum_name_id u32) bool {
 	return false
 }
 
+// C++ needs the anonymous union's own braces. Flattening its designator into
+// an enclosing aggregate can make GCC 9 crash when this sum is nested again.
+// The positional fields follow emit_sum_type; the C representation is unchanged.
+fn (g &FlatGen) sum_initializer_prefix(sum_name_id u32, ct string, tag int, field string, owned bool) string {
+	if g.ccompiler == 'cplusplus' {
+		ownership := if g.sum_has_pointer_variant(sum_name_id) { '${owned}, ' } else { '' }
+		return '(${ct}){${tag}, ${ownership}{.${field} = '
+	}
+	return '(${ct}){.typ = ${tag}, .${field} = '
+}
+
+fn (g &FlatGen) sum_initializer_suffix(owned bool) string {
+	if g.ccompiler == 'cplusplus' {
+		return '}}'
+	}
+	return if owned { ', ._pointer_variant_is_owned = true}' } else { '}' }
+}
+
 // A C array needs a complete element type even behind a pointer. Erase only these
 // pointer fields so finite recursive sums such as `int | &[2]Self` remain declarable.
 fn sum_pointer_needs_erased_storage(typ &types.Type) bool {
@@ -96,7 +114,7 @@ fn (mut g FlatGen) sum_pointer_slot_typedefs_for_array(arr types.ArrayFixed) {
 			if depths[alias] != depth || g.emitted_fixed_array_typedefs[alias] { continue }
 			g.tc.cur_module = modules[alias]
 			if !g.cached_support_identifiers[alias] {
-				typ := pointers[alias]
+				typ := pointers[alias] or { continue }
 				g.writeln('typedef ${g.value_c_type(typ)} ${alias} __attribute__((may_alias));')
 			}
 			g.emitted_fixed_array_typedefs[alias] = true
@@ -347,13 +365,11 @@ fn (mut g FlatGen) gen_sum_variant_value(sum types.SumType, variant u32, value f
 		g.write(', sizeof(${tmp}.${field})); ${tmp}; })')
 		return
 	}
-	g.write('(${ct}){.typ = ${idx}, .${field} = ')
 	clean_type := unalias_type(typ)
+	owned := clean_type is types.Pointer && g.pointer_variant_expr_creates_owned_value(value)
+	g.write(g.sum_initializer_prefix(sum.name_id, ct, idx, field, owned))
 	g.gen_expr_with_expected_type(value, typ)
-	if clean_type is types.Pointer && g.pointer_variant_expr_creates_owned_value(value) {
-		g.write(', ._pointer_variant_is_owned = true')
-	}
-	g.write('}')
+	g.write(g.sum_initializer_suffix(owned))
 }
 
 fn (g &FlatGen) sum_unique_variant_field_info(base_type0 &types.Type, field string) ?SumUniqueFieldInfo {
@@ -533,11 +549,12 @@ fn (mut g FlatGen) gen_recursive_default_sum_value(sum_type types.SumType, mut s
 	variant := variants[0]
 	variant_type := unalias_type(g.tc.parse_type(variant))
 	variant_field := string(sum_field_name(flat.source_type_name(variant)))
+	g.write(g.sum_initializer_prefix(sum_name, ct, g.sum_type_index(sum_name, variant), variant_field, false))
 	if variant_type is types.Pointer {
-		g.write('(${ct}){.typ = ${g.sum_type_index(sum_name, variant)}, .${variant_field} = NULL}')
+		g.write('NULL')
+		g.write(g.sum_initializer_suffix(false))
 		return
 	}
-	g.write('(${ct}){.typ = ${g.sum_type_index(sum_name, variant)}, .${variant_field} = ')
 	if variant_type is types.SumType {
 		g.gen_recursive_default_sum_value(variant_type, mut seen)
 	} else {
@@ -545,5 +562,5 @@ fn (mut g FlatGen) gen_recursive_default_sum_value(sum_type types.SumType, mut s
 		g.gen_default_value_for_clean_type(variant_type)
 		g.shallow_default_value_depth--
 	}
-	g.write('}')
+	g.write(g.sum_initializer_suffix(false))
 }

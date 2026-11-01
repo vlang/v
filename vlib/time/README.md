@@ -9,6 +9,12 @@ V's `time` module, provides utilities for working with time and dates:
 - stop watches for accurately measuring time durations
 - sleeping for a period of time
 
+`time.until(t)` returns `t - time.now()` as a `time.Duration`, complementing
+`time.since(t)`. As with `Time` subtraction, the interval must fit in `Duration`;
+representable intervals are positive for future times and negative for past times.
+Both helpers use the wall clock; use a stopwatch to measure elapsed time independently
+of system clock adjustments.
+
 Dates before year 1 use the proleptic Gregorian calendar with astronomical year numbering: year
 0 is 1 BC and is a leap year. Unix timestamp and day-offset conversions preserve dates at the
 400-year cycle boundaries before year 0, including March 1 and 2 of years -400, -800 and -1200.

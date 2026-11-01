@@ -16,6 +16,22 @@ struct CppFixedFields {
 
 type CppValue = CppPair | int
 
+interface CppReader {
+	read() int
+}
+
+struct CppReading {
+	value int
+}
+
+fn (reading CppReading) read() int {
+	return reading.value
+}
+
+fn make_reader(value int) CppReader {
+	return CppReading{value}
+}
+
 fn next(mut trace []int, value int) int {
 	trace << value
 	return value
@@ -98,6 +114,11 @@ fn main() {
 	assert values[0].first == 5
 	assert values[1].second == 8
 	assert keyword_args(1, 2, 3, true, 4) == 10
+	reader := make_reader(67)
+	assert reader.read() == 67
+	reading := CppReading{71}
+	borrowed_reader := CppReader(&reading)
+	assert borrowed_reader.read() == 71
 	fixed := [3, 4, 5]!
 	mut copied := [3]int{}
 	copied = fixed

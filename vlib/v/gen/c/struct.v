@@ -2809,13 +2809,14 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 			variant_type := unalias_type(g.tc.parse_type(variant))
 			ct := g.value_c_type(clean_typ)
 			variant_field := string(sum_field_name(flat.source_type_name(variant)))
+			g.write(g.sum_initializer_prefix(sum_name_id, ct, g.sum_type_index(sum_name_id, variant), variant_field, false))
 			if variant_type is types.Pointer {
-				g.write('(${ct}){.typ = ${g.sum_type_index(sum_name_id, variant)}, .${variant_field} = NULL}')
+				g.write('NULL')
+				g.write(g.sum_initializer_suffix(false))
 				return
 			}
-			g.write('(${ct}){.typ = ${g.sum_type_index(sum_name_id, variant)}, .${variant_field} = ')
 			g.gen_default_value_for_type(variant_type)
-			g.write('}')
+			g.write(g.sum_initializer_suffix(false))
 			return
 		}
 	}
@@ -3270,10 +3271,13 @@ fn (g &FlatGen) scalar_zero_init(c_type string) string {
 
 // StructDeclInfo stores struct decl info metadata used by c.
 struct StructDeclInfo {
-	node          flat.Node
-	node_id       int
-	module        string
-	file          string
+	node    flat.Node
+	node_id int
+	module  string
+	file    string
+	// Native ownership follows the original V declaration, while file keeps the
+	// parsed header's import context for expressions such as field defaults.
+	original_file string
 	full_name     u32
 	shared_fields []flat.NodeId
 }
@@ -5906,6 +5910,11 @@ fn (g &FlatGen) embedded_field_for_promoted_field(type_name_id u32, field_name s
 // which resolves unambiguously) as set, so the flattened-defaults pass does not
 // re-emit them after the whole embed was initialized via `Embed: value`.
 fn (g &FlatGen) mark_embedded_promoted_fields_set(embed_type_name_id u32, owner_type_id u32, mut set_fields map[string]bool) {
+	mut seen := map[u32]bool{}
+	g.mark_embedded_promoted_fields_set_inner(embed_type_name_id, owner_type_id, mut set_fields, mut seen)
+}
+
+fn (g &FlatGen) mark_embedded_promoted_fields_set_inner(embed_type_name_id u32, owner_type_id u32, mut set_fields map[string]bool, mut seen map[u32]bool) {
 	embed_type_name := flat.source_type_name(embed_type_name_id)
 
 	if embed_type_name_id == 0 {
@@ -5914,6 +5923,8 @@ fn (g &FlatGen) mark_embedded_promoted_fields_set(embed_type_name_id u32, owner_
 	set_fields[embed_type_name] = true
 	set_fields[c_field_name(embed_type_name)] = true
 	info := g.find_struct_decl(embed_type_name_id) or { return }
+	if seen[info.full_name] { return }
+	seen[info.full_name] = true
 	for i in 0 .. info.node.children_count {
 		field := g.a.child_node(&info.node, i)
 		if field.kind != .field_decl || field.value.len == 0 {
@@ -5931,7 +5942,10 @@ fn (g &FlatGen) mark_embedded_promoted_fields_set(embed_type_name_id u32, owner_
 		// A nested embedded field_decl has value == typ; recurse into it, keeping the
 		// original owner so its direct fields still win over deeper promoted names.
 		if field.source_value_id() == field.typ {
-			g.mark_embedded_promoted_fields_set(field.source_value_id(), owner_type_id, mut set_fields)
+			// A raw embedded name is relative to this declaration, not the caller.
+			embedded := g.canonical_import_alias_type_in_file(field.typ, info.file)
+			g.mark_embedded_promoted_fields_set_inner(embedded.source_type_id(), owner_type_id,
+				mut set_fields, mut seen)
 		}
 	}
 }
@@ -6360,7 +6374,10 @@ fn (mut g FlatGen) gen_assoc_tmp_decl_by_fields(node flat.Node, tmp string, ct s
 		}
 	}
 	if copied.len == 0 {
-		return false
+		g.write('(void)(')
+		g.gen_expr(g.a.child(&node, 0))
+		g.write('); ${ct} ${tmp} = (${ct}){0};')
+		return true
 	}
 	source_ct := g.tc.c_type(source_type)
 	source_tmp := g.tmp_name()
@@ -6808,6 +6825,7 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 		}
 		if name_id := flat.source_type_existing_id(name) {
 			if info := g.struct_decl_infos[name_id] {
+				source_file := info.c_source_file()
 				// Headerless vlib bindings supply their own complete C layouts.
 				// Keep externally supplied types opaque when headers own their definitions.
 				// A c_struct_header_guards type is V's to lay out: the generated C includes its
@@ -6815,8 +6833,8 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 				// unless the program's C can follow the type block, where the guard cannot see a
 				// header it includes; such a program keeps this rule (can_emit_c_after_types).
 				if !(name in c_struct_header_guards && !g.can_emit_c_after_types())
-					&& (info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file))
-					&& (g.c_directives_use_system_libc() || !g.c_source_file_is_in_vlib(info.file)) {
+					&& (source_file.ends_with('.c.v') || c_source_looks_header_backed(source_file))
+					&& (g.c_directives_use_system_libc() || !g.c_source_file_is_in_vlib(source_file)) {
 					return true
 				}
 			}
@@ -6999,6 +7017,10 @@ fn c_source_looks_header_backed(path string) bool {
 		}
 	}
 	return false
+}
+
+fn (info &StructDeclInfo) c_source_file() string {
+	return if info.original_file.len > 0 { info.original_file } else { info.file }
 }
 
 fn (g &FlatGen) struct_decl_head(name string) string {
@@ -7812,7 +7834,8 @@ fn (g &FlatGen) header_c_struct_needs_compat_typedef(name string) bool {
 		return true
 	}
 	if info := g.struct_decl_infos[flat.source_type_id(name)] {
-		return info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file)
+		source_file := info.c_source_file()
+		return source_file.ends_with('.c.v') || c_source_looks_header_backed(source_file)
 	}
 	return false
 }
@@ -7885,7 +7908,8 @@ fn (g &FlatGen) soa_companion_has_c_typedef(soa_name string) bool {
 		return true
 	}
 	if info := g.struct_decl_infos[c_decl_id] {
-		return info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file)
+		source_file := info.c_source_file()
+		return source_file.ends_with('.c.v') || c_source_looks_header_backed(source_file)
 	}
 	return false
 }

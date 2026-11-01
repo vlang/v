@@ -2800,12 +2800,12 @@ fn (mut g FlatGen) gen_select_receive_sum_value(expr string, actual types.Type, 
 	ct := g.tc.c_type(sum_type0)
 	idx := g.sum_type_index(sum_name_id, variant_id)
 	field := sum_field_name(flat.source_type_name(variant_id))
-	g.write('(${ct}){.typ = ${idx}, .${field} = ')
+	g.write(g.sum_initializer_prefix(sum_name_id, ct, idx, field, false))
 	if actual_type is types.Pointer && g.type_names_match(actual_type.base_type, variant_type) {
 		g.write('*')
 	}
 	g.write(expr)
-	g.write('}')
+	g.write(g.sum_initializer_suffix(false))
 	return true
 }
 
@@ -5009,7 +5009,12 @@ fn split_c_inline_asm_operands(source string) []string {
 fn lower_c_inline_asm_operand(source string, arch string, aliases map[string]bool, is_extended bool, is_directive bool) string {
 	operand := source.trim_space()
 	if operand.len >= 2 && operand[0] == `\`` && operand[operand.len - 1] == `\`` {
-		return "'${operand[1..operand.len - 1]}'"
+		literal := "'${operand[1..operand.len - 1]}'"
+		return if !is_directive && is_c_inline_asm_x86_arch(arch) {
+			'\$${literal}'
+		} else {
+			literal
+		}
 	}
 	if label := c_inline_asm_local_label_reference(operand) {
 		return label

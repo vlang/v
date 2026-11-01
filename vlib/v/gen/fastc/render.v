@@ -990,7 +990,7 @@ fn (g &Parser) print_value_string_expression(value string, value_type u32, value
 		} else {
 			'(${value}).data'
 		}
-		return '${helper}((${flat.source_type_name(element_type)} *)(${data_source}))'
+		return '${helper}((${w.collection_storage_type(element_type)} *)(${data_source}))'
 	}
 	return w.fastc_struct_field_str_expression(value, type_name_id)
 }
