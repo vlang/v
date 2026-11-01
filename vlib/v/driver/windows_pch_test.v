@@ -340,6 +340,8 @@ fn test_windows_pch_record_holds_while_its_inputs_do() ! {
 	// about everywhere.
 	assert inputs.files == [late + '/x.h', late + '/sub/y.h', early + '/sub/y.h']
 	assert inputs.missing == [early + '/x.h', late + '/z.h', early + '/z.h']
+	// A header that was read and is gone already is no input that can be told.
+	assert v3_windows_pch_inputs([late + '/gone.h'], search, time.utc().unix() - 1) == none
 	base := os.join_path(root, 'windows_sdk_k')
 	pch := base + '.1_2_3.pch'
 	os.write_file(pch, 'pch')!
