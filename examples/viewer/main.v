@@ -617,44 +617,44 @@ fn frame(mut app App) {
 // `voidptr` (implicit conversion in C): re-declaring the C tag types would
 // collide with the windows.h definitions.
 $if windows {
-struct WinPoint {
-	x i32
-	y i32
-}
+	struct WinPoint {
+		x i32
+		y i32
+	}
 
-struct WinRect {
-	left   i32
-	top    i32
-	right  i32
-	bottom i32
-}
+	struct WinRect {
+		left   i32
+		top    i32
+		right  i32
+		bottom i32
+	}
 
-struct WinMonitorInfo {
-	cb         u32
-	rc_monitor WinRect
-	rc_work    WinRect
-	flags      u32
-}
+	struct WinMonitorInfo {
+		cb         u32
+		rc_monitor WinRect
+		rc_work    WinRect
+		flags      u32
+	}
 
-fn C.GetCursorPos(voidptr) bool
-fn C.MonitorFromRect(voidptr, u32) voidptr
-fn C.MonitorFromWindow(voidptr, u32) voidptr
-fn C.GetMonitorInfoW(voidptr, voidptr) bool
-fn C.GetSystemMetrics(int) int
+	fn C.GetCursorPos(voidptr) bool
+	fn C.MonitorFromRect(voidptr, u32) voidptr
+	fn C.MonitorFromWindow(voidptr, u32) voidptr
+	fn C.GetMonitorInfoW(voidptr, voidptr) bool
+	fn C.GetSystemMetrics(int) int
 
-// gg already declares C.RECT and C.GetWindowRect with these exact
-// signatures; repeating them identically keeps V's cross-module
-// deduplication happy.
-@[typedef]
-struct C.RECT {
-	left   i32
-	top    i32
-	right  i32
-	bottom i32
-}
+	// gg already declares C.RECT and C.GetWindowRect with these exact
+	// signatures; repeating them identically keeps V's cross-module
+	// deduplication happy.
+	@[typedef]
+	struct C.RECT {
+		left   i32
+		top    i32
+		right  i32
+		bottom i32
+	}
 
-fn C.GetWindowRect(hwnd voidptr, rect &C.RECT) int
-fn C.SetWindowPos(hwnd voidptr, hwnd_insert_after voidptr, x int, y int, cx int, cy int, flags u32) int
+	fn C.GetWindowRect(hwnd voidptr, rect &C.RECT) int
+	fn C.SetWindowPos(hwnd voidptr, hwnd_insert_after voidptr, x int, y int, cx int, cy int, flags u32) int
 }
 
 // monitor_rect returns the pixel rect (x, y, w, h) of the monitor the app
@@ -676,8 +676,7 @@ fn monitor_rect() (int, int, int, int) {
 			hmon := C.MonitorFromRect(voidptr(&rc), 2)
 			mut mi := WinMonitorInfo{ cb: u32(unsafe { sizeof(WinMonitorInfo) }) }
 			if hmon != unsafe { nil } && C.GetMonitorInfoW(hmon, voidptr(&mi)) {
-				return mi.rc_monitor.right - mi.rc_monitor.left, mi.rc_monitor.top,
-					mi.rc_monitor.right - mi.rc_monitor.left, mi.rc_monitor.bottom - mi.rc_monitor.top
+				return mi.rc_monitor.right - mi.rc_monitor.left, mi.rc_monitor.top, mi.rc_monitor.right - mi.rc_monitor.left, mi.rc_monitor.bottom - mi.rc_monitor.top
 			}
 		}
 		// SM_CXSCREEN == 0, SM_CYSCREEN == 1 (primary display fallback)
@@ -1045,7 +1044,7 @@ fn main() {
 	// Headless scan check mode: no window, no sokol context.
 	check_idx := os.args.index('--check')
 	if check_idx >= 0 {
-		run_scan_check(os.args[check_idx+1..])
+		run_scan_check(os.args[check_idx + 1..])
 		return
 	}
 	mut app := &App{ player: NullPlayer{} }

@@ -147,14 +147,14 @@ struct Job_result {
 mut:
 	is_zip bool
 	// folder results
-	id      int // folder id
+	id      int    // folder id
 	path    string // the directory itself (parent path for its sub-folders)
 	items   []Item // images and zip items, in listing order
 	subdirs []Sub_dir
 	// zip results
 	key      string // archive path as discovered (map key)
 	zip_path string // ASCII-safe path stored on the entries
-	n_total  int // total archive entries (progress accounting)
+	n_total  int    // total archive entries (progress accounting)
 }
 
 // Scan_pool is the state shared between the main thread and the workers.
@@ -165,11 +165,11 @@ struct Scan_pool {
 mut:
 	mtx       sync.Mutex
 	queue     []Scan_job // pending jobs (LIFO: better cache locality)
-	in_flight int // enqueued but not yet completed jobs
-	next_id   int // folder id generator
-	done      int // progress: entries processed so far
-	total     int // progress: entries discovered so far
-	warnings  []string // capped at 100
+	in_flight int        // enqueued but not yet completed jobs
+	next_id   int        // folder id generator
+	done      int        // progress: entries processed so far
+	total     int        // progress: entries discovered so far
+	warnings  []string   // capped at 100
 	// Completed results, filed by the main thread while draining `results`.
 	folders map[int]Job_result
 	zips    map[string]Job_result
@@ -333,8 +333,8 @@ fn (mut il Item_list) scan_begin(args []string) {
 	il.scanning = true
 	il.path_sep = path_sep()
 	mut p := &Scan_pool{
-		results: chan Job_result{ cap: 1024 }
-		exits:   chan int{ cap: 64 }
+		results: chan Job_result{cap: 1024}
+		exits:   chan int{cap: 64}
 	}
 	p.mtx.init()
 	p.folders = map[int]Job_result{}
@@ -666,7 +666,8 @@ fn (mut il Item_list) append_zip_entries(mut p &Scan_pool, key string, zip_index
 // synchronously: it drives the same parallel engine the GUI scan uses.
 fn (mut il Item_list) get_items_list(args []string) {
 	il.scan_begin(args)
-	for il.scan_step() {}
+	for il.scan_step() {
+	}
 	il.scan_finish()
 }
 
