@@ -6637,7 +6637,9 @@ fn (mut tc TypeChecker) infer_generic_struct_init_type(node flat.Node) ?Type {
 	if base_name_id == 0 || flat.source_type_shape(base_name_id).has(.bracketed) {
 		return none
 	}
-	qualified_name_id := tc.qualify_type_name(base_name_id)
+	qualified_name_id := tc.resolve_selective_import_type_symbol_id(base_name_id) or {
+		tc.qualify_type_name(base_name_id)
+	}
 	params := tc.struct_generic_params[qualified_name_id] or {
 		// A concrete declaration in the active module shadows an unrelated
 		// bare generic declaration collected from another module.
