@@ -137,6 +137,49 @@ fn tool_vls_references(ws &Workspace, arguments string) string {
 	return run.output
 }
 
+fn spec_vls_rename() ToolSpec {
+	return writing_spec('v_vls_rename',
+		'Rename a symbol at a position using VLS.',
+		input_schema(['path', 'line', 'character', 'newName'], {
+			'path': SchemaProperty{
+				kind:        'string'
+				description: 'The .v file.'
+			}
+			'line': SchemaProperty{
+				kind:        'integer'
+				description: 'Zero-based line number.'
+			}
+			'character': SchemaProperty{
+				kind:        'integer'
+				description: 'Zero-based character offset.'
+			}
+			'newName': SchemaProperty{
+				kind:        'string'
+				description: 'The new name.'
+			}
+		}), tool_vls_rename)
+}
+
+fn tool_vls_rename(ws &Workspace, arguments string) string {
+	args := decode_args(arguments)
+	path := ws.resolve_arg(args, 'path') or { return error_json(err.msg()) }
+	if !os.exists(path) {
+		return error_json('`${path}` does not exist')
+	}
+	line := args.int('line', 0)
+	col := args.int('character', 0)
+	new_name := args.text('newName', '')
+	if new_name == '' {
+		return error_json('missing newName')
+	}
+	vls := find_vls_binary() or { return error_json('vls not found on PATH') }
+	run := os.exec([vls, 'rename', path, line.str(), col.str(), new_name])
+	if run.exit_code != 0 {
+		return error_json('vls rename failed: ${run.output}')
+	}
+	return run.output
+}
+
 fn find_vls_binary() ?string {
 	p := os.getenv('VLS_PATH')
 	if p != '' && os.exists(p) {
