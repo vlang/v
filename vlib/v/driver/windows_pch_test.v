@@ -508,18 +508,83 @@ fn test_windows_pch_is_not_recorded_when_a_read_header_was_swapped_while_it_buil
 	assert v3_windows_pch(compiler, args, cache, mut known) or { '' } != ''
 }
 
-fn test_windows_pch_places_follow_the_search_whatever_letters_its_paths_have() ! {
-	root := os.join_path(os.vtmp_dir(), 'windows_pch_letters_${os.getpid()}')
+fn test_windows_pch_places_come_from_the_names_the_headers_include() ! {
+	root := os.join_path(os.vtmp_dir(), 'windows_pch_names_${os.getpid()}')
 	defer { os.rmdir_all(root) or {} }
-	// `İ` lowers to more bytes than it has: the name below a directory is cut
-	// from the path as it is, not from a lowered copy.
-	early := v3_windows_pch_path(os.join_path(root, 'İearly'))
-	late := v3_windows_pch_path(os.join_path(root, 'İlate'))
+	// Paths whose letters change length in lower case (`İ`).
+	early := v3_windows_pch_path(os.join_path(root, 'İa', 's1'))
+	late := v3_windows_pch_path(os.join_path(root, 'İb', 's2'))
+	shared := v3_windows_pch_path(os.join_path(root, 'İb', 'shared'))
+	os.mkdir_all(early)!
 	os.mkdir_all(late)!
-	os.write_file(late + '/x.h', '')!
+	os.mkdir_all(shared)!
+	header := v3_windows_pch_path(os.join_path(root, 'p.h'))
+	// A name that leaves its directory, and one header under two spellings,
+	// which a directory that tells case apart holds as two files.
+	os.write_file(header, '#include <x.h>\n#include <../shared/y.h>\n')!
+	os.write_file(late + '/x.h', '#include <specstrings.h>\n#include <SpecStrings.h>\n')!
+	os.write_file(shared + '/y.h', '')!
 	time.sleep(2 * time.second)
-	inputs := v3_windows_pch_inputs([late + '/x.h'], [early, late], root + '/p.h', time.utc().unix() - 1)?
-	assert early + '/x.h' in inputs.missing, inputs.missing.str()
+	search := [early, late]
+	read := [late + '/x.h', shared + '/y.h']
+	inputs := v3_windows_pch_inputs(read, search, header, time.utc().unix() - 1)?
+	for place in [early + '/x.h', v3_windows_pch_path(root + '/İa/shared/y.h'),
+		early + '/specstrings.h', early + '/SpecStrings.h'] {
+		assert place in inputs.missing, '${place} not in ${inputs.missing}'
+	}
+	// A name a macro gives is not known: no record can say where it was looked for.
+	os.write_file(shared + '/y.h', '#define Y_NEXT "z.h"\n#include Y_NEXT\n')!
+	time.sleep(2 * time.second)
+	assert v3_windows_pch_inputs(read, search, header, time.utc().unix() - 1) == none
+	os.write_file(shared + '/y.h', '#if __has_include(Y_NEXT)\n#endif\n')!
+	time.sleep(2 * time.second)
+	assert v3_windows_pch_inputs(read, search, header, time.utc().unix() - 1) == none
+}
+
+fn test_windows_pch_is_not_rebuilt_every_build_when_a_place_cannot_be_told() ! {
+	$if !windows {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'windows_pch_place_untold_${os.getpid()}')
+	os.mkdir_all(root)!
+	saved := os.getenv_opt('V3_TEST_NO_FILE_METADATA')
+	defer {
+		if value := saved {
+			os.setenv('V3_TEST_NO_FILE_METADATA', value, true)
+		} else {
+			os.unsetenv('V3_TEST_NO_FILE_METADATA')
+		}
+		os.rmdir_all(root) or {}
+	}
+	sdk := v3_windows_pch_path(os.join_path(root, 'sdk'))
+	sdk2 := v3_windows_pch_path(os.join_path(root, 'sdk2'))
+	os.mkdir_all(sdk)!
+	os.mkdir_all(sdk2)!
+	os.write_file(sdk + '/io.h', '#include "q.h"\n#include_next <io.h>\n')!
+	os.write_file(sdk + '/q.h', '')!
+	// Found beside io.h first, so never read, but a place of "q.h" in the search.
+	os.write_file(sdk2 + '/q.h', '')!
+	time.sleep(2 * time.second)
+	os.setenv('V3_TEST_NO_FILE_METADATA', sdk2 + '/q.h', true)
+	cache := os.join_path(root, 'cache')
+	os.mkdir_all(cache)!
+	compiler := V3CachedObjectCompiler{
+		path:     clang
+		identity: 'test clang place untold ${os.getpid()}'
+	}
+	args := ['-std=gnu11', '-O2', '-isystem', sdk, '-isystem', sdk2]
+	mut known := map[string]string{}
+	assert v3_windows_pch(compiler, args, cache, mut known) == none
+	failed := (os.ls(cache)!).filter(it.ends_with('.failed'))
+	assert failed.len == 1, os.ls(cache)!.str()
+	marker := os.join_path(cache, failed[0])
+	assert os.read_file(marker)!.contains('cannot be told apart'), os.read_file(marker)!
+	marked := os.file_last_mod_unix(marker)
+	known = map[string]string{}
+	assert v3_windows_pch(compiler, args, cache, mut known) == none
+	assert os.file_last_mod_unix(marker) == marked
+	assert (os.ls(cache)!).filter(it.ends_with('.pch')) == []
 }
 
 fn test_windows_pch_record_holds_while_its_inputs_do() ! {
@@ -538,6 +603,8 @@ fn test_windows_pch_record_holds_while_its_inputs_do() ! {
 	read := [late + '/x.h', late + '/sub/y.h']
 	cache := v3_windows_pch_path(os.join_path(root, 'cache'))
 	header := cache + '/windows_sdk_k.h'
+	os.mkdir_all(cache)!
+	os.write_file(header, '#include <x.h>\n')!
 	inputs := v3_windows_pch_inputs(read, search, header, time.utc().unix() - 1)?
 	// What was read, a file of the same name earlier in the search, and the
 	// places where none is: the same names earlier in the search, the name x.h
@@ -579,7 +646,10 @@ fn test_windows_pch_record_holds_while_its_inputs_do() ! {
 	os.rm(early + '/z.h')!
 	assert v3_windows_pch_kept(text, base, search)? == pch
 	// A file that was read, changed, or one that was passed over, gone.
-	os.write_file(late + '/sub/y.h', 'changed')!
+	// Rewritten with the same size, and old enough by the next build: only the
+	// identity it had tells it changed.
+	os.write_file(late + '/sub/y.h', '')!
+	time.sleep(2 * time.second)
 	assert v3_windows_pch_kept(text, base, search) == none
 	os.write_file(late + '/sub/y.h', '')!
 	time.sleep(2 * time.second)

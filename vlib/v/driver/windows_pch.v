@@ -445,7 +445,16 @@ fn v3_windows_pch_of(compiler V3CachedObjectCompiler, args []string, base string
 	// file or with a directory or a link moved there, keeps the times it had and
 	// cannot be told from one it passed over, and one that comes after this is
 	// recorded where none was.
-	inputs := v3_windows_pch_inputs(read, search, header, before) or { V3HeaderInputs{} }
+	inputs := v3_windows_pch_inputs(read, search, header, before) or {
+		if trace {
+			eprintln('  V3 module cache: the places of the Windows SDK headers read for ${pch} cannot be told')
+		}
+		os.rm(pch) or {}
+		// A file that keeps no identity, or a name a macro gives, does so in the
+		// next build as well: this is recorded as a failed build is.
+		os.write_file(failed, 'the headers read cannot be told apart from newer ones, or include a name a macro gives\n') or {}
+		return none
+	}
 	after := v3_windows_pch_reads(compiler.path, args, header) or { []string{} }
 	if inputs.files.len == 0 || read != first || after != first
 		|| inputs.files.any(it in was && was[it] != inputs.identities[inputs.files.index(it)]) {
@@ -495,69 +504,138 @@ fn v3_windows_pch_path(path string) string {
 // v3_windows_pch_inputs returns what a precompiled header that a compiler built
 // from `header`, reading the headers `read` and looking for them in the
 // directories of `search`, depends on: those files, and every place where a
-// file would have been read instead of one of them or in addition to it. Those
-// are the same name in each directory that is searched before the one it was
-// found in, a name a header includes in quotation marks in the directory of
-// each header that can be on the include stack (Clang for a MinGW target looks
-// in the includer's own, for an MSVC target in every one up to `header`'s,
-// before the search), and a name a header asks `__has_include` about in each of
-// those and each directory of the search. A file that is in such a place is an
-// input with its metadata (`#include_next` passes over it), and a place where
-// none is, an input as a missing file. It returns none when a file was written
-// or put in place at `before`, in seconds, or later, so that it may not be the
-// one that was read, or may not have been there when the compiler looked.
+// file would have been read instead of one of them or in addition to it. The
+// places come from the names the headers include, as they write them (a name
+// may leave its directory with `..`, and one header may be included under two
+// spellings, which a directory that tells case apart holds as two files): a
+// name in angle brackets in each directory of the search, and a name in
+// quotation marks, or one a header asks `__has_include` about, there and in
+// the directory of each header that can be on the include stack (Clang for a
+// MinGW target looks in the includer's own, for an MSVC target in every one up
+// to `header`'s). A file that is in such a place is an input with its metadata
+// (`#include_next` passes over it), and a place where none is, an input as a
+// missing file. It returns none when a header includes a name a macro gives,
+// which no place can be taken of, or when a file was written or put in place at
+// `before`, in seconds, or later, so that it may not be the one that was read,
+// or may not have been there when the compiler looked.
 fn v3_windows_pch_inputs(read []string, search []string, header string, before i64) ?V3HeaderInputs {
 	mut inputs := V3HeaderInputs{}
 	for path in read {
 		inputs.add_windows_pch_place(path, before)?
 	}
-	mut includers := [v3_windows_pch_path(header).all_before_last('/')]
+	mut includers := []string{}
+	mut angled := []string{}
 	mut quoted := []string{}
-	mut asked := []string{}
-	for path in read {
-		// The name below a directory is cut from the path at the length of the
-		// directory, so the case is folded where that keeps lengths: ASCII.
-		lower := path.to_lower_ascii()
-		for k, dir in search {
-			prefix := dir.trim_right('/').to_lower_ascii() + '/'
-			if !lower.starts_with(prefix) {
-				continue
-			}
-			name := path[prefix.len..]
-			for earlier in search[..k] {
-				inputs.add_windows_pch_place(earlier.trim_right('/') + '/' + name, before)?
-			}
-		}
+	mut headers := [v3_windows_pch_path(header)]
+	headers << read
+	for path in headers {
 		dir := path.all_before_last('/')
 		if dir !in includers {
 			includers << dir
 		}
 		text := os.read_file(path) or { return none }
-		for name in v3_quoted_include_names(text) {
+		angled_names, quoted_names := v3_windows_pch_include_names(text)?
+		for name in angled_names {
+			if name !in angled {
+				angled << name
+			}
+		}
+		for name in quoted_names {
 			if name !in quoted {
 				quoted << name
 			}
 		}
-		for name in v3_has_include_names(text) {
-			if name !in asked {
-				asked << name
-			}
+	}
+	for name in angled {
+		for dir in search {
+			inputs.add_windows_pch_place(v3_windows_pch_path(dir + '/' + name), before)?
 		}
 	}
 	for name in quoted {
 		for dir in includers {
 			inputs.add_windows_pch_place(v3_windows_pch_path(dir + '/' + name), before)?
 		}
-	}
-	for name in asked {
-		for dir in includers {
+		for dir in search {
 			inputs.add_windows_pch_place(v3_windows_pch_path(dir + '/' + name), before)?
-		}
-		for searched in search {
-			inputs.add_windows_pch_place(v3_windows_pch_path(searched + '/' + name), before)?
 		}
 	}
 	return inputs
+}
+
+// v3_windows_pch_include_names returns the names the C `text` includes in angle
+// brackets, and those it includes in quotation marks or asks `__has_include`
+// about, each as it writes them, or none when it includes or asks about a name
+// a macro gives. Every directive of the text counts, the ones a conditional
+// leaves out as well.
+fn v3_windows_pch_include_names(text string) ?([]string, []string) {
+	mut angled := []string{}
+	mut quoted := []string{}
+	for line in text.split_into_lines() {
+		trimmed := line.trim_space()
+		if !trimmed.starts_with('#') {
+			continue
+		}
+		directive := trimmed[1..].trim_left(' \t')
+		for keyword in ['include_next', 'include', 'import'] {
+			if !directive.starts_with(keyword) {
+				continue
+			}
+			rest := directive[keyword.len..].trim_left(' \t')
+			close := if rest.starts_with('<') {
+				'>'
+			} else if rest.starts_with('"') {
+				'"'
+			} else {
+				return none
+			}
+			end := rest.index_after_(close, 1)
+			if end <= 1 {
+				return none
+			}
+			name := rest[1..end]
+			if close == '>' {
+				if name !in angled {
+					angled << name
+				}
+			} else if name !in quoted {
+				quoted << name
+			}
+			break
+		}
+	}
+	// `__has_include(` followed by anything but a written name asks about one a
+	// macro gives.
+	mut pos := 0
+	for {
+		found := text.index_after_('__has_include', pos)
+		if found < 0 {
+			break
+		}
+		pos = found + '__has_include'.len
+		mut next := pos
+		if text[next..].starts_with('_next') {
+			next += '_next'.len
+		}
+		for next < text.len && text[next] in [` `, `\t`] {
+			next++
+		}
+		if next >= text.len || text[next] != `(` {
+			continue
+		}
+		next++
+		for next < text.len && text[next] in [` `, `\t`] {
+			next++
+		}
+		if next >= text.len || text[next] !in [`<`, `"`] {
+			return none
+		}
+	}
+	for name in v3_has_include_names(text) {
+		if name !in quoted {
+			quoted << name
+		}
+	}
+	return angled, quoted
 }
 
 // v3_windows_pch_reads returns the headers that `compiler`, preprocessing
