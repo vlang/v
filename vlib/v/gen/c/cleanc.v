@@ -16378,7 +16378,7 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 			'(${ct}){${parts.join(', ')}}'
 		}
 		.string_literal {
-			'(string){(u8*)"${c_escape(node.value)}", ${node.value.len}, 1}'
+			'(string){(u8*)${c_segmented_string_literal(node.value)}, ${node.value.len}, 1}'
 		}
 		.typeof_expr {
 			type_name := g.typeof_type_name(node)
@@ -19989,23 +19989,10 @@ fn escape_c_string_literal_quotes(s string) string {
 }
 
 fn c_segmented_string_literal(s string) string {
-	max_segment_len := 12_000
-	if s.len <= max_segment_len {
-		return '"${c_escape(s)}"'
-	}
-	mut out := strings.new_builder(s.len + (s.len / max_segment_len + 1) * 4)
-	mut start := 0
-	for start < s.len {
-		end := if start + max_segment_len < s.len { start + max_segment_len } else { s.len }
-		if start > 0 {
-			out.write_string(' "')
-		} else {
-			out.write_u8(`"`)
-		}
-		out.write_string(c_escape(s[start..end]))
-		out.write_u8(`"`)
-		start = end
-	}
+	mut out := strings.new_builder(s.len + 2)
+	out.write_u8(`"`)
+	c_literal_escape_into(mut out, s)
+	out.write_u8(`"`)
 	return out.str()
 }
 
