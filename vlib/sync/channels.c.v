@@ -93,23 +93,24 @@ fn new_channel_st(n u32, st u32) &Channel {
 	rsem := if n > 0 { u32(0) } else { 1 }
 	rbuf := if n > 0 { unsafe { malloc(int(n * st)) } } else { &u8(unsafe { nil }) }
 	sbuf := if n > 0 { vcalloc_noscan(int(n * 2)) } else { &u8(unsafe { nil }) }
-	mut ch := Channel{
-		objsize:          st
-		cap:              n
-		write_free:       n
-		read_avail:       0
-		ringbuf:          rbuf
-		statusbuf:        sbuf
-		write_subscriber: unsafe { nil }
-		read_subscriber:  unsafe { nil }
-		write_sub_mtx:    new_spin_lock()
-		read_sub_mtx:     new_spin_lock()
+	mut ch := &Channel(unsafe { malloc(int(sizeof(Channel))) })
+	unsafe {
+		ch.objsize = st
+		ch.cap = n
+		ch.write_free = n
+		ch.read_avail = 0
+		ch.ringbuf = rbuf
+		ch.statusbuf = sbuf
+		ch.write_subscriber = unsafe { nil }
+		ch.read_subscriber = unsafe { nil }
+		ch.write_sub_mtx = new_spin_lock()
+		ch.read_sub_mtx = new_spin_lock()
 	}
 	ch.writesem.init(wsem)
 	ch.readsem.init(rsem)
 	ch.writesem_im.init(0)
 	ch.readsem_im.init(0)
-	return &ch
+	return ch
 }
 
 @[unsafe]
@@ -391,7 +392,7 @@ fn (mut ch Channel) try_push_impl(src voidptr, no_block bool) ChanState {
 			ch.writesem.post()
 			return .closed
 		}
-		if ch.cap == 0 {
+		if ch.ringbuf == unsafe { nil } {
 			// try to advertise current object as readable
 			mut read_in_progress := false
 			race_release_on(src)
@@ -596,7 +597,7 @@ fn (mut ch Channel) try_pop_impl(dest voidptr, no_block bool) ChanState {
 	mut write_in_progress := false
 	for {
 		mut got_sem := false
-		if ch.cap == 0 {
+		if ch.ringbuf == unsafe { nil } {
 			// unbuffered channel - first see if a `push()` has adversized
 			mut rdadr := C.atomic_load_ptr(unsafe { &voidptr(&ch.read_adr) })
 			for rdadr != unsafe { nil } {
@@ -696,7 +697,7 @@ fn (mut ch Channel) try_pop_impl(dest voidptr, no_block bool) ChanState {
 		// try to advertise `dest` as writable
 		race_release_on(dest)
 		C.atomic_store_ptr(unsafe { &voidptr(&ch.write_adr) }, dest)
-		if ch.cap == 0 {
+		if ch.ringbuf == unsafe { nil } {
 			mut rdadr := C.atomic_load_ptr(unsafe { &voidptr(&ch.read_adr) })
 			if rdadr != unsafe { nil } {
 				mut dest2 := dest
