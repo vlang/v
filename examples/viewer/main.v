@@ -683,7 +683,11 @@ fn monitor_rect() (int, int, int, int) {
 		// SM_CXSCREEN == 0, SM_CYSCREEN == 1 (primary display fallback)
 		return 0, 0, C.GetSystemMetrics(0), C.GetSystemMetrics(1)
 	} $else {
-		return 0, 0, 0, 0
+		// macOS/Linux: gg exposes the primary screen size on every platform
+		// (XRandR on X11, NSScreen on macOS); the window manager places and
+		// centers the window itself.
+		ss := gg.screen_size()
+		return 0, 0, ss.width, ss.height
 	}
 }
 
