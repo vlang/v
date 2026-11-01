@@ -114,7 +114,7 @@ fn (mut g FlatGen) sum_pointer_slot_typedefs_for_array(arr types.ArrayFixed) {
 			if depths[alias] != depth || g.emitted_fixed_array_typedefs[alias] { continue }
 			g.tc.cur_module = modules[alias]
 			if !g.cached_support_identifiers[alias] {
-				typ := pointers[alias]
+				typ := pointers[alias] or { continue }
 				g.writeln('typedef ${g.value_c_type(typ)} ${alias} __attribute__((may_alias));')
 			}
 			g.emitted_fixed_array_typedefs[alias] = true

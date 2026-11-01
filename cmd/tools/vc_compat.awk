@@ -5,6 +5,7 @@ BEGIN {
 	while ((getline line < ARGV[1]) > 0) {
 		if (line ~ /^u32 flat__source_type_usize;$/) legacy_uint = 1
 		if (line ~ /^u32 flat__source_type_uint;$/) native_uint = 1
+		if (line ~ /^static int v3_linux_memory_file\(const char[ \t]*\*/) memory_file_const = 1
 		if (line ~ /^_SL\([^,]+, "(u8\* malloc_noscan\(ptrdiff_t n\);|void\* memdup\(void\* src, ptrdiff_t sz\);|void\* memdup_align\(void\* src, ptrdiff_t sz, ptrdiff_t alignment\);)",/) {
 			id = line
 			sub(/^_SL\(/, "", id)
@@ -13,6 +14,13 @@ BEGIN {
 		}
 	}
 	close(ARGV[1])
+}
+
+# The native helper takes const char*, but affected snapshots emitted a char*
+# prototype for its c_extern declaration. Only fix snapshots with that helper;
+# leave older non-const definitions and embedded source strings untouched.
+memory_file_const && /^[ \t]*int v3_linux_memory_file\(char[ \t]*\*[ \t]*[A-Za-z_][A-Za-z0-9_]*\);[ \t]*$/ {
+	sub(/\(char/, "(const char")
 }
 
 legacy_uint && !native_uint {

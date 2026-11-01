@@ -198,7 +198,7 @@ fn source_type_spelling_flags(text string) (SourceTypeShape, SourceTypeQuery) {
 	}
 	if text.contains('Arc_') { query.set(.map_arc_key) }
 	last := text.len - 1
-	if (text.len == 1 || text[last - 1] == `.`) {
+	if text.len == 1 || text[last - 1] == `.` {
 		if text[last] >= `A` && text[last] <= `Z` { query.set(.generic_fn_name) }
 		if text[last] in [`T`, `U`, `V`, `K`] { query.set(.generic_name) }
 	}

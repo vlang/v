@@ -1,6 +1,5 @@
 import os
 import v.skills
-import v.util.cache_refresh
 
 const vexe = @VEXE
 const vroot = os.dir(vexe)
@@ -115,94 +114,61 @@ fn run_vup(root string, home string, tool string, bin_dir string, extra ...strin
 	return os.exec(args)
 }
 
-fn test_vup_refreshes_only_tinycc_modes_even_when_already_updated() ! {
+fn test_vup_wipes_caches_instead_of_replaying_configurations() ! {
 	$if windows {
 		return
 	}
 	root, home, tool, bin_dir := vup_report_fixture()!
-	previous := os.getenv_opt('V3CACHE')
-	os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
 	defer {
-		if value := previous { os.setenv('V3CACHE', value, true) } else { os.unsetenv('V3CACHE') }
 		os.rmdir_all(root) or {}
 	}
-	source := os.join_path(root, 'vlib', 'crypto', 'sample', 'sample.v')
-	os.mkdir_all(os.dir(source))!
-	os.write_file(source, 'module sample\n')!
-	for compiler in ['tcc', 'cc', 'clang', 'gcc'] {
-		for prod in [false, true] {
-			mut flags := ['-cc', compiler]
-			if prod { flags << '-prod' }
-			dir := os.join_path(cache_refresh.root_dir(root, os.join_path(root, 'v')), '${compiler}_${prod}')
-			os.mkdir_all(dir)!
-			for is_test in [false, true] {
-				cache_refresh.record(dir, root, flags, is_test, {
-					'sample': [source]
-				}, [], '', false)!
-			}
-		}
-	}
-	cache_log := os.join_path(root, 'cache_calls.log')
-	for name in ['cc', 'clang', 'gcc', 'tcc'] {
-		write_executable(os.join_path(bin_dir, name), '#!/bin/sh\nexit 0\n')!
-	}
+	write_executable(os.join_path(bin_dir, 'cc'), '#!/bin/sh\nexit 0\n')!
+	wipe_tool := os.join_path(root, 'vwipe-cache')
+	build := os.exec([vexe, '-o', wipe_tool, os.join_path(vroot, 'cmd', 'tools', 'vwipe-cache.v')])
+	assert build.exit_code == 0, build.output
+	log := os.join_path(root, 'compiler_calls.log')
 	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
-		'case "\$*" in\n  *vup_cache_refresh_*)\n' +
-		'    printf "%s\\n" "\$*" >> ' + os.quoted_path(cache_log) + '\n' +
-		'    echo "Caching module crypto.sample..."\n    exit 0;;\nesac\n' +
+		'printf "%s\\n" "\$*" >> ' + os.quoted_path(log) + '\n' +
+		'if [ "\$1" = "wipe-cache" ]; then exec ' + os.quoted_path(wipe_tool) + '; fi\n' +
 		'echo "V 0.5.2 abcdef0"\nexit 0\n')!
-	// Cache refresh must run on both the early-return and compiler-rebuild paths.
-	for options in [[]string{}, ['-skip_current'], ['-prod']] {
-		os.write_file(cache_log, '')!
-		result := run_vup(root, home, tool, bin_dir, ...options)!
+	cache := os.join_path(root, 'module cache')
+	tmp := os.join_path(root, 'tmp cache')
+	v3cache := os.join_path(root, 'v3 cache')
+	tools := os.join_path(root, 'tool cache')
+	xdg_cache := os.join_path(home, '.cache')
+	targets := [cache, tmp, v3cache, tools, tools + '.untrusted-old',
+		os.join_path(xdg_cache, 'v', 'tools'), os.join_path(home, '.vtools'),
+		os.join_path(home, '.v', 'tools')]
+	// Repeat the already-current path, and exercise forced rebuilds and verbose updates too.
+	for options in [[]string{}, []string{}, ['-skip_current'], ['-prod'], ['-skip_v_self'], ['-v']] {
+		for target in targets {
+			os.mkdir_all(target)!
+			os.write_file(os.join_path(target, 'stale'), 'old cache data')!
+		}
+		// Historical configurations, including test selectors, must be removed without replay.
+		for i in 0 .. 128 {
+			dir := os.join_path(v3cache, 'v3_module_cache_deadbeef', 'configuration_${i}')
+			os.mkdir_all(dir)!
+			os.write_file(os.join_path(dir, 'stale'), '-gc none -run-only test_selected')!
+		}
+		os.write_file(log, '')!
+		result := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}', 'XDG_CACHE_HOME=${xdg_cache}',
+			'VCACHE=${cache}', 'VTMP=${tmp}', 'V3CACHE=${v3cache}', 'VTOOLS_CACHE_DIR=${tools}',
+			'VEXE=' + os.join_path(root, 'v'), tool, ...options])
 		assert result.exit_code == 0, result.output
-		assert result.output.count('Caching module crypto.sample...') == 2, result.output
-		assert result.output.count('> Refreshing module cache (') == 2, result.output
-		assert !result.output.contains('> Refreshing module cache ['), result.output
-		assert result.output.contains('> Module cache refresh complete: 2 build configurations checked.'), result.output
-		assert result.output.contains('> Refreshing module cache (normal program; -cc tcc).\nCaching module crypto.sample...'), result.output
-		assert result.output.contains('> Refreshing module cache (normal tests; -cc tcc).\nCaching module crypto.sample...'), result.output
-		// The production TinyCC records stay on disk from before the rule, and are not refreshed.
-		calls := os.read_file(cache_log)!.split_into_lines()
-		assert calls.len == 2, calls.str()
-		assert calls.all(it.starts_with('-cc tcc ')), calls.str()
-		assert calls.any(it.starts_with('-cc tcc -skip-running ')), calls.str()
-		assert !calls.any(it.contains('-prod')), calls.str()
-		assert !calls.any(it.contains(' run ')), calls.str()
+		for target in targets {
+			assert !os.exists(os.join_path(target, 'stale')), target
+		}
+		assert os.ls(cache)!.len == 0
+		assert os.ls(tmp)!.len == 0
+		assert os.ls(v3cache)!.len == 0
+		calls := os.read_file(log)!.split_into_lines()
+		assert calls.filter(it == 'wipe-cache').len == 1, calls.str()
+		assert !calls.any(it.contains('vup_cache_refresh_') || it.contains('-run-only')), calls.str()
+		assert !result.output.contains('Refreshing module cache'), result.output
+		assert !result.output.contains('build configurations checked'), result.output
+		assert result.output.contains('was wiped.'), result.output
 	}
-	// Warm caches still get validated on both update paths, without claiming any rebuilds.
-	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
-		'case "\$*" in\n  *vup_cache_refresh_*)\n' +
-		'    printf "%s\\n" "\$*" >> ' + os.quoted_path(cache_log) + '\n' +
-		'    exit 0;;\nesac\necho "V 0.5.2 abcdef0"\nexit 0\n')!
-	for options in [[]string{}, ['-skip_current'], ['-prod']] {
-		os.write_file(cache_log, '')!
-		warm := run_vup(root, home, tool, bin_dir, ...options)!
-		assert warm.exit_code == 0, warm.output
-		assert !warm.output.contains('> Refreshing module cache '), warm.output
-		assert !warm.output.contains('> Module cache refresh complete:'), warm.output
-		assert os.read_file(cache_log)!.split_into_lines().len == 2
-	}
-	// Verbose updates retain the indexed validation report even when no modules rebuild.
-	os.write_file(cache_log, '')!
-	verbose := run_vup(root, home, tool, bin_dir, '-v')!
-	assert verbose.exit_code == 0, verbose.output
-	assert verbose.output.count('> Refreshing module cache [') == 2, verbose.output
-	assert verbose.output.contains('> Refreshing module cache [1/2]'), verbose.output
-	assert verbose.output.contains('> Refreshing module cache [2/2]'), verbose.output
-	assert verbose.output.contains('> Module cache refresh complete: 2 build configurations checked.'), verbose.output
-	assert os.read_file(cache_log)!.split_into_lines().len == 2
-	// A failed refresh is visible and fails v up, while other modules still refresh.
-	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
-		'case "\$*" in\n  *vup_cache_refresh_*)\n' +
-		'    printf "%s\\n" "\$*" >> ' + os.quoted_path(cache_log) + '\n' +
-		'    exit 1;;\nesac\necho "V 0.5.2 abcdef0"\nexit 0\n')!
-	os.write_file(cache_log, '')!
-	failure := run_vup(root, home, tool, bin_dir)!
-	assert failure.exit_code != 0, failure.output
-	assert failure.output.contains('refreshing cached vlib modules failed'), failure.output
-	assert !failure.output.contains('> Module cache refresh complete:'), failure.output
-	assert os.read_file(cache_log)!.split_into_lines().len == 2
 }
 
 fn test_vup_resolves_relative_cache_paths_before_entering_checkout() ! {
@@ -210,242 +176,176 @@ fn test_vup_resolves_relative_cache_paths_before_entering_checkout() ! {
 		return
 	}
 	root, home, tool, bin_dir := vup_report_fixture()!
-	previous_cache := os.getenv_opt('V3CACHE')
-	previous_tmp := os.getenv_opt('VTMP')
 	previous_dir := os.getwd()
 	defer {
-		if value := previous_cache {
-			os.setenv('V3CACHE', value, true)
-		} else {
-			os.unsetenv('V3CACHE')
-		}
-		if value := previous_tmp { os.setenv('VTMP', value, true) } else { os.unsetenv('VTMP') }
 		os.chdir(previous_dir) or {}
 		os.rmdir_all(root) or {}
 	}
+	project := os.join_path(root, 'project with spaces')
+	os.mkdir_all(project)!
+	log := os.join_path(root, 'cache_paths.log')
+	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
+		'if [ "\$1" = "wipe-cache" ]; then\n' +
+		'  printf "%s\\n" "\$VCACHE" "\$VTMP" "\$V3CACHE" "\$VTOOLS_CACHE_DIR" > ' +
+		os.quoted_path(log) + '\n  exit 0\nfi\necho "V 0.5.2 abcdef0"\nexit 0\n')!
+	os.chdir(project)!
+	for options in [[]string{}, ['-skip_current']] {
+		result := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v'),
+			'VCACHE=.module cache', 'VTMP=.tmp cache', 'V3CACHE=.v3 cache',
+			'VTOOLS_CACHE_DIR=.tool cache', tool, ...options])
+		assert result.exit_code == 0, result.output
+		assert os.read_file(log)!.split_into_lines() == ['.module cache', '.tmp cache', '.v3 cache',
+			'.tool cache'].map(os.join_path(project, it))
+	}
+}
+
+fn test_vup_wipes_default_cache_from_relative_vmodules() ! {
+	$if windows {
+		return
+	}
+	root, home, tool, bin_dir := vup_report_fixture()!
+	previous_dir := os.getwd()
+	defer {
+		os.chdir(previous_dir) or {}
+		os.rmdir_all(root) or {}
+	}
+	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
+		'if [ "\$1" = "wipe-cache" ]; then exec ' + os.quoted_path(vexe) + ' wipe-cache; fi\n' +
+		'echo "V 0.5.2 abcdef0"\nexit 0\n')!
 	project := os.join_path(root, 'project')
 	os.mkdir_all(project)!
-	source := os.join_path(root, 'vlib', 'crypto', 'sample', 'sample.v')
-	os.mkdir_all(os.dir(source))!
-	os.write_file(source, 'module sample\n')!
-	log := os.join_path(root, 'cache_paths.log')
-	for name in ['cc', 'clang', 'gcc', 'tcc'] {
-		write_executable(os.join_path(bin_dir, name), '#!/bin/sh\nexit 0\n')!
-	}
-	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
-		'case "\$*" in\n  *vup_cache_refresh_*)\n' +
-		'    printf "%s\\n%s\\n" "\$V3CACHE" "\$VTMP" >> ' + os.quoted_path(log) + '\n' +
-		'    echo "Caching module crypto.sample..."\n    exit 0;;\nesac\n' +
-		'echo "V 0.5.2 abcdef0"\nexit 0\n')!
-	for variable in ['V3CACHE', 'VTMP'] {
-		os.chdir(project)!
-		os.unsetenv('V3CACHE')
-		os.setenv('VTMP', os.join_path(root, 'default_tmp'), true)
-		os.setenv(variable, '.cache with spaces', true)
-		dir := os.join_path(cache_refresh.root_dir(root, os.join_path(root, 'v')), variable)
-		os.mkdir_all(dir)!
-		cache_refresh.record(dir, root, ['-cc', 'tcc'], false, {
-			'sample': [source]
-		}, [], '', false)!
-		os.write_file(log, '')!
-		result := run_vup(root, home, tool, bin_dir)!
-		assert result.exit_code == 0, result.output
-		assert result.output.count('Caching module crypto.sample...') == 1, result.output
-		paths := os.read_file(log)!.split_into_lines()
-		assert paths.len == 2, paths.str()
-		assert paths[if variable == 'V3CACHE' { 0 } else { 1 }] == os.join_path(project, '.cache with spaces'), paths.str()
-		assert os.is_abs_path(paths[1]), paths.str()
-	}
-}
-
-fn test_vup_recognizes_tinycc_paths_aliases_and_default_records() ! {
-	$if windows {
-		return
-	}
-	root, home, tool, bin_dir := vup_report_fixture()!
-	previous := os.getenv_opt('V3CACHE')
-	previous_dir := os.getwd()
-	os.chdir(root)!
-	os.setenv('V3CACHE', os.join_path(root, 'cache'), true)
-	defer {
-		if value := previous { os.setenv('V3CACHE', value, true) } else { os.unsetenv('V3CACHE') }
-		os.chdir(previous_dir) or {}
-		os.rmdir_all(root) or {}
-	}
-	source := os.join_path(root, 'vlib', 'crypto', 'sample', 'sample.v')
-	os.mkdir_all(os.dir(source))!
-	os.write_file(source, 'module sample\n')!
-	bundled := os.join_path(root, 'thirdparty', 'tcc', 'tcc.exe')
-	os.mkdir_all(os.dir(bundled))!
-	write_executable(bundled, '#!/bin/sh\nexit 0\n')!
-	alias := os.join_path(bin_dir, 'compiler-alias')
-	os.symlink(bundled, alias)!
-	write_executable(os.join_path(bin_dir, 'cc'), '#!/bin/sh\nexit 0\n')!
-	renamed := os.join_path(bin_dir, 'my-tcc')
-	write_executable(renamed, '#!/bin/sh\nexit 0\n')!
-	copied := os.join_path(bin_dir, 'backend-copy')
-	write_executable(copied, '#!/bin/sh\necho "Tiny C Compiler 0.9.27"\n')!
-	wrapper := os.join_path(bin_dir, 'compiler-wrapper')
-	probes := os.join_path(root, 'version_probes')
-	write_executable(wrapper, '#!/bin/sh\necho probe >> ' + os.quoted_path(probes) +
-		'\necho "tcc version 0.9.27"\n')!
-	other := os.join_path(bin_dir, 'other-compiler')
-	write_executable(other, '#!/bin/sh\necho "clang version 19.1.7"\n' +
-		'echo "InstalledDir: /opt/tinycc-tcc version-compatible-sdk/bin"\n')!
-	relative := os.path_rel(os.getwd(), bundled)!
-	variants := [['-cc', 'tinyc'], ['-cc', bundled], ['-cc', alias], ['-cc', relative], []string{},
-		['-cc', os.join_path(bin_dir, 'cc')], ['-cc'], ['-cc', renamed], ['-cc', copied],
-		['-cc', wrapper], ['-cc', wrapper, '-prod'], ['-cc', other]]
-	for index, flags in variants {
-		dir := os.join_path(cache_refresh.root_dir(root, os.join_path(root, 'v')), 'variant_${index}')
-		os.mkdir_all(dir)!
-		cache_refresh.record(dir, root, flags, false, {
-			'sample': [source]
-		}, [], '', false)!
-	}
-	// A wrapper can select its backend from project-local configuration.
-	context_wrapper := os.join_path(bin_dir, 'context-compiler')
-	context_probes := os.join_path(root, 'context_probes')
-	write_executable(context_wrapper, '#!/bin/sh\npwd >> ' + os.quoted_path(context_probes) +
-		'\nif [ -f tinycc.cfg ]; then echo "tcc version 0.9.27"; else echo "clang version 18"; fi\n')!
-	for context in ['tinycc_project', 'clang_project'] {
-		project := os.join_path(root, context)
-		os.mkdir_all(project)!
-		if context == 'tinycc_project' { os.write_file(os.join_path(project, 'tinycc.cfg'), '')! }
-		os.chdir(project)!
-		dir := os.join_path(cache_refresh.root_dir(root, os.join_path(root, 'v')), context)
-		os.mkdir_all(dir)!
-		cache_refresh.record(dir, root, ['-cc', context_wrapper], false, {
-			'sample': [source]
-		}, [cache_refresh.FlagGroup{ flags: ['-I.'], identity: 'context' }], '', false)!
-	}
-	os.chdir(root)!
-	log := os.join_path(root, 'cache_calls')
-	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
-		'case "\$*" in\n  *vup_cache_refresh_*)\n' +
-		'    printf "%s\\n" "\$*" >> ' + os.quoted_path(log) + '\n    exit 0;;\nesac\n' +
-		'echo "V 0.5.2 abcdef0"\nexit 0\n')!
-	result := run_vup(root, home, tool, bin_dir)!
-	assert result.exit_code == 0, result.output
-	calls := os.read_file(log)!.split_into_lines()
-	// The production wrapper resolves to TinyCC, so it is skipped with the other tcc+prod records.
-	assert calls.len == 8, calls.str()
-	assert calls.any(it.starts_with('-cc tinyc ')), calls.str()
-	assert calls.any(it.starts_with('-cc ${bundled} ')), calls.str()
-	assert calls.any(it.starts_with('-cc ${alias} ')), calls.str()
-	assert calls.any(it.starts_with('-cc ${relative} ')), calls.str()
-	assert calls.any(it.starts_with('-cc ${renamed} ')), calls.str()
-	assert calls.any(it.starts_with('-cc ${copied} ')), calls.str()
-	assert calls.any(it.starts_with('-cc ${wrapper} -skip-running ')), calls.str()
-	assert !calls.any(it.starts_with('-cc ${wrapper} -prod ')), calls.str()
-	assert calls.filter(it.starts_with('-cc ${context_wrapper} ')).len == 1, calls.str()
-	assert !calls.any(it.contains('-cc ${os.join_path(bin_dir, 'cc')} ')), calls.str()
-	assert !calls.any(it.contains('-cc ${other} ')), calls.str()
-	// vup probes the wrapper once for its cache selection, and the refresh filter probes the
-	// production record again before skipping it.
-	assert os.read_file(probes)!.split_into_lines() == ['probe', 'probe']
-	contexts := os.read_file(context_probes)!.split_into_lines()
-	assert contexts.len == 2, contexts.str()
-	assert os.join_path(root, 'tinycc_project') in contexts, contexts.str()
-	assert os.join_path(root, 'clang_project') in contexts, contexts.str()
-	assert !result.output.contains('> Refreshing module cache '), result.output
-	assert !result.output.contains('> Module cache refresh complete:'), result.output
-}
-
-fn test_vup_rebuilds_changed_tinycc_module_and_reuses_unrelated_module() ! {
-	$if windows {
-		return
-	}
-	compiler := os.join_path(vroot, 'v')
-	if !os.is_executable(os.join_path(vroot, 'thirdparty', 'tcc', 'tcc.exe')) { return }
-	system_cc := os.find_abs_path_of_executable('cc') or { return }
-	root, home, tool, bin_dir := vup_report_fixture()!
-	name := 'vup_module_change_${os.getpid()}'
-	modules := os.join_path(vroot, 'vlib', name)
-	defer {
-		os.rmdir_all(modules) or {}
-		os.rmdir_all(root) or {}
-	}
-	for module_name in ['changed', 'unchanged'] {
-		path := os.join_path(modules, module_name, 'value.v')
-		os.mkdir_all(os.dir(path))!
-		os.write_file(path, 'module ${module_name}\npub fn value() int { return 42 }\n')!
-	}
-	entry := os.join_path(root, 'main.v')
-	os.write_file(entry, 'import ${name}.changed as _\nimport ${name}.unchanged as _\nfn main() {}\n')!
-	cache := os.join_path(root, 'cache')
-	environment := ['env', 'VEXE=${compiler}', 'V3CACHE=${cache}', 'V_SKIP_VVMRC=1']
-	for cc in ['tcc', 'cc'] {
-		seed := os.exec([...environment, compiler, '-cc', cc, '-gc', 'none', '-skip-running', '-o',
-			os.join_path(root, 'program'), entry])
-		assert seed.exit_code == 0, seed.output
-	}
-	up := [...environment, 'PATH=${bin_dir}${os.path_delimiter}${os.getenv('PATH')}', 'HOME=${home}',
-		tool]
-	// Publish current interfaces and objects before changing just one input.
-	warm := os.exec(up)
-	assert warm.exit_code == 0, warm.output
-	os.write_file(os.join_path(modules, 'changed', 'value.v'),
-		'module changed\npub fn value() int { return 43 }\n')!
-	updated := os.exec(up)
-	assert updated.exit_code == 0, updated.output
-	assert updated.output.contains('Caching module ${name}.changed...'), updated.output
-	assert !updated.output.contains('Caching module ${name}.unchanged...'), updated.output
-	assert !updated.output.contains('-cc ${system_cc}'), updated.output
-	assert !updated.output.contains('Caching module builtin...'), updated.output
-	again := os.exec(up)
-	assert again.exit_code == 0, again.output
-	assert !again.output.contains('Caching module '), again.output
-	assert !again.output.contains('> Refreshing module cache '), again.output
-	assert !again.output.contains('> Module cache refresh complete:'), again.output
-	// Linking still sees the changed function alongside the reused object.
-	os.write_file(entry, 'import ${name}.changed\nimport ${name}.unchanged\n' +
-		'fn main() { println(changed.value()); println(unchanged.value()) }\n')!
-	result := os.exec([...environment, compiler, '-cc', 'tcc', '-gc', 'none', 'run', entry])
-	assert result.exit_code == 0, result.output
-	assert result.output.trim_space() == '43\n42', result.output
-}
-
-fn test_vup_collects_isolated_cache_for_the_compiler_instead_of_the_tool() ! {
-	$if windows {
-		return
-	}
-	root, home, tool, bin_dir := vup_report_fixture()!
-	previous := os.environ()
-	defer {
-		for name in ['V3CACHE', 'VTMP', 'V3_TEST_ISOLATE_CACHE'] {
-			if name in previous { os.setenv(name, previous[name], true) } else { os.unsetenv(name) }
+	os.chdir(project)!
+	caller_cache := os.join_path(project, '.vmodules with spaces', '.cache')
+	checkout_cache := os.join_path(root, '.vmodules with spaces', '.cache')
+	for options in [[]string{}, ['-skip_current']] {
+		for cache in [caller_cache, checkout_cache] {
+			os.mkdir_all(cache)!
+			os.write_file(os.join_path(cache, 'stale'), 'cached object')!
 		}
+		result := os.exec(['env', '-u', 'VCACHE', 'PATH=${bin_dir}', 'HOME=${home}',
+			'XDG_CACHE_HOME=' + os.join_path(home, '.cache'), 'VEXE=' + os.join_path(root, 'v'),
+			'VMODULES=.vmodules with spaces${os.path_delimiter}.other modules',
+			'VTMP=' + os.join_path(root, 'tmp'), 'V3CACHE=' + os.join_path(root, 'v3cache'),
+			'VTOOLS_CACHE_DIR=' + os.join_path(root, 'tools'), tool, ...options])
+		assert result.exit_code == 0, result.output
+		assert !os.exists(os.join_path(caller_cache, 'stale')), result.output
+		assert os.read_file(os.join_path(checkout_cache, 'stale'))! == 'cached object'
+		assert result.output.contains('V cache folder ${caller_cache} was wiped.'), result.output
+	}
+}
+
+fn test_vup_reports_real_cache_filesystem_failures() ! {
+	$if windows {
+		return
+	}
+	root, home, tool, bin_dir := vup_report_fixture()!
+	locked := os.join_path(root, 'cache', 'locked')
+	defer {
+		os.chmod(locked, 0o700) or {}
 		os.rmdir_all(root) or {}
 	}
-	os.unsetenv('V3CACHE')
-	os.setenv('VTMP', os.join_path(root, 'tmp'), true)
-	os.setenv('V3_TEST_ISOLATE_CACHE', '1', true)
-	compiler := os.join_path(root, 'v')
-	cache := cache_refresh.root_dir(root, compiler)
-	assert cache != cache_refresh.root_dir(root, tool)
-	source := os.join_path(root, 'vlib', 'crypto', 'sample', 'sample.v')
-	os.mkdir_all(os.dir(source))!
-	os.write_file(source, 'module sample\n')!
-	dir := os.join_path(cache, 'config')
-	os.mkdir_all(dir)!
-	cache_refresh.record(dir, root, ['-cc', 'tcc'], false, {
-		'sample': [source]
-	}, [], '', false)!
-	for name in ['cc', 'clang', 'gcc', 'tcc'] {
-		write_executable(os.join_path(bin_dir, name), '#!/bin/sh\nexit 0\n')!
+	wipe_tool := os.join_path(root, 'vwipe-cache')
+	build := os.exec([vexe, '-o', wipe_tool, os.join_path(vroot, 'cmd', 'tools', 'vwipe-cache.v')])
+	assert build.exit_code == 0, build.output
+	// Exercise both the compiler's built-in command and the standalone tool.
+	for cleanup in [vexe, wipe_tool] {
+		write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
+			'if [ "\$1" = "wipe-cache" ]; then exec ' + os.quoted_path(cleanup) + ' wipe-cache; fi\n' +
+			'echo "V 0.5.2 abcdef0"\nexit 0\n')!
+		for operation in ['remove', 'create'] {
+			if operation == 'remove' && os.getuid() == 0 { continue }
+			cache := if operation == 'remove' {
+				os.mkdir_all(locked)!
+				os.write_file(os.join_path(locked, 'object.o'), 'cached object')!
+				os.chmod(locked, 0o500)!
+				os.dir(locked)
+			} else {
+				blocker := os.join_path(root, 'not_a_directory')
+				os.write_file(blocker, 'a file cannot contain a cache directory')!
+				os.join_path(blocker, 'cache')
+			}
+			for options in [[]string{}, ['-skip_current']] {
+				result := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}',
+					'XDG_CACHE_HOME=' + os.join_path(home, '.cache'),
+					'VEXE=' + os.join_path(root, 'v'), 'VCACHE=${cache}',
+					'VTMP=' + os.join_path(root, 'tmp'), 'V3CACHE=' + os.join_path(root, 'v3cache'),
+					'VTOOLS_CACHE_DIR=' + os.join_path(root, 'tools'), tool, ...options])
+				assert result.exit_code != 0, result.output
+				assert result.output.contains('could not ${operation} V cache folder ${cache}:'), result.output
+				assert result.output.contains('v up: wiping caches failed'), result.output
+				assert !result.output.contains('V cache folder ${cache} was wiped.'), result.output
+			}
+			if operation == 'remove' {
+				assert os.read_file(os.join_path(locked, 'object.o'))! == 'cached object'
+				os.chmod(locked, 0o700)!
+			}
+		}
 	}
-	write_executable(compiler, '#!/bin/sh\n' +
-		'case "\$*" in\n  *vup_cache_refresh_*)\n' +
-		'    echo "Caching module crypto.sample..."\n    exit 0;;\nesac\n' +
+}
+
+fn test_vup_requests_deferred_windows_cleanup_only_after_success() ! {
+	$if windows {
+		return
+	}
+	root, home, _, bin_dir := vup_report_fixture()!
+	defer { os.rmdir_all(root) or {} }
+	// Exercise the Windows finish path on this host; the cross-generation test
+	// separately checks that the unmodified Windows source compiles.
+	source := os.read_file(os.join_path(vroot, 'cmd', 'tools', 'vup.v'))!
+	assert source.count('defer_cleanup := $if windows {') == 1
+	modified := source.replace('defer_cleanup := $if windows {', 'defer_cleanup := $if !windows {')
+	file := os.join_path(root, 'vup_deferred.v')
+	os.write_file(file, modified)!
+	tool := os.join_path(root, 'vup_deferred')
+	build := os.exec([vexe, '-o', tool, file])
+	assert build.exit_code == 0, build.output
+	install(root, os.join_path(home, '.agents', 'skills'), 'alpha')!
+	rebundle(root, 'alpha')!
+	log := os.join_path(root, 'calls.log')
+	for options in [[]string{}, ['-skip_current'], ['-prod'], ['-h'], ['--unknown']] {
+		os.write_file(log, '')!
+		result := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v'),
+			'VUP_DEFER_CACHE_WIPE=1', tool, ...options])
+		expected := if '-h' in options {
+			0
+		} else if '--unknown' in options {
+			1
+		} else {
+			80
+		}
+		assert result.exit_code == expected, result.output
+		calls := os.read_file(log)!
+		assert !calls.contains('wipe-cache'), calls
+		if expected == 80 {
+			assert result.output.contains('Current V version:'), result.output
+			assert result.output.contains('skills: can be refreshed: alpha'), result.output
+		} else {
+			assert calls == '', calls
+		}
+	}
+	write_executable(os.join_path(bin_dir, 'make'), '#!/bin/sh\nexit 9\n')!
+	failed := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v'),
+		'VUP_DEFER_CACHE_WIPE=1', tool])
+	assert failed.exit_code == 1, failed.output
+	assert !failed.output.contains('Current V version:') || failed.output.contains('Updating TCC *failed*.'), failed.output
+}
+
+fn test_vup_reports_cache_wipe_failures() ! {
+	$if windows {
+		return
+	}
+	root, home, tool, bin_dir := vup_report_fixture()!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
+		'if [ "\$1" = "wipe-cache" ]; then echo "cache cleanup failed" >&2; exit 9; fi\n' +
 		'echo "V 0.5.2 abcdef0"\nexit 0\n')!
-	fallback := os.join_path(root, 'v1_fallback')
-	write_executable(fallback, '#!/bin/sh\necho fallback must not refresh >&2\nexit 1\n')!
-	assert cache != cache_refresh.root_dir(root, fallback)
-	for launcher in [compiler, fallback] {
-		result := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=${launcher}', tool])
-		assert result.exit_code == 0, result.output
-		assert result.output.count('Caching module crypto.sample...') == 1, result.output
+	for options in [[]string{}, ['-skip_current']] {
+		result := run_vup(root, home, tool, bin_dir, ...options)!
+		assert result.exit_code != 0, result.output
+		assert result.output.contains('cache cleanup failed'), result.output
+		assert result.output.contains('v up: wiping caches failed'), result.output
 	}
 }
 
@@ -720,7 +620,7 @@ fn test_vup_checks_primary_compiler_when_built_by_v1_fallback() ! {
 	bin_dir := os.join_path(test_root, 'bin')
 	os.mkdir_all(bin_dir)!
 	log_file := os.join_path(test_root, 'compiler.log')
-	write_executable(os.join_path(test_root, 'v'), '#!/bin/sh\n' + 'printf "%s\\n" "\$*" >> ${os.quoted_path(log_file)}\n' + 'if [ "\$1" = "version" ]; then\n' + '  echo "V 0.5.2 abcdef0"\n' + '  exit 0\n' + 'fi\n' + 'exit 1\n')!
+	write_executable(os.join_path(test_root, 'v'), '#!/bin/sh\n' + 'printf "%s\\n" "\$*" >> ${os.quoted_path(log_file)}\n' + 'if [ "\$1" = "wipe-cache" ]; then exit 0; fi\nif [ "\$1" = "version" ]; then\n' + '  echo "V 0.5.2 abcdef0"\n' + '  exit 0\n' + 'fi\n' + 'exit 1\n')!
 	write_executable(os.join_path(test_root, 'v1_fallback'), '#!/bin/sh\n' + 'printf "fallback %s\\n" "\$*" >> ${os.quoted_path(log_file)}\n' + 'exit 1\n')!
 	write_executable(os.join_path(bin_dir, 'git'), '#!/bin/sh\n' + 'if [ "\$1" = "pull" ]; then\n' + '  echo "Already up to date."\n' + 'fi\n' + 'exit 0\n')!
 	write_executable(os.join_path(bin_dir, 'make'), '#!/bin/sh\nexit 0\n')!
@@ -733,7 +633,7 @@ fn test_vup_checks_primary_compiler_when_built_by_v1_fallback() ! {
 	assert result.output.contains('V is already updated.'), result.output
 	compiler_calls := os.read_file(log_file)!
 	assert !compiler_calls.contains('fallback'), compiler_calls
-	assert compiler_calls.trim_space().split_into_lines() == ['version', 'version'], compiler_calls
+	assert compiler_calls.trim_space().split_into_lines() == ['version', 'version', 'wipe-cache'], compiler_calls
 }
 
 fn test_vup_restores_missing_primary_compiler_when_built_by_v1_fallback() ! {
@@ -768,7 +668,12 @@ fn test_vup_restores_missing_primary_compiler_when_built_by_v1_fallback() ! {
 	fallback_log := os.join_path(test_root, 'fallback.log')
 	write_executable(os.join_path(test_root, 'v1_fallback'), '#!/bin/sh\n' + 'printf "%s\\n" "\$*" >> ${os.quoted_path(fallback_log)}\n' + 'if [ "\$1" = "version" ]; then\n' + '  echo "V 0.5.2 abcdef0"\n' + '  exit 0\n' + 'fi\n' + 'exit 1\n')!
 	write_executable(os.join_path(bin_dir, 'git'), '#!/bin/sh\n' + 'if [ "\$1" = "pull" ]; then\n' + '  echo "Already up to date."\n' + 'fi\n' + 'exit 0\n')!
-	write_executable(os.join_path(bin_dir, 'make'), '#!/bin/sh\n' + 'printf "make:%s\\n" "\$*" >> ${os.quoted_path(make_log)}\n' + 'exit 0\n')!
+	write_executable(os.join_path(bin_dir, 'make'), '#!/bin/sh\n' +
+		'printf "make:%s\\n" "\$*" >> ${os.quoted_path(make_log)}\n' +
+		'if [ "\$#" = "0" ]; then\n' +
+		'  printf "#!/bin/sh\\necho V 0.5.2 abcdef0\\nexit 0\\n" > ' +
+		os.quoted_path(os.join_path(test_root, 'v')) + '\n' +
+		'  chmod +x ' + os.quoted_path(os.join_path(test_root, 'v')) + '\nfi\nexit 0\n')!
 	write_executable(os.join_path(bin_dir, 'gmake'), '#!/bin/sh\n' + 'printf "gmake:%s\\n" "\$*" >> ${os.quoted_path(make_log)}\n' + 'exit 0\n')!
 
 	path := '${bin_dir}:${os.getenv('PATH')}'

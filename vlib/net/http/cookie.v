@@ -13,6 +13,7 @@ pub mut:
 	value       string
 	path        string    // optional
 	domain      string    // optional
+	host_only   bool      // whether cookie is host-only (no Domain attribute)
 	expires     time.Time // optional
 	raw_expires string    // for reading cookies only. optional.
 	// max_age=0 means no 'Max-Age' attribute specified.

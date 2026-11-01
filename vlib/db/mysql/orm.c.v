@@ -581,9 +581,9 @@ fn (db DB) convert_query_data_to_primitives(table string, data orm.QueryData) ![
 
 	for i, primitive in data.data {
 		field := data.fields[i % data.fields.len]
-		if primitive.type_name() == 'time.Time' {
+		if primitive is time.Time {
 			if column_type_map[field] in ['datetime', 'timestamp'] {
-				converted_data << orm.Primitive((primitive as time.Time).str())
+				converted_data << orm.Primitive(primitive.str())
 			} else {
 				converted_data << primitive
 			}

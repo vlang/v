@@ -400,6 +400,40 @@ pub fn fastc_flag_is_native_input(flag string) bool {
 		|| flag.ends_with('.dylib') || flag.ends_with('.so') || flag.contains('.so.'))
 }
 
+// fastc_deduplicate_native_files keeps shared helper definitions out of the link twice.
+fn fastc_deduplicate_native_files(flags []string) []string {
+	if flags.len < 2 {
+		return flags
+	}
+	mut result := []string{cap: flags.len}
+	mut seen := map[string]bool{}
+	mut operand := false
+	for flag in flags {
+		if operand {
+			result << flag
+			operand = false
+			continue
+		}
+		if flag in ['-I', '-L', '-F', '-D', '-U', '-x', '-include', '-imacros', '-isystem', '-iquote',
+			'-idirafter', '-iprefix', '-iwithprefix', '-iwithprefixbefore', '-isysroot', '--sysroot',
+			'-target', '-arch', '-framework', '-weak_framework', '-Xlinker', '-force_load', '-o',
+			'-MF', '-MT', '-MQ', '-l', '-weak_library', '-rpath'] {
+			result << flag
+			operand = true
+			continue
+		}
+		if !flag.starts_with('-') && (flag.ends_with('.c') || flag.ends_with('.m')
+			|| flag.ends_with('.mm') || flag.ends_with('.o') || flag.ends_with('.obj')) {
+			if flag in seen {
+				continue
+			}
+			seen[flag] = true
+		}
+		result << flag
+	}
+	return result
+}
+
 // fastc_flag_is_skippable reports whether a `#flag` payload only affects native
 // compilation or linking, so the parser can leave it to the TinyCC driver.
 fn fastc_flag_is_skippable(flag string) bool {

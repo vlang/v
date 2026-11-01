@@ -2,6 +2,19 @@
 
 `io` provides common interfaces for buffered reading/writing of data.
 
+## Discarding output
+
+`Discard` implements `Writer` by accepting every byte without storing data. Writes never
+fail and return the input length, including zero for an empty input. Copy `io.discard`
+to a mutable local, or construct `io.Discard{}`, when a writer is required.
+
+```v
+import io
+
+mut sink := io.discard
+assert sink.write('ignored'.bytes())! == 7
+```
+
 ## ByteBuffer
 
 `new_byte_buffer(capacity)` creates a growable cursor-based buffer. `put_u8`,
@@ -32,3 +45,19 @@ newline delimiter and handles CRLF and a final line without a newline.
 Iteration ends with `none` at EOF or any read error. The iterator uses the original reader,
 which must remain valid until iteration finishes.
 `Seeker` describes `seek(position, os.SeekMode)!`; `os.File` implements it.
+
+## Writing strings
+
+`write_string(mut writer, text)!` writes a string through a `Writer`. It calls `write`
+once and returns the writer's byte count or error, including a short count without
+retrying. Counts refer to UTF-8 bytes, not Unicode characters. Empty strings are passed
+to the writer too.
+
+```v
+import io
+import strings
+
+mut buffer := strings.new_builder(16)
+assert io.write_string(mut buffer, 'hello')! == 5
+assert buffer.str() == 'hello'
+```

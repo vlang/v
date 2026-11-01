@@ -1,5 +1,48 @@
 import os
 
+fn test_vc_compat_matches_the_native_memory_file_qualifier() ! {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'vc_compat_memory_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'snapshot with spaces.c')
+	executable := os.join_path(root, 'snapshot')
+	script := os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat.sh')
+	filter := os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat.awk')
+	cc := os.getenv_opt('CC') or { 'cc' }
+	embedded := 'const char *embedded = "int v3_linux_memory_file(char* name);";\n'
+	main := 'int main(void) { return v3_linux_memory_file("vc") != 118 || embedded[0] != 105; }\n'
+	for definition_const in [false, true] {
+		for prototype_const in [false, true] {
+			// Only the historical const-definition/non-const-prototype pair is
+			// broken. The opposite mismatch is not a supported snapshot shape.
+			if !definition_const && prototype_const {
+				continue
+			}
+			definition_type := if definition_const { 'const char*' } else { 'char*' }
+			prototype_type := if prototype_const { 'const char*' } else { 'char*' }
+			text := 'static int v3_linux_memory_file(${definition_type} name) { return name[0]; }\nint v3_linux_memory_file(${prototype_type} name);\n' +
+				embedded + main
+			os.write_file(source, text)!
+			original := os.exec([cc, '-std=c99', '-fsyntax-only', source])
+			assert (original.exit_code == 0) == (definition_const == prototype_const), original.output
+			filtered := os.exec(['awk', '-f', filter, source])
+			assert filtered.exit_code == 0, filtered.output
+			assert filtered.output.contains(embedded), filtered.output
+			if definition_const == prototype_const {
+				assert filtered.output == text
+			}
+			checked := os.exec(['sh', script, source, cc, '-std=c99', '-Werror', '-o', executable])
+			assert checked.exit_code == 0, checked.output
+			ran := os.exec([executable])
+			assert ran.exit_code == 0, ran.output
+			assert os.read_file(source)! == text
+		}
+	}
+}
+
 fn test_vc_compat_preserves_linux_prctl_and_skips_it_elsewhere() {
 	$if windows {
 		return

@@ -1538,8 +1538,19 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 		transformed_base
 	}
 	t.drain_pending(mut prelude)
-	init_base := t.assoc_mapped_base_init(base, base_type, assoc_type, mut prelude) or { base }
-	prelude << t.make_decl_assign_typed(tmp_name, init_base, assoc_type)
+	if init_base := t.assoc_mapped_base_init(base, base_type, assoc_type, mut prelude) {
+		// Every target field is copied or supplied explicitly. Do not evaluate
+		// defaults that the following assignments would overwrite.
+		prelude << t.make_staging_value_decl(tmp_name, assoc_type)
+		init := t.a.nodes[int(init_base)]
+		for i in 0 .. init.children_count {
+			field := t.a.child_node(&init, i)
+			prelude << t.make_assign(t.make_selector(t.make_ident(tmp_name), field.value, field.typ),
+				t.a.child(field, 0))
+		}
+	} else {
+		prelude << t.make_decl_assign_typed(tmp_name, base, assoc_type)
+	}
 
 	for i in 1 .. node.children_count {
 		field_id := t.a.child(&node, i)
@@ -1622,9 +1633,6 @@ fn (mut t Transformer) assoc_mapped_base_init(base flat.NodeId, base_type_id u32
 		}
 		value := t.make_selector(t.make_ident(source_name), source_field.name, source_field_type_source_id)
 		field_ids << t.make_named_field_init(field.name, value, target_type_source_id)
-	}
-	if field_ids.len == 0 {
-		return none
 	}
 	start := t.a.children.len
 	for field_id in field_ids {

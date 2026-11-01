@@ -3157,6 +3157,29 @@ fn (tc &TypeChecker) multi_interface_match_common_interface(subject Interface, b
 }
 
 fn (tc &TypeChecker) resolve_interface_match_pattern(pattern_id u32) ?u32 {
+	clean_id := trimmed_source_type_id(pattern_id)
+	syntax := flat.source_type_syntax(clean_id)
+	if flat.source_type_shape(clean_id).has(.pointer) {
+		base_id := tc.resolve_interface_match_pattern(syntax.raw_base())?
+		return flat.source_type_composition_one(.pointer, base_id)
+	}
+	if syntax.application_valid() {
+		// A concrete specialization is not necessarily registered as a type symbol
+		// until monomorphization. Resolve its declared base before qualifying it.
+		base_id := tc.resolve_interface_match_pattern(syntax.application_base())?
+		base_type_id := tc.parse_type(base_id).source_type_id()
+		kind, params := tc.generic_decl_kind_and_params(base_type_id)
+		args := syntax.application_args()
+		if kind == '' || params.len != args.len {
+			return none
+		}
+		for arg in args {
+			if !tc.interface_pattern_argument_known(arg) {
+				return none
+			}
+		}
+		return flat.source_type_composition_two(.concat, base_type_id, tc.qualified_generic_suffix(args))
+	}
 	for candidate_id in tc.interface_match_pattern_candidates(pattern_id) {
 		if interface_pattern_is_collapsed_container_id(candidate_id) {
 			container_type := tc.parse_type(candidate_id)
@@ -3176,6 +3199,53 @@ fn (tc &TypeChecker) resolve_interface_match_pattern(pattern_id u32) ?u32 {
 		}
 	}
 	return none
+}
+
+fn (tc &TypeChecker) interface_pattern_argument_known(type_id u32) bool {
+	clean_id := trimmed_source_type_id(type_id)
+	if tc.active_generic_param_id(clean_id) {
+		return true
+	}
+	shape := flat.source_type_shape(clean_id)
+	syntax := flat.source_type_syntax(clean_id)
+	if shape.has(.pointer) || shape.has(.optional) || shape.has(.array_type) || shape.has(.variadic)
+		|| shape.has(.shared_type) || shape.has(.atomic_type) || shape.has(.mutable_type)
+		|| shape.has(.channel_type) || shape.has(.thread_type) {
+		return tc.interface_pattern_argument_known(syntax.raw_base())
+	}
+	if shape.has(.map_type) {
+		return syntax.bracket_closed()
+			&& tc.interface_pattern_argument_known(syntax.bracket_inner())
+			&& tc.interface_pattern_argument_known(syntax.bracket_suffix())
+	}
+	if shape.has(.leading_bracket) {
+		return syntax.bracket_closed()
+			&& tc.interface_pattern_argument_known(syntax.bracket_suffix())
+	}
+	if syntax.tuple_like() {
+		parts := syntax.tuple_components()
+		if parts.len == 0 {
+			return false
+		}
+		for part in parts {
+			if part == 0 || !tc.interface_pattern_argument_known(part) {
+				return false
+			}
+		}
+		return true
+	}
+	if shape.has(.function_compact) || shape.has(.function_spaced) {
+		for param in syntax.function_params() {
+			if !tc.interface_pattern_argument_known(flat.source_type_syntax(param).parameter_type()) {
+				return false
+			}
+		}
+		result := syntax.function_result()
+		// Bare `!` and `?` are valid payload-free function results.
+		return result == 0 || result in [checker_source_option_marker, checker_source_result_marker]
+			|| tc.interface_pattern_argument_known(result)
+	}
+	return tc.resolve_interface_match_pattern(clean_id) != none
 }
 
 fn interface_pattern_is_collapsed_container_id(pattern_id u32) bool {
@@ -4319,6 +4389,37 @@ fn (tc &TypeChecker) struct_init_is_synthetic_embed_file(id flat.NodeId) bool {
 	return first >= 0 && source[first + 1..].starts_with('embed_file')
 }
 
+// struct_init_private_type_id checks each C-alias target from the module that
+// declared the alias, so a public wrapper can expose its private implementation.
+fn (mut tc TypeChecker) struct_init_private_type_id(typ Type, base Struct) ?u32 {
+	if typ !is Alias || !flat.source_type_syntax(base.source_type_id()).c_qualified() {
+		if _ := tc.private_type_declaration(base.source_type_id()) {
+			return base.source_type_id()
+		}
+		return none
+	}
+	saved_module := tc.cur_module
+	defer { tc.cur_module = saved_module }
+	mut current := typ
+	for current is Alias {
+		mut alias_id := current.source_type_id()
+		if current.name() !in tc.declaration_visibility {
+			alias_id = strip_generic_args_id(alias_id)
+		}
+		if _ := tc.private_type_declaration(alias_id) {
+			return alias_id
+		}
+		if visibility := tc.declaration_visibility[flat.source_type_name(alias_id)] {
+			tc.cur_module = visibility.module_name
+		}
+		current = *current.base_type
+	}
+	if _ := tc.private_type_declaration(base.source_type_id()) {
+		return base.source_type_id()
+	}
+	return none
+}
+
 // check_struct_init validates check struct init state for types.
 fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	if flat.source_type_syntax(node.source_value_id()).named_variant() && !tc.check_named_variant_init(id, node) {
@@ -4612,10 +4713,15 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		// and stays subject to the check, as does a type a user happened to call
 		// `AnonStruct_...`: neither is a name the parser made up for a literal.
 		if init_type_id != checker_tail_source_struct && !tc.a.contextual_anon_struct_types[init_type_id] {
-			if _ := tc.private_type_declaration(init_struct.source_type_id()) {
+			if visibility_type_id := tc.struct_init_private_type_id(init_type, init_struct) {
+				private_name := if visibility_type_id == init_struct.source_type_id() {
+					init_struct.name()
+				} else {
+					flat.source_type_name(visibility_type_id)
+				}
 				inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
-				tc.record_error_at(.unknown_type, 'struct `${init_struct.name()}` was declared as private to module `${init_struct.name().all_before_last('.')}`, so it can not be used inside module `${inside_module}`', id, node.pos)
-				tc.record_error_at(.unknown_type, 'type `${init_struct.name()}` is private', id, node.pos)
+				tc.record_error_at(.unknown_type, 'struct `${private_name}` was declared as private to module `${private_name.all_before_last('.')}`, so it can not be used inside module `${inside_module}`', id, node.pos)
+				tc.record_error_at(.unknown_type, 'type `${private_name}` is private', id, node.pos)
 			}
 		}
 		if deprecation := tc.deprecated_symbols[init_struct.name()] {
@@ -4701,7 +4807,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 			spread_fields := tc.struct_fields_for_init(spread_struct.source_type_id())
 			mut compatible := true
 			for target_field in fields {
-				if supplied_fields[target_field.name] {
+				if supplied_fields[target_field.name]
+					|| tc.struct_spread_embed_fully_supplied(init_name_id, target_field, supplied_fields, []u32{}) {
 					continue
 				}
 				mut found := false
@@ -6153,6 +6260,56 @@ fn (tc &TypeChecker) fn_assignment_mismatch_details(expected_id u32, expected_al
 		]
 	}
 	return []string{}
+}
+
+// struct_spread_embed_fully_supplied recognizes an embedded field whose members
+// are all initialized explicitly through their promoted names. Direct fields at
+// each enclosing level shadow those names, and earlier embeddings own duplicate
+// promoted names, just as in struct-literal lowering. Every remaining member must
+// still be supplied rather than silently defaulted by a cross-struct spread.
+fn (tc &TypeChecker) struct_spread_embed_fully_supplied(owner_id u32, field StructField, supplied map[string]bool, path_ids []u32) bool {
+	embedded_type := embedded_field_type(field) or { return false }
+	embedded_struct := struct_type_from_type(unwrap_pointer(embedded_type)) or { return false }
+	embedded_id := embedded_struct.source_type_id()
+	if embedded_id == 0 || embedded_id in path_ids {
+		return false
+	}
+	embedded_fields := tc.struct_fields_for_init(embedded_id)
+	if embedded_fields.len == 0 {
+		return false
+	}
+	mut promoted := supplied.clone()
+	for owner_field in tc.struct_fields_for_init(owner_id) {
+		promoted.delete(owner_field.name)
+		if owner_embed := embedded_field_type(owner_field) {
+			owner_embed_id := method_type_name(unwrap_pointer(owner_embed))
+			owner_base_id := flat.source_type_syntax(owner_embed_id).generic_base()
+			promoted.delete(flat.source_type_name(flat.source_type_syntax(owner_base_id).unqualified()))
+		}
+	}
+	for owner_field in tc.struct_fields_for_init(owner_id) {
+		if owner_field.name == field.name {
+			break
+		}
+		previous_type := embedded_field_type(owner_field) or { continue }
+		previous_struct := struct_type_from_type(unwrap_pointer(previous_type)) or { continue }
+		for name, _ in supplied {
+			if tc.struct_field_type(previous_struct.source_type_id(), name) != none {
+				promoted.delete(name)
+			}
+		}
+	}
+	mut next_path := path_ids.clone()
+	next_path << embedded_id
+	for embedded_field in embedded_fields {
+		if promoted[embedded_field.name] {
+			continue
+		}
+		if !tc.struct_spread_embed_fully_supplied(embedded_id, embedded_field, promoted, next_path) {
+			return false
+		}
+	}
+	return true
 }
 
 // supplied_fields_for_embeds returns the names in `supplied` that can still refer to a

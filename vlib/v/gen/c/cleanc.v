@@ -24615,8 +24615,8 @@ fn (mut g FlatGen) collect_fixed_array_typedef(typ types.Type, source_module str
 		g.tc.cur_module = source_module
 		name := g.fixed_array_c_type(typ)
 		g.tc.cur_module = old_module
-		existing_priority := if name in needed {
-			fixed_array_typedef_module_priority(needed[name].module)
+		existing_priority := if existing := needed[name] {
+			fixed_array_typedef_module_priority(existing.module)
 		} else {
 			-1
 		}

@@ -6374,7 +6374,10 @@ fn (mut g FlatGen) gen_assoc_tmp_decl_by_fields(node flat.Node, tmp string, ct s
 		}
 	}
 	if copied.len == 0 {
-		return false
+		g.write('(void)(')
+		g.gen_expr(g.a.child(&node, 0))
+		g.write('); ${ct} ${tmp} = (${ct}){0};')
+		return true
 	}
 	source_ct := g.tc.c_type(source_type)
 	source_tmp := g.tmp_name()
