@@ -96,7 +96,7 @@ pub mut:
 	// Shared state of the worker pool (nil between scans).
 	pool &Scan_pool = unsafe { nil }
 	// Top-level paths enqueued by scan_begin, in argument order; assembly
-	// walks them in reverse (the old engine used a LIFO stack).
+	// appends each root's Item and its subtree in that same order.
 	roots []Root_entry
 }
 
@@ -113,7 +113,7 @@ fn path_sep() string {
 struct Scan_job {
 mut:
 	is_zip bool
-	id     int    // folder id (folder jobs only)
+	id     int    // unique job id (folder map key / zip temp-file discriminator)
 	path   string // directory or archive to scan
 }
 
@@ -127,14 +127,15 @@ mut:
 	id    int // folder id given to its job
 }
 
-// Root_entry remembers where a top-level path landed in the flat list so the
-// assembly pass can attach its children at the right place.
+// Root_entry remembers a top-level path and the Item it contributes to the
+// flat list. The Item is appended during assembly (not in scan_begin) so
+// every root lands right before its own subtree, in argument order, exactly
+// like the original recursive scan did.
 struct Root_entry {
 mut:
-	is_zip     bool
-	id         int    // folder id (folder roots)
-	path       string // archive path (zip roots)
-	flat_index int    // index of the root's own Item in Item_list.lst
+	is_zip bool
+	id     int  // folder id (folder roots)
+	item   Item // the root's own Item, appended during assembly
 }
 
 // Job_result is the pure output of one job. Workers fill one on their stack
@@ -165,6 +166,7 @@ struct Scan_pool {
 mut:
 	mtx       sync.Mutex
 	queue     []Scan_job // pending jobs (LIFO: better cache locality)
+	cancelled bool       // set by scan_abort(): workers stop early and drop results
 	in_flight int        // enqueued but not yet completed jobs
 	next_id   int        // folder id generator
 	done      int        // progress: entries processed so far
@@ -213,7 +215,10 @@ fn (mut p Scan_pool) add_progress(done_inc int, total_inc int) {
 	p.mtx.unlock()
 }
 
-fn (mut p Scan_pool) new_folder_id() int {
+// new_job_id hands out a unique id for any scan job (folder or zip). Zip
+// jobs use it as the temp-file discriminator in `ensure_ascii_zip`, so two
+// workers must never build the same temp path in the same clock tick.
+fn (mut p Scan_pool) new_job_id() int {
 	p.mtx.lock()
 	id := p.next_id
 	p.next_id += 1
@@ -351,16 +356,17 @@ fn (mut il Item_list) scan_begin(args []string) {
 			continue
 		}
 		if os.is_dir(x) {
-			il.lst << Item{
-				path:            x
-				name:            x
-				container_index: il.lst.len
-				i_type:          .folder
-				mtime:           os.file_last_mod_unix(x)
-			}
-			id := p.new_folder_id()
+			id := p.new_job_id()
 			p.push_job(Scan_job{ id: id, path: x.clone() })
-			il.roots << Root_entry{ id: id, flat_index: il.lst.len - 1 }
+			il.roots << Root_entry{
+				id: id
+				item: Item{
+					path:   x
+					name:   x
+					i_type: .folder
+					mtime:  os.file_last_mod_unix(x)
+				}
+			}
 			p.done += 1
 			continue
 		}
@@ -373,19 +379,16 @@ fn (mut il Item_list) scan_begin(args []string) {
 		if ext == .zip {
 			item.i_type = .zip
 			item.mtime = os.file_last_mod_unix(x)
-			il.lst << item
-			p.push_job(Scan_job{ is_zip: true, path: x.clone() })
-			il.roots << Root_entry{ is_zip: true, path: x.clone(), flat_index: il.lst.len - 1 }
+			p.push_job(Scan_job{ is_zip: true, id: p.new_job_id(), path: x.clone() })
+			il.roots << Root_entry{ is_zip: true, item: item }
 			p.done += 1
 			continue
 		}
 		if is_image(ext) {
-			il.n_item += 1
-			item.n_item = il.n_item
 			item.i_type = ext
 			item.drawable = true
 			item.mtime = os.file_last_mod_unix(x)
-			il.lst << item
+			il.roots << Root_entry{ item: item }
 		} else {
 			// A top-level path the viewer cannot show (files found inside
 			// scanned folders are skipped silently: that is normal).
@@ -404,14 +407,19 @@ fn (mut il Item_list) scan_begin(args []string) {
 }
 
 // scan_worker is one pool worker: it runs jobs until the queue empties with
-// no work in flight, publishes each result to the main thread, then signals
-// its own exit. It never touches Item_list or any UI state.
+// no work in flight (or the scan is cancelled), publishes each result to the
+// main thread, then signals its own exit. It never touches Item_list or any
+// UI state.
 fn scan_worker(p &Scan_pool) {
 	mut mp := &Scan_pool(p)
 	for {
 		mut has_job := false
 		mut job := Scan_job{}
 		mp.mtx.lock()
+		if mp.cancelled {
+			mp.mtx.unlock()
+			break
+		}
 		if mp.queue.len > 0 {
 			job = mp.queue.pop()
 			has_job = true
@@ -432,6 +440,27 @@ fn scan_worker(p &Scan_pool) {
 		mp.job_finished()
 	}
 	mp.exits <- 1
+}
+
+// publish_result hands a finished job's result to the main thread without
+// ever blocking forever: if the scan was cancelled while the job ran, the
+// result is dropped (its scratch arrays freed) and false is returned. The
+// aborting thread keeps draining `results` until every worker has exited,
+// so a full channel only delays a worker until that drain catches up.
+fn publish_result(mut p &Scan_pool, mut res Job_result) bool {
+	for {
+		p.mtx.lock()
+		cancelled := p.cancelled
+		p.mtx.unlock()
+		if cancelled {
+			free_job_result(mut res)
+			return false
+		}
+		if p.results.try_push(mut res) == .success {
+			return true
+		}
+		time.sleep(1 * time.millisecond)
+	}
 }
 
 // run_folder_job lists one directory and classifies its entries. It only
@@ -467,7 +496,7 @@ fn run_folder_job(mut p &Scan_pool, job Scan_job) {
 			continue
 		}
 		if st.get_filetype() == .directory {
-			id := p.new_folder_id()
+			id := p.new_job_id()
 			res.subdirs << Sub_dir{
 				name:  x
 				path:  pt
@@ -486,7 +515,7 @@ fn run_folder_job(mut p &Scan_pool, job Scan_job) {
 				i_type:               .zip
 				mtime:                st.mtime
 			}
-			p.push_job(Scan_job{ is_zip: true, path: pt })
+			p.push_job(Scan_job{ is_zip: true, id: p.new_job_id(), path: pt })
 		} else if is_image(ext) {
 			res.items << Item{
 				path:                 job.path
@@ -499,18 +528,18 @@ fn run_folder_job(mut p &Scan_pool, job Scan_job) {
 		}
 	}
 	p.add_progress(entries.len - flushed, 0)
-	p.results <- res
+	publish_result(mut p, mut res)
 }
 
 // run_zip_job scans one archive and hands the result to the main thread.
 // A corrupt or unreadable archive is a warning, never an abort. Progress
 // is reported inside scan_zip_items while the entries are enumerated.
 fn run_zip_job(mut p &Scan_pool, job Scan_job) {
-	zr := scan_zip_items(mut p, job.path, job.id) or {
+	mut zr := scan_zip_items(mut p, job.path, job.id) or {
 		p.add_scan_warning('zip `${job.path}`: ${err}')
 		return
 	}
-	p.results <- zr
+	publish_result(mut p, mut zr)
 }
 
 // scan_step collects the results the workers have completed so far and
@@ -562,9 +591,27 @@ fn (mut il Item_list) scan_finish() {
 	}
 	il.assemble_scan(mut p)
 	for w in p.warnings {
-		il.scan_warnings << w
+		// Clone: `p.warnings.free()` below deep-frees the pool's strings, so a
+		// shallow-copied header would dangle in the retained report.
+		il.scan_warnings << w.clone()
 	}
 	il.scan_done = p.total
+	release_pool(mut p)
+	il.pool = unsafe { nil }
+	for i in 0 .. il.lst.len {
+		il.lst[i].orig_index = i
+	}
+	println('Items: ${il.n_item}')
+	il.get_next_item(1)
+	il.loaded = true
+	il.scanning = false
+}
+
+// release_pool frees a finished scan's pool and everything it owns: the
+// results' scratch arrays, the maps, the channels and the pool itself. The
+// per-entry strings leak exactly like the old recursive scan did under
+// `-gc none`; the Items that survived assembly already copied them.
+fn release_pool(mut p &Scan_pool) {
 	for _, mut fr in p.folders {
 		free_job_result(mut fr)
 	}
@@ -578,14 +625,65 @@ fn (mut il Item_list) scan_finish() {
 	unsafe { p.queue.free() }
 	unsafe { p.warnings.free() }
 	unsafe { p.free() }
-	il.pool = unsafe { nil }
-	for i in 0 .. il.lst.len {
-		il.lst[i].orig_index = i
+}
+
+// scan_abort cancels a running scan and empties the list, so a new scan can
+// start on the same Item_list. Dropping a new path set during a scan must
+// not leave the old workers traversing the tree and publishing into a
+// channel nobody drains: they are told to stop, their queued results are
+// drained and freed, and the main thread joins every worker before the pool
+// is released. Safe to call at any time (idle, scanning, or finished).
+fn (mut il Item_list) scan_abort() {
+	if il.pool != unsafe { nil } {
+		mut p := &Scan_pool(il.pool)
+		p.mtx.lock()
+		p.cancelled = true
+		n := p.n_workers
+		p.mtx.unlock()
+		// A worker notices the flag between jobs and before publishing; one
+		// that is mid-job still finishes it (a listing or an archive parse
+		// cannot be interrupted) and then drops its result. Drain whatever
+		// the workers publish meanwhile and wait for every exit signal.
+		mut exited  := 0
+		mut code    := 0
+		mut r       := Job_result{}
+		for exited < n {
+			for p.results.try_pop(mut r) == .success {
+				free_job_result(mut r)
+			}
+			if p.exits.try_pop(mut code) == .success {
+				exited += 1
+			} else {
+				time.sleep(1 * time.millisecond)
+			}
+		}
+		// Whatever the last workers sent just before exiting.
+		for p.results.try_pop(mut r) == .success {
+			free_job_result(mut r)
+		}
+		release_pool(mut p)
+		il.pool = unsafe { nil }
 	}
-	println('Items: ${il.n_item}')
-	il.get_next_item(1)
-	il.loaded = true
+	il.reset()
+}
+
+// reset empties the item list and all scan state (the pool must already be
+// released). Every owned allocation is freed for the `-gc none` target; the
+// per-entry Item strings leak exactly like the old recursive scan did.
+fn (mut il Item_list) reset() {
+	unsafe { il.lst.free() }
+	unsafe { il.roots.free() }
+	il.lst = []Item{}
+	il.roots = []Root_entry{}
+	unsafe { il.scan_warnings.free() } // deep-free: the report owns its strings
+	il.scan_warnings = []string{}
+	il.item_index = -1
+	il.n_item = 0
+	il.loaded = false
 	il.scanning = false
+	il.scan_done = 0
+	il.scan_total = 0
+	il.last_error = ''
 }
 
 // free_job_result releases one finished job's scratch arrays. Only the array
@@ -598,18 +696,24 @@ fn free_job_result(mut r Job_result) {
 }
 
 // assemble_scan flattens the per-job results into the final list. The roots
-// are walked in reverse enqueue order (the old engine's job stack popped
-// the last top-level path first).
+// are walked in argument order and each root's own Item is appended right
+// before its subtree, exactly like the original recursive scan did.
 fn (mut il Item_list) assemble_scan(mut p &Scan_pool) {
-	mut ri := il.roots.len - 1
-	for ri >= 0 {
-		r := il.roots[ri]
+	for r in il.roots {
+		mut item := r.item
 		if r.is_zip {
-			il.append_zip_entries(mut p, r.path, r.flat_index)
+			il.lst << item
+			il.append_zip_entries(mut p, item.name, il.lst.len - 1)
+		} else if item.i_type == .folder {
+			item.container_index = il.lst.len // a folder is its own container
+			il.lst << item
+			il.assemble_folder(mut p, r.id, il.lst.len - 1)
 		} else {
-			il.assemble_folder(mut p, r.id, r.flat_index)
+			// A direct image file passed on the command line / dropped.
+			il.n_item += 1
+			item.n_item = il.n_item
+			il.lst << item
 		}
-		ri--
 	}
 	unsafe { il.roots.free() }
 }

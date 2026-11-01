@@ -26,6 +26,12 @@ import os
 import time
 import compress.szip
 
+// max_image_bytes caps the uncompressed size the viewer will allocate for a
+// single archive entry. A lazy open trusts the central directory, and a
+// corrupt archive can declare gigabytes over a tiny payload, so the bound is
+// checked before any allocation happens.
+const max_image_bytes = u64(512 * 1024 * 1024)
+
 // is_ascii reports whether every byte of s is < 128.
 fn is_ascii(s string) bool {
 	for b in s.bytes() {
@@ -146,6 +152,12 @@ fn scan_zip_entry(mut zp &szip.Zip, index int, path string, mut res Job_result) 
 	}
 	ext := get_extension(name)
 	if is_image(ext) {
+		if size > max_image_bytes {
+			// The central directory claims more than any viewable image can
+			// need: treat the entry as corrupt instead of listing an item
+			// whose load would try a huge allocation.
+			return error('implausible uncompressed size ${size}')
+		}
 		res.items << Item{
 			need_extract:         true
 			path:                 path
@@ -177,6 +189,13 @@ fn (mut app App) load_current_bytes() ![]u8 {
 	// than the one currently open. `item.path` is already ASCII-safe (set by
 	// scan_zip), so miniz can open it on Windows. The lazy open decodes only
 	// the entry that is actually read, not the whole archive.
+	//
+	// The size bound is checked before allocating: the lazy open validated
+	// nothing, and a corrupt central directory can declare a huge entry over
+	// a small payload (int() also guards the 32-bit truncation).
+	if item.size > max_image_bytes || int(item.size) < 0 {
+		return error('zip entry `${item.name}`: implausible size ${item.size}')
+	}
 	if app.zip_index != item.container_index {
 		if app.zip_index >= 0 {
 			app.zip.close()

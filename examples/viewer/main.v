@@ -657,6 +657,16 @@ $if windows {
 	fn C.SetWindowPos(hwnd voidptr, hwnd_insert_after voidptr, x int, y int, cx int, cy int, flags u32) int
 }
 
+// X11: sokol_app.h already includes X11/Xlib.h in the generated C and gg
+// links libX11, so these declarations need no extra setup (same pattern as
+// the Win32 declarations above; XOpenDisplay repeats gg's declaration
+// exactly, which V's cross-module deduplication requires).
+$if linux {
+	fn C.XOpenDisplay(voidptr) voidptr
+	fn C.XCloseDisplay(voidptr) int
+	fn C.XGetDefault(voidptr, charptr, charptr) charptr
+}
+
 // monitor_rect returns the pixel rect (x, y, w, h) of the monitor the app
 // should open on: the monitor under the mouse cursor, falling back to the
 // primary display. Returns zeros where the query is unavailable.
@@ -693,12 +703,51 @@ fn monitor_rect() (int, int, int, int) {
 // startup_window_size returns the initial window size: one third of the
 // monitor width and one half of its height. Falls back to the historical
 // 1024x768 where the monitor query is unavailable.
+//
+// On X11 the monitor query is in physical pixels while sokol_app scales the
+// requested window size by Xft.dpi / 96, so the fraction has to be converted
+// back to logical units first (see x11_window_scale).
 fn startup_window_size() (int, int) {
 	_, _, mw, mh := monitor_rect()
 	if mw <= 0 || mh <= 0 {
 		return 1024, 768
 	}
-	return mw / 3, mh / 2
+	mut w := mw / 3
+	mut h := mh / 2
+	$if linux {
+		mut scale := x11_window_scale()
+		if scale < 0.01 {
+			scale = 1.0
+		}
+		w = int(f64(mw) / 3.0 / scale)
+		h = int(f64(mh) / 2.0 / scale)
+	}
+	return w, h
+}
+
+// x11_window_scale returns the factor sokol_app multiplies the requested
+// window size by on X11: it reads the `Xft.dpi` X resource and divides it by
+// 96, while gg.screen_size() reports the physical XRandR resolution. On a
+// 3840x2160 desktop at 200% scaling (Xft.dpi 192) the unconverted size would
+// therefore come out twice as large as intended. Returns 1.0 when no display
+// or no `Xft.dpi` resource is available, matching sokol's own fallback.
+$if linux {
+	fn x11_window_scale() f64 {
+		display := C.XOpenDisplay(0)
+		if display == unsafe { nil } {
+			return 1.0
+		}
+		mut scale := 1.0
+		res := C.XGetDefault(display, 'Xft', 'dpi')
+		if unsafe { !res.is_nil() } {
+			dpi := unsafe { res.vstring() }.int()
+			if dpi > 0 {
+				scale = f64(dpi) / 96.0
+			}
+		}
+		C.XCloseDisplay(display)
+		return scale
+	}
 }
 
 // window_settings_path returns the file that remembers the window placement
@@ -984,7 +1033,8 @@ fn my_event(mut ev gg.Event, mut app App) {
 	}
 
 	// drag & drop: restart the scan with the dropped paths (dropping while a
-	// scan is running cancels the previous one). The list is then filled
+	// scan is running cancels the previous one: its workers are stopped and
+	// joined before the new scan starts). The list is then filled
 	// incrementally by app_update, with the progress bar visible.
 	if ev.typ == .files_dropped {
 		if app.zip_index >= 0 {
@@ -997,7 +1047,7 @@ fn my_event(mut ev gg.Event, mut app App) {
 		for i in 0 .. n {
 			paths << sapp.get_dropped_file_path(i)
 		}
-		app.item_list = Item_list{}
+		app.item_list.scan_abort()
 		app.item_list.scan_begin(paths)
 	}
 }
