@@ -39,6 +39,15 @@ vls
 # Single-file compile check (agent-friendly)
 vls check path/to/file.v
 
+# Hover at a position
+vls hover path/to/file.v 10 5
+
+# Go to definition at a position
+vls definition path/to/file.v 10 5
+
+# Find references at a position
+vls references path/to/file.v 10 5
+
 # MCP mode (experimental): speaks MCP over stdio
 vls --mcp
 
