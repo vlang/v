@@ -9749,10 +9749,16 @@ fn (mut b Builder) build_decl_assign(node flat.Node) {
 			TypeID(0)
 		}
 		if declared_storage_type > 0 {
-			rhs_val = b.coerce_value_for_type(rhs_val, declared_storage_type)
-			if b.is_int_type(declared_storage_type) || b.is_float_type(declared_storage_type)
-				|| b.is_pointer_type(declared_storage_type) {
-				rhs_type = declared_storage_type
+			mut is_channel := false
+			if declared_type_source_id != 0 && flat.source_type_shape(declared_type_source_id).has(.channel_type) {
+				is_channel = true
+			}
+			if !is_channel {
+				rhs_val = b.coerce_value_for_type(rhs_val, declared_storage_type)
+				if b.is_int_type(declared_storage_type) || b.is_float_type(declared_storage_type)
+					|| b.is_pointer_type(declared_storage_type) {
+					rhs_type = declared_storage_type
+				}
 			}
 		}
 		if int(rhs_id) >= 0 && b.a.nodes[int(rhs_id)].kind == .nil_literal && lhs.typ != 0 {
@@ -16189,6 +16195,8 @@ fn (b &Builder) should_pass_ident_addr_for_ptr_param(addr ValueID, param_type Ty
 }
 
 fn (mut b Builder) build_selector(node flat.Node) ValueID {
+	if node.value_text() == 'readsem' {
+	}
 	if name := b.source_selector_name(node) {
 		if addr := b.vars[name] {
 			return b.emit1(.load, b.deref_type(addr), addr)
@@ -17583,6 +17591,8 @@ fn (mut b Builder) get_field_ptr(base_addr ValueID, field_name string) ValueID {
 		}
 		typ := b.m.type_store.types[owner]
 		index := typ.field_names.index(storage_field)
+		if storage_field == 'readsem' {
+		}
 		if index >= 0 && index < typ.fields.len {
 			offset := b.m.struct_field_offset(owner, index)
 			constant := b.m.get_or_add_const(b.i64_type, offset.str())
