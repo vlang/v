@@ -627,3 +627,100 @@ fn test_comptime_const_inferred_array_evaluates_elements_once_in_order() {
 		assert tc.comptime_const_values['result']!.integer == expected, body
 	}
 }
+
+fn test_comptime_const_rejects_overloaded_scalar_operators() {
+	declarations := 'type Count = int\ntype Word = string\ntype Flag = bool\nstruct Cell {\nmut:\nvalue Count\n}\nfn (a Count) + (b Count) Count { return Count(int(a) + int(b) + 10) }\nfn (a Count) < (b Count) bool { return int(a) > int(b) }\nfn (a Count) == (b Count) bool { return int(a) != int(b) }\nfn (a Word) + (b Word) Word { return Word(string(a) + "!" + string(b)) }\nfn (a Word) == (b Word) bool { return string(a) != string(b) }\nfn (a Flag) == (b Flag) bool { return bool(a) != bool(b) }'
+	for body in [
+		'return int(Count(1) + Count(2))',
+		'return int(Count(1) + 2)',
+		'mut a := Count(1) a += Count(2) return int(a)',
+		'mut a := Cell{value: Count(1)} a.value += Count(2) return int(a.value)',
+		'mut a := [Count(1)]! a[0] += Count(2) return int(a[0])',
+		'if Count(1) < Count(2) { return 1 } return 0',
+		'if Count(1) > Count(2) { return 1 } return 0',
+		'if Count(1) <= Count(2) { return 1 } return 0',
+		'if Count(1) >= Count(2) { return 1 } return 0',
+		'if Count(1) == Count(2) { return 1 } return 0',
+		'if Count(1) != Count(2) { return 1 } return 0',
+		'return (Word("a") + Word("b")).len',
+		'if Word("a") == Word("b") { return 1 } return 0',
+		'if Flag(true) == Flag(false) { return 1 } return 0',
+	] {
+		tc := comptime_const_checker('${declarations}\nconst bad = compute()\n@[comptime]\nfn compute() int { ${body} }\nfn main() { _ = bad }')
+		assert tc.errors.any(it.msg.contains('cannot evaluate const `bad`') && it.msg.contains('overloaded operator')), '${body}: ${tc.errors}'
+	}
+}
+
+fn test_comptime_const_keeps_builtin_alias_operators() {
+	declarations := 'type Count = int\ntype Derived = Count\ntype Plain = int\ntype Flag = bool\nfn (a Count) + (b Count) Count { return Count(int(a) + int(b) + 10) }\nfn (a Count) - (b Count) Count { return Count(int(a) - int(b) + 10) }\nfn (a Flag) == (b Flag) bool { return bool(a) != bool(b) }'
+	for body, expected in {
+		'return int(1 + Count(2))':                              3
+		'return int(Count(1)) + int(Count(2))':                  3
+		'return int(Derived(1) + Derived(2))':                   3
+		'mut a := Plain(1) a += Plain(2) return int(a)':         3
+		'return int(-Count(2))':                                 -2
+		'mut a := Count(1) a++ return int(a)':                   2
+		'if !Flag(true) { return 1 } return 0':                  0
+		'if false { return int(Count(1) + Count(2)) } return 7': 7
+	} {
+		tc := comptime_const_checker('${declarations}\nconst n = compute()\n@[comptime]\nfn compute() int { ${body} }\nfn main() { _ = n }')
+		assert tc.errors.len == 0, '${body}: ${tc.errors}'
+		assert tc.comptime_const_values['n']!.integer == expected, body
+	}
+}
+
+fn test_comptime_const_resolves_mutation_targets_once() {
+	declarations := 'struct Cell {\nmut:\nvalue int\nvalues [3]int\n}\nstruct Box {\nmut:\ncells [3]Cell\n}'
+	for body, expected in {
+		'mut a := [3]int{} mut i := 0 a[if true { i += 1 i } else { 0 }] += 7 return a[1] * 100 + a[2] * 10 + i':                                             701
+		'mut a := [3]int{} mut i := 0 a[if true { i += 1 i } else { 0 }]++ return a[1] * 100 + a[2] * 10 + i':                                                101
+		'mut a := [3][3]int{} mut i := 0 a[if true { i += 1 i } else { 0 }][1] = 7 return a[1][1] * 100 + a[2][1] * 10 + i':                                  701
+		'mut a := [3]int{} a[if true { a[0] = 5 1 } else { 0 }] = 7 return a[0] * 10 + a[1]':                                                                 57
+		'mut a := [2]int{} value := a[if true { a[0] = 5 0 } else { 1 }] return value':                                                                       5
+		'mut a := [3]Cell{} mut i := 0 a[if true { i += 1 i } else { 0 }].value += 7 return a[1].value * 100 + i':                                            701
+		'mut a := Box{} mut i := 0 a.cells[if true { i += 1 i } else { 0 }].values[if true { i += 1 i } else { 0 }]++ return a.cells[1].values[2] * 100 + i': 102
+		'mut a := [3]Cell{} copy := a mut i := 0 a[if true { i += 1 i } else { 0 }].value += 7 return copy[1].value * 1000 + a[1].value * 100 + i':           701
+		'mut a := [u8(0), 255, 0]! mut i := 0 a[if true { i += 1 i } else { 0 }]++ return int(a[1]) * 100 + i':                                               1
+		'mut a := [3]int{} mut i := 1 a[i] += if true { i = 2 a[0] = 5 7 } else { 0 } return a[0] * 1000 + a[1] * 100 + a[2] * 10 + i':                       5072
+	} {
+		tc := comptime_const_checker('${declarations}\nconst n = compute()\n@[comptime]\nfn compute() int { ${body} }\nfn main() { _ = n }')
+		assert tc.errors.len == 0, '${body}: ${tc.errors}'
+		assert tc.comptime_const_values['n']!.integer == expected, body
+	}
+}
+
+fn test_comptime_const_rejects_dependent_conditional_index_ordering() {
+	for body in [
+		'mut a := [3]int{} mut i := 0 a[if true { i += 1 i } else { 0 }] += i return a[1]',
+		'mut a := [3]int{} mut order := 0 a[if true { order = order * 10 + 1 1 } else { 0 }] = if true { order = order * 10 + 2 7 } else { 0 } return order',
+		'mut a := [3]int{} mut order := 0 a[if true { order = order * 10 + 1 1 } else { 0 }] += if true { order = order * 10 + 2 7 } else { 0 } return order',
+		'mut a := [2][2]int{} mut i := 0 a[i][if true { i = 1 0 } else { 0 }]++ return a[1][0]',
+		'a := [[10, 11]!, [20, 21]!]! mut i := 0 return a[i][if true { i = 1 0 } else { 0 }]',
+		'mut i := 0 return table[i][if true { i = 1 0 } else { 0 }]',
+		'mut i := 0 return table[$if linux { i } $else { 0 }][if true { i = 1 0 } else { 0 }]',
+		'mut a := [3]int{} a[1 + if true { 0 } else { 1 }] += 7 return a[1]',
+		'mut a := [2]int{} return Values(a)[if true { a[0] = 5 0 } else { 1 }]',
+	] {
+		tc := comptime_const_checker('type Values = [2]int\nconst table = [[10, 11]!, [20, 21]!]!\nconst bad = compute()\n@[comptime]\nfn compute() int { ${body} }\nfn main() { _ = bad }')
+		assert tc.errors.any(it.msg.contains('cannot evaluate const `bad`') && it.msg.contains('conditional index ordering')), '${body}: ${tc.errors}'
+	}
+}
+
+fn test_comptime_const_conditional_index_workarounds_and_bounds() {
+	for body, expected in {
+		'return table[if true { 1 } else { 0 }][0]':                                                                           20
+		'mut a := [3]int{} mut i := 0 index := if true { i += 1 i } else { 0 } a[index] += i return a[1] * 10 + i':            11
+		'mut a := [3]int{} mut i := 0 a[(if true { i += 1 i } else { 0 })] += amount return a[1] * 10 + i':                    71
+		'a := [[10, 11]!, [20, 21]!]! mut i := 0 first := i second := if true { i = 1 0 } else { 0 } return a[first][second]': 10
+		'mut a := [3]int{} mut i := 0 if false { a[if true { i += 1 i } else { 0 }] += i } return 7':                          7
+		'mut a := [3]int{} a[1] += if true { a[1] = 5 7 } else { 0 } return a[1]':                                             12
+	} {
+		tc := comptime_const_checker('const amount = 7\nconst table = [[10, 11]!, [20, 21]!]!\nconst n = compute()\n@[comptime]\nfn compute() int { ${body} }\nfn main() { _ = n }')
+		assert tc.errors.len == 0, '${body}: ${tc.errors}'
+		assert tc.comptime_const_values['n']!.integer == expected, body
+	}
+	for update in ['= 7', '+= 7', '++'] {
+		tc := comptime_const_checker('const bad = compute()\n@[comptime]\nfn compute() int { mut a := [3]int{} mut i := 2 a[if true { i += 1 i } else { 0 }] ${update} return a[0] }\nfn main() { _ = bad }')
+		assert tc.errors.any(it.msg.contains('cannot evaluate const `bad`') && it.msg.contains('array index out of bounds')), tc.errors.str()
+	}
+}

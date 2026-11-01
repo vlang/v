@@ -163,3 +163,78 @@ fn test_cli_comptime_rejects_translated_evaluation_but_keeps_runtime_calls() ! {
 	assert runtime.exit_code == 0, runtime.output
 	assert runtime.output.trim_space() == '-250\n-250', runtime.output
 }
+
+fn test_cli_comptime_rejects_operator_methods_but_keeps_runtime_calls() ! {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_operator_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	program := 'type Count = int\nfn (a Count) + (b Count) Count { return Count(int(a) + int(b) + 10) }\n@[comptime]\nfn compute() int { return int(Count(1) + Count(2)) }\nconst result = compute()\nfn main() { println(result) println(compute()) }'
+	args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none', '-cc',
+		'tcc']
+	os.write_file(source, program)!
+	required := os.exec([...args, '-o', os.join_path(root, 'required'), source])
+	assert required.exit_code != 0, required.output
+	assert required.output.contains('cannot evaluate const `result`'), required.output
+	assert required.output.contains('overloaded operator'), required.output
+	runtime_program := program.replace('const result = compute()\n', '').replace('fn main() {',
+		'fn main() { result := compute()\n')
+	os.write_file(source, runtime_program)!
+	runtime := os.exec([...args, 'run', source])
+	assert runtime.exit_code == 0, runtime.output
+	assert runtime.output.trim_space() == '13\n13', runtime.output
+	plain := program.replace('fn (a Count) + (b Count) Count { return Count(int(a) + int(b) + 10) }\n', '')
+	os.write_file(source, plain)!
+	builtin := os.exec([...args, 'run', source])
+	assert builtin.exit_code == 0, builtin.output
+	assert builtin.output.trim_space() == '3\n3', builtin.output
+}
+
+fn test_cli_comptime_mutation_targets_emit_static_values() ! {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_lvalue_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main.c')
+	os.write_file(source, 'const answer = compute()\n@[comptime]\nfn compute() u32 { mut a := [3]int{} mut i := 0 a[if true { i += 1 i } else { 0 }] += 7 return u32(a[1] * 100 + i) }\nfn main() { assert answer == 701 }')!
+	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none',
+		'-o', output, source])
+	assert result.exit_code == 0, result.output
+	generated := os.read_file(output)!
+	assert generated.contains('#define main__answer ((u32)(701LL))'), generated.all_after('compute(void);')
+	assert !generated.contains('main__answer = compute('), generated.all_after('compute(void);')
+}
+
+fn test_cli_comptime_conditional_index_ordering_is_explicit() ! {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_index_order_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	suffix := if os.user_os() == 'windows' { '.exe' } else { '' }
+	program := 'const result = compute()\n@[comptime]\nfn compute() int { mut a := [3]int{} mut order := 0 a[if true { order = order * 10 + 1 1 } else { 0 }] = if true { order = order * 10 + 2 7 } else { 0 } return order * 100 + a[1] }\nfn main() { println(result) println(compute()) }'
+	args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none', '-cc',
+		'tcc']
+	os.write_file(source, program)!
+	required := os.exec([...args, '-o', os.join_path(root, 'required'), source])
+	assert required.exit_code != 0, required.output
+	assert required.output.contains('cannot evaluate const `result`'), required.output
+	assert required.output.contains('conditional index ordering'), required.output
+	runtime_program := program.replace('const result = compute()\n', '').replace('fn main() {',
+		'fn main() { result := compute()\n')
+	os.write_file(source, runtime_program)!
+	runtime_path := os.join_path(root, 'runtime${suffix}')
+	runtime_build := os.exec([...args, '-o', runtime_path, source])
+	assert runtime_build.exit_code == 0, runtime_build.output
+	runtime := os.exec([runtime_path])
+	assert runtime.exit_code == 0, runtime.output
+	assert runtime.output.trim_space() == '1207\n1207', runtime.output
+	workaround := program.replace('a[if true { order = order * 10 + 1 1 } else { 0 }] =',
+		'index := if true { order = order * 10 + 1 1 } else { 0 }\na[index] =')
+	os.write_file(source, workaround)!
+	explicit_path := os.join_path(root, 'explicit_order${suffix}')
+	explicit_build := os.exec([...args, '-o', explicit_path, source])
+	assert explicit_build.exit_code == 0, explicit_build.output
+	explicit_order := os.exec([explicit_path])
+	assert explicit_order.exit_code == 0, explicit_order.output
+	assert explicit_order.output.trim_space() == '1207\n1207', explicit_order.output
+}

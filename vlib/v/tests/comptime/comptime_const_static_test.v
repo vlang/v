@@ -434,6 +434,132 @@ fn test_comptime_literal_shifts_and_array_evaluation_order() {
 	assert computed_array_narrowing == const_array_narrowing()
 }
 
+struct ConstMutationCell {
+mut:
+	value  int
+	values [3]int
+}
+
+struct ConstMutationBox {
+mut:
+	cells [3]ConstMutationCell
+}
+
+const computed_mutation_targets = const_mutation_targets()
+
+@[comptime]
+fn const_mutation_targets() [11]int {
+	mut compound := [3]int{}
+	mut index := 0
+	compound[if true {
+		index += 1
+		index
+	} else {
+		0
+	}] += 7
+	compound_result := compound[1] * 100 + compound[2] * 10 + index
+	mut postfix := [3]int{}
+	index = 0
+	postfix[if true {
+		index += 1
+		index
+	} else {
+		0
+	}]++
+	postfix_result := postfix[1] * 100 + postfix[2] * 10 + index
+	mut decrement := [0, 7, 0]!
+	index = 0
+	decrement[if true {
+		index += 1
+		index
+	} else {
+		0
+	}]--
+	decrement_result := decrement[1] * 100 + index
+	mut nested := [3][3]int{}
+	index = 0
+	nested[if true {
+		index += 1
+		index
+	} else {
+		0
+	}][1] = 7
+	nested_result := nested[1][1] * 100 + nested[2][1] * 10 + index
+	mut same_root := [3]int{}
+	same_root[if true {
+		same_root[0] = 5
+		1
+	} else {
+		0
+	}] = 7
+	same_root_result := same_root[0] * 10 + same_root[1]
+	mut read_root := [2]int{}
+	read_result := read_root[if true {
+		read_root[0] = 5
+		0
+	} else {
+		1
+	}]
+	mut cells := [3]ConstMutationCell{}
+	copy := cells
+	index = 0
+	cells[if true {
+		index += 1
+		index
+	} else {
+		0
+	}].value += 7
+	copy_result := copy[1].value * 1000 + cells[1].value * 100 + index
+	mut box := ConstMutationBox{}
+	index = 0
+	box.cells[if true {
+		index += 1
+		index
+	} else {
+		0
+	}].values[if true {
+		index += 1
+		index
+	} else {
+		0
+	}]++
+	nested_postfix_result := box.cells[1].values[2] * 100 + index
+	mut narrow := [u8(0), 255, 0]!
+	index = 0
+	narrow[if true {
+		index += 1
+		index
+	} else {
+		0
+	}]++
+	narrow_result := int(narrow[1]) * 100 + index
+	mut live_index := [3]int{}
+	index = 1
+	live_index[index] += if true {
+		index = 2
+		live_index[0] = 5
+		7
+	} else {
+		0
+	}
+	live_index_result := live_index[0] * 1000 + live_index[1] * 100 + live_index[2] * 10 + index
+	mut current_leaf := [3]int{}
+	current_leaf[1] += if true {
+		current_leaf[1] = 5
+		7
+	} else {
+		0
+	}
+	return [compound_result, postfix_result, decrement_result, nested_result, same_root_result,
+		copy_result, nested_postfix_result, narrow_result, live_index_result, read_result,
+		current_leaf[1]]!
+}
+
+fn test_comptime_mutation_targets_match_runtime() {
+	assert computed_mutation_targets == [701, 101, 601, 701, 57, 701, 102, 1, 5072, 5, 12]!
+	assert computed_mutation_targets == const_mutation_targets()
+}
+
 fn test_comptime_constants_match_runtime() {
 	assert imported_pair == evaluated.make_pair(10)
 	assert imported_pair == [u32(10), 17]!

@@ -34,6 +34,23 @@ struct ConstEvalShiftCount {
 	value int
 }
 
+struct ConstEvalAccessStep {
+	kind  flat.NodeKind
+	index i64
+	field string
+}
+
+struct ConstEvalLvalue {
+	scope int
+	name  string
+	path  []ConstEvalAccessStep
+}
+
+struct ConstEvalOrdering {
+	branch      bool
+	independent bool
+}
+
 // Integer lookup creates an evaluator only when it encounters required evaluation.
 // Symbolic array bounds borrow the current evaluator, including its guards.
 struct ConstIntContext {
@@ -520,6 +537,13 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 			return value
 		}
 		.index {
+			root, path := e.access_path(id)!
+			e.check_access_order(root, path, flat.empty_node)!
+			root_node := e.tc.a.node(root)
+			if root_node.kind == .ident && e.local(root_node.value) != none {
+				target := e.resolve_lvalue(root, path)!
+				return e.lvalue_value(target)
+			}
 			container := e.expr(e.tc.a.child(node, 0))!
 			index := e.expr(e.tc.a.child(node, 1))!
 			if unalias_type(container.typ) !is ArrayFixed {
@@ -811,6 +835,16 @@ fn (e &ConstEval) binary_result_type(id flat.NodeId, op flat.Op, left Type, righ
 }
 
 fn (mut e ConstEval) binary(id flat.NodeId, op flat.Op, left ComptimeConstValue, right ComptimeConstValue) !ComptimeConstValue {
+	method_op := match op {
+		.ne { flat.Op.eq }
+		.gt, .ge, .le { flat.Op.lt }
+		else { op }
+	}
+	if (left.typ is Alias || left.typ is Struct)
+		&& e.tc.type_has_infix_operator_method(left.typ, method_op)
+		&& e.tc.infix_operator_return_type(method_op, left.typ, right.typ) != none {
+		return error('overloaded operator `${op}` is not supported')
+	}
 	if unalias_type(left.typ) is String && unalias_type(right.typ) is String {
 		if op == .plus {
 			e.reserve(left.text.len + right.text.len)!
@@ -1108,12 +1142,17 @@ fn (mut e ConstEval) stmt(id flat.NodeId) !ConstEvalFlow {
 		.decl_assign, .assign, .index_assign, .selector_assign {
 			if node.children_count != 2 { return error('only single assignments are supported') }
 			lhs := e.tc.a.child(node, 0)
-			mut value := e.expr(e.tc.a.child(node, 1))!
+			rhs := e.tc.a.child(node, 1)
 			if node.kind == .decl_assign {
+				value := e.expr(rhs)!
 				name := e.tc.a.node(lhs)
 				if name.kind != .ident { return error('unsupported local declaration') }
 				e.bind(name.value, e.convert(value, value.typ)!)
 			} else {
+				root, path := e.access_path(lhs)!
+				e.check_access_order(root, path, rhs)!
+				mut value := e.expr(rhs)!
+				target := e.resolve_lvalue(root, path)!
 				if node.op != .assign {
 					op := match node.op {
 						.plus_assign { flat.Op.plus }
@@ -1128,19 +1167,22 @@ fn (mut e ConstEval) stmt(id flat.NodeId) !ConstEvalFlow {
 						.right_shift_assign { flat.Op.right_shift }
 						else { return error('unsupported compound assignment') }
 					}
-					value = e.binary(lhs, op, e.expr(lhs)!, value)!
+					value = e.binary(lhs, op, e.lvalue_value(target)!, value)!
 				}
-				e.assign(lhs, value)!
+				e.assign(target, value)!
 			}
 			return ConstEvalFlow{}
 		}
 		.postfix {
 			lhs := e.tc.a.child(node, 0)
-			old := e.expr(lhs)!
+			root, path := e.access_path(lhs)!
+			e.check_access_order(root, path, flat.empty_node)!
+			target := e.resolve_lvalue(root, path)!
+			old := e.lvalue_value(target)!
 			if !unalias_type(old.typ).is_integer() || node.op !in [.inc, .dec] {
 				return error('unsupported postfix operation')
 			}
-			e.assign(lhs, ComptimeConstValue{
+			e.assign(target, ComptimeConstValue{
 				typ:     old.typ
 				integer: if node.op == .inc {
 					i64(u64(old.integer) + 1)
@@ -1222,34 +1264,144 @@ fn (mut e ConstEval) stmt(id flat.NodeId) !ConstEvalFlow {
 	}
 }
 
-fn (mut e ConstEval) assign(id flat.NodeId, value ComptimeConstValue) ! {
-	node := e.tc.a.node(id)
-	if node.kind == .ident {
-		for i := e.scopes.len - 1; i >= 0; i-- {
-			if old := e.scopes[i][node.value] {
-				e.scopes[i][node.value] = e.convert(value, old.typ)!
-				return
-			}
+fn (mut e ConstEval) access_path(id flat.NodeId) !(flat.NodeId, []flat.NodeId) {
+	mut current := id
+	mut path := []flat.NodeId{}
+	mut depth := e.depth
+	for {
+		e.tick()!
+		depth++
+		if depth > 128 { return error('evaluation exceeded recursion limit') }
+		node := e.tc.a.node(current)
+		if node.kind == .paren {
+			current = e.tc.a.child(node, 0)
+		} else if node.kind in [.index, .selector] {
+			path << current
+			current = e.tc.a.child(node, 0)
+		} else {
+			return current, path.reverse()
 		}
-		return error('cannot mutate runtime state `${node.value}`')
 	}
-	if node.kind in [.index, .selector] {
-		base_id := e.tc.a.child(node, 0)
-		mut base := e.expr(base_id)!
-		if node.kind == .index {
-			index := e.expr(e.tc.a.child(node, 1))!.integer
-			if index < 0 || index >= base.elements.len { return error('array index out of bounds') }
+	return current, path
+}
+
+// Classify ordering without executing a branch or reading a local's value.
+fn (mut e ConstEval) expression_ordering(id flat.NodeId) !ConstEvalOrdering {
+	e.tick()!
+	e.depth++
+	defer { e.depth-- }
+	if e.depth > 128 { return error('evaluation exceeded recursion limit') }
+	node := e.tc.a.node(id)
+	if node.kind in [.if_expr, .comptime_if] { return ConstEvalOrdering{ branch: true } }
+	mut independent := node.kind !in [.call, .decl_assign, .assign, .index_assign, .selector_assign]
+		&& !(node.kind == .ident && e.local(node.value) != none)
+		&& !(node.kind == .postfix && node.op in [.inc, .dec])
+	mut branch := false
+	for i in 0 .. node.children_count {
+		child := e.expression_ordering(e.tc.a.child(node, i))!
+		branch = branch || child.branch
+		independent = independent && child.independent
+	}
+	return ConstEvalOrdering{ branch: branch, independent: independent }
+}
+
+fn (mut e ConstEval) check_access_order(root flat.NodeId, path []flat.NodeId, rhs flat.NodeId) ! {
+	mut has_branch := false
+	mut independent_indices := true
+	for id in path {
+		node := e.tc.a.node(id)
+		if node.kind != .index { continue }
+		index := e.tc.a.child(node, 1)
+		ordering := e.expression_ordering(index)!
+		has_branch = has_branch || ordering.branch
+		mut whole := index
+		for e.tc.a.node(whole).kind == .paren { whole = e.tc.a.child(e.tc.a.node(whole), 0) }
+		independent_indices = independent_indices && (ordering.independent
+			|| e.tc.a.node(whole).kind == .if_expr)
+	}
+	if !has_branch { return }
+	// Transform materializes whole value conditionals, but leaves ordinary
+	// indices live. Mixed dependent expressions require staging outside this
+	// evaluator's milestone rather than an approximation of runtime ordering.
+	root_node := e.tc.a.node(root)
+	local_root := root_node.kind == .ident && e.local(root_node.value) != none
+	if !independent_indices || (!local_root && !e.expression_ordering(root)!.independent)
+		|| (rhs >= 0 && !e.expression_ordering(rhs)!.independent) {
+		return error('conditional index ordering with dependent expressions is not supported')
+	}
+}
+
+fn (mut e ConstEval) resolve_lvalue(root flat.NodeId, path []flat.NodeId) !ConstEvalLvalue {
+	node := e.tc.a.node(root)
+	if node.kind != .ident { return error('unsupported assignment target') }
+	mut scope := -1
+	for i := e.scopes.len - 1; i >= 0; i-- {
+		if node.value in e.scopes[i] {
+			scope = i
+			break
+		}
+	}
+	if scope < 0 { return error('cannot mutate runtime state `${node.value}`') }
+	mut steps := []ConstEvalAccessStep{cap: path.len}
+	for id in path {
+		e.tick()!
+		step := e.tc.a.node(id)
+		steps << ConstEvalAccessStep{
+			kind:  step.kind
+			index: if step.kind == .index { e.expr(e.tc.a.child(step, 1))!.integer } else { 0 }
+			field: step.value
+		}
+	}
+	return ConstEvalLvalue{ scope: scope, name: node.value, path: steps }
+}
+
+fn const_eval_access_value(base ComptimeConstValue, step ConstEvalAccessStep) !ComptimeConstValue {
+	if step.kind == .index {
+		if unalias_type(base.typ) !is ArrayFixed {
+			return error('only fixed-array indexing is supported')
+		}
+		if step.index < 0 || step.index >= base.elements.len {
+			return error('array index out of bounds')
+		}
+		return base.elements[int(step.index)]
+	}
+	return base.fields[step.field] or { return error('unknown struct field') }
+}
+
+fn (mut e ConstEval) lvalue_value(target ConstEvalLvalue) !ComptimeConstValue {
+	mut value := e.scopes[target.scope][target.name] or { return error('missing local value') }
+	for step in target.path {
+		e.tick()!
+		value = const_eval_access_value(value, step)!
+	}
+	return value
+}
+
+fn (mut e ConstEval) assign(target ConstEvalLvalue, value ComptimeConstValue) ! {
+	// Index expressions may update other fields in this root. Read its current
+	// value only after resolving the path, then copy containers on writeback.
+	mut old := e.scopes[target.scope][target.name] or { return error('missing local value') }
+	mut parents := []ComptimeConstValue{cap: target.path.len}
+	for step in target.path {
+		e.tick()!
+		parents << old
+		old = const_eval_access_value(old, step)!
+	}
+	mut updated := e.convert(value, old.typ)!
+	for i := target.path.len - 1; i >= 0; i-- {
+		e.tick()!
+		step := target.path[i]
+		mut base := parents[i]
+		if step.kind == .index {
 			e.reserve(base.elements.len)!
 			base = ComptimeConstValue{ ...base, elements: base.elements.clone() }
-			base.elements[int(index)] = e.convert(value, base.elements[int(index)].typ)!
+			base.elements[int(step.index)] = updated
 		} else {
-			old := base.fields[node.value] or { return error('unknown struct field') }
 			e.reserve(base.fields.len)!
 			base = ComptimeConstValue{ ...base, fields: base.fields.clone() }
-			base.fields[node.value] = e.convert(value, old.typ)!
+			base.fields[step.field] = updated
 		}
-		e.assign(base_id, base)!
-		return
+		updated = base
 	}
-	return error('unsupported assignment target')
+	e.scopes[target.scope][target.name] = updated
 }

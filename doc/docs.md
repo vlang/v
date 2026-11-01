@@ -4283,12 +4283,19 @@ structs containing those types, including aliases of supported scalar types.
 Local variables, assignments, conditionals, integer range loops,
 C-style loops, and recursive calls to other `@[comptime]` functions are supported. Struct defaults
 and embedded fields, unions, dynamic arrays, maps, floating-point values, pointers, and
-result/option values are currently unsupported. Generic functions and methods are not supported by
-this evaluator.
+result/option values are currently unsupported. Generic functions and methods, including overloaded
+operators, are not supported by this evaluator.
 In `-ownership` and `-autofree` builds, values with implicit `drop` or `free` cleanup are
 unsupported, including local values and fields nested inside other values.
 Ordinary calls to the same function outside constant expressions remain
 runtime calls. Evaluation also applies when dependencies are loaded from the module cache.
+
+Indexed reads and updates that contain value conditionals have an additional ordering restriction.
+Every index in the access must be a whole runtime `if` expression (optionally parenthesized), or an
+expression independent of helper locals, calls, and conditionals. The array must be a local value or
+an expression independent of those same operations. Assignments to these targets also require a
+right-hand side independent of helper locals, calls, and conditionals. More complex indices,
+including `$if` expressions, and array bases can be evaluated into fresh locals before the access.
 
 The checker can use a computed integer constant as a fixed-array bound. The C backend emits the
 computed value as static data, with no initializer call, allocation, or copy at startup. Integer
