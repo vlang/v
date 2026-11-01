@@ -3208,7 +3208,7 @@ fn (tc &TypeChecker) interface_pattern_argument_known(type_id u32) bool {
 	}
 	shape := flat.source_type_shape(clean_id)
 	syntax := flat.source_type_syntax(clean_id)
-	if shape.has(.pointer) || shape.has(.optional) || shape.has(.array_type)
+	if shape.has(.pointer) || shape.has(.optional) || shape.has(.array_type) || shape.has(.variadic)
 		|| shape.has(.shared_type) || shape.has(.atomic_type) || shape.has(.mutable_type)
 		|| shape.has(.channel_type) || shape.has(.thread_type) {
 		return tc.interface_pattern_argument_known(syntax.raw_base())
@@ -3240,8 +3240,10 @@ fn (tc &TypeChecker) interface_pattern_argument_known(type_id u32) bool {
 				return false
 			}
 		}
-		return syntax.function_result() == 0
-			|| tc.interface_pattern_argument_known(syntax.function_result())
+		result := syntax.function_result()
+		// Bare `!` and `?` are valid payload-free function results.
+		return result == 0 || result in [checker_source_option_marker, checker_source_result_marker]
+			|| tc.interface_pattern_argument_known(result)
 	}
 	return tc.resolve_interface_match_pattern(clean_id) != none
 }
