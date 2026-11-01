@@ -236,9 +236,10 @@ fn rasterize_tri(mut frame Frame, st &State, cmd Command, uni Uniform, vp Viewpo
 			if wsum == 0.0 {
 				continue
 			}
-			bw0 := w0 / area
-			bw1 := w1 / area
-			bw2 := w2 / area
+			// The edge weights have the opposite sign to area; normalize by their sum.
+			bw0 := w0 / wsum
+			bw1 := w1 / wsum
+			bw2 := w2 / wsum
 
 			u := v0.u * bw0 + v1.u * bw1 + v2.u * bw2
 			vv := v0.v * bw0 + v1.v * bw1 + v2.v * bw2

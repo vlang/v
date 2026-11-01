@@ -166,15 +166,18 @@ fn test_enable_instruction_counts() {
 	b.set_quiet()
 	b.enable_instruction_counts()
 	assert b.show_instructions
-	$if macos {
-		start := current_instruction_count() or { 0 }
+	if start := current_instruction_count() {
 		assert start > 0
 		assert b.last_instructions > 0
 		assert b.last_instructions <= start
 		assert b.step_instructions().ends_with(' G instructions')
 		b.step('work')
 		assert b.last_instructions >= start
-	} $else {
+	} else {
+		// Virtualized macOS runners may not expose retired instruction counters.
+		assert b.last_instructions == 0
 		assert b.step_instructions() == ''
+		b.step('work')
+		assert b.last_instructions == 0
 	}
 }

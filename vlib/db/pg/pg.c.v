@@ -191,8 +191,8 @@ pub struct C.PGnotify {
 }
 
 pub enum ConnStatusType {
-	ok                = C.CONNECTION_OK
-	bad               = C.CONNECTION_BAD
+	ok  = C.CONNECTION_OK
+	bad = C.CONNECTION_BAD
 	// Non-blocking mode only below here
 	// The existence of these should never be relied upon - they should only be used for user feedback or similar purposes.
 	started           = C.CONNECTION_STARTED // Waiting for connection to be made.

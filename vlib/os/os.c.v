@@ -1037,7 +1037,9 @@ fn normalize_windows_extended_path_prefix(path string) string {
 fn working_directory_is(path &char) bool {
 	mut named := C.stat{}
 	mut current := C.stat{}
-	return C.stat(path, &named) == 0 && C.stat(c'.', &current) == 0 && named.st_dev == current.st_dev
+	// path is a NUL-terminated C string; stat writes into the local structures.
+	return unsafe { C.stat(path, &named) } == 0 && unsafe { C.stat(c'.', &current) } == 0
+		&& named.st_dev == current.st_dev
 		&& named.st_ino == current.st_ino
 }
 
@@ -1057,7 +1059,8 @@ fn relative_path_from_cwd(fpath string, buf voidptr, size int) int {
 			// getcwd allocated the path for this call.
 			unsafe { C.free(cwd) }
 		}
-		cwd_len := int(C.strlen(&char(cwd)))
+		// getcwd returned a NUL-terminated, libc-owned string.
+		cwd_len := int(unsafe { C.strlen(&char(cwd)) })
 		// `cwd` is a C string of cwd_len bytes: reading its first byte needs no bounds
 		// that V could check.
 		if cwd_len == 0 || unsafe { cwd[0] } != `/` || cwd_len + 1 + fpath.len >= size {

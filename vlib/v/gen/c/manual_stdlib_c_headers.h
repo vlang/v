@@ -31,6 +31,13 @@ typedef int (*qsort_callback_func)(const void*, const void*);
 #ifndef _TRUNCATE
 	#define _TRUNCATE ((size_t)-1)
 #endif
+#elif defined(__vinix__) && defined(__STDC_HOSTED__) && __STDC_HOSTED__
+// Hosted Vinix utilities use the selected C compiler's libc. Let its headers
+// declare FILE, the streams and libc functions; the freestanding ABI is below.
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #elif defined(__NetBSD__)
 // NetBSD exposes stdin/stdout/stderr as macros into a single `__sF[3]`
 // array whose element size (sizeof(FILE)) depends on the platform and libc
@@ -249,14 +256,14 @@ typedef __builtin_va_list va_list;
 	#define va_copy(dest, src) __builtin_va_copy(dest, src)
 #endif
 #endif
-#if (!defined(_MSC_VER) || defined(__clang__)) && !defined(__cplusplus) && !defined(__NetBSD__) && !defined(__sun)
+#if (!defined(_MSC_VER) || defined(__clang__)) && !defined(__cplusplus) && !defined(__NetBSD__) && !defined(__sun) && !(defined(__vinix__) && defined(__STDC_HOSTED__) && __STDC_HOSTED__)
 // mingw-w64 stdio.h declares these as static __mingw_ovr inline overrides
 // when __USE_MINGW_ANSI_STDIO is on. Skip them under gcc+mingw to avoid
 // static-after-extern conflicts; clang+mingw needs them because it builds
 // with -Werror=implicit-function-declaration and does not hit the conflict.
 // NetBSD pulls these prototypes from <stdio.h>/<stdlib.h>/<string.h> via
 // the include block above to avoid `__restrict` qualifier conflicts, and
-// Solaris defers to its system headers the same way.
+// Solaris and hosted Vinix defer to their system headers the same way.
 #if !((defined(__MINGW32__) || defined(__MINGW64__)) && !defined(__clang__))
 V_CRT_LINKAGE int V_CRT_CALL vfprintf(FILE *stream, const char *format, va_list ap);
 V_CRT_LINKAGE int V_CRT_CALL vsnprintf(char *str, size_t size, const char *format, va_list ap);

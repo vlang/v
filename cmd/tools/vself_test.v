@@ -1,5 +1,4 @@
 import os
-import v.pref
 
 const vexe = @VEXE
 const vroot = os.dir(vexe)
@@ -41,6 +40,7 @@ fn main() {
 		exit(1)
 	}
 	os.chmod(output, 0o755) or { panic(err) }
+	os.write_file(output + '.manifest', 'replacement manifest') or { panic(err) }
 	println(os.args.last())
 }
 "
@@ -152,14 +152,8 @@ fn test_macos_default_self_build_compiler_selection() {
 		os.exec(['env', '-u', 'CC', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-o',
 			'/tmp/vself_macos_prealloc_test'])
 	assert default_result.exit_code == 0, default_result.output
-	default_cc := if os.uname().machine in ['arm64', 'aarch64']
-		&& !pref.host_rejects_tcc_executables() {
-		'tcc'
-	} else {
-		'cc'
-	}
 	assert !default_result.output.contains('-b fastc'), default_result.output
-	assert default_result.output.contains('-cc ${default_cc}'), default_result.output
+	assert default_result.output.contains('-cc tcc'), default_result.output
 	assert default_result.output.contains('-prealloc'), default_result.output
 	assert_vself_preserves_full_cli(default_result.output)
 	override_result :=
@@ -241,6 +235,7 @@ fn test_other_native_host_self_replacement_preserves_cli() {
 	mock_build :=
 		os.exec([vexe, '-o', isolated_vexe, mock_source])
 	assert mock_build.exit_code == 0, mock_build.output
+	os.write_file('${isolated_vexe}.manifest', 'previous manifest')!
 	vself_tool := os.join_path(root, 'vself')
 	vself_build := os.exec([vexe, '-nocache', '-d', 'vself_test_other_transition', '-o',
 		'${vself_tool}', os.join_path(vroot, 'cmd', 'tools', 'vself.v')])
@@ -254,6 +249,9 @@ fn test_other_native_host_self_replacement_preserves_cli() {
 	assert !self_result.output.contains('vlib/v/v.v'), self_result.output
 	assert os.is_executable(isolated_vexe)
 	assert os.is_executable(os.join_path(root, 'v_old'))
+	assert os.read_file('${isolated_vexe}.manifest')! == 'replacement manifest'
+	assert os.read_file(os.join_path(root, 'v_old.manifest'))! == 'previous manifest'
+	assert !os.exists(os.join_path(root, 'v2.manifest'))
 	assert !os.exists(os.join_path(root, 'v1_fallback'))
 
 	version_result :=
@@ -486,4 +484,68 @@ fn test_arm64_self_build_preserves_native_options_and_full_cli() {
 		'-o', '/tmp/vself_arm64_failed_test'])
 	assert failure.exit_code != 0, failure.output
 	assert !failure.output.contains('bootstrap fallback'), failure.output
+}
+
+fn assert_no_preprocessor_includes(code string) {
+	for line in code.split_into_lines() {
+		text := line.trim_space()
+		if text.starts_with('#') {
+			directive := text[1..].trim_left(' \t')
+			assert !directive.starts_with('include') && !directive.starts_with('import'), line
+		}
+	}
+}
+
+fn test_self_generated_compiler_c_needs_no_headers() {
+	$if !macos && !linux {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'vself_no_headers_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	compiler := os.join_path(root, 'compiler')
+	build := os.exec(['env', '-u', 'VFLAGS', '-u', 'VEXE', '-u', 'CC', '-u', 'CFLAGS', '-u', 'LDFLAGS',
+		'VTMP=${root}', vexe, '-cc', clang, '-gc', 'none', '-keepc', '-no-retry-compilation', '-o',
+		compiler, 'self'])
+	assert build.exit_code == 0, build.output
+	files := os.walk_ext(root, '.tmp.c').filter(os.file_name(it).starts_with('compiler.'))
+	assert files.len == 1, os.walk_ext(root, '.c').str()
+	code := os.read_file(files[0])!
+	assert_no_preprocessor_includes(code)
+	checked := os.exec([clang, '-std=gnu11', '-nostdinc', '-fsyntax-only', '-Wno-everything',
+		'-Wno-incompatible-function-pointer-types', '-Wno-int-conversion',
+		'-Werror=implicit-function-declaration', '-x', 'c', files[0]])
+	assert checked.exit_code == 0, checked.output
+	version := os.exec([compiler, 'version'])
+	assert version.exit_code == 0 && version.output.starts_with('V '), version.output
+}
+
+fn test_track_heap_guards_need_no_header() {
+	$if !macos && !linux {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'vself_heap_guards_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	generated := os.join_path(root, 'main.c')
+	os.write_file(source, 'fn main() {}\n')!
+	for mode in [['-gc', 'none'], ['-gc', 'boehm'], ['-gc', 'vgc'], ['-gc', 'none', '-prealloc']] {
+		built := os.exec([vexe, '-nocache', ...mode, '-d', 'track_heap', '-o', generated, source])
+		assert built.exit_code == 0, '${mode}: ${built.output}'
+		if mode == ['-gc', 'none'] {
+			assert_no_preprocessor_includes(os.read_file(generated)!)
+			checked := os.exec([clang, '-std=gnu11', '-nostdinc', '-fsyntax-only', '-Wno-everything',
+				'-Wno-incompatible-function-pointer-types', '-Wno-int-conversion', '-x', 'c',
+				generated])
+			assert checked.exit_code == 0, checked.output
+		} else {
+			checked := os.exec([vexe, '-nocache', '-cc', clang, ...mode, '-d', 'track_heap', '-o',
+				os.join_path(root, 'invalid'), source])
+			assert checked.exit_code != 0, mode.str()
+			assert checked.output.contains('track_heap requires manual memory management'), checked.output
+		}
+	}
 }

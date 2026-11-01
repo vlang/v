@@ -87,6 +87,42 @@ fn test_watch_run_reloads_on_source_change() {
 	assert reload_error == '', '${reload_error}\n${output}'
 }
 
+fn test_watch_run_keeps_the_windows_manifest_after_reload() ! {
+	$if !windows {
+		return
+	}
+	source := os.join_path(tsource_dir, 'manifest.v')
+	marker := os.join_path(toutput_dir, 'manifest_marker.txt')
+	mut process := os.new_process(vexe)
+	process.set_work_folder(vroot)
+	process.set_redirect_stdio()
+	process.use_pgroup = true
+	process.set_args(['watch', '-cc', 'tcc', 'run', source, marker])
+	mut errors := []string{}
+	for version in ['V1', 'V2'] {
+		if version == 'V2' { time.sleep(1500 * time.millisecond) }
+		os.write_file(source, "module main
+import os
+fn main() {
+	manifest := os.read_file(os.executable() + '.manifest') or { panic(err) }
+	assert manifest.contains('longPathAware')
+	os.write_file(os.args[1], '${version}') or { panic(err) }
+}
+")!
+		if version == 'V1' { process.run() }
+		failure := wait_for_marker(marker, version, 'manifest ${version}', mut process)
+		if failure != '' {
+			errors << failure
+			break
+		}
+	}
+	if process.is_alive() { process.signal_pgkill() }
+	process.wait()
+	output := process.stdout_slurp() + process.stderr_slurp()
+	process.close()
+	assert errors.len == 0, errors.join('\n') + '\n' + output
+}
+
 // For veb apps, `v watch` builds the new version while the old one keeps serving,
 // keeps the old one when a build fails, writes the build status for veb's live
 // reload, and stops the app when it is itself terminated.

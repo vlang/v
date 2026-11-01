@@ -301,3 +301,106 @@ fn test_comptime_const_symbolic_lengths_revisit_earlier_legacy_operands() {
 	assert tc.const_int_value('left_quotient', [])? == 257
 	assert tc.const_int_expr(tc.const_exprs['left_quotient']!, tc.cur_module, [])? == 257
 }
+
+fn test_comptime_const_sizeof_keeps_unsigned_storage_type() {
+	original_bits := platform_int_bits()
+	defer { set_platform_int_bits(original_bits) }
+	for bits in [32, 64] {
+		set_platform_int_bits(bits)
+		for body, expected in {
+			'n := sizeof(u8) return u64(~n)':              u64(4294967294)
+			'n := sizeof[Byte]() + u32(1) return u64(~n)': u64(4294967293)
+		} {
+			tc := comptime_const_checker('type Byte = u8\n@[comptime]\nfn compute() u64 { ${body} }\nconst result = compute()\nfn main() { _ = result }')
+			assert tc.errors.len == 0, tc.errors.str()
+			assert u64(tc.comptime_const_values['result']!.integer) == expected
+		}
+	}
+}
+
+fn test_comptime_const_sizeof_keeps_direct_c_expression_width() {
+	original_bits := platform_int_bits()
+	defer { set_platform_int_bits(original_bits) }
+	for bits in [32, 64] {
+		set_platform_int_bits(bits)
+		maximum := if bits == 32 { u64(4294967295) } else { u64(18446744073709551615) }
+		for expression, expected in {
+			'u64(~sizeof(u8))':              maximum - 1
+			'u64(~(sizeof[u8]() + u32(1)))': maximum - 2
+		} {
+			tc := comptime_const_checker('@[comptime]\nfn compute() u64 { return ${expression} }\nconst result = compute()\nfn main() { _ = result }')
+			assert tc.errors.len == 0, tc.errors.str()
+			assert u64(tc.comptime_const_values['result']!.integer) == expected
+		}
+	}
+}
+
+fn test_comptime_const_converts_symbolic_fixed_array_results() {
+	tc := comptime_const_checker('const n = 2\nconst table = make()\n@[comptime]\nfn make() [n]u8 { return [u8(1), 2]! }\nfn main() { _ = table }')
+	assert tc.errors.len == 0, tc.errors.str()
+	value := tc.comptime_const_values['table']!
+	assert value.elements.len == 2
+	assert value.elements[0].integer == 1
+	assert value.elements[1].integer == 2
+}
+
+fn test_comptime_const_converts_symbolic_parameters_nested_arrays_and_aliases() {
+	for source in [
+		'const n = 2\nconst table = copy([u8(1), 2]!)\n@[comptime]\nfn copy(value [n]u8) [n]u8 { mut local := value local[1] = 3 return local }',
+		'const n = 2\nconst table = make()\n@[comptime]\nfn make() [n][n]u8 { return [[u8(1), 2]!, [u8(3), 4]!]! }',
+		'const n = 2\ntype Pair = [n]u8\nconst table = make()\n@[comptime]\nfn make() Pair { return Pair([u8(1), 2]!) }',
+	] {
+		tc := comptime_const_checker(source + '\nfn main() { _ = table }')
+		assert tc.errors.len == 0, tc.errors.str()
+		value := tc.comptime_const_values['table']!
+		assert value.elements.len == 2
+		if source.contains('type Pair') {
+			assert value.typ is Alias
+			assert value.typ.source_type_id() == flat.source_type_id('Pair')
+		}
+	}
+}
+
+fn test_comptime_const_rejects_incompatible_array_shapes_and_elements() {
+	for item in [
+		['[n]u8', '[u8(1), 2, 3]!'],
+		['[n]u8', '[u16(1), 2]!'],
+		['[zero][3]u8', '[zero][2]u8{}'],
+		['[zero]u8', '[zero]u16{}'],
+	] {
+		tc := comptime_const_checker('const n = 2\nconst zero = 0\nconst table = make()\n@[comptime]\nfn make() ${item[0]} { return ${item[1]} }\nfn main() { _ = table }')
+		assert tc.errors.any(it.msg.contains('cannot evaluate const `table`') && it.msg.contains('unsupported conversion')), tc.errors.str()
+	}
+}
+
+fn test_comptime_const_symbolic_array_conversion_keeps_cycle_guards() {
+	for returned in ['[n]u8', 'Pair'] {
+		expression := if returned == 'Pair' { 'Pair([u8(1), 2]!)' } else { '[u8(1), 2]!' }
+		tc := comptime_const_checker('const n = size()\ntype Pair = [n]u8\n@[comptime]\nfn size() int { return make().len }\n@[comptime]\nfn make() ${returned} { return ${expression} }\nfn main() { _ = n }')
+		assert tc.errors.any(it.msg.contains('cannot evaluate const `n`') && it.msg.contains('cycle in constant')), tc.errors.str()
+	}
+}
+
+fn test_comptime_const_imported_array_shapes_keep_declaration_scope() ! {
+	root := os.join_path(os.vtmp_dir(), 'comptime_const_array_scope_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	helper := os.join_path(root, 'helper.v')
+	main := os.join_path(root, 'main.v')
+	os.write_file(helper, 'module helper\nconst n = 2\npub type Pair = [n]u8\npub const table = make()\n@[comptime]\npub fn make() [n]u8 { return [u8(1), 2]! }\n@[comptime]\npub fn last(value [3]u8) int { return value[2] }')!
+	os.write_file(main, 'module main\nimport helper as source\nconst n = 3\nconst result = compute()\n@[comptime]\nfn compute() int { mut local := source.table local = source.make() aliased := source.Pair([u8(1), 2]!) mut values := [n]u8{} values[2] = 7 return local[1] + aliased[0] + source.last(values) }\nfn main() { _ = result }')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_files([helper, main])
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	assert 'helper.table' in tc.comptime_const_values
+	assert tc.comptime_const_values['result']!.integer == 10
+	// Re-evaluate with the completed imported value already cached.
+	tc.cur_file = main
+	tc.cur_module = 'main'
+	value := tc.eval_comptime_const(tc.const_exprs['result']!)!
+	assert value.integer == 10
+}

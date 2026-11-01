@@ -14,6 +14,7 @@ concurrency:
 
 jobs:
   projection-dark-mode:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:

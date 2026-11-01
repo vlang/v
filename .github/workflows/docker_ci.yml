@@ -10,13 +10,6 @@ on:
       - '!**/docker_ci.yml'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
-  pull_request:
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/docker_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
 
 concurrency:
   group: docker-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}

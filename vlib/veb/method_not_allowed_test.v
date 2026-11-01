@@ -158,10 +158,10 @@ fn test_405_combines_only_handlers_for_the_request_host() {
 
 fn test_405_keeps_first_matching_resource_and_host_fallbacks() {
 	mut routes := map[string]Route{}
-	insert_route_metadata(mut routes, 'parameter', ['/items/:id', 'get', 'host: example.test'], [], []) or { panic(err) }
-	insert_route_metadata(mut routes, 'literal', ['/items/fixed', 'put'], [], []) or { panic(err) }
-	insert_route_metadata(mut routes, 'other_parameter', ['/items/:name', 'post', 'host: example.test'], [], []) or { panic(err) }
-	insert_route_metadata(mut routes, 'fallback', ['/items/:value', 'delete'], [], []) or { panic(err) }
+	insert_route_metadata(mut routes, 'parameter', ['/items/:id', 'get', 'host: example.test'], [], [], unsafe { nil }) or { panic(err) }
+	insert_route_metadata(mut routes, 'literal', ['/items/fixed', 'put'], [], [], unsafe { nil }) or { panic(err) }
+	insert_route_metadata(mut routes, 'other_parameter', ['/items/:name', 'post', 'host: example.test'], [], [], unsafe { nil }) or { panic(err) }
+	insert_route_metadata(mut routes, 'fallback', ['/items/:value', 'delete'], [], [], unsafe { nil }) or { panic(err) }
 	selected := select_route_ignoring_method(&routes, '/items/fixed', 'example.test') or { panic('missing route') }
 	assert selected.name == 'parameter'
 	assert allowed_methods_for_route(&routes, selected, '/items/fixed', 'example.test') == [
@@ -176,10 +176,10 @@ fn test_405_keeps_first_matching_resource_and_host_fallbacks() {
 
 fn test_405_keeps_variadic_specificity_and_non_variadic_precedence() {
 	mut routes := map[string]Route{}
-	insert_route_metadata(mut routes, 'catch_all', ['/:path...', 'delete'], [], []) or { panic(err) }
-	insert_route_metadata(mut routes, 'api', ['/api/:path...', 'get'], [], []) or { panic(err) }
-	insert_route_metadata(mut routes, 'api_post', ['/api/:other...', 'post'], [], []) or { panic(err) }
-	insert_route_metadata(mut routes, 'item', ['/api/items/:id', 'patch'], [], []) or { panic(err) }
+	insert_route_metadata(mut routes, 'catch_all', ['/:path...', 'delete'], [], [], unsafe { nil }) or { panic(err) }
+	insert_route_metadata(mut routes, 'api', ['/api/:path...', 'get'], [], [], unsafe { nil }) or { panic(err) }
+	insert_route_metadata(mut routes, 'api_post', ['/api/:other...', 'post'], [], [], unsafe { nil }) or { panic(err) }
+	insert_route_metadata(mut routes, 'item', ['/api/items/:id', 'patch'], [], [], unsafe { nil }) or { panic(err) }
 	selected := select_route_ignoring_method(&routes, '/api/other/path', '') or { panic('missing route') }
 	assert selected.name == 'api'
 	assert allowed_methods_for_route(&routes, selected, '/api/other/path', '') == [

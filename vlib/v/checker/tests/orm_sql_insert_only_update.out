@@ -1,0 +1,21 @@
+vlib/v/checker/tests/orm_sql_insert_only_update.vv:16:29: error: ORM: cannot update insert-only field `InsertOnlyUser.id` (@[sql_insert_only])
+   14 |     db := sqlite.connect(':memory:')!
+   15 |     sql db {
+   16 |         update InsertOnlyUser set id = 2 where id == 1
+      |                                   ~~
+   17 |     }!
+   18 |     sql db {
+vlib/v/checker/tests/orm_sql_insert_only_update.vv:19:29: error: ORM: cannot update insert-only field `InsertOnlyUser.creator` (@[sql_insert_only])
+   17 |     }!
+   18 |     sql db {
+   19 |         update InsertOnlyUser set created_by = 'other' where id == 1
+      |                                   ~~~~~~~~~~
+   20 |     }!
+   21 |     sql db {
+vlib/v/checker/tests/orm_sql_insert_only_update.vv:22:29: error: ORM: cannot update insert-only field `InsertOnlyUser.creator` (@[sql_insert_only])
+   20 |     }!
+   21 |     sql db {
+   22 |         update InsertOnlyUser set creator = 'other' where id == 1
+      |                                   ~~~~~~~
+   23 |     }!
+   24 | }

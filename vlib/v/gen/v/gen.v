@@ -653,6 +653,11 @@ fn (mut g Gen) emit_implied_imports() {
 }
 
 fn (mut g Gen) collect_implied_imports(fnode &flat.Node) {
+	// Translated selectors can name C globals declared in another generated
+	// file. Inferring a vlib import here would shadow that global.
+	if g.is_translated {
+		return
+	}
 	mut imported := map[string]bool{}
 	mut declared := map[string]bool{}
 	for n in g.a.nodes {
@@ -4810,8 +4815,7 @@ fn (g &Gen) enum_field_alignments(fields []flat.NodeId) map[int]int {
 			previous = flat.empty_node
 			continue
 		}
-		if int(previous) >= 0
-			&& g.source_has_blank_line_between(g.a.node(previous).pos.end, f.pos.offset) {
+		if g.field_alignment_break(previous, fid) {
 			g.store_enum_field_alignments(mut alignments, group)
 			group.clear()
 		}

@@ -434,7 +434,8 @@ fn test_multiwindow_render_runtime_no_flag_generated_c_is_isolated() {
 			defer {
 				os.rm(c_path) or {}
 			}
-			cmd := '${os.quoted_path(@VEXE)}${render_runtime_child_flags(false)} -os ${target} -b c -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(c_path)} ${os.quoted_path(fixture)}'
+			// C emission for foreign targets must override an inherited MSVC selection.
+			cmd := '${os.quoted_path(@VEXE)}${render_runtime_child_flags(false)} -cc clang -os ${target} -b c -path "${vlib_dir}|@vlib|@vmodules" -o ${os.quoted_path(c_path)} ${os.quoted_path(fixture)}'
 			result := render_runtime_execute_child(cmd, false)
 			assert result.exit_code == 0, 'no-flag ${target} ${label} consumer C generation failed\ncommand: ${cmd}\noutput:\n${result.output}'
 			generated := render_runtime_generated_c_without_paths(os.read_file(c_path) or {
@@ -1230,6 +1231,9 @@ fn render_runtime_child_flags(enabled bool) string {
 	}
 	$if gcc {
 		flags += ' -cc gcc'
+	}
+	$if clang {
+		flags += ' -cc clang'
 	}
 	$if msvc {
 		flags += ' -cc msvc'

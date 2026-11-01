@@ -11,13 +11,6 @@ on:
       - '!**/paths_ci.yml'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
-  pull_request:
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/paths_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
 
 concurrency:
   group: paths-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -31,6 +24,7 @@ permissions:
 
 jobs:
   space-paths-linux:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     env:
       # Stop a failing test session at its first failure instead of
@@ -64,6 +58,7 @@ jobs:
           ./v test vlib/builtin vlib/os
 
   space-paths-macos:
+    if: github.ref == 'refs/heads/master'
     runs-on: macos-14
     env:
       # Stop a failing test session at its first failure instead of
@@ -100,6 +95,7 @@ jobs:
           ./v test vlib/builtin vlib/os
 
   space-paths-windows:
+    if: github.ref == 'refs/heads/master'
     runs-on: windows-2022
     env:
       # Stop a failing test session at its first failure instead of

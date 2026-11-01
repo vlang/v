@@ -1,6 +1,6 @@
 import os
 
-fn test_default_clone_treats_imported_enum_as_scalar() {
+fn test_append_copies_imported_enums_and_shares_nested_storage() {
 	root := os.join_path(os.temp_dir(), 'v3 default clone enum ${os.getpid()}')
 	enum_dir := os.join_path(root, 'enum_mod')
 	event_dir := os.join_path(root, 'event_mod')
@@ -37,12 +37,12 @@ pub fn count() int {
 	events << event
 	assert events[0].result == .ok
 	assert events[0].name == "readyready"
-	assert events[0].name.str != event.name.str
+	assert events[0].name.str == event.name.str
 	event.values[0] = 9
-	assert events[0].values == [1, 2, 3]
+	assert events[0].values == [9, 2, 3]
 	events[0].values[1] = 8
-	assert event.values == [9, 2, 3]
-	assert events[0].values == [1, 8, 3]
+	assert event.values == [9, 8, 3]
+	assert events[0].values == [9, 8, 3]
 	assert event.result == .ok
 	return events.len
 }
@@ -74,12 +74,12 @@ fn main() {
 	events << event
 	assert events[0].result == ResultAlias(Result(enum_mod.Result.failed))
 	assert events[0].name == "readyready"
-	assert events[0].name.str != event.name.str
+	assert events[0].name.str == event.name.str
 	event.values[0] = 9
-	assert events[0].values == [1, 2, 3]
+	assert events[0].values == [9, 2, 3]
 	events[0].values[1] = 8
-	assert event.values == [9, 2, 3]
-	assert events[0].values == [1, 8, 3]
+	assert event.values == [9, 8, 3]
+	assert events[0].values == [9, 8, 3]
 	assert event.result == ResultAlias(Result(enum_mod.Result.failed))
 }
 ') or { panic(err) }

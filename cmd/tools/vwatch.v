@@ -513,6 +513,18 @@ fn (mut context Context) build_first_loop() {
 						context.write_status('failed', 'cannot replace ${app_bin}: ${err}')
 						continue
 					}
+					if os.is_file('${new_bin}.manifest') {
+						os.mv('${new_bin}.manifest', '${app_bin}.manifest') or {
+							eprintln('v watch: cannot replace ${app_bin}.manifest: ${err}')
+							context.write_status('failed', 'cannot replace ${app_bin}.manifest: ${err}')
+							continue
+						}
+					} else if os.exists('${app_bin}.manifest') {
+						os.rm('${app_bin}.manifest') or {
+							context.write_status('failed', 'cannot remove ${app_bin}.manifest: ${err}')
+							continue
+						}
+					}
 					context.write_status('ok', '')
 					context.start_app(app_bin, program_args)
 				} else {

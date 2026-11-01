@@ -1765,9 +1765,9 @@ fn (t &Transformer) normalize_type_in_module_uncached(type_id u32, mod string) u
 		for param in syntax.function_params() {
 			parts << t.normalize_type_in_module(flat.source_type_syntax(param).legacy_parameter_mut_type(), mod)
 		}
-		normalized_ret := t.normalize_type_in_module(syntax.function_result(), mod)
-		if normalized_ret != 0 {
-			parts << normalized_ret
+		if syntax.function_result() != 0 {
+			ret := fn_type_return_type_text(clean_id) or { syntax.function_result() }
+			parts << t.normalize_type_in_module(ret, mod)
 			return flat.source_type_composition(.function_type_spaced, parts)
 		}
 		return flat.source_type_composition(.void_function_type_spaced, parts)

@@ -1206,6 +1206,7 @@ pub mut:
 	v_fn_semantic_names              map[string]bool
 	c_fn_module_ret_types            map[string]Type
 	c_fn_module_param_types          map[string][]Type
+	c_fn_referenced_types            map[u32]bool
 	c_fn_module_variadic             map[string]bool
 	c_fn_abi_variadic_prefixes       map[string]int
 	fn_shared_params                 map[string][]bool
@@ -1708,6 +1709,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		fn_param_types:                          map[string][]Type{}
 		c_fn_module_ret_types:                   map[string]Type{}
 		c_fn_module_param_types:                 map[string][]Type{}
+		c_fn_referenced_types:                   map[u32]bool{}
 		c_fn_module_variadic:                    map[string]bool{}
 		c_fn_abi_variadic_prefixes:              map[string]int{}
 		fn_shared_params:                        map[string][]bool{}
@@ -1876,6 +1878,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		fn_param_types:                        tc.fn_param_types
 		c_fn_module_ret_types:                 tc.c_fn_module_ret_types
 		c_fn_module_param_types:               tc.c_fn_module_param_types
+		c_fn_referenced_types:                 tc.c_fn_referenced_types
 		c_fn_module_variadic:                  tc.c_fn_module_variadic
 		c_fn_abi_variadic_prefixes:            tc.c_fn_abi_variadic_prefixes
 		fn_shared_params:                      tc.fn_shared_params
@@ -5205,6 +5208,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 				}
 				tc.register_visible_mutation_fn_decl(tl_idx, tc.cur_module, c_name, c_name)
 				ret_type := tc.parse_type(node.typ)
+				tc.register_c_fn_referenced_type(ret_type)
 				mut ptypes := []Type{}
 				mut is_variadic := false
 				for i in 0 .. node.children_count {
@@ -5219,6 +5223,7 @@ fn (mut tc TypeChecker) collect_pass2(a &flat.FlatAst, entries []i32, pass2_prep
 						is_variadic = true
 					}
 					parsed_param_type := tc.parse_type(child.typ)
+					tc.register_c_fn_referenced_type(parsed_param_type)
 					ptypes << if child.is_mut {
 						mut_param_semantic_type(*parsed_param_type)
 					} else {
@@ -7262,26 +7267,30 @@ pub fn (tc &TypeChecker) parse_resolution_type_in_file(source_id u32, file strin
 	if context_independent_type(source_id) {
 		return *tc.parse_type(source_id)
 	}
+	return tc.type_parse_view_in_file(file).parse_resolution_type(source_id)
+}
+
+// Reuse a lookup-only view without inheriting the caller's local bindings.
+fn (tc &TypeChecker) type_parse_view_in_file(file string) &TypeChecker {
 	if !isnil(tc.resolution_type_views) {
 		mut views := unsafe { tc.resolution_type_views }
 		if !isnil(views.recent_scoped) && views.recent_scoped_file == file {
-			return views.recent_scoped.parse_resolution_type(source_id)
+			return views.recent_scoped
 		}
 		if cached := views.scoped_by_file[file] {
 			views.recent_scoped_file = file
 			views.recent_scoped = cached
-			return cached.parse_resolution_type(source_id)
+			return cached
 		}
 		module_name := tc.file_modules[file] or { '' }
 		mut scoped := tc.fork_type_parse_view(file, module_name)
 		views.scoped_by_file[file] = scoped
 		views.recent_scoped_file = file
 		views.recent_scoped = scoped
-		return scoped.parse_resolution_type(source_id)
+		return scoped
 	}
 	module_name := tc.file_modules[file] or { '' }
-	mut scoped := tc.fork_type_parse_view(file, module_name)
-	return scoped.parse_resolution_type(source_id)
+	return tc.fork_type_parse_view(file, module_name)
 }
 
 // Primitive payloads and their exact wrappers cannot refer to declaration imports.
@@ -7452,7 +7461,13 @@ fn (tc &TypeChecker) qualify_fn_type_text(typ_id u32, resolution bool, generic_p
 		}
 	}
 	if syntax.function_result() != 0 {
-		params << tc.qualify_type_text_impl(syntax.function_result(), resolution, generic_params)
+		result := syntax.function_result()
+		// Keep payload-free callbacks identical to parsed FnType specializations.
+		params << if result in [checker_source_option_marker, checker_source_result_marker] {
+			tc.parse_type(result).source_type_id()
+		} else {
+			tc.qualify_type_text_impl(result, resolution, generic_params)
+		}
 		return flat.source_type_composition(.function_type, params)
 	}
 	return flat.source_type_composition(.void_function_type, params)
@@ -8433,10 +8448,10 @@ fn (mut tc TypeChecker) enter_module(name string) {
 		// `module_decl` after this file's marker without an intervening file marker of
 		// their own; without this guard that would rebind `cur_file` to the foreign
 		// module and mis-resolve same-named types (`main.Context` -> `veb.Context`).
-		if existing := tc.file_modules[tc.cur_file] {
-			if existing != name {
-				return
-			}
+		// Collection already fixed this mapping. Even writing the same value would
+		// race with semantic workers and overlapping declaration preparation.
+		if tc.cur_file in tc.file_modules {
+			return
 		}
 		tc.file_modules[tc.cur_file] = name
 	}
@@ -15705,7 +15720,9 @@ fn (mut tc TypeChecker) check_decl_type_strings(node_id flat.NodeId, node flat.N
 			if int(grandchild_id) < 0 {
 				continue
 			}
-			grandchild := tc.a.nodes[int(grandchild_id)]
+			// Body workers can update call flags while signatures are checked.
+			// Borrow only the type operands instead of copying the mutable flags.
+			grandchild := &tc.a.nodes[int(grandchild_id)]
 			if grandchild.kind in [.comptime_for, .offsetof_expr] {
 				continue
 			}
@@ -17167,7 +17184,8 @@ fn (mut tc TypeChecker) check_type_string_for_unsupported_generics(typ_id u32, n
 			return
 		}
 	}
-	if syntax.named_type() && tc.record_invalid_type_module_qualifier(clean, node_id) {
+	if syntax.named_type() && !tc.struct_init_is_synthetic_embed_file(node_id)
+		&& tc.record_invalid_type_module_qualifier(clean, node_id) {
 		return
 	}
 	if syntax.named_type() && !tc.type_name_known(clean_id) {
@@ -18539,6 +18557,7 @@ const builtin_attribute_names = [
 	'soa',
 	'spawn_stack',
 	'sql',
+	'sql_insert_only',
 	'sql_select',
 	'sql_type',
 	'str',
@@ -18896,6 +18915,14 @@ fn (mut tc TypeChecker) check_custom_attribute_uses() {
 			.module_decl {
 				cur_module = node.value
 				tc.enter_module(node.value)
+				lo, hi := attribute_use_window(node)
+				tc.check_sql_insert_only_attribute_use(flat.NodeId(i), node,
+					tc.declaration_attributes[i], lo, hi)
+			}
+			.const_decl, .global_decl, .c_fn_decl {
+				lo, hi := attribute_use_window(node)
+				tc.check_sql_insert_only_attribute_use(flat.NodeId(i), node,
+					tc.declaration_attributes[i], lo, hi)
 			}
 			.fn_decl, .struct_decl, .enum_decl, .type_decl, .interface_decl {
 				node_id := flat.NodeId(i)
@@ -18966,10 +18993,25 @@ fn (mut tc TypeChecker) check_custom_attribute_uses() {
 	}
 }
 
+fn (mut tc TypeChecker) check_sql_insert_only_attribute_use(node_id flat.NodeId, node flat.Node, pieces []string, lo int, hi int) {
+	for piece in pieces {
+		if !attribute_name_is(piece, 'sql_insert_only') {
+			continue
+		}
+		pos := tc.attribute_use_pos(node, 'sql_insert_only', lo, hi)
+		if node.kind != .field_decl {
+			tc.record_error_at(.assignment_mismatch, 'attribute `sql_insert_only` can only be applied to struct fields', node_id, pos)
+		} else if piece != 'sql_insert_only' {
+			tc.record_error_at(.assignment_mismatch, 'attribute `sql_insert_only` does not accept arguments', node_id, pos)
+		}
+	}
+}
+
 // check_attribute_use_pieces validates the attribute `pieces` on one
 // declaration, field, or enum value against the registered schemas. `lo` and
 // `hi` bound the source range the attributes of this node occupy.
 fn (mut tc TypeChecker) check_attribute_use_pieces(node_id flat.NodeId, node flat.Node, module string, pieces []string, lo int, hi int, mut warning_heads map[string][]AttributeWarningHead) {
+	tc.check_sql_insert_only_attribute_use(node_id, node, pieces, lo, hi)
 	// Schema interpretation needs the parser's no-argument identity: the legacy
 	// strings alone make @['Schema'] indistinguishable from @[Schema].
 	mut kinds_id := node.attribute_kinds_id()

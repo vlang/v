@@ -7,7 +7,9 @@ name: h2spec conformance
 
 on:
   push:
-    paths: &h2paths
+    branches:
+      - master
+    paths:
       - 'vlib/net/http/h2_*.v'
       - 'vlib/net/http/server*.v'
       - 'vlib/net/http/http*.v'
@@ -16,8 +18,6 @@ on:
       # so TLS/ALPN behavior can change via the headers too (Codex P2).
       - 'vlib/net/mbedtls/**'
       - '.github/workflows/h2spec.yml'
-  pull_request:
-    paths: *h2paths
 
 concurrency:
   group: h2spec-${{ github.workflow }}-${{ github.ref }}

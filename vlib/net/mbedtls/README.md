@@ -10,3 +10,7 @@ client authentication can accept clients without `cert` and `cert_key`.
 `SSLConn.shutdown()` also releases contexts created by `new_ssl_conn` before a successful
 connection, including their ALPN configuration. Calling it again after cleanup returns the
 existing `connection was not open` error without releasing resources a second time.
+
+On Linux, TLS sends suppress SIGPIPE for each socket operation. A peer that closes
+the connection produces a connection-reset error without terminating the process
+or changing its SIGPIPE handler. Nonblocking backpressure remains retryable.

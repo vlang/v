@@ -47,7 +47,7 @@ fn test_cached_module_embedded_resources_refresh_after_changes_and_deletion() ! 
 	assert missing_run.exit_code != 0 && missing_run.output.contains('do not exist'), missing_run.output
 }
 
-fn test_shipped_zstd_and_veb_use_module_cache() {
+fn test_shipped_native_headers_use_conservative_cache_fallback() {
 	$if windows {
 		return
 	} // This regression uses the Unix system C compiler cache path.
@@ -80,11 +80,12 @@ fn main() {
 			'cc', '-no-retry-compilation', '-show-timings', '-o', binary, src]
 		cold := os.exec(args)
 		assert cold.exit_code == 0, cold.output
-		assert !cold.output.contains('external C inputs cannot be assigned'), cold.output
+		// Shipped native inputs need an explicit ownership contract for reuse.
+		assert cold.output.contains('external C inputs cannot be assigned'), cold.output
 		warm := os.exec(args)
 		assert warm.exit_code == 0, warm.output
-		assert warm.output.contains('monomorphize (cached)'), warm.output
-		assert !warm.output.contains('external C inputs cannot be assigned'), warm.output
+		assert !warm.output.contains('monomorphize (cached)'), warm.output
+		assert warm.output.contains('external C inputs cannot be assigned'), warm.output
 		if name == 'zstd' {
 			run := os.exec([binary])
 			assert run.exit_code == 0, run.output

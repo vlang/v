@@ -194,7 +194,9 @@ fn (g &Parser) c_function_name_or(key string, conventional string) string {
 	if cached := g.c_function_name_memo[key] {
 		return cached
 	}
-	c_name := if key == 'main' && !g.prefs.is_test {
+	c_name := if key in g.globals && key in g.functions && g.functions[key].is_global {
+		g.globals[key]
+	} else if key == 'main' && !g.prefs.is_test {
 		fastc_c_main_name(g.prefs)
 	} else if compact_name := g.function_c_names[key] {
 		compact_name

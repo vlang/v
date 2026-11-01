@@ -698,7 +698,7 @@ $if windows {
 
 	@[export: 'v_multiwindow_win32_window_touch_event']
 	@[markused]
-	fn win32_window_touch_event(data voidptr, sequence u64, kind int, modifiers u32, count int, ids &u64, xs &int, ys &int, changed &int) {
+	fn win32_window_touch_event(data voidptr, sequence u64, kind int, modifiers u32, count int, ids &u64, xs &i32, ys &i32, changed &i32) {
 		if data == unsafe { nil } || count <= 0 || ids == unsafe { nil } || xs == unsafe { nil }
 			|| ys == unsafe { nil } || changed == unsafe { nil } {
 			return

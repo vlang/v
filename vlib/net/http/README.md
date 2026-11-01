@@ -212,6 +212,38 @@ crossing that boundary. Text without a recognized document signature returns
 Use sniffing only when no explicit content type is available. In particular, serving sniffed
 HTML from your application origin permits that content to run scripts.
 
+## Cookie jars
+
+`http.new_cookie_jar()` creates an in-memory cookie jar. Store response cookies with
+`jar.set_cookies(response_url, response.cookies())`, using the URL that produced the response.
+Use `jar.cookies_header(request_url)` as the next request's `Cookie` header, or
+`jar.cookies(request_url)` to retrieve the matching `Cookie` values.
+
+```v
+import net.http
+
+mut jar := http.new_cookie_jar()
+jar.set_cookies('https://example.com/account/login', [
+	http.Cookie{
+		name:  'sid'
+		value: 'abc'
+	},
+])
+assert jar.cookies_header('https://example.com/account/profile') == 'sid=abc'
+assert jar.cookies_header('https://sub.example.com/account/profile') == ''
+```
+
+URLs must be absolute HTTP or HTTPS URLs with a host; other URLs are ignored. Cookies without
+`Domain` stay on the response host. An explicit domain must be valid and match that host; IP
+addresses require an exact match. Domains are compared without case distinctions or a leading
+dot, and equivalent name/domain/path entries replace or delete each other. The jar does not
+check a public suffix list.
+
+Path matching uses the escaped URL path. Missing, empty, or relative `Path` attributes use
+the response URL's directory. `Max-Age` takes precedence over `Expires`, expired cookies are
+excluded, and `Secure` cookies are returned only for HTTPS. Header generation validates names
+and sanitizes and quotes values using the same rules as `Request.cookie_header_value()`.
+
 ## Cookies, headers and multipart
 
 Header value validation also works in `-check-overflow` builds: permitted TAB bytes are kept.

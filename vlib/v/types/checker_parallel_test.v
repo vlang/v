@@ -642,6 +642,9 @@ fn test_parallel_interface_indexes_outlive_worker_scopes() {
 			source.writeln('struct ${name} {}')
 			source.writeln('fn (item ${name}) value_${i}() int { return ${j} }')
 		}
+		// The receiver prefilter must retain promoted methods too.
+		names << 'Wrapped${i}'
+		source.writeln('struct Wrapped${i} { Item${i}_0 }')
 		expected[iface] = names
 		// A same-named method with the wrong return type must stay excluded.
 		source.writeln('struct Rejected${i} {}')
@@ -669,10 +672,15 @@ fn test_parallel_interface_indexes_outlive_worker_scopes() {
 	a.ensure_workers(2)
 	defer { a.close_workers() }
 	mut retained := map[string][]string{}
-	for _ in 0 .. 4 {
+	for round in 0 .. 4 {
 		// This call releases each worker's scratch arena before returning. Later
 		// rounds allocate another set of indexes while the first snapshot stays live.
+		opened := round == 0 && tc.begin_interface_impl_queries()
+		caller_memo := tc.interface_impl_memo
 		assert tc.prepare_interface_impl_indexes_parallel(flat.TypeTextList.from_names(names).ids)
+		assert tc.interface_impl_memo == caller_memo
+		tc.end_interface_impl_queries(opened)
+		assert isnil(tc.interface_impl_memo)
 		for iface in names {
 			prepared := flat.TypeTextList{
 				ids: tc.pre_transform_interface_impl_names(flat.source_type_id(iface)) or {

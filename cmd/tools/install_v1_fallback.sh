@@ -357,6 +357,8 @@ fallback_compatibility_is_installed() {
 }
 
 sha256_of() {
+	# Git for Windows initializes binary mode on stdin even when hashing a file.
+	# Compiler-spawned installers can inherit a closed stdin handle.
 	if command -v sha256sum >/dev/null 2>&1; then
 		sha256sum "$1" | awk '{print $1}'
 	elif command -v shasum >/dev/null 2>&1; then
@@ -368,7 +370,7 @@ sha256_of() {
 	else
 		return 1
 	fi
-}
+} < /dev/null
 
 candidate_has_expected_version() {
 	candidate_version=$("$candidate" version 2>/dev/null) || return 1
@@ -394,10 +396,11 @@ download_release() {
 		return 1
 	fi
 	mkdir -p "$release_tree" || return 1
-	if command -v unzip >/dev/null 2>&1; then
-		unzip -q "$archive" -d "$release_tree" || return 1
-	elif command -v bsdtar >/dev/null 2>&1; then
+	# macOS unzip rejects the release archive's absolute libc.dylib symlink.
+	if command -v bsdtar >/dev/null 2>&1; then
 		bsdtar -xf "$archive" -C "$release_tree" || return 1
+	elif command -v unzip >/dev/null 2>&1; then
+		unzip -q "$archive" -d "$release_tree" || return 1
 	elif command -v tar >/dev/null 2>&1; then
 		tar -xf "$archive" -C "$release_tree" || return 1
 	else

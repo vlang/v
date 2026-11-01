@@ -232,6 +232,53 @@ fn const_else_if_division(flag int) u64 {
 const computed_else_if_middle = const_else_if_division(1)
 const computed_else_if_final = const_else_if_division(2)
 
+@[comptime]
+fn const_stored_sizeof_complement() u64 {
+	n := sizeof(u8)
+	return u64(~n)
+}
+
+@[comptime]
+fn const_direct_sizeof_complement() u64 {
+	return u64(~sizeof(u8))
+}
+
+@[comptime]
+fn const_stored_sizeof_infix() u64 {
+	n := sizeof(u8) + u32(1)
+	return u64(~n)
+}
+
+@[comptime]
+fn const_direct_sizeof_infix() u64 {
+	return u64(~(sizeof(u8) + u32(1)))
+}
+
+const computed_stored_sizeof = const_stored_sizeof_complement()
+const computed_direct_sizeof = const_direct_sizeof_complement()
+const computed_stored_sizeof_infix = const_stored_sizeof_infix()
+const computed_direct_sizeof_infix = const_direct_sizeof_infix()
+const fixed_width = 2
+const computed_array_table = const_array_table()
+
+@[comptime]
+fn const_array_table() [fixed_width][fixed_width]u8 {
+	return [[u8(1), 2]!, [u8(3), 4]!]!
+}
+
+const symbolic_width = 3
+const computed_imported_arrays = const_imported_array_values()
+
+@[comptime]
+fn const_imported_array_values() int {
+	mut local := evaluated.symbolic_table
+	local = evaluated.make_symbolic_table()
+	aliased := evaluated.SymbolicPair([u8(1), 2]!)
+	mut values := [symbolic_width]u8{}
+	values[2] = 7
+	return local[1] + aliased[0] + evaluated.last_symbolic(values)
+}
+
 fn test_comptime_constants_match_runtime() {
 	assert imported_pair == evaluated.make_pair(10)
 	assert imported_pair == [u32(10), 17]!
@@ -302,4 +349,14 @@ fn test_comptime_constants_match_runtime() {
 	assert computed_else_if_middle == const_else_if_division(1)
 	assert computed_else_if_final == u64(6148914691236517205)
 	assert computed_else_if_final == const_else_if_division(2)
+	assert computed_stored_sizeof == u64(4294967294)
+	assert computed_stored_sizeof == const_stored_sizeof_complement()
+	assert computed_direct_sizeof == const_direct_sizeof_complement()
+	assert computed_stored_sizeof_infix == u64(4294967293)
+	assert computed_stored_sizeof_infix == const_stored_sizeof_infix()
+	assert computed_direct_sizeof_infix == const_direct_sizeof_infix()
+	assert computed_array_table == [[u8(1), 2]!, [u8(3), 4]!]!
+	assert computed_array_table == const_array_table()
+	assert computed_imported_arrays == 10
+	assert computed_imported_arrays == const_imported_array_values()
 }

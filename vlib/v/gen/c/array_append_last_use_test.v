@@ -3,7 +3,7 @@ module main
 import os
 import v.cmdexec
 
-fn test_array_append_reuses_consumed_last_use_local_storage() {
+fn test_array_append_copies_values_without_implicit_clones() {
 	root := os.join_path(os.vtmp_dir(), 'array_append_last_use_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer {
@@ -150,8 +150,9 @@ fn main() {}
 		'retain_loop', 'retain_twice', 'retain_defer', 'retain_capture', 'retain_call_alias',
 		'retain_literal_alias', 'retain_shared_fields', 'retain_scoped_const', 'retain_wrapped_const'] {
 		body := code.all_after_last('void ${name}(').all_after('{').all_before('\n}')
-		assert body.contains('__derived_clone'), '${name}: ${body}'
+		assert body.contains('array_push('), '${name}: ${body}'
+		assert !body.contains('__derived_clone'), '${name}: ${body}'
 	}
 	custom := code.all_after_last('void retain_custom_clone(').all_after('{').all_before('\n}')
-	assert custom.contains('clone('), custom
+	assert !custom.contains('clone('), custom
 }

@@ -219,7 +219,6 @@ mut:
 	const_selector_filter         &ConstSelectorNameFilter = unsafe { nil }
 	const_suffixes                map[string]string
 	source_parent_ids             []i32
-	array_append_tree_factories   map[string]bool // immutable freshness proof, shared by workers
 	shared_local_decl_names       map[string]bool
 	has_shared_decls              bool            // any `shared` variable, parameter, global or field, see shared_map_autolock_possible
 	shared_field_names            map[string]bool // names of `shared` fields and globals
@@ -3021,10 +3020,6 @@ fn (mut t Transformer) prepare() {
 	t.ierror_none_type_id = t.interface_impl_type_id(flat.source_type_id('IError'), flat.source_type_id('None__')) or { 0 }
 	if !t.defer_fixed_array_borrow_prep {
 		t.prepare_fixed_array_borrow_params()
-		// Deferred preparation runs this once the parameter worker has published
-		// its declaration index; building that index here as well only to drop it
-		// left a second copy in the preparation arena.
-		t.prepare_array_append_tree_factories()
 	}
 }
 
@@ -5886,7 +5881,6 @@ fn (t &Transformer) fork_program_view(ast &flat.FlatAst, wtc &types.TypeChecker,
 		const_selector_filter:                  t.const_selector_filter
 		const_suffixes:                         t.const_suffixes
 		source_parent_ids:                      t.source_parent_ids
-		array_append_tree_factories:            t.array_append_tree_factories
 		shared_local_decl_names:                t.shared_local_decl_names
 		has_shared_decls:                       t.has_shared_decls
 		shared_field_names:                     t.shared_field_names
@@ -18402,7 +18396,18 @@ fn (mut t Transformer) build_interface_field_selector_chain(base flat.NodeId, ba
 }
 
 fn (mut t Transformer) struct_field_selector_for_type(base flat.NodeId, struct_type_id u32, field string, field_type_id u32, base_is_ptr bool) ?flat.NodeId {
-	path := t.struct_field_path_for_field(struct_type_id, field) or { return none }
+	path := t.struct_field_path_for_field(struct_type_id, field) or {
+		// Smartcast receivers can select an imported embed by its short name.
+		// Keep the declaration's field spelling, as ordinary selectors do.
+		owner := t.trim_pointer_type(t.normalize_type_alias(struct_type_id))
+		info := t.lookup_struct_info(owner) or { return none }
+		embedded := t.embedded_field_for_direct_selector(info, field) or { return none }
+		return t.make_selector_op(base, embedded.name, field_type_id, if base_is_ptr {
+			.arrow
+		} else {
+			.dot
+		})
+	}
 	mut cur := base
 	mut cur_is_ptr := base_is_ptr
 	for embedded in path {
@@ -32833,7 +32838,8 @@ fn (t &Transformer) resolve_interface_pattern(pattern_id u32, subject_type_id u3
 				return target_iface_source_id
 			}
 		} else if t.tc.named_type_implements_interface(candidate_source_id_4, iface) {
-			return candidate_source_id_4
+			// Use the canonical type ID registered for interface implementations.
+			return t.tc.parse_resolution_type_in_file(candidate_source_id_4, t.cur_file).source_type_id()
 		}
 	}
 	return none

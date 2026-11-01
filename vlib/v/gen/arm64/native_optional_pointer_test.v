@@ -1,11 +1,13 @@
 module arm64
 
-import os
-import v.parser
-import v.pref
-import v.ssa
-import v.transform
-import v.types
+$if macos && arm64 {
+	import os
+	import v.parser
+	import v.pref
+	import v.ssa
+	import v.transform
+	import v.types
+}
 
 fn test_native_optional_pointer_literals_and_thread_results_preserve_the_pointer() {
 	$if macos && arm64 {

@@ -40,7 +40,17 @@ __global total_m = i64(0)
 // no matching hook and they would be reported as permanently live. Reject that
 // combination at C compile time rather than emit misleading stats. The guard is
 // emitted as C preprocessor code so `-cross` can still preserve conditional C.
-#insert "@VEXEROOT/vlib/builtin/track_heap_checks.h"
+#if defined(CUSTOM_DEFINE_track_heap) && (defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm))
+#error "-d track_heap requires manual memory management; rebuild with -gc none"
+#endif
+
+#if defined(CUSTOM_DEFINE_track_heap) && defined(CUSTOM_DEFINE_vgc)
+#error "-d track_heap requires manual memory management; rebuild with -gc none"
+#endif
+
+#if defined(CUSTOM_DEFINE_track_heap) && (defined(_VPREALLOC) || defined(CUSTOM_DEFINE_prealloc))
+#error "-d track_heap requires manual memory management; rebuild with -gc none (not -prealloc)"
+#endif
 
 fn C.vheap_alloc(p voidptr, n u64)
 fn C.vheap_free(p voidptr)

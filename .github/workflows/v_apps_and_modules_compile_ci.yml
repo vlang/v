@@ -10,13 +10,6 @@ on:
       - '!**/v_apps_and_modules_compile_ci.yml'
       - 'examples/**'
       - 'cmd/tools/vrepl.v'
-  pull_request:
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/v_apps_and_modules_compile_ci.yml'
-      - 'examples/**'
-      - 'cmd/tools/vrepl.v'
   schedule:
     - cron: '37 2 * * *'
 
@@ -29,7 +22,7 @@ concurrency:
 
 jobs:
   v-apps-compile:
-    if: ${{ github.event_name != 'schedule' || (github.repository == 'vlang/v' && github.ref == 'refs/heads/master') }}
+    if: github.ref == 'refs/heads/master' && (github.event_name != 'schedule' || github.repository == 'vlang/v')
     strategy:
       matrix:
         os: [ubuntu-latest, macos-14]
@@ -264,7 +257,7 @@ jobs:
       #     v test ~/.vmodules/nedpals/vex
 
   vpm-site-compile:
-    if: ${{ github.event_name != 'pull_request' && (github.event_name != 'schedule' || (github.repository == 'vlang/v' && github.ref == 'refs/heads/master')) }}
+    if: github.ref == 'refs/heads/master' && (github.event_name != 'schedule' || github.repository == 'vlang/v')
     strategy:
       matrix:
         os: [ubuntu-24.04, macos-14]
@@ -288,7 +281,7 @@ jobs:
   # sure a real veb/fasthttp app both builds and returns the expected HTML on
   # Windows (a regression test for the Windows fasthttp SOCKET truncation crash).
   gitly-windows:
-    if: ${{ github.event_name != 'schedule' || (github.repository == 'vlang/v' && github.ref == 'refs/heads/master') }}
+    if: github.ref == 'refs/heads/master' && (github.event_name != 'schedule' || github.repository == 'vlang/v')
     runs-on: windows-2025
     timeout-minutes: 60
     env:

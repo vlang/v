@@ -1,6 +1,5 @@
 import os
 import v.cmdexec
-import v.pref
 
 fn test_macos_tcc_links_atomic_thread_fences_without_fallback() ! {
 	$if !macos {
@@ -30,12 +29,7 @@ fn main() {
 }
 ')!
 	exe := os.join_path(root, 'main')
-	// Without `-cc`, V selects TCC only on hosts that can load its executables.
-	compiler_variants := if pref.host_rejects_tcc_executables() {
-		[['-cc', 'tcc']]
-	} else {
-		[([]string{}), ['-cc', 'tcc']]
-	}
+	compiler_variants := [([]string{}), ['-cc', 'tcc']]
 	for compiler_args in compiler_variants {
 		for gc_mode in ['none', 'boehm'] {
 			mut args := ['-new-compiler', '-nocache', '-no-retry-compilation', '-gc', gc_mode,

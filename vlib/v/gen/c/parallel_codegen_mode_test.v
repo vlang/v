@@ -353,3 +353,27 @@ fn work_${i}(n i64) string {
 		assert code == first, 'VJOBS=${jobs} generated different C than VJOBS=1'
 	}
 }
+
+fn test_parallel_codegen_preserves_c_function_names_shadowed_by_locals() {
+	test_dir := os.join_path(os.vtmp_dir(), 'cgen_c_function_shadow_${os.getpid()}')
+	os.mkdir_all(test_dir) or { panic(err) }
+	defer { os.rmdir_all(test_dir) or {} }
+	os.write_file(os.join_path(test_dir, 'native.h'),
+		'static int backend_probe(int value) { return value + 1; }\n') or { panic(err) }
+	source := os.join_path(test_dir, 'main.c.v')
+	os.write_file(source, '#include "@DIR/native.h"\nfn C.backend_probe(value i32) i32\nfn main() {\n backend_probe := C.backend_probe(41)\n callback := C.backend_probe\n if backend_probe != 42 || callback(7) != 8 { panic("C function was shadowed") }\n println(backend_probe)\n}\n') or { panic(err) }
+	for jobs in ['1', '2', '4'] {
+		for no_fused_prep in ['', '1'] {
+			exe := os.join_path(test_dir, 'program_${jobs}_${no_fused_prep}')
+			build := cmdexec.run_in_merged_with_env(@VEXE, ['-nocache', '-no-retry-compilation',
+				'-o', exe, source], test_dir, {
+				'VJOBS':               jobs
+				'V3_NO_PAR_CGEN_PREP': no_fused_prep
+			})
+			assert build.exit_code == 0, 'VJOBS=${jobs}, no fused prep=${no_fused_prep}: ${build.output}'
+			run := cmdexec.run(exe, [])
+			assert run.exit_code == 0, run.output
+			assert run.output.trim_space() == '42', run.output
+		}
+	}
+}

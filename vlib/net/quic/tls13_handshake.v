@@ -8,12 +8,12 @@ import crypto.sha256
 // module's established narrow-but-real-values convention (see
 // tls13_client_hello.v's sig_scheme_* constants).
 pub enum TlsAlert {
-	unexpected_message      = 10
-	handshake_failure       = 40
-	bad_certificate         = 42
-	illegal_parameter       = 47
-	decode_error            = 50
-	decrypt_error           = 51
+	unexpected_message = 10
+	handshake_failure  = 40
+	bad_certificate    = 42
+	illegal_parameter  = 47
+	decode_error       = 50
+	decrypt_error      = 51
 	// RFC 7301 §3.2 (registered separately from RFC 8446's own alert
 	// registry): the fatal alert a server sends when it supports none of
 	// the client's offered ALPN protocols. This client's own ALPN check
@@ -29,14 +29,14 @@ pub enum TlsAlert {
 	// parse_encrypted_extensions for any extension outside the small set
 	// this client can legitimately receive there (IANA TLS Alert registry
 	// value 110, confirmed directly, not assumed).
-	unsupported_extension   = 110
+	unsupported_extension = 110
 	// RFC 9001 §8.2: "endpoints that receive ClientHello or
 	// EncryptedExtensions messages without the quic_transport_parameters
 	// extension MUST close the connection with an error of type 0x016d
 	// (equivalent to a fatal TLS missing_extension alert)" -- 0x016d =
 	// 0x100 + 0x6d (109), confirmed against the IANA TLS Alert registry
 	// directly, not assumed.
-	missing_extension       = 109
+	missing_extension = 109
 }
 
 // tls_alert_to_quic_error implements RFC 9001 §4.8: "If TLS produces an

@@ -10,11 +10,24 @@ From the repository root of a built checkout on Linux, run:
 
 This runs the script tasks from `.github/workflows/linux_ci.yml` in workflow order:
 TCC, GCC, then Clang. It does not bootstrap V or run the workflow's separate shell
-canaries. The tasks include dependency installation with `sudo apt`; use the Ubuntu
-24.04 environment expected by the workflow, with all three C compilers available.
+canaries. The tasks include dependency installation with `sudo apt`; Ubuntu 24.04
+and Debian 13 are supported, with all three C compilers available. Wayland uses
+the runtime package `libwayland-egl1`. The wkhtmltox C interop library uses the
+guest's Debian package architecture, with the Jammy build on Ubuntu and the
+Bookworm build on Debian. Its dependencies are installed through APT.
+The dependency tasks also install Node.js for the WebAssembly runtime tests.
+Native C++ objects use the platform C++ compiler for headers. On Linux, TinyCC
+links also search that compiler's C++ runtime directory, including Debian's
+versioned GCC library directory.
 The command uses the workflow's compiler flags (`-cc tcc -no-retry-compilation`
 for TCC, the default compiler for GCC, and `-cc clang` for Clang), sets the
 corresponding `GITHUB_JOB`, and disables the compatibility compiler fallback.
+
+The ARM64 fixtures using `cmp` or raw SIMD run with GCC or Clang; TCC's assembler
+does not support those instructions and NEON register clobbers. Linux builds
+enable the ARMv8 crypto assembler extension, while the PMULL runtime test still
+checks the host CPU's capabilities. Generic bool assembly uses byte loads and
+stores, with a guard checking that adjacent bytes remain unchanged.
 
 Like the macOS runner, it saves the current task **before** executing it and sets
 `VTEST_FAIL_FAST=1`. It retains Linux CI's normal test worker count. Fix a failure
@@ -77,6 +90,10 @@ single worker. Without `VJOBS`, GitHub Actions self-tests use one worker when
 vetting session instead of starting formatting checks. The failed task's checkpoint
 is retained. Existing per-test retry and known-flaky-test policies are unchanged.
 
+The macOS `self_tests` task uses `/usr/bin/caffeinate` to wake the display and keep
+it awake while the tests run. Metal frame callbacks require an awake display.
+The display assertion is released when the task exits, including after a failure.
+
 Progress is stored in `/tmp/v-macos-ci-<uid>-<checkout-hash>.progress`; the command
 prints the exact path. The hash uses the canonical checkout directory, not a commit
 or source timestamp, so edits, commits and compiler rebuilds do not discard progress.
@@ -111,6 +128,8 @@ Other non-test commands retain their existing task-level retry behavior.
 
 On macOS, `build-examples` builds `examples/macos_tray` as a project folder so its
 platform-specific source is included alongside the main program.
+`examples/mini_software_emulator` is also built as a project folder on every platform,
+including its CPU, instruction handlers and machine state in one program.
 
 A resumed pass is not a fresh validation of earlier tasks or tests against shared
 source changes. Compiler and library edits deliberately preserve progress. Use

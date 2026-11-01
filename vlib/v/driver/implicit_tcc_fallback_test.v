@@ -170,10 +170,6 @@ fn test_forced_implicit_tcc_failure_reports_the_fallback() {
 		eprintln('skipping: no bundled or system tcc available for implicit tcc selection')
 		return
 	}
-	if pref.host_rejects_tcc_executables() {
-		eprintln('skipping: this host never selects tcc implicitly')
-		return
-	}
 	fallback := v3_platform_c_compiler_command(os.user_os())
 	os.find_abs_path_of_executable(fallback) or {
 		eprintln('skipping: no ${fallback} to fall back to')
@@ -304,4 +300,10 @@ fn test_implicit_tcc_builds_programs_using_the_macos_module() {
 	run := cmdexec.run(exe, [])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'NSString'
+}
+
+fn test_tcc_failure_recognizes_the_bundled_executable_name() {
+	assert v3_is_tcc_compilation_failure('/tools/tcc.exe', 'file.c:2: error: expression expected before @')
+	assert v3_is_tcc_compilation_failure('/tools/tinyc.exe', 'file.c:2: error: unsupported syntax')
+	assert !v3_is_tcc_compilation_failure('/tools/clang', 'file.c:2: error: unsupported syntax')
 }

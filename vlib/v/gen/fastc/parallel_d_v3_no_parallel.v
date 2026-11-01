@@ -3,6 +3,24 @@ module fastc
 import v.flat
 import v.pref
 
+struct FastcPendingEmbeddedPayloads {
+	result FastcEmbeddedPayloadResult
+}
+
+fn fastc_start_embedded_payloads(sources []FastcSourceFile, prefs &pref.Preferences) FastcPendingEmbeddedPayloads {
+	if !prefs.building_v || prefs.selfhost {
+		return FastcPendingEmbeddedPayloads{}
+	}
+	return FastcPendingEmbeddedPayloads{ result: fastc_collect_source_embedded_payloads(sources, prefs) }
+}
+
+fn fastc_wait_embedded_payloads(mut pending FastcPendingEmbeddedPayloads) !map[string]string {
+	if pending.result.error_message != '' {
+		return error(pending.result.error_message)
+	}
+	return pending.result.payloads
+}
+
 struct FastcPendingReferences {
 	references map[string]bool
 }

@@ -51,12 +51,13 @@ fn workflow_index_after(source string, needle string, offset int) int {
 	return offset + relative
 }
 
-fn test_pr_contract_workflow_always_exposes_both_required_checks() {
+fn test_master_contract_workflow_always_exposes_both_required_checks() {
 	source := workflow_source('tccbin_automation_contract.yml')
 	vc_lock := bin.validate_vc_bootstrap_contract(automation_root()) or { panic(err) }
 	tcc_lock := 'ece46f06fbe6eb701d52442f11dd59c48d166cae'
-	assert source.contains('  pull_request:')
-	assert source.contains('  merge_group:')
+	assert source.contains('on:\n  push:\n    branches:\n      - master\n')
+	assert !source.contains('  pull_request:')
+	assert !source.contains('  merge_group:')
 	assert !source.contains('paths:')
 	assert !source.contains('paths-ignore:')
 	assert source.contains('name: tccbin-automation-contract')
@@ -232,7 +233,7 @@ fn test_update_authenticates_real_staging_before_every_upload_or_publication() {
 	checkout_pin := '3d3c42e5aac5ba805825da76410c181273ba90b1'
 	upload_pin := '043fb46d1a93c77aae656e7c1c64a875d1fc6a0a'
 	vc_lock := '0781dbf8ed16a8e9ebce3771a645b814456c0103'
-	cpa_pin := 'e0b9770014ba65d5e0815f15b74031c3a635f641'
+	cpa_pin := '82668f1fbd89d9c99487604f822cbf6716f124d3' // v1.7.0
 	mut action_calls := 0
 	for raw_line in source.split_into_lines() {
 		mut line := raw_line.trim_space()

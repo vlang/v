@@ -126,10 +126,9 @@ v up
 ```
 
 This also refreshes the bundled TCC binaries used for fast C compilation.
-Previously cached modules are validated with the updated compiler. Successful checks that
-produce no output remain quiet; `Caching module <name>...` reports actual C compilation.
-Different build configurations can compile the same module separately.
-Use `v up -v` to show progress for every checked cache configuration, including reused objects.
+It then runs `v wipe-cache` to clear module, object, temporary, and compiled tool caches,
+even when V is already up to date. Subsequent builds recreate the caches they need;
+`v up` does not replay previously recorded build configurations or test selectors.
 
 > [!NOTE]
 > If you run into any trouble, or you have a different operating
@@ -264,10 +263,10 @@ working `tcc` from `PATH`, before using the platform compiler. The system fallba
 when required V runtime artifacts are available, including the bundled `libgc.a` used by default
 glibc and Windows Boehm builds.
 
-On macOS 27 (Darwin 27) and later, V never selects TCC by itself, and `make` and `v self` build
-V with the system compiler: depending on their layout, TCC-linked executables can start there
-with corrupted global variables ([#29744](https://github.com/vlang/v/issues/29744)). An explicit
-`-cc tcc` is still honored.
+On macOS, regular builds and `v self` use TCC by default, including on Darwin 27 and later.
+Use a current TCC bundle built with the Mach-O zero-fill fix for
+[#29744](https://github.com/vlang/v/issues/29744); older bundles can corrupt global variables.
+An explicit `-cc` overrides the default, and `CC` also overrides the compiler used by `v self`.
 
 `-prod` builds never default to TCC, which cannot do their optimizations. On x64 Windows,
 without `-cc`, a `-prod` build uses MSVC when an x64 Visual Studio Developer environment is

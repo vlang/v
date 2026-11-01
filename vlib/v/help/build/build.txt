@@ -274,7 +274,8 @@ NB: the build flags are shared with the run command too:
     Generate C/JS code for all functions, including those that are provably not used by your
     project. By default, V skips them, which speeds up compilation, and reduces the generated
     output size. Use this option if your program breaks only because of that, and please
-    report the issue.
+    report the issue. The obsolete -skip-unused flag has no effect and prints a notice
+    that unused code is skipped by default.
 
   -stats
     Enable more detailed statistics reporting, while compiling test files.

@@ -76,13 +76,8 @@ fn (g &Parser) render_struct_literal_field_value(value_tokens []FastcExpressionT
 			is_fixed_array:   true
 		}
 	}
-	value := if value_tokens.len == 1 && value_tokens[0].has_source() {
-		// A field value carried as a pre-rendered `({ ... })` (e.g. an `or`-unwrap) is used
-		// directly so its internal temporaries stay self-contained.
-		value_tokens[0].source_text()
-	} else {
-		g.render_call_argument_expression(value_tokens, expected_type_source_id) or { return none }
-	}
+	value := g.render_call_argument_expression(value_tokens, expected_type_source_id) or { return none }
+
 	if g.c_global_static_initializer && !is_shared_pointer {
 		return FastcStructLiteralFieldValue{
 			rendered_field: '.${c_field_name}=(${value})'
@@ -196,10 +191,25 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 				}
 			}
 		}
+		if is_positional && g.struct_field_info[flat.source_type_name(layout_type)].any(fastc_fixed_array_element_type(it.typ) != none) {
+			mut named_items := [][]FastcExpressionToken{}
+			for item_index, item in items {
+				if item_index >= g.struct_field_info[flat.source_type_name(layout_type)].len {
+					return none
+				}
+				field := g.struct_field_info[flat.source_type_name(layout_type)][item_index]
+				mut named := [FastcExpressionToken{ tok: .name, lit: field.name },
+					FastcExpressionToken{ tok: .colon, lit: ':' }]
+				named << item
+				named_items << named
+			}
+			value := g.render_named_struct_initializer(c_type, named_items) or { return none }
+			return FastcRenderedExpression{ source: value, typ: c_type }
+		}
 		if is_positional {
 			mut values := []string{cap: items.len}
 			for item_index, item in items {
-				field := if !is_c_struct_literal && item_index < g.struct_field_info[flat.source_type_name(layout_type)].len {
+				field := if item_index < g.struct_field_info[flat.source_type_name(layout_type)].len {
 					g.struct_field_info[flat.source_type_name(layout_type)][item_index]
 				} else {
 					FastcStructField{}
@@ -370,6 +380,13 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 				}
 			}
 		}
+		if field := g.struct_field_metadata(c_type, field_name) {
+			if field.typ == fastc_type_option && field.option_value_type != 0 {
+				expected_type = flat.source_type_id(fastc_typed_option_type(field.option_value_type))
+				mut writer := unsafe { &Parser(g) }
+				fastc_register_composite_type(expected_type, mut writer.composite_types)
+			}
+		}
 		field_value := if value_start >= 0 {
 			g.render_struct_literal_field_value(tokens[value_start..value_end], expected_type, c_field_name, explicit_initializers.len, field_is_shared_pointer) or { return none }
 		} else {
@@ -386,6 +403,9 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 				...field_value
 				fixed_array_copy: field_value.fixed_array_copy.replace('__vf_struct_fixed.${c_field_name}', '__vf_promoted_field')
 			}
+		} else if field_value.is_fixed_array && field_value.rendered_field != '' && update_source != '' {
+			element_type := fastc_fixed_array_element_type(expected_type) or { return none }
+			fixed_array_copies << 'memcpy(__vf_struct_fixed.${c_field_name}, (${g.collection_storage_type(element_type)}[])${field_value.field_value}, sizeof(__vf_struct_fixed.${c_field_name}));'
 		} else if field_value.rendered_field != '' {
 			rendered_fields << field_value.rendered_field
 			rendered_fields_by_name[field_name] = field_value.rendered_field

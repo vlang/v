@@ -292,7 +292,7 @@ pub fn (ctx &Context) update_image_region(id int, data voidptr, x int, y int, w 
 	}
 }
 
-// destroy detaches the context from sokol and drops its CPU-side image copies.
+// destroy releases the context's graphics resources and CPU-side image copies.
 // It must be called before `gfx.shutdown()`. Pipelines created with
 // `make_pipeline` are owned by the caller and stay alive until
 // `destroy_pipeline` is called for them.
@@ -300,13 +300,36 @@ pub fn (ctx &Context) destroy() {
 	if ctx == unsafe { nil } || ctx.st == unsafe { nil } {
 		return
 	}
+	mut st := ctx.st
 	if gfx.is_valid() {
 		gfx.remove_commit_listener(gfx.CommitListener{
 			func:      commit_listener_fn
 			user_data: voidptr(ctx)
 		})
+		if st.vbuf.id != 0 {
+			gfx.destroy_buffer(st.vbuf)
+		}
+		for index, pipeline in st.def_pip.pips {
+			if index != 5 && pipeline.id != 0 {
+				gfx.destroy_pipeline(pipeline)
+			}
+		}
+		if st.def_img.id != 0 {
+			gfx.destroy_image(st.def_img)
+		}
+		if st.def_smp.id != 0 {
+			gfx.destroy_sampler(st.def_smp)
+		}
+		if st.shader.id != 0 {
+			gfx.destroy_shader(st.shader)
+		}
 	}
-	ctx.st.image_data.clear()
+	st.vbuf = gfx.Buffer{}
+	st.def_pip = Pipeline{}
+	st.def_img = gfx.Image{}
+	st.def_smp = gfx.Sampler{}
+	st.shader = gfx.Shader{}
+	st.image_data.clear()
 }
 
 pub fn (ctx &Context) setup(desc Desc) {

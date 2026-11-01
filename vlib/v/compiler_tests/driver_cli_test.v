@@ -1,6 +1,7 @@
 import os
 import time
 import v.cmdexec
+import v.compiler_tests.driver_signals
 import v.pref
 import v.util
 
@@ -1128,6 +1129,15 @@ fn test_driver_no_skip_unused_bypasses_warm_cgen_cache() {
 		'c', '-o', no_skip_c_path, source], environment)
 	assert no_skip_c.exit_code == 0, no_skip_c.output
 	assert os.read_file(no_skip_c_path)!.contains('unused_value(')
+	for flags in [['-skip-unused'], ['-skip-unused', '-no-skip-unused'],
+		['-no-skip-unused', '-skip-unused']] {
+		mut args := flags.clone()
+		args << ['-w', '-o', no_skip_c_path, source]
+		obsolete := run_driver_with_environment(v3_bin, args, environment)
+		assert obsolete.exit_code == 0, obsolete.output
+		assert obsolete.output.contains('notice: `-skip-unused` is no longer needed'), obsolete.output
+		assert os.read_file(no_skip_c_path)!.contains('unused_value(') == ('-no-skip-unused' in flags)
+	}
 }
 
 fn test_driver_user_native_header_bypasses_cgen_cache() {
@@ -2012,13 +2022,13 @@ fn main() {
 			interrupted_run.close()
 			assert false, 'interrupted run did not start: ${run_error}'
 		}
-		interrupt := os.exec(['kill', '-INT', '-' + '${interrupted_run.pid}'])
-		if interrupt.exit_code != 0 {
+		// Signal the group directly: external kill utilities parse negative IDs differently.
+		driver_signals.interrupt_process_group(interrupted_run.pid) or {
 			os.exec(['kill', '-KILL', '${program_pid}'])
 			interrupted_run.signal_pgkill()
 			interrupted_run.wait()
 			interrupted_run.close()
-			assert false, interrupt.output
+			assert false, err.msg()
 		}
 		// The program runs in its own process group, so killing the group of the
 		// driver does not stop it: kill it by its pid if the interrupt is lost.

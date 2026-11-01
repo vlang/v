@@ -49,7 +49,7 @@ fn main() {
 }
 '
 	os.write_file(src, source) or { panic(err) }
-	compile := os.exec([lmsr_vexe, '-nocache', '-no-memory-limit', '${src}', '-b', 'c', '-o', '${out}'])
+	compile := os.exec([lmsr_vexe, '-nocache', '-no-memory-limit', '-b', 'c', '-o', out, src])
 	assert compile.exit_code == 0, compile.output
 	assert !compile.output.contains('C compilation failed'), compile.output
 	run := os.exec([out])

@@ -77,6 +77,11 @@ fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
 		a.scope = check_worker_scope_begin(true)
 	}
 	tc := unsafe { &TypeChecker(a.checker) }
+	// Declarations and context stay fixed while this worker drains the queue.
+	// Match the serial preparation path: reuse receiver and candidate queries
+	// across interfaces, with one private memo per checker.
+	opened := tc.begin_interface_impl_queries()
+	defer { tc.end_interface_impl_queries(opened) }
 	iface_names := unsafe { &[]u32(a.iface_names) }
 	mut results := unsafe { &InterfaceImplResults(a.results) }
 	// Implementer scans differ widely in cost (IError checks every type), so

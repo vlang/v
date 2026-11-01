@@ -1046,17 +1046,6 @@ fn directive_order_count(c_code string, needle string) int {
 	return count
 }
 
-fn directive_order_has_include_directive(c_code string) bool {
-	for line in c_code.split_into_lines() {
-		clean := line.trim_space()
-		// Portable output embeds local headers while preserving system includes.
-		if clean.starts_with('#include "') {
-			return true
-		}
-	}
-	return false
-}
-
 fn test_c_directives_follow_import_dependency_order() {
 	c_code := directive_order_gen_c(directive_order_build_v3(), true)
 	gfx_define := directive_order_index(c_code, '#define SOKOL_GFX_IMPL')
@@ -1066,7 +1055,8 @@ fn test_c_directives_follow_import_dependency_order() {
 	assert fontstash_define >= 0, c_code
 	assert block_start >= 0, c_code
 	assert gfx_define < fontstash_define, c_code
-	assert !directive_order_has_include_directive(c_code), c_code
+	assert gfx_define < directive_order_index(c_code, 'sokol_gfx.h"'), c_code
+	assert fontstash_define < directive_order_index(c_code, 'sokol_fontstash.h"'), c_code
 	block_tail := c_code[block_start..]
 	block_end := directive_order_index(block_tail, '#endif')
 	assert block_end >= 0, c_code
@@ -1101,126 +1091,106 @@ fn test_c_directives_preserve_dotted_import_module_identity() {
 fn test_importer_macro_is_emitted_before_dependency_include() {
 	c_code := directive_order_gen_and_run_importer_macro(directive_order_build_v3())
 	use_foo := directive_order_index(c_code, '#define USE_FOO')
-	foo_header := directive_order_index(c_code, 'static inline int foo_value')
+	foo_header := directive_order_index(c_code, 'foo.h"')
 	assert use_foo >= 0, c_code
 	assert foo_header >= 0, c_code
 	assert use_foo < foo_header, c_code
 	assert !c_code.contains('int foo_value(void);'), c_code
-	assert !directive_order_has_include_directive(c_code), c_code
 }
 
-fn test_dir_include_is_expanded_before_header_probe() {
+fn test_dir_include_is_resolved_without_a_header_probe() {
 	c_code := directive_order_gen_and_run_dir_header(directive_order_build_v3())
-	dir_header := directive_order_index(c_code, 'static inline int dir_value')
+	dir_header := directive_order_index(c_code, 'dir_value.h"')
 	assert dir_header >= 0, c_code
 	assert !c_code.contains('int dir_value(void);'), c_code
-	assert !directive_order_has_include_directive(c_code), c_code
 }
 
 fn test_quoted_include_uses_flag_include_dirs() {
 	c_code := directive_order_gen_and_run_flag_include_dir_header(directive_order_build_v3())
-	flag_header := directive_order_index(c_code, 'static inline int flag_value')
+	flag_header := directive_order_index(c_code, 'flag_value.c"')
 	assert flag_header >= 0, c_code
 	// Angle-bracket dependencies remain supplied through the recorded -I flag.
-	assert c_code.contains('#include <flag_value.h>'), c_code
+	assert !c_code.contains('#include <flag_value.h>'), c_code
 	assert !c_code.contains('int flag_value(void);'), c_code
-	assert !directive_order_has_include_directive(c_code), c_code
 }
 
 fn test_quoted_include_uses_later_flag_include_dirs() {
 	c_code := directive_order_gen_and_run_late_flag_include_dir_header(directive_order_build_v3())
-	flag_header := directive_order_index(c_code, 'static inline int late_flag_value')
+	flag_header := directive_order_index(c_code, 'late_flag_value.c"')
 	assert flag_header >= 0, c_code
-	assert c_code.contains('#include <late_flag_value.h>'), c_code
+	assert !c_code.contains('#include <late_flag_value.h>'), c_code
 
 	assert !c_code.contains('int late_flag_value(void);'), c_code
-	assert !directive_order_has_include_directive(c_code), c_code
 }
 
 fn test_multiline_static_inline_header_is_not_redeclared() {
 	c_code := directive_order_gen_and_run_multiline_static_inline(directive_order_build_v3())
-	header_idx := directive_order_index(c_code, 'static inline\nint multiline_value')
+	header_idx := directive_order_index(c_code, 'multiline_value.h"')
 	assert header_idx >= 0, c_code
 	assert !c_code.contains('int multiline_value(void);'), c_code
-	assert !directive_order_has_include_directive(c_code), c_code
 }
 
-fn test_inlined_headers_are_emitted_before_extern_prototypes() {
+fn test_header_includes_are_emitted_before_extern_prototypes() {
 	c_code := directive_order_gen_c_extern_after_header(directive_order_build_v3())
-	header_idx := directive_order_index(c_code, 'typedef struct NativeThing')
+	header_idx := directive_order_index(c_code, 'native_thing.h"')
 	proto_idx := directive_order_index(c_code, 'int native_use(NativeThing*')
 	assert header_idx >= 0, c_code
 	assert proto_idx >= 0, c_code
 	assert header_idx < proto_idx, c_code
-	assert !directive_order_has_include_directive(c_code), c_code
 }
 
 fn test_header_declared_prototypes_are_not_redeclared() {
 	c_code := directive_order_gen_c_header_declared_prototype(directive_order_build_v3())
-	header_idx := directive_order_index(c_code, 'const char* declared_text(void);')
+	header_idx := directive_order_index(c_code, 'declared_proto.h"')
 	assert header_idx >= 0, c_code
-	assert directive_order_count(c_code, 'declared_text(void);') == 1, c_code
-	assert !directive_order_has_include_directive(c_code), c_code
+	assert directive_order_count(c_code, 'declared_text(void);') == 0, c_code
 }
 
-fn test_inlined_headers_are_emitted_before_type_declarations() {
+fn test_header_includes_are_emitted_before_type_declarations() {
 	c_code := directive_order_gen_c_struct_field_after_header(directive_order_build_v3())
-	header_idx := directive_order_index(c_code, '} FieldThing;')
+	header_idx := directive_order_index(c_code, 'field_thing.h"')
 	wrap_idx := directive_order_index(c_code, 'struct main__Wrap {')
 	assert header_idx >= 0, c_code
 	assert wrap_idx >= 0, c_code
 	assert header_idx < wrap_idx, c_code
 	assert !c_code.contains('typedef struct FieldThing'), c_code
-	assert !directive_order_has_include_directive(c_code), c_code
 }
 
 fn test_anonymous_typedef_struct_header_is_not_duplicated() {
 	c_code := directive_order_gen_and_run_anonymous_typedef(directive_order_build_v3())
-	assert c_code.contains('} AnonymousThing;'), c_code
-	assert c_code.contains('static inline int anonymous_value'), c_code
+	assert c_code.contains('anonymous_thing.h"'), c_code
+	assert !c_code.contains('static inline int anonymous_value'), c_code
 	assert !c_code.contains('typedef struct AnonymousThing'), c_code
-	assert !directive_order_has_include_directive(c_code), c_code
 }
 
 fn test_tagged_typedef_struct_alias_header_is_not_duplicated() {
 	c_code := directive_order_gen_and_run_tagged_typedef_alias(directive_order_build_v3())
-	assert c_code.contains('} TaggedAlias;'), c_code
-	assert c_code.contains('static inline int tagged_value'), c_code
+	assert c_code.contains('tagged_thing.h"'), c_code
+	assert !c_code.contains('static inline int tagged_value'), c_code
 	assert !c_code.contains('typedef struct TaggedAlias'), c_code
-	assert !directive_order_has_include_directive(c_code), c_code
 }
 
-fn test_inlined_typedef_union_headers_are_not_duplicated() {
+fn test_native_typedef_union_headers_are_not_duplicated() {
 	c_code := directive_order_gen_c_union_typedef_aliases(directive_order_build_v3())
-	assert c_code.contains('} AnonymousUnion;'), c_code
-	assert c_code.contains('} TaggedUnionAlias;'), c_code
+	assert c_code.contains('union_thing.h"'), c_code
+	assert !c_code.contains('} TaggedUnionAlias;'), c_code
 	assert !c_code.contains('typedef union AnonymousUnion'), c_code
 	assert !c_code.contains('union AnonymousUnion {\n'), c_code
 	assert !c_code.contains('typedef union TaggedUnionAlias'), c_code
 	assert !c_code.contains('union TaggedUnionAlias {\n'), c_code
-	assert !directive_order_has_include_directive(c_code), c_code
 }
 
-fn test_nested_local_header_includes_are_inlined_recursively() {
+fn test_nested_local_header_includes_are_left_to_the_c_preprocessor() {
 	c_code := directive_order_gen_and_run_nested_include(directive_order_build_v3())
-	bias_idx := directive_order_index(c_code, '#define NESTED_BIAS 5')
-	stdint_idx := directive_order_index(c_code, '#include <stdint.h>')
-	typedef_idx := directive_order_index(c_code, '} NestedThing;')
-	outer_fn_idx := directive_order_index(c_code, 'static inline int nested_value')
-	assert bias_idx >= 0, c_code
-	assert stdint_idx >= 0, c_code
-	assert typedef_idx >= 0, c_code
-	assert outer_fn_idx >= 0, c_code
-	assert stdint_idx < typedef_idx, c_code
-	assert bias_idx < outer_fn_idx, c_code
-	assert typedef_idx < outer_fn_idx, c_code
+	assert c_code.contains('outer.h"'), c_code
+	assert !c_code.contains('#define NESTED_BIAS 5'), c_code
+	assert !c_code.contains('} NestedThing;'), c_code
+	assert !c_code.contains('static inline int nested_value'), c_code
 	assert !c_code.contains('typedef struct NestedThing'), c_code
-	assert !directive_order_has_include_directive(c_code), c_code
 }
 
 fn test_supported_system_include_is_preserved_and_enables_system_preamble() {
 	c_code := directive_order_gen_c_unresolved_system_include(directive_order_build_v3())
-	assert !directive_order_has_include_directive(c_code), c_code
 	assert c_code.contains('#include <platform_user_header.h>'), c_code
 	assert c_code.contains('#include <dlfcn.h>'), c_code
 	assert c_code.contains('#include <stdint.h>'), c_code
@@ -1243,21 +1213,16 @@ fn test_unresolved_quoted_include_is_preserved() {
 	assert include_idx < define_idx, c_code
 }
 
-fn test_nested_system_include_is_preserved_in_its_platform_guard() {
+fn test_nested_system_include_stays_inside_its_unexpanded_header() {
 	c_code := directive_order_gen_c_nested_system_include(directive_order_build_v3())
-	// Keep the original guard intact: unavailable platform headers must stay inactive.
-	assert c_code.contains('#if defined(__linux__)\n#define NESTED_PLATFORM_HEADER 1\n#include <nested_platform_header.h>\n#endif'), c_code
-	nested_define_idx := directive_order_index(c_code, '#define NESTED_PLATFORM_HEADER 1')
-	nested_word_idx := directive_order_index(c_code, 'typedef uint64_t NestedWord;')
-	assert nested_define_idx >= 0, c_code
-	assert nested_word_idx > nested_define_idx, c_code
-	assert c_code[nested_define_idx..nested_word_idx].contains('#include <stdint.h>'), c_code
-	assert !directive_order_has_include_directive(c_code), c_code
+	assert c_code.contains('nested_preserved.h"'), c_code
+	assert !c_code.contains('#define NESTED_PLATFORM_HEADER 1'), c_code
+	assert !c_code.contains('#include <nested_platform_header.h>'), c_code
+	assert !c_code.contains('typedef uint64_t NestedWord;'), c_code
 }
 
 fn test_system_header_aggregates_keep_sdk_declarations() {
 	c_code := directive_order_gen_c_sdk_x11_aggregates(directive_order_build_v3())
-	assert !directive_order_has_include_directive(c_code), c_code
 	assert c_code.contains('#include <X11/Xlib.h>'), c_code
 	assert !c_code.contains('typedef union XEvent XEvent;'), c_code
 	assert !c_code.contains('union XEvent {\n'), c_code
@@ -1268,7 +1233,6 @@ fn test_system_header_aggregates_keep_sdk_declarations() {
 
 fn test_system_header_functions_keep_sdk_declarations() {
 	c_code := directive_order_gen_c_sdk_bcrypt_fn(directive_order_build_v3())
-	assert !directive_order_has_include_directive(c_code), c_code
 	assert c_code.contains('#include <bcrypt.h>'), c_code
 	// The sole occurrence is the call, rather than an extra ABI declaration.
 	assert directive_order_count(c_code, 'BCryptGenRandom(') == 1, c_code
@@ -1276,7 +1240,6 @@ fn test_system_header_functions_keep_sdk_declarations() {
 
 fn test_mach_headers_keep_sdk_declarations_and_scope_panic_macro() {
 	c_code := directive_order_gen_c_sdk_mach_headers(directive_order_build_v3())
-	assert !directive_order_has_include_directive(c_code), c_code
 	assert c_code.contains('#define panic mach_panic\n#include <mach/mach.h>\n#undef panic'), c_code
 	assert c_code.contains('#define panic mach_panic\n#include <mach/mach_time.h>\n#undef panic'), c_code
 	assert !c_code.contains('typedef unsigned int task_t;'), c_code
@@ -1287,7 +1250,6 @@ fn test_mach_headers_keep_sdk_declarations_and_scope_panic_macro() {
 
 fn test_inferred_mach_bindings_keep_guarded_sdk_declarations() {
 	c_code := directive_order_gen_c_task_info_reference(directive_order_build_v3())
-	assert !directive_order_has_include_directive(c_code), c_code
 	assert c_code.contains('#ifdef __APPLE__\n#define panic mach_panic\n#include <mach/mach.h>\n#undef panic\n#include <mach/task.h>\n#endif'), c_code
 	assert !c_code.contains('int task_info(void);'), c_code
 	assert directive_order_count(c_code, 'task_info(') == 1, c_code
@@ -1306,29 +1268,23 @@ fn test_timerfd_header_keeps_sdk_declarations() {
 	assert directive_order_count(c_code, 'timerfd_gettime(') == 1, c_code
 }
 
-fn test_stdarg_in_inlined_header_provides_va_defs() {
+fn test_stdarg_in_native_header_provides_va_defs() {
 	c_code := directive_order_gen_and_run_stdarg_header(directive_order_build_v3())
-	assert c_code.contains('#include <stdarg.h>')
-		|| c_code.contains('typedef __builtin_va_list va_list;'), c_code
-	assert c_code.contains('#include <stddef.h>')
-		|| c_code.contains('#define offsetof(type, member) __builtin_offsetof(type, member)'), c_code
-	assert c_code.contains('offsetof(struct StdargThing, value)'), c_code
-	assert c_code.contains('static inline int stdarg_sum(int count, ...)'), c_code
+	assert c_code.contains('stdarg_user.h"'), c_code
+	assert !c_code.contains('offsetof(struct StdargThing, value)'), c_code
+	assert !c_code.contains('static inline int stdarg_sum(int count, ...)'), c_code
 }
 
-fn test_inttypes_in_inlined_header_keeps_format_macros() {
+fn test_inttypes_in_native_header_keeps_format_macros() {
 	c_code := directive_order_gen_and_run_inttypes_header(directive_order_build_v3())
-	assert c_code.contains('#include <stdint.h>'), c_code
-	assert c_code.contains('#include <inttypes.h>'), c_code
-	assert !c_code.contains('__V_HEADERLESS_STDINT_H'), c_code
-	assert c_code.contains('sizeof(PRId64) + sizeof(PRIuPTR) + sizeof(SCNi64)'), c_code
+	assert c_code.contains('inttypes_user.h"'), c_code
+	assert !c_code.contains('sizeof(PRId64) + sizeof(PRIuPTR) + sizeof(SCNi64)'), c_code
 }
 
-fn test_poll_in_inlined_header_uses_preserved_system_struct() {
+fn test_poll_in_native_header_uses_preserved_system_struct() {
 	c_code := directive_order_gen_c_nested_poll_header(directive_order_build_v3())
-	assert !directive_order_has_include_directive(c_code), c_code
-	assert c_code.contains('#include <poll.h>'), c_code
-	assert c_code.contains('static inline int poll_user_fd(struct pollfd* item)'), c_code
+	assert c_code.contains('poll_user.h"'), c_code
+	assert !c_code.contains('static inline int poll_user_fd(struct pollfd* item)'), c_code
 	assert !c_code.contains('struct pollfd {\n'), c_code
 }
 

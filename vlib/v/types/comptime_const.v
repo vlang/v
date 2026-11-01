@@ -166,7 +166,8 @@ fn const_eval_c_integer_promotion(left Type, right Type) Type {
 	return if unsigned { Type(u64_) } else { Type(i64_) }
 }
 
-fn const_eval_convert(value ComptimeConstValue, typ Type) !ComptimeConstValue {
+fn (mut e ConstEval) convert(value ComptimeConstValue, destination Type) !ComptimeConstValue {
+	typ := e.resolved_storage_type(destination)!
 	base := unalias_type(typ)
 	if base.is_integer() {
 		if base is Primitive && base.size > 64 {
@@ -175,7 +176,13 @@ fn const_eval_convert(value ComptimeConstValue, typ Type) !ComptimeConstValue {
 		if !unalias_type(value.typ).is_integer() { return error('unsupported integer conversion') }
 		return ComptimeConstValue{ typ: typ, integer: const_eval_integer_cast(value.integer, typ) }
 	}
-	if (base is Primitive && base.props.has(.boolean)) || base is String || base is ArrayFixed || base is Struct {
+	if base is ArrayFixed {
+		if !e.fixed_array_value_matches(value, base)! {
+			return error('unsupported conversion to `${typ.name()}`')
+		}
+		return ComptimeConstValue{ ...value, typ: typ }
+	}
+	if (base is Primitive && base.props.has(.boolean)) || base is String || base is Struct {
 		if unalias_type(value.typ).source_type_id() != base.source_type_id() {
 			return error('unsupported conversion to `${typ.name()}`')
 		}
@@ -184,29 +191,110 @@ fn const_eval_convert(value ComptimeConstValue, typ Type) !ComptimeConstValue {
 	return error('unsupported constant type `${typ.name()}`')
 }
 
-fn (mut e ConstEval) zero(typ Type) !ComptimeConstValue {
+fn (mut e ConstEval) fixed_array_length(array ArrayFixed) !int {
+	if array.len > 0 { return array.len }
+	mut context := ConstIntContext{ evaluator: &e }
+	return e.tc.const_int_value_with_context(array.len_expr, e.tc.cur_module, []string{}, mut context) or {
+		return error(if context.failure.len > 0 {
+			context.failure
+		} else {
+			'unknown fixed-array length'
+		})
+	}
+}
+
+// Array values carry concrete dimensions after leaving their declaration scope.
+// Keep nominal aliases while replacing only their evaluator-owned array shapes.
+fn (mut e ConstEval) resolved_storage_type(typ Type) !Type {
+	if unalias_type(typ) !is ArrayFixed { return typ }
 	e.tick()!
 	e.depth++
 	defer { e.depth-- }
 	if e.depth > 128 { return error('evaluation exceeded recursion limit') }
+	if typ is Alias {
+		name_id := if typ.name_id in e.tc.type_alias_modules {
+			typ.name_id
+		} else {
+			flat.source_type_syntax(typ.name_id).generic_base()
+		}
+		module_name := e.tc.type_alias_modules[name_id] or { e.tc.cur_module }
+		decl := e.tc.first_type_declaration_ids[name_id] or { -1 }
+		file := if decl >= 0 {
+			if source := e.tc.a.source_files[e.tc.a.node(flat.NodeId(decl)).pos.id] {
+				source.name
+			} else {
+				e.tc.cur_file
+			}
+		} else {
+			e.tc.cur_file
+		}
+		old_tc := e.tc
+		e.tc = e.tc.fork_type_parse_view(file, module_name)
+		defer { e.tc = old_tc }
+		base := e.resolved_storage_type(typ.base_type)!
+		return Type(Alias{ name_id: typ.name_id, base_type: e.tc.intern_type_reference(base) })
+	}
+	if typ is ArrayFixed {
+		length := e.fixed_array_length(typ)!
+		element := e.resolved_storage_type(typ.elem_type)!
+		return Type(ArrayFixed{
+			elem_type: e.tc.intern_type_reference(element)
+			len:       length
+			len_expr:  if length == 0 { '0' } else { '' }
+		})
+	}
+	return typ
+}
+
+fn (mut e ConstEval) array_element_types_match(actual Type, expected Type) !bool {
+	e.tick()!
+	e.depth++
+	defer { e.depth-- }
+	if e.depth > 128 { return error('evaluation exceeded recursion limit') }
+	left := unalias_type(actual)
+	right := unalias_type(expected)
+	if right is ArrayFixed {
+		if left !is ArrayFixed { return false }
+		length := e.fixed_array_length(right)!
+		if left.len != length { return false }
+		return e.array_element_types_match(left.elem_type, right.elem_type)
+	}
+	return left.source_type_id() == right.source_type_id()
+}
+
+fn (mut e ConstEval) fixed_array_value_matches(value ComptimeConstValue, expected ArrayFixed) !bool {
+	e.tick()!
+	e.depth++
+	defer { e.depth-- }
+	if e.depth > 128 { return error('evaluation exceeded recursion limit') }
+	actual := unalias_type(value.typ)
+	if actual !is ArrayFixed { return false }
+	if value.elements.len != e.fixed_array_length(expected)! { return false }
+	if !e.array_element_types_match(actual.elem_type, expected.elem_type)! { return false }
+	// Source bounds can belong to the caller's file. Their evaluated shapes are
+	// already present in the values; only destination bounds use the current scope.
+	element_type := unalias_type(expected.elem_type)
+	if element_type is ArrayFixed {
+		for element in value.elements {
+			if !e.fixed_array_value_matches(element, element_type)! { return false }
+		}
+	}
+	return true
+}
+
+fn (mut e ConstEval) zero(destination Type) !ComptimeConstValue {
+	e.tick()!
+	e.depth++
+	defer { e.depth-- }
+	if e.depth > 128 { return error('evaluation exceeded recursion limit') }
+	typ := e.resolved_storage_type(destination)!
 	base := unalias_type(typ)
 	if base is Primitive && base.size > 64 { return error('128-bit integers are not supported') }
 	if base.is_integer() || (base is Primitive && base.props.has(.boolean)) || base is String {
 		return ComptimeConstValue{ typ: typ }
 	}
 	if base is ArrayFixed {
-		mut context := ConstIntContext{ evaluator: &e }
-		n := if base.len > 0 {
-			base.len
-		} else {
-			e.tc.const_int_value_with_context(base.len_expr, e.tc.cur_module, []string{}, mut context) or {
-				return error(if context.failure.len > 0 {
-					context.failure
-				} else {
-					'unknown fixed-array length'
-				})
-			}
-		}
+		n := e.fixed_array_length(base)!
 		e.reserve(n)!
 		mut elements := []ComptimeConstValue{cap: n}
 		for _ in 0 .. n { elements << e.zero(base.elem_type)! }
@@ -241,12 +329,6 @@ fn (mut e ConstEval) constant(name string) !ComptimeConstValue {
 
 fn (mut e ConstEval) constant_value(key string) !ComptimeConstValue {
 	if e.active[key] { return error('cycle in constant `${key}`') }
-	// Completed values remain authoritative after transform has lowered their
-	// initializers and helper bodies. Reads still apply the declared storage type.
-	if value := e.tc.comptime_const_values[key] {
-		return const_eval_convert(value, e.tc.const_types[key] or { value.typ })
-	}
-	id := e.tc.const_exprs[key] or { return error('constant `${key}` has no initializer') }
 	e.active[key] = true
 	old_tc := e.tc
 	old_scopes := e.scopes
@@ -257,8 +339,15 @@ fn (mut e ConstEval) constant_value(key string) !ComptimeConstValue {
 		e.scopes = old_scopes
 		e.active.delete(key)
 	}
+	// Completed values remain authoritative after transform has lowered their
+	// initializers and helper bodies. Their storage types can still have bounds
+	// that must resolve in the declaration's scope under the active cycle guard.
+	if value := e.tc.comptime_const_values[key] {
+		return e.convert(value, e.tc.const_types[key] or { value.typ })
+	}
+	id := e.tc.const_exprs[key] or { return error('constant `${key}` has no initializer') }
 	value := e.expr(id)!
-	return const_eval_convert(value, e.tc.const_types[key] or { value.typ })
+	return e.convert(value, e.tc.const_types[key] or { value.typ })
 }
 
 // Transform qualifies main constants, whose semantic table keys remain bare.
@@ -300,7 +389,7 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 		.ident { return e.local(node.value) or { e.constant(node.value)! } }
 		.paren, .expr_stmt { return e.expr(e.tc.a.child(node, 0)) }
 		.cast_expr {
-			return const_eval_convert(e.expr(e.tc.a.child(node, 0))!, e.tc.parse_type(node.source_value_id()))
+			return e.convert(e.expr(e.tc.a.child(node, 0))!, e.tc.parse_type(node.source_value_id()))
 		}
 		.call { return e.call(id) }
 		.prefix {
@@ -351,7 +440,7 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 			}
 			if node.kind == .if_expr {
 				typ := e.expr_types[int(id)] or { e.if_result_type(id)! }
-				return const_eval_convert(value, typ)
+				return e.convert(value, typ)
 			}
 			return value
 		}
@@ -396,7 +485,7 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 					return error('unknown struct field')
 				}
 				old := value.fields[name] or { return error('unknown struct field `${name}`') }
-				value.fields[name] = const_eval_convert(e.expr(e.tc.a.child(field, 0))!, old.typ)!
+				value.fields[name] = e.convert(e.expr(e.tc.a.child(field, 0))!, old.typ)!
 			}
 			return value
 		}
@@ -437,7 +526,7 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 			if typ is Primitive {
 				bits := if typ.size == 0 { platform_int_bits() } else { int(typ.size) }
 				return ComptimeConstValue{
-					typ:     int_
+					typ:     u32_
 					integer: if typ.props.has(.boolean) {
 						1
 					} else {
@@ -461,7 +550,7 @@ fn (mut e ConstEval) array_value(node flat.Node, typ Type) !ComptimeConstValue {
 		if e.tc.a.node(child).kind == .field_init {
 			return error('array init fields are not supported')
 		}
-		value.elements[i] = const_eval_convert(e.expr(child)!, base.elem_type)!
+		value.elements[i] = e.convert(e.expr(child)!, value.elements[i].typ)!
 	}
 	return value
 }
@@ -489,6 +578,7 @@ fn (e &ConstEval) comparison_operand(id flat.NodeId, value ComptimeConstValue) i
 
 fn (e &ConstEval) integer_c_expression_type(id flat.NodeId, typ Type) Type {
 	node := e.tc.a.node(id)
+	if node.kind == .sizeof_expr { return builtin_usize_type }
 	if node.kind == .paren && node.children_count == 1 {
 		return e.integer_c_expression_type(e.tc.a.child(node, 0), typ)
 	}
@@ -760,13 +850,13 @@ fn (mut e ConstEval) call(id flat.NodeId) !ComptimeConstValue {
 		if param_index >= args.len || param.is_mut {
 			return error('unsupported arguments to `${f.value}`')
 		}
-		e.bind(param.value, const_eval_convert(args[param_index], e.tc.parse_type(param.typ))!)
+		e.bind(param.value, e.convert(args[param_index], e.tc.parse_type(param.typ))!)
 		param_index++
 	}
 	if param_index != args.len { return error('incorrect argument count') }
 	flow := e.sequence(f, 0) or { return error('in `${f.value}`: ${err}') }
 	if flow.kind != .return_stmt { return error('`${f.value}` did not return a value') }
-	return const_eval_convert(flow.value, e.tc.parse_type(f.typ))
+	return e.convert(flow.value, e.tc.parse_type(f.typ))
 }
 
 fn (e &ConstEval) if_result_type(id flat.NodeId) !Type {
@@ -855,7 +945,7 @@ fn (mut e ConstEval) stmt(id flat.NodeId) !ConstEvalFlow {
 			if node.kind == .decl_assign {
 				name := e.tc.a.node(lhs)
 				if name.kind != .ident { return error('unsupported local declaration') }
-				e.bind(name.value, const_eval_convert(value, value.typ)!)
+				e.bind(name.value, e.convert(value, value.typ)!)
 			} else {
 				if node.op != .assign {
 					op := match node.op {
@@ -970,7 +1060,7 @@ fn (mut e ConstEval) assign(id flat.NodeId, value ComptimeConstValue) ! {
 	if node.kind == .ident {
 		for i := e.scopes.len - 1; i >= 0; i-- {
 			if old := e.scopes[i][node.value] {
-				e.scopes[i][node.value] = const_eval_convert(value, old.typ)!
+				e.scopes[i][node.value] = e.convert(value, old.typ)!
 				return
 			}
 		}
@@ -984,12 +1074,12 @@ fn (mut e ConstEval) assign(id flat.NodeId, value ComptimeConstValue) ! {
 			if index < 0 || index >= base.elements.len { return error('array index out of bounds') }
 			e.reserve(base.elements.len)!
 			base = ComptimeConstValue{ ...base, elements: base.elements.clone() }
-			base.elements[int(index)] = const_eval_convert(value, base.elements[int(index)].typ)!
+			base.elements[int(index)] = e.convert(value, base.elements[int(index)].typ)!
 		} else {
 			old := base.fields[node.value] or { return error('unknown struct field') }
 			e.reserve(base.fields.len)!
 			base = ComptimeConstValue{ ...base, fields: base.fields.clone() }
-			base.fields[node.value] = const_eval_convert(value, old.typ)!
+			base.fields[node.value] = e.convert(value, old.typ)!
 		}
 		e.assign(base_id, base)!
 		return

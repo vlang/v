@@ -5653,7 +5653,9 @@ fn source_type_syntax_parameter_name(head string, tail string) bool {
 	if head in ['shared', 'atomic', 'chan', 'thread', 'map'] || head.contains('.') || source_type_syntax_builtin(head) {
 		return false
 	}
-	return (head[0] >= `a` && head[0] <= `z`) || head[0] == `_`
+	// Escaped names still name parameters; the escape is not part of their type.
+	first := if head.len > 1 && head[0] == `@` { head[1] } else { head[0] }
+	return (first >= `a` && first <= `z`) || first == `_`
 }
 
 fn source_type_syntax_parameter_details(raw string) (u32, u32, bool, bool, string) {
