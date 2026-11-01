@@ -581,6 +581,16 @@ fn test_windows_pch_places_come_from_the_names_the_headers_include() ! {
 	}
 	pragma_angled, pragma_quoted := v3_windows_pch_include_names('#include <ok.h>\n_Pragma("GCC diagnostic push")\n')?
 	assert pragma_angled == ['ok.h'] && pragma_quoted == []
+	// A name that begins with a slash but no drive is below each directory, as
+	// Clang on Windows takes it, and one the length of MAX_PATH or more cannot
+	// be told missing by os.exists, while Clang can open it.
+	os.write_file(shared + '/y.h', '#include </zz/rooted.h>\n')!
+	time.sleep(2 * time.second)
+	rooted := v3_windows_pch_inputs(read, search, header, time.utc().unix() - 1)?
+	assert early + '/zz/rooted.h' in rooted.missing, rooted.missing.str()
+	os.write_file(shared + '/y.h', '#include <${'n'.repeat(260)}.h>\n')!
+	time.sleep(2 * time.second)
+	assert v3_windows_pch_inputs(read, search, header, time.utc().unix() - 1) == none
 	// A name a macro gives is not known: no record can say where it was looked for.
 	os.write_file(shared + '/y.h', '#define Y_NEXT "z.h"\n#include Y_NEXT\n')!
 	time.sleep(2 * time.second)
@@ -839,6 +849,9 @@ fn test_windows_pch_flags_configure_sdk() {
 	// A directory searched for `#include "..."` alone stands in the search list
 	// clang prints once for both forms, where the record cannot tell its place.
 	assert v3_windows_pch_flags_configure_sdk(['-iquote', 'S:/y'])
+	// A macro that pastes or stringizes can make a word that names a file.
+	assert v3_windows_pch_flags_configure_sdk(['-DCAT(a,b)=a##b'])
+	assert v3_windows_pch_flags_configure_sdk(['-D', 'S(x)=#x'])
 	assert v3_windows_pch_flags_configure_sdk(['-Ix', '-I-'])
 	assert v3_windows_pch_flags_configure_sdk(['--define-macro=V_X/**/'])
 	assert v3_windows_pch_flags_configure_sdk(['-D=1'])

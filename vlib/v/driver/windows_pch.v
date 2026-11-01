@@ -258,7 +258,9 @@ fn v3_windows_pch_plain_macro(definition string) bool {
 		end++
 	}
 	name := definition[..end]
-	if name == '' || name in v3_windows_pch_sdk_macros {
+	// A macro that stringizes or pastes can make a word that names a file
+	// (`__has_include`, `include_alias`) out of pieces.
+	if name == '' || name in v3_windows_pch_sdk_macros || definition.contains('#') {
 		return false
 	}
 	return end == definition.len || definition[end] in [`=`, `(`]
@@ -556,27 +558,37 @@ fn v3_windows_pch_inputs(read []string, search []string, header string, before i
 	}
 	for name in angled {
 		for dir in search {
-			inputs.add_windows_pch_place(v3_windows_pch_place(dir, name), before)?
+			inputs.add_windows_pch_place(v3_windows_pch_place(dir, name)?, before)?
 		}
 	}
 	for name in quoted {
 		for dir in includers {
-			inputs.add_windows_pch_place(v3_windows_pch_place(dir, name), before)?
+			inputs.add_windows_pch_place(v3_windows_pch_place(dir, name)?, before)?
 		}
 		for dir in search {
-			inputs.add_windows_pch_place(v3_windows_pch_place(dir, name), before)?
+			inputs.add_windows_pch_place(v3_windows_pch_place(dir, name)?, before)?
 		}
 	}
 	return inputs
 }
 
 // v3_windows_pch_place returns where the compiler looks for the included `name`
-// in the directory `dir`: below it, or the name itself when it is absolute.
-fn v3_windows_pch_place(dir string, name string) string {
-	if os.is_abs_path(name) || name.starts_with('/') || name.starts_with('\\') {
-		return v3_windows_pch_path(name)
+// in the directory `dir`: the name itself when it has a drive or a server
+// (`C:/x.h`, `//server/share/x.h`), and below the directory otherwise, a name
+// that begins with one slash as well: Clang on Windows takes no name without a
+// drive for absolute. A name with any other colon is not known.
+fn v3_windows_pch_place(dir string, name string) ?string {
+	slashed := name.replace('\\', '/')
+	if slashed.len > 2 && slashed[0].is_letter() && slashed[1] == `:` && slashed[2] == `/` {
+		return v3_windows_pch_path(slashed)
 	}
-	return v3_windows_pch_path(dir + '/' + name)
+	if slashed.starts_with('//') {
+		return slashed
+	}
+	if slashed.contains(':') {
+		return none
+	}
+	return v3_windows_pch_path(dir + '/' + slashed.trim_left('/'))
 }
 
 // v3_windows_pch_include_names returns the names the C `source` includes in
@@ -588,7 +600,11 @@ fn v3_windows_pch_place(dir string, name string) string {
 // gives, any other use of such a word (`#pragma include_alias`, `#embed`,
 // `__has_include` through another macro), and the digraph and trigraph that
 // can start a directive, so that no file the compiler may look for goes
-// without a place.
+// without a place. What it cannot see is a word a macro pastes together
+// (`CAT(__has_incl, ude)`): the pieces can be as short as the one-letter
+// identifiers the SDK headers are full of, so only a preprocessor could tell.
+// The flags give no such macro (v3_windows_pch_plain_macro); a header that
+// writes one to hide an include is not one this guards against.
 fn v3_windows_pch_include_names(source string) ?([]string, []string) {
 	// Splices the compiler makes that v3_windows_pch_code does not: past
 	// blanks after the backslash, and with the trigraph `??/` (ISO C modes,
@@ -798,6 +814,12 @@ fn v3_windows_pch_reads(compiler string, args []string, header string) ?[]string
 fn (mut inputs V3HeaderInputs) add_windows_pch_place(path string, before i64) ? {
 	if path in inputs.files || path in inputs.missing {
 		return
+	}
+	// os.exists cannot see a file at a path of MAX_PATH or more (it does not
+	// prefix `\\?\`), which the compiler opens; the length in bytes is at least
+	// the length Windows counts.
+	if path.len >= 260 {
+		return none
 	}
 	if !os.exists(path) {
 		inputs.missing << path
