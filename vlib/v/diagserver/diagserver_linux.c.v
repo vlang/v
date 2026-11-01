@@ -32,7 +32,7 @@ fn C.kill(pid int, sig int) int
 fn C.v3_linux_parent_death_signal(signal_number int) int
 
 @[c_extern]
-fn C.v3_linux_memory_file(name &char) int
+fn C.v3_linux_memory_file(const_name &char) int
 
 fn C.lseek(fd int, offset i64, whence int) i64
 fn C.flock(i32, i32) i32
