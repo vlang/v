@@ -13,7 +13,7 @@ import v.util.cache_refresh
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-57'
+const cache_format = 'v3-module-cache-58'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -28,6 +28,7 @@ const source_body_marker = '// v3cache: source bodies required'
 // `recover()`. A header has the declarations of a module and not its code, so a
 // build that reads it cannot tell otherwise that the program reaches that call.
 const recover_call_marker = '// v3cache: calls recover'
+const c_struct_source_marker = '// v3cache: c struct source '
 const source_signature_cache_format = 'v3-source-signature-cache-12'
 const program_executable_format = 'v3-program-executable-2'
 const source_type_void_pointer_head = flat.source_type_id('&void')
@@ -1448,6 +1449,25 @@ pub fn header_calls_recover(entry Entry) bool {
 // header_text_calls_recover is header_calls_recover for the text of a header.
 pub fn header_text_calls_recover(header string) bool {
 	return header.contains('\n${recover_call_marker}\n')
+}
+
+// header_c_struct_sources recovers the original V source of each C struct in a
+// compiler-generated module header. Native headers remain opaque: these records
+// come only from the V declarations serialized into the cache.
+pub fn header_c_struct_sources(header string) map[string]string {
+	mut sources := map[string]string{}
+	for line in header.split_into_lines() {
+		if !line.starts_with(c_struct_source_marker) {
+			continue
+		}
+		entry := line[c_struct_source_marker.len..]
+		name := entry.all_before(' ')
+		source := entry.all_after(' ')
+		if name.starts_with('C.') && source.len > 0 && source != entry {
+			sources[name] = cached_unescape_v_string(source)
+		}
+	}
+	return sources
 }
 
 // valid_object reports whether a cached object matches the supplied sources.
@@ -5452,6 +5472,16 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 	const_replacements, const_files := module_header_const_replacements(a, module_name, file_ids, const_order)
 	for file_id in file_ids {
 		file_node := a.node(file_id)
+		cached_struct_sources := if file_node.value in a.cached_header_sources {
+			cached_header := source_cache[file_node.value] or {
+				loaded := os.read_file(file_node.value) or { '' }
+				source_cache[file_node.value] = loaded
+				loaded
+			}
+			header_c_struct_sources(cached_header)
+		} else {
+			map[string]string{}
+		}
 		for i in 0 .. file_node.children_count {
 			mut decl_ids := []flat.NodeId{}
 			append_declaration_nodes(a, a.child(file_node, i), mut decl_ids)
@@ -5518,6 +5548,10 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 					seen_types[type_key] = true
 				} else if key.len > 0 {
 					seen[key] = true
+				}
+				if node.kind == .struct_decl && node.value.starts_with('C.') {
+					origin := cached_struct_sources[node.value] or { source_file }
+					out.writeln('${c_struct_source_marker}${node.value} ${escape_v_string(origin)}')
 				}
 				out.writeln(text)
 				out.writeln('')

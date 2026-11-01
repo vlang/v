@@ -957,7 +957,7 @@ fn test_tinyc_declarations_preserve_explicit_stack_alignment() {
 		g.tc = &tc
 		g.set_ccompiler('tcc')
 		g.register_struct_decl_info_at(int(decl), node.value, node.value,
-			'main', 'aligned.v', node)
+			'main', 'aligned.v', 'aligned.v', node)
 		for name in ['alloca', 'v_alloca', '__v3_internal_symbol_libc_alloca'] {
 			local := stmt_test_node(mut a, .ident, name, [])
 			value := stmt_test_node(mut a, .int_literal, '7', [])

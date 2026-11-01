@@ -3270,10 +3270,13 @@ fn (g &FlatGen) scalar_zero_init(c_type string) string {
 
 // StructDeclInfo stores struct decl info metadata used by c.
 struct StructDeclInfo {
-	node          flat.Node
-	node_id       int
-	module        string
-	file          string
+	node    flat.Node
+	node_id int
+	module  string
+	file    string
+	// Native ownership follows the original V declaration, while file keeps the
+	// parsed header's import context for expressions such as field defaults.
+	original_file string
 	full_name     u32
 	shared_fields []flat.NodeId
 }
@@ -6808,6 +6811,7 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 		}
 		if name_id := flat.source_type_existing_id(name) {
 			if info := g.struct_decl_infos[name_id] {
+				source_file := info.c_source_file()
 				// Headerless vlib bindings supply their own complete C layouts.
 				// Keep externally supplied types opaque when headers own their definitions.
 				// A c_struct_header_guards type is V's to lay out: the generated C includes its
@@ -6815,8 +6819,8 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 				// unless the program's C can follow the type block, where the guard cannot see a
 				// header it includes; such a program keeps this rule (can_emit_c_after_types).
 				if !(name in c_struct_header_guards && !g.can_emit_c_after_types())
-					&& (info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file))
-					&& (g.c_directives_use_system_libc() || !g.c_source_file_is_in_vlib(info.file)) {
+					&& (source_file.ends_with('.c.v') || c_source_looks_header_backed(source_file))
+					&& (g.c_directives_use_system_libc() || !g.c_source_file_is_in_vlib(source_file)) {
 					return true
 				}
 			}
@@ -6999,6 +7003,10 @@ fn c_source_looks_header_backed(path string) bool {
 		}
 	}
 	return false
+}
+
+fn (info &StructDeclInfo) c_source_file() string {
+	return if info.original_file.len > 0 { info.original_file } else { info.file }
 }
 
 fn (g &FlatGen) struct_decl_head(name string) string {
@@ -7812,7 +7820,8 @@ fn (g &FlatGen) header_c_struct_needs_compat_typedef(name string) bool {
 		return true
 	}
 	if info := g.struct_decl_infos[flat.source_type_id(name)] {
-		return info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file)
+		source_file := info.c_source_file()
+		return source_file.ends_with('.c.v') || c_source_looks_header_backed(source_file)
 	}
 	return false
 }
@@ -7885,7 +7894,8 @@ fn (g &FlatGen) soa_companion_has_c_typedef(soa_name string) bool {
 		return true
 	}
 	if info := g.struct_decl_infos[c_decl_id] {
-		return info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file)
+		source_file := info.c_source_file()
+		return source_file.ends_with('.c.v') || c_source_looks_header_backed(source_file)
 	}
 	return false
 }
