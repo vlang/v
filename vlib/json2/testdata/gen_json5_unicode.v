@@ -5,6 +5,7 @@ module main
 
 import net.http
 import os
+import rand
 import strconv
 import strings
 
@@ -21,14 +22,13 @@ fn main() {
 	script_dir := os.dir(os.real_path(@FILE))
 	json2_dir := os.dir(script_dir)
 	reference_path := os.join_path(json2_dir, 'json5_unicode.v')
-	unicode_data_path := '/tmp/UnicodeData.txt'
-	output_path := '/tmp/json5_unicode.v'
+	temporary_dir := os.join_path(os.temp_dir(), 'json5_unicode_${rand.ulid()}')
+	os.mkdir(temporary_dir) or { panic(err) }
 	defer {
-		os.rm(unicode_data_path) or {}
+		os.rmdir_all(temporary_dir) or {}
 	}
-	defer {
-		os.rm(output_path) or {}
-	}
+	unicode_data_path := os.join_path(temporary_dir, 'UnicodeData.txt')
+	output_path := os.join_path(temporary_dir, 'json5_unicode.v')
 
 	http.download_file(unicode_data_url, unicode_data_path) or { panic(err) }
 	categories := read_categories(unicode_data_path) or { panic(err) }
