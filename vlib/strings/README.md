@@ -5,6 +5,17 @@
 If you got here looking for methods available on the `string` struct, those
 methods are found in the `builtin` module.
 
+`pad_left(s, width, pad)`, `pad_right(s, width, pad)`, and `center(s, width, pad)` extend a
+string to the requested rune count. They repeat multi-rune padding and truncate it on the right
+without splitting UTF-8 sequences. Empty padding, nonpositive widths, and widths no greater
+than the input rune count return the input unchanged. `center` puts any extra padding on the
+right and restarts the padding pattern on each side: `center('ab', 5, 'xy')` is `'xabxy'`.
+Widths count runes, not grapheme clusters or terminal display columns.
+
+`zfill(s, width)` adds zeros on the left, after a leading ASCII `+` or `-` if present.
+It includes that sign in the requested rune count and leaves the original input bytes intact.
+For example, `zfill('-42', 5)` is `'-0042'`; the input does not have to be numeric.
+
 `cut(s, sep)` returns the text before and after the first exact byte sequence `sep`,
 plus a boolean indicating a match. An absent separator returns `s`, `''`, and `false`;
 an empty separator returns `''`, `s`, and `true`, even when `s` is empty.
