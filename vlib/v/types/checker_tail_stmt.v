@@ -4389,6 +4389,37 @@ fn (tc &TypeChecker) struct_init_is_synthetic_embed_file(id flat.NodeId) bool {
 	return first >= 0 && source[first + 1..].starts_with('embed_file')
 }
 
+// struct_init_private_type_id checks each C-alias target from the module that
+// declared the alias, so a public wrapper can expose its private implementation.
+fn (mut tc TypeChecker) struct_init_private_type_id(typ Type, base Struct) ?u32 {
+	if typ !is Alias || !flat.source_type_syntax(base.source_type_id()).c_qualified() {
+		if _ := tc.private_type_declaration(base.source_type_id()) {
+			return base.source_type_id()
+		}
+		return none
+	}
+	saved_module := tc.cur_module
+	defer { tc.cur_module = saved_module }
+	mut current := typ
+	for current is Alias {
+		mut alias_id := current.source_type_id()
+		if current.name() !in tc.declaration_visibility {
+			alias_id = strip_generic_args_id(alias_id)
+		}
+		if _ := tc.private_type_declaration(alias_id) {
+			return alias_id
+		}
+		if visibility := tc.declaration_visibility[flat.source_type_name(alias_id)] {
+			tc.cur_module = visibility.module_name
+		}
+		current = *current.base_type
+	}
+	if _ := tc.private_type_declaration(base.source_type_id()) {
+		return base.source_type_id()
+	}
+	return none
+}
+
 // check_struct_init validates check struct init state for types.
 fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	if flat.source_type_syntax(node.source_value_id()).named_variant() && !tc.check_named_variant_init(id, node) {
@@ -4682,10 +4713,15 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		// and stays subject to the check, as does a type a user happened to call
 		// `AnonStruct_...`: neither is a name the parser made up for a literal.
 		if init_type_id != checker_tail_source_struct && !tc.a.contextual_anon_struct_types[init_type_id] {
-			if _ := tc.private_type_declaration(init_struct.source_type_id()) {
+			if visibility_type_id := tc.struct_init_private_type_id(init_type, init_struct) {
+				private_name := if visibility_type_id == init_struct.source_type_id() {
+					init_struct.name()
+				} else {
+					flat.source_type_name(visibility_type_id)
+				}
 				inside_module := if tc.cur_module.len > 0 { tc.cur_module } else { 'main' }
-				tc.record_error_at(.unknown_type, 'struct `${init_struct.name()}` was declared as private to module `${init_struct.name().all_before_last('.')}`, so it can not be used inside module `${inside_module}`', id, node.pos)
-				tc.record_error_at(.unknown_type, 'type `${init_struct.name()}` is private', id, node.pos)
+				tc.record_error_at(.unknown_type, 'struct `${private_name}` was declared as private to module `${private_name.all_before_last('.')}`, so it can not be used inside module `${inside_module}`', id, node.pos)
+				tc.record_error_at(.unknown_type, 'type `${private_name}` is private', id, node.pos)
 			}
 		}
 		if deprecation := tc.deprecated_symbols[init_struct.name()] {

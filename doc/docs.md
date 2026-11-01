@@ -11206,6 +11206,8 @@ Calls see methods from directly imported modules by their full module path.
 If a V alias of that C struct declares the same method, calls on the alias use its own method.
 
 C-backed struct aliases can also initialize constants, including when compiling with MSVC.
+A public V alias of a C struct can be initialized from another module without making the
+underlying C declaration public. Private alias names retain their usual visibility restrictions.
 
 Ordinary zero terminated C strings can be converted to V strings with
 `unsafe { &char(cstring).vstring() }` or if you know their length already with
