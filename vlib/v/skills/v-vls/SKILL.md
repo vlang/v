@@ -38,6 +38,9 @@ vls
 
 # Single-file compile check (agent-friendly)
 vls check path/to/file.v
+
+# MCP mode (experimental): speaks MCP over stdio
+vls --mcp
 ```
 
 VLS is usually launched by the editor (VS Code, etc.), not by hand. For agent
