@@ -20144,38 +20144,86 @@ fn builtin_dir_for_vroot(root string) string {
 	return os.join_path_single(os.join_path_single(root, 'vlib'), 'builtin')
 }
 
-// print_type_diagnostics renders notices before fatal type errors.
-// The diagnostics server callbacks live outside `run`: a function literal makes
-// the transformer lower its whole enclosing function serially, before the
-// parallel workers start, and `run` is the largest function of the compiler.
+// Named callbacks keep diagnostics serving available in a -no-closures compiler.
+// Their heap-backed contexts outlive the helpers that register them.
+struct V3PartialDiagnosticsContext {
+	a                  &flat.FlatAst
+	found_notices      []types.TypeError
+	found_errors       []types.TypeError
+	is_checker_fixture bool
+	fatal_errors       bool
+	check_only         bool
+	message_limit      int
+	skip_notices       bool
+}
+
+fn v3_print_partial_type_diagnostics(context voidptr) int {
+	data := unsafe { &V3PartialDiagnosticsContext(context) }
+	print_type_diagnostics(data.a, data.found_notices, data.found_errors,
+		data.is_checker_fixture, data.fatal_errors, data.check_only, data.message_limit,
+		data.skip_notices)
+	return if data.found_errors.len > 0 { 1 } else { 0 }
+}
 
 // serve_partial_type_diagnostics prints what the check found so far for a
 // client that shows it while the grandchild takes long.
 fn serve_partial_type_diagnostics(mut served diagserver.Request, a &flat.FlatAst, found_notices []types.TypeError, found_errors []types.TypeError, is_checker_fixture bool, fatal_errors bool, check_only bool, message_limit int, skip_notices bool) {
-	served.print_partial_with(fn [a, found_notices, found_errors, is_checker_fixture, fatal_errors, check_only, message_limit, skip_notices] () int {
-		print_type_diagnostics(a, found_notices, found_errors, is_checker_fixture, fatal_errors,
-			check_only, message_limit, skip_notices)
-		return if found_errors.len > 0 { 1 } else { 0 }
-	})
+	context := &V3PartialDiagnosticsContext{
+		a:                  a
+		found_notices:      found_notices
+		found_errors:       found_errors
+		is_checker_fixture: is_checker_fixture
+		fatal_errors:       fatal_errors
+		check_only:         check_only
+		message_limit:      message_limit
+		skip_notices:       skip_notices
+	}
+	served.print_partial_with(v3_print_partial_type_diagnostics, context)
+}
+
+struct V3IncrementalCheckContext {
+	checker types.TypeChecker
+}
+
+fn v3_complete_incremental_check_step(context voidptr) bool {
+	data := unsafe { &V3IncrementalCheckContext(context) }
+	mut tc := data.checker
+	return tc.complete_incremental_check_step(incremental_completion_step)
 }
 
 // serve_incremental_check_steps checks the bodies the check left out while no
 // question comes: a question reads their types.
 fn serve_incremental_check_steps(mut served diagserver.Request, checker types.TypeChecker) {
-	served.keep_busy_with(fn [checker] () bool {
-		mut tc := checker
-		return tc.complete_incremental_check_step(incremental_completion_step)
-	})
+	context := &V3IncrementalCheckContext{
+		checker: checker
+	}
+	served.keep_busy_with(v3_complete_incremental_check_step, context)
+}
+
+struct V3ImportCheckContext {
+	// A child keeps answering with the preferences of the original check.
+	prefs            pref.Preferences
+	project_root     string
+	resolved_imports []V3ImportResolution
+}
+
+fn v3_check_unchanged_imports(context voidptr) bool {
+	data := unsafe { &V3ImportCheckContext(context) }
+	return v3_imports_resolve_as_before(&data.prefs, data.project_root, data.resolved_imports)
 }
 
 // serve_unchanged_imports keeps the checked program while its inputs and
 // imports resolve as before.
 fn serve_unchanged_imports(mut served diagserver.Request, digests map[string]string, prefs &pref.Preferences, project_root string, resolved_imports []V3ImportResolution) {
-	served.keep_inputs(digests, fn [prefs, project_root, resolved_imports] () bool {
-		return v3_imports_resolve_as_before(prefs, project_root, resolved_imports)
-	})
+	context := &V3ImportCheckContext{
+		prefs:            *prefs
+		project_root:     project_root
+		resolved_imports: resolved_imports
+	}
+	served.keep_inputs(digests, v3_check_unchanged_imports, context)
 }
 
+// print_type_diagnostics renders notices before fatal type errors.
 fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_errors []types.TypeError, all_errors bool, fatal_errors bool, check_only bool, message_limit int, skip_notices bool) {
 	if !check_only {
 		mut first_unused := -1
