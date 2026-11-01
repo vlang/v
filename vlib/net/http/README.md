@@ -7,6 +7,36 @@ opt-in, HTTP/2 — over plain TCP or with TLS termination.
 For building web applications on top of it, see [`veb`](../../veb), which has its
 own server and router.
 
+## Response and handler helpers
+
+`http.redirect(url, code)` returns an empty redirect response with a `Location` header.
+`http.not_found()` returns a 404 response with the body `404 page not found`.
+`http.error_response(message, code)` returns the message verbatim as plain text, with
+`X-Content-Type-Options: nosniff`. Both error helpers set a UTF-8 content type.
+
+All three helpers return HTTP/1.1 responses with a byte-counted `Content-Length`, including
+zero for an empty body. Numeric status codes are retained even when no standard reason
+phrase exists. Use `Response.set_version` when another protocol version is needed.
+
+```v
+import net.http
+
+redirect := http.redirect('/login', 303)
+assert redirect.status_code == 303
+failure := http.error_response('Access denied', 403)
+assert failure.body == 'Access denied'
+```
+
+`http.strip_prefix(prefix, handler)` wraps an `http.Handler`. It removes a literal prefix
+from the URL path before calling the wrapped handler, and returns 404 for a nonmatching or
+malformed URL. Query strings and escaped path suffixes are preserved. The decoded path and
+any preserved alternative escaped spelling must both match the prefix, so `/api` does not
+match `/%61pi`.
+
+An empty prefix passes the request through unchanged. Removing the entire path leaves `/`.
+Matching uses a string prefix: use `/api/` when a directory boundary is required. The wrapper
+supports mutable handlers and leaves the caller's request unchanged.
+
 ## Status reason phrases
 
 `http.status_from_int(code).str()` returns the standard HTTP reason phrase, matching
