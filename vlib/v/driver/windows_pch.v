@@ -290,15 +290,16 @@ fn v3_windows_pch_compiler(compiler string) bool {
 }
 
 // v3_windows_pch_key names the precompiled header of one compiler, one
-// compile-flag set and the environment they compile in. Any difference gives a
-// different header, so a change never meets a precompiled header made without
-// it: Clang rejects a header whose language standard or optimization level
-// differ, but checks a command-line macro only when the header used it, and the
-// SDK headers it read only while they are where it found them. So the key holds
-// what sends the compiler to other headers: the variables of
-// v3_link_environment_names (CPATH, C_INCLUDE_PATH, ...), PATH (a MinGW Clang
-// without a sysroot of its own takes the headers of the first MinGW GCC on it),
-// and the directory that relative include directories are found from.
+// compile-flag set and the environment they compile in. Clang rejects a header
+// whose language standard or optimization level differ, but checks a
+// command-line macro only when the header used it, and the SDK headers it read
+// only while they are where it found them, so a precompiled header is kept with
+// a record of what it was made of (see v3_windows_pch_kept). The key holds what
+// commonly sends the compiler to other headers, so that two environments in use
+// side by side have a header each instead of replacing each other's: the
+// variables of v3_link_environment_names (CPATH, C_INCLUDE_PATH, ...), PATH (a
+// MinGW Clang without a sysroot of its own takes the headers of the first MinGW
+// GCC on it), and the directory that relative include directories are found from.
 fn v3_windows_pch_key(identity string, args []string) string {
 	mut hash := u64(1469598103934665603)
 	for part in [v3_windows_pch_format, identity, v3_windows_pch_header, args.join('\x00'),
@@ -311,15 +312,16 @@ fn v3_windows_pch_key(identity string, args []string) string {
 
 // v3_windows_pch returns the precompiled v3_windows_pch_header for a compile by
 // `compiler` with `args` (everything on its command line but `-c`, the output
-// and the source), building it in `cache_dir` when this flag set has none yet.
-// It returns none when the compile cannot use one: another host or compiler, a
-// cross target, a compiler without an identity, a flag that configures the SDK
-// headers (`-DWIN32_FULL`, `-include`, CCC_OVERRIDE_OPTIONS), or a header whose build failed within
-// the hour (recorded beside it, so the build is not retried for every unit). Building
-// is the compile of the header with the same arguments, so an SDK or compiler
-// that changes under the cache gives a header its compiles reject; the
-// compile's caller then drops it with v3_windows_pch_discard.
-fn v3_windows_pch(compiler V3CachedObjectCompiler, args []string, cache_dir string) ?string {
+// and the source), building it in `cache_dir` when this flag set has none yet,
+// or none that was made of the headers the compiler finds now. It returns none
+// when the compile cannot use one: another host or compiler, a cross target, a
+// compiler without an identity, a flag that configures the SDK headers
+// (`-DWIN32_FULL`, `-include`, CCC_OVERRIDE_OPTIONS), or a header whose build
+// failed within the hour (recorded beside it, so the build is not retried for
+// every unit). `known` holds the answer for each flag set of this build, so the
+// compiler is asked where it searches, and the record checked, once a build. A
+// compile that rejects the header anyway drops it with v3_windows_pch_discard.
+fn v3_windows_pch(compiler V3CachedObjectCompiler, args []string, cache_dir string, mut known map[string]string) ?string {
 	$if !windows {
 		return none
 	}
@@ -330,11 +332,35 @@ fn v3_windows_pch(compiler V3CachedObjectCompiler, args []string, cache_dir stri
 		return none
 	}
 	base := os.join_path(cache_dir, 'windows_sdk_${v3_windows_pch_key(compiler.identity, args)}')
-	pch := base + '.pch'
-	header := base + '.h'
-	failed := base + '.failed'
-	if os.is_file(pch) && os.is_file(header) {
+	if base in known {
+		pch := known[base]
+		if pch == '' {
+			return none
+		}
 		return pch
+	}
+	pch := v3_windows_pch_of(compiler, args, base) or {
+		known[base] = ''
+		return none
+	}
+	known[base] = pch
+	return pch
+}
+
+// v3_windows_pch_of returns the precompiled header of the flag set `base` names:
+// the one its record (`base.inputs`) names when that holds for the headers the
+// compiler finds now, or else a new one, built and recorded.
+fn v3_windows_pch_of(compiler V3CachedObjectCompiler, args []string, base string) ?string {
+	header := base + '.h'
+	record := base + '.inputs'
+	failed := base + '.failed'
+	search := v3_windows_pch_search(compiler.path, args)?
+	if text := os.read_file(record) {
+		if pch := v3_windows_pch_kept(text, base, search) {
+			return pch
+		}
+		// It was made of other headers than the compiler finds now.
+		v3_windows_pch_forget(base, text)
 	}
 	if os.is_file(failed) {
 		// A build that failed for a passing reason (a disk that was full, a
@@ -344,9 +370,7 @@ fn v3_windows_pch(compiler V3CachedObjectCompiler, args []string, cache_dir stri
 		}
 		os.rm(failed) or {}
 	}
-	unique := tempname.unique_token()
-	tmp_pch := '${pch}.tmp.${unique}'
-	defer { os.rm(tmp_pch) or {} }
+	unique := tempname.unique_token().replace('.', '_')
 	if !os.is_file(header) {
 		// Clang records the header's path and modification time in the
 		// precompiled header and checks them at every use, so the header stays
@@ -365,8 +389,15 @@ fn v3_windows_pch(compiler V3CachedObjectCompiler, args []string, cache_dir stri
 			}
 		}
 	}
+	// Each build gets a file of its own, which the record names once it is
+	// complete: a compiler reading one never finds it replaced.
+	pch := '${base}.${unique}.pch'
+	deps := '${base}.${unique}.d'
+	defer { os.rm(deps) or {} }
+	// Whole seconds, and one to spare for a file system that rounds them.
+	before := time.utc().unix() - 1
 	mut build_args := args.clone()
-	build_args << ['-x', 'c-header', header, '-o', tmp_pch]
+	build_args << ['-x', 'c-header', header, '-o', pch, '-MD', '-MF', deps]
 	trace := os.getenv('V3_CACHE_TRACE') != ''
 	if trace {
 		eprintln('  V3 module cache: precompiling Windows SDK headers: ${cmdexec.display(compiler.path, build_args)}')
@@ -376,22 +407,195 @@ fn v3_windows_pch(compiler V3CachedObjectCompiler, args []string, cache_dir stri
 		if trace {
 			eprintln('  V3 module cache: Windows SDK headers do not precompile with these flags:\n${result.output}')
 		}
+		os.rm(pch) or {}
 		os.write_file(failed, result.output) or {}
 		return none
 	}
-	// One of the same flag set that another build published meanwhile is the
-	// same header for the same compiler; it stays.
-	os.mv(tmp_pch, pch, overwrite: false) or {
-		if !os.is_file(pch) {
-			return none
+	own := v3_windows_pch_path(header)
+	read := v3_parse_dependency_file(os.read_file(deps) or { '' }).map(v3_windows_pch_path(it)).filter(it != own)
+	// A header that changed while it was read, or one the compiler did not say
+	// it read, leaves the header unknown: this build compiles without it.
+	inputs := v3_windows_pch_inputs(read, search, before) or { V3HeaderInputs{} }
+	if inputs.files.len == 0 {
+		if trace {
+			eprintln('  V3 module cache: the Windows SDK headers read for ${pch} cannot be told apart from newer ones')
 		}
+		os.rm(pch) or {}
+		return none
+	}
+	tmp_record := '${record}.tmp.${unique}'
+	os.write_file(tmp_record, v3_windows_pch_record_text(os.file_name(pch), search, &inputs)) or {
+		os.rm(tmp_record) or {}
+		os.rm(pch) or {}
+		return none
+	}
+	os.mv(tmp_record, record, overwrite: false) or {
+		// Another build recorded one meanwhile: that one is taken when it holds.
+		os.rm(tmp_record) or {}
+		os.rm(pch) or {}
+		return v3_windows_pch_kept(os.read_file(record) or { return none }, base, search)
 	}
 	return pch
 }
 
+// v3_windows_pch_search returns where `compiler` looks for an included file when
+// it compiles with `args` in this directory, in the order of the search, as
+// v3_windows_pch_path spells them.
+fn v3_windows_pch_search(compiler string, args []string) ?[]string {
+	mut query := args.clone()
+	// Clang does not open os.path_devnull, `\\.\nul`, as a file.
+	query << ['-Wno-unused-command-line-argument', '-x', 'c', '-E', '-v', 'NUL']
+	result := v3_run_in_c_locale(compiler, query, os.getwd())
+	if result.exit_code != 0 {
+		return none
+	}
+	search := v3_parse_include_search(result.output)?
+	return search.dirs.map(v3_windows_pch_path(it))
+}
+
+// v3_windows_pch_path spells `path` as the records of precompiled headers do:
+// absolute, without `.` or `..`, with forward slashes.
+fn v3_windows_pch_path(path string) string {
+	absolute := if os.is_abs_path(path) { path } else { os.join_path(os.getwd(), path) }
+	return os.norm_path(absolute).replace('\\', '/')
+}
+
+// v3_windows_pch_inputs returns what a precompiled header that a compiler built
+// from the headers `read`, looking for them in the directories of `search`,
+// depends on: those files, and every place where a file would have been read
+// instead of one of them or in addition to it. Those are the same name in each
+// directory that is searched before the one it was found in, a name a header
+// includes in quotation marks in that header's own directory, which is searched
+// first, and a name a header asks `__has_include` about in each directory. A
+// file that is in such a place is an input with its metadata (`#include_next`
+// passes over it), and a place where none is, an input as a missing file. It
+// returns none when a file is as new as the build, which started at `before`,
+// in seconds, so that it may not be the one that was read.
+fn v3_windows_pch_inputs(read []string, search []string, before i64) ?V3HeaderInputs {
+	mut inputs := V3HeaderInputs{}
+	for path in read {
+		inputs.add_windows_pch_place(path, before)?
+	}
+	for path in read {
+		lower := path.to_lower()
+		for k, dir in search {
+			prefix := dir.trim_right('/').to_lower() + '/'
+			if !lower.starts_with(prefix) {
+				continue
+			}
+			name := path[prefix.len..]
+			for earlier in search[..k] {
+				inputs.add_windows_pch_place(earlier.trim_right('/') + '/' + name, before)?
+			}
+		}
+		text := os.read_file(path) or { return none }
+		dir := path.all_before_last('/')
+		for name in v3_quoted_include_names(text) {
+			inputs.add_windows_pch_place(v3_windows_pch_path(dir + '/' + name), before)?
+		}
+		for name in v3_has_include_names(text) {
+			inputs.add_windows_pch_place(v3_windows_pch_path(dir + '/' + name), before)?
+			for searched in search {
+				inputs.add_windows_pch_place(v3_windows_pch_path(searched + '/' + name), before)?
+			}
+		}
+	}
+	return inputs
+}
+
+// add_windows_pch_place takes the place `path` into `inputs`: the file that is
+// there with its metadata, or the path as one where no file is. It returns none
+// when the file is as new as `before`.
+fn (mut inputs V3HeaderInputs) add_windows_pch_place(path string, before i64) ? {
+	if path in inputs.files || path in inputs.missing {
+		return
+	}
+	if !os.exists(path) {
+		inputs.missing << path
+		return
+	}
+	identity := v3_file_identity_from_before(path, before)?
+	inputs.files << path
+	inputs.identities << identity
+}
+
+// v3_windows_pch_record_text is the record of the precompiled header `pch_name`:
+// the directories the compiler searched, in their order, and its inputs.
+fn v3_windows_pch_record_text(pch_name string, search []string, inputs &V3HeaderInputs) string {
+	mut text := 'pch=${pch_name}\n'
+	for dir in search {
+		text += 'search=${dir}\n'
+	}
+	return text + v3_header_inputs_text(inputs) + 'complete=1\n'
+}
+
+// v3_windows_pch_record_pch returns the precompiled header that the record
+// `text` of the flag set `base` names: a file beside it of the name of one that
+// v3_windows_pch_of builds.
+fn v3_windows_pch_record_pch(text string, base string) ?string {
+	first := text.all_before('\n')
+	if !first.starts_with('pch=') {
+		return none
+	}
+	name := first['pch='.len..]
+	if !name.starts_with(os.file_name(base) + '.') || !name.ends_with('.pch')
+		|| name.contains_any('/\\') {
+		return none
+	}
+	return os.join_path(os.dir(base), name)
+}
+
+// v3_windows_pch_kept returns the precompiled header that the record `text` of
+// the flag set `base` names when it holds now: the compiler searches the
+// directories it searched, in their order, every file it depends on is the one
+// it was, older than now, and no file is where none was.
+fn v3_windows_pch_kept(text string, base string, search []string) ?string {
+	pch := v3_windows_pch_record_pch(text, base)?
+	lines := text.split_into_lines()
+	mut recorded := []string{}
+	mut i := 1
+	for i < lines.len && lines[i].starts_with('search=') {
+		recorded << lines[i]['search='.len..]
+		i++
+	}
+	if recorded != search || !os.is_file(pch) || !os.is_file(base + '.h') {
+		return none
+	}
+	inputs := v3_header_inputs_of_record(lines[i..].join('\n'), [], time.utc().unix() - 1)?
+	if inputs.files.len == 0 {
+		return none
+	}
+	return pch
+}
+
+// v3_windows_pch_forget removes the record `text` of the flag set `base`, and the
+// precompiled header it names, unless another build replaced it meanwhile.
+fn v3_windows_pch_forget(base string, text string) {
+	record := base + '.inputs'
+	if os.read_file(record) or { return } != text {
+		return
+	}
+	os.rm(record) or {}
+	if pch := v3_windows_pch_record_pch(text, base) {
+		os.rm(pch) or {}
+	}
+}
+
 // v3_windows_pch_discard removes a precompiled header a compile was rejected
-// with. The next compile of its flag set builds it again from the current SDK
-// and compiler.
-fn v3_windows_pch_discard(pch string) {
+// with, and its record: the next build makes it again from the current SDK and
+// compiler. This build compiles the rest of the flag set without one.
+fn v3_windows_pch_discard(pch string, mut known map[string]string) {
+	for base in known.keys() {
+		if known[base] != pch {
+			continue
+		}
+		known[base] = ''
+		record := base + '.inputs'
+		if text := os.read_file(record) {
+			if v3_windows_pch_record_pch(text, base) or { '' } == pch {
+				os.rm(record) or {}
+			}
+		}
+	}
 	os.rm(pch) or {}
 }

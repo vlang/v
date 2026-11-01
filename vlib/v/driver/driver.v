@@ -235,6 +235,7 @@ mut:
 	objects                   map[string]string
 	headers                   map[string]string
 	import_resolutions        V3ImportResolutions
+	windows_pchs              map[string]string // the precompiled Windows SDK header of each flag set of this build, '' for none, see v3_windows_pch
 }
 
 struct V3ParseTiming {
@@ -17442,7 +17443,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			} else {
 				prune_foreign_program_wrappers(declarations, bundle_code) + bundle_code
 			}
-			compiled := compile_v3_cached_object(state.object_compiler, state.manager.object_entry('builtin', state.bundle_sources, bundle_signature), module_source, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c, bundle_dependencies, state, 'builtin') or {
+			compiled := compile_v3_cached_object(state.object_compiler, state.manager.object_entry('builtin', state.bundle_sources, bundle_signature), module_source, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c, bundle_dependencies, mut state, 'builtin') or {
 				prealloc_scope_leave_for_v3(bundle_compile_scope)
 				message := err.msg().clone()
 				prealloc_scope_free_for_v3(bundle_compile_scope)
@@ -17524,7 +17525,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			} else {
 				prune_foreign_program_wrappers(declarations, body) + body
 			}
-			compiled := compile_v3_cached_object(state.object_compiler, entry, module_source, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c, dependencies, state, module_name) or {
+			compiled := compile_v3_cached_object(state.object_compiler, entry, module_source, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c, dependencies, mut state, module_name) or {
 				prealloc_scope_leave_for_v3(module_compile_scope)
 				message := err.msg().clone()
 				prealloc_scope_free_for_v3(module_compile_scope)
@@ -19463,7 +19464,7 @@ fn (state &V3ModuleCacheState) print_module_cache_notice(module_name string) {
 	}
 }
 
-fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.Entry, source string, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, dependencies map[string]string, state &V3ModuleCacheState, module_name string) !bool {
+fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.Entry, source string, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, dependencies map[string]string, mut state V3ModuleCacheState, module_name string) !bool {
 	// Whole-program declarations include literals from other modules, including
 	// the V build hash. Only literals referenced by this object belong in its C.
 	// V module bodies use C pointers to Objective-C runtime objects. ARC belongs
@@ -19509,7 +19510,9 @@ fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.E
 	if !objective_c && v3_windows_pch_applies(c_source) {
 		mut pch_args := args.clone()
 		pch_args << flags
-		pch = v3_windows_pch(compiler, pch_args, os.dir(entry.object)) or { '' }
+		pch = v3_windows_pch(compiler, pch_args, os.dir(entry.object), mut state.windows_pchs) or {
+			''
+		}
 	}
 	mut compile_args := args.clone()
 	if pch != '' {
@@ -19533,7 +19536,7 @@ fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.E
 		compile_args << flags
 		result = cmdexec.run(compiler.path, compile_args)
 		if result.exit_code == 0 {
-			v3_windows_pch_discard(pch)
+			v3_windows_pch_discard(pch, mut state.windows_pchs)
 		}
 	}
 	if result.exit_code != 0 {
