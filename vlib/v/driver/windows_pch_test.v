@@ -226,46 +226,49 @@ fn test_windows_pch_follows_the_include_environment() ! {
 	assert first[0] in both
 }
 
-fn test_windows_pch_answer_outlives_the_scope_of_a_module() ! {
+fn test_windows_pch_is_not_rebuilt_every_build_when_its_headers_cannot_be_told() ! {
 	$if !windows {
 		return
 	}
 	clang := os.find_abs_path_of_executable('clang') or { return }
-	root := os.join_path(os.vtmp_dir(), 'windows_pch_scope_${os.getpid()}')
+	windows_h := os.join_path(os.dir(os.dir(os.real_path(clang))), 'include', 'windows.h')
+	if !os.is_file(windows_h) {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'windows_pch_untold_${os.getpid()}')
 	os.mkdir_all(root)!
-	defer { os.rmdir_all(root) or {} }
+	saved := os.getenv_opt('V3_TEST_NO_FILE_METADATA')
+	defer {
+		if value := saved {
+			os.setenv('V3_TEST_NO_FILE_METADATA', value, true)
+		} else {
+			os.unsetenv('V3_TEST_NO_FILE_METADATA')
+		}
+		os.rmdir_all(root) or {}
+	}
+	// A file system that gives windows.h no identity (FAT, some shares).
+	os.setenv('V3_TEST_NO_FILE_METADATA', windows_h, true)
 	entry := modulecache.Entry{
 		object:   os.join_path(root, 'sample.o')
 		c_source: os.join_path(root, 'sample.c')
 	}
 	compiler := V3CachedObjectCompiler{
 		path:     clang
-		identity: 'test clang scope ${os.getpid()}'
+		identity: 'test clang untold ${os.getpid()}'
 	}
 	mut state := V3ModuleCacheState{ silent: true }
-	// Each module compiles in a disposable arena, as prepare_v3_module_cache
-	// does; what the build keeps of the first is read by the second (built
-	// with -prealloc, a scope that freed it would leave the map dangling).
-	for value in [1, 2, 3] {
-		scope := prealloc_scope_begin_for_v3()
-		compiled := compile_v3_cached_object(compiler, entry, generated_windows_prelude +
-			'int scoped_value(void) { return ${value}; }\n', '-std=gnu11', '-O2', '', '-w', [
-			'-fwrapv',
-		], false, {}, mut state, 'sample', scope) or {
-			prealloc_scope_leave_for_v3(scope)
-			prealloc_scope_free_for_v3(scope)
-			return err
-		}
-		prealloc_scope_leave_for_v3(scope)
-		prealloc_scope_free_for_v3(scope)
-		assert compiled
-		// Overwrite what the scope held.
-		filler := []string{len: 1000, init: 'x'.repeat(64)}
-		assert filler.len == 1000
-		assert state.windows_pchs.len == 1
-		pch := state.windows_pchs.values()[0]
-		assert pch.ends_with('.pch') && os.is_file(pch), pch
-	}
+	assert compile_v3_cached_object(compiler, entry, generated_windows_prelude + 'int untold(void) { return 1; }\n', '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample', unsafe { nil })!
+	assert windows_pch_files(root) == []
+	failed := (os.ls(root)!).filter(it.starts_with('windows_sdk_') && it.ends_with('.failed'))
+	assert failed.len == 1, os.ls(root)!.str()
+	// The next build within the hour does not build it again.
+	marker := os.join_path(root, failed[0])
+	old := time.now().unix() - 600
+	os.utime(marker, old, old)!
+	state = V3ModuleCacheState{ silent: true }
+	assert compile_v3_cached_object(compiler, entry, generated_windows_prelude + 'int untold(void) { return 2; }\n', '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample', unsafe { nil })!
+	assert os.file_last_mod_unix(marker) == old
+	assert windows_pch_files(root) == []
 }
 
 // windows_pch_files returns the precompiled headers in `dir`.
@@ -384,6 +387,16 @@ fn test_windows_pch_record_holds_while_its_inputs_do() ! {
 	assert inputs.missing == [early + '/x.h', late + '/z.h', early + '/z.h']
 	// A header that was read and is gone already is no input that can be told.
 	assert v3_windows_pch_inputs([late + '/gone.h'], search, time.utc().unix() - 1) == none
+	// A header moved into a place where none was keeps its times of writing and
+	// creation, but not its time of change: it may have come after the compiler
+	// looked there, so the place cannot be told.
+	staged := os.join_path(root, 'staged.h')
+	os.write_file(staged, '')!
+	time.sleep(2 * time.second)
+	os.mv(staged, early + '/x.h')!
+	assert os.stat(early + '/x.h')!.mtime < time.utc().unix() - 1
+	assert v3_windows_pch_inputs(read, search, time.utc().unix() - 1) == none
+	os.rm(early + '/x.h')!
 	base := os.join_path(root, 'windows_sdk_k')
 	pch := base + '.1_2_3.pch'
 	os.write_file(pch, 'pch')!

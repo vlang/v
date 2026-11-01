@@ -421,6 +421,10 @@ fn v3_windows_pch_of(compiler V3CachedObjectCompiler, args []string, base string
 			eprintln('  V3 module cache: the Windows SDK headers read for ${pch} cannot be told apart from newer ones')
 		}
 		os.rm(pch) or {}
+		// On a file system that keeps no identity of a file (FAT, some network
+		// shares) every build would build it again for nothing: this is recorded
+		// as a failed build is, and tried again after a while.
+		os.write_file(failed, 'the headers read cannot be told apart from newer ones\n') or {}
 		return none
 	}
 	tmp_record := '${record}.tmp.${unique}'
@@ -470,7 +474,8 @@ fn v3_windows_pch_path(path string) string {
 // file that is in such a place is an input with its metadata (`#include_next`
 // passes over it), and a place where none is, an input as a missing file. It
 // returns none when a file is as new as the build, which started at `before`,
-// in seconds, so that it may not be the one that was read.
+// in seconds, or was moved or linked into place since, so that it may not be
+// the one that was read, or may not have been there when the compiler looked.
 fn v3_windows_pch_inputs(read []string, search []string, before i64) ?V3HeaderInputs {
 	mut inputs := V3HeaderInputs{}
 	for path in read {
@@ -515,8 +520,29 @@ fn (mut inputs V3HeaderInputs) add_windows_pch_place(path string, before i64) ? 
 		return
 	}
 	identity := v3_file_identity_from_before(path, before)?
+	if !v3_windows_pch_changed_before(identity, before) {
+		return none
+	}
 	inputs.files << path
 	inputs.identities << identity
+}
+
+// v3_windows_pch_changed_before reports whether the file of `identity` (see
+// modulecache.file_metadata_signature, whose last two fields are the time of the
+// last change of the file's entry) last changed before `before`, in seconds. On
+// Windows os.stat gives the time of creation instead, which a file moved or
+// linked into place keeps along with its time of writing, so only this time
+// tells that it came after the compiler looked where it is.
+fn v3_windows_pch_changed_before(identity string, before i64) bool {
+	fields := identity.split(':')
+	if fields.len < 2 {
+		return false
+	}
+	seconds := fields[fields.len - 2]
+	if seconds.len == 0 || !seconds.bytes().all(it.is_digit()) {
+		return false
+	}
+	return seconds.i64() < before
 }
 
 // v3_windows_pch_record_text is the record of the precompiled header `pch_name`:
