@@ -17017,6 +17017,39 @@ fn (mut b Builder) build_storable_field_value(expr_id flat.NodeId, field_type_na
 fn (mut b Builder) build_struct_init(id flat.NodeId, node flat.Node) ValueID {
 	type_id := node.source_value_id()
 	type_shape := flat.source_type_shape(type_id)
+	// Channel construction: chan T{cap: N} lowers to sync.new_channel_st(N, sizeof(T))
+	if type_shape.has(.channel_type) {
+		// Extract cap from field assignments (default 0)
+		mut cap_val := b.m.get_or_add_const(b.i32_type, '0')
+		for i in 0 .. node.children_count {
+			field_node := b.a.child_node(&node, i)
+			if field_node.value == 'cap' && field_node.children_count > 0 {
+				cap_expr_id := b.a.child(field_node, 0)
+				cap_val = b.build_expr(cap_expr_id)
+			}
+		}
+		// Get element type
+		type_name := flat.source_type_name(type_id)
+		elem_type_name := type_name[5..].trim_space()
+		elem_type_name_id := flat.source_type_id(elem_type_name)
+		elem_type := b.resolve_type(elem_type_name_id)
+		elem_size := b.m.type_size(elem_type)
+		size_const := b.m.get_or_add_const(b.i32_type, elem_size.str())
+		// Call sync.new_channel_st(cap, sizeof(elem))
+		if fn_id := b.fn_ids['sync.new_channel_st'] {
+			fn_type := b.fn_types['sync.new_channel_st']
+			fn_ref := b.m.add_value(.func_ref, fn_type, 'sync.new_channel_st', fn_id)
+			result := b.emit3(.call, b.m.type_store.get_ptr(b.resolve_type(type_id)), fn_ref, cap_val, size_const)
+			return result
+		}
+		// Fallback: try to register the function
+		if fn_id := b.register_runtime_c_function('sync.new_channel_st', b.m.type_store.get_ptr(b.resolve_type(type_id)), [b.i32_type, b.i32_type]) {
+			fn_type := b.fn_types['sync.new_channel_st']
+			fn_ref := b.m.add_value(.func_ref, fn_type, 'sync.new_channel_st', fn_id)
+			result := b.emit3(.call, b.m.type_store.get_ptr(b.resolve_type(type_id)), fn_ref, cap_val, size_const)
+			return result
+		}
+	}
 	if flat.source_type_syntax(type_id).raw_base() != 0
 		&& (type_shape.has(.option_type) || type_shape.has(.result_type)) {
 		// Transformed optional literals may be their type's first use. Register
