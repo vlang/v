@@ -3222,6 +3222,18 @@ fn (tc &TypeChecker) interface_pattern_argument_known(type_id u32) bool {
 		return syntax.bracket_closed()
 			&& tc.interface_pattern_argument_known(syntax.bracket_suffix())
 	}
+	if syntax.tuple_like() {
+		parts := syntax.tuple_components()
+		if parts.len == 0 {
+			return false
+		}
+		for part in parts {
+			if part == 0 || !tc.interface_pattern_argument_known(part) {
+				return false
+			}
+		}
+		return true
+	}
 	if shape.has(.function_compact) || shape.has(.function_spaced) {
 		for param in syntax.function_params() {
 			if !tc.interface_pattern_argument_known(flat.source_type_syntax(param).parameter_type()) {

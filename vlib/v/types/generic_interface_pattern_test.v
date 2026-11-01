@@ -12,12 +12,31 @@ fn test_generic_interface_pattern_names_keep_the_declared_base_and_arguments() {
 	tc.struct_generic_params[flat.source_type_id('animation.Animator')] = generic_param_ids(['T'])
 	// An identically spelled program type cannot replace the local declaration.
 	tc.structs[flat.source_type_id('Animator')] = []StructField{}
-	for arg in ['f32', 'f64', '[]f32', '[2]f32', 'map[string]f32', 'fn (f32) f64', 'Animator[f32]'] {
+	for arg in ['f32', 'f64', '[]f32', '[2]f32', 'map[string]f32', 'fn (f32) f64', 'fn () (int)',
+		'fn () (int, string)', 'fn () !(int, string)', 'fn () ?(int, string)',
+		'fn (fn () (int, string)) (bool, Animator[f32])', 'fn () (map[string]int, fn () (int, string))',
+		'Animator[f32]'] {
 		pattern := tc.resolve_interface_match_pattern(flat.source_type_id('Animator[${arg}]')) or {
 			panic('unresolved pattern Animator[${arg}]')
 		}
 		assert flat.source_type_syntax(pattern).application_base() == flat.source_type_id('animation.Animator')
 		assert tc.parse_type(pattern).source_type_id() == pattern
+	}
+}
+
+fn test_generic_interface_callback_patterns_reject_invalid_multi_return_components() {
+	a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	tc.cur_module = 'animation'
+	tc.cur_file = 'animation.v'
+	tc.structs[flat.source_type_id('animation.Animator')] = []StructField{}
+	tc.struct_generic_params[flat.source_type_id('animation.Animator')] = generic_param_ids(['T'])
+	for result in ['()', '(int,)', '(,string)', '(int,,string)', '(int, Missing)',
+		'(map[string]Missing, string)', '(int, fn () (Missing, string))'] {
+		pattern := flat.source_type_id('Animator[fn () ${result}]')
+		if resolved := tc.resolve_interface_match_pattern(pattern) {
+			assert false, 'invalid callback pattern resolved as ${flat.source_type_name(resolved)}'
+		}
 	}
 }
 
@@ -150,6 +169,55 @@ fn main() { animation.verify_pool() }
 	}
 }
 
+fn test_imported_generic_interface_patterns_accept_multi_return_callbacks() {
+	root := generic_interface_pattern_fixture('multi_return')
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'animation', 'callbacks.v'), 'module animation
+fn pair() (int, string) {
+	return 7, "seven"
+}
+
+fn result_pair() !(int, string) {
+	return 11, "eleven"
+}
+
+pub fn verify_callbacks() {
+	value := Motion(&Animator[fn () (int, string)]{running: true, value: pair})
+	if value is Animator[fn () (int, string)] {
+		number, word := value.value()
+		assert number == 7
+		assert word == "seven"
+	} else {
+		panic("tuple callback specialization did not match")
+	}
+	pointer_value := Motion(&Animator[fn () (int, string)]{running: true, value: pair})
+	if pointer_value is &Animator[fn () (int, string)] {
+		number, word := pointer_value.value()
+		assert number == 7
+		assert word == "seven"
+	} else {
+		panic("pointer tuple callback specialization did not match")
+	}
+	result := Motion(Animator[fn () !(int, string)]{running: true, value: result_pair})
+	if result is Animator[fn () !(int, string)] {
+		number, word := result.value() or { panic(err) }
+		assert number == 11
+		assert word == "eleven"
+	} else {
+		panic("result tuple callback specialization did not match")
+	}
+}
+') or { panic(err) }
+	os.write_file(os.join_path(root, 'main.v'), 'import animation
+fn main() { animation.verify_callbacks() }
+') or { panic(err) }
+	binary := os.join_path(root, 'probe' + $if windows { '.exe' } $else { '' })
+	built := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-o', binary, root])
+	assert built.exit_code == 0, built.output
+	ran := os.exec([binary])
+	assert ran.exit_code == 0, ran.output
+}
+
 fn test_interface_generic_patterns_still_require_known_compatible_types() {
 	root := generic_interface_pattern_fixture('invalid')
 	defer { os.rmdir_all(root) or {} }
@@ -160,6 +228,13 @@ fn test_interface_generic_patterns_still_require_known_compatible_types() {
 		'&Animator[Missing]',
 		'Animator[[]Missing]',
 		'Animator[map[string]Missing]',
+		'Animator[fn () (Missing, string)]',
+		'Animator[fn () (int, Missing)]',
+		'Animator[fn () (int, []Missing)]',
+		'Animator[fn () (map[string]Missing, string)]',
+		'Animator[fn () (int, fn () (Missing, string))]',
+		'Animator[fn () !(int, Missing)]',
+		'Animator[fn () (int, Animator[f32, f64])]',
 		'Animator[Animator[f32, f64]]',
 		'Animator[[]Animator[f32, f64]]',
 		'Animator[map[string]Animator[f32, f64]]',
