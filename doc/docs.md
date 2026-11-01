@@ -4004,6 +4004,9 @@ V supports closures too.
 This means that anonymous functions can inherit variables from the scope they were created in.
 They must do so explicitly by listing all variables that are inherited.
 
+Each anonymous function has its own local scope. Locals, including `for` iteration variables,
+may reuse names of enclosing variables that are not captured.
+
 ```v oksyntax
 my_int := 1
 my_closure := fn [my_int] () {
