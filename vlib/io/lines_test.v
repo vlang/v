@@ -1,5 +1,7 @@
 module io
 
+import arrays
+
 // ChunkReader serves its input in small fixed chunks, forcing the
 // BufferedReader to refill mid-line.
 struct ChunkReader {
@@ -13,7 +15,7 @@ fn (mut c ChunkReader) read(mut buf []u8) !int {
 	}
 	chunk := c.chunks[0]
 	c.chunks.delete(0)
-	return copy(mut buf, chunk)
+	return arrays.copy[u8](mut buf, chunk)
 }
 
 fn collect_lines(mut it LineIterator) []string {

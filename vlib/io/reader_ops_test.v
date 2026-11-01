@@ -1,6 +1,7 @@
 module io
 
 import os
+import arrays
 
 // ChunkReader serves its chunks one read at a time and then reports Eof, so
 // combinators can be tested over short reads without a real stream.
@@ -17,9 +18,9 @@ fn (mut c ChunkReader) read(mut buf []u8) !int {
 	c.chunks.delete(0)
 	if buf.len < chunk.len {
 		c.chunks.insert(0, chunk[buf.len..])
-		return copy(mut buf, chunk[..buf.len])
+		return arrays.copy[u8](mut buf, chunk[..buf.len])
 	}
-	return copy(mut buf, chunk)
+	return arrays.copy[u8](mut buf, chunk)
 }
 
 fn drain(mut r Reader) []u8 {

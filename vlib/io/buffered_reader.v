@@ -1,5 +1,7 @@
 module io
 
+import arrays
+
 // BufferedReader provides a buffered interface for a reader.
 pub struct BufferedReader {
 mut:
@@ -46,7 +48,7 @@ pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
 }
 
 fn (mut r BufferedReader) copy_unread(mut buf []u8) !int {
-	read := copy(mut buf, r.buf[r.offset..r.len])
+	read := arrays.copy[u8](mut buf, r.buf[r.offset..r.len])
 	if read == 0 {
 		return NotExpected{
 			cause: 'invalid copy of buffer'

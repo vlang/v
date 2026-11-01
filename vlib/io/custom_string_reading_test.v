@@ -1,4 +1,5 @@
 import io
+import arrays
 
 struct StringReader {
 	text string
@@ -19,7 +20,7 @@ fn (mut s StringReader) read(mut buf []u8) !int {
 	}
 	mut howmany := imin(buf.len, s.text.len - s.place)
 	xxx := s.text[s.place..s.place + howmany].bytes()
-	read := copy(mut buf, xxx)
+	read := arrays.copy[u8](mut buf, xxx)
 	s.place += read
 	return read
 }

@@ -1,5 +1,7 @@
 module io
 
+import arrays
+
 pub struct BufferedWriter {
 mut:
 	n  int
@@ -76,7 +78,7 @@ fn (mut b BufferedWriter) shift_unwritten_to_front(written int) {
 		b.n = 0
 		return
 	}
-	copy(mut b.buf[..remaining], b.buf[written..b.n])
+	arrays.copy[u8](mut b.buf[..remaining], b.buf[written..b.n])
 	b.n = remaining
 }
 
@@ -94,7 +96,7 @@ pub fn (mut b BufferedWriter) write(src []u8) !int {
 			written += n
 			continue
 		}
-		n := copy(mut b.buf[b.n..], src[written..])
+		n := arrays.copy[u8](mut b.buf[b.n..], src[written..])
 		b.n += n
 		written += n
 		if b.available() == 0 {

@@ -1,4 +1,5 @@
 import io
+import arrays
 
 struct Buf {
 pub:
@@ -16,7 +17,7 @@ fn (mut b Buf) read(mut buf []u8) !int {
 	if !(b.i < b.bytes.len) {
 		return io.Eof{}
 	}
-	n := copy(mut buf, b.bytes[b.i..])
+	n := arrays.copy[u8](mut buf, b.bytes[b.i..])
 	b.i += n
 	return n
 }
