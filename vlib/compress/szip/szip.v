@@ -155,6 +155,22 @@ fn (mut z Zip) parse() ! {
 			}
 		}
 	}
+	// Tolerant fallback: real-world archives sometimes carry a few trailing
+	// bytes after the end record (interrupted downloads, appended markers);
+	// WinRAR and 7-Zip accept them. Take the candidate closest to the end
+	// whose declared comment fits; the central-directory validation below
+	// still rejects accidental signature matches inside compressed data.
+	if eocd_pos < 0 {
+		for i := data.len - 22; i >= 0 && i >= data.len - 65557; i-- {
+			if data[i..i + 4] == [u8(0x50), 0x4b, 0x05, 0x06] {
+				comment_len := int(u16(data[i + 20]) | (u16(data[i + 21]) << 8))
+				if i + 22 + comment_len <= data.len {
+					eocd_pos = i
+					break
+				}
+			}
+		}
+	}
 	if eocd_pos < 0 {
 		return error('missing end record')
 	}
