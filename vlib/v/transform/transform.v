@@ -24454,6 +24454,14 @@ fn (mut t Transformer) transform_infix_expr(id flat.NodeId, node flat.Node) flat
 		return id
 	}
 	if node.op == .arrow {
+		lhs_id := t.a.child(&node, 0)
+		if !isnil(t.tc) {
+			if typ := t.tc.expr_type(lhs_id) {
+				if typ is types.Channel {
+					t.mark_fn_used('sync.Channel.push')
+				}
+			}
+		}
 		rhs_id := t.a.child(&node, 1)
 		rhs := t.a.nodes[int(rhs_id)]
 		if rhs.kind == .or_expr && rhs.children_count >= 2 {

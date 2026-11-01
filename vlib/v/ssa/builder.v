@@ -9119,6 +9119,11 @@ fn (mut b Builder) build_function(node flat.Node, module_name string) {
 					typ = b.ssa_type_from_checker_type(checked)
 				}
 			}
+			mut is_mut_value_param := false
+			if child.is_mut && !b.is_pointer_type(typ) {
+				is_mut_value_param = true
+				typ = b.m.type_store.get_ptr(typ)
+			}
 			param_val := b.m.add_value(.argument, typ, child.value_text(), b.m.funcs[func_id].params.len)
 			mut f := b.m.funcs[func_id]
 			f.params << param_val
@@ -9128,12 +9133,13 @@ fn (mut b Builder) build_function(node flat.Node, module_name string) {
 			b.emit2(.store, b.void_type, param_val, alloca)
 			b.vars[child.value_text()] = alloca
 			b.var_type_names.set_id(child.value_text(), typ_name_source_id_2)
-			if child.is_mut && b.is_pointer_type(typ) {
+			if child.is_mut {
 				b.mut_param_names[child.value_text()] = true
-			}
-			if child.is_mut && (child.op == .amp || child.is_mut_builtin_pointer_param())
-				&& b.is_pointer_type(typ) {
-				b.mut_pointer_params[child.value_text()] = b.m.type_store.types[typ].elem_type
+				if is_mut_value_param {
+					b.mut_pointer_params[child.value_text()] = b.m.type_store.types[typ].elem_type
+				} else if b.is_pointer_type(typ) {
+					b.mut_pointer_params[child.value_text()] = b.m.type_store.types[typ].elem_type
+				}
 			}
 			param_index++
 		}
@@ -9486,6 +9492,25 @@ fn (mut b Builder) build_stmt(id flat.NodeId) {
 		.expr_stmt {
 			expr_id := b.a.child(&node, 0)
 			expr := b.a.nodes[int(expr_id)]
+			if expr.kind == .infix && expr.op == .arrow {
+				lhs_id := b.a.child(&expr, 0)
+				rhs_id := b.a.child(&expr, 1)
+				type_name_id := b.checked_expr_type_name(lhs_id)
+				type_name := flat.source_type_name(type_name_id)
+				if type_name.starts_with('chan ') {
+					// Channel send: ch <- val
+					channel_val := b.build_expr(lhs_id)
+					val := b.build_expr(rhs_id)
+					val_slot := b.emit0(.alloca, b.m.type_store.get_ptr(b.value_type(val)))
+					b.emit2(.store, b.void_type, val, val_slot)
+					if push_id := b.fn_ids['sync.Channel.push'] {
+						push_fn_type := b.fn_types['sync.Channel.push']
+						push_ref := b.m.add_value(.func_ref, push_fn_type, 'sync.Channel.push', push_id)
+						b.emit3(.call, b.void_type, push_ref, channel_val, val_slot)
+					}
+					return
+				}
+			}
 			if expr.kind == .infix && expr.op == .left_shift && expr.value_text() == 'push' {
 				b.build_array_push_expr(expr)
 				return
@@ -17700,6 +17725,25 @@ fn (mut b Builder) resolve_type(name_id u32) TypeID {
 	}
 	if name_id == ssa_strings_builder_source_type {
 		return b.array_type
+	}
+	// Channel types resolve to a pointer to the Channel struct type
+	if shape.has(.channel_type) {
+		mut chan_struct := TypeID(0)
+		if typ := b.struct_types[flat.source_type_id('Channel')] {
+			chan_struct = typ
+		} else if typ := b.struct_types[flat.source_type_id('sync.Channel')] {
+			chan_struct = typ
+		} else {
+			for k, v in b.struct_types {
+				if flat.source_type_name(k).ends_with('Channel') {
+					chan_struct = v
+					break
+				}
+			}
+		}
+		if chan_struct > 0 {
+			return b.m.type_store.get_ptr(chan_struct)
+		}
 	}
 	if shape.has(.map_type) || name_id in [ssa_map_source_type, ssa_nominal_map_source_type] {
 		return b.map_type
