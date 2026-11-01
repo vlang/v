@@ -214,16 +214,58 @@ fn test_windows_pch_follows_the_include_environment() ! {
 		return (os.ls(cache) or { [] }).filter(it.starts_with('windows_sdk_') && it.ends_with('.pch'))
 	}
 	os.setenv('CPATH', os.join_path(root, 'sdk1'), true)
-	assert compile_v3_cached_object(compiler, entry, generated_windows_prelude + '_Static_assert(SDK_ABI == 1, "sdk1");\n', '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample')!
+	assert compile_v3_cached_object(compiler, entry, generated_windows_prelude + '_Static_assert(SDK_ABI == 1, "sdk1");\n', '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample', unsafe { nil })!
 	first := pchs()
 	assert first.len == 1, first.str()
 	// A new unit in the other environment gets a header of its own, and the
 	// first one stays for the first environment.
 	os.setenv('CPATH', os.join_path(root, 'sdk2'), true)
-	assert compile_v3_cached_object(compiler, entry, generated_windows_prelude + '_Static_assert(SDK_ABI == 2, "sdk2");\n', '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample')!
+	assert compile_v3_cached_object(compiler, entry, generated_windows_prelude + '_Static_assert(SDK_ABI == 2, "sdk2");\n', '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample', unsafe { nil })!
 	both := pchs()
 	assert both.len == 2, both.str()
 	assert first[0] in both
+}
+
+fn test_windows_pch_answer_outlives_the_scope_of_a_module() ! {
+	$if !windows {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'windows_pch_scope_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	entry := modulecache.Entry{
+		object:   os.join_path(root, 'sample.o')
+		c_source: os.join_path(root, 'sample.c')
+	}
+	compiler := V3CachedObjectCompiler{
+		path:     clang
+		identity: 'test clang scope ${os.getpid()}'
+	}
+	mut state := V3ModuleCacheState{ silent: true }
+	// Each module compiles in a disposable arena, as prepare_v3_module_cache
+	// does; what the build keeps of the first is read by the second (built
+	// with -prealloc, a scope that freed it would leave the map dangling).
+	for value in [1, 2, 3] {
+		scope := prealloc_scope_begin_for_v3()
+		compiled := compile_v3_cached_object(compiler, entry, generated_windows_prelude +
+			'int scoped_value(void) { return ${value}; }\n', '-std=gnu11', '-O2', '', '-w', [
+			'-fwrapv',
+		], false, {}, mut state, 'sample', scope) or {
+			prealloc_scope_leave_for_v3(scope)
+			prealloc_scope_free_for_v3(scope)
+			return err
+		}
+		prealloc_scope_leave_for_v3(scope)
+		prealloc_scope_free_for_v3(scope)
+		assert compiled
+		// Overwrite what the scope held.
+		filler := []string{len: 1000, init: 'x'.repeat(64)}
+		assert filler.len == 1000
+		assert state.windows_pchs.len == 1
+		pch := state.windows_pchs.values()[0]
+		assert pch.ends_with('.pch') && os.is_file(pch), pch
+	}
 }
 
 // windows_pch_files returns the precompiled headers in `dir`.
@@ -278,7 +320,7 @@ fn test_windows_pch_is_rebuilt_when_the_compiler_would_find_other_headers() ! {
 	}
 	build := fn [compiler, entry, unit] (n int) ! {
 		mut state := V3ModuleCacheState{ silent: true }
-		assert compile_v3_cached_object(compiler, entry, unit(n), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample')!
+		assert compile_v3_cached_object(compiler, entry, unit(n), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample', unsafe { nil })!
 		assert state.windows_pchs.len == 1
 		assert state.windows_pchs.values()[0] != '', 'the build took no precompiled header'
 	}
@@ -528,7 +570,7 @@ fn test_windows_pch_is_built_once_and_a_rejected_one_is_compiled_without() ! {
 	unit := fn (value int) string {
 		return generated_windows_prelude + 'int shared_value(void) { return ${value} + (int)sizeof(SOCKET); }\n'
 	}
-	assert compile_v3_cached_object(compiler, entry, unit(1), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample')!
+	assert compile_v3_cached_object(compiler, entry, unit(1), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample', unsafe { nil })!
 	pchs := windows_pch_files(root)
 	assert pchs.len == 1, pchs.str()
 	pch := os.join_path(root, pchs[0])
@@ -540,31 +582,31 @@ fn test_windows_pch_is_built_once_and_a_rejected_one_is_compiled_without() ! {
 	assert v3_windows_pch_record_pch(os.read_file(base + '.inputs')!, base)? == pch
 	// The next unit of the flag set reuses the precompiled header, and so does
 	// the next build.
-	assert compile_v3_cached_object(compiler, entry, unit(2), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample')!
+	assert compile_v3_cached_object(compiler, entry, unit(2), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample', unsafe { nil })!
 	state = V3ModuleCacheState{ silent: true }
-	assert compile_v3_cached_object(compiler, entry, unit(12), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample')!
+	assert compile_v3_cached_object(compiler, entry, unit(12), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample', unsafe { nil })!
 	assert windows_pch_files(root) == pchs
 	assert os.file_last_mod_unix(pch) == built
 	// Other flags get their own; a unit that does not open with the prelude gets none.
-	assert compile_v3_cached_object(compiler, entry, unit(3), '-std=gnu11', '-O1', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample')!
+	assert compile_v3_cached_object(compiler, entry, unit(3), '-std=gnu11', '-O1', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample', unsafe { nil })!
 	assert windows_pch_files(root).len == 2
-	assert compile_v3_cached_object(compiler, entry, 'int shared_value(void) { return 4; }\n', '-std=gnu11', '-Os', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample')!
+	assert compile_v3_cached_object(compiler, entry, 'int shared_value(void) { return 4; }\n', '-std=gnu11', '-Os', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample', unsafe { nil })!
 	assert windows_pch_files(root).len == 2
 	// The header changed under the precompiled form (an SDK update the record
 	// misses would do the same): Clang rejects it, the unit compiles without it,
 	// the precompiled header and its record go, and the rest of the build does
 	// without one.
 	os.write_file(header, v3_windows_pch_header + '// changed\n')!
-	assert compile_v3_cached_object(compiler, entry, unit(5), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample')!
+	assert compile_v3_cached_object(compiler, entry, unit(5), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample', unsafe { nil })!
 	assert !os.is_file(pch)
 	assert !os.is_file(base + '.inputs')
 	assert os.is_file(entry.object)
 	os.write_file(header, v3_windows_pch_header)!
-	assert compile_v3_cached_object(compiler, entry, unit(6), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample')!
+	assert compile_v3_cached_object(compiler, entry, unit(6), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample', unsafe { nil })!
 	assert !os.is_file(base + '.inputs')
 	// The next build makes it again.
 	state = V3ModuleCacheState{ silent: true }
-	assert compile_v3_cached_object(compiler, entry, unit(16), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample')!
+	assert compile_v3_cached_object(compiler, entry, unit(16), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample', unsafe { nil })!
 	rebuilt := v3_windows_pch_record_pch(os.read_file(base + '.inputs')!, base)?
 	assert os.is_file(rebuilt) && rebuilt != pch
 	// A build of the header that failed just now is not tried again.
@@ -573,13 +615,13 @@ fn test_windows_pch_is_built_once_and_a_rejected_one_is_compiled_without() ! {
 	assert !os.is_file(rebuilt)
 	os.write_file(failed, 'out of disk space')!
 	state = V3ModuleCacheState{ silent: true }
-	assert compile_v3_cached_object(compiler, entry, unit(8), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample')!
+	assert compile_v3_cached_object(compiler, entry, unit(8), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample', unsafe { nil })!
 	assert !os.is_file(base + '.inputs')
 	// One that failed a while ago is tried again, and the record goes.
 	old := time.now().unix() - 2 * v3_windows_pch_failed_retry
 	os.utime(failed, old, old)!
 	state = V3ModuleCacheState{ silent: true }
-	assert compile_v3_cached_object(compiler, entry, unit(9), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample')!
+	assert compile_v3_cached_object(compiler, entry, unit(9), '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample', unsafe { nil })!
 	again := v3_windows_pch_record_pch(os.read_file(base + '.inputs')!, base)?
 	assert os.is_file(again)
 	assert !os.is_file(failed)
@@ -590,11 +632,11 @@ fn test_windows_pch_is_built_once_and_a_rejected_one_is_compiled_without() ! {
 	assert compile_v3_cached_object(compiler, entry, unit(11) + '_Static_assert(UNICODE == 1, "UNICODE of the unit");\n', '-std=gnu11', '-O2', '', '-w', [
 		'-fwrapv',
 		'-municode',
-	], false, {}, mut state, 'sample')!
+	], false, {}, mut state, 'sample', unsafe { nil })!
 	assert windows_pch_files(root).len == before + 1
 	// A unit with an error of its own fails with that error, not the header's,
 	// and the header stays for the other units.
-	compile_v3_cached_object(compiler, entry, unit(7) + 'int broken(void) { return missing; }\n', '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample') or {
+	compile_v3_cached_object(compiler, entry, unit(7) + 'int broken(void) { return missing; }\n', '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample', unsafe { nil }) or {
 		assert err.msg().contains('missing'), err.msg()
 		assert os.is_file(again)
 		return
