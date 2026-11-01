@@ -1530,12 +1530,14 @@ fn (mut t Transformer) transform_assoc_expr(id flat.NodeId, node flat.Node) flat
 	}
 	t.drain_pending(mut prelude)
 	if init_base := t.assoc_mapped_base_init(base, base_type, assoc_type, mut prelude) {
-		if t.a.nodes[int(init_base)].children_count == 0 {
-			// Every target field is supplied explicitly. Reserve storage without
-			// evaluating defaults that the following assignments would overwrite.
-			prelude << t.make_staging_value_decl(tmp_name, assoc_type)
-		} else {
-			prelude << t.make_decl_assign_typed(tmp_name, init_base, assoc_type)
+		// Every target field is copied or supplied explicitly. Do not evaluate
+		// defaults that the following assignments would overwrite.
+		prelude << t.make_staging_value_decl(tmp_name, assoc_type)
+		init := t.a.nodes[int(init_base)]
+		for i in 0 .. init.children_count {
+			field := t.a.child_node(&init, i)
+			prelude << t.make_assign(t.make_selector(t.make_ident(tmp_name), field.value, field.typ),
+				t.a.child(field, 0))
 		}
 	} else {
 		prelude << t.make_decl_assign_typed(tmp_name, base, assoc_type)

@@ -198,8 +198,20 @@ fn test_cross_struct_spread_without_copied_fields_preserves_evaluation() {
 	result := spread_promoted_project('no_copied_fields', {
 		'main.v': 'struct Link { token int = unused_default() }
 struct Owner { Link }
+struct PartialOwner {
+	Link
+	width int
+	fixed [2]int
+	dynamic []int
+	label string
+}
 struct FlatOwner { token int = unused_default() }
-struct Config { width int }
+struct Config {
+	width int
+	fixed [2]int
+	dynamic []int
+	label string
+}
 struct Counter {
 mut:
 	calls int
@@ -211,7 +223,7 @@ fn unused_default() int {
 fn make_config(mut counter Counter) Config {
 	counter.calls++
 	counter.order = counter.order * 10 + 1
-	return Config{width: 31}
+	return Config{width: 31, fixed: [4, 5]!, dynamic: [6, 7], label: "copied"}
 }
 fn make_token(mut counter Counter) int {
 	counter.order = counter.order * 10 + 2
@@ -219,6 +231,7 @@ fn make_token(mut counter Counter) int {
 }
 fn main() {
 	config := Config{width: 31}
+	if config.width < 0 { unused_default() }
 	owner := Owner{...config, token: 9}
 	assert owner.token == 9
 	assert config.width == 31
@@ -237,6 +250,30 @@ fn main() {
 	assert flat.token == 9
 	assert counter.calls == 1
 	assert counter.order == 12
+	counter = Counter{}
+	partial := PartialOwner{...make_config(mut counter), token: make_token(mut counter)}
+	assert partial.token == 9
+	assert partial.width == 31
+	assert partial.fixed == [4, 5]!
+	assert partial.dynamic == [6, 7]
+	assert partial.label == "copied"
+	assert counter.calls == 1
+	assert counter.order == 12
+}
+'
+	}, true)
+	assert result.exit_code == 0, result.output
+}
+
+fn test_cross_struct_spread_accepts_promoted_initializer_with_ampersand_embed() {
+	result := spread_promoted_project('ampersand_embed', {
+		'main.v': 'struct Link { token int }
+struct Owner { &Link }
+struct Config { width int }
+fn main() {
+	config := Config{width: 31}
+	owner := Owner{...config, token: 9}
+	assert owner.token == 9
 }
 '
 	}, true)
