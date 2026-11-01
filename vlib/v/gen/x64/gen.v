@@ -76,8 +76,25 @@ pub fn Gen.new_with_options(m &ssa.Module, opts GenOptions) &Gen {
 pub fn (g &Gen) validate_c_extern_calls() ! {
 	// Reject unsupported signatures before a function address is stored or passed
 	// elsewhere and its C provenance is lost by an indirect call.
+	mut escaped_func_refs := map[int]bool{}
+	for instr in g.m.instrs {
+		call_like := instr.op in [.call, .call_sret, .call_indirect, .go_call, .spawn_call]
+		for operand_idx, operand in instr.operands {
+			if operand <= 0 || operand >= g.m.values.len
+				|| g.m.values[operand].kind != .func_ref {
+				continue
+			}
+			if call_like && operand_idx == 0 {
+				continue
+			}
+			escaped_func_refs[operand] = true
+		}
+	}
 	for value in g.m.values {
 		if value.kind != .func_ref || value.index < 0 || value.index >= g.m.funcs.len {
+			continue
+		}
+		if !escaped_func_refs[value.id] {
 			continue
 		}
 		function := g.m.funcs[value.index]
@@ -87,7 +104,6 @@ pub fn (g &Gen) validate_c_extern_calls() ! {
 		if g.is_aggregate_type(function.typ) {
 			return error('x64: C aggregate return values are not supported yet: ${function.name}')
 		}
-		g.validate_c_callback_type(function.typ, function.name)!
 		for param in function.params {
 			if g.is_aggregate_type(g.m.values[param].typ) {
 				return error('x64: C aggregate arguments are not supported yet: ${function.name}')
@@ -96,18 +112,12 @@ pub fn (g &Gen) validate_c_extern_calls() ! {
 		if value.typ > 0 && value.typ < g.m.type_store.types.len {
 			signature := g.m.type_store.types[value.typ]
 			if signature.kind == .func_t {
-				return_type := g.m.type_store.types[signature.ret_type]
-				if function.is_variadic || return_type.kind == .float_t
-					|| (return_type.kind == .int_t && return_type.width < 64) {
-					return error('x64: C function addresses with variadic, floating-point or narrow integer return conventions are not supported yet: ${function.name}')
+				if function.is_variadic {
+					return error('x64: C function addresses with variadic return conventions are not supported yet: ${function.name}')
 				}
 				for param_type in signature.params {
-					g.validate_c_callback_type(param_type, function.name)!
 					if g.is_aggregate_type(param_type) {
 						return error('x64: C aggregate arguments are not supported yet: ${function.name}')
-					}
-					if g.is_float_type(param_type) {
-						return error('x64: C function addresses with floating-point arguments are not supported yet: ${function.name}')
 					}
 				}
 			}
@@ -119,18 +129,50 @@ pub fn (g &Gen) validate_c_extern_calls() ! {
 			continue
 		}
 		callee := g.m.values[instr.operands[0]]
-		g.validate_c_callback_type(instr.typ, callee.name)!
 		if g.is_aggregate_type(instr.typ) {
 			return error('x64: C aggregate return values are not supported yet: ${callee.name}')
 		}
 		for arg_index in 1 .. instr.operands.len {
 			param_type := g.call_param_type(instr, arg_index - 1)
-			g.validate_c_callback_type(param_type, callee.name)!
+			if !g.is_c_function_address_value(instr.operands[arg_index]) {
+				g.validate_c_callback_type(param_type, callee.name)!
+			}
 			if g.is_aggregate_type(param_type) {
 				return error('x64: C aggregate arguments are not supported yet: ${callee.name}')
 			}
 		}
 	}
+}
+
+fn (g &Gen) is_c_function_address_value(value_id int) bool {
+	mut current := value_id
+	for _ in 0 .. 16 {
+		if current <= 0 || current >= g.m.values.len {
+			return false
+		}
+		value := g.m.values[current]
+		if value.kind == .func_ref {
+			if value.index < 0 || value.index >= g.m.funcs.len {
+				return false
+			}
+			function := g.m.funcs[value.index]
+			return function.is_c_extern && function.name.starts_with('C.')
+		}
+		if value.kind != .instruction || value.index < 0 || value.index >= g.m.instrs.len {
+			return false
+		}
+		instr := g.m.instrs[value.index]
+		if instr.op == .bitcast {
+			current = instr.operands[0]
+			continue
+		}
+		if instr.op == .assign && instr.operands.len > 1 {
+			current = instr.operands.last()
+			continue
+		}
+		return false
+	}
+	return false
 }
 
 fn (g &Gen) validate_c_callback_type(typ_id ssa.TypeID, name string) ! {
@@ -146,15 +188,13 @@ fn (g &Gen) validate_c_callback_type(typ_id ssa.TypeID, name string) ! {
 		return
 	}
 	return_type := g.m.type_store.types[typ.ret_type]
-	if g.is_aggregate_type(typ.ret_type) || return_type.kind == .float_t
-		|| (return_type.kind == .int_t && return_type.width < 64) {
+	if g.is_aggregate_type(typ.ret_type) || return_type.kind == .float_t {
 		return error('x64: unsupported C callback return convention: ${name}')
 	}
 	g.validate_c_callback_type(typ.ret_type, name)!
 	for param_type in typ.params {
 		param := g.m.type_store.types[param_type]
-		if g.is_aggregate_type(param_type) || param.kind == .float_t
-			|| (param.kind == .int_t && param.width < 64) {
+		if g.is_aggregate_type(param_type) || param.kind == .float_t {
 			return error('x64: unsupported C callback argument convention: ${name}')
 		}
 		g.validate_c_callback_type(param_type, name)!

@@ -2640,7 +2640,10 @@ fn x64_native_support_object(a &flat.FlatAst, prefs &pref.Preferences, user_c_fl
 	flags << directive_flags
 	compile_flags := x64_native_compile_flags(flags)
 	compiler := if c_compiler in ['', 'tinyc', 'tcc'] { 'cc' } else { c_compiler }
-	mut args := ['-w', '-std=gnu11', '-fwrapv']
+	// Static inline helpers in #insert headers are part of the native bridge: the
+	// x64 object calls them as external symbols. Export them from this support
+	// translation unit instead of letting C discard them as translation-local.
+	mut args := ['-w', '-std=gnu11', '-fwrapv', '-Dstatic=', '-fgnu89-inline']
 	args << optimization_flags
 	args << ['-c', support_source, '-o', support_object]
 	for dir in include_dirs {
@@ -14501,6 +14504,10 @@ pub fn run(args []string) {
 
 			mut linker_args := ['-no-pie', obj_file, '-o', bin_file]
 			if native_support.object.len > 0 {
+				// Insert headers expose static-inline bridge helpers from the support
+				// object. Some are also emitted by the main x64 object; both copies
+				// come from the same source header.
+				linker_args << '-Wl,--allow-multiple-definition'
 				linker_args << native_support.object
 			}
 			linker := if c_compiler in ['', 'tinyc', 'tcc'] { 'cc' } else { c_compiler }

@@ -16678,7 +16678,10 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 	}
 	if builtin_base_type_source_id == flat.source_type_u8 && method in ['is_space', 'is_digit',
 		'is_hex_digit', 'is_letter'] {
-		return t.make_call_typed('u8__${method}', [t.transform_expr(base_id)], flat.source_type_bool)
+		call_name := 'u8__${method}'
+		t.mark_fn_used(call_name)
+		t.mark_fn_used(call_name.replace('__', '.'))
+		return t.make_call_typed(call_name, [t.transform_expr(base_id)], flat.source_type_bool)
 	}
 	if !base_is_pointer
 		&& builtin_base_type_comparison_type_id in [flat.source_type_u8, flat.source_type_i8,
@@ -16693,12 +16696,16 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 				}
 			}
 		}
-		return t.make_call_typed('${flat.source_type_name(builtin_base_type_source_id)}__${method}', [
-			t.transform_expr(base_id),
-		], flat.source_type_string)
+		call_name := '${flat.source_type_name(builtin_base_type_source_id)}__${method}'
+		t.mark_fn_used(call_name)
+		t.mark_fn_used(call_name.replace('__', '.'))
+		return t.make_call_typed(call_name, [t.transform_expr(base_id)], flat.source_type_string)
 	}
 	if !base_is_pointer && builtin_base_type_source_id == flat.source_type_voidptr && method == 'hex_full' {
-		return t.make_call_typed('voidptr__hex_full', [t.transform_expr(base_id)], flat.source_type_string)
+		call_name := 'voidptr__hex_full'
+		t.mark_fn_used(call_name)
+		t.mark_fn_used(call_name.replace('__', '.'))
+		return t.make_call_typed(call_name, [t.transform_expr(base_id)], flat.source_type_string)
 	}
 	if flat.source_type_shape(base_type).has(.array_type) || flat.source_type_shape(base_type).has(.map_type) {
 		if flat.source_type_shape(base_type).has(.array_type) {
