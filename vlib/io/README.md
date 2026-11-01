@@ -2,6 +2,35 @@
 
 `io` provides common interfaces for buffered reading/writing of data.
 
+## Copying bytes and streams
+
+`copy_bytes(mut dst, src)` copies `min(dst.len, src.len)` bytes and returns that count.
+It leaves the destination length unchanged, ignores unused capacity, and supports overlapping
+slices. It can also be stored in a function value.
+
+```v
+import io
+
+mut bytes := 'abcdef'.bytes()
+assert io.copy_bytes(mut bytes[2..], bytes[..4]) == 4
+assert bytes.bytestr() == 'ababcd'
+```
+
+`copy(mut dst, mut src)!` copies from a `Reader` into a `Writer` until the reader reports
+`io.Eof`. It returns the total byte count on success and uses a 32 KiB buffer.
+`copy_buffer(mut dst, mut src, mut buffer)!` uses the supplied buffer instead. An empty buffer
+is replaced with a 32 KiB buffer; a nonempty buffer keeps its length.
+
+`copy_n(mut dst, mut src, n)!` copies exactly `n` bytes without reading beyond that limit.
+If `n <= 0`, it returns zero without reading or writing. Early `io.Eof` returns an unexpected-EOF
+error.
+
+All three stream helpers handle short reads and retry short writes. Negative or oversized counts,
+zero-byte reads, and zero-byte writes return errors. A zero-byte read is a no-progress error,
+not a completed stream. Other reader and writer errors propagate unchanged, including a writer's
+`io.Eof`. Errors may leave partial output in the writer; the result carries a byte count only
+on success.
+
 ## Discarding output
 
 `Discard` implements `Writer` by accepting every byte without storing data. Writes never
