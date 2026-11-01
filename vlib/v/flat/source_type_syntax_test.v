@@ -100,6 +100,27 @@ fn test_source_type_syntax_parameter_normalization() {
 	}
 }
 
+fn test_source_type_syntax_escaped_parameter_names_keep_the_payload_type() {
+	for name in ['@type', '@fn', '@shared', '@int', '@_value'] {
+		for payload in ['Kind', '&Owner', '[]Kind', 'fn (Kind) Status'] {
+			syntax := source_type_syntax(source_type_id('${name} ${payload}'))
+			assert syntax.parameter_named()
+			assert syntax.parameter_name() == source_type_id(name)
+			assert syntax.parameter_type() == source_type_id(payload)
+			assert syntax.parameter_mut_type() == source_type_id(payload)
+		}
+	}
+	mutable := source_type_syntax(source_type_id('mut @type Kind'))
+	assert mutable.parameter_name() == source_type_id('@type')
+	assert mutable.parameter_type() == source_type_id('&Kind')
+	assert mutable.parameter_mut_type() == source_type_id('mut Kind')
+	for spelling in ['shared Kind', 'atomic Kind', 'chan Kind', 'thread Kind', 'fn (Kind) Status'] {
+		syntax := source_type_syntax(source_type_id(spelling))
+		assert !syntax.parameter_named()
+		assert syntax.parameter_type() == source_type_id(spelling)
+	}
+}
+
 fn test_source_type_syntax_exact_legacy_views() {
 	function := source_type_syntax(source_type_id('fn (,T,)'))
 	assert function.function_params() == [source_type_id('T')]

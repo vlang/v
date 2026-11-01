@@ -7,6 +7,36 @@ opt-in, HTTP/2 — over plain TCP or with TLS termination.
 For building web applications on top of it, see [`veb`](../../veb), which has its
 own server and router.
 
+## Response and handler helpers
+
+`http.redirect(url, code)` returns an empty redirect response with a `Location` header.
+`http.not_found()` returns a 404 response with the body `404 page not found`.
+`http.error_response(message, code)` returns the message verbatim as plain text, with
+`X-Content-Type-Options: nosniff`. Both error helpers set a UTF-8 content type.
+
+All three helpers return HTTP/1.1 responses with a byte-counted `Content-Length`, including
+zero for an empty body. Numeric status codes are retained even when no standard reason
+phrase exists. Use `Response.set_version` when another protocol version is needed.
+
+```v
+import net.http
+
+redirect := http.redirect('/login', 303)
+assert redirect.status_code == 303
+failure := http.error_response('Access denied', 403)
+assert failure.body == 'Access denied'
+```
+
+`http.strip_prefix(prefix, handler)` wraps an `http.Handler`. It removes a literal prefix
+from the URL path before calling the wrapped handler, and returns 404 for a nonmatching or
+malformed URL. Query strings and escaped path suffixes are preserved. The decoded path and
+any preserved alternative escaped spelling must both match the prefix, so `/api` does not
+match `/%61pi`.
+
+An empty prefix passes the request through unchanged. Removing the entire path leaves `/`.
+Matching uses a string prefix: use `/api/` when a directory boundary is required. The wrapper
+supports mutable handlers and leaves the caller's request unchanged.
+
 ## Status reason phrases
 
 `http.status_from_int(code).str()` returns the standard HTTP reason phrase, matching
@@ -211,6 +241,38 @@ crossing that boundary. Text without a recognized document signature returns
 `text/plain; charset=utf-8`; other unknown content returns `application/octet-stream`.
 Use sniffing only when no explicit content type is available. In particular, serving sniffed
 HTML from your application origin permits that content to run scripts.
+
+## Cookie jars
+
+`http.new_cookie_jar()` creates an in-memory cookie jar. Store response cookies with
+`jar.set_cookies(response_url, response.cookies())`, using the URL that produced the response.
+Use `jar.cookies_header(request_url)` as the next request's `Cookie` header, or
+`jar.cookies(request_url)` to retrieve the matching `Cookie` values.
+
+```v
+import net.http
+
+mut jar := http.new_cookie_jar()
+jar.set_cookies('https://example.com/account/login', [
+	http.Cookie{
+		name:  'sid'
+		value: 'abc'
+	},
+])
+assert jar.cookies_header('https://example.com/account/profile') == 'sid=abc'
+assert jar.cookies_header('https://sub.example.com/account/profile') == ''
+```
+
+URLs must be absolute HTTP or HTTPS URLs with a host; other URLs are ignored. Cookies without
+`Domain` stay on the response host. An explicit domain must be valid and match that host; IP
+addresses require an exact match. Domains are compared without case distinctions or a leading
+dot, and equivalent name/domain/path entries replace or delete each other. The jar does not
+check a public suffix list.
+
+Path matching uses the escaped URL path. Missing, empty, or relative `Path` attributes use
+the response URL's directory. `Max-Age` takes precedence over `Expires`, expired cookies are
+excluded, and `Secure` cookies are returned only for HTTPS. Header generation validates names
+and sanitizes and quotes values using the same rules as `Request.cookie_header_value()`.
 
 ## Cookies, headers and multipart
 

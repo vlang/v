@@ -5,6 +5,13 @@
 If you got here looking for methods available on the `string` struct, those
 methods are found in the `builtin` module.
 
+`cut(s, sep)` returns the text before and after the first exact byte sequence `sep`,
+plus a boolean indicating a match. An absent separator returns `s`, `''`, and `false`;
+an empty separator returns `''`, `s`, and `true`, even when `s` is empty.
+`cut_prefix(s, prefix)` and `cut_suffix(s, suffix)` remove at most one matching affix
+and return the remaining string plus the match boolean. An empty affix always matches
+without changing `s`. These helpers preserve UTF-8 and arbitrary byte content as supplied.
+
 Builder rune methods write U+FFFD for surrogate halves and values above U+10FFFF,
 including repeated writes. Valid Unicode scalar values retain their UTF-8 encoding.
 

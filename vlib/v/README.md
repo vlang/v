@@ -275,6 +275,7 @@ TinyCC may therefore accept source that the regular V checker rejects through C 
 conversions. Use the regular backend when semantic type validation is required. Range bounds are
 evaluated once, from left to right. The parser still rejects mutation of immutable or unknown local
 names instead of relying on C's weaker assignment rules.
+With the builtin runtime, collection string conversion preserves the target's integer width.
 
 Syntax without a direct FastC lowering is rejected. In ordinary non-selfhost builds this includes
 float printing, C-string and embedded-NUL string literals, runes, assertions, `sizeof`, shift,
@@ -284,6 +285,8 @@ cannot provide the required runtime behavior.
 FastC transports header paths, link inputs, frameworks, and preprocessor defines from `#flag`, and
 resolves `#pkgconfig` options into its fixed TinyCC invocation. Other compile options remain
 unsupported.
+Native C and object files shared by multiple imported modules are passed to the linker once.
+Archive and library flags keep their original order and repetitions.
 
 FastC requires exactly one `.v` entry file. Executables are host-target only; `-o file.c` also
 permits an explicit cross target and publishes its generated C without host TinyCC validation.

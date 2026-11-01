@@ -120,27 +120,16 @@ fn concurrent_large_response_body() string {
 		'</body></html>'
 }
 
-// clr_test_extra_accepts is the number of EXTRA connections each test server
-// must tolerate beyond its real requests. Only native Windows (without
-// -d no_vschannel) ever needs one: an h2-enabled https request (fetch's
-// default) to an h1-only origin makes TWO separate connections there --
-// net.http's ALPN probe (closes immediately once it sees h2 wasn't selected,
-// without sending a request) and the real request from the one-shot SChannel
-// path's own independent dial. The probe happens once per pool key (origin),
-// then key_proto is memoized and later requests go straight to the one-shot
-// path. Every other configuration reuses the probe connection directly,
-// needing no extra accept.
-const clr_test_extra_accepts = $if windows && !no_vschannel ? { 1 } $else { 0 }
+// Every TLS backend, including native Windows SChannel, reuses the ALPN
+// probe connection for an h1-only response. Single-request test servers
+// therefore need exactly one connection.
+const clr_test_max_accepts = 1
 
 fn serve_incomplete_https_response(mut listener mbedtls.SSLListener) bool {
 	defer {
 		listener.shutdown() or {}
 	}
-	// Accept up to 1 + clr_test_extra_accepts connections: a probe connection
-	// (see clr_test_extra_accepts) sends no request -- its read returns 0
-	// bytes (a clean close_notify EOF, NOT an error) or fails -- so skip it
-	// and keep waiting for the connection that actually carries a request.
-	for _ in 0 .. 1 + clr_test_extra_accepts {
+	for _ in 0 .. clr_test_max_accepts {
 		mut conn := listener.accept() or { panic(err) }
 		mut request_buf := []u8{len: 2048}
 		n := conn.read(mut request_buf) or {
@@ -167,11 +156,9 @@ fn serve_large_html_responses(mut listener mbedtls.SSLListener, body string, req
 	defer {
 		listener.shutdown() or {}
 	}
-	// The probe connection (if any) occupies one accept slot; its handler
-	// finds no request and exits early, so request_count real requests still
-	// each get a served connection.
-	mut handlers := []thread{cap: request_count + clr_test_extra_accepts}
-	for _ in 0 .. request_count + clr_test_extra_accepts {
+	// Each request uses one connection, including the reused ALPN probe.
+	mut handlers := []thread{cap: request_count}
+	for _ in 0 .. request_count {
 		mut conn := listener.accept() or { panic(err) }
 		handlers << spawn write_large_html_response(mut conn, body)
 	}
@@ -182,11 +169,10 @@ fn serve_chunked_html_response(mut listener mbedtls.SSLListener, body string) {
 	defer {
 		listener.shutdown() or {}
 	}
-	for _ in 0 .. 1 + clr_test_extra_accepts {
+	for _ in 0 .. clr_test_max_accepts {
 		mut conn := listener.accept() or { panic(err) }
 		if !write_chunked_html_response(mut conn, body) {
-			// No request arrived on this connection (the ALPN probe) -- keep
-			// waiting for the one that carries the real request.
+			// The peer closed without sending a request.
 			continue
 		}
 		return
@@ -200,8 +186,7 @@ fn write_large_html_response(mut conn mbedtls.SSLConn, body string) {
 	mut request_buf := []u8{len: 2048}
 	n := conn.read(mut request_buf) or { return }
 	if n <= 0 {
-		// 0 bytes = the peer closed without sending a request (the ALPN
-		// probe's clean close_notify EOF) -- nothing to respond to.
+		// The peer closed without sending a request: nothing to respond to.
 		return
 	}
 	header := 'HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: ${body.len}\r\nConnection: close\r\n\r\n'
@@ -220,10 +205,8 @@ fn write_large_html_response(mut conn mbedtls.SSLConn, body string) {
 }
 
 // write_chunked_html_response serves one scripted chunked response. Returns
-// whether a request actually arrived on this connection -- false means the
-// peer sent nothing (the ALPN probe: its read returns 0 bytes as a clean
-// close_notify EOF, or errors), so the caller should keep waiting for the
-// connection that carries the real request.
+// whether a request actually arrived on this connection. A clean close_notify
+// EOF or read error before the request returns false.
 fn write_chunked_html_response(mut conn mbedtls.SSLConn, body string) bool {
 	defer {
 		conn.shutdown() or {}

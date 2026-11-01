@@ -1176,35 +1176,99 @@ fn (t &Transformer) alias_target_type_preserving_main_lock(base_type_id u32) ?u3
 }
 
 fn (t &Transformer) resolve_embedded_receiver_method(base_type_id u32, method string) ?string {
+	mut seen := map[u32]bool{}
+	return t.resolve_embedded_receiver_method_inner(base_type_id, method, mut seen)
+}
+
+fn (t &Transformer) resolve_embedded_receiver_method_inner(base_type_id u32, method string, mut seen map[u32]bool) ?string {
 	if base_type_id == 0 || method == '' {
 		return none
 	}
 	mut lookup_type := t.trim_pointer_type(base_type_id)
+	if seen[lookup_type] { return none }
+	seen[lookup_type] = true
 	if alias_target := t.alias_target_type_preserving_main_lock(lookup_type) {
 		if alias_target != lookup_type {
-			if method_name := t.resolve_embedded_receiver_method(alias_target, method) {
+			if method_name := t.resolve_embedded_receiver_method_inner(alias_target, method, mut seen) {
 				return method_name
 			}
 		}
 	}
 	if lookup_type !in t.structs && flat.source_type_shape(lookup_type).has(.dotted) {
 		short_type := flat.source_type_syntax(lookup_type).unqualified()
-		if short_type in t.structs {
-			lookup_type = short_type
+		if info := t.structs[short_type] {
+			if t.struct_info_matches_qualifier(info, lookup_type) {
+				lookup_type = short_type
+			}
 		}
 	}
 	fields := t.embedded_fields[lookup_type] or { return none }
 	for field in fields {
-		field_type := if field.raw_typ != 0 { field.raw_typ } else { field.typ }
+		field_type := t.embedded_receiver_field_type(lookup_type, field)
 		clean_field := t.trim_pointer_type(field_type)
 		if method_name := t.resolve_receiver_method_for_type(clean_field, method) {
-			return method_name
+			if t.receiver_owns_method(clean_field, method_name) {
+				return method_name
+			}
 		}
-		if method_name := t.resolve_embedded_receiver_method(clean_field, method) {
+		if method_name := t.resolve_embedded_receiver_method_inner(clean_field, method, mut seen) {
 			return method_name
 		}
 	}
 	return none
+}
+
+// Embedded source spellings belong to their declaring file, not the caller.
+// Keep nominal aliases for method lookup, then substitute concrete owner arguments.
+fn (t &Transformer) embedded_receiver_field_type(owner_type_id u32, field FieldInfo) u32 {
+	mut source_id := if field.raw_typ != 0 { field.raw_typ } else { field.typ }
+	info := t.lookup_struct_info(owner_type_id) or { return source_id }
+	owner := flat.source_type_syntax(owner_type_id)
+	mut declaration := if owner.generic_app_valid() {
+		owner.generic_app_base()
+	} else {
+		owner_type_id
+	}
+	if info.module !in ['', 'main', 'builtin'] {
+		declaration = flat.source_type_composition_two(.qualified, flat.source_type_id(info.module),
+			flat.source_type_syntax(declaration).unqualified())
+	} else if flat.source_type_query(declaration).has(.main_prefix) {
+		declaration = flat.source_type_syntax(declaration).main_base()
+	}
+	params := t.generic_struct_param_names_for_base_id(declaration)
+	if owner.generic_app_valid() {
+		if declared_info := t.structs[declaration] {
+			if declared_field := declared_info.field(field.name) {
+				source_id = if declared_field.raw_typ != 0 {
+					declared_field.raw_typ
+				} else {
+					declared_field.typ
+				}
+			}
+		}
+	}
+	file := if !isnil(t.tc) { t.tc.struct_files[declaration] or { '' } } else { '' }
+	syntax := flat.source_type_syntax(source_id)
+	mut qualified := u32(0)
+	for index, part in syntax.symbol_parts() {
+		mut name := part
+		if syntax.symbol_is_name()[index] && flat.source_type_name(name) !in params {
+			if file.len > 0 {
+				resolved := t.tc.parse_resolution_type_in_file(name, file)
+				if resolved !is types.Unknown {
+					name = resolved.source_type_id()
+				}
+			} else {
+				name = t.qualify_generic_arg_for_decl_module(name, info.module)
+			}
+		}
+		qualified = flat.source_type_composition_two(.concat, qualified, name)
+	}
+	if owner.generic_app_valid() && params.len > 0 {
+		args := owner.generic_app_args().map(t.qualify_generic_arg_for_decl_module(it, t.cur_module))
+		return substitute_generic_type_text_with_params(qualified, args, params)
+	}
+	return qualified
 }
 
 // Embedded method signatures are copied onto child interfaces, but default method bodies
@@ -4832,6 +4896,13 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 		}
 		if !has_smartcast
 			&& t.resolve_sum_name(t.normalize_type_alias(t.trim_pointer_type(arg_type_source_id_3))) == resolved_target_sum {
+			// A returned reference can borrow this argument past the call. Reuse
+			// ordinary scoped storage instead of a C++ full-expression temporary.
+			if !t.in_spawn_expr {
+				if stable := t.transform_pointer_rvalue_arg(arg_id, *arg_node, param_type_id) {
+					return stable
+				}
+			}
 			return t.transform_expr(arg_id)
 		}
 		if arg_node.kind == .prefix && arg_node.op == .amp && arg_node.children_count > 0 {
@@ -4851,6 +4922,11 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 			inner_type_source_id := t.node_type(inner_id)
 
 			if t.resolve_sum_name(t.normalize_type_alias(t.trim_pointer_type(inner_type_source_id))) == resolved_target_sum {
+				if !t.in_spawn_expr {
+					if stable := t.transform_pointer_rvalue_arg(arg_id, *arg_node, param_type_id) {
+						return stable
+					}
+				}
 				return t.transform_expr(arg_id)
 			}
 		}
@@ -14843,7 +14919,13 @@ fn (mut t Transformer) try_lower_smartcast_target_receiver_method_call(_call_id 
 				target_source_id := t.trim_pointer_type(t.smartcast_target_type(sc))
 
 				if aggregate_source_id := t.stringify_aggregate_type_name(target_source_id) {
-					value_ptr := t.make_prefix(.amp, args[0])
+					// Interface smartcasts already retain the concrete object's address.
+					// Only take an address when the transformed receiver is still a value.
+					value_ptr := if flat.source_type_shape(t.node_type(args[0])).has(.pointer) {
+						args[0]
+					} else {
+						t.make_prefix(.amp, args[0])
+					}
 					t.set_node_typ(int(value_ptr), flat.source_type_composition_one(.pointer, aggregate_source_id))
 					interface_expr := t.make_plain_expr_for_smartcast(base_id)
 					return t.lower_interface_smartcast_ref_str(value_ptr, interface_expr, aggregate_source_id, method_name)
@@ -18206,21 +18288,30 @@ fn (t &Transformer) embedded_receiver_field(base_type_id u32, receiver_type_id u
 }
 
 fn (t &Transformer) embedded_receiver_path(base_type_id u32, receiver_type_id u32) ?[]FieldInfo {
+	mut seen := map[u32]bool{}
+	return t.embedded_receiver_path_inner(base_type_id, receiver_type_id, mut seen)
+}
+
+fn (t &Transformer) embedded_receiver_path_inner(base_type_id u32, receiver_type_id u32, mut seen map[u32]bool) ?[]FieldInfo {
 	if base_type_id == u32(0) || receiver_type_id == u32(0) {
 		return none
 	}
 	mut lookup_type := t.trim_pointer_type(base_type_id)
+	if seen[lookup_type] { return none }
+	seen[lookup_type] = true
 	if alias_target_source_id := t.alias_target_type_preserving_main_lock(lookup_type) {
 		if alias_target_source_id != lookup_type {
-			if path := t.embedded_receiver_path(alias_target_source_id, receiver_type_id) {
+			if path := t.embedded_receiver_path_inner(alias_target_source_id, receiver_type_id, mut seen) {
 				return path
 			}
 		}
 	}
 	if lookup_type !in t.structs && flat.source_type_shape(lookup_type).has(.dotted) {
 		short_type := flat.source_type_syntax(lookup_type).unqualified()
-		if short_type in t.structs {
-			lookup_type = short_type
+		if info := t.structs[short_type] {
+			if t.struct_info_matches_qualifier(info, lookup_type) {
+				lookup_type = short_type
+			}
 		}
 	}
 	fields := t.embedded_fields[lookup_type] or {
@@ -18237,7 +18328,12 @@ fn (t &Transformer) embedded_receiver_path(base_type_id u32, receiver_type_id u3
 	for field in fields {
 		// The semantic type of an embedded alias can be its underlying function
 		// type. Keep the source alias spelling for promoted receiver matching.
-		field_type := if field.raw_typ != 0 { field.raw_typ } else { field.typ }
+		field_type := t.embedded_receiver_field_type(lookup_type, field)
+		resolved_field := FieldInfo{
+			...field
+			typ:     t.normalize_type_alias(field_type)
+			raw_typ: field_type
+		}
 		raw_field_id := t.trim_all_pointer_type(field_type)
 		clean_field_source_id := t.normalize_type_alias(raw_field_id)
 		clean_field_comparison_type_id := clean_field_source_id
@@ -18247,14 +18343,14 @@ fn (t &Transformer) embedded_receiver_path(base_type_id u32, receiver_type_id u3
 		// (`Base` in `shapes`); the semantic type is qualified (`shapes.Base`).
 		semantic_field_comparison_type_id := t.normalize_type_alias(t.trim_all_pointer_type(field.typ))
 
-		if flat.source_type_id(field.name) in [raw_field_id, short_raw_field,
-			clean_field_comparison_type_id, short_field]
+		if flat.source_type_id(field.name) in [t.trim_all_pointer_type(field.raw_typ), raw_field_id,
+			short_raw_field, clean_field_comparison_type_id, short_field]
 			&& (clean_field_comparison_type_id == clean_receiver_comparison_type_id || semantic_field_comparison_type_id == clean_receiver_comparison_type_id) {
-			return [field]
+			return [resolved_field]
 		}
-		if sub_path := t.embedded_receiver_path(clean_field_source_id, receiver_type_id) {
+		if sub_path := t.embedded_receiver_path_inner(clean_field_source_id, receiver_type_id, mut seen) {
 			mut path := []FieldInfo{}
-			path << field
+			path << resolved_field
 			path << sub_path
 			return path
 		}

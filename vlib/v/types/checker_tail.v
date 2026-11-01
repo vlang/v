@@ -5658,6 +5658,42 @@ fn (tc &TypeChecker) translated_named_cast_call_name_id(id flat.NodeId, node fla
 	return none
 }
 
+// C declarations name their parameter and return types even when a typedef's
+// representation is supplied only by its header. Keep those names without
+// reading the header, so a later C.Type(value) remains a cast.
+fn (mut tc TypeChecker) register_c_fn_referenced_type(typ Type) {
+	match typ {
+		Struct {
+			if flat.source_type_query(typ.source_type_id()).has(.c_prefix) {
+				tc.c_fn_referenced_types[typ.source_type_id()] = true
+			}
+		}
+		Pointer, Alias {
+			tc.register_c_fn_referenced_type(typ.base_type)
+		}
+		ArrayFixed {
+			tc.register_c_fn_referenced_type(typ.elem_type)
+		}
+		FnType {
+			tc.register_c_fn_referenced_type(typ.return_type)
+			for param in typ.params {
+				tc.register_c_fn_referenced_type(param.typ)
+			}
+		}
+		else {}
+	}
+}
+
+// c_type_cast_name_known reports whether a C call spelling names an alias or an
+// opaque type referenced by a C declaration, rather than a C function.
+pub fn (tc &TypeChecker) c_type_cast_name_known(name_id u32) bool {
+	if flat.source_type_name(name_id) in tc.fn_ret_types {
+		return false
+	}
+	return tc.type_aliases.contains(name_id)
+		|| (name_id in tc.c_fn_referenced_types && name_id !in tc.structs)
+}
+
 fn (mut tc TypeChecker) check_c_alias_cast_call(id flat.NodeId, node flat.Node, callee flat.Node) bool {
 	if callee.kind != .selector || callee.children_count == 0 || node.children_count != 2 {
 		return false
@@ -5667,7 +5703,7 @@ fn (mut tc TypeChecker) check_c_alias_cast_call(id flat.NodeId, node flat.Node, 
 		return false
 	}
 	type_name_id := flat.source_type_existing_id('C.${callee.value}') or { return false }
-	if !tc.type_aliases.contains(type_name_id) {
+	if !tc.c_type_cast_name_known(type_name_id) {
 		return false
 	}
 	cast_node := flat.Node{
@@ -6403,6 +6439,7 @@ fn (mut tc TypeChecker) remember_nongeneric_call(call flat.Node, info CallInfo) 
 
 struct GenericCompileErrorInstantiation {
 	decl_id        flat.NodeId
+	decl_file      string
 	generic_params []u32
 	concrete_args  flat.TypeTextList
 	symbol_types   flat.TypeTextBindings
@@ -6561,7 +6598,7 @@ fn (mut tc TypeChecker) resolve_generic_compile_error_instantiation(call flat.No
 				actual := tc.resolve_type(receiver_id)
 				tc.infer_generic_type_text_from_type(param.typ, actual, generic_params, mut inferred)
 				if param.value.len > 0 {
-					symbol_types[param.value] = actual.source_type_id()
+					symbol_types[param.value] = tc.generic_diagnostic_symbol_type(actual.source_type_id())
 				}
 			}
 			source_param_index++
@@ -6574,7 +6611,7 @@ fn (mut tc TypeChecker) resolve_generic_compile_error_instantiation(call flat.No
 		actual := tc.resolve_type(arg_id)
 		tc.infer_generic_type_text_from_type(param.typ, actual, generic_params, mut inferred)
 		if param.value.len > 0 {
-			symbol_types[param.value] = actual.source_type_id()
+			symbol_types[param.value] = tc.generic_diagnostic_symbol_type(actual.source_type_id())
 		}
 		arg_index++
 		source_param_index++
@@ -6587,15 +6624,25 @@ fn (mut tc TypeChecker) resolve_generic_compile_error_instantiation(call flat.No
 			arg_source_id := inferred[param] or { return none }
 
 			concrete_args << arg_source_id
-			symbol_types[flat.source_type_name(param)] = arg_source_id
+			symbol_types[flat.source_type_name(param)] = tc.generic_diagnostic_symbol_type(arg_source_id)
 		}
 	}
 	return GenericCompileErrorInstantiation{
 		decl_id:        decl_id
+		decl_file:      tc.generic_decl_file
 		generic_params: generic_params
 		concrete_args:  flat.TypeTextList{ ids: concrete_args.clone() }
 		symbol_types:   flat.TypeTextBindings{ ids: symbol_types }
 	}
+}
+
+fn (tc &TypeChecker) generic_diagnostic_symbol_type(source_id u32) u32 {
+	if context_independent_type(source_id) {
+		return source_id
+	}
+	// Inferred names are canonical, but a bare program-owned type still needs
+	// `main.` before the condition is resolved in the generic declaration.
+	return tc.type_parse_view_in_file('').explicit_generic_concrete_arg_text(source_id)
 }
 
 fn (tc &TypeChecker) generic_method_call_receiver_id(call flat.Node) ?flat.NodeId {
@@ -6703,7 +6750,8 @@ fn (mut tc TypeChecker) collect_instantiated_compile_warnings(id flat.NodeId, in
 	node := tc.a.node(id)
 	if node.kind == .comptime_if {
 		substituted := substitute_comptime_condition_symbols(node.value, instantiation.symbol_types)
-		take_then := tc.comptime_type_condition_value(substituted) or { return }
+		declaration := tc.type_parse_view_in_file(instantiation.decl_file)
+		take_then := declaration.comptime_type_condition_value(substituted) or { return }
 		branch_index := if take_then { 0 } else { 1 }
 		if branch_index < node.children_count {
 			tc.collect_instantiated_compile_warnings(tc.a.child(node, branch_index), instantiation, mut warnings)
@@ -6740,7 +6788,8 @@ fn (mut tc TypeChecker) collect_instantiated_compile_errors(id flat.NodeId, inst
 	node := tc.a.node(id)
 	if node.kind == .comptime_if {
 		substituted := substitute_comptime_condition_symbols(node.value, instantiation.symbol_types)
-		take_then := tc.comptime_type_condition_value(substituted) or { return }
+		declaration := tc.type_parse_view_in_file(instantiation.decl_file)
+		take_then := declaration.comptime_type_condition_value(substituted) or { return }
 		branch_index := if take_then { 0 } else { 1 }
 		if branch_index < node.children_count {
 			tc.collect_instantiated_compile_errors(tc.a.child(node, branch_index), instantiation, mut messages)
@@ -12309,7 +12358,36 @@ fn (tc &TypeChecker) flag_enum_receiver_is_mutable_lvalue(recv_id flat.NodeId) b
 	if !tc.expr_can_take_address(recv_id) {
 		return false
 	}
-	return tc.expr_root_is_mutable_lvalue(recv_id)
+	if tc.expr_root_is_mutable_lvalue(recv_id) {
+		return true
+	}
+	if tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(recv_id) {
+		return false
+	}
+	// Follow the same storage-preserving wrappers as expr_can_take_address.
+	mut current := recv_id
+	for tc.valid_node_id(current) {
+		node := tc.a.node(current)
+		if node.kind == .ident {
+			return tc.expr_root_constant_name(current) == none
+		}
+		if node.children_count == 0 {
+			break
+		}
+		base := tc.a.child_node(node, 0)
+		if node.kind == .selector && base.kind == .ident
+			&& !tc.ident_resolves_to_value(base.value) && tc.const_type_for_selector(*node) != none {
+			return false
+		}
+		if node.kind in [.block, .expr_stmt] {
+			current = tc.a.child(node, node.children_count - 1)
+		} else if node.kind in [.index, .selector, .paren, .or_expr, .postfix] {
+			current = tc.a.child(node, 0)
+		} else {
+			break
+		}
+	}
+	return true
 }
 
 fn (tc &TypeChecker) mut_receiver_expr_is_mutable_lvalue(id flat.NodeId) bool {

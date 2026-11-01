@@ -15,6 +15,10 @@ For floating point values, `math.abs` maps both signs of zero to positive zero.
 `math.min` and `math.max` return NaN when either floating point argument is NaN.
 For equal non-NaN values, including opposite signs of zero, both return their second argument.
 
+`dim(x, y)` computes the positive difference: `x - y` when positive, and positive zero
+otherwise. It returns NaN if either input is NaN or if both inputs are infinities with
+the same sign. A positive difference that overflows `f64` returns positive infinity.
+
 `modf` preserves the input sign on both its integer and fractional results, including zero.
 `log_gamma` returns the logarithm of the absolute value of Gamma; either positive or negative
 infinity as input returns positive infinity.
