@@ -297,6 +297,11 @@ fn v3_windows_pch_compiler(compiler string) bool {
 	return name.contains('clang') && !name.contains('clang-cl')
 }
 
+// The variables an MSVC-target Clang takes its system include directories
+// from, as a Visual Studio developer prompt sets them.
+const v3_windows_pch_msvc_environment_names = ['INCLUDE', 'EXTERNAL_INCLUDE', 'VCToolsInstallDir',
+	'VCINSTALLDIR', 'WindowsSdkDir', 'WindowsSDKVersion', 'UniversalCRTSdkDir', 'UCRTVersion']
+
 // v3_windows_pch_key names the precompiled header of one compiler, one
 // compile-flag set and the environment they compile in. Clang rejects a header
 // whose language standard or optimization level differ, but checks a
@@ -307,11 +312,13 @@ fn v3_windows_pch_compiler(compiler string) bool {
 // side by side have a header each instead of replacing each other's: the
 // variables of v3_link_environment_names (CPATH, C_INCLUDE_PATH, ...), PATH (a
 // MinGW Clang without a sysroot of its own takes the headers of the first MinGW
-// GCC on it), and the directory that relative include directories are found from.
+// GCC on it), those of v3_windows_pch_msvc_environment_names, and the directory
+// that relative include directories are found from.
 fn v3_windows_pch_key(identity string, args []string) string {
 	mut hash := u64(1469598103934665603)
+	msvc := v3_windows_pch_msvc_environment_names.map('${it}=${os.getenv(it)}').join('\x00')
 	for part in [v3_windows_pch_format, identity, v3_windows_pch_header, args.join('\x00'),
-		v3_link_environment_signature(), 'PATH=${os.getenv('PATH')}', os.getwd()] {
+		v3_link_environment_signature(), 'PATH=${os.getenv('PATH')}', msvc, os.getwd()] {
 		hash = c_hash_bytes(hash, part.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
 	}
@@ -549,18 +556,27 @@ fn v3_windows_pch_inputs(read []string, search []string, header string, before i
 	}
 	for name in angled {
 		for dir in search {
-			inputs.add_windows_pch_place(v3_windows_pch_path(dir + '/' + name), before)?
+			inputs.add_windows_pch_place(v3_windows_pch_place(dir, name), before)?
 		}
 	}
 	for name in quoted {
 		for dir in includers {
-			inputs.add_windows_pch_place(v3_windows_pch_path(dir + '/' + name), before)?
+			inputs.add_windows_pch_place(v3_windows_pch_place(dir, name), before)?
 		}
 		for dir in search {
-			inputs.add_windows_pch_place(v3_windows_pch_path(dir + '/' + name), before)?
+			inputs.add_windows_pch_place(v3_windows_pch_place(dir, name), before)?
 		}
 	}
 	return inputs
+}
+
+// v3_windows_pch_place returns where the compiler looks for the included `name`
+// in the directory `dir`: below it, or the name itself when it is absolute.
+fn v3_windows_pch_place(dir string, name string) string {
+	if os.is_abs_path(name) || name.starts_with('/') || name.starts_with('\\') {
+		return v3_windows_pch_path(name)
+	}
+	return v3_windows_pch_path(dir + '/' + name)
 }
 
 // v3_windows_pch_include_names returns the names the C `source` includes in
@@ -651,6 +667,20 @@ fn v3_windows_pch_include_names(source string) ?([]string, []string) {
 			}
 			'include_alias', 'embed', '__has_embed' {
 				return none
+			}
+			'_Pragma' {
+				// Its pragma is in a string, which is skipped as a literal:
+				// one that aliases an included name names a file.
+				mut open := i
+				for open < text.len && text[open] in [` `, `\t`, `(`] {
+					open++
+				}
+				if open < text.len && text[open] == `"` {
+					close := v3_c_skip_literal(text, open)
+					if text[open..close].contains('include_alias') {
+						return none
+					}
+				}
 			}
 			else {}
 		}
