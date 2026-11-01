@@ -69,6 +69,9 @@ MCP tools exposed:
 When `vls` is on PATH, V MCP exposes:
 - `v_vls_check`: compile-check a file via VLS.
 - `v_vls_hover`: hover info at a position via VLS.
+- `v_vls_definition`: go to definition via VLS.
+- `v_vls_references`: find references via VLS.
+- `v_vls_rename`: rename a symbol via VLS.
 
 VLS is usually launched by the editor (VS Code, etc.), not by hand. For agent
 use, invoke `vls` over stdio with LSP framing, or use the editor's LSP client.
