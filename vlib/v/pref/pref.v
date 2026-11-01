@@ -1623,13 +1623,15 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 			return p.is_test
 		}
 		'native', 'builtin_write_buf_to_fd_should_use_c_write' {
-			return p.backend in ['arm64', 'x64', 'riscv64', 'loongarch64', 'ppc64le', 'arm32', 's390x']
+			return p.backend in ['arm64', 'x64', 'riscv64', 'loongarch64', 'ppc64le', 'arm32',
+				's390x']
 		}
 		'gcc', 'clang', 'mingw', 'msvc', 'cplusplus' {
 			return p.backend == 'c' && p.ccompiler == name
 		}
 		'tinyc' {
-			return p.backend in ['arm64', 'x64', 'riscv64', 'loongarch64', 'ppc64le', 'arm32', 's390x']
+			return p.backend in ['arm64', 'x64', 'riscv64', 'loongarch64', 'ppc64le', 'arm32',
+				's390x']
 				|| (p.backend in ['c', 'fastc'] && p.ccompiler == 'tinyc')
 		}
 		'no_backtrace' {
@@ -1777,7 +1779,7 @@ pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
 	// Builtin spells its native backend check `$if native ?`, because the V1
 	// compatibility compiler, which still checks some fixtures, knows `native`
 	// only as a define. Here it also names the backend, as in `$if native`.
-	if name == 'native' {
+	if name == 'native' || name == 'builtin_write_buf_to_fd_should_use_c_write' {
 		return comptime_flag_value(p, name) || name in p.user_defines
 	}
 	return name in p.user_defines

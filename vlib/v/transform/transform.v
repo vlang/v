@@ -27659,6 +27659,20 @@ fn (mut t Transformer) transform_prefix_expr(id flat.NodeId, node flat.Node) fla
 	if node.children_count == 0 {
 		return id
 	}
+	if node.op == .arrow && node.children_count > 0 {
+		child := t.a.nodes[int(t.a.child(&node, 0))]
+		if !isnil(t.tc) {
+			if typ := t.tc.expr_type(t.a.child(&node, 0)) {
+				if typ is types.Channel {
+					t.mark_fn_used('sync.Channel.pop')
+				}
+			} else {
+				eprintln('transform arrow: no type')
+			}
+		} else {
+			eprintln('transform arrow: tc is nil')
+		}
+	}
 	if node.op == .amp {
 		child := t.a.child(&node, 0)
 		if t.sum_projection_has_temporary_storage(child) {

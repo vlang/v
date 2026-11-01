@@ -2240,7 +2240,9 @@ fn (mut b Builder) register_functions() {
 	if b.m.target.ptr_size == 8 { b.register_native_runtime_helpers() }
 	if b.m.target.ptr_size == 8 { b.register_native_allocation_helpers() }
 	if b.m.target.ptr_size == 8 { b.register_native_header_helpers() }
-	if b.m.target.ptr_size == 8 && b.m.target.backend != "ppc64le" { b.register_native_signal_helpers() }
+	if b.m.target.ptr_size == 8 && b.m.target.backend != 'ppc64le' {
+		b.register_native_signal_helpers()
+	}
 	if b.m.target.ptr_size == 8 { b.register_native_worker_helpers() }
 }
 
@@ -13368,6 +13370,33 @@ fn (mut b Builder) build_prefix(node flat.Node, _id flat.NodeId) ValueID {
 			}
 			return b.emit1(.load, b.deref_type(val), val)
 		}
+		.arrow {
+			type_name_id := b.checked_expr_type_name(child_id)
+			type_name := flat.source_type_name(type_name_id)
+			if type_name.starts_with('chan ') {
+				// Resolve element type from "chan X"
+				elem_type_name_str := type_name[5..].trim_space()
+				elem_type_name := flat.source_type_id(elem_type_name_str)
+				elem_type := b.resolve_type(elem_type_name)
+				slot := b.emit0(.alloca, b.m.type_store.get_ptr(elem_type))
+				channel_val := b.build_expr(child_id)
+				ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+				result_ptr := if b.value_type(slot) == ptr_i8 {
+					slot
+				} else {
+					b.emit1(.bitcast, ptr_i8, slot)
+				}
+				channel_ptr := channel_val
+
+				if pop_id := b.fn_ids['sync.Channel.pop'] {
+					pop_fn_type := b.fn_types['sync.Channel.pop']
+					pop_ref := b.m.add_value(.func_ref, pop_fn_type, 'sync.Channel.pop', pop_id)
+					b.emit3(.call, b.i1_type, pop_ref, channel_ptr, result_ptr)
+				}
+				return b.emit1(.load, elem_type, slot)
+			}
+			return val
+		}
 		else {
 			return val
 		}
@@ -14634,7 +14663,9 @@ fn (mut b Builder) register_builtin_method_stub(name string, call_id flat.NodeId
 		return existing
 	}
 	mut params := []TypeID{cap: node.children_count}
-	params << b.resolve_type(flat.source_type_id(receiver_name))
+	// Channel methods take the channel by pointer (mut receiver)
+	channel_ptr_type := b.m.type_store.get_ptr(b.resolve_type(flat.source_type_id(receiver_name)))
+	params << channel_ptr_type
 	for i in 1 .. node.children_count {
 		arg_id := b.a.child(&node, i)
 		arg_type_name := b.checked_expr_type_name(arg_id)
@@ -14646,7 +14677,7 @@ fn (mut b Builder) register_builtin_method_stub(name string, call_id flat.NodeId
 	}
 	ret_type := b.call_expr_result_type(call_id, node)
 	func_id := b.register_synthetic_function(name, ret_type, params)
-	if name.contains('Channel.') && (name.contains('try_') || name.ends_with('.pop')) {
+	if name.contains('Channel.') && (name.contains('try_push') || name.contains('try_pop_from_select') || name.contains('try_pop_impl')) {
 		mut f := b.m.funcs[func_id]
 		f.is_c_extern = true
 		b.m.funcs[func_id] = f

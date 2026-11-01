@@ -32,11 +32,15 @@ fn panic_debug(line_no int, file string, mod string, fn_name string, s string) {
 		eprint(' function: '); eprint(fn_name); eprintln('()')
 		eprint('  message: '); eprintln(s)
 		eprint('     file: '); eprint(file); eprint(':');
-	    C.fprintf(C.stderr, c'%d\n', line_no)
+	    $if !builtin_write_buf_to_fd_should_use_c_write ? {
+		    C.fprintf(C.stderr, c'%d\n', line_no)
+	    }
 		eprint('   v hash: '); eprintln(vcurrent_hash())
 		$if !vinix {
-			eprint('      pid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_getpid()))
-			eprint('      tid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_gettid()))
+			$if !builtin_write_buf_to_fd_should_use_c_write ? {
+				eprint('      pid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_getpid()))
+				eprint('      tid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_gettid()))
+			}
 		}
 		eprintln('=========================================')
 		flush_stdout()
@@ -112,8 +116,10 @@ pub fn panic(s string) {
 		eprint(' v hash: ')
 		eprintln(vcurrent_hash())
 		$if !vinix {
-			eprint('    pid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_getpid()))
-			eprint('    tid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_gettid()))
+			$if !builtin_write_buf_to_fd_should_use_c_write ? {
+				eprint('    pid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_getpid()))
+				eprint('    tid: '); C.fprintf(C.stderr, c'%p\n', voidptr(v_gettid()))
+			}
 		}
 		flush_stdout()
 		// vfmt on

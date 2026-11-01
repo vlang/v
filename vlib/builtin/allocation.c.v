@@ -15,7 +15,7 @@ fn _memory_panic(fname string, size int) {
 	// Note: do not use string interpolation here at all, since string interpolation itself allocates
 	eprint(fname)
 	eprint('(')
-	$if freestanding || vinix || v2_native_windows_pe_minimal ? {
+	$if freestanding || vinix || v2_native_windows_pe_minimal || builtin_write_buf_to_fd_should_use_c_write ? {
 		eprint('size') // TODO: use something more informative here
 	} $else {
 		C.fprintf(C.stderr, c'%p', voidptr(size))
