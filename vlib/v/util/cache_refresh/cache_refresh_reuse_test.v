@@ -189,10 +189,12 @@ fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches()
 	for is_test in [false, true] {
 		// Overlapping import sets share compiler flags but can select different
 		// interface implementations. Every variant must survive a complete pass.
+		// Keep the crypto imports free of opaque native headers so they can be cached.
+		// math.big and crypto.ed25519 import crypto.rand.internal, which cannot.
 		requests := [Request{
 			args:    ['-cc', compiler]
-			module:  'math.big'
-			imports: ['crypto.ed25519', 'math.big']
+			module:  'crypto.sha3'
+			imports: ['crypto.sha512', 'crypto.sha3']
 			is_test: is_test
 		}, Request{
 			args:    ['-cc', compiler]
@@ -214,7 +216,7 @@ fn test_synthetic_refresh_only_compiles_module_objects_on_cold_and_warm_caches()
 		cold_calls := os.read_file(log)!
 		assert cold_calls.len > 0
 		assert !cold_calls.contains('program_main_') && !cold_calls.contains('program_prefix_'), cold_calls
-		assert collect(os.dir(@VEXE), @VEXE)!.any(it.module == 'math.big' && it.is_test == is_test)
+		assert collect(os.dir(@VEXE), @VEXE)!.any(it.module == 'crypto.sha3' && it.is_test == is_test)
 		refresh(@VEXE, requests)!
 		assert os.read_file(log)! == cold_calls, 'warm refresh must reuse its validated module objects'
 	}

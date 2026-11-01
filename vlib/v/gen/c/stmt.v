@@ -1942,7 +1942,8 @@ fn (mut g FlatGen) gen_ownership_ierror_clone_method_call(method string, receive
 		g.write(', ')
 		if is_variadic && i == params.len - 1 && param is types.Array {
 			c_elem := g.tc.c_type(param.elem_type)
-			g.write('new_array_from_c_array(0, 0, sizeof(${c_elem}), (${c_elem}[]){0})')
+			source := g.cpp_copy_source('(${c_elem}[]){0}')
+			g.write('new_array_from_c_array(0, 0, sizeof(${c_elem}), ${source})')
 		} else {
 			clean_param := types.unalias_type(param)
 			if clean_param is types.Pointer {
@@ -2432,7 +2433,7 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 			g.writeln('Array ${directions} = array_new(sizeof(int), 0, 0);')
 			g.writeln('Array ${objects} = array_new(sizeof(void*), 0, 0);')
 		} else {
-			g.write('Array ${channels} = new_array_from_c_array(${cases.len}, ${cases.len}, sizeof(sync__Channel*), (sync__Channel*[]){')
+			g.write('Array ${channels} = new_array_from_c_array(${cases.len}, ${cases.len}, sizeof(sync__Channel*), ${g.cpp_copy_source_prefix()}(sync__Channel*[]){')
 			for i, select_case in cases {
 				if i > 0 {
 					g.write(', ')
@@ -2441,23 +2442,23 @@ fn (mut g FlatGen) gen_select(id flat.NodeId, node flat.Node, is_expr bool) {
 				g.gen_channel_try_receiver(select_case.channel_id)
 				g.write(')')
 			}
-			g.writeln('});')
-			g.write('Array ${directions} = new_array_from_c_array(${cases.len}, ${cases.len}, sizeof(int), (int[]){')
+			g.writeln('}${g.cpp_copy_source_suffix()});')
+			g.write('Array ${directions} = new_array_from_c_array(${cases.len}, ${cases.len}, sizeof(int), ${g.cpp_copy_source_prefix()}(int[]){')
 			for i, select_case in cases {
 				if i > 0 {
 					g.write(', ')
 				}
 				g.write(if select_case.is_push { '1' } else { '0' })
 			}
-			g.writeln('});')
-			g.write('Array ${objects} = new_array_from_c_array(${cases.len}, ${cases.len}, sizeof(void*), (void*[]){')
+			g.writeln('}${g.cpp_copy_source_suffix()});')
+			g.write('Array ${objects} = new_array_from_c_array(${cases.len}, ${cases.len}, sizeof(void*), ${g.cpp_copy_source_prefix()}(void*[]){')
 			for i, tmp in temps {
 				if i > 0 {
 					g.write(', ')
 				}
 				g.write('(void*)&${tmp}')
 			}
-			g.writeln('});')
+			g.writeln('}${g.cpp_copy_source_suffix()});')
 		}
 		select_fn := if is_expr { 'sync__channel_select' } else { 'sync__channel_select_lang' }
 		g.write('int ${select_result} = ${select_fn}(&${channels}, ${directions}, &${objects}, ')
@@ -2799,12 +2800,12 @@ fn (mut g FlatGen) gen_select_receive_sum_value(expr string, actual types.Type, 
 	ct := g.tc.c_type(sum_type0)
 	idx := g.sum_type_index(sum_name_id, variant_id)
 	field := sum_field_name(flat.source_type_name(variant_id))
-	g.write('(${ct}){.typ = ${idx}, .${field} = ')
+	g.write(g.sum_initializer_prefix(sum_name_id, ct, idx, field, false))
 	if actual_type is types.Pointer && g.type_names_match(actual_type.base_type, variant_type) {
 		g.write('*')
 	}
 	g.write(expr)
-	g.write('}')
+	g.write(g.sum_initializer_suffix(false))
 	return true
 }
 
@@ -3785,7 +3786,8 @@ fn (g &FlatGen) assert_operand_is_constant(id flat.NodeId) bool {
 fn (mut g FlatGen) assert_capture_c_type(id flat.NodeId) ?(string, bool) {
 	typ := g.usable_expr_type(id)
 	clean := g.value_unalias_type(typ)
-	is_number := clean.is_integer() || clean.is_float()
+	// Wide integers can be C structs; copy their values without a scalar cast.
+	is_number := (clean.is_integer() || clean.is_float()) && int128_signedness(clean) == none
 	match clean {
 		types.Primitive, types.String, types.Char, types.Rune, types.ISize, types.USize,
 		types.Enum, types.Struct, types.Array, types.Map, types.SumType, types.Interface,
@@ -5007,7 +5009,12 @@ fn split_c_inline_asm_operands(source string) []string {
 fn lower_c_inline_asm_operand(source string, arch string, aliases map[string]bool, is_extended bool, is_directive bool) string {
 	operand := source.trim_space()
 	if operand.len >= 2 && operand[0] == `\`` && operand[operand.len - 1] == `\`` {
-		return "'${operand[1..operand.len - 1]}'"
+		literal := "'${operand[1..operand.len - 1]}'"
+		return if !is_directive && is_c_inline_asm_x86_arch(arch) {
+			'\$${literal}'
+		} else {
+			literal
+		}
 	}
 	if label := c_inline_asm_local_label_reference(operand) {
 		return label
@@ -9259,7 +9266,8 @@ fn (mut g FlatGen) gen_fixed_array_zero_init_decl(lhs_id flat.NodeId, init_type 
 		}
 	} else if lhs_is_defer_capture {
 		init := g.empty_fixed_array_initializer_string(init_type)
-		g.writeln('memmove(${lhs_str}, (${c_elem}${dims})${init}, sizeof(${lhs_str}));')
+		source := g.cpp_copy_source('(${c_elem}${dims})${init}')
+		g.writeln('memmove(${lhs_str}, ${source}, sizeof(${lhs_str}));')
 	} else {
 		init := g.empty_fixed_array_initializer_string(init_type)
 		g.writeln('${decl_prefix}${c_elem} ${lhs_str}${dims} = ${init};')
@@ -9419,7 +9427,7 @@ fn (mut g FlatGen) gen_multi_return_temp_return(ct string, ret_types []types.Typ
 
 fn (mut g FlatGen) gen_fixed_array_copy_from_node(dst string, rhs_id flat.NodeId, fixed types.ArrayFixed) {
 	g.write('memmove(${dst}, ')
-	g.gen_fixed_array_data_arg(rhs_id, fixed)
+	g.gen_fixed_array_copy_data_arg(rhs_id, fixed)
 	g.writeln(', sizeof(${dst}));')
 }
 
@@ -9738,7 +9746,7 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 					g.write('memcpy(')
 					g.gen_expr(lhs_id)
 					g.write(', ')
-					g.gen_fixed_array_data_arg(rhs_id, lhs_type)
+					g.gen_fixed_array_copy_data_arg(rhs_id, lhs_type)
 					g.write(', sizeof(')
 					g.gen_expr(lhs_id)
 					g.writeln('));')
@@ -9816,14 +9824,14 @@ fn (mut g FlatGen) gen_assign(node flat.Node) {
 								g.gen_fixed_array_copy_source(rhs_id, lhs_type)
 								g.writeln(', sizeof(${dst}));')
 							} else {
-								g.writeln('memmove(${dst}, ${g.expr_to_string(rhs_id)}, sizeof(${dst}));')
+								g.writeln('memmove(${dst}, ${g.cpp_copy_source(g.expr_to_string(rhs_id))}, sizeof(${dst}));')
 							}
 							i += 2
 							continue
 						} else {
 							dst := g.expr_to_string(lhs_id)
 							g.write('memmove(${dst}, ')
-							g.gen_fixed_array_data_arg(rhs_id, lhs_fixed)
+							g.gen_fixed_array_copy_data_arg(rhs_id, lhs_fixed)
 							g.writeln(', sizeof(${dst}));')
 							i += 2
 							continue

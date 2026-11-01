@@ -4302,6 +4302,23 @@ fn (tc &TypeChecker) extract_else_branch_smartcasts(cond_id flat.NodeId) []Local
 	return []LocalBinding{}
 }
 
+// The parser gives `$embed_file` a runtime struct type that is not written in
+// source. A handwritten literal of that same type still follows import rules.
+fn (tc &TypeChecker) struct_init_is_synthetic_embed_file(id flat.NodeId) bool {
+	node := tc.a.node(id)
+	if node.kind != .struct_init
+		|| node.source_value_id() != checker_tail_source_embed_file_data {
+		return false
+	}
+	source := tc.source_text_for_node(id)
+	if !source.starts_with('$') {
+		return false
+	}
+	// Whitespace and comments may separate `$` from the compile-time name.
+	first, _ := code_bounds_of(source[1..])
+	return first >= 0 && source[first + 1..].starts_with('embed_file')
+}
+
 // check_struct_init validates check struct init state for types.
 fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	if flat.source_type_syntax(node.source_value_id()).named_variant() && !tc.check_named_variant_init(id, node) {
@@ -4335,9 +4352,10 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		node.source_value_id()
 	}
 	init_type_text := flat.source_type_name(init_type_id)
+	is_synthetic_embed_file := tc.struct_init_is_synthetic_embed_file(id)
 	// Synthesized literals have no source spelling of their type: `$embed_file`, and
 	// `Expr.Count(x)`, which the parser lowers to a hidden variant struct literal.
-	raw_source_type_text := if node.source_value_id() == checker_tail_source_embed_file_data
+	raw_source_type_text := if is_synthetic_embed_file
 		|| flat.source_type_syntax(node.source_value_id()).named_variant() {
 		''
 	} else {
@@ -4566,7 +4584,6 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if init_struct := struct_type_from_type(init_type) {
-		is_synthetic_embed_file := node.source_value_id() == checker_tail_source_embed_file_data
 		decl_module := tc.struct_module_for_type(init_struct.source_type_id())
 		noinit_same_main_module := decl_module in ['', 'main'] && tc.cur_module in ['', 'main']
 		if decl_module != tc.cur_module && !noinit_same_main_module {
@@ -5237,7 +5254,9 @@ fn (tc &TypeChecker) struct_init_has_positional_fields(node flat.Node) bool {
 
 fn (tc &TypeChecker) distinct_alias_primitive_mismatch(actual &Type, expected &Type) bool {
 	if actual is Alias && unalias_type(expected) is Primitive {
-		return actual.base_type.source_type_id() != unalias_type(expected).source_type_id()
+		// Compare the primitive at the end of both alias chains, not an
+		// intermediate alias name against the expected primitive.
+		return unalias_type(actual).source_type_id() != unalias_type(expected).source_type_id()
 	}
 	return false
 }
@@ -7279,6 +7298,11 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		display_type_name := '${display_module_name}.${node.value}'
 		if base.value == 'C' {
 			qname := 'C.${node.value}'
+			// An explicit binding owns its type even when its name looks like a macro.
+			if typ := tc.c_globals[qname] {
+				tc.register_synth_type(id, typ)
+				return
+			}
 			if tc.c_identifier_is_undeclared(node.value) {
 				// C enum members may use lowercase names. Their integer type comes
 				// from the enum initializer, including nested arithmetic expressions.
@@ -8949,6 +8973,10 @@ fn (mut tc TypeChecker) check_valid_selector(id flat.NodeId, node flat.Node) {
 		module_name := tc.resolve_import_alias(base.value) or { base.value }
 		if base.value == 'C' {
 			qname := 'C.${node.value}'
+			if typ := tc.c_globals[qname] {
+				tc.register_synth_type(id, typ)
+				return
+			}
 			if tc.c_identifier_is_undeclared(node.value) {
 				// C enum members may use lowercase names. Their integer type comes
 				// from the enum initializer, including nested arithmetic expressions.
@@ -21069,6 +21097,9 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 					if ci := tc.resolve_generic_struct_method(clean_type.source_type_id(), fn_node.value) {
 						return ci.return_type
 					}
+					if ci := tc.embedded_method_call_info(clean_type.source_type_id(), fn_node.value) {
+						return ci.return_type
+					}
 				}
 				if clean_type is Interface {
 					mname := '${clean_type.name()}.${fn_node.value}'
@@ -21403,14 +21434,14 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 				resolved := tc.resolve_import_alias(base_node.value) or { base_node.value }
 				qname := '${resolved}.${node.value}'
 				if qname.starts_with('C.') {
+					if gt := tc.c_globals[qname] {
+						return gt
+					}
 					if c_int_selector_name(node.value) {
 						return builtin_int_type
 					}
 					if c_upper_constant_is_pointer(qname) {
 						return builtin_voidptr_type
-					}
-					if gt := tc.c_globals[qname] {
-						return gt
 					}
 					if node.value.len > 0 && node.value[0].is_capital() {
 						return builtin_int_type
@@ -21759,7 +21790,7 @@ fn (tc &TypeChecker) resolve_index_type(node flat.Node) Type {
 		return generic_fn_type
 	}
 	base_id := tc.a.child(&node, 0)
-	base_type0 := tc.resolve_type(base_id)
+	mut base_type0 := tc.resolve_type(base_id)
 	if node.value == 'range' {
 		if sliced_alias := range_slice_alias_type(base_type0) {
 			return sliced_alias
@@ -21771,7 +21802,10 @@ fn (tc &TypeChecker) resolve_index_type(node flat.Node) Type {
 		// and indexing it indexes that value: `word[0]` is a byte of the string.
 		if mut_base := tc.mut_param_expr_base(base_id, base_type0) {
 			if unalias_type(mut_base) !is Pointer {
-				base_type = unalias_type(mut_base)
+				// unalias_type can return its argument; retain the value outside
+				// this optional-binding scope before keeping a reference to it.
+				base_type0 = mut_base
+				base_type = unalias_type(base_type0)
 			}
 		}
 	}

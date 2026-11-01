@@ -4476,7 +4476,7 @@ fn enqueue_stringified_type_dependencies(typ types.Type, cur_module string, tc &
 		types.Map {
 			// The generated map formatter has runtime branches for every scalar
 			// kind, so even an integer map needs its float conversion callee.
-			enqueue_implicit_map_str_helpers(mut used, mut queue)
+			enqueue_implicit_map_str_helpers(tc, mut used, mut queue)
 			enqueue_stringified_type_dependencies(typ.key_type, cur_module, tc, skipped_fields,
 				mut used, mut queue, mut seen)
 			enqueue_stringified_type_dependencies(typ.value_type, cur_module, tc, skipped_fields,
@@ -4569,9 +4569,12 @@ fn enqueue_implicit_interface_str_helpers_inner(typ types.Type, tc &types.TypeCh
 			enqueue_implicit_interface_str_helpers_inner(typ.elem_type, tc, mut used, mut queue, mut seen)
 		}
 		types.Map {
-			for helper in ['i64.str', 'i64__str', 'u64.str', 'u64__str', 'f64.str', 'f64__str',
-				'rune.str', 'rune__str'] {
+			for helper in ['i64.str', 'i64__str', 'u64.str', 'u64__str', 'rune.str', 'rune__str'] {
 				enqueue(helper, mut used, mut queue)
+			}
+			if !tc.nofloat {
+				enqueue('f64.str', mut used, mut queue)
+				enqueue('f64__str', mut used, mut queue)
 			}
 			enqueue_implicit_interface_str_helpers_inner(typ.key_type, tc, mut used, mut queue, mut seen)
 			enqueue_implicit_interface_str_helpers_inner(typ.value_type, tc, mut used, mut queue, mut seen)
@@ -4663,7 +4666,7 @@ fn enqueue_implicit_str_type_helpers(typ types.Type, tc &types.TypeChecker, mut 
 			enqueue_implicit_str_type_helpers(typ.base_type, tc, mut used, mut queue, mut seen)
 		}
 		types.Map {
-			enqueue_implicit_map_str_helpers(mut used, mut queue)
+			enqueue_implicit_map_str_helpers(tc, mut used, mut queue)
 			enqueue_implicit_str_type_helpers(typ.key_type, tc, mut used, mut queue, mut seen)
 			enqueue_implicit_str_type_helpers(typ.value_type, tc, mut used, mut queue, mut seen)
 		}
@@ -4671,10 +4674,13 @@ fn enqueue_implicit_str_type_helpers(typ types.Type, tc &types.TypeChecker, mut 
 	}
 }
 
-fn enqueue_implicit_map_str_helpers(mut used map[string]bool, mut queue []string) {
+fn enqueue_implicit_map_str_helpers(tc &types.TypeChecker, mut used map[string]bool, mut queue []string) {
 	enqueue('string__plus', mut used, mut queue)
-	for primitive in ['i64', 'u64', 'f64', 'rune'] {
+	for primitive in ['i64', 'u64', 'rune'] {
 		enqueue_stringified_primitive_helpers(flat.source_type_id(primitive), mut used, mut queue)
+	}
+	if !tc.nofloat {
+		enqueue_stringified_primitive_helpers(flat.source_type_f64, mut used, mut queue)
 	}
 }
 
