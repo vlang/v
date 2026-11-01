@@ -265,9 +265,10 @@ fn test_windows_pch_is_not_rebuilt_every_build_when_its_headers_cannot_be_told()
 	marker := os.join_path(root, failed[0])
 	old := time.now().unix() - 600
 	os.utime(marker, old, old)!
+	marked := os.file_last_mod_unix(marker)
 	state = V3ModuleCacheState{ silent: true }
 	assert compile_v3_cached_object(compiler, entry, generated_windows_prelude + 'int untold(void) { return 2; }\n', '-std=gnu11', '-O2', '', '-w', ['-fwrapv'], false, {}, mut state, 'sample', unsafe { nil })!
-	assert os.file_last_mod_unix(marker) == old
+	assert os.file_last_mod_unix(marker) == marked
 	assert windows_pch_files(root) == []
 }
 
@@ -364,6 +365,40 @@ fn test_windows_pch_is_rebuilt_when_the_compiler_would_find_other_headers() ! {
 	assert sixth.len == 1 && sixth != fifth, '${fifth} ${sixth}'
 }
 
+fn test_windows_pch_refuses_a_header_that_came_by_a_directory_during_the_build() ! {
+	$if !windows {
+		return
+	}
+	clang := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'windows_pch_dirmove_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	early := v3_windows_pch_path(os.join_path(root, 'early'))
+	late := v3_windows_pch_path(os.join_path(root, 'late'))
+	stage := v3_windows_pch_path(os.join_path(root, 'stage'))
+	os.mkdir_all(early)!
+	os.mkdir_all(late + '/sub')!
+	os.mkdir_all(stage + '/sub')!
+	os.write_file(late + '/sub/inc.h', '#define WHERE 1\n')!
+	os.write_file(stage + '/sub/inc.h', '#define WHERE 2\n')!
+	header := v3_windows_pch_path(os.join_path(root, 'p.h'))
+	os.write_file(header, '#include <sub/inc.h>\n')!
+	time.sleep(2 * time.second)
+	args := ['-I', early, '-I', late]
+	search := v3_windows_pch_search(clang, args)?
+	assert search[..2] == [early, late]
+	before := time.utc().unix() - 1
+	// What the build read, while early had no sub/.
+	read := [late + '/sub/inc.h']
+	assert v3_windows_pch_reads_the_same(clang, args, header, read)
+	// A directory moved in while it built: the header inside keeps every time
+	// it had, so its place is taken for one the build passed over, and only
+	// asking the compiler again tells that it would read it now.
+	os.mv(stage + '/sub', early + '/sub')!
+	assert v3_windows_pch_inputs(read, search, header, before)?.files.contains(early + '/sub/inc.h')
+	assert !v3_windows_pch_reads_the_same(clang, args, header, read)
+}
+
 fn test_windows_pch_record_holds_while_its_inputs_do() ! {
 	root := os.join_path(os.vtmp_dir(), 'windows_pch_record_${os.getpid()}')
 	os.mkdir_all(root)!
@@ -378,15 +413,19 @@ fn test_windows_pch_record_holds_while_its_inputs_do() ! {
 	time.sleep(2 * time.second)
 	search := [early, late]
 	read := [late + '/x.h', late + '/sub/y.h']
-	inputs := v3_windows_pch_inputs(read, search, time.utc().unix() - 1)?
+	cache := v3_windows_pch_path(os.join_path(root, 'cache'))
+	header := cache + '/windows_sdk_k.h'
+	inputs := v3_windows_pch_inputs(read, search, header, time.utc().unix() - 1)?
 	// What was read, a file of the same name earlier in the search, and the
 	// places where none is: the same names earlier in the search, the name x.h
-	// includes in quotation marks beside it, and the one it asks __has_include
-	// about everywhere.
+	// includes in quotation marks beside each header that can be on the include
+	// stack (Clang for an MSVC target looks in all of them), and the one it asks
+	// __has_include about there and in the search.
 	assert inputs.files == [late + '/x.h', late + '/sub/y.h', early + '/sub/y.h']
-	assert inputs.missing == [early + '/x.h', late + '/z.h', early + '/z.h']
+	assert inputs.missing == [early + '/x.h', cache + '/sub/y.h', late + '/sub/sub/y.h',
+		cache + '/z.h', late + '/z.h', late + '/sub/z.h', early + '/z.h']
 	// A header that was read and is gone already is no input that can be told.
-	assert v3_windows_pch_inputs([late + '/gone.h'], search, time.utc().unix() - 1) == none
+	assert v3_windows_pch_inputs([late + '/gone.h'], search, header, time.utc().unix() - 1) == none
 	// A header moved into a place where none was keeps its times of writing and
 	// creation, but not its time of change: it may have come after the compiler
 	// looked there, so the place cannot be told.
@@ -394,8 +433,11 @@ fn test_windows_pch_record_holds_while_its_inputs_do() ! {
 	os.write_file(staged, '')!
 	time.sleep(2 * time.second)
 	os.mv(staged, early + '/x.h')!
-	assert os.stat(early + '/x.h')!.mtime < time.utc().unix() - 1
-	assert v3_windows_pch_inputs(read, search, time.utc().unix() - 1) == none
+	// Its time of writing (from its identity: os.stat is an hour off at the end
+	// of daylight saving time) is older than the build.
+	written := modulecache.file_metadata_signature(early + '/x.h').split(':')
+	assert written[written.len - 4].i64() < time.utc().unix() - 1
+	assert v3_windows_pch_inputs(read, search, header, time.utc().unix() - 1) == none
 	os.rm(early + '/x.h')!
 	base := os.join_path(root, 'windows_sdk_k')
 	pch := base + '.1_2_3.pch'
@@ -417,7 +459,7 @@ fn test_windows_pch_record_holds_while_its_inputs_do() ! {
 	os.write_file(late + '/sub/y.h', '')!
 	time.sleep(2 * time.second)
 	changed := v3_windows_pch_record_text(os.file_name(pch), search, v3_windows_pch_inputs(read,
-		search, time.utc().unix() - 1)?)
+		search, header, time.utc().unix() - 1)?)
 	assert v3_windows_pch_kept(changed, base, search)? == pch
 	os.rm(early + '/sub/y.h')!
 	assert v3_windows_pch_kept(changed, base, search) == none

@@ -3,6 +3,7 @@ module driver
 import os
 import time
 import v.cmdexec
+import v.modulecache
 import v.tempname
 
 // The Windows SDK prelude of a generated C unit, as a header: what the unit
@@ -415,7 +416,7 @@ fn v3_windows_pch_of(compiler V3CachedObjectCompiler, args []string, base string
 	read := v3_parse_dependency_file(os.read_file(deps) or { '' }).map(v3_windows_pch_path(it)).filter(it != own)
 	// A header that changed while it was read, or one the compiler did not say
 	// it read, leaves the header unknown: this build compiles without it.
-	inputs := v3_windows_pch_inputs(read, search, before) or { V3HeaderInputs{} }
+	inputs := v3_windows_pch_inputs(read, search, header, before) or { V3HeaderInputs{} }
 	if inputs.files.len == 0 {
 		if trace {
 			eprintln('  V3 module cache: the Windows SDK headers read for ${pch} cannot be told apart from newer ones')
@@ -425,6 +426,13 @@ fn v3_windows_pch_of(compiler V3CachedObjectCompiler, args []string, base string
 		// shares) every build would build it again for nothing: this is recorded
 		// as a failed build is, and tried again after a while.
 		os.write_file(failed, 'the headers read cannot be told apart from newer ones\n') or {}
+		return none
+	}
+	if !v3_windows_pch_reads_the_same(compiler.path, args, header, read) {
+		if trace {
+			eprintln('  V3 module cache: the Windows SDK headers changed while ${pch} was built')
+		}
+		os.rm(pch) or {}
 		return none
 	}
 	tmp_record := '${record}.tmp.${unique}'
@@ -465,22 +473,27 @@ fn v3_windows_pch_path(path string) string {
 }
 
 // v3_windows_pch_inputs returns what a precompiled header that a compiler built
-// from the headers `read`, looking for them in the directories of `search`,
-// depends on: those files, and every place where a file would have been read
-// instead of one of them or in addition to it. Those are the same name in each
-// directory that is searched before the one it was found in, a name a header
-// includes in quotation marks in that header's own directory, which is searched
-// first, and a name a header asks `__has_include` about in each directory. A
-// file that is in such a place is an input with its metadata (`#include_next`
-// passes over it), and a place where none is, an input as a missing file. It
-// returns none when a file is as new as the build, which started at `before`,
-// in seconds, or was moved or linked into place since, so that it may not be
-// the one that was read, or may not have been there when the compiler looked.
-fn v3_windows_pch_inputs(read []string, search []string, before i64) ?V3HeaderInputs {
+// from `header`, reading the headers `read` and looking for them in the
+// directories of `search`, depends on: those files, and every place where a
+// file would have been read instead of one of them or in addition to it. Those
+// are the same name in each directory that is searched before the one it was
+// found in, a name a header includes in quotation marks in the directory of
+// each header that can be on the include stack (Clang for a MinGW target looks
+// in the includer's own, for an MSVC target in every one up to `header`'s,
+// before the search), and a name a header asks `__has_include` about in each of
+// those and each directory of the search. A file that is in such a place is an
+// input with its metadata (`#include_next` passes over it), and a place where
+// none is, an input as a missing file. It returns none when a file was written
+// or put in place at `before`, in seconds, or later, so that it may not be the
+// one that was read, or may not have been there when the compiler looked.
+fn v3_windows_pch_inputs(read []string, search []string, header string, before i64) ?V3HeaderInputs {
 	mut inputs := V3HeaderInputs{}
 	for path in read {
 		inputs.add_windows_pch_place(path, before)?
 	}
+	mut includers := [v3_windows_pch_path(header).all_before_last('/')]
+	mut quoted := []string{}
+	mut asked := []string{}
 	for path in read {
 		lower := path.to_lower()
 		for k, dir in search {
@@ -493,24 +506,64 @@ fn v3_windows_pch_inputs(read []string, search []string, before i64) ?V3HeaderIn
 				inputs.add_windows_pch_place(earlier.trim_right('/') + '/' + name, before)?
 			}
 		}
-		text := os.read_file(path) or { return none }
 		dir := path.all_before_last('/')
+		if dir !in includers {
+			includers << dir
+		}
+		text := os.read_file(path) or { return none }
 		for name in v3_quoted_include_names(text) {
-			inputs.add_windows_pch_place(v3_windows_pch_path(dir + '/' + name), before)?
+			if name !in quoted {
+				quoted << name
+			}
 		}
 		for name in v3_has_include_names(text) {
-			inputs.add_windows_pch_place(v3_windows_pch_path(dir + '/' + name), before)?
-			for searched in search {
-				inputs.add_windows_pch_place(v3_windows_pch_path(searched + '/' + name), before)?
+			if name !in asked {
+				asked << name
 			}
+		}
+	}
+	for name in quoted {
+		for dir in includers {
+			inputs.add_windows_pch_place(v3_windows_pch_path(dir + '/' + name), before)?
+		}
+	}
+	for name in asked {
+		for dir in includers {
+			inputs.add_windows_pch_place(v3_windows_pch_path(dir + '/' + name), before)?
+		}
+		for searched in search {
+			inputs.add_windows_pch_place(v3_windows_pch_path(searched + '/' + name), before)?
 		}
 	}
 	return inputs
 }
 
+// v3_windows_pch_reads_the_same reports whether `compiler`, preprocessing
+// `header` with `args` now, reads the headers `read` that it read when it
+// precompiled it. A header that came where it looks while it built, as a file
+// or with a directory or a link moved there, keeps the times it had and cannot
+// be told from one it passed over; this asks the compiler instead. The places
+// of the record are taken before, so one that comes after this is recorded
+// where none was.
+fn v3_windows_pch_reads_the_same(compiler string, args []string, header string, read []string) bool {
+	deps := '${header}.check.${tempname.unique_token().replace('.', '_')}.d'
+	defer { os.rm(deps) or {} }
+	mut check_args := args.clone()
+	check_args << ['-x', 'c-header', header, '-M', '-MF', deps]
+	if cmdexec.run(compiler, check_args).exit_code != 0 {
+		return false
+	}
+	own := v3_windows_pch_path(header)
+	mut now := v3_parse_dependency_file(os.read_file(deps) or { return false }).map(v3_windows_pch_path(it)).filter(it != own)
+	mut then := read.clone()
+	now.sort()
+	then.sort()
+	return now == then
+}
+
 // add_windows_pch_place takes the place `path` into `inputs`: the file that is
 // there with its metadata, or the path as one where no file is. It returns none
-// when the file is as new as `before`.
+// when the file was written or put in place at `before` or later.
 fn (mut inputs V3HeaderInputs) add_windows_pch_place(path string, before i64) ? {
 	if path in inputs.files || path in inputs.missing {
 		return
@@ -519,30 +572,32 @@ fn (mut inputs V3HeaderInputs) add_windows_pch_place(path string, before i64) ? 
 		inputs.missing << path
 		return
 	}
-	identity := v3_file_identity_from_before(path, before)?
-	if !v3_windows_pch_changed_before(identity, before) {
-		return none
-	}
+	inputs.identities << v3_windows_pch_identity_from_before(path, before)?
 	inputs.files << path
-	inputs.identities << identity
 }
 
-// v3_windows_pch_changed_before reports whether the file of `identity` (see
-// modulecache.file_metadata_signature, whose last two fields are the time of the
-// last change of the file's entry) last changed before `before`, in seconds. On
-// Windows os.stat gives the time of creation instead, which a file moved or
-// linked into place keeps along with its time of writing, so only this time
-// tells that it came after the compiler looked where it is.
-fn v3_windows_pch_changed_before(identity string, before i64) bool {
+// v3_windows_pch_identity_from_before returns the identity of the file at `path`
+// (modulecache.file_metadata_signature) when it was last written and its entry
+// last changed before `before`, in seconds. The identity holds both times as the
+// file system keeps them, the time of change last: a file moved or linked into
+// place keeps its time of writing and of creation but gets a new time of change.
+// os.stat would give the time of creation in its place on Windows, and its times
+// are an hour off in the hour repeated at the end of daylight saving time.
+fn v3_windows_pch_identity_from_before(path string, before i64) ?string {
+	identity := modulecache.file_metadata_signature(path)
+	if identity == '' || path.contains_any('\t\n') {
+		return none
+	}
 	fields := identity.split(':')
-	if fields.len < 2 {
-		return false
+	if fields.len < 4 {
+		return none
 	}
-	seconds := fields[fields.len - 2]
-	if seconds.len == 0 || !seconds.bytes().all(it.is_digit()) {
-		return false
+	for seconds in [fields[fields.len - 4], fields[fields.len - 2]] {
+		if seconds.len == 0 || !seconds.bytes().all(it.is_digit()) || seconds.i64() >= before {
+			return none
+		}
 	}
-	return seconds.i64() < before
+	return identity
 }
 
 // v3_windows_pch_record_text is the record of the precompiled header `pch_name`:
@@ -587,8 +642,26 @@ fn v3_windows_pch_kept(text string, base string, search []string) ?string {
 	if recorded != search || !os.is_file(pch) || !os.is_file(base + '.h') {
 		return none
 	}
-	inputs := v3_header_inputs_of_record(lines[i..].join('\n'), [], time.utc().unix() - 1)?
+	rest := lines[i..]
+	if rest.len == 0 || rest.last() != 'complete=1' {
+		return none
+	}
+	mut inputs := V3HeaderInputs{}
+	for line in rest[..rest.len - 1] {
+		if !inputs.read_line(line) {
+			return none
+		}
+	}
 	if inputs.files.len == 0 {
+		return none
+	}
+	now := time.utc().unix()
+	for k, path in inputs.files {
+		if v3_windows_pch_identity_from_before(path, now) or { return none } != inputs.identities[k] {
+			return none
+		}
+	}
+	if inputs.missing.any(os.exists(it)) {
 		return none
 	}
 	return pch
