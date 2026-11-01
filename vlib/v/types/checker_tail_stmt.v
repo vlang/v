@@ -4302,6 +4302,23 @@ fn (tc &TypeChecker) extract_else_branch_smartcasts(cond_id flat.NodeId) []Local
 	return []LocalBinding{}
 }
 
+// The parser gives `$embed_file` a runtime struct type that is not written in
+// source. A handwritten literal of that same type still follows import rules.
+fn (tc &TypeChecker) struct_init_is_synthetic_embed_file(id flat.NodeId) bool {
+	node := tc.a.node(id)
+	if node.kind != .struct_init
+		|| node.source_value_id() != checker_tail_source_embed_file_data {
+		return false
+	}
+	source := tc.source_text_for_node(id)
+	if !source.starts_with('$') {
+		return false
+	}
+	// Whitespace and comments may separate `$` from the compile-time name.
+	first, _ := code_bounds_of(source[1..])
+	return first >= 0 && source[first + 1..].starts_with('embed_file')
+}
+
 // check_struct_init validates check struct init state for types.
 fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 	if flat.source_type_syntax(node.source_value_id()).named_variant() && !tc.check_named_variant_init(id, node) {
@@ -4335,9 +4352,10 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		node.source_value_id()
 	}
 	init_type_text := flat.source_type_name(init_type_id)
+	is_synthetic_embed_file := tc.struct_init_is_synthetic_embed_file(id)
 	// Synthesized literals have no source spelling of their type: `$embed_file`, and
 	// `Expr.Count(x)`, which the parser lowers to a hidden variant struct literal.
-	raw_source_type_text := if node.source_value_id() == checker_tail_source_embed_file_data
+	raw_source_type_text := if is_synthetic_embed_file
 		|| flat.source_type_syntax(node.source_value_id()).named_variant() {
 		''
 	} else {
@@ -4566,7 +4584,6 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		return
 	}
 	if init_struct := struct_type_from_type(init_type) {
-		is_synthetic_embed_file := node.source_value_id() == checker_tail_source_embed_file_data
 		decl_module := tc.struct_module_for_type(init_struct.source_type_id())
 		noinit_same_main_module := decl_module in ['', 'main'] && tc.cur_module in ['', 'main']
 		if decl_module != tc.cur_module && !noinit_same_main_module {
