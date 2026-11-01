@@ -404,3 +404,101 @@ fn test_comptime_const_imported_array_shapes_keep_declaration_scope() ! {
 	value := tc.eval_comptime_const(tc.const_exprs['result']!)!
 	assert value.integer == 10
 }
+
+fn test_comptime_const_struct_fields_keep_declaration_scope() ! {
+	root := os.join_path(os.vtmp_dir(), 'comptime_const_struct_scope_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	helper := os.join_path(root, 'helper.v')
+	main := os.join_path(root, 'main.v')
+	os.write_file(helper, 'module helper\nconst n = 2\npub struct S { pub: items [n]u8 value int }\npub struct Outer { pub: child S tagged [n]u8 }\n@[comptime]\npub fn measure(s S) int { return s.items.len }\n@[comptime]\npub fn measure_outer(s Outer) int { return s.child.items.len * 10 + s.tagged.len }')!
+	os.write_file(main, 'module main\nimport helper as source\nconst n = 3\nconst result = source.measure(source.S{})\nconst nested = source.measure_outer(source.Outer{})\nconst explicit = compute(5)\n@[comptime]\nfn compute(n int) int { value := source.S{value: n} outer := source.Outer{child: value} return source.measure_outer(outer) * 10 + value.value }\nfn main() { _ = result _ = nested _ = explicit _ = n }')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_files([helper, main])
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	assert tc.comptime_const_values['result']!.integer == 2
+	assert tc.comptime_const_values['nested']!.integer == 22
+	assert tc.comptime_const_values['explicit']!.integer == 225
+}
+
+fn test_comptime_const_left_shift_keeps_c_expression_width() {
+	original_bits := platform_int_bits()
+	defer { set_platform_int_bits(original_bits) }
+	set_platform_int_bits(64)
+	for body, expected in {
+		'return (1 << 30) > bound':                            i64(1)
+		'return (1 << 31) > bound':                            i64(0)
+		'return (0 << 31) > bound':                            i64(0)
+		'return (1 << (30 + 1)) > bound':                      i64(0)
+		'return (1 << ((31 | 32) & 31)) > bound':              i64(0)
+		'return (1 << (32 ^ 63)) > bound':                     i64(0)
+		'return (1 << (93 / 3)) > bound':                      i64(0)
+		'return (1 << (63 % 32)) > bound':                     i64(0)
+		'return (1 << ~(-32)) > bound':                        i64(0)
+		'return (1 << shift_count) > bound':                   i64(0)
+		'return (1 << required_count) > bound':                i64(0)
+		'return ((1 << 31) + 0) > bound':                      i64(0)
+		'return ((1 << 31) & 1) > bound':                      i64(0)
+		'return (1 << 63) > 0':                                i64(1)
+		'return (1 << 64) > bound':                            i64(1)
+		'return ~(1 << 31) > 0':                               i64(1)
+		'return ((1) << 31) > bound':                          i64(1)
+		'return (1 << (1 << 5)) > bound':                      i64(1)
+		'return (1 << int(31)) > bound':                       i64(1)
+		'return (1 << get_count()) > bound':                   i64(1)
+		'return (1 << count) > bound':                         i64(1)
+		'return (1 << ordinary_count) > bound':                i64(1)
+		'return (u64(1) << 31) > bound':                       i64(1)
+		'value := 1 << 31 return value > bound':               i64(1)
+		'shift_count := 30 return (1 << shift_count) > bound': i64(0)
+	} {
+		tc := comptime_const_checker('const shift_count = 31\nconst ordinary_count = u8(250 + 37)\nconst required_count = get_count()\n@[comptime]\nfn get_count() u8 { return u8(250 + 37) }\n@[comptime]\nfn above(bound int, count int) bool { ${body} }\nconst result = above(-1, 31)\nfn main() { _ = result }')
+		assert tc.errors.len == 0, tc.errors.str()
+		assert tc.comptime_const_values['result']!.integer == expected, body
+	}
+}
+
+fn test_comptime_const_left_shift_widens_before_target_storage_conversion() {
+	original_bits := platform_int_bits()
+	defer { set_platform_int_bits(original_bits) }
+	for bits in [32, 64] {
+		set_platform_int_bits(bits)
+		for body, expected in {
+			'return u64(1 << 32)':                u64(4294967296)
+			'return u64(4294967297 << 31)':       u64(9223372039002259456)
+			'value := 1 << 32 return u64(value)': if bits == 32 { u64(0) } else { u64(4294967296) }
+		} {
+			tc := comptime_const_checker('@[comptime]\nfn compute() u64 { ${body} }\nconst result = compute()\nfn main() { _ = result }')
+			assert tc.errors.len == 0, tc.errors.str()
+			assert u64(tc.comptime_const_values['result']!.integer) == expected, '${bits}: ${body}'
+		}
+	}
+}
+
+fn test_comptime_const_left_shift_count_keeps_cycle_guards() {
+	tc := comptime_const_checker('const count = make_count()\n@[comptime]\nfn make_count() int { count := 31 return int(1 << count) }\nfn main() { _ = count }')
+	assert tc.errors.any(it.msg.contains('cannot evaluate const `count`') && it.msg.contains('cycle in constant')), tc.errors.str()
+}
+
+fn test_comptime_const_left_shift_does_not_widen_translated_literals() ! {
+	original_bits := platform_int_bits()
+	defer { set_platform_int_bits(original_bits) }
+	set_platform_int_bits(64)
+	mut tc := comptime_const_checker('@[comptime]\nfn above(bound int) bool { return (1 << 31) > bound }\nconst result = above(-1)\nfn main() { _ = result }')
+	assert tc.errors.len == 0, tc.errors.str()
+	assert tc.comptime_const_values['result']!.integer == 0
+	for _, file in tc.a.source_files { tc.translated_files[file.name] = true }
+	mut evaluator := tc.new_comptime_const_eval(tc.const_exprs['result']!)!
+	for i, node in tc.a.nodes {
+		if node.kind == .infix && node.op == .left_shift {
+			c_type := evaluator.integer_c_expression_type(flat.NodeId(i), builtin_int_type)!
+			assert c_type.source_type_id() == builtin_int_type.source_type_id()
+			return
+		}
+	}
+	assert false, 'missing shift expression'
+}

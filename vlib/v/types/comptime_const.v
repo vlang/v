@@ -29,12 +29,18 @@ struct ConstEvalFlow {
 	value ComptimeConstValue
 }
 
+struct ConstEvalShiftCount {
+	known bool
+	value int
+}
+
 // Integer lookup creates an evaluator only when it encounters required evaluation.
 // Symbolic array bounds borrow the current evaluator, including its guards.
 struct ConstIntContext {
 mut:
-	evaluator &ConstEval = unsafe { nil }
-	failure   string
+	evaluator        &ConstEval = unsafe { nil }
+	parent_evaluator &ConstEval = unsafe { nil }
+	failure          string
 }
 
 // requires_comptime_const reports an explicit opt-in in a constant initializer.
@@ -75,9 +81,13 @@ fn (tc &TypeChecker) new_comptime_const_eval(id flat.NodeId) !&ConstEval {
 fn (mut context ConstIntContext) start(tc &TypeChecker, id flat.NodeId) bool {
 	if context.failure.len > 0 { return false }
 	if context.evaluator == unsafe { nil } {
-		context.evaluator = tc.new_comptime_const_eval(id) or {
-			context.failure = err.msg()
-			return false
+		if context.parent_evaluator != unsafe { nil } {
+			context.evaluator = context.parent_evaluator
+		} else {
+			context.evaluator = tc.new_comptime_const_eval(id) or {
+				context.failure = err.msg()
+				return false
+			}
 		}
 	}
 	return true
@@ -307,6 +317,15 @@ fn (mut e ConstEval) zero(destination Type) !ComptimeConstValue {
 				return error('types with implicit cleanup are not supported (`${base.name()}`)')
 			}
 		}
+		file := e.tc.struct_files[base.name_id] or { e.tc.cur_file }
+		module_name := e.tc.struct_modules[base.name_id] or { e.tc.cur_module }
+		old_tc := e.tc
+		e.tc = if file == e.tc.cur_file && module_name == e.tc.cur_module {
+			e.tc
+		} else {
+			e.tc.fork_type_parse_view(file, module_name)
+		}
+		defer { e.tc = old_tc }
 		mut fields := map[string]ComptimeConstValue{}
 		for field in e.tc.structs[base.name_id] {
 			if field.has_default || field.is_embed {
@@ -411,7 +430,7 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 			} else {
 				v.typ
 			}
-			c_type := e.integer_c_expression_type(id, typ)
+			c_type := e.integer_c_expression_type(id, typ)!
 			return ComptimeConstValue{ typ: v.typ, integer: const_eval_integer_cast(value, c_type) }
 		}
 		.infix {
@@ -576,7 +595,120 @@ fn (e &ConstEval) comparison_operand(id flat.NodeId, value ComptimeConstValue) i
 	return value.integer
 }
 
-fn (e &ConstEval) integer_c_expression_type(id flat.NodeId, typ Type) Type {
+fn (e &ConstEval) shift_count_const_key(node flat.Node) ?string {
+	mut name := node.value
+	if node.kind == .selector {
+		if node.children_count == 0 { return none }
+		base := e.tc.a.child_node(node, 0)
+		if base.kind != .ident { return none }
+		if _ := e.local(base.value) { return none }
+		if e.tc.global_names[e.tc.qualify_name(base.value)] { return none }
+		file := if source := e.tc.a.source_files[node.pos.id] { source.name } else { e.tc.cur_file }
+		view := if file == e.tc.cur_file {
+			e.tc
+		} else {
+			e.tc.fork_type_parse_view(file, e.tc.cur_module)
+		}
+		module_name := view.resolve_import_alias(base.value) or { base.value }
+		name = '${module_name}.${node.value}'
+	} else if node.kind != .ident {
+		return none
+	} else {
+		// Cgen consults global constants for an identifier even if a local
+		// shadows it; the evaluated shift still uses the local's actual value.
+		name = e.tc.resolve_selective_import_symbol(name) or { name }
+	}
+	return e.tc.const_key_for_name(name) or {
+		e.tc.const_main_qualified_key(name) or {
+			if !name.contains('.') { return e.tc.const_key_for_suffix(name) }
+			return none
+		}
+	}
+}
+
+// Match Cgen's syntactic count lookup, including its legacy folding of ordinary
+// constants. If a named constant needs evaluation, borrow this evaluator's guards.
+fn (mut e ConstEval) shift_count_const_value(id flat.NodeId) !ConstEvalShiftCount {
+	e.tick()!
+	e.depth++
+	defer { e.depth-- }
+	if e.depth > 128 { return error('evaluation exceeded recursion limit') }
+	if !e.tc.valid_node_id(id) { return ConstEvalShiftCount{} }
+	node := e.tc.a.node(id)
+	match node.kind {
+		.int_literal, .ident, .selector {
+			name := if node.kind == .int_literal {
+				node.value
+			} else {
+				e.shift_count_const_key(node) or { return ConstEvalShiftCount{} }
+			}
+			module_name := e.tc.const_modules[name] or { e.tc.cur_module }
+			mut context := ConstIntContext{ parent_evaluator: &e }
+			value := e.tc.const_int_value_with_context(name, module_name, [], mut context) or {
+				if context.failure.len > 0 { return error(context.failure) }
+				return ConstEvalShiftCount{}
+			}
+			return ConstEvalShiftCount{ known: true, value: value }
+		}
+		.paren {
+			if node.children_count > 0 { return e.shift_count_const_value(e.tc.a.child(node, 0)) }
+		}
+		.prefix {
+			if node.children_count == 0 || node.op !in [.plus, .minus, .bit_not] {
+				return ConstEvalShiftCount{}
+			}
+			value := e.shift_count_const_value(e.tc.a.child(node, 0))!
+			if !value.known { return value }
+			return ConstEvalShiftCount{
+				known: true
+				value: match node.op {
+					.plus { value.value }
+					.minus { -value.value }
+					else { ~value.value }
+				}
+			}
+		}
+		.infix {
+			if node.children_count < 2 || node.op !in [.plus, .minus, .mul, .div, .mod, .pipe,
+				.xor, .amp] {
+				return ConstEvalShiftCount{}
+			}
+			left := e.shift_count_const_value(e.tc.a.child(node, 0))!
+			if !left.known { return left }
+			right := e.shift_count_const_value(e.tc.a.child(node, 1))!
+			if !right.known { return right }
+			if node.op in [.div, .mod] && right.value == 0 { return ConstEvalShiftCount{} }
+			return ConstEvalShiftCount{
+				known: true
+				value: match node.op {
+					.plus { left.value + right.value }
+					.minus { left.value - right.value }
+					.mul { left.value * right.value }
+					.div { left.value / right.value }
+					.mod { left.value % right.value }
+					.pipe { left.value | right.value }
+					.xor { left.value ^ right.value }
+					else { left.value & right.value }
+				}
+			}
+		}
+		else {}
+	}
+	return ConstEvalShiftCount{}
+}
+
+fn (mut e ConstEval) shift_needs_64bit_widening(node flat.Node) !bool {
+	if node.children_count < 2 { return false }
+	lhs := e.tc.a.child_node(node, 0)
+	if lhs.kind != .int_literal { return false }
+	if source := e.tc.a.source_files[lhs.pos.id] {
+		if e.tc.translated_files[source.name] { return false }
+	}
+	count := e.shift_count_const_value(e.tc.a.child(node, 1))!
+	return count.known && count.value >= 31 && count.value < 64
+}
+
+fn (mut e ConstEval) integer_c_expression_type(id flat.NodeId, typ Type) !Type {
 	node := e.tc.a.node(id)
 	if node.kind == .sizeof_expr { return builtin_usize_type }
 	if node.kind == .paren && node.children_count == 1 {
@@ -592,14 +724,17 @@ fn (e &ConstEval) integer_c_expression_type(id flat.NodeId, typ Type) Type {
 			literal := comptime_enum_integer_literal(child.value) or { return typ }
 			if literal > 2147483647 { return i64_ }
 		}
-		operand := e.integer_c_expression_type(child_id, typ)
+		operand := e.integer_c_expression_type(child_id, typ)!
 		return if const_eval_integer_width(operand) < 32 { Type(i32_) } else { operand }
+	}
+	if node.kind == .infix && node.op == .left_shift && e.shift_needs_64bit_widening(node)! {
+		return builtin_u64_type
 	}
 	if node.kind == .infix && node.op in [.plus, .minus, .mul, .amp, .pipe, .xor] {
 		left_id := e.tc.a.child(node, 0)
 		right_id := e.tc.a.child(node, 1)
-		mut left := e.integer_c_expression_type(left_id, e.expr_types[int(left_id)] or { typ })
-		right := e.integer_c_expression_type(right_id, e.expr_types[int(right_id)] or { typ })
+		mut left := e.integer_c_expression_type(left_id, e.expr_types[int(left_id)] or { typ })!
+		right := e.integer_c_expression_type(right_id, e.expr_types[int(right_id)] or { typ })!
 		if node.op in [.plus, .minus, .mul] && e.integer_literal_arithmetic(left_id)
 			&& e.integer_literal_arithmetic(right_id) {
 			left = i64_
@@ -704,10 +839,15 @@ fn (mut e ConstEval) binary(id flat.NodeId, op flat.Op, left ComptimeConstValue,
 		}
 	}
 	if op in [.left_shift, .right_shift, .right_shift_unsigned] {
-		if r < 0 || r >= const_eval_integer_width(left.typ) {
+		shift_type := if op == .left_shift {
+			e.integer_c_expression_type(id, typ)!
+		} else {
+			left.typ
+		}
+		if r < 0 || r >= const_eval_integer_width(shift_type) {
 			return ComptimeConstValue{ typ: typ }
 		}
-		l = const_eval_integer_cast(l, left.typ)
+		l = const_eval_integer_cast(l, shift_type)
 	}
 	if op in [.eq, .ne, .lt, .gt, .le, .ge] {
 		left_id := e.tc.a.child(e.tc.a.node(id), 0)
@@ -719,8 +859,8 @@ fn (mut e ConstEval) binary(id flat.NodeId, op flat.Op, left ComptimeConstValue,
 		right_base := unalias_type(right.typ)
 		left_unsigned := const_eval_integer_unsigned(left.typ)
 		right_unsigned := const_eval_integer_unsigned(right.typ)
-		left_c_type := e.integer_c_expression_type(left_id, left.typ)
-		right_c_type := e.integer_c_expression_type(right_id, right.typ)
+		left_c_type := e.integer_c_expression_type(left_id, left.typ)!
+		right_c_type := e.integer_c_expression_type(right_id, right.typ)!
 		mixed_sign := left_base is Primitive && right_base is Primitive
 			&& left_unsigned != right_unsigned
 			&& !(!left_unsigned && e.tc.a.node(left_id).kind == .int_literal)
@@ -815,7 +955,7 @@ fn (mut e ConstEval) binary(id flat.NodeId, op flat.Op, left ComptimeConstValue,
 	// converts it to its semantic type.
 	return ComptimeConstValue{
 		typ:     typ
-		integer: const_eval_integer_cast(result, e.integer_c_expression_type(id, typ))
+		integer: const_eval_integer_cast(result, e.integer_c_expression_type(id, typ)!)
 	}
 }
 

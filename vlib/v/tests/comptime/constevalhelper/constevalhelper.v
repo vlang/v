@@ -10,6 +10,27 @@ const symbolic_width = 2
 
 pub type SymbolicPair = [symbolic_width]u8
 
+pub struct SymbolicRecord {
+pub:
+	items [symbolic_width]u8
+	value int
+}
+
+pub struct SymbolicOuter {
+pub:
+	record SymbolicRecord
+}
+
+@[comptime]
+pub fn record_length(value SymbolicRecord) int {
+	return value.items.len
+}
+
+@[comptime]
+pub fn nested_length(value SymbolicOuter) int {
+	return value.record.items.len
+}
+
 pub const symbolic_table = make_symbolic_table()
 
 @[comptime]

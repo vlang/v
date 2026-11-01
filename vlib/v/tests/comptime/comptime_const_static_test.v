@@ -279,6 +279,80 @@ fn const_imported_array_values() int {
 	return local[1] + aliased[0] + evaluated.last_symbolic(values)
 }
 
+const computed_imported_record_length = evaluated.record_length(evaluated.SymbolicRecord{})
+const computed_imported_nested_length = evaluated.nested_length(evaluated.SymbolicOuter{})
+const computed_imported_explicit_record = const_imported_record_value(5)
+
+@[comptime]
+fn const_imported_record_value(symbolic_width int) int {
+	value := evaluated.SymbolicRecord{ value: symbolic_width }
+	return evaluated.record_length(value) * 10 + value.value
+}
+
+const widened_shift_count = 31
+const ordinary_shift_count = u8(250 + 37)
+const required_shift_count = const_shift_count()
+
+@[comptime]
+fn const_shift_count() u8 {
+	return u8(250 + 37)
+}
+
+@[comptime]
+fn const_shift_width_cases(bound int, count int) [18]bool {
+	stored := 1 << 31
+	return [
+		(1 << 31) > bound,
+		(0 << 31) > bound,
+		(1 << (30 + 1)) > bound,
+		(1 << widened_shift_count) > bound,
+		(1 << required_shift_count) > bound,
+		((1 << 31) + 0) > bound,
+		((1 << 31) & 1) > bound,
+		(1 << 63) > 0,
+		~(1 << 31) > 0,
+		((1) << 31) > bound,
+		(1 << (1 << 5)) > bound,
+		(1 << int(31)) > bound,
+		(1 << const_shift_count()) > bound,
+		(1 << count) > bound,
+		(1 << ordinary_shift_count) > bound,
+		(u64(1) << 31) > bound,
+		stored > bound,
+		(1 << ~(-32)) > bound,
+	]!
+}
+
+@[comptime]
+fn const_shadowed_shift_count(widened_shift_count int, bound int) bool {
+	return (1 << widened_shift_count) > bound
+}
+
+@[comptime]
+fn const_large_literal_shifts() [2]u64 {
+	return [u64(1 << 32), u64(4294967297 << 31)]!
+}
+
+const computed_shift_width_cases = const_shift_width_cases(-1, 31)
+const computed_shadowed_shift_count = const_shadowed_shift_count(30, -1)
+const computed_large_literal_shifts = const_large_literal_shifts()
+
+fn test_comptime_struct_and_shift_parity() {
+	assert computed_imported_record_length == 2
+	assert computed_imported_record_length == evaluated.record_length(evaluated.SymbolicRecord{})
+	assert computed_imported_nested_length == 2
+	assert computed_imported_nested_length == evaluated.nested_length(evaluated.SymbolicOuter{})
+	assert computed_imported_explicit_record == 25
+	assert computed_imported_explicit_record == const_imported_record_value(5)
+	assert !computed_shift_width_cases[0]
+	assert computed_shift_width_cases[7]
+	assert computed_shift_width_cases == const_shift_width_cases(-1, 31)
+	assert !computed_shadowed_shift_count
+	assert computed_shadowed_shift_count == const_shadowed_shift_count(30, -1)
+	assert computed_large_literal_shifts == [u64(4294967296), u64(9223372039002259456)]!
+	assert computed_large_literal_shifts == const_large_literal_shifts()
+}
+
 fn test_comptime_constants_match_runtime() {
 	assert imported_pair == evaluated.make_pair(10)
 	assert imported_pair == [u32(10), 17]!
