@@ -31,6 +31,20 @@ not a completed stream. Other reader and writer errors propagate unchanged, incl
 `io.Eof`. Errors may leave partial output in the writer; the result carries a byte count only
 on success.
 
+## Synchronous pipes
+
+`pipe()` returns a connected `PipeReader` and `PipeWriter`. A nonempty read waits for
+data or a close. A nonempty write waits until one or more reads consume all its bytes;
+parallel writes are serialized. Run the producer and consumer in separate workers.
+Reads, writes, and closes may run concurrently. Do not modify a write's input while it runs.
+
+Closing the writer makes reads return `Eof`; `close_with_error(err)` supplies another error.
+Closing the reader makes writes fail, forwarding its custom error while the writer is open.
+An operation on its own closed end returns a pipe-closed error. Each end retains its first
+close error, and closing either end wakes blocked operations. An interrupted write may have
+already delivered some bytes; `!int` carries a count only on success. Empty reads and writes
+are no-ops that return zero, even after a close.
+
 ## Discarding output
 
 `Discard` implements `Writer` by accepting every byte without storing data. Writes never
