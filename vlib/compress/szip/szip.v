@@ -57,7 +57,12 @@ pub mut:
 	csize  u64 // compressed
 	offset u64 // local header offset
 	is_dir bool
-	data   []u8 // uncompressed data (for write) / cached (for read)
+	data   []u8 // uncompressed bytes of an entry being written
+mut:
+	// payload holds the compressed bytes of an entry that has been written and
+	// closed, or retained as is from an existing archive in append mode.
+	payload []u8
+	sealed  bool
 }
 
 // ---------------------------------------------------------------------------
@@ -72,11 +77,15 @@ pub mut:
 	entries []ZipEntry
 	// write state
 	current int = -1
-	// cached file bytes for read
-	filedata []u8
 mut:
-	directory_offset int
-	validated        bool
+	directory_offset u64
+	limits           Limits
+	// The archive being read is accessed by offset, so opening it only reads
+	// its central directory and an entry is decompressed when it is read.
+	file       os.File
+	file_open  bool
+	file_size  u64
+	total_read u64
 }
 
 // helper: deflate level int
@@ -95,57 +104,96 @@ fn (z &Zip) deflate_level() int {
 // open / close
 // ---------------------------------------------------------------------------
 
+// open opens an archive for reading, writing or appending, applying the default
+// `Limits` to what it reads.
 pub fn open(name string, level CompressionLevel, mode OpenMode) !&Zip {
+	return open_with_limits(name, level, mode, Limits{})
+}
+
+// open_with_limits opens an archive like `open`, applying `limits` to what it
+// reads. An archive of unknown origin should be read with limits that match what
+// the program is prepared to handle.
+pub fn open_with_limits(name string, level CompressionLevel, mode OpenMode, limits Limits) !&Zip {
 	if name == '' {
 		return error('szip: name of file empty')
 	}
 	mut z := &Zip{
-		path:  name
-		mode:  mode
-		level: level
+		path:   name
+		mode:   mode
+		level:  level
+		limits: limits
 	}
 	match mode {
 		.read_only {
 			if !os.exists(name) {
 				return error('szip: cannot open archive')
 			}
-			z.filedata = os.read_bytes(name) or { return error('szip: cannot read archive') }
-			z.parse(true) or { return error('szip: cannot parse archive: ${err.msg()}') }
+			z.open_file() or { return error('szip: cannot read archive') }
+			z.parse() or {
+				z.close_file()
+				return parse_error(err)
+			}
 		}
-		.write {
-			// create/overwrite
-			z.filedata = []u8{}
-			z.entries = []ZipEntry{}
-		}
+		.write {}
 		.append {
 			if os.exists(name) {
-				z.filedata = os.read_bytes(name) or { return error('szip: cannot read archive') }
-				z.parse(true) or { return error('szip: cannot parse archive: ${err.msg()}') }
-			} else {
-				z.filedata = []u8{}
-				z.entries = []ZipEntry{}
+				z.open_file() or { return error('szip: cannot read archive') }
+				z.parse() or {
+					z.close_file()
+					return parse_error(err)
+				}
+				// The archive is rewritten as a whole on close, so the existing
+				// entries are validated and their compressed bytes kept now.
+				z.retain_existing() or {
+					z.close_file()
+					return parse_error(err)
+				}
+				z.close_file()
 			}
 		}
 	}
 	return z
 }
 
-// open_lazy opens a readable archive without decompressing and caching the
-// payload of every entry. Listing entries (total/name/size/is_dir) only
-// needs the central directory, so scanning large archives stays fast; an
-// entry is decoded (and validated) on demand when it is actually read.
-pub fn open_lazy(name string) !&Zip {
-	if !os.exists(name) {
-		return error('szip: cannot open archive')
+fn parse_error(err IError) IError {
+	if err is LimitExceeded {
+		return err
 	}
-	mut z := &Zip{
-		path:  name
-		mode:  .read_only
-		level: .no_compression
+	return error('szip: cannot parse archive: ${err.msg()}')
+}
+
+fn (mut z Zip) open_file() ! {
+	z.file = os.open_file(z.path, 'rb')!
+	z.file_open = true
+	z.file_size = os.file_size(z.path)
+}
+
+fn (mut z Zip) close_file() {
+	if z.file_open {
+		z.file.close()
+		z.file_open = false
 	}
-	z.filedata = os.read_bytes(name) or { return error('szip: cannot read archive') }
-	z.parse(false) or { return error('szip: cannot parse archive: ${err.msg()}') }
-	return z
+}
+
+// read_at reads exactly `n` bytes at `pos`. `os.File.read_from` may return fewer
+// bytes than asked for, so it is called until the buffer is full.
+fn (mut z Zip) read_at(pos u64, n int) ![]u8 {
+	if n < 0 || pos > z.file_size || u64(n) > z.file_size - pos {
+		return error('read past the end of the archive')
+	}
+	mut buf := []u8{len: n}
+	mut done := 0
+	for done < n {
+		mut chunk := unsafe { buf[done..] }
+		got := z.file.read_from(pos + u64(done), mut chunk) or {
+			return error('cannot read the archive: ${err.msg()}')
+		}
+		if got <= 0 {
+			return error('unexpected end of the archive')
+		}
+		done += got
+	}
+	return buf
 }
 
 // close flushes pending entries; use zip_files or zip_folder when write errors must be returned.
@@ -154,67 +202,24 @@ pub fn (mut z Zip) close() {
 	if z.mode == .write || z.mode == .append {
 		z.flush() or {}
 	}
+	z.close_file()
 }
 
 // ---------------------------------------------------------------------------
 // Parse (read mode)
 // ---------------------------------------------------------------------------
 
-fn (mut z Zip) parse(cache_payloads bool) ! {
-	data := z.filedata
+fn (mut z Zip) parse() ! {
+	// The end record sits in the last 22 bytes plus at most a 64 KiB comment.
+	tail_len := if z.file_size < 65557 { int(z.file_size) } else { 65557 }
+	tail_start := z.file_size - u64(tail_len)
+	tail := z.read_at(tail_start, tail_len)!
 	mut eocd_pos := -1
 	// The end record may be followed only by its declared archive comment.
-	for i := data.len - 22; i >= 0 && i >= data.len - 65557; i-- {
-		if data[i..i + 4] == [u8(0x50), 0x4b, 0x05, 0x06] {
-			comment_len := int(u16(data[i + 20]) | (u16(data[i + 21]) << 8))
-			if i + 22 + comment_len == data.len {
-				eocd_pos = i
-				break
-			}
-		}
-	}
-	// Tolerant fallback: real-world archives sometimes carry a few trailing
-	// bytes after the end record (interrupted downloads, appended markers);
-	// WinRAR and 7-Zip accept them. Take the candidate closest to the end
-	// whose declared comment fits AND that plausibly describes this archive:
-	// a signature found inside stored data (an embedded empty zip, random
-	// bytes) must not mask the real end record nor fake an empty archive.
-	if eocd_pos < 0 {
-		for i := data.len - 22; i >= 0 && i >= data.len - 65557; i-- {
-			if data[i..i + 4] == [u8(0x50), 0x4b, 0x05, 0x06] {
-				comment_len := int(u16(data[i + 20]) | (u16(data[i + 21]) << 8))
-				if i + 22 + comment_len > data.len {
-					continue
-				}
-				n_cand := int(u16(data[i + 10]) | (u16(data[i + 11]) << 8))
-				cd_size_cand := u32(data[i + 12]) | (u32(data[i + 13]) << 8) |
-					(u32(data[i + 14]) << 16) | (u32(data[i + 15]) << 24)
-				cd_off_cand := u32(data[i + 16]) | (u32(data[i + 17]) << 8) |
-					(u32(data[i + 18]) << 16) | (u32(data[i + 19]) << 24)
-				if n_cand == 0xffff || cd_size_cand == 0xffffffff || cd_off_cand == 0xffffffff {
-					// ZIP64 sentinel: accept so the dedicated ZIP64 check below
-					// reports it properly instead of 'missing end record'.
-					eocd_pos = i
-					break
-				}
-				if n_cand == 0 && cd_size_cand == 0 && cd_off_cand == 0 {
-					// A truly empty archive is exactly the 22-byte end record
-					// (+ optional trailing bytes): the record must sit at the
-					// very start of the file. Anywhere else the signature came
-					// from an embedded empty zip, not from this archive.
-					if i != 0 {
-						continue
-					}
-				} else {
-					// The central directory must fit before the end record and
-					// really start with a central-directory entry signature.
-					if u64(cd_off_cand) + u64(cd_size_cand) > u64(i) {
-						continue
-					}
-					if data[int(cd_off_cand)..int(cd_off_cand) + 4] != [u8(0x50), 0x4b, 0x01, 0x02] {
-						continue
-					}
-				}
+	for i := tail.len - 22; i >= 0; i-- {
+		if tail[i..i + 4] == [u8(0x50), 0x4b, 0x05, 0x06] {
+			comment_len := int(read_u16(tail, i + 20))
+			if i + 22 + comment_len == tail.len {
 				eocd_pos = i
 				break
 			}
@@ -223,43 +228,49 @@ fn (mut z Zip) parse(cache_payloads bool) ! {
 	if eocd_pos < 0 {
 		return error('missing end record')
 	}
-	if data[eocd_pos + 4..eocd_pos + 8] != [u8(0), 0, 0, 0] {
+	if tail[eocd_pos + 4..eocd_pos + 8] != [u8(0), 0, 0, 0] {
 		return error('multi-disk archives are unsupported')
 	}
-	n_entries := int(u16(data[eocd_pos + 10]) | (u16(data[eocd_pos + 11]) << 8))
-	n_disk_entries := int(u16(data[eocd_pos + 8]) | (u16(data[eocd_pos + 9]) << 8))
-	cd_size := u32(data[eocd_pos + 12]) | (u32(data[eocd_pos + 13]) << 8) | (u32(data[eocd_pos + 14]) << 16) | (u32(data[eocd_pos + 15]) << 24)
-	cd_offset := u32(data[eocd_pos + 16]) | (u32(data[eocd_pos + 17]) << 8) | (u32(data[eocd_pos + 18]) << 16) | (u32(data[eocd_pos + 19]) << 24)
+	n_entries := int(read_u16(tail, eocd_pos + 10))
+	n_disk_entries := int(read_u16(tail, eocd_pos + 8))
+	cd_size := read_u32(tail, eocd_pos + 12)
+	cd_offset := read_u32(tail, eocd_pos + 16)
+	z.limits.check_header_sizes(0, 0, int(read_u16(tail, eocd_pos + 20)))!
 	if n_entries == 0xffff || cd_size == 0xffffffff || cd_offset == 0xffffffff {
 		return error('ZIP64 archives are unsupported')
 	}
-	if n_disk_entries != n_entries || u64(cd_offset) + u64(cd_size) > u64(eocd_pos) {
+	z.limits.check_entry_count(u64(n_entries))!
+	eocd_offset := tail_start + u64(eocd_pos)
+	if n_disk_entries != n_entries || u64(cd_offset) + u64(cd_size) > eocd_offset {
 		return error('invalid central directory bounds')
 	}
-	z.directory_offset = int(cd_offset)
-	cd_end := int(cd_offset) + int(cd_size)
-	mut pos := int(cd_offset)
+	z.directory_offset = u64(cd_offset)
+	data := z.read_at(u64(cd_offset), int(cd_size))!
+	cd_end := data.len
+	mut pos := 0
 	for _ in 0 .. n_entries {
 		if pos > cd_end - 46 || data[pos..pos + 4] != [u8(0x50), 0x4b, 0x01, 0x02] {
 			return error('invalid central directory entry')
 		}
-		flags := u16(data[pos + 8]) | (u16(data[pos + 9]) << 8)
+		flags := read_u16(data, pos + 8)
 		if flags & 1 != 0 {
 			return error('encrypted entries are unsupported')
 		}
-		method := u16(data[pos + 10]) | (u16(data[pos + 11]) << 8)
+		method := read_u16(data, pos + 10)
 		if method !in [u16(0), 8] {
 			return error('unsupported compression method')
 		}
-		crc := u32(data[pos + 16]) | (u32(data[pos + 17]) << 8) | (u32(data[pos + 18]) << 16) | (u32(data[pos + 19]) << 24)
-		csize := u32(data[pos + 20]) | (u32(data[pos + 21]) << 8) | (u32(data[pos + 22]) << 16) | (u32(data[pos + 23]) << 24)
-		size := u32(data[pos + 24]) | (u32(data[pos + 25]) << 8) | (u32(data[pos + 26]) << 16) | (u32(data[pos + 27]) << 24)
-		name_len := int(u16(data[pos + 28]) | (u16(data[pos + 29]) << 8))
-		extra_len := int(u16(data[pos + 30]) | (u16(data[pos + 31]) << 8))
-		comment_len := int(u16(data[pos + 32]) | (u16(data[pos + 33]) << 8))
-		local_offset := u32(data[pos + 42]) | (u32(data[pos + 43]) << 8) | (u32(data[pos + 44]) << 16) | (u32(data[pos + 45]) << 24)
+		crc := read_u32(data, pos + 16)
+		csize := read_u32(data, pos + 20)
+		size := read_u32(data, pos + 24)
+		name_len := int(read_u16(data, pos + 28))
+		extra_len := int(read_u16(data, pos + 30))
+		comment_len := int(read_u16(data, pos + 32))
+		local_offset := read_u32(data, pos + 42)
+		z.limits.check_header_sizes(name_len, extra_len, comment_len)!
 		entry_end := pos + 46 + name_len + extra_len + comment_len
-		if name_len == 0 || entry_end > cd_end || csize == 0xffffffff || size == 0xffffffff || local_offset == 0xffffffff {
+		if name_len == 0 || entry_end > cd_end || csize == 0xffffffff || size == 0xffffffff
+			|| local_offset == 0xffffffff {
 			return error('invalid central directory metadata')
 		}
 		name := data[pos + 46..pos + 46 + name_len].bytestr()
@@ -272,24 +283,26 @@ fn (mut z Zip) parse(cache_payloads bool) ! {
 			csize:  u64(csize)
 			offset: u64(local_offset)
 			is_dir: name.ends_with('/')
+			sealed: true
 		}
 		pos = entry_end
 	}
 	if pos != cd_end {
 		return error('central directory size mismatch')
 	}
-	// Cache validated payloads so reads and append mode do not decompress
-	// entries twice. In lazy mode (cache_payloads == false) this step is
-	// skipped: read_current_data() decodes and validates each entry on
-	// demand, so listing a large archive never touches the entry bodies.
-	if cache_payloads {
-		for i in 0 .. z.entries.len {
-			z.current = i
-			z.entries[i].data = z.read_current_data()!
-		}
-		z.validated = true
+}
+
+// retain_existing validates every entry of an archive opened for appending and
+// keeps its compressed bytes, which are written back unchanged on close.
+fn (mut z Zip) retain_existing() ! {
+	for i in 0 .. z.entries.len {
+		raw := z.read_raw_entry(i)!
+		z.decode_entry(i, raw)!
+		z.entries[i].payload = raw
+		// The rewritten local header carries the sizes and checksum, so a data
+		// descriptor is no longer needed; the name encoding flag is kept.
+		z.entries[i].flags &= 0x0800
 	}
-	z.current = -1
 }
 
 // ---------------------------------------------------------------------------
@@ -315,6 +328,9 @@ pub fn (mut z Zip) open_entry(name string) ! {
 		return error('szip: entry name is empty')
 	}
 	if z.mode == .write || z.mode == .append {
+		for i in 0 .. z.entries.len {
+			z.seal(i)!
+		}
 		z.entries << ZipEntry{
 			name:   normalized
 			method: 0
@@ -333,7 +349,11 @@ pub fn (mut z Zip) open_entry(name string) ! {
 	return error('szip: cannot open archive entry')
 }
 
+// close_entry finishes the current entry; a written entry is compressed now.
 pub fn (mut z Zip) close_entry() {
+	if z.current >= 0 && z.current < z.entries.len && z.mode != .read_only {
+		z.seal(z.current) or {}
+	}
 	z.current = -1
 }
 
@@ -372,69 +392,86 @@ pub fn (mut z Zip) index() !int {
 	return z.current
 }
 
-// read entry data (uncompressed)
+// read_current_data reads and decompresses the current entry.
 fn (mut z Zip) read_current_data() ![]u8 {
 	if z.current < 0 || z.current >= z.entries.len {
 		return error('szip: no current entry')
 	}
-	e := z.entries[z.current]
-	if z.validated {
+	if z.mode != .read_only || !z.file_open {
+		e := z.entries[z.current]
+		if e.sealed && e.payload.len > 0 && e.data.len == 0 {
+			return z.decode_entry(z.current, e.payload)
+		}
 		return e.data.clone()
 	}
-	if e.offset > u64(z.directory_offset) || e.offset + 30 > u64(z.directory_offset) {
+	e := z.entries[z.current]
+	z.limits.check_entry(e.name, e.csize, e.size, z.total_read)!
+	raw := z.read_raw_entry(z.current)!
+	decoded := z.decode_entry(z.current, raw)!
+	z.total_read += u64(decoded.len)
+	return decoded
+}
+
+// read_raw_entry checks the local header of entry `i` against the central
+// directory and returns its compressed bytes.
+fn (mut z Zip) read_raw_entry(i int) ![]u8 {
+	e := z.entries[i]
+	if e.offset > z.directory_offset || e.offset + 30 > z.directory_offset {
 		return error('szip: bad local header offset')
 	}
-	pos := int(e.offset)
-	data := z.filedata
-	if data[pos..pos + 4] != [u8(0x50), 0x4b, 0x03, 0x04] {
+	header := z.read_at(e.offset, 30)!
+	if header[0..4] != [u8(0x50), 0x4b, 0x03, 0x04] {
 		return error('szip: invalid local header')
 	}
-	flags := read_u16(data, pos + 6)
-	if flags != e.flags || flags & 1 != 0 || read_u16(data, pos + 8) != e.method {
+	flags := read_u16(header, 6)
+	if flags != e.flags || flags & 1 != 0 || read_u16(header, 8) != e.method {
 		return error('szip: inconsistent local header')
 	}
-	name_len := int(read_u16(data, pos + 26))
-	extra_len := int(read_u16(data, pos + 28))
-	data_start := pos + 30 + name_len + extra_len
-	if data_start > z.directory_offset || e.csize > u64(z.directory_offset - data_start) {
+	name_len := int(read_u16(header, 26))
+	extra_len := int(read_u16(header, 28))
+	z.limits.check_header_sizes(name_len, extra_len, 0)!
+	data_start := e.offset + 30 + u64(name_len) + u64(extra_len)
+	if data_start > z.directory_offset || e.csize > z.directory_offset - data_start {
 		return error('szip: truncated entry data')
 	}
-	if data[pos + 30..pos + 30 + name_len].bytestr() != e.name {
+	if z.read_at(e.offset + 30, name_len)!.bytestr() != e.name {
 		return error('szip: inconsistent entry name')
 	}
 	// With a data descriptor, the central directory carries the final sizes and checksum.
-	if flags & 8 == 0 {
-		mut local_csize := u64(read_u32(data, pos + 18))
-		mut local_size := u64(read_u32(data, pos + 22))
-		if local_size == 0xffffffff || local_csize == 0xffffffff {
-			// Writers can reserve ZIP64 local sizes even when the final sizes
-			// fit in the ordinary central directory, as NumPy does for NPZ files.
-			zip64_size, zip64_csize := read_local_zip64_sizes(data[pos + 30 + name_len..data_start])!
-			if local_size == 0xffffffff { local_size = zip64_size }
-			if local_csize == 0xffffffff { local_csize = zip64_csize }
-		}
-		if read_u32(data, pos + 14) != e.crc32 || local_csize != e.csize || local_size != e.size {
-			return error('szip: inconsistent entry metadata')
-		}
+	if flags & 8 == 0 && (read_u32(header, 14) != e.crc32 || u64(read_u32(header, 18)) != e.csize
+		|| u64(read_u32(header, 22)) != e.size) {
+		return error('szip: inconsistent entry metadata')
 	}
-	data_end := data_start + int(e.csize)
+	data_end := data_start + e.csize
 	if flags & 8 != 0 {
 		mut descriptor := data_end
-		if descriptor <= z.directory_offset - 4 && read_u32(data, descriptor) == 0x08074b50 {
+		if descriptor + 4 <= z.directory_offset
+			&& read_u32(z.read_at(descriptor, 4)!, 0) == 0x08074b50 {
 			descriptor += 4
 		}
-		if descriptor > z.directory_offset - 12 || read_u32(data, descriptor) != e.crc32
-			|| u64(read_u32(data, descriptor + 4)) != e.csize
-			|| u64(read_u32(data, descriptor + 8)) != e.size {
+		if descriptor + 12 > z.directory_offset {
+			return error('szip: invalid data descriptor')
+		}
+		d := z.read_at(descriptor, 12)!
+		if read_u32(d, 0) != e.crc32 || u64(read_u32(d, 4)) != e.csize
+			|| u64(read_u32(d, 8)) != e.size {
 			return error('szip: invalid data descriptor')
 		}
 	}
-	compressed := data[data_start..data_end]
+	return z.read_at(data_start, int(e.csize))!
+}
+
+// decode_entry decompresses the compressed bytes of entry `i` and checks them
+// against its declared size and checksum. Decompression stops as soon as the
+// output passes the declared size, so a lying header cannot make it allocate more.
+fn (mut z Zip) decode_entry(i int, compressed []u8) ![]u8 {
+	e := z.entries[i]
+	z.limits.check_entry(e.name, e.csize, e.size, 0)!
 	mut decoded := []u8{}
 	if e.method == 0 {
 		decoded = compressed.clone()
 	} else if e.method == 8 {
-		res := deflate.decompress_raw_with_consumed(compressed) or {
+		res := deflate.decompress_raw_bounded(compressed, int(e.size)) or {
 			return error('szip: deflate failed: ${err.msg()}')
 		}
 		if res.consumed != compressed.len {
@@ -453,41 +490,13 @@ fn (mut z Zip) read_current_data() ![]u8 {
 	return decoded
 }
 
-// read_local_zip64_sizes reads the two sizes required in a ZIP64 local extra
-// field (APPNOTE 4.5.3), checking every extra-field boundary before reading it.
-fn read_local_zip64_sizes(extra []u8) !(u64, u64) {
-	mut pos := 0
-	mut found := false
-	mut size := u64(0)
-	mut csize := u64(0)
-	for pos < extra.len {
-		if extra.len - pos < 4 {
-			return error('szip: truncated local extra field')
-		}
-		tag := read_u16(extra, pos)
-		field_len := int(read_u16(extra, pos + 2))
-		pos += 4
-		if field_len > extra.len - pos {
-			return error('szip: truncated local extra field')
-		}
-		if tag == 0x0001 {
-			if found || field_len < 16 {
-				return error('szip: invalid ZIP64 local extra field')
-			}
-			size = u64(read_u32(extra, pos)) | (u64(read_u32(extra, pos + 4)) << 32)
-			csize = u64(read_u32(extra, pos + 8)) | (u64(read_u32(extra, pos + 12)) << 32)
-			found = true
-		}
-		pos += field_len
-	}
-	if !found {
-		return error('szip: missing ZIP64 local extra field')
-	}
-	return size, csize
-}
-
 pub fn (mut z Zip) read_entry_buf(buf voidptr, in_bsize int) !int {
-	data := z.read_current_data() or { return error('szip: ${err.msg()}') }
+	data := z.read_current_data() or {
+		if err is LimitExceeded {
+			return err
+		}
+		return error('szip: ${err.msg()}')
+	}
 	if in_bsize < data.len || (data.len > 0 && buf == unsafe { nil }) {
 		return error('szip: cannot read properly data from entry')
 	}
@@ -501,16 +510,6 @@ pub fn (mut z Zip) read_entry_buf(buf voidptr, in_bsize int) !int {
 		}
 	}
 	return n
-}
-
-// read_entry_bytes returns the fully validated, decompressed bytes of the
-// current entry. Unlike read_entry_buf, the caller does not have to
-// preallocate from the untrusted central-directory size: the entry is checked
-// against its local header, decompressed and checksum-verified first, and the
-// returned buffer is sized from the actual decoded length. The caller owns
-// the returned array and must free it.
-pub fn (mut z Zip) read_entry_bytes() ![]u8 {
-	return z.read_current_data()
 }
 
 // read_entry allocates the current entry's bytes; the caller must free the returned buffer.
@@ -537,7 +536,8 @@ pub fn (mut z Zip) extract_entry(path string) ! {
 	os.write_file_array(path, data) or { return error('szip: cannot extract entry: ${err.msg()}') }
 }
 
-// write_entry appends bytes to the currently open writable entry.
+// write_entry appends bytes to the currently open writable entry. The entry is
+// compressed once, when it is closed.
 pub fn (mut z Zip) write_entry(data []u8) ! {
 	if z.mode == .read_only {
 		return error('szip: archive is read-only')
@@ -545,27 +545,40 @@ pub fn (mut z Zip) write_entry(data []u8) ! {
 	if z.current < 0 || z.current >= z.entries.len {
 		return error('szip: no current entry')
 	}
+	if z.entries[z.current].sealed {
+		return error('szip: entry is already closed')
+	}
 	z.entries[z.current].data << data
-	contents := z.entries[z.current].data
-	z.entries[z.current].size = u64(contents.len)
-	z.entries[z.current].crc32 = crc32.sum(contents)
-	// compression
-	if z.deflate_level() == 0 {
-		z.entries[z.current].method = 0
-		z.entries[z.current].csize = u64(contents.len)
-	} else {
-		compressed := deflate.compress_raw(contents) or {
+}
+
+// seal compresses a written entry at the archive's level, keeping it stored
+// when deflate does not make it smaller, and releases its uncompressed bytes.
+fn (mut z Zip) seal(i int) ! {
+	if z.entries[i].sealed {
+		return
+	}
+	contents := z.entries[i].data
+	level := z.deflate_level()
+	mut method := u16(0)
+	// The uncompressed bytes are released below, so the payload takes over
+	// whichever buffer is kept instead of copying it.
+	mut payload := unsafe { contents }
+	if level > 0 && contents.len > 0 {
+		compressed := deflate.compress(contents, format: .raw_deflate, level: level) or {
 			return error('szip: compress failed: ${err.msg()}')
 		}
-		// only use deflate if smaller
 		if compressed.len < contents.len {
-			z.entries[z.current].method = 8
-			z.entries[z.current].csize = u64(compressed.len)
-		} else {
-			z.entries[z.current].method = 0
-			z.entries[z.current].csize = u64(contents.len)
+			method = 8
+			payload = unsafe { compressed }
 		}
 	}
+	z.entries[i].method = method
+	z.entries[i].size = u64(contents.len)
+	z.entries[i].crc32 = crc32.sum(contents)
+	z.entries[i].csize = u64(payload.len)
+	z.entries[i].payload = payload
+	z.entries[i].data = []u8{}
+	z.entries[i].sealed = true
 }
 
 // ---------------------------------------------------------------------------
@@ -577,17 +590,17 @@ fn (mut z Zip) flush() ! {
 		return error('szip: ZIP64 archives are unsupported')
 	}
 	mut payloads := [][]u8{cap: z.entries.len}
-	for i, e in z.entries {
-		payload := if e.method == 8 { deflate.compress_raw(e.data)! } else { e.data.clone() }
-		if e.name.len == 0 || e.name.len > 0xffff || payload.len >= i64(0xffffffff) || e.data.len >= i64(0xffffffff) {
+	for i in 0 .. z.entries.len {
+		z.seal(i)!
+		e := z.entries[i]
+		if e.name.len == 0 || e.name.len > 0xffff || e.csize >= u64(0xffffffff)
+			|| e.size >= u64(0xffffffff) {
 			return error('szip: entry exceeds ZIP32 limits')
 		}
-		z.entries[i].size = u64(e.data.len)
-		z.entries[i].csize = u64(payload.len)
-		z.entries[i].crc32 = crc32.sum(e.data)
-		// Re-encoding removes data descriptors and compression options, but not name encoding.
+		// Written entries carry their sizes in the local header, so no data
+		// descriptor is used; the name encoding flag is kept.
 		z.entries[i].flags = e.flags & 0x0800
-		payloads << payload
+		payloads << e.payload
 	}
 	// Build zip file in memory
 	mut out := []u8{}

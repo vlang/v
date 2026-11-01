@@ -25,13 +25,27 @@ fn test_invalid_archive_metadata_and_payload_return_errors() {
 	validation_archive(path, 'entry.txt', .no_compression)
 	original := os.read_bytes(path)!
 	central := validation_u32(original, original.len - 6)
-	// Independently damage the record count, name bounds, local header, and payload.
-	for pos in [original.len - 12, central + 28, 0, 30 + 'entry.txt'.len] {
+	// Damage to the central directory, the record count or the name bounds, is
+	// reported when the archive is opened.
+	for pos in [original.len - 12, central + 28] {
 		mut bytes := original.clone()
 		bytes[pos] ^= 0xff
 		os.write_file_array(path, bytes)!
 		mut rejected := false
 		szip.open(path, .no_compression, .read_only) or { rejected = true }
+		assert rejected, 'invalid archive byte at ${pos} was accepted'
+	}
+	// Entries are only read when asked for, so damage to the local header or
+	// the payload is reported when the entry is read.
+	for pos in [0, 30 + 'entry.txt'.len] {
+		mut bytes := original.clone()
+		bytes[pos] ^= 0xff
+		os.write_file_array(path, bytes)!
+		mut z := szip.open(path, .no_compression, .read_only)!
+		z.open_entry('entry.txt')!
+		mut rejected := false
+		z.read_entry() or { rejected = true }
+		z.close()
 		assert rejected, 'invalid archive byte at ${pos} was accepted'
 	}
 }

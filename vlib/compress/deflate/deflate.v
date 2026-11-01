@@ -286,6 +286,42 @@ pub fn decompress_raw_with_consumed(data []u8) !RawInflateResult {
 	}
 }
 
+// decompress_raw_bounded decompresses raw RFC 1951 DEFLATE data like
+// `decompress_raw_with_consumed`, but fails as soon as the output would exceed
+// `limit` bytes. A hostile stream therefore cannot make it allocate much more
+// than `limit` plus one 32 KiB chunk, whatever it expands to.
+pub fn decompress_raw_bounded(data []u8, limit int) !RawInflateResult {
+	if limit < 0 {
+		return error('inflate: negative output limit')
+	}
+	mut sink := BoundedSink{
+		limit: limit
+	}
+	res := inflate_with_callback(data, bounded_sink_accept, &sink)!
+	if res.aborted {
+		return error('inflate: output exceeds ${limit} bytes')
+	}
+	return RawInflateResult{
+		decoded:  res.decoded
+		consumed: res.consumed
+	}
+}
+
+struct BoundedSink {
+	limit int
+mut:
+	seen int
+}
+
+fn bounded_sink_accept(chunk []u8, userdata voidptr) int {
+	mut sink := unsafe { &BoundedSink(userdata) }
+	if sink.seen + chunk.len > sink.limit {
+		return 0
+	}
+	sink.seen += chunk.len
+	return chunk.len
+}
+
 // decompress_with_callback decompresses a zlib/gzip/raw stream (RFC 1950, RFC 1952) using a callback for chunked delivery.
 // The callback receives chunks of decompressed data and should return the chunk length to continue, or 0 to abort.
 // Returns the number of bytes delivered. If the callback aborts, unread data and trailers are not validated.
