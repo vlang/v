@@ -5760,6 +5760,8 @@ Fixed array fields initialize each element with its specialized generic defaults
 
 Generic types brought into scope by a selective import retain their declaring module when
 passed to generic functions and methods in other modules.
+Their struct literals also infer omitted type arguments from their field values, just as
+module-qualified literals do.
 
 Type arguments retain the module where they are declared when used in a generic struct from
 another module, including arguments inside arrays, pointers, and maps.
