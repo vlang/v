@@ -1,5 +1,11 @@
 module builtin
 
+$if musl ? {
+	// musl has no getcontext implementation. Use the collector's register-saving
+	// fallback when compiling the bundled source with musl-gcc.
+	#flag -DNO_GETCONTEXT=1
+}
+
 $if macos || linux {
 	// The bundled amalgamation otherwise enables unmapping only with HAVE_CONFIG_H.
 	// Unmapping requires the mmap-based heap. libgc selects it on its own only on
