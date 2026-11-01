@@ -7,8 +7,8 @@ Ordinary default builds and explicit `-cc tcc` builds compile generated V code a
 TinyCC. FastC reports TinyCC compilation failures directly.
 On macOS, Objective-C interop uses a cached native library built by the platform compiler.
 Generated V code and the executable link remain on TinyCC, including with
-`-no-retry-compilation`. Native bindings come from explicit V declarations; V never opens or
-infers declarations from native headers. Dependency manifests produced by the native compiler
+`-no-retry-compilation`. Native bindings come from explicit V declarations; V never infers
+declarations from native headers. Dependency manifests produced by the native compiler
 validate the library cache, including transitive headers and native link inputs. A changed or
 unverifiable native input requires rebuilding the native library.
 Native implementation includes follow generated V types, while ordinary C headers precede them.
