@@ -60,15 +60,11 @@ preserve its file metadata so cached modules can reuse their objects.
 On macOS, TCC builds use its runtime thread fence directly, including when
 preprocessed C identifies ARM64 with `__arm64__` alone.
 
-After updating, `v up` refreshes previously cached vlib modules with the compiler
-and flags used to cache them, including normal and `-prod` builds. Unchanged
-modules are reused. Each module being cached is printed to standard output as
-`Caching module <name>...`. A failed cache refresh makes `v up` fail.
-The final configuration count includes checks that reused every cached object.
-Different build flags, program or test modes, and import sequences can require
-separate checks. Pass `v up -v` to see each checked configuration.
-Cached module headers preserve struct field attribute groups, so valid deprecation
-attributes do not introduce warnings during refresh.
+After a successful update, `v up` runs `v wipe-cache` to clear module, object,
+temporary, and compiled tool caches, even when V is already up to date.
+Subsequent builds recreate the caches they need. Previously recorded build
+configurations and test selectors are not replayed. A failed cache cleanup
+makes `v up` fail.
 
 `make` also warms the default test configuration's builtin module bundle, including
 `strings`, `strconv`, `hash` and `bits`. Compatible test builds reuse these objects
