@@ -13,11 +13,18 @@ pub enum CompressFormat {
 	raw_deflate
 }
 
+// CompressParams selects the container and the compression level.
+// The level runs from 0 (stored, no compression) to 9 (most effort), with the
+// same meaning as zlib's; 6 is the default.
 @[params]
 pub struct CompressParams {
 pub:
 	format CompressFormat = .zlib
+	level  int            = default_compression_level
 }
+
+// default_compression_level is the level used when none is given, as in zlib.
+pub const default_compression_level = 6
 
 pub struct RawInflateResult {
 pub:
@@ -127,47 +134,72 @@ pub fn validate_gzip_header(data []u8) !GzipHeader {
 	return header
 }
 
-// compress compresses data as zlib, gzip, or raw DEFLATE.
-pub fn compress(data []u8, format CompressParams) ![]u8 {
-	return match format.format {
-		.zlib { compress_zlib(data)! }
-		.gzip { compress_gzip(data)! }
-		.raw_deflate { deflate_compress_fixed(data)! }
+// compress compresses data as zlib, gzip, or raw DEFLATE, at `params.level`.
+pub fn compress(data []u8, params CompressParams) ![]u8 {
+	return match params.format {
+		.zlib { zlib_wrap(data, params.level)! }
+		.gzip { gzip_wrap(data, params.level)! }
+		.raw_deflate { compress_level(data, params.level)! }
 	}
 }
 
+// compress_zlib compresses data into a zlib stream (RFC 1950) at the default level.
 pub fn compress_zlib(data []u8) ![]u8 {
-	mut payload := deflate_compress_fixed(data)!
+	return zlib_wrap(data, default_compression_level)!
+}
+
+// compress_gzip compresses data into a gzip stream (RFC 1952) at the default level.
+pub fn compress_gzip(data []u8) ![]u8 {
+	return gzip_wrap(data, default_compression_level)!
+}
+
+// compress_raw compresses data to a raw RFC 1951 DEFLATE stream at the default level.
+pub fn compress_raw(data []u8) ![]u8 {
+	return compress_level(data, default_compression_level)!
+}
+
+fn zlib_wrap(data []u8, level int) ![]u8 {
+	mut payload := compress_level(data, level)!
 	defer {
 		unsafe { payload.free() }
 	}
-	cksum := adler32.sum(data)
+	// FLG carries the level class (RFC 1950 FLEVEL) and a check value that
+	// makes CMF*256+FLG a multiple of 31.
+	flevel := match true {
+		level < 2 { u8(0) }
+		level < 6 { u8(1) }
+		level == 6 { u8(2) }
+		else { u8(3) }
+	}
+	cmf := u8(0x78) // CM=8 deflate, CINFO=7 (32K window)
+	mut flg := flevel << 6
+	flg += u8(31 - (u32(cmf) * 256 + u32(flg)) % 31) % 31
 	mut out := []u8{cap: 2 + payload.len + 4}
-	out << u8(0x78) // CMF: CM=8 deflate, CINFO=7 (32K window)
-	out << u8(0x9c) // FLG: default compression, FCHECK satisfies (CMF*256+FLG)%31==0
+	out << cmf
+	out << flg
 	out << payload
-	out << binary.big_endian_get_u32(cksum)
+	out << binary.big_endian_get_u32(adler32.sum(data))
 	return out
 }
 
-// compress_gzip compresses data into a gzip stream (RFC 1952).
-pub fn compress_gzip(data []u8) ![]u8 {
-	mut payload := deflate_compress_fixed(data)!
+fn gzip_wrap(data []u8, level int) ![]u8 {
+	mut payload := compress_level(data, level)!
 	defer {
 		unsafe { payload.free() }
 	}
+	// XFL: 2 for maximum compression, 4 for the fastest (RFC 1952).
+	xfl := match level {
+		9 { u8(2) }
+		1 { u8(4) }
+		else { u8(0) }
+	}
 	mut out := []u8{cap: 10 + payload.len + 8}
 	// 10-byte gzip header: ID1 ID2 CM FLG MTIME(4) XFL OS
-	out << [u8(0x1f), 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff]
+	out << [u8(0x1f), 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, xfl, 0xff]
 	out << payload
 	out << binary.little_endian_get_u32(crc32.sum(data))
 	out << binary.little_endian_get_u32(u32(data.len))
 	return out
-}
-
-// compress_raw compresses data to a raw RFC 1951 DEFLATE stream.
-pub fn compress_raw(data []u8) ![]u8 {
-	return deflate_compress_fixed(data)!
 }
 
 // decompress decompresses a zlib (RFC 1950), gzip (RFC 1952), or raw DEFLATE (RFC 1951) stream.
