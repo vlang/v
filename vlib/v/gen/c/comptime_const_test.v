@@ -238,3 +238,98 @@ fn test_cli_comptime_conditional_index_ordering_is_explicit() ! {
 	assert explicit_order.exit_code == 0, explicit_order.output
 	assert explicit_order.output.trim_space() == '1207\n1207', explicit_order.output
 }
+
+struct ComptimeAccessCase {
+	declarations string
+	body         string
+	diagnostic   string
+	expected     string
+}
+
+fn test_cli_comptime_restrictions_leave_ordinary_calls_available() ! {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_access_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none', '-cc',
+		'tcc']
+	cases := [
+		ComptimeAccessCase{
+			declarations: 'type Pair = [2]int\nfn (a Pair) [] (i int) int { _ = i return 7 }\nconst pair = Pair([1, 2]!)'
+			body:         'return pair[0]'
+			diagnostic:   'overloaded indexing'
+			expected:     '7'
+		},
+		ComptimeAccessCase{
+			declarations: 'type Pair = [2]int\nfn (mut a Pair) []= (i int, value int) { _ = i a = Pair([value + 10, 2]!) }\nstruct Box {\nmut:\npair Pair\n}'
+			body:         'mut a := Box{pair: Pair([1, 2]!)}\na.pair[0] = 3\nplain := [2]int(a.pair)\nreturn plain[0]'
+			diagnostic:   'overloaded indexing'
+			expected:     '13'
+		},
+		ComptimeAccessCase{
+			declarations: 'type Word = string\nfn (a Word) == (b Word) bool { _ = b return false }'
+			body:         's := Word(Word("a") + Word("b"))\nreturn if s == Word("ab") { 1 } else { 0 }'
+			diagnostic:   'overloaded operator'
+			expected:     '0'
+		},
+		ComptimeAccessCase{
+			body:       'mut a := [1, 2]!\nreturn a#[if true { a[0] = 9 0 } else { 1 }]'
+			diagnostic: 'gated indexing'
+			expected:   '1'
+		},
+		ComptimeAccessCase{
+			declarations: 'const n = 1'
+			body:         'n := 255\nvalue := n + u8(1)\nreturn value'
+			diagnostic:   'integer promotion of a local that shadows a constant'
+			expected:     '0'
+		},
+		ComptimeAccessCase{
+			body:       'return if true { 255 + u8(1) } else { 0 }'
+			diagnostic: 'narrowing conditional integer values'
+			expected:   '256'
+		},
+	]
+	for i, case in cases {
+		program := '${case.declarations}\nconst result = compute()\n@[comptime]\nfn compute() int { ${case.body} }\nfn main() { println(result) println(compute()) }'
+		os.write_file(source, program)!
+		required := os.exec([...args, '-o', os.join_path(root, 'required_${i}'), source])
+		assert required.exit_code != 0, required.output
+		assert required.output.contains('cannot evaluate const `result`'), required.output
+		assert required.output.contains(case.diagnostic), required.output
+		runtime_program := program.replace('const result = compute()\n', '').replace('fn main() {',
+			'fn main() { result := compute()\n')
+		os.write_file(source, runtime_program)!
+		executable := os.join_path(root, 'runtime_${i}')
+		built := os.exec([...args, '-o', executable, source])
+		assert built.exit_code == 0, built.output
+		runtime := os.exec([executable])
+		assert runtime.exit_code == 0, runtime.output
+		assert runtime.output.trim_space() == '${case.expected}\n${case.expected}', runtime.output
+	}
+	// A plain string operand makes concatenation return string, so no alias
+	// equality method is reached by either the evaluator or the runtime call.
+	mixed := 'type Word = string\nfn (a Word) == (b Word) bool { _ = b return false }\nconst result = compute()\n@[comptime]\nfn compute() [2]bool { left := Word("a") + "b" right := "a" + Word("b") return [left == Word("ab"), right == Word("ab")]! }\nfn main() {\nassert result == [true, true]!\nassert result == compute()\nprintln("ok")\n}'
+	os.write_file(source, mixed)!
+	mixed_executable := os.join_path(root, 'mixed')
+	mixed_built := os.exec([...args, '-o', mixed_executable, source])
+	assert mixed_built.exit_code == 0, mixed_built.output
+	builtin := os.exec([mixed_executable])
+	assert builtin.exit_code == 0, builtin.output
+	assert builtin.output.trim_space() == 'ok', builtin.output
+}
+
+fn test_cli_comptime_local_promotion_and_live_bounds_emit_static_values() ! {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_live_bounds_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	output := os.join_path(root, 'main.c')
+	os.write_file(source, 'const initial = local_value()\n@[comptime]\nfn local_value() int { value := 1 return value + u8(1) }\nconst counts = range_counts()\n@[comptime]\nfn range_counts() [3]u32 { mut n := 3 mut live := u32(0) for _ in 0 .. n { n = 1 live++ } n = 3 mut snapshot := u32(0) for _ in 0 .. (n + 0) { n = 1 snapshot++ } return [u32(initial), live, snapshot]! }\nfn main() { assert counts == [u32(2), 1, 3]! }')!
+	result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none',
+		'-o', output, source])
+	assert result.exit_code == 0, result.output
+	generated := os.read_file(output)!
+	assert generated.contains('const u32 main__counts[3] = {2LL, 1LL, 3LL};'), generated.all_after('range_counts(void);')
+	assert !generated.contains('memmove(main__counts,'), generated.all_after('range_counts(void);')
+	assert !generated.contains('main__counts = range_counts('), generated.all_after('range_counts(void);')
+}

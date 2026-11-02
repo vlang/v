@@ -58,6 +58,7 @@ mut:
 	evaluator        &ConstEval = unsafe { nil }
 	parent_evaluator &ConstEval = unsafe { nil }
 	failure          string
+	check_only       bool
 }
 
 // requires_comptime_const reports an explicit opt-in in a constant initializer.
@@ -104,6 +105,10 @@ fn (tc &TypeChecker) check_comptime_const_context() ! {
 
 fn (mut context ConstIntContext) start(tc &TypeChecker, id flat.NodeId) bool {
 	if context.failure.len > 0 { return false }
+	if context.check_only {
+		context.failure = 'required evaluation during conditional type inference is not supported'
+		return false
+	}
 	if context.evaluator == unsafe { nil } {
 		if context.parent_evaluator != unsafe { nil } {
 			context.evaluator = context.parent_evaluator
@@ -487,7 +492,14 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 			}
 			if node.kind == .if_expr {
 				typ := e.expr_types[int(id)] or { e.if_result_type(id)! }
-				return e.convert(value, typ)
+				converted := e.convert(value, typ)!
+				// Return lowering can use a branch directly, while a stored
+				// conditional converts it to the inferred type. Do not fold a
+				// value whose narrowing depends on that surrounding context.
+				if unalias_type(value.typ).is_integer() && converted.integer != value.integer {
+					return error('narrowing conditional integer values is not supported')
+				}
+				return converted
 			}
 			return value
 		}
@@ -545,6 +557,7 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 				return e.lvalue_value(target)
 			}
 			container := e.expr(e.tc.a.child(node, 0))!
+			e.check_builtin_index(container.typ)!
 			index := e.expr(e.tc.a.child(node, 1))!
 			if unalias_type(container.typ) !is ArrayFixed {
 				return error('only fixed-array indexing is supported')
@@ -813,7 +826,30 @@ fn (e &ConstEval) integer_literal_arithmetic(id flat.NodeId) bool {
 	}
 }
 
-fn (e &ConstEval) binary_result_type(id flat.NodeId, op flat.Op, left Type, right Type) Type {
+fn (mut e ConstEval) references_local(id flat.NodeId) !bool {
+	e.tick()!
+	e.depth++
+	defer { e.depth-- }
+	if e.depth > 128 { return error('evaluation exceeded recursion limit') }
+	node := e.tc.a.node(id)
+	if node.kind == .ident && e.local(node.value) != none {
+		// Runtime checking may still consult a same-named global constant.
+		// Its promotion differs between stored and directly returned values;
+		// reject that ambiguity without evaluating a fresh helper invocation.
+		mut context := ConstIntContext{ check_only: true }
+		if e.tc.const_int_expr_with_context(id, e.tc.cur_module, [], mut context) != none
+			|| context.failure.len > 0 {
+			return error('integer promotion of a local that shadows a constant is not supported')
+		}
+		return true
+	}
+	for i in 0 .. node.children_count {
+		if e.references_local(e.tc.a.child(node, i))! { return true }
+	}
+	return false
+}
+
+fn (mut e ConstEval) binary_result_type(id flat.NodeId, op flat.Op, left Type, right Type) !Type {
 	node := e.tc.a.node(id)
 	// A compound assignment uses the stored lvalue type, not a pre-check query
 	// of its index/selector. Ordinary expressions use their evaluated operands.
@@ -825,11 +861,32 @@ fn (e &ConstEval) binary_result_type(id flat.NodeId, op flat.Op, left Type, righ
 	if op in [.left_shift, .right_shift] { return left }
 	left_id := e.tc.a.child(node, 0)
 	right_id := e.tc.a.child(node, 1)
-	if promoted := e.tc.int_literal_promoted_infix_type(left_id, right_id, left, right) {
-		return promoted
-	}
-	if promoted := e.tc.int_literal_promoted_infix_type(right_id, left_id, right, left) {
-		return promoted
+	// A helper-local int is stored data, even when its current value is known.
+	// Checker constant queries have no evaluator scopes and can accidentally
+	// restart evaluation of a shadowed global with fresh cycle and depth guards.
+	for side in 0 .. 2 {
+		lit_id := if side == 0 { left_id } else { right_id }
+		other_id := if side == 0 { right_id } else { left_id }
+		lit_type := if side == 0 { left } else { right }
+		other_type := unalias_type(if side == 0 { right } else { left })
+		if lit_type.source_type_id() != flat.source_type_int
+			|| !other_type.is_integer() || other_type.source_type_id() == flat.source_type_int
+			|| e.tc.int_literal_value(other_id) != none || e.references_local(lit_id)! {
+			continue
+		}
+		mut context := ConstIntContext{ parent_evaluator: &e }
+		value := e.tc.const_int_expr_with_context(lit_id, e.tc.cur_module, [], mut context) or {
+			if context.failure.len > 0 { return error(context.failure) }
+			continue
+		}
+		if other_type is Primitive && other_type.size in [u8(8), 16] {
+			return if small_integer_type_accepts_int_literal(other_type, value) {
+				Type(other_type)
+			} else {
+				builtin_int_type
+			}
+		}
+		return *other_type
 	}
 	return infix_integer_promotion_type(left, right) or { left }
 }
@@ -848,7 +905,10 @@ fn (mut e ConstEval) binary(id flat.NodeId, op flat.Op, left ComptimeConstValue,
 	if unalias_type(left.typ) is String && unalias_type(right.typ) is String {
 		if op == .plus {
 			e.reserve(left.text.len + right.text.len)!
-			return ComptimeConstValue{ typ: string_, text: left.text + right.text }
+			// Match the checker's builtin fallback without erasing a nominal
+			// alias before a later operator-dispatch check.
+			typ := if right.typ is String { Type(right.typ) } else { left.typ }
+			return ComptimeConstValue{ typ: typ, text: left.text + right.text }
 		}
 		if op in [.eq, .ne] {
 			return ComptimeConstValue{
@@ -883,7 +943,7 @@ fn (mut e ConstEval) binary(id flat.NodeId, op flat.Op, left ComptimeConstValue,
 	typ := if op in [.eq, .ne, .lt, .gt, .le, .ge] {
 		infix_integer_promotion_type(left.typ, right.typ) or { left.typ }
 	} else {
-		e.binary_result_type(id, op, left.typ, right.typ)
+		e.binary_result_type(id, op, left.typ, right.typ)!
 	}
 	type_id := unalias_type(typ).source_type_id()
 	mut l := left.integer
@@ -1060,7 +1120,8 @@ fn (mut e ConstEval) call(id flat.NodeId) !ComptimeConstValue {
 	return e.convert(flow.value, e.tc.parse_type(f.typ))
 }
 
-fn (e &ConstEval) if_result_type(id flat.NodeId) !Type {
+fn (mut e ConstEval) if_result_type(id flat.NodeId) !Type {
+	e.check_conditional_type_queries(id)!
 	mut locals := map[string]Type{}
 	for scope in e.scopes {
 		for name, value in scope { locals[name] = value.typ }
@@ -1069,6 +1130,32 @@ fn (e &ConstEval) if_result_type(id flat.NodeId) !Type {
 	for name, typ in locals { bindings << LocalBinding{ name: name, typ: typ } }
 	mut typing := e.tc.fork_type_parse_view(e.tc.cur_file, e.tc.cur_module)
 	return e.if_result_type_in_context(mut typing, id, bindings)
+}
+
+// The general checker infers both branch types and may query integer constants
+// for promotions. Probe those lookups without executing another evaluator: its
+// fresh scopes and guards cannot safely describe this active helper invocation.
+fn (mut e ConstEval) check_conditional_type_queries(id flat.NodeId) ! {
+	e.tick()!
+	e.depth++
+	defer { e.depth-- }
+	if e.depth > 128 { return error('evaluation exceeded recursion limit') }
+	node := e.tc.a.node(id)
+	if node.kind == .infix && node.op !in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or,
+		.left_shift, .right_shift, .right_shift_unsigned] {
+		for i in 0 .. node.children_count {
+			child := e.tc.a.child(node, i)
+			mut context := ConstIntContext{ check_only: true }
+			if e.tc.requires_comptime_const(child) {
+				return error('required evaluation during conditional type inference is not supported')
+			}
+			_ = e.tc.const_int_expr_with_context(child, e.tc.cur_module, [], mut context)
+			if context.failure.len > 0 { return error(context.failure) }
+		}
+	}
+	for i in 0 .. node.children_count {
+		e.check_conditional_type_queries(e.tc.a.child(node, i))!
+	}
 }
 
 fn (e &ConstEval) if_result_type_in_context(mut typing TypeChecker, id flat.NodeId, bindings []LocalBinding) !Type {
@@ -1217,7 +1304,8 @@ fn (mut e ConstEval) stmt(id flat.NodeId) !ConstEvalFlow {
 				flat.source_type_u64,
 				flat.source_type_uint,
 			]
-			limit := const_eval_integer_cast(end.integer, range_type)
+			live_bound := e.range_bound_is_live(end_id)!
+			mut limit := const_eval_integer_cast(end.integer, range_type)
 			for index := const_eval_integer_cast(start.integer, range_type); if unsigned {
 				u64(index) < u64(limit)
 			} else {
@@ -1231,6 +1319,9 @@ fn (mut e ConstEval) stmt(id flat.NodeId) !ConstEvalFlow {
 				e.scopes.delete_last()
 				if flow.kind == .return_stmt { return flow }
 				if flow.kind == .break_stmt { break }
+				if live_bound {
+					limit = const_eval_integer_cast(e.expr(end_id)!.integer, range_type)
+				}
 			}
 			return ConstEvalFlow{}
 		}
@@ -1264,6 +1355,43 @@ fn (mut e ConstEval) stmt(id flat.NodeId) !ConstEvalFlow {
 	}
 }
 
+// Match transform's stable_expr_for_reuse for supported range bounds. Other
+// expressions are materialized before the loop, including parenthesized bounds.
+fn (mut e ConstEval) range_bound_is_live(id flat.NodeId) !bool {
+	e.tick()!
+	e.depth++
+	defer { e.depth-- }
+	if e.depth > 128 { return error('evaluation exceeded recursion limit') }
+	node := e.tc.a.node(id)
+	match node.kind {
+		.ident, .int_literal, .bool_literal, .string_literal, .sizeof_expr { return true }
+		.selector {
+			return node.children_count > 0 && e.range_bound_is_live(e.tc.a.child(node, 0))!
+		}
+		.cast_expr, .field_init {
+			return node.children_count == 0 || e.range_bound_is_live(e.tc.a.child(node, 0))!
+		}
+		.index {
+			return node.children_count >= 2 && e.range_bound_is_live(e.tc.a.child(node, 0))!
+				&& e.range_bound_is_live(e.tc.a.child(node, 1))!
+		}
+		.struct_init {
+			typ := e.tc.expr_type(id) or { *e.tc.parse_type(node.source_value_id()) }
+			base := unalias_type(typ)
+			if base is Struct {
+				for field in e.tc.structs[base.name_id] {
+					if unalias_type(field.typ) is ArrayFixed { return false }
+				}
+			}
+			for i in 0 .. node.children_count {
+				if !e.range_bound_is_live(e.tc.a.child(node, i))! { return false }
+			}
+			return true
+		}
+		else { return false }
+	}
+}
+
 fn (mut e ConstEval) access_path(id flat.NodeId) !(flat.NodeId, []flat.NodeId) {
 	mut current := id
 	mut path := []flat.NodeId{}
@@ -1276,6 +1404,9 @@ fn (mut e ConstEval) access_path(id flat.NodeId) !(flat.NodeId, []flat.NodeId) {
 		if node.kind == .paren {
 			current = e.tc.a.child(node, 0)
 		} else if node.kind in [.index, .selector] {
+			if node.kind == .index && node.op == .gated_index {
+				return error('gated indexing is not supported')
+			}
 			path << current
 			current = e.tc.a.child(node, 0)
 		} else {
@@ -1355,8 +1486,16 @@ fn (mut e ConstEval) resolve_lvalue(root flat.NodeId, path []flat.NodeId) !Const
 	return ConstEvalLvalue{ scope: scope, name: node.value, path: steps }
 }
 
-fn const_eval_access_value(base ComptimeConstValue, step ConstEvalAccessStep) !ComptimeConstValue {
+fn (e &ConstEval) check_builtin_index(typ Type) ! {
+	if e.tc.index_overload_call_info(typ, false) != none
+		|| e.tc.index_overload_call_info(typ, true) != none {
+		return error('overloaded indexing is not supported')
+	}
+}
+
+fn (e &ConstEval) access_value(base ComptimeConstValue, step ConstEvalAccessStep) !ComptimeConstValue {
 	if step.kind == .index {
+		e.check_builtin_index(base.typ)!
 		if unalias_type(base.typ) !is ArrayFixed {
 			return error('only fixed-array indexing is supported')
 		}
@@ -1372,7 +1511,7 @@ fn (mut e ConstEval) lvalue_value(target ConstEvalLvalue) !ComptimeConstValue {
 	mut value := e.scopes[target.scope][target.name] or { return error('missing local value') }
 	for step in target.path {
 		e.tick()!
-		value = const_eval_access_value(value, step)!
+		value = e.access_value(value, step)!
 	}
 	return value
 }
@@ -1385,7 +1524,7 @@ fn (mut e ConstEval) assign(target ConstEvalLvalue, value ComptimeConstValue) ! 
 	for step in target.path {
 		e.tick()!
 		parents << old
-		old = const_eval_access_value(old, step)!
+		old = e.access_value(old, step)!
 	}
 	mut updated := e.convert(value, old.typ)!
 	for i := target.path.len - 1; i >= 0; i-- {

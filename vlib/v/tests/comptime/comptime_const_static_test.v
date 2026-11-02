@@ -560,6 +560,45 @@ fn test_comptime_mutation_targets_match_runtime() {
 	assert computed_mutation_targets == const_mutation_targets()
 }
 
+const computed_local_promotion = const_local_promotion(255)
+const computed_range_bounds = const_range_bounds()
+
+@[comptime]
+fn const_local_promotion(input int) int {
+	value := input + u8(1)
+	return value
+}
+
+@[comptime]
+fn const_range_bounds() [3]int {
+	mut n := 3
+	mut live := 0
+	for _ in 0 .. n {
+		n = 1
+		live++
+	}
+	n = 3
+	mut expression := 0
+	for _ in 0 .. (n + 0) {
+		n = 1
+		expression++
+	}
+	n = 3
+	mut conditional := 0
+	for _ in 0 .. if true { n } else { 0 } {
+		n = 1
+		conditional++
+	}
+	return [live, expression, conditional]!
+}
+
+fn test_comptime_local_promotion_and_range_bounds_match_runtime() {
+	assert computed_local_promotion == 256
+	assert computed_local_promotion == const_local_promotion(255)
+	assert computed_range_bounds == [1, 3, 3]!
+	assert computed_range_bounds == const_range_bounds()
+}
+
 fn test_comptime_constants_match_runtime() {
 	assert imported_pair == evaluated.make_pair(10)
 	assert imported_pair == [u32(10), 17]!

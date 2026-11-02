@@ -4284,7 +4284,8 @@ Local variables, assignments, conditionals, integer range loops,
 C-style loops, and recursive calls to other `@[comptime]` functions are supported. Struct defaults
 and embedded fields, unions, dynamic arrays, maps, floating-point values, pointers, and
 result/option values are currently unsupported. Generic functions and methods, including overloaded
-operators, are not supported by this evaluator.
+operators and index getters/setters, are not supported by this evaluator. Gated indexing (`#[...]`)
+is also unsupported; ordinary fixed-array indexing remains available.
 In `-ownership` and `-autofree` builds, values with implicit `drop` or `free` cleanup are
 unsupported, including local values and fields nested inside other values.
 Ordinary calls to the same function outside constant expressions remain
@@ -4296,6 +4297,11 @@ expression independent of helper locals, calls, and conditionals. The array must
 an expression independent of those same operations. Assignments to these targets also require a
 right-hand side independent of helper locals, calls, and conditionals. More complex indices,
 including `$if` expressions, and array bases can be evaluated into fresh locals before the access.
+Range loops preserve the runtime distinction between live upper bounds (such as a local variable)
+and expressions that are evaluated once before the loop (such as an addition or function call).
+Conditional result-type inference that needs another required evaluation is currently unsupported.
+Integer promotion of locals that shadow constants and narrowing conditional integer values are
+also unsupported, because their runtime conversions depend on the surrounding storage context.
 
 The checker can use a computed integer constant as a fixed-array bound. The C backend emits the
 computed value as static data, with no initializer call, allocation, or copy at startup. Integer

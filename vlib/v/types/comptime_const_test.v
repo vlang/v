@@ -724,3 +724,186 @@ fn test_comptime_const_conditional_index_workarounds_and_bounds() {
 		assert tc.errors.any(it.msg.contains('cannot evaluate const `bad`') && it.msg.contains('array index out of bounds')), tc.errors.str()
 	}
 }
+
+fn test_comptime_const_range_bounds_keep_runtime_stability() {
+	declarations := 'struct RangeBounds {\nmut:\nend int\n}\n@[comptime]\nfn range_bound(n int) int { return n }'
+	for body, expected in {
+		'mut n := 3 mut count := 0 for _ in 0 .. n { n = 1 count++ } return count':                                               1
+		'mut bounds := RangeBounds{end: 3} mut count := 0 for _ in 0 .. bounds.end { bounds.end = 1 count++ } return count':      1
+		'mut bounds := [3]!\nmut count := 0 for _ in 0 .. bounds[0] { bounds[0] = 1 count++ } return count':                      1
+		'mut n := 3 mut count := 0 for _ in 0 .. int(n) { n = 1 count++ } return count':                                          1
+		'mut n := 3 mut count := 0 for _ in 0 .. (n) { n = 1 count++ } return count':                                             3
+		'mut n := 3 mut count := 0 for _ in 0 .. n + 0 { n = 1 count++ } return count':                                           3
+		'mut n := 3 mut count := 0 for _ in 0 .. (n + 0) { n = 1 count++ } return count':                                         3
+		'mut n := 3 mut count := 0 for _ in 0 .. range_bound(n) { n = 1 count++ } return count':                                  3
+		'mut n := 3 mut count := 0 for _ in 0 .. (if true { n } else { 0 }) { n = 1 count++ } return count':                      3
+		'mut n := 3 mut count := 0 for _ in 0 .. n { n = 1 count++ continue } return count':                                      1
+		'mut bounds := [3, 1]!\nmut index := 0 mut count := 0 for _ in 0 .. bounds[index] { index = 1 count++ } return count':    1
+		'mut bounds := [3]!\nmut index := 0 mut count := 0 for _ in 0 .. bounds[index] { index = 1 count++ break } return count': 1
+	} {
+		tc := comptime_const_checker('${declarations}\nconst result = compute()\n@[comptime]\nfn compute() int { ${body} }\nfn main() { _ = result }')
+		assert tc.errors.len == 0, '${body}: ${tc.errors}'
+		assert tc.comptime_const_values['result']!.integer == expected, body
+	}
+}
+
+fn test_comptime_const_rejects_nominal_index_overloads() {
+	declarations := 'type GetterPair = [2]int\ntype SetterPair = [2]int\ntype Pair = [2]int\nfn (a GetterPair) [] (i int) int { return 7 }\nfn (mut a SetterPair) []= (i int, value int) {}\nfn (a Pair) [] (i int) int { return 7 }\nfn (mut a Pair) []= (i int, value int) {}\nstruct IndexedBox {\nmut:\npair Pair\n}\nconst pair = Pair([1, 2]!)'
+	for body in [
+		'a := GetterPair([1, 2]!) return a[0]',
+		'return GetterPair([1, 2]!)[0]',
+		'return pair[0]',
+		'a := [Pair([1, 2]!)]! return a[0][0]',
+		'a := IndexedBox{pair: Pair([1, 2]!)} return a.pair[0]',
+		'mut a := SetterPair([1, 2]!) a[0] = 9 return 1',
+		'mut a := Pair([1, 2]!) a[0] = 9 return 1',
+		'mut a := Pair([1, 2]!) a[0] += 9 return 1',
+		'mut a := Pair([1, 2]!) a[0]++ return 1',
+		'mut a := [IndexedBox{pair: Pair([1, 2]!)}]! a[0].pair[1] += 9 return 1',
+	] {
+		tc := comptime_const_checker('${declarations}\nconst bad = compute()\n@[comptime]\nfn compute() int { ${body} }\nfn main() { _ = bad }')
+		assert tc.errors.any(it.msg.contains('cannot evaluate const `bad`') && it.msg.contains('overloaded indexing')), '${body}: ${tc.errors}'
+	}
+}
+
+fn test_comptime_const_builtin_alias_indexing_and_unexecuted_overloads() {
+	declarations := 'type PlainPair = [2]int\ntype Pair = [2]int\nfn (a Pair) [] (i int) int { return 7 }\nfn (mut a Pair) []= (i int, value int) {}'
+	for body, expected in {
+		'a := PlainPair([1, 2]!) return a[0]':                                  1
+		'mut a := PlainPair([1, 2]!) a[0] += 4 a[1]++ return a[0] * 10 + a[1]': 53
+		'a := Pair([1, 2]!) if false { return a[0] } return 7':                 7
+		'mut a := Pair([1, 2]!) if false { a[0] = 9 } return 7':                7
+	} {
+		tc := comptime_const_checker('${declarations}\nconst result = compute()\n@[comptime]\nfn compute() int { ${body} }\nfn main() { _ = result }')
+		assert tc.errors.len == 0, '${body}: ${tc.errors}'
+		assert tc.comptime_const_values['result']!.integer == expected, body
+	}
+}
+
+fn test_comptime_const_string_concatenation_keeps_nominal_dispatch() {
+	declarations := 'type Word = string\nfn (a Word) == (b Word) bool { return false }'
+	for body in [
+		's := Word("a") + Word("b") if s == Word("ab") { return 1 } return 0',
+		'if (Word("a") + Word("b")) == Word("ab") { return 1 } return 0',
+		's := (Word("a") + Word("b")) + Word("c") if s == Word("abc") { return 1 } return 0',
+		'mut s := Word("a") s += Word("b") if s == Word("ab") { return 1 } return 0',
+	] {
+		tc := comptime_const_checker('${declarations}\nconst bad = compute()\n@[comptime]\nfn compute() int { ${body} }\nfn main() { _ = bad }')
+		assert tc.errors.any(it.msg.contains('cannot evaluate const `bad`') && it.msg.contains('overloaded operator')), '${body}: ${tc.errors}'
+	}
+}
+
+fn test_comptime_const_string_concatenation_plain_string_controls() {
+	declarations := 'type Word = string\ntype PlainWord = string\nfn (a Word) == (b Word) bool { return false }'
+	for body, expected in {
+		's := Word("a") + "b" if s == Word("ab") { return 1 } return 0':                      1
+		's := "a" + Word("b") if s == Word("ab") { return 1 } return 0':                      1
+		's := string(Word("a") + Word("b")) if s == Word("ab") { return 1 } return 0':        1
+		's := PlainWord("a") + PlainWord("b") if s == PlainWord("ab") { return 1 } return 0': 1
+		'if false { s := Word("a") + Word("b") if s == Word("ab") { return 1 } } return 7':   7
+	} {
+		tc := comptime_const_checker('${declarations}\nconst result = compute()\n@[comptime]\nfn compute() int { ${body} }\nfn main() { _ = result }')
+		assert tc.errors.len == 0, '${body}: ${tc.errors}'
+		assert tc.comptime_const_values['result']!.integer == expected, body
+	}
+}
+
+fn test_comptime_const_rejects_gated_indexing_in_all_access_paths() {
+	for body in [
+		'a := [1, 2]! return a#[-1]',
+		'return table#[0]',
+		'mut a := [1, 2]! return a#[if true { a[0] = 9 0 } else { 1 }]',
+		'a := [[1, 2]!, [3, 4]!]! return a[0]#[-1]',
+		'a := [[1, 2]!, [3, 4]!]! return a#[0][1]',
+		'mut a := [1, 2]! a#[0] = 9 return a[0]',
+		'mut a := [1, 2]! a#[0] += 9 return a[0]',
+		'mut a := [1, 2]! a#[0]++ return a[0]',
+		'mut a := [[1, 2]!, [3, 4]!]! a[0]#[1] += 9 return a[0][1]',
+	] {
+		tc := comptime_const_checker('const table = [1, 2]!\nconst bad = compute()\n@[comptime]\nfn compute() int { ${body} }\nfn main() { _ = bad }')
+		assert tc.errors.any(it.msg.contains('cannot evaluate const `bad`') && it.msg.contains('gated indexing')), '${body}: ${tc.errors}'
+	}
+}
+
+fn test_comptime_const_ordinary_indexing_and_unexecuted_gated_accesses() {
+	for body, expected in {
+		'mut a := [1, 2]! return a[if true { a[0] = 9 0 } else { 1 }]': 9
+		'a := [1, 2]! if false { return a#[-1] } return 7':             7
+		'mut a := [1, 2]! if false { a#[0] = 9 } return a[0]':          1
+	} {
+		tc := comptime_const_checker('const result = compute()\n@[comptime]\nfn compute() int { ${body} }\nfn main() { _ = result }')
+		assert tc.errors.len == 0, '${body}: ${tc.errors}'
+		assert tc.comptime_const_values['result']!.integer == expected, body
+	}
+}
+
+fn test_comptime_const_integer_promotion_preserves_local_storage_width() {
+	for body, expected in {
+		'value := n + u8(1) return value':                              256
+		'value := (n + 0) + u8(1) return value':                        256
+		'local := n value := local + u8(1) return value':               256
+		'mut local := 1 local = n value := local + u8(1) return value': 256
+		'value := 1 + u8(255) return int(value)':                       0
+		'value := small + u8(255) return int(value)':                   0
+	} {
+		tc := comptime_const_checker('const small = 1\nconst result = compute(255)\n@[comptime]\nfn compute(n int) int { ${body} }\nfn main() { _ = result }')
+		assert tc.errors.len == 0, '${body}: ${tc.errors}'
+		assert tc.comptime_const_values['result']!.integer == expected, body
+	}
+}
+
+fn test_comptime_const_integer_promotion_rejects_shadowing_and_preserves_guards() {
+	for body in [
+		'n := 1 return n + u8(1)',
+		'n := 1 return (n + 0) + u8(1)',
+		'n := 1 return u8(1) + n',
+		'n := 1 return (int(n)) + u8(1)',
+	] {
+		tc := comptime_const_checker('const n = compute()\n@[comptime]\nfn compute() int { ${body} }\nfn main() { _ = n }')
+		assert tc.errors.any(it.msg.contains('cannot evaluate const `n`') && it.msg.contains('integer promotion of a local that shadows a constant')), '${body}: ${tc.errors}'
+	}
+	for helper in [
+		'fn compute(n int) int { value := n + u8(1) return value }',
+		'fn compute(n int) int { return if true { n + u8(1) } else { 0 } }',
+		'fn compute(input int) int { return if true { n := input n + u8(1) } else { 0 } }',
+	] {
+		tc := comptime_const_checker('const n = 1\nconst result = compute(255)\n@[comptime]\n${helper}\nfn main() { _ = result }')
+		assert tc.errors.any(it.msg.contains('cannot evaluate const `result`') && it.msg.contains('integer promotion of a local that shadows a constant')), '${helper}: ${tc.errors}'
+	}
+	for body in ['return n + u8(1)', 'return u8(1) + n'] {
+		tc := comptime_const_checker('const n = compute()\n@[comptime]\nfn compute() int { ${body} }\nfn main() { _ = n }')
+		assert tc.errors.any(it.msg.contains('cannot evaluate const `n`') && it.msg.contains('cycle in constant')), '${body}: ${tc.errors}'
+	}
+}
+
+fn test_comptime_const_conditional_type_queries_do_not_start_fresh_evaluation() {
+	for body in [
+		'return if true { 0 } else { n + u8(1) }',
+		'return if true { 0 } else { n := 1 n + u8(1) }',
+		'return if true { 0 } else { required + u8(1) }',
+		'return if true { 0 } else { indirect + u8(1) }',
+		'return if true { 0 } else { seed() + u8(1) }',
+	] {
+		tc := comptime_const_checker('const required = seed()\nconst indirect = required\nconst n = compute()\n@[comptime]\nfn seed() int { return 1 }\n@[comptime]\nfn compute() int { ${body} }\nfn main() { _ = n }')
+		assert tc.errors.any(it.msg.contains('cannot evaluate const `n`') && it.msg.contains('required evaluation during conditional type inference is not supported')), '${body}: ${tc.errors}'
+	}
+}
+
+fn test_comptime_const_narrowing_conditional_integer_values_are_explicit() {
+	for body in [
+		'return if true { 255 + u8(1) } else { 0 }',
+		'return (if true { 255 + u8(1) } else { 0 })',
+		'value := if true { 255 + u8(1) } else { 0 } return value',
+	] {
+		tc := comptime_const_checker('const result = compute()\n@[comptime]\nfn compute() int { ${body} }\nfn main() { _ = result }')
+		assert tc.errors.any(it.msg.contains('cannot evaluate const `result`') && it.msg.contains('narrowing conditional integer values')), '${body}: ${tc.errors}'
+	}
+	for body in [
+		'return if true { 254 + u8(1) } else { 0 }',
+		'value := if true { 254 + u8(1) } else { 0 } return value',
+	] {
+		tc := comptime_const_checker('const result = compute()\n@[comptime]\nfn compute() int { ${body} }\nfn main() { _ = result }')
+		assert tc.errors.len == 0, '${body}: ${tc.errors}'
+		assert tc.comptime_const_values['result']!.integer == 255, body
+	}
+}
