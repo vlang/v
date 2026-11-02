@@ -85,13 +85,17 @@ pub fn fd_read(fd int, maxbytes int) (string, int) {
 	}
 }
 
-@[typedef]
-pub struct C.fd_set {}
+$if !windows {
+	#include <sys/select.h>
+} $else {
+	@[typedef]
+	pub struct C.fd_set {}
 
-pub struct C.timeval {
-pub:
-	tv_sec  u64
-	tv_usec u64
+	pub struct C.timeval {
+	pub:
+		tv_sec  u64
+		tv_usec u64
+	}
 }
 
 fn C.select(ndfs i32, readfds &C.fd_set, writefds &C.fd_set, exceptfds &C.fd_set, timeout &C.timeval) i32
