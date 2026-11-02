@@ -26,6 +26,7 @@ pub fn instructions(ws &Workspace) string {
 		'3. `v_check` after every change. It is the only authoritative answer to\n' +
 		'   "does it compile", and it returns records with file, line and column.\n' +
 		'4. `v_test_run` for behaviour. `v_check` will not catch a wrong result.\n' +
+		'   Run `v_affected` first to narrow the suite to the tests a change can reach.\n' +
 		'\n' +
 		'## Before guessing, ask\n' +
 		'\n' +

@@ -134,11 +134,11 @@ fn test_every_tool_is_named_and_described() {
 
 // Limit the unencoded catalogue strings separately from the complete response.
 // These are UTF-8 byte budgets, not model-specific token counts.
-const max_catalogue_content_bytes = 12000
+const max_catalogue_content_bytes = 14000
 
-// The current writable/read-only responses are 12,580/9,763 bytes including LF.
-// A 13,000-byte ceiling leaves 420 bytes of headroom for serialized metadata.
-const max_tools_list_response_bytes = 13000
+// The current writable response is 15,619 bytes including LF. A 17,000-byte
+// ceiling leaves about 1,400 bytes of headroom for serialized metadata.
+const max_tools_list_response_bytes = 17000
 
 fn test_tool_catalogue_stays_within_content_byte_budget() {
 	mut total := 0
@@ -1168,7 +1168,7 @@ fn test_tools_list_wire_schemas_are_valid_in_both_modes() {
 				properties := raw_tool.as_map()
 				assert 'title' !in properties, 'tools/list must omit the redundant title for ${properties['name']!.str()}'
 			}
-			expected := if read_only { 15 } else { 18 }
+			expected := if read_only { 20 } else { 23 }
 			assert response.result.tools.len == expected, line
 			for tool in response.result.tools {
 				schema_type := tool.input_schema['type'] or { panic('missing schema type for ${tool.name}') }
@@ -2311,4 +2311,53 @@ fn test_server_exe_resolves_the_selected_symlink() {
 		os.rm(executable) or {}
 	}
 	assert server_exe_for(link, @VEXE, false) == os.real_path(executable)
+}
+
+fn test_repo_brief_lists_the_probe_project() {
+	answer := call_tool('v_repo_brief', '{}')
+	assert answer.contains('main.v'), answer
+	assert answer.contains('probe'), answer
+	assert answer.contains('"totals_partial"'), answer
+	assert answer.contains('"truncated":\tfalse') || answer.contains('"truncated": false'), answer
+}
+
+fn test_repo_brief_reports_a_missing_directory() {
+	answer := call_tool('v_repo_brief', '{"path":"no_such_dir"}')
+	assert answer.contains('error'), answer
+}
+
+fn test_affected_with_an_explicit_test_path_returns_it() {
+	ws := probe_workspace()
+	os.write_file(os.join_path(ws.project_root, 'main_test.v'), 'module main\nfn test_probe() {\n\tassert true\n}\n')!
+	answer := call_tool_on(ws, 'v_affected', '{"path":"main_test.v"}')
+	assert answer.contains('main_test.v'), answer
+	assert answer.contains('"count"'), answer
+}
+
+fn test_affected_expands_a_directory_seed() {
+	ws := probe_workspace()
+	os.write_file(os.join_path(ws.project_root, 'main_test.v'), 'module main\nfn test_probe() {\n\tassert true\n}\n')!
+	answer := call_tool_on(ws, 'v_affected', '{"path":"."}')
+	assert answer.contains('main_test.v'), answer
+}
+
+fn test_affected_follows_block_imports_to_other_directories() {
+	ws := probe_workspace()
+	os.mkdir_all(os.join_path(ws.project_root, 'mymod'))!
+	os.write_file(os.join_path(ws.project_root, 'mymod', 'mymod.v'), 'module mymod\npub fn hello() string {\n\treturn \'hi\'\n}\n')!
+	os.write_file(os.join_path(ws.project_root, 'mymod', 'mymod_test.v'), 'module mymod\nfn test_hello() {\n\tassert hello() == \'hi\'\n}\n')!
+	os.mkdir_all(os.join_path(ws.project_root, 'other'))!
+	os.write_file(os.join_path(ws.project_root, 'other', 'other_test.v'), 'module other\n\nimport (\n\tmymod\n)\n\nfn test_uses_mymod() {\n\tassert mymod.hello() == \'hi\'\n}\n')!
+	answer := call_tool_on(ws, 'v_affected', '{"path":"mymod/mymod.v"}')
+	// Same-module test, found through its directory.
+	assert answer.contains('mymod_test.v'), answer
+	// Cross-directory test, found through the parenthesised import block.
+	assert answer.contains('other_test.v'), answer
+}
+
+fn test_affected_without_git_explains_itself() {
+	// The probe fixture is not a git checkout, so the worktree default cannot work.
+	answer := call_tool('v_affected', '{}')
+	assert answer.contains('error'), answer
+	assert answer.contains('git'), answer
 }
