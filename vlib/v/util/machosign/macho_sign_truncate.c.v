@@ -1,4 +1,4 @@
-module fastc
+module machosign
 
 fn C.ftruncate(i32, u64) i32
 
