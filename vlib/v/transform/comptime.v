@@ -1155,9 +1155,7 @@ fn comptime_attribute_schema_instance(base string, schema AttributeSchemaInfo, d
 	}
 	for i in 0 .. schema.fields.len {
 		if !bound[i] && schema.fields[i].has_default {
-			if !comptime_attribute_value_matches(schema.fields[i].kind, schema.fields[i].default_value, 0) {
-				// leave unbound; checker already validated the default
-			}
+			// Defaults were validated by the checker; bind them directly.
 			bound_values[i] = schema.fields[i].default_value
 			bound[i] = true
 		}
