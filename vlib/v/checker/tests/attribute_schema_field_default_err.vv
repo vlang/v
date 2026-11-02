@@ -1,7 +1,0 @@
-@[attribute]
-struct Route {
-	path string = '/x'
-}
-
-fn main() {
-}
