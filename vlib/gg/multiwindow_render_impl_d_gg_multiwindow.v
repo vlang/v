@@ -401,6 +401,9 @@ fn (mut app App) fail_managed_window_captures_for_batch(batch_epoch u64, message
 			continue
 		}
 		if !app.window_exists(capture.window) {
+			app.core.service_fail_window_readback(capture.id, err_multiwindow_render_native_service_unavailable) or {
+				errors << err.msg()
+			}
 			continue
 		}
 		app.core.service_fail_window_readback(capture.id, terminal_message) or {
@@ -425,6 +428,9 @@ fn (mut app App) finish_managed_window_captures(outcome multiwindow.RenderBatchO
 			continue
 		}
 		if !app.window_exists(capture.window) {
+			app.core.service_fail_window_readback(capture.id, err_multiwindow_render_native_service_unavailable) or {
+				errors << err.msg()
+			}
 			continue
 		}
 		snapshot := app.core.render_window_snapshot(capture.window.core) or {
@@ -1098,7 +1104,7 @@ fn (pass &WindowPassContext) validate_managed_pass() ! {
 }
 
 fn validate_pixel_rect(rect WindowPixelRect) ! {
-	if rect.width <= 0 || rect.height <= 0 {
+	if rect.x < 0 || rect.y < 0 || rect.width <= 0 || rect.height <= 0 {
 		return error(err_multiwindow_render_invalid_bindings)
 	}
 }
