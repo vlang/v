@@ -19294,6 +19294,7 @@ fn (tc &TypeChecker) attribute_unknown_hint(name string, module string) string {
 	}
 	mut closest := ''
 	mut closest_distance := name.len + 1
+	mut closest_first_match := false
 	lower_name := name.to_lower()
 	for candidate in candidates {
 		lower_candidate := candidate.to_lower()
@@ -19307,15 +19308,17 @@ fn (tc &TypeChecker) attribute_unknown_hint(name string, module string) string {
 		max_distance := if name.len <= 3 { 1 } else { int_max(1, name.len / 3) }
 		allowed := if first_letter_match {
 			max_distance
-		} else if distance <= max_distance {
+		} else if distance < max_distance {
 			// Allow a cross-first-letter suggestion only when it is very close.
-			int_max(1, max_distance - 1)
+			max_distance - 1
 		} else {
 			0
 		}
-		if allowed > 0 && distance <= allowed && distance < closest_distance {
+		if allowed > 0 && distance <= allowed
+			&& (distance < closest_distance || (distance == closest_distance && first_letter_match && !closest_first_match)) {
 			closest = candidate
 			closest_distance = distance
+			closest_first_match = first_letter_match
 		}
 	}
 	if closest.len > 0 {
