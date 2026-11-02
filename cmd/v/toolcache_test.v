@@ -157,6 +157,33 @@ fn toolcache_test_dir(name string) string {
 	return directory
 }
 
+// private_toolcache_test_dir prepares a root that the real launcher can select. Windows
+// chmod does not change ACLs, and an elevated process can create an Administrators-owned
+// directory even when its token user is the account that will run the cached tool.
+fn private_toolcache_test_dir(name string) string {
+	directory := toolcache_test_dir(name)
+	$if windows {
+		system32 := os.join_path(os.getenv('SystemRoot'), 'System32')
+		identity := os.exec([os.join_path(system32, 'whoami.exe'), '/user', '/fo', 'csv', '/nh'])
+		assert identity.exit_code == 0, identity.output
+		sid := identity.output.trim_space().all_after_last(',').trim('"')
+		assert sid.starts_with('S-1-') && sid[4..].bytes().all(it.is_digit() || it == `-`), identity.output
+		icacls := os.join_path(system32, 'icacls.exe')
+		for arguments in [
+			['/setowner', '*${sid}'],
+			['/grant:r', '*${sid}:(OI)(CI)F'],
+			['/inheritancelevel:r'],
+		] {
+			mut command := [icacls, directory]
+			command << arguments
+			result := os.exec(command)
+			assert result.exit_code == 0, result.output
+		}
+	}
+	assert tool_cache_root_can_stage(directory), tool_cache_root_problem(directory)
+	return directory
+}
+
 // cached_entry_dirs returns the content addressed entry directories of `tool`. Each holds one
 // build: the executable, named exactly like the tool, plus that build's bookkeeping files.
 fn cached_entry_dirs(directory string, tool string) []string {
@@ -175,7 +202,7 @@ fn test_a_second_invocation_of_a_tool_reuses_the_compiled_binary() {
 		eprintln('> skipping, no V executable at `${vexe}`')
 		return
 	}
-	cache := toolcache_test_dir('reuse')
+	cache := private_toolcache_test_dir('reuse')
 	defer {
 		os.rmdir_all(cache) or {}
 	}
@@ -1264,7 +1291,7 @@ fn test_a_cached_tool_keeps_its_own_executable_name() {
 		eprintln('> skipping, no V executable at `${vexe}`')
 		return
 	}
-	cache := toolcache_test_dir('exe_name')
+	cache := private_toolcache_test_dir('exe_name')
 	defer {
 		os.rmdir_all(cache) or {}
 	}
@@ -2012,10 +2039,12 @@ fn test_tool_cache_unavailable_error_lists_rejected_candidates_and_workaround() 
 	assert formatted.contains('no usable tool cache folder was found:')
 	assert formatted.contains('is writable by group/others without the sticky bit')
 	assert formatted.contains('is owned by user id 65534, not by the current user or root')
-	assert formatted.contains('export VTOOLS_CACHE_DIR="\$HOME/.vtools"')
 	$if windows {
+		assert formatted.contains('The tool cache folder has to belong to you, and no other account may be allowed to change it.')
+		assert formatted.contains('Fix its permissions, or set VTOOLS_CACHE_DIR to a folder that only you can change.')
 		return
 	}
+	assert formatted.contains('export VTOOLS_CACHE_DIR="\$HOME/.vtools"')
 	directory := trusted_toolcache_test_dir('unavailable_diagnostics') or {
 		eprintln('> skipping, the system temporary folder is not private enough')
 		return
