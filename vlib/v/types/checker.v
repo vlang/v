@@ -19297,12 +19297,23 @@ fn (tc &TypeChecker) attribute_unknown_hint(name string, module string) string {
 	lower_name := name.to_lower()
 	for candidate in candidates {
 		lower_candidate := candidate.to_lower()
-		if lower_name.len == 0 || lower_candidate.len == 0 || lower_name[0] != lower_candidate[0] {
+		if lower_name.len == 0 || lower_candidate.len == 0 {
 			continue
 		}
+		// First-letter mismatch is allowed but penalized: prefer candidates
+		// that share the first letter, then fall back to any candidate.
+		first_letter_match := lower_name[0] == lower_candidate[0]
 		distance := strings.levenshtein_distance(lower_name, lower_candidate)
 		max_distance := if name.len <= 3 { 1 } else { int_max(1, name.len / 3) }
-		if distance <= max_distance && distance < closest_distance {
+		allowed := if first_letter_match {
+			max_distance
+		} else if distance <= max_distance {
+			// Allow a cross-first-letter suggestion only when it is very close.
+			int_max(1, max_distance - 1)
+		} else {
+			0
+		}
+		if allowed > 0 && distance <= allowed && distance < closest_distance {
 			closest = candidate
 			closest_distance = distance
 		}
