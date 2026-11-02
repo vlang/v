@@ -4286,6 +4286,8 @@ and embedded fields, unions, dynamic arrays, maps, floating-point values, pointe
 result/option values are currently unsupported. Generic structs, functions and methods, including
 overloaded operators and index getters/setters, are not supported by this evaluator.
 Gated indexing (`#[...]`) is also unsupported; ordinary fixed-array indexing remains available.
+For C-style loops with `i <= bound; i++` or `i >= bound; i--`, counters of an alias type are
+unsupported when the counter is at its maximum before incrementing or zero before decrementing.
 In `-ownership` and `-autofree` builds, values with implicit `drop` or `free` cleanup are
 unsupported, including local values and fields nested inside other values.
 Ordinary calls to the same function outside constant expressions remain
@@ -4314,7 +4316,7 @@ conversions use the target's widths, including platform-width `int`. Required ev
 integer constants with their declared or inferred type. Native C emission preserves those
 conversions for macros and expanded constant references, matching addressable constant storage.
 Native C constant initializers and fixed-array literals use the same typed division, remainder,
-and signed/unsigned comparison rules as ordinary function expressions.
+shift, and signed/unsigned comparison rules as ordinary function expressions.
 Unsupported target-dependent operations produce an error; required evaluation needs a concrete
 target and rejects portable C (`-os cross`). Required evaluation with `-check-overflow` or
 `-check-casts` is not yet supported.

@@ -1015,3 +1015,188 @@ fn test_comptime_calls_in_callback_bodies_remain_runtime_calls() {
 	assert computed_callback_seed == 7
 	assert ordinary_function_callback() == computed_callback_seed
 }
+
+const computed_unsigned_loop_counts = const_unsigned_inclusive_loop_counts()
+
+@[comptime]
+fn const_unsigned_inclusive_loop_counts() [16]int {
+	mut counts := [16]int{}
+	to := u8(255)
+	for i := u8(254); i <= to; i++ {
+		if i == 0 {
+			counts[0] = 99
+			break
+		}
+		counts[0]++
+	}
+	for i := u8(1); i >= u8(0); i-- {
+		if i == 255 {
+			counts[1] = 99
+			break
+		}
+		counts[1]++
+	}
+	for i := u8(254); i <= to; i++ {
+		if i == 0 {
+			counts[2] = 99
+			break
+		}
+		counts[2]++
+		continue
+	}
+	mut outside := u8(254)
+	for ; outside <= to; outside++ {
+		if outside == 0 {
+			counts[3] = 99
+			break
+		}
+		counts[3]++
+	}
+	counts[4] = int(outside)
+	for i := u8(1); i <= to; i++ {
+		if i == 0 {
+			counts[5] = 99
+			break
+		}
+		counts[5]++
+		i = to
+	}
+	mut reset := false
+	for i := u8(254); i <= to; i++ {
+		if i == 0 {
+			counts[6] = 99
+			break
+		}
+		counts[6]++
+		if i == 255 && !reset {
+			reset = true
+			i = 253
+			continue
+		}
+	}
+	for i := u16(65534); i <= u16(65535); i++ {
+		if i == 0 {
+			counts[7] = 99
+			break
+		}
+		counts[7]++
+	}
+	for i := u32(0xfffffffe); i <= u32(0xffffffff); i++ {
+		if i == 0 {
+			counts[8] = 99
+			break
+		}
+		counts[8]++
+	}
+	for i := u64(0xfffffffffffffffe); i <= u64(0xffffffffffffffff); i++ {
+		if i == 0 {
+			counts[9] = 99
+			break
+		}
+		counts[9]++
+	}
+	for i := uint(-2); i <= uint(-1); i++ {
+		if i == 0 {
+			counts[10] = 99
+			break
+		}
+		counts[10]++
+	}
+	// These forms do not receive transform's inclusive unsigned post guard.
+	for i := u8(255); to >= i; i++ {
+		counts[11]++
+		if i == 0 { break }
+	}
+	for i := u8(255); (i <= to); i++ {
+		counts[12]++
+		if i == 0 { break }
+	}
+	for i := u8(255); i <= to; i += 1 {
+		counts[13]++
+		if i == 0 { break }
+	}
+	for i := rune(0xfffffffe); i <= rune(0xffffffff); i++ {
+		if i == 0 {
+			counts[14] = 99
+			break
+		}
+		counts[14]++
+	}
+	for i := i8(126); i <= i8(127); i++ {
+		if i < 0 {
+			counts[15] = 99
+			break
+		}
+		counts[15]++
+	}
+	return counts
+}
+
+type ConstLoopByte = u8
+
+@[comptime]
+fn const_direct_alias_loop() int {
+	mut count := 0
+	for i := ConstLoopByte(254); i <= ConstLoopByte(255); i++ {
+		if i == 0 { return 99 }
+		count++
+	}
+	return count
+}
+
+@[comptime]
+fn const_copied_alias_loop() int {
+	start := ConstLoopByte(254)
+	mut count := 0
+	for i := start; i <= ConstLoopByte(255); i++ {
+		if i == 0 { return 99 }
+		count++
+	}
+	return count
+}
+
+@[comptime]
+fn const_parameter_alias_loop(start ConstLoopByte) int {
+	mut count := 0
+	for i := start; i <= ConstLoopByte(255); i++ {
+		if i == 0 { return 99 }
+		count++
+	}
+	return count
+}
+
+@[comptime]
+fn const_alias_loop_nonboundary() int {
+	mut count := 0
+	for i := ConstLoopByte(1); i <= ConstLoopByte(2); i++ {
+		count++
+	}
+	return count
+}
+
+@[comptime]
+fn const_alias_loop_early_exit(use_return bool) int {
+	for i := ConstLoopByte(255); i <= ConstLoopByte(255); i++ {
+		if use_return { return 7 }
+		break
+	}
+	return 8
+}
+
+const computed_alias_loop_nonboundary = const_alias_loop_nonboundary()
+const computed_alias_loop_return = const_alias_loop_early_exit(true)
+const computed_alias_loop_break = const_alias_loop_early_exit(false)
+
+fn test_comptime_unsigned_loop_guards_match_runtime() {
+	assert computed_unsigned_loop_counts == [2, 2, 2, 2, 255, 1, 4, 2, 2, 2, 2, 2, 2, 2, 99, 99]!
+	assert computed_unsigned_loop_counts == const_unsigned_inclusive_loop_counts()
+	assert const_direct_alias_loop() == 2
+	assert const_copied_alias_loop() == 99
+	assert const_parameter_alias_loop(ConstLoopByte(254)) == 99
+	assert computed_alias_loop_nonboundary == 2
+	assert computed_alias_loop_nonboundary == const_alias_loop_nonboundary()
+	assert computed_alias_loop_return == 7
+	assert computed_alias_loop_return == const_alias_loop_early_exit(true)
+	assert computed_alias_loop_break == 8
+	assert computed_alias_loop_break == const_alias_loop_early_exit(false)
+}

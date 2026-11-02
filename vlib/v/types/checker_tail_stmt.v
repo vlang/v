@@ -12678,6 +12678,56 @@ fn (tc &TypeChecker) const_int_literal_arithmetic(id flat.NodeId, depth int) boo
 	}
 }
 
+// Use Cgen's syntactic count lookup for literal-left-shift widening. A cast or
+// call is not a known count here, and arithmetic between named counts is raw.
+fn (tc &TypeChecker) const_int_shift_count_value(id flat.NodeId, depth int, module_name string, seen []string, mut context ConstIntContext) ?int {
+	if depth > 128 || !tc.valid_node_id(id) || context.failure.len > 0 { return none }
+	node := tc.a.node(id)
+	match node.kind {
+		.int_literal, .ident, .selector {
+			return tc.const_int_expr_with_context(id, module_name, seen, mut context)
+		}
+		.paren {
+			if node.children_count > 0 {
+				return tc.const_int_shift_count_value(tc.a.child(node, 0), depth + 1, module_name, seen, mut context)
+			}
+		}
+		.prefix {
+			if node.children_count == 0 || node.op !in [.plus, .minus, .bit_not] { return none }
+			value := tc.const_int_shift_count_value(tc.a.child(node, 0), depth + 1, module_name, seen, mut context)?
+			return match node.op {
+				.plus { value }
+				.minus { -value }
+				else { ~value }
+			}
+		}
+		.infix {
+			if node.children_count < 2 || node.op !in [.plus, .minus, .mul, .div, .mod, .pipe,
+				.xor, .amp] {
+				return none
+			}
+			left := tc.const_int_shift_count_value(tc.a.child(node, 0), depth + 1, module_name, seen, mut context)?
+			right := tc.const_int_shift_count_value(tc.a.child(node, 1), depth + 1, module_name, seen, mut context)?
+			if node.op in [.div, .mod]
+				&& (right == 0 || (left == i64(-9223372036854775807) - 1 && right == -1)) {
+				return none
+			}
+			return match node.op {
+				.plus { int(u64(left) + u64(right)) }
+				.minus { int(u64(left) - u64(right)) }
+				.mul { int(u64(left) * u64(right)) }
+				.div { left / right }
+				.mod { left % right }
+				.pipe { left | right }
+				.xor { left ^ right }
+				else { left & right }
+			}
+		}
+		else {}
+	}
+	return none
+}
+
 // Preserve C intermediate widths before a surrounding cast or typed division
 // widens the value; narrow primitive arithmetic is promoted to at least i32.
 fn (tc &TypeChecker) const_int_c_expression_type(id flat.NodeId, depth int, module_name string, seen []string, mut context ConstIntContext) ?Type {
@@ -12686,6 +12736,23 @@ fn (tc &TypeChecker) const_int_c_expression_type(id flat.NodeId, depth int, modu
 	if node.kind == .sizeof_expr { return builtin_usize_type }
 	if node.kind == .paren && node.children_count == 1 {
 		return tc.const_int_c_expression_type(tc.a.child(node, 0), depth + 1, module_name, seen, mut context)
+	}
+	if node.kind == .infix && node.op == .left_shift && node.children_count == 2
+		&& !tc.node_is_in_translated_file(id) {
+		left_id := tc.a.child(node, 0)
+		right_id := tc.a.child(node, 1)
+		if left_type := tc.const_int_recorded_type(left_id, depth + 1, module_name, seen, mut context) {
+			if right_type := tc.const_int_recorded_type(right_id, depth + 1, module_name, seen, mut context) {
+				if const_eval_integer_width(left_type) <= 64 && const_eval_integer_width(right_type) <= 64 {
+					if tc.a.node(left_id).kind == .int_literal {
+						if count := tc.const_int_shift_count_value(right_id, depth + 1, module_name, seen, mut context) {
+							if count >= 31 && count < 64 { return builtin_u64_type }
+						}
+					}
+					return left_type
+				}
+			}
+		}
 	}
 	if node.kind == .prefix && node.op in [.plus, .minus, .bit_not] {
 		child_id := tc.a.child(node, 0)
@@ -12819,6 +12886,36 @@ fn (tc &TypeChecker) const_int_expr_with_context(id flat.NodeId, module_name str
 			}
 			right := tc.const_int_expr_with_context(tc.a.child(&node, 1), module_name, seen, mut context) or { return none }
 			if !left_resolved { return none }
+			if node.op in [.left_shift, .right_shift, .right_shift_unsigned]
+				&& context.evaluator == unsafe { nil } && !tc.node_is_in_translated_file(id) {
+				if typ := tc.const_int_recorded_type(id, 0, module_name, seen, mut context) {
+					if left_type := tc.const_int_recorded_type(tc.a.child(node, 0), 0, module_name, seen, mut context) {
+						if right_type := tc.const_int_recorded_type(tc.a.child(node, 1), 0, module_name, seen, mut context) {
+							shift_type := if node.op == .left_shift {
+								tc.const_int_c_expression_type(id, 0, module_name, seen, mut context) or { typ }
+							} else if node.op == .right_shift {
+								left_type
+							} else {
+								typ
+							}
+							width := const_eval_integer_width(shift_type)
+							if width > 0 && width <= 64 && const_eval_integer_width(left_type) <= 64
+								&& const_eval_integer_width(right_type) <= 64 {
+								if right < 0 || right >= width { return 0 }
+								l := const_eval_integer_cast(left, shift_type)
+								result := if node.op == .left_shift {
+									i64(u64(l) << right)
+								} else if node.op == .right_shift_unsigned || const_eval_integer_unsigned(shift_type) {
+									i64(u64(l) >> right)
+								} else {
+									l >> right
+								}
+								return int(const_eval_integer_cast(result, shift_type))
+							}
+						}
+					}
+				}
+			}
 			if node.op in [.div, .mod] && context.evaluator == unsafe { nil }
 				&& !tc.node_is_in_translated_file(id) {
 				if typ := tc.const_int_recorded_type(id, 0, module_name, seen, mut context) {

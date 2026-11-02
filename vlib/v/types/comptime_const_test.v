@@ -1218,3 +1218,200 @@ fn test_comptime_const_ordinary_integer_queries_before_annotations() ! {
 		assert tc.comptime_const_values.len == 0
 	}
 }
+
+fn test_comptime_const_ordinary_shift_queries_use_native_widths() ! {
+	original_bits := platform_int_bits()
+	defer { set_platform_int_bits(original_bits) }
+	path := os.join_path(os.vtmp_dir(), 'comptime_const_shift_bounds_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	source := [
+		'type Byte = u8',
+		'const logical_bound = 1 + int((-5 >>> 1) % u32(3))',
+		'const logical_literal = -5 >>> 1',
+		'const logical_byte = i8(-5) >>> 1',
+		'const logical_word = i16(-5) >>> 1',
+		'const signed_right = i8(-5) >> 1',
+		'const narrow_chain = (u8(200) << 1) >> 1',
+		'const signed_chain = (i8(100) << 1) >> 1',
+		'const alias_chain = (Byte(200) << 1) >> 1',
+		'const wide_count_chain = (u8(200) << u64(1)) >> u64(1)',
+		'const unsigned_high = u64(0xffffffffffffffff) >> 63',
+		'const unsigned_word = u32(0xffffffff) >>> 31',
+		'const large_left = 1 + int(u8(1) << int(8))',
+		'const large_right = 1 + int(u8(255) >> int(8))',
+		'const large_logical = 1 + int(i8(-1) >>> int(8))',
+		'const negative_left = 1 + int(u16(3) << -1)',
+		'const negative_right = 1 + int(i16(-3) >> -1)',
+		'const negative_logical = 1 + int(i16(-3) >>> -1)',
+		'const wide_literal_remainder = 1 + int((1 << 63) % u64(3))',
+		'const count_a = u8(250)',
+		'const count_b = u8(37)',
+		'const count_unit = u8(1)',
+		'const stored_count = (count_a + count_b) / count_unit',
+		'const literal_named = 1 << stored_count',
+		'const literal_cast = 1 << u8(31)',
+		'const literal_raw_counts = 1 << ((count_a + count_b) / count_unit)',
+		'const literal_wide = 1 << 40',
+		'fn main() { _ = [logical_bound]u8{} _ = [narrow_chain]u8{} _ = [large_left]u8{} }',
+	].join('\n')
+	os.write_file(path, source)!
+	for bits in [32, 64] {
+		set_platform_int_bits(bits)
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_file(path)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		for checked in [false, true] {
+			if checked { tc.check_semantics() }
+			assert tc.errors.len == 0, tc.errors.str()
+			for name, expected in {
+				'logical_bound':          3
+				'logical_literal':        2147483645
+				'logical_byte':           125
+				'logical_word':           32765
+				'signed_right':           -3
+				'narrow_chain':           72
+				'signed_chain':           -28
+				'alias_chain':            72
+				'wide_count_chain':       72
+				'unsigned_high':          1
+				'unsigned_word':          1
+				'large_left':             1
+				'large_right':            1
+				'large_logical':          1
+				'negative_left':          1
+				'negative_right':         1
+				'negative_logical':       1
+				'wide_literal_remainder': 3
+				'stored_count':           31
+			} {
+				assert tc.const_int_value(name, [])? == expected, '${name}, bits=${bits}, checked=${checked}'
+			}
+			for name, expected_type in {
+				'literal_named':      flat.source_type_u64
+				'literal_cast':       flat.source_type_int
+				'literal_raw_counts': flat.source_type_int
+				'literal_wide':       flat.source_type_u64
+			} {
+				mut context := ConstIntContext{ check_only: true }
+				typ := tc.const_int_c_expression_type(tc.const_exprs[name]!, 0, tc.cur_module, [], mut context)?
+				assert typ.source_type_id() == expected_type, '${name}, bits=${bits}, checked=${checked}'
+				assert context.evaluator == unsafe { nil }
+				assert context.failure == ''
+			}
+			assert tc.comptime_const_values.len == 0
+		}
+	}
+}
+
+fn test_comptime_const_ordinary_shift_queries_keep_translated_promotions() {
+	for translated in [false, true] {
+		prefix := if translated { '@[translated]\n' } else { '' }
+		tc := comptime_const_checker('${prefix}module main\nconst chained = (u8(200) << 1) >> 1\nconst large = u8(1) << int(8)\nfn main() { _ = chained _ = large }')
+		assert tc.errors.len == 0, tc.errors.str()
+		assert tc.const_int_value('chained', [])? == if translated { 200 } else { 72 }
+		assert tc.const_int_value('large', [])? == if translated { 256 } else { 0 }
+		assert tc.comptime_const_values.len == 0
+	}
+}
+
+fn test_comptime_const_unsigned_inclusive_loops_match_post_guards() {
+	for body, expected in {
+		'mut n := 0 for i := u8(254); i <= u8(255); i++ { n++ if i == 0 { return 99 } } return n':                      2
+		'mut n := 0 for i := u8(1); i >= u8(0); i-- { n++ if i == 255 { return 99 } } return n':                        2
+		'mut n := 0 for i := u8(254); i <= u8(255); i++ { n++ continue } return n':                                     2
+		'mut n := 0 for i := u8(1); i >= u8(0); i-- { n++ continue } return n':                                         2
+		'mut i := u8(254) for ; i <= u8(255); i++ {} return int(i)':                                                    255
+		'mut i := u8(1) for ; i >= u8(0); i-- {} return int(i)':                                                        0
+		'mut n := 0 for i := u8(0); i <= u8(255); i++ { n++ i = 255 if n > 2 { return 99 } } return n':                 1
+		'mut n := 0 for i := u8(255); i <= u8(255); i++ { n++ if n == 1 { i = 254 } if n > 2 { return 99 } } return n': 2
+		'mut n := 0 for i := u8(0); i >= u8(0); i-- { n++ if n == 1 { i = 1 } if n > 2 { return 99 } } return n':       2
+		'for i := u8(255); i <= u8(255); i++ { break } return 7':                                                       7
+		'for i := u8(255); i <= u8(255); i++ { return 7 } return 0':                                                    7
+		'for i := u8(254); u8(255) >= i; i++ { if i == 0 { return 99 } } return 2':                                     99
+		'for i := u8(254); (i <= u8(255)); i++ { if i == 0 { return 99 } } return 2':                                   99
+		'for i := u8(254); i <= u8(255); i += 1 { if i == 0 { return 99 } } return 2':                                  99
+	} {
+		for constant_first in [false, true] {
+			decl := '@[comptime]\nfn compute() int { ${body} }\n'
+			constant := 'const n = compute()\n'
+			source := if constant_first { constant + decl } else { decl + constant }
+			tc := comptime_const_checker(source + 'fn main() { _ = n }')
+			assert tc.errors.len == 0, '${body}, constant_first=${constant_first}: ${tc.errors}'
+			assert tc.comptime_const_values['n']!.integer == expected, '${body}, constant_first=${constant_first}'
+		}
+	}
+}
+
+fn test_comptime_const_unsigned_inclusive_loop_widths_and_rune_exclusion() ! {
+	original_bits := platform_int_bits()
+	defer { set_platform_int_bits(original_bits) }
+	path := os.join_path(os.vtmp_dir(), 'comptime_const_loop_widths_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	for bits in [32, 64] {
+		set_platform_int_bits(bits)
+		for item in [
+			['u8', '254', '255'],
+			['u16', '65534', '65535'],
+			['u32', '4294967294', '4294967295'],
+			['u64', '0xfffffffffffffffe', '0xffffffffffffffff'],
+			['uint', '-2', '-1'],
+			['usize', '-2', '-1'],
+		] {
+			os.write_file(path, '@[comptime]\nfn compute() int { mut n := 0 for i := ${item[0]}(${item[1]}); i <= ${item[0]}(${item[2]}); i++ { n++ if i == 0 { return 99 } } return n }\nconst n = compute()\nfn main() { _ = n }')!
+			mut p := parser.Parser.new(pref.new_preferences())
+			a := p.parse_file(path)
+			if item[0] == 'usize' {
+				assert p.diagnostics.len == 2, p.diagnostics.str()
+				assert p.diagnostics.all(it.severity == 'warning:' && it.message == '`usize` is deprecated; use `uint` instead'), p.diagnostics.str()
+			} else {
+				assert p.diagnostics.len == 0, p.diagnostics.str()
+			}
+			mut tc := TypeChecker.new(a)
+			tc.collect(a)
+			tc.check_semantics()
+			assert tc.errors.len == 0, '${item}, bits=${bits}: ${tc.errors}'
+			assert tc.comptime_const_values['n']!.integer == 2, '${item}, bits=${bits}'
+		}
+		rune_loop := comptime_const_checker('@[comptime]\nfn compute() int { for i := rune(0xfffffffe); i <= rune(0xffffffff); i++ { if i == 0 { return 99 } } return 2 }\nconst n = compute()\nfn main() { _ = n }')
+		assert rune_loop.errors.len == 0, rune_loop.errors.str()
+		assert rune_loop.comptime_const_values['n']!.integer == 99
+	}
+}
+
+fn test_comptime_const_alias_inclusive_loop_boundary_restriction() {
+	for body in [
+		'for i := Byte(254); i <= Byte(255); i++ { if i == 0 { return 99 } } return 2',
+		'value := Byte(254) for i := value; i <= Byte(255); i++ { if i == 0 { return 99 } } return 2',
+		'for i := start; i <= Byte(255); i++ { if i == 0 { return 99 } } return 2',
+		'for i := Byte(1); i >= Byte(0); i-- { if i == 255 { return 99 } } return 2',
+	] {
+		decl := '@[comptime]\nfn compute(start Byte) int { ${body} }\n'
+		for constant_first in [false, true] {
+			constant := 'const n = compute(Byte(254))\n'
+			source := 'type Byte = u8\n' + if constant_first {
+				constant + decl
+			} else {
+				decl + constant
+			}
+			tc := comptime_const_checker(source + 'fn main() { _ = n }')
+			assert tc.errors.any(it.msg.contains('cannot evaluate const `n`') && it.msg.contains('alias counters are not supported')), '${body}, constant_first=${constant_first}: ${tc.errors}'
+			assert 'n' !in tc.comptime_const_values
+		}
+		ordinary := comptime_const_checker('type Byte = u8\n' + decl + 'fn main() { _ = compute(Byte(254)) }')
+		assert ordinary.errors.len == 0, ordinary.errors.str()
+		assert ordinary.comptime_const_values.len == 0
+	}
+	for body, expected in {
+		'mut n := 0 for i := Byte(1); i <= Byte(2); i++ { n++ } return n':                                                2
+		'for i := Byte(255); i <= Byte(255); i++ { break } return 7':                                                     7
+		'for i := Byte(255); i <= Byte(255); i++ { return 7 } return 0':                                                  7
+		'mut n := 0 for i := Byte(255); i <= Byte(255); i++ { n++ if n == 1 { i = Byte(254) } else { break } } return n': 2
+		'for i := Byte(255); i <= Byte(254); i++ { return 99 } return 7':                                                 7
+	} {
+		tc := comptime_const_checker('type Byte = u8\n@[comptime]\nfn compute() int { ${body} }\nconst n = compute()\nfn main() { _ = n }')
+		assert tc.errors.len == 0, '${body}: ${tc.errors}'
+		assert tc.comptime_const_values['n']!.integer == expected, body
+	}
+}

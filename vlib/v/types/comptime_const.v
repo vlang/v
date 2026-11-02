@@ -1466,6 +1466,7 @@ fn (mut e ConstEval) stmt(id flat.NodeId) !ConstEvalFlow {
 				flow := e.scope(node, 3)!
 				if flow.kind == .return_stmt { return flow }
 				if flow.kind == .break_stmt { break }
+				if e.unsigned_inclusive_loop_post_overflows(cond, e.tc.a.child(node, 2))! { break }
 				_ = e.stmt(e.tc.a.child(node, 2))!
 			}
 			return ConstEvalFlow{}
@@ -1483,6 +1484,43 @@ fn (mut e ConstEval) stmt(id flat.NodeId) !ConstEvalFlow {
 		}
 		else { return error('unsupported statement `${node.kind}`') }
 	}
+}
+
+// Match transform's unsigned_inclusive_for_post_body at the post boundary,
+// including continue paths and mutations made by the loop body.
+fn (e &ConstEval) unsigned_inclusive_loop_post_overflows(cond_id flat.NodeId, post_id flat.NodeId) !bool {
+	if !e.tc.valid_node_id(cond_id) || !e.tc.valid_node_id(post_id) { return false }
+	cond := e.tc.a.node(cond_id)
+	post := e.tc.a.node(post_id)
+	if cond.kind != .infix || cond.children_count < 2
+		|| post.kind != .expr_stmt || post.children_count == 0 {
+		return false
+	}
+	post_expr := e.tc.a.child_node(post, 0)
+	if post_expr.kind != .postfix || post_expr.children_count == 0
+		|| post_expr.op !in [.inc, .dec] {
+		return false
+	}
+	if (post_expr.op == .inc && cond.op != .le)
+		|| (post_expr.op == .dec && cond.op != .ge) {
+		return false
+	}
+	index := e.tc.a.child_node(post_expr, 0)
+	lhs := e.tc.a.child_node(cond, 0)
+	if index.kind != .ident || lhs.kind != .ident || lhs.value != index.value { return false }
+	value := e.local(index.value) or { return false }
+	if unalias_type(value.typ).source_type_id() !in [flat.source_type_u8, flat.source_type_u16,
+		flat.source_type_u32, flat.source_type_u64, flat.source_type_uint] {
+		return false
+	}
+	limit := if post_expr.op == .inc { const_eval_integer_cast(-1, value.typ) } else { i64(0) }
+	if value.integer != limit { return false }
+	// Runtime storage can retain or erase a nominal alias depending on the
+	// declaration. Reject ambiguous boundary guards instead of guessing that type.
+	if value.typ is Alias {
+		return error('unsigned inclusive loop boundary guards for alias counters are not supported')
+	}
+	return true
 }
 
 // Match transform's stable_expr_for_reuse for supported range bounds. Other

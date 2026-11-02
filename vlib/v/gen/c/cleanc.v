@@ -16130,12 +16130,47 @@ fn (mut g FlatGen) const_integer_storage_expression(id flat.NodeId, typ types.Ty
 // ordinary expressions, using only forms valid in C static initializers.
 fn (mut g FlatGen) const_integer_infix_expression(id flat.NodeId, node flat.Node, seen []string) ?string {
 	if isnil(g.tc) || node.children_count < 2 || node.op !in [.div, .mod, .eq, .ne, .lt, .gt, .le,
-		.ge]
+		.ge, .left_shift, .right_shift, .right_shift_unsigned]
 		|| g.expr_is_in_translated_file(id) || g.tc.translated_files[g.tc.cur_file] {
 		return none
 	}
 	lhs_id := g.a.child(&node, 0)
 	rhs_id := g.a.child(&node, 1)
+	if node.op in [.left_shift, .right_shift, .right_shift_unsigned] {
+		lhs_type := g.usable_expr_type(lhs_id)
+		rhs_type := g.usable_expr_type(rhs_id)
+		if int128_signedness(lhs_type) != none || int128_signedness(rhs_type) != none {
+			return g.expr_to_string(id)
+		}
+		// Keep the ordinary emitter's bare-literal widening as a u64
+		// expression, including its promotion in a surrounding comparison.
+		if node.op == .left_shift && g.shift_needs_64bit_widening(&node) {
+			return none
+		}
+		shift_type := if node.op == .right_shift_unsigned {
+			*g.usable_expr_type(id)
+		} else {
+			*lhs_type
+		}
+		if !unalias_type(shift_type).is_integer() {
+			return none
+		}
+		if !g.is_const_expr(id) {
+			// The guard repeats its count, so runtime operands use the
+			// normal temporary-based path and execute exactly once.
+			return g.expr_to_string(id)
+		}
+		ut, bits := g.unsigned_shift_type_parts(shift_type)
+		ct := if node.op == .right_shift_unsigned {
+			ut
+		} else {
+			g.value_c_type(unalias_type(shift_type))
+		}
+		lhs := g.const_expr_to_string(lhs_id, seen)
+		rhs := g.const_expr_to_string(rhs_id, seen)
+		op := if node.op == .left_shift { '<<' } else { '>>' }
+		return '((u64)(${rhs}) >= ${bits} ? (${ct})0 : (${ct})(((${ct})(${lhs})) ${op} ((u64)(${rhs}))))'
+	}
 	if node.op in [.div, .mod] {
 		if !g.has_builtins {
 			return none

@@ -560,3 +560,137 @@ fn test_cli_comptime_constant_integer_operations_match_runtime() ! {
 	assert control_run.exit_code == 0, control_run.output
 	assert control_run.output.trim_space() == 'ok', control_run.output
 }
+
+fn test_cli_comptime_constant_shifts_match_runtime() ! {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_constant_shifts_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	suffix := if os.user_os() == 'windows' { '.exe' } else { '' }
+	args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none', '-cc',
+		'tcc']
+	cases := [
+		ComptimeConstantOperationCase{
+			expression: '(u8(200) << 1) >> 1'
+			value_type: 'u8'
+			expected:   '72'
+		},
+		ComptimeConstantOperationCase{
+			expression: '(u16(50000) << 1) >> 1'
+			value_type: 'u16'
+			expected:   '17232'
+		},
+		ComptimeConstantOperationCase{
+			expression: '(i8(100) << 1) >> 1'
+			value_type: 'i8'
+			expected:   '-28'
+		},
+		ComptimeConstantOperationCase{
+			expression: 'i8(-2) >> 1'
+			value_type: 'i8'
+			expected:   '-1'
+		},
+		ComptimeConstantOperationCase{
+			expression: 'i8(-2) >>> 1'
+			value_type: 'u8'
+			expected:   '127'
+		},
+		ComptimeConstantOperationCase{
+			expression: 'u8(1) << u8(8)'
+			value_type: 'u8'
+			expected:   '0'
+		},
+		ComptimeConstantOperationCase{
+			expression: 'u8(200) >> i8(-1)'
+			value_type: 'u8'
+			expected:   '0'
+		},
+		ComptimeConstantOperationCase{
+			expression: 'i8(-2) >>> u8(8)'
+			value_type: 'u8'
+			expected:   '0'
+		},
+		ComptimeConstantOperationCase{
+			expression: 'u32(1) << u32(32)'
+			value_type: 'u32'
+			expected:   '0'
+		},
+		ComptimeConstantOperationCase{
+			expression: 'i64(-1) >> i64(64)'
+			value_type: 'i64'
+			expected:   '0'
+		},
+		ComptimeConstantOperationCase{
+			expression: 'u64(1) << u64(63)'
+			value_type: 'u64'
+			expected:   '9223372036854775808'
+		},
+		ComptimeConstantOperationCase{
+			expression: 'u64(0xffffffffffffffff) >>> -1'
+			value_type: 'u64'
+			expected:   '0'
+		},
+		ComptimeConstantOperationCase{
+			expression: '1 << 40'
+			value_type: 'int'
+			expected:   '1099511627776'
+		},
+		ComptimeConstantOperationCase{
+			expression: '(1 << 40) < i64(-1)'
+			value_type: 'bool'
+			expected:   'true'
+		},
+		ComptimeConstantOperationCase{
+			expression: '(1 << 63) >> 63'
+			value_type: 'int'
+			expected:   '-1'
+		},
+		ComptimeConstantOperationCase{
+			expression: '1 << 64'
+			value_type: 'int'
+			expected:   '0'
+		},
+		ComptimeConstantOperationCase{
+			expression: '-5 >>> 1'
+			value_type: 'u32'
+			expected:   '2147483645'
+		},
+		ComptimeConstantOperationCase{
+			expression: '(Tiny(200) << 1) >> 1'
+			value_type: 'Tiny'
+			expected:   '72'
+		},
+	]
+	for i, case in cases {
+		for depth in 0 .. 3 {
+			name := '${i}_${depth}'
+			initializer := match depth {
+				0 { case.expression }
+				1 { '[${case.expression}]!' }
+				else { '[[${case.expression}]!]!' }
+			}
+			value_type := '[1]'.repeat(depth) + case.value_type
+			index := '[0]'.repeat(depth)
+			// Each shape exercises both ordinary constant expansion and the
+			// fixed-literal path inside an ordinary call to the annotated helper.
+			program := 'type Tiny = u8\nconst value = ${initializer}\n@[comptime]\nfn make_value() ${value_type} { return ${initializer} }\nconst made_value = make_value()\n@[comptime]\nfn compute() ${case.value_type} { return value${index} }\nconst result = compute()\nfn main() { println(result) println(compute()) println(made_value${index}) println(make_value()${index}) }'
+			os.write_file(source, program)!
+			executable := os.join_path(root, 'runtime_${name}${suffix}')
+			built := os.exec([...args, '-o', executable, source])
+			assert built.exit_code == 0, '${name}: ${built.output}'
+			runtime := os.exec([executable])
+			assert runtime.exit_code == 0, '${name}: ${runtime.output}'
+			assert runtime.output.trim_space() == '${case.expected}\n${case.expected}\n${case.expected}\n${case.expected}', '${name}: ${runtime.output}'
+		}
+	}
+	// Invalid counts must still evaluate both runtime operands exactly once.
+	// The legacy bound query must use the unsigned width of literal >>> too.
+	control := 'const n = 1 + int((-5 >>> 1) % u32(3))\n@[comptime]\nfn bound_count() int { return n }\nconst folded_n = bound_count()\nstruct Counter {\nmut:\ncalls int\n}\nfn byte_value(mut counter Counter) u8 { counter.calls++ return u8(200) }\nfn negative_count(mut counter Counter) int { counter.calls++ return -1 }\nfn wide_count(mut counter Counter) u8 { counter.calls++ return u8(8) }\nfn one(mut counter Counter) int { counter.calls++ return 1 }\nfn main() {\nassert n == 3\nassert folded_n == n\nvalues := [n]u8{}\nassert values.len == n\nmut counter := Counter{}\nleft := [byte_value(mut counter) << negative_count(mut counter)]!\nassert left[0] == 0\nassert counter.calls == 2\nright := [[byte_value(mut counter) >> wide_count(mut counter)]!]!\nassert right[0][0] == 0\nassert counter.calls == 4\nlogical := [byte_value(mut counter) >>> one(mut counter)]!\nassert logical[0] == 100\nassert counter.calls == 6\nchained := [(byte_value(mut counter) << 1) >> 1]!\nassert chained[0] == 72\nassert counter.calls == 7\nlarge := u128(1) << 100\nassert large >> 100 == u128(1)\nprintln("ok")\n}'
+	os.write_file(source, control)!
+	control_path := os.join_path(root, 'runtime_calls${suffix}')
+	control_build := os.exec([...args, '-o', control_path, source])
+	assert control_build.exit_code == 0, control_build.output
+	control_run := os.exec([control_path])
+	assert control_run.exit_code == 0, control_run.output
+	assert control_run.output.trim_space() == 'ok', control_run.output
+}
