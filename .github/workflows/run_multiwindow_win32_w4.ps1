@@ -695,7 +695,7 @@ foreach ($group in @($cases | Group-Object File)) {
 
 $testPaths = @($oracle, $nativeTest, $publicTest, $noOptProbe)
 $knownTestFileHashes = @(
-    '2884f7b9b9d9b64852dae48718126368c6bfed9026813298505512bbed3b64ab'
+    '82b9227f8a900d5a82794e65188885e63a4961b6583db4514f5879bd18c2c059'
 	'c85dc17d04e6978206babf63bb158d8a97c1e0e43d561c6d228dc9e172378e00'
     'aae9e07b56175987fb94f794380c1bf0b36c53fb7ef8c7e77efc423879b43234'
     '288f148ca15b6694481f117c03be5f80c4045baf76d3b0e90db61b5e0596741c'
