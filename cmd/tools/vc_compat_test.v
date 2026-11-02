@@ -34,10 +34,16 @@ fn test_vc_compat_matches_the_native_memory_file_qualifier() ! {
 			if definition_const == prototype_const {
 				assert filtered.output == text
 			}
-			checked := os.exec(['sh', script, source, cc, '-std=c99', '-Werror', '-o', executable])
-			assert checked.exit_code == 0, checked.output
-			ran := os.exec([executable])
-			assert ran.exit_code == 0, ran.output
+			for separator in [false, true] {
+				mut command := ['sh', script, source, cc, '-std=c99', '-Werror', '-o', executable]
+				if separator {
+					command << '--'
+				}
+				checked := os.exec(command)
+				assert checked.exit_code == 0, checked.output
+				ran := os.exec([executable])
+				assert ran.exit_code == 0, ran.output
+			}
 			assert os.read_file(source)! == text
 		}
 	}
@@ -88,7 +94,7 @@ fn test_vc_compat_preserves_linux_prctl_and_skips_it_elsewhere() {
 	failed := os.exec([...(os.split_args(command) or { panic(err) }), '37', '${args}',
 		'flag with spaces'])
 	assert failed.exit_code == 37, failed.output
-	assert os.read_file(args)! == 'flag with spaces\n-x\nc\n-\n-x\nnone\n'
+	assert os.read_file(args)! == 'flag with spaces\n-x\nc\n-\n'
 
 	// Do not let a changed snapshot format leave the rest of the file inside
 	// a silently unterminated platform guard.
@@ -229,6 +235,29 @@ fn test_vc_compat_links_libraries_after_the_streamed_source() ! {
 	cc := os.getenv_opt('CC') or { 'cc' }
 	checked := os.exec(['sh', os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat.sh'), source,
 		cc, '-std=c99', '-fno-builtin', '-o', executable, '--', '-lm'])
+	assert checked.exit_code == 0, checked.output
+	ran := os.exec([executable])
+	assert ran.exit_code == 0, ran.output
+}
+
+fn test_vc_compat_links_objects_after_the_streamed_source() ! {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'vc_compat_object_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'snapshot.c')
+	object_source := os.join_path(root, 'object.c')
+	object := os.join_path(root, 'object with spaces.o')
+	executable := os.join_path(root, 'snapshot')
+	os.write_file(source, 'int linked(void);\nint main(void) { return linked() != 42; }\n')!
+	os.write_file(object_source, 'int linked(void) { return 42; }\n')!
+	cc := os.getenv_opt('CC') or { 'cc' }
+	compiled := os.exec([cc, '-std=c99', '-Werror', '-c', object_source, '-o', object])
+	assert compiled.exit_code == 0, compiled.output
+	checked := os.exec(['sh', os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat.sh'), source,
+		cc, '-std=c99', '-Werror', '-o', executable, '--', object])
 	assert checked.exit_code == 0, checked.output
 	ran := os.exec([executable])
 	assert ran.exit_code == 0, ran.output
