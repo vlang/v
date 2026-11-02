@@ -1,10 +1,6 @@
 module os
 
-pub struct C.timespec {
-pub mut:
-	tv_sec  i64
-	tv_nsec i64
-}
+#include <time.h>
 
 fn C.nanosleep(req &C.timespec, rem &C.timespec) i32
 
