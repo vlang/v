@@ -16,7 +16,7 @@ fn new_array_reader(a []u8) &ArrayReader {
 }
 
 fn (mut r ArrayReader) read(mut buf []u8) !int {
-	read := copy(mut buf, r.a[r.i..])
+	read := copy_bytes(mut buf, r.a[r.i..])
 	r.i += read
 	return read
 }
@@ -183,7 +183,7 @@ fn (mut r OneByteReader) read(mut buf []u8) !int {
 	if r.i == r.a.len {
 		return Eof{}
 	}
-	read := copy(mut buf, [r.a[r.i]])
+	read := copy_bytes(mut buf, [r.a[r.i]])
 	r.i++
 	return read
 }
@@ -278,7 +278,7 @@ fn (mut r EofAfterDataReader) read(mut buf []u8) !int {
 	if r.offset >= r.data.len {
 		return Eof{}
 	}
-	n := copy(mut buf, r.data[r.offset..])
+	n := copy_bytes(mut buf, r.data[r.offset..])
 	r.offset += n
 	return n
 }

@@ -1,0 +1,21 @@
+syntax = "proto3";
+
+package demo;
+
+enum Status {
+  // The longest name is at the beginning of this group.
+  status_unspecified = 0;
+  active = 1;
+  // The longest name is at the end of this group.
+  idle = 2;
+  temporarily_suspended = 3;
+  // A single member forms its own group.
+  retired = 7;
+  // Adjacent comments start another group.
+  gone = 8;
+  deleted = 9;
+}
+
+message Holder {
+  Status status = 1;
+}

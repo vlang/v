@@ -6637,7 +6637,9 @@ fn (mut tc TypeChecker) infer_generic_struct_init_type(node flat.Node) ?Type {
 	if base_name_id == 0 || flat.source_type_shape(base_name_id).has(.bracketed) {
 		return none
 	}
-	qualified_name_id := tc.qualify_type_name(base_name_id)
+	qualified_name_id := tc.resolve_selective_import_type_symbol_id(base_name_id) or {
+		tc.qualify_type_name(base_name_id)
+	}
 	params := tc.struct_generic_params[qualified_name_id] or {
 		// A concrete declaration in the active module shadows an unrelated
 		// bare generic declaration collected from another module.
@@ -7383,10 +7385,7 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 	if tc.check_unbound_instance_method_value(id, node) {
 		return
 	}
-	if typ := tc.enum_selector_type(&node) {
-		tc.register_synth_type(id, typ)
-		return
-	}
+	// Check imported enum visibility before resolving a valid member.
 	base_id := tc.a.child(&node, 0)
 	base := tc.a.nodes[int(base_id)]
 	if base.kind == .selector && base.children_count > 0 {

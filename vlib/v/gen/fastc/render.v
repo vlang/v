@@ -1910,10 +1910,25 @@ fn (g &Parser) render_array_equality_comparison(left_tokens []FastcExpressionTok
 	}
 	if flat.source_type_query(left_layout_query_type_id).has(.c_fixed_array_prefix) {
 		length := fastc_fixed_array_length_id(left_layout_query_type_id) or { return none }
-		left_data := g.render_fixed_array_equality_data(left_tokens, left_type) or { return none }
-		right_data := g.render_fixed_array_equality_data(right_tokens, right_type) or {
-			return none
+		mut setup := ''
+		mut data := []string{}
+		for i, operand in [left_tokens, right_tokens] {
+			typ := if i == 0 { left_type } else { right_type }
+			if g.fixed_array_uses_raw_storage(operand) {
+				data << g.render_fixed_array_equality_data(operand, typ) or { return none }
+			} else {
+				name := if i == 0 {
+					'__vf_array_eq_left_value'
+				} else {
+					'__vf_array_eq_right_value'
+				}
+				value := g.render_call_argument_expression(operand, typ) or { return none }
+				setup += '${flat.source_type_name(typ)} ${name} = (${value}); '
+				data << name + if fastc_is_pointer_type(typ) { '->data' } else { '.data' }
+			}
 		}
+		left_data := data[0]
+		right_data := data[1]
 		element_comparison := if resolved_element == flat.source_type_string {
 			'builtin__string_eq(__vf_array_eq_left[__vf_array_eq_index], __vf_array_eq_right[__vf_array_eq_index])'
 		} else {
@@ -1921,7 +1936,7 @@ fn (g &Parser) render_array_equality_comparison(left_tokens []FastcExpressionTok
 		}
 		result := if operator == .ne { '!__vf_array_equal' } else { '__vf_array_equal' }
 		return FastcRenderedExpression{
-			source: '({ ${element_storage_type} *__vf_array_eq_left = (${element_storage_type} *)(${left_data}); ${element_storage_type} *__vf_array_eq_right = (${element_storage_type} *)(${right_data}); bool __vf_array_equal = true; for (int __vf_array_eq_index = 0; __vf_array_eq_index < ${length}; __vf_array_eq_index++) { if (!(${element_comparison})) { __vf_array_equal = false; break; } } ${result}; })'
+			source: '({ ${setup}${element_storage_type} *__vf_array_eq_left = (${element_storage_type} *)(${left_data}); ${element_storage_type} *__vf_array_eq_right = (${element_storage_type} *)(${right_data}); bool __vf_array_equal = true; for (int __vf_array_eq_index = 0; __vf_array_eq_index < ${length}; __vf_array_eq_index++) { if (!(${element_comparison})) { __vf_array_equal = false; break; } } ${result}; })'
 			typ:    flat.source_type_bool
 		}
 	}
@@ -5774,7 +5789,7 @@ fn (g &Parser) render_map_lookup_option_expression(tokens []FastcExpressionToken
 	if flat.source_type_query(map_type).has(.c_pointer_suffix) {
 		map_source = '*(${map_source})'
 	}
-	key_source := g.render_membership_candidate(lookup_tokens[open + 1..lookup_tokens.len - 1], key_type) or { return none }
+	key_source := g.render_call_argument_expression(lookup_tokens[open + 1..lookup_tokens.len - 1], key_type) or { return none }
 	stored_payload := fastc_typed_option_payload(value_type) or { u32(0) }
 	option_value_type := if address_of_value {
 		fastc_with_pointer_depth(value_type, 1)
