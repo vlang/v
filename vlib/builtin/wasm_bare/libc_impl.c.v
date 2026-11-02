@@ -118,9 +118,8 @@ fn memmove(dest &C.void, const_src &C.void, n uint) &C.void {
 @[export: 'calloc']
 @[unsafe]
 fn __calloc(nmemb uint, size uint) &C.void {
-	new_area := unsafe { malloc(int(nmemb) * int(size)) }
-	unsafe { memset(new_area, 0, nmemb * size) }
-	return new_area
+	walloc_init()
+	return unsafe { g_walloc_heap.calloc(nmemb * size) }
 }
 
 fn getchar() int {
