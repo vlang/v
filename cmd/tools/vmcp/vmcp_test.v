@@ -125,8 +125,9 @@ fn test_every_tool_is_named_and_described() {
 	// Every documented tool is present. A name here that no tool implements is a
 	// gap in the catalogue; a tool here that this list omits is a silent addition.
 	for expected in ['v_project_info', 'v_modules', 'v_files', 'v_ast', 'v_symbols', 'v_symbol_at',
-		'v_references', 'v_stdlib_doc', 'v_check', 'v_test_run', 'v_doctor', 'v_veb_routes', 'v_skills',
-		'v_run', 'v_eval', 'v_edit_replace', 'v_rename_symbol', 'v_format'] {
+		'v_references', 'v_stdlib_doc', 'v_check', 'v_build', 'v_fmt_check', 'v_vet', 'v_affected',
+		'v_repo_brief', 'v_test_run', 'v_doctor', 'v_veb_routes', 'v_skills', 'v_run', 'v_eval',
+		'v_edit_replace', 'v_rename_symbol', 'v_format'] {
 		assert expected in names, '${expected} is missing from the catalogue'
 	}
 }
