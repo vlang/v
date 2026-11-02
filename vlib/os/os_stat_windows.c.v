@@ -27,14 +27,31 @@ fn C.GetFileInformationByHandle(handle voidptr, information voidptr) i32
 // stat returns metadata for the given file/folder.
 // It will return a POSIX error message, if it can not do so.
 // Pre-1970 timestamps are read from the target's Win32 file information.
+// Trailing directory separators are supported with both legacy and current CRTs.
 // C._wstat64() can be used on 32- and 64-bit Windows per
 // https://learn.microsoft.com/en-us/cpp/c-runtime-library/reference/stat-functions?view=msvc-170
 pub fn stat(path string) !Stat {
 	mut s := C.__stat64{}
+	w_path := path.to_wide()
+	defer {
+		unsafe { free(w_path) }
+	}
 	unsafe {
-		res := C._wstat64(path.to_wide(), &s)
+		res := C._wstat64(w_path, &s)
 		if res != 0 {
-			return error_posix()
+			original_error := error_posix()
+			path_end := windows_stat_path_end(path)
+			if original_error.code() != int(C.ENOENT) || path_end == path.len {
+				return original_error
+			}
+			// Legacy msvcrt rejects a trailing separator even on a directory.
+			// Retry without it, but keep the original error for files and missing paths.
+			trimmed_path := path[..path_end].to_wide()
+			retry_res := C._wstat64(trimmed_path, &s)
+			free(trimmed_path)
+			if retry_res != 0 || u32(s.st_mode) & u32(s_ifdir) == 0 {
+				return original_error
+			}
 		}
 		mut st := Stat{
 			dev:   s.st_dev
@@ -64,11 +81,7 @@ pub fn stat(path string) !Stat {
 
 fn windows_stat_file_information(path string) ?WindowsFileInformation {
 	normalized_path := path.replace('/', '\\')
-	root_len := win_root_len(normalized_path)
-	mut path_end := normalized_path.len
-	for path_end > root_len + 1 && normalized_path[path_end - 1] == `\\` {
-		path_end--
-	}
+	path_end := windows_stat_path_end(normalized_path)
 	w_path := normalized_path[..path_end].to_wide()
 	defer {
 		// to_wide allocates the UTF-16 buffer passed to CreateFileW.
@@ -89,6 +102,15 @@ fn windows_stat_file_information(path string) ?WindowsFileInformation {
 		return none
 	}
 	return information
+}
+
+fn windows_stat_path_end(path string) int {
+	root_len := win_root_len(path)
+	mut path_end := path.len
+	for path_end > root_len + 1 && is_slash(path[path_end - 1]) {
+		path_end--
+	}
+	return path_end
 }
 
 // lstat is the same as stat() for Windows, including reporting symbolic links as regular files.
