@@ -619,6 +619,7 @@ pub fn is_readable(path string) bool {
 // rm removes file in `path`.
 // On Windows it clears the file's read-only attribute for deletion and preserves
 // its other attributes. If deletion fails, it attempts to restore the original attributes.
+// A directory symlink or junction is removed itself, without touching its target.
 pub fn rm(path string) ! {
 	mut rc := 0
 	$if windows {
@@ -628,9 +629,13 @@ pub fn rm(path string) ! {
 			unsafe { free(wpath) }
 		}
 		attrs := C.GetFileAttributesW(wpath)
+		is_dir_link := attrs != u32(C.INVALID_FILE_ATTRIBUTES)
+			&& attrs & u32(C.FILE_ATTRIBUTE_DIRECTORY) != 0
+			&& attrs & u32(C.FILE_ATTRIBUTE_REPARSE_POINT) != 0
 		mut changed := false
+		// The attributes of a link are its own, so clearing them never touches the target.
 		if attrs != u32(C.INVALID_FILE_ATTRIBUTES)
-			&& attrs & u32(C.FILE_ATTRIBUTE_DIRECTORY) == 0
+			&& (attrs & u32(C.FILE_ATTRIBUTE_DIRECTORY) == 0 || is_dir_link)
 			&& attrs & u32(C.FILE_ATTRIBUTE_READONLY) != 0 {
 			without_read_only := attrs & ~u32(C.FILE_ATTRIBUTE_READONLY)
 			new_attrs := if without_read_only == 0 {
@@ -639,6 +644,21 @@ pub fn rm(path string) ! {
 				without_read_only
 			}
 			changed = C.SetFileAttributesW(wpath, new_attrs)
+		}
+		if is_dir_link {
+			// _wremove (DeleteFileW) refuses directory reparse points with EACCES,
+			// even dangling ones; RemoveDirectoryW deletes only the link itself.
+			if !C.RemoveDirectoryW(wpath) {
+				code := int(C.GetLastError())
+				if changed {
+					C.SetFileAttributesW(wpath, attrs)
+				}
+				return error_win32(
+					msg:  'Failed to remove "${path}"'
+					code: code
+				)
+			}
+			return
 		}
 		rc = C._wremove(wpath)
 		if rc == -1 {
