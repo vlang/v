@@ -1,6 +1,3 @@
-// imp is an imperative build system for V. A build script is a .vsh file that
-// declares targets and flows on a Context, then hands control to `ctx.flow()`.
-// See spec.vsh for the intended usage.
 module imp
 
 import hash

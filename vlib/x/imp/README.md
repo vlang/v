@@ -52,10 +52,14 @@ ctx.flow()
 | `flow`  | fn (self imp.Flow) ! |
 
 ## hooks
+| declaration                                | result |
+|--------------------------------------------|--------|
 | `imp.FlowDep{id: 'clean'}`                 | skipped along with its flow |
 | `imp.FlowDep{id: 'clean', required: true}` | always runs, pre before the skip check |
 
 ## flags
+| declaration                                | result |
+|--------------------------------------------|--------|
 | `flags: [imp.Flag{id: 'prod'}]` | `self.flag('prod')`, forces the flow to run |
 | `ctx.flag(id: 'android')`       | returns a bool, also readable with `self.flag` |
 
