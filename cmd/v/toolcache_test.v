@@ -2245,10 +2245,11 @@ fn test_cached_updater_wipes_caches_only_after_a_successful_child_exits() ! {
 		os.setenv('V3CACHE', os.join_path(directory, 'v3cache'), true)
 		// In particular, VTMP cleanup must not run while its cached child is alive.
 		updater := os.join_path(os.vtmp_dir(), 'tools', 'cached-updater', 'vup.exe')
+		// Each mode uses the same probe; request mode removes it with the cache.
+		os.mkdir_all(os.dir(updater))!
+		os.cp(os.executable(), updater)!
+		os.chmod(updater, 0o755)!
 		for mode in ['help', 'failure', 'request'] {
-			os.mkdir_all(os.dir(updater))!
-			os.cp(os.executable(), updater)!
-			os.chmod(updater, 0o755)!
 			os.mkdir_all(cache)!
 			marker := os.join_path(cache, 'object.o')
 			os.write_file(marker, 'cached object')!
