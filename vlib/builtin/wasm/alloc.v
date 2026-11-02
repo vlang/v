@@ -2,7 +2,9 @@
 module builtin
 
 // Shitty `sbrk` basic `malloc` and `free` impl
-// TODO: implement pure V `walloc` later
+// NOTE: the freestanding C-backend wasm target (`-bare-builtin-dir
+// vlib/builtin/wasm_bare`) uses the pure V `walloc` module (vlib/walloc)
+// instead; this bump allocator remains for the native wasm backend.
 
 __global g_heap_base = uint(vwasm_heap_base())
 

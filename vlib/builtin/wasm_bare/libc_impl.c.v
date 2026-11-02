@@ -1,22 +1,45 @@
 module builtin
 
-//__global global_allocator dlmalloc.Dlmalloc
+import walloc
 
-// __malloc allocates size bytes of memory.
+__global g_walloc_heap walloc.Walloc
+__global g_walloc_ready bool
+
+// walloc_init sets up the global walloc instance on first use. This
+// laziness mirrors the linux_bare allocator: constants and `_vinit`
+// allocate before any explicit init call could run.
+@[unsafe]
+fn walloc_init() {
+	if !g_walloc_ready {
+		g_walloc_heap = walloc.new_walloc()
+		g_walloc_ready = true
+	}
+}
+
+// __malloc allocates size bytes of memory. Exported as `malloc`, so every
+// `C.malloc` call in the generated code is served by the pure V walloc.
+@[export: 'malloc']
 @[unsafe]
 pub fn __malloc(size uint) voidptr {
 	unsafe {
-		$if windows {
-			// Warning! On windows, we always use _aligned_malloc to allocate memory.
-			// This ensures that we can later free the memory with _aligned_free
-			// without needing to track whether the memory was originally allocated
-			// by malloc or _aligned_malloc.
-			return C._aligned_malloc(size, 1)
-		} $else {
-			return C.malloc(int(size))
-		}
+		walloc_init()
+		return g_walloc_heap.malloc(size)
 	}
 	return unsafe { nil }
+}
+
+// __free releases memory allocated by __malloc. Exported as `free`, so every
+// `C.free` call in the generated code is served by the pure V walloc.
+@[export: 'free']
+@[unsafe]
+fn __free(ptr voidptr) {
+	if ptr == 0 {
+		return
+	}
+	unsafe {
+		walloc_init()
+		g_walloc_heap.free_(ptr)
+	}
 }
 
 // memcpy copies n bytes from const_src to dest.
