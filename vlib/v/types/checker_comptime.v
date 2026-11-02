@@ -4242,7 +4242,8 @@ fn (mut tc TypeChecker) check_assert_stmt(node flat.Node) {
 		tc.record_error_at(.condition_mismatch, 'assert can be used only with `bool` expressions, but found `void` instead', condition_id, tc.assert_condition_diagnostic_pos(condition_id))
 		return
 	}
-	if unalias_type(condition_type).source_type_id() == flat.source_type_bool {
+	if unalias_type(condition_type).source_type_id() == flat.source_type_bool
+		|| tc.translated_condition_compatible(condition_id, condition_type) {
 		return
 	}
 	clean_condition := unalias_type(condition_type)
