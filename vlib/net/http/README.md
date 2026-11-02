@@ -414,3 +414,26 @@ its content length is recalculated when its size changes. Response modifiers rec
 upstream representation, including any content encoding. A hook that changes the representation
 must also update or remove `Content-Encoding`. Response hop headers are removed before the hook;
 the hook is responsible for any headers it adds.
+
+## Diagnostic request and response dumps
+
+`http.dump_request(req, body)` renders the stored method, URL, version and headers as
+HTTP/1-style text. An empty URL is shown as `/`. The URL is otherwise preserved as stored,
+and headers normally added by the transport are not synthesized. Header rendering follows
+the selected version, but HTTP/2 and HTTP/3 dumps are text, not wire frames.
+
+`http.dump_response(resp, body)` uses the same representation as `resp.bytestr()`.
+For both helpers, setting `body` to `true` includes the stored body byte for byte; `false` omits it
+without changing the status line or headers such as `Content-Length`. Neither helper
+modifies its input.
+
+```v
+import net.http
+
+req := http.Request{
+	method: .post
+	url:    '/upload'
+	data:   'hello'
+}
+assert http.dump_request(req, true) == 'POST /upload HTTP/1.1\r\n\r\nhello'
+```

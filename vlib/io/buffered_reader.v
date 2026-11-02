@@ -46,7 +46,7 @@ pub fn new_buffered_reader(o BufferedReaderConfig) &BufferedReader {
 }
 
 fn (mut r BufferedReader) copy_unread(mut buf []u8) !int {
-	read := copy(mut buf, r.buf[r.offset..r.len])
+	read := copy_bytes(mut buf, r.buf[r.offset..r.len])
 	if read == 0 {
 		return NotExpected{
 			cause: 'invalid copy of buffer'

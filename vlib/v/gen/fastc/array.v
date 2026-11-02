@@ -160,7 +160,8 @@ fn (g &Parser) render_higher_order_method_expression(tokens []FastcExpressionTok
 	receiver_type := fastc_normalize_inferred_type(g.underlying_alias_type(g.infer_expression_type(receiver_tokens) or {
 		return none
 	}))
-	if !flat.source_type_query(receiver_type).has(.c_array_prefix) {
+	is_fixed := flat.source_type_query(fastc_trim_pointer_type(receiver_type)).has(.c_fixed_array_prefix)
+	if !flat.source_type_query(receiver_type).has(.c_array_prefix) && !is_fixed {
 		return none
 	}
 	element_type := g.array_element_type(receiver_type) or { return none }
@@ -182,15 +183,28 @@ fn (g &Parser) render_higher_order_method_expression(tokens []FastcExpressionTok
 		}
 	}
 	mut w := unsafe { &Parser(g) }
-	collection_type_id := fastc_trim_pointer_type(receiver_type)
+	collection_type_id := if is_fixed {
+		fastc_array_c_type_id(element_type)
+	} else {
+		fastc_trim_pointer_type(receiver_type)
+	}
 	collection_type := flat.source_type_name(collection_type_id)
 	fastc_register_composite_type(collection_type_id, mut w.composite_types)
 	receiver := g.render_method_receiver_expression(receiver_tokens) or { return none }
 	receiver_source := receiver.source
-	collection_source := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
+	mut collection_source := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 		'*(${receiver_source})'
 	} else {
 		receiver_source
+	}
+	mut fixed_setup := ''
+	if is_fixed {
+		name := w.temporary_name('fixed_collection')
+		value := g.render_call_argument_expression(receiver_tokens, receiver_type) or { return none }
+		fixed_setup = '${flat.source_type_name(receiver_type)} ${name} = (${value});'
+		access := if fastc_is_pointer_type(receiver_type) { '->' } else { '.' }
+		length := fastc_fixed_array_length_id(fastc_trim_pointer_type(receiver_type)) or { return none }
+		collection_source = '((${collection_type}){.data=${name}${access}data, .len=${length}, .cap=${length}, .element_size=sizeof(${g.collection_storage_type(element_type)})})'
 	}
 	had_it := it_name in g.locals
 	saved_it := g.locals[it_name] or { FastcLocal{} }
@@ -289,6 +303,7 @@ fn (g &Parser) render_higher_order_method_expression(tokens []FastcExpressionTok
 		matched := if method == 'all' { 'false' } else { 'true' }
 		lowered = '({ ${collection_type} ${src} = (${collection_source}); bool ${dst} = ${initial}; for (${index_type} ${idx} = 0; ${idx} < ${src}.len; ${idx}++) { ${element_storage_type} ${it_c_name} = ((${element_storage_type} *)${src}.data)[${idx}]; if (${condition}) { ${dst} = ${matched}; break; } } ${dst}; })'
 	}
+	if fixed_setup != '' { lowered = '({ ${fixed_setup} ${lowered}; })' }
 	return FastcRenderedExpression{
 		source: lowered
 		typ:    result_type
