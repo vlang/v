@@ -35,20 +35,22 @@ fn write_tool_manifest(root string) ! {
 }
 
 fn test_ensure_modules_for_tool_are_installed_keeps_installed_modules() {
-	vmodules := os.join_path(os.vtmp_dir(), 'util_module_deps_${os.getpid()}')
-	os.rmdir_all(vmodules) or {}
+	base := os.join_path(os.vtmp_dir(), 'util_module_deps_${os.getpid()}')
+	os.rmdir_all(base) or {}
+	vmodules := os.join_path(base, 'vmodules')
 	markdown_dir := os.join_path(vmodules, 'markdown')
 	os.mkdir_all(markdown_dir)!
 	os.write_file(os.join_path(markdown_dir, 'v.mod'), "Module {\n\tname: 'markdown'\n}\n")!
 	old_vmodules := os.getenv_opt('VMODULES')
+	old_vexe := os.getenv_opt('VEXE')
+	// VEXE points to a missing program, so that a clone or an update would fail.
+	os.setenv('VEXE', os.join_path(base, 'missing_v'), true)
+	write_tool_manifest(base)!
 	os.setenv('VMODULES', vmodules, true)
 	defer {
-		if value := old_vmodules {
-			os.setenv('VMODULES', value, true)
-		} else {
-			os.unsetenv('VMODULES')
-		}
-		os.rmdir_all(vmodules) or {}
+		restore_env('VMODULES', old_vmodules)
+		restore_env('VEXE', old_vexe)
+		os.rmdir_all(base) or {}
 	}
 	// An already installed module must be reused as is, without cloning or updating it.
 	ensure_modules_for_tool_are_installed('vdoc', '', false)!
