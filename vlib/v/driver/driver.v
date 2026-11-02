@@ -24678,12 +24678,14 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				}
 				record_v3_fallback_module_use(mut cache_state, module_identity, is_bundle_warmup_import)
 				record_cache_module_dependency(mut cache_state, cur_module, module_identity)
+				retain_cache_source_module(mut cache_state, module_identity)
 				node_idx++
 				continue
 			}
 			if mod_name in parsed_modules {
 				record_v3_fallback_module_use(mut cache_state, mod_name, is_bundle_warmup_import)
 				record_cache_module_dependency(mut cache_state, cur_module, mod_name)
+				retain_cache_source_module(mut cache_state, mod_name)
 				node_idx++
 				continue
 			}
@@ -24808,11 +24810,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				}
 			}
 			if already_parsed {
-				if cache_state.manager.enabled && module_resolved && cache_module != 'main'
-					&& cache_module !in cache_state.module_sources {
-					// A cached dependency can import the module under test. Its bodies
-					// are absent from the AST, so retain the functions it can call here.
-					cache_state.source_body_modules[cache_module] = true
+				if module_resolved {
+					retain_cache_source_module(mut cache_state, cache_module)
 				}
 				node_idx++
 				continue
@@ -25058,6 +25057,15 @@ fn parse_files_dispatch_profiled(mut p parser.Parser, paths []string, allow_para
 		timing.source_parallel = timing.source_parallel || source_weight > 0
 	}
 	return starts, parallel
+}
+
+fn retain_cache_source_module(mut state V3ModuleCacheState, module_name string) {
+	if state.manager.enabled && module_name.len > 0 && module_name != 'main'
+		&& module_name !in state.module_sources {
+		// A cached dependency can import the module under test. Its bodies are
+		// absent from the AST, so retain the source module functions it can call.
+		state.source_body_modules[module_name] = true
+	}
 }
 
 fn record_cache_module_dependency(mut state V3ModuleCacheState, owner string, dependency string) {
