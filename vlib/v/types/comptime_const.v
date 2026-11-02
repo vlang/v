@@ -216,10 +216,23 @@ fn (mut e ConstEval) convert(value ComptimeConstValue, destination Type) !Compti
 		return ComptimeConstValue{ typ: typ, integer: const_eval_integer_cast(value.integer, typ) }
 	}
 	if base is ArrayFixed {
+		e.depth++
+		defer { e.depth-- }
+		if e.depth > 128 { return error('evaluation exceeded recursion limit') }
 		if !e.fixed_array_value_matches(value, base)! {
 			return error('unsupported conversion to `${typ.name()}`')
 		}
-		return ComptimeConstValue{ ...value, typ: typ }
+		actual := unalias_type(value.typ)
+		if actual is ArrayFixed && actual.elem_type.source_type_id() == base.elem_type.source_type_id() {
+			return ComptimeConstValue{ ...value, typ: typ }
+		}
+		e.reserve(value.elements.len)!
+		mut elements := []ComptimeConstValue{cap: value.elements.len}
+		for element in value.elements {
+			e.tick()!
+			elements << e.convert(element, base.elem_type)!
+		}
+		return ComptimeConstValue{ ...value, typ: typ, elements: elements }
 	}
 	if (base is Primitive && base.props.has(.boolean)) || base is String || base is Struct {
 		if unalias_type(value.typ).source_type_id() != base.source_type_id() {
@@ -891,17 +904,98 @@ fn (mut e ConstEval) binary_result_type(id flat.NodeId, op flat.Op, left Type, r
 	return infix_integer_promotion_type(left, right) or { left }
 }
 
-fn (mut e ConstEval) binary(id flat.NodeId, op flat.Op, left ComptimeConstValue, right ComptimeConstValue) !ComptimeConstValue {
+fn (e &ConstEval) check_builtin_operator(op flat.Op, left Type, right Type) ! {
 	method_op := match op {
 		.ne { flat.Op.eq }
 		.gt, .ge, .le { flat.Op.lt }
 		else { op }
 	}
-	if (left.typ is Alias || left.typ is Struct)
-		&& e.tc.type_has_infix_operator_method(left.typ, method_op)
-		&& e.tc.infix_operator_return_type(method_op, left.typ, right.typ) != none {
+	if (left is Alias || left is Struct)
+		&& e.tc.type_has_infix_operator_method(left, method_op)
+		&& e.tc.infix_operator_return_type(method_op, left, right) != none {
 		return error('overloaded operator `${op}` is not supported')
 	}
+}
+
+// An empty node denotes an operand already converted to its stored type.
+fn (mut e ConstEval) integer_comparison(op flat.Op, left_id flat.NodeId, right_id flat.NodeId, left ComptimeConstValue, right ComptimeConstValue) !ComptimeConstValue {
+	typ := infix_integer_promotion_type(left.typ, right.typ) or { left.typ }
+	type_id := unalias_type(typ).source_type_id()
+	mut l := e.comparison_operand(left_id, left)
+	mut r := e.comparison_operand(right_id, right)
+	mut unsigned := type_id in [flat.source_type_u64, flat.source_type_uint]
+	left_base := unalias_type(left.typ)
+	right_base := unalias_type(right.typ)
+	left_unsigned := const_eval_integer_unsigned(left.typ)
+	right_unsigned := const_eval_integer_unsigned(right.typ)
+	left_c_type := e.integer_c_expression_type(left_id, left.typ)!
+	right_c_type := e.integer_c_expression_type(right_id, right.typ)!
+	mixed_sign := left_base is Primitive && right_base is Primitive
+		&& left_unsigned != right_unsigned
+		&& !(!left_unsigned && e.tc.a.node(left_id).kind == .int_literal)
+		&& !(!right_unsigned && e.tc.a.node(right_id).kind == .int_literal)
+	if mixed_sign {
+		// Match the C backend's mathematical signed/unsigned comparison.
+		l = const_eval_integer_cast(l, left.typ)
+		r = const_eval_integer_cast(r, right.typ)
+		if left_base is Primitive && !left_unsigned && l < 0 {
+			return ComptimeConstValue{
+				typ:     bool_
+				integer: if op in [.ne, .lt, .le] {
+					1
+				} else {
+					0
+				}
+			}
+		}
+		if right_base is Primitive && !right_unsigned && r < 0 {
+			return ComptimeConstValue{
+				typ:     bool_
+				integer: if op in [.ne, .gt, .ge] {
+					1
+				} else {
+					0
+				}
+			}
+		}
+		unsigned = true
+	} else if left_base is ISize || left_base is USize || left_base is Rune
+		|| right_base is ISize || right_base is USize || right_base is Rune
+		|| left_c_type.source_type_id() != left.typ.source_type_id()
+		|| right_c_type.source_type_id() != right.typ.source_type_id() {
+		// These C integer types use the usual arithmetic conversions rather
+		// than the primitive mixed-sign helper emitted by the C backend.
+		common := const_eval_c_integer_promotion(left_c_type, right_c_type)
+		unsigned = const_eval_integer_unsigned(common)
+		if const_eval_integer_width(common) == 32 {
+			l = if unsigned { i64(u32(l)) } else { i64(i32(l)) }
+			r = if unsigned { i64(u32(r)) } else { i64(i32(r)) }
+		}
+	} else if const_eval_integer_width(typ) >= 32 {
+		l = const_eval_integer_cast(l, typ)
+		r = const_eval_integer_cast(r, typ)
+	}
+	ok := match op {
+		.eq { l == r }
+		.ne { l != r }
+		.lt {
+			if unsigned { u64(l) < u64(r) } else { l < r }
+		}
+		.gt {
+			if unsigned { u64(l) > u64(r) } else { l > r }
+		}
+		.le {
+			if unsigned { u64(l) <= u64(r) } else { l <= r }
+		}
+		else {
+			if unsigned { u64(l) >= u64(r) } else { l >= r }
+		}
+	}
+	return ComptimeConstValue{ typ: bool_, integer: if ok { 1 } else { 0 } }
+}
+
+fn (mut e ConstEval) binary(id flat.NodeId, op flat.Op, left ComptimeConstValue, right ComptimeConstValue) !ComptimeConstValue {
+	e.check_builtin_operator(op, left.typ, right.typ)!
 	if unalias_type(left.typ) is String && unalias_type(right.typ) is String {
 		if op == .plus {
 			e.reserve(left.text.len + right.text.len)!
@@ -940,11 +1034,11 @@ fn (mut e ConstEval) binary(id flat.NodeId, op flat.Op, left ComptimeConstValue,
 	}
 	// Reuse integer/literal promotions with the evaluated operand types; helper
 	// bodies need not have been checked or annotated yet.
-	typ := if op in [.eq, .ne, .lt, .gt, .le, .ge] {
-		infix_integer_promotion_type(left.typ, right.typ) or { left.typ }
-	} else {
-		e.binary_result_type(id, op, left.typ, right.typ)!
+	if op in [.eq, .ne, .lt, .gt, .le, .ge] {
+		node := e.tc.a.node(id)
+		return e.integer_comparison(op, e.tc.a.child(node, 0), e.tc.a.child(node, 1), left, right)
 	}
+	typ := e.binary_result_type(id, op, left.typ, right.typ)!
 	type_id := unalias_type(typ).source_type_id()
 	mut l := left.integer
 	mut r := right.integer
@@ -969,81 +1063,7 @@ fn (mut e ConstEval) binary(id flat.NodeId, op flat.Op, left ComptimeConstValue,
 		}
 		l = const_eval_integer_cast(l, shift_type)
 	}
-	if op in [.eq, .ne, .lt, .gt, .le, .ge] {
-		left_id := e.tc.a.child(e.tc.a.node(id), 0)
-		right_id := e.tc.a.child(e.tc.a.node(id), 1)
-		l = e.comparison_operand(left_id, left)
-		r = e.comparison_operand(right_id, right)
-		mut unsigned := type_id in [flat.source_type_u64, flat.source_type_uint]
-		left_base := unalias_type(left.typ)
-		right_base := unalias_type(right.typ)
-		left_unsigned := const_eval_integer_unsigned(left.typ)
-		right_unsigned := const_eval_integer_unsigned(right.typ)
-		left_c_type := e.integer_c_expression_type(left_id, left.typ)!
-		right_c_type := e.integer_c_expression_type(right_id, right.typ)!
-		mixed_sign := left_base is Primitive && right_base is Primitive
-			&& left_unsigned != right_unsigned
-			&& !(!left_unsigned && e.tc.a.node(left_id).kind == .int_literal)
-			&& !(!right_unsigned && e.tc.a.node(right_id).kind == .int_literal)
-		if mixed_sign {
-			// Match the C backend's mathematical signed/unsigned comparison.
-			l = const_eval_integer_cast(l, left.typ)
-			r = const_eval_integer_cast(r, right.typ)
-			if left_base is Primitive && !left_unsigned && l < 0 {
-				return ComptimeConstValue{
-					typ:     bool_
-					integer: if op in [.ne, .lt, .le] {
-						1
-					} else {
-						0
-					}
-				}
-			}
-			if right_base is Primitive && !right_unsigned && r < 0 {
-				return ComptimeConstValue{
-					typ:     bool_
-					integer: if op in [.ne, .gt, .ge] {
-						1
-					} else {
-						0
-					}
-				}
-			}
-			unsigned = true
-		} else if left_base is ISize || left_base is USize || left_base is Rune
-			|| right_base is ISize || right_base is USize || right_base is Rune
-			|| left_c_type.source_type_id() != left.typ.source_type_id()
-			|| right_c_type.source_type_id() != right.typ.source_type_id() {
-			// These C integer types use the usual arithmetic conversions rather
-			// than the primitive mixed-sign helper emitted by the C backend.
-			common := const_eval_c_integer_promotion(left_c_type, right_c_type)
-			unsigned = const_eval_integer_unsigned(common)
-			if const_eval_integer_width(common) == 32 {
-				l = if unsigned { i64(u32(l)) } else { i64(i32(l)) }
-				r = if unsigned { i64(u32(r)) } else { i64(i32(r)) }
-			}
-		} else if const_eval_integer_width(typ) >= 32 {
-			l = const_eval_integer_cast(l, typ)
-			r = const_eval_integer_cast(r, typ)
-		}
-		ok := match op {
-			.eq { l == r }
-			.ne { l != r }
-			.lt {
-				if unsigned { u64(l) < u64(r) } else { l < r }
-			}
-			.gt {
-				if unsigned { u64(l) > u64(r) } else { l > r }
-			}
-			.le {
-				if unsigned { u64(l) <= u64(r) } else { l <= r }
-			}
-			else {
-				if unsigned { u64(l) >= u64(r) } else { l >= r }
-			}
-		}
-		return ComptimeConstValue{ typ: bool_, integer: if ok { 1 } else { 0 } }
-	}
+
 	result := match op {
 		.plus { i64(u64(l) + u64(r)) }
 		.minus { i64(u64(l) - u64(r)) }
@@ -1300,17 +1320,14 @@ fn (mut e ConstEval) stmt(id flat.NodeId) !ConstEvalFlow {
 			} else {
 				start.typ
 			}
-			unsigned := unalias_type(range_type).source_type_id() in [
-				flat.source_type_u64,
-				flat.source_type_uint,
-			]
 			live_bound := e.range_bound_is_live(end_id)!
-			mut limit := const_eval_integer_cast(end.integer, range_type)
-			for index := const_eval_integer_cast(start.integer, range_type); if unsigned {
-				u64(index) < u64(limit)
-			} else {
-				index < limit
-			}; index = const_eval_integer_cast(i64(u64(index) + 1), range_type) {
+			// The loop index is stored in range_type, while a materialized upper
+			// bound has its own storage conversion and a live bound stays an expression.
+			mut limit := if live_bound { end } else { e.convert(end, end.typ)! }
+			limit_id := if live_bound { end_id } else { flat.empty_node }
+			e.check_builtin_operator(.lt, range_type, limit.typ)!
+			for index := const_eval_integer_cast(start.integer, range_type); e.integer_comparison(.lt,
+				flat.empty_node, limit_id, ComptimeConstValue{ typ: range_type, integer: index }, limit)!.integer != 0; index = const_eval_integer_cast(i64(u64(index) + 1), range_type) {
 				e.tick()!
 				e.scopes << map[string]ComptimeConstValue{}
 				name := e.tc.a.child_node(node, 0).value
@@ -1320,7 +1337,7 @@ fn (mut e ConstEval) stmt(id flat.NodeId) !ConstEvalFlow {
 				if flow.kind == .return_stmt { return flow }
 				if flow.kind == .break_stmt { break }
 				if live_bound {
-					limit = const_eval_integer_cast(e.expr(end_id)!.integer, range_type)
+					limit = e.expr(end_id)!
 				}
 			}
 			return ConstEvalFlow{}

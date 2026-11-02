@@ -333,3 +333,34 @@ fn test_cli_comptime_local_promotion_and_live_bounds_emit_static_values() ! {
 	assert !generated.contains('memmove(main__counts,'), generated.all_after('range_counts(void);')
 	assert !generated.contains('main__counts = range_counts('), generated.all_after('range_counts(void);')
 }
+
+fn test_cli_comptime_array_conversions_preserve_nominal_operators() ! {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_array_alias_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none', '-cc',
+		'tcc']
+	program := 'type Count = int\nfn (a Count) + (b Count) Count { return Count(int(a) + int(b) + 10) }\n@[comptime]\nfn values() [2]int { return [1, 2]! }\n@[comptime]\nfn total(items [2]Count) int { return int(items[0] + items[1]) }\nconst answer = total(values())\nfn main() { println(answer) println(total(values())) }'
+	os.write_file(source, program)!
+	required := os.exec([...args, '-o', os.join_path(root, 'required'), source])
+	assert required.exit_code != 0, required.output
+	assert required.output.contains('cannot evaluate const `answer`'), required.output
+	assert required.output.contains('overloaded operator'), required.output
+	runtime_program := program.replace('const answer = total(values())\n', '').replace('fn main() {', 'fn main() { answer := total(values())\n')
+	os.write_file(source, runtime_program)!
+	executable := os.join_path(root, 'runtime')
+	built := os.exec([...args, '-o', executable, source])
+	assert built.exit_code == 0, built.output
+	runtime := os.exec([executable])
+	assert runtime.exit_code == 0, runtime.output
+	assert runtime.output.trim_space() == '13\n13', runtime.output
+	reverse := 'type Count = int\nfn (a Count) + (b Count) Count { return Count(int(a) + int(b) + 10) }\n@[comptime]\nfn values() [2]Count { return [Count(1), Count(2)]! }\n@[comptime]\nfn total(items [2]int) int { return items[0] + items[1] }\nconst answer = total(values())\nfn main() { println(answer) println(total(values())) }'
+	os.write_file(source, reverse)!
+	reverse_path := os.join_path(root, 'reverse')
+	reverse_built := os.exec([...args, '-o', reverse_path, source])
+	assert reverse_built.exit_code == 0, reverse_built.output
+	reverse_runtime := os.exec([reverse_path])
+	assert reverse_runtime.exit_code == 0, reverse_runtime.output
+	assert reverse_runtime.output.trim_space() == '3\n3', reverse_runtime.output
+}

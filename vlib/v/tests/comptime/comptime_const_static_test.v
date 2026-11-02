@@ -599,6 +599,61 @@ fn test_comptime_local_promotion_and_range_bounds_match_runtime() {
 	assert computed_range_bounds == const_range_bounds()
 }
 
+const computed_typed_range_bounds = const_typed_range_bounds()
+
+@[comptime]
+fn const_typed_range_bounds() [9]int {
+	mut results := [9]int{}
+	for _ in u8(0) .. u16(256) {
+		results[0] = 1
+		break
+	}
+	negative := i16(-1)
+	for _ in u8(0) .. negative {
+		results[1] = 1
+		break
+	}
+	for _ in i64(-1) .. u64(1) {
+		results[2] = 1
+		break
+	}
+	for _ in u64(0) .. 1 {
+		results[3] = 1
+		break
+	}
+	for _ in int(0) .. u8(255) + u8(1) {
+		results[4] = 1
+		break
+	}
+	mut limit := u16(2)
+	for _ in u8(0) .. limit {
+		results[5]++
+		limit = 256
+		if results[5] == 2 {
+			break
+		}
+	}
+	for _ in i64(-1) .. sizeof(u8) {
+		results[6] = 1
+		break
+	}
+	for _ in i64(-1) .. (sizeof(u8)) {
+		results[7] = 1
+		break
+	}
+	maximum := u64(0xffffffffffffffff)
+	for _ in i64(-1) .. maximum {
+		results[8] = 1
+		break
+	}
+	return results
+}
+
+fn test_comptime_range_bound_types_match_runtime() {
+	assert computed_typed_range_bounds == [1, 0, 1, 1, 0, 2, 1, 1, 1]!
+	assert computed_typed_range_bounds == const_typed_range_bounds()
+}
+
 fn test_comptime_constants_match_runtime() {
 	assert imported_pair == evaluated.make_pair(10)
 	assert imported_pair == [u32(10), 17]!

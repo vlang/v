@@ -725,6 +725,33 @@ fn test_comptime_const_conditional_index_workarounds_and_bounds() {
 	}
 }
 
+fn test_comptime_const_range_bounds_keep_independent_integer_types() {
+	for body, expected in {
+		'for _ in u8(0) .. u16(256) { return 1 } return 0':                                                                                 1
+		'limit := i16(-1) for _ in u8(0) .. limit { return 1 } return 0':                                                                   0
+		'limit := i64(-1) for _ in u64(0) .. limit { return 1 } return 0':                                                                  0
+		'for _ in i64(-1) .. u64(1) { return 1 } return 0':                                                                                 1
+		'limit := u64(0xffffffffffffffff) for _ in i64(-1) .. limit { return 1 } return 0':                                                 1
+		'for _ in u64(0) .. 1 { return 1 } return 0':                                                                                       1
+		'for _ in int(0) .. u8(255) + u8(1) { return 1 } return 0':                                                                         0
+		'for _ in u8(0) .. (u16(256)) { return 1 } return 0':                                                                               1
+		'mut limit := u16(2) mut count := 0 for _ in u8(0) .. limit { count++ limit = 256 if count == 2 { break } } return count':          2
+		'mut limit := u16(2) mut count := 0 for _ in u8(0) .. limit { count++ limit = 256 if count == 2 { break } continue } return count': 2
+		'mut limit := u16(256) mut count := 0 for _ in u8(0) .. limit { count++ limit = 1 } return count':                                  1
+		'for _ in i64(-1) .. sizeof(u8) { return 1 } return 0':                                                                             1
+		'for _ in i64(-1) .. (sizeof(u8)) { return 1 } return 0':                                                                           1
+	} {
+		tc := comptime_const_checker('const result = compute()\n@[comptime]\nfn compute() int { ${body} }\nfn main() { _ = result }')
+		assert tc.errors.len == 0, '${body}: ${tc.errors}'
+		assert tc.comptime_const_values['result']!.integer == expected, body
+	}
+}
+
+fn test_comptime_const_range_comparisons_reject_operator_methods() {
+	tc := comptime_const_checker('type Step = u8\nfn (a Step) < (b Step) bool { return false }\nconst result = compute()\n@[comptime]\nfn compute() int { for _ in Step(0) .. Step(2) { return 1 } return 0 }\nfn main() { _ = result }')
+	assert tc.errors.any(it.msg.contains('cannot evaluate const `result`') && it.msg.contains('overloaded operator')), tc.errors.str()
+}
+
 fn test_comptime_const_range_bounds_keep_runtime_stability() {
 	declarations := 'struct RangeBounds {\nmut:\nend int\n}\n@[comptime]\nfn range_bound(n int) int { return n }'
 	for body, expected in {
@@ -906,4 +933,49 @@ fn test_comptime_const_narrowing_conditional_integer_values_are_explicit() {
 		assert tc.errors.len == 0, '${body}: ${tc.errors}'
 		assert tc.comptime_const_values['result']!.integer == 255, body
 	}
+}
+
+fn test_comptime_const_array_conversions_preserve_nominal_dispatch() {
+	declarations := 'type Count = int\ntype Pair = [2]int\nfn (a Count) + (b Count) Count { return Count(int(a) + int(b) + 10) }\nfn (a Pair) [] (i int) int { _ = i return 7 }\n@[comptime]\nfn plain() [2]int { return [1, 2]! }\n@[comptime]\nfn nested() [1][2]int { return [[1, 2]!]! }'
+	for helpers, diagnostic in {
+		'@[comptime]\nfn consume(a [2]Count) int { return int(a[0] + a[1]) }\nconst bad = consume(plain())':                                                                                                                                                                               'overloaded operator'
+		'@[comptime]\nfn counts() [2]Count { return plain() }\n@[comptime]\nfn compute() int { a := counts() return int(a[0] + a[1]) }\nconst bad = compute()':                                                                                                                            'overloaded operator'
+		'@[comptime]\nfn compute() int { a := [2]Count(plain()) return int(a[0] + a[1]) }\nconst bad = compute()':                                                                                                                                                                         'overloaded operator'
+		'@[comptime]\nfn consume(a [1][2]Count) int { return int(a[0][0] + a[0][1]) }\nconst bad = consume(nested())':                                                                                                                                                                     'overloaded operator'
+		'@[comptime]\nfn consume(a [1]Pair) int { return a[0][0] }\nconst bad = consume(nested())':                                                                                                                                                                                        'overloaded indexing'
+		'@[comptime]\nfn counts() [2]Count { return [Count(1), Count(2)]! }\n@[comptime]\nfn plain_sum(a [2]int) int { return a[0] + a[1] }\n@[comptime]\nfn compute() int { a := counts() sum := plain_sum(a) if sum != 3 { return 0 } return int(a[0] + a[1]) }\nconst bad = compute()': 'overloaded operator'
+	} {
+		tc := comptime_const_checker('${declarations}\n${helpers}\nfn main() { _ = bad }')
+		assert tc.errors.any(it.msg.contains('cannot evaluate const `bad`') && it.msg.contains(diagnostic)), '${helpers}: ${tc.errors}'
+	}
+}
+
+fn test_comptime_const_array_conversions_apply_leaf_types_and_values() {
+	tc := comptime_const_checker('type Count = int\ntype Byte = u8\ntype Signed = i8\nfn (a Count) + (b Count) Count { return Count(int(a) + int(b) + 10) }\n@[comptime]\nfn plain() [2]int { return [1, 2]! }\n@[comptime]\nfn counts() [2]Count { return plain() }\n@[comptime]\nfn plain_copy(a [2]int) [2]int { return a }\n@[comptime]\nfn nested_counts() [1][2]Count { return [plain()]! }\n@[comptime]\nfn bytes() [2]Byte { return [u8(4), u8(255)]! }\n@[comptime]\nfn signed_values() [1]Signed { return [i8(-1)]! }\nconst nominal = counts()\nconst plain_again = plain_copy(nominal)\nconst nested_nominal = nested_counts()\nconst unsigned_values = bytes()\nconst negative_values = signed_values()\nfn main() { _ = nominal _ = plain_again _ = nested_nominal _ = unsigned_values _ = negative_values }')
+	assert tc.errors.len == 0, tc.errors.str()
+	nominal := tc.comptime_const_values['nominal']!
+	plain_again := tc.comptime_const_values['plain_again']!
+	nested_nominal := tc.comptime_const_values['nested_nominal']!
+	for i in 0 .. 2 {
+		assert nominal.elements[i].typ.source_type_id() == flat.source_type_id('Count')
+		assert nominal.elements[i].integer == i + 1
+		assert plain_again.elements[i].typ.source_type_id() == flat.source_type_int
+		assert plain_again.elements[i].integer == i + 1
+		assert nested_nominal.elements[0].elements[i].typ.source_type_id() == flat.source_type_id('Count')
+		assert nested_nominal.elements[0].elements[i].integer == i + 1
+	}
+	unsigned_values := tc.comptime_const_values['unsigned_values']!
+	assert unsigned_values.elements[0].typ.source_type_id() == flat.source_type_id('Byte')
+	assert unsigned_values.elements[1].typ.source_type_id() == flat.source_type_id('Byte')
+	assert unsigned_values.elements[0].integer == 4
+	assert unsigned_values.elements[1].integer == 255
+	negative_values := tc.comptime_const_values['negative_values']!
+	assert negative_values.elements[0].typ.source_type_id() == flat.source_type_id('Signed')
+	assert negative_values.elements[0].integer == -1
+}
+
+fn test_comptime_const_unchanged_array_element_types_do_not_consume_copy_budget() {
+	tc := comptime_const_checker('@[comptime]\nfn large_table() [60000]u8 { return [60000]u8{} }\n@[comptime]\nfn echo_array(value [60000]u8) [60000]u8 { return value }\n@[comptime]\nfn repeated_copies() int { values := large_table() mut count := 0 for _ in 0 .. 20 { current := echo_array(values) count += current.len } return count }\nconst answer = repeated_copies()\nfn main() { _ = answer }')
+	assert tc.errors.len == 0, tc.errors.str()
+	assert tc.comptime_const_values['answer']!.integer == 1200000
 }
