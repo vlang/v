@@ -153,7 +153,7 @@ fn (mut encoder Encoder) encode_value[T](val T) {
 			$for member in T.values {
 				if member.value == val {
 					enum_val = member.name
-					for attr in member.attrs {
+					for attr in member.attributes {
 						if json_attr := json_attr_value(attr) {
 							enum_val = json_attr
 						}
@@ -519,7 +519,7 @@ fn (mut encoder Encoder) encode_enum[T](val T) {
 		$for member in T.values {
 			if member.value == val {
 				enum_val = member.name
-				for attr in member.attrs {
+				for attr in member.attributes {
 					if json_attr := json_attr_value(attr) {
 						enum_val = json_attr
 					}
@@ -741,14 +741,14 @@ mut:
 // Keep runtime attribute parsing outside the compile-time field loop. This is called only while
 // a struct type's field metadata cache is initialized.
 @[manualfree; noinline]
-fn encoder_field_info(field_name string, attrs []string) EncoderFieldInfo {
+fn encoder_field_info(field_name string, attrs []VAttribute) EncoderFieldInfo {
 	mut is_skip := false
 	mut key_name := ''
 	mut is_omitempty := false
 	mut is_required := false
 	mut is_json_null := false
 	for attr in attrs {
-		match attr {
+		match attr.name {
 			'skip' {
 				is_skip = true
 				break
@@ -765,13 +765,12 @@ fn encoder_field_info(field_name string, attrs []string) EncoderFieldInfo {
 			else {}
 		}
 
-		if attr.starts_with('json:') {
-			json_attr := json_attr_value(attr) or { continue }
-			if json_attr == '-' {
+		if attr.name == 'json' && attr.has_arg {
+			if attr.arg == '-' {
 				is_skip = true
 				break
 			}
-			key_name = json_attr
+			key_name = attr.arg
 		}
 	}
 	resolved_key := if key_name == '' { field_name } else { key_name.clone() }
@@ -878,7 +877,7 @@ fn (mut encoder Encoder) cached_field_infos[T]() &EncoderFieldInfoCache {
 	if stdatomic.load_u64(&state.initialized) == 0 && state.begin() {
 		cache = &EncoderFieldInfoCache{}
 		$for field in T.fields {
-			cache.field_infos << encoder_field_info(field.name, field.attrs)
+			cache.field_infos << encoder_field_info(field.name, field.attributes)
 		}
 		// Publish every field before another thread can read the immutable cache.
 		stdatomic.store_u64(&state.initialized, 1)
@@ -1031,7 +1030,13 @@ fn (mut encoder Encoder) encode_plain_struct_fields[T](val T, was_first bool) bo
 	mut is_first := was_first
 	mut i := 0
 	$for field in T.fields {
-		if !field.attrs.contains('skip') {
+		mut field_is_skip := false
+		$for attr in field.attributes {
+			$if attr.name == 'skip' {
+				field_is_skip = true
+			}
+		}
+		if !field_is_skip {
 			$if field.typ is $shared {
 				shared field_value := unsafe { val.$(field.name) }
 				rlock field_value {
@@ -1054,6 +1059,12 @@ fn (mut encoder Encoder) encode_embedded_struct_fields[T](val T, was_first bool,
 	mut i := 0
 
 	$for field in T.fields {
+		mut field_is_skip := false
+		$for attr in field.attributes {
+			$if attr.name == 'skip' {
+				field_is_skip = true
+			}
+		}
 		$if field.is_embed {
 			mut child_reserved_keys := reserved_keys.clone()
 			mut reserved_i := 0
@@ -1078,7 +1089,7 @@ fn (mut encoder Encoder) encode_embedded_struct_fields[T](val T, was_first bool,
 					used_keys, child_reserved_keys, new_prefix)
 			}
 		} $else {
-			if !field.attrs.contains('skip') {
+			if !field_is_skip {
 				$if field.typ is $shared {
 					shared field_value := unsafe { val.$(field.name) }
 					rlock field_value {

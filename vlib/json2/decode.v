@@ -44,32 +44,41 @@ struct StructFieldInfo {
 // a struct type's field metadata cache is initialized. The cached pointers borrow attribute
 // bytes, so autofree must not release the loop's attribute strings.
 @[manualfree; noinline]
-fn struct_field_info(field_name string, attrs []string) StructFieldInfo {
+fn struct_field_info(field_name string, attrs []VAttribute) StructFieldInfo {
 	mut json_name_str := field_name.str
 	mut json_name_len := field_name.len
 	mut is_json_skip := false
-	for i in 0 .. attrs.len {
-		attr := &attrs[i]
-		if start, end := json_attr_value_range(attr) {
-			if end <= start {
-				continue
-			}
-			if end == start + 1 && (*attr)[start] == `-` {
+	for attr in attrs {
+		if attr.name == 'json' && attr.has_arg {
+			if attr.arg == '-' {
 				is_json_skip = true
 				break
 			}
-			json_name_str = unsafe { attr.str + start }
-			json_name_len = end - start
-			break
+			if attr.arg != '' {
+				json_name_str = unsafe { attr.arg.str }
+				json_name_len = attr.arg.len
+				break
+			}
+		}
+	}
+	mut has_skip := false
+	mut has_required := false
+	mut has_raw := false
+	for attr in attrs {
+		match attr.name {
+			'skip' { has_skip = true }
+			'required' { has_required = true }
+			'raw' { has_raw = true }
+			else {}
 		}
 	}
 	return StructFieldInfo{
 		name:          field_name
 		json_name_ptr: voidptr(json_name_str)
 		json_name_len: json_name_len
-		is_skip:       attrs.contains('skip') || is_json_skip
-		is_required:   attrs.contains('required')
-		is_raw:        attrs.contains('raw')
+		is_skip:       has_skip || is_json_skip
+		is_required:   has_required
+		is_raw:        has_raw
 	}
 }
 
@@ -572,24 +581,34 @@ fn decoder_field_infos[T]() []DecoderFieldInfo {
 	$for field in T.fields {
 		mut key_name := field.name
 		mut is_json_skip := false
-		for attr in field.attrs {
-			if start, end := json_attr_value_range(attr) {
-				if end <= start {
-					continue
-				}
-				if end == start + 1 && (*attr)[start] == `-` {
+		for attr in field.attributes {
+			if attr.name == 'json' && attr.has_arg {
+				if attr.arg == '-' {
 					is_json_skip = true
 					break
 				}
-				key_name = attr[start..end]
-				break
+				if attr.arg != '' {
+					key_name = attr.arg
+					break
+				}
+			}
+		}
+		mut has_skip := false
+		mut has_required := false
+		mut has_raw := false
+		for attr in field.attributes {
+			match attr.name {
+				'skip' { has_skip = true }
+				'required' { has_required = true }
+				'raw' { has_raw = true }
+				else {}
 			}
 		}
 		field_infos << DecoderFieldInfo{
 			key_name:    key_name
-			is_skip:     field.attrs.contains('skip') || is_json_skip
-			is_required: field.attrs.contains('required')
-			is_raw:      field.attrs.contains('raw')
+			is_skip:     has_skip || is_json_skip
+			is_required: has_required
+			is_raw:      has_raw
 		}
 	}
 	return field_infos
@@ -610,7 +629,7 @@ fn (mut decoder Decoder) cached_struct_field_infos[T]() &StructFieldInfoCache {
 		if stdatomic.fetch_add_u64(&initializing, 1) == 0 {
 			cache = &StructFieldInfoCache{}
 			$for field in T.fields {
-				cache.field_infos << struct_field_info(field.name, field.attrs)
+				cache.field_infos << struct_field_info(field.name, field.attributes)
 			}
 			stdatomic.store_u64(&initialized, 1)
 		} else {
@@ -736,6 +755,12 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 	mut i := 0
 	$for field in T.fields {
 		field_info := field_infos[i]
+		mut field_is_skip := false
+		$for attr in field.attributes {
+			$if attr.name == 'skip' {
+				field_is_skip = true
+			}
+		}
 		$if !field.is_embed {
 			if decoder.json_key_matches(key_info, field_info.key_name)!
 				|| (prefix != ''
@@ -753,7 +778,7 @@ fn decode_struct_key[T](mut decoder Decoder, val T, key_info ValueInfo, prefix s
 					}
 				}
 
-				if !field.attrs.contains('skip') {
+				if !field_is_skip {
 					if field_info.is_required {
 						seen_required << prefix + field.name
 					}
@@ -884,7 +909,13 @@ fn (mut decoder Decoder) decode_struct_fields[T](mut val T, struct_info ValueInf
 		field_info := field_info_cache.field_infos[field_idx]
 		mut i := 0
 		$for field in T.fields {
-			if field.attrs.contains('skip') {
+			mut field_is_skip := false
+			$for attr in field.attributes {
+				$if attr.name == 'skip' {
+					field_is_skip = true
+				}
+			}
+			if field_is_skip {
 				// Handled above, without decoding (or even compiling a decoder for) its type.
 			} else if i == field_idx {
 				$if field.is_shared {
@@ -1752,7 +1783,7 @@ fn (mut decoder Decoder) decode_enum[T](mut val T) ! {
 		decoder.decode_string(mut result)!
 
 		$for value in T.values {
-			for attr in value.attrs {
+			for attr in value.attributes {
 				if json_attr := json_attr_value(attr) {
 					if json_attr == result {
 						val = value.value
