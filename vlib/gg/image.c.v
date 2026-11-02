@@ -299,10 +299,7 @@ pub fn (mut ctx Context) update_pixel_data(cached_image_idx int, buf &u8) {
 // update_pixel_data updates the sokol specific pixel data associated
 // with this `Image`.
 pub fn (mut img Image) update_pixel_data(buf &u8) {
-	if buf == unsafe { nil } || !img.simg_ok || img.width <= 0 || img.height <= 0 {
-		return
-	}
-	if img.width <= 0 || img.height <= 0 || img.nr_channels <= 0 {
+	if buf == unsafe { nil } || !img.simg_ok || img.width <= 0 || img.height <= 0 || img.nr_channels <= 0 {
 		return
 	}
 	mut data := gfx.ImageData{}

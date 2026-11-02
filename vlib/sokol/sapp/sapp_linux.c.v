@@ -684,8 +684,8 @@ mut:
 	depth    int
 }
 
-// X11 event types are defined in vlib/x/x11/x11.v
-// XEvent union is defined above since it's used extensively in sokol
+// TODO: the X11 structs below are truncated shims; replace with `#include <X11/Xlib.h>`
+// and `#include <X11/extensions/Xrandr.h>` to get correct layouts.
 @[typedef]
 pub struct C.XKeyEvent {
 pub mut:
