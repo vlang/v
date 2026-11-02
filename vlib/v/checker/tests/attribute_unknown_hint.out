@@ -1,0 +1,18 @@
+vlib/v/checker/tests/attribute_unknown_hint.vv:1:3: warning: unknown attribute `xeprecated`. Did you mean `deprecated`? Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+    1 | @[xeprecated]
+      |   ~~~~~~~~~~
+    2 | fn cross_letter_near_miss_suggests() {}
+    3 |
+vlib/v/checker/tests/attribute_unknown_hint.vv:4:3: warning: unknown attribute `xut` Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+    2 | fn cross_letter_near_miss_suggests() {}
+    3 |
+    4 | @[xut]
+      |   ~~~
+    5 | fn short_cross_letter_no_hint() {}
+    6 |
+vlib/v/checker/tests/attribute_unknown_hint.vv:7:3: warning: unknown attribute `ninline`. Did you mean `noinline`? Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+    5 | fn short_cross_letter_no_hint() {}
+    6 |
+    7 | @[ninline]
+      |   ~~~~~~~
+    8 | fn tie_prefers_same_first_letter() {}

@@ -1,0 +1,8 @@
+@[xeprecated]
+fn cross_letter_near_miss_suggests() {}
+
+@[xut]
+fn short_cross_letter_no_hint() {}
+
+@[ninline]
+fn tie_prefers_same_first_letter() {}
