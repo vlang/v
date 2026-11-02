@@ -14072,6 +14072,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	mut capture_heap_snapshots := map[string]bool{}
 	mut capture_array_param_snapshots := map[string]bool{}
 	mut capture_pointer_value_aliases := map[string]bool{}
+	mut capture_mut_pointer_params := map[string]bool{}
 	mut capture_is_ref_param := map[string]bool{}
 	mut body_ids := []flat.NodeId{}
 	for i in 0 .. node.children_count {
@@ -14132,11 +14133,22 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 				if capture_type == 0 || capture_type == flat.source_type_unknown {
 					capture_type = flat.source_type_int
 				}
-				// Mutable parameter captures retain the caller's array header reference.
-				if !child.is_mut && t.mut_param_values[child.value]
+				if t.mut_param_values[child.value] && t.pointer_value_rvalues[child.value]
+					&& flat.source_type_shape(capture_type).has(.pointer) {
+					// `mut p &T` stores the caller's pointer in an extra reference slot.
+					// A mutable capture keeps that slot; an immutable one snapshots &T.
+					capture_type = t.var_type(child.value)
+					if child.is_mut {
+						capture_mut_pointer_params[child.value] = true
+					} else {
+						capture_type = t.trim_pointer_type(capture_type)
+						capture_heap_snapshots[child.value] = true
+					}
+				} else if !child.is_mut && t.mut_param_values[child.value]
 					&& !t.pointer_value_rvalues[child.value]
 					&& flat.source_type_shape(capture_type).has(.pointer)
 					&& flat.source_type_shape(t.comptime_normalize_type_alias_chain(capture_type)).has(.pointer_array) {
+					// Mutable parameter captures retain the caller's array header reference.
 					capture_type = t.trim_pointer_type(capture_type)
 					capture_array_param_snapshots[child.value] = true
 				}
@@ -14328,7 +14340,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	t.pending_stmts.clear()
 	t.mark_local_closure_cleanup_decls(lifted_body)
 	mut new_body := []flat.NodeId{}
-	if capture_is_ref_param.len == 0 {
+	if capture_is_ref_param.len == 0 && capture_mut_pointer_params.len == 0 {
 		new_body = t.transform_stmts(lifted_body)
 	} else {
 		new_body = t.transform_stmts(lifted_body[..synthetic_decl_count])
@@ -14336,6 +14348,14 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		// Restore reference-parameter identity before transforming the lifted body.
 		for capture_name, _ in capture_is_ref_param {
 			t.mark_var_as_ref_param(capture_name)
+		}
+		for capture_name, _ in capture_mut_pointer_params {
+			// Restore the same implicit-reference semantics as the source parameter,
+			// including pointer replacement and captures made by nested closures.
+			t.set_var_type(capture_name, capture_types[capture_name])
+			t.mut_param_values[capture_name] = true
+			t.pointer_value_lvalues[capture_name] = true
+			t.pointer_value_rvalues[capture_name] = true
 		}
 		new_body << t.transform_stmts(lifted_body[synthetic_decl_count..])
 	}
