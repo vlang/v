@@ -381,16 +381,27 @@ pub fn vfopen(path string, mode string) !&C.FILE {
 	if path == '' {
 		return error('vfopen called with ""')
 	}
-	mut fp := &C.FILE(unsafe { nil })
 	$if windows {
-		fp = C._wfopen(path.to_wide(), mode.to_wide())
+		w_path := path.to_wide()
+		w_mode := mode.to_wide()
+		defer {
+			unsafe {
+				free(w_path)
+				free(w_mode)
+			}
+		}
+		fp := C._wfopen(w_path, w_mode)
+		if isnil(voidptr(fp)) {
+			return error_posix(msg: 'failed to open file "${path}"')
+		}
+		return fp
 	} $else {
-		fp = C.fopen(&char(path.str), &char(mode.str))
+		fp := C.fopen(&char(path.str), &char(mode.str))
+		if isnil(voidptr(fp)) {
+			return error_posix(msg: 'failed to open file "${path}"')
+		}
+		return fp
 	}
-	if isnil(voidptr(fp)) {
-		return error_posix(msg: 'failed to open file "${path}"')
-	}
-	return fp
 }
 
 // fileno returns the file descriptor of an opened C file.
