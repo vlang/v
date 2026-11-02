@@ -1,5 +1,9 @@
 module os
 
+$if windows {
+	#include <stdlib.h>
+}
+
 fn C.SetEnvironmentVariableW(name &u16, value &u16) i32
 
 // clearenv removes all environment variables from the current process.
