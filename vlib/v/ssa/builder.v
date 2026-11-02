@@ -8855,6 +8855,12 @@ fn (mut b Builder) source_param_type_name(param flat.Node, fn_name string, modul
 	if param.is_mut && param.op == .amp && flat.source_type_shape(name).has(.pointer) {
 		name = flat.source_type_composition_one(.pointer, name)
 	}
+	// Mut method receivers (e.g. mut ch Channel) are passed by pointer in V.
+	// Convert value receivers to pointer types so the SSA backend dereferences
+	// them correctly instead of treating the pointer as the struct itself.
+	if param.is_mut && idx == 0 && !flat.source_type_shape(name).has(.pointer) {
+		name = flat.source_type_composition_one(.pointer, name)
+	}
 	return name
 }
 
