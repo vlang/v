@@ -80,7 +80,10 @@ $if use_bundled_libgc ? {
 		#flag -I @VEXEROOT/thirdparty/libatomic_ops
 		#flag @VEXEROOT/vlib/builtin/gc_tinyc_windows.o
 	} $else {
-		#flag -DGC_BUILTIN_ATOMIC=1
+		$if !msvc {
+			// MSVC uses libatomic_ops from the Windows branch below.
+			#flag -DGC_BUILTIN_ATOMIC=1
+		}
 		#flag @VEXEROOT/thirdparty/libgc/gc.o
 	}
 }
