@@ -17591,7 +17591,9 @@ fn (mut b Builder) get_field_ptr(base_addr ValueID, field_name string) ValueID {
 		}
 		typ := b.m.type_store.types[owner]
 		index := typ.field_names.index(storage_field)
-		if storage_field == 'readsem' {
+		if owner > 0 && owner < b.m.type_store.types.len && b.m.type_store.types[owner].field_names.len > 0 && b.m.type_store.types[owner].field_names[0] == 'ringbuf' {
+			if storage_field == 'cap' {
+			}
 		}
 		if index >= 0 && index < typ.fields.len {
 			offset := b.m.struct_field_offset(owner, index)
@@ -17735,6 +17737,10 @@ fn (mut b Builder) resolve_type(name_id u32) TypeID {
 	}
 	if name_id == ssa_strings_builder_source_type {
 		return b.array_type
+	}
+	// C.atomic_uintptr_t is a typedef for void* (8 bytes on 64-bit)
+	if flat.source_type_name(name_id) == 'C.atomic_uintptr_t' {
+		return b.u64_type
 	}
 	// Channel types resolve to a pointer to the Channel struct type
 	if shape.has(.channel_type) {
