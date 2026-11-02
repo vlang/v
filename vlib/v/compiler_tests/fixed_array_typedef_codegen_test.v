@@ -616,24 +616,34 @@ fn second_size() int {
 
 fn test_struct_field_const_length_used_from_another_module() {
 	v3_bin := fixed_array_build_v3()
+	// fixture imports other, so other is the module the checker is in when the lengths are
+	// folded: every part of `2 * (n + 1)` must still be read in fixture.
 	root := fixed_array_write_project('foreign_field_len', 'module fixture
+
+import other
 
 pub const n = 4
 
 pub struct Holder {
 pub mut:
 	x [n]u8
+	y [2 * (n + 1)]u8
+}
+
+pub fn other_size() int {
+	return other.size()
 }
 ', 'module main
 
 import user
-import other
+import fixture
 
 fn main() {
 	mut c := user.Carrier{}
 	c.fill(3)
 	println(c.total())
-	println(other.size())
+	println(c.h.y.len)
+	println(fixture.other_size())
 }
 ')
 	// Another module declares a const of the same bare name, so `n` does not name one const
@@ -673,5 +683,5 @@ pub fn (c Carrier) total() int {
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin])
 	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == '124\n2', run.output
+	assert run.output.trim_space() == '124\n10\n2', run.output
 }

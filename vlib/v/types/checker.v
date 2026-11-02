@@ -6288,11 +6288,20 @@ fn (tc &TypeChecker) const_key_for_suffix(name string) ?string {
 // names that module's `n`, or nothing once two modules declare one; the field types were parsed
 // before the consts could be evaluated.
 fn (mut tc TypeChecker) fold_struct_fixed_array_lens() {
+	saved_module := tc.cur_module
+	saved_file := tc.cur_file
+	defer {
+		tc.cur_module = saved_module
+		tc.cur_file = saved_file
+	}
 	for name_id, fields in tc.structs {
 		module_name := tc.struct_modules[name_id] or { continue }
 		if module_name.len == 0 || module_name in ['main', 'builtin'] {
 			continue
 		}
+		// every evaluator branch reads the struct's own module and file, not only the first
+		tc.cur_module = module_name
+		tc.cur_file = tc.struct_files[name_id] or { '' }
 		base_id := flat.source_type_syntax(name_id).application_base()
 		if (tc.struct_generic_params[name_id] or { []u32{} }).len > 0
 			|| (tc.struct_generic_params[base_id] or { []u32{} }).len > 0 {
