@@ -33,18 +33,23 @@ fn test_windows_stat_reports_negative_filetime_values() {
 		for path in [file, folder] {
 			set_negative_stat_times_for_test(path, seconds)!
 		}
-		for path in [file, folder, folder + path_separator] {
+		for path in [file, folder, folder + path_separator, folder + '/', folder + '\\\\'] {
 			st := stat(path)!
 			assert st.atime == seconds, '${path}: ${seconds}: ${st.atime}'
 			assert st.mtime == seconds, '${path}: ${seconds}: ${st.mtime}'
 			assert st.ctime == seconds, '${path}: ${seconds}: ${st.ctime}'
 		}
 	}
-	if _ := stat(join_path(root, 'missing')) {
-		assert false, 'stat must still fail for a missing path'
-	} else {
-		assert err.code() == int(C.ENOENT)
+	for path in [file + path_separator, file + '/', join_path(root, 'missing'),
+		join_path(root, 'missing') + path_separator] {
+		if _ := stat(path) {
+			assert false, 'stat must still fail for ${path}'
+		} else {
+			assert err.code() == int(C.ENOENT)
+		}
 	}
+	volume_root := volume_name(root) + path_separator
+	assert stat(volume_root)!.get_filetype() == .directory
 }
 
 fn test_windows_stat_negative_times_follow_live_symlinks() {
