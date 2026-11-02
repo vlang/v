@@ -159,9 +159,13 @@ mut:
 }
 
 // Scan_pool is the state shared between the main thread and the workers.
-// Everything mutable lives behind `mtx` except the two channels (the
-// results channel is written only by workers and read only by the main
-// thread; the exits channel only by exiting workers and the main thread).
+// Every mutable field lives behind `mtx`, including the result handover
+// (`results_buf`) and the worker exit counter (`exited`): workers append
+// finished results and bump `exited`, the main thread moves the results out
+// and polls `exited` to join. No `chan` is used on purpose: V channels own
+// internal ring buffers and synchronisation primitives that cannot be released
+// under `-gc none`, so a per-scan channel pair would leak on every replacement
+// scan, while plain arrays and the pool itself free cleanly.
 struct Scan_pool {
 mut:
 	mtx       sync.Mutex
@@ -172,13 +176,13 @@ mut:
 	done      int        // progress: entries processed so far
 	total     int        // progress: entries discovered so far
 	warnings  []string   // capped at 100
-	// Completed results, filed by the main thread while draining `results`.
+	// Completed results, filed by the main thread while draining `results_buf`.
 	folders map[int]Job_result
 	zips    map[string]Job_result
-	// Worker plumbing.
-	results   chan Job_result
-	exits     chan int
-	n_workers int
+	// Worker handover (guarded by `mtx`).
+	results_buf []Job_result
+	exited      int
+	n_workers   int
 }
 
 // scan_progress_flush is how many folder entries a worker walks before
@@ -337,10 +341,7 @@ fn (mut il Item_list) scan_begin(args []string) {
 	il.loaded = false
 	il.scanning = true
 	il.path_sep = path_sep()
-	mut p := &Scan_pool{
-		results: chan Job_result{cap: 1024}
-		exits:   chan int{cap: 64}
-	}
+	mut p := &Scan_pool{}
 	p.mtx.init()
 	p.folders = map[int]Job_result{}
 	p.zips = map[string]Job_result{}
@@ -439,28 +440,26 @@ fn scan_worker(p &Scan_pool) {
 		}
 		mp.job_finished()
 	}
-	mp.exits <- 1
+	mp.mtx.lock()
+	mp.exited += 1
+	mp.mtx.unlock()
 }
 
-// publish_result hands a finished job's result to the main thread without
-// ever blocking forever: if the scan was cancelled while the job ran, the
-// result is dropped (its scratch arrays freed) and false is returned. The
-// aborting thread keeps draining `results` until every worker has exited,
-// so a full channel only delays a worker until that drain catches up.
+// publish_result hands a finished job's result to the main thread by appending
+// it to the shared handover buffer under the pool lock. If the scan was
+// cancelled while the job ran, the result is dropped (its scratch arrays freed)
+// and false is returned; the aborting thread keeps draining `results_buf`
+// until every worker has exited, so a worker never blocks.
 fn publish_result(mut p &Scan_pool, mut res Job_result) bool {
-	for {
-		p.mtx.lock()
-		cancelled := p.cancelled
+	p.mtx.lock()
+	if p.cancelled {
 		p.mtx.unlock()
-		if cancelled {
-			free_job_result(mut res)
-			return false
-		}
-		if p.results.try_push(mut res) == .success {
-			return true
-		}
-		time.sleep(1 * time.millisecond)
+		free_job_result(mut res)
+		return false
 	}
+	p.results_buf << res
+	p.mtx.unlock()
+	return true
 }
 
 // run_folder_job lists one directory and classifies its entries. It only
@@ -498,7 +497,7 @@ fn run_folder_job(mut p &Scan_pool, job Scan_job) {
 		if st.get_filetype() == .directory {
 			id := p.new_job_id()
 			res.subdirs << Sub_dir{
-				name:  x
+				name:  x.clone()
 				path:  pt
 				mtime: st.mtime
 				id:    id
@@ -510,7 +509,7 @@ fn run_folder_job(mut p &Scan_pool, job Scan_job) {
 		if ext == .zip {
 			res.items << Item{
 				path:                 job.path
-				name:                 x
+				name:                 x.clone()
 				container_item_index: c
 				i_type:               .zip
 				mtime:                st.mtime
@@ -519,7 +518,7 @@ fn run_folder_job(mut p &Scan_pool, job Scan_job) {
 		} else if is_image(ext) {
 			res.items << Item{
 				path:                 job.path
-				name:                 x
+				name:                 x.clone()
 				container_item_index: c
 				i_type:               ext
 				mtime:                st.mtime
@@ -528,6 +527,12 @@ fn run_folder_job(mut p &Scan_pool, job Scan_job) {
 		}
 	}
 	p.add_progress(entries.len - flushed, 0)
+	// Release the os.ls() listing. The retained Items/Sub_dirs own cloned name
+	// strings (see the x.clone() below), so a deep entries.free() is safe here
+	// and reclaims both the array backing and the strings of the skipped
+	// (non-image, non-archive) entries. Under the Boehm build free is a no-op,
+	// so this only matters for the `-gc none` target.
+	unsafe { entries.free() }
 	publish_result(mut p, mut res)
 }
 
@@ -551,19 +556,23 @@ fn (mut il Item_list) scan_step() bool {
 		return false
 	}
 	mut p := &Scan_pool(il.pool)
-	mut r := Job_result{}
-	for p.results.try_pop(mut r) == .success {
+	// Move the finished results out of the shared buffer under the lock, then
+	// file them into the pool maps outside it (the maps are main-thread only).
+	p.mtx.lock()
+	mut buf := unsafe { p.results_buf }
+	p.results_buf = []Job_result{}
+	il.scan_done = p.done
+	il.scan_total = p.total
+	more := p.in_flight > 0
+	p.mtx.unlock()
+	for r in buf {
 		if r.is_zip {
 			p.zips[r.key] = r
 		} else {
 			p.folders[r.id] = r
 		}
 	}
-	p.mtx.lock()
-	il.scan_done = p.done
-	il.scan_total = p.total
-	more := p.in_flight > 0
-	p.mtx.unlock()
+	unsafe { buf.free() }
 	return more
 }
 
@@ -576,19 +585,28 @@ fn (mut il Item_list) scan_finish() {
 		return
 	}
 	mut p := &Scan_pool(il.pool)
-	for _ in 0 .. p.n_workers {
-		<-p.exits
+	// Join: every worker bumps `exited` after publishing its last result, so
+	// once all have exited the handover buffer holds whatever is still left.
+	mut exited := 0
+	for exited < p.n_workers {
+		p.mtx.lock()
+		exited = p.exited
+		p.mtx.unlock()
+		if exited < p.n_workers {
+			time.sleep(1 * time.millisecond)
+		}
 	}
-	// Every result was sent before the last job decremented in_flight, so
-	// after the workers are gone the channel holds whatever is left.
-	mut r := Job_result{}
-	for p.results.try_pop(mut r) == .success {
+	// All workers are gone: no one can append any more, so drain without locking.
+	mut buf := unsafe { p.results_buf }
+	p.results_buf = []Job_result{}
+	for r in buf {
 		if r.is_zip {
 			p.zips[r.key] = r
 		} else {
 			p.folders[r.id] = r
 		}
 	}
+	unsafe { buf.free() }
 	il.assemble_scan(mut p)
 	for w in p.warnings {
 		// Clone: `p.warnings.free()` below deep-frees the pool's strings, so a
@@ -608,9 +626,9 @@ fn (mut il Item_list) scan_finish() {
 }
 
 // release_pool frees a finished scan's pool and everything it owns: the
-// results' scratch arrays, the maps, the channels and the pool itself. The
-// per-entry strings leak exactly like the old recursive scan did under
-// `-gc none`; the Items that survived assembly already copied them.
+// results' scratch arrays, the maps, the handover buffer, the mutex and the
+// pool itself. The per-entry strings leak exactly like the old recursive scan
+// did under `-gc none`; the Items that survived assembly already copied them.
 fn release_pool(mut p &Scan_pool) {
 	for _, mut fr in p.folders {
 		free_job_result(mut fr)
@@ -618,21 +636,28 @@ fn release_pool(mut p &Scan_pool) {
 	for _, mut zr in p.zips {
 		free_job_result(mut zr)
 	}
+	// Drain any result still in the handover buffer (normally empty: the join
+	// in scan_finish/scan_abort already moved them out).
+	for mut r in p.results_buf {
+		free_job_result(mut r)
+	}
 	unsafe { p.folders.free() }
 	unsafe { p.zips.free() }
-	unsafe { p.results.free() }
-	unsafe { p.exits.free() }
+	unsafe { p.results_buf.free() }
 	unsafe { p.queue.free() }
 	unsafe { p.warnings.free() }
-	unsafe { p.free() }
+	p.mtx.destroy()
+	// `p.free()` is a no-op for a reference under `-gc none`; the builtin
+	// `free` emits a real v_free and releases the pool allocation itself.
+	unsafe { free(p) }
 }
 
 // scan_abort cancels a running scan and empties the list, so a new scan can
-// start on the same Item_list. Dropping a new path set during a scan must
-// not leave the old workers traversing the tree and publishing into a
-// channel nobody drains: they are told to stop, their queued results are
-// drained and freed, and the main thread joins every worker before the pool
-// is released. Safe to call at any time (idle, scanning, or finished).
+// start on the same Item_list. Dropping a new path set during a scan must not
+// leave the old workers traversing the tree and publishing into a buffer nobody
+// drains: they are told to stop, their handed-over results are drained and
+// freed, and the main thread joins every worker before the pool is released.
+// Safe to call at any time (idle, scanning, or finished).
 fn (mut il Item_list) scan_abort() {
 	if il.pool != unsafe { nil } {
 		mut p := &Scan_pool(il.pool)
@@ -642,25 +667,30 @@ fn (mut il Item_list) scan_abort() {
 		p.mtx.unlock()
 		// A worker notices the flag between jobs and before publishing; one
 		// that is mid-job still finishes it (a listing or an archive parse
-		// cannot be interrupted) and then drops its result. Drain whatever
-		// the workers publish meanwhile and wait for every exit signal.
+		// cannot be interrupted) and then drops its result. Drain whatever the
+		// workers already handed over and wait for every exit.
 		mut exited := 0
-		mut code := 0
-		mut r := Job_result{}
 		for exited < n {
-			for p.results.try_pop(mut r) == .success {
+			p.mtx.lock()
+			mut buf := unsafe { p.results_buf }
+			p.results_buf = []Job_result{}
+			exited = p.exited
+			p.mtx.unlock()
+			for mut r in buf {
 				free_job_result(mut r)
 			}
-			if p.exits.try_pop(mut code) == .success {
-				exited += 1
-			} else {
+			unsafe { buf.free() }
+			if exited < n {
 				time.sleep(1 * time.millisecond)
 			}
 		}
-		// Whatever the last workers sent just before exiting.
-		for p.results.try_pop(mut r) == .success {
+		// Whatever the last workers handed over just before exiting.
+		mut last := unsafe { p.results_buf }
+		p.results_buf = []Job_result{}
+		for mut r in last {
 			free_job_result(mut r)
 		}
+		unsafe { last.free() }
 		release_pool(mut p)
 		il.pool = unsafe { nil }
 	}

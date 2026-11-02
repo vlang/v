@@ -132,9 +132,18 @@ mut:
 	scan_pending []string
 
 	// true on the very first launch (no placement file yet): only then the
-	// 1/3 x 1/2 centered default is applied in app_init; afterwards Windows
-	// restores the previous placement by itself.
+	// 1/3 x 1/2 centered default is applied in app_init. On later launches the
+	// rectangle saved by placement_save() is restored instead (see below).
 	place_first bool
+
+	// Rectangle read back from the placement file on a later launch and applied
+	// in app_init (Windows). place_restore is false when there is no usable
+	// saved placement, so the default startup size is kept.
+	place_restore bool
+	place_x       int
+	place_y       int
+	place_w       int
+	place_h       int
 
 	// view transform (window pixel space, y-down)
 	win_w f32
@@ -738,8 +747,8 @@ $if linux {
 			return 1.0
 		}
 		mut scale := 1.0
-		res := C.XGetDefault(display, 'Xft', 'dpi')
-		if unsafe { !res.is_nil() } {
+		res := C.XGetDefault(display, c'Xft', c'dpi')
+		if unsafe { res != nil } {
 			dpi := unsafe { res.vstring() }.int()
 			if dpi > 0 {
 				scale = f64(dpi) / 96.0
@@ -824,6 +833,68 @@ fn apply_first_launch_placement() {
 	}
 }
 
+// Placement is a window rectangle (physical pixels) read back from the file
+// written by placement_save().
+$if windows {
+	struct Placement {
+	mut:
+		x int
+		y int
+		w int
+		h int
+	}
+
+	// saved_placement reads the saved rectangle ("left top width height"). It
+	// fails when the file is missing or malformed, the size is not positive, or
+	// the rectangle no longer intersects the desktop (for example a monitor was
+	// disconnected since the last run), so the caller falls back to the default
+	// startup placement.
+	fn saved_placement() !Placement {
+		txt := os.read_file(window_settings_path()) or {
+			return error('no saved placement')
+		}
+		mut f := []string{}
+		for part in txt.split(' ') {
+			if part != '' {
+				f << part
+			}
+		}
+		if f.len != 4 {
+			return error('malformed saved placement')
+		}
+		p := Placement{
+			x: f[0].int()
+			y: f[1].int()
+			w: f[2].int()
+			h: f[3].int()
+		}
+		if p.w <= 0 || p.h <= 0 {
+			return error('non-positive saved size')
+		}
+		// SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SM_CXVIRTUALSCREEN,
+		// SM_CYVIRTUALSCREEN: reject a rectangle entirely off the desktop.
+		vx := C.GetSystemMetrics(76)
+		vy := C.GetSystemMetrics(77)
+		vw := C.GetSystemMetrics(78)
+		vh := C.GetSystemMetrics(79)
+		if p.x + p.w <= vx || p.y + p.h <= vy || p.x >= vx + vw || p.y >= vy + vh {
+			return error('saved placement is off-screen')
+		}
+		return p
+	}
+
+	// apply_saved_placement moves/resizes the window to the saved rectangle.
+	// Runs in app_init on every launch after the first.
+	fn apply_saved_placement(x int, y int, w int, h int) {
+		hwnd := sapp.win32_get_hwnd()
+		if hwnd == unsafe { nil } {
+			return
+		}
+		// SWP_NOZORDER == 0x0004
+		C.SetWindowPos(hwnd, unsafe { nil }, x, y, w, h, 0x0004)
+	}
+}
+
 // app_init runs once after sokol is set up.
 fn app_init(mut app App) {
 	mut sd := gfx.SamplerDesc{
@@ -833,8 +904,12 @@ fn app_init(mut app App) {
 		wrap_v:     .clamp_to_edge
 	}
 	app.sampler = gfx.make_sampler(&sd)
-	if app.place_first {
-		apply_first_launch_placement()
+	$if windows {
+		if app.place_first {
+			apply_first_launch_placement()
+		} else if app.place_restore {
+			apply_saved_placement(app.place_x, app.place_y, app.place_w, app.place_h)
+		}
 	}
 	if app.scan_pending.len > 0 {
 		// Command-line paths are scanned incrementally now that the window
@@ -1105,7 +1180,27 @@ fn main() {
 	// Later launches: Windows restores the previous placement by itself, so
 	// the window must not be touched.
 	app.place_first = window_is_first_launch()
-	win_w, win_h := startup_window_size()
+	mut win_w := 0
+	mut win_h := 0
+	$if windows {
+		win_w, win_h = startup_window_size()
+		// On a later launch, restore the rectangle saved on exit. Creating the
+		// window at the saved size avoids a visible resize; the position is
+		// applied in app_init (sokol cannot place the window itself).
+		if !app.place_first {
+			if sp := saved_placement() {
+				app.place_restore = true
+				app.place_x = sp.x
+				app.place_y = sp.y
+				app.place_w = sp.w
+				app.place_h = sp.h
+				win_w = sp.w
+				win_h = sp.h
+			}
+		}
+	} $else {
+		win_w, win_h = startup_window_size()
+	}
 
 	app.gg = gg.new_context(
 		width:             win_w
