@@ -473,19 +473,39 @@ fn (ctx &Context) text_metrics(s string) (f32, [4]f32) {
 	return advance, bounds
 }
 
-// text_width returns the width of the `string` `s` in pixels.
-pub fn (ctx &Context) text_width(s string) int {
+// text_width_cfg returns the width of `s` using the supplied TextCfg.
+pub fn (ctx &Context) text_width_cfg(s string, cfg TextCfg) int {
 	$if macos {
 		if ctx.native_rendering {
 			return darwin_text_width(s)
 		}
 	}
-	// ctx.set_text_cfg(cfg) TODO
 	if !ctx.font_inited {
 		return 0
 	}
+	ctx.set_text_cfg(cfg)
 	advance, _ := ctx.text_metrics(s)
 	return int(advance / ctx.scale)
+}
+
+// text_height_cfg returns the height of `s` using the supplied TextCfg.
+pub fn (ctx &Context) text_height_cfg(s string, cfg TextCfg) int {
+	if !ctx.font_inited {
+		return 0
+	}
+	ctx.set_text_cfg(cfg)
+	_, bounds := ctx.text_metrics(s)
+	return int((bounds[3] - bounds[1]) / ctx.scale)
+}
+
+// text_size_cfg returns the size of `s` using the supplied TextCfg.
+pub fn (ctx &Context) text_size_cfg(s string, cfg TextCfg) (int, int) {
+	if !ctx.font_inited {
+		return 0, 0
+	}
+	ctx.set_text_cfg(cfg)
+	advance, bounds := ctx.text_metrics(s)
+	return int(advance / ctx.scale), int((bounds[3] - bounds[1]) / ctx.scale)
 }
 
 // text_height returns the height of the `string` `s` in pixels.
