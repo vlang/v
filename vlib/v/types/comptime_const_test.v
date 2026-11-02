@@ -1604,3 +1604,117 @@ fn test_comptime_const_literal_context_keeps_array_conversion_and_nominal_checks
 	invalid_literal := comptime_const_checker('@[comptime]\nfn bytes() [2]u8 { return [256, 2]! }\nconst values = bytes()\nfn main() { _ = values }')
 	assert invalid_literal.errors.any(it.msg.contains('invalid array element')), invalid_literal.errors.str()
 }
+
+fn test_comptime_const_range_counter_uses_lower_bound_storage() ! {
+	original_bits := platform_int_bits()
+	defer { set_platform_int_bits(original_bits) }
+	path := os.join_path(os.vtmp_dir(), 'comptime_const_range_storage_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	for bits in [32, 64] {
+		set_platform_int_bits(bits)
+		cases := {
+			'limit := u16(60001) for i in 60000 .. limit { return int(i * i) } return 0':                              if bits == 64 {
+				i64(3600000000)
+			} else {
+				i64(-694967296)
+			}
+			'limit := u32(70001) for i in 70000 .. limit { return int(i * i) } return 0':                              if bits == 64 {
+				i64(4900000000)
+			} else {
+				i64(605032704)
+			}
+			'limit := u16(60001) for i in 60000 .. limit { return int(i << 1) } return 0':                             i64(120000)
+			'limit := u16(60001) for i in (60000) .. limit { return int(i << 1) } return 0':                           i64(120000)
+			'limit := u16(60001) for i in range_lower .. limit { return int(i << 1) } return 0':                       i64(120000)
+			'limit := u16(60001) for i in u16(60000) .. limit { return int(i << 1) } return 0':                        i64(54464)
+			'lower := u16(60000) limit := u16(60001) for i in lower .. limit { return int(i << 1) } return 0':         i64(54464)
+			'limit := RangeWord(60001) for i in 60000 .. limit { return int(i << 1) } return 0':                       i64(120000)
+			'limit := u16(60001) for i in RangeWord(60000) .. limit { return int(i << 1) } return 0':                  i64(54464)
+			'limit := i16(30001) for i in 30000 .. limit { return int(i << 1) } return 0':                             i64(60000)
+			'limit := i16(30001) for i in i16(30000) .. limit { return int(i << 1) } return 0':                        i64(-5536)
+			'for i in u8(250) .. u16(256) { return int(i << 1) } return 0':                                            i64(244)
+			'mut limit := u16(3) mut total := 0 for i in 0 .. limit { total += int(i) limit = 2 } return total':       i64(1)
+			'mut limit := u16(3) mut total := 0 for i in 0 .. (limit + 0) { total += int(i) limit = 1 } return total': i64(3)
+		}
+		for body, expected in cases {
+			for constant_first in [false, true] {
+				helper := '@[comptime]\nfn compute() int { ${body} }\n'
+				constant := 'const result = compute()\n'
+				source := 'type RangeWord = u16\nconst range_lower = 60000\n' + if constant_first {
+					constant + helper
+				} else {
+					helper + constant
+				}
+				os.write_file(path, source + 'fn main() { _ = result }')!
+				mut p := parser.Parser.new(pref.new_preferences())
+				a := p.parse_file(path)
+				assert p.diagnostics.len == 0, p.diagnostics.str()
+				mut tc := TypeChecker.new(a)
+				tc.collect(a)
+				for checked in [false, true] {
+					if checked { tc.check_semantics() }
+					assert tc.errors.len == 0, '${body}, bits=${bits}, constant_first=${constant_first}, checked=${checked}: ${tc.errors}'
+					value := tc.eval_comptime_const(tc.const_exprs['result']!)!
+					assert value.integer == expected, '${body}, bits=${bits}, constant_first=${constant_first}, checked=${checked}: ${value.integer}'
+				}
+			}
+		}
+	}
+}
+
+fn test_comptime_const_lvalue_expression_bases_check_integer_staging() {
+	declarations := 'struct Cell { mut: value int }\n'
+	for body in [
+		'mut table := [300][1]int{} table[u8(250) + u8(10)][if true { 0 } else { 0 }]++ return table[4][0]',
+		'mut table := [300][1]int{} table[u8(250) + u8(10)][if true { 0 } else { 0 }]-- return table[4][0]',
+		'mut table := [300][1]int{} table[(u8(250) + u8(10))][if true { 0 } else { 0 }]++ return table[4][0]',
+		'mut table := [300][1]Cell{} table[u8(250) + u8(10)][if true { 0 } else { 0 }].value++ return table[4][0].value',
+		'mut table := [300][1][1]int{} table[u8(250) + u8(10)][if true { 0 } else { 0 }][0] = 7 return table[4][0][0]',
+		'mut table := [300][1][1]int{} table[u8(250) + u8(10)][if true { 0 } else { 0 }][0] += 7 return table[4][0][0]',
+		'mut table := [300][1][1]Cell{} table[u8(250) + u8(10)][if true { 0 } else { 0 }][0].value = 7 return table[4][0][0].value',
+	] {
+		helper := '@[comptime]\nfn compute() int { ${body} }\n'
+		for constant_first in [false, true] {
+			constant := 'const bad = compute()\n'
+			source := declarations + if constant_first {
+				constant + helper
+			} else {
+				helper + constant
+			}
+			tc := comptime_const_checker(source + 'fn main() { _ = bad }')
+			assert tc.errors.any(it.msg.contains('cannot evaluate const `bad`') && it.msg.contains('integer operand staging')), '${body}, constant_first=${constant_first}: ${tc.errors}'
+			assert 'bad' !in tc.comptime_const_values, body
+		}
+		ordinary := comptime_const_checker(declarations + helper + 'fn main() { _ = compute() }')
+		assert ordinary.errors.len == 0, '${body}: ${ordinary.errors}'
+		assert ordinary.comptime_const_values.len == 0
+	}
+}
+
+fn test_comptime_const_lvalue_staging_keeps_unstaged_and_explicit_storage() {
+	for body, expected in {
+		'mut table := [300][1]int{} table[u8(250) + u8(10)][if true { 0 } else { 0 }] = 7 return table[4][0] * 100 + table[260][0]':                                          7
+		'mut table := [300][1]int{} table[u8(250) + u8(10)][if true { 0 } else { 0 }] += 7 return table[4][0] * 100 + table[260][0]':                                         7
+		'mut table := [300][1]Cell{} table[u8(250) + u8(10)][if true { 0 } else { 0 }].value = 7 return table[4][0].value * 100 + table[260][0].value':                       7
+		'mut table := [300][1]int{} table[u8(250) + u8(10)][0]++ return table[4][0] * 100 + table[260][0]':                                                                   1
+		'mut table := [300][1]int{} table[u8(1) + u8(2)][if true { 0 } else { 0 }]++ return table[3][0]':                                                                     1
+		'mut table := [300][1]int{} table[u8(u8(250) + u8(10))][if true { 0 } else { 0 }]++ return table[4][0] * 100 + table[260][0]':                                        100
+		'mut table := [300][1]int{} table[int(u8(250) + u8(10))][if true { 0 } else { 0 }]++ return table[4][0] * 100 + table[260][0]':                                       1
+		'mut table := [300][1]int{} index := u8(250) + u8(10) slot := if true { 0 } else { 0 } table[index][slot]++ return table[4][0] * 100 + table[260][0]':                100
+		'mut table := [300][1][1]int{} index := u8(250) + u8(10) slot := if true { 0 } else { 0 } table[index][slot][0] += 7 return table[4][0][0] * 100 + table[260][0][0]': 700
+		'mut table := [300][1]int{} if false { table[u8(250) + u8(10)][if true { 0 } else { 0 }]++ } return 7':                                                               7
+	} {
+		for constant_first in [false, true] {
+			helper := '@[comptime]\nfn compute() int { ${body} }\n'
+			constant := 'const result = compute()\n'
+			source := 'struct Cell { mut: value int }\n' + if constant_first {
+				constant + helper
+			} else {
+				helper + constant
+			}
+			tc := comptime_const_checker(source + 'fn main() { _ = result }')
+			assert tc.errors.len == 0, '${body}, constant_first=${constant_first}: ${tc.errors}'
+			assert tc.comptime_const_values['result']!.integer == expected, '${body}, constant_first=${constant_first}'
+		}
+	}
+}

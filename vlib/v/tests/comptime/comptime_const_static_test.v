@@ -1292,3 +1292,81 @@ fn test_comptime_fixed_literals_use_expected_context() {
 	assert context_once == [u8(1), 2]!
 	assert context_once == context_make_once(true)
 }
+
+type ConstRangeWord = u16
+
+const computed_literal_range_storage = const_literal_range_storage()
+
+@[comptime]
+fn const_literal_range_storage() [6]i64 {
+	mut results := [6]i64{}
+	limit := u16(60001)
+	for i in 60000 .. limit {
+		results[0] = i64(i * i)
+		break
+	}
+	for i in 60000 .. u16(60001) {
+		results[1] = i64(i * i)
+		break
+	}
+	for i in (60000) .. limit {
+		results[2] = i64(i * i)
+		break
+	}
+	for i in u16(60000) .. limit {
+		results[3] = i64(i * i)
+		break
+	}
+	for i in ConstRangeWord(60000) .. limit {
+		results[4] = i64(i * i)
+		break
+	}
+	wide_limit := u32(70001)
+	for i in 70000 .. wide_limit {
+		results[5] = i64(i * i)
+		break
+	}
+	return results
+}
+
+fn test_comptime_range_counter_storage_follows_lower_bound() {
+	wide := i64(int(i64(3600000000)))
+	wider := i64(int(i64(4900000000)))
+	assert computed_literal_range_storage == [wide, wide, wide, i64(-694967296), i64(-694967296),
+		wider]!
+	assert computed_literal_range_storage == const_literal_range_storage()
+}
+
+const computed_postfix_index_storage = const_postfix_index_storage()
+
+@[comptime]
+fn const_postfix_index_storage() [6]int {
+	mut increment := [300][1]int{}
+	increment[u8(1) + u8(2)][if true { 0 } else { 0 }]++
+	mut decrement := [300][1]int{}
+	decrement[3][0] = 2
+	decrement[u8(1) + u8(2)][if true { 0 } else { 0 }]--
+	index := u8(250) + u8(10)
+	mut calls := 0
+	slot := if true {
+		calls++
+		0
+	} else {
+		0
+	}
+	mut stored_increment := [300][1]int{}
+	stored_increment[index][slot]++
+	mut stored_decrement := [300][1]int{}
+	stored_decrement[4][0] = 2
+	stored_decrement[index][slot]--
+	mut assigned := [300][1]int{}
+	assigned[u8(250) + u8(10)][if true { 0 } else { 0 }] = 7
+	assigned[u8(250) + u8(10)][if true { 0 } else { 0 }] += 2
+	return [increment[3][0], decrement[3][0], stored_increment[4][0], stored_decrement[4][0],
+		assigned[4][0] * 10 + assigned[260][0], calls]!
+}
+
+fn test_comptime_postfix_indices_preserve_explicit_storage() {
+	assert computed_postfix_index_storage == [1, 1, 1, 1, 9, 1]!
+	assert computed_postfix_index_storage == const_postfix_index_storage()
+}

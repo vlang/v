@@ -620,7 +620,7 @@ fn (mut e ConstEval) expr_value(id flat.NodeId, expected Type) !ComptimeConstVal
 			}
 			root_node := e.tc.a.node(root)
 			if root_node.kind == .ident && e.local(root_node.value) != none {
-				target := e.resolve_lvalue(root, path)!
+				target := e.resolve_lvalue(root, path, [])!
 				return e.lvalue_value(target)
 			}
 			container := e.expr(e.tc.a.child(node, 0))!
@@ -1310,6 +1310,17 @@ fn (mut e ConstEval) staged_access_indices(path []flat.NodeId) ![]flat.NodeId {
 	return staged
 }
 
+// Assignment lowering treats the last index as storage, but transforms its base
+// as an expression. Selectors after that index preserve the lvalue distinction.
+fn (mut e ConstEval) staged_assignment_indices(path []flat.NodeId) ![]flat.NodeId {
+	for i := path.len - 1; i >= 0; i-- {
+		if e.tc.a.node(path[i]).kind == .index {
+			return e.staged_access_indices(path[..i])
+		}
+	}
+	return []
+}
+
 fn (mut e ConstEval) if_result_type(id flat.NodeId) !Type {
 	e.check_conditional_type_queries(id)!
 	mut locals := map[string]Type{}
@@ -1449,7 +1460,7 @@ fn (mut e ConstEval) stmt_with_expected_type(id flat.NodeId, expected Type) !Con
 				root, path := e.access_path(lhs)!
 				e.check_access_order(root, path, rhs)!
 				mut value := e.expr_with_expected_type(rhs, e.lvalue_type(root, path))!
-				target := e.resolve_lvalue(root, path)!
+				target := e.resolve_lvalue(root, path, e.staged_assignment_indices(path)!)!
 				if node.op != .assign {
 					op := match node.op {
 						.plus_assign { flat.Op.plus }
@@ -1474,7 +1485,7 @@ fn (mut e ConstEval) stmt_with_expected_type(id flat.NodeId, expected Type) !Con
 			lhs := e.tc.a.child(node, 0)
 			root, path := e.access_path(lhs)!
 			e.check_access_order(root, path, flat.empty_node)!
-			target := e.resolve_lvalue(root, path)!
+			target := e.resolve_lvalue(root, path, e.staged_access_indices(path)!)!
 			old := e.lvalue_value(target)!
 			if !unalias_type(old.typ).is_integer() || node.op !in [.inc, .dec] {
 				return error('unsupported postfix operation')
@@ -1505,8 +1516,10 @@ fn (mut e ConstEval) stmt_with_expected_type(id flat.NodeId, expected Type) !Con
 			if !unalias_type(start.typ).is_integer() || !unalias_type(end.typ).is_integer() {
 				return error('expected integer range')
 			}
-			range_type := if e.tc.range_endpoint_is_literal(start_id) && !e.tc.range_endpoint_is_literal(end_id) {
-				end.typ
+			// Range lowering declares the counter from the lower expression,
+			// independently of the checker's inferred type from either endpoint.
+			range_type := if e.tc.a.node(start_id).kind == .int_literal {
+				builtin_int_type
 			} else {
 				start.typ
 			}
@@ -1726,7 +1739,7 @@ fn (e &ConstEval) lvalue_type(root flat.NodeId, path []flat.NodeId) Type {
 	return value.typ
 }
 
-fn (mut e ConstEval) resolve_lvalue(root flat.NodeId, path []flat.NodeId) !ConstEvalLvalue {
+fn (mut e ConstEval) resolve_lvalue(root flat.NodeId, path []flat.NodeId, staged []flat.NodeId) !ConstEvalLvalue {
 	node := e.tc.a.node(root)
 	if node.kind != .ident { return error('unsupported assignment target') }
 	mut scope := -1
@@ -1741,9 +1754,16 @@ fn (mut e ConstEval) resolve_lvalue(root flat.NodeId, path []flat.NodeId) !Const
 	for id in path {
 		e.tick()!
 		step := e.tc.a.node(id)
+		mut index := i64(0)
+		if step.kind == .index {
+			index_id := e.tc.a.child(step, 1)
+			value := e.expr(index_id)!
+			if index_id in staged { e.check_staged_integer(index_id, value)! }
+			index = value.integer
+		}
 		steps << ConstEvalAccessStep{
 			kind:  step.kind
-			index: if step.kind == .index { e.expr(e.tc.a.child(step, 1))!.integer } else { 0 }
+			index: index
 			field: step.value
 		}
 	}

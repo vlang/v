@@ -4305,12 +4305,17 @@ right-hand side independent of helper locals, calls, and conditionals. More comp
 including `$if` expressions, and array bases can be evaluated into fresh locals before the access.
 Range loops preserve the runtime distinction between live upper bounds (such as a local variable)
 and expressions that are evaluated once before the loop (such as an addition or function call).
+Range counters use the lower bound's storage type. An untyped literal uses target-width `int`;
+the upper bound retains its own integer type.
 Conditional result-type inference that needs another required evaluation is currently unsupported.
 Integer promotion of locals that shadow constants and narrowing conditional integer values are
 also unsupported, because their runtime conversions depend on the surrounding storage context.
 Runtime value conditionals can also cause other operands to be stored in temporary variables.
 Required evaluation rejects this implicit integer staging when it changes a value or its effective
 C integer type. Store the affected expression in a fresh local before using the conditional.
+This restriction also applies to nested indexed `++` and `--` targets and expression bases inside
+assignment targets. Explicitly storing the indices before the access makes their conversions and
+evaluation order unambiguous.
 
 The checker can use a computed integer constant as a fixed-array bound. The C backend emits the
 computed value as static data, with no initializer call, allocation, or copy at startup. Integer

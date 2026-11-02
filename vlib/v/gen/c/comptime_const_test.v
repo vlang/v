@@ -734,3 +734,92 @@ fn test_cli_comptime_fixed_literals_keep_expected_context() ! {
 		}
 	}
 }
+
+fn test_cli_comptime_literal_range_counter_matches_runtime() ! {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_range_storage_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	suffix := if os.user_os() == 'windows' { '.exe' } else { '' }
+	args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none']
+	program := 'const result = compute()\n@[comptime]\nfn compute() int { limit := u16(60001) for i in 60000 .. limit { return int(i * i) } return 0 }\nfn main() {\nassert result == compute()\nprintln(result)\n}'
+	os.write_file(source, program)!
+	expected := if sizeof(int) == 8 { '3600000000' } else { '-694967296' }
+	for mode, flags in [[]string{}, ['-no-parallel']] {
+		output := os.join_path(root, 'range_${mode}.c')
+		generated_result := os.exec([...args, ...flags, '-o', output, source])
+		assert generated_result.exit_code == 0, generated_result.output
+		generated := os.read_file(output)!
+		// A name collision with a struct field can require addressable C storage.
+		definition := generated.split_into_lines().filter(it.starts_with('#define main__result ')
+			|| (it.starts_with('static const ') && it.contains(' main__result = ')))
+		assert definition.len == 1, generated.all_after('compute(void);')
+		assert definition[0].contains('${expected}LL'), definition[0]
+		assert !generated.contains('main__result = compute(')
+		executable := os.join_path(root, 'range_${mode}${suffix}')
+		built := os.exec([...args, ...flags, '-o', executable, source])
+		assert built.exit_code == 0, built.output
+		runtime := os.exec([executable])
+		assert runtime.exit_code == 0, runtime.output
+		assert runtime.output.trim_space() == expected, runtime.output
+	}
+}
+
+fn test_cli_comptime_mutation_index_staging_is_explicit() ! {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_postfix_staging_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	suffix := if os.user_os() == 'windows' { '.exe' } else { '' }
+	args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none', '-cc',
+		'tcc']
+	cases := [
+		ComptimeAccessCase{
+			body:     'mut table := [300][1]int{} table[u8(250) + u8(10)][if true { 0 } else { 0 }]++ return table[4][0]'
+			expected: '1'
+		},
+		ComptimeAccessCase{
+			body:     'mut table := [300][1]int{} table[u8(250) + u8(10)][if true { 0 } else { 0 }]-- return table[4][0]'
+			expected: '-1'
+		},
+		ComptimeAccessCase{
+			body:     'mut table := [300][1][1]int{} table[u8(250) + u8(10)][if true { 0 } else { 0 }][0] = 7 return table[4][0][0] * 100 + table[260][0][0]'
+			expected: '700'
+		},
+		ComptimeAccessCase{
+			body:     'mut table := [300][1][1]int{} table[u8(250) + u8(10)][if true { 0 } else { 0 }][0] += 7 return table[4][0][0] * 100 + table[260][0][0]'
+			expected: '700'
+		},
+		ComptimeAccessCase{
+			declarations: 'struct Cell {\nmut:\nvalue int\n}'
+			body:         'mut table := [300][1]Cell{} table[u8(250) + u8(10)][if true { 0 } else { 0 }].value++ return table[4][0].value * 100 + table[260][0].value'
+			expected:     '100'
+		},
+	]
+	for i, case in cases {
+		program := '${case.declarations}\nconst result = compute()\n@[comptime]\nfn compute() int { ${case.body} }\nfn main() { println(result) println(compute()) }'
+		os.write_file(source, program)!
+		required := os.exec([...args, '-o', os.join_path(root, 'required_${i}'), source])
+		assert required.exit_code != 0, required.output
+		assert required.output.contains('cannot evaluate const `result`'), required.output
+		assert required.output.contains('integer operand staging'), required.output
+		runtime_program := program.replace('const result = compute()\n', '').replace('fn main() {',
+			'fn main() { result := compute()\n')
+		os.write_file(source, runtime_program)!
+		executable := os.join_path(root, 'runtime_${i}${suffix}')
+		built := os.exec([...args, '-o', executable, source])
+		assert built.exit_code == 0, built.output
+		runtime := os.exec([executable])
+		assert runtime.exit_code == 0, runtime.output
+		assert runtime.output.trim_space() == '${case.expected}\n${case.expected}', runtime.output
+		workaround := program.replace('table[u8(250) + u8(10)][if true { 0 } else { 0 }]',
+			'index := u8(250) + u8(10)\nslot := if true { 0 } else { 0 }\ntable[index][slot]')
+		os.write_file(source, workaround)!
+		stored_path := os.join_path(root, 'stored_${i}${suffix}')
+		stored_build := os.exec([...args, '-o', stored_path, source])
+		assert stored_build.exit_code == 0, stored_build.output
+		stored := os.exec([stored_path])
+		assert stored.exit_code == 0, stored.output
+		assert stored.output.trim_space() == '${case.expected}\n${case.expected}', stored.output
+	}
+}
