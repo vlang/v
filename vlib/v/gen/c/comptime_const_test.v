@@ -462,3 +462,27 @@ fn test_cli_comptime_integer_staging_rejects_misfolds_and_keeps_runtime_calls() 
 	assert explicit_local.exit_code == 0, explicit_local.output
 	assert explicit_local.output.trim_space() == '5\n5', explicit_local.output
 }
+
+fn test_cli_integer_constant_macros_and_expansions_preserve_declared_types() ! {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_integer_macros_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	suffix := if os.user_os() == 'windows' { '.exe' } else { '' }
+	program := 'const word_value = u16(65530) + u16(10)\nconst widened = int(word_value)\nconst halved = word_value / u16(2)\nconst values = [int(word_value)]!\nstruct Record { value int }\nconst record = Record{value: int(word_value)}\nconst addressed = u16(65530) + u16(10)\nconst shifted = 1 << 40\n@[comptime]\nfn compute() [6]int { return [int(word_value), widened, int(halved), values[0], record.value, int(addressed)]! }\n@[comptime]\nfn compare() bool { return shifted < i64(-1) }\nconst folded = compute()\nconst comparison = compare()\nfn read_pointer(value &u16) u16 { return *value }\nfn main() {\nassert folded == [4, 4, 2, 4, 4, 4]!\nassert folded == compute()\nassert !comparison\nassert comparison == compare()\nassert read_pointer(&addressed) == 4\nassert sizeof(word_value) == sizeof(u16)\nprintln("ok")\n}'
+	os.write_file(source, program)!
+	executable := os.join_path(root, 'main${suffix}')
+	args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none', '-cc',
+		'tcc']
+	built := os.exec([...args, '-o', executable, source])
+	assert built.exit_code == 0, built.output
+	runtime := os.exec([executable])
+	assert runtime.exit_code == 0, runtime.output
+	assert runtime.output.trim_space() == 'ok', runtime.output
+	output := os.join_path(root, 'main.c')
+	generated_result := os.exec([...args, '-o', output, source])
+	assert generated_result.exit_code == 0, generated_result.output
+	generated := os.read_file(output)!
+	assert generated.contains('#define main__word_value (((u16)('), generated.all_after('void main__main(void);')
+	assert generated.contains('static const u16 main__addressed ='), generated.all_after('void main__main(void);')
+}

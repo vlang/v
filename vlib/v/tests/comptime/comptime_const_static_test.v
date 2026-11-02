@@ -654,6 +654,48 @@ fn test_comptime_range_bound_types_match_runtime() {
 	assert computed_typed_range_bounds == const_typed_range_bounds()
 }
 
+type ConstMacroWord = u16
+
+struct ConstMacroRecord {
+	value int
+}
+
+const ordinary_macro_word = u16(65530) + u16(10)
+const ordinary_macro_i8 = i8(120) + i8(10)
+const ordinary_macro_i16 = i16(32760) + i16(10)
+const ordinary_macro_negative = -u16(5)
+const ordinary_macro_complement = ~u16(0)
+const ordinary_macro_shift = u16(32768) << 1
+const ordinary_macro_alias = ConstMacroWord(65530) + ConstMacroWord(10)
+const ordinary_macro_chain = int(ordinary_macro_word)
+const ordinary_macro_ratio = ordinary_macro_word / u16(2)
+const ordinary_macro_array = [int(ordinary_macro_word)]!
+const ordinary_macro_record = ConstMacroRecord{ value: int(ordinary_macro_word) }
+const ordinary_macro_wide_shift = 1 << 40
+const computed_integer_macro_values = const_read_integer_macros()
+const computed_integer_macro_comparison = const_compare_integer_macro()
+
+@[comptime]
+fn const_read_integer_macros() [12]i64 {
+	return [i64(ordinary_macro_word), i64(ordinary_macro_i8), i64(ordinary_macro_i16),
+		i64(ordinary_macro_negative), i64(ordinary_macro_complement), i64(ordinary_macro_shift),
+		i64(ordinary_macro_alias), i64(ordinary_macro_chain), i64(ordinary_macro_ratio),
+		i64(ordinary_macro_array[0]), i64(ordinary_macro_record.value), i64(stored_byte)]!
+}
+
+@[comptime]
+fn const_compare_integer_macro() bool {
+	return ordinary_macro_wide_shift < i64(-1)
+}
+
+fn test_comptime_integer_macros_match_declared_storage_types() {
+	assert computed_integer_macro_values == [i64(4), -126, -32766, 65531, 65535, 0, 4, 4, 2, 4,
+		4, 4]!
+	assert computed_integer_macro_values == const_read_integer_macros()
+	assert !computed_integer_macro_comparison
+	assert computed_integer_macro_comparison == const_compare_integer_macro()
+}
+
 const computed_staging_controls = const_staging_controls(250, 10)
 const computed_staging_fits = const_staging_small(1, 2)
 const computed_staging_signed = const_staging_signed(0)

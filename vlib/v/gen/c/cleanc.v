@@ -16109,6 +16109,23 @@ fn (mut g FlatGen) const_array_literal_storage_type_for_name(name string, val_id
 	})
 }
 
+// Native integer constants have a typed value even when C represents them as
+// macros or expands their initializers inside another constant expression.
+fn (mut g FlatGen) const_integer_storage_expression(id flat.NodeId, typ types.Type, expr string) string {
+	if !unalias_type(typ).is_integer() || g.expr_is_in_translated_file(id)
+		|| g.tc.translated_files[g.tc.cur_file] {
+		return expr
+	}
+	if _ := int128_signedness(typ) {
+		return expr
+	}
+	// offsetof keeps its existing platform-size C type; the checker records u32.
+	if g.a.node(id).kind == .offsetof_expr {
+		return expr
+	}
+	return '((${g.tc.c_type(typ)})(${expr}))'
+}
+
 // const_expr_to_string converts const expr to string data for c.
 fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
@@ -16142,7 +16159,11 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 					g.tc.cur_file = file
 				}
 				g.const_init_depth++
-				dep_expr := g.const_expr_to_string(g.const_vals[const_name], next_seen)
+				dep_id := g.const_vals[const_name]
+				mut dep_expr := g.const_expr_to_string(dep_id, next_seen)
+				if trimmed_space(dep_expr).len > 0 {
+					dep_expr = g.const_integer_storage_expression(dep_id, g.const_value_type(const_name, dep_id), dep_expr)
+				}
 				g.const_init_depth--
 				g.tc.cur_file = old_file
 				g.tc.cur_module = old_module
@@ -26934,7 +26955,8 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 			// binary I/O helpers, so they need addressable storage rather than a macro.
 			g.writeln('static const ${ct} ${qname} = ${expr_str};')
 		} else {
-			g.writeln('#define ${qname} (${expr_str})')
+			macro_expr := g.const_integer_storage_expression(val_id, v_type, expr_str)
+			g.writeln('#define ${qname} (${macro_expr})')
 		}
 	} else if fixed := array_fixed_type(unalias_type(v_type)) {
 		// An alias whose underlying type is a fixed array still declares a C

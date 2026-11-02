@@ -1670,6 +1670,8 @@ fn test_comptime_headers_keep_source_files_for_conflicting_import_bindings() {
 		['import seed as source', 'import words as source'],
 		['import first.words', 'import second.words'],
 		['import seed { item }', 'import words { item }'],
+		['import seed as item', 'import words { item }'],
+		['import seed { item }', 'import words as item'],
 		['$if windows {\nimport seed as source\n} $else {\nimport seed as source\n}',
 			'$if windows {\nimport words as source\n} $else {\nimport words as source\n}'],
 	] {
@@ -1694,6 +1696,54 @@ fn test_comptime_headers_embed_compatible_import_bindings() {
 			'$if windows {\nimport seed as source\n} $else {\nimport seed as source\n}'],
 	] {
 		header := comptime_header_with_two_imports(root, imports)
+		assert !header.contains(source_body_marker), header
+		assert header.contains('return 1'), header
+		assert header.contains('return 2'), header
+	}
+}
+
+fn test_comptime_headers_keep_source_files_for_import_declaration_collisions() {
+	root := os.join_path(os.vtmp_dir(), 'v3_header_import_declarations_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for fragments in [
+		['import seed as item', 'const item = 7'],
+		['import source.item', 'const item = 7'],
+		['import seed { item }', 'const item = 7'],
+		['import seed as item', 'const (\nother = 1\nitem = 7\n)'],
+		['import seed as item', '__global item int'],
+		['import seed as item', '__global (\nother int\nitem int\n)'],
+		['import seed as item', 'fn item() int { return 7 }'],
+		['import seed { item }', 'fn item() int { return 7 }'],
+		['import seed as item', '$if true {\n$if true {\nconst item = 7\n}\n}'],
+		['$if true {\nimport seed as item\n}', 'const item = 7'],
+		['import seed { Item }', 'struct Item { value int }'],
+		['import seed { Item }', 'enum Item { one }'],
+		['import seed { Item }', 'type Item = int'],
+		['import seed { Item }', 'interface Item { read() int }'],
+	] {
+		for ordered in [fragments, fragments.reverse()] {
+			header := comptime_header_with_two_imports(root, ordered)
+			assert header.contains(source_body_marker), header
+			assert !header.contains('return 1'), header
+			assert !header.contains('return 2'), header
+		}
+	}
+}
+
+fn test_comptime_header_binding_scan_excludes_locals_fields_and_methods() {
+	root := os.join_path(os.vtmp_dir(), 'v3_header_nonmodule_bindings_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for declaration in [
+		'const other = 7',
+		'fn read(item int) int { return item }',
+		'fn read() int { item := 7 return item }',
+		'struct Cell { item int }',
+		'struct Cell {}\nfn (cell Cell) item() int { return 7 }',
+		'struct Cell {}\nfn Cell.item() int { return 7 }',
+	] {
+		header := comptime_header_with_two_imports(root, ['import seed as item', declaration])
 		assert !header.contains(source_body_marker), header
 		assert header.contains('return 1'), header
 		assert header.contains('return 2'), header

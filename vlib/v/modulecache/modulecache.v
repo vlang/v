@@ -5826,13 +5826,15 @@ fn module_source_bodies_are_embeddable(a &flat.FlatAst, tc &types.TypeChecker, f
 
 fn module_has_conflicting_import_bindings(a &flat.FlatAst, file_ids []flat.NodeId) bool {
 	// A header combines all source files into one scope. Keep the original files
-	// when their embedded helper bodies need different bindings of the same name.
+	// when imports would capture sibling declarations or bind the same name differently.
 	mut imports := []flat.NodeId{}
+	mut declarations := map[string]bool{}
 	for file_id in file_ids {
 		file_node := a.node(file_id)
 		for i in 0 .. file_node.children_count {
 			id := a.child(file_node, i)
 			node := a.node(id)
+			append_module_binding_declarations(a, id, mut declarations)
 			if node.kind in [.import_decl, .block, .comptime_if] {
 				append_module_import_nodes(a, id, mut imports)
 			}
@@ -5846,22 +5848,51 @@ fn module_has_conflicting_import_bindings(a &flat.FlatAst, file_ids []flat.NodeI
 		}
 		alias := if node.typ != 0 { node.typ_text() } else { node.value.all_after_last('.') }
 		mut names := []string{cap: int(node.children_count) + 1}
+		mut targets := []string{cap: int(node.children_count) + 1}
 		if alias != '_' {
-			names << 'module:${alias}'
+			names << alias
+			targets << 'module:${node.value}'
 		}
 		for i in 0 .. node.children_count {
-			names << 'symbol:${a.child_node(node, i).value}'
+			name := a.child_node(node, i).value
+			names << name
+			targets << 'symbol:${node.value}.${name}'
 		}
-		for name in names {
+		for i, name in names {
+			if declarations[name] { return true }
 			if previous := bindings[name] {
-				if previous != node.value {
+				if previous != targets[i] {
 					return true
 				}
 			}
-			bindings[name] = node.value
+			bindings[name] = targets[i]
 		}
 	}
 	return false
+}
+
+fn append_module_binding_declarations(a &flat.FlatAst, id flat.NodeId, mut names map[string]bool) {
+	node := a.node(id)
+	match node.kind {
+		.block, .comptime_if {
+			for i in 0 .. node.children_count {
+				append_module_binding_declarations(a, a.child(node, i), mut names)
+			}
+		}
+		.const_decl, .global_decl {
+			for i in 0 .. node.children_count {
+				name := a.child_node(node, i).value
+				if name.len > 0 && name != '_' && !name.contains('.') { names[name] = true }
+			}
+		}
+		.fn_decl, .struct_decl, .enum_decl, .interface_decl, .type_decl {
+			if node.value.len > 0 && node.value != '_' && !node.value.contains('.')
+				&& !node.is_static_type_method() {
+				names[node.value] = true
+			}
+		}
+		else {}
+	}
 }
 
 fn append_module_import_nodes(a &flat.FlatAst, id flat.NodeId, mut imports []flat.NodeId) {

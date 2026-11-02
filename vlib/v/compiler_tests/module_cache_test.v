@@ -8675,6 +8675,56 @@ fn main() {
 	assert run_module_cache_binary(reordered_output) == '1'
 }
 
+fn test_module_cache_comptime_helpers_keep_import_and_value_bindings() {
+	v3_bin := module_cache_compiler()
+	root := os.join_path(os.temp_dir(), 'v3_comptime_cache_bindings_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for fixture in [
+		['alias', 'module dep\npub const value = 2\n',
+			'module helpers\nimport dep as item\npub fn imported_value() int { return item.value }\n',
+			'module helpers\nstruct Cell { value int }\nconst item = Cell{value: @VALUE@}\n@[comptime]\npub fn value() int { return item.value }\n'],
+		['selected', 'module dep\n@[comptime]\npub fn item() int { return 2 }\n',
+			'module helpers\nimport dep { item }\npub fn imported_value() int { return dep.item() }\n',
+			'module helpers\nconst item = @VALUE@\n@[comptime]\npub fn value() int { return item }\n'],
+	] {
+		case_root := os.join_path(root, fixture[0])
+		project := os.join_path(case_root, 'project')
+		modules := os.join_path(case_root, 'modules')
+		cache_dir := os.join_path(case_root, 'cache')
+		// External dependencies exercise warm headers. Project-owned modules are
+		// deliberately reparsed to preserve diagnostics, which would mask this bug.
+		write_module_cache_file(project, 'v.mod', "Module { name: 'comptime_cache_bindings' }\n")
+		write_module_cache_file(modules, 'dep/dep.v', fixture[1])
+		write_module_cache_file(modules, 'helpers/a.v', fixture[2])
+		write_module_cache_file(modules, 'numbers/numbers.v', 'module numbers\npub const word = u16(65530) + u16(10)\npub fn read_word() int { return int(word) }\n')
+		main_file := os.join_path(project, 'main.v')
+		for i, phase in ['cold', 'warm', 'changed', 'changed_warm'] {
+			value := if i < 2 { 7 } else { 11 }
+			if i == 0 || i == 2 {
+				write_module_cache_file(modules, 'helpers/b.v', fixture[3].replace('@VALUE@', value.str()))
+			}
+			// Rebuild the entry point so whole-program reuse cannot hide a stale fold.
+			write_module_cache_file(project, 'main.v', 'module main\nimport helpers\nimport numbers\nconst folded = helpers.value()\nfn main() { println(folded) println(helpers.value()) println(helpers.imported_value()) println(numbers.read_word()) println(int(numbers.word)) }\n// ${phase}\n')
+			output := os.join_path(case_root, phase)
+			built := os.exec(['env', 'V3CACHE=${cache_dir}', 'VMODULES=${modules}', v3_bin,
+				'-new-compiler', '-no-retry-compilation', '-cc', 'cc', '-gc', 'none', '-show-timings',
+				'-o', output, main_file])
+			assert built.exit_code == 0, '${fixture[0]} ${phase}: ${built.output}'
+			assert run_module_cache_binary(output) == '${value}\n${value}\n2\n4\n4', '${fixture[0]} ${phase}'
+			helper_header := module_cache_artifact(cache_dir, 'helpers_', '.vh')
+			assert helper_header.len > 0
+			assert modulecache.header_needs_source(modulecache.Entry{ header: helper_header })
+			if i > 0 {
+				dep_header := module_cache_artifact(cache_dir, 'dep_', '.vh')
+				assert dep_header.len > 0
+				parsed_headers := built.output.split_into_lines().filter(it.trim_space().starts_with('.vh files:'))
+				assert parsed_headers.any(it.contains(dep_header)), built.output
+			}
+		}
+	}
+}
+
 // Drain both pipes while the child runs, so a full stderr pipe cannot block stdout.
 fn cache_capture_files(arguments []string, stdout_file string, stderr_file string, variables map[string]string) os.Result {
 	mut process := os.new_process(arguments[0])

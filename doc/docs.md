@@ -4308,9 +4308,12 @@ C integer type. Store the affected expression in a fresh local before using the 
 
 The checker can use a computed integer constant as a fixed-array bound. The C backend emits the
 computed value as static data, with no initializer call, allocation, or copy at startup. Integer
-conversions use the target's widths, including platform-width `int`. Unsupported target-dependent
-operations produce an error; required evaluation needs a concrete target and rejects portable C
-(`-os cross`). Required evaluation with `-check-overflow` or `-check-casts` is not yet supported.
+conversions use the target's widths, including platform-width `int`. Required evaluation reads
+integer constants with their declared or inferred type. Native C emission preserves those
+conversions for macros and expanded constant references, matching addressable constant storage.
+Unsupported target-dependent operations produce an error; required evaluation needs a concrete
+target and rejects portable C (`-os cross`). Required evaluation with `-check-overflow` or
+`-check-casts` is not yet supported.
 Required evaluation of translated code (`-translated` or files marked `@[translated]`) is also
 unsupported. This includes entering a translated helper or evaluating a constant declared in a
 translated file from native V code. Ordinary runtime calls remain supported. Mixed native and

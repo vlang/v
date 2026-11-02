@@ -8,6 +8,56 @@ import v.pref
 import v.transform
 import v.types
 
+fn test_cache_owner_integer_macros_use_the_declaration_storage_type() {
+	source_path := os.join_path(os.vtmp_dir(), 'cache_owner_integer_constants_${os.getpid()}.v')
+	os.write_file(source_path, 'module sample\ntype Word = u16\npub const word = u16(65530) + u16(10)\npub const alias_word = Word(65530) + Word(10)\n')!
+	defer { os.rm(source_path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	mut a := p.parse_file(source_path)
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.check_semantics()
+	assert tc.errors.len == 0, tc.errors.str()
+	transform.transform(mut a, &tc)
+	tc.annotate_types()
+	caller_file := '${source_path}.caller'
+	for declaration_translated in [false, true] {
+		for caller_translated in [false, true] {
+			tc.translated_files[source_path] = declaration_translated
+			tc.translated_files[caller_file] = caller_translated
+			tc.cur_file = caller_file
+			for name in ['word', 'alias_word'] {
+				key := 'sample.${name}'
+				id := tc.const_exprs[key]!
+				typ := tc.const_types[key]!
+				mut g := FlatGen.new()
+				g.a = a
+				g.tc = &tc
+				g.const_vals[key] = id
+				g.const_modules[key] = 'sample'
+				g.const_files[key] = source_path
+				g.cache_const_modules['sample'] = true
+				cname := 'sample__${name}'
+				g.emit_cache_owned_const(key, id, 'sample', typ, tc.c_type(typ), cname)
+				output := g.sb.str()
+				macro := output.all_after('#define ${cname} ').all_before('\n')
+				definition := g.cache_const_definitions['sample'].join('\n')
+				assert output.contains('extern u16 ${cname};'), output
+				assert definition.contains('u16 ${cname} = '), definition
+				assert definition.contains('#define ${cname} ${macro}'), definition
+				initializer := definition.all_after('u16 ${cname} = ').all_before(';')
+				expected := if declaration_translated {
+					'(${initializer})'
+				} else {
+					'(((u16)(${initializer})))'
+				}
+				assert macro == expected, macro
+				assert tc.cur_file == caller_file, tc.cur_file
+			}
+		}
+	}
+}
+
 fn test_incremental_cgen_declares_new_tuple_payloads_before_wrappers() {
 	source_path := os.join_path(os.vtmp_dir(), 'incremental_tuple_declarations_${os.getpid()}.v')
 	os.write_file(source_path, 'module main
