@@ -220,11 +220,35 @@ fn v3_tcc_dylib_function_bindings(functions map[string]bool) V3TccDylibBindings 
 	return V3TccDylibBindings{ owner: owner.str() }
 }
 
-fn v3_tcc_dylib_needs_native_sources(state &V3ModuleCacheState, v_interface_path string) bool {
+fn v3_tcc_dylib_needs_native_sources(state &V3ModuleCacheState, v_interface_path string, source_files []string, vroot string) bool {
 	if !state.native_bridge { return false }
 	// This is a generated V declaration interface (.vh), never a C header.
 	text := os.read_file(v_interface_path) or { return true }
-	return text.contains('#include') && (text.contains('.m"') || text.contains('.mm"'))
+	if text.contains('#include') && (text.contains('.m"') || text.contains('.mm"')) { return true }
+	mut has_c_binding := false
+	mut has_native_directive := false
+	for line in text.split_into_lines() {
+		clean := line.trim_space()
+		if clean.starts_with('fn C.') || clean.starts_with('pub fn C.') { has_c_binding = true }
+		for directive in ['include', 'insert', 'preinclude', 'postinclude'] {
+			if clean.starts_with('#${directive} ') || clean.starts_with('#${directive}\t') {
+				has_native_directive = true
+			}
+		}
+	}
+	if !has_c_binding || !has_native_directive { return false }
+	root := os.real_path(vroot)
+	library := os.real_path(os.join_path(vroot, 'vlib'))
+	for file in source_files {
+		real := os.real_path(file)
+		if !real_path_is_in_dir(real, root) && !real_path_is_in_dir(real, library) {
+			// External native bindings are bridged by v3_tcc_dylib_native_closure.
+			// Their V bodies identify the C pointers a reused object still needs;
+			// a declaration-only interface does not retain those dependencies.
+			return true
+		}
+	}
+	return false
 }
 
 fn v3_tcc_dylib_module_declarations(source string, state &V3ModuleCacheState) string {

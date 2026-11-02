@@ -24843,7 +24843,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 						if header := cache_state.manager.valid_header(cache_module, mod_files) {
 							record_v3_cached_source_digests(mut cache_state, header.source_digests)
 							cache_module_calls_recover(mut cache_state, modulecache.header_calls_recover(header))
-							if !modulecache.header_needs_source(header) && !v3_tcc_dylib_needs_native_sources(cache_state, header.header) {
+							if !modulecache.header_needs_source(header) && !v3_tcc_dylib_needs_native_sources(cache_state, header.header, mod_files, prefs.vroot) {
 								parse_files = [header.header]
 								if mod_files.len > 0 {
 									a.cached_header_sources[header.header] = mod_files[0]
@@ -24874,7 +24874,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 						record_v3_cached_source_digests(mut cache_state, cached.source_digests)
 						cache_module_calls_recover(mut cache_state, modulecache.header_calls_recover(cached))
 						owned_sources_need_check := mod_files.any(types.shadow_roots_own_file(it, shadow_diagnostic_root, shadow_explicit_roots, shadow_dependency_roots))
-						if !modulecache.header_needs_source(cached) && !owned_sources_need_check && !v3_tcc_dylib_needs_native_sources(cache_state, cached.header) {
+						if !modulecache.header_needs_source(cached) && !owned_sources_need_check && !v3_tcc_dylib_needs_native_sources(cache_state, cached.header, mod_files, prefs.vroot) {
 							parse_files = [cached.header]
 							if mod_files.len > 0 {
 								a.cached_header_sources[cached.header] = mod_files[0]
