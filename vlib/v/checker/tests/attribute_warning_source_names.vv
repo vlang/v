@@ -1,0 +1,80 @@
+@['legacy']
+struct QuotedMetadata {}
+
+@[legacy]
+struct BareMetadata {}
+
+// @[legacy] inside a comment is not an attribute.
+@['legacy']
+struct MoreQuotedMetadata {}
+
+@[foo; foo_bar]
+fn independent_names() {}
+
+@[NoSchema('first', named: 'value', 'second')]
+fn flattened_arguments() {}
+
+struct FieldMetadata {
+	value int @[foo; foo_bar]
+	quoted string @['legacy']
+	call int @[NoSchema('first', named: 'value')]
+}
+
+[legacy_bare]
+struct OldDeclaration {}
+
+['legacy_bare']
+struct OldQuotedDeclaration {}
+
+const legacy = 2
+
+struct LegacyFields {
+    quoted_array [legacy]int @['legacy']
+    @['int']
+    quoted_generic Generic[int]
+    @['legacy']
+    quoted_literal []int = [legacy]
+    @['legacy']
+    quoted_index int = [1, 2][legacy - 1]
+    grouped_type (int) [legacy_field]
+    quoted_prefix int ['metadata'; legacy_after_quoted]
+    keyword_head int [pub]
+    @[lead_field]
+    leading int
+}
+
+struct Generic[T] {
+    value T
+}
+
+enum LegacyValues {
+    @[lead_enum]
+    one
+    [legacy_lead_enum]
+    two
+    three [legacy_enum]
+    four @[enum_name]
+    @['enum_name']
+    five
+}
+
+@[LongCall('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')]
+fn long_argument() {}
+
+@[pub_unknown]
+pub fn public_function() {}
+
+struct InlineFieldAttributes {
+    @[before_mut]
+    mut first int
+    mut @[after_mut] second int
+    @[before_pub_mut]
+    pub mut third int
+    pub mut @[after_pub_mut] fourth int
+    @[before_module_mut]
+    pub module_mut fifth int
+    pub @[after_pub] sixth int
+}
+
+@[console]
+fn main() {}
