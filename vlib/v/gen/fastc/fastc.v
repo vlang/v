@@ -985,6 +985,10 @@ struct FastcLocal {
 	smartcast_origin_type u32
 	// Keep the declared slot mode distinct from a narrowed payload reference.
 	smartcast_origin_is_reference bool
+	// A terminal guard narrows accesses to the payload, but a new local copied from
+	// its fall-through view keeps the boxed type. Explicit branch smart-casts still
+	// infer the concrete variant when copied.
+	smartcast_copy_is_boxed bool
 	// C expression that still names the original boxed value while this local is narrowed.
 	// Mutable calls accepting the sum type must receive this storage, not the concrete payload
 	// pointer, because their ABI expects the sum-type tag/object wrapper.
