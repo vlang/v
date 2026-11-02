@@ -3,8 +3,6 @@
 
 module gg
 
-#include <string.h>
-
 import os
 import os.font
 import time
