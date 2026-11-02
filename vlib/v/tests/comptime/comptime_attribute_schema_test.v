@@ -193,3 +193,33 @@ fn test_attribute_schema_array_values() {
 		}
 	}
 }
+
+enum TestArrayEdgeMode {
+	read
+	write
+}
+
+@[attribute]
+struct TestArrayEdgesSchema {
+	tags  []string
+	empty []string
+	modes []TestArrayEdgeMode
+}
+
+@[TestArrayEdgesSchema(tags: ['a,b', 'c]d', 'it\'s', '[x]'], empty: [], modes: [.read, .write])]
+fn test_array_edges_schema_fn() {}
+
+fn test_attribute_schema_array_edge_values() {
+	mut seen := false
+	$for attr in test_array_edges_schema_fn.attributes {
+		$if attr is TestArrayEdgesSchema {
+			assert attr.tags == ['a,b', 'c]d', "it's", '[x]']
+			assert attr.empty.len == 0
+			assert attr.modes.len == 2
+			assert attr.modes[0] == TestArrayEdgeMode.read
+			assert attr.modes[1] == TestArrayEdgeMode.write
+			seen = true
+		}
+	}
+	assert seen
+}

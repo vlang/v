@@ -18380,7 +18380,7 @@ fn (mut tc TypeChecker) check_attribute_schema_decl(node_id flat.NodeId, node fl
 		}
 		clean_field_type_id := trimmed_source_type_id(field_type_id)
 		if tc.attribute_field_kind(clean_field_type_id) == .unsupported {
-			tc.record_error_at(.assignment_mismatch, 'attribute schema field `${display}.${field.value}` must be a string, integer, bool, or enum, not `${flat.source_type_name(clean_field_type_id)}`', field_id, tc.struct_field_declaration_pos(*field))
+			tc.record_error_at(.assignment_mismatch, 'attribute schema field `${display}.${field.value}` must be a string, integer, bool, enum, or an array of those (float arrays like `[]f64` are unsupported), not `${flat.source_type_name(clean_field_type_id)}`', field_id, tc.struct_field_declaration_pos(*field))
 		}
 	}
 	for raw in tc.declaration_attributes[int(node_id)] {
@@ -18658,31 +18658,36 @@ fn attribute_integer_literal(value string) bool {
 	return true
 }
 
-// attribute_arg_kind classifies a raw attribute argument value: quoted
-// strings, integers, bools, and dot-prefixed enum values are valid;
-// anything else (bare idents, floats, compound expressions) is invalid.
+// attribute_arg_kind classifies a raw attribute argument value: surrounding
+// spaces are trimmed first, then quoted strings, integers, bools, bracketed
+// arrays, and dot-prefixed enum values are valid; anything else (bare idents,
+// floats, compound expressions) is invalid.
 fn attribute_arg_kind(value string) AttributeFieldKind {
-	if attribute_string_literal(value) {
+	trimmed := value.trim_space()
+	if attribute_string_literal(trimmed) {
 		return .string_
 	}
-	if value == 'true' || value == 'false' {
+	if trimmed == 'true' || trimmed == 'false' {
 		return .boolean
 	}
-	if attribute_integer_literal(value) {
+	if attribute_integer_literal(trimmed) {
 		return .integer
 	}
-	if value.len > 1 && value[0] == `.` {
+	if trimmed.len > 1 && trimmed[0] == `.` {
 		return .enum_
 	}
-	if value.len > 1 && value[0] == `[` {
+	if trimmed.len > 1 && trimmed[0] == `[` {
 		return .array_
 	}
 	return .unsupported
 }
 
 // attribute_field_kind maps a trimmed schema field source spelling ID to the
-// argument kind it accepts. Only plain strings, integers, bools, and enums are supported;
-// options, references, arrays, maps, and nested structs are unsupported.
+// argument kind it accepts. Plain strings, integers, bools, enums, and arrays
+// of those are supported. Options, references, maps, and nested structs are
+// unsupported, as are float arrays: there are no float attribute literals, so
+// e.g. `[]f64` falls through to .unsupported and is rejected at the schema
+// declaration with a clear error.
 fn (tc &TypeChecker) attribute_field_kind(type_id u32) AttributeFieldKind {
 	clean := unalias_type(tc.parse_type(type_id))
 	if clean is String {
@@ -18702,6 +18707,8 @@ fn (tc &TypeChecker) attribute_field_kind(type_id u32) AttributeFieldKind {
 		if elem is String || elem.is_integer() || elem.source_type_id() == flat.source_type_bool || elem is Enum {
 			return .array_
 		}
+		// Notably float array elements (e.g. `f64` in `[]f64`) land here.
+		return .unsupported
 	}
 	return .unsupported
 }

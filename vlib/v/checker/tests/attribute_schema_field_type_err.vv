@@ -4,7 +4,7 @@ struct Inner {
 
 @[attribute]
 struct Route {
-	items []string
+	items []f64
 	inner Inner
 }
 

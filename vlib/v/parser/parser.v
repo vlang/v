@@ -4640,14 +4640,20 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 							}
 							if p.tok == .lsbr {
 								depth++
-							}
-							if p.tok == .rsbr {
+							} else if p.tok == .rsbr {
 								depth--
 								end = p.tok_end
 								p.next()
 								if depth <= 0 {
 									break
 								}
+								continue
+							} else if p.tok in [.string, .char] {
+								// A string or rune literal is a single token, so brackets
+								// and quotes inside it (e.g. `[']'`) never open or close
+								// the array; skips and escapes are already resolved by
+								// the scanner, so consume it as one unit.
+								p.next()
 								continue
 							}
 							p.next()

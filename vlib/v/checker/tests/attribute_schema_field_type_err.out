@@ -1,13 +1,13 @@
-vlib/v/checker/tests/attribute_schema_field_type_err.vv:7:2: error: attribute schema field `Route.items` must be a string, integer, bool, or enum, not `[]string`
+vlib/v/checker/tests/attribute_schema_field_type_err.vv:7:2: error: attribute schema field `Route.items` must be a string, integer, bool, enum, or an array of those (float arrays like `[]f64` are unsupported), not `[]f64`
     5 | @[attribute]
     6 | struct Route {
-    7 |     items []string
-      |     ~~~~~~~~~~~~~~
+    7 |     items []f64
+      |     ~~~~~~~~~~~
     8 |     inner Inner
     9 | }
-vlib/v/checker/tests/attribute_schema_field_type_err.vv:8:2: error: attribute schema field `Route.inner` must be a string, integer, bool, or enum, not `Inner`
+vlib/v/checker/tests/attribute_schema_field_type_err.vv:8:2: error: attribute schema field `Route.inner` must be a string, integer, bool, enum, or an array of those (float arrays like `[]f64` are unsupported), not `Inner`
     6 | struct Route {
-    7 |     items []string
+    7 |     items []f64
     8 |     inner Inner
       |     ~~~~~~~~~~~
     9 | }
