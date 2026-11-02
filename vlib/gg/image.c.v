@@ -244,6 +244,12 @@ pub fn (ctx &Context) draw_image(x f32, y f32, width f32, height f32, img_ &Imag
 // this often means, that you have to call it once in the `init_fn` callback of
 // gg.new_context, or gg.start, and then store the result in your app instance.
 pub fn (mut ctx Context) new_streaming_image(w int, h int, channels int, sicfg StreamingImageConfig) int {
+	if !gfx.is_valid() {
+		return -1
+	}
+	if w <= 0 || h <= 0 || channels <= 0 {
+		return -1
+	}
 	mut img := Image{}
 	img.width = w
 	img.height = h
@@ -293,7 +299,7 @@ pub fn (mut ctx Context) update_pixel_data(cached_image_idx int, buf &u8) {
 // update_pixel_data updates the sokol specific pixel data associated
 // with this `Image`.
 pub fn (mut img Image) update_pixel_data(buf &u8) {
-	if buf == unsafe { nil } {
+	if buf == unsafe { nil } || !img.simg_ok || img.width <= 0 || img.height <= 0 {
 		return
 	}
 	if img.width <= 0 || img.height <= 0 || img.nr_channels <= 0 {

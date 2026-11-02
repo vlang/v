@@ -36,6 +36,7 @@ pub fn (ctx &Context) draw_cubic_bezier_recursive_scalar(x1 f32, y1 f32, x2 f32,
 // based on nsvg__flattenCubicBez, from https://github.com/memononen/nanosvg/ :
 fn (ctx &Context) cubic_bezier_rec(x1 f32, y1 f32, x2 f32, y2 f32, x3 f32, y3 f32, x4 f32, y4 f32, level int) {
 	if level > 10 {
+		ctx.r.v2f(x4 * ctx.scale, y4 * ctx.scale)
 		return
 	}
 	dx, dy := x4 - x1, y4 - y1

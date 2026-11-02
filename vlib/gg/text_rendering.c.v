@@ -369,7 +369,12 @@ pub fn (ctx &Context) set_text_cfg(cfg TextCfg) {
 		ctx.ft.fons.set_font(ctx.ft.font_normal)
 	}
 	scale := if ctx.ft.scale == 0 { f32(1) } else { ctx.ft.scale }
-	size := if cfg.mono { cfg.size - 2 } else { cfg.size }
+	size := if cfg.mono {
+		if cfg.size > 2 { cfg.size - 2 } else { cfg.size }
+	} else {
+		cfg.size
+	}
+	if size <= 0 { return }
 	ctx.ft.fons.set_size(scale * f32(size))
 	ctx.ft.fons.set_align(int(cfg.align) | int(cfg.vertical_align))
 	color := u32(cfg.color.r) | (u32(cfg.color.g) << 8) | (u32(cfg.color.b) << 16) | (u32(cfg.color.a) << 24)

@@ -685,26 +685,7 @@ mut:
 }
 
 // X11 event types are defined in vlib/x/x11/x11.v
-// XEvent union is defined here since it's used extensively in sokol
-
-@[typedef]
-pub union C.XEvent {
-pub mut:
-	@type             int
-	xclient           C.XClientMessageEvent
-	xkey              C.XKeyEvent
-	xbutton           C.XButtonEvent
-	xmotion           C.XMotionEvent
-	xcrossing         C.XCrossingEvent
-	xfocus            C.XFocusChangeEvent
-	xproperty         C.XPropertyEvent
-	xselection        C.XSelectionEvent
-	xselectionrequest C.XSelectionRequestEvent
-	xselectionclear   C.XSelectionClearEvent
-	xdestroywindow    C.XDestroyWindowEvent
-	xcookie           C.XGenericEventCookie
-}
-
+// XEvent union is defined above since it's used extensively in sokol
 @[typedef]
 pub struct C.XKeyEvent {
 pub mut:
@@ -760,12 +741,6 @@ pub mut:
 	format       int
 	message_type Atom
 	data         C.XClientMessageData
-}
-
-@[typedef]
-pub union C.XClientMessageData {
-pub mut:
-	l [5]i64
 }
 
 @[typedef]
@@ -953,9 +928,9 @@ const x_cursor_none = Cursor(0)
 const xa_atom = Atom(4)
 const xa_cardinal = Atom(6)
 const alloc_none = 0
-const cw_border_pixel = u64(1 << 11)
+const cw_border_pixel = u64(1 << 3) // CWBorderPixel (X.h: 8)
 const cw_colormap = u64(1 << 13)
-const cw_event_mask = u64(1 << 11) // this is actually CWEventMask
+const cw_event_mask = u64(1 << 11) // CWEventMask (X.h: 2048)
 const input_output = u32(1)
 const structure_notify_mask = i64(1 << 17)
 const key_press_mask = i64(1 << 0)
