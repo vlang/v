@@ -486,3 +486,77 @@ fn test_cli_integer_constant_macros_and_expansions_preserve_declared_types() ! {
 	assert generated.contains('#define main__word_value (((u16)('), generated.all_after('void main__main(void);')
 	assert generated.contains('static const u16 main__addressed ='), generated.all_after('void main__main(void);')
 }
+
+struct ComptimeConstantOperationCase {
+	expression string
+	value_type string
+	expected   string
+}
+
+fn test_cli_comptime_constant_integer_operations_match_runtime() ! {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_constant_operations_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	suffix := if os.user_os() == 'windows' { '.exe' } else { '' }
+	args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none', '-cc',
+		'tcc']
+	cases := [
+		ComptimeConstantOperationCase{
+			expression: '(u16(65530) + u16(10)) / u16(2)'
+			value_type: 'u16'
+			expected:   '2'
+		},
+		ComptimeConstantOperationCase{
+			expression: '(u16(65530) + u16(10)) % u16(3)'
+			value_type: 'u16'
+			expected:   '1'
+		},
+		ComptimeConstantOperationCase{
+			expression: 'u64(0xffffffffffffffff) > i64(-1)'
+			value_type: 'bool'
+			expected:   'true'
+		},
+		ComptimeConstantOperationCase{
+			expression: 'int(i8(-128) / i8(-1))'
+			value_type: 'int'
+			expected:   '-128'
+		},
+		ComptimeConstantOperationCase{
+			expression: 'u64(0xffffffffffffffff) == 0xffffffffffffffff'
+			value_type: 'bool'
+			expected:   'true'
+		},
+	]
+	for i, case in cases {
+		for aggregate in [false, true] {
+			name := '${i}_${aggregate}'
+			initializer := if aggregate { '[${case.expression}]!' } else { case.expression }
+			value_type := if aggregate { '[1]${case.value_type}' } else { case.value_type }
+			value := if aggregate { 'value[0]' } else { 'value' }
+			index := if aggregate { '[0]' } else { '' }
+			result_type := if case.value_type == 'bool' { 'bool' } else { 'int' }
+			returned := if case.value_type == 'bool' { value } else { 'int(${value})' }
+			// Compare a folded read, an ordinary read, an annotated initializer,
+			// and the direct ordinary helper call for both scalars and arrays.
+			program := 'const value = ${initializer}\n@[comptime]\nfn make_value() ${value_type} { return ${initializer} }\nconst made_value = make_value()\n@[comptime]\nfn compute() ${result_type} { return ${returned} }\nconst result = compute()\nfn main() { println(result) println(compute()) println(made_value${index}) println(make_value()${index}) }'
+			os.write_file(source, program)!
+			executable := os.join_path(root, 'runtime_${name}${suffix}')
+			built := os.exec([...args, '-o', executable, source])
+			assert built.exit_code == 0, '${name}: ${built.output}'
+			runtime := os.exec([executable])
+			assert runtime.exit_code == 0, '${name}: ${runtime.output}'
+			assert runtime.output.trim_space() == '${case.expected}\n${case.expected}\n${case.expected}\n${case.expected}', '${name}: ${runtime.output}'
+		}
+	}
+	// Runtime array elements must evaluate call operands once, including when a
+	// signed operand is negative and the comparison can choose its result early.
+	control := 'struct Counter {\nmut:\ncalls int\n}\nfn unsigned_value(mut counter Counter) u64 { counter.calls++ return u64(0xffffffffffffffff) }\nfn signed_value(mut counter Counter) i64 { counter.calls++ return i64(-1) }\nfn dividend(mut counter Counter) u16 { counter.calls++ return u16(65530) }\nfn main() {\nmut counter := Counter{}\ncomparison := [unsigned_value(mut counter) > signed_value(mut counter)]!\nassert comparison[0]\nassert counter.calls == 2\nquotient := [(dividend(mut counter) + u16(10)) / u16(2)]!\nassert quotient[0] == 2\nassert counter.calls == 3\nprintln("ok")\n}'
+	os.write_file(source, control)!
+	control_path := os.join_path(root, 'runtime_calls${suffix}')
+	control_build := os.exec([...args, '-o', control_path, source])
+	assert control_build.exit_code == 0, control_build.output
+	control_run := os.exec([control_path])
+	assert control_run.exit_code == 0, control_run.output
+	assert control_run.output.trim_space() == 'ok', control_run.output
+}

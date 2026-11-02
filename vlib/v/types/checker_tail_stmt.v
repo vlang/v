@@ -12240,8 +12240,10 @@ pub fn (tc &TypeChecker) const_int_value_in_module(name string, module_name stri
 
 fn (tc &TypeChecker) const_int_initializer(key string, id flat.NodeId, module_name string, seen []string, mut context ConstIntContext) ?int {
 	if context.failure.len > 0 { return none }
-	view := if context.evaluator == unsafe { nil } && (tc.has_comptime_functions || tc.comptime_const_values.len > 0) {
-		tc.fork_type_parse_view(tc.const_files[key] or { tc.cur_file }, module_name)
+	file := tc.const_files[key] or { tc.cur_file }
+	view := if context.evaluator == unsafe { nil } && (file != tc.cur_file || module_name != tc.cur_module
+		|| tc.has_comptime_functions || tc.comptime_const_values.len > 0) {
+		tc.fork_type_parse_view(file, module_name)
 	} else {
 		tc
 	}
@@ -12250,7 +12252,18 @@ fn (tc &TypeChecker) const_int_initializer(key string, id flat.NodeId, module_na
 	}
 	if context.evaluator == unsafe { nil } {
 		if value := view.const_int_expr_with_context(id, module_name, seen, mut context) {
-			if context.evaluator == unsafe { nil } { return value }
+			if context.evaluator == unsafe { nil } {
+				// Native constants have the same stored value in array bounds and
+				// emitted macros, including each declaration in a constant chain.
+				if !tc.translated_files[file] {
+					if typ := tc.const_types[key] {
+						if unalias_type(typ).is_integer() {
+							return int(const_eval_integer_cast(value, typ))
+						}
+					}
+				}
+				return value
+			}
 		}
 		// A referenced constant can require evaluation even when this initializer
 		// has no annotated call. Re-evaluate its complete expression and conversion.
@@ -12522,7 +12535,7 @@ fn (tc &TypeChecker) const_int_cast_text_value(text string, module_name string, 
 		return none
 	}
 	value := tc.const_int_value_with_context(inner, module_name, seen, mut context) or { return none }
-	return if context.evaluator == unsafe { nil } {
+	return if context.evaluator == unsafe { nil } && tc.translated_files[tc.cur_file] {
 		value
 	} else {
 		int(const_eval_integer_cast(value, cast_type))
@@ -12568,6 +12581,148 @@ fn (tc &TypeChecker) const_int_expr(id flat.NodeId, module_name string, seen []s
 	return context.expression(tc, id, module_name)
 }
 
+// Read numeric types without resolving another initializer or starting an
+// evaluator. Collection can query bounds before expression annotations exist.
+fn (tc &TypeChecker) const_int_recorded_type(id flat.NodeId, depth int, module_name string, seen []string, mut context ConstIntContext) ?Type {
+	if depth > 128 || !tc.valid_node_id(id) { return none }
+	if typ := tc.cached_expr_type(id) {
+		if unalias_type(typ).is_integer() { return typ }
+	}
+	node := tc.a.node(id)
+	match node.kind {
+		.int_literal { return builtin_int_type }
+		.sizeof_expr, .offsetof_expr { return builtin_u32_type }
+		.cast_expr {
+			typ := tc.parse_type(node.source_value_id())
+			if unalias_type(typ).is_integer() { return *typ }
+		}
+		.paren, .prefix {
+			if node.children_count > 0 {
+				return tc.const_int_recorded_type(tc.a.child(node, 0), depth + 1, module_name, seen, mut context)
+			}
+		}
+		.ident, .selector {
+			mut name := node.value
+			if node.kind == .selector {
+				if node.children_count == 0 { return none }
+				base := tc.a.child_node(node, 0)
+				if base.kind != .ident { return none }
+				resolved_module := tc.resolve_import_alias(base.value) or { base.value }
+				name = '${resolved_module}.${name}'
+			} else {
+				name = tc.resolve_selective_import_symbol(name) or { name }
+			}
+			key := tc.const_key_for_name(name) or { tc.const_main_qualified_key(name)? }
+			typ := tc.const_types[key] or { return none }
+			if unalias_type(typ).is_integer() { return typ }
+		}
+		.infix {
+			if node.children_count < 2 || node.op !in [.plus, .minus, .mul, .div, .mod, .amp, .pipe,
+				.xor, .left_shift, .right_shift, .right_shift_unsigned] {
+				return none
+			}
+			left_id := tc.a.child(node, 0)
+			right_id := tc.a.child(node, 1)
+			left := tc.const_int_recorded_type(left_id, depth + 1, module_name, seen, mut context)?
+			right := tc.const_int_recorded_type(right_id, depth + 1, module_name, seen, mut context)?
+			if node.op in [.left_shift, .right_shift] { return left }
+			if node.op == .right_shift_unsigned {
+				if tc.integer_literal_source(left_id) != none { return builtin_u32_type }
+				return unsigned_shift_result_type(left)
+			}
+			for side in 0 .. 2 {
+				literal_id := if side == 0 { left_id } else { right_id }
+				other_id := if side == 0 { right_id } else { left_id }
+				literal_type := if side == 0 { left } else { right }
+				other := unalias_type(if side == 0 { right } else { left })
+				if literal_type.source_type_id() != flat.source_type_int
+					|| other.source_type_id() == flat.source_type_int
+					|| tc.int_literal_value(other_id) != none {
+					continue
+				}
+				if value := tc.const_int_expr_with_context(literal_id, module_name, seen, mut context) {
+					if other is Primitive && other.size in [u8(8), 16] {
+						return if small_integer_type_accepts_int_literal(other, value) {
+							Type(other)
+						} else {
+							builtin_int_type
+						}
+					}
+					return *other
+				}
+			}
+			return infix_integer_promotion_type(left, right) or { left }
+		}
+		else {}
+	}
+	return none
+}
+
+fn (tc &TypeChecker) const_int_literal_arithmetic(id flat.NodeId, depth int) bool {
+	if depth > 128 || !tc.valid_node_id(id) { return false }
+	node := tc.a.node(id)
+	return match node.kind {
+		.int_literal { true }
+		.paren {
+			node.children_count == 1 && tc.const_int_literal_arithmetic(tc.a.child(node, 0), depth + 1)
+		}
+		.prefix {
+			node.op == .minus && node.children_count == 1 && tc.const_int_literal_arithmetic(tc.a.child(node, 0), depth + 1)
+		}
+		.infix {
+			node.op in [.plus, .minus, .mul] && node.children_count == 2
+				&& tc.const_int_literal_arithmetic(tc.a.child(node, 0), depth + 1)
+				&& tc.const_int_literal_arithmetic(tc.a.child(node, 1), depth + 1)
+		}
+		else { false }
+	}
+}
+
+// Preserve C intermediate widths before a surrounding cast or typed division
+// widens the value; narrow primitive arithmetic is promoted to at least i32.
+fn (tc &TypeChecker) const_int_c_expression_type(id flat.NodeId, depth int, module_name string, seen []string, mut context ConstIntContext) ?Type {
+	if depth > 128 || !tc.valid_node_id(id) { return none }
+	node := tc.a.node(id)
+	if node.kind == .sizeof_expr { return builtin_usize_type }
+	if node.kind == .paren && node.children_count == 1 {
+		return tc.const_int_c_expression_type(tc.a.child(node, 0), depth + 1, module_name, seen, mut context)
+	}
+	if node.kind == .prefix && node.op in [.plus, .minus, .bit_not] {
+		child_id := tc.a.child(node, 0)
+		mut child := tc.a.node(child_id)
+		for child.kind == .paren && child.children_count == 1 { child = tc.a.child_node(child, 0) }
+		if node.op == .minus && child.kind == .int_literal {
+			if literal := comptime_enum_integer_literal(child.value) {
+				if literal > 2147483647 { return i64_ }
+			}
+		}
+		operand := tc.const_int_c_expression_type(child_id, depth + 1, module_name, seen, mut context)?
+		return if const_eval_integer_width(operand) < 32 { Type(i32_) } else { operand }
+	}
+	if node.kind == .infix && node.op in [.plus, .minus, .mul, .amp, .pipe, .xor] {
+		left_id := tc.a.child(node, 0)
+		right_id := tc.a.child(node, 1)
+		mut left := tc.const_int_c_expression_type(left_id, depth + 1, module_name, seen, mut context)?
+		right := tc.const_int_c_expression_type(right_id, depth + 1, module_name, seen, mut context)?
+		if node.op in [.plus, .minus, .mul] && tc.const_int_literal_arithmetic(left_id, 0)
+			&& tc.const_int_literal_arithmetic(right_id, 0) {
+			left = i64_
+		}
+		return const_eval_c_integer_promotion(left, right)
+	}
+	if node.kind == .int_literal {
+		literal := comptime_enum_integer_literal(node.value)?
+		if literal < 0 { return u64_ }
+		if literal <= 2147483647 { return i32_ }
+		if (node.value.starts_with('0x') || node.value.starts_with('0o') || node.value.starts_with('0b'))
+			&& literal <= 4294967295 {
+			return u32_
+		}
+		return i64_
+	}
+	return tc.const_int_recorded_type(id, depth, module_name, seen, mut context)
+}
+
 fn (tc &TypeChecker) const_int_expr_with_context(id flat.NodeId, module_name string, seen []string, mut context ConstIntContext) ?int {
 	if context.failure.len > 0 { return none }
 	if int(id) < 0 {
@@ -12605,7 +12760,12 @@ fn (tc &TypeChecker) const_int_expr_with_context(id flat.NodeId, module_name str
 			if !cast_type.is_integer() {
 				return none
 			}
-			return tc.const_int_expr_with_context(tc.a.child(&node, 0), module_name, seen, mut context)
+			value := tc.const_int_expr_with_context(tc.a.child(&node, 0), module_name, seen, mut context)?
+			return if context.evaluator == unsafe { nil } && tc.node_is_in_translated_file(id) {
+				value
+			} else {
+				int(const_eval_integer_cast(value, cast_type))
+			}
 		}
 		.enum_val {
 			return tc.const_int_enum_selector_value(node.value)
@@ -12634,12 +12794,18 @@ fn (tc &TypeChecker) const_int_expr_with_context(id flat.NodeId, module_name str
 				return none
 			}
 			value := tc.const_int_expr_with_context(tc.a.child(&node, 0), module_name, seen, mut context) or { return none }
-			return match node.op {
+			result := match node.op {
 				.minus { -value }
 				.plus { value }
 				.bit_not { ~value }
-				else { none }
+				else { return none }
 			}
+			if context.evaluator == unsafe { nil } && !tc.node_is_in_translated_file(id) {
+				if typ := tc.const_int_c_expression_type(id, 0, module_name, seen, mut context) {
+					return int(const_eval_integer_cast(result, typ))
+				}
+			}
+			return result
 		}
 		.infix {
 			if node.children_count < 2 {
@@ -12653,6 +12819,39 @@ fn (tc &TypeChecker) const_int_expr_with_context(id flat.NodeId, module_name str
 			}
 			right := tc.const_int_expr_with_context(tc.a.child(&node, 1), module_name, seen, mut context) or { return none }
 			if !left_resolved { return none }
+			if node.op in [.div, .mod] && context.evaluator == unsafe { nil }
+				&& !tc.node_is_in_translated_file(id) {
+				if typ := tc.const_int_recorded_type(id, 0, module_name, seen, mut context) {
+					l := const_eval_integer_cast(left, typ)
+					r := const_eval_integer_cast(right, typ)
+					unsigned := const_eval_integer_unsigned(typ)
+					if r == 0 || (!unsigned && l == i64(-9223372036854775807) - 1 && r == -1) {
+						return none
+					}
+					division_type := if unsigned {
+						flat.source_type_u64
+					} else {
+						flat.source_type_i64
+					}
+					result := comptime_enum_integer_division(l, r, division_type, node.op == .mod)
+					return int(const_eval_integer_cast(result, typ))
+				}
+			}
+			if node.op in [.plus, .minus, .mul, .amp, .pipe, .xor]
+				&& context.evaluator == unsafe { nil } && !tc.node_is_in_translated_file(id) {
+				if typ := tc.const_int_c_expression_type(id, 0, module_name, seen, mut context) {
+					result := match node.op {
+						.plus { i64(u64(left) + u64(right)) }
+						.minus { i64(u64(left) - u64(right)) }
+						.mul { i64(u64(left) * u64(right)) }
+						.amp { i64(left & right) }
+						.pipe { i64(left | right) }
+						else { i64(left ^ right) }
+					}
+					return int(const_eval_integer_cast(result, typ))
+				}
+			}
+			if context.failure.len > 0 { return none }
 			match node.op {
 				.plus {
 					return left + right

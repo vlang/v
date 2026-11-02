@@ -8697,7 +8697,7 @@ fn test_module_cache_comptime_helpers_keep_import_and_value_bindings() {
 		write_module_cache_file(project, 'v.mod', "Module { name: 'comptime_cache_bindings' }\n")
 		write_module_cache_file(modules, 'dep/dep.v', fixture[1])
 		write_module_cache_file(modules, 'helpers/a.v', fixture[2])
-		write_module_cache_file(modules, 'numbers/numbers.v', 'module numbers\npub const word = u16(65530) + u16(10)\npub fn read_word() int { return int(word) }\n')
+		write_module_cache_file(modules, 'numbers/numbers.v', 'module numbers\npub const word = u16(65530) + u16(10)\npub const ratio = (u16(65530) + u16(10)) / u16(2)\npub const comparison = u64(0xffffffffffffffff) > i64(-1)\npub fn read_word() int { return int(word) }\npub fn read_ratio() int { return int(ratio) }\npub fn read_comparison() bool { return comparison }\n')
 		main_file := os.join_path(project, 'main.v')
 		for i, phase in ['cold', 'warm', 'changed', 'changed_warm'] {
 			value := if i < 2 { 7 } else { 11 }
@@ -8705,13 +8705,13 @@ fn test_module_cache_comptime_helpers_keep_import_and_value_bindings() {
 				write_module_cache_file(modules, 'helpers/b.v', fixture[3].replace('@VALUE@', value.str()))
 			}
 			// Rebuild the entry point so whole-program reuse cannot hide a stale fold.
-			write_module_cache_file(project, 'main.v', 'module main\nimport helpers\nimport numbers\nconst folded = helpers.value()\nfn main() { println(folded) println(helpers.value()) println(helpers.imported_value()) println(numbers.read_word()) println(int(numbers.word)) }\n// ${phase}\n')
+			write_module_cache_file(project, 'main.v', 'module main\nimport helpers\nimport numbers\nconst folded = helpers.value()\nfn main() { println(folded) println(helpers.value()) println(helpers.imported_value()) println(numbers.read_word()) println(int(numbers.word)) println(numbers.read_ratio()) println(int(numbers.ratio)) println(numbers.read_comparison()) println(numbers.comparison) }\n// ${phase}\n')
 			output := os.join_path(case_root, phase)
 			built := os.exec(['env', 'V3CACHE=${cache_dir}', 'VMODULES=${modules}', v3_bin,
 				'-new-compiler', '-no-retry-compilation', '-cc', 'cc', '-gc', 'none', '-show-timings',
 				'-o', output, main_file])
 			assert built.exit_code == 0, '${fixture[0]} ${phase}: ${built.output}'
-			assert run_module_cache_binary(output) == '${value}\n${value}\n2\n4\n4', '${fixture[0]} ${phase}'
+			assert run_module_cache_binary(output) == '${value}\n${value}\n2\n4\n4\n2\n2\ntrue\ntrue', '${fixture[0]} ${phase}'
 			helper_header := module_cache_artifact(cache_dir, 'helpers_', '.vh')
 			assert helper_header.len > 0
 			assert modulecache.header_needs_source(modulecache.Entry{ header: helper_header })
@@ -8720,6 +8720,9 @@ fn test_module_cache_comptime_helpers_keep_import_and_value_bindings() {
 				assert dep_header.len > 0
 				parsed_headers := built.output.split_into_lines().filter(it.trim_space().starts_with('.vh files:'))
 				assert parsed_headers.any(it.contains(dep_header)), built.output
+				numbers_header := module_cache_artifact(cache_dir, 'numbers_', '.vh')
+				assert numbers_header.len > 0
+				assert parsed_headers.any(it.contains(numbers_header)), built.output
 			}
 		}
 	}

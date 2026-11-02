@@ -16126,6 +16126,85 @@ fn (mut g FlatGen) const_integer_storage_expression(id flat.NodeId, typ types.Ty
 	return '((${g.tc.c_type(typ)})(${expr}))'
 }
 
+// Constant integer operations keep the same operand and result conversions as
+// ordinary expressions, using only forms valid in C static initializers.
+fn (mut g FlatGen) const_integer_infix_expression(id flat.NodeId, node flat.Node, seen []string) ?string {
+	if isnil(g.tc) || node.children_count < 2 || node.op !in [.div, .mod, .eq, .ne, .lt, .gt, .le,
+		.ge]
+		|| g.expr_is_in_translated_file(id) || g.tc.translated_files[g.tc.cur_file] {
+		return none
+	}
+	lhs_id := g.a.child(&node, 0)
+	rhs_id := g.a.child(&node, 1)
+	if node.op in [.div, .mod] {
+		if !g.has_builtins {
+			return none
+		}
+		result_type := g.usable_expr_type(id)
+		checked_integer_bounds(result_type) or { return none }
+		if !g.is_const_expr(id) {
+			// Retain one-time evaluation and the runtime zero/overflow checks.
+			return g.expr_to_string(id)
+		}
+		ct := g.translated_numeric_c_type(lhs_id, result_type)
+		if ct.len == 0 {
+			return none
+		}
+		lhs := g.const_expr_to_string(lhs_id, seen)
+		rhs := g.const_expr_to_string(rhs_id, seen)
+		return '((${ct})(((${ct})(${lhs})) ${g.op_str(node.op)} ((${ct})(${rhs}))))'
+	}
+	lhs_type := g.usable_expr_type(lhs_id)
+	rhs_type := g.usable_expr_type(rhs_id)
+	if !unalias_type(lhs_type).is_integer() || !unalias_type(rhs_type).is_integer() {
+		return none
+	}
+	if _ := int128_signedness(lhs_type) {
+		return none
+	}
+	if _ := int128_signedness(rhs_type) {
+		return none
+	}
+	lhs_sign := integer_sign_kind(lhs_type)
+	rhs_sign := integer_sign_kind(rhs_type)
+	lhs_node := g.a.nodes[int(lhs_id)]
+	rhs_node := g.a.nodes[int(rhs_id)]
+	if lhs_sign != 0 && rhs_sign != 0 && lhs_sign != rhs_sign
+		&& !(lhs_sign < 0 && lhs_node.kind == .int_literal)
+		&& !(rhs_sign < 0 && rhs_node.kind == .int_literal) {
+		if !g.is_const_expr(id) {
+			// The static ternary repeats its signed operand; calls and other
+			// runtime expressions must use the normal temporary-based helper.
+			return g.expr_to_string(id)
+		}
+		lhs_ct := g.value_c_type(unalias_type(lhs_type))
+		rhs_ct := g.value_c_type(unalias_type(rhs_type))
+		lhs := '((${lhs_ct})(${g.const_expr_to_string(lhs_id, seen)}))'
+		rhs := '((${rhs_ct})(${g.const_expr_to_string(rhs_id, seen)}))'
+		signed := if lhs_sign < 0 { lhs } else { rhs }
+		negative_result := if lhs_sign < 0 {
+			if node.op in [.ne, .lt, .le] { '1' } else { '0' }
+		} else {
+			if node.op in [.ne, .gt, .ge] { '1' } else { '0' }
+		}
+		return '((${signed}) < 0 ? ${negative_result} : ((u64)(${lhs}) ${g.op_str(node.op)} (u64)(${rhs})))'
+	}
+	lhs_ct := g.small_int_arith_operand_c_type(lhs_node, lhs_type)
+	rhs_ct := g.small_int_arith_operand_c_type(rhs_node, rhs_type)
+	if lhs_ct.len == 0 && rhs_ct.len == 0 {
+		return none
+	}
+	mut lhs := g.const_expr_to_string(lhs_id, seen)
+	mut rhs := g.const_expr_to_string(rhs_id, seen)
+	if lhs_ct.len > 0 {
+		lhs = '((${lhs_ct})(${lhs}))'
+	}
+	if rhs_ct.len > 0 {
+		rhs = '((${rhs_ct})(${rhs}))'
+	}
+	return '(${lhs}) ${g.op_str(node.op)} (${rhs})'
+}
+
 // const_expr_to_string converts const expr to string data for c.
 fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
@@ -16183,6 +16262,9 @@ fn (mut g FlatGen) const_expr_to_string(id flat.NodeId, seen []string) string {
 			g.expr_to_string(id)
 		}
 		.infix {
+			if integer := g.const_integer_infix_expression(id, node, seen) {
+				return integer
+			}
 			lhs := g.const_expr_to_string(g.a.child(&node, 0), seen)
 			rhs := g.const_expr_to_string(g.a.child(&node, 1), seen)
 			// An int-literal shift by >= 31 would be performed at C `int` width
@@ -27817,37 +27899,45 @@ fn (g &FlatGen) is_runtime_assignable_call(node &flat.Node) bool {
 // evaluation would be integer-promoted (u8/u16/i8/i16). Returns false when the
 // operand does not need truncation (caller emits it normally).
 fn (mut g FlatGen) gen_small_int_arith_operand_truncated(id flat.NodeId, node flat.Node, typ types.Type) bool {
+	ct := g.small_int_arith_operand_c_type(node, typ)
+	if ct.len == 0 {
+		return false
+	}
+	g.write('(${ct})(')
+	g.gen_expr(id)
+	g.write(')')
+	return true
+}
+
+fn (mut g FlatGen) small_int_arith_operand_c_type(node flat.Node, typ types.Type) string {
 	mut inner := node
 	for inner.kind == .paren && inner.children_count > 0 {
 		inner = g.a.nodes[int(g.a.child(&inner, 0))]
 	}
 	if inner.kind != .infix {
-		return false
+		return ''
 	}
 	if inner.op !in [.plus, .minus, .mul, .left_shift] {
-		return false
+		return ''
 	}
 	mut ct := g.value_c_type(typ)
 	if ct !in ['u8', 'u16', 'i8', 'i16'] {
 		// The annotated infix type is often widened; fall back to the operand
 		// types (`u8 + u8` must wrap at 8 bits even if annotated as int).
 		if inner.children_count < 2 {
-			return false
+			return ''
 		}
 		lct := g.value_c_type(g.usable_expr_type(g.a.child(&inner, 0)))
 		if lct !in ['u8', 'u16', 'i8', 'i16'] {
-			return false
+			return ''
 		}
 		rct := g.value_c_type(g.usable_expr_type(g.a.child(&inner, 1)))
 		if rct != lct {
-			return false
+			return ''
 		}
 		ct = lct
 	}
-	g.write('(${ct})(')
-	g.gen_expr(id)
-	g.write(')')
-	return true
+	return ct
 }
 
 // shift_needs_64bit_widening reports whether `lhs << rhs` has an int-literal

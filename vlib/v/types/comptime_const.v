@@ -66,6 +66,8 @@ mut:
 pub fn (tc &TypeChecker) requires_comptime_const(id flat.NodeId) bool {
 	if !tc.has_comptime_functions || !tc.valid_node_id(id) { return false }
 	node := tc.a.node(id)
+	// Constructing a callback does not execute its deferred body.
+	if node.kind in [.fn_literal, .lambda_expr] { return false }
 	if node.kind == .call {
 		if decl := tc.comptime_static_enum_helper_decl(id, tc.cur_module) {
 			if tc.declaration_has_attribute(flat.NodeId(decl.idx), 'comptime') { return true }

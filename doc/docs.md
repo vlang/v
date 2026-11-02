@@ -4289,7 +4289,9 @@ Gated indexing (`#[...]`) is also unsupported; ordinary fixed-array indexing rem
 In `-ownership` and `-autofree` builds, values with implicit `drop` or `free` cleanup are
 unsupported, including local values and fields nested inside other values.
 Ordinary calls to the same function outside constant expressions remain
-runtime calls. Evaluation also applies when dependencies are loaded from the module cache.
+runtime calls. Calls inside a function literal or lambda do not opt the callback initializer into
+required evaluation, because creating a callback does not execute its body.
+Evaluation also applies when dependencies are loaded from the module cache.
 
 Indexed reads and updates that contain value conditionals have an additional ordering restriction.
 Every index in the access must be a whole runtime `if` expression (optionally parenthesized), or an
@@ -4311,6 +4313,8 @@ computed value as static data, with no initializer call, allocation, or copy at 
 conversions use the target's widths, including platform-width `int`. Required evaluation reads
 integer constants with their declared or inferred type. Native C emission preserves those
 conversions for macros and expanded constant references, matching addressable constant storage.
+Native C constant initializers and fixed-array literals use the same typed division, remainder,
+and signed/unsigned comparison rules as ordinary function expressions.
 Unsupported target-dependent operations produce an error; required evaluation needs a concrete
 target and rejects portable C (`-os cross`). Required evaluation with `-check-overflow` or
 `-check-casts` is not yet supported.

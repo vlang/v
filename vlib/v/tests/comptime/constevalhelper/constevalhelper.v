@@ -4,6 +4,13 @@ import constevalhelper.seed as evaluated
 
 pub const seed = 7
 
+pub type BoundWord = u16
+
+pub const ordinary_bound_word = BoundWord(65530) + BoundWord(10)
+pub const ordinary_bound_chain = ordinary_bound_word + BoundWord(65533)
+pub const ordinary_bound_ratio = (u16(65530) + u16(10)) / u16(2)
+pub const ordinary_bound_cast = int(u8(250 + 50))
+
 pub const symbolic_bound = u8(evaluated.value) + 1
 
 const symbolic_width = 2

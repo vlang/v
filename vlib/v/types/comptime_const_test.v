@@ -451,7 +451,7 @@ fn test_comptime_const_left_shift_keeps_c_expression_width() {
 		'return (1 << int(31)) > bound':                       i64(1)
 		'return (1 << get_count()) > bound':                   i64(1)
 		'return (1 << count) > bound':                         i64(1)
-		'return (1 << ordinary_count) > bound':                i64(1)
+		'return (1 << ordinary_count) > bound':                i64(0)
 		'return (u64(1) << 31) > bound':                       i64(1)
 		'value := 1 << 31 return value > bound':               i64(1)
 		'shift_count := 30 return (1 << shift_count) > bound': i64(0)
@@ -1104,5 +1104,117 @@ fn test_comptime_const_empty_structs_require_declared_metadata() {
 		assert false, 'missing struct metadata was treated as an empty declaration'
 	} else {
 		assert err.msg().contains('struct field metadata is unavailable'), err.msg()
+	}
+}
+
+fn test_comptime_const_ordinary_integer_queries_apply_declared_storage() {
+	for declarations in [
+		'const value = u16(65530) + u16(10)\nconst chained = value + u16(65533)',
+		'const chained = value + u16(65533)\nconst value = u16(65530) + u16(10)',
+	] {
+		tc := comptime_const_checker('type Word = u16\n${declarations}\nconst alias_value = Word(65530) + Word(10)\nconst signed_value = i8(120) + i8(10)\nconst ratio = (u16(65530) + u16(10)) / u16(2)\nconst remainder = (u16(65530) + u16(10)) % u16(3)\nconst narrow_cast = int(u8(250 + 50))\nconst alias_cast = int(Word(65530 + 10))\nconst narrow_result = int(i8(-128) / i8(-1))\nconst unsigned_ratio = u64(0xffffffffffffffff) / u64(3)\nfn main() { _ = [value]u8{} _ = [chained]u8{} _ = [alias_value]u8{} _ = [ratio]u8{} _ = [remainder]u8{} _ = [narrow_cast]u8{} _ = [alias_cast]u8{} _ = signed_value _ = narrow_result _ = unsigned_ratio }')
+		assert tc.errors.len == 0, tc.errors.str()
+		assert tc.comptime_const_values.len == 0
+		for name, expected in {
+			'value':          4
+			'chained':        1
+			'alias_value':    4
+			'signed_value':   -126
+			'ratio':          2
+			'remainder':      1
+			'narrow_cast':    44
+			'alias_cast':     4
+			'narrow_result':  -128
+			'unsigned_ratio': 6148914691236517205
+		} {
+			assert tc.const_int_value(name, [])? == expected, name
+		}
+		assert tc.const_int_value('value + chained', [])? == 5
+		assert tc.const_int_value('main.value', [])? == 4
+		assert tc.const_int_value('int(u8(250 + 50))', [])? == 44
+		mut context := ConstIntContext{ check_only: true }
+		assert tc.const_int_value_with_context('value', tc.cur_module, [], mut context)? == 4
+		assert context.evaluator == unsafe { nil }
+		assert context.failure == ''
+	}
+}
+
+fn test_comptime_const_ordinary_integer_queries_use_declaration_file() ! {
+	root := os.join_path(os.vtmp_dir(), 'comptime_const_ordinary_bounds_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	helper := os.join_path(root, 'helper.v')
+	main := os.join_path(root, 'main.v')
+	words := os.join_path(root, 'words.v')
+	os.write_file(words, 'module words\npub type Word = u16')!
+	for translated in [false, true] {
+		prefix := if translated { '@[translated]\n' } else { '' }
+		os.write_file(helper, '${prefix}module bounds\nimport words as storage\npub const value = u16(65530) + u16(10)\npub const chained = value + u16(65533)\npub const ratio = (u16(65530) + u16(10)) / u16(2)\npub const remainder = (u16(65530) + u16(10)) % u16(3)\npub const alias_cast = int(storage.Word(65530 + 10))')!
+		os.write_file(main, 'module main\nimport bounds as sizes\nconst local_value = sizes.value + u16(65533)\nfn main() { _ = [sizes.value]u8{} _ = [sizes.chained]u8{} _ = [sizes.ratio]u8{} _ = [sizes.alias_cast]u8{} _ = local_value }')!
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_files([words, helper, main])
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		tc.check_semantics()
+		assert tc.errors.len == 0, tc.errors.str()
+		tc.cur_file = main
+		tc.cur_module = 'main'
+		assert tc.const_int_value('sizes.value', [])? == if translated { 65540 } else { 4 }
+		assert tc.const_int_value('sizes.chained', [])? == if translated { 131073 } else { 1 }
+		assert tc.const_int_value('sizes.ratio', [])? == if translated { 32770 } else { 2 }
+		assert tc.const_int_value('sizes.remainder', [])? == if translated { 2 } else { 1 }
+		assert tc.const_int_value('sizes.alias_cast', [])? == if translated { 65540 } else { 4 }
+		assert tc.const_int_value_in_module('value', 'bounds', [])? == if translated {
+			65540
+		} else {
+			4
+		}
+		assert tc.const_int_value('local_value', [])? == if translated { 131073 } else { 1 }
+		assert tc.comptime_const_values.len == 0
+	}
+}
+
+fn test_comptime_const_requirement_scan_ignores_callback_bodies() {
+	for initializer in [
+		'fn () int { return seed() }',
+		'(fn () int { return seed() })',
+		'|| seed()',
+	] {
+		tc := comptime_const_checker('@[comptime]\nfn seed() int { return 7 }\nconst callback = ${initializer}\nconst direct = seed()\nfn main() { _ = callback() _ = direct }')
+		assert tc.errors.len == 0, '${initializer}: ${tc.errors}'
+		assert !tc.requires_comptime_const(tc.const_exprs['callback']!), initializer
+		assert 'callback' !in tc.comptime_const_values, initializer
+		assert tc.requires_comptime_const(tc.const_exprs['direct']!), initializer
+		assert tc.comptime_const_values['direct']!.integer == 7
+	}
+}
+
+fn test_comptime_const_ordinary_integer_queries_before_annotations() ! {
+	original_bits := platform_int_bits()
+	set_platform_int_bits(64)
+	defer { set_platform_int_bits(original_bits) }
+	path := os.join_path(os.vtmp_dir(), 'comptime_const_unchecked_bounds_${os.getpid()}.v')
+	os.write_file(path, 'const divisor = 2\nconst named_ratio = (u16(65530) + u16(10)) / divisor\nconst parenthesized_ratio = (u16(65530) + u16(10)) / (2)\nconst wide_remainder = 1 + int((u32(4294967295) + u32(1)) % u64(3))\nconst wide_division = 1 + int((u32(4294967295) + u32(1)) / u64(2))\nconst unary_division = 1 + int((-u32(1) + u32(1)) / u64(2))\nconst sizeof_remainder = 1 + int((sizeof(u8) + u32(4294967295)) % u64(3))\nfn main() { _ = [named_ratio]u8{} _ = [parenthesized_ratio]u8{} _ = [wide_remainder]u8{} _ = [wide_division]u8{} _ = [unary_division]u8{} }')!
+	defer { os.rm(path) or {} }
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	for checked in [false, true] {
+		if checked { tc.check_semantics() }
+		assert tc.errors.len == 0, tc.errors.str()
+		for name, expected in {
+			'named_ratio':         2
+			'parenthesized_ratio': 2
+			'wide_remainder':      1
+			'wide_division':       1
+			'unary_division':      1
+			'sizeof_remainder':    2
+		} {
+			assert tc.const_int_value(name, [])? == expected, '${name}, checked=${checked}'
+		}
+		assert tc.comptime_const_values.len == 0
 	}
 }

@@ -346,6 +346,7 @@ fn test_comptime_struct_and_shift_parity() {
 	assert computed_imported_explicit_record == const_imported_record_value(5)
 	assert !computed_shift_width_cases[0]
 	assert computed_shift_width_cases[7]
+	assert !computed_shift_width_cases[14]
 	assert computed_shift_width_cases == const_shift_width_cases(-1, 31)
 	assert !computed_shadowed_shift_count
 	assert computed_shadowed_shift_count == const_shadowed_shift_count(30, -1)
@@ -813,4 +814,204 @@ fn test_comptime_constants_match_runtime() {
 	assert computed_array_table == const_array_table()
 	assert computed_imported_arrays == 10
 	assert computed_imported_arrays == const_imported_array_values()
+}
+
+const ordinary_initializer_quotient = (u16(65530) + u16(10)) / u16(2)
+const ordinary_initializer_remainder = (u16(65530) + u16(10)) % u16(3)
+const ordinary_initializer_comparison = u64(0xffffffffffffffff) > i64(-1)
+const ordinary_initializer_numbers = [
+	(u16(65530) + u16(10)) / u16(2),
+	(u16(65530) + u16(10)) % u16(3),
+]!
+const ordinary_initializer_flags = [u64(0xffffffffffffffff) > i64(-1)]!
+const ordinary_initializer_nested_numbers = [[
+	(u16(65530) + u16(10)) / u16(2),
+	(u16(65530) + u16(10)) % u16(3),
+]!]!
+const ordinary_initializer_nested_flags = [[u64(0xffffffffffffffff) > i64(-1)]!]!
+const computed_initializer_numbers = const_read_initializer_numbers()
+const computed_initializer_flags = const_read_initializer_flags()
+
+@[comptime]
+fn const_read_initializer_numbers() [6]u16 {
+	return [ordinary_initializer_quotient, ordinary_initializer_remainder,
+		ordinary_initializer_numbers[0], ordinary_initializer_numbers[1],
+		ordinary_initializer_nested_numbers[0][0], ordinary_initializer_nested_numbers[0][1]]!
+}
+
+@[comptime]
+fn const_read_initializer_flags() [3]bool {
+	return [ordinary_initializer_comparison, ordinary_initializer_flags[0],
+		ordinary_initializer_nested_flags[0][0]]!
+}
+
+fn test_comptime_ordinary_constant_operations_match_runtime() {
+	assert computed_initializer_numbers == [u16(2), 1, 2, 1, 2, 1]!
+	assert computed_initializer_numbers == const_read_initializer_numbers()
+	assert computed_initializer_flags == [true, true, true]!
+	assert computed_initializer_flags == const_read_initializer_flags()
+}
+
+@[comptime]
+fn const_direct_initializer_quotient() u16 {
+	return (u16(65530) + u16(10)) / u16(2)
+}
+
+@[comptime]
+fn const_direct_initializer_remainder() u16 {
+	return (u16(65530) + u16(10)) % u16(3)
+}
+
+@[comptime]
+fn const_direct_initializer_comparison() bool {
+	return u64(0xffffffffffffffff) > i64(-1)
+}
+
+@[comptime]
+fn const_flat_initializer_numbers() [2]u16 {
+	return [(u16(65530) + u16(10)) / u16(2), (u16(65530) + u16(10)) % u16(3)]!
+}
+
+@[comptime]
+fn const_nested_initializer_numbers() [1][2]u16 {
+	return [[(u16(65530) + u16(10)) / u16(2), (u16(65530) + u16(10)) % u16(3)]!]!
+}
+
+@[comptime]
+fn const_flat_initializer_comparisons() [14]bool {
+	return [
+		u64(0xffffffffffffffff) > i64(-1),
+		u64(0xffffffffffffffff) < i64(-1),
+		u64(0xffffffffffffffff) == i64(-1),
+		u64(0xffffffffffffffff) != i64(-1),
+		u64(0xffffffffffffffff) <= i64(-1),
+		u64(0xffffffffffffffff) >= i64(-1),
+		i64(-1) < u64(0xffffffffffffffff),
+		i64(-1) > u64(0xffffffffffffffff),
+		i64(-1) == u64(0xffffffffffffffff),
+		i64(-1) != u64(0xffffffffffffffff),
+		i64(-1) <= u64(0xffffffffffffffff),
+		i64(-1) >= u64(0xffffffffffffffff),
+		(u8(250) + u8(10)) > u8(5),
+		(u8(250) + u8(10)) == u8(4),
+	]!
+}
+
+@[comptime]
+fn const_nested_initializer_flags() [1][1]bool {
+	return [[u64(0xffffffffffffffff) > i64(-1)]!]!
+}
+
+const computed_direct_initializer_quotient = const_direct_initializer_quotient()
+const computed_direct_initializer_remainder = const_direct_initializer_remainder()
+const computed_direct_initializer_comparison = const_direct_initializer_comparison()
+const computed_flat_initializer_numbers = const_flat_initializer_numbers()
+const computed_nested_initializer_numbers = const_nested_initializer_numbers()
+const computed_flat_initializer_comparisons = const_flat_initializer_comparisons()
+const computed_nested_initializer_flags = const_nested_initializer_flags()
+
+fn test_comptime_fixed_literal_operations_match_runtime() {
+	assert computed_direct_initializer_quotient == 2
+	assert computed_direct_initializer_quotient == const_direct_initializer_quotient()
+	assert computed_direct_initializer_remainder == 1
+	assert computed_direct_initializer_remainder == const_direct_initializer_remainder()
+	assert computed_direct_initializer_comparison
+	assert computed_direct_initializer_comparison == const_direct_initializer_comparison()
+	assert computed_flat_initializer_numbers == [u16(2), 1]!
+	assert computed_flat_initializer_numbers == const_flat_initializer_numbers()
+	assert computed_nested_initializer_numbers == [[u16(2), 1]!]!
+	assert computed_nested_initializer_numbers == const_nested_initializer_numbers()
+	assert computed_flat_initializer_comparisons == [true, false, false, true, false, true, true,
+		false, false, true, true, false, false, true]!
+	assert computed_flat_initializer_comparisons == const_flat_initializer_comparisons()
+	assert computed_nested_initializer_flags == [[true]!]!
+	assert computed_nested_initializer_flags == const_nested_initializer_flags()
+}
+
+@[comptime]
+fn const_variable_initializer_numbers(a u16, b u16) [2]u16 {
+	return [(a + b) / u16(2), (a + b) % u16(3)]!
+}
+
+@[comptime]
+fn const_variable_initializer_flags(a u64, b i64) [1]bool {
+	return [a > b]!
+}
+
+@[comptime]
+fn const_variable_nested_initializer_numbers(a u16, b u16) [1][2]u16 {
+	return [[(a + b) / u16(2), (a + b) % u16(3)]!]!
+}
+
+@[comptime]
+fn const_variable_nested_initializer_flags(a u64, b i64) [1][1]bool {
+	return [[a > b]!]!
+}
+
+const computed_variable_initializer_numbers = const_variable_initializer_numbers(65530, 10)
+const computed_variable_initializer_flags = const_variable_initializer_flags(0xffffffffffffffff, -1)
+const computed_variable_nested_initializer_numbers = const_variable_nested_initializer_numbers(65530, 10)
+const computed_variable_nested_initializer_flags = const_variable_nested_initializer_flags(0xffffffffffffffff, -1)
+
+fn test_comptime_initializer_variable_controls_match_runtime() {
+	assert computed_variable_initializer_numbers == [u16(2), 1]!
+	assert computed_variable_initializer_numbers == const_variable_initializer_numbers(65530, 10)
+	assert computed_variable_initializer_flags == [true]!
+	assert computed_variable_initializer_flags == const_variable_initializer_flags(0xffffffffffffffff, -1)
+	assert computed_variable_nested_initializer_numbers == [[u16(2), 1]!]!
+	assert computed_variable_nested_initializer_numbers == const_variable_nested_initializer_numbers(65530, 10)
+	assert computed_variable_nested_initializer_flags == [[true]!]!
+	assert computed_variable_nested_initializer_flags == const_variable_nested_initializer_flags(0xffffffffffffffff, -1)
+}
+
+const ordinary_bound_chain = ordinary_macro_word + u16(65533)
+const ordinary_bound_cast = int(u8(250 + 50))
+const ordinary_bound_divisor = 2
+const ordinary_bound_named_ratio = (u16(65530) + u16(10)) / ordinary_bound_divisor
+const ordinary_bound_wide_remainder = 1 + int((u32(4294967295) + u32(1)) % u64(3))
+const ordinary_bound_wide_division = 1 + int((u32(4294967295) + u32(1)) / u64(2))
+const ordinary_bound_sizeof_remainder = 1 + int((sizeof(u8) + u32(4294967295)) % u64(3))
+
+fn test_comptime_ordinary_constant_array_bounds_match_stored_values() {
+	assert [ordinary_macro_word]u8{}.len == 4
+	assert [ordinary_macro_word]u8{}.len == int(ordinary_macro_word)
+	assert [ordinary_bound_chain]u8{}.len == 1
+	assert [ordinary_bound_chain]u8{}.len == int(ordinary_bound_chain)
+	assert [ordinary_macro_alias]u8{}.len == 4
+	assert [ordinary_macro_alias]u8{}.len == int(ordinary_macro_alias)
+	assert [ordinary_initializer_quotient]u8{}.len == 2
+	assert [ordinary_initializer_quotient]u8{}.len == int(ordinary_initializer_quotient)
+	assert [ordinary_initializer_remainder]u8{}.len == 1
+	assert [ordinary_initializer_remainder]u8{}.len == int(ordinary_initializer_remainder)
+	assert [ordinary_bound_cast]u8{}.len == 44
+	assert [ordinary_bound_cast]u8{}.len == ordinary_bound_cast
+	assert [ordinary_bound_named_ratio]u8{}.len == 2
+	assert [ordinary_bound_named_ratio]u8{}.len == int(ordinary_bound_named_ratio)
+	assert [ordinary_bound_wide_remainder]u8{}.len == 1
+	assert [ordinary_bound_wide_remainder]u8{}.len == ordinary_bound_wide_remainder
+	assert [ordinary_bound_wide_division]u8{}.len == 1
+	assert [ordinary_bound_wide_division]u8{}.len == ordinary_bound_wide_division
+	assert [ordinary_bound_sizeof_remainder]u8{}.len == if sizeof(voidptr) == 8 { 2 } else { 1 }
+	assert [ordinary_bound_sizeof_remainder]u8{}.len == ordinary_bound_sizeof_remainder
+	assert [evaluated.ordinary_bound_word]u8{}.len == 4
+	assert [evaluated.ordinary_bound_word]u8{}.len == int(evaluated.ordinary_bound_word)
+	assert [evaluated.ordinary_bound_chain]u8{}.len == 1
+	assert [evaluated.ordinary_bound_chain]u8{}.len == int(evaluated.ordinary_bound_chain)
+	assert [evaluated.ordinary_bound_ratio]u8{}.len == 2
+	assert [evaluated.ordinary_bound_ratio]u8{}.len == int(evaluated.ordinary_bound_ratio)
+	assert [evaluated.ordinary_bound_cast]u8{}.len == 44
+	assert [evaluated.ordinary_bound_cast]u8{}.len == evaluated.ordinary_bound_cast
+}
+
+@[comptime]
+fn const_callback_seed() int {
+	return 7
+}
+
+const ordinary_function_callback = fn () int { return const_callback_seed() }
+const computed_callback_seed = const_callback_seed()
+
+fn test_comptime_calls_in_callback_bodies_remain_runtime_calls() {
+	assert computed_callback_seed == 7
+	assert ordinary_function_callback() == computed_callback_seed
 }
