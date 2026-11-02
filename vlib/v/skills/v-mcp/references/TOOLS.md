@@ -49,6 +49,18 @@ before reading one.
 
 A `path` that is not a directory is reported as an error rather than an empty list.
 
+### `v_repo_brief`
+
+The whole repo in one call: the manifest, the dependencies, and the file list
+with sizes. The output is capped, so one call orients instead of N file reads.
+
+```json
+{"path": "src"}
+```
+
+Omit `path` for the whole project. `truncated` says whether the file list was
+cut; when it is true, the totals cover only the files listed.
+
 ## Code
 
 ### `v_symbols`
@@ -129,6 +141,46 @@ nothing and writes nothing.
 The response carries `started`. When it is `false` the compiler could not be
 launched and the response has an `error` instead of a result — a sandbox failure
 that would otherwise read as a failed check.
+
+### `v_build`
+
+A full-codegen build of a file or directory. Unlike `v_check`, this also
+catches backend and linker failures. The binary goes to a temp dir, never the
+project.
+
+```json
+{"path": "src"}
+```
+
+### `v_fmt_check`
+
+Whether files are formatted (`v fmt -c`). Check-only, never writes anything.
+
+```json
+{"path": "src"}
+```
+
+### `v_vet`
+
+Run `v vet` and return its warnings. Read-only, changes nothing.
+
+```json
+{"path": "src"}
+```
+
+### `v_affected`
+
+The test files a change can reach through the local import graph. Pass a file
+or directory, or omit it to use the git worktree (staged, unstaged and
+untracked files). Same-module tests count via their directory. Only modules
+under the project root are followed, and a project that is not a git checkout
+needs an explicit `path`.
+
+```json
+{"path": "src/parser.v"}
+```
+
+Run this before `v_test_run` to avoid the full suite after every small change.
 
 ### `v_test_run`
 

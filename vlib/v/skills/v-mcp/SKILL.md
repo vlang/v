@@ -32,11 +32,16 @@ process**, so it answers correctly about code that does not compile yet.
 | What project is this? | `v_project_info` |
 | What modules can I import? | `v_modules` |
 | What files are here? | `v_files` |
+| What does the repo look like in one call? | `v_repo_brief` |
 | What does this file declare? | `v_symbols` |
 | What is at the cursor? | `v_symbol_at` |
 | Where is this used? | `v_references` |
 | What does this stdlib call take? | `v_stdlib_doc` |
 | Does it compile? | `v_check` |
+| Does it build and link? | `v_build` |
+| Is it formatted? | `v_fmt_check` |
+| What does vet say? | `v_vet` |
+| Which tests can this break? | `v_affected` |
 | Do the tests pass? | `v_test_run` |
 | What are this app's routes? | `v_veb_routes` |
 | Rename a symbol | `v_rename_symbol` |
@@ -52,6 +57,7 @@ process**, so it answers correctly about code that does not compile yet.
 3. **`v_check` after every change.** It is the only authoritative answer to "does
    it compile", and it returns records with file, line and column.
 4. **`v_test_run`** for behaviour. `v_check` cannot catch a wrong result.
+   Run **`v_affected`** first to narrow the suite to the tests a change can reach.
 
 ## Prefer asking over reading
 
@@ -91,7 +97,8 @@ cannot write by accident.
 
 ## When the tools cannot answer
 
-`v_run`, `v_test_run`, `v_doctor` and `v_eval` start the compiler. They are
+`v_run`, `v_test_run`, `v_doctor`, `v_eval`, `v_build`, `v_fmt_check` and `v_vet`
+start the compiler. They are
 slower than the in-process tools and unavailable when the compiler cannot be
 started. A tool that could not start the compiler says so explicitly — it reports
 `started: false` with an error rather than an exit code, so a sandbox that cannot
@@ -108,8 +115,8 @@ The server is the checker. Do not finish a change without it:
 {"name": "v_check", "arguments": {"path": "src/main.v"}}
 ```
 
-Then format what you touched with `v_format`, and run the tests with
-`v_test_run`. See [v-workflow](../v-workflow/SKILL.md) for the equivalent shell
+Then format what you touched with `v_format`, narrow with `v_affected`, and run
+the tests with `v_test_run`. See [v-workflow](../v-workflow/SKILL.md) for the equivalent shell
 commands.
 
 ## Related Skills
