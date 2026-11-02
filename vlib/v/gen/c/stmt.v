@@ -5375,17 +5375,27 @@ fn (g &FlatGen) debugger_smartcast_vars(node flat.Node) map[string]DebuggerSmart
 	return result
 }
 
+// Use the loaded runtime identity, which can retain the canonical module name
+// instead of its declared short name when imports need to remain distinct.
+fn (g &FlatGen) debugger_runtime_module_name() string {
+	if 'v.debug.g_debugger' in g.global_types {
+		return 'v.debug'
+	}
+	return 'debug'
+}
+
 fn (mut g FlatGen) gen_debugger_stmt(node flat.Node) {
 	position := g.a.source_position(node.pos) or { return }
 	vars := g.debugger_scope_vars()
 	smartcast_vars := g.debugger_smartcast_vars(node)
 	scope_name := '__v3_debug_scope_${g.tmp_count}'
 	g.tmp_count++
-	info_type := g.cname('debug.DebugContextInfo')
-	var_type := g.cname('debug.DebugContextVar')
-	debugger_type := g.cname('debug.Debugger')
-	interact_fn := g.cname('debug.Debugger.interact')
-	debugger_global := g.cname('debug.g_debugger')
+	runtime_module := g.debugger_runtime_module_name()
+	info_type := g.cname('${runtime_module}.DebugContextInfo')
+	var_type := g.cname('${runtime_module}.DebugContextVar')
+	debugger_type := g.cname('${runtime_module}.Debugger')
+	interact_fn := g.fn_c_name_in_module(runtime_module, 'Debugger.interact')
+	debugger_global := g.global_c_name('${runtime_module}.g_debugger')
 	file_literal := debugger_string_literal(position.filename)
 	module_literal := debugger_string_literal(if g.tc.cur_module.len > 0 {
 		g.tc.cur_module
