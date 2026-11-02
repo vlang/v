@@ -348,7 +348,9 @@ fn (mut w Walloc) maybe_compact() {
 					page := page_of(voidptr(end))
 					if chunk_kind_at(page, chunk) == kind_free_large {
 						tail := &LargeObject(voidptr(end))
-						if w.unlink_large(tail) {
+						unlinked := w.unlink_large(tail)
+						assert unlinked
+						if unlinked {
 							cur.size += large_header_size() + tail.size
 							merged = true
 							continue

@@ -182,6 +182,62 @@ fn test_split_repurpose_to_small_freelist() {
 	}
 }
 
+fn test_head_split_across_page_boundary() {
+	mut w := new_walloc()
+	unsafe {
+		a := w.malloc(1000)
+		assert a != nil
+		// claim three fresh pages; the request is page-sized so the round-up
+		// arm consumes the whole reservation without splitting
+		m := w.malloc(150000)
+		assert m != nil
+		w.free_(m)
+		// T1 (rest of page 1) is too small, so this splits the 3-page object
+		// same-page and leaves a tail starting mid-page 3 that reaches two
+		// pages further
+		b := w.malloc(64500)
+		assert b != nil
+		// locate that spanning tail and the biggest other free object
+		mut span := &LargeObject(unsafe { nil })
+		mut other_max := uint(0)
+		mut walk := w.large_objects
+		for walk != unsafe { nil } {
+			if walk.size > 100000 {
+				span = walk
+			} else if walk.size > other_max {
+				other_max = walk.size
+			}
+			walk = walk.next
+		}
+		assert span != unsafe { nil }
+		s_off := uint(large_payload(span)) & uint(page_mask)
+		f := span.size
+		// search a request best-fit must serve from span (too big for the
+		// rest), itself sub-page, but whose kept region crosses the page
+		// boundary, forcing the head-split arm
+		limit := uint(page_size) - uint(sizeof(LargeObject)) - uint(chunk_size)
+		mut r := uint(0)
+		for cand in other_max + 1 .. limit {
+			tail := (f - cand) & ~uint(chunk_mask)
+			if tail != 0 && s_off + (f - tail) >= uint(page_size) + 1 {
+				r = cand
+				break
+			}
+		}
+		assert r != 0
+		h := w.malloc(r)
+		assert h != nil
+		// head-split re-bases the object at chunk 1 of the next page; a
+		// same-page split would have returned span's own mid-page start
+		assert (uint(h) & uint(page_mask)) == uint(chunk_size) + uint(sizeof(LargeObject))
+		fill_pattern(&u8(h), int(r), 0x33)
+		check_pattern(&u8(h), int(r), 0x33)
+		w.free_(h)
+		w.free_(b)
+		w.free_(a)
+	}
+}
+
 fn test_grow_and_oom() {
 	mut w := new_walloc()
 	unsafe {
