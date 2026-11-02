@@ -1041,18 +1041,17 @@ fn (mut ctx Context) set_scale() {
 		h := ctx.config.height
 		dw := sapp.width()
 		dh := sapp.height()
-		if dw <= dh {
-			if w <= 0 {
-				s = 1.0
-			} else {
-				s = f32(dw) / w
-			}
-		} else {
-			if h <= 0 {
-				s = 1.0
-			} else {
-				s = f32(dh) / h
-			}
+		mut sx := sapp.dpi_scale()
+		mut sy := sapp.dpi_scale()
+		if w > 0 {
+			sx = f32(dw) / f32(w)
+		}
+		if h > 0 {
+			sy = f32(dh) / f32(h)
+		}
+		s = if sx < sy { sx } else { sy }
+		if s < 0.1 {
+			s = 1.0
 		}
 	}
 	// Note: on older X11, `Xft.dpi` from ~/.Xresources, that sokol uses,
