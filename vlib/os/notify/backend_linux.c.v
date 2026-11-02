@@ -5,19 +5,6 @@ import os
 
 #include <sys/epoll.h>
 
-pub struct C.epoll_event {
-	events u32
-	data   C.epoll_data_t
-}
-
-@[typedef]
-union C.epoll_data_t {
-	ptr voidptr
-	fd  int
-	u32 u32
-	u64 u64
-}
-
 fn C.epoll_create1(i32) i32
 
 fn C.epoll_ctl(i32, i32, i32, &C.epoll_event) i32
@@ -68,7 +55,7 @@ const epoll_exclusive = u32(C.EPOLLEXCLUSIVE)
 fn (mut en EpollNotifier) ctl(fd int, op int, mask u32) ! {
 	event := C.epoll_event{
 		events: mask
-		data:   C.epoll_data_t{
+		data:   C.epoll_data{
 			fd: fd
 		}
 	}
