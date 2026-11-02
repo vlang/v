@@ -1727,8 +1727,13 @@ fn test_a_missing_embedded_asset_is_recorded_and_invalidates_the_cache() {
 
 	dumped := os.join_path(directory, 'sources.txt')
 	binary := os.join_path(directory, 'vdemo' + tool_exe_suffix())
-	build :=
-		os.exec([vexe, '-prod', '-dump-files', '${dumped}', '-o', binary, source])
+	mut build_args := [vexe, '-prod']
+	$if tinyc {
+		// Keep production embedding coverage when the test runner uses TinyCC.
+		cc := $if windows { 'gcc' } $else { 'cc' }
+		build_args << ['-cc', cc]
+	}
+	build := os.exec([...build_args, '-dump-files', dumped, '-o', binary, source])
 	assert build.exit_code == 0, build.output
 
 	recorded := (os.read_file(dumped) or { '' }).split_into_lines().filter(it != '')
