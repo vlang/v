@@ -993,8 +993,6 @@ pub:
 
 pub type CommitListener = C.sg_commit_listener
 
-pub struct C.sg_trace_hooks {}
-
 // pub struct C.sg_resource_state {} enum
 pub struct C.sg_sampler_info {
 pub:

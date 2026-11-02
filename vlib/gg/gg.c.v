@@ -702,7 +702,7 @@ pub fn new_context(cfg Config) &Context {
 			event_userdata_cb:            gg_event_fn
 			// fail_userdata_cb: gg_fail_fn
 			cleanup_userdata_cb:          gg_cleanup_fn
-			window_title:                 &char(cfg.window_title.str)
+			window_title:                 unsafe { C.strdup(&char(cfg.window_title.str)) }
 			icon:                         cfg.icon
 			html5:                        sapp.Html5Desc{
 				canvas_selector: &char(cfg.html5_canvas_name.str)
@@ -1010,6 +1010,9 @@ pub fn (ctx &Context) show_fps() {
 		return
 	}
 	frame_duration := sapp.frame_duration()
+	if frame_duration <= 0 {
+		return
+	}
 	ctx.r.defaults()
 	ctx.r.matrix_mode_projection()
 	ctx.r.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
@@ -1191,7 +1194,7 @@ fn (mut ctx Context) memory_trace_frame() {
 	frame_tag_size := 61 // uneven, and easy to spot in heaptrack histograms as well
 	unsafe {
 		frame_tag := &u8(vcalloc(frame_tag_size))
-		C.snprintf(frame_tag, frame_tag_size, c'@@ gg_memory_trace_frame: %06d ', ctx.frame)
+		C.snprintf(frame_tag, frame_tag_size, c'@@ gg_memory_trace_frame: %06llu ', u64(ctx.frame))
 		frame_tag[frame_tag_size - 2] = `@`
 		frame_tag[frame_tag_size - 1] = `@`
 		free(frame_tag)
