@@ -208,11 +208,11 @@ This runs tests for:
 * `vlib/v/checker/tests/*.vv`
 * `vlib/v/parser/tests/*.vv`
 
-Some fixtures require the V 0.5.2 compatibility compiler: legacy compiler-module diagnostics,
-legacy JSON code-generation errors, and the `with_check_option` cases. The current driver selects
-that compiler for those fixtures; other fixtures start with the current compiler and may use its
-normal compatibility fallback. The suite remains runnable on master even though the legacy
-compiler sources were removed from this tree.
+Some fixtures require the V 0.5.2 compatibility compiler: legacy compiler-module diagnostics
+and legacy JSON code-generation errors. The current driver selects that compiler for those
+fixtures; other fixtures, including the `with_check_option` cases, start with the current compiler
+and may use its normal compatibility fallback. The suite remains runnable on master even though
+the legacy compiler sources were removed from this tree.
 
 Prepare the compatibility compiler from the repository root before running the complete suite:
 

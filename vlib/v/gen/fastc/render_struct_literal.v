@@ -145,7 +145,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		})
 	}
 	mut layout_type := fastc_trim_pointer_type(c_type)
-	if flat.source_type_query(layout_type).has(.c_array_prefix) {
+	if flat.source_type_query(g.underlying_alias_type(layout_type)).has(.c_array_prefix) {
 		layout_type = flat.source_type_id('array')
 	}
 	// `Alias{}` where `Alias = u8` (a primitive alias, e.g. ast.EmptyExpr) has no fields, so
@@ -256,6 +256,10 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 			// The base ends at a top-level separator, not one inside its own call.
 			mut depth := 0
 			for index < close && (depth > 0 || tokens[index].tok !in [.semicolon, .comma]) {
+				if depth == 0 && index + 1 < close && tokens[index].tok == .name
+					&& tokens[index + 1].tok == .colon {
+					break
+				}
 				if tokens[index].tok in [.lpar, .lsbr, .lcbr] {
 					depth++
 				} else if tokens[index].tok in [.rpar, .rsbr, .rcbr] {
@@ -484,7 +488,7 @@ fn (g &Parser) render_struct_literal_expression(tokens []FastcExpressionToken) ?
 		rendered_fields = ordered_fields.clone()
 	}
 	if layout_type == fastc_type_array && update_source == ''
-		&& flat.source_type_query(c_type).has(.c_array_prefix) {
+		&& flat.source_type_query(g.underlying_alias_type(c_type)).has(.c_array_prefix) {
 		array_type_id := fastc_trim_pointer_type(c_type)
 		array_type := flat.source_type_name(array_type_id)
 		element_type := g.array_element_type(array_type_id) or { return none }

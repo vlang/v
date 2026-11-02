@@ -927,12 +927,15 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		if receiver_type == u32(0) {
 			continue
 		}
-		if tokens[i].lit in ['map', 'filter', 'any', 'all', 'count'] && flat.source_type_query(fastc_normalize_inferred_type(g.underlying_alias_type(receiver_type))).has(.c_array_prefix) {
+		if tokens[i].lit in ['map', 'filter', 'any', 'all', 'count'] && (flat.source_type_query(fastc_normalize_inferred_type(g.underlying_alias_type(receiver_type))).has(.c_array_prefix) || flat.source_type_query(fastc_trim_pointer_type(g.underlying_alias_type(receiver_type))).has(.c_fixed_array_prefix)) {
 			// The magic closure methods change the result type: `filter` keeps the array,
 			// `count` is an int, `any`/`all` are bools, and `map` yields an array of the
 			// closure's element type (inferred with `it` bound to the element).
 			method := tokens[i].lit
 			if method == 'filter' {
+				if flat.source_type_query(fastc_trim_pointer_type(g.underlying_alias_type(receiver_type))).has(.c_fixed_array_prefix) {
+					return fastc_array_c_type_id(g.array_element_type(receiver_type) or { return u32(0) })
+				}
 				return fastc_trim_pointer_type(fastc_normalize_inferred_type(g.underlying_alias_type(receiver_type)))
 			}
 			if method == 'count' {

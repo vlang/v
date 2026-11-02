@@ -4,6 +4,7 @@ import os
 import strings
 import time
 import v.cmdexec
+import v.vmod
 
 // native_backend_replacement_message explains how to replace the removed native backend option.
 pub const native_backend_replacement_message = '`-b native` has been replaced by `-b arm64` and `-b x64`.\n' +
@@ -46,13 +47,15 @@ pub enum Subsystem {
 // Preferences represents preferences data used by pref.
 pub struct Preferences {
 pub mut:
-	verbose               bool
-	no_parallel           bool
-	output_file           string
-	target                Target = host_target()
-	user_defines          []string
-	compile_values        map[string]string
-	backend               string = 'c'
+	verbose        bool
+	no_parallel    bool
+	output_file    string
+	target         Target = host_target()
+	user_defines   []string
+	compile_values map[string]string
+	backend        string = 'c'
+	// fastc_native_bridge selects separate native ownership for executable output.
+	fastc_native_bridge   bool
 	ccompiler             string = 'gcc'
 	c99                   bool
 	force_bounds_checking bool
@@ -699,6 +702,19 @@ fn dir_is_module(dir string) bool {
 	for entry in entries {
 		if entry.ends_with('.v') {
 			return true
+		}
+	}
+	manifest := vmod.from_file(os.join_path_single(dir, 'v.mod')) or { return false }
+	source_root := manifest.source_root(dir)
+	mut source_dirs := [source_root]
+	for subdir in manifest.unknown['subdirs'] or { []string{} } {
+		source_dirs << os.join_path_single(source_root, subdir)
+	}
+	for source_dir in source_dirs {
+		for entry in os.ls(source_dir) or { continue } {
+			if entry.ends_with('.v') && os.is_file(os.join_path_single(source_dir, entry)) {
+				return true
+			}
 		}
 	}
 	return false
