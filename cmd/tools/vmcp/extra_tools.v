@@ -3,7 +3,7 @@
 // `v_build` does a full codegen build (unlike `v_check` which is `-check`
 // only), `v_fmt_check`/`v_vet` answer directory-level hygiene in one call,
 // `v_repo_brief` orients in one call instead of N file reads, and `v_affected`
-// narrows `v test` to the `*_test.v` files a change can reach.
+// narrows `v test` to the test files a change can reach.
 module main
 
 import os
@@ -15,7 +15,7 @@ const brief_char_limit = 40000
 
 fn spec_build() ToolSpec {
 	return read_only_spec('v_build',
-		'Compile a file or directory with full codegen and return compiler diagnostics. Unlike v_check (-check only), this also catches backend/linker failures. Writes the binary to a temp dir, never into the project.',
+		'Full-codegen build of a file or directory. Catches backend and linker failures that v_check misses. The binary goes to a temp dir, never the project.',
 		input_schema(['path'], {
 			'path':            SchemaProperty{
 				kind:        'string'
@@ -38,12 +38,12 @@ fn tool_build(ws &Workspace, arguments string) string {
 	if !os.exists(path) {
 		return error_json('`${path}` does not exist')
 	}
-	tmp := os.join_path_single(os.vtmp_dir(), 'v_mcp_build_${os.getpid()}.exe')
+	suffix := $if windows { '.exe' } $else { '' }
+	tmp := os.join_path_single(os.vtmp_dir(), 'v_mcp_build_${os.getpid()}${suffix}')
 	mut compiler_args := args.list('flags')
 	compiler_args << ['-o', tmp, path]
 	run := run_compiler(ws, compiler_args)
 	os.rm(tmp) or {}
-	os.rm(tmp.trim_string_right('.exe')) or {}
 	items := parse_diagnostics(run.output)
 	mut w := astjson.Writer{}
 	w.begin_object()
@@ -84,7 +84,7 @@ fn tool_build(ws &Workspace, arguments string) string {
 
 fn spec_fmt_check() ToolSpec {
 	return read_only_spec('v_fmt_check',
-		'Check whether files are formatted (`v fmt -c`). Check-only, never touches files. Point at a file or a directory.',
+		'Check formatting (v fmt -c) for a file or directory. Never writes anything.',
 		input_schema(['path'], {
 			'path': SchemaProperty{
 				kind:        'string'
@@ -127,8 +127,7 @@ fn tool_fmt_check(ws &Workspace, arguments string) string {
 }
 
 fn spec_vet() ToolSpec {
-	return read_only_spec('v_vet',
-		'Run `v vet` and return its warnings. Read-only, changes nothing.',
+	return read_only_spec('v_vet', 'Run v vet on a file or directory. Read-only.',
 		input_schema(['path'], {
 			'path':            SchemaProperty{
 				kind:        'string'
@@ -184,7 +183,7 @@ fn tool_vet(ws &Workspace, arguments string) string {
 
 fn spec_repo_brief() ToolSpec {
 	return read_only_spec('v_repo_brief',
-		'Compact repo map in one call: module identity, entry points, tree with LOC, per-file byte/line counts. Capped so one call orients instead of N file reads.',
+		'One-call repo map: manifest, dependencies, file list with sizes. Output is capped.',
 		input_schema([], {
 			'path': SchemaProperty{
 				kind:        'string'
@@ -209,13 +208,13 @@ fn tool_repo_brief(ws &Workspace, arguments string) string {
 	w.key_raw('v_mod', manifest_json(ws))
 	w.key_raw('dependencies', string_array(ws.dependencies))
 	mut entries := []string{}
+	mut entries_len := 0
 	mut total_bytes := 0
 	mut total_lines := 0
+	mut truncated := false
 	for file in ws.v_files(dir) {
 		contents := os.read_file(file) or { continue }
 		lines := contents.split_into_lines().len
-		total_bytes += contents.len
-		total_lines += lines
 		is_test := file.ends_with('_test.v') || file.ends_with('_test.vsh')
 		mut ew := astjson.Writer{}
 		ew.begin_object()
@@ -228,10 +227,18 @@ fn tool_repo_brief(ws &Workspace, arguments string) string {
 		ew.key('is_test')
 		ew.boolean(is_test)
 		ew.end_object()
-		entries << ew.str()
-		if entries.join(',').len + w.str().len > brief_char_limit {
+		entry := ew.str()
+		// Cap the files array on its own; the header above is small next
+		// to the limit. Note: never call w.str() before the response is
+		// complete, it drains what was written so far.
+		if entries_len + entry.len + 1 > brief_char_limit {
+			truncated = true
 			break
 		}
+		entries << entry
+		entries_len += entry.len + 1
+		total_bytes += contents.len
+		total_lines += lines
 	}
 	w.key('file_count')
 	w.number(entries.len)
@@ -239,24 +246,24 @@ fn tool_repo_brief(ws &Workspace, arguments string) string {
 	w.number(total_bytes)
 	w.key('total_lines')
 	w.number(total_lines)
-	mut joined := entries.join(',')
-	if joined.len > brief_char_limit {
-		joined = joined[..brief_char_limit]
-	}
-	w.key_raw('files', '[' + joined + ']')
+	// `totals_partial` tells the reader whether the totals above cover the
+	// whole directory or only the files listed below.
+	w.key('totals_partial')
+	w.boolean(truncated)
+	w.key_raw('files', '[' + entries.join(',') + ']')
 	w.key('truncated')
-	w.boolean(joined.len >= brief_char_limit)
+	w.boolean(truncated)
 	w.end_object()
 	return w.str()
 }
 
 fn spec_affected() ToolSpec {
 	return read_only_spec('v_affected',
-		'List the *_test.v files a change can affect: git diff vs base propagated through the static import graph. Run this before v_test_run to avoid the full suite.',
+		'List the test files a change can reach through the local import graph. Pass a file or directory, or omit it to use the git worktree (staged, unstaged and untracked files). Same-module tests count via their directory. Only modules under the project root are followed.',
 		input_schema([], {
 			'path': SchemaProperty{
 				kind:        'string'
-				description: 'File or directory that changed. Defaults to the git diff vs base.'
+				description: 'File or directory that changed. Defaults to the git worktree.'
 			}
 			'base': SchemaProperty{
 				kind:        'string'
@@ -268,34 +275,45 @@ fn spec_affected() ToolSpec {
 fn tool_affected(ws &Workspace, arguments string) string {
 	args := decode_args(arguments)
 	base := args.text('base', 'HEAD')
-	changed := affected_changed_files(ws, base)
 	mut seed := map[string]bool{}
+	mut changed := []string{}
 	if args.has('path') {
 		p := ws.resolve(args.text('path', '')) or { return error_json(err.msg()) }
-		seed[os.real_path(p)] = true
+		if os.is_dir(p) {
+			for f in ws.v_files(p) {
+				seed[os.real_path(f)] = true
+			}
+		} else if os.is_file(p) {
+			seed[os.real_path(p)] = true
+		} else {
+			return error_json('`${args.text('path', '')}` is not a file or directory')
+		}
 	} else {
+		if !is_git_repo(ws) {
+			return error_json('`${ws.relative(ws.project_root)}` is not a git checkout: pass `path` explicitly')
+		}
+		changed = affected_changed_files(ws, base)
 		for f in changed {
 			seed[f] = true
 		}
 	}
 	graph := import_graph(ws)
 	reached := propagate(graph, seed)
+	mut seed_dirs := map[string]bool{}
+	for s in seed.keys() {
+		seed_dirs[os.dir(s)] = true
+	}
 	mut tests := []string{}
 	for file in ws.v_files(ws.project_root) {
 		if !(file.ends_with('_test.v') || file.ends_with('_test.vsh')) {
 			continue
 		}
-		if os.real_path(file) in reached || file_is_imported_by_changed(file, reached, graph) {
+		real := os.real_path(file)
+		// Same-module tests share a directory with the changed file, so they
+		// count even though they import nothing.
+		if real in reached || os.dir(real) in seed_dirs
+			|| file_imported_by_changed(real, reached, graph) {
 			tests << ws.relative(file)
-		}
-	}
-	// A changed test file itself is always affected.
-	for s in seed.keys() {
-		if s.ends_with('_test.v') || s.ends_with('_test.vsh') {
-			rel := ws.relative(s)
-			if rel !in tests {
-				tests << rel
-			}
 		}
 	}
 	tests.sort()
@@ -311,18 +329,31 @@ fn tool_affected(ws &Workspace, arguments string) string {
 	return w.str()
 }
 
+// is_git_repo reports whether the project root is inside a git worktree.
+fn is_git_repo(ws &Workspace) bool {
+	res := os.exec(['git', '-C', ws.project_root, 'rev-parse', '--is-inside-work-tree'])
+	return res.exit_code == 0
+}
+
 fn affected_changed_files(ws &Workspace, base string) []string {
-	res := os.exec(['git', '-C', ws.project_root, 'diff', '--name-only', base])
+	// `status --porcelain` covers staged, unstaged and untracked files at once,
+	// which is what `diff --name-only` misses. A non-default base still goes
+	// through `diff`, which only sees tracked files.
+	res := if base == 'HEAD' {
+		os.exec(['git', '-C', ws.project_root, 'status', '--porcelain'])
+	} else {
+		os.exec(['git', '-C', ws.project_root, 'diff', '--name-only', base])
+	}
 	if res.exit_code != 0 {
 		return []string{}
 	}
 	mut out := []string{}
 	for line in res.output.split_into_lines() {
-		t := line.trim_space()
-		if t == '' {
+		p := if base == 'HEAD' { changed_path_from_status(line) } else { line.trim_space() }
+		if p == '' {
 			continue
 		}
-		full := os.join_path_single(ws.project_root, t)
+		full := os.join_path_single(ws.project_root, p)
 		if os.is_file(full) && (full.ends_with('.v') || full.ends_with('.vsh')) {
 			out << os.real_path(full)
 		}
@@ -330,13 +361,22 @@ fn affected_changed_files(ws &Workspace, base string) []string {
 	return out
 }
 
+// changed_path_from_status reads the path out of one `git status --porcelain`
+// line, following renames to the new name and unquoting quoted paths.
+fn changed_path_from_status(line string) string {
+	if line.len < 4 {
+		return ''
+	}
+	mut p := line[3..].trim_space()
+	if p.contains(' -> ') {
+		p = p.all_after(' -> ').trim_space()
+	}
+	return p.trim('"')
+}
+
 // import_graph maps a file to the project files it imports (by module dir match).
 fn import_graph(ws &Workspace) map[string][]string {
-	mut files := ws.v_files(ws.project_root)
-	mut by_dir := map[string]string{}
-	for f in files {
-		by_dir[os.dir(os.real_path(f))] = os.real_path(f)
-	}
+	files := ws.v_files(ws.project_root)
 	mut graph := map[string][]string{}
 	for f in files {
 		real := os.real_path(f)
@@ -348,16 +388,37 @@ fn import_graph(ws &Workspace) map[string][]string {
 fn imported_project_files(ws &Workspace, file string, all []string) []string {
 	src := os.read_file(file) or { return []string{} }
 	mut mods := []string{}
+	mut in_block := false
 	for line in src.split_into_lines() {
 		t := line.trim_space()
-		if t.starts_with('import ') {
-			rest := t[7..].trim_space()
-			for part in rest.split(',') {
-				name := part.trim_space().split(' ')[0].trim_space()
-				if name != '' {
-					mods << name.all_before(' as ').trim_space()
-				}
+		if in_block {
+			mut body := t
+			if body.contains(')') {
+				body = body.all_before(')').trim_space()
+				in_block = false
 			}
+			if body != '' {
+				mods << import_names(body)
+			}
+			continue
+		}
+		if t.starts_with('import')
+			&& (t.len == 6 || t[6] == ` ` || t[6] == `\t` || t[6] == `(`) {
+			mut rest := t[6..].trim_space()
+			if rest.starts_with('(') {
+				rest = rest[1..].trim_space()
+				if rest.contains(')') {
+					rest = rest.all_before(')').trim_space()
+				} else {
+					in_block = true
+				}
+			} else {
+				rest = rest.all_before('//')
+			}
+			if rest != '' {
+				mods << import_names(rest)
+			}
+			continue
 		}
 	}
 	mut out := []string{}
@@ -370,6 +431,19 @@ fn imported_project_files(ws &Workspace, file string, all []string) []string {
 					out << os.real_path(f)
 				}
 			}
+		}
+	}
+	return out
+}
+
+// import_names splits one import list (`os`, `a, b`, `mymod as m`) into names.
+fn import_names(text string) []string {
+	mut out := []string{}
+	for part in text.split(',') {
+		mut name := part.trim_space().split(' ')[0].trim_space()
+		name = name.all_before(' as ').trim_space()
+		if name != '' && name != ')' && !name.starts_with('//') {
+			out << name
 		}
 	}
 	return out
@@ -400,11 +474,9 @@ fn propagate(graph map[string][]string, seed map[string]bool) map[string]bool {
 	return reached
 }
 
-fn file_is_imported_by_changed(file string, reached map[string]bool, graph map[string][]string) bool {
-	real := os.real_path(file)
-	if real in reached {
-		return true
-	}
+// file_imported_by_changed reports whether the file at `real` imports anything
+// the change reached, which makes a test in another directory affected.
+fn file_imported_by_changed(real string, reached map[string]bool, graph map[string][]string) bool {
 	for dep in graph[real] {
 		if dep in reached {
 			return true
