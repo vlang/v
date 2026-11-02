@@ -50,7 +50,8 @@ jobs:
           $opensslBin = 'C:\Program Files\OpenSSL\bin'
           $libDir = 'C:\Program Files\OpenSSL\lib\VC\x64\MD'
           $cryptoLib = Join-Path $libDir 'libcrypto.lib'
-          if (-not (Test-Path $opensslBin) -or -not (Test-Path $cryptoLib)) {
+          $sslLib = Join-Path $libDir 'libssl.lib'
+          if (-not (Test-Path $opensslBin) -or -not (Test-Path $cryptoLib) -or -not (Test-Path $sslLib)) {
             choco install openssl --version=3.5.4 --allow-downgrade -y --no-progress
             if ($LASTEXITCODE -ne 0) {
               throw "Chocolatey failed to install OpenSSL 3.5.4 (exit $LASTEXITCODE)"
@@ -61,7 +62,7 @@ jobs:
           # ecdsa.c.v/rsa_pss.c.v's SECOND `#flag windows` fallback path --
           # NOT the first one (`...OpenSSL-Win64\...`), confirmed by an
           # actual CI run after guessing wrong the first time.
-          if (-not (Test-Path $opensslBin) -or -not (Test-Path $cryptoLib)) {
+          if (-not (Test-Path $opensslBin) -or -not (Test-Path $cryptoLib) -or -not (Test-Path $sslLib)) {
             throw "OpenSSL installation is incomplete under C:\Program Files\OpenSSL"
           }
           Add-Content -Path $env:GITHUB_PATH -Value $opensslBin
@@ -79,7 +80,10 @@ jobs:
           # it here instead: alias the file under the name MSVC expects.
           # A plain copy is safe -- a Windows import library doesn't embed
           # its own filename.
-          Copy-Item -Path $cryptoLib -Destination (Join-Path $libDir 'crypto.lib')
+          Copy-Item -Path $cryptoLib -Destination (Join-Path $libDir 'crypto.lib') -Force
+          # pkg-config also emits -lssl for the SMTP TLS helper, which MSVC
+          # resolves to ssl.lib while the installer ships libssl.lib.
+          Copy-Item -Path $sslLib -Destination (Join-Path $libDir 'ssl.lib') -Force
 
           Write-Host "OpenSSL install:"
           Get-ChildItem $libDir
