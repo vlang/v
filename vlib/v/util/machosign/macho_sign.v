@@ -101,11 +101,14 @@ fn fastc_macho_sign_capacity(original_len int, ident string) int {
 // empty requirements blob and an empty CMS wrapper), replacing any signature
 // it has. The identifier is the file name, as `codesign -s -` uses.
 pub fn sign_adhoc(path string) ! {
-	$if macos {
-		fastc_sign_macho_adhoc_mapped(path)!
-	} $else {
-		fastc_sign_macho_adhoc_buffered(path)!
+	// Portable bootstrap snapshots omit the Darwin-only source file.
+	$if !cross ? {
+		$if macos {
+			fastc_sign_macho_adhoc_mapped(path)!
+			return
+		}
 	}
+	fastc_sign_macho_adhoc_buffered(path)!
 }
 
 fn fastc_sign_macho_adhoc_buffered(path string) ! {
@@ -406,33 +409,10 @@ fn fastc_adhoc_signature(file []u8, code_limit int, ident string, text_limit u64
 	for _ in 0 .. cs_hash_size {
 		sig << u8(0)
 	}
-	// The page hashes: the system digest on macOS (where the signature is
-	// used); elsewhere V's SHA-256, which a self-hosted (TinyCC-built)
-	// compiler runs at a few tens of MB/s, so the pages are split over
-	// worker threads.
 	mut page_hashes := []u8{len: n_pages * cs_hash_size}
 	data_ptr := unsafe { &u8(file.data) }
 	hashes_ptr := unsafe { &u8(page_hashes.data) }
-	$if macos {
-		fastc_hash_code_pages_native(data_ptr, hashes_ptr, n_pages, code_limit)
-	} $else {
-		if n_pages >= 64 {
-			worker_count := 8
-			mut workers := [
-				spawn fastc_hash_code_pages(data_ptr, hashes_ptr, 0, n_pages / worker_count, code_limit),
-			]
-			for worker in 1 .. worker_count {
-				start := n_pages * worker / worker_count
-				end := n_pages * (worker + 1) / worker_count
-				workers << spawn fastc_hash_code_pages(data_ptr, hashes_ptr, start, end, code_limit)
-			}
-			for worker in workers {
-				worker.wait()
-			}
-		} else {
-			fastc_hash_code_pages(data_ptr, hashes_ptr, 0, n_pages, code_limit)
-		}
-	}
+	fastc_hash_signature_pages(data_ptr, hashes_ptr, n_pages, code_limit)
 	sig << page_hashes
 	for sig.len < req_blob_offset {
 		sig << u8(0)
@@ -441,6 +421,33 @@ fn fastc_adhoc_signature(file []u8, code_limit int, ident string, text_limit u64
 	fastc_push_u32_be(mut sig, cs_blob_wrapper_magic)
 	fastc_push_u32_be(mut sig, u32(cms_size))
 	return sig
+}
+
+// Native macOS builds use the system digest; portable snapshots and other
+// hosts split V's SHA-256 work over threads, as before.
+fn fastc_hash_signature_pages(data_ptr &u8, hashes_ptr &u8, n_pages int, code_limit int) {
+	$if !cross ? {
+		$if macos {
+			fastc_hash_code_pages_native(data_ptr, hashes_ptr, n_pages, code_limit)
+			return
+		}
+	}
+	if n_pages >= 64 {
+		worker_count := 8
+		mut workers := [
+			spawn fastc_hash_code_pages(data_ptr, hashes_ptr, 0, n_pages / worker_count, code_limit),
+		]
+		for worker in 1 .. worker_count {
+			start := n_pages * worker / worker_count
+			end := n_pages * (worker + 1) / worker_count
+			workers << spawn fastc_hash_code_pages(data_ptr, hashes_ptr, start, end, code_limit)
+		}
+		for worker in workers {
+			worker.wait()
+		}
+	} else {
+		fastc_hash_code_pages(data_ptr, hashes_ptr, 0, n_pages, code_limit)
+	}
 }
 
 // fastc_hash_code_pages writes the SHA-256 of the pages [page_start, page_end)
