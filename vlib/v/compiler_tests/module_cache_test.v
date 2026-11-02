@@ -2729,9 +2729,9 @@ fn main() {
 
 	write_module_cache_file(root, 'main.v', 'module main
 
-#flag -DV3_CACHE_RESTART_STDIO_PROBE
-
 import wrapper
+
+#flag -DV3_CACHE_RESTART_STDIO_PROBE
 
 fn C.v3_missing_restart_stdio_symbol() int
 
@@ -2742,9 +2742,10 @@ fn main() {
 	second_output := os.join_path(root, 'second')
 	stdout_file := os.join_path(root, 'stdout.txt')
 	stderr_file := os.join_path(root, 'stderr.txt')
+	// Exercise the current driver's stderr without the launcher's compatibility retry.
 	result :=
-		cache_capture_files([v3_bin, '-cc', 'cc', '-show-timings', '-enable-globals', '-o',
-			second_output, main_file], stdout_file, stderr_file, {
+		cache_capture_files([v3_bin, '-new-compiler', '-cc', 'cc', '-show-timings', '-enable-globals',
+			'-o', second_output, main_file], stdout_file, stderr_file, {
 			'V3CACHE': cache_dir
 		})
 	assert result.exit_code != 0
@@ -2809,7 +2810,9 @@ fn main() {
 	// The manifest costs a digest of every parsed source: a caller asks for it.
 	environment['V_MACOS_V3_SOURCE_MANIFEST'] = '1'
 	mut process := os.new_process(v3_bin)
-	process.set_args(['-silent', '-no-memory-limit', 'run', main_file, side_effect_file])
+	// Keep the caller's transport paths instead of letting the launcher replace them.
+	process.set_args(['-new-compiler', '-silent', '-no-memory-limit', 'run', main_file,
+		side_effect_file])
 	process.set_environment(environment)
 	process.set_redirect_stdio()
 	process.run()

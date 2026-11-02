@@ -1,5 +1,54 @@
 import os
 
+fn test_vc_compat_matches_the_native_memory_file_qualifier() ! {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'vc_compat_memory_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'snapshot with spaces.c')
+	executable := os.join_path(root, 'snapshot')
+	script := os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat.sh')
+	filter := os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat.awk')
+	cc := os.getenv_opt('CC') or { 'cc' }
+	embedded := 'const char *embedded = "int v3_linux_memory_file(char* name);";\n'
+	main := 'int main(void) { return v3_linux_memory_file("vc") != 118 || embedded[0] != 105; }\n'
+	for definition_const in [false, true] {
+		for prototype_const in [false, true] {
+			// Only the historical const-definition/non-const-prototype pair is
+			// broken. The opposite mismatch is not a supported snapshot shape.
+			if !definition_const && prototype_const {
+				continue
+			}
+			definition_type := if definition_const { 'const char*' } else { 'char*' }
+			prototype_type := if prototype_const { 'const char*' } else { 'char*' }
+			text := 'static int v3_linux_memory_file(${definition_type} name) { return name[0]; }\nint v3_linux_memory_file(${prototype_type} name);\n' +
+				embedded + main
+			os.write_file(source, text)!
+			original := os.exec([cc, '-std=c99', '-fsyntax-only', source])
+			assert (original.exit_code == 0) == (definition_const == prototype_const), original.output
+			filtered := os.exec(['awk', '-f', filter, source])
+			assert filtered.exit_code == 0, filtered.output
+			assert filtered.output.contains(embedded), filtered.output
+			if definition_const == prototype_const {
+				assert filtered.output == text
+			}
+			for separator in [false, true] {
+				mut command := ['sh', script, source, cc, '-std=c99', '-Werror', '-o', executable]
+				if separator {
+					command << '--'
+				}
+				checked := os.exec(command)
+				assert checked.exit_code == 0, checked.output
+				ran := os.exec([executable])
+				assert ran.exit_code == 0, ran.output
+			}
+			assert os.read_file(source)! == text
+		}
+	}
+}
+
 fn test_vc_compat_preserves_linux_prctl_and_skips_it_elsewhere() {
 	$if windows {
 		return
@@ -45,7 +94,7 @@ fn test_vc_compat_preserves_linux_prctl_and_skips_it_elsewhere() {
 	failed := os.exec([...(os.split_args(command) or { panic(err) }), '37', '${args}',
 		'flag with spaces'])
 	assert failed.exit_code == 37, failed.output
-	assert os.read_file(args)! == 'flag with spaces\n-x\nc\n-\n-x\nnone\n'
+	assert os.read_file(args)! == 'flag with spaces\n-x\nc\n-\n'
 
 	// Do not let a changed snapshot format leave the rest of the file inside
 	// a silently unterminated platform guard.
@@ -191,6 +240,29 @@ fn test_vc_compat_links_libraries_after_the_streamed_source() ! {
 	assert ran.exit_code == 0, ran.output
 }
 
+fn test_vc_compat_links_objects_after_the_streamed_source() ! {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'vc_compat_object_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'snapshot.c')
+	object_source := os.join_path(root, 'object.c')
+	object := os.join_path(root, 'object with spaces.o')
+	executable := os.join_path(root, 'snapshot')
+	os.write_file(source, 'int linked(void);\nint main(void) { return linked() != 42; }\n')!
+	os.write_file(object_source, 'int linked(void) { return 42; }\n')!
+	cc := os.getenv_opt('CC') or { 'cc' }
+	compiled := os.exec([cc, '-std=c99', '-Werror', '-c', object_source, '-o', object])
+	assert compiled.exit_code == 0, compiled.output
+	checked := os.exec(['sh', os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat.sh'), source,
+		cc, '-std=c99', '-Werror', '-o', executable, '--', object])
+	assert checked.exit_code == 0, checked.output
+	ran := os.exec([executable])
+	assert ran.exit_code == 0, ran.output
+}
+
 fn test_vc_compat_bridges_only_snapshots_without_native_uint() ! {
 	root := os.join_path(os.vtmp_dir(), 'vc_compat_uint_${os.getpid()}')
 	os.mkdir_all(root)!
@@ -253,5 +325,37 @@ fn test_vc_compat_relocates_native_includes_without_expanding_headers() ! {
 	assert stream.contains('#include "${vroot}/thirdparty/stdatomic/win/atomic.h"')
 	assert stream.contains('#include "/opt/sdk/vendor.h"\n#include "local.h"')
 	assert stream.contains('const char *literal = "vlib/builtin/track_heap_checks.h";')
+	assert os.read_file(source)! == text
+}
+
+fn test_windows_vc_compat_relocates_includes_and_preserves_snapshot_bytes() ! {
+	powershell := $if windows {
+		os.find_abs_path_of_executable('powershell')!
+	} $else {
+		os.find_abs_path_of_executable('pwsh') or { return }
+	}
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'vc_compat_windows_includes_${os.getpid()}')
+	checkout := os.join_path(root, 'checkout λ with spaces')
+	tools := os.join_path(checkout, 'cmd', 'tools')
+	os.mkdir_all(tools)!
+	defer { os.rmdir_all(root) or {} }
+	script := os.join_path(tools, 'vc_compat_uint.ps1')
+	os.cp(os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat_uint.ps1'), script)!
+	source := os.join_path(root, 'snapshot.c')
+	output := os.join_path(root, 'filtered.c')
+	unix_header := '/generator/v/vlib/builtin/core_windows.h'
+	windows_header := r'C:\runner\v\thirdparty\stdatomic\win\atomic.h'
+	cmd_header := '/generator/v/cmd/tools/helper.h'
+	binary := [u8(0xff), u8(0xfe)].bytestr()
+	text := '#include "${unix_header}" // keep this comment\n#include "${windows_header}"\n#include "${cmd_header}"\n#include "/opt/sdk/vendor.h"\n#include "local.h"\n#include <stdio.h>\nconst char *literal = "vlib/builtin/core_windows.h";\nconst char *binary = "${binary}";\n'
+	os.write_file(source, text)!
+	filtered := os.exec([powershell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', script,
+		'-Source', source, '-Destination', output])
+	assert filtered.exit_code == 0, filtered.output
+	vroot := os.real_path(checkout).replace('\\', '/')
+	expected := text.replace(unix_header, '${vroot}/vlib/builtin/core_windows.h')
+		.replace(windows_header, '${vroot}/thirdparty/stdatomic/win/atomic.h')
+		.replace(cmd_header, '${vroot}/cmd/tools/helper.h')
+	assert os.read_file(output)! == expected
 	assert os.read_file(source)! == text
 }

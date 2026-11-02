@@ -26,6 +26,7 @@ import v.transform
 import v.types
 import v.util
 import v.util.cache_refresh
+import v.util.machosign
 import v.util.vtest
 import v.workers
 import v.build_constraint
@@ -67,7 +68,11 @@ const macos_v3_vhash_env = 'V_MACOS_V3_VHASH'
 const macos_v3_vcurrent_hash_env = 'V_MACOS_V3_VCURRENT_HASH'
 const macos_v3_compat_c99_flag = '-macos-v3-compat-c99'
 const macos_v3_internal_quiet_flag = '-macos-v3-internal-quiet'
-const macos_v3_inline_asm_diagnostic = 'inline assembly is not supported by the selected V3 backend'
+// macos_v3_inline_asm_diagnostic_prefix starts every parser diagnostic for an inline assembly
+// block that the selected backend cannot lower. In a build the C backend can lower, a block for
+// another architecture reports a target mismatch instead and is not retried, because no compiler
+// can lower it either.
+const macos_v3_inline_asm_diagnostic_prefix = 'inline assembly is not supported by the'
 const macos_v3_inline_asm_fallback = 'inline_asm'
 const macos_v3_compiler_error_fallback = 'compiler_error'
 const macos_v3_c_error_fallback = 'c_compilation_error'
@@ -1173,6 +1178,16 @@ fn c_dylib_force_loaded_static_archive_inputs(link_flags []string) []string {
 	return result
 }
 
+// Sokol's implementation and backend selection belong to the native cache
+// owner. Public configuration, including trace hooks and API declarations,
+// must also reach the consumer's headers and inline helpers.
+fn tcc_cached_main_native_sokol_define(value string) bool {
+	name := value.trim_space().all_before('=')
+	return (name.starts_with('SOKOL_') && name.ends_with('_IMPL'))
+		|| name in ['SOKOL_GLCORE', 'SOKOL_GLCORE33', 'SOKOL_GLES2', 'SOKOL_GLES3', 'SOKOL_D3D11',
+			'SOKOL_METAL', 'SOKOL_WGPU', 'SOKOL_VULKAN', 'SOKOL_DUMMY_BACKEND', 'SOKOL_NOAPI']
+}
+
 fn tcc_cached_main_flags(flags []string) []string {
 	mut compile_flags := []string{}
 	mut i := 0
@@ -1183,14 +1198,14 @@ fn tcc_cached_main_flags(flags []string) []string {
 			'-iprefix', '-iwithprefix', '-iwithprefixbefore', '-isysroot', '--sysroot'] {
 			if i + 1 < flags.len {
 				value := flags[i + 1]
-				if !(clean == '-D' && value.trim_space().starts_with('SOKOL_')) {
+				if !(clean == '-D' && tcc_cached_main_native_sokol_define(value)) {
 					compile_flags << [flag, value]
 				}
 			}
 			i += 2
 			continue
 		}
-		if clean.starts_with('-DSOKOL_') {
+		if clean.starts_with('-D') && tcc_cached_main_native_sokol_define(clean[2..]) {
 			i++
 			continue
 		}
@@ -1508,7 +1523,7 @@ fn v3_cache_file_identity(path string) string {
 
 fn v3_cached_tcc_executable_path(manager &modulecache.Manager, source_identity string, link_plan_signature string, tcc_path string, tcc_lib_dir string, tcc_args []string) string {
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-cached-tcc-executable-v1', source_identity, link_plan_signature,
+	for identity in ['v3-cached-tcc-executable-v2', source_identity, link_plan_signature,
 		os.real_path(tcc_path), v3_cache_file_identity(tcc_path), tcc_args.join('\x00')] {
 		hash = c_hash_bytes(hash, identity.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
@@ -1542,30 +1557,29 @@ fn v3_cached_tcc_executable_path(manager &modulecache.Manager, source_identity s
 // TinyCC needs for a small program. A no-op `codesign` stands in for it while
 // TinyCC runs, and the executable gets the same kind of ad-hoc signature in this
 // process; Apple's tool still signs a file that the signer here does not handle.
-// A driver that is built without the FastC backend has no signer, and leaves the
-// signing to TinyCC.
+// The signer also repairs TinyCC's chained fixups, which otherwise map file bytes
+// over zero-initialized globals on macOS 27. Keep it available in the default
+// compiler, which is built without the optional FastC backend (#31486).
 fn run_v3_tcc_executable_link(tcc_path string, tcc_args []string, cc_dir string, output string, trace bool) os.Result {
-	$if !skip_fastc ? {
-		if os.user_os() == 'macos' && os.getenv('V3_TCC_APPLE_CODESIGN') != '1' {
-			shim := fastc.fastc_codesign_shim_dir()
-			result := cmdexec.run_in(tcc_path, tcc_args, cc_dir)
-			fastc.fastc_remove_codesign_shim_dir(shim)
-			if shim.dir == '' || result.exit_code != 0 || !os.is_file(output) {
-				return result
-			}
-			print_post_link_step(trace, macos_in_process_codesign_step(output))
-			fastc.fastc_sign_macho_adhoc(output) or {
-				print_post_link_step(trace, macos_codesign_step(output))
-				signed := cmdexec.run('codesign', ['-f', '-s', '-', output])
-				if signed.exit_code != 0 {
-					return os.Result{
-						exit_code: 1
-						output:    'could not sign ${output}: ${err.msg()}\n${signed.output}'
-					}
-				}
-			}
+	if os.user_os() == 'macos' && os.getenv('V3_TCC_APPLE_CODESIGN') != '1' {
+		shim := machosign.codesign_shim_dir()
+		result := cmdexec.run_in(tcc_path, tcc_args, cc_dir)
+		machosign.remove_codesign_shim_dir(shim)
+		if shim.dir == '' || result.exit_code != 0 || !os.is_file(output) {
 			return result
 		}
+		print_post_link_step(trace, macos_in_process_codesign_step(output))
+		machosign.sign_adhoc(output) or {
+			print_post_link_step(trace, macos_codesign_step(output))
+			signed := cmdexec.run('codesign', ['-f', '-s', '-', output])
+			if signed.exit_code != 0 {
+				return os.Result{
+					exit_code: 1
+					output:    'could not sign ${output}: ${err.msg()}\n${signed.output}'
+				}
+			}
+		}
+		return result
 	}
 	return cmdexec.run_in(tcc_path, tcc_args, cc_dir)
 }
@@ -3706,6 +3720,32 @@ fn v3_tcc_host_system_flags(target_os string, macos_sdk_root string) []string {
 		}
 	}
 	return flags
+}
+
+// v3_tcc_cpp_runtime_flags lets native Linux TinyCC links find the platform C++
+// runtime, which distributions install in the versioned GCC library directory.
+fn v3_tcc_cpp_runtime_flags(flags []string, target pref.Target) []string {
+	if target.os != 'linux' || os.user_os() != 'linux' || target.arch != pref.host_arch()
+		|| '-lstdc++' !in flags {
+		return flags
+	}
+	compiler := os.find_abs_path_of_executable('c++') or { return flags }
+	result := cmdexec.run(compiler, ['-print-file-name=libstdc++.so'])
+	path := result.output.trim_space()
+	if result.exit_code != 0 || !os.is_abs_path(path) || !os.is_file(path) {
+		return flags
+	}
+	search := '-L${os.dir(path)}'
+	mut resolved := flags.clone()
+	// Keep explicit user search directories ahead of this platform default.
+	if search !in resolved {
+		resolved << search
+	}
+	// Native C++ objects call the unwinder directly, even when libstdc++ also uses it.
+	if '-lgcc_s' !in resolved {
+		resolved << '-lgcc_s'
+	}
+	return resolved
 }
 
 // v3_tcc_macos_framework_flags replaces the `-framework` link flags that TCC
@@ -7524,6 +7564,7 @@ fn v3_implicit_tcc_preflight(vroot string, tcc_path string, bundled_tcc string, 
 	probe_args << ['-o', 'probe.exe', 'probe.c']
 	probe_args << link_flags
 	probe_args = v3_tcc_macos_framework_flags(probe_args, target.os, sdk_root)
+	probe_args = v3_tcc_cpp_runtime_flags(probe_args, target)
 	result := cmdexec.run_in(tcc_path, probe_args, dir)
 	if result.exit_code == 0 {
 		v3_record_tcc_probe(marker)
@@ -8293,7 +8334,7 @@ fn macos_v3_fallback_suppresses_diagnostics(fallback_file string) bool {
 
 fn request_macos_v3_compatibility_fallback(diagnostics []parser.Diagnostic, fallback_file string) bool {
 	if fallback_file == '' || os.getenv(macos_v3_no_fallback_env) == '1'
-		|| !diagnostics.any(it.message == macos_v3_inline_asm_diagnostic) {
+		|| !diagnostics.any(it.message.starts_with(macos_v3_inline_asm_diagnostic_prefix)) {
 		return false
 	}
 	os.write_file(fallback_file, macos_v3_inline_asm_fallback) or { return false }
@@ -11442,6 +11483,7 @@ pub fn run(args []string) {
 			if os.getenv('FASTC_BENCH_PHASES') != '' {
 				eprintln('fastc-phase driver.setup ${driver_sw.elapsed().microseconds()}us')
 			}
+			prefs.fastc_native_bridge = !c_only && prefs.normalized_target_os() == 'macos' && prefs.ccompiler == 'tinyc'
 			mut fastc_generation := fastc.generate_files_with_source_paths([input_file], prefs) or {
 				eprintln(err.msg())
 				exit(1)
@@ -11495,7 +11537,7 @@ pub fn run(args []string) {
 			fastc_result := if c_compiler_explicit && effective_c_compiler == 'clang' {
 				compile_v3_fastc_clang_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, c_compiler, is_debug, fastc_generation.uses_threads)
 			} else {
-				compile_v3_fastc_tcc_generation(input_file, mut fastc_generation, fastc_bin_file, prefs, environment_c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, is_debug, prefs.building_v && !is_debug && !no_cache && !fastc_bench, keep_c, retry_compilation, mut prestarted_fastc_units)
+				compile_v3_fastc_tcc_generation(&fastc_generation, fastc_bin_file, prefs, environment_c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, is_debug, prefs.building_v && !is_debug && !no_cache && !fastc_bench, keep_c, mut prestarted_fastc_units)
 			}
 
 			if (verbose || show_cc) && fastc_result.command.len > 0 {
@@ -14662,7 +14704,11 @@ pub fn run(args []string) {
 			&& a.nodes.len >= scoped_serial_user_cgen_node_threshold {
 			cache_no_parallel_cgen = true
 		}
-		c_standard := c_standard_flag(prefs.c99, no_std)
+		c_standard := if effective_c_compiler == 'cplusplus' {
+			cxx_standard_flag(prefs.c99, no_std)
+		} else {
+			c_standard_flag(prefs.c99, no_std)
+		}
 		// Long `$embed_file` payloads go into objects assembled from the bytes with
 		// `.incbin` when the link allows it and an assembler is at hand; cgen then
 		// refers to those objects instead of spelling out the bytes, see
@@ -15080,6 +15126,11 @@ pub fn run(args []string) {
 		} else {
 			['-w']
 		}
+		if effective_c_compiler == 'cplusplus' {
+			// The V1 g++ driver accepted GNU C aggregate addresses and C-style
+			// pointer conversions. Preserve that existing GNU C++ contract.
+			warn_args << '-fpermissive'
+		}
 		// Match the normal V driver's macOS compatibility flags. Apple SDK and
 		// third-party headers commonly add const qualifiers to callback typedefs,
 		// and Clang otherwise treats assignments from V's C declarations as errors.
@@ -15101,7 +15152,7 @@ pub fn run(args []string) {
 		mut all_compile_c_flags := environment_c_flags.clone()
 		all_compile_c_flags << generated_c_flags
 		needs_objective_c := c_flags_need_objective_c(all_compile_c_flags)
-			|| cgen.cache_native_inputs_need_objective_c(a, prefs.vroot, user_c_flags, prefs.c99, prefs.ccompiler, prefs.target)
+			|| cgen.generated_c_unit_needs_objective_c(a, prefs.vroot, user_c_flags, prefs.c99, prefs.ccompiler, prefs.target)
 		large_prod_c_unit := !use_parallel_c_compilation && os.is_file(published_c_source)
 			&& v3_is_large_prod_c_unit(os.file_size(published_c_source))
 		limit_large_unit_inlining := large_prod_c_unit && effective_c_compiler == 'clang'
@@ -15959,6 +16010,7 @@ pub fn run(args []string) {
 			}
 			tcc_args = v3_tcc_macos_framework_flags(tcc_args, prefs.normalized_target_os(),
 				tcc_sdk_root)
+			tcc_args = v3_tcc_cpp_runtime_flags(tcc_args, prefs.target)
 			program_source_identity := '${prefix_source_identity}\n${modulecache.file_signature(tcc_main_file)}\n${if cached_program_body_source.len > 0 {
 				modulecache.file_signature(cached_program_body_source)
 			} else {
@@ -16040,6 +16092,7 @@ pub fn run(args []string) {
 			mut tcc_args := c_flag_plan.compiler_args(cc_output_name, [tcc_source], tcc_support_inputs)
 			tcc_args = v3_tcc_macos_framework_flags(tcc_args, prefs.normalized_target_os(),
 				tcc_sdk_root)
+			tcc_args = v3_tcc_cpp_runtime_flags(tcc_args, prefs.target)
 			if verbose || show_cc {
 				println('  > ${cmdexec.display(tcc_path, tcc_args)}')
 			}
@@ -20144,38 +20197,86 @@ fn builtin_dir_for_vroot(root string) string {
 	return os.join_path_single(os.join_path_single(root, 'vlib'), 'builtin')
 }
 
-// print_type_diagnostics renders notices before fatal type errors.
-// The diagnostics server callbacks live outside `run`: a function literal makes
-// the transformer lower its whole enclosing function serially, before the
-// parallel workers start, and `run` is the largest function of the compiler.
+// Named callbacks keep diagnostics serving available in a -no-closures compiler.
+// Their heap-backed contexts outlive the helpers that register them.
+struct V3PartialDiagnosticsContext {
+	a                  &flat.FlatAst
+	found_notices      []types.TypeError
+	found_errors       []types.TypeError
+	is_checker_fixture bool
+	fatal_errors       bool
+	check_only         bool
+	message_limit      int
+	skip_notices       bool
+}
+
+fn v3_print_partial_type_diagnostics(context voidptr) int {
+	data := unsafe { &V3PartialDiagnosticsContext(context) }
+	print_type_diagnostics(data.a, data.found_notices, data.found_errors,
+		data.is_checker_fixture, data.fatal_errors, data.check_only, data.message_limit,
+		data.skip_notices)
+	return if data.found_errors.len > 0 { 1 } else { 0 }
+}
 
 // serve_partial_type_diagnostics prints what the check found so far for a
 // client that shows it while the grandchild takes long.
 fn serve_partial_type_diagnostics(mut served diagserver.Request, a &flat.FlatAst, found_notices []types.TypeError, found_errors []types.TypeError, is_checker_fixture bool, fatal_errors bool, check_only bool, message_limit int, skip_notices bool) {
-	served.print_partial_with(fn [a, found_notices, found_errors, is_checker_fixture, fatal_errors, check_only, message_limit, skip_notices] () int {
-		print_type_diagnostics(a, found_notices, found_errors, is_checker_fixture, fatal_errors,
-			check_only, message_limit, skip_notices)
-		return if found_errors.len > 0 { 1 } else { 0 }
-	})
+	context := &V3PartialDiagnosticsContext{
+		a:                  a
+		found_notices:      found_notices
+		found_errors:       found_errors
+		is_checker_fixture: is_checker_fixture
+		fatal_errors:       fatal_errors
+		check_only:         check_only
+		message_limit:      message_limit
+		skip_notices:       skip_notices
+	}
+	served.print_partial_with(v3_print_partial_type_diagnostics, context)
+}
+
+struct V3IncrementalCheckContext {
+	checker types.TypeChecker
+}
+
+fn v3_complete_incremental_check_step(context voidptr) bool {
+	data := unsafe { &V3IncrementalCheckContext(context) }
+	mut tc := data.checker
+	return tc.complete_incremental_check_step(incremental_completion_step)
 }
 
 // serve_incremental_check_steps checks the bodies the check left out while no
 // question comes: a question reads their types.
 fn serve_incremental_check_steps(mut served diagserver.Request, checker types.TypeChecker) {
-	served.keep_busy_with(fn [checker] () bool {
-		mut tc := checker
-		return tc.complete_incremental_check_step(incremental_completion_step)
-	})
+	context := &V3IncrementalCheckContext{
+		checker: checker
+	}
+	served.keep_busy_with(v3_complete_incremental_check_step, context)
+}
+
+struct V3ImportCheckContext {
+	// A child keeps answering with the preferences of the original check.
+	prefs            pref.Preferences
+	project_root     string
+	resolved_imports []V3ImportResolution
+}
+
+fn v3_check_unchanged_imports(context voidptr) bool {
+	data := unsafe { &V3ImportCheckContext(context) }
+	return v3_imports_resolve_as_before(&data.prefs, data.project_root, data.resolved_imports)
 }
 
 // serve_unchanged_imports keeps the checked program while its inputs and
 // imports resolve as before.
 fn serve_unchanged_imports(mut served diagserver.Request, digests map[string]string, prefs &pref.Preferences, project_root string, resolved_imports []V3ImportResolution) {
-	served.keep_inputs(digests, fn [prefs, project_root, resolved_imports] () bool {
-		return v3_imports_resolve_as_before(prefs, project_root, resolved_imports)
-	})
+	context := &V3ImportCheckContext{
+		prefs:            *prefs
+		project_root:     project_root
+		resolved_imports: resolved_imports
+	}
+	served.keep_inputs(digests, v3_check_unchanged_imports, context)
 }
 
+// print_type_diagnostics renders notices before fatal type errors.
 fn print_type_diagnostics(a &flat.FlatAst, notices []types.TypeError, type_errors []types.TypeError, all_errors bool, fatal_errors bool, check_only bool, message_limit int, skip_notices bool) {
 	if !check_only {
 		mut first_unused := -1

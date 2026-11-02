@@ -433,12 +433,12 @@ jobs:
             -ExpectedNoOptProbeSha256 '288f148ca15b6694481f117c03be5f80c4045baf76d3b0e90db61b5e0596741c' `
             -ExpectedServiceBackendSha256 '8ad39d63360446ef7049c726544200780eff61ff39917830f7024243dfd363be' `
             -ExpectedEventDeliverySha256 'd38c868f574c02fc46e047da25e770e5b9f672500d796694b5ef35bf042cdae0' `
-            -ExpectedWin32BackendSha256 'ebcd169ec1c382edf3cb05f3c7036c4cb149ceae34f141419ea01d24bcc948d6' `
+            -ExpectedWin32BackendSha256 'ccec71a1438683523cdd4d3583426b3477af2f36206733c74c77eda682bb2128' `
             -ExpectedWin32ServiceBackendSha256 'c7bb97952a49d06216ef33c4a9a1013a01c11a7a16cf32190d85d112024b785c' `
             -ExpectedWin32ServiceNativeSha256 '2ffc93e245a43c4a557fd7cc66ebcdda8874b9783ec3050ba754657a97efd033' `
             -ExpectedRedSurfaceSha256 'fe7fa76370ee25883e4da25e72b339daeba9d1b47ff70b8b56b0ada87a0027c6' `
-            -ExpectedGreenSurfaceSha256 '12b88570044e1cda2e3c630e4c700e71990dcecfa10a424c0019a996dff4cf8c' `
-            -ExpectedRunnerSha256 '79126b3b0272d6b2d40fe2d6a47d5d0ba5161cadd000870af7c073fb0a456624'
+            -ExpectedGreenSurfaceSha256 'e35dc0154c627c87e71845643e68dcc7c65e6b8bc4e6402ee6d4df48b4b5a980' `
+            -ExpectedRunnerSha256 '174769778f4006955214ae63a1102f429f0455b1f24329405515743ed4efa59c'
       - name: Win32 W5 raw-input A0 preflight
         id: win32_w5_raw_input_a0_preflight
         if: ${{ success() && !cancelled() && steps.win32_w4_clipboard_contracts.outcome == 'success' }}
@@ -478,12 +478,12 @@ jobs:
             -ExpectedPublicRoutingSurfaceSha256 'da259cec8ee5a0ce2a19948ec8a145393a44efdd3f4f7ae8ebb6d2e0bd896907' `
             -ExpectedServiceBackendSha256 '8ad39d63360446ef7049c726544200780eff61ff39917830f7024243dfd363be' `
             -ExpectedEventDispatchSha256 '7ef6c7cbd34511d6c19c1a3a269b46876db791b9412bb88e3a8d4dcd543bfd4e' `
-            -ExpectedWin32BackendSha256 'ebcd169ec1c382edf3cb05f3c7036c4cb149ceae34f141419ea01d24bcc948d6' `
+            -ExpectedWin32BackendSha256 'ccec71a1438683523cdd4d3583426b3477af2f36206733c74c77eda682bb2128' `
             -ExpectedWin32BackendHelpersSha256 '2265a247f626621d69e823c09a79a5611dd187880120ba493636e73858c74a4d' `
             -ExpectedWin32ServiceBackendSha256 'c7bb97952a49d06216ef33c4a9a1013a01c11a7a16cf32190d85d112024b785c' `
             -ExpectedWin32ServiceNativeSha256 '2ffc93e245a43c4a557fd7cc66ebcdda8874b9783ec3050ba754657a97efd033' `
-            -ExpectedGreenProductionSurfaceSha256 '376c2ed664bb7248dea90efd32c0989d648ea61b719d70d073e797073f98127c' `
-            -ExpectedRunnerSha256 '8782bc3444bdaaebfe4ac6ad988daa37a16ce4fafbb8457902372c82036a45ec'
+            -ExpectedGreenProductionSurfaceSha256 '2c929f3cddfe4ed6544678de10d9fbe3319f589ee08c0d2e4c8911fcd3738a22' `
+            -ExpectedRunnerSha256 '5953f18a2f560bb3c2e233ebfd704fea0d465daabff1c4c54dc676224b295071'
       - name: Prepare multiwindow Job Object watchdog
         id: prepare_multiwindow_job_object_watchdog
         if: ${{ success() && !cancelled() && steps.win32_w5_raw_input_a1_public_green.outcome == 'success' }}

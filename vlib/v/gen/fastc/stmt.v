@@ -1323,12 +1323,13 @@ fn (mut g Parser) parse_return() !bool {
 		expression = '${flat.source_type_name(fastc_trim_pointer_type(contextual_return_type))}__${g.last_expression[1].lit}'
 		actual_type = contextual_return_type
 	}
-	if g.selfhost && flat.source_type_syntax(g.return_type).fastc_array_marker() && g.fixed_array_uses_raw_storage(g.last_expression) {
+	if g.selfhost && flat.source_type_query(g.underlying_alias_type(contextual_return_type)).has(.c_fixed_array_prefix)
+		&& !fastc_is_pointer_type(contextual_return_type) && g.fixed_array_uses_raw_storage(g.last_expression) {
 		// A struct-field/global/`__global` fixed array is stored as a raw C array, but the
 		// by-value return type is the `struct { T data[N]; }` wrapper; copy the raw array into
 		// its `.data` so the value can be returned.
-		expression = '({ ${g.return_type_text()} __vf_fixed_ret; memcpy(__vf_fixed_ret.data, ${expression}, sizeof(__vf_fixed_ret.data)); __vf_fixed_ret; })'
-		actual_type = g.return_type
+		expression = '({ ${flat.source_type_name(contextual_return_type)} __vf_fixed_ret; memcpy(__vf_fixed_ret.data, ${expression}, sizeof(__vf_fixed_ret.data)); __vf_fixed_ret; })'
+		actual_type = contextual_return_type
 	}
 	if g.selfhost && flat.source_type_query(actual_type).has(.c_pointer_suffix) && !flat.source_type_query(g.return_type).has(.c_pointer_suffix) && g.return_type == fastc_trim_pointer_type(actual_type) {
 		// A member smart-cast (`match x { Variant { return x } }`) yields a pointer to the
@@ -1655,7 +1656,7 @@ fn (mut g Parser) parse_simple_statement() ! {
 			if g.tok == .key_for {
 				g.pending_loop_label = name
 			} else {
-				g.write_line('${fastc_c_identifier(name)}:')
+				g.write_line('${fastc_c_identifier(name)}:;')
 			}
 			return
 		}

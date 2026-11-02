@@ -110,7 +110,7 @@ pub fn open(name string, level CompressionLevel, mode OpenMode) !&Zip {
 				return error('szip: cannot open archive')
 			}
 			z.filedata = os.read_bytes(name) or { return error('szip: cannot read archive') }
-			z.parse() or { return error('szip: cannot parse archive: ${err.msg()}') }
+			z.parse(true) or { return error('szip: cannot parse archive: ${err.msg()}') }
 		}
 		.write {
 			// create/overwrite
@@ -120,13 +120,31 @@ pub fn open(name string, level CompressionLevel, mode OpenMode) !&Zip {
 		.append {
 			if os.exists(name) {
 				z.filedata = os.read_bytes(name) or { return error('szip: cannot read archive') }
-				z.parse() or { return error('szip: cannot parse archive: ${err.msg()}') }
+				z.parse(true) or { return error('szip: cannot parse archive: ${err.msg()}') }
 			} else {
 				z.filedata = []u8{}
 				z.entries = []ZipEntry{}
 			}
 		}
 	}
+	return z
+}
+
+// open_lazy opens a readable archive without decompressing and caching the
+// payload of every entry. Listing entries (total/name/size/is_dir) only
+// needs the central directory, so scanning large archives stays fast; an
+// entry is decoded (and validated) on demand when it is actually read.
+pub fn open_lazy(name string) !&Zip {
+	if !os.exists(name) {
+		return error('szip: cannot open archive')
+	}
+	mut z := &Zip{
+		path:  name
+		mode:  .read_only
+		level: .no_compression
+	}
+	z.filedata = os.read_bytes(name) or { return error('szip: cannot read archive') }
+	z.parse(false) or { return error('szip: cannot parse archive: ${err.msg()}') }
 	return z
 }
 
@@ -142,7 +160,7 @@ pub fn (mut z Zip) close() {
 // Parse (read mode)
 // ---------------------------------------------------------------------------
 
-fn (mut z Zip) parse() ! {
+fn (mut z Zip) parse(cache_payloads bool) ! {
 	data := z.filedata
 	mut eocd_pos := -1
 	// The end record may be followed only by its declared archive comment.
@@ -150,6 +168,53 @@ fn (mut z Zip) parse() ! {
 		if data[i..i + 4] == [u8(0x50), 0x4b, 0x05, 0x06] {
 			comment_len := int(u16(data[i + 20]) | (u16(data[i + 21]) << 8))
 			if i + 22 + comment_len == data.len {
+				eocd_pos = i
+				break
+			}
+		}
+	}
+	// Tolerant fallback: real-world archives sometimes carry a few trailing
+	// bytes after the end record (interrupted downloads, appended markers);
+	// WinRAR and 7-Zip accept them. Take the candidate closest to the end
+	// whose declared comment fits AND that plausibly describes this archive:
+	// a signature found inside stored data (an embedded empty zip, random
+	// bytes) must not mask the real end record nor fake an empty archive.
+	if eocd_pos < 0 {
+		for i := data.len - 22; i >= 0 && i >= data.len - 65557; i-- {
+			if data[i..i + 4] == [u8(0x50), 0x4b, 0x05, 0x06] {
+				comment_len := int(u16(data[i + 20]) | (u16(data[i + 21]) << 8))
+				if i + 22 + comment_len > data.len {
+					continue
+				}
+				n_cand := int(u16(data[i + 10]) | (u16(data[i + 11]) << 8))
+				cd_size_cand := u32(data[i + 12]) | (u32(data[i + 13]) << 8) |
+					(u32(data[i + 14]) << 16) | (u32(data[i + 15]) << 24)
+				cd_off_cand := u32(data[i + 16]) | (u32(data[i + 17]) << 8) |
+					(u32(data[i + 18]) << 16) | (u32(data[i + 19]) << 24)
+				if n_cand == 0xffff || cd_size_cand == 0xffffffff || cd_off_cand == 0xffffffff {
+					// ZIP64 sentinel: accept so the dedicated ZIP64 check below
+					// reports it properly instead of 'missing end record'.
+					eocd_pos = i
+					break
+				}
+				if n_cand == 0 && cd_size_cand == 0 && cd_off_cand == 0 {
+					// A truly empty archive is exactly the 22-byte end record
+					// (+ optional trailing bytes): the record must sit at the
+					// very start of the file. Anywhere else the signature came
+					// from an embedded empty zip, not from this archive.
+					if i != 0 {
+						continue
+					}
+				} else {
+					// The central directory must fit before the end record and
+					// really start with a central-directory entry signature.
+					if u64(cd_off_cand) + u64(cd_size_cand) > u64(i) {
+						continue
+					}
+					if data[int(cd_off_cand)..int(cd_off_cand) + 4] != [u8(0x50), 0x4b, 0x01, 0x02] {
+						continue
+					}
+				}
 				eocd_pos = i
 				break
 			}
@@ -213,13 +278,18 @@ fn (mut z Zip) parse() ! {
 	if pos != cd_end {
 		return error('central directory size mismatch')
 	}
-	// Cache validated payloads so reads and append mode do not decompress entries twice.
-	for i in 0 .. z.entries.len {
-		z.current = i
-		z.entries[i].data = z.read_current_data()!
+	// Cache validated payloads so reads and append mode do not decompress
+	// entries twice. In lazy mode (cache_payloads == false) this step is
+	// skipped: read_current_data() decodes and validates each entry on
+	// demand, so listing a large archive never touches the entry bodies.
+	if cache_payloads {
+		for i in 0 .. z.entries.len {
+			z.current = i
+			z.entries[i].data = z.read_current_data()!
+		}
+		z.validated = true
 	}
 	z.current = -1
-	z.validated = true
 }
 
 // ---------------------------------------------------------------------------
@@ -389,6 +459,16 @@ pub fn (mut z Zip) read_entry_buf(buf voidptr, in_bsize int) !int {
 		}
 	}
 	return n
+}
+
+// read_entry_bytes returns the fully validated, decompressed bytes of the
+// current entry. Unlike read_entry_buf, the caller does not have to
+// preallocate from the untrusted central-directory size: the entry is checked
+// against its local header, decompressed and checksum-verified first, and the
+// returned buffer is sized from the actual decoded length. The caller owns
+// the returned array and must free it.
+pub fn (mut z Zip) read_entry_bytes() ![]u8 {
+	return z.read_current_data()
 }
 
 // read_entry allocates the current entry's bytes; the caller must free the returned buffer.

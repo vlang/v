@@ -348,18 +348,20 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 					return error('fastc parser does not support function `${name}` parameter token `${tok.str()}` in ${path}')
 				}
 				parameter_name_or_type := scan.lit
+				parameter_scan := scan
 				tok = scan.scan()
 				mut parameter_names := [parameter_name_or_type]
 				if is_c_function && tok == .dot {
-					tok = scan.scan()
-					if parameter_name_or_type != 'C' || tok != .name {
-						return error('fastc parser does not support qualified C parameter type in ${path}')
-					}
-					parameter_types << flat.source_type_id(scan.lit)
+					// Reparse from the type's first token so imported V types and
+					// native C types follow the same qualified-type rules.
+					mut type_scan := parameter_scan
+					parameter_type, next_token := fastc_scan_type(mut type_scan, .name, path, header.module_name, header.imports, declared_types, prefs.building_v)!
+					parameter_types << parameter_type
 					parameter_mutability << false
 					parameter_constness << false
 					parameter_generic_values << false
-					tok = scan.scan()
+					scan = type_scan
+					tok = next_token
 					if tok == .comma {
 						tok = scan.scan()
 					}

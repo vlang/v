@@ -1,6 +1,6 @@
 module main
 
-import v.ast
+import v.checker.tests.diagnostic_types as fixture
 
 struct Data {
 }
@@ -10,6 +10,5 @@ type DataCollection = Data
 fn main() {
 	_ := Data
 	_ := DataCollection
-	_ := ast.Type
-	// _ := gui.Animate // for vpm mod
+	_ := fixture.Type
 }

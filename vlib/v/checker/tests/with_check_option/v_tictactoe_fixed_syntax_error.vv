@@ -1,6 +1,9 @@
 module main
 
-fn new_board() [][]string {
+type Board = [][]string
+
+// Fixed arrays can become dynamic arrays, but their element types must still match.
+fn new_board() [][]int {
 	mut board := [3][]string{init: []string{len: 3, init: ''}}
 	for i in 0 .. 9 {
 		board[i / 3][i % 3] = (i + 1).str()
@@ -8,7 +11,7 @@ fn new_board() [][]string {
 	return board
 }
 
-fn (mut b [][]string) place(player string, y int, x int) ? {
+fn (mut b Board) place(player string, y int, x int) ? {
 	if b[y][x] == 'a' {
 		error('position is already occupied')
 	}

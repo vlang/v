@@ -812,6 +812,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 	declared_type_key_by_name := fastc_declared_type_key_by_name(declared_types)
 	mut out := strings.new_builder(1024)
 	mut module_initializers := map[string]string{}
+	mut early_initializers := map[string]string{}
 	mut uses_pthread_tls := false
 	mut option_types := flat.TypeTextBindings{}
 	mut composite_types := map[string]bool{}
@@ -884,8 +885,18 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 			fixed_array_types.set_id(name, array_type_id)
 		}
 		if initializers.len > 0 {
-			previous := module_initializers[source_file.header.module_name] or { '' }
-			module_initializers[source_file.header.module_name] = previous + initializers.str()
+			module_name := source_file.header.module_name
+			for line in initializers.str().split_into_lines() {
+				// Only dependency-free values may precede runtime constants. Empty
+				// array allocation is a runtime representation detail of struct defaults.
+				value := line.all_after(' = ').trim_right(';')
+				if line.contains(' = ') && line.ends_with(';')
+					&& gen.global_initializer_is_constant(value.replace('builtin____new_array(', 'sizeof('), true) {
+					early_initializers[module_name] += line + '\n'
+				} else {
+					module_initializers[module_name] += line + '\n'
+				}
+			}
 		}
 	}
 	if out.len > 0 {
@@ -896,6 +907,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 		declarations:        out.str()
 		uses_pthread_tls:    uses_pthread_tls
 		module_initializers: module_initializers
+		early_initializers:  early_initializers
 		composite_types:     composite_types
 		fixed_array_types:   fixed_array_types
 	}
@@ -1231,7 +1243,7 @@ fn (g &Parser) global_initializer_is_constant(source string, allow_temporaries b
 		if previous == `.` || name in ['NULL', 'true', 'false', 'sizeof', '_S', 'struct', 'union',
 			'void', 'signed', 'unsigned', 'long', 'short', 'size_t', 'uintptr_t', 'intptr_t']
 			|| fastc_primitive_c_type(name) != none || g.declared_type_c_names.contains(name)
-			|| name.starts_with('FixedArray_') || fastc_source_type_key_exists(g.declared_types, '#Cstruct#${name}')
+			|| name.starts_with('FixedArray_') || name.starts_with('Array_') || fastc_source_type_key_exists(g.declared_types, '#Cstruct#${name}')
 			|| fastc_source_type_key_exists(g.declared_types, '#Ctypedef#${name}') {
 			previous = `a`
 			continue

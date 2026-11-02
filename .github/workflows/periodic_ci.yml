@@ -31,7 +31,7 @@ jobs:
       fail-fast: false
     runs-on: ${{ matrix.os }}
     if: github.ref == 'refs/heads/master' && (github.event_name != 'schedule' || github.repository == 'vlang/v')
-    timeout-minutes: 30
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 60 || 30 }}
     env:
       # Stop a failing test session at its first failure instead of
       # running the whole suite to completion; the remaining files
@@ -67,4 +67,8 @@ jobs:
           Add-Content -Path $env:GITHUB_PATH -Value $opensslBin
           Copy-Item -Path $cryptoLib -Destination (Join-Path $libDir 'crypto.lib') -Force
       - name: Test
+        env:
+          # The conservative memory budget selects one Windows test worker.
+          # Match the four-worker limit used by the Windows MSVC job.
+          VJOBS: ${{ runner.os == 'Windows' && '4' || '' }}
         run: ./v -d network -silent test-self vlib/net

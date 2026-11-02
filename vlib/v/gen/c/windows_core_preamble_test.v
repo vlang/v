@@ -67,7 +67,7 @@ fn test_windows_core_records_match_native_sdk() {
 	}
 	source := os.join_path(dir, 'sdk.c')
 	os.write_file(source, lines.join('\n'))!
-	result := os.execute('${os.quoted_path(cc)} -std=gnu11 -fsyntax-only ${os.quoted_path(source)}')
+	result := os.exec([cc, '-std=gnu11', '-fsyntax-only', source])
 	assert result.exit_code == 0, result.output
 }
 
@@ -79,11 +79,12 @@ fn test_windows_native_callback_thunks_match_sdk_calling_conventions() {
 	defer {
 		os.rmdir_all(dir) or {}
 	}
-	for arch_flags in ['', '-m32'] {
+	for arch_flags in [[]string{}, ['-m32']] {
 		for name in ['vlib/builtin/core_windows.c', 'vlib/sync/thread_helper.c'] {
 			source := os.join_path(@VEXEROOT, name)
 			object := os.join_path(dir, 'helper.o')
-			result := os.execute('${os.quoted_path(cc)} ${arch_flags} -std=gnu11 -Werror=implicit-function-declaration -Werror=incompatible-pointer-types -c ${os.quoted_path(source)} -o ${os.quoted_path(object)}')
+			result := os.exec([cc, ...arch_flags, '-std=gnu11', '-Werror=implicit-function-declaration',
+				'-Werror=incompatible-pointer-types', '-c', source, '-o', object])
 			assert result.exit_code == 0, result.output
 		}
 	}
@@ -156,6 +157,6 @@ fn test_windows_error_macros_match_sdk() {
 	}
 	source := os.join_path(dir, 'errmacros.c')
 	os.write_file(source, lines)!
-	result := os.execute('${os.quoted_path(cc)} -std=gnu11 -fsyntax-only ${os.quoted_path(source)}')
+	result := os.exec([cc, '-std=gnu11', '-fsyntax-only', source])
 	assert result.exit_code == 0, result.output
 }

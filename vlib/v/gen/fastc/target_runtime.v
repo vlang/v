@@ -47,6 +47,7 @@ struct FastcNativeSourceFacts {
 mut:
 	has_header   bool
 	links_native bool
+	needs_bridge bool
 	// local_headers lists the resolved paths of selected `#include "path"` headers.
 	local_headers []string
 }
@@ -75,6 +76,7 @@ fn fastc_target_collect_native_facts(source string, path string, prefs &pref.Pre
 						branch := fastc_target_collect_native_facts(selected.source, path, prefs, mut references, mut declarations)
 						facts.has_header = facts.has_header || branch.has_header
 						facts.links_native = facts.links_native || branch.links_native
+						facts.needs_bridge = facts.needs_bridge || branch.needs_bridge
 						facts.local_headers << branch.local_headers
 					}
 					scan = selected_scan
@@ -95,6 +97,7 @@ fn fastc_target_collect_native_facts(source string, path string, prefs &pref.Pre
 						if directive[0] == 'include' {
 							if header := fastc_native_quoted_include_path(scan.lit, path, prefs) {
 								facts.local_headers << header
+								facts.needs_bridge = facts.needs_bridge || header.ends_with('.m') || header.ends_with('.mm')
 							}
 						}
 					} else if directive[1..].any(!it.starts_with('-')
@@ -102,6 +105,9 @@ fn fastc_target_collect_native_facts(source string, path string, prefs &pref.Pre
 							|| it.ends_with('.m') || it.ends_with('.mm') || it.ends_with('.o')
 							|| it.ends_with('.obj'))) {
 						facts.links_native = true
+					}
+					if directive[0] == 'flag' && directive.any(it == '-framework' || it.starts_with('-fobjc-')) {
+						facts.needs_bridge = true
 					}
 				}
 			}
@@ -132,10 +138,12 @@ fn fastc_target_collect_native_facts(source string, path string, prefs &pref.Pre
 
 struct FastcNativeSourceContext {
 mut:
+	needs_bridge                 bool
 	references                   map[string]bool
 	files_with_headers           map[string]bool
 	files_linking_native_sources map[string]bool
 	declaration_paths            map[string][]string
+	references_by_file           map[string][]string
 	// local_headers maps a V source path to its selected quoted-include headers.
 	local_headers map[string][]string
 }
@@ -145,7 +153,11 @@ fn fastc_native_source_context_chunk(sources []FastcSourceFile, prefs &pref.Pref
 	for i in start .. end {
 		source := sources[i]
 		mut declarations := map[string]bool{}
-		facts := fastc_target_collect_native_facts(source.source, source.path, prefs, mut context.references, mut declarations)
+		mut references := map[string]bool{}
+		facts := fastc_target_collect_native_facts(source.source, source.path, prefs, mut references, mut declarations)
+		context.references_by_file[source.path] = references.keys()
+		for name, _ in references { context.references[name] = true }
+		context.needs_bridge = context.needs_bridge || facts.needs_bridge
 		if facts.has_header {
 			context.files_with_headers[source.path] = true
 		}
@@ -167,6 +179,10 @@ fn fastc_native_source_context_chunk(sources []FastcSourceFile, prefs &pref.Pref
 // Merge contiguous source chunks in order so duplicate declarations retain
 // every origin in the same order as the serial scanner.
 fn fastc_merge_native_source_context(mut context FastcNativeSourceContext, chunk FastcNativeSourceContext) {
+	context.needs_bridge = context.needs_bridge || chunk.needs_bridge
+	for path, references in chunk.references_by_file {
+		context.references_by_file[path] = references
+	}
 	for name, _ in chunk.references {
 		context.references[name] = true
 	}

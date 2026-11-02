@@ -4,8 +4,11 @@ import os
 import v.parser
 import v.pref
 import v.ssa
-import v.transform
 import v.types
+
+$if macos && arm64 {
+	import v.transform
+}
 
 fn test_native_cloned_array_fields_survive_return_statement_deferred_restoration() {
 	$if macos && arm64 {

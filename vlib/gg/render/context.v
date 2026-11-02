@@ -28,6 +28,9 @@ pub mut:
 	max_vertices int
 	max_commands int
 	face_winding gfx.FaceWinding = .ccw
+	// Explicit formats match the render target; ._default uses the graphics defaults.
+	color_format gfx.PixelFormat
+	depth_format gfx.PixelFormat
 	// sample_count must match the render pass the context draws into: the window's
 	// framebuffer sample count for the default pass (0 falls back to 1).
 	sample_count int
@@ -93,6 +96,8 @@ pub mut:
 	image_data        map[int]ImageData
 	next_pipeline_id  int = 1
 	sample_count      int = 1
+	color_format      gfx.PixelFormat
+	depth_format      gfx.PixelFormat
 }
 
 @[heap]
@@ -100,6 +105,7 @@ pub struct Context {
 	st &State
 }
 
+// new_context creates a drawing context with pipelines compatible with desc's render target.
 pub fn new_context(desc Desc) &Context {
 	mut st := &State{}
 	max_v := if desc.max_vertices != 0 { desc.max_vertices } else { 1 << 17 }
@@ -108,6 +114,8 @@ pub fn new_context(desc Desc) &Context {
 	st.max_commands = max_c
 	st.face_winding = desc.face_winding
 	st.sample_count = if desc.sample_count > 0 { desc.sample_count } else { 1 }
+	st.color_format = desc.color_format
+	st.depth_format = desc.depth_format
 	st.verts = []Vertex{len: max_v}
 	st.commands = []Command{len: max_c}
 	st.uniforms = []Uniform{len: max_c}
@@ -188,6 +196,8 @@ fn st_make_default_pipeline(st &State) Pipeline {
 		d.layout.attrs[3].buffer_index = 0
 		d.index_type = .none
 		d.sample_count = st.sample_count
+		d.colors[0].pixel_format = st.color_format
+		d.depth.pixel_format = st.depth_format
 		d.face_winding = st.face_winding
 		if d.colors[0].write_mask == ._default {
 			d.colors[0].write_mask = .rgb

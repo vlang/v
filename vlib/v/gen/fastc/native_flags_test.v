@@ -4,6 +4,37 @@ import os
 import v.cmdexec
 import v.pref
 
+fn test_fastc_native_input_deduplication_preserves_link_order_and_option_operands() {
+	inputs := ['helper.c', 'helper.o', 'helper.obj', 'helper.m', 'helper.mm']
+	assert fastc_deduplicate_native_files([...inputs, ...inputs]) == inputs
+	flags := ['-I', 'helper.c', 'helper.c', '-L', 'helper.o', 'helper.o', '-force_load', 'helper.o',
+		'-l', 'helper.c', 'helper.c', 'first.a', 'second.a', 'first.a', '-lcycle', '-lcycle', '-include',
+		'helper.c', 'native.lib', 'native.lib']
+	assert fastc_deduplicate_native_files(flags) == ['-I', 'helper.c', 'helper.c', '-L', 'helper.o',
+		'helper.o', '-force_load', 'helper.o', '-l', 'helper.c', 'first.a', 'second.a', 'first.a',
+		'-lcycle', '-lcycle', '-include', 'helper.c', 'native.lib', 'native.lib']
+}
+
+fn test_fastc_native_inputs_shared_by_imports_are_emitted_once() ! {
+	root := os.join_path(os.vtmp_dir(), 'fastc_shared_native_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'shared_native' }")!
+	helper := os.join_path(root, 'shared.c')
+	os.write_file(helper, 'int shared_value(void) { return 42; }\n')!
+	native_helper := os.real_path(helper)
+	for name in ['first', 'second'] {
+		os.mkdir_all(os.join_path(root, name))!
+		os.write_file(os.join_path(root, name, name + '.v'), 'module ${name}\n#flag @VMODROOT/shared.o\nfn C.shared_value() int\npub fn value() int { return C.shared_value() }\n')!
+	}
+	main := os.join_path(root, 'main.v')
+	os.write_file(main, 'import first\nimport second\nfn main() { assert first.value() + second.value() == 84 }\n')!
+	mut prefs := pref.new_preferences()
+	prefs.vroot = @VEXEROOT
+	generation := generate_files_with_source_paths([main], prefs)!
+	assert generation.c_flags.filter(it == native_helper).len == 1, generation.c_flags.str()
+}
+
 fn test_fastc_native_flags_select_existing_paths() {
 	root := os.join_path(os.vtmp_dir(), 'fastc native flags ${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }

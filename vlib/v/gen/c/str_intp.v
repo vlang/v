@@ -15,7 +15,7 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 		g.write('_str_${sid}')
 		return
 	}
-	g.write('string_plus_many(${n}, (string[${n}]){')
+	g.write('string_plus_many(${n}, ${g.cpp_copy_source_prefix()}(string[${n}]){')
 	for i in 0 .. n {
 		if i > 0 {
 			g.write(', ')
@@ -89,7 +89,7 @@ fn (mut g FlatGen) gen_string_interp(node flat.Node) {
 			}
 		}
 	}
-	g.write('})')
+	g.write('}${g.cpp_copy_source_suffix()})')
 }
 
 // Lowered operands are already strings. Separate assignments preserve source
