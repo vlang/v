@@ -174,6 +174,7 @@ enum AttributeSchemaFieldKind {
 	integer
 	boolean
 	enum_
+	array_
 }
 
 // AttributeSchemaFieldInfo is one field of a `@[attribute]` schema struct.
@@ -898,6 +899,12 @@ fn comptime_attribute_schema_field_kind(typ types.Type) ?(AttributeSchemaFieldKi
 	}
 	if clean is types.Enum {
 		return AttributeSchemaFieldKind.enum_, clean.name_id
+	}
+	if clean is types.Array {
+		elem := types.unalias_type(clean.elem_type)
+		if elem is types.String || elem.is_integer() || elem.source_type_id() == flat.source_type_bool || elem is types.Enum {
+			return AttributeSchemaFieldKind.array_, typ.source_type_id()
+		}
 	}
 	return none
 }
@@ -1829,6 +1836,30 @@ fn (mut t Transformer) make_attribute_schema_field_literal(field AttributeSchema
 				value: '${flat.source_type_name(field.type_id)}.${raw[1..]}'
 				typ:   field.type_id
 			})
+		}
+		.array_ {
+			mut elems := []flat.NodeId{}
+			mut inner := raw.trim_space()
+			if inner.starts_with('[') && inner.ends_with(']') {
+				inner = inner[1..inner.len - 1].trim_space()
+			}
+			elem_type := flat.source_type_name(field.type_id).all_after('[]').trim_space()
+			if inner.len > 0 {
+				for part in inner.split(',') {
+					p := part.trim_space()
+					if p.len == 0 { continue }
+					if elem_type == 'string' {
+						elems << t.make_string_literal(comptime_attr_unquote(p))
+					} else if elem_type in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'usize', 'isize'] {
+						elems << t.make_int_literal_typed(p, flat.source_type_id(elem_type))
+					} else if elem_type == 'bool' {
+						elems << t.make_bool_literal(p == 'true')
+					} else {
+						elems << t.make_string_literal(comptime_attr_unquote(p))
+					}
+				}
+			}
+			t.make_array_literal_typed(elems, field.type_id)
 		}
 	}
 }

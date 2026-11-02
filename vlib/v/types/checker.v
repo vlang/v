@@ -18926,6 +18926,7 @@ enum AttributeFieldKind {
 	integer
 	boolean
 	enum_
+	array_
 	unsupported
 }
 
@@ -19177,6 +19178,9 @@ fn attribute_arg_kind(value string) AttributeFieldKind {
 	if value.len > 1 && value[0] == `.` {
 		return .enum_
 	}
+	if value.len > 1 && value[0] == `[` {
+		return .array_
+	}
 	return .unsupported
 }
 
@@ -19196,6 +19200,12 @@ fn (tc &TypeChecker) attribute_field_kind(type_id u32) AttributeFieldKind {
 	}
 	if clean is Enum {
 		return .enum_
+	}
+	if clean is Array {
+		elem := unalias_type(clean.elem_type)
+		if elem is String || elem.is_integer() || elem.source_type_id() == flat.source_type_bool || elem is Enum {
+			return .array_
+		}
 	}
 	return .unsupported
 }
@@ -20057,6 +20067,7 @@ fn attribute_kind_word(kind AttributeFieldKind) string {
 		.integer { 'an integer' }
 		.boolean { 'a boolean' }
 		.enum_ { 'an enum value' }
+		.array_ { 'an array' }
 		.unsupported { 'a supported value' }
 	}
 }
