@@ -676,7 +676,7 @@ fn inline_asm_raw_gpr_constraint(constraint string) bool {
 		if c in [`+`, `=`, `&`] {
 			continue
 		}
-		if c !in [`r`, `q`, `Q`, `R`, `a`, `b`, `c`, `d`, `S`, `D`] {
+		if c !in [`r`, `q`, `Q`, `R`, `a`, `b`, `c`, `d`, `S`, `D`, `A`] {
 			return false
 		}
 		letters++
@@ -735,6 +735,12 @@ fn (tc &TypeChecker) inline_asm_att_enum_explicit_backing_type(name_id u32) ?Typ
 // target that assembles the block. On the i386 family GCC keeps a 64-bit value in a register
 // pair and `%[name]` prints its low 32-bit register.
 fn (tc &TypeChecker) inline_asm_att_type_width(typ Type, arch_bits int) int {
+	return int_min(tc.inline_asm_att_type_bits(typ, arch_bits), arch_bits)
+}
+
+// inline_asm_att_type_bits returns the width of an operand type in bits before any register
+// pair capping: 64 for a `u64` even in a 32-bit block, where it occupies a register pair.
+fn (tc &TypeChecker) inline_asm_att_type_bits(typ Type, arch_bits int) int {
 	clean := unalias_type(typ)
 	mut width := 0
 	match clean {
@@ -756,13 +762,13 @@ fn (tc &TypeChecker) inline_asm_att_type_width(typ Type, arch_bits int) int {
 			backing := tc.inline_asm_att_enum_explicit_backing_type(clean.source_type_id()) or {
 				return 32
 			}
-			width = tc.inline_asm_att_type_width(backing, arch_bits)
+			width = tc.inline_asm_att_type_bits(backing, arch_bits)
 		}
 		else {
 			width = tc.inline_asm_intel_operand_width(clean) or { 0 }
 		}
 	}
-	return int_min(width, arch_bits)
+	return width
 }
 
 // inline_asm_att_operand_width returns the register width that a raw AT&T operand fixes, or 0

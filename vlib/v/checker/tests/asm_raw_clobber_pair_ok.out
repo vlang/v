@@ -1,0 +1,6 @@
+vlib/v/checker/tests/asm_raw_clobber_pair_ok.vv:127:45: error: undefined ident: `undefined_total`
+  125 |     println(raw_single_word_pair_output_beside_early_clobber(6, 7))
+  126 |     println(raw_pair_operand_reference_has_the_low_register_width(6, 7))
+  127 |     println(raw_pair_output_with_alias(6, 7) + undefined_total)
+      |                                                ~~~~~~~~~~~~~~~
+  128 | }

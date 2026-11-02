@@ -60,7 +60,9 @@ fn inline_asm_raw_base_mnemonic(name string, families []string) string {
 }
 
 // inline_asm_raw_fixed_output_registers returns the general-purpose registers that output
-// operands bind through their constraints, such as `"=a"` for `rax`, and through `{rax}`.
+// operands bind through their single-register constraints, such as `"=a"` for `rax`, and
+// through `{rax}`. The `A` pair constraint depends on the operand width; see
+// inline_asm_raw_pair_outputs.
 fn inline_asm_raw_fixed_output_registers(block string, section InlineAsmRange) []string {
 	mut registers := []string{}
 	for io in inline_asm_ios(block, section) {
@@ -85,6 +87,59 @@ fn inline_asm_raw_fixed_output_registers(block string, section InlineAsmRange) [
 		}
 	}
 	return registers
+}
+
+// InlineAsmRawPairOperand is an output bound through the `A` constraint whose width does not
+// fill the `rax`:`rdx` pair, so GCC allocates it in one of the two registers.
+struct InlineAsmRawPairOperand {
+	name  string
+	width int
+	start int
+	end   int
+}
+
+// inline_asm_raw_pair_outputs declares `rax` and `rdx` for every output bound through the
+// `A` constraint with a double-word operand, which GCC keeps in the `rax`:`rdx` pair, and
+// returns the first `A` output whose operand is narrower, which GCC allocates in only one of
+// the two registers. When another output or clobber already takes one register of the pair,
+// or two such operands are bound, the narrower operand can only occupy the other, so both
+// are declared. An operand whose width cannot be resolved declares the pair.
+fn (mut tc TypeChecker) inline_asm_raw_pair_outputs(node flat.Node, block string, section InlineAsmRange, arch_bits int, mut clobbers map[string]bool) ?InlineAsmRawPairOperand {
+	mut single := ?InlineAsmRawPairOperand(none)
+	mut singles := 0
+	for io_index, io in inline_asm_ios(block, section) {
+		if io.constraint.contains('@') || !io.constraint.contains('A') {
+			continue
+		}
+		// Outputs come first among the node's children, so the output index is the child index.
+		// Every output is an lvalue with a type, so a field or an index expression is resolved too.
+		mut width := 0
+		if io_index < int(node.children_count) {
+			width = tc.inline_asm_att_type_bits(tc.resolve_type(tc.a.child(&node, io_index)),
+				arch_bits)
+		}
+		if width == 0 || width == 2 * arch_bits || clobbers['rax'] != clobbers['rdx'] {
+			clobbers['rax'] = true
+			clobbers['rdx'] = true
+			continue
+		}
+		singles++
+		if single == none {
+			single = InlineAsmRawPairOperand{
+				name:  if io.alias.len > 0 { io.alias } else { io.expr }
+				width: width
+				start: io.start
+				end:   io.end
+			}
+		}
+	}
+	if singles >= 2 {
+		// Two outputs never share a register, so together they fill the pair.
+		clobbers['rax'] = true
+		clobbers['rdx'] = true
+		return none
+	}
+	return single
 }
 
 // inline_asm_raw_mul_writes_dx reports whether a mul, imul, div or idiv is proven to write DX.
@@ -130,6 +185,10 @@ fn (mut tc TypeChecker) check_inline_asm_raw_clobbers(id flat.NodeId, node flat.
 		}
 	}
 	arch_bits := inline_asm_att_arch_bits(arch)
+	mut pair := ?InlineAsmRawPairOperand(none)
+	if sections.len > 1 {
+		pair = tc.inline_asm_raw_pair_outputs(node, block, sections[1], arch_bits, mut clobbers)
+	}
 	for instruction in instructions {
 		if instruction.is_directive || instruction.mnemonic.len == 0 {
 			continue
@@ -170,6 +229,18 @@ fn (mut tc TypeChecker) check_inline_asm_raw_clobbers(id flat.NodeId, node flat.
 				start, end := template.span(dst.start, dst.end)
 				written[register] = true
 				written_at[register] = token.new_span(node.pos.id, base + start, base + end)
+			}
+		}
+		if p := pair {
+			if (written['rax'] && !clobbers['rax']) || (written['rdx'] && !clobbers['rdx']) {
+				// A 64-bit block has no double-word integer type to offer.
+				widen := if arch_bits == 32 { 'bind a 64-bit operand, or ' } else { '' }
+				tc.record_error_at(.compile_error, '`${instruction.mnemonic}` writes a register of the `rax`:`rdx` pair in this raw assembly template, but the `A` constraint binds the ${p.width}-bit operand `${p.name}` to only one of them; ${widen}use `a` or `d` and add the other register to the clobbers',
+					id, token.new_span(node.pos.id, base + p.start, base + p.end))
+				// The operand is reported once; its registers are not reported again.
+				clobbers['rax'] = true
+				clobbers['rdx'] = true
+				pair = none
 			}
 		}
 		for register in inline_asm_raw_gp_registers {
