@@ -76,6 +76,7 @@ pub mut:
 	cert                     string
 	cert_key                 string
 	in_memory_verification   bool // if true, verify, cert, and cert_key are read from memory, not from a file
+	use_tls13                bool // use x.net.tls.Conn for HTTPS; HTTP/1.1 only, no client certificates
 	allow_redirect           bool = true // whether to allow redirect
 	max_retries              int  = 5    // maximum number of retries required when an underlying socket error occurs
 	enable_http2             bool // opt in to HTTP/2 for HTTPS: advertise ALPN `h2, http/1.1` and use HTTP/2 if selected. HTTP/1.1 is the default. Ignored for plain http://. Progress callbacks and receive limits work on HTTP/2; on_progress fires per DATA frame payload.
@@ -411,6 +412,20 @@ fn redirected_method(method Method, status Status) Method {
 fn (req &Request) method_and_url_to_response(method Method, url urllib.URL, data string, header Header) !Response {
 	host_name := url.hostname()
 	scheme := url.scheme
+	if scheme == 'https' && req.use_tls13 {
+		if req.enable_http2 {
+			return error('net.http TLS 1.3 adapter: HTTP/2 is not supported')
+		}
+		if req.enable_http3 {
+			return error('net.http TLS 1.3 adapter: HTTP/3 is not supported')
+		}
+		if req.proxy != unsafe { nil } {
+			return error('net.http TLS 1.3 adapter: proxies are not supported')
+		}
+		if req.cert != '' || req.cert_key != '' {
+			return error('net.http TLS 1.3 adapter: client certificates are not supported')
+		}
+	}
 	p := url.escaped_path().trim_left('/')
 	path := if url.query().len > 0 { '/${p}?${url.query().encode()}' } else { '/${p}' }
 	mut nport := url.port().int()
@@ -440,6 +455,18 @@ fn (req &Request) method_and_url_to_response(method Method, url urllib.URL, data
 		return error('http.request.method_and_url_to_response: exhausted retries')
 	}
 	if scheme == 'https' && req.proxy == unsafe { nil } {
+		if req.use_tls13 {
+			for i in 0 .. req.max_retries {
+				res := req.tls13_do(nport, method, host_name, path, data, header) or {
+					if i == req.max_retries - 1 || is_no_need_retry_error(err.code()) {
+						return err
+					}
+					continue
+				}
+				return res
+			}
+			return error('http.request.method_and_url_to_response: exhausted retries')
+		}
 		// println('ssl_do( ${nport}, ${method}, ${host_name}, ${path} )')
 		for i in 0 .. req.max_retries {
 			res := req.ssl_do(nport, method, host_name, path, data, header) or {

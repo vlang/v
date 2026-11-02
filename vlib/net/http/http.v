@@ -34,6 +34,7 @@ pub mut:
 	cert                     string // the path to a cert.pem file, containing client certificate(s) for the request
 	cert_key                 string // the path to a key.pem file, containing private keys for the client certificate(s)
 	in_memory_verification   bool   // if true, verify, cert, and cert_key are read from memory, not from a file
+	use_tls13                bool   // use x.net.tls.Conn for HTTPS; HTTP/1.1 only, no client certificates
 	allow_redirect           bool = true // whether to allow redirect
 	max_retries              int  = 5    // maximum number of retries required when an underlying socket error occurs
 	enable_http2             bool // opt in to HTTP/2 for HTTPS: advertise ALPN `h2, http/1.1` and use HTTP/2 if selected. HTTP/1.1 is the default. Ignored for plain http://. Progress callbacks and receive limits work on HTTP/2; on_progress fires per DATA frame payload.
@@ -189,6 +190,7 @@ pub fn prepare(config FetchConfig) !Request {
 		proxy:                    config.proxy
 		cert_key:                 config.cert_key
 		in_memory_verification:   config.in_memory_verification
+		use_tls13:                config.use_tls13
 		allow_redirect:           config.allow_redirect
 		max_retries:              config.max_retries
 		enable_http2:             config.enable_http2
