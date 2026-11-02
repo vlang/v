@@ -381,6 +381,71 @@ fn test_asm_goto_lowers_uppercase_branch_mnemonics() {
 	assert c_source.contains('"retry: JNE %l[__v_user_goto_0]\\n\\t"'), c_source
 }
 
+fn test_riscv_asm_goto_lowers_direct_branch_targets() {
+	for arch in ['rv64', 'riscv64'] {
+		generate, c_source := generate_inline_asm_c_for_arch('goto_${arch}_program', 'fn main() {
+	asm goto ${arch} {
+		beq zero, zero, done
+		bne a0, a1, done
+		bgt a0, a1, done
+		bgtz a0, done
+		j done
+		jal zero, done
+		call t0, done
+		tail done, t0
+		jump done, t0
+		c.j done
+		c.beqz a0, done
+		c.bnez a0, done
+		retry: BEQ zero, zero, done
+		; ; ; ; done
+	}
+	done:
+}
+', 'riscv64')
+		assert generate.exit_code == 0, generate.output
+		assert c_source.contains('__asm__ goto ('), c_source
+		for instruction in [
+			'beq zero, zero, %l[__v_user_goto_0]',
+			'bne a0, a1, %l[__v_user_goto_0]',
+			'bgt a0, a1, %l[__v_user_goto_0]',
+			'bgtz a0, %l[__v_user_goto_0]',
+			'j %l[__v_user_goto_0]',
+			'jal zero, %l[__v_user_goto_0]',
+			'call t0, %l[__v_user_goto_0]',
+			'tail %l[__v_user_goto_0], t0',
+			'jump %l[__v_user_goto_0], t0',
+			'c.j %l[__v_user_goto_0]',
+			'c.beqz a0, %l[__v_user_goto_0]',
+			'c.bnez a0, %l[__v_user_goto_0]',
+			'retry: BEQ zero, zero, %l[__v_user_goto_0]',
+		] {
+			assert c_source.contains('"${instruction}\\n\\t"'), c_source
+		}
+		assert c_source.contains(': __v_user_goto_0'), c_source
+	}
+}
+
+fn test_riscv_asm_goto_preserves_registers_and_non_branch_operands() {
+	generate, c_source := generate_inline_asm_c_for_arch('goto_riscv_operands_program', 'fn main() {
+	asm goto rv64 {
+		bext a0, a0, a0
+		jalr a0
+		jr a0
+		c.jr a0
+		; ; ; ; a0
+	}
+	a0:
+}
+', 'riscv64')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"bext a0, a0, a0\\n\\t"'), c_source
+	assert c_source.contains('"jalr a0\\n\\t"'), c_source
+	assert c_source.contains('"jr a0\\n\\t"'), c_source
+	assert c_source.contains('"c.jr a0\\n\\t"'), c_source
+	assert !c_source.contains('%l['), c_source
+}
+
 fn test_raw_asm_goto_keeps_symbolic_label_references_valid() {
 	generate, c_source := generate_inline_asm_c('raw_goto_program', 'fn main() {
 	asm goto amd64 raw {

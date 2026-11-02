@@ -4561,6 +4561,16 @@ fn c_inline_asm_goto_branch_label_operand_index(instruction string, arch string,
 		|| name.starts_with('b.') || name.starts_with('cb') || name.starts_with('tb')) {
 		return operand_count - 1
 	}
+	if arch in ['rv64', 'riscv64'] {
+		// Far jumps put the target before their optional scratch register.
+		if name in ['tail', 'jump'] {
+			return 0
+		}
+		if name in ['beq', 'bne', 'blt', 'bge', 'bltu', 'bgeu', 'bgt', 'ble', 'bgtu', 'bleu', 'beqz',
+			'bnez', 'blez', 'bgez', 'bltz', 'bgtz', 'j', 'jal', 'call', 'c.j', 'c.beqz', 'c.bnez'] {
+			return operand_count - 1
+		}
+	}
 	return -1
 }
 
