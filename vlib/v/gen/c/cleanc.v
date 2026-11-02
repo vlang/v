@@ -6851,7 +6851,7 @@ fn normalized_c_include_arg_path(include_arg string) string {
 }
 
 fn c_windows_header_requires_windows_h(directive string) bool {
-	return directive in ['#include <bcrypt.h>', '#include <synchapi.h>']
+	return directive in ['#include <bcrypt.h>', '#include <synchapi.h>', '#include <shellapi.h>']
 }
 
 fn (mut g FlatGen) emit_preinclude_directives() bool {
