@@ -4294,6 +4294,8 @@ Ordinary calls to the same function outside constant expressions remain
 runtime calls. Calls inside a function literal or lambda do not opt the callback initializer into
 required evaluation, because creating a callback does not execute its body.
 Evaluation also applies when dependencies are loaded from the module cache.
+Fixed-array literals use their expected element type in return values, arguments, and storage
+contexts, including when an annotated helper is declared after the constant that calls it.
 
 Indexed reads and updates that contain value conditionals have an additional ordering restriction.
 Every index in the access must be a whole runtime `if` expression (optionally parenthesized), or an

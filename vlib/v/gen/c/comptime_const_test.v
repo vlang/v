@@ -694,3 +694,43 @@ fn test_cli_comptime_constant_shifts_match_runtime() ! {
 	assert control_run.exit_code == 0, control_run.output
 	assert control_run.output.trim_space() == 'ok', control_run.output
 }
+
+fn test_cli_comptime_fixed_literals_keep_expected_context() ! {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_literal_context_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	suffix := if os.user_os() == 'windows' { '.exe' } else { '' }
+	args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none']
+	helpers := '@[comptime]\nfn make_bytes() [2]u8 { return [1, 2]! }\n@[comptime]\nfn make_nested() [2][2]u16 { return [[3, 4]!, [5, 6]!]! }\n@[comptime]\nfn take_bytes(values [2]u8) [2]u8 { return values }\n@[comptime]\nfn choose_bytes(first bool) [2]u8 { return if first { [9, 10]! } else { [11, 12]! } }\n@[comptime]\nfn parenthesized_bytes() [2]u8 { return ([13, 14]!) }'
+	constants := 'const bytes = make_bytes()\nconst nested = make_nested()\nconst passed = take_bytes([7, 8]!)\nconst chosen = choose_bytes(false)\nconst parenthesized = parenthesized_bytes()'
+	main_body := 'fn main() {\nassert bytes == [u8(1), 2]!\nassert bytes == make_bytes()\nassert nested == [[u16(3), 4]!, [u16(5), 6]!]!\nassert nested == make_nested()\nassert passed == [u8(7), 8]!\nassert passed == take_bytes([7, 8]!)\nassert chosen == [u8(11), 12]!\nassert chosen == choose_bytes(false)\nassert parenthesized == [u8(13), 14]!\nassert parenthesized == parenthesized_bytes()\nprintln("ok")\n}'
+	for before in [false, true] {
+		program := if before {
+			'${constants}\n${helpers}\n${main_body}\n'
+		} else {
+			'${helpers}\n${constants}\n${main_body}\n'
+		}
+		os.write_file(source, program)!
+		executable := os.join_path(root, 'literal_context_${before}${suffix}')
+		built := os.exec([...args, '-o', executable, source])
+		assert built.exit_code == 0, '${before}: ${built.output}'
+		runtime := os.exec([executable])
+		assert runtime.exit_code == 0, '${before}: ${runtime.output}'
+		assert runtime.output.trim_space() == 'ok', '${before}: ${runtime.output}'
+		for flags in [[]string{}, ['-no-parallel']] {
+			output := os.join_path(root, 'literal_context.c')
+			generated_result := os.exec([...args, ...flags, '-o', output, source])
+			assert generated_result.exit_code == 0, '${before}: ${generated_result.output}'
+			generated := os.read_file(output)!
+			assert generated.contains('const u8 main__bytes[2] = {1LL, 2LL};')
+			assert generated.contains('const u16 main__nested[2][2] = {{3LL, 4LL}, {5LL, 6LL}};')
+			assert generated.contains('const u8 main__passed[2] = {7LL, 8LL};')
+			assert generated.contains('const u8 main__chosen[2] = {11LL, 12LL};')
+			assert generated.contains('const u8 main__parenthesized[2] = {13LL, 14LL};')
+			for name in ['bytes', 'nested', 'passed', 'chosen', 'parenthesized'] {
+				assert !generated.contains('memmove(main__${name},')
+			}
+		}
+	}
+}

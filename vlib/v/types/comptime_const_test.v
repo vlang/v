@@ -349,6 +349,7 @@ fn test_comptime_const_converts_symbolic_parameters_nested_arrays_and_aliases() 
 		'const n = 2\nconst table = copy([u8(1), 2]!)\n@[comptime]\nfn copy(value [n]u8) [n]u8 { mut local := value local[1] = 3 return local }',
 		'const n = 2\nconst table = make()\n@[comptime]\nfn make() [n][n]u8 { return [[u8(1), 2]!, [u8(3), 4]!]! }',
 		'const n = 2\ntype Pair = [n]u8\nconst table = make()\n@[comptime]\nfn make() Pair { return Pair([u8(1), 2]!) }',
+		'const n = 2\nconst zero = 0\nconst table = make()\n@[comptime]\nfn make() [n]u8 { return [u16(1), 2]! }',
 	] {
 		tc := comptime_const_checker(source + '\nfn main() { _ = table }')
 		assert tc.errors.len == 0, tc.errors.str()
@@ -358,13 +359,18 @@ fn test_comptime_const_converts_symbolic_parameters_nested_arrays_and_aliases() 
 			assert value.typ is Alias
 			assert value.typ.source_type_id() == flat.source_type_id('Pair')
 		}
+		if source.contains('[u16(1), 2]!') {
+			// Literal elements use the return context, including ordinary integer conversions.
+			assert value.elements.map(int(it.integer)) == [1, 2]
+			assert value.elements.all(it.typ.source_type_id() == flat.source_type_u8)
+		}
 	}
 }
 
 fn test_comptime_const_rejects_incompatible_array_shapes_and_elements() {
 	for item in [
 		['[n]u8', '[u8(1), 2, 3]!'],
-		['[n]u8', '[u16(1), 2]!'],
+		['[n]u8', '[n]u16{}'],
 		['[zero][3]u8', '[zero][2]u8{}'],
 		['[zero]u8', '[zero]u16{}'],
 	] {
@@ -1414,4 +1420,187 @@ fn test_comptime_const_alias_inclusive_loop_boundary_restriction() {
 		assert tc.errors.len == 0, '${body}: ${tc.errors}'
 		assert tc.comptime_const_values['n']!.integer == expected, body
 	}
+}
+
+fn test_comptime_const_fixed_literals_use_expected_types_before_body_checking() ! {
+	path := os.join_path(os.vtmp_dir(), 'comptime_const_literal_context_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	declarations := 'type Word = u16\ntype BytePair = [2]u8\nstruct Record { bytes [2]u8\nnested [1][2]u16 }\n'
+	helpers := '
+@[comptime]
+fn bytes() [2]u8 { return [1, 2]! }
+@[comptime]
+fn nested() [2][2]u16 { return [[3, 4]!, [5, 6]!]! }
+@[comptime]
+fn take(values [2]u8) [2]u8 { return values }
+@[comptime]
+fn choose(first bool) [2]u8 { return if first { [7, 8]! } else if !first { [9, 10]! } else { [0, 0]! } }
+@[comptime]
+fn parenthesized() [2]u8 { return ([11, 12]!) }
+@[comptime]
+fn record() Record { return Record{bytes: [13, 14]!, nested: [[15, 16]!]!} }
+@[comptime]
+fn assigned() [2]u8 { mut values := [2]u8{} values = [17, 18]!
+ return values }
+@[comptime]
+fn words() [2]Word { return [19, 20]! }
+@[comptime]
+fn casted() [2]u8 { return [2]u8([21, 22]!) }
+@[comptime]
+fn restored() [2]u8 { unused := nested() if unused[0][0] != 3 { return [0, 0]! } return [23, 24]! }
+@[comptime]
+fn named() BytePair { return [25, 26]! }
+@[comptime]
+fn typed_elements() [2]u8 { return [u16(27), u16(28)]! }
+'
+	constants := 'const direct = bytes()\nconst matrix = nested()\nconst argument = take([5, 6]!)\nconst yes = choose(true)\nconst no = choose(false)\nconst parens = parenthesized()\nconst fields = record()\nconst local = assigned()\nconst aliases = words()\nconst cast = casted()\nconst restored_frame = restored()\nconst named_alias = named()\nconst typed = typed_elements()\n'
+	for constant_first in [false, true] {
+		source := declarations + if constant_first {
+			constants + helpers
+		} else {
+			helpers + constants
+		}
+		os.write_file(path, source + 'fn main() { _ = direct _ = matrix _ = argument _ = yes _ = no _ = parens _ = fields _ = local _ = aliases _ = cast _ = restored_frame _ = named_alias _ = typed }')!
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_file(path)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		for checked in [false, true] {
+			if checked { tc.check_semantics() }
+			assert tc.errors.len == 0, '${constant_first}, ${checked}: ${tc.errors}'
+			for name, expected in {
+				'direct':         [1, 2]
+				'argument':       [5, 6]
+				'yes':            [7, 8]
+				'no':             [9, 10]
+				'parens':         [11, 12]
+				'local':          [17, 18]
+				'cast':           [21, 22]
+				'restored_frame': [23, 24]
+				'named_alias':    [25, 26]
+				'typed':          [27, 28]
+			} {
+				value := tc.eval_comptime_const(tc.const_exprs[name]!)!
+				assert value.elements.map(int(it.integer)) == expected, '${name}, ${constant_first}, ${checked}'
+				assert value.elements.all(it.typ.source_type_id() == flat.source_type_u8), '${name}, ${constant_first}, ${checked}'
+			}
+			matrix := tc.eval_comptime_const(tc.const_exprs['matrix']!)!
+			assert matrix.elements[0].elements.map(int(it.integer)) == [3, 4]
+			assert matrix.elements[1].elements.map(int(it.integer)) == [5, 6]
+			assert matrix.elements[0].elements.all(it.typ.source_type_id() == flat.source_type_u16)
+			assert matrix.elements[1].elements.all(it.typ.source_type_id() == flat.source_type_u16)
+			fields := tc.eval_comptime_const(tc.const_exprs['fields']!)!
+			assert fields.fields['bytes']!.elements.map(int(it.integer)) == [13, 14]
+			assert fields.fields['nested']!.elements[0].elements.map(int(it.integer)) == [
+				15,
+				16,
+			]
+			aliases := tc.eval_comptime_const(tc.const_exprs['aliases']!)!
+			assert aliases.elements.map(int(it.integer)) == [19, 20]
+			assert aliases.elements.all(it.typ.source_type_id() == flat.source_type_id('Word'))
+			named := tc.eval_comptime_const(tc.const_exprs['named_alias']!)!
+			assert named.typ.source_type_id() == flat.source_type_id('BytePair')
+		}
+	}
+}
+
+fn test_comptime_const_contextual_array_storage_and_single_evaluation() {
+	for constant_first in [false, true] {
+		helpers := '
+struct Record { mut: bytes [2]u8 }
+@[comptime]
+fn once() [2]u8 {
+ mut count := 0
+ return [if true { count++; u8(count) } else { u8(0) },
+  if true { count++; u8(count) } else { u8(0) }]!
+}
+@[comptime]
+fn update() [2]u8 {
+ mut records := [2]Record{}
+ records[1].bytes = [3, 4]!
+ mut matrix := [2][2]u8{}
+ matrix[1] = [5, 6]!
+ if records[0].bytes[0] != 0 || matrix[0][0] != 0 { return [0, 0]! }
+ return [records[1].bytes[0], matrix[1][1]]!
+}
+@[comptime]
+fn branches(first bool) [2]u8 {
+ mut values := [2]u8{}
+ values = if first { [7, 8]! } else { [9, 10]! }
+ return values
+}
+'
+		constants := 'const counted = once()\nconst stored = update()\nconst then_value = branches(true)\nconst else_value = branches(false)\n'
+		source := if constant_first { constants + helpers } else { helpers + constants }
+		tc := comptime_const_checker(source + 'fn main() { _ = counted _ = stored _ = then_value _ = else_value }')
+		assert tc.errors.len == 0, '${constant_first}: ${tc.errors}'
+		for name, expected in {
+			'counted':    [1, 2]
+			'stored':     [3, 6]
+			'then_value': [7, 8]
+			'else_value': [9, 10]
+		} {
+			value := tc.comptime_const_values[name]!
+			assert value.elements.map(int(it.integer)) == expected, '${name}, ${constant_first}'
+			assert value.elements.all(it.typ.source_type_id() == flat.source_type_u8)
+		}
+	}
+}
+
+fn test_comptime_const_literal_signature_context_uses_declaration_file() ! {
+	dir := os.join_path(os.vtmp_dir(), 'comptime_const_literal_signature_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	storage := os.join_path(dir, 'storage.v')
+	helper := os.join_path(dir, 'helper.v')
+	main := os.join_path(dir, 'main.v')
+	os.write_file(storage, 'module storage\npub type Word = u16\npub const width = 2')!
+	os.write_file(helper, 'module helper\nimport storage as shape\npub const width = 3\n@[comptime]\npub fn take(values [shape.width]shape.Word) [shape.width]shape.Word { return values }\n@[comptime]\npub fn make() [shape.width]shape.Word { return [3, 4]! }')!
+	os.write_file(main, 'module main\nimport helper as source\nconst width = 4\nconst values = source.take([1, 2]!)\nconst made = source.make()\nfn main() { _ = values _ = made }')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_files([storage, helper, main])
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := TypeChecker.new(a)
+	tc.collect(a)
+	for checked in [false, true] {
+		if checked { tc.check_semantics() }
+		assert tc.errors.len == 0, '${checked}: ${tc.errors}'
+		tc.cur_file = main
+		tc.cur_module = 'main'
+		for name, expected in {
+			'values': [1, 2]
+			'made':   [3, 4]
+		} {
+			value := tc.eval_comptime_const(tc.const_exprs[name]!)!
+			assert value.elements.map(int(it.integer)) == expected, '${name}, ${checked}'
+			assert value.elements.all(it.typ.source_type_id() == flat.source_type_id('storage.Word'))
+		}
+	}
+}
+
+fn test_comptime_const_literal_context_keeps_array_conversion_and_nominal_checks() {
+	declarations := 'type Count = int\ntype Pair = [2]int\nfn (a Count) + (b Count) Count { return Count(int(a) + int(b) + 10) }\nfn (a Pair) [] (i int) int { _ = i return 7 }\n@[comptime]\nfn plain() [2]int { return [1, 2]! }\n'
+	for helpers, diagnostic in {
+		'@[comptime]\nfn compute() [2]u8 { return plain() }':                                                                                           'unsupported conversion'
+		'@[comptime]\nfn compute() [2]u8 { return [2]int{} }':                                                                                          'unsupported conversion'
+		'@[comptime]\nfn compute() [2]u8 { return [1]! }':                                                                                              'unsupported conversion'
+		'@[comptime]\nfn take(values [2]u8) [2]u8 { return values }\n@[comptime]\nfn compute() [2]u8 { return take(plain()) }':                         'unsupported conversion'
+		'@[comptime]\nfn counts() [2]Count { return [1, 2]! }\n@[comptime]\nfn compute() int { values := counts() return int(values[0] + values[1]) }': 'overloaded operator'
+		'@[comptime]\nfn pair() Pair { return [1, 2]! }\n@[comptime]\nfn compute() int { values := pair() return values[0] }':                          'overloaded indexing'
+	} {
+		for constant_first in [false, true] {
+			constant := 'const bad = compute()\n'
+			source := declarations + if constant_first {
+				constant + helpers
+			} else {
+				helpers + '\n' + constant
+			}
+			tc := comptime_const_checker(source + '\nfn main() { _ = bad }')
+			assert tc.errors.any(it.msg.contains('cannot evaluate const `bad`') && it.msg.contains(diagnostic)), '${helpers}, ${constant_first}: ${tc.errors}'
+			assert 'bad' !in tc.comptime_const_values
+		}
+	}
+	invalid_literal := comptime_const_checker('@[comptime]\nfn bytes() [2]u8 { return [256, 2]! }\nconst values = bytes()\nfn main() { _ = values }')
+	assert invalid_literal.errors.any(it.msg.contains('invalid array element')), invalid_literal.errors.str()
 }

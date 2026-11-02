@@ -8680,6 +8680,9 @@ fn test_module_cache_comptime_helpers_keep_import_and_value_bindings() {
 	root := os.join_path(os.temp_dir(), 'v3_comptime_cache_bindings_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
+	// Required evaluation runs before the helper body has ordinary annotations.
+	// Warm imports must preserve the declared fixed-array element type too.
+	array_helper := 'pub const implicit_bytes = byte_values()\n@[comptime]\npub fn byte_values() [2]u8 { return [1, 2]! }\n'
 	for fixture in [
 		['alias', 'module dep\npub const value = 2\n',
 			'module helpers\nimport dep as item\npub fn imported_value() int { return item.value }\n',
@@ -8702,10 +8705,10 @@ fn test_module_cache_comptime_helpers_keep_import_and_value_bindings() {
 		for i, phase in ['cold', 'warm', 'changed', 'changed_warm'] {
 			value := if i < 2 { 7 } else { 11 }
 			if i == 0 || i == 2 {
-				write_module_cache_file(modules, 'helpers/b.v', fixture[3].replace('@VALUE@', value.str()))
+				write_module_cache_file(modules, 'helpers/b.v', fixture[3].replace('@VALUE@', value.str()) + array_helper)
 			}
 			// Rebuild the entry point so whole-program reuse cannot hide a stale fold.
-			write_module_cache_file(project, 'main.v', 'module main\nimport helpers\nimport numbers\nconst folded = helpers.value()\nfn main() { println(folded) println(helpers.value()) println(helpers.imported_value()) println(numbers.read_word()) println(int(numbers.word)) println(numbers.read_ratio()) println(int(numbers.ratio)) println(numbers.read_comparison()) println(numbers.comparison) println(numbers.read_shifted()) println(int(numbers.shifted)) println(numbers.read_shift_bound()) println(numbers.shift_bound) println([numbers.shift_bound]u8{}.len) }\n// ${phase}\n')
+			write_module_cache_file(project, 'main.v', 'module main\nimport helpers\nimport numbers\nconst folded = helpers.value()\nconst folded_bytes = helpers.byte_values()\nfn main() {\nimported_bytes := helpers.implicit_bytes\nassert folded_bytes == [u8(1), 2]!\nassert imported_bytes == folded_bytes\nassert helpers.byte_values() == folded_bytes\nassert sizeof(folded_bytes) == 2\nassert sizeof(imported_bytes) == 2\nprintln(folded) println(helpers.value()) println(helpers.imported_value()) println(numbers.read_word()) println(int(numbers.word)) println(numbers.read_ratio()) println(int(numbers.ratio)) println(numbers.read_comparison()) println(numbers.comparison) println(numbers.read_shifted()) println(int(numbers.shifted)) println(numbers.read_shift_bound()) println(numbers.shift_bound) println([numbers.shift_bound]u8{}.len) }\n// ${phase}\n')
 			output := os.join_path(case_root, phase)
 			built := os.exec(['env', 'V3CACHE=${cache_dir}', 'VMODULES=${modules}', v3_bin,
 				'-new-compiler', '-no-retry-compilation', '-cc', 'cc', '-gc', 'none', '-show-timings',

@@ -20,6 +20,7 @@ mut:
 	active         map[string]bool
 	expr_types     map[int]Type
 	staged_indices map[int]int
+	return_type    Type = builtin_void_type
 	steps          int
 	storage        int
 	depth          int
@@ -421,7 +422,7 @@ fn (mut e ConstEval) constant_value(key string) !ComptimeConstValue {
 		return e.convert(value, e.tc.const_types[key] or { value.typ })
 	}
 	id := e.tc.const_exprs[key] or { return error('constant `${key}` has no initializer') }
-	value := e.expr(id)!
+	value := e.expr_with_expected_type(id, e.tc.const_types[key] or { builtin_void_type })!
 	return e.convert(value, e.tc.const_types[key] or { value.typ })
 }
 
@@ -437,19 +438,23 @@ fn (tc &TypeChecker) const_main_qualified_key(name string) ?string {
 }
 
 fn (mut e ConstEval) expr(id flat.NodeId) !ComptimeConstValue {
+	return e.expr_with_expected_type(id, builtin_void_type)
+}
+
+fn (mut e ConstEval) expr_with_expected_type(id flat.NodeId, expected Type) !ComptimeConstValue {
 	e.tick()!
 	e.depth++
 	defer { e.depth-- }
 	if e.depth > 128 { return error('evaluation exceeded recursion limit') }
 	if !e.tc.valid_node_id(id) { return error('missing constant expression') }
 	e.tc.check_comptime_const_context()!
-	value := e.expr_value(id)!
+	value := e.expr_value(id, expected)!
 	e.expr_types[int(id)] = value.typ
 	if e.staged_indices[int(id)] > 0 { e.check_staged_integer(id, value)! }
 	return value
 }
 
-fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
+fn (mut e ConstEval) expr_value(id flat.NodeId, expected Type) !ComptimeConstValue {
 	node := e.tc.a.node(id)
 	match node.kind {
 		.int_literal {
@@ -464,9 +469,10 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 			return ComptimeConstValue{ typ: string_, text: node.value }
 		}
 		.ident { return e.local(node.value) or { e.constant(node.value)! } }
-		.paren, .expr_stmt { return e.expr(e.tc.a.child(node, 0)) }
+		.paren, .expr_stmt { return e.expr_with_expected_type(e.tc.a.child(node, 0), expected) }
 		.cast_expr {
-			return e.convert(e.expr(e.tc.a.child(node, 0))!, e.tc.parse_type(node.source_value_id()))
+			typ := e.tc.parse_type(node.source_value_id())
+			return e.convert(e.expr_with_expected_type(e.tc.a.child(node, 0), typ)!, typ)
 		}
 		.call { return e.call(id) }
 		.prefix {
@@ -514,16 +520,20 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 			if branch < 0 { return error('conditional has no value') }
 			branch_node := e.tc.a.node(branch)
 			value := if branch_node.kind in [.if_expr, .comptime_if] {
-				e.expr(branch)!
+				e.expr_with_expected_type(branch, expected)!
 			} else {
-				flow := e.scope(branch_node, 0)!
+				flow := e.scope_with_expected_type(branch_node, 0, expected)!
 				if flow.kind != .empty {
 					return error('control flow in a value expression is not supported')
 				}
 				flow.value
 			}
 			if node.kind == .if_expr {
-				typ := e.expr_types[int(id)] or { e.if_result_type(id)! }
+				typ := if unalias_type(expected) is ArrayFixed {
+					expected
+				} else {
+					e.expr_types[int(id)] or { e.if_result_type(id)! }
+				}
 				converted := e.convert(value, typ)!
 				// Return lowering can use a branch directly, while a stored
 				// conditional converts it to the inferred type. Do not fold a
@@ -540,6 +550,10 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 			if node.op != .not || child.kind != .array_literal {
 				return error('unsupported postfix expression')
 			}
+			context_type := e.fixed_literal_expected_type(child, expected)!
+			if unalias_type(context_type) is ArrayFixed {
+				return e.array_value(child, context_type, none)
+			}
 			if typ := e.tc.expr_type(id) { return e.array_value(child, typ, none) }
 			if child.children_count == 0 { return error('unknown fixed-array type') }
 			first := e.expr(e.tc.a.child(child, 0))!
@@ -548,6 +562,12 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 			return e.array_value(child, typ, first)
 		}
 		.array_init, .array_literal {
+			if node.kind == .array_literal {
+				context_type := e.fixed_literal_expected_type(node, expected)!
+				if unalias_type(context_type) is ArrayFixed {
+					return e.array_value(node, context_type, none)
+				}
+			}
 			typ := e.tc.expr_type(id) or {
 				*e.tc.parse_type(if node.typ != 0 {
 					node.typ
@@ -578,7 +598,7 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 				}
 				old := value.fields[name] or { return error('unknown struct field `${name}`') }
 				value_id := e.tc.a.child(field, 0)
-				field_value := e.expr(value_id)!
+				field_value := e.expr_with_expected_type(value_id, old.typ)!
 				if i < last_branch { e.check_staged_integer(value_id, field_value)! }
 				value.fields[name] = e.convert(field_value, old.typ)!
 			}
@@ -662,6 +682,19 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 	}
 }
 
+// Context types untyped literals, without widening conversions of existing array
+// values or changing the length/type written on an explicitly typed literal.
+fn (mut e ConstEval) fixed_literal_expected_type(node flat.Node, expected Type) !Type {
+	if node.typ != 0 || unalias_type(expected) !is ArrayFixed { return builtin_void_type }
+	typ := e.resolved_storage_type(expected)!
+	base := unalias_type(typ)
+	if base !is ArrayFixed { return builtin_void_type }
+	if node.children_count != base.len {
+		return builtin_void_type
+	}
+	return typ
+}
+
 fn (mut e ConstEval) array_value(node flat.Node, typ Type, first ?ComptimeConstValue) !ComptimeConstValue {
 	base := unalias_type(typ)
 	if base !is ArrayFixed { return error('only fixed arrays are supported') }
@@ -673,7 +706,12 @@ fn (mut e ConstEval) array_value(node flat.Node, typ Type, first ?ComptimeConstV
 			return error('array init fields are not supported')
 		}
 		// The inferred postfix path already evaluated element zero for its type.
-		item := if i == 0 { first or { e.expr(child)! } } else { e.expr(child)! }
+		element_type := value.elements[i].typ
+		item := if i == 0 {
+			first or { e.expr_with_expected_type(child, element_type)! }
+		} else {
+			e.expr_with_expected_type(child, element_type)!
+		}
 		value.elements[i] = e.convert(item, value.elements[i].typ)!
 	}
 	return value
@@ -1142,28 +1180,47 @@ fn (mut e ConstEval) call(id flat.NodeId) !ComptimeConstValue {
 	}
 	f := e.tc.a.node(fn_id)
 	if f.generic_params().len > 0 { return error('generic calls are not supported') }
-	mut args := []ComptimeConstValue{}
-	last_branch := e.last_value_branch(node, 1)!
-	for i in 1 .. node.children_count {
-		arg_id := e.tc.a.child(node, i)
-		arg := e.expr(arg_id)!
-		if i < last_branch { e.check_staged_integer(arg_id, arg)! }
-		args << arg
-	}
 	old_tc := e.tc
 	old_scopes := e.scopes
+	old_return_type := e.return_type
 	file := if source := e.tc.a.source_files[f.pos.id] { source.name } else { e.tc.cur_file }
-	e.tc = if e.tc.cur_file == file && e.tc.cur_module == decl.mod {
+	callee := if e.tc.cur_file == file && e.tc.cur_module == decl.mod {
 		e.tc
 	} else {
 		e.tc.fork_type_parse_view(file, decl.mod)
 	}
-	e.scopes = [map[string]ComptimeConstValue{}]
 	defer {
 		e.tc = old_tc
 		e.scopes = old_scopes
+		e.return_type = old_return_type
 	}
+	// Resolve formal storage shapes in their declaration's view, then evaluate
+	// each argument once in the caller's view with that literal context.
+	e.tc = callee
+	e.scopes = [map[string]ComptimeConstValue{}]
 	e.tc.check_comptime_const_context()!
+	mut param_types := []Type{}
+	for i in 0 .. f.children_count {
+		param := e.tc.a.child_node(f, i)
+		if param.kind == .param {
+			param_types << e.resolved_storage_type(e.tc.parse_type(param.typ))!
+		}
+	}
+	return_type := e.resolved_storage_type(e.tc.parse_type(f.typ))!
+	e.tc = old_tc
+	e.scopes = old_scopes
+	mut args := []ComptimeConstValue{}
+	last_branch := e.last_value_branch(node, 1)!
+	for i in 1 .. node.children_count {
+		arg_id := e.tc.a.child(node, i)
+		expected := if i - 1 < param_types.len { param_types[i - 1] } else { builtin_void_type }
+		arg := e.expr_with_expected_type(arg_id, expected)!
+		if i < last_branch { e.check_staged_integer(arg_id, arg)! }
+		args << arg
+	}
+	e.tc = callee
+	e.scopes = [map[string]ComptimeConstValue{}]
+	e.return_type = return_type
 	mut param_index := 0
 	for i in 0 .. f.children_count {
 		param := e.tc.a.child_node(f, i)
@@ -1171,13 +1228,13 @@ fn (mut e ConstEval) call(id flat.NodeId) !ComptimeConstValue {
 		if param_index >= args.len || param.is_mut {
 			return error('unsupported arguments to `${f.value}`')
 		}
-		e.bind(param.value, e.convert(args[param_index], e.tc.parse_type(param.typ))!)
+		e.bind(param.value, e.convert(args[param_index], param_types[param_index])!)
 		param_index++
 	}
 	if param_index != args.len { return error('incorrect argument count') }
 	flow := e.sequence(f, 0) or { return error('in `${f.value}`: ${err}') }
 	if flow.kind != .return_stmt { return error('`${f.value}` did not return a value') }
-	return e.convert(flow.value, e.tc.parse_type(f.typ))
+	return e.convert(flow.value, return_type)
 }
 
 // Runtime lowering can store earlier operands before a value branch's prelude.
@@ -1331,33 +1388,53 @@ fn (mut e ConstEval) branch(node flat.Node) !flat.NodeId {
 }
 
 fn (mut e ConstEval) scope(node flat.Node, start int) !ConstEvalFlow {
+	return e.scope_with_expected_type(node, start, builtin_void_type)
+}
+
+fn (mut e ConstEval) scope_with_expected_type(node flat.Node, start int, expected Type) !ConstEvalFlow {
 	e.scopes << map[string]ComptimeConstValue{}
 	defer { e.scopes.delete_last() }
-	return e.sequence(node, start)
+	return e.sequence_with_expected_type(node, start, expected)
 }
 
 fn (mut e ConstEval) sequence(node flat.Node, start int) !ConstEvalFlow {
+	return e.sequence_with_expected_type(node, start, builtin_void_type)
+}
+
+fn (mut e ConstEval) sequence_with_expected_type(node flat.Node, start int, expected Type) !ConstEvalFlow {
 	mut result := ConstEvalFlow{}
 	for i in start .. node.children_count {
-		result = e.stmt(e.tc.a.child(node, i))!
+		typ := if i + 1 == node.children_count { expected } else { builtin_void_type }
+		result = e.stmt_with_expected_type(e.tc.a.child(node, i), typ)!
 		if result.kind != .empty { return result }
 	}
 	return result
 }
 
 fn (mut e ConstEval) stmt(id flat.NodeId) !ConstEvalFlow {
+	return e.stmt_with_expected_type(id, builtin_void_type)
+}
+
+fn (mut e ConstEval) stmt_with_expected_type(id flat.NodeId, expected Type) !ConstEvalFlow {
 	e.tick()!
 	node := e.tc.a.node(id)
 	match node.kind {
 		.empty, .param { return ConstEvalFlow{} }
-		.block { return e.scope(node, 0) }
+		.block { return e.scope_with_expected_type(node, 0, expected) }
 		.return_stmt {
 			if node.children_count != 1 { return error('only single value returns are supported') }
-			return ConstEvalFlow{ kind: .return_stmt, value: e.expr(e.tc.a.child(node, 0))! }
+			return ConstEvalFlow{
+				kind:  .return_stmt
+				value: e.expr_with_expected_type(e.tc.a.child(node, 0), e.return_type)!
+			}
 		}
 		.if_expr, .comptime_if {
 			branch := e.branch(node)!
-			return if branch < 0 { ConstEvalFlow{} } else { e.stmt(branch)! }
+			return if branch < 0 {
+				ConstEvalFlow{}
+			} else {
+				e.stmt_with_expected_type(branch, expected)!
+			}
 		}
 		.decl_assign, .assign, .index_assign, .selector_assign {
 			if node.children_count != 2 { return error('only single assignments are supported') }
@@ -1371,7 +1448,7 @@ fn (mut e ConstEval) stmt(id flat.NodeId) !ConstEvalFlow {
 			} else {
 				root, path := e.access_path(lhs)!
 				e.check_access_order(root, path, rhs)!
-				mut value := e.expr(rhs)!
+				mut value := e.expr_with_expected_type(rhs, e.lvalue_type(root, path))!
 				target := e.resolve_lvalue(root, path)!
 				if node.op != .assign {
 					op := match node.op {
@@ -1480,7 +1557,7 @@ fn (mut e ConstEval) stmt(id flat.NodeId) !ConstEvalFlow {
 			if e.tc.a.node(child).kind == .postfix && e.tc.a.node(child).op in [.inc, .dec] {
 				return e.stmt(child)
 			}
-			return ConstEvalFlow{ value: e.expr(child)! }
+			return ConstEvalFlow{ value: e.expr_with_expected_type(child, expected)! }
 		}
 		else { return error('unsupported statement `${node.kind}`') }
 	}
@@ -1628,6 +1705,25 @@ fn (mut e ConstEval) check_access_order(root flat.NodeId, path []flat.NodeId, rh
 		|| (rhs >= 0 && !e.expression_ordering(rhs)!.independent) {
 		return error('conditional index ordering with dependent expressions is not supported')
 	}
+}
+
+// Read only storage types here: evaluating an index before the RHS would change
+// assignment ordering. Array values have homogeneous element/field types, and an
+// empty array cannot contain a valid indexed destination.
+fn (e &ConstEval) lvalue_type(root flat.NodeId, path []flat.NodeId) Type {
+	node := e.tc.a.node(root)
+	if node.kind != .ident { return builtin_void_type }
+	mut value := e.local(node.value) or { return builtin_void_type }
+	for id in path {
+		step := e.tc.a.node(id)
+		if step.kind == .index {
+			if value.elements.len == 0 { return builtin_void_type }
+			value = value.elements[0]
+		} else {
+			value = value.fields[step.value] or { return builtin_void_type }
+		}
+	}
+	return value.typ
 }
 
 fn (mut e ConstEval) resolve_lvalue(root flat.NodeId, path []flat.NodeId) !ConstEvalLvalue {

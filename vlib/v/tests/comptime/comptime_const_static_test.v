@@ -1200,3 +1200,95 @@ fn test_comptime_unsigned_loop_guards_match_runtime() {
 	assert computed_alias_loop_break == 8
 	assert computed_alias_loop_break == const_alias_loop_early_exit(false)
 }
+
+type ContextWord = u16
+
+struct ContextRecord {
+	bytes  [2]u8
+	nested [1][2]u16
+}
+
+const context_bytes = context_make_bytes()
+const context_nested = context_make_nested()
+const context_argument = context_take_bytes([5, 6]!)
+const context_true = context_choose_bytes(true)
+const context_false = context_choose_bytes(false)
+const context_record = context_make_record()
+const context_assigned = context_assign_bytes()
+const context_alias = context_make_alias()
+const context_once = context_make_once(true)
+
+@[comptime]
+fn context_make_bytes() [2]u8 {
+	return [1, 2]!
+}
+
+@[comptime]
+fn context_make_nested() [2][2]u16 {
+	return [[1, 2]!, [3, 4]!]!
+}
+
+@[comptime]
+fn context_take_bytes(values [2]u8) [2]u8 {
+	return values
+}
+
+@[comptime]
+fn context_choose_bytes(first bool) [2]u8 {
+	return if first { [7, 8]! } else { [9, 10]! }
+}
+
+@[comptime]
+fn context_make_record() ContextRecord {
+	return ContextRecord{ bytes: [13, 14]!, nested: [[15, 16]!]! }
+}
+
+@[comptime]
+fn context_assign_bytes() [2]u8 {
+	mut values := [2]u8{}
+	values = [17, 18]!
+	return values
+}
+
+@[comptime]
+fn context_make_alias() [2]ContextWord {
+	return [19, 20]!
+}
+
+@[comptime]
+fn context_make_once(first bool) [2]u8 {
+	mut count := 0
+	return [if first {
+		count++
+		u8(count)
+	} else {
+		u8(0)
+	}, if first {
+		count++
+		u8(count)
+	} else {
+		u8(0)
+	}]!
+}
+
+fn test_comptime_fixed_literals_use_expected_context() {
+	assert context_bytes == [u8(1), 2]!
+	assert context_bytes == context_make_bytes()
+	assert context_nested == [[u16(1), 2]!, [u16(3), 4]!]!
+	assert context_nested == context_make_nested()
+	assert context_argument == [u8(5), 6]!
+	assert context_argument == context_take_bytes([5, 6]!)
+	assert context_true == [u8(7), 8]!
+	assert context_true == context_choose_bytes(true)
+	assert context_false == [u8(9), 10]!
+	assert context_false == context_choose_bytes(false)
+	assert context_record.bytes == [u8(13), 14]!
+	assert context_record.nested == [[u16(15), 16]!]!
+	assert context_record == context_make_record()
+	assert context_assigned == [u8(17), 18]!
+	assert context_assigned == context_assign_bytes()
+	assert context_alias == [ContextWord(19), ContextWord(20)]!
+	assert context_alias == context_make_alias()
+	assert context_once == [u8(1), 2]!
+	assert context_once == context_make_once(true)
+}
