@@ -1843,21 +1843,59 @@ fn (mut t Transformer) make_attribute_schema_field_literal(field AttributeSchema
 			if inner.starts_with('[') && inner.ends_with(']') {
 				inner = inner[1..inner.len - 1].trim_space()
 			}
-			elem_type := flat.source_type_name(field.type_id).all_after('[]').trim_space()
+			// Resolve the element type from the declared array type, mirroring
+			// comptime_attribute_schema_field_kind: aliases are followed, so
+			// `[]MyInt` dispatches on `int` and `[]MyEnum` builds enum values
+			// instead of falling back to strings.
+			mut elem_is_string := false
+			mut elem_is_int := false
+			mut elem_is_bool := false
+			mut elem_is_enum := false
+			mut elem_type_id := u32(0)
+			mut elem_enum_name := ''
+			if !isnil(t.tc) {
+				parsed_arr := t.tc.parse_type(field.type_id)
+				if !(parsed_arr is types.Unknown) {
+					arr_clean := types.unalias_type(parsed_arr)
+					if arr_clean is types.Array {
+						elem := types.unalias_type(arr_clean.elem_type)
+						if elem is types.String {
+							elem_is_string = true
+						} else if elem.is_integer() {
+							elem_is_int = true
+							elem_type_id = elem.source_type_id()
+						} else if elem.source_type_id() == flat.source_type_bool {
+							elem_is_bool = true
+						} else if elem is types.Enum {
+							elem_is_enum = true
+							elem_type_id = elem.name_id
+							elem_enum_name = flat.source_type_name(elem_type_id)
+						}
+					}
+				}
+			}
 			if inner.len > 0 {
-				// Split by top-level commas (bracket-aware) so string elements
-				// containing commas are not broken.
+				// Split by top-level commas (bracket- and quote-aware) so string
+				// elements containing commas or brackets are not broken. A
+				// backslash escapes the next byte, so an escaped quote does not
+				// end the string.
 				mut parts := []string{}
 				mut depth := 0
 				mut in_str := false
 				mut str_quote := u8(0)
 				mut start := 0
-				for i in 0 .. inner.len {
+				mut i := 0
+				for i < inner.len {
 					c := inner[i]
 					if in_str {
+						if c == `\\` && i + 1 < inner.len {
+							i += 2
+							continue
+						}
 						if c == str_quote {
 							in_str = false
 						}
+						i++
 						continue
 					}
 					if c == `'` || c == `"` {
@@ -1871,6 +1909,7 @@ fn (mut t Transformer) make_attribute_schema_field_literal(field AttributeSchema
 						parts << inner[start..i]
 						start = i + 1
 					}
+					i++
 				}
 				if start < inner.len {
 					parts << inner[start..]
@@ -1878,12 +1917,19 @@ fn (mut t Transformer) make_attribute_schema_field_literal(field AttributeSchema
 				for part in parts {
 					p := part.trim_space()
 					if p.len == 0 { continue }
-					if elem_type == 'string' {
+					if elem_is_string {
 						elems << t.make_string_literal(comptime_attr_unquote(p))
-					} else if elem_type in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'usize', 'isize'] {
-						elems << t.make_int_literal_typed(p, flat.source_type_id(elem_type))
-					} else if elem_type == 'bool' {
+					} else if elem_is_int {
+						elems << t.make_int_literal_typed(p, elem_type_id)
+					} else if elem_is_bool {
 						elems << t.make_bool_literal(p == 'true')
+					} else if elem_is_enum {
+						name := if p.starts_with('.') { p[1..] } else { comptime_attr_unquote(p) }
+						elems << t.a.add_node(flat.Node{
+							kind:  .enum_val
+							value: '${elem_enum_name}.${name}'
+							typ:   elem_type_id
+						})
 					} else {
 						elems << t.make_string_literal(comptime_attr_unquote(p))
 					}
