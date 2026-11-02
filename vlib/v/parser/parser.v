@@ -4624,13 +4624,43 @@ fn (mut p Parser) parse_field_attrs_with_kinds_mode(single_group bool, check_pen
 						p.next()
 						p.check(.colon)
 					}
-					arg_kind := parsed_attribute_kind(p.tok)
-					mut arg := p.lit.trim_space()
-					if p.tok == .dot && p.peek() == .name {
-						p.next()
-						arg = '.' + p.lit
+					arg_kind := if p.tok == .lsbr {
+						0
+					} else {
+						parsed_attribute_kind(p.tok)
 					}
-					p.next()
+					mut arg := ''
+					if p.tok == .lsbr {
+						start := p.tok_pos
+						mut depth := 0
+						mut end := p.tok_end
+						for {
+							if p.tok == .eof {
+								break
+							}
+							if p.tok == .lsbr {
+								depth++
+							}
+							if p.tok == .rsbr {
+								depth--
+								end = p.tok_end
+								p.next()
+								if depth <= 0 {
+									break
+								}
+								continue
+							}
+							p.next()
+						}
+						arg = p.s.src[start..end].trim_space()
+					} else {
+						arg = p.lit.trim_space()
+						if p.tok == .dot && p.peek() == .name {
+							p.next()
+							arg = '.' + p.lit
+						}
+						p.next()
+					}
 					if attr_name == 'deprecated' && arg_name == 'msg' {
 						if has_base_arg && !p.prefs.is_fmt {
 							p.record_diagnostic_span('duplicate `msg` argument for `@[deprecated(...)]` attribute',
