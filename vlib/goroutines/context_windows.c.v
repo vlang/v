@@ -11,7 +11,8 @@ fn C.CreateFiber(dwStackSize uint, lpStartAddress voidptr, lpParameter voidptr) 
 fn C.ConvertThreadToFiber(lpParameter voidptr) voidptr
 fn C.SwitchToFiber(lpFiber voidptr)
 fn C.DeleteFiber(lpFiber voidptr)
-fn C.ConvertFiberToThread()
+fn C.ConvertFiberToThread() i32
+fn C.goroutines_convert_fiber_to_thread() i32
 fn C.GetCurrentFiber() voidptr
 
 // GetLastError value of ConvertThreadToFiber on a thread that is already a fiber
@@ -97,6 +98,13 @@ pub fn convert_thread_to_fiber() Context {
 // thread stops. It does nothing for a thread that was already a fiber.
 fn convert_fiber_to_thread(ctx Context) {
 	if ctx.is_thread_fiber {
-		C.ConvertFiberToThread()
+		converted := $if tinyc {
+			C.goroutines_convert_fiber_to_thread()
+		} $else {
+			C.ConvertFiberToThread()
+		}
+		if converted == 0 {
+			panic('goroutines: ConvertFiberToThread failed, error code ${C.GetLastError()}')
+		}
 	}
 }
