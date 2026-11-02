@@ -979,3 +979,130 @@ fn test_comptime_const_unchanged_array_element_types_do_not_consume_copy_budget(
 	assert tc.errors.len == 0, tc.errors.str()
 	assert tc.comptime_const_values['answer']!.integer == 1200000
 }
+
+fn test_comptime_const_rejects_integer_staging_before_value_branches() {
+	for body in [
+		'return int((a + b) + (if true { u8(1) } else { u8(1) }))',
+		'return int(((a + b)) + (if true { u8(1) } else { u8(1) }))',
+		'return int((if true { u8(1) } else { u8(1) }) + (a + b))',
+		'return int((a + b) + (u8(2) + (if true { u8(1) } else { u8(1) })))',
+		'return int((a + b) + identity(if true { u8(1) } else { u8(1) }))',
+		'return add_args(a + b, if true { u8(1) } else { u8(1) })',
+		'pair := Pair{x: a + b, y: if true { u8(1) } else { u8(1) }} return pair.x + pair.y',
+	] {
+		tc := comptime_const_checker('struct Pair { x int\ny int }\n@[comptime]\nfn identity(value u8) u8 { return value }\n@[comptime]\nfn add_args(x int, y int) int { return x + y }\n@[comptime]\nfn compute(a u8, b u8) int { ${body} }\nconst bad = compute(250, 10)\nfn main() { _ = bad }')
+		assert tc.errors.any(it.msg.contains('cannot evaluate const `bad`') && it.msg.contains('integer operand staging')), '${body}: ${tc.errors}'
+		assert 'bad' !in tc.comptime_const_values, body
+	}
+}
+
+fn test_comptime_const_integer_staging_checks_effective_c_signedness() {
+	for body in [
+		'return ((1 << 40) + offset) < (if true { i64(-1) } else { i64(-1) })',
+		'return (1 << 40) < (if true { i64(-1) } else { i64(-1) })',
+	] {
+		tc := comptime_const_checker('@[comptime]\nfn compute(offset int) bool { ${body} }\nconst bad = compute(0)\nfn main() { _ = bad }')
+		assert tc.errors.any(it.msg.contains('cannot evaluate const `bad`') && it.msg.contains('integer operand staging')), '${body}: ${tc.errors}'
+		assert 'bad' !in tc.comptime_const_values, body
+	}
+}
+
+fn test_comptime_const_nested_index_reads_check_staged_integers() {
+	local := comptime_const_checker('@[comptime]\nfn compute() int { mut table := [300][1]int{} table[4][0] = 7 table[260][0] = 9 return table[u8(250) + u8(10)][if true { 0 } else { 0 }] }\nconst bad = compute()\nfn main() { _ = bad }')
+	assert local.errors.any(it.msg.contains('cannot evaluate const `bad`') && it.msg.contains('integer operand staging')), local.errors.str()
+	mut entries := []string{len: 257, init: '[0]!'}
+	entries[0] = '[7]!'
+	entries[256] = '[9]!'
+	nonlocal := comptime_const_checker('const table = [${entries.join(', ')}]!\n@[comptime]\nfn compute() int { return table[u8(255) + u8(1)][if true { 0 } else { 0 }] }\nconst bad = compute()\nfn main() { _ = bad }')
+	assert nonlocal.errors.any(it.msg.contains('cannot evaluate const `bad`') && it.msg.contains('integer operand staging')), nonlocal.errors.str()
+}
+
+fn test_comptime_const_staging_preserves_explicit_storage_and_unexecuted_branches() {
+	for body, expected in {
+		'intermediate := a + b return int(intermediate + (if true { u8(1) } else { u8(1) }))':                 5
+		'return int((a + b) + ($if true { u8(1) } $else { u8(1) }))':                                          261
+		'return int((a + b) + ($if true { u8(1) } $else { if true { u8(1) } else { u8(1) } }))':               261
+		'if false && ((a + b) + (if true { u8(1) } else { u8(1) })) > 0 { return 99 } return 7':               7
+		'if true || ((a + b) + (if true { u8(1) } else { u8(1) })) > 0 { return 7 } return 99':                7
+		'values := [a + b, if true { u8(1) } else { u8(1) }]!\nreturn int(values[0]) + int(values[1])':        5
+		'mut table := [300]int{} table[u8(250) + u8(10)] = if true { 7 } else { 0 } return table[4]':          0
+		'mut table := [300][1]int{} table[u8(250) + u8(10)][if true { 0 } else { 0 }] = 7 return table[4][0]': 0
+	} {
+		tc := comptime_const_checker('@[comptime]\nfn compute(a u8, b u8) int { ${body} }\nconst result = compute(250, 10)\nfn main() { _ = result }')
+		assert tc.errors.len == 0, '${body}: ${tc.errors}'
+		assert tc.comptime_const_values['result']!.integer == expected, body
+	}
+	for body in [
+		'return int((a + b) + (if true { u8(1) } else { u8(1) }))',
+		'return int((if true { u8(1) } else { u8(1) }) + (a + b))',
+	] {
+		tc := comptime_const_checker('@[comptime]\nfn compute(a u8, b u8) int { ${body} }\nconst result = compute(1, 2)\nfn main() { _ = result }')
+		assert tc.errors.len == 0, '${body}: ${tc.errors}'
+		assert tc.comptime_const_values['result']!.integer == 4, body
+	}
+}
+
+fn test_comptime_const_rejects_generic_struct_storage() {
+	for item in [
+		['struct Box[T] { value T\ntag int = 7 }', 'Box[int]', 'return Box[int]{}'],
+		['struct Box[T] { value T }', 'Box[int]', 'return Box[int]{}'],
+		['struct Box[T] { value T }', 'Box[int]', 'return Box[int]{value: 7}'],
+		['struct Box[T] { value T }', 'Box[int]', 'return Box[int]{7}'],
+		['struct Box[T] { value T }', 'Box[[2]u8]', 'return Box[[2]u8]{}'],
+		['struct Box[T] { value T }\ntype IntBox = Box[int]', 'IntBox', 'return IntBox{}'],
+		['struct Box[T] { value T }\nstruct Outer { box Box[int] }', 'Outer', 'return Outer{}'],
+		['struct Box[T] { value T }', '[1]Box[int]', 'return [1]Box[int]{}'],
+		['union Storage[T] { value T }', 'Storage[int]', 'return Storage[int]{}'],
+	] {
+		tc := comptime_const_checker('${item[0]}\n@[comptime]\nfn compute() ${item[1]} { ${item[2]} }\nconst bad = compute()\nfn main() { _ = bad }')
+		assert tc.errors.any(it.msg.contains('cannot evaluate const `bad`') && it.msg.contains('generic structs are not supported')), '${item}: ${tc.errors}'
+		assert 'bad' !in tc.comptime_const_values, item.str()
+	}
+}
+
+fn test_comptime_const_generic_struct_restriction_is_independent_of_materialization() {
+	mut tc := comptime_const_checker('struct Box[T] { value T }\nconst value = Box[int]{}\nfn main() { _ = value }')
+	assert tc.errors.len == 0, tc.errors.str()
+	name := flat.source_type_id('Box[int]')
+	fields := tc.struct_fields_for_type(name)
+	assert fields.len == 1
+	assert fields[0].typ.source_type_id() == flat.source_type_int
+	for materialized in [false, true] {
+		if materialized {
+			tc.structs[name] = fields
+		} else {
+			tc.structs.delete(name)
+		}
+		if _ := tc.eval_comptime_const(tc.const_exprs['value']!) {
+			assert false, 'generic struct was evaluated with materialized=${materialized}'
+		} else {
+			assert err.msg().contains('generic structs are not supported'), err.msg()
+		}
+	}
+}
+
+fn test_comptime_const_plain_structs_and_unexecuted_generic_values() {
+	for body, expected in {
+		'box := Plain{} return box.value':                                  0
+		'box := Plain{value: 7} return box.value':                          7
+		'box := Plain{7} return box.value':                                 7
+		'box := PlainAlias{value: 9} return box.value':                     9
+		'if false { box := Box[int]{value: 9} return box.value } return 7': 7
+	} {
+		tc := comptime_const_checker('struct Plain { value int }\ntype PlainAlias = Plain\nstruct Box[T] { value T }\n@[comptime]\nfn compute() int { ${body} }\nconst result = compute()\nfn main() { _ = result }')
+		assert tc.errors.len == 0, '${body}: ${tc.errors}'
+		assert tc.comptime_const_values['result']!.integer == expected, body
+	}
+}
+
+fn test_comptime_const_empty_structs_require_declared_metadata() {
+	mut tc := comptime_const_checker('struct Empty {}\n@[comptime]\nfn make_empty() Empty { return Empty{} }\nconst empty = make_empty()\nfn main() { _ = empty }')
+	assert tc.errors.len == 0, tc.errors.str()
+	assert tc.comptime_const_values['empty']!.fields.len == 0
+	tc.structs.delete(flat.source_type_id('Empty'))
+	if _ := tc.eval_comptime_const(tc.const_exprs['empty']!) {
+		assert false, 'missing struct metadata was treated as an empty declaration'
+	} else {
+		assert err.msg().contains('struct field metadata is unavailable'), err.msg()
+	}
+}

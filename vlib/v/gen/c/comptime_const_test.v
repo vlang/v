@@ -364,3 +364,101 @@ fn test_cli_comptime_array_conversions_preserve_nominal_operators() ! {
 	assert reverse_runtime.exit_code == 0, reverse_runtime.output
 	assert reverse_runtime.output.trim_space() == '3\n3', reverse_runtime.output
 }
+
+fn test_cli_comptime_generic_structs_reject_required_values_and_preserve_runtime_defaults() ! {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_generic_struct_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none', '-cc',
+		'tcc']
+	program := 'struct Box[T] { value T\ntag int = 7 }\n@[comptime]\nfn make_box() Box[int] { return Box[int]{} }\nconst boxed = make_box()\nfn main() { println(boxed.tag) println(make_box().tag) }'
+	os.write_file(source, program)!
+	required := os.exec([...args, '-o', os.join_path(root, 'required'), source])
+	assert required.exit_code != 0, required.output
+	assert required.output.contains('cannot evaluate const `boxed`'), required.output
+	assert required.output.contains('generic structs are not supported'), required.output
+	runtime_program := program.replace('const boxed = make_box()\n', '').replace('fn main() {',
+		'fn main() { boxed := make_box()\n')
+	os.write_file(source, runtime_program)!
+	executable := os.join_path(root, 'runtime')
+	built := os.exec([...args, '-o', executable, source])
+	assert built.exit_code == 0, built.output
+	runtime := os.exec([executable])
+	assert runtime.exit_code == 0, runtime.output
+	assert runtime.output.trim_space() == '7\n7', runtime.output
+}
+
+fn test_cli_comptime_integer_staging_rejects_misfolds_and_keeps_runtime_calls() ! {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_integer_staging_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	suffix := if os.user_os() == 'windows' { '.exe' } else { '' }
+	args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none', '-cc',
+		'tcc']
+	mut global_rows := ['[7]!']
+	for _ in 0 .. 255 {
+		global_rows << '[0]!'
+	}
+	global_rows << '[9]!'
+	global_table := 'const table = [${global_rows.join(', ')}]!'
+	cases := [
+		ComptimeAccessCase{
+			body:     'return int((a + b) + (if true { u8(1) } else { u8(1) }))'
+			expected: '5'
+		},
+		ComptimeAccessCase{
+			body:     'return int((if true { u8(1) } else { u8(1) }) + (a + b))'
+			expected: '5'
+		},
+		ComptimeAccessCase{
+			declarations: '@[comptime]\nfn add_args(x int, y int) int { return x + y }'
+			body:         'return add_args(a + b, if true { u8(1) } else { u8(1) })'
+			expected:     '5'
+		},
+		ComptimeAccessCase{
+			declarations: 'struct Pair { x int\ny int }'
+			body:         'pair := Pair{x: a + b, y: if true { u8(1) } else { u8(1) }}\nreturn pair.x + pair.y'
+			expected:     '5'
+		},
+		ComptimeAccessCase{
+			body:     'return if (1 << 40) < (if true { i64(-1) } else { i64(-1) }) { 1 } else { 0 }'
+			expected: '0'
+		},
+		ComptimeAccessCase{
+			body:     'mut table := [300][1]int{}\ntable[4][0] = 7\ntable[260][0] = 9\nreturn table[u8(250) + u8(10)][if true { 0 } else { 0 }]'
+			expected: '7'
+		},
+		ComptimeAccessCase{
+			declarations: global_table
+			body:         'return table[u8(255) + u8(1)][if true { 0 } else { 0 }]'
+			expected:     '7'
+		},
+	]
+	for i, case in cases {
+		program := '${case.declarations}\n@[comptime]\nfn compute(a u8, b u8) int { ${case.body} }\nconst result = compute(250, 10)\nfn main() { println(result) println(compute(250, 10)) }'
+		os.write_file(source, program)!
+		required := os.exec([...args, '-o', os.join_path(root, 'required_${i}${suffix}'), source])
+		assert required.exit_code != 0, '${i}: ${required.output}'
+		assert required.output.contains('cannot evaluate const `result`'), '${i}: ${required.output}'
+		assert required.output.contains('integer operand staging'), '${i}: ${required.output}'
+		runtime_program := program.replace('const result = compute(250, 10)\n', '').replace('fn main() {',
+			'fn main() { result := compute(250, 10)\n')
+		os.write_file(source, runtime_program)!
+		executable := os.join_path(root, 'runtime_${i}${suffix}')
+		built := os.exec([...args, '-o', executable, source])
+		assert built.exit_code == 0, '${i}: ${built.output}'
+		runtime := os.exec([executable])
+		assert runtime.exit_code == 0, '${i}: ${runtime.output}'
+		assert runtime.output.trim_space() == '${case.expected}\n${case.expected}', '${i}: ${runtime.output}'
+	}
+	workaround := '@[comptime]\nfn compute(a u8, b u8) int { sum := a + b return int(sum + (if true { u8(1) } else { u8(1) })) }\nconst result = compute(250, 10)\nfn main() { println(result) println(compute(250, 10)) }'
+	os.write_file(source, workaround)!
+	explicit_path := os.join_path(root, 'explicit_local${suffix}')
+	explicit_build := os.exec([...args, '-o', explicit_path, source])
+	assert explicit_build.exit_code == 0, explicit_build.output
+	explicit_local := os.exec([explicit_path])
+	assert explicit_local.exit_code == 0, explicit_local.output
+	assert explicit_local.output.trim_space() == '5\n5', explicit_local.output
+}

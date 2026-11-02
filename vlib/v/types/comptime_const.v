@@ -15,13 +15,14 @@ pub mut:
 
 struct ConstEval {
 mut:
-	tc         &TypeChecker
-	scopes     []map[string]ComptimeConstValue
-	active     map[string]bool
-	expr_types map[int]Type
-	steps      int
-	storage    int
-	depth      int
+	tc             &TypeChecker
+	scopes         []map[string]ComptimeConstValue
+	active         map[string]bool
+	expr_types     map[int]Type
+	staged_indices map[int]int
+	steps          int
+	storage        int
+	depth          int
 }
 
 struct ConstEvalFlow {
@@ -354,6 +355,14 @@ fn (mut e ConstEval) zero(destination Type) !ComptimeConstValue {
 		return ComptimeConstValue{ typ: typ, elements: elements }
 	}
 	if base is Struct {
+		// Specializations can lack concrete fields and declaration context here.
+		// Reject them consistently, even after another pass materializes fields.
+		if flat.source_type_syntax(base.name_id).application_valid() {
+			return error('generic structs are not supported')
+		}
+		if base.name_id !in e.tc.structs {
+			return error('struct field metadata is unavailable for `${base.name()}`')
+		}
 		if e.tc.unions[base.name_id] { return error('unions are not supported') }
 		$if ownership ? {
 			if e.tc.ownership_type_has_explicit_drop(base.name_id) {
@@ -434,6 +443,7 @@ fn (mut e ConstEval) expr(id flat.NodeId) !ComptimeConstValue {
 	e.tc.check_comptime_const_context()!
 	value := e.expr_value(id)!
 	e.expr_types[int(id)] = value.typ
+	if e.staged_indices[int(id)] > 0 { e.check_staged_integer(id, value)! }
 	return value
 }
 
@@ -480,14 +490,21 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 			return ComptimeConstValue{ typ: v.typ, integer: const_eval_integer_cast(value, c_type) }
 		}
 		.infix {
-			left := e.expr(e.tc.a.child(node, 0))!
+			left_id := e.tc.a.child(node, 0)
+			right_id := e.tc.a.child(node, 1)
+			left := e.expr(left_id)!
 			if node.op == .logical_and && left.integer == 0 {
 				return ComptimeConstValue{ typ: bool_ }
 			}
 			if node.op == .logical_or && left.integer != 0 {
 				return ComptimeConstValue{ typ: bool_, integer: 1 }
 			}
-			right := e.expr(e.tc.a.child(node, 1))!
+			right := e.expr(right_id)!
+			if node.op !in [.logical_and, .logical_or]
+				&& (e.hoists_value_branch(left_id)! || e.hoists_value_branch(right_id)!) {
+				e.check_staged_integer(left_id, left)!
+				e.check_staged_integer(right_id, right)!
+			}
 			return e.binary(id, node.op, left, right)
 		}
 		.if_expr, .comptime_if {
@@ -544,6 +561,7 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 			if base !is Struct { return error('only value structs are supported') }
 			mut value := e.zero(typ)!
 			fields := e.tc.structs[base.name_id]
+			last_branch := e.last_value_branch(node, 0)!
 			for i in 0 .. node.children_count {
 				field := e.tc.a.child_node(node, i)
 				if field.kind != .field_init || field.children_count != 1 {
@@ -557,13 +575,27 @@ fn (mut e ConstEval) expr_value(id flat.NodeId) !ComptimeConstValue {
 					return error('unknown struct field')
 				}
 				old := value.fields[name] or { return error('unknown struct field `${name}`') }
-				value.fields[name] = e.convert(e.expr(e.tc.a.child(field, 0))!, old.typ)!
+				value_id := e.tc.a.child(field, 0)
+				field_value := e.expr(value_id)!
+				if i < last_branch { e.check_staged_integer(value_id, field_value)! }
+				value.fields[name] = e.convert(field_value, old.typ)!
 			}
 			return value
 		}
 		.index {
 			root, path := e.access_path(id)!
 			e.check_access_order(root, path, flat.empty_node)!
+			staged := e.staged_access_indices(path)!
+			for index in staged { e.staged_indices[int(index)] = e.staged_indices[int(index)] + 1 }
+			defer {
+				for index in staged {
+					if e.staged_indices[int(index)] == 1 {
+						e.staged_indices.delete(int(index))
+					} else {
+						e.staged_indices[int(index)] = e.staged_indices[int(index)] - 1
+					}
+				}
+			}
 			root_node := e.tc.a.node(root)
 			if root_node.kind == .ident && e.local(root_node.value) != none {
 				target := e.resolve_lvalue(root, path)!
@@ -1109,7 +1141,13 @@ fn (mut e ConstEval) call(id flat.NodeId) !ComptimeConstValue {
 	f := e.tc.a.node(fn_id)
 	if f.generic_params().len > 0 { return error('generic calls are not supported') }
 	mut args := []ComptimeConstValue{}
-	for i in 1 .. node.children_count { args << e.expr(e.tc.a.child(node, i))! }
+	last_branch := e.last_value_branch(node, 1)!
+	for i in 1 .. node.children_count {
+		arg_id := e.tc.a.child(node, i)
+		arg := e.expr(arg_id)!
+		if i < last_branch { e.check_staged_integer(arg_id, arg)! }
+		args << arg
+	}
 	old_tc := e.tc
 	old_scopes := e.scopes
 	file := if source := e.tc.a.source_files[f.pos.id] { source.name } else { e.tc.cur_file }
@@ -1138,6 +1176,79 @@ fn (mut e ConstEval) call(id flat.NodeId) !ComptimeConstValue {
 	flow := e.sequence(f, 0) or { return error('in `${f.value}`: ${err}') }
 	if flow.kind != .return_stmt { return error('`${f.value}` did not return a value') }
 	return e.convert(flow.value, e.tc.parse_type(f.typ))
+}
+
+// Runtime lowering can store earlier operands before a value branch's prelude.
+// Compile-time branches are pruned before their inactive bodies can stage values.
+fn (mut e ConstEval) hoists_value_branch(id flat.NodeId) !bool {
+	e.tick()!
+	e.depth++
+	defer { e.depth-- }
+	if e.depth > 128 { return error('evaluation exceeded recursion limit') }
+	if !e.tc.valid_node_id(id) { return false }
+	node := e.tc.a.node(id)
+	if node.kind in [.if_expr, .match_stmt, .or_expr] { return true }
+	if node.kind in [.fn_literal, .lambda_expr, .spawn_expr] { return false }
+	if node.kind == .comptime_if { return e.hoists_value_branch(e.branch(node)!) }
+	for i in 0 .. node.children_count {
+		if e.hoists_value_branch(e.tc.a.child(node, i))! { return true }
+	}
+	return false
+}
+
+fn (mut e ConstEval) last_value_branch(node flat.Node, start int) !int {
+	mut last := -1
+	for i in start .. node.children_count {
+		if e.hoists_value_branch(e.tc.a.child(node, i))! { last = i }
+	}
+	return last
+}
+
+fn (mut e ConstEval) staging_operand_is_pure(id flat.NodeId) !bool {
+	e.tick()!
+	e.depth++
+	defer { e.depth-- }
+	if e.depth > 128 { return error('evaluation exceeded recursion limit') }
+	node := e.tc.a.node(id)
+	match node.kind {
+		.int_literal, .bool_literal, .string_literal, .sizeof_expr { return true }
+		.paren, .cast_expr {
+			return node.children_count == 1 && e.staging_operand_is_pure(e.tc.a.child(node, 0))!
+		}
+		.prefix {
+			return node.op in [.plus, .minus, .bit_not, .not] && node.children_count == 1
+				&& e.staging_operand_is_pure(e.tc.a.child(node, 0))!
+		}
+		.infix { return e.integer_literal_arithmetic(id) }
+		else { return false }
+	}
+}
+
+// Reject staging whose storage conversion changes either the value or effective
+// C integer type. Equal values alone do not preserve widened unsigned comparisons.
+fn (mut e ConstEval) check_staged_integer(id flat.NodeId, value ComptimeConstValue) ! {
+	if !unalias_type(value.typ).is_integer() || e.staging_operand_is_pure(id)! { return }
+	original := const_eval_c_integer_promotion(e.integer_c_expression_type(id, value.typ)!, i32_)
+	stored := const_eval_c_integer_promotion(value.typ, i32_)
+	if const_eval_integer_cast(value.integer, value.typ) != value.integer
+		|| const_eval_integer_width(original) != const_eval_integer_width(stored)
+		|| const_eval_integer_unsigned(original) != const_eval_integer_unsigned(stored) {
+		return error('integer operand staging that changes its value or C type is not supported')
+	}
+}
+
+fn (mut e ConstEval) staged_access_indices(path []flat.NodeId) ![]flat.NodeId {
+	mut last_branch := -1
+	for i, id in path {
+		node := e.tc.a.node(id)
+		if node.kind == .index && e.hoists_value_branch(e.tc.a.child(node, 1))! { last_branch = i }
+	}
+	mut staged := []flat.NodeId{}
+	for i, id in path {
+		node := e.tc.a.node(id)
+		if i < last_branch && node.kind == .index { staged << e.tc.a.child(node, 1) }
+	}
+	return staged
 }
 
 fn (mut e ConstEval) if_result_type(id flat.NodeId) !Type {

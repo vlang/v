@@ -654,6 +654,43 @@ fn test_comptime_range_bound_types_match_runtime() {
 	assert computed_typed_range_bounds == const_typed_range_bounds()
 }
 
+const computed_staging_controls = const_staging_controls(250, 10)
+const computed_staging_fits = const_staging_small(1, 2)
+const computed_staging_signed = const_staging_signed(0)
+
+@[comptime]
+fn const_staging_controls(a u8, b u8) [5]int {
+	stored := a + b
+	explicit := int(stored + (if true { u8(1) } else { u8(1) }))
+	compile_time := int((a + b) + ($if true { u8(1) } $else { u8(1) }))
+	values := [a + b, if true { u8(1) } else { u8(1) }]!
+	mut table := [300]int{}
+	table[u8(250) + u8(10)] = if true { 7 } else { 0 }
+	mut nested := [300][1]int{}
+	nested[u8(250) + u8(10)][if true { 0 } else { 0 }] = 7
+	return [explicit, compile_time, int(values[0]) + int(values[1]), table[4], nested[4][0]]!
+}
+
+@[comptime]
+fn const_staging_small(a u8, b u8) int {
+	return int((a + b) + (if true { u8(1) } else { u8(1) }))
+}
+
+@[comptime]
+fn const_staging_signed(offset int) bool {
+	stored := (1 << 40) + offset
+	return stored < (if true { i64(-1) } else { i64(-1) })
+}
+
+fn test_comptime_staging_controls_match_runtime() {
+	assert computed_staging_controls == [5, 261, 5, 0, 0]!
+	assert computed_staging_controls == const_staging_controls(250, 10)
+	assert computed_staging_fits == 4
+	assert computed_staging_fits == const_staging_small(1, 2)
+	assert !computed_staging_signed
+	assert computed_staging_signed == const_staging_signed(0)
+}
+
 fn test_comptime_constants_match_runtime() {
 	assert imported_pair == evaluated.make_pair(10)
 	assert imported_pair == [u32(10), 17]!

@@ -4283,9 +4283,9 @@ structs containing those types, including aliases of supported scalar types.
 Local variables, assignments, conditionals, integer range loops,
 C-style loops, and recursive calls to other `@[comptime]` functions are supported. Struct defaults
 and embedded fields, unions, dynamic arrays, maps, floating-point values, pointers, and
-result/option values are currently unsupported. Generic functions and methods, including overloaded
-operators and index getters/setters, are not supported by this evaluator. Gated indexing (`#[...]`)
-is also unsupported; ordinary fixed-array indexing remains available.
+result/option values are currently unsupported. Generic structs, functions and methods, including
+overloaded operators and index getters/setters, are not supported by this evaluator.
+Gated indexing (`#[...]`) is also unsupported; ordinary fixed-array indexing remains available.
 In `-ownership` and `-autofree` builds, values with implicit `drop` or `free` cleanup are
 unsupported, including local values and fields nested inside other values.
 Ordinary calls to the same function outside constant expressions remain
@@ -4302,6 +4302,9 @@ and expressions that are evaluated once before the loop (such as an addition or 
 Conditional result-type inference that needs another required evaluation is currently unsupported.
 Integer promotion of locals that shadow constants and narrowing conditional integer values are
 also unsupported, because their runtime conversions depend on the surrounding storage context.
+Runtime value conditionals can also cause other operands to be stored in temporary variables.
+Required evaluation rejects this implicit integer staging when it changes a value or its effective
+C integer type. Store the affected expression in a fresh local before using the conditional.
 
 The checker can use a computed integer constant as a fixed-array bound. The C backend emits the
 computed value as static data, with no initializer call, allocation, or copy at startup. Integer
