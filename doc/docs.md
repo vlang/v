@@ -4307,6 +4307,9 @@ Range loops preserve the runtime distinction between live upper bounds (such as 
 and expressions that are evaluated once before the loop (such as an addition or function call).
 Range counters use the lower bound's storage type. An untyped literal uses target-width `int`;
 the upper bound retains its own integer type.
+Required evaluation rejects a range when its inferred counter type differs from its runtime storage
+type. Give the lower bound an explicit integer type, such as `int(60000)`, to make the counter's
+storage unambiguous.
 Conditional result-type inference that needs another required evaluation is currently unsupported.
 Integer promotion of locals that shadow constants and narrowing conditional integer values are
 also unsupported, because their runtime conversions depend on the surrounding storage context.

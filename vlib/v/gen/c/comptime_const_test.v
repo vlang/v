@@ -735,33 +735,92 @@ fn test_cli_comptime_fixed_literals_keep_expected_context() ! {
 	}
 }
 
-fn test_cli_comptime_literal_range_counter_matches_runtime() ! {
-	root := os.join_path(os.vtmp_dir(), 'cli_comptime_range_storage_${os.getpid()}')
+fn test_cli_comptime_range_inference_rejects_required_values() ! {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_range_inference_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
+
 	source := os.join_path(root, 'main.v')
 	suffix := if os.user_os() == 'windows' { '.exe' } else { '' }
 	args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none']
-	program := 'const result = compute()\n@[comptime]\nfn compute() int { limit := u16(60001) for i in 60000 .. limit { return int(i * i) } return 0 }\nfn main() {\nassert result == compute()\nprintln(result)\n}'
-	os.write_file(source, program)!
-	expected := if sizeof(int) == 8 { '3600000000' } else { '-694967296' }
-	for mode, flags in [[]string{}, ['-no-parallel']] {
-		output := os.join_path(root, 'range_${mode}.c')
-		generated_result := os.exec([...args, ...flags, '-o', output, source])
-		assert generated_result.exit_code == 0, generated_result.output
-		generated := os.read_file(output)!
-		// A name collision with a struct field can require addressable C storage.
-		definition := generated.split_into_lines().filter(it.starts_with('#define main__result ')
-			|| (it.starts_with('static const ') && it.contains(' main__result = ')))
-		assert definition.len == 1, generated.all_after('compute(void);')
-		assert definition[0].contains('${expected}LL'), definition[0]
-		assert !generated.contains('main__result = compute(')
-		executable := os.join_path(root, 'range_${mode}${suffix}')
-		built := os.exec([...args, ...flags, '-o', executable, source])
-		assert built.exit_code == 0, built.output
+	wide := if sizeof(int) == 8 { '3600000000' } else { '-694967296' }
+	cases := [
+		ComptimeAccessCase{
+			body:     'limit := u16(60001)\nfor i in 60000 .. limit {\nreturn int(i * i)\n}\nreturn 0'
+			expected: wide
+		},
+		ComptimeAccessCase{
+			body:     'limit := u16(60001)\nfor i in 60000 .. limit {\nx := i * i\nreturn int(x)\n}\nreturn 0'
+			expected: '41984'
+		},
+		ComptimeAccessCase{
+			body:     'limit := u16(60001)\nfor i in 60000 .. limit {\nvalues := [i * i]!\nreturn int(values[0])\n}\nreturn 0'
+			expected: '41984'
+		},
+		ComptimeAccessCase{
+			body:     'limit := u16(60001)\nfor i in 60000 .. limit {\nx := if true { i * i } else { 0 }\nreturn int(x)\n}\nreturn 0'
+			expected: wide
+		},
+	]
+	for i, case in cases {
+		helper := '@[comptime]\nfn compute() int {\n${case.body}\n}\n'
+		constant := 'const result = compute()\n'
+		for before in [false, true] {
+			declarations := if before { constant + helper } else { helper + constant }
+			os.write_file(source, declarations + 'fn main() { println(result) }\n')!
+			required := os.exec([...args, '-o', os.join_path(root, 'required_${i}_${before}.c'),
+				source])
+			assert required.exit_code != 0, '${i} ${before}: ${required.output}'
+			assert required.output.contains('cannot evaluate const `result`'), required.output
+			assert required.output.contains('range counter inference differs from its runtime storage type; use an explicit lower-bound cast'), required.output
+		}
+		// The same annotated function remains available as an ordinary runtime call.
+		os.write_file(source, helper + 'fn main() { println(compute()) }\n')!
+		executable := os.join_path(root, 'runtime_${i}${suffix}')
+		built := os.exec([...args, '-o', executable, source])
+		assert built.exit_code == 0, '${i}: ${built.output}'
 		runtime := os.exec([executable])
-		assert runtime.exit_code == 0, runtime.output
-		assert runtime.output.trim_space() == expected, runtime.output
+		assert runtime.exit_code == 0, '${i}: ${runtime.output}'
+		assert runtime.output.trim_space() == case.expected, '${i}: ${runtime.output}'
+	}
+}
+
+fn test_cli_comptime_explicit_range_counter_matches_runtime() ! {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_range_storage_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+
+	source := os.join_path(root, 'main.v')
+	suffix := if os.user_os() == 'windows' { '.exe' } else { '' }
+	args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none']
+	helpers := '@[comptime]\nfn compute() int {\nlimit := u16(60001)\nfor i in int(60000) .. limit { return int(i * i) }\nreturn 0\n}\n@[comptime]\nfn storage_values() [3]int {\nlimit := u16(60001)\nfor i in int(60000) .. limit {\nx := i * i\nvalues := [i * i]!\nselected := if true { i * i } else { 0 }\nreturn [x, values[0], selected]!\n}\nreturn [3]int{}\n}\n'
+	constants := 'const result = compute()\nconst stored = storage_values()\n'
+	main_body := 'fn main() {\nassert result == compute()\nassert stored == [result, result, result]!\nassert stored == storage_values()\nprintln(result)\n}\n'
+	expected := if sizeof(int) == 8 { '3600000000' } else { '-694967296' }
+	for before in [false, true] {
+		declarations := if before { constants + helpers } else { helpers + constants }
+		os.write_file(source, declarations + main_body)!
+		for mode, flags in [[]string{}, ['-no-parallel']] {
+			output := os.join_path(root, 'range_${before}_${mode}.c')
+			generated_result := os.exec([...args, ...flags, '-o', output, source])
+			assert generated_result.exit_code == 0, generated_result.output
+			generated := os.read_file(output)!
+			// A name collision with a struct field can require addressable C storage.
+			definition := generated.split_into_lines().filter(it.starts_with('#define main__result ')
+				|| (it.starts_with('static const ') && it.contains(' main__result = ')))
+			assert definition.len == 1, generated.all_after('compute(void);')
+			assert definition[0].contains('${expected}LL'), definition[0]
+			assert !generated.contains('main__result = compute(')
+			assert generated.contains(' main__stored[3] = {${expected}LL, ${expected}LL, ${expected}LL};')
+			assert !generated.contains('memmove(main__stored,')
+			assert !generated.contains('main__stored = storage_values(')
+			executable := os.join_path(root, 'range_${before}_${mode}${suffix}')
+			built := os.exec([...args, ...flags, '-o', executable, source])
+			assert built.exit_code == 0, built.output
+			runtime := os.exec([executable])
+			assert runtime.exit_code == 0, runtime.output
+			assert runtime.output.trim_space() == expected, runtime.output
+		}
 	}
 }
 

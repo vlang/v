@@ -1301,16 +1301,17 @@ const computed_literal_range_storage = const_literal_range_storage()
 fn const_literal_range_storage() [6]i64 {
 	mut results := [6]i64{}
 	limit := u16(60001)
-	for i in 60000 .. limit {
+	for i in int(60000) .. limit {
 		results[0] = i64(i * i)
 		break
 	}
-	for i in 60000 .. u16(60001) {
+	for i in int(60000) .. u16(60001) {
 		results[1] = i64(i * i)
 		break
 	}
 	for i in (60000) .. limit {
-		results[2] = i64(i * i)
+		value := i * i
+		results[2] = i64(value)
 		break
 	}
 	for i in u16(60000) .. limit {
@@ -1322,7 +1323,7 @@ fn const_literal_range_storage() [6]i64 {
 		break
 	}
 	wide_limit := u32(70001)
-	for i in 70000 .. wide_limit {
+	for i in int(70000) .. wide_limit {
 		results[5] = i64(i * i)
 		break
 	}
@@ -1335,6 +1336,26 @@ fn test_comptime_range_counter_storage_follows_lower_bound() {
 	assert computed_literal_range_storage == [wide, wide, wide, i64(-694967296), i64(-694967296),
 		wider]!
 	assert computed_literal_range_storage == const_literal_range_storage()
+}
+
+const computed_explicit_range_storage = const_explicit_range_storage()
+
+@[comptime]
+fn const_explicit_range_storage() [3]int {
+	limit := u16(60001)
+	for i in int(60000) .. limit {
+		local := i * i
+		values := [i * i]!
+		selected := if true { i * i } else { 0 }
+		return [local, values[0], selected]!
+	}
+	return [3]int{}
+}
+
+fn test_comptime_explicit_range_storage_matches_runtime() {
+	wide := int(i64(3600000000))
+	assert computed_explicit_range_storage == [wide, wide, wide]!
+	assert computed_explicit_range_storage == const_explicit_range_storage()
 }
 
 const computed_postfix_index_storage = const_postfix_index_storage()

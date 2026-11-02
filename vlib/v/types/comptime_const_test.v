@@ -1613,34 +1613,54 @@ fn test_comptime_const_range_counter_uses_lower_bound_storage() ! {
 	for bits in [32, 64] {
 		set_platform_int_bits(bits)
 		cases := {
-			'limit := u16(60001) for i in 60000 .. limit { return int(i * i) } return 0':                              if bits == 64 {
+			'limit := u16(60001) for i in int(60000) .. limit { return int(i * i) } return 0':                               if bits == 64 {
 				i64(3600000000)
 			} else {
 				i64(-694967296)
 			}
-			'limit := u32(70001) for i in 70000 .. limit { return int(i * i) } return 0':                              if bits == 64 {
+			'limit := u32(70001) for i in int(70000) .. limit { return int(i * i) } return 0':                               if bits == 64 {
 				i64(4900000000)
 			} else {
 				i64(605032704)
 			}
-			'limit := u16(60001) for i in 60000 .. limit { return int(i << 1) } return 0':                             i64(120000)
-			'limit := u16(60001) for i in (60000) .. limit { return int(i << 1) } return 0':                           i64(120000)
-			'limit := u16(60001) for i in range_lower .. limit { return int(i << 1) } return 0':                       i64(120000)
-			'limit := u16(60001) for i in u16(60000) .. limit { return int(i << 1) } return 0':                        i64(54464)
-			'lower := u16(60000) limit := u16(60001) for i in lower .. limit { return int(i << 1) } return 0':         i64(54464)
-			'limit := RangeWord(60001) for i in 60000 .. limit { return int(i << 1) } return 0':                       i64(120000)
-			'limit := u16(60001) for i in RangeWord(60000) .. limit { return int(i << 1) } return 0':                  i64(54464)
-			'limit := i16(30001) for i in 30000 .. limit { return int(i << 1) } return 0':                             i64(60000)
-			'limit := i16(30001) for i in i16(30000) .. limit { return int(i << 1) } return 0':                        i64(-5536)
-			'for i in u8(250) .. u16(256) { return int(i << 1) } return 0':                                            i64(244)
-			'mut limit := u16(3) mut total := 0 for i in 0 .. limit { total += int(i) limit = 2 } return total':       i64(1)
-			'mut limit := u16(3) mut total := 0 for i in 0 .. (limit + 0) { total += int(i) limit = 1 } return total': i64(3)
+			'limit := u16(60001) for i in int(60000) .. limit { return int(i << 1) } return 0':                              i64(120000)
+			'limit := u16(60001) for i in (60000) .. limit { return int(i << 1) } return 0':                                 i64(120000)
+			'limit := u16(60001) for i in int(range_lower) .. limit { return int(i << 1) } return 0':                        i64(120000)
+			'limit := u16(60001) for i in u16(60000) .. limit { return int(i << 1) } return 0':                              i64(54464)
+			'lower := u16(60000) limit := u16(60001) for i in lower .. limit { return int(i << 1) } return 0':               i64(54464)
+			'limit := RangeWord(60001) for i in int(60000) .. limit { return int(i << 1) } return 0':                        i64(120000)
+			'limit := u16(60001) for i in RangeWord(60000) .. limit { return int(i << 1) } return 0':                        i64(54464)
+			'limit := i16(30001) for i in int(30000) .. limit { return int(i << 1) } return 0':                              i64(60000)
+			'limit := i16(30001) for i in i16(30000) .. limit { return int(i << 1) } return 0':                              i64(-5536)
+			'for i in u8(250) .. u16(256) { return int(i << 1) } return 0':                                                  i64(244)
+			'mut limit := u16(3) mut total := 0 for i in int(0) .. limit { total += int(i) limit = 2 } return total':        i64(1)
+			'mut limit := u16(3) mut total := 0 for i in int(0) .. (limit + 0) { total += int(i) limit = 1 } return total':  i64(3)
+			'limit := u16(60001) for i in int(60000) .. limit { x := i * i return int(x) } return 0':                        if bits == 64 {
+				i64(3600000000)
+			} else {
+				i64(-694967296)
+			}
+			'limit := u16(60001) for i in int(60000) .. limit { values := [i * i]! return int(values[0]) } return 0':        if bits == 64 {
+				i64(3600000000)
+			} else {
+				i64(-694967296)
+			}
+			'limit := u16(60001) for i in int(60000) .. limit { x := if true { i * i } else { 0 } return int(x) } return 0': if bits == 64 {
+				i64(3600000000)
+			} else {
+				i64(-694967296)
+			}
+			'for i in 60000 .. 60001 { return int(i << 1) } return 0':                                                       i64(120000)
+			'limit := RangeIndex(60001) for i in int(60000) .. limit { return int(i << 1) } return 0':                       i64(120000)
+			'limit := RangeIndex(60001) for i in RangeIndex(60000) .. limit { return int(i << 1) } return 0':                i64(120000)
+			'limit := Count(2) for i in int(1) .. limit { return int(i + i) } return 0':                                     i64(2)
+			'if false { limit := u16(60001) for i in 60000 .. limit { return int(i * i) } } return 7':                       i64(7)
 		}
 		for body, expected in cases {
 			for constant_first in [false, true] {
 				helper := '@[comptime]\nfn compute() int { ${body} }\n'
 				constant := 'const result = compute()\n'
-				source := 'type RangeWord = u16\nconst range_lower = 60000\n' + if constant_first {
+				source := 'type RangeWord = u16\ntype RangeIndex = int\ntype Count = int\nfn (a Count) + (b Count) Count { return Count(int(a) + int(b) + 10) }\nconst range_lower = 60000\n' + if constant_first {
 					constant + helper
 				} else {
 					helper + constant
@@ -1658,6 +1678,83 @@ fn test_comptime_const_range_counter_uses_lower_bound_storage() ! {
 					assert value.integer == expected, '${body}, bits=${bits}, constant_first=${constant_first}, checked=${checked}: ${value.integer}'
 				}
 			}
+		}
+	}
+}
+
+fn test_comptime_const_range_counter_rejects_inferred_storage_mismatches() ! {
+	original_bits := platform_int_bits()
+	defer { set_platform_int_bits(original_bits) }
+	path := os.join_path(os.vtmp_dir(), 'comptime_const_range_inference_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	diagnostic := 'range counter inference differs from its runtime storage type; use an explicit lower-bound cast'
+	for bits in [32, 64] {
+		set_platform_int_bits(bits)
+		for body in [
+			'limit := u16(60001) for i in 60000 .. limit { return int(i * i) } return 0',
+			'limit := u32(70001) for i in 70000 .. limit { return int(i * i) } return 0',
+			'limit := u16(60001) for i in 60000 .. limit { return int(i << 1) } return 0',
+			'limit := u16(60001) for i in range_lower .. limit { return int(i << 1) } return 0',
+			'limit := RangeWord(60001) for i in 60000 .. limit { return int(i << 1) } return 0',
+			'limit := i16(30001) for i in 30000 .. limit { return int(i << 1) } return 0',
+			'mut limit := u16(3) mut total := 0 for i in 0 .. limit { total += int(i) limit = 2 } return total',
+			'mut limit := u16(3) mut total := 0 for i in 0 .. (limit + 0) { total += int(i) limit = 1 } return total',
+			'limit := u16(60001) for i in 60000 .. limit { x := i * i return int(x) } return 0',
+			'limit := u16(60001) for i in 60000 .. limit { values := [i * i]! return int(values[0]) } return 0',
+			'limit := u16(60001) for i in 60000 .. limit { x := if true { i * i } else { 0 } return int(x) } return 0',
+			'limit := u16(60001) for i in 60000 .. limit { values := [if true { i * i } else { 0 }]! return int(values[0]) } return 0',
+			'limit := i64(60001) for i in 60000 .. limit { return int(i << 1) } return 0',
+			'limit := RangeIndex(60001) for i in 60000 .. limit { return int(i << 1) } return 0',
+			'for i in 60000 .. u16(60001) { return int(i * i) } return 0',
+			'limit := Count(2) for i in 1 .. limit { return int(i + i) } return 0',
+		] {
+			for constant_first in [false, true] {
+				helper := '@[comptime]\nfn compute() int { ${body} }\n'
+				constant := 'const result = compute()\n'
+				source := 'type RangeWord = u16\ntype RangeIndex = int\ntype Count = int\nfn (a Count) + (b Count) Count { return Count(int(a) + int(b) + 10) }\nconst range_lower = 60000\n' + if constant_first {
+					constant + helper
+				} else {
+					helper + constant
+				}
+				os.write_file(path, source + 'fn main() { _ = result }')!
+				mut p := parser.Parser.new(pref.new_preferences())
+				a := p.parse_file(path)
+				assert p.diagnostics.len == 0, p.diagnostics.str()
+				mut tc := TypeChecker.new(a)
+				tc.collect(a)
+				for checked in [false, true] {
+					if checked {
+						tc.check_semantics()
+						assert tc.errors.any(it.msg.contains('cannot evaluate const `result`') && it.msg.contains(diagnostic)), '${body}, bits=${bits}, constant_first=${constant_first}: ${tc.errors}'
+					}
+					if value := tc.eval_comptime_const(tc.const_exprs['result']!) {
+						assert false, '${body}, bits=${bits}, constant_first=${constant_first}, checked=${checked}: unexpectedly evaluated ${value.integer}'
+					} else {
+						assert err.msg().contains(diagnostic), '${body}, bits=${bits}, constant_first=${constant_first}, checked=${checked}: ${err}'
+					}
+					assert 'result' !in tc.comptime_const_values
+				}
+			}
+		}
+	}
+}
+
+fn test_comptime_const_range_literal_classification_is_bounded() ! {
+	path := os.join_path(os.vtmp_dir(), 'comptime_const_range_literal_cycle_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	for globals in ['const lower = lower', 'const lower = other\nconst other = lower'] {
+		os.write_file(path, '${globals}\nconst result = compute()\n@[comptime]\nfn compute() int { lower := int(0) for i in lower .. 1 { return i } return 0 }\nfn main() { _ = result }')!
+		mut p := parser.Parser.new(pref.new_preferences())
+		a := p.parse_file(path)
+		assert p.diagnostics.len == 0, p.diagnostics.str()
+		mut tc := TypeChecker.new(a)
+		tc.collect(a)
+		// Value evaluation reads the local. The checker's syntactic classifier
+		// follows the shadowed global; its evaluator equivalent must stay bounded.
+		if value := tc.eval_comptime_const(tc.const_exprs['result']!) {
+			assert false, '${globals}: unexpectedly evaluated ${value.integer}'
+		} else {
+			assert err.msg().contains('evaluation exceeded recursion limit'), err.msg()
 		}
 	}
 }

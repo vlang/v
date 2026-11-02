@@ -1523,6 +1523,18 @@ fn (mut e ConstEval) stmt_with_expected_type(id flat.NodeId, expected Type) !Con
 			} else {
 				start.typ
 			}
+			// The checker may infer a different counter type from the upper bound.
+			// That type still controls inferred locals, arrays, and conditionals in
+			// the body. Reject the mismatch before binding the runtime counter.
+			inferred_range_type := if e.range_endpoint_is_literal(start_id)!
+				&& !e.range_endpoint_is_literal(end_id)! {
+				end.typ
+			} else {
+				start.typ
+			}
+			if inferred_range_type.source_type_id() != range_type.source_type_id() {
+				return error('range counter inference differs from its runtime storage type; use an explicit lower-bound cast')
+			}
 			live_bound := e.range_bound_is_live(end_id)!
 			// The loop index is stored in range_type, while a materialized upper
 			// bound has its own storage conversion and a live bound stays an expression.
@@ -1574,6 +1586,27 @@ fn (mut e ConstEval) stmt_with_expected_type(id flat.NodeId, expected Type) !Con
 		}
 		else { return error('unsupported statement `${node.kind}`') }
 	}
+}
+
+// Mirror the checker's syntactic endpoint classification, including constant
+// names, without consulting body annotations. Bound recursion because a local
+// can shadow a cyclic global that normal value evaluation never visits.
+fn (mut e ConstEval) range_endpoint_is_literal(id flat.NodeId) !bool {
+	e.tick()!
+	e.depth++
+	defer { e.depth-- }
+	if e.depth > 128 { return error('evaluation exceeded recursion limit') }
+	if !e.tc.valid_node_id(id) { return false }
+	node := e.tc.a.node(id)
+	if node.kind in [.int_literal, .float_literal, .char_literal] { return true }
+	if node.kind == .ident {
+		for candidate in [e.tc.qualify_name(node.value), node.value] {
+			if expr_id := e.tc.const_exprs[candidate] {
+				return e.range_endpoint_is_literal(expr_id)
+			}
+		}
+	}
+	return false
 }
 
 // Match transform's unsigned_inclusive_for_post_body at the post boundary,
