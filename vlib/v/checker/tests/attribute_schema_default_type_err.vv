@@ -1,0 +1,7 @@
+@[attribute]
+struct Route {
+	count int = 'x'
+}
+
+fn main() {
+}
