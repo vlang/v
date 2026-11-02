@@ -171,3 +171,25 @@ fn test_attribute_schema_fields_do_not_replace_method_callees() {
 	}
 	assert seen
 }
+
+@[attribute]
+struct TestArraySchema {
+	paths []string
+	nums  []int
+}
+
+@[TestArraySchema(paths: ['/a', '/b'], nums: [1, 2, 3])]
+fn test_array_schema_fn() {}
+
+fn test_attribute_schema_array_values() {
+	$for attr in test_array_schema_fn.attributes {
+		$if attr is TestArraySchema {
+			assert attr.paths.len == 2
+			assert attr.paths[0] == '/a'
+			assert attr.paths[1] == '/b'
+			assert attr.nums.len == 3
+			assert attr.nums[0] == 1
+			assert attr.nums[2] == 3
+		}
+	}
+}
