@@ -1845,7 +1845,37 @@ fn (mut t Transformer) make_attribute_schema_field_literal(field AttributeSchema
 			}
 			elem_type := flat.source_type_name(field.type_id).all_after('[]').trim_space()
 			if inner.len > 0 {
-				for part in inner.split(',') {
+				// Split by top-level commas (bracket-aware) so string elements
+				// containing commas are not broken.
+				mut parts := []string{}
+				mut depth := 0
+				mut in_str := false
+				mut str_quote := u8(0)
+				mut start := 0
+				for i in 0 .. inner.len {
+					c := inner[i]
+					if in_str {
+						if c == str_quote {
+							in_str = false
+						}
+						continue
+					}
+					if c == `'` || c == `"` {
+						in_str = true
+						str_quote = c
+					} else if c == `[` || c == `{` || c == `(` {
+						depth++
+					} else if c == `]` || c == `}` || c == `)` {
+						if depth > 0 { depth-- }
+					} else if c == `,` && depth == 0 {
+						parts << inner[start..i]
+						start = i + 1
+					}
+				}
+				if start < inner.len {
+					parts << inner[start..]
+				}
+				for part in parts {
 					p := part.trim_space()
 					if p.len == 0 { continue }
 					if elem_type == 'string' {
