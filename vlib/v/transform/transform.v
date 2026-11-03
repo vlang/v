@@ -354,6 +354,7 @@ mut:
 	used_fn_name_cache                     &UsedFnNameCache           = unsafe { nil }
 	call_variadic_cache                    &BoolLookupCache           = unsafe { nil }
 	str_alias_cache                        &StrAliasCache             = unsafe { nil }
+	qname_scratch                          &QualifiedNameScratch      = unsafe { nil }
 	file_import_cache                      &util.KeyRecentCache       = unsafe { nil }
 	file_import_name_filter                &FileImportNameFilter      = unsafe { nil }
 	generic_type_name_index_cache          &GenericTypeNameIndexCache = &GenericTypeNameIndexCache{}
@@ -2999,6 +3000,7 @@ fn (mut t Transformer) prepare() {
 	t.enum_selector_cache = &EnumSelectorCache{}
 	t.struct_guess_cache = &AliasCache{}
 	t.var_type_cache = &VarTypeIndexCache{}
+	t.qname_scratch = &QualifiedNameScratch{}
 	t.generic_unresolved_cache = &GenericUnresolvedCache{}
 	t.spec_args_misses = &SpecArgsMissCache{}
 	t.generic_spec_decode_cache = &TypeLookupCache{
@@ -5616,6 +5618,7 @@ fn (t &Transformer) fork_worker_with_state(ast &flat.FlatAst, wtc &types.TypeChe
 	w.enum_selector_cache = &EnumSelectorCache{}
 	w.struct_guess_cache = &AliasCache{}
 	w.var_type_cache = &VarTypeIndexCache{}
+	w.qname_scratch = &QualifiedNameScratch{}
 	w.generic_unresolved_cache = &GenericUnresolvedCache{}
 	w.generic_spec_decode_cache = &TypeLookupCache{
 		entries: map[u32]u32{}
@@ -5762,6 +5765,7 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.enum_selector_cache = &EnumSelectorCache{}
 	w.struct_guess_cache = &AliasCache{}
 	w.var_type_cache = &VarTypeIndexCache{}
+	w.qname_scratch = &QualifiedNameScratch{}
 	w.generic_unresolved_cache = &GenericUnresolvedCache{}
 	w.generic_spec_decode_cache = &TypeLookupCache{
 		entries: map[u32]u32{}
@@ -12968,30 +12972,11 @@ fn address_expr_base_is_indirect_storage(typ_id u32) bool {
 	return shape.has(.pointer) || shape.has(.array_type) || shape.has(.map_type)
 }
 
+// escape_ident_is_stack_local reports whether `name` is one of the frame's
+// stack locals. Globals and file-scope declarations are never in that set, so
+// no further lookup can change a negative answer.
 fn (t &Transformer) escape_ident_is_stack_local(name string, local_stack_names map[string]bool) bool {
-	if name == '' {
-		return false
-	}
-	if name in local_stack_names {
-		return true
-	}
-	if _ := t.global_ident_type(name) {
-		return false
-	}
-	if !isnil(t.tc) {
-		if t.tc.file_scope.contains(name) {
-			return false
-		}
-		if t.cur_module.len > 0 {
-			qname := '${t.cur_module}.${name}'
-			if qname != name {
-				if t.tc.file_scope.contains(qname) {
-					return false
-				}
-			}
-		}
-	}
-	return false
+	return name != '' && name in local_stack_names
 }
 
 // collect_return_escape_idents gathers the idents in a return-expression subtree that occupy an
@@ -31093,9 +31078,15 @@ fn (t &Transformer) resolve_ident_expr_type(name string) u32 {
 	}
 	if !isnil(t.tc) {
 		if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
-			qname := '${t.cur_module}.${name}'
-			if name_source_id := t.const_type_name(qname) {
-				return name_source_id
+			// Most identifiers reaching this point name no const at all: probe the
+			// const key from the scratch buffer and build the owned key only when
+			// const_type_name can find one (it starts with the same key probe).
+			qname_view := t.qualified_name_view(t.cur_module, name)
+			if _ := t.const_type_key(qname_view) {
+				qname := qname_view.clone()
+				if name_source_id := t.const_type_name(qname) {
+					return name_source_id
+				}
 			}
 		}
 		if name_source_id := t.const_type_name(name) {
@@ -31797,9 +31788,11 @@ fn (t &Transformer) const_type_key_in_context(name string, module_name string, f
 	}
 	if !name.contains('.') {
 		if module_name != '' && module_name != 'main' && module_name != 'builtin' {
-			qname := '${module_name}.${name}'
+			// Most names probed here are not consts of this module: look the key
+			// up from the scratch buffer and own it only on a hit.
+			qname := t.qualified_name_view(module_name, name)
 			if qname in t.tc.const_types {
-				return qname
+				return qname.clone()
 			}
 		}
 		if key := t.tc.shadowed_builtin_const_key_in_module(name, module_name) {
@@ -33446,6 +33439,38 @@ mut:
 	misses  map[u64]bool
 	modules map[string]u32
 	recent  &TypeRecentCache = unsafe { nil }
+}
+
+const qualified_name_scratch_bytes = 256
+
+// QualifiedNameScratch builds `module.name` lookup keys in place. It is
+// allocated with the transformer's other caches, outside any batch arena, and
+// never reallocated, so a view over it stays valid for the transformer's life.
+@[heap]
+struct QualifiedNameScratch {
+mut:
+	buf [qualified_name_scratch_bytes]u8
+}
+
+// qualified_name_view returns `'${module_name}.${name}'` as a view over the
+// scratch buffer when it fits, allocating otherwise. The view is overwritten by
+// the next call: hand it to a map lookup directly, never store it or pass it
+// to a helper that may build another qualified name first.
+@[direct_array_access]
+fn (t &Transformer) qualified_name_view(module_name string, name string) string {
+	n := module_name.len + 1 + name.len
+	if isnil(t.qname_scratch) || n >= qualified_name_scratch_bytes {
+		return '${module_name}.${name}'
+	}
+	mut scratch := t.qname_scratch
+	unsafe {
+		mut p := &u8(&scratch.buf[0])
+		vmemcpy(p, module_name.str, module_name.len)
+		p[module_name.len] = `.`
+		vmemcpy(p + module_name.len + 1, name.str, name.len)
+		p[n] = 0
+		return tos(p, n)
+	}
 }
 
 fn (mut cache StrAliasCache) key(module_name string, type_id u32) u64 {

@@ -2022,7 +2022,7 @@ fn (mut g FlatGen) gen_scalar_array_push_call_stmt(id flat.NodeId, node flat.Nod
 	// records the helper as the target of an append it lowered, which tells the two
 	// apart where the module has such a global.
 	if _ := g.global_type_for_ident(target) {
-		recorded := g.tc.resolved_call_name(id) or { '' }
+		recorded := g.resolved_call_name(id) or { '' }
 		if recorded != target {
 			return false
 		}

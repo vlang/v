@@ -74,7 +74,10 @@ fn (tc &TypeChecker) lexical_parent_link_miss(id flat.NodeId) (flat.NodeId, flat
 	if memo.generations[initial_slot] == memo.generation && memo.ids[initial_slot] == initial_idx {
 		return memo.parents[initial_slot], memo.children[initial_slot], memo.depths[initial_slot]
 	}
-	mut path := [64]flat.NodeId{}
+	// The walk stops at the nearest branch or function, a few levels up; the
+	// rare deeper nodes of a path are not memoized rather than zeroing a large
+	// buffer on every miss (nearly every queried leaf is one).
+	mut path := [16]flat.NodeId{}
 	mut path_len := 0
 	mut current := id
 	mut parent := flat.empty_node
@@ -133,8 +136,13 @@ mut:
 	hi               int = -1
 	ready            bool
 	has_unsafe_block bool
-	keys             []string
-	index            map[string]bool
+	// Whether the range has an identifier spelled as a bare generic name (one
+	// uppercase letter) and a match branch with several patterns: the walks
+	// that look for one in a subtree or up the parents skip a range without.
+	has_bare_generic_ident         bool
+	has_multi_pattern_match_branch bool
+	keys                           []string
+	index                          map[string]bool
 }
 
 const smartcast_key_filter_linear = 16
@@ -178,6 +186,8 @@ fn (tc &TypeChecker) collect_smartcast_keys(mut filter SmartcastKeyFilter) {
 		filter.index.clear()
 	}
 	filter.has_unsafe_block = false
+	filter.has_bare_generic_ident = false
+	filter.has_multi_pattern_match_branch = false
 	hi := int_min(filter.hi, tc.a.nodes.len - 1)
 	for i in filter.lo .. hi + 1 {
 		node := unsafe { &tc.a.nodes[i] }
@@ -185,6 +195,23 @@ fn (tc &TypeChecker) collect_smartcast_keys(mut filter SmartcastKeyFilter) {
 			.block {
 				if node.value == 'unsafe' {
 					filter.has_unsafe_block = true
+				}
+			}
+			.ident {
+				// value_text() is the value when there is one; only a nameless
+				// identifier spells its text from its source id.
+				if !filter.has_bare_generic_ident {
+					if node.value.len > 0 {
+						filter.has_bare_generic_ident = source_text_is_bare_generic(node.value)
+					} else {
+						filter.has_bare_generic_ident = source_text_is_bare_generic(node.value_text())
+					}
+				}
+			}
+			.match_branch {
+				if !filter.has_multi_pattern_match_branch && node.value != 'else'
+					&& node.value.int() >= 2 {
+					filter.has_multi_pattern_match_branch = true
 				}
 			}
 			.is_expr, .match_stmt {
@@ -240,6 +267,42 @@ fn (tc &TypeChecker) lexical_smartcast_key_unused(idx int, key string) bool {
 		tc.collect_smartcast_keys(mut filter)
 	}
 	return !filter.has(key)
+}
+
+// fn_range_lacks_bare_generic_ident reports that no identifier of the function
+// being checked, which the node `idx` is in, is spelled as a bare generic name
+// (see expr_has_unresolved_generic_name_ident).
+@[inline]
+fn (tc &TypeChecker) fn_range_lacks_bare_generic_ident(idx int) bool {
+	if isnil(tc.smartcast_key_filter) {
+		return false
+	}
+	mut filter := tc.smartcast_key_filter
+	if idx < filter.lo || idx > filter.hi || filter.lo < 0 {
+		return false
+	}
+	if !filter.ready {
+		tc.collect_smartcast_keys(mut filter)
+	}
+	return !filter.has_bare_generic_ident
+}
+
+// fn_range_lacks_multi_pattern_match reports that no match branch of the
+// function being checked, which the node `idx` is in, has several patterns
+// (see ident_is_multi_pattern_match_subject).
+@[inline]
+fn (tc &TypeChecker) fn_range_lacks_multi_pattern_match(idx int) bool {
+	if isnil(tc.smartcast_key_filter) {
+		return false
+	}
+	mut filter := tc.smartcast_key_filter
+	if idx < filter.lo || idx > filter.hi || filter.lo < 0 {
+		return false
+	}
+	if !filter.ready {
+		tc.collect_smartcast_keys(mut filter)
+	}
+	return !filter.has_multi_pattern_match_branch
 }
 
 // lexical_smartcasts_unused rules out lexical narrowing of this expression
