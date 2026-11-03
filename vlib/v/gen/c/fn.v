@@ -724,6 +724,9 @@ fn (mut g FlatGen) gen_synthetic_main_after_fns() {
 		return
 	}
 	if g.has_entry_main() {
+		if g.needs_no_main_runtime_init_caller() {
+			g.gen_no_main_runtime_init_caller()
+		}
 		return
 	}
 	if g.is_shared {
@@ -779,7 +782,8 @@ fn (mut g FlatGen) gen_executable_cleanup_registration() {
 }
 
 fn (g &FlatGen) needs_no_main_runtime_init_caller() bool {
-	return g.test_files.len == 0 && (g.suppress_main || !g.has_entry_main())
+	// A native consumer can call an object's exports without entering its V main.
+	return g.test_files.len == 0 && (g.object_file_mode || g.suppress_main || !g.has_entry_main())
 		&& (g.a.export_fn_names.len > 0 || g.is_shared)
 }
 
@@ -5672,13 +5676,19 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 		}
 		g.gen_compiler_vexe_env_setup()
 		g.gen_coverage_registration()
-		g.gen_trace_startup()
-		g.gen_profile_startup_enable()
-		if g.runtime_init_is_needed() {
-			g.gen_vinit_call('argc', 'argv')
+		if g.needs_no_main_runtime_init_caller() {
+			// Share the guard with native callers when this main is linked from
+			// an object, so an exported callback cannot initialize globals twice.
+			g.writeln('\t_vno_main_init_caller();')
+		} else {
+			g.gen_trace_startup()
+			g.gen_profile_startup_enable()
+			if g.runtime_init_is_needed() {
+				g.gen_vinit_call('argc', 'argv')
+			}
+			g.gen_profile_registration()
+			g.gen_executable_cleanup_registration()
 		}
-		g.gen_profile_registration()
-		g.gen_executable_cleanup_registration()
 		g.gen_live_initialization()
 	} else {
 		ret_type := g.fn_node_return_type(node, module_name)
