@@ -22,6 +22,7 @@ fn test_uncached_c_output_does_not_probe_native_headers() {
 	os.chmod(c_compiler, 0o755)!
 	header := os.join_path(root, 'native.h')
 	os.write_file(header, '#define V_TEST_NATIVE_VALUE 7\n')!
+	canonical_header := os.real_path(header)
 	source := os.join_path(root, 'main.c.v')
 	output := os.join_path(root, 'main.c')
 	for serial in [false, true] {
@@ -38,7 +39,7 @@ fn test_uncached_c_output_does_not_probe_native_headers() {
 			generated := os.read_file(output)!
 			assert generated.contains('v3_')
 			assert generated.contains('sha3__sum512')
-			assert generated.contains(header)
+			assert generated.contains(canonical_header)
 		}
 	}
 }

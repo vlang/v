@@ -4,6 +4,38 @@ import v.flat
 import v.token
 import v.types
 
+fn test_heap_channel_argument_validation_preserves_smartcasts() {
+	for narrowed in [false, true] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		choice := flat.source_type_id('Choice')
+		tc.sum_types.set_ids(choice, [flat.source_type_int, flat.source_type_string])
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		t.cur_module = 'main'
+		t.validating_generic_spec = true
+		t.set_var_type('ch', flat.source_type_composition_one(.channel, flat.source_type_int))
+		storage := flat.source_type_composition_one(.pointer, choice)
+		t.set_var_type_with_raw('value', storage, storage)
+		index := t.var_type_index('value')
+		t.var_types[index] = VarTypeBinding{
+			...t.var_types[index]
+			heap_value_typ: choice
+		}
+		t.heaped_amp_locals['value'] = true
+		if narrowed {
+			t.push_smartcast('value', flat.source_type_int, choice)
+		}
+		call := t.make_method_call(t.make_ident('ch'), 'try_push', [t.make_ident('value')])
+		_ := t.try_lower_receiver_method_call(call, a.nodes[int(call)]) or { flat.empty_node }
+		if narrowed {
+			assert t.monomorph_errors.len == 0, t.monomorph_errors.str()
+		} else {
+			assert t.monomorph_errors.len == 1, t.monomorph_errors.str()
+			assert t.monomorph_errors[0].contains('cannot use `Choice`'), t.monomorph_errors.str()
+		}
+	}
+}
+
 fn literal_binding_test_node(mut a flat.FlatAst, kind flat.NodeKind, children []flat.NodeId) flat.NodeId {
 	start := a.children.len
 	for child in children {
