@@ -7454,8 +7454,58 @@ fn (g &FlatGen) usable_expr_type_reference_uncached(id flat.NodeId) &types.Type 
 		if typ !is types.Unknown && typ !is types.Void {
 			return typ
 		}
+	} else {
+		// Without a checked type, resolve_type_reference reaches resolve_type_slow,
+		// whose answer for these kinds is fixed by the node alone; skip the body
+		// memo and the checker's dispatch for them.
+		if int(id) >= 0 && int(id) < g.a.nodes.len {
+			if fixed := g.fixed_unchecked_node_type(unsafe { &g.a.nodes[int(id)] }) {
+				return g.tc.intern_type_reference(fixed)
+			}
+		}
 	}
 	return g.body_resolve_type_reference(id)
+}
+
+// fixed_unchecked_node_type mirrors the checker's resolution of a node that has
+// no checked expression type when that resolution does not depend on operands,
+// scopes or memos: resolve_type_slow's literal table, and the comparison/logical
+// operator rule of resolve_type_nonliteral, which precedes every operand read
+// (and is only bypassed by a diagnostic on the node, so it is skipped when any
+// diagnostics exist).
+fn (g &FlatGen) fixed_unchecked_node_type(node &flat.Node) ?types.Type {
+	match node.kind {
+		.int_literal {
+			if g.tc.translated_files.len == 0 {
+				return types.Type(types.int_)
+			}
+		}
+		.float_literal {
+			return types.Type(types.f64_)
+		}
+		.bool_literal {
+			return types.Type(types.bool_)
+		}
+		.char_literal {
+			if !node.value.starts_with('c:') {
+				return types.Type(types.rune_)
+			}
+		}
+		.nil_literal {
+			return types.Type(types.voidptr_)
+		}
+		.sizeof_expr, .offsetof_expr {
+			return types.Type(types.u32_)
+		}
+		.infix {
+			if g.tc.errors.len == 0
+				&& node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
+				return types.Type(types.bool_)
+			}
+		}
+		else {}
+	}
+	return none
 }
 
 fn (g &FlatGen) specialized_selector_method_call_return_type(node flat.Node, fn_node flat.Node) ?types.Type {
