@@ -826,6 +826,26 @@ fn test_latest_tcc_pulls_other_bundles_only_when_their_branch_moved() {
 	assert git_current_branch(tcc_dir) == 'thirdparty-macos-arm64'
 	assert run_checked('git -C ${os.quoted_path(tcc_dir)} rev-parse HEAD').trim_space() == next_head_sha
 	assert os.read_file(os.join_path(tcc_dir, 'lib', 'libgc.a'))! == 'macos-libgc-v2\n'
+
+	// The pull follows the branch's configured upstream, so the shortcut has to ask
+	// that repository too, and not `origin`, which does not move here.
+	mirror := os.join_path(root, 'mirror.git')
+	run_checked('git clone --quiet --bare ${os.quoted_path(remote)} ${os.quoted_path(mirror)}')
+	tcc_git := 'git -C ${os.quoted_path(tcc_dir)}'
+	run_checked('${tcc_git} remote add mirror ${os.quoted_path('file://${mirror}')}')
+	run_checked('${tcc_git} fetch --quiet mirror')
+	run_checked('${tcc_git} branch --quiet --set-upstream-to=mirror/thirdparty-macos-arm64')
+	mirror_head_sha := commit_bundle_state(source, 'macos-mirror',
+		compatible_tcc_script('macos-tcc-mirror'), 'macos-libgc-mirror\n')
+	run_checked('git -C ${os.quoted_path(source)} push --quiet ${os.quoted_path(mirror)} HEAD:refs/heads/thirdparty-macos-arm64')
+	mirror_result := os.exec(latest_cmd)
+	assert mirror_result.exit_code == 0, mirror_result.output
+	assert !mirror_result.output.contains('already up to date'), mirror_result.output
+	assert run_checked('${tcc_git} rev-parse HEAD').trim_space() == mirror_head_sha
+	assert os.read_file(os.join_path(tcc_dir, 'lib', 'libgc.a'))! == 'macos-libgc-mirror\n'
+	unchanged_mirror_result := os.exec(latest_cmd)
+	assert unchanged_mirror_result.exit_code == 0, unchanged_mirror_result.output
+	assert unchanged_mirror_result.output.contains('TCC thirdparty-macos-arm64 is already up to date.'), unchanged_mirror_result.output
 }
 
 fn test_linux_tcc_rechecks_pinned_bundle_before_reusing_unchanged_history() {
