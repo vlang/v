@@ -11,7 +11,8 @@ imp is a mischievous implicit build system meant to be used in V scripts
 ## example usage
 ```v
 #!/usr/bin/env -S v run
-import imp
+
+import x.imp
 
 const target = $if windows { 'hello.exe' } $else { 'hello' }
 
@@ -22,7 +23,7 @@ ctx.add_flow(
 	help:  'build the binary'
 	takes: ['src']
 	gives: [target]
-	flags: [imp.Flag{id: 'prod', help: 'optimised build'}]
+	flags: [imp.Flag{ id: 'prod', help: 'optimised build' }]
 	flow:  fn (self imp.Flow) ! {
 		mut args := ['v', '-o', target]
 		if self.flag('prod') {

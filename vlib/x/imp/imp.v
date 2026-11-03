@@ -208,8 +208,8 @@ fn (mut c Context) execute(args []string) ! {
 	c.validate()!
 	for id in ids {
 		// each requested flow is its own pass, so `clean run` rechecks build
-		mut visited := map[string]bool{}
-		c.visit(id, mut visited)!
+		mut pass := Pass{}
+		c.visit(id, mut pass)!
 	}
 }
 
@@ -232,6 +232,13 @@ fn (c &Context) print_help() {
 // by when the two differ.
 fn (f Flow) label() string {
 	return if f.display_name() == f.id { f.id } else { '${f.display_name()} [${f.id}]' }
+}
+
+// arrays_concat returns the items of `a` followed by those of `b`.
+fn arrays_concat(a []string, b []string) []string {
+	mut all := a.clone()
+	all << b
+	return all
 }
 
 // arrays_max_len returns the length of the longest string in `items`.
@@ -284,9 +291,21 @@ fn overlaps_any(path string, others []string) bool {
 
 // paths_overlap reports whether the paths are equal or one contains the other.
 fn paths_overlap(a string, b string) bool {
-	x, y := os.norm_path(a), os.norm_path(b)
-	return x == y || x == '.' || y == '.' || x.starts_with(y + os.path_separator)
-		|| y.starts_with(x + os.path_separator)
+	x, y := path_key(a), path_key(b)
+	return contains_path(x, y) || contains_path(y, x)
+}
+
+// path_key is the absolute, normalised form of `path`, so that relative and
+// absolute spellings of the same file compare equal.
+fn path_key(path string) string {
+	return os.norm_path(os.abs_path(path))
+}
+
+// contains_path reports whether `child` is `parent` or lies under it. Both must
+// come from `path_key`.
+fn contains_path(parent string, child string) bool {
+	return child == parent || child.starts_with(parent.trim_right(os.path_separator) +
+		os.path_separator)
 }
 
 // validate rejects unknown hooks and dependency cycles before anything runs.
@@ -319,23 +338,94 @@ fn (c &Context) check_cycle(f Flow, mut state map[string]int) ! {
 	state[f.id] = 2
 }
 
+// FlowState tracks a flow within one pass.
+enum FlowState {
+	pending
+	active // started, waiting on its dependencies, body or post hooks
+	done
+}
+
+// Pass is the progress of one requested flow and everything it pulls in.
+struct Pass {
+mut:
+	state    map[string]FlowState
+	stack    []string            // the active flows, outermost first
+	deferred map[string][]string // post hooks waiting for an active flow
+}
+
 // visit runs a flow and everything it needs, at most once per pass.
-fn (c &Context) visit(id string, mut visited map[string]bool) ! {
-	if visited[id] {
+fn (c &Context) visit(id string, mut pass Pass) ! {
+	match pass.state[id] {
+		.done {
+			return
+		}
+		.active {
+			// validate rejects pre and producer cycles, and post hooks reaching an
+			// active flow are deferred, so this is a bug in imp
+			return error('flow `${id}` was reached while still running')
+		}
+		.pending {}
+	}
+	pass.state[id] = .active
+	pass.stack << id
+	c.run(c.find(id)!, mut pass)!
+	pass.stack.pop()
+	pass.state[id] = .done
+	hooks := pass.deferred[id] or { []string{} }
+	pass.deferred.delete(id)
+	for hook in hooks {
+		c.visit(hook, mut pass)!
+	}
+}
+
+// post runs a post hook, unless it needs a flow that has not finished yet, like
+// the flow that pulled in the hook's owner. It then waits for that flow.
+fn (c &Context) post(id string, mut pass Pass) ! {
+	mut seen := map[string]bool{}
+	waits := c.first_active(id, pass, mut seen)
+	if waits < 0 {
+		c.visit(id, mut pass)!
 		return
 	}
-	visited[id] = true
-	f := c.find(id)!
+	owner := pass.stack[waits]
+	mut hooks := pass.deferred[owner] or { []string{} }
+	hooks << id
+	pass.deferred[owner] = hooks
+}
+
+// first_active returns the stack index of the outermost active flow that `id`
+// would run ahead of itself, or -1 if there is none.
+fn (c &Context) first_active(id string, pass &Pass, mut seen map[string]bool) int {
+	if seen[id] || pass.state[id] == .done {
+		return -1
+	}
+	seen[id] = true
+	if pass.state[id] == .active {
+		return pass.stack.index(id)
+	}
+	f := c.find(id) or { return -1 }
+	mut first := -1
+	for dep in arrays_concat(f.pre.map(it.id), c.producers(f)) {
+		i := c.first_active(dep, pass, mut seen)
+		if i >= 0 && (first < 0 || i < first) {
+			first = i
+		}
+	}
+	return first
+}
+
+// run executes the hooks, dependencies and body of a flow that is now active.
+fn (c &Context) run(f Flow, mut pass Pass) ! {
 	for hook in f.pre.filter(it.required) {
-		c.visit(hook.id, mut visited)!
+		c.visit(hook.id, mut pass)!
 	}
 	for dep in c.producers(f) {
-		c.visit(dep, mut visited)!
+		c.visit(dep, mut pass)!
 	}
 	// checked here and not earlier: a required pre hook or a dependency may
 	// have just removed or rebuilt the outputs
 	digest := if f.check == .hash { c.digest(f) } else { '' }
-	skip := match f.check {
+	skip := !os.exists(dirty_path(f)) && match f.check {
 		.mtime { !f.flags.any(it.id in c.enabled) && is_up_to_date(f) }
 		.hash { is_unchanged(f, digest) }
 		.none { false }
@@ -343,16 +433,20 @@ fn (c &Context) visit(id string, mut visited map[string]bool) ! {
 	if skip {
 		println('>> ${f.display_name()} (skip)')
 		for hook in f.post.filter(it.required) {
-			c.visit(hook.id, mut visited)!
+			c.post(hook.id, mut pass)!
 		}
 		return
 	}
 	for hook in f.pre.filter(!it.required) {
-		c.visit(hook.id, mut visited)!
+		c.visit(hook.id, mut pass)!
 	}
 	println('>> ${f.display_name()}')
-	// dropped first, so that a failed run can never be mistaken for a good one
-	os.rm(stamp_path(f)) or {}
+	if f.check != .none {
+		// marked first, so that a failed or interrupted run, which may have left
+		// newer or partial outputs, is never mistaken for a good one
+		os.mkdir_all(os.dir(dirty_path(f)))!
+		os.write_file(dirty_path(f), '')!
+	}
 	runnable := Flow{
 		...f
 		enabled:      c.enabled
@@ -365,20 +459,42 @@ fn (c &Context) visit(id string, mut visited map[string]bool) ! {
 		}
 	}
 	if f.check == .hash {
-		os.mkdir_all(stamp_dir)!
+		os.mkdir_all(os.dir(stamp_path(f)))!
 		os.write_file(stamp_path(f), digest)!
 	}
+	if f.check != .none {
+		os.rm(dirty_path(f))!
+	}
 	for hook in f.post {
-		c.visit(hook.id, mut visited)!
+		c.post(hook.id, mut pass)!
 	}
 }
 
-// stamp_dir holds the digests of hash flows, relative to the working directory.
+// stamp_dir holds the state of flows between runs, relative to the working
+// directory. It is never an input, or keeping state would itself be a change.
 const stamp_dir = '.imp'
+
+// state_file names the file of a flow under a subdirectory of `stamp_dir`.
+fn state_file(kind string, f Flow) string {
+	return os.join_path(stamp_dir, kind, f.id.replace_each(['/', '_', '\\', '_']))
+}
 
 // stamp_path is where a hash flow keeps the digest of its last successful run.
 fn stamp_path(f Flow) string {
-	return os.join_path(stamp_dir, f.id.replace_each(['/', '_', '\\', '_']))
+	return state_file('digest', f)
+}
+
+// dirty_path marks a flow whose body started but did not finish successfully.
+fn dirty_path(f Flow) string {
+	return state_file('dirty', f)
+}
+
+// excluded_keys are the paths left out of the inputs of `f`: its outputs, and
+// the state imp keeps.
+fn excluded_keys(f Flow) []string {
+	mut keys := f.gives.map(path_key(it))
+	keys << path_key(stamp_dir)
+	return keys
 }
 
 // digest identifies the inputs of a flow and the flags that can affect it.
@@ -386,9 +502,9 @@ fn stamp_path(f Flow) string {
 // enough for inputs of hundreds of megabytes.
 fn (c &Context) digest(f Flow) string {
 	mut lines := []string{}
-	excluded := f.gives.map(os.norm_path(it))
+	excluded := excluded_keys(f)
 	for path in f.takes {
-		hash_path(path, excluded, mut lines)
+		hash_path(path, path_key(path), excluded, mut lines)
 	}
 	lines.sort()
 	mut flags := c.enabled.filter(fn [c, f] (id string) bool {
@@ -400,14 +516,15 @@ fn (c &Context) digest(f Flow) string {
 }
 
 // hash_path appends a line for `path`, and when it is a directory, for every
-// file, directory or link under it, to `lines`.
-fn hash_path(path string, excluded []string, mut lines []string) {
+// file, directory or link under it, to `lines`. `key` is the `path_key` of
+// `path`.
+fn hash_path(path string, key string, excluded []string, mut lines []string) {
 	if is_real_dir(path) {
 		lines << 'dir ${path}'
 		for entry in os.ls(path) or { []string{} } {
-			child := os.join_path(path, entry)
-			if os.norm_path(child) !in excluded {
-				hash_path(child, excluded, mut lines)
+			child_key := os.join_path(key, entry)
+			if child_key !in excluded {
+				hash_path(os.join_path(path, entry), child_key, excluded, mut lines)
 			}
 		}
 	} else if bytes := os.read_bytes(path) {
@@ -439,14 +556,14 @@ fn is_up_to_date(f Flow) bool {
 	if f.gives.len == 0 || f.takes.any(!os.exists(it)) || f.gives.any(!os.exists(it)) {
 		return false
 	}
-	excluded := f.gives.map(os.norm_path(it))
+	excluded := excluded_keys(f)
 	mut oldest_output := max_i64
 	for path in f.gives {
 		oldest_output = min_i64_of(oldest_output, oldest_mtime(path))
 	}
 	mut newest_input := i64(0)
 	for path in f.takes {
-		newest_input = max_i64_of(newest_input, newest_mtime(path, excluded))
+		newest_input = max_i64_of(newest_input, newest_mtime(path, path_key(path), excluded))
 	}
 	return newest_input < oldest_output
 }
@@ -470,13 +587,15 @@ fn is_real_dir(path string) bool {
 }
 
 // newest_mtime returns the latest mtime under `path`, leaving out `excluded`.
-fn newest_mtime(path string, excluded []string) i64 {
+// `key` is the `path_key` of `path`.
+fn newest_mtime(path string, key string, excluded []string) i64 {
 	mut newest := os.file_last_mod_unix(path)
 	if is_real_dir(path) {
 		for entry in os.ls(path) or { []string{} } {
-			child := os.join_path(path, entry)
-			if os.norm_path(child) !in excluded {
-				newest = max_i64_of(newest, newest_mtime(child, excluded))
+			child_key := os.join_path(key, entry)
+			if child_key !in excluded {
+				newest = max_i64_of(newest, newest_mtime(os.join_path(path, entry), child_key,
+					excluded))
 			}
 		}
 	}

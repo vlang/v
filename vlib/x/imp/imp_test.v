@@ -3,9 +3,6 @@ module imp
 import os
 import time
 
-// repo is the root of this module, linked into the end to end test.
-const repo = os.dir(@FILE)
-
 // noop is a flow body that does nothing.
 fn noop(_ Flow) ! {}
 
@@ -196,7 +193,7 @@ fn test_check_v_modules() {
 }
 
 // script is the build script of the end to end test.
-const script = "import imp
+const script = "import x.imp
 
 const target = 'app'
 
@@ -314,14 +311,12 @@ ctx.flow()
 
 // test_end_to_end replays the session at the bottom of spec.vsh.
 fn test_end_to_end() {
-	dir := sandbox('e2e')
-	mods := os.join_path(dir, 'mods')
-	os.mkdir_all(mods)!
-	os.symlink(repo, os.join_path(mods, 'imp'))!
+	sandbox('e2e')
 	os.mkdir_all('src')!
 	os.write_file('src/app.sh', '#!/bin/sh\necho running\n')!
 	os.write_file('build.vsh', script)!
-	res := os.exec([@VEXE, '-path', '${mods}|@vlib|@vmodules', '-o', 'build', 'build.vsh'])
+	// the installed module path, as in the README
+	res := os.exec([@VEXE, '-o', 'build', 'build.vsh'])
 	assert res.exit_code == 0, res.output
 	// compiling a .vsh also runs it, which has built the default flow
 	os.rm('app')!
@@ -416,4 +411,128 @@ fn test_end_to_end() {
 	bad := os.exec(['./build', 'nope'])
 	assert bad.exit_code == 1
 	assert bad.output.contains('unknown flow `nope`')
+}
+
+// test_failed_mtime_flow_reruns checks partial outputs of a failure are not
+// taken as up to date, although they are newer than the inputs.
+fn test_failed_mtime_flow_reruns() {
+	sandbox('failed_mtime')
+	os.write_file('src', '')!
+	set_mtime('src', -100)
+	os.write_file('poison', '')!
+	mut c := new()
+	c.add_flow(
+		id:    'build'
+		takes: ['src']
+		gives: ['out']
+		flow:  fn (_ Flow) ! {
+			if os.exists('poison') {
+				os.write_file('out', 'partial')!
+				return error('poisoned')
+			}
+			os.write_file('out', 'done')!
+		}
+	)
+	c.execute(['build']) or { assert err.msg().contains('poisoned') }
+	assert os.read_file('out')! == 'partial'
+	os.rm('poison')!
+	c.execute(['build'])!
+	assert os.read_file('out')! == 'done'
+	// success clears the mark, so the flow can be skipped again
+	assert is_up_to_date(c.find('build')!) && !os.exists(dirty_path(c.find('build')!))
+}
+
+// test_post_hook_waits_for_active_producer checks that a post hook needing the
+// flow that pulled in its owner runs after that flow, not before it.
+fn test_post_hook_waits_for_active_producer() {
+	sandbox('post_waits')
+	mut c := new()
+	c.add_flow(
+		id:    'gen'
+		gives: ['gen.txt']
+		check: .none
+		post:  [FlowDep{
+			id: 'audit'
+		}]
+		flow:  fn (_ Flow) ! {
+			os.write_file('gen.txt', 'gen')!
+		}
+	)
+	c.add_flow(
+		id:    'build'
+		takes: ['gen.txt']
+		gives: ['app.txt']
+		check: .none
+		flow:  fn (_ Flow) ! {
+			os.write_file('app.txt', os.read_file('gen.txt')! + ' app')!
+		}
+	)
+	c.add_flow(
+		id:    'audit'
+		takes: ['app.txt']
+		check: .none
+		flow:  fn (_ Flow) ! {
+			os.write_file('audit.txt', os.read_file('app.txt')!)!
+		}
+	)
+	c.execute(['build'])!
+	assert os.read_file('audit.txt')! == 'gen app'
+	os.rm('audit.txt')!
+	// requested on its own, the hook's producer is already done
+	c.execute(['gen'])!
+	assert os.read_file('audit.txt')! == 'gen app'
+}
+
+// test_absolute_and_relative_paths_match checks producers are found whatever
+// the spelling of a path.
+fn test_absolute_and_relative_paths_match() {
+	sandbox('abs_paths')
+	assert paths_overlap(os.abs_path('gen.txt'), 'gen.txt')
+	assert paths_overlap('./', os.abs_path('gen.txt'))
+	mut c := new()
+	c.add_flow(
+		id:    'gen'
+		gives: [os.abs_path('gen.txt')]
+		check: .none
+		flow:  fn (_ Flow) ! {
+			os.write_file('gen.txt', 'gen')!
+		}
+	)
+	c.add_flow(
+		id:    'build'
+		takes: ['gen.txt']
+		check: .none
+		flow:  fn (_ Flow) ! {
+			os.read_file('gen.txt')!
+		}
+	)
+	c.execute(['build'])!
+}
+
+// test_hash_flow_over_own_state_dir checks a hash flow taking the directory
+// holding `.imp` does not see its own stamp as a change.
+fn test_hash_flow_over_own_state_dir() {
+	dir := sandbox('hash_root')
+	runs := os.join_path(dir, 'runs')
+	os.mkdir_all('proj')!
+	os.chdir('proj')!
+	os.write_file('a', '1')!
+	mut c := new()
+	c.add_flow(
+		id:    'build'
+		takes: ['.']
+		gives: ['out']
+		check: .hash
+		flow:  fn [runs] (_ Flow) ! {
+			os.write_file(runs, (os.read_file(runs) or { '' }) + 'x')!
+			os.write_file('out', '')!
+		}
+	)
+	for _ in 0 .. 3 {
+		c.execute(['build'])!
+	}
+	assert os.read_file(runs)! == 'x'
+	os.write_file('a', '2')!
+	c.execute(['build'])!
+	assert os.read_file(runs)! == 'xx'
 }
