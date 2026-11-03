@@ -10,7 +10,8 @@ fn C.GC_allow_register_threads()
 @[c_extern; markused]
 fn C.GC_set_markers_count(u32)
 
-@[c_extern]
+// Shared-library constructors query this even without a V runtime initializer.
+@[c_extern; markused]
 fn C.GC_is_init_called() int
 
 @[c_extern]
