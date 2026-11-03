@@ -4491,6 +4491,14 @@ fn (mut t Transformer) clone_variant_subst(id flat.NodeId, var_name string, item
 	return t.clone_variant_subst_with_smartcast(id, var_name, item, '', u32(0), []string{})
 }
 
+// variant_guard_smartcast finds a refinement guaranteed by a true variant guard.
+fn (t &Transformer) variant_guard_smartcast(id flat.NodeId, var_name string, item VariantMeta) string {
+	if int(id) < 0 {
+		return ''
+	}
+	return t.variant_guard_smartcast_name(&t.a.nodes[int(id)], var_name, item.typ)
+}
+
 // variant_guard_smartcast_name finds a reflected variant guard that holds in the
 // then branch. Conjunctions preserve the guard; disjunctions do not.
 fn (t &Transformer) variant_guard_smartcast_name(cond &flat.Node, var_name string, variant_type u32) string {
@@ -4614,7 +4622,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 	if node.kind == .if_expr && node.children_count >= 2 {
 		cond := t.a.child_node(&node, 0)
 		if cond.kind in [.is_expr, .paren] || (cond.kind == .infix && cond.op == .logical_and) {
-			branch_smartcast = t.variant_guard_smartcast_name(cond, var_name, item.typ)
+			branch_smartcast = t.variant_guard_smartcast(t.a.child(&node, 0), var_name, item)
 		}
 	}
 	argument_types_source_ids := t.generic_clone_call_param_types(node, t.active_specialization_args.ids, return_context_id)
