@@ -6,6 +6,7 @@
 module handshake
 
 import encoding.hex
+import crypto.sha512
 
 const rfc8448_client_hello = '010000c00303cb34ecb1e78163ba1c38c6dacb196a6dffa21a8d9912ec18a2ef6283024dece7000006130113031302010000910000000b0009000006736572766572ff01000100000a00140012001d0017001800190100010101020103010400230000003300260024001d002099381de560e4bd43d23d8e435a7dbafeb3c06e51c13cae4d5413691e529aaf2c002b0003020304000d0020001e040305030603020308040805080604010501060102010402050206020202002d00020101001c00024001'
 const rfc8448_server_hello = '020000560303a6af06a4121860dc5e6e60249cd34c95930c8ac5cb1434dac155772ed3e2692800130100002e00330024001d0020c9828876112095fe66762bdbf7c672e156d6cc253b833df1dd69b1b04e751f0f002b00020304'
@@ -263,4 +264,15 @@ fn test_sha384_split_chain_matches_primitives() ! {
 	split_master := derive_master_secret(hash, manual_hs)!
 	assert split_master == manual_master
 	assert split_master.len == 48
+}
+
+// test_sha384_empty_transcript_hash_matches_digest pins the fixed empty-message
+// hash to the independent SHA-384 implementation, not the key-schedule helpers.
+fn test_sha384_empty_transcript_hash_matches_digest() {
+	expected := sha512.sum384([]u8{})
+	actual := empty_transcript_hash(.sha384)
+	assert expected.len == 48
+	assert hex.encode(expected) == '38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b'
+	assert actual.len == 48
+	assert actual == expected
 }
