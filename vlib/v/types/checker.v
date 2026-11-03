@@ -1457,9 +1457,6 @@ pub mut:
 	cross_target_prefs            &pref.Preferences = unsafe { nil }
 	suppress_dump_output          bool
 	diagnostic_files              map[string]bool
-	diag_file_memo_file           string
-	diag_file_memo_count          int
-	diag_file_memo_value          bool
 	sel_decl_memo_id              int = -1 // see selector_declared_value_type_at
 	sel_decl_memo_scope           voidptr
 	sel_decl_memo_names           int

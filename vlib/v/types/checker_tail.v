@@ -8805,21 +8805,6 @@ fn (tc &TypeChecker) should_diagnose_notice(id flat.NodeId) bool {
 	return tc.should_diagnose_with_dependencies(id, false)
 }
 
-// cur_file_is_diagnostic is `tc.cur_file in tc.diagnostic_files`, remembered
-// for the current file: the question is asked for every diagnostic site of a
-// body, and the file changes rarely.
-fn (tc &TypeChecker) cur_file_is_diagnostic() bool {
-	if tc.diag_file_memo_count == tc.diagnostic_files.len && tc.cur_file == tc.diag_file_memo_file {
-		return tc.diag_file_memo_value
-	}
-	value := tc.cur_file in tc.diagnostic_files
-	mut wtc := unsafe { tc }
-	wtc.diag_file_memo_file = tc.cur_file
-	wtc.diag_file_memo_count = tc.diagnostic_files.len
-	wtc.diag_file_memo_value = value
-	return value
-}
-
 fn (tc &TypeChecker) should_diagnose_with_dependencies(id flat.NodeId, include_dependencies bool) bool {
 	if tc.valid_diagnostic_fast {
 		return false
@@ -8854,7 +8839,7 @@ fn (tc &TypeChecker) should_diagnose_with_dependencies(id flat.NodeId, include_d
 	if tc.diagnostic_files.len == 0 {
 		return true
 	}
-	if tc.cur_file_is_diagnostic() {
+	if tc.cur_file in tc.diagnostic_files {
 		return true
 	}
 	// Dependency code kept by a call from the selected files must not reach
