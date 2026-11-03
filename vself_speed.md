@@ -4,6 +4,44 @@ Every compiler fix must preserve or improve self-compilation efficiency. Agents 
 retired instructions before and after compiler changes and resolve regressions before merging.
 Keep correctness tests and generated-output checks alongside performance measurements.
 
+## Profile-driven follow-up, 2026-11-03 (round 2)
+
+The same self-host command retires **3.39% fewer instructions** at the median of ten alternating
+pairs against master `0fe9594303f1a7e9c6d3d6bf2ab6a4ae3e6b1e4c` (which includes the previous
+round); the requested 5% was not reached. The median paired difference is `-1.704 G`, **2/10 pairs
+regress** (both load spikes in a candidate run), the minima are 44.944 G against 43.282 G, and the
+serial (`VJOBS=1`) run goes from 39.96 G to 38.5 G (-3.9%).
+
+| Median metric | Before | After |
+| --- | ---: | ---: |
+| Retired instructions | 45,394,000,000 | 43,857,000,000 |
+| Peak memory footprint, MiB | 1,022 | 1,031 |
+| Elapsed time, s | 1.33 | 1.25 |
+
+This round was driven by `v -profile`: a production compiler built with `-profile` compiled the
+fixed input serially and reported exact call counts per function (3.28 G calls). The counts, not
+the instrumented times, chose the work: 83 M map operations, 131 M string comparisons, 30 M
+allocations, 130 M bounds-checked array reads, 52 M type-registry entry reads. The changes read
+spelling shapes and syntax entries through dense per-id tables, check accessor bounds with one
+comparison, copy into fresh string and array storage without pointer guards, memoize the callee's
+declared value type and per-name declaration facts, and skip repeated promotion, reachability,
+smartcast and resolution lookups in the checker, transformer and C generator.
+
+Generated C is identical for the self-host build and for 114 example programs; the self-hosted
+compiler builds and runs `hello_world`. Both compilers use the user's recipe, the same fixed input
+tree, one warmup per role and alternating AB/BA order under host load 16-18; the parsed inventory
+is the same 458 `.v` files in both roles.
+
+Left for a next round, measured but not changed: after transform the AST has 3.57 M nodes while
+the C generator's trusted type cache covers the first 1.88 M, so every transform-created node is
+re-resolved from scratch on each query (489k slow resolutions from the C generator, about
+1.3 G of `node_type_uncached` in the transformer); the checker's existing per-function resolve
+memo could serve them, but the C generator changes scope, binding and smartcast state at 51
+sites that would each have to advance the memo's epoch. Also: the transformer's node-type memo
+recomputes 705k identical answers after conservative invalidation, `call_info` makes about seven
+lookups per call, the reachability walk costs ~1.2 G, markused's three per-body walks ~1.9 G,
+and the parallel parse merge ~1.1 G.
+
 ## Memory churn and per-area follow-up, 2026-11-03
 
 The user's self-host command, `cd vlib/v && ../../v -gc none -prealloc -prod -o v3 v.v &&
