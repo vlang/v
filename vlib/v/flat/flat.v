@@ -258,6 +258,9 @@ __global g_node_payload_lock u32
 __global g_canonical_comptime_payload NodePayload
 // Empty borrowed type lists share a typed descriptor without rebuilding it per lookup.
 __global g_empty_source_type_ids []u32 = []u32{}
+// Accessors of nodes without a payload share this empty list instead of
+// constructing one per call; readers never write through a zero-capacity view.
+__global g_empty_payload_texts []string = []string{}
 
 // node_payload registers an uncommon node payload and returns its id, or 0
 // for an empty list.
@@ -639,7 +642,7 @@ pub fn (n &Node) type_text_id() u32 {
 @[inline]
 pub fn (n &Node) generic_params() []string {
 	if n.payload == 0 {
-		return []string{}
+		return g_empty_payload_texts
 	}
 	return node_payload_at(n.payload).generic_params
 }
@@ -649,7 +652,7 @@ pub fn (n &Node) generic_params() []string {
 @[inline]
 pub fn (n &Node) generic_constraints() []string {
 	if n.payload == 0 {
-		return []string{}
+		return g_empty_payload_texts
 	}
 	return node_payload_at(n.payload).generic_constraints.names()
 }
@@ -694,7 +697,7 @@ pub fn (mut n Node) set_enum_backing_type_id(type_id u32) {
 // The immutable payload list is borrowed for read-only use.
 @[inline]
 pub fn (n &Node) debugger_value_type_ids() []u32 {
-	if n.payload == 0 || n.kind != .debugger_stmt { return []u32{} }
+	if n.payload == 0 || n.kind != .debugger_stmt { return g_empty_source_type_ids }
 	return node_payload_at(n.payload).debugger_value_types.ids
 }
 
@@ -1374,6 +1377,9 @@ pub fn (mut a FlatAst) intern_node_texts_at(indexes []int) {
 	}
 }
 
+// The callers index live nodes (a parsed range, or recorded merge misses), so
+// the slot needs no bounds check; the param loop is indexed for the same reason.
+@[direct_array_access]
 fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs [4096]voidptr, mut cache_vals [4096]string, mut type_cache_ptrs [4096]voidptr, mut type_cache_vals [4096]string, mut type_cache_ids [4096]u16) {
 	// Interning grows the text tables, never the node array, so this slot stays valid.
 	mut node := &a.nodes[idx]
@@ -1388,8 +1394,8 @@ fn (mut a FlatAst) intern_node_texts_one(idx int, mut cache_ptrs [4096]voidptr, 
 		// Always rebuild the payload: the params array itself may live in a
 		// stage arena even when every param string is already canonical.
 		mut canonical_params := []string{cap: params.len}
-		for item in params {
-			canonical_params << a.intern_text_ptr_cached(item, mut cache_ptrs, mut cache_vals)
+		for index in 0 .. params.len {
+			canonical_params << a.intern_text_ptr_cached(params[index], mut cache_ptrs, mut cache_vals)
 		}
 		node.payload = node_payload_with_types(canonical_params, payload.generic_constraints.clone(), payload.enum_backing_type, payload.debugger_value_types.clone(), payload.call_type_args.clone(), payload.fn_value_type, payload.generated_variant_type, payload.mut_optional_arg_view_type, payload.attribute_kinds)
 	}
