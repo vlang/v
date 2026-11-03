@@ -7,6 +7,8 @@ const shared_flag_tests_dir = os.dir(@FILE)
 const shared_flag_v3_dir = os.dir(shared_flag_tests_dir)
 const shared_flag_v3_src = os.join_path(shared_flag_v3_dir, 'v.v')
 
+type SharedFlagGcParallelFn = fn () int
+
 // test_shared_flag_builds_no_main_module validates this v3 regression case.
 fn test_shared_flag_builds_no_main_module() {
 	v3_bin := os.join_path(os.vtmp_dir(), 'v3_shared_flag_test_${os.getpid()}')
@@ -50,10 +52,20 @@ pub fn answer() int {
 	return 42
 }
 ")!
+	os.write_file(os.join_path(tmp_dir, 'gc_probe.c.v'), "module shared_flag_module
+
+@[c_extern]
+fn C.GC_get_parallel() int
+
+@[export: 'gc_parallel']
+pub fn gc_parallel() int {
+	return C.GC_get_parallel()
+}
+")!
 
 	out_c := os.join_path(tmp_dir, 'shared_flag_module.c')
 	compile_c :=
-		os.exec([v3_bin, '-shared', '-o', '${out_c}', tmp_dir])
+		os.exec([v3_bin, '-gc', 'boehm', '-shared', '-o', '${out_c}', tmp_dir])
 	assert compile_c.exit_code == 0, compile_c.output
 	generated_c := os.read_file(out_c)!
 	assert generated_c.contains('void _vcleanup(void) {'), generated_c
@@ -67,7 +79,8 @@ pub fn answer() int {
 	coverage_dir := os.join_path(tmp_dir, 'coverage')
 	coverage_c := os.join_path(tmp_dir, 'shared_flag_module_coverage.c')
 	compile_coverage_c :=
-		os.exec([v3_bin, '-coverage', coverage_dir, '-shared', '-o', '${coverage_c}', tmp_dir])
+		os.exec([v3_bin, '-gc', 'boehm', '-coverage', coverage_dir, '-shared', '-o', '${coverage_c}',
+			tmp_dir])
 	assert compile_coverage_c.exit_code == 0, compile_coverage_c.output
 	generated_coverage_c := os.read_file(coverage_c)!
 	assert generated_coverage_c.contains('void _vcleanup_caller(void) {\n\tstatic bool once = false;\n\tif (once) { return; }\n\tonce = true;\n\t_vcleanup();\n\tv3_write_coverage_stats();\n}'), generated_coverage_c
@@ -80,7 +93,8 @@ pub fn answer() int {
 	}
 
 	compile :=
-		os.exec([v3_bin, '-v', '-coverage', coverage_dir, '-shared', '-o', '${out_lib}', tmp_dir])
+		os.exec([v3_bin, '-gc', 'boehm', '-v', '-coverage', coverage_dir, '-shared', '-o',
+			'${out_lib}', tmp_dir])
 	assert compile.exit_code == 0, compile.output
 	// `-v` is what makes the driver print the resolved C command line; without it the
 	// output is empty and the assertions below have nothing to inspect.
@@ -106,6 +120,13 @@ pub fn answer() int {
 		handle := dl.open(out_path, dl.rtld_now)
 		assert handle != unsafe { nil }, dl.dlerror()
 		assert os.read_file(lifecycle_path)! == 'init\n'
+		$if linux {
+			parallel_symbol := dl.sym(handle, 'gc_parallel')
+			assert parallel_symbol != unsafe { nil }, dl.dlerror()
+			// The private collector must not leave marker threads in the unloaded image.
+			parallel := unsafe { SharedFlagGcParallelFn(parallel_symbol) }
+			assert parallel() == 0
+		}
 		assert dl.close(handle), dl.dlerror()
 		// dyld does not unload an image with thread-local variables or Objective-C image
 		// info, and a V shared library has both (`MH_HAS_TLV_DESCRIPTORS`), so on macOS
