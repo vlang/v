@@ -6,6 +6,7 @@ module builtin
 #include "@VEXEROOT/vlib/builtin/gc_stack_roots_vgc_test.h"
 
 fn C.vgc_test_visit_stack_root(object voidptr, visit fn (uint, uint) int) int
+fn C.vgc_test_visit_register_root(object voidptr, visit fn (uint, uint) int) int
 
 __global vgc_test_stack_root = unsafe { nil }
 
@@ -48,6 +49,14 @@ fn test_live_local_in_asan_fake_frame_is_a_root() {
 	$if vgc ? {
 		vgc_test_stack_root = vgc_malloc_noscan(200)
 		assert C.vgc_test_visit_stack_root(vgc_test_stack_root, vgc_test_mark_stack_window) == 1
+		vgc_test_stack_root = unsafe { nil }
+	}
+}
+
+fn test_saved_registers_are_roots_under_memory_sanitizer() {
+	$if vgc ?&& linux && amd64 && (gcc || clang) {
+		vgc_test_stack_root = vgc_malloc_noscan(200)
+		assert C.vgc_test_visit_register_root(vgc_test_stack_root, vgc_test_mark_stack_window) == 1
 		vgc_test_stack_root = unsafe { nil }
 	}
 }
