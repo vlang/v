@@ -109,9 +109,13 @@ jobs:
               throw "pkg-config regression failed for $test with exit code $LASTEXITCODE"
             }
           }
+      - name: Local Windows CI runner regressions
+        id: local_windows_ci_runner_regressions
+        if: ${{ success() && !cancelled() && steps.pkg_config_regressions_gcc.outcome == 'success' }}
+        run: .\v.exe -silent test ci/windows/
       - name: tccbin Windows cmd-wrapper regressions (GCC)
         id: tccbin_windows_cmd_wrapper_regressions_gcc
-        if: ${{ success() && !cancelled() && steps.pkg_config_regressions_gcc.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.local_windows_ci_runner_regressions.outcome == 'success' }}
         run: |
           # Only the *_on_windows tests run here: the other tests in these files use the POSIX
           # durable runner. -no-retry-compilation stops a C compile error from silently rerunning

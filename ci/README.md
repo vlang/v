@@ -1,5 +1,39 @@
 # Local CI runners
 
+## Running Windows CI on an installed VM
+
+From a built Windows checkout with PowerShell 7.3 or newer (`pwsh`) and the workflow's
+dependencies installed, run a compiler's validation sequence or a single step:
+
+```powershell
+./v.exe run ci/windows_ci.vsh tcc list
+./v.exe run ci/windows_ci.vsh tcc self_tests
+./v.exe run ci/windows_ci.vsh tcc ci
+```
+
+Use `gcc` or `msvc` in place of `tcc` for the other compiler lanes. MSVC requires
+a developer shell with `cl.exe` and the Windows SDK on PATH. The runner reads each
+step's commands and environment directly from `.github/workflows/windows_ci_*.yml`.
+It uses this checkout's compiler, disables compatibility fallback, sets fail-fast,
+and preserves an explicitly set `VJOBS` for smaller VMs. It also runs the workflow's
+private cache setup and imports `GITHUB_ENV` and `GITHUB_PATH` changes between steps.
+
+The sequence starts after bootstrap and dependency provisioning. Install those
+prerequisites before running it. Hosted MSYS2 graphics steps and the separate
+multiwindow jobs remain in GitHub Actions. Use `list` to see the local selection;
+it is also available on other operating systems. A failed step stops the sequence.
+Repeat its step ID to retry it. To focus a self-test run on an existing failure:
+
+```powershell
+$env:VTEST_ONLY = 'goroutines_windows_test.v,legacy_json_edge_cases_test.v'
+./v.exe run ci/windows_ci.vsh tcc self_tests
+Remove-Item Env:VTEST_ONLY
+```
+
+Test the runner and workflow selection with `./v.exe test ci/windows/`. On Windows,
+this executes real PowerShell subprocesses to check compiler selection, environment
+propagation, quoting, and failure handling.
+
 ## Resuming the Linux CI jobs
 
 From the repository root of a built checkout on Linux, run:

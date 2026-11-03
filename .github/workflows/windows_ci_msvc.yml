@@ -153,9 +153,13 @@ jobs:
               throw "pkg-config regression failed for $test with exit code $LASTEXITCODE"
             }
           }
+      - name: Local Windows CI runner regressions
+        id: local_windows_ci_runner_regressions
+        if: ${{ success() && !cancelled() && steps.pkg_config_regressions_msvc_dynamic_isolation.outcome == 'success' }}
+        run: .\v.exe -silent test ci/windows/
       - name: Legacy gg import multiwindow isolation
         id: legacy_gg_import_multiwindow_isolation
-        if: ${{ success() && !cancelled() && steps.pkg_config_regressions_msvc_dynamic_isolation.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.local_windows_ci_runner_regressions.outcome == 'success' }}
         run: v -cc msvc test vlib/gg/legacy_import_multiwindow_isolation_test.v
       - name: Prepare multiwindow Job Object watchdog
         id: prepare_multiwindow_job_object_watchdog
