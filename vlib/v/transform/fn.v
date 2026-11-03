@@ -14338,7 +14338,18 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	}
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
-	t.mark_local_closure_cleanup_decls(lifted_body)
+	outer_locals_in_scope := t.fn_body_locals_in_scope
+	t.fn_body_locals_in_scope = false
+	has_ordinary_escape_proof := t.scan_escaping_amp_ptrs(lifted_body)
+	t.mark_local_closure_cleanup_decls_with_proof(lifted_body, has_ordinary_escape_proof)
+	for body_id in body_ids {
+		t.collect_mut_capture_sources(body_id)
+	}
+	t.clear_node_type_memo()
+	if !isnil(t.selector_type_cache) {
+		t.selector_type_cache.generation++
+	}
+	t.fn_body_locals_in_scope = true
 	mut new_body := []flat.NodeId{}
 	if capture_is_ref_param.len == 0 && capture_mut_pointer_params.len == 0 {
 		new_body = t.transform_stmts(lifted_body)
@@ -14360,6 +14371,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		new_body << t.transform_stmts(lifted_body[synthetic_decl_count..])
 	}
 	t.pending_stmts = outer_pending
+	t.fn_body_locals_in_scope = outer_locals_in_scope
 	t.restore_function_local_state(saved_locals)
 	t.cur_fn_name = saved_fn_name
 	t.set_cur_fn_ret_type(saved_ret_type_source_id)
