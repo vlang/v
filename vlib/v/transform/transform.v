@@ -31344,7 +31344,18 @@ fn (t &Transformer) resolve_nonident_expr_type(id flat.NodeId) u32 {
 				flat.source_type_rune
 			}
 		}
-		.string_literal, .string_interp {
+		.string_literal {
+			// Deferred $zero/$new markers carry a type operand, not string data.
+			// In particular, a specialized $new(sum) is already a sum pointer.
+			if node.children_count == 1
+				&& node.value_text() in ['__v3_comptime_zero', '__v3_comptime_new'] {
+				if marker_type := t.checker_expr_type_name(id) {
+					return marker_type
+				}
+			}
+			return flat.source_type_string
+		}
+		.string_interp {
 			return flat.source_type_string
 		}
 		.int_literal {
