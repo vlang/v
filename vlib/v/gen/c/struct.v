@@ -2815,7 +2815,11 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 				g.write(g.sum_initializer_suffix(false))
 				return
 			}
-			g.gen_default_value_for_type(variant_type)
+			if variant_type is types.ArrayFixed {
+				g.write(g.empty_fixed_array_initializer_string(variant_type))
+			} else {
+				g.gen_default_value_for_type(variant_type)
+			}
 			g.write(g.sum_initializer_suffix(false))
 			return
 		}
