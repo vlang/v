@@ -146,3 +146,70 @@ fn test_decode_in_buffer_bytes() {
 		assert src_dec_buf == out_buf[..n]
 	}
 }
+
+fn test_decode_strict_accepts_canonical_base64() {
+	for p in pairs {
+		assert base64.decode_strict(p.encoded)! == p.decoded.bytes()
+	}
+	for n in 0 .. 64 {
+		data := []u8{len: n, init: u8(index * 37 + 11)}
+		assert base64.decode_strict(base64.encode(data))! == data
+	}
+}
+
+fn test_decode_strict_reports_the_offset_of_invalid_input() {
+	cases := {
+		'!!!!':         0
+		'QUJ':          3
+		'QUJDR':        5
+		'Zm9v\n':       4
+		'Zm9 ':         3
+		'Zm9v\r\nZm9v': 4
+		'ab-_':         2
+		'QQ=A':         3
+		'=QQQ':         0
+		'====':         0
+		'Q===':         1
+		'Zm9vYmFy===':  8
+		'QQQ==':        4
+		'QQ=':          3
+		'Zh==':         1
+		'Zm9=':         2
+		'Zm\xc3\xa9':   2
+		'Zh==A':        1
+		'Zh=A':         1
+	}
+	for input, offset in cases {
+		if decoded := base64.decode_strict(input) {
+			assert false, '`${input}` decoded as ${decoded}'
+		} else {
+			if err is base64.CorruptInputError {
+				assert err.offset == offset, '`${input}`'
+				assert err.msg() == 'base64: invalid input at byte ${offset}'
+			} else {
+				assert false, '`${input}`: ${err}'
+			}
+		}
+	}
+}
+
+fn test_decode_strict_rejects_what_decode_accepts_silently() {
+	assert base64.decode('!!!!') == [u8(0), 0, 0]
+	assert base64.decode('Zh==') == 'f'.bytes()
+	assert base64.decode_strict('!!!!') or { []u8{} } == []u8{}
+	assert base64.decode_strict('Zh==') or { []u8{} } == []u8{}
+}
+
+fn test_decode_strict_accepts_a_padded_group_only_if_it_is_canonical() {
+	alphabet := 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+	for c in alphabet {
+		for group in ['Q${c.ascii_str()}==', 'QQ${c.ascii_str()}='] {
+			canonical := base64.encode(base64.decode(group)) == group
+			if _ := base64.decode_strict(group) {
+				assert canonical, group
+			} else {
+				assert !canonical, group
+			}
+		}
+	}
+}
