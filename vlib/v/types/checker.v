@@ -3816,8 +3816,12 @@ fn (tc &TypeChecker) typeof_operand_is_runtime(id flat.NodeId, node flat.Node) b
 	parent_id := tc.direct_parent_id(id)
 	if tc.valid_node_id(parent_id) {
 		parent := tc.a.node(parent_id)
+		// Reflection members erase the operand; string methods and fields on
+		// a runtime sum-type typeof result must still evaluate it.
 		if parent.kind == .selector && parent.children_count > 0
-			&& tc.a.child(parent, 0) == id {
+			&& tc.a.child(parent, 0) == id && parent.value in ['name', 'idx', 'indirections', 'typ',
+			'unaliased_typ', 'payload_type', 'pointee_type', 'element_type', 'key_type', 'value_type',
+			'variant_types'] {
 			return false
 		}
 	}

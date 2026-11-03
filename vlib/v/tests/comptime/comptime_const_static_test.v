@@ -1391,3 +1391,143 @@ fn test_comptime_postfix_indices_preserve_explicit_storage() {
 	assert computed_postfix_index_storage == [1, 1, 1, 1, 9, 1]!
 	assert computed_postfix_index_storage == const_postfix_index_storage()
 }
+
+const computed_fixed_len_direct = fixed_len_direct()
+const computed_fixed_len_stored = fixed_len_stored()
+const computed_fixed_len_literals = fixed_len_literals()
+const computed_fixed_len_shift = fixed_len_shift()
+const computed_fixed_len_erased = fixed_len_erased()
+const computed_fixed_len_materialized = fixed_len_materialized()
+const computed_fixed_len_call_base = fixed_len_call_base()
+const computed_fixed_len_string_effects = fixed_len_string_effects()
+const reflected_comptime_seed_name = typeof(type_only_seed()).name
+
+@[comptime]
+fn fixed_len_direct() int {
+	a := [2]u8{}
+	b := u32(0xffffffff)
+	return a.len + b
+}
+
+@[comptime]
+fn fixed_len_stored() int {
+	a := [2]u8{}
+	length := a.len
+	b := u32(0xffffffff)
+	return length + b
+}
+
+@[comptime]
+fn fixed_len_literals() int {
+	a := [2]u8{}
+	b := u32(0xffffffff)
+	return (a.len + a.len) + b
+}
+
+@[comptime]
+fn fixed_len_shift() bool {
+	a := [63]u8{}
+	return (1 << a.len) > 0
+}
+
+@[comptime]
+fn fixed_len_erased() int {
+	mut n := 0
+	length := ([if true {
+		n += 1
+		n
+	} else {
+		0
+	}]!).len
+	return n + length
+}
+
+@[comptime]
+fn fixed_len_materialized() int {
+	mut n := 0
+	a := [if true {
+		n += 1
+		n
+	} else {
+		0
+	}]!
+	return n + a.len
+}
+
+@[comptime]
+fn fixed_len_array_base(value int) [1]int {
+	assert false, 'fixed-array length must not call its base'
+	return [value]!
+}
+
+@[comptime]
+fn fixed_len_call_base() int {
+	mut n := 0
+	length := fixed_len_array_base(if true {
+		n += 1
+		n
+	} else {
+		0
+	}).len
+	return n + length
+}
+
+@[comptime]
+fn fixed_len_string_base(value int) string {
+	return if value > 0 { 'x' } else { 'y' }
+}
+
+@[comptime]
+fn fixed_len_string_effects() int {
+	mut n := 0
+	length := fixed_len_string_base(if true {
+		n += 1
+		n
+	} else {
+		0
+	}).len
+	return n + length
+}
+
+@[comptime]
+fn type_only_seed() int {
+	assert false, 'typeof must not execute its operand'
+	return 7
+}
+
+type FixedLenPair = [2]u8
+
+const computed_fixed_len_alias = fixed_len_alias_stored()
+
+@[comptime]
+fn fixed_len_alias_stored() int {
+	a := FixedLenPair([u8(0), u8(0)]!)
+	b := u32(0xffffffff)
+	return (a.len + 2) + b
+}
+
+fn test_comptime_fixed_array_lengths_match_lowering() {
+	assert computed_fixed_len_direct == 1
+	assert computed_fixed_len_direct == fixed_len_direct()
+	assert computed_fixed_len_stored == int(i64(4294967297))
+	assert computed_fixed_len_stored == fixed_len_stored()
+	assert computed_fixed_len_literals == int(i64(4294967299))
+	assert computed_fixed_len_literals == fixed_len_literals()
+	assert computed_fixed_len_shift
+	assert computed_fixed_len_shift == fixed_len_shift()
+	assert computed_fixed_len_erased == 1
+	assert computed_fixed_len_erased == fixed_len_erased()
+	assert computed_fixed_len_materialized == 2
+	assert computed_fixed_len_materialized == fixed_len_materialized()
+	assert computed_fixed_len_call_base == 1
+	assert computed_fixed_len_call_base == fixed_len_call_base()
+	assert computed_fixed_len_string_effects == 2
+	assert computed_fixed_len_string_effects == fixed_len_string_effects()
+	assert computed_fixed_len_alias == int(i64(4294967299))
+	assert computed_fixed_len_alias == fixed_len_alias_stored()
+}
+
+fn test_typeof_comptime_operand_remains_unevaluated() {
+	assert reflected_comptime_seed_name == 'int'
+	assert typeof(type_only_seed()).name == reflected_comptime_seed_name
+}

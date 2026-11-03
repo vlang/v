@@ -560,7 +560,7 @@ fn test_comptime_const_translated_declaration_contexts_and_native_controls() ! {
 			'const':  'return int(helper.value)'
 			'cached': 'return int(helper.value)'
 			'struct': 'return helper.Box{}.value'
-			'alias':  'return helper.Pair([u8(1), 2]!).len'
+			'alias':  'pair := helper.Pair([u8(1), 2]!) return pair.len'
 			'unused': 'return if false { helper.negate(250) } else { 7 }'
 		} {
 			os.write_file(main, 'module main\nimport helper\n@[comptime]\nfn outer() int { ${body} }\nconst result = outer()\nfn main() { _ = result }')!
@@ -1812,6 +1812,205 @@ fn test_comptime_const_lvalue_staging_keeps_unstaged_and_explicit_storage() {
 			tc := comptime_const_checker(source + 'fn main() { _ = result }')
 			assert tc.errors.len == 0, '${body}, constant_first=${constant_first}: ${tc.errors}'
 			assert tc.comptime_const_values['result']!.integer == expected, '${body}, constant_first=${constant_first}'
+		}
+	}
+}
+
+fn test_comptime_const_fixed_lengths_keep_c_literal_and_storage_types() ! {
+	original_bits := platform_int_bits()
+	defer { set_platform_int_bits(original_bits) }
+	path := os.join_path(os.vtmp_dir(), 'comptime_const_length_width_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	declarations := 'type Pair = [2]u8\n@[comptime]\nfn pair() Pair { assert false return Pair([u8(0), u8(0)]!) }\n'
+	for bits in [32, 64] {
+		set_platform_int_bits(bits)
+		wide_stored := if bits == 64 { i64(4294967297) } else { i64(1) }
+		wide_literals := if bits == 64 { i64(4294967299) } else { i64(3) }
+		mut cases := {
+			'a := [2]u8{} b := u32(0xffffffff) return a.len + b':                     i64(1)
+			'a := [2]u8{} length := a.len b := u32(0xffffffff) return length + b':    wide_stored
+			'a := [2]u8{} b := u32(0xffffffff) return int(a.len) + b':                wide_stored
+			'a := [2]u8{} b := u32(0xffffffff) return (a.len + a.len) + b':           wide_literals
+			'a := [63]u8{} if (1 << a.len) > 0 { return 1 } return 0':                i64(1)
+			'a := [2]u8{} if (a.len << 31) > 0 { return 1 } return 0':                i64(1)
+			'a := Pair([u8(0), u8(0)]!) b := u32(0xffffffff) return (a.len + 2) + b': wide_literals
+			'b := u32(0xffffffff) return (pair().len + 2) + b':                       wide_literals
+		}
+		if bits == 64 {
+			// The existing bound parser clamps decimal dimensions to i32 max.
+			// Lowering emits that literal, and the erased array is never allocated.
+			cases['b := u32(0xffffffff) return [2147483648]u8{}.len + b'] = i64(2147483646)
+		}
+		for body, expected in cases {
+			for constant_first in [false, true] {
+				helper := '@[comptime]\nfn compute() int { ${body} }\n'
+				constant := 'const result = compute()\n'
+				source := declarations + if constant_first {
+					constant + helper
+				} else {
+					helper + constant
+				}
+				os.write_file(path, source + 'fn main() { _ = result }')!
+				mut p := parser.Parser.new(pref.new_preferences())
+				a := p.parse_file(path)
+				assert p.diagnostics.len == 0, p.diagnostics.str()
+				mut tc := TypeChecker.new(a)
+				tc.collect(a)
+				for checked in [false, true] {
+					if checked { tc.check_semantics() }
+					assert tc.errors.len == 0, '${body}, bits=${bits}, constant_first=${constant_first}, checked=${checked}: ${tc.errors}'
+					value := tc.eval_comptime_const(tc.const_exprs['result']!)!
+					assert value.integer == expected, '${body}, bits=${bits}, constant_first=${constant_first}, checked=${checked}: ${value.integer}'
+					assert value.typ.source_type_id() == flat.source_type_int
+				}
+			}
+		}
+	}
+}
+
+fn test_comptime_const_fixed_length_bases_are_not_executed() ! {
+	path := os.join_path(os.vtmp_dir(), 'comptime_const_length_effects_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	declarations := 'const shape_n = 2\nconst table = [u8(0), u8(0)]!\nstruct LengthBox { len int }\nstruct Sized { items [shape_n]u8 }\n@[comptime]\nfn array_trap(value int) [1]int { assert false return [value]! }\n@[comptime]\nfn string_base(value int) string { return if value > 0 { "x" } else { "y" } }\n@[comptime]\nfn box_base(value int) LengthBox { return LengthBox{len: value} }\n@[comptime]\nfn sized_trap() [shape_n]u8 { assert false return [shape_n]u8{} }\n'
+	for body, expected in {
+		'mut n := 0 length := ([if true { n += 1 n } else { 0 }]!).len return n + length':         1
+		'mut n := 0 a := [if true { n += 1 n } else { 0 }]! return n + a.len':                     2
+		'mut n := 0 length := array_trap(if true { n += 1 n } else { 0 }).len return n + length':  1
+		'mut n := 0 length := string_base(if true { n += 1 n } else { 0 }).len return n + length': 2
+		'mut n := 0 length := box_base(if true { n += 1 n } else { 0 }).len return n + length':    2
+		'shape_n := 9 return sized_trap().len':                                                    2
+		'shape_n := 9 return Sized{}.items.len':                                                   2
+		'return table.len':                                                                        2
+	} {
+		for constant_first in [false, true] {
+			helper := '@[comptime]\nfn compute() int { ${body} }\n'
+			constant := 'const result = compute()\n'
+			source := declarations + if constant_first {
+				constant + helper
+			} else {
+				helper + constant
+			}
+			os.write_file(path, source + 'fn main() { _ = result }')!
+			mut p := parser.Parser.new(pref.new_preferences())
+			a := p.parse_file(path)
+			assert p.diagnostics.len == 0, p.diagnostics.str()
+			mut tc := TypeChecker.new(a)
+			tc.collect(a)
+			for checked in [false, true] {
+				if checked { tc.check_semantics() }
+				assert tc.errors.len == 0, '${body}, constant_first=${constant_first}, checked=${checked}: ${tc.errors}'
+				value := tc.eval_comptime_const(tc.const_exprs['result']!)!
+				assert value.integer == expected, '${body}, constant_first=${constant_first}, checked=${checked}: ${value.integer}'
+			}
+		}
+	}
+}
+
+fn test_comptime_const_length_rejects_unknown_and_unlowered_alias_bases() ! {
+	path := os.join_path(os.vtmp_dir(), 'comptime_const_length_unsupported_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	declarations := 'type Pair = [2]u8\nstruct AliasBox { items Pair }\ntype Grid = [1][2]int\nfn (a Grid) [] (i int) [3]int { _ = i return [3]int{} }\n@[comptime]\nfn take(a int, b int) int { _ = b return a }\n'
+	alias_diagnostic := 'fixed-array alias length lowering is not supported; store the array in a local first'
+	for body, diagnostic in {
+		'return Pair([u8(0), u8(0)]!).len':                                 alias_diagnostic
+		'b := u32(0xffffffff) return (Pair([u8(0), u8(0)]!).len + 2) + b':  alias_diagnostic
+		'box := AliasBox{} return box.items.len':                           alias_diagnostic
+		'return (if true { [1]int{} } else { [1]int{} }).len':              'cannot determine length operand storage without evaluation'
+		'grid := Grid([[int(0), int(0)]!]!) return grid[0].len':            'overloaded indexing'
+		'return take(u8(250) + u8(10), ([if true { 1 } else { 0 }]!).len)': 'integer operand staging'
+	} {
+		for constant_first in [false, true] {
+			helper := '@[comptime]\nfn compute() int { ${body} }\n'
+			constant := 'const result = compute()\n'
+			source := declarations + if constant_first {
+				constant + helper
+			} else {
+				helper + constant
+			}
+			os.write_file(path, source + 'fn main() { _ = result }')!
+			mut p := parser.Parser.new(pref.new_preferences())
+			a := p.parse_file(path)
+			assert p.diagnostics.len == 0, p.diagnostics.str()
+			mut tc := TypeChecker.new(a)
+			tc.collect(a)
+			for checked in [false, true] {
+				if checked {
+					tc.check_semantics()
+					assert tc.errors.any(it.msg.contains('cannot evaluate const `result`') && it.msg.contains(diagnostic)), '${body}, constant_first=${constant_first}: ${tc.errors}'
+				}
+				if value := tc.eval_comptime_const(tc.const_exprs['result']!) {
+					assert false, '${body}, constant_first=${constant_first}, checked=${checked}: unexpectedly evaluated ${value.integer}'
+				} else {
+					assert err.msg().contains(diagnostic), '${body}, constant_first=${constant_first}, checked=${checked}: ${err}'
+				}
+				assert 'result' !in tc.comptime_const_values
+			}
+		}
+	}
+}
+
+fn test_comptime_const_requirement_scan_ignores_type_only_operands() ! {
+	path := os.join_path(os.vtmp_dir(), 'comptime_const_type_only_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	types := 'type Choice = int | string\n'
+	helpers := '@[comptime]\nfn seed() int { assert false return 7 }\n@[comptime]\nfn pick() Choice { assert false return 1 }\n@[comptime]\nfn pick_ptr() &Choice { assert false return unsafe { nil } }\n'
+	for initializer in [
+		'typeof(seed()).name',
+		'typeof(seed()).idx',
+		'typeof(seed()).indirections',
+		'typeof(pick()).name',
+		'typeof(pick()).idx',
+		'typeof(pick_ptr()).name',
+		'typeof(pick_ptr()).idx',
+	] {
+		for constant_first in [false, true] {
+			constant := 'const label = ${initializer}\n'
+			source := types + if constant_first { constant + helpers } else { helpers + constant }
+			os.write_file(path, source + 'fn main() { _ = label }')!
+			mut p := parser.Parser.new(pref.new_preferences())
+			a := p.parse_file(path)
+			assert p.diagnostics.len == 0, p.diagnostics.str()
+			mut tc := TypeChecker.new(a)
+			tc.collect(a)
+			for checked in [false, true] {
+				if checked { tc.check_semantics() }
+				assert tc.errors.len == 0, '${initializer}, constant_first=${constant_first}, checked=${checked}: ${tc.errors}'
+				assert !tc.requires_comptime_const(tc.const_exprs['label']!), '${initializer}, constant_first=${constant_first}, checked=${checked}'
+				assert 'label' !in tc.comptime_const_values
+			}
+		}
+	}
+}
+
+fn test_comptime_const_requirement_scan_keeps_runtime_typeof_operands() ! {
+	path := os.join_path(os.vtmp_dir(), 'comptime_const_runtime_typeof_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	types := 'type Choice = int | string\n'
+	helpers := '@[comptime]\nfn seed() int { return 7 }\n@[comptime]\nfn pick() Choice { return 1 }\n@[comptime]\nfn pick_ptr() &Choice { return unsafe { nil } }\n'
+	for initializer in [
+		'unsafe { typeof(pick()) }',
+		'unsafe { typeof(pick_ptr()) }',
+		'unsafe { typeof(pick()).str() }',
+		'unsafe { typeof(pick()).len }',
+		'typeof(seed()).idx + seed()',
+	] {
+		for constant_first in [false, true] {
+			constant := 'const label = ${initializer}\n'
+			source := types + if constant_first { constant + helpers } else { helpers + constant }
+			os.write_file(path, source + 'fn main() { _ = label }')!
+			mut p := parser.Parser.new(pref.new_preferences())
+			a := p.parse_file(path)
+			assert p.diagnostics.len == 0, p.diagnostics.str()
+			mut tc := TypeChecker.new(a)
+			tc.collect(a)
+			for checked in [false, true] {
+				if checked {
+					tc.check_semantics()
+					assert tc.errors.any(it.msg.contains('cannot evaluate const `label`')), '${initializer}, constant_first=${constant_first}: ${tc.errors}'
+				}
+				assert tc.requires_comptime_const(tc.const_exprs['label']!), '${initializer}, constant_first=${constant_first}, checked=${checked}'
+				assert 'label' !in tc.comptime_const_values
+			}
 		}
 	}
 }

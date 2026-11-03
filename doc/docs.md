@@ -4293,9 +4293,18 @@ unsupported, including local values and fields nested inside other values.
 Ordinary calls to the same function outside constant expressions remain
 runtime calls. Calls inside a function literal or lambda do not opt the callback initializer into
 required evaluation, because creating a callback does not execute its body.
+Calls used only for static `typeof` reflection, such as `typeof(seed()).name`, also do not opt the
+initializer into required evaluation. Runtime type inspection of sum values retains its evaluation
+requirements.
 Evaluation also applies when dependencies are loaded from the module cache.
 Fixed-array literals use their expected element type in return values, arguments, and storage
 contexts, including when an annotated helper is declared after the constant that calls it.
+Fixed-array `.len` uses the array's static shape without executing its base expression, matching
+ordinary compilation. Its direct C arithmetic uses the lowered integer literal; storing the length
+in a local preserves ordinary `int` storage. If the evaluator cannot determine a length operand's
+storage without evaluating it, first store that operand in a local. Fixed-array aliases also require
+a local or an ordinary function result as the base; direct alias casts and fields are unsupported.
+String lengths continue to evaluate their operands.
 
 Indexed reads and updates that contain value conditionals have an additional ordering restriction.
 Every index in the access must be a whole runtime `if` expression (optionally parenthesized), or an

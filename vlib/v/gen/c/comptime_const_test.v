@@ -882,3 +882,149 @@ fn test_cli_comptime_mutation_index_staging_is_explicit() ! {
 		assert stored.output.trim_space() == '${case.expected}\n${case.expected}', stored.output
 	}
 }
+
+fn test_cli_fixed_array_lengths_match_lowering() ! {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_fixed_lengths_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+
+	source := os.join_path(root, 'main.v')
+	suffix := if os.user_os() == 'windows' { '.exe' } else { '' }
+	args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none']
+	helpers := '@[comptime]\nfn fixed_len_direct() int {\n    a := [2]u8{}\n    b := u32(0xffffffff)\n    return a.len + b\n}\n\n@[comptime]\nfn fixed_len_stored() int {\n    a := [2]u8{}\n    length := a.len\n    b := u32(0xffffffff)\n    return length + b\n}\n\n@[comptime]\nfn fixed_len_literals() int {\n    a := [2]u8{}\n    b := u32(0xffffffff)\n    return (a.len + a.len) + b\n}\n\n@[comptime]\nfn fixed_len_shift() bool {\n    a := [63]u8{}\n    return (1 << a.len) > 0\n}\n\n@[comptime]\nfn fixed_len_erased() int {\n    mut n := 0\n    length := ([if true {\n        n += 1\n        n\n    } else {\n        0\n    }]!).len\n    return n + length\n}\n\n@[comptime]\nfn fixed_len_materialized() int {\n    mut n := 0\n    a := [if true {\n        n += 1\n        n\n    } else {\n        0\n    }]!\n    return n + a.len\n}\n\n@[comptime]\nfn fixed_len_array_base(value int) [1]int {\n    assert false, "fixed-array length must not call its base"\n    return [value]!\n}\n\n@[comptime]\nfn fixed_len_call_base() int {\n    mut n := 0\n    length := fixed_len_array_base(if true {\n        n += 1\n        n\n    } else {\n        0\n    }).len\n    return n + length\n}\n\n@[comptime]\nfn fixed_len_string_base(value int) string {\n    return if value > 0 { "x" } else { "y" }\n}\n\n@[comptime]\nfn fixed_len_string_effects() int {\n    mut n := 0\n    length := fixed_len_string_base(if true {\n        n += 1\n        n\n    } else {\n        0\n    }).len\n    return n + length\n}\n\n'
+	constants := 'const direct = fixed_len_direct()\nconst stored = fixed_len_stored()\nconst literals = fixed_len_literals()\nconst shifted = fixed_len_shift()\nconst erased = fixed_len_erased()\nconst materialized = fixed_len_materialized()\nconst called = fixed_len_call_base()\nconst text_length = fixed_len_string_effects()\n'
+	main_body := 'fn main() {\n    assert direct == 1\n    assert direct == fixed_len_direct()\n    assert stored == int(i64(4294967297))\n    assert stored == fixed_len_stored()\n    assert literals == int(i64(4294967299))\n    assert literals == fixed_len_literals()\n    assert shifted\n    assert shifted == fixed_len_shift()\n    assert erased == 1\n    assert erased == fixed_len_erased()\n    assert materialized == 2\n    assert materialized == fixed_len_materialized()\n    assert called == 1\n    assert called == fixed_len_call_base()\n    assert text_length == 2\n    assert text_length == fixed_len_string_effects()\n    println("ok")\n}\n'
+	expected := {
+		'direct':       '1'
+		'stored':       int(i64(4294967297)).str()
+		'literals':     int(i64(4294967299)).str()
+		'erased':       '1'
+		'materialized': '2'
+		'called':       '1'
+		'text_length':  '2'
+	}
+	for before in [false, true] {
+		declarations := if before { constants + helpers } else { helpers + constants }
+		os.write_file(source, declarations + main_body)!
+		for mode, flags in [[]string{}, ['-no-parallel']] {
+			output := os.join_path(root, 'lengths_${before}_${mode}.c')
+			generated_result := os.exec([...args, ...flags, '-o', output, source])
+			assert generated_result.exit_code == 0, '${before} ${mode}: ${generated_result.output}'
+			generated := os.read_file(output)!
+			for name, value in expected {
+				definition := generated.split_into_lines().filter(it.starts_with('#define main__${name} ')
+					|| ((it.starts_with('static const ') || it.starts_with('const '))
+						&& it.contains(' main__${name} = ')))
+				assert definition.len == 1, '${before} ${mode} ${name}: ${generated}'
+				assert definition[0].contains('${value}LL'), definition[0]
+				assert !definition[0].contains('fixed_len_'), definition[0]
+			}
+			executable := os.join_path(root, 'lengths_${before}_${mode}${suffix}')
+			built := os.exec([...args, ...flags, '-o', executable, source])
+			assert built.exit_code == 0, '${before} ${mode}: ${built.output}'
+			runtime := os.exec([executable])
+			assert runtime.exit_code == 0, '${before} ${mode}: ${runtime.output}'
+			assert runtime.output.trim_space() == 'ok', '${before} ${mode}: ${runtime.output}'
+		}
+	}
+}
+
+fn test_cli_typeof_comptime_operand_remains_unevaluated() ! {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_type_only_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+
+	source := os.join_path(root, 'main.v')
+	suffix := if os.user_os() == 'windows' { '.exe' } else { '' }
+	args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none']
+	helper := '@[comptime]\nfn type_only_seed() int {\n    assert false, "typeof must not execute its operand"\n    return 7\n}\n'
+	constant := 'const label = typeof(type_only_seed()).name\n'
+	main_body := 'fn main() {\nassert label == "int"\nassert typeof(type_only_seed()).name == label\nprintln(label)\n}\n'
+	for before in [false, true] {
+		declarations := if before { constant + helper } else { helper + constant }
+		os.write_file(source, declarations + main_body)!
+		executable := os.join_path(root, 'type_only_${before}${suffix}')
+		built := os.exec([...args, '-o', executable, source])
+		assert built.exit_code == 0, '${before}: ${built.output}'
+		runtime := os.exec([executable])
+		assert runtime.exit_code == 0, '${before}: ${runtime.output}'
+		assert runtime.output.trim_space() == 'int', '${before}: ${runtime.output}'
+	}
+}
+
+fn test_cli_erased_fixed_length_bases_preserve_source_hoists() ! {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_length_hoists_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+
+	source := os.join_path(root, 'main.v')
+	suffix := if os.user_os() == 'windows' { '.exe' } else { '' }
+	args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none']
+	helpers := '@[comptime]\nfn take(a int, b int) int {\nreturn a\n}\n@[comptime]\nfn compute() int {\nreturn take(u8(250) + u8(10), ([if true { 1 } else { 0 }]!).len)\n}\n'
+	constant := 'const result = compute()\n'
+	main_body := 'fn main() {\nprintln(result)\nprintln(compute())\n}\n'
+	for before in [false, true] {
+		declarations := if before { constant + helpers } else { helpers + constant }
+		program := declarations + main_body
+		os.write_file(source, program)!
+		required := os.exec([...args, '-o', os.join_path(root, 'required_${before}.c'), source])
+		assert required.exit_code != 0, '${before}: ${required.output}'
+		assert required.output.contains('cannot evaluate const `result`'), required.output
+		assert required.output.contains('integer operand staging'), required.output
+		workaround := program.replace('return take(u8(250) + u8(10),', 'sum := u8(250) + u8(10)\nreturn take(sum,')
+		os.write_file(source, workaround)!
+		executable := os.join_path(root, 'stored_${before}${suffix}')
+		built := os.exec([...args, '-o', executable, source])
+		assert built.exit_code == 0, '${before}: ${built.output}'
+		runtime := os.exec([executable])
+		assert runtime.exit_code == 0, '${before}: ${runtime.output}'
+		assert runtime.output.trim_space() == '4\n4', '${before}: ${runtime.output}'
+	}
+	os.write_file(source, helpers + 'fn main() { println(compute()) }\n')!
+	executable := os.join_path(root, 'ordinary${suffix}')
+	built := os.exec([...args, '-o', executable, source])
+	assert built.exit_code == 0, built.output
+	runtime := os.exec([executable])
+	assert runtime.exit_code == 0, runtime.output
+	assert runtime.output.trim_space() == '4', runtime.output
+}
+
+fn test_cli_fixed_array_alias_lengths_require_stored_bases() ! {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_alias_lengths_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+
+	source := os.join_path(root, 'main.v')
+	suffix := if os.user_os() == 'windows' { '.exe' } else { '' }
+	args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none']
+	type_declaration := 'type Pair = [2]u8\n'
+	helper := '@[comptime]\nfn compute() int {\nb := u32(0xffffffff)\nreturn (Pair([u8(0), u8(0)]!).len + 2) + b\n}\n'
+	constant := 'const result = compute()\n'
+	main_body := 'fn main() {\nprintln(result)\nprintln(compute())\n}\n'
+	expected := int(i64(4294967299)).str()
+	for before in [false, true] {
+		declarations := if before { constant + helper } else { helper + constant }
+		program := type_declaration + declarations + main_body
+		os.write_file(source, program)!
+		required := os.exec([...args, '-o', os.join_path(root, 'required_${before}.c'), source])
+		assert required.exit_code != 0, '${before}: ${required.output}'
+		assert required.output.contains('cannot evaluate const `result`'), required.output
+		assert required.output.contains('fixed-array alias length lowering is not supported; store the array in a local first'), required.output
+		workaround := program.replace('return (Pair([u8(0), u8(0)]!).len + 2) + b',
+			'a := Pair([u8(0), u8(0)]!)\nreturn (a.len + 2) + b')
+		os.write_file(source, workaround)!
+		executable := os.join_path(root, 'stored_${before}${suffix}')
+		built := os.exec([...args, '-o', executable, source])
+		assert built.exit_code == 0, '${before}: ${built.output}'
+		runtime := os.exec([executable])
+		assert runtime.exit_code == 0, '${before}: ${runtime.output}'
+		assert runtime.output.trim_space() == '${expected}\n${expected}', '${before}: ${runtime.output}'
+	}
+	os.write_file(source, type_declaration + helper + 'fn main() { println(compute()) }\n')!
+	executable := os.join_path(root, 'ordinary${suffix}')
+	built := os.exec([...args, '-o', executable, source])
+	assert built.exit_code == 0, built.output
+	runtime := os.exec([executable])
+	assert runtime.exit_code == 0, runtime.output
+	assert runtime.output.trim_space() == '3', runtime.output
+}

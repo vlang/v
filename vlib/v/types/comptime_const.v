@@ -15,15 +15,16 @@ pub mut:
 
 struct ConstEval {
 mut:
-	tc             &TypeChecker
-	scopes         []map[string]ComptimeConstValue
-	active         map[string]bool
-	expr_types     map[int]Type
-	staged_indices map[int]int
-	return_type    Type = builtin_void_type
-	steps          int
-	storage        int
-	depth          int
+	tc                         &TypeChecker
+	scopes                     []map[string]ComptimeConstValue
+	active                     map[string]bool
+	expr_types                 map[int]Type
+	lowered_c_integer_literals map[int]i64
+	staged_indices             map[int]int
+	return_type                Type = builtin_void_type
+	steps                      int
+	storage                    int
+	depth                      int
 }
 
 struct ConstEvalFlow {
@@ -69,6 +70,7 @@ pub fn (tc &TypeChecker) requires_comptime_const(id flat.NodeId) bool {
 	node := tc.a.node(id)
 	// Constructing a callback does not execute its deferred body.
 	if node.kind in [.fn_literal, .lambda_expr] { return false }
+	if node.kind == .typeof_expr && !tc.typeof_operand_is_runtime(id, node) { return false }
 	if node.kind == .call {
 		if decl := tc.comptime_static_enum_helper_decl(id, tc.cur_module) {
 			if tc.declaration_has_attribute(flat.NodeId(decl.idx), 'comptime') { return true }
@@ -437,6 +439,158 @@ fn (tc &TypeChecker) const_main_qualified_key(name string) ?string {
 	return none
 }
 
+// Inspect storage shapes without executing a length selector's base. Runtime
+// lowering erases fixed-array bases, including calls and index side effects.
+// Unknown shapes are rejected instead of consulting optional body annotations.
+fn (mut e ConstEval) length_operand_type(id flat.NodeId) !Type {
+	e.tick()!
+	e.depth++
+	defer { e.depth-- }
+	if e.depth > 128 { return error('evaluation exceeded recursion limit') }
+	if !e.tc.valid_node_id(id) { return builtin_void_type }
+	node := e.tc.a.node(id)
+	match node.kind {
+		.paren, .expr_stmt { return e.length_operand_type(e.tc.a.child(node, 0)) }
+		.ident {
+			if value := e.local(node.value) { return value.typ }
+			return e.constant_length_operand_type(node.value)
+		}
+		.string_literal { return string_ }
+		.int_literal { return builtin_int_type }
+		.bool_literal { return bool_ }
+		.cast_expr { return e.resolved_storage_type(e.tc.parse_type(node.source_value_id())) }
+		.array_init {
+			return e.resolved_storage_type(e.tc.parse_type(if node.typ != 0 {
+				node.typ
+			} else {
+				node.source_value_id()
+			}))
+		}
+		.postfix {
+			if node.op == .not && node.children_count == 1 {
+				literal := e.tc.a.child_node(node, 0)
+				if literal.kind == .array_literal {
+					return Type(ArrayFixed{
+						elem_type: e.tc.intern_type_reference(builtin_void_type)
+						len:       literal.children_count
+						len_expr:  if literal.children_count == 0 { '0' } else { '' }
+					})
+				}
+			}
+		}
+		.call {
+			decl := e.tc.comptime_static_enum_helper_decl(id, e.tc.cur_module) or {
+				return builtin_void_type
+			}
+			f := e.tc.a.node(flat.NodeId(decl.idx))
+			if f.generic_params().len > 0 { return builtin_void_type }
+			old_tc := e.tc
+			old_scopes := e.scopes
+			file := if source := e.tc.a.source_files[f.pos.id] {
+				source.name
+			} else {
+				e.tc.cur_file
+			}
+			e.tc = e.tc.fork_type_parse_view(file, decl.mod)
+			e.scopes = [map[string]ComptimeConstValue{}]
+			defer {
+				e.tc = old_tc
+				e.scopes = old_scopes
+			}
+			e.tc.check_comptime_const_context()!
+			return e.resolved_storage_type(e.tc.parse_type(f.typ))
+		}
+		.struct_init { return *e.tc.parse_type(node.source_value_id()) }
+		.selector {
+			base_id := e.tc.a.child(node, 0)
+			base_node := e.tc.a.node(base_id)
+			if base_node.kind == .ident && e.local(base_node.value) == none
+				&& e.tc.is_namespace_selector(node, base_node) {
+				if module_name := e.tc.resolve_import_alias(base_node.value) {
+					return e.constant_length_operand_type('${module_name}.${node.value}')
+				}
+				if base_node.value == e.tc.cur_module || base_node.value == short_name_view(e.tc.cur_module)
+					|| (base_node.value == 'main' && is_main_module_name(e.tc.cur_module)) {
+					return e.constant_length_operand_type(node.value)
+				}
+			}
+			base := unalias_type(e.length_operand_type(base_id)!)
+			if base is Struct {
+				if flat.source_type_syntax(base.name_id).application_valid() {
+					return builtin_void_type
+				}
+				old_tc := e.tc
+				old_scopes := e.scopes
+				e.tc = e.tc.fork_type_parse_view(e.tc.struct_files[base.name_id] or { e.tc.cur_file },
+					e.tc.struct_modules[base.name_id] or { e.tc.cur_module })
+				e.scopes = [map[string]ComptimeConstValue{}]
+				defer {
+					e.tc = old_tc
+					e.scopes = old_scopes
+				}
+				for field in e.tc.structs[base.name_id] {
+					if field.name == node.value && !field.is_embed {
+						return e.resolved_storage_type(field.typ)
+					}
+				}
+			}
+		}
+		.index {
+			container := e.length_operand_type(e.tc.a.child(node, 0))!
+			e.check_builtin_index(container)!
+			base := unalias_type(container)
+			if base is ArrayFixed { return *base.elem_type }
+		}
+		.infix {
+			if node.op == .plus {
+				left := unalias_type(e.length_operand_type(e.tc.a.child(node, 0))!)
+				right := unalias_type(e.length_operand_type(e.tc.a.child(node, 1))!)
+				if left is String && right is String { return string_ }
+			}
+		}
+		else {}
+	}
+	return builtin_void_type
+}
+
+fn (mut e ConstEval) constant_length_operand_type(name string) !Type {
+	resolved := e.tc.resolve_selective_import_symbol(name) or { name }
+	key := e.tc.const_key_for_name(resolved) or {
+		e.tc.const_main_qualified_key(resolved) or { return builtin_void_type }
+	}
+	if e.active[key] { return error('cycle in constant `${key}`') }
+	e.active[key] = true
+	old_tc := e.tc
+	old_scopes := e.scopes
+	e.tc = e.tc.fork_type_parse_view(e.tc.const_files[key] or { e.tc.cur_file },
+		e.tc.const_modules[key] or { e.tc.cur_module })
+	e.scopes = [map[string]ComptimeConstValue{}]
+	defer {
+		e.tc = old_tc
+		e.scopes = old_scopes
+		e.active.delete(key)
+	}
+	e.tc.check_comptime_const_context()!
+	if value := e.tc.comptime_const_values[key] { return e.resolved_storage_type(value.typ) }
+	id := e.tc.const_exprs[key] or { return builtin_void_type }
+	return e.length_operand_type(id)
+}
+
+// Lowering normalizes aliases for stored locals and declared call results, but
+// an alias cast or field can retain a selector until Cgen. Those later selectors
+// do not receive the AST literal's arithmetic and shift treatment.
+fn (mut e ConstEval) array_alias_length_base_is_normalized(id flat.NodeId) !bool {
+	e.tick()!
+	e.depth++
+	defer { e.depth-- }
+	if e.depth > 128 { return error('evaluation exceeded recursion limit') }
+	node := e.tc.a.node(id)
+	if node.kind in [.paren, .expr_stmt] && node.children_count == 1 {
+		return e.array_alias_length_base_is_normalized(e.tc.a.child(node, 0))
+	}
+	return (node.kind == .ident && e.local(node.value) != none) || node.kind == .call
+}
+
 fn (mut e ConstEval) expr(id flat.NodeId) !ComptimeConstValue {
 	return e.expr_with_expected_type(id, builtin_void_type)
 }
@@ -448,6 +602,7 @@ fn (mut e ConstEval) expr_with_expected_type(id flat.NodeId, expected Type) !Com
 	if e.depth > 128 { return error('evaluation exceeded recursion limit') }
 	if !e.tc.valid_node_id(id) { return error('missing constant expression') }
 	e.tc.check_comptime_const_context()!
+	e.lowered_c_integer_literals.delete(int(id))
 	value := e.expr_value(id, expected)!
 	e.expr_types[int(id)] = value.typ
 	if e.staged_indices[int(id)] > 0 { e.check_staged_integer(id, value)! }
@@ -649,6 +804,23 @@ fn (mut e ConstEval) expr_value(id flat.NodeId, expected Type) !ComptimeConstVal
 					return e.constant(node.value)
 				}
 			}
+			if node.value == 'len' {
+				base_id := e.tc.a.child(node, 0)
+				operand_type := e.length_operand_type(base_id)!
+				typ := unalias_type(operand_type)
+				if typ is Void || typ is Unknown {
+					return error('cannot determine length operand storage without evaluation')
+				}
+				if typ is ArrayFixed {
+					if operand_type is Alias && !e.array_alias_length_base_is_normalized(base_id)! {
+						return error('fixed-array alias length lowering is not supported; store the array in a local first')
+					}
+					length := e.fixed_array_length(typ)!
+					if length < 0 { return error('invalid fixed-array length') }
+					e.lowered_c_integer_literals[int(id)] = i64(length)
+					return ComptimeConstValue{ typ: builtin_int_type, integer: i64(length) }
+				}
+			}
 			container := e.expr(e.tc.a.child(node, 0))!
 			base := unalias_type(container.typ)
 			if node.value == 'len' && (base is ArrayFixed || base is String) {
@@ -777,6 +949,9 @@ fn (mut e ConstEval) shift_count_const_value(id flat.NodeId) !ConstEvalShiftCoun
 	defer { e.depth-- }
 	if e.depth > 128 { return error('evaluation exceeded recursion limit') }
 	if !e.tc.valid_node_id(id) { return ConstEvalShiftCount{} }
+	if value := e.lowered_c_integer_literals[int(id)] {
+		return ConstEvalShiftCount{ known: true, value: int(value) }
+	}
 	node := e.tc.a.node(id)
 	match node.kind {
 		.int_literal, .ident, .selector {
@@ -842,8 +1017,9 @@ fn (mut e ConstEval) shift_count_const_value(id flat.NodeId) !ConstEvalShiftCoun
 
 fn (mut e ConstEval) shift_needs_64bit_widening(node flat.Node) !bool {
 	if node.children_count < 2 { return false }
-	lhs := e.tc.a.child_node(node, 0)
-	if lhs.kind != .int_literal { return false }
+	lhs_id := e.tc.a.child(node, 0)
+	lhs := e.tc.a.node(lhs_id)
+	if lhs.kind != .int_literal && int(lhs_id) !in e.lowered_c_integer_literals { return false }
 	if source := e.tc.a.source_files[lhs.pos.id] {
 		if e.tc.translated_files[source.name] { return false }
 	}
@@ -853,19 +1029,25 @@ fn (mut e ConstEval) shift_needs_64bit_widening(node flat.Node) !bool {
 
 fn (mut e ConstEval) integer_c_expression_type(id flat.NodeId, typ Type) !Type {
 	node := e.tc.a.node(id)
+	if literal := e.lowered_c_integer_literals[int(id)] {
+		return if literal <= 2147483647 { Type(i32_) } else { Type(i64_) }
+	}
 	if node.kind == .sizeof_expr { return builtin_usize_type }
 	if node.kind == .paren && node.children_count == 1 {
 		return e.integer_c_expression_type(e.tc.a.child(node, 0), typ)
 	}
 	if node.kind == .prefix && node.op in [.plus, .minus, .bit_not] {
 		child_id := e.tc.a.child(node, 0)
-		mut child := e.tc.a.node(child_id)
+		mut literal_id := child_id
+		mut child := e.tc.a.node(literal_id)
 		for child.kind == .paren && child.children_count == 1 {
-			child = e.tc.a.child_node(child, 0)
+			literal_id = e.tc.a.child(child, 0)
+			child = e.tc.a.node(literal_id)
 		}
-		if node.op == .minus && child.kind == .int_literal {
-			literal := comptime_enum_integer_literal(child.value) or { return typ }
-			if literal > 2147483647 { return i64_ }
+		if node.op == .minus {
+			if literal := e.c_integer_literal_value(literal_id) {
+				if literal > 2147483647 { return i64_ }
+			}
 		}
 		operand := e.integer_c_expression_type(child_id, typ)!
 		return if const_eval_integer_width(operand) < 32 { Type(i32_) } else { operand }
@@ -895,8 +1077,18 @@ fn (mut e ConstEval) integer_c_expression_type(id flat.NodeId, typ Type) !Type {
 	return i64_
 }
 
+// C lowering can introduce a literal while V's semantic/storage type stays int.
+// Keep this query separate from checker-side literal promotion and range typing.
+fn (e &ConstEval) c_integer_literal_value(id flat.NodeId) ?i64 {
+	if value := e.lowered_c_integer_literals[int(id)] { return value }
+	node := e.tc.a.node(id)
+	if node.kind == .int_literal { return comptime_enum_integer_literal(node.value) }
+	return none
+}
+
 fn (e &ConstEval) integer_literal_arithmetic(id flat.NodeId) bool {
 	if e.tc.translated_files[e.tc.cur_file] { return false }
+	if int(id) in e.lowered_c_integer_literals { return true }
 	node := e.tc.a.node(id)
 	return match node.kind {
 		.int_literal { true }
@@ -1004,8 +1196,8 @@ fn (mut e ConstEval) integer_comparison(op flat.Op, left_id flat.NodeId, right_i
 	right_c_type := e.integer_c_expression_type(right_id, right.typ)!
 	mixed_sign := left_base is Primitive && right_base is Primitive
 		&& left_unsigned != right_unsigned
-		&& !(!left_unsigned && e.tc.a.node(left_id).kind == .int_literal)
-		&& !(!right_unsigned && e.tc.a.node(right_id).kind == .int_literal)
+		&& !(!left_unsigned && e.c_integer_literal_value(left_id) != none)
+		&& !(!right_unsigned && e.c_integer_literal_value(right_id) != none)
 	if mixed_sign {
 		// Match the C backend's mathematical signed/unsigned comparison.
 		l = const_eval_integer_cast(l, left.typ)
@@ -1268,6 +1460,7 @@ fn (mut e ConstEval) staging_operand_is_pure(id flat.NodeId) !bool {
 	e.depth++
 	defer { e.depth-- }
 	if e.depth > 128 { return error('evaluation exceeded recursion limit') }
+	if int(id) in e.lowered_c_integer_literals { return true }
 	node := e.tc.a.node(id)
 	match node.kind {
 		.int_literal, .bool_literal, .string_literal, .sizeof_expr { return true }
@@ -1653,6 +1846,7 @@ fn (mut e ConstEval) range_bound_is_live(id flat.NodeId) !bool {
 	e.depth++
 	defer { e.depth-- }
 	if e.depth > 128 { return error('evaluation exceeded recursion limit') }
+	if int(id) in e.lowered_c_integer_literals { return true }
 	node := e.tc.a.node(id)
 	match node.kind {
 		.ident, .int_literal, .bool_literal, .string_literal, .sizeof_expr { return true }
