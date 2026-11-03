@@ -765,7 +765,8 @@ fn test_vup_says_whether_tcc_changed() ! {
 	}
 	// The git stand-in reports the TCC checkout at the revision in `tcc_head`, and
 	// the TCC refresh moves it to the one in `tcc_next`, when there is one. Only
-	// the stand-ins are on PATH, so they use shell builtins.
+	// the stand-ins are on PATH, so they use shell builtins. The BSDs and Solaris
+	// refresh TCC with `gmake`, so both names get the refresh.
 	os.mkdir_all(os.join_path(root, 'thirdparty', 'tcc', '.git'))!
 	tcc_head := os.join_path(root, 'tcc_head')
 	tcc_next := os.join_path(root, 'tcc_next')
@@ -773,10 +774,12 @@ fn test_vup_says_whether_tcc_changed() ! {
 	write_executable(os.join_path(bin_dir, 'git'), '#!/bin/sh\n' +
 		'if [ "\$1" = "-C" ] && [ "\$3" = "rev-parse" ]; then\n' +
 		'  read -r rev < ${os.quoted_path(tcc_head)}\n  echo "\$rev"\nfi\nexit 0\n')!
-	write_executable(os.join_path(bin_dir, 'make'), '#!/bin/sh\n' +
-		'if [ -f ${os.quoted_path(tcc_next)} ]; then\n' +
-		'  read -r rev < ${os.quoted_path(tcc_next)}\n  echo "\$rev" > ${os.quoted_path(tcc_head)}\n' +
-		'fi\nexit 0\n')!
+	for make_name in ['make', 'gmake'] {
+		write_executable(os.join_path(bin_dir, make_name), '#!/bin/sh\n' +
+			'if [ -f ${os.quoted_path(tcc_next)} ]; then\n' +
+			'  read -r rev < ${os.quoted_path(tcc_next)}\n  echo "\$rev" > ${os.quoted_path(tcc_head)}\n' +
+			'fi\nexit 0\n')!
+	}
 
 	unchanged := run_vup(root, home, tool, bin_dir)!
 	assert unchanged.output.contains('> checking for TCC updates ...'), unchanged.output

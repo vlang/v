@@ -781,7 +781,13 @@ fn test_latest_tcc_pulls_other_bundles_only_when_their_branch_moved() {
 	run_checked(push)
 	run_checked('git clone --quiet --branch thirdparty-macos-arm64 ${os.quoted_path('file://${remote}')} ${os.quoted_path(tcc_dir)}')
 	git_wrapper, git_trace := new_git_trace_wrapper(root)
-	latest_cmd := ['make', '--no-print-directory', '-C', vroot, 'latest_tcc', 'VROOT=${vroot}',
+	// The BSDs and Solaris install GNU make as `gmake`, as `v up` expects there.
+	gnu_make := $if freebsd || openbsd || netbsd || dragonfly || solaris {
+		'gmake'
+	} $else {
+		'make'
+	}
+	latest_cmd := [gnu_make, '--no-print-directory', '-C', vroot, 'latest_tcc', 'VROOT=${vroot}',
 		'TCCOS=macos', 'TCCARCH=arm64', 'GIT=${git_wrapper}']
 
 	// Left-over build files are still removed when there is nothing to pull.
