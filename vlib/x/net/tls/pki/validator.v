@@ -5,7 +5,10 @@
 // (RFC 6125), trust_store.v seeds from system roots.
 module pki
 
+import crypto.ecdsa
 import crypto.ed25519
+import crypto.sha256
+import crypto.sha512
 import time
 
 // max_cert_chain_depth bounds the certificates a peer may place in one
@@ -382,16 +385,40 @@ fn verify_cert_signature(child Certificate, parent Certificate) ! {
 		}
 		.ecdsa {
 			pubkey := parent.ecdsa_public_key()!
-			// ECDSA carries no hash parameter; the digest is hashed inside verify.
-			match child.signature_algo_oid {
-				'1.2.840.10045.4.3.2', '1.2.840.10045.4.3.3', '1.2.840.10045.4.3.4' {
-					if !pubkey.verify(child.tbs_raw, child.signature)! {
-						return error('pki: ECDSA signature verification failed')
+			opts := match child.signature_algo_oid {
+				// ecdsa-with-SHA256
+				'1.2.840.10045.4.3.2' {
+					ecdsa.SignerOpts{
+						hash_config:        .with_custom_hash
+						allow_custom_hash:  true
+						allow_smaller_size: true
+						custom_hash:        sha256.new()
+					}
+				}
+				// ecdsa-with-SHA384
+				'1.2.840.10045.4.3.3' {
+					ecdsa.SignerOpts{
+						hash_config:        .with_custom_hash
+						allow_custom_hash:  true
+						allow_smaller_size: true
+						custom_hash:        sha512.new384()
+					}
+				}
+				// ecdsa-with-SHA512
+				'1.2.840.10045.4.3.4' {
+					ecdsa.SignerOpts{
+						hash_config:        .with_custom_hash
+						allow_custom_hash:  true
+						allow_smaller_size: true
+						custom_hash:        sha512.new()
 					}
 				}
 				else {
 					return error('pki: unsupported ECDSA signature OID ${child.signature_algo_oid}')
 				}
+			}
+			if !pubkey.verify(child.tbs_raw, child.signature, opts)! {
+				return error('pki: ECDSA signature verification failed')
 			}
 		}
 		.ed25519 {

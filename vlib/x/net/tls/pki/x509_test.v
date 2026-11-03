@@ -624,6 +624,30 @@ fn test_verify_openssl_pss_signed_certificate() ! {
 	validator.verify_certificate_chain([leaf, issuer], 'example.com')!
 }
 
+// test_verify_ecdsa_sha256_with_p384_issuer confirms the digest comes from the
+// certificate signature OID, not from the issuer's curve.
+fn test_verify_ecdsa_sha256_with_p384_issuer() ! {
+	leaf_der := hex.decode('308201cf30820155a003020102020203ea300a06082a8648ce3d040302301a3118301606035504030c0f5620502d3338342054657374204341301e170d3236313130333130313631395a170d3336313033313130313631395a30163114301206035504030c0b6578616d706c652e636f6d3059301306072a8648ce3d020106082a8648ce3d03010703420004ac1e34704734240471b0d63e801e9c93cc08e4fdeee5e4bc32143b3318c65595f5b16eb19a30e2f0006f14669782de2dcc6b973781757ef31dabea8011aeab72a3818e30818b300c0603551d130101ff04023000300e0603551d0f0101ff04040302078030130603551d25040c300a06082b0601050507030130160603551d11040f300d820b6578616d706c652e636f6d301d0603551d0e04160414c260e5a2103239352212925f1f28df93d74b9d5c301f0603551d23041830168014907bd455113becfe6272d9c23b594f71cb351619300a06082a8648ce3d04030203680030650231008208e63f6668d4fffd5a8a3a35b317997a3c2bfff6508f8c65b2fa4b9712941068df71d30458fd88a8584389828c17f6023022f0bf916161d78c17547be0da6e3edc745e3ed4ba7a50622e7bbceb3e0bf28b998ab33bc8badeea0eae1874b125b9b8')!
+	leaf := parse_certificate(leaf_der)!
+
+	assert leaf.signature_algo_oid == '1.2.840.10045.4.3.2'
+	issuer := Certificate{
+		public_key_algo: .ecdsa
+		public_key_raw:  hex.decode('04b085b395ec89417e48bf3e4cb25453d3cc7a3d98a56d55da8f88df0dda97d10afe78ae31a7cc4afe1ff099b077b0cd90ea1e70c7cfd1573982061b5442f88375fa8f3542d48f6afd08bf3c1a68660fbfcfb2dfcc00876c9bee5b8768d4a9b14d')!
+		ecdsa_curve:     .secp384r1
+		subject_dn:      leaf.issuer_dn
+		issuer_dn:       leaf.issuer_dn
+		is_ca:           true
+		max_path_len:    -1
+		not_after_unix:  4102444800
+		raw:             [u8(0x01)]
+	}
+	mut trust_store := new_trust_store()
+	trust_store.certs << issuer
+	validator := new_validator(trust_store)
+	validator.verify_certificate_chain([leaf, issuer], 'example.com')!
+}
+
 // ---- Name-constraint subtree matching ----
 
 fn test_dns_within_subtree_matching() {
