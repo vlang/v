@@ -1233,8 +1233,8 @@ $if !v3_backend ? {
 }
 
 // copy_element_to copies a single `element_size` byte element from `src` to `dest`.
-// It dispatches the common small element sizes to `vmemcpy` with a *compile time constant*
-// size: since `vmemcpy` is inlined and forwards to `C.memcpy`, a literal size lets the C
+// It dispatches the common small element sizes to `vmemcpy_unchecked` with a *compile time
+// constant* size: since it is inlined and forwards to `C.memcpy`, a literal size lets the C
 // backend inline the copy as plain loads/stores instead of a `memcpy` library call, which
 // otherwise dominates the cost of single element pushes (`a << x`) in hot loops.
 // The copy semantics stay exactly those of `memcpy`, so it is safe for arbitrary element
@@ -1243,12 +1243,12 @@ $if !v3_backend ? {
 fn copy_element_to(dest voidptr, src voidptr, element_size int) {
 	unsafe {
 		match element_size {
-			1 { vmemcpy(dest, src, 1) }
-			2 { vmemcpy(dest, src, 2) }
-			4 { vmemcpy(dest, src, 4) }
-			8 { vmemcpy(dest, src, 8) }
-			16 { vmemcpy(dest, src, 16) }
-			else { vmemcpy(dest, src, element_size) }
+			1 { vmemcpy_unchecked(dest, src, 1) }
+			2 { vmemcpy_unchecked(dest, src, 2) }
+			4 { vmemcpy_unchecked(dest, src, 4) }
+			8 { vmemcpy_unchecked(dest, src, 8) }
+			16 { vmemcpy_unchecked(dest, src, 16) }
+			else { vmemcpy_unchecked(dest, src, element_size) }
 		}
 	}
 }
