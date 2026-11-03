@@ -21,10 +21,13 @@ static int vgc_test_visit_stack_root(void* object, int (*visit)(uintptr_t, uintp
 struct vgc_test_register_context {
     int (*visit)(uintptr_t, uintptr_t);
     int result;
+    uintptr_t stack_hi;
 };
 
 static void vgc_test_visit_register_window(void* arg, void* regs) {
     struct vgc_test_register_context* context = (struct vgc_test_register_context*)arg;
+    uintptr_t stack_lo;
+    __asm__ volatile("movq %%rsp, %0" : "=r"(stack_lo) : : "memory");
 #ifdef VGC_SCAN_MSAN
     if (__msan_test_shadow(regs, sizeof(jmp_buf)) != -1) {
         context->result = 0;
@@ -32,18 +35,24 @@ static void vgc_test_visit_register_window(void* arg, void* regs) {
     }
 #endif
     context->result = context->visit((uintptr_t)regs, (uintptr_t)regs + sizeof(jmp_buf));
+    if (!context->result) {
+        // The helper's prologue may save the original registers before reusing
+        // them. Include those physical spills, but exclude the caller's locals.
+        context->result = context->visit(stack_lo, context->stack_hi);
+    }
 }
 
-// Keep the only scanned copy in callee-saved registers. The visitor sees only
-// the production spill buffer, so another stack/global copy cannot hide a miss.
+// Keep the root live in callee-saved registers across the ordinary helper call.
+// Scan its register buffer and physical prologue spills, not the caller's locals.
 static int vgc_test_visit_register_root(void* object, int (*visit)(uintptr_t, uintptr_t)) {
     register uintptr_t root12 __asm__("r12") = (uintptr_t)object;
     register uintptr_t root13 __asm__("r13") = (uintptr_t)object;
     register uintptr_t root14 __asm__("r14") = (uintptr_t)object;
     register uintptr_t root15 __asm__("r15") = (uintptr_t)object;
-    struct vgc_test_register_context context = { visit, 0 };
+    struct vgc_test_register_context context = { visit, 0, 0 };
     // Keep the ordinary helper ABI instead of specializing it for this visitor.
     void (* volatile spill)(vgc_spill_fn, void*) = vgc_call_with_registers_spilled;
+    __asm__ volatile("movq %%rsp, %0" : "=r"(context.stack_hi) : : "memory");
     __asm__ volatile("" : "+r"(root12), "+r"(root13), "+r"(root14), "+r"(root15) : : "memory");
     spill(vgc_test_visit_register_window, &context);
     __asm__ volatile("" : "+r"(root12), "+r"(root13), "+r"(root14), "+r"(root15) : : "memory");

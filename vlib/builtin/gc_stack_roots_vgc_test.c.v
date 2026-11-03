@@ -38,6 +38,18 @@ fn vgc_test_mark_stack_window(lo uint, hi uint) int {
 	// Only the supplied window is a root: do not scan the globals or other stack
 	// words that might contain another copy of the object's address.
 	vgc_scan_stack_range(lo, hi, stack_lo, stack_hi, C.vgc_current_fake_stack())
+	return vgc_test_root_marked()
+}
+
+fn vgc_test_mark_register_window(lo uint, hi uint) int {
+	vgc_clear_mark_bits()
+	// Scan the supplied words without following references into the caller's
+	// ASan fake frame, where an ordinary local could hide a missing register root.
+	vgc_scan_range(lo, hi)
+	return vgc_test_root_marked()
+}
+
+fn vgc_test_root_marked() int {
 	vgc_drain_mark_work()
 	span := vgc_find_span(vgc_test_stack_root)
 	assert span != unsafe { nil }
@@ -56,7 +68,7 @@ fn test_live_local_in_asan_fake_frame_is_a_root() {
 fn test_saved_registers_are_roots_under_memory_sanitizer() {
 	$if vgc ?&& linux && amd64 && (gcc || clang) {
 		vgc_test_stack_root = vgc_malloc_noscan(200)
-		assert C.vgc_test_visit_register_root(vgc_test_stack_root, vgc_test_mark_stack_window) == 1
+		assert C.vgc_test_visit_register_root(vgc_test_stack_root, vgc_test_mark_register_window) == 1
 		vgc_test_stack_root = unsafe { nil }
 	}
 }
