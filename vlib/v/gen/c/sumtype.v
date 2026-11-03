@@ -524,7 +524,16 @@ fn (mut g FlatGen) gen_lowered_sum_field_value(sum_name u32, field &flat.Node) {
 		g.gen_expr(child)
 		return
 	}
-	g.gen_expr_with_expected_type(child, g.tc.parse_canonical_type(variant))
+	variant_type := g.tc.parse_canonical_type(variant)
+	if fixed := array_fixed_type(variant_type) {
+		// Array fields need braces rather than a typed array compound literal.
+		initializer := g.fixed_array_initializer_string(child, fixed)
+		if initializer.len > 0 {
+			g.write(initializer)
+			return
+		}
+	}
+	g.gen_expr_with_expected_type(child, variant_type)
 }
 
 fn (mut g FlatGen) gen_recursive_default_sum_value(sum_type types.SumType, mut seen map[u32]bool) {
@@ -559,7 +568,11 @@ fn (mut g FlatGen) gen_recursive_default_sum_value(sum_type types.SumType, mut s
 		g.gen_recursive_default_sum_value(variant_type, mut seen)
 	} else {
 		g.shallow_default_value_depth++
-		g.gen_default_value_for_clean_type(variant_type)
+		if variant_type is types.ArrayFixed {
+			g.write(g.empty_fixed_array_initializer_string(variant_type))
+		} else {
+			g.gen_default_value_for_clean_type(variant_type)
+		}
 		g.shallow_default_value_depth--
 	}
 	g.write(g.sum_initializer_suffix(false))
