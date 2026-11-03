@@ -9740,20 +9740,33 @@ fn (g &FlatGen) expr_is_non_string_scalar_value(id flat.NodeId) bool {
 		|| clean is types.ISize || clean is types.USize || clean is types.Enum
 }
 
+// Every synthetic drop spelling starts with `drop_owned`; one byte test rejects
+// the ordinary call names that reach these checks.
+@[direct_array_access; inline]
 fn ownership_synthetic_drop_name(name string) bool {
+	if name.len < 10 || name[0] != `d` || !name.starts_with('drop_owned') {
+		return false
+	}
 	return name == 'drop_owned' || name.starts_with('drop_owned_T_')
 		|| name == 'drop_owned_v3_interface' || name.starts_with('drop_owned_v3_interface_T_')
 }
 
+@[direct_array_access]
 fn (g &FlatGen) ownership_drop_intrinsic_name(name string) bool {
-	if name in ['builtin.drop_owned', 'builtin__drop_owned']
-		|| name.starts_with('builtin.drop_owned_T_') || name.starts_with('builtin__drop_owned_T_')
-		|| name in ['builtin.drop_owned_v3_interface', 'builtin__drop_owned_v3_interface']
-		|| name.starts_with('builtin.drop_owned_v3_interface_T_')
-		|| name.starts_with('builtin__drop_owned_v3_interface_T_') {
-		return true
+	if name.len < 10 {
+		return false
 	}
-	if !ownership_synthetic_drop_name(name) {
+	if name[0] == `b` {
+		// Only a builtin-qualified drop spelling is accepted here; the synthetic
+		// spellings below all start with `drop_owned`.
+		return (name.starts_with('builtin.drop_owned') || name.starts_with('builtin__drop_owned'))
+			&& (name in ['builtin.drop_owned', 'builtin__drop_owned']
+				|| name.starts_with('builtin.drop_owned_T_') || name.starts_with('builtin__drop_owned_T_')
+				|| name in ['builtin.drop_owned_v3_interface', 'builtin__drop_owned_v3_interface']
+				|| name.starts_with('builtin.drop_owned_v3_interface_T_')
+				|| name.starts_with('builtin__drop_owned_v3_interface_T_'))
+	}
+	if name[0] != `d` || !ownership_synthetic_drop_name(name) {
 		return false
 	}
 	if module_name := g.tc.fn_type_modules[name] {
@@ -17557,20 +17570,23 @@ fn (g &FlatGen) collect_c_extern_referenced_symbols_in(node &flat.Node, mut refs
 		return
 	}
 	// Visit the children that `g.a.child` would return; out-of-range slots are empty there.
+	// The walk never grows the AST, so its arrays can be read through local headers.
+	children := g.a.children
+	nodes := g.a.nodes
 	mut start := int(node.children_start)
 	mut end := start + int(node.children_count)
 	if start < 0 {
 		start = 0
 	}
-	if end > g.a.children.len {
-		end = g.a.children.len
+	if end > children.len {
+		end = children.len
 	}
 	for i in start .. end {
-		child_id := int(g.a.children[i])
-		if child_id < 0 || child_id >= g.a.nodes.len {
+		child_id := int(children[i])
+		if child_id < 0 || child_id >= nodes.len {
 			continue
 		}
-		child := unsafe { &g.a.nodes[child_id] }
+		child := unsafe { &nodes[child_id] }
 		// A leaf that is not an identifier can neither name C nor reach a node that does.
 		if child.children_count <= 0 && child.kind != .ident {
 			continue
