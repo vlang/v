@@ -51,7 +51,7 @@ jobs:
             cc: gcc
             build: make
             v: ./v
-          - os: macos-14
+          - os: macos-15
             cc: clang
             build: make
             v: ./v

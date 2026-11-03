@@ -25,7 +25,7 @@ jobs:
     if: github.ref == 'refs/heads/master' && (github.event_name != 'schedule' || github.repository == 'vlang/v')
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-14]
+        os: [ubuntu-latest, macos-15]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     env:
@@ -212,7 +212,7 @@ jobs:
           fi
 
       - name: Build vlang/go2v
-        if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' && matrix.os != 'macos-14' }}
+        if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' && matrix.os != 'macos-15' }}
         run: |
           echo "Clone Go2V"
           v retry -- git clone --depth=1 https://github.com/vlang/go2v /tmp/go2v/
@@ -267,7 +267,7 @@ jobs:
     if: github.ref == 'refs/heads/master' && (github.event_name != 'schedule' || github.repository == 'vlang/v')
     strategy:
       matrix:
-        os: [ubuntu-24.04, macos-14]
+        os: [ubuntu-24.04, macos-15]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20

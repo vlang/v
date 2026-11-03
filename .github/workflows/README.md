@@ -169,7 +169,7 @@ inventory.
 | `ubuntu-22.04` | Some sanitizer, release, and architecture lanes. |
 | `windows-2025` | GCC Windows lane and selected Windows checks. |
 | `windows-2022` | MSVC and TCC Windows lanes. |
-| `macos-14` | Apple Silicon CI lanes. |
+| `macos-15` | Apple Silicon CI lanes. |
 | `macos-15-intel` | Intel macOS release artifact lane. |
 | `*-latest` | Small utility, smoke, or intentionally floating lanes. |
 

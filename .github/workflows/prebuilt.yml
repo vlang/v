@@ -30,8 +30,8 @@ jobs:
 
   prebuilt-macos-arm64:
     if: github.ref == 'refs/heads/master'
-    ## macos-14 is a m1 runner
-    runs-on: macos-14
+    ## macos-15 is a m1 runner
+    runs-on: macos-15
     timeout-minutes: 5
     steps:
       - name: Download V

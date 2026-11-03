@@ -28,7 +28,7 @@ jobs:
           - os: ubuntu-22.04
             build: make
             v: ./v
-          - os: macos-14
+          - os: macos-15
             build: make
             v: ./v
           - os: windows-2025

@@ -95,7 +95,7 @@ jobs:
       - name: Prepare artifact
         shell: bash
         run: |
-          if [[ ${{ matrix.os }} == 'macos-14' ]]; then
+          if [[ ${{ matrix.os }} == 'macos-15' ]]; then
             rm -rf thirdparty/tcc
             git clone --branch thirdparty-macos-arm64 --depth=1 https://github.com/vlang/tccbin thirdparty/tcc
           fi
