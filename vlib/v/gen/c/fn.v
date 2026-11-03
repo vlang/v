@@ -1979,7 +1979,7 @@ fn (mut g FlatGen) direct_call_name_for_call(id flat.NodeId, name string) string
 		}
 	}
 	if g.test_files.len > 0 && (name == 'main' || name == 'main.main') {
-		if resolved := g.tc.resolved_call_name(id) {
+		if resolved := g.resolved_call_name(id) {
 			if resolved == 'main' || resolved == 'main.main' {
 				return g.test_user_main_c_name()
 			}
@@ -4154,7 +4154,7 @@ fn (mut g FlatGen) gen_method_value_closure(selector_id flat.NodeId, base_id fla
 	method_key := if is_interface_receiver {
 		'${receiver_name}.${method}'
 	} else {
-		g.tc.resolved_call_name(selector_id) or { g.resolve_method_name(receiver_name_id, method) }
+		g.resolved_call_name(selector_id) or { g.resolve_method_name(receiver_name_id, method) }
 	}
 	mut params := []types.Type{}
 	mut ret := cgen_void_type
@@ -4421,7 +4421,7 @@ fn (mut g FlatGen) gen_spawn_expr(node flat.Node) {
 	// The call expression can lose the element type of `thread []T`; the
 	// registered callee return keeps the concrete thread result type.
 	if ret_type.source_type_id() == cgen_thread_array_source_type {
-		call_name := g.tc.resolved_call_name(call_id) or { fn_node.value }
+		call_name := g.resolved_call_name(call_id) or { fn_node.value }
 		if declared := g.tc.fn_ret_types[call_name] {
 			ret_type = declared
 		}
@@ -5424,7 +5424,7 @@ fn (g &FlatGen) spawn_arg_expr_is_pointer_value(arg_id flat.NodeId) bool {
 		}
 	}
 	if node.kind == .call {
-		if fname := g.tc.resolved_call_name(arg_id) {
+		if fname := g.resolved_call_name(arg_id) {
 			ret_type := g.tc.fn_ret_types[fname] or { return false }
 			return ret_type is types.Pointer
 		}
@@ -5587,6 +5587,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	g.cur_param_name_bits = 0
 	g.cur_concrete_optional_params.clear()
 	g.cur_mut_params.clear()
+	g.cur_mut_param_name_bits = 0
 	g.cur_mut_pointer_params.clear()
 	g.cur_explicit_mut_pointer_params.clear()
 	g.cur_mut_param_owners.clear()
@@ -5628,6 +5629,7 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 				}
 				if p.is_mut {
 					g.cur_mut_params[p.value] = true
+					g.cur_mut_param_name_bits |= current_param_name_bit(p.value)
 					builtin_pointer_value := mut_param_has_builtin_pointer_value(p)
 					if p.op == .amp || builtin_pointer_value {
 						g.cur_mut_pointer_params[p.value] = true
@@ -6135,6 +6137,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	old_param_names := g.cur_param_names
 	old_param_type_values := g.cur_param_type_values
 	old_param_name_bits := g.cur_param_name_bits
+	old_mut_param_name_bits := g.cur_mut_param_name_bits
 	mut old_param_types := g.cur_param_types.move()
 	mut old_concrete_optional_params := g.cur_concrete_optional_params.move()
 	mut old_mut_params := g.cur_mut_params.move()
@@ -6147,6 +6150,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.cur_param_types = map[string]&types.Type{}
 	g.cur_concrete_optional_params = map[string]bool{}
 	g.cur_mut_params = map[string]bool{}
+	g.cur_mut_param_name_bits = 0
 	g.cur_mut_pointer_params = map[string]bool{}
 	g.cur_explicit_mut_pointer_params = map[string]bool{}
 	g.cur_mut_param_owners = map[string]types.ScopeBindingOwner{}
@@ -6203,6 +6207,7 @@ fn (mut g FlatGen) gen_top_level_main(stmts []TopLevelStmt) {
 	g.cur_param_types = old_param_types.move()
 	g.cur_concrete_optional_params = old_concrete_optional_params.move()
 	g.cur_mut_params = old_mut_params.move()
+	g.cur_mut_param_name_bits = old_mut_param_name_bits
 	g.cur_mut_pointer_params = old_mut_pointer_params.move()
 	g.cur_explicit_mut_pointer_params = old_explicit_mut_pointer_params.move()
 	g.cur_mut_param_owners = old_mut_param_owners.move()
@@ -7919,7 +7924,7 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 	mut fn_node := g.a.child_node(node, 0)
 	callee_name := g.call_target_name(g.a.child(node, 0))
 	mut target_name := callee_name
-	checker_resolved_name := g.tc.resolved_call_name(id)
+	checker_resolved_name := g.resolved_call_name(id)
 	mut resolved_target_name := checker_resolved_name or { '' }
 	if fn_node.kind == .ident && node.pos.is_valid() && g.tc.cur_module == 'main'
 		&& g.tc.cur_file.ends_with('.vsh') {
@@ -11790,7 +11795,7 @@ fn (mut g FlatGen) optional_type_name_for_expr(id flat.NodeId, typ types.Type) s
 // call_returns_concrete_optional reports whether the callee of call `id` uses the
 // concrete optional ABI of a specialized generic or a concrete optional parameter.
 fn (mut g FlatGen) call_returns_concrete_optional(id flat.NodeId, node flat.Node) bool {
-	if resolved := g.tc.resolved_call_name(id) {
+	if resolved := g.resolved_call_name(id) {
 		if g.call_uses_concrete_optional_params(resolved) {
 			return true
 		}
@@ -11803,7 +11808,7 @@ fn (mut g FlatGen) call_returns_concrete_optional(id flat.NodeId, node flat.Node
 
 fn (g &FlatGen) call_declared_return_type_text(id flat.NodeId, node flat.Node) ?u32 {
 	mut candidates := []string{}
-	if resolved := g.tc.resolved_call_name(id) {
+	if resolved := g.resolved_call_name(id) {
 		candidates << resolved
 	}
 	target := g.call_target_name(g.a.child(&node, 0))
@@ -11829,7 +11834,8 @@ fn (g &FlatGen) call_declared_return_type_text(id flat.NodeId, node flat.Node) ?
 // current_param_is_mut returns true when a current param originated from `mut name T`
 // and the identifier still resolves to that parameter (not a shadowing local).
 fn (g &FlatGen) current_param_is_mut(name string) bool {
-	if g.cur_mut_params.len == 0 {
+	if g.cur_mut_params.len == 0
+		|| g.cur_mut_param_name_bits & current_param_name_bit(name) == 0 {
 		return false
 	}
 	if !(g.cur_mut_params[name] or { false }) {
@@ -11850,7 +11856,8 @@ fn (g &FlatGen) current_param_is_mut_pointer(name string) bool {
 }
 
 fn (g &FlatGen) current_mut_param_binding_is_shadowed(name string) bool {
-	if g.cur_mut_params.len == 0 {
+	if g.cur_mut_params.len == 0
+		|| g.cur_mut_param_name_bits & current_param_name_bit(name) == 0 {
 		return false
 	}
 	if !(g.cur_mut_params[name] or { false }) {
@@ -11976,7 +11983,7 @@ fn (g &FlatGen) call_key(id flat.NodeId, name string) string {
 			return normalized
 		}
 	}
-	if resolved := g.tc.resolved_call_name(id) {
+	if resolved := g.resolved_call_name(id) {
 		if resolved == name && !name.contains('.')
 			&& (name in g.tc.fn_param_types || name in g.tc.fn_ret_types) {
 			return name
@@ -12843,7 +12850,7 @@ fn (g &FlatGen) callback_closure_target(id flat.NodeId) ?CallbackClosureTarget {
 		return none
 	}
 	callee := g.call_target_name(g.a.child(&node, 0))
-	resolved := g.tc.resolved_call_name(id) or { '' }
+	resolved := g.resolved_call_name(id) or { '' }
 	if callee !in ['closure.closure_create_with_data', 'closure__closure_create_with_data']
 		&& resolved !in ['closure.closure_create_with_data', 'closure__closure_create_with_data'] {
 		return none
@@ -14135,7 +14142,7 @@ fn (g &FlatGen) resolved_name_is_generic_plain(name string) bool {
 
 fn (g &FlatGen) generic_plain_fn_base_for_call(id flat.NodeId, name string) ?string {
 	mut candidates := []string{}
-	if resolved := g.tc.resolved_call_name(id) {
+	if resolved := g.resolved_call_name(id) {
 		if g.resolved_call_matches_target(resolved, name) {
 			candidates << resolved
 		}
@@ -14824,7 +14831,7 @@ fn (g &FlatGen) selector_module_call_name(id flat.NodeId, fn_node flat.Node, nod
 		return none
 	}
 	if g.selector_base_is_local_value(base.value) {
-		resolved := g.tc.resolved_call_name(id) or { return none }
+		resolved := g.resolved_call_name(id) or { return none }
 		source_name := if source_file := g.a.source_files[fn_node.pos.id] {
 			source_file.name
 		} else {
@@ -14847,7 +14854,7 @@ fn (g &FlatGen) selector_module_call_name(id flat.NodeId, fn_node flat.Node, nod
 		// local with the same name as the import. A concrete resolved method name
 		// still wins for a genuine local shadow in the original source.
 		call_name := '${lexical_module}.${fn_node.value}'
-		resolved_call := g.tc.resolved_call_name(id) or { '' }
+		resolved_call := g.resolved_call_name(id) or { '' }
 		resolved_is_lexical_module_call := resolved_call == call_name
 			|| resolved_call.replace('__', '.') == call_name
 		if resolved_call.len == 0 || resolved_is_lexical_module_call {
@@ -14878,7 +14885,7 @@ fn (g &FlatGen) selector_module_call_name(id flat.NodeId, fn_node flat.Node, nod
 	}
 	call_name := '${mod_name}.${fn_node.value}'
 	if g.selector_base_is_local_value(base.value) {
-		resolved := g.tc.resolved_call_name(id) or { return none }
+		resolved := g.resolved_call_name(id) or { return none }
 		if resolved != call_name && resolved.replace('__', '.') != call_name {
 			return none
 		}
@@ -16135,7 +16142,7 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 			g.write('})[0]')
 		}
 	}
-	resolved_call := g.tc.resolved_call_name(id) or { '' }
+	resolved_call := g.resolved_call_name(id) or { '' }
 	callee_has_implicit_ctx := g.tc.fn_implicit_veb_ctx.len > 0 && g.call_has_implicit_veb_ctx([
 		resolved_call,
 		fn_node.value,
@@ -16520,7 +16527,7 @@ fn (g &FlatGen) enum_from_selector_base_name(base_id flat.NodeId) ?u32 {
 }
 
 fn (g &FlatGen) selector_call_resolves_to_user_fn(id flat.NodeId, base_name_id u32, method string) bool {
-	if resolved := g.tc.resolved_call_name(id) {
+	if resolved := g.resolved_call_name(id) {
 		if g.fn_key_registered(resolved) {
 			return true
 		}

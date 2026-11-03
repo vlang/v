@@ -62,6 +62,7 @@ const c_has_attribute_override_key = '@function:__has_attribute'
 const usable_expr_type_memo_slots = 8192
 const usable_expr_type_memo_mask = usable_expr_type_memo_slots - 1
 const body_import_type_query_slots = 256
+const body_exact_import_slots = 1024
 const body_field_type_query_slots = 512
 const body_method_query_slots = 256
 const body_sum_name_query_slots = 256
@@ -603,6 +604,11 @@ mut:
 	resolve_ids    []int
 	resolve_gens   []u32
 	resolve_values []&types.Type
+	// exact_known_import_type_text results by type spelling id, tagged like `ids`/`gens`.
+	exact_import_ids    []u32
+	exact_import_gens   []u32
+	exact_import_found  []bool
+	exact_import_values []types.Type
 }
 
 fn (mut g FlatGen) begin_usable_expr_type_memo() {
@@ -612,26 +618,30 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 	if isnil(g.usable_expr_type_memo) {
 		g.usable_expr_type_memo = &UsableExprTypeMemo{
 			// Generation zero marks unused slots, including the slot for node zero.
-			ids:              []int{len: usable_expr_type_memo_slots}
-			gens:             []u32{len: usable_expr_type_memo_slots}
-			values:           unsafe { []&types.Type{len: usable_expr_type_memo_slots} }
-			import_queries:   []BodyImportTypeQuery{len: body_import_type_query_slots}
-			call_ret_ids:     []int{len: usable_expr_type_memo_slots}
-			call_ret_gens:    []u32{len: usable_expr_type_memo_slots}
-			call_ret_values:  unsafe { []&types.Type{len: usable_expr_type_memo_slots} }
-			field_queries:    []BodyFieldTypeQuery{len: body_field_type_query_slots}
-			method_queries:   []BodyMethodQuery{len: body_method_query_slots}
-			sum_name_queries: []BodySumNameQuery{len: body_sum_name_query_slots}
-			promoted_misses:  []BodyPromotedMissQuery{len: body_promoted_miss_slots}
-			struct_decls:     []BodyStructDeclQuery{len: body_struct_decl_query_slots}
-			alias_type_names: []BodyAliasTypeNameQuery{len: body_alias_type_name_slots}
-			sel_ids:          []int{len: usable_expr_type_memo_slots}
-			sel_gens:         []u32{len: usable_expr_type_memo_slots}
-			sel_found:        []bool{len: usable_expr_type_memo_slots}
-			sel_values:       unsafe { []&types.Type{len: usable_expr_type_memo_slots} }
-			resolve_ids:      []int{len: usable_expr_type_memo_slots}
-			resolve_gens:     []u32{len: usable_expr_type_memo_slots}
-			resolve_values:   unsafe { []&types.Type{len: usable_expr_type_memo_slots} }
+			ids:                 []int{len: usable_expr_type_memo_slots}
+			gens:                []u32{len: usable_expr_type_memo_slots}
+			values:              unsafe { []&types.Type{len: usable_expr_type_memo_slots} }
+			import_queries:      []BodyImportTypeQuery{len: body_import_type_query_slots}
+			call_ret_ids:        []int{len: usable_expr_type_memo_slots}
+			call_ret_gens:       []u32{len: usable_expr_type_memo_slots}
+			call_ret_values:     unsafe { []&types.Type{len: usable_expr_type_memo_slots} }
+			field_queries:       []BodyFieldTypeQuery{len: body_field_type_query_slots}
+			method_queries:      []BodyMethodQuery{len: body_method_query_slots}
+			sum_name_queries:    []BodySumNameQuery{len: body_sum_name_query_slots}
+			promoted_misses:     []BodyPromotedMissQuery{len: body_promoted_miss_slots}
+			struct_decls:        []BodyStructDeclQuery{len: body_struct_decl_query_slots}
+			alias_type_names:    []BodyAliasTypeNameQuery{len: body_alias_type_name_slots}
+			sel_ids:             []int{len: usable_expr_type_memo_slots}
+			sel_gens:            []u32{len: usable_expr_type_memo_slots}
+			sel_found:           []bool{len: usable_expr_type_memo_slots}
+			sel_values:          unsafe { []&types.Type{len: usable_expr_type_memo_slots} }
+			resolve_ids:         []int{len: usable_expr_type_memo_slots}
+			resolve_gens:        []u32{len: usable_expr_type_memo_slots}
+			resolve_values:      unsafe { []&types.Type{len: usable_expr_type_memo_slots} }
+			exact_import_ids:    []u32{len: body_exact_import_slots}
+			exact_import_gens:   []u32{len: body_exact_import_slots}
+			exact_import_found:  []bool{len: body_exact_import_slots}
+			exact_import_values: []types.Type{len: body_exact_import_slots}
 		}
 	}
 	mut memo := g.usable_expr_type_memo
@@ -651,6 +661,9 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 		}
 		for i in 0 .. memo.resolve_gens.len {
 			memo.resolve_gens[i] = 0
+		}
+		for i in 0 .. memo.exact_import_gens.len {
+			memo.exact_import_gens[i] = 0
 		}
 		for i in 0 .. memo.field_queries.len {
 			memo.field_queries[i] = BodyFieldTypeQuery{}
@@ -986,38 +999,40 @@ mut:
 	// C spelling for V's platform-width `int`: `i64` on 64-bit targets, `i32` on
 	// 32-bit. Used by hand-written runtime helpers that operate on `[]int`
 	// elements or `int` values directly (kept in sync with set_target).
-	int_ct                          string = 'i64'
-	thread_stack_size               int    = 8 * 1024 * 1024
-	compile_values                  map[string]string // explicit `-d` values used by `$d(...)` in C directives
-	output_path                     string
-	output_error                    string
-	c99_mode                        bool
-	trace_calls                     bool // -d trace: custom call-site hooks
-	is_trace_calls                  bool // -trace-calls: function-entry logging
-	trace_fns                       []string
-	track_heap                      bool
-	inside_trace_call               bool
-	skip_generics                   bool
-	skip_enum_autostr               bool
-	literal_output_only             bool
-	placeholder_check_forced        bool
-	cur_fn_name                     string
-	cur_fn_source_file              string
-	cur_fn_is_specialized           bool
-	cur_fn_assert_continues         bool
-	cur_fn_manualfree               bool
-	current_decl_is_mut             bool
-	direct_array_access             bool
-	struct_default_module           string
-	struct_default_generic_params   []string
-	struct_default_generic_args     flat.TypeTextList
-	default_value_stack             map[u32]bool
-	shallow_default_value_depth     int
-	shadowed_global_locals          map[string]bool
-	cur_param_names                 []string
-	cur_param_type_values           []&types.Type
-	cur_param_types                 map[string]&types.Type
-	cur_param_name_bits             u64
+	int_ct                        string = 'i64'
+	thread_stack_size             int    = 8 * 1024 * 1024
+	compile_values                map[string]string // explicit `-d` values used by `$d(...)` in C directives
+	output_path                   string
+	output_error                  string
+	c99_mode                      bool
+	trace_calls                   bool // -d trace: custom call-site hooks
+	is_trace_calls                bool // -trace-calls: function-entry logging
+	trace_fns                     []string
+	track_heap                    bool
+	inside_trace_call             bool
+	skip_generics                 bool
+	skip_enum_autostr             bool
+	literal_output_only           bool
+	placeholder_check_forced      bool
+	cur_fn_name                   string
+	cur_fn_source_file            string
+	cur_fn_is_specialized         bool
+	cur_fn_assert_continues       bool
+	cur_fn_manualfree             bool
+	current_decl_is_mut           bool
+	direct_array_access           bool
+	struct_default_module         string
+	struct_default_generic_params []string
+	struct_default_generic_args   flat.TypeTextList
+	default_value_stack           map[u32]bool
+	shallow_default_value_depth   int
+	shadowed_global_locals        map[string]bool
+	cur_param_names               []string
+	cur_param_type_values         []&types.Type
+	cur_param_types               map[string]&types.Type
+	cur_param_name_bits           u64
+	// Same filter for cur_mut_params: a name whose bit is clear is no mut parameter.
+	cur_mut_param_name_bits         u64
 	cur_concrete_optional_params    map[string]bool
 	cur_mut_params                  map[string]bool
 	cur_mut_pointer_params          map[string]bool
@@ -1122,7 +1137,10 @@ mut:
 	local_global_shadow_facts       &ContextNameFactCache = unsafe { nil }
 	local_global_suffix_names       map[string]bool
 	local_global_suffix_names_ready bool
-	local_name_exceptions           &LocalNameExceptions = unsafe { nil }
+	// Per first byte, the set of lengths (bit 63 = 63 or longer) of the names
+	// above, so a local name with no candidate skips hashing (see cgen_name_len_bits).
+	local_global_suffix_len_bits []u64
+	local_name_exceptions        &LocalNameExceptions = unsafe { nil }
 	// C names a local must not take because a typedef already uses them; see
 	// precompute_c_typedef_shadow_names.
 	c_typedef_shadow_names       map[string]bool
@@ -1130,6 +1148,7 @@ mut:
 	// None of the shadow names is a spelling that cname produces by renaming
 	// another identifier (`v_x`, `int__str`, internal symbols).
 	c_typedef_shadow_names_plain bool
+	c_typedef_shadow_len_bits    []u64
 	generic_app_cache            &GenericAppCache = unsafe { nil }
 	want_parallel_prep           bool
 	want_parallel_c_extern_prep  bool
@@ -1138,6 +1157,16 @@ mut:
 	// back to a serial top-up when it cannot run.
 	prep_externs_pending bool
 	prep_costs_pending   bool
+	// No registered type alias is spelled `main.<name>`, so main_type_alias_id
+	// cannot find one and value_unalias_type skips building that key.
+	main_type_aliases_absent bool
+	// Dense view of the checker's sparse resolved-call map (names of the
+	// transform-created call nodes, which cgen asks about far more often than
+	// the parsed ones): index[idx - base] is 1 + the position in values, or 0.
+	sparse_call_name_index       []u32
+	sparse_call_name_values      []string
+	sparse_call_name_index_base  int
+	sparse_call_name_index_ready bool
 	// offsetof_expr and leaf sizeof_expr nodes in AST order (referenced_c_structs).
 	sizeof_offsetof_node_ids    []i32
 	sizeof_offsetof_nodes_ready bool
@@ -4029,6 +4058,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.cur_param_name_bits = 0
 	g.cur_concrete_optional_params.clear()
 	g.cur_mut_params.clear()
+	g.cur_mut_param_name_bits = 0
 	g.cur_mut_pointer_params.clear()
 	g.cur_explicit_mut_pointer_params.clear()
 	g.cur_mut_param_owners.clear()
@@ -5444,6 +5474,8 @@ fn (mut g FlatGen) collect_gen_info(no_parallel bool) {
 	}
 	g.reserve_collect_gen_info_maps(no_parallel, defer_fn_signature_registrations)
 	g.precompute_export_lookups()
+	g.main_type_aliases_absent = !g.tc_has_main_type_alias()
+	g.build_sparse_call_name_index()
 	if profile {
 		g.timing_profile('  [ttime]   ci reserve maps  ${f64(presw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 		presw.restart()
@@ -5920,6 +5952,69 @@ fn (g &FlatGen) parsed_node_end() int {
 		return g.a.nodes.len
 	}
 	return parsed
+}
+
+// build_sparse_call_name_index copies the checker's sparse resolved-call map
+// into node-indexed storage. The checker records the names of transform-created
+// call nodes only in that map; cgen reads it about half a million times for a
+// self-host build, and the tables are read-only for the rest of cgen.
+fn (mut g FlatGen) build_sparse_call_name_index() {
+	g.sparse_call_name_index_ready = false
+	if isnil(g.tc) || !g.tc.parallel_check_sparse || !isnil(g.tc.fork_overlay)
+		|| g.tc.check_range_lo != 0 || g.tc.check_range_hi < 0 {
+		return
+	}
+	base := g.tc.check_range_hi + 1
+	n := g.a.nodes.len
+	if base >= n {
+		return
+	}
+	mut index := []u32{len: n - base}
+	mut values := []string{len: g.tc.sparse_resolved_call_names.len}
+	mut count := 0
+	for idx, name in g.tc.sparse_resolved_call_names {
+		if idx >= base && idx < n && count < values.len {
+			values[count] = name
+			count++
+			index[idx - base] = u32(count)
+		}
+	}
+	g.sparse_call_name_index = index
+	g.sparse_call_name_values = values
+	g.sparse_call_name_index_base = base
+	g.sparse_call_name_index_ready = true
+}
+
+// resolved_call_name is tc.resolved_call_name, answering transform-created
+// nodes from the dense index built by build_sparse_call_name_index.
+@[direct_array_access; inline]
+fn (g &FlatGen) resolved_call_name(id flat.NodeId) ?string {
+	idx := int(id)
+	if g.sparse_call_name_index_ready && idx > g.tc.check_range_hi {
+		rel := idx - g.sparse_call_name_index_base
+		if rel < g.sparse_call_name_index.len {
+			pos := g.sparse_call_name_index[rel]
+			if pos == 0 {
+				return none
+			}
+			return g.sparse_call_name_values[int(pos) - 1]
+		}
+	}
+	return g.tc.resolved_call_name(id)
+}
+
+// tc_has_main_type_alias reports whether any registered type alias is spelled
+// with the `main.` prefix.
+fn (g &FlatGen) tc_has_main_type_alias() bool {
+	if isnil(g.tc) {
+		return true
+	}
+	for registry_name_id, _ in g.tc.type_aliases.ids {
+		if flat.source_type_query(registry_name_id).has(.main_prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 @[direct_array_access]
@@ -17274,7 +17369,7 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 				g.write(c_fn_name)
 				return
 			}
-			if (ident_value.contains('sizeof') && ident_value.contains('('))
+			if (ident_value.contains_u8(`(`) && ident_value.contains('sizeof'))
 				|| fixed_array_len_has_operator(ident_value) {
 				if expr := g.fixed_array_len_c_expr(ident_value) {
 					g.write(expr)
@@ -18490,7 +18585,7 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 								}
 							}
 						}
-						if resolved_name := g.tc.resolved_call_name(base_id) {
+						if resolved_name := g.resolved_call_name(base_id) {
 							if resolved_type := g.tc.fn_ret_types[resolved_name] {
 								stable_base_type = resolved_type
 							}
@@ -26455,7 +26550,7 @@ fn (g &FlatGen) const_collect_deps_inner(val_id flat.NodeId, mut deps []string, 
 				}
 			}
 		}
-		if resolved := g.tc.resolved_call_name(val_id) {
+		if resolved := g.resolved_call_name(val_id) {
 			callee_name = resolved
 		}
 		// Key the visited set by the qualified name so `a.foo` and `b.foo` are treated

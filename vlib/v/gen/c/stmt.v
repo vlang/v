@@ -6401,7 +6401,7 @@ fn (g &FlatGen) local_fn_call_return_type(call_id flat.NodeId, call_node flat.No
 			return node_type
 		}
 	}
-	if name := g.tc.resolved_call_name(call_id) {
+	if name := g.resolved_call_name(call_id) {
 		if name.starts_with('C.') {
 			if ret := g.module_c_fn_return_type(name) {
 				return ret
@@ -6924,7 +6924,7 @@ fn (g &FlatGen) expr_really_returns_optional(id flat.NodeId) bool {
 		if declared is types.OptionType || declared is types.ResultType {
 			return true
 		}
-		if fname := g.tc.resolved_call_name(id) {
+		if fname := g.resolved_call_name(id) {
 			ret_type := g.tc.fn_ret_types[fname] or { return false }
 			return ret_type is types.OptionType || ret_type is types.ResultType
 		}
@@ -10564,7 +10564,8 @@ fn (g &FlatGen) local_decl_cname(name string) string {
 
 fn (g &FlatGen) local_name_needs_global_suffix(name string) bool {
 	if g.local_global_suffix_names_ready {
-		return name in g.local_global_suffix_names
+		return cgen_name_may_be_in(g.local_global_suffix_len_bits, name)
+			&& name in g.local_global_suffix_names
 	}
 	mut cache := g.local_global_shadow_facts
 	if !isnil(cache) {
@@ -10598,7 +10599,34 @@ fn (mut g FlatGen) precompute_local_global_suffix_names() {
 			g.local_global_suffix_names[name] = true
 		}
 	}
+	g.local_global_suffix_len_bits = cgen_name_len_bits(g.local_global_suffix_names)
 	g.local_global_suffix_names_ready = true
+}
+
+// cgen_name_len_bits indexes a name set by first byte and length: bit
+// min(len, 63) of entry names[0] is set for every name in `names`. A name whose
+// bit is clear is not in the set, so hot lookups skip hashing most misses.
+@[direct_array_access]
+fn cgen_name_len_bits(names map[string]bool) []u64 {
+	mut bits := []u64{len: 256}
+	for name, _ in names {
+		if name.len > 0 {
+			bits[name[0]] |= u64(1) << cgen_name_len_bit(name.len)
+		}
+	}
+	return bits
+}
+
+@[inline]
+fn cgen_name_len_bit(len int) int {
+	return if len < 63 { len } else { 63 }
+}
+
+// cgen_name_may_be_in reports whether `bits` (see cgen_name_len_bits) admits `name`.
+@[direct_array_access; inline]
+fn cgen_name_may_be_in(bits []u64, name string) bool {
+	return bits.len != 256 || name.len == 0
+		|| bits[name[0]] & (u64(1) << cgen_name_len_bit(name.len)) != 0
 }
 
 // The runtime's own `array` struct is typed into C under that name, and a local
@@ -10617,7 +10645,8 @@ fn (g &FlatGen) local_name_shadows_c_typedef(name string) bool {
 		// precompute_c_typedef_shadow_names), so only a shadow name itself can
 		// map to one.
 		if g.c_typedef_shadow_names_plain && cgen_is_word_identifier(name)
-			&& name !in g.c_typedef_shadow_names {
+			&& (!cgen_name_may_be_in(g.c_typedef_shadow_len_bits, name)
+				|| name !in g.c_typedef_shadow_names) {
 			return false
 		}
 		return g.cname(name) in g.c_typedef_shadow_names
@@ -10681,6 +10710,7 @@ fn (mut g FlatGen) precompute_c_typedef_shadow_names() {
 		}
 	}
 	g.c_typedef_shadow_names_plain = plain
+	g.c_typedef_shadow_len_bits = cgen_name_len_bits(g.c_typedef_shadow_names)
 	g.c_typedef_shadow_names_ready = true
 }
 
@@ -10929,7 +10959,7 @@ fn (g &FlatGen) noreturn_call_id(id flat.NodeId) ?flat.NodeId {
 // is_noreturn_call reports whether is noreturn call applies in c.
 fn (g &FlatGen) is_noreturn_call(id flat.NodeId) bool {
 	call_id := g.noreturn_call_id(id) or { return false }
-	if g.tc.resolved_call_name(call_id) != none {
+	if g.resolved_call_name(call_id) != none {
 		return g.tc.resolved_call_never_returns(call_id)
 	}
 	call := g.a.nodes[int(call_id)]
@@ -11330,7 +11360,7 @@ fn (g &FlatGen) expr_is_error_call(id flat.NodeId) bool {
 	if fn_node.value !in ['error', 'error_with_code'] {
 		return false
 	}
-	if resolved := g.tc.resolved_call_name(id) {
+	if resolved := g.resolved_call_name(id) {
 		return resolved in ['error', 'error_with_code', 'builtin.error', 'builtin.error_with_code']
 	}
 	if fn_node.kind != .ident {

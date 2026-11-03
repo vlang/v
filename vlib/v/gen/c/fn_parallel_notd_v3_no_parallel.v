@@ -2853,7 +2853,7 @@ fn (g &FlatGen) parallel_cached_expr_type(id flat.NodeId, node &flat.Node) ?type
 			return t
 		}
 		if node.kind == .call {
-			if name := g.tc.sparse_resolved_call_names[idx] {
+			if name := g.resolved_call_name(id) {
 				if t := g.tc.fn_ret_types[name] {
 					return t
 				}
@@ -2970,17 +2970,30 @@ fn (g &FlatGen) parallel_cached_expr_type_with_cache(id flat.NodeId, node &flat.
 	if idx < 0 {
 		return none
 	}
+	mut name := ''
 	if g.tc.parallel_check_sparse && (idx < g.tc.check_range_lo || idx > g.tc.check_range_hi) {
-		return g.parallel_cached_expr_type(id, node)
+		// Same answer as parallel_cached_expr_type; the call's declared return
+		// type goes through the name-keyed cache below like a parsed call's.
+		if g.tc.sparse_expr_type_values.len != 0 {
+			if t := g.tc.sparse_expr_type_values[idx] {
+				return t
+			}
+		}
+		if node.kind != .call {
+			return none
+		}
+		name = g.resolved_call_name(id) or { return none }
+	} else {
+		if idx < g.tc.expr_type_set.len && idx < g.tc.expr_type_values.len
+			&& g.tc.expr_type_set[idx] {
+			return *g.tc.expr_type_values[idx]
+		}
+		if node.kind != .call || idx >= g.tc.resolved_call_set.len
+			|| idx >= g.tc.resolved_call_names.len || !g.tc.resolved_call_set[idx] {
+			return none
+		}
+		name = g.tc.resolved_call_names[idx].value
 	}
-	if idx < g.tc.expr_type_set.len && idx < g.tc.expr_type_values.len && g.tc.expr_type_set[idx] {
-		return *g.tc.expr_type_values[idx]
-	}
-	if node.kind != .call || idx >= g.tc.resolved_call_set.len
-		|| idx >= g.tc.resolved_call_names.len || !g.tc.resolved_call_set[idx] {
-		return none
-	}
-	name := g.tc.resolved_call_names[idx].value
 	slot := int((u64(voidptr(name.str)) >> 4 ^ u64(name.len)) & 4095)
 	if cache.seen[slot] && cache.ptrs[slot] == voidptr(name.str) && cache.lens[slot] == name.len {
 		if cache.found[slot] {
@@ -3291,6 +3304,11 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		top_level_node_ids:                 g.top_level_node_ids
 		type_metadata_node_ids:             g.type_metadata_node_ids
 		type_metadata_nodes_ready:          g.type_metadata_nodes_ready
+		main_type_aliases_absent:           g.main_type_aliases_absent
+		sparse_call_name_index:             g.sparse_call_name_index
+		sparse_call_name_values:            g.sparse_call_name_values
+		sparse_call_name_index_base:        g.sparse_call_name_index_base
+		sparse_call_name_index_ready:       g.sparse_call_name_index_ready
 		sizeof_offsetof_node_ids:           g.sizeof_offsetof_node_ids
 		sizeof_offsetof_nodes_ready:        g.sizeof_offsetof_nodes_ready
 		embed_payload_node_ids:             g.embed_payload_node_ids
@@ -3489,6 +3507,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 			g.cur_param_types.clone()
 		}
 		cur_param_name_bits:                g.cur_param_name_bits
+		cur_mut_param_name_bits:            g.cur_mut_param_name_bits
 		cur_concrete_optional_params:       if result_only {
 			g.cur_concrete_optional_params
 		} else {
@@ -3595,9 +3614,11 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		local_global_shadow_facts:          &ContextNameFactCache{}
 		local_global_suffix_names:          g.local_global_suffix_names
 		local_global_suffix_names_ready:    g.local_global_suffix_names_ready
+		local_global_suffix_len_bits:       g.local_global_suffix_len_bits
 		local_name_exceptions:              g.local_name_exceptions
 		c_typedef_shadow_names:             g.c_typedef_shadow_names
 		c_typedef_shadow_names_ready:       g.c_typedef_shadow_names_ready
+		c_typedef_shadow_len_bits:          g.c_typedef_shadow_len_bits
 		generic_app_cache:                  &GenericAppCache{
 			base: if !isnil(g.generic_app_cache.base) {
 				g.generic_app_cache.base
