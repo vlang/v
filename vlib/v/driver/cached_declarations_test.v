@@ -63,13 +63,13 @@ fn main() {
 }
 '
 
-fn parse_cached_interface(name string) (&flat.FlatAst, string) {
+fn parse_cached_interface(name string, extra_declarations ...string) (&flat.FlatAst, string) {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_${name}_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	header := os.join_path(root, 'cachedmod.vh')
 	program := os.join_path(root, 'main.v')
-	os.write_file(header, cached_interface) or { panic(err) }
+	os.write_file(header, cached_interface + extra_declarations.join('\n')) or { panic(err) }
 	os.write_file(program, cached_interface_user) or { panic(err) }
 	mut p := parser.Parser.new(pref.new_preferences())
 	mut a := p.parse_files([header, program])
@@ -144,6 +144,24 @@ fn test_functions_of_a_module_that_a_stage_names_stay_in_that_module() {
 	assert kinds['never_called'] == .empty
 	assert kinds['named_by_a_stage'] == .empty
 	assert pruned.count == 2
+}
+
+fn test_synthesized_trace_hooks_keep_cached_declarations() {
+	mut a, root := parse_cached_interface('trace_hooks', '
+pub fn before_call_hook(name string)
+pub fn after_call_hook(name string)
+pub fn irrelevant_hook(name string)
+')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header := os.join_path(root, 'cachedmod.vh')
+	prune_unreferenced_cached_functions(mut a, cached_runtime_function_names,
+		cached_module_function_names, cached_function_name_patterns)
+	kinds := function_kinds(a, header)
+	assert kinds['before_call_hook'] == .fn_decl
+	assert kinds['after_call_hook'] == .fn_decl
+	assert kinds['irrelevant_hook'] == .empty
 }
 
 fn test_functions_of_a_file_that_is_not_a_cached_interface_stay() {

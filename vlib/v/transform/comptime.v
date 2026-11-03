@@ -4491,6 +4491,34 @@ fn (mut t Transformer) clone_variant_subst(id flat.NodeId, var_name string, item
 	return t.clone_variant_subst_with_smartcast(id, var_name, item, '', u32(0), []string{})
 }
 
+// variant_guard_smartcast_name finds a reflected variant guard that holds in the
+// then branch. Conjunctions preserve the guard; disjunctions do not.
+fn (t &Transformer) variant_guard_smartcast_name(id flat.NodeId, var_name string, variant_type u32) string {
+	cond := t.a.nodes[int(id)]
+	if cond.kind == .is_expr && cond.children_count > 0 {
+		guard_type := cond.source_value_id()
+		if guard_type == variant_type || guard_type == flat.source_type_id(var_name) {
+			base := t.a.child_node(&cond, 0)
+			if base.kind == .ident {
+				return base.value
+			}
+		}
+		return ''
+	}
+	if cond.kind == .paren && cond.children_count > 0 {
+		return t.variant_guard_smartcast_name(t.a.child(&cond, 0), var_name, variant_type)
+	}
+	if cond.kind == .infix && cond.op == .logical_and && cond.children_count >= 2 {
+		for i in 0 .. cond.children_count {
+			name := t.variant_guard_smartcast_name(t.a.child(&cond, i), var_name, variant_type)
+			if name != '' {
+				return name
+			}
+		}
+	}
+	return ''
+}
+
 fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_name string, item VariantMeta, smartcast_name string, return_context_id u32, inner_vars []string) ?flat.NodeId {
 	if int(id) < 0 {
 		return id
@@ -4585,16 +4613,8 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 	}
 	mut branch_smartcast := ''
 	if node.kind == .if_expr && node.children_count >= 2 {
-		cond := t.a.child_node(&node, 0)
-		if cond.kind == .is_expr && cond.source_value_id() in [
-			flat.source_type_id(var_name),
-			item.typ,
-		] && cond.children_count > 0 {
-			base := t.a.child_node(cond, 0)
-			if base.kind == .ident {
-				branch_smartcast = base.value
-			}
-		}
+		branch_smartcast = t.variant_guard_smartcast_name(t.a.child(&node, 0), var_name,
+			item.typ)
 	}
 	argument_types_source_ids := t.generic_clone_call_param_types(node, t.active_specialization_args.ids, return_context_id)
 

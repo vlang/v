@@ -66,6 +66,16 @@ The macOS integration test and shared resume unit test listed below also run on 
 and cover the unchanged per-file resume implementation. Set `VEXE` to an absolute
 compiler path to select the compiler used to build the integration-test runner.
 
+### Debian QEMU guest disk space
+
+`ci/qemu_linux_tests.sh` enables discard for the guest's QCOW2 disk. Run
+`sudo fstrim -v /` inside the guest to release unused disk blocks back to the host
+after compiler builds and test runs. Guest free space alone does not show how much
+host storage the disk image occupies. A full host disk can pause QEMU even when
+the guest filesystem has free space.
+
+Restart a guest launched before discard was enabled to apply the disk setting.
+
 ## Resuming the macOS CI job
 
 From the repository root, run:

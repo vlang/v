@@ -13,6 +13,8 @@ backends: a direct flat-AST-to-C backend, a scanner-to-C fast path, a native
 ARM64 backend via SSA IR with a built-in linker, and a direct
 flat-AST-to-WebAssembly backend. With `-prod`, the ARM64 backend runs SSA
 optimization, MIR lowering, and instruction selection.
+Driver builds that omit FastC also omit its native bridge imports.
+Cached module interfaces retain the hook declarations used by generated call tracing.
 
 `parser.Parser.parse_text` copies caller-provided source into the AST, so callers can reuse
 or release their own buffers after parsing.
@@ -102,6 +104,9 @@ aliases. Each spread contributes the array's elements to the variadic argument l
 
 Generic function bodies retain nominal alias types after unsafe expressions, array indexing,
 and map iteration, so methods declared on the alias remain available.
+
+Inside `$for variant in T.variants`, a variant guard combined with `&&` retains its narrowed
+type for inferred generic calls in the then branch, including mutable sum type aliases.
 
 ## Compiler dispatch
 
