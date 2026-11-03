@@ -411,6 +411,7 @@ fn (g &FlatGen) embed_payload_node_indexes() []i32 {
 fn (mut g FlatGen) gen_embed_file_blobs() {
 	mut defined := 0
 	mut seen := map[string]bool{}
+	linkage_attr := g.object_file_variable_linkage()
 	for i in g.embed_payload_node_indexes() {
 		node := unsafe { &g.a.nodes[i] }
 		if node.kind != .string_literal || !node.is_embed_payload() {
@@ -429,7 +430,7 @@ fn (mut g FlatGen) gen_embed_file_blobs() {
 			// `.incbin`; see embed_incbin_payloads. No size split is needed there:
 			// the C object size limit is about initializers, which that object
 			// does not have.
-			g.writeln('extern const unsigned char _v_embed_blob_${sym}[];')
+			g.writeln('${linkage_attr}extern const unsigned char _v_embed_blob_${sym}[];')
 			defined++
 			continue
 		}
@@ -444,7 +445,7 @@ fn (mut g FlatGen) gen_embed_file_blobs() {
 		// prefix per unit, and a `static` pointer would leave every unit but the
 		// one that runs `_vinit` holding its own null copy. gen_embed_blob_joined
 		// defines it, next to the `_vinit` that fills it.
-		g.writeln('extern u8* _v_embed_joined_${sym};')
+		g.writeln('${linkage_attr}extern u8* _v_embed_joined_${sym};')
 		defined++
 	}
 	if defined > 0 {
@@ -572,8 +573,9 @@ fn (mut g FlatGen) embed_payload_uses_incbin(sym string) bool {
 // gen_embed_blob_joined defines the buffers that _vinit fills, and is emitted
 // right before it so that the definition lands in the same translation unit.
 fn (mut g FlatGen) gen_embed_blob_joined() {
+	linkage_attr := g.object_file_variable_linkage()
 	for blob in g.chunked_embed_blobs() {
-		g.writeln('u8* _v_embed_joined_${blob.sym} = NULL;')
+		g.writeln('${linkage_attr}u8* _v_embed_joined_${blob.sym} = NULL;')
 	}
 }
 
