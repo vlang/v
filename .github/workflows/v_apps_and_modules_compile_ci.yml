@@ -182,6 +182,13 @@ jobs:
         run: |
           echo "Clone v-analyzer"
           v retry -- git clone --depth=1 --filter=blob:none --recursive --shallow-submodules https://github.com/vlang/v-analyzer /tmp/v-analyzer
+          # Remove this patch once the default branch supports the current compiler.
+          analyzer_patch="$GITHUB_WORKSPACE/.github/v_analyzer_current_v.patch"
+          if git -C /tmp/v-analyzer apply --check "$analyzer_patch"; then
+            git -C /tmp/v-analyzer apply "$analyzer_patch"
+          else
+            git -C /tmp/v-analyzer apply --reverse --check "$analyzer_patch"
+          fi
           cd /tmp/v-analyzer
           echo "Installing dependencies"
           v install
