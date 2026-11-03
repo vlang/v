@@ -366,11 +366,12 @@ ifdef WIN32
 		cd "$(TMPTCC)" && $(GIT) checkout -- lib/advapi32.def > /dev/null 2> /dev/null || true; \
 	fi
 endif
-# Pull only when the checked out branch moved upstream; a pull fetches every platform branch.
+# A pull fetches every platform branch, so skip it while the checked out branch has not
+# moved upstream. `clean` keeps changed tracked files; leave those to the pull to report.
 	@set -e; cd $(TMPTCC); $(GIT) clean -xf; \
 	tcc_branch="$$($(GIT) symbolic-ref --quiet --short HEAD || true)"; \
 	tcc_remote_sha=; \
-	if [ -n "$$tcc_branch" ]; then \
+	if [ -n "$$tcc_branch" ] && [ -z "$$($(GIT) status --porcelain --untracked-files=no)" ]; then \
 		tcc_remote_sha="$$($(GIT) ls-remote --heads origin "refs/heads/$$tcc_branch" 2> /dev/null | cut -f1)"; \
 	fi; \
 	if [ -n "$$tcc_remote_sha" ] && [ "$$tcc_remote_sha" = "$$($(GIT) rev-parse HEAD)" ]; then \

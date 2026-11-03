@@ -145,11 +145,14 @@ remote_has_branch() {
 	run_git ls-remote --exit-code --heads "$tcc_repo" "refs/heads/$1" >/dev/null 2>&1
 }
 
-# remote_branch_sha prints the commit that branch $1 points to upstream, and fails
-# when the branch is missing or the repository cannot be reached.
-remote_branch_sha() {
+# origin_branch_sha prints the commit that branch $1 points to on the origin of the
+# existing TCC checkout, which is the repository latest_bundle fetches from; that can
+# be a mirror chosen when the checkout was created. It fails when the branch is
+# missing or the repository cannot be reached.
+origin_branch_sha() {
 	local refs
-	refs="$(run_git ls-remote --exit-code --heads "$tcc_repo" "refs/heads/$1" 2>/dev/null)" || return 1
+	refs="$(run_git -C "$tcc_dir" ls-remote --exit-code --heads origin "refs/heads/$1" 2>/dev/null)" \
+		|| return 1
 	refs="${refs%%[[:space:]]*}"
 	[ -n "$refs" ] || return 1
 	printf '%s\n' "$refs"
@@ -372,7 +375,7 @@ latest_bundle() {
 	fi
 
 	local advertised_sha
-	if ! advertised_sha="$(remote_branch_sha "$expected_branch")"; then
+	if ! advertised_sha="$(origin_branch_sha "$expected_branch")"; then
 		if [ "$current_branch" = "$unknown_branch" ] && remote_has_branch "$unknown_branch"; then
 			if tcc_is_required; then
 				echo "Pre-built TCC is still unavailable for ${expected_branch}; explicit '-cc tcc' cannot continue." >&2
@@ -382,7 +385,7 @@ latest_bundle() {
 			echo "Pre-built TCC is still unavailable for ${expected_branch}; continuing with the system compiler."
 			return 0
 		fi
-		echo "Unable to refresh ${expected_branch} from ${tcc_repo}; preserving the current TCC checkout." >&2
+		echo "Unable to refresh ${expected_branch} from the origin of ${tcc_dir}; preserving the current TCC checkout." >&2
 		return 1
 	fi
 	if keep_unchanged_bundle "$current_branch" "$current_sha" "$advertised_sha"; then

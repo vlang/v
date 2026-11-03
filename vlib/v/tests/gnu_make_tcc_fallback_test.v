@@ -730,6 +730,34 @@ fn test_linux_tcc_leaves_an_unchanged_branch_alone() {
 	assert_clean_checkout(fixture.tcc_dir)
 }
 
+fn test_linux_tcc_compares_against_the_origin_it_fetches() {
+	if os.user_os() != 'linux' {
+		return
+	}
+	mut fixture := new_tcc_history_fixture(true)
+	defer {
+		os.rmdir_all(fixture.root) or {}
+	}
+	head_sha := push_compatible_head(mut fixture)
+	// The checkout is created from a mirror, which stays its origin, while later
+	// refreshes name the default repository, which does not move.
+	mirror := os.join_path(fixture.root, 'mirror.git')
+	run_checked('git clone --quiet --bare ${os.quoted_path(fixture.remote)} ${os.quoted_path(mirror)}')
+	run_checked('${fixture.fresh_cmd} TCCREPO=${os.quoted_path('file://${mirror}')} 2>&1')
+	assert run_checked('git -C ${os.quoted_path(fixture.tcc_dir)} rev-parse HEAD').trim_space() == head_sha
+
+	mirror_head_sha := commit_bundle_state(fixture.source, 'compatible-mirror',
+		compatible_tcc_script('compatible-tcc-mirror'), 'compatible-libgc-mirror\n')
+	run_checked('git -C ${os.quoted_path(fixture.source)} push --quiet ${os.quoted_path(mirror)} HEAD:refs/heads/thirdparty-linux-amd64')
+	result := os.exec(os.split_args(fixture.latest_cmd) or { panic(err) })
+	assert result.exit_code == 0, result.output
+	assert !result.output.contains('already up to date'), result.output
+	assert git_current_branch(fixture.tcc_dir) == 'thirdparty-linux-amd64'
+	assert run_checked('git -C ${os.quoted_path(fixture.tcc_dir)} rev-parse HEAD').trim_space() == mirror_head_sha
+	assert os.read_file(os.join_path(fixture.tcc_dir, 'lib', 'libgc.a'))! == 'compatible-libgc-mirror\n'
+	assert_clean_checkout(fixture.tcc_dir)
+}
+
 fn test_latest_tcc_pulls_other_bundles_only_when_their_branch_moved() {
 	$if windows {
 		return
@@ -768,6 +796,18 @@ fn test_latest_tcc_pulls_other_bundles_only_when_their_branch_moved() {
 	assert !trace.contains('fetch'), trace
 	assert !os.exists(stray_file)
 	assert run_checked('git -C ${os.quoted_path(tcc_dir)} rev-parse HEAD').trim_space() == head_sha
+
+	// `clean` keeps a changed tracked file, so the pull has to run to refuse it,
+	// instead of an unchanged upstream reporting the altered bundle as current.
+	tcc_exe := os.join_path(tcc_dir, 'tcc.exe')
+	write_executable(tcc_exe, '#!/bin/sh\nexit 1\n')
+	os.rm(git_trace)!
+	dirty_result := os.exec(latest_cmd)
+	assert dirty_result.exit_code != 0, dirty_result.output
+	assert !dirty_result.output.contains('already up to date'), dirty_result.output
+	assert os.read_file(git_trace)!.contains('pull --rebase --quiet')
+	assert os.read_file(tcc_exe)! == '#!/bin/sh\nexit 1\n'
+	run_checked('git -C ${os.quoted_path(tcc_dir)} checkout -- tcc.exe')
 
 	next_head_sha := commit_bundle_state(source, 'macos-v2', compatible_tcc_script('macos-tcc-v2'),
 		'macos-libgc-v2\n')
