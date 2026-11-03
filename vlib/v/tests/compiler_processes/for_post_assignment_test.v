@@ -1,4 +1,93 @@
 import os
+import v.cmdexec
+
+fn test_for_post_exits_drop_body_locals_once() {
+	root := os.join_path(os.vtmp_dir(), 'for_post_exits_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	program := '
+struct Tracked { id int }
+
+fn (item &Tracked) free() {
+	println("drop \${item.id}")
+}
+
+fn next_index(i int) !int {
+	if i == 1 { return error("done") }
+	return i + 1
+}
+
+fn check_break() {
+	outer := Tracked{90}
+	for i := 0; i < 3; i = next_index(i) or { break } {
+		body := Tracked{10 + i}
+		text := "body_" + i.str()
+		defer { println(text) }
+		assert body.id == 10 + i
+		// BODY_CONTINUE
+	}
+	assert outer.id == 90
+	println("after break")
+}
+
+fn check_return() {
+	outer := Tracked{91}
+	for i := 0; i < 3; i = next_index(i) or { return } {
+		body := Tracked{20 + i}
+		text := "body_" + i.str()
+		defer { println(text) }
+		assert body.id == 20 + i && outer.id == 91
+		// BODY_CONTINUE
+	}
+	assert false
+}
+
+fn check_propagation() ! {
+	outer := Tracked{92}
+	for i := 0; i < 3; i = next_index(i)! {
+		body := Tracked{30 + i}
+		text := "body_" + i.str()
+		defer { println(text) }
+		assert body.id == 30 + i && outer.id == 92
+		// BODY_CONTINUE
+	}
+	assert false
+}
+
+fn main() {
+	check_break()
+	check_return()
+	check_propagation() or { println("propagated") }
+}
+'
+	for translated in [false, true] {
+		attribute := if translated { '@[translated]\n' } else { '' }
+		source := os.join_path(root, 'main.v')
+		for take_continue in [false, true] {
+			code := program.replace('// BODY_CONTINUE', if take_continue { 'continue' } else { '' })
+			os.write_file(source, '${attribute}module main\n${code}')!
+			for autofree in [false, true] {
+				for serial in [false, true] {
+					mut args := ['-new-compiler', '-gc', 'none', '-cc', @CCOMPILER]
+					if autofree { args << '-autofree' }
+					if serial { args << '-no-parallel' }
+					args << ['run', source]
+					result := cmdexec.run(@VEXE, args)
+					mode := 'translated=${translated}, autofree=${autofree}, serial=${serial}, continue=${take_continue}'
+					assert result.exit_code == 0, '${mode}: ${result.output}'
+					expected := if autofree {
+						'body_0\ndrop 10\nbody_1\ndrop 11\nafter break\ndrop 90\n' +
+							'body_0\ndrop 20\nbody_1\ndrop 21\ndrop 91\n' +
+							'body_0\ndrop 30\nbody_1\ndrop 31\ndrop 92\npropagated\n'
+					} else {
+						'body_0\nbody_1\nafter break\nbody_0\nbody_1\nbody_0\nbody_1\npropagated\n'
+					}
+					assert result.output == expected, '${mode}: ${result.output}'
+				}
+			}
+		}
+	}
+}
 
 fn test_for_post_assignments_preserve_control_flow_and_cleanup() {
 	root := os.join_path(os.vtmp_dir(), 'for_post_assignments_${os.getpid()}')

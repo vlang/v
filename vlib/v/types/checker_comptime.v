@@ -15308,6 +15308,7 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 	}
 	$if ownership ? {
 		body_reaches_post := tc.ownership_statement_sequence_can_reach_loop_post(node, 3)
+		tc.ownership_record_current_loop_iteration_drops(true)
 		if node.children_count > 2 {
 			post_id := tc.a.child(&node, 2)
 			if int(post_id) >= 0 {
@@ -15321,7 +15322,6 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 		} else {
 			tc.ownership_merge_loop_continue_snapshots()
 		}
-		tc.ownership_record_current_loop_iteration_drops()
 		if body_reaches_post {
 			tc.ownership_end_loop_branch(node, 3)
 		}
@@ -16291,7 +16291,7 @@ fn (mut tc TypeChecker) check_for_in_stmt(node flat.Node) {
 		tc.record_error_at(.return_mismatch, 'unreachable code', unreachable_id, tc.unreachable_statement_diagnostic_pos(unreachable_id))
 	}
 	$if ownership ? {
-		tc.ownership_record_current_loop_iteration_drops()
+		tc.ownership_record_current_loop_iteration_drops(false)
 		tc.ownership_merge_loop_continue_snapshots()
 		tc.ownership_end_loop_branch(node, header)
 		tc.ownership_add_branch_group_base()
