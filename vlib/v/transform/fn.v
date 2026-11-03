@@ -3105,14 +3105,12 @@ fn (t &Transformer) call_name_for_node(id flat.NodeId, node flat.Node) string {
 						&& name.starts_with(t.cur_module) && name[t.cur_module.len] == `.` {
 						return name
 					}
-					qname := '${t.cur_module}.${short_name}'
-					if t.fn_ret_types.contains(qname) || qname in t.tc.fn_ret_types {
-						return qname
-					}
-					// The lowered spelling is only needed when the plain one is not declared.
-					lowered_qname := c_name(qname)
-					if t.fn_ret_types.contains(lowered_qname) || lowered_qname in t.tc.fn_ret_types {
-						return qname
+					// Most bare callees that resolve unqualified are builtin functions
+					// called from every module; remember per module which short names
+					// have no qualified declaration instead of spelling and looking
+					// up two candidates each time.
+					if t.module_declares_qualified_fn(short_name) {
+						return '${t.cur_module}.${short_name}'
 					}
 				}
 			}
@@ -3120,6 +3118,43 @@ fn (t &Transformer) call_name_for_node(id flat.NodeId, node flat.Node) string {
 		}
 	}
 	return t.resolve_call_name(node)
+}
+
+// module_declares_qualified_fn reports whether `cur_module.short_name`, plainly
+// or in its lowered C spelling, names a declared function; memoized per
+// (module, short name) until the signature tables change.
+@[direct_array_access]
+fn (t &Transformer) module_declares_qualified_fn(short_name string) bool {
+	if isnil(t.call_qualified_name_cache) || short_name.len == 0 {
+		return t.module_declares_qualified_fn_uncached(short_name)
+	}
+	mut cache := t.call_qualified_name_cache
+	if !same_transform_text(cache.module, t.cur_module) || cache.fn_count != t.fn_ret_types.ids.len
+		|| cache.tc_rets != t.tc.fn_ret_types.len || cache.tc_revision != t.tc.fn_ret_types_revision {
+		cache.module = t.cur_module
+		cache.fn_count = t.fn_ret_types.ids.len
+		cache.tc_rets = t.tc.fn_ret_types.len
+		cache.tc_revision = t.tc.fn_ret_types_revision
+		cache.states = [512]i8{}
+	}
+	slot := resolved_name_cache_slot(short_name, 511)
+	if cache.states[slot] != 0 && same_transform_text(cache.names[slot], short_name) {
+		return cache.states[slot] > 0
+	}
+	declared := t.module_declares_qualified_fn_uncached(short_name)
+	cache.names[slot] = short_name
+	cache.states[slot] = if declared { i8(1) } else { i8(-1) }
+	return declared
+}
+
+fn (t &Transformer) module_declares_qualified_fn_uncached(short_name string) bool {
+	qname := '${t.cur_module}.${short_name}'
+	if t.fn_ret_types.contains(qname) || qname in t.tc.fn_ret_types {
+		return true
+	}
+	// The lowered spelling is only needed when the plain one is not declared.
+	lowered_qname := c_name(qname)
+	return t.fn_ret_types.contains(lowered_qname) || lowered_qname in t.tc.fn_ret_types
 }
 
 // call_param_offset updates call param offset state for Transformer.
@@ -20230,7 +20265,7 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 			}
 		}
 	}
-	decl_module := t.tc.fn_type_modules[name] or { '' }
+	decl_module, decl_has_generics := t.resolved_call_decl_facts(name)
 	same_decl_module := decl_module == t.cur_module
 		|| (decl_module in ['', 'main'] && t.cur_module in ['', 'main'])
 	if !same_decl_module && node.children_count > 0 {
@@ -20273,7 +20308,7 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 	// The expression cache can contain a parser-inferred multi-return tail such as
 	// `!(m.Match, _)`. Prefer the resolved declaration, whose complete return type
 	// is authoritative, before falling back to that provisional expression type.
-	if param_ids := t.tc.fn_generic_params[name] {
+	if param_ids := t.resolved_call_generic_param_ids(name, decl_has_generics) {
 		params := types.generic_param_texts(param_ids)
 		if params == ['T'] {
 			if ret_text_source_id := t.tc.fn_ret_type_texts.type_id(name) {
@@ -20325,6 +20360,47 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 		}
 	}
 	return none
+}
+
+// resolved_call_decl_facts returns the declaring module of a resolved call name
+// ('' when unknown) and whether its declaration has generic parameters, from
+// the per-name memo when the checker's signature tables have not changed.
+@[direct_array_access]
+fn (t &Transformer) resolved_call_decl_facts(name string) (string, bool) {
+	if isnil(t.resolved_call_decl_cache) || name.len == 0 {
+		return t.tc.fn_type_modules[name] or { '' }, name in t.tc.fn_generic_params
+	}
+	mut cache := t.resolved_call_decl_cache
+	if cache.tc != voidptr(t.tc) || cache.revision != t.tc.fn_ret_types_revision
+		|| cache.modules_len != t.tc.fn_type_modules.len
+		|| cache.generics_len != t.tc.fn_generic_params.len {
+		cache.tc = voidptr(t.tc)
+		cache.revision = t.tc.fn_ret_types_revision
+		cache.modules_len = t.tc.fn_type_modules.len
+		cache.generics_len = t.tc.fn_generic_params.len
+		cache.states = [1024]i8{}
+	}
+	slot := resolved_name_cache_slot(name, 1023)
+	if cache.states[slot] != 0 && same_transform_text(cache.names[slot], name) {
+		return cache.modules[slot], cache.has_generics[slot]
+	}
+	decl_module := t.tc.fn_type_modules[name] or { '' }
+	has_generics := name in t.tc.fn_generic_params
+	cache.names[slot] = name
+	cache.modules[slot] = decl_module
+	cache.has_generics[slot] = has_generics
+	cache.states[slot] = 1
+	return decl_module, has_generics
+}
+
+// resolved_call_generic_param_ids is `tc.fn_generic_params[name]` when the
+// memoized facts say the declaration has generic parameters.
+@[inline]
+fn (t &Transformer) resolved_call_generic_param_ids(name string, has_generics bool) ?[]u32 {
+	if !has_generics {
+		return none
+	}
+	return t.tc.fn_generic_params[name] or { return none }
 }
 
 fn (t &Transformer) call_return_type_name_in_module(ret_name_id u32, node flat.Node, module_name string) u32 {

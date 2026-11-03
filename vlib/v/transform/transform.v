@@ -344,6 +344,8 @@ mut:
 	variant_match_cache                    &VariantMatchCache         = unsafe { nil }
 	alias_target_cache                     &AliasTargetCache          = unsafe { nil }
 	noreturn_names                         &NoreturnNameList          = unsafe { nil }
+	resolved_call_decl_cache               &ResolvedCallDeclCache     = unsafe { nil }
+	call_qualified_name_cache              &CallQualifiedNameCache    = unsafe { nil }
 	interface_type_cache                   &ContextLookupCache        = unsafe { nil }
 	alias_equivalent_names_cache           &EquivalentNamesCache      = unsafe { nil }
 	enum_expected_cache                    &EnumExpectedCache         = unsafe { nil }
@@ -1056,6 +1058,45 @@ mut:
 	generations [1024]u32
 	results     [1024]u32
 	states      [1024]i8
+}
+
+// ResolvedCallDeclCache memoizes, per resolved call name, the two declaration
+// facts that checker_resolved_non_builtin_return_type_uncached reads from
+// string-keyed checker tables on every call: the declaring module and whether
+// the declaration has generic parameters. The snapshot fields drop the entries
+// when the checker registers more signatures.
+struct ResolvedCallDeclCache {
+mut:
+	tc           voidptr
+	revision     u64
+	modules_len  int
+	generics_len int
+	names        [1024]string
+	modules      [1024]string
+	has_generics [1024]bool
+	states       [1024]i8
+}
+
+// CallQualifiedNameCache remembers, per (module, short callee name), whether
+// call_name_for_node found a module-qualified declaration for a bare callee
+// whose resolved name is unqualified. Only the answer is kept: a positive one
+// rebuilds the spelling, so no scope-allocated text is retained.
+struct CallQualifiedNameCache {
+mut:
+	module      string
+	fn_count    int
+	tc_rets     int
+	tc_revision u64
+	names       [512]string
+	states      [512]i8
+}
+
+// resolved_name_cache_slot hashes a non-empty name into a 512/1024-slot front.
+@[direct_array_access; inline]
+fn resolved_name_cache_slot(name string, mask int) int {
+	n := uint(name.len)
+	return int((n * 31 + uint(name[0]) * 7 + uint(name[n / 2]) * 3 + uint(name[n - 1]) +
+		(uint(name[(n * 3) / 4]) << 4)) & uint(mask))
 }
 
 // NoreturnNameList is a read-only snapshot of the keys of the AST's noreturn
@@ -3056,6 +3097,8 @@ fn (mut t Transformer) prepare() {
 	t.variant_match_cache = &VariantMatchCache{}
 	t.alias_target_cache = &AliasTargetCache{}
 	t.noreturn_names = new_noreturn_name_list(t.a)
+	t.resolved_call_decl_cache = &ResolvedCallDeclCache{}
+	t.call_qualified_name_cache = &CallQualifiedNameCache{}
 	t.interface_type_cache = &ContextLookupCache{
 		entries: map[u32]u32{}
 		misses:  map[u32]bool{}
@@ -5675,6 +5718,8 @@ fn (t &Transformer) fork_worker_with_state(ast &flat.FlatAst, wtc &types.TypeChe
 	w.variant_match_cache = &VariantMatchCache{}
 	w.alias_target_cache = &AliasTargetCache{}
 	w.noreturn_names = t.noreturn_names
+	w.resolved_call_decl_cache = &ResolvedCallDeclCache{}
+	w.call_qualified_name_cache = &CallQualifiedNameCache{}
 	w.interface_type_cache = &ContextLookupCache{
 		entries: map[u32]u32{}
 		misses:  map[u32]bool{}
@@ -5824,6 +5869,8 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.variant_match_cache = &VariantMatchCache{}
 	w.alias_target_cache = &AliasTargetCache{}
 	w.noreturn_names = t.noreturn_names
+	w.resolved_call_decl_cache = &ResolvedCallDeclCache{}
+	w.call_qualified_name_cache = &CallQualifiedNameCache{}
 	w.interface_type_cache = &ContextLookupCache{
 		entries: map[u32]u32{}
 		misses:  map[u32]bool{}
