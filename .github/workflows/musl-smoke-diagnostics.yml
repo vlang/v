@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  trace-smoke:
+  cold-smoke:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
@@ -28,13 +28,9 @@ jobs:
         with:
           ref: 8636a8fe6c2d285f6bb60ad5686b6ffda61f9835
           persist-credentials: false
-      - name: Install the diagnostic tracer
-        run: |
-          apt-get update -qq
-          apt-get install -y --no-install-recommends --no-upgrade strace
       - name: Build V using the original CI command
         run: make && ./v -cg -o v cmd/v && ./v symlink
-      - name: Record toolchain and trace the smoke matrix
+      - name: Record toolchain for the cold smoke control
         run: |
           git config --global --add safe.directory /__w/v/v
           cc --version
@@ -42,16 +38,8 @@ jobs:
           nproc
           ulimit -s
           printf 'VJOBS=%s\n' "${VJOBS-unset}"
+          test "${VJOBS+x}" != x
+      - name: Verify `v test` works
+        run: |
           ./v cmd/tools/test_if_v_test_system_works.v
-          set +e
-          (sleep 150; ps -eLo pid,tid,ppid,stat,wchan:32,comm) &
-          observer=$!
-          timeout --signal=TERM --kill-after=10s 240s strace -f -tt -T -s 80 \
-            -e trace=process,desc,futex -o /tmp/musl-smoke.strace \
-            ./cmd/tools/test_if_v_test_system_works > /tmp/musl-smoke.log 2>&1
-          status=$?
-          kill "$observer" 2>/dev/null
-          wait "$observer" 2>/dev/null
-          cat /tmp/musl-smoke.log
-          tail -n 400 /tmp/musl-smoke.strace
-          exit "$status"
+          ./cmd/tools/test_if_v_test_system_works
