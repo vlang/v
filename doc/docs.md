@@ -6433,6 +6433,7 @@ The `try_push/pop()` methods will return immediately with one of the results
 the reason why not.
 These methods also work in generic functions with a `chan T`. Their arguments must match the
 channel's element storage type, and `try_pop(mut value)` requires mutable destination storage.
+Arguments keep their active smartcasts, including when their address escapes.
 A sum-type channel requires storage of the full sum type when popping. A shared destination
 is writable inside its `lock` block. Pointer values can be pushed into a `chan voidptr`.
 Methods declared on a channel alias take precedence over these builtins.

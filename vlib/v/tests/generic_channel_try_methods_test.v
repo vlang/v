@@ -140,3 +140,19 @@ fn test_generic_channel_try_full_sum_type_storage() {
 	assert put(ch, ChannelValue(42))
 	assert take(ch)? == ChannelValue(42)
 }
+
+fn push_heap_smartcast[T](ch chan T) &ChannelValue {
+	mut value := ChannelValue(42)
+	escaped := &value
+	if value is int {
+		assert ch.try_push(value) == .success
+	}
+	return escaped
+}
+
+fn test_generic_channel_try_push_keeps_heap_smartcast() {
+	ch := chan int{cap: 1}
+	value := push_heap_smartcast[int](ch)
+	assert <-ch == 42
+	assert *value == ChannelValue(42)
+}
