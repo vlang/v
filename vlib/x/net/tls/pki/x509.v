@@ -182,14 +182,31 @@ pub fn parse_certificate(der []u8) !Certificate {
 		// For id-RSASSA-PSS (1.2.840.113549.1.1.10), extract the hash OID from the
 		// RSASSA-PSS-params SEQUENCE's hashAlgorithm [0] field.
 		if tbs_sig_algo_oid == '1.2.840.113549.1.1.10' && sig_alg_inner.len >= 2 {
-			pss_params := parse_sequence(sig_alg_inner[1].data) or { []Asn1Element{} }
+			if sig_alg_inner[1].tag != 0x30 {
+				return error('x509: RSASSA-PSS parameters must be a SEQUENCE')
+			}
+			pss_params := parse_sequence(sig_alg_inner[1].data) or {
+				return error('x509: malformed RSASSA-PSS parameters (${err.msg()})')
+			}
 			for param in pss_params {
 				// [0] EXPLICIT -- hashAlgorithm: 0xa0 = context-specific class +
 				// constructed bit, & 0x1f == 0 pins the tag to [0].
 				if (param.tag & 0xe0) == 0xa0 && (param.tag & 0x1f) == 0 {
-					hash_alg_inner := parse_sequence(param.data) or { []Asn1Element{} }
-					if hash_alg_inner.len > 0 {
-						tbs_sig_hash_oid = parse_oid(hash_alg_inner[0].data)
+					hash_alg_wrapper := parse_sequence(param.data) or {
+						return error('x509: malformed RSASSA-PSS hashAlgorithm AlgorithmIdentifier (${err.msg()})')
+					}
+					if hash_alg_wrapper.len != 1 || hash_alg_wrapper[0].tag != 0x30 {
+						return error('x509: RSASSA-PSS hashAlgorithm must explicitly contain one AlgorithmIdentifier SEQUENCE')
+					}
+					hash_alg_inner := parse_sequence(hash_alg_wrapper[0].data) or {
+						return error('x509: malformed RSASSA-PSS hashAlgorithm AlgorithmIdentifier (${err.msg()})')
+					}
+					if hash_alg_inner.len == 0 || hash_alg_inner[0].tag != 0x06 {
+						return error('x509: RSASSA-PSS hashAlgorithm AlgorithmIdentifier is missing its OID')
+					}
+					tbs_sig_hash_oid = parse_oid(hash_alg_inner[0].data)
+					if tbs_sig_hash_oid == '' {
+						return error('x509: malformed RSASSA-PSS hashAlgorithm OID')
 					}
 					break
 				}
