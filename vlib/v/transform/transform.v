@@ -24712,6 +24712,29 @@ fn (mut t Transformer) call_argument_borrows_fixed_array(id flat.NodeId, node fl
 		|| param_type in [flat.source_type_voidptr, flat.source_type_byteptr, flat.source_type_charptr]
 }
 
+// An implicit reference captures the argument's address before a later operand's
+// prelude. Copying its value instead would detach the call from caller storage
+// and can emit an invalid initializer for opaque C array typedefs like jmp_buf.
+fn (mut t Transformer) snapshot_implicit_reference_call_arg(id flat.NodeId, node flat.Node, child_index int) ?flat.NodeId {
+	param := t.resolved_call_argument_param_type(id, node, child_index)?
+	param_type := t.normalize_type_alias(t.semantic_type_name(param))
+	if !flat.source_type_shape(param_type).has(.pointer)
+		|| t.is_sum_type_name(flat.source_type_syntax(param_type).raw_base())
+		|| t.is_interface_type(param_type) {
+		return none
+	}
+	// Keep earlier argument snapshots outside any block expression lowered here.
+	outer_pending := t.pending_stmts.clone()
+	t.pending_stmts.clear()
+	defer {
+		reference_pending := t.pending_stmts.clone()
+		t.pending_stmts = outer_pending
+		t.pending_stmts << reference_pending
+	}
+	reference := t.transform_implicit_ref_arg(t.a.child(&node, child_index), param_type)?
+	return t.snapshot_transformed_expr_for_reuse(reference, param_type, 'order_snapshot')
+}
+
 // mut_pointer_slot_arg_keeps_binding reports whether call operand `child_index` passes a plain
 // pointer binding to a `mut x &T` parameter. That passes the binding's own address, which a
 // later operand cannot change, and the callee may retarget the binding. Snapshotting its pointer
@@ -25083,6 +25106,8 @@ fn (mut t Transformer) transform_call_expr_inner(id flat.NodeId, node flat.Node)
 						} else {
 							t.snapshot_expr_for_reuse(arg_id)
 						}
+					} else if reference := t.snapshot_implicit_reference_call_arg(id, node, i) {
+						reference
 					} else {
 						t.snapshot_expr_for_reuse(arg_id)
 					}
