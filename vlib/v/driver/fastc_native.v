@@ -1,13 +1,12 @@
 module driver
 
-import os
-import strings
-import v.cmdexec
-import v.modulecache
-import v.tempname
-
 // vfmt off
 $if !skip_fastc ? {
+	import os
+	import strings
+	import v.cmdexec
+	import v.modulecache
+	import v.tempname
 	import v.pref
 	import v.gen.fastc
 }
