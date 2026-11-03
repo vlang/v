@@ -625,7 +625,8 @@ fn (mut t Transformer) transform_array_index_or_expr(id flat.NodeId, node flat.N
 		} else {
 			index_value0
 		}
-		then_block = t.make_block([t.make_assign(t.make_ident(val_name), index_value)])
+		// Only the explicit fallback has a checker scope; the successful lookup is synthetic.
+		then_block = t.make_block_skip_scope_drops([t.make_assign(t.make_ident(val_name), index_value)])
 	}
 	mut opt_else := flat.empty_node
 	if info.base_optional {
