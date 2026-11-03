@@ -23898,7 +23898,7 @@ fn (mut t Transformer) transform_children_stmt(id flat.NodeId, node flat.Node) [
 }
 
 // transform_assert_stmt lowers a value `if`/`match` used as the assert
-// condition into a temp bool (with its guard/branch prelude) before the
+// condition into a temp value (with its guard/branch prelude) before the
 // assert. Without this, cgen calls `gen_expr` on the bare `if`-expression,
 // which is not a C expression, and emits an empty `if (!())` condition.
 //
@@ -23911,11 +23911,19 @@ fn (mut t Transformer) transform_assert_stmt(id flat.NodeId, node flat.Node) []f
 	}
 	cond_id := t.a.child(&node, 0)
 	cond := t.a.nodes[int(cond_id)]
+	mut condition_type := flat.source_type_bool
+	if !isnil(t.tc) {
+		if file := t.a.source_files[cond.pos.id] {
+			if t.tc.translated_files[file.name] {
+				condition_type = t.normalize_type_alias(t.tc.resolve_type(cond_id).source_type_id())
+			}
+		}
+	}
 	mut operands := []flat.NodeId{}
 	mut operand_spans := ''
 	mut lowered := flat.NodeId(-1)
 	if cond.kind in [.if_expr, .match_stmt] {
-		lowered = t.transform_expr_for_type(cond_id, flat.source_type_bool)
+		lowered = t.transform_expr_for_type(cond_id, condition_type)
 	} else if t.assert_reports_operands(cond) {
 		lhs_id := t.a.child(&cond, 0)
 		rhs_id := t.a.child(&cond, 1)
@@ -23940,6 +23948,14 @@ fn (mut t Transformer) transform_assert_stmt(id flat.NodeId, node flat.Node) []f
 		}
 	} else {
 		lowered = t.transform_expr(cond_id)
+	}
+	if condition_type != flat.source_type_bool {
+		// Preserve the scalar until comparison: byte-sized bool storage can truncate
+		// pointers, and portable 128-bit integers need their comparison helpers.
+		zero := t.make_int_literal_typed('0', flat.source_type_int)
+		lowered = t.make_infix(.ne, lowered, zero)
+		t.a.nodes[int(lowered)].pos = cond.pos
+		t.set_node_typ(int(lowered), flat.source_type_bool)
 	}
 	mut new_children := []flat.NodeId{cap: int(node.children_count) + operands.len}
 	new_children << lowered
