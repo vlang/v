@@ -181,7 +181,7 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Clone v-analyzer"
-          v retry -- git clone --depth=1 --branch=master --filter=blob:none --recursive --shallow-submodules https://github.com/vlang/v-analyzer /tmp/v-analyzer
+          v retry -- git clone --depth=1 --filter=blob:none --recursive --shallow-submodules https://github.com/vlang/v-analyzer /tmp/v-analyzer
           cd /tmp/v-analyzer
           echo "Installing dependencies"
           v install
