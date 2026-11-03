@@ -5508,7 +5508,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		if tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id)
 			&& !tc.current_fn_declared_unsafe()
 			&& !tc.node_is_in_translated_file(id)
-			&& (info.name in tc.unsafe_fns || tc.is_builtin_unsafe_c_call(node, info.name))
+			&& (tc.is_declared_unsafe_fn(info.name) || tc.is_builtin_unsafe_c_call(node, info.name))
 			&& info.name !in ['map.delete', 'builtin.map.delete'] && !calls_safe_array_repeat {
 			if info.has_receiver && callee.kind == .selector {
 				method_name := info.name.trim_string_left('main.')
@@ -5748,6 +5748,14 @@ fn os_raw_io_unsupported_type_message(path string, type_name string) string {
 		return 'contains non-plain-data values of type `${type_name}`'
 	}
 	return 'contains field `${path}` of type `${type_name}`'
+}
+
+fn (tc &TypeChecker) is_declared_unsafe_fn(name string) bool {
+	modules := tc.unsafe_fn_modules[name] or { return false }
+	// Bare names are shared by signature aliases from different modules. The
+	// unsafe attribute belongs to the declaration selected by call resolution.
+	owner_module := tc.fn_type_modules[name] or { tc.cur_module }
+	return owner_module in modules
 }
 
 fn (tc &TypeChecker) is_builtin_unsafe_c_call(node flat.Node, name string) bool {
