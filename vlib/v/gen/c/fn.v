@@ -487,13 +487,23 @@ fn c_call_needs_prelude_scan(a &flat.FlatAst, node &flat.Node) bool {
 	return base.kind == .empty || (base.kind == .ident && base.value == 'C')
 }
 
+@[direct_array_access]
 fn exact_flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId, windows_target bool, mut c_extern_refs map[string]bool, mut stack []flat.NodeId) (int, bool) {
 	mut cost := 0
 	mut needs_prelude_scan := false
-	stack.clear()
-	stack << node_id
-	for stack.len > 0 {
-		id := stack.pop()
+	// `stack` is a reusable buffer: `top` is the live depth, entries below the
+	// array length are overwritten in place and only a deeper tree appends, so no
+	// per-node push/pop bookkeeping runs. The visiting order is unchanged.
+	mut top := 0
+	if stack.len == 0 {
+		stack << node_id
+	} else {
+		stack[0] = node_id
+	}
+	top = 1
+	for top > 0 {
+		top--
+		id := stack[top]
 		idx := int(id)
 		if idx < 0 || idx >= a.nodes.len {
 			continue
@@ -523,7 +533,12 @@ fn exact_flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId, windows_tar
 		for i in 0 .. node.children_count {
 			child_id := a.children[node.children_start + i]
 			if int(child_id) >= 0 {
-				stack << child_id
+				if top < stack.len {
+					stack[top] = child_id
+				} else {
+					stack << child_id
+				}
+				top++
 			}
 		}
 	}
