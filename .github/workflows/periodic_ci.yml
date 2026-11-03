@@ -43,6 +43,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: Prepare private tool cache (Windows)
+        if: runner.os == 'Windows'
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
       - name: Build
         if: runner.os != 'Windows'
         run: make -j4 && ./v -showcc -o v cmd/v && ./v doctor
