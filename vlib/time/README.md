@@ -139,10 +139,11 @@ fields (`year`, `hour`, ...) are wall time in that location. Prefer
 marks system-local wall time with a fixed process offset and is left `false`
 on IANA-zoned `Time` values.
 
-`parse_rfc3339` and `parse_iso8601` keep a non-zero numeric UTC offset in the
-same way: the calendar fields stay as written, and `t.zone()` returns a fixed
-zone with that offset (in seconds east of UTC). Inputs ending in `Z`, `+00:00`
-or `-00:00` give plain UTC values without a location.
+`parse_rfc3339`, `parse_iso8601` and `parse_rfc2822` keep a non-zero UTC offset
+in the same way: the calendar fields stay as written, and `t.zone()` returns a
+fixed zone with that offset (in seconds east of UTC). Inputs ending in `Z`,
+`+00:00` or `-00:00` (or `+0000`, `-0000`, `UT` and `GMT` for `parse_rfc2822`)
+give plain UTC values without a location.
 
 ```v
 import time
