@@ -7374,15 +7374,23 @@ fn (mut g FlatGen) gen_owned_capture_closure_create(id flat.NodeId, node flat.No
 	return true
 }
 
+fn (g &FlatGen) trace_hook_module_name() string {
+	if fn_decl_module_key('v.debug', 'before_call_hook') in g.fn_decl_ret_types {
+		return 'v.debug'
+	}
+	return 'debug'
+}
+
 fn (g &FlatGen) trace_call_name(fn_node &flat.Node, fn_name string, target_name string, resolved_target_name string) ?string {
 	if !g.trace_calls || g.inside_trace_call {
 		return none
 	}
-	if fn_decl_module_key('debug', 'before_call_hook') !in g.fn_decl_ret_types
-		|| fn_decl_module_key('debug', 'after_call_hook') !in g.fn_decl_ret_types {
+	hook_module := g.trace_hook_module_name()
+	if fn_decl_module_key(hook_module, 'before_call_hook') !in g.fn_decl_ret_types
+		|| fn_decl_module_key(hook_module, 'after_call_hook') !in g.fn_decl_ret_types {
 		return none
 	}
-	if g.tc.cur_module in ['builtin', 'debug'] {
+	if g.tc.cur_module in ['builtin', hook_module] {
 		return none
 	}
 	if target_name.starts_with('C.') || resolved_target_name.starts_with('C.') {
@@ -7405,7 +7413,9 @@ fn (g &FlatGen) trace_call_name(fn_node &flat.Node, fn_name string, target_name 
 		} else {
 			candidate
 		}
-		if fn_decl_module_key('builtin', clean) in g.fn_decl_ret_types {
+		// The signature index also contains C declarations from builtin/cfns.c.v.
+		// Those must not hide a same-named V function from call-site tracing.
+		if fn_decl_module_key('builtin', clean) in g.non_generic_fn_names_by_module {
 			return none
 		}
 	}
@@ -7478,9 +7488,10 @@ fn (mut g FlatGen) gen_traced_call(id flat.NodeId, trace_name string) bool {
 		return false
 	}
 	trace_sid := g.intern_string(trace_name)
-	trace_global := g.cname('debug.g_trace')
-	before_hook := g.cname('debug.before_call_hook')
-	after_hook := g.cname('debug.after_call_hook')
+	hook_module := g.trace_hook_module_name()
+	trace_global := g.cname('${hook_module}.g_trace')
+	before_hook := g.cname('${hook_module}.before_call_hook')
+	after_hook := g.cname('${hook_module}.after_call_hook')
 	g.write('({ if (!${trace_global}.in_hook) { ${before_hook}(_str_${trace_sid}); } ')
 	if ret_type is types.Void {
 		g.write('${call_expr}; ')

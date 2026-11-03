@@ -4090,6 +4090,10 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.timing_profile('  [ttime] cg collect_info    ${f64(cgsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	cgsw.restart()
 	mut parallel_support_precomputed := false
+	// Call-site tracing also uses this V-only index after monomorphization.
+	if g.trace_calls {
+		g.precompute_non_generic_fn_index()
+	}
 	if g.incremental_fn_names.len > 0 {
 		// Cached declarations already contain whole-program typedefs, wrappers,
 		// interface tables and shared-parameter metadata. A body-only update only
@@ -4136,7 +4140,9 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.preseed_struct_default_string_literals()
 		g.precompute_shared_param_index()
 		if !g.skip_generics {
-			g.precompute_non_generic_fn_index()
+			if !g.trace_calls {
+				g.precompute_non_generic_fn_index()
+			}
 			g.precompute_generic_fn_key_index()
 		}
 		if !parallel_iface_scan {
