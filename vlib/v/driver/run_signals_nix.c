@@ -162,7 +162,13 @@ static void v3_run_forward_signal(int signal_number) {
         }
         _exit(128 + signal_number);
     }
-    if ((is_stop && v3_run_bridging_stop) || signal_number == v3_run_bridging_interrupt) {
+    if (is_stop && signal_number == v3_run_bridging_stop) {
+        v3_run_bridging_stop = 0;
+        errno = saved_errno;
+        return;
+    }
+    if (signal_number == v3_run_bridging_interrupt) {
+        v3_run_bridging_interrupt = 0;
         errno = saved_errno;
         return;
     }
@@ -360,10 +366,9 @@ static int v3_run_observer_exit(int status) {
         }
         v3_run_bridging_interrupt = signal_number;
         kill(-v3_run_owner_group, signal_number);
-        /* Drain our own group notification under the existing handler, including
-         * when finish entered with all forwarded signals blocked. */
+        /* Any compiler thread can receive this process-directed notification.
+         * Its handler consumes the marker, even if the owner unblocks first. */
         v3_run_sigprocmask(V3_RUN_UNBLOCK, &selected, 0);
-        v3_run_bridging_interrupt = 0;
     }
     v3_run_sigprocmask(V3_RUN_SETMASK, &previous_mask, 0);
     return WIFEXITED(status) && WEXITSTATUS(status) == 125 ? -1 : 0;
@@ -494,14 +499,13 @@ static int v3_run_suspend_owner(int stop_signal, int forwarded_stop) {
     if (v3_run_terminal_fd >= 0 && !forwarded_stop
         && (stop_signal == V3_RUN_TSTP || stop_signal == V3_RUN_TTIN
             || stop_signal == V3_RUN_TTOU)) {
-        v3_run_bridging_stop = 1;
+        v3_run_bridging_stop = stop_signal;
         kill(-v3_run_owner_group, stop_signal);
     }
     sigset_t previous_mask;
     for (;;) {
         v3_run_forwarded_stop = 0;
         kill((int)v3_run_owner_pid, V3_RUN_STOP);
-        v3_run_bridging_stop = 0;
         /* A later stop must reach the app after its SIGCONT, not before it. */
         if (v3_run_block_signals(&previous_mask)) return -1;
         /* A stop forwarded while the app was still stopped, such as a pipeline

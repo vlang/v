@@ -69,6 +69,30 @@ fn test_run_signal_helper_has_a_portable_windows_stub() {
 	assert result.exit_code == 0, result.output
 }
 
+fn test_run_signal_relay_received_by_a_worker_is_not_forwarded_twice() ! {
+	$if !linux {
+		return
+	}
+	cc := os.find_abs_path_of_executable('clang') or {
+		os.find_abs_path_of_executable('cc') or { return }
+	}
+	root := os.join_path(os.vtmp_dir(), 'run_signal_worker_${os.getpid()}_${time.now().unix_nano()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	fixture := os.join_path(@VEXEROOT, 'vlib', 'v', 'tests', 'compiler_processes', 'testdata', 'run_signal_thread_nix.c')
+	helper_dir := os.join_path(@VEXEROOT, 'vlib', 'v', 'driver')
+	binary := os.join_path(root, 'worker')
+	compiled := os.exec([cc, '-std=c11', '-Wall', '-Wextra', '-Werror', '-I', helper_dir, fixture,
+		'-o', binary, '-pthread'])
+	assert compiled.exit_code == 0, compiled.output
+	for mode in ['', 'stop'] {
+		args := if mode == '' { [binary] } else { [binary, mode] }
+		result := os.exec(args)
+		assert result.exit_code == 0, '${mode}: ${result.output}'
+		assert result.output.contains('received=0 bridging=0'), result.output
+	}
+}
+
 fn test_run_signal_forwarded_before_exec_terminates_child() ! {
 	cc := os.find_abs_path_of_executable('clang') or {
 		os.find_abs_path_of_executable('cc') or { return }
