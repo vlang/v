@@ -24,6 +24,7 @@ fn type_recent_slot(id u32, field string) int {
 	return int((mix ^ (mix >> 10)) & 1023)
 }
 
+@[direct_array_access]
 fn (mut cache TypeRecentCache) get(module_name string, id u32, field string) (i8, u32) {
 	slot := type_recent_slot(id, field)
 	if cache.states[slot] != 0 && cache.types[slot] == id
@@ -33,6 +34,7 @@ fn (mut cache TypeRecentCache) get(module_name string, id u32, field string) (i8
 	return 0, 0
 }
 
+@[direct_array_access]
 fn (mut cache TypeRecentCache) put(module_name string, id u32, field string, state i8, result u32) {
 	slot := type_recent_slot(id, field)
 	// Keep the owned spellings when the slot already holds equal ones.

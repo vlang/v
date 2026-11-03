@@ -260,6 +260,7 @@ fn fn_type_return_type_text(typ_id u32) ?u32 {
 }
 
 // is_known_fn_name reports whether is known fn name applies in transform.
+@[direct_array_access]
 fn (t &Transformer) is_known_fn_name(name string) bool {
 	if isnil(t.fn_return_name_cache) || name.len == 0 {
 		return t.is_known_fn_name_uncached(name)
@@ -20134,6 +20135,7 @@ fn (t &Transformer) current_generic_receiver_call_return_type(node flat.Node) ?u
 	return none
 }
 
+@[direct_array_access]
 fn (t &Transformer) checker_resolved_non_builtin_return_type(id flat.NodeId, node flat.Node) ?u32 {
 	if isnil(t.resolved_call_return_cache) {
 		return t.checker_resolved_non_builtin_return_type_uncached(id, node)

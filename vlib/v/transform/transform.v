@@ -1157,7 +1157,7 @@ fn var_type_index_cache_slot(name string) int {
 	return int((uint(name.str) >> 3 ^ uint(name.len)) & 127)
 }
 
-@[inline]
+@[direct_array_access; inline]
 fn (c &VarTypeIndexCache) get(name string, binding_count int) int {
 	slot := var_type_index_cache_slot(name)
 	// A declaration with the same spelling may use another string allocation.
@@ -1169,7 +1169,7 @@ fn (c &VarTypeIndexCache) get(name string, binding_count int) int {
 	return -2
 }
 
-@[inline]
+@[direct_array_access; inline]
 fn (mut c VarTypeIndexCache) put(name string, index int, binding_count int) {
 	slot := var_type_index_cache_slot(name)
 	c.names[slot] = name
@@ -1659,7 +1659,7 @@ fn (t &Transformer) clear_fn_return_name_cache() {
 	}
 }
 
-@[inline]
+@[direct_array_access; inline]
 fn (t &Transformer) checker_fn_return_type_name(name string) ?u32 {
 	if isnil(t.tc) {
 		return none
@@ -9276,6 +9276,7 @@ fn escape_call_may_return_receiver_address(a &flat.FlatAst, tc &types.TypeChecke
 // rooted at a `mut`/`&` parameter (or has no local root at all). Its address
 // then points into caller-owned storage: the escape walk may record that root,
 // but no declaration in this frame is moved to the heap because of it.
+@[direct_array_access]
 fn (t &Transformer) escape_arg_is_frame_independent(id flat.NodeId) bool {
 	mut cur := id
 	for int(cur) >= 0 && int(cur) < t.a.nodes.len {
@@ -30510,6 +30511,7 @@ fn (t &Transformer) concrete_variant_matches_generic_pattern(concrete_id u32, pa
 	return base_short in flat.source_type_syntax(concrete_short).underscore_prefixes()
 }
 
+@[direct_array_access]
 fn (t &Transformer) variant_names_match(a_id u32, b_id u32) bool {
 	if a_id == b_id { return true }
 	if isnil(t.variant_match_cache) {

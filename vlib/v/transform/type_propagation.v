@@ -629,6 +629,7 @@ fn type_text_has_unresolved_generic_placeholder(typ_id u32) bool {
 
 // resolve_selector_type resolves the type of a .selector node (e.g. `obj.field`).
 // Looks up the base expression type, then finds the field in the struct definition.
+@[direct_array_access]
 fn (t &Transformer) resolve_selector_type(node flat.Node) u32 {
 	if node.kind != .selector || node.children_count == 0 || t.smartcast_stack.len > 0
 		|| isnil(t.selector_type_cache) {
@@ -1373,6 +1374,7 @@ fn (t &Transformer) normalize_type_alias(type_id u32) u32 {
 	return t.normalize_type_alias_cached(type_id)
 }
 
+@[direct_array_access]
 fn (t &Transformer) normalize_type_alias_cached(type_id u32) u32 {
 	if isnil(t.alias_cache) {
 		return t.normalize_type_alias_uncached(type_id)
