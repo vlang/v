@@ -10,13 +10,6 @@ on:
       - '!**/docker_ci.yml'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
-  pull_request:
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/docker_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
 
 concurrency:
   group: docker-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -103,7 +96,9 @@ jobs:
       image: thevlang/vlang:ubuntu-build
       env:
         V_CI_UBUNTU_MUSL: 1
-        VFLAGS: -cc musl-gcc -gc none
+        # Tests that opt into Boehm need a musl-built collector; Ubuntu's system
+        # libgc and the prebuilt TCC archive target glibc. GC-none builds are unchanged.
+        VFLAGS: -cc musl-gcc -gc none -d use_bundled_libgc
       volumes:
         - ${{github.workspace}}:/opt/vlang
     steps:

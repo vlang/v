@@ -1349,7 +1349,7 @@ fn test_v3_implicit_tcc_cpp_native_object_uses_platform_headers() {
 	cpp_object := os.join_path(root, 'native.o')
 	v_source := os.join_path(root, 'main.v')
 	output := os.join_path(root, 'main')
-	os.write_file(cpp_source, '#include <cstddef>\nextern "C" size_t v3_cpp_object_probe(void) { return sizeof(std::max_align_t); }\n')!
+	os.write_file(cpp_source, '#include <cstddef>\n#include <string>\nextern "C" size_t v3_cpp_object_probe(void) { return sizeof(std::max_align_t) + std::string("native").size(); }\n')!
 	os.write_file(v_source, '#flag ${cpp_object}\n\nfn C.v3_cpp_object_probe() uint\n\nfn main() {\n\tassert C.v3_cpp_object_probe() > 0\n}\n')!
 	old_vflags := os.getenv_opt('VFLAGS')
 	os.unsetenv('VFLAGS')
@@ -1358,11 +1358,24 @@ fn test_v3_implicit_tcc_cpp_native_object_uses_platform_headers() {
 			os.setenv('VFLAGS', value, true)
 		}
 	}
-	build := cmdexec.run_in(v3_driver_test_executable(), ['-new-compiler', '-nocache',
+	no_retry := cmdexec.run_in(v3_driver_test_executable(), ['-new-compiler', '-nocache',
 		'-no-retry-compilation', '-o', output, v_source], root)
+	assert !no_retry.output.contains('failed to build C object'), no_retry.output
+	if no_retry.exit_code != 0 {
+		// TinyCC may not find the platform C++ runtime without its compiler's search paths.
+		runtime := $if macos { 'c++' } $else { 'stdc++' }
+		assert no_retry.output.contains('C compilation error: implicit tcc could not be used for this build')
+			|| (no_retry.output.contains('C compilation error (from ')
+				&& no_retry.output.contains("tcc: error: library '${runtime}' not found")), no_retry.output
+		assert !no_retry.output.contains('regenerating it with'), no_retry.output
+	}
+	// The normal implicit-TinyCC policy must still compile and run the native helper.
+	build := cmdexec.run_in(v3_driver_test_executable(), ['-new-compiler', '-nocache', '-o', output,
+		v_source], root)
 	assert !build.output.contains('failed to build C object'), build.output
-	assert build.exit_code == 0
-		|| build.output.contains('implicit tcc could not be used for this build'), build.output
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run_in(output, [], root)
+	assert run.exit_code == 0, run.output
 }
 
 fn test_v3_system_tcc_runtime_requires_windows_openlibm() {
@@ -1417,6 +1430,19 @@ fn test_v3_tcc_flag_plan_skips_backtrace_on_macos_arm64() {
 	assert '-B${tcc_install_dir}' in plan.before_inputs
 	assert '-I${os.join_path_single(tcc_install_dir, 'include')}' in plan.before_inputs
 	assert '-L${tcc_install_dir}' in plan.before_inputs
+}
+
+fn test_v3_tcc_flag_plan_honors_no_backtrace() {
+	for no_backtrace in [false, true] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			is_tcc:       true
+			target_os:    'linux'
+			target_arch:  'amd64'
+			vroot:        os.join_path(os.temp_dir(), 'v3_no_backtrace_flag_plan')
+			no_backtrace: no_backtrace
+		})
+		assert ('-bt25' in plan.before_inputs) == !no_backtrace
+	}
 }
 
 fn test_v3_freestanding_flag_plan_links_no_host_libraries() {

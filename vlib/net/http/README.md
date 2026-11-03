@@ -7,6 +7,36 @@ opt-in, HTTP/2 — over plain TCP or with TLS termination.
 For building web applications on top of it, see [`veb`](../../veb), which has its
 own server and router.
 
+## Response and handler helpers
+
+`http.redirect(url, code)` returns an empty redirect response with a `Location` header.
+`http.not_found()` returns a 404 response with the body `404 page not found`.
+`http.error_response(message, code)` returns the message verbatim as plain text, with
+`X-Content-Type-Options: nosniff`. Both error helpers set a UTF-8 content type.
+
+All three helpers return HTTP/1.1 responses with a byte-counted `Content-Length`, including
+zero for an empty body. Numeric status codes are retained even when no standard reason
+phrase exists. Use `Response.set_version` when another protocol version is needed.
+
+```v
+import net.http
+
+redirect := http.redirect('/login', 303)
+assert redirect.status_code == 303
+failure := http.error_response('Access denied', 403)
+assert failure.body == 'Access denied'
+```
+
+`http.strip_prefix(prefix, handler)` wraps an `http.Handler`. It removes a literal prefix
+from the URL path before calling the wrapped handler, and returns 404 for a nonmatching or
+malformed URL. Query strings and escaped path suffixes are preserved. The decoded path and
+any preserved alternative escaped spelling must both match the prefix, so `/api` does not
+match `/%61pi`.
+
+An empty prefix passes the request through unchanged. Removing the entire path leaves `/`.
+Matching uses a string prefix: use `/api/` when a directory boundary is required. The wrapper
+supports mutable handlers and leaves the caller's request unchanged.
+
 ## Status reason phrases
 
 `http.status_from_int(code).str()` returns the standard HTTP reason phrase, matching
@@ -212,6 +242,38 @@ crossing that boundary. Text without a recognized document signature returns
 Use sniffing only when no explicit content type is available. In particular, serving sniffed
 HTML from your application origin permits that content to run scripts.
 
+## Cookie jars
+
+`http.new_cookie_jar()` creates an in-memory cookie jar. Store response cookies with
+`jar.set_cookies(response_url, response.cookies())`, using the URL that produced the response.
+Use `jar.cookies_header(request_url)` as the next request's `Cookie` header, or
+`jar.cookies(request_url)` to retrieve the matching `Cookie` values.
+
+```v
+import net.http
+
+mut jar := http.new_cookie_jar()
+jar.set_cookies('https://example.com/account/login', [
+	http.Cookie{
+		name:  'sid'
+		value: 'abc'
+	},
+])
+assert jar.cookies_header('https://example.com/account/profile') == 'sid=abc'
+assert jar.cookies_header('https://sub.example.com/account/profile') == ''
+```
+
+URLs must be absolute HTTP or HTTPS URLs with a host; other URLs are ignored. Cookies without
+`Domain` stay on the response host. An explicit domain must be valid and match that host; IP
+addresses require an exact match. Domains are compared without case distinctions or a leading
+dot, and equivalent name/domain/path entries replace or delete each other. The jar does not
+check a public suffix list.
+
+Path matching uses the escaped URL path. Missing, empty, or relative `Path` attributes use
+the response URL's directory. `Max-Age` takes precedence over `Expires`, expired cookies are
+excluded, and `Secure` cookies are returned only for HTTPS. Header generation validates names
+and sanitizes and quotes values using the same rules as `Request.cookie_header_value()`.
+
 ## Cookies, headers and multipart
 
 Header value validation also works in `-check-overflow` builds: permitted TAB bytes are kept.
@@ -352,3 +414,26 @@ its content length is recalculated when its size changes. Response modifiers rec
 upstream representation, including any content encoding. A hook that changes the representation
 must also update or remove `Content-Encoding`. Response hop headers are removed before the hook;
 the hook is responsible for any headers it adds.
+
+## Diagnostic request and response dumps
+
+`http.dump_request(req, body)` renders the stored method, URL, version and headers as
+HTTP/1-style text. An empty URL is shown as `/`. The URL is otherwise preserved as stored,
+and headers normally added by the transport are not synthesized. Header rendering follows
+the selected version, but HTTP/2 and HTTP/3 dumps are text, not wire frames.
+
+`http.dump_response(resp, body)` uses the same representation as `resp.bytestr()`.
+For both helpers, setting `body` to `true` includes the stored body byte for byte; `false` omits it
+without changing the status line or headers such as `Content-Length`. Neither helper
+modifies its input.
+
+```v
+import net.http
+
+req := http.Request{
+	method: .post
+	url:    '/upload'
+	data:   'hello'
+}
+assert http.dump_request(req, true) == 'POST /upload HTTP/1.1\r\n\r\nhello'
+```

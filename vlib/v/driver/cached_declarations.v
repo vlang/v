@@ -69,8 +69,7 @@ const cached_module_function_names = ['debug.after_call_hook', 'debug.before_cal
 	'os.posix_get_error_msg', 'os.quoted_path', 'os.read_bytes', 'os.read_file', 'os.real_path',
 	'os.walk', 'os.win_volume_len', 'overflow.add_i8', 'rand.init', 'sync.channel_select',
 	'sync.channel_select_lang', 'sync.cpanic', 'sync.cpanic_errno', 'sync.new_channel_st',
-	'sync.should_be_zero', 'time.now', 'time.sleep', 'time.ticks', 'time.vpc_now', 'time.vpc_now_darwin',
-	'veb.run_at']
+	'sync.should_be_zero', 'time.now', 'time.sleep', 'time.ticks', 'time.vpc_now', 'time.vpc_now_darwin']
 
 // cached_function_name_patterns are the names that a stage of the compiler puts
 // together when it runs, as far as its string literals show them: a name with
@@ -82,10 +81,11 @@ const cached_module_function_names = ['debug.after_call_hook', 'debug.before_cal
 // among them; neither is one that fits no function of vlib, which is the name of
 // something else: a temporary, a type, a keyword. `cached_declarations_test.v`
 // works this list out again too.
-const cached_function_name_patterns = ['*.arg*', '*.free', '*.json', '*.len', '*_aligned', '*_break',
-	'*_callback', '*_clone', '*_continue', '*_free', '*_hash', '*_idx', '*_key_*', '*_map_key',
-	'*_object', '*_source', '*_str', '*_thread_args', '*_value_*', '*data', '*defined', '*nil',
-	'.arg*', 'arg*', 'main*', 'map_clone_int_*', 'map_eq_int_*', 'map_hash_int_*', 'ptr_*', 'vpc_*_*']
+const cached_function_name_patterns = ['*.arg*', '*.clone', '*.free', '*.json', '*.len', '*_aligned',
+	'*_break', '*_callback', '*_clone', '*_continue', '*_free', '*_hash', '*_idx', '*_key_*',
+	'*_map_key', '*_object', '*_source', '*_str', '*_thread_args', '*_value_*', '*data', '*defined',
+	'*nil', '.arg*', 'arg*', 'main*', 'map_clone_int_*', 'map_eq_int_*', 'map_hash_int_*', 'ptr_*',
+	'vpc_*_*']
 
 // module_lifecycle_function_names are the functions that a program calls for each
 // of its modules that has them, without a call in its source.

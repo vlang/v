@@ -124,6 +124,9 @@ fn test_fastc_target_boxing_uses_only_core_headers_and_real_allocator() {
 	root := os.join_path(os.vtmp_dir(), 'fastc_target_boxing_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
 	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'stdbool.h'), '#define bool _Bool\n#define true 1\n#define false 0\n') or {
+		panic(err)
+	}
 	os.write_file(os.join_path(root, 'stddef.h'), 'typedef __SIZE_TYPE__ size_t;\n#define NULL ((void*)0)\n') or {
 		panic(err)
 	}

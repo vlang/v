@@ -12,11 +12,6 @@ on:
       - '**.yml'
       - '!**/docs_ci.yml'
       - 'cmd/tools/vrepl.v'
-  pull_request:
-    paths-ignore:
-      - '**.yml'
-      - '!**/docs_ci.yml'
-      - 'cmd/tools/vrepl.v'
 
 concurrency:
   group: docs-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -89,15 +84,16 @@ jobs:
       - name: Unpack V
         run: tar -xzf "$RUNNER_TEMP/v-linux-build.tgz" && ./v version
 
-      - name: Checkout previous v
+      - name: Checkout commit before this push
         uses: actions/checkout@v7
         with:
           persist-credentials: false
           repository: vlang/v
-          ref: master
+          # A queued run must not compare against a newer master commit.
+          ref: ${{ github.event.before }}
           path: pv
 
-      - name: Check against parent commit
+      - name: Check documentation changes in this push
         run: |
           # shellcheck disable=SC2086
           ./v missdoc $MOPTIONS pv/vlib vlib
@@ -140,7 +136,5 @@ jobs:
           path: ${{ runner.temp }}
       - name: Unpack V
         run: tar -xzf "$RUNNER_TEMP/v-linux-build.tgz" && ./v version
-      - name: Install markdown dependency
-        run: ./v retry -- ./v install markdown
       - name: Check examples in the doc comments for all vlib modules
         run: VJOBS=1 ./v doc -check-examples -f none vlib/

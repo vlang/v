@@ -16,6 +16,7 @@ struct Lock { value int }
 __global (controller_lock Lock io_epoch u64 = 1)
 __global (first int = 7 second u64 = u64(9) state Lock = Lock{ value: 11 } callback fn (int) ?int = unsafe { nil } last int = 13)
 __global (enabled bool = false disabled bool = !enabled computed int = first + last trailing int = 29)
+__global (nested = map[int]map[string]int{} arrays = [][]int{} marker int = 31)
 @[cinit]
 __global (volatile static_first u64 = 17 volatile static_second u64 = 19)
 fn probe(value int) ?int {
@@ -26,6 +27,11 @@ fn main() {
 	assert controller_lock.value == 0 && io_epoch == 1
 	assert first == 7 && second == 9 && state.value == 11 && last == 13
 	assert !enabled && disabled && computed == 20 && trailing == 29
+	assert nested.len == 0 && arrays.len == 0 && marker == 31
+	nested[1] = {"answer": 42}
+	assert nested[1]["answer"] == 42
+	arrays << [7]
+	assert arrays[0][0] == 7
 	assert static_first == 17 && static_second == 19
 	assert callback == unsafe { nil }
 	callback = probe

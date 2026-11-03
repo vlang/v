@@ -52,6 +52,14 @@ builtin maps; pointer keys use pointer identity even when their pointed-to data 
 It visits each snapshot entry until the callback returns `false`; concurrent additions and
 removals may or may not be reflected. Locks protect map operations, not objects stored as values.
 
+`sync.new_map[K, V]()` creates a simpler map guarded by a single mutex. `sync.Map[K, V]{}`
+is also ready to use. Share the same instance by reference between workers; do not copy it.
+`load(key)` returns `(value, found)`, with the value type's default when the key is absent
+(`nil` for pointer values). A stored `nil` is still present and returns `found == true`.
+`store`, `delete`, `has`, `len`, and `clear` each run under the mutex. `keys()` and `values()`
+return snapshots in unspecified order. Separate snapshot calls can observe different changes;
+the returned values are shallow copies, so shared referenced data needs its own synchronization.
+
 ## Phaser and StampedLock
 
 `new_phaser()` creates a reusable barrier. Register each participating worker before the

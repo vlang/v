@@ -11,15 +11,6 @@ on:
       - 'vlib/v/pref/**'
       - 'vlib/v/util/vflags/**'
       - '.github/workflows/test_selection_ci.yml'
-  pull_request:
-    paths:
-      - 'cmd/tools/vtest*.v'
-      - 'cmd/tools/testing/**'
-      - 'cmd/v/**'
-      - 'vlib/v/build_constraint/**'
-      - 'vlib/v/pref/**'
-      - 'vlib/v/util/vflags/**'
-      - '.github/workflows/test_selection_ci.yml'
   workflow_dispatch:
 
 concurrency:
@@ -31,6 +22,7 @@ permissions:
 
 jobs:
   test-selection:
+    if: github.ref == 'refs/heads/master'
     strategy:
       fail-fast: false
       matrix:

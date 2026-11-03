@@ -159,6 +159,10 @@ readback, and native-borrow admissions fail as stale. Already admitted work
 follows the terminal or cancellation flow, and queued terminals remain
 deliverable.
 
+Within a render frame, `WindowContext.with_swapchain_sgl()` and `with_offscreen_sgl()`
+submit the drawing commands from a successful callback to the selected target before
+returning. Renderer errors propagate through the managed pass cleanup.
+
 `examples/gg/multiwindow_render_runtime.v` is an unattended CI probe, not an
 interactive launch target. Backend lanes compile it with `-d gg_multiwindow`
 plus `-d x_multiwindow_x11`, `-d sokol_wayland`, `-d sokol_metal`, or

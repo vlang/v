@@ -647,8 +647,13 @@ pub fn (tc &TypeChecker) fn_type(params []Type, result &Type, mutability []bool)
 
 // variadic_fn_type creates a canonical signature while preserving its variadic tail.
 pub fn (tc &TypeChecker) variadic_fn_type(params []Type, result &Type, mutability []bool, is_variadic bool) FnType {
-	mut signature := []FnParam{cap: params.len}
-	for i in 0 .. params.len {
+	return tc.variadic_fn_type_from(params, result, mutability, is_variadic, 0)
+}
+
+@[inline]
+fn (tc &TypeChecker) variadic_fn_type_from(params []Type, result &Type, mutability []bool, is_variadic bool, start int) FnType {
+	mut signature := []FnParam{cap: params.len - start}
+	for i in start .. params.len {
 		_, typ := tc.intern_type(params[i])
 		signature << FnParam{
 			typ:    typ

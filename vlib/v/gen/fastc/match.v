@@ -34,13 +34,24 @@ fn (mut g Parser) read_match_expression() !string {
 	// `read_expression` consumes the `mut` modifier and keeps only the referenced
 	// name in `last_expression`, so remember it before parsing the subject.
 	subject_is_mut := g.tok == .key_mut
-	subject := g.read_expression([token.Token.lcbr])!
-	subject_type_source_id := g.last_expression_type
+	mut subject := g.read_expression([token.Token.lcbr])!
+	subject_wrapper := g.last_expression_type
+	subject_payload := if subject_wrapper in [fastc_type_option, fastc_type_result] {
+		g.option_value_type_for_expression(g.last_expression)
+	} else {
+		u32(0)
+	}
+	subject_type_source_id := if subject_payload != 0 { subject_payload } else { subject_wrapper }
 	subject_type := subject_type_source_id
 	if subject == '' || subject_type_source_id == u32(0) {
 		return g.unsupported('unverifiable match expression subject')
 	}
 	subject_tokens := g.last_expression.clone()
+	if g.member_smartcasts.len > 0 {
+		if path := fastc_indexed_member_chain_path(subject_tokens) {
+			if cast := g.member_smartcasts[path] { subject = cast.source }
+		}
+	}
 	smartcast_is_reference := subject_is_mut || flat.source_type_query(subject_type).has(.c_pointer_suffix)
 	// A sum-type / interface subject dispatches on the boxed `_typ` tag; each branch
 	// names a variant type and (for a plain-local subject) is smart-cast inside its
@@ -71,10 +82,11 @@ fn (mut g Parser) read_match_expression() !string {
 	}
 	mut subject_member_path := ''
 	if is_boxed && subject_local == '' {
-		if path := fastc_member_chain_path(subject_tokens, member_start, subject_tokens.len) {
+		if path := fastc_indexed_member_chain_path(subject_tokens[member_start..]) {
 			subject_member_path = path
 		}
 	}
+
 	// The boxed member itself, which an assignment to the narrowed member writes.
 	mut subject_member_source := ''
 	mut subject_member_type := u32(0)
@@ -89,6 +101,7 @@ fn (mut g Parser) read_match_expression() !string {
 	mut conditions := []string{}
 	mut values := []string{}
 	mut result_type := u32(0)
+	mut result_option_type := u32(0)
 	mut fallback := ''
 	mut has_else := false
 	mut handled_cases := map[string]bool{}
@@ -160,7 +173,16 @@ fn (mut g Parser) read_match_expression() !string {
 			}
 		}
 		g.expect(.lcbr)!
-		g.expected_expression_type = outer_expected_type_source_id
+		g.expected_expression_type = if result_type != 0 && outer_expected_type_source_id in [
+			u32(0),
+			fastc_type_option,
+			fastc_type_result,
+			flat.source_type_voidptr,
+		] {
+			result_type
+		} else {
+			outer_expected_type_source_id
+		}
 		// A single-type branch smart-casts to that variant. A branch listing several
 		// array variants (`[]int, []string { value.len }`) cannot pick one concrete
 		// element type, but every V array shares the generic `array` layout, so casting
@@ -234,9 +256,30 @@ fn (mut g Parser) read_match_expression() !string {
 			}
 		}
 		mut value := g.read_match_block_expression_value()!
-		mut value_type := g.last_expression_type
+		mut value_type := fastc_normalize_inferred_type(g.last_expression_type)
+		if member_smartcast_active && !fastc_is_pointer_type(smartcast_type)
+			&& fastc_is_pointer_type(value_type) && fastc_trim_pointer_type(value_type) == smartcast_type
+			&& !fastc_is_pointer_type(outer_expected_type_source_id) {
+			if path := fastc_indexed_member_chain_path(g.last_expression) {
+				if path == projection_path {
+					value = '*(${value})'
+					value_type = smartcast_type
+				}
+			}
+		}
+		if value_type == 0 && g.declared_kinds[g.semantic_type_key(outer_expected_type_source_id)] == .enum_ {
+			value_type = outer_expected_type_source_id
+		}
+		if value_type in [fastc_type_option, fastc_type_result] {
+			payload := if g.last_expression.len > 0 {
+				g.option_value_type_for_expression(g.last_expression)
+			} else {
+				g.last_option_value_type
+			}
+			if payload != 0 { result_option_type = payload }
+		}
 		if member_smartcast_active {
-			if member_smartcast_present {
+			if member_smartcast_present && projection_path in g.member_smartcasts {
 				g.member_smartcasts[projection_path] = member_smartcast_saved
 			} else {
 				g.member_smartcasts.delete(projection_path)
@@ -298,6 +341,7 @@ fn (mut g Parser) read_match_expression() !string {
 			if fallback != '' {
 				fallback = g.option_success_expression(value_type, result_type, fallback)
 			}
+			result_option_type = result_type
 			result_type = value_type
 		}
 		if g.selfhost && value_type in [u32(0), flat.source_type_void] && result_type != 0 {
@@ -337,8 +381,26 @@ fn (mut g Parser) read_match_expression() !string {
 		fallback = '(${flat.source_type_name(result_type)}){0}'
 	}
 	mut expression := fallback
-	for i := conditions.len - 1; i >= 0; i-- {
-		expression = '((${conditions[i]}) ? (${values[i]}) : (${expression}))'
+	if conditions.len > 16 {
+		// Flat branches keep large enum matches within native C parsers' stack limits.
+		// A label preserves any break/continue in an arm's enclosing V loop.
+		result_name := g.temporary_name('match_result')
+		done := g.temporary_name('match_done')
+		storage_type := if result_type in [u32(0), flat.source_type_void] {
+			flat.source_type_int
+		} else {
+			result_type
+		}
+		mut statements := ['${fastc_output_c_type(flat.source_type_name(storage_type))} ${result_name};']
+		for i, condition in conditions {
+			statements << 'if (${condition}) { ${result_name} = (${values[i]}); goto ${done}; }'
+		}
+		statements << '${result_name} = (${fallback}); ${done}: ${result_name};'
+		expression = '({ ${statements.join(' ')} })'
+	} else {
+		for i := conditions.len - 1; i >= 0; i-- {
+			expression = '((${conditions[i]}) ? (${values[i]}) : (${expression}))'
+		}
 	}
 	g.last_expression_type = (if result_type == 0 {
 		outer_expected_type_source_id
@@ -346,7 +408,17 @@ fn (mut g Parser) read_match_expression() !string {
 		result_type
 	})
 	g.last_expression = []FastcExpressionToken{}
+	g.last_option_value_type = result_option_type
 	subject_decl_type := g.declaration_c_type(subject_type, subject)
+	if subject_payload != 0 {
+		if result_type !in [fastc_type_option, fastc_type_result] {
+			result_option_type = result_type
+			expression = g.option_success_expression(subject_wrapper, result_type, expression)
+		}
+		g.last_expression_type = subject_wrapper
+		g.last_option_value_type = result_option_type
+		return '({ ${flat.source_type_name(subject_wrapper)} __vf_match_option = (${subject}); __vf_match_option.state ? (${flat.source_type_name(subject_wrapper)}){.state=2} : ({ ${subject_decl_type} ${temporary} = ${g.option_value_expression(subject_payload, '__vf_match_option')}; ${expression}; }); })'
+	}
 	return '({ ${subject_decl_type} ${temporary} = (${subject}); ${expression}; })'
 }
 

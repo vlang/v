@@ -30,10 +30,9 @@ mut:
 	// build and leaves it: what it names depends on where the output goes.
 	relative_paths bool
 	// The parts of the name of a macro for the time of the compilation that the
-	// command, a header or the unit has: see v3_c_time_name_parts.
+	// command or generated unit has: see v3_c_time_name_parts.
 	time_parts []string
-	// Why the C of the program may ask for the time of its compilation, for as
-	// long as nothing has told whether it does, or ''.
+	// Why a possible time dependency prevents executable reuse, or ''.
 	time_question string
 }
 
@@ -46,21 +45,6 @@ fn (inputs &V3ProgramLinkInputs) reason() string {
 		return inputs.time_question
 	}
 	return inputs.unknown_option
-}
-
-// settle_time takes the answer to `time_question`: whether the C of the program
-// asks for the time of its compilation, or none when the preprocessor did not
-// tell. An executable of a C that does is good for the moment in which it was
-// compiled, and none is kept of a C of which that is not known.
-fn (mut inputs V3ProgramLinkInputs) settle_time(asks ?bool) {
-	if answer := asks {
-		if answer && inputs.unknown.len == 0 {
-			inputs.unknown = 'the C of the program asks for the time of its compilation'
-		}
-	} else if inputs.unknown.len == 0 {
-		inputs.unknown = 'the preprocessor did not tell whether the C of the program asks for the time of its compilation'
-	}
-	inputs.time_question = ''
 }
 
 // inputs_can_be_told reports whether nothing of the command stands in the way of

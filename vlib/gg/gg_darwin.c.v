@@ -7,7 +7,7 @@ import math
 #flag darwin -framework CoreGraphics
 #flag darwin -framework Foundation
 
-#include "gg_darwin_force_mono.h"
+#include "gg_darwin_force_mono.m"
 
 fn C.gg_darwin_application() macos.Id
 fn C.gg_darwin_color_attribute() macos.Id
@@ -17,6 +17,7 @@ fn C.gg_darwin_fill_rect(ctx voidptr, x f64, y f64, width f64, height f64)
 fn C.gg_darwin_fill_ellipse(ctx voidptr, x f64, y f64, width f64, height f64)
 fn C.gg_darwin_stroke_ellipse(ctx voidptr, x f64, y f64, width f64, height f64)
 fn C.gg_darwin_mouse_in_rect(x f64, y f64, rx f64, ry f64, width f64, height f64, flipped bool) bool
+fn C.gg_darwin_dispatch_main(context voidptr, work fn (voidptr))
 
 fn C.CGColorCreateGenericRGB(r f64, g f64, b f64, a f64) voidptr
 fn C.CGColorRelease(color voidptr)
@@ -30,9 +31,6 @@ fn C.CGContextMoveToPoint(ctx voidptr, x f64, y f64)
 fn C.CGContextAddLineToPoint(ctx voidptr, x f64, y f64)
 fn C.CGContextStrokePath(ctx voidptr)
 fn C.CGColorRelease(color voidptr)
-
-fn C.dispatch_get_main_queue() voidptr
-fn C.dispatch_async_f(queue voidptr, context voidptr, work voidptr)
 
 fn C.gg_set_force_mono(on int)
 fn C.gg_get_force_mono() int
@@ -198,9 +196,9 @@ fn darwin_window_refresh_cb(ctx voidptr) {
 	macos.msg_void(window, 'displayIfNeeded')
 }
 
+// darwin_window_refresh schedules the active window's redraw on the main queue.
 pub fn darwin_window_refresh() {
-	queue := C.dispatch_get_main_queue()
-	C.dispatch_async_f(queue, unsafe { nil }, voidptr(darwin_window_refresh_cb))
+	C.gg_darwin_dispatch_main(unsafe { nil }, darwin_window_refresh_cb)
 }
 
 // gg_get_screen_size returns the size of the current window's screen, or the main screen.

@@ -40,9 +40,11 @@ fn build_driver_review_v3(root string) string {
 }
 
 fn test_driver_preserves_delegated_cli_modes() {
-	root := os.join_path(os.vtmp_dir(), 'v3_driver_review_feedback_${os.getpid()}')
-	os.rmdir_all(root) or {}
-	os.mkdir_all(root) or { panic(err) }
+	requested_root := os.join_path(os.vtmp_dir(), 'v3_driver_review_feedback_${os.getpid()}')
+	os.rmdir_all(requested_root) or {}
+	os.mkdir_all(requested_root) or { panic(err) }
+	// Imported source diagnostics report physical paths on macOS.
+	root := os.real_path(requested_root)
 	defer {
 		os.rmdir_all(root) or {}
 	}

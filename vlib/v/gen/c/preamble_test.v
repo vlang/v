@@ -14,14 +14,15 @@ fn windows_preamble_test_gen() FlatGen {
 
 fn test_windows_translation_unit_preserves_configuration_preincludes() {
 	mut g := windows_preamble_test_gen()
-	g.preinclude_directives = ['#include "winapi_config.h"', '#include <bcrypt.h>',
-		'#include <synchapi.h>', '#include <windows.h>']
+	g.preinclude_directives = ['#include "winapi_config.h"', '#include <shellapi.h>',
+		'#include <bcrypt.h>', '#include <synchapi.h>', '#include <windows.h>']
 	g.emit_translation_unit_include_directives()
 	c_code := g.sb.str()
 	config_index := c_code.index('#include "winapi_config.h"')?
 	assert c_code.index('#ifndef UNICODE\n#define UNICODE\n#endif')? < config_index
 	assert c_code.index('#ifndef _UNICODE\n#define _UNICODE\n#endif')? < config_index
 	assert config_index < c_code.index('#include <windows.h>')?
+	assert c_code.index('#include <windows.h>')? < c_code.index('#include <shellapi.h>')?
 	assert c_code.index('#include <windows.h>')? < c_code.index('#include <bcrypt.h>')?
 	assert c_code.index('#include <windows.h>')? < c_code.index('#include <synchapi.h>')?
 	assert c_code.count('#include <windows.h>') == 1
@@ -72,6 +73,7 @@ fn test_windows_translation_unit_interposes_windows_header_before_dependent_head
 	g.preinclude_directives = ['#include "winapi_config.h"']
 	g.add_c_directive('crypto.rand.internal', '#include <bcrypt.h>', false)
 	g.add_c_directive('sync', '#include <synchapi.h>', false)
+	g.add_c_directive('os', '#include <shellapi.h>', false)
 	g.add_c_directive('net', '#include <winsock2.h>', false)
 	g.add_c_directive('net', '#include <ws2tcpip.h>', false)
 	g.emit_translation_unit_include_directives()
@@ -82,11 +84,13 @@ fn test_windows_translation_unit_interposes_windows_header_before_dependent_head
 	windows_index := c_code.index('#include <windows.h>')?
 	bcrypt_index := c_code.index('#include <bcrypt.h>')?
 	synchapi_index := c_code.index('#include <synchapi.h>')?
+	shellapi_index := c_code.index('#include <shellapi.h>')?
 	assert config_index < winsock_index
 	assert winsock_index < ws2tcpip_index
 	assert ws2tcpip_index < windows_index
 	assert windows_index < bcrypt_index
 	assert windows_index < synchapi_index
+	assert windows_index < shellapi_index
 	assert c_code.count('#include <windows.h>') == 1
 }
 
@@ -458,11 +462,8 @@ fn test_manual_stdlib_header_usage_resolves_native_sources_with_cli_include_dirs
 			assert g.collect_c_directive_at(ast.nodes.len - 1, 'main', ast.nodes.last(),
 				os.join_path(root, 'main.v'), true)
 			assert g.c_directives.len == 1
-			if portable {
-				assert g.c_directives[0].text.trim_space() == source.trim_space()
-			} else {
-				assert g.c_directives[0].text.contains(os.real_path(os.join_path(include_dir, 'helper.c')).replace('\\', '/'))
-			}
+			// Both output modes leave source-local header lookup to the C compiler.
+			assert g.c_directives[0].text.contains(os.real_path(os.join_path(include_dir, 'helper.c')).replace('\\', '/'))
 			assert g.inlined_c_fns['helper'] == !has_include
 		}
 	}
@@ -840,7 +841,7 @@ fn test_builtin_abi_decls_reuse_tcc_x64_stdatomic_fence_declaration() {
 	c_code := g.sb.str()
 	assert c_code.contains('#if defined(_WIN32) && (defined(__TINYC__) || (defined(_MSC_VER) && !defined(__clang__)))\n/* V atomic.h supplies atomic_thread_fence on Windows TCC and MSVC. */')
 	assert c_code.contains('#define atomic_thread_fence(order) __atomic_thread_fence(order)')
-	assert !c_code.contains('extern void __atomic_thread_fence(int order);')
+	assert c_code.contains('#elif defined(__TINYC__) && defined(__OpenBSD__) && defined(__x86_64__)\n#ifndef atomic_thread_fence\nextern void __atomic_thread_fence(int order);')
 	// a <stdatomic.h> included first already defines the macro; defining it again is a warning
 	assert c_code.contains('#elif !defined(atomic_thread_fence)\n#define atomic_thread_fence(order) __atomic_thread_fence(order)')
 }
@@ -1008,9 +1009,11 @@ fn test_arm32_output_undefines_tinycc_identifier_macros() {
 	source := os.join_path(root, 'main.v')
 	c_file := os.join_path(root, 'main.c')
 	os.write_file(source, 'fn main() {\n\tarm := 3\n\tarm_elf := 4\n\tprintln(arm + arm_elf)\n}\n')!
-	generated := os.execute('${os.quoted_path(@VEXE)} -nocache -gc none -os linux -arch arm32 -cross -d v3_headerless_bootstrap -o ${os.quoted_path(c_file)} ${os.quoted_path(source)}')
+	generated := os.exec([@VEXE, '-nocache', '-gc', 'none', '-os', 'linux', '-arch', 'arm32', '-cross',
+		'-d', 'v3_headerless_bootstrap', '-o', c_file, source])
 	assert generated.exit_code == 0, generated.output
 	// TinyCC predefines both macros on 32-bit ARM.
-	checked := os.execute('${os.quoted_path(clang)} -target armv7-unknown-linux-gnueabihf -std=c99 -fsyntax-only -Wno-everything -Darm=1 -Darm_elf=1 ${os.quoted_path(c_file)}')
+	checked := os.exec([clang, '-target', 'armv7-unknown-linux-gnueabihf', '-std=c99', '-fsyntax-only',
+		'-Wno-everything', '-Darm=1', '-Darm_elf=1', c_file])
 	assert checked.exit_code == 0, checked.output
 }

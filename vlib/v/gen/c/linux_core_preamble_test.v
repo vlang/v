@@ -192,7 +192,7 @@ fn main() {
 		c_file, source])
 	assert generated.exit_code == 0, generated.output
 	code := os.read_file(c_file)!
-	assert !code.contains('#include'), 'expected headerless C'
+	assert code.split_into_lines().all(!it.starts_with('#include') || it == '#include "${os.join_path(@VEXEROOT, 'vlib', 'builtin', 'track_heap_checks.h').replace('\\', '/')}"'), 'expected headerless C'
 	assert !code.contains('#define CUSTOM_DEFINE_glibc') && !code.contains('#define CUSTOM_DEFINE_musl')
 	compiled := cmdexec.run('cc', ['-std=c99', '-w', '-o', exe, c_file, '-lm', '-lpthread'])
 	assert compiled.exit_code == 0, compiled.output

@@ -771,3 +771,25 @@ fn test_portable_output_keeps_other_target_linkage_metadata() {
 		assert !selected.c_extern_decl_has_no_header(source, 'bindings'), flag
 	}
 }
+
+fn test_heap_guard_does_not_select_system_headers_or_own_builtin_declarations() {
+	mut g := FlatGen.new()
+	g.compiler_vroot = @VEXEROOT
+	g.set_target(pref.host_target())
+	helper := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'track_heap_checks.h')
+	assert c_include_arg_is_heap_guard('"${helper}"', @VEXEROOT)
+	g.c_directives << CDirective{ module: 'builtin', text: '#include "${helper}"' }
+	assert !g.c_directives_use_system_libc()
+}
+
+fn test_objective_cpp_prototypes_ignore_headers_from_other_modules() {
+	mut g := FlatGen.new()
+	g.c_directives << CDirective{ module: 'other', text: '#include "missing.h"' }
+	g.objective_cpp_source_requests << ObjectiveCppSourceRequest{
+		module:      'sample'
+		source_path: '/project/impl.mm'
+		defined_fns: ['sample_answer']
+	}
+	g.materialize_objective_cpp_sources()
+	assert g.c_extern_forced_decls['sample_answer']
+}

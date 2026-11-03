@@ -11,14 +11,6 @@ on:
       - 'cmd/tools/builders/**.v'
       - '**/gg_regressions_ci.yml'
       - '!**.md'
-  pull_request:
-    paths:
-      - 'vlib/**'
-      - 'examples/gg/multiwindow.v'
-      - 'thirdparty/**'
-      - 'cmd/tools/builders/**.v'
-      - '**/gg_regressions_ci.yml'
-      - '!**.md'
 
 concurrency:
   group: gg-regressions-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -40,7 +32,6 @@ jobs:
       V_MACOS_V3_NO_FALLBACK: '1'
       DISPLAY: :99
       LIBGL_ALWAYS_SOFTWARE: true
-      VTMP: /tmp
     steps:
       - name: Checkout V
         uses: actions/checkout@v7
@@ -48,11 +39,20 @@ jobs:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
 
+      - name: Create private V temporary directory
+        shell: bash
+        run: |
+          graphics_vtmp="$(mktemp -d "${RUNNER_TEMP}/v-graphics.XXXXXX")"
+          printf 'VTMP=%s\n' "$graphics_vtmp" >> "$GITHUB_ENV"
+
       - name: Build local v
         run: make -j4 && ./v symlink
 
       - name: Clear module cache
-        run: ./v wipe-cache
+        run: |
+          # wipe-cache recreates VTMP; keep the new directory private too.
+          umask 077
+          ./v wipe-cache
 
       - name: Setup dependencies
         run: |
@@ -161,6 +161,6 @@ jobs:
       - name: Upload regression to imgur
         if: steps.compare.outcome != 'success'
         run: |
-          ./imgur.sh /tmp/fail.png
-          ./imgur.sh /tmp/diff.png
+          ./imgur.sh "$VTMP/fail.png"
+          ./imgur.sh "$VTMP/diff.png"
           exit 1

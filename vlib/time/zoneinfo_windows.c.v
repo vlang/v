@@ -2,6 +2,8 @@ module time
 
 import os
 
+#include "@VEXEROOT/vlib/time/zoneinfo_windows.h"
+
 const windows_min_system_year = 1601
 
 struct TimeZoneInformation {
@@ -30,9 +32,9 @@ pub mut:
 
 fn C.GetTimeZoneInformation(voidptr) u32
 
-fn C.GetDynamicTimeZoneInformation(voidptr) u32
+fn C.v_time_get_dynamic_time_zone_information(voidptr) u32
 
-fn C.GetTimeZoneInformationForYear(u16, voidptr, voidptr) C.BOOL
+fn C.v_time_get_time_zone_information_for_year(u16, voidptr, voidptr) i32
 
 fn local_location() !&Location {
 	if tz := os.getenv_opt('TZ') {
@@ -58,7 +60,7 @@ fn local_location() !&Location {
 		loc.has_posix = true
 	}
 	mut dynamic_info := DynamicTimeZoneInformation{}
-	dynamic_status := C.GetDynamicTimeZoneInformation(voidptr(&dynamic_info))
+	dynamic_status := C.v_time_get_dynamic_time_zone_information(voidptr(&dynamic_info))
 	has_dynamic_info := dynamic_status != u32(0xffff_ffff)
 		&& dynamic_info.dynamic_daylight_time_is_disabled == 0
 	current_year := now().year
@@ -67,7 +69,8 @@ fn local_location() !&Location {
 		// history so old dynamic rules do not silently fall back to today's offset.
 		for year in windows_min_system_year .. current_year + 1 {
 			mut candidate := TimeZoneInformation{}
-			if C.GetTimeZoneInformationForYear(u16(year), voidptr(&dynamic_info), voidptr(&candidate)) == 0 {
+			if C.v_time_get_time_zone_information_for_year(u16(year), voidptr(&dynamic_info),
+				voidptr(&candidate)) == 0 {
 				continue
 			}
 			loc.add_windows_year_transitions(year, candidate)
