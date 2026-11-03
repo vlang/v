@@ -13106,7 +13106,7 @@ fn mut_param_has_builtin_pointer_value(param flat.Node) bool {
 
 // heap_fixed_array_view_params moves an escaping by-value parameter's local copy at
 // function entry: one exposed as a fixed array view, or, like V1, one whose address
-// escapes (`return Node{parent: &param}`). Reference and mut parameters keep sharing
+// escapes (`return Node{parent: &param}`). Reference, mut and shared parameters keep sharing
 // the caller's promoted root.
 fn (mut t Transformer) heap_fixed_array_view_params(fn_node flat.Node, param_types []types.Type) (map[int]flat.NodeId, []flat.NodeId) {
 	mut replacements := map[int]flat.NodeId{}
@@ -13126,6 +13126,7 @@ fn (mut t Transformer) heap_fixed_array_view_params(fn_node flat.Node, param_typ
 		if (param.value_text() !in t.escaping_fixed_array_view_sources
 			&& param.value_text() !in t.escaping_amp_sources) || param.is_mut || param.op == .amp
 			|| t.var_is_ref_param(param.value_text())
+			|| flat.source_type_shape(param.typ).has(.shared_type)
 			|| (index < param_types.len && escape_type_is_pointer(param_types[index])) {
 			continue
 		}

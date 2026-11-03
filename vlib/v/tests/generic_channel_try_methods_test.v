@@ -105,6 +105,12 @@ fn pop_shared[T](ch chan T, shared value T) {
 	}
 }
 
+fn pop_shared_int(ch chan int, shared value int) {
+	lock value {
+		assert ch.try_pop(mut value) == .success
+	}
+}
+
 fn test_generic_channel_try_void_pointer_and_shared_storage() {
 	pointers := chan voidptr{cap: 1}
 	pointed := 42
@@ -117,6 +123,11 @@ fn test_generic_channel_try_void_pointer_and_shared_storage() {
 	pop_shared(ch, shared value)
 	rlock value {
 		assert value == 23
+	}
+	ch <- 24
+	pop_shared_int(ch, shared value)
+	rlock value {
+		assert value == 24
 	}
 }
 

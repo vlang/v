@@ -6510,6 +6510,8 @@ fn main() {
 ```
 
 A `shared` parameter already passes a reference to the synchronized storage.
+It keeps referring to the caller's storage when used as a mutable channel destination inside a
+`lock` block, including in generic functions.
 Declare it as `shared m map[K]V` and pass `shared m`. Explicit address arguments such
 as `shared &m` are unsupported; remove `&` from both the parameter type and the argument.
 

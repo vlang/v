@@ -16487,7 +16487,13 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			}
 			arg_id := t.a.child(&node, 1)
 			expected := t.normalize_type_alias(flat.source_type_syntax(builtin_base_type_comparison_type_id).raw_base())
-			actual := t.normalize_type_alias(t.specialized_expr_type_name(arg_id))
+			// Heap promotion changes storage, but channel validation uses the source value type.
+			heaped_arg := t.heaped_amp_local_arg_name(arg_id)
+			actual := t.normalize_type_alias(if heaped_arg.len > 0 {
+				t.typeof_var_type(heaped_arg)
+			} else {
+				t.specialized_expr_type_name(arg_id)
+			})
 			actual_is_pointer := flat.source_type_shape(actual).has(.pointer)
 			arg := t.a.nodes[int(arg_id)]
 			if method == 'try_pop' && !arg.is_mut && !isnil(t.tc)
