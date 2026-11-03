@@ -1432,6 +1432,19 @@ fn test_v3_tcc_flag_plan_skips_backtrace_on_macos_arm64() {
 	assert '-L${tcc_install_dir}' in plan.before_inputs
 }
 
+fn test_v3_tcc_flag_plan_honors_no_backtrace() {
+	for no_backtrace in [false, true] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			is_tcc:       true
+			target_os:    'linux'
+			target_arch:  'amd64'
+			vroot:        os.join_path(os.temp_dir(), 'v3_no_backtrace_flag_plan')
+			no_backtrace: no_backtrace
+		})
+		assert ('-bt25' in plan.before_inputs) == !no_backtrace
+	}
+}
+
 fn test_v3_freestanding_flag_plan_links_no_host_libraries() {
 	for is_tcc in [false, true] {
 		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
