@@ -87,6 +87,10 @@ fn (mut tc TypeChecker) check_comptime_static_metadata_if(node flat.Node, var_na
 		} else {
 			tc.comptime_static_subst_field_cond(node.value, var_name, f)
 		}
+		if loop_kind == 'variants' && tc.comptime_static_condition_needs_value(cond) {
+			// Earlier declarations are evaluated while the concrete loop body is unrolled.
+			continue
+		}
 		if comptime_text_references_var(cond, var_name) {
 			then_cases << f
 			else_cases << f
@@ -1005,6 +1009,49 @@ fn (tc &TypeChecker) comptime_static_condition_has_outer_metadata(id flat.NodeId
 	return false
 }
 
+// comptime_static_condition_needs_value recognizes bindings whose values are not
+// available to the preflight text evaluator. Quoted text and member names are not bindings.
+fn (tc &TypeChecker) comptime_static_condition_needs_value(cond string) bool {
+	mut i := 0
+	for i < cond.len {
+		if cond[i] in [`\'`, `"`, `\``] {
+			i = comptime_cond_skip_string(cond, i)
+			continue
+		}
+		if !comptime_cond_name_char(cond[i]) || cond[i].is_digit() {
+			i++
+			continue
+		}
+		start := i
+		for i < cond.len && (comptime_cond_name_char(cond[i]) || cond[i] == `.`) {
+			i++
+		}
+		mut prev := start
+		for prev > 0 && cond[prev - 1].is_space() { prev-- }
+		if prev > 0 && cond[prev - 1] in [`.`, `$`] { continue }
+		name := cond[start..i]
+		root := name.all_before('.')
+		if tc.non_file_scope_type(root) != none {
+			return true
+		}
+		qualified := tc.qualify_name(name)
+		if name in tc.const_types || qualified in tc.const_types
+			|| tc.global_names[name] || tc.global_names[qualified] {
+			return true
+		}
+	}
+	return false
+}
+
+// comptime_static_variant_type_index follows reflected metadata's wrapper normalization.
+fn (tc &TypeChecker) comptime_static_variant_type_index(typ u32) int {
+	mut key := trimmed_source_type_id(typ)
+	for flat.source_type_shape(key).has(.optional) {
+		key = trimmed_source_type_id(flat.source_type_syntax(key).raw_base())
+	}
+	return tc.type_index(key)
+}
+
 // Numeric comparisons use runtime type indexes; type comparisons use the spelling.
 fn (mut tc TypeChecker) comptime_static_subst_variant_cond(cond string, var_name string, variant ComptimeStaticFieldCase) string {
 	clean := comptime_condition_strip_outer_parens(trimmed_space(cond))
@@ -1026,10 +1073,10 @@ fn (mut tc TypeChecker) comptime_static_subst_variant_cond(cond string, var_name
 			right := trimmed_space(clean[idx + op.len..])
 			member := '${var_name}.typ'
 			if left == member && comptime_static_is_int(right) {
-				return '${tc.type_index(variant.typ)}${op}${right}'
+				return '${tc.comptime_static_variant_type_index(variant.typ)}${op}${right}'
 			}
 			if right == member && comptime_static_is_int(left) {
-				return '${left}${op}${tc.type_index(variant.typ)}'
+				return '${left}${op}${tc.comptime_static_variant_type_index(variant.typ)}'
 			}
 		}
 	}

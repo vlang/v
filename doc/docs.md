@@ -8982,6 +8982,9 @@ Conjunctions and nested guards retain all active refinements. A mutable guard ke
 sum storage available for reassignment. Each iteration infers its own local collection types;
 conditions using enclosing reflection metadata are checked after that metadata is substituted.
 Numeric comparisons with `variant.typ` use the same type index as `value.type_idx()`.
+Optional and result variants expose their wrapped type's metadata index, preserving pointer depth.
+Conditions using local metadata values are checked after unrolling, when their values are available.
+Matches retain their arm refinements while loop metadata is checked.
 
 #### <h4 id="comptime-methods">.methods</h4>
 

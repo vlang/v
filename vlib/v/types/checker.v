@@ -23392,6 +23392,13 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 		return
 	}
 	if node.kind == .match_stmt {
+		mut subject_key := ''
+		mut subject_type := Type(Unknown{})
+		if loop_kind == 'variants' && node.children_count > 0 {
+			subject_id := tc.a.child(&node, 0)
+			subject_key = tc.expr_key(subject_id)
+			subject_type = unalias_and_unwrap_pointer_type(tc.resolve_type(subject_id))
+		}
 		for i in 1 .. node.children_count {
 			branch_id := tc.a.child(&node, i)
 			branch := tc.a.node(branch_id)
@@ -23402,11 +23409,22 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 			if body_start < 0 || body_start > branch.children_count {
 				continue
 			}
+			saved_smartcasts := if loop_kind == 'variants' {
+				clone_smartcasts(tc.smartcasts)
+			} else {
+				map[string]Type{}
+			}
+			if loop_kind == 'variants' {
+				tc.apply_match_branch_context_smartcasts(subject_key, subject_type, *branch)
+			}
 			tc.push_scope()
 			for j in body_start .. branch.children_count {
 				tc.check_comptime_static_body(tc.a.child(branch, j), var_name, loop_kind, field_cases, value_cases)
 			}
 			tc.pop_scope()
+			if loop_kind == 'variants' {
+				tc.smartcasts = saved_smartcasts
+			}
 		}
 		return
 	}

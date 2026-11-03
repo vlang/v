@@ -2,6 +2,10 @@ import os
 import time
 
 fn run_variant_review_case(name string, source string, check_only bool) {
+	check_variant_review_case(name, source, check_only, '')
+}
+
+fn check_variant_review_case(name string, source string, check_only bool, expected_error string) {
 	root := os.join_path(os.vtmp_dir(), 'variant_review_${name}_${os.getpid()}_${time.now().unix_nano()}')
 	os.mkdir_all(root) or { panic(err) }
 	defer { os.rmdir_all(root) or {} }
@@ -10,6 +14,11 @@ fn run_variant_review_case(name string, source string, check_only bool) {
 	os.write_file(path, source) or { panic(err) }
 	args := if check_only { [@VEXE, '-check', path] } else { [@VEXE, '-o', binary, path] }
 	compiled := os.exec(args)
+	if expected_error != '' {
+		assert compiled.exit_code != 0, compiled.output
+		assert compiled.output.contains(expected_error), compiled.output
+		return
+	}
 	assert compiled.exit_code == 0, compiled.output
 	if check_only {
 		return
@@ -208,4 +217,81 @@ fn main() {
 	assert !booleans(false, true)
 	assert booleans(true, none)
 }', false)
+}
+
+fn test_variant_preflight_defers_local_metadata_values() {
+	run_variant_review_case('local_metadata', r'
+type Choice = int | string
+fn extract(value Choice) int {
+	$for variant in Choice.variants {
+		type_id := variant.typ
+		if value is variant {
+			$if variant.typ is int && type_id == 8 {
+				return value
+			} $else {
+				return value.len
+			}
+		}
+	}
+	return -1
+}
+fn main() {
+	assert extract(Choice(42)) == 42
+	assert extract(Choice("hello")) == 5
+}', false)
+}
+
+fn test_variant_preflight_normalizes_optional_metadata_ids() {
+	run_variant_review_case('optional_id', r'
+type Choice = ?string | int
+fn extract(value Choice) int {
+	$for variant in Choice.variants {
+		if value is variant {
+			$if variant.typ == 21 {
+				if value != none { return value.len }
+				return 0
+			} $else {
+				return value
+			}
+		}
+	}
+	return -1
+}
+fn main() {
+	assert extract(Choice(?string("hello"))) == 5
+	assert extract(Choice(?string(none))) == 0
+	assert extract(Choice(42)) == 42
+}', false)
+}
+
+fn test_metadata_dependent_variant_matches_keep_arm_refinements() {
+	// Exercise checker preflight independently of native interface-in-sum lowering.
+	source := r'
+interface Named { name string }
+struct Record {
+	name string
+	x int
+}
+type Choice = Named | int
+fn extract(value Choice) int {
+	$for variant in Choice.variants {
+		if value is variant {
+			$if variant.typ is Named {
+				match value {
+					Record {
+						println(variant.typ)
+						return value.x
+					}
+					else {}
+				}
+			}
+		}
+	}
+	return -1
+}
+fn main() {
+	_ = extract(Choice(Named(Record{"record", 42})))
+}'
+	run_variant_review_case('match_metadata', source, true)
+	check_variant_review_case('invalid_match_metadata', source.replace('return value.x', 'return value.missing'), true, 'type `Record` has no field named `missing`')
 }
