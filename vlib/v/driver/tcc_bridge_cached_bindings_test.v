@@ -32,8 +32,8 @@ fn test_native_bridge_cached_headers_keep_called_c_bindings() ! {
 		bundle_valid:     true
 		native_bridge:    true
 		bridge_functions: {
-			'native_answer':      true
-			'unavailable_unused': true
+			'native_answer':      'native_answer'
+			'unavailable_unused': 'unavailable_unused'
 		}
 	}
 	for phase in ['cold', 'warm'] {
