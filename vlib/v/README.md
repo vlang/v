@@ -27,7 +27,8 @@ the notification.
 TinyCC AArch64 panic reports use its native backtracer to avoid faults during glibc unwinding.
 
 Results in the value tails of returned `if`, `match`, and `or` expressions remain handled by
-the enclosing return. Earlier calls in those branches still receive unhandled-result warnings.
+the enclosing return. An `or {}` block or propagation operator on an `if` expression also handles
+its branch tails. Earlier calls in those branches still receive unhandled-result warnings.
 
 `parser.Parser.parse_text` copies caller-provided source into the AST, so callers can reuse
 or release their own buffers after parsing.

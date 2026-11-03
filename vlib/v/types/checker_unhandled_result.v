@@ -58,7 +58,7 @@ fn (tc &TypeChecker) unhandled_result_spot(id flat.NodeId, call flat.Node) (bool
 	parent := tc.a.node(parent_id)
 	match parent.kind {
 		.expr_stmt {
-			if tc.branch_tail_result_is_returned(parent_id) {
+			if tc.branch_tail_result_is_handled(parent_id) {
 				return false, false
 			}
 			return true, tc.is_in_defer(parent_id)
@@ -88,10 +88,10 @@ fn (tc &TypeChecker) unhandled_result_spot(id flat.NodeId, call flat.Node) (bool
 	}
 }
 
-// branch_tail_result_is_returned reports whether a branch tail reaches an explicit
-// return in a Result-returning function. The branch can belong to an if, match,
-// or `or {}` expression; earlier statements still drop their Results.
-fn (tc &TypeChecker) branch_tail_result_is_returned(stmt_id flat.NodeId) bool {
+// branch_tail_result_is_handled reports whether a branch tail reaches an `or {}`
+// or propagation operator, or an explicit return in a Result-returning function.
+// Earlier statements in those branches still drop their Results.
+fn (tc &TypeChecker) branch_tail_result_is_handled(stmt_id flat.NodeId) bool {
 	mut returned := flat.empty_node
 	mut child := stmt_id
 	for _ in 0 .. 256 {
@@ -100,6 +100,10 @@ fn (tc &TypeChecker) branch_tail_result_is_returned(stmt_id flat.NodeId) bool {
 			return false
 		}
 		parent := tc.a.node(parent_id)
+		if parent.kind == .or_expr && parent.children_count > 0
+			&& tc.a.child(parent, 0) == child {
+			return true
+		}
 		if parent.kind == .return_stmt {
 			if parent.children_count != 1 || tc.a.child(parent, 0) != child {
 				return false
