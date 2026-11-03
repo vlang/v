@@ -17330,6 +17330,9 @@ fn (tc &TypeChecker) static_initializer_is_constant(id flat.NodeId) bool {
 	if node.kind == .ident {
 		return tc.const_key_for_name(node.value) != none
 	}
+	if node.kind == .selector {
+		return tc.enum_selector_type(node) != none
+	}
 	if node.kind == .block {
 		return node.value == 'unsafe' && node.children_count == 1
 			&& tc.static_initializer_is_constant(tc.a.child(node, 0))
