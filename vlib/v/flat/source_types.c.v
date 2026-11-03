@@ -376,12 +376,13 @@ __global g_source_type_read_entries [source_type_read_cache_size]voidptr
 // reads its entry instead. The table covers the whole ID space of the chunked
 // entries, so a published ID never needs a bounds check; untouched pages stay
 // unmapped. Word zero is the empty spelling: no shape, and the `complete` query.
+// An ID beyond the ID space is a compiler bug: it indexes outside the table.
 __global g_source_type_flags &u64
 
-// source_type_flags_capacity is the number of IDs the flags table covers. A
-// 64-bit process reserves the whole ID space, so published IDs skip the bounds
-// check; a 32-bit one keeps the reservation small and reads later IDs from
-// their entries.
+// source_type_flags_capacity is the largest ID the dense per-ID tables hold
+// (their slots run from 0 to this value inclusive). A 64-bit process reserves
+// the whole ID space, so published IDs skip the bounds check; a 32-bit one
+// keeps the reservation small and reads later IDs from their entries or pages.
 @[inline]
 fn source_type_flags_capacity() u32 {
 	$if x32 {
@@ -389,6 +390,14 @@ fn source_type_flags_capacity() u32 {
 	} $else {
 		return u32(source_type_chunk_count) * u32(source_type_chunk_size)
 	}
+}
+
+// source_type_dense_table_alloc returns zeroed process memory for one pointer
+// or word per ID up to source_type_flags_capacity. The slots hold no pointers a
+// collector must follow, so plain C memory serves every build mode, and only
+// the pages of IDs in use are ever touched.
+fn source_type_dense_table_alloc(slot_size u32) voidptr {
+	return unsafe { C.calloc(source_type_flags_capacity() + 1, slot_size) }
 }
 
 fn source_type_lock() {
@@ -660,7 +669,7 @@ fn source_type_id_uncached(text string) u32 {
 			query: query
 		}
 		// The flags word is complete before the release stores publish the ID.
-		if id < source_type_flags_capacity() {
+		if id <= source_type_flags_capacity() {
 			g_source_type_flags[id] = source_type_flags_word(shape, query)
 		}
 	}
@@ -740,10 +749,8 @@ fn source_type_flags_table_load() &u64 {
 // source_type_flags_table_create allocates the flags table for the whole ID
 // space and publishes it. The caller holds the writer lock and publishes the
 // entry table afterwards, so every published ID finds the table in place.
-// The words hold no pointers: plain zeroed C memory serves every build mode,
-// and only the pages of IDs in use are ever touched.
 fn source_type_flags_table_create() {
-	flags := unsafe { &u64(C.calloc(uint(source_type_flags_capacity()), sizeof(u64))) }
+	flags := unsafe { &u64(source_type_dense_table_alloc(sizeof(u64))) }
 	if isnil(flags) {
 		panic('could not allocate the source type flags')
 	}
@@ -762,7 +769,7 @@ fn source_type_flags_table_create() {
 fn source_type_flags(id u32) u64 {
 	flags := source_type_flags_table_load()
 	$if x32 {
-		if id >= source_type_flags_capacity() {
+		if id > source_type_flags_capacity() {
 			return source_type_flags_miss(id)
 		}
 	}
