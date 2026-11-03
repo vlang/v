@@ -540,8 +540,11 @@ int v3_run_signals_wait(int *code, int *signal_number) {
             if (WIFSTOPPED(status)) { v3_run_observer_stopped = 1; continue; }
             if (v3_run_observer_exit(status)) return -1;
             if (v3_run_observed_stop) {
-                v3_run_observed_stop = 0;
-                if (v3_run_suspend_owner(V3_RUN_TSTP, 0)) return -1;
+                /* A caught/ignored terminal stop can leave the app in read().
+                 * Stop it and wait for its status before returning the tty to
+                 * the shell, or that read can consume the shell's next command. */
+                kill(-(int)v3_run_child_pid, V3_RUN_STOP);
+                continue;
             }
             sigset_t previous_mask;
             if (v3_run_block_signals(&previous_mask)) return -1;
@@ -554,7 +557,7 @@ int v3_run_signals_wait(int *code, int *signal_number) {
         if (WIFSTOPPED(status)) {
             /* Terminal reads and TOSTOP writes can race the initial handoff. */
             if ((WSTOPSIG(status) == V3_RUN_TTIN || WSTOPSIG(status) == V3_RUN_TTOU)
-                && !v3_run_forwarded_stop && v3_run_handoff_terminal
+                && !v3_run_forwarded_stop && !v3_run_observed_stop && v3_run_handoff_terminal
                 && v3_run_terminal_fd >= 0
                 && v3_run_tcgetpgrp(v3_run_terminal_fd) == v3_run_child_pid) {
                 kill(-(int)v3_run_child_pid, V3_RUN_CONT);
@@ -564,7 +567,7 @@ int v3_run_signals_wait(int *code, int *signal_number) {
             v3_run_forwarded_stop = 0;
             /* A debugger can stop/resume only the child without stopping its waiter. */
             if (v3_run_terminal_fd < 0 && !forwarded_stop) continue;
-            int stop_signal = WSTOPSIG(status);
+            int stop_signal = v3_run_observed_stop ? V3_RUN_TSTP : WSTOPSIG(status);
             /* Reap the observer before suspending: otherwise its pending stop
              * notification could suspend the same job again after fg. */
             if (v3_run_close_observer()) return -1;

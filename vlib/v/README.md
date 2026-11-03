@@ -20,6 +20,8 @@ On native Linux, TinyCC builds use the platform C compiler for the bundled Boehm
 The AArch64 GC object uses inline atomics so linking does not require GCC's atomic helpers.
 Array alignment metadata keeps its 32-bit encoding when a backend uses wider flag enums.
 Long conditional chains in generated type-name dispatch do not consume recursive C generator frames.
+On Unix, a terminal job stop suspends the running application before returning control to the shell,
+including applications that catch or ignore `SIGTSTP`.
 
 `parser.Parser.parse_text` copies caller-provided source into the AST, so callers can reuse
 or release their own buffers after parsing.

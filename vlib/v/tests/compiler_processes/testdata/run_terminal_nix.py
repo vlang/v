@@ -276,6 +276,8 @@ int leave_app_group(void) { return setpgid(0, getpgid(getppid())); }
             read_until(b"VPTY> ")
             wait_stopped(compiler)
             wait_stopped(peer)
+            # A caught/ignored TSTP must not leave the app reading shell commands.
+            wait_stopped(child)
             send(b"fg\n")
             deadline = time.monotonic() + 5
             while os.tcgetpgrp(terminal) != child and time.monotonic() < deadline:
@@ -323,7 +325,7 @@ int leave_app_group(void) { return setpgid(0, getpgid(getppid())); }
             send(b"done\n")
         read_until(b"VPTY> ")
         if mode == "catch":
-            assert counts.read_text() == "1", "terminal interrupt was forwarded twice"
+            assert counts.read_text() == "1", "terminal interrupt count: " + counts.read_text()
         assert not (Path(root) / "output").exists(), "output pipeline executable survived"
     print("PTY output pipelines: default/caught INT, caught QUIT, parent-only INT, stdout EOF and app group move passed", flush=True)
 
