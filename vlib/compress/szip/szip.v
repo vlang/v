@@ -169,6 +169,13 @@ pub fn open_with_limits(name string, level CompressionLevel, mode OpenMode, limi
 	return z
 }
 
+// open_lazy opens an archive for reading with the default `Limits`, like `open`
+// in `.read_only` mode, which only reads the central directory and decompresses
+// each entry when it is read.
+pub fn open_lazy(name string) !&Zip {
+	return open(name, .no_compression, .read_only)
+}
+
 fn parse_error(err IError) IError {
 	if err is LimitExceeded {
 		return err
@@ -308,6 +315,9 @@ fn (mut z Zip) parse() ! {
 				break
 			}
 		}
+	}
+	if eocd_pos < 0 {
+		eocd_pos = z.find_trailing_end_record(tail, tail_start)
 	}
 	if eocd_pos < 0 {
 		return error('missing end record')
@@ -450,6 +460,47 @@ fn (mut z Zip) parse() ! {
 	if cd.pos != cd.end {
 		return error('central directory size mismatch')
 	}
+}
+
+// find_trailing_end_record looks in `tail`, the end of the archive starting at
+// `tail_start`, for an end record followed by unexpected bytes, as left by an
+// interrupted download or an appended marker; WinRAR and 7-Zip accept them. It
+// returns the position in `tail` of the candidate closest to the end whose comment
+// fits and that describes this archive, or -1. A signature inside stored data,
+// such as an embedded empty archive, must not be taken for the end record.
+fn (mut z Zip) find_trailing_end_record(tail []u8, tail_start u64) int {
+	for i := tail.len - 22; i >= 0; i-- {
+		if read_u32(tail, i) != sig_eocd {
+			continue
+		}
+		if i + 22 + int(read_u16(tail, i + 20)) > tail.len {
+			continue
+		}
+		n_entries := read_u16(tail, i + 10)
+		cd_size := read_u32(tail, i + 12)
+		cd_offset := read_u32(tail, i + 16)
+		if n_entries == sentinel_u16 || cd_size == sentinel_u32 || cd_offset == sentinel_u32 {
+			// The ZIP64 end record is checked like any other.
+			return i
+		}
+		if n_entries == 0 && cd_size == 0 && cd_offset == 0 {
+			// An empty archive is only its end record, at the start of the file.
+			if tail_start + u64(i) == 0 {
+				return i
+			}
+			continue
+		}
+		// The central directory must fit before the end record and start with
+		// a central directory entry.
+		if u64(cd_offset) + u64(cd_size) > tail_start + u64(i) {
+			continue
+		}
+		head := z.read_at(u64(cd_offset), 4) or { continue }
+		if read_u32(head, 0) == sig_central_header {
+			return i
+		}
+	}
+	return -1
 }
 
 // retain_existing validates every entry of an archive opened for appending and
@@ -640,13 +691,12 @@ fn (mut z Zip) read_raw_entry(i int) ![]u8 {
 	mut local_csize := u64(read_u32(header, 18))
 	zip64_sizes := local_size == u64(sentinel_u32) || local_csize == u64(sentinel_u32)
 	if zip64_sizes {
-		z64 := parse_zip64_extra(local_extra, local_size == u64(sentinel_u32), local_csize == u64(sentinel_u32),
-			false, false)!
+		zip64_size, zip64_csize := parse_local_zip64_sizes(local_extra)!
 		if local_size == u64(sentinel_u32) {
-			local_size = z64.size
+			local_size = zip64_size
 		}
 		if local_csize == u64(sentinel_u32) {
-			local_csize = z64.csize
+			local_csize = zip64_csize
 		}
 	}
 	// With a data descriptor, the central directory carries the final sizes and checksum.
@@ -723,6 +773,19 @@ pub fn (mut z Zip) read_entry_buf(buf voidptr, in_bsize int) !int {
 		unsafe { vmemcpy(buf, data.data, n) }
 	}
 	return n
+}
+
+// read_entry_bytes returns the decompressed bytes of the current entry, after
+// checking them against its local header, size and checksum. Unlike
+// `read_entry_buf`, the caller does not size a buffer from the central directory,
+// which an archive of unknown origin can falsify.
+pub fn (mut z Zip) read_entry_bytes() ![]u8 {
+	return z.read_current_data() or {
+		if err is LimitExceeded {
+			return err
+		}
+		return error('szip: ${err.msg()}')
+	}
 }
 
 // read_entry allocates the current entry's bytes; the caller must free the returned buffer.

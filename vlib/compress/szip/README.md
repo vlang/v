@@ -28,7 +28,13 @@ leaves that directory behind.
 
 Opening an archive for reading only reads its central directory. Each entry is read,
 decompressed and checked when it is asked for, so damage to an entry's local header or
-data is reported by that read rather than by `open`.
+data is reported by that read rather than by `open`. `open_lazy(name)` is the same as
+`open(name, .no_compression, .read_only)`. `read_entry_bytes` returns the checked bytes
+of the current entry, without sizing a buffer from the central directory first.
+
+Trailing bytes after the end record, as left by an interrupted download, are tolerated when
+a plausible end record is found near the end of the file. This fallback ignores an empty end
+record stored inside the archive.
 
 Written entries are compressed once, when they are closed, at the level given to `open`:
 `.best_speed` is DEFLATE level 1, `.default_compression` level 6 and `.best_compression`

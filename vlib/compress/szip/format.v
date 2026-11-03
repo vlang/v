@@ -156,6 +156,41 @@ fn parse_zip64_extra(extra []u8, want_size bool, want_csize bool, want_offset bo
 	return z
 }
 
+// parse_local_zip64_sizes reads the ZIP64 block of a local header's `extra`. Unlike
+// the central directory, a local header's block holds both sizes, whichever of its
+// header fields are saturated (APPNOTE 4.5.3). The block must appear once, and the
+// fields around it must be well formed.
+fn parse_local_zip64_sizes(extra []u8) !(u64, u64) {
+	mut pos := 0
+	mut found := false
+	mut size := u64(0)
+	mut csize := u64(0)
+	for pos < extra.len {
+		if extra.len - pos < 4 {
+			return error('truncated local extra field')
+		}
+		id := binary.little_endian_u16_at(extra, pos)
+		block_len := int(binary.little_endian_u16_at(extra, pos + 2))
+		pos += 4
+		if block_len > extra.len - pos {
+			return error('truncated local extra field')
+		}
+		if id == extra_zip64 {
+			if found || block_len < 16 {
+				return error('invalid ZIP64 local extra field')
+			}
+			size = binary.little_endian_u64_at(extra, pos)
+			csize = binary.little_endian_u64_at(extra, pos + 8)
+			found = true
+		}
+		pos += block_len
+	}
+	if !found {
+		return error('missing ZIP64 local extra field')
+	}
+	return size, csize
+}
+
 fn zip64_value(block []u8, pos int) !u64 {
 	if pos + 8 > block.len {
 		return error('truncated ZIP64 extra field')
