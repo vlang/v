@@ -231,7 +231,7 @@ mut:
 	parsed_from_source        map[string]bool
 	source_body_modules       map[string]bool
 	native_bridge             bool
-	bridge_functions          map[string]bool
+	bridge_functions          map[string]string
 	bridge_native_sources     []string
 	program_module_sources    map[string][]string
 	native_source_modules     map[string]bool
@@ -5212,7 +5212,7 @@ fn v3_native_inputs(a &flat.FlatAst, prefs &pref.Preferences, user_files []strin
 // C-compiler dependency manifest, keep their compilation outside module caches.
 struct V3NativeInputClosure {
 mut:
-	functions      map[string]bool
+	functions      map[string]string // V binding name -> native C ABI name
 	native_sources []string
 	inputs         map[string][]string
 	unassignable   string
@@ -14829,7 +14829,7 @@ pub fn run(args []string) {
 			g.set_ccompiler(if tcc_dylib { effective_c_compiler } else { prefs.ccompiler })
 			if tcc_dylib {
 				g.set_tcc_program_unit(true)
-				g.set_native_function_aliases(native_closure.functions.keys())
+				g.set_native_function_aliases(native_closure.functions.values())
 			}
 			g.set_prod(prefs.is_prod)
 			g.set_debug(prefs.is_debug)
@@ -14930,7 +14930,7 @@ pub fn run(args []string) {
 			g.set_ccompiler(if tcc_dylib { effective_c_compiler } else { prefs.ccompiler })
 			if tcc_dylib {
 				g.set_tcc_program_unit(true)
-				g.set_native_function_aliases(native_closure.functions.keys())
+				g.set_native_function_aliases(native_closure.functions.values())
 			}
 			g.set_prod(prefs.is_prod)
 			g.set_debug(prefs.is_debug)
@@ -17380,10 +17380,10 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 	mut native_bindings := V3TccDylibBindings{}
 	if state.native_bridge {
 		mut functions := map[string]bool{}
-		for name, _ in state.bridge_functions {
+		for name, abi_name in state.bridge_functions {
 			if cache_used_fns['C.' + name] || cache_used_fns[name]
 				|| program_used_fns['C.' + name] || program_used_fns[name] {
-				functions[name] = true
+				functions[abi_name] = true
 			}
 		}
 		native_bindings = v3_tcc_dylib_function_bindings(functions)
@@ -17712,7 +17712,7 @@ fn prune_cache_only_function_prototypes(source string, cache_used_fns &map[strin
 	}
 	mut candidate_functions := map[string]bool{}
 	for name, is_used in cache_used_fns {
-		if state.native_bridge && state.bridge_functions[name.trim_string_left('C.')] {
+		if state.native_bridge && name.trim_string_left('C.') in state.bridge_functions {
 			// The owner takes this function's address even when V calls its alias.
 			continue
 		}

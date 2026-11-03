@@ -62,6 +62,7 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	// headers to infer declarations, types, macros or implementation ownership.
 	mut bridged_modules := map[string]bool{}
 	mut v_functions := map[string]bool{}
+	mut c_abi_names := map[int]string{}
 	for _, export_name in a.export_fn_names { v_functions[export_name] = true }
 	mut current_module := 'main'
 	mut current_file := ''
@@ -69,6 +70,17 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	// Bootstrap checkouts can symlink vlib to the original repository.
 	vlib_root := os.real_path(os.join_path(prefs.vroot, 'vlib')) + os.path_separator
 	for node in a.nodes {
+		if node.kind == .directive && node.value.starts_with('@attributes:') {
+			decl_idx := node.value['@attributes:'.len..].int()
+			if decl_idx >= 0 && decl_idx < a.nodes.len && a.nodes[decl_idx].kind == .c_fn_decl {
+				for attr in node.generic_params() {
+					if attr.all_before(':').trim_space() == 'c' && attr.contains(':') {
+						abi_name := attr.all_after(':').trim_space().trim('\'"')
+						if abi_name.len > 0 { c_abi_names[decl_idx] = abi_name }
+					}
+				}
+			}
+		}
 		if node.kind == .file {
 			current_module = 'main'
 			current_file = a.cached_header_sources[node.value] or { node.value }
@@ -91,16 +103,18 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 			}
 		}
 	}
-	mut functions := map[string]bool{}
+	mut functions := map[string]string{}
 	current_module = 'main'
-	for node in a.nodes {
+	for node_idx, node in a.nodes {
 		if node.kind == .file { current_module = 'main' }
 		if node.kind == .module_decl { current_module = node.value }
 		if node.kind == .c_fn_decl && bridged_modules[current_module] {
 			name := node.value.all_after_last('.')
-			if !v_functions[name] && !name.starts_with('__builtin_') && !name.starts_with('__atomic_')
-				&& !name.starts_with('__sync_') && name !in ['va_arg', 'va_start', 'va_end', 'va_copy'] {
-				functions[name] = true
+			abi_name := c_abi_names[node_idx] or { name }
+			if !v_functions[abi_name] && !abi_name.starts_with('__builtin_') && !abi_name.starts_with('__atomic_')
+				&& !abi_name.starts_with('__sync_') && abi_name !in ['va_arg', 'va_start', 'va_end',
+				'va_copy'] {
+				functions[name] = abi_name
 			}
 		}
 	}
