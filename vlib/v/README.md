@@ -16,6 +16,8 @@ optimization, MIR lowering, and instruction selection.
 Driver builds that omit FastC also omit its native bridge imports.
 Cached module interfaces retain the hook declarations used by generated call tracing.
 GC thread bridges use the platform's `pthread_t` type for join, detach, and cancellation.
+On native Linux, TinyCC builds use the platform C compiler for the bundled Boehm GC dependency.
+The AArch64 GC object uses inline atomics so linking does not require GCC's atomic helpers.
 Array alignment metadata keeps its 32-bit encoding when a backend uses wider flag enums.
 Long conditional chains in generated type-name dispatch do not consume recursive C generator frames.
 
