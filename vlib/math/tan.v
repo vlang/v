@@ -73,6 +73,9 @@ pub fn tanf(a f32) f32 {
 // cot calculates cotangent of a number
 pub fn cot(a f64) f64 {
 	mut x := a
+	if is_nan(x) {
+		return x
+	}
 	if x == 0.0 {
 		return inf(1)
 	}
