@@ -89,3 +89,21 @@ fn test_vlibc_rejects_unsupported_backend_and_target() {
 		}
 	}
 }
+
+fn test_os_portable_c_drops_inactive_vlibc_branches() ! {
+	root := os.join_path(os.vtmp_dir(), 'vlibc_portable_os_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'import os\nfn main() { println(os.getwd()) }')!
+	for target in ['linux', 'macos'] {
+		output := os.join_path(root, '${target}.c')
+		result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-cross',
+			'-os', target, '-o', output, source])
+		assert result.exit_code == 0, result.output
+		code := os.read_file(output)!
+		assert code.contains('os__getwd(')
+		assert !code.contains('vlibc_getcwd(')
+		assert !code.contains('vlibc_sys_gettid(')
+	}
+}

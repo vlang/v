@@ -17,11 +17,13 @@ fn v_os_execute_mutex_ptr() voidptr {
 }
 
 fn init() {
-	$if linux && freestanding && vlibc ? {
-		// The raw syscall runtime does not use the hosted process capture mutex.
-	} $else {
-		C.pthread_mutex_init(v_os_execute_mutex_ptr(), unsafe { nil })
+	$if vlibc ? {
+		$if linux && freestanding {
+			// The raw syscall runtime does not use the hosted process capture mutex.
+			return
+		}
 	}
+	C.pthread_mutex_init(v_os_execute_mutex_ptr(), unsafe { nil })
 }
 
 fn v_os_execute_lock() {

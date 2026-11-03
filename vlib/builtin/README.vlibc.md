@@ -17,6 +17,7 @@ kernel clears that thread's TID before releasing its stack.
 Linux freestanding `os.is_main_thread()` uses kernel thread IDs without requiring pthreads.
 Its startup uses the raw working-directory syscall and omits the hosted process capture mutex.
 GCC and Clang links discard unused hosted helpers from Linux freestanding executables.
+Portable C snapshots omit startup calls from the inactive vlibc runtime.
 macOS uses libSystem for process startup and pthreads for threads.
 FreeBSD and DragonFly join through kernel-published exit state. OpenBSD uses `__tfork` and
 `__threxit`; current OpenBSD syscall-pinning policies may restrict raw syscall executables.
