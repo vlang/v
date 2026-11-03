@@ -44,6 +44,19 @@ fn write_executable(path string, contents string) {
 	os.chmod(path, 0o755) or { panic(err) }
 }
 
+// new_git_trace_wrapper writes a git stand-in under `root` that records each call
+// before running the real git. It returns the stand-in and its trace file.
+fn new_git_trace_wrapper(root string) (string, string) {
+	real_git := os.find_abs_path_of_executable('git') or { panic(err) }
+	git_wrapper := os.join_path(root, 'traced-git')
+	git_trace := os.join_path(root, 'traced-git.trace')
+	os.rm(git_trace) or {}
+	write_executable(git_wrapper, '#!/bin/sh\n' +
+		'printf "%s\\n" "\$*" >> ${os.quoted_path(git_trace)}\n' +
+		'exec ${os.quoted_path(real_git)} "\$@"\n')
+	return git_wrapper, git_trace
+}
+
 fn run_linux_tcc_source_git_case(with_options bool) {
 	root := os.join_path(os.vtmp_dir(), 'v_make_tcc_source_${rand.ulid()}')
 	defer {
@@ -620,12 +633,7 @@ fn test_linux_tcc_uses_newest_compatible_commit_and_returns_to_a_fixed_head() {
 	inputs := ['tcc.exe', 'lib/libgc.a', 'lib/tcc/include/stddef.h'].map(os.join_path(fixture.tcc_dir,
 		it))
 	identities := inputs.map(modulecache.file_metadata_signature(it))
-	real_git := os.find_abs_path_of_executable('git') or { panic(err) }
-	git_wrapper := os.join_path(fixture.root, 'repeat-git')
-	git_trace := os.join_path(fixture.root, 'repeat-git.trace')
-	write_executable(git_wrapper, '#!/bin/sh\n' +
-		'printf "%s\\n" "\$*" >> ${os.quoted_path(git_trace)}\n' +
-		'exec ${os.quoted_path(real_git)} "\$@"\n')
+	git_wrapper, git_trace := new_git_trace_wrapper(fixture.root)
 	still_broken_result := os.exec([
 		...(os.split_args(fixture.latest_cmd) or { panic(err) }),
 		'GIT=${git_wrapper}',
@@ -638,7 +646,8 @@ fn test_linux_tcc_uses_newest_compatible_commit_and_returns_to_a_fixed_head() {
 	}
 	assert !still_broken_result.output.contains('is not host-compatible'), still_broken_result.output
 	trace := os.read_file(git_trace) or { panic(err) }
-	assert trace.contains('fetch --quiet origin'), trace
+	assert trace.contains('ls-remote'), trace
+	assert !trace.contains('fetch'), trace
 	assert !trace.contains('checkout'), trace
 	assert !trace.contains('rev-list'), trace
 	assert_historical_fallback(fixture)
@@ -669,6 +678,108 @@ fn test_linux_tcc_uses_newest_compatible_commit_and_returns_to_a_fixed_head() {
 	assert run_checked('git -C ${os.quoted_path(fixture.tcc_dir)} rev-parse HEAD').trim_space() == local_sha
 	assert os.read_file(local_file)! == 'preserve this branch commit\n'
 	assert_clean_checkout(fixture.tcc_dir)
+}
+
+fn test_linux_tcc_leaves_an_unchanged_branch_alone() {
+	if os.user_os() != 'linux' {
+		return
+	}
+	mut fixture := new_tcc_history_fixture(true)
+	defer {
+		os.rmdir_all(fixture.root) or {}
+	}
+	head_sha := push_compatible_head(mut fixture)
+	run_checked('${fixture.fresh_cmd} 2>&1')
+	assert git_current_branch(fixture.tcc_dir) == 'thirdparty-linux-amd64'
+	assert run_checked('git -C ${os.quoted_path(fixture.tcc_dir)} rev-parse HEAD').trim_space() == head_sha
+
+	// Learning that upstream did not move takes one ref lookup: no fetch, and no
+	// checkout that would rewrite the native inputs of cached modules.
+	inputs := ['tcc.exe', 'lib/libgc.a', 'lib/tcc/include/stddef.h'].map(os.join_path(fixture.tcc_dir,
+		it))
+	identities := inputs.map(modulecache.file_metadata_signature(it))
+	git_wrapper, git_trace := new_git_trace_wrapper(fixture.root)
+	unchanged_result := os.exec([
+		...(os.split_args(fixture.latest_cmd) or { panic(err) }),
+		'GIT=${git_wrapper}',
+	])
+	assert unchanged_result.exit_code == 0, unchanged_result.output
+	assert unchanged_result.output.contains('TCC thirdparty-linux-amd64@${head_sha} is already up to date.'), unchanged_result.output
+	trace := os.read_file(git_trace)!
+	assert trace.contains('ls-remote'), trace
+	assert !trace.contains('fetch'), trace
+	assert !trace.contains('checkout'), trace
+	for index, input in inputs {
+		if identities[index] != '' {
+			assert modulecache.file_metadata_signature(input) == identities[index], input
+		}
+	}
+	assert git_current_branch(fixture.tcc_dir) == 'thirdparty-linux-amd64'
+	assert_clean_checkout(fixture.tcc_dir)
+	assert os.ls(fixture.tmp_dir)! == []
+
+	next_head_sha := commit_bundle_state(fixture.source, 'compatible-v3',
+		compatible_tcc_script('compatible-tcc-v3'), 'compatible-libgc-v3\n')
+	run_checked('git -C ${os.quoted_path(fixture.source)} push --quiet ${os.quoted_path(fixture.remote)} HEAD:refs/heads/thirdparty-linux-amd64')
+	moved_result := os.exec(os.split_args(fixture.latest_cmd) or { panic(err) })
+	assert moved_result.exit_code == 0, moved_result.output
+	assert !moved_result.output.contains('already up to date'), moved_result.output
+	assert git_current_branch(fixture.tcc_dir) == 'thirdparty-linux-amd64'
+	assert run_checked('git -C ${os.quoted_path(fixture.tcc_dir)} rev-parse HEAD').trim_space() == next_head_sha
+	assert os.read_file(os.join_path(fixture.tcc_dir, 'lib', 'libgc.a'))! == 'compatible-libgc-v3\n'
+	assert_clean_checkout(fixture.tcc_dir)
+}
+
+fn test_latest_tcc_pulls_other_bundles_only_when_their_branch_moved() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v_make_tcc_pull_${rand.ulid()}')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	remote := os.join_path(root, 'tccbin.git')
+	source := os.join_path(root, 'source')
+	vroot := os.join_path(root, 'vroot')
+	tcc_dir := os.join_path(vroot, 'thirdparty', 'tcc')
+	os.mkdir_all(os.join_path(vroot, 'thirdparty'))!
+	os.symlink(makefile_path, os.join_path(vroot, 'GNUmakefile'))!
+	run_checked('git init --quiet --bare ${os.quoted_path(remote)}')
+	configure_source_repo(source)
+	run_checked('git -C ${os.quoted_path(source)} checkout --quiet -b thirdparty-macos-arm64')
+	head_sha := commit_bundle_state(source, 'macos-v1', compatible_tcc_script('macos-tcc-v1'),
+		'macos-libgc-v1\n')
+	push := 'git -C ${os.quoted_path(source)} push --quiet ${os.quoted_path(remote)} HEAD:refs/heads/thirdparty-macos-arm64'
+	run_checked(push)
+	run_checked('git clone --quiet --branch thirdparty-macos-arm64 ${os.quoted_path('file://${remote}')} ${os.quoted_path(tcc_dir)}')
+	git_wrapper, git_trace := new_git_trace_wrapper(root)
+	latest_cmd := ['make', '--no-print-directory', '-C', vroot, 'latest_tcc', 'VROOT=${vroot}',
+		'TCCOS=macos', 'TCCARCH=arm64', 'GIT=${git_wrapper}']
+
+	// Left-over build files are still removed when there is nothing to pull.
+	stray_file := os.join_path(tcc_dir, 'stray.o')
+	os.write_file(stray_file, '')!
+	unchanged_result := os.exec(latest_cmd)
+	assert unchanged_result.exit_code == 0, unchanged_result.output
+	assert unchanged_result.output.contains('TCC thirdparty-macos-arm64 is already up to date.'), unchanged_result.output
+	trace := os.read_file(git_trace)!
+	assert trace.contains('ls-remote'), trace
+	assert !trace.contains('pull'), trace
+	assert !trace.contains('fetch'), trace
+	assert !os.exists(stray_file)
+	assert run_checked('git -C ${os.quoted_path(tcc_dir)} rev-parse HEAD').trim_space() == head_sha
+
+	next_head_sha := commit_bundle_state(source, 'macos-v2', compatible_tcc_script('macos-tcc-v2'),
+		'macos-libgc-v2\n')
+	run_checked(push)
+	os.rm(git_trace)!
+	moved_result := os.exec(latest_cmd)
+	assert moved_result.exit_code == 0, moved_result.output
+	assert !moved_result.output.contains('already up to date'), moved_result.output
+	assert os.read_file(git_trace)!.contains('pull --rebase --quiet')
+	assert git_current_branch(tcc_dir) == 'thirdparty-macos-arm64'
+	assert run_checked('git -C ${os.quoted_path(tcc_dir)} rev-parse HEAD').trim_space() == next_head_sha
+	assert os.read_file(os.join_path(tcc_dir, 'lib', 'libgc.a'))! == 'macos-libgc-v2\n'
 }
 
 fn test_linux_tcc_rechecks_pinned_bundle_before_reusing_unchanged_history() {
@@ -1135,6 +1246,35 @@ fn test_linux_tcc_without_explicit_request_uses_system_fallback() {
 
 	assert_clean_checkout(fixture.tcc_dir)
 	assert os.ls(fixture.tmp_dir)! == []
+
+	// Every commit of the unchanged branch already failed the host check. Checking
+	// them again would download each bundle and clone the fallback once more.
+	git_wrapper, git_trace := new_git_trace_wrapper(fixture.root)
+	unchanged_result := os.exec([
+		...(os.split_args(fixture.latest_cmd) or { panic(err) }),
+		'GIT=${git_wrapper}',
+	])
+	assert unchanged_result.exit_code == 0, unchanged_result.output
+	assert unchanged_result.output.contains('continuing with the system compiler'), unchanged_result.output
+	assert !unchanged_result.output.contains('is not host-compatible'), unchanged_result.output
+	trace := os.read_file(git_trace)!
+	assert trace.contains('ls-remote'), trace
+	for operation in ['fetch', 'clone', 'checkout', 'rev-list'] {
+		assert !trace.contains(operation), trace
+	}
+	assert git_current_branch(fixture.tcc_dir) == 'thirdparty-unknown-unknown'
+	assert os.read_file(os.join_path(compatible_marker_dir(fixture), 'metadata'))! == metadata
+	assert_clean_checkout(fixture.tcc_dir)
+	assert os.ls(fixture.tmp_dir)! == []
+
+	// An explicit TCC request still checks the branch again rather than settling.
+	required_result := os.exec([
+		...(os.split_args(fixture.latest_cmd) or { panic(err) }),
+		'VFLAGS=-cc tcc',
+	])
+	assert required_result.exit_code != 0, required_result.output
+	assert required_result.output.contains('is not host-compatible'), required_result.output
+	assert required_result.output.contains("explicit '-cc tcc' cannot continue"), required_result.output
 
 	compatible_head_sha := push_compatible_head(mut fixture)
 	refresh_result := os.exec(os.split_args(fixture.latest_cmd) or { panic(err) })

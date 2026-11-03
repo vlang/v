@@ -366,7 +366,18 @@ ifdef WIN32
 		cd "$(TMPTCC)" && $(GIT) checkout -- lib/advapi32.def > /dev/null 2> /dev/null || true; \
 	fi
 endif
-	cd $(TMPTCC) && $(GITCLEANPULL)
+# Pull only when the checked out branch moved upstream; a pull fetches every platform branch.
+	@set -e; cd $(TMPTCC); $(GIT) clean -xf; \
+	tcc_branch="$$($(GIT) symbolic-ref --quiet --short HEAD || true)"; \
+	tcc_remote_sha=; \
+	if [ -n "$$tcc_branch" ]; then \
+		tcc_remote_sha="$$($(GIT) ls-remote --heads origin "refs/heads/$$tcc_branch" 2> /dev/null | cut -f1)"; \
+	fi; \
+	if [ -n "$$tcc_remote_sha" ] && [ "$$tcc_remote_sha" = "$$($(GIT) rev-parse HEAD)" ]; then \
+		echo "TCC $$tcc_branch is already up to date."; \
+	else \
+		$(GIT) pull --rebase --quiet; \
+	fi
 ifdef WIN32
 	@if [ -f "$(TMPTCC)/lib/advapi32.def" ]; then \
 		for sym in RegEnumKeyExW RegEnumValueW RegQueryInfoKeyW; do \
