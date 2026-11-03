@@ -369,6 +369,28 @@ const source_type_recent_slots = 131072
 __global g_source_type_recent_entries [source_type_recent_slots]voidptr
 __global g_source_type_read_entries [source_type_read_cache_size]voidptr
 
+// Spelling flags travel with the ID: one dense word per ID holds the shape in
+// its low half and the query in its high half. Readers index it directly,
+// without a cache probe or an entry read. Both flag sets fill their 32 bits, so
+// a nonzero word marks a published ID; the rare spelling with no flags at all
+// reads its entry instead. The table covers the whole ID space of the chunked
+// entries, so a published ID never needs a bounds check; untouched pages stay
+// unmapped. Word zero is the empty spelling: no shape, and the `complete` query.
+__global g_source_type_flags &u64
+
+// source_type_flags_capacity is the number of IDs the flags table covers. A
+// 64-bit process reserves the whole ID space, so published IDs skip the bounds
+// check; a 32-bit one keeps the reservation small and reads later IDs from
+// their entries.
+@[inline]
+fn source_type_flags_capacity() u32 {
+	$if x32 {
+		return u32(1) << 20
+	} $else {
+		return u32(source_type_chunk_count) * u32(source_type_chunk_size)
+	}
+}
+
 fn source_type_lock() {
 	for {
 		mut expected := u32(0)
@@ -585,6 +607,7 @@ fn source_type_id_uncached(text string) u32 {
 		if isnil(table) {
 			panic('could not allocate the source type table')
 		}
+		source_type_flags_table_create()
 		source_type_table_publish(table)
 	}
 	mut index := source_type_index_load(table)
@@ -635,6 +658,10 @@ fn source_type_id_uncached(text string) u32 {
 			shape: shape
 			id:    id
 			query: query
+		}
+		// The flags word is complete before the release stores publish the ID.
+		if id < source_type_flags_capacity() {
+			g_source_type_flags[id] = source_type_flags_word(shape, query)
 		}
 	}
 	C.atomic_store_u32(&table.count, id)
@@ -687,13 +714,75 @@ pub fn source_type_name(id u32) string {
 // source_type_shape returns syntax properties without resolving spelling bytes.
 @[inline]
 pub fn source_type_shape(id u32) SourceTypeShape {
-	if id == 0 { return unsafe { SourceTypeShape(0) } }
-	return source_type_read_entry(id).shape
+	return unsafe { SourceTypeShape(u32(source_type_flags(id))) }
 }
 
 // source_type_query returns context-free query results without decoding a spelling.
 @[inline]
 pub fn source_type_query(id u32) SourceTypeQuery {
-	if id == 0 { return .complete }
-	return source_type_read_entry(id).query
+	return unsafe { SourceTypeQuery(u32(source_type_flags(id) >> 32)) }
+}
+
+@[inline]
+fn source_type_flags_word(shape SourceTypeShape, query SourceTypeQuery) u64 {
+	return u64(u32(shape)) | (u64(u32(query)) << 32)
+}
+
+@[inline]
+fn source_type_flags_table_load() &u64 {
+	$if x32 {
+		return unsafe { &u64(voidptr(C.atomic_load_u32(voidptr(&g_source_type_flags)))) }
+	} $else {
+		return unsafe { &u64(voidptr(C.atomic_load_u64(voidptr(&g_source_type_flags)))) }
+	}
+}
+
+// source_type_flags_table_create allocates the flags table for the whole ID
+// space and publishes it. The caller holds the writer lock and publishes the
+// entry table afterwards, so every published ID finds the table in place.
+// The words hold no pointers: plain zeroed C memory serves every build mode,
+// and only the pages of IDs in use are ever touched.
+fn source_type_flags_table_create() {
+	flags := unsafe { &u64(C.calloc(uint(source_type_flags_capacity()), sizeof(u64))) }
+	if isnil(flags) {
+		panic('could not allocate the source type flags')
+	}
+	unsafe {
+		flags[0] = source_type_flags_word(SourceTypeShape(0), SourceTypeQuery.complete)
+	}
+	$if x32 {
+		C.atomic_store_u32(voidptr(&g_source_type_flags), u32(voidptr(flags)))
+	} $else {
+		C.atomic_store_u64(voidptr(&g_source_type_flags), u64(voidptr(flags)))
+	}
+}
+
+// source_type_flags reads the published flags word of a spelling ID.
+@[direct_array_access; inline]
+fn source_type_flags(id u32) u64 {
+	flags := source_type_flags_table_load()
+	$if x32 {
+		if id >= source_type_flags_capacity() {
+			return source_type_flags_miss(id)
+		}
+	}
+	if !isnil(flags) {
+		word := unsafe { flags[id] }
+		if word != 0 {
+			return word
+		}
+	}
+	return source_type_flags_miss(id)
+}
+
+// The empty spelling before any interning, a spelling without any flag, IDs
+// beyond a small table, and invalid IDs reach this: a published ID's flags are
+// visible wherever the ID is, and its entry answers for an all-zero word.
+@[noinline]
+fn source_type_flags_miss(id u32) u64 {
+	if id == 0 {
+		return source_type_flags_word(unsafe { SourceTypeShape(0) }, SourceTypeQuery.complete)
+	}
+	entry := source_type_read_entry(id)
+	return source_type_flags_word(entry.shape, entry.query)
 }
