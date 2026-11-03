@@ -2167,8 +2167,9 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	}
 	// A method is named `<module>__<Receiver>_<method>`, which a free function of the
 	// same module can also be named (`string.index_pair` and `string_index_pair` were
-	// both `builtin__string_index_pair`). The method keeps its name, which FastC's
-	// runtime helpers call, and the free function moves to FastC's own namespace.
+	// both `builtin__string_index_pair`). The method keeps its name, which generated
+	// code calls directly (`builtin__string_plus`), and the free function moves to
+	// FastC's own namespace.
 	mut method_c_names := map[string]bool{}
 	for key, signature in functions {
 		if key.starts_with('C.') || !key.contains('.') {
