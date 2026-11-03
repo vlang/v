@@ -4301,6 +4301,15 @@ fn (tc &TypeChecker) expr_has_multi_match_member_error(id flat.NodeId) bool {
 }
 
 fn (tc &TypeChecker) expr_contains_multi_pattern_subject_member(id flat.NodeId) bool {
+	// A subject is named by a match branch with several patterns above the
+	// member, in the function's node range.
+	if tc.fn_range_lacks_multi_pattern_match(int(id)) {
+		return false
+	}
+	return tc.expr_contains_multi_pattern_subject_member_walk(id)
+}
+
+fn (tc &TypeChecker) expr_contains_multi_pattern_subject_member_walk(id flat.NodeId) bool {
 	if !tc.valid_node_id(id) {
 		return false
 	}
@@ -4310,7 +4319,7 @@ fn (tc &TypeChecker) expr_contains_multi_pattern_subject_member(id flat.NodeId) 
 		return true
 	}
 	for i in 0 .. node.children_count {
-		if tc.expr_contains_multi_pattern_subject_member(tc.a.child(node, i)) {
+		if tc.expr_contains_multi_pattern_subject_member_walk(tc.a.child(node, i)) {
 			return true
 		}
 	}
@@ -9792,6 +9801,15 @@ fn source_text_is_bare_generic(text string) bool {
 }
 
 fn (tc &TypeChecker) expr_has_unresolved_generic_name_ident(id flat.NodeId) bool {
+	// Only a bare generic identifier in the subtree makes this true, and the
+	// subtree is in the function's node range.
+	if tc.fn_range_lacks_bare_generic_ident(int(id)) {
+		return false
+	}
+	return tc.expr_has_unresolved_generic_name_ident_walk(id)
+}
+
+fn (tc &TypeChecker) expr_has_unresolved_generic_name_ident_walk(id flat.NodeId) bool {
 	if !tc.valid_node_id(id) {
 		return false
 	}
@@ -9806,7 +9824,7 @@ fn (tc &TypeChecker) expr_has_unresolved_generic_name_ident(id flat.NodeId) bool
 		}
 	}
 	for i in 0 .. node.children_count {
-		if tc.expr_has_unresolved_generic_name_ident(tc.a.child(node, i)) {
+		if tc.expr_has_unresolved_generic_name_ident_walk(tc.a.child(node, i)) {
 			return true
 		}
 	}

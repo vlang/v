@@ -7973,6 +7973,10 @@ fn (tc &TypeChecker) ident_is_multi_pattern_match_subject(id flat.NodeId) bool {
 	if ident.kind != .ident {
 		return false
 	}
+	// The branch found below is a parent in the function's node range.
+	if tc.fn_range_lacks_multi_pattern_match(int(id)) {
+		return false
+	}
 	mut current := id
 	for _ in 0 .. 32 {
 		parent_id := tc.direct_parent_id(current)
@@ -15393,6 +15397,24 @@ pub fn (tc &TypeChecker) begin_interface_impl_queries() bool {
 	}
 	mut writable := unsafe { tc }
 	writable.interface_impl_memo = &InterfaceImplMemo{}
+	return true
+}
+
+// begin_interface_impl_queries_sharing is begin_interface_impl_queries with the
+// method-receiver index of `shared` (see memo_index_method_receivers), which
+// only reads the declared signatures and is read-only once built, in place of
+// indexing every signature key again for this checker.
+fn (tc &TypeChecker) begin_interface_impl_queries_sharing(shared &InterfaceImplMemo) bool {
+	if !isnil(tc.interface_impl_memo) {
+		return false
+	}
+	mut writable := unsafe { tc }
+	writable.interface_impl_memo = &InterfaceImplMemo{
+		method_keys_ready: shared.method_keys_ready
+		required_methods:  shared.required_methods
+		receiver_parts:    shared.receiver_parts
+		method_receivers:  shared.method_receivers
+	}
 	return true
 }
 

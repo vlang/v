@@ -59,6 +59,9 @@ struct InterfaceImplChunkArgs {
 	results     voidptr
 	queue       chan int
 	scoped      bool
+	// The master's method-receiver index (see memo_index_method_receivers),
+	// shared read-only by every job's memo.
+	shared_memo voidptr
 mut:
 	scope voidptr
 }
@@ -80,7 +83,8 @@ fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
 	// Declarations and context stay fixed while this worker drains the queue.
 	// Match the serial preparation path: reuse receiver and candidate queries
 	// across interfaces, with one private memo per checker.
-	opened := tc.begin_interface_impl_queries()
+	shared_memo := unsafe { &InterfaceImplMemo(a.shared_memo) }
+	opened := tc.begin_interface_impl_queries_sharing(shared_memo)
 	defer { tc.end_interface_impl_queries(opened) }
 	iface_names := unsafe { &[]u32(a.iface_names) }
 	mut results := unsafe { &InterfaceImplResults(a.results) }
@@ -131,6 +135,10 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []u3
 		queue <- i
 	}
 	queue.close()
+	// The method-receiver index reads only the declared signatures, which every
+	// fork shares: index them once here instead of once per job.
+	mut shared_memo := &InterfaceImplMemo{}
+	tc.memo_index_method_receivers(mut shared_memo)
 	mut args := []InterfaceImplChunkArgs{cap: n_jobs}
 	mut tasks := []workers.Task{cap: n_jobs}
 	for job in 0 .. n_jobs {
@@ -142,6 +150,7 @@ fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []u3
 			// Job 0 runs on the master checker, whose overlay is folded back
 			// into the shared cache below; only forks may use scratch arenas.
 			scoped:      job > 0
+			shared_memo: voidptr(shared_memo)
 		}
 		tasks << workers.Task{
 			run:        interface_impl_index_chunk_thread
