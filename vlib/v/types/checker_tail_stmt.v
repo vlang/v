@@ -15000,9 +15000,31 @@ fn (tc &TypeChecker) source_declares_type_in_scope(name_id u32, file string, mod
 // The module is normalized so that '' and 'main' collapse to the same bucket,
 // matching the old `module_names_match` semantics.
 fn scope_type_key(file string, mod_name string, name_id u32) u64 {
+	return (u64(scope_type_context_id(file, mod_name)) << 32) | u64(name_id)
+}
+
+// scope_type_context_id interns the `file\x01module` context of scope_type_key.
+fn scope_type_context_id(file string, mod_name string) u32 {
 	norm_mod := if mod_name == '' || mod_name == 'main' { 'main' } else { mod_name }
-	context_id := flat.source_type_id('${file}\x01${norm_mod}')
-	return (u64(context_id) << 32) | u64(name_id)
+	return flat.source_type_id('${file}\x01${norm_mod}')
+}
+
+// current_scope_type_key is scope_type_key(tc.cur_file, tc.cur_module, name_id)
+// with the interned context memoized per checker: the declaration checks query
+// it in runs of hundreds per file.
+fn (tc &TypeChecker) current_scope_type_key(name_id u32) u64 {
+	mut cache := tc.qualify_name_cache
+	if isnil(cache) {
+		return scope_type_key(tc.cur_file, tc.cur_module, name_id)
+	}
+	if !cache.scope_key_valid || !same_string(cache.scope_key_file, tc.cur_file)
+		|| !same_string(cache.scope_key_module, tc.cur_module) {
+		cache.scope_key_file = tc.cur_file
+		cache.scope_key_module = tc.cur_module
+		cache.scope_key_context = scope_type_context_id(tc.cur_file, tc.cur_module)
+		cache.scope_key_valid = true
+	}
+	return (u64(cache.scope_key_context) << 32) | u64(name_id)
 }
 
 // scope_unqualified_type_name keeps plain declaration names out of the syntax cache.
@@ -16279,8 +16301,14 @@ fn subst_generic_const_expr(expr string, args []u32, params []u32) string {
 }
 
 fn (tc &TypeChecker) embedded_method_call_info(struct_name_id u32, method string) ?CallInfo {
+	// Most structs embed nothing: no promoted method, and no `seen` set to allocate.
+	receiver_ids := tc.embedded_receiver_ids(struct_name_id)
+	if receiver_ids.len == 0 {
+		return none
+	}
 	mut seen := map[u32]bool{}
-	return tc.embedded_method_call_info_inner(struct_name_id, method, mut seen)
+	seen[struct_name_id] = true
+	return tc.embedded_method_call_info_among(receiver_ids, method, mut seen)
 }
 
 fn (tc &TypeChecker) embedded_method_call_info_inner(struct_name_id u32, method string, mut seen map[u32]bool) ?CallInfo {
@@ -16288,7 +16316,13 @@ fn (tc &TypeChecker) embedded_method_call_info_inner(struct_name_id u32, method 
 		return none
 	}
 	seen[struct_name_id] = true
-	for receiver_id in tc.embedded_receiver_ids(struct_name_id) {
+	return tc.embedded_method_call_info_among(tc.embedded_receiver_ids(struct_name_id), method, mut seen)
+}
+
+// embedded_method_call_info_among resolves `method` promoted through the
+// embedded receivers `receiver_ids` (in field order), then through theirs.
+fn (tc &TypeChecker) embedded_method_call_info_among(receiver_ids []u32, method string, mut seen map[u32]bool) ?CallInfo {
+	for receiver_id in receiver_ids {
 		// An embedded concrete generic receiver (`Collector[int]`) promotes the
 		// method registered on its open declaration (`Collector[T].use`).
 		if info := tc.resolve_generic_struct_method(receiver_id, method) {
@@ -18054,6 +18088,11 @@ fn (tc &TypeChecker) subtree_ends_narrowing(root flat.NodeId, key string, narrow
 }
 
 fn (tc &TypeChecker) lexical_match_smartcast_type(id flat.NodeId) ?Type {
+	// A match narrowing names its subject among the function's smartcast keys:
+	// an expression none of them names has no key to build and no parents to walk.
+	if tc.lexical_smartcasts_unused(int(id)) {
+		return none
+	}
 	return tc.lexical_smartcast_type_in_parents(id, tc.expr_key(id), true)
 }
 
