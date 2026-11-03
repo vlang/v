@@ -280,16 +280,18 @@ fn C.GC_REALLOC(ptr voidptr, n uint) voidptr
 fn C.GC_FREE(ptr voidptr)
 
 $if !windows {
+	struct C.pthread_t {}
+
 	@[markused]
 	fn C.v_gc_pthread_create(thread voidptr, attr voidptr, start_routine voidptr, arg voidptr) i32
 	@[markused]
-	fn C.v_gc_pthread_join(thread voidptr, retval voidptr) i32
+	fn C.v_gc_pthread_join(thread C.pthread_t, retval voidptr) i32
 	@[markused]
-	fn C.v_gc_pthread_detach(thread voidptr) i32
+	fn C.v_gc_pthread_detach(thread C.pthread_t) i32
 	@[markused]
 	fn C.v_gc_pthread_sigmask(how i32, const_set voidptr, oldset voidptr) i32
 	@[markused]
-	fn C.v_gc_pthread_cancel(thread voidptr) i32
+	fn C.v_gc_pthread_cancel(thread C.pthread_t) i32
 	@[markused]
 	fn C.v_gc_pthread_exit(result voidptr)
 	@[markused]

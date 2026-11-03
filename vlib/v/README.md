@@ -15,6 +15,7 @@ flat-AST-to-WebAssembly backend. With `-prod`, the ARM64 backend runs SSA
 optimization, MIR lowering, and instruction selection.
 Driver builds that omit FastC also omit its native bridge imports.
 Cached module interfaces retain the hook declarations used by generated call tracing.
+GC thread bridges use the platform's `pthread_t` type for join, detach, and cancellation.
 
 `parser.Parser.parse_text` copies caller-provided source into the AST, so callers can reuse
 or release their own buffers after parsing.
