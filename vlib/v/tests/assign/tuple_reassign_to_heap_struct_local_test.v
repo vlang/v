@@ -1,4 +1,4 @@
-@[heap]
+@[heap; minify]
 struct Cfg {
 	id   string
 	rows []int
