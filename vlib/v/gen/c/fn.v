@@ -17011,6 +17011,12 @@ fn (mut g FlatGen) gen_sum_variant_arg(arg_id flat.NodeId, expected types.Type) 
 	if expected_type is types.SumType {
 		return false
 	}
+	if int(arg_id) >= 0 && int(arg_id) < g.a.nodes.len
+		&& g.a.node(arg_id).kind in [.int_literal, .float_literal, .bool_literal, .char_literal,
+			.string_literal, .string_interp] {
+		// A literal has a builtin type and is never a sum value.
+		return false
+	}
 	actual0 := types.unwrap_pointer(g.body_resolve_type(arg_id))
 	mut actual := actual0
 	if actual0 is types.Alias {
