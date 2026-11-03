@@ -16312,6 +16312,14 @@ fn (mut p Parser) translated_sizeof_name_is_const(name string) bool {
 	if !p.is_translated && p.is_local_binding(name) {
 		return false
 	}
+	// An imported module name followed by `.` selects a qualified member: a
+	// const of that name would conflict with the import. Reading it as a const
+	// operand would index every sibling file of a module that only measures
+	// another module's types, such as sizeof(flat.Node).
+	if !p.is_translated && p.tok == .name && p.lit == name && p.peek() == .dot
+		&& p.imported_module_names[name] {
+		return false
+	}
 	// A type that this module already declared is never read as a const operand,
 	// whatever its other files declare, so no other module is indexed for one of
 	// its own types either.
