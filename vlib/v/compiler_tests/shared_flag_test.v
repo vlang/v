@@ -58,6 +58,7 @@ pub fn answer() int {
 fn C.GC_get_parallel() int
 
 @[export: 'gc_parallel']
+// gc_parallel reports the private collector's parallel marker workers.
 pub fn gc_parallel() int {
 	return C.GC_get_parallel()
 }
