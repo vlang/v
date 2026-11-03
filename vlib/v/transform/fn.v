@@ -5135,9 +5135,9 @@ fn (t &Transformer) current_module_global_type(name string) ?u32 {
 		return none
 	}
 	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
-		qname := '${t.cur_module}.${name}'
-		if qname in t.globals.ids {
-			return t.globals.value_id(qname)
+		// The key is only looked up, never stored: build it in the scratch buffer.
+		if id := t.globals.ids[t.qualified_name_view(t.cur_module, name)] {
+			return id
 		}
 		return none
 	}
@@ -5198,7 +5198,7 @@ fn (t &Transformer) current_module_declares_const(name string) bool {
 		return name in t.tc.const_types && t.tc.const_owner_module(name) == t.cur_module
 	}
 	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
-		return '${t.cur_module}.${name}' in t.tc.const_types
+		return t.qualified_name_view(t.cur_module, name) in t.tc.const_types
 	}
 	return name in t.tc.const_types
 }
