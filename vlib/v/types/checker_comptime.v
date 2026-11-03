@@ -1446,8 +1446,9 @@ fn (tc &TypeChecker) comptime_static_enum_call_value(id flat.NodeId, enum_module
 		}
 		arg_id := tc.a.child(call, arg_idx)
 		arg := tc.comptime_static_enum_field_value(arg_id, enum_module, enum_name, mut field_values, field_exprs, mut resolving) or { return none }
-		local_types[param.value] = helper.parse_type(param.typ)
-		locals[param.value] = comptime_enum_integer_cast(arg, unalias_type(local_types[param.value]).source_type_id())
+		param_type := helper.parse_type(param.typ)
+		local_types[param.value] = param_type
+		locals[param.value] = comptime_enum_integer_cast(arg, unalias_type(param_type).source_type_id())
 		arg_idx++
 	}
 	if arg_idx != call.children_count {
