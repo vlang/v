@@ -29,7 +29,7 @@ fn local_zip64_with_extra(extra []u8) []u8 {
 fn test_zip64_local_sizes_with_ordinary_central_directory() {
 	path := os.join_path(os.vtmp_dir(), 'szip_local_zip64_${os.getpid()}.zip')
 	defer { os.rm(path) or {} }
-	for prefix in [ []u8{}, [u8(0xef), 0xbe, 2, 0, 3, 4] ] {
+	for prefix in [[]u8{}, [u8(0xef), 0xbe, 2, 0, 3, 4]] {
 		mut extra := prefix.clone()
 		extra << local_zip64_extra()
 		os.write_file_array(path, local_zip64_with_extra(extra))!
