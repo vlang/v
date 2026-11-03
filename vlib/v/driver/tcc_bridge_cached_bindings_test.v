@@ -79,22 +79,28 @@ fn test_native_bridge_source_retention_keeps_standard_headers_cached() ! {
 	}
 	root := os.join_path(os.vtmp_dir(), 'native_bridge_source_retention_${os.getpid()}')
 	checkout := os.join_path(root, 'checkout')
+	checkout_target := os.join_path(root, 'original', 'checkout')
 	library := os.join_path(root, 'original', 'vlib')
 	external := os.join_path(root, 'external', 'binding.c.v')
-	os.mkdir_all(checkout)!
+	local_source := os.join_path(checkout, 'local.c.v')
+	library_source := os.join_path(library, 'os', 'binding.c.v')
+	os.mkdir_all(checkout_target)!
 	os.mkdir_all(os.join_path(library, 'os'))!
 	os.mkdir_all(os.dir(external))!
 	defer { os.rmdir_all(root) or {} }
+	os.symlink(checkout_target, checkout)!
 	os.symlink(library, os.join_path(checkout, 'vlib'))!
+	// Source files must exist so real_path resolves their symlinked parents.
+	for source in [external, local_source, library_source] {
+		os.write_file(source, 'module binding\n')!
+	}
 	header := os.join_path(root, 'binding.vh')
 	// The native header need not exist: only the generated V interface is read.
 	os.write_file(header, 'module binding\n#include "missing.h"\nfn C.answer() i32\n')!
 	mut state := V3ModuleCacheState{ native_bridge: true }
 	assert v3_tcc_dylib_needs_native_sources(&state, header, [external], checkout)
-	assert !v3_tcc_dylib_needs_native_sources(&state, header, [os.join_path(checkout,
-		'local.c.v')], checkout)
-	assert !v3_tcc_dylib_needs_native_sources(&state, header, [os.join_path(library, 'os',
-		'binding.c.v')], checkout)
+	assert !v3_tcc_dylib_needs_native_sources(&state, header, [local_source], checkout)
+	assert !v3_tcc_dylib_needs_native_sources(&state, header, [library_source], checkout)
 	assert !v3_tcc_dylib_needs_native_sources(&state, header, [os.join_path(checkout, 'vlib',
 		'os', 'binding.c.v')], checkout)
 	state.native_bridge = false
