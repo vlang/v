@@ -32,9 +32,9 @@ a TLS-record-only call on a QUIC-mode core (`next_application_key_material()`,
 error without touching state or keys, the same convention as the out-of-phase guards.
 
 ```v
-mut hs := new_tls_handshake(server_name, opts)!   // or new_quic_handshake(...)
+mut hs := new_tls_handshake(server_name, opts)! // or new_quic_handshake(...)
 client_hello := hs.create_client_hello()!
-messages := hs.receive_initial_bytes(bytes)!   // or hs.receive_handshake_bytes(bytes)!
+messages := hs.receive_initial_bytes(bytes)! // or hs.receive_handshake_bytes(bytes)!
 state := hs.state()
 ```
 
@@ -104,6 +104,8 @@ Each `*_test.v` sits beside its source.
   ordering cursor: `is_handshake_message_accepted()` gates the encrypted flight — EncryptedExtensions,
   optional CertificateRequest, Certificate, CertificateVerify, Finished — so handlers only parse and
   transition, and `state()` returns the cursor directly.
+- A requested empty client Certificate is deferred until the server Finished is verified,
+  preserving the RFC 8446 server-flight transcript; the client Finished then includes it.
 - **Key-material readiness** is inferred from `state()`: handshake keys are installable once the
   core leaves `start`/`wait_sh`, and application keys at `connected`. A `.failed` handshake has
   already wiped its schedule, so it never presents stale readiness.

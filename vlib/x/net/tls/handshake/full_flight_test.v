@@ -51,8 +51,8 @@ fn feed_encrypted_flight(mut h HandshakeCore, flight []u8) ![]HandshakeMessage {
 	return produced
 }
 
-// test_client_auth_request_answered_with_empty_certificate checks that a
-// CertificateRequest is answered with an empty Certificate (§4.4.2).
+// test_client_auth_request_answered_with_empty_certificate checks the client waits
+// for the verified server flight before sending its empty Certificate (§4.4.1).
 fn test_client_auth_request_answered_with_empty_certificate() ! {
 	mut h := new_tls_handshake(fakeserver.server_name, HandshakeOptions{ validator: fixture_trusted_validator() })!
 	mut srv := fakeserver.new_server(client_auth: true)!
@@ -62,21 +62,22 @@ fn test_client_auth_request_answered_with_empty_certificate() ! {
 	assert !fl.is_hrr
 	h.receive_initial_bytes(fl.server_hello)!
 
-	// EE + CertificateRequest: the client must emit exactly its empty Certificate.
-	assert fl.rest.len == 2
-	produced := feed_encrypted_flight(mut h, fakeserver.flatten(fl.rest))!
-	assert produced.len == 1
+	// EE + CertificateRequest alone do not trigger the client response.
+	assert fl.rest.len == 5
+	assert feed_encrypted_flight(mut h, fakeserver.flatten(fl.rest[..2]))!.len == 0
 	assert h.state() == .wait_cert
 
-	// The server validates the echo and returns the deferred Cert/CV/Fin tail.
-	tail := srv.handle_client_certificate(produced[0].msg)!
-	assert tail.len == 3
-
-	// The tail completes the handshake and yields the client Finished.
-	out := feed_encrypted_flight(mut h, fakeserver.flatten(tail))!
-	assert out.len == 1
+	// The independently signed server flight is verified before client output.
+	produced := feed_encrypted_flight(mut h, fakeserver.flatten(fl.rest[2..]))!
+	assert produced.len == 2
+	assert produced[0].msg[0] == u8(.certificate)
+	assert produced[1].msg[0] == u8(.finished)
 	assert h.state() == .connected
-	srv.handle_client_finished(out[0].msg)!
+
+	// The fakeserver checks the echoed non-empty request context, then the client
+	// Finished against the transcript including that Certificate.
+	assert srv.handle_client_certificate(produced[0].msg)!.len == 0
+	srv.handle_client_finished(produced[1].msg)!
 
 	assert h.server_certs.len == 1
 }

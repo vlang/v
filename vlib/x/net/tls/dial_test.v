@@ -896,8 +896,8 @@ fn test_dial_sends_plaintext_fatal_alert_before_server_hello() ! {
 
 // ---- Client authentication (CertificateRequest) over TCP ----
 
-// client_auth_script sends a CertificateRequest, reads the client's encrypted
-// empty Certificate, then streams the deferred Cert/CV/Fin tail.
+// client_auth_script sends the complete server flight before reading the client's
+// deferred empty Certificate and Finished.
 fn client_auth_script(mut c net.TcpConn) ! {
 	ch_rec := scripted_read_record(mut c)!
 	if ch_rec.content_type != .handshake {
@@ -915,12 +915,13 @@ fn client_auth_script(mut c net.TcpConn) ! {
 	skey, siv := srv.server_handshake_keys() or { return error('fakeserver keys: ${err.msg()}') }
 	aead := handshake.new_aead_for_suite(.tls_aes_128_gcm_sha256, skey) or { return err }
 	mut senc := new_tls_protection(aead, siv)!
-	// fl.rest is [EncryptedExtensions, CertificateRequest].
+	// fl.rest includes [EncryptedExtensions, CertificateRequest, Certificate,
+	// CertificateVerify, Finished] in server-flight order.
 	for m in fl.rest {
 		c.write(senc.encrypt_record(.handshake, m)!.serialize()) or { return err }
 	}
 
-	// The client answers with its empty Certificate under the client handshake keys.
+	// The client responds only after verifying the complete server flight.
 	ckey, civ := srv.client_handshake_keys() or { return error('fakeserver keys: ${err.msg()}') }
 	caead := handshake.new_aead_for_suite(.tls_aes_128_gcm_sha256, ckey) or { return err }
 	mut cdec := new_tls_protection(caead, civ)!
@@ -929,13 +930,8 @@ fn client_auth_script(mut c net.TcpConn) ! {
 	if ccert.content_type != .handshake {
 		return error('client Certificate inner type ${ccert.content_type}, expected handshake')
 	}
-	tail := srv.handle_client_certificate(ccert.plaintext) or {
+	srv.handle_client_certificate(ccert.plaintext) or {
 		return error('fakeserver client Certificate: ${err.msg()}')
-	}
-
-	// The deferred tail continues under the same server handshake key generation.
-	for m in tail {
-		c.write(senc.encrypt_record(.handshake, m)!.serialize()) or { return err }
 	}
 
 	cfin_rec := scripted_read_record(mut c)!

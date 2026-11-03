@@ -141,6 +141,9 @@ mut:
 	// Certificate chain received from the server, leaf first; validated against the
 	// immutable validator declared above.
 	server_certs []pki.Certificate // certificates received from the server, leaf first
+	// A requested client Certificate is deferred until the server Finished is verified.
+	client_cert_request_context []u8
+	client_cert_requested       bool
 
 	// Handshake retry and outcome.
 	hrr_cipher_suite ?CipherSuite   // suite from the retry request; presence marks a retry
@@ -455,21 +458,18 @@ fn (mut h HandshakeCore) handle_encrypted_extensions(full_msg []u8, body []u8) !
 	return []HandshakeMessage{}
 }
 
-// handle_certificate_request answers a server request with an empty Certificate.
+// handle_certificate_request retains the request context for the deferred response.
 fn (mut h HandshakeCore) handle_certificate_request(full_msg []u8, body []u8) ![]HandshakeMessage {
-	// §4.3.2: the server wants client authentication; this client holds no
-	// credential and acknowledges with an empty Certificate (§4.4.2).
+	// §4.3.2: retain the request context so the empty Certificate can be sent after
+	// the server's Certificate, CertificateVerify, and Finished have been verified.
 	req := parse_certificate_request(body) or {
 		return h.fail_with(.decode_error, err)
 	}
 	h.update_transcript(full_msg)!
+	h.client_cert_request_context = req.request_context
+	h.client_cert_requested = true
 	h.state = .wait_cert
-
-	// The empty Certificate-response (§4.4.2) enters the transcript BEFORE the
-	// server's flight is verified, so the server Finished covers our response.
-	response := build_empty_certificate_message(req.request_context)
-	h.update_transcript(response)!
-	return [new_handshake_message(response)!]
+	return []HandshakeMessage{}
 }
 
 // handle_certificate parses and validates the server certificate chain.
@@ -546,13 +546,6 @@ fn (mut h HandshakeCore) handle_finished(full_msg []u8, body []u8) ![]HandshakeM
 	h.c_app_tsec = c_ap
 	h.s_app_tsec = s_ap
 
-	// The client Finished uses the handshake traffic secret over the transcript now
-	// including server Finished, sent under the (still active) handshake keys.
-	client_verify_data := compute_finished_verify_data(h.hash_algo, h.c_hsk_tsec,
-		th_sfin)!
-	client_fin_msg := build_finished(client_verify_data)
-	h.update_transcript(client_fin_msg)!
-
 	// RFC 8446 §4.6.1/§4.5.5.1 let the server coalesce NewSessionTicket (type 4)
 	// or KeyUpdate (type 24) behind its Finished; those stay buffered for the
 	// adapter's take_buffered_handshake_bytes. Any other leading byte is flight garbage.
@@ -563,13 +556,31 @@ fn (mut h HandshakeCore) handle_finished(full_msg []u8, body []u8) ![]HandshakeM
 		}
 	}
 
+	// The client's Certificate follows the complete server flight (§4.4.1), so it is
+	// excluded from the server Finished and application-secret transcripts above but
+	// included in the client Finished transcript.
+	mut out := []HandshakeMessage{}
+	if h.client_cert_requested {
+		client_cert_msg := build_empty_certificate_message(h.client_cert_request_context)
+		h.update_transcript(client_cert_msg)!
+		out << new_handshake_message(client_cert_msg)!
+		h.client_cert_request_context = []u8{}
+		h.client_cert_requested = false
+	}
+	client_verify_data := compute_finished_verify_data(h.hash_algo, h.c_hsk_tsec,
+		h.transcript.current_hash())!
+	client_fin_msg := build_finished(client_verify_data)
+	h.update_transcript(client_fin_msg)!
+
 	h.state = .connected
 	// Forward-secrecy cleanup: every ephemeral/handshake secret consumed to reach
 	// this point is now dead (RFC 8446 §7.5 / §1.3.1).
 	h.wipe_key_schedule_secrets()
-	// Hand the raw client Finished to the transport, which encrypts it under the
-	// still-active handshake keys.
-	return [new_handshake_message(client_fin_msg)!]
+
+	// Hand outbound messages to the transport in protocol order under the still-active
+	// client handshake keys.
+	out << new_handshake_message(client_fin_msg)!
+	return out
 }
 
 // receive_initial_bytes feeds pre-ServerHello (plaintext) handshake bytes —

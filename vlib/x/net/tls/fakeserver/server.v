@@ -36,6 +36,7 @@ const ext_quic_transport_parameters = u16(57)
 // Named groups (RFC 8446 §4.2.7) the fakeserver can negotiate.
 const group_secp256r1 = u16(0x0017)
 const group_x25519 = u16(0x001d)
+const client_auth_request_context = 'fakeserver-client-auth-context'.bytes()
 
 // The cipher suites the fakeserver can select (RFC 8446 §B.4), both SHA-256 with a
 // 12-byte IV; AES-128-GCM keys are 16 bytes, ChaCha20-Poly1305 keys 32.
@@ -101,7 +102,7 @@ pub:
 	// the client offered, proving the RFC 7301 §3.1 check aborts on an unoffered selection.
 	force_alpn string
 	// client_auth sends a CertificateRequest after EncryptedExtensions and expects
-	// the client's empty Certificate (RFC 8446 §4.3.2/§4.4.2) in the transcript.
+	// the client's empty Certificate after the server flight (§4.4.1).
 	client_auth bool
 	// quic_scid is sent as initial_source_connection_id when the ClientHello carries
 	// the QUIC transport-parameters extension.
@@ -140,9 +141,6 @@ mut:
 	server_hsk_traffic  []u8
 	client_app_traffic  []u8
 	server_app_traffic  []u8
-	// pending_tail holds the server-flight messages deferred until the client's
-	// empty Certificate is folded into the transcript.
-	pending_tail [][]u8
 }
 
 // Flight is one server response: the (possibly HelloRetryRequest) ServerHello in
@@ -302,14 +300,19 @@ fn (mut s Server) finish_flight(ch ClientHello, ch_msg []u8) !Flight {
 	s.transcript.append(ee)
 
 	if s.cfg.client_auth {
-		// §4.3.2: wait for the client's empty Certificate before the server tail.
+		// §4.3.2: the client responds after verifying the complete server flight.
 		creq := build_certificate_request()!
 		s.transcript.append(creq)
+		tail := s.build_server_tail()!
 		s.stage = .expect_client_cert
+		mut rest := [][]u8{cap: 2 + tail.len}
+		rest << ee
+		rest << creq
+		rest << tail
 		return Flight{
 			is_hrr:       false
 			server_hello: sh
-			rest:         [ee, creq]
+			rest:         rest
 		}
 	}
 
@@ -326,7 +329,7 @@ fn (mut s Server) finish_flight(ch ClientHello, ch_msg []u8) !Flight {
 }
 
 // build_server_tail builds Certificate + CertificateVerify + Finished over the
-// current transcript (after EncryptedExtensions, and the client Certificate if any).
+// current transcript, which may include CertificateRequest but not a client Certificate.
 fn (mut s Server) build_server_tail() ![][]u8 {
 	cert := build_certificate(leaf_der() or {
 		return error('fakeserver: cannot decode embedded leaf certificate (${err.msg()})')
@@ -361,8 +364,8 @@ fn (mut s Server) build_server_tail() ![][]u8 {
 	return [cert, cv, fin]
 }
 
-// handle_client_certificate consumes the client's empty Certificate response,
-// folds it into the transcript, and returns the deferred server tail.
+// handle_client_certificate consumes the client's empty Certificate response after
+// the server flight and folds it into the transcript for client Finished verification.
 pub fn (mut s Server) handle_client_certificate(msg []u8) ![][]u8 {
 	if s.stage != .expect_client_cert {
 		return error('fakeserver: client Certificate is unexpected in stage ${s.stage}')
@@ -380,8 +383,8 @@ pub fn (mut s Server) handle_client_certificate(msg []u8) ![][]u8 {
 	// §4.4.2: the client echoes our request context and sends an empty list.
 	mut br := wire.new_reader(body)
 	req_ctx := br.read_vector_u8()!
-	if req_ctx.len != 0 {
-		return error('fakeserver: client returned a non-empty certificate_request_context')
+	if req_ctx != client_auth_request_context {
+		return error('fakeserver: client Certificate request context mismatch')
 	}
 	cert_list := br.read_vector_u24()!
 	if cert_list.len != 0 {
@@ -391,9 +394,8 @@ pub fn (mut s Server) handle_client_certificate(msg []u8) ![][]u8 {
 		return error('fakeserver: trailing bytes in client Certificate body')
 	}
 	s.transcript.append(msg)
-	tail := s.build_server_tail()!
 	s.stage = .expect_client_finished
-	return tail
+	return [][]u8{}
 }
 
 // handle_client_finished verifies the client Finished against the full transcript,
@@ -835,8 +837,8 @@ fn build_certificate_verify(signature []u8) ![]u8 {
 	return wrap_handshake(hs_certificate_verify, body.bytes())
 }
 
-// build_certificate_request emits a CertificateRequest (RFC 8446 §4.3.2) with an
-// empty request context and only the signature_algorithms extension (Ed25519).
+// build_certificate_request emits a CertificateRequest with a context that lets tests
+// verify the client echoes it, and only the Ed25519 signature_algorithms extension.
 fn build_certificate_request() ![]u8 {
 	// signature_algorithms: a u16-length list of schemes, here just Ed25519.
 	mut sa_body := wire.new_writer(4)
@@ -846,7 +848,7 @@ fn build_certificate_request() ![]u8 {
 	ext.write_vector_u16(sa_body.bytes())!
 
 	mut body := wire.new_writer(ext.len() + 3)
-	body.write_vector_u8([]u8{})! // certificate_request_context: empty
+	body.write_vector_u8(client_auth_request_context)!
 	body.write_vector_u16(ext.bytes())!
 	return wrap_handshake(hs_certificate_request, body.bytes())
 }
