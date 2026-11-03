@@ -5624,6 +5624,11 @@ struct CheckTypePromotionCache {
 mut:
 	values [4096]&Type
 	set    [4096]bool
+	// The checked types are canonical interner references, so a batch repeats
+	// the same pointer on thousands of nodes. The identity slots answer those
+	// repeats before the structural lookup hashes and compares the type again.
+	ptrs       [1024]voidptr
+	ptr_values [1024]&Type
 }
 
 // CheckNamePromotionCache maps a still-alive worker-arena name instance to
@@ -5653,10 +5658,18 @@ fn promote_cached_name_value(name &CachedName, mut cache CheckNamePromotionCache
 
 @[direct_array_access; inline]
 fn (tc &TypeChecker) cached_check_type_promotion(typ &Type, mut cache CheckTypePromotionCache, promote_missing bool, frozen_interner bool) ?&Type {
+	// A repeated pointer is a repeated immutable type: its promotion was
+	// already decided by the structural lookup below.
+	ptr_slot := int((u64(voidptr(typ)) >> 4) & u64(cache.ptrs.len - 1))
+	if cache.ptrs[ptr_slot] == voidptr(typ) {
+		return cache.ptr_values[ptr_slot]
+	}
 	// Slot selection stays shallow; structural verification below guards collisions
 	// and borrowed metadata that changed since a previous lookup.
 	slot := int(canonical_intern_cache_key(typ) & u64(cache.set.len - 1))
 	if cache.set[slot] && semantic_types_equal(cache.values[slot], typ) {
+		cache.ptrs[ptr_slot] = voidptr(typ)
+		cache.ptr_values[ptr_slot] = cache.values[slot]
 		return cache.values[slot]
 	}
 	canonical := tc.probe_check_type_promotion(typ, frozen_interner) or {
@@ -5667,6 +5680,8 @@ fn (tc &TypeChecker) cached_check_type_promotion(typ &Type, mut cache CheckTypeP
 	}
 	cache.values[slot] = canonical
 	cache.set[slot] = true
+	cache.ptrs[ptr_slot] = voidptr(typ)
+	cache.ptr_values[ptr_slot] = canonical
 	return canonical
 }
 

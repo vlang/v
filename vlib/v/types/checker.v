@@ -1512,6 +1512,9 @@ pub mut:
 	// duration of a reachability walk (see walk_fn_value_decl_key).
 	walk_fn_short_names       map[string]bool
 	walk_fn_short_names_ready bool
+	// A conservative filter over walk_fn_short_names: most identifiers of a body
+	// are locals, which it rejects without hashing them into the map.
+	walk_fn_short_names_bloom NameBloom
 	// During a scoped check, sites that would gate on the called-fns closure park
 	// their candidate error here. Successful builds skip the closure entirely;
 	// the master computes it after checking only when a candidate needs filtering.
@@ -2048,6 +2051,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		selected_file_worklist:                tc.selected_file_worklist
 		walk_fn_short_names:                   tc.walk_fn_short_names
 		walk_fn_short_names_ready:             tc.walk_fn_short_names_ready
+		walk_fn_short_names_bloom:             tc.walk_fn_short_names_bloom
 		defer_ierror_gating:                   tc.defer_ierror_gating
 		pending_ierror_errors:                 []PendingIerrorError{}
 		top_level_idx:                         tc.top_level_idx
@@ -14200,7 +14204,13 @@ fn (mut tc TypeChecker) arm_walk_fn_short_names() {
 	for key, _ in tc.fn_param_types {
 		names[short_name_view(key)] = true
 	}
+	mut bloom := NameBloom{}
+	for key, _ in names {
+		bloom.add(key)
+	}
+	bloom.count = u64(names.len)
 	tc.walk_fn_short_names = names.move()
+	tc.walk_fn_short_names_bloom = bloom
 	tc.walk_fn_short_names_ready = true
 }
 
@@ -14208,6 +14218,7 @@ fn (mut tc TypeChecker) arm_walk_fn_short_names() {
 // the walk is over, so that later declarations cannot make it stale.
 fn (mut tc TypeChecker) disarm_walk_fn_short_names() {
 	tc.walk_fn_short_names = map[string]bool{}
+	tc.walk_fn_short_names_bloom = NameBloom{}
 	tc.walk_fn_short_names_ready = false
 }
 
@@ -14218,7 +14229,8 @@ fn (mut tc TypeChecker) disarm_walk_fn_short_names() {
 // declaration lookups.
 fn (tc &TypeChecker) walk_fn_value_decl_key(node &flat.Node) ?string {
 	if tc.walk_fn_short_names_ready && node.value.len > 0 && node.value.index_u8(`.`) < 0
-		&& node.value !in tc.walk_fn_short_names {
+		&& (tc.walk_fn_short_names_bloom.excludes(node.value, u64(tc.walk_fn_short_names.len))
+			|| node.value !in tc.walk_fn_short_names) {
 		return none
 	}
 	return tc.fn_value_decl_key(*node)
@@ -14498,10 +14510,11 @@ fn (mut tc TypeChecker) collect_selected_file_node_called_fns(id flat.NodeId) {
 			return
 		}
 		.call {
-			if name := tc.selected_file_call_name(node) {
-				tc.enqueue_selected_file_fn(name)
+			if found := tc.selected_file_call_name(node) {
+				tc.enqueue_selected_file_fn(found.name)
 				callee := tc.a.child_node(node, 0)
-				if callee.kind in [.ident, .selector] && tc.fn_signature_known(name) {
+				if callee.kind in [.ident, .selector]
+					&& (found.known || tc.fn_signature_known(found.name)) {
 					// A resolved callee already keeps its declaration. Visit its receiver
 					// and the arguments without resolving the callee again as a fn value.
 					for i in 0 .. callee.children_count {
@@ -14524,8 +14537,8 @@ fn (mut tc TypeChecker) collect_selected_file_node_called_fns(id flat.NodeId) {
 				&& tc.selected_file_method_suffix_known(node.value)
 				&& tc.fn_value_shadowed_by_value(node)
 				&& tc.selector_declared_value_type(node) == none {
-				if name := tc.selected_file_receiver_method_name(tc.a.child(node, 0), node.value) {
-					tc.enqueue_selected_file_fn(name)
+				if found := tc.selected_file_receiver_method_name(tc.a.child(node, 0), node.value) {
+					tc.enqueue_selected_file_fn(found.name)
 				}
 			}
 		}
@@ -14695,7 +14708,15 @@ fn (mut tc TypeChecker) insert_selected_file_decl_binding_type(lhs_id flat.NodeI
 	tc.selected_file_resolve_context_changed()
 }
 
-fn (tc &TypeChecker) selected_file_call_name(node &flat.Node) ?string {
+// SelectedCallName is a function the reachability walk found called: `known`
+// records that both signature tables held `name` when it was chosen, so the
+// walk does not look it up again.
+struct SelectedCallName {
+	name  string
+	known bool
+}
+
+fn (tc &TypeChecker) selected_file_call_name(node &flat.Node) ?SelectedCallName {
 	if node.children_count == 0 {
 		return none
 	}
@@ -14706,7 +14727,7 @@ fn (tc &TypeChecker) selected_file_call_name(node &flat.Node) ?string {
 	return tc.selected_file_call_base_name(fn_node)
 }
 
-fn (tc &TypeChecker) selected_file_call_base_name(fn_node &flat.Node) ?string {
+fn (tc &TypeChecker) selected_file_call_base_name(fn_node &flat.Node) ?SelectedCallName {
 	match fn_node.kind {
 		.ident {
 			// A callable value, such as a function-typed parameter, shadows the
@@ -14715,13 +14736,21 @@ fn (tc &TypeChecker) selected_file_call_base_name(fn_node &flat.Node) ?string {
 				return none
 			}
 			if local_name := tc.local_bare_fn_signature_key(fn_node.value) {
-				return local_name
+				return SelectedCallName{
+					name:  local_name
+					known: true
+				}
 			}
 			if imported_name := tc.resolve_selective_import_symbol(fn_node.value) {
-				return imported_name
+				return SelectedCallName{
+					name: imported_name
+				}
 			}
 			if tc.fn_signature_known(fn_node.value) {
-				return fn_node.value
+				return SelectedCallName{
+					name:  fn_node.value
+					known: true
+				}
 			}
 		}
 		.selector {
@@ -14732,26 +14761,32 @@ fn (tc &TypeChecker) selected_file_call_base_name(fn_node &flat.Node) ?string {
 			base_node := tc.a.node(base_id)
 			if base_node.kind == .ident {
 				if tc.cur_scope.contains(base_node.value) {
-					if name := tc.selected_file_receiver_method_name(base_id, fn_node.value) {
-						return name
+					if found := tc.selected_file_receiver_method_name(base_id, fn_node.value) {
+						return found
 					}
 					return none
 				}
 				if resolved_mod := tc.resolve_import_alias(base_node.value) {
 					mod_name := '${resolved_mod}.${fn_node.value}'
 					if tc.fn_signature_known(mod_name) {
-						return mod_name
+						return SelectedCallName{
+							name:  mod_name
+							known: true
+						}
 					}
 				}
 				if base_node.value == tc.cur_module {
 					mod_name := '${tc.cur_module}.${fn_node.value}'
 					if tc.fn_signature_known(mod_name) {
-						return mod_name
+						return SelectedCallName{
+							name:  mod_name
+							known: true
+						}
 					}
 				}
 			}
-			if name := tc.selected_file_receiver_method_name(base_id, fn_node.value) {
-				return name
+			if found := tc.selected_file_receiver_method_name(base_id, fn_node.value) {
+				return found
 			}
 		}
 		else {}
@@ -14770,7 +14805,7 @@ fn (tc &TypeChecker) bare_call_resolves_to_value(name string) bool {
 	return typ is Unknown || unresolved_generic_receiver_type(typ)
 }
 
-fn (tc &TypeChecker) selected_file_receiver_method_name(base_id flat.NodeId, method string) ?string {
+fn (tc &TypeChecker) selected_file_receiver_method_name(base_id flat.NodeId, method string) ?SelectedCallName {
 	if method == '' || !tc.selected_file_method_suffix_known(method) {
 		return none
 	}
@@ -14791,12 +14826,18 @@ fn (tc &TypeChecker) selected_file_receiver_method_name(base_id flat.NodeId, met
 		plain := '${type_text}.${method}'
 		if tc.fn_signature_known(plain)
 			&& tc.method_can_be_called_on_receiver(base_type, method, plain) {
-			return plain
+			return SelectedCallName{
+				name:  plain
+				known: true
+			}
 		}
 		escaped := '${type_text}.@${method}'
 		if tc.fn_signature_known(escaped)
 			&& tc.method_can_be_called_on_receiver(base_type, method, escaped) {
-			return escaped
+			return SelectedCallName{
+				name:  escaped
+				known: true
+			}
 		}
 	} else if tc.method_suffix_prescreen && tc.top_level_idx.len > 0 && method.index_u8(`.`) < 0
 		&& method !in tc.collection_method_short_names {
@@ -14805,7 +14846,10 @@ fn (tc &TypeChecker) selected_file_receiver_method_name(base_id flat.NodeId, met
 		if found := tc.selected_file_collection_method_without_collection_decl(base_type,
 			recv, type_name, method)
 		{
-			return found
+			return SelectedCallName{
+				name:  found
+				known: true
+			}
 		}
 	} else {
 		for method_name in receiver_method_name_candidates(clean, method, tc.cur_module) {
@@ -14815,17 +14859,24 @@ fn (tc &TypeChecker) selected_file_receiver_method_name(base_id flat.NodeId, met
 			if !tc.method_can_be_called_on_receiver(base_type, method, method_name) {
 				continue
 			}
-			return method_name
+			return SelectedCallName{
+				name:  method_name
+				known: true
+			}
 		}
 	}
 	if info := tc.embedded_method_call_info(type_name, method) {
 		if info.name.len > 0 {
-			return info.name
+			return SelectedCallName{
+				name: info.name
+			}
 		}
 	}
 	if info := tc.resolve_generic_struct_method(type_name, method) {
 		if info.name.len > 0 {
-			return info.name
+			return SelectedCallName{
+				name: info.name
+			}
 		}
 	}
 	return none
