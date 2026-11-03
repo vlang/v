@@ -3568,7 +3568,10 @@ fn v3_c_source_mode_flags(objective_c bool) []string {
 }
 
 fn v3_tcc_backtrace_enabled(target_os string, target_arch string, is_shared bool) bool {
+	// TinyCC's Win64 backtrace runtime treats recoverable first-chance exceptions
+	// as fatal, including COM/RPC exceptions handled by system libraries.
 	return !is_shared && !(target_os == 'macos' && target_arch == 'arm64')
+		&& !(target_os == 'windows' && target_arch == 'amd64')
 }
 
 fn add_v3_tcc_compat_defines(mut user_defines []string, target_os string, target_arch string, is_shared bool, is_tcc bool) {
@@ -3576,8 +3579,14 @@ fn add_v3_tcc_compat_defines(mut user_defines []string, target_os string, target
 		&& 'no_backtrace' !in user_defines {
 		// The builtin backtrace implementation must match the native TCC flag plan.
 		// Shared libraries cannot link TCC's runtime symbols, while its initializer
-		// crashes in dyld on macOS arm64 due to unaligned access.
+		// crashes in dyld on macOS arm64 due to unaligned access. On Windows amd64,
+		// its vectored handler terminates recoverable first-chance exceptions.
 		user_defines << 'no_backtrace'
+	}
+	if is_tcc && !is_shared && target_os == 'windows' && target_arch == 'amd64'
+		&& 'windows_tcc_unhandled_filter' !in user_defines {
+		// Keep executable fault diagnostics without replacing a DLL host's filter.
+		user_defines << 'windows_tcc_unhandled_filter'
 	}
 }
 

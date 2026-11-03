@@ -37,6 +37,8 @@ fn test_input_is_cmd_v_accepts_relative_entry_file() {
 
 fn test_v3_tcc_backtrace_enabled() {
 	assert !v3_tcc_backtrace_enabled('macos', 'arm64', false)
+	assert !v3_tcc_backtrace_enabled('windows', 'amd64', false)
+	assert v3_tcc_backtrace_enabled('windows', 'x86', false)
 	assert v3_tcc_backtrace_enabled('macos', 'amd64', false)
 	assert v3_tcc_backtrace_enabled('linux', 'arm64', false)
 	assert !v3_tcc_backtrace_enabled('linux', 'arm64', true)
@@ -1443,6 +1445,24 @@ fn test_v3_tcc_flag_plan_honors_no_backtrace() {
 		})
 		assert ('-bt25' in plan.before_inputs) == !no_backtrace
 	}
+}
+
+fn test_v3_windows_amd64_tcc_flag_plan_preserves_exception_handlers() {
+	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		is_tcc:      true
+		target_os:   'windows'
+		target_arch: 'amd64'
+		vroot:       os.join_path(os.temp_dir(), 'v3_windows_tcc_flag_plan')
+	})
+	assert '-bt25' !in plan.before_inputs
+	mut defines := ['custom']
+	add_v3_tcc_compat_defines(mut defines, 'windows', 'amd64', false, true)
+	assert defines == ['custom', 'no_backtrace', 'windows_tcc_unhandled_filter']
+	add_v3_tcc_compat_defines(mut defines, 'windows', 'amd64', false, true)
+	assert defines == ['custom', 'no_backtrace', 'windows_tcc_unhandled_filter']
+	mut shared_defines := []string{}
+	add_v3_tcc_compat_defines(mut shared_defines, 'windows', 'amd64', true, true)
+	assert shared_defines == ['no_backtrace']
 }
 
 fn test_v3_freestanding_flag_plan_links_no_host_libraries() {
