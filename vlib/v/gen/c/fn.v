@@ -11831,11 +11831,20 @@ fn (g &FlatGen) call_declared_return_type_text(id flat.NodeId, node flat.Node) ?
 	return none
 }
 
+// mut_param_name_may_match answers the name filter in front of `cur_mut_params`.
+// Every registered parameter sets a bit, so an empty filter over a non-empty map
+// means the filter was never built (tests and helpers fill the map directly),
+// not that no name can match.
+@[inline]
+fn (g &FlatGen) mut_param_name_may_match(name string) bool {
+	return g.cur_mut_param_name_bits == 0
+		|| g.cur_mut_param_name_bits & current_param_name_bit(name) != 0
+}
+
 // current_param_is_mut returns true when a current param originated from `mut name T`
 // and the identifier still resolves to that parameter (not a shadowing local).
 fn (g &FlatGen) current_param_is_mut(name string) bool {
-	if g.cur_mut_params.len == 0
-		|| g.cur_mut_param_name_bits & current_param_name_bit(name) == 0 {
+	if g.cur_mut_params.len == 0 || !g.mut_param_name_may_match(name) {
 		return false
 	}
 	if !(g.cur_mut_params[name] or { false }) {
@@ -11856,8 +11865,7 @@ fn (g &FlatGen) current_param_is_mut_pointer(name string) bool {
 }
 
 fn (g &FlatGen) current_mut_param_binding_is_shadowed(name string) bool {
-	if g.cur_mut_params.len == 0
-		|| g.cur_mut_param_name_bits & current_param_name_bit(name) == 0 {
+	if g.cur_mut_params.len == 0 || !g.mut_param_name_may_match(name) {
 		return false
 	}
 	if !(g.cur_mut_params[name] or { false }) {
