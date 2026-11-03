@@ -1345,6 +1345,10 @@ pub mut:
 	// checked. Consumers such as markused can walk these resolved Symbol-like
 	// names instead of reconstructing import and receiver resolution from syntax.
 	direct_dependencies_by_fn map[int][]SymbolId // enclosing fn node id -> resolved function identities
+	// The dependency record_direct_dependency last added or found: the calls
+	// of a body repeat the same callee, which the list then already holds.
+	last_dependency_fn int = -1
+	last_dependency_id SymbolId
 	// Read-only post-check call graph for transform forks (see
 	// fork_for_parallel_transform); nil in the checker that owns the graph.
 	post_check_dependencies &DependencyGraphView = unsafe { nil }
@@ -4296,6 +4300,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 	tc.comptime_method_calls_by_decl.clear()
 	tc.has_spawn_expr = -1
 	tc.direct_dependencies_by_fn = map[int][]SymbolId{}
+	tc.last_dependency_fn = -1
 	tc.file_scope = new_scope(unsafe { nil })
 	tc.cur_scope = tc.file_scope
 	tc.scope_pool_index = 0
@@ -12078,18 +12083,27 @@ pub fn (tc &TypeChecker) direct_dependencies(fn_node_id int) []string {
 // private dependency maps so resolution writes cannot race.
 pub fn (mut tc TypeChecker) share_direct_dependencies_from(source &TypeChecker) {
 	tc.direct_dependencies_by_fn = source.direct_dependencies_by_fn.clone()
+	tc.last_dependency_fn = -1
 	tc.symbols = source.symbols
 }
 
 fn (mut tc TypeChecker) record_direct_dependency(id SymbolId) {
-	if tc.fn_context.node_id < 0 || id == 0 {
+	fn_id := tc.fn_context.node_id
+	if fn_id < 0 || id == 0 {
 		return
 	}
-	mut dependencies := tc.direct_dependencies_by_fn[tc.fn_context.node_id] or { []SymbolId{} }
+	// Dependency lists only grow until the map is reset (which also resets
+	// this memo), so the last recorded pair is still in its list.
+	if fn_id == tc.last_dependency_fn && id == tc.last_dependency_id {
+		return
+	}
+	mut dependencies := tc.direct_dependencies_by_fn[fn_id] or { []SymbolId{} }
 	if id !in dependencies {
 		dependencies << id
-		tc.direct_dependencies_by_fn[tc.fn_context.node_id] = dependencies
+		tc.direct_dependencies_by_fn[fn_id] = dependencies
 	}
+	tc.last_dependency_fn = fn_id
+	tc.last_dependency_id = id
 }
 
 fn (tc &TypeChecker) intern_symbol(name string) (SymbolId, string) {
@@ -14519,8 +14533,22 @@ fn (mut tc TypeChecker) collect_selected_file_node_called_fns(id flat.NodeId) {
 	}
 
 	for i in 0 .. node.children_count {
-		tc.collect_selected_file_node_called_fns(tc.a.child(node, i))
+		child_id := tc.a.child(node, i)
+		// A literal leaf names no function: its visit would only match its kind.
+		if int(child_id) >= 0 && int(child_id) < tc.a.nodes.len
+			&& selected_file_walk_skips_leaf(tc.a.node(child_id)) {
+			continue
+		}
+		tc.collect_selected_file_node_called_fns(child_id)
 	}
+}
+
+// selected_file_walk_skips_leaf reports a literal without children, which the
+// reachability walk visits to no effect.
+@[inline]
+fn selected_file_walk_skips_leaf(node &flat.Node) bool {
+	return node.children_count == 0 && node.kind in [.int_literal, .float_literal, .bool_literal,
+		.char_literal, .string_literal, .nil_literal, .none_expr]
 }
 
 fn (mut tc TypeChecker) enqueue_selected_file_fn(name string) {

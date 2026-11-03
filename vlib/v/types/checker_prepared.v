@@ -289,6 +289,7 @@ pub fn (mut tc TypeChecker) collect_continue(a &flat.FlatAst) bool {
 	tc.static_associated_signature_count = -1
 	tc.has_spawn_expr = -1
 	tc.direct_dependencies_by_fn = map[int][]SymbolId{}
+	tc.last_dependency_fn = -1
 	tc.cur_scope = tc.file_scope
 	tc.scope_pool_index = 0
 	tc.extend_collect_node_caches(n)

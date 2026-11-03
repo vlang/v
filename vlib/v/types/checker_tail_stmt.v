@@ -19554,7 +19554,8 @@ fn (tc &TypeChecker) resolved_inferred_type(source_id u32) ?u32 {
 fn (mut tc TypeChecker) check_node_inferred_type_witnesses(node &flat.Node) {
 	tc.check_inferred_type_witnesses(node.typ)
 	if node.kind in [.string_literal, .char_literal, .string_interp] { return }
-	if node.value.len > 15 && node.value.contains('typeof(__expr_') {
+	if node.value.len > 15 && node.value.index_u8(`(`) >= 0
+		&& node.value.contains('typeof(__expr_') {
 		// Legacy raw operands cross the source boundary here; ordinary names
 		// should never enter the source type interner for this probe.
 		value_id := node.source_value_id()
