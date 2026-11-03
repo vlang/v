@@ -581,18 +581,12 @@ fn parse_name_constraints(ext_bytes []u8) !([]string, []string, [][]u8, [][]u8) 
 			return error('x509: unexpected nameConstraints field tag 0x${field.tag:02x}')
 		}
 		saw_field = true
-		mut subtrees := wire.new_reader(field.data)
-		// GeneralSubtrees ::= SEQUENCE SIZE (1..MAX) OF GeneralSubtree, wrapped by the [0]/[1] field.
-		if subtrees.remaining() == 0 {
+		// In the IMPLICIT TAGS encoding, [0]/[1] replaces the GeneralSubtrees
+		// SEQUENCE tag, so field.data contains GeneralSubtree entries directly.
+		mut entries := wire.new_reader(field.data)
+		if entries.remaining() == 0 {
 			return error('x509: empty nameConstraints subtree list (SIZE 1..MAX)')
 		}
-		list := read_asn1_element(mut subtrees) or {
-			return error('x509: malformed nameConstraints GeneralSubtrees SEQUENCE')
-		}
-		if list.tag != 0x30 {
-			return error('x509: nameConstraints GeneralSubtrees has unexpected tag 0x${list.tag:02x}')
-		}
-		mut entries := wire.new_reader(list.data)
 		mut entry_count := 0
 		for entries.remaining() > 0 {
 			gs := read_asn1_element(mut entries) or {

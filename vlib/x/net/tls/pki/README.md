@@ -58,8 +58,8 @@ Each `*_test.v` sits beside its source. `pki_test.v` holds validator- and helper
   it must allow `serverAuth`; absence is unconstrained (RFC 5280 §4.2.1.12).
 - **pathLenConstraint** (RFC 5280 §4.2.1.9) counted against intermediates below each constrained
   CA; a malformed INTEGER never maps to the unlimited sentinel.
-- **Name constraints** (RFC 5280 §4.2.1.10): each CA binds every subordinate beneath it; permitted
-  subtrees are one namespace across dNSName and iPAddress.
+- **Name constraints** (RFC 5280 §4.2.1.10): each CA binds every subordinate beneath it; implicit
+  subtree tagging is decoded. Permitted subtrees are one namespace across dNSName and iPAddress.
 - **Hostname matching** (RFC 6125 §6.4.3/§6.4.4): IP literals match iPAddress SANs only; a present
   SAN disables the CN; single-label wildcards; CN fallback only when no SAN list exists.
 - **Signature schemes**: RSA-PSS (SHA-256/384/512, RFC 4055 §3.1 refuses any other hash rather

@@ -6,6 +6,7 @@
 module pki
 
 import crypto.ecdsa
+import encoding.hex
 
 fn test_parse_san_extension() ! {
 	// GeneralNames = SEQUENCE of dNSName [2] "example.com" and iPAddress [7] 1.1.1.1.
@@ -564,15 +565,15 @@ fn test_parse_certificate_rejects_duplicate_extension() ! {
 // §4.2.1.10) must be decoded into the permitted/excluded dNSName and iPAddress
 // subtrees rather than rejected as an unknown critical extension.
 fn test_parse_name_constraints() ! {
-	// permittedSubtrees [0] = SEQUENCE OF GeneralSubtree{ dNSName "example.com" }
+	// Implicit tagging: [0] contains the GeneralSubtree entries directly.
 	dns_base := der_tlv(0x82, ['example.com'.bytes()])
 	dns_subtree := der_tlv(0x30, [dns_base])
-	permitted := der_tlv(0xa0, [der_tlv(0x30, [dns_subtree])])
+	permitted := der_tlv(0xa0, [dns_subtree])
 
-	// excludedSubtrees [1] = SEQUENCE OF GeneralSubtree{ iPAddress 10.0.0.0/8 }
+	// [1] likewise contains its GeneralSubtree entries directly.
 	ip_base := der_tlv(0x87, [[u8(10), 0, 0, 0], [u8(255), 0, 0, 0]])
 	ip_subtree := der_tlv(0x30, [ip_base])
-	excluded := der_tlv(0xa1, [der_tlv(0x30, [ip_subtree])])
+	excluded := der_tlv(0xa1, [ip_subtree])
 
 	nc_value := der_tlv(0x30, [permitted, excluded])
 	nc_oid := [u8(0x06), 0x03, 0x55, 0x1d, 0x1e] // 2.5.29.30
@@ -584,6 +585,26 @@ fn test_parse_name_constraints() ! {
 	assert c.permitted_dns == ['example.com']
 	assert c.excluded_ip.len == 1
 	assert c.excluded_ip[0] == [u8(10), 0, 0, 0, 255, 0, 0, 0]
+}
+
+// test_parse_openssl_implicit_name_constraints parses an independently generated
+// DER CA certificate whose NameConstraints uses the IMPLICIT TAGS encoding.
+fn test_parse_openssl_implicit_name_constraints() ! {
+	der := hex.decode('3082035030820238a003020102021440dee0e28acf2e2031f70f88842cee21cd25eb0e300d06092a864886f70d01010b0500302f312d302b06035504030c2456204e616d6520436f6e73747261696e7473205465737420496e7465726d656469' +
+		'617465301e170d3236313130333039323032345a170d3336313033313039323032345a302f312d302b06035504030c2456204e616d6520436f6e73747261696e7473205465737420496e7465726d65646961746530820122300d06092a864886' +
+		'f70d01010105000382010f003082010a0282010100cf221824b3a1ad3fca66fdad23c0ebb9cb9fbd8508bb224b7d52472d0ab4e3d8c07f369388b269e605584c54e62526f63eed1ea924a9b38b309cc08992c0473df49b2dcd6afd56f181165d' +
+		'59851163e4ea701342f34406c86e41905044b71d172f089b5732c2e7293c5231b536c1624674128c4946496561a1a9adc6a7ca055e5a67510fb2a69fe09502869e1cebe6254801b1e408278444eb618d01c807fb8b191078c24511684d9f8df9' +
+		'e709b7cff97a383feea57f76c81cbab588fe9357a30cba9371be7923d2a34bbd6ee800af815b712f49565b16ac584595e8d221dede5fe588fb28449bf2a7d4bac7e9b67cf8507d6fa1a59d60f2e2dda60896a4ad690203010001a36430623012' +
+		'0603551d130101ff040830060101ff020100300e0603551d0f0101ff040403020106301d0603551d1e0101ff04133011a00f300d820b6578616d706c652e636f6d301d0603551d0e041604149030c38054597c4d4a8bcca25fb03a17188ce8bf' +
+		'300d06092a864886f70d01010b050003820101001fb4da4217feb30964678f83fcec73402f23a7f4f27a95e01bed40deac79858b04f3778d6f60f8f7a4a640d90873f4b7cdc3affc978366f9f2172a1373cbb98523a039b1351b69b3a6186e14' +
+		'fed51853a3596c85991bb60c1df2385831a31c287182ca7b80889b2f75a30b27cf08cf87aa45236dcbdb39c4a230e09d778eccb6abf4ba9495fe582247ed12e9a9a8b843e79e790639b86f3da1a00ab162b12f7e503fa2a34e184d7f29ca0adb' +
+		'f6de4c1fbf80cb50fc9d368149aa242608031a53e95058fae8dcb42a15edf7bdc38b7902f0caa89c0d8a816bcd9ac719d980de4e153aac002dc64065af86d1ff37952fc277759bdb9aa68480cd23898cf1bac27d')!
+	cert := parse_certificate(der)!
+
+	assert cert.is_ca
+	assert cert.name_constraints_present
+	assert cert.permitted_dns == ['example.com']
+	assert cert.excluded_dns.len == 0
 }
 
 // ---- Name-constraint subtree matching ----
@@ -653,7 +674,7 @@ fn test_enforce_name_constraints_honors_exclusions() ! {
 fn test_parse_certificate_rejects_unsupported_name_constraint_form() ! {
 	email_base := der_tlv(0x81, ['user@example.com'.bytes()]) // [1] rfc822Name
 	subtree := der_tlv(0x30, [email_base])
-	permitted := der_tlv(0xa0, [der_tlv(0x30, [subtree])])
+	permitted := der_tlv(0xa0, [subtree])
 	nc_value := der_tlv(0x30, [permitted])
 	nc_oid := [u8(0x06), 0x03, 0x55, 0x1d, 0x1e] // 2.5.29.30
 	// Non-critical: the rejection must come from the constraint parse, not the
@@ -671,7 +692,7 @@ fn test_parse_certificate_rejects_unsupported_name_constraint_form() ! {
 fn test_parse_certificate_rejects_malformed_ip_length() ! {
 	bad_ip_base := der_tlv(0x87, [[u8(1), 2, 3, 4, 5]]) // 5 bytes: neither 8 nor 32
 	subtree := der_tlv(0x30, [bad_ip_base])
-	excluded := der_tlv(0xa1, [der_tlv(0x30, [subtree])])
+	excluded := der_tlv(0xa1, [subtree])
 	nc_value := der_tlv(0x30, [excluded])
 	nc_oid := [u8(0x06), 0x03, 0x55, 0x1d, 0x1e] // 2.5.29.30
 	cert := minimal_extension_cert(nc_oid, false, nc_value)
