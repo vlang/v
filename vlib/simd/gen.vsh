@@ -609,14 +609,13 @@ fn c_ops(e Elem) []COp {
 	mut ops := []COp{}
 	if e.kind == .float {
 		absmask := if e.bits == 32 { '0x7fffffffu' } else { '0x7fffffffffffffffull' }
-		fabs := if e.bits == 32 { 'fabsf' } else { 'fabs' }
 		ops << [
 			COp{'add', .bin, 'E', 'vx + vy', 'a[i] + b[i]'},
 			COp{'sub', .bin, 'E', 'vx - vy', 'a[i] - b[i]'},
 			COp{'mul', .bin, 'E', 'vx * vy', 'a[i] * b[i]'},
 			COp{'div', .bin, 'E', 'vx / vy', 'a[i] / b[i]'},
 			COp{'neg', .un, 'E', '-vx', '-a[i]'},
-			COp{'abs', .un, 'U', 'vx & ${absmask}', '${fabs}(a[i])'},
+			COp{'abs', .un, 'U', 'vx & ${absmask}', ''},
 			COp{'min', .pick, 'E', '(vy < vx) | (vx != vx)', '(b[i] < a[i] || a[i] != a[i]) ? b[i] : a[i]'},
 			COp{'max', .pick, 'E', '(vy > vx) | (vx != vx)', '(b[i] > a[i] || a[i] != a[i]) ? b[i] : a[i]'},
 			COp{'sqrt', .sqrt, '', '', ''},
@@ -819,7 +818,17 @@ fn gen_header() string {
 				g.l('\tcase ${n}: ${body}')
 			}
 			g.l('\tdefault: break;\n\t}\n#endif')
-			g.l('\tfor (int i = 0; i < n; i++) out[i] = ${op.scalar};\n}\n')
+			if e.kind == .float && op.name == 'abs' {
+				// Match the vector path exactly, including signed zero and NaN payloads.
+				g.l('\tfor (int i = 0; i < n; i++) {')
+				g.l('\t\t${e.uctype()} bits;')
+				g.l('\t\tmemcpy(&bits, a + i, sizeof bits);')
+				g.l('\t\tbits = ${op.vec.replace('vx', 'bits')};')
+				g.l('\t\tmemcpy(out + i, &bits, sizeof bits);')
+				g.l('\t}\n}\n')
+			} else {
+				g.l('\tfor (int i = 0; i < n; i++) out[i] = ${op.scalar};\n}\n')
+			}
 		}
 	}
 	g.l('#endif')
