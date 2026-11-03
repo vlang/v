@@ -1026,6 +1026,10 @@ pub fn chdir(path string) ! {
 // getwd returns the absolute path of the current directory.
 @[manualfree]
 pub fn getwd() string {
+	$if linux && freestanding && vlibc ? {
+		wd, e := vlibc_getcwd()
+		return if e == .enoerror { wd } else { '' }
+	}
 	unsafe {
 		$if windows {
 			buf := [max_path_buffer_size]u8{}

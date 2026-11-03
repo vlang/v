@@ -1463,6 +1463,9 @@ fn test_v3_freestanding_flag_plan_links_no_host_libraries() {
 		assert '-static' in plan.after_inputs && '-nostdlib' in plan.after_inputs, 'tcc=${is_tcc}'
 		assert '-lm' !in plan.after_inputs && '-lpthread' !in plan.after_inputs, 'tcc=${is_tcc}'
 		assert ('-ltcc1' in plan.after_inputs) == is_tcc
+		assert ('-ffunction-sections' in plan.before_inputs) == !is_tcc
+		assert ('-fdata-sections' in plan.before_inputs) == !is_tcc
+		assert ('-Wl,--gc-sections' in plan.after_inputs) == !is_tcc
 	}
 }
 

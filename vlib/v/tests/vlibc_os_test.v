@@ -3,6 +3,8 @@ import os
 const vlibc_os_program = "import os
 
 fn main() {
+	assert os.is_main_thread()
+	assert os.getwd() == os.args[4]
 	path := os.args[1]
 	missing := os.args[2]
 	link := os.args[3]
@@ -59,7 +61,8 @@ fn test_vlibc_os_file_operations() {
 			args << ['-o', exe, source]
 			build := os.exec(args)
 			assert build.exit_code == 0, '${freestanding}/${optimized}: ${build.output}'
-			run := os.exec(['/bin/sh', '-c', 'umask 0; exec "$@"', 'sh', exe, path, missing, link])
+			run := os.exec(['/bin/sh', '-c', 'umask 0; exec "$@"', 'sh', exe, path, missing, link,
+				os.getwd()])
 			assert run.exit_code == 0, '${freestanding}/${optimized}: ${run.output}'
 			assert run.output == 'file operations ok\n', run.output
 			assert os.stat(path)!.mode & 0o777 == 0o666
