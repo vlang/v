@@ -22,6 +22,7 @@ Array alignment metadata keeps its 32-bit encoding when a backend uses wider fla
 Long conditional chains in generated type-name dispatch do not consume recursive C generator frames.
 On Unix, a terminal job stop suspends the running application before returning control to the shell,
 including applications that catch or ignore `SIGTSTP`.
+TinyCC AArch64 panic reports use its native backtracer to avoid faults during glibc unwinding.
 
 `parser.Parser.parse_text` copies caller-provided source into the AST, so callers can reuse
 or release their own buffers after parsing.
