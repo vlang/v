@@ -2165,6 +2165,30 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 			function_c_names[key] = '__vf_function_${c_name['main__'.len..]}'
 		}
 	}
+	// A method is named `<module>__<Receiver>_<method>`, which a free function of the
+	// same module can also be named (`string.index_pair` and `string_index_pair` were
+	// both `builtin__string_index_pair`). The method keeps its name, which FastC's
+	// runtime helpers call, and the free function moves to FastC's own namespace.
+	mut method_c_names := map[string]bool{}
+	for key, signature in functions {
+		if key.starts_with('C.') || !key.contains('.') {
+			continue
+		}
+		if key.all_before_last('.') != signature.module_name {
+			c_name := function_c_names[key] or { fastc_signature_c_name(key, signature) }
+			method_c_names[c_name] = true
+		}
+	}
+	for key, signature in functions {
+		if key.starts_with('C.') || key == 'main' || signature.is_global
+			|| (key.contains('.') && key.all_before_last('.') != signature.module_name) {
+			continue
+		}
+		c_name := function_c_names[key] or { fastc_signature_c_name(key, signature) }
+		if c_name in method_c_names {
+			function_c_names[key] = '__vf_function_${c_name}'
+		}
+	}
 	for key, signature in functions {
 		if signature.export_name != '' && !signature.is_disabled {
 			internal_name := function_c_names[key] or { fastc_c_function_name_for_key(key) }
