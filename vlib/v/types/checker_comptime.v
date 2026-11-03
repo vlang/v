@@ -2265,12 +2265,12 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	}
 	// Leaf nodes cannot recurse. Keep them out of the large statement checker
 	// and its re-entry bookkeeping; their diagnostics still run on every visit.
-	node := tc.a.nodes[idx]
+	node := tc.a.node(id)
 	if node.kind == .string_literal {
-		tc.check_string_literal_node(id, node)
+		tc.check_string_literal_node(id, *node)
 		return
 	}
-	kind_id := node_kind_id(node)
+	kind_id := int(node.kind)
 	if kind_id == 1 {
 		tc.check_untyped_integer_literal_overflow(id)
 		return
@@ -2328,7 +2328,7 @@ fn (mut tc TypeChecker) check_nonliteral_node(id flat.NodeId) {
 	// A function literal's return type names its own parameters; it is checked
 	// after they are bound, in check_fn_literal.
 	if node.kind != .fn_literal {
-		tc.check_node_inferred_type_witnesses(node)
+		tc.check_node_inferred_type_witnesses(&node)
 	}
 	if node.kind in [.break_stmt, .continue_stmt] {
 		tc.check_loop_control_statement(id, node)
@@ -4301,6 +4301,15 @@ fn (tc &TypeChecker) expr_has_multi_match_member_error(id flat.NodeId) bool {
 }
 
 fn (tc &TypeChecker) expr_contains_multi_pattern_subject_member(id flat.NodeId) bool {
+	// A subject is named by a match branch with several patterns above the
+	// member, in the function's node range.
+	if tc.fn_range_lacks_multi_pattern_match(int(id)) {
+		return false
+	}
+	return tc.expr_contains_multi_pattern_subject_member_walk(id)
+}
+
+fn (tc &TypeChecker) expr_contains_multi_pattern_subject_member_walk(id flat.NodeId) bool {
 	if !tc.valid_node_id(id) {
 		return false
 	}
@@ -4310,7 +4319,7 @@ fn (tc &TypeChecker) expr_contains_multi_pattern_subject_member(id flat.NodeId) 
 		return true
 	}
 	for i in 0 .. node.children_count {
-		if tc.expr_contains_multi_pattern_subject_member(tc.a.child(node, i)) {
+		if tc.expr_contains_multi_pattern_subject_member_walk(tc.a.child(node, i)) {
 			return true
 		}
 	}
@@ -9792,6 +9801,15 @@ fn source_text_is_bare_generic(text string) bool {
 }
 
 fn (tc &TypeChecker) expr_has_unresolved_generic_name_ident(id flat.NodeId) bool {
+	// Only a bare generic identifier in the subtree makes this true, and the
+	// subtree is in the function's node range.
+	if tc.fn_range_lacks_bare_generic_ident(int(id)) {
+		return false
+	}
+	return tc.expr_has_unresolved_generic_name_ident_walk(id)
+}
+
+fn (tc &TypeChecker) expr_has_unresolved_generic_name_ident_walk(id flat.NodeId) bool {
 	if !tc.valid_node_id(id) {
 		return false
 	}
@@ -9806,7 +9824,7 @@ fn (tc &TypeChecker) expr_has_unresolved_generic_name_ident(id flat.NodeId) bool
 		}
 	}
 	for i in 0 .. node.children_count {
-		if tc.expr_has_unresolved_generic_name_ident(tc.a.child(node, i)) {
+		if tc.expr_has_unresolved_generic_name_ident_walk(tc.a.child(node, i)) {
 			return true
 		}
 	}

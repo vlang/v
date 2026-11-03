@@ -14920,6 +14920,16 @@ pub fn run(args []string) {
 			// stage arena; all of them can grow while servicing those queries.
 			pre_tc.reset_type_interners()
 			pre_tc.set_fresh_type_cache(cgen_parse_cache_enabled)
+			if !(should_run || test_files.len > 0 || served.from_server) {
+				// A plain build ends with the process once the C compiler has run,
+				// and allocates little until then. Leave the arenas that the
+				// release threads, the ending workers and the exit handler would
+				// unmap from here on mapped: the OS reclaims them at exit with
+				// less work than a page-table teardown per resident page.
+				$if prealloc {
+					unsafe { prealloc_keep_freed_memory() }
+				}
+			}
 			// Nothing reads cgen's arenas any more. Unmapping them takes several
 			// milliseconds; do it beside the following stages.
 			track_release_thread(spawn release_cgen_scopes(cgen_worker_scopes.clone(),
@@ -16523,18 +16533,27 @@ Please install the corresponding development package/libraries and make sure the
 	b.metric('C object dep-scan fallbacks', c_object_cache_stats.dependency_scan_fallbacks, 'objects')
 	b.metric('C object publish races', c_object_cache_stats.publish_races, 'objects')
 	b.metric('C object input-snapshot races', c_object_cache_stats.input_snapshot_races, 'objects')
-	if retained_transform_scope != unsafe { nil } {
-		prealloc_scope_free_for_v3(retained_transform_scope)
-		retained_transform_scope = unsafe { nil }
+	if should_run || test_files.len > 0 || served.from_server {
+		if retained_transform_scope != unsafe { nil } {
+			prealloc_scope_free_for_v3(retained_transform_scope)
+			retained_transform_scope = unsafe { nil }
+		}
+		if retained_transform_prepare_scope != unsafe { nil } {
+			prealloc_scope_free_for_v3(retained_transform_prepare_scope)
+			retained_transform_prepare_scope = unsafe { nil }
+		}
+		for scope in transform_helper_scopes {
+			prealloc_scope_free_for_v3(scope)
+		}
+		transform_helper_scopes = []voidptr{}
+	} else {
+		// A plain build ends with the process right after its report. Leave the
+		// retained stage arenas and the main thread's blocks mapped: the OS
+		// reclaims them at exit with less work than unmapping each block here.
+		$if prealloc {
+			unsafe { prealloc_keep_memory_at_exit() }
+		}
 	}
-	if retained_transform_prepare_scope != unsafe { nil } {
-		prealloc_scope_free_for_v3(retained_transform_prepare_scope)
-		retained_transform_prepare_scope = unsafe { nil }
-	}
-	for scope in transform_helper_scopes {
-		prealloc_scope_free_for_v3(scope)
-	}
-	transform_helper_scopes = []voidptr{}
 	if show_test_stats {
 		println('checker summary: 0 V errors, ${checker_warning_count} V warnings, ${checker_notice_count} V notices')
 	}
