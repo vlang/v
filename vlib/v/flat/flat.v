@@ -1678,10 +1678,12 @@ pub fn (mut a FlatAst) add_child(id NodeId) {
 }
 
 // child supports child handling for FlatAst.
+// Array lengths are never negative, so one unsigned comparison rejects both a
+// negative index and one at or past the end.
 @[direct_array_access; inline]
 pub fn (a &FlatAst) child(node &Node, index int) NodeId {
 	child_index := node.children_start + index
-	if index < 0 || index >= node.children_count || child_index < 0 || child_index >= a.children.len {
+	if u64(index) >= u64(node.children_count) || u64(child_index) >= u64(a.children.len) {
 		return empty_node
 	}
 	// Bounds are checked above; avoid a second array bounds check on this hot path.
@@ -1692,7 +1694,7 @@ pub fn (a &FlatAst) child(node &Node, index int) NodeId {
 @[direct_array_access; inline]
 pub fn (a &FlatAst) child_node(node &Node, index int) &Node {
 	id := a.child(node, index)
-	if int(id) < 0 || int(id) >= a.nodes.len {
+	if u64(int(id)) >= u64(a.nodes.len) {
 		return &empty_node_value
 	}
 	// Bounds are checked above; avoid a second array bounds check on this hot path.
@@ -1702,7 +1704,7 @@ pub fn (a &FlatAst) child_node(node &Node, index int) &Node {
 // node supports node handling for FlatAst.
 @[direct_array_access; inline]
 pub fn (a &FlatAst) node(id NodeId) &Node {
-	if int(id) < 0 || int(id) >= a.nodes.len {
+	if u64(int(id)) >= u64(a.nodes.len) {
 		return &empty_node_value
 	}
 	// Bounds are checked above; avoid a second array bounds check on this hot path.
