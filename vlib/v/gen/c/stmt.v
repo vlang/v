@@ -6622,20 +6622,9 @@ fn (g &FlatGen) declared_call_return_type_uncached(call_id flat.NodeId) (types.T
 				return *local_fn.return_type, unsafe { nil }
 			}
 		}
-		if ret := g.module_c_fn_return_type(fn_node.value) {
-			return ret, unsafe { nil }
-		}
-		if rt := g.fn_decl_return_type_reference_for_call_name(fn_node.value) {
-			return *rt, rt
-		}
-		if ret := g.tc.fn_ret_types[fn_node.value] {
-			return ret, unsafe { nil }
-		}
-		cfn := g.cname(fn_node.value)
-		if cfn != fn_node.value {
-			if ret := g.tc.fn_ret_types[cfn] {
-				return ret, unsafe { nil }
-			}
+		found, ret, canonical := g.ident_callee_declared_return_type(fn_node.value)
+		if found {
+			return ret, canonical
 		}
 	}
 	// Indirect call through an fn-pointer value (local var, param, or struct field
@@ -6651,6 +6640,52 @@ fn (g &FlatGen) declared_call_return_type_uncached(call_id flat.NodeId) (types.T
 		return *callee_t.return_type, unsafe { nil }
 	}
 	return types.Type(types.void_), unsafe { nil }
+}
+
+// ident_callee_declared_return_type is the declaration part of
+// declared_call_return_type_uncached for a plain callee name: the module C
+// function table, the collected declarations and the checker signatures, in
+// that order. The answer depends only on the name and the body's module, so it
+// is memoized per body; a body calls the same few names many times.
+fn (g &FlatGen) ident_callee_declared_return_type(name string) (bool, types.Type, &types.Type) {
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.callee_returns.len == 0 {
+		return g.ident_callee_declared_return_type_uncached(name)
+	}
+	slot := c_name_recent_slot(name) & (body_callee_return_slots - 1)
+	// The masked slot is in bounds; borrow the entry without copying its type.
+	entry := unsafe { &memo.callee_returns[slot] }
+	if entry.generation == memo.generation && entry.name == name {
+		return entry.found, entry.value, entry.canonical
+	}
+	found, ret, canonical := g.ident_callee_declared_return_type_uncached(name)
+	memo.callee_returns[slot] = BodyCalleeReturnQuery{
+		name:       name
+		generation: memo.generation
+		found:      found
+		value:      ret
+		canonical:  canonical
+	}
+	return found, ret, canonical
+}
+
+fn (g &FlatGen) ident_callee_declared_return_type_uncached(name string) (bool, types.Type, &types.Type) {
+	if ret := g.module_c_fn_return_type(name) {
+		return true, ret, unsafe { nil }
+	}
+	if rt := g.fn_decl_return_type_reference_for_call_name(name) {
+		return true, *rt, rt
+	}
+	if ret := g.tc.fn_ret_types[name] {
+		return true, ret, unsafe { nil }
+	}
+	cfn := g.cname(name)
+	if cfn != name {
+		if ret := g.tc.fn_ret_types[cfn] {
+			return true, ret, unsafe { nil }
+		}
+	}
+	return false, types.Type(types.void_), unsafe { nil }
 }
 
 fn (g &FlatGen) selector_call_return_type(fn_node flat.Node) ?types.Type {

@@ -63,6 +63,7 @@ const usable_expr_type_memo_slots = 8192
 const usable_expr_type_memo_mask = usable_expr_type_memo_slots - 1
 const body_import_type_query_slots = 256
 const body_exact_import_slots = 1024
+const body_callee_return_slots = 1024
 const body_field_type_query_slots = 512
 const body_method_query_slots = 256
 const body_sum_name_query_slots = 256
@@ -567,6 +568,16 @@ struct BodyFieldTypeQuery {
 	value      types.Type
 }
 
+// BodyCalleeReturnQuery memoizes the declared return type of a plain callee
+// name in the current body (see ident_callee_declared_return_type).
+struct BodyCalleeReturnQuery {
+	name       string
+	generation u32
+	found      bool
+	value      types.Type
+	canonical  &types.Type = unsafe { nil }
+}
+
 @[heap]
 struct ConstHelperDependencies {
 mut:
@@ -609,6 +620,7 @@ mut:
 	exact_import_gens   []u32
 	exact_import_found  []bool
 	exact_import_values []types.Type
+	callee_returns      []BodyCalleeReturnQuery
 }
 
 fn (mut g FlatGen) begin_usable_expr_type_memo() {
@@ -642,6 +654,7 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 			exact_import_gens:   []u32{len: body_exact_import_slots}
 			exact_import_found:  []bool{len: body_exact_import_slots}
 			exact_import_values: []types.Type{len: body_exact_import_slots}
+			callee_returns:      []BodyCalleeReturnQuery{len: body_callee_return_slots}
 		}
 	}
 	mut memo := g.usable_expr_type_memo
@@ -664,6 +677,9 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 		}
 		for i in 0 .. memo.exact_import_gens.len {
 			memo.exact_import_gens[i] = 0
+		}
+		for i in 0 .. memo.callee_returns.len {
+			memo.callee_returns[i] = BodyCalleeReturnQuery{}
 		}
 		for i in 0 .. memo.field_queries.len {
 			memo.field_queries[i] = BodyFieldTypeQuery{}
