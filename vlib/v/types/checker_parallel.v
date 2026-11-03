@@ -5618,10 +5618,12 @@ mut:
 	miss []int
 }
 
+// A chunk or batch has thousands of distinct live types; with 512 slots most
+// probes collided and went on to hash the type for the interner.
 struct CheckTypePromotionCache {
 mut:
-	values [512]&Type
-	set    [512]bool
+	values [4096]&Type
+	set    [4096]bool
 }
 
 // CheckNamePromotionCache maps a still-alive worker-arena name instance to
