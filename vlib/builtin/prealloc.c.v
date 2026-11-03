@@ -77,7 +77,8 @@ __global g_memory_block &VMemoryBlock
 __global g_prealloc_allocation_count i64
 __global g_prealloc_allocated_bytes i64
 __global g_prealloc_keep_at_exit bool
-__global g_prealloc_keep_freed bool
+// Read by every thread that frees a block, through the `_i32` atomics.
+__global g_prealloc_keep_freed i32
 
 // Scoped stage batches begin and free thousands of short-lived blocks, and
 // munmap+mmap churn (page-table teardown plus refaulting fresh zero pages,
@@ -145,10 +146,8 @@ fn prealloc_block_pool_put(start voidptr, size int) bool {
 // least `size` bytes, storing its size in `taken_size`, or nil when none fits.
 @[unsafe]
 fn prealloc_block_pool_take(size int, taken_size &int) voidptr {
-	if g_prealloc_block_pool.count == 0 {
-		// An unlocked read only skips the lock while the pool is idle.
-		return unsafe { nil }
-	}
+	// The count is only read under the lock: another thread may be freeing a
+	// block into the pool right now.
 	prealloc_block_pool_lock()
 	mut best := -1
 	for i := 0; i < g_prealloc_block_pool.count; i++ {
@@ -605,7 +604,7 @@ fn vmemory_block_malloc_aligned(n int, align int) &u8 {
 
 @[unsafe]
 fn vmemory_block_free(mb &VMemoryBlock) {
-	if g_prealloc_keep_freed {
+	if C.v_prealloc_atomic_load_i32(&g_prealloc_keep_freed) != 0 {
 		// The process is about to end (see prealloc_keep_freed_memory).
 		return
 	}
@@ -776,10 +775,12 @@ pub fn prealloc_keep_memory_at_exit() {
 // and little will be allocated any more: returning the blocks of the last
 // stages to the OS costs page-table work for every resident page, and the OS
 // reclaims the whole address space at exit with less. Nothing is reused after
-// this call, so it also implies prealloc_keep_memory_at_exit.
+// this call, so it also implies prealloc_keep_memory_at_exit. Release threads
+// that are still freeing blocks read the flag atomically; whichever value one
+// of them sees, its block is either returned or kept, both of which are fine.
 @[unsafe]
 pub fn prealloc_keep_freed_memory() {
-	g_prealloc_keep_freed = true
+	C.v_prealloc_atomic_store_i32(&g_prealloc_keep_freed, 1)
 	g_prealloc_keep_at_exit = true
 }
 
