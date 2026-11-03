@@ -81,6 +81,26 @@ def read_until(marker, seconds=12):
 def send(text):
     os.write(terminal, text)
 
+def set_tostop(enabled):
+    # Let the shell retain the new mode, and let stty run before tty handoff.
+    mode = b"tostop" if enabled else b"-tostop"
+    send(b"(trap '' TTOU; stty " + mode + b"); echo TOSTOP_STATUS:$?\n")
+    read_until(b"TOSTOP_STATUS:0")
+    read_until(b"VPTY> ")
+
+def read_published_text(path, seconds=5):
+    # os.write_file creates the file before writing its nonempty PID or count.
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        try:
+            value = path.read_text()
+        except FileNotFoundError:
+            value = ""
+        if value:
+            return value
+        time.sleep(0.02)
+    raise AssertionError("file did not publish its contents: " + str(path))
+
 def wait_stopped(pid):
     deadline = time.monotonic() + 5
     while time.monotonic() < deadline:
@@ -206,8 +226,7 @@ int main(int argc, char **argv) {
     return 0;
 }
 """.replace("@HELPER@", str(helper)))
-    send(b"stty tostop\n")
-    read_until(b"VPTY> ")
+    set_tostop(True)
     for headerless in [False, True]:
         binary = Path(root) / ("early-headerless" if headerless else "early-native")
         args = ["cc", "-Wall", "-Wextra", "-Werror", str(fixture), "-o", str(binary)]
@@ -219,10 +238,10 @@ int main(int argc, char **argv) {
         read_until(b"\r\nJOB:")
         compiler = int(read_until(b"\r\n").strip())
         read_until(b"EARLY_WRITE_OK")
+        read_until(b"EARLY_STATUS:0")
         read_until(b"VPTY> ")
         child = int(ready.read_text())
-    send(b"stty -tostop\n")
-    read_until(b"VPTY> ")
+    set_tostop(False)
     print("PTY deterministic early TOSTOP write recovered: native and headerless", flush=True)
 
 def extra_foreground_cases():
@@ -264,11 +283,7 @@ int leave_app_group(void) { return setpgid(0, getpgid(getppid())); }
         read_until(b"\r\nPEER:")
         peer = int(read_until(b"\r\n").strip())
         compiler = os.getpgid(peer)
-        deadline = time.monotonic() + 45
-        while not ready.exists() and time.monotonic() < deadline:
-            time.sleep(0.02)
-        assert ready.exists(), "output pipeline did not become ready"
-        child = int(ready.read_text())
+        child = int(read_published_text(ready, 45))
         if mode != "move":
             assert os.tcgetpgrp(terminal) == child
         if mode in ["stop", "ignorestop"]:
@@ -284,19 +299,18 @@ int leave_app_group(void) { return setpgid(0, getpgid(getppid())); }
                 time.sleep(0.02)
             assert os.tcgetpgrp(terminal) == child
             send(b"done\n")
-            deadline = time.monotonic() + 5
-            while not counts.exists() and time.monotonic() < deadline:
-                time.sleep(0.02)
-            assert counts.exists()
-            assert counts.read_text() == ("1" if mode == "stop" else "0")
+            observed = read_published_text(counts)
+            # SIGCONT discards pending stop signals. The forced suspension can
+            # precede the caught TSTP handler; an already-handled stop runs once.
+            expected = ("0", "1") if mode == "stop" else ("0",)
+            assert observed in expected, (mode, observed)
             os.kill(peer, signal.SIGTERM)
         elif mode == "parent":
             os.kill(compiler, signal.SIGINT)
             send(b"done\n")
             deadline = time.monotonic() + 5
-            while not counts.exists() and time.monotonic() < deadline:
-                time.sleep(0.02)
-            assert counts.exists() and counts.read_text() == "1"
+            observed = read_published_text(counts)
+            assert observed == "1", (mode, observed)
             while time.monotonic() < deadline:
                 state = subprocess.run(["ps", "-o", "state=", "-p", str(compiler)],
                                        capture_output=True, text=True, check=False).stdout.strip()
