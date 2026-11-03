@@ -66,9 +66,16 @@ pub fn stat(path string) !Stat {
 			mtime: s.st_mtime
 			ctime: s.st_ctime
 		}
-		// The CRT clamps timestamps before its local epoch to -1. Query a handle
-		// to the same target; directory entries would describe a symlink itself.
-		if st.atime < 0 || st.mtime < 0 || st.ctime < 0 {
+		// The CRT clamps timestamps before its local epoch to -1. Legacy CRTs
+		// also report a reparse point's own timestamps, which can be positive.
+		mut needs_file_information := st.atime < 0 || st.mtime < 0 || st.ctime < 0
+		if !needs_file_information {
+			attributes := C.GetFileAttributesW(w_path)
+			needs_file_information = attributes != u32(C.INVALID_FILE_ATTRIBUTES)
+				&& attributes & windows_file_attribute_reparse_point != 0
+		}
+		// Query a handle to the target; directory entries describe the link itself.
+		if needs_file_information {
 			if information := windows_stat_file_information(path) {
 				st.atime = windows_filetime_to_unix_seconds(information.access_time)
 				st.mtime = windows_filetime_to_unix_seconds(information.write_time)
