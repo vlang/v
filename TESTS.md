@@ -164,6 +164,9 @@ and builds configured projects as folders. Leading comments, attributes, and dir
 affect module discovery. Library modules are checked when the programs that import them compile.
 The macOS tray example is built as a project on macOS and excluded on other hosts.
 
+When `VFLAGS` selects TinyCC, `v build-vbinaries` uses an installed GCC or Clang for its
+production variants. Debug variants retain TinyCC. Other compiler selections are preserved.
+
 ## Formatting tests
 
 `cmd/tools/vfmt_test.v` checks the formatter command, while
