@@ -51,13 +51,17 @@ fn test_sign_adhoc_matches_codesign() {
 		args << '-L${os.join_path(sdk_root, 'usr', 'lib')}'
 	}
 	args << ['-w', '-o', exe_path, source_path]
-	// Without `codesign` on PATH TinyCC leaves the executable unsigned (and
-	// reports the failed call), which is what the signer is given.
-	old_path := os.getenv('PATH')
-	os.setenv('PATH', '/nonexistent', true)
-	os.exec([tcc, ...args])
-	os.setenv('PATH', old_path, true)
+	compiled := os.exec([tcc, ...args])
+	assert compiled.exit_code == 0, compiled.output
 	assert os.is_file(exe_path)
+	// Create the unsigned fixture explicitly, independent of TinyCC's signing
+	// method. Sign first so removal also works with bundles that do not sign.
+	prepared := os.exec(['codesign', '--force', '--sign', '-', exe_path])
+	assert prepared.exit_code == 0, prepared.output
+	removed := os.exec(['codesign', '--remove-signature', exe_path])
+	assert removed.exit_code == 0, removed.output
+	unsigned_signature := os.exec(['codesign', '--verify', '--strict', exe_path])
+	assert unsigned_signature.exit_code != 0, unsigned_signature.output
 	$if arm64 {
 		unsigned := os.exec([exe_path])
 		assert unsigned.exit_code != 0
