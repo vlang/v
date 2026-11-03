@@ -4491,6 +4491,36 @@ fn (mut t Transformer) clone_variant_subst(id flat.NodeId, var_name string, item
 	return t.clone_variant_subst_with_smartcast(id, var_name, item, '', u32(0), []string{})
 }
 
+// variant_guard_smartcast finds a variant refinement guaranteed by a true guard.
+// A conjunction preserves either operand's refinement; a disjunction does not.
+fn (t &Transformer) variant_guard_smartcast(id flat.NodeId, var_name string, item VariantMeta) string {
+	if int(id) < 0 {
+		return ''
+	}
+	node := t.a.nodes[int(id)]
+	if node.kind == .paren && node.children_count > 0 {
+		return t.variant_guard_smartcast(t.a.child(&node, 0), var_name, item)
+	}
+	if node.kind == .infix && node.op == .logical_and && node.children_count >= 2 {
+		left := t.variant_guard_smartcast(t.a.child(&node, 0), var_name, item)
+		if left != '' {
+			return left
+		}
+		return t.variant_guard_smartcast(t.a.child(&node, 1), var_name, item)
+	}
+	if node.kind == .is_expr && node.source_value_id() in [
+		flat.source_type_id(var_name),
+		item.typ,
+	]
+		&& node.children_count > 0 {
+		base := t.a.child_node(&node, 0)
+		if base.kind == .ident {
+			return base.value
+		}
+	}
+	return ''
+}
+
 fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_name string, item VariantMeta, smartcast_name string, return_context_id u32, inner_vars []string) ?flat.NodeId {
 	if int(id) < 0 {
 		return id
@@ -4585,16 +4615,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 	}
 	mut branch_smartcast := ''
 	if node.kind == .if_expr && node.children_count >= 2 {
-		cond := t.a.child_node(&node, 0)
-		if cond.kind == .is_expr && cond.source_value_id() in [
-			flat.source_type_id(var_name),
-			item.typ,
-		] && cond.children_count > 0 {
-			base := t.a.child_node(cond, 0)
-			if base.kind == .ident {
-				branch_smartcast = base.value
-			}
-		}
+		branch_smartcast = t.variant_guard_smartcast(t.a.child(&node, 0), var_name, item)
 	}
 	argument_types_source_ids := t.generic_clone_call_param_types(node, t.active_specialization_args.ids, return_context_id)
 
