@@ -4306,6 +4306,13 @@ fn (tc &TypeChecker) option_none_cmp_binding(cond flat.Node) ?LocalBinding {
 		return none
 	}
 	mut opt_type := tc.expr_type(opt_id) or { tc.resolve_type(opt_id) }
+	// A reflected sum guard refines expressions without shadowing their storage binding.
+	// An already-unwrapped refinement must still compare the original optional storage.
+	if refined := tc.smartcasts[key] {
+		if refined is OptionType {
+			opt_type = refined
+		}
+	}
 	opt_node := tc.a.node(opt_id)
 	if opt_node.kind == .selector {
 		if declared := tc.selector_declared_value_type(*opt_node) {

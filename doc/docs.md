@@ -8977,6 +8977,12 @@ fn main() {
 // has string type
 ```
 
+Within a variant loop, `if value is variant` narrows expressions to the current payload type.
+Conjunctions and nested guards retain all active refinements. A mutable guard keeps the original
+sum storage available for reassignment. Each iteration infers its own local collection types;
+conditions using enclosing reflection metadata are checked after that metadata is substituted.
+Numeric comparisons with `variant.typ` use the same type index as `value.type_idx()`.
+
 #### <h4 id="comptime-methods">.methods</h4>
 
 You can retrieve information about struct methods.

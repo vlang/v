@@ -5630,7 +5630,7 @@ fn (mut tc TypeChecker) resolve_inferred_global_types_of(a &flat.FlatAst, entrie
 					}
 					initializer_id := a.child(f, 0)
 					initializer := a.node(initializer_id)
-					tc.invalidate_const_initializer_type(initializer_id)
+					tc.invalidate_subtree_expr_types(initializer_id)
 					mut ft := tc.resolve_type(initializer_id)
 					// Function bodies are checked after globals are collected. Infer an
 					// implicit generic call here so methods used on the global receiver see
@@ -6328,7 +6328,7 @@ fn (mut tc TypeChecker) resolve_const_types_of(const_exprs map[string]flat.NodeI
 			// Const dependencies are not guaranteed to be visited in declaration order.
 			// Re-resolve the initializer on every pass so an array DSL call that was
 			// first seen through a still-pending const does not retain `[]unknown`.
-			tc.invalidate_const_initializer_type(expr_id)
+			tc.invalidate_subtree_expr_types(expr_id)
 			mut new_type := tc.resolve_type(expr_id)
 			new_type = tc.refine_const_initializer_type(expr_id, new_type)
 			new_type = tc.const_type_from_initializer(name, new_type)
@@ -6393,7 +6393,7 @@ fn (tc &TypeChecker) syntactic_const_element_type(id flat.NodeId) ?Type {
 	}
 }
 
-fn (mut tc TypeChecker) invalidate_const_initializer_type(expr_id flat.NodeId) {
+fn (mut tc TypeChecker) invalidate_subtree_expr_types(expr_id flat.NodeId) {
 	idx := int(expr_id)
 	if idx < 0 || idx >= tc.a.nodes.len {
 		return
@@ -6405,7 +6405,7 @@ fn (mut tc TypeChecker) invalidate_const_initializer_type(expr_id flat.NodeId) {
 	tc.sparse_expr_type_values.delete(idx)
 	node := tc.a.nodes[idx]
 	for i in 0 .. node.children_count {
-		tc.invalidate_const_initializer_type(tc.a.child(&node, i))
+		tc.invalidate_subtree_expr_types(tc.a.child(&node, i))
 	}
 }
 
@@ -23259,7 +23259,7 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 				} else {
 					tc.extract_else_branch_smartcasts(tc.a.child(&node, 0))
 				}
-				if smartcasts.any(it.typ.source_type_id() == flat.source_type_id(var_name)) {
+				if smartcasts.len > 0 {
 					tc.check_comptime_static_variant_guard(tc.a.child(&node, i), var_name, field_cases, value_cases, smartcasts)
 					continue
 				}
@@ -23284,6 +23284,11 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 		for i in 0 .. node.children_count {
 			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases, value_cases)
 		}
+		return
+	}
+	if node.kind == .comptime_if && loop_kind == 'variants'
+		&& tc.comptime_static_condition_has_outer_metadata(id, node.value, var_name) {
+		// The enclosing loop substitutes its metadata before the expanded body is checked.
 		return
 	}
 	if node.kind == .comptime_if && comptime_text_references_var(node.value, var_name) {

@@ -82,13 +82,21 @@ fn (mut tc TypeChecker) check_comptime_static_metadata_if(node flat.Node, var_na
 	mut then_cases := []ComptimeStaticFieldCase{}
 	mut else_cases := []ComptimeStaticFieldCase{}
 	for f in field_cases.cases {
-		cond := tc.comptime_static_subst_field_cond(node.value, var_name, f)
+		cond := if loop_kind == 'variants' {
+			tc.comptime_static_subst_variant_cond(node.value, var_name, f)
+		} else {
+			tc.comptime_static_subst_field_cond(node.value, var_name, f)
+		}
 		if comptime_text_references_var(cond, var_name) {
 			then_cases << f
 			else_cases << f
 			continue
 		}
 		taken := tc.comptime_static_eval_field_cond(cond) or {
+			if loop_kind == 'variants' {
+				// Check dependent branches once their condition can be resolved by unrolling.
+				continue
+			}
 			then_cases << f
 			else_cases << f
 			continue
@@ -946,8 +954,15 @@ fn (mut tc TypeChecker) check_comptime_static_variant_guard(id flat.NodeId, var_
 			memo.advance_context()
 		}
 	}
-	variants := if field_cases.known { field_cases.cases } else { [ComptimeStaticFieldCase{}] }
+	reflected := smartcasts.any(it.typ.source_type_id() == flat.source_type_id(var_name))
+	variants := if reflected && field_cases.known {
+		field_cases.cases
+	} else {
+		[ComptimeStaticFieldCase{}]
+	}
 	for variant in variants {
+		// Each pass shares syntax, but its inferred expression types belong to this payload only.
+		tc.invalidate_subtree_expr_types(id)
 		saved_smartcasts := clone_smartcasts(tc.smartcasts)
 		tc.push_scope()
 		for binding in smartcasts {
@@ -961,9 +976,8 @@ fn (mut tc TypeChecker) check_comptime_static_variant_guard(id flat.NodeId, var_
 				binding.typ
 			}
 			tc.smartcasts[binding.name] = typ
-			tc.cur_scope.insert(binding.name, typ)
 		}
-		tc.check_comptime_static_body(id, var_name, 'variants', if field_cases.known {
+		tc.check_comptime_static_body(id, var_name, 'variants', if reflected && field_cases.known {
 			ComptimeStaticFieldCases{ known: true, cases: [variant] }
 		} else {
 			field_cases
@@ -971,6 +985,55 @@ fn (mut tc TypeChecker) check_comptime_static_variant_guard(id flat.NodeId, var_
 		tc.pop_scope()
 		tc.smartcasts = saved_smartcasts
 	}
+	tc.invalidate_subtree_expr_types(id)
+}
+
+// comptime_static_condition_has_outer_metadata avoids evaluating an enclosing loop's
+// metadata spelling as though it were a literal value in the inner loop.
+fn (tc &TypeChecker) comptime_static_condition_has_outer_metadata(id flat.NodeId, cond string, var_name string) bool {
+	mut parent := tc.direct_parent_id(id)
+	for tc.valid_node_id(parent) {
+		node := tc.a.node(parent)
+		if node.kind == .comptime_for {
+			parts := node.value.split('|')
+			if parts.len == 2 && parts[0] != var_name && comptime_text_references_var(cond, parts[0]) {
+				return true
+			}
+		}
+		parent = tc.direct_parent_id(parent)
+	}
+	return false
+}
+
+// Numeric comparisons use runtime type indexes; type comparisons use the spelling.
+fn (mut tc TypeChecker) comptime_static_subst_variant_cond(cond string, var_name string, variant ComptimeStaticFieldCase) string {
+	clean := comptime_condition_strip_outer_parens(trimmed_space(cond))
+	for op in ['||', '&&'] {
+		idx := comptime_condition_top_level_index(clean, op)
+		if idx >= 0 {
+			left := tc.comptime_static_subst_variant_cond(clean[..idx], var_name, variant)
+			right := tc.comptime_static_subst_variant_cond(clean[idx + op.len..], var_name, variant)
+			return '(${left}) ${op} (${right})'
+		}
+	}
+	if clean.starts_with('!') {
+		return '!(' + tc.comptime_static_subst_variant_cond(clean[1..], var_name, variant) + ')'
+	}
+	for op in [' == ', ' != ', ' <= ', ' >= ', ' < ', ' > '] {
+		idx := comptime_condition_top_level_index(clean, op)
+		if idx >= 0 {
+			left := trimmed_space(clean[..idx])
+			right := trimmed_space(clean[idx + op.len..])
+			member := '${var_name}.typ'
+			if left == member && comptime_static_is_int(right) {
+				return '${tc.type_index(variant.typ)}${op}${right}'
+			}
+			if right == member && comptime_static_is_int(left) {
+				return '${left}${op}${tc.type_index(variant.typ)}'
+			}
+		}
+	}
+	return tc.comptime_static_subst_field_cond(cond, var_name, variant)
 }
 
 fn (tc &TypeChecker) comptime_static_type_is_struct(typ Type, typ_name u32, raw_typ_id u32) bool {
@@ -2036,6 +2099,9 @@ fn comptime_static_replace_bare_ident(cond string, ident string, replacement str
 
 fn (mut tc TypeChecker) comptime_static_eval_field_cond(cond string) ?bool {
 	clean := comptime_condition_strip_outer_parens(trimmed_space(cond))
+	if clean == 'threads' {
+		return tc.threads_condition_value()
+	}
 	if clean == 'true' {
 		return true
 	}
@@ -19164,7 +19230,8 @@ fn (mut tc TypeChecker) decl_assign_inferred_type(rhs_id flat.NodeId) Type {
 	}
 	if smartcast := tc.smartcast_type(rhs_id) {
 		if rhs.kind == .ident && tc.lexical_smartcast_type(rhs_id, rhs.value) == none
-			&& !tc.none_guard_fallthrough_unwraps(rhs_id, rhs.value) {
+			&& !tc.none_guard_fallthrough_unwraps(rhs_id, rhs.value)
+			&& !(tc.comptime_static_depth > 0 && tc.cur_comptime_variant_loop_vars.len > 0) {
 			// A guard/assert fallthrough narrows reads of the original binding, but V1
 			// infers a new declaration from its declared type. Lexical branch and loop
 			// smartcasts, and the `if x == none { return }` unwrap, still infer the
