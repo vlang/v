@@ -1339,7 +1339,9 @@ mut:
 }
 
 const used_fn_name_cache_slots = 1024
-const used_fn_name_cache_key_bytes = 58
+// Method names of long receivers in dotted modules exceed 58 bytes; a pair that
+// does not fit is reprocessed on every call, so the key holds longer spellings.
+const used_fn_name_cache_key_bytes = 122
 
 // used_fn_name_cache_slot hashes a non-empty name and its module into a
 // UsedFnNameCache slot.
@@ -9414,20 +9416,31 @@ fn (mut t Transformer) escape_subtree_may_need_scan(id flat.NodeId) bool {
 	if node.kind == .prefix && node.op == .amp {
 		return true
 	}
-	if escape_call_may_return_receiver_address(t.a, t.tc, id, node)
-		&& !t.escape_arg_is_frame_independent(t.a.child(t.a.child_node(&node, 0), 0)) {
-		return true
-	}
 	// Void pointers, mutable interface views, and references to inline fixed-array
 	// storage can outlive a local.
 	// Checked direct calls expose their exact signature here; unresolved function-value
 	// calls stay conservative and use the full escape walk.
 	if node.kind == .call && node.children_count > 0 {
+		// A method whose receiver is a pointer and whose result is not a scalar
+		// can return the receiver's address (escape_call_may_return_receiver_address);
+		// both tests read the same resolved signature, so it is looked up once.
 		if isnil(t.tc) {
 			return true
 		}
+		callee := t.a.child_node(&node, 0)
 		name := t.tc.resolved_call_name(id) or { return true }
 		params := t.tc.fn_param_types[name] or { return true }
+		if callee.kind == .selector && callee.children_count > 0 && params.len > 0
+			&& types.unalias_type(params[0]) is types.Pointer {
+			mut may_return_receiver_address := true
+			if result_type := t.tc.fn_ret_types[name] {
+				may_return_receiver_address = !escape_type_is_scalar_value(result_type)
+			}
+			if may_return_receiver_address
+				&& !t.escape_arg_is_frame_independent(t.a.child(callee, 0)) {
+				return true
+			}
+		}
 		mut has_reference_param := false
 		for param_idx, param in params {
 			if escape_type_is_void_pointer(param) || escape_type_is_interface(param) {
@@ -9511,11 +9524,22 @@ fn (t &Transformer) save_heaped_local_state() HeapedLocalState {
 	}
 	return HeapedLocalState{
 		cloned:                true
-		heaped_amp_locals:     t.heaped_amp_locals.clone()
-		pointer_value_lvalues: t.pointer_value_lvalues.clone()
-		pointer_value_rvalues: t.pointer_value_rvalues.clone()
+		heaped_amp_locals:     clone_heaped_marks(t.heaped_amp_locals)
+		pointer_value_lvalues: clone_heaped_marks(t.pointer_value_lvalues)
+		pointer_value_rvalues: clone_heaped_marks(t.pointer_value_rvalues)
 		bindings:              t.heaped_local_bindings()
 	}
+}
+
+// clone_heaped_marks copies one mark set for a saved scope state. A set that was
+// cleared keeps its hash storage, so copying it would allocate for nothing; an
+// empty set is represented by a fresh map, which reads and clones the same way.
+@[inline]
+fn clone_heaped_marks(marks map[string]bool) map[string]bool {
+	if marks.len == 0 {
+		return map[string]bool{}
+	}
+	return marks.clone()
 }
 
 // heaped_local_bindings returns, in declaration order, the bindings of the locals
@@ -29594,11 +29618,15 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 			if smartcasted := t.smartcast_ident_value(node.value_text()) {
 				return smartcasted
 			}
+			// The checker's fn-value resolution is queried once; the fallback
+			// below reuses this answer while the node is left untouched.
+			mut checker_fn_value_missing := false
 			if !t.in_call_callee && !isnil(t.tc) {
 				if fn_name := t.tc.resolved_fn_value_name(id) {
 					t.set_node_value(int(id), fn_name)
 					return id
 				}
+				checker_fn_value_missing = true
 			}
 			mut typ := t.var_type(node.value_text())
 			if typ != 0 {
@@ -29620,6 +29648,7 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 					typ = t.globals.value_id(global_name)
 					is_global = true
 					t.set_node_value(int(id), global_name)
+					checker_fn_value_missing = false
 				}
 			}
 			is_file_import_selector_base := t.in_selector_base
@@ -29649,7 +29678,9 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 			// allocating a fresh node) avoids cascading rebuilds of every enclosing
 			// expression and the associated allocations (critical under -gc none).
 			if !t.in_call_callee {
-				if fn_name := t.resolved_ident_fn_value(id, node.value_text()) {
+				if fn_name := t.resolved_ident_fn_value_after_checker(id, node.value_text(),
+					checker_fn_value_missing)
+				{
 					t.set_node_value(int(id), fn_name)
 					return id
 				}
@@ -29669,11 +29700,20 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 }
 
 fn (t &Transformer) resolved_ident_fn_value(id flat.NodeId, name string) ?string {
+	return t.resolved_ident_fn_value_after_checker(id, name, false)
+}
+
+// resolved_ident_fn_value_after_checker is resolved_ident_fn_value for a caller
+// that already asked the checker for this node's fn value and found none
+// (`checker_missing`), with no write to the node since.
+fn (t &Transformer) resolved_ident_fn_value_after_checker(id flat.NodeId, name string, checker_missing bool) ?string {
 	if isnil(t.tc) {
 		return t.resolve_fn_value_ident(name)
 	}
-	if fn_name := t.tc.resolved_fn_value_name(id) {
-		return fn_name
+	if !checker_missing {
+		if fn_name := t.tc.resolved_fn_value_name(id) {
+			return fn_name
+		}
 	}
 	// resolve_fn_value_ident answers none for a bound local whatever the checker
 	// says about its type, so there is nothing to resolve for one.
