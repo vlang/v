@@ -82,9 +82,11 @@ def send(text):
     os.write(terminal, text)
 
 def set_tostop(enabled):
-    # Let the shell retain the new mode, and let stty run before tty handoff.
+    # Ignore before forking: a subshell can stop before executing its first trap.
+    # Clear the trap afterward so the app keeps its normal signal dispositions.
     mode = b"tostop" if enabled else b"-tostop"
-    send(b"(trap '' TTOU; stty " + mode + b"); echo TOSTOP_STATUS:$?\n")
+    send(b"trap '' TTOU; stty " + mode
+         + b"; vpty_stty_status=$?; trap - TTOU; echo TOSTOP_STATUS:$vpty_stty_status\n")
     read_until(b"TOSTOP_STATUS:0")
     read_until(b"VPTY> ")
 
@@ -100,6 +102,16 @@ def read_published_text(path, seconds=5):
             return value
         time.sleep(0.02)
     raise AssertionError("file did not publish its contents: " + str(path))
+
+def wait_foreground(group):
+    # The app can publish its PID before the driver finishes the tty handoff.
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if os.tcgetpgrp(terminal) == group:
+            return
+        time.sleep(0.02)
+    raise AssertionError("terminal foreground group: expected " + str(group)
+                         + ", got " + str(os.tcgetpgrp(terminal)))
 
 def wait_stopped(pid):
     deadline = time.monotonic() + 5
@@ -285,7 +297,7 @@ int leave_app_group(void) { return setpgid(0, getpgid(getppid())); }
         compiler = os.getpgid(peer)
         child = int(read_published_text(ready, 45))
         if mode != "move":
-            assert os.tcgetpgrp(terminal) == child
+            wait_foreground(child)
         if mode == "movestop":
             Path(str(ready) + ".move").write_text("go")
             read_published_text(Path(str(ready) + ".moved"))
@@ -298,11 +310,8 @@ int leave_app_group(void) { return setpgid(0, getpgid(getppid())); }
             # A caught/ignored TSTP must not leave the app reading shell commands.
             wait_stopped(child)
             send(b"fg\n")
-            deadline = time.monotonic() + 5
             foreground = compiler if mode == "movestop" else child
-            while os.tcgetpgrp(terminal) != foreground and time.monotonic() < deadline:
-                time.sleep(0.02)
-            assert os.tcgetpgrp(terminal) == foreground
+            wait_foreground(foreground)
             if mode == "movestop":
                 Path(str(ready) + ".finish").write_text("done")
             else:
@@ -384,7 +393,7 @@ int main(void) {
     startup = read_until(b"input> ", 45)
     compiler = int(re.search(rb"JOB:(\d+)", startup).group(1))
     child = int(re.search(rb"READY:(\d+)", startup).group(1))
-    assert os.tcgetpgrp(terminal) == (os.getpgid(compiler) if pipeline else child)
+    wait_foreground(os.getpgid(compiler) if pipeline else child)
     if pipeline:
         assert os.getpgid(compiler) != compiler, "compiler should be a pipeline group member"
     send(b"\x1a")
@@ -414,10 +423,7 @@ int main(void) {
     # case, the peer's in the pipeline case.
     wait_job_stopped()
     send(b"fg\n")
-    deadline = time.monotonic() + 5
-    while os.tcgetpgrp(terminal) != (os.getpgid(compiler) if pipeline else child) and time.monotonic() < deadline:
-        time.sleep(0.02)
-    assert os.tcgetpgrp(terminal) == (os.getpgid(compiler) if pipeline else child)
+    wait_foreground(os.getpgid(compiler) if pipeline else child)
     send(b"\x03")
     read_until(b"VPTY> ")
     send(b"echo STATUS:$?\n")
@@ -434,10 +440,7 @@ int main(void) {
         read_until(b"VPTY> ")
         wait_stopped(compiler)
         send(b"fg\n")
-        deadline = time.monotonic() + 5
-        while os.tcgetpgrp(terminal) != os.getpgid(compiler) and time.monotonic() < deadline:
-            time.sleep(0.02)
-        assert os.tcgetpgrp(terminal) == os.getpgid(compiler)
+        wait_foreground(os.getpgid(compiler))
         send(b"\x03")
         read_until(b"VPTY> ")
         send(b"echo STATUS:$?\n")
