@@ -4386,10 +4386,12 @@ fn (mut g FlatGen) shared_dup_fns() {
 		g.writeln('static inline void* __dup${name}(void* src, int sz) {')
 		g.writeln('#if defined(_VPREALLOC)')
 		g.writeln('\t${name}* dest = (${name}*)malloc((size_t)sz);')
-		g.writeln('#else')
-		g.writeln('\t${name}* dest = (${name}*)malloc_uncollectable((ptrdiff_t)sz);')
-		g.writeln('#endif')
 		g.writeln('\tmemcpy(dest, src, (size_t)sz);')
+		g.writeln('#else')
+		// Shared aliases and worker stacks keep the non-moving wrapper alive.
+		// Uncollectable storage would permanently root it and its payload.
+		g.writeln('\t${name}* dest = (${name}*)memdup(src, (ptrdiff_t)sz);')
+		g.writeln('#endif')
 		g.writeln('\tsync__RwMutex__init(&dest->mtx);')
 		g.writeln('\treturn dest;')
 		g.writeln('}')
