@@ -1,0 +1,22 @@
+diff --git a/build_whole_project.sh b/build_whole_project.sh
+index 821fdb0..50473ae 100755
+--- a/build_whole_project.sh
++++ b/build_whole_project.sh
+@@ -27,12 +27,17 @@ cd $DOOM_FOLDER/chocolate-doom/src/doom ;
+ ## compile the produced V source code to an .o file that can be linked to the rest:
+ v -cc $CC -o doom_v/doom.o -w -translated doom_v/
+ 
++# The translated object uses V's Boehm allocator and foreign-thread registration.
++# Link the bundled collector selected by V's default Linux build.
++doom_vroot=$(v env VROOT)
++
+ $CC -o doomv \
+   $DOOM_FOLDER/chocolate-doom/src/CMakeFiles/chocolate-doom.dir/*.o \
+   $DOOM_FOLDER/chocolate-doom/textscreen/CMakeFiles/textscreen.dir/*.o \
+   $DOOM_FOLDER/chocolate-doom/pcsound/CMakeFiles/pcsound.dir/*.o \
+   $DOOM_FOLDER/chocolate-doom/opl/CMakeFiles/opl.dir/*.o \
+   $DOOM_FOLDER/chocolate-doom/src/doom/doom_v/doom.o \
++  "$doom_vroot/thirdparty/tcc/lib/libgc.a" -lpthread -ldl \
+   $(sdl2-config --libs) -lSDL2_mixer -lSDL2_net -lpng -lsamplerate -lm
+ 
+ cp $WAD_FILE .

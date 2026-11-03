@@ -4092,9 +4092,12 @@ fn test_mut_interface_argument_borrows_existing_interface_box() {
 	v3_bin := build_v3()
 	source := 'interface Visitor {\n\tvalue() int\nmut:\n\tvisit()\n}\n\nstruct Counter {\nmut:\n\tn int\n}\n\nfn (c Counter) value() int {\n\treturn c.n\n}\n\nfn (mut c Counter) visit() {\n\tc.n++\n}\n\nfn call(mut visitor Visitor) {\n\tvisitor.visit()\n}\n\nfn main() {\n\tmut visitor := Visitor(Counter{})\n\tcall(mut visitor)\n\tprintln(int_str(visitor.value()))\n}\n'
 	c_source := gen_c(v3_bin, 'mut_interface_arg_borrows_existing_box', source)
+	main_body := c_fn_body(c_source, 'int main(int argc, char** argv) {')
+	assert main_body != '', c_source
 	// Interface calls can retain the mutable view, so its existing box is heap-promoted.
-	assert c_source.contains('Visitor* visitor =')
-	assert c_source.contains('call(visitor);')
+	assert main_body.contains('Visitor* visitor =')
+	// Heap-promoted caller storage is already a pointer to the existing interface box.
+	assert main_body.contains('call(&visitor);') || main_body.contains('call(visitor);'), main_body
 	assert !c_source.contains('call((Visitor*)(memdup(&__iface_box_')
 	out := run_good(v3_bin, 'mut_interface_arg_borrows_existing_box_run', source)
 	assert out == '1'

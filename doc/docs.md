@@ -6433,6 +6433,7 @@ The `try_push/pop()` methods will return immediately with one of the results
 the reason why not.
 These methods also work in generic functions with a `chan T`. Their arguments must match the
 channel's element storage type, and `try_pop(mut value)` requires mutable destination storage.
+Arguments keep their active smartcasts, including when their address escapes.
 A sum-type channel requires storage of the full sum type when popping. A shared destination
 is writable inside its `lock` block. Pointer values can be pushed into a `chan voidptr`.
 Methods declared on a channel alias take precedence over these builtins.
@@ -6510,6 +6511,8 @@ fn main() {
 ```
 
 A `shared` parameter already passes a reference to the synchronized storage.
+It keeps referring to the caller's storage when used as a mutable channel destination inside a
+`lock` block, including in generic functions.
 Declare it as `shared m map[K]V` and pass `shared m`. Explicit address arguments such
 as `shared &m` are unsupported; remove `&` from both the parameter type and the argument.
 

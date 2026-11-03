@@ -4660,11 +4660,21 @@ fn (mut g FlatGen) emit_object_file_internal_linkage(enabled bool) {
 	}
 	g.writeln('#if defined(__clang__)')
 	if enabled {
-		g.writeln('#pragma clang attribute push(__attribute__((internal_linkage)), apply_to = any(function, variable(is_global)))')
+		// Clang's variable(is_global) also matches function-local statics. Applying
+		// internal_linkage there can leave references to an undefined global name.
+		// Annotate file-scope storage explicitly and keep only functions in scope.
+		g.writeln('#define V3_OBJECT_LOCAL __attribute__((internal_linkage))')
+		g.writeln('#pragma clang attribute push(__attribute__((internal_linkage)), apply_to = function)')
+		g.writeln('#else')
+		g.writeln('#define V3_OBJECT_LOCAL')
 	} else {
 		g.writeln('#pragma clang attribute pop')
 	}
 	g.writeln('#endif')
+}
+
+fn (g &FlatGen) object_file_variable_linkage() string {
+	return if g.object_file_mode { 'V3_OBJECT_LOCAL ' } else { '' }
 }
 
 fn (mut g FlatGen) gen_global_declaration_block() {
@@ -25173,7 +25183,6 @@ fn (mut g FlatGen) global_initializer_is_static(id flat.NodeId, typ types.Type) 
 fn (mut g FlatGen) global_decls() {
 	old_module := g.tc.cur_module
 	old_file := g.tc.cur_file
-	mut internal_linkage := g.object_file_mode
 	for name, typ in g.global_types {
 		if mod := g.global_modules[name] {
 			g.tc.cur_module = mod
@@ -25188,18 +25197,11 @@ fn (mut g FlatGen) global_decls() {
 		decl_typ := g.global_storage_type(name, typ)
 		is_thread_local := g.global_is_thread_local(name)
 		is_exported := name in g.export_global_names || g.cname(name) in g.export_global_names
-		if g.object_file_mode {
-			// Exported storage must remain visible to the native object consumer.
-			needs_internal_linkage := !is_exported
-			if internal_linkage != needs_internal_linkage {
-				g.emit_object_file_internal_linkage(needs_internal_linkage)
-				internal_linkage = needs_internal_linkage
-			}
-		}
-		export_attr := if is_exported {
+		// Exported storage must remain visible to the native object consumer.
+		linkage_attr := if is_exported {
 			g.exported_symbol_attribute()
 		} else {
-			''
+			g.object_file_variable_linkage()
 		}
 		if raw_source_id := g.global_raw_type_texts.type_id(name) {
 			raw := raw_source_id
@@ -25207,12 +25209,12 @@ fn (mut g FlatGen) global_decls() {
 			if inner := shared_inner_type_text(raw) {
 				qualified := g.shared_qualify_type_text(inner, g.tc.cur_module)
 				wrapper := g.shared_wrapper_c_name(qualified)
-				g.writeln('${export_attr}${wrapper}* ${g.global_c_name(name)};')
+				g.writeln('${linkage_attr}${wrapper}* ${g.global_c_name(name)};')
 				continue
 			}
 		}
 		vq := g.global_volatile_qualifier(name)
-		section_prefix := g.global_linker_section_prefix(name) + export_attr
+		section_prefix := g.global_linker_section_prefix(name) + linkage_attr
 		if fixed := array_fixed_type(unalias_type(decl_typ)) {
 			c_elem, dims := g.fixed_array_decl_parts(fixed)
 			if val_id := g.global_inits[name] {
@@ -25228,7 +25230,7 @@ fn (mut g FlatGen) global_decls() {
 				cname := g.global_c_name(name)
 				g.emit_tinyc_windows_thread_local_slot(cname, c_elem, dims)
 				g.emit_tinyc_pthread_value_slot(cname, c_elem, dims)
-				g.emit_thread_local_decl_after_tinyc('${export_attr}${c_elem} ${cname}${dims}${init};')
+				g.emit_thread_local_decl_after_tinyc('${linkage_attr}${c_elem} ${cname}${dims}${init};')
 			} else {
 				g.writeln('${section_prefix}${vq}${c_elem} ${g.global_c_name(name)}${dims}${init};')
 			}
@@ -25247,7 +25249,7 @@ fn (mut g FlatGen) global_decls() {
 			ct = g.resolve_fn_ptr_type(ct)
 		}
 		if extern_name := g.c_extern_global_names[name] {
-			g.writeln('extern ${vq}${ct} ${extern_name};')
+			g.writeln('${linkage_attr}extern ${vq}${ct} ${extern_name};')
 			continue
 		}
 		if name.starts_with('C.') {
@@ -25280,12 +25282,12 @@ fn (mut g FlatGen) global_decls() {
 			if shared_ct := g.fn_capture_shared_global_c_type(name) {
 				g.emit_tinyc_windows_thread_local_slot(cname, shared_ct, '')
 				g.emit_tinyc_pthread_value_slot(cname, shared_ct, '')
-				g.emit_thread_local_decl_after_tinyc('${export_attr}${shared_ct} ${cname};')
+				g.emit_thread_local_decl_after_tinyc('${linkage_attr}${shared_ct} ${cname};')
 				continue
 			}
 			g.emit_tinyc_windows_thread_local_slot(cname, ct, '')
 			g.emit_tinyc_pthread_value_slot(cname, ct, '')
-			g.emit_thread_local_decl_after_tinyc('${export_attr}${ct} ${cname}${init};')
+			g.emit_thread_local_decl_after_tinyc('${linkage_attr}${ct} ${cname}${init};')
 			continue
 		}
 		// With -prealloc the arena base block is per-thread; a shared pointer
@@ -25298,13 +25300,10 @@ fn (mut g FlatGen) global_decls() {
 			cn := g.global_c_name(name)
 			g.emit_tinyc_windows_thread_local_slot(cn, ct, '')
 			g.emit_tinyc_pthread_pointer_slot(cn, ct)
-			g.emit_thread_local_decl_after_tinyc('${ct} ${cn}${init};')
+			g.emit_thread_local_decl_after_tinyc('${linkage_attr}${ct} ${cn}${init};')
 			continue
 		}
 		g.writeln('${section_prefix}${vq}${ct} ${g.global_c_name(name)}${init};')
-	}
-	if g.object_file_mode && !internal_linkage {
-		g.emit_object_file_internal_linkage(true)
 	}
 	g.tc.cur_module = old_module
 	g.tc.cur_file = old_file
@@ -26779,6 +26778,7 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		ct = g.resolve_fn_ptr_type(ct)
 	}
 	qname := g.const_ident_c_name(name)
+	linkage_attr := g.object_file_variable_linkage()
 	// C constants can be header macros, so their declarations never acquire
 	// storage in a cached V module.
 	if g.cache_const_modules[const_owner] && !name.starts_with('C.')
@@ -26800,11 +26800,11 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		// File-scope initializers need brace lists rather than compound-literal
 		// casts: GCC rejects the latter as non-constant when cached modules are
 		// linked separately.
-		g.writeln('MessageError ${object_name} = {.msg = ${message}};')
+		g.writeln('${linkage_attr}MessageError ${object_name} = {.msg = ${message}};')
 		if g.ccompiler == 'cplusplus' {
-			g.writeln('IError ${qname} = {._object = &${object_name}, ._typ = ${type_id}};')
+			g.writeln('${linkage_attr}IError ${qname} = {._object = &${object_name}, ._typ = ${type_id}};')
 		} else {
-			g.writeln('IError ${qname} = {._typ = ${type_id}, ._object = &${object_name}};')
+			g.writeln('${linkage_attr}IError ${qname} = {._typ = ${type_id}, ._object = &${object_name}};')
 		}
 		g.tc.cur_module = old_module
 		return
@@ -26815,9 +26815,9 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		if ct != 'void' {
 			if fixed := array_fixed_type(unalias_type(v_type)) {
 				c_elem, dims := g.fixed_array_decl_parts(fixed)
-				g.writeln('${c_elem} ${qname}${dims};')
+				g.writeln('${linkage_attr}${c_elem} ${qname}${dims};')
 			} else {
-				g.writeln('${ct} ${qname};')
+				g.writeln('${linkage_attr}${ct} ${qname};')
 			}
 			g.queue_const_runtime_init(g.const_block_init_to_string(qname, val_node, v_type))
 		}
@@ -26856,7 +26856,7 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		return
 	}
 	if v_type is types.String && g.ccompiler == 'msvc' && val_node.kind == .string_literal {
-		g.writeln('string ${qname};')
+		g.writeln('${linkage_attr}string ${qname};')
 		g.queue_const_runtime_init('\t${qname} = _S(${c_segmented_string_literal(val_node.value)});')
 		g.tc.cur_module = old_module
 		return
@@ -26878,10 +26878,10 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 	if !is_static_const {
 		if fixed := array_fixed_type(unalias_type(v_type)) {
 			c_elem, dims := g.fixed_array_decl_parts(fixed)
-			g.writeln('${c_elem} ${qname}${dims};')
+			g.writeln('${linkage_attr}${c_elem} ${qname}${dims};')
 			g.queue_const_fixed_array_runtime_init(qname, val_id, fixed)
 		} else if ct != 'void' {
-			g.writeln('${ct} ${qname};')
+			g.writeln('${linkage_attr}${ct} ${qname};')
 			// The initializer is not a compile-time constant (e.g. `os.args =
 			// arguments()`), so it cannot be a C static initializer. Run it at startup
 			// in _vinit; otherwise the const stays zero/empty and first use is wrong.
@@ -26894,7 +26894,7 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		return
 	}
 	if v_type is types.String {
-		g.writeln('string ${qname} = ${expr_str};')
+		g.writeln('${linkage_attr}string ${qname} = ${expr_str};')
 	} else if v_type is types.ArrayFixed {
 		c_elem, dims := g.fixed_array_decl_parts(v_type)
 		// A fixed-array object declaration cannot be initialized from a
@@ -26906,7 +26906,7 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		if init_str.starts_with(cast_prefix) {
 			init_str = init_str[cast_prefix.len..].trim_space()
 		}
-		g.writeln('const ${c_elem} ${qname}${dims} = ${init_str};')
+		g.writeln('${linkage_attr}const ${c_elem} ${qname}${dims} = ${init_str};')
 	} else if v_type is types.Primitive || v_type is types.Char || v_type is types.Rune || v_type is types.ISize || v_type is types.USize || v_type is types.Enum || ct in [
 		'bool',
 		'char',
@@ -26947,7 +26947,7 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		if init_str.starts_with(cast_prefix) {
 			init_str = init_str[cast_prefix.len..].trim_space()
 		}
-		g.writeln('const ${ct} ${qname} = ${init_str};')
+		g.writeln('${linkage_attr}const ${ct} ${qname} = ${init_str};')
 	} else if unalias_type(v_type) is types.Struct {
 		// MSVC cannot initialize a file-scope object from a compound literal.
 		// C-backed structs may be declared in an external header, so the MSVC
@@ -26957,9 +26957,9 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 		if init_str.starts_with('${cast_prefix}{') {
 			init_str = init_str[cast_prefix.len..]
 		}
-		g.writeln('const ${ct} ${qname} = ${init_str};')
+		g.writeln('${linkage_attr}const ${ct} ${qname} = ${init_str};')
 	} else {
-		g.writeln('const ${ct} ${qname} = ${expr_str};')
+		g.writeln('${linkage_attr}const ${ct} ${qname} = ${expr_str};')
 	}
 	g.tc.cur_module = old_module
 }
