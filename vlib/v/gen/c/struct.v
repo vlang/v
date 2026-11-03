@@ -7549,14 +7549,24 @@ fn (mut g FlatGen) referenced_c_structs() map[u32]bool {
 		g.tc.cur_module = old_module
 	}
 	// These operators have integer result types, so their type operands do not
-	// appear in the checked expression-type tables below.
-	for idx in 0 .. g.a.nodes.len {
-		// The AST stays immutable while collecting references.
-		node := unsafe { &g.a.nodes[idx] }
-		if node.kind == .offsetof_expr || (node.kind == .sizeof_expr && node.children_count == 0) {
+	// appear in the checked expression-type tables below. collect_gen_info indexes
+	// them; standalone generators without that index scan every node.
+	if g.sizeof_offsetof_nodes_ready {
+		for idx in g.sizeof_offsetof_node_ids {
+			// The AST stays immutable while collecting references.
+			node := unsafe { &g.a.nodes[idx] }
 			g.tc.cur_file = g.node_source_file(node)
 			g.tc.cur_module = g.tc.file_modules[g.tc.cur_file] or { old_module }
 			g.collect_c_struct_type_refs(g.tc.parse_type(node.source_value_id()), mut seen)
+		}
+	} else {
+		for idx in 0 .. g.a.nodes.len {
+			node := unsafe { &g.a.nodes[idx] }
+			if node.kind == .offsetof_expr || (node.kind == .sizeof_expr && node.children_count == 0) {
+				g.tc.cur_file = g.node_source_file(node)
+				g.tc.cur_module = g.tc.file_modules[g.tc.cur_file] or { old_module }
+				g.collect_c_struct_type_refs(g.tc.parse_type(node.source_value_id()), mut seen)
+			}
 		}
 	}
 	// Alias preseeding can emit wrappers, array typedefs, and callback signatures

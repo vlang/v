@@ -1136,11 +1136,14 @@ mut:
 	// Set while selected items' C-extern refs still have to be collected: the
 	// fused prep walk defers them to the parallel exact-cost pass, which falls
 	// back to a serial top-up when it cannot run.
-	prep_externs_pending   bool
-	prep_costs_pending     bool
-	prep_typ_text_cache    &PrepTypTextCache = unsafe { nil }
-	prep_alias_short_names map[u32]bool
-	preseed_type_seen      &PreseedTypeSeen = unsafe { nil }
+	prep_externs_pending bool
+	prep_costs_pending   bool
+	// offsetof_expr and leaf sizeof_expr nodes in AST order (referenced_c_structs).
+	sizeof_offsetof_node_ids    []i32
+	sizeof_offsetof_nodes_ready bool
+	prep_typ_text_cache         &PrepTypTextCache = unsafe { nil }
+	prep_alias_short_names      map[u32]bool
+	preseed_type_seen           &PreseedTypeSeen = unsafe { nil }
 	// Separate seen-cache for the declaration preseed family
 	// (preseed_fn_ptr_type has optional-typedef side effects the body-walk
 	// preseed does not); armed only for the contiguous pre-dispatch preseed
@@ -1987,24 +1990,75 @@ fn (g &FlatGen) top_level_nodes() []i32 {
 	return ids
 }
 
+// Node kind classes of the whole-AST collection sweeps (collect_gen_info and its
+// parallel count/fill passes), so each node is classified by one switch instead
+// of several membership chains.
+const cgen_kind_class_metadata = u8(1) // always a type metadata node
+const cgen_kind_class_shared_marker = u8(2) // decl_assign: metadata when it marks `shared`
+const cgen_kind_class_typedef_text = u8(4) // metadata when its text may need a fixed typedef
+const cgen_kind_class_sizeof = u8(8) // sizeof_expr: metadata when it names `?T`/`!T`
+const cgen_kind_class_top_level = u8(16) // declaration index entry
+const cgen_kind_class_string_literal = u8(32)
+const cgen_kind_class_sizeof_ref = u8(64) // offsetof_expr / sizeof_expr: referenced_c_structs input
+
+@[inline]
+fn cgen_kind_class(kind flat.NodeKind) u8 {
+	return match kind {
+		.file, .module_decl, .global_decl, .fn_decl, .c_fn_decl {
+			cgen_kind_class_metadata | cgen_kind_class_top_level
+		}
+		.fn_literal, .param, .call, .struct_init {
+			cgen_kind_class_metadata
+		}
+		.struct_decl, .type_decl, .const_decl, .enum_decl, .interface_decl, .import_decl,
+		.directive {
+			cgen_kind_class_top_level
+		}
+		.decl_assign {
+			cgen_kind_class_shared_marker
+		}
+		.array_init, .array_literal, .cast_expr, .typeof_expr {
+			cgen_kind_class_typedef_text
+		}
+		.sizeof_expr {
+			cgen_kind_class_typedef_text | cgen_kind_class_sizeof | cgen_kind_class_sizeof_ref
+		}
+		.offsetof_expr {
+			cgen_kind_class_sizeof_ref
+		}
+		.string_literal {
+			cgen_kind_class_string_literal
+		}
+		else {
+			u8(0)
+		}
+	}
+}
+
 // Type support passes need declarations, calls, initializers and array types.
 // Keep file/module markers in AST order for the passes with lexical context.
 @[inline]
 fn is_type_metadata_node(node &flat.Node, mut cache TypeMetadataTextCache) bool {
-	if node.kind in [.file, .module_decl, .global_decl, .fn_decl, .c_fn_decl, .fn_literal, .param,
-		.call, .struct_init] {
+	return is_type_metadata_node_of_class(node, cgen_kind_class(node.kind), mut cache)
+}
+
+// is_type_metadata_node_of_class is is_type_metadata_node for a node whose kind
+// class the caller already has.
+@[inline]
+fn is_type_metadata_node_of_class(node &flat.Node, class u8, mut cache TypeMetadataTextCache) bool {
+	if class & cgen_kind_class_metadata != 0 {
 		return true
 	}
-	if node.kind == .decl_assign && decl_assign_is_shared_marker(node.value) {
+	if class & cgen_kind_class_shared_marker != 0 && decl_assign_is_shared_marker(node.value) {
 		return true
 	}
 	if cache.may_need_array_type_id(node.typ) {
 		return true
 	}
-	if is_optional_sizeof_node(node) {
+	if class & cgen_kind_class_sizeof != 0 && is_optional_sizeof_node(node) {
 		return true
 	}
-	return node.kind in [.array_init, .array_literal, .cast_expr, .sizeof_expr, .typeof_expr]
+	return class & cgen_kind_class_typedef_text != 0
 		&& cache.may_need_array_typedef(node.value_text())
 }
 
@@ -2898,7 +2952,9 @@ fn native_inputs_language(a &flat.FlatAst, vroot string, c_flags []string, c99_m
 	mut need_cpp := false
 	mut cur_file := ''
 	mut cur_module := 'main'
-	for node_idx, node in a.nodes {
+	for node_idx in 0 .. a.nodes.len {
+		// The scan only reads the AST; borrow each node instead of copying it.
+		node := unsafe { &a.nodes[node_idx] }
 		if node.kind == .file {
 			cur_file = node.value
 			cur_module = 'main'
@@ -3788,6 +3844,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.top_level_node_ids = []i32{}
 	g.type_metadata_node_ids = []i32{}
 	g.type_metadata_nodes_ready = false
+	g.sizeof_offsetof_node_ids = []i32{}
+	g.sizeof_offsetof_nodes_ready = false
 	g.shared_scan_bits = []u64{}
 	g.shared_scan_bits_ready = false
 	g.ast_string_literals = []string{}
@@ -5875,13 +5933,19 @@ fn (mut g FlatGen) scan_collect_gen_info_serial() CollectGenInfoScanCounts {
 	g.top_level_node_ids = []i32{cap: 4096}
 	g.type_metadata_node_ids = []i32{cap: 4096}
 	g.embed_payload_node_ids = []i32{}
+	g.sizeof_offsetof_node_ids = []i32{}
 	for node_idx in 0 .. g.a.nodes.len {
 		// Collection only reads the AST; no helper can reallocate these slots.
 		node := unsafe { &g.a.nodes[node_idx] }
-		if is_type_metadata_node(node, mut cache) {
+		class := cgen_kind_class(node.kind)
+		if is_type_metadata_node_of_class(node, class, mut cache) {
 			g.type_metadata_node_ids << node_idx
 		}
-		if node.kind == .string_literal {
+		if class & cgen_kind_class_sizeof_ref != 0
+			&& (node.kind == .offsetof_expr || node.children_count == 0) {
+			g.sizeof_offsetof_node_ids << node_idx
+		}
+		if class & cgen_kind_class_string_literal != 0 {
 			if node.is_embed_payload() {
 				g.embed_payload_node_ids << node_idx
 			} else {
@@ -5891,9 +5955,11 @@ fn (mut g FlatGen) scan_collect_gen_info_serial() CollectGenInfoScanCounts {
 				}
 			}
 		}
-		if node.kind in [.file, .module_decl, .fn_decl, .c_fn_decl, .struct_decl, .type_decl,
-			.global_decl, .const_decl, .enum_decl, .interface_decl, .import_decl, .directive] {
+		if class & cgen_kind_class_top_level != 0 {
 			g.top_level_node_ids << node_idx
+		}
+		if class & (cgen_kind_class_top_level | cgen_kind_class_metadata) == 0 {
+			continue
 		}
 		match node.kind {
 			.fn_decl {
@@ -5924,6 +5990,7 @@ fn (mut g FlatGen) scan_collect_gen_info_serial() CollectGenInfoScanCounts {
 	}
 	g.type_metadata_nodes_ready = true
 	g.embed_payload_nodes_ready = true
+	g.sizeof_offsetof_nodes_ready = true
 	return counts
 }
 
