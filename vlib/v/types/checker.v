@@ -1417,7 +1417,7 @@ pub mut:
 	sparse_resolved_fn_values  map[int]string // the only fn-value name store: a few dozen entries, a node-indexed array cost ~12 MB
 	// Only private transform/codegen snapshots enable this conservative filter.
 	// Mutable masters and storage probes keep supporting direct map writes.
-	sparse_fn_value_filter        [4]u64
+	sparse_fn_value_filter        [64]u64
 	sparse_fn_value_filter_ready  bool
 	fork_fn_value_writes          map[int]string // a transform fork's own fn-value writes ('' = cleared); its sparse map stays a read-only snapshot and only these are merged
 	sparse_statement_nodes        map[int]bool
@@ -11941,10 +11941,13 @@ pub fn (tc &TypeChecker) resolved_fn_value_name(id flat.NodeId) ?string {
 	return tc.sparse_resolved_fn_values[idx] or { none }
 }
 
+// sparse_fn_value_filter_bit selects the filter bit of a node index. The map
+// holds a few hundred entries at most, so 4096 bits keep most of the lookups
+// for nodes that are not function values from hashing into it.
 @[inline]
 fn sparse_fn_value_filter_bit(idx int) u32 {
 	key := u32(idx)
-	return (key ^ (key >> 8)) & 255
+	return (key ^ (key >> 12)) & 4095
 }
 
 @[direct_array_access; inline]
@@ -11959,7 +11962,7 @@ fn (mut tc TypeChecker) record_sparse_fn_value_filter_key(idx int) {
 // Fork source maps are otherwise read-only; later setters maintain the filter,
 // and deletions may retain bits because a false positive still checks the map.
 fn (mut tc TypeChecker) rebuild_sparse_fn_value_filter() {
-	tc.sparse_fn_value_filter = [4]u64{}
+	tc.sparse_fn_value_filter = [64]u64{}
 	tc.sparse_fn_value_filter_ready = true
 	for idx, _ in tc.sparse_resolved_fn_values {
 		tc.record_sparse_fn_value_filter_key(idx)
@@ -12349,6 +12352,7 @@ pub fn (mut tc TypeChecker) register_synth_type(id flat.NodeId, typ Type) {
 }
 
 // remember_expr_type supports remember expr type handling for TypeChecker.
+@[direct_array_access]
 fn (mut tc TypeChecker) remember_expr_type(id flat.NodeId, typ Type) {
 	if int(id) < 0 {
 		return
@@ -18326,6 +18330,7 @@ fn v_int_literal_value(s string) ?int {
 }
 
 // is_bare_generic_param reports whether is bare generic param applies in types.
+@[direct_array_access; inline]
 fn is_bare_generic_param(typ string) bool {
 	return typ.len == 1 && typ[0] >= `A` && typ[0] <= `Z`
 }
@@ -21484,6 +21489,7 @@ fn type_allows_implicit_return(typ &Type) bool {
 }
 
 // valid_node_id supports valid node id handling for TypeChecker.
+@[inline]
 fn (tc &TypeChecker) valid_node_id(id flat.NodeId) bool {
 	return int(id) >= 0 && tc.a != unsafe { nil } && int(id) < tc.a.nodes.len
 }

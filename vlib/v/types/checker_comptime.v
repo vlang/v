@@ -9788,6 +9788,7 @@ fn (tc &TypeChecker) shift_is_in_inactive_compact_else(id flat.NodeId) bool {
 // source_text_is_bare_generic is SourceTypeSyntax.bare_generic for raw text: one
 // ASCII uppercase letter after trimming. Checking the text first keeps plain
 // identifiers from being interned as type spellings.
+@[direct_array_access]
 fn source_text_is_bare_generic(text string) bool {
 	mut start := 0
 	mut end := text.len
