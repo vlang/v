@@ -1137,10 +1137,44 @@ fn (t &Transformer) alias_receiver_method_candidates_probed(method string, metho
 // alias_target_type_preserving_main_lock returns the underlying type while retaining
 // an explicit `main.` lock introduced by generic specialization. The lock prevents
 // an imported generic body from rebasing a program type to a same-named local type.
+@[direct_array_access]
 fn (t &Transformer) alias_target_type_preserving_main_lock(base_type_id u32) ?u32 {
 	if isnil(t.tc) || base_type_id == u32(0) {
 		return none
 	}
+	if isnil(t.alias_target_cache) {
+		return t.alias_target_type_preserving_main_lock_uncached(base_type_id)
+	}
+	// Hot under struct and receiver lookups, with few distinct spellings per
+	// body: memoize per (module, file, alias table) like the other type fronts.
+	mut cache := t.alias_target_cache
+	alias_count := t.tc.type_aliases.ids.len
+	if !same_transform_text(cache.module, t.cur_module)
+		|| !same_transform_text(cache.file, t.cur_file) || cache.alias_count != alias_count {
+		cache.module = t.cur_module
+		cache.file = t.cur_file
+		cache.alias_count = alias_count
+		cache.generation++
+	}
+	slot := int(base_type_id & 1023)
+	if cache.generations[slot] == cache.generation && cache.keys[slot] == base_type_id {
+		if cache.states[slot] > 0 {
+			return cache.results[slot]
+		}
+		return none
+	}
+	cache.keys[slot] = base_type_id
+	cache.generations[slot] = cache.generation
+	target_source_id := t.alias_target_type_preserving_main_lock_uncached(base_type_id) or {
+		cache.states[slot] = -1
+		return none
+	}
+	cache.states[slot] = 1
+	cache.results[slot] = target_source_id
+	return target_source_id
+}
+
+fn (t &Transformer) alias_target_type_preserving_main_lock_uncached(base_type_id u32) ?u32 {
 	trimmed_id := transform_trimmed_type_id(base_type_id)
 	clean := if flat.source_type_shape(trimmed_id).has(.pointer) {
 		flat.source_type_syntax(trimmed_id).pointer_raw_base()
@@ -3361,7 +3395,7 @@ fn (t &Transformer) call_selector_callee_id(node flat.Node) ?flat.NodeId {
 
 fn (t &Transformer) selector_call_name_has_receiver_param(call_name string, method string, params []types.Type) bool {
 	if params.len == 0 || method == '' || call_name == ''
-		|| !call_name.ends_with('.${method}') {
+		|| !ends_with_dot_suffix(call_name, method) {
 		return false
 	}
 	clean_first := t.trim_pointer_type(t.normalize_type_alias(t.semantic_type_name(params[0])))
@@ -3375,6 +3409,16 @@ fn (t &Transformer) selector_call_name_has_receiver_param(call_name string, meth
 		return true
 	}
 	return false
+}
+
+// ends_with_dot_suffix is `name.ends_with('.' + suffix)` without building the
+// joined spelling.
+@[direct_array_access; inline]
+fn ends_with_dot_suffix(name string, suffix string) bool {
+	if name.len <= suffix.len || name[name.len - suffix.len - 1] != `.` {
+		return false
+	}
+	return unsafe { vmemcmp(name.str + name.len - suffix.len, suffix.str, suffix.len) == 0 }
 }
 
 fn (mut t Transformer) transform_method_callee_receiver_for_param(callee_id flat.NodeId, param_type_id u32) ?flat.NodeId {
@@ -5185,6 +5229,11 @@ fn (t &Transformer) imported_global_name(name string) ?string {
 // const_suffixes sees every transitive module and must not decide ownership.
 fn (t &Transformer) current_module_declares_const(name string) bool {
 	if name == '' || isnil(t.tc) {
+		return false
+	}
+	// Every key probed below shares the short name of `name`; the frozen filter
+	// rules the whole family out without building the qualified spelling.
+	if !t.const_selector_may_match(name) {
 		return false
 	}
 	if name.contains('.') {
@@ -18592,7 +18641,14 @@ fn (t &Transformer) explicit_generic_call_arg_ids(node flat.Node) []u32 {
 }
 
 fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_id flat.NodeId) bool {
-	receiver_name := method_name.all_before_last('.')
+	// A borrowed view avoids copying the method name; it is only interned, and
+	// source_type_id copies spellings it stores.
+	receiver_dot := method_name.last_index_u8(`.`)
+	receiver_name := if receiver_dot < 0 {
+		method_name
+	} else {
+		unsafe { tos(method_name.str, receiver_dot) }
+	}
 	if receiver_name.len == 0 {
 		return true
 	}
@@ -20120,7 +20176,7 @@ fn (t &Transformer) current_generic_receiver_call_return_type(node flat.Node) ?u
 		}
 	}
 	for name, ret in t.fn_ret_types.ids {
-		if !name.ends_with('.${callee.value}') { continue }
+		if !ends_with_dot_suffix(name, callee.value) { continue }
 		decl_receiver := flat.source_type_id(name.all_before_last('.'))
 		decl_syntax := flat.source_type_syntax(decl_receiver)
 		decl_base := if decl_syntax.generic_app_valid() {

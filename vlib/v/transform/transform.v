@@ -342,6 +342,8 @@ mut:
 	resolved_call_return_cache             &ResolvedCallReturnCache   = unsafe { nil }
 	fn_return_name_cache                   &FnReturnNameCache         = unsafe { nil }
 	variant_match_cache                    &VariantMatchCache         = unsafe { nil }
+	alias_target_cache                     &AliasTargetCache          = unsafe { nil }
+	noreturn_names                         &NoreturnNameList          = unsafe { nil }
 	interface_type_cache                   &ContextLookupCache        = unsafe { nil }
 	alias_equivalent_names_cache           &EquivalentNamesCache      = unsafe { nil }
 	enum_expected_cache                    &EnumExpectedCache         = unsafe { nil }
@@ -1039,6 +1041,40 @@ mut:
 	payloads    [1024]u32
 	generations [1024]u32
 	results     [1024]u32
+}
+
+// AliasTargetCache memoizes alias_target_type_preserving_main_lock per source
+// context. The answer depends on the spelling, the current module and file
+// (import aliases) and the alias table, which the generation covers.
+struct AliasTargetCache {
+mut:
+	module      string
+	file        string
+	alias_count int
+	generation  u32 = 1
+	keys        [1024]u32
+	generations [1024]u32
+	results     [1024]u32
+	states      [1024]i8
+}
+
+// NoreturnNameList is a read-only snapshot of the keys of the AST's noreturn
+// table, so is_noreturn_call can scan the candidates without cloning every key
+// out of the map on each call. `count` detects a table that grew afterwards.
+struct NoreturnNameList {
+	count int
+	names []string
+}
+
+fn new_noreturn_name_list(a &flat.FlatAst) &NoreturnNameList {
+	mut names := []string{cap: a.noreturn_fns.len}
+	for name, _ in a.noreturn_fns {
+		names << name
+	}
+	return &NoreturnNameList{
+		count: a.noreturn_fns.len
+		names: names
+	}
 }
 
 struct VariantMatchCache {
@@ -3018,6 +3054,8 @@ fn (mut t Transformer) prepare() {
 	t.resolved_call_return_cache = &ResolvedCallReturnCache{}
 	t.fn_return_name_cache = new_fn_return_name_cache()
 	t.variant_match_cache = &VariantMatchCache{}
+	t.alias_target_cache = &AliasTargetCache{}
+	t.noreturn_names = new_noreturn_name_list(t.a)
 	t.interface_type_cache = &ContextLookupCache{
 		entries: map[u32]u32{}
 		misses:  map[u32]bool{}
@@ -5635,6 +5673,8 @@ fn (t &Transformer) fork_worker_with_state(ast &flat.FlatAst, wtc &types.TypeChe
 	w.resolved_call_return_cache = &ResolvedCallReturnCache{}
 	w.fn_return_name_cache = new_fn_return_name_cache()
 	w.variant_match_cache = &VariantMatchCache{}
+	w.alias_target_cache = &AliasTargetCache{}
+	w.noreturn_names = t.noreturn_names
 	w.interface_type_cache = &ContextLookupCache{
 		entries: map[u32]u32{}
 		misses:  map[u32]bool{}
@@ -5782,6 +5822,8 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.resolved_call_return_cache = &ResolvedCallReturnCache{}
 	w.fn_return_name_cache = new_fn_return_name_cache()
 	w.variant_match_cache = &VariantMatchCache{}
+	w.alias_target_cache = &AliasTargetCache{}
+	w.noreturn_names = t.noreturn_names
 	w.interface_type_cache = &ContextLookupCache{
 		entries: map[u32]u32{}
 		misses:  map[u32]bool{}
