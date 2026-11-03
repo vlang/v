@@ -2,6 +2,54 @@ module c
 
 import os
 
+fn test_profiled_darwin_objects_keep_native_clock_linkage() {
+	$if !linux && !macos {
+		return
+	}
+	cc := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'object_profile_clock_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'clock.v')
+	output := os.join_path(root, 'clock.c')
+	// Profiling must supply its native timer dependencies without an explicit
+	// time import. Generate Darwin C on Linux and macOS hosts that have Clang.
+	os.write_file(source, "@[export: 'clock_value']\nfn clock_value() int { return 42 }\n")!
+	generated := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none',
+		'-os', 'macos', '-is_o', '-profile', os.join_path(root, 'profile'), '-o', output, source])
+	assert generated.exit_code == 0, generated.output
+	code := os.read_file(output)!
+	// Preserve the emitted native declarations and linkage scopes. Compile this
+	// slice against separate native definitions so no Darwin SDK is needed.
+	mut declarations := []string{}
+	for line in code.split_into_lines() {
+		is_clock := (line.starts_with('u64 ') || line.starts_with('i32 ')
+			|| line.starts_with('extern ')) && line.ends_with(';')
+			&& (line.contains('mach_absolute_time(') || line.contains('mach_timebase_info('))
+		if is_clock || line.starts_with('#pragma clang attribute') {
+			if line == '#pragma clang attribute pop' {
+				declarations << 'u64 read_clock(void) { mach_timebase_info_data_t info; mach_timebase_info(&info); return mach_absolute_time() * info.numer / info.denom; }'
+			}
+			declarations << line
+		}
+	}
+	selected := declarations.join('\n')
+	assert selected.contains('mach_absolute_time(void);'), selected
+	assert selected.contains('mach_timebase_info(mach_timebase_info_data_t*);'), selected
+	assert selected.contains('#pragma clang attribute push'), selected
+	assert selected.contains('#pragma clang attribute pop'), selected
+	types := 'typedef unsigned long long u64;\ntypedef int i32;\ntypedef struct { unsigned int numer, denom; } mach_timebase_info_data_t;\n'
+	probe := os.join_path(root, 'probe.c')
+	os.write_file(probe, types + selected + '\nint main(void) { return read_clock() == 42 ? 0 : 1; }\n')!
+	native := os.join_path(root, 'native.c')
+	os.write_file(native, types + 'u64 mach_absolute_time(void) { return 21; }\nint mach_timebase_info(mach_timebase_info_data_t* info) { info->numer = 2; info->denom = 1; return 0; }\n')!
+	executable := os.join_path(root, 'probe')
+	compiled := os.exec([cc, '-std=c99', '-Werror', '-o', executable, probe, native])
+	assert compiled.exit_code == 0, compiled.output
+	ran := os.exec([executable])
+	assert ran.exit_code == 0, ran.output
+}
+
 fn test_clang_objects_keep_static_locals_and_private_storage_separate() {
 	$if !linux && !macos {
 		return
