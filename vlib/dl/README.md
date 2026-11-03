@@ -10,8 +10,7 @@ inside that library. Their methods can be called by a program that loaded the
 library with `dl.open` (or `dl.loader`), as long as it has not been closed yet.
 
 Private Boehm collectors in V shared libraries use one marking thread, so parallel marker workers
-cannot outlive the loaded image. A collector already initialized by the host keeps its
-configuration.
+cannot outlive the loaded image. An initialized host collector retains its marking policy.
 
 > **Note**
 > We highly recommend using `dl.loader` instead of `dl` directly.
