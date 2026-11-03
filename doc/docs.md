@@ -11368,6 +11368,7 @@ pointer type checks; calls to C functions also accept these character pointers.
 
 In translated files, fixed arrays decay to pointers to their elements, including when compared
 with pointers. Nested array literals retain their full array type in these comparisons.
+Their generated C uses nested brace initializers, supported by GCC, Clang, and TinyCC.
 
 Files marked `@[translated]` retain C scalar conversions between numbers, enums, and booleans.
 These scalars can be mixed in arithmetic expressions and compound assignments. Integral scalars
