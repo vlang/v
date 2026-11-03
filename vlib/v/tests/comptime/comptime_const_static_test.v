@@ -1531,3 +1531,52 @@ fn test_typeof_comptime_operand_remains_unevaluated() {
 	assert reflected_comptime_seed_name == 'int'
 	assert typeof(type_only_seed()).name == reflected_comptime_seed_name
 }
+
+struct ConstCloneCell {
+	text  string
+	value int
+}
+
+fn (cell &ConstCloneCell) clone() ConstCloneCell {
+	return ConstCloneCell{ text: cell.text, value: cell.value + 10 }
+}
+
+const clone_seed = ConstCloneCell{ text: 'x', value: 1 }
+
+@[comptime]
+fn const_clone_mode_control() int {
+	// The copying branch is supported when ownership cloning is disabled.
+	$if ownership ? {
+		return 1
+	} $else {
+		copy := clone_seed
+		return copy.value
+	}
+}
+
+@[comptime]
+fn const_clone_inactive() int {
+	if false {
+		copy := clone_seed
+		return copy.value
+	}
+	return 7
+}
+
+@[comptime]
+fn const_clone_erased_length() int {
+	return ([clone_seed]!).len
+}
+
+const computed_clone_mode_control = const_clone_mode_control()
+const computed_clone_inactive = const_clone_inactive()
+const computed_clone_erased_length = const_clone_erased_length()
+
+fn test_comptime_clone_guards_preserve_supported_values() {
+	assert computed_clone_mode_control == 1
+	assert computed_clone_mode_control == const_clone_mode_control()
+	assert computed_clone_inactive == 7
+	assert computed_clone_inactive == const_clone_inactive()
+	assert computed_clone_erased_length == 1
+	assert computed_clone_erased_length == const_clone_erased_length()
+}

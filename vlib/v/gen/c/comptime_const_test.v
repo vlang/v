@@ -1028,3 +1028,80 @@ fn test_cli_fixed_array_alias_lengths_require_stored_bases() ! {
 	assert runtime.exit_code == 0, runtime.output
 	assert runtime.output.trim_space() == '3', runtime.output
 }
+
+fn test_cli_comptime_values_reject_implicit_clone() ! {
+	root := os.join_path(os.vtmp_dir(), 'cli_comptime_clone_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	suffix := if os.user_os() == 'windows' { '.exe' } else { '' }
+	args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none']
+	declarations := 'struct Cell { text string value int }\nfn (cell &Cell) clone() Cell { return Cell{text: cell.text, value: cell.value + 10} }\nconst seed = Cell{text: "x", value: 1}\n' +
+		'type CellAlias = Cell\nconst alias_seed = CellAlias{text: "x", value: 1}\nconst array_seed = [Cell{text: "x", value: 1}]!\n' +
+		'struct Pod { value int }\nfn (cell &Pod) clone() Pod { return Pod{value: cell.value + 10} }\nconst pod_seed = Pod{value: 1}\nstruct Outer { text string cell Pod }\nconst outer_seed = Outer{text: "x", cell: Pod{value: 1}}\n'
+	for before in [false, true] {
+		for i, body in [
+			'copy := seed\nreturn copy.value',
+			'copy := alias_seed\nreturn copy.value',
+			'copy := array_seed\nreturn copy[0].value',
+			'copy := outer_seed\nreturn copy.cell.value',
+			// A POD clone is conservatively excluded too: an owning outer value
+			// can dispatch it even when copying the POD directly would not.
+			'copy := pod_seed\nreturn copy.value',
+		] {
+			helper := '@[comptime]\nfn compute() int {\n${body}\n}\n'
+			constant := 'const answer = compute()\n'
+			ordered := if before { constant + helper } else { helper + constant }
+			os.write_file(source, declarations + ordered + 'fn main() { println(answer) }\n')!
+			for mode in ['-ownership', '-autofree'] {
+				required := os.exec([...args, mode, '-o',
+					os.join_path(root, 'required_${mode[1..]}_${before}_${i}.c'), source])
+				assert required.exit_code != 0, '${mode} ${before} ${i}: ${required.output}'
+				assert required.output.contains('cannot evaluate const `answer`'), required.output
+				assert required.output.contains('types with implicit clone are not supported'), required.output
+			}
+		}
+		control_helpers := '@[comptime]\nfn direct() int {\ncopy := seed\nreturn copy.value\n}\n@[comptime]\nfn nested() int {\ncopy := outer_seed\nreturn copy.cell.value\n}\n@[comptime]\nfn pod() int {\ncopy := pod_seed\nreturn copy.value\n}\n'
+		control_constants := 'const direct_value = direct()\nconst nested_value = nested()\nconst pod_value = pod()\n'
+		control_ordered := if before {
+			control_constants + control_helpers
+		} else {
+			control_helpers + control_constants
+		}
+		control_main := 'fn main() {\nprintln(direct_value)\nprintln(direct())\nprintln(nested_value)\nprintln(nested())\nprintln(pod_value)\nprintln(pod())\n}\n'
+		control_program := declarations + control_ordered + control_main
+		os.write_file(source, control_program)!
+		plain := os.join_path(root, 'default_${before}${suffix}')
+		plain_build := os.exec([...args, '-o', plain, source])
+		assert plain_build.exit_code == 0, '${before}: ${plain_build.output}'
+		plain_result := os.exec([plain])
+		assert plain_result.exit_code == 0, '${before}: ${plain_result.output}'
+		assert plain_result.output.trim_space() == '1\n1\n1\n1\n1\n1', '${before}: ${plain_result.output}'
+		os.write_file(source, control_program.replace('@[comptime]\n', ''))!
+		for mode in ['-ownership', '-autofree'] {
+			ordinary := os.join_path(root, 'ordinary_${mode[1..]}_${before}${suffix}')
+			ordinary_build := os.exec([...args, mode, '-o', ordinary, source])
+			assert ordinary_build.exit_code == 0, '${mode} ${before}: ${ordinary_build.output}'
+			ordinary_result := os.exec([ordinary])
+			assert ordinary_result.exit_code == 0, '${mode} ${before}: ${ordinary_result.output}'
+			assert ordinary_result.output.trim_space() == '11\n11\n11\n11\n1\n1', '${mode} ${before}: ${ordinary_result.output}'
+		}
+		// Unexecuted copies and erased fixed-array bases do not call clone.
+		inactive_helpers := '@[comptime]\nfn inactive() int {\nif false {\ncopy := seed\nreturn copy.value\n}\nreturn 7\n}\n@[comptime]\nfn erased() int { return ([seed]!).len }\n'
+		inactive_constants := 'const skipped = inactive()\nconst length = erased()\n'
+		inactive_ordered := if before {
+			inactive_constants + inactive_helpers
+		} else {
+			inactive_helpers + inactive_constants
+		}
+		os.write_file(source, declarations + inactive_ordered + 'fn main() {\nprintln(skipped)\nprintln(inactive())\nprintln(length)\nprintln(erased())\n}\n')!
+		for mode in ['-ownership', '-autofree'] {
+			inactive := os.join_path(root, 'inactive_${mode[1..]}_${before}${suffix}')
+			inactive_build := os.exec([...args, mode, '-o', inactive, source])
+			assert inactive_build.exit_code == 0, '${mode} ${before}: ${inactive_build.output}'
+			inactive_result := os.exec([inactive])
+			assert inactive_result.exit_code == 0, '${mode} ${before}: ${inactive_result.output}'
+			assert inactive_result.output.trim_space() == '7\n7\n1\n1', '${mode} ${before}: ${inactive_result.output}'
+		}
+	}
+}

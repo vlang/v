@@ -373,6 +373,11 @@ fn (mut e ConstEval) zero(destination Type) !ComptimeConstValue {
 			if e.tc.ownership_type_has_explicit_drop(base.name_id) {
 				return error('types with implicit cleanup are not supported (`${base.name()}`)')
 			}
+			// An owning outer copy can call a nested POD field's clone, too.
+			// Reject reached clone-bearing structs without guessing copy context.
+			if e.tc.ownership_type_has_clone_method(base) {
+				return error('types with implicit clone are not supported (`${base.name()}`)')
+			}
 		}
 		file := e.tc.struct_files[base.name_id] or { e.tc.cur_file }
 		module_name := e.tc.struct_modules[base.name_id] or { e.tc.cur_module }

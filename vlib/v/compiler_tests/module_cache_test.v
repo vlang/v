@@ -8734,6 +8734,41 @@ fn test_module_cache_comptime_helpers_keep_import_and_value_bindings() {
 	}
 }
 
+fn test_module_cache_comptime_values_reject_implicit_clone() {
+	v3_bin := module_cache_compiler()
+	root := os.join_path(os.temp_dir(), 'v3_comptime_cache_clone_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	project := os.join_path(root, 'project')
+	modules := os.join_path(root, 'modules')
+	cache_dir := os.join_path(root, 'cache')
+	write_module_cache_file(project, 'v.mod', "Module { name: 'comptime_cache_clone' }\n")
+	write_module_cache_file(modules, 'clones/clones.v', 'module clones\nstruct Cell { text string value int }\nfn (cell &Cell) clone() Cell { return Cell{text: cell.text, value: cell.value + 10} }\nconst seed = Cell{text: "x", value: 1}\n@[comptime]\npub fn value() int {\ncopy := seed\nreturn copy.value\n}\n')
+	main_file := os.join_path(project, 'main.v')
+	args := ['env', 'V3CACHE=${cache_dir}', 'VMODULES=${modules}', v3_bin, '-new-compiler',
+		'-no-retry-compilation', '-ownership', '-cc', 'cc', '-gc', 'none', '-show-timings']
+	for phase in ['cold', 'warm'] {
+		write_module_cache_file(project, 'main.v', 'module main\nimport clones\nconst answer = clones.value()\nfn main() { println(answer) }\n// ${phase}\n')
+		required := os.exec([...args, '-o', os.join_path(root, 'required_${phase}'), main_file])
+		assert required.exit_code != 0, '${phase}: ${required.output}'
+		assert required.output.contains('cannot evaluate const `answer`'), required.output
+		assert required.output.contains('types with implicit clone are not supported'), required.output
+		// The ordinary caller publishes the helper cache used by the next phase.
+		write_module_cache_file(project, 'main.v', 'module main\nimport clones\nfn main() { println(clones.value()) }\n// ${phase}\n')
+		output := os.join_path(root, 'ordinary_${phase}')
+		built := os.exec([...args, '-o', output, main_file])
+		assert built.exit_code == 0, '${phase}: ${built.output}'
+		assert run_module_cache_binary(output) == '11', phase
+		helper_header := module_cache_artifact(cache_dir, 'clones_', '.vh')
+		assert helper_header.len > 0
+		assert !modulecache.header_needs_source(modulecache.Entry{ header: helper_header })
+		if phase == 'warm' {
+			parsed_headers := built.output.split_into_lines().filter(it.trim_space().starts_with('.vh files:'))
+			assert parsed_headers.any(it.contains(helper_header)), built.output
+		}
+	}
+}
+
 // Drain both pipes while the child runs, so a full stderr pipe cannot block stdout.
 fn cache_capture_files(arguments []string, stdout_file string, stderr_file string, variables map[string]string) os.Result {
 	mut process := os.new_process(arguments[0])

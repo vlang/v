@@ -2014,3 +2014,71 @@ fn test_comptime_const_requirement_scan_keeps_runtime_typeof_operands() ! {
 		}
 	}
 }
+
+fn test_comptime_const_ownership_clone_restriction_is_reached() ! {
+	path := os.join_path(os.vtmp_dir(), 'comptime_const_implicit_clone_${os.getpid()}.v')
+	defer { os.rm(path) or {} }
+	declarations := 'struct Cell {\nname string\nvalue int\n}\ntype CellAlias = Cell\nstruct Wrapper { cell Cell }\nstruct Pod { value int }\nstruct Owner {\nname string\nchild Pod\n}\nstruct Plain { value int }\nstruct PlainOwner {\nname string\nvalue int\n}\nconst seed = Cell{name: "x", value: 1}\nconst alias_seed = CellAlias{name: "x", value: 1}\nconst wrapped = Wrapper{cell: Cell{name: "x", value: 1}}\nconst cells = [Cell{name: "x", value: 1}]!\nconst pod_seed = Pod{value: 1}\nconst owned_pod = Owner{name: "x", child: Pod{value: 1}}\nconst plain_owned_seed = PlainOwner{name: "x", value: 1}\n'
+	methods := 'fn (cell Cell) clone() Cell { return Cell{name: cell.name, value: cell.value + 10} }\nfn (pod Pod) clone() Pod { return Pod{value: pod.value + 10} }\n@[comptime]\nfn make_cell() Cell { assert false return Cell{} }\n@[comptime]\nfn make_cells() [1]Cell { assert false return [1]Cell{} }\n'
+	for body, rejects_owned in {
+		'copy := seed return copy.value':                                  true
+		'copy := alias_seed return copy.value':                            true
+		'copy := wrapped return copy.cell.value':                          true
+		'copy := cells return copy[0].value':                              true
+		'copy := owned_pod return copy.child.value':                       true
+		'copy := pod_seed return copy.value':                              true
+		'copy := Cell{name: "x", value: 1} return copy.value':             true
+		'if false { copy := seed return copy.value } return 1':            false
+		'$if false { copy := seed return copy.value } $else { return 1 }': false
+		'return [1]Cell{}.len':                                            false
+		'return [1]CellAlias{}.len':                                       false
+		'return make_cells().len':                                         false
+		'plain := Plain{value: 1} return plain.value':                     false
+		'copy := plain_owned_seed return copy.value':                      false
+	} {
+		mut rejected := false
+		$if ownership ? {
+			rejected = rejects_owned
+		}
+		for constant_first in [false, true] {
+			helpers := methods + '@[comptime]\nfn compute() int { ${body} }\n'
+			constants := 'const answer = compute()\nconst type_label = typeof(make_cell()).name\n'
+			source := declarations + if constant_first {
+				constants + helpers
+			} else {
+				helpers + constants
+			}
+			os.write_file(path, source + 'fn main() { _ = answer _ = type_label }')!
+			mut p := parser.Parser.new(pref.new_preferences())
+			a := p.parse_file(path)
+			assert p.diagnostics.len == 0, p.diagnostics.str()
+			mut tc := TypeChecker.new(a)
+			tc.collect(a)
+			for checked in [false, true] {
+				if checked { tc.check_semantics() }
+				// Clone compatibility is collected from signatures, independently
+				// of body order or later ownership projection annotations.
+				assert tc.ownership_type_has_clone_method(tc.parse_type(flat.source_type_id('Cell')))
+				assert tc.ownership_type_has_clone_method(tc.parse_type(flat.source_type_id('Pod')))
+				assert !tc.ownership_type_has_clone_method(tc.parse_type(flat.source_type_id('Plain')))
+				assert !tc.requires_comptime_const(tc.const_exprs['type_label']!)
+				assert 'type_label' !in tc.comptime_const_values
+				if rejected {
+					if checked {
+						assert tc.errors.any(it.msg.contains('cannot evaluate const `answer`') && it.msg.contains('types with implicit clone are not supported')), '${body}, constant_first=${constant_first}: ${tc.errors}'
+					}
+					if value := tc.eval_comptime_const(tc.const_exprs['answer']!) {
+						assert false, '${body}, constant_first=${constant_first}, checked=${checked}: unexpectedly evaluated ${value.integer}'
+					} else {
+						assert err.msg().contains('types with implicit clone are not supported'), '${body}, constant_first=${constant_first}, checked=${checked}: ${err}'
+					}
+					assert 'answer' !in tc.comptime_const_values
+				} else {
+					assert tc.errors.len == 0, '${body}, constant_first=${constant_first}, checked=${checked}: ${tc.errors}'
+					value := tc.eval_comptime_const(tc.const_exprs['answer']!)!
+					assert value.integer == 1, '${body}, constant_first=${constant_first}, checked=${checked}: ${value.integer}'
+				}
+			}
+		}
+	}
+}

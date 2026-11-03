@@ -4288,8 +4288,10 @@ overloaded operators and index getters/setters, are not supported by this evalua
 Gated indexing (`#[...]`) is also unsupported; ordinary fixed-array indexing remains available.
 For C-style loops with `i <= bound; i++` or `i >= bound; i--`, counters of an alias type are
 unsupported when the counter is at its maximum before incrementing or zero before decrementing.
-In `-ownership` and `-autofree` builds, values with implicit `drop` or `free` cleanup are
-unsupported, including local values and fields nested inside other values.
+In `-ownership` and `-autofree` builds, reached values with implicit `drop` or `free` cleanup
+or a compatible custom `clone()` method are unsupported, including local values and nested fields.
+This conservatively excludes plain structs with custom `clone()` methods too: an owning outer
+value can invoke such a method on a nested field. Default-mode evaluation remains available.
 Ordinary calls to the same function outside constant expressions remain
 runtime calls. Calls inside a function literal or lambda do not opt the callback initializer into
 required evaluation, because creating a callback does not execute its body.
