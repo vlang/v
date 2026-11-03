@@ -158,8 +158,9 @@ fn (mut g FlatGen) gen_profile_support() {
 		g.writeln('extern int mach_timebase_info(mach_timebase_info_data_t*);')
 	}
 	g.writeln('// V profile counters:')
+	linkage_attr := g.object_file_variable_linkage()
 	for pc in g.profile_counters {
-		g.writeln('double ${pc.counter_name} = 0.0; double ${pc.counter_name}_only_current = 0.0; u64 ${pc.calls_name} = 0;')
+		g.writeln('${linkage_attr}double ${pc.counter_name} = 0.0; ${linkage_attr}double ${pc.counter_name}_only_current = 0.0; ${linkage_attr}u64 ${pc.calls_name} = 0;')
 	}
 	g.writeln('// V profile thread local:')
 	g.writeln('#if defined(__TINYC__)')
@@ -181,7 +182,7 @@ fn (mut g FlatGen) gen_profile_support() {
 	g.writeln('#ifdef PROF_THREAD_LOCAL')
 	g.writeln('static PROF_THREAD_LOCAL double prof_measured_time = 0.0;')
 	g.writeln('#else')
-	g.writeln('double prof_measured_time = 0.0; // multithreaded: wrong values for func times without its children')
+	g.writeln('${linkage_attr}double prof_measured_time = 0.0; // multithreaded: wrong values for func times without its children')
 	g.writeln('#endif')
 	g.writeln('void vprint_profile_stats(void) {')
 	g.indent++

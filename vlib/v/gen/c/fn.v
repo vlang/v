@@ -4632,8 +4632,9 @@ fn (mut g FlatGen) detached_spawn_aggregate_cleanup(typ types.Type, expr string)
 		}
 	}
 	if new_names.len > 0 {
-		g.add_spawn_wrapper_def('extern IError builtin__none__;')
-		g.add_spawn_wrapper_def('extern IError builtin__error_sentinel;')
+		linkage_attr := g.object_file_variable_linkage()
+		g.add_spawn_wrapper_def('${linkage_attr}extern IError builtin__none__;')
+		g.add_spawn_wrapper_def('${linkage_attr}extern IError builtin__error_sentinel;')
 	}
 	for name_id in new_names {
 		helper_name := g.ownership_recursive_drop_helper_name(name_id)
