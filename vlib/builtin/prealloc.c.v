@@ -77,6 +77,7 @@ __global g_memory_block &VMemoryBlock
 __global g_prealloc_allocation_count i64
 __global g_prealloc_allocated_bytes i64
 __global g_prealloc_keep_at_exit bool
+__global g_prealloc_keep_freed bool
 
 // Scoped stage batches begin and free thousands of short-lived blocks, and
 // munmap+mmap churn (page-table teardown plus refaulting fresh zero pages,
@@ -604,6 +605,10 @@ fn vmemory_block_malloc_aligned(n int, align int) &u8 {
 
 @[unsafe]
 fn vmemory_block_free(mb &VMemoryBlock) {
+	if g_prealloc_keep_freed {
+		// The process is about to end (see prealloc_keep_freed_memory).
+		return
+	}
 	$if trace_prealloc ? {
 		if mb.is_scope {
 			C.fprintf(C.stderr, c'[trace_prealloc] block free block=%p id=%d start=%p used=%lld size=%lld mallocs=%d\n', mb, mb.id, mb.start, vmemory_block_used(mb), vmemory_block_size(mb), mb.mallocs)
@@ -763,6 +768,18 @@ fn prealloc_vcleanup() {
 // unmapping each block. Only call it from programs that end with the process.
 @[unsafe]
 pub fn prealloc_keep_memory_at_exit() {
+	g_prealloc_keep_at_exit = true
+}
+
+// prealloc_keep_freed_memory makes the arena blocks freed from now on stay
+// mapped as well, on every thread. Call it once the process is about to end
+// and little will be allocated any more: returning the blocks of the last
+// stages to the OS costs page-table work for every resident page, and the OS
+// reclaims the whole address space at exit with less. Nothing is reused after
+// this call, so it also implies prealloc_keep_memory_at_exit.
+@[unsafe]
+pub fn prealloc_keep_freed_memory() {
+	g_prealloc_keep_freed = true
 	g_prealloc_keep_at_exit = true
 }
 
