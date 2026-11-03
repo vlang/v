@@ -196,7 +196,8 @@ fn test_run_signal_dispositions_restart_and_finish() ! {
 		assert compiled.exit_code == 0, compiled.output
 		for check in ['ignore-hup', 'ignore-term', 'ignore-int', 'ignore-quit', 'ignore-tstp',
 			'ignore-ttin', 'ignore-ttou', 'pending', 'restart', 'finish', 'group-hup', 'group-term',
-			'group-int', 'group-quit', 'debugger-stop', 'setup-retry', 'setup-rejected', 'setup-failure'] {
+			'group-int', 'group-quit', 'moved-group-stop', 'debugger-stop', 'setup-retry',
+			'setup-rejected', 'setup-failure'] {
 			result := os.exec([binary, check])
 			assert result.exit_code == 0, '${mode} ${check}: ${result.output}'
 		}
@@ -425,6 +426,27 @@ static int check_group(int signo) {
     }
     return !separate_group || code != 42 || child_signal || received != expected_signal;
 }
+/* The old process group can disappear when an application rejoins its owner.
+ * A stale/reaped PID must also report failure instead of entering a wait. */
+static int check_moved_group_stop(void) {
+    pid_t child = fork();
+    if (child < 0) return 3;
+    if (!child) { for (;;) pause(); }
+    timeout_child = child;
+    v3_run_child_pid = child;
+    if (v3_run_signal_child(V3_RUN_STOP)) return 4;
+    int status;
+    pid_t waited;
+    do { waited = waitpid(child, &status, WUNTRACED); } while (waited < 0 && errno == EINTR);
+    if (waited != child || !WIFSTOPPED(status) || WSTOPSIG(status) != SIGSTOP) return 5;
+    if (v3_run_signal_child(V3_RUN_CONT) || kill(child, SIGKILL)) return 6;
+    reap(child, &status);
+    timeout_child = 0;
+    int failed = v3_run_signal_child(V3_RUN_STOP);
+    v3_run_child_pid = 0;
+    return failed != -1;
+}
+
 /* A debugger stopping only the child must not strand a waiter without a tty. */
 static int check_debugger_stop(void) {
     int report[2];
@@ -618,6 +640,7 @@ int main(int argc, char **argv) {
     if (argc > 1 && !strcmp(argv[1], "group-term")) result = check_group(SIGTERM);
     if (argc > 1 && !strcmp(argv[1], "group-int")) result = check_group(SIGINT);
     if (argc > 1 && !strcmp(argv[1], "group-quit")) result = check_group(SIGQUIT);
+    if (argc > 1 && !strcmp(argv[1], "moved-group-stop")) result = check_moved_group_stop();
     if (argc > 1 && !strcmp(argv[1], "debugger-stop")) result = check_debugger_stop();
     if (argc > 1 && !strcmp(argv[1], "setup-retry")) result = check_setup_retry(1);
     if (argc > 1 && !strcmp(argv[1], "setup-rejected")) result = check_setup_retry(2);

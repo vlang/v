@@ -248,7 +248,9 @@ static void v3_run_restore_terminal(void) {
 static int v3_run_foreground_child(void) {
     if (v3_run_handoff_terminal && v3_run_terminal_fd >= 0
         && v3_run_tcgetpgrp(v3_run_terminal_fd) == v3_run_owner_group) {
-        return v3_run_set_foreground((int)v3_run_child_pid);
+        int group = v3_run_getpgid((int)v3_run_child_pid);
+        if (group < 0) return -1;
+        return v3_run_set_foreground(group);
     }
     return 0;
 }
@@ -271,6 +273,9 @@ static void v3_run_observer_interrupt(int signal_number) {
  * until its group and dispositions are ready, including a fast terminal handoff. */
 static int v3_run_start_observer(const sigset_t *previous_mask) {
     if (!v3_run_handoff_terminal) return 0;
+    /* The app may rejoin the owner's job. That job receives terminal signals
+     * directly and no longer has an isolated group for an observer to join. */
+    if (v3_run_getpgid((int)v3_run_child_pid) != v3_run_child_pid) return 0;
     int control[2];
     if (v3_run_pipe(control)) return -1;
     if (v3_run_fcntl(control[0], F_SETFD, FD_CLOEXEC) < 0
@@ -490,6 +495,15 @@ int v3_run_signals_set_pid(int child_pid) {
     return result;
 }
 
+/* A child may have left the group that was verified at launch. A successful
+ * group signal still reaches its remaining members; the PID fallback reaches
+ * the app when that group is gone. Never wait for a stop that was not sent. */
+static int v3_run_signal_child(int signal_number) {
+    if (!kill(-(int)v3_run_child_pid, signal_number)
+        && v3_run_getpgid((int)v3_run_child_pid) == v3_run_child_pid) return 0;
+    return kill((int)v3_run_child_pid, signal_number);
+}
+
 /* A terminal stop can be caught by the app. The observer still suspends the
  * shell's original job and restores its terminal, without re-signalling the app. */
 static int v3_run_suspend_owner(int stop_signal, int forwarded_stop) {
@@ -514,7 +528,7 @@ static int v3_run_suspend_owner(int stop_signal, int forwarded_stop) {
         v3_run_sigprocmask(V3_RUN_SETMASK, &previous_mask, 0);
     }
     int result = v3_run_foreground_child();
-    if (!result) kill(-(int)v3_run_child_pid, V3_RUN_CONT);
+    if (!result) result = v3_run_signal_child(V3_RUN_CONT);
     int saved_errno = errno;
     v3_run_sigprocmask(V3_RUN_SETMASK, &previous_mask, 0);
     errno = saved_errno;
@@ -547,7 +561,7 @@ int v3_run_signals_wait(int *code, int *signal_number) {
                 /* A caught/ignored terminal stop can leave the app in read().
                  * Stop it and wait for its status before returning the tty to
                  * the shell, or that read can consume the shell's next command. */
-                kill(-(int)v3_run_child_pid, V3_RUN_STOP);
+                if (v3_run_signal_child(V3_RUN_STOP)) return -1;
                 continue;
             }
             sigset_t previous_mask;

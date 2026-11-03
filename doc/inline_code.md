@@ -22,7 +22,8 @@ Interactive programs receive the foreground terminal while running. Terminal inp
 shell job control (`Ctrl-Z`, `fg`, and `bg`) continue to work. Terminal interrupts also reach
 peers in an output pipeline, even if the program handles the interrupt and keeps running.
 Terminal `Ctrl-Z` also suspends the original pipeline when the program catches or ignores
-`SIGTSTP`. V stops the program before returning the terminal to the shell. Resuming with
+`SIGTSTP`. V stops the program before returning the terminal to the shell. This also applies
+when the program has moved out of its original process group. Resuming with
 `SIGCONT` discards pending stop signals, so a caught `SIGTSTP` handler may remain uncalled if
 suspension precedes its delivery.
 Failed signal setup terminates the verified program group, including its descendants.

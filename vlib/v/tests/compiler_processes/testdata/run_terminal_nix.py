@@ -267,12 +267,12 @@ int leave_app_group(void) { return setpgid(0, getpgid(getppid())); }
         "fn C.read_terminal_line(&u8, i32) i32\nfn C.install_interrupt(i32) i32\n"
         "fn C.ignore_interrupt(i32) i32\nfn C.interrupt_calls() i32\nfn C.close_stdout() i32\nfn C.leave_app_group() i32\n"
         "fn main() { mode := os.args[1]; if mode in ['catch', 'parent', 'stop'] { assert C.install_interrupt(i32(os.args[4].int())) == 0 }; "
-        "if mode == 'ignorestop' { assert C.ignore_interrupt(i32(os.args[4].int())) == 0 }; if mode == 'close' { assert C.close_stdout() == 0 }; if mode == 'move' { assert C.leave_app_group() == 0 }; os.write_file(os.args[2], os.getpid().str())!; if mode == 'move' { return }; "
-        "mut bytes := []u8{len:4096}; _ = C.read_terminal_line(bytes.data, i32(bytes.len)); "
+        "if mode == 'ignorestop' { assert C.ignore_interrupt(i32(os.args[4].int())) == 0 }; if mode == 'close' { assert C.close_stdout() == 0 }; if mode == 'move' { assert C.leave_app_group() == 0 }; os.write_file(os.args[2], os.getpid().str())!; if mode == 'move' { return }; if mode == 'movestop' { for !os.exists(os.args[2] + '.move') { time.sleep(time.millisecond) }; assert C.leave_app_group() == 0; os.write_file(os.args[2] + '.moved', 'ready')!; for !os.exists(os.args[2] + '.finish') { time.sleep(time.millisecond) } }; "
+        "if mode != 'movestop' { mut bytes := []u8{len:4096}; _ = C.read_terminal_line(bytes.data, i32(bytes.len)) }; "
         "if mode == 'parent' { for C.interrupt_calls() == 0 { time.sleep(time.millisecond) } }; "
         "os.write_file(os.args[3], C.interrupt_calls().str())! }\n")
     for mode, signo in [("default", signal.SIGINT), ("catch", signal.SIGINT),
-                         ("catch", signal.SIGQUIT), ("stop", signal.SIGTSTP), ("ignorestop", signal.SIGTSTP), ("parent", signal.SIGINT), ("close", signal.SIGINT), ("move", signal.SIGINT)]:
+                         ("catch", signal.SIGQUIT), ("stop", signal.SIGTSTP), ("ignorestop", signal.SIGTSTP), ("movestop", signal.SIGTSTP), ("parent", signal.SIGINT), ("close", signal.SIGINT), ("move", signal.SIGINT)]:
         signo = int(signo)
         ready = Path(root) / (mode + str(signo) + ".ready")
         counts = Path(root) / (mode + str(signo) + ".counts")
@@ -286,7 +286,11 @@ int leave_app_group(void) { return setpgid(0, getpgid(getppid())); }
         child = int(read_published_text(ready, 45))
         if mode != "move":
             assert os.tcgetpgrp(terminal) == child
-        if mode in ["stop", "ignorestop"]:
+        if mode == "movestop":
+            Path(str(ready) + ".move").write_text("go")
+            read_published_text(Path(str(ready) + ".moved"))
+            assert os.getpgid(child) == compiler
+        if mode in ["stop", "ignorestop", "movestop"]:
             send(b"\x1a")
             read_until(b"VPTY> ")
             wait_stopped(compiler)
@@ -295,10 +299,14 @@ int leave_app_group(void) { return setpgid(0, getpgid(getppid())); }
             wait_stopped(child)
             send(b"fg\n")
             deadline = time.monotonic() + 5
-            while os.tcgetpgrp(terminal) != child and time.monotonic() < deadline:
+            foreground = compiler if mode == "movestop" else child
+            while os.tcgetpgrp(terminal) != foreground and time.monotonic() < deadline:
                 time.sleep(0.02)
-            assert os.tcgetpgrp(terminal) == child
-            send(b"done\n")
+            assert os.tcgetpgrp(terminal) == foreground
+            if mode == "movestop":
+                Path(str(ready) + ".finish").write_text("done")
+            else:
+                send(b"done\n")
             observed = read_published_text(counts)
             # SIGCONT discards pending stop signals. The forced suspension can
             # precede the caught TSTP handler; an already-handled stop runs once.
