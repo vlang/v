@@ -74,7 +74,10 @@ fn (tc &TypeChecker) lexical_parent_link_miss(id flat.NodeId) (flat.NodeId, flat
 	if memo.generations[initial_slot] == memo.generation && memo.ids[initial_slot] == initial_idx {
 		return memo.parents[initial_slot], memo.children[initial_slot], memo.depths[initial_slot]
 	}
-	mut path := [64]flat.NodeId{}
+	// The walk stops at the nearest branch or function, a few levels up; the
+	// rare deeper nodes of a path are not memoized rather than zeroing a large
+	// buffer on every miss (nearly every queried leaf is one).
+	mut path := [16]flat.NodeId{}
 	mut path_len := 0
 	mut current := id
 	mut parent := flat.empty_node

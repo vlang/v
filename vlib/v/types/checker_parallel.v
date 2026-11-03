@@ -283,7 +283,7 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 			// The parent walk already found these nodes; avoid streaming the whole
 			// AST again just to collect declaration attributes and builder bindings.
 			for idx in arg.parent_chunk.metadata_node_ids {
-				tc.collect_direct_parent_node_metadata(a, idx, a.nodes[idx])
+				tc.collect_direct_parent_node_metadata(a, idx, a.node(flat.NodeId(idx)))
 			}
 		}
 	}
@@ -602,6 +602,15 @@ fn (mut tc TypeChecker) apply_pass2_ancillary_group(group int) {
 	} else if group == 6 || group == 9 {
 		// The module-qualified and module-less keys land in separate maps, so the
 		// largest registration set is split over two lanes.
+		if !isnil(tc.visible_mutation_cache) {
+			// A declaration registers up to four spellings; size the lane's map once.
+			mut cache := tc.visible_mutation_cache
+			if group == 9 {
+				cache.global_decls.reserve(u32(tc.visible_mutation_registrations.len * 3))
+			} else {
+				cache.decls.reserve(u32(tc.visible_mutation_registrations.len * 3))
+			}
+		}
 		for registration in tc.visible_mutation_registrations {
 			tc.register_visible_mutation_fn_decl_keys(registration.idx, registration.module_name,
 				registration.qname, registration.source_name, registration.c_qname,
@@ -5604,6 +5613,10 @@ struct CheckTypePromotionCache {
 mut:
 	values [512]&Type
 	set    [512]bool
+	// The answer per source pointer: a batch records the same `&Type` on runs
+	// of nodes, and a pointer hit needs neither the key nor the comparison.
+	ptrs       [512]voidptr
+	ptr_values [512]&Type
 }
 
 // CheckNamePromotionCache maps a still-alive worker-arena name instance to
@@ -5633,10 +5646,16 @@ fn promote_cached_name_value(name &CachedName, mut cache CheckNamePromotionCache
 
 @[direct_array_access; inline]
 fn (tc &TypeChecker) cached_check_type_promotion(typ &Type, mut cache CheckTypePromotionCache, promote_missing bool, frozen_interner bool) ?&Type {
+	ptr_slot := int((u64(voidptr(typ)) >> 4) & u64(cache.ptrs.len - 1))
+	if cache.ptrs[ptr_slot] == voidptr(typ) {
+		return cache.ptr_values[ptr_slot]
+	}
 	// Slot selection stays shallow; structural verification below guards collisions
 	// and borrowed metadata that changed since a previous lookup.
 	slot := int(canonical_intern_cache_key(typ) & u64(cache.set.len - 1))
 	if cache.set[slot] && semantic_types_equal(cache.values[slot], typ) {
+		cache.ptrs[ptr_slot] = voidptr(typ)
+		cache.ptr_values[ptr_slot] = cache.values[slot]
 		return cache.values[slot]
 	}
 	canonical := tc.probe_check_type_promotion(typ, frozen_interner) or {
@@ -5647,6 +5666,8 @@ fn (tc &TypeChecker) cached_check_type_promotion(typ &Type, mut cache CheckTypeP
 	}
 	cache.values[slot] = canonical
 	cache.set[slot] = true
+	cache.ptrs[ptr_slot] = voidptr(typ)
+	cache.ptr_values[ptr_slot] = canonical
 	return canonical
 }
 

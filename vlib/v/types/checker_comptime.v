@@ -2265,12 +2265,12 @@ fn (mut tc TypeChecker) check_node(id flat.NodeId) {
 	}
 	// Leaf nodes cannot recurse. Keep them out of the large statement checker
 	// and its re-entry bookkeeping; their diagnostics still run on every visit.
-	node := tc.a.nodes[idx]
+	node := tc.a.node(id)
 	if node.kind == .string_literal {
-		tc.check_string_literal_node(id, node)
+		tc.check_string_literal_node(id, *node)
 		return
 	}
-	kind_id := node_kind_id(node)
+	kind_id := int(node.kind)
 	if kind_id == 1 {
 		tc.check_untyped_integer_literal_overflow(id)
 		return
@@ -2328,7 +2328,7 @@ fn (mut tc TypeChecker) check_nonliteral_node(id flat.NodeId) {
 	// A function literal's return type names its own parameters; it is checked
 	// after they are bound, in check_fn_literal.
 	if node.kind != .fn_literal {
-		tc.check_node_inferred_type_witnesses(node)
+		tc.check_node_inferred_type_witnesses(&node)
 	}
 	if node.kind in [.break_stmt, .continue_stmt] {
 		tc.check_loop_control_statement(id, node)

@@ -497,7 +497,7 @@ fn test_parent_metadata_replay_matches_full_scan() {
 	for part in 0 .. 3 {
 		chunk := split.fill_direct_parent_edges_range(a, a.nodes.len * part / 3, a.nodes.len * (part + 1) / 3)
 		for idx in chunk.metadata_node_ids {
-			split.collect_direct_parent_node_metadata(a, idx, a.nodes[idx])
+			split.collect_direct_parent_node_metadata(a, idx, a.node(flat.NodeId(idx)))
 		}
 	}
 	assert split.declaration_attributes == serial.declaration_attributes

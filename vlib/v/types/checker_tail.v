@@ -5993,7 +5993,13 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 			}
 			receiver_name_id := method_type_name(direct_type)
 			receiver_name := flat.source_type_name(receiver_name_id)
-			mut has_direct_method := '${receiver_name}.${callee.value}' in tc.fn_ret_types
+			// The call usually resolved to `receiver_name.method` itself; the key
+			// is spelled again only when it did not.
+			mut has_direct_method := if spells_method_name(info.name, receiver_name, callee.value) {
+				info.name in tc.fn_ret_types
+			} else {
+				'${receiver_name}.${callee.value}' in tc.fn_ret_types
+			}
 			selected_visibility = tc.private_declaration(info.name)
 			selected_visibility_known = true
 			selected_is_private := selected_visibility != none
@@ -6060,6 +6066,16 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 		return true
 	}
 	return false
+}
+
+// spells_method_name reports whether `name` is `${receiver}.${method}`.
+@[direct_array_access]
+fn spells_method_name(name string, receiver string, method string) bool {
+	if name.len != receiver.len + 1 + method.len || name[receiver.len] != `.` {
+		return false
+	}
+	return string_bytes_equal_at(name, 0, receiver)
+		&& string_bytes_equal_at(name, receiver.len + 1, method)
 }
 
 fn (tc &TypeChecker) non_function_index_call_kind(call flat.Node) ?string {
@@ -16305,11 +16321,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	mut expanded_multi_return_arg := false
 	mut expanded_overflow_arg := flat.NodeId(-1)
 	mut logical_arg_count := recv_extra
+	print_style := is_print_style_fn_name(info.name)
 	for i in 1 + info.arg_offset .. node.children_count {
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
 		logical_arg_count++
 		arg := tc.a.node(arg_id)
-		if !info.is_variadic && arg.kind == .call && !is_print_style_fn_name(info.name) {
+		if !info.is_variadic && arg.kind == .call && !print_style {
 			arg_type := tc.cached_expr_type(arg_id) or { tc.resolve_type(arg_id) }
 			if arg_type is MultiReturn {
 				actual_count += arg_type.types.len - 1
@@ -16719,7 +16736,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 			continue
 		}
-		if !info.is_variadic && !is_print_style_fn_name(info.name) && multi_arg_type is MultiReturn
+		if !info.is_variadic && !print_style && multi_arg_type is MultiReturn
 			&& tc.a.node(check_arg_id).kind != .call {
 			expected_count := info.params.len - (if info.has_receiver { 1 } else { 0 })
 			found_count := node.children_count - 2 - info.arg_offset + multi_arg_type.types.len
@@ -17055,7 +17072,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 			continue
 		}
-		if !is_print_style_fn_name(info.name) {
+		if !print_style {
 			unlocked_access := if param_is_mut && mut_arg_node.is_mut {
 				tc.unlocked_shared_access(arg_id)
 			} else {

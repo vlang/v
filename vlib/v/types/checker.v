@@ -2662,7 +2662,7 @@ fn (mut tc TypeChecker) fill_direct_parent_edges(a &flat.FlatAst) {
 	tc.merge_direct_parent_chunk(chunk)
 	// All parent edges are ready; replay the metadata found in the same source-order walk.
 	for idx in chunk.metadata_node_ids {
-		tc.collect_direct_parent_node_metadata(a, idx, a.nodes[idx])
+		tc.collect_direct_parent_node_metadata(a, idx, a.node(flat.NodeId(idx)))
 	}
 	tc.preflight_index_nodes_len = a.nodes.len
 }
@@ -2674,7 +2674,7 @@ fn (mut tc TypeChecker) fill_direct_parent_edges_range(a &flat.FlatAst, start in
 	mut fn_cost := 0
 	profile_fn_costs := tc.fn_check_costs.len > 0
 	for parent_idx in start .. end {
-		node := a.nodes[parent_idx]
+		node := a.node(flat.NodeId(parent_idx))
 		if node.kind in [.decl_assign, .directive] {
 			chunk.metadata_node_ids << parent_idx
 		}
@@ -2705,7 +2705,7 @@ fn (mut tc TypeChecker) fill_direct_parent_edges_range(a &flat.FlatAst, start in
 			chunk.synthetic_type_ids << parent_idx
 		}
 		for child_idx in 0 .. node.children_count {
-			child := a.child(&node, child_idx)
+			child := a.child(node, child_idx)
 			idx := int(child)
 			if idx < 0 || idx >= a.nodes.len {
 				continue
@@ -2809,17 +2809,18 @@ fn (mut tc TypeChecker) comptime_methods_loop_exists() bool {
 }
 
 fn (mut tc TypeChecker) collect_direct_parent_metadata(a &flat.FlatAst) {
-	for parent_idx, node in a.nodes {
+	for parent_idx in 0 .. a.nodes.len {
+		node := a.node(flat.NodeId(parent_idx))
 		if node.kind in [.decl_assign, .directive] {
 			tc.collect_direct_parent_node_metadata(a, parent_idx, node)
 		}
 	}
 }
 
-fn (mut tc TypeChecker) collect_direct_parent_node_metadata(a &flat.FlatAst, parent_idx int, node flat.Node) {
+fn (mut tc TypeChecker) collect_direct_parent_node_metadata(a &flat.FlatAst, parent_idx int, node &flat.Node) {
 	if node.kind == .decl_assign && node.children_count >= 2 {
-		lhs := a.child_node(&node, 0)
-		if lhs.kind == .ident && tc.expr_is_strings_new_builder_call(a.child(&node, 1)) {
+		lhs := a.child_node(node, 0)
+		if lhs.kind == .ident && tc.expr_is_strings_new_builder_call(a.child(node, 1)) {
 			tc.strings_builder_candidates << parent_idx
 		}
 	} else if node.kind == .directive {
@@ -2978,6 +2979,8 @@ fn (mut tc TypeChecker) build_fn_declaration_indexes(a &flat.FlatAst) {
 // builders below each own their maps, so collection runs them on separate lanes.
 fn (mut tc TypeChecker) build_declaration_param_mutability_index(a &flat.FlatAst) {
 	tc.declaration_param_mutability = map[string][]bool{}
+	// A function declaration adds its plain and its qualified key.
+	tc.declaration_param_mutability.reserve(u32(count_fn_decls(a, tc.top_level_idx) * 2))
 	tc.index_declaration_param_mutability(a, tc.top_level_idx, '')
 }
 
@@ -3068,7 +3071,25 @@ fn (mut tc TypeChecker) build_fn_name_indexes(a &flat.FlatAst) {
 	tc.recursive_str_fn_decl_ids = map[string]int{}
 	tc.recursive_str_fn_decl_index_complete = true
 	tc.file_bare_fn_names = map[string]bool{}
+	// Every function declaration adds a key to each table (three to the
+	// recursive-str index); sized once, they are not rehashed at each doubling.
+	fn_decls := count_fn_decls(a, tc.top_level_idx)
+	tc.fn_decl_short_name_ids.reserve(u32(fn_decls))
+	tc.recursive_str_fn_decl_ids.reserve(u32(fn_decls * 3))
+	tc.file_bare_fn_names.reserve(u32(fn_decls))
+	tc.static_associated_fn_keys.reserve(u32(fn_decls))
 	tc.index_fn_names(a, tc.top_level_idx, '')
+}
+
+// count_fn_decls counts the fn_decl nodes among the top-level `entries`.
+fn count_fn_decls(a &flat.FlatAst, entries []i32) int {
+	mut count := 0
+	for index in entries {
+		if a.nodes[index].kind == .fn_decl {
+			count++
+		}
+	}
+	return count
 }
 
 fn (mut tc TypeChecker) index_fn_names(a &flat.FlatAst, entries []i32, start_module string) {
@@ -3093,7 +3114,7 @@ fn (mut tc TypeChecker) index_fn_names(a &flat.FlatAst, entries []i32, start_mod
 			continue
 		}
 		if node.kind == .fn_decl {
-			short_name := node.value.all_after_last('.')
+			short_name := short_name_view(node.value)
 			if short_name !in tc.fn_decl_short_name_ids {
 				tc.fn_decl_short_name_ids[short_name] = index
 			}

@@ -383,7 +383,7 @@ fn (mut tc TypeChecker) extend_direct_parent_index(a &flat.FlatAst, start int) {
 	chunk := tc.fill_direct_parent_edges_range(a, start, a.nodes.len)
 	tc.merge_direct_parent_chunk(chunk)
 	for idx in chunk.metadata_node_ids {
-		tc.collect_direct_parent_node_metadata(a, idx, a.nodes[idx])
+		tc.collect_direct_parent_node_metadata(a, idx, a.node(flat.NodeId(idx)))
 	}
 	tc.preflight_index_nodes_len = a.nodes.len
 	tc.direct_parent_index_trusted = true

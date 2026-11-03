@@ -19529,7 +19529,7 @@ fn (tc &TypeChecker) resolved_inferred_type(source_id u32) ?u32 {
 
 // check_node_inferred_type_witnesses checks the `typeof(expr)` expressions of
 // the type a node is annotated with, or of the type spelling in its value.
-fn (mut tc TypeChecker) check_node_inferred_type_witnesses(node flat.Node) {
+fn (mut tc TypeChecker) check_node_inferred_type_witnesses(node &flat.Node) {
 	tc.check_inferred_type_witnesses(node.typ)
 	if node.kind in [.string_literal, .char_literal, .string_interp] { return }
 	if node.value.len > 15 && node.value.contains('typeof(__expr_') {
