@@ -26431,6 +26431,11 @@ fn (g &FlatGen) const_collect_deps_inner(val_id flat.NodeId, mut deps []string, 
 }
 
 fn (g &FlatGen) const_fn_decl_node(callee_name string, callee_module string) ?flat.NodeId {
+	// Native calls have no V body. A suffix lookup could otherwise enter an
+	// unrelated V helper such as Zip.close for C.close and invent const cycles.
+	if callee_module == 'C' || callee_name.starts_with('C.') {
+		return none
+	}
 	if g.fn_decl_nodes_by_name.len == 0 && g.fn_decl_nodes_by_short.len == 0 && g.fn_decl_nodes_by_module_short.len == 0 {
 		return g.const_fn_decl_node_scan(callee_name, callee_module)
 	}
