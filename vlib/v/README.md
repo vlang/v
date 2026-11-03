@@ -110,6 +110,7 @@ and map iteration, so methods declared on the alias remain available.
 
 Inside `$for variant in T.variants`, a variant guard combined with `&&` retains its narrowed
 type for inferred generic calls in the then branch, including mutable sum type aliases.
+The checker preserves concrete variant types in locals derived from guarded payloads.
 
 ## Compiler dispatch
 

@@ -912,6 +912,67 @@ fn (mut tc TypeChecker) comptime_static_field_cases(base_type_id u32) ComptimeSt
 	}
 }
 
+fn (mut tc TypeChecker) comptime_static_variant_cases(base_type_id u32) ComptimeStaticFieldCases {
+	source_type := unalias_and_unwrap_pointer_type(tc.parse_type(tc.comptime_static_for_base_type(base_type_id)))
+	if source_type !is SumType {
+		return ComptimeStaticFieldCases{}
+	}
+	variants := tc.sum_types.type_ids(tc.sum_base_name(source_type.source_type_id())) or {
+		return ComptimeStaticFieldCases{}
+	}
+	mut cases := []ComptimeStaticFieldCase{cap: variants.len}
+	for variant in variants {
+		typ := tc.concrete_sum_variant_name(source_type.source_type_id(), variant)
+		cases << ComptimeStaticFieldCase{
+			typ:           typ
+			unaliased_typ: tc.comptime_type_match_type(typ).source_type_id()
+		}
+	}
+	return ComptimeStaticFieldCases{ known: true, cases: cases }
+}
+
+fn (mut tc TypeChecker) check_comptime_static_variant_guard(id flat.NodeId, var_name string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases, smartcasts []LocalBinding) {
+	saved_trust := tc.trust_checked_expr_types
+	tc.trust_checked_expr_types = false
+	mut memo := tc.body_resolve_memo
+	saved_memo_active := !isnil(memo) && memo.active
+	if !isnil(memo) {
+		memo.active = false
+	}
+	defer {
+		tc.trust_checked_expr_types = saved_trust
+		if !isnil(memo) {
+			memo.active = saved_memo_active
+			memo.advance_context()
+		}
+	}
+	variants := if field_cases.known { field_cases.cases } else { [ComptimeStaticFieldCase{}] }
+	for variant in variants {
+		saved_smartcasts := clone_smartcasts(tc.smartcasts)
+		tc.push_scope()
+		for binding in smartcasts {
+			typ := if binding.typ.source_type_id() == flat.source_type_id(var_name) {
+				if variant.typ != 0 {
+					*tc.parse_type(variant.typ)
+				} else {
+					unknown_type('reflected sum variant')
+				}
+			} else {
+				binding.typ
+			}
+			tc.smartcasts[binding.name] = typ
+			tc.cur_scope.insert(binding.name, typ)
+		}
+		tc.check_comptime_static_body(id, var_name, 'variants', if field_cases.known {
+			ComptimeStaticFieldCases{ known: true, cases: [variant] }
+		} else {
+			field_cases
+		}, value_cases)
+		tc.pop_scope()
+		tc.smartcasts = saved_smartcasts
+	}
+}
+
 fn (tc &TypeChecker) comptime_static_type_is_struct(typ Type, typ_name u32, raw_typ_id u32) bool {
 	if typ is Struct && tc.comptime_static_type_name_is_struct(typ.source_type_id()) {
 		return true

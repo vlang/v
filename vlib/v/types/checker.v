@@ -22208,6 +22208,8 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 
 	field_cases := if parts[1] == 'fields' {
 		tc.comptime_static_field_cases(node.typ)
+	} else if parts[1] == 'variants' {
+		tc.comptime_static_variant_cases(node.typ)
 	} else {
 		ComptimeStaticFieldCases{}
 	}
@@ -23245,6 +23247,17 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 			return
 		}
 		for i in 0 .. node.children_count {
+			if loop_kind == 'variants' && i in [1, 2] {
+				smartcasts := if i == 1 {
+					tc.extract_smartcasts(tc.a.child(&node, 0))
+				} else {
+					tc.extract_else_branch_smartcasts(tc.a.child(&node, 0))
+				}
+				if smartcasts.any(it.typ.source_type_id() == flat.source_type_id(var_name)) {
+					tc.check_comptime_static_variant_guard(tc.a.child(&node, i), var_name, field_cases, value_cases, smartcasts)
+					continue
+				}
+			}
 			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases, value_cases)
 		}
 		return
@@ -23288,7 +23301,15 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 	}
 	if !tc.comptime_subtree_references_var(id, var_name) {
 		tc.comptime_static_depth++
-		tc.check_node(id)
+		if loop_kind == 'variants' && tc.smartcasts.len > 0 && node.kind == .decl_assign {
+			// Generic cloning can annotate this local with the whole sum type.
+			// Infer it again in the current variant's scope.
+			mut declaration := node
+			declaration.typ = 0
+			tc.check_decl_assign(id, declaration)
+		} else {
+			tc.check_node(id)
+		}
 		tc.comptime_static_depth--
 		return
 	}

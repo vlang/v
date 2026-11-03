@@ -20756,6 +20756,12 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 				return *cached_type_ref2
 			}
 		}
+	} else if tc.comptime_static_depth > 0 && kind_id == 7 {
+		// A variant-dependent local can carry an annotation from an earlier
+		// generic check. Its current preflight scope has the narrowed type.
+		if typ := tc.non_file_scope_type(node.value) {
+			return typ
+		}
 	}
 	if node.kind == .selector {
 		if typ := tc.global_type_for_selector(*node) {
