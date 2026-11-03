@@ -26,6 +26,9 @@ Struct attributes such as `heap`, `minify`, and `autostr` are builtins and do no
 The standard `flag` module's metadata names, including `doc`, `xdoc`, `footer`, `name`,
 `version`, and `ignore`, are recognized builtins and do not require a custom attribute schema.
 
+The `veb` metadata names `description` and `example`, and its HTTP method attributes, including
+`connect` and `trace`, are also recognized. Builtin names are case-sensitive.
+
 ## Structured reflection on fields and enum values
 
 Struct fields and enum values expose the same typed `.attributes` view as
