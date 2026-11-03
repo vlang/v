@@ -57,9 +57,10 @@ The dependency tasks also install Node.js for the WebAssembly runtime tests.
 Native C++ objects use the platform C++ compiler for headers. On Linux, TinyCC
 links also search that compiler's C++ runtime directory, including Debian's
 versioned GCC library directory.
-The command uses the workflow's compiler flags (`-cc tcc -no-retry-compilation`
-for TCC, the default compiler for GCC, and `-cc clang` for Clang), sets the
+The command selects each lane explicitly (`-cc tcc -no-retry-compilation` for TCC,
+`-cc gcc` for GCC, and `-cc clang` for Clang), sets the
 corresponding `GITHUB_JOB`, and disables the compatibility compiler fallback.
+Explicit GCC selection prevents the installed TinyCC from becoming the GCC lane's default.
 
 The ARM64 fixtures using `cmp` or raw SIMD run with GCC or Clang; TCC's assembler
 does not support those instructions and NEON register clobbers. Linux builds
