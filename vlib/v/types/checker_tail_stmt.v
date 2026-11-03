@@ -10486,7 +10486,8 @@ fn (tc &TypeChecker) selector_fn_value_key(node flat.Node) ?string {
 	// A namespace is an identifier that names no value. Past that test, few selectors
 	// name a global or a constant: look those up before deciding whether the base is
 	// a namespace, which probes every kind of type and import.
-	if base.kind == .ident && !tc.ident_resolves_to_value(base.value)
+	base_is_value := base.kind == .ident && tc.ident_resolves_to_value(base.value)
+	if base.kind == .ident && !base_is_value
 		&& (tc.global_type_for_selector(node) != none || tc.const_type_for_selector(node) != none)
 		&& tc.is_namespace_selector(node, base) {
 		return none
@@ -10499,7 +10500,7 @@ fn (tc &TypeChecker) selector_fn_value_key(node flat.Node) ?string {
 			}
 			return none
 		}
-		if tc.ident_resolves_to_value(base.value) {
+		if base_is_value {
 			return none
 		}
 		if resolved_mod := tc.resolve_import_alias(base.value) {
