@@ -64,8 +64,8 @@ interface Handler {
 }
 '
 	declared := {
-		'Callback': true
-		'Handler':  true
+		flat.source_type_id('Callback'): true
+		flat.source_type_id('Handler'):  true
 	}
 	mut functions := map[string]FastcFunctionSignature{}
 	collect_function_signatures(source, 'contextual_signatures.v', header, prefs, []int{},

@@ -9,7 +9,7 @@ fn test_rebuilt_pointer_field_selector_preserves_mutable_argument() {
 		mut tc := types.TypeChecker.new(&a)
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 		t.set_var_type('holder', flat.source_type_id('&Holder'))
-		t.structs['Holder'] = StructInfo{
+		t.structs[flat.source_type_id('Holder')] = StructInfo{
 			name:   flat.source_type_id('Holder')
 			fields: [FieldInfo{ name: 'value', typ: flat.source_type_id('&int') }]
 		}

@@ -1,9 +1,8 @@
 // Characterization of struct-field and enum-value attributes.
-// Unlike declarations (which expose typed `VAttribute` values via
-// `.attributes`), fields and enum values expose raw strings via
-// `.attrs` — quotes preserved — and their `.attributes` view is
-// currently empty. The custom-attributes work must preserve the
-// `.attrs` strings and give fields the same typed view.
+// Fields and enum values expose raw strings via `.attrs` (quotes
+// preserved) and, like declarations, typed `VAttribute` values via
+// `.attributes`. The custom-attributes work must preserve the
+// `.attrs` strings.
 struct FieldAttrStrings {
 	name  string @[json: 'userName'; required; tag: 7]
 	flag  bool   @[skip]
@@ -31,14 +30,15 @@ fn test_field_attrs_strings() {
 	]
 }
 
-fn test_field_attributes_view_is_empty() {
+fn test_field_attributes_view() {
+	mut got := []string{}
 	$for field in FieldAttrStrings.fields {
-		mut count := 0
 		$for attr in field.attributes {
-			count += attr.name.len + 1
+			got << '${field.name}:${attr.name}|${attr.has_arg}|${attr.arg}'
 		}
-		assert count == 0
 	}
+	assert got == ['name:json|true|userName', 'name:required|false|', 'name:tag|true|7',
+		'flag:skip|false|']
 }
 
 fn test_enum_value_attrs_strings() {

@@ -16,7 +16,7 @@ fn (mut g Parser) promote_spawn_parameter_storage() {
 		g.locals[name] = FastcLocal{
 			...local
 			is_reference: true
-			typ:          flat.source_type_id(local.typ_text() + '*')
+			typ:          flat.source_type_composition_two(.concat, local.typ, flat.source_type_id('*'))
 			c_name:       storage
 		}
 	}

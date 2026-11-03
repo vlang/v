@@ -7,18 +7,18 @@ fn test_numeric_alias_normalization_preserves_one_step_and_recursive_results() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	leaf_id := flat.source_type_id('Leaf')
-	tc.type_aliases.set_id('Leaf', flat.source_type_int)
-	tc.type_aliases.set_id('Bare', leaf_id)
-	tc.type_aliases.set_id('current.Local', leaf_id)
-	tc.type_aliases.set_id('dep.Exact', leaf_id)
+	tc.type_aliases.set_id(flat.source_type_id('Leaf'), flat.source_type_int)
+	tc.type_aliases.set_id(flat.source_type_id('Bare'), leaf_id)
+	tc.type_aliases.set_id(flat.source_type_id('current.Local'), leaf_id)
+	tc.type_aliases.set_id(flat.source_type_id('dep.Exact'), leaf_id)
 	tc.file_imports[file_import_key('alias.v', 'renamed')] = 'dep'
-	tc.structs['dep.Canonical'] = []types.StructField{}
+	tc.structs[flat.source_type_id('dep.Canonical')] = []types.StructField{}
 	mut t := Transformer{
 		tc:         &tc
 		cur_file:   'alias.v'
 		cur_module: 'current'
 	}
-	t.type_alias_suffixes['SuffixOnly'] = leaf_id
+	t.type_alias_suffixes[flat.source_type_id('SuffixOnly')] = leaf_id
 	// Bare, module-qualified fallback and suffix aliases return their direct target.
 	for name in ['Bare', 'Local', 'SuffixOnly'] {
 		assert t.normalize_type_alias_uncached(flat.source_type_id(name)) == leaf_id
@@ -38,9 +38,9 @@ fn test_numeric_alias_normalization_preserves_one_step_and_recursive_results() {
 fn test_numeric_alias_normalization_preserves_composites_and_malformed_spellings() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set_id('Bare', flat.source_type_id('Leaf'))
-	tc.type_aliases.set_id('Leaf', flat.source_type_int)
-	tc.type_aliases.set_id('Empty', 0)
+	tc.type_aliases.set_id(flat.source_type_id('Bare'), flat.source_type_id('Leaf'))
+	tc.type_aliases.set_id(flat.source_type_id('Leaf'), flat.source_type_int)
+	tc.type_aliases.set_id(flat.source_type_id('Empty'), 0)
 	uncached := Transformer{
 		tc: &tc
 	}

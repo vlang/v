@@ -1,5 +1,43 @@
 # Local CI runners
 
+## Running Windows CI on an installed VM
+
+From a built Windows checkout with PowerShell 7.4 or newer (`pwsh`) and the workflow's
+dependencies installed, run a compiler's validation sequence or a single step:
+
+```powershell
+./v.exe run ci/windows_ci.vsh tcc list
+./v.exe run ci/windows_ci.vsh tcc self_tests
+./v.exe run ci/windows_ci.vsh tcc ci
+```
+
+Use `gcc` or `msvc` in place of `tcc` for the other compiler lanes. MSVC requires
+a developer shell with `cl.exe` and the Windows SDK on PATH. The runner reads each
+step's commands and environment directly from `.github/workflows/windows_ci_*.yml`.
+It uses this checkout's compiler, disables compatibility fallback, sets fail-fast,
+and preserves an explicitly set `VJOBS` for smaller VMs. It also runs the workflow's
+private cache setup and imports `GITHUB_ENV` and `GITHUB_PATH` changes between steps.
+
+The sequence starts after bootstrap and dependency provisioning. Install those
+prerequisites before running it. Hosted MSYS2 graphics steps and the separate
+multiwindow jobs remain in GitHub Actions. Use `list` to see the local selection;
+it is also available on other operating systems. A failed step stops the sequence.
+Repeat its step ID to retry it. To focus a self-test run on an existing failure:
+
+```powershell
+$env:VTEST_ONLY = 'goroutines_windows_test.v,legacy_json_edge_cases_test.v'
+./v.exe run ci/windows_ci.vsh tcc self_tests
+Remove-Item Env:VTEST_ONLY
+```
+
+Selecting `msvc multiwindow_d3d11_warp_regressions_and_runtime_probes` also runs
+`prepare_multiwindow_job_object_watchdog` first, rebuilding the generated helper
+needed by the probe. The complete `msvc ci` sequence already includes it in workflow order.
+
+Test the runner and workflow selection with `./v.exe test ci/windows/`. On Windows,
+this executes real PowerShell subprocesses to check compiler selection, environment
+propagation, quoting, and failure handling.
+
 ## Resuming the Linux CI jobs
 
 From the repository root of a built checkout on Linux, run:
@@ -10,11 +48,24 @@ From the repository root of a built checkout on Linux, run:
 
 This runs the script tasks from `.github/workflows/linux_ci.yml` in workflow order:
 TCC, GCC, then Clang. It does not bootstrap V or run the workflow's separate shell
-canaries. The tasks include dependency installation with `sudo apt`; use the Ubuntu
-24.04 environment expected by the workflow, with all three C compilers available.
+canaries. The tasks include dependency installation with `sudo apt`; Ubuntu 24.04
+and Debian 13 are supported, with all three C compilers available. Wayland uses
+the runtime package `libwayland-egl1`. The wkhtmltox C interop library uses the
+guest's Debian package architecture, with the Jammy build on Ubuntu and the
+Bookworm build on Debian. Its dependencies are installed through APT.
+The dependency tasks also install Node.js for the WebAssembly runtime tests.
+Native C++ objects use the platform C++ compiler for headers. On Linux, TinyCC
+links also search that compiler's C++ runtime directory, including Debian's
+versioned GCC library directory.
 The command uses the workflow's compiler flags (`-cc tcc -no-retry-compilation`
 for TCC, the default compiler for GCC, and `-cc clang` for Clang), sets the
 corresponding `GITHUB_JOB`, and disables the compatibility compiler fallback.
+
+The ARM64 fixtures using `cmp` or raw SIMD run with GCC or Clang; TCC's assembler
+does not support those instructions and NEON register clobbers. Linux builds
+enable the ARMv8 crypto assembler extension, while the PMULL runtime test still
+checks the host CPU's capabilities. Generic bool assembly uses byte loads and
+stores, with a guard checking that adjacent bytes remain unchanged.
 
 Like the macOS runner, it saves the current task **before** executing it and sets
 `VTEST_FAIL_FAST=1`. It retains Linux CI's normal test worker count. Fix a failure
@@ -69,11 +120,17 @@ its checkpoints, so the following invocation starts from the beginning.
 
 The aggregate `ci` command sets `VTEST_FAIL_FAST=1` and `VJOBS=1`, overriding inherited
 values. Test and example-build sessions stop at the first reported failure, with no
-other files already running in parallel. The `self_tests` task retains this single-worker
-setting; standalone GitHub Actions self-test tasks still use every available CPU.
+other files already running in parallel. The `self_tests` task retains the explicit
+`VJOBS` setting, including the workflow's three workers and the aggregate runner's
+single worker. Without `VJOBS`, GitHub Actions self-tests use one worker when
+`VTEST_FAIL_FAST=1`, or every available CPU otherwise.
 `test-cleancode` also stops after a failed
 vetting session instead of starting formatting checks. The failed task's checkpoint
 is retained. Existing per-test retry and known-flaky-test policies are unchanged.
+
+The macOS `self_tests` task uses `/usr/bin/caffeinate` to wake the display and keep
+it awake while the tests run. Metal frame callbacks require an awake display.
+The display assertion is released when the task exits, including after a failure.
 
 Progress is stored in `/tmp/v-macos-ci-<uid>-<checkout-hash>.progress`; the command
 prints the exact path. The hash uses the canonical checkout directory, not a commit
@@ -106,6 +163,11 @@ additional state too. Normal individual-task and `all` invocations remain exhaus
 It checkpoints the successful instrumented compiler build. A retry runs the failing
 self-compilation without rebuilding `v2`, unless that binary is missing or changed.
 Other non-test commands retain their existing task-level retry behavior.
+
+On macOS, `build-examples` builds `examples/macos_tray` as a project folder so its
+platform-specific source is included alongside the main program.
+`examples/mini_software_emulator` is also built as a project folder on every platform,
+including its CPU, instruction handlers and machine state in one program.
 
 A resumed pass is not a fresh validation of earlier tasks or tests against shared
 source changes. Compiler and library edits deliberately preserve progress. Use

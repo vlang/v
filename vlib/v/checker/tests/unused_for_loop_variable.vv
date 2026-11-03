@@ -1,0 +1,66 @@
+fn main() {
+	for j in 0 .. 3 {
+		println('x')
+	}
+	k := 5
+	for array_value in [1, 2] {
+		println('array')
+	}
+	for array_index, value in [1, 2] {
+		println(value)
+	}
+	for index, unused_value in [1, 2] {
+		println(index)
+	}
+	for map_key, map_value in {'a': 1} {
+		println('map')
+	}
+	for iterator_value in UnusedLoopIterator{remaining: 1} {
+		println('iterator')
+	}
+	for reused in 0 .. 2 {
+		println(reused)
+	}
+	for reused in 0 .. 2 {
+		println('unused')
+	}
+	for _ in 0 .. 2 {
+		println('discard')
+	}
+	for value in [1] {
+		_ = value
+	}
+	for outer in 0 .. 2 {
+		for inner in 0 .. 2 {
+			println(outer + inner)
+		}
+	}
+	mut values := [1, 2]
+	for mut value in values {
+		value = 3
+	}
+	for index, mut value in values {
+		value = index
+	}
+	println(values)
+	for value in [1] {
+		$if windows {
+			println(value)
+		} $else {
+			println('other platform')
+		}
+	}
+}
+
+struct UnusedLoopIterator {
+mut:
+	remaining int
+}
+
+fn (mut iter UnusedLoopIterator) next() ?int {
+	if iter.remaining == 0 {
+		return none
+	}
+	iter.remaining--
+	return iter.remaining
+}

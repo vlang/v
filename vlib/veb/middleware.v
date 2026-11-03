@@ -210,29 +210,150 @@ enum ContentEncoding {
 	zstd
 }
 
+// min_compression_body_bytes is the smallest response body eligible for
+// dynamic compression. Below this size the framing overhead exceeds any
+// savings: compressed output is usually larger than the input, and the CPU
+// cost buys nothing. (Ported from viltrum's gzip_min_bytes.)
+const min_compression_body_bytes = 256
+
+// compressible_content_type reports whether responses with the given
+// Content-Type value are worth compressing. Already-compressed formats
+// (images, audio, video, archives) are skipped; an empty value is allowed so
+// untyped responses keep the previous behavior.
+fn compressible_content_type(content_type string) bool {
+	ct := content_type.all_before(';').trim_space().to_lower()
+	if ct == '' {
+		return true
+	}
+	if ct.starts_with('text/') {
+		return true
+	}
+	for token in ['json', 'javascript', 'ecmascript', 'xml', 'svg'] {
+		if ct.contains(token) {
+			return true
+		}
+	}
+	return false
+}
+
+// response_allows_body reports whether the status code permits a message body.
+fn response_allows_body(status_code int) bool {
+	if status_code >= 100 && status_code < 200 {
+		return false
+	}
+	return status_code != 204 && status_code != 205 && status_code != 304
+}
+
+// qvalue_is_zero reports whether an Accept-Encoding q-value refuses the
+// coding. Only the zero value matters here: any positive q-value is
+// acceptable, and zstd is always preferred over gzip when both are offered.
+fn qvalue_is_zero(qval string) bool {
+	t := qval.trim_space()
+	if t == '0' {
+		return true
+	}
+	if t.starts_with('0.') {
+		for c in t[2..] {
+			if c != `0` {
+				return false
+			}
+		}
+		return true
+	}
+	return false
+}
+
+// client_accepts_encoding reports whether an Accept-Encoding header value
+// offers `encoding`. An explicit entry wins over `*`, an explicit `;q=0`
+// refuses the coding, matching is case-insensitive, and a missing header
+// accepts nothing.
+fn client_accepts_encoding(accept_encoding string, encoding string) bool {
+	mut star_q_zero := true
+	mut star_seen := false
+	for part in accept_encoding.split(',') {
+		mut coding := part.trim_space().to_lower()
+		mut refused := false
+		if idx := coding.index(';') {
+			params := coding[idx + 1..]
+			coding = coding[..idx].trim_space()
+			for param in params.split(';') {
+				p := param.replace(' ', '').replace('\t', '')
+				if p.starts_with('q=') && qvalue_is_zero(p[2..]) {
+					refused = true
+					break
+				}
+			}
+		}
+		if coding == encoding {
+			return !refused
+		}
+		if coding == '*' {
+			star_seen = true
+			star_q_zero = refused
+		}
+	}
+	return star_seen && !star_q_zero
+}
+
 // send_compressed_response compresses the response body and updates the response.
 // Returns true if compression should be skipped, false if compression was applied.
+//
+// Compression is skipped when it cannot pay for itself or would be wrong:
+// already-compressed or streaming file responses, statuses without a body,
+// bodies below min_compression_body_bytes, incompressible media types, clients
+// that did not offer the encoding (q-values honoured), and output that would
+// be larger than the input.
 fn send_compressed_response(mut ctx Context, encoding ContentEncoding) bool {
-	compressed, encoding_name := match encoding {
+	if should_skip_compression(ctx) {
+		return true
+	}
+	if !response_allows_body(ctx.res.status_code) {
+		return true
+	}
+	body := ctx.res.body
+	if body.len < min_compression_body_bytes {
+		return true
+	}
+	content_type := ctx.res.header.get(.content_type) or { '' }
+	// Caches must not serve a compressed variant to clients that did not ask
+	// for one; advertise the variance even when this response stays plaintext.
+	add_accept_encoding_vary(mut ctx)
+	if !compressible_content_type(content_type) {
+		return true
+	}
+	encoding_name := if encoding == .zstd { 'zstd' } else { 'gzip' }
+	accept_encoding := ctx.req.header.values(.accept_encoding).join(',')
+	if !client_accepts_encoding(accept_encoding, encoding_name) {
+		return true
+	}
+	compressed, _ := match encoding {
 		.zstd {
-			data := zstd.compress(ctx.res.body.bytes()) or {
+			data := zstd.compress(body.bytes()) or {
 				eprintln('[veb] error while compressing with zstd: ${err.msg()}')
 				return true
 			}
 			data, 'zstd'
 		}
 		.gzip {
-			data := gzip.compress(ctx.res.body.bytes()) or {
+			data := gzip.compress(body.bytes()) or {
 				eprintln('[veb] error while compressing with gzip: ${err.msg()}')
 				return true
 			}
 			data, 'gzip'
 		}
 	}
+	// Compression that does not shrink the body only wastes bytes on the wire.
+	if compressed.len >= body.len {
+		return true
+	}
 
 	// Set HTTP headers for compressed content
 	ctx.res.header.add(.content_encoding, encoding_name)
-	ctx.res.header.set(.vary, 'Accept-Encoding')
+	if etag := ctx.res.header.get(.etag) {
+		if !etag.starts_with('W/') {
+			ctx.res.header.set(.etag, 'W/${etag}')
+		}
+	}
 
 	// Replace the response body with the compressed data and update Content-Length.
 	// The normal response path will handle sending it.
@@ -255,6 +376,17 @@ fn should_skip_compression(ctx Context) bool {
 		return true
 	}
 	return false
+}
+
+fn add_accept_encoding_vary(mut ctx Context) {
+	for value in ctx.res.header.values(.vary) {
+		for field in value.split(',') {
+			if field.trim_space().to_lower() in ['*', 'accept-encoding'] {
+				return
+			}
+		}
+	}
+	ctx.res.header.add(.vary, 'Accept-Encoding')
 }
 
 // encode_gzip adds gzip encoding to the HTTP Response body.
@@ -307,21 +439,20 @@ pub fn encode_auto[T]() MiddlewareOptions[T] {
 				return true
 			}
 
-			// Check Accept-Encoding header to determine best compression
-			accept_encoding := ctx.req.header.get(.accept_encoding) or { '' }
-			supports_zstd := accept_encoding.contains('zstd')
-			supports_gzip := accept_encoding.contains('gzip')
+			// Check Accept-Encoding header to determine best compression,
+			// honouring q-values (`gzip;q=0` refuses compression).
+			accept_encoding := ctx.req.header.values(.accept_encoding).join(',')
 
 			// Try zstd first (better compression ratio), fallback to gzip
-			if supports_zstd {
+			if client_accepts_encoding(accept_encoding, 'zstd') {
 				return send_compressed_response(mut ctx.Context, .zstd)
 			}
-			if supports_gzip {
+			if client_accepts_encoding(accept_encoding, 'gzip') {
 				return send_compressed_response(mut ctx.Context, .gzip)
 			}
 
-			// No supported compression
-			return true
+			// Apply eligibility and Vary to the identity representation too.
+			return send_compressed_response(mut ctx.Context, .gzip)
 		}
 	}
 }

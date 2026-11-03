@@ -12,7 +12,7 @@ fn test_usable_expr_type_uses_materialized_anonymous_storage() {
 			typ:   flat.source_type_id('${prefix}Row')
 		})
 		mut tc := types.TypeChecker.new(&a)
-		tc.structs['Row'] = [types.StructField{ name: 'item', typ: types.Type(types.int_) }]
+		tc.structs[flat.source_type_id('Row')] = [types.StructField{ name: 'item', typ: types.Type(types.int_) }]
 		tc.register_synth_type(id, tc.parse_type(flat.source_type_id('${prefix}struct')))
 		mut g := FlatGen.new()
 		g.a = &a
@@ -51,7 +51,7 @@ fn test_usable_expr_type_keeps_checked_container_alive_across_dense_slot_updates
 		children_count: 1
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['Payload'] = []types.StructField{}
+	tc.structs[flat.source_type_id('Payload')] = []types.StructField{}
 	container := tc.parse_type(flat.source_type_id('[]Payload'))
 	tc.register_synth_type(value, container)
 	mut g := FlatGen.new()
@@ -144,8 +144,8 @@ fn test_body_import_type_queries_keep_source_files_and_declaration_generations()
 	tc.cur_module = 'main'
 	tc.file_imports['first.v\nmodel'] = 'first.model'
 	tc.file_imports['second.v\nmodel'] = 'second.model'
-	tc.structs['first.model.Item'] = []types.StructField{}
-	tc.structs['second.model.Item'] = []types.StructField{}
+	tc.structs[flat.source_type_id('first.model.Item')] = []types.StructField{}
+	tc.structs[flat.source_type_id('second.model.Item')] = []types.StructField{}
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
@@ -163,14 +163,14 @@ fn test_body_import_type_queries_keep_source_files_and_declaration_generations()
 	assert g.canonical_import_alias_type_in_file(flat.source_type_id('model.Item'), 'first.v') is types.Struct
 	g.end_usable_expr_type_memo()
 	// Another body can observe declarations registered after the previous one.
-	tc.structs.delete('first.model.Item')
-	tc.enum_names['first.model.Item'] = true
+	tc.structs.delete(flat.source_type_id('first.model.Item'))
+	tc.enum_names[flat.source_type_id('first.model.Item')] = true
 	g.begin_usable_expr_type_memo()
 	assert g.canonical_import_alias_type_in_file(flat.source_type_id('model.Item'), 'first.v') is types.Enum
 	g.end_usable_expr_type_memo()
 	g.usable_expr_type_memo.generation = ~u32(0)
-	tc.enum_names.delete('first.model.Item')
-	tc.structs['first.model.Item'] = []types.StructField{}
+	tc.enum_names.delete(flat.source_type_id('first.model.Item'))
+	tc.structs[flat.source_type_id('first.model.Item')] = []types.StructField{}
 	g.begin_usable_expr_type_memo()
 	assert g.canonical_import_alias_type_in_file(flat.source_type_id('model.Item'), 'first.v') is types.Struct
 }
@@ -180,7 +180,7 @@ fn test_body_import_type_queries_bypass_temporary_contexts() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.cur_file = 'caller.v'
 	tc.cur_module = 'main'
-	tc.structs['Item'] = []types.StructField{}
+	tc.structs[flat.source_type_id('Item')] = []types.StructField{}
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
@@ -188,8 +188,8 @@ fn test_body_import_type_queries_bypass_temporary_contexts() {
 	type_id := flat.source_type_id('Item')
 	g.begin_usable_expr_type_memo()
 	assert g.canonical_import_alias_type_in_file(type_id, 'caller.v') is types.Struct
-	tc.structs.delete('Item')
-	tc.enum_names['Item'] = true
+	tc.structs.delete(flat.source_type_id('Item'))
+	tc.enum_names[flat.source_type_id('Item')] = true
 	// Nested emission must resolve its own declarations without poisoning the body.
 	g.const_init_depth = 1
 	assert g.canonical_import_alias_type_in_file(type_id, 'caller.v') is types.Enum
@@ -213,7 +213,7 @@ fn test_body_import_type_queries_preserve_colliding_spelling_ids() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.cur_file = 'caller.v'
 	tc.cur_module = 'main'
-	tc.structs['CollisionStruct'] = []types.StructField{}
+	tc.structs[flat.source_type_id('CollisionStruct')] = []types.StructField{}
 	first := flat.source_type_id('CollisionStruct')
 	mask := u32(body_import_type_query_slots - 1)
 	mut second := u32(0)
@@ -222,7 +222,7 @@ fn test_body_import_type_queries_preserve_colliding_spelling_ids() {
 		id := flat.source_type_id(name)
 		if id != first && (id & mask) == (first & mask) {
 			second = id
-			tc.enum_names[name] = true
+			tc.enum_names[flat.source_type_id(name)] = true
 			break
 		}
 	}

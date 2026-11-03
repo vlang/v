@@ -166,8 +166,11 @@ fn (mut p Json5Parser) parse_container(is_object bool) !int {
 	return source_end
 }
 
+// new_json5_decoder parses the non-standard JSON5 input once in shared code.
+// Keeping the parser setup out of the generic decoder avoids cloning it for
+// every target type; only decode_root[T] needs the concrete type.
 @[manualfree]
-fn decode_json5[T](text string, mut buffer DecodeBuffer, params DecoderOptions) !T {
+fn new_json5_decoder(text string, mut buffer DecodeBuffer, params DecoderOptions) !(Decoder, Json5Parser, string) {
 	mut parser := Json5Parser{
 		scanner:     new_json5_scanner(text)
 		values_info: unsafe { buffer.values_info }
@@ -179,30 +182,52 @@ fn decode_json5[T](text string, mut buffer DecodeBuffer, params DecoderOptions) 
 		parser.source_values_info.flags |= .noslices
 		parser.output.output.flags |= .noslices
 	}
+	mut transfer_scratch := false
 	defer {
 		buffer.values_info = unsafe { parser.values_info }
-		// Only cloned strings escape the decoder; all parser storage is scratch.
-		unsafe {
-			parser.tok.lit.free()
-			parser.output.output.free()
-			parser.source_values_info.free()
-			parser.scanner.text.free()
-			free(parser.scanner)
+		if !transfer_scratch {
+			// Only cloned strings escape the decoder; all parser storage is scratch.
+			free_json5_parser_scratch(mut parser)
 		}
 	}
 	parser.parse()!
 	// JSON5 decoding clones text that escapes, so this document can always be freed.
 	normalized := parser.output.output.bytestr()
-	defer {
-		unsafe { normalized.free() }
-	}
-	mut decoder := Decoder{
+	decoder := Decoder{
 		json:               normalized
 		json5:              true
 		source_json:        text
 		source_values_info: unsafe { parser.source_values_info }
 		strict:             params.strict
 		values_info:        unsafe { parser.values_info }
+	}
+	transfer_scratch = true
+	return decoder, parser, normalized
+}
+
+@[manualfree]
+fn free_json5_parser_scratch(mut parser Json5Parser) {
+	unsafe {
+		parser.tok.lit.free()
+		parser.output.output.free()
+		parser.source_values_info.free()
+		parser.scanner.text.free()
+		free(parser.scanner)
+	}
+}
+
+@[manualfree]
+fn free_json5_decoder_scratch(mut parser Json5Parser, normalized string) {
+	free_json5_parser_scratch(mut parser)
+	unsafe { normalized.free() }
+}
+
+@[manualfree]
+fn decode_json5[T](text string, mut buffer DecodeBuffer, params DecoderOptions) !T {
+	mut decoder, mut parser, normalized := new_json5_decoder(text, mut buffer, params)!
+	defer {
+		buffer.values_info = unsafe { decoder.values_info }
+		free_json5_decoder_scratch(mut parser, normalized)
 	}
 	return decoder.decode_root[T]()
 }

@@ -31,7 +31,7 @@ fn snapshot_restore_assertion(mut a flat.FlatAst, name string, pattern string) f
 
 fn snapshot_restore_seed(mut tc TypeChecker) string {
 	tc.cur_scope = new_scope(tc.file_scope)
-	tc.sum_types.set('Value', ['int', 'string'])
+	tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
 	tc.cur_scope.insert('value', Type(SumType{ name_id: flat.source_type_id('Value') }))
 	tc.cur_scope.insert('other', Type(SumType{ name_id: flat.source_type_id('Value') }))
 	tc.cur_scope.insert('branch_value', Type(SumType{ name_id: flat.source_type_id('Value') }))

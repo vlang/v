@@ -9,7 +9,7 @@ fn test_scoped_signature_writes_detach_prepared_bindings_and_survive_release() {
 	mut master := new_transformer(mut a, &tc, map[string]bool{})
 	master.fn_ret_types.set_id('existing', flat.source_type_int)
 	master.globals.set_id('global_value', flat.source_type_u64)
-	master.qualified_types.set_id('Record', flat.source_type_id('sample.Record'))
+	master.qualified_types.set_id(flat.source_type_id('Record'), flat.source_type_id('sample.Record'))
 	mut helper := master.fork_worker(&a, tc.fork_for_parallel_transform(&a))
 	peer := master.fork_worker(&a, tc.fork_for_parallel_transform(&a))
 
@@ -18,7 +18,8 @@ fn test_scoped_signature_writes_detach_prepared_bindings_and_survive_release() {
 	mut nested := batch.fork_scoped_batch_worker(&a, batch.tc.fork_for_parallel_transform(&a))
 	assert voidptr(nested.fn_ret_types.texts) != voidptr(helper.fn_ret_types.texts)
 	assert voidptr(nested.globals.texts) != voidptr(master.globals.texts)
-	assert voidptr(nested.qualified_types.texts) != voidptr(master.qualified_types.texts)
+	// Prepared nominal bindings contain only stable IDs and are shared read-only.
+	assert nested.qualified_types.value_id(flat.source_type_id('Record')) == flat.source_type_id('sample.Record')
 	// Inserting enough generated signatures to grow the map must not rehash a
 	// parent's or peer's prepared binding storage, even through nested forks.
 	for i in 0 .. 256 {
@@ -43,7 +44,7 @@ fn test_scoped_signature_writes_detach_prepared_bindings_and_survive_release() {
 	next := helper.fork_scoped_batch_worker(&a, helper.tc.fork_for_parallel_transform(&a))
 	assert next.fn_ret_types.value_id('generated_255') == flat.source_type_string
 	assert next.globals.value_id('global_value') == flat.source_type_u64
-	assert flat.source_type_name(next.qualified_types.value_id('Record')) == 'sample.Record'
+	assert flat.source_type_name(next.qualified_types.value_id(flat.source_type_id('Record'))) == 'sample.Record'
 	assert master.fn_ret_types.value_id('existing') == flat.source_type_int
 	assert peer.fn_ret_types.value_id('existing') == flat.source_type_int
 }
@@ -52,7 +53,7 @@ fn test_alias_cache_rebinds_equal_content_type_text_owners() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	alias_id := flat.source_type_id('CacheOwnerAlias')
-	tc.type_aliases.set_id('CacheOwnerAlias', flat.source_type_int)
+	tc.type_aliases.set_id(flat.source_type_id('CacheOwnerAlias'), flat.source_type_int)
 	parent := &flat.TypeTextTable{}
 	fork := parent.fork()
 	assert voidptr(parent) != voidptr(fork)

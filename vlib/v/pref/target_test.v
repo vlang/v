@@ -386,13 +386,11 @@ fn test_architecture_suffixes_are_still_c_backend_tests() {
 	assert is_test_file_for_backend('foo_test.amd64.v', 'c')
 }
 
-// `-b native` is the documented spelling of the native backend, which the driver rewrites to
-// the internal name `arm64` before prefs.backend is read. Both spellings therefore select a
-// `foo_test.native.v` file; selecting only the literal one is why the native backend has no
-// tests of its own.
+// `.native.v` is shared by the architecture-specific native backends.
 fn test_native_backend_tests_answer_to_both_spellings() {
 	assert is_test_file_for_backend('foo_test.native.v', 'native')
 	assert is_test_file_for_backend('foo_test.native.v', 'arm64')
+	assert is_test_file_for_backend('foo_test.native.v', 'x64')
 	assert !is_test_file_for_backend('foo_test.native.v', 'c')
 	assert !is_test_file_for_backend('foo_test.native.v', 'fastc')
 	assert !is_test_file_for_backend('foo_test.native.v', 'js')
@@ -400,6 +398,7 @@ fn test_native_backend_tests_answer_to_both_spellings() {
 	for arch in ['amd64', 'arm64'] {
 		target := target_from('linux', arch) or { panic(err) }
 		assert is_test_file_for_platform('foo_test.native.v', 'arm64', target), 'native test on ${arch}'
+		assert is_test_file_for_platform('foo_test.native.v', 'x64', target), 'native test on ${arch}'
 		assert !is_test_file_for_platform('foo_test.native.v', 'c', target), 'native test on ${arch}'
 	}
 	// The other spelling still names the architecture, so it stays a C-backend test and never

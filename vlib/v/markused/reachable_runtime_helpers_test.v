@@ -150,6 +150,7 @@ type Number = f64
 struct Item {
 	value f64
 }
+
 fn main() {
 	${body}
 }
@@ -162,6 +163,34 @@ fn main() {
 		} else {
 			assert used['strconv__f64_to_str_l'], body
 		}
+	}
+}
+
+fn test_native_test_helpers_follow_tests_and_suite_hooks() {
+	for reached in [false, true] {
+		call := if reached { 'extra()' } else { '' }
+		a, tc := checked_runtime_helper_source('module main
+fn extra() {
+	println(u128(1))
+}
+fn testsuite_begin() {
+	println(f64(1.25))
+}
+fn test_native() {
+	${call}
+	assert 7 * 6 == 42
+}
+fn main() {}
+')
+		files := a.nodes.filter(it.kind == .file).map(it.value)
+		used, _ := mark_used_for_native_tests_with_generic_usage(a, tc, files)
+		assert used['test_native']
+		assert used['testsuite_begin']
+		assert used['f64.str']
+		assert used['u128.str'] == reached
+		assert used['extra'] == reached
+		conservative := mark_used_for_tests(a, tc, files)
+		assert conservative['u128.str']
 	}
 }
 
@@ -610,10 +639,10 @@ ${body}
 		tc.fn_ret_types['math.sin'] = types.Type(types.f64_)
 		tc.fn_ret_types['math.small'] = types.Type(types.f32_)
 		tc.fn_ret_types['math.values'] = types.Type(types.Array{ elem_type: types.Type(types.f64_) })
-		tc.type_aliases.set('dep.Number', 'f64')
-		tc.type_alias_modules['dep.Number'] = 'dep'
-		tc.type_aliases.set('other.Number', 'int')
-		tc.type_alias_modules['other.Number'] = 'other'
+		tc.type_aliases.set(flat.source_type_id('dep.Number'), 'f64')
+		tc.type_alias_modules[flat.source_type_id('dep.Number')] = 'dep'
+		tc.type_aliases.set(flat.source_type_id('other.Number'), 'int')
+		tc.type_alias_modules[flat.source_type_id('other.Number')] = 'other'
 		tc.fn_ret_types['math.alias_value'] = types.Type(types.Alias{
 			name_id:   flat.source_type_id('dep.Number')
 			base_type: types.Type(types.f64_)
@@ -669,23 +698,23 @@ fn main() {}
 ')
 	mut used := map[string]bool{}
 	mut queue := []string{}
-	mut processed := map[string]bool{}
-	assert !enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut processed)
-	assert processed.len == 0
+	mut scan := InterfaceDispatchScan{}
+	assert !enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut scan)
+	assert scan.processed.len == 0
 	used['Reader.first'] = true
-	assert enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut processed)
+	assert enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut scan)
 	assert used['Item.first']
 	assert !used['Item.second']
-	assert processed['Reader.first']
-	assert !processed['Reader.second']
+	assert scan.processed['Reader.first']
+	assert !scan.processed['Reader.second']
 	first_len := queue.len
-	assert !enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut processed)
+	assert !enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut scan)
 	assert queue.len == first_len
 	// A later body can introduce a second abstract dispatch after the first one was cached.
 	used['Reader.second'] = true
-	enqueue_ierror_equality_dispatch_helpers(tc, mut used, mut queue, mut processed)
+	enqueue_ierror_equality_dispatch_helpers(tc, mut used, mut queue, mut scan)
 	assert used['Item.second']
-	assert processed['Reader.second']
+	assert scan.processed['Reader.second']
 }
 
 fn test_interface_dispatch_cache_keeps_implicit_stringification_dependencies() {
@@ -705,16 +734,16 @@ fn main() {
 ')
 	mut used := map[string]bool{}
 	mut queue := []string{}
-	mut processed := map[string]bool{}
-	enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut processed)
-	assert !processed['Printable.str']
+	mut scan := InterfaceDispatchScan{}
+	enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut scan)
+	assert !scan.processed['Printable.str']
 	used['Printable.str'] = true
-	enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut processed)
-	assert processed['Printable.str']
+	enqueue_used_interface_dispatch_implementers(tc, mut used, mut queue, mut scan)
+	assert scan.processed['Printable.str']
 	assert used['f64.str']
 	assert used['strconv__f64_to_str_l']
 	first_len := queue.len
-	enqueue_ierror_equality_dispatch_helpers(tc, mut used, mut queue, mut processed)
+	enqueue_ierror_equality_dispatch_helpers(tc, mut used, mut queue, mut scan)
 	assert queue.len == first_len
 }
 
@@ -956,4 +985,24 @@ fn main() { println(join_path('a', 'b')) }
 	assert !used['join_path_single']
 	full, _ := mark_used_with_generic_usage_full_runtime(a, tc)
 	assert !full['join_path_single']
+}
+
+fn test_generated_enum_str_does_not_retain_unrelated_methods() {
+	for custom in [false, true] {
+		method := if custom { 'fn (value Kind) str() string { return "first" }' } else { '' }
+		a, tc := checked_runtime_helper_source('module main
+enum Kind { first second }
+struct Other {}
+fn (value Other) str() string { return "unrelated" }
+${method}
+fn main() {
+	value := Kind.first
+	assert value.str() == "first"
+}
+')
+		used := mark_used(a, tc)
+		assert used['Kind__autostr'] == !custom
+		assert used['Kind.str'] == custom
+		assert !used['Other.str']
+	}
 }

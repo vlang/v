@@ -1,0 +1,13 @@
+diff --git a/user/user.v b/user/user.v
+index a9165d5..caa1b7c 100644
+--- a/user/user.v
++++ b/user/user.v
+@@ -157,7 +157,7 @@ pub fn (mut app App) register_user(username string, password string, salt string
+ 
+ 		mut u := app.get_user_by_username(user.username) or {
+ 			app.info('User was not inserted')
+-			return error('user `${username}` was not inserted (lookup after insert failed: ${err})')
++			return error('user `${username}` was not inserted (lookup after insert failed)')
+ 		}
+ 
+ 		if u.password != user.password {

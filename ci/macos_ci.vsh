@@ -59,15 +59,35 @@ fn test_pure_v_math_module() {
 }
 
 fn self_tests() {
+	$if macos {
+		// Metal frame callbacks stop when the display sleeps. Keep the real GPU
+		// probes running, and release the assertion even if a failed command exits.
+		mut display_guard := os.new_process('/usr/bin/caffeinate')
+		display_guard.set_args(['-d', '-u', '-w', os.getpid().str()])
+		display_guard.run()
+		defer {
+			display_guard.signal_term()
+			display_guard.wait()
+			display_guard.close()
+		}
+		run_self_tests()
+	} $else {
+		run_self_tests()
+	}
+}
+
+fn run_self_tests() {
 	// Do not select the V1 compatibility compiler here. It is a separate V 0.5.2
 	// installation, so `test-self vlib` would resolve `vlib` under *its* VROOT and
 	// test the release's own standard library instead of this repository's.
 	// Individual files still fall back to it when the default compiler cannot
 	// build them.
-	// Exercise default caching throughout the standard library suite. Use every
-	// core on the 7 GB runners unless the aggregate runner requires fail-fast.
+	// Exercise default caching throughout the standard library suite. Respect the
+	// workflow's worker count as well as the aggregate runner's serial setting.
 	if common.is_github_job {
-		vjobs := if os.getenv('VTEST_FAIL_FAST') == '1' { '1' } else { '${runtime.nr_cpus()}' }
+		vjobs := os.getenv_opt('VJOBS') or {
+			if os.getenv('VTEST_FAIL_FAST') == '1' { '1' } else { '${runtime.nr_cpus()}' }
+		}
 		exec_args(['env', 'VJOBS=' + '${vjobs}', 'v', '-no-memory-limit', '-silent', 'test-self',
 			'vlib'])
 	} else {

@@ -6,7 +6,7 @@ import v.types
 fn test_sumtype_layout_contains_inline_values() {
 	mut ast := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&ast)
-	tc.sum_types.set('Value', ['int', 'string', 'voidptr'])
+	tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string', 'voidptr'])
 	mut g := FlatGen.new()
 	g.a = &ast
 	g.tc = &tc

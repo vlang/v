@@ -8,10 +8,6 @@ on:
     paths:
       - 'cmd/tools/vsymlink/**.v'
       - '.github/workflows/symlink_ci.yml'
-  pull_request:
-    paths:
-      - 'cmd/tools/vsymlink/**.v'
-      - '.github/workflows/symlink_ci.yml'
 
 concurrency:
   group: symlink-${{ github.workflow }}-${{ github.ref_name == 'master' && github.sha || github.ref_name }}
@@ -22,6 +18,7 @@ permissions:
 
 jobs:
   symlink-unix:
+    if: github.ref == 'refs/heads/master'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
@@ -66,6 +63,7 @@ jobs:
           v run hi.v
 
   symlink-windows:
+    if: github.ref == 'refs/heads/master'
     runs-on: windows-2025
     timeout-minutes: 60
     strategy:

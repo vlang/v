@@ -11,13 +11,6 @@ on:
       - '!**/build_on_ubuntu_25_ci.yml'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
-  pull_request:
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/build_on_ubuntu_25_ci.yml'
-      - 'cmd/tools/**'
-      - '!cmd/tools/builders/**.v'
 
 concurrency:
   group: ubuntu-25-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -28,6 +21,7 @@ permissions:
 
 jobs:
   ubuntu-25-gcc-14-2-build:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

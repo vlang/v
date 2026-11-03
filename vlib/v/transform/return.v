@@ -20,14 +20,14 @@ fn (mut t Transformer) transform_return_with_sumtype_wrap(id flat.NodeId, node f
 		return [id]
 	}
 	// Check if current function returns a sum type
-	if t.cur_fn_ret_type == 0 || !t.sum_types.contains(t.cur_fn_ret_type_text()) {
+	if t.cur_fn_ret_type == 0 || !t.sum_types.contains(t.cur_fn_ret_type) {
 		return [id]
 	}
 	// Check if the return value is a struct init whose type is a variant
 	child_id := t.a.child(&node, 0)
 	child := t.a.nodes[int(child_id)]
 	if child.kind == .struct_init && child.source_value_id() != 0 {
-		variants := t.sum_types.type_ids(t.cur_fn_ret_type_text()) or { []u32{} }
+		variants := t.sum_types.type_ids(t.cur_fn_ret_type) or { []u32{} }
 		for v in variants {
 			if v == child.source_value_id() {
 				// This is a variant being returned as a sum type.
@@ -776,8 +776,14 @@ fn (t &Transformer) forwarded_slot_conversion_supported(actual types.Type, expec
 
 fn forwarded_return_type_is_unresolved(typ types.Type) bool {
 	base := unalias_type(typ)
-	name := trimmed_transform_text(base.name())
-	if name == 'unknown' || name.ends_with('.unknown') || is_generic_placeholder_type_name(name) {
+	name := base.source_type_id()
+	clean := if flat.source_type_shape(name).has(.padded) {
+		flat.source_type_syntax(name).trimmed()
+	} else {
+		name
+	}
+	if flat.source_type_syntax(clean).unqualified() == flat.source_type_unknown
+		|| is_generic_placeholder_type_id(clean) {
 		return true
 	}
 	if base is types.OptionType {
@@ -1146,7 +1152,7 @@ fn (mut t Transformer) build_return_map_index_if_guard_chain(if_node flat.Node, 
 	}
 	mut then_children := []flat.NodeId{}
 	if lhs.value != '_' {
-		ptr_value := t.make_prefix(.mul, t.make_cast(flat.source_type_id('&${info.value_type_text()}'), t.make_ident(ptr_name), flat.source_type_id('&${info.value_type_text()}')))
+		ptr_value := t.make_prefix(.mul, t.make_cast(flat.source_type_composition_one(.pointer, info.value_type), t.make_ident(ptr_name), flat.source_type_composition_one(.pointer, info.value_type)))
 		then_children << t.make_guard_value_decls(lhs.value, ptr_value, info.value_type)
 	}
 	t.preserve_guard_binding_mutability(if_node, then_children)

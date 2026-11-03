@@ -12,7 +12,7 @@ import v.flat
 pub fn (mut tc TypeChecker) warn_unhandled_result_calls() {
 	saved_file := tc.cur_file
 	for idx in tc.a.user_code_start .. tc.a.nodes.len {
-		node := tc.a.nodes[idx]
+		node := tc.a.node(flat.NodeId(idx))
 		if node.kind != .call {
 			continue
 		}

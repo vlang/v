@@ -12,7 +12,7 @@ fn (mut t Transformer) match_has_sum_type_subject(node flat.Node) bool {
 	}
 	subject_id := t.a.child(&node, 0)
 	subject_type_source_id := t.resolve_expr_type(subject_id)
-	subject_type := flat.source_type_name(subject_type_source_id)
+	subject_type := subject_type_source_id
 	if subject_type_source_id == 0 {
 		return false
 	}

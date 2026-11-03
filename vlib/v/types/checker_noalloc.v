@@ -220,7 +220,7 @@ fn (mut s NoAllocScan) walk_function(decl NoAllocFunction, chain []string, ancho
 		child := s.tc.a.child_node(node, i)
 		if child.kind == .param {
 			parameters[child.value] = child.typ
-			if child.is_mut && child.typ_text().trim_left('&').starts_with('[]') {
+			if child.is_mut && flat.source_type_shape(flat.source_type_syntax(child.typ).pointer_raw_base()).has(.array_type) {
 				mutable_arrays[child.value] = true
 			}
 		}
@@ -350,17 +350,17 @@ fn (s &NoAllocScan) type_name(id flat.NodeId, parameters map[string]u32) u32 {
 		child_id := s.tc.a.child(node, 0)
 		if node.kind == .postfix && node.op == .not && s.tc.a.node(child_id).kind == .array_literal {
 			literal := s.tc.a.node(child_id)
-			return flat.source_type_id('[${literal.children_count}]${s.tc.array_literal_elem_type(*literal).name()}')
+			return flat.source_type_fixed_array(literal.children_count, '', s.tc.array_literal_elem_type(*literal).source_type_id(), false)
 		}
 		child_type := s.type_name(child_id, parameters)
 		if node.kind == .prefix && node.op == .amp {
-			return flat.source_type_id('&${flat.source_type_name(child_type)}')
+			return flat.source_type_composition_one(.pointer, child_type)
 		}
 		if node.kind == .prefix && node.op == .mul {
 			if !flat.source_type_shape(child_type).has(.pointer) {
 				return child_type
 			}
-			return flat.source_type_id(flat.source_type_name(child_type).trim_string_left('&'))
+			return flat.source_type_syntax(child_type).raw_base()
 		}
 		return child_type
 	}

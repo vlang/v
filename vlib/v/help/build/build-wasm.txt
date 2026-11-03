@@ -3,7 +3,9 @@ into an executable using the WebAssembly code generation backend.
 The backend emits a binary from V's SSA intermediate representation. `-prod`
 optimizes SSA before code generation. See doc/wasm.md for supported features.
 
-The standard compiler includes this backend. A standalone compiler build needs
+The standard C-only compiler automatically builds and runs a cached full compiler for this
+backend. Use `v -compile-backend wasm self` to include it in the main executable, or
+`-all-backends` to include every backend. A standalone compiler build needs
 `-compile-backend wasm` or `-all-backends`.
 
 Usage:

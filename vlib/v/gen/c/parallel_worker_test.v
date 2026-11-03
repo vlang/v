@@ -76,7 +76,7 @@ fn test_scoped_cgen_batches_amortize_small_bodies_and_bound_compiler_scratch() {
 	assert g.scoped_cgen_batch_count(1, 1_000_000) == 1
 	assert g.scoped_cgen_batch_count(10_000, 100_000_000) == scoped_cgen_worker_batches
 	tc.building_v_fast = true
-	assert g.scoped_cgen_batch_count(169, 1000) == 169
+	assert g.scoped_cgen_batch_count(12, 1000) == 12
 	assert g.scoped_cgen_batch_count(10_000, 100_000_000) == scoped_cgen_worker_batches
 }
 
@@ -777,8 +777,8 @@ fn test_parallel_type_declarations_include_body_discovered_fn_ptr_types() {
 
 fn test_parallel_type_declarations_preseed_function_type_aliases() {
 	mut g, mut tc := parallel_worker_test_gen(true)
-	tc.type_aliases.set_id('Callback', flat.source_type_id('fn (int)'))
-	callback_type := tc.parse_type(tc.type_aliases.value_id('Callback'))
+	tc.type_aliases.set_id(flat.source_type_id('Callback'), flat.source_type_id('fn (int)'))
+	callback_type := tc.parse_type(tc.type_aliases.value_id(flat.source_type_id('Callback')))
 	encoded := tc.c_type(callback_type)
 	assert encoded.starts_with('fn_ptr:')
 	assert encoded !in g.fn_ptr_types
@@ -866,6 +866,52 @@ fn test_dynamic_parallel_chunk_capture_keeps_deduplicated_wrapper_attempts() {
 	assert g.callback_wrapper_defs == ['callback-shared;']
 	assert g.parallel_chunk_wrapper_defs[0].spawn == ['spawn-shared;', 'spawn-shared;']
 	assert g.parallel_chunk_wrapper_defs[0].callback == ['callback-shared;', 'callback-shared;']
+}
+
+fn test_parallel_capture_drop_wrappers_replay_by_symbol() {
+	mut g, _ := parallel_worker_test_gen(true)
+	g.parallel_chunk_wrapper_defs << ParallelChunkWrapperDefs{
+		chunk_idx: 0
+	}
+	g.parallel_chunk_wrapper_capture = 0
+	first := 'static void _flctxdrop_7(void* data) { for (int i0 = 0; i0 < 2; i0++) {} }'
+	repeated := 'static void _flctxdrop_7(void* data) { for (int i1 = 0; i1 < 2; i1++) {} }'
+	g.add_spawn_wrapper_def(first)
+	g.add_spawn_wrapper_def(repeated)
+	g.parallel_chunk_wrapper_capture = -1
+	assert g.spawn_wrapper_defs == [first]
+	assert g.parallel_chunk_wrapper_defs[0].spawn == [first, repeated]
+	mut merged := FlatGen.new()
+	merged.replay_ordered_parallel_wrapper_defs(g.parallel_chunk_wrapper_defs)
+	assert merged.spawn_wrapper_defs == [first]
+}
+
+fn test_parallel_workers_merge_capture_drop_wrappers_by_symbol() {
+	for ordered_merge in [false, true] {
+		mut g, _ := parallel_worker_test_gen(true)
+		mut first := g.new_parallel_dispatch_worker(1)
+		mut second := g.new_parallel_dispatch_worker(2)
+		first.parallel_chunk_wrapper_defs << ParallelChunkWrapperDefs{ chunk_idx: 0 }
+		second.parallel_chunk_wrapper_defs << ParallelChunkWrapperDefs{ chunk_idx: 1 }
+		first.parallel_chunk_wrapper_capture = 0
+		second.parallel_chunk_wrapper_capture = 0
+		shared := 'static void _flctxdrop_7(void* data) { for (int i0 = 0; i0 < 2; i0++) {} }'
+		first.add_spawn_wrapper_def(shared)
+		second.add_spawn_wrapper_def('static void _flctxdrop_7(void* data) { for (int i1 = 0; i1 < 2; i1++) {} }')
+		distinct := 'static void _flctxdrop_8(void* data) {}'
+		second.add_spawn_wrapper_def(distinct)
+		if ordered_merge {
+			mut ordered := []string{len: 2}
+			mut wrappers := []ParallelChunkWrapperDefs{len: 2}
+			g.merge_parallel_worker_ordered(second, mut ordered, mut wrappers)
+			g.merge_parallel_worker_ordered(first, mut ordered, mut wrappers)
+			g.replay_ordered_parallel_wrapper_defs(wrappers)
+		} else {
+			g.merge_parallel_worker(first)
+			g.merge_parallel_worker(second)
+		}
+		assert g.spawn_wrapper_defs == [shared, distinct]
+	}
 }
 
 // c_extern_forward_decls() runs inside a disposable worker in scoped mode, so the

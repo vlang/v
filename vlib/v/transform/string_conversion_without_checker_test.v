@@ -16,12 +16,12 @@ fn test_string_conversion_respects_local_struct_without_checker() {
 			a:          &a
 			cur_module: 'records'
 			enum_types: {
-				'Flag':          fields
-				'statuses.Flag': fields
+				flat.source_type_id('Flag'):          fields
+				flat.source_type_id('statuses.Flag'): fields
 			}
 		}
 		if has_local_struct {
-			t.structs['records.Flag'] = StructInfo{
+			t.structs[flat.source_type_id('records.Flag')] = StructInfo{
 				name:   flat.source_type_id('records.Flag')
 				module: 'records'
 			}

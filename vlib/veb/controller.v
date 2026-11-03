@@ -36,11 +36,20 @@ pub fn controller[A, X](path string, mut global_app A) !&ControllerPath {
 		panic(err.msg())
 	}
 
+	// Route metadata is only needed for `route_info` and runtime OpenAPI generation.
+	// Applications serving a pre-generated OpenAPI document can pass
+	// `-d veb_skip_route_metadata` to skip `flatten_route_info` monomorphization
+	// for every controller. Dispatch, middleware, and route matching are unaffected.
+	mut documented_routes := []RouteInfo{}
+	$if !veb_skip_route_metadata ? {
+		documented_routes = flatten_route_info[A](global_app, routes)
+	}
+
 	// generate struct with closure so the generic type is encapsulated in the closure
 	// no need to type `ControllerHandler` as generic since it's not needed for closures
 	return &ControllerPath{
 		path:              path
-		documented_routes: flatten_route_info[A](global_app, routes)
+		documented_routes: documented_routes
 		handler:           fn [mut global_app, path, routes, controllers_sorted] [A, X](ctx &Context, mut url urllib.URL, host string) &Context {
 			// transform the url
 			url.path = url.path.all_after_first(path)

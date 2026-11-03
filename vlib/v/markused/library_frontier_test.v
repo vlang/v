@@ -1,6 +1,7 @@
 module markused
 
 import os
+import strings
 import v.flat
 import v.parser
 import v.pref
@@ -35,6 +36,10 @@ fn helper() int { return identity(42) }
 }
 
 fn library_frontier_source(tail_body string) (&flat.FlatAst, &types.TypeChecker) {
+	return library_frontier_large_source(tail_body, 0)
+}
+
+fn library_frontier_large_source(tail_body string, unused_count int) (&flat.FlatAst, &types.TypeChecker) {
 	root := os.join_path(os.vtmp_dir(), 'v3_library_frontier_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
 	defer { os.rmdir_all(root) or { panic(err) } }
@@ -47,7 +52,8 @@ fn main() {
 	_ := item.str()
 }
 ') or { panic(err) }
-	os.write_file(library_path, 'module dependency
+	mut library := strings.new_builder(256 + unused_count * 64)
+	library.write_string('module dependency
 pub struct Item {}
 struct Unused {}
 pub fn (item Item) str() string { return middle() }
@@ -57,7 +63,11 @@ fn (item Unused) str() string {
 	\$compile_error("unused formatter")
 	return "unused"
 }
-') or { panic(err) }
+')
+	for i in 0 .. unused_count {
+		library.writeln('fn unreachable_${i}() int { return ${i} }')
+	}
+	os.write_file(library_path, library.str()) or { panic(err) }
 	mut p := parser.Parser.new(pref.new_preferences())
 	a := p.parse_files([main_path, library_path])
 	assert p.diagnostics.len == 0, p.diagnostics.str()
@@ -74,7 +84,6 @@ fn (item Unused) str() string {
 fn test_library_frontier_checks_transitive_bodies_before_collecting_their_calls() {
 	a, checker := library_frontier_source('return "value"')
 	mut tc := checker
-	assert can_check_library_body_frontiers(a, tc)
 	assert !tc.reachable_library_fns['dependency.Item.str']
 	assert !tc.reachable_library_fns['dependency.middle']
 	assert !tc.reachable_library_fns['dependency.tail']
@@ -296,5 +305,28 @@ fn tail() int { return 42 }
 		assert selected == eager
 		assert selected_generic == eager_generic
 		assert tc.skips_library_bodies
+	}
+}
+
+fn test_large_library_frontier_checks_only_reached_bodies() {
+	for parallel in [false, true] {
+		a, checker := library_frontier_large_source('return "value"', min_eager_markused_bodies)
+		mut tc := checker
+		defer { a.close_workers() }
+		if parallel { a.ensure_workers(2) }
+		used, generic := mark_used_checking_library_bodies(a, mut tc, parallel)
+		assert tc.errors.len == 0, tc.errors.str()
+		assert tc.library_body_convergence_complete
+		assert tc.library_bodies_checked_late() == 3
+		for name in ['Item.str', 'middle', 'tail'] {
+			assert used['dependency.${name}'], name
+		}
+		assert !used['dependency.Unused.str']
+		assert !used['dependency.unreachable_0']
+		assert !used['dependency.unreachable_${min_eager_markused_bodies - 1}']
+		fresh, fresh_generic := mark_used_with_generic_usage(a, tc)
+		assert used == fresh
+		assert generic == fresh_generic
+		assert tc.check_reached_library_bodies(used, parallel) == 0
 	}
 }

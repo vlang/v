@@ -124,6 +124,9 @@ fn test_fastc_target_boxing_uses_only_core_headers_and_real_allocator() {
 	root := os.join_path(os.vtmp_dir(), 'fastc_target_boxing_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }
 	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'stdbool.h'), '#define bool _Bool\n#define true 1\n#define false 0\n') or {
+		panic(err)
+	}
 	os.write_file(os.join_path(root, 'stddef.h'), 'typedef __SIZE_TYPE__ size_t;\n#define NULL ((void*)0)\n') or {
 		panic(err)
 	}
@@ -162,4 +165,32 @@ int main(void) {
 	assert build.exit_code == 0, build.output
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output
+}
+
+fn test_fastc_windows_target_entry_switches_stdio_to_binary_mode() {
+	source := 'module main\nfn main() {\n\tprintln(1)\n}\n'
+	mut windows_prefs := pref.new_preferences()
+	windows_prefs.target = pref.target_from('windows', 'amd64') or { panic(err) }
+	windows_c := generate(source, 'binary_stdio.v', windows_prefs) or { panic(err) }
+	// An ordinary Windows program must leave the CRT's text mode before it prints, so
+	// `println` writes `\n` like the same program built with cgen, not `\r\n`.
+	assert windows_c.contains('#ifdef _WIN32\n#include <io.h>\n#include <fcntl.h>\n#endif'), windows_c
+	assert windows_c.contains('int wmain(void) {\n\t_setmode(1, _O_BINARY);\n\t_setmode(2, _O_BINARY);\n\tsetvbuf(stdout, NULL, _IONBF, 0);'), windows_c
+
+	// The synthesized entry of a declaration-only program takes the same path.
+	declaration_only_c := generate('module main\npub fn answer() int {\n\treturn 42\n}\n',
+		'binary_stdio_decl.v', windows_prefs) or { panic(err) }
+	assert declaration_only_c.contains('int wmain(void) {\n\t_setmode(1, _O_BINARY);\n\t_setmode(2, _O_BINARY);\n\tsetvbuf(stdout, NULL, _IONBF, 0);\n\treturn 0;'), declaration_only_c
+
+	mut linux_prefs := pref.new_preferences()
+	linux_prefs.target = pref.target_from('linux', 'amd64') or { panic(err) }
+	linux_c := generate(source, 'binary_stdio.v', linux_prefs) or { panic(err) }
+	assert !linux_c.contains('_setmode('), linux_c
+
+	// Selfhost builds get binary streams from builtin's own startup instead.
+	mut selfhost_prefs := pref.new_preferences()
+	selfhost_prefs.target = pref.target_from('windows', 'amd64') or { panic(err) }
+	selfhost_prefs.building_v = true
+	selfhost_c := generate(source, 'binary_stdio.v', selfhost_prefs) or { panic(err) }
+	assert !selfhost_c.contains('_setmode(1, _O_BINARY);'), selfhost_c
 }

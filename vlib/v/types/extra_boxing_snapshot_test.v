@@ -14,7 +14,7 @@ fn test_source_struct_field_decls_keeps_field_names_and_source_types() {
 	mut tc := TypeChecker.new(&a)
 	tc.cur_module = 'model'
 	tc.top_level_idx = [int(file), int(mod), int(decl)]
-	tc.struct_files['model.Item'] = 'model.v'
+	tc.struct_files[flat.source_type_id('model.Item')] = 'model.v'
 	fields := tc.source_struct_field_decls(flat.source_type_id('model.Item'))
 	assert fields.len == 1
 	assert fields[0].name == 'value'
@@ -34,8 +34,8 @@ fn test_enum_selector_keeps_saved_header_after_ast_reallocation() {
 		a.add_val(.ident, 'padding')
 	}
 	mut tc := TypeChecker.new(&a)
-	tc.enum_names['Color'] = true
-	tc.enum_fields['Color'] = ['red']
+	tc.enum_names[flat.source_type_id('Color')] = true
+	tc.enum_fields[flat.source_type_id('Color')] = ['red']
 	from_pointer := tc.enum_selector_type(&snapshot) or { panic('missing enum selector') }
 	from_value := tc.selector_type(selector, snapshot) or { panic('missing saved selector') }
 	assert from_pointer.source_type_id() == flat.source_type_id('Color')

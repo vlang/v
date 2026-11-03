@@ -33,6 +33,11 @@ const optional_backends = [
 		symbol: 'arm64__Gen__gen('
 	},
 	OptionalBackend{
+		name:   'x64'
+		dir:    'gen/x64'
+		symbol: 'x64__Gen__gen('
+	},
+	OptionalBackend{
 		name:   'ssa'
 		dir:    'ssa'
 		symbol: 'ssa__build_with_options('
@@ -132,12 +137,17 @@ fn test_selfhost_compile_backend_wasm_opts_wasm_back_in() {
 // The `cmd/v` builds below take the path of `v self`: a parallel `-nocache` compiler build
 // discovers its imports eagerly with a byte-level scan that cannot evaluate the
 // `$if !skip_* ?` import gates in vlib/v/driver/driver.v.
-fn test_cmd_v_keeps_wasm_and_fastc_and_prunes_the_rest() {
+fn test_cmd_v_defaults_to_c_only() {
 	build := compiler_to_c('cmd_v', [], cmd_v_src)
-	assert_backends(build, 'cmd/v', ['fastc', 'wasm', 'ssa', 'ssa.optimize'])
+	assert_backends(build, 'cmd/v', [])
 }
 
 fn test_cmd_v_skip_wasm_also_prunes_ssa() {
-	build := compiler_to_c('cmd_v_skip_wasm', ['-d', 'skip_wasm'], cmd_v_src)
+	build := compiler_to_c('cmd_v_skip_wasm', ['-compile-backend', 'fastc', '-d', 'skip_wasm'], cmd_v_src)
 	assert_backends(build, 'cmd/v -d skip_wasm', ['fastc'])
+}
+
+fn test_cmd_v_all_backends_keeps_every_backend() {
+	build := compiler_to_c('cmd_v_all', ['-all-backends'], cmd_v_src)
+	assert_backends(build, 'cmd/v -all-backends', optional_backends.map(it.name))
 }

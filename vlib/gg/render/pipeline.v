@@ -12,6 +12,15 @@ pub mut:
 }
 
 pub fn (ctx &Context) make_pipeline(desc gfx.PipelineDesc) Pipeline {
+	return ctx.make_pipeline_with_shader(desc, ctx.st.shader)
+}
+
+// make_pipeline_with_shader builds a pipeline around `shader` instead of the
+// shared sgl shader. The text atlas needs this: its fragment stage treats the
+// single-channel atlas's red channel as alpha, which the generic shader's
+// plain `texture * color` multiply renders as red glyphs and black quads.
+// Explicit context formats override the recipe to match the render target.
+pub fn (ctx &Context) make_pipeline_with_shader(desc gfx.PipelineDesc, shader gfx.Shader) Pipeline {
 	mut st := ctx.st
 	mut p := Pipeline{}
 	if !gfx.is_valid() {
@@ -38,7 +47,7 @@ pub fn (ctx &Context) make_pipeline(desc gfx.PipelineDesc) Pipeline {
 
 	for i in 0 .. num_primitive_types {
 		mut d := desc
-		d.shader = st.shader
+		d.shader = shader
 		d.layout.buffers[0].stride = int(sizeof(Vertex))
 		d.layout.attrs[0].offset = 0
 		d.layout.attrs[0].format = .float3
@@ -54,6 +63,15 @@ pub fn (ctx &Context) make_pipeline(desc gfx.PipelineDesc) Pipeline {
 		d.layout.attrs[3].buffer_index = 0
 		d.index_type = .none
 		d.sample_count = st.sample_count
+		if st.color_format != ._default {
+			d.colors[0].pixel_format = st.color_format
+		}
+		if st.depth_format != ._default {
+			d.depth.pixel_format = st.depth_format
+		}
+		if st.depth_format == .none {
+			d.depth.write_enabled = false
+		}
 		d.face_winding = st.face_winding
 		if d.colors[0].write_mask == ._default {
 			d.colors[0].write_mask = .rgb
@@ -76,6 +94,11 @@ pub fn (ctx &Context) make_pipeline(desc gfx.PipelineDesc) Pipeline {
 		}
 	}
 	return p
+}
+
+// current_pipeline returns the pipeline selected for subsequent drawing.
+pub fn (ctx &Context) current_pipeline() Pipeline {
+	return ctx.st.pip_stack[ctx.st.pip_tos]
 }
 
 pub fn (ctx &Context) load_pipeline(p Pipeline) {

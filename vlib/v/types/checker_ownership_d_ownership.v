@@ -11,6 +11,10 @@ const ownership_source_error = flat.source_type_id('Error')
 const ownership_source_message_error = flat.source_type_id('MessageError')
 const ownership_source_builtin_error = flat.source_type_id('builtin.Error')
 const ownership_source_builtin_message_error = flat.source_type_id('builtin.MessageError')
+const ownership_source_arc = flat.source_type_id('Arc')
+const ownership_source_owned = flat.source_type_id('Owned')
+const ownership_source_copy = flat.source_type_id('Copy')
+const ownership_source_drop = flat.source_type_id('Drop')
 
 // ownership_prescan_max_rounds bounds each ownership fixed point, so that a
 // regression in path composition fails as a diagnostic instead of hanging the
@@ -1478,7 +1482,7 @@ fn (tc &TypeChecker) ownership_owned_storage_contains_pointer_sum(typ Type, dept
 			if seen[name_id] { return false }
 			seen[name_id] = true
 			if tc.sum_escape_has_pointer_variant(typ) { return true }
-			base_name := flat.source_type_name(tc.sum_base_name(name_id))
+			base_name := tc.sum_base_name(name_id)
 			for variant in tc.sum_types.type_ids(base_name) or { []u32{} } {
 				concrete := tc.concrete_sum_variant_name(name_id, variant)
 				concrete_type := tc.parse_type(concrete)
@@ -1506,17 +1510,17 @@ fn (tc &TypeChecker) ownership_drop_target_for_type_name(type_name_id u32) ?Owne
 	}
 	mut clean_id := type_name_id
 	if flat.source_type_shape(type_name_id).has(.pointer) {
-		clean_id = flat.source_type_id(flat.source_type_name(type_name_id).trim_left('&'))
+		clean_id = flat.source_type_syntax(type_name_id).pointer_raw_base()
 	}
 	shape := flat.source_type_shape(clean_id)
-	if shape.has(.option_type) && flat.source_type_name(clean_id).len > 1 {
+	if shape.has(.option_type) && flat.source_type_syntax(clean_id).byte_len() > 1 {
 		return OwnershipDropTarget{
 			type_name: clean_id
 		}
 	}
 	// A result owns both its successful payload and its failed IError. Preserve the
 	// complete result type so code generation can destroy whichever branch is active.
-	if shape.has(.result_type) && flat.source_type_name(clean_id).len > 1 {
+	if shape.has(.result_type) && flat.source_type_syntax(clean_id).byte_len() > 1 {
 		return OwnershipDropTarget{
 			type_name: clean_id
 		}
@@ -1845,7 +1849,7 @@ fn (tc &TypeChecker) ownership_default_clone_missing_method_inner(typ Type, mut 
 				return none
 			}
 			seen[name_id] = true
-			base := flat.source_type_name(tc.sum_base_name(name_id))
+			base := tc.sum_base_name(name_id)
 			for variant_source_id_2 in tc.sum_types.type_ids(base) or { return name_id } {
 				variant_source_id_5 := variant_source_id_2
 
@@ -1903,16 +1907,15 @@ fn (tc &TypeChecker) ownership_ierror_has_compatible_clone_method(typ Type) bool
 	if actual_id == expected_id {
 		return true
 	}
-	actual := flat.source_type_name(actual_id)
-	expected := flat.source_type_name(expected_id)
-	return actual.all_after_last('.') == expected.all_after_last('.')
+	return flat.source_type_syntax(actual_id).unqualified() == flat.source_type_syntax(expected_id).unqualified()
 }
 
 fn (tc &TypeChecker) ownership_type_has_explicit_drop(type_name_id u32) bool {
 	mut clean_id := type_name_id
-	shape := flat.source_type_shape(type_name_id)
-	if shape.has(.pointer) || shape.has(.option_type) {
-		clean_id = flat.source_type_id(flat.source_type_name(type_name_id).trim_left('&?'))
+	for {
+		shape := flat.source_type_shape(clean_id)
+		if !shape.has(.pointer) && !shape.has(.option_type) { break }
+		clean_id = flat.source_type_syntax(clean_id).raw_base()
 	}
 	return clean_id in tc.ownership.drop_structs
 		|| ownership_generic_base_type_name(clean_id) in tc.ownership.drop_structs
@@ -1946,9 +1949,9 @@ fn (tc &TypeChecker) ownership_collect_drop_type_names(typ Type, mut names []u32
 		}
 		Interface {
 			mut iface_name_id := typ.source_type_id()
-			if flat.source_type_name(iface_name_id) !in tc.interface_names {
+			if iface_name_id !in tc.interface_names {
 				qualified_id := tc.qualify_type_name(iface_name_id)
-				if flat.source_type_name(qualified_id) in tc.interface_names {
+				if qualified_id in tc.interface_names {
 					iface_name_id = qualified_id
 				}
 			}
@@ -1967,15 +1970,14 @@ fn (tc &TypeChecker) ownership_collect_drop_type_names(typ Type, mut names []u32
 		}
 		Struct {
 			name_id := typ.source_type_id()
-			name := flat.source_type_name(name_id)
 			if tc.ownership_type_has_explicit_drop(name_id) {
 				if name_id !in names {
 					names << name_id
 				}
-				base, args, is_generic := generic_type_application_parts(name)
-				if is_generic && base.all_after_last('.') == 'Arc' {
-					for arg in args {
-						tc.ownership_collect_drop_type_names(tc.parse_type(flat.source_type_id(arg)), mut names, mut seen, first_only)
+				syntax := flat.source_type_syntax(name_id)
+				if syntax.application_valid() && flat.source_type_syntax(syntax.application_base()).unqualified() == ownership_source_arc {
+					for arg in syntax.application_args() {
+						tc.ownership_collect_drop_type_names(tc.parse_type(arg), mut names, mut seen, first_only)
 					}
 				}
 				return
@@ -1993,7 +1995,7 @@ fn (tc &TypeChecker) ownership_collect_drop_type_names(typ Type, mut names []u32
 				return
 			}
 			seen[typ.source_type_id()] = true
-			for variant_source_id_3 in tc.sum_types.type_ids(generic_base_name(typ.name())) or { []u32{} } {
+			for variant_source_id_3 in tc.sum_types.type_ids(ownership_generic_base_type_name(typ.source_type_id())) or { []u32{} } {
 				variant := unalias_type(tc.parse_type(variant_source_id_3))
 				// A sum can own its pointer payload. Keep that payload's destructor
 				// available even though ordinary borrowed pointers do not own it.
@@ -2239,25 +2241,27 @@ fn (mut tc TypeChecker) ownership_after_collect() {
 			if !method_name.ends_with('.free') {
 				continue
 			}
-			receiver := method_name.all_before_last('.')
-			if receiver in tc.structs {
-				st.drop_structs[flat.source_type_id(receiver)] = true
-				st.owned_structs[flat.source_type_id(receiver)] = true
+			// A receiver that was never interned names no collected struct.
+			receiver_id := flat.source_type_existing_id(method_name.all_before_last('.')) or {
+				continue
+			}
+			if receiver_id in tc.structs {
+				st.drop_structs[receiver_id] = true
+				st.owned_structs[receiver_id] = true
 			}
 		}
 	}
-	for qname, impls_id in tc.struct_implements.ids {
-		qname_id := flat.source_type_id(qname)
+	for qname_id, impls_id in tc.struct_implements.ids {
 		for iface_id in impls_id {
-			short := flat.source_type_name(iface_id).all_after_last('.')
+			short := flat.source_type_syntax(iface_id).unqualified()
 			match short {
-				'Owned' {
+				ownership_source_owned {
 					st.owned_structs[qname_id] = true
 				}
-				'Copy' {
+				ownership_source_copy {
 					st.copy_structs[qname_id] = true
 				}
-				'Drop' {
+				ownership_source_drop {
 					st.drop_structs[qname_id] = true
 					st.owned_structs[qname_id] = true
 				}
@@ -2446,7 +2450,7 @@ fn (mut tc TypeChecker) ownership_mark_owned_global(name string, qname string, s
 
 fn (mut tc TypeChecker) ownership_collect_global_struct_init_descendants(name string, qname string, suffix string, node flat.Node, init_type Type, skip_fields map[string]bool) bool {
 	fields := if init_type is Struct {
-		tc.structs[init_type.name()] or { []StructField{} }
+		tc.structs[init_type.source_type_id()] or { []StructField{} }
 	} else {
 		[]StructField{}
 	}
@@ -2498,7 +2502,7 @@ fn (mut tc TypeChecker) ownership_collect_global_assoc_init_descendants(name str
 	if init_type !is Struct {
 		return false
 	}
-	fields := tc.structs[(init_type as Struct).name()] or { []StructField{} }
+	fields := tc.structs[(init_type as Struct).source_type_id()] or { []StructField{} }
 	mut explicit_fields := map[string]bool{}
 	for i in 1 .. node.children_count {
 		field := tc.a.child_node(&node, i)
@@ -2760,7 +2764,7 @@ fn (mut tc TypeChecker) ownership_collect_fn_signature(node flat.Node) {
 	if recv.kind != .param || recv.typ == 0 || flat.source_type_shape(recv.typ).has(.pointer) || recv.op == .amp {
 		return
 	}
-	short_type := recv.typ_text().all_after_last('.')
+	short_type := flat.source_type_name(flat.source_type_syntax(recv.typ).unqualified())
 	method_name := node.value.all_after_last('.')
 	tc.ownership_state().value_receiver_methods['${short_type}.${method_name}'] = true
 	tc.ownership_state().value_receiver_methods['${recv.typ_text()}.${method_name}'] = true
@@ -3481,7 +3485,7 @@ fn (mut tc TypeChecker) ownership_prescan_return_aggregate_literal_descendants(f
 		.struct_init {
 			init_type := tc.parse_type(node.source_value_id())
 			fields := if init_type is Struct {
-				tc.structs[init_type.name()] or { []StructField{} }
+				tc.structs[init_type.source_type_id()] or { []StructField{} }
 			} else {
 				[]StructField{}
 			}
@@ -3740,7 +3744,7 @@ fn (mut tc TypeChecker) ownership_prescan_param_aggregate_literal_descendants(fn
 		.struct_init {
 			init_type := tc.parse_type(node.source_value_id())
 			fields := if init_type is Struct {
-				tc.structs[init_type.name()] or { []StructField{} }
+				tc.structs[init_type.source_type_id()] or { []StructField{} }
 			} else {
 				[]StructField{}
 			}
@@ -3882,7 +3886,7 @@ fn (tc &TypeChecker) ownership_wrapped_sum_array_storage(typ &Type, seen []u32, 
 			if name in seen { return false, false }
 			mut next_seen := seen.clone()
 			next_seen << name
-			base := flat.source_type_name(tc.sum_base_name(name))
+			base := tc.sum_base_name(name)
 			variants := tc.sum_types.type_ids(base) or { return false, false }
 			if variants.len == 0 { return false, false }
 			mut has_array := false
@@ -3921,7 +3925,7 @@ fn (tc &TypeChecker) ownership_sum_return_array_paths(typ &Type, array_type &Typ
 	mut direct_pointer := false
 	mut first_value_copies := false
 	mut first_pointer_copies := false
-	base := flat.source_type_name(tc.sum_base_name(name))
+	base := tc.sum_base_name(name)
 	for raw_variant in tc.sum_types.type_ids(base) or { return false, false, false } {
 		variant := tc.parse_type(tc.concrete_sum_variant_name(name, raw_variant))
 		value, pointer, copies := tc.ownership_sum_return_array_paths(variant, array_type, next_seen)
@@ -4640,7 +4644,7 @@ fn (mut tc TypeChecker) ownership_prescan_assign_literal_to_name(lhs_name string
 	if node.kind == .struct_init {
 		init_type := tc.parse_type(node.source_value_id())
 		fields := if init_type is Struct {
-			tc.structs[init_type.name()] or { []StructField{} }
+			tc.structs[init_type.source_type_id()] or { []StructField{} }
 		} else {
 			[]StructField{}
 		}
@@ -4747,7 +4751,7 @@ fn (mut tc TypeChecker) ownership_prescan_assign_literal_to_name(lhs_name string
 		if init_type !is Struct {
 			return false
 		}
-		fields := tc.structs[(init_type as Struct).name()] or { []StructField{} }
+		fields := tc.structs[(init_type as Struct).source_type_id()] or { []StructField{} }
 		mut explicit_fields := map[string]bool{}
 		for i in 1 .. node.children_count {
 			field := tc.a.child_node(&node, i)
@@ -5384,8 +5388,8 @@ fn (mut tc TypeChecker) ownership_prescan_call_info(node flat.Node, local_types 
 					return info
 				}
 			}
-			qbase := tc.qualify_name(base_node.value)
-			static_name := flat.encode_static_type_method_name(qbase, fn_node.value)
+			qbase := tc.qualify_type_name(base_node.source_value_id())
+			static_name := flat.encode_static_type_method_name(flat.source_type_name(qbase), fn_node.value)
 			if static_name in tc.fn_ret_types && (qbase in tc.structs
 				|| qbase in tc.enum_names || tc.sum_types.contains(qbase)
 				|| qbase in tc.interface_names || tc.type_aliases.contains(qbase)) {
@@ -8898,7 +8902,7 @@ fn (mut tc TypeChecker) ownership_mark_struct_literal_fields_with_mode(lhs_name 
 	if init_type !is Struct {
 		return false
 	}
-	fields := tc.structs[(init_type as Struct).name()] or { []StructField{} }
+	fields := tc.structs[(init_type as Struct).source_type_id()] or { []StructField{} }
 	mut marked := false
 	mut explicit_fields := map[string]bool{}
 	for i in 0 .. node.children_count {
@@ -8982,7 +8986,7 @@ fn (mut tc TypeChecker) ownership_mark_assoc_literal_fields_with_mode(lhs_name s
 	if init_type !is Struct {
 		return false
 	}
-	fields := tc.structs[(init_type as Struct).name()] or { []StructField{} }
+	fields := tc.structs[(init_type as Struct).source_type_id()] or { []StructField{} }
 	mut explicit_fields := map[string]bool{}
 	for i in 1 .. node.children_count {
 		field_id := tc.a.child(&node, i)
@@ -9085,7 +9089,6 @@ fn (tc &TypeChecker) ownership_struct_decl_node(struct_name_id u32) ?flat.Node {
 	if decl := tc.source_struct_decl_for_name(target_id) {
 		return decl
 	}
-	target := flat.source_type_name(target_id)
 	// Keep the historical spelling fallback for synthesized declarations that
 	// were appended after the immutable source declaration index was built.
 	mut cur_module := ''
@@ -9096,14 +9099,16 @@ fn (tc &TypeChecker) ownership_struct_decl_node(struct_name_id u32) ?flat.Node {
 				cur_module = node.value
 			}
 			.struct_decl {
-				qname := ownership_qualify_name(cur_module, node.value)
-				module_qname := if cur_module.len > 0 {
-					'${cur_module}.${node.value}'
+				// `ownership_qualify_name(cur_module, node.value)` is one of these two.
+				name_id := node.source_value_id()
+				module_qname_id := if cur_module.len > 0 {
+					flat.source_type_composition_two(.qualified, flat.source_type_id(cur_module),
+						name_id)
 				} else {
-					node.value
+					name_id
 				}
-				if target == generic_base_name(qname) || target == generic_base_name(module_qname)
-					|| target == generic_base_name(node.value) {
+				if target_id == ownership_generic_base_type_name(module_qname_id)
+					|| target_id == ownership_generic_base_type_name(name_id) {
 					return node
 				}
 			}
@@ -9657,7 +9662,7 @@ fn (mut tc TypeChecker) ownership_mark_fn_param_aggregate_literal_descendants(fn
 			if init_type !is Struct {
 				return false
 			}
-			fields := tc.structs[(init_type as Struct).name()] or { []StructField{} }
+			fields := tc.structs[(init_type as Struct).source_type_id()] or { []StructField{} }
 			mut marked := false
 			for i in 0 .. node.children_count {
 				field_id := tc.a.child(&node, i)
@@ -9686,7 +9691,7 @@ fn (mut tc TypeChecker) ownership_mark_fn_param_aggregate_literal_descendants(fn
 			if init_type !is Struct || node.children_count == 0 {
 				return false
 			}
-			fields := tc.structs[(init_type as Struct).name()] or { []StructField{} }
+			fields := tc.structs[(init_type as Struct).source_type_id()] or { []StructField{} }
 			mut marked := false
 			mut explicit_fields := map[string]bool{}
 			for i in 1 .. node.children_count {
@@ -9878,7 +9883,7 @@ fn (mut tc TypeChecker) ownership_mark_return_aggregate_literal_descendants(fn_n
 			if init_type !is Struct {
 				return false
 			}
-			fields := tc.structs[(init_type as Struct).name()] or { []StructField{} }
+			fields := tc.structs[(init_type as Struct).source_type_id()] or { []StructField{} }
 			mut marked := false
 			mut explicit_fields := map[string]bool{}
 			for i in 0 .. node.children_count {
@@ -9924,7 +9929,7 @@ fn (mut tc TypeChecker) ownership_mark_return_aggregate_literal_descendants(fn_n
 			if init_type !is Struct || node.children_count == 0 {
 				return false
 			}
-			fields := tc.structs[(init_type as Struct).name()] or { []StructField{} }
+			fields := tc.structs[(init_type as Struct).source_type_id()] or { []StructField{} }
 			mut marked := false
 			mut explicit_fields := map[string]bool{}
 			for i in 1 .. node.children_count {
@@ -11240,7 +11245,7 @@ fn (mut tc TypeChecker) ownership_aggregate_field_expr(id flat.NodeId, field_nam
 			if init_type !is Struct {
 				return none
 			}
-			fields := tc.structs[(init_type as Struct).name()] or { []StructField{} }
+			fields := tc.structs[(init_type as Struct).source_type_id()] or { []StructField{} }
 			for i in 0 .. node.children_count {
 				field_id := tc.a.child(&node, i)
 				field := tc.a.nodes[int(field_id)]
@@ -11270,7 +11275,7 @@ fn (mut tc TypeChecker) ownership_aggregate_field_expr(id flat.NodeId, field_nam
 			if init_type !is Struct || node.children_count == 0 {
 				return none
 			}
-			fields := tc.structs[(init_type as Struct).name()] or { []StructField{} }
+			fields := tc.structs[(init_type as Struct).source_type_id()] or { []StructField{} }
 			for i in 1 .. node.children_count {
 				field_id := tc.a.child(&node, i)
 				field := tc.a.nodes[int(field_id)]
@@ -12526,7 +12531,7 @@ fn (tc &TypeChecker) ownership_call_has_receiver(node flat.Node, fn_node flat.No
 		if _ := tc.resolve_import_alias(base_node.value) {
 			return false
 		}
-		qbase := tc.qualify_name(base_node.value)
+		qbase := tc.qualify_type_name(base_node.source_value_id())
 		if qbase in tc.structs || qbase in tc.enum_names || tc.sum_types.contains(qbase)
 			|| qbase in tc.interface_names || tc.type_aliases.contains(qbase) {
 			return false
@@ -12802,6 +12807,9 @@ pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(id flat.NodeId) b
 	if action := tc.ownership.borrowed_projection_actions[int(id)] {
 		return action == .clone_value
 	}
+	if tc.ownership_generated_projection_is_borrowed(id) {
+		return true
+	}
 	clean_id := tc.ownership_unwrap_expr(id)
 	if clean_id == id || !tc.valid_node_id(clean_id) {
 		return false
@@ -12809,7 +12817,25 @@ pub fn (tc &TypeChecker) ownership_expr_is_borrowed_projection(id flat.NodeId) b
 	if action := tc.ownership.borrowed_projection_actions[int(clean_id)] {
 		return action == .clone_value
 	}
-	return false
+	return tc.ownership_generated_projection_is_borrowed(clean_id)
+}
+
+fn (tc &TypeChecker) ownership_generated_projection_is_borrowed(id flat.NodeId) bool {
+	return !isnil(tc.type_cache) && !isnil(tc.type_cache.borrowed_projection_clone_copies)
+		&& tc.type_cache.borrowed_projection_clone_copies.reads[int(id)]
+}
+
+// note_generated_borrowed_projection_copy preserves a checked clone decision when transform
+// copies an expression. The overlay belongs to this worker, not the shared ownership state.
+pub fn (tc &TypeChecker) note_generated_borrowed_projection_copy(source flat.NodeId, generated flat.NodeId) {
+	if isnil(tc.type_cache) || !tc.ownership_expr_is_borrowed_projection(source) {
+		return
+	}
+	mut cache := tc.type_cache
+	if isnil(cache.borrowed_projection_clone_copies) {
+		cache.borrowed_projection_clone_copies = &BorrowedProjectionCloneCopies{}
+	}
+	cache.borrowed_projection_clone_copies.reads[int(generated)] = true
 }
 
 // ownership_borrowed_projection_action records how a read from retained storage is handled.
@@ -13688,7 +13714,7 @@ fn ownership_generic_base_type_name(name_id u32) u32 {
 	if !shape.has(.bracketed) || shape.has(.leading_bracket) {
 		return name_id
 	}
-	return flat.source_type_id(generic_base_name(flat.source_type_name(name_id)))
+	return flat.source_type_syntax(name_id).generic_base()
 }
 
 fn ownership_marker_name_candidates(name_id u32) []u32 {
@@ -13898,9 +13924,9 @@ fn (tc &TypeChecker) ownership_match_covers_all_sum_variants(node flat.Node) boo
 		return false
 	}
 	subject_type := unwrap_pointer(tc.resolve_type(tc.a.child(&node, 0)))
-	mut sum_name := ''
+	mut sum_name := u32(0)
 	if subject_type is SumType {
-		sum_name = subject_type.name()
+		sum_name = subject_type.source_type_id()
 	} else {
 		return false
 	}
@@ -13921,12 +13947,11 @@ fn (tc &TypeChecker) ownership_match_covers_all_sum_variants(node flat.Node) boo
 		for j in 0 .. n_conds {
 			cond := tc.a.child_node(branch, j)
 			pattern_id := tc.match_type_pattern(cond) or { continue }
-			pattern := flat.source_type_name(pattern_id)
-			pattern_short := short_type_name(pattern)
+			pattern_short := flat.source_type_syntax(pattern_id).unqualified()
 			qpattern_id := tc.qualify_type_name(pattern_id)
 			for variant_id in variants {
 				if variant_id == pattern_id || variant_id == qpattern_id
-					|| short_type_name(flat.source_type_name(variant_id)) == pattern_short {
+					|| flat.source_type_syntax(variant_id).unqualified() == pattern_short {
 					covered[variant_id] = true
 				}
 			}
@@ -14045,49 +14070,7 @@ fn (value &MovedVar) type_name_text() string {
 
 // type_name_text resolves the indexed source type spelling.
 @[inline]
-fn (value &OwnershipKeySnapshot) type_name_text() string {
-	return flat.source_type_name(value.type_name)
-}
-
-// type_name_text resolves the indexed source type spelling.
-@[inline]
-fn (value &OwnershipReturnDescendant) type_name_text() string {
-	return flat.source_type_name(value.type_name)
-}
-
-// type_name_text resolves the indexed source type spelling.
-@[inline]
-fn (value &OwnershipArrayShiftEntry) type_name_text() string {
-	return flat.source_type_name(value.type_name)
-}
-
-// type_name_text resolves the indexed source type spelling.
-@[inline]
-fn (value &OwnershipParamDescendant) type_name_text() string {
-	return flat.source_type_name(value.type_name)
-}
-
-// type_name_text resolves the indexed source type spelling.
-@[inline]
-fn (value &OwnershipCaptureBinding) type_name_text() string {
-	return flat.source_type_name(value.type_name)
-}
-
-// type_name_text resolves the indexed source type spelling.
-@[inline]
 pub fn (value &OwnershipDropEntry) type_name_text() string {
-	return flat.source_type_name(value.type_name)
-}
-
-// type_name_text resolves the indexed source type spelling.
-@[inline]
-fn (value &OwnershipDropTarget) type_name_text() string {
-	return flat.source_type_name(value.type_name)
-}
-
-// type_name_text resolves the indexed source type spelling.
-@[inline]
-fn (value &OwnershipNameSnapshot) type_name_text() string {
 	return flat.source_type_name(value.type_name)
 }
 

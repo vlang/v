@@ -11,12 +11,12 @@ Compression output format is selected by `CompressFormat` via
 
 `compress` keeps default zlib behavior, and `decompress` auto-detects all three.
 
-## Interop Validation
+## Testing
 
-Cross-validation with C/zlib is kept separate from `v test` and can be run manually:
+Run the module's roundtrip, stream, checksum and malformed-input tests from the repository root:
 
 ```bash
-./vnew run vlib/compress/deflate/interop/deflate_interop.v
+./v test vlib/compress/deflate/
 ```
 
 ## Example

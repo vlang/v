@@ -9,6 +9,10 @@ $if !android {
 	#flag -lpthread
 }
 
+// NetBSD keeps the unnamed POSIX semaphores in librt, not in the pthread
+// library this file links above.
+#flag netbsd -lrt
+
 #include <semaphore.h>
 
 @[trusted]

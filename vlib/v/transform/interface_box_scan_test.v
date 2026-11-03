@@ -23,7 +23,7 @@ fn test_interface_box_scan_retains_every_multi_return_assignment_slot() {
 	result := a.add_val(.ident, 'result')
 	assignment := interface_box_scan_node(mut a, .assign, '3', '', [first, result, middle, last])
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['Reader'] = true
+	tc.interface_names[flat.source_type_id('Reader')] = true
 	tc.register_synth_type(result, types.Type(types.MultiReturn{
 		types: [types.Type(types.Struct{ name_id: flat.source_type_id('First') }),
 			types.Type(types.int_), types.Type(types.Struct{ name_id: flat.source_type_id('Last') })]
@@ -47,7 +47,7 @@ fn test_interface_box_scan_retains_parallel_assignment_boxes() {
 	assignment := interface_box_scan_node(mut a, .assign, '2', '', [first, first_value, last,
 		last_value])
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['Reader'] = true
+	tc.interface_names[flat.source_type_id('Reader')] = true
 	tc.register_synth_type(first_value, types.Type(types.Struct{ name_id: flat.source_type_id('First') }))
 	tc.register_synth_type(last_value, types.Type(types.Struct{ name_id: flat.source_type_id('Last') }))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
@@ -67,7 +67,7 @@ fn test_interface_box_scan_preserves_interface_alias_after_primitive_arguments()
 	value := a.add_val(.ident, 'source')
 	call := interface_box_scan_node(mut a, .call, '', '', [callee, count, label, value])
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['Reader'] = true
+	tc.interface_names[flat.source_type_id('Reader')] = true
 	tc.fn_param_types['consume'] = [types.Type(types.int_), types.Type(types.String{}), types.Type(types.Alias{
 		name_id:   flat.source_type_id('ReaderAlias')
 		base_type: types.Type(types.Interface{ name_id: flat.source_type_id('Reader') })
@@ -86,7 +86,7 @@ fn test_interface_box_scan_preserves_interface_alias_after_primitive_arguments()
 fn test_interface_box_param_predicate_preserves_container_and_callback_types() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.interface_names['Reader'] = true
+	tc.interface_names[flat.source_type_id('Reader')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	reader := types.Type(types.Interface{ name_id: flat.source_type_id('Reader') })
 	integer := types.Type(types.int_)
@@ -130,7 +130,7 @@ fn test_interface_array_spread_classification_and_box_scan() {
 		spread := interface_box_scan_node(mut a, .prefix, '...', '', [value])
 		append := interface_box_scan_node(mut a, .infix, '', '', [lhs, spread])
 		mut tc := types.TypeChecker.new(&a)
-		tc.interface_names['Value'] = true
+		tc.interface_names[flat.source_type_id('Value')] = true
 		tc.register_synth_type(lhs, types.Type(types.Array{
 			elem_type: types.Type(types.Interface{ name_id: flat.source_type_id('Value') })
 		}))

@@ -126,10 +126,9 @@ v up
 ```
 
 This also refreshes the bundled TCC binaries used for fast C compilation.
-Previously cached modules are validated with the updated compiler. Successful checks that
-produce no output remain quiet; `Caching module <name>...` reports actual C compilation.
-Different build configurations can compile the same module separately.
-Use `v up -v` to show progress for every checked cache configuration, including reused objects.
+It then runs `v wipe-cache` to clear module, object, temporary, and compiled tool caches,
+even when V is already up to date. Subsequent builds recreate the caches they need;
+`v up` does not replay previously recorded build configurations or test selectors.
 
 > [!NOTE]
 > If you run into any trouble, or you have a different operating
@@ -264,10 +263,10 @@ working `tcc` from `PATH`, before using the platform compiler. The system fallba
 when required V runtime artifacts are available, including the bundled `libgc.a` used by default
 glibc and Windows Boehm builds.
 
-On macOS 27 (Darwin 27) and later, V never selects TCC by itself, and `make` and `v self` build
-V with the system compiler: depending on their layout, TCC-linked executables can start there
-with corrupted global variables ([#29744](https://github.com/vlang/v/issues/29744)). An explicit
-`-cc tcc` is still honored.
+On macOS, regular builds and `v self` use TCC by default, including on Darwin 27 and later.
+Use a current TCC bundle built with the Mach-O zero-fill fix for
+[#29744](https://github.com/vlang/v/issues/29744); older bundles can corrupt global variables.
+An explicit `-cc` overrides the default, and `CC` also overrides the compiler used by `v self`.
 
 `-prod` builds never default to TCC, which cannot do their optimizations. On x64 Windows,
 without `-cc`, a `-prod` build uses MSVC when an x64 Visual Studio Developer environment is
@@ -382,7 +381,10 @@ hello world
 >>>
 ```
 
-`v self` defaults to `-gc none`. Pass `-gc <mode>` if you need a different GC mode.
+`v self` defaults to `-gc none` and includes only the C backend. Selecting an omitted backend
+automatically builds and runs a cached full compiler. Later requests reuse it while its sources
+are current. Use `v -all-backends self` or `v -compile-backend fastc self` to include optional
+backends in the main executable. Pass `-gc <mode>` if you need a different GC mode.
 On non-Windows hosts, `v -prod self` uses profile-guided optimization (PGO) when the selected C
 compiler is Clang and `llvm-profdata` is available. Clang's reported installation directory and
 resolved executable directory are searched before `PATH` and macOS `xcrun` for the profile tool,
@@ -394,13 +396,16 @@ production compiler. Other C toolchains and failed PGO attempts use a regular pr
 Use `v -prod -parallel-cc self` to skip PGO and compile the generated C units in parallel.
 Explicit `-no-prod-options` or profile-related `-cflags` also skip automatic PGO.
 
-On macOS ARM64, first run `v -compile-backend arm64 self` to include the native backend in
-the current compiler. Then use `v -b arm64 self` to rebuild the full compiler with the native
-ARM64 backend. `v -b arm64 self x2` replaces the compiler twice, so the second build runs the
-compiler produced by the first native build. Use `-o v_arm64` to keep the current compiler
-and write a separate executable. Native self-builds use `-gc none` and retain commands
-such as `self`, `fmt`, and `version`. The native compiler includes the C backend and leaves
-out FastC by default.
+Use `v -b arm64 file.v` on macOS ARM64 or `v -b x64 file.v` on Linux AMD64 to compile
+with a native backend. Use `v -b arm64 self` or `v -b x64 self` to rebuild
+the full compiler with the selected native backend. A backend-specific `self x2` replaces
+the compiler twice, so the second build runs the compiler produced by the first native
+build. Use `-o v_arm64` or `-o v_x64` to keep the current compiler and write a separate
+executable. Native self-builds use `-gc none` and retain commands such as `self`, `fmt`,
+and `version`. The native compiler includes the C backend and leaves out FastC by default.
+For x64, add `-prod` to enable SSA optimization, register allocation and optimized C helpers.
+Very large x64 modules may skip the global SSA pass to bound compiler memory. The ARM64
+backend retains its existing optimization behavior.
 
 ```bash
 cd examples

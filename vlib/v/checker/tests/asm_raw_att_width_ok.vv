@@ -1,0 +1,73 @@
+// These AT&T forms agree with the widths of their operands, so the width check reports nothing.
+// The undefined name afterwards stops the build before code generation, which would otherwise
+// reject the templates on other hosts.
+enum Tag as int {
+	first
+	second
+}
+
+@[noinline]
+fn widths(len u64, small u32, low u8, count int, tag Tag) u64 {
+	mut out := len
+	mut narrow := small
+	mut byte_value := low
+	mut total := count
+	mut kind := tag
+	asm amd64 raw {
+		"movl %k[small], %%ecx\n\t"
+		"movq %%rax, %%rdx\n\t"
+		"movl %%eax, %%ecx\n\t"
+		"movzbl %%al, %%eax\n\t"
+		"movslq %%ecx, %%rdx\n\t"
+		"shll %%cl, %%eax\n\t"
+		"shlq %%cl, %%rax\n\t"
+		"movq %%xmm0, %%rax\n\t"
+		"addl $1, %k[small]\n\t"
+		"incq %[len]\n\t"
+		"testb $1, %b[byte]\n\t"
+		"addq %[total], %[total]\n\t"
+		"incq %[kind]\n\t"
+		"orl %%eax, %%ecx\n\t"
+		"pushq %%fs\n\t"
+		"popq %%fs\n\t"
+		"movl %%ds, %%eax\n\t"
+		"movq %%fs, %%rax\n\t"
+		"movq %%cr0, %%rax"
+		; [len] "+r" (out)
+		  [small] "+r" (narrow)
+		  [byte] "+q" (byte_value)
+		  [total] "+r" (total)
+		  [kind] "+r" (kind)
+		; ; rax rcx rdx xmm0 cc
+	}
+	return out + u64(narrow) + u64(byte_value) + u64(total) + u64(kind) + undefined_total
+}
+
+// On the i386 family `int` is 32 bits wide, and `%[name]` prints the low register of a 64-bit
+// operand, so both agree with an `l` suffix. Segment, control and debug registers take a
+// 32-bit view.
+@[noinline]
+fn narrow_widths(wide u64, count int) u32 {
+	mut out := u32(0)
+	mut total := count
+	asm i386 raw {
+		"movl %[wide], %[out]\n\t"
+		"incl %[total]\n\t"
+		"pushl %%ds\n\t"
+		"popl %%fs\n\t"
+		"movl %%cr0, %%eax\n\t"
+		"movl %%eax, %%cr0\n\t"
+		"movl %%dr7, %%eax\n\t"
+		"movl %%ds, %%eax"
+		; [out] "=&r" (out)
+		  [total] "+r" (total)
+		; [wide] "r" (wide)
+		; eax cc
+	}
+	return out + u32(total)
+}
+
+fn main() {
+	println(widths(1, 2, 3, 4, .first))
+	println(narrow_widths(5, 6))
+}

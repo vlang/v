@@ -35,6 +35,30 @@ fn (mut b Builder) register_native_float_format_helpers() {
 		id := b.register_synthetic_function(name, b.str_type, [value_type])
 		b.generate_native_float_string_body(id, value_type)
 	}
+	f32_strg_id := b.register_synthetic_function('f32.strg', b.str_type, [b.f32_type])
+	b.generate_native_float_strg_body(f32_strg_id, b.f32_type, 'strconv__f32_to_str_l_with_dot')
+	f64_strg_id := b.register_synthetic_function('f64.strg', b.str_type, [b.f64_type])
+	b.generate_native_float_strg_body(f64_strg_id, b.f64_type, 'strconv__f64_to_str_l_with_dot')
+}
+
+fn (mut b Builder) generate_native_float_strg_body(func_id int, value_type TypeID, helper_name string) {
+	entry := b.m.add_block(func_id, 'float_strg_entry')
+	value := b.func_add_argument(func_id, value_type, 'value')
+	bits_type := if value_type == b.f32_type { b.u32_type } else { b.u64_type }
+	mask_value := if value_type == b.f32_type { '2147483647' } else { '9223372036854775807' }
+	bits := b.block_instr1(.bitcast, entry, bits_type, value)
+	magnitude := b.block_instr2(.and_, entry, bits_type, bits,
+		b.m.get_or_add_const(bits_type, mask_value))
+	is_zero := b.block_instr2(.eq, entry, b.i1_type, magnitude,
+		b.m.get_or_add_const(bits_type, '0'))
+	zero_block := b.m.add_block(func_id, 'float_strg_zero')
+	nonzero_block := b.m.add_block(func_id, 'float_strg_nonzero')
+	b.block_instr3(.br, entry, b.void_type, is_zero, ValueID(zero_block), ValueID(nonzero_block))
+	zero_text := b.m.add_value(.string_literal, b.str_type, '0.0', 0)
+	b.block_instr1(.ret, zero_block, b.void_type, zero_text)
+	helper := b.m.add_value(.func_ref, b.str_type, helper_name, b.fn_ids[helper_name])
+	result := b.block_instr2(.call, nonzero_block, b.str_type, helper, value)
+	b.block_instr1(.ret, nonzero_block, b.void_type, result)
 }
 
 // generate_native_float_format_body uses the platform formatter with an exact

@@ -1071,3 +1071,15 @@ fn unhex(c u8) u8 {
 	}
 	return 0
 }
+
+// join_host_port joins host and port into a network address of the form
+// `host:port`. The colon is retained when port is empty. IPv6 addresses are
+// bracketed, and an already bracketed host is preserved. No validation or
+// service-name resolution is performed.
+pub fn join_host_port(host string, port string) string {
+	mut h := host
+	if h.contains(':') && !h.starts_with('[') {
+		h = '[' + h + ']'
+	}
+	return h + ':' + port
+}

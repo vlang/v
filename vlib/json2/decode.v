@@ -438,6 +438,7 @@ fn decoder_for_text(val string, params DecoderOptions) !Decoder {
 // decode decodes a JSON string into a specified type.
 // By default, decoding is lenient. Use `strict: true` for strict type conversion
 // and `json5: true` to accept JSON5 syntax.
+// Use decode_standard to avoid generating JSON5 decoding code for the target type.
 @[manualfree]
 pub fn decode[T](val string, params DecoderOptions) !T {
 	if params.json5 {
@@ -447,6 +448,14 @@ pub fn decode[T](val string, params DecoderOptions) !T {
 		}
 		return decode_json5[T](val, mut buffer, params)
 	}
+	return decode_standard[T](val, params)
+}
+
+// decode_standard decodes standard JSON into a specified type without generating
+// JSON5 decoding code. It is lenient by default; use `strict: true` for strict
+// type conversion. The `json5` option is ignored; JSON5 syntax is always rejected.
+@[manualfree]
+pub fn decode_standard[T](val string, params DecoderOptions) !T {
 	mut decoder := decoder_for_text(val, params)!
 	// Nothing that is decoded refers to values_info, so it is released right away.
 	defer {

@@ -40,7 +40,7 @@ fn v3_gc_is_disabled(building_v bool, cross_output bool, target_os string, targe
 	if building_v || cross_output {
 		return true
 	}
-	if backend == 'arm64' {
+	if backend in ['arm64', 'x64'] {
 		return true
 	}
 	if gc_mode == 'vgc' {

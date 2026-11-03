@@ -1,6 +1,6 @@
 module fontstash
 
-#define FONS_USE_FREETYPE 1
+#flag -DFONS_USE_FREETYPE=1
 // Windows fontstash forces stb_truetype in thirdparty/fontstash/fontstash.h,
 // so adding freetype link flags here only creates a stale linker dependency.
 #flag linux -I/usr/include/freetype2

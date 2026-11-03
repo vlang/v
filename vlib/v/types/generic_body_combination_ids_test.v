@@ -2,19 +2,22 @@ module types
 
 import v.flat
 
+const combination_id_param_t = flat.source_type_id('T')
+const combination_id_param_u = flat.source_type_id('U')
+
 fn test_generic_body_combination_ids_preserve_parameter_order() {
-	names := ['T', 'U']
+	names := [combination_id_param_t, combination_id_param_u]
 	first := {
-		'T': flat.source_type_int
-		'U': flat.source_type_string
+		combination_id_param_t: flat.source_type_int
+		combination_id_param_u: flat.source_type_string
 	}
 	reordered := {
-		'U': flat.source_type_string
-		'T': flat.source_type_int
+		combination_id_param_u: flat.source_type_string
+		combination_id_param_t: flat.source_type_int
 	}
 	swapped := {
-		'T': flat.source_type_string
-		'U': flat.source_type_int
+		combination_id_param_t: flat.source_type_string
+		combination_id_param_u: flat.source_type_int
 	}
 	assert type_param_combination_key(names, first) == type_param_combination_key(names, reordered)
 	assert type_param_combination_seen(names, reordered, [first], [0])
@@ -22,18 +25,18 @@ fn test_generic_body_combination_ids_preserve_parameter_order() {
 }
 
 fn test_generic_body_combination_buckets_verify_all_spelling_ids() {
-	names := ['T', 'U']
+	names := [combination_id_param_t, combination_id_param_u]
 	first := {
-		'T': flat.source_type_int
-		'U': flat.source_type_string
+		combination_id_param_t: flat.source_type_int
+		combination_id_param_u: flat.source_type_string
 	}
 	second := {
-		'T': flat.source_type_int
-		'U': flat.source_type_bool
+		combination_id_param_t: flat.source_type_int
+		combination_id_param_u: flat.source_type_bool
 	}
 	absent := {
-		'T': flat.source_type_f64
-		'U': flat.source_type_bool
+		combination_id_param_t: flat.source_type_f64
+		combination_id_param_u: flat.source_type_bool
 	}
 	combinations := [first, second]
 	// Force several candidates into one bucket, independent of their fingerprints.

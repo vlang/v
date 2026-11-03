@@ -142,6 +142,15 @@ mut:
 	entries    map[string]i8
 	last_name  string
 	last_value i8
+	// parked keeps the entries of contexts switched away from, as in
+	// ContextStringLookupCache.
+	parked map[string]&ContextNameFacts
+}
+
+@[heap]
+struct ContextNameFacts {
+mut:
+	entries map[string]i8
 }
 
 @[inline]
@@ -193,9 +202,20 @@ fn (mut c ContextNameFactCache) select_context(file string, module_name string) 
 		&& (unsafe { c.module.str == module_name.str } || c.module == module_name) {
 		return
 	}
+	if c.entries.len > 0 {
+		c.parked[context_lookup_key(c.file, c.module)] = &ContextNameFacts{
+			entries: c.entries.move()
+		}
+	}
 	c.file = file
 	c.module = module_name
-	c.entries = map[string]i8{}
+	key := context_lookup_key(file, module_name)
+	if mut parked := c.parked[key] {
+		c.entries = parked.entries.move()
+		c.parked.delete(key)
+	} else {
+		c.entries = map[string]i8{}
+	}
 	c.last_name = ''
 	c.last_value = 0
 }
@@ -239,9 +259,10 @@ fn (mut c AliasMethodLookupCache) put(target_id u32, method string, value string
 }
 
 // ContextStringLookupCache memoizes string lookups whose answers depend on the
-// current source file and module. Cgen visits functions in source order, so
-// replacing on a context switch avoids allocating a compound key on every hot
-// lookup while retaining almost all hits.
+// current source file and module. Hot lookups use the active context's map
+// directly, so they never allocate a compound key. Function items are not
+// grouped by file, so a context switch parks the active entries under their
+// context instead of discarding them, and a returning context resumes them.
 @[heap]
 struct ContextStringLookupCache {
 mut:
@@ -251,6 +272,13 @@ mut:
 	last_name  string
 	last_value string
 	last_valid bool
+	parked     map[string]&ContextStringEntries
+}
+
+@[heap]
+struct ContextStringEntries {
+mut:
+	entries map[string]string
 }
 
 @[inline]
@@ -283,12 +311,30 @@ fn (mut c ContextStringLookupCache) select_context(file string, module_name stri
 		&& (unsafe { c.module.str == module_name.str } || c.module == module_name) {
 		return
 	}
+	if c.entries.len > 0 {
+		c.parked[context_lookup_key(c.file, c.module)] = &ContextStringEntries{
+			entries: c.entries.move()
+		}
+	}
 	c.file = file
 	c.module = module_name
-	c.entries = map[string]string{}
+	key := context_lookup_key(file, module_name)
+	if mut parked := c.parked[key] {
+		c.entries = parked.entries.move()
+		c.parked.delete(key)
+	} else {
+		c.entries = map[string]string{}
+	}
 	c.last_name = ''
 	c.last_value = ''
 	c.last_valid = false
+}
+
+// context_lookup_key names a (file, module) lookup context. A newline cannot
+// occur in either part.
+@[inline]
+fn context_lookup_key(file string, module_name string) string {
+	return '${file}\n${module_name}'
 }
 
 struct SourceTypeLookupRecentEntry {
@@ -360,7 +406,6 @@ fn (mut c ContextSourceTypeLookupCache) select_context(file string, module_name 
 fn (mut g FlatGen) reset_context_lookup_caches() {
 	g.normalize_call_cache = &ContextStringLookupCache{}
 	g.import_key_cache = &util.KeyRecentCache{}
-	g.selective_import_key_cache = &util.KeyRecentCache{}
 	g.import_alias_cache = &ContextStringLookupCache{}
 	g.enum_selector_cache = &ContextSourceTypeLookupCache{}
 	g.enum_method_cache = &ContextStringLookupCache{}
@@ -581,12 +626,8 @@ fn (g &FlatGen) cname(name string) string {
 
 fn (g &FlatGen) cname_uncached(name string) string {
 	mut cache := g.c_name_cache
-	if cached := cache.entries[name] {
-		cache.last_name = name
-		cache.last_value = cached
-		cache.remember(name, cached)
-		return cached
-	}
+	// c_name is pure, so every cache level holds the same C name for `name`: the
+	// base's recent slots can answer before the map lookups.
 	if !isnil(cache.base) {
 		if cached := cache.base.recent(name) {
 			cache.last_name = name
@@ -594,6 +635,14 @@ fn (g &FlatGen) cname_uncached(name string) string {
 			cache.remember(name, cached)
 			return cached
 		}
+	}
+	if cached := cache.entries[name] {
+		cache.last_name = name
+		cache.last_value = cached
+		cache.remember(name, cached)
+		return cached
+	}
+	if !isnil(cache.base) {
 		if cached := cache.base.entries[name] {
 			cache.last_name = name
 			cache.last_value = cached
@@ -671,12 +720,18 @@ fn c_escape(s string) string {
 // c_escape_into appends the C-escaped form of s to out, without the temporary
 // builder and copy that c_escape needs for its return value.
 fn c_escape_into(mut out strings.Builder, s string) {
+	c_escape_bytes_into(mut out, s, false)
+}
+
+// c_escape_bytes_into can restrict literal bodies to ASCII without changing
+// the filename spelling used by C include and line directives.
+fn c_escape_bytes_into(mut out strings.Builder, s string, ascii_only bool) {
 	// Copy runs of bytes that need no escape in one write; literal tables are
 	// mostly plain text, and a per-byte write dominated emitting them.
 	mut run_start := 0
 	for i in 0 .. s.len {
 		b := s[i]
-		if b >= 32 && b != 127 && b != `\\` && b != `"` {
+		if b >= 32 && b != 127 && b != `\\` && b != `"` && (!ascii_only || b < 128) {
 			continue
 		}
 		if i > run_start {
@@ -700,7 +755,7 @@ fn c_escape_into(mut out strings.Builder, s string) {
 				out.write_string('\\r')
 			}
 			else {
-				if b < 32 || b == 127 {
+				if b < 32 || b == 127 || (ascii_only && b >= 128) {
 					v := int(b)
 					out.write_u8(`\\`)
 					out.write_u8(u8(`0` + ((v >> 6) & 7)))
@@ -718,7 +773,8 @@ fn c_escape_into(mut out strings.Builder, s string) {
 }
 
 // c_literal_escape_into splits escaped literal bodies between complete escapes.
-// Even a four-byte octal escape fits within the source-line chunk bound.
+// Octal escapes preserve arbitrary V bytes in UTF-8 C source, including malformed
+// UTF-8 that MSVC cannot preprocess. Each escape fits within the source-line bound.
 fn c_literal_escape_into(mut out strings.Builder, s string) {
 	max_bytes := c_string_literal_chunk_len / 4
 	mut start := 0
@@ -734,7 +790,7 @@ fn c_literal_escape_into(mut out strings.Builder, s string) {
 		if end == start {
 			end = if s.len - start > max_bytes { start + max_bytes } else { s.len }
 		}
-		c_escape_into(mut out, s[start..end])
+		c_escape_bytes_into(mut out, s[start..end], true)
 		start = end
 	}
 }

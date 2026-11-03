@@ -1,10 +1,9 @@
 import os
 import time
 
-// A build that changes nothing restores the executable that the build before it
-// linked: it checks, generates, compiles and links nothing. These tests build a
-// program twice, and then change one input of the build at a time: each change has
-// to be seen, and the executable has to be the one of the present inputs.
+// An unchanged program can reuse an executable only when all native inputs are
+// certifiable. Opaque headers instead require the C compiler on every build.
+// These tests retain runtime and input-change checks for both policies.
 
 struct SavedEnv {
 	name    string
@@ -162,7 +161,15 @@ fn linked(output string) bool {
 	return false
 }
 
-fn assert_restored(output string) {
+fn native_headers_prevent_reuse(output string) bool {
+	return output.contains('V3 program executable not cached: native headers require C compiler processing')
+}
+
+fn assert_reused_or_native_header_rebuild(output string) {
+	if native_headers_prevent_reuse(output) {
+		assert_rebuilt(output)
+		return
+	}
 	assert restored(output), output
 	assert !linked(output), output
 	assert output.contains('cgen (cached)'), output
@@ -235,19 +242,21 @@ fn test_unchanged_program_restores_its_executable_and_a_changed_one_does_not() {
 
 		// The same build, to another path: the executable does not carry its name.
 		same := build(root, flags, main_file, 'same')
-		assert_restored(same)
+		assert_reused_or_native_header_rebuild(same)
 		assert run_built(root, 'same') == '42'
-		assert os.read_bytes(os.join_path(root, 'same'))! == os.read_bytes(os.join_path(root, 'cold'))!
+		if restored(same) {
+			assert os.read_bytes(os.join_path(root, 'same'))! == os.read_bytes(os.join_path(root, 'cold'))!
+		}
 
 		// A restored executable is a file of its own: changing it changes no other.
 		os.write_file(os.join_path(root, 'same'), 'not an executable')!
 		again := build(root, flags, main_file, 'again')
-		assert_restored(again)
+		assert_reused_or_native_header_rebuild(again)
 		assert run_built(root, 'again') == '42'
 
 		// Saved again with the text it has: it is the same program.
 		os.write_file(main_file, program)!
-		assert_restored(build(root, flags, main_file, 'saved'))
+		assert_reused_or_native_header_rebuild(build(root, flags, main_file, 'saved'))
 
 		// Another declaration: the program is built, and its executable replaces the old one.
 		os.write_file(main_file, program.replace('println(n + 1)', 'println(twice(n + 1))') +
@@ -255,7 +264,7 @@ fn test_unchanged_program_restores_its_executable_and_a_changed_one_does_not() {
 		changed := build(root, flags, main_file, 'changed')
 		assert_rebuilt(changed)
 		assert run_built(root, 'changed') == '84'
-		assert_restored(build(root, flags, main_file, 'changed_again'))
+		assert_reused_or_native_header_rebuild(build(root, flags, main_file, 'changed_again'))
 		assert run_built(root, 'changed_again') == '84'
 
 		// Back to the first text: one executable is kept for a program, the last one.
@@ -263,8 +272,9 @@ fn test_unchanged_program_restores_its_executable_and_a_changed_one_does_not() {
 		back := build(root, flags, main_file, 'back')
 		assert_rebuilt(back)
 		assert run_built(root, 'back') == '42'
-		assert_restored(build(root, flags, main_file, 'back_again'))
-		assert cached_executables(flags).len == kept_for_others + 1, cached_executables(flags).str()
+		assert_reused_or_native_header_rebuild(build(root, flags, main_file, 'back_again'))
+		expected_kept := kept_for_others + if native_headers_prevent_reuse(cold) { 0 } else { 1 }
+		assert cached_executables(flags).len == expected_kept, cached_executables(flags).str()
 	}
 }
 
@@ -283,19 +293,19 @@ fn test_flags_and_link_inputs_decide_whether_an_executable_is_restored() {
 		main_file := os.join_path(root, 'main.v')
 		os.write_file(main_file, program)!
 		assert_rebuilt(build(root, flags, main_file, 'cold'))
-		assert_restored(build(root, flags, main_file, 'same'))
+		assert_reused_or_native_header_rebuild(build(root, flags, main_file, 'same'))
 
 		// Flags of the C compiler and of the linker are inputs of the executable.
 		mut with_cflags := flags.clone()
 		with_cflags << ['-cflags', '-DV_PROGRAM_EXECUTABLE_TEST=1']
 		assert_rebuilt(build(root, with_cflags, main_file, 'cflags'))
-		assert_restored(build(root, with_cflags, main_file, 'cflags_again'))
+		assert_reused_or_native_header_rebuild(build(root, with_cflags, main_file, 'cflags_again'))
 		mut with_ldflags := flags.clone()
 		with_ldflags << ['-ldflags', '-L${root}']
 		assert_rebuilt(build(root, with_ldflags, main_file, 'ldflags'))
-		assert_restored(build(root, with_ldflags, main_file, 'ldflags_again'))
+		assert_reused_or_native_header_rebuild(build(root, with_ldflags, main_file, 'ldflags_again'))
 		assert_rebuilt(build(root, flags, main_file, 'plain'))
-		assert_restored(build(root, flags, main_file, 'plain_again'))
+		assert_reused_or_native_header_rebuild(build(root, flags, main_file, 'plain_again'))
 
 		// A build that is asked to show its C compiler runs it.
 		mut with_showcc := flags.clone()
@@ -310,7 +320,7 @@ fn test_flags_and_link_inputs_decide_whether_an_executable_is_restored() {
 
 		// The object of a module is a link input: without it the executable is not
 		// known to be what a link would produce.
-		assert_restored(build(root, flags, main_file, 'before_object'))
+		assert_reused_or_native_header_rebuild(build(root, flags, main_file, 'before_object'))
 		objects := os.walk_ext(cache_dir(flags), '.o').filter(os.file_name(it).starts_with('time_'))
 		assert objects.len > 0
 		for object in objects {
@@ -318,9 +328,9 @@ fn test_flags_and_link_inputs_decide_whether_an_executable_is_restored() {
 		}
 		without_object := build(root, flags, main_file, 'without_object')
 		assert !restored(without_object), without_object
-		assert without_object.contains('V3 program executable miss: an input of the compiler or the linker changed'), without_object
+		assert native_headers_prevent_reuse(without_object) || without_object.contains('V3 program executable miss: an input of the compiler or the linker changed'), without_object
 		assert run_built(root, 'without_object') == '42'
-		assert_restored(build(root, flags, main_file, 'with_object'))
+		assert_reused_or_native_header_rebuild(build(root, flags, main_file, 'with_object'))
 
 		// The copy in the cache is checked before it is used.
 		for cached in cached_executables(flags) {
@@ -329,7 +339,7 @@ fn test_flags_and_link_inputs_decide_whether_an_executable_is_restored() {
 		damaged := build(root, flags, main_file, 'damaged')
 		assert_rebuilt(damaged)
 		assert run_built(root, 'damaged') == '42'
-		assert_restored(build(root, flags, main_file, 'repaired'))
+		assert_reused_or_native_header_rebuild(build(root, flags, main_file, 'repaired'))
 
 		os.setenv('V3_CACHE_DISABLE_PROGRAM_EXECUTABLE', '1', true)
 		assert_rebuilt(build(root, flags, main_file, 'disabled'))
@@ -359,14 +369,14 @@ fn test_changed_module_rebuilds_the_program_that_imports_it() {
 		os.write_file(main_file, 'import exeanswer\n\nfn main() {\n\tprintln(exeanswer.answer())\n}\n')!
 		assert_rebuilt(build(root, flags, main_file, 'cold'))
 		assert run_built(root, 'cold') == '42'
-		assert_restored(build(root, flags, main_file, 'same'))
+		assert_reused_or_native_header_rebuild(build(root, flags, main_file, 'same'))
 
 		// The body of a function of the module: its interface stays what it was.
 		os.write_file(module_file, 'module exeanswer\n\npub fn answer() int {\n\treturn 43\n}\n')!
 		changed := build(root, flags, main_file, 'changed')
 		assert !restored(changed), changed
 		assert run_built(root, 'changed') == '43'
-		assert_restored(build(root, flags, main_file, 'changed_again'))
+		assert_reused_or_native_header_rebuild(build(root, flags, main_file, 'changed_again'))
 		assert run_built(root, 'changed_again') == '43'
 
 		// One more file in the module.
@@ -374,7 +384,7 @@ fn test_changed_module_rebuilds_the_program_that_imports_it() {
 		more := build(root, flags, main_file, 'more')
 		assert !restored(more), more
 		assert run_built(root, 'more') == 'more\n43'
-		assert_restored(build(root, flags, main_file, 'more_again'))
+		assert_reused_or_native_header_rebuild(build(root, flags, main_file, 'more_again'))
 	}
 }
 
@@ -396,7 +406,7 @@ fn test_restored_build_prints_the_notices_of_the_program_again() {
 		assert_rebuilt(cold)
 		assert cold.contains('warning: unused variable: `unused`'), cold
 		same := build(root, flags, main_file, 'same')
-		assert_restored(same)
+		assert_reused_or_native_header_rebuild(same)
 		assert same.contains('main.v:2:2: warning: unused variable: `unused`'), same
 		assert same.count('unused variable') == cold.count('unused variable'), same
 		assert run_built(root, 'same') == 'done'
@@ -429,7 +439,7 @@ fn test_run_restores_the_executable_and_keeps_its_exit_code() {
 			warm := os.exec(args)
 			assert warm.exit_code == 3, warm.output
 			assert warm.output.contains('ran a,b'), warm.output
-			assert restored(warm.output), warm.output
+			assert_reused_or_native_header_rebuild(warm.output)
 			assert os.is_file(output)
 		}
 	}
@@ -458,13 +468,13 @@ fn test_libraries_of_the_link_are_inputs_of_the_executable() {
 	with_option << ['-ldflags', '-Wl,${direct}']
 	assert_rebuilt(build(root, with_option, main_file, 'direct'))
 	assert run_built(root, 'direct') == '41'
-	assert_restored(build(root, with_option, main_file, 'direct_same'))
+	assert_reused_or_native_header_rebuild(build(root, with_option, main_file, 'direct_same'))
 	make_answer_library(direct, 42, false)
 	replaced := build(root, with_option, main_file, 'direct_replaced')
 	assert !restored(replaced), replaced
 	assert replaced.contains('V3 program executable miss: an input of the compiler or the linker changed'), replaced
 	assert run_built(root, 'direct_replaced') == '42'
-	assert_restored(build(root, with_option, main_file, 'direct_again'))
+	assert_reused_or_native_header_rebuild(build(root, with_option, main_file, 'direct_again'))
 	assert run_built(root, 'direct_again') == '42'
 
 	// A library that the linker looks up, and one that appears before it.
@@ -476,15 +486,15 @@ fn test_libraries_of_the_link_are_inputs_of_the_executable() {
 	with_search << ['-ldflags', '-L${earlier} -L${searched} -lanswer']
 	assert_rebuilt(build(root, with_search, main_file, 'searched'))
 	assert run_built(root, 'searched') == '51'
-	assert_restored(build(root, with_search, main_file, 'searched_same'))
+	assert_reused_or_native_header_rebuild(build(root, with_search, main_file, 'searched_same'))
 	make_answer_library(os.join_path(searched, 'libanswer.a'), 52, false)
 	assert !restored(build(root, with_search, main_file, 'searched_replaced'))
 	assert run_built(root, 'searched_replaced') == '52'
-	assert_restored(build(root, with_search, main_file, 'searched_again'))
+	assert_reused_or_native_header_rebuild(build(root, with_search, main_file, 'searched_again'))
 	make_answer_library(os.join_path(earlier, 'libanswer.a'), 53, false)
 	shadowed := build(root, with_search, main_file, 'shadowed')
 	assert !restored(shadowed), shadowed
-	assert shadowed.contains('V3 program executable miss: a file appeared where the compiler or the linker looks'), shadowed
+	assert native_headers_prevent_reuse(shadowed) || shadowed.contains('V3 program executable miss: a file appeared where the compiler or the linker looks'), shadowed
 	assert run_built(root, 'shadowed') == '53'
 
 	// A directory and a library that the linker is handed one by one.
@@ -494,13 +504,13 @@ fn test_libraries_of_the_link_are_inputs_of_the_executable() {
 	with_forwarded << ['-ldflags', '-Wl,-L,${os.dir(forwarded)},-lanswer']
 	assert_rebuilt(build(root, with_forwarded, main_file, 'forwarded'))
 	assert run_built(root, 'forwarded') == '71'
-	assert_restored(build(root, with_forwarded, main_file, 'forwarded_same'))
+	assert_reused_or_native_header_rebuild(build(root, with_forwarded, main_file, 'forwarded_same'))
 	make_answer_library(forwarded, 72, false)
 	forwarded_replaced := build(root, with_forwarded, main_file, 'forwarded_replaced')
 	assert !restored(forwarded_replaced), forwarded_replaced
 	assert forwarded_replaced.contains('V3 program executable miss: an input of the compiler or the linker changed'), forwarded_replaced
 	assert run_built(root, 'forwarded_replaced') == '72'
-	assert_restored(build(root, with_forwarded, main_file, 'forwarded_again'))
+	assert_reused_or_native_header_rebuild(build(root, with_forwarded, main_file, 'forwarded_again'))
 
 	// An option of the linker that the driver has no word of: Apple's linker tells
 	// every file that it read and every place where it found none, so an
@@ -510,7 +520,7 @@ fn test_libraries_of_the_link_are_inputs_of_the_executable() {
 		with_unlisted << ['-ldflags', '-Wl,-no_order_inits -L${os.dir(forwarded)} -lanswer']
 		assert_rebuilt(build(root, with_unlisted, main_file, 'unlisted'))
 		assert run_built(root, 'unlisted') == '72'
-		assert_restored(build(root, with_unlisted, main_file, 'unlisted_same'))
+		assert_reused_or_native_header_rebuild(build(root, with_unlisted, main_file, 'unlisted_same'))
 		make_answer_library(forwarded, 73, false)
 		unlisted_replaced := build(root, with_unlisted, main_file, 'unlisted_replaced')
 		assert !restored(unlisted_replaced), unlisted_replaced
@@ -529,7 +539,7 @@ fn test_libraries_of_the_link_are_inputs_of_the_executable() {
 	os.setenv('LIBRARY_PATH', env_first, true)
 	assert_rebuilt(build(root, with_environment, main_file, 'env_first'))
 	assert run_built(root, 'env_first') == '81'
-	assert_restored(build(root, with_environment, main_file, 'env_first_same'))
+	assert_reused_or_native_header_rebuild(build(root, with_environment, main_file, 'env_first_same'))
 	os.setenv('LIBRARY_PATH', env_second, true)
 	env_changed := build(root, with_environment, main_file, 'env_second')
 	if value := saved_library_path {
@@ -550,12 +560,12 @@ fn test_libraries_of_the_link_are_inputs_of_the_executable() {
 		with_script << ['-ldflags', script]
 		assert_rebuilt(build(root, with_script, main_file, 'scripted'))
 		assert run_built(root, 'scripted') == '91'
-		assert_restored(build(root, with_script, main_file, 'scripted_same'))
+		assert_reused_or_native_header_rebuild(build(root, with_script, main_file, 'scripted_same'))
 		make_answer_library(scripted, 92, false)
 		scripted_replaced := build(root, with_script, main_file, 'scripted_replaced')
 		assert !restored(scripted_replaced), scripted_replaced
 		assert run_built(root, 'scripted_replaced') == '92'
-		assert_restored(build(root, with_script, main_file, 'scripted_again'))
+		assert_reused_or_native_header_rebuild(build(root, with_script, main_file, 'scripted_again'))
 	}
 
 	// A relative path of the link names a file by where the output goes: the C
@@ -567,11 +577,11 @@ fn test_libraries_of_the_link_are_inputs_of_the_executable() {
 	with_relative << ['-ldflags', '-L../libs -lanswer']
 	assert_rebuilt(build(root, with_relative, main_file, 'place_a/out'))
 	assert run_built(root, 'place_a/out') == '101'
-	assert_restored(build(root, with_relative, main_file, 'place_a/out'))
+	assert_reused_or_native_header_rebuild(build(root, with_relative, main_file, 'place_a/out'))
 	other_place := build(root, with_relative, main_file, 'place_b/out')
 	assert !restored(other_place), other_place
 	assert run_built(root, 'place_b/out') == '102'
-	assert_restored(build(root, with_relative, main_file, 'place_b/out'))
+	assert_reused_or_native_header_rebuild(build(root, with_relative, main_file, 'place_b/out'))
 	make_answer_library(os.join_path(root, 'place_b', 'libs', 'libanswer.a'), 103, false)
 	relative_replaced := build(root, with_relative, main_file, 'place_b/out')
 	assert !restored(relative_replaced), relative_replaced
@@ -582,7 +592,7 @@ fn test_libraries_of_the_link_are_inputs_of_the_executable() {
 	os.mkdir_all(os.join_path(root, 'with,comma'))!
 	assert_rebuilt(build(root, with_option, main_file, 'with,comma/out'))
 	assert run_built(root, 'with,comma/out') == '42'
-	assert_restored(build(root, with_option, main_file, 'with,comma/out'))
+	assert_reused_or_native_header_rebuild(build(root, with_option, main_file, 'with,comma/out'))
 
 	// A command that asks its linker for a file of its own gets it from every
 	// build: one that took a kept executable would link nothing and write none.
@@ -673,7 +683,7 @@ exit $status
 	second := build(root, flags, main_file, 'second')
 	assert !restored(second), second
 	assert run_built(root, 'second') == '2'
-	assert_restored(build(root, flags, main_file, 'third'))
+	assert_reused_or_native_header_rebuild(build(root, flags, main_file, 'third'))
 	assert run_built(root, 'third') == '2'
 }
 
@@ -699,7 +709,11 @@ fn test_a_restored_executable_has_the_permissions_of_a_linked_one() {
 			command << ['-o', output, main_file]
 			res := os.exec(command)
 			assert res.exit_code == 0, res.output
-			assert restored(res.output) == (name == 'restored'), res.output
+			if native_headers_prevent_reuse(res.output) {
+				assert !restored(res.output), res.output
+			} else {
+				assert restored(res.output) == (name == 'restored'), res.output
+			}
 			modes << os.stat(output)!.mode & 0o777
 		}
 		assert modes[0] == 0o700
@@ -737,7 +751,7 @@ fn test_notices_of_a_program_built_from_cached_c_are_kept_with_its_executable() 
 		return
 	}
 	third := build(root, flags, main_file, 'third')
-	assert_restored(third)
+	assert_reused_or_native_header_rebuild(third)
 	assert third.count('unused variable: `unused`') == warnings, third
 	assert run_built(root, 'third') == 'done'
 }
@@ -746,9 +760,8 @@ fn test_notices_of_a_program_built_from_cached_c_are_kept_with_its_executable() 
 // compiles the headers of the program and links whatever an earlier one kept, and
 // returns what the program prints.
 fn built_without_the_cached_executable(root string, flags []string, main_file string, name string) string {
-	saved := ['V3_CACHE_DISABLE_PROGRAM_EXECUTABLE', 'V3_TCC_NO_PRELUDE_CACHE'].map(save_env(it))
+	saved := ['V3_CACHE_DISABLE_PROGRAM_EXECUTABLE'].map(save_env(it))
 	os.setenv('V3_CACHE_DISABLE_PROGRAM_EXECUTABLE', '1', true)
-	os.setenv('V3_TCC_NO_PRELUDE_CACHE', '1', true)
 	build(root, flags, main_file, name)
 	for env in saved {
 		env.restore()
@@ -790,7 +803,7 @@ fn test_headers_that_the_c_of_a_program_reads_are_inputs_of_the_executable() {
 		time.sleep(2200 * time.millisecond)
 		assert_rebuilt(build(root, flags, main_file, 'cold'))
 		assert run_built(root, 'cold') == '1'
-		assert_restored(build(root, flags, main_file, 'same'))
+		assert_reused_or_native_header_rebuild(build(root, flags, main_file, 'same'))
 		assert run_built(root, 'same') == '1'
 
 		// The header is another file than it was. A build gives what a build that
@@ -803,8 +816,8 @@ fn test_headers_that_the_c_of_a_program_reads_are_inputs_of_the_executable() {
 		assert run_built(root, 'edited') == expected, edited
 		if expected == '2' {
 			assert !restored(edited), edited
-			assert edited.contains('V3 program executable miss: an input of the compiler or the linker changed'), edited
-			assert_restored(build(root, flags, main_file, 'edited_same'))
+			assert native_headers_prevent_reuse(edited) || edited.contains('V3 program executable miss: an input of the compiler or the linker changed'), edited
+			assert_reused_or_native_header_rebuild(build(root, flags, main_file, 'edited_same'))
 			assert run_built(root, 'edited_same') == '2'
 		}
 
@@ -817,7 +830,7 @@ fn test_headers_that_the_c_of_a_program_reads_are_inputs_of_the_executable() {
 		assert run_built(root, 'shadowed') == expected_shadowed, shadowed
 		if expected_shadowed == '3' {
 			assert !restored(shadowed), shadowed
-			assert shadowed.contains('V3 program executable miss: a file appeared where the compiler or the linker looks'), shadowed
+			assert native_headers_prevent_reuse(shadowed) || shadowed.contains('V3 program executable miss: a file appeared where the compiler or the linker looks'), shadowed
 		}
 
 		// A header includes another in quotation marks: the directory of the header
@@ -831,7 +844,7 @@ fn test_headers_that_the_c_of_a_program_reads_are_inputs_of_the_executable() {
 		time.sleep(2200 * time.millisecond)
 		assert_rebuilt(build(root, flags, main_file, 'nested'))
 		assert run_built(root, 'nested') == '1'
-		assert_restored(build(root, flags, main_file, 'nested_same'))
+		assert_reused_or_native_header_rebuild(build(root, flags, main_file, 'nested_same'))
 		os.write_file(os.join_path(first, 'nested', inner), 'static inline int nested_answer(void) { return 2; }\n')!
 		time.sleep(2200 * time.millisecond)
 		nested := build(root, flags, main_file, 'nested_shadowed')
@@ -852,30 +865,30 @@ fn test_headers_that_the_c_of_a_program_reads_are_inputs_of_the_executable() {
 		assert run_built(root, 'timed').len == 'Jan  1 2026 00:00:00'.len
 		compiles_each_time := flags == []string{} || os.user_os() != 'macos'
 		if compiles_each_time || timed.contains('V3 program executable not cached') {
-			assert timed.contains('V3 program executable not cached: the C of the program asks for the time of its compilation'), timed
+			assert native_headers_prevent_reuse(timed) || timed.contains('V3 program executable not cached: the C of the program asks for the time of its compilation'), timed
 			assert !restored(build(root, flags, main_file, 'timed_again'))
 		}
 
-		// The name of such a macro can be pasted together where no text spells it:
-		// what the preprocessor makes of the C tells that it asks for the time.
+		// Token pasting can hide a time macro. Opaque headers remain C inputs;
+		// V never preprocesses their contents to decide reuse.
 		os.write_file(os.join_path(later, name), '#define HEADER_JOIN_(a, b) a##b\n#define HEADER_JOIN(a, b) HEADER_JOIN_(a, b)\nstatic inline const char *header_answer(void) { return HEADER_JOIN(__TI, ME__); }\n')!
 		time.sleep(2200 * time.millisecond)
 		pasted := build(root, flags, main_file, 'pasted')
 		if compiles_each_time {
 			assert run_built(root, 'pasted').len == '00:00:00'.len
-			assert pasted.contains('V3 program executable not cached: the C of the program asks for the time of its compilation'), pasted
+			assert native_headers_prevent_reuse(pasted) || pasted.contains('V3 program executable not cached: the C of the program asks for the time of its compilation'), pasted
 			assert !restored(build(root, flags, main_file, 'pasted_again'))
 		}
 
-		// A header that names the macro and does not use it leaves a program that
-		// is the same at any time: its executable is kept.
+		// Even unused time macro definitions remain opaque to V. The C compiler
+		// still produces the same runtime value.
 		os.write_file(os.join_path(later, name), '#define HEADER_BUILT __DATE__ " " __TIME__\nstatic inline const char *header_answer(void) { return "always"; }\n')!
 		time.sleep(2200 * time.millisecond)
 		named := build(root, flags, main_file, 'named')
 		if compiles_each_time {
 			assert run_built(root, 'named') == 'always'
-			assert !named.contains('V3 program executable not cached'), named
-			assert restored(build(root, flags, main_file, 'named_again'))
+			assert native_headers_prevent_reuse(named) || !named.contains('V3 program executable not cached'), named
+			assert_reused_or_native_header_rebuild(build(root, flags, main_file, 'named_again'))
 		}
 
 		// So does a command that defines a macro as the time for a C that does
@@ -885,8 +898,8 @@ fn test_headers_that_the_c_of_a_program_reads_are_inputs_of_the_executable() {
 		defined := build(root, with_definition, main_file, 'defined')
 		if compiles_each_time {
 			assert run_built(root, 'defined') == 'always'
-			assert !defined.contains('V3 program executable not cached'), defined
-			assert restored(build(root, with_definition, main_file, 'defined_again'))
+			assert native_headers_prevent_reuse(defined) || !defined.contains('V3 program executable not cached'), defined
+			assert_reused_or_native_header_rebuild(build(root, with_definition, main_file, 'defined_again'))
 		}
 	}
 }

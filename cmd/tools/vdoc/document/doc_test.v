@@ -92,14 +92,17 @@ pub:
 	assert end_options.tags == ['@[params]']
 
 	pipeline_container := mod_doc.contents['PipelineContainer']
-	assert pipeline_container.content == '@[heap]
+	assert pipeline_container.content == "@[heap]
 pub struct PipelineContainer {
 pub mut:
 	alpha    render.Pipeline
 	add      render.Pipeline
 	multiply render.Pipeline
 	screen   render.Pipeline
-}'
+	// font draws the text atlas: the same alpha blend as `alpha`, but with the
+	// font shader that reads the r8 atlas's red channel as coverage.
+	font render.Pipeline
+}"
 	assert pipeline_container.attrs == {
 		'heap': '@[heap]'
 	}

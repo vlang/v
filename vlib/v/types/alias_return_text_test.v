@@ -16,8 +16,8 @@ fn test_alias_return_text_preserves_empty_and_missing_bindings() {
 fn test_alias_return_text_preserves_direct_qualified_and_module_aliases() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.type_aliases.set('Counter', 'int')
-	tc.type_aliases.set('sample.Count', 'int')
+	tc.type_aliases.set(flat.source_type_id('Counter'), 'int')
+	tc.type_aliases.set(flat.source_type_id('sample.Count'), 'int')
 	tc.fn_ret_type_texts.set('direct', '  Counter ')
 	tc.fn_ret_type_texts.set('qualified', 'sample.Count')
 	tc.fn_ret_type_texts.set('relative', 'Count')

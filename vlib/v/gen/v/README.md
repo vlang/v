@@ -2,6 +2,9 @@
 
 The V3 formatter formats source syntax without type checking.
 
+Standalone comments and blank lines separate struct, union, and enum fields into alignment groups.
+Each group aligns independently; trailing comments do not separate groups.
+
 ## Anonymous aggregate indentation
 
 Multiline anonymous `struct` and `union` bodies follow the surrounding field's

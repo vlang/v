@@ -3,6 +3,7 @@
 module fastc
 
 import os
+import v.flat
 import v.pref
 
 fn test_fastc_parser_emits_arm64_without_c() {
@@ -1871,7 +1872,7 @@ fn main() {
 fn test_fastc_arm64_map_rehash_frees_superseded_buckets() {
 	$if arm64 ? {
 		mut prefs := pref.new_preferences()
-		mut program := FastArm64Program.new(prefs, map[string]bool{}, map[string]FastcFunctionSignature{}, map[string]FastArm64TypeDecl{}, map[string]FastArm64ConstantDecl{}, map[string]FastArm64ConstantDecl{})
+		mut program := FastArm64Program.new(prefs, map[u32]bool{}, map[string]FastcFunctionSignature{}, map[u32]FastArm64TypeDecl{}, map[string]FastArm64ConstantDecl{}, map[string]FastArm64ConstantDecl{})
 		program.register_functions()
 		rehash_id := program.fn_ids['fast_map_rehash']
 		mut free_calls := 0
@@ -2205,5 +2206,49 @@ fn main() {
 		result := os.exec([output_path])
 		assert result.exit_code == 0
 		assert result.output == 'native:1024\n'
+	}
+}
+
+fn test_fastc_arm64_numeric_nominal_registry_preserves_qualified_identity_and_order() {
+	$if arm64 ? {
+		first := flat.source_type_id('first.Item')
+		first_c := flat.source_type_id('first__Item')
+		second := flat.source_type_id('second.Item')
+		second_c := flat.source_type_id('second__Item')
+		alias := flat.source_type_id('first.Alias')
+		alias_c := flat.source_type_id('first__Alias')
+		mut declarations := map[u32]FastArm64TypeDecl{}
+		first_declaration := FastArm64TypeDecl{
+			key:    first
+			c_name: first_c
+			fields: [FastArm64FieldDecl{ name: 'value', typ: flat.source_type_int }]
+		}
+		second_declaration := FastArm64TypeDecl{
+			key:    second
+			c_name: second_c
+			fields: [FastArm64FieldDecl{ name: 'value', typ: flat.source_type_i64 }]
+		}
+		alias_declaration := FastArm64TypeDecl{
+			key:      alias
+			c_name:   alias_c
+			alias_of: first
+		}
+		declarations[first] = first_declaration
+		declarations[first_c] = first_declaration
+		declarations[second] = second_declaration
+		declarations[second_c] = second_declaration
+		declarations[alias] = alias_declaration
+		declarations[alias_c] = alias_declaration
+		prefs := pref.new_preferences()
+		mut program := FastArm64Program.new(prefs, map[u32]bool{}, map[string]FastcFunctionSignature{}, declarations, map[string]FastArm64ConstantDecl{}, map[string]FastArm64ConstantDecl{})
+		assert program.type_ids[first] == program.type_ids[first_c]
+		assert program.type_ids[second] == program.type_ids[second_c]
+		assert program.type_ids[first] != program.type_ids[second]
+		assert program.type_ids[flat.source_type_id('Item')] == program.type_ids[second]
+		assert program.type_id(alias) == program.type_ids[first]
+		assert program.type_id(alias_c) == program.type_ids[first]
+		assert program.type_id(flat.source_type_id('Alias')) == program.type_ids[first]
+		assert program.resolved_type_name(alias) == first
+		assert program.resolved_type_name(alias_c) == first
 	}
 }

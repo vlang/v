@@ -1,0 +1,19 @@
+import flag
+
+@[xdoc: 'Example application']
+@[footer: 'Example footer']
+@[version: '1.2.3']
+@[name: 'example']
+@[doc: 'Example documentation']
+struct Config {
+	verbose bool @[short: v; xdoc: 'Verbose output']
+	ignored string @[ignore]
+}
+
+fn main() {
+	config, remaining := flag.to_struct[Config](['-v'])!
+	assert config.verbose
+	assert remaining.len == 0
+	documentation := flag.to_doc[Config]()!
+	assert documentation.contains('Example application')
+}

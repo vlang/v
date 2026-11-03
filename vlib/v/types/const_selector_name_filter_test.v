@@ -34,7 +34,7 @@ fn test_const_selector_filter_preserves_bare_qualified_and_ambiguous_names() {
 	}
 	assert_const_selector_filter_matches_tables(tc, names)
 	fork := tc.fork_for_parallel_codegen()
-	assert fork.const_selector_bloom.count == tc.const_selector_bloom.count
+	assert fork.const_selector_bloom == tc.const_selector_bloom
 	assert fork.const_selector_suffix_count == tc.const_suffixes.len
 	assert_const_selector_filter_matches_tables(fork, names)
 }
@@ -59,4 +59,26 @@ fn test_const_selector_filter_falls_back_after_collection_changes() {
 	assert !tc.selector_names_no_const('missing')
 	tc.build_const_suffixes()
 	assert_const_selector_filter_matches_tables(tc, ['first', 'second', 'added_suffix', 'missing'])
+}
+
+fn test_const_selector_filter_rejects_most_absent_names_in_large_tables() {
+	mut a := flat.FlatAst.new()
+	mut tc := TypeChecker.new(&a)
+	for i in 0 .. 4000 {
+		tc.const_types['mod_${i % 50}.const_${i}'] = builtin_int_type
+	}
+	tc.build_const_suffixes()
+	mut names := []string{}
+	for i in 0 .. 1000 {
+		names << 'field_${i}'
+	}
+	names << ['const_7', 'mod_3.const_103', 'const_3999', 'mod_1.const_3999']
+	assert_const_selector_filter_matches_tables(tc, names)
+	mut rejected := 0
+	for i in 0 .. 1000 {
+		if tc.const_selector_bloom.excludes('field_${i}', tc.const_types.len) {
+			rejected++
+		}
+	}
+	assert rejected > 900, 'rejected only ${rejected} of 1000 absent names'
 }

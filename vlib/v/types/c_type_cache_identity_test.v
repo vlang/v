@@ -97,7 +97,7 @@ fn test_wsa_data_keeps_the_windows_struct_tag() {
 fn test_private_typedef_c_struct_names_keep_the_typedef_name() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.c_typedef_structs['C._Foo'] = true
+	tc.c_typedef_structs[flat.source_type_id('C._Foo')] = true
 	typedef_type := Type(Struct{
 		name_id: flat.source_type_id('C._Foo')
 	})

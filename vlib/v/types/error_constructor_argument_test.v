@@ -1,5 +1,6 @@
 module types
 
+import v.flat
 import os
 import v.parser
 import v.pref
@@ -12,7 +13,7 @@ fn error_constructor_check(source string) &TypeChecker {
 	a := p.parse_file(path)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
 	mut tc := TypeChecker.new(a)
-	tc.interface_names['IError'] = true
+	tc.interface_names[flat.source_type_id('IError')] = true
 	tc.collect(a)
 	_ = tc.check_semantics_opt(false)
 	return tc

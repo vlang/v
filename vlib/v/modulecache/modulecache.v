@@ -13,7 +13,7 @@ import v.util.cache_refresh
 pub const builtin_bundle_imports = ['strconv', 'strings', 'hash', 'math.bits']
 pub const builtin_bundle_modules = ['builtin', 'strconv', 'strings', 'hash', 'bits', 'math.bits']
 
-const cache_format = 'v3-module-cache-57'
+const cache_format = 'v3-module-cache-58'
 const c_body_begin = '/* V3CACHE_BODY_BEGIN */'
 const c_body_end = '/* V3CACHE_BODY_END */'
 const c_module_prefix = '/* V3CACHE_MODULE '
@@ -28,8 +28,10 @@ const source_body_marker = '// v3cache: source bodies required'
 // `recover()`. A header has the declarations of a module and not its code, so a
 // build that reads it cannot tell otherwise that the program reaches that call.
 const recover_call_marker = '// v3cache: calls recover'
+const c_struct_source_marker = '// v3cache: c struct source '
 const source_signature_cache_format = 'v3-source-signature-cache-12'
 const program_executable_format = 'v3-program-executable-2'
+const source_type_void_pointer_head = flat.source_type_id('&void')
 
 // PkgConfigProbes remembers what `pkg-config --exists` answered in this compiler
 // process, and which recorded answers apply to it. A build validates the sources
@@ -1447,6 +1449,25 @@ pub fn header_calls_recover(entry Entry) bool {
 // header_text_calls_recover is header_calls_recover for the text of a header.
 pub fn header_text_calls_recover(header string) bool {
 	return header.contains('\n${recover_call_marker}\n')
+}
+
+// header_c_struct_sources recovers the original V source of each C struct in a
+// compiler-generated module header. Native headers remain opaque: these records
+// come only from the V declarations serialized into the cache.
+pub fn header_c_struct_sources(header string) map[string]string {
+	mut sources := map[string]string{}
+	for line in header.split_into_lines() {
+		if !line.starts_with(c_struct_source_marker) {
+			continue
+		}
+		entry := line[c_struct_source_marker.len..]
+		name := entry.all_before(' ')
+		source := entry.all_after(' ')
+		if name.starts_with('C.') && source.len > 0 && source != entry {
+			sources[name] = cached_unescape_v_string(source)
+		}
+	}
+	return sources
 }
 
 // valid_object reports whether a cached object matches the supplied sources.
@@ -4602,6 +4623,23 @@ fn c_declaration_item(item string, has_brace bool, types_only bool, definition_p
 		return item
 	}
 	clean := trim_leading_c_comments(trimmed)
+	// Keep the ordinary declaration path immutable; GNU markers are uncommon.
+	if clean.len >= '__extension__'.len && clean[0] == `_`
+		&& clean.starts_with('__extension__')
+		&& (clean.len == '__extension__'.len
+			|| !c_generated_identifier_byte(clean['__extension__'.len])) {
+		mut rest := clean
+		for rest.starts_with('__extension__') {
+			tail := rest['__extension__'.len..]
+			if tail.len > 0 && c_generated_identifier_byte(tail[0]) {
+				break
+			}
+			rest = trim_leading_c_comments(tail.trim_space())
+		}
+		converted := c_declaration_item(rest, has_brace, types_only, definition_preserving_macros)
+		// Classification ignores the markers; unchanged declarations retain them.
+		return if converted == rest { item } else { converted }
+	}
 	if block := c_extern_c_block(item) {
 		inner_header, _, _, _, _, _ := c_declaration_header_mode(block.inner, types_only)
 		mut result := block.before
@@ -5280,7 +5318,7 @@ fn module_header_const_storage_name(module_name string, name string) string {
 	return name
 }
 
-fn module_header_const_replacements(a &flat.FlatAst, module_name string, file_ids []flat.NodeId, const_order []string) (map[int]flat.NodeId, map[int]string) {
+fn module_header_const_replacements(a &flat.FlatAst, tc &types.TypeChecker, module_name string, file_ids []flat.NodeId, const_order []string) (map[int]flat.NodeId, map[int]string) {
 	mut replacements := map[int]flat.NodeId{}
 	mut files := map[int]string{}
 	if const_order.len == 0 {
@@ -5302,14 +5340,28 @@ fn module_header_const_replacements(a &flat.FlatAst, module_name string, file_id
 					continue
 				}
 				mut rank := const_order.len + declarations.len
+				mut has_initializer := false
 				for j in 0 .. node.children_count {
 					field := a.child_node(&node, j)
+					if field.children_count == 0 {
+						continue
+					}
+					expr_id := a.child(field, 0)
+					if const_initializer_is_stored(a, expr_id, tc.resolve_type(expr_id)) {
+						continue
+					}
+					has_initializer = true
 					name := module_header_const_storage_name(module_name, field.value)
 					if field_rank := ranks[name] {
 						if field_rank < rank {
 							rank = field_rank
 						}
 					}
+				}
+				// Stored constants have no initializer in the header. Keep their
+				// declaration slots stable when cached helper bodies change the ranks.
+				if !has_initializer {
+					continue
 				}
 				files[int(id)] = file_node.value
 				declarations << ModuleHeaderConstDecl{
@@ -5446,10 +5498,21 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 		out.writeln('')
 	}
 	mut seen := map[string]bool{}
+	mut seen_types := map[u64]bool{}
 	mut selected_imports := map[string]bool{}
-	const_replacements, const_files := module_header_const_replacements(a, module_name, file_ids, const_order)
+	const_replacements, const_files := module_header_const_replacements(a, tc, module_name, file_ids, const_order)
 	for file_id in file_ids {
 		file_node := a.node(file_id)
+		cached_struct_sources := if file_node.value in a.cached_header_sources {
+			cached_header := source_cache[file_node.value] or {
+				loaded := os.read_file(file_node.value) or { '' }
+				source_cache[file_node.value] = loaded
+				loaded
+			}
+			header_c_struct_sources(cached_header)
+		} else {
+			map[string]string{}
+		}
 		for i in 0 .. file_node.children_count {
 			mut decl_ids := []flat.NodeId{}
 			append_declaration_nodes(a, a.child(file_node, i), mut decl_ids)
@@ -5460,8 +5523,9 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 				if node.kind == .module_decl {
 					continue
 				}
-				key := decl_key(a, node)
-				if key.len > 0 && seen[key] {
+				type_key := nominal_decl_key(node)
+				key := if type_key == 0 { decl_key(a, node) } else { '' }
+				if (type_key != 0 && seen_types[type_key]) || (key.len > 0 && seen[key]) {
 					continue
 				}
 				if node.kind == .import_decl {
@@ -5511,8 +5575,14 @@ fn module_header_indexed(a &flat.FlatAst, tc &types.TypeChecker, module_name str
 				if attrs_text.len > 0 && (!source_embedded || !text.trim_space().starts_with('@[')) {
 					text = '${attrs_text}\n${text}'
 				}
-				if key.len > 0 {
+				if type_key != 0 {
+					seen_types[type_key] = true
+				} else if key.len > 0 {
 					seen[key] = true
+				}
+				if node.kind == .struct_decl && node.value.starts_with('C.') {
+					origin := cached_struct_sources[node.value] or { source_file }
+					out.writeln('${c_struct_source_marker}${node.value} ${escape_v_string(origin)}')
 				}
 				out.writeln(text)
 				out.writeln('')
@@ -6510,6 +6580,17 @@ fn source_balanced_declaration_end(source string, start int, open u8, close u8) 
 	return none
 }
 
+fn type_has_generic_receiver_args(tc &types.TypeChecker, type_id u32) bool {
+	if !flat.source_type_shape(type_id).has(.bracketed) {
+		return false
+	}
+	base := flat.source_type_syntax(type_id).generic_base()
+	short_base := flat.source_type_syntax(base).unqualified()
+	// Declaration lookup and structural selection share source spelling IDs.
+	return base in tc.struct_generic_params
+		|| short_base in tc.struct_generic_params
+}
+
 fn node_creates_generic_specialization(a &flat.FlatAst, tc &types.TypeChecker, id flat.NodeId, generic_callees map[string]bool) bool {
 	if int(id) < 0 || int(id) >= a.nodes.len {
 		return false
@@ -6532,11 +6613,9 @@ fn node_creates_generic_specialization(a &flat.FlatAst, tc &types.TypeChecker, i
 		// required by the cached module object. Unwrap aliases first: a `type
 		// IntNumber = Number[int]` operand resolves to the alias name (no `[`), which
 		// would otherwise hide the generic receiver base.
-		operand_type :=
-			types.unalias_type(tc.resolve_type(a.child(&node, 0))).name().trim_left('&?!')
-		receiver_base := operand_type.all_before('[')
-		if operand_type.contains('[') && (receiver_base in tc.struct_generic_params
-			|| receiver_base.all_after_last('.') in tc.struct_generic_params) {
+		operand_id := types.unalias_type(tc.resolve_type(a.child(&node, 0))).source_type_id()
+		operand_type := flat.source_type_syntax(operand_id).source_wrapper_base()
+		if type_has_generic_receiver_args(tc, operand_type) {
 			return true
 		}
 	}
@@ -6549,11 +6628,15 @@ fn node_creates_generic_specialization(a &flat.FlatAst, tc &types.TypeChecker, i
 		}
 		callee := a.nodes[int(callee_id)]
 		if callee.kind == .selector && callee.children_count > 0 {
-			receiver_type :=
-				types.unalias_type(tc.resolve_type(a.child(callee, 0))).name().trim_left('&?')
-			receiver_base := receiver_type.all_before('[')
-			if receiver_type.contains('[') && (receiver_base in tc.struct_generic_params
-				|| receiver_base.all_after_last('.') in tc.struct_generic_params) {
+			mut receiver_type := types.unalias_type(tc.resolve_type(a.child(callee, 0))).source_type_id()
+			for {
+				shape := flat.source_type_shape(receiver_type)
+				if !shape.has(.pointer) && !shape.has(.option_type) {
+					break
+				}
+				receiver_type = flat.source_type_syntax(receiver_type).raw_base()
+			}
+			if type_has_generic_receiver_args(tc, receiver_type) {
 				return true
 			}
 		}
@@ -6764,13 +6847,14 @@ fn fn_decl_has_generic_receiver(a &flat.FlatAst, node flat.Node) bool {
 	if receiver.kind != .param {
 		return false
 	}
-	receiver_type := clean_receiver_type(receiver.typ_text())
-	declared_receiver := node.value.all_before_last('.')
+	receiver_type := clean_receiver_type(receiver.typ)
+	declared_receiver := flat.source_type_id(node.value.all_before_last('.'))
 	if receiver_type != declared_receiver
-		&& receiver_type.all_after_last('.') != declared_receiver.all_after_last('.') {
+		&& flat.source_type_syntax(receiver_type).unqualified() != flat.source_type_syntax(declared_receiver).unqualified() {
 		return false
 	}
-	return receiver_type.contains('[') && receiver_type.contains(']')
+	return flat.source_type_shape(receiver_type).has(.bracketed)
+		&& flat.source_type_syntax(receiver_type).contains_closing_bracket()
 }
 
 fn file_module_name(a &flat.FlatAst, file_node flat.Node) string {
@@ -6783,6 +6867,15 @@ fn file_module_name(a &flat.FlatAst, file_node flat.Node) string {
 	return ''
 }
 
+fn nominal_decl_key(node flat.Node) u64 {
+	return match node.kind {
+		.struct_decl, .enum_decl, .type_decl, .interface_decl {
+			(u64(node.kind) << 32) | u64(flat.source_type_id(node.value))
+		}
+		else { u64(0) }
+	}
+}
+
 fn decl_key(a &flat.FlatAst, node flat.Node) string {
 	return match node.kind {
 		.import_decl {
@@ -6792,7 +6885,7 @@ fn decl_key(a &flat.FlatAst, node flat.Node) string {
 			}
 			'import:${node.value}:${node.typ_text()}:${selected.join(',')}'
 		}
-		.fn_decl, .c_fn_decl, .struct_decl, .enum_decl, .type_decl, .interface_decl {
+		.fn_decl, .c_fn_decl {
 			'${int(node.kind)}:${node.value}'
 		}
 		.directive {
@@ -7109,22 +7202,22 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 	mut head := if is_c { 'fn C.${name}' } else { '${visibility}fn ${name}' }
 	mut param_start := 0
 	if !is_c && !node.is_static_type_method() && name.contains('.') && params.len > 0 {
-		receiver_type := name.all_before_last('.')
-		first_type := clean_receiver_type(params[0].typ_text())
+		receiver_type := flat.source_type_id(name.all_before_last('.'))
+		first_type := clean_receiver_type(params[0].typ)
 		if first_type == receiver_type
-			|| first_type.all_after_last('.') == receiver_type.all_after_last('.') {
+			|| flat.source_type_syntax(first_type).unqualified() == flat.source_type_syntax(receiver_type).unqualified() {
 			receiver := params[0]
 			receiver_name := if receiver.value.len > 0 { receiver.value } else { 'it' }
-			mut receiver_decl_type := receiver.typ_text()
+			mut receiver_decl_type := receiver.typ
 			mut receiver_prefix := ''
 			if receiver.is_mut {
 				receiver_prefix = 'mut '
-				receiver_decl_type = receiver_decl_type.trim_left('&').trim_space()
-			} else if receiver_decl_type.starts_with('shared ') {
+				receiver_decl_type = flat.source_type_syntax(flat.source_type_syntax(receiver_decl_type).pointer_raw_base()).trimmed()
+			} else if flat.source_type_shape(receiver_decl_type).has(.shared_type) {
 				receiver_prefix = 'shared '
-				receiver_decl_type = receiver_decl_type['shared '.len..].trim_space()
+				receiver_decl_type = flat.source_type_syntax(flat.source_type_syntax(receiver_decl_type).raw_base()).trimmed()
 			}
-			head = '${visibility}fn (${receiver_prefix}${receiver_name} ${receiver_decl_type}) ${name.all_after_last('.')}'
+			head = '${visibility}fn (${receiver_prefix}${receiver_name} ${flat.source_type_name(receiver_decl_type)}) ${name.all_after_last('.')}'
 			param_start = 1
 		}
 	}
@@ -7139,18 +7232,18 @@ fn fn_text(a &flat.FlatAst, module_name string, node flat.Node, is_c bool, decla
 		if pname.len == 0 {
 			pname = 'arg${i - param_start}'
 		}
-		mut ptype := p.typ_text()
+		mut ptype := p.typ
 		mut prefix := ''
 		if p.is_mut && p.op == .amp {
 			prefix = 'mut '
-			if !ptype.starts_with('&') {
-				ptype = '&${ptype}'
+			if !flat.source_type_shape(ptype).has(.pointer) {
+				ptype = flat.source_type_composition_one(.pointer, ptype)
 			}
-		} else if ptype.starts_with('&') && p.is_mut {
+		} else if flat.source_type_shape(ptype).has(.pointer) && p.is_mut {
 			prefix = 'mut '
-			ptype = ptype[1..].trim_space()
+			ptype = flat.source_type_syntax(flat.source_type_syntax(ptype).raw_base()).trimmed()
 		}
-		ptexts << '${prefix}${pname} ${ptype}'
+		ptexts << '${prefix}${pname} ${flat.source_type_name(ptype)}'
 	}
 	head += '(${ptexts.join(', ')})'
 	if node.typ != 0 && node.typ != flat.source_type_void {
@@ -7242,13 +7335,10 @@ fn fn_is_noreturn(a &flat.FlatAst, module_name string, name string) bool {
 	return short_qualified_name in a.noreturn_fns
 }
 
-fn clean_receiver_type(value string) string {
-	mut typ := value.trim_space()
-	for typ.starts_with('&') {
-		typ = typ[1..].trim_space()
-	}
-	if typ.starts_with('shared ') {
-		typ = typ['shared '.len..].trim_space()
+fn clean_receiver_type(value u32) u32 {
+	mut typ := flat.source_type_syntax(value).pointer_base()
+	if flat.source_type_shape(typ).has(.shared_type) {
+		typ = flat.source_type_syntax(flat.source_type_syntax(typ).raw_base()).trimmed()
 	}
 	return typ
 }
@@ -7384,10 +7474,11 @@ fn cached_global_source_type_id(tc &types.TypeChecker, module_name string, name 
 			if source_id in [flat.source_type_nil, flat.source_type_none, flat.source_type_unknown] {
 				return flat.source_type_voidptr
 			}
-			if flat.source_type_shape(source_id).has(.pointer) {
-				type_name := flat.source_type_name(source_id)
-				if type_name.starts_with('&void[') {
-					return flat.source_type_id('voidptr' + type_name['&void'.len..])
+			if flat.source_type_shape(source_id).has(.pointer)
+				&& flat.source_type_shape(source_id).has(.bracketed) {
+				syntax := flat.source_type_syntax(source_id)
+				if syntax.generic_base() == source_type_void_pointer_head {
+					return flat.source_type_composition_two(.concat, flat.source_type_voidptr, syntax.bracket_from())
 				}
 			}
 			return source_id
@@ -7413,6 +7504,13 @@ fn cached_type_source_name(typ types.Type) string {
 	return typ.name()
 }
 
+fn const_initializer_is_stored(a &flat.FlatAst, expr_id flat.NodeId, typ types.Type) bool {
+	return typ is types.Array || typ is types.ArrayFixed || typ is types.Map
+		|| typ is types.Struct || typ is types.Pointer || typ is types.Interface
+		|| typ is types.SumType || typ is types.OptionType || typ is types.ResultType
+		|| (a.node(expr_id).kind == .call && typ !is types.FnType)
+}
+
 fn const_text(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node, source_is_public bool) string {
 	mut lines := []string{cap: node.children_count}
 	for i in 0 .. node.children_count {
@@ -7421,10 +7519,7 @@ fn const_text(a &flat.FlatAst, tc &types.TypeChecker, node flat.Node, source_is_
 		if field.children_count > 0 {
 			expr_id := a.child(field, 0)
 			typ := tc.resolve_type(expr_id)
-			if typ is types.Array || typ is types.ArrayFixed || typ is types.Map
-				|| typ is types.Struct || typ is types.Pointer || typ is types.Interface
-				|| typ is types.SumType || typ is types.OptionType || typ is types.ResultType
-				|| (a.node(expr_id).kind == .call && typ !is types.FnType) {
+			if const_initializer_is_stored(a, expr_id, typ) {
 				// Stored constants belong to the module object. Its interface needs
 				// the checked type, not the table or the code that initializes it.
 				lines << '${line} ${cached_type_source_name(typ)}'
@@ -7536,18 +7631,18 @@ fn interface_field_text(a &flat.FlatAst, field &flat.Node) string {
 		for pi in 0 .. field.children_count {
 			param := a.child_node(field, pi)
 			mut prefix := ''
-			mut param_type := param.typ_text()
+			mut param_type := param.typ
 			if param.is_mut {
 				prefix = 'mut '
 				if param.op == .amp {
-					if !param_type.starts_with('&') {
-						param_type = '&${param_type}'
+					if !flat.source_type_shape(param_type).has(.pointer) {
+						param_type = flat.source_type_composition_one(.pointer, param_type)
 					}
-				} else if param_type.starts_with('&') {
-					param_type = param_type[1..].trim_space()
+				} else if flat.source_type_shape(param_type).has(.pointer) {
+					param_type = flat.source_type_syntax(flat.source_type_syntax(param_type).raw_base()).trimmed()
 				}
 			}
-			params << '${prefix}arg${pi} ${param_type}'
+			params << '${prefix}arg${pi} ${flat.source_type_name(param_type)}'
 		}
 		ret := if field.typ != 0 { ' ${field.typ_text()}' } else { '' }
 		return '\t${field.value}(${params.join(', ')})${ret}'
@@ -7568,7 +7663,11 @@ fn expr_text(a &flat.FlatAst, id flat.NodeId) string {
 			node.value_text()
 		}
 		.char_literal {
-			'`${escape_v_char(node.value)}`'
+			if node.value.starts_with('c:') {
+				c_string_expr_text(node.value[2..])
+			} else {
+				'`${escape_v_char(node.value)}`'
+			}
 		}
 		.string_literal {
 			"'${escape_v_string(node.value)}'"
@@ -7828,4 +7927,28 @@ fn escape_v_char(value string) string {
 	// escape sequences. Escaping it again would turn `\\` into `\\\\` in a
 	// cached header and change the rune's value when that header is parsed.
 	return value
+}
+
+// C-string nodes retain escape spellings. Preserve those escapes while using a
+// double-quoted delimiter, including strings originally written with single quotes.
+fn c_string_expr_text(value string) string {
+	mut out := strings.new_builder(value.len + 4)
+	out.write_string('c"')
+	mut escaped := false
+	for ch in value {
+		if escaped {
+			if ch != `\'` { out.write_u8(`\\`) }
+			out.write_u8(ch)
+			escaped = false
+		} else if ch == `\\` {
+			escaped = true
+		} else if ch == `"` {
+			out.write_string('\\"')
+		} else {
+			out.write_u8(ch)
+		}
+	}
+	if escaped { out.write_string('\\\\') }
+	out.write_u8(`"`)
+	return out.str()
 }

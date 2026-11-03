@@ -59,10 +59,52 @@ fn test_struct_field_default_error_does_not_change_later_expression_context() {
 	}
 }
 
+fn test_match_struct_field_default_preserves_or_field() {
+	for value in ['match true { true { 1 } else { 2 } }', '1 + match true { true { 1 } else { 2 } }',
+		'-match true { true { 1 } else { 2 } }'] {
+		for separator in ['\n', ';'] {
+			for aggregate in ['struct Defaults {\n%s\n}', 'union Defaults {\n%s\n}',
+				'struct Container { nested struct {\n%s\n} }'] {
+				source := aggregate.replace('%s', 'value int = ${value}${separator}or int')
+				for is_fmt in [false, true] {
+					mut prefs := pref.new_preferences()
+					prefs.is_fmt = is_fmt
+					mut p := Parser.new(prefs)
+					a := p.parse_text('match_default.v', source)
+					assert p.diagnostics.len == 0, '${source}: ${p.diagnostics}'
+					assert a.nodes.filter(it.kind == .field_decl && it.value == 'or').len == 1, source
+					assert a.nodes.filter(it.kind == .or_expr).len == 0, source
+				}
+			}
+		}
+	}
+}
+
+fn test_match_struct_field_default_keeps_nested_or_handlers() {
+	for source in [
+		'struct Defaults { value int = (match true { true { optional_value() } else { optional_value() } }\n or { 0 })\n or int }',
+		'struct Defaults { value int = identity(match true { true { optional_value() } else { optional_value() } }\n or { 0 })\n or int }',
+		'struct Defaults { value int = match true { true { optional_value() } else { optional_value() } } or { 0 }\n or int }',
+		'struct Defaults { value int = match true { true { match true { true { optional_value() } else { optional_value() } }\n or { 0 } } else { 0 } }\n or int }',
+		'struct Defaults { callback fn () int = fn () int { return match true { true { optional_value() } else { optional_value() } }\n or { 0 } }\n or int }',
+		'fn control() int { value := match true { true { optional_value() } else { optional_value() } }\n or { 0 }\n return value }',
+		'fn control() { match true { true { optional_value() } else { optional_value() } }\n or { 0 } }',
+	] {
+		for is_fmt in [false, true] {
+			mut prefs := pref.new_preferences()
+			prefs.is_fmt = is_fmt
+			mut p := Parser.new(prefs)
+			a := p.parse_text('match_or_handler.v', source)
+			assert p.diagnostics.len == 0, '${source}: ${p.diagnostics}'
+			assert a.nodes.filter(it.kind == .or_expr).len == 1, source
+		}
+	}
+}
+
 fn test_nested_struct_field_defaults_compile_and_run() {
 	path := os.join_path(os.vtmp_dir(), 'nested_struct_defaults_${os.getpid()}.v')
 	defer { os.rm(path) or {} }
-	os.write_file(path, 'struct Defaults {\n grouped bool = (1\n in [1])\n argument bool = identity(1\n in [1])\n callback fn () int = fn () int {\n value := optional_value()\n or { return 0 }\n return value\n }\n in int\n or int\n}\nfn identity(value bool) bool { return value }\nfn optional_value() ?int { return 42 }\nfn main() {\n value := Defaults{in: 7, or: 8}\n assert value.grouped\n assert value.argument\n assert value.callback() == 42\n assert value.in == 7\n assert value.or == 8\n}\n')!
+	os.write_file(path, 'struct Defaults {\n grouped bool = (1\n in [1])\n argument bool = identity(1\n in [1])\n callback fn () int = fn () int {\n value := optional_value()\n or { return 0 }\n return value\n }\n in int\n matched int = match true { true { 3 } else { 0 } }\n or int\n}\nfn identity(value bool) bool { return value }\nfn optional_value() ?int { return 42 }\nfn main() {\n value := Defaults{in: 7, or: 8}\n assert value.grouped\n assert value.argument\n assert value.callback() == 42\n assert value.matched == 3\n assert value.in == 7\n assert value.or == 8\n}\n')!
 	mut child := os.new_process(@VEXE)
 	child.set_args(['-new-compiler', '-no-retry-compilation', '-cc', 'clang', '-gc', 'none', 'run',
 		path])

@@ -4,9 +4,9 @@ $if darwin {
 	import macos
 	import math
 
-	fn C.strlen(s &char) usize
-	fn C.calloc(n usize, size usize) voidptr
-	fn C.memcpy(dest voidptr, src voidptr, n usize) voidptr
+	fn C.strlen(s &char) uint
+	fn C.calloc(n uint, size uint) voidptr
+	fn C.memcpy(dest voidptr, src voidptr, n uint) voidptr
 
 	@[export: 'v_multiwindow_appkit_string']
 	fn v_multiwindow_appkit_string(value &char) voidptr {
@@ -51,7 +51,7 @@ $if darwin {
 		if value == unsafe { nil } {
 			return unsafe { nil }
 		}
-		len := usize(C.strlen(value))
+		len := uint(C.strlen(value))
 		copy := &char(C.calloc(len + 1, 1))
 		if copy == unsafe { nil } {
 			return unsafe { nil }

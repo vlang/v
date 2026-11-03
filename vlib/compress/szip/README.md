@@ -3,6 +3,8 @@
 `szip` reads and writes ZIP archives in V, using stored or DEFLATE-compressed entries.
 ZIP64, multi-disk and encrypted archives are unsupported and return an error.
 Reading validates entry bounds, uncompressed sizes and CRC-32 checksums.
+New entry names are written as UTF-8 with the ZIP language encoding flag.
+Appending preserves the encoding flag and raw name bytes of existing entries.
 
 Opening an entry by name in read-only mode returns an error when that entry is missing.
 `extract_zip_to_dir` rejects paths outside the destination and paths containing symbolic links.

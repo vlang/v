@@ -13,8 +13,8 @@ fn test_const_struct_inference_uses_original_operand_after_annotation_changes() 
 		typ:          resolved_id
 	})
 	mut tc := TypeChecker.new(&a)
-	tc.structs['Original'] = []StructField{}
-	tc.structs['Resolved'] = []StructField{}
+	tc.structs[flat.source_type_id('Original')] = []StructField{}
+	tc.structs[flat.source_type_id('Resolved')] = []StructField{}
 	inferred := tc.syntactic_const_element_type(literal_id)?
 	assert inferred.source_type_id() == original_id
 	assert a.node(literal_id).typ == resolved_id

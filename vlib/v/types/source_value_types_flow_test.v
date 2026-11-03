@@ -9,20 +9,20 @@ fn test_written_type_constraints_use_source_operands_before_checked_annotations(
 		typ:          flat.source_type_id('Resolved')
 		source_value: flat.source_type_id('Box[T]')
 	}
-	assert written_type_texts(cast) == ['Box[T]']
+	assert written_type_ids(cast).map(flat.source_type_name(it)) == ['Box[T]']
 	array := flat.Node{
 		kind:         .array_init
 		typ:          flat.source_type_id('[3]Box[T]')
 		source_value: flat.source_type_id('Box[T]')
 	}
-	assert written_type_texts(array) == ['[3]Box[T]', 'Box[T]']
+	assert written_type_ids(array).map(flat.source_type_name(it)) == ['[3]Box[T]', 'Box[T]']
 	type_arg := flat.Node{
 		kind:         .ident
 		pos:          token.Pos{ end: 6 }
 		source_value: flat.source_type_id('Box[T]')
 	}
-	assert written_type_texts(type_arg) == ['Box[T]']
-	assert written_type_texts(flat.Node{
+	assert written_type_ids(type_arg).map(flat.source_type_name(it)) == ['Box[T]']
+	assert written_type_ids(flat.Node{
 		kind:           .sizeof_expr
 		source_value:   flat.source_type_id('Box[T]')
 		children_count: 1
@@ -38,9 +38,7 @@ fn test_source_operands_remain_visible_to_generic_body_dependency_checks() {
 	})
 	literal := a.add_node(flat.Node{ kind: .string_literal, value: 'Box[T]' })
 	tc := TypeChecker.new(&a)
-	params := {
-		'T': true
-	}
+	params := generic_param_id_set(generic_param_ids(['T']))
 	assert tc.subtree_depends_on_type_params(cast, map[string]bool{}, params)
 	assert !tc.subtree_depends_on_type_params(literal, map[string]bool{}, params)
 }

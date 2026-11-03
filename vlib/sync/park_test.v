@@ -99,7 +99,10 @@ fn test_parker_reuses_a_worker_id_for_multiple_cycles() {
 	tid := <-tid_ch
 	for _ in 0 .. 20 {
 		p.unpark(tid)
-		assert <-done_ch
+		// the receive must not be inside the `assert`: `-prod` drops asserts, and the worker
+		// would then block for ever in `done_ch <- true`
+		got := <-done_ch
+		assert got
 	}
 	worker.wait()
 }

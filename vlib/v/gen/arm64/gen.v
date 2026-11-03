@@ -1338,6 +1338,22 @@ fn (mut g Gen) gen_instr(val_id int) {
 		.unreachable {
 			g.emit32(asm_udf())
 		}
+		.select {
+			if instr.operands.len < 3 {
+				return
+			}
+			cond_reg := g.load_val(instr.operands[0], 8)
+			g.emit32(asm_cbnz(Reg(cond_reg), 2))
+			false_jump := g.text_offset()
+			g.emit32(asm_b(0))
+			// Copy the selected value's full representation, including aggregates.
+			g.emit_phi_copy_value(instr.operands[1], val_id)
+			end_jump := g.text_offset()
+			g.emit32(asm_b(0))
+			g.patch_branch(false_jump, (g.text_offset() - false_jump) / 4)
+			g.emit_phi_copy_value(instr.operands[2], val_id)
+			g.patch_branch(end_jump, (g.text_offset() - end_jump) / 4)
+		}
 		.phi {}
 		.assign {
 			// Phi-elimination copy: assign dest, src  ->  dest_slot = src.

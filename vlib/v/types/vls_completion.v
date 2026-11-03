@@ -168,7 +168,7 @@ fn (tc &TypeChecker) vls_type_details(typ Type) []VlsDetail {
 		}
 	}
 	owner := flat.source_type_name(owner_id)
-	fields := tc.structs[owner] or { tc.interface_fields[owner] or { []StructField{} } }
+	fields := tc.structs[owner_id] or { tc.interface_fields[owner_id] or { []StructField{} } }
 	for field in fields {
 		if t is Struct && !tc.vls_field_is_usable(typ, owner_id, field.name) {
 			continue
@@ -193,7 +193,7 @@ fn (tc &TypeChecker) vls_field_is_usable(typ Type, owner u32, field string) bool
 	if receiver is Alias {
 		return !tc.alias_struct_field_is_private_outside_module(receiver, field)
 	}
-	if visibility := tc.private_declaration(flat.source_type_name(owner)) {
+	if visibility := tc.private_type_declaration(owner) {
 		return tc.is_synthesized_anon_struct(owner)
 			&& tc.anonymous_struct_field_is_public(owner, field, visibility.module_name)
 	}
@@ -257,7 +257,8 @@ fn (tc &TypeChecker) vls_module_details(module_name string) []VlsDetail {
 			declaration: tc.vls_fn_signature(key) or { '' }
 		}
 	}
-	for key, index in tc.first_type_declaration_ids {
+	for key_id, index in tc.first_type_declaration_ids {
+		key := flat.source_type_name(key_id)
 		if !key.starts_with(prefix) || key[prefix.len..].contains('.') || !tc.vls_visible(key) {
 			continue
 		}

@@ -1,5 +1,7 @@
 module types
 
+import v.flat
+
 // What each constrained type parameter of a generic body is where the editor
 // asks, whatever the conditions of the `$if`s on the way there: tests of
 // several type parameters, joined with `&&`, `||` and `!`, in parentheses. A
@@ -192,7 +194,7 @@ fn (c &ComptimeConds) holds(id int, values []bool) bool {
 // ComptimeParamGroups are the types of a constrained type parameter that the
 // tests of a way tell apart, in groups that pass the same tests.
 struct ComptimeParamGroups {
-	name string
+	name u32
 mut:
 	types []Type // its types: those of its set, or of an interface, the ones its tests name
 	open  bool   // an interface: after `types`, any other type that implements it
@@ -212,7 +214,7 @@ mut:
 // or that tests no type parameter, may go either way. A condition that cannot
 // be read, or ways with too many combinations, leave the type parameters as
 // they are.
-fn (tc &TypeChecker) comptime_ways_constraints(ways []ComptimeWay, constraints map[string]GenericConstraint, names []string) map[string]GenericConstraint {
+fn (tc &TypeChecker) comptime_ways_constraints(ways []ComptimeWay, constraints map[u32]GenericConstraint, names []u32) map[u32]GenericConstraint {
 	mut testable := constraints.clone()
 	for name in names {
 		if name !in testable {
@@ -236,7 +238,7 @@ fn (tc &TypeChecker) comptime_ways_constraints(ways []ComptimeWay, constraints m
 	mut either_way := []int{}
 	mut types_of := [][]Type{len: conds.tests.len, init: []Type{}}
 	mut negated := []bool{len: conds.tests.len}
-	mut group_index := map[string]int{}
+	mut group_index := map[u32]int{}
 	for test_idx, test in conds.tests {
 		name, tested_types, is_negated := tc.comptime_test_types(test, testable) or {
 			either_way << test_idx
@@ -367,13 +369,15 @@ fn (tc &TypeChecker) comptime_ways_constraints(ways []ComptimeWay, constraints m
 // `!is` and `!in` on an interface do. none for a test of no constrained type
 // parameter, of more than one, of one without types, or that says something of
 // one that cannot be followed, as `sizeof(T) == 8`.
-fn (tc &TypeChecker) comptime_test_types(test string, constraints map[string]GenericConstraint) ?(string, []Type, bool) {
-	names := constraints.keys().filter(comptime_condition_names(test, it))
+fn (tc &TypeChecker) comptime_test_types(test string, constraints map[u32]GenericConstraint) ?(u32, []Type, bool) {
+	names := constraints.keys().filter(comptime_condition_names(test, flat.source_type_name(it)))
 	if names.len != 1 {
 		return none
 	}
-	name := names[0]
-	constraint := constraints[name]
+	name_id := names[0]
+	constraint := constraints[name_id]
+	// The test is source text that spells the type parameter.
+	name := flat.source_type_name(name_id)
 	// `[T Nope]`, which the check reports: no types to tell apart.
 	if !constraint.is_interface && constraint.types.len == 0 {
 		return none
@@ -382,10 +386,10 @@ fn (tc &TypeChecker) comptime_test_types(test string, constraints map[string]Gen
 		// `T !is User`: an interface has no list of types to leave the others
 		// of, so the test holds for the types that `T is User` does not name.
 		if positive := comptime_positive_test(test, name) {
-			return name, tc.constraint_condition_term_types(positive, name, constraint)?, true
+			return name_id, tc.constraint_condition_term_types(positive, name, constraint)?, true
 		}
 	}
-	return name, tc.constraint_condition_term_types(test, name, constraint)?, false
+	return name_id, tc.constraint_condition_term_types(test, name, constraint)?, false
 }
 
 // comptime_positive_test is `test`, `name !is X` or `name !in [X, Y]`, without

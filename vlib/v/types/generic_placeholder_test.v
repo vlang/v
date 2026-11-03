@@ -20,8 +20,8 @@ fn test_type_text_generic_placeholder_prescreen_keeps_results() {
 	assert tc.type_text_has_generic_placeholder(flat.source_type_id('map[string][]T'))
 	assert !tc.type_text_has_generic_placeholder(flat.source_type_id('SomeType'))
 	assert !tc.type_text_has_generic_placeholder(flat.source_type_id('map[string]HTTP'))
-	assert tc.type_text_has_unbound_generic_placeholder(flat.source_type_id('map[K]V'), ['V'])
-	assert !tc.type_text_has_unbound_generic_placeholder(flat.source_type_id('map[string]int'), [])
+	assert tc.type_text_has_unbound_generic_placeholder_ids(flat.source_type_id('map[K]V'), [flat.source_type_id('V')])
+	assert !tc.type_text_has_unbound_generic_placeholder_ids(flat.source_type_id('map[string]int'), [])
 }
 
 fn test_empty_array_generic_diagnostic_prescreen() {
@@ -39,7 +39,7 @@ fn test_empty_array_generic_diagnostic_prescreen() {
 	})
 	mut tc := TypeChecker.new(&a)
 	tc.diagnose_unknown_calls = true
-	tc.fn_generic_params['consume'] = ['T']
+	tc.fn_generic_params['consume'] = generic_param_ids(['T'])
 	for arg in [value, typed, empty, wrapped] {
 		start := a.begin_children()
 		a.add_child(callee)

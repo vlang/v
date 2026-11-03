@@ -280,17 +280,17 @@ pub fn (resp Response) decode_result[T]() !T {
 
 // decode_request decodes a JSON payload into an MCP request.
 pub fn decode_request(raw string) !Request {
-	return json.decode[Request](raw) or { return err }
+	return json.decode_standard[Request](raw) or { return err }
 }
 
 // decode_notification decodes a JSON payload into an MCP notification.
 pub fn decode_notification(raw string) !Notification {
-	return json.decode[Notification](raw) or { return err }
+	return json.decode_standard[Notification](raw) or { return err }
 }
 
 // decode_response decodes a JSON payload into an MCP response.
 pub fn decode_response(raw string) !Response {
-	return json.decode[Response](raw) or { return err }
+	return json.decode_standard[Response](raw) or { return err }
 }
 
 // MessageEnvelope is the shared wire representation used while decoding MCP messages.
@@ -332,7 +332,7 @@ fn (env MessageEnvelope) encode() string {
 }
 
 fn decode_envelope(raw string) !MessageEnvelope {
-	return json.decode[MessageEnvelope](raw) or { return err }
+	return json.decode_standard[MessageEnvelope](raw) or { return err }
 }
 
 // Transport is the boundary between MCP messages and the wire format.
@@ -655,7 +655,7 @@ const result_type_complete = 'complete'
 // result_type_of reads the top-level `resultType` of a result object.
 fn result_type_of(result_json string) string {
 	trimmed := result_json.trim_space()
-	wrapper := json.decode[ResultTypeEnvelope](trimmed) or { return result_type_complete }
+	wrapper := json.decode_standard[ResultTypeEnvelope](trimmed) or { return result_type_complete }
 	return wrapper.result_type
 }
 
@@ -682,7 +682,7 @@ fn (mut c Client) build_input_retry(original Request, response Response) !Reques
 	if result_type_of(response.result) != result_type_input_required {
 		return Request{}
 	}
-	wrapper := json.decode[InputRequestsEnvelope](response.result.trim_space()) or {
+	wrapper := json.decode_standard[InputRequestsEnvelope](response.result.trim_space()) or {
 		return Request{}
 	}
 	mut responses := []string{}
@@ -710,7 +710,7 @@ fn (mut c Client) build_input_retry(original Request, response Response) !Reques
 // handler registered for its method.
 fn (c &Client) answer_input_request(request_json string) ?string {
 	trimmed := request_json.trim_space()
-	envelope := json.decode[EmbeddedRequest](trimmed) or { return none }
+	envelope := json.decode_standard[EmbeddedRequest](trimmed) or { return none }
 	return match envelope.method {
 		'roots/list' {
 			handler := c.config.roots_handler or { return none }
@@ -738,7 +738,7 @@ struct EmbeddedRequest {
 // downgrade_to_supported switches the client to the first revision the server
 // named in an UnsupportedProtocolVersionError payload.
 fn (mut c Client) downgrade_to_supported(response Response) bool {
-	payload := json.decode[UnsupportedVersionEnvelope](response.error.data.trim_space()) or {
+	payload := json.decode_standard[UnsupportedVersionEnvelope](response.error.data.trim_space()) or {
 		return false
 	}
 	for candidate in payload.supported {
@@ -787,7 +787,7 @@ pub fn (mut c Client) listen[P](filter P) !SubscriptionFilter {
 fn (mut c Client) wait_for_listen_ack(request_id string) !SubscriptionFilter {
 	wait_for_result := c.transport is HttpTransport
 	expected_subscription_id := if request_id.starts_with('"') {
-		json.encode(json.decode[string](request_id)!)
+		json.encode(json.decode_standard[string](request_id)!)
 	} else {
 		request_id
 	}
@@ -811,7 +811,7 @@ fn (mut c Client) wait_for_listen_ack(request_id string) !SubscriptionFilter {
 					params: envelope.params
 				}) or { '' }) == expected_subscription_id
 			if just_acknowledged {
-				ack := json.decode[ListenAcknowledgement](envelope.params.trim_space()) or {
+				ack := json.decode_standard[ListenAcknowledgement](envelope.params.trim_space()) or {
 					return error('mcp.Client.listen: malformed subscription acknowledgment')
 				}
 				acknowledged = ack.notifications
@@ -872,7 +872,7 @@ struct ListenAcknowledgement {
 pub fn subscription_id_of(notification Notification) ?string {
 	request_id := subscription_request_id_of(notification) or { return none }
 	if request_id.starts_with('"') {
-		return json.decode[string](request_id) or { return none }
+		return json.decode_standard[string](request_id) or { return none }
 	}
 	return request_id
 }
@@ -880,14 +880,14 @@ pub fn subscription_id_of(notification Notification) ?string {
 // subscription_request_id_of preserves the JSON type for acknowledgment
 // matching, normalizing string escapes while keeping numeric tokens intact.
 fn subscription_request_id_of(notification Notification) ?string {
-	wrapper := json.decode[SubscriptionIdEnvelope](notification.params.trim_space()) or {
+	wrapper := json.decode_standard[SubscriptionIdEnvelope](notification.params.trim_space()) or {
 		return none
 	}
 	raw_id := wrapper.meta.subscription_id.trim_space()
 	if raw_id.len == 0 {
 		return none
 	}
-	id := json.decode[json.Any](raw_id) or { return none }
+	id := json.decode_standard[json.Any](raw_id) or { return none }
 	return match id {
 		string { json.encode(id) }
 		i64, u64, f64 { raw_id }
@@ -1096,7 +1096,7 @@ fn (transport &HttpTransport) request_target(message string) string {
 
 fn read_negotiated_version(body string) string {
 	envelope := decode_envelope(body) or { return '' }
-	result := json.decode[InitializeResult](envelope.result) or { return '' }
+	result := json.decode_standard[InitializeResult](envelope.result) or { return '' }
 	return result.protocol_version
 }
 
@@ -1235,7 +1235,7 @@ fn split_json_payloads(body string) ![]string {
 	if trimmed[0] != `[` {
 		return [trimmed]
 	}
-	envelopes := json.decode[[]MessageEnvelope](trimmed) or { return err }
+	envelopes := json.decode_standard[[]MessageEnvelope](trimmed) or { return err }
 	mut messages := []string{cap: envelopes.len}
 	for envelope in envelopes {
 		messages << envelope.encode()
@@ -1361,7 +1361,7 @@ fn decode_value[T](value string) !T {
 		return error('mcp: expected null, got `${value}`')
 	} $else $if T is string {
 		if value.len >= 2 && value[0] == `"` && value[value.len - 1] == `"` {
-			return json.decode[string](value) or { return err }
+			return json.decode_standard[string](value) or { return err }
 		}
 		return error('mcp: could not decode `${value}` into string')
 	} $else $if T is bool {
@@ -1373,7 +1373,7 @@ fn decode_value[T](value string) !T {
 		}
 		return error('mcp: could not decode `${value}` into bool')
 	} $else {
-		return json.decode[T](value) or { return err }
+		return json.decode_standard[T](value) or { return err }
 	}
 }
 

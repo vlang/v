@@ -13,6 +13,9 @@ doc1 := toml.parse_text(<string content>) or { panic(err) }
 doc2 := toml.parse_file(<file path>) or { panic(err) }
 ```
 
+Hexadecimal integers use the `0x` prefix and allow repeated digits, including `b`:
+`color = 0xbbbbbb`. Binary and octal literals still accept only digits valid for their base.
+
 ## Parser AST and table views
 
 `toml.ast.DateTime` keeps its public `date` and `time` components, including their

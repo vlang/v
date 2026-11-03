@@ -72,7 +72,7 @@ done
 		os.join_path(os.dir(@VEXE), 'cmd', 'tools', 'vself.v')])
 	assert build.exit_code == 0, build.output
 
-	result := pgo_test_run(root, tool, [], false, '2', '')
+	result := pgo_test_run(root, tool, ['-compile-backend', 'fastc'], false, '2', '')
 	assert result.exit_code == 0, result.output
 	calls := os.read_file(os.join_path(root, 'calls'))!
 	lines := calls.split_into_lines()
@@ -170,13 +170,20 @@ done
 			assert selected_calls.contains('TRAIN ') == (compiler == 'clang'), selected_calls
 		}
 	}
+	os.write_file(os.join_path(root, 'calls'), '')!
+	default_build := pgo_test_run(root, tool, [], false, '2', '')
+	assert default_build.exit_code == 0, default_build.output
+	default_calls := os.read_file(os.join_path(root, 'calls'))!
+	assert !default_calls.contains('-compile-backend'), default_calls
+	assert !default_calls.contains('-b fastc '), default_calls
+	assert default_calls.split_into_lines().filter(it.starts_with('TRAIN ')).len == 2, default_calls
 	for extra in [([]string{}), ['-no-parallel']] {
 		os.write_file(os.join_path(root, 'calls'), '')!
 		serial := pgo_test_run(root, tool, extra, false, if extra.len == 0 { '1' } else { '2' }, '')
 		assert serial.exit_code == 0, serial.output
 		serial_calls := os.read_file(os.join_path(root, 'calls'))!
-		assert serial_calls.split_into_lines().filter(it.starts_with('TRAIN ')).len == 2, serial_calls
-		assert serial_calls.split_into_lines().filter(it.starts_with('TRAIN ') && it.contains('-b fastc ')).len == 1, serial_calls
+		assert serial_calls.split_into_lines().filter(it.starts_with('TRAIN ')).len == 1, serial_calls
+		assert !serial_calls.contains('-b fastc '), serial_calls
 	}
 	for extra in [['-d', 'skip_fastc'], ['-dskip_fastc'], ['-define', 'skip_fastc=1']] {
 		os.write_file(os.join_path(root, 'calls'), '')!
@@ -195,7 +202,7 @@ done
 	assert !inherited_calls.contains('-b fastc '), inherited_calls
 	os.setenv('VSELF_PGO_TEST_FAIL_FASTC', '1', true)
 	os.write_file(os.join_path(root, 'calls'), '')!
-	fastc_fallback := pgo_test_run(root, tool, [], false, '2', '')
+	fastc_fallback := pgo_test_run(root, tool, ['-all-backends'], false, '2', '')
 	os.unsetenv('VSELF_PGO_TEST_FAIL_FASTC')
 	assert fastc_fallback.exit_code == 0, fastc_fallback.output
 	assert fastc_fallback.output.contains('FastC profiling data'), fastc_fallback.output

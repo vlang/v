@@ -175,7 +175,7 @@ fn test_type_promotion_cache_preserves_misses_and_distinct_live_payloads() {
 	initial_count := tc.type_count()
 	mut cache := CheckTypePromotionCache{}
 	mut originals := []Type{}
-	for i in 0 .. 600 {
+	for i in 0 .. 5000 {
 		typ := Type(Struct{ name_id: flat.source_type_id('Item${i}') })
 		originals << typ
 		assert tc.cached_check_type_promotion(typ, mut cache, false, false) == none
@@ -188,7 +188,7 @@ fn test_type_promotion_cache_preserves_misses_and_distinct_live_payloads() {
 	for i, typ in originals {
 		assert tc.cached_check_type_promotion(typ, mut cache, false, true)?.name() == 'Item${i}'
 	}
-	assert tc.type_count() == initial_count + 600
+	assert tc.type_count() == initial_count + 5000
 }
 
 fn test_type_promotion_cache_verifies_borrowed_metadata_after_reuse() {
@@ -497,7 +497,7 @@ fn test_parent_metadata_replay_matches_full_scan() {
 	for part in 0 .. 3 {
 		chunk := split.fill_direct_parent_edges_range(a, a.nodes.len * part / 3, a.nodes.len * (part + 1) / 3)
 		for idx in chunk.metadata_node_ids {
-			split.collect_direct_parent_node_metadata(a, idx, a.nodes[idx])
+			split.collect_direct_parent_node_metadata(a, idx, a.node(flat.NodeId(idx)))
 		}
 	}
 	assert split.declaration_attributes == serial.declaration_attributes
@@ -642,6 +642,9 @@ fn test_parallel_interface_indexes_outlive_worker_scopes() {
 			source.writeln('struct ${name} {}')
 			source.writeln('fn (item ${name}) value_${i}() int { return ${j} }')
 		}
+		// The receiver prefilter must retain promoted methods too.
+		names << 'Wrapped${i}'
+		source.writeln('struct Wrapped${i} { Item${i}_0 }')
 		expected[iface] = names
 		// A same-named method with the wrong return type must stay excluded.
 		source.writeln('struct Rejected${i} {}')
@@ -657,7 +660,7 @@ fn test_parallel_interface_indexes_outlive_worker_scopes() {
 	tc.collect(a)
 	assert tc.errors.len == 0, tc.errors.str()
 	tc.prepare_interface_requirement_indexes()
-	mut names := tc.interface_names.keys()
+	mut names := tc.interface_names.keys().map(flat.source_type_name(it))
 	names.sort()
 	assert names.len == expected.len
 	mut expected_ids := map[string]map[u32]int{}
@@ -669,10 +672,15 @@ fn test_parallel_interface_indexes_outlive_worker_scopes() {
 	a.ensure_workers(2)
 	defer { a.close_workers() }
 	mut retained := map[string][]string{}
-	for _ in 0 .. 4 {
+	for round in 0 .. 4 {
 		// This call releases each worker's scratch arena before returning. Later
 		// rounds allocate another set of indexes while the first snapshot stays live.
+		opened := round == 0 && tc.begin_interface_impl_queries()
+		caller_memo := tc.interface_impl_memo
 		assert tc.prepare_interface_impl_indexes_parallel(flat.TypeTextList.from_names(names).ids)
+		assert tc.interface_impl_memo == caller_memo
+		tc.end_interface_impl_queries(opened)
+		assert isnil(tc.interface_impl_memo)
 		for iface in names {
 			prepared := flat.TypeTextList{
 				ids: tc.pre_transform_interface_impl_names(flat.source_type_id(iface)) or {
@@ -876,7 +884,7 @@ fn test_generic_receiver_pattern_index_survives_rebuild_and_worker_fork() {
 		return
 	}
 	assert matched.key == structured_key
-	assert matched.params == ['T']
+	assert matched.params == generic_param_ids(['T'])
 	assert matched.args_text() == ['int']
 
 	tc.rebuild_fn_param_suffix_index()
@@ -995,9 +1003,9 @@ fn test_disabled_resolution_views_reuse_warm_composite_type_parse_cache() {
 			tc.disable_resolution_type_view_cache()
 			tc.cur_file = 'items.v'
 			tc.cur_module = 'items'
-			tc.fn_context.generic_params = ['T']
+			tc.fn_context.generic_params = generic_param_ids(['T'])
 			tc.resolution_type_mode = true
-			tc.structs['items.Item'] = []StructField{}
+			tc.structs[flat.source_type_id('items.Item')] = []StructField{}
 			assert tc.parse_resolution_type(flat.source_type_id('[]Item')).name() == '[]items.Item'
 			before := gc_heap_usage().total_bytes
 			for _ in 0 .. 128 {
@@ -1017,23 +1025,23 @@ fn test_disabled_resolution_views_keep_file_context_and_recursive_aliases() {
 	tc.disable_resolution_type_view_cache()
 	tc.cur_module = 'main'
 	tc.cur_file = 'one.v'
-	tc.structs['one.Item'] = []StructField{}
-	tc.structs['two.Item'] = []StructField{}
+	tc.structs[flat.source_type_id('one.Item')] = []StructField{}
+	tc.structs[flat.source_type_id('two.Item')] = []StructField{}
 	tc.register_file_import('dep', 'one')
 	assert tc.parse_resolution_type(flat.source_type_id('[]dep.Item')).name() == '[]one.Item'
 	tc.cur_file = 'two.v'
 	tc.register_file_import('dep', 'two')
 	assert tc.parse_resolution_type(flat.source_type_id('[]dep.Item')).name() == '[]two.Item'
-	tc.fn_context.generic_params = ['Item']
+	tc.fn_context.generic_params = generic_param_ids(['Item'])
 	tc.resolution_type_mode = true
 	assert tc.parse_resolution_type(flat.source_type_id('[]dep.Item')).name() == '[]two.Item'
 	tc.cur_file = 'one.v'
 	assert tc.parse_resolution_type(flat.source_type_id('[]dep.Item')).name() == '[]one.Item'
 	assert tc.cur_module == 'main'
-	assert tc.fn_context.generic_params == ['Item']
+	assert tc.fn_context.generic_params == generic_param_ids(['Item'])
 	assert tc.resolution_type_mode
 
-	tc.type_aliases.set_id('Handlers', flat.source_type_id('map[string]fn (Handlers) int'))
+	tc.type_aliases.set_id(flat.source_type_id('Handlers'), flat.source_type_id('map[string]fn (Handlers) int'))
 	warm := tc.parse_resolution_type(flat.source_type_id('Handlers'))
 	assert warm is Alias
 	assert (warm as Alias).base_type is Map

@@ -1,7 +1,6 @@
 module driver
 
 import os
-import v.pref
 
 fn test_cached_module_closure_dependencies_outlive_prepare_scope() {
 	mut state := V3ModuleCacheState{
@@ -20,9 +19,14 @@ fn test_cached_module_closure_dependencies_outlive_prepare_scope() {
 	scope := prealloc_scope_begin_for_v3()
 	mut bodies := map[string]string{}
 	for i in 0 .. 64 {
-		bodies['module_${i}'] = 'void value() { closure__closure_data(); }'
+		bodies['module_${i}'] = if i % 2 == 0 {
+			'void value() { closure__closure_data(); }'
+		} else {
+			'void value() { kept_wrapper(); }'
+		}
 	}
-	cache_record_closure_dependencies(bodies, '', scope, mut state)
+	prefix := '${v3_program_wrappers_begin}\nstatic void kept_wrapper(void) { closure__closure_data(); }\n${v3_program_wrappers_end}\n'
+	cache_record_closure_dependencies(bodies, prefix, scope, mut state)
 	$if prealloc {
 		for i in 0 .. 64 {
 			name := 'module_${i}'
@@ -74,6 +78,37 @@ fn test_cached_module_preserves_generated_closure_dependencies() {
 		'other': 'void other__use() { kept_wrapper(); }'
 	}, '${v3_program_wrappers_begin}\nstatic void kept_wrapper(void) { closure__closure_data(); }\nstatic void unused_wrapper(void) { missing(); }\n${v3_program_wrappers_end}\n', unsafe { nil }, mut state)
 	assert cache_dependency_modules(&state, ['other']) == ['closure']
+}
+
+fn test_cached_modules_keep_their_own_wrapper_closure_dependencies() {
+	mut state := V3ModuleCacheState{
+		module_sources: {
+			'closure': ['/vlib/builtin/closure/closure.v']
+		}
+		headers:        {
+			'closure': 'module closure\nfn closure_data()\n'
+		}
+	}
+	for name in ['first', 'second', 'unrelated'] {
+		state.module_sources[name] = ['/vlib/${name}/module.v']
+		state.headers[name] = 'module ${name}\nfn value()\n'
+	}
+	prefix := '${v3_program_wrappers_begin}
+static void closure_wrapper(void) { closure__closure_data(); }
+static void outer_wrapper(void) { closure_wrapper(); }
+static void plain_wrapper(void) { puts("closure__not_a_call"); }
+${v3_program_wrappers_end}\n'
+	cache_record_closure_dependencies({
+		'first':     'void first__value() { outer_wrapper(); }'
+		'second':    'void second__value() { closure_wrapper(); }'
+		'unrelated': 'void unrelated__value() { plain_wrapper(); }'
+	}, prefix, unsafe { nil }, mut state)
+	for name in ['first', 'second'] {
+		assert state.module_dependencies[name] == ['closure']
+		assert state.headers[name].contains('import builtin.closure as ${closure_runtime_import_alias}')
+	}
+	assert 'unrelated' !in state.module_dependencies
+	assert !state.headers['unrelated'].contains('import builtin.closure')
 }
 
 fn test_module_cache_compiler_identity_changes_when_executable_changes() {
@@ -488,28 +523,6 @@ fn test_target_libc_cached_prefix_refreshes_when_thread_support_changes() {
 		'// __v_thread pthread_self\nconst char *name = "__v_thread_spawn pthread_create";\n')
 }
 
-fn test_cache_native_public_include_strips_conventional_implementation_macros() {
-	include := cache_native_public_include('/tmp/native.h', [
-		'#define FEATURE 1',
-		'#include "/tmp/context.h"',
-		'#define FONTSTASH_IMPLEMENTATION',
-		'#define SOKOL_FONTSTASH_IMPL',
-	], map[string]bool{})
-	assert include.contains('#define FEATURE 1')
-	assert !include.contains('context.h')
-	assert include.contains('#undef FONTSTASH_IMPLEMENTATION')
-	assert include.contains('#undef SOKOL_FONTSTASH_IMPL')
-	assert include.contains('#undef SOKOL_IMPL')
-	include_pos := include.index('#include') or { -1 }
-	assert include_pos >= 0
-	// Declaration-only replay must leave the switches undefined so later generated
-	// wrappers are emitted only by the selected owner object.
-	assert (include.index('#undef FONTSTASH_IMPLEMENTATION') or { -1 }) < include_pos
-	assert (include.index('#undef SOKOL_FONTSTASH_IMPL') or { -1 }) < include_pos
-	assert !include.contains('#define FONTSTASH_IMPLEMENTATION')
-	assert !include.contains('#define SOKOL_FONTSTASH_IMPL')
-}
-
 fn test_cached_native_owner_restores_stripped_implementation_context() {
 	path := os.real_path('/tmp/sokol_gl.h')
 	include_line := '#include "${c_include_path(path)}"'
@@ -537,13 +550,6 @@ fn test_cached_native_owner_restores_stripped_implementation_context() {
 	assert native.has_native
 	assert define_pos >= 0
 	assert include_pos > define_pos
-}
-
-fn test_cache_c_flags_without_forced_inputs_drops_forced_files() {
-	filtered := cache_c_flags_without_forced_inputs(['-DFEATURE=1', '-include', '/tmp/forced.h',
-		'-I/tmp/inc', '-imacros', '/tmp/macros.h', '-include=/tmp/joined.h',
-		'-imacros=/tmp/joined_macros.h', '-DOTHER'])
-	assert filtered == ['-DFEATURE=1', '-I/tmp/inc', '-DOTHER']
 }
 
 fn test_cache_probe_language_unions_input_and_flag_languages() {
@@ -580,41 +586,6 @@ fn test_v_c_identifiers_accepts_spaced_and_commented_selectors() {
 	assert v_c_identifiers('// C.fake()\nC.real_value') == [
 		'real_value',
 	]
-}
-
-fn test_cache_compiler_macro_probe_uses_implicit_objective_c_language() {
-	$if macos {
-		macros, complete := cache_c_compiler_predefined_macros([]string{}, 'cc',
-			pref.host_target(), 'objective-c')
-		assert complete
-		assert '__OBJC__' in macros
-		// An Objective-C++ input defines both __OBJC__ and __cplusplus; the probe must
-		// carry __cplusplus so branches guarded by it are not discarded.
-		objc_cpp_macros, objc_cpp_complete := cache_c_compiler_predefined_macros([]string{}, 'cc',
-			pref.host_target(), 'objective-c++')
-		assert objc_cpp_complete
-		assert '__OBJC__' in objc_cpp_macros
-		assert '__cplusplus' in objc_cpp_macros
-	}
-}
-
-fn test_cache_compiler_macro_probe_excludes_forced_headers() {
-	$if macos {
-		dir := os.join_path(os.vtmp_dir(), 'v3_probe_forced_header_${os.getpid()}')
-		os.rmdir_all(dir) or {}
-		os.mkdir_all(dir) or { panic(err) }
-		defer {
-			os.rmdir_all(dir) or {}
-		}
-		forced := os.join_path(dir, 'forced.h')
-		os.write_file(forced, '#define V3_FORCED_PROBE_MACRO 1\n') or { panic(err) }
-		macros, complete := cache_c_compiler_predefined_macros(['-include', forced], 'cc',
-			pref.host_target(), 'c')
-		assert complete
-		// The forced header runs before the empty probe input, so its macros must not
-		// be reported as part of the predefined baseline the input scanner starts from.
-		assert 'V3_FORCED_PROBE_MACRO' !in macros
-	}
 }
 
 fn test_prune_cached_native_function_prototypes_resolves_cache_guards() {

@@ -405,12 +405,13 @@ pub fn run(args []string) {
 			pointer_bits:  64
 			object_format: 'macho'
 		}
-		prefs.user_defines = ['fastc_selfhost', 'v3_backend', 'v3_no_parallel', 'arm64', 'skip_wasm',
-			'skip_eval']
+		prefs.user_defines = ['fastc_selfhost', 'v3_backend', 'v3_no_parallel', 'arm64', 'skip_x64',
+			'skip_wasm', 'skip_eval']
 		fastc.generate_arm64_files([real_input], prefs, output) or { fail(err.msg()) }
 		return
 	}
-	prefs.user_defines = ['fastc_selfhost', 'v3_backend', 'skip_arm64', 'skip_wasm', 'skip_eval']
+	prefs.user_defines = ['fastc_selfhost', 'v3_backend', 'skip_arm64', 'skip_x64', 'skip_wasm',
+		'skip_eval']
 	backtrace_enabled := fastc_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.target.arch)
 	// Mirror the driver's TinyCC compatibility plan (add_v3_tcc_compat_defines):
 	// TCC's backtrace runtime cannot be linked on macOS arm64, so builtin must

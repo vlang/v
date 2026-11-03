@@ -476,6 +476,60 @@ fn test_instances_that_return_values_of_their_types_stay_valid() {
 	}
 }
 
+// A clone types a local fn literal as the literal's return type. Returning the
+// callback, directly or through another local, is still valid in its instance.
+fn test_instances_returning_local_callbacks_stay_valid() {
+	source := "fn callback[T](x T) fn () !int {
+	make := fn () !int {
+		return 1
+	}
+	return make
+}
+
+fn forwarded_callback[T](x T) fn () !int {
+	make := fn () !int {
+		return 2
+	}
+	forwarded := make
+	return forwarded
+}
+
+fn main() {
+	f := callback(1)
+	g := forwarded_callback('a')
+	assert f()! == 1
+	assert g()! == 2
+}
+"
+	for res in [check_program('return_local_callbacks_check', source),
+		build_program('return_local_callbacks_build', source)] {
+		assert res.exit_code == 0, res.output
+		assert error_lines(res.output) == [], res.output
+	}
+}
+
+// A local initialized from a plain parameter retains the instance's concrete
+// type, so its incompatible return still belongs to the instance's diagnostics.
+fn test_an_instance_returning_a_plain_local_of_another_type_is_reported() {
+	source := 'fn invalid[T](value T) bool {
+	local := value
+	return local
+}
+
+fn main() {
+	println(invalid(1))
+}
+'
+	for res in [check_program('return_plain_local_check', source),
+		build_program('return_plain_local_build', source)] {
+		assert res.exit_code != 0, res.output
+		assert !res.output.contains('C compilation error'), res.output
+		assert error_lines(res.output) == [
+			'12:9: cannot use `int` as type `bool` in return argument',
+		], res.output
+	}
+}
+
 // An `if v := a` guard over an `a T` whose instance is neither an option nor a
 // result is reported for that instance, in a check and in a build, as V1 did,
 // instead of failing in the C compiler.
@@ -759,6 +813,76 @@ fn main() {
 		build_program('call_arg_valid_build', source)] {
 		assert res.exit_code == 0, res.output
 		assert error_lines(res.output) == [], res.output
+	}
+}
+
+fn test_instances_keep_the_inferred_types_of_loop_values() {
+	source := "fn take_u8(n u8) u8 {
+	return n
+}
+
+fn sized[T](x T) {
+	lengths := [match typeof(x).name {
+		'u8' { u8(2) }
+		else { 4 }
+	}]
+	for length in lengths {
+		assert take_u8(length) == 2
+	}
+	aliases := lengths
+	for _, length in aliases {
+		copy := length
+		assert take_u8(copy) == 2
+	}
+}
+
+fn main() {
+	sized(u8(1))
+}
+"
+	for res in [check_program('inferred_loop_check', source),
+		build_program('inferred_loop_build', source)] {
+		assert res.exit_code == 0, res.output
+		assert error_lines(res.output) == [], res.output
+	}
+}
+
+fn test_instances_still_report_incompatible_plain_loop_values() {
+	source := 'fn take_u8(n u8) {}
+
+fn from_param[T](values []T) {
+	for value in values {
+		take_u8(value)
+	}
+}
+
+fn from_alias[T](values []T) {
+	alias := values
+	for value in alias {
+		take_u8(value)
+	}
+}
+
+fn from_literal[T](value T) {
+	for item in [value] {
+		take_u8(item)
+	}
+}
+
+fn main() {
+	from_param([u64(1)])
+	from_alias([u64(1)])
+	from_literal(u64(1))
+}
+'
+	for res in [check_program('plain_loop_check', source), build_program('plain_loop_build', source)] {
+		assert res.exit_code != 0, res.output
+		assert !res.output.contains('C compilation error'), res.output
+		errors := error_lines(res.output)
+		assert errors.len == 3, res.output
+		for error in errors {
+			assert error.contains('cannot use `u64` as `u8` in argument 1 to `take_u8`'), res.output
+		}
 	}
 }
 

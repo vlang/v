@@ -79,6 +79,9 @@ refer to the caller's payload. An explicit pointer payload keeps its declared po
 Intern new source text with `flat.source_type_id(text)` at a parsing boundary. An AST annotation
 already carries that ID in `node.typ`. Parsing still observes imports, generic bindings, and the
 declaration context; identical spelling IDs can resolve to different semantic types.
+Imported generic signatures retain caller-owned types inside callback signatures, channel
+payloads, and nested generic arguments. A same-named type declared by the imported module
+does not replace those caller types.
 `Type.source_type_id()`, `TypeChecker.type_name(value)`, and `type_name_by_id(id)` return spelling
 IDs. Resolve bytes with `flat.source_type_name(id)` for diagnostics, spelling syntax, or emission.
 Builtin spelling constants in `v.flat` avoid repeated interning of scalar names.
@@ -175,12 +178,15 @@ Explicit generic arguments retain the types written at the call site.
 Concrete generic instances report incompatible returned names and fields during checking and
 building, including generic closures and methods. For example, `fn flag[T](value T) bool`
 cannot return an `int` instance's `value`. Returns narrowed by type tests retain their normal
-smartcast behavior.
+smartcast behavior. Returned locals initialized by calls, match expressions, or fn literals
+retain their normal checking and lowering behavior.
 
 Concrete generic instances also report incompatible plain call arguments during checking and
 building. For example, passing a concrete `bool` field to a `string` parameter reports the
 argument mismatch at the call. Spread arguments, embedded struct conversions, and values narrowed
 by type tests or comptime field iteration retain their existing lowering and checking behavior.
+Loop bindings also retain the inferred types of their iterables, including local containers
+initialized from expressions whose types are resolved during lowering.
 
 Compiler integrations can prepare a `LibraryBodyFrontier` after the initial semantic check
 and pass reached declaration IDs to `TypeChecker.check_library_body_frontier_nodes`.

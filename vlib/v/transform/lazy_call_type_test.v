@@ -7,7 +7,7 @@ fn test_callee_signature_keeps_raw_binding_precedence_and_checked_fallback() {
 	mut a := flat.FlatAst.new()
 	callback := a.add_val(.ident, 'callback')
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set_id('RawCallback', flat.source_type_id('fn () string'))
+	tc.type_aliases.set_id(flat.source_type_id('RawCallback'), flat.source_type_id('fn () string'))
 	tc.register_synth_type(callback, tc.parse_type(flat.source_type_id('fn () bool')))
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.set_var_type_with_raw('callback', flat.source_type_id('fn () int'), flat.source_type_id('RawCallback'))
@@ -65,10 +65,10 @@ fn test_resolved_receiver_keeps_raw_alias_and_pointer_views() {
 		mut a := flat.FlatAst.new()
 		base := a.add_node(flat.Node{ kind: .ident, value: 'object', typ: flat.source_type_id(spelling) })
 		mut tc := types.TypeChecker.new(&a)
-		tc.type_aliases.set_id('AliasThing', flat.source_type_id('Thing'))
-		tc.structs['Thing'] = []types.StructField{}
+		tc.type_aliases.set_id(flat.source_type_id('AliasThing'), flat.source_type_id('Thing'))
+		tc.structs[flat.source_type_id('Thing')] = []types.StructField{}
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
-		t.structs['Thing'] = StructInfo{ name: flat.source_type_id('Thing') }
+		t.structs[flat.source_type_id('Thing')] = StructInfo{ name: flat.source_type_id('Thing') }
 		t.set_var_type_with_raw('object', flat.source_type_id(spelling), flat.source_type_id(spelling))
 		result := t.receiver_base_for_resolved_method(base, 'Thing.run', [], flat.source_type_id(spelling))
 		assert a.node(result).kind == .ident

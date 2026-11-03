@@ -46,7 +46,7 @@ fn (mut tc TypeChecker) vls_type_generic_body(id flat.NodeId) {
 	}
 	tc.vls_typed_bodies[int(fn_id)] = true
 	node := *tc.a.node(fn_id)
-	generic_params := tc.infer_decl_generic_param_names(node)
+	generic_params := tc.infer_decl_generic_param_ids(node)
 	// A declaration of a `.vh` file has no body.
 	if node.kind != .fn_decl || generic_params.len == 0 || node.is_mut {
 		return
@@ -62,14 +62,14 @@ fn (mut tc TypeChecker) vls_type_generic_body(id flat.NodeId) {
 	tc.fn_context.generic_params = generic_params
 	tc.vls_enter_file(int(node.pos.id))
 	tc.cur_scope = tc.file_scope
-	return_type := if node.typ_text().ends_with('?') && !flat.source_type_shape(node.typ).has(.option_type) {
-		flat.source_type_id(node.typ_text().trim_right('?'))
+	return_type := if !flat.source_type_shape(node.typ).has(.option_type) {
+		flat.source_type_syntax(node.typ).question_trimmed()
 	} else {
 		node.typ
 	}
 	tc.cur_fn_ret_type = tc.parse_type(return_type)
 	tc.fn_context.return_type = tc.cur_fn_ret_type
-	w := tc.checked_generic_fn_body(node, int(fn_id), map[string]u32{}, true)
+	w := tc.checked_generic_fn_body(node, int(fn_id), map[u32]u32{}, true)
 	tc.fn_context = saved_context
 	tc.cur_fn_ret_type = saved_return
 	tc.cur_scope = saved_scope
@@ -82,10 +82,7 @@ fn (mut tc TypeChecker) vls_type_generic_body(id flat.NodeId) {
 	// them, or a value that does, or when a node below it does (see
 	// subtree_depends_on_type_params): the nodes come in the order of a walk from
 	// the top, and are decided from the last one up.
-	mut params := map[string]bool{}
-	for param in generic_params {
-		params[param] = true
-	}
+	params := generic_param_id_set(generic_params)
 	dependent := tc.type_param_dependent_names(node, params)
 	mut order := []flat.NodeId{}
 	mut stack := []flat.NodeId{}
@@ -109,9 +106,9 @@ fn (mut tc TypeChecker) vls_type_generic_body(id flat.NodeId) {
 		current := order[i]
 		n := tc.a.node(current)
 		mut depending := (n.kind == .ident && n.value in dependent)
-			|| type_text_names_any(n.typ_text(), params)
+			|| type_id_names_any(n.typ, params)
 			|| (n.kind !in [.string_literal, .char_literal, .int_literal, .float_literal]
-				&& type_text_names_any(n.value, params))
+				&& n.value.len > 0 && type_id_names_any(n.source_value_id(), params))
 		mut generic_call := n.kind == .call && tc.vls_calls_generic(current, *n)
 		for j in 0 .. n.children_count {
 			child := int(tc.a.child(n, j))
@@ -145,22 +142,20 @@ fn (tc &TypeChecker) vls_calls_generic(id flat.NodeId, node flat.Node) bool {
 		return false
 	}
 	target := tc.vls_call_target(id, tc.a.child(&node, 0)) or { return false }
-	if (tc.fn_generic_params[target] or { []string{} }).len > 0 {
+	if (tc.fn_generic_params[target] or { []u32{} }).len > 0 {
 		return true
 	}
-	_, _, receiver_is_generic := generic_type_application_parts(target.all_before_last('.'))
-	return receiver_is_generic
+	return flat.source_type_syntax(flat.source_type_syntax(flat.source_type_id(target)).qualifier()).application_valid()
 }
 
 // vls_open_type_holds reports whether `typ`, the type that the check of a
 // generic body with its type parameters open gave a node, tells what the node
 // is: each type parameter it names is one of `params`, the body's own, and
 // nothing in it is void or a type the check could not tell.
-fn vls_open_type_holds(typ &Type, params map[string]bool) bool {
+fn vls_open_type_holds(typ &Type, params map[u32]bool) bool {
 	match typ {
 		Unknown {
-			name := generic_placeholder_from_unknown(typ) or { return false }
-			return name in params
+			return typ.placeholder != 0 && typ.placeholder in params
 		}
 		Void {
 			return false
@@ -201,7 +196,7 @@ fn vls_open_type_holds(typ &Type, params map[string]bool) bool {
 			return true
 		}
 		Struct, Interface, SumType {
-			return vls_type_text_params_hold(typ.name(), params)
+			return vls_type_params_hold(typ.source_type_id(), params)
 		}
 		else {
 			return true
@@ -209,22 +204,11 @@ fn vls_open_type_holds(typ &Type, params map[string]bool) bool {
 	}
 }
 
-// vls_type_text_params_hold reports whether every type parameter that the type
-// `text` names, `T` in `Box[T]`, is one of `params`.
-fn vls_type_text_params_hold(text string, params map[string]bool) bool {
-	mut i := 0
-	for i < text.len {
-		if !(text[i].is_letter() || text[i] == `_`) {
-			i++
-			continue
-		}
-		start := i
-		for i < text.len && (text[i].is_alnum() || text[i] == `_`) {
-			i++
-		}
-		name := text[start..i]
-		if (start == 0 || text[start - 1] != `.`) && is_bare_generic_param(name)
-			&& name !in params {
+// vls_type_params_hold reports whether every bare type parameter named by the
+// source type is one of `params`.
+fn vls_type_params_hold(type_id u32, params map[u32]bool) bool {
+	for word in flat.source_type_syntax(type_id).vls_generic_words() {
+		if word !in params {
 			return false
 		}
 	}
@@ -242,14 +226,14 @@ fn (tc &TypeChecker) vls_generic_call_type(id flat.NodeId, node flat.Node) ?Type
 	}
 	callee_id := tc.a.child(&node, 0)
 	target := tc.vls_call_target(id, callee_id)?
-	fn_params := tc.fn_generic_params[target] or { []string{} }
+	fn_params := tc.fn_generic_params[target] or { []u32{} }
 	mut names := fn_params.clone()
-	_, receiver_params, receiver_is_generic := generic_type_application_parts(target.all_before_last('.'))
-	if receiver_is_generic {
-		for param in receiver_params {
-			name := param.trim_space()
-			if is_bare_generic_param(name) && name !in names {
-				names << name
+	receiver := flat.source_type_syntax(flat.source_type_syntax(flat.source_type_id(target)).qualifier())
+	if receiver.application_valid() {
+		for param in receiver.application_args() {
+			param_id := trimmed_source_type_id(param)
+			if flat.source_type_syntax(param_id).bare_generic() {
+				if param_id !in names { names << param_id }
 			}
 		}
 	}
@@ -257,16 +241,15 @@ fn (tc &TypeChecker) vls_generic_call_type(id flat.NodeId, node flat.Node) ?Type
 		return none
 	}
 	callee := tc.a.node(callee_id)
-	mut bound := map[string]Type{}
+	mut bound := map[u32]Type{}
 	// `first_of[A](values)`: its type arguments, a type parameter of the body
 	// kept as one.
 	if callee.kind == .index && tc.call_has_explicit_generic_type_args(node) {
 		for k, text_source_id in tc.generic_call_type_arg_names(*callee) {
-			text := flat.source_type_name(text_source_id)
-
 			if k < fn_params.len {
-				bound[fn_params[k]] = if is_bare_generic_param(text.trim_space()) {
-					unknown_type('generic placeholder `${text.trim_space()}`')
+				clean_id := trimmed_source_type_id(text_source_id)
+				bound[fn_params[k]] = if flat.source_type_syntax(clean_id).bare_generic() {
+					generic_placeholder_type(clean_id)
 				} else {
 					*tc.parse_type(text_source_id)
 				}
@@ -281,9 +264,9 @@ fn (tc &TypeChecker) vls_generic_call_type(id flat.NodeId, node flat.Node) ?Type
 	param_type_ids := tc.fn_param_type_texts.type_ids(target) or { []u32{} }
 	mut first := 0
 	if method.kind == .selector && method.children_count > 0 {
-		if receiver := tc.vls_unconstrained_type(tc.a.child(&method, 0)) {
+		if receiver_type := tc.vls_unconstrained_type(tc.a.child(&method, 0)) {
 			if param_type_ids.len > 0 {
-				tc.vls_bind_type_params(param_type_ids[0], unwrap_pointer(receiver), names, mut
+				tc.vls_bind_type_params(param_type_ids[0], unwrap_pointer(receiver_type), names, mut
 					bound)
 			}
 			first = 1
@@ -311,90 +294,70 @@ fn (tc &TypeChecker) vls_generic_call_type(id flat.NodeId, node flat.Node) ?Type
 // `text_id`, the type spelling of a parameter of a generic declaration, spells,
 // from `actual`, the type of what a call passes there: `[]T` against `[]A` binds
 // `T` to `A`, `Box[T]` against `Box[A]` too.
-fn (tc &TypeChecker) vls_bind_type_params(text_id u32, actual Type, names []string, mut bound map[string]Type) {
-	tc.vls_bind_type_params_text(flat.source_type_name(text_id), actual, names, mut bound)
-}
-
-// vls_bind_type_params_text parses the wrappers and type arguments of a parameter.
-fn (tc &TypeChecker) vls_bind_type_params_text(text string, actual Type, names []string, mut bound map[string]Type) {
-	clean := text.trim_space()
-	if clean in names {
-		if clean !in bound {
-			bound[clean] = actual
-		}
-		return
-	}
-	for prefix in ['mut ', 'shared ', '&'] {
-		if clean.starts_with(prefix) {
-			tc.vls_bind_type_params_text(clean[prefix.len..], unwrap_pointer(actual), names, mut
-				bound)
+fn (tc &TypeChecker) vls_bind_type_params(text_id u32, actual Type, names []u32, mut bound map[u32]Type) {
+	clean := trimmed_source_type_id(text_id)
+	for name in names {
+		if clean == name {
+			if name !in bound { bound[name] = actual }
 			return
 		}
 	}
-	held := unalias_type(actual)
-	if clean.starts_with('...') {
-		elem := if held is Array { *held.elem_type } else { actual }
-		tc.vls_bind_type_params_text(clean[3..], elem, names, mut bound)
+	shape := flat.source_type_shape(clean)
+	syntax := flat.source_type_syntax(clean)
+	if shape.has(.mutable_type) || shape.has(.shared_type) || shape.has(.pointer) {
+		tc.vls_bind_type_params(syntax.raw_base(), unwrap_pointer(actual), names, mut bound)
 		return
 	}
-	if clean.starts_with('?') || clean.starts_with('!') {
+	held := unalias_type(actual)
+	if shape.has(.variadic) {
+		elem := if held is Array { *held.elem_type } else { actual }
+		tc.vls_bind_type_params(syntax.raw_base(), elem, names, mut bound)
+		return
+	}
+	if shape.has(.optional) {
 		base := match held {
 			OptionType { held.base_type }
 			ResultType { held.base_type }
 			else { held }
 		}
-		tc.vls_bind_type_params_text(clean[1..], base, names, mut bound)
+		tc.vls_bind_type_params(syntax.raw_base(), base, names, mut bound)
 		return
 	}
-	if clean.starts_with('[]') {
+	if shape.has(.array_type) {
 		if held is Array {
-			tc.vls_bind_type_params_text(clean[2..], held.elem_type, names, mut bound)
+			tc.vls_bind_type_params(syntax.raw_base(), held.elem_type, names, mut bound)
 		}
 		return
 	}
-	if clean.starts_with('[') {
-		end := find_matching_bracket(clean, 0)
-		if held is ArrayFixed && end > 0 && end + 1 < clean.len {
-			tc.vls_bind_type_params_text(clean[end + 1..], held.elem_type, names, mut bound)
+	if shape.has(.leading_bracket) {
+		if held is ArrayFixed && syntax.bracket_closed() && syntax.bracket_suffix() != 0 {
+			tc.vls_bind_type_params(syntax.bracket_suffix(), held.elem_type, names, mut bound)
 		}
 		return
 	}
-	if clean.starts_with('map[') {
-		end := find_matching_bracket(clean, 3)
-		if held is Map && end > 0 && end + 1 < clean.len {
-			tc.vls_bind_type_params_text(clean[4..end], held.key_type, names, mut bound)
-			tc.vls_bind_type_params_text(clean[end + 1..], held.value_type, names, mut bound)
+	if shape.has(.map_type) {
+		if held is Map && syntax.bracket_closed() && syntax.bracket_suffix() != 0 {
+			tc.vls_bind_type_params(syntax.bracket_raw_inner(), held.key_type, names, mut bound)
+			tc.vls_bind_type_params(syntax.bracket_suffix(), held.value_type, names, mut bound)
 		}
 		return
 	}
 	// `Box[T]` against `Box[A]`: each type argument against the actual's.
-	base, args, is_generic := generic_type_application_parts(clean)
-	if !is_generic {
+	if !syntax.application_valid() {
 		return
 	}
-	actual_base, actual_args, actual_is_generic := generic_type_application_parts(tc.vls_type_name(held))
-	if !actual_is_generic || actual_args.len != args.len
-		|| actual_base.all_after_last('.') != base.all_after_last('.') {
+	actual_syntax := flat.source_type_syntax(held.source_type_id())
+	if !actual_syntax.application_valid() || actual_syntax.application_args().len != syntax.application_args().len
+		|| flat.source_type_syntax(actual_syntax.application_base()).unqualified() != flat.source_type_syntax(syntax.application_base()).unqualified() {
 		return
 	}
-	for i, arg in args {
-		arg_text := actual_args[i].trim_space()
-		arg_type := if is_bare_generic_param(arg_text) {
-			unknown_type('generic placeholder `${arg_text}`')
+	for i, arg in syntax.application_args() {
+		arg_id := trimmed_source_type_id(actual_syntax.application_args()[i])
+		arg_type := if flat.source_type_syntax(arg_id).bare_generic() {
+			generic_placeholder_type(arg_id)
 		} else {
-			*tc.parse_type(flat.source_type_id(arg_text))
+			*tc.parse_type(arg_id)
 		}
-		tc.vls_bind_type_params_text(arg, arg_type, names, mut bound)
-	}
-}
-
-// vls_type_name is the name of `typ` with its type arguments, `Box[A]`, for a
-// struct, an interface or a sum type.
-fn (tc &TypeChecker) vls_type_name(typ Type) string {
-	return match typ {
-		Struct { typ.name() }
-		Interface { typ.name() }
-		SumType { typ.name() }
-		else { typ.name() }
+		tc.vls_bind_type_params(arg, arg_type, names, mut bound)
 	}
 }

@@ -112,7 +112,7 @@ fn (mut g FlatGen) gen_fixed_array_index(index_id flat.NodeId, len string) {
 
 fn (g &FlatGen) fixed_array_type_from_alias_text(type_name_id u32) ?types.ArrayFixed {
 	mut cur := if flat.source_type_shape(type_name_id).has(.padded) {
-		flat.source_type_id(trimmed_space(flat.source_type_name(type_name_id)))
+		flat.source_type_syntax(type_name_id).trimmed()
 	} else {
 		type_name_id
 	}
@@ -123,10 +123,10 @@ fn (g &FlatGen) fixed_array_type_from_alias_text(type_name_id u32) ?types.ArrayF
 		if fixed := array_fixed_type(g.tc.parse_type(cur)) {
 			return fixed
 		}
-		mut next := g.tc.type_aliases.type_id(flat.source_type_name(cur)) or { u32(0) }
+		mut next := g.tc.type_aliases.type_id(cur) or { u32(0) }
 		if next == 0 {
 			qname := g.tc.qualify_type_name(cur)
-			next = g.tc.type_aliases.type_id(flat.source_type_name(qname)) or { u32(0) }
+			next = g.tc.type_aliases.type_id(qname) or { u32(0) }
 		}
 		if next == 0 || next == cur {
 			return none
@@ -191,7 +191,11 @@ fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type)
 	// Size the compound literal explicitly. TinyCC mis-accounts an unsized
 	// `(T[]){a, b}` whose elements are struct values rather than brace
 	// initializers, and aborts with an internal `initializer overflow`.
-	g.write('${new_fn}(${count}, ${count}, sizeof(${sizeof_elem}), (${c_elem}[${count}]){')
+	g.write('${new_fn}(${count}, ${count}, sizeof(${sizeof_elem}), ')
+	if g.ccompiler == 'cplusplus' {
+		g.write('__v3_internal_symbol_cpp_array(')
+	}
+	g.write('(${c_elem}[${count}]){')
 	for i in 0 .. count {
 		if i > 0 {
 			g.write(', ')
@@ -212,6 +216,9 @@ fn (mut g FlatGen) gen_array_literal_value(node flat.Node, elem_type types.Type)
 		g.gen_expr_with_expected_type(child_id, canonical_elem_type)
 	}
 	g.write('}')
+	if g.ccompiler == 'cplusplus' {
+		g.write(')')
+	}
 	if aligned {
 		g.write(', __alignof__(${sizeof_elem})')
 	}
@@ -330,6 +337,14 @@ fn (mut g FlatGen) gen_pointer_arg_from_array_literal(node flat.Node, expected t
 		return true
 	}
 	return false
+}
+
+// gen_fixed_array_copy_data_arg keeps temporary array storage alive through an
+// immediate copy while retaining the normal nested-array lowering.
+fn (mut g FlatGen) gen_fixed_array_copy_data_arg(id flat.NodeId, arr types.ArrayFixed) {
+	g.write(g.cpp_copy_source_prefix())
+	g.gen_fixed_array_data_arg(id, arr)
+	g.write(g.cpp_copy_source_suffix())
 }
 
 // gen_fixed_array_data_arg emits fixed array data arg output for c.
@@ -566,11 +581,17 @@ fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected t
 		return false
 	}
 	node := g.a.nodes[int(id)]
-	mut actual := g.body_resolve_type(id)
+	// A parameter's declared type wins; resolve the expression type only otherwise.
+	mut actual := types.Type(types.void_)
+	mut has_param_type := false
 	if node.kind == .ident {
 		if param_type := g.current_param_type(node.value) {
 			actual = param_type
+			has_param_type = true
 		}
+	}
+	if !has_param_type {
+		actual = g.body_resolve_type(id)
 	}
 	if actual is types.Pointer {
 		return false
@@ -1004,8 +1025,8 @@ fn (mut g FlatGen) gen_array_method_call(node flat.Node, fn_node &flat.Node, arr
 			mut is_thread := false
 			elem := unalias_type(arr.elem_type)
 			if elem is types.Struct {
-				tn := trimmed_space(elem.name())
-				is_thread = tn == 'thread' || tn.starts_with('thread ')
+				tn := flat.source_type_syntax(elem.source_type_id()).trimmed()
+				is_thread = tn == flat.source_type_id('thread') || flat.source_type_shape(tn).has(.thread_type)
 			}
 			if is_thread {
 				g.gen_thread_array_wait(base_id, is_ptr, elem)
@@ -1144,9 +1165,9 @@ fn (mut g FlatGen) gen_thread_array_wait(base_id flat.NodeId, is_ptr bool, elem_
 	g.needs_thread_runtime = true
 	mut ret_name_id := u32(0)
 	if elem_type is types.Struct {
-		trimmed := trimmed_space(elem_type.name())
-		if trimmed != 'thread' && trimmed.starts_with('thread ') {
-			ret_name_id = flat.source_type_id(trimmed_space(trimmed[7..]))
+		trimmed := flat.source_type_syntax(elem_type.source_type_id()).trimmed()
+		if trimmed != flat.source_type_id('thread') && flat.source_type_shape(trimmed).has(.thread_type) {
+			ret_name_id = flat.source_type_syntax(flat.source_type_syntax(trimmed).raw_base()).trimmed()
 		}
 	}
 	fn_name := g.ensure_thread_arr_wait_fn(ret_name_id)
@@ -1586,7 +1607,7 @@ fn (mut g FlatGen) gen_slice_index_array_value(node flat.Node, elem_type types.T
 	} else {
 		0
 	}
-	g.write('new_array_from_c_array(${count}, ${count}, sizeof(${ct}), (${ct}[]){')
+	g.write('new_array_from_c_array(${count}, ${count}, sizeof(${ct}), ${g.cpp_copy_source_prefix()}(${ct}[]){')
 	if node.value == 'range' {
 		g.gen_slice_index_value_from_index_range(node)
 	} else {
@@ -1597,7 +1618,7 @@ fn (mut g FlatGen) gen_slice_index_array_value(node flat.Node, elem_type types.T
 			g.gen_slice_index_value(g.a.child(&node, i))
 		}
 	}
-	g.write('})')
+	g.write('}${g.cpp_copy_source_suffix()})')
 }
 
 fn (mut g FlatGen) gen_slice_index_value_from_index_range(node flat.Node) {
@@ -2001,7 +2022,7 @@ fn (mut g FlatGen) gen_scalar_array_push_call_stmt(id flat.NodeId, node flat.Nod
 	// records the helper as the target of an append it lowered, which tells the two
 	// apart where the module has such a global.
 	if _ := g.global_type_for_ident(target) {
-		recorded := g.tc.resolved_call_name(id) or { '' }
+		recorded := g.resolved_call_name(id) or { '' }
 		if recorded != target {
 			return false
 		}

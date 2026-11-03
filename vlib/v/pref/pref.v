@@ -4,11 +4,12 @@ import os
 import strings
 import time
 import v.cmdexec
+import v.vmod
 
 // native_backend_replacement_message explains how to replace the removed native backend option.
-pub const native_backend_replacement_message = '`-b native` has been replaced by `-b arm64` for native ARM64 compilation on macOS.\n' +
+pub const native_backend_replacement_message = '`-b native` has been replaced by `-b arm64` and `-b x64`.\n' +
 	'Enable ARM64 support with `v -compile-backend arm64 self`, then use `v -b arm64 -gc none file.v`.\n' +
-	'The native AMD64 backend is not available yet; use `v -b c -arch amd64 file.v`.'
+	'On Linux AMD64, first run `v -compile-backend x64 self`, then `v -b x64 file.v`.'
 
 const macos_v3_caller_vexe_env = 'V_MACOS_V3_CALLER_VEXE'
 const macos_v3_caller_vexe_present_env = 'V_MACOS_V3_CALLER_VEXE_PRESENT'
@@ -46,13 +47,15 @@ pub enum Subsystem {
 // Preferences represents preferences data used by pref.
 pub struct Preferences {
 pub mut:
-	verbose               bool
-	no_parallel           bool
-	output_file           string
-	target                Target = host_target()
-	user_defines          []string
-	compile_values        map[string]string
-	backend               string = 'c'
+	verbose        bool
+	no_parallel    bool
+	output_file    string
+	target         Target = host_target()
+	user_defines   []string
+	compile_values map[string]string
+	backend        string = 'c'
+	// fastc_native_bridge selects separate native ownership for executable output.
+	fastc_native_bridge   bool
 	ccompiler             string = 'gcc'
 	c99                   bool
 	force_bounds_checking bool
@@ -108,6 +111,9 @@ pub:
 	build_date      string
 	build_time      string
 	build_timestamp string
+pub mut:
+	// hot_fn extracts raw machine code for a single function only (hot reload).
+	hot_fn string
 }
 
 // without_excluded returns files, minus the ones matched by a `-exclude` pattern.
@@ -196,6 +202,13 @@ pub fn default_thread_stack_size_for_bits(pointer_bits int) int {
 	return if pointer_bits == 32 { 2 * 1024 * 1024 } else { 8 * 1024 * 1024 }
 }
 
+// is_supported_arch reports whether `arch` is a canonical architecture name that a target
+// can be built for; spellings such as `x86_64` must be passed through normalized_arch first.
+pub fn is_supported_arch(arch string) bool {
+	return arch in ['amd64', 'arm64', 'x86', 'arm32', 'riscv32', 'riscv64', 'ppc', 'ppc64', 'ppc64le',
+		's390x', 'loongarch64', 'sparc64', 'wasm32']
+}
+
 // target_from validates and canonicalizes an OS/architecture pair.
 pub fn target_from(os_name string, arch_name string) !Target {
 	target_os := normalized_os(os_name.trim_space().to_lower())
@@ -204,8 +217,7 @@ pub fn target_from(os_name string, arch_name string) !Target {
 		'android', 'termux', 'ios', 'solaris', 'qnx', 'haiku', 'serenity', 'vinix', 'wasm32_emscripten'] {
 		return error('unsupported target OS `${os_name}`')
 	}
-	if target_arch !in ['amd64', 'arm64', 'x86', 'arm32', 'riscv32', 'riscv64', 'ppc', 'ppc64',
-		'ppc64le', 's390x', 'loongarch64', 'sparc64', 'wasm32'] {
+	if !is_supported_arch(target_arch) {
 		return error('unsupported target architecture `${arch_name}`')
 	}
 	if target_os == 'wasm32_emscripten' && target_arch != 'wasm32' {
@@ -261,7 +273,7 @@ pub fn option_may_consume_value(option string) bool {
 		'-cov', '-coverage', '-profile-fns', '-bug-report-url', '-run-only', '-exclude', '-file-list',
 		'-test-runner', '-dump-c-flags', '-dump-modules', '-dump-files', '-dump-defines',
 		'-generate-c-project', '-macosx-version-min', '-os', '-printfn', '-cflags', '-ldflags',
-		'-d', '-define', '-message-limit', '-thread-stack-size', '-cc', '-c++',
+		'-d', '-define', '-message-limit', '-thread-stack-size', '-hot-fn', '-cc', '-c++',
 		'-checker-match-exhaustive-cutoff-limit', '-o', '-output', '-b', '-backend', '-compile-backend',
 		'--compile-backend', '-path', '-bare-builtin-dir', '-custom-prelude', '-raw-vsh-tmp-prefix',
 		'-cmain', '-line-info', '-memory-limit', '--memory-limit']
@@ -692,6 +704,19 @@ fn dir_is_module(dir string) bool {
 			return true
 		}
 	}
+	manifest := vmod.from_file(os.join_path_single(dir, 'v.mod')) or { return false }
+	source_root := manifest.source_root(dir)
+	mut source_dirs := [source_root]
+	for subdir in manifest.unknown['subdirs'] or { []string{} } {
+		source_dirs << os.join_path_single(source_root, subdir)
+	}
+	for source_dir in source_dirs {
+		for entry in os.ls(source_dir) or { continue } {
+			if entry.ends_with('.v') && os.is_file(os.join_path_single(source_dir, entry)) {
+				return true
+			}
+		}
+	}
 	return false
 }
 
@@ -1038,10 +1063,9 @@ pub fn is_test_file_for_backend(path string, backend string) bool {
 		// A backend name wins over an architecture alias: `wasm` spells both, and
 		// `foo_test.wasm.v` is a WASM backend test, not an amd64/arm64 one.
 		if backend_suffix == 'native' {
-			// `.native.v` is the backend-specific file suffix for ARM64 code.
-			// The CLI uses `-b arm64`; keep suffix selection independent of the
-			// removed `-b native` option.
-			return backend in ['native', 'arm64']
+			// `.native.v` is the backend-specific file suffix shared by the
+			// architecture code generators.
+			return backend in ['native', 'arm64', 'x64']
 		}
 		return backend_suffix == backend
 	}
@@ -1601,16 +1625,17 @@ pub fn comptime_flag_value(p &Preferences, name string) bool {
 			return p.is_test
 		}
 		'native', 'builtin_write_buf_to_fd_should_use_c_write' {
-			return p.backend == 'arm64'
+			return p.backend in ['arm64', 'x64']
 		}
 		'gcc', 'clang', 'mingw', 'msvc', 'cplusplus' {
 			return p.backend == 'c' && p.ccompiler == name
 		}
 		'tinyc' {
-			return p.backend == 'arm64' || (p.backend in ['c', 'fastc'] && p.ccompiler == 'tinyc')
+			return p.backend in ['arm64', 'x64']
+				|| (p.backend in ['c', 'fastc'] && p.ccompiler == 'tinyc')
 		}
 		'no_backtrace' {
-			return p.backend == 'arm64' || name in p.user_defines
+			return p.backend in ['arm64', 'x64'] || name in p.user_defines
 		}
 		else {
 			return name in p.user_defines
@@ -1738,7 +1763,7 @@ pub fn comptime_optional_flag_value(p &Preferences, name string) bool {
 	if name == 'new_int' {
 		// SSA currently lowers `int` to i32, including array and string headers.
 		// Its builtin limits must use that width even on a 64-bit target.
-		if p.backend == 'arm64' {
+		if p.backend in ['arm64', 'x64'] {
 			return false
 		}
 		// The C backend lowers `int` to the target pointer width.

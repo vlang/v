@@ -39,8 +39,8 @@ if [ "$1" = doctor ]; then
 fi
 if [ "$1" = -no-memory-limit ]; then
     [ "$2" = -silent ] && [ "$3" = test-self ] && [ "$4" = vlib ] || exit 98
-    [ "${VTEST_FAIL_FAST:-}" = 1 ] && [ "${VJOBS:-}" = 1 ] || exit 99
-    echo self-tests >> self.log
+    [ "${VJOBS:-}" = "$SELF_TEST_EXPECTED_JOBS" ] || exit 99
+    printf '%s:%s\n' "$VTEST_FAIL_FAST" "$VJOBS" >> self.log
     exit 0
 fi
 [ "$1" = run ] && [ "$2" = ci/macos_ci.vsh ] || exit 90
@@ -134,12 +134,22 @@ run_ci 0 v_doctor
 cmp "$work/saved" "$checkpoint"
 [ "$(cat "$checkout/direct.log")" = doctor ] || fail 'individual task did not run'
 
-# Execute the real self_tests task: its GitHub branch must retain the aggregate
-# runner's serial fail-fast setting instead of replacing it with the CPU count.
-(cd "$checkout" && GITHUB_JOB=clang-macos VTEST_FAIL_FAST=1 VJOBS=1 \
-    V_CI_VEXE="$fake_v" "$runner" self_tests) > "$work/output" 2>&1 || \
-    fail 'self_tests replaced the fail-fast worker count'
-[ "$(cat "$checkout/self.log")" = self-tests ] || fail 'self_tests did not run'
+# Execute the real self_tests task with both the aggregate runner's serial setting
+# and the workflow's three workers. Fail-fast must not override an explicit VJOBS.
+for fast in 0 1; do
+    for jobs in 1 3; do
+        (cd "$checkout" && GITHUB_JOB=clang-macos VTEST_FAIL_FAST="$fast" VJOBS="$jobs" \
+            SELF_TEST_EXPECTED_JOBS="$jobs" V_CI_VEXE="$fake_v" "$runner" self_tests) \
+            > "$work/output" 2>&1 || fail "self_tests replaced VJOBS=$jobs (fail-fast=$fast)"
+    done
+done
+printf '0:1\n0:3\n1:1\n1:3\n' > "$work/expected-self"
+cmp "$work/expected-self" "$checkout/self.log" || fail 'self_tests did not run'
+
+# Without an explicit worker count, fail-fast still defaults to a serial session.
+(cd "$checkout" && unset VJOBS && GITHUB_JOB=clang-macos VTEST_FAIL_FAST=1 \
+    SELF_TEST_EXPECTED_JOBS=1 V_CI_VEXE="$fake_v" "$runner" self_tests) \
+    > "$work/output" 2>&1 || fail 'self_tests lost its serial fail-fast default'
 
 # A second checkout must not consume the first checkout's saved progress.
 first_checkout=$checkout
@@ -396,5 +406,36 @@ run_sanitizers 1
 rm "$sanitize_root/fail-sanitizer"
 run_sanitizers 0
 [ "$(grep -c '^build$' "$sanitize_root/commands.log")" -eq 3 ] || fail 'rebuilt sanitizer compiler on retry'
+
+# Keep GPU probes awake only while self_tests runs, including failed commands
+# that exit before the V defer can run. caffeinate -w owns that failure cleanup.
+if [ "$(uname -s)" = Darwin ]; then
+    display_root="$work/display"
+    mkdir "$display_root"
+    cat > "$display_root/compiler" <<'MOCK'
+#!/bin/sh
+set -eu
+guard=$(pgrep -P "$PPID" -x caffeinate)
+[ -n "$guard" ] || exit 80
+printf '%s\n' "$guard" > guard.pid
+[ ! -f fail-self ]
+MOCK
+    chmod +x "$display_root/compiler"
+    for expected in 0 1; do
+        [ "$expected" -eq 0 ] || touch "$display_root/fail-self"
+        status=0
+        (cd "$display_root" && GITHUB_JOB=clang-macos \
+            V_CI_VEXE="$display_root/compiler" "$runner" self_tests) \
+            > "$work/output" 2>&1 || status=$?
+        [ "$status" -eq "$expected" ] || fail 'self-tests display guard failed'
+        guard=$(cat "$display_root/guard.pid")
+        attempts=0
+        while kill -0 "$guard" 2>/dev/null && [ "$attempts" -lt 100 ]; do
+            sleep 0.02
+            attempts=$((attempts + 1))
+        done
+        ! kill -0 "$guard" 2>/dev/null || fail 'self-tests leaked the display guard'
+    done
+fi
 
 echo 'PASS: macOS CI task, test-file and sanitizer checkpoint/resume integration tests'

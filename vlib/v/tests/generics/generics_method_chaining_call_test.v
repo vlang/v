@@ -30,3 +30,17 @@ fn test_generics_method_chaining_call() {
 	println(s)
 	assert s.ar == [3, 4]
 }
+
+fn test_generics_method_chaining_changes_receiver_and_result_types() {
+	s := Seq[int]{[1, 22]}
+		.map[string](fn (element int) string {
+		return element.str()
+	})
+		.map[bool](fn (element string) bool {
+		return element.len > 1
+	})
+		.map[string](fn (element bool) string {
+		return if element { 'long' } else { 'short' }
+	})
+	assert s.ar == ['short', 'long']
+}

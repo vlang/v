@@ -5,7 +5,7 @@ import v.pref
 import v.token
 
 struct SizeofTables {
-	types   []string
+	types   []u64
 	consts  []string
 	globals []string
 	tokens  int

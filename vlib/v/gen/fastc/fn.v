@@ -62,7 +62,7 @@ fn (mut g Parser) drain_pending_mono() ! {
 // retain its specialized body.
 fn fastc_is_json2_voidptr_element_check(req FastcMonoRequest, src FastcGenericMethodSource) bool {
 	normalized_path := src.path.replace('\\', '/')
-	return req.concrete == flat.source_type_voidptr && src.name == 'check_element_type_valid' && (src.receiver_type_text() == 'json2__Decoder' || src.receiver_type_text().ends_with('__json2__Decoder')) && normalized_path.ends_with('/vlib/json2/decode_sumtype.v')
+	return req.concrete == flat.source_type_voidptr && src.name == 'check_element_type_valid' && (src.receiver_type == flat.source_type_id('json2__Decoder') || flat.source_type_id('_json2__Decoder') in flat.source_type_syntax(src.receiver_type).underscore_suffixes()) && normalized_path.ends_with('/vlib/json2/decode_sumtype.v')
 }
 
 // reset_lookup_memos discards the per-file name lookup memos. They are keyed
@@ -73,7 +73,7 @@ fn (mut g Parser) reset_lookup_memos() {
 	g.global_key_memo = map[string]string{}
 	g.nonlocal_name_type_memo = flat.TypeTextBindings{}
 	g.resolved_name_memo = map[string]string{}
-	g.declared_type_key_memo = map[string]FastcMemoEntry{}
+	g.declared_type_key_memo = map[u32]FastcMemoEntry{}
 	g.type_memo = map[i64]u32{}
 	g.method_key_memo = map[u32]map[string]string{}
 	g.field_memo = map[u32]map[string]&FastcStructField{}
@@ -240,7 +240,7 @@ fn (mut g Parser) parse_c_directive() ! {
 	}
 	if c_directive.starts_with('include ')
 		&& c_directive.contains('/thirdparty/stdatomic/nix/atomic.h')
-		&& g.prefs.target.arch == 'arm64' {
+		&& g.prefs.target.arch == 'arm64' && g.prefs.ccompiler in ['tinyc', 'tcc'] {
 		// TinyCC emits C99 extern-inline ARM64 support functions in each split
 		// unit. Weak definitions let the linker share those identical helpers.
 		// glibc can define __attribute__ as an empty macro for TinyCC.
@@ -395,9 +395,43 @@ fn fastc_pkgconfig_flags(raw string) ![]string {
 
 // fastc_flag_is_native_input reports whether a flag is a native source or link input.
 pub fn fastc_flag_is_native_input(flag string) bool {
-	return !flag.starts_with('-') && (flag.ends_with('.c') || flag.ends_with('.o')
+	return !flag.starts_with('-') && (flag.ends_with('.c') || flag.ends_with('.m') || flag.ends_with('.mm') || flag.ends_with('.o')
 		|| flag.ends_with('.a') || flag.ends_with('.obj') || flag.ends_with('.lib')
 		|| flag.ends_with('.dylib') || flag.ends_with('.so') || flag.contains('.so.'))
+}
+
+// fastc_deduplicate_native_files keeps shared helper definitions out of the link twice.
+fn fastc_deduplicate_native_files(flags []string) []string {
+	if flags.len < 2 {
+		return flags
+	}
+	mut result := []string{cap: flags.len}
+	mut seen := map[string]bool{}
+	mut operand := false
+	for flag in flags {
+		if operand {
+			result << flag
+			operand = false
+			continue
+		}
+		if flag in ['-I', '-L', '-F', '-D', '-U', '-x', '-include', '-imacros', '-isystem', '-iquote',
+			'-idirafter', '-iprefix', '-iwithprefix', '-iwithprefixbefore', '-isysroot', '--sysroot',
+			'-target', '-arch', '-framework', '-weak_framework', '-Xlinker', '-force_load', '-o',
+			'-MF', '-MT', '-MQ', '-l', '-weak_library', '-rpath'] {
+			result << flag
+			operand = true
+			continue
+		}
+		if !flag.starts_with('-') && (flag.ends_with('.c') || flag.ends_with('.m')
+			|| flag.ends_with('.mm') || flag.ends_with('.o') || flag.ends_with('.obj')) {
+			if flag in seen {
+				continue
+			}
+			seen[flag] = true
+		}
+		result << flag
+	}
+	return result
 }
 
 // fastc_flag_is_skippable reports whether a `#flag` payload only affects native
@@ -410,13 +444,18 @@ fn fastc_flag_is_skippable(flag string) bool {
 	mut i := 0
 	for i < tokens.len {
 		part := tokens[i]
-		// Search-path / include flags whose operand can be a SEPARATE token
-		// (`-I <path>`): skip the flag and its path operand.
-		if part in ['-I', '-L', '-F', '-rpath', '-isystem', '-iquote', '-idirafter'] {
+		// Search-path / include / library flags whose operand can be a SEPARATE
+		// token (`-I <path>`, `-l <lib>`): skip the flag and its operand.
+		if part in ['-I', '-L', '-l', '-F', '-rpath', '-isystem', '-iquote', '-idirafter'] {
 			i += 2
 			continue
 		}
-		if part.starts_with('-l') || part.starts_with('-L') || part.starts_with('-Wl') || part.starts_with('-rpath') || part.starts_with('-I') || part.starts_with('-F') || part == '-pthread' {
+		if part.starts_with('-l') || part.starts_with('-L') || part.starts_with('-Wl') || part.starts_with('-rpath') || part.starts_with('-I') || part.starts_with('-F') || part in [
+			'-pthread',
+			'-fobjc-arc',
+			'-fno-objc-arc',
+			'-fblocks',
+		] {
 			i++
 			continue
 		}
@@ -458,7 +497,10 @@ fn fastc_flag_defines(flag string) ?[]string {
 	}
 	mut defines := []string{}
 	mut has_define := false
-	for part in tokens {
+	mut i := 0
+	for i < tokens.len {
+		part := tokens[i]
+		i++
 		if part.starts_with('-D') {
 			body := part[2..]
 			if body == '' {
@@ -475,6 +517,12 @@ fn fastc_flag_defines(flag string) ?[]string {
 		if part.starts_with('-U') && part.len > 2 {
 			has_define = true
 			defines << '#undef ${part[2..]}'
+			continue
+		}
+		// Link/header flags mixed in are skipped, including a SEPARATE operand
+		// (`-l <lib>`, `-I <path>`), as in fastc_flag_is_skippable.
+		if part in ['-I', '-L', '-l'] {
+			i++
 			continue
 		}
 		if part.starts_with('-l') || part.starts_with('-L') || part.starts_with('-I') || part.starts_with('-Wl') || part.starts_with('-rpath') || part == '-pthread' {
@@ -560,7 +608,16 @@ fn (mut g Parser) skip_top_level_declaration() ! {
 	mut brace_depth := 0
 	mut paren_depth := 0
 	mut bracket_depth := 0
+	mut previous := token.Token.unknown
 	for g.tok != .eof {
+		if !body_declaration && !type_declaration && brace_depth == 0 && paren_depth == 0
+			&& bracket_depth == 0 && previous in [.name, .number, .string, .char, .rpar, .rsbr,
+			.rcbr, .not, .question, .key_true, .key_false, .key_none]
+			&& g.tok in [.key_fn, .key_pub, .key_const, .key_global, .key_struct, .key_union,
+				.key_enum, .key_interface, .key_type] {
+			return
+		}
+		previous = g.tok
 		if g.tok == .lcbr {
 			brace_depth++
 		} else if g.tok == .rcbr {
@@ -809,7 +866,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.expect(.rpar)!
 		receiver_is_reference := receiver_is_mut && !flat.source_type_query(receiver_type).has(.c_pointer_suffix)
 		receiver_parameter_type := if receiver_is_reference {
-			flat.source_type_id(flat.source_type_name(receiver_type) + '*')
+			flat.source_type_composition_two(.concat, receiver_type, flat.source_type_id('*'))
 		} else {
 			receiver_type
 		}
@@ -838,7 +895,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		g.next()
 	} else if receiver_type == u32(0) && g.tok == .dot {
 		type_key := fastc_type_key(g.module_name, name)
-		if type_key !in g.declared_types {
+		if !fastc_source_type_key_exists(g.declared_types, type_key) {
 			return g.unsupported('static method owner `${name}`')
 		}
 		receiver_type = flat.source_type_id(fastc_c_declared_type_name(type_key))
@@ -937,7 +994,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 			return
 		}
 	}
-	if g.selfhost && !is_fastc_source && receiver_type != u32(0) && g.method_uses_undefined_receiver() {
+	if (g.prefs.selfhost || g.prefs.target_libc_headers || 'nofloat' in g.prefs.user_defines) && !is_fastc_source && receiver_type != u32(0) && g.method_uses_undefined_receiver() {
 		// A method reaching an undefined identifier as a method-call receiver is broken
 		// dead code, kept only because its name collides with a genuinely-used method on
 		// another type (name-grouped reachability). The mainline compiler drops it via
@@ -988,6 +1045,9 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	g.indent++
 	g.promote_spawn_parameter_storage()
 	if is_main && !g.prefs.target_libc_headers {
+		for line in fastc_c_main_binary_stdio_lines(g.prefs) {
+			g.write_line(line)
+		}
 		g.write_line('setvbuf(stdout, NULL, _IONBF, 0);')
 		if g.selfhost {
 			g.write_line('g_main_argc = argc;')
@@ -1434,6 +1494,9 @@ fn (mut g Parser) parse_script() ! {
 	g.write_line('int ${main_name}(void) {')
 	g.indent++
 	if !g.prefs.target_libc_headers {
+		for line in fastc_c_main_binary_stdio_lines(g.prefs) {
+			g.write_line(line)
+		}
 		g.write_line('setvbuf(stdout, NULL, _IONBF, 0);')
 		if g.has_startup_inits {
 			g.write_line('v_fastc_init_globals();')
@@ -1493,11 +1556,12 @@ fn (mut g Parser) parse_parameters(function_key string, parameter_offset int) ![
 		fn_return_type := g.pending_fn_return_type
 		fn_option_value_type := g.pending_fn_option_value_type
 		fn_parameters := g.pending_fn_parameters
+		fn_type := g.pending_fn_type
 		parameter_index := parameter_offset + params.len
 		is_generic_value := g.in_mono_drain && parameter_index < mono_signature.parameter_generic_values.len && mono_signature.parameter_generic_values[parameter_index]
 		is_reference := is_mut && (!flat.source_type_query(type_name).has(.c_pointer_suffix) || is_generic_value)
 		if is_reference {
-			type_name = flat.source_type_id(flat.source_type_name(type_name) + '*')
+			type_name = flat.source_type_composition_two(.concat, type_name, flat.source_type_id('*'))
 		}
 		for parameter_name in names {
 			// Two blank `_` parameters (`fn f(_ A, _ B)`) would both render as the C name
@@ -1516,7 +1580,7 @@ fn (mut g Parser) parse_parameters(function_key string, parameter_offset int) ![
 				g.type_memo.clear()
 				g.locals[parameter_name] = FastcLocal{
 					is_mut:               is_mut
-					typ:                  type_name
+					typ:                  if fn_type != 0 { fn_type } else { type_name }
 					fn_return_type:       fn_return_type
 					fn_option_value_type: fn_option_value_type
 				}
@@ -1553,6 +1617,7 @@ fn (mut g Parser) parse_type() !u32 {
 	g.pending_fn_return_type = u32(0)
 	g.pending_fn_option_value_type = u32(0)
 	g.pending_fn_parameters = ''
+	g.pending_fn_type = 0
 	if g.tok == .question {
 		// Peek the wrapped value type of an option type `?T` before the main scan
 		// erases it to `Option`, so a caller can record it on the declared local.
@@ -1576,6 +1641,8 @@ fn (mut g Parser) parse_type() !u32 {
 	if !g.selfhost && (first_lit in ['charptr', 'rune'] || type_name == fastc_type_char_pointer) {
 		return g.unsupported('type `${first_lit}`')
 	}
+	fastc_register_composite_type(type_name, mut g.composite_types)
+	fastc_register_composite_type(g.pending_option_value_type, mut g.composite_types)
 	return type_name
 }
 
@@ -1630,6 +1697,8 @@ fn (mut g Parser) peek_fn_pointer_signature() {
 		g.selfhost)
 	{
 		g.pending_fn_parameters = fastc_c_prototype_parameters(signature.parameter_types.ids.clone())
+		g.pending_fn_type = flat.source_type_id(fastc_callable_type_name(signature))
+		fastc_register_composite_type(g.pending_fn_type, mut g.composite_types)
 	}
 }
 
@@ -1691,39 +1760,44 @@ fn fastc_output_c_type(t string) string {
 	return t
 }
 
-fn fastc_primitive_c_type(raw_type string) ?string {
-	return match raw_type {
-		'bool' { 'bool' }
-		'char' { 'char' }
-		'f32' { 'f32' }
-		'f64' { 'f64' }
-		'float_literal' { 'f64' }
-		'i8' { 'i8' }
-		'i16' { 'i16' }
-		'i32' { 'i32' }
-		'i64' { 'i64' }
-		'int' { 'int' }
-		'int_literal' { 'i64' }
-		'isize' { 'isize' }
-		'rune' { 'rune' }
-		'string' { 'string' }
-		'u8' { 'u8' }
-		'u16' { 'u16' }
-		'u32' { 'u32' }
-		'u64' { 'u64' }
-		'uint' { 'usize' }
-		'usize' { 'usize' }
-		'voidptr' { 'voidptr' }
-		'byteptr' { 'byteptr' }
-		'charptr' { 'charptr' }
-		'chan' { 'chan' }
-		'array' { 'array' }
-		'map' { 'map' }
-		'Option' { 'Option' }
-		'__v_result' { '__v_result' }
-		'any' { 'voidptr' }
-		else { none }
+// fastc_output_c_type_id maps semantic spellings to their physical C type identities.
+fn fastc_output_c_type_id(type_id u32) u32 {
+	syntax := flat.source_type_syntax(type_id)
+	base := syntax.c_pointer_raw_base()
+	if base == flat.source_type_uint {
+		return fastc_with_pointer_depth(flat.source_type_usize, syntax.c_pointer_depth())
 	}
+	if base == flat.source_type_int {
+		return fastc_with_pointer_depth(flat.source_type_id(fastc_platform_int_c_type), syntax.c_pointer_depth())
+	}
+	return type_id
+}
+
+const fastc_primitive_float_literal = flat.source_type_id('float_literal')
+const fastc_primitive_int_literal = flat.source_type_id('int_literal')
+const fastc_primitive_any = flat.source_type_id('any')
+
+// fastc_primitive_c_type_id maps the exact primitive spelling IDs accepted by the scanner.
+fn fastc_primitive_c_type_id(raw_type u32) ?u32 {
+	if raw_type in [flat.source_type_bool, flat.source_type_char, flat.source_type_f32,
+		flat.source_type_f64, flat.source_type_i8, flat.source_type_i16, flat.source_type_i32,
+		flat.source_type_i64, flat.source_type_int, flat.source_type_isize, flat.source_type_rune,
+		flat.source_type_string, flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
+		flat.source_type_u64, flat.source_type_usize, flat.source_type_voidptr,
+		flat.source_type_byteptr, flat.source_type_charptr, fastc_type_chan, fastc_type_array,
+		fastc_type_map, fastc_type_option, fastc_type_result] {
+		return raw_type
+	}
+	if raw_type == fastc_primitive_float_literal { return flat.source_type_f64 }
+	if raw_type == fastc_primitive_int_literal { return flat.source_type_i64 }
+	if raw_type == flat.source_type_uint { return flat.source_type_usize }
+	if raw_type == fastc_primitive_any { return flat.source_type_voidptr }
+	return none
+}
+
+fn fastc_primitive_c_type(raw_type string) ?string {
+	mapped := fastc_primitive_c_type_id(flat.source_type_id(raw_type)) or { return none }
+	return flat.source_type_name(mapped)
 }
 
 fn fastc_expression_tokens_contain(tokens []FastcExpressionToken, wanted token.Token) bool {

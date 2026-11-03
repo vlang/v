@@ -37,8 +37,8 @@ fn test_voidptr_function_value_detection_prefers_explicit_node_type() {
 		typ:   flat.source_type_id('fn ()')
 	})
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['gg.WindowReadbackId'] = []types.StructField{}
-	tc.struct_modules['gg.WindowReadbackId'] = 'gg'
+	tc.structs[flat.source_type_id('gg.WindowReadbackId')] = []types.StructField{}
+	tc.struct_modules[flat.source_type_id('gg.WindowReadbackId')] = 'gg'
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
@@ -174,8 +174,10 @@ fn main() {
 		compiled := cmdexec.run(@VEXE, args)
 		assert compiled.exit_code == 0, '${mode}: ${compiled.output}'
 		if '-parallel-cc' in mode {
-			assert compiled.output.contains('unit_0.c'), compiled.output
-			assert compiled.output.contains('unit_1.c'), compiled.output
+			// Opaque header ownership requires the single-unit fallback.
+			assert compiled.output.contains('src.c'), compiled.output
+			assert !compiled.output.contains('unit_0.c'), compiled.output
+			assert !compiled.output.contains('unit_1.c'), compiled.output
 		}
 		run := cmdexec.run(binary, [])
 		assert run.exit_code == 0, run.output

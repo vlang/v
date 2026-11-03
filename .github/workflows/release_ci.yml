@@ -8,15 +8,11 @@ on:
         required: false
         type: string
         default: ''
-  pull_request:
-    paths:
-      - '.github/workflows/release_ci.yml'
   push:
+    branches:
+      - master
     paths:
       - '.github/workflows/release_ci.yml'
-    tags:
-      - weekly.**
-      - 0.**
 
 concurrency:
   group: release-${{ github.workflow }}-${{ inputs.release_tag || (github.ref_type == 'tag' && github.ref_name) || github.ref }}
@@ -27,6 +23,7 @@ permissions:
 
 jobs:
   release-build:
+    if: github.ref == 'refs/heads/master'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
     strategy:
@@ -130,7 +127,7 @@ jobs:
           path: ${{ matrix.artifact }}
 
   release-publish:
-    if: github.ref_type == 'tag' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+    if: github.ref == 'refs/heads/master' && github.event_name == 'workflow_dispatch' && inputs.release_tag != ''
     needs: release-build
     runs-on: ubuntu-latest
     timeout-minutes: 60

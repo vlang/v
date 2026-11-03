@@ -67,6 +67,13 @@ fn main() {
 		if texe == '.v.mod.stop' {
 			continue
 		}
+		if texe.ends_with('.manifest') {
+			binary_name := texe[..texe.len - '.manifest'.len]
+			if binary_name in executables {
+				// The executable's move also routes its sidecar into the tool's subfolder.
+				continue
+			}
+		}
 		tname := texe.replace(os.file_ext(texe), '')
 		if tname in non_packaged_tools {
 			continue
@@ -97,6 +104,11 @@ fn main() {
 
 fn move_tool_executable(source string, target string) ! {
 	os.mv_by_cp(source, target)!
+	if os.is_file('${source}.manifest') {
+		os.mv_by_cp('${source}.manifest', '${target}.manifest')!
+	} else if os.exists('${target}.manifest') {
+		os.rm('${target}.manifest')!
+	}
 	$if !windows {
 		os.chmod(target, 0o755)!
 	}

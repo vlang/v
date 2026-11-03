@@ -31,7 +31,7 @@ fn test_identifier_type_resolution_uses_the_active_module_and_aliases() {
 	mut tc := types.TypeChecker.new(&a)
 	tc.const_types['first.constant'] = types.Type(types.string_)
 	tc.const_types['second.constant'] = types.Type(types.bool_)
-	tc.type_aliases.set_id('Counter', flat.source_type_i64)
+	tc.type_aliases.set_id(flat.source_type_id('Counter'), flat.source_type_i64)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.globals.set_id('first.global', flat.source_type_id('Counter'))
 	t.globals.set_id('second.global', flat.source_type_u64)

@@ -53,7 +53,15 @@ pub type UnknownDataRef = &UnknownData
 // UnknownData stores the immutable fields of Unknown.
 pub struct UnknownData {
 pub:
+	// reason is the message text: why the type is unknown.
 	reason string
+	// placeholder is the spelling ID of the type parameter (`T`) that the unknown
+	// stands for, or 0. It is set where the unknown is made, from the name that
+	// its reason quotes, so nothing has to parse the name back out of `reason`.
+	placeholder u32
+	// generic marks the unknown of a generic placeholder, `T` or a qualified `mod.T`,
+	// that monomorphization can still make concrete.
+	generic bool
 }
 
 // String represents string data used by types.
@@ -316,7 +324,9 @@ pub fn clone_owned_type(value &Type) Type {
 		}
 		Unknown {
 			Type(Unknown{
-				reason: value.reason.clone()
+				reason:      value.reason.clone()
+				placeholder: value.placeholder
+				generic:     value.generic
 			})
 		}
 		Primitive {
@@ -490,12 +500,7 @@ pub fn generic_base_type_id(name_id u32) u32 {
 	if !shape.has(.bracketed) || shape.has(.leading_bracket) {
 		return name_id
 	}
-	name := flat.source_type_name(name_id)
-	idx := name.index_u8(`[`)
-	if idx > 0 {
-		return flat.source_type_id(name[..idx])
-	}
-	return name_id
+	return flat.source_type_syntax(name_id).generic_base()
 }
 
 // is_pointer reports whether is pointer applies in types.

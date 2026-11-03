@@ -40,6 +40,13 @@ pub enum GStatus {
 	copystack // stack is being moved (not used yet)
 }
 
+enum SchedulerHandoff {
+	none
+	parked
+	yielded
+	exited
+}
+
 // PStatus represents processor states
 pub enum PStatus {
 	idle    // not being used, available on idle list
@@ -76,9 +83,18 @@ pub mut:
 	p          &Processor = unsafe { nil } // attached processor (nil if not executing Go code)
 	spinning   bool           // looking for work
 	blocked    bool           // blocked on a note
+	started    u32            // set to 1 by the M thread once it is running (atomic)
 	park       sync.Semaphore // for parking/unparking
 	sched_link &Machine = unsafe { nil } // linked list for idle Machine list
 	thread     thread // underlying OS thread handle
+	// dead_context is the native context of a goroutine that exited on this M (a fiber on
+	// Windows). It is still running when goexit0 stores it, so execute() releases it after
+	// switching back to g0.
+	dead_context voidptr
+mut:
+	handoff_g   &Goroutine = unsafe { nil }
+	handoff     SchedulerHandoff
+	park_unlock &SpinLock = unsafe { nil }
 }
 
 // Processor represents a processor - a resource required to execute goroutines.
@@ -137,6 +153,11 @@ pub mut:
 	g_free_mu    SpinLock
 	g_free       GoroutineList
 	g_free_count i32
+
+	// The main goroutine runs on the main OS thread, which has no scheduler context to
+	// switch to. It blocks on main_park instead (see gopark and goready).
+	main_g    &Goroutine = unsafe { nil }
+	main_park sync.Semaphore
 
 	// Shutdown
 	stopped bool

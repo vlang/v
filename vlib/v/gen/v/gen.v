@@ -466,7 +466,7 @@ fn (mut g Gen) setup_json_migration(fnode &flat.Node) {
 			&& legacy.children_count > 0 {
 			return
 		}
-		if n.kind == .field_decl && n.value == n.typ_text() && n.children_count == 0 {
+		if n.kind == .field_decl && n.source_value_id() == n.typ && n.children_count == 0 {
 			return
 		}
 		if n.kind == .selector && n.children_count > 0 {
@@ -653,6 +653,11 @@ fn (mut g Gen) emit_implied_imports() {
 }
 
 fn (mut g Gen) collect_implied_imports(fnode &flat.Node) {
+	// Translated selectors can name C globals declared in another generated
+	// file. Inferring a vlib import here would shadow that global.
+	if g.is_translated {
+		return
+	}
 	mut imported := map[string]bool{}
 	mut declared := map[string]bool{}
 	for n in g.a.nodes {
@@ -4395,19 +4400,19 @@ fn (mut g Gen) params(parent_id flat.NodeId, ids []flat.NodeId) {
 }
 
 fn (g &Gen) param_type(p &flat.Node) string {
-	mut t := p.typ_text()
-	if p.is_mut && p.op != .amp && t.starts_with('&') {
-		t = t[1..]
+	mut t := p.typ
+	if p.is_mut && p.op != .amp && flat.source_type_shape(t).has(.pointer) {
+		t = flat.source_type_syntax(t).raw_base()
 	}
-	return t
+	return flat.source_type_name(t)
 }
 
 fn (g &Gen) receiver_type(rn &flat.Node) string {
-	mut t := rn.typ_text()
-	if rn.is_mut && t.starts_with('&') {
-		t = t[1..]
+	mut t := rn.typ
+	if rn.is_mut && flat.source_type_shape(t).has(.pointer) {
+		t = flat.source_type_syntax(t).raw_base()
 	}
-	return t
+	return flat.source_type_name(t)
 }
 
 // struct_body_start finds the opening brace without mistaking header comments for the body.
@@ -4810,8 +4815,7 @@ fn (g &Gen) enum_field_alignments(fields []flat.NodeId) map[int]int {
 			previous = flat.empty_node
 			continue
 		}
-		if int(previous) >= 0
-			&& g.source_has_blank_line_between(g.a.node(previous).pos.end, f.pos.offset) {
+		if g.field_alignment_break(previous, fid) {
 			g.store_enum_field_alignments(mut alignments, group)
 			group.clear()
 		}

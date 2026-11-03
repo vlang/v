@@ -361,6 +361,25 @@ fn test_cache_native_input_language_reports_source_language() {
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_file(mm_program)
 	assert cache_native_inputs_language(a, '', []string{}, false, 'clang', prefs.target) == 'objective-c++'
+	assert cache_native_inputs_need_objective_c(a, '', []string{}, false, 'clang', prefs.target)
+	assert !generated_c_unit_needs_objective_c(a, '', []string{}, false, 'clang', prefs.target)
+	// Only ordinary includes use separate wrappers. Explicit insertion still
+	// contributes the source language to the generated translation unit.
+	for directive in ['insert', 'preinclude', 'postinclude'] {
+		program := os.join_path(dir, '${directive}_program.v')
+		os.write_file(program, 'module sample\n#${directive} "impl.mm"\n')!
+		mut explicit_parser := parser.Parser.new(prefs)
+		explicit_ast := explicit_parser.parse_file(program)
+		assert generated_c_unit_needs_objective_c(explicit_ast, '', []string{}, false,
+			'clang', prefs.target), directive
+	}
+	// An active .m include still lives in the generated unit, even beside .mm.
+	mixed_program := os.join_path(dir, 'mixed_program.v')
+	os.write_file(mixed_program, 'module sample\n#include "impl.mm"\n#include "impl.m"\n')!
+	mut mixed_parser := parser.Parser.new(prefs)
+	mixed_ast := mixed_parser.parse_file(mixed_program)
+	assert generated_c_unit_needs_objective_c(mixed_ast, '', []string{}, false, 'clang',
+		prefs.target)
 }
 
 // Darwin header directives select Objective-C without opening the headers, while
@@ -385,6 +404,7 @@ fn test_cache_native_inputs_language_uses_objective_c_for_darwin_headers() {
 	mut p1 := parser.Parser.new(macos_prefs)
 	a1 := p1.parse_file(objc_program)
 	assert cache_native_inputs_language(a1, '', []string{}, false, 'clang', macos_prefs.target) == 'objective-c'
+	assert generated_c_unit_needs_objective_c(a1, '', []string{}, false, 'clang', macos_prefs.target)
 	assert cache_native_inputs_language(a1, '', []string{}, false, 'clang', ios) == 'objective-c'
 	assert cache_native_inputs_language(a1, '', []string{}, false, 'tinyc', macos_prefs.target) == 'c'
 	assert cache_native_inputs_language(a1, '', []string{}, false, 'clang', linux) == 'c'
@@ -470,50 +490,18 @@ fn test_cross_directive_target_prefix_conditions() {
 	assert c_directive_strip_target_prefix('<stdio.h>') == '<stdio.h>'
 }
 
-fn test_cross_embeds_transitive_local_includes() {
-	// A header embedded into portable output takes its own quoted includes with
-	// it: the generated C is compiled far from the source tree, where a sibling
-	// `#include "..."` would no longer resolve.
-	dir := os.join_path(os.vtmp_dir(), 'v3_cross_embed_${os.getpid()}')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	os.write_file(os.join_path(dir, 'sibling.h'), '#define SIBLING_MARKER 1\n') or { panic(err) }
-	os.write_file(os.join_path(dir, 'outer.h'), '#include "sibling.h"\n#include <stdio.h>\n#define OUTER_MARKER 1\n') or {
-		panic(err)
-	}
-
+fn test_cross_c_keeps_local_headers_for_the_c_compiler() ! {
+	dir := os.join_path(os.vtmp_dir(), 'v3_cross_headers_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	header := os.join_path(dir, 'outer.h')
+	os.write_file(header, '#include "missing.h"\n#define HEADER_CONTENT_SENTINEL 1\n')!
 	mut g := FlatGen.new()
 	g.set_output_cross_c(true)
-	embedded := g.cross_embedded_header_text(os.join_path(dir, 'outer.h'), []string{}) or {
-		panic('header not embedded')
-	}
-	assert embedded.contains('SIBLING_MARKER')
-	assert embedded.contains('OUTER_MARKER')
-	assert !embedded.contains('#include "sibling.h"')
-	// A system header stays an include; the consumer's C compiler supplies it.
-	assert embedded.contains('#include <stdio.h>')
-}
-
-fn test_cross_embedding_stops_at_an_include_cycle() {
-	dir := os.join_path(os.vtmp_dir(), 'v3_cross_embed_cycle_${os.getpid()}')
-	os.rmdir_all(dir) or {}
-	os.mkdir_all(dir) or { panic(err) }
-	defer {
-		os.rmdir_all(dir) or {}
-	}
-	os.write_file(os.join_path(dir, 'a.h'), '#include "b.h"\n#define A_MARKER 1\n') or { panic(err) }
-	os.write_file(os.join_path(dir, 'b.h'), '#include "a.h"\n#define B_MARKER 1\n') or { panic(err) }
-
-	mut g := FlatGen.new()
-	g.set_output_cross_c(true)
-	embedded := g.cross_embedded_header_text(os.join_path(dir, 'a.h'), []string{}) or {
-		panic('header not embedded')
-	}
-	assert embedded.contains('A_MARKER')
-	assert embedded.contains('B_MARKER')
+	assert g.c_local_header_directive(header) == '#include "${header}"'
+	included := g.c_include_directive_text(-1, '', '"${header}"', os.join_path(dir, 'main.v'))
+	assert included == '#include "${header}"'
+	assert !included.contains('HEADER_CONTENT_SENTINEL')
 }
 
 // A `#flag` can name a native source or object outright -- `vlib/db/sqlite/sqlite.c.v` builds

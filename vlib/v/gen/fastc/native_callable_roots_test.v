@@ -53,7 +53,7 @@ fn C.bare_hook(charptr, ...) i32
 	prefs.target_libc_headers = true
 	mut functions := map[string]FastcFunctionSignature{}
 	collect_function_signatures(source, path, FastcSourceHeader{ module_name: 'main' }, prefs,
-		[]int{}, map[string]bool{}, flat.TypeTextBindings{}, map[string]bool{}, mut functions) or {
+		[]int{}, map[u32]bool{}, flat.TypeTextBindings{}, map[string]bool{}, mut functions) or {
 		panic(err)
 	}
 	mut used := map[string]bool{}

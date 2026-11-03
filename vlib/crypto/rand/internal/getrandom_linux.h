@@ -12,7 +12,8 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 
-#if defined(__has_include)
+// Bionic's libc wrapper requires API 28; Android uses the syscall at every API level.
+#if defined(__has_include) && !defined(__ANDROID__)
 #if __has_include(<sys/random.h>)
 #include <sys/random.h>
 #define V_CRYPTO_RAND_LIBC_GETRANDOM 1

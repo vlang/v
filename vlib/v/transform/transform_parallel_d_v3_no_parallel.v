@@ -23,7 +23,7 @@ fn (mut _ Transformer) run_serial_scoped_monomorphize_specs(_ []PendingGenericFn
 	return false
 }
 
-fn (mut _ Transformer) run_parallel_monomorphize_specs(_ []PendingGenericFnSpec, _ map[string]GenericStructDecl, _ map[string]GenericSumDecl, mut _ GenericFnSpecBoolMap, mut _ []string) bool {
+fn (mut _ Transformer) run_parallel_monomorphize_specs(_ []PendingGenericFnSpec, _ map[u32]GenericStructDecl, _ map[u32]GenericSumDecl, mut _ GenericFnSpecBoolMap, mut _ []string) bool {
 	return false
 }
 

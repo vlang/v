@@ -50,6 +50,24 @@ fn run_with_v_environment(program string, args []string, flags string, vexe stri
 	return cmdexec.run(program, args)
 }
 
+fn test_full_compiler_fastc_pgo_training_generates_c() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v_fastc_pgo_training_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	output := os.join_path(root, 'cmd_v_fastc_training.c')
+	// Match the FastC profiling workload in vself without building an instrumented compiler.
+	training := run_with_v_environment(@VEXE, ['-nocache', '-gc', 'none', '-prealloc',
+		'-compile-backend', 'fastc', '-building-v', '-b', 'fastc', '-no-memory-limit', '-o', output,
+		os.join_path(fastc_backend_vroot, 'cmd', 'v')], '', @VEXE)
+	assert training.exit_code == 0, training.output
+	assert os.file_size(output) > 0
+}
+
 fn test_direct_fastc_compiler_entry_selects_selfhost_driver() {
 	$if !macos && !linux {
 		return

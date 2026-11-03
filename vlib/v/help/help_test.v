@@ -40,7 +40,8 @@ fn test_build_topic_lists_fastc_backend() {
 	assert res.exit_code == 0, res.output
 	assert res.output.contains('* `fastc`'), res.output
 	assert res.output.contains('available on macOS, Linux, and Windows'), res.output
-	assert res.output.contains('`-d skip_fastc`'), res.output
+	assert res.output.contains('`v -compile-backend fastc self`'), res.output
+	assert res.output.contains('full compiler when an omitted backend is selected'), res.output
 	assert res.output.contains('See `v help vsh`'), res.output
 }
 

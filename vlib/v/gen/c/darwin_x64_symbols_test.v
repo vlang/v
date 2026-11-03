@@ -61,7 +61,7 @@ fn test_macos_prototypes_link_the_x86_64_sdk_symbols() {
 	root := darwin_x64_symbols_project()!
 	defer { os.rmdir_all(root) or {} }
 	lines := generate_darwin_x64_symbols_c(root, 'macos')!
-	assert !lines.any(it.starts_with('#include')), 'macOS output is expected to be headerless'
+	assert lines.all(!it.starts_with('#include') || it == '#include "${os.join_path(@VEXEROOT, 'vlib', 'builtin', 'track_heap_checks.h').replace('\\', '/')}"'), 'macOS output is expected to be headerless'
 	for name, symbol in darwin_x64_program_symbols {
 		label := ' __asm__("${symbol}");'
 		mut idx := -1

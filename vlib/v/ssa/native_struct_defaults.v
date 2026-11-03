@@ -17,7 +17,7 @@ fn (mut b Builder) register_struct_field_defaults() {
 		if node.kind != .struct_decl {
 			continue
 		}
-		typ := b.struct_type_id_for_decl(node.value, module_name)
+		typ := b.struct_type_id_for_decl(node.source_value_id(), module_name)
 		b.default_struct_types[typ] = true
 		for index in 0 .. node.children_count {
 			field := b.a.child_node(&node, index)
@@ -97,7 +97,7 @@ fn (mut b Builder) nested_struct_default_value(type_name_id u32, storage_type Ty
 		&& b.m.type_store.types[storage_type].kind == .struct_t
 		&& b.default_struct_types[storage_type]
 		&& b.resolve_type(type_name_id) == storage_type {
-		return b.build_struct_init(flat.Node{
+		return b.build_struct_init(flat.NodeId(-1), flat.Node{
 			kind:         .struct_init
 			source_value: type_name_id
 			typ:          type_name_id

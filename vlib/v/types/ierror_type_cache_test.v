@@ -7,7 +7,7 @@ fn test_ierror_cache_owner_and_scoped_payload_context() {
 	mut tc := TypeChecker.new(&a)
 	tc.cur_file = 'first.v'
 	tc.cur_module = 'pkg'
-	tc.structs['pkg.Payload'] = []StructField{}
+	tc.structs[flat.source_type_id('pkg.Payload')] = []StructField{}
 	payload := tc.ierror_compat_cache_key(flat.source_type_id('Payload'))
 	assert payload.owner_id == flat.source_type_id('pkg.Payload')
 	assert payload.scope.len == 0

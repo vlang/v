@@ -1,13 +1,6 @@
 name: Compiler process regressions
 
 on:
-  pull_request:
-    paths:
-      - 'vlib/v/cmdexec/**'
-      - 'vlib/v/util/vflags/**'
-      - 'cmd/v/**'
-      - 'vlib/v/driver/**'
-      - '.github/workflows/process_regressions_ci.yml'
   push:
     branches: [master]
     paths:
@@ -27,6 +20,7 @@ permissions:
 
 jobs:
   process-regressions:
+    if: github.ref == 'refs/heads/master'
     strategy:
       fail-fast: false
       matrix:

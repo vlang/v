@@ -5,7 +5,7 @@ import v.flat
 fn test_transform_static_method_list_agrees_with_the_general_lookup() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.structs['Box'] = []StructField{}
+	tc.structs[flat.source_type_id('Box')] = []StructField{}
 	make_key := flat.encode_static_type_method_name('Box', 'make')
 	tc.fn_ret_types[make_key] = Type(int_)
 	tc.fn_param_types[make_key] = []Type{}

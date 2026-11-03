@@ -19,11 +19,27 @@ struct PanickingContext {
 	Context
 }
 
+struct CustomServerErrorApp {}
+
+struct CustomServerErrorContext {
+	Context
+}
+
 @['/boom']
 fn (mut app PanickingApp) boom(mut ctx PanickingContext) Result {
 	items := ['a', 'b']
 	// An out-of-range read stands in for any handler bug that panics.
 	return ctx.text(items[9])
+}
+
+@['/custom-boom']
+fn (mut app CustomServerErrorApp) custom_boom(mut _ctx CustomServerErrorContext) Result {
+	panic('custom server error dispatch')
+}
+
+fn (mut ctx CustomServerErrorContext) server_error(msg string) Result {
+	ctx.set_custom_header('X-Custom-Server-Error', msg) or {}
+	return ctx.Context.server_error(msg)
 }
 
 @['/survives']
@@ -99,6 +115,17 @@ fn panic_request(path string) &Context {
 fn test_panicking_handler_answers_500_instead_of_exiting() {
 	ctx := panic_request('/boom')
 	assert_panic_response(ctx)
+}
+
+fn test_panic_recovery_uses_custom_server_error_context_method() {
+	mut app := CustomServerErrorApp{}
+	ctx := render_request[CustomServerErrorApp, CustomServerErrorContext](mut app, http.Request{
+		method: .get
+		url:    '/custom-boom'
+	}) or { panic(err) }
+	assert ctx.res.status_code == int(http.Status.internal_server_error)
+	assert ctx.res.body == 'Internal Server Error'
+	assert ctx.res.header.get_custom('X-Custom-Server-Error') or { '' } == 'Internal Server Error'
 }
 
 fn assert_panic_response(ctx &Context) {

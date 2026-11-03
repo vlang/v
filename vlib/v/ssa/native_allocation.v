@@ -1,5 +1,24 @@
 module ssa
 
+// register_ssa_memdup_helper supplies ownership-copying helpers without
+// depending on whether the source builtin is selected for a compilation.
+fn (mut b Builder) register_ssa_memdup_helper() {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	memdup_id := b.register_synthetic_function('__ssa_memdup', ptr_i8, [ptr_i8, b.i64_type])
+	entry := b.m.add_block(memdup_id, 'memdup_entry')
+	src := b.func_add_argument(memdup_id, ptr_i8, 'src')
+	size := b.func_add_argument(memdup_id, b.i64_type, 'size')
+	one := b.m.get_or_add_const(b.i64_type, '1')
+	is_empty := b.block_instr2(.eq, entry, b.i1_type, size, b.m.get_or_add_const(b.i64_type,
+		'0'))
+	allocation_size := b.block_instr3(.select, entry, b.i64_type, is_empty, one, size)
+	malloc_ref := b.m.add_value(.func_ref, ptr_i8, 'malloc', b.fn_ids['malloc'])
+	allocation := b.block_instr2(.call, entry, ptr_i8, malloc_ref, allocation_size)
+	memcpy_ref := b.m.add_value(.func_ref, ptr_i8, 'memcpy', b.fn_ids['memcpy'])
+	result := b.block_instr4(.call, entry, ptr_i8, memcpy_ref, allocation, src, size)
+	b.block_instr1(.ret, entry, b.void_type, result)
+}
+
 // register_native_allocation_helpers supplies allocations emitted by the transformer.
 fn (mut b Builder) register_native_allocation_helpers() {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)

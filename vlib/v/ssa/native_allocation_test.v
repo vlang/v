@@ -21,8 +21,8 @@ fn test_native_alignof_preserves_nested_fixed_array_element_alignment() {
 		m:            m
 		u64_type:     u64_type
 		struct_types: {
-			'Aligned': aligned_type
-			'Packed':  packed_type
+			flat.source_type_id('Aligned'): aligned_type
+			flat.source_type_id('Packed'):  packed_type
 		}
 	}
 	callee := a.add_node(flat.Node{ kind: .ident, value: '__alignof__' })

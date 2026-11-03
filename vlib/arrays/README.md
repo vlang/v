@@ -34,3 +34,23 @@ Generic element types can be inferred from the input arrays, including inside in
 
 Nested arrays follow the same rule: `arrays.group([[1, 2], [3, 4]])` returns
 `[[[1, 2]], [[3, 4]]]`, while `arrays.group(...[[1, 2], [3, 4]])` returns `[[1, 3], [2, 4]]`.
+
+## Stable sorting
+
+`stable_sort(mut array, less)` sorts an array or slice in place, preserving the input order of
+elements that compare as equivalent. `less(a, b)` must define a consistent strict weak ordering:
+it returns true when `a` precedes `b`, and false in both directions for equivalent elements.
+The comparator must not modify the array. Empty and single-element arrays need no comparisons.
+The merge sort uses O(n log n) comparisons and O(n) temporary elements.
+
+```v
+import arrays
+
+fn main() {
+	mut words := ['apple', 'pear', 'plum', 'fig']
+	arrays.stable_sort(mut words, fn (a string, b string) bool {
+		return a.len < b.len
+	})
+	assert words == ['fig', 'pear', 'plum', 'apple']
+}
+```

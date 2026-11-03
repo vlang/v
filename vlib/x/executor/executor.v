@@ -18,7 +18,7 @@ mut:
 }
 
 struct ExecutorJob {
-	f            fn () ! @[required]
+	f            JobFn @[required]
 	result_ch    chan ExecutorJobResult
 	has_result   bool
 	report_error bool

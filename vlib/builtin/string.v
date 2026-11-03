@@ -1527,7 +1527,7 @@ fn (s string) index_multibyte(p string) int {
 		return s.index_kmp(p)
 	}
 	if p.len == 2 {
-		return s.index_pair(p)
+		return s.index_two_bytes(p)
 	}
 	// Short needles: scanning for the first byte and comparing the rest in place
 	// needs no prefix table, and costs at most p.len compares per position.
@@ -1550,7 +1550,7 @@ fn (s string) index_multibyte(p string) int {
 }
 
 @[direct_array_access]
-fn (s string) index_pair(p string) int {
+fn (s string) index_two_bytes(p string) int {
 	return string_index_pair(s.str, s.len, unsafe { p.str[0] }, unsafe { p.str[1] })
 }
 

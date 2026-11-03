@@ -51,6 +51,14 @@ Translated from Go's runtime source:
 | asm (gogo/gosave) | `context_nix.c.v` | Context switching (ucontext) |
 | asm (gogo/gosave) | `context_windows.c.v` | Context switching (Windows fibers) |
 
+On Windows, workers use native fibers. Completed fibers are deleted after returning to the
+worker's scheduler. The main thread uses a semaphore when a channel operation blocks, so
+it keeps every processor available to workers even on a single-core machine.
+Channel parking holds the channel lock until the worker's context has been saved. Yielded
+and completed goroutines reach run queues and free lists only after returning to the scheduler,
+so another worker cannot resume or reuse an active context. Closing a channel wakes blocked
+receivers with `ok == false`; a blocked send fails with `send on closed channel`.
+
 ## References
 
 - [Go Scheduler Design Doc](https://golang.org/s/go11sched)
