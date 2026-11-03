@@ -1214,7 +1214,7 @@ pub mut:
 	source_no_body_fns               map[string]bool
 	source_no_body_fn_suffixes       map[string]bool
 	source_no_body_method_names      map[string]bool
-	unsafe_fns                       map[string]bool
+	unsafe_fn_modules                map[string][]string
 	unsafe_c_fns                     map[string]bool
 	fn_ret_type_texts                flat.TypeTextBindings     // generic struct method key -> original return type text (e.g. `Box[T].clone` -> `Box[T]`)
 	fn_param_type_texts              flat.TypeTextListBindings // generic struct method key -> original param type texts (receiver first)
@@ -1715,7 +1715,7 @@ pub fn TypeChecker.new(a &flat.FlatAst) TypeChecker {
 		source_no_body_fns:                      map[string]bool{}
 		source_no_body_fn_suffixes:              map[string]bool{}
 		source_no_body_method_names:             map[string]bool{}
-		unsafe_fns:                              map[string]bool{}
+		unsafe_fn_modules:                       map[string][]string{}
 		unsafe_c_fns:                            map[string]bool{}
 		fn_ret_type_texts:                       flat.TypeTextBindings{}
 		fn_param_type_texts:                     flat.TypeTextListBindings{}
@@ -1884,7 +1884,7 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		source_no_body_fns:                    tc.source_no_body_fns
 		source_no_body_fn_suffixes:            tc.source_no_body_fn_suffixes
 		source_no_body_method_names:           tc.source_no_body_method_names
-		unsafe_fns:                            tc.unsafe_fns
+		unsafe_fn_modules:                     tc.unsafe_fn_modules
 		unsafe_c_fns:                          tc.unsafe_c_fns
 		fn_ret_type_texts:                     tc.fn_ret_type_texts
 		fn_param_type_texts:                   tc.fn_param_type_texts
@@ -5454,7 +5454,7 @@ pub fn source_field_decl_is_volatile(field flat.Node) bool {
 fn (mut tc TypeChecker) collect_deprecated_symbols() {
 	tc.deprecated_symbols.clear()
 	tc.deprecated_modules.clear()
-	tc.unsafe_fns.clear()
+	tc.unsafe_fn_modules.clear()
 	tc.collect_deprecated_symbols_of(tc.top_level_idx)
 }
 
@@ -5513,8 +5513,11 @@ fn (mut tc TypeChecker) collect_deprecated_symbols_of(entries []i32) {
 		}
 		attrs := attr_node.generic_params()
 		if node.kind == .fn_decl && 'unsafe' in attrs {
-			tc.unsafe_fns[node.value] = true
-			tc.unsafe_fns[checker_qualified_fn_name(module_name, node.value)] = true
+			tc.unsafe_fn_modules[node.value] << module_name
+			qname := checker_qualified_fn_name(module_name, node.value)
+			if qname != node.value {
+				tc.unsafe_fn_modules[qname] << module_name
+			}
 		}
 		if node.kind !in [.fn_decl, .struct_decl, .const_decl] {
 			continue
