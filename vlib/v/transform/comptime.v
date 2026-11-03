@@ -2551,7 +2551,13 @@ fn (mut t Transformer) comptime_method_metas(base_type_id u32) []MethodMeta {
 			attributes:  comptime_attribute_metas_from_raw(raw_attr_data.attrs, raw_attr_data.kinds)
 		}
 	}
-	t.comptime_method_metas_cache[cache_key][context] = methods
+	if mut contexts := t.comptime_method_metas_cache[cache_key] {
+		contexts[context] = methods
+	} else {
+		t.comptime_method_metas_cache[cache_key] = {
+			context: methods
+		}
+	}
 	return methods
 }
 
