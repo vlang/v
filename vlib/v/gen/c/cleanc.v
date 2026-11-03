@@ -653,7 +653,9 @@ fn (mut g FlatGen) begin_usable_expr_type_memo() {
 			exact_import_ids:    []u32{len: body_exact_import_slots}
 			exact_import_gens:   []u32{len: body_exact_import_slots}
 			exact_import_found:  []bool{len: body_exact_import_slots}
-			exact_import_values: []types.Type{len: body_exact_import_slots}
+			// Read only behind the slot's generation and found flags, so the
+			// zeroed sum type values are never observed.
+			exact_import_values: unsafe { []types.Type{len: body_exact_import_slots} }
 			callee_returns:      []BodyCalleeReturnQuery{len: body_callee_return_slots}
 		}
 	}
