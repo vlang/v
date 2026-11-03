@@ -1273,20 +1273,38 @@ fn (mut p InlineParser) parse_newline() &Node {
 
 // try_linkify matches a bare URL (linkify extension).
 fn (mut p InlineParser) try_linkify() ?&Node {
+	// Like in GFM, a URL starts a line or follows a space, `*`, `_`, `~` or `(`, so a scheme
+	// in the middle of a word, like in `foohttps://`, is not a link.
+	if p.pos > 0 && p.src[p.pos - 1] !in [` `, `\t`, `\n`, `\r`, `*`, `_`, `~`, `(`] {
+		return none
+	}
 	rest := p.src[p.pos..]
 	for _, scheme in ['https://', 'http://', 'ftp://', 'mailto:'] {
 		if rest.starts_with(scheme) {
 			mut end := scheme.len
+			mut opening := 0
+			mut closing := 0
 			for end < rest.len {
 				ch := rest[end]
 				if ch == ` ` || ch == `<` || ch == `>` || ch == `"` || ch == `\n` || ch == `\t` {
 					break
 				}
+				if ch == `(` {
+					opening++
+				} else if ch == `)` {
+					closing++
+				}
 				end++
 			}
+			// Like in GFM, trailing punctuation is not part of the URL, and neither is a `)`
+			// that closes no `(` of the URL, as in `(see https://vlang.io)`, while
+			// `https://w.org/Clamp_(function)` keeps it.
 			for end > scheme.len {
 				last := rest[end - 1]
-				if last == `.` || last == `,` || last == `;` || last == `!` || last == `?` {
+				if last in [`.`, `,`, `;`, `:`, `!`, `?`, `*`, `_`, `~`] {
+					end--
+				} else if last == `)` && closing > opening {
+					closing--
 					end--
 				} else {
 					break
