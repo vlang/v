@@ -21324,6 +21324,9 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 					if ret := tc.fn_ret_types[mname] {
 						return ret
 					}
+					if info := tc.interface_receiver_method_call_info(clean_type.source_type_id(), fn_node.value) {
+						return info.return_type
+					}
 				}
 				if clean_type is SumType {
 					mname := '${clean_type.name()}.${fn_node.value}'
