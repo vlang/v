@@ -2180,6 +2180,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 			method_c_names[c_name] = true
 		}
 	}
+	mut colliding_keys := []string{}
 	for key, signature in functions {
 		if key.starts_with('C.') || key == 'main' || signature.is_global
 			|| (key.contains('.') && key.all_before_last('.') != signature.module_name) {
@@ -2187,7 +2188,35 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		}
 		c_name := function_c_names[key] or { fastc_signature_c_name(key, signature) }
 		if c_name in method_c_names {
-			function_c_names[key] = '__vf_function_${c_name}'
+			colliding_keys << key
+		}
+	}
+	if colliding_keys.len > 0 {
+		// The constant collision pass above allocates in `__vf_function_` too, so the new
+		// name must be one that no function, global or export spells yet. Generic instances
+		// are named while generating, outside `functions`, and are not covered here.
+		mut used_c_names := map[string]bool{}
+		for key, signature in functions {
+			c_name := function_c_names[key] or { fastc_signature_c_name(key, signature) }
+			used_c_names[c_name] = true
+			if signature.export_name != '' {
+				used_c_names[signature.export_name] = true
+			}
+		}
+		for _, c_name in globals {
+			used_c_names[c_name] = true
+		}
+		colliding_keys.sort()
+		for key in colliding_keys {
+			c_name := function_c_names[key] or { fastc_signature_c_name(key, functions[key]) }
+			mut renamed := '__vf_function_${c_name}'
+			mut suffix := 1
+			for used_c_names[renamed] {
+				renamed = '__vf_function_${c_name}_${suffix}'
+				suffix++
+			}
+			used_c_names[renamed] = true
+			function_c_names[key] = renamed
 		}
 	}
 	for key, signature in functions {
