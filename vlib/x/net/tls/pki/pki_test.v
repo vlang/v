@@ -9,6 +9,7 @@ module pki
 
 import encoding.base64
 import math.big
+import time
 
 // test_hostname_matching pins the RFC 6125 §6.4.3 matcher rules: exact
 // case-insensitive equality, a single-label leftmost wildcard that cannot cross
@@ -164,6 +165,37 @@ fn test_verify_certificate_chain_rejects_empty_hostname() ! {
 	leaf := Certificate{}
 	validator.verify_certificate_chain([leaf], '') or {
 		assert err.msg().contains('empty server name')
+		return
+	}
+	assert false
+}
+
+// test_verify_certificate_chain_rejects_intermediate_client_auth_eku ensures
+// a CA restricted to clientAuth cannot issue a serverAuth leaf. The EKU value
+// is decoded from the clientAuth-only OID as it would be in a certificate.
+fn test_verify_certificate_chain_rejects_intermediate_client_auth_eku() ! {
+	now := time.now().unix()
+	client_auth_eku := [u8(0x30), 0x0a, 0x06, 0x08, 0x2b, 0x06, 0x01, 0x05, 0x05, 0x07, 0x03, 0x02]
+	leaf := Certificate{
+		public_key_algo: .ed25519
+		has_san:         true
+		sans:            ['example.com']
+		issuer_dn:       [u8(1)]
+		not_before_unix: now - 60
+		not_after_unix:  now + 60
+	}
+	intermediate := Certificate{
+		subject_dn:      [u8(1)]
+		is_ca:           true
+		has_eku:         true
+		eku_server_auth: parse_eku_server_auth(client_auth_eku)
+		not_before_unix: now - 60
+		not_after_unix:  now + 60
+	}
+	assert !intermediate.eku_server_auth
+	validator := new_validator(new_trust_store())
+	validator.verify_certificate_chain([leaf, intermediate], 'example.com') or {
+		assert err.msg().contains('CA at chain index 1 Extended Key Usage does not permit serverAuth')
 		return
 	}
 	assert false

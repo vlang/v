@@ -147,6 +147,18 @@ fn test_parse_eku_server_auth() {
 	assert !parse_eku_server_auth(client_auth)
 }
 
+// test_parse_certificate_critical_client_auth_eku confirms a critical
+// clientAuth-only EKU is preserved as an EKU restriction by certificate parsing.
+fn test_parse_certificate_critical_client_auth_eku() ! {
+	eku_oid := [u8(0x06), 0x03, 0x55, 0x1d, 0x25]
+	client_auth_eku := der_tlv(0x30, [der_tlv(0x06, [[u8(0x2b), 0x06, 0x01, 0x05, 0x05, 0x07, 0x03,
+		0x02]])])
+	cert := minimal_extension_cert(eku_oid, true, client_auth_eku)
+	parsed := parse_certificate(cert)!
+	assert parsed.has_eku
+	assert !parsed.eku_server_auth
+}
+
 fn test_extract_cn_from_name() {
 	// A single RDN SET holding one Attribute SEQUENCE: OID commonName (2.5.4.3)
 	// plus a PrintableString value. extract_cn receives the Name's child bytes.

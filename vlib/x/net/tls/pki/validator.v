@@ -158,6 +158,11 @@ pub fn (v &Validator) verify_certificate_chain(chain []Certificate, hostname str
 		if !parent.is_ca {
 			return error('pki: certificate at chain index ${i + 1} is not a CA (basicConstraints cA=TRUE missing)')
 		}
+		// EKU applies to CA certificates too: every certificate in the path must
+		// permit the requested server-authentication purpose (RFC 5280 §4.2.1.12).
+		if parent.has_eku && !parent.eku_server_auth {
+			return error('pki: CA at chain index ${i + 1} Extended Key Usage does not permit serverAuth')
+		}
 		// keyUsage bit 5 = keyCertSign: a CA asserting keyUsage must include it (RFC 5280 §4.2.1.3).
 		if parent.has_key_usage && !key_usage_bit(parent.key_usage, 5) {
 			return error('pki: CA at chain index ${i + 1} keyUsage does not permit keyCertSign')

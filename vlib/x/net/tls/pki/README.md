@@ -5,17 +5,20 @@ module answers one question — *can this certificate list be trusted for this h
 nothing else in the stack re-decides it. It is built from V's `crypto` packages and this module's
 own DER reader; there are no OpenSSL bindings.
 
-The rest of the API reference lives in [`docs.md`](../../../docs.md); this file orients you to the
-module's layout and security posture.
+This README summarizes the module's public entry points, layout, and security posture.
 
 ## Public entry points
 
 ```v
-cert := pki.parse_certificate(der)!                // one X.509 v3 cert
-mut store := pki.new_trust_store()                 // or pki.system_root_cas()
-store.add_pem(pem_bytes.bytestr())!                // roots (mut: add_* appends)
-v := pki.new_validator(store)                      // always verifies
-v.verify_certificate_chain(chain, 'example.com')!  // chain → root + name
+import x.net.tls.pki
+
+fn verify_server(chain []pki.Certificate, hostname string) ! {
+	store := pki.system_root_cas()!
+	validator := pki.new_validator(store)
+	validator.verify_certificate_chain(chain, hostname)!
+}
+
+fn main() {}
 ```
 
 - `parse_certificate(der []u8) !Certificate` — decode one certificate.
@@ -51,7 +54,8 @@ Each `*_test.v` sits beside its source. `pki_test.v` holds validator- and helper
 - **Validity windows** on the leaf and every intermediate (RFC 5280 §4.1.2.5).
 - **Key usage**: leaf must permit `digitalSignature`; every CA in the path must permit
   `keyCertSign` when it asserts a `keyUsage` (RFC 5280 §4.2.1.3).
-- **Extended key usage**: when present it must allow `serverAuth`.
+- **Extended key usage**: when present on the leaf or an issuer in the peer chain,
+  it must allow `serverAuth`; absence is unconstrained (RFC 5280 §4.2.1.12).
 - **pathLenConstraint** (RFC 5280 §4.2.1.9) counted against intermediates below each constrained
   CA; a malformed INTEGER never maps to the unlimited sentinel.
 - **Name constraints** (RFC 5280 §4.2.1.10): each CA binds every subordinate beneath it; permitted
@@ -81,13 +85,12 @@ This module treats parsing as the attack surface it is:
 ## Revocation
 
 CRL and OCSP are **not** implemented: a revoked-but-unexpired certificate is accepted. A caller
-needing revocation must validate out of band before trusting the connection — see
-[`docs.md`](../../../docs.md).
+needing revocation must validate out of band before trusting the connection.
 
 ## Testing
 
-```
-v test src/tls/pki/
+```sh
+./v -silent test vlib/x/net/tls/pki/
 ```
 
 Covers OID edge inputs, hand-built v3 certificate fixtures, the element-count truncation guards,
