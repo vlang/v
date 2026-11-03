@@ -1,11 +1,13 @@
 module x64
 
-import os
-import v.parser
-import v.pref
-import v.ssa
-import v.transform
-import v.types
+$if linux && amd64 {
+	import os
+	import v.parser
+	import v.pref
+	import v.ssa
+	import v.transform
+	import v.types
+}
 
 fn test_native_optional_tuple_guards_preserve_both_strings() {
 	$if linux && amd64 {
