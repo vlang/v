@@ -2,7 +2,7 @@
 
 ## Running Windows CI on an installed VM
 
-From a built Windows checkout with PowerShell 7.3 or newer (`pwsh`) and the workflow's
+From a built Windows checkout with PowerShell 7.4 or newer (`pwsh`) and the workflow's
 dependencies installed, run a compiler's validation sequence or a single step:
 
 ```powershell
@@ -29,6 +29,10 @@ $env:VTEST_ONLY = 'goroutines_windows_test.v,legacy_json_edge_cases_test.v'
 ./v.exe run ci/windows_ci.vsh tcc self_tests
 Remove-Item Env:VTEST_ONLY
 ```
+
+Selecting `msvc multiwindow_d3d11_warp_regressions_and_runtime_probes` also runs
+`prepare_multiwindow_job_object_watchdog` first, rebuilding the generated helper
+needed by the probe. The complete `msvc ci` sequence already includes it in workflow order.
 
 Test the runner and workflow selection with `./v.exe test ci/windows/`. On Windows,
 this executes real PowerShell subprocesses to check compiler selection, environment

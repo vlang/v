@@ -25,6 +25,99 @@ fn test_windows_workflow_validation_plans() {
 	}
 }
 
+fn test_msvc_probe_selection_includes_watchdog() {
+	root := os.getenv_opt('V_CI_TEST_ROOT') or { @VEXEROOT }
+	job := read_job(root, 'msvc')!
+	probe := 'multiwindow_d3d11_warp_regressions_and_runtime_probes'
+	preparation := 'prepare_multiwindow_job_object_watchdog'
+	selected := job.select_steps(probe)!
+	assert selected.map(it.id) == [preparation, probe]
+	assert job.select_steps('ci')!.map(it.id) == job.steps.map(it.id)
+	assert job.select_steps(preparation)!.map(it.id) == [preparation]
+	assert job.select_steps('self_tests')!.map(it.id) == ['self_tests']
+	for id in [probe, 'unknown'] {
+		missing := Job{
+			compiler: 'msvc'
+			steps:    job.steps.filter(it.id != preparation)
+		}
+		if _ := missing.select_steps(id) {
+			assert false, 'a missing step must fail before executing anything'
+		}
+	}
+}
+
+fn test_powershell_version_guard() {
+	$if !windows {
+		return
+	}
+	shell := os.find_abs_path_of_executable('pwsh')!
+	dir := os.join_path(os.temp_dir(), 'v-ci-powershell-version-${os.getpid()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	marker := os.join_path(dir, 'reached')
+	path := os.join_path(dir, 'version.ps1')
+	for version, supported in {
+		'7.3.12': false
+		'7.4.0':  true
+	} {
+		// Override only the child's reported version to exercise the production guard.
+		script := '\$PSVersionTable.PSVersion = [version]${ps_quote(version)}\n' +
+			step_script(dir, os.join_path(dir, 'unused.exe'), os.join_path(dir, 'environment'),
+				os.join_path(dir, 'path'), Step{
+					script: 'Set-Content -LiteralPath ${ps_quote(marker)} -Value reached'
+				})
+		os.write_file(path, script)!
+		status := os.system_args([shell, '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy',
+			'Bypass', '-File', path])
+		assert (status == 0) == supported
+		assert os.exists(marker) == supported
+		if os.exists(marker) {
+			os.rm(marker)!
+		}
+	}
+}
+
+fn test_selected_msvc_probe_prepares_watchdog_in_clean_directory() {
+	$if !windows {
+		return
+	}
+	root := os.getenv_opt('V_CI_TEST_ROOT') or { @VEXEROOT }
+	job := read_job(root, 'msvc')!
+	selected := job.select_steps('multiwindow_d3d11_warp_regressions_and_runtime_probes')!
+	shell := os.find_abs_path_of_executable('pwsh')!
+	dir := os.join_path(os.temp_dir(), 'v-ci-msvc-probe-${os.getpid()}')
+	os.mkdir(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	assert !os.exists(os.join_path(dir, 'multiwindow_ci_watchdog.exe'))
+	for step in selected {
+		// Exercise the real selection and execution with tiny scripts, without requiring MSVC.
+		script := match step.id {
+			'prepare_multiwindow_job_object_watchdog' {
+				'Set-Content -LiteralPath (Join-Path \$env:RUNNER_TEMP multiwindow_ci_watchdog.exe) -Value fixture\nAdd-Content -LiteralPath order.txt -Value preparation'
+			}
+			'multiwindow_d3d11_warp_regressions_and_runtime_probes' {
+				"if (-not (Test-Path -LiteralPath (Join-Path \$env:RUNNER_TEMP multiwindow_ci_watchdog.exe))) { throw 'watchdog was not prepared' }\nAdd-Content -LiteralPath order.txt -Value probe"
+			}
+			else {
+				panic('unexpected selected step ${step.id}')
+			}
+		}
+		execute_step(shell, dir, os.join_path(dir, 'unused.exe'), dir, Step{
+			id:     step.id
+			name:   step.name
+			script: script
+			env:    {
+				'RUNNER_TEMP': dir
+			}
+		})!
+	}
+	assert os.read_lines(os.join_path(dir, 'order.txt'))! == ['preparation', 'probe']
+}
+
 fn test_step_execution_and_failure_propagation() {
 	$if !windows {
 		return
