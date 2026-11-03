@@ -176,8 +176,14 @@ fn test_const_helper_does_not_resolve_native_call_to_v_method() {
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	g.const_vals = {'wrong_dep': value, 'fd': value}
-	g.const_modules = {'wrong_dep': 'main', 'fd': 'main'}
+	g.const_vals = {
+		'wrong_dep': value
+		'fd':        value
+	}
+	g.const_modules = {
+		'wrong_dep': 'main'
+		'fd':        'main'
+	}
 	assert g.const_get_deps(call) == ['fd']
 
 	// Cover the indexed lookup used by full program generation as well as
