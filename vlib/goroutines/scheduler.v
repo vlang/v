@@ -706,7 +706,7 @@ fn proc_yield(count int) {
 	for _ in 0 .. count {
 		// CPU pause instruction to reduce power and contention
 		$if msvc {
-			C.YieldProcessor()
+			yield_processor()
 		} $else $if amd64 {
 			asm volatile amd64 {
 				pause

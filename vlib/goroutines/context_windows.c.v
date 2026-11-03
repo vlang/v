@@ -16,6 +16,11 @@ fn C.goroutines_convert_fiber_to_thread() i32
 fn C.GetCurrentFiber() voidptr
 fn C.YieldProcessor()
 
+@[inline]
+fn yield_processor() {
+	C.YieldProcessor()
+}
+
 // GetLastError value of ConvertThreadToFiber on a thread that is already a fiber
 const error_already_fiber = u32(1280)
 
