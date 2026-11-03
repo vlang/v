@@ -108,12 +108,16 @@ pub fn (mut ed EmbedFileData) free() {
 	}
 }
 
+// to_string returns an independent, zero-terminated copy of the embedded bytes.
+// Embedded zero bytes are preserved and do not shorten the returned string.
 pub fn (original &EmbedFileData) to_string() string {
 	unsafe {
 		mut ed := &EmbedFileData(original)
 		// Loading the file sets `len`, so the bytes are taken before the length is read.
 		payload := ed.data()
-		the_copy := &u8(memdup(payload, ed.len))
+		the_copy := malloc_noscan(ed.len + 1)
+		vmemcpy(the_copy, payload, ed.len)
+		the_copy[ed.len] = 0
 		return the_copy.vstring_with_len(ed.len)
 	}
 }
