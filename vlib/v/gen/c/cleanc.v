@@ -4784,6 +4784,7 @@ fn (g &FlatGen) object_file_variable_linkage() string {
 }
 
 fn (mut g FlatGen) gen_global_declaration_block() {
+	g.gen_profile_native_declarations()
 	g.emit_object_file_internal_linkage(true)
 	g.builtin_abi_decls()
 	g.test_failure_helpers()

@@ -145,17 +145,22 @@ fn (mut g FlatGen) gen_profile_startup_enable() {
 	}
 }
 
-fn (mut g FlatGen) gen_profile_support() {
-	if g.profile_file.len == 0 {
+fn (mut g FlatGen) gen_profile_native_declarations() {
+	if g.profile_file.len == 0 || g.target.os != 'macos' {
 		return
 	}
 	// The profiling timer is forced into the used-function set even when user
 	// code does not import `time`. Keep its platform C function declarations
 	// available in that minimal program too. The V-generated Mach struct already
 	// exists here, so including the system header would redefine it.
-	if g.target.os == 'macos' {
-		g.writeln('extern u64 mach_absolute_time(void);')
-		g.writeln('extern int mach_timebase_info(mach_timebase_info_data_t*);')
+	// Emit these before object output gives V functions internal linkage.
+	g.writeln('extern u64 mach_absolute_time(void);')
+	g.writeln('extern int mach_timebase_info(mach_timebase_info_data_t*);')
+}
+
+fn (mut g FlatGen) gen_profile_support() {
+	if g.profile_file.len == 0 {
+		return
 	}
 	g.writeln('// V profile counters:')
 	linkage_attr := g.object_file_variable_linkage()
