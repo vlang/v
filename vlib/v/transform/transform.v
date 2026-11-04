@@ -19499,8 +19499,8 @@ fn (mut t Transformer) transform_match_expr_for_type(_id flat.NodeId, node flat.
 	return tmp
 }
 
-// match_expr_common_value_type uses checked types and declarations from the arm
-// itself, avoiding name lookups before arm-local declarations are transformed.
+// match_expr_common_value_type uses the checker's concrete per-node types, avoiding
+// name lookups before arm-local declarations are transformed.
 fn (t &Transformer) match_expr_common_value_type(node flat.Node) u32 {
 	mut result := u32(0)
 	mut enum_shorthand := false
@@ -19509,11 +19509,9 @@ fn (t &Transformer) match_expr_common_value_type(node flat.Node) u32 {
 		if branch.kind != .match_branch || branch.children_count == 0 {
 			return 0
 		}
-		mut body := *branch
 		mut tail_id := t.a.child(branch, branch.children_count - 1)
 		mut tail := t.a.nodes[int(tail_id)]
 		for tail.kind in [.expr_stmt, .block, .paren] && tail.children_count > 0 {
-			if tail.kind == .block { body = tail }
 			tail_id = t.a.child(&tail, tail.children_count - 1)
 			tail = t.a.nodes[int(tail_id)]
 		}
@@ -19521,17 +19519,7 @@ fn (t &Transformer) match_expr_common_value_type(node flat.Node) u32 {
 			enum_shorthand = true
 			continue
 		}
-		mut type_expr := tail_id
-		if tail.kind == .ident {
-			for j in 0 .. body.children_count {
-				decl := t.a.child_node(&body, j)
-				if decl.kind == .decl_assign && decl.children_count == 2
-					&& t.a.child_node(decl, 0).value == tail.value {
-					type_expr = t.a.child(decl, 1)
-				}
-			}
-		}
-		value := t.a.nodes[int(type_expr)]
+		value := tail
 		mut typ := u32(0)
 		if value.kind == .selector && value.children_count == 1 {
 			base_name := t.expr_key(t.a.child(&value, 0))
@@ -19547,7 +19535,7 @@ fn (t &Transformer) match_expr_common_value_type(node flat.Node) u32 {
 				.cast_expr { value.source_value_id() }
 				else {
 					if isnil(t.tc) { return 0 }
-					checked := t.tc.expr_type_reference(type_expr) or { return 0 }
+					checked := t.tc.expr_type_reference(tail_id) or { return 0 }
 					t.tc.type_name(checked)
 				}
 			}

@@ -10355,7 +10355,13 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 			}
 			return actual
 		}
-		if expected is SumType || expected is Enum {
+		if expected is SumType {
+			// The storage context is the sum, but lowering still needs the value's
+			// concrete type to choose its variant and promote numeric match arms.
+			tc.register_synth_type(id, actual)
+			return expected_raw
+		}
+		if expected is Enum {
 			tc.register_synth_type(id, expected_raw)
 			return expected_raw
 		}
