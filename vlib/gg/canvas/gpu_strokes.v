@@ -313,8 +313,7 @@ fn write_stroke_patches(mut w StrokeWriter, path Path, cap StrokeCap) ! {
 				if n == 0 {
 					w.write_cubic(pts[0], pts[1], pts[2], pts[3])!
 				} else if n == 1 {
-					chops := chop_cubic_at(pts, t[0])
-					mut c := chops
+					mut c := chop_cubic_at(pts, t[0])
 					if cusps {
 						w.write_circle(c[3])
 						c[2] = c[3]
