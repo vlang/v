@@ -19502,6 +19502,7 @@ fn (mut t Transformer) transform_match_expr_for_type(_id flat.NodeId, node flat.
 // match_expr_common_value_type prefers checked per-node types to avoid name lookups
 // before arm-local declarations are transformed. Generic clones may instead carry
 // their specialized types on the nodes or current bindings.
+// Nested matches infer their own common type before the enclosing match promotes it.
 fn (t &Transformer) match_expr_common_value_type(node flat.Node) u32 {
 	mut result := u32(0)
 	mut enum_shorthand := false
@@ -19533,6 +19534,7 @@ fn (t &Transformer) match_expr_common_value_type(node flat.Node) u32 {
 			typ = match value.kind {
 				.int_literal { flat.source_type_int }
 				.float_literal { flat.source_type_f64 }
+				.match_stmt { t.match_expr_common_value_type(value) }
 				.cast_expr { t.resolve_type_text_import_aliases(value.source_value_id()) }
 				else {
 					mut value_type := value.typ

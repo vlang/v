@@ -83,3 +83,62 @@ fn test_sum_match_promotes_specialized_generic_arms() {
 		}
 	}
 }
+
+fn test_sum_match_promotes_nested_numeric_arms() {
+	for k in 0 .. 2 {
+		for j in 0 .. 2 {
+			mut items := []NumericExpressionValue{}
+			items << match k {
+				0 {
+					match j {
+						0 { 1 }
+						else { 2 }
+					}
+				}
+				else { 2.5 }
+			}
+			value := items[0]
+			assert value is f64
+			assert (value as f64) == if k == 0 { f64(j + 1) } else { 2.5 }
+		}
+	}
+}
+
+fn append_generic_nested_numeric_match[T](n T, k int, j int, l int) []NumericExpressionValue {
+	mut items := []NumericExpressionValue{}
+	items << match k {
+		0 {
+			match j {
+				0 {
+					match l {
+						0 { n }
+						else { 6 }
+					}
+				}
+				else { 7 }
+			}
+		}
+		else { 2.5 }
+	}
+	return items
+}
+
+fn test_sum_match_promotes_deeply_nested_specialized_generic_arms() {
+	for k in 0 .. 2 {
+		for j in 0 .. 2 {
+			for l in 0 .. 2 {
+				items := append_generic_nested_numeric_match[int](5, k, j, l)
+				value := items[0]
+				assert value is f64
+				expected := if k != 0 {
+					2.5
+				} else if j != 0 {
+					7.0
+				} else {
+					f64(l + 5)
+				}
+				assert (value as f64) == expected
+			}
+		}
+	}
+}
