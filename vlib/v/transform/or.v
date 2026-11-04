@@ -1334,8 +1334,9 @@ fn (t &Transformer) normalize_or_expr_value_type(typ_id u32) u32 {
 		return flat.source_type_composition_one(kind, t.normalize_or_expr_value_type(flat.source_type_syntax(typ_id).raw_base()))
 	}
 	syntax := flat.source_type_syntax(typ_id)
+	has_main_lock := shape.has(.dotted) && t.or_expr_type_has_main_lock(typ_id)
 	// Resolve the other components of a composite payload before keeping its main lock.
-	if t.or_expr_type_has_main_lock(typ_id) {
+	if has_main_lock {
 		if shape.has(.leading_bracket) && syntax.first_bracket_closed() {
 			return flat.source_type_composition_two(.concat, syntax.first_bracket_prefix(), t.normalize_or_expr_value_type(syntax.first_bracket_base()))
 		}
@@ -1372,14 +1373,14 @@ fn (t &Transformer) normalize_or_expr_value_type(typ_id u32) u32 {
 		}
 	}
 	if !syntax.generic_app_valid() {
-		return if t.or_expr_type_has_main_lock(typ_id) {
+		return if has_main_lock {
 			typ_id
 		} else {
 			t.normalize_type_alias(typ_id)
 		}
 	}
 	base_id := syntax.generic_app_base()
-	mut normalized_base := if t.or_expr_type_has_main_lock(base_id) {
+	mut normalized_base := if has_main_lock && t.or_expr_type_has_main_lock(base_id) {
 		base_id
 	} else {
 		t.normalize_type_alias(base_id)
