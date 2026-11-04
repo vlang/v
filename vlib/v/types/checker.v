@@ -5662,7 +5662,7 @@ fn (mut tc TypeChecker) resolve_inferred_global_types_of(a &flat.FlatAst, entrie
 					}
 					initializer_id := a.child(f, 0)
 					initializer := a.node(initializer_id)
-					tc.invalidate_const_initializer_type(initializer_id)
+					tc.invalidate_subtree_expr_types(initializer_id)
 					mut ft := tc.resolve_type(initializer_id)
 					// Function bodies are checked after globals are collected. Infer an
 					// implicit generic call here so methods used on the global receiver see
@@ -6360,7 +6360,7 @@ fn (mut tc TypeChecker) resolve_const_types_of(const_exprs map[string]flat.NodeI
 			// Const dependencies are not guaranteed to be visited in declaration order.
 			// Re-resolve the initializer on every pass so an array DSL call that was
 			// first seen through a still-pending const does not retain `[]unknown`.
-			tc.invalidate_const_initializer_type(expr_id)
+			tc.invalidate_subtree_expr_types(expr_id)
 			mut new_type := tc.resolve_type(expr_id)
 			new_type = tc.refine_const_initializer_type(expr_id, new_type)
 			new_type = tc.const_type_from_initializer(name, new_type)
@@ -6425,7 +6425,7 @@ fn (tc &TypeChecker) syntactic_const_element_type(id flat.NodeId) ?Type {
 	}
 }
 
-fn (mut tc TypeChecker) invalidate_const_initializer_type(expr_id flat.NodeId) {
+fn (mut tc TypeChecker) invalidate_subtree_expr_types(expr_id flat.NodeId) {
 	idx := int(expr_id)
 	if idx < 0 || idx >= tc.a.nodes.len {
 		return
@@ -6437,7 +6437,7 @@ fn (mut tc TypeChecker) invalidate_const_initializer_type(expr_id flat.NodeId) {
 	tc.sparse_expr_type_values.delete(idx)
 	node := tc.a.nodes[idx]
 	for i in 0 .. node.children_count {
-		tc.invalidate_const_initializer_type(tc.a.child(&node, i))
+		tc.invalidate_subtree_expr_types(tc.a.child(&node, i))
 	}
 }
 
@@ -18575,6 +18575,7 @@ const builtin_attribute_names = [
 	'assert_continues',
 	'application',
 	'attribute',
+	'autostr',
 	'c',
 	'callconv',
 	'c_anon',
@@ -18583,6 +18584,7 @@ const builtin_attribute_names = [
 	'cinit',
 	'comptime',
 	'comment',
+	'connect',
 	'console',
 	'context_specific',
 	'c_extern',
@@ -18590,9 +18592,11 @@ const builtin_attribute_names = [
 	'deprecated',
 	'deprecated_after',
 	'delete',
+	'description',
 	'direct_array_access',
 	'email',
 	'env',
+	'example',
 	'explicit',
 	'export',
 	'flag',
@@ -18623,6 +18627,7 @@ const builtin_attribute_names = [
 	'markused',
 	'max',
 	'min',
+	'minify',
 	'name',
 	'must_use',
 	'noalloc',
@@ -18661,6 +18666,7 @@ const builtin_attribute_names = [
 	'table',
 	'tail',
 	'toml',
+	'trace',
 	'translated',
 	'trusted',
 	'typedef',
@@ -22309,6 +22315,8 @@ fn (mut tc TypeChecker) check_comptime_for_members(_id flat.NodeId, node flat.No
 
 	field_cases := if parts[1] == 'fields' {
 		tc.comptime_static_field_cases(node.typ)
+	} else if parts[1] == 'variants' {
+		tc.comptime_static_variant_cases(node.typ)
 	} else {
 		ComptimeStaticFieldCases{}
 	}
@@ -23341,11 +23349,27 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 		return
 	}
 	if node.kind == .if_expr {
+		if loop_kind == 'variants' && node.children_count >= 2
+			&& tc.a.child_node(&node, 0).kind == .decl_assign {
+			tc.check_comptime_static_variant_if_guard(node, var_name, field_cases, value_cases)
+			return
+		}
 		if loop_kind == 'methods' && value_cases.known && node.children_count >= 2 {
 			tc.check_comptime_static_method_runtime_if(node, var_name, loop_kind, field_cases, value_cases)
 			return
 		}
 		for i in 0 .. node.children_count {
+			if loop_kind == 'variants' && i in [1, 2] {
+				smartcasts := if i == 1 {
+					tc.extract_smartcasts(tc.a.child(&node, 0))
+				} else {
+					tc.extract_else_branch_smartcasts(tc.a.child(&node, 0))
+				}
+				if smartcasts.len > 0 {
+					tc.check_comptime_static_variant_guard(tc.a.child(&node, i), var_name, field_cases, value_cases, smartcasts)
+					continue
+				}
+			}
 			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases, value_cases)
 		}
 		return
@@ -23366,6 +23390,11 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 		for i in 0 .. node.children_count {
 			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases, value_cases)
 		}
+		return
+	}
+	if node.kind == .comptime_if && loop_kind == 'variants'
+		&& tc.comptime_static_condition_has_outer_metadata(id, node.value, var_name) {
+		// The enclosing loop substitutes its metadata before the expanded body is checked.
 		return
 	}
 	if node.kind == .comptime_if && comptime_text_references_var(node.value, var_name) {
@@ -23389,7 +23418,15 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 	}
 	if !tc.comptime_subtree_references_var(id, var_name) {
 		tc.comptime_static_depth++
-		tc.check_node(id)
+		if loop_kind == 'variants' && tc.smartcasts.len > 0 && node.kind == .decl_assign {
+			// Generic cloning can annotate this local with the whole sum type.
+			// Infer it again in the current variant's scope.
+			mut declaration := node
+			declaration.typ = 0
+			tc.check_decl_assign(id, declaration)
+		} else {
+			tc.check_node(id)
+		}
 		tc.comptime_static_depth--
 		return
 	}
@@ -23461,6 +23498,13 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 		return
 	}
 	if node.kind == .match_stmt {
+		mut subject_key := ''
+		mut subject_type := Type(Unknown{})
+		if loop_kind == 'variants' && node.children_count > 0 {
+			subject_id := tc.a.child(&node, 0)
+			subject_key = tc.expr_key(subject_id)
+			subject_type = unalias_and_unwrap_pointer_type(tc.resolve_type(subject_id))
+		}
 		for i in 1 .. node.children_count {
 			branch_id := tc.a.child(&node, i)
 			branch := tc.a.node(branch_id)
@@ -23471,11 +23515,22 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 			if body_start < 0 || body_start > branch.children_count {
 				continue
 			}
+			saved_smartcasts := if loop_kind == 'variants' {
+				clone_smartcasts(tc.smartcasts)
+			} else {
+				map[string]Type{}
+			}
+			if loop_kind == 'variants' {
+				tc.apply_match_branch_context_smartcasts(subject_key, subject_type, *branch)
+			}
 			tc.push_scope()
 			for j in body_start .. branch.children_count {
 				tc.check_comptime_static_body(tc.a.child(branch, j), var_name, loop_kind, field_cases, value_cases)
 			}
 			tc.pop_scope()
+			if loop_kind == 'variants' {
+				tc.smartcasts = saved_smartcasts
+			}
 		}
 		return
 	}

@@ -20134,7 +20134,6 @@ fn (tc &TypeChecker) generic_param_type_text(text_id u32) u32 {
 	if flat.source_type_shape(resolved).has(.dotted) {
 		return resolved
 	}
-	resolved_text := flat.source_type_name(resolved)
 	if selected_id := tc.resolve_selective_import_type_symbol_in_file_id(resolved, file) {
 		return selected_id
 	}

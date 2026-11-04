@@ -57,9 +57,10 @@ The dependency tasks also install Node.js for the WebAssembly runtime tests.
 Native C++ objects use the platform C++ compiler for headers. On Linux, TinyCC
 links also search that compiler's C++ runtime directory, including Debian's
 versioned GCC library directory.
-The command uses the workflow's compiler flags (`-cc tcc -no-retry-compilation`
-for TCC, the default compiler for GCC, and `-cc clang` for Clang), sets the
+The command selects each lane explicitly (`-cc tcc -no-retry-compilation` for TCC,
+`-cc gcc` for GCC, and `-cc clang` for Clang), sets the
 corresponding `GITHUB_JOB`, and disables the compatibility compiler fallback.
+Explicit GCC selection prevents the installed TinyCC from becoming the GCC lane's default.
 
 The ARM64 fixtures using `cmp` or raw SIMD run with GCC or Clang; TCC's assembler
 does not support those instructions and NEON register clobbers. Linux builds
@@ -104,6 +105,16 @@ The macOS integration test and shared resume unit test listed below also run on 
 and cover the unchanged per-file resume implementation. Set `VEXE` to an absolute
 compiler path to select the compiler used to build the integration-test runner.
 
+### Debian QEMU guest disk space
+
+`ci/qemu_linux_tests.sh` enables discard for the guest's QCOW2 disk. Run
+`sudo fstrim -v /` inside the guest to release unused disk blocks back to the host
+after compiler builds and test runs. Guest free space alone does not show how much
+host storage the disk image occupies. A full host disk can pause QEMU even when
+the guest filesystem has free space.
+
+Restart a guest launched before discard was enabled to apply the disk setting.
+
 ## Resuming the macOS CI job
 
 From the repository root, run:
@@ -111,6 +122,14 @@ From the repository root, run:
 ```sh
 ./v run ci/macos_ci.vsh ci
 ```
+
+On macOS, every invocation first runs `vlib/v/util/machosign/macho_sign_test.v`
+with the workflow's compiler flags and compatibility fallback disabled. This fresh
+check runs even when resuming past `self_tests`, ignores test file/function filters,
+and does not reuse successful test records. It requires an executable TinyCC in the
+compiler checkout; run `make` to install it if missing. A signing failure stops CI
+without changing existing progress. The check covers unsigned fixture verification,
+execution after signing, strict `codesign` verification, repeated signing and shrinking.
 
 The `ci` command saves the current **CI task** before executing it. After a failure,
 fix the code and run the same command again: previously completed tasks are skipped,
@@ -197,7 +216,9 @@ Set `VEXE` to an absolute compiler path to use a different V executable. The tes
 compiles the real runner, then replaces its task subprocesses through `V_CI_VEXE`
 with a small shell fixture. It tests failures, retries, successful cleanup, reset,
 invalid checkpoints, checkout isolation, checkpoint write failures and fail-fast
-environment propagation. It also compiles the real `test-cleancode` tool and runs it
+environment propagation. On macOS it also checks that signing runs before every
+resume despite test filters, and that signing failures or missing TinyCC stop CI
+without advancing progress. It also compiles the real `test-cleancode` tool and runs it
 against a tiny checkout with mocked vet/fmt commands, checking both fail-fast and
 normal session sequencing. The real `v test` runner is exercised with mocked test
 compilation/execution to check per-file retries after compile and runtime failures,

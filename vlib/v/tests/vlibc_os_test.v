@@ -3,6 +3,8 @@ import os
 const vlibc_os_program = "import os
 
 fn main() {
+	assert os.is_main_thread()
+	assert os.getwd() == os.args[4]
 	path := os.args[1]
 	missing := os.args[2]
 	link := os.args[3]
@@ -59,7 +61,8 @@ fn test_vlibc_os_file_operations() {
 			args << ['-o', exe, source]
 			build := os.exec(args)
 			assert build.exit_code == 0, '${freestanding}/${optimized}: ${build.output}'
-			run := os.exec(['/bin/sh', '-c', 'umask 0; exec "$@"', 'sh', exe, path, missing, link])
+			run := os.exec(['/bin/sh', '-c', 'umask 0; exec "$@"', 'sh', exe, path, missing, link,
+				os.getwd()])
 			assert run.exit_code == 0, '${freestanding}/${optimized}: ${run.output}'
 			assert run.output == 'file operations ok\n', run.output
 			assert os.stat(path)!.mode & 0o777 == 0o666
@@ -84,5 +87,23 @@ fn test_vlibc_rejects_unsupported_backend_and_target() {
 			assert result.exit_code != 0
 			assert result.output.contains('`-d vlibc` requires the C backend and a supported Unix amd64/arm64 target'), result.output
 		}
+	}
+}
+
+fn test_os_portable_c_drops_inactive_vlibc_branches() ! {
+	root := os.join_path(os.vtmp_dir(), 'vlibc_portable_os_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, 'import os\nfn main() { println(os.getwd()) }')!
+	for target in ['linux', 'macos'] {
+		output := os.join_path(root, '${target}.c')
+		result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-cross',
+			'-os', target, '-o', output, source])
+		assert result.exit_code == 0, result.output
+		code := os.read_file(output)!
+		assert code.contains('os__getwd(')
+		assert !code.contains('vlibc_getcwd(')
+		assert !code.contains('vlibc_sys_gettid(')
 	}
 }

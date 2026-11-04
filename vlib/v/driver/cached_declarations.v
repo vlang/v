@@ -81,11 +81,11 @@ const cached_module_function_names = ['debug.after_call_hook', 'debug.before_cal
 // among them; neither is one that fits no function of vlib, which is the name of
 // something else: a temporary, a type, a keyword. `cached_declarations_test.v`
 // works this list out again too.
-const cached_function_name_patterns = ['*.arg*', '*.clone', '*.free', '*.json', '*.len', '*_aligned',
-	'*_break', '*_callback', '*_clone', '*_continue', '*_free', '*_hash', '*_idx', '*_key_*',
-	'*_map_key', '*_object', '*_source', '*_str', '*_thread_args', '*_value_*', '*data', '*defined',
-	'*nil', '.arg*', 'arg*', 'main*', 'map_clone_int_*', 'map_eq_int_*', 'map_hash_int_*', 'ptr_*',
-	'vpc_*_*']
+const cached_function_name_patterns = ['*.after_call_hook', '*.arg*', '*.before_call_hook', '*.clone',
+	'*.free', '*.json', '*.len', '*_aligned', '*_break', '*_callback', '*_clone', '*_continue',
+	'*_free', '*_hash', '*_idx', '*_key_*', '*_map_key', '*_object', '*_source', '*_str',
+	'*_thread_args', '*_value_*', '*data', '*defined', '*nil', '.arg*', 'arg*', 'main*',
+	'map_clone_int_*', 'map_eq_int_*', 'map_hash_int_*', 'ptr_*', 'vpc_*_*']
 
 // module_lifecycle_function_names are the functions that a program calls for each
 // of its modules that has them, without a call in its source.
