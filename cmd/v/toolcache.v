@@ -1426,6 +1426,10 @@ struct WipeCacheOptions {
 
 const wipe_cache_help_text = 'Remove V cache folders (VCACHE, VTMP, V3CACHE, and compiled tool caches).
 Stop and return a nonzero status if a cache folder cannot be removed or recreated.
+Leave the entries of tools that another process has locked right now (a build in progress)
+in place and name them in the output. Lock files that cannot be opened are repaired, so they can be locked again.
+Entries of a tool whose lock cannot be created, for example because the filesystem has no hard
+links or a directory is in the way, are kept.
 
 Usage:
   v wipe-cache [options]
@@ -1619,6 +1623,256 @@ fn is_v3_cache_subdir(name string) bool {
 	return false
 }
 
+// tool_cache_lock_file_suffix ends the name of this user's persistent build lock for one
+// tool inside a tool cache root; the tool's name sits between the leading dot and it.
+// Keep in sync with `tool_cache_lock_path_for_uid` and cmd/tools/vwipe-cache.v.
+fn tool_cache_lock_file_suffix() string {
+	return '.${os.getuid()}.toolcache.lock'
+}
+
+// tool_cache_entry_tool returns the tool a cache entry directory `<tool>-<64 hex>[.<n>]` belongs
+// to, or none when `name` is not shaped like one. A tool name may itself contain dashes, so every
+// dash is tried as the separator.
+fn tool_cache_entry_tool(name string) ?string {
+	for i, c in name {
+		if c == `-` && i > 0 && is_cache_artifact_of(name, name[..i]) {
+			return name[..i]
+		}
+	}
+	return none
+}
+
+// ToolCacheWipeLocks tracks, for one tool cache root, which build locks the wipe holds, which
+// tools another process has locked, and which lock files cannot be opened at all. The lock files
+// are persistent mutexes (see `tool_cache_lock`): usable ones are opened, created only by `claim`,
+// and never removed, so a builder blocked on one while the wipe holds it simply proceeds once the wipe
+// releases it.
+struct ToolCacheWipeLocks {
+	root string
+mut:
+	busy       []string
+	held       []string
+	stale      []string
+	unlockable []string
+	locks      []filelock.FileLock
+}
+
+// probe takes the build lock of `tool` in this root unless it was already probed. No lock file
+// means no builder can be at work: every build creates the lock file before it touches the entry
+// directory. A lock file that cannot even be opened for writing (read-only attribute, mode 0400)
+// is stale rather than held: no builder can lock it either, so nothing is being built with it.
+fn (mut locks ToolCacheWipeLocks) probe(tool string) {
+	if tool in locks.busy || tool in locks.held || tool in locks.stale {
+		return
+	}
+	lock_path := os.join_path(locks.root, '.${tool}${tool_cache_lock_file_suffix()}')
+	if os.is_link(lock_path) || !os.is_file(lock_path) {
+		return
+	}
+	mut build_lock := filelock.new_file(lock_path, mode: .exclusive)
+	if build_lock.try_acquire() {
+		locks.held << tool
+		locks.locks << build_lock
+		return
+	}
+	// `try_acquire` fails both when another process holds the lock and when the file cannot be
+	// opened; only the first one means a build is in flight.
+	mut probe_file := os.open_file(lock_path, 'r+') or {
+		locks.stale << tool
+		return
+	}
+	probe_file.close()
+	locks.busy << tool
+}
+
+// claim takes the build lock of `tool` before its entries are removed. When the tool has no lock
+// file yet, one is created first, so that a builder either finds the lock taken or waits on it. A
+// tool whose lock cannot be taken, because it could not be created or its path is a link, is
+// recorded as unlockable and its entries are kept rather than removed without a lock. A dry run
+// creates nothing. It returns the path of a lock file it created, or nothing.
+fn (mut locks ToolCacheWipeLocks) claim(tool string, dry_run bool) string {
+	lock_path := os.join_path(locks.root, '.${tool}${tool_cache_lock_file_suffix()}')
+	mut created := ''
+	if !dry_run && !os.exists(lock_path) && !os.is_link(lock_path) {
+		created = locks.create_lock(tool, lock_path)
+	}
+	locks.probe(tool)
+	if !dry_run && tool !in locks.held && tool !in locks.busy && tool !in locks.unlockable {
+		locks.unlockable << tool
+	}
+	return created
+}
+
+// create_lock makes the missing lock file of `tool` by hard linking a temporary file to `lock_path`.
+// A link fails when that path exists and never follows a link found there, so a link planted at the
+// lock path cannot redirect the create. It returns the new path, or nothing when the file could not
+// be made, for instance on a filesystem without hard links.
+fn (mut locks ToolCacheWipeLocks) create_lock(tool string, lock_path string) string {
+	staged := os.join_path(locks.root, '.${tool}.${os.getpid()}-${time.now().unix_nano()}.tmp')
+	mut staged_file := os.open_file(staged, 'a', 0o600) or { return '' }
+	staged_file.close()
+	os.link(staged, lock_path) or {
+		os.rm(staged) or {}
+		return ''
+	}
+	os.rm(staged) or {}
+	return lock_path
+}
+
+// release gives every acquired build lock back, after the wipe is done.
+fn (mut locks ToolCacheWipeLocks) release() {
+	for mut build_lock in locks.locks {
+		build_lock.release()
+	}
+	locks.locks = []
+	locks.held = []
+}
+
+// repair_stale_lock sets a stale lock file to mode 0600, which makes it lockable again. It returns
+// an error that names the file and the cause when that fails.
+fn repair_stale_lock(path string) ! {
+	os.chmod(path, 0o600) or {
+		return error('cannot repair the lock file ${path}: ${err}')
+	}
+}
+
+// wipe_except_text names the tools whose entries a wipe kept, and why, for its summary line.
+fn wipe_except_text(busy []string, unlockable []string) string {
+	mut text := ''
+	if busy.len > 0 {
+		text += ', except for the tools another process has locked right now: ${busy.join(', ')}'
+	}
+	if unlockable.len > 0 {
+		text += ', except for the tools whose lock could not be created: ${unlockable.join(', ')}'
+	}
+	return text
+}
+
+// wipe_tool_cache_directory wipes one tool cache root like `wipe_cache_directory`, except that
+// the entries of tools another process has locked at that moment are left in place, and the
+// output names those tools. Such a lock means a build is in flight: on Windows the compiler still
+// has its staging directory open and removal fails with a sharing violation; on POSIX removal
+// would succeed and pull the build's files out from under it. The locks the wipe can take are
+// held until it is done, so a build starting meanwhile waits instead of racing it. Usable lock
+// files stay. A lock file that cannot be opened is repaired to mode 0600 instead of removed, so a
+// builder can lock it again: lock files are never unlinked. An entry of a tool with no lock file is
+// removed only while its lock is held: a missing lock file is created first, so a builder either
+// finds the lock taken or waits on it, and a tool whose lock cannot be created is kept. Every entry is attempted and the first failure is reported
+// afterwards, as `os.rmdir_all` does. The root itself is removed when
+// nothing in it was kept. If that removal fails, the failure is an error unless a build that
+// started during the wipe put new entries in the root; those are its own, and are reported.
+fn wipe_tool_cache_directory(path string, label string, opts WipeCacheOptions, mut lines []string) ! {
+	if os.is_link(path) || !os.is_dir(path) {
+		return wipe_cache_directory(path, label, false, opts, mut lines)
+	}
+	mut locks := ToolCacheWipeLocks{
+		root: path
+	}
+	defer {
+		locks.release()
+	}
+	mut names := os.ls(path) or {
+		return error('v wipe-cache: could not list ${label} folder ${path}: ${err}')
+	}
+	names.sort()
+	suffix := tool_cache_lock_file_suffix()
+	mut details := []string{}
+	mut kept := []string{}
+	mut first_error := ''
+	for name in names {
+		full := os.join_path(path, name)
+		// Another wipe may have removed this entry since the listing.
+		if !os.exists(full) && !os.is_link(full) {
+			continue
+		}
+		if name.starts_with('.') && name.ends_with(suffix) && name.len > suffix.len + 1
+			&& os.is_file(full) && !os.is_link(full) {
+			tool := name[1..name.len - suffix.len]
+			locks.probe(tool)
+			if tool in locks.stale && !opts.dry_run {
+				// Repaired rather than removed: lock files are never unlinked, so no builder can be left
+				// holding an inode that the wipe took away.
+				repair_stale_lock(full) or {
+					if first_error == '' {
+						first_error = err.msg()
+					}
+				}
+				locks.stale = locks.stale.filter(it != tool)
+				locks.probe(tool)
+			}
+			kept << full
+			continue
+		} else if entry_tool := tool_cache_entry_tool(name) {
+			created := locks.claim(entry_tool, opts.dry_run)
+			if created != '' {
+				kept << created
+			}
+			if entry_tool in locks.busy || entry_tool in locks.unlockable {
+				kept << full
+				continue
+			}
+		}
+		if opts.dry_run {
+			details << '  would remove ${full}'
+			continue
+		}
+		details << '  removing ${full}'
+		if os.is_dir(full) && !os.is_link(full) {
+			os.rmdir_all(full) or {
+				if first_error == '' && (os.exists(full) || os.is_link(full)) {
+					first_error = '${err}'
+				}
+			}
+		} else {
+			os.rm(full) or {
+				if first_error == '' && (os.exists(full) || os.is_link(full)) {
+					first_error = '${err}'
+				}
+			}
+		}
+	}
+	for path_kept in kept {
+		details << if opts.dry_run { '  would keep ${path_kept}' } else { '  keeping ${path_kept}' }
+	}
+	mut busy := locks.busy.clone()
+	busy.sort()
+	mut unlockable := locks.unlockable.clone()
+	unlockable.sort()
+	except := wipe_except_text(busy, unlockable)
+	if opts.dry_run {
+		// Same order as `wipe_cache_directory`: the summary first, then what it consists of.
+		lines << 'Would wipe ${label} folder ${path}${except}.'
+		if opts.verbose {
+			lines << details
+		}
+		return
+	}
+	if opts.verbose {
+		lines << details
+	}
+	if first_error != '' {
+		return error('v wipe-cache: could not remove ${label} folder ${path}: ${first_error}')
+	}
+	mut build_started := ''
+	if kept.len == 0 {
+		os.rmdir(path) or {
+			// Only a build that started during the wipe can have put new entries in the root;
+			// anything else that stops the removal is a failure of the wipe.
+			mut fresh := os.ls(path) or { []string{} }
+			fresh = fresh.filter(it !in names)
+			if fresh.len == 0 {
+				return error('v wipe-cache: could not remove ${label} folder ${path}: ${err}')
+			}
+			build_started = '${label} folder ${path} was emptied, but a build started during the wipe kept ${fresh.len} entries in it.'
+		}
+	}
+	if build_started != '' {
+		lines << build_started
+	} else {
+		lines << '${label} folder ${path} was wiped${except}.'
+	}
+}
+
 fn wipe_cache_directory(path string, label string, recreate bool, opts WipeCacheOptions, mut lines []string) ! {
 	if opts.dry_run {
 		if os.is_link(path) {
@@ -1698,7 +1952,7 @@ fn wipe_caches(opts WipeCacheOptions) ![]string {
 			}
 			if os.exists(target) || os.is_link(target) {
 				wiped_any_tool_cache = true
-				wipe_cache_directory(target, label, false, opts, mut tool_lines)!
+				wipe_tool_cache_directory(target, label, opts, mut tool_lines)!
 			} else if opts.verbose {
 				tool_lines << '${label} folder ${target} does not exist, skipping.'
 			}

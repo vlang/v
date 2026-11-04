@@ -72,7 +72,11 @@ configurations and test selectors are not replayed. A failed cache cleanup
 makes `v up` fail.
 On Windows, the cached updater exits before its launcher wipes the caches,
 so the running executable does not block cleanup. Cleanup failures are returned
-by the launcher.
+by the launcher. Entries of tools that another process has locked at that moment (a
+build in progress) are left in place and named in the output, so a build running
+alongside `v up` does not make the cleanup fail. Lock files that cannot be opened are
+repaired, so they can be locked again. Entries of a tool whose lock cannot be created,
+for example because the filesystem has no hard links or a directory is in the way, are kept.
 
 `make` also warms the default test configuration's builtin module bundle, including
 `strings`, `strconv`, `hash` and `bits`. Compatible test builds reuse these objects
