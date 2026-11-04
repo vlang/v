@@ -1734,6 +1734,27 @@ fn (mut timer FastcPhaseTimer) mark(name string) {
 	timer.last_us = now_us
 }
 
+// fastc_source_uses_deprecated_integer reports whether the driver has to run the
+// full parser on `source` to warn about `isize` or `usize`. Comments and plain
+// strings that only mention the names do not count, which keeps sources like the
+// compiler's own out of that second parse. A source the scanner rejects counts, so
+// that the parser reports what it finds there.
+fn fastc_source_uses_deprecated_integer(source string, path string, prefs &pref.Preferences) bool {
+	if !source.contains('isize') && !source.contains('usize') {
+		return false
+	}
+	mut scan := scanner.new_scanner(prefs, .normal)
+	scan.init(token.File.unindexed(path, source.len), source)
+	mut tok := scan.scan()
+	for tok != .eof {
+		if tok == .name && (scan.lit == 'isize' || scan.lit == 'usize') {
+			return true
+		}
+		tok = scan.scan()
+	}
+	return scan.diagnostics.len > 0
+}
+
 // generate_files_with_source_paths emits C and reports every source read from entry files,
 // entry directories, and their imports.
 pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences) !GenerationResult {
@@ -1755,7 +1776,7 @@ pub fn generate_files_with_native_aliases(paths []string, prefs &pref.Preference
 	for source_file in sources {
 		source_paths << source_file.path
 		if source_file.header.module_name != 'builtin'
-			&& (source_file.source.contains('isize') || source_file.source.contains('usize')) {
+			&& fastc_source_uses_deprecated_integer(source_file.source, source_file.path, &scoped_prefs) {
 			deprecated_integer_paths << source_file.path
 		}
 	}
