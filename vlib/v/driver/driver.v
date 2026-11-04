@@ -26,6 +26,7 @@ import v.transform
 import v.types
 import v.util
 import v.util.cache_refresh
+import v.util.machosign
 import v.util.vtest
 import v.workers
 import v.build_constraint
@@ -230,7 +231,7 @@ mut:
 	parsed_from_source        map[string]bool
 	source_body_modules       map[string]bool
 	native_bridge             bool
-	bridge_functions          map[string]bool
+	bridge_functions          map[string]string
 	bridge_native_sources     []string
 	program_module_sources    map[string][]string
 	native_source_modules     map[string]bool
@@ -1522,7 +1523,7 @@ fn v3_cache_file_identity(path string) string {
 
 fn v3_cached_tcc_executable_path(manager &modulecache.Manager, source_identity string, link_plan_signature string, tcc_path string, tcc_lib_dir string, tcc_args []string) string {
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-cached-tcc-executable-v1', source_identity, link_plan_signature,
+	for identity in ['v3-cached-tcc-executable-v2', source_identity, link_plan_signature,
 		os.real_path(tcc_path), v3_cache_file_identity(tcc_path), tcc_args.join('\x00')] {
 		hash = c_hash_bytes(hash, identity.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
@@ -1556,28 +1557,27 @@ fn v3_cached_tcc_executable_path(manager &modulecache.Manager, source_identity s
 // TinyCC needs for a small program. A no-op `codesign` stands in for it while
 // TinyCC runs, and the executable gets the same kind of ad-hoc signature in this
 // process; Apple's tool still signs a file that the signer here does not handle.
-// A driver that is built without the FastC backend has no signer, and leaves the
-// signing to TinyCC.
+// The signer also repairs TinyCC's chained fixups, which otherwise map file bytes
+// over zero-initialized globals on macOS 27. Keep it available in the default
+// compiler, which is built without the optional FastC backend (#31486).
 fn run_v3_tcc_executable_link(tcc_path string, tcc_args []string, cc_dir string, output string) os.Result {
-	$if !skip_fastc ? {
-		if os.user_os() == 'macos' && os.getenv('V3_TCC_APPLE_CODESIGN') != '1' {
-			shim := fastc.fastc_codesign_shim_dir()
-			result := cmdexec.run_in(tcc_path, tcc_args, cc_dir)
-			fastc.fastc_remove_codesign_shim_dir(shim)
-			if shim.dir == '' || result.exit_code != 0 || !os.is_file(output) {
-				return result
-			}
-			fastc.fastc_sign_macho_adhoc(output) or {
-				signed := cmdexec.run('codesign', ['-f', '-s', '-', output])
-				if signed.exit_code != 0 {
-					return os.Result{
-						exit_code: 1
-						output:    'could not sign ${output}: ${err.msg()}\n${signed.output}'
-					}
-				}
-			}
+	if os.user_os() == 'macos' && os.getenv('V3_TCC_APPLE_CODESIGN') != '1' {
+		shim := machosign.codesign_shim_dir()
+		result := cmdexec.run_in(tcc_path, tcc_args, cc_dir)
+		machosign.remove_codesign_shim_dir(shim)
+		if shim.dir == '' || result.exit_code != 0 || !os.is_file(output) {
 			return result
 		}
+		machosign.sign_adhoc(output) or {
+			signed := cmdexec.run('codesign', ['-f', '-s', '-', output])
+			if signed.exit_code != 0 {
+				return os.Result{
+					exit_code: 1
+					output:    'could not sign ${output}: ${err.msg()}\n${signed.output}'
+				}
+			}
+		}
+		return result
 	}
 	return cmdexec.run_in(tcc_path, tcc_args, cc_dir)
 }
@@ -1707,7 +1707,19 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	} else {
 		c_standard_flag(c99, no_std)
 	}
-	compiler := c_source_object_compiler(language, c_compiler, use_platform_non_c_compiler, target.os)
+	mut compiler := c_source_object_compiler(language, c_compiler, use_platform_non_c_compiler, target.os)
+	mut platform_gc := false
+	if target.os == 'linux' && pref.ccompiler_is_tinycc(compiler)
+		&& (source_file == 'thirdparty/libgc/gc.c'
+			|| source_file.ends_with('/thirdparty/libgc/gc.c')) {
+		host := pref.host_target()
+		if host.os == target.os && host.arch == target.arch {
+			// Bundled Boehm uses atomic builtins that TinyCC does not implement.
+			// Only this native dependency needs the platform compiler.
+			compiler = v3_platform_c_compiler(target.os)
+			platform_gc = true
+		}
+	}
 	mut args := []string{}
 	if std_flag.len > 0 {
 		args << std_flag
@@ -1724,6 +1736,10 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	// A C helper does not inherit a standard intended for the C++ main unit.
 	args << object_flags.flags_for_compiler(compiler).filter(is_cpp
 		|| !(it.starts_with('-std=c++') || it.starts_with('-std=gnu++')))
+	if platform_gc && target.arch == 'arm64' {
+		// TinyCC's linker does not provide GCC's outlined atomic helpers.
+		args << '-mno-outline-atomics'
+	}
 	if target.os == 'macos' && pref.ccompiler_is_tinycc(compiler) {
 		// Framework search paths are link flags that TCC also rejects in C helpers.
 		args = c_object_compile_flags(v3_tcc_macos_framework_flags(args, target.os, ''))
@@ -2896,6 +2912,7 @@ struct V3CCompilerFlagOptions {
 	limit_inlining      bool
 	is_tcc              bool
 	is_c_debug          bool
+	no_backtrace        bool
 	is_o                bool
 	is_liveshared       bool
 	// is_freestanding marks a `-freestanding` build: no libc, crt or default libraries.
@@ -3567,7 +3584,10 @@ fn v3_c_source_mode_flags(objective_c bool) []string {
 }
 
 fn v3_tcc_backtrace_enabled(target_os string, target_arch string, is_shared bool) bool {
+	// TinyCC's Win64 backtrace runtime treats recoverable first-chance exceptions
+	// as fatal, including COM/RPC exceptions handled by system libraries.
 	return !is_shared && !(target_os == 'macos' && target_arch == 'arm64')
+		&& !(target_os == 'windows' && target_arch == 'amd64')
 }
 
 fn add_v3_tcc_compat_defines(mut user_defines []string, target_os string, target_arch string, is_shared bool, is_tcc bool) {
@@ -3575,8 +3595,14 @@ fn add_v3_tcc_compat_defines(mut user_defines []string, target_os string, target
 		&& 'no_backtrace' !in user_defines {
 		// The builtin backtrace implementation must match the native TCC flag plan.
 		// Shared libraries cannot link TCC's runtime symbols, while its initializer
-		// crashes in dyld on macOS arm64 due to unaligned access.
+		// crashes in dyld on macOS arm64 due to unaligned access. On Windows amd64,
+		// its vectored handler terminates recoverable first-chance exceptions.
 		user_defines << 'no_backtrace'
+	}
+	if is_tcc && !is_shared && target_os == 'windows' && target_arch == 'amd64'
+		&& 'windows_tcc_unhandled_filter' !in user_defines {
+		// Keep executable fault diagnostics without replacing a DLL host's filter.
+		user_defines << 'windows_tcc_unhandled_filter'
 	}
 }
 
@@ -3982,13 +4008,16 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 			before_inputs << v3_tcc_host_system_flags(options.target_os, options.macos_sdk_root)
 		}
 		// TinyCC's backtrace runtime prints through libc.
-		if !options.is_freestanding
+		if !options.is_freestanding && !options.no_backtrace
 			&& v3_tcc_backtrace_enabled(options.target_os, options.target_arch, options.is_shared) {
 			before_inputs << '-bt25'
 		}
 	}
 	if options.is_freestanding {
 		before_inputs << ['-ffreestanding', '-fno-stack-protector']
+		if options.target_os == 'linux' && !options.is_tcc {
+			before_inputs << ['-ffunction-sections', '-fdata-sections']
+		}
 	}
 	before_inputs << options.warn_args
 	if '-Wno-int-conversion' !in before_inputs {
@@ -4035,6 +4064,10 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 				after_inputs << ['-lSystem']
 			} else {
 				after_inputs << ['-static', '-nostdlib']
+				if options.target_os == 'linux' && !options.is_tcc {
+					// Unused hosted helpers must not introduce libc dependencies.
+					after_inputs << '-Wl,--gc-sections'
+				}
 			}
 			// `-nostdlib` also drops TinyCC's own runtime, whose helpers (like
 			// `__builtin_clz`) the generated code calls; they do not need libc.
@@ -5212,7 +5245,7 @@ fn v3_native_inputs(a &flat.FlatAst, prefs &pref.Preferences, user_files []strin
 // C-compiler dependency manifest, keep their compilation outside module caches.
 struct V3NativeInputClosure {
 mut:
-	functions      map[string]bool
+	functions      map[string]string // V binding name -> native C ABI name
 	native_sources []string
 	inputs         map[string][]string
 	unassignable   string
@@ -9423,7 +9456,8 @@ $if !skip_fastc ? {
 		if '-Werror=implicit-function-declaration' !in cc_args {
 			cc_args << '-Werror=implicit-function-declaration'
 		}
-		if v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), false) {
+		if 'no_backtrace' !in prefs.user_defines
+			&& v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), false) {
 			cc_args << '-bt25'
 		}
 		if is_debug {
@@ -11449,7 +11483,8 @@ pub fn run(args []string) {
 							tcc_resources.include_arg, tcc_resources.library_arg]
 						anticipated_cc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), macos_sdk_root_cache.get())
 						anticipated_cc_args << '-Werror=implicit-function-declaration'
-						if v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), false) {
+						if 'no_backtrace' !in prefs.user_defines
+							&& v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), false) {
 							anticipated_cc_args << '-bt25'
 						}
 						if is_debug {
@@ -14829,7 +14864,7 @@ pub fn run(args []string) {
 			g.set_ccompiler(if tcc_dylib { effective_c_compiler } else { prefs.ccompiler })
 			if tcc_dylib {
 				g.set_tcc_program_unit(true)
-				g.set_native_function_aliases(native_closure.functions.keys())
+				g.set_native_function_aliases(native_closure.functions.values())
 			}
 			g.set_prod(prefs.is_prod)
 			g.set_debug(prefs.is_debug)
@@ -14917,6 +14952,16 @@ pub fn run(args []string) {
 			// stage arena; all of them can grow while servicing those queries.
 			pre_tc.reset_type_interners()
 			pre_tc.set_fresh_type_cache(cgen_parse_cache_enabled)
+			if !(should_run || test_files.len > 0 || served.from_server) {
+				// A plain build ends with the process once the C compiler has run,
+				// and allocates little until then. Leave the arenas that the
+				// release threads, the ending workers and the exit handler would
+				// unmap from here on mapped: the OS reclaims them at exit with
+				// less work than a page-table teardown per resident page.
+				$if prealloc {
+					unsafe { prealloc_keep_freed_memory() }
+				}
+			}
 			// Nothing reads cgen's arenas any more. Unmapping them takes several
 			// milliseconds; do it beside the following stages.
 			track_release_thread(spawn release_cgen_scopes(cgen_worker_scopes.clone(),
@@ -14930,7 +14975,7 @@ pub fn run(args []string) {
 			g.set_ccompiler(if tcc_dylib { effective_c_compiler } else { prefs.ccompiler })
 			if tcc_dylib {
 				g.set_tcc_program_unit(true)
-				g.set_native_function_aliases(native_closure.functions.keys())
+				g.set_native_function_aliases(native_closure.functions.values())
 			}
 			g.set_prod(prefs.is_prod)
 			g.set_debug(prefs.is_debug)
@@ -15326,6 +15371,7 @@ pub fn run(args []string) {
 			limit_inlining:      limit_large_unit_inlining
 			is_tcc:              effective_tcc
 			is_c_debug:          is_c_debug
+			no_backtrace:        'no_backtrace' in prefs.user_defines
 			is_o:                is_o
 			is_liveshared:       is_liveshared
 			is_freestanding:     'freestanding' in prefs.user_defines
@@ -15472,7 +15518,8 @@ pub fn run(args []string) {
 			// cache off (see `no_cache` where they are read), so none reach an object.
 			mut object_compiler_args := v3_tcc_object_compile_flags(prefs.vroot, bundled_tcc,
 				bundled_tcc, bundled_tcc_available, prefs.normalized_target_os(), flag_plan_sdk_root)
-			if v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), is_shared) {
+			if 'no_backtrace' !in prefs.user_defines
+				&& v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), is_shared) {
 				object_compiler_args << '-bt25'
 			}
 			cache_state.object_compiler = V3CachedObjectCompiler{
@@ -15952,7 +15999,8 @@ pub fn run(args []string) {
 			if tcc_resources.base_arg != '' {
 				tcc_args << v3_tcc_host_system_flags(prefs.normalized_target_os(), tcc_sdk_root)
 			}
-			if v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), is_shared) {
+			if 'no_backtrace' !in prefs.user_defines
+				&& v3_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.normalized_target_arch(), is_shared) {
 				tcc_args << '-bt25'
 			}
 			if wrapv_flag.len > 0 {
@@ -16517,18 +16565,27 @@ Please install the corresponding development package/libraries and make sure the
 	b.metric('C object dep-scan fallbacks', c_object_cache_stats.dependency_scan_fallbacks, 'objects')
 	b.metric('C object publish races', c_object_cache_stats.publish_races, 'objects')
 	b.metric('C object input-snapshot races', c_object_cache_stats.input_snapshot_races, 'objects')
-	if retained_transform_scope != unsafe { nil } {
-		prealloc_scope_free_for_v3(retained_transform_scope)
-		retained_transform_scope = unsafe { nil }
+	if should_run || test_files.len > 0 || served.from_server {
+		if retained_transform_scope != unsafe { nil } {
+			prealloc_scope_free_for_v3(retained_transform_scope)
+			retained_transform_scope = unsafe { nil }
+		}
+		if retained_transform_prepare_scope != unsafe { nil } {
+			prealloc_scope_free_for_v3(retained_transform_prepare_scope)
+			retained_transform_prepare_scope = unsafe { nil }
+		}
+		for scope in transform_helper_scopes {
+			prealloc_scope_free_for_v3(scope)
+		}
+		transform_helper_scopes = []voidptr{}
+	} else {
+		// A plain build ends with the process right after its report. Leave the
+		// retained stage arenas and the main thread's blocks mapped: the OS
+		// reclaims them at exit with less work than unmapping each block here.
+		$if prealloc {
+			unsafe { prealloc_keep_memory_at_exit() }
+		}
 	}
-	if retained_transform_prepare_scope != unsafe { nil } {
-		prealloc_scope_free_for_v3(retained_transform_prepare_scope)
-		retained_transform_prepare_scope = unsafe { nil }
-	}
-	for scope in transform_helper_scopes {
-		prealloc_scope_free_for_v3(scope)
-	}
-	transform_helper_scopes = []voidptr{}
 	if show_test_stats {
 		println('checker summary: 0 V errors, ${checker_warning_count} V warnings, ${checker_notice_count} V notices')
 	}
@@ -17380,10 +17437,10 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 	mut native_bindings := V3TccDylibBindings{}
 	if state.native_bridge {
 		mut functions := map[string]bool{}
-		for name, _ in state.bridge_functions {
+		for name, abi_name in state.bridge_functions {
 			if cache_used_fns['C.' + name] || cache_used_fns[name]
 				|| program_used_fns['C.' + name] || program_used_fns[name] {
-				functions[name] = true
+				functions[abi_name] = true
 			}
 		}
 		native_bindings = v3_tcc_dylib_function_bindings(functions)
@@ -17712,7 +17769,7 @@ fn prune_cache_only_function_prototypes(source string, cache_used_fns &map[strin
 	}
 	mut candidate_functions := map[string]bool{}
 	for name, is_used in cache_used_fns {
-		if state.native_bridge && state.bridge_functions[name.trim_string_left('C.')] {
+		if state.native_bridge && name.trim_string_left('C.') in state.bridge_functions {
 			// The owner takes this function's address even when V calls its alias.
 			continue
 		}
@@ -24678,12 +24735,14 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				}
 				record_v3_fallback_module_use(mut cache_state, module_identity, is_bundle_warmup_import)
 				record_cache_module_dependency(mut cache_state, cur_module, module_identity)
+				retain_cache_source_module(mut cache_state, module_identity)
 				node_idx++
 				continue
 			}
 			if mod_name in parsed_modules {
 				record_v3_fallback_module_use(mut cache_state, mod_name, is_bundle_warmup_import)
 				record_cache_module_dependency(mut cache_state, cur_module, mod_name)
+				retain_cache_source_module(mut cache_state, mod_name)
 				node_idx++
 				continue
 			}
@@ -24808,11 +24867,8 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 				}
 			}
 			if already_parsed {
-				if cache_state.manager.enabled && module_resolved && cache_module != 'main'
-					&& cache_module !in cache_state.module_sources {
-					// A cached dependency can import the module under test. Its bodies
-					// are absent from the AST, so retain the functions it can call here.
-					cache_state.source_body_modules[cache_module] = true
+				if module_resolved {
+					retain_cache_source_module(mut cache_state, cache_module)
 				}
 				node_idx++
 				continue
@@ -24844,7 +24900,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 						if header := cache_state.manager.valid_header(cache_module, mod_files) {
 							record_v3_cached_source_digests(mut cache_state, header.source_digests)
 							cache_module_calls_recover(mut cache_state, modulecache.header_calls_recover(header))
-							if !modulecache.header_needs_source(header) && !v3_tcc_dylib_needs_native_sources(cache_state, header.header) {
+							if !modulecache.header_needs_source(header) && !v3_tcc_dylib_needs_native_sources(cache_state, header.header, mod_files, prefs.vroot) {
 								parse_files = [header.header]
 								if mod_files.len > 0 {
 									a.cached_header_sources[header.header] = mod_files[0]
@@ -24875,7 +24931,7 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 						record_v3_cached_source_digests(mut cache_state, cached.source_digests)
 						cache_module_calls_recover(mut cache_state, modulecache.header_calls_recover(cached))
 						owned_sources_need_check := mod_files.any(types.shadow_roots_own_file(it, shadow_diagnostic_root, shadow_explicit_roots, shadow_dependency_roots))
-						if !modulecache.header_needs_source(cached) && !owned_sources_need_check && !v3_tcc_dylib_needs_native_sources(cache_state, cached.header) {
+						if !modulecache.header_needs_source(cached) && !owned_sources_need_check && !v3_tcc_dylib_needs_native_sources(cache_state, cached.header, mod_files, prefs.vroot) {
 							parse_files = [cached.header]
 							if mod_files.len > 0 {
 								a.cached_header_sources[cached.header] = mod_files[0]
@@ -25058,6 +25114,15 @@ fn parse_files_dispatch_profiled(mut p parser.Parser, paths []string, allow_para
 		timing.source_parallel = timing.source_parallel || source_weight > 0
 	}
 	return starts, parallel
+}
+
+fn retain_cache_source_module(mut state V3ModuleCacheState, module_name string) {
+	if state.manager.enabled && module_name.len > 0 && module_name != 'main'
+		&& module_name !in state.module_sources {
+		// A cached dependency can import the module under test. Its bodies are
+		// absent from the AST, so retain the source module functions it can call.
+		state.source_body_modules[module_name] = true
+	}
 }
 
 fn record_cache_module_dependency(mut state V3ModuleCacheState, owner string, dependency string) {

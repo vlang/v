@@ -103,7 +103,9 @@ jobs:
             sanitizer: memory
             gc: none
             timeout: 300
-            vflags: -cc clang -gc none -cflags -fno-omit-frame-pointer
+            # Some tests explicitly select Boehm. Build its source with MSan too;
+            # the prebuilt archive cannot update the sanitizer's shadow memory.
+            vflags: -cc clang -gc none -d use_bundled_libgc -cflags -fno-omit-frame-pointer
           - name: memory-clang-compiler
             cc: clang
             sanitizer: memory

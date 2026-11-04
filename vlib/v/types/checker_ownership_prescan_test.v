@@ -1,6 +1,8 @@
 module types
 
-import v.flat
+$if ownership ? {
+	import v.flat
+}
 
 fn test_ownership_prescan_reports_exhaustion_without_a_source_position() {
 	$if ownership ? {

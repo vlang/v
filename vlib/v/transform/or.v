@@ -625,7 +625,8 @@ fn (mut t Transformer) transform_array_index_or_expr(id flat.NodeId, node flat.N
 		} else {
 			index_value0
 		}
-		then_block = t.make_block([t.make_assign(t.make_ident(val_name), index_value)])
+		// Only the explicit fallback has a checker scope; the successful lookup is synthetic.
+		then_block = t.make_block_skip_scope_drops([t.make_assign(t.make_ident(val_name), index_value)])
 	}
 	mut opt_else := flat.empty_node
 	if info.base_optional {
@@ -2769,14 +2770,19 @@ fn (t &Transformer) is_noreturn_call(id flat.NodeId) bool {
 			main_or_builtin = resolved_module == 'main' || resolved_module == 'builtin'
 			short_name = unsafe { tos(resolved.str + dot + 1, resolved.len - dot - 1) }
 		}
-		for candidate, _ in t.a.noreturn_fns {
-			if candidate.contains_u8(`.`) {
-				if resolved.len > candidate.len && resolved[resolved.len - candidate.len - 1] == `.`
-					&& resolved.ends_with(candidate) {
+		// Iterating the map clones every key; the snapshot taken when the caches
+		// were created lists the same names (the table is complete after parsing).
+		if !isnil(t.noreturn_names) && t.noreturn_names.count == t.a.noreturn_fns.len {
+			for candidate in t.noreturn_names.names {
+				if noreturn_candidate_matches(candidate, resolved, short_name, main_or_builtin) {
 					return true
 				}
-			} else if main_or_builtin && short_name == candidate {
-				return true
+			}
+		} else {
+			for candidate, _ in t.a.noreturn_fns {
+				if noreturn_candidate_matches(candidate, resolved, short_name, main_or_builtin) {
+					return true
+				}
 			}
 		}
 	}
@@ -2788,6 +2794,18 @@ fn (t &Transformer) is_noreturn_call(id flat.NodeId) bool {
 	name := t.resolve_call_name(node)
 	return name in ['panic', 'exit', 'os.exit', 'C.exit', 'builtin.panic']
 		|| name in t.a.noreturn_fns
+}
+
+// noreturn_candidate_matches reports whether a noreturn table entry names the
+// resolved callee: a dotted entry as a `.`-separated suffix, a bare entry as the
+// short name of a main/builtin function.
+@[direct_array_access; inline]
+fn noreturn_candidate_matches(candidate string, resolved string, short_name string, main_or_builtin bool) bool {
+	if candidate.contains_u8(`.`) {
+		return resolved.len > candidate.len && resolved[resolved.len - candidate.len - 1] == `.`
+			&& resolved.ends_with(candidate)
+	}
+	return main_or_builtin && short_name == candidate
 }
 
 // base_type_text resolves the indexed source type spelling.

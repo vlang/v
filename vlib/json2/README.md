@@ -37,6 +37,9 @@
 
 `json2` is an experimental JSON parser written from scratch on V.
 
+Aliases of `Any` decode through the selected concrete variant, including at the
+root of a JSON value or as array and map elements.
+
 ## Typed map keys
 
 Integer map keys are parsed as the declared integer type with range checks. Invalid

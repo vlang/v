@@ -38,6 +38,8 @@ values up to `math.max_f64`. Infinite angles produce NaN.
 `lgamma` aliases `log_gamma`. `remainder(x, y)` uses the IEEE nearest-integer,
 ties-to-even remainder and preserves the dividend's sign on zero. On the C backend,
 `fma(x, y, z)` computes one rounded multiply-add, including intermediate product overflow.
+Windows TinyCC imports `fma` from the Universal CRT (`ucrtbase.dll`), included in Windows 10
+and later. Older Windows systems require the Universal CRT update or redistributable.
 The C backend uses its math library for both operations. Other backends and pure V builds
 that exclude `math/*.c.v` use portable remainder and a two-round multiply-add fallback.
 `floor_mod(x, y)` instead follows the divisor's sign, including zero.

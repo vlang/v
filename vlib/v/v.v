@@ -34,6 +34,11 @@ $if vgc ? {
 }
 
 fn main() {
+	$if prealloc {
+		// The compiler's arenas live until the process ends; the OS reclaims them
+		// with less work than unmapping each block in the exit handler.
+		unsafe { prealloc_keep_memory_at_exit() }
+	}
 	$if fastc_selfhost ? {
 		fastcdriver.run(os.args[1..])
 	} $else {

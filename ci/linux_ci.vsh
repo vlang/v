@@ -565,7 +565,7 @@ fn ci_vflags(task_index int) string {
 		return '-cc tcc -no-retry-compilation'
 	}
 	if task_index < ci_tasks.index('all_code_is_formatted_clang') {
-		return ''
+		return '-cc gcc'
 	}
 	return '-cc clang'
 }

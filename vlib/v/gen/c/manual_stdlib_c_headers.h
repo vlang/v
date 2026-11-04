@@ -277,8 +277,9 @@ V_CRT_LINKAGE int V_CRT_CALL scanf(const char *format, ...);
 V_CRT_LINKAGE int V_CRT_CALL puts(const char *str);
 V_CRT_LINKAGE void V_CRT_CALL perror(const char *str);
 V_CRT_LINKAGE int V_CRT_CALL fputs(const char *str, FILE *stream);
-V_CRT_LINKAGE int V_CRT_CALL getchar(void);
-V_CRT_LINKAGE int V_CRT_CALL putchar(int ch);
+// BSD stdio.h can define function-like macros before these declarations.
+V_CRT_LINKAGE int V_CRT_CALL (getchar)(void);
+V_CRT_LINKAGE int V_CRT_CALL (putchar)(int ch);
 V_CRT_LINKAGE int V_CRT_CALL getc(FILE *stream);
 V_CRT_LINKAGE int V_CRT_CALL fgetc(FILE *stream);
 V_CRT_LINKAGE int V_CRT_CALL ungetc(int ch, FILE *stream);

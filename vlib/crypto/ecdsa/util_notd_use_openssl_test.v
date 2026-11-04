@@ -52,9 +52,8 @@ fn test_pubkey_bytes_delegates_to_uncompressed_bytes() ! {
 	// PublicKey.bytes() (util_notd_use_openssl.v) is the one REAL
 	// implementation in this file -- it delegates to uncompressed_bytes()
 	// rather than duplicating the mbedTLS call sequence.
-	_, priv_key := generate_key() or { panic(err) }
+	pub_key, priv_key := generate_key() or { panic(err) }
 	defer { priv_key.free() }
-	pub_key := priv_key.public_key()!
 	defer { pub_key.free() }
 	assert pub_key.bytes()! == pub_key.uncompressed_bytes()!
 }

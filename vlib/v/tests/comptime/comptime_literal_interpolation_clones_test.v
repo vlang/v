@@ -4,7 +4,7 @@
 import os
 import time
 
-@[literal_interpolation_flag]
+@['literal_interpolation_flag']
 struct LiteralInterpolationMarker {
 	value int
 }
@@ -133,7 +133,12 @@ fn test_literal_interpolation_survives_variant_clones() {
 	check_literal_interpolation_clone('variants', literal_interpolation_variants, 2)
 }
 
-@[prefix: r'${if true {']
+@[attribute]
+struct Prefix {
+	value string
+}
+
+@[Prefix: r'${if true {']
 struct LiteralInterpolationAttributePrefix {}
 
 fn literal_interpolation_attribute_text(first string, second string) string {

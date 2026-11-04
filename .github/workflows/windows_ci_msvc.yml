@@ -50,7 +50,8 @@ jobs:
           $opensslBin = 'C:\Program Files\OpenSSL\bin'
           $libDir = 'C:\Program Files\OpenSSL\lib\VC\x64\MD'
           $cryptoLib = Join-Path $libDir 'libcrypto.lib'
-          if (-not (Test-Path $opensslBin) -or -not (Test-Path $cryptoLib)) {
+          $sslLib = Join-Path $libDir 'libssl.lib'
+          if (-not (Test-Path $opensslBin) -or -not (Test-Path $cryptoLib) -or -not (Test-Path $sslLib)) {
             choco install openssl --version=3.5.4 --allow-downgrade -y --no-progress
             if ($LASTEXITCODE -ne 0) {
               throw "Chocolatey failed to install OpenSSL 3.5.4 (exit $LASTEXITCODE)"
@@ -61,7 +62,7 @@ jobs:
           # ecdsa.c.v/rsa_pss.c.v's SECOND `#flag windows` fallback path --
           # NOT the first one (`...OpenSSL-Win64\...`), confirmed by an
           # actual CI run after guessing wrong the first time.
-          if (-not (Test-Path $opensslBin) -or -not (Test-Path $cryptoLib)) {
+          if (-not (Test-Path $opensslBin) -or -not (Test-Path $cryptoLib) -or -not (Test-Path $sslLib)) {
             throw "OpenSSL installation is incomplete under C:\Program Files\OpenSSL"
           }
           Add-Content -Path $env:GITHUB_PATH -Value $opensslBin
@@ -79,7 +80,10 @@ jobs:
           # it here instead: alias the file under the name MSVC expects.
           # A plain copy is safe -- a Windows import library doesn't embed
           # its own filename.
-          Copy-Item -Path $cryptoLib -Destination (Join-Path $libDir 'crypto.lib')
+          Copy-Item -Path $cryptoLib -Destination (Join-Path $libDir 'crypto.lib') -Force
+          # pkg-config also emits -lssl for the SMTP TLS helper, which MSVC
+          # resolves to ssl.lib while the installer ships libssl.lib.
+          Copy-Item -Path $sslLib -Destination (Join-Path $libDir 'ssl.lib') -Force
 
           Write-Host "OpenSSL install:"
           Get-ChildItem $libDir
@@ -149,9 +153,13 @@ jobs:
               throw "pkg-config regression failed for $test with exit code $LASTEXITCODE"
             }
           }
+      - name: Local Windows CI runner regressions
+        id: local_windows_ci_runner_regressions
+        if: ${{ success() && !cancelled() && steps.pkg_config_regressions_msvc_dynamic_isolation.outcome == 'success' }}
+        run: .\v.exe -silent test ci/windows/
       - name: Legacy gg import multiwindow isolation
         id: legacy_gg_import_multiwindow_isolation
-        if: ${{ success() && !cancelled() && steps.pkg_config_regressions_msvc_dynamic_isolation.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.local_windows_ci_runner_regressions.outcome == 'success' }}
         run: v -cc msvc test vlib/gg/legacy_import_multiwindow_isolation_test.v
       - name: Prepare multiwindow Job Object watchdog
         id: prepare_multiwindow_job_object_watchdog
@@ -465,7 +473,7 @@ jobs:
             -ExpectedA0MainSha256 '5f30869ae97f680032e622273ea69986d612cc82cad2adf53e4c3b1415154301' `
             -ExpectedA0TupleSha256 '99ef24bf101dc83543f26f86cb23a80c82607e0f1b35c32e9dbb431368ecc7c4' `
             -ExpectedA0RunnerSha256 'ce4da58e24730899f970a7566dc65d82eb0c07d38f74efcaeeb02c450a011b68' `
-            -ExpectedGgFacadeSha256 'e50d9478b50c9110929a34fa6823249f82be79d675eab8846340eac646b065d8' `
+            -ExpectedGgFacadeSha256 '3b3042842f713da99d1e25b144ac7d89637f83c90d99c735267cc85275c3a87b' `
             -ExpectedGgNoFlagSha256 'ad528c64cf18bce9415dd0e50513fb87d8d0b58c8ac4a99025a5c8955e7d9549' `
             -ExpectedGgServiceTypesSha256 '9f17334ba5e5aff51f26d55476c83878856a8494a890aa64ee6434a52c1ecfeb' `
             -ExpectedAppSha256 'af32eec55c119907a8bbf544842131018d36d3887347e26486e067a79d78a946' `
@@ -475,7 +483,7 @@ jobs:
             -ExpectedServiceTypesSha256 'cd8326b81201727618e758d79970b7a77223fd6418e18afda44a526a3b0b4267' `
             -ExpectedServiceRegistrySha256 'db244497fd23974c1739d6c7a8bc57a2e3137c8765d4bc7f789efd80a59066b7' `
             -ExpectedEventDeliverySha256 'd38c868f574c02fc46e047da25e770e5b9f672500d796694b5ef35bf042cdae0' `
-            -ExpectedPublicRoutingSurfaceSha256 'da259cec8ee5a0ce2a19948ec8a145393a44efdd3f4f7ae8ebb6d2e0bd896907' `
+            -ExpectedPublicRoutingSurfaceSha256 'e52eae27edfb90fd6b55fb3de6e82e1b541b69ba6de98751d76f707fe095bcad' `
             -ExpectedServiceBackendSha256 '8ad39d63360446ef7049c726544200780eff61ff39917830f7024243dfd363be' `
             -ExpectedEventDispatchSha256 '7ef6c7cbd34511d6c19c1a3a269b46876db791b9412bb88e3a8d4dcd543bfd4e' `
             -ExpectedWin32BackendSha256 'ccec71a1438683523cdd4d3583426b3477af2f36206733c74c77eda682bb2128' `
@@ -483,7 +491,7 @@ jobs:
             -ExpectedWin32ServiceBackendSha256 'c7bb97952a49d06216ef33c4a9a1013a01c11a7a16cf32190d85d112024b785c' `
             -ExpectedWin32ServiceNativeSha256 '2ffc93e245a43c4a557fd7cc66ebcdda8874b9783ec3050ba754657a97efd033' `
             -ExpectedGreenProductionSurfaceSha256 '2c929f3cddfe4ed6544678de10d9fbe3319f589ee08c0d2e4c8911fcd3738a22' `
-            -ExpectedRunnerSha256 '5953f18a2f560bb3c2e233ebfd704fea0d465daabff1c4c54dc676224b295071'
+            -ExpectedRunnerSha256 'c651dd1fd7b0a5b58ec999694170d052a40ff5bc3b9b90c47825881af0d13dff'
       - name: Prepare multiwindow Job Object watchdog
         id: prepare_multiwindow_job_object_watchdog
         if: ${{ success() && !cancelled() && steps.win32_w5_raw_input_a1_public_green.outcome == 'success' }}

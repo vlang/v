@@ -35,6 +35,7 @@ fn (mut t Transformer) mark_sum_moving_read(source flat.NodeId, value flat.NodeI
 }
 
 // trim_pointer_type transforms trim pointer type data for transform.
+@[direct_array_access]
 fn (t &Transformer) trim_pointer_type(typ_id u32) u32 {
 	if !flat.source_type_shape(typ_id).has(.pointer) { return typ_id }
 	if !isnil(t.alias_cache) {
@@ -182,6 +183,7 @@ fn (t &Transformer) generic_sum_arg_variant_for_pattern(sum_name_id u32, variant
 }
 
 // resolve_sum_name resolves resolve sum name information for transform.
+@[direct_array_access]
 fn (t &Transformer) resolve_sum_name(type_id u32) u32 {
 	if type_id == 0 { return 0 }
 	if isnil(t.sum_cache) {

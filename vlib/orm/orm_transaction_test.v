@@ -331,3 +331,108 @@ fn test_orm_execute_after_commit_fails() {
 	}
 	assert false
 }
+
+@[heap]
+struct CommitFailures {
+mut:
+	commits   int
+	releases  int
+	rollbacks int
+}
+
+// FailingCommitDB fails the next commits/releases without running them, which leaves the
+// transaction or savepoint open, as SQLite does after a busy COMMIT.
+struct FailingCommitDB {
+	sqlite.DB
+mut:
+	failures &CommitFailures = unsafe { nil }
+}
+
+fn (mut db FailingCommitDB) orm_commit() ! {
+	if db.failures.commits > 0 {
+		db.failures.commits--
+		return error_with_code('commit failed', 5)
+	}
+	db.DB.orm_commit()!
+}
+
+fn (mut db FailingCommitDB) orm_release_savepoint(name string) ! {
+	if db.failures.releases > 0 {
+		db.failures.releases--
+		return error_with_code('release failed', 5)
+	}
+	db.DB.orm_release_savepoint(name)!
+}
+
+fn (mut db FailingCommitDB) orm_rollback() ! {
+	if db.failures.rollbacks > 0 {
+		db.failures.rollbacks--
+		return error('rollback failed')
+	}
+	db.DB.orm_rollback()!
+}
+
+fn test_transaction_reports_a_failed_rollback_after_a_failed_commit() {
+	mut failures := &CommitFailures{
+		commits:   1
+		rollbacks: 1
+	}
+	mut db := FailingCommitDB{
+		DB:       setup_tx_db()!
+		failures: failures
+	}
+	defer {
+		db.DB.close() or {}
+	}
+
+	mut msg := ''
+	orm.transaction[int](mut db, insert_callback_user) or { msg = err.msg() }
+	assert msg == 'transaction commit failed: commit failed; rollback failed: rollback failed'
+	db.DB.rollback()!
+	assert count_tx_users(db.DB)! == 0
+}
+
+fn test_transaction_rolls_back_when_commit_fails() {
+	mut failures := &CommitFailures{
+		commits: 1
+	}
+	mut db := FailingCommitDB{
+		DB:       setup_tx_db()!
+		failures: failures
+	}
+	defer {
+		db.DB.close() or {}
+	}
+
+	mut commit_err_code := 0
+	orm.transaction[int](mut db, insert_callback_user) or {
+		commit_err_code = err.code()
+		assert err.msg() == 'commit failed'
+	}
+	assert commit_err_code == 5
+	// the failed transaction was rolled back, so the connection can start a new one
+	orm.transaction[int](mut db, insert_callback_user)!
+	assert count_tx_users(db.DB)! == 1
+}
+
+fn test_nested_transaction_rolls_back_when_release_fails() {
+	mut failures := &CommitFailures{
+		releases: 1
+	}
+	mut db := FailingCommitDB{
+		DB:       setup_tx_db()!
+		failures: failures
+	}
+	defer {
+		db.DB.close() or {}
+	}
+
+	orm.transaction[int](mut db, fn (mut tx orm.Tx) !int {
+		mut nested_err_code := 0
+		tx.transaction[int](nested_success_inner) or { nested_err_code = err.code() }
+		assert nested_err_code == 5
+		return 0
+	})!
+	// the inner insert was rolled back to its savepoint before the outer commit
+	assert count_tx_users(db.DB)! == 0
+}
