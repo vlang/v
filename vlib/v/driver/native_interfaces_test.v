@@ -70,3 +70,28 @@ fn test_native_interface_contract_requires_known_paths_and_complete_manifest() !
 	}
 	assert v3_native_interface_closure(&a, &prefs, [], compiler, &forced).unassignable != ''
 }
+
+fn test_tinycc_interface_contract_pin_rejects_bundle_edits() ! {
+	assert v3_pinned_web_native_interfaces(@VEXEROOT)
+	root := os.join_path(os.vtmp_dir(), 'pinned_interfaces_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	headers := os.join_path(root, 'thirdparty', 'mbedtls', 'include')
+	os.mkdir_all(os.dir(headers))!
+	os.cp_all(os.join_path(@VEXEROOT, 'thirdparty', 'mbedtls', 'include'), headers, false)!
+	helper_dir := os.join_path(root, 'vlib', 'net', 'mbedtls')
+	os.mkdir_all(helper_dir)!
+	for name in ['mbedtls_helpers.h', 'mbedtls_threading.h'] {
+		os.cp(os.join_path(@VEXEROOT, 'vlib', 'net', 'mbedtls', name), os.join_path(helper_dir, name))!
+	}
+	assert v3_pinned_web_native_interfaces(root)
+	added := os.join_path(headers, '.added.inc')
+	os.write_file(added, '#define LATER __DATE__\n')!
+	assert !v3_pinned_web_native_interfaces(root)
+	os.rm(added)!
+	assert v3_pinned_web_native_interfaces(root)
+	os.write_file(os.join_path(helper_dir, 'mbedtls_helpers.h'), 'modified')!
+	assert !v3_pinned_web_native_interfaces(root)
+	os.rm(os.join_path(helper_dir, 'mbedtls_helpers.h'))!
+	assert !v3_pinned_web_native_interfaces(root)
+}
