@@ -54,9 +54,14 @@ If V is already installed on a machine, it can be upgraded to its latest version
 by using the V's built-in self-updater.
 To do so, run the command `v up`.
 This also refreshes the bundled TCC binaries used for fast C compilation.
+It asks the TCC repository which revision the bundle's branch is at; when that has
+not changed, the TCC checkout is not fetched or rewritten, and `v up` reports that
+TCC is already up to date.
 On Linux, an older compatible TCC bundle stays in place while its upstream revision
 is unchanged and it still passes the host compatibility check. Repeated updates
-preserve its file metadata.
+preserve its file metadata. When no commit of an unchanged branch suits the host,
+V keeps using the system compiler without checking the branch again; run
+`make fresh_tcc` to check it again, for example after upgrading the system.
 On macOS, TCC builds use its runtime thread fence directly, including when
 preprocessed C identifies ARM64 with `__arm64__` alone.
 
