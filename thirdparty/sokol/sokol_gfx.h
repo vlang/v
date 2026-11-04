@@ -1157,6 +1157,8 @@
         - SG_VERTEXFORMAT_UINT10_N2
         - SG_VERTEXFORMAT_HALF2
         - SG_VERTEXFORMAT_HALF4
+        - SG_VERTEXFORMAT_INT, INT2, INT3, INT4 (V patch, GLES3/GL3.0+ only)
+        - SG_VERTEXFORMAT_UINT, UINT2, UINT3, UINT4 (V patch, GLES3/GL3.0+ only)
 
 
     MEMORY ALLOCATION OVERRIDE
@@ -2179,6 +2181,18 @@ typedef enum sg_vertex_format {
     SG_VERTEXFORMAT_UINT10_N2,
     SG_VERTEXFORMAT_HALF2,
     SG_VERTEXFORMAT_HALF4,
+    /* V_SOKOL_INT_VERTEX_FORMATS_BEGIN */
+    // V patch: 32-bit integer attributes, read by the shader as int/uint
+    // vectors without conversion (GL uses glVertexAttribIPointer).
+    SG_VERTEXFORMAT_INT,
+    SG_VERTEXFORMAT_INT2,
+    SG_VERTEXFORMAT_INT3,
+    SG_VERTEXFORMAT_INT4,
+    SG_VERTEXFORMAT_UINT,
+    SG_VERTEXFORMAT_UINT2,
+    SG_VERTEXFORMAT_UINT3,
+    SG_VERTEXFORMAT_UINT4,
+    /* V_SOKOL_INT_VERTEX_FORMATS_END */
     _SG_VERTEXFORMAT_NUM,
     _SG_VERTEXFORMAT_FORCE_U32 = 0x7FFFFFFF
 } sg_vertex_format;
@@ -5375,6 +5389,7 @@ typedef struct {
     uint8_t stride;
     uint8_t size;
     uint8_t normalized;
+    uint8_t integer;        // V patch: bound with glVertexAttribIPointer
     int offset;
     GLenum type;
 } _sg_gl_attr_t;
@@ -6130,6 +6145,14 @@ _SOKOL_PRIVATE int _sg_vertexformat_bytesize(sg_vertex_format fmt) {
         case SG_VERTEXFORMAT_UINT10_N2: return 4;
         case SG_VERTEXFORMAT_HALF2:     return 4;
         case SG_VERTEXFORMAT_HALF4:     return 8;
+        case SG_VERTEXFORMAT_INT:       return 4;
+        case SG_VERTEXFORMAT_INT2:      return 8;
+        case SG_VERTEXFORMAT_INT3:      return 12;
+        case SG_VERTEXFORMAT_INT4:      return 16;
+        case SG_VERTEXFORMAT_UINT:      return 4;
+        case SG_VERTEXFORMAT_UINT2:     return 8;
+        case SG_VERTEXFORMAT_UINT3:     return 12;
+        case SG_VERTEXFORMAT_UINT4:     return 16;
         case SG_VERTEXFORMAT_INVALID:   return 0;
         default:
             SOKOL_UNREACHABLE;
@@ -6874,6 +6897,7 @@ _SOKOL_PRIVATE void _sg_dummy_update_image(_sg_image_t* img, const sg_image_data
     _SG_XMACRO(glRenderbufferStorageMultisample,  void, (GLenum target, GLsizei samples, GLenum internalformat, GLsizei width, GLsizei height)) \
     _SG_XMACRO(glDrawBuffers,                     void, (GLsizei n, const GLenum * bufs)) \
     _SG_XMACRO(glVertexAttribDivisor,             void, (GLuint index, GLuint divisor)) \
+    _SG_XMACRO(glVertexAttribIPointer,            void, (GLuint index, GLint size, GLenum type, GLsizei stride, const void * pointer)) \
     _SG_XMACRO(glBufferSubData,                   void, (GLenum target, GLintptr offset, GLsizeiptr size, const void * data)) \
     _SG_XMACRO(glGenBuffers,                      void, (GLsizei n, GLuint * buffers)) \
     _SG_XMACRO(glCheckFramebufferStatus,          GLenum, (GLenum target)) \
@@ -7040,7 +7064,31 @@ _SOKOL_PRIVATE GLint _sg_gl_vertexformat_size(sg_vertex_format fmt) {
         case SG_VERTEXFORMAT_UINT10_N2: return 4;
         case SG_VERTEXFORMAT_HALF2:     return 2;
         case SG_VERTEXFORMAT_HALF4:     return 4;
+        case SG_VERTEXFORMAT_INT:       return 1;
+        case SG_VERTEXFORMAT_INT2:      return 2;
+        case SG_VERTEXFORMAT_INT3:      return 3;
+        case SG_VERTEXFORMAT_INT4:      return 4;
+        case SG_VERTEXFORMAT_UINT:      return 1;
+        case SG_VERTEXFORMAT_UINT2:     return 2;
+        case SG_VERTEXFORMAT_UINT3:     return 3;
+        case SG_VERTEXFORMAT_UINT4:     return 4;
         default: SOKOL_UNREACHABLE; return 0;
+    }
+}
+
+_SOKOL_PRIVATE GLboolean _sg_gl_vertexformat_is_integer(sg_vertex_format fmt) {
+    switch (fmt) {
+        case SG_VERTEXFORMAT_INT:
+        case SG_VERTEXFORMAT_INT2:
+        case SG_VERTEXFORMAT_INT3:
+        case SG_VERTEXFORMAT_INT4:
+        case SG_VERTEXFORMAT_UINT:
+        case SG_VERTEXFORMAT_UINT2:
+        case SG_VERTEXFORMAT_UINT3:
+        case SG_VERTEXFORMAT_UINT4:
+            return GL_TRUE;
+        default:
+            return GL_FALSE;
     }
 }
 
@@ -7070,6 +7118,16 @@ _SOKOL_PRIVATE GLenum _sg_gl_vertexformat_type(sg_vertex_format fmt) {
         case SG_VERTEXFORMAT_HALF2:
         case SG_VERTEXFORMAT_HALF4:
             return GL_HALF_FLOAT;
+        case SG_VERTEXFORMAT_INT:
+        case SG_VERTEXFORMAT_INT2:
+        case SG_VERTEXFORMAT_INT3:
+        case SG_VERTEXFORMAT_INT4:
+            return GL_INT;
+        case SG_VERTEXFORMAT_UINT:
+        case SG_VERTEXFORMAT_UINT2:
+        case SG_VERTEXFORMAT_UINT3:
+        case SG_VERTEXFORMAT_UINT4:
+            return GL_UNSIGNED_INT;
         default:
             SOKOL_UNREACHABLE; return 0;
     }
@@ -8672,6 +8730,7 @@ _SOKOL_PRIVATE sg_resource_state _sg_gl_create_pipeline(_sg_pipeline_t* pip, _sg
             gl_attr->size = (uint8_t) _sg_gl_vertexformat_size(a_state->format);
             gl_attr->type = _sg_gl_vertexformat_type(a_state->format);
             gl_attr->normalized = _sg_gl_vertexformat_normalized(a_state->format);
+            gl_attr->integer = _sg_gl_vertexformat_is_integer(a_state->format);
             pip->cmn.vertex_buffer_layout_active[a_state->buffer_index] = true;
         } else {
             _SG_ERROR(GL_VERTEX_ATTRIBUTE_NOT_FOUND_IN_SHADER);
@@ -9367,12 +9426,17 @@ _SOKOL_PRIVATE bool _sg_gl_apply_bindings(_sg_bindings_t* bnd) {
                 (attr->size != cache_attr->gl_attr.size) ||
                 (attr->type != cache_attr->gl_attr.type) ||
                 (attr->normalized != cache_attr->gl_attr.normalized) ||
+                (attr->integer != cache_attr->gl_attr.integer) ||
                 (attr->stride != cache_attr->gl_attr.stride) ||
                 (vb_offset != cache_attr->gl_attr.offset) ||
                 (cache_attr->gl_attr.divisor != attr->divisor))
             {
                 _sg_gl_cache_bind_buffer(GL_ARRAY_BUFFER, gl_vb);
-                glVertexAttribPointer(attr_index, attr->size, attr->type, attr->normalized, attr->stride, (const GLvoid*)(GLintptr)vb_offset);
+                if (attr->integer) {
+                    glVertexAttribIPointer(attr_index, attr->size, attr->type, attr->stride, (const GLvoid*)(GLintptr)vb_offset);
+                } else {
+                    glVertexAttribPointer(attr_index, attr->size, attr->type, attr->normalized, attr->stride, (const GLvoid*)(GLintptr)vb_offset);
+                }
                 _sg_stats_add(gl.num_vertex_attrib_pointer, 1);
                 glVertexAttribDivisor(attr_index, (GLuint)attr->divisor);
                 _sg_stats_add(gl.num_vertex_attrib_divisor, 1);
@@ -10220,6 +10284,14 @@ _SOKOL_PRIVATE DXGI_FORMAT _sg_d3d11_vertex_format(sg_vertex_format fmt) {
         case SG_VERTEXFORMAT_UINT10_N2: return DXGI_FORMAT_R10G10B10A2_UNORM;
         case SG_VERTEXFORMAT_HALF2:     return DXGI_FORMAT_R16G16_FLOAT;
         case SG_VERTEXFORMAT_HALF4:     return DXGI_FORMAT_R16G16B16A16_FLOAT;
+        case SG_VERTEXFORMAT_INT:       return DXGI_FORMAT_R32_SINT;
+        case SG_VERTEXFORMAT_INT2:      return DXGI_FORMAT_R32G32_SINT;
+        case SG_VERTEXFORMAT_INT3:      return DXGI_FORMAT_R32G32B32_SINT;
+        case SG_VERTEXFORMAT_INT4:      return DXGI_FORMAT_R32G32B32A32_SINT;
+        case SG_VERTEXFORMAT_UINT:      return DXGI_FORMAT_R32_UINT;
+        case SG_VERTEXFORMAT_UINT2:     return DXGI_FORMAT_R32G32_UINT;
+        case SG_VERTEXFORMAT_UINT3:     return DXGI_FORMAT_R32G32B32_UINT;
+        case SG_VERTEXFORMAT_UINT4:     return DXGI_FORMAT_R32G32B32A32_UINT;
         default: SOKOL_UNREACHABLE; return (DXGI_FORMAT) 0;
     }
 }
@@ -11691,6 +11763,14 @@ _SOKOL_PRIVATE MTLVertexFormat _sg_mtl_vertex_format(sg_vertex_format fmt) {
         case SG_VERTEXFORMAT_UINT10_N2: return MTLVertexFormatUInt1010102Normalized;
         case SG_VERTEXFORMAT_HALF2:     return MTLVertexFormatHalf2;
         case SG_VERTEXFORMAT_HALF4:     return MTLVertexFormatHalf4;
+        case SG_VERTEXFORMAT_INT:       return MTLVertexFormatInt;
+        case SG_VERTEXFORMAT_INT2:      return MTLVertexFormatInt2;
+        case SG_VERTEXFORMAT_INT3:      return MTLVertexFormatInt3;
+        case SG_VERTEXFORMAT_INT4:      return MTLVertexFormatInt4;
+        case SG_VERTEXFORMAT_UINT:      return MTLVertexFormatUInt;
+        case SG_VERTEXFORMAT_UINT2:     return MTLVertexFormatUInt2;
+        case SG_VERTEXFORMAT_UINT3:     return MTLVertexFormatUInt3;
+        case SG_VERTEXFORMAT_UINT4:     return MTLVertexFormatUInt4;
         default: SOKOL_UNREACHABLE; return (MTLVertexFormat)0;
     }
 }
@@ -13582,6 +13662,14 @@ _SOKOL_PRIVATE WGPUVertexFormat _sg_wgpu_vertexformat(sg_vertex_format f) {
         case SG_VERTEXFORMAT_USHORT4N:      return WGPUVertexFormat_Unorm16x4;
         case SG_VERTEXFORMAT_HALF2:         return WGPUVertexFormat_Float16x2;
         case SG_VERTEXFORMAT_HALF4:         return WGPUVertexFormat_Float16x4;
+        case SG_VERTEXFORMAT_INT:           return WGPUVertexFormat_Sint32;
+        case SG_VERTEXFORMAT_INT2:          return WGPUVertexFormat_Sint32x2;
+        case SG_VERTEXFORMAT_INT3:          return WGPUVertexFormat_Sint32x3;
+        case SG_VERTEXFORMAT_INT4:          return WGPUVertexFormat_Sint32x4;
+        case SG_VERTEXFORMAT_UINT:          return WGPUVertexFormat_Uint32;
+        case SG_VERTEXFORMAT_UINT2:         return WGPUVertexFormat_Uint32x2;
+        case SG_VERTEXFORMAT_UINT3:         return WGPUVertexFormat_Uint32x3;
+        case SG_VERTEXFORMAT_UINT4:         return WGPUVertexFormat_Uint32x4;
         // FIXME! UINT10_N2 (see https://github.com/gpuweb/gpuweb/issues/4275)
         case SG_VERTEXFORMAT_UINT10_N2:     return WGPUVertexFormat_Undefined;
         default:
