@@ -871,6 +871,35 @@ fn (mut tc TypeChecker) apply_post_assert_smartcasts(id flat.NodeId) {
 // that unwrap to new declarations (`y := key` gets the option's base type), unlike
 // the other fallthrough narrowings (`!is` guards, asserts, `||` conditions).
 fn (tc &TypeChecker) none_guard_fallthrough_unwraps(id flat.NodeId, key string) bool {
+	return tc.none_guard_fallthrough_unwraps_in_layer(id, key, false)
+}
+
+fn (tc &TypeChecker) condition_refines_type_of_key(id flat.NodeId, key string, depth int) bool {
+	if depth > 64 || !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind == .is_expr {
+		return node.children_count > 0 && tc.expr_key_matches(tc.a.child(node, 0), key)
+	}
+	if node.kind in [.paren, .prefix] && node.children_count > 0 {
+		return tc.condition_refines_type_of_key(tc.a.child(node, 0), key, depth + 1)
+	}
+	if node.kind == .infix && node.op in [.logical_and, .logical_or] && node.children_count >= 2 {
+		return tc.condition_refines_type_of_key(tc.a.child(node, 0), key, depth + 1)
+			|| tc.condition_refines_type_of_key(tc.a.child(node, 1), key, depth + 1)
+	}
+	if node.kind == .ident {
+		if owner := tc.visible_binding_storage_key(node.value) {
+			if source := tc.fn_context.bool_condition_exprs[owner] {
+				return tc.condition_refines_type_of_key(source, key, depth + 1)
+			}
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) none_guard_fallthrough_unwraps_in_layer(id flat.NodeId, key string, stop_at_refinement bool) bool {
 	if key.len == 0 || !valid_string_data(key) {
 		return false
 	}
@@ -897,6 +926,26 @@ fn (tc &TypeChecker) none_guard_fallthrough_unwraps(id flat.NodeId, key string) 
 				}
 				if tc.subtree_assigns_key(sibling_id, key) {
 					return false
+				}
+			}
+		}
+		if stop_at_refinement && parent.kind == .if_expr && parent.children_count >= 2
+			&& tc.a.child(parent, 0) != current
+			&& tc.condition_refines_type_of_key(tc.a.child(parent, 0), key, 0) {
+			return false
+		}
+		if stop_at_refinement && parent.kind == .match_stmt && parent.children_count > 0
+			&& tc.a.child(parent, 0) != current
+			&& tc.expr_key_matches(tc.a.child(parent, 0), key) {
+			for i in 1 .. parent.children_count {
+				branch := tc.a.child_node(parent, i)
+				if branch.kind != .match_branch || branch.value == 'else' {
+					continue
+				}
+				for j in 0 .. branch.value.int() {
+					if tc.match_type_pattern(tc.a.child_node(branch, j)) != none {
+						return false
+					}
 				}
 			}
 		}
@@ -17682,9 +17731,9 @@ fn (tc &TypeChecker) smartcast_type_miss(id flat.NodeId, parsed bool, state u32)
 	if typ := tc.smartcasts[key] {
 		if tc.comptime_static_depth > 0 && tc.cur_comptime_variant_loop_vars.len > 0 {
 			// A reflected option payload must retain lexical none-guard unwrapping.
-			// The lexical walk also stops at writes to the original binding.
+			// Writes and later type refinements end the current guard's option layer.
 			concrete := unalias_type(typ)
-			if concrete is OptionType && tc.none_guard_fallthrough_unwraps(id, key) {
+			if concrete is OptionType && tc.none_guard_fallthrough_unwraps_in_layer(id, key, true) {
 				return *concrete.base_type
 			}
 		}

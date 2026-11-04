@@ -8992,6 +8992,7 @@ Conditions using local metadata values are checked after unrolling, when their v
 Matches retain their arm refinements while loop metadata is checked.
 Declaration guards such as `if payload := value` bind the unwrapped payload in their success branch.
 Exiting option guards also unwrap payloads for later statements in the same block.
+Each guard applies to the option layer visible before it.
 
 #### <h4 id="comptime-methods">.methods</h4>
 

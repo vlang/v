@@ -382,6 +382,10 @@ fn main() {
 	assert extract(Choice("text")) == 4
 }'
 	run_variant_review_case('none_guard_fallthrough', source, false)
+	enclosed := source.replace('fn extract', 'fn enabled() bool { return true }\nfn extract').replace('return value\n', 'if enabled() { return value }; return 0\n')
+	run_variant_review_case('none_guard_unrelated_if', enclosed, false)
+	scalar_match := source.replace('return value\n', 'match value { 42 { return value } else { return value } }\n')
+	run_variant_review_case('none_guard_scalar_match', scalar_match, false)
 	check_variant_review_case('invalid_fallthrough_payload', source.replace('return value\n', 'return value.len\n'), true, '`int` has no property `len`')
 	scoped := source.all_before('fn main()').replace('fn extract(value Choice) int', 'fn extract(value Choice, enabled bool) int').replace('if value == none { return 0 }', 'if enabled {\n\t\t\t\t\tif value == none { return 0 }\n\t\t\t\t\tprintln(variant.typ)\n\t\t\t\t}') + 'fn main() { _ = extract(Choice(?int(none)), false) }'
 	check_variant_review_case('conditional_fallthrough_scope', scoped, true, '`?int` as type `int`')
@@ -470,4 +474,37 @@ fn extract() int {
 	return -1
 }
 fn main() { assert extract() == 8 }', false)
+}
+
+fn test_variant_preflight_keeps_option_layers_separate() {
+	source := r'
+type Choice = ?int | string
+fn extract(value ?Choice) int {
+	if value == none { return 0 }
+	$for variant in Choice.variants {
+		if value is variant {
+			$if variant.typ is ?int { return value or { 0 } } $else { return value.len }
+		}
+	}
+	return -1
+}
+fn main() {
+	assert extract(?Choice(none)) == 0
+	assert extract(?Choice(Choice(?int(none)))) == 0
+	assert extract(?Choice(Choice(?int(42)))) == 42
+	assert extract(?Choice(Choice("text"))) == 4
+}'
+	// The base compiler also has native codegen failures for this nested option shape.
+	run_variant_review_case('outer_option_layer', source, true)
+	compound := source.replace('fn extract', 'fn enabled() bool { return true }\nfn extract').replace('if value is variant {', 'if value is variant && enabled() {')
+	run_variant_review_case('outer_option_compound_layer', compound, true)
+	matched := source.replace('if value is variant {\n\t\t\t$if variant.typ is ?int { return value or { 0 } } $else { return value.len }\n\t\t}', '_ = variant.typ\n\t\tmatch value {\n\t\t\t?int { return value or { 0 } }\n\t\t\tstring { return value.len }\n\t\t}')
+	run_variant_review_case('outer_option_match_layer', matched, true)
+	for name, guarded in {
+		'if':    source
+		'match': matched
+	} {
+		run_variant_review_case('inner_option_guard_${name}', guarded.replace('return value or { 0 }', 'if value == none { return 0 }; return value'), true)
+	}
+	check_variant_review_case('inner_option_requires_unwrap', source.replace('return value or { 0 }', 'return value'), true, '`?int` as type `int`')
 }
