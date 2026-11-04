@@ -71,3 +71,50 @@ pub fn contains_rune(s string, r rune) bool {
 	}
 	return false
 }
+
+// fields splits s around each instance of one or more consecutive Unicode
+// (here, ASCII) whitespace characters, returning a slice of the substrings of
+// s or an empty slice if s contains only whitespace. Mirrors Go's strings.Fields.
+pub fn fields(s string) []string {
+	mut out := []string{}
+	mut start := -1
+	for i, c in s {
+		if c.is_space() {
+			if start >= 0 {
+				out << s[start..i]
+				start = -1
+			}
+		} else {
+			if start < 0 {
+				start = i
+			}
+		}
+	}
+	if start >= 0 {
+		out << s[start..]
+	}
+	return out
+}
+
+// fields_func splits s at each run of code points c satisfying f(c), returning
+// a slice of substrings of s. Mirrors Go's strings.FieldsFunc.
+pub fn fields_func(s string, f fn (rune) bool) []string {
+	mut out := []string{}
+	mut start := -1
+	for i, c in s {
+		if f(c) {
+			if start >= 0 {
+				out << s[start..i]
+				start = -1
+			}
+		} else {
+			if start < 0 {
+				start = i
+			}
+		}
+	}
+	if start >= 0 {
+		out << s[start..]
+	}
+	return out
+}
