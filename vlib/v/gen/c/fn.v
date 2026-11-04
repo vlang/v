@@ -958,15 +958,48 @@ fn (g &FlatGen) top_level_file_module_name(file_node flat.Node) string {
 }
 
 fn (mut g FlatGen) gen_top_level_asm() {
+	mut program_files := map[string]bool{}
 	for file_idx in g.top_level_nodes() {
 		file_node := g.a.nodes[file_idx]
 		if file_node.kind != .file {
 			continue
 		}
+		if g.cache_split {
+			if !g.has_top_level_asm(flat.NodeId(file_idx)) {
+				continue
+			}
+			module_name := g.top_level_file_module_name(file_node)
+			is_program := module_name in ['', 'main'] || g.test_files[file_node.value]
+				|| g.file_is_cache_program_file(file_node.value, mut program_files)
+			if g.program_body_only && !is_program {
+				continue
+			}
+			owner := if is_program { 'main' } else { module_name }
+			// Keep conditional wrappers and their assembly in the same owning unit.
+			g.writeln('/* V3CACHE_MODULE ${owner} */')
+		}
 		for i in 0 .. file_node.children_count {
 			g.gen_top_level_asm_node(g.a.child(&file_node, i))
 		}
 	}
+}
+
+fn (g &FlatGen) has_top_level_asm(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind == .asm_stmt {
+		return true
+	}
+	if node.kind in [.file, .block, .comptime_if] {
+		for i in 0 .. node.children_count {
+			if g.has_top_level_asm(g.a.child(&node, i)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (mut g FlatGen) gen_top_level_asm_node(id flat.NodeId) {
