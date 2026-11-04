@@ -23422,7 +23422,7 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 			tc.check_comptime_static_deferred_metadata_if(node, var_name, loop_kind, field_cases, value_cases)
 			return
 		}
-		tc.check_comptime_static_metadata_if(id, node, var_name, loop_kind, field_cases, value_cases)
+		tc.check_comptime_static_metadata_if(node, var_name, loop_kind, field_cases, value_cases)
 		return
 	}
 	if node.kind == .defer_stmt && loop_kind == 'fields'

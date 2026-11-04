@@ -1,7 +1,6 @@
 module transform
 
 import os
-import strconv
 import time
 import v.flat
 import v.errors
@@ -23193,15 +23192,6 @@ fn comptime_const_int_value(raw string) ?int {
 				left % right
 			}
 		}
-	}
-	literal_start := if clean[0] in [`+`, `-`] { 1 } else { 0 }
-	if literal_start < clean.len && clean[literal_start].is_digit() && clean.contains('_') {
-		return comptime_const_int_value(clean.replace('_', ''))
-	}
-	if clean.starts_with('0b') || clean.starts_with('0B') || clean.starts_with('0o')
-		|| clean.starts_with('0O') {
-		value := strconv.parse_int(clean.replace('_', ''), util.v_literal_parse_base(clean), 64) or { return none }
-		return int(value)
 	}
 	if clean.starts_with('0x') || clean.starts_with('0X') {
 		mut value := 0

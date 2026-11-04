@@ -68,7 +68,7 @@ fn (mut tc TypeChecker) initialize_unknown_pointer_binding(owner ScopeBindingOwn
 	}
 }
 
-fn (mut tc TypeChecker) check_comptime_static_metadata_if(id flat.NodeId, node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
+fn (mut tc TypeChecker) check_comptime_static_metadata_if(node flat.Node, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
 	if loop_kind == 'values' {
 		tc.check_comptime_static_value_metadata_if(node, var_name, loop_kind, field_cases, value_cases)
 		return
@@ -82,18 +82,14 @@ fn (mut tc TypeChecker) check_comptime_static_metadata_if(id flat.NodeId, node f
 	mut then_cases := []ComptimeStaticFieldCase{}
 	mut else_cases := []ComptimeStaticFieldCase{}
 	for f in field_cases.cases {
-		mut cond := if loop_kind == 'variants' {
+		cond := if loop_kind == 'variants' {
 			tc.comptime_static_subst_variant_cond(node.value, var_name, f)
 		} else {
 			tc.comptime_static_subst_field_cond(node.value, var_name, f)
 		}
 		if loop_kind == 'variants' && tc.comptime_static_condition_needs_value(cond) {
-			// Immutable metadata aliases already have a value in this concrete pass.
-			resolved := tc.comptime_static_variant_local_condition(node.value, id, var_name, f) or { continue }
-			cond = tc.comptime_static_subst_variant_cond(resolved, var_name, f)
-			if tc.comptime_static_condition_needs_value(cond) {
-				continue
-			}
+			// Earlier declarations are evaluated while the concrete loop body is unrolled.
+			continue
 		}
 		if comptime_text_references_var(cond, var_name) {
 			then_cases << f
@@ -1085,104 +1081,6 @@ fn (tc &TypeChecker) comptime_static_condition_needs_value(cond string) bool {
 		}
 	}
 	return false
-}
-
-// comptime_static_variant_local_condition resolves immutable local operands without guessing
-// the value of a binding that still requires unrolling.
-fn (tc &TypeChecker) comptime_static_variant_local_condition(cond string, id flat.NodeId, var_name string, variant ComptimeStaticFieldCase) ?string {
-	if cond.contains(' is ') || cond.contains(' !is ') {
-		clean := comptime_condition_strip_outer_parens(trimmed_space(cond))
-		for op in ['||', '&&'] {
-			idx := comptime_condition_top_level_index(clean, op)
-			if idx >= 0 {
-				left := tc.comptime_static_variant_local_condition(clean[..idx], id, var_name, variant) or { return none }
-				right := tc.comptime_static_variant_local_condition(clean[idx + op.len..], id, var_name, variant) or { return none }
-				return '(${left}) ${op} (${right})'
-			}
-		}
-		if clean.starts_with('!') {
-			inner := tc.comptime_static_variant_local_condition(clean[1..], id, var_name, variant) or { return none }
-			return '!(${inner})'
-		}
-		return cond
-	}
-	mut out := strings.new_builder(cond.len)
-	mut i := 0
-	for i < cond.len {
-		if cond[i] in [`'`, `"`, `\``] {
-			end := comptime_cond_skip_string(cond, i)
-			out.write_string(cond[i..end])
-			i = end
-			continue
-		}
-		end := comptime_condition_name_end(cond, i)
-		if end > i {
-			name := cond[i..end]
-			if name != var_name && tc.non_file_scope_type(name) != none {
-				if trimmed_space(cond[end..]).starts_with('.') {
-					return none
-				}
-				initializer := tc.comptime_local_initializer(name, id) or { return none }
-				loop_id := tc.comptime_static_variant_loop(id, var_name)
-				value := tc.comptime_static_variant_local_value(initializer, var_name, variant, loop_id, 0) or { return none }
-				out.write_string(value)
-			} else {
-				out.write_string(name)
-			}
-			i = end
-		} else {
-			out.write_u8(cond[i])
-			i++
-		}
-	}
-	return out.str()
-}
-
-fn (tc &TypeChecker) comptime_static_variant_loop(id flat.NodeId, var_name string) flat.NodeId {
-	mut parent := tc.direct_parent_id(id)
-	for tc.valid_node_id(parent) {
-		node := tc.a.node(parent)
-		if node.kind == .comptime_for && comptime_for_declares_var_in_value(node.value, var_name) {
-			return parent
-		}
-		parent = tc.direct_parent_id(parent)
-	}
-	return flat.empty_node
-}
-
-fn (tc &TypeChecker) comptime_static_variant_local_value(id flat.NodeId, var_name string, variant ComptimeStaticFieldCase, loop_id flat.NodeId, depth int) ?string {
-	if depth > 32 || !tc.valid_node_id(id) {
-		return none
-	}
-	node := tc.a.node(id)
-	if node.kind == .int_literal {
-		value := strconv.parse_int(node.value.replace('_', ''), util.v_literal_parse_base(node.value), 64) or { return none }
-		return value.str()
-	}
-	if node.kind == .bool_literal {
-		return node.value
-	}
-	if node.kind == .string_literal {
-		if node.children_count != 0 {
-			return none
-		}
-		return comptime_static_string_literal(node.value)
-	}
-	if node.kind == .selector && node.value == 'typ' && node.children_count == 1 {
-		base := tc.a.child_node(node, 0)
-		if base.kind == .ident && base.value == var_name && int(loop_id) >= 0
-			&& tc.comptime_static_variant_loop(id, var_name) == loop_id {
-			return tc.comptime_static_variant_type_index(variant.typ).str()
-		}
-	}
-	if node.kind == .paren && node.children_count == 1 {
-		return tc.comptime_static_variant_local_value(tc.a.child(node, 0), var_name, variant, loop_id, depth + 1)
-	}
-	if node.kind == .ident {
-		initializer := tc.comptime_local_initializer(node.value, id) or { return none }
-		return tc.comptime_static_variant_local_value(initializer, var_name, variant, loop_id, depth + 1)
-	}
-	return none
 }
 
 // comptime_static_variant_type_index follows reflected metadata's wrapper normalization.
@@ -2332,20 +2230,9 @@ fn (mut tc TypeChecker) comptime_static_eval_field_cond(cond string) ?bool {
 	for op in [' != ', ' == '] {
 		op_idx := comptime_condition_top_level_index(clean, op)
 		if op_idx >= 0 {
-			left_text := comptime_condition_strip_outer_parens(trimmed_space(clean[..op_idx]))
-			right_text := comptime_condition_strip_outer_parens(trimmed_space(clean[op_idx + op.len..]))
-			left := comptime_static_unquote(left_text)
-			right := comptime_static_unquote(right_text)
-			mut eq := left == right
-			if !eq && left_text.len > 0 && right_text.len > 0
-				&& (left_text[0].is_digit() || left_text[0] in [`+`, `-`])
-				&& (right_text[0].is_digit() || right_text[0] in [`+`, `-`]) {
-				if l := strconv.parse_int(left_text.replace('_', ''), util.v_literal_parse_base(left_text), 64) {
-					if r := strconv.parse_int(right_text.replace('_', ''), util.v_literal_parse_base(right_text), 64) {
-						eq = l == r
-					}
-				}
-			}
+			left := comptime_static_unquote(trimmed_space(clean[..op_idx]))
+			right := comptime_static_unquote(trimmed_space(clean[op_idx + op.len..]))
+			eq := left == right
 			return if op == ' == ' { eq } else { !eq }
 		}
 	}
