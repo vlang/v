@@ -112,6 +112,14 @@ From the repository root, run:
 ./v run ci/macos_ci.vsh ci
 ```
 
+On macOS, every invocation first runs `vlib/v/util/machosign/macho_sign_test.v`
+with the workflow's compiler flags and compatibility fallback disabled. This fresh
+check runs even when resuming past `self_tests`, ignores test file/function filters,
+and does not reuse successful test records. It requires an executable TinyCC in the
+compiler checkout; run `make` to install it if missing. A signing failure stops CI
+without changing existing progress. The check covers unsigned fixture verification,
+execution after signing, strict `codesign` verification, repeated signing and shrinking.
+
 The `ci` command saves the current **CI task** before executing it. After a failure,
 fix the code and run the same command again: previously completed tasks are skipped,
 and the failed task is retried before proceeding with the remaining tasks.
@@ -197,7 +205,9 @@ Set `VEXE` to an absolute compiler path to use a different V executable. The tes
 compiles the real runner, then replaces its task subprocesses through `V_CI_VEXE`
 with a small shell fixture. It tests failures, retries, successful cleanup, reset,
 invalid checkpoints, checkout isolation, checkpoint write failures and fail-fast
-environment propagation. It also compiles the real `test-cleancode` tool and runs it
+environment propagation. On macOS it also checks that signing runs before every
+resume despite test filters, and that signing failures or missing TinyCC stop CI
+without advancing progress. It also compiles the real `test-cleancode` tool and runs it
 against a tiny checkout with mocked vet/fmt commands, checking both fail-fast and
 normal session sequencing. The real `v test` runner is exercised with mocked test
 compilation/execution to check per-file retries after compile and runtime failures,
