@@ -591,10 +591,13 @@ pub fn (db &DB) journal_mode(journal_mode JournalMode) ! {
 
 @[params]
 pub struct Sqlite3TransactionParam {
+pub:
 	transaction_level Sqlite3TransactionLevel = .deferred
 }
 
-// begin begins a new transaction.
+// begin begins a new transaction, `.deferred` by default.
+// `.immediate` and `.exclusive` take the write lock when the transaction starts,
+// instead of at its first write (see https://www.sqlite.org/lang_transaction.html).
 pub fn (mut db DB) begin(param Sqlite3TransactionParam) ! {
 	mut sql_stmt := 'BEGIN '
 	match param.transaction_level {
