@@ -3372,7 +3372,10 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 	}
 	mut small_compile_flags := c_object_compile_flags(c_flag_plan.before_inputs)
 	small_compile_flags << c_object_compile_flags(c_flag_plan.after_inputs)
-	mut pool := workers.new(job_count)
+	// The workers mostly wait for C compiler processes, so the scoped -prealloc stage
+	// cap (limit_pool_size: 3 workers on macOS) must not apply; it halved the
+	// compile parallelism. Pool.run also lets the calling thread take tasks.
+	mut pool := workers.new_subprocess_pool(job_count - 1)
 	owner_source := v3_parallel_c_unit_source('', prefix, true, is_shared)
 	hazards, owner_names := v3_parallel_c_check_native_code(c_compiler, small_compile_flags,
 		objective_c, header_path, quoted_includes.len > 0, owner_source, parts, is_shared, mut pool)

@@ -20,3 +20,13 @@ fn test_pool_size_limit_is_process_local_and_only_lowers_future_pool_sizes() {
 	assert pool.stats().launch_attempts == 2
 	pool.close()
 }
+
+fn test_subprocess_pool_ignores_the_pool_size_limit() {
+	limit_pool_size(2)
+	mut limited := new(5)
+	assert limited.stats().launch_attempts == 2
+	limited.close()
+	mut subprocess := new_subprocess_pool(5)
+	assert subprocess.stats().launch_attempts == 5
+	subprocess.close()
+}
