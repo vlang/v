@@ -127,6 +127,9 @@ mut:
 	values_info []ValueInfo
 	checker_idx int // checker_idx is the current index of the decoder.
 	current_idx int // current_idx is the index in values_info of the value that is decoded next.
+	// checker_depth is the nesting depth reached by the current check_array/
+	// check_object call chain; see max_nesting_depth in check.v.
+	checker_depth int
 }
 
 // no_value_idx is the index of a value that is not there, such as the `_type` of an
