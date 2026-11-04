@@ -209,7 +209,7 @@ fn (mut c Context) execute(args []string) ! {
 	for id in ids {
 		// each requested flow is its own pass, so `clean run` rechecks build
 		mut pass := Pass{}
-		c.visit(id, mut pass)!
+		c.visit(id, [], mut pass)!
 	}
 }
 
@@ -350,14 +350,16 @@ enum FlowState {
 struct Pass {
 mut:
 	state    map[string]FlowState
-	stack    []string            // the active flows, outermost first
-	deferred map[string][]string // post hooks waiting for an active flow
+	stack    []string              // the active flows, outermost first
+	deferred map[string][][]string // hook sequences waiting for an active flow
 }
 
-// visit runs a flow and everything it needs, at most once per pass.
-fn (c &Context) visit(id string, mut pass Pass) ! {
+// visit runs a flow and everything it needs, at most once per pass, then the
+// hooks in `then`, which come after its post hooks.
+fn (c &Context) visit(id string, then []string, mut pass Pass) ! {
 	match pass.state[id] {
 		.ran, .done {
+			c.sequence(then, mut pass)!
 			return
 		}
 		.active {
@@ -375,30 +377,34 @@ fn (c &Context) visit(id string, mut pass Pass) ! {
 	// own post hooks, run instead of waiting for the post hooks to finish
 	pass.state[id] = .ran
 	// hooks of earlier flows first, as they were waiting for this body only
-	deferred := pass.deferred[id] or { []string{} }
+	deferred := pass.deferred[id] or { [][]string{} }
 	pass.deferred.delete(id)
-	for hook in deferred {
-		c.visit(hook, mut pass)!
+	for hooks in deferred {
+		c.sequence(hooks, mut pass)!
 	}
-	for hook in post {
-		c.post(hook, mut pass)!
-	}
+	c.sequence(arrays_concat(post, then), mut pass)!
 	pass.state[id] = .done
 }
 
-// post runs a post hook, unless it needs a flow whose body has not run yet, like
-// the flow that pulled in the hook's owner. It then waits for that body.
-fn (c &Context) post(id string, mut pass Pass) ! {
-	mut seen := map[string]bool{}
-	waits := c.first_active(id, pass, mut seen)
-	if waits < 0 {
-		c.visit(id, mut pass)!
+// sequence runs hooks in order, each with its own post hooks before the next.
+// A hook needing a flow whose body has not run yet, like the flow that pulled
+// in the hook's owner, waits for that body, and the hooks after it wait too.
+fn (c &Context) sequence(hooks []string, mut pass Pass) ! {
+	if hooks.len == 0 {
 		return
 	}
+	mut seen := map[string]bool{}
+	waits := c.first_active(hooks[0], pass, mut seen)
+	if waits < 0 {
+		c.visit(hooks[0], hooks[1..], mut pass)!
+		return
+	}
+	// queued as a whole and checked again once that body has run, as a later
+	// hook may need a flow further out
 	owner := pass.stack[waits]
-	mut hooks := pass.deferred[owner] or { []string{} }
-	hooks << id
-	pass.deferred[owner] = hooks
+	mut queued := pass.deferred[owner] or { [][]string{} }
+	queued << hooks
+	pass.deferred[owner] = queued
 }
 
 // first_active returns the stack index of the outermost active flow that `id`
@@ -426,10 +432,10 @@ fn (c &Context) first_active(id string, pass &Pass, mut seen map[string]bool) in
 // active, and returns the post hooks to schedule once its outputs are ready.
 fn (c &Context) run(f Flow, mut pass Pass) ![]string {
 	for hook in f.pre.filter(it.required) {
-		c.visit(hook.id, mut pass)!
+		c.visit(hook.id, [], mut pass)!
 	}
 	for dep in c.producers(f) {
-		c.visit(dep, mut pass)!
+		c.visit(dep, [], mut pass)!
 	}
 	// checked here and not earlier: a required pre hook or a dependency may
 	// have just removed or rebuilt the outputs
@@ -444,7 +450,7 @@ fn (c &Context) run(f Flow, mut pass Pass) ![]string {
 		return f.post.filter(it.required).map(it.id)
 	}
 	for hook in f.pre.filter(!it.required) {
-		c.visit(hook.id, mut pass)!
+		c.visit(hook.id, [], mut pass)!
 	}
 	println('>> ${f.display_name()}')
 	if f.check != .none {

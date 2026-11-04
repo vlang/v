@@ -21,6 +21,38 @@ fn set_mtime(path string, offset i64) {
 	os.utime(path, int(stamp), int(stamp)) or { panic(err) }
 }
 
+// record is a flow body that reads the inputs, creates the outputs and appends
+// the flow id to `log`, so that a test can check the order flows ran in.
+// Directories are left to the test.
+fn record(f Flow) ! {
+	for path in f.takes {
+		if !os.is_dir(path) {
+			os.read_file(path)!
+		}
+	}
+	for path in f.gives {
+		if !os.is_dir(path) {
+			os.write_file(path, f.id)!
+		}
+	}
+	os.write_file('log', (os.read_file('log') or { '' }) + '${f.id} ')!
+}
+
+// hook is a hook on the flow `id`, left out when its owner is skipped.
+fn hook(id string) FlowDep {
+	return FlowDep{
+		id: id
+	}
+}
+
+// required is a hook on the flow `id` that always runs.
+fn required(id string) FlowDep {
+	return FlowDep{
+		id:       id
+		required: true
+	}
+}
+
 // test_paths_overlap covers equal, nested and merely similar paths.
 fn test_paths_overlap() {
 	assert paths_overlap('src', 'src')
@@ -106,6 +138,76 @@ fn test_no_outputs_is_never_up_to_date() {
 	assert !is_up_to_date(Flow{ ...f, gives: [] })
 }
 
+// test_hash_skip_needs_outputs_and_inputs checks that, like an mtime flow, a
+// hash flow without outputs or with an input missing is never skipped.
+fn test_hash_skip_needs_outputs_and_inputs() {
+	sandbox('hash_needs')
+	os.write_file('src', '')!
+	os.write_file('out', '')!
+	f := Flow{
+		id:    'h'
+		takes: ['src']
+		gives: ['out']
+		check: .hash
+		flow:  noop
+	}
+	c := new()
+	digest := c.digest(f)
+	os.mkdir_all(os.dir(stamp_path(f)))!
+	os.write_file(stamp_path(f), digest)!
+	assert is_unchanged(f, digest)
+	assert !is_unchanged(Flow{ ...f, gives: [] }, digest)
+	os.rm('src')!
+	assert !is_unchanged(f, digest)
+}
+
+// test_walks_do_not_follow_links checks that a link loop in an input directory
+// cannot trap the skip checks, which take a dangling link as an entry like any
+// other.
+fn test_walks_do_not_follow_links() {
+	sandbox('links')
+	os.mkdir_all('src')!
+	os.write_file('src/a.v', '')!
+	os.symlink('.', 'src/loop')!
+	os.symlink('nowhere', 'src/dangling')!
+	os.write_file('out', '')!
+	set_mtime('src/a.v', -100)
+	set_mtime('src', -100)
+	set_mtime('out', -50)
+	f := Flow{
+		id:    'f'
+		takes: ['src']
+		gives: ['out']
+		flow:  noop
+	}
+	assert is_up_to_date(f)
+	c := new()
+	digest := c.digest(f)
+	assert c.digest(f) == digest
+	os.rm('src/dangling')!
+	assert c.digest(f) != digest
+}
+
+// test_remove_deletes_links_not_their_targets checks that removing a target
+// never reaches through a link, even one inside a removed directory, and that a
+// missing path is not an error.
+fn test_remove_deletes_links_not_their_targets() {
+	sandbox('remove')
+	os.mkdir_all('keep/sub')!
+	os.write_file('keep/sub/file', '')!
+	os.mkdir_all('dir')!
+	os.symlink('../keep', 'dir/link')!
+	os.symlink('keep', 'link')!
+	os.symlink('nowhere', 'dangling')!
+	os.write_file('file', '')!
+	for path in ['dir', 'link', 'dangling', 'file', 'missing'] {
+		remove(path)!
+	}
+	assert os.exists('keep/sub/file')
+	assert !os.exists('dir') && !os.exists('file')
+	assert !os.is_link('link') && !os.is_link('dangling')
+}
+
 // test_cycle_is_rejected checks that implicit dependency cycles are errors.
 fn test_cycle_is_rejected() {
 	mut c := new()
@@ -130,6 +232,83 @@ fn test_unknown_flow_and_hook_are_rejected() {
 		}
 	}
 	assert false
+}
+
+// test_pre_hook_cycle_is_rejected checks that cycles running through pre hooks,
+// required or not, are errors like those through implicit dependencies.
+fn test_pre_hook_cycle_is_rejected() {
+	mut c := new()
+	c.add_flow(id: 'a', pre: [hook('b')], check: .none, flow: noop)
+	c.add_flow(id: 'b', takes: ['x'], check: .none, flow: noop)
+	c.add_flow(id: 'c', gives: ['x'], pre: [required('a')], check: .none, flow: noop)
+	c.execute(['a']) or {
+		assert err.msg().contains('cycle')
+		return
+	}
+	assert false
+}
+
+// test_flow_taking_its_own_output_is_not_a_cycle checks that a flow rewriting a
+// file in place does not depend on itself.
+fn test_flow_taking_its_own_output_is_not_a_cycle() {
+	sandbox('in_place')
+	os.write_file('main.v', '')!
+	mut c := new()
+	c.add_flow(id: 'fmt', takes: ['main.v'], gives: ['main.v'], check: .none, flow: record)
+	c.execute(['fmt'])!
+	assert os.read_file('log')! == 'fmt '
+}
+
+// test_mistakes_are_reported_before_any_flow_runs checks that an unknown flow,
+// whether requested or named as a hook anywhere in the script, stops the build
+// before anything ran.
+fn test_mistakes_are_reported_before_any_flow_runs() {
+	sandbox('validate_first')
+	mut c := new()
+	c.add_flow(id: 'ok', check: .none, flow: record)
+	mut msg := ''
+	c.execute(['ok', 'nope']) or { msg = err.msg() }
+	assert msg.contains('`nope`')
+	c.add_flow(id: 'typo', check: .none, post: [hook('missing')], flow: record)
+	msg = ''
+	c.execute(['ok']) or { msg = err.msg() }
+	assert msg.contains('`missing`')
+	assert !os.exists('log')
+}
+
+// test_default_flows checks that flags alone run the default flows, and that a
+// build with nothing to run is an error.
+fn test_default_flows() {
+	sandbox('defaults')
+	mut c := new()
+	c.add_flow(
+		id:    'b'
+		check: .none
+		flags: [Flag{
+			id: 'fast'
+		}]
+		flow:  fn (f Flow) ! {
+			os.write_file('fast', f.flag('fast').str())!
+		}
+	)
+	mut msg := ''
+	c.execute([]) or { msg = err.msg() }
+	assert msg == 'no flow given and no default flow set'
+	c.default(['b'])
+	c.execute(['--fast'])!
+	assert os.read_file('fast')! == 'true'
+	c.execute([])!
+	assert os.read_file('fast')! == 'false'
+}
+
+// test_help_flow_replaces_the_help checks that a flow called help runs instead
+// of the generated help.
+fn test_help_flow_replaces_the_help() {
+	sandbox('help_flow')
+	mut c := new()
+	c.add_flow(id: 'help', check: .none, flow: record)
+	c.execute(['help'])!
+	assert os.read_file('log')! == 'help '
 }
 
 // test_missing_output_fails_the_flow checks gives are verified after a run.
@@ -190,6 +369,26 @@ fn test_check_v_modules() {
 	os.mkdir_all('modules/local')!
 	os.write_file('modules/local/local.v', 'module local')!
 	assert check_v_modules(['local'])
+}
+
+// test_check_system_c_links_uses_cc checks that $CC runs with its arguments,
+// and that a missing one fails the check rather than falling back to another.
+fn test_check_system_c_links_uses_cc() {
+	old := os.getenv_opt('CC')
+	defer {
+		if value := old {
+			os.setenv('CC', value, true)
+		} else {
+			os.unsetenv('CC')
+		}
+	}
+	// stand-ins for a compiler, succeeding or failing whatever they are given
+	os.setenv('CC', 'sh -c true', true)
+	assert check_system_c_links(['imp_no_such_header.h'])
+	os.setenv('CC', 'sh -c false', true)
+	assert !check_system_c_links(['stdio.h'])
+	os.setenv('CC', 'imp_no_such_cc', true)
+	assert !check_system_c_links(['stdio.h'])
 }
 
 // script is the build script of the end to end test.
@@ -413,6 +612,65 @@ fn test_end_to_end() {
 	assert bad.output.contains('unknown flow `nope`')
 }
 
+// mistakes_script is a build script whose mistakes only show when it runs. The
+// mistake to make is picked with the IMP_MISTAKE environment variable.
+const mistakes_script = "import x.imp
+
+mut ctx := imp.new()
+ctx.add_target('app')
+ctx.add_flow(id: 'docs', name: 'Docs', help: 'write the docs', check: .none, flow: fn (self imp.Flow) ! {})
+ctx.add_flow(id: 'talk', check: .none, flags: [imp.Flag{id: 'quiet'}], flow: fn (self imp.Flow) ! {})
+ctx.add_flow(
+	id:    'sneaky'
+	check: .none
+	flow:  fn (self imp.Flow) ! {
+		println(self.flag('quiet'))
+	}
+)
+match getenv('IMP_MISTAKE') {
+	'duplicate' { ctx.add_flow(id: 'docs', check: .none, flow: fn (self imp.Flow) ! {}) }
+	'targets' { ctx.add_target('lib') }
+	else {}
+}
+ctx.add_auto_flow(.run)
+ctx.default(['docs'])
+ctx.flow()
+"
+
+// test_script_mistakes_are_reported checks the messages a build script gets for
+// its mistakes, and that the names and help of its flows reach the user.
+fn test_script_mistakes_are_reported() {
+	sandbox('mistakes')
+	os.write_file('build.vsh', mistakes_script)!
+	// compiling a .vsh also runs it, which runs the default flow
+	res := os.exec([@VEXE, '-o', 'build', 'build.vsh'])
+	assert res.exit_code == 0, res.output
+	defer {
+		os.unsetenv('IMP_MISTAKE')
+	}
+	build := fn (mistake string, args ...string) os.Result {
+		os.setenv('IMP_MISTAKE', mistake, true)
+		mut argv := ['./build']
+		argv << args
+		return os.exec(argv)
+	}
+	assert build('').output.trim_space() == '>> Docs'
+	for help in ['help', '-h', '--help'] {
+		assert build('', help).output.contains('Docs [docs]  write the docs (default)')
+	}
+	sneaky := build('', 'sneaky')
+	assert sneaky.exit_code != 0
+	assert sneaky.output.contains('imp: flow `sneaky` did not declare flag `quiet`')
+	duplicate := build('duplicate')
+	assert duplicate.exit_code != 0
+	assert duplicate.output.contains('imp: duplicate flow id `docs`')
+	targets := build('targets')
+	assert targets.exit_code != 0
+	assert targets.output.contains('imp: the run flow needs exactly one target, got 2')
+	// the auto flows are made before any flow runs
+	assert !targets.output.contains('>> Docs')
+}
+
 // test_failed_mtime_flow_reruns checks partial outputs of a failure are not
 // taken as up to date, although they are newer than the inputs.
 fn test_failed_mtime_flow_reruns() {
@@ -440,6 +698,132 @@ fn test_failed_mtime_flow_reruns() {
 	assert os.read_file('out')! == 'done'
 	// success clears the mark, so the flow can be skipped again
 	assert is_up_to_date(c.find('build')!) && !os.exists(dirty_path(c.find('build')!))
+}
+
+// test_flag_of_another_flow_does_not_defeat_a_skip checks that a set flag only
+// makes the flows declaring it run, whatever their check.
+fn test_flag_of_another_flow_does_not_defeat_a_skip() {
+	sandbox('other_flag')
+	os.write_file('src', '')!
+	os.write_file('out', '')!
+	set_mtime('src', -100)
+	set_mtime('out', -50)
+	mut c := new()
+	c.add_flow(id: 'timed', takes: ['src'], gives: ['out'], flow: record)
+	c.add_flow(id: 'hashed', takes: ['src'], gives: ['hashed.out'], check: .hash, flow: record)
+	c.add_flow(
+		id:    'other'
+		check: .none
+		flags: [Flag{
+			id: 'fast'
+		}]
+		flow:  noop
+	)
+	c.execute(['hashed'])!
+	c.execute(['timed', 'hashed', '--fast'])!
+	assert os.read_file('log')! == 'hashed '
+}
+
+// test_hash_flow_reruns_when_a_script_flag_changes checks that the flags of the
+// script are part of the digest, as any flow may read them.
+fn test_hash_flow_reruns_when_a_script_flag_changes() {
+	sandbox('script_flag_hash')
+	os.write_file('src', '')!
+	mut c := new()
+	// declared as a build script would; the test binary was not given it
+	assert !c.flag(id: 'android')
+	c.add_flow(id: 'h', takes: ['src'], gives: ['h.out'], check: .hash, flow: record)
+	for args in [['h'], ['h'], ['h', '--android'], ['h', '--android'], ['h']] {
+		c.execute(args)!
+	}
+	assert os.read_file('log')! == 'h h h '
+}
+
+// test_hash_check_ignores_rewrites_with_the_same_content checks what hash checks
+// are for: an input rewritten with the same content lets a hash flow skip, while
+// an mtime flow sees a newer input.
+fn test_hash_check_ignores_rewrites_with_the_same_content() {
+	sandbox('rewrite')
+	mut c := new()
+	c.add_flow(
+		id:    'gen'
+		gives: ['gen.txt']
+		check: .none
+		flow:  fn (_ Flow) ! {
+			os.write_file('gen.txt', 'same')!
+		}
+	)
+	c.add_flow(id: 'hashed', takes: ['gen.txt'], gives: ['hashed.out'], check: .hash, flow: record)
+	c.add_flow(id: 'timed', takes: ['gen.txt'], gives: ['timed.out'], flow: record)
+	for _ in 0 .. 2 {
+		c.execute(['hashed', 'timed'])!
+	}
+	assert os.read_file('log')! == 'hashed timed timed '
+}
+
+// test_hash_flow_reruns_when_an_input_is_renamed checks that the digest covers
+// the paths of the inputs, not only their contents.
+fn test_hash_flow_reruns_when_an_input_is_renamed() {
+	sandbox('rename')
+	os.mkdir_all('data')!
+	os.write_file('data/a', '1')!
+	mut c := new()
+	c.add_flow(id: 'h', takes: ['data'], gives: ['h.out'], check: .hash, flow: record)
+	c.execute(['h'])!
+	os.rename('data/a', 'data/b')!
+	c.execute(['h'])!
+	c.execute(['h'])!
+	assert os.read_file('log')! == 'h h '
+}
+
+// test_shared_dependency_runs_once_per_pass checks that a flow needed twice runs
+// once, while each requested flow is a pass of its own.
+fn test_shared_dependency_runs_once_per_pass() {
+	sandbox('diamond')
+	mut c := new()
+	c.add_flow(id: 'gen', gives: ['gen.txt'], check: .none, flow: record)
+	c.add_flow(id: 'left', takes: ['gen.txt'], gives: ['l.txt'], check: .none, flow: record)
+	c.add_flow(id: 'right', takes: ['gen.txt'], gives: ['r.txt'], check: .none, flow: record)
+	c.add_flow(id: 'top', takes: ['l.txt', 'r.txt'], check: .none, flow: record)
+	c.execute(['top'])!
+	assert os.read_file('log')! == 'gen left right top '
+	os.rm('log')!
+	c.execute(['left', 'right'])!
+	assert os.read_file('log')! == 'gen left gen right '
+}
+
+// test_pre_hooks_and_dependencies_run_in_order checks that a flow runs its
+// required pre hooks, then its dependencies, then its other pre hooks, each in
+// the declared order.
+fn test_pre_hooks_and_dependencies_run_in_order() {
+	sandbox('pre_order')
+	mut c := new()
+	c.add_flow(
+		id:    'top'
+		takes: ['dep.txt']
+		check: .none
+		pre:   [hook('opt1'), required('req1'), hook('opt2'), required('req2')]
+		flow:  record
+	)
+	c.add_flow(id: 'dep', gives: ['dep.txt'], check: .none, flow: record)
+	for id in ['opt1', 'opt2', 'req1', 'req2'] {
+		c.add_flow(id: id, check: .none, flow: record)
+	}
+	c.execute(['top'])!
+	assert os.read_file('log')! == 'req1 req2 dep opt1 opt2 top '
+}
+
+// test_post_hooks_of_a_dependency_run_before_the_dependent checks that the post
+// hooks of a dependency run right after it, when they do not need the flow that
+// pulled it in.
+fn test_post_hooks_of_a_dependency_run_before_the_dependent() {
+	sandbox('post_dep')
+	mut c := new()
+	c.add_flow(id: 'gen', gives: ['gen.txt'], check: .none, post: [hook('note')], flow: record)
+	c.add_flow(id: 'build', takes: ['gen.txt'], check: .none, flow: record)
+	c.add_flow(id: 'note', check: .none, flow: record)
+	c.execute(['build'])!
+	assert os.read_file('log')! == 'gen note build '
 }
 
 // test_post_hook_waits_for_active_producer checks that a post hook needing the
@@ -526,6 +910,237 @@ fn test_post_hooks_keep_order_when_using_owner_output() {
 	assert !os.exists('out')
 }
 
+// test_post_hooks_keep_order_when_waiting_for_active_producer checks that the
+// hooks after a post hook waiting for the flow that pulled in its owner wait as
+// well. A cleanup overtaking the waiting hook would delete the input of that
+// flow.
+fn test_post_hooks_keep_order_when_waiting_for_active_producer() {
+	sandbox('post_wait_order')
+	mut c := new()
+	c.add_flow(
+		id:    'gen'
+		gives: ['gen.txt']
+		check: .none
+		post:  [FlowDep{
+			id: 'audit'
+		}, FlowDep{
+			id: 'clean'
+		}]
+		flow:  record
+	)
+	c.add_flow(id: 'build', takes: ['gen.txt'], gives: ['app.txt'], check: .none, flow: record)
+	c.add_flow(id: 'audit', takes: ['app.txt'], check: .none, flow: record)
+	c.add_flow(
+		id:    'clean'
+		check: .none
+		flow:  fn (f Flow) ! {
+			os.rm('gen.txt')!
+			record(f)!
+		}
+	)
+	c.execute(['build'])!
+	assert os.read_file('log')! == 'gen build audit clean '
+}
+
+// test_post_hooks_keep_order_when_nested_hooks_wait checks that a post hook
+// also comes after the post hooks of the hook before it, when those wait for a
+// flow further out. The cleanup would otherwise delete the input of that flow.
+fn test_post_hooks_keep_order_when_nested_hooks_wait() {
+	sandbox('post_wait_nested')
+	mut c := new()
+	c.add_flow(id: 'pkg', takes: ['app.txt'], gives: ['pkg.txt'], check: .none, flow: record)
+	c.add_flow(id: 'build', takes: ['gen.txt'], gives: ['app.txt'], check: .none, flow: record)
+	c.add_flow(
+		id:    'gen'
+		gives: ['gen.txt']
+		check: .none
+		post:  [FlowDep{
+			id: 'audit'
+		}, FlowDep{
+			id: 'clean'
+		}]
+		flow:  record
+	)
+	c.add_flow(
+		id:    'audit'
+		takes: ['app.txt']
+		check: .none
+		post:  [FlowDep{
+			id: 'report'
+		}]
+		flow:  record
+	)
+	c.add_flow(id: 'report', takes: ['pkg.txt'], check: .none, flow: record)
+	c.add_flow(
+		id:    'clean'
+		check: .none
+		flow:  fn (f Flow) ! {
+			remove('app.txt')!
+			record(f)!
+		}
+	)
+	c.execute(['pkg'])!
+	assert os.read_file('log')! == 'gen build audit pkg report clean '
+}
+
+// test_post_hook_waits_again_for_a_flow_further_out checks that hooks waiting
+// behind another hook are checked again once it ran, as they may need a flow
+// further out than it did.
+fn test_post_hook_waits_again_for_a_flow_further_out() {
+	sandbox('post_wait_again')
+	mut c := new()
+	c.add_flow(id: 'pkg', takes: ['app.txt'], gives: ['pkg.txt'], check: .none, flow: record)
+	c.add_flow(id: 'build', takes: ['gen.txt'], gives: ['app.txt'], check: .none, flow: record)
+	c.add_flow(
+		id:    'gen'
+		gives: ['gen.txt']
+		check: .none
+		post:  [hook('audit'), hook('ship')]
+		flow:  record
+	)
+	c.add_flow(id: 'audit', takes: ['app.txt'], check: .none, flow: record)
+	c.add_flow(id: 'ship', takes: ['pkg.txt'], check: .none, flow: record)
+	c.execute(['pkg'])!
+	assert os.read_file('log')! == 'gen build audit pkg ship '
+}
+
+// test_waiting_hooks_run_before_own_post_hooks checks that hooks waiting for a
+// flow run in the order they began to wait, ahead of the post hooks of that
+// flow, so that its cleanup cannot remove what they read.
+fn test_waiting_hooks_run_before_own_post_hooks() {
+	sandbox('post_queue')
+	mut c := new()
+	c.add_flow(
+		id:    'build'
+		takes: ['a.txt', 'b.txt']
+		gives: ['app.txt']
+		check: .none
+		post:  [hook('tidy')]
+		flow:  record
+	)
+	c.add_flow(id: 'a', gives: ['a.txt'], check: .none, post: [hook('check_a')], flow: record)
+	c.add_flow(id: 'b', gives: ['b.txt'], check: .none, post: [hook('check_b')], flow: record)
+	c.add_flow(id: 'check_a', takes: ['app.txt'], check: .none, flow: record)
+	c.add_flow(id: 'check_b', takes: ['app.txt'], check: .none, flow: record)
+	c.add_flow(
+		id:    'tidy'
+		check: .none
+		flow:  fn (f Flow) ! {
+			os.rm('app.txt')!
+			record(f)!
+		}
+	)
+	c.execute(['build'])!
+	assert os.read_file('log')! == 'a b build check_a check_b tidy '
+}
+
+// test_post_hook_naming_the_pulling_flow_runs_it_once checks that a post hook
+// that is the flow which pulled in its owner does not run again, and that the
+// hooks after it wait for that flow.
+fn test_post_hook_naming_the_pulling_flow_runs_it_once() {
+	sandbox('post_ancestor')
+	mut c := new()
+	c.add_flow(
+		id:    'gen'
+		gives: ['gen.txt']
+		check: .none
+		post:  [hook('build'), hook('clean')]
+		flow:  record
+	)
+	c.add_flow(id: 'build', takes: ['gen.txt'], check: .none, flow: record)
+	c.add_flow(
+		id:    'clean'
+		check: .none
+		flow:  fn (f Flow) ! {
+			os.rm('gen.txt')!
+			record(f)!
+		}
+	)
+	c.execute(['build'])!
+	assert os.read_file('log')! == 'gen build clean '
+	os.rm('log')!
+	// requested on its own, gen runs build as an ordinary post hook
+	c.execute(['gen'])!
+	assert os.read_file('log')! == 'gen build clean '
+}
+
+// test_post_hook_cycle_runs_each_hook_once checks that post hooks naming each
+// other run once per pass, whichever of them is requested.
+fn test_post_hook_cycle_runs_each_hook_once() {
+	sandbox('post_cycle')
+	mut c := new()
+	c.add_flow(id: 'x', check: .none, post: [hook('y')], flow: record)
+	c.add_flow(id: 'y', check: .none, post: [hook('x'), hook('z')], flow: record)
+	c.add_flow(id: 'z', check: .none, flow: record)
+	c.execute(['x'])!
+	assert os.read_file('log')! == 'x y z '
+	os.rm('log')!
+	c.execute(['y'])!
+	assert os.read_file('log')! == 'y x z '
+}
+
+// test_required_post_hooks_of_a_skipped_flow_keep_order checks that a skipped
+// flow still runs its required post hooks in order, waiting where they need
+// to, and leaves out the others.
+fn test_required_post_hooks_of_a_skipped_flow_keep_order() {
+	sandbox('post_skipped')
+	os.write_file('src', '')!
+	mut c := new()
+	c.add_flow(
+		id:    'gen'
+		takes: ['src']
+		gives: ['gen.txt']
+		check: .hash
+		post:  [required('audit'), hook('note'), required('tidy')]
+		flow:  record
+	)
+	c.add_flow(id: 'build', takes: ['gen.txt'], gives: ['app.txt'], check: .none, flow: record)
+	c.add_flow(id: 'audit', takes: ['app.txt'], check: .none, flow: record)
+	c.add_flow(id: 'note', check: .none, flow: record)
+	c.add_flow(
+		id:    'tidy'
+		check: .none
+		flow:  fn (f Flow) ! {
+			os.rm('app.txt')!
+			record(f)!
+		}
+	)
+	c.execute(['build'])!
+	assert os.read_file('log')! == 'gen build audit note tidy '
+	os.rm('log')!
+	c.execute(['build'])!
+	assert os.read_file('log')! == 'build audit tidy '
+}
+
+// test_failing_waiting_post_hook_stops_the_rest checks that a post hook failing
+// after it waited for a flow fails the build, and the hooks after it never run.
+fn test_failing_waiting_post_hook_stops_the_rest() {
+	sandbox('post_fails')
+	mut c := new()
+	c.add_flow(
+		id:    'gen'
+		gives: ['gen.txt']
+		check: .none
+		post:  [hook('audit'), hook('note')]
+		flow:  record
+	)
+	c.add_flow(id: 'build', takes: ['gen.txt'], gives: ['app.txt'], check: .none, flow: record)
+	c.add_flow(
+		id:    'audit'
+		takes: ['app.txt']
+		check: .none
+		flow:  fn (f Flow) ! {
+			record(f)!
+			return error('audit found a problem')
+		}
+	)
+	c.add_flow(id: 'note', check: .none, flow: record)
+	mut msg := ''
+	c.execute(['build']) or { msg = err.msg() }
+	assert msg == 'flow `audit` failed: audit found a problem'
+	assert os.read_file('log')! == 'gen build audit '
+}
+
 // test_absolute_and_relative_paths_match checks producers are found whatever
 // the spelling of a path.
 fn test_absolute_and_relative_paths_match() {
@@ -550,6 +1165,37 @@ fn test_absolute_and_relative_paths_match() {
 		}
 	)
 	c.execute(['build'])!
+}
+
+// test_dependencies_follow_directories checks that a flow taking a directory
+// depends on the flows writing into it, and that a flow taking a file depends
+// on the flow giving a directory around it.
+fn test_dependencies_follow_directories() {
+	sandbox('dir_deps')
+	mut c := new()
+	c.add_flow(
+		id:    'gen'
+		gives: ['out/gen.txt']
+		check: .none
+		flow:  fn (f Flow) ! {
+			os.mkdir_all('out')!
+			record(f)!
+		}
+	)
+	c.add_flow(id: 'zip', takes: ['out'], gives: ['out.zip'], check: .none, flow: record)
+	c.add_flow(
+		id:    'site'
+		gives: ['site']
+		check: .none
+		flow:  fn (f Flow) ! {
+			os.mkdir_all('site')!
+			os.write_file('site/index.html', '')!
+			record(f)!
+		}
+	)
+	c.add_flow(id: 'page', takes: ['site/index.html'], check: .none, flow: record)
+	c.execute(['zip', 'page'])!
+	assert os.read_file('log')! == 'gen zip site page '
 }
 
 // test_hash_flow_over_own_state_dir checks a hash flow taking the directory
@@ -578,4 +1224,23 @@ fn test_hash_flow_over_own_state_dir() {
 	os.write_file('a', '2')!
 	c.execute(['build'])!
 	assert os.read_file(runs)! == 'xx'
+}
+
+// test_clean_removes_targets_added_later checks that the clean flow covers the
+// targets known when the build starts, files and directories alike, and that it
+// does not mind targets that are already gone.
+fn test_clean_removes_targets_added_later() {
+	sandbox('auto_clean')
+	os.write_file('bin', '')!
+	os.mkdir_all('dist/sub')!
+	os.write_file('dist/sub/file', '')!
+	os.write_file('keep', '')!
+	mut c := new()
+	c.add_auto_flow(.clean)
+	c.add_target('bin')
+	c.add_target('dist')
+	c.resolve_auto_flows()
+	c.execute(['clean'])!
+	assert !os.exists('bin') && !os.exists('dist') && os.exists('keep')
+	c.execute(['clean'])!
 }
