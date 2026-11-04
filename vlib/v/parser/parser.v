@@ -8980,6 +8980,15 @@ fn scan_past_closing(mut s scanner.Scanner, opening token.Token, closing token.T
 }
 
 fn (mut p Parser) stmt() flat.NodeId {
+	if p.tok in [.key_go, .key_spawn, .key_match, .key_fn] && p.peek() == .decl_assign {
+		name := p.tok.str()
+		p.record_diagnostic_span('cannot use keyword `${name}` as a variable name', p.tok_pos,
+			p.tok_end)
+		// Recover as a declaration so its initializer does not become a keyword operand.
+		p.tok = .name
+		p.lit = name
+		return p.assign_or_expr_stmt()
+	}
 	match p.tok {
 		.key_return {
 			return p.return_stmt()
