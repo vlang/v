@@ -2,10 +2,10 @@
 
 import os
 
-fn test_sql_insert_only_diagnostics_in_compile_and_check_modes() {
+fn test_immutable_diagnostics_in_compile_and_check_modes() {
 	for fixture in ['attribute', 'update', 'dynamic'] {
 		path := os.join_path(os.dir(@VEXE), 'vlib', 'v', 'checker', 'tests',
-			'orm_sql_insert_only_${fixture}.vv')
+			'orm_immutable_${fixture}.vv')
 		normal := os.exec([@VEXE, '-new-compiler', '-nocolor', path])
 		checked := os.exec([@VEXE, '-new-compiler', '-nocolor', '-check', path])
 		assert normal.exit_code == 1, normal.output
@@ -23,7 +23,7 @@ fn test_sql_insert_only_diagnostics_in_compile_and_check_modes() {
 	}
 }
 
-fn test_sql_insert_only_dynamic_aliases_respect_scope_and_reassignment() {
+fn test_immutable_dynamic_aliases_respect_scope_and_reassignment() {
 	root := os.join_path(os.vtmp_dir(), 'orm_insert_only_aliases_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
@@ -32,7 +32,7 @@ fn test_sql_insert_only_dynamic_aliases_respect_scope_and_reassignment() {
 import orm
 struct InsertOnlyUser {
  id int @[primary]
- creator string @[sql_insert_only]
+ creator string @[immutable]
  name string
 }
 
@@ -58,7 +58,7 @@ fn main() {
 	}
 }
 
-fn test_sql_insert_only_dynamic_grouped_assignments_are_checked() {
+fn test_immutable_dynamic_grouped_assignments_are_checked() {
 	root := os.join_path(os.vtmp_dir(), 'orm_insert_only_grouped_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
@@ -71,7 +71,7 @@ fn test_sql_insert_only_dynamic_grouped_assignments_are_checked() {
 		os.write_file(path, "import db.sqlite
 struct InsertOnlyUser {
  id int @[primary]
- creator string @[sql_insert_only]
+ creator string @[immutable]
  name string
 }
 fn main() {
@@ -91,7 +91,7 @@ fn main() {
 	os.write_file(path, "import db.sqlite
 struct InsertOnlyUser {
  id int @[primary]
- creator string @[sql_insert_only]
+ creator string @[immutable]
  name string
  active bool
 }
