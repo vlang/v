@@ -812,6 +812,11 @@ struct PendingIerrorError {
 // FunctionCheckContext owns all semantic state whose lifetime is one function
 // body. Parallel checker forks replace this value wholesale, so adding a new
 // per-function cache cannot accidentally share its backing storage.
+struct PreflightOptionLayer {
+	keys                []string
+	restores_smartcasts bool
+}
+
 struct FunctionCheckContext {
 mut:
 	method_value_locals               map[string]bool
@@ -854,6 +859,7 @@ mut:
 	local_decl_rhs_range_lo                  int = -1
 	local_decl_rhs_range_hi                  int = -1
 	bool_condition_exprs                     map[string]flat.NodeId
+	preflight_option_layers                  map[flat.NodeId]PreflightOptionLayer
 	has_goto_nodes                           bool
 	closure_scope                            &Scope = unsafe { nil }
 	lambda_no_captures                       bool
@@ -917,6 +923,7 @@ fn (mut ctx FunctionCheckContext) reset_for_sibling_check() {
 	ctx.closure_forbidden_captures.clear()
 	ctx.local_decl_rhs_by_name.clear()
 	ctx.bool_condition_exprs.clear()
+	ctx.preflight_option_layers.clear()
 	// Nested snapshots and declaration generic parameters can share backing
 	// arrays with a synchronous view or the AST. Detach those headers.
 	ctx.unsafe_alias_break_states = [][]map[string]bool{}
@@ -977,6 +984,7 @@ fn clone_function_check_context(src FunctionCheckContext) FunctionCheckContext {
 		local_decl_rhs_range_lo:                  src.local_decl_rhs_range_lo
 		local_decl_rhs_range_hi:                  src.local_decl_rhs_range_hi
 		bool_condition_exprs:                     src.bool_condition_exprs.clone()
+		preflight_option_layers:                  src.preflight_option_layers.clone()
 		has_goto_nodes:                           src.has_goto_nodes
 		closure_scope:                            src.closure_scope
 		lambda_no_captures:                       src.lambda_no_captures
