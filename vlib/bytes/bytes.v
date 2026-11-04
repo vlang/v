@@ -354,3 +354,35 @@ pub fn trim_suffix(s []u8, suffix []u8) []u8 {
 pub fn clone(b []u8) []u8 {
 	return b.clone()
 }
+
+// cut slices `s` around the first instance of `sep`, returning the text before
+// and after `sep` and a boolean reporting whether `sep` was found.
+// Mirrors Go's bytes.Cut.
+pub fn cut(s []u8, sep []u8) ([]u8, []u8, bool) {
+	if sep.len == 0 {
+		return []u8{}, s.clone(), true
+	}
+	idx := index(s, sep)
+	if idx < 0 {
+		return s.clone(), []u8{}, false
+	}
+	return s[..idx].clone(), s[idx + sep.len..].clone(), true
+}
+
+// cut_prefix returns `s` without the provided leading prefix and reports whether
+// it found the prefix. Mirrors Go's bytes.CutPrefix.
+pub fn cut_prefix(s []u8, prefix []u8) ([]u8, bool) {
+	if s.len >= prefix.len && equal(s[..prefix.len], prefix) {
+		return s[prefix.len..].clone(), true
+	}
+	return s.clone(), false
+}
+
+// cut_suffix returns `s` without the provided trailing suffix and reports whether
+// it found the suffix. Mirrors Go's bytes.CutSuffix.
+pub fn cut_suffix(s []u8, suffix []u8) ([]u8, bool) {
+	if suffix.len <= s.len && equal(s[s.len - suffix.len..], suffix) {
+		return s[..s.len - suffix.len].clone(), true
+	}
+	return s.clone(), false
+}
