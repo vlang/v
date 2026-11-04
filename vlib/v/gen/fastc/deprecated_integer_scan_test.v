@@ -1,5 +1,6 @@
 module fastc
 
+import os
 import v.pref
 
 fn mentions_deprecated_integer(source string) bool {
@@ -41,4 +42,20 @@ fn test_text_that_only_mentions_the_names_is_not_a_use() {
 
 fn test_a_source_the_scanner_rejects_still_goes_to_the_parser() {
 	assert mentions_deprecated_integer("// usize\nfn f() { s := 'unterminated }")
+}
+
+fn test_call_site_skips_files_that_only_mention_the_names() {
+	root := os.join_path(os.vtmp_dir(), 'deprecated_integer_call_site_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	comment_only := os.join_path(root, 'comment_only.v')
+	real_use := os.join_path(root, 'real_use.v')
+	os.write_file(comment_only, '// usize\nfn g() {}\n') or { panic(err) }
+	os.write_file(real_use, 'fn f() { x := usize(1) }\n') or { panic(err) }
+	prefs := pref.new_preferences()
+	generation := generate_files_with_source_paths([comment_only, real_use], prefs) or {
+		panic(err.msg())
+	}
+	names := generation.deprecated_integer_paths.map(os.file_name(it))
+	assert names == ['real_use.v'], names.str()
 }
