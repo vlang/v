@@ -11,6 +11,7 @@ pub:
 	path               string
 	methods            []http.Method
 	host               string
+	description        string
 	parameter_names    []string
 	parameter_types    []string
 	parameter_schemas  []map[string]json2.Any
@@ -71,6 +72,7 @@ fn flatten_route_info[A](app &A, routes map[string]Route) []RouteInfo {
 			path:               openapi_join_path('', route.path)
 			methods:            route.methods
 			host:               route.host
+			description:        route_description(route.attrs)
 			parameter_names:    route.parameter_names
 			parameter_types:    kinds
 			parameter_schemas:  schemas
@@ -97,6 +99,22 @@ fn flatten_route_info[A](app &A, routes map[string]Route) []RouteInfo {
 	}
 	result.sort(a.path < b.path)
 	return result
+}
+
+fn route_description(attrs []string) string {
+	for attr in attrs {
+		if attr.starts_with('description:') {
+			value := attr.all_after(':').trim_space()
+			// Reflection decodes ordinary strings; raw strings retain their prefix.
+			quote_index := if value.len > 2 && value[0] == `r` { 1 } else { 0 }
+			if value.len > quote_index + 1 && value[quote_index] == value[value.len - 1]
+				&& value[quote_index] in [`'`, `"`] {
+				return value[quote_index + 1..value.len - 1]
+			}
+			return value
+		}
+	}
+	return ''
 }
 
 fn (route &RouteInfo) parameter_schema(index int) OpenApiSchema {

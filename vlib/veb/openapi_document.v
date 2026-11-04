@@ -90,7 +90,7 @@ pub fn new_openapi(config OpenApiConfig) !OpenApiDocument {
 	return OpenApiDocument{ config: OpenApiConfig{ ...config, version: version } }
 }
 
-// add_app includes root routes and all recursively mounted controllers.
+// add_app includes root routes and all recursively mounted controllers, with handler descriptions.
 pub fn (mut doc OpenApiDocument) add_app[A, X](app &A) ! {
 	for route in route_info[A, X](app)! {
 		path := openapi_path_of(route.path)
@@ -151,6 +151,9 @@ pub fn (mut doc OpenApiDocument) add_app[A, X](app &A) ! {
 				'tags':        json2.Any([json2.Any(route.controller)])
 				'parameters':  json2.Any(params)
 				'responses':   json2.Any(responses)
+			}
+			if route.description != '' {
+				operation['description'] = route.description
 			}
 			if path_index == 0 && method == .post && route.parameter_names.len > 0 {
 				mut properties := map[string]json2.Any{}

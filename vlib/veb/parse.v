@@ -23,6 +23,10 @@ fn parse_attrs(name string, attrs []string) !([]http.Method, string, string) {
 			x.delete(i)
 			continue
 		}
+		if attr.starts_with('description:') {
+			x.delete(i)
+			continue
+		}
 		if attru == 'GET' || m != .get {
 			methods << m
 			x.delete(i)
