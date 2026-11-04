@@ -1478,4 +1478,10 @@ fn test_optional_tuple_typedef_requires_a_concrete_or_cached_tuple() {
 	tc.structs[c_type] = []types.StructField{}
 	tc.c_typedef_structs[c_type] = true
 	assert g.emit_optional_typedef('__v_result_${c_name}', c_name)
+	c_alias := 'multi_return_ScalarAlias'
+	tc.type_aliases.set_id(flat.source_type_id('C.${c_alias}'), flat.source_type_int)
+	assert g.emit_optional_typedef('__v_result_${c_alias}', c_alias)
+	c_enum := 'multi_return_NativeEnum'
+	tc.enum_names[flat.source_type_id('C.${c_enum}')] = true
+	assert g.emit_optional_typedef('__v_result_${c_enum}', c_enum)
 }
