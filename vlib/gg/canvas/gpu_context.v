@@ -37,6 +37,11 @@ const analytic_rrect_vert = $embed_file('shaders/analytic_rrect_solid.vert.metal
 const analytic_rrect_frag = $embed_file('shaders/analytic_rrect_solid.frag.metal')
 const cover_bounds_vert = $embed_file('shaders/cover_bounds_solid.vert.metal')
 const cover_bounds_frag = $embed_file('shaders/cover_bounds_solid.frag.metal')
+// The same render steps with Graphite's analytic NonMSAAClip in the paint.
+const analytic_rrect_clip_vert = $embed_file('shaders/analytic_rrect_solid_clip.vert.metal')
+const analytic_rrect_clip_frag = $embed_file('shaders/analytic_rrect_solid_clip.frag.metal')
+const cover_bounds_clip_vert = $embed_file('shaders/cover_bounds_solid_clip.vert.metal')
+const cover_bounds_clip_frag = $embed_file('shaders/cover_bounds_solid_clip.frag.metal')
 // Graphite's LoadMSAAFromResolve pipeline (MtlGraphicsPipeline.mm): a
 // fullscreen draw that copies the resolve texture into a multisampled
 // attachment before the pass's draws.
@@ -62,12 +67,14 @@ mut:
 }
 
 struct GpuShaderEntry {
-	step   RenderStep
-	shader gfx.Shader
+	step    RenderStep
+	clipped bool
+	shader  gfx.Shader
 }
 
 struct GpuPipelineEntry {
 	step         RenderStep
+	clipped      bool
 	sample_count int
 	blend        bool
 	pipeline     gfx.Pipeline
@@ -150,9 +157,11 @@ pub fn (mut ctx GpuContext) free() {
 // where long-lived allocations belong.
 pub fn (mut ctx GpuContext) precompile() {
 	for step in [RenderStep.analytic_rrect, .cover_bounds] {
-		for sample_count in [1, 4] {
-			for blend in [true, false] {
-				ctx.pipeline(step, sample_count, blend)
+		for clipped in [false, true] {
+			for sample_count in [1, 4] {
+				for blend in [true, false] {
+					ctx.pipeline(step, sample_count, blend, clipped)
+				}
 			}
 		}
 	}
@@ -177,16 +186,19 @@ fn (mut ctx GpuContext) ensure_instance_capacity(bytes int) {
 	ctx.instance_capacity = capacity
 }
 
-fn (mut ctx GpuContext) shader(step RenderStep) gfx.Shader {
+fn (mut ctx GpuContext) shader(step RenderStep, clipped bool) gfx.Shader {
 	for entry in ctx.shaders {
-		if entry.step == step {
+		if entry.step == step && entry.clipped == clipped {
 			return entry.shader
 		}
 	}
-	vert, frag := match step {
-		.analytic_rrect { analytic_rrect_vert, analytic_rrect_frag }
+	vert, frag := match true {
+		step == .analytic_rrect && clipped { analytic_rrect_clip_vert, analytic_rrect_clip_frag }
+		step == .analytic_rrect { analytic_rrect_vert, analytic_rrect_frag }
+		clipped { cover_bounds_clip_vert, cover_bounds_clip_frag }
 		else { cover_bounds_vert, cover_bounds_frag }
 	}
+	paint_uniform_size := if clipped { clip_uniform_size } else { solid_uniform_size }
 	vs_source := vert.to_string()
 	fs_source := frag.to_string()
 	mut desc := gfx.ShaderDesc{}
@@ -197,24 +209,25 @@ fn (mut ctx GpuContext) shader(step RenderStep) gfx.Shader {
 	for stage in [&desc.vs, &desc.fs] {
 		unsafe {
 			stage.uniform_blocks[0].size = intrinsic_uniform_size
-			stage.uniform_blocks[1].size = solid_uniform_block_size
+			stage.uniform_blocks[1].size = u32(paint_uniform_size * max_batch_colors)
 		}
 	}
 	gfx.mtl_set_shader_compile_options(graphite_msl_major, graphite_msl_minor, true)
 	shader := gfx.make_shader(&desc)
 	gfx.mtl_set_shader_compile_options(0, 0, false)
-	ctx.shaders << GpuShaderEntry{step, shader}
+	ctx.shaders << GpuShaderEntry{step, clipped, shader}
 	return shader
 }
 
-fn (mut ctx GpuContext) pipeline(step RenderStep, sample_count int, blend bool) gfx.Pipeline {
+fn (mut ctx GpuContext) pipeline(step RenderStep, sample_count int, blend bool, clipped bool) gfx.Pipeline {
 	for entry in ctx.pipelines {
-		if entry.step == step && entry.sample_count == sample_count && entry.blend == blend {
+		if entry.step == step && entry.clipped == clipped && entry.sample_count == sample_count
+			&& entry.blend == blend {
 			return entry.pipeline
 		}
 	}
 	mut desc := gfx.PipelineDesc{
-		shader:         ctx.shader(step)
+		shader:         ctx.shader(step, clipped)
 		primitive_type: .triangle_strip
 		sample_count:   sample_count
 		cull_mode:      .none
@@ -280,7 +293,7 @@ fn (mut ctx GpuContext) pipeline(step RenderStep, sample_count int, blend bool) 
 		write_enabled: true
 	}
 	pipeline := gfx.make_pipeline(&desc)
-	ctx.pipelines << GpuPipelineEntry{step, sample_count, blend, pipeline}
+	ctx.pipelines << GpuPipelineEntry{step, clipped, sample_count, blend, pipeline}
 	return pipeline
 }
 

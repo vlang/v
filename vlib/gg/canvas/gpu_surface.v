@@ -17,8 +17,8 @@ pub:
 struct GpuDraw {
 	step     RenderStep
 	instance []u8
-	// Premultiplied solid color.
-	color Color4f
+	// Premultiplied solid color and analytic clip.
+	uniforms PaintUniforms
 	// Disabled for draws without coverage whose paint is opaque: Graphite then
 	// prefers a fixed "src" blend, which rounds differently than src-over.
 	blend bool = true
@@ -34,8 +34,9 @@ struct GpuDraw {
 }
 
 struct PipelineKey {
-	step  RenderStep
-	blend bool
+	step    RenderStep
+	blend   bool
+	clipped bool
 }
 
 // GpuSurface records draws into a BGRA8 premultiplied render target and
@@ -61,7 +62,8 @@ mut:
 	transform   Transform
 	bounds      BoundsManager
 	pipelines   []PipelineKey
-	uniforms    []Color4f
+	uniforms    []PaintUniforms
+	clip        ClipStackState
 }
 
 // new_surface creates an offscreen surface, initially transparent black.
@@ -79,6 +81,7 @@ pub fn (mut ctx GpuContext) new_surface(cfg GpuSurfaceConfig) !&GpuSurface {
 		sample_count: cfg.sample_count
 		transform:    Transform.new(Matrix.identity())
 		bounds:       new_bounds_manager(cfg.width, cfg.height)
+		clip:         new_clip_stack(cfg.width, cfg.height)
 	}
 	s.color = gfx.make_image(&gfx.ImageDesc{
 		render_target: true
@@ -253,11 +256,13 @@ fn (s &GpuSurface) quick_reject(bounds Rect, paint Paint) bool {
 	if !device.is_finite() {
 		return true
 	}
-	// SkRect::intersects with the device clip bounds outset by one pixel.
-	l := max_f32(device.left(), -1)
-	r := min_f32(device.right(), f32(s.width) + 1)
-	t := max_f32(device.top(), -1)
-	b := min_f32(device.bottom(), f32(s.height) + 1)
+	// SkRect::intersects with the device clip bounds outset by one pixel
+	// (SkCanvas::computeDeviceClipBounds()).
+	clip := s.conservative_clip_bounds() or { return true }
+	l := max_f32(device.left(), clip.left() - 1)
+	r := min_f32(device.right(), clip.right() + 1)
+	t := max_f32(device.top(), clip.top() - 1)
+	b := min_f32(device.bottom(), clip.bottom() + 1)
 	return !(l < r && t < b)
 }
 
@@ -339,8 +344,10 @@ pub fn (mut s GpuSurface) draw_msaa_trigger() {
 	// uniform (never equal to a paint color); step 1 covers them with the
 	// transparent paint.
 	nan := f32(math.nan())
-	s.record_step(.tessellate_wedges, false, []u8{}, Color4f{nan, nan, nan, nan}, order, 0, 3)
-	s.record_step(.cover_fills, true, []u8{}, Color4f{0, 0, 0, 0}, order, 1, 1)
+	s.record_step(.tessellate_wedges, false, []u8{}, PaintUniforms{
+		color: Color4f{nan, nan, nan, nan}
+	}, order, 0, 3)
+	s.record_step(.cover_fills, true, []u8{}, PaintUniforms{}, order, 1, 1)
 	// The path bounds (0, 0, 0.01, 0.01) are subpixel, so the clip stack
 	// outsets them by the local AA radius before clipping to the device.
 	path := Rect.ltrb(0, 0, f32(0.01), f32(0.01)).outset(1)
@@ -363,7 +370,17 @@ fn (mut s GpuSurface) draw_shape(geometry ShapeGeometry, paint Paint) ! {
 	// The draw bounds clipped to the device; empty bounds clip the draw out
 	// before it consumes a depth value.
 	clipped_bounds := s.draw_bounds(paint, bounds) or { return }
+	influence, clip_rect := s.clip_for_draw(clipped_bounds)!
+	if influence == .clipped_out {
+		return
+	}
+	clipped := influence == .analytic
 	color := paint.color.premul()
+	uniforms := PaintUniforms{
+		color:   color
+		clipped: clipped
+		clip:    if clipped { analytic_clip_uniforms(clip_rect) } else { AnalyticClipUniforms{} }
+	}
 	pixel_aligned := !stroked && geometry.kind == .rect && is_pixel_aligned(geometry.rect, s.transform)
 	step := if pixel_aligned { RenderStep.cover_bounds } else { RenderStep.analytic_rrect }
 	// Renderers with analytic coverage include their 1px AA ramp in the
@@ -374,9 +391,10 @@ fn (mut s GpuSurface) draw_shape(geometry ShapeGeometry, paint Paint) ! {
 	} else {
 		clipped_bounds
 	}
-	// DstUsage: src-over with analytic coverage always reads the destination;
-	// without coverage only a translucent paint does.
-	depends_on_dst := step == .analytic_rrect || !color.is_opaque()
+	// DstUsage: src-over with analytic coverage (from the renderer or an
+	// analytic clip) always reads the destination; without coverage only a
+	// translucent paint does.
+	depends_on_dst := step == .analytic_rrect || clipped || !color.is_opaque()
 	s.depth_index++
 	mut order := DrawOrder{
 		depth: s.depth_index
@@ -388,7 +406,9 @@ fn (mut s GpuSurface) draw_shape(geometry ShapeGeometry, paint Paint) ! {
 		// Opaque rectangles are sorted front to back.
 		order.reverse_depth_as_stencil()
 	}
-	if !stroked && step == .analytic_rrect && color.is_opaque() {
+	// With an analytic clip the destination is not only read by the renderer,
+	// so there is no inner fill.
+	if !stroked && step == .analytic_rrect && color.is_opaque() && !clipped {
 		// The destination is only read for the coverage ramp, so Graphite
 		// fills the interior with an extra non-AA draw at the same depth.
 		inner := inner_fill_bounds(geometry, s.transform)
@@ -400,7 +420,7 @@ fn (mut s GpuSurface) draw_shape(geometry ShapeGeometry, paint Paint) ! {
 			inner_order.reverse_depth_as_stencil()
 			mut instance := []u8{cap: cover_bounds_instance_stride}
 			write_cover_bounds_instance(mut instance, inner, s.transform, order.depth, 0)
-			s.record(.cover_bounds, false, instance, color, inner_order)
+			s.record(.cover_bounds, false, instance, uniforms, inner_order)
 			order.depends_on_paint_order(inner_order.paint_order)
 		}
 	}
@@ -410,7 +430,7 @@ fn (mut s GpuSurface) draw_shape(geometry ShapeGeometry, paint Paint) ! {
 	} else {
 		write_analytic_rrect_instance(mut instance, geometry, s.transform, paint, order.depth, 0)
 	}
-	s.record(step, step == .analytic_rrect || depends_on_dst, instance, color, order)
+	s.record(step, step == .analytic_rrect || depends_on_dst, instance, uniforms, order)
 	s.bounds.record_draw(draw_bounds, order.paint_order)
 	$if gg_canvas_debug ? {
 		eprintln('bounds depth ${order.depth}: ${draw_bounds.left()} ${draw_bounds.top()} ${draw_bounds.right()} ${draw_bounds.bottom()} local ${bounds.left()} ${bounds.top()} ${bounds.right()} ${bounds.bottom()} kind ${geometry.kind} style ${paint.style} width ${paint.stroke_width} aa ${paint.anti_alias} m ${s.transform.matrix.m}')
@@ -418,34 +438,34 @@ fn (mut s GpuSurface) draw_shape(geometry ShapeGeometry, paint Paint) ! {
 }
 
 // record mirrors DrawList::recordDraw() for a single-step renderer.
-fn (mut s GpuSurface) record(step RenderStep, blend bool, instance []u8, color Color4f, order DrawOrder) {
-	s.record_step(step, blend, instance, color, order, 0, 0)
+fn (mut s GpuSurface) record(step RenderStep, blend bool, instance []u8, uniforms PaintUniforms, order DrawOrder) {
+	s.record_step(step, blend, instance, uniforms, order, 0, 0)
 }
 
 // record_step assigns the render step's pipeline and uniform cache indices
 // in insertion order, like DrawList::recordDraw().
-fn (mut s GpuSurface) record_step(step RenderStep, blend bool, instance []u8, color Color4f, order DrawOrder, step_index u32, phantom_instances u32) {
-	key := PipelineKey{step, blend}
+fn (mut s GpuSurface) record_step(step RenderStep, blend bool, instance []u8, uniforms PaintUniforms, order DrawOrder, step_index u32, phantom_instances u32) {
+	key := PipelineKey{step, blend, uniforms.clipped}
 	mut pipeline_index := s.pipelines.index(key)
 	if pipeline_index < 0 {
 		pipeline_index = s.pipelines.len
 		s.pipelines << key
 	}
 	mut uniform_index := -1
-	for i, c in s.uniforms {
-		if c.r == color.r && c.g == color.g && c.b == color.b && c.a == color.a {
+	for i, u in s.uniforms {
+		if same_paint_uniforms(u, uniforms) {
 			uniform_index = i
 			break
 		}
 	}
 	if uniform_index < 0 {
 		uniform_index = s.uniforms.len
-		s.uniforms << color
+		s.uniforms << uniforms
 	}
 	s.draws << GpuDraw{
 		step:              step
 		instance:          instance
-		color:             color
+		uniforms:          uniforms
 		blend:             blend
 		order:             order
 		pipeline_index:    u32(pipeline_index)
@@ -455,9 +475,9 @@ fn (mut s GpuSurface) record_step(step RenderStep, blend bool, instance []u8, co
 	}
 }
 
-// draw_bounds mirrors ClipStack::visitClipStackForDraw() without clip
-// elements: the styled shape bounds mapped to device space and clipped to
-// the surface.
+// draw_bounds mirrors DrawShape::applyStyle() in
+// ClipStack::visitClipStackForDraw(): the styled shape bounds mapped to
+// device space and clipped to the surface (difference clips scissor to it).
 fn (s &GpuSurface) draw_bounds(paint Paint, bounds Rect) ?Rect {
 	w := bounds.width()
 	h := bounds.height()
@@ -598,6 +618,8 @@ pub fn (mut s GpuSurface) flush() ! {
 		draw := s.draws[key.draw]
 		uniform_size := if draw.step == .tessellate_wedges {
 			u32(64)
+		} else if draw.uniforms.clipped {
+			u32(clip_uniform_size)
 		} else {
 			u32(solid_uniform_size)
 		}
@@ -630,17 +652,23 @@ pub fn (mut s GpuSurface) flush() ! {
 	keys = real_keys.clone()
 	mut instances := []u8{}
 	mut offsets := []int{cap: keys.len}
-	mut batch_colors := [][]Color4f{len: batches.len - 1}
+	mut batch_uniforms := [][]PaintUniforms{len: batches.len - 1}
 	for b in 0 .. batches.len - 1 {
 		for i in batches[b] .. batches[b + 1] {
 			draw := s.draws[keys[i].draw]
 			offsets << instances.len
 			start := instances.len
 			instances << draw.instance
-			mut slot := batch_colors[b].index(draw.color)
+			mut slot := -1
+			for j, u in batch_uniforms[b] {
+				if same_paint_uniforms(u, draw.uniforms) {
+					slot = j
+					break
+				}
+			}
 			if slot < 0 {
-				slot = batch_colors[b].len
-				batch_colors[b] << draw.color
+				slot = batch_uniforms[b].len
+				batch_uniforms[b] << draw.uniforms
 			}
 			ssbo_offset := if draw.step == .analytic_rrect { 68 } else { 20 }
 			patch_u32(mut instances, start + ssbo_offset, u32(slot))
@@ -701,7 +729,7 @@ pub fn (mut s GpuSurface) flush() ! {
 		first := batches[b]
 		count := batches[b + 1] - first
 		draw := s.draws[keys[first].draw]
-		gfx.apply_pipeline(ctx.pipeline(draw.step, s.sample_count, draw.blend))
+		gfx.apply_pipeline(ctx.pipeline(draw.step, s.sample_count, draw.blend, draw.uniforms.clipped))
 		mut bindings := gfx.Bindings{}
 		if draw.step == .analytic_rrect {
 			bindings.vertex_buffers[0] = ctx.rrect_vertices
@@ -713,12 +741,25 @@ pub fn (mut s GpuSurface) flush() ! {
 			bindings.vertex_buffer_offsets[0] = base + offsets[first]
 		}
 		gfx.apply_bindings(&bindings)
-		mut paint_uniforms := []f32{cap: batch_colors[b].len * 4}
-		for c in batch_colors[b] {
-			paint_uniforms << c.r
-			paint_uniforms << c.g
-			paint_uniforms << c.b
-			paint_uniforms << c.a
+		mut paint_uniforms := []f32{cap: batch_uniforms[b].len * clip_uniform_size / 4}
+		for u in batch_uniforms[b] {
+			paint_uniforms << u.color.r
+			paint_uniforms << u.color.g
+			paint_uniforms << u.color.b
+			paint_uniforms << u.color.a
+			if u.clipped {
+				// CombinedUniformData: rect_5, radiusPlusHalf_5 (padded), edgeSelect_5.
+				for v in u.clip.rect {
+					paint_uniforms << v
+				}
+				paint_uniforms << u.clip.radius_plus_half[0]
+				paint_uniforms << u.clip.radius_plus_half[1]
+				paint_uniforms << 0
+				paint_uniforms << 0
+				for v in u.clip.edge_select {
+					paint_uniforms << v
+				}
+			}
 		}
 		paint_range := gfx.Range{
 			ptr:  paint_uniforms.data

@@ -140,6 +140,12 @@ pub fn (r Rect) nearly_equals(o Rect, epsilon f32) bool {
 	return true
 }
 
+// intersects reports a positive-area overlap, like Graphite's Rect::intersects().
+pub fn (r Rect) intersects(o Rect) bool {
+	return r.left() < o.right() && r.top() < o.bottom() && r.right() > o.left()
+		&& r.bottom() > o.top()
+}
+
 pub fn (r Rect) contains(o Rect) bool {
 	return r.vals[0] <= o.vals[0] && r.vals[1] <= o.vals[1] && r.vals[2] <= o.vals[2]
 		&& r.vals[3] <= o.vals[3]

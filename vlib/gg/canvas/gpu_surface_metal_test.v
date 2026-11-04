@@ -117,3 +117,35 @@ fn test_precompiled_contexts_compile_nothing_later() {
 	assert ctx.shaders.len == shaders
 	assert ctx.pipelines.len == pipelines
 }
+
+fn test_difference_clips_cut_out_draws() {
+	mut ctx := new_gpu_context() or {
+		eprintln('skipping: ${err}')
+		return
+	}
+	defer {
+		ctx.free()
+	}
+	mut s := ctx.new_surface(width: test_width, height: test_height)!
+	defer {
+		s.free()
+	}
+	s.clear(Color4f{})
+	// Snapped to whole pixels: (4, 4, 12, 10).
+	s.clip_rect(Rect.ltrb(3.6, 4.4, 11.5, 9.5), .difference, false)!
+	paint := Paint{
+		color:      Color4f.from_rgba8(10, 20, 30, 255)
+		anti_alias: true
+	}
+	s.draw_rrect(RRect.rect_radii(Rect.ltrb(2, 2, 20, 16), [Point{3, 3}, Point{3, 3}, Point{3, 3},
+		Point{3, 3}]!), paint)!
+	// A draw inside the clipped-out rect is skipped entirely.
+	s.draw_rect(Rect.ltrb(5, 5, 9, 8), paint)!
+	assert s.draws.len == 1
+	assert s.draws[0].uniforms.clipped
+	mut px := []u8{len: test_width * test_height * 4}
+	s.read_pixels(px.data, test_width * 4)!
+	assert pixel(px, 6, 6) == [u8(0), 0, 0, 0]
+	assert pixel(px, 15, 12) == [u8(30), 20, 10, 255]
+	assert pixel(px, 12, 6) == [u8(30), 20, 10, 255]
+}
