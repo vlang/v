@@ -3987,6 +3987,34 @@ SOKOL_GFX_API_DECL bool v_sokol_mtl_set_end_pass_hook(
 #endif
 /* V_SOKOL_MTL_END_PASS_DECL_END */
 
+/* V_SOKOL_IMAGE_TRANSFER_DECL_BEGIN */
+/*
+    V patch: synchronous image transfers for offscreen rendering whose pixels
+    are consumed by the CPU, e.g. to reproduce another renderer's output.
+
+    All functions must be called outside of a render pass. They submit the
+    work recorded so far in the current frame and wait for the GPU to finish
+    it, so later passes in the same frame observe the transferred pixels.
+    Only single-sampled 2D images whose pixel format has a fixed byte size are
+    supported; 'pitch' is the CPU row stride in bytes. They return false for
+    unsupported images or backends (D3D11 and WebGPU currently).
+
+    sg_v_flush():        submit and wait for all recorded GPU work
+    sg_v_read_image():   copy a rectangle of a 2D image into CPU memory
+    sg_v_write_image():  replace a rectangle of a 2D image, including render targets
+
+    sg_v_mtl_set_shader_compile_options() selects the MSL language version
+    (e.g. 2, 3 for MSL 2.3) and fast-math mode used by shaders created
+    afterwards from source code. Passing major == 0 restores the Metal
+    defaults. Fast-math changes floating-point results, so a shader that must
+    match another renderer bit-for-bit needs that renderer's options.
+*/
+SOKOL_GFX_API_DECL bool sg_v_flush(void);
+SOKOL_GFX_API_DECL bool sg_v_read_image(sg_image img, int x, int y, int width, int height, void* pixels, int pitch);
+SOKOL_GFX_API_DECL bool sg_v_write_image(sg_image img, int x, int y, int width, int height, const void* pixels, int pitch);
+SOKOL_GFX_API_DECL void sg_v_mtl_set_shader_compile_options(int language_major, int language_minor, bool fast_math);
+/* V_SOKOL_IMAGE_TRANSFER_DECL_END */
+
 /*
     sg_allocator
 
@@ -6898,6 +6926,7 @@ _SOKOL_PRIVATE void _sg_dummy_update_image(_sg_image_t* img, const sg_image_data
     _SG_XMACRO(glDrawBuffers,                     void, (GLsizei n, const GLenum * bufs)) \
     _SG_XMACRO(glVertexAttribDivisor,             void, (GLuint index, GLuint divisor)) \
     _SG_XMACRO(glVertexAttribIPointer,            void, (GLuint index, GLint size, GLenum type, GLsizei stride, const void * pointer)) \
+    _SG_XMACRO(glFinish,                          void, (void)) \
     _SG_XMACRO(glBufferSubData,                   void, (GLenum target, GLintptr offset, GLsizeiptr size, const void * data)) \
     _SG_XMACRO(glGenBuffers,                      void, (GLsizei n, GLuint * buffers)) \
     _SG_XMACRO(glCheckFramebufferStatus,          GLenum, (GLenum target)) \
@@ -12679,13 +12708,37 @@ _SOKOL_PRIVATE void _sg_mtl_discard_sampler(_sg_sampler_t* smp) {
     _sg_mtl_release_resource(_sg.frame_index, smp->mtl.sampler_state);
 }
 
+/* V_SOKOL_MTL_COMPILE_OPTIONS_BEGIN */
+static struct {
+    int language_major;
+    int language_minor;
+    bool fast_math;
+} _sg_v_mtl_compile_options;
+
+_SOKOL_PRIVATE MTLCompileOptions* _sg_v_mtl_new_compile_options(void) {
+    if (0 == _sg_v_mtl_compile_options.language_major) {
+        return nil;
+    }
+    MTLCompileOptions* options = [[MTLCompileOptions alloc] init];
+    options.languageVersion = (MTLLanguageVersion)((_sg_v_mtl_compile_options.language_major << 16)
+        | _sg_v_mtl_compile_options.language_minor);
+    #pragma clang diagnostic push
+    #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    options.fastMathEnabled = _sg_v_mtl_compile_options.fast_math;
+    #pragma clang diagnostic pop
+    return options;
+}
+/* V_SOKOL_MTL_COMPILE_OPTIONS_END */
+
 _SOKOL_PRIVATE id<MTLLibrary> _sg_mtl_compile_library(const char* src) {
     NSError* err = NULL;
+    MTLCompileOptions* v_options = _sg_v_mtl_new_compile_options();
     id<MTLLibrary> lib = [_sg.mtl.device
         newLibraryWithSource:[NSString stringWithUTF8String:src]
-        options:nil
+        options:v_options
         error:&err
     ];
+    _SG_OBJC_RELEASE(v_options);
     if (err) {
         _SG_ERROR(METAL_SHADER_COMPILATION_FAILED);
         _SG_LOGMSG(METAL_SHADER_COMPILATION_OUTPUT, [err.localizedDescription UTF8String]);
@@ -13209,10 +13262,12 @@ _SOKOL_PRIVATE void _sg_mtl_end_pass(void) {
 
 _SOKOL_PRIVATE void _sg_mtl_commit(void) {
     SOKOL_ASSERT(nil == _sg.mtl.cmd_encoder);
-    SOKOL_ASSERT(nil != _sg.mtl.cmd_buffer);
 
-    // commit the frame's command buffer
-    [_sg.mtl.cmd_buffer commit];
+    // commit the frame's command buffer (V patch: sg_v_flush() may already
+    // have submitted it, and no pass may have started a new one since)
+    if (nil != _sg.mtl.cmd_buffer) {
+        [_sg.mtl.cmd_buffer commit];
+    }
 
     // garbage-collect resources pending for release
     _sg_mtl_garbage_collect(_sg.frame_index);
@@ -19344,6 +19399,194 @@ SOKOL_API_IMPL sg_mtl_buffer_info sg_mtl_query_buffer_info(sg_buffer buf_id) {
     #endif
     return res;
 }
+
+/* V_SOKOL_IMAGE_TRANSFER_IMPL_BEGIN */
+_SOKOL_PRIVATE _sg_image_t* _sg_v_transfer_image(sg_image img_id, int x, int y, int width, int height, int pitch) {
+    _sg_image_t* img = _sg_lookup_image(&_sg.pools, img_id.id);
+    if ((0 == img) || (img->slot.state != SG_RESOURCESTATE_VALID)) {
+        return 0;
+    }
+    if ((img->cmn.type != SG_IMAGETYPE_2D) || (img->cmn.sample_count > 1)) {
+        return 0;
+    }
+    const int bpp = _sg_pixelformat_bytesize(img->cmn.pixel_format);
+    if ((bpp <= 0) || (x < 0) || (y < 0) || (width <= 0) || (height <= 0)
+        || (x > img->cmn.width - width) || (y > img->cmn.height - height) || (pitch < width * bpp)) {
+        return 0;
+    }
+    return img;
+}
+
+#if defined(SOKOL_METAL)
+_SOKOL_PRIVATE bool _sg_v_mtl_flush(void) {
+    if (nil != _sg.mtl.cmd_encoder) {
+        return false;
+    }
+    if (nil != _sg.mtl.cmd_buffer) {
+        // The frame's command buffer was enqueued when it was created, so a
+        // separate transfer command buffer could not run before it. Submit
+        // it now; begin_pass() creates the next one. All of this frame's
+        // uniform data has been consumed after the wait, so its space can be
+        // reused even if the application never calls sg_commit().
+        id<MTLCommandBuffer> cmd_buffer = _sg.mtl.cmd_buffer;
+        _sg.mtl.cmd_buffer = nil;
+        [cmd_buffer commit];
+        [cmd_buffer waitUntilCompleted];
+        _sg.mtl.cur_ub_offset = 0;
+        if (cmd_buffer.status != MTLCommandBufferStatusCompleted) {
+            return false;
+        }
+    }
+    return true;
+}
+
+_SOKOL_PRIVATE bool _sg_v_mtl_transfer(_sg_image_t* img, int x, int y, int width, int height, void* pixels, int pitch, bool write) {
+    if (!_sg_v_mtl_flush()) {
+        return false;
+    }
+    bool ok = false;
+    @autoreleasepool {
+        id<MTLTexture> tex = _sg_mtl_id(img->mtl.tex[img->cmn.active_slot]);
+        const NSUInteger row_bytes = (NSUInteger)(width * _sg_pixelformat_bytesize(img->cmn.pixel_format));
+        const NSUInteger total = row_bytes * (NSUInteger)height;
+        id<MTLBuffer> staging = [_sg.mtl.device newBufferWithLength:total options:MTLResourceStorageModeShared];
+        if (nil != staging) {
+            uint8_t* staged = (uint8_t*)[staging contents];
+            if (write) {
+                for (int row = 0; row < height; row++) {
+                    memcpy(staged + (size_t)row * row_bytes, (const uint8_t*)pixels + (size_t)row * (size_t)pitch, row_bytes);
+                }
+            }
+            id<MTLCommandBuffer> cmd_buffer = [_sg.mtl.cmd_queue commandBuffer];
+            id<MTLBlitCommandEncoder> blit = [cmd_buffer blitCommandEncoder];
+            const MTLOrigin origin = MTLOriginMake((NSUInteger)x, (NSUInteger)y, 0);
+            const MTLSize size = MTLSizeMake((NSUInteger)width, (NSUInteger)height, 1);
+            if (write) {
+                [blit copyFromBuffer:staging sourceOffset:0 sourceBytesPerRow:row_bytes sourceBytesPerImage:total
+                    sourceSize:size toTexture:tex destinationSlice:0 destinationLevel:0 destinationOrigin:origin];
+            } else {
+                [blit copyFromTexture:tex sourceSlice:0 sourceLevel:0 sourceOrigin:origin sourceSize:size
+                    toBuffer:staging destinationOffset:0 destinationBytesPerRow:row_bytes destinationBytesPerImage:total];
+            }
+            [blit endEncoding];
+            [cmd_buffer commit];
+            [cmd_buffer waitUntilCompleted];
+            ok = cmd_buffer.status == MTLCommandBufferStatusCompleted;
+            if (ok && !write) {
+                for (int row = 0; row < height; row++) {
+                    memcpy((uint8_t*)pixels + (size_t)row * (size_t)pitch, staged + (size_t)row * row_bytes, row_bytes);
+                }
+            }
+            _SG_OBJC_RELEASE(staging);
+        }
+    }
+    return ok;
+}
+#endif
+
+#if defined(_SOKOL_ANY_GL)
+_SOKOL_PRIVATE bool _sg_v_gl_transfer(_sg_image_t* img, int x, int y, int width, int height, void* pixels, int pitch, bool write) {
+    const GLuint tex = img->gl.tex[img->cmn.active_slot];
+    if ((0 == tex) || (img->gl.target != GL_TEXTURE_2D)) {
+        return false;
+    }
+    const GLenum gl_format = _sg_gl_teximage_format(img->cmn.pixel_format);
+    const GLenum gl_type = _sg_gl_teximage_type(img->cmn.pixel_format);
+    const int bpp = _sg_pixelformat_bytesize(img->cmn.pixel_format);
+    const bool tight = (pitch == width * bpp);
+    if (write) {
+        _sg_gl_cache_store_texture_sampler_binding(0);
+        _sg_gl_cache_bind_texture_sampler(0, GL_TEXTURE_2D, tex, 0);
+        glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+        for (int row = 0; row < height; row++) {
+            if (tight && (row > 0)) {
+                break;
+            }
+            glTexSubImage2D(GL_TEXTURE_2D, 0, x, y + row, width, tight ? height : 1, gl_format, gl_type,
+                (const uint8_t*)pixels + (size_t)row * (size_t)pitch);
+        }
+        _sg_gl_cache_restore_texture_sampler_binding(0);
+    } else {
+        GLint previous = 0;
+        glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previous);
+        GLuint fb = 0;
+        glGenFramebuffers(1, &fb);
+        glBindFramebuffer(GL_FRAMEBUFFER, fb);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex, 0);
+        const bool complete = glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE;
+        if (complete) {
+            glPixelStorei(GL_PACK_ALIGNMENT, 1);
+            for (int row = 0; row < height; row++) {
+                glReadPixels(x, y + row, width, 1, gl_format, gl_type, (uint8_t*)pixels + (size_t)row * (size_t)pitch);
+            }
+        }
+        glBindFramebuffer(GL_FRAMEBUFFER, (GLuint)previous);
+        glDeleteFramebuffers(1, &fb);
+        if (!complete) {
+            return false;
+        }
+    }
+    return glGetError() == GL_NO_ERROR;
+}
+#endif
+
+SOKOL_API_IMPL bool sg_v_flush(void) {
+    SOKOL_ASSERT(_sg.valid);
+    if (_sg.cur_pass.in_pass) {
+        return false;
+    }
+    #if defined(SOKOL_METAL)
+        return _sg_v_mtl_flush();
+    #elif defined(_SOKOL_ANY_GL)
+        glFinish();
+        return true;
+    #else
+        return false;
+    #endif
+}
+
+SOKOL_API_IMPL bool sg_v_read_image(sg_image img_id, int x, int y, int width, int height, void* pixels, int pitch) {
+    SOKOL_ASSERT(_sg.valid);
+    _sg_image_t* img = _sg_v_transfer_image(img_id, x, y, width, height, pitch);
+    if ((0 == img) || (0 == pixels) || _sg.cur_pass.in_pass) {
+        return false;
+    }
+    #if defined(SOKOL_METAL)
+        return _sg_v_mtl_transfer(img, x, y, width, height, pixels, pitch, false);
+    #elif defined(_SOKOL_ANY_GL)
+        return _sg_v_gl_transfer(img, x, y, width, height, pixels, pitch, false);
+    #else
+        return false;
+    #endif
+}
+
+SOKOL_API_IMPL bool sg_v_write_image(sg_image img_id, int x, int y, int width, int height, const void* pixels, int pitch) {
+    SOKOL_ASSERT(_sg.valid);
+    _sg_image_t* img = _sg_v_transfer_image(img_id, x, y, width, height, pitch);
+    if ((0 == img) || (0 == pixels) || _sg.cur_pass.in_pass) {
+        return false;
+    }
+    #if defined(SOKOL_METAL)
+        return _sg_v_mtl_transfer(img, x, y, width, height, (void*)pixels, pitch, true);
+    #elif defined(_SOKOL_ANY_GL)
+        return _sg_v_gl_transfer(img, x, y, width, height, (void*)pixels, pitch, true);
+    #else
+        return false;
+    #endif
+}
+
+SOKOL_API_IMPL void sg_v_mtl_set_shader_compile_options(int language_major, int language_minor, bool fast_math) {
+    #if defined(SOKOL_METAL)
+        _sg_v_mtl_compile_options.language_major = language_major;
+        _sg_v_mtl_compile_options.language_minor = language_minor;
+        _sg_v_mtl_compile_options.fast_math = fast_math;
+    #else
+        _SOKOL_UNUSED(language_major);
+        _SOKOL_UNUSED(language_minor);
+        _SOKOL_UNUSED(fast_math);
+    #endif
+}
+/* V_SOKOL_IMAGE_TRANSFER_IMPL_END */
 
 SOKOL_API_IMPL sg_mtl_image_info sg_mtl_query_image_info(sg_image img_id) {
     SOKOL_ASSERT(_sg.valid);
