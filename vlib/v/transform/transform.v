@@ -19532,21 +19532,24 @@ fn (t &Transformer) match_expr_common_value_type(node flat.Node) u32 {
 			}
 		}
 		value := t.a.nodes[int(type_expr)]
-		mut typ := match value.kind {
-			.int_literal { flat.source_type_int }
-			.float_literal { flat.source_type_f64 }
-			.cast_expr { value.source_value_id() }
-			else {
-				if isnil(t.tc) { return 0 }
-				checked := t.tc.expr_type_reference(type_expr) or { return 0 }
-				t.tc.type_name(checked)
+		mut typ := u32(0)
+		if value.kind == .selector && value.children_count == 1 {
+			base_name := t.expr_key(t.a.child(&value, 0))
+			if base_name.len > 0 {
+				enum_name := t.resolve_type_text_import_aliases(flat.source_type_id(base_name))
+				typ = t.enum_type_name_for_expected(enum_name, t.cur_module)
 			}
 		}
-		if value.kind == .selector && value.children_count == 1 {
-			base := t.a.child_node(&value, 0)
-			if base.kind == .ident {
-				enum_type := t.enum_type_name_for_expected(flat.source_type_id(base.value), t.cur_module)
-				if enum_type != 0 { typ = enum_type }
+		if typ == 0 {
+			typ = match value.kind {
+				.int_literal { flat.source_type_int }
+				.float_literal { flat.source_type_f64 }
+				.cast_expr { value.source_value_id() }
+				else {
+					if isnil(t.tc) { return 0 }
+					checked := t.tc.expr_type_reference(type_expr) or { return 0 }
+					t.tc.type_name(checked)
+				}
 			}
 		}
 		is_enum := t.enum_type_name_for_expected(typ, t.cur_module) != 0
