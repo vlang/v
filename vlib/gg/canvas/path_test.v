@@ -142,3 +142,28 @@ fn test_midpoint_contours_split_at_moves() {
 	assert contours[0].midpoint == Point{f32(5) * third, f32(5) * third}
 	assert contours[1].verb_start == 4 && contours[1].verb_end == 6
 }
+
+fn test_svg_arcs_match_sk_path_builder_bit_for_bit() {
+	// Points and weights produced by SkPathBuilder::arcTo() of the pinned
+	// Skia for the same arguments.
+	mut b := PathBuilder{}
+	b.move_to(f32(11.581105139828319), f32(50.0693373303035))
+	b.arc_to_svg(f32(11.64792707484055), f32(4.2227373311956375), f32(-99.92622184274818),
+		true, .ccw, f32(27.78401298036616), f32(4.989945955549562))
+	p := b.detach()
+	expected := [u32(0x41394c35), 0x42484700, 0x41c5391e, 0x42a20497, 0x42030473, 0x4269e087,
+		0x42236c55, 0x420fb7df, 0x41de45a9, 0x409fada3]
+	mut got := []u32{}
+	for pt in p.points {
+		got << math.f32_bits(pt.x)
+		got << math.f32_bits(pt.y)
+	}
+	assert got == expected
+	assert p.verbs == [PathVerb.move, .conic, .conic]
+	assert p.weights.map(math.f32_bits(it)) == [u32(0x3f3504f2), 0x3f3504f2]
+	// Zero radii and coincident end points become lines.
+	b.move_to(1, 1)
+	b.arc_to_svg(0, 5, 0, false, .cw, 4, 4)
+	b.arc_to_svg(3, 3, 0, false, .cw, 4, 4)
+	assert b.detach().verbs == [PathVerb.move, .line, .line]
+}

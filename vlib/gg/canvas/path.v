@@ -732,3 +732,159 @@ pub fn (p Path) convexity() PathConvexity {
 pub fn (p Path) is_convex() bool {
 	return p.convexity() in [.convex_cw, .convex_ccw, .convex_degenerate]
 }
+
+#include "@DIR/path_math.h"
+
+fn C.gg_canvas_sincosf(x f32, s &f32, c &f32)
+fn C.cosf(x f32) f32
+fn C.tanf(x f32) f32
+fn C.atan2f(y f32, x f32) f32
+fn C.ceilf(x f32) f32
+
+// sk_scalar_pi is SK_ScalarPI.
+const sk_scalar_pi = f32(3.14159265)
+
+// sin_cos_snap_to_zero mirrors SkScalarSinSnapToZero() and
+// SkScalarCosSnapToZero() of one angle, which the compiled Skia evaluates
+// with a single sincos call.
+fn sin_cos_snap_to_zero(radians f32) (f32, f32) {
+	mut s := f32(0)
+	mut c := f32(0)
+	C.gg_canvas_sincosf(radians, &s, &c)
+	tolerance := f32(1) / f32(1 << 16)
+	return if abs_f32(s) <= tolerance { f32(0) } else { s }, if abs_f32(c) <= tolerance {
+		f32(0)
+	} else {
+		c
+	}
+}
+
+// AffinePoints is the 2x2 of an SkMatrix without translation, applied like
+// SkMatrix::mapPoints(): (x * sx + y * kx, y * sy + x * ky).
+struct AffinePoints {
+	sx f32
+	kx f32
+	ky f32
+	sy f32
+}
+
+fn (m AffinePoints) map(p Point) Point {
+	a := p.x * m.sx
+	b := p.y * m.kx
+	c := p.y * m.sy
+	d := p.x * m.ky
+	return Point{a + b, c + d}
+}
+
+// arc_to_svg mirrors SkPathBuilder::arcTo(SkPoint rad, angle, arcLarge,
+// arcSweep, endPt): an SVG elliptical arc from the last point, added as
+// conics.
+pub fn (mut b PathBuilder) arc_to_svg(rad_x f32, rad_y f32, angle f32, large bool, sweep PathDirection, x f32, y f32) {
+	b.ensure_move()
+	src0 := b.points[b.points.len - 1]
+	src1 := Point{x, y}
+	if rad_x == 0 || rad_y == 0 {
+		b.line_to(x, y)
+		return
+	}
+	if src0.x == src1.x && src0.y == src1.y {
+		b.line_to(x, y)
+		return
+	}
+	mut rx := abs_f32(rad_x)
+	mut ry := abs_f32(rad_y)
+	mid_dx := src0.x - src1.x
+	mid_dy := src0.y - src1.y
+	mid := Point{mid_dx * f32(0.5), mid_dy * f32(0.5)}
+	// setRotate(-angle), then mapPoint().
+	deg_to_rad := sk_scalar_pi / f32(180)
+	neg_rad := -angle * deg_to_rad
+	s0, c0 := sin_cos_snap_to_zero(neg_rad)
+	rotate := AffinePoints{c0, -s0, s0, c0}
+	tm := rotate.map(mid)
+	square_rx := rx * rx
+	square_ry := ry * ry
+	square_x := tm.x * tm.x
+	square_y := tm.y * tm.y
+	qx := square_x / square_rx
+	qy := square_y / square_ry
+	mut radii_scale := qx + qy
+	if radii_scale > 1 {
+		radii_scale = C.sqrtf(radii_scale)
+		rx *= radii_scale
+		ry *= radii_scale
+	}
+	// setScale(1 / rx, 1 / ry).preRotate(-angle)
+	isx := f32(1) / rx
+	isy := f32(1) / ry
+	unit_xform := AffinePoints{isx * c0, isx * -s0, isy * s0, isy * c0}
+	mut u0 := unit_xform.map(src0)
+	mut u1 := unit_xform.map(src1)
+	mut delta := Point{u1.x - u0.x, u1.y - u0.y}
+	dxx := delta.x * delta.x
+	dyy := delta.y * delta.y
+	d := dxx + dyy
+	inv_d := f32(1) / d
+	scale_factor_squared := max_f32(inv_d - f32(0.25), 0)
+	mut scale_factor := C.sqrtf(scale_factor_squared)
+	if (sweep == .ccw) != large {
+		scale_factor = -scale_factor
+	}
+	delta = Point{delta.x * scale_factor, delta.y * scale_factor}
+	sum := Point{u0.x + u1.x, u0.y + u1.y}
+	mut center := Point{sum.x * f32(0.5), sum.y * f32(0.5)}
+	center = Point{center.x + -delta.y, center.y + delta.x}
+	u0 = Point{u0.x - center.x, u0.y - center.y}
+	u1 = Point{u1.x - center.x, u1.y - center.y}
+	theta1 := C.atan2f(u0.y, u0.x)
+	theta2 := C.atan2f(u1.y, u1.x)
+	mut theta_arc := theta2 - theta1
+	two_pi := sk_scalar_pi * f32(2)
+	if theta_arc < 0 && sweep == .cw {
+		theta_arc += two_pi
+	} else if theta_arc > 0 && sweep != .cw {
+		theta_arc -= two_pi
+	}
+	if abs_f32(theta_arc) < sk_scalar_pi / f32(1000 * 1000) {
+		b.line_to(x, y)
+		return
+	}
+	// setRotate(angle).preScale(rx, ry)
+	rad := angle * deg_to_rad
+	s1, c1 := sin_cos_snap_to_zero(rad)
+	xform := AffinePoints{c1 * rx, -s1 * ry, s1 * rx, c1 * ry}
+	third := (f32(2) * sk_scalar_pi) / f32(3)
+	segments := int(C.ceilf(abs_f32(theta_arc / third)))
+	theta_width := theta_arc / f32(segments)
+	t := C.tanf(f32(0.5) * theta_width)
+	if !is_finite_f32(t) {
+		return
+	}
+	mut start_theta := theta1
+	half_cos := C.cosf(theta_width) * f32(0.5)
+	w := C.sqrtf(f32(0.5) + half_cos)
+	is_integer := fn (v f32) bool {
+		return v == floor_f32(v)
+	}
+	half_pi := sk_scalar_pi / f32(2)
+	expect_integers := abs_f32(half_pi - abs_f32(theta_width)) <= scalar_nearly_zero
+		&& is_integer(rx) && is_integer(ry) && is_integer(x) && is_integer(y)
+	for _ in 0 .. segments {
+		end_theta := start_theta + theta_width
+		sin_end, cos_end := sin_cos_snap_to_zero(end_theta)
+		p1 := Point{cos_end + center.x, sin_end + center.y}
+		ts := t * sin_end
+		tc := -t * cos_end
+		p0 := Point{p1.x + ts, p1.y + tc}
+		mut m0 := xform.map(p0)
+		mut m1 := xform.map(p1)
+		if expect_integers {
+			m0 = Point{floor_f32(m0.x + f32(0.5)), floor_f32(m0.y + f32(0.5))}
+			m1 = Point{floor_f32(m1.x + f32(0.5)), floor_f32(m1.y + f32(0.5))}
+		}
+		b.conic_to(m0.x, m0.y, m1.x, m1.y, w)
+		start_theta = end_theta
+	}
+	// The final point is exactly the requested end point.
+	b.points[b.points.len - 1] = Point{x, y}
+}
