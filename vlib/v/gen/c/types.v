@@ -1748,6 +1748,14 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 		return false
 	}
 	bare_val_type := val_type.trim_right('*')
+	if bare_val_type.starts_with('multi_return_') && !g.multi_return_type_names[bare_val_type]
+		&& !g.cached_support_identifiers[bare_val_type]
+		&& bare_val_type !in g.qualified_struct_c_types(bare_val_type) {
+		// A stale checker annotation can register an optional tuple without a
+		// concrete tuple declaration. Its specialization registers the usable ABI.
+		g.emitted_optional_types[opt_name] = true
+		return false
+	}
 	interface_matches := g.qualified_interface_c_types(bare_val_type.all_after_last('__'))
 	is_known_interface := bare_val_type in interface_matches
 	is_known_sum_type := g.is_known_sum_c_type(bare_val_type)

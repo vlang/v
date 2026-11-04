@@ -107,6 +107,9 @@ specify with special field attributes. The matching is done in the following way
 A new instance of `T` is returned with fields assigned with values from any matching
 input flags, along with an array of flags that could not be matched.
 
+`T` can have the same name as a type exported by `flag`, such as an application-defined
+`FlagConfig`; the returned value keeps the application type.
+
 ## using[T](...)
 
 `using[T](defaults T, input []string, config ParseConfig) !(T, []string)` does the same as

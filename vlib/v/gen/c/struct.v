@@ -3215,7 +3215,7 @@ fn (mut g FlatGen) can_use_global_brace_zero_init(typ types.Type, c_type string)
 // has_zero_sized_leading_init_slot reports whether has zero sized leading init slot applies in c.
 fn (mut g FlatGen) has_zero_sized_leading_init_slot(typ types.Type) bool {
 	clean := unalias_type(typ)
-	if clean !is types.Struct && clean !is types.ArrayFixed {
+	if clean !is types.Struct && clean !is types.ArrayFixed && clean !is types.MultiReturn {
 		return false
 	}
 	mut visited := map[u32]bool{}
@@ -3227,6 +3227,9 @@ fn (mut g FlatGen) has_zero_sized_leading_init_slot_inner(typ types.Type, mut vi
 	return match typ {
 		types.Alias {
 			g.has_zero_sized_leading_init_slot_inner(typ.base_type, mut visited)
+		}
+		types.MultiReturn {
+			typ.types.len == 0 || g.has_zero_sized_leading_init_slot_inner(typ.types[0], mut visited)
 		}
 		types.ArrayFixed {
 			if g.fixed_array_len_is_zero(typ) {

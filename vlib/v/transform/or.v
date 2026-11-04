@@ -1279,8 +1279,9 @@ fn (t &Transformer) canonical_or_expr_types(expr_type_id u32) (u32, u32) {
 	base_id = t.normalize_or_expr_value_type(base_id)
 	// Resolve import aliases and nested generic arguments in the payload. The
 	// optional wrapper and its lowered value temporary must use one canonical
-	// spelling (`json2.Any`, not the source alias `json.Any`).
-	if !isnil(t.tc) {
+	// spelling (`json2.Any`, not the source alias `json.Any`). Keep explicit
+	// `main.` provenance when lowering a caller's type in an imported generic.
+	if !isnil(t.tc) && !t.or_expr_type_has_main_lock(base_id) {
 		resolved := t.tc.parse_resolution_type(base_id)
 		if resolved !is types.Unknown && resolved !is types.Void {
 			base_id = resolved.source_type_id()
@@ -1313,6 +1314,13 @@ fn (t &Transformer) call_declared_return_type_text(id flat.NodeId) ?u32 {
 	return none
 }
 
+// or_expr_type_has_main_lock recognizes caller provenance without matching module names
+// such as `domain`, or a real import whose alias is `main`.
+fn (t &Transformer) or_expr_type_has_main_lock(typ_id u32) bool {
+	return flat.source_type_syntax(typ_id).main_unlocked() != typ_id
+		&& !t.ident_is_import_alias('main')
+}
+
 fn (t &Transformer) normalize_or_expr_value_type(typ_id u32) u32 {
 	shape := flat.source_type_shape(typ_id)
 	// Container types must be decomposed before generic applications, which mistake
@@ -1326,6 +1334,23 @@ fn (t &Transformer) normalize_or_expr_value_type(typ_id u32) u32 {
 		return flat.source_type_composition_one(kind, t.normalize_or_expr_value_type(flat.source_type_syntax(typ_id).raw_base()))
 	}
 	syntax := flat.source_type_syntax(typ_id)
+	// Resolve the other components of a composite payload before keeping its main lock.
+	if t.or_expr_type_has_main_lock(typ_id) {
+		if shape.has(.leading_bracket) && syntax.first_bracket_closed() {
+			return flat.source_type_composition_two(.concat, syntax.first_bracket_prefix(), t.normalize_or_expr_value_type(syntax.first_bracket_base()))
+		}
+		if (shape.has(.function_compact) || shape.has(.function_spaced)) && syntax.function_closed() {
+			mut parts := []u32{cap: syntax.function_params().len + 1}
+			for param in syntax.function_params() {
+				parts << t.normalize_or_expr_value_type(flat.source_type_syntax(param).legacy_parameter_mut_type())
+			}
+			if syntax.function_result() != 0 {
+				parts << t.normalize_or_expr_value_type(syntax.function_result())
+				return flat.source_type_composition(.function_type_spaced, parts)
+			}
+			return flat.source_type_composition(.void_function_type_spaced, parts)
+		}
+	}
 	if shape.has(.map_type) && syntax.bracket_closed() {
 		return flat.source_type_composition_two(.map, t.normalize_or_expr_value_type(syntax.bracket_raw_inner()), t.normalize_or_expr_value_type(syntax.raw_base()))
 	}
@@ -1340,8 +1365,19 @@ fn (t &Transformer) normalize_or_expr_value_type(typ_id u32) u32 {
 			return flat.source_type_composition_two(.map, t.normalize_or_expr_value_type(key_type), t.normalize_or_expr_value_type(value_type))
 		}
 	}
-	if !syntax.generic_app_valid() { return t.normalize_type_alias(typ_id) }
-	mut normalized_base := t.normalize_type_alias(syntax.generic_app_base())
+	if !syntax.generic_app_valid() {
+		return if t.or_expr_type_has_main_lock(typ_id) {
+			typ_id
+		} else {
+			t.normalize_type_alias(typ_id)
+		}
+	}
+	base_id := syntax.generic_app_base()
+	mut normalized_base := if t.or_expr_type_has_main_lock(base_id) {
+		base_id
+	} else {
+		t.normalize_type_alias(base_id)
+	}
 	// Imported generic structs have both a qualified declaration entry and a
 	// short convenience entry. The latter is sufficient for field lookup but is
 	// not a valid C type outside its declaring module (`QueryBuilder_User` versus

@@ -1449,3 +1449,33 @@ fn test_shared_generic_substitution_preserves_composite_spelling_rules() {
 		assert substitute_shared_generic_type_text(flat.source_type_id(input), params, args) == flat.source_type_id(expected[i])
 	}
 }
+
+fn test_optional_tuple_typedef_requires_a_concrete_or_cached_tuple() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs[flat.source_type_id('Config')] = []types.StructField{}
+	tc.structs[flat.source_type_id('other.Config')] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	tuple := types.Type(types.MultiReturn{
+		types: [
+			types.Type(types.Struct{ name_id: flat.source_type_id('main.Config') }),
+			types.Type(types.Array{ elem_type: types.Type(types.string_) }),
+		]
+	})
+	g.collect_known_concrete_multi_return_type(tuple)
+	valid := g.multi_return_c_type_name(tuple as types.MultiReturn)
+	assert g.emit_optional_typedef('__v_result_${valid}', valid)
+	stale := 'multi_return_other__Config_Array'
+	assert !g.emit_optional_typedef('__v_result_${stale}', stale)
+	assert !g.sb.str().contains('${stale} value;')
+	cached := 'multi_return_cached__Config_Array'
+	g.cached_support_identifiers[cached] = true
+	assert g.emit_optional_typedef('__v_result_${cached}', cached)
+	c_name := 'multi_return_Native'
+	c_type := flat.source_type_id('C.${c_name}')
+	tc.structs[c_type] = []types.StructField{}
+	tc.c_typedef_structs[c_type] = true
+	assert g.emit_optional_typedef('__v_result_${c_name}', c_name)
+}

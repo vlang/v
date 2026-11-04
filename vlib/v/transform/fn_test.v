@@ -572,6 +572,66 @@ fn test_or_query_pairs_preserve_empty_and_void_payload_identities() {
 	}
 }
 
+fn test_or_payload_keeps_main_types_inside_imported_generic_bodies() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs[flat.source_type_id('Config')] = []types.StructField{}
+	tc.structs[flat.source_type_id('library.Config')] = []types.StructField{}
+	tc.structs[flat.source_type_id('Box')] = []types.StructField{}
+	tc.structs[flat.source_type_id('library.Box')] = []types.StructField{}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'library'
+	tc.cur_module = 'library'
+	for wrapper in ['?', '!'] {
+		for value in ['main.Config', '[]main.Config', '&main.Config', '(main.Config, []main.Config)',
+			'map[string]main.Config', '[2]main.Config', 'Container[main.Config]', 'main.Box[int]'] {
+			expr, payload := t.canonical_or_expr_types(flat.source_type_id('${wrapper}${value}'))
+			assert flat.source_type_name(expr) == '${wrapper}${value}'
+			assert flat.source_type_name(payload) == value
+		}
+	}
+}
+
+fn test_or_payload_resolves_imports_containing_main_in_the_alias_name() {
+	for import_alias in ['domain', 'user_domain', 'main'] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		tc.imports[import_alias] = 'actual'
+		tc.structs[flat.source_type_id('actual.Config')] = []types.StructField{}
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		t.cur_module = 'library'
+		tc.cur_module = 'library'
+		for wrapper in ['?', '!'] {
+			for prefix in ['', '[]', '[2]'] {
+				expr, payload := t.canonical_or_expr_types(flat.source_type_id('${wrapper}${prefix}${import_alias}.Config'))
+				assert flat.source_type_name(expr) == '${wrapper}${prefix}actual.Config'
+				assert flat.source_type_name(payload) == '${prefix}actual.Config'
+			}
+		}
+	}
+}
+
+fn test_or_payload_resolves_other_components_beside_main_locks() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.imports['domain'] = 'actual'
+	tc.structs[flat.source_type_id('Config')] = []types.StructField{}
+	tc.structs[flat.source_type_id('library.Config')] = []types.StructField{}
+	tc.structs[flat.source_type_id('actual.Config')] = []types.StructField{}
+	mut t := new_transformer(mut a, &tc, map[string]bool{})
+	t.cur_module = 'library'
+	tc.cur_module = 'library'
+	for raw, expected in {
+		'fn (main.Config) domain.Config':           'fn (main.Config) actual.Config'
+		'[2]Container[main.Config, domain.Config]': '[2]Container[main.Config, actual.Config]'
+		'(main.Config, []domain.Config)':           '(main.Config, []actual.Config)'
+	} {
+		expr, payload := t.canonical_or_expr_types(flat.source_type_id('?${raw}'))
+		assert flat.source_type_name(expr) == '?${expected}'
+		assert flat.source_type_name(payload) == expected
+	}
+}
+
 fn test_or_payload_type_qualifies_generic_base_in_own_module() {
 	mut t := Transformer{
 		cur_module: 'orm'

@@ -1063,3 +1063,27 @@ fn test_exiting_if_branch_has_no_cleanup_after_transfer() {
 		}
 	}
 }
+
+fn test_tuple_staging_zero_init_handles_an_empty_first_field() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs[flat.source_type_id('Empty')] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	for raw, empty_first in {
+		'(Empty, int)':        true
+		'([0]int, int)':       true
+		'((Empty, int), int)': true
+		'(int, Empty)':        false
+		'(int, string)':       false
+	} {
+		lhs := stmt_test_node(mut a, .ident, 'staged', [])
+		decl := stmt_test_node(mut a, .decl_assign, '__v3_zeroed_stack_value_decl', [lhs])
+		a.nodes[int(decl)].typ = flat.source_type_id(raw)
+		g.sb.clear()
+		g.gen_staging_value_decl(a.nodes[int(decl)])
+		expected := if empty_first { ' = {};' } else { ' = {0};' }
+		assert g.sb.str().contains(expected), g.sb.str()
+	}
+}
