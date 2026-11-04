@@ -52,6 +52,8 @@ fn test_native_interface_contract_requires_known_paths_and_complete_manifest() !
 	for macro_name in ['__DATE__', '__TIME__', '__TIMESTAMP__'] {
 		os.write_file(nested, 'static const char *probe_build = ${macro_name};\n')!
 		assert v3_native_interface_closure(&a, &prefs, [], compiler, &inputs).unassignable != '', macro_name
+		os.write_file(nested, '#define PROBE_DELAYED ${macro_name}\n')!
+		assert v3_native_interface_closure(&a, &prefs, [], compiler, &inputs).unassignable != '', 'delayed ${macro_name}'
 	}
 	os.write_file(nested, 'typedef int other_value;\n')!
 	mut configured := flat.FlatAst.new()

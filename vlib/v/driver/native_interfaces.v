@@ -79,7 +79,13 @@ fn v3_native_interface_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	}
 	path := os.join_path(os.real_path(os.vtmp_dir()), 'v3_native_interfaces_${tempname.unique_token()}.c')
 	defer { os.rm(path) or {} }
-	os.write_file(path, cgen.cache_native_dependency_directives(a, prefs.vroot, flags, prefs.target)) or { return result }
+	probe := cgen.cache_native_dependency_directives(a, prefs.vroot, flags, prefs.target)
+	checked_probe := if tinycc {
+		probe
+	} else {
+		'#pragma GCC poison __DATE__ __TIME__ __TIMESTAMP__\n' + probe
+	}
+	os.write_file(path, checked_probe) or { return result }
 	mut args := c_object_compile_flags(flags)
 	args << ['-x', 'c']
 	// -M does not expand macros in ordinary code. Let the selected C
