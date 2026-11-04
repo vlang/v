@@ -177,7 +177,18 @@ fn (g &Gen) is_aggregate_type(typ_id ssa.TypeID) bool {
 	if typ_id <= 0 || typ_id >= g.m.type_store.types.len {
 		return false
 	}
-	return g.m.type_store.types[typ_id].kind in [.struct_t, .array_t]
+	typ := g.m.type_store.types[typ_id]
+	// Channels are reference types (pointers), not aggregates.
+	if typ.kind == .struct_t && typ.field_names.len > 0 && typ.field_names[0] == 'ringbuf' {
+		return false
+	}
+	if typ.kind == .ptr_t && typ.elem_type > 0 && typ.elem_type < g.m.type_store.types.len {
+		et := g.m.type_store.types[typ.elem_type]
+		if et.kind == .struct_t && et.field_names.len > 0 && et.field_names[0] == 'ringbuf' {
+			return false
+		}
+	}
+	return typ.kind in [.struct_t, .array_t]
 }
 
 fn (g &Gen) is_float_type(typ_id ssa.TypeID) bool {
@@ -470,9 +481,10 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 				}
 			}
 
-			// Keep full stack storage for struct/array values
+			// Keep full stack storage for struct/array values (but not channels, which are pointers)
 			val_typ := g.m.type_store.types[val.typ]
-			if val_typ.kind == .struct_t || val_typ.kind == .array_t {
+			is_channel_type := (val_typ.kind == .struct_t && val_typ.field_names.len > 0 && val_typ.field_names[0] == 'ringbuf') || (val_typ.kind == .ptr_t && val_typ.elem_type > 0 && val_typ.elem_type < g.m.type_store.types.len && g.m.type_store.types[val_typ.elem_type].kind == .struct_t && g.m.type_store.types[val_typ.elem_type].field_names.len > 0 && g.m.type_store.types[val_typ.elem_type].field_names[0] == 'ringbuf')
+			if (val_typ.kind == .struct_t || val_typ.kind == .array_t) && !is_channel_type {
 				mut struct_size := g.type_size(val.typ)
 				if struct_size <= 0 {
 					struct_size = if val_typ.fields.len > 0 { val_typ.fields.len * 8 } else { 8 }
@@ -2151,11 +2163,16 @@ fn (mut g Gen) load_call_arg_to_reg(reg int, val_id int, arg_idx int, instr ssa.
 	value := g.m.values[val_id]
 	if param_type > 0 && param_type < g.m.type_store.types.len {
 		param := g.m.type_store.types[param_type]
-		if param.kind == .ptr_t && param.elem_type == value.typ
-			&& g.is_aggregate_type(value.typ) {
-			g.load_address_of_val_to_reg(reg, val_id)
-			return
-		}
+		// Channel values are already pointers; pass by value, not by address.
+	is_channel_value := value.typ > 0 && value.typ < g.m.type_store.types.len
+		&& g.m.type_store.types[value.typ].kind == .struct_t
+		&& g.m.type_store.types[value.typ].field_names.len > 0
+		&& g.m.type_store.types[value.typ].field_names[0] == 'ringbuf'
+	if param.kind == .ptr_t && param.elem_type == value.typ
+		&& g.is_aggregate_type(value.typ) && !is_channel_value {
+		g.load_address_of_val_to_reg(reg, val_id)
+		return
+	}
 	}
 	g.load_val_to_reg(reg, val_id)
 }
