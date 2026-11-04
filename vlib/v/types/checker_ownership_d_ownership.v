@@ -7882,6 +7882,12 @@ fn (mut tc TypeChecker) ownership_assign_to_name(lhs_name string, rhs_id flat.No
 	if lhs_name != rhs_name {
 		tc.ownership_clear_descendant_state(lhs_name)
 	}
+	// Scalar assignment copies the value, including casts of borrowed fields.
+	if returned_value_is_scalar_copy(lhs_type) {
+		st.owned_vars.delete(lhs_name)
+		st.owned_var_types.delete(lhs_name)
+		return
+	}
 	if tc.ownership_reject_sum_aggregate_store(lhs_name, rhs_id, lhs_type, assign_id) { return }
 	if tc.ownership_transfer_inner_sum_local(lhs_name, rhs_id, lhs_type, assign_id) { return }
 	if tc.ownership_mark_sum_borrow(lhs_name, rhs_id, lhs_type, assign_id) { return }
@@ -10692,7 +10698,10 @@ fn (mut tc TypeChecker) ownership_after_return(id flat.NodeId, node flat.Node) {
 			}
 		}
 		if name.len > 0 {
-			tc.ownership_reject_global_move(name, expr_id, st.cur_fn, true)
+			// Taking a global's address borrows its storage instead of moving its value.
+			if !tc.ownership_expr_is_borrow(expr_id) {
+				tc.ownership_reject_global_move(name, expr_id, st.cur_fn, true)
+			}
 			return_slots := tc.ownership_return_slot_indices(expr_id, i, '')
 			if name in st.owned_vars {
 				// Moving descendants first makes the aggregate overlap with an already moved

@@ -324,6 +324,33 @@ fn main() {
 	}
 }
 
+fn test_ownership_cast_scalar_field_assignments_copy_borrowed_values() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_scalar_cast_assignments_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source_path := os.join_path(root, 'main.v')
+	os.write_file(source_path, 'type Count = int
+struct Node { start i32; count i32 }
+struct Tree { nodes []Node }
+fn copied(tree &Tree) int {
+	node := &tree.nodes[0]
+	start := int(node.start)
+	mut count := Count(node.count)
+	count = Count(node.start)
+	return start + int(count)
+}
+fn main() {
+	tree := Tree{nodes: [Node{start: 3, count: 4}]}
+	assert copied(&tree) == 6
+	assert tree.nodes[0].start == 3 && tree.nodes[0].count == 4
+}
+')!
+	for mode in ['-no-parallel', ''] {
+		result := run_owned_storage_summary(source_path, mode, 'run')
+		assert result.exit_code == 0, '${mode}: ${result.output}'
+	}
+}
+
 fn test_ownership_returned_fields_still_reject_local_references() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_reference_fields_${os.getpid()}')
 	os.mkdir_all(root)!
@@ -506,6 +533,50 @@ fn main() {}
 		result := run_owned_storage_summary(source_path, mode, '-check')
 		assert result.exit_code != 0, '${mode}: ${result.output}'
 		assert result.output.contains('cannot return a reference to local storage `local`'), '${mode}: ${result.output}'
+	}
+}
+
+fn test_ownership_returning_global_address_borrows_instead_of_moving() {
+	root := os.join_path(os.vtmp_dir(), 'ownership_global_address_return_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source_path := os.join_path(root, 'main.v')
+	declarations := '__global drops int
+struct Item implements Drop { label string }
+fn (mut value Item) drop() { drops++ }
+fn (value &Item) free() { drops++ }
+__global global_item = Item{label: "persistent".to_owned()}
+'
+	for mode in ['-ownership', '-autofree'] {
+		for parallel in [false, true] {
+			mut args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-enable-globals',
+				mode]
+			if !parallel { args << '-no-parallel' }
+			os.write_file(source_path, declarations + 'fn borrow() &Item { return (&global_item) }
+fn main() {
+	for _ in 0 .. 3 {
+		value := borrow()
+		assert value == &global_item
+		assert value.label == "persistent"
+		assert drops == 0
+	}
+	assert global_item.label == "persistent"
+	assert borrow().label == "persistent"
+	assert drops == 0
+}
+')!
+			valid := os.exec([...args, 'run', source_path])
+			assert valid.exit_code == 0, '${mode}, parallel=${parallel}: ${valid.output}'
+			for body, diagnostic in {
+				'fn take() Item { return global_item }\nfn main() { println(take().label) }':                                                                                                                      'cannot move owned global `global_item`'
+				'struct Local { mut: number int }\nfn (mut local Local) borrow() &Local { return local }\nfn take() &Local { mut local := Local{}; return local.borrow() }\nfn main() { println(take().number) }': 'cannot return a reference to local storage `local`'
+			} {
+				os.write_file(source_path, declarations + body)!
+				invalid := os.exec([...args, '-check', source_path])
+				assert invalid.exit_code != 0, '${mode}, parallel=${parallel}: ${invalid.output}'
+				assert invalid.output.contains(diagnostic), '${mode}, parallel=${parallel}: ${invalid.output}'
+			}
+		}
 	}
 }
 
