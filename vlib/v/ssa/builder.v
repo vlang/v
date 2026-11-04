@@ -16145,6 +16145,9 @@ fn (mut b Builder) build_selector(node flat.Node) ValueID {
 			}
 			return b.m.get_or_add_const(typ, value.str())
 		}
+		location := if position := b.a.source_position(node.pos) { '${position}: ' } else { '' }
+		b.m.errors << '${location}error: the V arm64 backend cannot resolve C constant `C.${field_name}`; use the C backend'
+		return b.m.get_or_add_const(b.i64_type, '0')
 	}
 
 	if base.kind == .ident {

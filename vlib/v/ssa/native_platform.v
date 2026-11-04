@@ -47,22 +47,25 @@ fn native_linux_constant(name string) ?i64 {
 // These values come from the Darwin system ABI, independently of the bootstrap OS.
 fn native_darwin_constant(name string) ?i64 {
 	return match name {
-		'O_RDONLY', 'F_OK', 'PROT_NONE', 'SEEK_SET', 'CLOCK_REALTIME', 'STDIN_FILENO' {
+		'O_RDONLY', 'F_OK', 'PROT_NONE', 'SEEK_SET', 'CLOCK_REALTIME', 'STDIN_FILENO', 'NULL' {
 			i64(0)
 		}
 		'O_WRONLY', 'X_OK', 'PROT_READ', 'SEEK_CUR', 'RTLD_LAZY', 'EPERM',
-		'PTHREAD_CREATE_JOINABLE', 'POLLIN', 'STDOUT_FILENO' {
+		'PTHREAD_CREATE_JOINABLE', 'POLLIN', 'STDOUT_FILENO', 'FD_CLOEXEC' {
 			i64(1)
 		}
 		'O_RDWR', 'W_OK', 'PROT_WRITE', 'MAP_PRIVATE', 'SEEK_END', 'RTLD_NOW',
-		'ENOENT', 'PTHREAD_CREATE_DETACHED', 'PTHREAD_PROCESS_PRIVATE', 'STDERR_FILENO' {
+		'ENOENT', 'PTHREAD_CREATE_DETACHED', 'PTHREAD_PROCESS_PRIVATE', 'STDERR_FILENO', 'F_SETFD',
+		'_IONBF' {
 			i64(2)
 		}
 		'O_ACCMODE', 'ESRCH' { i64(3) }
 		'O_NONBLOCK', 'O_NDELAY', 'R_OK', 'PROT_EXEC', 'RTLD_LOCAL', 'EINTR' { i64(4) }
 		'CLOCK_MONOTONIC' { i64(6) }
 		'O_APPEND', 'RTLD_GLOBAL' { i64(8) }
+		'SIGKILL' { i64(9) }
 		'ECHILD' { i64(10) }
+		'SIGTERM' { i64(15) }
 		'ENOMEM' { i64(12) }
 		'EACCES' { i64(13) }
 		'O_SHLOCK' { i64(16) }
