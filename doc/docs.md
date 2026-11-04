@@ -10724,6 +10724,8 @@ so they always
 build as if `-gc none` was passed. For x64, `-prod` enables SSA optimization, scalar register
 allocation, and optimized C helpers. Very large x64 modules may skip the global SSA pass to
 bound compiler memory. The ARM64 backend retains its existing optimization behavior.
+ARM64 resolves a fixed set of platform C constants. Other C constants produce an error;
+use the C backend when a header defines a constant the native backend does not support.
 The x64 backend is experimental. Calls without a native implementation fail compilation
 or linking rather than producing placeholder implementations.
 It requires a Linux AMD64 host. Passing or returning C structs and arrays by value is
