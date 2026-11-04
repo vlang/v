@@ -38,6 +38,13 @@ fn record(f Flow) ! {
 	os.write_file('log', (os.read_file('log') or { '' }) + '${f.id} ')!
 }
 
+// contents returns the text of the file `path`, or a marker when it cannot be
+// read, so that an assertion on a missing file fails its own test instead of
+// stopping the whole test run.
+fn contents(path string) string {
+	return os.read_file(path) or { '<${err.msg()}>' }
+}
+
 // hook is a hook on the flow `id`, left out when its owner is skipped.
 fn hook(id string) FlowDep {
 	return FlowDep{
@@ -266,7 +273,7 @@ fn test_flow_taking_its_own_output_is_not_a_cycle() {
 	mut c := new()
 	c.add_flow(id: 'fmt', takes: ['main.v'], gives: ['main.v'], check: .none, flow: record)
 	c.execute(['fmt'])!
-	assert os.read_file('log')! == 'fmt '
+	assert contents('log') == 'fmt '
 }
 
 // test_mistakes_are_reported_before_any_flow_runs checks that an unknown flow,
@@ -310,9 +317,9 @@ fn test_default_flows() {
 	assert msg == 'unknown default flow `nope`'
 	c.default(['b'])
 	c.execute(['--fast'])!
-	assert os.read_file('fast')! == 'true'
+	assert contents('fast') == 'true'
 	c.execute([])!
-	assert os.read_file('fast')! == 'false'
+	assert contents('fast') == 'false'
 }
 
 // test_help_flow_replaces_the_help checks that a flow called help runs instead
@@ -324,7 +331,7 @@ fn test_help_flow_replaces_the_help() {
 	for arg in ['help', '-h', '--help'] {
 		c.execute([arg])!
 	}
-	assert os.read_file('log')! == 'help help help '
+	assert contents('log') == 'help help help '
 }
 
 // test_missing_output_fails_the_flow checks gives are verified after a run.
@@ -719,10 +726,10 @@ fn test_failed_mtime_flow_reruns() {
 		}
 	)
 	c.execute(['build']) or { assert err.msg().contains('poisoned') }
-	assert os.read_file('out')! == 'partial'
+	assert contents('out') == 'partial'
 	os.rm('poison')!
 	c.execute(['build'])!
-	assert os.read_file('out')! == 'done'
+	assert contents('out') == 'done'
 	// success clears the mark, so the flow can be skipped again
 	assert is_up_to_date(c.find('build')!) && !os.exists(dirty_path(c.find('build')!))
 }
@@ -748,7 +755,7 @@ fn test_flag_of_another_flow_does_not_defeat_a_skip() {
 	)
 	c.execute(['hashed'])!
 	c.execute(['timed', 'hashed', '--fast'])!
-	assert os.read_file('log')! == 'hashed '
+	assert contents('log') == 'hashed '
 }
 
 // test_hash_flow_reruns_when_a_script_flag_changes checks that the flags of the
@@ -763,7 +770,7 @@ fn test_hash_flow_reruns_when_a_script_flag_changes() {
 	for args in [['h'], ['h'], ['h', '--android'], ['h', '--android'], ['h']] {
 		c.execute(args)!
 	}
-	assert os.read_file('log')! == 'h h h '
+	assert contents('log') == 'h h h '
 }
 
 // test_hash_check_ignores_rewrites_with_the_same_content checks what hash checks
@@ -785,7 +792,7 @@ fn test_hash_check_ignores_rewrites_with_the_same_content() {
 	for _ in 0 .. 2 {
 		c.execute(['hashed', 'timed'])!
 	}
-	assert os.read_file('log')! == 'hashed timed timed '
+	assert contents('log') == 'hashed timed timed '
 }
 
 // test_hash_flow_reruns_when_an_input_is_renamed checks that the digest covers
@@ -800,7 +807,7 @@ fn test_hash_flow_reruns_when_an_input_is_renamed() {
 	os.rename('data/a', 'data/b')!
 	c.execute(['h'])!
 	c.execute(['h'])!
-	assert os.read_file('log')! == 'h h '
+	assert contents('log') == 'h h '
 }
 
 // test_shared_dependency_runs_once_per_pass checks that a flow needed twice runs
@@ -813,10 +820,10 @@ fn test_shared_dependency_runs_once_per_pass() {
 	c.add_flow(id: 'right', takes: ['gen.txt'], gives: ['r.txt'], check: .none, flow: record)
 	c.add_flow(id: 'top', takes: ['l.txt', 'r.txt'], check: .none, flow: record)
 	c.execute(['top'])!
-	assert os.read_file('log')! == 'gen left right top '
+	assert contents('log') == 'gen left right top '
 	os.rm('log')!
 	c.execute(['left', 'right'])!
-	assert os.read_file('log')! == 'gen left gen right '
+	assert contents('log') == 'gen left gen right '
 }
 
 // test_pre_hooks_and_dependencies_run_in_order checks that a flow runs its
@@ -837,7 +844,7 @@ fn test_pre_hooks_and_dependencies_run_in_order() {
 		c.add_flow(id: id, check: .none, flow: record)
 	}
 	c.execute(['top'])!
-	assert os.read_file('log')! == 'req1 req2 dep opt1 opt2 top '
+	assert contents('log') == 'req1 req2 dep opt1 opt2 top '
 }
 
 // test_post_hooks_of_a_dependency_run_before_the_dependent checks that the post
@@ -850,7 +857,7 @@ fn test_post_hooks_of_a_dependency_run_before_the_dependent() {
 	c.add_flow(id: 'build', takes: ['gen.txt'], check: .none, flow: record)
 	c.add_flow(id: 'note', check: .none, flow: record)
 	c.execute(['build'])!
-	assert os.read_file('log')! == 'gen note build '
+	assert contents('log') == 'gen note build '
 }
 
 // test_post_hook_waits_for_active_producer checks that a post hook needing the
@@ -887,11 +894,11 @@ fn test_post_hook_waits_for_active_producer() {
 		}
 	)
 	c.execute(['build'])!
-	assert os.read_file('audit.txt')! == 'gen app'
+	assert contents('audit.txt') == 'gen app'
 	os.rm('audit.txt')!
 	// requested on its own, the hook's producer is already done
 	c.execute(['gen'])!
-	assert os.read_file('audit.txt')! == 'gen app'
+	assert contents('audit.txt') == 'gen app'
 }
 
 // test_post_hooks_keep_order_when_using_owner_output checks that a post hook
@@ -932,8 +939,8 @@ fn test_post_hooks_keep_order_when_using_owner_output() {
 		}
 	)
 	c.execute(['build'])!
-	assert os.read_file('log')! == 'build audit clean'
-	assert os.read_file('audit.txt')! == 'built'
+	assert contents('log') == 'build audit clean'
+	assert contents('audit.txt') == 'built'
 	assert !os.exists('out')
 }
 
@@ -966,7 +973,7 @@ fn test_post_hooks_keep_order_when_waiting_for_active_producer() {
 		}
 	)
 	c.execute(['build'])!
-	assert os.read_file('log')! == 'gen build audit clean '
+	assert contents('log') == 'gen build audit clean '
 }
 
 // test_post_hooks_keep_order_when_nested_hooks_wait checks that a post hook
@@ -1007,7 +1014,7 @@ fn test_post_hooks_keep_order_when_nested_hooks_wait() {
 		}
 	)
 	c.execute(['pkg'])!
-	assert os.read_file('log')! == 'gen build audit pkg report clean '
+	assert contents('log') == 'gen build audit pkg report clean '
 }
 
 // test_post_hook_waits_again_for_a_flow_further_out checks that hooks waiting
@@ -1028,7 +1035,7 @@ fn test_post_hook_waits_again_for_a_flow_further_out() {
 	c.add_flow(id: 'audit', takes: ['app.txt'], check: .none, flow: record)
 	c.add_flow(id: 'ship', takes: ['pkg.txt'], check: .none, flow: record)
 	c.execute(['pkg'])!
-	assert os.read_file('log')! == 'gen build audit pkg ship '
+	assert contents('log') == 'gen build audit pkg ship '
 }
 
 // test_waiting_hooks_run_before_own_post_hooks checks that hooks waiting for a
@@ -1058,7 +1065,7 @@ fn test_waiting_hooks_run_before_own_post_hooks() {
 		}
 	)
 	c.execute(['build'])!
-	assert os.read_file('log')! == 'a b build check_a check_b tidy '
+	assert contents('log') == 'a b build check_a check_b tidy '
 }
 
 // test_post_hook_naming_the_pulling_flow_runs_it_once checks that a post hook
@@ -1084,11 +1091,11 @@ fn test_post_hook_naming_the_pulling_flow_runs_it_once() {
 		}
 	)
 	c.execute(['build'])!
-	assert os.read_file('log')! == 'gen build clean '
+	assert contents('log') == 'gen build clean '
 	os.rm('log')!
 	// requested on its own, gen runs build as an ordinary post hook
 	c.execute(['gen'])!
-	assert os.read_file('log')! == 'gen build clean '
+	assert contents('log') == 'gen build clean '
 }
 
 // test_post_hook_cycle_runs_each_hook_once checks that post hooks naming each
@@ -1100,10 +1107,10 @@ fn test_post_hook_cycle_runs_each_hook_once() {
 	c.add_flow(id: 'y', check: .none, post: [hook('x'), hook('z')], flow: record)
 	c.add_flow(id: 'z', check: .none, flow: record)
 	c.execute(['x'])!
-	assert os.read_file('log')! == 'x y z '
+	assert contents('log') == 'x y z '
 	os.rm('log')!
 	c.execute(['y'])!
-	assert os.read_file('log')! == 'y x z '
+	assert contents('log') == 'y x z '
 }
 
 // test_reused_hook_keeps_waiting_post_work_first checks that a hook reached a
@@ -1139,7 +1146,7 @@ fn test_reused_hook_keeps_waiting_post_work_first() {
 		}
 	)
 	c.execute(['build'])!
-	assert os.read_file('log')! == 'a shared b build audit clean '
+	assert contents('log') == 'a shared b build audit clean '
 }
 
 // test_post_hook_cycle_waiting_on_itself_still_runs checks that post hooks
@@ -1161,7 +1168,1174 @@ fn test_post_hook_cycle_waiting_on_itself_still_runs() {
 	c.add_flow(id: 'x', check: .none, flow: record)
 	c.add_flow(id: 'y', check: .none, flow: record)
 	c.execute(['top'])!
-	assert os.read_file('log')! == 'a b top p y x '
+	assert contents('log') == 'a b top p y x '
+}
+
+// test_post_hook_naming_the_pulling_flow_waits_for_its_post_hooks checks that
+// the hooks after a post hook naming the flow which pulled in its owner wait
+// for the post hooks of that flow, which are not scheduled yet when the hook
+// is reached. The cleanup would otherwise delete an input of those hooks.
+fn test_post_hook_naming_the_pulling_flow_waits_for_its_post_hooks() {
+	sandbox('post_ancestor_post')
+	mut c := new()
+	c.add_flow(
+		id:    'gen'
+		gives: ['gen.txt']
+		check: .none
+		post:  [hook('build'), hook('clean')]
+		flow:  record
+	)
+	c.add_flow(
+		id:    'build'
+		takes: ['gen.txt']
+		gives: ['app.txt']
+		check: .none
+		post:  [hook('audit')]
+		flow:  record
+	)
+	c.add_flow(id: 'audit', takes: ['app.txt'], check: .none, flow: record)
+	c.add_flow(
+		id:    'clean'
+		check: .none
+		flow:  fn (f Flow) ! {
+			os.rm('app.txt')!
+			record(f)!
+		}
+	)
+	c.execute(['build'])!
+	assert contents('log') == 'gen build audit clean '
+	os.rm('log')!
+	c.execute(['gen'])!
+	assert contents('log') == 'gen build audit clean '
+}
+
+// test_post_hook_cycle_keeps_waits_outside_it checks that breaking a cycle of
+// post hooks waiting for each other leaves the waits outside the cycle in
+// place, even for a flow waited for before the flows of the cycle. The cleanup
+// would otherwise delete an input of a hook still part of that flow's post work.
+fn test_post_hook_cycle_keeps_waits_outside_it() {
+	sandbox('post_cycle_outside')
+	mut c := new()
+	c.add_flow(
+		id:    'top'
+		takes: ['w.txt', 'q.txt', 'b.txt']
+		gives: ['top.txt']
+		check: .none
+		flow:  record
+	)
+	c.add_flow(id: 'w', gives: ['w.txt'], check: .none, post: [hook('a')], flow: record)
+	c.add_flow(
+		id:    'q'
+		gives: ['q.txt']
+		check: .none
+		post:  [hook('w'), hook('clean')]
+		flow:  record
+	)
+	c.add_flow(id: 'b', gives: ['b.txt'], check: .none, post: [hook('a'), hook('y')], flow: record)
+	c.add_flow(id: 'a', check: .none, post: [hook('p'), hook('b'), hook('x')], flow: record)
+	c.add_flow(id: 'p', takes: ['top.txt'], check: .none, flow: record)
+	c.add_flow(id: 'x', takes: ['top.txt'], check: .none, flow: record)
+	c.add_flow(id: 'y', check: .none, flow: record)
+	c.add_flow(
+		id:    'clean'
+		check: .none
+		flow:  fn (f Flow) ! {
+			os.rm('top.txt')!
+			record(f)!
+		}
+	)
+	c.execute(['top'])!
+	assert contents('log') == 'w a q b top p y x clean '
+}
+
+// remove_top is a flow body that deletes `top.txt` if it is still there, then
+// records the flow.
+fn remove_top(f Flow) ! {
+	remove('top.txt')!
+	record(f)!
+}
+
+// test_skipped_flow_reached_by_a_released_hook_waits_for_its_post_hooks checks
+// that the wait for post work not scheduled yet holds for a skipped flow too,
+// whose required post hooks run in place of the others.
+fn test_skipped_flow_reached_by_a_released_hook_waits_for_its_post_hooks() {
+	sandbox('post_ancestor_skipped')
+	os.write_file('src', '')!
+	mut c := new()
+	c.add_flow(
+		id:    'gen'
+		takes: ['src']
+		gives: ['gen.txt']
+		check: .hash
+		post:  [required('build'), required('clean')]
+		flow:  record
+	)
+	c.add_flow(
+		id:    'build'
+		takes: ['gen.txt']
+		gives: ['app.txt']
+		check: .hash
+		post:  [required('audit'), hook('note')]
+		flow:  record
+	)
+	c.add_flow(
+		id:    'audit'
+		check: .none
+		flow:  fn (f Flow) ! {
+			if os.exists('cleaned') {
+				return error('ran after clean')
+			}
+			record(f)!
+		}
+	)
+	c.add_flow(id: 'note', check: .none, flow: record)
+	c.add_flow(
+		id:    'clean'
+		check: .none
+		flow:  fn (f Flow) ! {
+			os.write_file('cleaned', '')!
+			record(f)!
+		}
+	)
+	c.execute(['build'])!
+	assert contents('log') == 'gen build audit note clean '
+	os.rm('log')!
+	os.rm('cleaned')!
+	c.execute(['build'])!
+	assert contents('log') == 'audit clean '
+}
+
+// test_post_hook_cycles_are_broken_one_at_a_time checks that separate cycles of
+// post hooks waiting for each other are each broken on their own, and every
+// hook still runs once.
+fn test_post_hook_cycles_are_broken_one_at_a_time() {
+	sandbox('post_cycles')
+	mut c := new()
+	c.add_flow(
+		id:    'top'
+		takes: ['a.txt', 'b.txt', 'c.txt', 'd.txt']
+		gives: ['top.txt']
+		check: .none
+		flow:  record
+	)
+	c.add_flow(
+		id:    'a'
+		gives: ['a.txt']
+		check: .none
+		post:  [hook('p'), hook('b'), hook('x')]
+		flow:  record
+	)
+	c.add_flow(id: 'b', gives: ['b.txt'], check: .none, post: [hook('a'), hook('y')], flow: record)
+	c.add_flow(
+		id:    'c'
+		gives: ['c.txt']
+		check: .none
+		post:  [hook('r'), hook('d'), hook('z')]
+		flow:  record
+	)
+	c.add_flow(id: 'd', gives: ['d.txt'], check: .none, post: [hook('c'), hook('u')], flow: record)
+	for id in ['p', 'x', 'r', 'z'] {
+		c.add_flow(id: id, takes: ['top.txt'], check: .none, flow: record)
+	}
+	for id in ['y', 'u'] {
+		c.add_flow(id: id, check: .none, flow: record)
+	}
+	c.execute(['top'])!
+	assert contents('log') == 'a b c d top p r y x u z '
+}
+
+// test_chain_into_post_hook_cycle_keeps_its_order checks that a chain of
+// several waits leading into a cycle of post hooks is released in order, after
+// the cycle is broken. Both cleanups would otherwise delete an input of `x`.
+fn test_chain_into_post_hook_cycle_keeps_its_order() {
+	sandbox('post_cycle_chain')
+	mut c := new()
+	c.add_flow(
+		id:    'top'
+		takes: ['w.txt', 'q.txt', 'r.txt', 'b.txt']
+		gives: ['top.txt']
+		check: .none
+		flow:  record
+	)
+	c.add_flow(id: 'w', gives: ['w.txt'], check: .none, post: [hook('a')], flow: record)
+	c.add_flow(
+		id:    'q'
+		gives: ['q.txt']
+		check: .none
+		post:  [hook('w'), hook('clean')]
+		flow:  record
+	)
+	c.add_flow(
+		id:    'r'
+		gives: ['r.txt']
+		check: .none
+		post:  [hook('q'), hook('clean2')]
+		flow:  record
+	)
+	c.add_flow(id: 'b', gives: ['b.txt'], check: .none, post: [hook('a'), hook('y')], flow: record)
+	c.add_flow(id: 'a', check: .none, post: [hook('p'), hook('b'), hook('x')], flow: record)
+	c.add_flow(id: 'p', takes: ['top.txt'], check: .none, flow: record)
+	c.add_flow(id: 'x', takes: ['top.txt'], check: .none, flow: record)
+	c.add_flow(id: 'y', check: .none, flow: record)
+	c.add_flow(id: 'clean', check: .none, flow: remove_top)
+	c.add_flow(id: 'clean2', check: .none, flow: remove_top)
+	c.execute(['top'])!
+	assert contents('log') == 'w a q r b top p y x clean clean2 '
+}
+
+// test_post_hook_cycle_through_the_pulling_flow_runs_each_once checks that post
+// hooks of a flow and of the flow that pulled it in, naming each other, run
+// once each and end the pass, though their post work can only wait for each
+// other. The cycle is broken at the flow waited for first, `build`.
+fn test_post_hook_cycle_through_the_pulling_flow_runs_each_once() {
+	sandbox('post_ancestor_cycle')
+	mut c := new()
+	c.add_flow(
+		id:    'gen'
+		gives: ['gen.txt']
+		check: .none
+		post:  [hook('build'), hook('clean')]
+		flow:  record
+	)
+	c.add_flow(
+		id:    'build'
+		takes: ['gen.txt']
+		check: .none
+		post:  [hook('gen'), hook('audit')]
+		flow:  record
+	)
+	c.add_flow(id: 'audit', check: .none, flow: record)
+	c.add_flow(id: 'clean', check: .none, flow: record)
+	c.execute(['build'])!
+	assert contents('log') == 'gen build clean audit '
+}
+
+// test_failing_hook_released_by_drain_stops_the_rest checks that a hook failing
+// once a cycle of post hooks is broken fails the build, and the hooks waiting
+// after it never run.
+fn test_failing_hook_released_by_drain_stops_the_rest() {
+	sandbox('post_cycle_fails')
+	mut c := new()
+	c.add_flow(
+		id:    'top'
+		takes: ['w.txt', 'q.txt', 'b.txt']
+		gives: ['top.txt']
+		check: .none
+		flow:  record
+	)
+	c.add_flow(id: 'w', gives: ['w.txt'], check: .none, post: [hook('a')], flow: record)
+	c.add_flow(
+		id:    'q'
+		gives: ['q.txt']
+		check: .none
+		post:  [hook('w'), hook('clean')]
+		flow:  record
+	)
+	c.add_flow(id: 'b', gives: ['b.txt'], check: .none, post: [hook('a'), hook('y')], flow: record)
+	c.add_flow(id: 'a', check: .none, post: [hook('p'), hook('b'), hook('x')], flow: record)
+	c.add_flow(id: 'p', takes: ['top.txt'], check: .none, flow: record)
+	c.add_flow(
+		id:    'y'
+		check: .none
+		flow:  fn (f Flow) ! {
+			record(f)!
+			return error('y found a problem')
+		}
+	)
+	c.add_flow(id: 'x', check: .none, flow: record)
+	c.add_flow(id: 'clean', check: .none, flow: remove_top)
+	mut msg := ''
+	c.execute(['top']) or { msg = err.msg() }
+	assert msg == 'flow `y` failed: y found a problem'
+	assert contents('log') == 'w a q b top p y '
+}
+
+// test_post_hook_cycles_do_not_leak_into_the_next_pass checks that a pass ending
+// with a cycle of post hooks broken leaves nothing waiting for the next one.
+fn test_post_hook_cycles_do_not_leak_into_the_next_pass() {
+	sandbox('post_cycle_passes')
+	mut c := new()
+	c.add_flow(id: 'top', takes: ['a.txt', 'b.txt'], gives: ['top.txt'], check: .none, flow: record)
+	c.add_flow(
+		id:    'a'
+		gives: ['a.txt']
+		check: .none
+		post:  [hook('p'), hook('b'), hook('x')]
+		flow:  record
+	)
+	c.add_flow(id: 'b', gives: ['b.txt'], check: .none, post: [hook('a'), hook('y')], flow: record)
+	c.add_flow(id: 'p', takes: ['top.txt'], check: .none, flow: record)
+	c.add_flow(id: 'x', check: .none, flow: record)
+	c.add_flow(id: 'y', check: .none, flow: record)
+	c.execute(['top', 'b'])!
+	assert contents('log') == 'a b top p y x b a top p x y '
+}
+
+// remove_app is a flow body that deletes `app.txt` if it is still there, then
+// records the flow.
+fn remove_app(f Flow) ! {
+	remove('app.txt')!
+	record(f)!
+}
+
+// fail is a flow body that records the flow, then fails.
+fn fail(f Flow) ! {
+	record(f)!
+	return error('${f.id} found a problem')
+}
+
+// test_flow_naming_itself_as_post_hook_runs_once checks that a flow among its
+// own post hooks is not run again, and does not wait for itself.
+fn test_flow_naming_itself_as_post_hook_runs_once() {
+	sandbox('post_self')
+	mut c := new()
+	c.add_flow(id: 'a', check: .none, post: [hook('a'), hook('x')], flow: record)
+	c.add_flow(id: 'x', check: .none, flow: record)
+	c.execute(['a'])!
+	assert contents('log') == 'a x '
+}
+
+// test_flow_naming_itself_after_a_waiting_hook_runs_once checks that a flow
+// among its own post hooks does not wait for itself either once its post hooks
+// waited for the flow that pulled it in.
+fn test_flow_naming_itself_after_a_waiting_hook_runs_once() {
+	sandbox('post_self_wait')
+	mut c := new()
+	c.add_flow(id: 'top', takes: ['a.txt'], gives: ['top.txt'], check: .none, flow: record)
+	c.add_flow(
+		id:    'a'
+		gives: ['a.txt']
+		check: .none
+		post:  [hook('p'), hook('a'), hook('x')]
+		flow:  record
+	)
+	c.add_flow(id: 'p', takes: ['top.txt'], check: .none, flow: record)
+	c.add_flow(id: 'x', check: .none, flow: record)
+	c.execute(['top'])!
+	assert contents('log') == 'a top p x '
+}
+
+// test_repeated_post_hook_runs_once checks that a post hook listed twice runs
+// once, in its first place, even while it waits for the flow that pulled in
+// its owner.
+fn test_repeated_post_hook_runs_once() {
+	sandbox('post_repeated')
+	mut c := new()
+	c.add_flow(
+		id:    'gen'
+		gives: ['gen.txt']
+		check: .none
+		post:  [hook('audit'), hook('note'), hook('audit')]
+		flow:  record
+	)
+	c.add_flow(id: 'build', takes: ['gen.txt'], gives: ['app.txt'], check: .none, flow: record)
+	c.add_flow(id: 'audit', takes: ['app.txt'], check: .none, flow: record)
+	c.add_flow(id: 'note', check: .none, flow: record)
+	c.execute(['build'])!
+	assert contents('log') == 'gen build audit note '
+}
+
+// test_hooks_waiting_for_the_same_post_work_keep_their_order checks that hooks
+// of several dependencies, all waiting for the post work of the flow that
+// pulled them in, run after it in the order they began to wait.
+fn test_hooks_waiting_for_the_same_post_work_keep_their_order() {
+	sandbox('post_ancestor_many')
+	mut c := new()
+	c.add_flow(
+		id:    'build'
+		takes: ['g1.txt', 'g2.txt']
+		gives: ['app.txt']
+		check: .none
+		post:  [hook('audit')]
+		flow:  record
+	)
+	c.add_flow(
+		id:    'gen1'
+		gives: ['g1.txt']
+		check: .none
+		post:  [hook('build'), hook('clean1')]
+		flow:  record
+	)
+	c.add_flow(
+		id:    'gen2'
+		gives: ['g2.txt']
+		check: .none
+		post:  [hook('build'), hook('clean2')]
+		flow:  record
+	)
+	c.add_flow(id: 'audit', takes: ['app.txt'], check: .none, flow: record)
+	c.add_flow(id: 'clean1', check: .none, flow: remove_app)
+	c.add_flow(id: 'clean2', check: .none, flow: remove_app)
+	c.execute(['build'])!
+	assert contents('log') == 'gen1 gen2 build audit clean1 clean2 '
+}
+
+// test_nested_hook_reaching_the_releasing_flow_waits_for_its_post_hooks checks
+// that a hook run while the hooks waiting for a body are released, and naming
+// that flow, waits for its post hooks, which are not scheduled yet.
+fn test_nested_hook_reaching_the_releasing_flow_waits_for_its_post_hooks() {
+	sandbox('post_nested_ancestor')
+	mut c := new()
+	c.add_flow(
+		id:    'build'
+		takes: ['gen.txt']
+		gives: ['app.txt']
+		check: .none
+		post:  [hook('audit')]
+		flow:  record
+	)
+	c.add_flow(id: 'gen', gives: ['gen.txt'], check: .none, post: [hook('lint')], flow: record)
+	c.add_flow(
+		id:    'lint'
+		takes: ['app.txt']
+		check: .none
+		post:  [hook('build'), hook('clean')]
+		flow:  record
+	)
+	c.add_flow(id: 'audit', takes: ['app.txt'], check: .none, flow: record)
+	c.add_flow(id: 'clean', check: .none, flow: remove_app)
+	c.execute(['build'])!
+	assert contents('log') == 'gen build lint audit clean '
+}
+
+// test_wait_for_post_work_ends_at_the_pulling_flow checks that hooks waiting
+// for the post work of the flow that pulled in their owner do not also wait for
+// the flows further out, which need none of them.
+fn test_wait_for_post_work_ends_at_the_pulling_flow() {
+	sandbox('post_ancestor_outer')
+	mut c := new()
+	c.add_flow(id: 'pkg', takes: ['app.txt'], check: .none, flow: record)
+	c.add_flow(
+		id:    'build'
+		takes: ['gen.txt']
+		gives: ['app.txt']
+		check: .none
+		post:  [hook('audit')]
+		flow:  record
+	)
+	c.add_flow(
+		id:    'gen'
+		gives: ['gen.txt']
+		check: .none
+		post:  [hook('build'), hook('note')]
+		flow:  record
+	)
+	c.add_flow(id: 'audit', takes: ['app.txt'], check: .none, flow: record)
+	c.add_flow(id: 'note', check: .none, flow: record)
+	c.execute(['pkg'])!
+	assert contents('log') == 'gen build audit note pkg '
+}
+
+// test_released_hook_waits_again_for_an_active_flow checks that hooks released
+// by the end of some post work wait again when they need a flow still running
+// further out.
+fn test_released_hook_waits_again_for_an_active_flow() {
+	sandbox('post_wait_then_defer')
+	mut c := new()
+	c.add_flow(id: 'top', takes: ['app.txt'], gives: ['top.txt'], check: .none, flow: record)
+	c.add_flow(
+		id:    'build'
+		takes: ['gen.txt']
+		gives: ['app.txt']
+		check: .none
+		post:  [hook('audit')]
+		flow:  record
+	)
+	c.add_flow(
+		id:    'gen'
+		gives: ['gen.txt']
+		check: .none
+		post:  [hook('build'), hook('p'), hook('clean')]
+		flow:  record
+	)
+	c.add_flow(id: 'audit', takes: ['app.txt'], check: .none, flow: record)
+	c.add_flow(id: 'p', takes: ['top.txt'], check: .none, flow: record)
+	c.add_flow(id: 'clean', check: .none, flow: remove_app)
+	c.execute(['top'])!
+	assert contents('log') == 'gen build audit top p clean '
+}
+
+// test_failing_post_hook_of_the_pulling_flow_stops_the_waiting_hooks checks
+// that hooks waiting for the post work of the flow that pulled in their owner
+// never run when that post work fails.
+fn test_failing_post_hook_of_the_pulling_flow_stops_the_waiting_hooks() {
+	sandbox('post_ancestor_fails')
+	mut c := new()
+	c.add_flow(
+		id:    'gen'
+		gives: ['gen.txt']
+		check: .none
+		post:  [hook('build'), hook('clean')]
+		flow:  record
+	)
+	c.add_flow(id: 'build', takes: ['gen.txt'], check: .none, post: [hook('audit')], flow: record)
+	c.add_flow(id: 'audit', check: .none, flow: fail)
+	c.add_flow(id: 'clean', check: .none, flow: record)
+	mut msg := ''
+	c.execute(['build']) or { msg = err.msg() }
+	assert msg == 'flow `audit` failed: audit found a problem'
+	assert contents('log') == 'gen build audit '
+}
+
+// test_failing_body_drops_the_hooks_waiting_for_it checks that hooks waiting for
+// the body of a flow never run when that body fails.
+fn test_failing_body_drops_the_hooks_waiting_for_it() {
+	sandbox('post_body_fails')
+	mut c := new()
+	c.add_flow(
+		id:    'gen'
+		gives: ['gen.txt']
+		check: .none
+		post:  [hook('audit'), hook('note')]
+		flow:  record
+	)
+	c.add_flow(id: 'build', takes: ['gen.txt'], gives: ['app.txt'], check: .none, flow: fail)
+	c.add_flow(id: 'audit', takes: ['app.txt'], check: .none, flow: record)
+	c.add_flow(id: 'note', check: .none, flow: record)
+	mut msg := ''
+	c.execute(['build']) or { msg = err.msg() }
+	assert msg == 'flow `build` failed: build found a problem'
+	assert contents('log') == 'gen build '
+}
+
+// test_post_hook_cycle_of_three_runs_each_once checks that three flows whose
+// post work waits for each other in a ring all finish, the ring broken at the
+// flow waited for first.
+fn test_post_hook_cycle_of_three_runs_each_once() {
+	sandbox('post_cycle_three')
+	mut c := new()
+	c.add_flow(
+		id:    'top'
+		takes: ['a.txt', 'b.txt', 'c.txt']
+		gives: ['top.txt']
+		check: .none
+		flow:  record
+	)
+	c.add_flow(
+		id:    'a'
+		gives: ['a.txt']
+		check: .none
+		post:  [hook('p1'), hook('b'), hook('x')]
+		flow:  record
+	)
+	c.add_flow(
+		id:    'b'
+		gives: ['b.txt']
+		check: .none
+		post:  [hook('p2'), hook('c'), hook('y')]
+		flow:  record
+	)
+	c.add_flow(
+		id:    'c'
+		gives: ['c.txt']
+		check: .none
+		post:  [hook('p3'), hook('a'), hook('z')]
+		flow:  record
+	)
+	for id in ['p1', 'p2', 'p3'] {
+		c.add_flow(id: id, takes: ['top.txt'], check: .none, flow: record)
+	}
+	for id in ['x', 'y', 'z'] {
+		c.add_flow(id: id, check: .none, flow: record)
+	}
+	c.execute(['top'])!
+	assert contents('log') == 'a b c top p1 p2 p3 x z y '
+}
+
+// test_post_hook_that_is_a_pre_hook_of_the_pulling_flow_runs_once checks that a
+// pre hook of a flow, also a post hook of its dependency, runs once, wherever it
+// comes first.
+fn test_post_hook_that_is_a_pre_hook_of_the_pulling_flow_runs_once() {
+	sandbox('post_is_pre')
+	mut c := new()
+	c.add_flow(
+		id:    'build'
+		takes: ['gen.txt']
+		check: .none
+		pre:   [required('prep'), hook('lint')]
+		flow:  record
+	)
+	c.add_flow(
+		id:    'gen'
+		gives: ['gen.txt']
+		check: .none
+		post:  [hook('prep'), hook('lint')]
+		flow:  record
+	)
+	c.add_flow(id: 'prep', check: .none, flow: record)
+	c.add_flow(id: 'lint', check: .none, flow: record)
+	c.execute(['build'])!
+	assert contents('log') == 'prep gen lint build '
+}
+
+// test_skipped_producer_leaves_out_hooks_naming_the_pulling_flow checks that a
+// skipped flow leaves out its optional post hooks, including the flow that
+// pulled it in and the hooks that would have waited for it.
+fn test_skipped_producer_leaves_out_hooks_naming_the_pulling_flow() {
+	sandbox('post_ancestor_left_out')
+	os.write_file('src', '')!
+	mut c := new()
+	c.add_flow(
+		id:    'gen'
+		takes: ['src']
+		gives: ['gen.txt']
+		check: .hash
+		post:  [hook('build'), hook('clean')]
+		flow:  record
+	)
+	c.add_flow(id: 'build', takes: ['gen.txt'], check: .none, flow: record)
+	c.add_flow(id: 'clean', check: .none, flow: record)
+	c.execute(['build'])!
+	assert contents('log') == 'gen build clean '
+	os.rm('log')!
+	c.execute(['build'])!
+	assert contents('log') == 'build '
+}
+
+// remove_c is a flow body that deletes `c.txt` if it is still there, then
+// records the flow.
+fn remove_c(f Flow) ! {
+	remove('c.txt')!
+	record(f)!
+}
+
+// test_nested_pulling_flows_finish_their_post_work_inside_out checks that along
+// a chain of flows, each with post hooks naming the flow that pulled it in, the
+// cleanups wait for the post work further in, whichever flow is requested.
+fn test_nested_pulling_flows_finish_their_post_work_inside_out() {
+	sandbox('post_ancestor_chain')
+	mut c := new()
+	c.add_flow(
+		id:    'a'
+		gives: ['a.txt']
+		check: .none
+		post:  [hook('b'), hook('clean_a')]
+		flow:  record
+	)
+	c.add_flow(
+		id:    'b'
+		takes: ['a.txt']
+		gives: ['b.txt']
+		check: .none
+		post:  [hook('c'), hook('clean_b')]
+		flow:  record
+	)
+	c.add_flow(
+		id:    'c'
+		takes: ['b.txt']
+		gives: ['c.txt']
+		check: .none
+		post:  [hook('audit')]
+		flow:  record
+	)
+	c.add_flow(id: 'audit', takes: ['c.txt'], check: .none, flow: record)
+	c.add_flow(id: 'clean_a', check: .none, flow: remove_c)
+	c.add_flow(id: 'clean_b', check: .none, flow: remove_c)
+	for id in ['c', 'b', 'a'] {
+		c.execute([id])!
+		assert contents('log') == 'a b c audit clean_b clean_a ', id
+		os.rm('log')!
+	}
+}
+
+// test_pre_hook_naming_the_flow_it_runs_ahead_of_waits_for_its_post_hooks
+// checks that the hooks after a post hook of a pre hook, naming the flow the pre
+// hook runs ahead of, wait for the post hooks of that flow, whether or not the
+// pre hook is required.
+fn test_pre_hook_naming_the_flow_it_runs_ahead_of_waits_for_its_post_hooks() {
+	for dep in [hook('lint'), required('lint')] {
+		sandbox('post_pre_ancestor_${dep.required}')
+		mut c := new()
+		c.add_flow(
+			id:    'build'
+			gives: ['app.txt']
+			check: .none
+			pre:   [dep]
+			post:  [hook('audit')]
+			flow:  record
+		)
+		c.add_flow(
+			id:    'lint'
+			check: .none
+			post:  [hook('build'), hook('note')]
+			flow:  record
+		)
+		c.add_flow(id: 'audit', takes: ['app.txt'], check: .none, flow: record)
+		c.add_flow(id: 'note', check: .none, flow: remove_app)
+		c.execute(['build'])!
+		assert contents('log') == 'lint build audit note ', dep.str()
+	}
+}
+
+// test_post_hook_naming_a_finished_producer_does_not_wait checks that a post
+// hook naming a dependency whose post work is already complete, after waiting
+// for the flow that names it, lets the hooks after it run at once.
+fn test_post_hook_naming_a_finished_producer_does_not_wait() {
+	sandbox('post_done_producer')
+	mut c := new()
+	c.add_flow(id: 'gen', gives: ['gen.txt'], check: .none, post: [hook('audit')], flow: record)
+	c.add_flow(
+		id:    'build'
+		takes: ['gen.txt']
+		gives: ['app.txt']
+		check: .none
+		post:  [hook('gen'), hook('clean')]
+		flow:  record
+	)
+	c.add_flow(id: 'audit', takes: ['app.txt'], check: .none, flow: record)
+	c.add_flow(id: 'clean', check: .none, flow: remove_app)
+	c.execute(['build'])!
+	assert contents('log') == 'gen build audit clean '
+}
+
+// test_repeated_request_waits_for_post_work_each_pass checks that a flow
+// requested twice starts its second pass afresh, waiting as it did in the first.
+fn test_repeated_request_waits_for_post_work_each_pass() {
+	sandbox('post_ancestor_twice')
+	mut c := new()
+	c.add_flow(
+		id:    'gen'
+		gives: ['gen.txt']
+		check: .none
+		post:  [hook('build'), hook('clean')]
+		flow:  record
+	)
+	c.add_flow(
+		id:    'build'
+		takes: ['gen.txt']
+		gives: ['app.txt']
+		check: .none
+		post:  [hook('audit')]
+		flow:  record
+	)
+	c.add_flow(id: 'audit', takes: ['app.txt'], check: .none, flow: record)
+	c.add_flow(id: 'clean', check: .none, flow: remove_app)
+	c.execute(['build', 'build'])!
+	assert contents('log') == 'gen build audit clean gen build audit clean '
+}
+
+// test_failing_pass_stops_the_requested_flows_after_it checks that a requested
+// flow failing ends the build, so the flows requested after it never run.
+fn test_failing_pass_stops_the_requested_flows_after_it() {
+	sandbox('pass_fails')
+	mut c := new()
+	c.add_flow(id: 'bad', check: .none, post: [hook('note')], flow: fail)
+	c.add_flow(id: 'ok', check: .none, flow: record)
+	c.add_flow(id: 'note', check: .none, flow: record)
+	mut msg := ''
+	c.execute(['bad', 'ok']) or { msg = err.msg() }
+	assert msg == 'flow `bad` failed: bad found a problem'
+	assert contents('log') == 'bad '
+}
+
+// test_post_hook_cycle_of_a_dependency_finishes_before_the_dependent checks
+// that post hooks of a dependency naming each other carry on at once, rather
+// than wait for the end of the pass, so they still run ahead of the dependent.
+fn test_post_hook_cycle_of_a_dependency_finishes_before_the_dependent() {
+	sandbox('post_cycle_dep')
+	mut c := new()
+	c.add_flow(id: 'top', takes: ['x.txt'], check: .none, flow: record)
+	c.add_flow(id: 'x', gives: ['x.txt'], check: .none, post: [hook('y'), hook('w')], flow: record)
+	c.add_flow(id: 'y', check: .none, post: [hook('x'), hook('z')], flow: record)
+	c.add_flow(id: 'z', check: .none, flow: record)
+	c.add_flow(id: 'w', check: .none, flow: record)
+	c.execute(['top'])!
+	assert contents('log') == 'x y z w top '
+}
+
+// test_post_hook_ring_is_broken_at_the_flow_in_it_waited_for_first checks that
+// a ring of post work entered from a flow waited for earlier is broken at the
+// flow in the ring waited for first, `b`, not where the wait leads into it,
+// `a`, nor at the flow outside, `w`, whose cleanup would delete an input of `x`.
+fn test_post_hook_ring_is_broken_at_the_flow_in_it_waited_for_first() {
+	sandbox('post_ring_entry')
+	mut c := new()
+	c.add_flow(
+		id:    'top'
+		takes: ['a.txt', 'b.txt', 'c.txt', 'w.txt', 'q.txt']
+		gives: ['top.txt']
+		check: .none
+		flow:  record
+	)
+	c.add_flow(
+		id:    'a'
+		gives: ['a.txt']
+		check: .none
+		post:  [hook('p1'), hook('b'), hook('x')]
+		flow:  record
+	)
+	c.add_flow(
+		id:    'b'
+		gives: ['b.txt']
+		check: .none
+		post:  [hook('p2'), hook('c'), hook('y')]
+		flow:  record
+	)
+	c.add_flow(
+		id:    'c'
+		gives: ['c.txt']
+		check: .none
+		post:  [hook('p3'), hook('a'), hook('z')]
+		flow:  record
+	)
+	c.add_flow(
+		id:    'w'
+		gives: ['w.txt']
+		check: .none
+		post:  [hook('p0'), hook('a'), hook('x0')]
+		flow:  record
+	)
+	c.add_flow(
+		id:    'q'
+		gives: ['q.txt']
+		check: .none
+		post:  [hook('w'), hook('clean')]
+		flow:  record
+	)
+	for id in ['p0', 'p1', 'p2', 'p3', 'x'] {
+		c.add_flow(id: id, takes: ['top.txt'], check: .none, flow: record)
+	}
+	for id in ['x0', 'y', 'z'] {
+		c.add_flow(id: id, check: .none, flow: record)
+	}
+	c.add_flow(id: 'clean', check: .none, flow: remove_top)
+	c.execute(['top'])!
+	assert contents('log') == 'a b c w q top p1 p2 p3 p0 x z y x0 clean '
+}
+
+// finish_step is the step at which the post work of the flow `id` is complete.
+fn finish_step(id string) Step {
+	return Step{
+		id:     id
+		finish: true
+	}
+}
+
+// test_cycle_start_picks_the_ring_member_waited_for_first checks the choice of
+// `cycle_start` directly: a ring entered from outside, at a member other than
+// the one waited for first, and a flow holding its own finish step.
+fn test_cycle_start_picks_the_ring_member_waited_for_first() {
+	// w waits on a, and the ring a -> b -> c -> a, where b was waited for first
+	ring := Pass{
+		order:   ['w', 'b', 'c', 'a']
+		waiting: {
+			'w': [[Step{
+				id: 'clean'
+			}]]
+			'a': [[finish_step('c')], [finish_step('w')]]
+			'b': [[finish_step('a')]]
+			'c': [[finish_step('b')]]
+		}
+	}
+	assert ring.cycle_start() == 'b'
+	// flows no longer waited for are passed over
+	mut finished := ring
+	finished.order = ['gone', 'w', 'b', 'c', 'a']
+	assert finished.cycle_start() == 'b'
+	looped := Pass{
+		order:   ['x']
+		waiting: {
+			'x': [[Step{
+				id: 'z'
+			}, finish_step('x')]]
+		}
+	}
+	assert looped.cycle_start() == 'x'
+}
+
+// test_drain_completes_a_flow_waiting_on_nothing checks that a flow waited for
+// whose own completion is held nowhere, so in no cycle, is still completed at
+// the end of a pass, and what waits for it runs. A pass never leaves such a
+// flow, so the state is made by hand.
+fn test_drain_completes_a_flow_waiting_on_nothing() {
+	sandbox('drain_unheld')
+	mut c := new()
+	c.add_flow(id: 'note', check: .none, flow: record)
+	mut pass := Pass{
+		state:   {
+			'k': FlowState.ran
+		}
+		order:   ['k']
+		waiting: {
+			'k': [[Step{
+				id: 'note'
+			}]]
+		}
+	}
+	assert pass.cycle_start() == 'k'
+	c.drain(mut pass)!
+	assert pass.waiting.len == 0
+	assert pass.state['k'] == .done
+	assert contents('log') == 'note '
+}
+
+// test_reaching_a_running_flow_is_an_internal_error checks that a flow reached
+// again while it runs is reported, rather than run twice or waited for. Passes
+// never do this, so the state is made by hand.
+fn test_reaching_a_running_flow_is_an_internal_error() {
+	sandbox('visit_active')
+	mut c := new()
+	c.add_flow(id: 'a', check: .none, flow: record)
+	mut pass := Pass{
+		state: {
+			'a': FlowState.active
+		}
+		stack: ['a']
+	}
+	mut msg := ''
+	c.visit('a', [], mut pass) or { msg = err.msg() }
+	assert msg == 'flow `a` was reached while still running'
+	assert !os.exists('log')
+}
+
+// Lcg is a small seeded random generator, so that a failing graph of
+// `test_random_graphs_run_each_reachable_flow_once` can be reproduced.
+struct Lcg {
+mut:
+	state u64
+}
+
+// next returns a number in `[0, n)`.
+fn (mut r Lcg) next(n int) int {
+	r.state = r.state * 6364136223846793005 + 1442695040888963407
+	return int((r.state >> 33) % u64(n))
+}
+
+// test_random_graphs_run_each_reachable_flow_once runs many random graphs of
+// pre hooks, dependencies and post hooks, optional or required. Each graph is
+// requested twice. The first time nothing can be skipped; the second time every
+// flow with outputs is skipped, so only its required hooks run. Bodies read
+// their inputs, so a flow running ahead of a dependency fails the pass.
+//
+// Half of the graphs only point forward, from a flow to flows with a higher
+// index. Nothing ever waits in them, so the order must be exactly that of a
+// depth first walk. In the others, post hooks may name any flow; see
+// `check_random_pass` for what their order must satisfy.
+fn test_random_graphs_run_each_reachable_flow_once() {
+	dir := sandbox('random_graphs')
+	mut r := Lcg{
+		state: 20261104
+	}
+	for round in 0 .. 1200 {
+		for entry in os.ls(dir)! {
+			remove(entry)!
+		}
+		forward := round % 2 == 0
+		n := 2 + r.next(7)
+		mut flows := []Flow{}
+		for i in 0 .. n {
+			// dependencies and pre hooks only point to flows with a higher index,
+			// so that validate accepts every graph
+			mut takes := []string{}
+			mut pre := []FlowDep{}
+			for j in i + 1 .. n {
+				if j % 3 != 0 && r.next(3) == 0 {
+					takes << 'f${j}.txt'
+				}
+				if r.next(6) == 0 {
+					pre << FlowDep{
+						id:       'f${j}'
+						required: r.next(2) == 0
+					}
+				}
+			}
+			mut post := []FlowDep{}
+			for _ in 0 .. r.next(4) {
+				if forward && i == n - 1 {
+					break
+				}
+				// half the hooks of other graphs name an earlier flow, like one that
+				// pulled the flow in, so that hooks often wait for each other
+				target := if forward {
+					i + 1 + r.next(n - i - 1)
+				} else if i > 0 && r.next(2) == 0 {
+					r.next(i)
+				} else {
+					r.next(n)
+				}
+				post << FlowDep{
+					id:       'f${target}'
+					required: r.next(2) == 0
+				}
+			}
+			flows << Flow{
+				id:    'f${i}'
+				takes: takes
+				gives: if i % 3 != 0 { ['f${i}.txt'] } else { []string{} }
+				check: .hash
+				pre:   pre
+				post:  post
+				flow:  record
+			}
+		}
+		mut c := new()
+		for f in flows {
+			c.add_flow(f)
+		}
+		requested := 'f${r.next(n)}'
+		graph := flows.map('${it.id} takes ${it.takes} pre ${it.pre} post ${it.post}').join('; ')
+		for skipping in [false, true] {
+			what := 'round ${round}, ${requested} requested, skipping ${skipping}; ${graph}'
+			os.rm('log') or {}
+			c.execute([requested]) or { assert false, '${err.msg()}; ${what}' }
+			ran := (os.read_file('log') or { '' }).fields()
+			check_random_pass(flows, requested, skipping, ran, what)
+			if forward {
+				mut seen := map[string]bool{}
+				mut want := []string{}
+				walk_forward(flows, requested, skipping, mut seen, mut want)
+				assert ran == want, 'ran ${ran}, want ${want}; ${what}'
+			}
+		}
+	}
+}
+
+// walk_forward appends to `out` the flows a pass over a graph that only points
+// forward runs, in order: a plain depth first walk, as nothing waits.
+fn walk_forward(flows []Flow, id string, skipping bool, mut seen map[string]bool, mut out []string) {
+	if seen[id] {
+		return
+	}
+	seen[id] = true
+	f := flows.filter(it.id == id)[0]
+	skip := skipping && f.gives.len > 0
+	for dep in f.pre.filter(it.required) {
+		walk_forward(flows, dep.id, skipping, mut seen, mut out)
+	}
+	for path in f.takes {
+		walk_forward(flows, path.all_before('.'), skipping, mut seen, mut out)
+	}
+	if !skip {
+		for dep in f.pre.filter(!it.required) {
+			walk_forward(flows, dep.id, skipping, mut seen, mut out)
+		}
+		out << id
+	}
+	for hook in f.post.filter(!skip || it.required) {
+		walk_forward(flows, hook.id, skipping, mut seen, mut out)
+	}
+}
+
+// reach returns the flows reachable from `from` along `edges`, leaving out the
+// edges from `cut_from` to `cut_to`.
+fn reach(from []string, edges map[string][]string, cut_from string, cut_to string) map[string]bool {
+	mut found := map[string]bool{}
+	mut todo := from.clone()
+	for todo.len > 0 {
+		id := todo.pop()
+		if !found[id] {
+			found[id] = true
+			for next in edges[id] {
+				if !(id == cut_from && next == cut_to) {
+					todo << next
+				}
+			}
+		}
+	}
+	return found
+}
+
+// check_random_pass checks the flows `ran` by a pass of a random graph against
+// what the pass reaches. With `skipping` set, every flow with outputs is
+// skipped: it does not run, and leaves out its optional pre and post hooks.
+fn check_random_pass(flows []Flow, requested string, skipping bool, ran []string, what string) {
+	mut needs := map[string][]string{} // what runs ahead of a flow, whether or not it is skipped
+	mut hooks := map[string][]string{} // the post hooks a flow runs
+	mut edges := map[string][]string{}
+	mut skips := map[string]bool{}
+	for f in flows {
+		skips[f.id] = skipping && f.gives.len > 0
+		mut ahead := f.pre.filter(it.required).map(it.id)
+		ahead << f.takes.map(it.all_before('.'))
+		if !skips[f.id] {
+			ahead << f.pre.filter(!it.required).map(it.id)
+		}
+		needs[f.id] = ahead
+		hooks[f.id] = f.post.filter(!skips[f.id] || it.required).map(it.id)
+		edges[f.id] = arrays_concat(ahead, hooks[f.id])
+	}
+	reachable := reach([requested], edges, '', '')
+	mut seen := map[string]bool{}
+	for i, id in ran {
+		assert !seen[id], '${id} ran twice in ${ran}; ${what}'
+		seen[id] = true
+		assert reachable[id] && !skips[id], '${id} should not have run in ${ran}; ${what}'
+		for dep in needs[id] {
+			assert skips[dep] || dep in ran[..i], '${id} ran before ${dep} in ${ran}; ${what}'
+		}
+	}
+	for id, _ in reachable {
+		assert skips[id] || seen[id], '${id} never ran in ${ran}; ${what}'
+	}
+	// A post hook `later` of a flow `x`, reached only through `x`, comes after
+	// the post work of each hook `h` before it: the flows its post hooks reach.
+	// That holds unless the post work of `h` leads back to `x`, a cycle in which
+	// one of them has to go first, or contains a cycle of its own, which the
+	// pass breaks somewhere.
+	for x, _ in reachable {
+		for j, later in hooks[x] {
+			if !seen[later] || later in hooks[x][..j] || later == x || later in needs[x]
+				|| reach([requested], edges, x, later)[later] {
+				continue
+			}
+			for h in hooks[x][..j] {
+				work := reach([h], hooks, '', '')
+				if work[x] || work[later] || has_cycle(work, hooks) {
+					continue
+				}
+				for y, _ in work {
+					assert !seen[y] || ran.index(y) < ran.index(later), '${later}, a post hook of ${x}, ran before ${y} from the post work of ${h} in ${ran}; ${what}'
+				}
+			}
+		}
+	}
+}
+
+// has_cycle reports whether the flows in `within` hold a cycle of `hooks`.
+fn has_cycle(within map[string]bool, hooks map[string][]string) bool {
+	for id, _ in within {
+		mut from := []string{}
+		for next in hooks[id] {
+			from << next
+		}
+		if reach(from, hooks, '', '')[id] {
+			return true
+		}
+	}
+	return false
+}
+
+// test_hook_after_post_work_running_further_up_waits_for_it checks that the
+// hooks after a post hook wait for its post work even when that post work is
+// already running further up, if what runs it needs the flow they belong to as
+// a dependency. That post work goes on once the dependency is done, so waiting
+// for it ends, unlike in a cycle of post hooks. The cleanup would otherwise
+// delete the input of `build` before it runs.
+fn test_hook_after_post_work_running_further_up_waits_for_it() {
+	sandbox('post_running_above')
+	mut c := new()
+	c.add_flow(
+		id:    'gen'
+		gives: ['gen.txt']
+		check: .none
+		post:  [hook('lint'), hook('clean')]
+		flow:  record
+	)
+	c.add_flow(id: 'lint', check: .none, post: [hook('build')], flow: record)
+	c.add_flow(id: 'build', takes: ['gen.txt'], check: .none, flow: record)
+	c.add_flow(
+		id:    'clean'
+		check: .none
+		flow:  fn (f Flow) ! {
+			os.rm('gen.txt')!
+			record(f)!
+		}
+	)
+	c.execute(['lint'])!
+	assert contents('log') == 'lint gen build clean '
+	os.rm('log')!
+	c.execute(['gen'])!
+	assert contents('log') == 'gen lint build clean '
 }
 
 // test_required_post_hooks_of_a_skipped_flow_keep_order checks that a skipped
@@ -1191,10 +2365,10 @@ fn test_required_post_hooks_of_a_skipped_flow_keep_order() {
 		}
 	)
 	c.execute(['build'])!
-	assert os.read_file('log')! == 'gen build audit note tidy '
+	assert contents('log') == 'gen build audit note tidy '
 	os.rm('log')!
 	c.execute(['build'])!
-	assert os.read_file('log')! == 'build audit tidy '
+	assert contents('log') == 'build audit tidy '
 }
 
 // test_failing_waiting_post_hook_stops_the_rest checks that a post hook failing
@@ -1223,7 +2397,7 @@ fn test_failing_waiting_post_hook_stops_the_rest() {
 	mut msg := ''
 	c.execute(['build']) or { msg = err.msg() }
 	assert msg == 'flow `audit` failed: audit found a problem'
-	assert os.read_file('log')! == 'gen build audit '
+	assert contents('log') == 'gen build audit '
 }
 
 // test_absolute_and_relative_paths_match checks producers are found whatever
@@ -1280,7 +2454,7 @@ fn test_dependencies_follow_directories() {
 	)
 	c.add_flow(id: 'page', takes: ['site/index.html'], check: .none, flow: record)
 	c.execute(['zip', 'page'])!
-	assert os.read_file('log')! == 'gen zip site page '
+	assert contents('log') == 'gen zip site page '
 }
 
 // test_hash_flow_over_own_state_dir checks a hash flow taking the directory
@@ -1305,10 +2479,10 @@ fn test_hash_flow_over_own_state_dir() {
 	for _ in 0 .. 3 {
 		c.execute(['build'])!
 	}
-	assert os.read_file(runs)! == 'x'
+	assert contents(runs) == 'x'
 	os.write_file('a', '2')!
 	c.execute(['build'])!
-	assert os.read_file(runs)! == 'xx'
+	assert contents(runs) == 'xx'
 }
 
 // test_state_files_never_clash checks that each flow id gets a state file of its
@@ -1348,7 +2522,7 @@ fn test_long_ids_get_bounded_state_files() {
 	c.add_flow(id: long, takes: ['src'], gives: ['out'], flow: record)
 	c.execute([long])!
 	c.execute([long])!
-	assert os.read_file('log')! == '${long} '
+	assert contents('log') == '${long} '
 }
 
 // test_flows_keep_their_state_apart checks that encoding ids for their state
@@ -1364,7 +2538,7 @@ fn test_flows_keep_their_state_apart() {
 	for id in ['a/b', 'a_b', 'a/b', 'a_b'] {
 		c.execute([id])!
 	}
-	assert os.read_file('log')! == 'a/b a_b '
+	assert contents('log') == 'a/b a_b '
 }
 
 // test_clean_removes_targets_added_later checks that the clean flow covers the

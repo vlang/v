@@ -387,17 +387,11 @@ mut:
 	deferred map[string][][]Step // sequences waiting for the body of an active flow
 	waiting  map[string][][]Step // sequences waiting for the post work of a flow
 	order    []string            // the flows in `waiting`, by when they were first waited for
-	parked   map[string]int      // the finish steps of each flow held in `deferred` or `waiting`
 }
 
 // park holds `steps` back until the body (`body` set) or the post work of the
 // flow `id` is complete.
 fn (mut pass Pass) park(id string, steps []Step, body bool) {
-	for step in steps {
-		if step.finish {
-			pass.parked[step.id]++
-		}
-	}
 	if body {
 		mut queued := pass.deferred[id] or { [][]Step{} }
 		queued << steps
@@ -412,15 +406,6 @@ fn (mut pass Pass) park(id string, steps []Step, body bool) {
 	}
 }
 
-// unpark marks `steps`, taken from `deferred` or `waiting`, as running again.
-fn (mut pass Pass) unpark(steps []Step) {
-	for step in steps {
-		if step.finish {
-			pass.parked[step.id]--
-		}
-	}
-}
-
 // visit runs a flow and everything it needs, at most once per pass, then the
 // steps in `then`, which come after its post work.
 fn (c &Context) visit(id string, then []Step, mut pass Pass) ! {
@@ -431,10 +416,11 @@ fn (c &Context) visit(id string, then []Step, mut pass Pass) ! {
 		}
 		.ran {
 			// the outputs are ready, which is all a dependency needs, but what comes
-			// after the post work waits for it when it waits for a body further out.
-			// Post work that is not held back is in progress further up, as a post
-			// hook cycle led back here, and waiting for it would never end.
-			if then.len > 0 && pass.parked[id] > 0 {
+			// after the post work waits for it: the post work completes at its finish
+			// step, which is held back, not scheduled yet, or further up the stack,
+			// and goes on regardless. Only when `then` holds that step itself, as a
+			// cycle of post hooks led back here, would waiting never end.
+			if then.len > 0 && !then.any(it.finish && it.id == id) {
 				pass.park(id, then, false)
 			} else {
 				c.sequence(then, mut pass)!
@@ -459,7 +445,6 @@ fn (c &Context) visit(id string, then []Step, mut pass Pass) ! {
 	deferred := pass.deferred[id] or { [][]Step{} }
 	pass.deferred.delete(id)
 	for steps in deferred {
-		pass.unpark(steps)
 		c.sequence(steps, mut pass)!
 	}
 	mut steps := visits(post)
@@ -501,23 +486,60 @@ fn (c &Context) finish(id string, mut pass Pass) ! {
 	waiting := pass.waiting[id] or { [][]Step{} }
 	pass.waiting.delete(id)
 	for steps in waiting {
-		pass.unpark(steps)
 		c.sequence(steps, mut pass)!
 	}
 }
 
 // drain runs the sequences still waiting at the end of a pass. Every body has
 // run by then, so they can only wait for each other, through a cycle of post
-// hooks. The one waiting for the flow first waited for goes first.
+// hooks. Each round breaks one such cycle, at the flow in it waited for first,
+// and leaves the waits leading into the cycle in place.
 fn (c &Context) drain(mut pass Pass) ! {
 	for pass.waiting.len > 0 {
-		for id in pass.order {
-			if id in pass.waiting {
-				c.finish(id, mut pass)!
-				break
+		id := pass.cycle_start()
+		c.finish(id, mut pass)!
+		// a complete flow is never waited for again, so each round ends a wait
+		if id in pass.waiting {
+			return error('flow `${id}` is still waited for after its post work, a bug in imp')
+		}
+	}
+}
+
+// cycle_start returns the flow waited for first among a cycle of flows whose
+// post work waits for each other. `waiting` must not be empty.
+fn (pass &Pass) cycle_start() string {
+	// the post work of a flow is complete at its finish step, which is held in
+	// `waiting` for exactly one flow
+	mut holder := map[string]string{}
+	for id, queued in pass.waiting {
+		for steps in queued {
+			for step in steps {
+				if step.finish {
+					holder[step.id] = id
+				}
 			}
 		}
 	}
+	waited := pass.order.filter(it in pass.waiting)
+	// following the holders from any flow leads into a cycle
+	// each step adds a flow to the path or ends the walk, so it always ends
+	mut path := []string{}
+	mut id := waited[0]
+	for id !in path {
+		path << id
+		id = holder[id] or {
+			// not held, so not waiting on anything: complete it as it is
+			return id
+		}
+	}
+	// the cycle is the end of the path, from the flow met twice
+	start := path.index(id)
+	for flow in waited {
+		if path.index(flow) >= start {
+			return flow
+		}
+	}
+	return id
 }
 
 // first_active returns the stack index of the outermost active flow that `id`
