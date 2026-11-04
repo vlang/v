@@ -19,6 +19,13 @@ fn main() {
 		'get_lines_joined' {
 			println(os.get_lines_joined())
 		}
+		'get_raw_stdin' {
+			println(os.get_raw_stdin().bytestr())
+		}
+		'get_raw_line_then_stdin' {
+			os.get_raw_line()
+			println(os.get_raw_stdin().bytestr())
+		}
 		'get_raw_lines' {
 			println(os.get_raw_lines().str())
 		}
@@ -187,4 +194,29 @@ fn test_input_and_input_opt_print_the_prompt_and_return_the_first_line() {
 	assert p.feed('input', 'only') == 'PROMPT> only'
 	// End of input is reported as the literal `<EOF>`.
 	assert p.feed('input', '') == 'PROMPT> <EOF>'
+}
+
+fn test_get_raw_stdin_reads_every_byte_until_eof() {
+	mut p := new_stdin_probe()
+	defer {
+		p.close()
+	}
+	assert p.feed('get_raw_stdin', 'one\ntwo\nthree\n') == 'one\ntwo\nthree\n'
+	assert p.feed('get_raw_stdin', 'a\r\n\n\x00b\xff') == 'a\r\n\n\x00b\xff'
+	assert p.feed('get_raw_stdin', '') == ''
+	assert p.feed('get_raw_stdin', 'unterminated') == 'unterminated'
+	payload := '0123456789'.repeat(1000) + '\x00tail'
+	assert p.feed('get_raw_stdin', payload) == payload
+}
+
+fn test_get_raw_stdin_keeps_bytes_buffered_by_a_previous_line_read() {
+	$if windows {
+		// Windows line input uses a different console encoding path.
+		return
+	}
+	mut p := new_stdin_probe()
+	defer {
+		p.close()
+	}
+	assert p.feed('get_raw_line_then_stdin', 'first\nsecond\nthird') == 'second\nthird'
 }
