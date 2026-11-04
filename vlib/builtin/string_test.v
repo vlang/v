@@ -866,6 +866,25 @@ fn test_replace_each() {
 	assert 'abc'.replace_each(['a', '', 'b', '']) == 'c'
 }
 
+fn test_replace_each_preserves_nul_bytes_and_match_precedence() {
+	assert 'a\r\nQ\x00UIT'.replace_each(['\r', '', '\n', '', '\x00', '']) == 'aQUIT'
+	assert 'abc'.replace_each(['b', '', '\x00', 'XYZ']) == 'ac'
+	assert 'a\x00b\x00'.replace_each(['\x00', 'XYZ', 'b', '']) == 'aXYZXYZ'
+	assert 'a\x00b\x00'.replace_each(['a\x00', '', '\x00', '!']) == 'b!'
+	assert 'a\x00\x00b'.replace_each(['\x00\x00', '\x00']) == 'a\x00b'
+	assert 'a\x00b'.replace_each(['a', '\x00', '\x00', 'X']) == '\x00Xb'
+	assert '\x00\x00\x00'.replace_each(['\x00\x00', 'X', '\x00', 'Y']) == 'XY'
+	assert 'aaaa'.replace_each(['aa', 'X', 'aaa', 'Y']) == 'XX'
+	// A rejected overlapping match must not hide a later disjoint match.
+	assert 'abcbcb'.replace_each(['ab', 'X', 'bc', 'Y']) == 'XcYb'
+	assert 'abca'.replace_each(['b', '', 'ac', 'X']) == 'aca'
+	assert 'abcabc'.replace_each(['bc', 'X', 'abc', 'Y']) == 'aXaX'
+	assert 'ABCD'.replace_each(['B', 'C/', 'C', 'D', 'D', 'C']) == 'AC/DC'
+	original := 'a\x00b'
+	assert original.replace_each(['a', 'A', '\x00', '']) == 'Ab'
+	assert original.bytes() == [u8(97), 0, 98]
+}
+
 fn test_format() {
 	template := 'First: {0}, First again: {0}, Second: {1}, Third: {2}'
 	assert template.format('A', 'B', 'C') == 'First: A, First again: A, Second: B, Third: C'
