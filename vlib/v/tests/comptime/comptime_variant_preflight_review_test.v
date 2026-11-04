@@ -441,3 +441,33 @@ fn main() {
 	run_variant_review_case('concrete_reflected_assert', source.replace('if value !is variant { return 0 }', 'assert value is variant'), false)
 	check_variant_review_case('invalid_reflected_fallthrough_payload', source.replace('return value }', 'return value.len }'), true, '`int` has no property `len`')
 }
+
+fn test_variant_preflight_preserves_local_storage_after_guards() {
+	source := r'
+type Choice = int | string
+fn visit(value Choice) {
+	$for variant in Choice.variants {
+		_ = variant.typ
+		if value !is int { return }
+		mut local := value
+		local = Choice("text")
+		assert local is string
+	}
+}
+fn main() { visit(Choice(42)) }'
+	// These controls check acceptance of declared local storage during preflight.
+	run_variant_review_case('declared_fallthrough_local', source, true)
+	run_variant_review_case('declared_assert_local', source.replace('if value !is int { return }', 'assert value is int'), true)
+	run_variant_review_case('metadata_assignment_after_none_guard', r'
+type Choice = int | string
+fn extract() int {
+	mut x := ?int(42)
+	$for variant in Choice.variants {
+		if x == none { return 0 }
+		x = ?int(variant.typ)
+		if payload := x { return payload }
+	}
+	return -1
+}
+fn main() { assert extract() == 8 }', false)
+}

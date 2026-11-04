@@ -23326,25 +23326,6 @@ fn comptime_cond_name_char(ch u8) bool {
 	return ch.is_letter() || ch.is_digit() || ch == `_`
 }
 
-// apply_comptime_static_post_smartcasts keeps reflected targets concrete, or deferred until unrolling.
-fn (mut tc TypeChecker) apply_comptime_static_post_smartcasts(id flat.NodeId, var_name string, field_cases ComptimeStaticFieldCases) {
-	mut bindings := tc.post_if_exit_smartcasts(id)
-	bindings << tc.post_assert_smartcasts(id)
-	for binding in bindings {
-		if !valid_string_data(binding.name) {
-			continue
-		}
-		target_id := binding.typ.source_type_id()
-		if target_id == flat.source_type_id(var_name) {
-			if field_cases.known && field_cases.cases.len == 1 && field_cases.cases[0].typ != 0 {
-				tc.smartcasts[binding.name] = *tc.parse_type(field_cases.cases[0].typ)
-			}
-		} else if !tc.cur_comptime_variant_loop_vars.any(target_id == flat.source_type_id(it)) {
-			tc.smartcasts[binding.name] = binding.typ
-		}
-	}
-}
-
 fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
 	if !tc.valid_node_id(id) {
 		return
@@ -23353,28 +23334,9 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 	if node.kind == .block {
 		// Locals registered while walking this block (declarations whose RHS
 		// references the loop var) must not leak past it.
-		had_saved_smartcasts := loop_kind == 'variants' && tc.smartcasts.len > 0
-		saved_smartcasts := if had_saved_smartcasts {
-			clone_smartcasts(tc.smartcasts)
-		} else {
-			tc.smartcasts
-		}
-		defer {
-			if loop_kind == 'variants' {
-				if had_saved_smartcasts {
-					tc.smartcasts = saved_smartcasts
-				} else {
-					tc.smartcasts.clear()
-				}
-			}
-		}
 		tc.push_scope()
 		for i in 0 .. node.children_count {
-			child_id := tc.a.child(&node, i)
-			tc.check_comptime_static_body(child_id, var_name, loop_kind, field_cases, value_cases)
-			if loop_kind == 'variants' {
-				tc.apply_comptime_static_post_smartcasts(child_id, var_name, field_cases)
-			}
+			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases, value_cases)
 		}
 		tc.pop_scope()
 		return

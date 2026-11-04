@@ -846,28 +846,24 @@ fn (mut tc TypeChecker) apply_post_if_exit_smartcasts(id flat.NodeId) {
 }
 
 fn (mut tc TypeChecker) apply_post_assert_smartcasts(id flat.NodeId) {
-	for binding in tc.post_assert_smartcasts(id) {
-		if valid_string_data(binding.name) {
-			tc.smartcasts[binding.name] = binding.typ
-		}
-	}
-}
-
-fn (tc &TypeChecker) post_assert_smartcasts(id flat.NodeId) []LocalBinding {
 	if !tc.valid_node_id(id) {
-		return []LocalBinding{}
+		return
 	}
 	node := tc.a.node(id)
 	if node.kind != .assert_stmt || node.children_count == 0 {
-		return []LocalBinding{}
+		return
 	}
 	condition_id := tc.a.child(node, 0)
 	condition := tc.a.node(condition_id)
 	if condition.kind == .infix && condition.op in [.eq, .ne]
 		&& tc.option_none_cmp_binding(condition) != none {
-		return []LocalBinding{}
+		return
 	}
-	return tc.extract_smartcasts(condition_id)
+	for binding in tc.extract_smartcasts(condition_id) {
+		if valid_string_data(binding.name) {
+			tc.smartcasts[binding.name] = binding.typ
+		}
+	}
 }
 
 // none_guard_fallthrough_unwraps reports whether the option `key` read at `id`
@@ -17684,6 +17680,14 @@ fn (tc &TypeChecker) smartcast_type_miss(id flat.NodeId, parsed bool, state u32)
 		return none
 	}
 	if typ := tc.smartcasts[key] {
+		if tc.comptime_static_depth > 0 && tc.cur_comptime_variant_loop_vars.len > 0 {
+			// A reflected option payload must retain lexical none-guard unwrapping.
+			// The lexical walk also stops at writes to the original binding.
+			concrete := unalias_type(typ)
+			if concrete is OptionType && tc.none_guard_fallthrough_unwraps(id, key) {
+				return *concrete.base_type
+			}
+		}
 		return typ
 	}
 	if !parsed {
