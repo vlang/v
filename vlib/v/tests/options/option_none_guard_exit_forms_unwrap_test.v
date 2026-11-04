@@ -1,3 +1,5 @@
+// vtest vflags: -w
+// The parenthesized condition deliberately exercises a syntax warning.
 // `if x == none { panic(...) }` and the parenthesized `if (x == none) { return }`
 // unwrap `x` after the guard, the same as a plain `return` guard.
 fn none_guard_paren_exit(o ?int) int {

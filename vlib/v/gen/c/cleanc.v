@@ -19309,13 +19309,11 @@ fn (mut g FlatGen) gen_pointer_cast_fixed_array_literal(arg_id flat.NodeId, targ
 		return false
 	}
 	if actual_fixed := array_fixed_type(g.usable_expr_type(arg_id)) {
-		if elem_fixed := array_fixed_type(actual_fixed.elem_type) {
-			if g.fixed_array_literal_needs_runtime_copy(arg, elem_fixed) {
-				g.write('(${ct})(')
-				g.gen_fixed_array_data_arg(literal_id, actual_fixed)
-				g.write(')')
-				return true
-			}
+		if _ := array_fixed_type(actual_fixed.elem_type) {
+			g.write('(${ct})(')
+			g.gen_fixed_array_data_arg(literal_id, actual_fixed)
+			g.write(')')
+			return true
 		}
 	}
 	elem_ct := g.value_c_type(target_type.base_type)

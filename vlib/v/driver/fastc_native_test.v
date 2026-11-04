@@ -1,6 +1,10 @@
 module driver
 
-import os
+// vfmt off
+$if !skip_fastc ? {
+	import os
+}
+// vfmt on
 
 fn test_fastc_native_cache_hashes_every_dependency_before_reuse() ! {
 	$if !skip_fastc ? {

@@ -8982,6 +8982,16 @@ fn main() {
 // has string type
 ```
 
+Within a variant loop, `if value is variant` narrows expressions to the current payload type.
+Conjunctions and nested guards retain all active refinements. A mutable guard keeps the original
+sum storage available for reassignment. Each iteration infers its own local collection types;
+conditions using enclosing reflection metadata are checked after that metadata is substituted.
+Numeric comparisons with `variant.typ` use the same type index as `value.type_idx()`.
+Optional and result variants expose their wrapped type's metadata index, preserving pointer depth.
+Conditions using local metadata values are checked after unrolling, when their values are available.
+Matches retain their arm refinements while loop metadata is checked.
+Declaration guards such as `if payload := value` bind the unwrapped payload in their success branch.
+
 #### <h4 id="comptime-methods">.methods</h4>
 
 You can retrieve information about struct methods.
@@ -11373,6 +11383,7 @@ pointer type checks; calls to C functions also accept these character pointers.
 
 In translated files, fixed arrays decay to pointers to their elements, including when compared
 with pointers. Nested array literals retain their full array type in these comparisons.
+Their generated C uses nested brace initializers, supported by GCC, Clang, and TinyCC.
 
 Files marked `@[translated]` retain C scalar conversions between numbers, enums, and booleans.
 These scalars can be mixed in arithmetic expressions and compound assignments. Integral scalars
