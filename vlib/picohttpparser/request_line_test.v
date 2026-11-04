@@ -213,6 +213,6 @@ pub fn test_pipeline_empty_input_has_no_request() {
 	assert n == -99, 'ret ${n}'
 	assert got_err == 'error parsing request: no request found', got_err
 	assert r.prev_len == 0, 'prev_len ${r.prev_len}'
-	// NOTE: `advance_token2` has no end-of-buffer check, so `method` and `path`
-	// hold bytes read past the empty buffer. They are deliberately not asserted.
+	assert r.method == ''
+	assert r.path == ''
 }
