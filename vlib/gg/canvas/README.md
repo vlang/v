@@ -23,7 +23,9 @@ output:
 
 Supported so far: filled, stroked and hairline rects, rounded rects and ovals
 (the analytic rrect and non-AA bounds renderers, including Graphite's inner
-fills), single-sampled and 4x MSAA surfaces, and BGRA8 premultiplied readback.
+fills), single-sampled and 4x MSAA surfaces, uploaded backdrops (loaded into
+MSAA passes with Graphite's LoadMSAAFromResolve draw), and BGRA8 premultiplied
+readback.
 Draws that need other renderers (paths, elliptical strokes, ...) return an
 error instead of rendering differently.
 

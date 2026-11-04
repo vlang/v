@@ -152,11 +152,6 @@ fn (mut s GpuSurface) reset_draws() {
 // write_pixels replaces the surface contents with BGRA8 premultiplied pixels,
 // discarding pending draws.
 pub fn (mut s GpuSurface) write_pixels(pixels voidptr, pitch int) ! {
-	if s.sample_count > 1 {
-		// Graphite loads an MSAA attachment from its resolve texture with a
-		// dedicated draw; that pass is not reproduced yet.
-		return error('gg.canvas: writing pixels into a multisampled surface is not supported')
-	}
 	s.reset_draws()
 	if !gfx.write_image(s.color, 0, 0, s.width, s.height, pixels, pitch) {
 		return error('gg.canvas: could not upload pixels')
@@ -668,7 +663,12 @@ pub fn (mut s GpuSurface) flush() ! {
 	mut pass := gfx.Pass{
 		attachments: s.attachments
 	}
-	if s.load {
+	// Like Graphite on Metal, a multisampled pass discards its samples and
+	// loads existing pixels with a draw from the resolve texture.
+	load_msaa := s.load && s.sample_count > 1
+	if load_msaa {
+		pass.action.colors[0].load_action = .dontcare
+	} else if s.load {
 		pass.action.colors[0].load_action = .load
 	} else {
 		pass.action.colors[0].load_action = .clear
@@ -684,6 +684,14 @@ pub fn (mut s GpuSurface) flush() ! {
 	pass.action.depth.clear_value = 1.0
 	pass.action.depth.store_action = .dontcare
 	gfx.begin_pass(&pass)
+	if load_msaa {
+		gfx.apply_pipeline(ctx.load_msaa_pipeline())
+		mut bindings := gfx.Bindings{}
+		bindings.fs.images[0] = s.color
+		bindings.fs.samplers[0] = ctx.msaa_load_sampler
+		gfx.apply_bindings(&bindings)
+		gfx.draw(0, 4, 1)
+	}
 	intrinsics := [f32(0), 0, f32(2) / f32(s.width), -(f32(2) / f32(s.height)), 0, 0, 0, 0]!
 	intrinsic_range := gfx.Range{
 		ptr:  unsafe { &intrinsics[0] }

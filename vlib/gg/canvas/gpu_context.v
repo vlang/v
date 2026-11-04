@@ -37,6 +37,10 @@ const analytic_rrect_vert = $embed_file('shaders/analytic_rrect_solid.vert.metal
 const analytic_rrect_frag = $embed_file('shaders/analytic_rrect_solid.frag.metal')
 const cover_bounds_vert = $embed_file('shaders/cover_bounds_solid.vert.metal')
 const cover_bounds_frag = $embed_file('shaders/cover_bounds_solid.frag.metal')
+// Graphite's LoadMSAAFromResolve pipeline (MtlGraphicsPipeline.mm): a
+// fullscreen draw that copies the resolve texture into a multisampled
+// attachment before the pass's draws.
+const load_msaa_from_resolve = $embed_file('shaders/load_msaa_from_resolve.metal')
 
 // GpuContext owns the GPU resources shared by all surfaces: shaders,
 // pipelines and the static vertex data of the render steps. It uses the
@@ -45,13 +49,16 @@ const cover_bounds_frag = $embed_file('shaders/cover_bounds_solid.frag.metal')
 @[heap]
 pub struct GpuContext {
 mut:
-	owns_gfx          bool
-	shaders           []GpuShaderEntry
-	pipelines         []GpuPipelineEntry
-	rrect_vertices    gfx.Buffer
-	rrect_indices     gfx.Buffer
-	instances         gfx.Buffer
-	instance_capacity int
+	owns_gfx           bool
+	shaders            []GpuShaderEntry
+	pipelines          []GpuPipelineEntry
+	rrect_vertices     gfx.Buffer
+	rrect_indices      gfx.Buffer
+	instances          gfx.Buffer
+	instance_capacity  int
+	msaa_load_shader   gfx.Shader
+	msaa_load_pipeline gfx.Pipeline
+	msaa_load_sampler  gfx.Sampler
 }
 
 struct GpuShaderEntry {
@@ -123,6 +130,12 @@ pub fn (mut ctx GpuContext) free() {
 	}
 	ctx.pipelines.clear()
 	ctx.shaders.clear()
+	if ctx.msaa_load_pipeline.id != 0 {
+		gfx.destroy_pipeline(ctx.msaa_load_pipeline)
+		gfx.destroy_shader(ctx.msaa_load_shader)
+		gfx.destroy_sampler(ctx.msaa_load_sampler)
+		ctx.msaa_load_pipeline = gfx.Pipeline{}
+	}
 	gfx.destroy_buffer(ctx.rrect_vertices)
 	gfx.destroy_buffer(ctx.rrect_indices)
 	gfx.destroy_buffer(ctx.instances)
@@ -255,4 +268,55 @@ fn (mut ctx GpuContext) pipeline(step RenderStep, sample_count int, blend bool) 
 	pipeline := gfx.make_pipeline(&desc)
 	ctx.pipelines << GpuPipelineEntry{step, sample_count, blend, pipeline}
 	return pipeline
+}
+
+// load_msaa_pipeline returns Graphite's LoadMSAAFromResolve pipeline for 4x
+// MSAA passes: no blending, no depth test, and the resolve texture read with
+// texel fetches.
+fn (mut ctx GpuContext) load_msaa_pipeline() gfx.Pipeline {
+	if ctx.msaa_load_pipeline.id != 0 {
+		return ctx.msaa_load_pipeline
+	}
+	source := load_msaa_from_resolve.to_string()
+	mut desc := gfx.ShaderDesc{}
+	desc.vs.source = &char(source.str)
+	desc.vs.entry = c'vertexMain'
+	desc.fs.source = &char(source.str)
+	desc.fs.entry = c'fragmentMain'
+	desc.fs.images[0] = gfx.ShaderImageDesc{
+		used:        true
+		image_type:  ._2d
+		sample_type: .float
+	}
+	// The shader reads texels without a sampler, but sokol pairs every image
+	// with one; the sampler is bound and unused.
+	desc.fs.samplers[0] = gfx.ShaderSamplerDesc{
+		used:         true
+		sampler_type: .filtering
+	}
+	desc.fs.image_sampler_pairs[0] = gfx.ShaderImageSamplerPairDesc{
+		used:         true
+		image_slot:   0
+		sampler_slot: 0
+	}
+	gfx.mtl_set_shader_compile_options(graphite_msl_major, graphite_msl_minor, true)
+	ctx.msaa_load_shader = gfx.make_shader(&desc)
+	gfx.mtl_set_shader_compile_options(0, 0, false)
+	mut pipeline := gfx.PipelineDesc{
+		shader:         ctx.msaa_load_shader
+		primitive_type: .triangle_strip
+		sample_count:   4
+		cull_mode:      .none
+	}
+	pipeline.colors[0].pixel_format = .bgra8
+	pipeline.depth = gfx.DepthState{
+		pixel_format: .depth_stencil
+		compare:      .always
+	}
+	ctx.msaa_load_pipeline = gfx.make_pipeline(&pipeline)
+	ctx.msaa_load_sampler = gfx.make_sampler(&gfx.SamplerDesc{
+		min_filter: .nearest
+		mag_filter: .nearest
+	})
+	return ctx.msaa_load_pipeline
 }

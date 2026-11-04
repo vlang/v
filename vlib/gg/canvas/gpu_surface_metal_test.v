@@ -60,11 +60,40 @@ fn test_gpu_surface_draws_and_reads_back() {
 		background[i * 4 + 2] = 60
 		background[i * 4 + 3] = 255
 	}
-	px := render(mut ctx, 1, background)!
-	assert pixel(px, 0, 0) == [u8(40), 50, 60, 255]
-	assert pixel(px, 5, 5) == [u8(30), 20, 10, 255]
-	// Multisampled surfaces do not load existing pixels.
-	if _ := render(mut ctx, 4, background) {
-		assert false, 'expected an error'
+	for samples in [1, 4] {
+		px := render(mut ctx, samples, background)!
+		assert pixel(px, 0, 0) == [u8(40), 50, 60, 255], 'samples ${samples}'
+		assert pixel(px, 5, 5) == [u8(30), 20, 10, 255]
+		// The half covered edge blends with the uploaded pixel.
+		edge := pixel(px, 14, 12)
+		assert edge[3] == 255 && edge[0] > 0 && edge[0] < 40, 'samples ${samples}: ${edge}'
 	}
+}
+
+fn test_multisampled_flushes_keep_earlier_pixels() {
+	mut ctx := new_gpu_context() or {
+		eprintln('skipping: ${err}')
+		return
+	}
+	defer {
+		ctx.free()
+	}
+	mut s := ctx.new_surface(width: test_width, height: test_height, sample_count: 4)!
+	defer {
+		s.free()
+	}
+	s.clear(Color4f{})
+	s.draw_rect(Rect.ltrb(4, 4, 12, 10), Paint{
+		color: Color4f.from_rgba8(10, 20, 30, 255)
+	})!
+	s.flush()!
+	// The next pass loads the resolved pixels before drawing.
+	s.draw_rect(Rect.ltrb(16, 4, 24, 10), Paint{
+		color: Color4f.from_rgba8(200, 100, 0, 255)
+	})!
+	mut px := []u8{len: test_width * test_height * 4}
+	s.read_pixels(px.data, test_width * 4)!
+	assert pixel(px, 5, 5) == [u8(30), 20, 10, 255]
+	assert pixel(px, 17, 5) == [u8(0), 100, 200, 255]
+	assert pixel(px, 0, 0) == [u8(0), 0, 0, 0]
 }
