@@ -956,3 +956,61 @@ fn test_openapi_tag_mapping_survives_multiple_mount_prefixes() {
 		assert api_at(raw, 'paths', prefix + '/items/{id}', 'get', 'tags').as_array().map(it.str()) == ['public-items']
 	}
 }
+
+fn test_openapi_32_nullability_uses_json_schema_null_branches() {
+	mut doc := new_openapi(openapi_version: '3.2.0', nullable_options: true)!
+	forced := json2.Any(doc.resolve_schema(doc.schema[WireJsonNull]()))
+	for field in ['value', 'node', 'state'] {
+		property := api_at(forced, 'properties', field)
+		assert 'nullable' !in property.as_map()
+		assert api_at(property, 'anyOf').as_array()[0].as_map()['type']!.str() == 'null'
+	}
+	optional := json2.Any(doc.resolve_schema(doc.schema[TypedApiDto]()))
+	for field in ['optional', 'maybe_node'] {
+		property := api_at(optional, 'properties', field)
+		assert 'nullable' !in property.as_map()
+		assert api_at(property, 'anyOf').as_array()[0].as_map()['type']!.str() == 'null'
+	}
+	for schema in [
+		json2.Any(doc.schema[&int]()),
+		api_at(json2.Any(doc.schema[[]&int]()), 'items'),
+		api_at(json2.Any(doc.schema[map[string]&int]()), 'additionalProperties'),
+		json2.Any(doc.schema[&TypedApiNode]()),
+		json2.Any(doc.schema[&TypedApiState]()),
+	] {
+		assert 'nullable' !in schema.as_map()
+		branches := api_at(schema, 'anyOf').as_array()
+		assert branches.len == 2
+		assert api_at(branches[0], 'type').str() == 'null'
+		assert 'enum' !in branches[0].as_map()
+	}
+	primitive := json2.Any(doc.schema[&int]())
+	assert api_at(api_at(primitive, 'anyOf').as_array()[1], 'type').str() == 'integer'
+	referenced := json2.Any(doc.schema[&TypedApiNode]())
+	assert api_at(api_at(referenced, 'anyOf').as_array()[1], '$ref').str().ends_with('TypedApiNode')
+	enumeration := json2.Any(doc.schema[&TypedApiState]())
+	assert api_at(api_at(enumeration, 'anyOf').as_array()[1], 'enum').as_array().map(it.str()) == [
+		'ready',
+		'done',
+	]
+	app := &ConventionalApi{}
+	doc.add_app[ConventionalApi, TypedApiContext](app)!
+	doc.response[&TypedApiNode]('/search', .get)!
+	raw := json2.decode[json2.Any](doc.json(false)!)!
+	response := api_at(raw, 'paths', '/search', 'get', 'responses', '200', 'content', 'application/json', 'schema')
+	assert api_at(response, 'anyOf').as_array()[0].as_map()['type']!.str() == 'null'
+	if output := os.getenv_opt('V_OPENAPI_TEST_OUTPUT') { doc.write(output + '.32', true)! }
+}
+
+fn test_openapi_32_json_null_does_not_require_nullable_options() {
+	mut doc := new_openapi(openapi_version: '3.2.0')!
+	schema := json2.Any(doc.resolve_schema(doc.schema[WireJsonNull]()))
+	for field in ['value', 'node', 'state'] {
+		property := api_at(schema, 'properties', field)
+		assert 'nullable' !in property.as_map()
+		assert api_at(property, 'anyOf').as_array()[0].as_map()['type']!.str() == 'null'
+	}
+	options := json2.Any(doc.resolve_schema(doc.schema[TypedApiDto]()))
+	assert 'anyOf' !in api_at(options, 'properties', 'optional').as_map()
+	assert 'anyOf' !in api_at(options, 'properties', 'maybe_node').as_map()
+}

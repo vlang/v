@@ -73,6 +73,8 @@ can omit. Optional fields are omitted from `required` unless marked `required` o
 `omitempty` can still omit them. Set `nullable_options` to allow null for options, including
 referenced structs and sums. `json_null` fields allow null independently of that setting.
 Pointer schemas always allow null, including response values and array or map elements.
+OpenAPI 3.0.x uses `nullable: true`; 3.2.x uses a JSON Schema `anyOf` with a `type: null`
+branch, retaining the non-null branch's references and enum constraints.
 
 Types with a custom `json2.JsonEncoder` or `json2.Encodable` implementation use an unconstrained
 named component, since their methods can emit any JSON shape. Supply `custom_schema` for a precise
