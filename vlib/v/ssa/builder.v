@@ -4062,7 +4062,8 @@ fn (mut b Builder) register_array_runtime_stubs() {
 	for sort_type in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'uint', 'rune',
 		'char'] {
 		elem_type := match sort_type {
-			'int', 'rune' { b.i32_type }
+			'int' { b.resolve_type(flat.source_type_int) }
+			'rune' { b.i32_type }
 			'i8' { b.i8_type }
 			'i16' { b.m.type_store.get_int(16) }
 			'i64', 'isize' { b.i64_type }
@@ -10999,11 +11000,23 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 				'max_i16' {
 					return b.m.get_or_add_const(b.i64_type, '32767')
 				}
-				'min_i32', 'min_int' {
+				'min_i32' {
 					return b.m.get_or_add_const(b.i64_type, '-2147483648')
 				}
-				'max_i32', 'max_int' {
+				'max_i32' {
 					return b.m.get_or_add_const(b.i64_type, '2147483647')
+				}
+				'min_int' {
+					return b.m.get_or_add_const(b.resolve_type(flat.source_type_int),
+						if b.m.target.ptr_size == 4 {
+							'-2147483648'
+						} else {
+							'-9223372036854775808'
+						})
+				}
+				'max_int' {
+					return b.m.get_or_add_const(b.resolve_type(flat.source_type_int),
+						if b.m.target.ptr_size == 4 { '2147483647' } else { '9223372036854775807' })
 				}
 				'min_i64' {
 					return b.m.get_or_add_const(b.i64_type, '-9223372036854775808')
@@ -17574,7 +17587,7 @@ fn (mut b Builder) resolve_type(name_id u32) TypeID {
 fn (mut b Builder) primitive_type_id(name_id u32) ?TypeID {
 	return match name_id {
 		flat.source_type_int {
-			b.i32_type
+			if b.m.target.ptr_size == 4 { b.i32_type } else { b.i64_type }
 		}
 		flat.source_type_isize {
 			if b.m.target.ptr_size == 4 { b.i32_type } else { b.i64_type }
