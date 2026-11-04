@@ -554,3 +554,54 @@ fn test_skip_shared_field() {
     c: 200
 }'
 }
+
+fn test_encode_decode_empty_compound() ! {
+	// encode_binary accepts empty values, so decode_binary must too
+	b_arr := encode_binary([]int{})!
+	assert b_arr == [u8(0), 0, 0, 0, 0, 0, 0, 0]
+	c_arr := decode_binary[[]int](b_arr)!
+	assert c_arr.len == 0
+
+	b_u8 := encode_binary([]u8{})!
+	c_u8 := decode_binary[[]u8](b_u8)!
+	assert c_u8.len == 0
+
+	b_str := encode_binary('')!
+	assert b_str == [u8(0), 0, 0, 0, 0, 0, 0, 0]
+	c_str := decode_binary[string](b_str)!
+	assert c_str == ''
+
+	a_map := map[string]int{}
+	b_map := encode_binary(a_map)!
+	assert b_map == [u8(0), 0, 0, 0, 0, 0, 0, 0]
+	c_map := decode_binary[map[string]int](b_map)!
+	assert c_map.len == 0
+}
+
+fn test_decode_crafted_invalid_lengths() {
+	// a malformed length prefix close to `int` max must produce a clean error,
+	// and never panic with an allocation failure or an out of range slice index
+	mut crafted := []u8{len: 8, init: u8(255)}
+	crafted[7] = u8(0x7f) // little endian 0x7fffffffffffffff
+	mut err_arr := ''
+	c_arr := decode_binary[[]u8](crafted, DecodeConfig{}) or {
+		err_arr = err.msg()
+		[]u8{}
+	}
+	assert err_arr.contains('invalid array length')
+	assert c_arr.len == 0
+	mut err_str := ''
+	c_str := decode_binary[string](crafted, DecodeConfig{}) or {
+		err_str = err.msg()
+		''
+	}
+	assert err_str.contains('invalid string length')
+	assert c_str == ''
+	mut err_map := ''
+	c_map := decode_binary[map[string]int](crafted, DecodeConfig{}) or {
+		err_map = err.msg()
+		map[string]int{}
+	}
+	assert err_map.contains('invalid map length')
+	assert c_map.len == 0
+}

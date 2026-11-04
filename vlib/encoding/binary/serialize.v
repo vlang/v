@@ -324,7 +324,8 @@ fn decode_primitive[T](mut s DecodeState, value T) !T {
 
 fn decode_array[T](mut s DecodeState, _ []T) ![]T {
 	len := int(s.get_u64()!)
-	if len <= 0 || s.offset + len > s.b.len {
+	// s.offset + len could overflow, so compare against the remaining bytes instead.
+	if len < 0 || len > s.b.len - s.offset {
 		return error('${@FN}(): invalid array length decode from stream')
 	}
 	mut arr := []T{cap: len}
@@ -355,7 +356,8 @@ fn decode_array[T](mut s DecodeState, _ []T) ![]T {
 
 fn decode_string(mut s DecodeState) !string {
 	len := int(s.get_u64()!)
-	if len <= 0 || s.offset + len > s.b.len {
+	// s.offset + len could overflow, so compare against the remaining bytes instead.
+	if len < 0 || len > s.b.len - s.offset {
 		return error('${@FN}(): invalid string length decode from stream')
 	}
 	str := unsafe { s.b[s.offset..s.offset + len].bytestr() }
@@ -365,7 +367,8 @@ fn decode_string(mut s DecodeState) !string {
 
 fn decode_map[K, V](mut s DecodeState, _ map[K]V) !map[K]V {
 	len := int(s.get_u64()!)
-	if len <= 0 || s.offset + len > s.b.len {
+	// s.offset + len could overflow, so compare against the remaining bytes instead.
+	if len < 0 || len > s.b.len - s.offset {
 		return error('${@FN}(): invalid map length decode from stream')
 	}
 
