@@ -2583,6 +2583,10 @@ println(typ)
 // 'lowercase'
 ```
 
+A `match` value assigned to a sum type may return its variants directly, including in map
+values, appended array elements, and struct fields. Different variant arms are wrapped individually;
+numeric arms retain their usual numeric promotion.
+
 A match statement also can match the variant types of a `sumtype`. Note that
 in that case, the match is exhaustive, since all variant types are mentioned
 explicitly, so there is no need for an `else{}` branch.

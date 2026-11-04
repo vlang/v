@@ -19466,7 +19466,15 @@ fn (mut t Transformer) transform_match_expr_for_type(_id flat.NodeId, node flat.
 	if t.is_fn_pointer_type_name(target_type_id) || t.is_interface_pointer_target(target_type_id) {
 		actual_result_type = target_type_id
 	}
-	if t.sum_target_accepts_variant_type(target_type_id, actual_result_type) {
+	common_value_type := if t.is_sum_type_name(target_type_id) {
+		t.match_expr_common_value_type(node)
+	} else {
+		u32(0)
+	}
+	if common_value_type != 0 && t.sum_target_accepts_variant_type(target_type_id, common_value_type) {
+		// Numeric promotion and enum shorthand resolve before choosing the sum variant.
+		actual_result_type = common_value_type
+	} else if t.is_sum_type_name(target_type_id) || t.sum_target_accepts_variant_type(target_type_id, actual_result_type) {
 		actual_result_type = target_type_id
 	}
 	tmp_name := t.new_temp('match_val')
@@ -19485,7 +19493,76 @@ fn (mut t Transformer) transform_match_expr_for_type(_id flat.NodeId, node flat.
 	}
 	tmp := t.make_ident(tmp_name)
 	t.set_node_typ(int(tmp), actual_result_type)
+	if common_value_type != 0 && actual_result_type == common_value_type {
+		return t.wrap_sum_value_for_storage(tmp, target_type_id)
+	}
 	return tmp
+}
+
+// match_expr_common_value_type uses checked types and declarations from the arm
+// itself, avoiding name lookups before arm-local declarations are transformed.
+fn (t &Transformer) match_expr_common_value_type(node flat.Node) u32 {
+	mut result := u32(0)
+	mut enum_shorthand := false
+	for i in 1 .. node.children_count {
+		branch := t.a.child_node(&node, i)
+		if branch.kind != .match_branch || branch.children_count == 0 {
+			return 0
+		}
+		mut body := *branch
+		mut tail_id := t.a.child(branch, branch.children_count - 1)
+		mut tail := t.a.nodes[int(tail_id)]
+		for tail.kind in [.expr_stmt, .block, .paren] && tail.children_count > 0 {
+			if tail.kind == .block { body = tail }
+			tail_id = t.a.child(&tail, tail.children_count - 1)
+			tail = t.a.nodes[int(tail_id)]
+		}
+		if tail.kind == .enum_val {
+			enum_shorthand = true
+			continue
+		}
+		mut type_expr := tail_id
+		if tail.kind == .ident {
+			for j in 0 .. body.children_count {
+				decl := t.a.child_node(&body, j)
+				if decl.kind == .decl_assign && decl.children_count == 2
+					&& t.a.child_node(decl, 0).value == tail.value {
+					type_expr = t.a.child(decl, 1)
+				}
+			}
+		}
+		value := t.a.nodes[int(type_expr)]
+		mut typ := match value.kind {
+			.int_literal { flat.source_type_int }
+			.float_literal { flat.source_type_f64 }
+			.cast_expr { value.source_value_id() }
+			else {
+				if isnil(t.tc) { return 0 }
+				checked := t.tc.expr_type_reference(type_expr) or { return 0 }
+				t.tc.type_name(checked)
+			}
+		}
+		if value.kind == .selector && value.children_count == 1 {
+			base := t.a.child_node(&value, 0)
+			if base.kind == .ident {
+				enum_type := t.enum_type_name_for_expected(flat.source_type_id(base.value), t.cur_module)
+				if enum_type != 0 { typ = enum_type }
+			}
+		}
+		is_enum := t.enum_type_name_for_expected(typ, t.cur_module) != 0
+		if typ == 0 || t.is_type_alias_name(typ) || (!is_enum && !t.is_numeric_stringify_type(typ)) {
+			return 0
+		}
+		if result == 0 {
+			result = typ
+		} else if is_enum || t.enum_type_name_for_expected(result, t.cur_module) != 0 {
+			if result != typ { return 0 }
+		} else {
+			result = promote_numeric_stringify_type(result, typ)
+		}
+	}
+	if enum_shorthand && t.enum_type_name_for_expected(result, t.cur_module) == 0 { return 0 }
+	return result
 }
 
 // transform_amp_struct_init_for_type supports transform_amp_struct_init_for_type handling.
