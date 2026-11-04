@@ -25,11 +25,13 @@ Supported so far: filled, stroked and hairline rects, rounded rects and ovals
 (the analytic rrect and non-AA bounds renderers, including Graphite's inner
 fills), single-sampled and 4x MSAA surfaces, uploaded backdrops (loaded into
 MSAA passes with Graphite's LoadMSAAFromResolve draw), BGRA8 premultiplied
-readback, and difference clip rectangles under axis-aligned transforms (Graphite's
-ClipStack bookkeeping, its analytic clip shaders, and depth-only convex wedge
-draws in a 4x MSAA pass for further elements).
-Draws that need other renderers (paths, elliptical strokes, ...) return an
-error instead of rendering differently.
+readback, double rounded rects (`draw_drrect`), and clips: `save`/`restore`,
+intersect and difference `clip_rect` and `clip_rrect` (a port of Graphite's
+ClipStack: element simplification, geometric intersection of draws with
+clips, scissors, the analytic clip shaders, and depth-only convex wedge draws
+in a 4x MSAA pass for further difference elements, including conics).
+Draws that need other renderers (paths, elliptical strokes, stencil-and-cover
+clip elements, ...) return an error instead of rendering differently.
 
 Only Metal is supported: the reproduced output is Graphite's Metal output on
 the same GPU.

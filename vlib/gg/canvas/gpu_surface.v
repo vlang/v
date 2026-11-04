@@ -34,6 +34,9 @@ struct GpuDraw {
 	// The instances in `instance` of a real draw.
 	instance_count u32 = 1
 	clip           DrawClip
+mut:
+	// The index count of a wedge draw's fixed-count template.
+	template_count u32 = wedge_base_index_count
 }
 
 // DrawClip is the part of Graphite's Clip that the draw pass uses to choose
@@ -75,7 +78,7 @@ mut:
 	bounds      BoundsManager
 	pipelines   []PipelineKey
 	uniforms    []PaintUniforms
-	clip        ClipStackState
+	clip        ClipStack
 	// The MSAA attachments of a single-sampled surface whose pass contains a
 	// draw that requires MSAA, like Graphite's discardable MSAA texture.
 	dynamic_msaa        gfx.Image
@@ -198,10 +201,17 @@ pub fn (mut s GpuSurface) draw_rect(r Rect, paint Paint) ! {
 	if paint.style == .stroke_and_fill {
 		return error('gg.canvas: stroke-and-fill needs the tessellating path renderer')
 	}
-	mut rect := r.sorted()
+	rect := r.sorted()
 	if s.quick_reject(rect, paint) {
 		return
 	}
+	s.device_draw_rect(rect, paint)!
+}
+
+// device_draw_rect mirrors Device::drawRect(), after SkCanvas sorted and
+// quick-rejected the rectangle.
+fn (mut s GpuSurface) device_draw_rect(r Rect, paint Paint) ! {
+	mut rect := r
 	mut style := paint
 	if !paint.anti_alias {
 		// Graphite emulates non-AA rectangles by snapping them to pixels.
@@ -261,6 +271,133 @@ fn (mut s GpuSurface) draw_rrect_unchecked(rr RRect, paint Paint) ! {
 		kind:  .rrect
 		rrect: shape
 	}, style)!
+}
+
+// draw_drrect fills the area between two rounded rectangles, like
+// SkCanvas::drawDRRect() on a Graphite device.
+pub fn (mut s GpuSurface) draw_drrect(outer RRect, inner RRect, paint Paint) ! {
+	if outer.is_empty() {
+		return
+	}
+	if inner.is_empty() {
+		s.draw_rrect(outer, paint)!
+		return
+	}
+	// SkRect::contains() on the bounds.
+	o := outer.rect
+	i := inner.rect
+	if !(i.left() < i.right() && i.top() < i.bottom()) || !(o.left() <= i.left()
+		&& o.top() <= i.top() && o.right() >= i.right() && o.bottom() >= i.bottom()) {
+		return
+	}
+	if !s.transform.valid() || s.quick_reject(o, paint) {
+		return
+	}
+	if paint.style != .fill {
+		return error('gg.canvas: stroked double rounded rectangles need the path renderer')
+	}
+	// Device::drawDRRect(): equal insets on all sides may be a stroked rrect.
+	gap := [i.vals[0] - o.vals[0], i.vals[1] - o.vals[1], i.vals[2] - o.vals[2], i.vals[3] - o.vals[3]]!
+	tolerance := shape_pixel_tolerance * s.transform.local_aa_radius()
+	stroke_width := gap[0]
+	mut equal_insets := true
+	for g in gap {
+		if !(g > tolerance && abs_f32(g - stroke_width) <= tolerance) {
+			equal_insets = false
+		}
+	}
+	if !equal_insets {
+		if outer.is_rect() && inner.is_rect() {
+			if diff := rect_subtract_exact(o, i) {
+				s.device_draw_rect(diff, paint)!
+				return
+			}
+		}
+	} else {
+		stroke_radius := f32(0.5) * stroke_width
+		stroke_rect := o.inset(stroke_radius)
+		mut stroke := Paint{
+			...paint
+			style:        .stroke
+			stroke_width: stroke_width
+			cap:          .butt
+			miter_limit:  4
+		}
+		mut valid_corners := 0
+		mut rect_corners := 0
+		mut required_join := ?StrokeJoin(none)
+		mut corners := [4]Point{}
+		for c in 0 .. 4 {
+			outer_radii := outer.radii[c]
+			inner_radii := inner.radii[c]
+			mut corner := f32(0)
+			if !is_relatively_circular(outer_radii.x, outer_radii.y, tolerance) {
+				break
+			} else if abs_f32(outer_radii.x) <= tolerance {
+				if join := required_join {
+					if join != .miter {
+						break
+					}
+				}
+				required_join = .miter
+				corner = 0
+				rect_corners++
+			} else {
+				corner = outer_radii.x - stroke_radius
+				if corner < -tolerance {
+					break
+				} else if corner <= tolerance {
+					if join := required_join {
+						if join != .round {
+							break
+						}
+					}
+					required_join = .round
+					corner = 0
+					rect_corners++
+				}
+			}
+			expected := max_f32(0, corner - stroke_radius)
+			if !is_relatively_circular(inner_radii.x, expected, tolerance)
+				|| !is_relatively_circular(inner_radii.y, expected, tolerance) {
+				break
+			}
+			corners[c] = Point{corner, corner}
+			valid_corners++
+		}
+		if valid_corners == 4 {
+			stroke.join = required_join or { StrokeJoin.round }
+			if rect_corners == 4 {
+				s.device_draw_rect(stroke_rect, stroke)!
+			} else {
+				s.draw_rrect_unchecked(RRect.rect_radii(stroke_rect, corners), stroke)!
+			}
+			return
+		}
+	}
+	// Otherwise the outer shape is drawn with the inner one clipped out.
+	s.save()
+	if inner.is_rect() {
+		s.clip_shape(rect_shape(inner.rect), .difference, !paint.anti_alias)!
+	} else {
+		s.clip_shape(rrect_shape(inner), .difference, !paint.anti_alias)!
+	}
+	if outer.is_rect() {
+		s.device_draw_rect(o, paint)!
+	} else {
+		s.draw_rrect_unchecked(outer, paint)!
+	}
+	s.restore()
+}
+
+// rect_subtract_exact mirrors SkRectPriv::Subtract(): `a` minus `b`, or none
+// when the difference is not a rectangle.
+fn rect_subtract_exact(a Rect, b Rect) ?Rect {
+	exact := subtract_rect(a, b, true)
+	if rect_equal(exact, a) && sk_rects_intersect(a, b) && !rect_equal(subtract_rect(a, b, false), a) {
+		return none
+	}
+	return exact
 }
 
 // quick_reject mirrors SkCanvas::internalQuickReject(): transparent paints
@@ -365,7 +502,6 @@ pub fn (mut s GpuSurface) draw_msaa_trigger() {
 	// Step 0 tessellates three wedges with the 64-byte localToDevice matrix
 	// uniform (never equal to a paint color); step 1 covers them with the
 	// transparent paint.
-	nan := f32(math.nan())
 	device := Rect.ltrb(0, 0, f32(s.width), f32(s.height))
 	trigger_bounds := Rect.ltrb(0, 0, 0.01, 0.01)
 	trigger_clip := DrawClip{
@@ -383,47 +519,80 @@ pub fn (mut s GpuSurface) draw_msaa_trigger() {
 }
 
 // draw_shape mirrors Device::drawGeometry() for the analytic renderers.
-fn (mut s GpuSurface) draw_shape(geometry ShapeGeometry, paint Paint) ! {
-	bounds := geometry.bounds()
+fn (mut s GpuSurface) draw_shape(geometry_in ShapeGeometry, paint Paint) ! {
 	if int(s.transform.typ) > int(TransformType.affine) {
 		return error('gg.canvas: perspective transforms are not supported')
 	}
 	stroked := paint.style == .stroke
-	if stroked && geometry.kind == .rrect && paint.stroke_width > 0 {
+	if stroked && geometry_in.kind == .rrect && paint.stroke_width > 0 {
 		tolerance := s.transform.local_aa_radius() * shape_pixel_tolerance
-		if !all_corners_relatively_circular(geometry.rrect, tolerance) {
+		if !all_corners_relatively_circular(geometry_in.rrect, tolerance) {
 			return error('gg.canvas: elliptical strokes need the tessellating path renderer')
 		}
 	}
-	// The draw bounds clipped to the device; empty bounds clip the draw out
-	// before it consumes a depth value.
-	clipped_bounds, shape_bounds := s.draw_bounds(paint, bounds) or { return }
-	influence, clip_rect, depth_elements := s.clip_for_draw(clipped_bounds)!
-	if influence == .clipped_out {
+	clip_shape := if geometry_in.kind == .rect {
+		rect_shape(geometry_in.rect)
+	} else {
+		rrect_shape(geometry_in.rrect)
+	}
+	clip := s.visit_clip_stack_for_draw(clip_shape, paint)!
+	if clip.clipped_out {
 		return
 	}
-	clipped := influence == .analytic
+	if clip.modified && clip.shape.is_flood_fill() {
+		s.draw_flood_fill(clip, paint)!
+		return
+	}
+	// The clip stack may have intersected the geometry with clip elements.
+	geometry := if !clip.modified {
+		geometry_in
+	} else {
+		match clip.shape.kind {
+			.rect {
+				ShapeGeometry{
+					kind: .rect
+					rect: clip.shape.rect
+				}
+			}
+			.rrect {
+				ShapeGeometry{
+					kind:  .rrect
+					rrect: clip.shape.rrect
+				}
+			}
+			.empty {
+				return error('gg.canvas: draws replaced by a flood fill are not supported')
+			}
+		}
+	}
+	clipped := !clip.analytic.is_empty()
 	color := paint.color.premul()
 	uniforms := PaintUniforms{
 		color:   color
 		clipped: clipped
-		clip:    if clipped { analytic_clip_uniforms(clip_rect) } else { AnalyticClipUniforms{} }
+		clip:    if clipped {
+			analytic_clip_uniforms(clip.analytic)
+		} else {
+			AnalyticClipUniforms{}
+		}
 	}
 	pixel_aligned := !stroked && geometry.kind == .rect && is_pixel_aligned(geometry.rect, s.transform)
 	step := if pixel_aligned { RenderStep.cover_bounds } else { RenderStep.analytic_rrect }
 	// Renderers with analytic coverage include their 1px AA ramp in the
 	// bounds used for ordering (Clip::outsetBoundsForAA()).
-	device_bounds := Rect.ltrb(0, 0, f32(s.width), f32(s.height))
 	draw_bounds := if step == .analytic_rrect {
-		clipped_bounds.outset(1).intersect(device_bounds)
+		clip.draw_bounds.outset(1).intersect(clip.scissor)
 	} else {
-		clipped_bounds
+		clip.draw_bounds
 	}
-	// Difference clips scissor to the device.
 	draw_clip := DrawClip{
-		scissor:      device_bounds
+		scissor:      clip.scissor
 		draw_bounds:  draw_bounds
-		shape_bounds: if step == .analytic_rrect { shape_bounds.outset(1) } else { shape_bounds }
+		shape_bounds: if step == .analytic_rrect {
+			clip.shape_bounds.outset(1)
+		} else {
+			clip.shape_bounds
+		}
 	}
 	// DstUsage: src-over with analytic coverage (from the renderer or an
 	// analytic clip) always reads the destination; without coverage only a
@@ -434,7 +603,7 @@ fn (mut s GpuSurface) draw_shape(geometry ShapeGeometry, paint Paint) ! {
 		depth: s.depth_index
 	}
 	// The draw follows the depth-only draws of the clip elements it uses.
-	clip_order := s.update_clip_state_for_draw(depth_elements, draw_bounds, order.depth)
+	clip_order := s.update_clip_state_for_draw(clip.elements, draw_bounds, order.depth)
 	order.depends_on_paint_order(clip_order)
 	if depends_on_dst {
 		order.depends_on_paint_order(s.bounds.most_recent_draw(draw_bounds))
@@ -470,8 +639,63 @@ fn (mut s GpuSurface) draw_shape(geometry ShapeGeometry, paint Paint) ! {
 		draw_clip)
 	s.bounds.record_draw(draw_bounds, order.paint_order)
 	$if gg_canvas_debug ? {
+		bounds := geometry.bounds()
 		eprintln('bounds depth ${order.depth}: ${draw_bounds.left()} ${draw_bounds.top()} ${draw_bounds.right()} ${draw_bounds.bottom()} local ${bounds.left()} ${bounds.top()} ${bounds.right()} ${bounds.bottom()} kind ${geometry.kind} style ${paint.style} width ${paint.stroke_width} aa ${paint.anti_alias} m ${s.transform.matrix.m}')
 	}
+}
+
+// draw_flood_fill mirrors Device::drawGeometry() for a draw the clip stack
+// replaced with a flood fill (an inverse-filled empty shape): the
+// coverage-less bounds renderer fills the scissor, or an opaque fill of the
+// whole surface clears the pending draws.
+fn (mut s GpuSurface) draw_flood_fill(clip ClipResult, paint Paint) ! {
+	clipped := !clip.analytic.is_empty()
+	color := paint.color.premul()
+	if !clipped && color.is_opaque() && clip.elements.len == 0
+		&& clip.scissor.contains(s.device_bounds()) {
+		if s.sample_count != 1 {
+			return error('gg.canvas: clearing a multisampled pass is not supported')
+		}
+		// DrawContext::clear(): the pass starts from this color; the depth and
+		// bounds of the discarded draws remain in use.
+		s.draws.clear()
+		s.pipelines.clear()
+		s.uniforms.clear()
+		s.clear_color = color
+		s.load = false
+		return
+	}
+	uniforms := PaintUniforms{
+		color:   color
+		clipped: clipped
+		clip:    if clipped {
+			analytic_clip_uniforms(clip.analytic)
+		} else {
+			AnalyticClipUniforms{}
+		}
+	}
+	depends_on_dst := clipped || !color.is_opaque()
+	s.depth_index++
+	mut order := DrawOrder{
+		depth: s.depth_index
+	}
+	clip_order := s.update_clip_state_for_draw(clip.elements, clip.draw_bounds, order.depth)
+	order.depends_on_paint_order(clip_order)
+	if depends_on_dst {
+		order.depends_on_paint_order(s.bounds.most_recent_draw(clip.draw_bounds))
+	}
+	// Inverse fills encode device-space bounds as [right, bottom, left, top].
+	sc := clip.scissor
+	mut instance := []u8{cap: cover_bounds_instance_stride}
+	write_cover_bounds_instance(mut instance, Rect{
+		vals: [sc.right(), sc.bottom(), -sc.left(), -sc.top()]!
+	}, s.transform, order.depth, 0)
+	s.record(.cover_bounds, depends_on_dst, instance, uniforms, order, DrawClip{
+		scissor:      clip.scissor
+		draw_bounds:  clip.draw_bounds
+		shape_bounds: clip.shape_bounds
+	})
+	s.bounds.record_draw(clip.draw_bounds, order.paint_order)
 }
 
 // record mirrors DrawList::recordDraw() for a single-step renderer.
@@ -512,47 +736,6 @@ fn (mut s GpuSurface) record_step(step RenderStep, blend bool, instance []u8, un
 		instance_count:    instance_count
 		clip:              clip
 	}
-}
-
-// draw_bounds mirrors DrawShape::applyStyle() in
-// ClipStack::visitClipStackForDraw(): the styled shape bounds mapped to
-// device space and clipped to the surface (difference clips scissor to it).
-// It also returns the unclipped transformed shape bounds.
-fn (s &GpuSurface) draw_bounds(paint Paint, bounds Rect) ?(Rect, Rect) {
-	w := bounds.width()
-	h := bounds.height()
-	if !is_finite_f32(w) || !is_finite_f32(h) {
-		return none
-	}
-	stroked := paint.style == .stroke
-	if w == 0 || h == 0 {
-		// An empty fill, or a zero-length butt-capped stroke, draws nothing.
-		if !stroked || (paint.cap == .butt && w == 0 && h == 0) {
-			return none
-		}
-	}
-	local_aa := s.transform.local_aa_radius()
-	mut local_outset := f32(0)
-	hairline := stroked && paint.stroke_width == 0
-	if stroked && !hairline {
-		// Rects and rrects have neither miters nor caps.
-		local_outset = paint.stroke_width / f32(2)
-	}
-	if hairline || (stroked && paint.stroke_width < local_aa) || (!stroked && (w < local_aa
-		|| h < local_aa)) {
-		local_outset += local_aa
-	}
-	mut shape_bounds := bounds
-	if local_outset > 0 {
-		shape_bounds = shape_bounds.outset(local_outset)
-	}
-	device_bounds := Rect.ltrb(0, 0, f32(s.width), f32(s.height))
-	transformed := s.transform.map_rect(shape_bounds)
-	outer := transformed.intersect(device_bounds)
-	if outer.is_empty_negative_or_nan() {
-		return none
-	}
-	return outer, transformed
 }
 
 fn patch_u32(mut bytes []u8, offset int, value u32) {
@@ -609,8 +792,10 @@ fn all_corners_relatively_circular(rr RRect, tolerance f32) bool {
 	return true
 }
 
+// is_relatively_circular mirrors SkRRectPriv::IsRelativelyCircular() as built
+// with SK_GRAPHITE_USE_LEGACY_RRECT_CLIP_SHADER.
 fn is_relatively_circular(rx f32, ry f32, tolerance f32) bool {
-	return abs_f32(rx - ry) <= tolerance || (rx <= tolerance && ry <= tolerance)
+	return abs_f32(rx - ry) <= tolerance * max_f32(rx, ry)
 }
 
 // read_pixels renders the pending draws and copies the surface into BGRA8
@@ -798,8 +983,12 @@ pub fn (mut s GpuSurface) flush() ! {
 	for b in 0 .. batches.len - 1 {
 		first := batches[b]
 		mut count := 0
+		// A batch of wedge draws uses the largest template of its draws
+		// (DrawWriter::DynamicInstances).
+		mut template_count := u32(0)
 		for i in first .. batches[b + 1] {
 			count += int(s.draws[keys[i].draw].instance_count)
+			template_count = math.max(template_count, s.draws[keys[i].draw].template_count)
 		}
 		draw := s.draws[keys[first].draw]
 		gfx.apply_pipeline(ctx.pipeline(draw.step, samples, draw.blend, draw.uniforms.clipped))
@@ -839,7 +1028,7 @@ pub fn (mut s GpuSurface) flush() ! {
 		}
 		match draw.step {
 			.analytic_rrect { gfx.draw(0, analytic_rrect_index_count, count) }
-			.convex_wedges { gfx.draw(0, wedge_index_count, count) }
+			.convex_wedges { gfx.draw(0, int(template_count), count) }
 			else { gfx.draw(0, 4, count) }
 		}
 	}

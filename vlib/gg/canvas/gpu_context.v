@@ -46,7 +46,6 @@ const analytic_rrect_clip_frag = $embed_file('shaders/analytic_rrect_solid_clip.
 const cover_bounds_clip_vert = $embed_file('shaders/cover_bounds_solid_clip.vert.metal')
 const cover_bounds_clip_frag = $embed_file('shaders/cover_bounds_solid_clip.frag.metal')
 const convex_wedges_vert = $embed_file('shaders/tessellate_wedges_convex.vert.metal')
-const depth_only_frag = $embed_file('shaders/depth_only.frag.metal')
 // Graphite's LoadMSAAFromResolve pipeline (MtlGraphicsPipeline.mm): a
 // fullscreen draw that copies the resolve texture into a multisampled
 // attachment before the pass's draws.
@@ -129,16 +128,18 @@ pub fn new_gpu_context() !&GpuContext {
 			size: u32(sizeof(u16) * u32(indices.len))
 		}
 	})
+	wedge_vertices := wedge_vertex_data()
 	ctx.wedge_vertices = gfx.make_buffer(&gfx.BufferDesc{
 		data: gfx.Range{
-			ptr:  unsafe { &wedge_vertices[0] }
+			ptr:  wedge_vertices.data
 			size: u32(sizeof(f32) * u32(wedge_vertices.len))
 		}
 	})
+	wedge_indices := wedge_index_data()
 	ctx.wedge_indices = gfx.make_buffer(&gfx.BufferDesc{
 		@type: .indexbuffer
 		data:  gfx.Range{
-			ptr:  unsafe { &wedge_indices[0] }
+			ptr:  wedge_indices.data
 			size: u32(sizeof(u16) * u32(wedge_indices.len))
 		}
 	})
@@ -215,8 +216,10 @@ fn (mut ctx GpuContext) shader(step RenderStep, clipped bool) gfx.Shader {
 			return entry.shader
 		}
 	}
+	// Depth-only steps have no fragment function, like Graphite's; their
+	// fragment entry is unused.
 	vert, frag := match true {
-		step == .convex_wedges { convex_wedges_vert, depth_only_frag }
+		step == .convex_wedges { convex_wedges_vert, convex_wedges_vert }
 		step == .analytic_rrect && clipped { analytic_rrect_clip_vert, analytic_rrect_clip_frag }
 		step == .analytic_rrect { analytic_rrect_vert, analytic_rrect_frag }
 		clipped { cover_bounds_clip_vert, cover_bounds_clip_frag }
@@ -234,8 +237,10 @@ fn (mut ctx GpuContext) shader(step RenderStep, clipped bool) gfx.Shader {
 	mut desc := gfx.ShaderDesc{}
 	desc.vs.source = &char(vs_source.str)
 	desc.vs.entry = c'vertexMain'
-	desc.fs.source = &char(fs_source.str)
-	desc.fs.entry = c'fragmentMain'
+	if step != .convex_wedges {
+		desc.fs.source = &char(fs_source.str)
+		desc.fs.entry = c'fragmentMain'
+	}
 	for stage in [&desc.vs, &desc.fs] {
 		unsafe {
 			stage.uniform_blocks[0].size = intrinsic_uniform_size

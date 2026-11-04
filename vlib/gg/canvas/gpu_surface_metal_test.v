@@ -172,7 +172,7 @@ fn test_further_clip_elements_are_drawn_into_the_depth_attachment() {
 		anti_alias: true
 	})!
 	assert s.draws.len == 1 && s.draws[0].uniforms.clipped
-	assert s.clip.elements[0].pending
+	assert s.clip.elements[0].has_pending_draw()
 	mut px := []u8{len: test_width * test_height * 4}
 	s.read_pixels(px.data, test_width * 4)!
 	assert pixel(px, 7, 5) == [u8(0), 0, 0, 0]
@@ -180,5 +180,66 @@ fn test_further_clip_elements_are_drawn_into_the_depth_attachment() {
 	assert pixel(px, 4, 5) == [u8(30), 20, 10, 255]
 	assert pixel(px, 11, 5) == [u8(30), 20, 10, 255]
 	assert pixel(px, 20, 5) == [u8(30), 20, 10, 255]
-	assert !s.clip.elements[0].pending
+	assert !s.clip.elements[0].has_pending_draw()
+}
+
+fn test_double_rrect_with_elliptical_corners_clips_out_the_inner_rrect() {
+	mut ctx := new_gpu_context() or {
+		eprintln('skipping: ${err}')
+		return
+	}
+	defer {
+		ctx.free()
+	}
+	mut s := ctx.new_surface(width: test_width, height: test_height)!
+	defer {
+		s.free()
+	}
+	s.clear(Color4f{})
+	outer := RRect.rect_radii(Rect.ltrb(2, 2, 30, 14), [Point{6, 4}, Point{6, 4}, Point{6, 4},
+		Point{6, 4}]!)
+	// Elliptical rings are drawn as the outer rrect with the inner one clipped
+	// out through a depth-only wedge draw.
+	s.draw_drrect(outer, outer.inset(2, 2), Paint{
+		color:      Color4f.from_rgba8(10, 20, 30, 255)
+		anti_alias: true
+	})!
+	assert s.draws.any(it.step == .convex_wedges)
+	assert s.clip.saves.len == 1 && s.clip.elements.len == 0
+	mut px := []u8{len: test_width * test_height * 4}
+	s.read_pixels(px.data, test_width * 4)!
+	assert pixel(px, 16, 8) == [u8(0), 0, 0, 0]
+	assert pixel(px, 16, 2) == [u8(30), 20, 10, 255]
+	assert pixel(px, 2, 8) == [u8(30), 20, 10, 255]
+	assert pixel(px, 0, 0) == [u8(0), 0, 0, 0]
+}
+
+fn test_intersect_rrect_clip_rounds_a_rect_draw() {
+	mut ctx := new_gpu_context() or {
+		eprintln('skipping: ${err}')
+		return
+	}
+	defer {
+		ctx.free()
+	}
+	mut s := ctx.new_surface(width: test_width, height: test_height)!
+	defer {
+		s.free()
+	}
+	s.clear(Color4f{})
+	r := Point{5, 5}
+	s.save()
+	s.clip_rrect(RRect.rect_radii(Rect.ltrb(2, 2, 26, 14), [r, r, r, r]!), .intersect, true)!
+	s.draw_rect(Rect.ltrb(0, 0, 32, 16), Paint{
+		color:      Color4f.from_rgba8(10, 20, 30, 255)
+		anti_alias: true
+	})!
+	s.restore()
+	// The rect covers the clip, so it is replaced by the clip's rrect.
+	assert s.draws.len == 1 && s.draws[0].step == .analytic_rrect
+	mut px := []u8{len: test_width * test_height * 4}
+	s.read_pixels(px.data, test_width * 4)!
+	assert pixel(px, 2, 2) == [u8(0), 0, 0, 0]
+	assert pixel(px, 14, 8) == [u8(30), 20, 10, 255]
+	assert pixel(px, 28, 8) == [u8(0), 0, 0, 0]
 }

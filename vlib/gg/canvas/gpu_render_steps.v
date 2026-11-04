@@ -336,37 +336,339 @@ fn write_cover_bounds_instance(mut out []u8, bounds Rect, transform Transform, d
 const wedge_instance_stride = 48
 const wedge_ssbo_offset = 44
 
-// The static data of a wedge draw at resolve level 0, the only level lines
-// need: FixedCountWedges' fan vertex and the curve's end vertices
-// (resolveLevel, idx), and its fan triangle.
-const wedge_vertices = [f32(-1), -1, 0, 0, 0, 1]!
-const wedge_indices = [u16(0), 1, 2]!
-const wedge_index_count = 3
+// FixedCountWedges' template: kMaxResolveLevel and the index count of a
+// draw at resolve level 0 (only the fan triangle).
+const max_resolve_level = 5
+const wedge_base_index_count = u32(3)
+// kMaxParametricSegments^4: curves needing more segments are chopped.
+const max_parametric_segments_p4 = f32(32 * 32 * 32 * 32)
+
+// wedge_vertex_data mirrors FixedCountWedges::WriteVertexBuffer(): the fan
+// vertex, then (resolveLevel, idx) for the curve vertices of every level.
+fn wedge_vertex_data() []f32 {
+	mut v := [f32(-1), -1, 0, 0, 0, 1]
+	for level in 1 .. max_resolve_level + 1 {
+		for i := 1; i < 1 << level; i += 2 {
+			v << f32(level)
+			v << f32(i)
+		}
+	}
+	return v
+}
+
+// wedge_index_data mirrors FixedCountWedges::WriteIndexBuffer(): the fan
+// triangle, then the curve triangles of every level, starting at vertex 1.
+fn wedge_index_data() []u16 {
+	mut out := [u16(0), 1, 2]
+	base := u16(1)
+	mut tris := [[base, base + 2, base + 1]!]
+	mut neighbor := 0
+	mut next := base + 3
+	for level in 2 .. max_resolve_level + 1 {
+		pairs := (1 << (level - 1)) >> 1
+		for _ in 0 .. pairs {
+			n := tris[neighbor]
+			tris << [n[0], next, n[1]]!
+			next++
+			tris << [n[1], next, n[2]]!
+			next++
+			neighbor++
+		}
+	}
+	for t in tris {
+		out << t[0]
+		out << t[1]
+		out << t[2]
+	}
+	return out
+}
+
+// wedge_vertex_count mirrors FixedCountWedges::VertexCount(): the index
+// count of a draw whose patches need n^4 = `n4` parametric segments.
+fn wedge_vertex_count(n4 f32) u32 {
+	mut level := nextlog16(n4)
+	if level > max_resolve_level {
+		level = max_resolve_level
+	}
+	return u32(((1 << level) - 1 + 1) * 3)
+}
+
+// nextlog2 mirrors wangs_formula::nextlog2(): ceil(log2(x)) for x > 1.
+fn nextlog2(x f32) int {
+	if x <= 1 {
+		return 0
+	}
+	bits := math.f32_bits(x) + (u32(1) << 23) - 1
+	exp := int((bits >> 23) & 0xff) - 127
+	return if exp > 0 { exp } else { 0 }
+}
+
+fn nextlog16(x f32) int {
+	return (nextlog2(x) + 3) >> 2
+}
+
+enum PathVerb {
+	move
+	line
+	conic
+	close
+}
+
+// PathData is the verbs, points and conic weights of a filled path.
+struct PathData {
+	verbs   []PathVerb
+	points  []Point
+	weights []f32
+}
+
+// sk_root2_over_2 is SK_ScalarRoot2Over2, the weight of quarter-circle conics.
+const sk_root2_over_2 = f32(0.707106781)
+
+// element_path mirrors Shape::asPath() for rects and rrects: SkPathBuilder's
+// addRect() and addRRect() with their default (clockwise) directions and
+// start indices, through SkPathRawShapes.
+fn element_path(shape ClipShape) PathData {
+	if shape.kind == .rect {
+		return rect_path(shape.rect, 0)
+	}
+	rr := shape.rrect
+	if rr.is_rect() || rr.is_empty() {
+		return rect_path(rr.rect, (6 + 1) / 2)
+	}
+	if rr.typ == .oval {
+		return oval_path(rr.rect, 6 / 2)
+	}
+	return rrect_path(rr, 6)
+}
+
+fn rect_points(r Rect) [4]Point {
+	return [Point{r.left(), r.top()}, Point{r.right(), r.top()}, Point{r.right(), r.bottom()},
+		Point{r.left(), r.bottom()}]!
+}
+
+fn rect_path(r Rect, start int) PathData {
+	pts := rect_points(r)
+	mut points := []Point{cap: 4}
+	for i in 0 .. 4 {
+		points << pts[(start + i) % 4]
+	}
+	return PathData{
+		verbs:  [PathVerb.move, .line, .line, .line, .close]
+		points: points
+	}
+}
+
+fn oval_path(r Rect, start int) PathData {
+	cx := float_midpoint(r.left(), r.right())
+	cy := float_midpoint(r.top(), r.bottom())
+	oval := [Point{cx, r.top()}, Point{r.right(), cy}, Point{cx, r.bottom()}, Point{r.left(), cy}]!
+	rect := rect_points(r)
+	mut points := [oval[start % 4]]
+	for i in 1 .. 5 {
+		points << rect[(start + i) % 4]
+		points << oval[(start + i) % 4]
+	}
+	return PathData{
+		verbs:   [PathVerb.move, .conic, .conic, .conic, .conic, .close]
+		points:  points
+		weights: [sk_root2_over_2, sk_root2_over_2, sk_root2_over_2, sk_root2_over_2]
+	}
+}
+
+// rrect_path mirrors set_as_rrect() for a clockwise contour starting at an
+// even index (a line first).
+fn rrect_path(rr RRect, start int) PathData {
+	b := rr.rect
+	ul := rr.radii[int(Corner.upper_left)]
+	ur := rr.radii[int(Corner.upper_right)]
+	lr := rr.radii[int(Corner.lower_right)]
+	ll := rr.radii[int(Corner.lower_left)]
+	l, t, r, bt := b.left(), b.top(), b.right(), b.bottom()
+	rrect_pts := [Point{l + ul.x, t}, Point{r - ur.x, t}, Point{r, t + ur.y}, Point{r, bt - lr.y},
+		Point{r - lr.x, bt}, Point{l + ll.x, bt}, Point{l, bt - ll.y}, Point{l, t + ul.y}]!
+	rect := rect_points(b)
+	rect_start := start / 2
+	mut points := [rrect_pts[start % 8]]
+	mut ri := start
+	mut qi := rect_start
+	for _ in 0 .. 4 {
+		ri++
+		points << rrect_pts[ri % 8]
+		qi++
+		points << rect[qi % 4]
+		ri++
+		points << rrect_pts[ri % 8]
+	}
+	return PathData{
+		verbs:   [PathVerb.move, .line, .conic, .line, .conic, .line, .conic, .line, .conic, .close]
+		points:  points
+		weights: [sk_root2_over_2, sk_root2_over_2, sk_root2_over_2, sk_root2_over_2]
+	}
+}
+
+// contour_midpoint mirrors MidpointContourParser for a single contour: the
+// average of the verbs' end points, and of the start point unless the
+// contour already ends there.
+fn contour_midpoint(path PathData) Point {
+	mut sum := Point{0, 0}
+	mut weight := 0
+	mut idx := 1
+	for verb in path.verbs[1..] {
+		match verb {
+			.line { idx++ }
+			.conic { idx += 2 }
+			else { continue }
+		}
+		sum = Point{sum.x + path.points[idx - 1].x, sum.y + path.points[idx - 1].y}
+		weight++
+	}
+	first := path.points[0]
+	last := path.points[idx - 1]
+	if first.x != last.x || first.y != last.y {
+		sum = Point{sum.x + first.x, sum.y + first.y}
+		weight++
+	}
+	scale := f32(1) / f32(weight)
+	return Point{sum.x * scale, sum.y * scale}
+}
+
+// write_wedge_patches mirrors TessellateWedgesRenderStep::writeVertices() for
+// a single-contour path drawn with `m`. It returns the number of patches and
+// the largest n^4 they need; curves that would have to be chopped are not
+// supported.
+fn write_wedge_patches(mut out []u8, path PathData, m Matrix, depth u16) !(int, f32) {
+	fan := contour_midpoint(path)
+	mut count := 0
+	mut max_n4 := f32(1)
+	mut idx := 0
+	mut weight := 0
+	start := path.points[0]
+	mut last := start
+	for verb in path.verbs {
+		match verb {
+			.move {
+				idx = 1
+			}
+			.line {
+				p1 := path.points[idx]
+				if write_line_patch(mut out, last, p1, fan, depth) {
+					count++
+				}
+				last = p1
+				idx++
+			}
+			.conic {
+				p1 := path.points[idx]
+				p2 := path.points[idx + 1]
+				w := path.weights[weight]
+				n2 := conic_p2(f32(4), last, p1, p2, w, m)
+				n4 := n2 * n2
+				if n4 > max_parametric_segments_p4 {
+					return error('gg.canvas: curves that need chopping are not supported')
+				}
+				if write_conic_patch(mut out, last, p1, p2, w, fan, depth) {
+					count++
+					// The draw's template covers its patches' largest tolerance.
+					if n4 > max_n4 {
+						max_n4 = n4
+					}
+				}
+				last = p2
+				idx += 2
+				weight++
+			}
+			.close {}
+		}
+	}
+	if last.x != start.x || last.y != start.y {
+		if write_line_patch(mut out, last, start, fan, depth) {
+			count++
+		}
+	}
+	return count, max_n4
+}
+
+// conic_p2 mirrors wangs_formula::conic_p2() with the 2x2 of `m` as the
+// vector transform, one operation per statement (-ffp-contract=off).
+fn conic_p2(precision f32, q0 Point, q1 Point, q2 Point, w f32, m Matrix) f32 {
+	mut p0 := xform_vector(m, q0)
+	mut p1 := xform_vector(m, q1)
+	mut p2 := xform_vector(m, q2)
+	min_x := min_f32(min_f32(p0.x, p1.x), p2.x)
+	min_y := min_f32(min_f32(p0.y, p1.y), p2.y)
+	max_x := max_f32(max_f32(p0.x, p1.x), p2.x)
+	max_y := max_f32(max_f32(p0.y, p1.y), p2.y)
+	sum_x := min_x + max_x
+	sum_y := min_y + max_y
+	cx := f32(0.5) * sum_x
+	cy := f32(0.5) * sum_y
+	p0 = Point{p0.x - cx, p0.y - cy}
+	p1 = Point{p1.x - cx, p1.y - cy}
+	p2 = Point{p2.x - cx, p2.y - cy}
+	max_len := C.sqrtf(max_f32(dot2(p0, p0), max_f32(dot2(p1, p1), dot2(p2, p2))))
+	k := f32(-2) * w
+	kx := k * p1.x
+	ky := k * p1.y
+	ax := kx + p0.x
+	ay := ky + p0.y
+	dp := Point{ax + p2.x, ay + p2.y}
+	dw := abs_f32(k + f32(2))
+	len_precision := max_len * precision
+	rp_minus_1 := max_f32(0, len_precision - f32(1))
+	dp_len := C.sqrtf(dot2(dp, dp))
+	a := dp_len * precision
+	b := rp_minus_1 * dw
+	numer := a + b
+	denom := f32(4) * min_f32(w, 1)
+	return numer / denom
+}
+
+// xform_vector applies the 2x2 of `m` (VectorXform: fC0 * x + fC1 * y).
+fn xform_vector(m Matrix, v Point) Point {
+	ax := m.m[0] * v.x
+	ay := m.m[3] * v.x
+	bx := m.m[1] * v.y
+	by := m.m[4] * v.y
+	return Point{ax + bx, ay + by}
+}
+
+fn dot2(a Point, b Point) f32 {
+	x := a.x * b.x
+	y := a.y * b.y
+	return x + y
+}
+
+// write_conic_patch mirrors PatchWriter::writeConicPatch(): the control
+// points and (w, inf) mark a conic. Degenerate patches are skipped.
+fn write_conic_patch(mut out []u8, p0 Point, p1 Point, p2 Point, w f32, fan Point, depth u16) bool {
+	if p0.x == p1.x && p0.y == p1.y && p1.x == p2.x && p1.y == p2.y {
+		return false
+	}
+	inf := f32(math.inf(1))
+	for v in [p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, w, inf, fan.x, fan.y]! {
+		put_f32(mut out, v)
+	}
+	put_f32(mut out, depth_as_float(depth))
+	put_u32(mut out, 0)
+	return true
+}
 
 // write_rect_wedge_patches mirrors TessellateWedgesRenderStep::writeVertices()
 // for a device-space rectangle: the four lines of SkPath::Rect() around the
 // contour's midpoint (MidpointContourParser), each written by
 // PatchWriter::writeLine() as a cubic patch.
 fn write_rect_wedge_patches(mut out []u8, r Rect, depth u16) {
-	pts := [Point{r.left(), r.top()}, Point{r.right(), r.top()}, Point{r.right(), r.bottom()},
-		Point{r.left(), r.bottom()}]!
-	// The lines' end points, then the start point of the implicit close.
-	mut mx := pts[1].x + pts[2].x
-	mx = mx + pts[3].x
-	mx = mx + pts[0].x
-	mut my := pts[1].y + pts[2].y
-	my = my + pts[3].y
-	my = my + pts[0].y
-	fan := Point{mx * f32(0.25), my * f32(0.25)}
-	for i in 0 .. 4 {
-		write_line_patch(mut out, pts[i], pts[(i + 1) % 4], fan, depth)
-	}
+	write_wedge_patches(mut out, rect_path(r, 0), Matrix.identity(), depth) or { panic(err) }
 }
 
 // write_line_patch mirrors PatchWriter::writeLine() without replicated end
 // points: the cubic (p0, (p1 - p0) / 3 + p0, (p0 - p1) / 3 + p1, p1), with
 // separate operations because Skia does not contract them into FMAs.
-fn write_line_patch(mut out []u8, p0 Point, p1 Point, fan Point, depth u16) {
+fn write_line_patch(mut out []u8, p0 Point, p1 Point, fan Point, depth u16) bool {
+	if p0.x == p1.x && p0.y == p1.y {
+		// Degenerate patches are skipped.
+		return false
+	}
 	third := f32(1) / f32(3)
 	d1x := (p1.x - p0.x) * third
 	d1y := (p1.y - p0.y) * third
@@ -379,4 +681,5 @@ fn write_line_patch(mut out []u8, p0 Point, p1 Point, fan Point, depth u16) {
 	}
 	put_f32(mut out, depth_as_float(depth))
 	put_u32(mut out, 0)
+	return true
 }
