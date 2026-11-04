@@ -6900,7 +6900,18 @@ fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 			// and bare on the other (`txt` as captured in the condition); compare unquoted.
 			left := comptime_cond_operand(clean[..op_idx]) or { return none }
 			right := comptime_cond_operand(clean[op_idx + op.len..]) or { return none }
-			eq := left == right
+			left_text := comptime_condition_strip_outer_parens(trimmed_transform_text(clean[..op_idx]))
+			right_text := comptime_condition_strip_outer_parens(trimmed_transform_text(clean[op_idx + op.len..]))
+			mut eq := left == right
+			if !eq && left_text.len > 0 && right_text.len > 0
+				&& (left_text[0].is_digit() || left_text[0] in [`+`, `-`])
+				&& (right_text[0].is_digit() || right_text[0] in [`+`, `-`]) {
+				if l := strconv.parse_int(left_text, 0, 64) {
+					if r := strconv.parse_int(right_text, 0, 64) {
+						eq = l == r
+					}
+				}
+			}
 			return if op == ' == ' { eq } else { !eq }
 		}
 	}

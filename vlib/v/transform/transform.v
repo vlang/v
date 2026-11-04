@@ -1,6 +1,7 @@
 module transform
 
 import os
+import strconv
 import time
 import v.flat
 import v.errors
@@ -23192,6 +23193,11 @@ fn comptime_const_int_value(raw string) ?int {
 				left % right
 			}
 		}
+	}
+	if clean.starts_with('0b') || clean.starts_with('0B') || clean.starts_with('0o')
+		|| clean.starts_with('0O') {
+		value := strconv.parse_int(clean, 0, 64) or { return none }
+		return int(value)
 	}
 	if clean.starts_with('0x') || clean.starts_with('0X') {
 		mut value := 0

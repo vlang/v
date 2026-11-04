@@ -632,7 +632,8 @@ fn (t &Transformer) subst_comptime_scalar_locals(cond string) string {
 			i = end
 			continue
 		}
-		if comptime_cond_name_char(cond[i]) && !cond[i].is_digit() {
+		if comptime_cond_name_char(cond[i]) && !cond[i].is_digit()
+			&& (i == 0 || !comptime_cond_name_char(cond[i - 1])) {
 			start := i
 			for i < cond.len && comptime_cond_name_char(cond[i]) {
 				i++
@@ -722,7 +723,8 @@ fn comptime_condition_bare_names(cond string) []string {
 			i = comptime_cond_skip_string(cond, i)
 			continue
 		}
-		if comptime_cond_name_char(cond[i]) && !cond[i].is_digit() {
+		if comptime_cond_name_char(cond[i]) && !cond[i].is_digit()
+			&& (i == 0 || !comptime_cond_name_char(cond[i - 1])) {
 			start := i
 			for i < cond.len && comptime_cond_name_char(cond[i]) {
 				i++

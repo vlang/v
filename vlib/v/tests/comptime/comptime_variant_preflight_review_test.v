@@ -359,3 +359,66 @@ fn main() {
 	run_variant_review_case('option_guard', source, false)
 	check_variant_review_case('invalid_option_guard', source.replace('return payload\n', 'return payload.len\n'), true, '`int` has no property `len`')
 }
+
+fn test_local_variant_metadata_keeps_return_diagnostics() {
+	source := r'
+type Choice = int | string
+fn extract(value Choice) int {
+	$for variant in Choice.variants {
+		type_id := variant.typ
+		alias_id := type_id
+		if value is variant {
+			$if variant.typ is int && alias_id == 8 {
+				return value
+			} $else {
+				return value.len
+			}
+		}
+	}
+	return -1
+}
+fn main() {
+	assert extract(Choice(42)) == 42
+	assert extract(Choice("text")) == 4
+}'
+	run_variant_review_case('local_alias', source, false)
+	check_variant_review_case('invalid_local_alias', source.replace('return value\n', 'return "wrong"\n'), true, 'cannot use `string` as type `int`')
+	negated := source.replace('variant.typ is int && alias_id == 8', '!(variant.typ !is int || 8 != alias_id)')
+	run_variant_review_case('negated_local_alias', negated, false)
+	check_variant_review_case('invalid_negated_local_alias', negated.replace('return value\n', 'return "wrong"\n'), true, 'cannot use `string` as type `int`')
+	scalars := source.replace('alias_id := type_id', 'alias_id := type_id\n\t\tenabled := true\n\t\texpected := 0x8\n\t\tlabel := "alias_id"').replace('alias_id == 8', 'alias_id == expected && enabled && label == "alias_id"')
+	for literal in ['0x8', '0b1000', '0o10'] {
+		case := scalars.replace('0x8', literal)
+		run_variant_review_case('local_metadata_scalars_${literal}', case, false)
+		check_variant_review_case('invalid_local_metadata_scalars_${literal}', case.replace('return value\n', 'return "wrong"\n'), true, 'cannot use `string` as type `int`')
+	}
+	quoted := source.replace('alias_id == 8', 'alias_id == 0x8 && "8" != "0x8"')
+	run_variant_review_case('quoted_numeric_operands', quoted, false)
+	local_type_test := source.replace('alias_id := type_id', 'alias_id := type_id\n\t\tkind := 1').replace('alias_id == 8', 'alias_id == 8 && kind is int')
+	run_variant_review_case('local_metadata_type_test', local_type_test, false)
+}
+
+fn test_local_variant_alias_keeps_its_declaring_loop() {
+	run_variant_review_case('outer_variant_alias', r'
+type Outer = int | string
+type Inner = bool | string
+fn extract(value Inner) int {
+	$for variant in Outer.variants {
+		outer_id := variant.typ
+		$for variant in Inner.variants {
+			if value is variant {
+				$if variant.typ is bool && outer_id == 19 {
+					return value.missing
+				} $else {
+					return 42
+				}
+			}
+		}
+	}
+	return -1
+}
+fn main() {
+	assert extract(Inner(true)) == 42
+	assert extract(Inner("text")) == 42
+}', false)
+}

@@ -8989,6 +8989,9 @@ conditions using enclosing reflection metadata are checked after that metadata i
 Numeric comparisons with `variant.typ` use the same type index as `value.type_idx()`.
 Optional and result variants expose their wrapped type's metadata index, preserving pointer depth.
 Conditions using local metadata values are checked after unrolling, when their values are available.
+Immutable local aliases of `variant.typ` can be resolved earlier, so their selected branches retain
+ordinary type diagnostics, including invalid return types.
+Integer equality compares values across decimal, hexadecimal, binary, and octal spellings.
 Matches retain their arm refinements while loop metadata is checked.
 Declaration guards such as `if payload := value` bind the unwrapped payload in their success branch.
 
