@@ -741,6 +741,9 @@ Pointer subtraction returns `int`, including in translated C code.
 
 ### 128-bit integers
 
+The native ARM64 backend compares `i128` and `u128` using both 64-bit limbs.
+Signed ordering uses the high limb's sign; equality compares every bit.
+
 `i128` and `u128` hold 128 bits. The usual operators work on them: arithmetic,
 bitwise, shifts, comparisons, and casts to and from the other numeric types.
 

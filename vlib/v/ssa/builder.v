@@ -12345,12 +12345,50 @@ fn (mut b Builder) build_wide_integer_expr(node flat.Node) ?ValueID {
 	}
 }
 
+// Compare the high limb first, then the unsigned low limb on a tie.
+fn (mut b Builder) build_wide_integer_comparison(node flat.Node) ValueID {
+	lhs_id := b.a.child(&node, 0)
+	rhs_id := b.a.child(&node, 1)
+	lhs := b.wide_integer_operand(lhs_id)
+	rhs := b.wide_integer_operand(rhs_id)
+	lhs_low, lhs_high := b.wide_integer_limbs(b.cur_block, lhs)
+	rhs_low, rhs_high := b.wide_integer_limbs(b.cur_block, rhs)
+	high_equal := b.block_instr2(.eq, b.cur_block, b.i1_type, lhs_high, rhs_high)
+	if node.op in [.eq, .ne] {
+		low_equal := b.block_instr2(.eq, b.cur_block, b.i1_type, lhs_low, rhs_low)
+		equal := b.block_instr2(.and_, b.cur_block, b.i1_type, high_equal, low_equal)
+		if node.op == .eq { return equal }
+		return b.block_instr2(.xor, b.cur_block, b.i1_type, equal,
+			b.m.get_or_add_const(b.i1_type, '1'))
+	}
+	signed := b.is_signed_wide_integer_expr(lhs_id) || b.is_signed_wide_integer_expr(rhs_id)
+	less := node.op in [.lt, .le]
+	high_op := if less {
+		if signed { OpCode.lt } else { OpCode.ult }
+	} else {
+		if signed { OpCode.gt } else { OpCode.ugt }
+	}
+	low_op := match node.op {
+		.lt { OpCode.ult }
+		.le { OpCode.ule }
+		.gt { OpCode.ugt }
+		else { OpCode.uge }
+	}
+	high_order := b.block_instr2(high_op, b.cur_block, b.i1_type, lhs_high, rhs_high)
+	low_order := b.block_instr2(low_op, b.cur_block, b.i1_type, lhs_low, rhs_low)
+	tied_order := b.block_instr2(.and_, b.cur_block, b.i1_type, high_equal, low_order)
+	return b.block_instr2(.or_, b.cur_block, b.i1_type, high_order, tied_order)
+}
+
 fn (mut b Builder) build_infix(id flat.NodeId, node flat.Node) ValueID {
 	// Comparisons have a bool result, so the result-type wide dispatch cannot
 	// catch them. Never send either wide operand to a scalar instruction.
 	if node.children_count >= 2
 		&& (b.is_wide_integer_expr(b.a.child(&node, 0))
 			|| b.is_wide_integer_expr(b.a.child(&node, 1))) {
+		if node.op in [.eq, .ne, .lt, .le, .gt, .ge] {
+			return b.build_wide_integer_comparison(node)
+		}
 		panic('ssa: unsupported 128-bit integer operation: ${node.op}')
 	}
 	if node.op == .power {
