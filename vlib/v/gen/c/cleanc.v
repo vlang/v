@@ -22037,6 +22037,12 @@ fn (mut g FlatGen) headerless_utsname_struct() {
 	g.writeln('#else')
 	g.writeln('struct utsname { char sysname[65]; char nodename[65]; char release[65]; char version[65]; char machine[65]; char domainname[65]; };')
 	g.writeln('#endif')
+	// FreeBSD's exported uname symbol uses the legacy 32-byte field ABI. Its
+	// native header wraps __xuname with the field width of the current struct.
+	g.writeln('#ifdef __FreeBSD__')
+	g.writeln('int __xuname(int, void*);')
+	g.writeln('static inline int uname(struct utsname* name) { return __xuname((int)sizeof(name->sysname), (void*)name); }')
+	g.writeln('#endif')
 }
 
 fn (mut g FlatGen) headerless_stat_struct() {
