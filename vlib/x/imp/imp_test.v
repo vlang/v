@@ -483,6 +483,49 @@ fn test_post_hook_waits_for_active_producer() {
 	assert os.read_file('audit.txt')! == 'gen app'
 }
 
+// test_post_hooks_keep_order_when_using_owner_output checks that a post hook
+// taking its owner's output runs right after the owner's body, ahead of a later
+// hook that removes that output.
+fn test_post_hooks_keep_order_when_using_owner_output() {
+	sandbox('post_order')
+	mut c := new()
+	c.add_flow(
+		id:    'build'
+		gives: ['out']
+		check: .none
+		post:  [FlowDep{
+			id: 'audit'
+		}, FlowDep{
+			id: 'clean'
+		}]
+		flow:  fn (_ Flow) ! {
+			os.write_file('out', 'built')!
+			os.write_file('log', 'build')!
+		}
+	)
+	c.add_flow(
+		id:    'audit'
+		takes: ['out']
+		check: .none
+		flow:  fn (_ Flow) ! {
+			os.write_file('audit.txt', os.read_file('out')!)!
+			os.write_file('log', os.read_file('log')! + ' audit')!
+		}
+	)
+	c.add_flow(
+		id:    'clean'
+		check: .none
+		flow:  fn (_ Flow) ! {
+			os.rm('out')!
+			os.write_file('log', os.read_file('log')! + ' clean')!
+		}
+	)
+	c.execute(['build'])!
+	assert os.read_file('log')! == 'build audit clean'
+	assert os.read_file('audit.txt')! == 'built'
+	assert !os.exists('out')
+}
+
 // test_absolute_and_relative_paths_match checks producers are found whatever
 // the spelling of a path.
 fn test_absolute_and_relative_paths_match() {

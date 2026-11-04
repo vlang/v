@@ -341,7 +341,8 @@ fn (c &Context) check_cycle(f Flow, mut state map[string]int) ! {
 // FlowState tracks a flow within one pass.
 enum FlowState {
 	pending
-	active // started, waiting on its dependencies, body or post hooks
+	active // started, waiting on its dependencies or body
+	ran    // body finished or skipped, so its outputs are ready; post hooks pending
 	done
 }
 
@@ -356,7 +357,7 @@ mut:
 // visit runs a flow and everything it needs, at most once per pass.
 fn (c &Context) visit(id string, mut pass Pass) ! {
 	match pass.state[id] {
-		.done {
+		.ran, .done {
 			return
 		}
 		.active {
@@ -368,18 +369,25 @@ fn (c &Context) visit(id string, mut pass Pass) ! {
 	}
 	pass.state[id] = .active
 	pass.stack << id
-	c.run(c.find(id)!, mut pass)!
+	post := c.run(c.find(id)!, mut pass)!
 	pass.stack.pop()
-	pass.state[id] = .done
-	hooks := pass.deferred[id] or { []string{} }
+	// the outputs are ready now, so hooks that need them, including this flow's
+	// own post hooks, run instead of waiting for the post hooks to finish
+	pass.state[id] = .ran
+	// hooks of earlier flows first, as they were waiting for this body only
+	deferred := pass.deferred[id] or { []string{} }
 	pass.deferred.delete(id)
-	for hook in hooks {
+	for hook in deferred {
 		c.visit(hook, mut pass)!
 	}
+	for hook in post {
+		c.post(hook, mut pass)!
+	}
+	pass.state[id] = .done
 }
 
-// post runs a post hook, unless it needs a flow that has not finished yet, like
-// the flow that pulled in the hook's owner. It then waits for that flow.
+// post runs a post hook, unless it needs a flow whose body has not run yet, like
+// the flow that pulled in the hook's owner. It then waits for that body.
 fn (c &Context) post(id string, mut pass Pass) ! {
 	mut seen := map[string]bool{}
 	waits := c.first_active(id, pass, mut seen)
@@ -396,7 +404,7 @@ fn (c &Context) post(id string, mut pass Pass) ! {
 // first_active returns the stack index of the outermost active flow that `id`
 // would run ahead of itself, or -1 if there is none.
 fn (c &Context) first_active(id string, pass &Pass, mut seen map[string]bool) int {
-	if seen[id] || pass.state[id] == .done {
+	if seen[id] || pass.state[id] in [.ran, .done] {
 		return -1
 	}
 	seen[id] = true
@@ -414,8 +422,9 @@ fn (c &Context) first_active(id string, pass &Pass, mut seen map[string]bool) in
 	return first
 }
 
-// run executes the hooks, dependencies and body of a flow that is now active.
-fn (c &Context) run(f Flow, mut pass Pass) ! {
+// run executes the pre hooks, dependencies and body of a flow that is now
+// active, and returns the post hooks to schedule once its outputs are ready.
+fn (c &Context) run(f Flow, mut pass Pass) ![]string {
 	for hook in f.pre.filter(it.required) {
 		c.visit(hook.id, mut pass)!
 	}
@@ -432,10 +441,7 @@ fn (c &Context) run(f Flow, mut pass Pass) ! {
 	}
 	if skip {
 		println('>> ${f.display_name()} (skip)')
-		for hook in f.post.filter(it.required) {
-			c.post(hook.id, mut pass)!
-		}
-		return
+		return f.post.filter(it.required).map(it.id)
 	}
 	for hook in f.pre.filter(!it.required) {
 		c.visit(hook.id, mut pass)!
@@ -465,9 +471,7 @@ fn (c &Context) run(f Flow, mut pass Pass) ! {
 	if f.check != .none {
 		os.rm(dirty_path(f))!
 	}
-	for hook in f.post {
-		c.post(hook.id, mut pass)!
-	}
+	return f.post.map(it.id)
 }
 
 // stamp_dir holds the state of flows between runs, relative to the working
