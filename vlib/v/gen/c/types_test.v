@@ -1485,3 +1485,24 @@ fn test_optional_tuple_typedef_requires_a_concrete_or_cached_tuple() {
 	tc.enum_names[flat.source_type_id('C.${c_enum}')] = true
 	assert g.emit_optional_typedef('__v_result_${c_enum}', c_enum)
 }
+
+fn test_optional_tuple_prefix_preserves_registered_v_payloads() {
+	for precomputed in [false, true] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		tc.structs[flat.source_type_id('multi_return_models.Config')] = []types.StructField{}
+		tc.enum_names[flat.source_type_id('multi_return_models.Mode')] = true
+		mut g := FlatGen.new()
+		g.a = &a
+		g.tc = &tc
+		if precomputed {
+			g.precompute_qualified_struct_c_types()
+		}
+		for payload in ['multi_return_models__Config', 'multi_return_models__Mode'] {
+			assert g.emit_optional_typedef('__v_result_${payload}', payload)
+			assert g.emit_optional_typedef('__v_option_${payload}', payload)
+		}
+		assert !g.emit_optional_typedef('__v_result_multi_return_stale__Config',
+			'multi_return_stale__Config')
+	}
+}
