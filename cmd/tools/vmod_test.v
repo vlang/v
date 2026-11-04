@@ -387,3 +387,63 @@ fn test_project_free_fixture_skips_a_temporary_directory_inside_a_project() {
 	assert selected == os.real_path(fallback)
 	assert !has_project_ancestor(selected)
 }
+
+fn test_v_mod_reads_imports_from_large_sources_without_parsing_bodies() {
+	prepare_fixture()!
+	// A full parse reserves an 8 MiB node array for this otherwise uninteresting
+	// body. Import discovery needs only the declaration at the start of the file.
+	write_file(os.join_path(tfolder, 'lib', 'lib.v'), 'module lib\nimport deeper\npub fn hello() string { return deeper.value() }\nfn padding() {\n' +
+		'\t_ = 0\n'.repeat(100_000) + '}\n')!
+	why := mod_why('deeper')
+	assert why.exit_code == 0, why.output
+	assert why.output.trim_space().split_into_lines() == ['app', 'lib', 'deeper'], why.output
+	graph := mod_graph()
+	assert graph.exit_code == 0, graph.output
+	assert graph.output.trim_space().split_into_lines() == ['app', 'lib', '  deeper'], graph.output
+}
+
+fn test_v_mod_ignores_import_text_in_comments_strings_and_directives() {
+	prepare_fixture()!
+	write_module('ghost', 'module ghost\n')!
+	write_file(os.join_path(tfolder, 'app', 'main.v'), "module main\nimport lib\n// import ghost\n/* import ghost */\nconst text = 'import ghost'\nconst raw = r'import ghost'\n#flag -Dimport ghost\nfn main() { println(lib.hello()) }\n")!
+	res := mod_why('ghost')
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == '(main module does not need module `ghost`)', res.output
+}
+
+fn test_v_mod_preserves_nested_comptime_import_scopes() {
+	prepare_fixture()!
+	write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\n\$if false {\n\t\$if true {\n\t\timport lib\n\t}\n} \$else \$if true {\n\timport orphan\n}\nstruct Example { import string }\nfn main() {}\n')!
+	for dependency in ['lib', 'orphan'] {
+		res := mod_why(dependency)
+		assert res.exit_code == 0, res.output
+		assert res.output.trim_space().split_into_lines() == ['app', dependency], res.output
+	}
+	graph := mod_graph()
+	assert graph.exit_code == 0, graph.output
+	assert graph.output.split_into_lines().contains('orphan'), graph.output
+	assert !graph.output.split_into_lines().contains('string'), graph.output
+}
+
+fn test_v_mod_keeps_first_resolved_directory_for_same_named_local_modules() {
+	prepare_fixture()!
+	write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\nimport near\nimport far\nfn main() {}\n')!
+	for branch in ['near', 'far'] {
+		write_module(branch, 'module ${branch}\nimport shared\n')!
+		write_file(os.join_path(tfolder, branch, 'shared', 'v.mod'), "Module { name: 'shared' }\n")!
+		write_file(os.join_path(tfolder, branch, 'shared', 'shared.v'), 'module shared\nimport ${branch}_only\n')!
+		write_module('${branch}_only', 'module ${branch}_only\n')!
+	}
+	// The LIFO walk resolves far/shared first. The shortest chain still uses
+	// near's edge to the same graph node, whose directory stays pinned to far.
+	why := mod_why('far_only')
+	assert why.exit_code == 0, why.output
+	assert why.output.trim_space().split_into_lines() == ['app', 'near', 'shared', 'far_only'], why.output
+	unused := mod_why('near_only')
+	assert unused.exit_code == 0, unused.output
+	assert unused.output.trim_space() == '(main module does not need module `near_only`)', unused.output
+	graph := mod_graph()
+	assert graph.exit_code == 0, graph.output
+	assert graph.output.trim_space().split_into_lines() == ['app', 'near', '  shared', '    far_only',
+		'far'], graph.output
+}

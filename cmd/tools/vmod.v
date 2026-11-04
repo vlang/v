@@ -5,8 +5,9 @@ module main
 
 import os
 import flag
-import v.parser
 import v.pref
+import v.scanner
+import v.token
 import v.util
 import v.vmod
 
@@ -105,26 +106,93 @@ fn v_files_in(dir string) ![]string {
 
 // imports_in_file returns declared import paths, including both comptime branches.
 fn imports_in_file(path string) ![]string {
-	mut prefs := pref.new_preferences()
-	// Preserve source declarations without lowering scripts or selecting a target.
-	prefs.is_fmt = true
-	prefs.preserve_comptime_conditionals = true
-	prefs.supports_inline_asm = true
-	prefs.enable_globals = true
-	mut p := parser.Parser.new(prefs)
-	a := p.parse_file(path)
-	for diagnostic in p.diagnostics {
-		if diagnostic.message.starts_with('error reading source:') {
-			return error(diagnostic.message)
-		}
-	}
+	source := os.read_file(path) or { return error('error reading source: ${err.msg()}') }
+	prefs := pref.new_preferences()
+	mut s := scanner.new_scanner(prefs, .skip_interpolation)
+	s.init(token.File.unindexed(path, source.len), source)
 	mut result := []string{}
-	for node in a.nodes {
-		if node.kind == .import_decl {
-			result << node.value
+	scan_import_scope(mut s, mut result)
+	return result
+}
+
+// scan_import_scope reads declarations without constructing an AST. Full parsing
+// reserves multi-megabyte node arrays for large dependency files, which can exhaust
+// Boehm's large-allocation retries on macOS when free blocks are blacklisted.
+// Ordinary bodies and signatures are opaque; only comptime declaration branches
+// introduce further import scopes. The compiler scanner handles comments, strings,
+// directives, tabs and keyword module names in the same way as a normal parse.
+fn scan_import_scope(mut s scanner.Scanner, mut imports []string) {
+	mut tok := s.scan()
+	mut comptime_block := false
+	mut comptime_else := false
+	for tok != .eof {
+		if tok !in [.semicolon, .dollar, .key_else] {
+			comptime_else = false
+		}
+		match tok {
+			.key_import {
+				tok = s.scan()
+				if tok != .name && !tok.is_keyword() {
+					continue
+				}
+				mut name := s.lit
+				tok = s.scan()
+				for tok == .dot {
+					tok = s.scan()
+					if tok != .name && !tok.is_keyword() {
+						break
+					}
+					name += '.' + s.lit
+					tok = s.scan()
+				}
+				imports << name
+				continue
+			}
+			.dollar {
+				tok = s.scan()
+				comptime_block = tok == .key_if
+				continue
+			}
+			.key_else {
+				comptime_block = comptime_else
+			}
+			.lcbr {
+				if comptime_block {
+					scan_import_scope(mut s, mut imports)
+				} else {
+					skip_import_group(mut s, .lcbr, .rcbr)
+				}
+				comptime_else = comptime_block
+				comptime_block = false
+			}
+			.lpar {
+				skip_import_group(mut s, .lpar, .rpar)
+			}
+			.lsbr, .attribute {
+				skip_import_group(mut s, .lsbr, .rsbr)
+			}
+			.rcbr {
+				return
+			}
+			else {}
+		}
+		tok = s.scan()
+	}
+}
+
+fn skip_import_group(mut s scanner.Scanner, open token.Token, close token.Token) {
+	mut depth := 1
+	for depth > 0 {
+		tok := s.scan()
+		if tok == .eof {
+			return
+		}
+		if tok == open || (open == .lsbr && tok == .attribute) {
+			depth++
+		} else if tok == close {
+			depth--
 		}
 	}
-	return result
 }
 
 // build_graph walks the import graph outward from the project root, following
