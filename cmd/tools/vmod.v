@@ -108,11 +108,22 @@ fn v_files_in(dir string) ![]string {
 fn imports_in_file(path string) ![]string {
 	source := os.read_file(path) or { return error('error reading source: ${err.msg()}') }
 	prefs := pref.new_preferences()
-	mut s := scanner.new_scanner(prefs, .skip_interpolation)
+	mut s := scanner.new_scanner(prefs, .normal)
 	s.init(token.File.unindexed(path, source.len), source)
 	mut result := []string{}
 	scan_import_scope(mut s, mut result)
 	return result
+}
+
+// scan_import_token consumes a complete interpolated string as one token. Normal
+// scanning handles quoted braces and nested strings inside its expressions, whose
+// tokens must not participate in balancing declaration scopes or finding imports.
+fn scan_import_token(mut s scanner.Scanner) token.Token {
+	mut tok := s.scan()
+	for tok != .eof && (s.in_str_inter || s.in_str_incomplete || s.str_parent_quotes.len > 0) {
+		tok = s.scan()
+	}
+	return tok
 }
 
 // scan_import_scope reads declarations without constructing an AST. Full parsing
@@ -122,7 +133,7 @@ fn imports_in_file(path string) ![]string {
 // introduce further import scopes. The compiler scanner handles comments, strings,
 // directives, tabs and keyword module names in the same way as a normal parse.
 fn scan_import_scope(mut s scanner.Scanner, mut imports []string) {
-	mut tok := s.scan()
+	mut tok := scan_import_token(mut s)
 	mut comptime_block := false
 	mut comptime_else := false
 	for tok != .eof {
@@ -131,25 +142,25 @@ fn scan_import_scope(mut s scanner.Scanner, mut imports []string) {
 		}
 		match tok {
 			.key_import {
-				tok = s.scan()
+				tok = scan_import_token(mut s)
 				if tok != .name && !tok.is_keyword() {
 					continue
 				}
 				mut name := s.lit
-				tok = s.scan()
+				tok = scan_import_token(mut s)
 				for tok == .dot {
-					tok = s.scan()
+					tok = scan_import_token(mut s)
 					if tok != .name && !tok.is_keyword() {
 						break
 					}
 					name += '.' + s.lit
-					tok = s.scan()
+					tok = scan_import_token(mut s)
 				}
 				imports << name
 				continue
 			}
 			.dollar {
-				tok = s.scan()
+				tok = scan_import_token(mut s)
 				// The pending condition can itself contain $int or $pkgconfig(...).
 				comptime_block = comptime_block || tok == .key_if
 				continue
@@ -177,14 +188,14 @@ fn scan_import_scope(mut s scanner.Scanner, mut imports []string) {
 			}
 			else {}
 		}
-		tok = s.scan()
+		tok = scan_import_token(mut s)
 	}
 }
 
 fn skip_import_group(mut s scanner.Scanner, open token.Token, close token.Token) {
 	mut depth := 1
 	for depth > 0 {
-		tok := s.scan()
+		tok := scan_import_token(mut s)
 		if tok == .eof {
 			return
 		}

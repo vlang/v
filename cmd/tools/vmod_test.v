@@ -455,6 +455,29 @@ fn test_v_mod_preserves_import_scopes_with_pkgconfig_conditions() {
 	check_comptime_import_condition("\$pkgconfig('vmod_import_scope_missing')")!
 }
 
+fn test_v_mod_preserves_import_scopes_after_quoted_interpolation_braces() {
+	for literal in ["'\${'{'}'", "'\${'}'}'", '\'\${"{"}\'', '\'\${\'\${"{"}\'}\'',
+		"'\${'import ghost { }'}'"] {
+		prepare_fixture()!
+		write_module('ghost', 'module ghost\n')!
+		write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\n\$if true {\n\timport orphan\n\tfn marker() string { return ${literal} }\n} \$else {\n\timport lib\n}\nfn main() {}\n')!
+		checked := os.exec([@VEXE, '-check', '.'])
+		assert checked.exit_code == 0, checked.output
+		for dependency in ['lib', 'orphan'] {
+			res := mod_why(dependency)
+			assert res.exit_code == 0, res.output
+			assert res.output.trim_space().split_into_lines() == ['app', dependency], res.output
+		}
+		graph := mod_graph()
+		assert graph.exit_code == 0, graph.output
+		lines := graph.output.trim_space().split_into_lines()
+		assert lines.contains('lib'), graph.output
+		assert lines.contains('orphan'), graph.output
+		assert lines.contains('  deeper'), graph.output
+		assert !lines.contains('ghost'), graph.output
+	}
+}
+
 fn test_v_mod_keeps_first_resolved_directory_for_same_named_local_modules() {
 	prepare_fixture()!
 	write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\nimport near\nimport far\nfn main() {}\n')!
