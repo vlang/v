@@ -6,9 +6,9 @@ Keep correctness tests and generated-output checks alongside performance measure
 
 ## Option/result payload identity, 2026-11-04
 
-The fix in PR #31882 preserves self-compilation instruction efficiency on the fixed workload.
+The final fixes in PR #31882 show no measurable systematic instruction change on the fixed workload.
 Baseline `73c784a0d5c6ab437c733fbd7e900a83b0af949e` and candidate
-`f5ee5cecc77a175f582bb74f17e7ccf18689f434` use matched Apple Clang production builds, without PGO:
+`8e1238eb44d4f28043f06153a84a414ff4cd1178` use matched Apple Clang production builds, without PGO:
 
 ```sh
 ./v -prod -cc /usr/bin/clang -gc none -prealloc -compile-backend fastc -nocache \
@@ -22,23 +22,29 @@ one warmup per role, then ten alternating AB/BA pairs. Warmups are excluded belo
 
 | Median metric | Baseline | Candidate |
 | --- | ---: | ---: |
-| Retired instructions | 40,061,992,415.5 | 40,056,452,123 |
-| Instructions/parsed physical line | 80,405.5651 | 80,394.4456 |
-| Peak RSS, MiB | 1,100.586 | 1,101.031 |
-| Peak memory footprint, MiB | 1,087.642 | 1,088.041 |
-| Elapsed time, s | 9.970 | 10.225 |
-| CPU cycles | 20,546,048,347.5 | 20,850,918,454.5 |
+| Retired instructions | 39,915,971,674.5 | 39,917,502,965 |
+| Instructions/parsed physical line | 80,112.4973 | 80,115.5707 |
+| Peak RSS, MiB | 1,101.789 | 1,102.164 |
+| Peak memory footprint, MiB | 1,088.861 | 1,089.197 |
+| Elapsed time, s | 6.600 | 6.470 |
+| CPU cycles | 18,684,857,851.5 | 18,993,525,191.5 |
 
-The instruction median changes by **-0.01383%**, and the median paired difference is
-**-7,028,513 instructions**; **4/10 pairs are higher** for the candidate. The change is smaller
-than the observed instruction ranges (about 0.5%), so this is no observed median regression,
-not a speedup claim. Elapsed time and cycles are contextual under concurrent host load.
+The instruction median changes by **+0.00384%**, and the median paired difference is
+**+11,315,550.5 instructions**; **5/10 pairs are higher** for the candidate. The paired differences
+range from -82,616,882 to +83,426,599 instructions. The mixed directions and much larger sample
+variation do not establish a systematic regression or improvement. No speedup is claimed.
+Elapsed time and cycles are contextual under concurrent host load.
 
 Verbose inventories match: **498,249 physical lines in 465 `.v` files**, no `.vh` files.
 Generated C is byte-identical without normalization and passes Clang syntax checking.
-The retained directory `/Users/alex/code/v-issues20c-20261104/perf-31882-review/` contains all
+The retained directory `/Users/alex/code/v-issues20c-20261104/perf-31882-review-final/` contains all
 timing/stdout/stderr/exit logs, exact commands and environment, source inventories and hashes,
 production executable hashes, output verification, paired samples, and interpretation notes.
+Candidate executable SHA256 is
+`98164753cc359b87ccfa4f1386836cc835967aa151c2644c256cae99a015c14a`.
+The final compiler source matches this measured revision. A subsequent optional optimization
+was reverted after its build hit the disk reserve guard; it is absent from the final source.
+The earlier comparison and incomplete optional-build receipts are retained separately.
 
 ## Profile-driven follow-up, 2026-11-03 (round 2)
 
