@@ -44,6 +44,10 @@ On FreeBSD and OpenBSD, builds with system headers include `<sys/sysctl.h>` for
 `os.executable()` and retain its native `sysctl` declaration. Headerless builds supply
 the sysctl constants and prototype directly.
 
+On Linux, Android, Termux and FreeBSD, builds with system headers use the native
+`sem_*` declarations from `<semaphore.h>`, including when compiling cached modules.
+Headerless builds retain V's semaphore prototypes.
+
 Win32 API names in headerless C declarations receive `WINAPI` and their wide export
 names only for Windows targets. On other targets, names such as `Sleep` and `CreateFile`
 keep the spelling and calling convention of the program's own C functions.
