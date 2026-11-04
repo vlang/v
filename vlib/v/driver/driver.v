@@ -28,6 +28,7 @@ import v.util
 import v.util.cache_refresh
 import v.util.machosign
 import v.util.vtest
+import v.util.version as vversion
 import v.workers
 import v.build_constraint
 import v.vmod
@@ -2411,7 +2412,9 @@ fn run_v_inline_source(args []string, option_index int, consumed int, source str
 	exit(exit_code)
 }
 
-fn maybe_delegate_v3_to_vvmrc(input_file string, verbose bool) {
+// maybe_delegate_to_vvmrc runs the complete command with the project's pinned compiler.
+// A missing compiler is an error; V_SKIP_VVMRC explicitly bypasses the project pin.
+pub fn maybe_delegate_to_vvmrc(input_file string, verbose bool) {
 	if os.getenv(v3_vvmrc_skip_env) != '' || input_file in ['', '-'] {
 		return
 	}
@@ -2421,12 +2424,14 @@ fn maybe_delegate_v3_to_vvmrc(input_file string, verbose bool) {
 	}
 	requested_version := parse_v3_vvmrc_version(os.read_file(vvmrc_path) or { '' })
 	if requested_version.len == 0
-		|| normalize_v3_vvmrc_version(requested_version).to_lower_ascii() in ['latest', 'current'] {
+		|| normalize_v3_vvmrc_version(requested_version).to_lower_ascii() in ['latest', 'current',
+			vversion.v_version, @VCURRENTHASH] {
 		return
 	}
 	requested_exe := resolve_v3_version_executable(requested_version) or {
-		eprintln('v3: warning: `${vvmrc_path}` requests V `${requested_version}`, but no matching compiler executable was found; continuing with `${os.executable()}`')
-		return
+		eprintln('error: this project pins V ${requested_version} (${vvmrc_path}), which is not installed.')
+		eprintln('Install the pinned compiler, or set V_SKIP_VVMRC=1 to use the running compiler.')
+		exit(1)
 	}
 	if os.real_path(requested_exe) == os.real_path(os.executable()) {
 		return
@@ -10734,7 +10739,7 @@ pub fn run(args []string) {
 		exit(fixturetest.run(os.executable(), input_file, args))
 	}
 	if os.getenv(v3_embedded_env) != '1' {
-		maybe_delegate_v3_to_vvmrc(input_file, verbose)
+		maybe_delegate_to_vvmrc(input_file, verbose)
 	}
 	// JS and FastC dispatch before the common runtime-injection validation below.
 	if 'vlibc' in user_defines && backend != 'c' {
