@@ -106,7 +106,9 @@ try {
     Set-MsvcTarget $install 'arm64' $work
     $stageC = Join-Path $work 'v_stage.c'
     Invoke-Checked $bootstrap @('-no-parallel', '-gc', 'none', '-g', '-cc', 'msvc', '-os', 'windows', '-arch', 'arm64', '-o', $stageC, 'cmd/v')
-    Invoke-Checked cl ($common + @("/Fe$stage", $stageC) + $stageNative + $libraries)
+    # This direct C link also needs the ARM64 atomic pause mapping normally
+    # supplied by sync.stdatomic's target-specific #flag.
+    Invoke-Checked cl ($common + @('/D_mm_pause=__yield', "/Fe$stage", $stageC) + $stageNative + $libraries)
     Assert-ExecutableMachine $stage 0xaa64
     Invoke-Checked $stage @('-no-parallel', '-prod', '-cc', 'msvc', '-arch', 'arm64', '-no-retry-compilation', '-o', 'v.exe', 'cmd/v')
     Assert-ExecutableMachine (Join-Path $root 'v.exe') 0xaa64
