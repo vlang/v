@@ -102,6 +102,22 @@ pub fn cp_all(src string, dst string, overwrite bool) ! {
 	for file in files {
 		sp := join_path_single(source_path, file)
 		dp := join_path_single(dest_path, file)
+		$if !js {
+			if is_link(sp) {
+				// A symlink inside the tree is copied as a symlink, so a
+				// reflective copy never pulls the link target's contents,
+				// which may lie outside `source_path`, into the destination.
+				target := readlink(sp) or { return err }
+				if exists(dp) || is_link(dp) {
+					if !overwrite || (is_dir(dp) && !is_link(dp)) {
+						return error('Destination file path already exist')
+					}
+					rm(dp)!
+				}
+				symlink(target, dp)!
+				continue
+			}
+		}
 		if is_dir(sp) {
 			if !exists(dp) {
 				mkdir(dp)!
