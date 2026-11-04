@@ -87,7 +87,8 @@ fn v3_native_interface_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	}
 	os.write_file(path, checked_probe) or { return result }
 	mut args := c_object_compile_flags(flags)
-	args << ['-x', 'c']
+	// Depfile readers need stdout alone; poison diagnostics remain hard errors.
+	args << ['-x', 'c', '-w']
 	// -M does not expand macros in ordinary code. Let the selected C
 	// preprocessor validate them too, discarding its output without inspecting it.
 	if !tinycc {
