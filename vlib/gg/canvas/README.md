@@ -30,8 +30,15 @@ intersect and difference `clip_rect` and `clip_rrect` (a port of Graphite's
 ClipStack: element simplification, geometric intersection of draws with
 clips, scissors, the analytic clip shaders, and depth-only convex wedge draws
 in a 4x MSAA pass for further difference elements, including conics).
-Draws that need other renderers (paths, elliptical strokes, stencil-and-cover
-clip elements, ...) return an error instead of rendering differently.
+Filled paths (`Path`, built with `PathBuilder` like `SkPathBuilder`) are drawn
+like Graphite's `drawPath`: rect, oval and nested-rect paths use those
+renderers, convex paths the shaded convex wedges and other paths the MSAA
+stencil-and-cover wedges (winding and even-odd), including Skia's path
+convexity, rect detection and Wang's formula for lines, quads, conics and
+cubics.
+Draws that need other renderers (strokes of paths and elliptical rrects,
+inverse fills, curves that need chopping, stencil-and-cover clip elements,
+...) return an error instead of rendering differently.
 
 Only Metal is supported: the reproduced output is Graphite's Metal output on
 the same GPU.

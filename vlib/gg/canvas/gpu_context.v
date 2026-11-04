@@ -27,16 +27,47 @@ const solid_uniform_block_size = solid_uniform_size * max_batch_colors
 enum RenderStep {
 	analytic_rrect
 	cover_bounds
-	// The two steps of Graphite's MSAA stencil-and-cover path renderer. They
-	// are only recorded for ordering by draw_msaa_trigger(), never executed.
-	tessellate_wedges
-	cover_fills
+	// The stencil and cover steps of Graphite's MSAA stencil-and-cover path
+	// renderer (StencilTessellatedWedges): wedges counted into the stencil
+	// buffer with the winding or even-odd rule, then the path bounds filled
+	// where the stencil is non-zero.
+	stencil_wedges_winding
+	stencil_wedges_even_odd
+	cover_fill
 	// The depth-only convex wedges of a clip element's draw (Graphite's
 	// TessellateWedges_Convex with no paint), executed in MSAA passes.
 	convex_wedges
+	// TessellateWedges_Convex with a solid color paint, for convex path fills.
+	wedges_shaded
+}
+
+// is_wedge_step reports the steps that draw tessellated wedge patches.
+fn is_wedge_step(step RenderStep) bool {
+	return step in [.stencil_wedges_winding, .stencil_wedges_even_odd, .convex_wedges, .wedges_shaded]
+}
+
+// writes_color reports the steps with a fragment function.
+fn writes_color(step RenderStep) bool {
+	return step !in [.stencil_wedges_winding, .stencil_wedges_even_odd, .convex_wedges]
+}
+
+// step_uniform_size returns the size of a step's uniform block: the
+// localToDevice matrix of wedge steps (after the color for shaded wedges),
+// or the paint color with the analytic clip data.
+fn step_uniform_size(step RenderStep, clipped bool) int {
+	return match true {
+		step == .wedges_shaded { wedge_solid_uniform_size }
+		is_wedge_step(step) || clipped { clip_uniform_size }
+		else { solid_uniform_size }
+	}
 }
 
 const analytic_rrect_vert = $embed_file('shaders/analytic_rrect_solid.vert.metal')
+const wedges_solid_vert = $embed_file('shaders/tessellate_wedges_solid.vert.metal')
+const wedges_solid_frag = $embed_file('shaders/tessellate_wedges_solid.frag.metal')
+
+// The shaded wedge uniforms: float4 color, then the float4x4 localToDevice.
+const wedge_solid_uniform_size = 80
 const analytic_rrect_frag = $embed_file('shaders/analytic_rrect_solid.frag.metal')
 const cover_bounds_vert = $embed_file('shaders/cover_bounds_solid.vert.metal')
 const cover_bounds_frag = $embed_file('shaders/cover_bounds_solid.frag.metal')
@@ -189,6 +220,14 @@ pub fn (mut ctx GpuContext) precompile() {
 		}
 	}
 	ctx.pipeline(.convex_wedges, 4, false, false)
+	for step in [RenderStep.stencil_wedges_winding, .stencil_wedges_even_odd] {
+		ctx.pipeline(step, 4, false, false)
+	}
+	for step in [RenderStep.cover_fill, .wedges_shaded] {
+		for blend in [true, false] {
+			ctx.pipeline(step, 4, blend, false)
+		}
+	}
 	ctx.load_msaa_pipeline()
 }
 
@@ -219,7 +258,8 @@ fn (mut ctx GpuContext) shader(step RenderStep, clipped bool) gfx.Shader {
 	// Depth-only steps have no fragment function, like Graphite's; their
 	// fragment entry is unused.
 	vert, frag := match true {
-		step == .convex_wedges { convex_wedges_vert, convex_wedges_vert }
+		!writes_color(step) { convex_wedges_vert, convex_wedges_vert }
+		step == .wedges_shaded { wedges_solid_vert, wedges_solid_frag }
 		step == .analytic_rrect && clipped { analytic_rrect_clip_vert, analytic_rrect_clip_frag }
 		step == .analytic_rrect { analytic_rrect_vert, analytic_rrect_frag }
 		clipped { cover_bounds_clip_vert, cover_bounds_clip_frag }
@@ -227,17 +267,13 @@ fn (mut ctx GpuContext) shader(step RenderStep, clipped bool) gfx.Shader {
 	}
 	// The per-draw uniform block: the localToDevice matrix of wedge steps, or
 	// the paint color with the analytic clip data.
-	paint_uniform_size := if step == .convex_wedges || clipped {
-		clip_uniform_size
-	} else {
-		solid_uniform_size
-	}
+	paint_uniform_size := step_uniform_size(step, clipped)
 	vs_source := vert.to_string()
 	fs_source := frag.to_string()
 	mut desc := gfx.ShaderDesc{}
 	desc.vs.source = &char(vs_source.str)
 	desc.vs.entry = c'vertexMain'
-	if step != .convex_wedges {
+	if writes_color(step) {
 		desc.fs.source = &char(fs_source.str)
 		desc.fs.entry = c'fragmentMain'
 	}
@@ -268,7 +304,7 @@ fn (mut ctx GpuContext) pipeline(step RenderStep, sample_count int, blend bool, 
 		cull_mode:      .none
 	}
 	match step {
-		.convex_wedges {
+		.convex_wedges, .wedges_shaded, .stencil_wedges_winding, .stencil_wedges_even_odd {
 			desc.primitive_type = .triangles
 			desc.index_type = .uint16
 			desc.layout.buffers[0].stride = 8
@@ -329,7 +365,7 @@ fn (mut ctx GpuContext) pipeline(step RenderStep, sample_count int, blend bool, 
 		}
 	}
 	desc.colors[0].pixel_format = .bgra8
-	if step == .convex_wedges {
+	if !writes_color(step) {
 		desc.colors[0].write_mask = .none
 	}
 	desc.colors[0].blend = gfx.BlendState{
@@ -348,7 +384,47 @@ fn (mut ctx GpuContext) pipeline(step RenderStep, sample_count int, blend bool, 
 			gfx.PixelFormat.depth
 		}
 		compare:       .less
-		write_enabled: true
+		// The stencil passes leave the depth write to the cover pass.
+		write_enabled: step !in [.stencil_wedges_winding, .stencil_wedges_even_odd]
+	}
+	// Graphite's kWindingStencilPass, kEvenOddStencilPass and kRegularCoverPass.
+	match step {
+		.stencil_wedges_winding, .stencil_wedges_even_odd {
+			winding := step == .stencil_wedges_winding
+			desc.stencil = gfx.StencilState{
+				enabled:    true
+				front:      gfx.StencilFaceState{
+					compare:       .always
+					fail_op:       .keep
+					depth_fail_op: .keep
+					pass_op:       if winding { gfx.StencilOp.incr_wrap } else { .invert }
+				}
+				back:       gfx.StencilFaceState{
+					compare:       .always
+					fail_op:       .keep
+					depth_fail_op: .keep
+					pass_op:       if winding { gfx.StencilOp.decr_wrap } else { .invert }
+				}
+				read_mask:  0xff
+				write_mask: 0xff
+			}
+		}
+		.cover_fill {
+			face := gfx.StencilFaceState{
+				compare:       .not_equal
+				fail_op:       .keep
+				depth_fail_op: .zero
+				pass_op:       .zero
+			}
+			desc.stencil = gfx.StencilState{
+				enabled:    true
+				front:      face
+				back:       face
+				read_mask:  0xff
+				write_mask: 0xff
+			}
+		}
+		else {}
 	}
 	pipeline := gfx.make_pipeline(&desc)
 	ctx.pipelines << GpuPipelineEntry{step, clipped, sample_count, blend, pipeline}

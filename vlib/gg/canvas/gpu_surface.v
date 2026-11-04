@@ -79,6 +79,9 @@ mut:
 	pipelines   []PipelineKey
 	uniforms    []PaintUniforms
 	clip        ClipStack
+	// Device's IntersectionTreeSet: per paint order, the bounds of the
+	// stencil draws in each disjoint stencil set.
+	disjoint map[u16][][]Rect
 	// The MSAA attachments of a single-sampled surface whose pass contains a
 	// draw that requires MSAA, like Graphite's discardable MSAA texture.
 	dynamic_msaa        gfx.Image
@@ -174,6 +177,7 @@ fn (mut s GpuSurface) reset_draws() {
 	s.pipelines.clear()
 	s.uniforms.clear()
 	s.bounds = new_bounds_manager(s.width, s.height)
+	s.disjoint = map[u16][][]Rect{}
 	s.depth_index = 0
 }
 
@@ -293,6 +297,13 @@ pub fn (mut s GpuSurface) draw_drrect(outer RRect, inner RRect, paint Paint) ! {
 	if !s.transform.valid() || s.quick_reject(o, paint) {
 		return
 	}
+	s.device_draw_drrect(outer, inner, paint)!
+}
+
+// device_draw_drrect mirrors Device::drawDRRect().
+fn (mut s GpuSurface) device_draw_drrect(outer RRect, inner RRect, paint Paint) ! {
+	o := outer.rect
+	i := inner.rect
 	if paint.style != .fill {
 		return error('gg.canvas: stroked double rounded rectangles need the path renderer')
 	}
@@ -509,13 +520,15 @@ pub fn (mut s GpuSurface) draw_msaa_trigger() {
 		draw_bounds:  trigger_bounds
 		shape_bounds: trigger_bounds
 	}
-	s.record_step(.tessellate_wedges, false, []u8{}, identity_local_to_device, order, 0, 3,
+	s.record_step(.stencil_wedges_winding, false, []u8{}, identity_local_to_device, order, 0, 3,
 		trigger_clip, 0)
-	s.record_step(.cover_fills, true, []u8{}, PaintUniforms{}, order, 1, 1, trigger_clip, 0)
+	s.record_step(.cover_fill, true, []u8{}, PaintUniforms{}, order, 1, 1, trigger_clip, 0)
 	// The path bounds (0, 0, 0.01, 0.01) are subpixel, so the clip stack
 	// outsets them by the local AA radius before clipping to the device.
 	path := Rect.ltrb(0, 0, f32(0.01), f32(0.01)).outset(1)
-	s.bounds.record_draw(path.intersect(Rect.ltrb(0, 0, f32(s.width), f32(s.height))), 1)
+	draw_bounds := path.intersect(Rect.ltrb(0, 0, f32(s.width), f32(s.height)))
+	s.add_disjoint_stencil(1, draw_bounds)
+	s.bounds.record_draw(draw_bounds, 1)
 }
 
 // draw_shape mirrors Device::drawGeometry() for the analytic renderers.
@@ -748,7 +761,9 @@ fn patch_u32(mut bytes []u8, offset int, value u32) {
 fn instance_stride(step RenderStep) int {
 	return match step {
 		.analytic_rrect { analytic_rrect_instance_stride }
-		.tessellate_wedges, .convex_wedges { wedge_instance_stride }
+		.stencil_wedges_winding, .stencil_wedges_even_odd, .convex_wedges, .wedges_shaded {
+			wedge_instance_stride
+		}
 		else { cover_bounds_instance_stride }
 	}
 }
@@ -819,7 +834,7 @@ pub fn (mut s GpuSurface) flush() ! {
 	mut ctx := s.ctx
 	// A pass with a draw that requires MSAA (depth-only clip draws, path steps)
 	// is multisampled, even on a single-sampled surface.
-	requires_msaa := s.draws.any(it.step in [.convex_wedges, .tessellate_wedges, .cover_fills])
+	requires_msaa := s.draws.any(is_wedge_step(it.step) || it.step == .cover_fill)
 	samples := if s.sample_count == 1 && requires_msaa { 4 } else { s.sample_count }
 	attachments := if samples == s.sample_count {
 		s.attachments
@@ -855,11 +870,7 @@ pub fn (mut s GpuSurface) flush() ! {
 	mut last_pipeline := u32(0xffffffff)
 	for i, key in keys {
 		draw := s.draws[key.draw]
-		uniform_size := if draw.uniforms.local_to_device || draw.uniforms.clipped {
-			u32(clip_uniform_size)
-		} else {
-			u32(solid_uniform_size)
-		}
+		uniform_size := u32(step_uniform_size(draw.step, draw.uniforms.clipped))
 		rebind := tracker.write_uniforms(int(draw.uniform_index), uniform_size, mut buffers)
 		new_scissor, scissor_changes := draw_scissor(draw.clip, scissor, device)
 		if draw.pipeline_index != last_pipeline {
@@ -921,7 +932,9 @@ pub fn (mut s GpuSurface) flush() ! {
 			stride := instance_stride(draw.step)
 			ssbo_offset := match draw.step {
 				.analytic_rrect { 68 }
-				.convex_wedges { wedge_ssbo_offset }
+				.stencil_wedges_winding, .stencil_wedges_even_odd, .convex_wedges, .wedges_shaded {
+					wedge_ssbo_offset
+				}
 				else { 20 }
 			}
 			for k in 0 .. int(draw.instance_count) {
@@ -1003,7 +1016,7 @@ pub fn (mut s GpuSurface) flush() ! {
 				bindings.vertex_buffer_offsets[1] = base + offsets[first]
 				bindings.index_buffer = ctx.rrect_indices
 			}
-			.convex_wedges {
+			.stencil_wedges_winding, .stencil_wedges_even_odd, .convex_wedges, .wedges_shaded {
 				bindings.vertex_buffers[0] = ctx.wedge_vertices
 				bindings.vertex_buffers[1] = ctx.instances
 				bindings.vertex_buffer_offsets[1] = base + offsets[first]
@@ -1022,13 +1035,15 @@ pub fn (mut s GpuSurface) flush() ! {
 		}
 		gfx.apply_uniforms(.vs, 0, &intrinsic_range)
 		gfx.apply_uniforms(.vs, 1, &paint_range)
-		if draw.step != .convex_wedges {
+		if writes_color(draw.step) {
 			gfx.apply_uniforms(.fs, 0, &intrinsic_range)
 			gfx.apply_uniforms(.fs, 1, &paint_range)
 		}
 		match draw.step {
 			.analytic_rrect { gfx.draw(0, analytic_rrect_index_count, count) }
-			.convex_wedges { gfx.draw(0, int(template_count), count) }
+			.stencil_wedges_winding, .stencil_wedges_even_odd, .convex_wedges, .wedges_shaded {
+				gfx.draw(0, int(template_count), count)
+			}
 			else { gfx.draw(0, 4, count) }
 		}
 	}
@@ -1045,6 +1060,12 @@ fn serialize_uniforms(blocks []PaintUniforms) []f32 {
 	mut out := []f32{cap: blocks.len * clip_uniform_size / 4}
 	for u in blocks {
 		if u.local_to_device {
+			if u.with_color {
+				out << u.color.r
+				out << u.color.g
+				out << u.color.b
+				out << u.color.a
+			}
 			for v in u.matrix {
 				out << v
 			}

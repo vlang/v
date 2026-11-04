@@ -25,6 +25,8 @@ enum ClipShapeKind {
 	empty
 	rect
 	rrect
+	// A path draw; the clip stack only uses its bounds (in `rect`).
+	path
 }
 
 // ClipShape is the part of Graphite's Shape that clips and the draws of
@@ -55,7 +57,7 @@ fn rrect_shape(rr RRect) ClipShape {
 fn (s ClipShape) bounds() Rect {
 	return match s.kind {
 		.empty { Rect.ltrb(0, 0, 0, 0) }
-		.rect { s.rect }
+		.rect, .path { s.rect }
 		.rrect { s.rrect.rect }
 	}
 }
@@ -84,7 +86,7 @@ fn (mut s ClipShape) reset() {
 // conservative_contains mirrors Shape::conservativeContains(Rect).
 fn (s ClipShape) conservative_contains(r Rect) bool {
 	return match s.kind {
-		.empty { false }
+		.empty, .path { false }
 		.rect { s.rect.contains(r) }
 		.rrect { s.rrect.contains_rect(r) }
 	}
@@ -93,7 +95,7 @@ fn (s ClipShape) conservative_contains(r Rect) bool {
 // conservative_contains_point mirrors Shape::conservativeContains(float2).
 fn (s ClipShape) conservative_contains_point(x f32, y f32) bool {
 	return match s.kind {
-		.empty { false }
+		.empty, .path { false }
 		.rect { s.rect.contains(Rect.ltrb(x, y, x, y)) }
 		.rrect { s.rrect.contains_point(x, y) }
 	}
@@ -304,6 +306,7 @@ fn (e RawElement) transformed_shape() TransformedShape {
 fn (e RawElement) clip_type() ClipState {
 	return match e.shape.kind {
 		.empty { ClipState.empty }
+		.path { ClipState.complex }
 		.rect {
 			if e.op == .intersect && e.l2d.typ == .identity { .device_rect } else { .complex }
 		}
@@ -972,7 +975,9 @@ struct PaintUniforms {
 	clipped         bool
 	clip            AnalyticClipUniforms
 	local_to_device bool
-	matrix          [16]f32
+	// Shaded wedge steps put the paint color before the matrix.
+	with_color bool
+	matrix     [16]f32
 }
 
 // identity_local_to_device is the uniform block of draws in device space.
@@ -1244,7 +1249,9 @@ fn (d DrawShape) to_clip(analytic AnalyticClip, elements []int) ClipResult {
 // byte-keyed cache for these values (a NaN block is never shared).
 fn same_paint_uniforms(a PaintUniforms, b PaintUniforms) bool {
 	if a.local_to_device || b.local_to_device {
-		return a.local_to_device == b.local_to_device && a.matrix == b.matrix
+		return a.local_to_device == b.local_to_device && a.with_color == b.with_color
+			&& a.matrix == b.matrix && (!a.with_color || (a.color.r == b.color.r
+			&& a.color.g == b.color.g && a.color.b == b.color.b && a.color.a == b.color.a))
 	}
 	if a.clipped != b.clipped || a.color.r != b.color.r || a.color.g != b.color.g
 		|| a.color.b != b.color.b || a.color.a != b.color.a {

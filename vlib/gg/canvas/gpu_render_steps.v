@@ -407,27 +407,13 @@ fn nextlog16(x f32) int {
 	return (nextlog2(x) + 3) >> 2
 }
 
-enum PathVerb {
-	move
-	line
-	conic
-	close
-}
-
-// PathData is the verbs, points and conic weights of a filled path.
-struct PathData {
-	verbs   []PathVerb
-	points  []Point
-	weights []f32
-}
-
 // sk_root2_over_2 is SK_ScalarRoot2Over2, the weight of quarter-circle conics.
 const sk_root2_over_2 = f32(0.707106781)
 
 // element_path mirrors Shape::asPath() for rects and rrects: SkPathBuilder's
 // addRect() and addRRect() with their default (clockwise) directions and
 // start indices, through SkPathRawShapes.
-fn element_path(shape ClipShape) PathData {
+fn element_path(shape ClipShape) Path {
 	if shape.kind == .rect {
 		return rect_path(shape.rect, 0)
 	}
@@ -446,19 +432,19 @@ fn rect_points(r Rect) [4]Point {
 		Point{r.left(), r.bottom()}]!
 }
 
-fn rect_path(r Rect, start int) PathData {
+fn rect_path(r Rect, start int) Path {
 	pts := rect_points(r)
 	mut points := []Point{cap: 4}
 	for i in 0 .. 4 {
 		points << pts[(start + i) % 4]
 	}
-	return PathData{
+	return Path{
 		verbs:  [PathVerb.move, .line, .line, .line, .close]
 		points: points
 	}
 }
 
-fn oval_path(r Rect, start int) PathData {
+fn oval_path(r Rect, start int) Path {
 	cx := float_midpoint(r.left(), r.right())
 	cy := float_midpoint(r.top(), r.bottom())
 	oval := [Point{cx, r.top()}, Point{r.right(), cy}, Point{cx, r.bottom()}, Point{r.left(), cy}]!
@@ -468,7 +454,7 @@ fn oval_path(r Rect, start int) PathData {
 		points << rect[(start + i) % 4]
 		points << oval[(start + i) % 4]
 	}
-	return PathData{
+	return Path{
 		verbs:   [PathVerb.move, .conic, .conic, .conic, .conic, .close]
 		points:  points
 		weights: [sk_root2_over_2, sk_root2_over_2, sk_root2_over_2, sk_root2_over_2]
@@ -477,7 +463,7 @@ fn oval_path(r Rect, start int) PathData {
 
 // rrect_path mirrors set_as_rrect() for a clockwise contour starting at an
 // even index (a line first).
-fn rrect_path(rr RRect, start int) PathData {
+fn rrect_path(rr RRect, start int) Path {
 	b := rr.rect
 	ul := rr.radii[int(Corner.upper_left)]
 	ur := rr.radii[int(Corner.upper_right)]
@@ -499,93 +485,237 @@ fn rrect_path(rr RRect, start int) PathData {
 		ri++
 		points << rrect_pts[ri % 8]
 	}
-	return PathData{
+	return Path{
 		verbs:   [PathVerb.move, .line, .conic, .line, .conic, .line, .conic, .line, .conic, .close]
 		points:  points
 		weights: [sk_root2_over_2, sk_root2_over_2, sk_root2_over_2, sk_root2_over_2]
 	}
 }
 
-// contour_midpoint mirrors MidpointContourParser for a single contour: the
-// average of the verbs' end points, and of the start point unless the
-// contour already ends there.
-fn contour_midpoint(path PathData) Point {
-	mut sum := Point{0, 0}
-	mut weight := 0
-	mut idx := 1
-	for verb in path.verbs[1..] {
-		match verb {
-			.line { idx++ }
-			.conic { idx += 2 }
-			else { continue }
+// Contour is a contour found by MidpointContourParser: its verbs, the index
+// of its first point and conic weight, and its fan point.
+struct Contour {
+	verb_start   int
+	verb_end     int
+	point_start  int
+	weight_start int
+	midpoint     Point
+}
+
+// midpoint_contours mirrors MidpointContourParser: contours start at their
+// last leading move, and the midpoint averages the verbs' end points and the
+// start point unless the contour already ends there.
+fn midpoint_contours(path Path) []Contour {
+	mut out := []Contour{}
+	n := path.verbs.len
+	mut base_v, mut base_p, mut base_w := 0, 0, 0
+	mut vidx, mut pidx, mut widx := 0, 0, 0
+	for {
+		mut has_geometry := false
+		mut mid := Point{0, 0}
+		mut weight := 0
+		mut found := false
+		for ; base_v + vidx < n; vidx++ {
+			match path.verbs[base_v + vidx] {
+				.move {
+					if !has_geometry {
+						mid = Point{0, 0}
+						weight = 0
+						base_v += vidx
+						vidx = 0
+						base_p += pidx
+						base_w += widx
+						widx = 0
+						pidx = 1
+						continue
+					}
+					found = true
+					break
+				}
+				.line {
+					pidx++
+				}
+				.conic {
+					widx++
+					pidx += 2
+				}
+				.quad {
+					pidx += 2
+				}
+				.cubic {
+					pidx += 3
+				}
+				.close {
+					continue
+				}
+			}
+			p := path.points[base_p + pidx - 1]
+			mid = Point{mid.x + p.x, mid.y + p.y}
+			weight++
+			has_geometry = true
 		}
-		sum = Point{sum.x + path.points[idx - 1].x, sum.y + path.points[idx - 1].y}
-		weight++
+		if !has_geometry {
+			break
+		}
+		first := path.points[base_p]
+		last := path.points[base_p + pidx - 1]
+		if first.x != last.x || first.y != last.y {
+			mid = Point{mid.x + first.x, mid.y + first.y}
+			weight++
+		}
+		scale := f32(1) / f32(weight)
+		out << Contour{
+			verb_start:   base_v
+			verb_end:     base_v + vidx
+			point_start:  base_p
+			weight_start: base_w
+			midpoint:     Point{mid.x * scale, mid.y * scale}
+		}
+		if !found {
+			break
+		}
 	}
-	first := path.points[0]
-	last := path.points[idx - 1]
-	if first.x != last.x || first.y != last.y {
-		sum = Point{sum.x + first.x, sum.y + first.y}
-		weight++
-	}
-	scale := f32(1) / f32(weight)
-	return Point{sum.x * scale, sum.y * scale}
+	return out
 }
 
 // write_wedge_patches mirrors TessellateWedgesRenderStep::writeVertices() for
-// a single-contour path drawn with `m`. It returns the number of patches and
-// the largest n^4 they need; curves that would have to be chopped are not
-// supported.
-fn write_wedge_patches(mut out []u8, path PathData, m Matrix, depth u16) !(int, f32) {
-	fan := contour_midpoint(path)
+// a path drawn with `m`. It returns the number of patches and the largest n^4
+// they need; curves that would have to be chopped are not supported.
+fn write_wedge_patches(mut out []u8, path Path, m Matrix, depth u16) !(int, f32) {
 	mut count := 0
 	mut max_n4 := f32(1)
-	mut idx := 0
-	mut weight := 0
-	start := path.points[0]
-	mut last := start
-	for verb in path.verbs {
-		match verb {
-			.move {
-				idx = 1
-			}
-			.line {
-				p1 := path.points[idx]
-				if write_line_patch(mut out, last, p1, fan, depth) {
-					count++
+	for contour in midpoint_contours(path) {
+		fan := contour.midpoint
+		mut pi := contour.point_start
+		mut wi := contour.weight_start
+		mut start := Point{0, 0}
+		mut last := Point{0, 0}
+		for vi in contour.verb_start .. contour.verb_end {
+			mut n4 := f32(1)
+			mut written := false
+			match path.verbs[vi] {
+				.move {
+					start = path.points[pi]
+					last = start
+					pi++
 				}
-				last = p1
-				idx++
-			}
-			.conic {
-				p1 := path.points[idx]
-				p2 := path.points[idx + 1]
-				w := path.weights[weight]
-				n2 := conic_p2(f32(4), last, p1, p2, w, m)
-				n4 := n2 * n2
-				if n4 > max_parametric_segments_p4 {
-					return error('gg.canvas: curves that need chopping are not supported')
+				.line {
+					p1 := path.points[pi]
+					written = write_line_patch(mut out, last, p1, fan, depth)
+					last = p1
+					pi++
 				}
-				if write_conic_patch(mut out, last, p1, p2, w, fan, depth) {
-					count++
-					// The draw's template covers its patches' largest tolerance.
-					if n4 > max_n4 {
-						max_n4 = n4
+				.quad {
+					p1 := path.points[pi]
+					p2 := path.points[pi + 1]
+					n4 = quadratic_p4(f32(4), last, p1, p2, m)
+					if n4 > max_parametric_segments_p4 {
+						return error('gg.canvas: curves that need chopping are not supported')
 					}
+					// writeQuadPatch(): the equivalent cubic.
+					two_thirds := f32(2) / f32(3)
+					c1 := mix_point(last, p1, two_thirds)
+					c2 := mix_point(p2, p1, two_thirds)
+					written = write_cubic_patch(mut out, last, c1, c2, p2, fan, depth)
+					last = p2
+					pi += 2
 				}
-				last = p2
-				idx += 2
-				weight++
+				.conic {
+					p1 := path.points[pi]
+					p2 := path.points[pi + 1]
+					w := path.weights[wi]
+					n2 := conic_p2(f32(4), last, p1, p2, w, m)
+					n4 = n2 * n2
+					if n4 > max_parametric_segments_p4 {
+						return error('gg.canvas: curves that need chopping are not supported')
+					}
+					written = write_conic_patch(mut out, last, p1, p2, w, fan, depth)
+					last = p2
+					pi += 2
+					wi++
+				}
+				.cubic {
+					p1 := path.points[pi]
+					p2 := path.points[pi + 1]
+					p3 := path.points[pi + 2]
+					n4 = cubic_p4(f32(4), last, p1, p2, p3, m)
+					if n4 > max_parametric_segments_p4 {
+						return error('gg.canvas: curves that need chopping are not supported')
+					}
+					written = write_cubic_patch(mut out, last, p1, p2, p3, fan, depth)
+					last = p3
+					pi += 3
+				}
+				.close {}
 			}
-			.close {}
+			if written {
+				count++
+				// The draw's template covers its patches' largest tolerance
+				// (lines need one segment, curves at least one).
+				if n4 > max_n4 {
+					max_n4 = n4
+				}
+			}
 		}
-	}
-	if last.x != start.x || last.y != start.y {
-		if write_line_patch(mut out, last, start, fan, depth) {
-			count++
+		if last.x != start.x || last.y != start.y {
+			if write_line_patch(mut out, last, start, fan, depth) {
+				count++
+			}
 		}
 	}
 	return count, max_n4
+}
+
+// mix_point is PatchWriter's mix(): (b - a) * t + a, one operation at a time.
+fn mix_point(a Point, b Point, t f32) Point {
+	dx := b.x - a.x
+	dy := b.y - a.y
+	sx := dx * t
+	sy := dy * t
+	return Point{sx + a.x, sy + a.y}
+}
+
+// quadratic_p4 mirrors wangs_formula::quadratic_p4(); length_term_p2<2>(4)
+// is 1.
+fn quadratic_p4(precision f32, p0 Point, p1 Point, p2 Point, m Matrix) f32 {
+	kx := f32(-2) * p1.x
+	ky := f32(-2) * p1.y
+	ax := kx + p0.x
+	ay := ky + p0.y
+	v := xform_vector(m, Point{ax + p2.x, ay + p2.y})
+	vv := dot2(v, v)
+	term := (f32(4) / f32(64)) * (precision * precision)
+	return vv * term
+}
+
+// cubic_p4 mirrors wangs_formula::cubic_p4(); length_term_p2<3>(4) is 9.
+fn cubic_p4(precision f32, p0 Point, p1 Point, p2 Point, p3 Point, m Matrix) f32 {
+	k1x := f32(-2) * p1.x
+	k1y := f32(-2) * p1.y
+	k2x := f32(-2) * p2.x
+	k2y := f32(-2) * p2.y
+	a1x := k1x + p0.x
+	a1y := k1y + p0.y
+	a2x := k2x + p1.x
+	a2y := k2y + p1.y
+	v1 := xform_vector(m, Point{a1x + p2.x, a1y + p2.y})
+	v2 := xform_vector(m, Point{a2x + p3.x, a2y + p3.y})
+	term := (f32(9 * 4) / f32(64)) * (precision * precision)
+	return max_f32(dot2(v1, v1), dot2(v2, v2)) * term
+}
+
+// write_cubic_patch mirrors PatchWriter::writeCubicPatch(); degenerate
+// patches are skipped.
+fn write_cubic_patch(mut out []u8, p0 Point, p1 Point, p2 Point, p3 Point, fan Point, depth u16) bool {
+	if p0.x == p1.x && p0.y == p1.y && p1.x == p2.x && p1.y == p2.y && p2.x == p3.x && p2.y == p3.y {
+		return false
+	}
+	for v in [p0.x, p0.y, p1.x, p1.y, p2.x, p2.y, p3.x, p3.y, fan.x, fan.y]! {
+		put_f32(mut out, v)
+	}
+	put_f32(mut out, depth_as_float(depth))
+	put_u32(mut out, 0)
+	return true
 }
 
 // conic_p2 mirrors wangs_formula::conic_p2() with the 2x2 of `m` as the

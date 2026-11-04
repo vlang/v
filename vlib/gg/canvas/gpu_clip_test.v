@@ -173,8 +173,8 @@ fn test_rrect_paths_follow_sk_path_raw_shapes() {
 	assert path.points[3] == Point{2, 0}
 	assert path.points[12] == path.points[0]
 	// The contour ends at its start, so the midpoint averages 8 end points.
-	mid := contour_midpoint(path)
-	assert mid == Point{10, 5}
+	contours := midpoint_contours(path)
+	assert contours.len == 1 && contours[0].midpoint == Point{10, 5}
 	oval := element_path(rrect_shape(RRect.oval(Rect.ltrb(0, 0, 20, 10))))
 	// Start index 3: the left extreme, then the top-left conic.
 	assert oval.points[0] == Point{0, 5}
