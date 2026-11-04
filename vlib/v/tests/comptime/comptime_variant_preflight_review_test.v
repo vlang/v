@@ -404,6 +404,24 @@ fn main() {
 }'
 	run_variant_review_case('deferred_reflected_fallthrough', deferred, false)
 	run_variant_review_case('deferred_reflected_assert', deferred.replace('consume(value)\n', 'assert value is variant\n\t\tconsume(value)\n'), false)
+	run_variant_review_case('outer_reflected_fallthrough', r'
+type Choice = int | string
+type Other = bool | int
+fn consume(value Choice) { assert value is int || value is string }
+fn visit(value Choice) {
+	$for outer in Choice.variants {
+		$for inner in Other.variants {
+			if value !is outer { return }
+			_ = outer.typ
+			_ = inner.typ
+			consume(value)
+		}
+	}
+}
+fn main() {
+	visit(Choice(42))
+	visit(Choice("text"))
+}', false)
 	source := r'
 type Choice = int | string
 fn extract(value Choice) int {

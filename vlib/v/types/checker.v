@@ -23334,11 +23334,12 @@ fn (mut tc TypeChecker) apply_comptime_static_post_smartcasts(id flat.NodeId, va
 		if !valid_string_data(binding.name) {
 			continue
 		}
-		if binding.typ.source_type_id() == flat.source_type_id(var_name) {
+		target_id := binding.typ.source_type_id()
+		if target_id == flat.source_type_id(var_name) {
 			if field_cases.known && field_cases.cases.len == 1 && field_cases.cases[0].typ != 0 {
 				tc.smartcasts[binding.name] = *tc.parse_type(field_cases.cases[0].typ)
 			}
-		} else {
+		} else if !tc.cur_comptime_variant_loop_vars.any(target_id == flat.source_type_id(it)) {
 			tc.smartcasts[binding.name] = binding.typ
 		}
 	}
