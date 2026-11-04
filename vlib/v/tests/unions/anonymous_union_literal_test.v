@@ -46,6 +46,11 @@ fn test_anonymous_union_literal_can_be_empty_in_context() {
 	assert unsafe { box.data.large } == 0
 }
 
+fn test_empty_anonymous_union_literal_infers_a_concrete_local_type() {
+	value := union {}
+	assert value.str() == 'union {}'
+}
+
 fn test_anonymous_union_literal_infers_a_local_value() {
 	text := 'local'
 	value := union { text: text }

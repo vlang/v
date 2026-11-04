@@ -772,10 +772,9 @@ fn anonymous_struct_init_scan_thread(arg voidptr) voidptr {
 	flags := unsafe { &u8(a.flags) }
 	for i in a.start .. a.end {
 		node := unsafe { &a.a.nodes[i] }
-		if node.kind == .struct_init && node.children_count > 0 && node.value_text() in [
-			'struct',
-			'union',
-		] {
+		if node.kind == .struct_init
+			&& ((node.children_count > 0 && node.source_value_id() == transform_source_type_struct)
+				|| node.source_value_id() == transform_source_type_union) {
 			unsafe {
 				flags[i] = 1
 			}

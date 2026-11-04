@@ -3748,6 +3748,9 @@ assert unsafe { packet.data.text } == 'hello'
 
 Anonymous union values format as `union { ... }`, without an internal generated type name.
 
+An anonymous literal cannot yet initialize a C anonymous aggregate declared in a header.
+Anonymous C structs have the same limitation.
+
 ### Why use unions?
 
 One reason, as stated above, is to use less memory for storing things.  Since the size of a union

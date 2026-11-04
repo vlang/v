@@ -53,7 +53,8 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 			flat.source_type_id('struct'),
 			transform_source_type_union,
 		]
-			|| t.a.nodes[idx].children_count == 0 {
+			|| (t.a.nodes[idx].children_count == 0
+				&& t.a.nodes[idx].source_value_id() != transform_source_type_union) {
 			continue
 		}
 		// Materialization appends nodes, so keep a copy of this candidate.

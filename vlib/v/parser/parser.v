@@ -18193,6 +18193,7 @@ fn (mut p Parser) anonymous_union_type_for_literal(init flat.Node) ?u32 {
 		field_types << typ
 		field_positions << field.pos
 	}
+	// An empty literal needs the complete type from its context, when one exists.
 	if init.children_count == 0 { return none }
 	if candidates := p.anonymous_union_types.typed_candidates(field_names, field_types) {
 		for candidate in candidates {
