@@ -181,7 +181,7 @@ Methods:
 Available as functions returning extension structs:
 - `table()` - GFM tables
 - `strikethrough()` - GFM strikethrough
-- `linkify()` - Bare URL autolinks
+- `linkify()` - Bare URL autolinks, excluding explicit link labels
 - `task_list()` - GFM task lists
 - `footnote()` - Footnote references and definitions
 - `typographer()` - Smart punctuation

@@ -635,12 +635,15 @@ fn (mut p InlineParser) try_link_or_footnote() ?[]&Node {
 	}
 	link_text := p.src[text_start..close]
 	p.pos = close + 1
+	// Explicit destinations take precedence over automatic links in link labels.
+	mut label_opts := p.opts
+	label_opts.linkify = false
 
 	// Inline link (url).
 	if p.pos < p.src.len && p.src[p.pos] == `(` {
 		dest, title, end := parse_inline_link_dest_from(p.src, p.pos + 1)
 		if end >= 0 {
-			inner_nodes := parse_inline(link_text, p.opts, p.ref_map)
+			inner_nodes := parse_inline(link_text, label_opts, p.ref_map)
 			if contains_link(inner_nodes) {
 				// A link cannot contain another link.
 				p.pos = saved
@@ -666,7 +669,7 @@ fn (mut p InlineParser) try_link_or_footnote() ?[]&Node {
 			label := normalize_label(if raw_label.len > 0 { raw_label } else { link_text })
 			if label in p.ref_map {
 				ref := p.ref_map[label]
-				inner_nodes := parse_inline(link_text, p.opts, p.ref_map)
+				inner_nodes := parse_inline(link_text, label_opts, p.ref_map)
 				if contains_link(inner_nodes) {
 					// A link cannot contain another link.
 					p.pos = saved
@@ -693,7 +696,7 @@ fn (mut p InlineParser) try_link_or_footnote() ?[]&Node {
 	label := normalize_label(link_text)
 	if label in p.ref_map {
 		ref := p.ref_map[label]
-		inner_nodes := parse_inline(link_text, p.opts, p.ref_map)
+		inner_nodes := parse_inline(link_text, label_opts, p.ref_map)
 		if contains_link(inner_nodes) {
 			// A link cannot contain another link.
 			p.pos = saved

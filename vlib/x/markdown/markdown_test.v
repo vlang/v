@@ -417,3 +417,24 @@ fn test_linkify_follows_the_gfm_boundaries_of_a_url() {
 	assert md.convert('*https://vlang.io*') == '<p><em><a href="https://vlang.io">https://vlang.io</a></em></p>\n'
 	assert md.convert('see https://vlang.io: it') == '<p>see <a href="https://vlang.io">https://vlang.io</a>: it</p>\n'
 }
+
+fn test_linkify_does_not_autolink_inline_link_labels() {
+	assert to_html('[https://vlang.io](https://docs.vlang.io)', linkify: true) == '<p><a href="https://docs.vlang.io">https://vlang.io</a></p>\n'
+	assert to_html('[**https://vlang.io**](https://docs.vlang.io) https://vlang.io',
+		linkify: true
+	) == '<p><a href="https://docs.vlang.io"><strong>https://vlang.io</strong></a> <a href="https://vlang.io">https://vlang.io</a></p>\n'
+}
+
+fn test_linkify_does_not_autolink_reference_link_labels() {
+	for src in [
+		'[https://vlang.io][docs]\n\n[docs]: https://docs.vlang.io',
+		'[https://vlang.io][]\n\n[https://vlang.io]: https://docs.vlang.io',
+		'[https://vlang.io]\n\n[https://vlang.io]: https://docs.vlang.io',
+	] {
+		assert to_html(src, linkify: true) == '<p><a href="https://docs.vlang.io">https://vlang.io</a></p>\n'
+	}
+}
+
+fn test_linkify_still_rejects_nested_explicit_links() {
+	assert to_html('[outer [inner](/inner)](/outer)', linkify: true) == '<p>[outer <a href="/inner">inner</a>](/outer)</p>\n'
+}

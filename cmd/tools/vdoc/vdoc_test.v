@@ -661,6 +661,17 @@ fn test_markdown_renderer_supports_github_flavored_markdown() {
 	assert markdown.render('- [x] done', mut renderer).contains('type="checkbox"')
 }
 
+fn test_markdown_renderer_preserves_explicit_url_link_destinations() {
+	mut renderer := new_doc_markdown_renderer('')
+	for source in [
+		'[https://vlang.io](https://docs.vlang.io)',
+		'[https://vlang.io][docs]\n\n[docs]: https://docs.vlang.io',
+	] {
+		out := render_doc_markdown(prepare_markdown_for_html(source), mut renderer)
+		assert out == '<p><a href="https://docs.vlang.io">https://vlang.io</a></p>'
+	}
+}
+
 fn test_doc_multi_skips_modules_without_valid_files_for_platform() {
 	// https://github.com/vlang/v/issues/27464
 	// A module whose only V files are filtered out for the target platform (e.g.
