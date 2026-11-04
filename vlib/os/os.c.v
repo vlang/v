@@ -285,6 +285,13 @@ pub fn rename(src string, dst string) ! {
 		rdst = join_path_single(rdst.trim_right(path_separator),
 			file_name(src.trim_right(path_separator)))
 	}
+	$if vlibc ? {
+		e := vlibc_rename(src, rdst)
+		if e != .enoerror {
+			return error_with_code('rename failed: ${e}', int(e))
+		}
+		return
+	}
 	$if windows {
 		w_src := src.replace('/', '\\')
 		w_dst := rdst.replace('/', '\\')
@@ -632,6 +639,13 @@ pub fn is_readable(path string) bool {
 // its other attributes. If deletion fails, it attempts to restore the original attributes.
 // A directory symlink or junction is removed itself, without touching its target.
 pub fn rm(path string) ! {
+	$if vlibc ? {
+		e := vlibc_unlink(path)
+		if e != .enoerror {
+			return error_with_code('rm failed: ${e}', int(e))
+		}
+		return
+	}
 	mut rc := 0
 	$if windows {
 		wpath := path.to_wide()
@@ -693,6 +707,13 @@ pub fn rm(path string) ! {
 
 // rmdir removes a specified directory.
 pub fn rmdir(path string) ! {
+	$if vlibc ? {
+		e := vlibc_rmdir(path)
+		if e != .enoerror {
+			return error_with_code('rmdir failed: ${e}', int(e))
+		}
+		return
+	}
 	$if windows {
 		rc := C.RemoveDirectory(path.to_wide())
 		if !rc {
