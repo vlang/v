@@ -4,6 +4,42 @@ Every compiler fix must preserve or improve self-compilation efficiency. Agents 
 retired instructions before and after compiler changes and resolve regressions before merging.
 Keep correctness tests and generated-output checks alongside performance measurements.
 
+## Option/result payload identity, 2026-11-04
+
+The fix in PR #31882 preserves self-compilation instruction efficiency on the fixed workload.
+Baseline `73c784a0d5c6ab437c733fbd7e900a83b0af949e` and candidate
+`f5ee5cecc77a175f582bb74f17e7ccf18689f434` use matched Apple Clang production builds, without PGO:
+
+```sh
+./v -prod -cc /usr/bin/clang -gc none -prealloc -compile-backend fastc -nocache \
+  -o ./v-perf31474-production cmd/v
+```
+
+Both builds and measurements use `VJOBS=1`, `SOURCE_DATE_EPOCH=0`, cleared compiler overrides,
+and `V_MACOS_V3_NO_FALLBACK=1`. Both executable roles run from the same path in the unchanged
+baseline tree, compiling its `cmd/v` to the same C output with `-nocache`. All 22 runs succeed:
+one warmup per role, then ten alternating AB/BA pairs. Warmups are excluded below.
+
+| Median metric | Baseline | Candidate |
+| --- | ---: | ---: |
+| Retired instructions | 40,061,992,415.5 | 40,056,452,123 |
+| Instructions/parsed physical line | 80,405.5651 | 80,394.4456 |
+| Peak RSS, MiB | 1,100.586 | 1,101.031 |
+| Peak memory footprint, MiB | 1,087.642 | 1,088.041 |
+| Elapsed time, s | 9.970 | 10.225 |
+| CPU cycles | 20,546,048,347.5 | 20,850,918,454.5 |
+
+The instruction median changes by **-0.01383%**, and the median paired difference is
+**-7,028,513 instructions**; **4/10 pairs are higher** for the candidate. The change is smaller
+than the observed instruction ranges (about 0.5%), so this is no observed median regression,
+not a speedup claim. Elapsed time and cycles are contextual under concurrent host load.
+
+Verbose inventories match: **498,249 physical lines in 465 `.v` files**, no `.vh` files.
+Generated C is byte-identical without normalization and passes Clang syntax checking.
+The retained directory `/Users/alex/code/v-issues20c-20261104/perf-31882-review/` contains all
+timing/stdout/stderr/exit logs, exact commands and environment, source inventories and hashes,
+production executable hashes, output verification, paired samples, and interpretation notes.
+
 ## Profile-driven follow-up, 2026-11-03 (round 2)
 
 The same self-host command retires **3.39% fewer instructions** at the median of ten alternating
