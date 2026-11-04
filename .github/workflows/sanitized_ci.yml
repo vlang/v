@@ -105,7 +105,10 @@ jobs:
             timeout: 300
             # Some tests explicitly select Boehm. Build its source with MSan too;
             # the prebuilt archive cannot update the sanitizer's shadow memory.
-            vflags: -cc clang -gc none -d use_bundled_libgc -cflags -fno-omit-frame-pointer
+            # AES-NI intrinsics let MSan track mbedTLS output writes on this x86_64 runner.
+            vflags: >-
+              -cc clang -gc none -d use_bundled_libgc -cflags -fno-omit-frame-pointer
+              -cflags -maes -cflags -mpclmul
           - name: memory-clang-compiler
             cc: clang
             sanitizer: memory
