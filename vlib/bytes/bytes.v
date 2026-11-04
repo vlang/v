@@ -355,6 +355,29 @@ pub fn clone(b []u8) []u8 {
 	return b.clone()
 }
 
+// fields splits b around runs of ASCII whitespace, returning a slice of
+// subslices of b. Mirrors Go's bytes.Fields.
+pub fn fields(b []u8) [][]u8 {
+	mut out := [][]u8{}
+	mut start := -1
+	for i in 0 .. b.len {
+		if b[i].is_space() {
+			if start >= 0 {
+				out << b[start..i].clone()
+				start = -1
+			}
+		} else {
+			if start < 0 {
+				start = i
+			}
+		}
+	}
+	if start >= 0 {
+		out << b[start..].clone()
+	}
+	return out
+}
+
 // cut slices `s` around the first instance of `sep`, returning the text before
 // and after `sep` and a boolean reporting whether `sep` was found.
 // Mirrors Go's bytes.Cut.
