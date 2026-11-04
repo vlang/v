@@ -8980,15 +8980,6 @@ fn scan_past_closing(mut s scanner.Scanner, opening token.Token, closing token.T
 }
 
 fn (mut p Parser) stmt() flat.NodeId {
-	if p.tok in [.key_go, .key_spawn, .key_match, .key_fn] && p.peek() == .decl_assign {
-		name := p.tok.str()
-		p.record_diagnostic_span('cannot use keyword `${name}` as a variable name', p.tok_pos,
-			p.tok_end)
-		// Recover as a declaration so its initializer does not become a keyword operand.
-		p.tok = .name
-		p.lit = name
-		return p.assign_or_expr_stmt()
-	}
 	match p.tok {
 		.key_return {
 			return p.return_stmt()
@@ -9015,7 +9006,11 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.for_stmt()
 		}
 		.key_fn {
-			if p.peek() in [.lpar, .lsbr] {
+			next := p.peek()
+			if next == .decl_assign {
+				return p.recover_keyword_variable_decl()
+			}
+			if next in [.lpar, .lsbr] {
 				if p.cur_fn != '' && p.method_decl_follows() {
 					p.report_fn_decl_inside_fn(p.tok_pos, p.tok_end)
 					return p.fn_decl()
@@ -9034,7 +9029,11 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.const_decl()
 		}
 		.key_match {
-			if p.peek() == .lpar && !p.parenthesized_match_header_starts_block() {
+			next := p.peek()
+			if next == .decl_assign {
+				return p.recover_keyword_variable_decl()
+			}
+			if next == .lpar && !p.parenthesized_match_header_starts_block() {
 				return p.assign_or_expr_stmt()
 			}
 			return p.match_stmt(false)
@@ -9179,6 +9178,9 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.goto_stmt()
 		}
 		.key_go, .key_spawn {
+			if p.peek() == .decl_assign {
+				return p.recover_keyword_variable_decl()
+			}
 			keyword := if p.tok == .key_go { 'go' } else { 'spawn' }
 			spawn_pos := p.span_start()
 			p.next()
@@ -9258,6 +9260,17 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.assign_or_expr_stmt()
 		}
 	}
+}
+
+// recover_keyword_variable_decl reports a keyword name and parses its declaration for recovery.
+fn (mut p Parser) recover_keyword_variable_decl() flat.NodeId {
+	name := p.tok.str()
+	p.record_diagnostic_span('cannot use keyword `${name}` as a variable name', p.tok_pos,
+		p.tok_end)
+	// Recover as a declaration so its initializer does not become a keyword operand.
+	p.tok = .name
+	p.lit = name
+	return p.assign_or_expr_stmt()
 }
 
 fn (mut p Parser) debugger_stmt() flat.NodeId {
