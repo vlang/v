@@ -146,3 +146,23 @@ fn test_decode_in_buffer_bytes() {
 		assert src_dec_buf == out_buf[..n]
 	}
 }
+
+// test_junk_characters_do_not_decode_as_alphabet_digits guards the `index`
+// table: the `,` entry used to behave exactly like `/` (digit 63) and `.`
+// exactly like `+` (digit 62), in no RFC 4648 alphabet. All bytes outside the
+// alphabets now follow the same lenient path (digit 0), while the URL
+// alphabet characters keep their meaning.
+fn test_junk_characters_do_not_decode_as_alphabet_digits() ! {
+	space := base64.decode_str('AAA ')
+	comma := base64.decode_str('AAA,')
+	dot := base64.decode_str('AAA.')
+	slash := base64.decode_str('AAA/')
+	plus := base64.decode_str('AAA+')
+	assert comma == space
+	assert dot == space
+	assert comma != slash
+	assert dot != plus
+	// URL alphabet characters are unchanged:
+	assert base64.decode_str('AAA-') == plus
+	assert base64.decode_str('AAA_') == slash
+}
