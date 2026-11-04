@@ -377,6 +377,7 @@ __global g_source_type_read_entries [source_type_read_cache_size]voidptr
 // entries, so a published ID never needs a bounds check; untouched pages stay
 // unmapped. Word zero is the empty spelling: no shape, and the `complete` query.
 // An ID beyond the ID space is a compiler bug: it indexes outside the table.
+// If the optional reservation fails, readers use the authoritative entries.
 __global g_source_type_flags &u64
 
 // source_type_flags_capacity is the largest ID the dense per-ID tables hold
@@ -669,7 +670,7 @@ fn source_type_id_uncached(text string) u32 {
 			query: query
 		}
 		// The flags word is complete before the release stores publish the ID.
-		if id <= source_type_flags_capacity() {
+		if !isnil(g_source_type_flags) && id <= source_type_flags_capacity() {
 			g_source_type_flags[id] = source_type_flags_word(shape, query)
 		}
 	}
@@ -747,12 +748,13 @@ fn source_type_flags_table_load() &u64 {
 }
 
 // source_type_flags_table_create allocates the flags table for the whole ID
-// space and publishes it. The caller holds the writer lock and publishes the
-// entry table afterwards, so every published ID finds the table in place.
+// space when address space permits. The caller holds the writer lock and tries
+// this once, before publishing the entry table. A refused reservation leaves
+// the dense pointer nil; flags remain available from the authoritative entries.
 fn source_type_flags_table_create() {
 	flags := unsafe { &u64(source_type_dense_table_alloc(sizeof(u64))) }
 	if isnil(flags) {
-		panic('could not allocate the source type flags')
+		return
 	}
 	unsafe {
 		flags[0] = source_type_flags_word(SourceTypeShape(0), SourceTypeQuery.complete)

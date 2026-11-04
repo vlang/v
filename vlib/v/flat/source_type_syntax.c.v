@@ -2253,6 +2253,9 @@ __global g_source_type_syntax_empty voidptr
 // still finds the entry there. 32-bit hosts keep a small dense table and read
 // later IDs from their pages.
 __global g_source_type_syntax_entries &voidptr
+// Only the spelling writer lock accesses this flag. Do not retry a refused
+// optional reservation on every syntax publication.
+__global g_source_type_syntax_dense_attempted bool
 
 // Prefixes and suffixes have independent cache entries: requesting either view
 // never interns the other. Empty views are cached too. The spelling ID is stored
@@ -2948,7 +2951,8 @@ fn source_type_syntax_publish(id u32, entry &SourceTypeSyntaxEntry) {
 }
 
 // source_type_syntax_publish_dense records a published entry in the dense
-// per-ID table, allocating the table on first use under the writer lock.
+// per-ID table, trying one optional allocation under the writer lock. The page
+// entry is already published and remains usable if the reservation fails.
 @[direct_array_access]
 fn source_type_syntax_publish_dense(id u32, entry &SourceTypeSyntaxEntry) {
 	if id > source_type_flags_capacity() {
@@ -2956,9 +2960,13 @@ fn source_type_syntax_publish_dense(id u32, entry &SourceTypeSyntaxEntry) {
 	}
 	mut dense := unsafe { &voidptr(source_type_syntax_pointer_load(voidptr(&g_source_type_syntax_entries))) }
 	if isnil(dense) {
+		if g_source_type_syntax_dense_attempted {
+			return
+		}
+		g_source_type_syntax_dense_attempted = true
 		dense = unsafe { &voidptr(source_type_dense_table_alloc(sizeof(voidptr))) }
 		if isnil(dense) {
-			panic('could not allocate the source type syntax table')
+			return
 		}
 		source_type_syntax_pointer_store(voidptr(&g_source_type_syntax_entries), voidptr(dense))
 	}
