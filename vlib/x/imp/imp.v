@@ -218,6 +218,7 @@ fn (mut c Context) execute(args []string) ! {
 		// each requested flow is its own pass, so `clean run` rechecks build
 		mut pass := Pass{}
 		c.visit(id, [], mut pass)!
+		c.drain(mut pass)!
 	}
 }
 
@@ -360,24 +361,84 @@ fn (c &Context) check_cycle(f Flow, mut state map[string]int) ! {
 enum FlowState {
 	pending
 	active // started, waiting on its dependencies or body
-	ran    // body finished or skipped, so its outputs are ready; post hooks pending
-	done
+	ran    // body finished or skipped, so its outputs are ready; post work pending
+	done   // post hooks finished as well, with their own post hooks
+}
+
+// Step is an item of a hook sequence: a flow to visit, or, when `finish` is
+// set, the point at which the post work of the flow `id` is complete.
+struct Step {
+	id     string
+	finish bool
+}
+
+// visits returns the steps visiting the flows `ids`, in order.
+fn visits(ids []string) []Step {
+	return ids.map(Step{
+		id: it
+	})
 }
 
 // Pass is the progress of one requested flow and everything it pulls in.
 struct Pass {
 mut:
 	state    map[string]FlowState
-	stack    []string              // the active flows, outermost first
-	deferred map[string][][]string // hook sequences waiting for an active flow
+	stack    []string            // the active flows, outermost first
+	deferred map[string][][]Step // sequences waiting for the body of an active flow
+	waiting  map[string][][]Step // sequences waiting for the post work of a flow
+	order    []string            // the flows in `waiting`, by when they were first waited for
+	parked   map[string]int      // the finish steps of each flow held in `deferred` or `waiting`
+}
+
+// park holds `steps` back until the body (`body` set) or the post work of the
+// flow `id` is complete.
+fn (mut pass Pass) park(id string, steps []Step, body bool) {
+	for step in steps {
+		if step.finish {
+			pass.parked[step.id]++
+		}
+	}
+	if body {
+		mut queued := pass.deferred[id] or { [][]Step{} }
+		queued << steps
+		pass.deferred[id] = queued
+	} else {
+		if id !in pass.order {
+			pass.order << id
+		}
+		mut queued := pass.waiting[id] or { [][]Step{} }
+		queued << steps
+		pass.waiting[id] = queued
+	}
+}
+
+// unpark marks `steps`, taken from `deferred` or `waiting`, as running again.
+fn (mut pass Pass) unpark(steps []Step) {
+	for step in steps {
+		if step.finish {
+			pass.parked[step.id]--
+		}
+	}
 }
 
 // visit runs a flow and everything it needs, at most once per pass, then the
-// hooks in `then`, which come after its post hooks.
-fn (c &Context) visit(id string, then []string, mut pass Pass) ! {
+// steps in `then`, which come after its post work.
+fn (c &Context) visit(id string, then []Step, mut pass Pass) ! {
 	match pass.state[id] {
-		.ran, .done {
+		.done {
 			c.sequence(then, mut pass)!
+			return
+		}
+		.ran {
+			// the outputs are ready, which is all a dependency needs, but what comes
+			// after the post work waits for it when it waits for a body further out.
+			// Post work that is not held back is in progress further up, as a post
+			// hook cycle led back here, and waiting for it would never end.
+			if then.len > 0 && pass.parked[id] > 0 {
+				pass.park(id, then, false)
+			} else {
+				c.sequence(then, mut pass)!
+			}
 			return
 		}
 		.active {
@@ -395,34 +456,68 @@ fn (c &Context) visit(id string, then []string, mut pass Pass) ! {
 	// own post hooks, run instead of waiting for the post hooks to finish
 	pass.state[id] = .ran
 	// hooks of earlier flows first, as they were waiting for this body only
-	deferred := pass.deferred[id] or { [][]string{} }
+	deferred := pass.deferred[id] or { [][]Step{} }
 	pass.deferred.delete(id)
-	for hooks in deferred {
-		c.sequence(hooks, mut pass)!
+	for steps in deferred {
+		pass.unpark(steps)
+		c.sequence(steps, mut pass)!
 	}
-	c.sequence(arrays_concat(post, then), mut pass)!
-	pass.state[id] = .done
+	mut steps := visits(post)
+	steps << Step{
+		id:     id
+		finish: true
+	}
+	steps << then
+	c.sequence(steps, mut pass)!
 }
 
-// sequence runs hooks in order, each with its own post hooks before the next.
-// A hook needing a flow whose body has not run yet, like the flow that pulled
-// in the hook's owner, waits for that body, and the hooks after it wait too.
-fn (c &Context) sequence(hooks []string, mut pass Pass) ! {
-	if hooks.len == 0 {
+// sequence runs steps in order, each hook with its own post hooks before the
+// next. A hook needing a flow whose body has not run yet, like the flow that
+// pulled in the hook's owner, waits for that body, and the steps after it wait
+// too.
+fn (c &Context) sequence(steps []Step, mut pass Pass) ! {
+	if steps.len == 0 {
+		return
+	}
+	if steps[0].finish {
+		c.finish(steps[0].id, mut pass)!
+		c.sequence(steps[1..], mut pass)!
 		return
 	}
 	mut seen := map[string]bool{}
-	waits := c.first_active(hooks[0], pass, mut seen)
+	waits := c.first_active(steps[0].id, pass, mut seen)
 	if waits < 0 {
-		c.visit(hooks[0], hooks[1..], mut pass)!
+		c.visit(steps[0].id, steps[1..], mut pass)!
 		return
 	}
 	// queued as a whole and checked again once that body has run, as a later
 	// hook may need a flow further out
-	owner := pass.stack[waits]
-	mut queued := pass.deferred[owner] or { [][]string{} }
-	queued << hooks
-	pass.deferred[owner] = queued
+	pass.park(pass.stack[waits], steps, true)
+}
+
+// finish marks the post work of a flow complete, and runs what waited for it.
+fn (c &Context) finish(id string, mut pass Pass) ! {
+	pass.state[id] = .done
+	waiting := pass.waiting[id] or { [][]Step{} }
+	pass.waiting.delete(id)
+	for steps in waiting {
+		pass.unpark(steps)
+		c.sequence(steps, mut pass)!
+	}
+}
+
+// drain runs the sequences still waiting at the end of a pass. Every body has
+// run by then, so they can only wait for each other, through a cycle of post
+// hooks. The one waiting for the flow first waited for goes first.
+fn (c &Context) drain(mut pass Pass) ! {
+	for pass.waiting.len > 0 {
+		for id in pass.order {
+			if id in pass.waiting {
+				c.finish(id, mut pass)!
+				break
+			}
+		}
+	}
 }
 
 // first_active returns the stack index of the outermost active flow that `id`
@@ -505,6 +600,9 @@ const stamp_dir = '.imp'
 // state_file names the file of a flow under a subdirectory of `stamp_dir`. Bytes
 // of the id other than lowercase letters, digits, `-` and `_` are percent-encoded,
 // so that distinct ids never share a file, even on a case-insensitive file system.
+// A name longer than `max_state_name` is cut short and ends in `+` and a digest
+// of the whole id instead, as file systems limit the length of a name, commonly
+// to 255 bytes. Encoding never produces `+`, so the two forms cannot meet.
 fn state_file(kind string, f Flow) string {
 	mut name := ''
 	for b in f.id {
@@ -514,8 +612,22 @@ fn state_file(kind string, f Flow) string {
 			'%${b:02X}'
 		}
 	}
+	if name.len > max_state_name {
+		digest := hash.sum64_string(f.id, 0).hex_full()
+		mut head := name[..max_state_name - digest.len - 1]
+		// keep the readable part free of a cut escape
+		escape := head.last_index_u8(`%`)
+		if escape >= head.len - 2 {
+			head = head[..escape]
+		}
+		name = '${head}+${digest}'
+	}
 	return os.join_path(stamp_dir, kind, name)
 }
+
+// max_state_name is the longest state file name, well under the limits of common
+// file systems.
+const max_state_name = 128
 
 // stamp_path is where a hash flow keeps the digest of its last successful run.
 fn stamp_path(f Flow) string {

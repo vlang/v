@@ -1106,6 +1106,64 @@ fn test_post_hook_cycle_runs_each_hook_once() {
 	assert os.read_file('log')! == 'y x z '
 }
 
+// test_reused_hook_keeps_waiting_post_work_first checks that a hook reached a
+// second time, while its post hooks still wait for a flow further out, runs
+// once, and that the hooks after it wait for those post hooks. The cleanup
+// would otherwise delete an input of that flow.
+fn test_reused_hook_keeps_waiting_post_work_first() {
+	sandbox('post_shared')
+	mut c := new()
+	c.add_flow(
+		id:    'build'
+		takes: ['a.txt', 'b.txt']
+		gives: ['app.txt']
+		check: .none
+		flow:  record
+	)
+	c.add_flow(id: 'a', gives: ['a.txt'], check: .none, post: [hook('shared')], flow: record)
+	c.add_flow(
+		id:    'b'
+		gives: ['b.txt']
+		check: .none
+		post:  [hook('shared'), hook('clean')]
+		flow:  record
+	)
+	c.add_flow(id: 'shared', check: .none, post: [hook('audit')], flow: record)
+	c.add_flow(id: 'audit', takes: ['app.txt'], check: .none, flow: record)
+	c.add_flow(
+		id:    'clean'
+		check: .none
+		flow:  fn (f Flow) ! {
+			os.rm('a.txt')!
+			record(f)!
+		}
+	)
+	c.execute(['build'])!
+	assert os.read_file('log')! == 'a shared b build audit clean '
+}
+
+// test_post_hook_cycle_waiting_on_itself_still_runs checks that post hooks
+// waiting for each other's post work, through a cycle of post hooks, all run
+// at the end of the pass instead of being dropped.
+fn test_post_hook_cycle_waiting_on_itself_still_runs() {
+	sandbox('post_cycle_wait')
+	mut c := new()
+	c.add_flow(id: 'top', takes: ['a.txt', 'b.txt'], gives: ['top.txt'], check: .none, flow: record)
+	c.add_flow(
+		id:    'a'
+		gives: ['a.txt']
+		check: .none
+		post:  [hook('p'), hook('b'), hook('x')]
+		flow:  record
+	)
+	c.add_flow(id: 'b', gives: ['b.txt'], check: .none, post: [hook('a'), hook('y')], flow: record)
+	c.add_flow(id: 'p', takes: ['top.txt'], check: .none, flow: record)
+	c.add_flow(id: 'x', check: .none, flow: record)
+	c.add_flow(id: 'y', check: .none, flow: record)
+	c.execute(['top'])!
+	assert os.read_file('log')! == 'a b top p y x '
+}
+
 // test_required_post_hooks_of_a_skipped_flow_keep_order checks that a skipped
 // flow still runs its required post hooks in order, waiting where they need
 // to, and leaves out the others.
@@ -1268,6 +1326,29 @@ fn test_state_files_never_clash() {
 		assert key !in seen, '`${id}` and `${seen[key]}` share `${name}`'
 		seen[key] = id
 	}
+}
+
+// test_long_ids_get_bounded_state_files checks that ids whose encoding would
+// exceed a file name limit get a short state file, still of their own, and that
+// such a flow runs and is skipped like any other.
+fn test_long_ids_get_bounded_state_files() {
+	long := 'A'.repeat(86)
+	mut names := map[string]bool{}
+	for id in [long, long + 'B', 'A'.repeat(200), 'é'.repeat(100), 'a'.repeat(128), 'a'.repeat(129)] {
+		name := os.file_name(state_file('dirty', Flow{ id: id, flow: noop }))
+		assert name.len <= max_state_name, name
+		assert name.to_lower() !in names, name
+		names[name.to_lower()] = true
+	}
+	assert os.file_name(state_file('dirty', Flow{ id: 'a'.repeat(128), flow: noop })) == 'a'.repeat(128)
+	sandbox('state_long')
+	os.write_file('src', '')!
+	set_mtime('src', -10)
+	mut c := new()
+	c.add_flow(id: long, takes: ['src'], gives: ['out'], flow: record)
+	c.execute([long])!
+	c.execute([long])!
+	assert os.read_file('log')! == '${long} '
 }
 
 // test_flows_keep_their_state_apart checks that encoding ids for their state
