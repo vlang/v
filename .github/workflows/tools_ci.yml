@@ -126,6 +126,9 @@ jobs:
       # running the whole suite to completion; the remaining files
       # add no signal.
       VTEST_FAIL_FAST: '1'
+      # Use the same worker count as the dedicated Windows CI jobs.
+      # The automatic memory budget selects one worker on these runners.
+      VJOBS: '4'
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
