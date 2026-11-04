@@ -82,13 +82,25 @@ fn (mut tc TypeChecker) check_comptime_static_metadata_if(node flat.Node, var_na
 	mut then_cases := []ComptimeStaticFieldCase{}
 	mut else_cases := []ComptimeStaticFieldCase{}
 	for f in field_cases.cases {
-		cond := tc.comptime_static_subst_field_cond(node.value, var_name, f)
+		cond := if loop_kind == 'variants' {
+			tc.comptime_static_subst_variant_cond(node.value, var_name, f)
+		} else {
+			tc.comptime_static_subst_field_cond(node.value, var_name, f)
+		}
+		if loop_kind == 'variants' && tc.comptime_static_condition_needs_value(cond) {
+			// Earlier declarations are evaluated while the concrete loop body is unrolled.
+			continue
+		}
 		if comptime_text_references_var(cond, var_name) {
 			then_cases << f
 			else_cases << f
 			continue
 		}
 		taken := tc.comptime_static_eval_field_cond(cond) or {
+			if loop_kind == 'variants' {
+				// Check dependent branches once their condition can be resolved by unrolling.
+				continue
+			}
 			then_cases << f
 			else_cases << f
 			continue
@@ -912,6 +924,205 @@ fn (mut tc TypeChecker) comptime_static_field_cases(base_type_id u32) ComptimeSt
 	}
 }
 
+fn (mut tc TypeChecker) comptime_static_variant_cases(base_type_id u32) ComptimeStaticFieldCases {
+	source_type := unalias_and_unwrap_pointer_type(tc.parse_type(tc.comptime_static_for_base_type(base_type_id)))
+	if source_type !is SumType {
+		return ComptimeStaticFieldCases{}
+	}
+	variants := tc.sum_types.type_ids(tc.sum_base_name(source_type.source_type_id())) or {
+		return ComptimeStaticFieldCases{}
+	}
+	mut cases := []ComptimeStaticFieldCase{cap: variants.len}
+	for variant in variants {
+		typ := tc.concrete_sum_variant_name(source_type.source_type_id(), variant)
+		cases << ComptimeStaticFieldCase{
+			typ:           typ
+			unaliased_typ: tc.comptime_type_match_type(typ).source_type_id()
+		}
+	}
+	return ComptimeStaticFieldCases{ known: true, cases: cases }
+}
+
+// check_comptime_static_variant_if_guard introduces unwrapped payloads only in the success branch.
+fn (mut tc TypeChecker) check_comptime_static_variant_if_guard(node flat.Node, var_name string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
+	condition_id := tc.a.child(&node, 0)
+	saved_owners_shared := tc.fn_context.mut_local_owners_shared
+	saved_owners := tc.share_mut_local_owners()
+	bindings := tc.check_if_guard(condition_id, *tc.a.node(condition_id))
+	saved_smartcasts := clone_smartcasts(tc.smartcasts)
+	defer {
+		tc.fn_context.mut_local_owners = saved_owners
+		tc.fn_context.mut_local_owners_shared = saved_owners_shared
+		tc.smartcasts = saved_smartcasts
+	}
+	for i in 1 .. node.children_count {
+		tc.fn_context.mut_local_owners = saved_owners
+		tc.fn_context.mut_local_owners_shared = true
+		tc.smartcasts = clone_smartcasts(saved_smartcasts)
+		tc.push_scope()
+		branch_id := tc.a.child(&node, i)
+		if i == 1 {
+			for binding in bindings {
+				$if ownership ? {
+					tc.ownership_note_binding(binding.name, binding.typ, condition_id)
+				}
+				owner := tc.cur_scope.insert_with_owner(binding.name, binding.typ)
+				tc.initialize_unknown_pointer_binding(owner, binding.typ)
+				tc.smartcasts.delete(binding.name)
+				if binding.is_mut {
+					tc.prepare_mut_local_owner_write()
+					tc.fn_context.mut_local_owners[binding.name] = owner
+				}
+			}
+		} else if tc.a.node(branch_id).kind != .if_expr && tc.failure_has_error(condition_id)
+			&& tc.has_ierror_interface() {
+			tc.cur_scope.insert('err', tc.parse_type(ierror_source_interface_name))
+		}
+		tc.check_comptime_static_body(branch_id, var_name, 'variants', field_cases, value_cases)
+		tc.pop_scope()
+	}
+}
+
+fn (mut tc TypeChecker) check_comptime_static_variant_guard(id flat.NodeId, var_name string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases, smartcasts []LocalBinding) {
+	saved_trust := tc.trust_checked_expr_types
+	tc.trust_checked_expr_types = false
+	mut memo := tc.body_resolve_memo
+	saved_memo_active := !isnil(memo) && memo.active
+	if !isnil(memo) {
+		memo.active = false
+	}
+	defer {
+		tc.trust_checked_expr_types = saved_trust
+		if !isnil(memo) {
+			memo.active = saved_memo_active
+			memo.advance_context()
+		}
+	}
+	reflected := smartcasts.any(it.typ.source_type_id() == flat.source_type_id(var_name))
+	variants := if reflected && field_cases.known {
+		field_cases.cases
+	} else {
+		[ComptimeStaticFieldCase{}]
+	}
+	for variant in variants {
+		// Each pass shares syntax, but its inferred expression types belong to this payload only.
+		tc.invalidate_subtree_expr_types(id)
+		saved_smartcasts := clone_smartcasts(tc.smartcasts)
+		tc.push_scope()
+		for binding in smartcasts {
+			typ := if binding.typ.source_type_id() == flat.source_type_id(var_name) {
+				if variant.typ != 0 {
+					*tc.parse_type(variant.typ)
+				} else {
+					unknown_type('reflected sum variant')
+				}
+			} else {
+				binding.typ
+			}
+			tc.smartcasts[binding.name] = typ
+		}
+		tc.check_comptime_static_body(id, var_name, 'variants', if reflected && field_cases.known {
+			ComptimeStaticFieldCases{ known: true, cases: [variant] }
+		} else {
+			field_cases
+		}, value_cases)
+		tc.pop_scope()
+		tc.smartcasts = saved_smartcasts
+	}
+	tc.invalidate_subtree_expr_types(id)
+}
+
+// comptime_static_condition_has_outer_metadata avoids evaluating an enclosing loop's
+// metadata spelling as though it were a literal value in the inner loop.
+fn (tc &TypeChecker) comptime_static_condition_has_outer_metadata(id flat.NodeId, cond string, var_name string) bool {
+	mut parent := tc.direct_parent_id(id)
+	for tc.valid_node_id(parent) {
+		node := tc.a.node(parent)
+		if node.kind == .comptime_for {
+			parts := node.value.split('|')
+			if parts.len == 2 && parts[0] != var_name && comptime_text_references_var(cond, parts[0]) {
+				return true
+			}
+		}
+		parent = tc.direct_parent_id(parent)
+	}
+	return false
+}
+
+// comptime_static_condition_needs_value recognizes bindings whose values are not
+// available to the preflight text evaluator. Quoted text and member names are not bindings.
+fn (tc &TypeChecker) comptime_static_condition_needs_value(cond string) bool {
+	mut i := 0
+	for i < cond.len {
+		if cond[i] in [`\'`, `"`, `\``] {
+			i = comptime_cond_skip_string(cond, i)
+			continue
+		}
+		if !comptime_cond_name_char(cond[i]) || cond[i].is_digit() {
+			i++
+			continue
+		}
+		start := i
+		for i < cond.len && (comptime_cond_name_char(cond[i]) || cond[i] == `.`) {
+			i++
+		}
+		mut prev := start
+		for prev > 0 && cond[prev - 1].is_space() { prev-- }
+		if prev > 0 && cond[prev - 1] in [`.`, `$`] { continue }
+		name := cond[start..i]
+		root := name.all_before('.')
+		if tc.non_file_scope_type(root) != none {
+			return true
+		}
+		qualified := tc.qualify_name(name)
+		if name in tc.const_types || qualified in tc.const_types
+			|| tc.global_names[name] || tc.global_names[qualified] {
+			return true
+		}
+	}
+	return false
+}
+
+// comptime_static_variant_type_index follows reflected metadata's wrapper normalization.
+fn (tc &TypeChecker) comptime_static_variant_type_index(typ u32) int {
+	mut key := trimmed_source_type_id(typ)
+	for flat.source_type_shape(key).has(.optional) {
+		key = trimmed_source_type_id(flat.source_type_syntax(key).raw_base())
+	}
+	return tc.type_index(key)
+}
+
+// Numeric comparisons use runtime type indexes; type comparisons use the spelling.
+fn (mut tc TypeChecker) comptime_static_subst_variant_cond(cond string, var_name string, variant ComptimeStaticFieldCase) string {
+	clean := comptime_condition_strip_outer_parens(trimmed_space(cond))
+	for op in ['||', '&&'] {
+		idx := comptime_condition_top_level_index(clean, op)
+		if idx >= 0 {
+			left := tc.comptime_static_subst_variant_cond(clean[..idx], var_name, variant)
+			right := tc.comptime_static_subst_variant_cond(clean[idx + op.len..], var_name, variant)
+			return '(${left}) ${op} (${right})'
+		}
+	}
+	if clean.starts_with('!') {
+		return '!(' + tc.comptime_static_subst_variant_cond(clean[1..], var_name, variant) + ')'
+	}
+	for op in [' == ', ' != ', ' <= ', ' >= ', ' < ', ' > '] {
+		idx := comptime_condition_top_level_index(clean, op)
+		if idx >= 0 {
+			left := trimmed_space(clean[..idx])
+			right := trimmed_space(clean[idx + op.len..])
+			member := '${var_name}.typ'
+			if left == member && comptime_static_is_int(right) {
+				return '${tc.comptime_static_variant_type_index(variant.typ)}${op}${right}'
+			}
+			if right == member && comptime_static_is_int(left) {
+				return '${left}${op}${tc.comptime_static_variant_type_index(variant.typ)}'
+			}
+		}
+	}
+	return tc.comptime_static_subst_field_cond(cond, var_name, variant)
+}
+
 fn (tc &TypeChecker) comptime_static_type_is_struct(typ Type, typ_name u32, raw_typ_id u32) bool {
 	if typ is Struct && tc.comptime_static_type_name_is_struct(typ.source_type_id()) {
 		return true
@@ -1385,8 +1596,9 @@ fn (tc &TypeChecker) comptime_static_enum_call_value(id flat.NodeId, enum_module
 		}
 		arg_id := tc.a.child(call, arg_idx)
 		arg := tc.comptime_static_enum_field_value(arg_id, enum_module, enum_name, mut field_values, field_exprs, mut resolving) or { return none }
-		local_types[param.value] = helper.parse_type(param.typ)
-		locals[param.value] = comptime_enum_integer_cast(arg, unalias_type(local_types[param.value]).source_type_id())
+		param_type := helper.parse_type(param.typ)
+		local_types[param.value] = param_type
+		locals[param.value] = comptime_enum_integer_cast(arg, unalias_type(param_type).source_type_id())
 		arg_idx++
 	}
 	if arg_idx != call.children_count {
@@ -1974,6 +2186,9 @@ fn comptime_static_replace_bare_ident(cond string, ident string, replacement str
 
 fn (mut tc TypeChecker) comptime_static_eval_field_cond(cond string) ?bool {
 	clean := comptime_condition_strip_outer_parens(trimmed_space(cond))
+	if clean == 'threads' {
+		return tc.threads_condition_value()
+	}
 	if clean == 'true' {
 		return true
 	}
@@ -19123,7 +19338,8 @@ fn (mut tc TypeChecker) decl_assign_inferred_type(rhs_id flat.NodeId) Type {
 	}
 	if smartcast := tc.smartcast_type(rhs_id) {
 		if rhs.kind == .ident && tc.lexical_smartcast_type(rhs_id, rhs.value) == none
-			&& !tc.none_guard_fallthrough_unwraps(rhs_id, rhs.value) {
+			&& !tc.none_guard_fallthrough_unwraps(rhs_id, rhs.value)
+			&& !(tc.comptime_static_depth > 0 && tc.cur_comptime_variant_loop_vars.len > 0) {
 			// A guard/assert fallthrough narrows reads of the original binding, but V1
 			// infers a new declaration from its declared type. Lexical branch and loop
 			// smartcasts, and the `if x == none { return }` unwrap, still infer the

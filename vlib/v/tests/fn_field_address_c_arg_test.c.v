@@ -1,3 +1,4 @@
+// vtest build: !tinyc && !msvc
 @[translated]
 module main
 

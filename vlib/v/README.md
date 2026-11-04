@@ -13,6 +13,22 @@ backends: a direct flat-AST-to-C backend, a scanner-to-C fast path, a native
 ARM64 backend via SSA IR with a built-in linker, and a direct
 flat-AST-to-WebAssembly backend. With `-prod`, the ARM64 backend runs SSA
 optimization, MIR lowering, and instruction selection.
+Driver builds that omit FastC also omit its native bridge imports.
+Cached module interfaces retain the hook declarations used by generated call tracing.
+GC thread bridges use the platform's `pthread_t` type for join, detach, and cancellation.
+On native Linux, TinyCC builds use the platform C compiler for the bundled Boehm GC dependency.
+The AArch64 GC object uses inline atomics so linking does not require GCC's atomic helpers.
+Array alignment metadata keeps its 32-bit encoding when a backend uses wider flag enums.
+Long conditional chains in generated type-name dispatch do not consume recursive C generator frames.
+On Unix, a terminal job stop suspends the running application before returning control to the shell,
+including applications that catch or ignore `SIGTSTP`.
+Relayed terminal interrupts and stops are consumed once even when a compiler worker receives
+the notification.
+TinyCC AArch64 panic reports use its native backtracer to avoid faults during glibc unwinding.
+
+Results in the value tails of returned `if`, `match`, and `or` expressions remain handled by
+the enclosing return. An `or {}` block or propagation operator on an `if` expression also handles
+its branch tails. Earlier calls in those branches still receive unhandled-result warnings.
 
 `parser.Parser.parse_text` copies caller-provided source into the AST, so callers can reuse
 or release their own buffers after parsing.
@@ -102,6 +118,10 @@ aliases. Each spread contributes the array's elements to the variadic argument l
 
 Generic function bodies retain nominal alias types after unsafe expressions, array indexing,
 and map iteration, so methods declared on the alias remain available.
+
+Inside `$for variant in T.variants`, a variant guard combined with `&&` retains its narrowed
+type for inferred generic calls in the then branch, including mutable sum type aliases.
+The checker preserves concrete variant types in locals derived from guarded payloads.
 
 ## Compiler dispatch
 

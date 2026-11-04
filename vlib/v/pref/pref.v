@@ -1280,7 +1280,6 @@ pub fn directive_target_arch(prefix string) ?string {
 	return none
 }
 
-// normalized_target_os supports normalized target os handling for Preferences.
 // ccompiler_can_assemble reports whether `ccompiler` is a GCC or Clang compatible
 // driver, one that preprocesses and assembles a `.S` file with `-c`. tcc and MSVC
 // cannot; a `cc` or `gcc` name is trusted only after its version output rules
@@ -1291,7 +1290,6 @@ pub fn ccompiler_can_assemble(ccompiler string) bool {
 		|| real_name in ['cl', 'cl.exe'] {
 		return false
 	}
-	quoted_ccompiler := os.quoted_path(ccompiler)
 	for version_flag in ['--version', '-v'] {
 		res := os.exec([ccompiler, '${version_flag}'])
 		output := res.output.to_lower_ascii()

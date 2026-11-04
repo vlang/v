@@ -852,6 +852,15 @@ fn (mut g FlatGen) gen_shared_runtime_callers() {
 		g.writeln('__attribute__((constructor))')
 	}
 	g.writeln('void _vinit_caller(void) {')
+	if 'gcboehm' in g.compile_defines {
+		// A private collector's marker threads cannot outlive the shared image.
+		// An initialized host collector keeps its existing configuration.
+		g.writeln('#if (defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)) && defined(GC_THREADS)')
+		g.writeln('\tif (GC_is_init_called() == 0) {')
+		g.writeln('\t\tGC_set_markers_count(1);')
+		g.writeln('\t}')
+		g.writeln('#endif')
+	}
 	g.writeln('\t_vno_main_init_caller();')
 	g.writeln('}')
 	g.writeln('')

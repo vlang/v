@@ -1707,7 +1707,19 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	} else {
 		c_standard_flag(c99, no_std)
 	}
-	compiler := c_source_object_compiler(language, c_compiler, use_platform_non_c_compiler, target.os)
+	mut compiler := c_source_object_compiler(language, c_compiler, use_platform_non_c_compiler, target.os)
+	mut platform_gc := false
+	if target.os == 'linux' && pref.ccompiler_is_tinycc(compiler)
+		&& (source_file == 'thirdparty/libgc/gc.c'
+			|| source_file.ends_with('/thirdparty/libgc/gc.c')) {
+		host := pref.host_target()
+		if host.os == target.os && host.arch == target.arch {
+			// Bundled Boehm uses atomic builtins that TinyCC does not implement.
+			// Only this native dependency needs the platform compiler.
+			compiler = v3_platform_c_compiler(target.os)
+			platform_gc = true
+		}
+	}
 	mut args := []string{}
 	if std_flag.len > 0 {
 		args << std_flag
@@ -1724,6 +1736,10 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	// A C helper does not inherit a standard intended for the C++ main unit.
 	args << object_flags.flags_for_compiler(compiler).filter(is_cpp
 		|| !(it.starts_with('-std=c++') || it.starts_with('-std=gnu++')))
+	if platform_gc && target.arch == 'arm64' {
+		// TinyCC's linker does not provide GCC's outlined atomic helpers.
+		args << '-mno-outline-atomics'
+	}
 	if target.os == 'macos' && pref.ccompiler_is_tinycc(compiler) {
 		// Framework search paths are link flags that TCC also rejects in C helpers.
 		args = c_object_compile_flags(v3_tcc_macos_framework_flags(args, target.os, ''))
@@ -3999,6 +4015,9 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 	}
 	if options.is_freestanding {
 		before_inputs << ['-ffreestanding', '-fno-stack-protector']
+		if options.target_os == 'linux' && !options.is_tcc {
+			before_inputs << ['-ffunction-sections', '-fdata-sections']
+		}
 	}
 	before_inputs << options.warn_args
 	if '-Wno-int-conversion' !in before_inputs {
@@ -4045,6 +4064,10 @@ fn v3_c_compiler_flag_plan(options V3CCompilerFlagOptions) V3CCompilerFlagPlan {
 				after_inputs << ['-lSystem']
 			} else {
 				after_inputs << ['-static', '-nostdlib']
+				if options.target_os == 'linux' && !options.is_tcc {
+					// Unused hosted helpers must not introduce libc dependencies.
+					after_inputs << '-Wl,--gc-sections'
+				}
 			}
 			// `-nostdlib` also drops TinyCC's own runtime, whose helpers (like
 			// `__builtin_clz`) the generated code calls; they do not need libc.
