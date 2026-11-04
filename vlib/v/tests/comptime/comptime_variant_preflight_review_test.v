@@ -386,3 +386,40 @@ fn main() {
 	scoped := source.all_before('fn main()').replace('fn extract(value Choice) int', 'fn extract(value Choice, enabled bool) int').replace('if value == none { return 0 }', 'if enabled {\n\t\t\t\t\tif value == none { return 0 }\n\t\t\t\t\tprintln(variant.typ)\n\t\t\t\t}') + 'fn main() { _ = extract(Choice(?int(none)), false) }'
 	check_variant_review_case('conditional_fallthrough_scope', scoped, true, '`?int` as type `int`')
 }
+
+fn test_variant_preflight_resolves_reflected_fallthrough_targets() {
+	deferred := r'
+type Choice = int | string
+fn consume(value Choice) { assert value is int || value is string }
+fn visit(value Choice) {
+	$for variant in Choice.variants {
+		if value !is variant { return }
+		_ = variant.typ
+		consume(value)
+	}
+}
+fn main() {
+	visit(Choice(42))
+	visit(Choice("text"))
+}'
+	run_variant_review_case('deferred_reflected_fallthrough', deferred, false)
+	run_variant_review_case('deferred_reflected_assert', deferred.replace('consume(value)\n', 'assert value is variant\n\t\tconsume(value)\n'), false)
+	source := r'
+type Choice = int | string
+fn extract(value Choice) int {
+	$for variant in Choice.variants {
+		if value is variant {
+			if value !is variant { return 0 }
+			$if variant.typ is int { return value } $else { return value.len }
+		}
+	}
+	return -1
+}
+fn main() {
+	assert extract(Choice(42)) == 42
+	assert extract(Choice("text")) == 4
+}'
+	run_variant_review_case('concrete_reflected_fallthrough', source, false)
+	run_variant_review_case('concrete_reflected_assert', source.replace('if value !is variant { return 0 }', 'assert value is variant'), false)
+	check_variant_review_case('invalid_reflected_fallthrough_payload', source.replace('return value }', 'return value.len }'), true, '`int` has no property `len`')
+}

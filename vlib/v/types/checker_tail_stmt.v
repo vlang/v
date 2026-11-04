@@ -846,24 +846,28 @@ fn (mut tc TypeChecker) apply_post_if_exit_smartcasts(id flat.NodeId) {
 }
 
 fn (mut tc TypeChecker) apply_post_assert_smartcasts(id flat.NodeId) {
+	for binding in tc.post_assert_smartcasts(id) {
+		if valid_string_data(binding.name) {
+			tc.smartcasts[binding.name] = binding.typ
+		}
+	}
+}
+
+fn (tc &TypeChecker) post_assert_smartcasts(id flat.NodeId) []LocalBinding {
 	if !tc.valid_node_id(id) {
-		return
+		return []LocalBinding{}
 	}
 	node := tc.a.node(id)
 	if node.kind != .assert_stmt || node.children_count == 0 {
-		return
+		return []LocalBinding{}
 	}
 	condition_id := tc.a.child(node, 0)
 	condition := tc.a.node(condition_id)
 	if condition.kind == .infix && condition.op in [.eq, .ne]
 		&& tc.option_none_cmp_binding(condition) != none {
-		return
+		return []LocalBinding{}
 	}
-	for binding in tc.extract_smartcasts(condition_id) {
-		if valid_string_data(binding.name) {
-			tc.smartcasts[binding.name] = binding.typ
-		}
-	}
+	return tc.extract_smartcasts(condition_id)
 }
 
 // none_guard_fallthrough_unwraps reports whether the option `key` read at `id`

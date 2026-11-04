@@ -23326,6 +23326,24 @@ fn comptime_cond_name_char(ch u8) bool {
 	return ch.is_letter() || ch.is_digit() || ch == `_`
 }
 
+// apply_comptime_static_post_smartcasts keeps reflected targets concrete, or deferred until unrolling.
+fn (mut tc TypeChecker) apply_comptime_static_post_smartcasts(id flat.NodeId, var_name string, field_cases ComptimeStaticFieldCases) {
+	mut bindings := tc.post_if_exit_smartcasts(id)
+	bindings << tc.post_assert_smartcasts(id)
+	for binding in bindings {
+		if !valid_string_data(binding.name) {
+			continue
+		}
+		if binding.typ.source_type_id() == flat.source_type_id(var_name) {
+			if field_cases.known && field_cases.cases.len == 1 && field_cases.cases[0].typ != 0 {
+				tc.smartcasts[binding.name] = *tc.parse_type(field_cases.cases[0].typ)
+			}
+		} else {
+			tc.smartcasts[binding.name] = binding.typ
+		}
+	}
+}
+
 fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name string, loop_kind string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
 	if !tc.valid_node_id(id) {
 		return
@@ -23354,8 +23372,7 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 			child_id := tc.a.child(&node, i)
 			tc.check_comptime_static_body(child_id, var_name, loop_kind, field_cases, value_cases)
 			if loop_kind == 'variants' {
-				tc.apply_post_if_exit_smartcasts(child_id)
-				tc.apply_post_assert_smartcasts(child_id)
+				tc.apply_comptime_static_post_smartcasts(child_id, var_name, field_cases)
 			}
 		}
 		tc.pop_scope()
