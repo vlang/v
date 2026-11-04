@@ -250,7 +250,8 @@ pub fn (db &DB) get_affected_rows_count() int {
 	return C.sqlite3_changes(db.conn)
 }
 
-// q_int returns a single integer value, from the first column of the result of executing `query`, or an error on failure
+// q_int returns a single integer value, from the first column of the result of executing `query`, or an error on failure.
+// Integer results are read using the width of `int`.
 pub fn (db &DB) q_int(query string) !int {
 	$if trace_sqlite ? {
 		eprintln('> q_int query: "${query}"')
@@ -267,8 +268,11 @@ pub fn (db &DB) q_int(query string) !int {
 	if code != sqlite_row {
 		return db.error_message(code, query)
 	}
-	res := C.sqlite3_column_int(stmt, 0)
-	return res
+	$if new_int ?&& x64 {
+		return int(C.sqlite3_column_int64(stmt, 0))
+	} $else {
+		return C.sqlite3_column_int(stmt, 0)
+	}
 }
 
 // q_string returns a single string value, from the first column of the result of executing `query`, or an error on failure
