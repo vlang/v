@@ -449,3 +449,56 @@ fn main() {
 	scoped := source.all_before('fn main()').replace('fn extract(value Choice) int', 'fn extract(value Choice, enabled bool) int').replace('if value == none { return 0 }', 'if enabled {\n\t\t\t\t\tif value == none { return 0 }\n\t\t\t\t\tprintln(variant.typ)\n\t\t\t\t}') + 'fn main() { _ = extract(Choice(?int(none)), false) }'
 	check_variant_review_case('conditional_fallthrough_scope', scoped, true, '`?int` as type `int`')
 }
+
+fn test_variant_integer_comparisons_keep_v_decimal_radix() {
+	source := r'
+type Choice = int | string
+fn selected(value Choice) int {
+	$for variant in Choice.variants {
+		if value is variant {
+			$if variant.typ == 010 { return 1 } $else { return 2 }
+		}
+	}
+	return -1
+}
+fn main() {
+	assert selected(Choice(42)) == 2
+	assert selected(Choice("text")) == 2
+}'
+	for literal, expected in {
+		'010':  2
+		'0010': 2
+		'008':  1
+	} {
+		case := source.replace('010', literal).replace('selected(Choice(42)) == 2', 'selected(Choice(42)) == ${expected}')
+		run_variant_review_case('decimal_${literal}', case, false)
+		local_case := case.replace('if value is variant {', 'index := variant.typ\n\t\tif value is variant {').replace('variant.typ == ${literal}', 'variant.typ is int && index == ${literal}')
+		run_variant_review_case('decimal_local_${literal}', local_case, false)
+	}
+	separated := source.replace('if value is variant {', 'index := variant.typ\n\t\tif value is variant {').replace('variant.typ == 010', 'variant.typ is int && index == 0_10')
+	run_variant_review_case('decimal_separator', separated, false)
+}
+
+fn test_variant_zero_local_placeholder_stays_deferred() {
+	source := r'
+type Choice = int | string
+fn extract(value Choice) int {
+	$for variant in Choice.variants {
+		zero := $zero(variant.typ)
+		if value is variant {
+			$if variant.typ is string && zero == "" {
+				return value.len
+			} $else {
+				return value
+			}
+		}
+	}
+	return -1
+}
+fn main() {
+	assert extract(Choice(42)) == 42
+	assert extract(Choice("text")) == 4
+}'
+	run_variant_review_case('zero_placeholder', source, false)
+	check_variant_review_case('invalid_zero_fallthrough', source.replace('return -1', 'return "wrong"'), true, 'cannot use `string` as type `int`')
+}

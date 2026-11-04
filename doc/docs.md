@@ -8992,6 +8992,8 @@ Conditions using local metadata values are checked after unrolling, when their v
 Immutable local aliases of `variant.typ` can be resolved earlier, so their selected branches retain
 ordinary type diagnostics, including invalid return types.
 Integer equality compares values across decimal, hexadecimal, binary, and octal spellings.
+Leading zeros keep decimal meaning (`010` is `10`); octal values use an explicit `0o` prefix.
+Generated values such as `$zero(variant.typ)` stay deferred until unrolling.
 Matches retain their arm refinements while loop metadata is checked.
 Declaration guards such as `if payload := value` bind the unwrapped payload in their success branch.
 Exiting option guards also unwrap payloads for later statements in the same block.

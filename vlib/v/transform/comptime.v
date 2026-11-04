@@ -6906,8 +6906,8 @@ fn (mut t Transformer) eval_field_cond(cond string) ?bool {
 			if !eq && left_text.len > 0 && right_text.len > 0
 				&& (left_text[0].is_digit() || left_text[0] in [`+`, `-`])
 				&& (right_text[0].is_digit() || right_text[0] in [`+`, `-`]) {
-				if l := strconv.parse_int(left_text, 0, 64) {
-					if r := strconv.parse_int(right_text, 0, 64) {
+				if l := strconv.parse_int(left_text.replace('_', ''), util.v_literal_parse_base(left_text), 64) {
+					if r := strconv.parse_int(right_text.replace('_', ''), util.v_literal_parse_base(right_text), 64) {
 						eq = l == r
 					}
 				}
