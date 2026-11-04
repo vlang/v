@@ -20,6 +20,10 @@ static void* v_canvas_ct_font_from_data(const uint8_t* bytes, size_t length) {
 	return (void*)font;
 }
 
+static void* v_canvas_cf_retain(void* ref) {
+	return ref ? (void*)CFRetain((CFTypeRef)ref) : NULL;
+}
+
 static void v_canvas_cf_release(void* ref) {
 	if (ref) CFRelease((CFTypeRef)ref);
 }

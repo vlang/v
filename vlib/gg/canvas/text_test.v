@@ -192,3 +192,37 @@ fn test_unsupported_text_reports_errors() {
 	surface.draw_glyphs(Font{ typeface: typeface, size: 12, embolden: true }, [u16(36)],
 		[Point{1, 30}], Point{}, paint) or { assert err.msg().contains('bold') }
 }
+
+fn draw_arial_sample(typeface &Typeface) ![]u32 {
+	mut surface := new_raster_surface(width: 80, height: 32)!
+	surface.clear(0xffffffff)
+	font := Font{
+		typeface:       typeface
+		size:           16
+		subpixel:       true
+		linear_metrics: true
+		edging:         .subpixel_antialias
+	}
+	positions := [Point{4.25, 22}, Point{14.55, 22}, Point{25.95, 22}]
+	surface.draw_glyphs(font, [u16(36), 37, 38], positions, Point{}, Paint.rgba8(20, 60, 200,
+		255))!
+	return surface.pixels.clone()
+}
+
+fn test_typeface_from_ct_font_draws_like_its_source() {
+	$if !macos {
+		return
+	}
+	Typeface.from_ct_font(unsafe { nil }) or { assert err.msg().contains('nil CTFont') }
+	path := '/System/Library/Fonts/Supplemental/Arial.ttf'
+	if !os.exists(path) {
+		return
+	}
+	source := Typeface.from_file(path)!
+	wrapped := Typeface.from_ct_font(source.ct_font)!
+	assert wrapped.id != source.id
+	assert wrapped.has_color_glyphs == source.has_color_glyphs
+	expected := draw_arial_sample(source)!
+	assert expected.any(it != u32(0xffffffff))
+	assert draw_arial_sample(wrapped)! == expected
+}
