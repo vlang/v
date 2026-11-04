@@ -405,13 +405,15 @@ fn (g &FlatGen) embed_payload_node_indexes() []i32 {
 // they are bounded the same way and linked to one another when one is not enough.
 //
 // The objects are `static`: a parallel C build repeats this prefix in each unit,
-// and external linkage would then collide. It also means a payload that lands
-// here is repeated per unit, which is why only payloads that have no other way
-// of being spelled take this path.
+// and external linkage would then collide. A program that is split for parallel
+// C compilation declares them here instead and defines them in a body segment of
+// their own (see embed_blob_segment), so that one unit compiles the bytes, in
+// parallel with the others, rather than every unit.
 fn (mut g FlatGen) gen_embed_file_blobs() {
 	mut defined := 0
 	mut seen := map[string]bool{}
 	linkage_attr := g.object_file_variable_linkage()
+	in_segment := g.parallel_cc && !g.program_body_only && !g.object_file_mode
 	for i in g.embed_payload_node_indexes() {
 		node := unsafe { &g.a.nodes[i] }
 		if node.kind != .string_literal || !node.is_embed_payload() {
@@ -434,13 +436,33 @@ fn (mut g FlatGen) gen_embed_file_blobs() {
 			defined++
 			continue
 		}
+		if in_segment {
+			if node.value.len <= c_max_object_size {
+				g.writeln('extern const unsigned char _v_embed_blob_${sym}[${node.value.len}];')
+			} else {
+				g.writeln('extern const ${g.cname('embed_file.EmbedFileChunk')} _v_embed_blob_${sym}[];')
+			}
+			segment_start := g.sb.len
+			if node.value.len <= c_max_object_size {
+				g.write('const unsigned char _v_embed_blob_${sym}')
+				g.write_embed_blob_bytes(node.value, 0, node.value.len)
+			} else {
+				g.write_embed_blob_chunks(sym, node.value, '')
+			}
+			g.embed_blob_segment.write_string(g.sb.cut_to(segment_start))
+			if node.value.len > c_max_object_size {
+				g.writeln('${linkage_attr}extern u8* _v_embed_joined_${sym};')
+			}
+			defined++
+			continue
+		}
 		if node.value.len <= c_max_object_size {
 			g.write('static const unsigned char _v_embed_blob_${sym}')
 			g.write_embed_blob_bytes(node.value, 0, node.value.len)
 			defined++
 			continue
 		}
-		g.write_embed_blob_chunks(sym, node.value)
+		g.write_embed_blob_chunks(sym, node.value, 'static ')
 		// The joined buffer has external linkage: a parallel C build repeats this
 		// prefix per unit, and a `static` pointer would leave every unit but the
 		// one that runs `_vinit` holding its own null copy. gen_embed_blob_joined
@@ -593,8 +615,9 @@ fn (mut g FlatGen) gen_embed_blob_joins() {
 
 // write_embed_blob_chunks emits `payload` as byte objects of an acceptable size,
 // followed by the tables that list them. Table `n` is named with the suffix `_tn`,
-// except the first, which carries the bare name the initializer points at.
-fn (mut g FlatGen) write_embed_blob_chunks(sym string, payload string) {
+// except the first, which carries the bare name the initializer points at and
+// is defined with `first_storage`; the rest are only named by the tables.
+fn (mut g FlatGen) write_embed_blob_chunks(sym string, payload string, first_storage string) {
 	parts := embed_blob_part_count(payload.len)
 	for part in 0 .. parts {
 		offset := part * c_max_object_size
@@ -616,7 +639,8 @@ fn (mut g FlatGen) write_embed_blob_chunks(sym string, payload string) {
 		if listed > per_table {
 			listed = per_table
 		}
-		g.write('static const ${chunk_ct} ')
+		g.write(if table == 0 { first_storage } else { 'static ' })
+		g.write('const ${chunk_ct} ')
 		g.write_embed_blob_table_name(sym, table)
 		g.sb.write_string('[')
 		g.sb.write_decimal(i64(listed + 1))

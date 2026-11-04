@@ -3061,12 +3061,17 @@ fn v3_parallel_c_unit_source(header_path string, body string, owner bool, is_sha
 	if header_path.len > 0 {
 		source.writeln('#include "${header_path}"')
 	}
-	// These program lifecycle functions are emitted in the generated body rather
-	// than its declaration prefix, so later body units need explicit prototypes.
-	source.writeln(if is_shared { 'void _vinit(int, void*);' } else { 'void _vinit(void);' })
-	source.writeln('void _vcleanup(void);')
+	source.write_string(v3_parallel_c_lifecycle_prototypes(is_shared))
 	source.write_string(body)
 	return source.str()
+}
+
+// v3_parallel_c_lifecycle_prototypes declares the program lifecycle functions,
+// which are emitted in the generated body rather than its declaration prefix, so
+// body code compiled in another unit, or after the prefix, needs the prototypes.
+fn v3_parallel_c_lifecycle_prototypes(is_shared bool) string {
+	vinit := if is_shared { 'void _vinit(int, void*);' } else { 'void _vinit(void);' }
+	return '${vinit}\nvoid _vcleanup(void);\n'
 }
 
 fn write_v3_parallel_c_source(path string, header_name string, body string, owner bool, is_shared bool) ! {
@@ -3091,12 +3096,14 @@ fn v3_include_directive_argument(line string) ?string {
 	return directive['include'.len..].trim_left(' \t')
 }
 
-// Only generated C is inspected here. Includes stay with the C compiler; a
-// quoted native header may own state and therefore keeps the build in one unit.
-fn v3_parallel_c_declaration_header(prefix string, vroot string) (string, bool) {
+// v3_parallel_c_declaration_header returns the header that every unit after the
+// first includes, whether the generated native directive text is safe to repeat
+// in each unit, and the quoted native headers those directives include. Quoted
+// headers are checked after preprocessing, see v3_parallel_c_check_native_code.
+fn v3_parallel_c_declaration_header(prefix string, vroot string) (string, bool, []string) {
 	mut native_directives := strings.new_builder(1024)
 	mut in_native_directives := false
-	mut safe := true
+	mut quoted_includes := []string{}
 	for line in prefix.split_into_lines() {
 		trimmed := line.trim_space()
 		if trimmed == '/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */' {
@@ -3112,17 +3119,15 @@ fn v3_parallel_c_declaration_header(prefix string, vroot string) (string, bool) 
 			// This compiler-owned guard has no declarations or storage. Its
 			// contract is fixed; its body is never opened or inspected here.
 			guard := '"' + c_include_path(os.join_path(vroot, 'vlib', 'builtin', 'track_heap_checks.h')) + '"'
-			if !argument.starts_with('<') && argument != guard { safe = false }
+			if !argument.starts_with('<') && argument != guard { quoted_includes << argument }
 		}
 		native_directives.writeln(line)
 	}
 	native_source := native_directives.str()
 	variables, complete := modulecache.c_source_static_variable_identifiers(native_source)
-	if !complete || modulecache.c_source_replicated_function_has_static_storage(native_source)
-		|| variables.keys().any(!it.starts_with('_v3_lit_') && !it.starts_with('_str_')) {
-		safe = false
-	}
-	return modulecache.declaration_header(prefix), safe
+	safe := complete && !modulecache.c_source_replicated_function_has_static_storage(native_source)
+		&& !variables.keys().any(!it.starts_with('_v3_lit_') && !it.starts_with('_str_'))
+	return modulecache.declaration_header(prefix), safe, quoted_includes
 }
 
 fn merge_v3_parallel_c_units(parts []string, max_units int) []string {
@@ -3159,6 +3164,13 @@ fn merge_v3_parallel_c_units(parts []string, max_units int) []string {
 }
 
 fn split_v3_parallel_c_source(source string, max_units int) !(string, []string) {
+	prefix, parts := split_v3_parallel_c_parts(source)!
+	return prefix, merge_v3_parallel_c_units(parts, max_units)
+}
+
+// split_v3_parallel_c_parts returns the declaration prefix of generated C and the
+// parts of its body between unit markers, which are compiled in any grouping.
+fn split_v3_parallel_c_parts(source string) !(string, []string) {
 	split := modulecache.split_generated_c(source)!
 	body_begin := '/* V3CACHE_BODY_BEGIN */\n'
 	begin := source.index(body_begin) or { return error('missing v3 parallel C body marker') }
@@ -3191,7 +3203,7 @@ fn split_v3_parallel_c_source(source string, max_units int) !(string, []string) 
 	if units.len == 0 {
 		return error('missing v3 parallel C unit markers')
 	}
-	return split.prefix, merge_v3_parallel_c_units(units, max_units)
+	return split.prefix, units
 }
 
 fn v3_linux_cross_link_flags(flags []string) []string {
@@ -3333,7 +3345,7 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 			output:    'failed to read generated C source ${source_path}: ${err.msg()}'
 		}
 	}
-	prefix, bodies := split_v3_parallel_c_source(source, unit_count) or {
+	prefix, parts := split_v3_parallel_c_parts(source) or {
 		return os.Result{
 			exit_code: 1
 			output:    'failed to split generated C source: ${err.msg()}'
@@ -3341,8 +3353,12 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 	}
 	header_name := 'v3_parallel_cc_${tempname.unique_token()}.h'
 	header_path := os.join_path_single(build_dir, header_name)
-	header, header_is_safe := v3_parallel_c_declaration_header(prefix, vroot)
+	header, header_is_safe, quoted_includes := v3_parallel_c_declaration_header(prefix, vroot)
+	trace := show_command || os.getenv('V3_PARALLEL_CC_TRACE') != ''
 	if !header_is_safe {
+		if trace {
+			eprintln('parallel C: the native directives own static storage; compiling one C unit')
+		}
 		return os.Result{
 			exit_code: v3_parallel_cc_monolithic_exit_code
 			output:    v3_parallel_cc_monolithic_message
@@ -3353,6 +3369,50 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 			exit_code: 1
 			output:    'failed to write parallel C header ${header_path}: ${err.msg()}'
 		}
+	}
+	mut small_compile_flags := c_object_compile_flags(c_flag_plan.before_inputs)
+	small_compile_flags << c_object_compile_flags(c_flag_plan.after_inputs)
+	mut pool := workers.new(job_count)
+	owner_source := v3_parallel_c_unit_source('', prefix, true, is_shared)
+	hazards, owner_names := v3_parallel_c_check_native_code(c_compiler, small_compile_flags,
+		objective_c, header_path, quoted_includes.len > 0, owner_source, parts, is_shared, mut pool)
+	if hazards.len > 0 {
+		if trace {
+			eprintln('parallel C: compiling one C unit, because the native code would change if every unit compiled it:')
+			for hazard in hazards[..int_min(hazards.len, 40)] {
+				eprintln('  ${hazard}')
+			}
+			if hazards.len > 40 {
+				eprintln('  ... and ${hazards.len - 40} more')
+			}
+		}
+		return os.Result{
+			exit_code: v3_parallel_cc_monolithic_exit_code
+			output:    v3_parallel_cc_monolithic_message
+		}
+	}
+	mut owner_parts := []string{}
+	mut shared_parts := []string{cap: parts.len}
+	for part in parts {
+		if !v3_c_text_uses_any(part, owner_names) {
+			shared_parts << part
+			continue
+		}
+		owner_items, rest := v3_c_partition_items(part, owner_names)
+		owner_parts << owner_items
+		if rest.trim_space().len > 0 {
+			shared_parts << rest
+		}
+	}
+	bodies := merge_v3_parallel_c_units(shared_parts, unit_count)
+	owner_body := if owner_parts.len > 0 {
+		prefix + '\n' + v3_parallel_c_lifecycle_prototypes(is_shared) + owner_parts.join('')
+	} else {
+		prefix
+	}
+	if trace {
+		owner_size := owner_body.len - prefix.len
+		eprintln('parallel C: ${bodies.len + 1} units; the first also compiles the functions of ${owner_parts.len} of ${parts.len} body parts (${owner_size} bytes) that use names only its native sources declare')
 	}
 	cache_root := v3_parallel_c_cache_root()
 	mut use_object_cache := cache_objects
@@ -3373,14 +3433,12 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 	}
 	mut tasks := []&V3ParallelCCompileTask{cap: bodies.len + 1}
 	mut objects := []string{cap: bodies.len + 1}
-	mut small_compile_flags := c_object_compile_flags(c_flag_plan.before_inputs)
-	small_compile_flags << c_object_compile_flags(c_flag_plan.after_inputs)
 	mut large_compile_flags := c_object_compile_flags(large_c_flag_plan.before_inputs)
 	large_compile_flags << c_object_compile_flags(large_c_flag_plan.after_inputs)
 	for unit_index := 0; unit_index <= bodies.len; unit_index++ {
 		source_name := 'unit_${unit_index}.c'
 		object_name := 'unit_${unit_index}.o'
-		unit_source := if unit_index == 0 { prefix } else { bodies[unit_index - 1] }
+		unit_source := if unit_index == 0 { owner_body } else { bodies[unit_index - 1] }
 		owner := unit_index == 0
 		mut unit_path := os.join_path_single(build_dir, source_name)
 		mut rendered_source := ''
@@ -3439,7 +3497,6 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 		task.args << ['-c', '-o', object_name, unit_path]
 		tasks << task
 	}
-	mut pool := workers.new(job_count)
 	mut dependency_work := []workers.Task{cap: tasks.len}
 	for task in tasks {
 		if task.cacheable {

@@ -191,8 +191,9 @@ fn test_v3_parallel_cc_does_not_shadow_user_parallel_header() {
 		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', 'cc', '-nocache',
 			'-showcc', '-o', output, source])
 		assert build.exit_code == 0, build.output
-		assert !build.output.contains('unit_0.c'), build.output
-		assert build.output.contains('src.c'), build.output
+		// A header with only an inline function is the same in every unit, so the
+		// program splits, and its units still find the user's `parallel.h`.
+		assert build.output.contains('unit_1.c'), build.output
 		run_result := cmdexec.run(output, [])
 		assert run_result.exit_code == 0, run_result.output
 		assert run_result.output.trim_space() == '42'
@@ -309,5 +310,72 @@ fn test_v3_parallel_cc_falls_back_for_coverage_and_profile_state() {
 				assert os.file_size(state_path) > 0
 			}
 		}
+	}
+}
+
+fn test_v3_parallel_cc_compiles_native_source_callers_in_the_first_unit() {
+	// Objective-C sources are the native sources that only the first unit includes.
+	$if macos {
+		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_native_source_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path_single(root, 'main.v')
+		native := os.join_path_single(root, 'native.m')
+		output := os.join_path_single(root, 'main')
+		// Only the first unit compiles a native source: its static helper, its
+		// external function and its macro are not declared anywhere else.
+		os.write_file(native, '#define NATIVE_SCALE 3\nstatic int native_helper(int x) { return x * NATIVE_SCALE; }\nint native_triple(int x) { return native_helper(x); }\n')!
+		os.write_file(source, '#include "@DIR/native.m"\n\nfn C.native_triple(x int) int\nfn C.native_helper(x int) int\n\nfn helper(x int) int { return C.native_helper(x) }\nfn triple(x int) int { return C.native_triple(x) }\nfn twice(x int) int { return x * 2 }\nfn main() { println(triple(7) + helper(2) + twice(3)) }\n')!
+		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', 'cc', '-nocache',
+			'-showcc', '-o', output, source])
+		assert build.exit_code == 0, build.output
+		assert build.output.contains('unit_0.c'), build.output
+		assert build.output.contains('unit_1.c'), build.output
+		run_result := cmdexec.run(output, [])
+		assert run_result.exit_code == 0, run_result.output
+		assert run_result.output.trim_space() == '33'
+	}
+}
+
+fn test_v3_parallel_cc_defines_embedded_payloads_once() {
+	$if bsd || linux || macos {
+		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_embed_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path_single(root, 'main.v')
+		output := os.join_path_single(root, 'main')
+		// One payload fits a single C object, the other is split into chunks.
+		mut small := []u8{len: 10000}
+		mut large := []u8{len: 200000}
+		for i in 0 .. small.len {
+			small[i] = u8(i * 7)
+		}
+		for i in 0 .. large.len {
+			large[i] = u8(i * 13 + 1)
+		}
+		os.write_file_array(os.join_path_single(root, 'small.bin'), small)!
+		os.write_file_array(os.join_path_single(root, 'large.bin'), large)!
+		os.write_file(source, "fn sum(data []u8) u64 {\n\tmut total := u64(0)\n\tfor b in data {\n\t\ttotal += b\n\t}\n\treturn total\n}\n\nfn small_sum() u64 {\n\tfile := \$embed_file('small.bin')\n\treturn sum(file.to_bytes())\n}\n\nfn large_sum() u64 {\n\tfile := \$embed_file('large.bin')\n\treturn sum(file.to_bytes())\n}\n\nfn main() { println('\${small_sum()} \${large_sum()}') }\n")!
+		mut expected_small := u64(0)
+		mut expected_large := u64(0)
+		for b in small {
+			expected_small += b
+		}
+		for b in large {
+			expected_large += b
+		}
+		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', 'cc', '-nocache',
+			'-showcc', '-o', output, source])
+		assert build.exit_code == 0, build.output
+		assert build.output.contains('unit_1.c'), build.output
+		run_result := cmdexec.run(output, [])
+		assert run_result.exit_code == 0, run_result.output
+		assert run_result.output.trim_space() == '${expected_small} ${expected_large}'
 	}
 }
