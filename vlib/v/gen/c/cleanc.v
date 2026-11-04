@@ -25404,6 +25404,11 @@ fn (mut g FlatGen) global_decls() {
 		section_prefix := g.global_linker_section_prefix(name) + linkage_attr
 		if fixed := array_fixed_type(unalias_type(decl_typ)) {
 			c_elem, dims := g.fixed_array_decl_parts(fixed)
+			if extern_name := g.c_extern_global_names[name] {
+				// Native code owns this array, including any initialized lookup table.
+				g.writeln('extern ${vq}${c_elem} ${extern_name}${dims};')
+				continue
+			}
 			if val_id := g.global_inits[name] {
 				if name in g.global_cinit_names || g.global_fixed_array_is_static(val_id, decl_typ) {
 					g.write('${section_prefix}${vq}${c_elem} ${g.global_c_name(name)}${dims} = ')
@@ -25821,6 +25826,10 @@ fn (mut g FlatGen) emit_global_inits() {
 	skip_closure_runtime_globals := !g.needs_closure_runtime_init()
 	for qname in g.global_init_order {
 		g.in_global_array_pointer_init = false
+		if qname in g.c_extern_global_names {
+			// Native code owns both the storage and its initial contents.
+			continue
+		}
 		if g.cache_const_modules[g.global_modules[qname] or { '' }]
 			&& (g.global_files[qname] or { '' }).ends_with('.vh') {
 			continue

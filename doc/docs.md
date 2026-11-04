@@ -10885,6 +10885,8 @@ V identifiers named `alloca` are escaped so they cannot shadow this intrinsic.
 C globals can be exposed on the V side too. Use `@[c_extern] __global name C.Type`
 when you want to redeclare an external symbol explicitly, or
 `@[c_extern] __global const name C.Type` for an external `extern const` symbol.
+Externally owned globals, including fixed arrays, retain the initial values supplied by native code.
+V does not allocate their storage or apply V default initializers to them.
 When the type already comes from the V context, direct references like
 `buffer = C.buffer` and `[4]u8(C.buffer)` can be used as well.
 
