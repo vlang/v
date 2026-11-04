@@ -180,7 +180,9 @@ Current release and artifact exceptions that intentionally use floating runners:
   Windows artifact tracks GitHub's current hosted Windows toolchain.
 - Its `windows-11-arm` lane builds `v_windows_arm64.zip` with native MSVC tools using
   `cmd/tools/builders/windows_arm64_release.ps1`. The script checks PE architecture
-  for the bootstrap, compiler stages, application smoke test, and release tools.
+  for the x64 bootstrap and the native ARM64 compiler stages, application smoke test,
+  and release tools. The transient x64 bootstrap runs under Windows 11's emulation;
+  all shipped binaries are ARM64.
   The ARM64 package uses `-cc msvc` and does not contain the x64 TCC bundle.
 - `release_ci.yml` uses `ubuntu-latest` only for the release publishing job; the
   job assembles already-built artifacts and does not compile platform binaries.
