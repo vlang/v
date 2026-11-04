@@ -81,13 +81,14 @@ fn ret_operand(m &ssa.Module, name string) ssa.ValueID {
 	return ssa.ValueID(0)
 }
 
-// Native int returns are 32 bits; a constant can arrive through a 64-bit truncation.
+// Native int returns follow the target width; 32-bit targets truncate 64-bit constants.
 fn assert_native_int_constant_return(m &ssa.Module, name string, expected string) {
 	mut value := m.values[ret_operand(m, name)]
 	typ := m.type_store.types[value.typ]
 	assert typ.kind == .int_t
-	assert typ.width == 32
+	assert typ.width == m.target.ptr_size * 8
 	if value.kind == .instruction {
+		assert typ.width == 32
 		instruction := m.instrs[value.index]
 		assert instruction.op == .trunc
 		assert instruction.operands.len == 1
@@ -316,16 +317,22 @@ fn set_kind(attr voidptr) {
 fn test_c_fn_decl_registers_extern_signature() {
 	m := build_source('c_fn_decl', '
 fn C.abs(x int) int
+fn C.fixed_i32(x i32) i32
 
 fn main() {
 	_ := C.abs(-3)
+	_ := C.fixed_i32(-3)
 }
 ')
 	f := find_func(m, 'C.abs')
 	assert f.is_c_extern
 	ret_type := m.type_store.types[f.typ]
 	assert ret_type.kind == .int_t
-	assert ret_type.width == 32
+	assert ret_type.width == m.target.ptr_size * 8
+	fixed := find_func(m, 'C.fixed_i32')
+	assert fixed.is_c_extern
+	assert m.type_store.types[fixed.typ].kind == .int_t
+	assert m.type_store.types[fixed.typ].width == 32
 }
 
 // test_function_parameter_call_lowers_to_call_indirect validates this v3 regression case.
@@ -532,7 +539,7 @@ fn widen(x u8) i64 {
 	return i64(x)
 }
 
-fn widen_signed(x int) i64 {
+fn widen_signed(x i32) i64 {
 	return i64(x)
 }
 ')
@@ -554,6 +561,31 @@ fn widen_signed(x int) i64 {
 	}
 	assert found_zext
 	assert has_instr_op(m, 'widen_signed', .sext)
+}
+
+fn test_native_int_constants_and_casts_follow_target_width() {
+	for pointer_size in [4, 8] {
+		a, tc := parse_checked_source('platform_int_width_${pointer_size}', '
+fn answer() int {
+	return 42
+}
+
+fn convert(value int) i64 {
+	return i64(value)
+}
+
+fn fixed(value i32) i64 {
+	return i64(value)
+}
+')
+		m := ssa.build_with_options(a, map[string]bool{}, tc, ssa.BuildOptions{
+			target: ssa.TargetData{ ptr_size: pointer_size }
+		})
+		assert_native_int_constant_return(m, 'answer', '42')
+		assert has_instr_op(m, 'convert', .sext) == (pointer_size == 4)
+		assert has_instr_op(m, 'fixed', .sext)
+		assert m.type_store.types[m.values[ret_operand(m, 'convert')].typ].width == 64
+	}
 }
 
 // test_unsigned_integer_infix_uses_unsigned_ops validates this v3 regression case.
