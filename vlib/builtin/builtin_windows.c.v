@@ -311,7 +311,8 @@ fn builtin_init() {
 				set_stream_unbuffered(C.stderr)
 			}
 		}
-		$if !no_backtrace ? {
+		$if !no_backtrace ?|| windows_tcc_unhandled_filter ? {
+			// Keep executable fault diagnostics when TCC's traces are unavailable.
 			add_unhandled_exception_handler()
 		}
 		// On windows, the default buffering is block based (~4096bytes), which interferes badly with non cmd shells
@@ -367,7 +368,9 @@ fn unhandled_exception_handler(e &ExceptionPointers) C.LONG {
 				ptr_str(e.exception_record.address))
 			flush_stdout()
 			flush_stderr()
-			print_backtrace_skipping_top_frames(5)
+			$if !no_backtrace ? {
+				print_backtrace_skipping_top_frames(5)
+			}
 			flush_stdout()
 			flush_stderr()
 		}
