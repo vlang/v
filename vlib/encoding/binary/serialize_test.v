@@ -604,4 +604,29 @@ fn test_decode_crafted_invalid_lengths() {
 	}
 	assert err_map.contains('invalid map length')
 	assert c_map.len == 0
+
+	// a prefix that u64 -> int narrowing can truncate to 0 (32-bit targets) must still be rejected
+	mut truncated := []u8{len: 8} // little endian 0x0000000100000000
+	truncated[4] = 1
+	mut err_zero_arr := ''
+	c_zero_arr := decode_binary[[]u8](truncated, DecodeConfig{}) or {
+		err_zero_arr = err.msg()
+		[]u8{}
+	}
+	assert err_zero_arr.contains('invalid array length')
+	assert c_zero_arr.len == 0
+	mut err_zero_str := ''
+	c_zero_str := decode_binary[string](truncated, DecodeConfig{}) or {
+		err_zero_str = err.msg()
+		''
+	}
+	assert err_zero_str.contains('invalid string length')
+	assert c_zero_str == ''
+	mut err_zero_map := ''
+	c_zero_map := decode_binary[map[string]int](truncated, DecodeConfig{}) or {
+		err_zero_map = err.msg()
+		map[string]int{}
+	}
+	assert err_zero_map.contains('invalid map length')
+	assert c_zero_map.len == 0
 }
