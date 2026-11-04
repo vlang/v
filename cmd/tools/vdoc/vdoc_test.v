@@ -659,6 +659,9 @@ fn test_markdown_renderer_supports_github_flavored_markdown() {
 	assert markdown.render('| a | b |\n|---|---|\n| 1 | 2 |', mut renderer).contains('<td>1</td>')
 	assert markdown.render('~~old~~', mut renderer).contains('<del>old</del>')
 	assert markdown.render('- [x] done', mut renderer).contains('type="checkbox"')
+	// A link whose text is a URL keeps its destination, and is not nested in another link.
+	assert render_doc_markdown(prepare_markdown_for_html('[https://vlang.io](https://docs.vlang.io)'), mut
+		renderer) == '<p><a href="https://docs.vlang.io">https://vlang.io</a></p>'
 }
 
 fn test_doc_multi_skips_modules_without_valid_files_for_platform() {

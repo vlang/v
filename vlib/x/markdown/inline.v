@@ -611,6 +611,14 @@ fn (mut p InlineParser) try_strikethrough() ?&Node {
 	return node
 }
 
+// link_text_opts returns the options for parsing the text of a link, in which a bare URL is
+// not linkified, since a link cannot contain another link.
+fn (p &InlineParser) link_text_opts() Options {
+	mut opts := p.opts
+	opts.linkify = false
+	return opts
+}
+
 // try_link_or_footnote handles [ and attempts to parse a link or footnote ref.
 fn (mut p InlineParser) try_link_or_footnote() ?[]&Node {
 	saved := p.pos
@@ -640,7 +648,7 @@ fn (mut p InlineParser) try_link_or_footnote() ?[]&Node {
 	if p.pos < p.src.len && p.src[p.pos] == `(` {
 		dest, title, end := parse_inline_link_dest_from(p.src, p.pos + 1)
 		if end >= 0 {
-			inner_nodes := parse_inline(link_text, p.opts, p.ref_map)
+			inner_nodes := parse_inline(link_text, p.link_text_opts(), p.ref_map)
 			if contains_link(inner_nodes) {
 				// A link cannot contain another link.
 				p.pos = saved
@@ -666,7 +674,7 @@ fn (mut p InlineParser) try_link_or_footnote() ?[]&Node {
 			label := normalize_label(if raw_label.len > 0 { raw_label } else { link_text })
 			if label in p.ref_map {
 				ref := p.ref_map[label]
-				inner_nodes := parse_inline(link_text, p.opts, p.ref_map)
+				inner_nodes := parse_inline(link_text, p.link_text_opts(), p.ref_map)
 				if contains_link(inner_nodes) {
 					// A link cannot contain another link.
 					p.pos = saved
@@ -693,7 +701,7 @@ fn (mut p InlineParser) try_link_or_footnote() ?[]&Node {
 	label := normalize_label(link_text)
 	if label in p.ref_map {
 		ref := p.ref_map[label]
-		inner_nodes := parse_inline(link_text, p.opts, p.ref_map)
+		inner_nodes := parse_inline(link_text, p.link_text_opts(), p.ref_map)
 		if contains_link(inner_nodes) {
 			// A link cannot contain another link.
 			p.pos = saved

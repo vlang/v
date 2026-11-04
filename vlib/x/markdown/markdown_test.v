@@ -409,6 +409,15 @@ fn test_linkify_leaves_out_a_closing_parenthesis_that_is_not_part_of_the_url() {
 	assert md.convert('(https://w.org/a_(b))') == '<p>(<a href="https://w.org/a_(b)">https://w.org/a_(b)</a>)</p>\n'
 }
 
+fn test_linkify_keeps_the_destination_of_a_link_whose_text_is_a_url() {
+	mut md := Markdown.new(extensions: [Extension(linkify())])
+	assert md.convert('[https://vlang.io](https://docs.vlang.io)') == '<p><a href="https://docs.vlang.io">https://vlang.io</a></p>\n'
+	assert md.convert('[https://vlang.io][docs]\n\n[docs]: https://docs.vlang.io') == '<p><a href="https://docs.vlang.io">https://vlang.io</a></p>\n'
+	assert md.convert('[https://vlang.io]\n\n[https://vlang.io]: https://docs.vlang.io') == '<p><a href="https://docs.vlang.io">https://vlang.io</a></p>\n'
+	// Also inside emphasis in the text of the link.
+	assert md.convert('[*https://vlang.io*](https://docs.vlang.io)') == '<p><a href="https://docs.vlang.io"><em>https://vlang.io</em></a></p>\n'
+}
+
 fn test_linkify_follows_the_gfm_boundaries_of_a_url() {
 	mut md := Markdown.new(extensions: [Extension(linkify())])
 	// A scheme in the middle of a word does not start a link.
