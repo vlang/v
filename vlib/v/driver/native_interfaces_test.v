@@ -33,6 +33,10 @@ fn test_native_interface_contract_requires_known_paths_and_complete_manifest() !
 	assert closure.unassignable == ''
 	assert header in closure.inputs['__v3_c_flags__']
 	assert nested in closure.inputs['__v3_c_flags__']
+	for input in closure.inputs['__v3_c_flags__'] {
+		assert os.is_file(input), input
+	}
+	assert v3_native_interface_closure(&a, &prefs, [], compiler, &inputs).inputs == closure.inputs
 	for override in ['-DMBEDTLS_CONFIG_FILE="custom.h"', '-DMBEDTLS_USER_CONFIG_FILE="custom.h"',
 		'-Wp,-include,custom.h', '@custom.rsp'] {
 		assert v3_native_interface_closure(&a, &prefs, [override], compiler, &inputs).unassignable != ''

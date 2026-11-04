@@ -55,7 +55,7 @@ fn v3_native_interface_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	if os.getenv('MBEDTLS_CONFIG_FILE') != '' || os.getenv('MBEDTLS_USER_CONFIG_FILE') != '' {
 		return result
 	}
-	path := os.join_path(os.vtmp_dir(), 'v3_native_interfaces_${tempname.unique_token()}.c')
+	path := os.join_path(os.real_path(os.vtmp_dir()), 'v3_native_interfaces_${tempname.unique_token()}.c')
 	defer { os.rm(path) or {} }
 	os.write_file(path, cgen.cache_native_dependency_directives(a, prefs.vroot, flags, prefs.target)) or { return result }
 	mut args := c_object_compile_flags(flags)
