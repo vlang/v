@@ -12786,6 +12786,25 @@ _SOKOL_PRIVATE sg_resource_state _sg_mtl_create_shader(_sg_shader_t* shd, const 
         }
         vs_func = [vs_lib newFunctionWithName:[NSString stringWithUTF8String:vs_entry]];
         fs_func = [fs_lib newFunctionWithName:[NSString stringWithUTF8String:fs_entry]];
+    } else if (desc->vs.source && !desc->fs.source && !desc->fs.bytecode.ptr) {
+        // V patch: a vertex-only shader for pipelines that only write depth and
+        // stencil (the render pipeline has no fragment function).
+        vs_lib = _sg_mtl_compile_library(desc->vs.source);
+        if (nil == vs_lib) {
+            goto failed;
+        }
+        vs_func = [vs_lib newFunctionWithName:[NSString stringWithUTF8String:vs_entry]];
+        if (nil == vs_func) {
+            _SG_ERROR(METAL_VERTEX_SHADER_ENTRY_NOT_FOUND);
+            goto failed;
+        }
+        shd->mtl.stage[SG_SHADERSTAGE_VS].mtl_lib  = _sg_mtl_add_resource(vs_lib);
+        _SG_OBJC_RELEASE(vs_lib);
+        shd->mtl.stage[SG_SHADERSTAGE_VS].mtl_func = _sg_mtl_add_resource(vs_func);
+        _SG_OBJC_RELEASE(vs_func);
+        shd->mtl.stage[SG_SHADERSTAGE_FS].mtl_lib  = _sg_mtl_add_resource(nil);
+        shd->mtl.stage[SG_SHADERSTAGE_FS].mtl_func = _sg_mtl_add_resource(nil);
+        return SG_RESOURCESTATE_VALID;
     } else {
         goto failed;
     }
@@ -12887,8 +12906,10 @@ _SOKOL_PRIVATE sg_resource_state _sg_mtl_create_pipeline(_sg_pipeline_t* pip, _s
     rp_desc.vertexDescriptor = vtx_desc;
     SOKOL_ASSERT(shd->mtl.stage[SG_SHADERSTAGE_VS].mtl_func != _SG_MTL_INVALID_SLOT_INDEX);
     rp_desc.vertexFunction = _sg_mtl_id(shd->mtl.stage[SG_SHADERSTAGE_VS].mtl_func);
-    SOKOL_ASSERT(shd->mtl.stage[SG_SHADERSTAGE_FS].mtl_func != _SG_MTL_INVALID_SLOT_INDEX);
-    rp_desc.fragmentFunction = _sg_mtl_id(shd->mtl.stage[SG_SHADERSTAGE_FS].mtl_func);
+    // V patch: vertex-only shaders have no fragment function.
+    if (shd->mtl.stage[SG_SHADERSTAGE_FS].mtl_func != _SG_MTL_INVALID_SLOT_INDEX) {
+        rp_desc.fragmentFunction = _sg_mtl_id(shd->mtl.stage[SG_SHADERSTAGE_FS].mtl_func);
+    }
     rp_desc.rasterSampleCount = (NSUInteger)desc->sample_count;
     rp_desc.alphaToCoverageEnabled = desc->alpha_to_coverage_enabled;
     rp_desc.alphaToOneEnabled = NO;
@@ -16518,7 +16539,12 @@ _SOKOL_PRIVATE bool _sg_validate_shader_desc(const sg_shader_desc* desc) {
         #elif defined(SOKOL_METAL) || defined(SOKOL_D3D11)
             // on Metal or D3D11, must provide shader source code or byte code
             _SG_VALIDATE((0 != desc->vs.source)||(0 != desc->vs.bytecode.ptr), VALIDATE_SHADERDESC_SOURCE_OR_BYTECODE);
-            _SG_VALIDATE((0 != desc->fs.source)||(0 != desc->fs.bytecode.ptr), VALIDATE_SHADERDESC_SOURCE_OR_BYTECODE);
+            #if defined(SOKOL_METAL)
+                // V patch: Metal allows vertex-only shaders (depth/stencil-only pipelines).
+                _SG_VALIDATE((0 != desc->fs.source)||(0 != desc->fs.bytecode.ptr)||(0 != desc->vs.source), VALIDATE_SHADERDESC_SOURCE_OR_BYTECODE);
+            #else
+                _SG_VALIDATE((0 != desc->fs.source)||(0 != desc->fs.bytecode.ptr), VALIDATE_SHADERDESC_SOURCE_OR_BYTECODE);
+            #endif
         #else
             // Dummy Backend, don't require source or bytecode
         #endif
