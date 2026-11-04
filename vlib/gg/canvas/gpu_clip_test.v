@@ -217,3 +217,30 @@ fn test_rrect_inset_and_contains_follow_sk_rrect() {
 	assert !rr.contains_rect(Rect.ltrb(0, 0, 4, 4))
 	assert rr.contains_point(20, 0) && !rr.contains_point(0.5, 0.5)
 }
+
+fn test_rrect_transform_rotates_corners_by_90_degrees_like_sk_rrect() {
+	radii := [Point{1, 2}, Point{3, 4}, Point{5, 6}, Point{7, 8}]!
+	rr := RRect.rect_radii(Rect.ltrb(10, 20, 50, 40), radii)
+	// SkMatrix::setRotate(90) then a translation: x' = -y + 100, y' = x.
+	cw := rr.transform_legacy(Transform.new(Matrix{
+		m: [f32(0), -1, 100, 1, 0, 0, 0, 0, 1]!
+	})) or { panic('not transformed') }
+	assert cw.rect == Rect.ltrb(60, 10, 80, 50)
+	// The lower-left corner becomes the upper-left one, with its axes swapped.
+	assert cw.radii == [Point{8, 7}, Point{2, 1}, Point{4, 3}, Point{6, 5}]!
+	// setRotate(-90): x' = y, y' = -x + 100.
+	ccw := rr.transform_legacy(Transform.new(Matrix{
+		m: [f32(0), 1, 0, -1, 0, 100, 0, 0, 1]!
+	})) or { panic('not transformed') }
+	assert ccw.rect == Rect.ltrb(20, 50, 40, 90)
+	assert ccw.radii == [Point{4, 3}, Point{6, 5}, Point{8, 7}, Point{2, 1}]!
+	// A rotation by 90 degrees with a scale of 2 doubles the swapped radii.
+	scaled := rr.transform_legacy(Transform.new(Matrix{
+		m: [f32(0), -2, 0, 2, 0, 0, 0, 0, 1]!
+	})) or { panic('not transformed') }
+	assert scaled.radii[0] == Point{16, 14}
+	// Rotations by other angles are not rounded rectangles.
+	assert rr.transform_legacy(Transform.new(Matrix{
+		m: [f32(0.8660254), -0.5, 0, 0.5, 0.8660254, 0, 0, 0, 1]!
+	})) == none
+}

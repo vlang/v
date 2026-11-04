@@ -475,10 +475,6 @@ fn (mut s GpuSurface) clip_shape(shape ClipShape, op ClipOp, snap bool) ! {
 	if int(s.transform.typ) > int(TransformType.affine) {
 		return error('gg.canvas: clips under perspective transforms are not supported')
 	}
-	if shape.kind == .rrect && int(s.transform.typ) <= int(TransformType.rect_stays_rect)
-		&& s.transform.typ != .identity && s.transform.matrix.m[0] == 0 {
-		return error('gg.canvas: rounded rectangle clips under 90 degree rotations are not supported')
-	}
 	element := new_raw_element(s.device_bounds(), s.transform, shape, op, snap)
 	if element.shape.kind == .empty && element.op == .difference {
 		return

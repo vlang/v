@@ -491,15 +491,15 @@ fn (rr RRect) contains_rect(o Rect) bool {
 }
 
 // transform_legacy mirrors SkRRect::transform() as built with
-// SK_SUPPORT_LEGACY_RRECT_TRANSFORM, for scale and translate transforms. It
-// returns none when the result is not a valid rounded rectangle.
+// SK_SUPPORT_LEGACY_RRECT_TRANSFORM, for axis-aligned transforms (scales,
+// flips and 90-degree rotations). It returns none when the result is not a
+// valid rounded rectangle.
 fn (rr RRect) transform_legacy(t Transform) ?RRect {
 	if t.typ == .identity {
 		return rr
 	}
 	m := t.matrix.m
-	if int(t.typ) > int(TransformType.rect_stays_rect) || m[0] == 0 {
-		// Rotations by 90 degrees swap radii; they are not ported.
+	if int(t.typ) > int(TransformType.rect_stays_rect) {
 		return none
 	}
 	new_rect := t.map_rect(rr.rect)
@@ -524,6 +524,18 @@ fn (rr RRect) transform_legacy(t Transform) ?RRect {
 	mut x_scale := m[0]
 	mut y_scale := m[4]
 	mut radii := rr.radii
+	if m[1] != 0 || m[3] != 0 {
+		// A rotation by 90 or 270 degrees: the corners rotate and each radius
+		// swaps its axes, and the scales come from the skew entries.
+		clockwise := m[1] < 0
+		y_scale = if clockwise { m[3] } else { -m[3] }
+		x_scale = if clockwise { -m[1] } else { m[1] }
+		dir := if clockwise { 3 } else { 1 }
+		for i in 0 .. 4 {
+			src := rr.radii[(i + dir) % 4]
+			radii[i] = Point{src.y, src.x}
+		}
+	}
 	flip_x := x_scale < 0
 	if flip_x {
 		x_scale = -x_scale
