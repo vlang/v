@@ -306,18 +306,20 @@ fn test_headerless_linux_family_keeps_itimerspec_and_semaphore_declarations() {
 	}
 }
 
-fn test_freebsd_semaphore_declarations_follow_system_headers() {
-	for system_libc in [false, true] {
-		for cache_split in [false, true] {
-			mut g := posix_declaration_filter_gen('freebsd', system_libc)
-			g.set_cache_split(cache_split)
-			assert g.c_directives_use_system_libc() == system_libc
-			assert !g.skip_builtin_struct('C.itimerspec')
-			for name in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait',
-				'sem_wait'] {
-				assert g.should_emit_c_extern_decl(name) == !system_libc, '${name}: system_libc=${system_libc}, cache_split=${cache_split}'
+fn test_bsd_semaphore_declarations_follow_system_headers() {
+	for target_os in ['freebsd', 'openbsd'] {
+		for system_libc in [false, true] {
+			for cache_split in [false, true] {
+				mut g := posix_declaration_filter_gen(target_os, system_libc)
+				g.set_cache_split(cache_split)
+				assert g.c_directives_use_system_libc() == system_libc
+				assert !g.skip_builtin_struct('C.itimerspec'), target_os
+				for name in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait',
+					'sem_wait'] {
+					assert g.should_emit_c_extern_decl(name) == !system_libc, '${target_os}: ${name}: system_libc=${system_libc}, cache_split=${cache_split}'
+				}
+				assert g.should_emit_c_extern_decl('user_semaphore_api')
 			}
-			assert g.should_emit_c_extern_decl('user_semaphore_api')
 		}
 	}
 }

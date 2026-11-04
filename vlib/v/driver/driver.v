@@ -14627,6 +14627,7 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			eprintln(msg)
 			exit(1)
 		}
@@ -14639,6 +14640,13 @@ pub fn run(args []string) {
 				test_run_only:     run_only
 				hot_fn:            prefs.hot_fn
 			})
+			if m.errors.len > 0 {
+				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+				for message in m.errors {
+					eprintln(message)
+				}
+				exit(1)
+			}
 			b.step('ssa build')
 			b.metric('SSA values before optimize', m.values.len, 'values')
 			b.metric('SSA instructions before optimize', m.instrs.len, 'instructions')

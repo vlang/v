@@ -28616,7 +28616,7 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 				// void pointer itself as a new sum variant on a later transform pass.
 				// The operand is still lowered: in `&i8(address_of(&local))`, a local
 				// moved to the heap is already the address.
-				operand := t.transform_expr_preserving_pointer_value(child_id)
+				operand := t.transform_opaque_pointer_value(child_id)
 				if operand == child_id || t.rewrite_children_in_place(id, [operand]) {
 					return id
 				}
@@ -28667,7 +28667,7 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 		mut new_children := []flat.NodeId{cap: int(node.children_count)}
 		for i in 0 .. node.children_count {
 			child_id := t.a.child(&node, i)
-			new_children << t.transform_expr_preserving_pointer_value(child_id)
+			new_children << t.transform_opaque_pointer_value(child_id)
 		}
 		if t.rewrite_children_in_place(id, new_children) {
 			return id

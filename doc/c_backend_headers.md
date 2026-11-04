@@ -44,7 +44,7 @@ On FreeBSD and OpenBSD, builds with system headers include `<sys/sysctl.h>` for
 `os.executable()` and retain its native `sysctl` declaration. Headerless builds supply
 the sysctl constants and prototype directly.
 
-On Linux, Android, Termux and FreeBSD, builds with system headers use the native
+On Linux, Android, Termux, FreeBSD and OpenBSD, builds with system headers use the native
 `sem_*` declarations from `<semaphore.h>`, including when compiling cached modules.
 Headerless builds retain V's semaphore prototypes.
 

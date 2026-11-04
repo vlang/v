@@ -287,7 +287,7 @@ fn test_vc_compat_runs_with_a_posix_shell_and_no_bash_in_path() ! {
 		os.find_abs_path_of_executable('sh')!
 	}
 	os.symlink(shell, os.join_path(bin, 'sh'))!
-	for utility in ['awk', 'dirname', 'mktemp', 'mkfifo', 'rm', 'cat'] {
+	for utility in ['awk', 'dirname', 'mktemp', 'mkfifo', 'rm', 'cat', 'printf'] {
 		path := os.find_abs_path_of_executable(utility)!
 		os.symlink(path, os.join_path(bin, utility))!
 	}
