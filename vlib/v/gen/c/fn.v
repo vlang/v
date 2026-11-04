@@ -6277,7 +6277,9 @@ fn (mut g FlatGen) gen_test_main() {
 		g.writeln('}')
 		g.writeln('')
 	}
-	g.writeln(g.c_main_declaration(false))
+	// Keep test diagnostics on the runner's inherited pipes when graphics
+	// libraries would otherwise select a GUI entry point. Honor an explicit GUI.
+	g.writeln(g.c_main_declaration(g.subsystem != .windows))
 	if g.has_builtins {
 		g.writeln('\tg_main_argc = argc;')
 		g.writeln('\tg_main_argv = argv;')
