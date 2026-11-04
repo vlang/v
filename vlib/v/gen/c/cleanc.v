@@ -23715,11 +23715,11 @@ fn (mut g FlatGen) atomic_thread_fence_compat_decls() {
 	g.writeln('extern void _V_atomic_thread_fence(int order);')
 	g.writeln('#define atomic_thread_fence(order) _V_atomic_thread_fence(order)')
 	g.writeln('#define __atomic_thread_fence(order) _V_atomic_thread_fence(order)')
-	// OpenBSD amd64 links the plain symbol from atomic.S. A headerless unit
+	// FreeBSD and OpenBSD amd64 link the plain symbol from atomic.S. A headerless unit
 	// still needs its prototype; preserve the enum-typed declaration if a
-	// stdatomic header has already supplied the public fence macro.
-	g.writeln('#elif defined(__TINYC__) && defined(__OpenBSD__) && defined(__x86_64__)')
-	g.writeln('#ifndef atomic_thread_fence')
+	// stdatomic header has already supplied either direction of the fence alias.
+	g.writeln('#elif defined(__TINYC__) && (defined(__FreeBSD__) || defined(__OpenBSD__)) && defined(__x86_64__)')
+	g.writeln('#if !defined(atomic_thread_fence) && !defined(__atomic_thread_fence)')
 	g.writeln('extern void __atomic_thread_fence(int order);')
 	g.writeln('#define atomic_thread_fence(order) __atomic_thread_fence(order)')
 	g.writeln('#endif')
