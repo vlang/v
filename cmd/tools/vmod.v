@@ -128,8 +128,10 @@ fn imports_in_file(path string) ![]string {
 }
 
 // build_graph walks the import graph outward from the project root, following
-// each module to the modules it actually imports.
-fn build_graph(project string) !&Graph {
+// each module to the modules it actually imports. A root or direct dependency
+// already gives `why` its shortest chain, so direct_target stops that search
+// before parsing dependencies. Other queries keep the complete graph traversal.
+fn build_graph(project string, direct_target string) !&Graph {
 	p := new_preferences(project)
 	mut g := &Graph{
 		roots:    map[string]string{}
@@ -138,6 +140,9 @@ fn build_graph(project string) !&Graph {
 	}
 	root_name := module_name_of(project)
 	g.record(root_name, project, os.join_path_single(project, 'v.mod'))
+	if direct_target != '' && direct_target == root_name {
+		return g
+	}
 	mut queue := [root_name]
 	mut seen := map[string]bool{}
 	for queue.len > 0 {
@@ -164,6 +169,9 @@ fn build_graph(project string) !&Graph {
 				target_name := module_path
 				g.record(target_name, target, file)
 				g.link(name, target_name)
+				if direct_target != '' && name == root_name && target_name == direct_target {
+					return g
+				}
 				if target_name !in seen {
 					queue << target_name
 				}
@@ -220,7 +228,7 @@ fn print_help(fp &flag.FlagParser) {
 // imports is reported differently from one that is not installed at all, because
 // those two answers point at different problems.
 fn why(module_name string, project string) ! {
-	g := build_graph(project)!
+	g := build_graph(project, module_name)!
 	root := module_name_of(project)
 	if module_name in g.roots {
 		for name in chain_to(g, root, module_name) {
@@ -241,7 +249,7 @@ fn why(module_name string, project string) ! {
 // modules it imports indented beneath it. It is the picture `v mod why` answers one
 // question about.
 fn graph(project string) ! {
-	g := build_graph(project)!
+	g := build_graph(project, '')!
 	root := module_name_of(project)
 	println(root)
 	mut seen := map[string]bool{
