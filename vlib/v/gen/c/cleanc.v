@@ -12841,7 +12841,7 @@ fn (mut g FlatGen) apply_fn_signature_registration_group(registration FnSignatur
 }
 
 fn (mut g FlatGen) register_fn_decl_node(name string, module_name string, id flat.NodeId) {
-	g.register_fn_decl_node_by_name(name, id)
+	g.register_fn_decl_node_by_name(name, module_name, id)
 	g.register_fn_decl_node_by_short(name, id)
 	g.register_fn_decl_node_by_module_short(name, module_name, id)
 }
@@ -12861,7 +12861,7 @@ fn (mut g FlatGen) register_fn_decl_nodes(regs []FnDeclNodeReg, which int) {
 	match which {
 		0 {
 			for reg in regs {
-				g.register_fn_decl_node_by_name(reg.name, reg.id)
+				g.register_fn_decl_node_by_name(reg.name, reg.module, reg.id)
 			}
 		}
 		1 {
@@ -12878,9 +12878,15 @@ fn (mut g FlatGen) register_fn_decl_nodes(regs []FnDeclNodeReg, which int) {
 }
 
 @[inline]
-fn (mut g FlatGen) register_fn_decl_node_by_name(name string, id flat.NodeId) {
+fn (mut g FlatGen) register_fn_decl_node_by_name(name string, module_name string, id flat.NodeId) {
 	if name !in g.fn_decl_nodes_by_name {
 		g.fn_decl_nodes_by_name[name] = id
+	}
+	if name.ends_with('.free') {
+		// Receiver cleanup depends on the exact declaration, even when another
+		// module declares the same receiver type and method name.
+		g.fn_decl_nodes_by_name[fn_decl_module_key(module_name, name)] = id
+		g.fn_decl_nodes_by_name['${module_name}.${name}'] = id
 	}
 }
 
