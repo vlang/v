@@ -1,0 +1,8 @@
+Enable the Windows Win32 long-path policy, so the CRT and plain Win32 calls accept paths past MAX_PATH (260 characters). The policy is machine-wide and needs administrator rights, like the Python installer's "Disable path length limit" option.
+
+Usage:
+  v enable-long-paths [options]
+
+Options:
+      --check   Only report the policy, without changing it.
+  -h, --help    Display this help message.
