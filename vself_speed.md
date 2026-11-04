@@ -7,14 +7,16 @@ Keep correctness tests and generated-output checks alongside performance measure
 ## Profile-driven follow-up, 2026-11-03 (round 2)
 
 The same self-host command retires **3.39% fewer instructions** at the median of ten alternating
-pairs against master `0fe9594303f1a7e9c6d3d6bf2ab6a4ae3e6b1e4c` (which includes the previous
+pairs against master `0fe95943038a0fd2a5f278f50cb3a4ff4f037291` (which includes the previous
 round); the requested 5% was not reached. The median paired difference is `-1.704 G`, **2/10 pairs
 regress** (both load spikes in a candidate run), the minima are 44.944 G against 43.282 G, and the
 serial (`VJOBS=1`) run goes from 39.96 G to 38.5 G (-3.9%).
 
 | Median metric | Before | After |
 | --- | ---: | ---: |
-| Retired instructions | 45,394,000,000 | 43,857,000,000 |
+| Retired instructions | 45,394,049,406.5 | 43,857,074,914 |
+| Parsed physical source lines | 492,696 | 492,696 |
+| Retired instructions/parsed line | 92,133.99 | 89,014.47 |
 | Peak memory footprint, MiB | 1,022 | 1,031 |
 | Elapsed time, s | 1.33 | 1.25 |
 
@@ -29,8 +31,11 @@ smartcast and resolution lookups in the checker, transformer and C generator.
 
 Generated C is identical for the self-host build and for 114 example programs; the self-hosted
 compiler builds and runs `hello_world`. Both compilers use the user's recipe, the same fixed input
-tree, one warmup per role and alternating AB/BA order under host load 16-18; the parsed inventory
-is the same 458 `.v` files in both roles.
+tree, one warmup per role and alternating AB/BA order under host load 16-18. The retained
+`base-*.out` and `cand-*.out` logs in `/Users/alex/code/v-self6-tools/ab/int2/` agree on the
+complete inventory: **492,696 physical lines in 458 parsed `.v` files**, with no `.vh` files.
+Both normalized medians divide the exact median instruction totals by that common line count;
+warmups are excluded. The table now uses the exact totals from the retained timing samples.
 
 Left for a next round, measured but not changed: after transform the AST has 3.57 M nodes while
 the C generator's trusted type cache covers the first 1.88 M, so every transform-created node is
