@@ -89,10 +89,10 @@ fn (mut r Request) phr_parse_request_path_pipeline(buf_start &u8, buf_end &u8, m
 	r.method = method
 	r.path = path
 
-	for buf < buf_end {
+	for unsafe { buf_end - buf > 4 } {
 		unsafe { buf++ }
-		// check if following 4 characters are '\r\n\r\n' indicating a new request line
-		if unsafe { *(&u32(buf)) == 0x0a0d0a0d } {
+		// All four delimiter bytes must be within the input, at any alignment.
+		if unsafe { buf[0] == `\r` && buf[1] == `\n` && buf[2] == `\r` && buf[3] == `\n` } {
 			unsafe {
 				buf += 4
 			}

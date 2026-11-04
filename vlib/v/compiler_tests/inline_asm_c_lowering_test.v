@@ -381,6 +381,71 @@ fn test_asm_goto_lowers_uppercase_branch_mnemonics() {
 	assert c_source.contains('"retry: JNE %l[__v_user_goto_0]\\n\\t"'), c_source
 }
 
+fn test_riscv_asm_goto_lowers_direct_branch_targets() {
+	for arch in ['rv64', 'riscv64'] {
+		generate, c_source := generate_inline_asm_c_for_arch('goto_${arch}_program', 'fn main() {
+	asm goto ${arch} {
+		beq zero, zero, done
+		bne a0, a1, done
+		bgt a0, a1, done
+		bgtz a0, done
+		j done
+		jal zero, done
+		call t0, done
+		tail done, t0
+		jump done, t0
+		c.j done
+		c.beqz a0, done
+		c.bnez a0, done
+		retry: BEQ zero, zero, done
+		; ; ; ; done
+	}
+	done:
+}
+', 'riscv64')
+		assert generate.exit_code == 0, generate.output
+		assert c_source.contains('__asm__ goto ('), c_source
+		for instruction in [
+			'beq zero, zero, %l[__v_user_goto_0]',
+			'bne a0, a1, %l[__v_user_goto_0]',
+			'bgt a0, a1, %l[__v_user_goto_0]',
+			'bgtz a0, %l[__v_user_goto_0]',
+			'j %l[__v_user_goto_0]',
+			'jal zero, %l[__v_user_goto_0]',
+			'call t0, %l[__v_user_goto_0]',
+			'tail %l[__v_user_goto_0], t0',
+			'jump %l[__v_user_goto_0], t0',
+			'c.j %l[__v_user_goto_0]',
+			'c.beqz a0, %l[__v_user_goto_0]',
+			'c.bnez a0, %l[__v_user_goto_0]',
+			'retry: BEQ zero, zero, %l[__v_user_goto_0]',
+		] {
+			assert c_source.contains('"${instruction}\\n\\t"'), c_source
+		}
+		assert c_source.contains(': __v_user_goto_0'), c_source
+	}
+}
+
+fn test_riscv_asm_goto_preserves_registers_and_non_branch_operands() {
+	generate, c_source := generate_inline_asm_c_for_arch('goto_riscv_operands_program', 'fn main() {
+	asm goto rv64 {
+		bext a0, a0, a0
+		jalr a0
+		jr a0
+		c.jr a0
+		; ; ; ; a0
+	}
+	a0:
+}
+', 'riscv64')
+	assert generate.exit_code == 0, generate.output
+	assert c_source.contains('"bext a0, a0, a0\\n\\t"'), c_source
+	assert c_source.contains('"jalr a0\\n\\t"'), c_source
+	assert c_source.contains('"jr a0\\n\\t"'), c_source
+	assert c_source.contains('"c.jr a0\\n\\t"'), c_source
+	assert !c_source.contains('%l['), c_source
+}
+
 fn test_raw_asm_goto_keeps_symbolic_label_references_valid() {
 	generate, c_source := generate_inline_asm_c('raw_goto_program', 'fn main() {
 	asm goto amd64 raw {
@@ -998,12 +1063,12 @@ fn test_asm_arch_hints_use_spellings_that_compile() {
 	assert generate.exit_code != 0, generate.output
 	assert generate.output.contains('`asm x86_64` block in a build for the `arm64` target; guard the block with `\$if amd64 {}` or build with `-arch amd64`'), generate.output
 	assert generate.output.contains('`asm ia-32` block in a build for the `arm64` target; guard the block with `\$if i386 {}` or build with `-arch x86`'), generate.output
+	assert generate.output.contains('`asm rv64` block in a build for the `arm64` target; guard the block with `\$if rv64 {}` or build with `-arch riscv64`'), generate.output
 	// The C backend does not lower these, so `-arch` is not offered.
-	assert generate.output.contains('`asm rv64` block in a build for the `arm64` target; guard the block with `\$if rv64 {}`\n'), generate.output
 	assert generate.output.contains('`asm riscv32` block in a build for the `arm64` target; guard the block with `\$if rv32 {}`\n'), generate.output
 	assert generate.output.contains('`asm arm32` block in a build for the `arm64` target; guard the block with `\$if arm32 {}`\n'), generate.output
 	assert generate.output.contains('`asm ppc64le` block in a build for the `arm64` target; guard the block with `\$if ppc64le {}`\n'), generate.output
-	assert !generate.output.contains('-arch riscv'), generate.output
+	assert !generate.output.contains('-arch riscv32'), generate.output
 	// `x32` is not a spelling the header accepts for x86, so `-arch x86` alone would not help.
 	assert generate.output.contains('`asm x32` block in a build for the `arm64` target; guard the block with `\$if i386 {}`, or write `asm x86 { ... }` and build with `-arch x86`'), generate.output
 	for arch in ['amd64', 'x86', 'riscv64'] {
@@ -1027,7 +1092,7 @@ fn test_asm_arch_hints_use_spellings_that_compile() {
 }
 ', arch)
 		assert guarded.exit_code == 0, '${arch}: ${guarded.output}'
-		assert c_source.contains('"nop\\n\\t"') == (arch != 'riscv64'), '${arch}: ${c_source}'
+		assert c_source.contains('"nop\\n\\t"'), '${arch}: ${c_source}'
 	}
 }
 
@@ -1054,19 +1119,19 @@ fn test_asm_for_an_unknown_arch_is_not_a_target_mismatch() {
 }
 
 fn test_asm_on_a_c_target_without_lowering_names_the_target() {
-	generate, _ := generate_inline_asm_c_for_arch('riscv_target_program', 'fn main() {
-	asm riscv64 {
+	generate, _ := generate_inline_asm_c_for_arch('riscv32_target_program', 'fn main() {
+	asm riscv32 {
 		nop
 	}
 	asm amd64 {
 		nop
 	}
 }
-', 'riscv64')
+', 'riscv32')
 	assert generate.exit_code != 0, generate.output
 	// A guard for the build's own architecture would be circular, so none is suggested.
-	assert generate.output.contains('inline assembly is not supported by the C backend for the `riscv64` target\n'), generate.output
-	assert generate.output.contains('inline assembly is not supported by the C backend for the `riscv64` target; guard the block with `\$if amd64 {}`'), generate.output
+	assert generate.output.contains('inline assembly is not supported by the C backend for the `riscv32` target\n'), generate.output
+	assert generate.output.contains('inline assembly is not supported by the C backend for the `riscv32` target; guard the block with `\$if amd64 {}`'), generate.output
 }
 
 fn test_asm_for_another_arch_is_skipped_under_its_guard() {

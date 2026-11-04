@@ -3,7 +3,7 @@ module macos
 // vfmt off
 #flag darwin -framework Foundation
 #flag darwin -lobjc
-#insert "@VEXEROOT/vlib/macos/objc_bridge.h"
+#preinclude "@VEXEROOT/vlib/macos/objc_bridge.h"
 
 pub type Id = voidptr
 pub type Sel = voidptr

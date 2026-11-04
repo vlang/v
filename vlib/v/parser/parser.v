@@ -11721,7 +11721,7 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 
 // inline_asm_c_lowering_arches are the architectures whose inline assembly the C backend
 // lowers to GNU `asm()`.
-const inline_asm_c_lowering_arches = ['amd64', 'arm64', 'x86']
+const inline_asm_c_lowering_arches = ['amd64', 'arm64', 'x86', 'riscv64']
 
 fn (p &Parser) supports_c_inline_asm_lowering() bool {
 	return p.prefs.backend == 'c' && p.prefs.target.arch in inline_asm_c_lowering_arches
@@ -16310,6 +16310,14 @@ fn (mut p Parser) translated_sizeof_name_is_const(name string) bool {
 	}
 	// A visible local or parameter cannot select a module constant.
 	if !p.is_translated && p.is_local_binding(name) {
+		return false
+	}
+	// An imported module name followed by `.` selects a qualified member: a
+	// const of that name would conflict with the import. Reading it as a const
+	// operand would index every sibling file of a module that only measures
+	// another module's types, such as sizeof(flat.Node).
+	if !p.is_translated && p.tok == .name && p.lit == name && p.peek() == .dot
+		&& p.imported_module_names[name] {
 		return false
 	}
 	// A type that this module already declared is never read as a const operand,

@@ -54,9 +54,14 @@ If V is already installed on a machine, it can be upgraded to its latest version
 by using the V's built-in self-updater.
 To do so, run the command `v up`.
 This also refreshes the bundled TCC binaries used for fast C compilation.
+It asks the TCC repository which revision the bundle's branch is at; when that has
+not changed, the TCC checkout is not fetched or rewritten, and `v up` reports that
+TCC is already up to date.
 On Linux, an older compatible TCC bundle stays in place while its upstream revision
 is unchanged and it still passes the host compatibility check. Repeated updates
-preserve its file metadata.
+preserve its file metadata. When no commit of an unchanged branch suits the host,
+V keeps using the system compiler without checking the branch again; run
+`make fresh_tcc` to check it again, for example after upgrading the system.
 On macOS, TCC builds use its runtime thread fence directly, including when
 preprocessed C identifies ARM64 with `__arm64__` alone.
 
@@ -6433,6 +6438,7 @@ The `try_push/pop()` methods will return immediately with one of the results
 the reason why not.
 These methods also work in generic functions with a `chan T`. Their arguments must match the
 channel's element storage type, and `try_pop(mut value)` requires mutable destination storage.
+Arguments keep their active smartcasts, including when their address escapes.
 A sum-type channel requires storage of the full sum type when popping. A shared destination
 is writable inside its `lock` block. Pointer values can be pushed into a `chan voidptr`.
 Methods declared on a channel alias take precedence over these builtins.
@@ -6510,6 +6516,8 @@ fn main() {
 ```
 
 A `shared` parameter already passes a reference to the synchronized storage.
+It keeps referring to the caller's storage when used as a mutable channel destination inside a
+`lock` block, including in generic functions.
 Declare it as `shared m map[K]V` and pass `shared m`. Explicit address arguments such
 as `shared &m` are unsupported; remove `&` from both the parameter type and the argument.
 
@@ -8974,6 +8982,16 @@ fn main() {
 // has string type
 ```
 
+Within a variant loop, `if value is variant` narrows expressions to the current payload type.
+Conjunctions and nested guards retain all active refinements. A mutable guard keeps the original
+sum storage available for reassignment. Each iteration infers its own local collection types;
+conditions using enclosing reflection metadata are checked after that metadata is substituted.
+Numeric comparisons with `variant.typ` use the same type index as `value.type_idx()`.
+Optional and result variants expose their wrapped type's metadata index, preserving pointer depth.
+Conditions using local metadata values are checked after unrolling, when their values are available.
+Matches retain their arm refinements while loop metadata is checked.
+Declaration guards such as `if payload := value` bind the unwrapped payload in their success branch.
+
 #### <h4 id="comptime-methods">.methods</h4>
 
 You can retrieve information about struct methods.
@@ -11365,6 +11383,7 @@ pointer type checks; calls to C functions also accept these character pointers.
 
 In translated files, fixed arrays decay to pointers to their elements, including when compared
 with pointers. Nested array literals retain their full array type in these comparisons.
+Their generated C uses nested brace initializers, supported by GCC, Clang, and TinyCC.
 
 Files marked `@[translated]` retain C scalar conversions between numbers, enums, and booleans.
 These scalars can be mixed in arithmetic expressions and compound assignments. Integral scalars
@@ -11559,6 +11578,11 @@ must be on the same source line. It may precede `add`, `adc`, `and`, `btc`, `btr
 `addq` and `cmpxchgq`. Without a permitted same-line instruction, the parser reports
 `The lock prefix cannot be used on this instruction`. A same-line `lock:` remains valid as a
 label; a newline inside a comment also separates the prefix, instruction, or label colon.
+
+The C backend lowers `rv64` and `riscv64` blocks when building for `-arch riscv64`.
+Structured RISC-V assembly keeps destination-first operand order and lowers `[base]` and
+`[base + displacement]` to GNU memory operands. Floating-point registers such as `f1` retain
+their register names; quote a forward numeric label as `'1f'` to distinguish it from a register.
 
 The C backend also supports raw GNU assembly templates. In a `raw` block, V passes each
 double-quoted template string through unchanged and still checks the output, input, and clobber

@@ -1,5 +1,102 @@
 import os
 
+fn test_vc_compat_uses_portable_machosign_when_native_helpers_are_missing() ! {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'vc_compat_machosign_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'snapshot.c')
+	executable := os.join_path(root, 'snapshot')
+	script := os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat.sh')
+	filter := os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat.awk')
+	cc := os.getenv_opt('CC') or { 'cc' }
+	// These conditional blocks match the affected Linux-generated snapshot.
+	// The portable implementations also make error propagation observable.
+	text := '#define CUSTOM_DEFINE_cross
+typedef unsigned char u8;
+typedef long __v_int;
+typedef const char* string;
+typedef _Bool bool;
+typedef struct { int ok; int err; } __v_result;
+static int hashed;
+bool machosign__fastc_hash_code_pages(u8* data, u8* hashes, __v_int start, __v_int end, __v_int limit) {
+    hashed = 1;
+    return 1;
+}
+__v_result machosign__fastc_sign_macho_adhoc_buffered(string path) {
+    return (__v_result){.ok = path != 0, .err = 37};
+}
+void hash_pages(void) {
+    u8* data_ptr = 0;
+    u8* hashes_ptr = 0;
+    __v_int n_pages = 1, code_limit = 1;
+    #if (defined(__APPLE__) && !defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__))
+    {
+        fastc_hash_code_pages_native(data_ptr, hashes_ptr, n_pages, code_limit);
+    }
+    #else
+    {
+        machosign__fastc_hash_code_pages(data_ptr, hashes_ptr, 0, n_pages, code_limit);
+    }
+    #endif
+}
+__v_result machosign__sign_adhoc(string path) {
+    #if (defined(__APPLE__) && !defined(__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__))
+    {
+        fastc_sign_macho_adhoc_mapped(path);
+    }
+    #else
+    {
+        __v_result result = machosign__fastc_sign_macho_adhoc_buffered(path);
+        if (!result.ok) return result;
+    }
+    #endif
+    return (__v_result){.ok = 1};
+}
+const char* embedded = "fastc_hash_code_pages_native(data_ptr, hashes_ptr, n_pages, code_limit);";
+const char* embedded_hash_decl = "void fastc_hash_code_pages_native(u8*, u8*, __v_int, __v_int);";
+const char* embedded_signer_decl = "void fastc_sign_macho_adhoc_mapped(string);";
+int main(void) {
+    hash_pages();
+    if (!hashed || !machosign__sign_adhoc("valid").ok) return 1;
+    __v_result failed = machosign__sign_adhoc(0);
+    return failed.ok || failed.err != 37;
+}
+'
+	os.write_file(source, text)!
+	flags := ['-std=c99', '-Werror=implicit-function-declaration', '-D__APPLE__',
+		'-U__ENVIRONMENT_IPHONE_OS_VERSION_MIN_REQUIRED__']
+	broken := os.exec([cc, ...flags, '-fsyntax-only', source])
+	assert broken.exit_code != 0
+	assert broken.output.contains('fastc_hash_code_pages_native'), broken.output
+	assert broken.output.contains('fastc_sign_macho_adhoc_mapped'), broken.output
+	checked := os.exec(['sh', script, source, cc, ...flags, '-o', executable])
+	assert checked.exit_code == 0, checked.output
+	assert os.exec([executable]).exit_code == 0
+	assert os.read_file(source)! == text
+	filtered := os.exec(['awk', '-f', filter, source])
+	assert filtered.exit_code == 0, filtered.output
+	assert filtered.output.contains('const char* embedded = "fastc_hash_code_pages_native(data_ptr, hashes_ptr, n_pages, code_limit);";')
+	assert filtered.output.contains('const char* embedded_hash_decl = "void fastc_hash_code_pages_native(u8*, u8*, __v_int, __v_int);";')
+	assert filtered.output.contains('const char* embedded_signer_decl = "void fastc_sign_macho_adhoc_mapped(string);";')
+	// A native snapshot with declarations for the helpers needs no repair.
+	native := 'void fastc_hash_code_pages_native(u8*, u8*, __v_int, __v_int);\nvoid fastc_sign_macho_adhoc_mapped(string);\n'
+	valid := text.replace('static int hashed;', native + 'static int hashed;')
+	os.write_file(source, valid)!
+	valid_native := os.exec([cc, ...flags, '-fsyntax-only', source])
+	assert valid_native.exit_code == 0, valid_native.output
+	for unchanged in [valid, text.replace('#define CUSTOM_DEFINE_cross\n', ''),
+		text.replace('machosign__fastc_hash_code_pages(', 'other_hash('),
+		text.replace('machosign__fastc_sign_macho_adhoc_buffered(', 'other_signer(')] {
+		os.write_file(source, unchanged)!
+		result := os.exec(['awk', '-f', filter, source])
+		assert result.exit_code == 0, result.output
+		assert result.output == unchanged
+	}
+}
+
 fn test_vc_compat_matches_the_native_memory_file_qualifier() ! {
 	$if windows {
 		return
@@ -34,10 +131,16 @@ fn test_vc_compat_matches_the_native_memory_file_qualifier() ! {
 			if definition_const == prototype_const {
 				assert filtered.output == text
 			}
-			checked := os.exec(['sh', script, source, cc, '-std=c99', '-Werror', '-o', executable])
-			assert checked.exit_code == 0, checked.output
-			ran := os.exec([executable])
-			assert ran.exit_code == 0, ran.output
+			for separator in [false, true] {
+				mut command := ['sh', script, source, cc, '-std=c99', '-Werror', '-o', executable]
+				if separator {
+					command << '--'
+				}
+				checked := os.exec(command)
+				assert checked.exit_code == 0, checked.output
+				ran := os.exec([executable])
+				assert ran.exit_code == 0, ran.output
+			}
 			assert os.read_file(source)! == text
 		}
 	}
@@ -88,7 +191,7 @@ fn test_vc_compat_preserves_linux_prctl_and_skips_it_elsewhere() {
 	failed := os.exec([...(os.split_args(command) or { panic(err) }), '37', '${args}',
 		'flag with spaces'])
 	assert failed.exit_code == 37, failed.output
-	assert os.read_file(args)! == 'flag with spaces\n-x\nc\n-\n-x\nnone\n'
+	assert os.read_file(args)! == 'flag with spaces\n-x\nc\n-\n'
 
 	// Do not let a changed snapshot format leave the rest of the file inside
 	// a silently unterminated platform guard.
@@ -229,6 +332,29 @@ fn test_vc_compat_links_libraries_after_the_streamed_source() ! {
 	cc := os.getenv_opt('CC') or { 'cc' }
 	checked := os.exec(['sh', os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat.sh'), source,
 		cc, '-std=c99', '-fno-builtin', '-o', executable, '--', '-lm'])
+	assert checked.exit_code == 0, checked.output
+	ran := os.exec([executable])
+	assert ran.exit_code == 0, ran.output
+}
+
+fn test_vc_compat_links_objects_after_the_streamed_source() ! {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'vc_compat_object_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'snapshot.c')
+	object_source := os.join_path(root, 'object.c')
+	object := os.join_path(root, 'object with spaces.o')
+	executable := os.join_path(root, 'snapshot')
+	os.write_file(source, 'int linked(void);\nint main(void) { return linked() != 42; }\n')!
+	os.write_file(object_source, 'int linked(void) { return 42; }\n')!
+	cc := os.getenv_opt('CC') or { 'cc' }
+	compiled := os.exec([cc, '-std=c99', '-Werror', '-c', object_source, '-o', object])
+	assert compiled.exit_code == 0, compiled.output
+	checked := os.exec(['sh', os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat.sh'), source,
+		cc, '-std=c99', '-Werror', '-o', executable, '--', object])
 	assert checked.exit_code == 0, checked.output
 	ran := os.exec([executable])
 	assert ran.exit_code == 0, ran.output

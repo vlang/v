@@ -6223,7 +6223,8 @@ fn (mut t Transformer) refresh_decl_assign_types_after_generic_rewrite(nodes []i
 	// Whether a callee returns a generic application depends on its name alone,
 	// and the same names are called over and over: remember, by the address of
 	// the name, those that do not.
-	mut plain_callee_ptrs := []voidptr{len: 4096}
+	// Null slots are deliberate sentinels, never dereferenced.
+	mut plain_callee_ptrs := []voidptr{len: 4096, init: unsafe { nil }}
 	mut plain_callee_lens := []int{len: 4096}
 	// A later specialization can update a call whose parent was indexed in an
 	// earlier pass; generic_refresh_nodes_for_calls adds that parent here.
@@ -16893,6 +16894,7 @@ fn (t &Transformer) generic_args_have_placeholders(args_ids []u32) bool {
 	return false
 }
 
+@[direct_array_access]
 fn (t &Transformer) generic_arg_is_unresolved(arg_id u32) bool {
 	if t.skip_generics {
 		// Anonymous literals still need materialization in nongeneric programs.

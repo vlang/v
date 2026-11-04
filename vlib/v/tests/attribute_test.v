@@ -1,55 +1,93 @@
-@[testing]
+// Declare the custom metadata used by these syntax fixtures for strict builds.
+@[attribute]
+struct Testing {}
+
+@[attribute]
+struct Prefix {}
+
+@[attribute]
+struct Attr {
+	value string
+}
+
+@[attribute]
+struct Attr0 {
+	value int
+}
+
+@[attribute]
+struct Attr1 {
+	value string
+}
+
+@[attribute]
+struct AttrBool {
+	value bool
+}
+
+@[attribute]
+struct Attr2 {
+	value bool
+}
+
+@[attribute]
+struct AttrOne {}
+
+@[attribute]
+struct AttrTwo {}
+
+@[Testing]
 struct StructAttrTest {
 	foo string
 	bar int
 }
 
-@[testing]
+@[Testing]
 pub struct PubStructAttrTest {
 	foo string
 	bar int
 }
 
 struct StructFieldAttrTest {
-	foo string      @[attr: bar; attr0; attr1: 'foo']
-	bar int         @[attr0: 123; attr1: true; attr2: false]
-	baz bool = true @[prefix; attr0]
+	foo string      @[Attr: 'bar'; Testing; Attr1: 'foo']
+	bar int         @[Attr0: 123; AttrBool: true; Attr2: false]
+	baz bool = true @[Prefix; Testing]
 }
 
-@[testing]
+@[Testing]
 enum EnumAttrTest {
 	one
 	two
 }
 
-@[testing]
+@[Testing]
 pub enum PubEnumAttrTest {
 	one
 	two
 }
 
-@[attrone; attrtwo]
+@[AttrOne; AttrTwo]
 pub enum EnumMultiAttrTest {
 	one
 	two
 }
 
-@[testing]
+@[Testing]
 fn test_fn_attribute() {
 	assert true
 }
 
-@[testing]
+@[Testing]
 pub fn test_pub_fn_attribute() {
 	assert true
 }
 
-@[attrone; attrtwo]
+@[AttrOne; AttrTwo]
 fn test_fn_multi_attribute() {
 	assert true
 }
 
-@[attrone; attrtwo]
+@[AttrOne; AttrTwo]
 fn test_fn_multi_attribute_single() {
 	assert true
 }

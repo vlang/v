@@ -1,6 +1,7 @@
 module builtin
 
-const array_alignment_shift = sizeof(ArrayFlags) * 8 - 8
+// Alignment metadata uses u32 even when a backend stores flag enums in a wider type.
+const array_alignment_shift = sizeof(u32) * 8 - 8
 const array_alignment_mask = u32(63) << array_alignment_shift
 
 @[inline]

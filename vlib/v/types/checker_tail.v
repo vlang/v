@@ -2032,6 +2032,10 @@ fn (tc &TypeChecker) mut_param_binding_matches_lvalue(name string) bool {
 	if tc.cur_scope == unsafe { nil } {
 		return false
 	}
+	// Most functions declare no `mut` parameter or local: nothing to look up.
+	if tc.fn_context.mut_param_owners.len == 0 && tc.fn_context.mut_local_owners.len == 0 {
+		return false
+	}
 	if param_owner := tc.fn_context.mut_param_owners[name] {
 		if owner := tc.cur_scope.lookup_owner(name) {
 			return voidptr(owner.scope) == voidptr(param_owner.scope)
@@ -4822,6 +4826,15 @@ fn (mut tc TypeChecker) call_callee_indexes_container(callee &flat.Node) bool {
 // check_call validates check call state for types.
 @[direct_array_access]
 fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
+	// The callee's declared value type is asked for up to three times while
+	// this call is resolved (see selector_declared_value_type_at).
+	previous_callee := tc.sel_decl_memo_callee
+	tc.sel_decl_memo_callee = int(tc.a.child(&node, 0))
+	tc.sel_decl_memo_id = -1
+	defer {
+		tc.sel_decl_memo_callee = previous_callee
+		tc.sel_decl_memo_id = -1
+	}
 	if type_name_id := tc.translated_named_cast_call_name_id(id, node) {
 		tc.check_cast_expr(id, flat.Node{
 			...node
@@ -4999,8 +5012,8 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			// `main__main`), so calling it is allowed just like in test builds.
 			tc.record_error_at(.call_arg_mismatch, 'the `main` function cannot be called in the program', id, node.pos)
 		}
-		if callee.kind == .ident && (callee.value in tc.fn_generic_params
-			|| tc.qualify_fn_name(callee.value) in tc.fn_generic_params) {
+		if callee.kind == .ident && (tc.fn_has_generic_params(callee.value)
+			|| tc.fn_has_generic_params(tc.qualify_fn_name(callee.value))) {
 			for i in 1 .. node.children_count {
 				arg_id := tc.call_arg_value(tc.a.child(&node, i))
 				arg := tc.a.node(arg_id)
@@ -5126,7 +5139,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 					return
 				}
 			}
-			if wrapped_fn := tc.selector_declared_value_type(*callee) {
+			if wrapped_fn := tc.selector_declared_value_type_at(callee_id, *callee) {
 				if wrapped_fn is OptionType && fn_type_from_type(wrapped_fn.base_type) != none {
 					smart_fn := tc.smartcast_type(tc.a.child(&node, 0)) or { builtin_void_type }
 					if fn_type_from_type(smart_fn) == none {
@@ -5508,7 +5521,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 		if tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id)
 			&& !tc.current_fn_declared_unsafe()
 			&& !tc.node_is_in_translated_file(id)
-			&& (info.name in tc.unsafe_fns || tc.is_builtin_unsafe_c_call(node, info.name))
+			&& (tc.is_declared_unsafe_fn(info.name) || tc.is_builtin_unsafe_c_call(node, info.name))
 			&& info.name !in ['map.delete', 'builtin.map.delete'] && !calls_safe_array_repeat {
 			if info.has_receiver && callee.kind == .selector {
 				method_name := info.name.trim_string_left('main.')
@@ -5750,6 +5763,17 @@ fn os_raw_io_unsupported_type_message(path string, type_name string) string {
 	return 'contains field `${path}` of type `${type_name}`'
 }
 
+fn (tc &TypeChecker) is_declared_unsafe_fn(name string) bool {
+	if tc.unsafe_fn_bloom.excludes(name, u64(tc.unsafe_fn_modules.len)) {
+		return false
+	}
+	modules := tc.unsafe_fn_modules[name] or { return false }
+	// Bare names are shared by signature aliases from different modules. The
+	// unsafe attribute belongs to the declaration selected by call resolution.
+	owner_module := tc.fn_type_modules[name] or { tc.cur_module }
+	return owner_module in modules
+}
+
 fn (tc &TypeChecker) is_builtin_unsafe_c_call(node flat.Node, name string) bool {
 	if !name.starts_with('C.m') && !name.starts_with('C.s') {
 		return false
@@ -5827,7 +5851,11 @@ fn (tc &TypeChecker) os_raw_io_call_result_pos(node flat.Node, method string) to
 }
 
 fn (mut tc TypeChecker) check_os_file_raw_io_call(id flat.NodeId, node flat.Node, info CallInfo) {
-	if !info.has_receiver || !info.name.contains('os.File.') {
+	// Every raw io method name below ends in `t` or `w`: test that byte before
+	// scanning the name of every method call for the receiver.
+	if !info.has_receiver || info.name.len == 0
+		|| (info.name[info.name.len - 1] != `t` && info.name[info.name.len - 1] != `w`)
+		|| !info.name.contains('os.File.') {
 		return
 	}
 	method := info.name.all_after_last('.')
@@ -5981,7 +6009,13 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 			}
 			receiver_name_id := method_type_name(direct_type)
 			receiver_name := flat.source_type_name(receiver_name_id)
-			mut has_direct_method := '${receiver_name}.${callee.value}' in tc.fn_ret_types
+			// The call usually resolved to `receiver_name.method` itself; the key
+			// is spelled again only when it did not.
+			mut has_direct_method := if spells_method_name(info.name, receiver_name, callee.value) {
+				info.name in tc.fn_ret_types
+			} else {
+				'${receiver_name}.${callee.value}' in tc.fn_ret_types
+			}
 			selected_visibility = tc.private_declaration(info.name)
 			selected_visibility_known = true
 			selected_is_private := selected_visibility != none
@@ -6050,6 +6084,16 @@ fn (mut tc TypeChecker) check_call_privacy(id flat.NodeId, node flat.Node, info 
 	return false
 }
 
+// spells_method_name reports whether `name` is `${receiver}.${method}`.
+@[direct_array_access]
+fn spells_method_name(name string, receiver string, method string) bool {
+	if name.len != receiver.len + 1 + method.len || name[receiver.len] != `.` {
+		return false
+	}
+	return string_bytes_equal_at(name, 0, receiver)
+		&& string_bytes_equal_at(name, receiver.len + 1, method)
+}
+
 fn (tc &TypeChecker) non_function_index_call_kind(call flat.Node) ?string {
 	if call.kind != .call || call.children_count == 0 {
 		return none
@@ -6100,13 +6144,13 @@ fn (tc &TypeChecker) call_closing_paren_pos(node flat.Node) token.Pos {
 
 fn (tc &TypeChecker) call_generic_params(name string) []u32 {
 	qualified := tc.qualify_fn_name(name)
-	if params := tc.fn_generic_params[qualified] {
+	if params := tc.declared_fn_generic_params(qualified) {
 		return params
 	}
 	if qualified != name && tc.fn_signature_known(qualified) {
 		return []u32{}
 	}
-	return tc.fn_generic_params[name] or { []u32{} }
+	return tc.declared_fn_generic_params(name) or { []u32{} }
 }
 
 fn (mut tc TypeChecker) record_chained_bare_generic_struct_method_inference_error(id flat.NodeId, node flat.Node, info CallInfo) {
@@ -6543,7 +6587,7 @@ fn (mut tc TypeChecker) resolve_generic_compile_error_instantiation(call flat.No
 	}
 	decl_id := flat.NodeId(decl.idx)
 	fn_node := tc.a.node(decl_id)
-	generic_params := tc.fn_generic_params[info.name] or {
+	generic_params := tc.declared_fn_generic_params(info.name) or {
 		tc.enclosing_generic_params_by_node[decl.idx] or {
 			tc.infer_decl_generic_param_ids(fn_node)
 		}
@@ -9725,7 +9769,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		}
 		// Resolve the declared field/global/const type once for both the plain and
 		// the Option/Result-wrapped function value checks.
-		declared_value_type := tc.selector_declared_value_type(fn_node) or { builtin_void_type }
+		declared_value_type := tc.selector_declared_value_type_at(tc.a.child(&node, 0), fn_node) or {
+			builtin_void_type
+		}
 		if fn_typ := fn_type_from_type(declared_value_type) {
 			return CallInfo{
 				name:         ''
@@ -14393,13 +14439,43 @@ fn (tc &TypeChecker) visible_fn_local_binding_sources_before(decl VisibleMutatio
 	return result
 }
 
+// CallParamHint memoizes, across the arguments of one call, what
+// visible_call_param and explicit_generic_source_param_is_mut derive from the
+// call alone: its visible declaration and its explicit generic source name.
+// Every argument of the call would otherwise repeat the same lookups.
+struct CallParamHint {
+mut:
+	decl_known        bool
+	decl_found        bool
+	decl              VisibleMutationFnDecl
+	source_name_known bool
+	source_name       string
+}
+
 fn (tc &TypeChecker) visible_call_param(info CallInfo, param_idx int) ?flat.Node {
-	decl_module := if info.name.starts_with('C.') {
-		tc.cur_module
-	} else {
-		tc.fn_type_modules[info.name] or { '' }
+	mut hint := CallParamHint{}
+	return tc.visible_call_param_hinted(info, param_idx, mut hint)
+}
+
+// visible_call_param_hinted is visible_call_param with the call's declaration
+// memoized in `hint`.
+fn (tc &TypeChecker) visible_call_param_hinted(info CallInfo, param_idx int, mut hint CallParamHint) ?flat.Node {
+	if !hint.decl_known {
+		hint.decl_known = true
+		decl_module := if info.name.starts_with('C.') {
+			tc.cur_module
+		} else {
+			tc.fn_type_modules[info.name] or { '' }
+		}
+		if found := tc.visible_mutation_fn_decl(info.name, decl_module) {
+			hint.decl = found
+			hint.decl_found = true
+		}
 	}
-	decl := tc.visible_mutation_fn_decl(info.name, decl_module) or { return none }
+	if !hint.decl_found {
+		return none
+	}
+	decl := hint.decl
 	mut source_param_idx := param_idx
 	if info.has_implicit_veb_ctx {
 		fn_node := tc.a.nodes[decl.idx]
@@ -14429,7 +14505,13 @@ fn mut_pointer_alias_slot_type(typ &Type) bool {
 	return typ.base_type is Alias && unalias_type(typ.base_type) is Pointer
 }
 
-fn (tc &TypeChecker) explicit_generic_source_param_is_mut(call flat.Node, info CallInfo, param_idx int) bool {
+// explicit_generic_source_name is the name of the generic source declaration
+// of `call`: the base of an explicit `name[T](...)` callee, or the name before
+// the `_T_` of an instantiated call name; '' when the call has neither.
+fn (tc &TypeChecker) explicit_generic_source_name(call flat.Node, info CallInfo, mut hint CallParamHint) string {
+	if hint.source_name_known {
+		return hint.source_name
+	}
 	mut name := ''
 	if call.children_count > 0 {
 		callee := tc.a.child_node(&call, 0)
@@ -14441,6 +14523,20 @@ fn (tc &TypeChecker) explicit_generic_source_param_is_mut(call flat.Node, info C
 	if name.len == 0 && info.name.index_after_('_T_', 0) >= 0 {
 		name = info.name.all_before('_T_')
 	}
+	hint.source_name_known = true
+	hint.source_name = name
+	return name
+}
+
+fn (tc &TypeChecker) explicit_generic_source_param_is_mut(call flat.Node, info CallInfo, param_idx int) bool {
+	mut hint := CallParamHint{}
+	return tc.explicit_generic_source_param_is_mut_hinted(call, info, param_idx, mut hint)
+}
+
+// explicit_generic_source_param_is_mut_hinted is explicit_generic_source_param_is_mut
+// with the call's generic source name memoized in `hint`.
+fn (tc &TypeChecker) explicit_generic_source_param_is_mut_hinted(call flat.Node, info CallInfo, param_idx int, mut hint CallParamHint) bool {
+	name := tc.explicit_generic_source_name(call, info, mut hint)
 	if name.len == 0 {
 		return false
 	}
@@ -14451,23 +14547,20 @@ fn (tc &TypeChecker) explicit_generic_source_param_is_mut(call flat.Node, info C
 }
 
 fn (tc &TypeChecker) call_param_has_open_generic_source(call flat.Node, info CallInfo, param_idx int) bool {
-	mut name := ''
-	if call.children_count > 0 {
-		callee := tc.a.child_node(&call, 0)
-		if callee.kind == .index && callee.children_count > 0 {
-			base := tc.a.child_node(callee, 0)
-			name = tc.generic_call_base_name(*base) or { '' }
-		}
-	}
-	if name.len == 0 && info.name.index_after_('_T_', 0) >= 0 {
-		name = info.name.all_before('_T_')
-	}
+	mut hint := CallParamHint{}
+	return tc.call_param_has_open_generic_source_hinted(call, info, param_idx, mut hint)
+}
+
+// call_param_has_open_generic_source_hinted is call_param_has_open_generic_source
+// with the call's declaration and generic source name memoized in `hint`.
+fn (tc &TypeChecker) call_param_has_open_generic_source_hinted(call flat.Node, info CallInfo, param_idx int, mut hint CallParamHint) bool {
+	name := tc.explicit_generic_source_name(call, info, mut hint)
 	param := if name.len > 0 {
 		decl_module := tc.fn_type_modules[name] or { tc.cur_module }
 		decl := tc.visible_mutation_fn_decl(name, decl_module) or { return false }
 		tc.visible_mutation_fn_param(decl, param_idx) or { return false }
 	} else {
-		tc.visible_call_param(info, param_idx) or { return false }
+		tc.visible_call_param_hinted(info, param_idx, mut hint) or { return false }
 	}
 	return tc.type_text_has_generic_placeholder(param.typ)
 }
@@ -14552,6 +14645,13 @@ fn is_trim_space_byte(c u8) bool {
 }
 
 fn (tc &TypeChecker) call_param_is_mut(info CallInfo, param_idx int) bool {
+	mut hint := CallParamHint{}
+	return tc.call_param_is_mut_hinted(info, param_idx, mut hint)
+}
+
+// call_param_is_mut_hinted is call_param_is_mut with the call's declaration
+// memoized in `hint`.
+fn (tc &TypeChecker) call_param_is_mut_hinted(info CallInfo, param_idx int, mut hint CallParamHint) bool {
 	if info.has_implicit_veb_ctx {
 		decl_module := tc.fn_type_modules[info.name] or { '' }
 		if decl := tc.visible_mutation_fn_decl(info.name, decl_module) {
@@ -14561,7 +14661,7 @@ fn (tc &TypeChecker) call_param_is_mut(info CallInfo, param_idx int) bool {
 			}
 		}
 	}
-	if param := tc.visible_call_param(info, param_idx) {
+	if param := tc.visible_call_param_hinted(info, param_idx, mut hint) {
 		return param.is_mut
 	}
 	if info.has_receiver {
@@ -16239,11 +16339,12 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	mut expanded_multi_return_arg := false
 	mut expanded_overflow_arg := flat.NodeId(-1)
 	mut logical_arg_count := recv_extra
+	print_style := is_print_style_fn_name(info.name)
 	for i in 1 + info.arg_offset .. node.children_count {
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
 		logical_arg_count++
 		arg := tc.a.node(arg_id)
-		if !info.is_variadic && arg.kind == .call && !is_print_style_fn_name(info.name) {
+		if !info.is_variadic && arg.kind == .call && !print_style {
 			arg_type := tc.cached_expr_type(arg_id) or { tc.resolve_type(arg_id) }
 			if arg_type is MultiReturn {
 				actual_count += arg_type.types.len - 1
@@ -16506,6 +16607,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 	channel_method := channel_builtin_call_method(info.name)
 	mut expanded_arg_offset := 0
 	mut pointer_slot_call_args := []flat.NodeId{}
+	// The declaration and generic source of the call, resolved once for all of
+	// its arguments.
+	mut param_hint := CallParamHint{}
 	for i in 1 + info.arg_offset .. node.children_count {
 		arg_id := tc.call_arg_value(tc.a.child(&node, i))
 		// field_init args are fields of one collapsed struct argument, not positional params.
@@ -16650,7 +16754,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 			continue
 		}
-		if !info.is_variadic && !is_print_style_fn_name(info.name) && multi_arg_type is MultiReturn
+		if !info.is_variadic && !print_style && multi_arg_type is MultiReturn
 			&& tc.a.node(check_arg_id).kind != .call {
 			expected_count := info.params.len - (if info.has_receiver { 1 } else { 0 })
 			found_count := node.children_count - 2 - info.arg_offset + multi_arg_type.types.len
@@ -16765,7 +16869,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 					}
 					continue
 				}
-				allow_sum_variant := tc.call_param_has_open_generic_source(node, info, param_idx)
+				allow_sum_variant := tc.call_param_has_open_generic_source_hinted(node, info, param_idx, mut param_hint)
 				if !tc.variadic_spread_arg_compatible(actual, expected_raw, allow_sum_variant) {
 					actual_elem := array_like_elem_type(unwrap_pointer(actual)) or {
 						Type(Unknown{})
@@ -16945,8 +17049,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			continue
 		}
 		param_is_mut := (channel_method == .try_pop
-			&& param_idx == 1) || tc.call_param_is_mut(info, param_idx)
-			|| tc.explicit_generic_source_param_is_mut(node, info, param_idx)
+			&& param_idx == 1) || tc.call_param_is_mut_hinted(info, param_idx, mut param_hint)
+			|| tc.explicit_generic_source_param_is_mut_hinted(node, info, param_idx, mut param_hint)
 			|| (info.name.len == 0
 				&& (tc.call_literal_param_is_mut(node, param_idx)
 					|| tc.call_field_param_is_mut(node, param_idx)
@@ -16986,7 +17090,7 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 			continue
 		}
-		if !is_print_style_fn_name(info.name) {
+		if !print_style {
 			unlocked_access := if param_is_mut && mut_arg_node.is_mut {
 				tc.unlocked_shared_access(arg_id)
 			} else {
@@ -17078,9 +17182,9 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			continue
 		}
 		if mut_arg_node.is_mut && mut_arg_node.kind == .struct_init
-			&& (tc.call_param_is_mut(info, param_idx)
+			&& (tc.call_param_is_mut_hinted(info, param_idx, mut param_hint)
 				|| tc.call_literal_param_is_mut(node, param_idx))
-			&& !tc.call_param_has_open_generic_source(node, info, param_idx)
+			&& !tc.call_param_has_open_generic_source_hinted(node, info, param_idx, mut param_hint)
 			&& !tc.type_contains_open_generic_placeholder(expected)
 			&& unalias_and_unwrap_pointer_type(expected) is Struct {
 			tc.record_error_at(.call_arg_mismatch, 'cannot pass a struct initialization as `mut`, you may want to use a variable `mut var := ${mut_arg_node.value_text()}{....}`', arg_id, mut_arg_node.pos)
@@ -17148,7 +17252,8 @@ fn (mut tc TypeChecker) check_call_arg_types(id flat.NodeId, node flat.Node, inf
 			}
 		}
 		arg_context_expected := if mut_arg_node.is_mut && mut_arg_node.kind == .struct_init
-			&& tc.call_param_has_open_generic_source(node, info, param_idx) && expected is Pointer {
+			&& tc.call_param_has_open_generic_source_hinted(node, info, param_idx, mut param_hint)
+			&& expected is Pointer {
 			*expected.base_type
 		} else {
 			expected
@@ -17632,12 +17737,14 @@ fn (mut tc TypeChecker) call_info_with_inferred_receiver(node flat.Node, info Ca
 }
 
 fn (mut tc TypeChecker) infer_call_info_receiver(node flat.Node, info CallInfo) CallInfo {
+	mut callee_id := tc.a.child(&node, 0)
 	mut callee := tc.a.child_node(&node, 0)
 	if callee.kind == .index && callee.children_count > 0 {
+		callee_id = tc.a.child(callee, 0)
 		callee = tc.a.child_node(callee, 0)
 		// `recv.fns[i](...)` indexes a field that holds functions, unlike the generic
 		// method call `recv.method[T](...)`, so `recv` is not a receiver.
-		if callee.kind == .selector && tc.selector_declared_value_type(*callee) != none {
+		if callee.kind == .selector && tc.selector_declared_value_type_at(callee_id, *callee) != none {
 			return info
 		}
 	}
@@ -17657,7 +17764,9 @@ fn (mut tc TypeChecker) infer_call_info_receiver(node flat.Node, info CallInfo) 
 	if callee.kind != .selector || callee.children_count == 0 {
 		return info
 	}
-	declared_value_type := tc.selector_declared_value_type(*callee) or { builtin_void_type }
+	declared_value_type := tc.selector_declared_value_type_at(callee_id, *callee) or {
+		builtin_void_type
+	}
 	if fn_type_from_type(declared_value_type) != none
 		|| wrapped_fn_type_from_type(declared_value_type) != none {
 		return info
@@ -18739,28 +18848,45 @@ fn (mut tc TypeChecker) record_array_compare_callback_param_errors(method string
 	expected := Type(Pointer{
 		base_type: tc.intern_type_reference(elem_type)
 	})
-	for idx in tc.top_level_idx {
-		fn_node := tc.a.nodes[idx]
-		if fn_node.kind != .fn_decl
-			|| (fn_node.value != arg.value && !fn_node.value.ends_with('.${arg.value}')) {
-			continue
+	// The first fn_decl named `arg.value`, plain or as a method. For a dotless
+	// name the short-name index records exactly that declaration (one appended
+	// after the index was built follows every indexed one), so only a name it
+	// does not index scans the top-level nodes.
+	mut decl_idx := -1
+	if arg.value.index_u8(`.`) < 0 {
+		if idx := tc.fn_decl_short_name_ids[arg.value] {
+			decl_idx = idx
 		}
-		mut param_index := 0
-		for i in 0 .. fn_node.children_count {
-			param_id := tc.a.child(&fn_node, i)
-			param := tc.a.node(param_id)
-			if param.kind != .param {
-				break
+	}
+	if decl_idx < 0 {
+		for idx in tc.top_level_idx {
+			candidate := tc.a.node(flat.NodeId(idx))
+			if candidate.kind != .fn_decl
+				|| (candidate.value != arg.value && !candidate.value.ends_with('.${arg.value}')) {
+				continue
 			}
-			if param_index < 2 {
-				actual := tc.parse_type(param.typ)
-				if !tc.method_param_signature_compatible(actual, expected) {
-					tc.record_error_at(.call_arg_mismatch, '${method} callback function parameter `${param.value}` with type `${actual.name()}` should be `${expected.name()}`', param_id, tc.type_diagnostic_pos_id(param_id, param.typ))
-				}
-			}
-			param_index++
+			decl_idx = int(idx)
+			break
 		}
+	}
+	if decl_idx < 0 {
 		return
+	}
+	fn_node := tc.a.nodes[decl_idx]
+	mut param_index := 0
+	for i in 0 .. fn_node.children_count {
+		param_id := tc.a.child(&fn_node, i)
+		param := tc.a.node(param_id)
+		if param.kind != .param {
+			break
+		}
+		if param_index < 2 {
+			actual := tc.parse_type(param.typ)
+			if !tc.method_param_signature_compatible(actual, expected) {
+				tc.record_error_at(.call_arg_mismatch, '${method} callback function parameter `${param.value}` with type `${actual.name()}` should be `${expected.name()}`', param_id, tc.type_diagnostic_pos_id(param_id, param.typ))
+			}
+		}
+		param_index++
 	}
 }
 
@@ -19561,7 +19687,7 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 	if tc.call_has_explicit_generic_type_args(node) {
 		return info
 	}
-	generic_params := tc.fn_generic_params[info.name] or { return info }
+	generic_params := tc.declared_fn_generic_params(info.name) or { return info }
 	param_texts := tc.fn_param_type_texts.type_ids(info.name) or { return info }
 	if generic_params.len == 0 || node.children_count == 0
 		|| (node.children_count == 1 && !info.has_receiver)
@@ -20030,7 +20156,6 @@ fn (tc &TypeChecker) generic_param_type_text(text_id u32) u32 {
 	if flat.source_type_shape(resolved).has(.dotted) {
 		return resolved
 	}
-	resolved_text := flat.source_type_name(resolved)
 	if selected_id := tc.resolve_selective_import_type_symbol_in_file_id(resolved, file) {
 		return selected_id
 	}
@@ -21721,7 +21846,51 @@ fn struct_type_from_type(typ Type) ?Struct {
 	return none
 }
 
-@[direct_array_access]
+// selector_declared_value_type_at is selector_declared_value_type for the
+// selector node `id`, remembered across the resolutions one check_call makes
+// of its callee (the preamble, resolve_call_info_uncached and the receiver
+// inference). Queries outside that active callee do not read or populate the
+// memo: smartcast values can change between queries without changing map size.
+// The answer holds while nothing else it was computed from changed:
+// the scope and its bindings, the smartcasts, the errors, the function and
+// whether the base already has a checked type; check_call clears it on exit.
+@[direct_array_access; inline]
+fn (tc &TypeChecker) selector_declared_value_type_at(id flat.NodeId, node flat.Node) ?Type {
+	if int(id) != tc.sel_decl_memo_callee || isnil(tc.cur_scope) || node.children_count == 0 {
+		return tc.selector_declared_value_type(node)
+	}
+	base_cached := !isnil(tc.cached_expr_type_ref(tc.a.child(&node, 0)))
+	if tc.sel_decl_memo_id == int(id) && tc.sel_decl_memo_scope == voidptr(tc.cur_scope)
+		&& tc.sel_decl_memo_names == tc.cur_scope.names.len
+		&& tc.sel_decl_memo_lifetime == tc.cur_scope.lifetime
+		&& tc.sel_decl_memo_errors == tc.errors.len
+		&& tc.sel_decl_memo_smartcasts == tc.smartcasts.len
+		&& tc.sel_decl_memo_fn == tc.fn_context.node_id
+		&& tc.sel_decl_memo_base_cached == base_cached {
+		if tc.sel_decl_memo_found {
+			return tc.sel_decl_memo_type
+		}
+		return none
+	}
+	result := tc.selector_declared_value_type(node)
+	mut wtc := unsafe { tc }
+	wtc.sel_decl_memo_id = int(id)
+	wtc.sel_decl_memo_scope = voidptr(tc.cur_scope)
+	wtc.sel_decl_memo_names = tc.cur_scope.names.len
+	wtc.sel_decl_memo_lifetime = tc.cur_scope.lifetime
+	wtc.sel_decl_memo_errors = tc.errors.len
+	wtc.sel_decl_memo_smartcasts = tc.smartcasts.len
+	wtc.sel_decl_memo_fn = tc.fn_context.node_id
+	wtc.sel_decl_memo_base_cached = base_cached
+	if typ := result {
+		wtc.sel_decl_memo_found = true
+		wtc.sel_decl_memo_type = typ
+	} else {
+		wtc.sel_decl_memo_found = false
+	}
+	return result
+}
+
 fn (tc &TypeChecker) selector_declared_value_type(node flat.Node) ?Type {
 	if node.children_count == 0 {
 		return none

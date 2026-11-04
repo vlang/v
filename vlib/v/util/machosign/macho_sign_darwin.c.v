@@ -1,6 +1,7 @@
-module fastc
+module machosign
 
 import os
+import runtime
 
 fn C.CC_SHA256(const_data voidptr, len u32, md &u8) &u8
 
@@ -71,7 +72,7 @@ fn fastc_hash_code_pages_native(data &u8, hashes &u8, page_count int, code_limit
 		fastc_hash_native_range(data, hashes, 0, page_count, code_limit)
 		return
 	}
-	available_workers := fastc_nr_cpus()
+	available_workers := runtime.nr_cpus()
 	worker_count := if available_workers < 16 { available_workers } else { 16 }
 	mut workers := [
 		spawn fastc_hash_native_range(data, hashes, 0, page_count / worker_count, code_limit),

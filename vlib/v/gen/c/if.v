@@ -455,53 +455,66 @@ fn (mut g FlatGen) gen_if_else(node flat.Node) {
 
 // gen_if_expr emits if expr output for c.
 fn (mut g FlatGen) gen_if_expr(node flat.Node) {
-	then_block := g.a.child_node(&node, 1)
-	mut needs_stmt_expr := g.expected_expr_type is types.MultiReturn
-		|| then_block.children_count > 1
-	if !needs_stmt_expr && node.children_count > 2 {
-		else_node := g.a.child_node(&node, 2)
-		if else_node.kind == .block && else_node.children_count > 1 {
-			needs_stmt_expr = true
-		} else if else_node.kind == .if_expr {
-			needs_stmt_expr = true
-		}
-	}
-	if needs_stmt_expr {
-		g.gen_if_expr_stmt(node)
-		return
-	}
-	g.write('(')
-	g.gen_expr(g.a.child(&node, 0))
-	g.write(' ? ')
-	if then_block.children_count > 0 {
-		last := g.a.child_node(then_block, then_block.children_count - 1)
-		if last.kind == .expr_stmt {
-			g.gen_expr(g.a.child(last, 0))
-		} else {
-			g.gen_expr(g.a.child(then_block, then_block.children_count - 1))
-		}
-	}
-	g.write(' : ')
-	if node.children_count > 2 {
-		else_node := g.a.child_node(&node, 2)
-		if else_node.kind == .if_expr {
-			g.gen_if_expr(*else_node)
-		} else if else_node.kind == .block {
-			if else_node.children_count > 0 {
-				last := g.a.child_node(else_node, else_node.children_count - 1)
-				if last.kind == .expr_stmt {
-					g.gen_expr(g.a.child(last, 0))
-				} else {
-					g.gen_expr(g.a.child(else_node, else_node.children_count - 1))
-				}
-			} else {
-				g.write('0')
+	mut current := node
+	mut closing_parens := 0
+	for {
+		then_block := g.a.child_node(&current, 1)
+		mut needs_stmt_expr := g.expected_expr_type is types.MultiReturn
+			|| then_block.children_count > 1
+		if !needs_stmt_expr && current.children_count > 2 {
+			else_node := g.a.child_node(&current, 2)
+			if else_node.kind == .block && else_node.children_count > 1 {
+				needs_stmt_expr = true
+			} else if else_node.kind == .if_expr {
+				needs_stmt_expr = true
 			}
 		}
-	} else {
-		g.write('0')
+		if needs_stmt_expr {
+			g.gen_if_expr_stmt(current)
+			break
+		}
+		g.write('(')
+		closing_parens++
+		g.gen_expr(g.a.child(&current, 0))
+		g.write(' ? ')
+		if then_block.children_count > 0 {
+			last := g.a.child_node(then_block, then_block.children_count - 1)
+			if last.kind == .expr_stmt {
+				g.gen_expr(g.a.child(last, 0))
+			} else {
+				g.gen_expr(g.a.child(then_block, then_block.children_count - 1))
+			}
+		}
+		g.write(' : ')
+		if current.children_count > 2 {
+			else_node := g.a.child_node(&current, 2)
+			if else_node.kind == .block {
+				if else_node.children_count > 0 {
+					last := g.a.child_node(else_node, else_node.children_count - 1)
+					mut value_id := g.a.child(else_node, else_node.children_count - 1)
+					if last.kind == .expr_stmt {
+						value_id = g.a.child(last, 0)
+					}
+					// Type-name dispatch can have thousands of nested conditional tails.
+					if int(value_id) >= 0 && g.a.nodes[int(value_id)].kind == .if_expr
+						&& int(value_id) !in g.assert_expr_overrides
+						&& int(value_id) !in g.callback_target_overrides {
+						current = g.a.nodes[int(value_id)]
+						continue
+					}
+					g.gen_expr(value_id)
+				} else {
+					g.write('0')
+				}
+			}
+		} else {
+			g.write('0')
+		}
+		break
 	}
-	g.write(')')
+	for _ in 0 .. closing_parens {
+		g.write(')')
+	}
 }
 
 // gen_if_expr_block emits if expr block output for c.
