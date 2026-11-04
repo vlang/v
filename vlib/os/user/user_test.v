@@ -19,3 +19,11 @@ fn test_lookup_unknown() {
 		assert err.msg().contains('unknown user')
 	}
 }
+
+fn test_lookup_id_current() {
+	u := current()!
+	if u.uid != '' {
+		u2 := lookup_id(u.uid)!
+		assert u2.username == u.username
+	}
+}

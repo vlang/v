@@ -3,6 +3,7 @@ module user
 import os
 
 #include <pwd.h>
+#include <grp.h>
 
 struct C.passwd {
 	pw_name   &char
@@ -14,8 +15,17 @@ struct C.passwd {
 	pw_shell  &char
 }
 
+struct C.group {
+	gr_name   &char
+	gr_passwd &char
+	gr_gid    int
+	gr_mem    &&char
+}
+
 fn C.getpwuid(int) &C.passwd
 fn C.getpwnam(&char) &C.passwd
+fn C.getgrgid(int) &C.group
+fn C.getgrnam(&char) &C.group
 
 fn make_user(pw &C.passwd) User {
 	unsafe {
@@ -34,6 +44,16 @@ fn make_user(pw &C.passwd) User {
 			username: username
 			name:     name
 			home_dir: home
+		}
+	}
+}
+
+fn make_group(gr &C.group) Group {
+	unsafe {
+		name := cstring_to_vstring(gr.gr_name)
+		return Group{
+			gid:  int(gr.gr_gid).str()
+			name: name
 		}
 	}
 }
@@ -76,4 +96,21 @@ pub fn lookup_id(uid string) !User {
 		return error('user: unknown uid ${uid}')
 	}
 	return make_user(pw)
+}
+
+pub fn lookup_group(name string) !Group {
+	gr := C.getgrnam(name.str)
+	if isnil(gr) {
+		return error('user: unknown group ${name}')
+	}
+	return make_group(gr)
+}
+
+pub fn lookup_group_id(gid string) !Group {
+	gid_int := gid.int()
+	gr := C.getgrgid(gid_int)
+	if isnil(gr) {
+		return error('user: unknown gid ${gid}')
+	}
+	return make_group(gr)
 }

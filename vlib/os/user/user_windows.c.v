@@ -38,3 +38,11 @@ pub fn lookup_id(uid string) !User {
 	}
 	return u
 }
+
+pub fn lookup_group(name string) !Group {
+	return error('user: group lookup is not supported on this platform')
+}
+
+pub fn lookup_group_id(gid string) !Group {
+	return error('user: group lookup is not supported on this platform')
+}
