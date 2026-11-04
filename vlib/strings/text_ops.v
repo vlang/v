@@ -62,6 +62,28 @@ pub fn last_index_any(s string, chars string) int {
 	return -1
 }
 
+// title returns a copy of s with the first character of each word (split by
+// whitespace) converted to title case. Mirrors Go's strings.Title (deprecated
+// but still useful as a simple helper).
+pub fn title(s string) string {
+	mut out := []u8{}
+	mut prev_space := true
+	for b in s.bytes() {
+		if b.is_space() {
+			out << b
+			prev_space = true
+		} else {
+			if prev_space && b >= `a` && b <= `z` {
+				out << b - 32
+			} else {
+				out << b
+			}
+			prev_space = false
+		}
+	}
+	return out.bytestr()
+}
+
 // contains_rune reports whether s contains the rune r anywhere.
 pub fn contains_rune(s string, r rune) bool {
 	for c in s.runes() {
