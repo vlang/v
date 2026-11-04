@@ -21,8 +21,13 @@ pub:
 // compiles and links with the flags. Each header is tried in its own program.
 // The program calls nothing from the header, so this shows that the flags
 // resolve, such as `-lmpv` finding a library, and not that they are complete.
+// The compiler is the one in $CC, or else the first of cc, gcc, clang and tcc
+// in the PATH.
 pub fn check_system_c_links(headers []string, opts LinkCheckOpts) bool {
-	cc := c_compiler() or { return verdict('C compiler', ['cc'], opts.panic) }
+	cc := c_compiler()
+	if !binary_exists(cc[0]) {
+		return verdict('C compiler', [cc[0]], opts.panic)
+	}
 	mut kind := 'C link'
 	if opts.flags.len > 0 {
 		kind += ' (flags: ${opts.flags.join(' ')})'
@@ -60,18 +65,19 @@ fn binary_exists(name string) bool {
 	return true
 }
 
-// c_compiler returns the command in $CC, or else the first compiler in the PATH.
-fn c_compiler() ?[]string {
+// c_compiler returns the command in $CC, or else the first compiler in the PATH,
+// or else `cc`. A missing compiler is left to the caller, to report it by name.
+fn c_compiler() []string {
 	from_env := os.getenv('CC').fields()
 	if from_env.len > 0 {
-		return if binary_exists(from_env[0]) { from_env } else { none }
+		return from_env
 	}
 	for name in ['cc', 'gcc', 'clang', 'tcc'] {
 		if binary_exists(name) {
 			return [name]
 		}
 	}
-	return none
+	return ['cc']
 }
 
 // header_links builds a program that includes the header, leaving the search

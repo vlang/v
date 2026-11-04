@@ -53,6 +53,16 @@ fn required(id string) FlowDep {
 	}
 }
 
+// restore_env sets the environment variable `name` back to `value`, or unsets it
+// when it was not set.
+fn restore_env(name string, value ?string) {
+	if v := value {
+		os.setenv(name, v, true)
+	} else {
+		os.unsetenv(name)
+	}
+}
+
 // test_paths_overlap covers equal, nested and merely similar paths.
 fn test_paths_overlap() {
 	assert paths_overlap('src', 'src')
@@ -227,7 +237,7 @@ fn test_unknown_flow_and_hook_are_rejected() {
 	c.execute(['b']) or {
 		assert err.msg().contains('`b`')
 		c.execute(['a']) or {
-			assert err.msg().contains('`nope`')
+			assert err.msg() == 'flow `a` has unknown pre hook `nope`'
 			return
 		}
 	}
@@ -261,23 +271,23 @@ fn test_flow_taking_its_own_output_is_not_a_cycle() {
 
 // test_mistakes_are_reported_before_any_flow_runs checks that an unknown flow,
 // whether requested or named as a hook anywhere in the script, stops the build
-// before anything ran.
+// before anything ran, and that the message says where the name is.
 fn test_mistakes_are_reported_before_any_flow_runs() {
 	sandbox('validate_first')
 	mut c := new()
 	c.add_flow(id: 'ok', check: .none, flow: record)
 	mut msg := ''
 	c.execute(['ok', 'nope']) or { msg = err.msg() }
-	assert msg.contains('`nope`')
+	assert msg == 'unknown flow `nope`'
 	c.add_flow(id: 'typo', check: .none, post: [hook('missing')], flow: record)
 	msg = ''
 	c.execute(['ok']) or { msg = err.msg() }
-	assert msg.contains('`missing`')
+	assert msg == 'flow `typo` has unknown post hook `missing`'
 	assert !os.exists('log')
 }
 
 // test_default_flows checks that flags alone run the default flows, and that a
-// build with nothing to run is an error.
+// build with nothing to run is an error, as is an unknown default.
 fn test_default_flows() {
 	sandbox('defaults')
 	mut c := new()
@@ -294,6 +304,10 @@ fn test_default_flows() {
 	mut msg := ''
 	c.execute([]) or { msg = err.msg() }
 	assert msg == 'no flow given and no default flow set'
+	c.default(['nope'])
+	msg = ''
+	c.execute([]) or { msg = err.msg() }
+	assert msg == 'unknown default flow `nope`'
 	c.default(['b'])
 	c.execute(['--fast'])!
 	assert os.read_file('fast')! == 'true'
@@ -302,13 +316,15 @@ fn test_default_flows() {
 }
 
 // test_help_flow_replaces_the_help checks that a flow called help runs instead
-// of the generated help.
+// of the generated help, whichever way the help is asked for.
 fn test_help_flow_replaces_the_help() {
 	sandbox('help_flow')
 	mut c := new()
 	c.add_flow(id: 'help', check: .none, flow: record)
-	c.execute(['help'])!
-	assert os.read_file('log')! == 'help '
+	for arg in ['help', '-h', '--help'] {
+		c.execute([arg])!
+	}
+	assert os.read_file('log')! == 'help help help '
 }
 
 // test_missing_output_fails_the_flow checks gives are verified after a run.
@@ -376,11 +392,7 @@ fn test_check_v_modules() {
 fn test_check_system_c_links_uses_cc() {
 	old := os.getenv_opt('CC')
 	defer {
-		if value := old {
-			os.setenv('CC', value, true)
-		} else {
-			os.unsetenv('CC')
-		}
+		restore_env('CC', old)
 	}
 	// stand-ins for a compiler, succeeding or failing whatever they are given
 	os.setenv('CC', 'sh -c true', true)
@@ -502,6 +514,13 @@ ctx.add_flow(
 		println('unreachable')
 	}
 )
+ctx.add_flow(
+	id:    'needcc'
+	check: .none
+	flow:  fn (self imp.Flow) ! {
+		imp.check_system_c_links(['stdio.h'], panic: true)
+	}
+)
 ctx.add_auto_flow(.clean)
 ctx.add_auto_flow(.run)
 ctx.default(['build'])
@@ -606,6 +625,14 @@ fn test_end_to_end() {
 	assert need.output.contains('check failed: missing binary: imp_no_such_binary')
 	assert !need.output.contains('unreachable')
 	assert !need.output.contains('>> build')
+
+	// a missing compiler is reported by the name $CC gives it
+	old_cc := os.getenv_opt('CC')
+	os.setenv('CC', 'imp_no_such_cc -O2', true)
+	needcc := os.exec(['./build', 'needcc'])
+	restore_env('CC', old_cc)
+	assert needcc.exit_code == 1
+	assert needcc.output.contains('check failed: missing C compiler: imp_no_such_cc')
 
 	bad := os.exec(['./build', 'nope'])
 	assert bad.exit_code == 1
@@ -1224,6 +1251,39 @@ fn test_hash_flow_over_own_state_dir() {
 	os.write_file('a', '2')!
 	c.execute(['build'])!
 	assert os.read_file(runs)! == 'xx'
+}
+
+// test_state_files_never_clash checks that each flow id gets a state file of its
+// own, in the directory of its kind, even on a case-insensitive file system,
+// while plain ids keep readable names.
+fn test_state_files_never_clash() {
+	plain := state_file('digest', Flow{ id: 'build-2_x', flow: noop })
+	assert plain == os.join_path(stamp_dir, 'digest', 'build-2_x')
+	mut seen := map[string]string{}
+	for id in ['a/b', 'a_b', 'a\\b', 'a%2Fb', 'A_b', 'a.b', '.', '..', 'a b', 'é'] {
+		path := state_file('digest', Flow{ id: id, flow: noop })
+		name := os.file_name(path)
+		assert os.dir(path) == os.join_path(stamp_dir, 'digest') && name !in ['.', '..'], path
+		key := name.to_lower()
+		assert key !in seen, '`${id}` and `${seen[key]}` share `${name}`'
+		seen[key] = id
+	}
+}
+
+// test_flows_keep_their_state_apart checks that encoding ids for their state
+// files cannot make two flows share one, as `a/b` and `a_b` would if `/` became
+// `_`.
+fn test_flows_keep_their_state_apart() {
+	sandbox('state_apart')
+	os.write_file('x', 'x')!
+	os.write_file('y', 'y')!
+	mut c := new()
+	c.add_flow(id: 'a/b', takes: ['x'], gives: ['x.out'], check: .hash, flow: record)
+	c.add_flow(id: 'a_b', takes: ['y'], gives: ['y.out'], check: .hash, flow: record)
+	for id in ['a/b', 'a_b', 'a/b', 'a_b'] {
+		c.execute([id])!
+	}
+	assert os.read_file('log')! == 'a/b a_b '
 }
 
 // test_clean_removes_targets_added_later checks that the clean flow covers the

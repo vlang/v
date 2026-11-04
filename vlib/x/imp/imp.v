@@ -136,8 +136,10 @@ pub fn (mut c Context) default(ids []string) {
 	c.defaults = ids
 }
 
-// flow executes the flows named on the command line, or the defaults.
-// On failure it reports the error and exits with status 1.
+// flow executes the flows named on the command line, or the defaults. Given
+// `help`, `-h` or `--help` first, it prints the flows and flags instead, unless
+// the script has a flow called help, which then runs. On failure it reports the
+// error and exits with status 1.
 pub fn (mut c Context) flow() {
 	c.resolve_auto_flows()
 	c.execute(os.args[1..]) or {
@@ -187,23 +189,29 @@ fn (mut c Context) resolve_auto_flows() {
 
 // execute parses the command line arguments and runs the flows they name.
 fn (mut c Context) execute(args []string) ! {
-	if args.len > 0 && args[0] in ['help', '-h', '--help'] && !c.flows.any(it.id == 'help') {
-		c.print_help()
-		return
+	mut argv := args.clone()
+	if argv.len > 0 && argv[0] in ['help', '-h', '--help'] {
+		if !c.flows.any(it.id == 'help') {
+			c.print_help()
+			return
+		}
+		// a flow called help replaces the generated help, however it is asked for
+		argv[0] = 'help'
 	}
-	c.enabled = args.filter(it.starts_with('--')).map(it.all_after('--'))
+	c.enabled = argv.filter(it.starts_with('--')).map(it.all_after('--'))
 	for id in c.enabled {
 		if !c.flags.any(it.id == id) && !c.flows.any(it.flags.any(it.id == id)) {
 			return error('unknown flag `--${id}`')
 		}
 	}
-	named := args.filter(!it.starts_with('--'))
+	named := argv.filter(!it.starts_with('--'))
 	ids := if named.len > 0 { named } else { c.defaults }
 	if ids.len == 0 {
 		return error('no flow given and no default flow set')
 	}
+	what := if named.len > 0 { 'flow' } else { 'default flow' }
 	for id in ids {
-		c.find(id)!
+		c.find(id) or { return error('unknown ${what} `${id}`') }
 	}
 	c.validate()!
 	for id in ids {
@@ -311,12 +319,22 @@ fn contains_path(parent string, child string) bool {
 // validate rejects unknown hooks and dependency cycles before anything runs.
 // Post hooks cannot form a cycle, since they start once their flow is done.
 fn (c &Context) validate() ! {
+	for f in c.flows {
+		c.check_hooks(f, 'pre', f.pre)!
+		c.check_hooks(f, 'post', f.post)!
+	}
 	mut state := map[string]int{} // 1: on the current path, 2: finished
 	for f in c.flows {
-		for hook in f.post {
-			c.find(hook.id)!
-		}
 		c.check_cycle(f, mut state)!
+	}
+}
+
+// check_hooks fails on a hook of `f` that names no flow, saying where it is.
+fn (c &Context) check_hooks(f Flow, kind string, hooks []FlowDep) ! {
+	for hook in hooks {
+		if !c.flows.any(it.id == hook.id) {
+			return error('flow `${f.id}` has unknown ${kind} hook `${hook.id}`')
+		}
 	}
 }
 
@@ -484,9 +502,19 @@ fn (c &Context) run(f Flow, mut pass Pass) ![]string {
 // directory. It is never an input, or keeping state would itself be a change.
 const stamp_dir = '.imp'
 
-// state_file names the file of a flow under a subdirectory of `stamp_dir`.
+// state_file names the file of a flow under a subdirectory of `stamp_dir`. Bytes
+// of the id other than lowercase letters, digits, `-` and `_` are percent-encoded,
+// so that distinct ids never share a file, even on a case-insensitive file system.
 fn state_file(kind string, f Flow) string {
-	return os.join_path(stamp_dir, kind, f.id.replace_each(['/', '_', '\\', '_']))
+	mut name := ''
+	for b in f.id {
+		name += if (b >= `a` && b <= `z`) || b.is_digit() || b in [`-`, `_`] {
+			b.ascii_str()
+		} else {
+			'%${b:02X}'
+		}
+	}
+	return os.join_path(stamp_dir, kind, name)
 }
 
 // stamp_path is where a hash flow keeps the digest of its last successful run.
