@@ -143,9 +143,11 @@ fn prealloc_block_pool_put(start voidptr, size int) bool {
 }
 
 // prealloc_block_pool_take removes and returns the smallest pooled block of at
-// least `size` bytes, storing its size in `taken_size`, or nil when none fits.
+// least `size` bytes and its actual size, or nil and zero when none fits.
+// Return the size by value: taking a local's address can make older bootstrap
+// compilers heap-allocate it, recursively entering the arena being initialized.
 @[unsafe]
-fn prealloc_block_pool_take(size int, taken_size &int) voidptr {
+fn prealloc_block_pool_take(size int) (voidptr, int) {
 	// The count is only read under the lock: another thread may be freeing a
 	// block into the pool right now.
 	prealloc_block_pool_lock()
@@ -164,19 +166,20 @@ fn prealloc_block_pool_take(size int, taken_size &int) voidptr {
 	}
 	if best < 0 {
 		prealloc_block_pool_unlock()
-		return unsafe { nil }
+		return unsafe { nil }, 0
 	}
 	mut start := unsafe { nil }
+	mut taken_size := 0
 	unsafe {
 		start = g_prealloc_block_pool.starts[best]
-		*taken_size = g_prealloc_block_pool.sizes[best]
+		taken_size = g_prealloc_block_pool.sizes[best]
 		g_prealloc_block_pool.bytes -= i64(g_prealloc_block_pool.sizes[best])
 		g_prealloc_block_pool.count--
 		g_prealloc_block_pool.starts[best] = g_prealloc_block_pool.starts[g_prealloc_block_pool.count]
 		g_prealloc_block_pool.sizes[best] = g_prealloc_block_pool.sizes[g_prealloc_block_pool.count]
 	}
 	prealloc_block_pool_unlock()
-	return start
+	return start, taken_size
 }
 
 // prealloc_block_pool_free returns every pooled block to the OS.
@@ -440,8 +443,7 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least int, align int, min_bloc
 		$if !freestanding && !vinix {
 			if fixed_align <= int(prealloc_default_align) {
 				$if !prealloc_no_recycle ? {
-					mut pooled_size := 0
-					pooled := unsafe { prealloc_block_pool_take(block_size, &pooled_size) }
+					pooled, pooled_size := unsafe { prealloc_block_pool_take(block_size) }
 					if pooled != unsafe { nil } {
 						// A larger pooled block is already resident; the extra bytes
 						// cost nothing and the block returns to the pool whole.
