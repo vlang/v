@@ -10849,8 +10849,7 @@ pub fn run(args []string) {
 	for requested in compile_backends {
 		for name in requested.split(',') {
 			if name.trim_space() !in ['c', 'fastc', 'arm64', 'aarch64', 'x64', 'amd64', 'x86_64',
-				'x86-64', 'riscv64', 'riscv', 'rv64', 'loongarch64', 'ppc64le', 'ppc64', 's390x', 'arm32',
-				'wasm', 'wasm32', 'eval'] {
+				'x86-64', 'riscv64', 'riscv', 'rv64', 'loongarch64', 'wasm', 'wasm32', 'eval'] {
 				eprintln('unknown compile backend `${name.trim_space()}`')
 				exit(1)
 			}
