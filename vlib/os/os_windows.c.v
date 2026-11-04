@@ -30,6 +30,86 @@ fn C.AddVectoredExceptionHandler(u32, voidptr) voidptr
 
 fn C._getpid() i32
 
+// See https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-deletefilew
+fn C.DeleteFileW(&u16) bool
+
+// windows_max_path is the legacy Windows path limit, in UTF-16 code units. The
+// CRT file APIs (`_wremove`, `_wopen`, ...) refuse longer paths, and so do the
+// Win32 file APIs, unless the path uses the extended-length (`\\?\`) form or
+// long paths are enabled in the OS.
+const windows_max_path = 260
+
+// windows_extended_path returns `path` with the Win32 extended-length prefix
+// (`\\?\` for drive paths, `\\?\UNC\` for UNC paths), which bypasses the
+// MAX_PATH limit even when long paths are disabled in the OS. Forward slashes
+// are spelled as backslashes, which the prefixed form requires. Already
+// extended (`\\?\`, `\\.\`) paths, and paths the prefix cannot spell
+// (relative, drive-relative, rooted without a drive), are returned unchanged.
+fn windows_extended_path(path string) string {
+	normalized := path.replace('/', '\\')
+	if normalized.starts_with('\\\\?\\') || normalized.starts_with('\\\\.\\') {
+		return normalized
+	}
+	if normalized.starts_with('\\\\') {
+		return '\\\\?\\UNC\\' + normalized[2..]
+	}
+	if is_drive_rooted(normalized) {
+		return '\\\\?\\' + normalized
+	}
+	return path
+}
+
+// windows_needs_extended_path reports whether `path` is long enough that the
+// plain Windows file APIs may refuse it for reaching past MAX_PATH, while the
+// extended-length form may still resolve it. Callers use it to retry an
+// already failed operation with `windows_extended_path`, so paths that work
+// keep their exact behavior, errors and messages.
+fn windows_needs_extended_path(path string) bool {
+	if path.starts_with('\\\\?\\') || path.starts_with('\\\\.\\') {
+		return false
+	}
+	if !(is_drive_rooted(path) || is_unc_path(path)) {
+		return false
+	}
+	return windows_utf16_len(path) >= windows_max_path
+}
+
+// rm_windows_extended retries the deletion of the file at `path` through its
+// Win32 extended-length form, which the CRT `_wremove` used by `os.rm` cannot
+// resolve past MAX_PATH when long paths are disabled in the OS. Like `os.rm`
+// it clears the read-only attribute first, and restores it when the deletion
+// fails. It returns whether the retry removed the file.
+fn rm_windows_extended(path string) bool {
+	ext := windows_extended_path(path)
+	if ext == path {
+		return false
+	}
+	wext := ext.to_wide()
+	defer {
+		unsafe { free(wext) }
+	}
+	attrs := C.GetFileAttributesW(wext)
+	mut changed := false
+	if attrs != u32(C.INVALID_FILE_ATTRIBUTES)
+		&& attrs & u32(C.FILE_ATTRIBUTE_DIRECTORY) == 0
+		&& attrs & u32(C.FILE_ATTRIBUTE_READONLY) != 0 {
+		without_read_only := attrs & ~u32(C.FILE_ATTRIBUTE_READONLY)
+		new_attrs := if without_read_only == 0 {
+			u32(C.FILE_ATTRIBUTE_NORMAL)
+		} else {
+			without_read_only
+		}
+		changed = C.SetFileAttributesW(wext, new_attrs)
+	}
+	if !C.DeleteFileW(wext) {
+		if changed {
+			C.SetFileAttributesW(wext, attrs)
+		}
+		return false
+	}
+	return true
+}
+
 // executable_suffixes are the extensions tried for a command name without one,
 // in the order of the default `PATHEXT` (`.COM;.EXE;.BAT;.CMD`), which is what
 // cmd.exe uses when two programs differ only by extension.
@@ -400,10 +480,16 @@ pub fn ls(path string) ![]string {
 			code)
 	}
 	// we need to add files to path eg. c:\windows\*.dll or :\windows\*
-	path_files := '${path}\\*'
+	mut path_files := '${path}\\*'
 	// NOTE:TODO: once we have a way to convert utf16 wide character to utf8
 	// we should use FindFirstFileW and FindNextFileW
-	h_find_files := C.FindFirstFile(path_files.to_wide(), voidptr(&find_file_data))
+	mut h_find_files := C.FindFirstFile(path_files.to_wide(), voidptr(&find_file_data))
+	if h_find_files == invalid_handle_value && windows_needs_extended_path(path) {
+		// Retry through the extended-length form, which plain Win32 calls
+		// cannot resolve past MAX_PATH when long paths are disabled in the OS.
+		path_files = windows_extended_path(path) + '\\*'
+		h_find_files = C.FindFirstFile(path_files.to_wide(), voidptr(&find_file_data))
+	}
 	// Handle cases where files cannot be opened. for example:"System Volume Information"
 	if h_find_files == invalid_handle_value {
 		error_num := int(C.GetLastError())
