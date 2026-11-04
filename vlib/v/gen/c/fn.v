@@ -487,13 +487,23 @@ fn c_call_needs_prelude_scan(a &flat.FlatAst, node &flat.Node) bool {
 	return base.kind == .empty || (base.kind == .ident && base.value == 'C')
 }
 
+@[direct_array_access]
 fn exact_flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId, windows_target bool, mut c_extern_refs map[string]bool, mut stack []flat.NodeId) (int, bool) {
 	mut cost := 0
 	mut needs_prelude_scan := false
-	stack.clear()
-	stack << node_id
-	for stack.len > 0 {
-		id := stack.pop()
+	// `stack` is a reusable buffer: `top` is the live depth, entries below the
+	// array length are overwritten in place and only a deeper tree appends, so no
+	// per-node push/pop bookkeeping runs. The visiting order is unchanged.
+	mut top := 0
+	if stack.len == 0 {
+		stack << node_id
+	} else {
+		stack[0] = node_id
+	}
+	top = 1
+	for top > 0 {
+		top--
+		id := stack[top]
 		idx := int(id)
 		if idx < 0 || idx >= a.nodes.len {
 			continue
@@ -523,7 +533,12 @@ fn exact_flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId, windows_tar
 		for i in 0 .. node.children_count {
 			child_id := a.children[node.children_start + i]
 			if int(child_id) >= 0 {
-				stack << child_id
+				if top < stack.len {
+					stack[top] = child_id
+				} else {
+					stack << child_id
+				}
+				top++
 			}
 		}
 	}
@@ -9751,20 +9766,33 @@ fn (g &FlatGen) expr_is_non_string_scalar_value(id flat.NodeId) bool {
 		|| clean is types.ISize || clean is types.USize || clean is types.Enum
 }
 
+// Every synthetic drop spelling starts with `drop_owned`; one byte test rejects
+// the ordinary call names that reach these checks.
+@[direct_array_access; inline]
 fn ownership_synthetic_drop_name(name string) bool {
+	if name.len < 10 || name[0] != `d` || !name.starts_with('drop_owned') {
+		return false
+	}
 	return name == 'drop_owned' || name.starts_with('drop_owned_T_')
 		|| name == 'drop_owned_v3_interface' || name.starts_with('drop_owned_v3_interface_T_')
 }
 
+@[direct_array_access]
 fn (g &FlatGen) ownership_drop_intrinsic_name(name string) bool {
-	if name in ['builtin.drop_owned', 'builtin__drop_owned']
-		|| name.starts_with('builtin.drop_owned_T_') || name.starts_with('builtin__drop_owned_T_')
-		|| name in ['builtin.drop_owned_v3_interface', 'builtin__drop_owned_v3_interface']
-		|| name.starts_with('builtin.drop_owned_v3_interface_T_')
-		|| name.starts_with('builtin__drop_owned_v3_interface_T_') {
-		return true
+	if name.len < 10 {
+		return false
 	}
-	if !ownership_synthetic_drop_name(name) {
+	if name[0] == `b` {
+		// Only a builtin-qualified drop spelling is accepted here; the synthetic
+		// spellings below all start with `drop_owned`.
+		return (name.starts_with('builtin.drop_owned') || name.starts_with('builtin__drop_owned'))
+			&& (name in ['builtin.drop_owned', 'builtin__drop_owned']
+				|| name.starts_with('builtin.drop_owned_T_') || name.starts_with('builtin__drop_owned_T_')
+				|| name in ['builtin.drop_owned_v3_interface', 'builtin__drop_owned_v3_interface']
+				|| name.starts_with('builtin.drop_owned_v3_interface_T_')
+				|| name.starts_with('builtin__drop_owned_v3_interface_T_'))
+	}
+	if name[0] != `d` || !ownership_synthetic_drop_name(name) {
 		return false
 	}
 	if module_name := g.tc.fn_type_modules[name] {
@@ -17009,6 +17037,12 @@ fn (mut g FlatGen) gen_sum_variant_arg(arg_id flat.NodeId, expected types.Type) 
 	if expected_type is types.SumType {
 		return false
 	}
+	if int(arg_id) >= 0 && int(arg_id) < g.a.nodes.len
+		&& g.a.node(arg_id).kind in [.int_literal, .float_literal, .bool_literal, .char_literal,
+			.string_literal, .string_interp] {
+		// A literal has a builtin type and is never a sum value.
+		return false
+	}
 	actual0 := types.unwrap_pointer(g.body_resolve_type(arg_id))
 	mut actual := actual0
 	if actual0 is types.Alias {
@@ -17568,20 +17602,23 @@ fn (g &FlatGen) collect_c_extern_referenced_symbols_in(node &flat.Node, mut refs
 		return
 	}
 	// Visit the children that `g.a.child` would return; out-of-range slots are empty there.
+	// The walk never grows the AST, so its arrays can be read through local headers.
+	children := g.a.children
+	nodes := g.a.nodes
 	mut start := int(node.children_start)
 	mut end := start + int(node.children_count)
 	if start < 0 {
 		start = 0
 	}
-	if end > g.a.children.len {
-		end = g.a.children.len
+	if end > children.len {
+		end = children.len
 	}
 	for i in start .. end {
-		child_id := int(g.a.children[i])
-		if child_id < 0 || child_id >= g.a.nodes.len {
+		child_id := int(children[i])
+		if child_id < 0 || child_id >= nodes.len {
 			continue
 		}
-		child := unsafe { &g.a.nodes[child_id] }
+		child := unsafe { &nodes[child_id] }
 		// A leaf that is not an identifier can neither name C nor reach a node that does.
 		if child.children_count <= 0 && child.kind != .ident {
 			continue
