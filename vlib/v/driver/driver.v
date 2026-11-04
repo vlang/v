@@ -12556,7 +12556,7 @@ pub fn run(args []string) {
 	mut native_closure := if tcc_dylib && cache_state.manager.enabled {
 		v3_tcc_dylib_native_closure(a, prefs, native_c_flags, c_compiler, &native_inputs)
 	} else {
-		v3_native_input_closure(&native_inputs)
+		v3_native_interface_closure(a, prefs, native_c_flags, c_compiler, &native_inputs)
 	}
 	if tcc_dylib {
 		v3_tcc_dylib_add_embedded_inputs(mut native_closure, &cache_state, user_files, prefs.vroot)

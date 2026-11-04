@@ -2,17 +2,26 @@
 module brotli
 
 import os
+import dl
 
-$if linux {
-	#flag -ldl
+const msan_unpoison_symbol = find_msan_unpoison()
+
+type FNMSanUnpoison = fn (voidptr, uint)
+
+fn find_msan_unpoison() voidptr {
+	$if linux {
+		// A dynamically loaded Brotli library is usually not instrumented.
+		// MSan exports its runtime helper from the current process.
+		return dl.sym(unsafe { nil }, '__msan_unpoison')
+	}
+	return unsafe { nil }
 }
 
-#insert "@VEXEROOT/vlib/compress/brotli/brotli_dl.h"
-
-fn C.v_brotli_open(const_name &char) voidptr
-fn C.v_brotli_sym(handle voidptr, const_name &char) voidptr
-fn C.v_brotli_close(handle voidptr) int
-fn C.v_brotli_msan_unpoison(ptr voidptr, len uint)
+fn unpoison_output(data voidptr, len uint) {
+	if len > 0 && msan_unpoison_symbol != unsafe { nil } {
+		FNMSanUnpoison(msan_unpoison_symbol)(data, len)
+	}
+}
 
 const min_quality = 0
 const max_quality = 11
@@ -60,7 +69,7 @@ pub:
 pub struct DecompressParams {}
 
 fn open_library_name(name string) voidptr {
-	return C.v_brotli_open(&char(name.str))
+	return dl.open(name, dl.rtld_lazy)
 }
 
 fn open_env_library(env_name string) voidptr {
@@ -134,11 +143,11 @@ fn open_decoder_library() !voidptr {
 }
 
 fn close_library(handle voidptr) {
-	C.v_brotli_close(handle)
+	dl.close(handle)
 }
 
 fn library_symbol(handle voidptr, name string, kind string) !voidptr {
-	sym := C.v_brotli_sym(handle, &char(name.str))
+	sym := dl.sym(handle, name)
 	if sym == 0 {
 		return error('brotli: could not load ${kind} symbol ${name}')
 	}
@@ -196,7 +205,7 @@ pub fn compress(data []u8, params CompressParams) ![]u8 {
 	if ok == 0 {
 		return error('brotli: compression failed')
 	}
-	C.v_brotli_msan_unpoison(dst.data, encoded_size)
+	unpoison_output(dst.data, encoded_size)
 	keep_dst = true
 	return dst[..int(encoded_size)]
 }
@@ -245,7 +254,7 @@ pub fn decompress(data []u8, _ DecompressParams) ![]u8 {
 			&total_out)
 		produced := chunk.len - int(available_out)
 		if produced > 0 {
-			C.v_brotli_msan_unpoison(chunk.data, uint(produced))
+			unpoison_output(chunk.data, uint(produced))
 			out << chunk[..produced]
 		}
 		match result {

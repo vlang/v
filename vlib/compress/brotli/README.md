@@ -18,3 +18,7 @@ fn main() {
 	assert decompressed == uncompressed.bytes()
 }
 ```
+
+Library loading uses V's `dl` module and requires no bundled native loader header. On Linux,
+MemorySanitizer's runtime helper is used when available to mark bytes written by the external
+Brotli libraries as initialized.

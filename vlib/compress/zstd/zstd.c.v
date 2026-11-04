@@ -16,7 +16,7 @@ $if tinyc {
 	#flag -DXXH_NO_PREFETCH
 }
 
-#include "zstd.c"	// msvc can't compile multiple source files, so included
+#flag @VMODROOT/thirdparty/zstd/zstd.o
 
 const frame_header_size_max = 18
 const content_size_unknown = u64(-1)

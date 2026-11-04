@@ -51,3 +51,18 @@ Set `V3_CACHE_TRACE=1` to inspect cache decisions and `-showcc` to inspect the n
 compiler command.
 `-print-watched-files` and `-dump-files` parse V source bodies to include embedded resources,
 including resources omitted from warm V declaration headers.
+
+The web stack's Brotli binding uses `dl` directly, so it has no bundled native loader header.
+Zstd is built as a separate `#flag` object, whose C compiler dependency manifest controls reuse;
+its implementation is not copied into V module objects. With Clang or GCC on Unix, importing
+`net.http`, `net.websocket`, or `veb` therefore retains the ordinary module cache. Windows SChannel still
+uses the conservative fallback for its bundled implementation and opaque context layout.
+
+The shipped mbedTLS public include tree and V's two mbedTLS helper headers have an explicit
+interface-only contract: ABI types and inline helpers may appear in every cached unit, while
+library state belongs to the separate `#flag` objects. A fresh C compiler dependency manifest
+tracks their complete include closure before reuse. Other native headers and forced macro files
+keep the conservative fallback. Alternate mbedTLS configuration files and opaque compiler options
+also bypass this contract. The selected C preprocessor rejects date/time macro uses with
+`-Werror=date-time`, and its output is discarded. TinyCC retains the fallback because it cannot
+reliably diagnose those macros. V does not infer contracts by inspecting header contents.
