@@ -425,6 +425,36 @@ fn test_v_mod_preserves_nested_comptime_import_scopes() {
 	assert !graph.output.split_into_lines().contains('string'), graph.output
 }
 
+fn check_comptime_import_condition(condition string) ! {
+	prepare_fixture()!
+	write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\n\$if ${condition} {\n\timport lib\n} \$else {\n\timport orphan\n}\nfn main() {}\n')!
+	for dependency in ['lib', 'orphan'] {
+		res := mod_why(dependency)
+		assert res.exit_code == 0, res.output
+		assert res.output.trim_space().split_into_lines() == ['app', dependency], res.output
+	}
+	transitive := mod_why('deeper')
+	assert transitive.exit_code == 0, transitive.output
+	assert transitive.output.trim_space().split_into_lines() == ['app', 'lib', 'deeper'], transitive.output
+	graph := mod_graph()
+	assert graph.exit_code == 0, graph.output
+	lines := graph.output.trim_space().split_into_lines()
+	assert lines[0] == 'app', graph.output
+	assert lines.contains('lib'), graph.output
+	assert lines.contains('orphan'), graph.output
+	assert lines.contains('  deeper'), graph.output
+}
+
+fn test_v_mod_preserves_import_scopes_with_dollar_type_groups() {
+	for condition in ['int is \$int', 'f64 is \$float && int is \$int'] {
+		check_comptime_import_condition(condition)!
+	}
+}
+
+fn test_v_mod_preserves_import_scopes_with_pkgconfig_conditions() {
+	check_comptime_import_condition("\$pkgconfig('vmod_import_scope_missing')")!
+}
+
 fn test_v_mod_keeps_first_resolved_directory_for_same_named_local_modules() {
 	prepare_fixture()!
 	write_file(os.join_path(tfolder, 'app', 'main.v'), 'module main\nimport near\nimport far\nfn main() {}\n')!

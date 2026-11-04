@@ -150,7 +150,8 @@ fn scan_import_scope(mut s scanner.Scanner, mut imports []string) {
 			}
 			.dollar {
 				tok = s.scan()
-				comptime_block = tok == .key_if
+				// The pending condition can itself contain $int or $pkgconfig(...).
+				comptime_block = comptime_block || tok == .key_if
 				continue
 			}
 			.key_else {
