@@ -27069,8 +27069,11 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 	if v_type is types.Array || ct == 'Array' {
 		is_static_const = false
 	}
-	if v_type is types.ArrayFixed && v_type.elem_type is types.ArrayFixed {
-		is_static_const = false
+	if fixed := array_fixed_type(unalias_type(v_type)) {
+		elem_type := unalias_type(fixed.elem_type)
+		if elem_type is types.ArrayFixed || elem_type is types.Array {
+			is_static_const = false
+		}
 	}
 	if !is_static_const {
 		if fixed := array_fixed_type(unalias_type(v_type)) {
@@ -27453,8 +27456,10 @@ fn (mut g FlatGen) write_fixed_array_elem_initializer(mut builder strings.Builde
 		builder.write_string(g.new_map_expr_string(clean_elem_type.key_type, clean_elem_type.value_type))
 		return
 	}
-	if node.kind == .array_init && clean_elem_type is types.Array {
-		builder.write_string(g.array_allocation_expr(clean_elem_type.elem_type, '0', '0'))
+	if clean_elem_type is types.Array {
+		// Dynamic arrays need Array values, including when their literal is a
+		// constant expression. A brace list would initialize Array's fields.
+		builder.write_string(g.expr_to_string_with_expected_type(val_id, elem_type))
 		return
 	}
 	if g.is_const_expr(val_id) && !(node.kind == .prefix && node.op == .amp) {
