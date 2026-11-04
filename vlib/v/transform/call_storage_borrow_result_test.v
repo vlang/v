@@ -36,12 +36,23 @@ fn read_unwrapped(row Row) int {
  return if zero { 0 } else { 1 }
 }
 fn (cols &Cols) slice(row Row) ![]u8 {
- _ = row.at(cols.idx[0])!
- return row.payload[cols.idx[0]..]
+ index := cols.idx[0]
+ _ = row.at(index)!
+ return row.payload[index..]
 }
 fn read_slice(row Row) []u8 {
  cols := Cols{n: 1}
+ _ = row.at(0) or { return []u8{} }
  return cols.slice(row) or { return []u8{} }
+}
+fn (cols &Cols) slice_direct(row Row) ![]u8 {
+ _ = row.at(cols.idx[0])!
+ return row.payload[cols.idx[0]..]
+}
+fn read_slice_direct(row Row) []u8 {
+ cols := Cols{n: 1}
+ _ = row.at(0) or { return []u8{} }
+ return cols.slice_direct(row) or { return []u8{} }
 }
 fn retain_copy(copy Payload, mut sink Sink) !bool {
  sink.pointer = copy.pointer
@@ -87,8 +98,15 @@ fn test_consumed_result_keeps_proven_storage_borrows_without_losing_embedded_ali
 		for i, node in a.nodes {
 			if node.kind != .fn_decl { continue }
 			used[node.value] = true
+			// Direct receiver reads in returned slice bounds remain conservative.
+			if node.value == 'Cols.slice_direct' {
+				summary := t.fixed_array_borrow_params[i] or { []bool{} }
+				assert summary.len == 0 || !summary[0], node.value
+			}
 			if node.value in ['Cols.is_zero', 'zero_from_cols', 'Cols.slice', 'Envelope.retain'] {
-				assert t.fixed_array_borrow_params[i][0], node.value
+				summary := t.fixed_array_borrow_params[i] or { []bool{} }
+				assert summary.len > 0, node.value
+				assert summary[0], node.value
 			}
 		}
 		t.transform_all()
@@ -100,7 +118,7 @@ fn test_consumed_result_keeps_proven_storage_borrows_without_losing_embedded_ali
 			body := generated.all_after_last('${name}(').all_after('{').all_before('\n}')
 			assert !body.contains('memdup('), '${name}: ${body}'
 		}
-		for name in ['retain_payload', 'escaping_receiver'] {
+		for name in ['retain_payload', 'escaping_receiver', 'read_slice_direct'] {
 			assert generated.contains('${name}('), name
 			body := generated.all_after_last('${name}(').all_after('{').all_before('\n}')
 			if name == 'retain_payload' {
@@ -177,7 +195,7 @@ fn main() {
 	assert compiled.exit_code == 0, compiled.output
 	generated := os.read_file(cpath)!
 	for name in ['read_method', 'read_parameter', 'read_or'] {
-		headers := generated.split_into_lines().filter(it.contains(' main__${name}(') && it.ends_with(' {'))
+		headers := generated.split_into_lines().filter((it.contains(' ${name}(') || it.contains(' main__${name}(')) && it.ends_with(' {'))
 		assert headers.len == 1, name
 		body := generated.all_after(headers[0]).all_before('\n}')
 		assert !body.contains('memdup('), '${name}: ${body}'
