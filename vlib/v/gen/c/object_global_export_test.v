@@ -57,6 +57,33 @@ __global native_grid [2][3]u16
 @[c_extern]
 __global native_lookup [3]NativeValue
 
+enum NativeState {
+	first = 5
+	second = 7
+	third = 11
+}
+
+struct NativeEntry {
+mut:
+	state NativeState
+	value i32
+}
+
+@[c_extern]
+__global native_states [2]NativeState
+
+@[c_extern]
+__global native_entries [2]NativeEntry
+
+@[c_extern]
+__global native_const_states [2]NativeState
+
+@[c_extern]
+__global native_const_entries [2]NativeEntry
+
+__global local_states [2]NativeState
+__global local_entries [2]NativeEntry
+
 __global private_between = i32(17)
 
 @[export: 'public_array']
@@ -69,6 +96,19 @@ ${tail}
 @[markused]
 @[export: 'ReadExports']
 fn read_exported() i32 {
+	if native_states[0] != .third || native_entries[0].state != .third ||
+		native_entries[0].value != 89 || native_const_states[1] != .third ||
+		native_const_entries[0].state != .second || native_const_entries[0].value != 97 {
+		return -1
+	}
+	// V-owned arrays must still receive their nonzero enum defaults.
+	if local_states[0] != .first || local_states[1] != .first ||
+		local_entries[0].state != .first || local_entries[1].state != .first ||
+		local_entries[0].value != 0 || local_entries[1].value != 0 {
+		return -2
+	}
+	native_states[1] = .second
+	native_entries[1].state = .second
 	native_values[2] = 79
 	native_grid[0][1] = 83
 	return scalar_storage + array_storage[0] + array_storage[1] + public_zero +
@@ -86,6 +126,12 @@ int native_counter = 31;
 int native_values[3] = {2, 3, 5};
 unsigned short native_grid[2][3] = {{7, 11, 13}, {17, 19, 23}};
 const int native_lookup[3] = {29, 31, 71};
+enum native_state { FIRST = 5, SECOND = 7, THIRD = 11 };
+struct native_entry { enum native_state state; int value; };
+enum native_state native_states[2] = {SECOND, THIRD};
+struct native_entry native_entries[2] = {{THIRD, 89}, {THIRD, 91}};
+const enum native_state native_const_states[2] = {SECOND, THIRD};
+const struct native_entry native_const_entries[2] = {{SECOND, 97}, {THIRD, 101}};
 
 int main(void) {
     if (public_scalar != 7 || public_array[0] != 3 || public_array[1] != 5) return 1;
@@ -99,10 +145,14 @@ int main(void) {
     native_counter = 47;
     native_values[1] = 53;
     native_grid[1][2] = 59;
+    native_states[0] = THIRD;
     /* The first V call must observe native writes, including static arrays. */
     if (ReadExports() != 463) return 3;
     /* V must write to the same arrays owned by the native object. */
-    return native_values[2] == 79 && native_grid[0][1] == 83 ? 0 : 4;
+    return native_values[2] == 79 && native_grid[0][1] == 83 &&
+        native_states[0] == THIRD && native_states[1] == SECOND &&
+        native_entries[0].state == THIRD && native_entries[0].value == 89 &&
+        native_entries[1].state == SECOND && native_entries[1].value == 91 ? 0 : 4;
 }
 ')!
 			object := os.join_path(dir, 'lib.o')

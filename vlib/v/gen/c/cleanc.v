@@ -25820,6 +25820,10 @@ fn (mut g FlatGen) emit_global_inits() {
 	skip_closure_runtime_globals := !g.needs_closure_runtime_init()
 	for qname in g.global_init_order {
 		g.in_global_array_pointer_init = false
+		if qname in g.c_extern_global_names {
+			// Native code owns both the storage and its initial contents.
+			continue
+		}
 		if g.cache_const_modules[g.global_modules[qname] or { '' }]
 			&& (g.global_files[qname] or { '' }).ends_with('.vh') {
 			continue
