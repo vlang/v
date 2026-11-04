@@ -1877,6 +1877,10 @@ the called function only reads or writes scalar fields and array elements, or pa
 reference, or the address of an element (`&buf[i]`), straight on to a function that does the
 same. Calls that may retain the storage still move it to the heap; `-warn-about-allocs` reports
 these moves.
+This also applies to reference receivers and implicitly referenced arguments when the callee
+calls a Result-returning function. Handling that Result with `!` or `or` does not itself
+require heap storage for a borrowed local. Pointers carried inside an aggregate still retain
+their original storage when the callee saves or returns them.
 Calls through local function values remain conservative, including values that shadow
 function names.
 Explicitly destroying owned source elements invalidates views of those elements, as with other

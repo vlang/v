@@ -327,10 +327,13 @@ fn (mut t Transformer) mark_call_provenance_argument_escapes(id flat.NodeId, cal
 			for source in t.escape_aggregate_address_sources(receiver, amp_sources, ptr_aliases) {
 				t.escaping_amp_sources[source] = true
 			}
+			// A storage-only proof protects the receiver address while the aggregate
+			// provenance above still preserves aliases carried inside its value.
 			// Interface dispatch passes the object, never the header's address, and a
 			// receiver that already is a pointer passes its value, never its own address.
 			if types.unalias_type(t.tc.resolve_type(receiver)) !in [types.Interface, types.Pointer]
-				&& t.method_receiver_is_reference(id, receiver, callee.value) {
+				&& t.method_receiver_is_reference(id, receiver, callee.value)
+				&& !t.escape_call_storage_borrow(id, call).borrows(0) {
 				for source in t.escape_address_sources(receiver, amp_sources, ptr_aliases) {
 					t.escaping_amp_sources[source] = true
 				}
@@ -350,7 +353,8 @@ fn (mut t Transformer) mark_call_provenance_argument_escapes(id flat.NodeId, cal
 		param_type := call_argument_param_type(param_types, index, variadic) or { types.Type(types.Unknown{}) }
 		implicit_reference := call_provenance_pointer_depth(param_type) >
 			call_provenance_pointer_depth(t.tc.resolve_type(argument))
-		if actual.is_mut || implicit_reference {
+		if (actual.is_mut || implicit_reference)
+			&& !t.escape_call_storage_borrow(id, call).borrows(i) {
 			for source in t.escape_address_sources(argument, amp_sources, ptr_aliases) {
 				t.escaping_amp_sources[source] = true
 			}
