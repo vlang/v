@@ -23334,9 +23334,29 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 	if node.kind == .block {
 		// Locals registered while walking this block (declarations whose RHS
 		// references the loop var) must not leak past it.
+		had_saved_smartcasts := loop_kind == 'variants' && tc.smartcasts.len > 0
+		saved_smartcasts := if had_saved_smartcasts {
+			clone_smartcasts(tc.smartcasts)
+		} else {
+			tc.smartcasts
+		}
+		defer {
+			if loop_kind == 'variants' {
+				if had_saved_smartcasts {
+					tc.smartcasts = saved_smartcasts
+				} else {
+					tc.smartcasts.clear()
+				}
+			}
+		}
 		tc.push_scope()
 		for i in 0 .. node.children_count {
-			tc.check_comptime_static_body(tc.a.child(&node, i), var_name, loop_kind, field_cases, value_cases)
+			child_id := tc.a.child(&node, i)
+			tc.check_comptime_static_body(child_id, var_name, loop_kind, field_cases, value_cases)
+			if loop_kind == 'variants' {
+				tc.apply_post_if_exit_smartcasts(child_id)
+				tc.apply_post_assert_smartcasts(child_id)
+			}
 		}
 		tc.pop_scope()
 		return

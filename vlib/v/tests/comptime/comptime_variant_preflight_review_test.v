@@ -422,3 +422,30 @@ fn main() {
 	assert extract(Inner("text")) == 42
 }', false)
 }
+
+fn test_variant_preflight_preserves_option_guard_fallthrough() {
+	source := r'
+type Choice = ?int | string
+fn extract(value Choice) int {
+	$for variant in Choice.variants {
+		if value is variant {
+			$if variant.typ is ?int {
+				if value == none { return 0 }
+				return value
+			} $else {
+				return value.len
+			}
+		}
+	}
+	return -1
+}
+fn main() {
+	assert extract(Choice(?int(42))) == 42
+	assert extract(Choice(?int(none))) == 0
+	assert extract(Choice("text")) == 4
+}'
+	run_variant_review_case('none_guard_fallthrough', source, false)
+	check_variant_review_case('invalid_fallthrough_payload', source.replace('return value\n', 'return value.len\n'), true, '`int` has no property `len`')
+	scoped := source.all_before('fn main()').replace('fn extract(value Choice) int', 'fn extract(value Choice, enabled bool) int').replace('if value == none { return 0 }', 'if enabled {\n\t\t\t\t\tif value == none { return 0 }\n\t\t\t\t\tprintln(variant.typ)\n\t\t\t\t}') + 'fn main() { _ = extract(Choice(?int(none)), false) }'
+	check_variant_review_case('conditional_fallthrough_scope', scoped, true, '`?int` as type `int`')
+}

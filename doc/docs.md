@@ -8994,6 +8994,7 @@ ordinary type diagnostics, including invalid return types.
 Integer equality compares values across decimal, hexadecimal, binary, and octal spellings.
 Matches retain their arm refinements while loop metadata is checked.
 Declaration guards such as `if payload := value` bind the unwrapped payload in their success branch.
+Exiting option guards also unwrap payloads for later statements in the same block.
 
 #### <h4 id="comptime-methods">.methods</h4>
 
