@@ -2109,6 +2109,7 @@ fn is_type_metadata_node_of_class(node &flat.Node, class u8, mut cache TypeMetad
 		&& cache.may_need_array_typedef(node.value_text())
 }
 
+@[direct_array_access]
 fn is_optional_sizeof_node(node &flat.Node) bool {
 	return node.kind == .sizeof_expr && node.children_count == 0 && node.value_text().len > 1
 		&& node.value_text()[0] in [`?`, `!`]
@@ -14430,11 +14431,12 @@ fn (g &FlatGen) sum_variant_accepts_actual(actual &types.Type, variant &types.Ty
 }
 
 fn (mut g FlatGen) sum_cast_actual_type(id flat.NodeId) types.Type {
-	mut actual_type := g.body_resolve_type(id)
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return actual_type
+		return g.body_resolve_type(id)
 	}
 	node := g.a.nodes[int(id)]
+	// The literal and declaration shapes below decide the type themselves; the
+	// expression is resolved only when none of them applies.
 	match node.kind {
 		.int_literal {
 			return types.Type(types.int_)
@@ -14515,7 +14517,7 @@ fn (mut g FlatGen) sum_cast_actual_type(id flat.NodeId) types.Type {
 			return *lit_type
 		}
 	}
-	return actual_type
+	return g.body_resolve_type(id)
 }
 
 // pointer_variant_expr_creates_owned_value reports pointer expressions whose pointee is
@@ -28864,7 +28866,7 @@ fn (g &FlatGen) op_str(op flat.Op) string {
 	}
 }
 
-@[inline]
+@[direct_array_access; inline]
 fn (mut g FlatGen) write(s string) {
 	if g.line_start {
 		g.write_indent()

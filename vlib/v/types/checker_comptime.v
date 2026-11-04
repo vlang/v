@@ -10003,6 +10003,7 @@ fn (tc &TypeChecker) shift_is_in_inactive_compact_else(id flat.NodeId) bool {
 // source_text_is_bare_generic is SourceTypeSyntax.bare_generic for raw text: one
 // ASCII uppercase letter after trimming. Checking the text first keeps plain
 // identifiers from being interned as type spellings.
+@[direct_array_access]
 fn source_text_is_bare_generic(text string) bool {
 	mut start := 0
 	mut end := text.len
@@ -22410,8 +22411,8 @@ fn (mut tc TypeChecker) collect_comptime_method_calls(id flat.NodeId, method_var
 	if node.kind == .call {
 		if var_name.len > 0 && tc.comptime_static_is_method_var_call(*node, var_name) {
 			calls[int(id)] = true
-		} else if name := tc.selected_file_call_name(node) {
-			tc.collect_comptime_generic_forwarder(name, mut pending)
+		} else if found := tc.selected_file_call_name(node) {
+			tc.collect_comptime_generic_forwarder(found.name, mut pending)
 		} else {
 			mut callee := tc.a.child_node(node, 0)
 			if callee.kind == .index && callee.children_count > 0 {
