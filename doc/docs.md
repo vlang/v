@@ -11256,6 +11256,8 @@ V has these types for easier interoperability with C:
 - `&&char` for C's `char**`
 
 To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
+The cast uses the stored pointer value even when the `voidptr` local's address escapes
+and its storage moves to the heap. Taking `&user_void_ptr` still addresses that pointer slot.
 
 Passing `unsafe { nil }` to a pointer parameter passes a null pointer, including pointers to
 handles that alias `voidptr`.
