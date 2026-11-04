@@ -48,8 +48,12 @@ pub fn (mut s GpuSurface) draw_path(path Path, paint Paint) ! {
 			return
 		}
 	}
-	if paint.style != .fill {
-		return error('gg.canvas: stroked paths need the tessellating stroke renderer')
+	if paint.style == .stroke {
+		s.draw_stroke(path, ClipShape{
+			kind: .path
+			rect: path.bounds()
+		}, paint)!
+		return
 	}
 	s.draw_path_fill(path, paint)!
 }

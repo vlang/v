@@ -39,6 +39,8 @@ enum RenderStep {
 	convex_wedges
 	// TessellateWedges_Convex with a solid color paint, for convex path fills.
 	wedges_shaded
+	// TessellateStrokes with a solid color paint.
+	tessellate_strokes
 }
 
 // is_wedge_step reports the steps that draw tessellated wedge patches.
@@ -57,6 +59,7 @@ fn writes_color(step RenderStep) bool {
 fn step_uniform_size(step RenderStep, clipped bool) int {
 	return match true {
 		step == .wedges_shaded { wedge_solid_uniform_size }
+		step == .tessellate_strokes { stroke_uniform_size }
 		is_wedge_step(step) || clipped { clip_uniform_size }
 		else { solid_uniform_size }
 	}
@@ -65,6 +68,8 @@ fn step_uniform_size(step RenderStep, clipped bool) int {
 const analytic_rrect_vert = $embed_file('shaders/analytic_rrect_solid.vert.metal')
 const wedges_solid_vert = $embed_file('shaders/tessellate_wedges_solid.vert.metal')
 const wedges_solid_frag = $embed_file('shaders/tessellate_wedges_solid.frag.metal')
+const strokes_solid_vert = $embed_file('shaders/tessellate_strokes_solid.vert.metal')
+const strokes_solid_frag = $embed_file('shaders/tessellate_strokes_solid.frag.metal')
 
 // The shaded wedge uniforms: float4 color, then the float4x4 localToDevice.
 const wedge_solid_uniform_size = 80
@@ -223,7 +228,7 @@ pub fn (mut ctx GpuContext) precompile() {
 	for step in [RenderStep.stencil_wedges_winding, .stencil_wedges_even_odd] {
 		ctx.pipeline(step, 4, false, false)
 	}
-	for step in [RenderStep.cover_fill, .wedges_shaded] {
+	for step in [RenderStep.cover_fill, .wedges_shaded, .tessellate_strokes] {
 		for blend in [true, false] {
 			ctx.pipeline(step, 4, blend, false)
 		}
@@ -260,6 +265,7 @@ fn (mut ctx GpuContext) shader(step RenderStep, clipped bool) gfx.Shader {
 	vert, frag := match true {
 		!writes_color(step) { convex_wedges_vert, convex_wedges_vert }
 		step == .wedges_shaded { wedges_solid_vert, wedges_solid_frag }
+		step == .tessellate_strokes { strokes_solid_vert, strokes_solid_frag }
 		step == .analytic_rrect && clipped { analytic_rrect_clip_vert, analytic_rrect_clip_frag }
 		step == .analytic_rrect { analytic_rrect_vert, analytic_rrect_frag }
 		clipped { cover_bounds_clip_vert, cover_bounds_clip_frag }
@@ -319,6 +325,21 @@ fn (mut ctx GpuContext) pipeline(step RenderStep, sample_count int, blend bool, 
 			for i, format in formats {
 				desc.layout.attrs[1 + i] = gfx.VertexAttrDesc{
 					buffer_index: 1
+					offset:       offsets[i]
+					format:       format
+				}
+			}
+		}
+		.tessellate_strokes {
+			// No vertex or index data: the shader uses the vertex ID.
+			desc.index_type = .none
+			desc.layout.buffers[0].stride = stroke_instance_stride
+			desc.layout.buffers[0].step_func = .per_instance
+			formats := [gfx.VertexFormat.float4, .float4, .float2, .float2, .float, .uint]
+			offsets := [0, 16, 32, 40, 48, 52]
+			for i, format in formats {
+				desc.layout.attrs[i] = gfx.VertexAttrDesc{
+					buffer_index: 0
 					offset:       offsets[i]
 					format:       format
 				}

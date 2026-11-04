@@ -240,7 +240,7 @@ fn test_quick_reject_and_culling_take_no_depth() {
 	assert s.draws[0].order.depth == 1
 }
 
-fn test_unsupported_draws_report_errors() {
+fn test_elliptical_strokes_use_the_stroke_renderer() {
 	mut s := recording_surface(64, 48, identity_values)
 	stroke := Paint{
 		color:        Color4f{1, 0, 0, 1}
@@ -250,9 +250,9 @@ fn test_unsupported_draws_report_errors() {
 	}
 	rr := RRect.rect_radii(Rect.ltrb(5, 5, 40, 30), [Point{8, 3}, Point{8, 3}, Point{8, 3},
 		Point{8, 3}]!)
-	s.draw_rrect(rr, stroke) or {
-		assert err.msg().contains('elliptical strokes')
-		return
-	}
-	assert false, 'elliptical strokes need the path renderer'
+	// Elliptical strokes are not simple shapes: Graphite strokes them with
+	// the tessellated stroke renderer.
+	s.draw_rrect(rr, stroke)!
+	assert s.draws.len == 1 && s.draws[0].step == .tessellate_strokes
+	assert s.draws[0].instance_count == 8
 }

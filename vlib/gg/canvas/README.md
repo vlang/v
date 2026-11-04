@@ -36,9 +36,13 @@ renderers, convex paths the shaded convex wedges and other paths the MSAA
 stencil-and-cover wedges (winding and even-odd), including Skia's path
 convexity, rect detection and Wang's formula for lines, quads, conics and
 cubics.
-Draws that need other renderers (strokes of paths and elliptical rrects,
-inverse fills, curves that need chopping, stencil-and-cover clip elements,
-...) return an error instead of rendering differently.
+Strokes of paths, and of rrects the analytic renderer cannot stroke
+(elliptical corners), use Graphite's tessellated stroke renderer: deferred
+first patches joined to closing patches, miter, round and bevel joins, butt,
+round and square caps, cusps, hairlines and cubic convex-180 chops.
+Draws that need other renderers (inverse fills, curves with more than 32
+parametric segments, stencil-and-cover clip elements, ...) return an error
+instead of rendering differently.
 
 Only Metal is supported: the reproduced output is Graphite's Metal output on
 the same GPU.

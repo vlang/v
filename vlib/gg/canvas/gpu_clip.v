@@ -977,7 +977,9 @@ struct PaintUniforms {
 	local_to_device bool
 	// Shaded wedge steps put the paint color before the matrix.
 	with_color bool
-	matrix     [16]f32
+	// Stroke steps put the 2x2, translation and max scale in `matrix`.
+	stroke_xform bool
+	matrix       [16]f32
 }
 
 // identity_local_to_device is the uniform block of draws in device space.
@@ -1059,8 +1061,19 @@ fn (mut d DrawShape) apply_style(paint Paint, device Rect) bool {
 	} else {
 		mut local_outset := f32(0)
 		if stroked && !hairline {
-			// Rects and rrects have neither miters nor caps.
-			local_outset = paint.stroke_width / f32(2)
+			// SkStrokeRec::GetInflationRadius(). Rects and rrects have
+			// neither miters nor caps; paths have both.
+			mut multiplier := f32(1)
+			if d.shape.kind == .path {
+				if paint.join == .miter {
+					multiplier = max_f32(multiplier, paint.miter_limit)
+				}
+				if paint.cap == .square {
+					multiplier = max_f32(multiplier, f32(1.41421356))
+				}
+			}
+			half := paint.stroke_width / f32(2)
+			local_outset = half * multiplier
 		}
 		if hairline || (stroked && paint.stroke_width < local_aa)
 			|| (!stroked && !d.shape.inverted && (w < local_aa || h < local_aa)) {

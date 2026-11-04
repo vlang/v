@@ -540,7 +540,10 @@ fn (mut s GpuSurface) draw_shape(geometry_in ShapeGeometry, paint Paint) ! {
 	if stroked && geometry_in.kind == .rrect && paint.stroke_width > 0 {
 		tolerance := s.transform.local_aa_radius() * shape_pixel_tolerance
 		if !all_corners_relatively_circular(geometry_in.rrect, tolerance) {
-			return error('gg.canvas: elliptical strokes need the tessellating path renderer')
+			// Not a simple shape: Graphite strokes it as a path.
+			shape := rrect_shape(geometry_in.rrect)
+			s.draw_stroke(element_path(shape), shape, paint)!
+			return
 		}
 	}
 	clip_shape := if geometry_in.kind == .rect {
@@ -764,6 +767,9 @@ fn instance_stride(step RenderStep) int {
 		.stencil_wedges_winding, .stencil_wedges_even_odd, .convex_wedges, .wedges_shaded {
 			wedge_instance_stride
 		}
+		.tessellate_strokes {
+			stroke_instance_stride
+		}
 		else { cover_bounds_instance_stride }
 	}
 }
@@ -834,7 +840,8 @@ pub fn (mut s GpuSurface) flush() ! {
 	mut ctx := s.ctx
 	// A pass with a draw that requires MSAA (depth-only clip draws, path steps)
 	// is multisampled, even on a single-sampled surface.
-	requires_msaa := s.draws.any(is_wedge_step(it.step) || it.step == .cover_fill)
+	requires_msaa := s.draws.any(is_wedge_step(it.step) || it.step in [.cover_fill,
+		.tessellate_strokes])
 	samples := if s.sample_count == 1 && requires_msaa { 4 } else { s.sample_count }
 	attachments := if samples == s.sample_count {
 		s.attachments
@@ -934,6 +941,9 @@ pub fn (mut s GpuSurface) flush() ! {
 				.analytic_rrect { 68 }
 				.stencil_wedges_winding, .stencil_wedges_even_odd, .convex_wedges, .wedges_shaded {
 					wedge_ssbo_offset
+				}
+				.tessellate_strokes {
+					stroke_ssbo_offset
 				}
 				else { 20 }
 			}
@@ -1041,7 +1051,8 @@ pub fn (mut s GpuSurface) flush() ! {
 		}
 		match draw.step {
 			.analytic_rrect { gfx.draw(0, analytic_rrect_index_count, count) }
-			.stencil_wedges_winding, .stencil_wedges_even_odd, .convex_wedges, .wedges_shaded {
+			.stencil_wedges_winding, .stencil_wedges_even_odd, .convex_wedges, .wedges_shaded,
+			.tessellate_strokes {
 				gfx.draw(0, int(template_count), count)
 			}
 			else { gfx.draw(0, 4, count) }
@@ -1065,6 +1076,12 @@ fn serialize_uniforms(blocks []PaintUniforms) []f32 {
 				out << u.color.g
 				out << u.color.b
 				out << u.color.a
+			}
+			if u.stroke_xform {
+				for v in u.matrix[..8] {
+					out << v
+				}
+				continue
 			}
 			for v in u.matrix {
 				out << v
