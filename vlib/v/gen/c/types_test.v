@@ -1484,6 +1484,12 @@ fn test_optional_tuple_typedef_requires_a_concrete_or_cached_tuple() {
 	c_enum := 'multi_return_NativeEnum'
 	tc.enum_names[flat.source_type_id('C.${c_enum}')] = true
 	assert g.emit_optional_typedef('__v_result_${c_enum}', c_enum)
+	opaque := 'multi_return_Opaque'
+	opaque_id := flat.source_type_id('C.${opaque}')
+	assert opaque_id !in tc.structs && opaque_id !in tc.enum_names
+	assert !tc.type_aliases.contains(opaque_id)
+	assert g.emit_optional_typedef('__v_option_${opaque}ptr', '${opaque}*')
+	assert g.emit_optional_typedef('__v_result_${opaque}ptr', '${opaque}*')
 }
 
 fn test_optional_tuple_prefix_preserves_registered_v_payloads() {

@@ -1342,7 +1342,13 @@ fn (t &Transformer) normalize_or_expr_value_type(typ_id u32) u32 {
 		if (shape.has(.function_compact) || shape.has(.function_spaced)) && syntax.function_closed() {
 			mut parts := []u32{cap: syntax.function_params().len + 1}
 			for param in syntax.function_params() {
-				parts << t.normalize_or_expr_value_type(flat.source_type_syntax(param).legacy_parameter_mut_type())
+				param_syntax := flat.source_type_syntax(param)
+				param_type := t.normalize_or_expr_value_type(param_syntax.legacy_parameter_type())
+				parts << if param_syntax.parameter_is_mut() {
+					flat.source_type_composition_one(.mutable_parameter, param_type)
+				} else {
+					param_type
+				}
 			}
 			if syntax.function_result() != 0 {
 				parts << t.normalize_or_expr_value_type(syntax.function_result())

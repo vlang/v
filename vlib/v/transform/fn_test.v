@@ -622,9 +622,11 @@ fn test_or_payload_resolves_other_components_beside_main_locks() {
 	t.cur_module = 'library'
 	tc.cur_module = 'library'
 	for raw, expected in {
-		'fn (main.Config) domain.Config':           'fn (main.Config) actual.Config'
-		'[2]Container[main.Config, domain.Config]': '[2]Container[main.Config, actual.Config]'
-		'(main.Config, []domain.Config)':           '(main.Config, []actual.Config)'
+		'fn (main.Config) domain.Config':             'fn (main.Config) actual.Config'
+		'fn (mut ?domain.Config, main.Config)':       'fn (mut ?actual.Config, main.Config)'
+		'fn (mut value ?domain.Config, main.Config)': 'fn (mut ?actual.Config, main.Config)'
+		'[2]Container[main.Config, domain.Config]':   '[2]Container[main.Config, actual.Config]'
+		'(main.Config, []domain.Config)':             '(main.Config, []actual.Config)'
 	} {
 		expr, payload := t.canonical_or_expr_types(flat.source_type_id('?${raw}'))
 		assert flat.source_type_name(expr) == '?${expected}'
