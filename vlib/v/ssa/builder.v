@@ -9126,7 +9126,20 @@ fn (mut b Builder) build_function(node flat.Node, module_name string) {
 				}
 			}
 			mut is_mut_value_param := false
-			if child.is_mut && !b.is_pointer_type(typ) {
+			// Channel parameters are passed by pointer (reference type), like mut params.
+			mut is_channel_param := false
+			// Detect channel type by checking if resolved type is a struct with 'ringbuf' as first field
+			if typ > 0 && typ < b.m.type_store.types.len {
+				t := b.m.type_store.types[typ]
+				if t.kind == .struct_t && t.field_names.len > 0 && t.field_names[0] == 'ringbuf' {
+					is_channel_param = true
+				}
+			}
+			// Also check source type shape
+			if typ_name_source_id != 0 && flat.source_type_shape(typ_name_source_id).has(.channel_type) {
+				is_channel_param = true
+			}
+			if (child.is_mut || is_channel_param) && !b.is_pointer_type(typ) {
 				is_mut_value_param = true
 				typ = b.m.type_store.get_ptr(typ)
 			}
