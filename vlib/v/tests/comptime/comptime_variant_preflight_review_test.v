@@ -295,3 +295,67 @@ fn main() {
 	run_variant_review_case('match_metadata', source, true)
 	check_variant_review_case('invalid_match_metadata', source.replace('return value.x', 'return value.missing'), true, 'type `Record` has no field named `missing`')
 }
+
+fn test_variant_preflight_unwraps_if_guard_bindings() {
+	source := r'
+type Choice = ?int | string
+fn extract(value Choice) int {
+	$for variant in Choice.variants {
+		if value is variant {
+			$if variant.typ is ?int {
+				if payload := value {
+					return payload
+				} else {
+					return 0
+				}
+			} $else {
+				return value.len
+			}
+		}
+	}
+	return -1
+}
+fn bump(value Choice) int {
+	$for variant in Choice.variants {
+		if value is variant {
+			$if variant.typ is ?int {
+				if mut payload := value {
+					payload += 1
+					println(variant.typ)
+					return payload
+				} else {
+					println(variant.typ)
+					return 0
+				}
+			}
+		}
+	}
+	return -1
+}
+fn scoped(value Choice) int {
+	$for variant in Choice.variants {
+		if value is variant {
+			$if variant.typ is ?int {
+				if payload := value {
+					assert payload == 42
+					println(variant.typ)
+				}
+				payload := "after"
+				return payload.len
+			}
+		}
+	}
+	return -1
+}
+fn main() {
+	assert extract(Choice(?int(42))) == 42
+	assert extract(Choice(?int(none))) == 0
+	assert extract(Choice("hello")) == 5
+	assert bump(Choice(?int(42))) == 43
+	assert bump(Choice(?int(none))) == 0
+	assert scoped(Choice(?int(42))) == 5
+	assert scoped(Choice(?int(none))) == 5
+}'
+	run_variant_review_case('option_guard', source, false)
+	check_variant_review_case('invalid_option_guard', source.replace('return payload\n', 'return payload.len\n'), true, '`int` has no property `len`')
+}

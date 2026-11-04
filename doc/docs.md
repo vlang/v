@@ -8985,6 +8985,7 @@ Numeric comparisons with `variant.typ` use the same type index as `value.type_id
 Optional and result variants expose their wrapped type's metadata index, preserving pointer depth.
 Conditions using local metadata values are checked after unrolling, when their values are available.
 Matches retain their arm refinements while loop metadata is checked.
+Declaration guards such as `if payload := value` bind the unwrapped payload in their success branch.
 
 #### <h4 id="comptime-methods">.methods</h4>
 

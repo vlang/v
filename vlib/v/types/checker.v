@@ -23248,6 +23248,11 @@ fn (mut tc TypeChecker) check_comptime_static_body(id flat.NodeId, var_name stri
 		return
 	}
 	if node.kind == .if_expr {
+		if loop_kind == 'variants' && node.children_count >= 2
+			&& tc.a.child_node(&node, 0).kind == .decl_assign {
+			tc.check_comptime_static_variant_if_guard(node, var_name, field_cases, value_cases)
+			return
+		}
 		if loop_kind == 'methods' && value_cases.known && node.children_count >= 2 {
 			tc.check_comptime_static_method_runtime_if(node, var_name, loop_kind, field_cases, value_cases)
 			return

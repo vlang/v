@@ -943,6 +943,46 @@ fn (mut tc TypeChecker) comptime_static_variant_cases(base_type_id u32) Comptime
 	return ComptimeStaticFieldCases{ known: true, cases: cases }
 }
 
+// check_comptime_static_variant_if_guard introduces unwrapped payloads only in the success branch.
+fn (mut tc TypeChecker) check_comptime_static_variant_if_guard(node flat.Node, var_name string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases) {
+	condition_id := tc.a.child(&node, 0)
+	saved_owners_shared := tc.fn_context.mut_local_owners_shared
+	saved_owners := tc.share_mut_local_owners()
+	bindings := tc.check_if_guard(condition_id, *tc.a.node(condition_id))
+	saved_smartcasts := clone_smartcasts(tc.smartcasts)
+	defer {
+		tc.fn_context.mut_local_owners = saved_owners
+		tc.fn_context.mut_local_owners_shared = saved_owners_shared
+		tc.smartcasts = saved_smartcasts
+	}
+	for i in 1 .. node.children_count {
+		tc.fn_context.mut_local_owners = saved_owners
+		tc.fn_context.mut_local_owners_shared = true
+		tc.smartcasts = clone_smartcasts(saved_smartcasts)
+		tc.push_scope()
+		branch_id := tc.a.child(&node, i)
+		if i == 1 {
+			for binding in bindings {
+				$if ownership ? {
+					tc.ownership_note_binding(binding.name, binding.typ, condition_id)
+				}
+				owner := tc.cur_scope.insert_with_owner(binding.name, binding.typ)
+				tc.initialize_unknown_pointer_binding(owner, binding.typ)
+				tc.smartcasts.delete(binding.name)
+				if binding.is_mut {
+					tc.prepare_mut_local_owner_write()
+					tc.fn_context.mut_local_owners[binding.name] = owner
+				}
+			}
+		} else if tc.a.node(branch_id).kind != .if_expr && tc.failure_has_error(condition_id)
+			&& tc.has_ierror_interface() {
+			tc.cur_scope.insert('err', tc.parse_type(ierror_source_interface_name))
+		}
+		tc.check_comptime_static_body(branch_id, var_name, 'variants', field_cases, value_cases)
+		tc.pop_scope()
+	}
+}
+
 fn (mut tc TypeChecker) check_comptime_static_variant_guard(id flat.NodeId, var_name string, field_cases ComptimeStaticFieldCases, value_cases ComptimeStaticValueCases, smartcasts []LocalBinding) {
 	saved_trust := tc.trust_checked_expr_types
 	tc.trust_checked_expr_types = false
