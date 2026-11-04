@@ -540,6 +540,12 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 		if g.m.globals.any(it.name == 'g_main_argv') {
 			g.store_entry_arg_to_global(int(rsi), 'g_main_argv', 8)
 		}
+		// Initialize closure runtime.
+		asm_xor_eax_eax(mut g)
+		asm_call_rel32(mut g)
+		sym_idx := g.elf.add_undefined('closure.closure_init')
+		g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, r_x86_64_plt32, -4)
+		g.emit_u32(0)
 	}
 
 	// Move Params (ABI: RDI, RSI, RDX, RCX, R8, R9)

@@ -14848,6 +14848,7 @@ fn (mut t Transformer) transform_dump_expr(node flat.Node) flat.NodeId {
 
 		typ = closure_type_source_id_3
 		t.mark_fn_used_name('closure.closure_create_with_data')
+		t.mark_fn_used_name('closure.closure_init')
 		t.mark_fresh_runtime_closure_methods_used(child_id)
 	}
 	if child_node.kind == .call {
