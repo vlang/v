@@ -17816,7 +17816,7 @@ fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 		return false
 	}
 	if cfn in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait', 'sem_wait']
-		&& g.target.os in ['linux', 'android', 'termux', 'freebsd']
+		&& g.target.os in ['linux', 'android', 'termux', 'freebsd', 'openbsd']
 		&& g.c_directives_use_system_libc() {
 		return false
 	}
