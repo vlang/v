@@ -97,3 +97,23 @@ fn test_multisampled_flushes_keep_earlier_pixels() {
 	assert pixel(px, 17, 5) == [u8(0), 100, 200, 255]
 	assert pixel(px, 0, 0) == [u8(0), 0, 0, 0]
 }
+
+fn test_precompiled_contexts_compile_nothing_later() {
+	mut ctx := new_gpu_context() or {
+		eprintln('skipping: ${err}')
+		return
+	}
+	defer {
+		ctx.free()
+	}
+	ctx.precompile()
+	shaders, pipelines := ctx.shaders.len, ctx.pipelines.len
+	assert ctx.msaa_load_pipeline.id != 0
+	mut background := []u8{len: test_width * test_height * 4, init: 255}
+	for samples in [1, 4] {
+		render(mut ctx, samples, []u8{})!
+		render(mut ctx, samples, background)!
+	}
+	assert ctx.shaders.len == shaders
+	assert ctx.pipelines.len == pipelines
+}

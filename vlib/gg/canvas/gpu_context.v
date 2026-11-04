@@ -145,6 +145,20 @@ pub fn (mut ctx GpuContext) free() {
 	}
 }
 
+// precompile creates every shader and pipeline that surfaces may use, so later
+// draws compile nothing. Embedders whose allocations are scoped can call it
+// where long-lived allocations belong.
+pub fn (mut ctx GpuContext) precompile() {
+	for step in [RenderStep.analytic_rrect, .cover_bounds] {
+		for sample_count in [1, 4] {
+			for blend in [true, false] {
+				ctx.pipeline(step, sample_count, blend)
+			}
+		}
+	}
+	ctx.load_msaa_pipeline()
+}
+
 fn (mut ctx GpuContext) ensure_instance_capacity(bytes int) {
 	if ctx.instance_capacity >= bytes && ctx.instances.id != 0 {
 		return
