@@ -4398,7 +4398,6 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.writeln('#define V3CACHE_PROGRAM_UNIT 1')
 		g.string_literals()
 		g.gen_embed_file_blobs()
-		g.gen_top_level_asm()
 		if g.incremental_fn_names.len > 0 {
 			g.writeln('/* V3CACHE_SUPPORT_BEGIN */')
 			g.multi_return_forward_decls()
@@ -4423,6 +4422,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		}
 		g.release_scoped_fn_items()
 		g.writeln('/* V3CACHE_BODY_BEGIN */')
+		g.gen_top_level_asm()
 		g.writeln('/* V3CACHE_MODULE main */')
 		for segment in g.fn_segs {
 			g.sb.write_string(segment)
@@ -4523,8 +4523,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.register_interface_strings()
 	g.string_literals()
 	g.gen_embed_file_blobs()
-	g.gen_top_level_asm()
 	if !g.cache_split {
+		g.gen_top_level_asm()
 		if g.parallel_interface_stubs.len > 0 {
 			g.sb.write_string(g.parallel_interface_stubs)
 			unsafe { g.parallel_interface_stubs.free() }
@@ -4547,6 +4547,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	unsafe { const_code.free() }
 	if g.cache_split {
 		g.writeln('/* V3CACHE_BODY_BEGIN */')
+		g.gen_top_level_asm()
 		g.emit_cache_module_constants()
 		// `_vinit` and interface stubs depend on the complete entry program, but
 		// remain stable across function-body literal edits. Keep them with the
