@@ -355,6 +355,30 @@ pub fn clone(b []u8) []u8 {
 	return b.clone()
 }
 
+// split_after splits s after each instance of sep.
+pub fn split_after(s []u8, sep []u8) [][]u8 {
+	if sep.len == 0 {
+		return [s.clone()]
+	}
+	mut out := [][]u8{}
+	mut rest := s.clone()
+	for {
+		idx := index(rest, sep)
+		if idx < 0 {
+			if rest.len > 0 {
+				out << rest.clone()
+			}
+			break
+		}
+		out << rest[..idx + sep.len].clone()
+		rest = rest[idx + sep.len..].clone()
+		if rest.len == 0 {
+			break
+		}
+	}
+	return out
+}
+
 // fields splits b around runs of ASCII whitespace, returning a slice of
 // subslices of b. Mirrors Go's bytes.Fields.
 pub fn fields(b []u8) [][]u8 {
