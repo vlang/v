@@ -11263,6 +11263,10 @@ Reference results of generic calls also pass the pointer value to `voidptr` para
 For example, `isnil(identity[&User](unsafe { nil }))` tests the returned pointer for null.
 A mutable block that yields `&T` can pass that pointer to a `mut T` parameter,
 including generic functions and functions from imported modules.
+Passing a `voidptr` as a `mut T` argument also forwards its pointer to the original storage.
+It does not copy or dereference the pointee before calling the function, so the callee can
+check a null raw pointer before accessing it. A `mut voidptr` parameter instead receives
+the caller's pointer slot and can replace its stored pointer value.
 
 `voidptr` can also be dereferenced into a V struct through casting: `user := User(user_void_ptr)`.
 
