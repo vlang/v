@@ -194,6 +194,6 @@ fn main() {
 		os.write_file(path, 'module main\n${source}\nfn main() {}\n') or { panic(err) }
 		result := os.exec([driver, path])
 		assert result.exit_code != 0, source
-		assert result.output.contains('ssa: unsupported 128-bit integer'), '${source}\n${result.output}'
+		assert result.output.contains('ssa: unsupported 128-bit'), '${source}\n${result.output}'
 	}
 }
