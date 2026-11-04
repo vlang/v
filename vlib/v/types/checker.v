@@ -1457,6 +1457,7 @@ pub mut:
 	cross_target_prefs            &pref.Preferences = unsafe { nil }
 	suppress_dump_output          bool
 	diagnostic_files              map[string]bool
+	sel_decl_memo_callee          int = -1 // selector of the active check_call
 	sel_decl_memo_id              int = -1 // see selector_declared_value_type_at
 	sel_decl_memo_scope           voidptr
 	sel_decl_memo_names           int

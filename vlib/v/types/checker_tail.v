@@ -4828,8 +4828,11 @@ fn (mut tc TypeChecker) call_callee_indexes_container(callee &flat.Node) bool {
 fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 	// The callee's declared value type is asked for up to three times while
 	// this call is resolved (see selector_declared_value_type_at).
+	previous_callee := tc.sel_decl_memo_callee
+	tc.sel_decl_memo_callee = int(tc.a.child(&node, 0))
 	tc.sel_decl_memo_id = -1
 	defer {
+		tc.sel_decl_memo_callee = previous_callee
 		tc.sel_decl_memo_id = -1
 	}
 	if type_name_id := tc.translated_named_cast_call_name_id(id, node) {
@@ -21847,12 +21850,14 @@ fn struct_type_from_type(typ Type) ?Struct {
 // selector_declared_value_type_at is selector_declared_value_type for the
 // selector node `id`, remembered across the resolutions one check_call makes
 // of its callee (the preamble, resolve_call_info_uncached and the receiver
-// inference). The answer holds while nothing it was computed from changed:
+// inference). Queries outside that active callee do not read or populate the
+// memo: smartcast values can change between queries without changing map size.
+// The answer holds while nothing else it was computed from changed:
 // the scope and its bindings, the smartcasts, the errors, the function and
 // whether the base already has a checked type; check_call clears it on exit.
-@[direct_array_access]
+@[direct_array_access; inline]
 fn (tc &TypeChecker) selector_declared_value_type_at(id flat.NodeId, node flat.Node) ?Type {
-	if isnil(tc.cur_scope) || node.children_count == 0 {
+	if int(id) != tc.sel_decl_memo_callee || isnil(tc.cur_scope) || node.children_count == 0 {
 		return tc.selector_declared_value_type(node)
 	}
 	base_cached := !isnil(tc.cached_expr_type_ref(tc.a.child(&node, 0)))
