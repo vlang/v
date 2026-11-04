@@ -4206,7 +4206,8 @@ To dereference a reference, use the `*` operator, just like in C.
 
 A constant can be qualified with its module name inside that module, including in module tests.
 
-A fixed array constant can be initialized by a function call; the call runs during initialization.
+A fixed array constant can be initialized by a function call. Unmarked calls run at startup;
+`@[comptime]` calls in constant initializers require compile-time evaluation.
 Sum type constants with aggregate variants are initialized at startup, including when compiling
 with GCC.
 Their resolved sum type remains the same when an import alias shares its module prefix.
@@ -4260,7 +4261,7 @@ const red = Color{
 	g: 0
 	b: 0
 }
-// evaluate function call at compile time*
+// Unmarked function calls run at startup.
 const blue = rgb(0, 0, 255)
 
 println(numbers)
@@ -4268,7 +4269,96 @@ println(red)
 println(blue)
 ```
 
-\* WIP - for now function calls are evaluated at program start-up
+Unmarked function calls are evaluated at program startup. To require evaluation during compilation,
+mark the called function with `@[comptime]`:
+
+```v
+@[comptime]
+fn table_size(bits int) int {
+	return 1 << bits
+}
+
+const size = table_size(3)
+
+fn main() {
+	values := [size]u8{}
+	assert values.len == 8
+}
+```
+
+Required evaluation supports integers up to 64 bits, booleans, strings, fixed arrays, and value
+structs containing those types, including aliases of supported scalar types.
+Local variables, assignments, conditionals, integer range loops,
+C-style loops, and recursive calls to other `@[comptime]` functions are supported. Struct defaults
+and embedded fields, unions, dynamic arrays, maps, floating-point values, pointers, and
+result/option values are currently unsupported. Generic structs, functions and methods, including
+overloaded operators and index getters/setters, are not supported by this evaluator.
+Gated indexing (`#[...]`) is also unsupported; ordinary fixed-array indexing remains available.
+For C-style loops with `i <= bound; i++` or `i >= bound; i--`, counters of an alias type are
+unsupported when the counter is at its maximum before incrementing or zero before decrementing.
+In `-ownership` and `-autofree` builds, reached values with implicit `drop` or `free` cleanup
+or a compatible custom `clone()` method are unsupported, including local values and nested fields.
+This conservatively excludes plain structs with custom `clone()` methods too: an owning outer
+value can invoke such a method on a nested field. Default-mode evaluation remains available.
+Ordinary calls to the same function outside constant expressions remain
+runtime calls. Calls inside a function literal or lambda do not opt the callback initializer into
+required evaluation, because creating a callback does not execute its body.
+Calls used only for static `typeof` reflection, such as `typeof(seed()).name`, also do not opt the
+initializer into required evaluation. Runtime type inspection of sum values retains its evaluation
+requirements.
+Evaluation also applies when dependencies are loaded from the module cache.
+Fixed-array literals use their expected element type in return values, arguments, and storage
+contexts, including when an annotated helper is declared after the constant that calls it.
+Fixed-array `.len` uses the array's static shape without executing its base expression, matching
+ordinary compilation. Its direct C arithmetic uses the lowered integer literal; storing the length
+in a local preserves ordinary `int` storage. If the evaluator cannot determine a length operand's
+storage without evaluating it, first store that operand in a local. Fixed-array aliases also require
+a local or an ordinary function result as the base; direct alias casts and fields are unsupported.
+String lengths continue to evaluate their operands.
+
+Indexed reads and updates that contain value conditionals have an additional ordering restriction.
+Every index in the access must be a whole runtime `if` expression (optionally parenthesized), or an
+expression independent of helper locals, calls, and conditionals. The array must be a local value or
+an expression independent of those same operations. Assignments to these targets also require a
+right-hand side independent of helper locals, calls, and conditionals. More complex indices,
+including `$if` expressions, and array bases can be evaluated into fresh locals before the access.
+Range loops preserve the runtime distinction between live upper bounds (such as a local variable)
+and expressions that are evaluated once before the loop (such as an addition or function call).
+Range counters use the lower bound's storage type. An untyped literal uses target-width `int`;
+the upper bound retains its own integer type.
+Required evaluation rejects a range when its inferred counter type differs from its runtime storage
+type. Give the lower bound an explicit integer type, such as `int(60000)`, to make the counter's
+storage unambiguous.
+Conditional result-type inference that needs another required evaluation is currently unsupported.
+Integer promotion of locals that shadow constants and narrowing conditional integer values are
+also unsupported, because their runtime conversions depend on the surrounding storage context.
+Runtime value conditionals can also cause other operands to be stored in temporary variables.
+Required evaluation rejects this implicit integer staging when it changes a value or its effective
+C integer type. Store the affected expression in a fresh local before using the conditional.
+This restriction also applies to nested indexed `++` and `--` targets and expression bases inside
+assignment targets. Explicitly storing the indices before the access makes their conversions and
+evaluation order unambiguous.
+
+The checker can use a computed integer constant as a fixed-array bound. The C backend emits the
+computed value as static data, with no initializer call, allocation, or copy at startup. Integer
+conversions use the target's widths, including platform-width `int`. Required evaluation reads
+integer constants with their declared or inferred type. Native C emission preserves those
+conversions for macros and expanded constant references, matching addressable constant storage.
+Native C constant initializers and fixed-array literals use the same typed division, remainder,
+shift, and signed/unsigned comparison rules as ordinary function expressions.
+Unsupported target-dependent operations produce an error; required evaluation needs a concrete
+target and rejects portable C (`-os cross`). Required evaluation with `-check-overflow` or
+`-check-casts` is not yet supported.
+Required evaluation of translated code (`-translated` or files marked `@[translated]`) is also
+unsupported. This includes entering a translated helper or evaluating a constant declared in a
+translated file from native V code. Ordinary runtime calls remain supported. Mixed native and
+translated modules retain their separate source-file contexts when loaded from the module cache.
+
+Evaluation cannot read mutable globals or perform runtime I/O. Every executed helper call must be
+marked `@[comptime]`. Unsupported operations, reached panics, dependency cycles, and exhausted
+limits are compilation errors at the constant declaration, with the evaluated helper names.
+Evaluation is limited to 1,000,000 steps, 128 expression/call nesting levels, 100,000 elements or
+bytes in one allocation, and 1,000,000 cumulative elements or bytes of temporary storage.
 
 Global variables are not normally allowed, so this can be really useful.
 
@@ -8551,7 +8641,8 @@ fn function() {
 // Calls to this function in enum expressions can be evaluated at compile time,
 // when all call arguments are compile-time constants. Integer parameters, casts, and
 // return values use their declared integer widths. Unsigned u64 shifts and division retain
-// their high bits. Const initializers remain runtime calls.
+// their high bits. Calls in const initializers require evaluation for supported value types;
+// unsupported executed operations produce a compilation error.
 @[comptime]
 fn make_mask(value u32, shift u32) u32 {
 	return value << shift

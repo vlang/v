@@ -1071,7 +1071,7 @@ pub:
 	}
 }
 
-fn test_cached_constant_tables_are_typed_declarations() {
+fn test_cached_constant_tables_keep_fixed_data_and_type_dynamic_data() {
 	root := os.join_path(os.vtmp_dir(), 'v3_cached_const_declarations_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
@@ -1082,7 +1082,8 @@ pub const width = 3
 pub const cast_width = i64(3)
 ')
 	assert header.contains('pub const data []u64'), header
-	assert header.contains('pub const fixed [3]u8'), header
+	// Fixed data may be read by a consumer's annotated helper, so keep its initializer.
+	assert header.contains('pub const fixed = [u8(1), 2, 3]!'), header
 	assert header.contains('pub const width = 3'), header
 	assert header.contains('pub const cast_width = i64(3)'), header
 	assert !header.contains('29'), header
@@ -1096,7 +1097,7 @@ pub const cast_width = i64(3)
 	assert (tc.const_types['tables.data'] or { panic('missing data') }).name() == '[]u64'
 	assert (tc.const_types['tables.fixed'] or { panic('missing fixed') }) is vtypes.ArrayFixed
 	assert 'tables.data' !in tc.const_exprs
-	assert 'tables.fixed' !in tc.const_exprs
+	assert 'tables.fixed' in tc.const_exprs
 	assert 'tables.cast_width' in tc.const_exprs
 }
 
@@ -1633,4 +1634,180 @@ fn test_real_source_paths_are_resolved_once_until_they_are_frozen() {
 	assert manager.real_source_path(late) == os.real_path(other)
 	manager.remember_source_path('late_given.v', '/resolved/late_given.v')
 	assert manager.real_source_path('late_given.v') == os.real_path('late_given.v')
+}
+
+fn test_module_header_retains_comptime_helper_bodies() {
+	root := os.join_path(os.vtmp_dir(), 'v3_header_comptime_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	header := header_of_source(root, 'helpers', 'module helpers\nconst seed = 7\n@[comptime]\npub fn size(n int) int { return n + seed }\n')
+	assert header.contains('@[comptime]'), header
+	assert header.contains('return n + seed'), header
+	// Other nongeneric runtime helpers retain declaration-only headers.
+	plain := header_of_source(root, 'plain', 'module plain\npub fn size(n int) int { return n + 7 }\n')
+	assert !plain.contains('return n + 7'), plain
+}
+
+fn comptime_header_with_two_imports(root string, imports []string) string {
+	mut paths := []string{}
+	for i, imported in imports {
+		path := os.join_path(root, 'helper_${i}.v')
+		os.write_file(path, 'module helpers\n${imported}\n@[comptime]\npub fn value_${i}() int { return ${i + 1} }\n') or { panic(err) }
+		paths << path
+	}
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_files(paths)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	tc := vtypes.TypeChecker.new(a)
+	return module_header(a, &tc, 'helpers', root, map[string]string{})
+}
+
+fn test_comptime_headers_keep_source_files_for_conflicting_import_bindings() {
+	root := os.join_path(os.vtmp_dir(), 'v3_header_conflicting_imports_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for imports in [
+		['import seed as source', 'import words as source'],
+		['import first.words', 'import second.words'],
+		['import seed { item }', 'import words { item }'],
+		['import seed as item', 'import words { item }'],
+		['import seed { item }', 'import words as item'],
+		['$if windows {\nimport seed as source\n} $else {\nimport seed as source\n}',
+			'$if windows {\nimport words as source\n} $else {\nimport words as source\n}'],
+	] {
+		header := comptime_header_with_two_imports(root, imports)
+		assert header.contains(source_body_marker), header
+		assert !header.contains('return 1'), header
+		assert !header.contains('return 2'), header
+	}
+}
+
+fn test_comptime_headers_embed_compatible_import_bindings() {
+	root := os.join_path(os.vtmp_dir(), 'v3_header_compatible_imports_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for imports in [
+		['import seed as source', 'import seed as source'],
+		['import seed as source', 'import words as other'],
+		['import seed as _', 'import words as _'],
+		['import seed { item }', 'import seed as other { item }'],
+		['import seed { size }', 'import words { label }'],
+		['$if windows {\nimport seed as source\n} $else {\nimport seed as source\n}',
+			'$if windows {\nimport seed as source\n} $else {\nimport seed as source\n}'],
+	] {
+		header := comptime_header_with_two_imports(root, imports)
+		assert !header.contains(source_body_marker), header
+		assert header.contains('return 1'), header
+		assert header.contains('return 2'), header
+	}
+}
+
+fn test_comptime_headers_keep_source_files_for_import_declaration_collisions() {
+	root := os.join_path(os.vtmp_dir(), 'v3_header_import_declarations_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for fragments in [
+		['import seed as item', 'const item = 7'],
+		['import source.item', 'const item = 7'],
+		['import seed { item }', 'const item = 7'],
+		['import seed as item', 'const (\nother = 1\nitem = 7\n)'],
+		['import seed as item', '__global item int'],
+		['import seed as item', '__global (\nother int\nitem int\n)'],
+		['import seed as item', 'fn item() int { return 7 }'],
+		['import seed { item }', 'fn item() int { return 7 }'],
+		['import seed as item', '$if true {\n$if true {\nconst item = 7\n}\n}'],
+		['$if true {\nimport seed as item\n}', 'const item = 7'],
+		['import seed { Item }', 'struct Item { value int }'],
+		['import seed { Item }', 'enum Item { one }'],
+		['import seed { Item }', 'type Item = int'],
+		['import seed { Item }', 'interface Item { read() int }'],
+	] {
+		for ordered in [fragments, fragments.reverse()] {
+			header := comptime_header_with_two_imports(root, ordered)
+			assert header.contains(source_body_marker), header
+			assert !header.contains('return 1'), header
+			assert !header.contains('return 2'), header
+		}
+	}
+}
+
+fn test_comptime_header_binding_scan_excludes_locals_fields_and_methods() {
+	root := os.join_path(os.vtmp_dir(), 'v3_header_nonmodule_bindings_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for declaration in [
+		'const other = 7',
+		'fn read(item int) int { return item }',
+		'fn read() int { item := 7 return item }',
+		'struct Cell { item int }',
+		'struct Cell {}\nfn (cell Cell) item() int { return 7 }',
+		'struct Cell {}\nfn Cell.item() int { return 7 }',
+	] {
+		header := comptime_header_with_two_imports(root, ['import seed as item', declaration])
+		assert !header.contains(source_body_marker), header
+		assert header.contains('return 1'), header
+		assert header.contains('return 2'), header
+	}
+}
+
+fn test_module_header_keeps_struct_data_without_local_comptime_helpers() {
+	root := os.join_path(os.vtmp_dir(), 'v3_header_const_data_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'data.v')
+	os.write_file(path, 'module data\npub struct Data { pub: value string }\npub const value = Data{value: "kept"}\n')!
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_file(path)
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := vtypes.TypeChecker.new(a)
+	tc.collect(a)
+	header := module_header(a, &tc, 'data', root, map[string]string{})
+	assert header.contains('pub const value = Data{value: "kept"}'), header
+	assert !header.contains(source_body_marker), header
+}
+
+fn test_module_header_keeps_constant_call_initializers() {
+	root := os.join_path(os.vtmp_dir(), 'v3_header_const_call_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	header := header_of_source(root, 'data', 'module data\n@[comptime]\nfn make() int { return 7 }\npub const value = make()\n')
+	assert header.contains('pub const value = make()'), header
+	assert !header.contains(source_body_marker), header
+}
+
+fn test_module_headers_keep_mixed_translated_file_contexts() ! {
+	root := os.join_path(os.vtmp_dir(), 'v3_header_translated_contexts_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for functions in [false, true] {
+		for translated in [[false, false], [true, true], [false, true], [true, false]] {
+			mut paths := []string{}
+			for i in 0 .. 2 {
+				path := os.join_path(root, 'helper_${i}.v')
+				prefix := if translated[i] { '@[translated]\n' } else { '' }
+				declaration := if functions {
+					'@[comptime]\npub fn value_${i}() int { return ${i + 1} }'
+				} else {
+					'pub const value_${i} = ${i + 1}'
+				}
+				os.write_file(path, '${prefix}module helpers\n${declaration}\n')!
+				paths << path
+			}
+			mut p := parser.Parser.new(pref.new_preferences())
+			a := p.parse_files(paths)
+			assert p.diagnostics.len == 0, p.diagnostics.str()
+			mut tc := vtypes.TypeChecker.new(a)
+			tc.collect(a)
+			header := module_header(a, &tc, 'helpers', root, map[string]string{})
+			mixed := translated[0] != translated[1]
+			assert header.contains(source_body_marker) == mixed, header
+			if functions {
+				assert header.contains('return 1') == !mixed, header
+				assert header.contains('return 2') == !mixed, header
+			} else {
+				assert header.contains('pub const value_0 = 1'), header
+				assert header.contains('pub const value_1 = 2'), header
+			}
+		}
+	}
 }

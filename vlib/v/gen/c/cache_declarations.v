@@ -64,7 +64,11 @@ fn (mut g FlatGen) emit_cache_owned_const(name string, val_id flat.NodeId, owner
 		&& !g.name_collides_with_struct_field(cname)
 		&& definition.starts_with('static const ${ct} ${cname} = ') {
 		value := definition.trim_space().all_after(' = ').all_before_last(';')
-		scalar_macro = '#define ${cname} (${value})'
+		old_file := g.tc.cur_file
+		g.tc.cur_file = g.const_files[name] or { old_file }
+		macro_value := g.const_integer_storage_expression(val_id, typ, value)
+		g.tc.cur_file = old_file
+		scalar_macro = '#define ${cname} (${macro_value})'
 		g.writeln(scalar_macro)
 	}
 	// V enforces constness. Uniform writable C storage gives declaration-only

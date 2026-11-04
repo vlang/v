@@ -77,7 +77,7 @@ pub fn read_earlier() int { return earlier }
 	mut tc := types.TypeChecker.new(a)
 	tc.collect(a)
 	// Rebuilding a dependency exposes helper bodies that warm headers omit.
-	// Only the ranks of values whose initializers are omitted may change here.
+	// Only the ranks of stored constants may change here.
 	first_order := ['stable.startup', 'stable.earlier', 'stable.mixed_value', 'stable.fixed',
 		'stable.later', 'stable.mixed_store']
 	second_order := ['stable.mixed_store', 'stable.fixed', 'stable.earlier', 'stable.mixed_value',
@@ -86,8 +86,8 @@ pub fn read_earlier() int { return earlier }
 	second := module_header_with_const_order(a, &tc, 'stable', root, map[string]string{}, second_order)
 	assert first == second, 'stored constant ranks changed the declaration header'
 	assert header_signature(first) == header_signature(second)
-	assert first.contains('pub const startup []int'), first
-	assert first.contains('pub const fixed [2]u8'), first
+	assert first.contains('pub const startup = stored_value()'), first
+	assert first.contains('pub const fixed = [u8(1), 2]!'), first
 	// A primitive expression retains its helper call in the header. Its required
 	// initialization order must still survive when the helper body is omitted.
 	assert first.contains('pub const later = read_earlier() + 1'), first
@@ -104,7 +104,7 @@ pub fn read_earlier() int { return earlier }
 	warm_tc.collect(warm_ast)
 	warm := module_header_with_const_order(warm_ast, &warm_tc, 'stable', root,
 		map[string]string{}, ['stable.earlier', 'stable.mixed_value', 'stable.later'])
-	assert warm == first, 'typed cached constants changed the reserialized header'
+	assert warm == first, 'cached constants changed the reserialized header'
 	assert header_signature(first.replace('earlier = 41', 'earlier = 43')) != header_signature(first)
 }
 

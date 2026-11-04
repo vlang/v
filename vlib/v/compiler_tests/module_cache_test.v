@@ -4963,14 +4963,19 @@ fn main() {
 	assert run_module_cache_binary(first_output) == '41\n42'
 	header_path := module_cache_artifact(cache_dir, 'records_', '.vh')
 	assert header_path.len > 0
+	assert !modulecache.header_needs_source(modulecache.Entry{
+		header: header_path
+	})
 	header := os.read_file(header_path) or { panic(err) }
-	assert header.contains('pairs [1]records.Pair'), header
-	assert !header.contains('pairs ='), header
+	// Fixed aggregate constants retain their data for required evaluation by consumers.
+	assert header.contains('const pairs = [Pair{41, 42}]!'), header
 	assert !header.contains('Pair{:'), header
+	first_hashes := module_cache_object_hashes(cache_dir)
 
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
 	assert run_module_cache_binary(second_output) == '41\n42'
+	assert changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir)).len == 0
 }
 
 fn test_cached_const_preserves_escaped_char_literals() {
@@ -8671,6 +8676,100 @@ fn main() {
 			'-enable-globals', '-o', reordered_output, main_file])
 	assert reordered.exit_code == 0, reordered.output
 	assert run_module_cache_binary(reordered_output) == '1'
+}
+
+fn test_module_cache_comptime_helpers_keep_import_and_value_bindings() {
+	v3_bin := module_cache_compiler()
+	root := os.join_path(os.temp_dir(), 'v3_comptime_cache_bindings_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	// Required evaluation runs before the helper body has ordinary annotations.
+	// Warm imports must preserve the declared fixed-array element type too.
+	array_helper := 'pub const implicit_bytes = byte_values()\n@[comptime]\npub fn byte_values() [2]u8 { return [1, 2]! }\n'
+	// Explicit range casts preserve inferred local, array, and conditional storage.
+	range_helper := 'pub const range_square = range_counter_square()\npub const range_storage = range_counter_storage()\n@[comptime]\npub fn range_counter_square() int {\nlimit := u16(60001)\nfor i in int(60000) .. limit { return int(i * i) }\nreturn 0\n}\n@[comptime]\npub fn range_counter_storage() [3]int {\nlimit := u16(60001)\nfor i in int(60000) .. limit {\nx := i * i\nvalues := [i * i]!\nselected := if true { i * i } else { 0 }\nreturn [x, values[0], selected]!\n}\nreturn [3]int{}\n}\n'
+	length_helper := 'pub const length_values = fixed_length_values()\npub const length_shift = fixed_len_shift()\npub const type_label = typeof(type_only_seed()).name\n@[comptime]\npub fn fixed_len_direct() int {\n    a := [2]u8{}\n    b := u32(0xffffffff)\n    return a.len + b\n}\n\n@[comptime]\npub fn fixed_len_stored() int {\n    a := [2]u8{}\n    length := a.len\n    b := u32(0xffffffff)\n    return length + b\n}\n\n@[comptime]\npub fn fixed_len_literals() int {\n    a := [2]u8{}\n    b := u32(0xffffffff)\n    return (a.len + a.len) + b\n}\n\n@[comptime]\npub fn fixed_len_shift() bool {\n    a := [63]u8{}\n    return (1 << a.len) > 0\n}\n\n@[comptime]\npub fn fixed_len_erased() int {\n    mut n := 0\n    length := ([if true {\n        n += 1\n        n\n    } else {\n        0\n    }]!).len\n    return n + length\n}\n\n@[comptime]\npub fn fixed_len_materialized() int {\n    mut n := 0\n    a := [if true {\n        n += 1\n        n\n    } else {\n        0\n    }]!\n    return n + a.len\n}\n\n@[comptime]\npub fn fixed_len_array_base(value int) [1]int {\n    assert false, "fixed-array length must not call its base"\n    return [value]!\n}\n\n@[comptime]\npub fn fixed_len_call_base() int {\n    mut n := 0\n    length := fixed_len_array_base(if true {\n        n += 1\n        n\n    } else {\n        0\n    }).len\n    return n + length\n}\n\n@[comptime]\npub fn fixed_len_string_base(value int) string {\n    return if value > 0 { "x" } else { "y" }\n}\n\n@[comptime]\npub fn fixed_len_string_effects() int {\n    mut n := 0\n    length := fixed_len_string_base(if true {\n        n += 1\n        n\n    } else {\n        0\n    }).len\n    return n + length\n}\n\n@[comptime]\npub fn type_only_seed() int {\n    assert false, "typeof must not execute its operand"\n    return 7\n}\n\n@[comptime]\npub fn fixed_length_values() [8]int {\n    return [fixed_len_direct(), fixed_len_stored(), fixed_len_literals(), fixed_len_erased(),\n        fixed_len_materialized(), fixed_len_call_base(), fixed_len_string_effects(), fixed_len_alias_stored()]!\n}\n\ntype CachedLengthPair = [2]u8\n\n@[comptime]\npub fn fixed_len_alias_stored() int {\n    a := CachedLengthPair([u8(0), u8(0)]!)\n    b := u32(0xffffffff)\n    return (a.len + 2) + b\n}\n'
+	for fixture in [
+		['alias', 'module dep\npub const value = 2\n',
+			'module helpers\nimport dep as item\npub fn imported_value() int { return item.value }\n',
+			'module helpers\nstruct Cell { value int }\nconst item = Cell{value: @VALUE@}\n@[comptime]\npub fn value() int { return item.value }\n'],
+		['selected', 'module dep\n@[comptime]\npub fn item() int { return 2 }\n',
+			'module helpers\nimport dep { item }\npub fn imported_value() int { return dep.item() }\n',
+			'module helpers\nconst item = @VALUE@\n@[comptime]\npub fn value() int { return item }\n'],
+	] {
+		case_root := os.join_path(root, fixture[0])
+		project := os.join_path(case_root, 'project')
+		modules := os.join_path(case_root, 'modules')
+		cache_dir := os.join_path(case_root, 'cache')
+		// External dependencies exercise warm headers. Project-owned modules are
+		// deliberately reparsed to preserve diagnostics, which would mask this bug.
+		write_module_cache_file(project, 'v.mod', "Module { name: 'comptime_cache_bindings' }\n")
+		write_module_cache_file(modules, 'dep/dep.v', fixture[1])
+		write_module_cache_file(modules, 'helpers/a.v', fixture[2])
+		write_module_cache_file(modules, 'numbers/numbers.v', 'module numbers\npub const word = u16(65530) + u16(10)\npub const ratio = (u16(65530) + u16(10)) / u16(2)\npub const comparison = u64(0xffffffffffffffff) > i64(-1)\npub const shifted = (u8(200) << 1) >> 1\npub const shift_bound = 1 + int((-5 >>> 1) % u32(3))\npub fn read_word() int { return int(word) }\npub fn read_ratio() int { return int(ratio) }\npub fn read_comparison() bool { return comparison }\npub fn read_shifted() int { return int(shifted) }\npub fn read_shift_bound() int { return shift_bound }\n')
+		main_file := os.join_path(project, 'main.v')
+		for i, phase in ['cold', 'warm', 'changed', 'changed_warm'] {
+			value := if i < 2 { 7 } else { 11 }
+			if i == 0 || i == 2 {
+				write_module_cache_file(modules, 'helpers/b.v', fixture[3].replace('@VALUE@', value.str()) + array_helper + range_helper + length_helper)
+			}
+			// Rebuild the entry point so whole-program reuse cannot hide a stale fold.
+			write_module_cache_file(project, 'main.v', 'module main\nimport helpers\nimport numbers\nconst folded = helpers.value()\nconst folded_bytes = helpers.byte_values()\nconst folded_range_square = helpers.range_counter_square()\nconst folded_range_storage = helpers.range_counter_storage()\nconst folded_lengths = helpers.fixed_length_values()\nconst folded_length_shift = helpers.fixed_len_shift()\nconst reflected_type_name = typeof(helpers.type_only_seed()).name\nfn main() {\nexpected_range_square := if sizeof(int) == 8 { i64(3600000000) } else { i64(-694967296) }\nassert i64(folded_range_square) == expected_range_square\nassert helpers.range_square == folded_range_square\nassert helpers.range_counter_square() == folded_range_square\nassert folded_range_storage == [int(expected_range_square), int(expected_range_square), int(expected_range_square)]!\nassert helpers.range_storage == folded_range_storage\nassert helpers.range_counter_storage() == folded_range_storage\nassert folded_lengths == [1, int(i64(4294967297)), int(i64(4294967299)), 1, 2, 1, 2, int(i64(4294967299))]!\nassert helpers.length_values == folded_lengths\nassert helpers.fixed_length_values() == folded_lengths\nassert folded_length_shift\nassert helpers.length_shift == folded_length_shift\nassert helpers.fixed_len_shift() == folded_length_shift\nassert reflected_type_name == "int"\nassert helpers.type_label == reflected_type_name\nassert typeof(helpers.type_only_seed()).name == reflected_type_name\nimported_bytes := helpers.implicit_bytes\nassert folded_bytes == [u8(1), 2]!\nassert imported_bytes == folded_bytes\nassert helpers.byte_values() == folded_bytes\nassert sizeof(folded_bytes) == 2\nassert sizeof(imported_bytes) == 2\nprintln(folded) println(helpers.value()) println(helpers.imported_value()) println(numbers.read_word()) println(int(numbers.word)) println(numbers.read_ratio()) println(int(numbers.ratio)) println(numbers.read_comparison()) println(numbers.comparison) println(numbers.read_shifted()) println(int(numbers.shifted)) println(numbers.read_shift_bound()) println(numbers.shift_bound) println([numbers.shift_bound]u8{}.len) }\n// ${phase}\n')
+			output := os.join_path(case_root, phase)
+			built := os.exec(['env', 'V3CACHE=${cache_dir}', 'VMODULES=${modules}', v3_bin,
+				'-new-compiler', '-no-retry-compilation', '-cc', 'cc', '-gc', 'none', '-show-timings',
+				'-o', output, main_file])
+			assert built.exit_code == 0, '${fixture[0]} ${phase}: ${built.output}'
+			assert run_module_cache_binary(output) == '${value}\n${value}\n2\n4\n4\n2\n2\ntrue\ntrue\n72\n72\n3\n3\n3', '${fixture[0]} ${phase}'
+			helper_header := module_cache_artifact(cache_dir, 'helpers_', '.vh')
+			assert helper_header.len > 0
+			assert modulecache.header_needs_source(modulecache.Entry{ header: helper_header })
+			if i > 0 {
+				dep_header := module_cache_artifact(cache_dir, 'dep_', '.vh')
+				assert dep_header.len > 0
+				parsed_headers := built.output.split_into_lines().filter(it.trim_space().starts_with('.vh files:'))
+				assert parsed_headers.any(it.contains(dep_header)), built.output
+				numbers_header := module_cache_artifact(cache_dir, 'numbers_', '.vh')
+				assert numbers_header.len > 0
+				assert parsed_headers.any(it.contains(numbers_header)), built.output
+			}
+		}
+	}
+}
+
+fn test_module_cache_comptime_values_reject_implicit_clone() {
+	v3_bin := module_cache_compiler()
+	root := os.join_path(os.temp_dir(), 'v3_comptime_cache_clone_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	project := os.join_path(root, 'project')
+	modules := os.join_path(root, 'modules')
+	cache_dir := os.join_path(root, 'cache')
+	write_module_cache_file(project, 'v.mod', "Module { name: 'comptime_cache_clone' }\n")
+	write_module_cache_file(modules, 'clones/clones.v', 'module clones\nstruct Cell { text string value int }\nfn (cell &Cell) clone() Cell { return Cell{text: cell.text, value: cell.value + 10} }\nconst seed = Cell{text: "x", value: 1}\n@[comptime]\npub fn value() int {\ncopy := seed\nreturn copy.value\n}\n')
+	main_file := os.join_path(project, 'main.v')
+	args := ['env', 'V3CACHE=${cache_dir}', 'VMODULES=${modules}', v3_bin, '-new-compiler',
+		'-no-retry-compilation', '-ownership', '-cc', 'cc', '-gc', 'none', '-show-timings']
+	for phase in ['cold', 'warm'] {
+		write_module_cache_file(project, 'main.v', 'module main\nimport clones\nconst answer = clones.value()\nfn main() { println(answer) }\n// ${phase}\n')
+		required := os.exec([...args, '-o', os.join_path(root, 'required_${phase}'), main_file])
+		assert required.exit_code != 0, '${phase}: ${required.output}'
+		assert required.output.contains('cannot evaluate const `answer`'), required.output
+		assert required.output.contains('types with implicit clone are not supported'), required.output
+		// The ordinary caller publishes the helper cache used by the next phase.
+		write_module_cache_file(project, 'main.v', 'module main\nimport clones\nfn main() { println(clones.value()) }\n// ${phase}\n')
+		output := os.join_path(root, 'ordinary_${phase}')
+		built := os.exec([...args, '-o', output, main_file])
+		assert built.exit_code == 0, '${phase}: ${built.output}'
+		assert run_module_cache_binary(output) == '11', phase
+		helper_header := module_cache_artifact(cache_dir, 'clones_', '.vh')
+		assert helper_header.len > 0
+		assert !modulecache.header_needs_source(modulecache.Entry{ header: helper_header })
+		if phase == 'warm' {
+			parsed_headers := built.output.split_into_lines().filter(it.trim_space().starts_with('.vh files:'))
+			assert parsed_headers.any(it.contains(helper_header)), built.output
+		}
+	}
 }
 
 // Drain both pipes while the child runs, so a full stderr pipe cannot block stdout.

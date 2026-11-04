@@ -1199,16 +1199,22 @@ struct UnusedLeaf { value int }
 struct UnusedMiddle { leaf UnusedLeaf }
 pub struct OptionLarge { child UnusedMiddle }
 pub struct ResultLarge { child UnusedMiddle }
+pub struct StructUnused { child UnusedMiddle }
+pub struct FactoryOnly { value int }
 pub struct Used {
 pub:
 	value int
 }
 pub const unused_option = ?OptionLarge(none)
 pub const unused_result = make_unused_result()
+pub const unused_struct = make_unused_struct()
 pub const kept_option = ?Used(none)
 pub const kept_result = make_used_result()
+pub const kept_struct = make_kept_struct(FactoryOnly{ value: 7 })
 fn make_unused_result() !ResultLarge { return ResultLarge{} }
+fn make_unused_struct() StructUnused { return StructUnused{} }
 fn make_used_result() !Used { return Used{ value: 7 } }
+fn make_kept_struct(value FactoryOnly) Used { return Used{ value: value.value } }
 pub fn value() int { return 42 }
 ')!
 		main_file := os.join_path(root, 'main.v')
@@ -1217,6 +1223,7 @@ fn main() {
 	assert cachepayloads.kept_option == none
 	kept_result := cachepayloads.kept_result or { panic(err) }
 	assert kept_result.value == 7
+	assert cachepayloads.kept_struct.value == 7
 	println(cachepayloads.value())
 }
 '
@@ -1234,7 +1241,8 @@ fn main() {
 		if flags[1] == 'cc' {
 			c_source := os.read_file(os.join_path(root, 'program.c'))!
 			assert c_source.contains('cachepayloads__Used'), c_source
-			for name in ['OptionLarge', 'ResultLarge', 'UnusedMiddle', 'UnusedLeaf'] {
+			for name in ['OptionLarge', 'ResultLarge', 'StructUnused', 'FactoryOnly', 'UnusedMiddle',
+				'UnusedLeaf'] {
 				assert !c_source.contains('cachepayloads__${name}'), name
 			}
 		}
