@@ -7029,6 +7029,12 @@ fn (data &MyType) free() {
 Just as the compiler frees C data types with C's `free()`, it will statically insert
 `free()` calls for your data type at the end of each variable's lifetime.
 
+When a custom `free()` method directly calls builtin `free(receiver)`, explicitly calling it
+on a named value of its receiver type passes a shallow heap copy. Existing pointers, borrowed
+mutable receivers, and receivers already stored on the heap keep their original storage.
+Methods that only free fields receive the original value, so their field updates remain visible.
+This shallow copy does not duplicate any allocations referenced by the value's fields.
+
 Autofree can be enabled with an `-autofree` flag.
 
 For developers willing to have more low-level control, autofree can be disabled with
