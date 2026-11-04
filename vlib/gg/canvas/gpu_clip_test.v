@@ -57,3 +57,31 @@ fn test_analytic_clip_uniforms_select_difference() {
 	assert u.radius_plus_half == [f32(-1), 1]!
 	assert u.edge_select == [f32(0), 0, 0, 0]!
 }
+
+fn test_snap_scissor_rounds_out_to_the_next_multiple_of_four() {
+	a := snap_scissor(Rect.ltrb(5, 5, 10, 10), clip_device)
+	assert a.left() == 0 && a.top() == 0 && a.right() == 16 && a.bottom() == 16
+	// Edges already on multiples of 4 still gain padding.
+	b := snap_scissor(Rect.ltrb(4, 4, 8, 8), clip_device)
+	assert b.left() == 0 && b.right() == 12
+	// Clipped to the device.
+	c := snap_scissor(Rect.ltrb(50, 40, 64, 48), clip_device)
+	assert c.right() == 64 && c.bottom() == 48
+}
+
+fn test_rect_wedge_patches_encode_lines_as_cubics_around_the_midpoint() {
+	mut out := []u8{}
+	write_rect_wedge_patches(mut out, Rect.ltrb(3, 6, 9, 12), 5)
+	assert out.len == 4 * wedge_instance_stride
+	floats := unsafe { &f32(out.data) }
+	// The first edge runs from (3, 6) to (9, 6) with control points a third in.
+	first := unsafe { [floats[0], floats[1], floats[2], floats[3], floats[4], floats[5], floats[6],
+		floats[7]] }
+	assert first == [f32(3), 6, 5, 6, 7, 6, 9, 6]
+	// The fan point is the contour's midpoint.
+	assert unsafe { floats[8] } == 6 && unsafe { floats[9] } == 9
+	assert unsafe { floats[10] } == depth_as_float(5)
+	// The closing edge runs from (3, 12) back to (3, 6).
+	last := unsafe { &f32(&out[3 * wedge_instance_stride]) }
+	assert unsafe { last[0] } == 3 && unsafe { last[1] } == 12 && unsafe { last[7] } == 6
+}

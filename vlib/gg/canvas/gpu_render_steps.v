@@ -330,3 +330,53 @@ fn write_cover_bounds_instance(mut out []u8, bounds Rect, transform Transform, d
 	put_u32(mut out, ssbo_index)
 	put_matrix_columns(mut out, transform.matrix)
 }
+
+// The convex TessellateWedgesRenderStep instance with infinity support:
+// float4 p01, float4 p23, float2 fanPointAttrib, float depth, uint ssboIndex.
+const wedge_instance_stride = 48
+const wedge_ssbo_offset = 44
+
+// The static data of a wedge draw at resolve level 0, the only level lines
+// need: FixedCountWedges' fan vertex and the curve's end vertices
+// (resolveLevel, idx), and its fan triangle.
+const wedge_vertices = [f32(-1), -1, 0, 0, 0, 1]!
+const wedge_indices = [u16(0), 1, 2]!
+const wedge_index_count = 3
+
+// write_rect_wedge_patches mirrors TessellateWedgesRenderStep::writeVertices()
+// for a device-space rectangle: the four lines of SkPath::Rect() around the
+// contour's midpoint (MidpointContourParser), each written by
+// PatchWriter::writeLine() as a cubic patch.
+fn write_rect_wedge_patches(mut out []u8, r Rect, depth u16) {
+	pts := [Point{r.left(), r.top()}, Point{r.right(), r.top()}, Point{r.right(), r.bottom()},
+		Point{r.left(), r.bottom()}]!
+	// The lines' end points, then the start point of the implicit close.
+	mut mx := pts[1].x + pts[2].x
+	mx = mx + pts[3].x
+	mx = mx + pts[0].x
+	mut my := pts[1].y + pts[2].y
+	my = my + pts[3].y
+	my = my + pts[0].y
+	fan := Point{mx * f32(0.25), my * f32(0.25)}
+	for i in 0 .. 4 {
+		write_line_patch(mut out, pts[i], pts[(i + 1) % 4], fan, depth)
+	}
+}
+
+// write_line_patch mirrors PatchWriter::writeLine() without replicated end
+// points: the cubic (p0, (p1 - p0) / 3 + p0, (p0 - p1) / 3 + p1, p1), with
+// separate operations because Skia does not contract them into FMAs.
+fn write_line_patch(mut out []u8, p0 Point, p1 Point, fan Point, depth u16) {
+	third := f32(1) / f32(3)
+	d1x := (p1.x - p0.x) * third
+	d1y := (p1.y - p0.y) * third
+	d2x := (p0.x - p1.x) * third
+	d2y := (p0.y - p1.y) * third
+	c1 := Point{d1x + p0.x, d1y + p0.y}
+	c2 := Point{d2x + p1.x, d2y + p1.y}
+	for v in [p0.x, p0.y, c1.x, c1.y, c2.x, c2.y, p1.x, p1.y, fan.x, fan.y]! {
+		put_f32(mut out, v)
+	}
+	put_f32(mut out, depth_as_float(depth))
+	put_u32(mut out, 0)
+}

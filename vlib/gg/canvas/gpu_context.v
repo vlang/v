@@ -31,6 +31,9 @@ enum RenderStep {
 	// are only recorded for ordering by draw_msaa_trigger(), never executed.
 	tessellate_wedges
 	cover_fills
+	// The depth-only convex wedges of a clip element's draw (Graphite's
+	// TessellateWedges_Convex with no paint), executed in MSAA passes.
+	convex_wedges
 }
 
 const analytic_rrect_vert = $embed_file('shaders/analytic_rrect_solid.vert.metal')
@@ -42,6 +45,8 @@ const analytic_rrect_clip_vert = $embed_file('shaders/analytic_rrect_solid_clip.
 const analytic_rrect_clip_frag = $embed_file('shaders/analytic_rrect_solid_clip.frag.metal')
 const cover_bounds_clip_vert = $embed_file('shaders/cover_bounds_solid_clip.vert.metal')
 const cover_bounds_clip_frag = $embed_file('shaders/cover_bounds_solid_clip.frag.metal')
+const convex_wedges_vert = $embed_file('shaders/tessellate_wedges_convex.vert.metal')
+const depth_only_frag = $embed_file('shaders/depth_only.frag.metal')
 // Graphite's LoadMSAAFromResolve pipeline (MtlGraphicsPipeline.mm): a
 // fullscreen draw that copies the resolve texture into a multisampled
 // attachment before the pass's draws.
@@ -59,6 +64,8 @@ mut:
 	pipelines          []GpuPipelineEntry
 	rrect_vertices     gfx.Buffer
 	rrect_indices      gfx.Buffer
+	wedge_vertices     gfx.Buffer
+	wedge_indices      gfx.Buffer
 	instances          gfx.Buffer
 	instance_capacity  int
 	msaa_load_shader   gfx.Shader
@@ -122,6 +129,19 @@ pub fn new_gpu_context() !&GpuContext {
 			size: u32(sizeof(u16) * u32(indices.len))
 		}
 	})
+	ctx.wedge_vertices = gfx.make_buffer(&gfx.BufferDesc{
+		data: gfx.Range{
+			ptr:  unsafe { &wedge_vertices[0] }
+			size: u32(sizeof(f32) * u32(wedge_vertices.len))
+		}
+	})
+	ctx.wedge_indices = gfx.make_buffer(&gfx.BufferDesc{
+		@type: .indexbuffer
+		data:  gfx.Range{
+			ptr:  unsafe { &wedge_indices[0] }
+			size: u32(sizeof(u16) * u32(wedge_indices.len))
+		}
+	})
 	ctx.ensure_instance_capacity(64 * 1024)
 	return ctx
 }
@@ -145,6 +165,8 @@ pub fn (mut ctx GpuContext) free() {
 	}
 	gfx.destroy_buffer(ctx.rrect_vertices)
 	gfx.destroy_buffer(ctx.rrect_indices)
+	gfx.destroy_buffer(ctx.wedge_vertices)
+	gfx.destroy_buffer(ctx.wedge_indices)
 	gfx.destroy_buffer(ctx.instances)
 	if ctx.owns_gfx {
 		gfx.shutdown()
@@ -165,6 +187,7 @@ pub fn (mut ctx GpuContext) precompile() {
 			}
 		}
 	}
+	ctx.pipeline(.convex_wedges, 4, false, false)
 	ctx.load_msaa_pipeline()
 }
 
@@ -193,12 +216,19 @@ fn (mut ctx GpuContext) shader(step RenderStep, clipped bool) gfx.Shader {
 		}
 	}
 	vert, frag := match true {
+		step == .convex_wedges { convex_wedges_vert, depth_only_frag }
 		step == .analytic_rrect && clipped { analytic_rrect_clip_vert, analytic_rrect_clip_frag }
 		step == .analytic_rrect { analytic_rrect_vert, analytic_rrect_frag }
 		clipped { cover_bounds_clip_vert, cover_bounds_clip_frag }
 		else { cover_bounds_vert, cover_bounds_frag }
 	}
-	paint_uniform_size := if clipped { clip_uniform_size } else { solid_uniform_size }
+	// The per-draw uniform block: the localToDevice matrix of wedge steps, or
+	// the paint color with the analytic clip data.
+	paint_uniform_size := if step == .convex_wedges || clipped {
+		clip_uniform_size
+	} else {
+		solid_uniform_size
+	}
 	vs_source := vert.to_string()
 	fs_source := frag.to_string()
 	mut desc := gfx.ShaderDesc{}
@@ -233,6 +263,26 @@ fn (mut ctx GpuContext) pipeline(step RenderStep, sample_count int, blend bool, 
 		cull_mode:      .none
 	}
 	match step {
+		.convex_wedges {
+			desc.primitive_type = .triangles
+			desc.index_type = .uint16
+			desc.layout.buffers[0].stride = 8
+			desc.layout.buffers[1].stride = wedge_instance_stride
+			desc.layout.buffers[1].step_func = .per_instance
+			desc.layout.attrs[0] = gfx.VertexAttrDesc{
+				buffer_index: 0
+				format:       .float2
+			}
+			formats := [gfx.VertexFormat.float4, .float4, .float2, .float, .uint]
+			offsets := [0, 16, 32, 40, 44]
+			for i, format in formats {
+				desc.layout.attrs[1 + i] = gfx.VertexAttrDesc{
+					buffer_index: 1
+					offset:       offsets[i]
+					format:       format
+				}
+			}
+		}
 		.analytic_rrect {
 			desc.index_type = .uint16
 			desc.layout.buffers[0].stride = analytic_rrect_vertex_stride
@@ -274,6 +324,9 @@ fn (mut ctx GpuContext) pipeline(step RenderStep, sample_count int, blend bool, 
 		}
 	}
 	desc.colors[0].pixel_format = .bgra8
+	if step == .convex_wedges {
+		desc.colors[0].write_mask = .none
+	}
 	desc.colors[0].blend = gfx.BlendState{
 		enabled:          blend
 		src_factor_rgb:   .one

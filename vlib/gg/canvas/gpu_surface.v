@@ -31,6 +31,18 @@ struct GpuDraw {
 	// Phantom draws are simulated for ordering and buffer use but not rendered:
 	// the number of instances they append (0 for real draws).
 	phantom_instances u32
+	// The instances in `instance` of a real draw.
+	instance_count u32 = 1
+	clip           DrawClip
+}
+
+// DrawClip is the part of Graphite's Clip that the draw pass uses to choose
+// scissors: the draw's integer scissor, its bounds and its unclipped,
+// transformed shape bounds.
+struct DrawClip {
+	scissor      Rect
+	draw_bounds  Rect
+	shape_bounds Rect
 }
 
 struct PipelineKey {
@@ -64,6 +76,11 @@ mut:
 	pipelines   []PipelineKey
 	uniforms    []PaintUniforms
 	clip        ClipStackState
+	// The MSAA attachments of a single-sampled surface whose pass contains a
+	// draw that requires MSAA, like Graphite's discardable MSAA texture.
+	dynamic_msaa        gfx.Image
+	dynamic_depth       gfx.Image
+	dynamic_attachments gfx.Attachments
 }
 
 // new_surface creates an offscreen surface, initially transparent black.
@@ -129,6 +146,11 @@ pub fn (mut ctx GpuContext) new_surface(cfg GpuSurfaceConfig) !&GpuSurface {
 }
 
 pub fn (mut s GpuSurface) free() {
+	if s.dynamic_msaa.id != 0 {
+		gfx.destroy_attachments(s.dynamic_attachments)
+		gfx.destroy_image(s.dynamic_depth)
+		gfx.destroy_image(s.dynamic_msaa)
+	}
 	gfx.destroy_attachments(s.attachments)
 	gfx.destroy_image(s.depth)
 	if s.msaa.id != 0 {
@@ -344,10 +366,16 @@ pub fn (mut s GpuSurface) draw_msaa_trigger() {
 	// uniform (never equal to a paint color); step 1 covers them with the
 	// transparent paint.
 	nan := f32(math.nan())
-	s.record_step(.tessellate_wedges, false, []u8{}, PaintUniforms{
-		color: Color4f{nan, nan, nan, nan}
-	}, order, 0, 3)
-	s.record_step(.cover_fills, true, []u8{}, PaintUniforms{}, order, 1, 1)
+	device := Rect.ltrb(0, 0, f32(s.width), f32(s.height))
+	trigger_bounds := Rect.ltrb(0, 0, 0.01, 0.01)
+	trigger_clip := DrawClip{
+		scissor:      device
+		draw_bounds:  trigger_bounds
+		shape_bounds: trigger_bounds
+	}
+	s.record_step(.tessellate_wedges, false, []u8{}, identity_local_to_device, order, 0, 3,
+		trigger_clip, 0)
+	s.record_step(.cover_fills, true, []u8{}, PaintUniforms{}, order, 1, 1, trigger_clip, 0)
 	// The path bounds (0, 0, 0.01, 0.01) are subpixel, so the clip stack
 	// outsets them by the local AA radius before clipping to the device.
 	path := Rect.ltrb(0, 0, f32(0.01), f32(0.01)).outset(1)
@@ -369,8 +397,8 @@ fn (mut s GpuSurface) draw_shape(geometry ShapeGeometry, paint Paint) ! {
 	}
 	// The draw bounds clipped to the device; empty bounds clip the draw out
 	// before it consumes a depth value.
-	clipped_bounds := s.draw_bounds(paint, bounds) or { return }
-	influence, clip_rect := s.clip_for_draw(clipped_bounds)!
+	clipped_bounds, shape_bounds := s.draw_bounds(paint, bounds) or { return }
+	influence, clip_rect, depth_elements := s.clip_for_draw(clipped_bounds)!
 	if influence == .clipped_out {
 		return
 	}
@@ -391,6 +419,12 @@ fn (mut s GpuSurface) draw_shape(geometry ShapeGeometry, paint Paint) ! {
 	} else {
 		clipped_bounds
 	}
+	// Difference clips scissor to the device.
+	draw_clip := DrawClip{
+		scissor:      device_bounds
+		draw_bounds:  draw_bounds
+		shape_bounds: if step == .analytic_rrect { shape_bounds.outset(1) } else { shape_bounds }
+	}
 	// DstUsage: src-over with analytic coverage (from the renderer or an
 	// analytic clip) always reads the destination; without coverage only a
 	// translucent paint does.
@@ -399,7 +433,9 @@ fn (mut s GpuSurface) draw_shape(geometry ShapeGeometry, paint Paint) ! {
 	mut order := DrawOrder{
 		depth: s.depth_index
 	}
-	order.depends_on_paint_order(no_intersection) // the (empty) clip's order
+	// The draw follows the depth-only draws of the clip elements it uses.
+	clip_order := s.update_clip_state_for_draw(depth_elements, draw_bounds, order.depth)
+	order.depends_on_paint_order(clip_order)
 	if depends_on_dst {
 		order.depends_on_paint_order(s.bounds.most_recent_draw(draw_bounds))
 	} else if !stroked && geometry.kind == .rect {
@@ -416,11 +452,11 @@ fn (mut s GpuSurface) draw_shape(geometry ShapeGeometry, paint Paint) ! {
 			mut inner_order := DrawOrder{
 				depth: order.depth
 			}
-			inner_order.depends_on_paint_order(no_intersection)
+			inner_order.depends_on_paint_order(clip_order)
 			inner_order.reverse_depth_as_stencil()
 			mut instance := []u8{cap: cover_bounds_instance_stride}
 			write_cover_bounds_instance(mut instance, inner, s.transform, order.depth, 0)
-			s.record(.cover_bounds, false, instance, uniforms, inner_order)
+			s.record(.cover_bounds, false, instance, uniforms, inner_order, draw_clip)
 			order.depends_on_paint_order(inner_order.paint_order)
 		}
 	}
@@ -430,7 +466,8 @@ fn (mut s GpuSurface) draw_shape(geometry ShapeGeometry, paint Paint) ! {
 	} else {
 		write_analytic_rrect_instance(mut instance, geometry, s.transform, paint, order.depth, 0)
 	}
-	s.record(step, step == .analytic_rrect || depends_on_dst, instance, uniforms, order)
+	s.record(step, step == .analytic_rrect || depends_on_dst, instance, uniforms, order,
+		draw_clip)
 	s.bounds.record_draw(draw_bounds, order.paint_order)
 	$if gg_canvas_debug ? {
 		eprintln('bounds depth ${order.depth}: ${draw_bounds.left()} ${draw_bounds.top()} ${draw_bounds.right()} ${draw_bounds.bottom()} local ${bounds.left()} ${bounds.top()} ${bounds.right()} ${bounds.bottom()} kind ${geometry.kind} style ${paint.style} width ${paint.stroke_width} aa ${paint.anti_alias} m ${s.transform.matrix.m}')
@@ -438,13 +475,13 @@ fn (mut s GpuSurface) draw_shape(geometry ShapeGeometry, paint Paint) ! {
 }
 
 // record mirrors DrawList::recordDraw() for a single-step renderer.
-fn (mut s GpuSurface) record(step RenderStep, blend bool, instance []u8, uniforms PaintUniforms, order DrawOrder) {
-	s.record_step(step, blend, instance, uniforms, order, 0, 0)
+fn (mut s GpuSurface) record(step RenderStep, blend bool, instance []u8, uniforms PaintUniforms, order DrawOrder, clip DrawClip) {
+	s.record_step(step, blend, instance, uniforms, order, 0, 0, clip, 1)
 }
 
 // record_step assigns the render step's pipeline and uniform cache indices
 // in insertion order, like DrawList::recordDraw().
-fn (mut s GpuSurface) record_step(step RenderStep, blend bool, instance []u8, uniforms PaintUniforms, order DrawOrder, step_index u32, phantom_instances u32) {
+fn (mut s GpuSurface) record_step(step RenderStep, blend bool, instance []u8, uniforms PaintUniforms, order DrawOrder, step_index u32, phantom_instances u32, clip DrawClip, instance_count u32) {
 	key := PipelineKey{step, blend, uniforms.clipped}
 	mut pipeline_index := s.pipelines.index(key)
 	if pipeline_index < 0 {
@@ -472,13 +509,16 @@ fn (mut s GpuSurface) record_step(step RenderStep, blend bool, instance []u8, un
 		uniform_index:     u32(uniform_index)
 		step_index:        step_index
 		phantom_instances: phantom_instances
+		instance_count:    instance_count
+		clip:              clip
 	}
 }
 
 // draw_bounds mirrors DrawShape::applyStyle() in
 // ClipStack::visitClipStackForDraw(): the styled shape bounds mapped to
 // device space and clipped to the surface (difference clips scissor to it).
-fn (s &GpuSurface) draw_bounds(paint Paint, bounds Rect) ?Rect {
+// It also returns the unclipped transformed shape bounds.
+fn (s &GpuSurface) draw_bounds(paint Paint, bounds Rect) ?(Rect, Rect) {
 	w := bounds.width()
 	h := bounds.height()
 	if !is_finite_f32(w) || !is_finite_f32(h) {
@@ -512,7 +552,7 @@ fn (s &GpuSurface) draw_bounds(paint Paint, bounds Rect) ?Rect {
 	if outer.is_empty_negative_or_nan() {
 		return none
 	}
-	return outer
+	return outer, transformed
 }
 
 fn patch_u32(mut bytes []u8, offset int, value u32) {
@@ -525,7 +565,7 @@ fn patch_u32(mut bytes []u8, offset int, value u32) {
 fn instance_stride(step RenderStep) int {
 	return match step {
 		.analytic_rrect { analytic_rrect_instance_stride }
-		.tessellate_wedges { 48 }
+		.tessellate_wedges, .convex_wedges { wedge_instance_stride }
 		else { cover_bounds_instance_stride }
 	}
 }
@@ -587,10 +627,20 @@ pub fn (mut s GpuSurface) read_pixels(pixels voidptr, pitch int) ! {
 
 // flush renders the pending draws.
 pub fn (mut s GpuSurface) flush() ! {
+	s.record_deferred_clip_draws()
 	if s.draws.len == 0 && s.load {
 		return
 	}
 	mut ctx := s.ctx
+	// A pass with a draw that requires MSAA (depth-only clip draws, path steps)
+	// is multisampled, even on a single-sampled surface.
+	requires_msaa := s.draws.any(it.step in [.convex_wedges, .tessellate_wedges, .cover_fills])
+	samples := if s.sample_count == 1 && requires_msaa { 4 } else { s.sample_count }
+	attachments := if samples == s.sample_count {
+		s.attachments
+	} else {
+		s.dynamic_msaa_attachments()!
+	}
 	// Sort like DrawList::snapDrawPass(), then batch consecutive draws with the
 	// same pipeline into one instanced draw call, like its DrawWriter.
 	mut keys := []SortKey{cap: s.draws.len}
@@ -608,37 +658,49 @@ pub fn (mut s GpuSurface) flush() ! {
 	}
 	libcpp_sort(mut keys)
 	// Simulate DrawList::snapDrawPass() to find the draw call boundaries:
-	// pipeline changes, uniform storage rebinds and full instance buffers.
+	// pipeline changes, uniform storage rebinds, scissor changes and full
+	// instance buffers.
+	device := Rect.ltrb(0, 0, f32(s.width), f32(s.height))
 	mut buffers := new_buffer_manager_sim()
 	mut writer := DrawWriterSim{}
 	mut tracker := UniformTrackerSim{}
 	mut call_of := []int{len: keys.len} // the simulated draw call of each sorted key
+	mut scissor_of := []Rect{len: keys.len}
+	mut scissor := device
 	mut last_pipeline := u32(0xffffffff)
 	for i, key in keys {
 		draw := s.draws[key.draw]
-		uniform_size := if draw.step == .tessellate_wedges {
-			u32(64)
-		} else if draw.uniforms.clipped {
+		uniform_size := if draw.uniforms.local_to_device || draw.uniforms.clipped {
 			u32(clip_uniform_size)
 		} else {
 			u32(solid_uniform_size)
 		}
 		rebind := tracker.write_uniforms(int(draw.uniform_index), uniform_size, mut buffers)
+		new_scissor, scissor_changes := draw_scissor(draw.clip, scissor, device)
 		if draw.pipeline_index != last_pipeline {
 			writer.new_pipeline_state(u32(instance_stride(draw.step)), mut buffers)
 			last_pipeline = draw.pipeline_index
-		} else if rebind {
+		} else if rebind || scissor_changes {
 			writer.flush()
 		}
-		count := if draw.phantom_instances > 0 { int(draw.phantom_instances) } else { 1 }
+		if scissor_changes {
+			scissor = new_scissor
+		}
+		count := if draw.phantom_instances > 0 {
+			int(draw.phantom_instances)
+		} else {
+			int(draw.instance_count)
+		}
 		for _ in 0 .. count {
 			writer.append_instance(mut buffers)
 		}
 		call_of[i] = writer.calls.len
+		scissor_of[i] = scissor
 	}
 	writer.flush()
 	mut batches := []int{} // start index into `keys` of each real draw call, plus keys.len
 	mut real_keys := []SortKey{cap: keys.len}
+	mut real_scissors := []Rect{cap: keys.len}
 	for i, key in keys {
 		if s.draws[key.draw].phantom_instances > 0 {
 			continue
@@ -647,6 +709,7 @@ pub fn (mut s GpuSurface) flush() ! {
 			batches << real_keys.len
 		}
 		real_keys << key
+		real_scissors << scissor_of[i]
 	}
 	batches << real_keys.len
 	keys = real_keys.clone()
@@ -670,8 +733,15 @@ pub fn (mut s GpuSurface) flush() ! {
 				slot = batch_uniforms[b].len
 				batch_uniforms[b] << draw.uniforms
 			}
-			ssbo_offset := if draw.step == .analytic_rrect { 68 } else { 20 }
-			patch_u32(mut instances, start + ssbo_offset, u32(slot))
+			stride := instance_stride(draw.step)
+			ssbo_offset := match draw.step {
+				.analytic_rrect { 68 }
+				.convex_wedges { wedge_ssbo_offset }
+				else { 20 }
+			}
+			for k in 0 .. int(draw.instance_count) {
+				patch_u32(mut instances, start + k * stride + ssbo_offset, u32(slot))
+			}
 		}
 	}
 	mut base := 0
@@ -689,11 +759,11 @@ pub fn (mut s GpuSurface) flush() ! {
 		})
 	}
 	mut pass := gfx.Pass{
-		attachments: s.attachments
+		attachments: attachments
 	}
 	// Like Graphite on Metal, a multisampled pass discards its samples and
 	// loads existing pixels with a draw from the resolve texture.
-	load_msaa := s.load && s.sample_count > 1
+	load_msaa := s.load && samples > 1
 	if load_msaa {
 		pass.action.colors[0].load_action = .dontcare
 	} else if s.load {
@@ -703,7 +773,7 @@ pub fn (mut s GpuSurface) flush() ! {
 		pass.action.colors[0].clear_value = gfx.Color{s.clear_color.r, s.clear_color.g, s.clear_color.b, s.clear_color.a}
 	}
 	// Graphite resolves multisampled passes without storing the samples.
-	pass.action.colors[0].store_action = if s.sample_count > 1 {
+	pass.action.colors[0].store_action = if samples > 1 {
 		gfx.StoreAction.dontcare
 	} else {
 		gfx.StoreAction.store
@@ -727,56 +797,138 @@ pub fn (mut s GpuSurface) flush() ! {
 	}
 	for b in 0 .. batches.len - 1 {
 		first := batches[b]
-		count := batches[b + 1] - first
-		draw := s.draws[keys[first].draw]
-		gfx.apply_pipeline(ctx.pipeline(draw.step, s.sample_count, draw.blend, draw.uniforms.clipped))
-		mut bindings := gfx.Bindings{}
-		if draw.step == .analytic_rrect {
-			bindings.vertex_buffers[0] = ctx.rrect_vertices
-			bindings.vertex_buffers[1] = ctx.instances
-			bindings.vertex_buffer_offsets[1] = base + offsets[first]
-			bindings.index_buffer = ctx.rrect_indices
-		} else {
-			bindings.vertex_buffers[0] = ctx.instances
-			bindings.vertex_buffer_offsets[0] = base + offsets[first]
+		mut count := 0
+		for i in first .. batches[b + 1] {
+			count += int(s.draws[keys[i].draw].instance_count)
 		}
-		gfx.apply_bindings(&bindings)
-		mut paint_uniforms := []f32{cap: batch_uniforms[b].len * clip_uniform_size / 4}
-		for u in batch_uniforms[b] {
-			paint_uniforms << u.color.r
-			paint_uniforms << u.color.g
-			paint_uniforms << u.color.b
-			paint_uniforms << u.color.a
-			if u.clipped {
-				// CombinedUniformData: rect_5, radiusPlusHalf_5 (padded), edgeSelect_5.
-				for v in u.clip.rect {
-					paint_uniforms << v
-				}
-				paint_uniforms << u.clip.radius_plus_half[0]
-				paint_uniforms << u.clip.radius_plus_half[1]
-				paint_uniforms << 0
-				paint_uniforms << 0
-				for v in u.clip.edge_select {
-					paint_uniforms << v
-				}
+		draw := s.draws[keys[first].draw]
+		gfx.apply_pipeline(ctx.pipeline(draw.step, samples, draw.blend, draw.uniforms.clipped))
+		sc := real_scissors[first]
+		gfx.apply_scissor_rect(int(sc.left()), int(sc.top()), int(sc.width()), int(sc.height()),
+			true)
+		mut bindings := gfx.Bindings{}
+		match draw.step {
+			.analytic_rrect {
+				bindings.vertex_buffers[0] = ctx.rrect_vertices
+				bindings.vertex_buffers[1] = ctx.instances
+				bindings.vertex_buffer_offsets[1] = base + offsets[first]
+				bindings.index_buffer = ctx.rrect_indices
+			}
+			.convex_wedges {
+				bindings.vertex_buffers[0] = ctx.wedge_vertices
+				bindings.vertex_buffers[1] = ctx.instances
+				bindings.vertex_buffer_offsets[1] = base + offsets[first]
+				bindings.index_buffer = ctx.wedge_indices
+			}
+			else {
+				bindings.vertex_buffers[0] = ctx.instances
+				bindings.vertex_buffer_offsets[0] = base + offsets[first]
 			}
 		}
+		gfx.apply_bindings(&bindings)
+		paint_uniforms := serialize_uniforms(batch_uniforms[b])
 		paint_range := gfx.Range{
 			ptr:  paint_uniforms.data
 			size: u32(paint_uniforms.len * 4)
 		}
 		gfx.apply_uniforms(.vs, 0, &intrinsic_range)
 		gfx.apply_uniforms(.vs, 1, &paint_range)
-		gfx.apply_uniforms(.fs, 0, &intrinsic_range)
-		gfx.apply_uniforms(.fs, 1, &paint_range)
-		if draw.step == .analytic_rrect {
-			gfx.draw(0, analytic_rrect_index_count, count)
-		} else {
-			gfx.draw(0, 4, count)
+		if draw.step != .convex_wedges {
+			gfx.apply_uniforms(.fs, 0, &intrinsic_range)
+			gfx.apply_uniforms(.fs, 1, &paint_range)
+		}
+		match draw.step {
+			.analytic_rrect { gfx.draw(0, analytic_rrect_index_count, count) }
+			.convex_wedges { gfx.draw(0, wedge_index_count, count) }
+			else { gfx.draw(0, 4, count) }
 		}
 	}
 	gfx.end_pass()
 	s.reset_draws()
 	// Later flushes draw on top of the rendered pixels.
 	s.load = true
+}
+
+// serialize_uniforms writes a batch's uniform blocks like Graphite's
+// storage-buffer uniforms: the localToDevice matrix of wedge steps, or the
+// paint color followed by the analytic clip data.
+fn serialize_uniforms(blocks []PaintUniforms) []f32 {
+	mut out := []f32{cap: blocks.len * clip_uniform_size / 4}
+	for u in blocks {
+		if u.local_to_device {
+			for v in u.matrix {
+				out << v
+			}
+			continue
+		}
+		out << u.color.r
+		out << u.color.g
+		out << u.color.b
+		out << u.color.a
+		if u.clipped {
+			// CombinedUniformData: rect_5, radiusPlusHalf_5 (padded), edgeSelect_5.
+			for v in u.clip.rect {
+				out << v
+			}
+			out << u.clip.radius_plus_half[0]
+			out << u.clip.radius_plus_half[1]
+			out << 0
+			out << 0
+			for v in u.clip.edge_select {
+				out << v
+			}
+		}
+	}
+	return out
+}
+
+// draw_scissor mirrors RenderStep::getScissor() for regular fills: the
+// scissor to set before a draw, and whether it is set (a state change, even
+// when the scissor stays the same).
+fn draw_scissor(clip DrawClip, current Rect, device Rect) (Rect, bool) {
+	if rect_equal(current, clip.scissor) {
+		return current, false
+	}
+	if rect_equal(clip.shape_bounds.intersect(current), clip.draw_bounds) {
+		return current, false
+	}
+	if rect_equal(clip.draw_bounds, clip.shape_bounds) {
+		return device, true
+	}
+	return clip.scissor, true
+}
+
+fn rect_equal(a Rect, b Rect) bool {
+	return a.vals[0] == b.vals[0] && a.vals[1] == b.vals[1] && a.vals[2] == b.vals[2]
+		&& a.vals[3] == b.vals[3]
+}
+
+// dynamic_msaa_attachments returns the 4x MSAA attachments that resolve into
+// a single-sampled surface, creating them on first use.
+fn (mut s GpuSurface) dynamic_msaa_attachments() !gfx.Attachments {
+	if s.dynamic_msaa.id == 0 {
+		s.dynamic_msaa = gfx.make_image(&gfx.ImageDesc{
+			render_target: true
+			width:         s.width
+			height:        s.height
+			pixel_format:  .bgra8
+			sample_count:  4
+		})
+		s.dynamic_depth = gfx.make_image(&gfx.ImageDesc{
+			render_target: true
+			width:         s.width
+			height:        s.height
+			pixel_format:  .depth_stencil
+			sample_count:  4
+		})
+		mut desc := gfx.AttachmentsDesc{}
+		desc.colors[0].image = s.dynamic_msaa
+		desc.resolves[0].image = s.color
+		desc.depth_stencil.image = s.dynamic_depth
+		s.dynamic_attachments = gfx.make_attachments(&desc)
+	}
+	if gfx.query_attachments_state(s.dynamic_attachments) != .valid {
+		return error('gg.canvas: could not create the MSAA render target')
+	}
+	return s.dynamic_attachments
 }

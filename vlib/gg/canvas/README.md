@@ -26,8 +26,8 @@ Supported so far: filled, stroked and hairline rects, rounded rects and ovals
 fills), single-sampled and 4x MSAA surfaces, uploaded backdrops (loaded into
 MSAA passes with Graphite's LoadMSAAFromResolve draw), BGRA8 premultiplied
 readback, and difference clip rectangles under axis-aligned transforms (Graphite's
-ClipStack bookkeeping and its analytic clip shaders; a second interacting
-element needs depth-only clip draws, which are not ported yet).
+ClipStack bookkeeping, its analytic clip shaders, and depth-only convex wedge
+draws in a 4x MSAA pass for further elements).
 Draws that need other renderers (paths, elliptical strokes, ...) return an
 error instead of rendering differently.
 

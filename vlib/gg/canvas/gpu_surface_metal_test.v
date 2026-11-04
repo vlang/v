@@ -149,3 +149,36 @@ fn test_difference_clips_cut_out_draws() {
 	assert pixel(px, 15, 12) == [u8(30), 20, 10, 255]
 	assert pixel(px, 12, 6) == [u8(30), 20, 10, 255]
 }
+
+fn test_further_clip_elements_are_drawn_into_the_depth_attachment() {
+	mut ctx := new_gpu_context() or {
+		eprintln('skipping: ${err}')
+		return
+	}
+	defer {
+		ctx.free()
+	}
+	mut s := ctx.new_surface(width: test_width, height: test_height)!
+	defer {
+		s.free()
+	}
+	s.clear(Color4f{})
+	// Two gaps in a line, like skip-ink underlines: the newest is analytic, the
+	// other is drawn into the depth attachment of a 4x MSAA pass.
+	s.clip_rect(Rect.ltrb(6, 2, 9, 10), .difference, false)!
+	s.clip_rect(Rect.ltrb(14, 2, 17, 10), .difference, false)!
+	s.draw_rect(Rect.ltrb(2, 4, 26, 8), Paint{
+		color:      Color4f.from_rgba8(10, 20, 30, 255)
+		anti_alias: true
+	})!
+	assert s.draws.len == 1 && s.draws[0].uniforms.clipped
+	assert s.clip.elements[0].pending
+	mut px := []u8{len: test_width * test_height * 4}
+	s.read_pixels(px.data, test_width * 4)!
+	assert pixel(px, 7, 5) == [u8(0), 0, 0, 0]
+	assert pixel(px, 15, 5) == [u8(0), 0, 0, 0]
+	assert pixel(px, 4, 5) == [u8(30), 20, 10, 255]
+	assert pixel(px, 11, 5) == [u8(30), 20, 10, 255]
+	assert pixel(px, 20, 5) == [u8(30), 20, 10, 255]
+	assert !s.clip.elements[0].pending
+}

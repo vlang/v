@@ -18,6 +18,12 @@ struct ClipElement {
 	rect Rect
 mut:
 	valid bool = true
+	// The draws clipped by the element since its depth-only draw was last
+	// recorded: RawElement's fOrder, fMaxZ and fUsageBounds.
+	pending bool
+	order   u16
+	max_z   u16
+	usage   Rect
 }
 
 // ClipStackState mirrors the single save record of Graphite's ClipStack for
@@ -55,12 +61,21 @@ struct AnalyticClipUniforms {
 	edge_select      [4]f32
 }
 
-// PaintUniforms is a draw's paint uniform block: its premultiplied color and,
-// for draws with an analytic clip, the clip data.
+// PaintUniforms is a draw's uniform block: its premultiplied color and, for
+// draws with an analytic clip, the clip data; or for wedge steps without a
+// paint, their localToDevice matrix.
 struct PaintUniforms {
-	color   Color4f
-	clipped bool
-	clip    AnalyticClipUniforms
+	color           Color4f
+	clipped         bool
+	clip            AnalyticClipUniforms
+	local_to_device bool
+	matrix          [16]f32
+}
+
+// identity_local_to_device is the uniform block of draws in device space.
+const identity_local_to_device = PaintUniforms{
+	local_to_device: true
+	matrix:          [f32(1), 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]!
 }
 
 // The analytic-clip paint uniforms: float4 color, float4 rect, float2
@@ -90,49 +105,54 @@ pub fn (mut s GpuSurface) clip_rect(r Rect, op ClipOp, anti_alias bool) ! {
 	if element.is_empty_negative_or_nan() {
 		return
 	}
-	s.clip.add_difference(element, device)
+	for removed in s.clip.add_difference(element, device) {
+		s.draw_clip(removed)
+	}
 }
 
 // add_difference mirrors SaveRecord::addElement() for a difference rectangle.
-fn (mut c ClipStackState) add_difference(e Rect, device Rect) {
+// It returns the elements it removes, in the order Graphite draws their
+// pending depth-only draws.
+fn (mut c ClipStackState) add_difference(e Rect, device Rect) []ClipElement {
 	if c.state == .wide_open {
 		// Intersect (device) + Difference (e)
 		if e.contains(device) {
 			c.state = .empty
+			mut removed := c.elements.reverse()
 			c.elements.clear()
 			c.oldest_valid = 0
-			return
+			return removed
 		}
-		c.replace_with(e)
-		return
+		return c.replace_with(e)
 	}
 	// Difference (stack) + Difference (e); the stack only checks its bounds.
 	if c.inner.contains(e) {
-		return
+		return []ClipElement{}
 	}
 	if e.contains(c.outer) {
-		c.replace_with(e)
-		return
+		return c.replace_with(e)
 	}
 	c.outer = c.outer.join(e)
 	if e.area() > c.inner.area() {
 		c.inner = e
 	}
-	c.append(e)
+	return c.append(e)
 }
 
-fn (mut c ClipStackState) replace_with(e Rect) {
+fn (mut c ClipStackState) replace_with(e Rect) []ClipElement {
 	c.state = .complex
 	c.inner = e
 	c.outer = e
+	removed := c.elements.reverse()
 	c.elements = [ClipElement{
 		rect: e
 	}]
 	c.oldest_valid = 0
+	return removed
 }
 
 // append mirrors SaveRecord::appendElement() for a stack with one save record.
-fn (mut c ClipStackState) append(e Rect) {
+fn (mut c ClipStackState) append(e Rect) []ClipElement {
 	mut youngest_valid := -1
 	mut oldest_valid := c.elements.len
 	mut oldest_active_invalid := -1
@@ -142,7 +162,7 @@ fn (mut c ClipStackState) append(e Rect) {
 			// RawElement::updateForElement(): Difference (A) + Difference (B)
 			if existing.rect.contains(e) {
 				// The new element changes nothing.
-				return
+				return []ClipElement{}
 			} else if e.contains(existing.rect) {
 				existing.valid = false
 			}
@@ -165,42 +185,47 @@ fn (mut c ClipStackState) append(e Rect) {
 		target++
 		reuse = -1
 	}
+	mut removed := []ClipElement{}
 	for c.elements.len > target {
-		c.elements.delete_last()
+		removed << c.elements.pop()
 	}
 	added := ClipElement{
 		rect: e
 	}
 	if reuse >= 0 {
+		removed << c.elements[reuse]
 		c.elements[reuse] = added
 	} else if c.elements.len < target {
 		c.elements << added
 	} else {
+		removed << c.elements[c.elements.len - 1]
 		c.elements[c.elements.len - 1] = added
 	}
+	return removed
 }
 
 // clip_for_draw mirrors ClipStack::visitClipStackForDraw() for a draw whose
 // styled device bounds are `outer`. It returns the analytic clip element's
-// rectangle for draws that need one.
-fn (s &GpuSurface) clip_for_draw(outer Rect) !(ClipInfluence, Rect) {
+// rectangle and the indices of the elements that need depth-only clip draws.
+fn (s &GpuSurface) clip_for_draw(outer Rect) !(ClipInfluence, Rect, []int) {
 	c := s.clip
 	if c.state == .empty {
-		return ClipInfluence.clipped_out, Rect{}
+		return ClipInfluence.clipped_out, Rect{}, []int{}
 	}
 	if c.state == .wide_open {
-		return ClipInfluence.none, Rect{}
+		return ClipInfluence.none, Rect{}, []int{}
 	}
 	// Difference (stack) + Intersect (draw)
 	if !outer.intersects(c.outer) {
-		return ClipInfluence.none, Rect{}
+		return ClipInfluence.none, Rect{}, []int{}
 	}
 	if c.inner.contains(outer) {
-		return ClipInfluence.clipped_out, Rect{}
+		return ClipInfluence.clipped_out, Rect{}, []int{}
 	}
 	rotated := int(s.transform.typ) > int(TransformType.rect_stays_rect)
 	mut influence := ClipInfluence.none
 	mut analytic := Rect{}
+	mut depth_elements := []int{}
 	mut unsupported := ''
 	// Newest elements first; the first one that interacts becomes the
 	// analytic clip, and any element can still clip the draw out entirely.
@@ -214,10 +239,11 @@ fn (s &GpuSurface) clip_for_draw(outer Rect) !(ClipInfluence, Rect) {
 			continue
 		}
 		if element.rect.contains(outer) {
-			return ClipInfluence.clipped_out, Rect{}
+			return ClipInfluence.clipped_out, Rect{}, []int{}
 		}
 		if influence == .analytic {
-			unsupported = 'gg.canvas: more than one clip element needs depth-only clip draws'
+			// Later elements are drawn into the depth attachment.
+			depth_elements << i
 			continue
 		}
 		influence = .analytic
@@ -226,7 +252,7 @@ fn (s &GpuSurface) clip_for_draw(outer Rect) !(ClipInfluence, Rect) {
 	if unsupported != '' {
 		return error(unsupported)
 	}
-	return influence, analytic
+	return influence, analytic, depth_elements
 }
 
 // analytic_clip_uniforms mirrors PaintParams' NonMSAAClip data for a
@@ -309,6 +335,9 @@ fn sk_rects_intersect(a Rect, b Rect) bool {
 // same_paint_uniforms compares uniform blocks with float equality, like the
 // byte-keyed cache for these values (a NaN block is never shared).
 fn same_paint_uniforms(a PaintUniforms, b PaintUniforms) bool {
+	if a.local_to_device || b.local_to_device {
+		return a.local_to_device == b.local_to_device && a.matrix == b.matrix
+	}
 	if a.clipped != b.clipped || a.color.r != b.color.r || a.color.g != b.color.g
 		|| a.color.b != b.color.b || a.color.a != b.color.a {
 		return false
@@ -323,4 +352,91 @@ fn same_paint_uniforms(a PaintUniforms, b PaintUniforms) bool {
 	}
 	return a.clip.radius_plus_half[0] == b.clip.radius_plus_half[0]
 		&& a.clip.radius_plus_half[1] == b.clip.radius_plus_half[1]
+}
+
+// snap_scissor mirrors ClipStack's snap_scissor(): `a` rounded out to the
+// next multiple of 4 pixels and clipped to the device.
+fn snap_scissor(a Rect, device Rect) Rect {
+	o := a.outset(3)
+	quarter := Rect{
+		vals: [o.vals[0] * f32(0.25), o.vals[1] * f32(0.25), o.vals[2] * f32(0.25),
+			o.vals[3] * f32(0.25)]!
+	}
+	r := quarter.round_out()
+	snapped := Rect{
+		vals: [r.vals[0] * 4, r.vals[1] * 4, r.vals[2] * 4, r.vals[3] * 4]!
+	}
+	return snapped.intersect(device)
+}
+
+// update_clip_state_for_draw mirrors ClipStack::updateClipStateForDraw(): the
+// elements that clip a draw at depth `z` with bounds `draw_bounds` record
+// their usage, and the draw is ordered after the latest of their depth-only
+// draws.
+fn (mut s GpuSurface) update_clip_state_for_draw(elements []int, draw_bounds Rect, z u16) u16 {
+	device := Rect.ltrb(0, 0, f32(s.width), f32(s.height))
+	snapped := snap_scissor(draw_bounds, device)
+	mut max_order := no_intersection
+	for i in elements {
+		mut e := &s.clip.elements[i]
+		if !e.pending {
+			// Ordered after the most recent draw under the element's bounds.
+			e.usage = snapped
+			e.max_z = z
+			e.order = s.bounds.most_recent_draw(snap_scissor(e.rect, device)) + 1
+			e.pending = true
+		} else {
+			e.usage = e.usage.join(snapped)
+			if z > e.max_z {
+				e.max_z = z
+			}
+		}
+		if e.order > max_order {
+			max_order = e.order
+		}
+	}
+	return max_order
+}
+
+// draw_clip mirrors RawElement::drawClip(): an element that clipped draws is
+// drawn into the depth attachment at one past their largest depth, with its
+// pending usage as the scissor.
+fn (mut s GpuSurface) draw_clip(e ClipElement) {
+	if !e.pending {
+		return
+	}
+	device := Rect.ltrb(0, 0, f32(s.width), f32(s.height))
+	snapped_outer := snap_scissor(e.rect, device)
+	mut scissor := e.usage.intersect(snapped_outer)
+	if f32(0.5) * snapped_outer.area() < scissor.area() {
+		scissor = snapped_outer
+	}
+	draw_bounds := e.rect.intersect(scissor)
+	if draw_bounds.is_empty_negative_or_nan() {
+		return
+	}
+	order := DrawOrder{
+		depth:       e.max_z + 1
+		paint_order: e.order
+	}
+	mut instance := []u8{cap: 4 * wedge_instance_stride}
+	write_rect_wedge_patches(mut instance, e.rect, order.depth)
+	s.record_step(.convex_wedges, false, instance, identity_local_to_device, order, 0, 0,
+		DrawClip{
+			scissor:      scissor
+			draw_bounds:  draw_bounds
+			shape_bounds: e.rect
+		}, 4)
+	if order.depth > s.depth_index {
+		s.depth_index = order.depth
+	}
+}
+
+// record_deferred_clip_draws mirrors ClipStack::recordDeferredClipDraws()
+// before a flush; elements then collect their usage again.
+fn (mut s GpuSurface) record_deferred_clip_draws() {
+	for i in 0 .. s.clip.elements.len {
+		s.draw_clip(s.clip.elements[i])
+		s.clip.elements[i].pending = false
+	}
 }
