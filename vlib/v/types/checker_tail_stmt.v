@@ -928,6 +928,10 @@ fn (tc &TypeChecker) none_guard_fallthrough_unwraps_in_layer(id flat.NodeId, key
 					return false
 				}
 			}
+			if stop_at_refinement && parent.kind == .for_stmt && index >= 3
+				&& tc.condition_refines_type_of_key(tc.a.child(parent, 1), key, 0) {
+				return false
+			}
 		}
 		if stop_at_refinement && parent.kind == .if_expr && parent.children_count >= 2
 			&& tc.a.child(parent, 0) != current

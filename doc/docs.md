@@ -8993,6 +8993,7 @@ Matches retain their arm refinements while loop metadata is checked.
 Declaration guards such as `if payload := value` bind the unwrapped payload in their success branch.
 Exiting option guards also unwrap payloads for later statements in the same block.
 Each guard applies to the option layer visible before it.
+Type checks in loop conditions preserve the optional payload type.
 
 #### <h4 id="comptime-methods">.methods</h4>
 

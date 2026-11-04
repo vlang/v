@@ -384,6 +384,7 @@ fn main() {
 	run_variant_review_case('none_guard_fallthrough', source, false)
 	enclosed := source.replace('fn extract', 'fn enabled() bool { return true }\nfn extract').replace('return value\n', 'if enabled() { return value }; return 0\n')
 	run_variant_review_case('none_guard_unrelated_if', enclosed, false)
+	run_variant_review_case('none_guard_unrelated_loop', enclosed.replace('if enabled() { return value }', 'for enabled() { return value }'), false)
 	scalar_match := source.replace('return value\n', 'match value { 42 { return value } else { return value } }\n')
 	run_variant_review_case('none_guard_scalar_match', scalar_match, false)
 	check_variant_review_case('invalid_fallthrough_payload', source.replace('return value\n', 'return value.len\n'), true, '`int` has no property `len`')
@@ -507,4 +508,34 @@ fn main() {
 		run_variant_review_case('inner_option_guard_${name}', guarded.replace('return value or { 0 }', 'if value == none { return 0 }; return value'), true)
 	}
 	check_variant_review_case('inner_option_requires_unwrap', source.replace('return value or { 0 }', 'return value'), true, '`?int` as type `int`')
+}
+
+fn test_variant_preflight_keeps_loop_option_layers_separate() {
+	source := r'
+type Choice = ?int | string
+fn extract(value ?Choice) int {
+	if value == none { return 0 }
+	$for variant in Choice.variants {
+		_ = variant.typ
+		for value is ?int {
+			return value or { 0 }
+		}
+	}
+	return -1
+}
+fn main() {
+	assert extract(?Choice(none)) == 0
+	assert extract(?Choice(Choice(?int(none)))) == 0
+	assert extract(?Choice(Choice(?int(42)))) == 42
+}'
+	// The nested option shape has the same baseline native codegen limitation as above.
+	run_variant_review_case('outer_option_loop_layer', source, true)
+	compound := source.replace('fn extract', 'fn enabled() bool { return true }\nfn extract').replace('for value is ?int {', 'for (value is ?int) && enabled() {')
+	run_variant_review_case('outer_option_compound_loop_layer', compound, true)
+	alias := source.replace('for value is ?int {', 'only_int := value is ?int\n\t\tfor only_int {')
+	run_variant_review_case('outer_option_alias_loop_layer', alias, true)
+	header := source.replace('fn extract', 'fn consume_outer(value Choice) int { _ = value; return 1 }\nfn extract').replace('for value is ?int {', 'for i := consume_outer(value); value is ?int && i < 2; i += consume_outer(value) {')
+	run_variant_review_case('outer_option_loop_header_scope', header, true)
+	run_variant_review_case('inner_option_loop_guard', source.replace('return value or { 0 }', 'if value == none { return 0 }; return value'), true)
+	check_variant_review_case('inner_loop_option_requires_unwrap', source.replace('return value or { 0 }', 'return value'), true, '`?int` as type `int`')
 }
