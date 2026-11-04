@@ -63,3 +63,23 @@ fn test_sum_match_promotes_numeric_expression_arms() {
 		}
 	}
 }
+
+fn append_generic_numeric_match[T](n T, k int) []NumericExpressionValue {
+	mut items := []NumericExpressionValue{}
+	items << match k {
+		0 { n }
+		else { 2.5 }
+	}
+	return items
+}
+
+fn test_sum_match_promotes_specialized_generic_arms() {
+	for k in 0 .. 2 {
+		items := append_generic_numeric_match[int](5, k)
+		value := items[0]
+		assert value is f64
+		if value is f64 {
+			assert value == if k == 0 { 5.0 } else { 2.5 }
+		}
+	}
+}

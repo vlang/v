@@ -19499,8 +19499,9 @@ fn (mut t Transformer) transform_match_expr_for_type(_id flat.NodeId, node flat.
 	return tmp
 }
 
-// match_expr_common_value_type uses the checker's concrete per-node types, avoiding
-// name lookups before arm-local declarations are transformed.
+// match_expr_common_value_type prefers checked per-node types to avoid name lookups
+// before arm-local declarations are transformed. Generic clones may instead carry
+// their specialized types on the nodes or current bindings.
 fn (t &Transformer) match_expr_common_value_type(node flat.Node) u32 {
 	mut result := u32(0)
 	mut enum_shorthand := false
@@ -19532,11 +19533,19 @@ fn (t &Transformer) match_expr_common_value_type(node flat.Node) u32 {
 			typ = match value.kind {
 				.int_literal { flat.source_type_int }
 				.float_literal { flat.source_type_f64 }
-				.cast_expr { value.source_value_id() }
+				.cast_expr { t.resolve_type_text_import_aliases(value.source_value_id()) }
 				else {
-					if isnil(t.tc) { return 0 }
-					checked := t.tc.expr_type_reference(tail_id) or { return 0 }
-					t.tc.type_name(checked)
+					mut value_type := value.typ
+					if !isnil(t.tc) {
+						if checked := t.tc.expr_type_reference(tail_id) {
+							value_type = t.tc.type_name(checked)
+						}
+					}
+					if value.kind == .ident
+						&& (value_type == 0 || t.generic_arg_is_unresolved(value_type)) {
+						value_type = t.raw_var_type(value.value_text())
+					}
+					value_type
 				}
 			}
 		}

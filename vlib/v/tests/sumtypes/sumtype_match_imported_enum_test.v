@@ -21,6 +21,28 @@ fn test_match_sum_storage_keeps_imported_enum_shorthand() {
 	}
 }
 
+fn test_match_sum_storage_keeps_imported_enum_cast_shorthand() {
+	mut values := []ImportedMatchColor{}
+	for k in 1 .. 3 {
+		// Casting a numeric value to an enum requires unsafe.
+		unsafe {
+			values << match k {
+				1 { colors.Second(0) }
+				else { .blue }
+			}
+		}
+		value := values[k - 1]
+		match value {
+			colors.Second {
+				assert value == if k == 1 { colors.Second.red } else { colors.Second.blue }
+			}
+			else {
+				assert false
+			}
+		}
+	}
+}
+
 type ImportedColorAlias = colors.Second
 
 type AliasedImportedMatchColor = ImportedColorAlias | colors.Second | string
