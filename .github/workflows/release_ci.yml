@@ -13,6 +13,11 @@ on:
       - master
     paths:
       - '.github/workflows/release_ci.yml'
+      - 'cmd/tools/builders/windows_arm64_release.ps1'
+  pull_request:
+    paths:
+      - '.github/workflows/release_ci.yml'
+      - 'cmd/tools/builders/windows_arm64_release.ps1'
 
 concurrency:
   group: release-${{ github.workflow }}-${{ inputs.release_tag || (github.ref_type == 'tag' && github.ref_name) || github.ref }}
@@ -22,6 +27,20 @@ permissions:
   contents: write
 
 jobs:
+  windows-arm64-smoke:
+    if: github.event_name == 'pull_request'
+    runs-on: windows-11-arm
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build and verify native ARM64 compiler and tools
+        shell: pwsh
+        run: ./cmd/tools/builders/windows_arm64_release.ps1
+
   release-build:
     if: github.ref == 'refs/heads/master'
     runs-on: ${{ matrix.os }}
@@ -35,6 +54,7 @@ jobs:
             macos-15-intel,
             macos-15,
             windows-latest,
+            windows-11-arm,
           ]
         include:
           - os: ubuntu-22.04
@@ -57,6 +77,10 @@ jobs:
             cc: msvc
             target: windows
             artifact: v_windows.zip
+          - os: windows-11-arm
+            cc: msvc
+            target: windows_arm64
+            artifact: v_windows_arm64.zip
       fail-fast: false
     steps:
       - uses: actions/checkout@v7
@@ -83,7 +107,7 @@ jobs:
           ./v -cc ${{ matrix.cc }} -prod cmd/tools/vup.v
           ./v -cc ${{ matrix.cc }} -prod cmd/tools/vdoctor.v
       - name: Compile release binaries (Windows)
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && matrix.target == 'windows'
         run: |
           ./makev.bat -msvc
           ./v -prod -cc msvc -o cmd/vprod.exe cmd/v
@@ -92,6 +116,10 @@ jobs:
           del ./*.exe
           del ./*.tmp.obj
           move cmd/vprod.exe v.exe
+      - name: Compile and verify release binaries (Windows ARM64)
+        if: matrix.target == 'windows_arm64'
+        shell: pwsh
+        run: ./cmd/tools/builders/windows_arm64_release.ps1
       - name: Prepare artifact
         shell: bash
         run: |
@@ -138,6 +166,7 @@ jobs:
         with:
           artifacts: |
             ~/work/v/v/windows/v_windows.zip
+            ~/work/v/v/windows_arm64/v_windows_arm64.zip
             ~/work/v/v/linux/v_linux.zip
             ~/work/v/v/linux_arm64/v_linux_arm64.zip
             ~/work/v/v/macos_arm64/v_macos_arm64.zip

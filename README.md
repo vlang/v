@@ -80,6 +80,12 @@ PowerShell.
 To build with Visual Studio, run `makev.bat -msvc`. If the bundled TCC bootstrap cannot be
 compiled or fails while building the next compiler stage, the script retries with MSVC,
 then Clang and GCC.
+Windows ARM64 releases are available as `v_windows_arm64.zip`. Install Visual Studio's
+C++ ARM64 build tools and a Windows SDK, then use `v -cc msvc file.v` to build native
+applications with the C backend. To build the compiler and release tools from source,
+run `./cmd/tools/builders/windows_arm64_release.ps1` in native ARM64 PowerShell 7.
+The script bootstraps with MSVC, checks every executable's ARM64 PE architecture, and
+builds and runs an application before packaging. It does not require an x64 TCC bundle.
 `makev.bat -clang` keeps Clang's installed target: LLVM-MinGW uses its GNU runtime,
 while Visual Studio's Clang uses the adjacent `clang-cl.exe` and the MSVC SDK.
 Note: On FreeBSD, OpenBSD, NetBSD, DragonFly, and Solaris, install GNU `make` and run it as
