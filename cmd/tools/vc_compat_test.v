@@ -456,3 +456,48 @@ fn test_windows_vc_compat_relocates_includes_and_preserves_snapshot_bytes() ! {
 	assert os.read_file(output)! == expected
 	assert os.read_file(source)! == text
 }
+
+fn test_windows_vc_compat_protects_source_type_scratch_arrays_from_small_macro() ! {
+	powershell := $if windows {
+		os.find_abs_path_of_executable('powershell')!
+	} $else {
+		os.find_abs_path_of_executable('pwsh') or { return }
+	}
+	root := os.join_path(os.vtmp_dir(), 'vc_compat_small_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'snapshot.c')
+	output := os.join_path(root, 'filtered.c')
+	executable := os.join_path(root, 'snapshot')
+	for function_name in ['source_type_id', 'composite_source_type_id'] {
+		text := '#define small char
+#define __inline
+typedef unsigned int u32;
+typedef struct { int unused; } types__Type;
+__inline u32 types__Type__${function_name}(types__Type* t) {
+    u32 small[16] = {0};
+    small[0] = 42;
+    return small[0];
+}
+const char* embedded = "u32 types__Type__${function_name}(types__Type* t) {";
+int main(void) { return types__Type__${function_name}(0) != 42 || embedded[0] != 117; }
+'
+		os.write_file(source, text)!
+		filtered := os.exec([powershell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+			os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat_uint.ps1'), '-Source', source,
+			'-Destination', output])
+		assert filtered.exit_code == 0, filtered.output
+		assert os.read_file(source)! == text
+		result := os.read_file(output)!
+		assert result.contains('#ifdef small\n#undef small\n#endif\n__inline u32 types__Type__${function_name}')
+		assert result.contains('const char* embedded = "u32 types__Type__${function_name}(types__Type* t) {";')
+		$if !windows {
+			cc := os.getenv_opt('CC') or { 'cc' }
+			broken := os.exec([cc, '-std=c99', '-fsyntax-only', source])
+			assert broken.exit_code != 0, broken.output
+			compiled := os.exec([cc, '-std=c99', '-o', executable, output])
+			assert compiled.exit_code == 0, compiled.output
+			assert os.exec([executable]).exit_code == 0
+		}
+	}
+}
