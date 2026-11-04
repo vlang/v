@@ -30,6 +30,13 @@ error instead of rendering differently.
 Only Metal is supported: the reproduced output is Graphite's Metal output on
 the same GPU.
 
+`RasterSurface` reproduces Skia's CPU raster text on macOS (`draw_glyphs`,
+like `SkCanvas::drawTextBlob` with one positioned run): the scaler record,
+CoreGraphics glyph masks with Skia's linearization and `SkMaskGamma`
+pre-blend, subpixel glyph positioning, and the lowp `SkRasterPipeline` mask
+blit into BGRA8 premultiplied pixels. Synthetic bold, color glyphs, aliased
+text and glyphs that Skia draws as paths (over 256px) return an error.
+
 ```v
 import gg.canvas
 

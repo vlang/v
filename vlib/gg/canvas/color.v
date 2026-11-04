@@ -34,7 +34,8 @@ pub fn (c Color4f) to_rgba8() [4]u8 {
 }
 
 fn unit_to_u8(v f32) u8 {
-	x := v * f32(255) + f32(0.5)
+	scaled := v * f32(255)
+	x := scaled + f32(0.5)
 	pinned := if x < 0 {
 		f32(0)
 	} else if x > 255 {
@@ -43,4 +44,16 @@ fn unit_to_u8(v f32) u8 {
 		x
 	}
 	return u8(pinned)
+}
+
+// to_sk_color converts to an 0xAARRGGBB SkColor like SkColor4f::toSkColor().
+// Components outside [0, 1] do not fit the 8-bit blitters and are rejected.
+pub fn (c Color4f) to_sk_color() !u32 {
+	for v in [c.r, c.g, c.b, c.a] {
+		if !(v >= 0 && v <= 1) {
+			return error('gg.canvas: color components outside [0, 1] are not supported')
+		}
+	}
+	b := c.to_rgba8()
+	return u32(b[3]) << 24 | u32(b[0]) << 16 | u32(b[1]) << 8 | u32(b[2])
 }
