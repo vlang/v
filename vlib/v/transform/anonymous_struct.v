@@ -28,6 +28,7 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 	}
 	t.tc.ensure_private_transform_structs()
 	mut materialized := false
+	mut union_map_detached := false
 	mut inferred_by_shape := map[string]u32{}
 	original_node_count := t.a.nodes.len
 	// Find the candidates on the pool; the loop below still checks each one.
@@ -48,12 +49,16 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 		if idx >= original_node_count {
 			break
 		}
-		if t.a.nodes[idx].kind != .struct_init || t.a.nodes[idx].source_value_id() != flat.source_type_id('struct')
+		if t.a.nodes[idx].kind != .struct_init || t.a.nodes[idx].source_value_id() !in [
+			flat.source_type_id('struct'),
+			transform_source_type_union,
+		]
 			|| t.a.nodes[idx].children_count == 0 {
 			continue
 		}
 		// Materialization appends nodes, so keep a copy of this candidate.
 		node := t.a.nodes[idx]
+		is_union := node.source_value_id() == transform_source_type_union
 		match node.kind {
 			.struct_init {
 				source_file := t.a.source_files[node.pos.id] or { continue }
@@ -98,7 +103,11 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 					field_type_id := t.tc.type_name(semantic_field.typ)
 					shape_parts << '${semantic_field.name.len}:${semantic_field.name}:${field_type_id}'
 				}
-				shape := '${cur_module.len}:${cur_module}:${shape_parts.join(',')}'
+				shape := if is_union {
+					'union:${cur_module.len}:${cur_module}:${shape_parts.join(',')}'
+				} else {
+					'${cur_module.len}:${cur_module}:${shape_parts.join(',')}'
+				}
 				if semantic_name_id := inferred_by_shape[shape] {
 					t.a.nodes[idx].set_value_text(flat.source_type_name(flat.source_type_syntax(semantic_name_id).unqualified()))
 					t.a.nodes[idx].typ = semantic_name_id
@@ -118,7 +127,11 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 						pos:   source_field.pos
 					})
 				}
-				base_name := 'AnonStruct_v3_inferred_${idx}'
+				base_name := if is_union {
+					'AnonUnion_v3_inferred_${idx}'
+				} else {
+					'AnonStruct_v3_inferred_${idx}'
+				}
 				mut name := base_name
 				mut semantic_name := name
 				if cur_module.len > 0 && cur_module !in ['main', 'builtin'] {
@@ -152,11 +165,21 @@ fn (mut t Transformer) materialize_inferred_anonymous_structs() bool {
 				t.a.add_node(flat.Node{
 					kind:           .struct_decl
 					value:          name
+					typ:            if is_union { transform_source_type_union } else { u32(0) }
 					children_start: children_start
 					children_count: flat.child_count(field_ids.len)
 					pos:            node.pos
 				})
 				semantic_name_id := flat.source_type_id(semantic_name)
+				if is_union {
+					if !union_map_detached {
+						t.tc.unions = t.tc.unions.clone()
+						t.a.synthesized_anon_struct_types = t.a.synthesized_anon_struct_types.clone()
+						union_map_detached = true
+					}
+					t.tc.unions[semantic_name_id] = true
+					t.a.synthesized_anon_struct_types[flat.source_type_syntax(semantic_name_id).unqualified()] = true
+				}
 				t.tc.structs[semantic_name_id] = semantic_fields
 				t.tc.struct_modules[semantic_name_id] = cur_module
 				t.tc.struct_files[semantic_name_id] = cur_file
