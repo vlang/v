@@ -110,9 +110,45 @@ responses unless `security_errors: false`. Undefined scheme names return an erro
 
 ## Rendering and serving
 
-The default format is OpenAPI 3.0.3; `openapi_version` accepts other 3.0.x versions.
+The default format is OpenAPI 3.0.3; `openapi_version` accepts 3.0.x and 3.2.x versions.
 Configure `title`, `description`, `version`, `tags` and `servers`, or set `version_file`
 to read a v.mod manifest. JSON keys are sorted, strings escaped and operation IDs checked.
 `json(pretty)!` renders, `write(path, pretty)!` saves, and `serve(mut ctx, pretty)!` sends
 an `application/json` response from a veb handler. Viewer integrations can consume the
 same endpoint without coupling the generator to a particular UI.
+
+
+## Public tag hierarchy
+
+Use `tag_definitions` as the public taxonomy instead of exposing internal module paths.
+No hierarchy is inferred from module names or URL prefixes: those are implementation details
+and may differ from the API domains presented to readers.
+
+```v ignore
+mut doc := veb.new_openapi(
+    title: 'Shop'
+    openapi_version: '3.2.0'
+    tag_definitions: [
+        veb.OpenApiTagConfig{ name: 'catalog', summary: 'Catalog' },
+        veb.OpenApiTagConfig{
+            name: 'catalog.items'
+            summary: 'Items'
+            parent: 'catalog'
+            controllers: [typeof(Items{}).name]
+        },
+    ]
+)!
+doc.add_app[App, Context](app)!
+```
+
+Each definition supports `name`, `summary`, `description`, `parent`, `kind` (default `nav`),
+`external_docs` (an OpenAPI External Documentation Object), and `controllers`. A controller
+can appear in multiple definitions to give all its operations multiple public tags. Controllers
+without a mapping retain their reflected name as a flat tag. Explicit `operation(..., tags: [...])`
+overrides the controller mapping; these tags are declared automatically in the document too.
+Mounted controller paths and shared controllers use the same mapping regardless of mount prefix.
+
+Names must be nonempty and unique across `tags` and `tag_definitions`. Parents must exist and
+parent chains cannot contain cycles. Rendering orders parents before descendants deterministically.
+OpenAPI 3.0.x accepts controller mappings and flat descriptions, but rejects parents and omits the
+3.2-only `summary` and `kind` fields. Use 3.2.x for native hierarchical tags.

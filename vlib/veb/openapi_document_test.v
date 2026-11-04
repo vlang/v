@@ -843,3 +843,116 @@ fn test_typed_openapi_unsigned_64_bit_schema_accepts_full_range() {
 		}
 	}
 }
+
+fn test_openapi_explicit_tag_hierarchy_and_controller_mapping() {
+	app := typed_api()!
+	mut doc := new_openapi(
+		openapi_version: '3.2.0'
+		tag_definitions: [
+			OpenApiTagConfig{
+				name:        'a-leaf'
+				parent:      'middle'
+				summary:     'Items'
+				controllers: [typeof(TypedApiLeaf{}).name]
+			},
+			OpenApiTagConfig{ name: 'middle', parent: 'z-root' },
+			OpenApiTagConfig{ name: 'z-root', description: 'Public API' },
+			OpenApiTagConfig{ name: 'shared', controllers: [typeof(TypedApiLeaf{}).name] },
+		]
+	)!
+	doc.add_app[TypedApiRoot, TypedApiContext](app)!
+	doc.operation('/v1/nested/items/:id', .post, tags: ['manual'])!
+	raw := json2.decode[json2.Any](doc.json(false)!)!
+	tags := api_at(raw, 'tags').as_array()
+	names := tags.map(api_at(it, 'name').str())
+	assert names.index('z-root') < names.index('middle')
+	assert names.index('middle') < names.index('a-leaf')
+	leaf := tags.filter(api_at(it, 'name').str() == 'a-leaf')[0]
+	assert api_at(leaf, 'parent').str() == 'middle'
+	assert api_at(leaf, 'summary').str() == 'Items'
+	assert api_at(leaf, 'kind').str() == 'nav'
+	assert api_at(raw, 'openapi').str() == '3.2.0'
+	assert api_at(raw, 'paths', '/v1/nested/items/{id}', 'get', 'tags').as_array().map(it.str()) == [
+		'a-leaf',
+		'shared',
+	]
+	assert api_at(raw, 'paths', '/v1/nested/items/{id}', 'post', 'tags').as_array().map(it.str()) == ['manual']
+	assert api_at(raw, 'paths', '/', 'get', 'tags').as_array().map(it.str()) == [typeof(TypedApiRoot{}).name]
+	assert doc.json(false)! == doc.json(false)!
+}
+
+fn test_openapi_flat_tag_definitions_keep_30_compatibility() {
+	app := typed_api()!
+	mut doc := new_openapi(
+		tag_definitions: [OpenApiTagConfig{
+			name:        'items'
+			summary:     'Items'
+			description: 'Public items'
+			controllers: [typeof(TypedApiLeaf{}).name]
+		}]
+	)!
+	doc.add_app[TypedApiRoot, TypedApiContext](app)!
+	raw := json2.decode[json2.Any](doc.json(false)!)!
+	assert api_at(raw, 'openapi').str() == '3.0.3'
+	assert api_at(raw, 'paths', '/v1/nested/items/{id}', 'get', 'tags').as_array().map(it.str()) == ['items']
+	tag := api_at(raw, 'tags').as_array().filter(api_at(it, 'name').str() == 'items')[0]
+	assert api_at(tag, 'description').str() == 'Public items'
+	for field in ['parent', 'summary', 'kind'] {
+		assert field !in tag.as_map()
+	}
+}
+
+fn test_openapi_tag_definition_validation() {
+	invalid := [
+		[OpenApiTagConfig{ name: '' }],
+		[OpenApiTagConfig{ name: 'duplicate' }, OpenApiTagConfig{ name: 'duplicate' }],
+		[OpenApiTagConfig{ name: 'child', parent: 'missing' }],
+		[OpenApiTagConfig{ name: 'self', parent: 'self' }],
+		[OpenApiTagConfig{ name: 'a', parent: 'b' }, OpenApiTagConfig{ name: 'b', parent: 'a' }],
+	]
+	for definitions in invalid {
+		if _ := new_openapi(openapi_version: '3.2.0', tag_definitions: definitions) {
+			assert false, 'invalid tag definitions accepted'
+		}
+	}
+	if _ := new_openapi(
+		tag_definitions: [OpenApiTagConfig{ name: 'a', parent: 'b' }, OpenApiTagConfig{ name: 'b' }]
+	) {
+		assert false, 'OpenAPI 3.0 must reject hierarchical tags'
+	}
+	if _ := new_openapi(
+		tags: [{
+			'name':   json2.Any('a')
+			'parent': json2.Any('b')
+		}]
+	) {
+		assert false, 'raw tags must also reject 3.0 hierarchy'
+	}
+	if _ := new_openapi(
+		tags:            [{
+			'name': json2.Any('a')
+		}]
+		tag_definitions: [OpenApiTagConfig{ name: 'a' }]
+	) {
+		assert false, 'duplicate raw and typed tag names accepted'
+	}
+}
+
+fn test_openapi_tag_mapping_survives_multiple_mount_prefixes() {
+	mut app := &TypedApiRoot{}
+	mut one := &TypedApiLeaf{}
+	mut two := &TypedApiLeaf{}
+	app.register_controller[TypedApiLeaf, TypedApiContext]('/old', mut one)!
+	app.register_controller[TypedApiLeaf, TypedApiContext]('/renamed', mut two)!
+	mut doc := new_openapi(
+		tag_definitions: [OpenApiTagConfig{
+			name:        'public-items'
+			controllers: [typeof(TypedApiLeaf{}).name]
+		}]
+	)!
+	doc.add_app[TypedApiRoot, TypedApiContext](app)!
+	raw := json2.decode[json2.Any](doc.json(false)!)!
+	for prefix in ['/old', '/renamed'] {
+		assert api_at(raw, 'paths', prefix + '/items/{id}', 'get', 'tags').as_array().map(it.str()) == ['public-items']
+	}
+}
