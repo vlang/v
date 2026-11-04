@@ -243,3 +243,51 @@ fn test_intersect_rrect_clip_rounds_a_rect_draw() {
 	assert pixel(px, 14, 8) == [u8(30), 20, 10, 255]
 	assert pixel(px, 28, 8) == [u8(0), 0, 0, 0]
 }
+
+fn test_intersect_clips_are_stenciled_and_inverse_covered_in_the_depth_attachment() {
+	mut ctx := new_gpu_context() or {
+		eprintln('skipping: ${err}')
+		return
+	}
+	defer {
+		ctx.free()
+	}
+	mut s := ctx.new_surface(width: test_width, height: test_height)!
+	defer {
+		s.free()
+	}
+	s.clear(Color4f{})
+	// Elliptical corners have no analytic clip, and an oval cannot be
+	// intersected with them geometrically.
+	r := Point{12, 6}
+	s.save()
+	s.clip_rrect(RRect.rect_radii(Rect.ltrb(2, 2, 30, 22), [r, r, r, r]!), .intersect, true)!
+	s.draw_rrect(RRect.oval(Rect.ltrb(0, 0, 20, 24)), Paint{
+		color:      Color4f.from_rgba8(10, 20, 30, 255)
+		anti_alias: true
+	})!
+	s.restore()
+	s.record_deferred_clip_draws()
+	stencil := s.draws.filter(it.step == .stencil_wedges_winding)
+	cover := s.draws.filter(it.step == .cover_inverse_clip)
+	assert stencil.len == 1 && cover.len == 1
+	assert cover[0].uniform_index == uniform_index_invalid
+	assert stencil[0].order == cover[0].order && cover[0].step_index == 1
+	// The inverse cover fills the integer scissor, written right-bottom first.
+	sc := cover[0].clip.scissor
+	assert cover[0].instance[0..16] == f32_bytes([sc.right(), sc.bottom(), sc.left(), sc.top()])
+	mut px := []u8{len: test_width * test_height * 4}
+	s.read_pixels(px.data, test_width * 4)!
+	assert pixel(px, 10, 12) == [u8(30), 20, 10, 255]
+	// Inside the oval, but left of the clip and in its rounded corner.
+	assert pixel(px, 1, 12) == [u8(0), 0, 0, 0]
+	assert pixel(px, 4, 3) == [u8(0), 0, 0, 0]
+}
+
+fn f32_bytes(values []f32) []u8 {
+	mut out := []u8{}
+	for v in values {
+		put_f32(mut out, v)
+	}
+	return out
+}

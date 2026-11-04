@@ -728,11 +728,13 @@ fn (mut s GpuSurface) record_step(step RenderStep, blend bool, instance []u8, un
 		pipeline_index = s.pipelines.len
 		s.pipelines << key
 	}
-	mut uniform_index := -1
+	mut uniform_index := if has_uniforms(step) { -1 } else { uniform_index_invalid }
 	for i, u in s.uniforms {
+		if uniform_index >= 0 {
+			break
+		}
 		if same_paint_uniforms(u, uniforms) {
 			uniform_index = i
-			break
 		}
 	}
 	if uniform_index < 0 {
@@ -776,6 +778,9 @@ fn instance_stride(step RenderStep) int {
 
 // TextureDataCache::kInvalidIndex, the texture field of draws without textures.
 const texture_index_invalid = u64(4096)
+
+// UniformDataCache::kInvalidIndex, the uniform field of draws without uniforms.
+const uniform_index_invalid = 4096
 
 // shape_pixel_tolerance is Shape::kDefaultPixelTolerance.
 const shape_pixel_tolerance = f32(0.0039)
@@ -841,7 +846,7 @@ pub fn (mut s GpuSurface) flush() ! {
 	// A pass with a draw that requires MSAA (depth-only clip draws, path steps)
 	// is multisampled, even on a single-sampled surface.
 	requires_msaa := s.draws.any(is_wedge_step(it.step) || it.step in [.cover_fill,
-		.tessellate_strokes])
+		.tessellate_strokes, .cover_inverse_clip])
 	samples := if s.sample_count == 1 && requires_msaa { 4 } else { s.sample_count }
 	attachments := if samples == s.sample_count {
 		s.attachments
@@ -878,7 +883,11 @@ pub fn (mut s GpuSurface) flush() ! {
 	for i, key in keys {
 		draw := s.draws[key.draw]
 		uniform_size := u32(step_uniform_size(draw.step, draw.uniforms.clipped))
-		rebind := tracker.write_uniforms(int(draw.uniform_index), uniform_size, mut buffers)
+		rebind := if has_uniforms(draw.step) {
+			tracker.write_uniforms(int(draw.uniform_index), uniform_size, mut buffers)
+		} else {
+			false
+		}
 		new_scissor, scissor_changes := draw_scissor(draw.clip, scissor, device)
 		if draw.pipeline_index != last_pipeline {
 			writer.new_pipeline_state(u32(instance_stride(draw.step)), mut buffers)

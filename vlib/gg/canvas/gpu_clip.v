@@ -1223,9 +1223,6 @@ fn (s &GpuSurface) visit_clip_stack_for_draw(shape ClipShape, paint Paint) !Clip
 						continue
 					}
 				}
-				if e.op == .intersect {
-					return error('gg.canvas: intersect clip elements drawn into the depth attachment need the stencil renderer')
-				}
 				elements << i
 			}
 		}
@@ -1321,9 +1318,12 @@ fn (mut s GpuSurface) update_clip_state_for_draw(elements []int, draw_bounds Rec
 	return max_order
 }
 
-// draw_clip mirrors RawElement::drawClip(): an element that clipped draws is
-// drawn into the depth attachment at one past their largest depth, with its
-// pending usage as the scissor.
+// draw_clip mirrors RawElement::drawClip() and Device::drawClipShape(): an
+// element that clipped draws is drawn into the depth attachment at one past
+// their largest depth, with its pending usage as the scissor. Difference
+// elements are convex and use the depth-only convex wedges; intersect
+// elements are inverse fills, which chooseMSAARenderer() draws with the
+// winding stencil wedges and an inverse cover of the scissor.
 fn (mut s GpuSurface) draw_clip(e RawElement) {
 	if !e.has_pending_draw() {
 		return
@@ -1342,16 +1342,32 @@ fn (mut s GpuSurface) draw_clip(e RawElement) {
 		depth:       e.max_z + 1
 		paint_order: e.order
 	}
+	clip := DrawClip{
+		scissor:      scissor
+		draw_bounds:  draw_bounds
+		shape_bounds: e.outer
+	}
 	mut instance := []u8{}
 	count, n4 := write_wedge_patches(mut instance, element_path(e.shape), e.l2d.matrix,
 		order.depth) or { panic(err) }
-	s.record_step(.convex_wedges, false, instance, local_to_device_uniforms(e.l2d.matrix),
-		order, 0, 0, DrawClip{
-			scissor:      scissor
-			draw_bounds:  draw_bounds
-			shape_bounds: e.outer
-		}, u32(count))
-	s.draws[s.draws.len - 1].template_count = wedge_vertex_count(n4)
+	uniforms := local_to_device_uniforms(e.l2d.matrix)
+	if e.shape.inverted {
+		mut stencil_order := order
+		stencil_order.stencil_index = s.add_disjoint_stencil(order.paint_order, draw_bounds)
+		s.record_step(.stencil_wedges_winding, false, instance, uniforms, stencil_order, 0, 0,
+			clip, u32(count))
+		s.draws[s.draws.len - 1].template_count = wedge_vertex_count(n4)
+		// CoverBoundsRenderStep writes an inverse fill's integer scissor as
+		// (right, bottom, left, top).
+		mut cover := []u8{cap: cover_bounds_instance_stride}
+		write_cover_bounds_instance(mut cover, Rect.ltrb(scissor.right(), scissor.bottom(),
+			scissor.left(), scissor.top()), e.l2d, order.depth, 0)
+		s.record_step(.cover_inverse_clip, false, cover, PaintUniforms{}, stencil_order, 1, 0,
+			clip, 1)
+	} else {
+		s.record_step(.convex_wedges, false, instance, uniforms, order, 0, 0, clip, u32(count))
+		s.draws[s.draws.len - 1].template_count = wedge_vertex_count(n4)
+	}
 	if order.depth > s.depth_index {
 		s.depth_index = order.depth
 	}

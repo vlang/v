@@ -26,10 +26,12 @@ Supported so far: filled, stroked and hairline rects, rounded rects and ovals
 fills), single-sampled and 4x MSAA surfaces, uploaded backdrops (loaded into
 MSAA passes with Graphite's LoadMSAAFromResolve draw), BGRA8 premultiplied
 readback, double rounded rects (`draw_drrect`), and clips: `save`/`restore`,
-intersect and difference `clip_rect` and `clip_rrect` (a port of Graphite's
+intersect and difference `clip_rect` and `clip_rrect` under scales, flips,
+90-degree rotations and other affine transforms (a port of Graphite's
 ClipStack: element simplification, geometric intersection of draws with
-clips, scissors, the analytic clip shaders, and depth-only convex wedge draws
-in a 4x MSAA pass for further difference elements, including conics).
+clips, scissors, the analytic clip shaders, and depth-only draws in a 4x MSAA
+pass for further elements: convex wedges for difference elements, winding
+stencil wedges with an inverse cover of the scissor for intersect elements).
 Filled paths (`Path`, built with `PathBuilder` like `SkPathBuilder`) are drawn
 like Graphite's `drawPath`: rect, oval and nested-rect paths use those
 renderers, convex paths the shaded convex wedges and other paths the MSAA
@@ -41,8 +43,8 @@ Strokes of paths, and of rrects the analytic renderer cannot stroke
 first patches joined to closing patches, miter, round and bevel joins, butt,
 round and square caps, cusps, hairlines and cubic convex-180 chops.
 Draws that need other renderers (inverse fills, curves with more than 32
-parametric segments, stencil-and-cover clip elements, ...) return an error
-instead of rendering differently.
+parametric segments, path clips, ...) return an error instead of rendering
+differently.
 
 Only Metal is supported: the reproduced output is Graphite's Metal output on
 the same GPU.

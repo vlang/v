@@ -41,6 +41,10 @@ enum RenderStep {
 	wedges_shaded
 	// TessellateStrokes with a solid color paint.
 	tessellate_strokes
+	// The depth-only inverse cover of an intersect clip element after its
+	// winding stencil wedges (CoverBounds_InverseCover with no paint): the
+	// draw's scissor where the stencil is zero.
+	cover_inverse_clip
 }
 
 // is_wedge_step reports the steps that draw tessellated wedge patches.
@@ -50,7 +54,14 @@ fn is_wedge_step(step RenderStep) bool {
 
 // writes_color reports the steps with a fragment function.
 fn writes_color(step RenderStep) bool {
-	return step !in [.stencil_wedges_winding, .stencil_wedges_even_odd, .convex_wedges]
+	return step !in [.stencil_wedges_winding, .stencil_wedges_even_odd, .convex_wedges,
+		.cover_inverse_clip]
+}
+
+// has_uniforms reports the steps with a uniform block; the others sort and
+// batch with UniformDataCache::kInvalidIndex.
+fn has_uniforms(step RenderStep) bool {
+	return step != .cover_inverse_clip
 }
 
 // step_uniform_size returns the size of a step's uniform block: the
@@ -82,6 +93,7 @@ const analytic_rrect_clip_frag = $embed_file('shaders/analytic_rrect_solid_clip.
 const cover_bounds_clip_vert = $embed_file('shaders/cover_bounds_solid_clip.vert.metal')
 const cover_bounds_clip_frag = $embed_file('shaders/cover_bounds_solid_clip.frag.metal')
 const convex_wedges_vert = $embed_file('shaders/tessellate_wedges_convex.vert.metal')
+const cover_depth_vert = $embed_file('shaders/cover_bounds_depth.vert.metal')
 // Graphite's LoadMSAAFromResolve pipeline (MtlGraphicsPipeline.mm): a
 // fullscreen draw that copies the resolve texture into a multisampled
 // attachment before the pass's draws.
@@ -225,6 +237,7 @@ pub fn (mut ctx GpuContext) precompile() {
 		}
 	}
 	ctx.pipeline(.convex_wedges, 4, false, false)
+	ctx.pipeline(.cover_inverse_clip, 4, false, false)
 	for step in [RenderStep.stencil_wedges_winding, .stencil_wedges_even_odd] {
 		ctx.pipeline(step, 4, false, false)
 	}
@@ -263,6 +276,7 @@ fn (mut ctx GpuContext) shader(step RenderStep, clipped bool) gfx.Shader {
 	// Depth-only steps have no fragment function, like Graphite's; their
 	// fragment entry is unused.
 	vert, frag := match true {
+		step == .cover_inverse_clip { cover_depth_vert, cover_depth_vert }
 		!writes_color(step) { convex_wedges_vert, convex_wedges_vert }
 		step == .wedges_shaded { wedges_solid_vert, wedges_solid_frag }
 		step == .tessellate_strokes { strokes_solid_vert, strokes_solid_frag }
@@ -408,7 +422,8 @@ fn (mut ctx GpuContext) pipeline(step RenderStep, sample_count int, blend bool, 
 		// The stencil passes leave the depth write to the cover pass.
 		write_enabled: step !in [.stencil_wedges_winding, .stencil_wedges_even_odd]
 	}
-	// Graphite's kWindingStencilPass, kEvenOddStencilPass and kRegularCoverPass.
+	// Graphite's kWindingStencilPass, kEvenOddStencilPass, kRegularCoverPass
+	// and kInverseCoverPass.
 	match step {
 		.stencil_wedges_winding, .stencil_wedges_even_odd {
 			winding := step == .stencil_wedges_winding
@@ -436,6 +451,21 @@ fn (mut ctx GpuContext) pipeline(step RenderStep, sample_count int, blend bool, 
 				fail_op:       .keep
 				depth_fail_op: .zero
 				pass_op:       .zero
+			}
+			desc.stencil = gfx.StencilState{
+				enabled:    true
+				front:      face
+				back:       face
+				read_mask:  0xff
+				write_mask: 0xff
+			}
+		}
+		.cover_inverse_clip {
+			face := gfx.StencilFaceState{
+				compare:       .equal
+				fail_op:       .zero
+				depth_fail_op: .keep
+				pass_op:       .keep
 			}
 			desc.stencil = gfx.StencilState{
 				enabled:    true
