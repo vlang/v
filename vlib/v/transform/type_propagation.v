@@ -1935,7 +1935,13 @@ fn (t &Transformer) node_type(id flat.NodeId) u32 {
 		.bool_literal { return flat.source_type_bool }
 		.float_literal { return flat.source_type_f64 }
 		.int_literal { return flat.source_type_int }
-		.string_literal, .string_interp { return flat.source_type_string }
+		.string_literal {
+			if t.a.nodes[idx].children_count != 1
+				|| t.a.nodes[idx].value_text() !in ['__v3_comptime_zero', '__v3_comptime_new'] {
+				return flat.source_type_string
+			}
+		}
+		.string_interp { return flat.source_type_string }
 		.nil_literal { return flat.source_type_voidptr }
 		.char_literal {
 			return if t.a.nodes[idx].value.starts_with('c:') {

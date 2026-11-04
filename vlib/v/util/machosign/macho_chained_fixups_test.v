@@ -1,4 +1,4 @@
-module fastc
+module machosign
 
 import os
 
@@ -131,7 +131,7 @@ fn test_signed_tcc_executable_starts_with_zeroed_bss() {
 	os.exec([tcc, ...args])
 	os.setenv('PATH', old_path, true)
 	assert os.is_file(exe_path)
-	fastc_sign_macho_adhoc(exe_path) or { panic(err) }
+	sign_adhoc(exe_path) or { panic(err) }
 	verify := os.exec(['codesign', '--verify', '--strict', exe_path])
 	assert verify.exit_code == 0, verify.output
 	run := os.exec([exe_path])

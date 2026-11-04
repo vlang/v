@@ -181,7 +181,14 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Clone v-analyzer"
-          v retry -- git clone --depth=1 --branch=master --filter=blob:none --recursive --shallow-submodules https://github.com/vlang/v-analyzer /tmp/v-analyzer
+          v retry -- git clone --depth=1 --filter=blob:none --recursive --shallow-submodules https://github.com/vlang/v-analyzer /tmp/v-analyzer
+          # Remove this patch once the default branch supports the current compiler.
+          analyzer_patch="$GITHUB_WORKSPACE/.github/v_analyzer_current_v.patch"
+          if git -C /tmp/v-analyzer apply --check "$analyzer_patch"; then
+            git -C /tmp/v-analyzer apply "$analyzer_patch"
+          else
+            git -C /tmp/v-analyzer apply --reverse --check "$analyzer_patch"
+          fi
           cd /tmp/v-analyzer
           echo "Installing dependencies"
           v install
@@ -308,6 +315,15 @@ jobs:
           v retry -- v install pcre
       - name: Clone gitly
         run: v retry -- git clone --depth 1 -b $env:GITLY_BRANCH $env:GITLY_REPO gitly
+      - name: Apply gitly first-run compatibility fixes
+        shell: bash
+        run: |
+          # Remove this patch when the ci/windows-first-run branch includes the fixes.
+          if git -C gitly apply --check ../.github/gitly_windows_first_run.patch; then
+            git -C gitly apply ../.github/gitly_windows_first_run.patch
+          else
+            git -C gitly apply --reverse --check ../.github/gitly_windows_first_run.patch
+          fi
       - name: Compile gitly CSS
         uses: gha-utilities/sass-build@c15aba209f1cfe51f43e319f2724558112cd9336 # v0.6.1
         with:

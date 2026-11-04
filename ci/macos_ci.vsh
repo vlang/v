@@ -281,6 +281,21 @@ fn save_ci_progress(path string, task_name string) ! {
 	os.rename(tmp_path, path)!
 }
 
+// check_macho_signing runs the native signing tests without resume or test filters.
+fn check_macho_signing() {
+	$if macos {
+		vexe := os.getenv_opt('V_CI_VEXE') or { os.join_path_single(@VEXEROOT, 'v') }
+		tcc := os.join_path(os.dir(os.real_path(vexe)), 'thirdparty', 'tcc', 'tcc.exe')
+		if !os.is_executable(tcc) {
+			eprintln('Mach-O signing check requires TinyCC at ${tcc}; run `make` first.')
+			exit(1)
+		}
+		eprintln('Checking Mach-O signing before resuming CI tasks.')
+		// Run the file directly so test filters and saved successes cannot skip it.
+		exec_args(['env', 'VTEST_ONLY_FN=', 'v', '-silent', 'vlib/v/util/machosign/macho_sign_test.v'])
+	}
+}
+
 // run_ci_tasks mirrors the active ci/macos_ci.vsh steps in
 // .github/workflows/macos_ci.yml. The generic `all` mode intentionally remains
 // exhaustive, including tasks that are currently disabled in the workflow.
@@ -300,6 +315,8 @@ fn run_ci_tasks(reset bool) ! {
 	os.setenv('VTEST_SKIP_OWNERSHIP', '1', true)
 	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 	os.setenv('V_MACOS_MULTIWINDOW_TESTS', '0', true)
+
+	check_macho_signing()
 
 	progress_path := ci_progress_path()
 	progress_dir := '${progress_path}.d'

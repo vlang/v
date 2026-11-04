@@ -2,6 +2,11 @@
 #define GG_DARWIN_FORCE_MONO_H
 
 #include <Cocoa/Cocoa.h>
+#include <dispatch/dispatch.h>
+
+static inline void gg_darwin_dispatch_main(void* context, dispatch_function_t work) {
+	dispatch_async_f(dispatch_get_main_queue(), context, work);
+}
 
 static inline void* gg_darwin_application(void) {
 	return (__bridge void*)NSApp;

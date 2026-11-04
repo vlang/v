@@ -348,7 +348,8 @@ fn (app App) update_tcc() bool {
 	if os.user_os() != 'windows' {
 		make_sure_cmd_is_available(get_tcc_make_cmd_name())
 	}
-	println('> updating TCC ...')
+	println('> checking for TCC updates ...')
+	old_revision := tcc_revision()
 	result := os.exec(if os.user_os() == 'windows' && command == 'makev.bat' {
 		['cmd.exe', '/d', '/c', 'makev.bat']
 	} else {
@@ -360,8 +361,30 @@ fn (app App) update_tcc() bool {
 		return false
 	}
 	app.vprintln(result.output)
-	println('> done updating TCC.')
+	new_revision := tcc_revision()
+	if new_revision == '' {
+		println('> done updating TCC.')
+	} else if new_revision == old_revision {
+		println('> TCC is already up to date.')
+	} else {
+		println('> updated TCC to ${new_revision#[..7]}.')
+	}
 	return true
+}
+
+// tcc_revision returns the commit of the bundled TCC checkout, or '' when there is
+// no such checkout or git cannot read it.
+fn tcc_revision() string {
+	tcc_dir := os.join_path('thirdparty', 'tcc')
+	// Without its own .git, git would report the revision of the V checkout around it.
+	if !os.exists(os.join_path(tcc_dir, '.git')) {
+		return ''
+	}
+	result := os.exec(['git', '-C', tcc_dir, 'rev-parse', 'HEAD'])
+	if result.exit_code != 0 {
+		return ''
+	}
+	return result.output.trim_space()
 }
 
 // compiler_sources_unchanged checks whether nothing the compiler is built from

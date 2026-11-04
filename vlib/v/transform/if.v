@@ -648,7 +648,9 @@ fn (mut t Transformer) transform_else_if_expr(else_id flat.NodeId, else_node fla
 		return new_if
 	}
 	local_pending << new_if
-	return t.make_block(local_pending)
+	// The wrapper holds lowered condition statements, not a source lexical scope.
+	// Its nested branches still consume their own checker cleanup slots.
+	return t.make_block_skip_scope_drops(local_pending)
 }
 
 // expand_map_index_if_guard builds expand map index if guard data for transform.

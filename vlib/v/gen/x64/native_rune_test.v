@@ -1,11 +1,13 @@
 module x64
 
-import os
-import v.parser
-import v.pref
-import v.ssa
-import v.transform
-import v.types
+$if linux && amd64 {
+	import os
+	import v.parser
+	import v.pref
+	import v.ssa
+	import v.transform
+	import v.types
+}
 
 fn test_native_rune_writes_preserve_utf8_lengths_pointer_slots_and_builder_growth() {
 	$if linux && amd64 {

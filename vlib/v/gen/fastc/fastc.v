@@ -985,6 +985,10 @@ struct FastcLocal {
 	smartcast_origin_type u32
 	// Keep the declared slot mode distinct from a narrowed payload reference.
 	smartcast_origin_is_reference bool
+	// A terminal guard narrows accesses to the payload, but a new local copied from
+	// its fall-through view keeps the boxed type. Explicit branch smart-casts still
+	// infer the concrete variant when copied.
+	smartcast_copy_is_boxed bool
 	// C expression that still names the original boxed value while this local is narrowed.
 	// Mutable calls accepting the sum type must receive this storage, not the concrete payload
 	// pointer, because their ABI expects the sum-type tag/object wrapper.
@@ -2159,6 +2163,60 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		if c_name.starts_with('main__')
 			&& ((constants[key] or { '' }) == c_name || (globals[key] or { '' }) == c_name) {
 			function_c_names[key] = '__vf_function_${c_name['main__'.len..]}'
+		}
+	}
+	// A method is named `<module>__<Receiver>_<method>`, which a free function of the
+	// same module can also be named (`string.index_pair` and `string_index_pair` were
+	// both `builtin__string_index_pair`). The method keeps its name, which generated
+	// code calls directly (`builtin__string_plus`), and the free function moves to
+	// FastC's own namespace.
+	mut method_c_names := map[string]bool{}
+	for key, signature in functions {
+		if key.starts_with('C.') || !key.contains('.') {
+			continue
+		}
+		if key.all_before_last('.') != signature.module_name {
+			c_name := function_c_names[key] or { fastc_signature_c_name(key, signature) }
+			method_c_names[c_name] = true
+		}
+	}
+	mut colliding_keys := []string{}
+	for key, signature in functions {
+		if key.starts_with('C.') || key == 'main' || signature.is_global
+			|| (key.contains('.') && key.all_before_last('.') != signature.module_name) {
+			continue
+		}
+		c_name := function_c_names[key] or { fastc_signature_c_name(key, signature) }
+		if c_name in method_c_names {
+			colliding_keys << key
+		}
+	}
+	if colliding_keys.len > 0 {
+		// The constant collision pass above allocates in `__vf_function_` too, so the new
+		// name must be one that no function, global or export spells yet. Generic instances
+		// are named while generating, outside `functions`, and are not covered here.
+		mut used_c_names := map[string]bool{}
+		for key, signature in functions {
+			c_name := function_c_names[key] or { fastc_signature_c_name(key, signature) }
+			used_c_names[c_name] = true
+			if signature.export_name != '' {
+				used_c_names[signature.export_name] = true
+			}
+		}
+		for _, c_name in globals {
+			used_c_names[c_name] = true
+		}
+		colliding_keys.sort()
+		for key in colliding_keys {
+			c_name := function_c_names[key] or { fastc_signature_c_name(key, functions[key]) }
+			mut renamed := '__vf_function_${c_name}'
+			mut suffix := 1
+			for used_c_names[renamed] {
+				renamed = '__vf_function_${c_name}_${suffix}'
+				suffix++
+			}
+			used_c_names[renamed] = true
+			function_c_names[key] = renamed
 		}
 	}
 	for key, signature in functions {

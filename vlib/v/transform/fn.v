@@ -5135,9 +5135,9 @@ fn (t &Transformer) current_module_global_type(name string) ?u32 {
 		return none
 	}
 	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
-		qname := '${t.cur_module}.${name}'
-		if qname in t.globals.ids {
-			return t.globals.value_id(qname)
+		// The key is only looked up, never stored: build it in the scratch buffer.
+		if id := t.globals.ids[t.qualified_name_view(t.cur_module, name)] {
+			return id
 		}
 		return none
 	}
@@ -5198,7 +5198,7 @@ fn (t &Transformer) current_module_declares_const(name string) bool {
 		return name in t.tc.const_types && t.tc.const_owner_module(name) == t.cur_module
 	}
 	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
-		return '${t.cur_module}.${name}' in t.tc.const_types
+		return t.qualified_name_view(t.cur_module, name) in t.tc.const_types
 	}
 	return name in t.tc.const_types
 }
@@ -14072,6 +14072,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	mut capture_heap_snapshots := map[string]bool{}
 	mut capture_array_param_snapshots := map[string]bool{}
 	mut capture_pointer_value_aliases := map[string]bool{}
+	mut capture_mut_pointer_params := map[string]bool{}
 	mut capture_is_ref_param := map[string]bool{}
 	mut body_ids := []flat.NodeId{}
 	for i in 0 .. node.children_count {
@@ -14132,11 +14133,22 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 				if capture_type == 0 || capture_type == flat.source_type_unknown {
 					capture_type = flat.source_type_int
 				}
-				// Mutable parameter captures retain the caller's array header reference.
-				if !child.is_mut && t.mut_param_values[child.value]
+				if t.mut_param_values[child.value] && t.pointer_value_rvalues[child.value]
+					&& flat.source_type_shape(capture_type).has(.pointer) {
+					// `mut p &T` stores the caller's pointer in an extra reference slot.
+					// A mutable capture keeps that slot; an immutable one snapshots &T.
+					capture_type = t.var_type(child.value)
+					if child.is_mut {
+						capture_mut_pointer_params[child.value] = true
+					} else {
+						capture_type = t.trim_pointer_type(capture_type)
+						capture_heap_snapshots[child.value] = true
+					}
+				} else if !child.is_mut && t.mut_param_values[child.value]
 					&& !t.pointer_value_rvalues[child.value]
 					&& flat.source_type_shape(capture_type).has(.pointer)
 					&& flat.source_type_shape(t.comptime_normalize_type_alias_chain(capture_type)).has(.pointer_array) {
+					// Mutable parameter captures retain the caller's array header reference.
 					capture_type = t.trim_pointer_type(capture_type)
 					capture_array_param_snapshots[child.value] = true
 				}
@@ -14326,9 +14338,20 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	}
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
-	t.mark_local_closure_cleanup_decls(lifted_body)
+	outer_locals_in_scope := t.fn_body_locals_in_scope
+	t.fn_body_locals_in_scope = false
+	has_ordinary_escape_proof := t.scan_escaping_amp_ptrs(lifted_body)
+	t.mark_local_closure_cleanup_decls_with_proof(lifted_body, has_ordinary_escape_proof)
+	for body_id in body_ids {
+		t.collect_mut_capture_sources(body_id)
+	}
+	t.clear_node_type_memo()
+	if !isnil(t.selector_type_cache) {
+		t.selector_type_cache.generation++
+	}
+	t.fn_body_locals_in_scope = true
 	mut new_body := []flat.NodeId{}
-	if capture_is_ref_param.len == 0 {
+	if capture_is_ref_param.len == 0 && capture_mut_pointer_params.len == 0 {
 		new_body = t.transform_stmts(lifted_body)
 	} else {
 		new_body = t.transform_stmts(lifted_body[..synthetic_decl_count])
@@ -14337,9 +14360,18 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		for capture_name, _ in capture_is_ref_param {
 			t.mark_var_as_ref_param(capture_name)
 		}
+		for capture_name, _ in capture_mut_pointer_params {
+			// Restore the same implicit-reference semantics as the source parameter,
+			// including pointer replacement and captures made by nested closures.
+			t.set_var_type(capture_name, capture_types[capture_name])
+			t.mut_param_values[capture_name] = true
+			t.pointer_value_lvalues[capture_name] = true
+			t.pointer_value_rvalues[capture_name] = true
+		}
 		new_body << t.transform_stmts(lifted_body[synthetic_decl_count..])
 	}
 	t.pending_stmts = outer_pending
+	t.fn_body_locals_in_scope = outer_locals_in_scope
 	t.restore_function_local_state(saved_locals)
 	t.cur_fn_name = saved_fn_name
 	t.set_cur_fn_ret_type(saved_ret_type_source_id)
@@ -16455,7 +16487,13 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			}
 			arg_id := t.a.child(&node, 1)
 			expected := t.normalize_type_alias(flat.source_type_syntax(builtin_base_type_comparison_type_id).raw_base())
-			actual := t.normalize_type_alias(t.specialized_expr_type_name(arg_id))
+			// Heap promotion changes storage, not the source value type or active smartcast.
+			heaped_arg := t.heaped_amp_local_arg_name(arg_id)
+			actual := t.normalize_type_alias(if heaped_arg.len > 0 && !t.has_smartcast(heaped_arg) {
+				t.typeof_var_type(heaped_arg)
+			} else {
+				t.specialized_expr_type_name(arg_id)
+			})
 			actual_is_pointer := flat.source_type_shape(actual).has(.pointer)
 			arg := t.a.nodes[int(arg_id)]
 			if method == 'try_pop' && !arg.is_mut && !isnil(t.tc)

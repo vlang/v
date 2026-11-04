@@ -4306,6 +4306,13 @@ fn (tc &TypeChecker) option_none_cmp_binding(cond flat.Node) ?LocalBinding {
 		return none
 	}
 	mut opt_type := tc.expr_type(opt_id) or { tc.resolve_type(opt_id) }
+	// A reflected sum guard refines expressions without shadowing their storage binding.
+	// An already-unwrapped refinement must still compare the original optional storage.
+	if refined := tc.smartcasts[key] {
+		if refined is OptionType {
+			opt_type = refined
+		}
+	}
 	opt_node := tc.a.node(opt_id)
 	if opt_node.kind == .selector {
 		if declared := tc.selector_declared_value_type(*opt_node) {
@@ -7971,6 +7978,10 @@ fn (tc &TypeChecker) ident_is_multi_pattern_match_subject(id flat.NodeId) bool {
 	}
 	ident := tc.a.node(id)
 	if ident.kind != .ident {
+		return false
+	}
+	// The branch found below is a parent in the function's node range.
+	if tc.fn_range_lacks_multi_pattern_match(int(id)) {
 		return false
 	}
 	mut current := id
@@ -15000,9 +15011,31 @@ fn (tc &TypeChecker) source_declares_type_in_scope(name_id u32, file string, mod
 // The module is normalized so that '' and 'main' collapse to the same bucket,
 // matching the old `module_names_match` semantics.
 fn scope_type_key(file string, mod_name string, name_id u32) u64 {
+	return (u64(scope_type_context_id(file, mod_name)) << 32) | u64(name_id)
+}
+
+// scope_type_context_id interns the `file\x01module` context of scope_type_key.
+fn scope_type_context_id(file string, mod_name string) u32 {
 	norm_mod := if mod_name == '' || mod_name == 'main' { 'main' } else { mod_name }
-	context_id := flat.source_type_id('${file}\x01${norm_mod}')
-	return (u64(context_id) << 32) | u64(name_id)
+	return flat.source_type_id('${file}\x01${norm_mod}')
+}
+
+// current_scope_type_key is scope_type_key(tc.cur_file, tc.cur_module, name_id)
+// with the interned context memoized per checker: the declaration checks query
+// it in runs of hundreds per file.
+fn (tc &TypeChecker) current_scope_type_key(name_id u32) u64 {
+	mut cache := tc.qualify_name_cache
+	if isnil(cache) {
+		return scope_type_key(tc.cur_file, tc.cur_module, name_id)
+	}
+	if !cache.scope_key_valid || !same_string(cache.scope_key_file, tc.cur_file)
+		|| !same_string(cache.scope_key_module, tc.cur_module) {
+		cache.scope_key_file = tc.cur_file
+		cache.scope_key_module = tc.cur_module
+		cache.scope_key_context = scope_type_context_id(tc.cur_file, tc.cur_module)
+		cache.scope_key_valid = true
+	}
+	return (u64(cache.scope_key_context) << 32) | u64(name_id)
 }
 
 // scope_unqualified_type_name keeps plain declaration names out of the syntax cache.
@@ -15371,6 +15404,24 @@ pub fn (tc &TypeChecker) begin_interface_impl_queries() bool {
 	}
 	mut writable := unsafe { tc }
 	writable.interface_impl_memo = &InterfaceImplMemo{}
+	return true
+}
+
+// begin_interface_impl_queries_sharing is begin_interface_impl_queries with the
+// method-receiver index of `shared` (see memo_index_method_receivers), which
+// only reads the declared signatures and is read-only once built, in place of
+// indexing every signature key again for this checker.
+fn (tc &TypeChecker) begin_interface_impl_queries_sharing(shared &InterfaceImplMemo) bool {
+	if !isnil(tc.interface_impl_memo) {
+		return false
+	}
+	mut writable := unsafe { tc }
+	writable.interface_impl_memo = &InterfaceImplMemo{
+		method_keys_ready: shared.method_keys_ready
+		required_methods:  shared.required_methods
+		receiver_parts:    shared.receiver_parts
+		method_receivers:  shared.method_receivers
+	}
 	return true
 }
 
@@ -16279,8 +16330,14 @@ fn subst_generic_const_expr(expr string, args []u32, params []u32) string {
 }
 
 fn (tc &TypeChecker) embedded_method_call_info(struct_name_id u32, method string) ?CallInfo {
+	// Most structs embed nothing: no promoted method, and no `seen` set to allocate.
+	receiver_ids := tc.embedded_receiver_ids(struct_name_id)
+	if receiver_ids.len == 0 {
+		return none
+	}
 	mut seen := map[u32]bool{}
-	return tc.embedded_method_call_info_inner(struct_name_id, method, mut seen)
+	seen[struct_name_id] = true
+	return tc.embedded_method_call_info_among(receiver_ids, method, mut seen)
 }
 
 fn (tc &TypeChecker) embedded_method_call_info_inner(struct_name_id u32, method string, mut seen map[u32]bool) ?CallInfo {
@@ -16288,7 +16345,13 @@ fn (tc &TypeChecker) embedded_method_call_info_inner(struct_name_id u32, method 
 		return none
 	}
 	seen[struct_name_id] = true
-	for receiver_id in tc.embedded_receiver_ids(struct_name_id) {
+	return tc.embedded_method_call_info_among(tc.embedded_receiver_ids(struct_name_id), method, mut seen)
+}
+
+// embedded_method_call_info_among resolves `method` promoted through the
+// embedded receivers `receiver_ids` (in field order), then through theirs.
+fn (tc &TypeChecker) embedded_method_call_info_among(receiver_ids []u32, method string, mut seen map[u32]bool) ?CallInfo {
+	for receiver_id in receiver_ids {
 		// An embedded concrete generic receiver (`Collector[int]`) promotes the
 		// method registered on its open declaration (`Collector[T].use`).
 		if info := tc.resolve_generic_struct_method(receiver_id, method) {
@@ -18054,6 +18117,11 @@ fn (tc &TypeChecker) subtree_ends_narrowing(root flat.NodeId, key string, narrow
 }
 
 fn (tc &TypeChecker) lexical_match_smartcast_type(id flat.NodeId) ?Type {
+	// A match narrowing names its subject among the function's smartcast keys:
+	// an expression none of them names has no key to build and no parents to walk.
+	if tc.lexical_smartcasts_unused(int(id)) {
+		return none
+	}
 	return tc.lexical_smartcast_type_in_parents(id, tc.expr_key(id), true)
 }
 
@@ -19490,10 +19558,11 @@ fn (tc &TypeChecker) resolved_inferred_type(source_id u32) ?u32 {
 
 // check_node_inferred_type_witnesses checks the `typeof(expr)` expressions of
 // the type a node is annotated with, or of the type spelling in its value.
-fn (mut tc TypeChecker) check_node_inferred_type_witnesses(node flat.Node) {
+fn (mut tc TypeChecker) check_node_inferred_type_witnesses(node &flat.Node) {
 	tc.check_inferred_type_witnesses(node.typ)
 	if node.kind in [.string_literal, .char_literal, .string_interp] { return }
-	if node.value.len > 15 && node.value.contains('typeof(__expr_') {
+	if node.value.len > 15 && node.value.index_u8(`(`) >= 0
+		&& node.value.contains('typeof(__expr_') {
 		// Legacy raw operands cross the source boundary here; ordinary names
 		// should never enter the source type interner for this probe.
 		value_id := node.source_value_id()
@@ -20756,6 +20825,12 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 				return *cached_type_ref2
 			}
 		}
+	} else if tc.comptime_static_depth > 0 && kind_id == 7 {
+		// A variant-dependent local can carry an annotation from an earlier
+		// generic check. Its current preflight scope has the narrowed type.
+		if typ := tc.non_file_scope_type(node.value) {
+			return typ
+		}
 	}
 	if node.kind == .selector {
 		if typ := tc.global_type_for_selector(*node) {
@@ -21261,6 +21336,9 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 					mname := '${clean_type.name()}.${fn_node.value}'
 					if ret := tc.fn_ret_types[mname] {
 						return ret
+					}
+					if info := tc.interface_receiver_method_call_info(clean_type.source_type_id(), fn_node.value) {
+						return info.return_type
 					}
 				}
 				if clean_type is SumType {
