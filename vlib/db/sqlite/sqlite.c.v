@@ -67,6 +67,7 @@ pub enum JournalMode {
 	truncate
 	persist
 	memory
+	wal
 }
 
 pub struct C.sqlite3 {
@@ -571,25 +572,25 @@ pub fn (db &DB) synchronization_mode(sync_mode SyncMode) ! {
 }
 
 // journal_mode controls how the journal file is stored and processed.
-// If the command fails to execute an error is returned
+// If the command fails to execute an error is returned. SQLite can also keep the current
+// mode without an error, e.g. an in-memory database stays in `.memory` mode when `.wal` is
+// requested: use `current_journal_mode` to check the mode that applies.
 // .off: No journal record is kept. (fastest)
 // .memory: Journal record is held in memory, rather than on disk.
 // .delete: At the conclusion of a transaction, journal file is deleted.
 // .truncate: Journal file is truncated to a length of zero bytes.
 // .persist: Journal file is left in place, but the header is overwritten to indicate journal is no longer valid.
+// .wal: A write-ahead log is used instead of a rollback journal, so that readers do not block the writer.
+// The mode is stored in the database file and applies to later connections too (see https://www.sqlite.org/wal.html).
 pub fn (db &DB) journal_mode(journal_mode JournalMode) ! {
-	if journal_mode == .off {
-		db.exec('pragma journal_mode = OFF;')!
-	} else if journal_mode == .delete {
-		db.exec('pragma journal_mode = DELETE;')!
-	} else if journal_mode == .truncate {
-		db.exec('pragma journal_mode = TRUNCATE;')!
-	} else if journal_mode == .persist {
-		db.exec('pragma journal_mode = PERSIST;')!
-	} else if journal_mode == .memory {
-		db.exec('pragma journal_mode = MEMORY;')!
-	} else {
-		db.exec('pragma journal_mode = MEMORY;')!
+	db.exec('pragma journal_mode = ${journal_mode.str().to_upper()};')!
+}
+
+// current_journal_mode returns the journal mode of the main database.
+pub fn (db &DB) current_journal_mode() !JournalMode {
+	mode := db.q_string('pragma journal_mode;')!
+	return JournalMode.from(mode.to_lower()) or {
+		error('SQLite returned an unknown journal mode: `${mode}`')
 	}
 }
 
