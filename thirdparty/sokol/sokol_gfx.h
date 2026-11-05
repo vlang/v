@@ -4820,6 +4820,7 @@ inline int sg_append_buffer(sg_buffer buf_id, const sg_range& data) { return sg_
         #define GL_CURRENT_PROGRAM 0x8B8D
         #define GL_MAX_VERTEX_UNIFORM_COMPONENTS  0x8B4A
         #define GL_UNPACK_ALIGNMENT 0x0CF5
+        #define GL_PACK_ALIGNMENT 0x0D05
         #define GL_FRAMEBUFFER_SRGB 0x8DB9
         #define GL_TEXTURE_COMPARE_MODE 0x884C
         #define GL_TEXTURE_COMPARE_FUNC 0x884D
