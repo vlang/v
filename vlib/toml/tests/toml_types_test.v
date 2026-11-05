@@ -1,5 +1,5 @@
 import toml
-import strconv
+import math
 
 fn test_string() {
 	str_value := 'test string'
@@ -130,13 +130,14 @@ fn test_nan_and_inf_values() {
 
 	toml_doc = toml.parse_text('inf = inf') or { panic(err) }
 	value = toml_doc.value('inf')
-	assert value.u64() == strconv.double_plus_infinity
+	assert value is f64
+	assert math.is_inf(value.f64(), 1)
 
 	toml_doc = toml.parse_text('inf = +inf') or { panic(err) }
 	value = toml_doc.value('inf')
-	assert value.u64() == strconv.double_plus_infinity
+	assert math.is_inf(value.f64(), 1)
 
 	toml_doc = toml.parse_text('inf = -inf') or { panic(err) }
 	value = toml_doc.value('inf')
-	assert value.u64() == strconv.double_minus_infinity
+	assert math.is_inf(value.f64(), -1)
 }
