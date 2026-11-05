@@ -1737,8 +1737,8 @@ fn (mut timer FastcPhaseTimer) mark(name string) {
 // fastc_source_uses_deprecated_integer reports whether the driver has to run the
 // full parser on `source` to warn about `isize` or `usize`. Comments and plain
 // strings that only mention the names do not count, which keeps sources like the
-// compiler's own out of that second parse. A source the scanner rejects counts, so
-// that the parser reports what it finds there.
+// compiler's own out of that second parse. A source with any scanner diagnostic,
+// warnings included, also counts, so the parser sees it and reports what it finds.
 fn fastc_source_uses_deprecated_integer(source string, path string, prefs &pref.Preferences) bool {
 	if !source.contains('isize') && !source.contains('usize') {
 		return false
