@@ -74,6 +74,8 @@ fn check_constants() {
 fn add(usize uint, isize int) int { return int(usize) + isize }
 fn maybe() ?uint { return uint(3) }
 struct IntegerContainers { values []uint; maybe ?uint }
+struct IndexedValues { indexed []uint }
+fn indexed[T](value T) T { return value }
 fn canonical_fields() bool {
  mut matches := 0
  $for field in Names.fields {
@@ -111,6 +113,11 @@ fn main() {
  if usize := maybe() { assert usize == uint(3) } else { assert false }
  usize := uint(1)
  isize := int(-1)
+ items := [uint(1), 2]
+ assert items[usize] == 2
+ assert items[isize + 1] == 1
+ indexed_values := IndexedValues{indexed: items}
+ assert indexed_values.indexed[usize] == 2
  values := Names{usize: uint(1), isize: int(-1)}
  assert values.usize == usize
  assert values.isize == isize
@@ -142,6 +149,158 @@ fn main() {
  value := C.raw_names()
  assert uint(value.usize) == 42
  assert int(value.isize) == -1
+}
+') or { panic(err) }
+	program := os.join_path(root, 'program')
+	built := cmdexec.run(@VEXE, ['-b', 'fastc', '-o', program, root])
+	assert built.exit_code == 0, built.output
+	ran := cmdexec.run(program, [])
+	assert ran.exit_code == 0, ran.output
+}
+
+fn test_composite_removed_integer_patterns_never_match() {
+	root := os.join_path(os.vtmp_dir(), 'fastc_integer_patterns_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+struct Box[T] { value T }
+fn canonical[T](value T) bool {
+ $if T is []usize || T is []isize || T is [2]usize || T is [2]isize || T is ?usize || T is ?isize || T is &usize || T is &isize || T is map[string][]usize || T is map[isize]uint || T is Box[usize] {
+  return false
+ } $else {
+  $if T !is []usize { return true } $else { return false }
+ }
+}
+fn canonical_match[T](value T) bool {
+ $match T {
+  []usize, []isize { return false }
+  ?usize, ?isize { return false }
+  &usize, &isize { return false }
+  map[string][]usize { return false }
+  $else { return true }
+ }
+}
+fn main() {
+ assert canonical(int(1))
+ assert canonical(uint(1))
+ assert canonical([uint(1)])
+ assert canonical_match(int(1))
+ assert canonical_match([uint(1)])
+}
+') or { panic(err) }
+	program := os.join_path(root, 'program')
+	built := cmdexec.run(@VEXE, ['-b', 'fastc', '-o', program, root])
+	assert built.exit_code == 0, built.output
+	ran := cmdexec.run(program, [])
+	assert ran.exit_code == 0, ran.output
+}
+
+fn test_inactive_explicit_generics_do_not_reject_removed_integers() {
+	root := os.join_path(os.vtmp_dir(), 'fastc_inactive_integer_generics_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+struct Box[T] { value T }
+fn identity[T](value T) T { return value }
+$if false {
+ fn inactive() { _ = identity[usize](1)\n _ = Box[isize]{value: 1} }
+}
+fn main() {
+ $if @BACKEND == "c" {
+  _ = identity[usize](1)
+  _ = Box[isize]{value: 1}
+ }
+ $if false {
+  _ = identity[usize](1)
+  _ = Box[isize]{value: 1}
+ } $else $if true {
+  $if !fastc_backend ? {
+   _ = identity[isize](1)
+   _ = Box[usize]{value: 1}
+  }
+  assert identity[uint](uint(7)) == 7
+  assert Box[uint]{value: 9}.value == 9
+ } $else {
+  _ = identity[isize](1)
+  _ = Box[usize]{value: 1}
+ }
+}
+') or { panic(err) }
+	program := os.join_path(root, 'program')
+	built := cmdexec.run(@VEXE, ['-b', 'fastc', '-o', program, root])
+	assert built.exit_code == 0, built.output
+	ran := cmdexec.run(program, [])
+	assert ran.exit_code == 0, ran.output
+}
+
+fn test_integer_names_in_match_expressions_and_layout_queries() {
+	root := os.join_path(os.vtmp_dir(), 'fastc_integer_match_layout_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+struct Packet { prefix u8; usize u64; isize i64 }
+struct CanonicalPacket { prefix u8; unsigned u64; signed i64 }
+type Value = int | string
+fn check_offset(actual int, expected int) bool { return actual == expected }
+fn main() {
+ unsigned_offset := int(__offsetof(CanonicalPacket, unsigned))
+ signed_offset := int(__offsetof(CanonicalPacket, signed))
+ assert __offsetof(Packet, usize) == unsigned_offset
+ assert check_offset(int(__offsetof(Packet, isize)), signed_offset)
+ usize := Value(7)
+ x := match usize {
+  int { usize + 1 }
+  string { usize.len }
+ }
+ assert x == 8
+ isize := Value("abc")
+ y := match isize {
+  int { isize + 1 }
+  string { isize.len }
+ }
+ assert y == 3
+ assert __offsetof(Packet, usize) == unsigned_offset
+ assert __offsetof(Packet, isize) == signed_offset
+}
+') or { panic(err) }
+	program := os.join_path(root, 'program')
+	built := cmdexec.run(@VEXE, ['-b', 'fastc', '-o', program, root])
+	assert built.exit_code == 0, built.output
+	ran := cmdexec.run(program, [])
+	assert ran.exit_code == 0, ran.output
+}
+
+fn test_removed_integer_names_in_generic_argument_value_contexts() {
+	root := os.join_path(os.vtmp_dir(), 'fastc_integer_argument_contexts_${os.getpid()}')
+	os.mkdir_all(os.join_path(root, 'helper')) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'helper', 'helper.v'), 'module helper\npub struct Value { pub: n int }\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+import helper as usize
+type Combined = usize.Value | string
+struct Holder[T] { mark int }
+struct Values {
+ qualified Holder[usize.Value]
+ callback Holder[fn(usize int) int]
+ named Holder[fn(isize int) int]
+}
+fn matches_import[T](value T) bool {
+ $if T is usize.Value { return true } $else { return false }
+}
+fn rejects_legacy[T](value T) bool {
+ $if T is usize { return false } $else { return true }
+}
+fn identity[T](value T) T { return value }
+fn main() {
+ values := Values{}
+ assert values.qualified.mark == 0
+ assert values.callback.mark == 0
+ assert values.named.mark == 0
+ assert identity[usize.Value](usize.Value{n: 3}).n == 3
+ assert matches_import[usize.Value](usize.Value{n: 3})
+ assert rejects_legacy[usize.Value](usize.Value{n: 3})
+ combined := Combined(usize.Value{n: 3})
+ assert combined is usize.Value
 }
 ') or { panic(err) }
 	program := os.join_path(root, 'program')

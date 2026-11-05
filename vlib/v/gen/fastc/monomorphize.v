@@ -1533,7 +1533,12 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 				concrete, bracket_next := fastc_read_bracket_names(mut s)
 				tok = bracket_next
 				if tok == .rsbr {
-					fastc_validate_source_type_arguments(concrete, path)!
+					if fastc_source_type_arguments_use_removed_integer(concrete) {
+						previous = .rsbr
+						previous_lit = ''
+						tok = s.scan()
+						continue
+					}
 					after := s.offset
 					if concrete in type_param_names {
 						unresolvable[name] = true
@@ -2133,14 +2138,20 @@ fn fastc_body_has_nested_generic(body string, prefs &pref.Preferences) bool {
 	return false
 }
 
-// fastc_validate_source_type_arguments rejects removed source types before
-// monomorphization can substitute their canonical internal storage names.
-fn fastc_validate_source_type_arguments(concrete string, path string) ! {
+// fastc_source_type_arguments_use_removed_integer keeps legacy arguments out of
+// source-level specialization. The parser rejects active uses after selecting
+// compile-time branches, before their spellings can become internal C types.
+fn fastc_source_type_arguments_use_removed_integer(concrete string) bool {
+	// Ordinary arguments need no type-registry lookup or comma-part materialization.
+	if !concrete.contains('size') {
+		return false
+	}
 	for part in flat.source_type_syntax(flat.source_type_id(concrete)).plain_comma_parts() {
 		if part == flat.source_type_isize || part == flat.source_type_usize {
-			return error('fastc parser does not support ${fastc_removed_integer_type(flat.source_type_name(part))} in ${path}')
+			return true
 		}
 	}
+	return false
 }
 
 // fastc_all_concrete_type_args reports whether every comma-joined argument of a
@@ -2213,7 +2224,11 @@ fn fastc_scan_generic_struct_instances(source string, path string, prefs &pref.P
 			previous = tok
 			continue
 		}
-		fastc_validate_source_type_arguments(concrete, path)!
+		if fastc_source_type_arguments_use_removed_integer(concrete) {
+			previous = .rsbr
+			tok = s.scan()
+			continue
+		}
 		after := s.offset
 		if !fastc_all_concrete_type_args(concrete) {
 			unresolvable[name] = true

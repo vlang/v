@@ -1810,6 +1810,30 @@ fn fastc_scan_type_bytes(mut scan scanner.Scanner, first token.Token, path strin
 	if type_module != 'C' && (raw_type == 'isize' || raw_type == 'usize') {
 		return error('fastc parser does not support ${fastc_removed_integer_type(raw_type)} in ${path}')
 	}
+	if tok == .lsbr {
+		argument_start := scan
+		mut depth := 1
+		mut has_legacy_name := false
+		for depth > 0 {
+			tok = scan.scan()
+			if tok == .eof {
+				return error('fastc parser does not support unfinished generic type in ${path}')
+			}
+			if tok == .name && fastc_is_removed_integer_name(scan.lit) {
+				has_legacy_name = true
+			}
+			if tok == .lsbr {
+				depth++
+			} else if tok == .rsbr {
+				depth--
+			}
+		}
+		if has_legacy_name {
+			fastc_validate_removed_generic_argument_types(argument_start, path, module_name,
+				imports, declared_types, allow_short_placeholders)!
+		}
+		tok = scan.scan()
+	}
 	type_key := fastc_type_key(type_module, raw_type)
 	if is_imported_type && type_module != 'builtin' && fastc_source_type_key_exists(declared_types, type_key) && !fastc_source_type_key_value(declared_types, type_key) {
 		return error('fastc parser does not support private type `${raw_type}` from imported module `${type_module}` in ${path}')
@@ -1850,25 +1874,42 @@ fn fastc_scan_type_bytes(mut scan scanner.Scanner, first token.Token, path strin
 			base = fastc_c_declared_type_name(type_key)
 		}
 	}
-	if tok == .lsbr {
-		mut depth := 1
-		for depth > 0 {
-			tok = scan.scan()
-			if tok == .eof {
-				return error('fastc parser does not support unfinished generic type in ${path}')
-			}
-			if tok == .lsbr {
-				depth++
-			} else if tok == .rsbr {
-				depth--
-			}
-		}
-		tok = scan.scan()
-	}
+
 	if optional {
 		return wrapper, tok
 	}
 	return base + '*'.repeat(pointers), tok
+}
+
+// fastc_validate_removed_generic_argument_types distinguishes types from module
+// qualifiers, array dimensions, and named callback parameters in erased arguments.
+fn fastc_validate_removed_generic_argument_types(scan scanner.Scanner, path string, module_name string, imports map[string]string, declared_types map[u32]bool, allow_short_placeholders bool) ! {
+	mut look := scan
+	mut tok := fastc_scan_skip_semicolons(mut look, look.scan())
+	for tok !in [.rsbr, .eof] {
+		start := look
+		tok = fastc_scan_generic_argument_type(mut look, tok, path, module_name, imports,
+			declared_types, allow_short_placeholders) or {
+			if err.msg().contains(fastc_removed_integer_type('isize'))
+				|| err.msg().contains(fastc_removed_integer_type('usize')) {
+				return err
+			}
+			// Other unresolved arguments retain the existing generic erasure behavior.
+			look = start
+			fastc_skip_global_type(mut look, tok, path) or { return }
+		}
+		tok = fastc_scan_skip_semicolons(mut look, tok)
+		if tok != .comma {
+			return
+		}
+		tok = fastc_scan_skip_semicolons(mut look, look.scan())
+	}
+}
+
+fn fastc_scan_generic_argument_type(mut scan scanner.Scanner, first token.Token, path string, module_name string, imports map[string]string, declared_types map[u32]bool, allow_short_placeholders bool) !token.Token {
+	_, next := fastc_scan_type_bytes(mut scan, first, path, module_name, imports, declared_types,
+		allow_short_placeholders)!
+	return next
 }
 
 fn fastc_composite_type_part(typ string) string {

@@ -301,7 +301,7 @@ fn (mut g Parser) read_match_expression() !string {
 			} else {
 				smartcast_c_type
 			}
-			value = '({ ${declaration_type} ${fastc_c_identifier(subject_local)} = ${smartcast_value}; (${value}); })'
+			value = '({ ${declaration_type} ${fastc_c_value_identifier(subject_local)} = ${smartcast_value}; (${value}); })'
 		}
 		if g.selfhost && value_type != u32(0) && outer_expected_type_source_id != u32(0) && g.should_box_variant(outer_expected_type, value_type) {
 			// A branch value whose type is a variant of the match's (boxed) expected

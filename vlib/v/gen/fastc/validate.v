@@ -477,6 +477,9 @@ fn (g &Parser) validate_expression_name(name string, previous token.Token) ! {
 	if previous != .dot && (name == 'isize' || name == 'usize') {
 		mut lookahead := g.s
 		next := lookahead.scan()
+		if next == .dot && name in g.imports {
+			return
+		}
 		is_type := previous in [.key_is, .not_is, .key_as]
 			|| (previous == .rsbr && next == .lcbr)
 		if is_type || (next !in [.colon, .decl_assign] && name !in g.locals && name !in g.imports

@@ -372,35 +372,46 @@ const fastc_c_reserved_identifiers = {
 	'while':    true
 }
 
+@[inline]
 fn fastc_c_identifier(name string) string {
-	if name.len > 1 && name[0] == `@` {
-		return fastc_c_identifier(name[1..])
+	mut plain_name := name
+	for plain_name.len > 1 && plain_name[0] == `@` {
+		plain_name = plain_name[1..]
 	}
-	if name.len < 2 || name.len > 8 {
-		return name
+	if plain_name.len < 2 || plain_name.len > 8 {
+		return plain_name
 	}
-	first := name[0]
+	first := plain_name[0]
 	// Bitset of the initial letters used by the reserved-identifier table (`a` is bit 0).
 	if first < `a` || first > `w` || (u32(8_264_063) & (u32(1) << (first - `a`))) == 0 {
-		return name
+		return plain_name
 	}
-	return if name in fastc_c_reserved_identifiers {
-		'__vf_keyword_${name}'
+	return if plain_name in fastc_c_reserved_identifiers {
+		'__vf_keyword_${plain_name}'
 	} else {
-		name
+		plain_name
 	}
+}
+
+// fastc_is_removed_integer_name recognizes the two legacy spellings without a type lookup.
+@[inline]
+fn fastc_is_removed_integer_name(name string) bool {
+	return name.len == 5 && (name[0] == `i` || name[0] == `u`) && name[1] == `s`
+		&& name[2] == `i` && name[3] == `z` && name[4] == `e`
 }
 
 // fastc_c_value_identifier keeps value bindings from shadowing the emitter's
 // private integer typedefs. Fields use a separate C namespace and keep their names.
+@[inline]
 fn fastc_c_value_identifier(name string) string {
-	if name.len > 1 && name[0] == `@` {
-		return fastc_c_value_identifier(name[1..])
+	mut plain_name := name
+	for plain_name.len > 1 && plain_name[0] == `@` {
+		plain_name = plain_name[1..]
 	}
-	if name == 'isize' || name == 'usize' {
-		return '__vf_keyword_${name}'
+	if fastc_is_removed_integer_name(plain_name) {
+		return '__vf_keyword_${plain_name}'
 	}
-	return fastc_c_identifier(name)
+	return fastc_c_identifier(plain_name)
 }
 
 const c_selfhost_preamble = r'#include <stdbool.h>

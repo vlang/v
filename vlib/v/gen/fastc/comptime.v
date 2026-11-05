@@ -1022,10 +1022,46 @@ fn (g &Parser) comptime_named_type(name string) u32 {
 // These names are not constructible FastC types, including uint's private C spelling.
 fn (mut g Parser) parse_comptime_type_pattern() !u32 {
 	if g.tok == .name && (g.lit == 'isize' || g.lit == 'usize') {
+		if g.lit in g.imports {
+			mut look := g.s
+			if look.scan() == .dot {
+				return g.parse_comptime_composite_type_pattern()
+			}
+		}
 		g.next()
 		return 0
 	}
-	return g.parse_type()!
+	if g.tok == .name && g.lit !in ['map', 'chan', 'thread'] {
+		mut offset := g.s.offset
+		for offset < g.s.src.len && fastc_source_space_byte(g.s.src[offset]) {
+			offset++
+		}
+		if offset >= g.s.src.len || g.s.src[offset] !in [`[`, `.`, `/`] {
+			return g.parse_type()
+		}
+	}
+	return g.parse_comptime_composite_type_pattern()
+}
+
+// parse_comptime_composite_type_pattern saves recovery state only for wrappers
+// and qualified or generic names; ordinary names keep the normal type parser path.
+fn (mut g Parser) parse_comptime_composite_type_pattern() !u32 {
+	first := g.tok
+	start := g.s
+	return g.parse_type() or {
+		if !err.msg().contains(fastc_removed_integer_type('isize'))
+			&& !err.msg().contains(fastc_removed_integer_type('usize')) {
+			return err
+		}
+		// A removed element makes the entire composite pattern nonmatching. Consume
+		// its remaining syntax without resolving types, including nested wrappers.
+		mut boundary := start
+		next := fastc_skip_global_type(mut boundary, first, g.path)!
+		g.s = boundary
+		g.tok = next
+		g.lit = boundary.lit
+		u32(0)
+	}
 }
 
 fn (g &Parser) comptime_type_matches(left_type u32, target_type u32, target_is_group bool) bool {

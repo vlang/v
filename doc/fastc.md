@@ -28,8 +28,9 @@ builds a full compiler in the tool cache and runs it; subsequent requests reuse 
 Use `v -compile-backend fastc self` to include FastC in the main executable instead.
 
 Use `int` and `uint` for platform-width integers. FastC rejects declarations and casts using
-the deprecated `isize` and `usize` types. Compile-time compatibility branches for those types
-never match. FastC does not run the regular parser to produce deprecation warnings.
+the deprecated `isize` and `usize` types. Compile-time compatibility patterns for those types,
+including composite patterns such as `[]usize`, never match. Uses inside inactive compile-time
+branches are ignored. FastC does not run the regular parser to produce deprecation warnings.
 
 On Windows, ordinary FastC programs set stdout and stderr to binary mode, preserving `\n`
 without CRT conversion to `\r\n`, as the default C backend does.
