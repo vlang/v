@@ -14,6 +14,7 @@ fn native_linux_constant(name string) ?i64 {
 	match name {
 		'PTHREAD_CREATE_JOINABLE', 'PTHREAD_PROCESS_PRIVATE' { return i64(0) }
 		'PTHREAD_CREATE_DETACHED', 'PTHREAD_PROCESS_SHARED' { return i64(1) }
+		'PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP' { return i64(2) }
 		'PATH_MAX' { return i64(4096) }
 		'CLOCK_MONOTONIC' { return i64(1) }
 		'EAGAIN' { return i64(11) }
@@ -44,10 +45,12 @@ fn native_linux_constant(name string) ?i64 {
 }
 
 // native_darwin_constant resolves macros used by the native compiler's OS runtime.
-// These values come from the Darwin system ABI, independently of the bootstrap OS.
+// These values follow the Darwin ABI and compiler-owned runtime compatibility declarations,
+// independently of the bootstrap OS.
 fn native_darwin_constant(name string) ?i64 {
 	return match name {
-		'O_RDONLY', 'F_OK', 'PROT_NONE', 'SEEK_SET', 'CLOCK_REALTIME', 'STDIN_FILENO', 'NULL' {
+		'O_RDONLY', 'F_OK', 'PROT_NONE', 'SEEK_SET', 'CLOCK_REALTIME', 'STDIN_FILENO', 'NULL',
+		'memory_order_relaxed', 'PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP' {
 			i64(0)
 		}
 		'O_WRONLY', 'X_OK', 'PROT_READ', 'SEEK_CUR', 'RTLD_LAZY', 'EPERM',
@@ -56,11 +59,14 @@ fn native_darwin_constant(name string) ?i64 {
 		}
 		'O_RDWR', 'W_OK', 'PROT_WRITE', 'MAP_PRIVATE', 'SEEK_END', 'RTLD_NOW',
 		'ENOENT', 'PTHREAD_CREATE_DETACHED', 'PTHREAD_PROCESS_PRIVATE', 'STDERR_FILENO', 'F_SETFD',
-		'_IONBF' {
+		'_IONBF', 'memory_order_acquire' {
 			i64(2)
 		}
-		'O_ACCMODE', 'ESRCH' { i64(3) }
-		'O_NONBLOCK', 'O_NDELAY', 'R_OK', 'PROT_EXEC', 'RTLD_LOCAL', 'EINTR' { i64(4) }
+		'O_ACCMODE', 'ESRCH', 'memory_order_release' { i64(3) }
+		'O_NONBLOCK', 'O_NDELAY', 'R_OK', 'PROT_EXEC', 'RTLD_LOCAL', 'EINTR', 'memory_order_acq_rel' {
+			i64(4)
+		}
+		'memory_order_seq_cst' { i64(5) }
 		'CLOCK_MONOTONIC' { i64(6) }
 		'O_APPEND', 'RTLD_GLOBAL' { i64(8) }
 		'SIGKILL' { i64(9) }
