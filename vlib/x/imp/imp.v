@@ -525,12 +525,12 @@ fn (c &Context) finish(id string, mut pass Pass) ! {
 // steps, leaving outside continuations waiting for those steps.
 fn (c &Context) drain(mut pass Pass) ! {
 	for pass.waiting.len > 0 {
-		id := pass.cycle_start()
-		steps := pass.cycle_steps(id)!
-		if steps.len == 0 {
+		cycle := pass.cycle_start()
+		if cycle.members.len == 0 {
 			// No finish step is held for this flow, so it has no remaining work.
-			c.finish(id, mut pass)!
+			c.finish(cycle.start, mut pass)!
 		} else {
+			steps := pass.cycle_steps(cycle)!
 			c.sequence(steps, mut pass)!
 		}
 	}
@@ -551,28 +551,16 @@ fn (pass &Pass) finish_holders() map[string]string {
 	return holder
 }
 
-// cycle_steps takes the cyclic continuations selected by `cycle_start`, keeping
-// their work in the order of breaking that cycle at `id`. Their finish steps all
-// follow the work; any suffix outside the cycle still waits for its own owner.
-fn (mut pass Pass) cycle_steps(id string) ![]Step {
-	holder := pass.finish_holders()
-	if id !in holder {
-		return []Step{}
-	}
-	mut cycle := []string{}
-	mut member := id
-	for {
-		cycle << member
-		member = holder[member] or { return error('post work cycle has no finish for `${member}`') }
-		if member == id {
-			break
-		}
-	}
+// cycle_steps takes the continuations of `cycle`, keeping their work in the
+// order of breaking that cycle at its start. Their finish steps all follow the
+// work; any suffix outside the cycle still waits for its own owner.
+fn (mut pass Pass) cycle_steps(cycle Cycle) ![]Step {
 	mut steps := []Step{}
 	// Finishing a member releases the preceding member in this holder walk.
-	for i := cycle.len - 1; i >= 0; i-- {
-		owner := cycle[i]
-		waits_for := holder[owner]
+	for i := cycle.members.len - 1; i >= 0; i-- {
+		owner := cycle.members[i]
+		// the finish of each member is held by the next one, closing the ring
+		waits_for := cycle.members[(i + 1) % cycle.members.len]
 		mut queued := pass.waiting[waits_for] or { [][]Step{} }
 		mut index := -1
 		mut end := -1
@@ -601,9 +589,15 @@ fn (mut pass Pass) cycle_steps(id string) ![]Step {
 	return finish_after_work(steps)
 }
 
-// cycle_start returns the flow waited for first among a cycle of flows whose
-// post work waits for each other. `waiting` must not be empty.
-fn (pass &Pass) cycle_start() string {
+// Cycle is a ring of flows whose post work waits for each other.
+struct Cycle {
+	start   string   // the flow waited for first, where the ring is broken
+	members []string // the ring in holder order from `start`; empty if `start` is not held
+}
+
+// cycle_start finds the cycle to break next, starting at the flow waited for
+// first among its members. `waiting` must not be empty.
+fn (pass &Pass) cycle_start() Cycle {
 	holder := pass.finish_holders()
 	waited := pass.order.filter(it in pass.waiting)
 	// following the holders from any flow leads into a cycle
@@ -614,17 +608,28 @@ fn (pass &Pass) cycle_start() string {
 		path << id
 		id = holder[id] or {
 			// not held, so not waiting on anything: complete it as it is
-			return id
+			return Cycle{
+				start: id
+			}
 		}
 	}
 	// the cycle is the end of the path, from the flow met twice
 	start := path.index(id)
+	mut first := start
 	for flow in waited {
-		if path.index(flow) >= start {
-			return flow
+		at := path.index(flow)
+		if at >= start {
+			first = at
+			break
 		}
 	}
-	return id
+	// rotate the ring to begin at the member waited for first
+	mut members := path[first..].clone()
+	members << path[start..first]
+	return Cycle{
+		start:   members[0]
+		members: members
+	}
 }
 
 // first_active returns the stack index of the outermost active flow that `id`

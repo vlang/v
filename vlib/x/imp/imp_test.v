@@ -2136,11 +2136,14 @@ fn test_cycle_start_picks_the_ring_member_waited_for_first() {
 			'c': [[finish_step('b')]]
 		}
 	}
-	assert ring.cycle_start() == 'b'
+	assert ring.cycle_start() == Cycle{
+		start:   'b'
+		members: ['b', 'c', 'a']
+	}
 	// flows no longer waited for are passed over
 	mut finished := ring
 	finished.order = ['gone', 'w', 'b', 'c', 'a']
-	assert finished.cycle_start() == 'b'
+	assert finished.cycle_start().start == 'b'
 	looped := Pass{
 		order:   ['x']
 		waiting: {
@@ -2149,7 +2152,10 @@ fn test_cycle_start_picks_the_ring_member_waited_for_first() {
 			}, finish_step('x')]]
 		}
 	}
-	assert looped.cycle_start() == 'x'
+	assert looped.cycle_start() == Cycle{
+		start:   'x'
+		members: ['x']
+	}
 }
 
 // test_drain_completes_a_flow_waiting_on_nothing checks that a flow waited for
@@ -2171,7 +2177,9 @@ fn test_drain_completes_a_flow_waiting_on_nothing() {
 			}]]
 		}
 	}
-	assert pass.cycle_start() == 'k'
+	assert pass.cycle_start() == Cycle{
+		start: 'k'
+	}
 	c.drain(mut pass)!
 	assert pass.waiting.len == 0
 	assert pass.state['k'] == .done
