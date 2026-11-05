@@ -171,6 +171,8 @@ given that the types of the parameters are equivalent.
 Ordinary V functions named `sync` or `syncfs` can coexist with the system C functions.
 Their generated C names also remain distinct from V functions named `main__sync` or `main__syncfs`.
 Use the `C.` prefix to refer to the C function.
+Their return types also remain distinct: V's `malloc` returns `&u8`, while `C.malloc`
+returns `voidptr`. A same-named C declaration does not change the type of a V call.
 For Linux bindings that declare `fn C.syncfs`, V enables GNU header declarations before
 including C headers, so `<unistd.h>` supplies the `syncfs` prototype.
 
