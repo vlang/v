@@ -48,6 +48,20 @@ replaces application-specific source-comment parsing: migrate each `@summary`,
 `@description`, `@tag` and `@security` into `OpenApiOperation`, and each `@response` into
 `response[T]` or `raw_response`. Source comments and decorative dividers are never parsed.
 
+Attach `@[description: 'Create an item.']` to a handler to include its description in
+`RouteInfo.description` and every operation generated for that handler by `add_app`.
+Descriptions also follow controller mounts and implicit index aliases. An explicit
+`operation(path, method, description: '...')` call overrides the handler description for
+that operation. Handlers without descriptions omit the OpenAPI `description` property.
+
+```v ignore
+@[description: 'Create an item.']
+@['/items'; post]
+pub fn (app &App) create_item(mut ctx Context) veb.Result {
+	return ctx.text('created')
+}
+```
+
 ## Typed metadata beside handlers
 
 Link a handler to a typed metadata method with `veb.OpenApi('method_name')`. The companion method
