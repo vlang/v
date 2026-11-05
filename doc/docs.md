@@ -4207,6 +4207,8 @@ To dereference a reference, use the `*` operator, just like in C.
 A constant can be qualified with its module name inside that module, including in module tests.
 
 A fixed array constant can be initialized by a function call; the call runs during initialization.
+Fixed array constants can contain dynamic arrays, including other constants and array literals.
+Their elements are initialized at startup after any constants they depend on.
 Sum type constants with aggregate variants are initialized at startup, including when compiling
 with GCC.
 Their resolved sum type remains the same when an import alias shares its module prefix.
@@ -7029,6 +7031,12 @@ fn (data &MyType) free() {
 Just as the compiler frees C data types with C's `free()`, it will statically insert
 `free()` calls for your data type at the end of each variable's lifetime.
 
+When a custom `free()` method directly calls builtin `free(receiver)`, explicitly calling it
+on a named value of its receiver type passes a shallow heap copy. Existing pointers, borrowed
+mutable receivers, and receivers already stored on the heap keep their original storage.
+Methods that only free fields receive the original value, so their field updates remain visible.
+This shallow copy does not duplicate any allocations referenced by the value's fields.
+
 Autofree can be enabled with an `-autofree` flag.
 
 For developers willing to have more low-level control, autofree can be disabled with
@@ -8991,6 +8999,9 @@ Optional and result variants expose their wrapped type's metadata index, preserv
 Conditions using local metadata values are checked after unrolling, when their values are available.
 Matches retain their arm refinements while loop metadata is checked.
 Declaration guards such as `if payload := value` bind the unwrapped payload in their success branch.
+Exiting option guards also unwrap payloads for later statements in the same block.
+Each guard applies to the option layer visible before it.
+Type checks in loop conditions, assertions, and exiting guards preserve the optional payload type.
 
 #### <h4 id="comptime-methods">.methods</h4>
 
@@ -10724,6 +10735,10 @@ so they always
 build as if `-gc none` was passed. For x64, `-prod` enables SSA optimization, scalar register
 allocation, and optimized C helpers. Very large x64 modules may skip the global SSA pass to
 bound compiler memory. The ARM64 backend retains its existing optimization behavior.
+ARM64 builds reject native source files included with `#include`, `#insert`, `#preinclude`, or
+`#postinclude`, because its linker cannot link those sources yet. Use the C backend for them.
+ARM64 resolves a fixed set of platform C constants. Other C constants produce an error;
+use the C backend when a header defines a constant the native backend does not support.
 The x64 backend is experimental. Calls without a native implementation fail compilation
 or linking rather than producing placeholder implementations.
 It requires a Linux AMD64 host. Passing or returning C structs and arrays by value is
@@ -11256,6 +11271,8 @@ V has these types for easier interoperability with C:
 - `&&char` for C's `char**`
 
 To cast a `voidptr` to a V reference, use `user := &User(user_void_ptr)`.
+The cast uses the stored pointer value even when the `voidptr` local's address escapes
+and its storage moves to the heap. Taking `&user_void_ptr` still addresses that pointer slot.
 
 Passing `unsafe { nil }` to a pointer parameter passes a null pointer, including pointers to
 handles that alias `voidptr`.
@@ -11263,6 +11280,10 @@ Reference results of generic calls also pass the pointer value to `voidptr` para
 For example, `isnil(identity[&User](unsafe { nil }))` tests the returned pointer for null.
 A mutable block that yields `&T` can pass that pointer to a `mut T` parameter,
 including generic functions and functions from imported modules.
+Passing a `voidptr` as a `mut T` argument also forwards its pointer to the original storage.
+It does not copy or dereference the pointee before calling the function, so the callee can
+check a null raw pointer before accessing it. A `mut voidptr` parameter instead receives
+the caller's pointer slot and can replace its stored pointer value.
 
 `voidptr` can also be dereferenced into a V struct through casting: `user := User(user_void_ptr)`.
 
