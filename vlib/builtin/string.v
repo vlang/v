@@ -449,6 +449,8 @@ struct RepIndex {
 
 // replace_each replaces all occurrences of the string pairs given in `vals`.
 // Pairs with an empty search string are ignored; empty replacement strings remove matches.
+// Earlier pairs take precedence over overlapping matches. Replacements are not searched again.
+// Search and replacement strings may contain NUL bytes.
 // Example: assert 'ABCD'.replace_each(['B','C/','C','D','D','C']) == 'AC/DC'
 @[direct_array_access]
 pub fn (s string) replace_each(vals []string) string {
@@ -459,86 +461,88 @@ pub fn (s string) replace_each(vals []string) string {
 		eprintln('string.replace_each(): odd number of strings')
 		return s.clone()
 	}
-	// `rep` - string to replace
-	// `with` - string to replace with
-	// Remember positions of all rep strings, and calculate the length
-	// of the new string to do just one allocation.
 	mut new_len := s.len
 	mut idxs := []RepIndex{cap: 6}
-	defer { unsafe { idxs.free() } }
-	mut idx := 0
-	s_ := s.clone()
+	mut consumed := []bool{len: s.len}
+	defer {
+		unsafe {
+			idxs.free()
+			consumed.free()
+		}
+	}
 	for rep_i := 0; rep_i < vals.len; rep_i += 2 {
-		// vals: ['rep1, 'with1', 'rep2', 'with2']
 		rep := vals[rep_i]
 		with := vals[rep_i + 1]
 		if rep.len == 0 {
-			// an empty needle matches at every position without advancing
-			// the scan below, so skip it instead of looping forever
 			continue
 		}
-
-		for {
-			idx = s_.index_after_(rep, idx)
-			if idx == -1 {
-				break
+		mut idx := 0
+		for idx < s.len {
+			for idx < s.len && consumed[idx] {
+				idx++
 			}
-			// The string already found is set to `/del`, to avoid duplicate searches.
-			for i in 0 .. rep.len {
-				unsafe {
-					s_.str[idx + i] = 0
+			mut end := idx
+			for end < s.len && !consumed[end] {
+				end++
+			}
+			// Search only unconsumed spans, so overlapping matches cannot restart the search.
+			span := s.substr_borrowed(idx, end)
+			span_start := idx
+			mut offset := 0
+			for {
+				offset = span.index_after_(rep, offset)
+				if offset == -1 {
+					break
 				}
+				idx = span_start + offset
+				// Track matches separately so every byte, including NUL, remains searchable.
+				for i in idx .. idx + rep.len {
+					consumed[i] = true
+				}
+				if with.len > rep.len && new_len > max_int - 1 - (with.len - rep.len) {
+					panic('string.replace_each(): result is too large')
+				}
+				new_len += with.len - rep.len
+				idxs << RepIndex{
+					idx:     idx
+					val_idx: rep_i
+				}
+				offset += rep.len
 			}
-			// We need to remember both the position in the string,
-			// and which rep/with pair it refers to.
-
-			idxs << RepIndex{
-				idx:     idx
-				val_idx: rep_i
-			}
-
-			idx += rep.len
-			new_len += with.len - rep.len
+			idx = end
 		}
 	}
-
-	// Dont change the string if there's nothing to replace
 	if idxs.len == 0 {
 		return s.clone()
 	}
 	idxs.sort(a.idx < b.idx)
-	mut buf := unsafe { malloc_string_buffer(new_len + 1) } // add space for 0 terminator
-	// Fill the new string
-	mut idx_pos := 0
-	mut cur_idx := idxs[idx_pos]
+	if new_len == max_int {
+		panic('string.replace_each(): result is too large')
+	}
+	mut buf := unsafe { malloc_string_buffer(new_len + 1) }
 	mut buf_i := 0
-	for i := 0; i < s.len; i++ {
-		if i == cur_idx.idx {
-			// Reached the location of rep, replace it with "with"
-			rep := vals[cur_idx.val_idx]
-			with := vals[cur_idx.val_idx + 1]
-			for j in 0 .. with.len {
-				unsafe {
-					buf[buf_i] = with[j]
-				}
-				buf_i++
-			}
-			// Skip the length of rep, since we just replaced it with "with"
-			i += rep.len - 1
-			// Go to the next index
-			idx_pos++
-			if idx_pos < idxs.len {
-				cur_idx = idxs[idx_pos]
-			}
-		} else {
-			// Rep doesnt start here, just copy
-			unsafe {
-				buf[buf_i] = s.str[i]
-			}
-			buf_i++
+	mut s_idx := 0
+	for match_idx in idxs {
+		before_len := match_idx.idx - s_idx
+		if before_len > new_len - buf_i {
+			panic('string.replace_each(): invalid result length')
 		}
+		unsafe { vmemcpy(buf + buf_i, s.str + s_idx, before_len) }
+		buf_i += before_len
+		with := vals[match_idx.val_idx + 1]
+		if with.len > new_len - buf_i {
+			panic('string.replace_each(): invalid result length')
+		}
+		unsafe { vmemcpy(buf + buf_i, with.str, with.len) }
+		buf_i += with.len
+		s_idx = match_idx.idx + vals[match_idx.val_idx].len
+	}
+	tail_len := s.len - s_idx
+	if tail_len != new_len - buf_i {
+		panic('string.replace_each(): invalid result length')
 	}
 	unsafe {
+		vmemcpy(buf + buf_i, s.str + s_idx, tail_len)
 		buf[new_len] = 0
 		return tos(buf, new_len)
 	}

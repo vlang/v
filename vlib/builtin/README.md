@@ -114,7 +114,9 @@ scope and saturates at `uint`'s maximum on overflow. This query is unsafe: no th
 remove blocks while it runs.
 
 `string.replace_each(pairs)` ignores pairs with an empty search string. An empty replacement
-string removes matches of a nonempty search string.
+string removes matches of a nonempty search string. Pairs are applied in order to disjoint matches
+of the original input; replacement text is not searched again. Input, search strings, and
+replacements may contain NUL bytes.
 
 `string.limit(max)` counts Unicode code points and returns an empty string for `max <= 0`.
 
