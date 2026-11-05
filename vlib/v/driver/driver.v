@@ -59,6 +59,11 @@ $if !skip_wasm ? {
 // vfmt on
 
 const cache_bundle_import_file_name = '.v3_cache_bundle_imports.vh'
+// syscalls_bare_file_names are the bare-directory files a `-syscalls` build takes:
+// the bf_* layer and the kernel syscall layer. The rest of a bare directory provides
+// libc symbols (libc_impl, libc, exports) or the freestanding entry point, which a
+// libc-linked build must not carry.
+const syscalls_bare_file_names = ['bf.v', 'syscalls.v', 'linux_syscalls.v', 'linux_syscalls.i386.v']
 const macos_v3_fallback_file_env = 'V_MACOS_V3_FALLBACK_FILE'
 const macos_v3_no_fallback_env = 'V_MACOS_V3_NO_FALLBACK'
 const macos_v3_c_error_dir_env = 'V_MACOS_V3_C_ERROR_DIR'
@@ -4431,7 +4436,7 @@ fn v3_crun_build_identity(state &V3ModuleCacheState, prefs &pref.Preferences, us
 }
 
 fn cli_usage() string {
-	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                  output binary or C file\n' + '  -b <c|fastc|arm64|x64|wasm|eval> backend\n' + '  -os <name> -arch <name>      target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -hot-fn <name>              extract raw machine code for one function (hot reload, arm64)\n' + '  -prod -c99 -shared -strict   C build modes\n' + '  -v                           verbose stage profiling\n' + '  -show-timings                compiler stage timings without verbose traces\n' + '  -show-instructions           -show-timings plus retired CPU instructions per stage (macOS)\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -memory-limit <size>         set a custom user-build memory safety limit\n                               to specify unit append K|M|G (or k|m|g) (default: M)\n' + '  -d <name>                    compile-time define'
+	return 'usage: v3 [run|crun|test] <file.v|directory> [options]\n' + '  -o <output>                  output binary or C file\n' + '  -b <c|fastc|arm64|x64|wasm|eval> backend\n' + '  -os <name> -arch <name>      target platform\n' + '  -cc <compiler>               C compiler executable\n' + '  -cflags <flags>              extra C compiler options\n' + '  -ldflags <flags>             extra options appended to the link command\n' + '  -syscalls                    libc-linked build with os on raw syscalls (C backend)\n' + '  -thread-stack-size <bytes>   spawned-thread stack size\n' + '  -hot-fn <name>              extract raw machine code for one function (hot reload, arm64)\n' + '  -prod -c99 -shared -strict   C build modes\n' + '  -v                           verbose stage profiling\n' + '  -show-timings                compiler stage timings without verbose traces\n' + '  -show-instructions           -show-timings plus retired CPU instructions per stage (macOS)\n' + '  -silent                      suppress benchmark output\n' + '  -showcc                      print C compiler commands\n' + '  -trace-calls                 trace function entries to stderr\n' + '  -trace-fns <patterns>        restrict tracing to functions or modules\n' + '  -race                        detect data races at runtime (ThreadSanitizer)\n' + '  -profile [file]              write V1-compatible function profile data\n' + '  -profile-fns <names>         profile only named functions and their callees\n' + '  -profile-no-inline           omit @[inline] functions from the profile\n' + '  -no-memory-limit             disable the 10176 MiB user-build memory safety limit\n' + '  -memory-limit <size>         set a custom user-build memory safety limit\n                               to specify unit append K|M|G (or k|m|g) (default: M)\n' + '  -d <name>                    compile-time define'
 }
 
 fn normalize_backend_name(name string) string {
@@ -10075,6 +10080,12 @@ pub fn run(args []string) {
 			record_user_define(mut user_defines, mut compile_values, 'freestanding')
 			no_cache = true
 			i++
+		} else if args[i] == '-syscalls' {
+			// The os module takes the raw-syscall routes, while builtin keeps libc:
+			// the program still links libc, unlike `-freestanding`.
+			record_user_define(mut user_defines, mut compile_values, 'syscalls')
+			no_cache = true
+			i++
 		} else if args[i] in ['-strict', '-cstrict'] {
 			is_strict = true
 			i++
@@ -11806,7 +11817,28 @@ pub fn run(args []string) {
 	// `-freestanding` builtin calls hooks (bare_print, __malloc, ...) and links no
 	// libc, so the implementations of those and the process entry point come from
 	// a bare builtin directory, by default vlib/builtin/linux_bare.
-	if 'freestanding' in prefs.user_defines && prefs.backend == 'c' {
+	if prefs.target.os == 'openbsd' && ('freestanding' in prefs.user_defines
+		|| 'syscalls' in prefs.user_defines) {
+		eprintln('v: -freestanding and -syscalls are not supported for an openbsd target yet')
+		eprintln('(OpenBSD kills raw syscall instructions outside libc; see vlib/builtin/README.vlibc.md)')
+		exit(1)
+	}
+	if 'syscalls' in prefs.user_defines {
+		if 'freestanding' in prefs.user_defines {
+			eprintln('v: -syscalls and -freestanding are separate runtimes; pass only one')
+			exit(1)
+		}
+		if prefs.backend != 'c' {
+			eprintln('v: -syscalls is only supported by the C backend (-b c) for now')
+			exit(1)
+		}
+		if prefs.target.os == 'windows' {
+			eprintln('v: -syscalls is not supported for a windows target')
+			exit(1)
+		}
+	}
+	if ('freestanding' in prefs.user_defines || 'syscalls' in prefs.user_defines)
+		&& prefs.backend == 'c' {
 		bare_dir := if bare_builtin_dir.len > 0 {
 			bare_builtin_dir
 		} else {
@@ -11824,15 +11856,29 @@ pub fn run(args []string) {
 				'android', 'termux' { 'linux_bare' }
 				'solaris' { 'solaris_bare' }
 				'vinix' { 'linux_bare' }
+				'windows' {
+					// There is no windows_bare runtime yet; silently linking
+					// the linux tables on a windows target would be wrong, so
+					// state it and stop. A future windows runtime would follow
+					// Zig's std/os/windows shape (PE entry, PEB argv/envp,
+					// ntdll calls, RtlAllocateHeap allocator, TLS directory).
+					eprintln('v: -freestanding is not supported for a windows target yet')
+					eprintln('(no vlib/builtin/windows_bare runtime exists; see vlib/builtin/README.vlibc.md)')
+					exit(1)
+				}
 				else { 'linux_bare' }
 			}
 			dir := os.join_path(builtin_dir, candidate)
 			if os.is_dir(dir) { dir } else { os.join_path(builtin_dir, 'linux_bare') }
 		}
-		builtin_files << prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(bare_dir,
+		mut bare_files := prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(bare_dir,
 			builtin_defines, prefs.backend, prefs.target))
+		if 'freestanding' !in prefs.user_defines {
+			bare_files = bare_files.filter(syscalls_bare_file_names.contains(os.file_name(it)))
+		}
+		builtin_files << bare_files
 	} else if bare_builtin_dir.len > 0 {
-		eprintln('`-bare-builtin-dir` must be used with `-freestanding`')
+		eprintln('`-bare-builtin-dir` must be used with `-freestanding` or `-syscalls`')
 	}
 	// Freestanding builds already include the runtime from their selected bare directory.
 	// Hosted builds need only its syscall layer and vlibc API, retaining libc startup.
@@ -14531,6 +14577,7 @@ pub fn run(args []string) {
 			if native_support.object.len > 0 {
 				linker_args << native_support.object
 			}
+			is_native_freestanding := 'freestanding' in prefs.user_defines
 			linker := if c_compiler in ['', 'tinyc', 'tcc'] { 'cc' } else { c_compiler }
 			mut native_link_flags := x64_native_link_flags(native_support.flags)
 			if native_link_flags.len > 0 {
@@ -14549,7 +14596,9 @@ pub fn run(args []string) {
 				}
 			}
 			linker_args << native_link_flags
-			linker_args << ['-lm', '-ldl', '-lpthread']
+			if !is_native_freestanding {
+				linker_args << ['-lm', '-ldl', '-lpthread']
+			}
 			linker_args << link_ld_flags
 			if show_cc {
 				println('${linker} ${linker_args.join(' ')}')
@@ -14614,6 +14663,7 @@ pub fn run(args []string) {
 			m.release_codegen_analysis_metadata()
 
 			mut g := arm64.Gen.new(m)
+			g.prune_unused = 'freestanding' in prefs.user_defines
 			g.gen()
 			b.step('arm64 gen')
 

@@ -20,20 +20,20 @@ module os
 // POSIX and ERROR_FILE_NOT_FOUND on Windows, which have the same value there.
 // Win32 functions report ERROR_PATH_NOT_FOUND instead for a missing directory
 // earlier in the path, which is_not_exist also accepts.
-pub const error_code_noent = $if windows { 2 } $else { int(C.ENOENT) }
+pub const error_code_noent = $if freestanding || syscalls { 2 } $else $if windows { 2 } $else { int(C.ENOENT) }
 // error_code_denied is the code for a permission failure. It is EACCES on
 // POSIX and ERROR_ACCESS_DENIED on Windows.
-pub const error_code_denied = $if windows { 5 } $else { int(C.EACCES) }
+pub const error_code_denied = $if freestanding || syscalls { 13 } $else $if windows { 5 } $else { int(C.EACCES) }
 // error_code_perm is the code for an operation the caller is not allowed to
 // perform. It is EPERM on POSIX. Windows has no separate code for it and
 // uses ERROR_ACCESS_DENIED, so it is equal to error_code_denied there.
-pub const error_code_perm = $if windows { 5 } $else { int(C.EPERM) }
+pub const error_code_perm = $if freestanding || syscalls { 1 } $else $if windows { 5 } $else { int(C.EPERM) }
 // error_code_exist is the code for a path that already exists. It is EEXIST
 // on POSIX and ERROR_ALREADY_EXISTS on Windows.
-pub const error_code_exist = $if windows { 183 } $else { int(C.EEXIST) }
+pub const error_code_exist = $if freestanding || syscalls { 17 } $else $if windows { 183 } $else { int(C.EEXIST) }
 // error_code_notdir is the code for a directory operation that targeted a
 // file. It is ENOTDIR on POSIX and ERROR_DIRECTORY on Windows.
-pub const error_code_notdir = $if windows { 267 } $else { int(C.ENOTDIR) }
+pub const error_code_notdir = $if freestanding || syscalls { 20 } $else $if windows { 267 } $else { int(C.ENOTDIR) }
 
 // is_not_exist reports whether err was caused by a path that does not exist.
 pub fn is_not_exist(err IError) bool {

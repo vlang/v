@@ -40,27 +40,32 @@ fn C.CopyFile(&u16, &u16, bool) i32
 fn C.SetFileAttributesW(lpFileName &u16, dwFileAttributes u32) bool
 
 fn write_file_direct(path string, text string) ! {
-	mut f := create(path)!
-	defer {
-		f.close()
+	$if freestanding || syscalls {
+		return fsys_write_file(path, unsafe { text.str.vbytes(text.len) })
 	}
-	mut sp := text.str
-	mut remaining := text.len
-	for remaining > 0 {
-		C.errno = 0
-		written := int(C.write(f.fd, sp, remaining))
-		if written < 0 {
-			cerror := int(C.errno)
-			if cerror == C.EINTR {
-				continue
+	$if !freestanding && !syscalls {
+		mut f := create(path)!
+		defer {
+			f.close()
+		}
+		mut sp := text.str
+		mut remaining := text.len
+		for remaining > 0 {
+			C.errno = 0
+			written := int(C.write(f.fd, sp, remaining))
+			if written < 0 {
+				cerror := int(C.errno)
+				if cerror == C.EINTR {
+					continue
+				}
+				return error(posix_get_error_msg(cerror))
 			}
-			return error(posix_get_error_msg(cerror))
+			if written == 0 {
+				return error('0 bytes written')
+			}
+			remaining -= written
+			sp = unsafe { &u8(voidptr(uint(sp) + uint(written))) }
 		}
-		if written == 0 {
-			return error('0 bytes written')
-		}
-		remaining -= written
-		sp = unsafe { &u8(voidptr(uint(sp) + uint(written))) }
 	}
 }
 
@@ -77,45 +82,56 @@ fn C._chsize_s(i32, u64) i32
 // read_bytes returns all bytes read from file in `path`.
 @[manualfree]
 pub fn read_bytes(path string) ![]u8 {
-	$if vlibc ? {
-		mut data, e := vlibc_read_file(path)
-		if e != .enoerror {
-			unsafe { data.free() }
-			return error_with_code('read_bytes failed: ${e}', int(e))
+	$if freestanding || syscalls {
+		return fsys_read_file(path)!
+	}
+	$if !freestanding && !syscalls {
+		$if vlibc ? {
+			mut data, e := vlibc_read_file(path)
+			if e != .enoerror {
+				unsafe { data.free() }
+				return error_with_code('read_bytes failed: ${e}', int(e))
+			}
+			return data
+		} $else {
+			mut fp := vfopen(path, 'rb')!
+			defer {
+				C.fclose(fp)
+			}
+			fsize := find_cfile_size(fp)!
+			if fsize == 0 {
+				mut sb := slurp_file_in_builder(fp)!
+				return unsafe { sb.reuse_as_plain_u8_array() }
+			}
+			mut res := []u8{len: fsize}
+			nr_read_elements := int(C.fread(res.data, 1, fsize, fp))
+			if nr_read_elements == 0 && fsize > 0 {
+				return error('fread failed')
+			}
+			race_file_read()
+			res.trim(nr_read_elements)
+			return res
 		}
-		return data
-	} $else {
-		mut fp := vfopen(path, 'rb')!
-		defer {
-			C.fclose(fp)
-		}
-		fsize := find_cfile_size(fp)!
-		if fsize == 0 {
-			mut sb := slurp_file_in_builder(fp)!
-			return unsafe { sb.reuse_as_plain_u8_array() }
-		}
-		mut res := []u8{len: fsize}
-		nr_read_elements := int(C.fread(res.data, 1, fsize, fp))
-		if nr_read_elements == 0 && fsize > 0 {
-			return error('fread failed')
-		}
-		race_file_read()
-		res.trim(nr_read_elements)
-		return res
 	}
 }
 
 // write_bytes writes all the `bytes` to `path`.
 @[manualfree]
 pub fn write_bytes(path string, bytes []u8) ! {
-	$if vlibc ? {
-		e := vlibc_write_file(path, bytes)
-		if e != .enoerror {
-			return error_with_code('write_bytes failed: ${e}', int(e))
-		}
+	$if freestanding || syscalls {
+		fsys_write_file(path, bytes)!
 		return
-	} $else {
-		write_file_array(path, bytes)!
+	}
+	$if !freestanding && !syscalls {
+		$if vlibc ? {
+			e := vlibc_write_file(path, bytes)
+			if e != .enoerror {
+				return error_with_code('write_bytes failed: ${e}', int(e))
+			}
+			return
+		} $else {
+			write_file_array(path, bytes)!
+		}
 	}
 }
 
@@ -176,49 +192,58 @@ fn slurp_file_in_builder(fp &C.FILE) !strings.Builder {
 // read_file reads the file in `path` and returns the contents.
 @[manualfree]
 pub fn read_file(path string) !string {
-	$if vlibc ? {
-		mut data, e := vlibc_read_file(path)
-		defer { unsafe { data.free() } }
-		if e != .enoerror {
-			return error_with_code('read_file failed: ${e}', int(e))
+	$if freestanding || syscalls {
+		data := fsys_read_file(path)!
+		defer {
+			unsafe { data.free() }
 		}
 		return data.bytestr()
-	} $else {
-		mode := 'rb'
-		mut fp := vfopen(path, mode)!
-		defer {
-			C.fclose(fp)
-		}
-		allocate := find_cfile_size(fp)!
-		if allocate == 0 {
-			mut sb := slurp_file_in_builder(fp)!
-			res := sb.str()
-			unsafe { sb.free() }
-			return res
-		}
-		unsafe {
-			mut str := malloc_noscan(allocate + 1)
-			nelements := int(C.fread(str, 1, allocate, fp))
-			is_eof := int(C.feof(fp))
-			is_error := int(C.ferror(fp))
-			if is_eof == 0 && is_error != 0 {
-				free(str)
-				return error('fread failed')
+	}
+	$if !freestanding && !syscalls {
+		$if vlibc ? {
+			mut data, e := vlibc_read_file(path)
+			defer { unsafe { data.free() } }
+			if e != .enoerror {
+				return error_with_code('read_file failed: ${e}', int(e))
 			}
-			race_file_read()
-			str[nelements] = 0
-			if nelements == 0 {
-				// It is highly likely that the file was a virtual file from
-				// /sys or /proc, with information generated on the fly, so
-				// fsize was not reliably reported. Using vstring() here is
-				// slower (it calls strlen internally), but will return more
-				// consistent results.
-				// For example reading from /sys/class/sound/card0/id produces
-				// a `PCH\n` string, but fsize is 4096, and otherwise you would
-				// get a V string with .len = 4096 and .str = "PCH\n\\000".
-				return str.vstring()
+			return data.bytestr()
+		} $else {
+			mode := 'rb'
+			mut fp := vfopen(path, mode)!
+			defer {
+				C.fclose(fp)
 			}
-			return str.vstring_with_len(nelements)
+			allocate := find_cfile_size(fp)!
+			if allocate == 0 {
+				mut sb := slurp_file_in_builder(fp)!
+				res := sb.str()
+				unsafe { sb.free() }
+				return res
+			}
+			unsafe {
+				mut str := malloc_noscan(allocate + 1)
+				nelements := int(C.fread(str, 1, allocate, fp))
+				is_eof := int(C.feof(fp))
+				is_error := int(C.ferror(fp))
+				if is_eof == 0 && is_error != 0 {
+					free(str)
+					return error('fread failed')
+				}
+				race_file_read()
+				str[nelements] = 0
+				if nelements == 0 {
+					// It is highly likely that the file was a virtual file from
+					// /sys or /proc, with information generated on the fly, so
+					// fsize was not reliably reported. Using vstring() here is
+					// slower (it calls strlen internally), but will return more
+					// consistent results.
+					// For example reading from /sys/class/sound/card0/id produces
+					// a `PCH\n` string, but fsize is 4096, and otherwise you would
+					// get a V string with .len = 4096 and .str = "PCH\n\\000".
+					return str.vstring()
+				}
+				return str.vstring_with_len(nelements)
+			}
 		}
 	}
 }
@@ -226,24 +251,33 @@ pub fn read_file(path string) !string {
 // truncate changes the size of the file located in `path` to `len`.
 // Note that changing symbolic links on Windows only works as admin.
 pub fn truncate(path string, len u64) ! {
-	fp := $if windows {
-		C._wopen(path.to_wide(), o_wronly | o_trunc, 0)
-	} $else {
-		C.open(&char(path.str), o_wronly | o_trunc, 0)
+	$if freestanding || syscalls {
+		e := fs_truncate(path, len)
+		if e != 0 {
+			return error_with_code('truncate: ' + fsys_errno_message(e), e)
+		}
+		return
 	}
-	if fp < 0 {
-		return error_posix()
-	}
-	defer {
-		C.close(fp)
-	}
-	$if windows {
-		if C._chsize_s(fp, len) != 0 {
+	$if !freestanding && !syscalls {
+		fp := $if windows {
+			C._wopen(path.to_wide(), o_wronly | o_trunc, 0)
+		} $else {
+			C.open(&char(path.str), o_wronly | o_trunc, 0)
+		}
+		if fp < 0 {
 			return error_posix()
 		}
-	} $else {
-		if C.ftruncate(fp, len) != 0 {
-			return error_posix()
+		defer {
+			C.close(fp)
+		}
+		$if windows {
+			if C._chsize_s(fp, len) != 0 {
+				return error_posix()
+			}
+		} $else {
+			if C.ftruncate(fp, len) != 0 {
+				return error_posix()
+			}
 		}
 	}
 }
@@ -291,6 +325,11 @@ pub fn rename(src string, dst string) ! {
 		ret := C._wrename(w_src.to_wide(), w_dst.to_wide())
 		if ret != 0 {
 			return error_posix(msg: 'failed to rename ${src} to ${dst}')
+		}
+	} $else $if freestanding || syscalls {
+		e := bf_rename(src, rdst)
+		if e != 0 {
+			return error_with_code('failed to rename ${src} to ${dst}: errno ${e}', e)
 		}
 	} $else {
 		ret := C.rename(&char(src.str), &char(rdst.str))
@@ -454,11 +493,17 @@ fn posix_wait4_to_exit_status(waitret int) (int, bool) {
 
 // posix_get_error_msg returns error code representation in string.
 pub fn posix_get_error_msg(code int) string {
-	ptr_text := C.strerror(code) // voidptr?
-	if ptr_text == 0 {
-		return ''
+	// there is no strerror(3) in -freestanding; the message table is V-side
+	$if freestanding || syscalls {
+		return fsys_errno_message(code)
 	}
-	return unsafe { tos3(ptr_text) }
+	$if !freestanding && !syscalls {
+		ptr_text := C.strerror(code) // voidptr?
+		if ptr_text == 0 {
+			return ''
+		}
+		return unsafe { tos3(ptr_text) }
+	}
 }
 
 // vpclose will close a file pointer opened with `vpopen`.
@@ -532,16 +577,22 @@ pub fn system(cmd string) int {
 // Consider using lstat() for a less ambiguous result about whether a path is occupied or not;
 // whether lstat returns any result or a "not exists" error gives a clear indication of whether the path is occupied.
 pub fn exists(path string) bool {
-	$if vlibc ? {
-		_, e := vlibc_stat(path)
-		return e == .enoerror
-	} $else $if windows {
-		// GetFileAttributesW is a Win32 call, so a longPathAware executable can use paths
-		// past MAX_PATH with it, where the CRT's _waccess cannot.
-		p := path.replace('/', '\\')
-		return C.GetFileAttributesW(p.to_wide()) != u32(C.INVALID_FILE_ATTRIBUTES)
-	} $else {
-		return C.access(&char(path.str), f_ok) != -1
+	$if freestanding || syscalls {
+		_, e := bf_stat(path, true)
+		return e == 0
+	}
+	$if !freestanding && !syscalls {
+		$if vlibc ? {
+			_, e := vlibc_stat(path)
+			return e == .enoerror
+		} $else $if windows {
+			// GetFileAttributesW is a Win32 call, so a longPathAware executable can use paths
+			// past MAX_PATH with it, where the CRT's _waccess cannot.
+			p := path.replace('/', '\\')
+			return C.GetFileAttributesW(p.to_wide()) != u32(C.INVALID_FILE_ATTRIBUTES)
+		} $else {
+			return C.access(&char(path.str), f_ok) != -1
+		}
 	}
 }
 
@@ -571,7 +622,19 @@ pub fn is_executable(path string) bool {
 		attr := stat(path) or { return false }
 		return (int(attr.mode) & (s_ixusr | s_ixgrp | s_ixoth)) != 0
 	}
-	return C.access(&char(path.str), x_ok) != -1
+	$if freestanding || syscalls {
+		// without libc there is no access() syscall wrapper needed; the mode
+		// bits of the resolved path answer the question directly
+		stx, e := bf_stat(path, true)
+		if e != 0 {
+			return false
+		}
+		return (u32(stx.mode) & s_ixusr) != 0 || (u32(stx.mode) & s_ixgrp) != 0
+			|| (u32(stx.mode) & s_ixoth) != 0
+	}
+	$if !freestanding && !syscalls {
+		return C.access(&char(path.str), x_ok) != -1
+	}
 }
 
 // win_has_executable_extension reports whether `path` ends in one of the
@@ -587,15 +650,25 @@ fn win_has_executable_extension(path string) bool {
 // (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md).
 @[manualfree]
 pub fn is_writable(path string) bool {
-	$if windows {
-		p := path.replace('/', '\\')
-		wp := p.to_wide()
-		res := C._waccess(wp, w_ok) != -1
-		unsafe { free(wp) } // &u16
-		unsafe { p.free() }
-		return res
-	} $else {
-		return C.access(&char(path.str), w_ok) != -1
+	$if freestanding || syscalls {
+		stx, e := bf_stat(path, true)
+		if e != 0 {
+			return false
+		}
+		return (u32(stx.mode) & s_iwusr) != 0 || (u32(stx.mode) & s_iwgrp) != 0
+			|| (u32(stx.mode) & s_iwoth) != 0
+	}
+	$if !freestanding && !syscalls {
+		$if windows {
+			p := path.replace('/', '\\')
+			wp := p.to_wide()
+			res := C._waccess(wp, w_ok) != -1
+			unsafe { free(wp) } // &u16
+			unsafe { p.free() }
+			return res
+		} $else {
+			return C.access(&char(path.str), w_ok) != -1
+		}
 	}
 }
 
@@ -620,63 +693,89 @@ pub fn is_readable(path string) bool {
 // On Windows it clears the file's read-only attribute for deletion and preserves
 // its other attributes. If deletion fails, it attempts to restore the original attributes.
 pub fn rm(path string) ! {
-	mut rc := 0
-	$if windows {
-		wpath := path.to_wide()
-		defer {
-			// This call owns the wide path passed to the Windows APIs.
-			unsafe { free(wpath) }
-		}
-		attrs := C.GetFileAttributesW(wpath)
-		mut changed := false
-		if attrs != u32(C.INVALID_FILE_ATTRIBUTES)
-			&& attrs & u32(C.FILE_ATTRIBUTE_DIRECTORY) == 0
-			&& attrs & u32(C.FILE_ATTRIBUTE_READONLY) != 0 {
-			without_read_only := attrs & ~u32(C.FILE_ATTRIBUTE_READONLY)
-			new_attrs := if without_read_only == 0 {
-				u32(C.FILE_ATTRIBUTE_NORMAL)
-			} else {
-				without_read_only
+	$if freestanding || syscalls {
+		// C.remove() unlinks both files and empty directories; try both
+		e := bf_unlink(path)
+		if e == 21 { // EISDIR
+			e2 := bf_rmdir(path)
+			if e2 != 0 {
+				return error_with_code('Failed to remove "${path}": ' + fsys_errno_message(e2), e2)
 			}
-			changed = C.SetFileAttributesW(wpath, new_attrs)
+			return
 		}
-		rc = C._wremove(wpath)
+		if e != 0 {
+			return error_with_code('Failed to remove "${path}": ' + fsys_errno_message(e), e)
+		}
+		return
+	}
+	$if !freestanding && !syscalls {
+		mut rc := 0
+		$if windows {
+			wpath := path.to_wide()
+			defer {
+				// This call owns the wide path passed to the Windows APIs.
+				unsafe { free(wpath) }
+			}
+			attrs := C.GetFileAttributesW(wpath)
+			mut changed := false
+			if attrs != u32(C.INVALID_FILE_ATTRIBUTES)
+				&& attrs & u32(C.FILE_ATTRIBUTE_DIRECTORY) == 0
+				&& attrs & u32(C.FILE_ATTRIBUTE_READONLY) != 0 {
+				without_read_only := attrs & ~u32(C.FILE_ATTRIBUTE_READONLY)
+				new_attrs := if without_read_only == 0 {
+					u32(C.FILE_ATTRIBUTE_NORMAL)
+				} else {
+					without_read_only
+				}
+				changed = C.SetFileAttributesW(wpath, new_attrs)
+			}
+			rc = C._wremove(wpath)
+			if rc == -1 {
+				code := int(C.errno)
+				if changed {
+					C.SetFileAttributesW(wpath, attrs)
+				}
+				return error_posix(
+					code: code
+					msg:  'Failed to remove "${path}": ' + posix_get_error_msg(code)
+				)
+			}
+		} $else {
+			rc = C.remove(&char(path.str))
+		}
 		if rc == -1 {
-			code := int(C.errno)
-			if changed {
-				C.SetFileAttributesW(wpath, attrs)
-			}
-			return error_posix(
-				code: code
-				msg:  'Failed to remove "${path}": ' + posix_get_error_msg(code)
-			)
+			return error_posix(msg: 'Failed to remove "${path}": ' + posix_get_error_msg(C.errno))
 		}
-	} $else {
-		rc = C.remove(&char(path.str))
+		// C.unlink(path.cstr())
 	}
-	if rc == -1 {
-		return error_posix(msg: 'Failed to remove "${path}": ' + posix_get_error_msg(C.errno))
-	}
-	// C.unlink(path.cstr())
 }
 
 // rmdir removes a specified directory.
 pub fn rmdir(path string) ! {
-	$if windows {
-		rc := C.RemoveDirectory(path.to_wide())
-		if !rc {
-			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya - 0 == false, is failure
-			// we must save error immediately, or it will be overwritten by other API function calls.
-			code := int(C.GetLastError())
-			return error_win32(
-				msg:  'Failed to remove "${path}"'
-				code: code
-			)
+	$if freestanding || syscalls {
+		e := bf_rmdir(path)
+		if e != 0 {
+			return error_with_code('Failed to remove "${path}": ' + fsys_errno_message(e), e)
 		}
-	} $else {
-		rc := C.rmdir(&char(path.str))
-		if rc == -1 {
-			return error_posix()
+		return
+	}
+	$if !freestanding && !syscalls {
+		$if windows {
+			rc := C.RemoveDirectory(path.to_wide())
+			if !rc {
+				// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya - 0 == false, is failure
+				// we must save error immediately, or it will be overwritten by other API function calls.
+				code := int(C.GetLastError())
+				return error_win32(
+					msg:  'Failed to remove "${path}"'
+					code: code
+				)
+			}
+		} $else {
+			rc := C.rmdir(&char(path.str))
+			if rc == -1 {
+				return error_posix()
+			}
 		}
 	}
 }
@@ -871,110 +970,131 @@ pub fn read_file_array[T](path string) []T {
 @[manualfree]
 pub fn executable() string {
 	mut result := [max_path_buffer_size]u8{}
-	$if windows {
-		pu16_result := unsafe { &u16(&result[0]) }
-		len := C.GetModuleFileName(0, pu16_result, 512)
-		// determine if the file is a windows symlink
-		attrs := C.GetFileAttributesW(pu16_result)
-		is_set := attrs & 0x400 // FILE_ATTRIBUTE_REPARSE_POINT
-		if is_set != 0 { // it's a windows symlink
-			// gets handle with GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
-			file := C.CreateFile(pu16_result, 0x80000000, 1, 0, 3, 0x80, 0)
-			if file != voidptr(-1) {
-				defer {
-					C.CloseHandle(file)
-				}
-				final_path := [max_path_buffer_size]u8{}
-				// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
-				final_len := C.GetFinalPathNameByHandleW(file, unsafe { &u16(&final_path[0]) },
-					max_path_buffer_size, 0)
-				if final_len < u32(max_path_buffer_size) && final_len != 0 {
-					sret := unsafe { string_from_wide2(&u16(&final_path[0]), int(final_len)) }
+	$if freestanding || syscalls {
+		e := bf_executable()
+		if e == '' {
+			eprintln('os.executable() failed to resolve the running executable path')
+			return executable_fallback()
+		}
+		return e
+	}
+	$if !freestanding && !syscalls {
+		$if windows {
+			pu16_result := unsafe { &u16(&result[0]) }
+			len := C.GetModuleFileName(0, pu16_result, 512)
+			// determine if the file is a windows symlink
+			attrs := C.GetFileAttributesW(pu16_result)
+			is_set := attrs & 0x400 // FILE_ATTRIBUTE_REPARSE_POINT
+			if is_set != 0 { // it's a windows symlink
+				// gets handle with GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
+				file := C.CreateFile(pu16_result, 0x80000000, 1, 0, 3, 0x80, 0)
+				if file != voidptr(-1) {
 					defer {
-						unsafe { sret.free() }
+						C.CloseHandle(file)
 					}
-					return normalize_windows_extended_path_prefix(sret)
-				} else if final_len != 0 {
-					eprintln('os.executable() saw that the executable file path was too long')
+					final_path := [max_path_buffer_size]u8{}
+					// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
+					final_len := C.GetFinalPathNameByHandleW(file, unsafe { &u16(&final_path[0]) },
+						max_path_buffer_size, 0)
+					if final_len < u32(max_path_buffer_size) && final_len != 0 {
+						sret := unsafe { string_from_wide2(&u16(&final_path[0]), int(final_len)) }
+						defer {
+							unsafe { sret.free() }
+						}
+						return normalize_windows_extended_path_prefix(sret)
+					} else if final_len != 0 {
+						eprintln('os.executable() saw that the executable file path was too long')
+					}
 				}
 			}
+			res := unsafe { string_from_wide2(pu16_result, int(len)) }
+			return res
 		}
-		res := unsafe { string_from_wide2(pu16_result, int(len)) }
-		return res
-	}
-	$if macos {
-		self_path := &char(C._dyld_get_image_name(u32(0)))
-		if self_path == unsafe { nil } {
-			return executable_fallback()
+		$if macos {
+			self_path := &char(C._dyld_get_image_name(u32(0)))
+			if self_path == unsafe { nil } {
+				return executable_fallback()
+			}
+			return unsafe { cstring_to_vstring(self_path) }
 		}
-		return unsafe { cstring_to_vstring(self_path) }
-	}
-	$if freebsd {
-		bufsize := uint(max_path_buffer_size)
-		mib := [sysctl_ctl_kern, freebsd_kern_proc, freebsd_kern_proc_pathname, -1]! // C `int` mib buffer
-		unsafe { C.sysctl(&mib[0], mib.len, &result[0], &bufsize, 0, 0) }
-		res := unsafe { tos_clone(&result[0]) }
-		return res
-	}
-	$if openbsd {
-		// Sadly, unlike on FreeBSD, there is still no reliable way, to get the full path of the
-		// current process in OpenBSD. However, we can try our best, by first checking, if the passed
-		// argv[0] to the process, contains an absolute path (starting with /), according to the kernel,
-		// and only go use the slower PATH scanning fallback method, when it does not.
-		// See also https://github.com/gpakosz/whereami/blob/master/src/whereami.c#L591
-		// and https://github.com/ziglang/zig/issues/6718#issuecomment-711134120 .
-		mut pbuf := unsafe { &&u8(&result[0]) }
-		bufsize := uint(max_path_buffer_size)
-		pid := C.getpid()
-		mib := [sysctl_ctl_kern, openbsd_kern_proc_args, pid, openbsd_kern_proc_argv]! // C `int` mib buffer
-		if unsafe { C.sysctl(&mib[0], mib.len, nil, &bufsize, nil, 0) } == 0 {
-			if bufsize > max_path_buffer_size {
-				pbuf = unsafe { &&u8(malloc(int(bufsize))) }
-				defer(fn) {
-					unsafe { free(pbuf) }
+		$if freebsd {
+			bufsize := uint(max_path_buffer_size)
+			mib := [sysctl_ctl_kern, freebsd_kern_proc, freebsd_kern_proc_pathname, -1]! // C `int` mib buffer
+			unsafe { C.sysctl(&mib[0], mib.len, &result[0], &bufsize, 0, 0) }
+			res := unsafe { tos_clone(&result[0]) }
+			return res
+		}
+		$if openbsd {
+			// Sadly, unlike on FreeBSD, there is still no reliable way, to get the full path of the
+			// current process in OpenBSD. However, we can try our best, by first checking, if the passed
+			// argv[0] to the process, contains an absolute path (starting with /), according to the kernel,
+			// and only go use the slower PATH scanning fallback method, when it does not.
+			// See also https://github.com/gpakosz/whereami/blob/master/src/whereami.c#L591
+			// and https://github.com/ziglang/zig/issues/6718#issuecomment-711134120 .
+			mut pbuf := unsafe { &&u8(&result[0]) }
+			bufsize := uint(max_path_buffer_size)
+			pid := C.getpid()
+			mib := [sysctl_ctl_kern, openbsd_kern_proc_args, pid, openbsd_kern_proc_argv]! // C `int` mib buffer
+			if unsafe { C.sysctl(&mib[0], mib.len, nil, &bufsize, nil, 0) } == 0 {
+				if bufsize > max_path_buffer_size {
+					pbuf = unsafe { &&u8(malloc(int(bufsize))) }
+					defer(fn) {
+						unsafe { free(pbuf) }
+					}
+				}
+				if unsafe { C.sysctl(&mib[0], mib.len, pbuf, &bufsize, nil, 0) } == 0 {
+					if unsafe { *pbuf[0] } == `/` {
+						res := unsafe { tos_clone(pbuf[0]) }
+						return res
+					}
 				}
 			}
-			if unsafe { C.sysctl(&mib[0], mib.len, pbuf, &bufsize, nil, 0) } == 0 {
-				if unsafe { *pbuf[0] } == `/` {
-					res := unsafe { tos_clone(pbuf[0]) }
-					return res
-				}
+			return executable_fallback()
+		}
+		$if netbsd {
+			count := C.readlink(c'/proc/curproc/exe', &char(&result[0]), max_path_len)
+			if count < 0 {
+				eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
+				return executable_fallback()
 			}
+			res := unsafe { (&result[0]).vstring_with_len(count).clone() }
+			return res
 		}
-		return executable_fallback()
-	}
-	$if netbsd {
-		count := C.readlink(c'/proc/curproc/exe', &char(&result[0]), max_path_len)
-		if count < 0 {
-			eprintln('os.executable() failed at reading /proc/curproc/exe to get exe path')
+		$if dragonfly {
+			count := C.readlink(c'/proc/curproc/file', &char(&result[0]), max_path_len)
+			if count < 0 {
+				eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
+				return executable_fallback()
+			}
+			res := unsafe { (&result[0]).vstring_with_len(count).clone() }
+			return res
+		}
+		$if linux {
+			$if freestanding || syscalls {
+				count, e := fsys_readlink('/proc/self/exe', &result[0], max_path_len)
+				if e != 0 {
+					eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
+					return executable_fallback()
+				}
+				res := unsafe { (&result[0]).vstring_with_len(count).clone() }
+				return res
+			}
+			$if !freestanding && !syscalls {
+				count := C.readlink(c'/proc/self/exe', &char(&result[0]), max_path_len)
+				if count < 0 {
+					eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
+					return executable_fallback()
+				}
+				res := unsafe { (&result[0]).vstring_with_len(count).clone() }
+				return res
+			}
+			$if solaris {
+			}
+			$if haiku {
+			}
 			return executable_fallback()
 		}
-		res := unsafe { (&result[0]).vstring_with_len(count).clone() }
-		return res
 	}
-	$if dragonfly {
-		count := C.readlink(c'/proc/curproc/file', &char(&result[0]), max_path_len)
-		if count < 0 {
-			eprintln('os.executable() failed at reading /proc/curproc/file to get exe path')
-			return executable_fallback()
-		}
-		res := unsafe { (&result[0]).vstring_with_len(count).clone() }
-		return res
-	}
-	$if linux {
-		count := C.readlink(c'/proc/self/exe', &char(&result[0]), max_path_len)
-		if count < 0 {
-			eprintln('os.executable() failed at reading /proc/self/exe to get exe path')
-			return executable_fallback()
-		}
-		res := unsafe { (&result[0]).vstring_with_len(count).clone() }
-		return res
-	}
-	$if solaris {
-	}
-	$if haiku {
-	}
-	return executable_fallback()
 }
 
 struct PathKind {
@@ -986,9 +1106,18 @@ mut:
 
 // chdir changes the current working directory to the new directory in `path`.
 pub fn chdir(path string) ! {
-	ret := $if windows { C._wchdir(path.to_wide()) } $else { C.chdir(&char(path.str)) }
-	if ret == -1 {
-		return error_posix()
+	$if freestanding || syscalls {
+		e := bf_chdir(path)
+		if e != 0 {
+			return error_with_code('chdir: ' + fsys_errno_message(e), e)
+		}
+		return
+	}
+	$if !freestanding && !syscalls {
+		ret := $if windows { C._wchdir(path.to_wide()) } $else { C.chdir(&char(path.str)) }
+		if ret == -1 {
+			return error_posix()
+		}
 	}
 }
 
@@ -996,22 +1125,33 @@ pub fn chdir(path string) ! {
 @[manualfree]
 pub fn getwd() string {
 	unsafe {
-		$if windows {
-			buf := [max_path_buffer_size]u8{}
-			if C._wgetcwd(&u16(&buf[0]), max_path_len) == 0 {
+		$if freestanding || syscalls {
+			mut buf := [4096]u8{}
+			_, e := bf_getcwd(&buf[0], 4096)
+			if e != 0 {
 				return ''
 			}
-			res := string_from_wide(&u16(&buf[0]))
+			res := (&buf[0]).vstring().clone()
 			return res
-		} $else {
-			// Use libc-managed buffer to avoid fixed-array address lowering pitfalls in v2.
-			cwd_ptr := C.getcwd(0, 4096)
-			if cwd_ptr == 0 {
-				return ''
+		}
+		$if !freestanding && !syscalls {
+			$if windows {
+				buf := [max_path_buffer_size]u8{}
+				if C._wgetcwd(&u16(&buf[0]), max_path_len) == 0 {
+					return ''
+				}
+				res := string_from_wide(&u16(&buf[0]))
+				return res
+			} $else {
+				// Use libc-managed buffer to avoid fixed-array address lowering pitfalls in v2.
+				cwd_ptr := C.getcwd(0, 4096)
+				if cwd_ptr == 0 {
+					return ''
+				}
+				res := tos_clone(byteptr(cwd_ptr))
+				C.free(cwd_ptr)
+				return res
 			}
-			res := tos_clone(byteptr(cwd_ptr))
-			C.free(cwd_ptr)
-			return res
 		}
 	}
 }
@@ -1095,99 +1235,104 @@ fn relative_path_from_cwd(fpath string, buf voidptr, size int) int {
 // Note: this particular rabbit hole is *deep* ...
 @[manualfree]
 pub fn real_path(fpath string) string {
-	mut fullpath := [max_path_buffer_size]u8{}
-	mut res := ''
-	$if windows {
-		pu16_fullpath := unsafe { &u16(&fullpath[0]) }
-		// gets handle with GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING,
-		// FILE_FLAG_BACKUP_SEMANTICS, 0
-		// FILE_FLAG_BACKUP_SEMANTICS (0x02000000) is needed to open directories
-		// and resolve directory symlinks properly.
-		// try to open the file to get symbolic link path
-		fpath_wide := fpath.to_wide()
-		defer {
-			unsafe { free(voidptr(fpath_wide)) }
-		}
-		file := C.CreateFile(fpath_wide, 0x80000000, 1, 0, 3, 0x02000000, 0)
-		if file != voidptr(-1) {
-			defer { C.CloseHandle(file) }
-			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
-			final_len := C.GetFinalPathNameByHandleW(file, pu16_fullpath, max_path_buffer_size, 0)
-			if final_len < u32(max_path_buffer_size) && final_len != 0 {
-				rt := unsafe { string_from_wide2(pu16_fullpath, int(final_len)) }
-				defer {
-					unsafe { rt.free() }
+	$if freestanding || syscalls {
+		return fsys_real_path(fpath)
+	}
+	$if !freestanding && !syscalls {
+		mut fullpath := [max_path_buffer_size]u8{}
+		mut res := ''
+		$if windows {
+			pu16_fullpath := unsafe { &u16(&fullpath[0]) }
+			// gets handle with GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING,
+			// FILE_FLAG_BACKUP_SEMANTICS, 0
+			// FILE_FLAG_BACKUP_SEMANTICS (0x02000000) is needed to open directories
+			// and resolve directory symlinks properly.
+			// try to open the file to get symbolic link path
+			fpath_wide := fpath.to_wide()
+			defer {
+				unsafe { free(voidptr(fpath_wide)) }
+			}
+			file := C.CreateFile(fpath_wide, 0x80000000, 1, 0, 3, 0x02000000, 0)
+			if file != voidptr(-1) {
+				defer { C.CloseHandle(file) }
+				// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-getfinalpathnamebyhandlew
+				final_len := C.GetFinalPathNameByHandleW(file, pu16_fullpath, max_path_buffer_size, 0)
+				if final_len < u32(max_path_buffer_size) && final_len != 0 {
+					rt := unsafe { string_from_wide2(pu16_fullpath, int(final_len)) }
+					defer {
+						unsafe { rt.free() }
+					}
+					unsafe { res.free() }
+					res = normalize_windows_extended_path_prefix(rt)
+				} else {
+					if final_len != 0 {
+						eprintln('os.real_path() saw that the file path was too long')
+					}
+					unsafe { res.free() }
+					return fpath.clone()
 				}
-				unsafe { res.free() }
-				res = normalize_windows_extended_path_prefix(rt)
 			} else {
-				if final_len != 0 {
-					eprintln('os.real_path() saw that the file path was too long')
+				// if it is not a file C.CreateFile doesn't gets a file handle, use GetFullPath instead
+				ret := C.GetFullPathName(fpath_wide, max_path_len, pu16_fullpath, 0)
+				if ret == 0 {
+					// TODO: check errors if path len is not enough
+					unsafe { res.free() }
+					return fpath.clone()
 				}
 				unsafe { res.free() }
-				return fpath.clone()
+				res = normalize_windows_extended_path_prefix(unsafe { string_from_wide(pu16_fullpath) })
 			}
-		} else {
-			// if it is not a file C.CreateFile doesn't gets a file handle, use GetFullPath instead
-			ret := C.GetFullPathName(fpath_wide, max_path_len, pu16_fullpath, 0)
-			if ret == 0 {
-				// TODO: check errors if path len is not enough
-				unsafe { res.free() }
-				return fpath.clone()
-			}
-			unsafe { res.free() }
-			res = normalize_windows_extended_path_prefix(unsafe { string_from_wide(pu16_fullpath) })
-		}
-	} $else {
-		mut ret := &char(unsafe { nil })
-		$if macos {
-			// A path whose first byte is NUL is the empty path to libc, which names
-			// nothing. Behind the directory's name it would name the directory.
-			if fpath.len > 0 && fpath[0] != `/` && fpath[0] != 0 {
-				// A relative path is resolved against the working directory, which libc
-				// finds again on every call. The libc of macOS reads the parent directories
-				// for that, so the call costs as much as those directories are large.
-				// Naming the directory in the path resolves the same file without that
-				// lookup. Other libcs ask the kernel, and would only check its answer again.
-				mut joined := [max_path_buffer_size]u8{}
-				dir_len := relative_path_from_cwd(fpath, voidptr(&joined[0]), max_path_buffer_size)
-				if dir_len > 0 {
-					ret = &char(C.realpath(&char(&joined[0]), &char(&fullpath[0])))
-					failure := C.errno
-					// The directory can be renamed, and its name given to another one, between
-					// the check of that name and the resolution through it. The answer stands
-					// only if the name is still the working directory's afterwards.
-					separator := joined[dir_len]
-					joined[dir_len] = 0
-					still_named := working_directory_is(&char(&joined[0]))
-					joined[dir_len] = separator
-					if !still_named {
-						ret = &char(unsafe { nil })
-					} else if ret == 0
-						&& failure in [error_code_noent, error_code_notdir, error_code_denied] {
-						// What is missing or unreachable under its full name is so by its relative one.
-						unsafe { res.free() }
-						return fpath.clone()
+		} $else {
+			mut ret := &char(unsafe { nil })
+			$if macos {
+				// A path whose first byte is NUL is the empty path to libc, which names
+				// nothing. Behind the directory's name it would name the directory.
+				if fpath.len > 0 && fpath[0] != `/` && fpath[0] != 0 {
+					// A relative path is resolved against the working directory, which libc
+					// finds again on every call. The libc of macOS reads the parent directories
+					// for that, so the call costs as much as those directories are large.
+					// Naming the directory in the path resolves the same file without that
+					// lookup. Other libcs ask the kernel, and would only check its answer again.
+					mut joined := [max_path_buffer_size]u8{}
+					dir_len := relative_path_from_cwd(fpath, voidptr(&joined[0]), max_path_buffer_size)
+					if dir_len > 0 {
+						ret = &char(C.realpath(&char(&joined[0]), &char(&fullpath[0])))
+						failure := C.errno
+						// The directory can be renamed, and its name given to another one, between
+						// the check of that name and the resolution through it. The answer stands
+						// only if the name is still the working directory's afterwards.
+						separator := joined[dir_len]
+						joined[dir_len] = 0
+						still_named := working_directory_is(&char(&joined[0]))
+						joined[dir_len] = separator
+						if !still_named {
+							ret = &char(unsafe { nil })
+						} else if ret == 0
+							&& failure in [error_code_noent, error_code_notdir, error_code_denied] {
+							// What is missing or unreachable under its full name is so by its relative one.
+							unsafe { res.free() }
+							return fpath.clone()
+						}
 					}
 				}
 			}
-		}
-		if ret == 0 {
-			ret = &char(C.realpath(&char(fpath.str), &char(&fullpath[0])))
-		}
-		if ret == 0 {
+			if ret == 0 {
+				ret = &char(C.realpath(&char(fpath.str), &char(&fullpath[0])))
+			}
+			if ret == 0 {
+				unsafe { res.free() }
+				return fpath.clone()
+			}
+			// Note: fullpath is much larger (usually ~4KB), than what C.realpath will
+			// actually fill in the vast majority of the cases => it pays to copy the
+			// resulting string from that buffer, to a shorter one, and then free the
+			// 4KB fullpath buffer.
 			unsafe { res.free() }
-			return fpath.clone()
+			res = unsafe { tos_clone(&fullpath[0]) }
 		}
-		// Note: fullpath is much larger (usually ~4KB), than what C.realpath will
-		// actually fill in the vast majority of the cases => it pays to copy the
-		// resulting string from that buffer, to a shorter one, and then free the
-		// 4KB fullpath buffer.
-		unsafe { res.free() }
-		res = unsafe { tos_clone(&fullpath[0]) }
+		unsafe { normalize_drive_letter(res) }
+		return res
 	}
-	unsafe { normalize_drive_letter(res) }
-	return res
 }
 
 @[direct_array_access; manualfree; unsafe]
@@ -1246,18 +1391,34 @@ pub fn file_last_mod_unix(path string) i64 {
 
 // flush will flush the stdout buffer.
 pub fn flush() {
-	$if v2_native_windows_pe_minimal ? {
+	$if freestanding || syscalls {
+		// builtin's freestanding stdout is unbuffered: every write goes
+		// straight to the fd
 		return
-	} $else {
-		C.fflush(C.stdout)
+	}
+	$if !freestanding && !syscalls {
+		$if v2_native_windows_pe_minimal ? {
+			return
+		} $else {
+			C.fflush(C.stdout)
+		}
 	}
 }
 
 // chmod change file access attributes of `path` to `mode`.
 // Octals like `0o600` can be used.
 pub fn chmod(path string, mode int) ! {
-	if C.chmod(&char(path.str), mode) != 0 {
-		return error_posix(msg: 'chmod failed: ' + posix_get_error_msg(C.errno))
+	$if freestanding || syscalls {
+		e := bf_fchmodat(path, u64(mode))
+		if e != 0 {
+			return error_with_code('chmod failed: ' + fsys_errno_message(e), e)
+		}
+		return
+	}
+	$if !freestanding && !syscalls {
+		if C.chmod(&char(path.str), mode) != 0 {
+			return error_posix(msg: 'chmod failed: ' + posix_get_error_msg(C.errno))
+		}
 	}
 }
 
@@ -1428,6 +1589,10 @@ pub fn last_error() IError {
 	$if windows {
 		code := int(C.GetLastError())
 		msg := get_error_msg(code)
+		return error_with_code(msg, code)
+	} $else $if freestanding || syscalls {
+		code := bf_last_errno()
+		msg := posix_get_error_msg(code)
 		return error_with_code(msg, code)
 	} $else {
 		code := C.errno

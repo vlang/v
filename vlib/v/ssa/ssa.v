@@ -75,6 +75,7 @@ pub enum OpCode {
 	bitcast
 	phi
 	select
+	inline_asm         // Inline assembly block for the target ISA
 	assign             // Copy op used during phi elimination
 	inline_string_init // Build a string struct by value: (string){str, len}
 	// Concurrency
@@ -292,6 +293,60 @@ pub mut:
 	pos        token.Pos
 	atomic_ord AtomicOrdering
 	inline     InlineHint // Inline hint for call instructions
+	asm_id     int        // Inline-asm spec: 1-based index into Module.asm_specs, 0 = none
+}
+
+// InlineAsmIO describes one inline-asm input or output operand: the constraint
+// string as written (for example `=r`, `0`, `D`, `g`) and the block template
+// alias that instructions reference. `child_index` names the .asm_stmt's
+// parsed expression child in source order (outputs first, then inputs).
+pub struct InlineAsmIO {
+pub:
+	alias       string
+	constraint  string
+	child_index int
+}
+
+// InlineAsmSpec lowers one `asm` block into a target-neutral description the
+// native emitters can consume. Instructions stay as written in the V source,
+// so the structured "destination-first" operand syntax survives; every operand
+// reference names an InlineAsmIO by its alias.
+pub struct InlineAsmSpec {
+pub:
+	arch        string // canonical arch of the block as named in the source
+	is_volatile bool
+	is_intel    bool
+	is_raw      bool
+	insts       []string      // template lines, one per instruction
+	ios         []InlineAsmIO // outputs then inputs, in source order
+	clobbered   []string
+}
+
+// asm_spec resolves the spec an inline_asm instruction points at. The id is
+// 1-based so the zero value means "no spec" without a lookup.
+pub fn (m &Module) asm_spec(instr &Instruction) ?&InlineAsmSpec {
+	if instr.op != .inline_asm || instr.asm_id <= 0 || instr.asm_id > m.asm_specs.len {
+		return none
+	}
+	return m.asm_specs[instr.asm_id - 1]
+}
+
+// add_inline_asm_spec registers a parsed asm block and returns its 1-based id.
+pub fn (mut m Module) add_inline_asm_spec(spec InlineAsmSpec) int {
+	m.asm_specs << spec
+	return m.asm_specs.len
+}
+
+// instruction_set_asm_id attaches an inline-asm spec id to the instruction that
+// defines val_id. asm_id is 1-based; 0 leaves the spec unset.
+pub fn (mut m Module) instruction_set_asm_id(val_id ValueID, spec_id int) {
+	if val_id <= 0 || val_id >= m.values.len {
+		return
+	}
+	index := m.values[val_id].index
+	if index >= 0 && index < m.instrs.len {
+		m.instrs[index].asm_id = spec_id
+	}
 }
 
 // is_block_operand reports whether operand `idx` names a basic block rather
@@ -427,6 +482,13 @@ pub mut:
 	c_typedef_structs map[int]bool
 	// Constant cache: "type:name" -> ValueID for deduplication.
 	const_cache map[string]ValueID
+	// Inline-asm block specs lowered from V `asm` sources. The field is
+	// separate so no instruction carries its whole spec; see asm_id.
+	asm_specs []InlineAsmSpec
+	// Freestanding `@[export]` shadow table: C name -> the internal V fn's
+	// SSA name. Native codegen resolves libc-shaped calls against the binary's
+	// own bodies with this instead of an undefined reference.
+	export_c_names map[string]string
 mut:
 	// Layout queries are hot in both SSA construction and native codegen. Keep
 	// their scratch and completed sizes on the module instead of allocating two

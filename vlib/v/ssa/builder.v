@@ -71,22 +71,28 @@ const bench_runtime_stub_names = ['current_rss_kb', 'macos_rss_kb', 'linux_rss_k
 // Builder stores state for SSA construction.
 pub struct Builder {
 mut:
-	m                        &Module            = unsafe { nil }
-	a                        &flat.FlatAst      = unsafe { nil }
-	tc                       &types.TypeChecker = unsafe { nil }
-	used_fns                 map[string]bool
-	used_fn_normalized       map[string]bool
-	used_fn_suffixes         map[string]bool
-	cur_module               string
-	cur_func                 int
-	cur_func_ret_type        u32
-	cur_block                BlockID
-	vars                     map[string]ValueID
-	global_vars              map[string]ValueID
-	global_type_names        flat.TypeTextBindings
-	global_imports           map[string]string
-	global_aliases           map[string]string
-	var_type_names           flat.TypeTextBindings
+	m                  &Module            = unsafe { nil }
+	a                  &flat.FlatAst      = unsafe { nil }
+	tc                 &types.TypeChecker = unsafe { nil }
+	used_fns           map[string]bool
+	used_fn_normalized map[string]bool
+	used_fn_suffixes   map[string]bool
+	cur_module         string
+	cur_func           int
+	cur_func_ret_type  u32
+	cur_block          BlockID
+	vars               map[string]ValueID
+	global_vars        map[string]ValueID
+	global_type_names  flat.TypeTextBindings
+	global_imports     map[string]string
+	global_aliases     map[string]string
+	var_type_names     flat.TypeTextBindings
+	// C extern declarations shadowed by the freestanding runtime's own
+	// `@[export]` functions (C name -> the internal V fn's SSA name).
+	export_fn_c_names map[string]string
+	// Every V function declaration's SSA name, so a C name that a V function
+	// already owns is never rebound to an exported body.
+	v_fn_decl_names          map[string]bool
 	mut_pointer_params       map[string]TypeID
 	mut_param_names          map[string]bool
 	sum_guard_variants       map[ValueID]u32
@@ -1832,6 +1838,7 @@ fn (mut b Builder) ensure_runtime_global(name string, typ TypeID) {
 
 // register_functions updates register functions state for ssa.
 fn (mut b Builder) register_functions() {
+	b.collect_export_fn_shadows()
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	mut p1 := []TypeID{}
 	mut p2 := []TypeID{}
@@ -2068,12 +2075,6 @@ fn (mut b Builder) register_functions() {
 	p2 << b.i64_type
 	p2 << ptr_i8
 	b.register_extern('clock_gettime', b.i64_type, p2)
-	if b.m.target.ptr_size == 8 {
-		b.register_basic_format_stubs()
-		b.register_string_plus_stubs()
-		b.register_native_string_format_helpers()
-		b.register_bench_runtime_stubs()
-	}
 	p1 = []TypeID{}
 	p1 << ptr_i8
 	b.register_extern('free', b.void_type, p1)
@@ -2151,7 +2152,21 @@ fn (mut b Builder) register_functions() {
 			if node.value_text() in native_runtime_override_names && node.value_text() in b.fn_ids {
 				continue
 			}
-			if (b.exact_used_fns || b.used_fns.len > 0) && !b.source_fn_is_used(node.value_text(), cur_module) {
+			// A freestanding `@[export]` body is the program's own libc-shaped
+			// surface: keep it registered even when no source code calls it,
+			// because generated runtime helpers (tos2, __ssa_memdup, ...) call
+			// it under the exported name and the native link needs the symbol.
+			mut is_export_shadow := false
+			if cur_module == 'builtin' {
+				for _, shadow_fn in b.export_fn_c_names {
+					if shadow_fn == fn_name {
+						is_export_shadow = true
+						break
+					}
+				}
+			}
+			if (b.exact_used_fns || b.used_fns.len > 0)
+				&& !b.source_fn_is_used(node.value_text(), cur_module) && !is_export_shadow {
 				continue
 			}
 			ret_type := b.checker_return_type(node.value_text(), cur_module) or {
@@ -2188,6 +2203,15 @@ fn (mut b Builder) register_functions() {
 				b.runtime_fn_types[fn_name] = fn_type
 			}
 		}
+	}
+	// Source functions exist now; complete any shadow binding the runtime
+	// stubs below need while resolving their libc names.
+	b.bind_export_fn_shadows()
+	if b.m.target.ptr_size == 8 {
+		b.register_basic_format_stubs()
+		b.register_string_plus_stubs()
+		b.register_native_string_format_helpers()
+		b.register_bench_runtime_stubs()
 	}
 	b.register_top_level_main()
 	if b.m.target.ptr_size == 4 {
@@ -2233,6 +2257,9 @@ fn (mut b Builder) register_functions() {
 	if b.m.target.ptr_size == 8 { b.register_native_header_helpers() }
 	if b.m.target.ptr_size == 8 { b.register_native_signal_helpers() }
 	if b.m.target.ptr_size == 8 { b.register_native_worker_helpers() }
+	// The source-fn registration above registered every `@[export]` body;
+	// now rebind the libc extern names it shadows.
+	b.bind_export_fn_shadows()
 }
 
 // register_enum_autostr_fns synthesizes a `<Enum>__autostr` helper per enum decl,
@@ -2534,6 +2561,34 @@ fn (b &Builder) source_selector_name(node flat.Node) ?string {
 
 // register_extern updates register extern state for ssa.
 fn (mut b Builder) register_extern(name string, ret TypeID, params []TypeID) {
+	// A source function of the same name keeps the name; the C extern is only a
+	// declaration of it.
+	if name in b.source_fn_names {
+		return
+	}
+	// A freestanding `@[export]` runtime function (builtin's memcpy/memset
+	// under `-freestanding`, for example) shadows the libc extern: the
+	// program supplies the body, so call sites ride the internal function
+	// and the native link resolves the symbol inside the binary. The id
+	// binding below is completed by bind_export_fn_shadows once the source
+	// functions are registered.
+	if shadow := b.export_fn_c_names[name] {
+		// A V function that declares the name keeps it (see bind_export_fn_shadows).
+		if shadow != name && name !in b.v_fn_decl_names {
+			if id := b.fn_ids[shadow] {
+				// Shadowed and the internal body exists already: bind right away.
+				b.fn_ids[name] = id
+				b.fn_types[name] = b.fn_types[shadow] or { ret }
+				b.runtime_fn_ids[name] = id
+				b.runtime_fn_types[name] = b.fn_types[shadow] or { ret }
+				b.c_fn_ids[name] = id
+				b.c_fn_types[name] = b.fn_types[shadow] or { ret }
+				b.m.export_c_names[name] = shadow
+				return
+			}
+		}
+		return
+	}
 	fn_type := b.m.type_store.register(Type{
 		kind:     .func_t
 		ret_type: ret
@@ -2577,6 +2632,81 @@ fn (mut b Builder) set_extern_variadic(name string, fixed int) {
 }
 
 // register_runtime_extern updates register runtime extern state for ssa.
+// collect_export_fn_shadows walks fn declarations and records their
+// `@[export: 'name']` attribute: the C symbol name becomes a key that
+// `register_extern` decline (the body is the program's own under
+// `-freestanding`, so the native link must resolve the symbol inside the
+// binary), and `bind_export_fn_shadows` completes the id binding from this
+// note once source functions are registered.
+fn (mut b Builder) collect_export_fn_shadows() {
+	mut module_name := ''
+	for i, node in b.a.nodes {
+		if node.kind == .file {
+			module_name = ''
+			continue
+		}
+		if node.kind == .module_decl {
+			module_name = b.source_module_name(node)
+			continue
+		}
+		if node.kind != .fn_decl {
+			continue
+		}
+		fn_name := ssa_fn_name_in_module(module_name, node.value_text())
+		b.v_fn_decl_names[fn_name] = true
+		// The attribute node follows the declaration node; the same convention
+		// markused and the checker use.
+		attr_idx := i + 1
+		if attr_idx >= b.a.nodes.len {
+			continue
+		}
+		attr := b.a.nodes[attr_idx]
+		if attr.kind != .directive || !attr.value.starts_with('@attributes:') {
+			continue
+		}
+		for raw in attr.generic_params() {
+			if !raw.contains(':') {
+				continue
+			}
+			key := raw.all_before(':').trim_space()
+			if key != 'export' {
+				continue
+			}
+			mut cname := raw.all_after(':').trim_space()
+			if cname.len >= 2 && ((cname[0] == `'` && cname[cname.len - 1] == `'`)
+				|| (cname[0] == `"` && cname[cname.len - 1] == `"`)) {
+				cname = cname[1..cname.len - 1]
+			}
+			if cname.len > 0 {
+				b.export_fn_c_names[cname] = fn_name
+			}
+		}
+	}
+}
+
+// bind_export_fn_shadows completes the freestanding shadow binding: the C
+// name resolves to the internal (V-defined) function body.
+fn (mut b Builder) bind_export_fn_shadows() {
+	for cname, fn_name in b.export_fn_c_names {
+		// A V function that already owns the C name (builtin's `malloc` wraps
+		// `__malloc`) keeps its own body: rebinding the name would build that
+		// body into the exported one and recurse through it.
+		if cname == fn_name || b.source_fn_names[cname] || cname in b.v_fn_decl_names {
+			continue
+		}
+		id := b.fn_ids[fn_name] or { continue }
+		typ := b.fn_types[fn_name] or { continue }
+		b.fn_ids[cname] = id
+		b.fn_types[cname] = typ
+		b.runtime_fn_ids[cname] = id
+		b.runtime_fn_types[cname] = typ
+		b.c_fn_ids[cname] = id
+		b.c_fn_types[cname] = typ
+		// the module map is read by the native emitters' symbol resolution
+		b.m.export_c_names[cname] = fn_name
+	}
+}
+
 fn (mut b Builder) register_runtime_extern(name string, ret TypeID, params []TypeID) {
 	if b.has_fn_decl(name) {
 		return
@@ -2664,7 +2794,7 @@ fn (b &Builder) skip_source_fn_in_module(name string, module_name string) bool {
 		return true
 	}
 	if module_name == 'builtin' {
-		return name in b.c_fn_ids || b.skip_source_fn(name)
+		return (name in b.c_fn_ids && !(name in b.m.export_c_names)) || b.skip_source_fn(name)
 			|| name in ['int_str', 'bool_str', 'string.int', 'string__int', 'array_slice',
 				'array__clone', 'array_push_many_ptr', 'IError.msg', 'IError.code', 'Array_str',
 				'error', 'error_with_code', '__v3_array_index_string', '__v3_array_index_int',
@@ -8783,6 +8913,19 @@ fn (mut b Builder) build_functions() {
 			if (b.exact_used_fns || b.used_fns.len > 0) && !b.source_fn_is_used(node.value_text(), cur_module) {
 				continue
 			}
+			// Freestanding export bodies ride the binary's own libc symbols:
+			// keep them materialized even when nothing calls them in V.
+			mut fn_is_export_shadow := false
+			for _, shadow_fn in b.m.export_c_names {
+				if shadow_fn == fn_name {
+					fn_is_export_shadow = true
+					break
+				}
+			}
+			if (b.exact_used_fns || b.used_fns.len > 0)
+				&& !b.source_fn_is_used(node.value_text(), cur_module) && !fn_is_export_shadow {
+				continue
+			}
 			// Hot reload: only the named function's body is materialized.
 			if b.hot_fn.len > 0 && node.value_text() != b.hot_fn && fn_name != b.hot_fn {
 				b.mark_fn_prototype(fn_name)
@@ -9616,6 +9759,9 @@ fn (mut b Builder) build_stmt(id flat.NodeId) {
 		.select_stmt {
 			b.build_select_placeholder(node)
 		}
+		.asm_stmt {
+			b.build_inline_asm_stmt(node)
+		}
 		.assert_stmt {
 			b.build_assert(node)
 		}
@@ -9627,6 +9773,47 @@ fn (mut b Builder) build_stmt(id flat.NodeId) {
 		else {
 			eprintln('build_stmt: unsupported node kind: ${node.kind}')
 		}
+	}
+}
+
+// build_inline_asm_stmt lowers a V `asm` block into an .inline_asm instruction.
+// The .asm_stmt's parsed operand expressions are its children in source order
+// (outputs first, then inputs), matching the spec's io order; the result value
+// becomes the block's first output.
+fn (mut b Builder) build_inline_asm_stmt(node flat.Node) {
+	spec := parse_native_inline_asm(node.value) or {
+		panic('ssa: unsupported inline asm block for the native backends')
+	}
+	asm_id := b.m.add_inline_asm_spec(spec)
+	mut input_vals := []ValueID{}
+	mut extra_out_addrs := []ValueID{}
+	mut out_addr := ValueID(0)
+	mut out_type := TypeID(0)
+	for io in spec.ios {
+		child_id := b.a.child(&node, io.child_index)
+		if io.constraint.starts_with('=') {
+			addr := b.build_lvalue_addr(child_id)
+			if out_addr == 0 {
+				out_addr = addr
+				out_type = b.deref_type(addr)
+				continue
+			}
+			extra_out_addrs << addr
+			continue
+		}
+		input_vals << b.build_expr(child_id)
+	}
+	asm_type := if out_addr != 0 { out_type } else { b.void_type }
+	// Operand layout (read together with the spec's io order): the input
+	// values first, then one pointer operand per secondary output. The first
+	// output defines the instruction's result value; secondary outputs are
+	// written through their alloca pointer by the emitter.
+	mut ops := input_vals
+	ops << extra_out_addrs
+	result := b.m.add_instr(.inline_asm, b.cur_block, asm_type, ops)
+	b.m.instruction_set_asm_id(result, asm_id)
+	if out_addr != 0 {
+		b.emit2(.store, b.void_type, b.coerce_value_for_type(result, out_type), out_addr)
 	}
 }
 

@@ -390,3 +390,25 @@ With `-d vlibc`, Unix C builds use the experimental raw syscall runtime for `rea
 New files use mode `0666` filtered by the process umask. Read and write errors retain their
 POSIX error codes; interrupted operations retry. `exists` follows symbolic links.
 See [the vlibc runtime notes](../builtin/README.vlibc.md) for supported platforms and limitations.
+
+### `-freestanding` backend
+
+With `-freestanding` (and without `-d vlibc`), the os module keeps its API while linking no
+libc: file, environment and process information calls use raw Linux syscalls from
+`freestanding_d_freestanding.c.v`, following the shapes of Zig's `std/os/linux.zig` (per-arch syscall
+tables, raw `syscall0..syscall6` entries, and a kernel-errno decoder). On x86_64 and arm64
+this covers the file and environment core: `open_file`, `open`, `create`, the standard
+files in `stdin`/`stdout`/`stderr`, `File.read/2` and the write/read/seek surface of
+`os.File`, `write_file`, `read_file`, `read_bytes`, `write_bytes`, `rename`, `truncate`,
+`mkdir`, `ls`, `rm`, `rmdir`, `chmod`, `stat`, `lstat`, `exists`, `is_file`, `is_dir`,
+`is_executable`, `is_writable`, `getwd`, `chdir`, `executable`, `getpid`, `getenv`, and
+`environ`. Error strings come from an in-module errno table instead of `strerror(3)`, and
+`sleep_ms` and the `os.fd_*` calls go through syscalls as well.
+
+Two purity notes: `real_path` makes a path absolute and resolves `.` and `..` lexically,
+without chasing symbolic links (there is no `realpath` syscall); and `setenv`/`unsetenv`
+return -1, because the startup environment snapshot in the kernel is immutable and a
+freestanding process has no saved envp block to rewrite. Operations that need libc (for
+example `system`, `exec`, `mmap`, threads) pull libc symbols at link time, which
+`-nostdlib` then reports as missing-symbol errors; A freestanding build stops supporting
+such functions when they are used.

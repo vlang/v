@@ -20577,6 +20577,24 @@ fn (mut g FlatGen) headerless_execinfo_declarations() {
 }
 
 fn (mut g FlatGen) system_libc_preamble() {
+	if 'freestanding' in g.compile_defines {
+		// A freestanding program links no pthread and no stdio; emit only the
+		// data shape and stubs that stay linkable with -nostdlib. The spawn
+		// stub never runs: freestanding programs do not create threads.
+		g.writeln('typedef struct { void* handle; } __v_thread;')
+		g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
+		g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return a.handle == b.handle; }')
+		g.writeln('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;')
+		g.writeln('static void* __v_thread_alloc(size_t size) { return malloc(size); }')
+		g.writeln('static void __v_thread_free(void* ptr) { free(ptr); }')
+		g.writeln('static __v_thread __v_thread_spawn(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
+		g.writeln('\tif (cleanup) { cleanup(arg); }')
+		g.writeln('\treturn (__v_thread){0};')
+		g.writeln('}')
+		g.writeln('static void* __v_thread_join(__v_thread thread) { (void)thread; return (void*)0; }')
+		g.thread_signal_stack_runtime()
+		return
+	}
 	g.writeln('#ifndef _WIN32')
 	g.writeln('extern char** environ;')
 	g.writeln('#endif')

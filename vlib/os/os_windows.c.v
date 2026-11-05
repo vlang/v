@@ -37,8 +37,12 @@ const executable_suffixes = ['.com', '.exe', '.bat', '.cmd', '']
 
 // Windows CRT file type and permission bits, also exposed for parity with Unix.
 const s_ifmt = 0xF000 // type of file
+const s_ifsock = 0xC000 // socket
 const s_ifdir = 0x4000 // directory
 const s_ifreg = 0x8000 // regular file
+const s_ifblk = 0x6000 // block device
+const s_ifchr = 0x2000 // character device
+const s_ififo = 0x1000 // FIFO
 const s_iflnk = 0xa000 // link
 const s_isuid = 0o4000 // SUID
 const s_isgid = 0o2000 // SGID
