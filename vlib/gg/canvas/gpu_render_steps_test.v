@@ -296,3 +296,12 @@ fn test_long_curves_are_chopped_like_patch_writer() {
 	// A curve that fits one patch is not chopped.
 	assert account_for_curve(max_parametric_segments_p4) == none
 }
+
+fn test_concat_multiplies_like_skm44() {
+	parent := Matrix.values([f32(2), 0, 0.375, 0, 2, -0.625, 0, 0, 1]!)
+	m := Matrix.values([f32(0.8660254), -0.5, 20, 0.5, 0.8660254, -6, 0, 0, 1]!)
+	mut s := recording_surface(64, 48, parent.m)
+	s.concat(m)
+	assert s.transform.matrix.m == concat_affine(parent, m).m
+	assert s.transform.typ == Transform.new(concat_affine(parent, m)).typ
+}

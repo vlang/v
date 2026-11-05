@@ -197,6 +197,12 @@ pub fn (mut s GpuSurface) set_matrix(m Matrix) {
 	s.transform = Transform.new(m)
 }
 
+// concat multiplies the current matrix by the affine matrix `m`, like
+// SkCanvas::concat(SkM44): the product is rounded like SkM44::setConcat().
+pub fn (mut s GpuSurface) concat(m Matrix) {
+	s.transform = Transform.new(concat_affine(s.transform.matrix, m))
+}
+
 // draw_rect draws a rectangle like SkCanvas::drawRect() on a Graphite device.
 // It returns an error for draws that need renderers which are not ported yet.
 pub fn (mut s GpuSurface) draw_rect(r Rect, paint Paint) ! {
