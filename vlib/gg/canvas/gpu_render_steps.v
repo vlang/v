@@ -436,6 +436,9 @@ const sk_root2_over_2 = f32(0.707106781)
 // addRect() and addRRect() with their default (clockwise) directions and
 // start indices, through SkPathRawShapes.
 fn element_path(shape ClipShape) Path {
+	if shape.kind == .path {
+		return shape.path
+	}
 	if shape.kind == .rect {
 		return rect_path(shape.rect, 0)
 	}

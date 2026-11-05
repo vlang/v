@@ -55,10 +55,7 @@ pub fn (mut s GpuSurface) draw_path(path Path, paint Paint) ! {
 		}
 	}
 	if paint.style == .stroke {
-		s.draw_stroke(path, ClipShape{
-			kind: .path
-			rect: path.bounds()
-		}, paint)!
+		s.draw_stroke(path, path_shape(path), paint)!
 		return
 	}
 	s.draw_path_fill(path, paint)!
@@ -74,10 +71,7 @@ fn (mut s GpuSurface) draw_path_fill(path Path, paint Paint) ! {
 	if int(s.transform.typ) > int(TransformType.affine) {
 		return error('gg.canvas: perspective transforms are not supported')
 	}
-	clip := s.visit_clip_stack_for_draw(ClipShape{
-		kind: .path
-		rect: path.bounds()
-	}, paint)!
+	clip := s.visit_clip_stack_for_draw(path_shape(path), paint)!
 	if clip.clipped_out {
 		return
 	}

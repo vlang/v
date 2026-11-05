@@ -202,3 +202,32 @@ fn test_add_rrect_follows_sk_path_raw_shapes() {
 	b.add_rrect(rr.inset(5, 5), .cw, 6)
 	assert b.detach().is_a == .general
 }
+
+fn test_conservatively_contains_rect_follows_sk_path() {
+	// A clockwise triangle with its right angle at the top left.
+	tri := polygon([Point{0, 0}, Point{20, 0}, Point{0, 20}], true)
+	assert path_conservatively_contains_rect(tri, Rect.ltrb(1, 1, 8, 8))
+	assert !path_conservatively_contains_rect(tri, Rect.ltrb(1, 1, 12, 12))
+	// The counter-clockwise triangle contains the same rects.
+	ccw := polygon([Point{0, 0}, Point{0, 20}, Point{20, 0}], true)
+	assert path_conservatively_contains_rect(ccw, Rect.ltrb(1, 1, 8, 8))
+	// Concave paths never contain a rect.
+	star := polygon([Point{32, 2}, Point{40, 44}, Point{6, 16}, Point{58, 16}, Point{24, 44}],
+		true)
+	assert !path_conservatively_contains_rect(star, Rect.ltrb(30, 20, 31, 21))
+	// An oval is tested against the chords of its conics' halves.
+	mut b := PathBuilder{}
+	b.add_oval(Rect.ltrb(0, 0, 40, 40), .cw, 1)
+	oval := b.detach()
+	assert path_conservatively_contains_rect(oval, Rect.ltrb(10, 10, 30, 30))
+	assert !path_conservatively_contains_rect(oval, Rect.ltrb(2, 2, 38, 38))
+}
+
+fn test_conic_quads_midpoint_follows_sk_conic_chop() {
+	// The quarter circle from (20, 0) to (0, 20) around the origin.
+	mid := conic_quads_midpoint(Point{20, 0}, Point{20, 20}, Point{0, 20}, f32(math.sqrt2 / 2)) or {
+		panic('no midpoint')
+	}
+	assert math.abs(mid.x - 14.142136) < 1e-5 && math.abs(mid.y - 14.142136) < 1e-5
+	assert conic_quads_midpoint(Point{0, 0}, Point{1, 1}, Point{2, 0}, -1) == none
+}

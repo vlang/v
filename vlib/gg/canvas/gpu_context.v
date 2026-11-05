@@ -42,9 +42,13 @@ enum RenderStep {
 	// TessellateStrokes with a solid color paint.
 	tessellate_strokes
 	// The depth-only inverse cover of an intersect clip element after its
-	// winding stencil wedges (CoverBounds_InverseCover with no paint): the
-	// draw's scissor where the stencil is zero.
+	// stencil wedges (CoverBounds_InverseCover with no paint): the draw's
+	// scissor where the stencil is zero.
 	cover_inverse_clip
+	// The depth-only regular cover of a non-convex difference clip element
+	// (CoverBounds_RegularCover with no paint): its bounds where the stencil
+	// is non-zero.
+	cover_clip
 }
 
 // is_wedge_step reports the steps that draw tessellated wedge patches.
@@ -55,13 +59,13 @@ fn is_wedge_step(step RenderStep) bool {
 // writes_color reports the steps with a fragment function.
 fn writes_color(step RenderStep) bool {
 	return step !in [.stencil_wedges_winding, .stencil_wedges_even_odd, .convex_wedges,
-		.cover_inverse_clip]
+		.cover_inverse_clip, .cover_clip]
 }
 
 // has_uniforms reports the steps with a uniform block; the others sort and
 // batch with UniformDataCache::kInvalidIndex.
 fn has_uniforms(step RenderStep) bool {
-	return step != .cover_inverse_clip
+	return step !in [.cover_inverse_clip, .cover_clip]
 }
 
 // step_uniform_size returns the size of a step's uniform block: the
@@ -248,6 +252,7 @@ pub fn (mut ctx GpuContext) precompile() {
 	}
 	ctx.pipeline(.convex_wedges, 4, false, false)
 	ctx.pipeline(.cover_inverse_clip, 4, false, false)
+	ctx.pipeline(.cover_clip, 4, false, false)
 	for step in [RenderStep.stencil_wedges_winding, .stencil_wedges_even_odd] {
 		ctx.pipeline(step, 4, false, false)
 	}
@@ -288,7 +293,7 @@ fn (mut ctx GpuContext) shader(step RenderStep, clipped bool) gfx.Shader {
 	// Depth-only steps have no fragment function, like Graphite's; their
 	// fragment entry is unused.
 	vert, frag := match true {
-		step == .cover_inverse_clip { cover_depth_vert, cover_depth_vert }
+		step in [.cover_inverse_clip, .cover_clip] { cover_depth_vert, cover_depth_vert }
 		!writes_color(step) { convex_wedges_vert, convex_wedges_vert }
 		step == .wedges_shaded && clipped { wedges_clip_vert, wedges_clip_frag }
 		step == .wedges_shaded { wedges_solid_vert, wedges_solid_frag }
@@ -460,7 +465,7 @@ fn (mut ctx GpuContext) pipeline(step RenderStep, sample_count int, blend bool, 
 				write_mask: if winding { u8(0xff) } else { u8(0x01) }
 			}
 		}
-		.cover_fill {
+		.cover_fill, .cover_clip {
 			face := gfx.StencilFaceState{
 				compare:       .not_equal
 				fail_op:       .keep

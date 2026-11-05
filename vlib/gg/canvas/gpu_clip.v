@@ -25,20 +25,23 @@ enum ClipShapeKind {
 	empty
 	rect
 	rrect
-	// A path draw; the clip stack only uses its bounds (in `rect`).
+	// A path clip element or draw: `path`, with its bounds in `rect`.
 	path
 	// A stroked line draw, with its bounding box in `rect`.
 	line
 }
 
 // ClipShape is the part of Graphite's Shape that clips and the draws of
-// gg.canvas use: an empty shape, a rectangle or a rounded rectangle, any of
-// them possibly inverse-filled. An inverted empty shape is a flood fill.
+// gg.canvas use: an empty shape, a rectangle, a rounded rectangle, a path or
+// a line, possibly inverse-filled. An inverted empty shape is a flood fill.
+// A path keeps its fill type; `inverted` holds the shape's inversion, which
+// replaces the path's own.
 struct ClipShape {
 mut:
 	kind     ClipShapeKind
 	rect     Rect
 	rrect    RRect
+	path     Path
 	inverted bool
 }
 
@@ -53,6 +56,15 @@ fn rrect_shape(rr RRect) ClipShape {
 	return ClipShape{
 		kind:  .rrect
 		rrect: rr
+	}
+}
+
+fn path_shape(p Path) ClipShape {
+	return ClipShape{
+		kind:     .path
+		rect:     p.bounds()
+		path:     p
+		inverted: p.is_inverse_fill()
 	}
 }
 
@@ -88,7 +100,8 @@ fn (mut s ClipShape) reset() {
 // conservative_contains mirrors Shape::conservativeContains(Rect).
 fn (s ClipShape) conservative_contains(r Rect) bool {
 	return match s.kind {
-		.empty, .path, .line { false }
+		.empty, .line { false }
+		.path { path_conservatively_contains_rect(s.path, r) }
 		.rect { s.rect.contains(r) }
 		.rrect { s.rrect.contains_rect(r) }
 	}
@@ -140,7 +153,7 @@ fn (a TransformedShape) intersects(o TransformedShape) bool {
 	return true
 }
 
-fn (a TransformedShape) contains(o TransformedShape) bool {
+fn (a TransformedShape) contains(o TransformedShape) !bool {
 	if a.inner.contains(o.outer) {
 		return true
 	}
@@ -151,14 +164,27 @@ fn (a TransformedShape) contains(o TransformedShape) bool {
 	if transforms_equal(a.l2d, o.l2d) {
 		if a.shape.kind == .rrect && o.shape.kind == .rrect {
 			return same_rrect(conservative_intersect(a.shape.rrect, o.shape.rrect), o.shape.rrect)
+		} else if a.shape.kind == .path && o.shape.kind == .path {
+			// Graphite also treats paths with the same generation ID as equal;
+			// gg.canvas paths are values and only compare small ones.
+			if a.shape.path.points.len > 16 || a.shape.inverted != o.shape.inverted {
+				return false
+			}
+			return paths_equal_but_inversion(a.shape.path, o.shape.path)
 		}
 		return a.shape.conservative_contains(o.shape.bounds())
 	} else if int(a.l2d.typ) <= rect_stays_rect && int(o.l2d.typ) <= rect_stays_rect {
 		local := a.l2d.inverse_map_rect(o.l2d.map_rect(o.shape.bounds()))
 		return a.shape.conservative_contains(local)
 	}
-	// Rects and rrects are convex: `o` is inside when all four corners of its
-	// bounds are.
+	// A convex shape contains `o` when all four corners of its bounds are
+	// inside.
+	if a.shape.kind == .path {
+		if !a.shape.path.is_convex() {
+			return false
+		}
+		return error('gg.canvas: path clips and draws in rotated or skewed spaces are not supported')
+	}
 	device := map_rect_corners(o.l2d.matrix, o.shape.bounds())
 	for p in device {
 		local := map_point_affine(a.l2d.inverse, p)
@@ -237,34 +263,34 @@ enum SimplifyResult {
 // simplify mirrors ClipStack::Simplify(). Applied to a clip and a draw, empty
 // clips the draw out, a_only replaces the draw with the clip, b_only leaves
 // the draw unclipped and both is a complex interaction.
-fn simplify(a TransformedShape, b TransformedShape) SimplifyResult {
+fn simplify(a TransformedShape, b TransformedShape) !SimplifyResult {
 	if a.op == .intersect && b.op == .intersect {
 		if !a.intersects(b) {
 			return .empty
-		} else if b.contains(a) {
+		} else if b.contains(a)! {
 			return .a_only
-		} else if a.contains(b) {
+		} else if a.contains(b)! {
 			return .b_only
 		}
 		return .both
 	} else if a.op == .intersect {
 		if !a.intersects(b) {
 			return .a_only
-		} else if b.contains(a) {
+		} else if b.contains(a)! {
 			return .empty
 		}
 		return .both
 	} else if b.op == .intersect {
 		if !b.intersects(a) {
 			return .b_only
-		} else if a.contains(b) {
+		} else if a.contains(b)! {
 			return .empty
 		}
 		return .both
 	}
-	if a.contains(b) {
+	if a.contains(b)! {
 		return .a_only
-	} else if b.contains(a) {
+	} else if b.contains(a)! {
 		return .b_only
 	}
 	return .both
@@ -469,6 +495,33 @@ pub fn (mut s GpuSurface) clip_rrect(rr RRect, op ClipOp, anti_alias bool) ! {
 	s.clip_shape(rrect_shape(rr), op, !anti_alias)!
 }
 
+// clip_path clips later draws to a path, like SkCanvas::clipPath() on a
+// Graphite device: rect and oval paths under axis-aligned transforms clip as
+// rects and rrects; other paths become path elements, which Graphite draws
+// into the depth attachment regardless of `anti_alias`. Paths of 50 or more
+// verbs are not supported yet.
+pub fn (mut s GpuSurface) clip_path(path Path, op ClipOp, anti_alias bool) ! {
+	if !path.is_inverse_fill() && int(s.transform.typ) <= int(TransformType.rect_stays_rect) {
+		if r, _ := path.is_rect() {
+			s.clip_rect(r, op, anti_alias)!
+			return
+		}
+		if oval := path.is_oval() {
+			s.clip_rrect(RRect.oval(oval), op, anti_alias)!
+			return
+		}
+		if path.is_a == .rrect {
+			return error('gg.canvas: rounded-rectangle clip paths are not supported')
+		}
+	}
+	// Large paths of 50 or more verbs may need the curves and triangles
+	// renderer.
+	if path.verbs.len >= 50 {
+		return error('gg.canvas: clip paths with 50 or more verbs are not supported')
+	}
+	s.clip_shape(path_shape(path), op, false)!
+}
+
 // clip_shape mirrors ClipStack::clipShape().
 fn (mut s GpuSurface) clip_shape(shape ClipShape, op ClipOp, snap bool) ! {
 	if s.clip.current().state == .empty {
@@ -526,7 +579,7 @@ fn (mut c ClipStack) add_element(to_add RawElement) !(bool, []RawElement) {
 		rec.state = .empty
 		return true, c.remove_elements(rec.starting_index)
 	}
-	match simplify(rec.transformed_shape(), to_add.transformed_shape()) {
+	match simplify(rec.transformed_shape(), to_add.transformed_shape())! {
 		.empty {
 			rec.state = .empty
 			return true, c.remove_elements(rec.starting_index)
@@ -657,7 +710,7 @@ fn update_for_element(mut existing RawElement, mut added RawElement, rec SaveRec
 	if existing.is_invalid() {
 		return
 	}
-	match simplify(existing.transformed_shape(), added.transformed_shape()) {
+	match simplify(existing.transformed_shape(), added.transformed_shape())! {
 		.empty {
 			existing.invalidated_by = rec.starting_index
 			added.invalidated_by = rec.starting_index
@@ -1181,7 +1234,7 @@ fn (s &GpuSurface) visit_clip_stack_for_draw(shape ClipShape, paint Paint) !Clip
 	} else {
 		device
 	})
-	match simplify(cs.transformed_shape(), draw.transformed_shape()) {
+	match simplify(cs.transformed_shape(), draw.transformed_shape())! {
 		.empty {
 			return clipped_out_draw
 		}
@@ -1200,7 +1253,7 @@ fn (s &GpuSurface) visit_clip_stack_for_draw(shape ClipShape, paint Paint) !Clip
 		if e.is_invalid() {
 			continue
 		}
-		influence := simplify(e.transformed_shape(), draw.transformed_shape())
+		influence := simplify(e.transformed_shape(), draw.transformed_shape())!
 		match influence {
 			.empty {
 				return clipped_out_draw
@@ -1355,27 +1408,43 @@ fn (mut s GpuSurface) draw_clip(e RawElement) {
 		draw_bounds:  draw_bounds
 		shape_bounds: e.outer
 	}
+	path := element_path(e.shape)
 	mut instance := []u8{}
-	count, n4 := write_wedge_patches(mut instance, element_path(e.shape), e.l2d.matrix,
-		order.depth) or { panic(err) }
+	count, n4 := write_wedge_patches(mut instance, path, e.l2d.matrix, order.depth) or {
+		panic(err)
+	}
 	uniforms := local_to_device_uniforms(e.l2d.matrix)
-	if e.shape.inverted {
-		mut stencil_order := order
-		stencil_order.stencil_index = s.add_disjoint_stencil(order.paint_order, draw_bounds)
-		// Shape::fillType() of rects and rrects is (inverse) even-odd.
-		s.record_step(.stencil_wedges_even_odd, false, instance, uniforms, stencil_order, 0, 0,
-			clip, u32(count))
-		s.draws[s.draws.len - 1].template_count = wedge_vertex_count(n4)
-		// CoverBoundsRenderStep writes an inverse fill's integer scissor as
-		// (right, bottom, left, top).
-		mut cover := []u8{cap: cover_bounds_instance_stride}
-		write_cover_bounds_instance(mut cover, Rect.ltrb(scissor.right(), scissor.bottom(),
-			scissor.left(), scissor.top()), e.l2d, order.depth, 0)
-		s.record_step(.cover_inverse_clip, false, cover, PaintUniforms{}, stencil_order, 1, 0,
-			clip, 1)
-	} else {
+	// Shape::convex(): rects and rrects are convex by construction.
+	convex := e.shape.kind != .path || path.is_convex()
+	if convex && !e.shape.inverted {
 		s.record_step(.convex_wedges, false, instance, uniforms, order, 0, 0, clip, u32(count))
 		s.draws[s.draws.len - 1].template_count = wedge_vertex_count(n4)
+	} else {
+		mut stencil_order := order
+		stencil_order.stencil_index = s.add_disjoint_stencil(order.paint_order, draw_bounds)
+		// Shape::fillType() of rects and rrects is (inverse) even-odd; paths
+		// keep their own rule.
+		even_odd := e.shape.kind != .path || path.is_even_odd()
+		s.record_step(if even_odd {
+			RenderStep.stencil_wedges_even_odd
+		} else {
+			RenderStep.stencil_wedges_winding
+		}, false, instance, uniforms, stencil_order, 0, 0, clip, u32(count))
+		s.draws[s.draws.len - 1].template_count = wedge_vertex_count(n4)
+		mut cover := []u8{cap: cover_bounds_instance_stride}
+		if e.shape.inverted {
+			// CoverBoundsRenderStep writes an inverse fill's integer scissor
+			// as (right, bottom, left, top).
+			write_cover_bounds_instance(mut cover, Rect.ltrb(scissor.right(), scissor.bottom(),
+				scissor.left(), scissor.top()), e.l2d, order.depth, 0)
+		} else {
+			write_cover_bounds_instance(mut cover, e.shape.bounds(), e.l2d, order.depth, 0)
+		}
+		s.record_step(if e.shape.inverted {
+			RenderStep.cover_inverse_clip
+		} else {
+			RenderStep.cover_clip
+		}, false, cover, PaintUniforms{}, stencil_order, 1, 0, clip, 1)
 	}
 	if order.depth > s.depth_index {
 		s.depth_index = order.depth

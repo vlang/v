@@ -334,3 +334,58 @@ fn test_lines_are_stroked_with_caps_by_the_analytic_renderer() {
 	assert pixel(px, 21, 20) == [u8(30), 20, 10, 255]
 	assert pixel(px, 13, 16) == [u8(0), 0, 0, 0]
 }
+
+fn test_path_clips_are_drawn_into_the_depth_attachment() {
+	mut ctx := new_gpu_context() or {
+		eprintln('skipping: ${err}')
+		return
+	}
+	defer {
+		ctx.free()
+	}
+	mut s := ctx.new_surface(width: test_width, height: test_height)!
+	defer {
+		s.free()
+	}
+	s.clear(Color4f{})
+	// Clip to a triangle, then clip out a smaller one inside it.
+	mut b := PathBuilder{}
+	b.move_to(0, 0)
+	b.line_to(30, 0)
+	b.line_to(0, 22)
+	b.close()
+	tri := b.detach()
+	b.move_to(4, 4)
+	b.line_to(10, 4)
+	b.line_to(4, 10)
+	b.close()
+	hole := b.detach()
+	s.save()
+	s.clip_path(tri, .intersect, true)!
+	s.clip_path(hole, .difference, true)!
+	s.draw_rect(Rect.ltrb(0, 0, 32, 24), Paint{
+		color: Color4f.from_rgba8(10, 20, 30, 255)
+	})!
+	s.restore()
+	s.record_deferred_clip_draws()
+	// The intersect triangle is stenciled and inverse-covered; the convex
+	// difference triangle is drawn with convex wedges.
+	assert s.draws.any(it.step == .cover_inverse_clip)
+	assert s.draws.any(it.step == .convex_wedges)
+	mut px := []u8{len: test_width * test_height * 4}
+	s.read_pixels(px.data, test_width * 4)!
+	assert pixel(px, 14, 3) == [u8(30), 20, 10, 255]
+	assert pixel(px, 5, 5) == [u8(0), 0, 0, 0]
+	assert pixel(px, 25, 18) == [u8(0), 0, 0, 0]
+	// Rect paths clip like clip_rect().
+	s.clear(Color4f{})
+	b.move_to(2, 2)
+	b.line_to(12, 2)
+	b.line_to(12, 8)
+	b.line_to(2, 8)
+	b.close()
+	s.save()
+	s.clip_path(b.detach(), .intersect, false)!
+	assert s.clip.elements.len == 0 || s.clip.elements.all(it.shape.kind == .rect)
+	s.restore()
+}

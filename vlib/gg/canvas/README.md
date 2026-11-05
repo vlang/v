@@ -26,12 +26,13 @@ Supported so far: filled, stroked and hairline rects, rounded rects and ovals
 fills), single-sampled and 4x MSAA surfaces, uploaded backdrops (loaded into
 MSAA passes with Graphite's LoadMSAAFromResolve draw), BGRA8 premultiplied
 readback, filled and stroked double rounded rects (`draw_drrect`), and clips: `save`/`restore`,
-intersect and difference `clip_rect` and `clip_rrect` under scales, flips,
+intersect and difference `clip_rect`, `clip_rrect` and `clip_path` under scales, flips,
 90-degree rotations and other affine transforms (a port of Graphite's
 ClipStack: element simplification, geometric intersection of draws with
 clips, scissors, the analytic clip shaders, and depth-only draws in a 4x MSAA
-pass for further elements: convex wedges for difference elements, winding
-stencil wedges with an inverse cover of the scissor for intersect elements).
+pass for further elements: convex wedges for convex difference elements,
+stencil wedges with an inverse cover of the scissor for intersect elements,
+and stencil wedges with a regular cover for non-convex difference paths).
 Filled paths (`Path`, built with `PathBuilder` like `SkPathBuilder`, including
 its rect, oval and rrect contours) are drawn
 like Graphite's `drawPath`: rect, oval and nested-rect paths use those
@@ -47,7 +48,8 @@ convex-180 chops. Convex
 path fills and strokes apply the analytic clip in their fragment shaders.
 Curves that need more than 32 parametric segments are chopped like Graphite's
 PatchWriter, in fills and strokes. Draws that need other renderers (inverse
-fills, path clips, ...) return an error instead of rendering differently.
+fills, path clips that need point containment under rotations, ...) return
+an error instead of rendering differently.
 Lines (`draw_line`, and paths that are a single line) are stroked by the
 analytic renderer with caps, like Graphite's `drawPoints`.
 

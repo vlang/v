@@ -982,3 +982,142 @@ pub fn (mut b PathBuilder) arc_to_svg(rad_x f32, rad_y f32, angle f32, large boo
 	// The final point is exactly the requested end point.
 	b.points[b.points.len - 1] = Point{x, y}
 }
+
+// is_even_odd reports whether the fill rule, ignoring inversion, is even-odd.
+pub fn (p Path) is_even_odd() bool {
+	return p.fill_type == .even_odd || p.fill_type == .inverse_even_odd
+}
+
+// paths_equal_but_inversion mirrors SkPath::operator==() for paths whose
+// inversion is compared separately: the fill rule, verbs, points and conic
+// weights.
+fn paths_equal_but_inversion(a Path, b Path) bool {
+	return a.is_even_odd() == b.is_even_odd() && a.verbs == b.verbs && a.points == b.points
+		&& a.weights == b.weights
+}
+
+// path_conservatively_contains_rect mirrors SkPath::conservativelyContainsRect():
+// a convex path contains `r` when every edge (the chord of a quad or cubic,
+// the chords of a conic's two halves) has all four corners of `r` on its
+// inner side.
+fn path_conservatively_contains_rect(p Path, r Rect) bool {
+	dir := match p.convexity() {
+		.convex_cw { PathDirection.cw }
+		.convex_ccw { PathDirection.ccw }
+		else { return false }
+	}
+	mut first := Point{}
+	mut prev := Point{}
+	mut segments := 0
+	mut pi := 0
+	mut wi := 0
+	for verb in p.verbs {
+		if verb == .close || (segments > 0 && verb == .move) {
+			segments++
+			break
+		}
+		if verb == .move {
+			first = p.points[pi]
+			prev = first
+			pi++
+			continue
+		}
+		n := match verb {
+			.line { 1 }
+			.quad, .conic { 2 }
+			else { 3 }
+		}
+		pts := p.points[pi..pi + n]
+		pi += n
+		mut weight := f32(1)
+		if verb == .conic {
+			weight = p.weights[wi]
+			wi++
+		}
+		if pts.all(it == prev) {
+			continue
+		}
+		end := pts[n - 1]
+		segments++
+		if prev == end {
+			// A single closed curve has no edge to test.
+			return false
+		} else if verb == .conic {
+			mid := conic_quads_midpoint(prev, pts[0], end, weight) or { return false }
+			if !check_edge_against_rect(prev, mid, r, dir)
+				|| !check_edge_against_rect(mid, end, r, dir) {
+				return false
+			}
+		} else if !check_edge_against_rect(prev, end, r, dir) {
+			return false
+		}
+		prev = end
+	}
+	if segments > 0 {
+		return check_edge_against_rect(prev, first, r, dir)
+	}
+	return false
+}
+
+// conic_quads_midpoint returns the shared point of the two quads of
+// SkConic::chopIntoQuadsPOW2(pts, 1): SkConic::chop()'s midpoint, moved to
+// the closer end when it breaks a monotonic Y order, or the control point
+// when a chopped point is not finite. It returns none for weights that make
+// Skia return one quad.
+fn conic_quads_midpoint(p0 Point, p1 Point, p2 Point, w f32) ?Point {
+	if w < 0 || !is_finite_f32(w) {
+		return none
+	}
+	scale := f32(1) / (f32(1) + w)
+	ws := w * scale
+	t0 := Point{p0.x * scale, p0.y * scale}
+	t1 := Point{p1.x * ws, p1.y * ws}
+	t2 := Point{p2.x * scale, p2.y * scale}
+	h0 := Point{f32(0.5) * t0.x, f32(0.5) * t0.y}
+	h2 := Point{f32(0.5) * t2.x, f32(0.5) * t2.y}
+	s01 := Point{h0.x + t1.x, h0.y + t1.y}
+	mut mid := Point{s01.x + h2.x, s01.y + h2.y}
+	q1 := Point{t0.x + t1.x, t0.y + t1.y}
+	q3 := Point{t1.x + t2.x, t1.y + t2.y}
+	if between_f32(p0.y, p1.y, p2.y) && !between_f32(p0.y, mid.y, p2.y) {
+		mid = Point{mid.x, if abs_f32(mid.y - p0.y) < abs_f32(mid.y - p2.y) {
+			p0.y
+		} else {
+			p2.y
+		}}
+	}
+	for q in [q1, mid, q3] {
+		if !is_finite_f32(q.x) || !is_finite_f32(q.y) {
+			return p1
+		}
+	}
+	return mid
+}
+
+// between_f32 mirrors between() in SkGeometry.cpp.
+fn between_f32(a f32, b f32, c f32) bool {
+	ab := a - b
+	cb := c - b
+	return ab * cb <= 0
+}
+
+// check_edge_against_rect mirrors the helper in SkPath.cpp: every corner of
+// `r` lies on the inner side of the edge (p0, p1) for direction `dir`.
+fn check_edge_against_rect(p0 Point, p1 Point, r Rect, dir PathDirection) bool {
+	v := if dir == .cw { Point{p1.x - p0.x, p1.y - p0.y} } else { Point{p0.x - p1.x, p0.y - p1.y} }
+	begin := if dir == .cw { p0 } else { p1 }
+	if v.x != 0 || v.y != 0 {
+		dl := r.left() - begin.x
+		dt := r.top() - begin.y
+		dr := r.right() - begin.x
+		db := r.bottom() - begin.y
+		y_l := v.y * dl
+		x_t := v.x * dt
+		y_r := v.y * dr
+		x_b := v.x * db
+		if x_t < y_l || x_t < y_r || x_b < y_l || x_b < y_r {
+			return false
+		}
+	}
+	return true
+}
