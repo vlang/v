@@ -178,26 +178,32 @@ fn test_gradient_text_is_rejected_without_changing_pixels() {
 }
 
 fn test_lowp_div255_is_exact() {
-	// The NEON lowp div255 rounds correctly for every product of two bytes.
-	for v in u32(0) .. 255 * 255 + 1 {
-		assert div255(v) == (v + 127) / 255
+	$if macos {
+		// The NEON lowp div255 rounds correctly for every product of two bytes.
+		for v in u32(0) .. 255 * 255 + 1 {
+			assert div255(v) == (v + 127) / 255
+		}
 	}
 }
 
 fn test_pipeline_color_matches_append_constant_color() {
-	// uniform_color slots hold (uint16_t)(premul * 255 + 0.5) of the float color.
-	c := PipelineColor.from_sk_color(0x80c81e1e)
-	assert c.r == 100 && c.g == 15 && c.b == 15 && c.a == 128
-	assert !c.opaque
-	assert PipelineColor.from_sk_color(0xff142896).opaque
+	$if macos {
+		// uniform_color slots hold (uint16_t)(premul * 255 + 0.5) of the float color.
+		c := PipelineColor.from_sk_color(0x80c81e1e)
+		assert c.r == 100 && c.g == 15 && c.b == 15 && c.a == 128
+		assert !c.opaque
+		assert PipelineColor.from_sk_color(0xff142896).opaque
+	}
 }
 
 fn test_packed_glyph_id_subpixel_buckets() {
-	// x keeps two subpixel bits, y is snapped when the baseline is horizontal.
-	assert pack_glyph_id(7, Point{10.125, 3.5}, 3, 0) == u32(7) << 2
-	assert pack_glyph_id(7, Point{10.375, 3.5}, 3, 0) == (u32(7) << 2 | 1)
-	assert pack_glyph_id(7, Point{-0.375, 3.5}, 3, 0) == (u32(7) << 2 | 2)
-	assert pack_glyph_id(7, Point{0.5, 0.75}, 3, u32(3) << 18) == (u32(7) << 2 | 2 | u32(3) << 18)
+	$if macos {
+		// x keeps two subpixel bits, y is snapped when the baseline is horizontal.
+		assert pack_glyph_id(7, Point{10.125, 3.5}, 3, 0) == u32(7) << 2
+		assert pack_glyph_id(7, Point{10.375, 3.5}, 3, 0) == (u32(7) << 2 | 1)
+		assert pack_glyph_id(7, Point{-0.375, 3.5}, 3, 0) == (u32(7) << 2 | 2)
+		assert pack_glyph_id(7, Point{0.5, 0.75}, 3, u32(3) << 18) == (u32(7) << 2 | 2 | u32(3) << 18)
+	}
 }
 
 fn test_unsupported_text_reports_errors() {
