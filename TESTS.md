@@ -61,6 +61,12 @@ of memory. On Linux it uses the lower of physical memory and the active cgroup m
 Set `VJOBS` to a positive value to explicitly choose a different worker count when your test
 workload and machine capacity are known.
 
+`cmd/tools/test_if_v_test_system_works.v` checks direct and nested test invocations,
+including expected failures. It streams child output to stderr while retaining that output
+for its assertions, so a watchdog failure leaves the nested command's progress in the log.
+Set `VTOOLS_CACHE_VERBOSE=1`, `VTEST_SHOW_CMD=1`, and `VTEST_SHOW_START=1` to include
+tool-cache decisions and test compilation/execution commands in that progress.
+
 Skipped test paths are resolved before comparison, so selecting a file through a symlink
 does not bypass its platform or architecture exclusion.
 
