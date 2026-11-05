@@ -182,6 +182,20 @@ Current release and artifact exceptions that intentionally use floating runners:
 - `prebuilt.yml` uses `macos-latest` and `windows-latest` to smoke-test the
   published release ZIPs against GitHub's current hosted macOS and Windows images.
 
+## Ecosystem module cache
+
+`make` warms separate core module cache entries for native programs and tests, using
+the same compiler and GC flags for both. Keep its C compiler configuration aligned
+with the later builds: the macOS GUI jobs select `-cc clang`
+before `make`, matching the GUI script. The other app and VPM jobs retain their
+default compiler selection. Explicit compiler, debug, and production options use
+their own cache configurations, as do different C flags and interface implementations.
+
+`should-compile-all` uses the default C backend for ordinary native examples so they
+can link the cached modules. It still selects JS and Wasm for their filename suffixes
+and overrides an inherited backend when selecting C examples. An explicit `-b c`
+requests a complete C translation unit and bypasses the module cache.
+
 ## Apt package cache profiles
 
 Use `.github/actions/cache-apt-packages-action` with the smallest profile that covers

@@ -13444,6 +13444,9 @@ fn (mut g FlatGen) gen_expr_as_string(id flat.NodeId) {
 		g.write(')')
 		return
 	}
+	if g.race && g.gen_race_string_read(id) {
+		return
+	}
 	g.gen_expr(id)
 }
 
@@ -13917,6 +13920,10 @@ fn (mut g FlatGen) gen_expr_with_expected_type_inner(id flat.NodeId, expected_ty
 		return
 	}
 	if g.gen_current_mut_param_value_read(id, semantic_expected) {
+		return
+	}
+	if g.race && semantic_expected is types.String && semantic_actual is types.String
+		&& g.gen_race_string_read(id) {
 		return
 	}
 	if expected is types.Pointer && g.gen_pointer_alias_value_cast_expr(id, expected) {
@@ -24053,7 +24060,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 		g.writeln('	u8* out = malloc_noscan((ptrdiff_t)(n + 1));')
 		g.writeln('	memcpy(out, s, (size_t)n);')
 		g.writeln('	out[n] = 0;')
-		g.writeln('	return (string){.str = (char*)out, .len = n, .is_lit = 0};')
+		g.writeln('	return (string){.str = out, .len = n, .is_lit = 0};')
 		g.writeln('}')
 	}
 	g.writeln('static inline i64 v3_map_signed(void* p, int bytes) { if (bytes == 1) return *(signed char*)p; if (bytes == 2) return *(short*)p; if (bytes == 8) return *(long long*)p; return *(int*)p; }')
