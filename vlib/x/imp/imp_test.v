@@ -1248,6 +1248,115 @@ fn test_post_hook_cycle_keeps_waits_outside_it() {
 	assert contents('log') == 'w a q b top p y x clean '
 }
 
+// direct_cycle_waiter builds a cycle between a and b, with an outside flow
+// waiting directly on `wait_on`. The outside flow is registered before b when
+// it waits on a, and after b when it waits on b.
+fn direct_cycle_waiter(wait_on string, y_body fn (Flow) !) Context {
+	outside := if wait_on == 'a' { 'q' } else { 'r' }
+	mut c := new()
+	c.add_flow(
+		id:    'top'
+		takes: if wait_on == 'a' {
+			['a.txt', 'q.txt', 'b.txt']
+		} else {
+			['a.txt', 'b.txt', 'r.txt']
+		}
+		gives: ['top.txt']
+		check: .none
+		flow:  record
+	)
+	c.add_flow(
+		id:    'a'
+		gives: ['a.txt']
+		check: .none
+		post:  [hook('p'), hook('b'), hook('x')]
+		flow:  record
+	)
+	b := Flow{
+		id:    'b'
+		gives: ['b.txt']
+		check: .none
+		post:  [hook('a'), hook('y')]
+		flow:  record
+	}
+	waiter := Flow{
+		id:    outside
+		gives: ['${outside}.txt']
+		check: .none
+		post:  [hook(wait_on), hook('clean')]
+		flow:  record
+	}
+	if wait_on == 'a' {
+		c.add_flow(waiter)
+		c.add_flow(b)
+	} else {
+		c.add_flow(b)
+		c.add_flow(waiter)
+	}
+	c.add_flow(id: 'p', takes: ['top.txt'], check: .none, flow: record)
+	c.add_flow(id: 'x', takes: ['top.txt'], check: .none, flow: record)
+	c.add_flow(id: 'y', check: .none, flow: y_body)
+	c.add_flow(id: 'clean', check: .none, flow: remove_top)
+	return c
+}
+
+// test_post_hook_cycle_keeps_direct_waiter_after_post_work checks that waits
+// outside a cycle remain pending when they name either cycle member directly.
+// Releasing clean with a cycle wait would delete the input that x reads.
+fn test_post_hook_cycle_keeps_direct_waiter_after_post_work() {
+	for wait_on in ['a', 'b'] {
+		sandbox('post_cycle_direct_wait_${wait_on}')
+		mut c := direct_cycle_waiter(wait_on, record)
+		c.execute(['top']) or { assert false, err.msg() }
+		want := if wait_on == 'a' { 'a q b top p y x clean ' } else { 'a b r top p y x clean ' }
+		assert contents('log') == want, wait_on
+		assert !os.exists('top.txt')
+	}
+}
+
+// test_failing_post_cycle_hook_keeps_direct_waiter_blocked checks that a hook
+// failing while the cycle is released stops the outside cleanup as well as
+// the remaining work within the cycle.
+fn test_failing_post_cycle_hook_keeps_direct_waiter_blocked() {
+	sandbox('post_cycle_direct_wait_fails')
+	mut c := direct_cycle_waiter('a', fail)
+	mut msg := ''
+	c.execute(['top']) or { msg = err.msg() }
+	assert msg == 'flow `y` failed: y found a problem'
+	assert contents('log') == 'a q b top p y '
+	assert contents('top.txt') == 'top'
+}
+
+// test_inline_post_hook_cycle_keeps_outside_waiter_after_post_work checks that
+// a cycle reached while running its hooks keeps an outside cleanup behind all
+// its post work. The producer q queues the cleanup while r needs its output.
+fn test_inline_post_hook_cycle_keeps_outside_waiter_after_post_work() {
+	sandbox('post_cycle_inline_wait')
+	mut c := new()
+	c.add_flow(
+		id:    'a'
+		gives: ['app.txt']
+		check: .none
+		post:  [hook('b'), hook('x')]
+		flow:  record
+	)
+	c.add_flow(id: 'b', check: .none, post: [hook('r'), hook('y')], flow: record)
+	c.add_flow(id: 'r', takes: ['q.txt'], check: .none, post: [hook('a')], flow: record)
+	c.add_flow(
+		id:    'q'
+		gives: ['q.txt']
+		check: .none
+		post:  [hook('b'), hook('clean')]
+		flow:  record
+	)
+	c.add_flow(id: 'x', takes: ['app.txt'], check: .none, flow: record)
+	c.add_flow(id: 'y', check: .none, flow: record)
+	c.add_flow(id: 'clean', check: .none, flow: remove_app)
+	c.execute(['a']) or { assert false, err.msg() }
+	assert contents('log') == 'a b q r y x clean '
+	assert !os.exists('app.txt')
+}
+
 // remove_top is a flow body that deletes `top.txt` if it is still there, then
 // records the flow.
 fn remove_top(f Flow) ! {
