@@ -273,6 +273,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     env:
       VTEST_FAIL_FAST: '1'
+      # Match the GUI script's compiler before make warms the module cache.
+      VFLAGS: ${{ startsWith(matrix.os, 'macos-') && '-cc clang' || '' }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
