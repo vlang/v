@@ -447,3 +447,66 @@ fn test_gradients_match_graphite_pixels() {
 	assert gradient_scene_hash(mut ctx, false)! == '3b90b310064516c5'
 	assert gradient_scene_hash(mut ctx, true)! == '2dded391c5fb0c20'
 }
+
+fn gradient_path_hash(mut ctx GpuContext, stroke bool) !string {
+	mut s := ctx.new_surface(width: 64, height: 48)!
+	defer {
+		s.free()
+	}
+	s.clear(Color4f{})
+	s.clip_rrect(RRect.rect_radii(Rect.ltrb(3, 3, 61, 45), [Point{8, 8}, Point{8, 8}, Point{8, 8},
+		Point{8, 8}]!), .intersect, true)!
+	mut b := PathBuilder{}
+	if stroke {
+		b.move_to(4, 4)
+		b.line_to(60, 10)
+		b.line_to(20, 44)
+	} else {
+		b.move_to(32, 2)
+		b.line_to(40, 44)
+		b.line_to(6, 16)
+		b.line_to(58, 16)
+		b.line_to(24, 44)
+		b.close()
+	}
+	s.draw_path(b.detach(), Paint{
+		anti_alias:   true
+		dither:       true
+		style:        if stroke { PaintStyle.stroke } else { PaintStyle.fill }
+		stroke_width: 3
+		gradient:     Gradient{
+			kind:      .linear
+			p0:        Point{4, 4}
+			p1:        Point{60, 40}
+			colors:    if stroke {
+				[Color4f{1, 0, 0, 1}, Color4f{1, 1, 0, 1}, Color4f{0, 1, 0, 1}, Color4f{0, 1, 1, 1},
+					Color4f{0, 0, 1, 1}, Color4f{1, 0, 1, 1}]
+			} else {
+				gradient_stops
+			}
+			positions: if stroke {
+				[f32(0), 0.2, 0.4, 0.6, 0.8, 1]
+			} else {
+				[f32(0), 0.5, 1]
+			}
+			premul:    stroke
+		}
+	})!
+	mut px := []u8{len: 64 * 48 * 4}
+	s.read_pixels(px.data, 64 * 4)!
+	return sha256.sum(px).hex()[..16]
+}
+
+// Graphite's pixels for gradient paths under an rrect clip: a concave fill
+// (stencil wedges, then the cover-bounds gradient shader) and a stroke.
+fn test_gradient_paths_match_graphite_pixels() {
+	mut ctx := new_gpu_context() or {
+		eprintln('skipping: ${err}')
+		return
+	}
+	defer {
+		ctx.free()
+	}
+	assert gradient_path_hash(mut ctx, false)! == '034ed0ac42400a65'
+	assert gradient_path_hash(mut ctx, true)! == '44d14951e590f9a8'
+}

@@ -369,9 +369,21 @@ const gradient_clip_block = '10'
 // Graphite generates for the same render step with a gradient paint: the
 // gradient uniforms replace the color, and the local coordinates mapped by
 // the LocalMatrix block replace the color varying.
-fn gradient_vertex_source(solid string, shading Shading, clipped bool) string {
+fn gradient_vertex_source(solid string, step RenderStep, shading Shading, clipped bool) string {
 	snippets := gradient_snippets()
-	mut t := solid.replace('float4 color_1;\n', snippets['fields_${shading.stops()}'])
+	mut t := solid
+	if !t.contains('stepLocalCoords') {
+		// The wedge and stroke steps only compute local coordinates for
+		// paints that read them.
+		anchor, assign := if step == .tessellate_strokes {
+			'float4 devPosition = float4(devAndLocalCoords.xy, _in.depth, 1.0);\n', 'stepLocalCoords = devAndLocalCoords.zw;\n'
+		} else {
+			'devPosition.z = _in.depth;\n', 'stepLocalCoords = localCoord;\n'
+		}
+		t = t.replace_once('(void)_out;\n', '(void)_out;\nfloat2 stepLocalCoords = float2(0.0);\n')
+		t = t.replace_once(anchor, anchor + assign)
+	}
+	t = t.replace('float4 color_1;\n', snippets['fields_${shading.stops()}'])
 	t = gradient_varyings(t, clipped)
 	mut lines := []string{}
 	for line in t.split('\n') {

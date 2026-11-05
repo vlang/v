@@ -273,7 +273,7 @@ fn test_clipped_wedge_and_stroke_uniforms_put_the_clip_after_the_color() {
 	t := Transform.new(Matrix{
 		m: [f32(2), 0, 5, 0, 3, 7, 0, 0, 1]!
 	})
-	strokes := serialize_uniforms([stroke_uniforms(color, t, AnalyticClip{
+	strokes := serialize_uniforms([stroke_uniforms(color, .solid, GradientUniforms{}, t, AnalyticClip{
 		bounds:     Rect.ltrb(2, 3, 20, 30)
 		radius:     4
 		edge_flags: analytic_left_edge | analytic_bottom_edge

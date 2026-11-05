@@ -65,7 +65,6 @@ pub fn (mut s GpuSurface) draw_path(path Path, paint Paint) ! {
 // PathRendererStrategy::kTessellation: convex paths use the shaded convex
 // wedges, others the stencil-and-cover wedges.
 fn (mut s GpuSurface) draw_path_fill(path Path, paint Paint) ! {
-	paint.solid_only()!
 	if !s.transform.valid() {
 		return
 	}
@@ -88,7 +87,9 @@ fn (mut s GpuSurface) draw_path_fill(path Path, paint Paint) ! {
 		AnalyticClipUniforms{}
 	}
 	color := paint.color.premul()
-	depends_on_dst := clipped || !color.is_opaque()
+	shading, gradient := paint.shading()!
+	opaque := color.is_opaque() && (!shading.is_gradient() || gradient.opaque)
+	depends_on_dst := clipped || !opaque
 	s.depth_index++
 	mut order := DrawOrder{
 		depth: s.depth_index
@@ -110,6 +111,8 @@ fn (mut s GpuSurface) draw_path_fill(path Path, paint Paint) ! {
 		s.record_step(.wedges_shaded, depends_on_dst, patches, PaintUniforms{
 			...matrix
 			color:      color
+			shading:    shading
+			gradient:   gradient
 			with_color: true
 			clipped:    clipped
 			clip:       clip_uniforms
@@ -127,9 +130,11 @@ fn (mut s GpuSurface) draw_path_fill(path Path, paint Paint) ! {
 		mut cover := []u8{cap: cover_bounds_instance_stride}
 		write_cover_bounds_instance(mut cover, path.bounds(), s.transform, order.depth, 0)
 		s.record_step(.cover_fill, depends_on_dst, cover, PaintUniforms{
-			color:   color
-			clipped: clipped
-			clip:    clip_uniforms
+			color:    color
+			shading:  shading
+			gradient: gradient
+			clipped:  clipped
+			clip:     clip_uniforms
 		}, order, 1, 0, draw_clip, 1)
 	}
 	s.bounds.record_draw(clip.draw_bounds, order.paint_order)

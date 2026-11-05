@@ -73,8 +73,17 @@ fn has_uniforms(step RenderStep) bool {
 // or the paint's color or gradient with the analytic clip data.
 fn step_uniform_size(step RenderStep, clipped bool, shading Shading) int {
 	if shading.is_gradient() {
-		size := gradient_uniform_size(shading.stops())
-		return if clipped { size + clip_block_size } else { size }
+		// The gradient replaces the color; the clip data and the step's
+		// transform follow it.
+		mut size := gradient_uniform_size(shading.stops())
+		if clipped {
+			size += clip_block_size
+		}
+		return match step {
+			.wedges_shaded { size + wedge_solid_uniform_size - solid_uniform_size }
+			.tessellate_strokes { size + stroke_uniform_size - solid_uniform_size }
+			else { size }
+		}
 	}
 	return match true {
 		step == .wedges_shaded && clipped { wedge_solid_uniform_size + clip_block_size }
@@ -338,7 +347,7 @@ fn (mut ctx GpuContext) shader(step RenderStep, clipped bool, shading Shading) g
 	}
 	mut vs_source, mut fs_source := solid_shader_sources(step, clipped)
 	if shading.is_gradient() {
-		vs_source = gradient_vertex_source(vs_source, shading, clipped)
+		vs_source = gradient_vertex_source(vs_source, step, shading, clipped)
 		fs_source = gradient_fragment_source(fs_source, shading, clipped)
 	}
 	// The per-draw uniform block: the localToDevice matrix of wedge steps, or

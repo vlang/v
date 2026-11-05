@@ -607,12 +607,14 @@ fn chop_cubic_at2(p [4]Point, t0 f32, t1 f32) [10]Point {
 }
 
 // stroke_uniforms mirrors TessellateStrokesRenderStep::writeUniformsAndTextures()
-// after the paint color: the 2x2 (column-major), translation and the
-// transform's largest scale factor.
-fn stroke_uniforms(color Color4f, t Transform, clip AnalyticClip) PaintUniforms {
+// after the paint: the 2x2 (column-major), translation and the transform's
+// largest scale factor.
+fn stroke_uniforms(color Color4f, shading Shading, gradient GradientUniforms, t Transform, clip AnalyticClip) PaintUniforms {
 	v := t.matrix.m
 	return PaintUniforms{
 		color:           color
+		shading:         shading
+		gradient:        gradient
 		clipped:         !clip.is_empty()
 		clip:            if clip.is_empty() {
 			AnalyticClipUniforms{}
@@ -631,7 +633,6 @@ fn stroke_uniforms(color Color4f, t Transform, clip AnalyticClip) PaintUniforms 
 // tessellated stroke renderer: `path` is the geometry as a path and `shape`
 // the shape the clip stack sees.
 fn (mut s GpuSurface) draw_stroke(path Path, shape ClipShape, paint Paint) ! {
-	paint.solid_only()!
 	if !s.transform.valid() {
 		return
 	}
@@ -643,7 +644,9 @@ fn (mut s GpuSurface) draw_stroke(path Path, shape ClipShape, paint Paint) ! {
 		return
 	}
 	color := paint.color.premul()
-	depends_on_dst := !clip.analytic.is_empty() || !color.is_opaque()
+	shading, gradient := paint.shading()!
+	opaque := color.is_opaque() && (!shading.is_gradient() || gradient.opaque)
+	depends_on_dst := !clip.analytic.is_empty() || !opaque
 	s.depth_index++
 	mut order := DrawOrder{
 		depth: s.depth_index
@@ -661,7 +664,8 @@ fn (mut s GpuSurface) draw_stroke(path Path, shape ClipShape, paint Paint) ! {
 	mut w := new_stroke_writer(s.transform.matrix, s.transform.max_scale, paint.stroke_width * f32(0.5),
 		join_type, depth_as_float(order.depth))
 	write_stroke_patches(mut w, path, paint.cap)!
-	s.record_step(.tessellate_strokes, depends_on_dst, w.out, stroke_uniforms(color, s.transform, clip.analytic),
+	s.record_step(.tessellate_strokes, depends_on_dst, w.out, stroke_uniforms(color, shading, gradient, s.transform,
+		clip.analytic),
 		order, 0, 0, DrawClip{
 			scissor:      clip.scissor
 			draw_bounds:  clip.draw_bounds

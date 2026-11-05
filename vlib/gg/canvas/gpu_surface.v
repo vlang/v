@@ -720,7 +720,9 @@ fn (mut s GpuSurface) draw_shape(geometry_in ShapeGeometry, paint Paint) ! {
 // coverage-less bounds renderer fills the scissor, or an opaque fill of the
 // whole surface clears the pending draws.
 fn (mut s GpuSurface) draw_flood_fill(clip ClipResult, paint Paint) ! {
-	paint.solid_only()!
+	if paint.gradient != none {
+		return error('gg.canvas: gradient flood fills are not supported')
+	}
 	clipped := !clip.analytic.is_empty()
 	color := paint.color.premul()
 	if !clipped && color.is_opaque() && clip.elements.len == 0

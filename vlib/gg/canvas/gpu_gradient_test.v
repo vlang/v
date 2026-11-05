@@ -15,7 +15,9 @@ struct GradientShaderCase {
 }
 
 // The SHA-256 prefixes of the shaders Skia Graphite (Chromium 155) compiles
-// for dithered gradients on rects and rrects, captured with a Metal trace.
+// for dithered gradients on rects, rrects, convex path fills and strokes,
+// captured with a Metal trace. Stencil-and-cover fills cover with the
+// cover-bounds shaders.
 const gradient_shader_cases = [
 	GradientShaderCase{.cover_bounds, false, .linear_4, '635a618cbe4139a4', 'be5d04eb806189e9'},
 	GradientShaderCase{.cover_bounds, false, .linear_8, '052f9387d8fa7319', '4c187b0fb3b94f66'},
@@ -33,16 +35,40 @@ const gradient_shader_cases = [
 	GradientShaderCase{.analytic_rrect, true, .linear_8, 'd6622548aa5918d5', '9fb3ec9fc0521b4f'},
 	GradientShaderCase{.analytic_rrect, true, .radial_4, 'ff779aff08c25dd2', '2bcd659530d23a7d'},
 	GradientShaderCase{.analytic_rrect, true, .radial_8, 'd6622548aa5918d5', '6ea6371a1100479c'},
+	GradientShaderCase{.wedges_shaded, false, .linear_4, '6e94f048af97772d', '07633829c11506f2'},
+	GradientShaderCase{.wedges_shaded, false, .linear_8, '59002f4895da517a', 'c969c3ceec7dc5f0'},
+	GradientShaderCase{.wedges_shaded, false, .radial_4, '6e94f048af97772d', '3494ed368d09f3fa'},
+	GradientShaderCase{.wedges_shaded, false, .radial_8, '59002f4895da517a', '4bae965a64e5c6be'},
+	GradientShaderCase{.wedges_shaded, true, .linear_4, '9eb92903ada80483', 'b1cba2b4a86567dc'},
+	GradientShaderCase{.wedges_shaded, true, .linear_8, '39374615eaf8bc67', 'caccd4067ea447b9'},
+	GradientShaderCase{.wedges_shaded, true, .radial_4, '9eb92903ada80483', 'ed2669950469045b'},
+	GradientShaderCase{.wedges_shaded, true, .radial_8, '39374615eaf8bc67', '489de9fed25b3fdd'},
+	GradientShaderCase{.tessellate_strokes, false, .linear_4, 'cde4b7564d8bea1a', 'fa66760ffd4b5c41'},
+	GradientShaderCase{.tessellate_strokes, false, .linear_8, '80b97845f7d004d7', '97cf4dbd751b8411'},
+	GradientShaderCase{.tessellate_strokes, false, .radial_4, 'cde4b7564d8bea1a', 'a995c7dd6104972a'},
+	GradientShaderCase{.tessellate_strokes, false, .radial_8, '80b97845f7d004d7', '9779abaeec60398c'},
+	GradientShaderCase{.tessellate_strokes, true, .linear_4, 'd15a6633e979d9df', 'e276f9a5546f4af9'},
+	GradientShaderCase{.tessellate_strokes, true, .linear_8, 'c23798e7cf17c4e9', 'c13c4fdf579b5fee'},
+	GradientShaderCase{.tessellate_strokes, true, .radial_4, 'd15a6633e979d9df', '5cabdbb32963d986'},
+	GradientShaderCase{.tessellate_strokes, true, .radial_8, 'c23798e7cf17c4e9', '8e3991386a011e67'},
 ]
 
 fn test_gradient_shaders_match_graphite() {
 	for c in gradient_shader_cases {
 		vert, frag := solid_shader_sources(c.step, c.clipped)
-		v := gradient_vertex_source(vert, c.shading, c.clipped)
+		v := gradient_vertex_source(vert, c.step, c.shading, c.clipped)
 		f := gradient_fragment_source(frag, c.shading, c.clipped)
 		assert sha_prefix(v.bytes()) == c.vertex, '${c.step} ${c.clipped} ${c.shading} vertex'
 		assert sha_prefix(f.bytes()) == c.fragment, '${c.step} ${c.clipped} ${c.shading} fragment'
 	}
+}
+
+fn test_gradient_uniform_sizes_follow_the_struct_layout() {
+	// The gradient, the analytic clip, then the step's transform.
+	assert step_uniform_size(.cover_bounds, false, .linear_4) == 144
+	assert step_uniform_size(.analytic_rrect, true, .radial_8) == 272
+	assert step_uniform_size(.wedges_shaded, false, .linear_4) == 208
+	assert step_uniform_size(.tessellate_strokes, true, .linear_4) == 224
 }
 
 fn test_dither_lut_matches_graphite_upload() {

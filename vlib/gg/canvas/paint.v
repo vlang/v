@@ -65,11 +65,3 @@ fn (p Paint) shading() !(Shading, GradientUniforms) {
 	}
 	return gradient_uniforms(g)!
 }
-
-// solid_only returns an error for paints with a shader, for the renderers
-// that only draw solid colors.
-fn (p Paint) solid_only() ! {
-	if p.gradient != none {
-		return error('gg.canvas: gradients are only supported on rects and rrects')
-	}
-}
