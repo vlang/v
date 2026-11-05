@@ -1881,6 +1881,10 @@ the called function only reads or writes scalar fields and array elements, or pa
 reference, or the address of an element (`&buf[i]`), straight on to a function that does the
 same. Calls that may retain the storage still move it to the heap; `-warn-about-allocs` reports
 these moves.
+This also applies to reference receivers and implicitly referenced arguments when the callee
+calls a Result-returning function. Handling that Result with `!` or `or` does not itself
+require heap storage for a borrowed local. Pointers carried inside an aggregate still retain
+their original storage when the callee saves or returns them.
 Calls through local function values remain conservative, including values that shadow
 function names.
 Explicitly destroying owned source elements invalidates views of those elements, as with other
@@ -7167,9 +7171,11 @@ storage; it does not require moving the containing local or by-value parameter t
 An address into an inline fixed array can require moving its owner instead.
 Casting a local address to an integer preserves the lifetime of the addressed storage.
 Calling through an interface field likewise borrows the interface's object, without retaining
-the address of the interface header. Unwrapping a Result into a narrow scalar can leave its
-arguments on the stack when the callee is proven to only read their values. Unknown callees
-and callees that store or forward an argument retain its address sources conservatively,
+the address of the interface header. Unwrapping a Result into a narrow scalar can leave named
+receiver values and identifier arguments on the stack when the callee is proven to borrow only
+their storage. Embedded pointers still retain the storage they reference. Dereferenced operands
+and mutable reference-iteration bindings remain conservative. Unknown callees and callees that
+store or forward an argument retain its address sources conservatively,
 including calls evaluated inside another call's arguments. Integer results as wide as a pointer
 and floating point or multiple results can carry encoded pointers and retain those arguments
 conservatively.
