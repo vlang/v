@@ -537,18 +537,19 @@ fn midpoint_contours(path Path) []Contour {
 // a path drawn with `m`. It returns the number of patches and the largest n^4
 // they need; curves that would have to be chopped are not supported.
 fn write_wedge_patches(mut out []u8, path Path, m Matrix, depth u16) !(int, f32) {
-	mut count := 0
+	mut sink := WedgePatches{
+		depth: depth
+	}
 	mut max_n4 := f32(1)
 	for contour in midpoint_contours(path) {
-		fan := contour.midpoint
+		sink.fan = contour.midpoint
 		mut pi := contour.point_start
 		mut wi := contour.weight_start
 		mut start := Point{0, 0}
 		mut last := Point{0, 0}
 		for vi in contour.verb_start .. contour.verb_end {
 			mut n4 := f32(1)
-			mut written := false
-			mut chopped := 0
+			before := sink.count
 			match path.verbs[vi] {
 				.move {
 					start = path.points[pi]
@@ -557,7 +558,9 @@ fn write_wedge_patches(mut out []u8, path Path, m Matrix, depth u16) !(int, f32)
 				}
 				.line {
 					p1 := path.points[pi]
-					written = write_line_patch(mut out, last, p1, fan, depth)
+					if write_line_patch(mut sink.out, last, p1, sink.fan, depth) {
+						sink.count++
+					}
 					last = p1
 					pi++
 				}
@@ -567,9 +570,9 @@ fn write_wedge_patches(mut out []u8, path Path, m Matrix, depth u16) !(int, f32)
 					n4 = quadratic_p4(f32(4), last, p1, p2, m)
 					if chops := account_for_curve(n4) {
 						n4 = max_parametric_segments_p4
-						chopped = chop_and_write_quads(mut out, last, p1, p2, chops, fan, depth)
+						chop_and_write_quads(mut sink, last, p1, p2, chops)
 					} else {
-						written = write_quad_patch(mut out, last, p1, p2, fan, depth)
+						quad_patch(mut sink, last, p1, p2)
 					}
 					last = p2
 					pi += 2
@@ -582,9 +585,9 @@ fn write_wedge_patches(mut out []u8, path Path, m Matrix, depth u16) !(int, f32)
 					n4 = n2 * n2
 					if chops := account_for_curve(n4) {
 						n4 = max_parametric_segments_p4
-						chopped = chop_and_write_conics(mut out, last, p1, p2, w, chops, fan, depth)
+						chop_and_write_conics(mut sink, last, p1, p2, w, chops)
 					} else {
-						written = write_conic_patch(mut out, last, p1, p2, w, fan, depth)
+						sink.conic_patch(last, p1, p2, w)
 					}
 					last = p2
 					pi += 2
@@ -597,36 +600,30 @@ fn write_wedge_patches(mut out []u8, path Path, m Matrix, depth u16) !(int, f32)
 					n4 = cubic_p4(f32(4), last, p1, p2, p3, m)
 					if chops := account_for_curve(n4) {
 						n4 = max_parametric_segments_p4
-						chopped = chop_and_write_cubics(mut out, last, p1, p2, p3, chops, fan,
-							depth)
+						chop_and_write_cubics(mut sink, last, p1, p2, p3, chops)
 					} else {
-						written = write_cubic_patch(mut out, last, p1, p2, p3, fan, depth)
+						sink.cubic_patch(last, p1, p2, p3)
 					}
 					last = p3
 					pi += 3
 				}
 				.close {}
 			}
-			if written {
-				chopped = 1
-			}
-			if chopped > 0 {
-				count += chopped
-				// The draw's template covers the largest tolerance of its
-				// appended patches (lines need one segment, curves at least
-				// one, chopped curves the maximum).
-				if n4 > max_n4 {
-					max_n4 = n4
-				}
+			// The draw's template covers the largest tolerance of its appended
+			// patches (lines need one segment, curves at least one, chopped
+			// curves the maximum).
+			if sink.count > before && n4 > max_n4 {
+				max_n4 = n4
 			}
 		}
 		if last.x != start.x || last.y != start.y {
-			if write_line_patch(mut out, last, start, fan, depth) {
-				count++
+			if write_line_patch(mut sink.out, last, start, sink.fan, depth) {
+				sink.count++
 			}
 		}
 	}
-	return count, max_n4
+	out << sink.out
+	return sink.count, max_n4
 }
 
 // mix_point is PatchWriter's mix(): (b - a) * t + a, one operation at a time.
@@ -641,17 +638,34 @@ fn account_for_curve(n4 f32) ?int {
 	return int(C.ceilf(C.sqrtf(C.sqrtf(q))))
 }
 
-// write_quad_patch mirrors PatchWriter::writeQuadPatch(): the equivalent
-// cubic.
-fn write_quad_patch(mut out []u8, p0 Point, p1 Point, p2 Point, fan Point, depth u16) bool {
+// WedgePatches collects TessellateWedgesRenderStep patches around a fan
+// point; it is the patch sink of the chopping helpers for fills.
+struct WedgePatches {
+	depth u16
+mut:
+	out   []u8
+	fan   Point
+	count int
+}
+
+fn (mut w WedgePatches) cubic_patch(p0 Point, p1 Point, p2 Point, p3 Point) {
+	if write_cubic_patch(mut w.out, p0, p1, p2, p3, w.fan, w.depth) {
+		w.count++
+	}
+}
+
+fn (mut w WedgePatches) conic_patch(p0 Point, p1 Point, p2 Point, weight f32) {
+	if write_conic_patch(mut w.out, p0, p1, p2, weight, w.fan, w.depth) {
+		w.count++
+	}
+}
+
+// quad_patch mirrors PatchWriter::writeQuadPatch(): the equivalent cubic.
+fn quad_patch[T](mut sink T, p0 Point, p1 Point, p2 Point) {
 	two_thirds := f32(2) / f32(3)
 	c1 := mix_point(p0, p1, two_thirds)
 	c2 := mix_point(p2, p1, two_thirds)
-	return write_cubic_patch(mut out, p0, c1, c2, p2, fan, depth)
-}
-
-fn written_count(written bool) int {
-	return if written { 1 } else { 0 }
+	sink.cubic_patch(p0, c1, c2, p2)
 }
 
 fn mid_point(a Point, b Point) Point {
@@ -662,12 +676,11 @@ fn mid_point(a Point, b Point) Point {
 
 // chop_and_write_quads mirrors PatchWriter::chopAndWriteQuads() without
 // inner triangles: three quads at a time at T = 1/n and 2/n, then two halves
-// or the remaining quad. It returns the number of patches written.
-fn chop_and_write_quads(mut out []u8, q0 Point, q1 Point, p2 Point, chops int, fan Point, depth u16) int {
+// or the remaining quad.
+fn chop_and_write_quads[T](mut sink T, q0 Point, q1 Point, p2 Point, chops int) {
 	mut p0 := q0
 	mut p1 := q1
 	mut n := chops
-	mut count := 0
 	for ; n >= 3; n -= 2 {
 		t1 := f32(1) / f32(n)
 		t2 := f32(2) / f32(n)
@@ -682,30 +695,28 @@ fn chop_and_write_quads(mut out []u8, q0 Point, q1 Point, p2 Point, chops int, f
 		s21 := d21 * two_thirds
 		m1 := mix_point(ab1, bc1, s12 + t1)
 		m2 := mix_point(ab2, bc2, s21 + t2)
-		count += written_count(write_quad_patch(mut out, p0, ab1, abc1, fan, depth))
-		count += written_count(write_cubic_patch(mut out, abc1, m1, m2, abc2, fan, depth))
+		quad_patch(mut sink, p0, ab1, abc1)
+		sink.cubic_patch(abc1, m1, m2, abc2)
 		p0, p1 = abc2, bc2
 	}
 	if n == 2 {
 		ab := mid_point(p0, p1)
 		bc := mid_point(p1, p2)
 		abc := mid_point(ab, bc)
-		count += written_count(write_quad_patch(mut out, p0, ab, abc, fan, depth))
-		count += written_count(write_quad_patch(mut out, abc, bc, p2, fan, depth))
+		quad_patch(mut sink, p0, ab, abc)
+		quad_patch(mut sink, abc, bc, p2)
 	} else {
-		count += written_count(write_quad_patch(mut out, p0, p1, p2, fan, depth))
+		quad_patch(mut sink, p0, p1, p2)
 	}
-	return count
 }
 
 // chop_and_write_cubics mirrors PatchWriter::chopAndWriteCubics() without
 // inner triangles.
-fn chop_and_write_cubics(mut out []u8, q0 Point, q1 Point, q2 Point, p3 Point, chops int, fan Point, depth u16) int {
+fn chop_and_write_cubics[T](mut sink T, q0 Point, q1 Point, q2 Point, p3 Point, chops int) {
 	mut p0 := q0
 	mut p1 := q1
 	mut p2 := q2
 	mut n := chops
-	mut count := 0
 	for ; n >= 3; n -= 2 {
 		t1 := f32(1) / f32(n)
 		t2 := f32(2) / f32(n)
@@ -718,8 +729,8 @@ fn chop_and_write_cubics(mut out []u8, q0 Point, q1 Point, q2 Point, p3 Point, c
 		// mix(abc, bcd, T.zwxy()): p1 and p2 of the middle cubic.
 		m1 := mix_point(abc1, bcd1, t2)
 		m2 := mix_point(abc2, bcd2, t1)
-		count += written_count(write_cubic_patch(mut out, p0, ab1, abc1, abcd1, fan, depth))
-		count += written_count(write_cubic_patch(mut out, abcd1, m1, m2, abcd2, fan, depth))
+		sink.cubic_patch(p0, ab1, abc1, abcd1)
+		sink.cubic_patch(abcd1, m1, m2, abcd2)
 		p0, p1, p2 = abcd2, bcd2, cd2
 	}
 	if n == 2 {
@@ -729,12 +740,11 @@ fn chop_and_write_cubics(mut out []u8, q0 Point, q1 Point, q2 Point, p3 Point, c
 		abc := mid_point(ab, bc)
 		bcd := mid_point(bc, cd)
 		abcd := mid_point(abc, bcd)
-		count += written_count(write_cubic_patch(mut out, p0, ab, abc, abcd, fan, depth))
-		count += written_count(write_cubic_patch(mut out, abcd, bcd, cd, p3, fan, depth))
+		sink.cubic_patch(p0, ab, abc, abcd)
+		sink.cubic_patch(abcd, bcd, cd, p3)
 	} else {
-		count += written_count(write_cubic_patch(mut out, p0, p1, p2, p3, fan, depth))
+		sink.cubic_patch(p0, p1, p2, p3)
 	}
-	return count
 }
 
 // HPoint is a conic control point in homogeneous space: (x, y, w).
@@ -760,26 +770,20 @@ fn (h HPoint) project() Point {
 
 // chop_and_write_conics mirrors PatchWriter::chopAndWriteConics() without
 // inner triangles: the conic is chopped at T = 1/n in homogeneous space.
-fn chop_and_write_conics(mut out []u8, p0 Point, p1 Point, p2 Point, w f32, chops int, fan Point, depth u16) int {
+fn chop_and_write_conics[T](mut sink T, p0 Point, p1 Point, p2 Point, w f32, chops int) {
 	mut h0 := HPoint{p0.x, p0.y, 1}
 	mut h1 := HPoint{p1.x * w, p1.y * w, w}
-	h2 := HPoint{p2.x, p2.y, 1}
 	mut n := chops
-	mut count := 0
 	for ; n >= 2; n-- {
 		t := f32(1) / f32(n)
 		ab := mix_h(h0, h1, t)
-		bc := mix_h(h1, h2, t)
+		bc := mix_h(h1, HPoint{p2.x, p2.y, 1}, t)
 		abc := mix_h(ab, bc, t)
 		ww := h0.w * abc.w
-		weight := ab.w / C.sqrtf(ww)
-		count += written_count(write_conic_patch(mut out, h0.project(), ab.project(), abc.project(),
-			weight, fan, depth))
+		sink.conic_patch(h0.project(), ab.project(), abc.project(), ab.w / C.sqrtf(ww))
 		h0, h1 = abc, bc
 	}
-	count += written_count(write_conic_patch(mut out, h0.project(), h1.project(), p2, h1.w / C.sqrtf(h0.w),
-		fan, depth))
-	return count
+	sink.conic_patch(h0.project(), h1.project(), p2, h1.w / C.sqrtf(h0.w))
 }
 
 fn mix_point(a Point, b Point, t f32) Point {

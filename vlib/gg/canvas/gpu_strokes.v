@@ -152,13 +152,25 @@ fn tangent_point(p0 Point, p1 Point, p2 Point, p3 Point) Point {
 	return p3
 }
 
-// account_for_curve mirrors PatchWriter::accountForCurve(); chopping curves
-// with more parametric segments is not ported.
-fn (mut w StrokeWriter) account_for_curve(n4 f32) ! {
-	if n4 > max_parametric_segments_p4 {
-		return error('gg.canvas: stroked curves that need chopping are not supported')
+// account_for_curve mirrors PatchWriter::accountForCurve(): it records the
+// curve's tolerance and returns the number of pieces to chop it into.
+fn (mut w StrokeWriter) account_for_curve(n4 f32) ?int {
+	if chops := account_for_curve(n4) {
+		w.tolerances.n4 = max_parametric_segments_p4
+		return chops
 	}
 	w.tolerances.n4 = max_f32(1, n4)
+	return none
+}
+
+// cubic_patch and conic_patch write the chopped pieces of a curve through
+// writePatch(), so each piece updates the join control point.
+fn (mut w StrokeWriter) cubic_patch(p0 Point, p1 Point, p2 Point, p3 Point) {
+	w.write_patch(p0, p1, p2, p3, cubic_curve_type)
+}
+
+fn (mut w StrokeWriter) conic_patch(p0 Point, p1 Point, p2 Point, weight f32) {
+	w.write_patch(p0, p1, p2, Point{weight, f32(math.inf(1))}, conic_curve_type)
 }
 
 fn (mut w StrokeWriter) write_line(p0 Point, p1 Point) {
@@ -166,22 +178,29 @@ fn (mut w StrokeWriter) write_line(p0 Point, p1 Point) {
 	w.write_patch(p0, p0, p1, p1, cubic_curve_type)
 }
 
-fn (mut w StrokeWriter) write_quadratic(p0 Point, p1 Point, p2 Point) ! {
-	w.account_for_curve(quadratic_p4(f32(4), p0, p1, p2, w.m))!
-	two_thirds := f32(2) / f32(3)
-	w.write_patch(p0, mix_point(p0, p1, two_thirds), mix_point(p2, p1, two_thirds), p2,
-		cubic_curve_type)
+fn (mut w StrokeWriter) write_quadratic(p0 Point, p1 Point, p2 Point) {
+	if chops := w.account_for_curve(quadratic_p4(f32(4), p0, p1, p2, w.m)) {
+		chop_and_write_quads(mut w, p0, p1, p2, chops)
+	} else {
+		quad_patch(mut w, p0, p1, p2)
+	}
 }
 
-fn (mut w StrokeWriter) write_conic(p0 Point, p1 Point, p2 Point, weight f32) ! {
+fn (mut w StrokeWriter) write_conic(p0 Point, p1 Point, p2 Point, weight f32) {
 	n2 := conic_p2(f32(4), p0, p1, p2, weight, w.m)
-	w.account_for_curve(n2 * n2)!
-	w.write_patch(p0, p1, p2, Point{weight, f32(math.inf(1))}, conic_curve_type)
+	if chops := w.account_for_curve(n2 * n2) {
+		chop_and_write_conics(mut w, p0, p1, p2, weight, chops)
+	} else {
+		w.conic_patch(p0, p1, p2, weight)
+	}
 }
 
-fn (mut w StrokeWriter) write_cubic(p0 Point, p1 Point, p2 Point, p3 Point) ! {
-	w.account_for_curve(cubic_p4(f32(4), p0, p1, p2, p3, w.m))!
-	w.write_patch(p0, p1, p2, p3, cubic_curve_type)
+fn (mut w StrokeWriter) write_cubic(p0 Point, p1 Point, p2 Point, p3 Point) {
+	if chops := w.account_for_curve(cubic_p4(f32(4), p0, p1, p2, p3, w.m)) {
+		chop_and_write_cubics(mut w, p0, p1, p2, p3, chops)
+	} else {
+		w.cubic_patch(p0, p1, p2, p3)
+	}
 }
 
 // write_circle mirrors PatchWriter::writeCircle(): a round cap or cusp.
@@ -266,6 +285,109 @@ fn conic_has_cusp(p0 Point, p1 Point, p2 Point) bool {
 	return c1 - c2 == 0 && d1 + d2 < 0
 }
 
+fn sub_point(a Point, b Point) Point {
+	return Point{a.x - b.x, a.y - b.y}
+}
+
+fn scale_point(a Point, s f32) Point {
+	return Point{a.x * s, a.y * s}
+}
+
+// find_bisector mirrors SkFindBisector(): normalize(a) + normalize(b), using
+// the interior normals when a and b are more than 90 degrees apart.
+fn find_bisector(a Point, b Point) Point {
+	mut v0 := a
+	mut v1 := b
+	if dot2(a, b) >= 0 {
+	} else if cross2(a, b) >= 0 {
+		v0 = Point{-a.y, a.x}
+		v1 = Point{b.y, -b.x}
+	} else {
+		v0 = Point{a.y, -a.x}
+		v1 = Point{-b.y, b.x}
+	}
+	inv0 := f32(1) / C.sqrtf(dot2(v0, v0))
+	inv1 := f32(1) / C.sqrtf(dot2(v1, v1))
+	x0 := v0.x * inv0
+	x1 := v1.x * inv1
+	y0 := v0.y * inv0
+	y1 := v1.y * inv1
+	return Point{x0 + x1, y0 + y1}
+}
+
+// find_quad_mid_tangent mirrors SkFindQuadMidTangent().
+fn find_quad_mid_tangent(p0 Point, p1 Point, p2 Point) f32 {
+	tan0 := sub_point(p1, p0)
+	tan1 := sub_point(p2, p1)
+	bisector := find_bisector(tan0, Point{-tan1.x, -tan1.y})
+	t := dot2(tan0, bisector) / dot2(sub_point(tan0, tan1), bisector)
+	return if t > 0 && t < 1 { t } else { f32(0.5) }
+}
+
+// eval_quad_at mirrors SkEvalQuadAt(): (A*t + B)*t + C in power basis.
+fn eval_quad_at(p0 Point, p1 Point, p2 Point, t f32) Point {
+	b := sub_point(p1, p0)
+	bb := Point{b.x + b.x, b.y + b.y}
+	p1p1 := Point{p1.x + p1.x, p1.y + p1.y}
+	a0 := sub_point(p2, p1p1)
+	a := Point{a0.x + p0.x, a0.y + p0.y}
+	at := scale_point(a, t)
+	atb := Point{at.x + bb.x, at.y + bb.y}
+	atbt := scale_point(atb, t)
+	return Point{atbt.x + p0.x, atbt.y + p0.y}
+}
+
+// conic_find_mid_tangent mirrors SkConic::findMidTangent().
+fn conic_find_mid_tangent(p0 Point, p1 Point, p2 Point, w f32) f32 {
+	tan0 := sub_point(p1, p0)
+	tan1 := sub_point(p2, p1)
+	bisector := find_bisector(tan0, Point{-tan1.x, -tan1.y})
+	d20 := sub_point(p2, p0)
+	d10 := sub_point(p1, p0)
+	big_a := scale_point(d20, w - f32(1))
+	big_b := sub_point(d20, scale_point(d10, w * f32(2)))
+	big_c := scale_point(d10, w)
+	a := dot2(bisector, big_a)
+	b := dot2(bisector, big_b)
+	c := dot2(bisector, big_c)
+	// solve_quadratic_equation_for_midtangent(a, b, c, b*b - 4*a*c)
+	bb := b * b
+	a4 := f32(4) * a
+	a4c := a4 * c
+	discr := bb - a4c
+	root := C.sqrtf(discr)
+	q := f32(-0.5) * (b + C.copysignf(root, b))
+	hq := f32(-0.5) * q
+	qa5 := hq * a
+	qq := q * q
+	ac := a * c
+	t := if abs_f32(qq + qa5) < abs_f32(ac + qa5) { q / a } else { c / q }
+	return if t > 0 && t < 1 { t } else { f32(0.5) }
+}
+
+// conic_eval_at mirrors SkConic::evalAt(): the power-basis numerator over the
+// power-basis denominator.
+fn conic_eval_at(p0 Point, p1 Point, p2 Point, w f32, t f32) Point {
+	p1w := scale_point(p1, w)
+	p1w2 := Point{p1w.x + p1w.x, p1w.y + p1w.y}
+	na0 := sub_point(p2, p1w2)
+	na := Point{na0.x + p0.x, na0.y + p0.y}
+	nb0 := sub_point(p1w, p0)
+	nb := Point{nb0.x + nb0.x, nb0.y + nb0.y}
+	db0 := w - f32(1)
+	db := db0 + db0
+	da := f32(0) - db
+	nat := scale_point(na, t)
+	natb := Point{nat.x + nb.x, nat.y + nb.y}
+	natbt := scale_point(natb, t)
+	numer := Point{natbt.x + p0.x, natbt.y + p0.y}
+	dat := da * t
+	datb := dat + db
+	datbt := datb * t
+	denom := datbt + f32(1)
+	return Point{numer.x / denom, numer.y / denom}
+}
+
 // write_stroke_patches mirrors TessellateStrokesRenderStep::writeVertices().
 fn write_stroke_patches(mut w StrokeWriter, path Path, cap StrokeCap) ! {
 	mut pi := 0
@@ -290,19 +412,30 @@ fn write_stroke_patches(mut w StrokeWriter, path Path, cap StrokeCap) ! {
 				p1 := path.points[pi]
 				p2 := path.points[pi + 1]
 				if conic_has_cusp(last, p1, p2) {
-					return error('gg.canvas: stroked curves with cusps are not supported')
+					// The cusp is at the midtangent of a flat 180-degree turnaround.
+					cusp := eval_quad_at(last, p1, p2, find_quad_mid_tangent(last, p1, p2))
+					w.write_circle(cusp)
+					w.write_line(last, cusp)
+					w.write_line(cusp, p2)
+				} else {
+					w.write_quadratic(last, p1, p2)
 				}
-				w.write_quadratic(last, p1, p2)!
 				last = p2
 				pi += 2
 			}
 			.conic {
 				p1 := path.points[pi]
 				p2 := path.points[pi + 1]
+				weight := path.weights[wi]
 				if conic_has_cusp(last, p1, p2) {
-					return error('gg.canvas: stroked curves with cusps are not supported')
+					cusp := conic_eval_at(last, p1, p2, weight, conic_find_mid_tangent(last,
+						p1, p2, weight))
+					w.write_circle(cusp)
+					w.write_line(last, cusp)
+					w.write_line(cusp, p2)
+				} else {
+					w.write_conic(last, p1, p2, weight)
 				}
-				w.write_conic(last, p1, p2, path.weights[wi])!
 				last = p2
 				pi += 2
 				wi++
@@ -311,7 +444,7 @@ fn write_stroke_patches(mut w StrokeWriter, path Path, cap StrokeCap) ! {
 				pts := [last, path.points[pi], path.points[pi + 1], path.points[pi + 2]]!
 				t, n, cusps := find_cubic_convex_180_chops(pts)
 				if n == 0 {
-					w.write_cubic(pts[0], pts[1], pts[2], pts[3])!
+					w.write_cubic(pts[0], pts[1], pts[2], pts[3])
 				} else if n == 1 {
 					mut c := chop_cubic_at(pts, t[0])
 					if cusps {
@@ -319,8 +452,8 @@ fn write_stroke_patches(mut w StrokeWriter, path Path, cap StrokeCap) ! {
 						c[2] = c[3]
 						c[4] = c[3]
 					}
-					w.write_cubic(c[0], c[1], c[2], c[3])!
-					w.write_cubic(c[3], c[4], c[5], c[6])!
+					w.write_cubic(c[0], c[1], c[2], c[3])
+					w.write_cubic(c[3], c[4], c[5], c[6])
 				} else {
 					c := chop_cubic_at2(pts, t[0], t[1])
 					if cusps {
@@ -330,9 +463,9 @@ fn write_stroke_patches(mut w StrokeWriter, path Path, cap StrokeCap) ! {
 						w.write_line(c[3], c[6])
 						w.write_line(c[6], c[9])
 					} else {
-						w.write_cubic(c[0], c[1], c[2], c[3])!
-						w.write_cubic(c[3], c[4], c[5], c[6])!
-						w.write_cubic(c[6], c[7], c[8], c[9])!
+						w.write_cubic(c[0], c[1], c[2], c[3])
+						w.write_cubic(c[3], c[4], c[5], c[6])
+						w.write_cubic(c[6], c[7], c[8], c[9])
 					}
 				}
 				last = pts[3]
