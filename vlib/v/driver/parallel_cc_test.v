@@ -414,3 +414,76 @@ fn test_v3_parallel_cc_defines_embedded_payloads_once() {
 		assert run_result.output.trim_space() == '${expected_small} ${expected_large}'
 	}
 }
+
+// Check native ownership through both the ordinary and requested split build paths.
+fn run_v3_parallel_cc_native_ownership_case(name string, header string, program string, expected string, expect_split bool) ! {
+	$if bsd || linux || macos {
+		cc := os.find_abs_path_of_executable('clang') or { return }
+		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_ownership_${name}_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		source := os.join_path(root, 'main.c.v')
+		output := os.join_path(root, 'main')
+		os.write_file(os.join_path(root, 'native.h'), header)!
+		os.write_file(source, '#include "@DIR/native.h"\n' + program)!
+		for parallel in [false, true] {
+			mut args := ['-cc', cc, '-gc', 'none', '-nocache', '-no-retry-compilation', '-showcc',
+				'-o', output]
+			if parallel { args << '-parallel-cc' }
+			args << source
+			build := cmdexec.run(v3_parallel_cc_test_compiler(), args)
+			assert build.exit_code == 0, '${name}, parallel=${parallel}: ${build.output}'
+			if parallel {
+				assert build.output.contains('unit_1.c') == expect_split, build.output
+				if !expect_split {
+					assert build.output.contains('src.c'), build.output
+				}
+			}
+			run_result := cmdexec.run(output, []string{})
+			assert run_result.exit_code == 0, '${name}, parallel=${parallel}: ${run_result.output}'
+			assert run_result.output.trim_space() == expected, run_result.output
+		}
+	}
+}
+
+fn test_v3_parallel_cc_keeps_native_external_definitions_in_one_unit() {
+	program := 'fn C.native_value() int\nfn main() { println(C.native_value()) }\n'
+	run_v3_parallel_cc_native_ownership_case('extern_initializer',
+		'extern int counter = 3;\nstatic inline int native_value(void) { return counter + 4; }\n',
+		program, '7', false)!
+	run_v3_parallel_cc_native_ownership_case('extern_inline',
+		'extern inline int native_value(void) { return 7; }\n', program, '7', false)!
+}
+
+fn test_v3_parallel_cc_can_split_unused_native_constants() {
+	run_v3_parallel_cc_native_ownership_case('unused_constant',
+		'static const int sentinel = 7;\n#define UNUSED_ADDRESS() (&sentinel)\nstatic inline int native_value(void) { return 7; }\n',
+		'fn C.native_value() int\nfn main() { println(C.native_value()) }\n', '7', true)!
+}
+
+fn test_v3_parallel_cc_preserves_native_constant_address_identity() {
+	program := 'fn C.native_identity() voidptr
+fn first() voidptr { return C.native_identity() }
+fn second() voidptr { return C.native_identity() }
+fn main() {
+	assert first() == second()
+	println("same identity")
+}
+'
+	run_v3_parallel_cc_native_ownership_case('global_constant',
+		'static const int sentinel = 7;\nstatic inline void *native_identity(void) { return (void*)&sentinel; }\n',
+		program, 'same identity', false)!
+	run_v3_parallel_cc_native_ownership_case('local_constant',
+		'static inline void *native_identity(void) { static const int sentinel = 7; return (void*)&sentinel; }\n',
+		program, 'same identity', false)!
+	run_v3_parallel_cc_native_ownership_case('macro_constant',
+		'#define NATIVE_SENTINEL(name) static const int name = 7;\nNATIVE_SENTINEL(sentinel)\nstatic inline void *native_identity(void) { return (void*)&sentinel; }\n',
+		program, 'same identity', false)!
+	run_v3_parallel_cc_native_ownership_case('macro_accessor',
+		'static const int sentinel = 7;\n#define native_identity() ((void*)&sentinel)\n',
+		program, 'same identity', false)!
+	run_v3_parallel_cc_native_ownership_case('pasted_accessor',
+		'static const int sentinel = 7;\n#define JOIN(a,b) a##b\n#define native_identity() ((void*)&JOIN(senti,nel))\n',
+		program, 'same identity', false)!
+}

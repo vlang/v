@@ -11120,6 +11120,12 @@ Native headers that cannot safely share state across units use a single compilat
 Clang builds can use its declaration and macro metadata to split programs with native headers;
 other C compilers retain the conservative fallback when this metadata is unavailable.
 Native-source callers stay in the first unit, and embedded file payloads are defined once.
+Native static objects keep a single unit even when constant, preserving their address identity.
+Unused constants may be repeated only when toolchain metadata shows no references or emitted
+storage, and a preprocessor probe rules out body references, including native macro expansions.
+A probe object and `llvm-nm` or `nm` distinguish external inline definitions from declarations
+under the selected inline mode, attributes, and redeclarations. Missing symbol metadata keeps
+one unit conservatively.
 Set `V3_PARALLEL_CC_TRACE=1` (or use `-showcc`) to report split decisions and fallback reasons.
 Set `V3_PARALLEL_CC_REQUIRE_SPLIT=1` to exit with status 3 when a requested split cannot be used,
 instead of silently rebuilding the program as one C unit.

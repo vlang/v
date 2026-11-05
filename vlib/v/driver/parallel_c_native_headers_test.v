@@ -3,25 +3,27 @@ module driver
 import os
 
 fn native_manifest(text string, check_header bool) !V3ParallelCManifest {
+	return native_manifest_with_flags(text, []string{}, check_header)
+}
+
+fn native_manifest_with_flags(text string, flags []string, check_header bool) !V3ParallelCManifest {
 	root := os.join_path(os.vtmp_dir(), 'parallel_c_manifest_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
 	path := os.join_path(root, 'unit.c')
-	return v3_parallel_c_native_manifest('clang', []string{}, false, text, path, []string{},
+	return v3_parallel_c_native_manifest('clang', flags, false, text, path, []string{},
 		{
 			'native_value': true
 			'NATIVE_SCALE': true
 		}, check_header)
 }
 
-fn test_native_manifest_accepts_declarations_and_read_only_data() {
+fn test_native_manifest_accepts_declarations_and_stateless_helpers() {
 	os.find_abs_path_of_executable('clang') or { return }
 	manifest := native_manifest('typedef struct Point { int x; int y; } Point;
 extern int shared_counter;
 int native_value(int);
 static inline int twice(int x) { return x * 2; }
-static const int table[3] = {1, 2, 3};
-static const char *const names[] = {"a", "b"};
 __attribute__((weak)) void hook(void *p) { (void)p; }
 __attribute__((weak)) int weak_default = 1;', true)!
 	assert manifest.hazards.len == 0, manifest.hazards.str()
@@ -32,7 +34,9 @@ fn test_native_manifest_rejects_mutable_storage_and_definitions() {
 	os.find_abs_path_of_executable('clang') or { return }
 	for text in ['static int counter;', 'static const char *names;',
 		'static inline int next(void) { static int id; return ++id; }', 'int global_value = 3;',
-		'int compute(int x) { return x + 1; }',
+		'int compute(int x) { return x + 1; }', 'extern int counter = 3;',
+		'static const int table[3] = {1, 2, 3};', 'static const char *const names[] = {"a", "b"};',
+		'static inline const int *identity(void) { static const int sentinel = 7; return &sentinel; }',
 		'static __attribute__((constructor)) void startup(void) {}'] {
 		manifest := native_manifest(text, true)!
 		assert manifest.hazards.len == 1, '${text}: ${manifest.hazards}'
@@ -145,4 +149,36 @@ fn test_native_manifest_refuses_unknown_declaration_kinds() {
 	manifest.collect_declaration(V3ParallelCDecl{ kind: 'UnknownDecl' }, map[string]bool{},
 		[]string{}, true, 'native.h')
 	assert manifest.hazards.len == 1
+}
+
+fn test_native_manifest_uses_actual_inline_emission_across_inline_modes() {
+	os.find_abs_path_of_executable('clang') or { return }
+	os.find_abs_path_of_executable('llvm-nm') or {
+		os.find_abs_path_of_executable('nm') or { return }
+	}
+	for flags in [['-std=gnu11'], ['-std=gnu89'], ['-std=gnu11', '-fgnu89-inline']] {
+		gnu_inline := '-std=gnu89' in flags || '-fgnu89-inline' in flags
+		for source, expected in {
+			'extern inline int native_value(void) { return 7; }':                             if gnu_inline {
+				0
+			} else {
+				1
+			}
+			'inline int native_value(void) { return 7; }':                                    if gnu_inline {
+				1
+			} else {
+				0
+			}
+			'extern int native_value(void); inline int native_value(void) { return 7; }':     1
+			'inline int native_value(void) { return 7; } extern int native_value(void);':     1
+			'extern inline __attribute__((gnu_inline)) int native_value(void) { return 7; }': 0
+		} {
+			manifest := native_manifest_with_flags(source, flags, true)!
+			assert manifest.has_emission_metadata
+			assert manifest.hazards.len == expected, '${flags}: ${source}: ${manifest.hazards}'
+		}
+		control := native_manifest_with_flags('static inline int native_value(void) { return 7; }', flags, true)!
+		assert control.hazards.len == 0, '${flags}: ${control.hazards}'
+		assert !control.has_emission_metadata
+	}
 }

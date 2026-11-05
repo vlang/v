@@ -109,7 +109,7 @@ fn test_parallel_c_generation_uses_native_toolchain_metadata_for_quoted_headers(
 	}
 	// A header of declarations and functions without static locals is the same in every unit.
 	user_header := os.join_path(root, 'native.h')
-	os.write_file(user_header, 'static inline int native_value(void) { return 1; }\nstatic const int native_table[2] = { 1, 2 };\n')!
+	os.write_file(user_header, 'static inline int native_value(void) { return 1; }\n')!
 	user_prefix := '/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */\n#include "${user_header}"\n/* V3CACHE_NATIVE_DIRECTIVES_END */\nvoid main__main(void);\n'
 	user_header_text, user_safe, user_quoted := v3_parallel_c_declaration_header(user_prefix,
 		@VEXEROOT)
@@ -118,6 +118,12 @@ fn test_parallel_c_generation_uses_native_toolchain_metadata_for_quoted_headers(
 	declarations := os.join_path(root, 'declarations.h')
 	os.write_file(declarations, user_header_text)!
 	assert header_hazards(declarations)! == []
+	// Const storage still has an observable address, so its identity has one owner.
+	os.write_file(user_header, 'static const int native_table[2] = { 1, 2 };\n')!
+	constant_hazards := header_hazards(declarations)!
+	assert constant_hazards.map(it.reason) == [
+		'static constant `native_table` would get a separate identity in every unit',
+	]
 	// State a header owns would be copied into every unit, and the build stays in one.
 	os.write_file(user_header, 'static int native_state;\nint native_counter = 0;\n')!
 	hazards := header_hazards(declarations)!

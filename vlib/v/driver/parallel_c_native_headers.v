@@ -13,6 +13,8 @@ struct V3ParallelCHeaderHazard {
 	file   string
 	line   int
 	reason string
+	// Only unreferenced, nonemitted constants can be cleared by a body probe.
+	unused_constant string
 }
 
 fn (h V3ParallelCHeaderHazard) str() string {
@@ -30,20 +32,25 @@ struct V3ParallelCDeclType {
 }
 
 struct V3ParallelCDecl {
-	kind          string
-	name          string
-	storage_class string
-	is_inline     bool
-	loc           V3ParallelCDeclLocation
-	typ           V3ParallelCDeclType
-	inner         []V3ParallelCDecl
+	kind            string
+	name            string
+	mangled_name    string
+	storage_class   string
+	has_initializer bool
+	is_inline       bool
+	is_referenced   bool
+	loc             V3ParallelCDeclLocation
+	typ             V3ParallelCDeclType
+	inner           []V3ParallelCDecl
 }
 
 struct V3ParallelCManifest {
 mut:
-	declared map[string]bool
-	macros   map[string]string
-	hazards  []V3ParallelCHeaderHazard
+	declared              map[string]bool
+	emitted_symbols       map[string]bool
+	has_emission_metadata bool
+	macros                map[string]string
+	hazards               []V3ParallelCHeaderHazard
 }
 
 struct V3ParallelCManifestTask {
@@ -88,6 +95,12 @@ fn v3_parallel_c_check_native_code(c_compiler string, flags []string, objective_
 		workers.Task{ run: run_v3_parallel_c_manifest_task, arg: voidptr(owner) },
 	])
 	mut hazards := header.manifest.hazards.clone()
+	candidates := hazards.map(it.unused_constant).filter(it.len > 0)
+	if candidates.len > 0 && hazards.all(it.unused_constant.len > 0)
+		&& v3_parallel_c_constants_unused(c_compiler, flags, objective_c,
+			header_path, header.source, candidates, parts) {
+		hazards = hazards.filter(it.unused_constant.len == 0)
+	}
 	for task in [header, owner] {
 		if task.failure.len > 0 {
 			hazards << V3ParallelCHeaderHazard{ file: task.path, reason: task.failure }
@@ -125,6 +138,10 @@ fn v3_parallel_c_native_manifest(compiler string, flags []string, objective_c bo
 		return error('missing translation-unit declaration manifest')
 	}
 	mut manifest := V3ParallelCManifest{}
+	if check_header && v3_parallel_c_needs_symbols(root) {
+		manifest.emitted_symbols = v3_parallel_c_native_symbols(compiler, args, path)!
+		manifest.has_emission_metadata = true
+	}
 	mut file := ''
 	mut generated_paths := generated.clone()
 	generated_paths << generated.map(os.real_path(it))
@@ -138,6 +155,84 @@ fn v3_parallel_c_native_manifest(compiler string, flags []string, objective_c bo
 	}
 	manifest.macros = v3_parallel_c_macro_manifest(macros.output, used)
 	return manifest
+}
+
+// Probe headers with ambiguous external inline bodies or constant objects. The C compiler,
+// including its selected inline flags and redeclarations, decides which symbols
+// are defined. No native header text or compiler IR is inspected by V.
+fn v3_parallel_c_needs_symbols(decl V3ParallelCDecl) bool {
+	if decl.kind == 'VarDecl' && decl.storage_class == 'static'
+		&& v3_parallel_c_const_object_type(decl.typ.qual_type) {
+		return true
+	}
+	if decl.kind == 'FunctionDecl' && decl.is_inline && decl.storage_class != 'static'
+		&& decl.inner.any(it.kind == 'CompoundStmt')
+		&& !decl.inner.any(it.kind == 'WeakAttr') {
+		return true
+	}
+	if decl.kind in ['TranslationUnitDecl', 'LinkageSpecDecl'] {
+		for child in decl.inner {
+			if v3_parallel_c_needs_symbols(child) { return true }
+		}
+	}
+	return false
+}
+
+fn v3_parallel_c_native_symbols(compiler string, flags []string, path string) !map[string]bool {
+	object := path + '.symbols.o'
+	defer { os.rm(object) or {} }
+	mut args := flags.clone()
+	args << ['-c', '-o', object, path]
+	compiled := cmdexec.run_in(compiler, args, os.dir(path))
+	if compiled.exit_code != 0 {
+		return error('native symbol probe failed: ${compiled.output}')
+	}
+	nm := os.find_abs_path_of_executable('llvm-nm') or {
+		os.find_abs_path_of_executable('nm') or {
+			return error('native symbol metadata requires llvm-nm or nm')
+		}
+	}
+	result := cmdexec.run(nm, ['-P', object])
+	if result.exit_code != 0 {
+		return error('native symbol metadata failed: ${result.output}')
+	}
+	mut symbols := map[string]bool{}
+	for line in result.output.split_into_lines() {
+		if line.trim_space().len == 0 { continue }
+		fields := line.fields()
+		if fields.len < 2 || fields.len > 4 || fields[1].len != 1 {
+			return error('unrecognized native symbol metadata')
+		}
+		if fields[1] in ['U', 'w', 'v'] { continue }
+		if fields.len < 3 || !fields[2].bytes().all(it.is_hex_digit())
+			|| (fields.len == 4 && !fields[3].bytes().all(it.is_hex_digit())) {
+			return error('incomplete native symbol metadata')
+		}
+		symbols[fields[0].clone()] = true
+	}
+	return symbols
+}
+
+// Ask the preprocessor whether any generated body can name these constants,
+// including through native macros or token pasting. The error macro catches
+// expansions of macros defined before GCC poison (which poison alone exempts).
+// Poison also prevents later undef/redefinition from hiding an access. V neither
+// expands macros nor inspects the preprocessed native text.
+fn v3_parallel_c_constants_unused(compiler string, flags []string, objective_c bool, header_path string, prefix string, names []string, parts []string) bool {
+	path := header_path + '.constants.c'
+	defer { os.rm(path) or {} }
+	mut source := strings.new_builder(prefix.len)
+	source.write_string(prefix)
+	for name in names {
+		source.writeln('#define ${name} _Pragma("GCC error \\"native constant used\\"")')
+		source.writeln('#pragma GCC poison ${name}')
+	}
+	for part in parts { source.writeln(part) }
+	os.write_file(path, source.str()) or { return false }
+	mut args := flags.clone()
+	args << ['-w', '-x', if objective_c { 'objective-c' } else { 'c' }, '-E', '-o', os.path_devnull,
+		path]
+	return cmdexec.run_in(compiler, args, os.dir(path)).exit_code == 0
 }
 
 fn (mut manifest V3ParallelCManifest) collect_declaration(decl V3ParallelCDecl, used map[string]bool, generated []string, check_header bool, previous_file string) string {
@@ -162,27 +257,44 @@ fn (mut manifest V3ParallelCManifest) collect_declaration(decl V3ParallelCDecl, 
 		&& decl.name in ['__v_u128_str', '__v_i128_str'] {
 		return file
 	}
-	// Classify all declarations conservatively, including ones with abbreviated
-	// macro locations. Only compiler-owned literal objects may repeat storage.
+	// V constants and literal objects in the compiler-owned prefix retain the
+	// existing generated-C value semantics. Native header objects, even const
+	// ones, must keep a single identity.
 	if decl.kind == 'VarDecl' && file in generated
-		&& (decl.name.starts_with('_v3_lit_') || decl.name.starts_with('_str_')) {
+		&& (v3_parallel_c_const_object_type(decl.typ.qual_type)
+			|| decl.name.starts_with('_v3_lit_') || decl.name.starts_with('_str_')) {
 		return file
 	}
 	mut reason := ''
+	mut unused_constant := ''
 	match decl.kind {
 		'VarDecl' {
 			if decl.storage_class == 'static' {
-				if !v3_parallel_c_const_object_type(decl.typ.qual_type) {
-					reason = 'mutable static `${decl.name}` would get a separate copy in every unit'
+				reason = if v3_parallel_c_const_object_type(decl.typ.qual_type) {
+					'static constant `${decl.name}` would get a separate identity in every unit'
+				} else {
+					'mutable static `${decl.name}` would get a separate copy in every unit'
 				}
-			} else if decl.storage_class != 'extern' && !decl.inner.any(it.kind == 'WeakAttr') {
+				if v3_parallel_c_const_object_type(decl.typ.qual_type) && !decl.is_referenced
+					&& decl.name.len > 0 && decl.name !in used
+					&& manifest.has_emission_metadata && decl.mangled_name.len > 0
+					&& decl.mangled_name !in manifest.emitted_symbols {
+					unused_constant = decl.name.clone()
+				}
+			} else if (decl.storage_class != 'extern' || decl.has_initializer
+				|| decl.inner.any(it.kind == 'AliasAttr'))
+				&& !decl.inner.any(it.kind == 'WeakAttr') {
 				reason = 'external object `${decl.name}` would be defined in every unit'
 			}
 		}
 		'FunctionDecl' {
-			if decl.inner.any(it.kind == 'CompoundStmt') {
-				if decl.storage_class != 'static' && !decl.is_inline
-					&& !decl.inner.any(it.kind == 'WeakAttr') {
+			if decl.inner.any(it.kind in ['CompoundStmt', 'AliasAttr', 'IFuncAttr']) {
+				// C99/GNU modes, attributes and redeclarations affect inline emission.
+				// Match the AST's native symbol name against the toolchain's probe
+				// object instead of guessing linkage from extern/inline specifiers.
+				if decl.storage_class != 'static' && !decl.inner.any(it.kind == 'WeakAttr')
+					&& (!decl.is_inline || !manifest.has_emission_metadata
+						|| decl.mangled_name.len == 0 || decl.mangled_name in manifest.emitted_symbols) {
 					reason = 'external function `${decl.name}` would be defined in every unit'
 				} else if local := v3_parallel_c_static_local(decl) {
 					reason = '`${decl.name}` has the static local `${local}`, which every unit would copy'
@@ -207,7 +319,12 @@ fn (mut manifest V3ParallelCManifest) collect_declaration(decl V3ParallelCDecl, 
 		}
 	}
 	if reason.len > 0 {
-		manifest.hazards << V3ParallelCHeaderHazard{ file: file.clone(), line: decl.loc.line, reason: reason }
+		manifest.hazards << V3ParallelCHeaderHazard{
+			file:            file.clone()
+			line:            decl.loc.line
+			reason:          reason
+			unused_constant: unused_constant
+		}
 	}
 	return file
 }
@@ -223,8 +340,7 @@ fn v3_parallel_c_const_object_type(qual_type string) bool {
 }
 
 fn v3_parallel_c_static_local(decl V3ParallelCDecl) ?string {
-	if decl.kind == 'VarDecl' && decl.storage_class == 'static'
-		&& !v3_parallel_c_const_object_type(decl.typ.qual_type) {
+	if decl.kind == 'VarDecl' && decl.storage_class == 'static' {
 		return decl.name
 	}
 	for child in decl.inner {
@@ -463,8 +579,11 @@ fn (mut r V3ParallelCManifestReader) declaration() !V3ParallelCDecl {
 	r.take(`{`)!
 	mut kind := ''
 	mut name := ''
-	mut storage := ''
+	mut mangled_name := ''
 	mut is_inline := false
+	mut is_referenced := false
+	mut storage := ''
+	mut has_initializer := false
 	mut file := ''
 	mut line := 0
 	mut qual_type := ''
@@ -483,10 +602,20 @@ fn (mut r V3ParallelCManifestReader) declaration() !V3ParallelCDecl {
 		match key {
 			'kind' { kind = r.quoted()! }
 			'name' { name = r.quoted()! }
-			'storageClass' { storage = r.quoted()! }
+			'mangledName' { mangled_name = r.quoted()! }
 			'inline' {
 				r.space()
 				is_inline = r.pos < r.text.len && r.text[r.pos] == `t`
+				r.skip()!
+			}
+			'isUsed', 'isReferenced' {
+				r.space()
+				is_referenced = is_referenced || (r.pos < r.text.len && r.text[r.pos] == `t`)
+				r.skip()!
+			}
+			'storageClass' { storage = r.quoted()! }
+			'init' {
+				has_initializer = true
 				r.skip()!
 			}
 			'file' { file = r.quoted()! }
@@ -495,6 +624,12 @@ fn (mut r V3ParallelCManifestReader) declaration() !V3ParallelCDecl {
 				start := r.pos
 				r.skip()!
 				line = r.text[start..r.pos].int()
+			}
+			'spellingLoc', 'expansionLoc' {
+				// Macro-produced declarations retain the expansion file's ownership.
+				item := r.declaration()!
+				if item.loc.file.len > 0 { file = item.loc.file }
+				if item.loc.line > 0 { line = item.loc.line }
 			}
 			'qualType' { qual_type = r.quoted()! }
 			'loc' {
@@ -536,20 +671,23 @@ fn (mut r V3ParallelCManifestReader) declaration() !V3ParallelCDecl {
 	}
 	r.depth--
 	return V3ParallelCDecl{
-		kind:          kind
-		name:          name
-		storage_class: storage
-		is_inline:     is_inline
-		loc:           if file.len > 0 || line > 0 {
+		kind:            kind
+		name:            name
+		mangled_name:    mangled_name
+		is_inline:       is_inline
+		is_referenced:   is_referenced
+		storage_class:   storage
+		has_initializer: has_initializer
+		loc:             if file.len > 0 || line > 0 {
 			V3ParallelCDeclLocation{ file: file, line: line }
 		} else {
 			loc
 		}
-		typ:           if qual_type.len > 0 {
+		typ:             if qual_type.len > 0 {
 			V3ParallelCDeclType{ qual_type: qual_type }
 		} else {
 			typ
 		}
-		inner:         inner
+		inner:           inner
 	}
 }
