@@ -812,6 +812,11 @@ struct PendingIerrorError {
 // FunctionCheckContext owns all semantic state whose lifetime is one function
 // body. Parallel checker forks replace this value wholesale, so adding a new
 // per-function cache cannot accidentally share its backing storage.
+struct PreflightOptionLayer {
+	keys                []string
+	restores_smartcasts bool
+}
+
 struct FunctionCheckContext {
 mut:
 	method_value_locals               map[string]bool
@@ -854,6 +859,7 @@ mut:
 	local_decl_rhs_range_lo                  int = -1
 	local_decl_rhs_range_hi                  int = -1
 	bool_condition_exprs                     map[string]flat.NodeId
+	preflight_option_layers                  map[flat.NodeId]PreflightOptionLayer
 	has_goto_nodes                           bool
 	closure_scope                            &Scope = unsafe { nil }
 	lambda_no_captures                       bool
@@ -917,6 +923,7 @@ fn (mut ctx FunctionCheckContext) reset_for_sibling_check() {
 	ctx.closure_forbidden_captures.clear()
 	ctx.local_decl_rhs_by_name.clear()
 	ctx.bool_condition_exprs.clear()
+	ctx.preflight_option_layers.clear()
 	// Nested snapshots and declaration generic parameters can share backing
 	// arrays with a synchronous view or the AST. Detach those headers.
 	ctx.unsafe_alias_break_states = [][]map[string]bool{}
@@ -977,6 +984,7 @@ fn clone_function_check_context(src FunctionCheckContext) FunctionCheckContext {
 		local_decl_rhs_range_lo:                  src.local_decl_rhs_range_lo
 		local_decl_rhs_range_hi:                  src.local_decl_rhs_range_hi
 		bool_condition_exprs:                     src.bool_condition_exprs.clone()
+		preflight_option_layers:                  src.preflight_option_layers.clone()
 		has_goto_nodes:                           src.has_goto_nodes
 		closure_scope:                            src.closure_scope
 		lambda_no_captures:                       src.lambda_no_captures
@@ -2178,6 +2186,11 @@ fn (tc &TypeChecker) fork_type_parse_view(file string, module_name string) &Type
 	mut view := tc.fork_program_view(tc.a, map[int][]SymbolId{})
 	view.cur_file = file
 	view.cur_module = module_name
+	// Synchronous queries still run inside their caller's parallel worker. The
+	// shared dense caches are accessible only for that worker's owned node range.
+	view.parallel_check_sparse = tc.parallel_check_sparse
+	view.check_range_lo = tc.check_range_lo
+	view.check_range_hi = tc.check_range_hi
 	view.type_cache = tc.type_cache
 	// Signature parsing immediately creates an unscoped resolution view. Reuse
 	// this worker's synchronous per-file view cache instead of allocating two
@@ -2202,6 +2215,9 @@ fn (tc &TypeChecker) fork_smartcast_query_view() &TypeChecker {
 	view.expected_expr_type = tc.expected_expr_type
 	view.fn_context = clone_function_check_context(tc.fn_context)
 	view.smartcasts = clone_smartcasts(tc.smartcasts)
+	view.parallel_check_sparse = tc.parallel_check_sparse
+	view.check_range_lo = tc.check_range_lo
+	view.check_range_hi = tc.check_range_hi
 	view.type_cache = tc.type_cache
 	return view
 }
@@ -7309,6 +7325,18 @@ fn (tc &TypeChecker) qualify_resolution_type_text(typ_id u32) u32 {
 	return tc.qualify_type_text_impl(source_id, true, []u32{})
 }
 
+// refresh_resolution_type_view updates a worker's cached lookup view when its
+// checked item or sparse mode changes. The cache is private to that worker.
+@[inline]
+fn (tc &TypeChecker) refresh_resolution_type_view(view &TypeChecker) &TypeChecker {
+	// Lookup receivers are shared references, but their synchronous memo is mutable.
+	mut current := unsafe { view }
+	current.parallel_check_sparse = tc.parallel_check_sparse
+	current.check_range_lo = tc.check_range_lo
+	current.check_range_hi = tc.check_range_hi
+	return current
+}
+
 // parse_resolution_type parses type text that can mix declaration-local names with concrete
 // generic arguments from another module.
 pub fn (tc &TypeChecker) parse_resolution_type(source_id u32) Type {
@@ -7350,12 +7378,12 @@ pub fn (tc &TypeChecker) parse_resolution_type(source_id u32) Type {
 	}
 	mut views := unsafe { tc.resolution_type_views }
 	if !isnil(views.recent_unscoped) && views.recent_unscoped_file == tc.cur_file {
-		return *views.recent_unscoped.parse_type(qualified_source_id)
+		return *tc.refresh_resolution_type_view(views.recent_unscoped).parse_type(qualified_source_id)
 	}
 	if cached := views.by_file[tc.cur_file] {
 		views.recent_unscoped_file = tc.cur_file
 		views.recent_unscoped = cached
-		return *cached.parse_type(qualified_source_id)
+		return *tc.refresh_resolution_type_view(cached).parse_type(qualified_source_id)
 	}
 	mut unscoped := tc.fork_type_parse_view(tc.cur_file, '')
 	unscoped.resolution_type_mode = false
@@ -7379,12 +7407,12 @@ fn (tc &TypeChecker) type_parse_view_in_file(file string) &TypeChecker {
 	if !isnil(tc.resolution_type_views) {
 		mut views := unsafe { tc.resolution_type_views }
 		if !isnil(views.recent_scoped) && views.recent_scoped_file == file {
-			return views.recent_scoped
+			return tc.refresh_resolution_type_view(views.recent_scoped)
 		}
 		if cached := views.scoped_by_file[file] {
 			views.recent_scoped_file = file
 			views.recent_scoped = cached
-			return cached
+			return tc.refresh_resolution_type_view(cached)
 		}
 		module_name := tc.file_modules[file] or { '' }
 		mut scoped := tc.fork_type_parse_view(file, module_name)

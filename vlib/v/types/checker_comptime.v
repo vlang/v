@@ -2619,7 +2619,7 @@ fn (mut tc TypeChecker) check_nonliteral_node(id flat.NodeId) {
 		return
 	}
 	if kind_id == 46 {
-		tc.check_for_stmt(node)
+		tc.check_for_stmt(id, node)
 		return
 	}
 	if kind_id == 47 {
@@ -15433,7 +15433,7 @@ fn (tc &TypeChecker) block_is_comptime_expression_value(id flat.NodeId) bool {
 }
 
 // check_for_stmt validates check for stmt state for types.
-fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
+fn (mut tc TypeChecker) check_for_stmt(id flat.NodeId, node flat.Node) {
 	tc.push_scope()
 	$if ownership ? {
 		if node.children_count > 0 {
@@ -15468,6 +15468,12 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 					tc.smartcasts[sc.name] = sc.typ
 				}
 			}
+		}
+	}
+	// Keep the decision even if the post statement later invalidates a condition alias.
+	if tc.comptime_static_depth > 0 && tc.cur_comptime_variant_loop_vars.len > 0 {
+		tc.fn_context.preflight_option_layers[id] = PreflightOptionLayer{
+			restores_smartcasts: has_cond_smartcasts
 		}
 	}
 	unsafe_alias_base := tc.fn_context.unsafe_reference_alias_owners.clone()

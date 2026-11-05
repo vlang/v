@@ -34,20 +34,23 @@ fn test_child_launches_survive_a_tmp_past_max_path() ! {
 	defer {
 		os.rmdir_all(root) or {}
 	}
-	long_tmp := os.join_path(root, 'b'.repeat(120), 'f'.repeat(150))
-	os.mkdir_all(long_tmp)!
-	assert long_tmp.len > max_path
+	os.mkdir_all(root)!
 	src := os.join_path(root, 'helper.v')
 	exe := os.join_path(root, 'helper.exe')
 	os.write_file(src, helper_source)!
 	// `-w`: the helper calls the deprecated os.execute and os.system on purpose.
-	build := os.exec([@VEXE, '-w', '-o', exe, src])
+	build := os.exec([@VEXE, '-cc', @CCOMPILER, '-w', '-o', exe, src])
 	assert build.exit_code == 0, build.output
 	manifest := os.read_file('${exe}.manifest') or { '' }
 	if !os.read_file(exe)!.contains('longPathAware') && !manifest.contains('longPathAware') {
 		eprintln('skipped: the helper is not longPathAware, so it cannot loop')
 		return
 	}
+	// MSVC executables deliberately do not opt into long paths. Check the
+	// helper's manifest before creating a fixture that requires that opt-in.
+	long_tmp := os.join_path(root, 'b'.repeat(120), 'f'.repeat(150))
+	os.mkdir_all(long_tmp)!
+	assert long_tmp.len > max_path
 	mut p := os.new_process(exe)
 	p.set_args([long_tmp])
 	p.set_redirect_stdio()

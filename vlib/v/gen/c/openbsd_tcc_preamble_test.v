@@ -4,7 +4,7 @@ import os
 import v.cmdexec
 
 fn test_manual_stdio_declarations_preserve_function_like_macros() ! {
-	$if !linux && !openbsd {
+	$if !linux && !openbsd && !freebsd {
 		return
 	}
 	cc := os.find_abs_path_of_executable('cc') or { return }
@@ -12,21 +12,50 @@ fn test_manual_stdio_declarations_preserve_function_like_macros() ! {
 	os.mkdir_all(dir)!
 	defer { os.rmdir_all(dir) or {} }
 	source := os.join_path(dir, 'stdio.c')
-	// OpenBSD stdio.h defines these macros after declaring the real functions.
+	// BSD stdio.h defines these macros after declaring the real functions.
 	// User headers can include stdio.h before the manual libc preamble is emitted.
 	os.write_file(source, '
 #include <stddef.h>
 #include <stdint.h>
 typedef intptr_t isize;
 typedef unsigned short u16;
+extern int v_test_stdio_isthreaded;
+#define getc(p) (!v_test_stdio_isthreaded ? v_test_sgetc(p) : (getc)(p))
+#define feof(p) (!v_test_stdio_isthreaded ? v_test_sfeof(p) : (feof)(p))
+#define ferror(p) (!v_test_stdio_isthreaded ? v_test_sferror(p) : (ferror)(p))
+#define clearerr(p) (!v_test_stdio_isthreaded ? v_test_sclearerr(p) : (clearerr)(p))
 #define getchar() getc(stdin)
 #define putchar(c) putc(c, stdout)
 ' + manual_stdlib_c_headers() + '
 int putc(int, FILE *);
+int v_test_sgetc(FILE *);
+int v_test_sfeof(FILE *);
+int v_test_sferror(FILE *);
+void v_test_sclearerr(FILE *);
 int (*read_character)(void) = getchar;
 int (*write_character)(int) = putchar;
+int (*read_stream)(FILE *) = getc;
+int (*stream_eof)(FILE *) = feof;
+int (*stream_error)(FILE *) = ferror;
+void (*clear_stream_error)(FILE *) = clearerr;
 int read_macro(void) { return getchar(); }
 int write_macro(int ch) { return putchar(ch); }
+int read_stream_macro(FILE *stream) { return getc(stream); }
+int stream_eof_macro(FILE *stream) { return feof(stream); }
+int stream_error_macro(FILE *stream) { return ferror(stream); }
+void clear_stream_error_macro(FILE *stream) { clearerr(stream); }
+#ifndef getc
+#error getc macro was removed
+#endif
+#ifndef feof
+#error feof macro was removed
+#endif
+#ifndef ferror
+#error ferror macro was removed
+#endif
+#ifndef clearerr
+#error clearerr macro was removed
+#endif
 #ifndef getchar
 #error getchar macro was removed
 #endif

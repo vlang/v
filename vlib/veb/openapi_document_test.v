@@ -843,3 +843,131 @@ fn test_typed_openapi_unsigned_64_bit_schema_accepts_full_range() {
 		}
 	}
 }
+
+struct HandlerMetadataApi {
+	Controller
+}
+
+struct HandlerMetadataLeaf {}
+
+struct HandlerMetadataQuery {
+	name int @[required]
+}
+
+@['/items'; post; OpenApi('item_metadata')]
+fn (app &HandlerMetadataLeaf) create(mut ctx TypedApiContext) Result {
+	return ctx.text('created')
+}
+
+@['/find'; get; delete; head; OpenApi(handler: 'find_metadata')]
+fn (app &HandlerMetadataLeaf) find(mut ctx TypedApiContext) Result {
+	return ctx.text('found')
+}
+
+fn (app &HandlerMetadataLeaf) item_metadata(mut handler OpenApiHandler) ! {
+	handler.request[TypedApiDto]()!
+	handler.response[openapi_left.Item](status: 201)!
+	handler.response[TypedApiNode](status: 422)!
+	handler.raw_response(409, {
+		'description': json2.Any('Conflict')
+	})!
+}
+
+fn (app &HandlerMetadataLeaf) find_metadata(mut handler OpenApiHandler) ! {
+	handler.request[TypedApiDto]()!
+	handler.response[openapi_left.Item]()!
+}
+
+$if openapi_extra ? {
+	@['/extra'; post; OpenApi('item_metadata')]
+	fn (app &HandlerMetadataLeaf) extra(mut ctx TypedApiContext) Result {
+		return ctx.text('extra')
+	}
+}
+
+fn test_handler_typed_metadata_follows_dispatcher_and_mounts() {
+	mut app := &HandlerMetadataApi{}
+	mut child := &HandlerMetadataLeaf{}
+	mut child2 := &HandlerMetadataLeaf{}
+	app.register_controller[HandlerMetadataLeaf, TypedApiContext]('/v1', mut child)!
+	app.register_controller[HandlerMetadataLeaf, TypedApiContext]('/renamed', mut child2)!
+	mut doc := new_openapi(success_field: 'data')!
+	doc.add_app[HandlerMetadataApi, TypedApiContext](app)!
+	raw := json2.decode[json2.Any](doc.json(false)!)!
+	for prefix in ['/v1', '/renamed'] {
+		post := api_at(raw, 'paths', prefix + '/items', 'post')
+		assert api_at(post, 'requestBody', 'content', 'application/json', 'schema', '$ref').str().ends_with('TypedApiDto')
+		assert api_at(post, 'responses', '201', 'content', 'application/json', 'schema', 'properties', 'data', '$ref').str().ends_with('openapi_left.Item')
+		assert api_at(post, 'responses', '422', 'content', 'application/json', 'schema', '$ref').str().ends_with('TypedApiNode')
+		assert api_at(post, 'responses', '409', 'description').str() == 'Conflict'
+		assert '200' !in api_at(post, 'responses').as_map()
+		for verb in ['get', 'delete', 'head'] {
+			operation := api_at(raw, 'paths', prefix + '/find', verb)
+			assert 'requestBody' !in operation.as_map()
+			assert api_at(operation, 'parameters').as_array().any(api_at(it, 'name').str() == 'name')
+		}
+		$if openapi_extra ? {
+			assert prefix + '/extra' in api_at(raw, 'paths').as_map()
+		} $else {
+			assert prefix + '/extra' !in api_at(raw, 'paths').as_map()
+		}
+	}
+	for route in route_info[HandlerMetadataApi, TypedApiContext](app)! {
+		for method in route.methods {
+			assert method.str().to_lower() in api_at(raw, 'paths', openapi_path_of(route.path)).as_map()
+		}
+	}
+	assert api_at(raw, 'components', 'schemas').as_map().keys().filter(it.ends_with('openapi_left.Item')).len == 1
+	response := render_request[HandlerMetadataApi, TypedApiContext](mut app, http.Request{ url: '/v1/items', method: .post })!
+	assert response.res.body == 'created'
+	// Explicit registration after reflected metadata retains precedence.
+	doc.request[TypedApiNode]('/v1/items', .post)!
+	doc.request[HandlerMetadataQuery]('/v1/find', .get)!
+	doc.response[TypedApiDto]('/v1/items', .post, status: 201, envelope: '')!
+	doc.raw_response('/v1/items', .post, 422, {
+		'description': json2.Any('Custom failure')
+	})!
+	overridden := json2.decode[json2.Any](doc.json(false)!)!
+	post := api_at(overridden, 'paths', '/v1/items', 'post')
+	assert api_at(post, 'requestBody', 'content', 'application/json', 'schema', '$ref').str().ends_with('TypedApiNode')
+	assert api_at(post, 'responses', '201', 'content', 'application/json', 'schema', '$ref').str().ends_with('TypedApiDto')
+	assert api_at(post, 'responses', '422', 'description').str() == 'Custom failure'
+	query := api_at(overridden, 'paths', '/v1/find', 'get', 'parameters').as_array().filter(api_at(it, 'name').str() == 'name')
+	assert query.len == 1
+	assert api_at(query[0], 'schema', 'type').str() == 'integer'
+	assert api_at(query[0], 'required').bool()
+}
+
+struct MissingHandlerMetadata {}
+
+@['/missing'; post; OpenApi('missing')]
+fn (app &MissingHandlerMetadata) missing_handler(mut ctx TypedApiContext) Result {
+	return ctx.text('unused')
+}
+
+fn test_handler_metadata_rejects_unknown_or_invalid_callbacks() {
+	app := &MissingHandlerMetadata{}
+	mut doc := new_openapi()!
+	if _ := doc.add_app[MissingHandlerMetadata, TypedApiContext](app) {
+		assert false, 'an unknown metadata method must be rejected'
+	} else {
+		assert err.msg().contains('unknown OpenAPI metadata method `missing`')
+	}
+	if _, _, _ := parse_attrs('x', ['/x', 'post', "OpenApi: ''"]) {
+		assert false, 'an empty metadata method name must be rejected'
+	}
+	if _, _, _ := parse_attrs('x', ['/x', 'post', "OpenApi: 'first'", "OpenApi: 'second'"]) {
+		assert false, 'duplicate metadata methods must be rejected'
+	}
+}
+
+fn test_openapi_metadata_named_attribute_parsing() {
+	methods, path, host := parse_attrs('x', ['/x', 'post', 'veb.OpenApi',
+		"veb.OpenApi_handler: 'schema'"])!
+	assert methods == [http.Method.post]
+	assert path == '/x'
+	assert host == ''
+	if _, _, _ := parse_attrs('x', ['/x', 'post', 'OpenApi', "OpenApi_handler: ''"]) {
+		assert false, 'an empty named metadata method must be rejected'
+	}
+}
