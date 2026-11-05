@@ -81,8 +81,10 @@ fn (mut s GpuSurface) draw_path_fill(path Path, paint Paint) ! {
 		return error('gg.canvas: the tessellated curves and triangles renderer is not ported')
 	}
 	clipped := !clip.analytic.is_empty()
-	if clipped && convex {
-		return error('gg.canvas: analytic clips on convex path fills are not supported')
+	clip_uniforms := if clipped {
+		analytic_clip_uniforms(clip.analytic)
+	} else {
+		AnalyticClipUniforms{}
 	}
 	color := paint.color.premul()
 	depends_on_dst := clipped || !color.is_opaque()
@@ -108,6 +110,8 @@ fn (mut s GpuSurface) draw_path_fill(path Path, paint Paint) ! {
 			...matrix
 			color:      color
 			with_color: true
+			clipped:    clipped
+			clip:       clip_uniforms
 		}, order, 0, 0, draw_clip, u32(count))
 		s.draws[s.draws.len - 1].template_count = wedge_vertex_count(n4)
 	} else {
@@ -124,11 +128,7 @@ fn (mut s GpuSurface) draw_path_fill(path Path, paint Paint) ! {
 		s.record_step(.cover_fill, depends_on_dst, cover, PaintUniforms{
 			color:   color
 			clipped: clipped
-			clip:    if clipped {
-				analytic_clip_uniforms(clip.analytic)
-			} else {
-				AnalyticClipUniforms{}
-			}
+			clip:    clip_uniforms
 		}, order, 1, 0, draw_clip, 1)
 	}
 	s.bounds.record_draw(clip.draw_bounds, order.paint_order)

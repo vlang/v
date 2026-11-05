@@ -69,7 +69,9 @@ fn has_uniforms(step RenderStep) bool {
 // or the paint color with the analytic clip data.
 fn step_uniform_size(step RenderStep, clipped bool) int {
 	return match true {
+		step == .wedges_shaded && clipped { wedge_solid_uniform_size + clip_block_size }
 		step == .wedges_shaded { wedge_solid_uniform_size }
+		step == .tessellate_strokes && clipped { stroke_uniform_size + clip_block_size }
 		step == .tessellate_strokes { stroke_uniform_size }
 		is_wedge_step(step) || clipped { clip_uniform_size }
 		else { solid_uniform_size }
@@ -81,6 +83,14 @@ const wedges_solid_vert = $embed_file('shaders/tessellate_wedges_solid.vert.meta
 const wedges_solid_frag = $embed_file('shaders/tessellate_wedges_solid.frag.metal')
 const strokes_solid_vert = $embed_file('shaders/tessellate_strokes_solid.vert.metal')
 const strokes_solid_frag = $embed_file('shaders/tessellate_strokes_solid.frag.metal')
+// The shaded wedges and strokes with Graphite's analytic NonMSAAClip.
+const wedges_clip_vert = $embed_file('shaders/tessellate_wedges_solid_clip.vert.metal')
+const wedges_clip_frag = $embed_file('shaders/tessellate_wedges_solid_clip.frag.metal')
+const strokes_clip_vert = $embed_file('shaders/tessellate_strokes_solid_clip.vert.metal')
+const strokes_clip_frag = $embed_file('shaders/tessellate_strokes_solid_clip.frag.metal')
+// The analytic clip's rect, radiusPlusHalf (padded to 16 bytes) and
+// edgeSelect, which follow the paint color in clipped uniform blocks.
+const clip_block_size = 48
 
 // The shaded wedge uniforms: float4 color, then the float4x4 localToDevice.
 const wedge_solid_uniform_size = 80
@@ -245,6 +255,8 @@ pub fn (mut ctx GpuContext) precompile() {
 		for blend in [true, false] {
 			ctx.pipeline(step, 4, blend, false)
 		}
+		// Analytic clips need coverage blending.
+		ctx.pipeline(step, 4, true, true)
 	}
 	ctx.load_msaa_pipeline()
 }
@@ -278,7 +290,9 @@ fn (mut ctx GpuContext) shader(step RenderStep, clipped bool) gfx.Shader {
 	vert, frag := match true {
 		step == .cover_inverse_clip { cover_depth_vert, cover_depth_vert }
 		!writes_color(step) { convex_wedges_vert, convex_wedges_vert }
+		step == .wedges_shaded && clipped { wedges_clip_vert, wedges_clip_frag }
 		step == .wedges_shaded { wedges_solid_vert, wedges_solid_frag }
+		step == .tessellate_strokes && clipped { strokes_clip_vert, strokes_clip_frag }
 		step == .tessellate_strokes { strokes_solid_vert, strokes_solid_frag }
 		step == .analytic_rrect && clipped { analytic_rrect_clip_vert, analytic_rrect_clip_frag }
 		step == .analytic_rrect { analytic_rrect_vert, analytic_rrect_frag }

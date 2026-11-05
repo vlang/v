@@ -244,3 +244,39 @@ fn test_rrect_transform_rotates_corners_by_90_degrees_like_sk_rrect() {
 		m: [f32(0.8660254), -0.5, 0, 0.5, 0.8660254, 0, 0, 0, 1]!
 	})) == none
 }
+
+fn test_clipped_wedge_and_stroke_uniforms_put_the_clip_after_the_color() {
+	clip := analytic_clip_uniforms(AnalyticClip{
+		bounds:     Rect.ltrb(2, 3, 20, 30)
+		radius:     4
+		edge_flags: analytic_left_edge | analytic_bottom_edge
+	})
+	color := Color4f{0.25, 0.5, 0.75, 1}
+	clip_block := [f32(1.5), 2.5, 20.5, 30.5, 4.5, f32(1) / f32(4.5), 0, 0, 1, 0, 0, 1]
+	// CombinedUniformData of the clipped convex wedges: color, the clip, then
+	// the float4x4 localToDevice.
+	wedges := serialize_uniforms([PaintUniforms{
+		...local_to_device_uniforms(Matrix.identity())
+		color:      color
+		with_color: true
+		clipped:    true
+		clip:       clip
+	}])
+	assert wedges.len * 4 == step_uniform_size(.wedges_shaded, true)
+	assert wedges[..4] == [f32(0.25), 0.5, 0.75, 1]
+	assert wedges[4..16] == clip_block
+	assert wedges[16] == 1 && wedges[21] == 1 && wedges[31] == 1
+	// The clipped strokes: color, the clip, then the 2x2, translation and
+	// max scale.
+	t := Transform.new(Matrix{
+		m: [f32(2), 0, 5, 0, 3, 7, 0, 0, 1]!
+	})
+	strokes := serialize_uniforms([stroke_uniforms(color, t, AnalyticClip{
+		bounds:     Rect.ltrb(2, 3, 20, 30)
+		radius:     4
+		edge_flags: analytic_left_edge | analytic_bottom_edge
+	})])
+	assert strokes.len * 4 == step_uniform_size(.tessellate_strokes, true)
+	assert strokes[4..16] == clip_block
+	assert strokes[16..] == [f32(2), 0, 0, 3, 5, 7, 3, 0]
+}

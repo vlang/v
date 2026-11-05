@@ -41,7 +41,8 @@ cubics.
 Strokes of paths, and of rrects the analytic renderer cannot stroke
 (elliptical corners), use Graphite's tessellated stroke renderer: deferred
 first patches joined to closing patches, miter, round and bevel joins, butt,
-round and square caps, cusps, hairlines and cubic convex-180 chops.
+round and square caps, cusps, hairlines and cubic convex-180 chops. Convex
+path fills and strokes apply the analytic clip in their fragment shaders.
 Draws that need other renderers (inverse fills, curves with more than 32
 parametric segments, path clips, ...) return an error instead of rendering
 differently.

@@ -1254,13 +1254,15 @@ fn (d DrawShape) to_clip(analytic AnalyticClip, elements []int) ClipResult {
 // same_paint_uniforms compares uniform blocks with float equality, like the
 // byte-keyed cache for these values (a NaN block is never shared).
 fn same_paint_uniforms(a PaintUniforms, b PaintUniforms) bool {
-	if a.local_to_device || b.local_to_device {
-		return a.local_to_device == b.local_to_device && a.with_color == b.with_color
-			&& a.matrix == b.matrix && (!a.with_color || (a.color.r == b.color.r
-			&& a.color.g == b.color.g && a.color.b == b.color.b && a.color.a == b.color.a))
+	if a.local_to_device != b.local_to_device || a.with_color != b.with_color
+		|| a.stroke_xform != b.stroke_xform || a.clipped != b.clipped {
+		return false
 	}
-	if a.clipped != b.clipped || a.color.r != b.color.r || a.color.g != b.color.g
-		|| a.color.b != b.color.b || a.color.a != b.color.a {
+	if (!a.local_to_device || a.with_color) && (a.color.r != b.color.r
+		|| a.color.g != b.color.g || a.color.b != b.color.b || a.color.a != b.color.a) {
+		return false
+	}
+	if a.local_to_device && a.matrix != b.matrix {
 		return false
 	}
 	if !a.clipped {

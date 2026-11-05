@@ -1079,28 +1079,12 @@ pub fn (mut s GpuSurface) flush() ! {
 fn serialize_uniforms(blocks []PaintUniforms) []f32 {
 	mut out := []f32{cap: blocks.len * clip_uniform_size / 4}
 	for u in blocks {
-		if u.local_to_device {
-			if u.with_color {
-				out << u.color.r
-				out << u.color.g
-				out << u.color.b
-				out << u.color.a
-			}
-			if u.stroke_xform {
-				for v in u.matrix[..8] {
-					out << v
-				}
-				continue
-			}
-			for v in u.matrix {
-				out << v
-			}
-			continue
+		if !u.local_to_device || u.with_color {
+			out << u.color.r
+			out << u.color.g
+			out << u.color.b
+			out << u.color.a
 		}
-		out << u.color.r
-		out << u.color.g
-		out << u.color.b
-		out << u.color.a
 		if u.clipped {
 			// CombinedUniformData: rect_5, radiusPlusHalf_5 (padded), edgeSelect_5.
 			for v in u.clip.rect {
@@ -1111,6 +1095,12 @@ fn serialize_uniforms(blocks []PaintUniforms) []f32 {
 			out << 0
 			out << 0
 			for v in u.clip.edge_select {
+				out << v
+			}
+		}
+		if u.local_to_device {
+			// Strokes use the 2x2, translation and max scale (padded).
+			for v in u.matrix[..if u.stroke_xform { 8 } else { 16 }] {
 				out << v
 			}
 		}

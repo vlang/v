@@ -476,10 +476,16 @@ fn chop_cubic_at2(p [4]Point, t0 f32, t1 f32) [10]Point {
 // stroke_uniforms mirrors TessellateStrokesRenderStep::writeUniformsAndTextures()
 // after the paint color: the 2x2 (column-major), translation and the
 // transform's largest scale factor.
-fn stroke_uniforms(color Color4f, t Transform) PaintUniforms {
+fn stroke_uniforms(color Color4f, t Transform, clip AnalyticClip) PaintUniforms {
 	v := t.matrix.m
 	return PaintUniforms{
 		color:           color
+		clipped:         !clip.is_empty()
+		clip:            if clip.is_empty() {
+			AnalyticClipUniforms{}
+		} else {
+			analytic_clip_uniforms(clip)
+		}
 		local_to_device: true
 		with_color:      true
 		stroke_xform:    true
@@ -502,11 +508,8 @@ fn (mut s GpuSurface) draw_stroke(path Path, shape ClipShape, paint Paint) ! {
 	if clip.clipped_out {
 		return
 	}
-	if !clip.analytic.is_empty() {
-		return error('gg.canvas: analytic clips on tessellated strokes are not supported')
-	}
 	color := paint.color.premul()
-	depends_on_dst := !color.is_opaque()
+	depends_on_dst := !clip.analytic.is_empty() || !color.is_opaque()
 	s.depth_index++
 	mut order := DrawOrder{
 		depth: s.depth_index
@@ -524,7 +527,7 @@ fn (mut s GpuSurface) draw_stroke(path Path, shape ClipShape, paint Paint) ! {
 	mut w := new_stroke_writer(s.transform.matrix, s.transform.max_scale, paint.stroke_width * f32(0.5),
 		join_type, depth_as_float(order.depth))
 	write_stroke_patches(mut w, path, paint.cap)!
-	s.record_step(.tessellate_strokes, depends_on_dst, w.out, stroke_uniforms(color, s.transform),
+	s.record_step(.tessellate_strokes, depends_on_dst, w.out, stroke_uniforms(color, s.transform, clip.analytic),
 		order, 0, 0, DrawClip{
 			scissor:      clip.scissor
 			draw_bounds:  clip.draw_bounds
