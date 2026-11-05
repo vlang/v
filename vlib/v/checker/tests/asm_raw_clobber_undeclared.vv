@@ -114,6 +114,190 @@ fn raw_suffixed_memory_mul_writes_rdx_undeclared(x u64) u64 {
 	return acc
 }
 
+fn raw_flags_clobber_is_not_a_register(x u64) u64 {
+	mut value := x
+	asm amd64 raw {
+		"movq %[value], %%rcx\n\t"
+		"addq $1, %[value]"
+		; [value] "+r" (value)
+		;
+		; flags
+	}
+	return value
+}
+
+fn raw_inert_directive_0_keeps_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".align 4\n\t"
+		"xorq %%r8, %%r8\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		; cc
+	}
+	return value
+}
+
+fn raw_inert_directive_1_keeps_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".p2align 4\n\t"
+		"xorq %%r9, %%r9\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		; cc
+	}
+	return value
+}
+
+fn raw_inert_directive_2_keeps_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".balign 4\n\t"
+		"xorq %%r10, %%r10\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		; cc
+	}
+	return value
+}
+
+fn raw_inert_directive_3_keeps_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".globl sym\n\t"
+		"xorq %%r11, %%r11\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		; cc
+	}
+	return value
+}
+
+fn raw_inert_directive_4_keeps_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".global sym\n\t"
+		"xorq %%r12, %%r12\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		; cc
+	}
+	return value
+}
+
+fn raw_inert_directive_5_keeps_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".weak sym\n\t"
+		"xorq %%r13, %%r13\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		; cc
+	}
+	return value
+}
+
+fn raw_inert_directive_6_keeps_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".hidden sym\n\t"
+		"xorq %%r14, %%r14\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		; cc
+	}
+	return value
+}
+
+fn raw_inert_directive_7_keeps_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".local sym\n\t"
+		"xorq %%r15, %%r15\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		; cc
+	}
+	return value
+}
+
+fn raw_inert_directive_8_keeps_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".type sym, @function\n\t"
+		"xorq %%r8, %%r8\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		; cc
+	}
+	return value
+}
+
+fn raw_inert_directive_9_keeps_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".size sym, 4\n\t"
+		"xorq %%r9, %%r9\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		; cc
+	}
+	return value
+}
+
+fn raw_inert_directive_19_keeps_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".cfi_adjust_cfa_offset 8\n\t"
+		"xorq %%r11, %%r11\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		; cc
+	}
+	return value
+}
+
+fn raw_inert_directive_20_keeps_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".P2ALIGN 4\n\t"
+		"xorq %%r12, %%r12\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		; cc
+	}
+	return value
+}
+
+// Words, a prefix, and a label on its own line are still plain, and a fixed input does not
+// declare any other register.
+fn raw_label_and_prefix_keep_the_check(x u64) u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		"1:\n\t"
+		"lock addq $1, %%r15\n\t"
+		"rex.w xorq %%r14, %%r14\n\t"
+		"movq $42, %[value]"
+		; [value] "=&d" (value)
+		; [x] "c" (x)
+		; cc
+	}
+	return value
+}
+
 fn main() {
 	println(raw_writes_rax_undeclared(1))
 	println(raw_sets_flags_without_cc(1))
@@ -125,4 +309,18 @@ fn main() {
 	println(raw_unsuffixed_mul_writes_rdx_undeclared(1))
 	println(raw_positional_wide_mul_writes_rdx_undeclared(1))
 	println(raw_suffixed_memory_mul_writes_rdx_undeclared(1))
+	println(raw_flags_clobber_is_not_a_register(1))
+	println(raw_inert_directive_0_keeps_the_check())
+	println(raw_inert_directive_1_keeps_the_check())
+	println(raw_inert_directive_2_keeps_the_check())
+	println(raw_inert_directive_3_keeps_the_check())
+	println(raw_inert_directive_4_keeps_the_check())
+	println(raw_inert_directive_5_keeps_the_check())
+	println(raw_inert_directive_6_keeps_the_check())
+	println(raw_inert_directive_7_keeps_the_check())
+	println(raw_inert_directive_8_keeps_the_check())
+	println(raw_inert_directive_9_keeps_the_check())
+	println(raw_inert_directive_19_keeps_the_check())
+	println(raw_inert_directive_20_keeps_the_check())
+	println(raw_label_and_prefix_keep_the_check(1))
 }

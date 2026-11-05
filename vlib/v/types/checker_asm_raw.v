@@ -792,6 +792,67 @@ fn (tc &TypeChecker) inline_asm_att_operand_width(operand InlineAsmRawOperand, t
 	}
 }
 
+// inline_asm_ident_is_const reports whether `name`, where the block is checked, names a
+// constant rather than a local variable, a parameter or a global. A local of the same name
+// shadows the constant, as the checker resolves identifiers.
+fn (tc &TypeChecker) inline_asm_ident_is_const(name string) bool {
+	if tc.cur_scope != unsafe { nil } {
+		if owner := tc.cur_scope.lookup_owner(name) {
+			if !owner.belongs_to_scope(tc.file_scope) {
+				return false
+			}
+		}
+	}
+	if _ := tc.const_key_for_name(name) {
+		return true
+	}
+	return false
+}
+
+// inline_asm_raw_inert_directives are the GNU assembler directives that only align code or
+// describe symbols. A data directive is left out: it can encode an instruction, or absorb the
+// next line as the immediate of one.
+const inline_asm_raw_inert_directives = ['.align', '.p2align', '.balign', '.globl', '.global',
+	'.weak', '.hidden', '.local', '.type', '.size']!
+
+// inline_asm_raw_statement_is_plain reports whether a statement is spelled as instruction words
+// only, which rules out a label form the tokenizer does not recognise, a `{att|intel}` dialect
+// alternative or `{vex}` prefix, and a symbol assignment such as `test = 5`.
+fn inline_asm_raw_statement_is_plain(instruction InlineAsmRawInstruction) bool {
+	for c in instruction.mnemonic {
+		if !c.is_letter() && !c.is_digit() && c !in [` `, `.`] {
+			return false
+		}
+	}
+	return instruction.operands.len == 0 || !instruction.operands[0].text.starts_with('=')
+}
+
+// inline_asm_raw_template_is_linear reports whether a raw template shows only plain instructions
+// and inert directives, so the checks built on it read it as AT&T code at the asm site, in the
+// order written. Any other directive can change that: a conditional, a macro or a repeat decides
+// what is assembled, a section directive decides where it goes, and `.intel_syntax` decides how
+// it is read. So can a `//` comment, which the tokenizer does not mask, and a carriage return or
+// NUL, which the assembler treats as ending a statement or the template. The checker does not
+// model the assembler, so the checks say nothing about a template this does not accept. It sees
+// this template only: a macro or a section left open by another asm block is not visible.
+fn inline_asm_raw_template_is_linear(template &InlineAsmRawTemplate, instructions []InlineAsmRawInstruction) bool {
+	if template.text.contains('//') || template.text.contains_any('\r\0') {
+		return false
+	}
+	for instruction in instructions {
+		if instruction.is_directive {
+			directive := instruction.mnemonic.to_lower_ascii()
+			if directive !in inline_asm_raw_inert_directives
+				&& !directive.starts_with('.cfi_') {
+				return false
+			}
+		} else if !inline_asm_raw_statement_is_plain(instruction) {
+			return false
+		}
+	}
+	return true
+}
+
 // inline_asm_raw_att_operand_types maps the names of general-register operands in a raw
 // template to their V types. Operands with other constraints are left out.
 fn (mut tc TypeChecker) inline_asm_raw_att_operand_types(node flat.Node, block string, sections []InlineAsmRange) map[string]Type {
@@ -808,8 +869,11 @@ fn (mut tc TypeChecker) inline_asm_raw_att_operand_types(node flat.Node, block s
 				|| child_index >= int(node.children_count) {
 				continue
 			}
-			// Only a named variable has a V type to width-check, as for aliases.
-			if !inline_asm_is_ident(io.expr) {
+			// Only a named variable has a V type to width-check, as for aliases. The C type of a
+			// constant is not its V type: `const a = 5` and `const b = true` are C `int` literals,
+			// `const c = sizeof(u8)` is a `size_t`, and an enum constant is a C `int`. The
+			// assembler still rejects a real mismatch on one.
+			if !inline_asm_is_ident(io.expr) || tc.inline_asm_ident_is_const(io.expr) {
 				continue
 			}
 			typ := tc.resolve_type(tc.a.child(&node, child_index))
@@ -826,11 +890,15 @@ fn (mut tc TypeChecker) inline_asm_raw_att_operand_types(node flat.Node, block s
 
 // check_inline_asm_raw_att_widths reports a GNU x86 mnemonic whose size suffix disagrees with
 // the register width of an operand it acts on, such as `movl` applied to a 64-bit register.
-// Mnemonics without a suffix, and instructions with vector or other non-general operands,
-// are not checked. The GNU assembler rejects the same mismatches.
+// Mnemonics without a suffix, instructions with vector or other non-general operands, and
+// templates that inline_asm_raw_template_is_linear does not accept are not checked. The GNU
+// assembler rejects the same mismatches.
 fn (mut tc TypeChecker) check_inline_asm_raw_att_widths(id flat.NodeId, node flat.Node, block string, base int, section InlineAsmRange, arch string, types map[string]Type) {
 	template := inline_asm_raw_template(block, section, arch)
 	instructions := inline_asm_raw_parse_instructions(&template, [])
+	if !inline_asm_raw_template_is_linear(&template, instructions) {
+		return
+	}
 	arch_bits := inline_asm_att_arch_bits(arch)
 	for instruction in instructions {
 		if instruction.is_directive || instruction.operands.len == 0 {

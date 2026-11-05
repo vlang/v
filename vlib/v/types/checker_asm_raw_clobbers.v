@@ -59,11 +59,11 @@ fn inline_asm_raw_base_mnemonic(name string, families []string) string {
 	return ''
 }
 
-// inline_asm_raw_fixed_output_registers returns the general-purpose registers that output
-// operands bind through their single-register constraints, such as `"=a"` for `rax`, and
-// through `{rax}`. The `A` pair constraint depends on the operand width; see
+// inline_asm_raw_fixed_registers returns the general-purpose registers that the operands of a
+// section bind through their single-register constraints, such as `"=a"` for `rax`, and through
+// `{rax}`. The `A` pair constraint depends on the operand width; see
 // inline_asm_raw_pair_outputs.
-fn inline_asm_raw_fixed_output_registers(block string, section InlineAsmRange) []string {
+fn inline_asm_raw_fixed_registers(block string, section InlineAsmRange) []string {
 	mut registers := []string{}
 	for io in inline_asm_ios(block, section) {
 		if io.constraint.contains('@') {
@@ -157,17 +157,29 @@ fn inline_asm_raw_mul_writes_dx(name string, width int) bool {
 }
 
 // check_inline_asm_raw_clobbers reports a GNU x86 raw template that writes a general-purpose
-// register, or sets the flags, without declaring it. It only reports the cases it can prove:
-// a destination register operand, the registers that `mul`, `div`, `cqo` and `rep` write
-// implicitly, and a flag-setting instruction without `cc`. Other mnemonics are not reported.
+// register, or sets the flags, without declaring it. It reads the template in order, without
+// following jumps, and reports a destination register operand, the registers that `mul`, `div`,
+// `cqo` and `rep` write implicitly, and a flag-setting instruction without `cc` or `flags`. Other
+// mnemonics, and templates that inline_asm_raw_template_is_linear does not accept, are not
+// reported.
 fn (mut tc TypeChecker) check_inline_asm_raw_clobbers(id flat.NodeId, node flat.Node, block string, base int, sections []InlineAsmRange, arch string, types map[string]Type) {
 	template := inline_asm_raw_template(block, sections[0], arch)
 	instructions := inline_asm_raw_parse_instructions(&template, [])
+	if !inline_asm_raw_template_is_linear(&template, instructions) {
+		return
+	}
 	mut clobbers := map[string]bool{}
 	mut has_cc := false
 	if sections.len > 3 {
+		// A clobber may name a register by number, which is not resolved here.
+		for field in block[sections[3].start..sections[3].end].fields() {
+			if field[0].is_digit() {
+				return
+			}
+		}
 		for word in inline_asm_words(block, sections[3]) {
-			if word.text == 'cc' {
+			// GCC maps the `flags` clobber to the condition-code register, as it does `cc`.
+			if word.text in ['cc', 'flags'] {
 				has_cc = true
 			}
 			clobbers[inline_asm_raw_x86_family(word.text)] = true
@@ -180,7 +192,14 @@ fn (mut tc TypeChecker) check_inline_asm_raw_clobbers(id flat.NodeId, node flat.
 				has_cc = true
 			}
 		}
-		for register in inline_asm_raw_fixed_output_registers(block, sections[1]) {
+		for register in inline_asm_raw_fixed_registers(block, sections[1]) {
+			clobbers[register] = true
+		}
+	}
+	if sections.len > 2 {
+		// A template may change a fixed input if it restores it, and a clobber of that register
+		// does not compile, so a write to one is neither proven wrong nor fixable by the report.
+		for register in inline_asm_raw_fixed_registers(block, sections[2]) {
 			clobbers[register] = true
 		}
 	}

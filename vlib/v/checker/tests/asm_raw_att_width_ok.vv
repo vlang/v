@@ -1,6 +1,13 @@
 // These AT&T forms agree with the widths of their operands, so the width check reports nothing.
 // The undefined name afterwards stops the build before code generation, which would otherwise
 // reject the templates on other hosts.
+const answer = 5
+const wide_const = u64(7)
+const flag_const = true
+const size_const = sizeof(u8)
+const tag_const = Tag.second
+const sum_const = u16(1) + 2
+
 enum Tag as int {
 	first
 	second
@@ -67,7 +74,53 @@ fn narrow_widths(wide u64, count int) u32 {
 	return out + u32(total)
 }
 
+// The C type of a constant is not its V type, so a constant operand fixes no width: each of
+// these is a valid width for the operand that cgen emits. A typed constant is not checked
+// either; the assembler rejects a real mismatch on one.
+@[noinline]
+fn const_operands() u32 {
+	mut out := u32(0)
+	mut other := u32(0)
+	asm amd64 raw {
+		"movl %1, %0\n\t"
+		"movl %[c], %[other]\n\t"
+		"movq %[w], %%rax\n\t"
+		"movl %[flag], %%eax\n\t"
+		"movq %[size], %%rax\n\t"
+		"movl %[tag], %%eax\n\t"
+		"movl %[sum], %%eax"
+		; "=r" (out)
+		  [other] "=r" (other)
+		; "r" (answer)
+		  [c] "r" (answer)
+		  [w] "r" (wide_const)
+		  [flag] "r" (flag_const)
+		  [size] "r" (size_const)
+		  [tag] "r" (tag_const)
+		  [sum] "r" (sum_const)
+		; rax
+	}
+	return out + other
+}
+
+// A directive that can change how the template is read stops the width check too.
+@[noinline]
+fn nonlinear_template(wide u64) u32 {
+	mut out := u32(0)
+	asm amd64 raw {
+		".if 0\n\t"
+		"movl %[wide], %[out]\n\t"
+		".endif"
+		; [out] "=r" (out)
+		; [wide] "r" (wide)
+		;
+	}
+	return out
+}
+
 fn main() {
 	println(widths(1, 2, 3, 4, .first))
 	println(narrow_widths(5, 6))
+	println(const_operands())
+	println(nonlinear_template(7))
 }

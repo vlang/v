@@ -68,3 +68,108 @@ vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:108:4: error: `mulq` writes `
       |          ~~~~
   109 |         ; [acc] "+a" (acc)
   110 |           [addr] "r" (addr)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:120:19: error: `movq` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+  118 |     mut value := x
+  119 |     asm amd64 raw {
+  120 |         "movq %[value], %%rcx\n\t"
+      |                         ~~~~~
+  121 |         "addq $1, %[value]"
+  122 |         ; [value] "+r" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:133:15: error: `xorq` writes `r8` in this raw assembly template, but `r8` is neither an output operand nor in the clobber list; add `r8` to the clobbers
+  131 |     asm amd64 raw {
+  132 |         ".align 4\n\t"
+  133 |         "xorq %%r8, %%r8\n\t"
+      |                     ~~~~
+  134 |         "movq $42, %[value]"
+  135 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:146:15: error: `xorq` writes `r9` in this raw assembly template, but `r9` is neither an output operand nor in the clobber list; add `r9` to the clobbers
+  144 |     asm amd64 raw {
+  145 |         ".p2align 4\n\t"
+  146 |         "xorq %%r9, %%r9\n\t"
+      |                     ~~~~
+  147 |         "movq $42, %[value]"
+  148 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:159:16: error: `xorq` writes `r10` in this raw assembly template, but `r10` is neither an output operand nor in the clobber list; add `r10` to the clobbers
+  157 |     asm amd64 raw {
+  158 |         ".balign 4\n\t"
+  159 |         "xorq %%r10, %%r10\n\t"
+      |                      ~~~~~
+  160 |         "movq $42, %[value]"
+  161 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:172:16: error: `xorq` writes `r11` in this raw assembly template, but `r11` is neither an output operand nor in the clobber list; add `r11` to the clobbers
+  170 |     asm amd64 raw {
+  171 |         ".globl sym\n\t"
+  172 |         "xorq %%r11, %%r11\n\t"
+      |                      ~~~~~
+  173 |         "movq $42, %[value]"
+  174 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:185:16: error: `xorq` writes `r12` in this raw assembly template, but `r12` is neither an output operand nor in the clobber list; add `r12` to the clobbers
+  183 |     asm amd64 raw {
+  184 |         ".global sym\n\t"
+  185 |         "xorq %%r12, %%r12\n\t"
+      |                      ~~~~~
+  186 |         "movq $42, %[value]"
+  187 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:198:16: error: `xorq` writes `r13` in this raw assembly template, but `r13` is neither an output operand nor in the clobber list; add `r13` to the clobbers
+  196 |     asm amd64 raw {
+  197 |         ".weak sym\n\t"
+  198 |         "xorq %%r13, %%r13\n\t"
+      |                      ~~~~~
+  199 |         "movq $42, %[value]"
+  200 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:211:16: error: `xorq` writes `r14` in this raw assembly template, but `r14` is neither an output operand nor in the clobber list; add `r14` to the clobbers
+  209 |     asm amd64 raw {
+  210 |         ".hidden sym\n\t"
+  211 |         "xorq %%r14, %%r14\n\t"
+      |                      ~~~~~
+  212 |         "movq $42, %[value]"
+  213 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:224:16: error: `xorq` writes `r15` in this raw assembly template, but `r15` is neither an output operand nor in the clobber list; add `r15` to the clobbers
+  222 |     asm amd64 raw {
+  223 |         ".local sym\n\t"
+  224 |         "xorq %%r15, %%r15\n\t"
+      |                      ~~~~~
+  225 |         "movq $42, %[value]"
+  226 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:237:15: error: `xorq` writes `r8` in this raw assembly template, but `r8` is neither an output operand nor in the clobber list; add `r8` to the clobbers
+  235 |     asm amd64 raw {
+  236 |         ".type sym, @function\n\t"
+  237 |         "xorq %%r8, %%r8\n\t"
+      |                     ~~~~
+  238 |         "movq $42, %[value]"
+  239 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:250:15: error: `xorq` writes `r9` in this raw assembly template, but `r9` is neither an output operand nor in the clobber list; add `r9` to the clobbers
+  248 |     asm amd64 raw {
+  249 |         ".size sym, 4\n\t"
+  250 |         "xorq %%r9, %%r9\n\t"
+      |                     ~~~~
+  251 |         "movq $42, %[value]"
+  252 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:263:16: error: `xorq` writes `r11` in this raw assembly template, but `r11` is neither an output operand nor in the clobber list; add `r11` to the clobbers
+  261 |     asm amd64 raw {
+  262 |         ".cfi_adjust_cfa_offset 8\n\t"
+  263 |         "xorq %%r11, %%r11\n\t"
+      |                      ~~~~~
+  264 |         "movq $42, %[value]"
+  265 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:276:16: error: `xorq` writes `r12` in this raw assembly template, but `r12` is neither an output operand nor in the clobber list; add `r12` to the clobbers
+  274 |     asm amd64 raw {
+  275 |         ".P2ALIGN 4\n\t"
+  276 |         "xorq %%r12, %%r12\n\t"
+      |                      ~~~~~
+  277 |         "movq $42, %[value]"
+  278 |         ; [value] "=d" (value)
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:291:18: error: `lock addq` writes `r15` in this raw assembly template, but `r15` is neither an output operand nor in the clobber list; add `r15` to the clobbers
+  289 |     asm amd64 raw {
+  290 |         "1:\n\t"
+  291 |         "lock addq $1, %%r15\n\t"
+      |                        ~~~~~
+  292 |         "rex.w xorq %%r14, %%r14\n\t"
+  293 |         "movq $42, %[value]"
+vlib/v/checker/tests/asm_raw_clobber_undeclared.vv:292:22: error: `rex.w xorq` writes `r14` in this raw assembly template, but `r14` is neither an output operand nor in the clobber list; add `r14` to the clobbers
+  290 |         "1:\n\t"
+  291 |         "lock addq $1, %%r15\n\t"
+  292 |         "rex.w xorq %%r14, %%r14\n\t"
+      |                            ~~~~~
+  293 |         "movq $42, %[value]"
+  294 |         ; [value] "=&d" (value)

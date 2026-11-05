@@ -136,6 +136,355 @@ fn raw_literal_positional_operand_is_not_width_checked() u32 {
 	return out
 }
 
+fn raw_flags_clobber_declares_flags(x u64) u64 {
+	mut value := x
+	asm amd64 raw {
+		"addq $1, %[value]"
+		; [value] "+r" (value)
+		;
+		; flags
+	}
+	return value
+}
+
+// A directive that can change what is assembled, where, or how it is read stops the check for
+// the whole template, on either side of the directive.
+fn raw_intel_syntax_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".intel_syntax prefix\n\t"
+		"mov %%rax, %%rbx\n\t"
+		"xorq %%rcx, %%rcx\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		;
+	}
+	return value
+}
+
+fn raw_if_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".if 0\n\t"
+		"xorq %%rax, %%rax\n\t"
+		"xorq %%rcx, %%rcx\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		;
+	}
+	return value
+}
+
+fn raw_uppercase_if_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".IF 0\n\t"
+		"xorq %%rax, %%rax\n\t"
+		"xorq %%rcx, %%rcx\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		;
+	}
+	return value
+}
+
+fn raw_ifdef_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".ifdef NEVER\n\t"
+		"xorq %%rax, %%rax\n\t"
+		"xorq %%rcx, %%rcx\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		;
+	}
+	return value
+}
+
+fn raw_macro_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".macro zero\n\t"
+		"xorq %%rax, %%rax\n\t"
+		"xorq %%rcx, %%rcx\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		;
+	}
+	return value
+}
+
+fn raw_rept_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".rept 2\n\t"
+		"xorq %%rax, %%rax\n\t"
+		"xorq %%rcx, %%rcx\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		;
+	}
+	return value
+}
+
+fn raw_pushsection_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".pushsection .text.cold\n\t"
+		"xorq %%rax, %%rax\n\t"
+		"xorq %%rcx, %%rcx\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		;
+	}
+	return value
+}
+
+fn raw_section_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".section .data\n\t"
+		"xorq %%rax, %%rax\n\t"
+		"xorq %%rcx, %%rcx\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		;
+	}
+	return value
+}
+
+fn raw_text_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".text\n\t"
+		"xorq %%rax, %%rax\n\t"
+		"xorq %%rcx, %%rcx\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		;
+	}
+	return value
+}
+
+fn raw_data_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".data\n\t"
+		"xorq %%rax, %%rax\n\t"
+		"xorq %%rcx, %%rcx\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		;
+	}
+	return value
+}
+
+fn raw_symbol_assignment_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".data = 5\n\t"
+		"xorq %%rax, %%rax\n\t"
+		"xorq %%rcx, %%rcx\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		;
+	}
+	return value
+}
+
+fn raw_code32_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".code32\n\t"
+		"xorq %%rax, %%rax\n\t"
+		"xorq %%rcx, %%rcx\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		;
+	}
+	return value
+}
+
+fn raw_directive_after_the_write_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		"xorq %%rcx, %%rcx\n\t"
+		".previous\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		;
+	}
+	return value
+}
+
+// A `@[_naked]` body is the whole function, so there is nothing around it to declare writes to.
+@[_naked]
+fn raw_naked_body_declares_nothing() {
+	asm amd64 raw {
+		"movl $42, %%eax\n\t"
+		"xorl %%edx, %%edx\n\t"
+		"ret"
+	}
+}
+
+// These spellings can hide a directive or text that is not assembled, so they stop the check.
+fn raw_byte_absorbs_next_line_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		".byte 0x3d\n\t"
+		"xorl %%ebx, %%ebx\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		;
+	}
+	return value
+}
+
+fn raw_dialect_alternative_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		"{.pushsection .data|x}\n\t"
+		"addq $1, %%rax\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		;
+	}
+	return value
+}
+
+fn raw_vex_prefix_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		"{} .pushsection .data\n\t"
+		"addq $1, %%rax\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		;
+	}
+	return value
+}
+
+fn raw_unknown_label_form_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		"x@y: .pushsection .data\n\t"
+		"addq $1, %%rax\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		;
+	}
+	return value
+}
+
+fn raw_symbol_assignment_mnemonic_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		"test = 5\n\t"
+		"addq $1, %%rax\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		;
+	}
+	return value
+}
+
+fn raw_assignment_without_blank_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		"test=5\n\t"
+		"addq $1, %%rax\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		;
+	}
+	return value
+}
+
+fn raw_slash_comment_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		"nop // old; addq $1, %%rax\n\t"
+		"addq $1, %%rax\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		;
+	}
+	return value
+}
+
+fn raw_carriage_return_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		"nop\r.pushsection .data\n\t"
+		"addq $1, %%rax\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		;
+	}
+	return value
+}
+
+fn raw_nul_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		"nop \0\n\t"
+		"addq $1, %%rax\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		;
+	}
+	return value
+}
+
+// A clobber given by number is not resolved, so the check says nothing about this block.
+fn raw_numeric_clobber_stops_the_check() u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		"movq $1, %%rax\n\t"
+		"movq $42, %[value]"
+		; [value] "=d" (value)
+		;
+		; 0
+	}
+	return value
+}
+
+// A fixed input may be changed and restored, and a clobber of it does not compile.
+fn raw_fixed_input_may_be_restored(x u64) u64 {
+	mut value := u64(0)
+	asm amd64 raw {
+		"shlq $3, %%rcx\n\t"
+		"leaq (%%rcx), %[value]\n\t"
+		"shrq $3, %%rcx"
+		; [value] "=&r" (value)
+		; [x] "c" (x)
+		; cc
+	}
+	return value
+}
+
 fn main() {
 	println(raw_writes_declared(1))
 	println(raw_output_binds_rax(2))
@@ -148,5 +497,31 @@ fn main() {
 	println(C.raw_answer_declared())
 	println(raw_positional_byte_mul_writes_ax_only(7, 5))
 	println(raw_literal_positional_operand_is_not_width_checked())
+	println(raw_flags_clobber_declares_flags(1))
+	println(raw_intel_syntax_stops_the_check())
+	println(raw_if_stops_the_check())
+	println(raw_uppercase_if_stops_the_check())
+	println(raw_ifdef_stops_the_check())
+	println(raw_macro_stops_the_check())
+	println(raw_rept_stops_the_check())
+	println(raw_pushsection_stops_the_check())
+	println(raw_section_stops_the_check())
+	println(raw_text_stops_the_check())
+	println(raw_data_stops_the_check())
+	println(raw_symbol_assignment_stops_the_check())
+	println(raw_code32_stops_the_check())
+	println(raw_directive_after_the_write_stops_the_check())
+	raw_naked_body_declares_nothing()
+	println(raw_byte_absorbs_next_line_stops_the_check())
+	println(raw_dialect_alternative_stops_the_check())
+	println(raw_vex_prefix_stops_the_check())
+	println(raw_unknown_label_form_stops_the_check())
+	println(raw_symbol_assignment_mnemonic_stops_the_check())
+	println(raw_assignment_without_blank_stops_the_check())
+	println(raw_slash_comment_stops_the_check())
+	println(raw_carriage_return_stops_the_check())
+	println(raw_nul_stops_the_check())
+	println(raw_numeric_clobber_stops_the_check())
+	println(raw_fixed_input_may_be_restored(1))
 	println(undefined_total)
 }

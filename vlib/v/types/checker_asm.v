@@ -121,8 +121,10 @@ fn (mut tc TypeChecker) check_inline_asm_block(id flat.NodeId, node flat.Node, s
 		&& header.arch in inline_asm_raw_x86_arches {
 		types := tc.inline_asm_raw_att_operand_types(node, block, sections)
 		tc.check_inline_asm_raw_att_widths(id, node, block, start, sections[0], header.arch, types)
-		// File-scope templates are emitted as basic asm, which takes no operands or clobbers.
-		if tc.fn_context.node_id >= 0 {
+		// File-scope templates are emitted as basic asm, which takes no operands or clobbers, and
+		// a `@[_naked]` body is the whole function, so no compiler code around it needs them.
+		if tc.fn_context.node_id >= 0
+			&& !tc.declaration_has_attribute(flat.NodeId(tc.fn_context.node_id), '_naked') {
 			tc.check_inline_asm_raw_clobbers(id, node, block, start, sections, header.arch, types)
 		}
 	}
