@@ -732,6 +732,7 @@ voidptr // this one is mostly used for [C interoperability](#v-and-c)
 > `int` is a platform-width signed integer: 64 bits on 64-bit targets and 32 bits on 32-bit
 > targets. Use `i32` or `i64` when you need a fixed width.
 > Integer literal casts to `int` are checked against the target platform's width.
+> Native ARM64 builds use the same platform width for `int`, `min_int`, and `max_int`.
 > `uint` has the same width and is unsigned.
 
 `isize` and `usize` are deprecated. Replace `isize` with `int` and `usize` with `uint`.

@@ -2062,7 +2062,13 @@ fn (mut g Gen) load_val(val_id int, reg int) int {
 			return reg
 		}
 		.func_ref {
-			g.emit_global_addr(reg, val.name)
+			name := if val.index >= 0 && val.index < g.m.funcs.len
+				&& g.m.funcs[val.index].is_c_extern {
+				val.name.trim_string_left('C.')
+			} else {
+				val.name
+			}
+			g.emit_global_addr(reg, name)
 			return reg
 		}
 		.instruction {
