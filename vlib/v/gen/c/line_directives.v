@@ -122,7 +122,7 @@ fn (mut g FlatGen) gen_race_string_read(id flat.NodeId) bool {
 
 // Calls, map lookups, and overloaded indexes may produce C temporaries. Only take
 // the address of storage that the normal expression path already reads as an lvalue.
-fn (g &FlatGen) race_string_read_is_lvalue(id flat.NodeId) bool {
+fn (mut g FlatGen) race_string_read_is_lvalue(id flat.NodeId) bool {
 	node := g.a.nodes[int(id)]
 	return match node.kind {
 		.ident { true }
@@ -135,8 +135,23 @@ fn (g &FlatGen) race_string_read_is_lvalue(id flat.NodeId) bool {
 				return false
 			}
 			base_id := g.a.child(&node, 0)
-			base_type := concrete_receiver_type(g.usable_expr_type(base_id))
-			(base_type is types.Array || base_type is types.ArrayFixed)
+			mut base_type := *g.usable_expr_type(base_id)
+			if storage_type := g.const_storage_type_from_node(g.a.nodes[int(base_id)]) {
+				base_type = storage_type
+			}
+			// Match both index-call paths before treating an array alias as storage.
+			if _ := g.tc.index_overload_call_info(base_type, false) {
+				return false
+			}
+			if node.children_count == 2 {
+				if info := g.tc.index_operator_call_info(g.usable_expr_type(base_id), '[]') {
+					if info.params.len >= 2 {
+						return false
+					}
+				}
+			}
+			concrete_type := concrete_receiver_type(base_type)
+			(concrete_type is types.Array || concrete_type is types.ArrayFixed)
 				&& g.race_string_read_is_lvalue(base_id)
 		}
 		else { false }

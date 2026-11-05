@@ -28,6 +28,18 @@ fn next_index(mut calls Counter) int { calls.value++; return 0 }
 fn read_indexed(values []string, mut calls Counter) string {
 	return values[next_index(mut calls)] + "!"
 }
+type LabelList = []string
+type FixedLabels = [1]string
+type PlainLabels = []string
+fn (values LabelList) [] (index int) string { return "overloaded" }
+fn (values FixedLabels) [] (index int) string { return "fixed" }
+fn read_overloaded(values LabelList, mut calls Counter) string {
+	return values[next_index(mut calls)] + "!"
+}
+fn read_fixed_overloaded(values FixedLabels, mut calls Counter) string {
+	return values[next_index(mut calls)] + "!"
+}
+fn read_alias(values PlainLabels) string { return values[0] + "!" }
 fn returned_string() string { return "hello" }
 fn read_temporary() string { return returned_string() + "!" }
 fn returned_cell() Cell { return Cell{value: "hello"} }
@@ -50,6 +62,13 @@ fn main() {
 	mut calls := Counter{}
 	assert read_indexed(["hello"], mut calls) == "hello!"
 	assert calls.value == 1
+	mut overloaded_calls := Counter{}
+	assert read_overloaded(LabelList(["ignored"]), mut overloaded_calls) == "overloaded!"
+	assert overloaded_calls.value == 1
+	mut fixed_calls := Counter{}
+	assert read_fixed_overloaded(FixedLabels(["ignored"]!), mut fixed_calls) == "fixed!"
+	assert fixed_calls.value == 1
+	assert read_alias(PlainLabels(["hello"])) == "hello!"
 	assert read_temporary() == "hello!"
 	assert read_temporary_selector() == "hello!"
 	assert read_map({"key": "hello"}) == "hello!"
@@ -76,10 +95,10 @@ fn main() {
 		generated := cmdexec.run(@VEXE, [...flags, source])
 		assert generated.exit_code == 0, generated.output
 		output := os.read_file(c_file)!
-		for name in ['read_concat', 'read_compare', 'read_slice', 'read_indexed'] {
+		for name in ['read_concat', 'read_compare', 'read_slice', 'read_indexed', 'read_alias'] {
 			body := race_string_function_body(output, name)
 			assert body.contains('__tsan_read_range((void*)') == race, '${name}: ${body}'
-			if race && name != 'read_indexed' {
+			if race && name in ['read_concat', 'read_compare', 'read_slice'] {
 				assert body.replace('\t', '').contains('&(cell->value)'), body
 			}
 		}
@@ -87,6 +106,11 @@ fn main() {
 		assert indexed.count('next_index(') == 1, indexed
 		indexed_map := race_string_function_body(output, 'read_indexed_map')
 		assert indexed_map.count('next_key(') == 1, indexed_map
+		for name in ['read_overloaded', 'read_fixed_overloaded'] {
+			body := race_string_function_body(output, name)
+			assert !body.contains('__tsan_read_range((void*)'), '${name}: ${body}'
+			assert body.count('next_index(') == 1, body
+		}
 		for name in ['read_temporary', 'read_temporary_selector', 'forward_mut'] {
 			body := race_string_function_body(output, name)
 			assert !body.contains('__tsan_read_range((void*)'), '${name}: ${body}'
