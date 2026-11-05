@@ -7,13 +7,15 @@ const vlib_dir = os.dir(v3_dir)
 const v3_src = os.join_path(v3_dir, 'v.v')
 
 fn test_array_filter_uses_specialized_generic_call_return_type() {
-	v3_bin := os.join_path(os.temp_dir(), 'v3_array_filter_specialized_generic_return_test')
+	exe_suffix := $if windows { '.exe' } $else { '' }
+	test_path := os.join_path(os.temp_dir(), 'v3_array_filter_specialized_generic_return_test')
+	v3_bin := '${test_path}${exe_suffix}'
 	build :=
 		os.exec([vexe, '-gc', 'none', '-path', '${vlib_dir}' + '|@vlib|@vmodules', '-o', v3_bin,
 			'${v3_src}'])
 	assert build.exit_code == 0, build.output
 
-	src_path := '${v3_bin}_program.v'
+	src_path := '${test_path}_program.v'
 	os.write_file(src_path, '
 import arrays { flat_map, flat_map_indexed, map_indexed }
 
@@ -49,7 +51,7 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	bin_path := '${v3_bin}.bin'
+	bin_path := '${test_path}_program${exe_suffix}'
 	compile := os.exec([v3_bin, src_path, '-b', 'c', '-o', bin_path])
 	assert compile.exit_code == 0, compile.output
 	run := os.exec([bin_path])
