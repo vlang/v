@@ -2093,7 +2093,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		}
 		if variadic_idx < 0 && param_idx < params.len {
 			arg_type := t.tc.resolve_type(arg_id)
-			if arg_type is types.MultiReturn && arg_type.types.len == params.len - param_idx {
+			if arg_type is types.MultiReturn && arg_type.types.len <= params.len - param_idx {
 				items := arg_type.types
 				multi_type_source_id := t.multi_return_type_name(items)
 
@@ -19515,7 +19515,7 @@ fn (mut t Transformer) transform_receiver_method_args_with_params(node flat.Node
 		}
 		if variadic_idx < 0 && param_idx < params.len {
 			arg_type := t.tc.resolve_type(arg_id)
-			if arg_type is types.MultiReturn && arg_type.types.len == params.len - param_idx {
+			if arg_type is types.MultiReturn && arg_type.types.len <= params.len - param_idx {
 				items := arg_type.types
 				multi_type_source_id_2 := t.multi_return_type_name(items)
 

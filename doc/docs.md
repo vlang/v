@@ -555,6 +555,23 @@ println(b) // 3
 c, _ := foo() // ignore values using `_`
 ```
 
+A call returning multiple values can supply consecutive parameters of a non-variadic
+function or method. It can appear before or after ordinary arguments, as long as the
+expanded values match the receiving parameters. The returning function is evaluated once.
+
+```v
+fn pair() (int, int) {
+	return 2, 3
+}
+
+fn digits(a int, b int, c int) int {
+	return a * 100 + b * 10 + c
+}
+
+assert digits(pair(), 4) == 234
+assert digits(1, pair()) == 123
+```
+
 ## Symbol visibility
 
 ```v
