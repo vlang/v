@@ -323,7 +323,10 @@ fn test_vup_requests_deferred_windows_cleanup_only_after_success() ! {
 			assert calls == '', calls
 		}
 	}
-	write_executable(os.join_path(bin_dir, 'make'), '#!/bin/sh\nexit 9\n')!
+	// TCC refresh uses gmake on the BSDs and Solaris, and make on other Unix hosts.
+	for make_name in ['make', 'gmake'] {
+		write_executable(os.join_path(bin_dir, make_name), '#!/bin/sh\nexit 9\n')!
+	}
 	failed := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v'),
 		'VUP_DEFER_CACHE_WIPE=1', tool])
 	assert failed.exit_code == 1, failed.output
