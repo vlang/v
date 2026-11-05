@@ -167,3 +167,38 @@ fn test_svg_arcs_match_sk_path_builder_bit_for_bit() {
 	b.arc_to_svg(3, 3, 0, false, .cw, 4, 4)
 	assert b.detach().verbs == [PathVerb.move, .line, .line]
 }
+
+fn test_add_rrect_follows_sk_path_raw_shapes() {
+	r := Point{5, 4}
+	rr := RRect.rect_radii(Rect.ltrb(0, 0, 40, 30), [r, r, r, r]!)
+	// SkPathBuilder::addRRect(rrect) starts clockwise at index 6 with a line.
+	mut b := PathBuilder{}
+	b.add_rrect(rr, .cw, 6)
+	cw := b.detach()
+	assert cw.verbs == [PathVerb.move, .line, .conic, .line, .conic, .line, .conic, .line, .conic,
+		.close]
+	assert cw.points == [Point{0, 26}, Point{0, 4}, Point{0, 0}, Point{5, 0}, Point{35, 0},
+		Point{40, 0}, Point{40, 4}, Point{40, 26}, Point{40, 30}, Point{35, 30}, Point{5, 30},
+		Point{0, 30}, Point{0, 26}]
+	assert cw.is_a == .rrect
+	// Counter-clockwise from index 7 (the default) also starts with a line.
+	b.add_rrect(rr, .ccw, 7)
+	ccw := b.detach()
+	assert ccw.points == [Point{0, 4}, Point{0, 26}, Point{0, 30}, Point{5, 30}, Point{35, 30},
+		Point{40, 30}, Point{40, 26}, Point{40, 4}, Point{40, 0}, Point{35, 0}, Point{5, 0},
+		Point{0, 0}, Point{0, 4}]
+	// Clockwise from an odd index starts with a conic and leaves the last line
+	// to the close.
+	b.add_rrect(rr, .cw, 7)
+	conic_first := b.detach()
+	assert conic_first.verbs == [PathVerb.move, .conic, .line, .conic, .line, .conic, .line, .conic,
+		.close]
+	assert conic_first.points.len == 12 && conic_first.points[1] == Point{0, 0}
+	// Rects and ovals become those contours, and a second contour makes the
+	// path general.
+	b.add_rrect(RRect.from_rect(Rect.ltrb(1, 2, 9, 7)), .cw, 6)
+	assert b.detach().points == [Point{1, 7}, Point{1, 2}, Point{9, 2}, Point{9, 7}]
+	b.add_rrect(rr, .cw, 6)
+	b.add_rrect(rr.inset(5, 5), .cw, 6)
+	assert b.detach().is_a == .general
+}

@@ -26,6 +26,10 @@ pub fn (mut s GpuSurface) draw_path(path Path, paint Paint) ! {
 		}
 		return
 	}
+	if path.is_a == .rrect {
+		// Device::drawPath() draws the rrect deduced from the contour.
+		return error('gg.canvas: rounded-rectangle paths are not supported')
+	}
 	if oval := path.is_oval() {
 		// Device::drawOval() draws the oval as a rounded rect.
 		s.draw_rrect_unchecked(RRect.oval(oval), paint)!

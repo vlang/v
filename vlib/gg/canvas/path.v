@@ -148,6 +148,31 @@ pub fn (mut b PathBuilder) add_oval(r Rect, dir PathDirection, start int) {
 	}
 }
 
+// add_rect mirrors SkPathBuilder::addRect(rect, dir, index); SkPathBuilder's
+// default start index is 0.
+pub fn (mut b PathBuilder) add_rect(r Rect, dir PathDirection, start int) {
+	b.add_raw(rect_path_dir(r, dir, start))
+}
+
+// add_rrect mirrors SkPathBuilder::addRRect(rrect, dir, index): rects and
+// ovals become those contours. SkPathBuilder's default start index is 6 for
+// clockwise and 7 for counter-clockwise contours.
+pub fn (mut b PathBuilder) add_rrect(rr RRect, dir PathDirection, start int) {
+	if rr.is_rect() || rr.is_empty() {
+		b.add_rect(rr.rect, dir, (start + 1) / 2)
+		return
+	}
+	if rr.is_oval() {
+		b.add_oval(rr.rect, dir, start / 2)
+		return
+	}
+	was_empty := b.verbs.len == 0 || (b.verbs.len == 1 && b.verbs[0] == .move)
+	b.add_raw(rrect_path_dir(rr, dir, start))
+	if was_empty {
+		b.is_a = .rrect
+	}
+}
+
 // add_raw mirrors SkPathBuilder::addRaw(): each verb is appended through the
 // builder, then a trailing move the iterator dropped is restored.
 fn (mut b PathBuilder) add_raw(raw Path) {
@@ -205,6 +230,75 @@ pub fn (mut b PathBuilder) detach() Path {
 }
 
 // oval_path_dir mirrors set_as_oval() in SkPathRawShapes.cpp.
+// rect_path_dir mirrors set_as_rect() in SkPathRawShapes.cpp.
+fn rect_path_dir(r Rect, dir PathDirection, start int) Path {
+	pts := rect_points(r)
+	advance := if dir == .cw { 1 } else { 3 }
+	mut i := start % 4
+	mut points := [pts[i]]
+	for _ in 0 .. 3 {
+		i = (i + advance) % 4
+		points << pts[i]
+	}
+	return Path{
+		verbs:  [PathVerb.move, .line, .line, .line, .close]
+		points: points
+	}
+}
+
+// rrect_path_dir mirrors set_as_rrect() in SkPathRawShapes.cpp: the contour
+// starts with a line at even clockwise or odd counter-clockwise indices and
+// with a conic otherwise, whose closing line is left to the close verb.
+fn rrect_path_dir(rr RRect, dir PathDirection, start int) Path {
+	b := rr.rect
+	ul := rr.radii[int(Corner.upper_left)]
+	ur := rr.radii[int(Corner.upper_right)]
+	lr := rr.radii[int(Corner.lower_right)]
+	ll := rr.radii[int(Corner.lower_left)]
+	l, t, r, bt := b.left(), b.top(), b.right(), b.bottom()
+	// SkPath_RRectPointIterator's points, in clockwise order.
+	rrect_pts := [Point{l + ul.x, t}, Point{r - ur.x, t}, Point{r, t + ur.y}, Point{r, bt - lr.y},
+		Point{r - lr.x, bt}, Point{l + ll.x, bt}, Point{l, bt - ll.y}, Point{l, t + ul.y}]!
+	rect := rect_points(b)
+	cw := dir == .cw
+	rrect_advance := if cw { 1 } else { 7 }
+	rect_advance := if cw { 1 } else { 3 }
+	mut ri := start % 8
+	mut qi := (start / 2 + if cw { 0 } else { 1 }) % 4
+	mut points := [rrect_pts[ri]]
+	weights := [sk_root2_over_2, sk_root2_over_2, sk_root2_over_2, sk_root2_over_2]
+	if ((start & 1) == 1) == cw {
+		for i in 0 .. 4 {
+			qi = (qi + rect_advance) % 4
+			points << rect[qi]
+			ri = (ri + rrect_advance) % 8
+			points << rrect_pts[ri]
+			if i < 3 {
+				ri = (ri + rrect_advance) % 8
+				points << rrect_pts[ri]
+			}
+		}
+		return Path{
+			verbs:   [PathVerb.move, .conic, .line, .conic, .line, .conic, .line, .conic, .close]
+			points:  points
+			weights: weights
+		}
+	}
+	for _ in 0 .. 4 {
+		ri = (ri + rrect_advance) % 8
+		points << rrect_pts[ri]
+		qi = (qi + rect_advance) % 4
+		points << rect[qi]
+		ri = (ri + rrect_advance) % 8
+		points << rrect_pts[ri]
+	}
+	return Path{
+		verbs:   [PathVerb.move, .line, .conic, .line, .conic, .line, .conic, .line, .conic, .close]
+		points:  points
+		weights: weights
+	}
+}
+
 fn oval_path_dir(r Rect, dir PathDirection, start int) Path {
 	cx := float_midpoint(r.left(), r.right())
 	cy := float_midpoint(r.top(), r.bottom())

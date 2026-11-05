@@ -150,6 +150,10 @@ pub fn (rr RRect) is_empty() bool {
 	return rr.typ == .empty
 }
 
+pub fn (rr RRect) is_oval() bool {
+	return rr.typ == .oval
+}
+
 pub fn (rr RRect) bounds() Rect {
 	return rr.rect
 }

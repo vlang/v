@@ -433,63 +433,16 @@ fn rect_points(r Rect) [4]Point {
 }
 
 fn rect_path(r Rect, start int) Path {
-	pts := rect_points(r)
-	mut points := []Point{cap: 4}
-	for i in 0 .. 4 {
-		points << pts[(start + i) % 4]
-	}
-	return Path{
-		verbs:  [PathVerb.move, .line, .line, .line, .close]
-		points: points
-	}
+	return rect_path_dir(r, .cw, start)
 }
 
 fn oval_path(r Rect, start int) Path {
-	cx := float_midpoint(r.left(), r.right())
-	cy := float_midpoint(r.top(), r.bottom())
-	oval := [Point{cx, r.top()}, Point{r.right(), cy}, Point{cx, r.bottom()}, Point{r.left(), cy}]!
-	rect := rect_points(r)
-	mut points := [oval[start % 4]]
-	for i in 1 .. 5 {
-		points << rect[(start + i) % 4]
-		points << oval[(start + i) % 4]
-	}
-	return Path{
-		verbs:   [PathVerb.move, .conic, .conic, .conic, .conic, .close]
-		points:  points
-		weights: [sk_root2_over_2, sk_root2_over_2, sk_root2_over_2, sk_root2_over_2]
-	}
+	return oval_path_dir(r, .cw, start)
 }
 
-// rrect_path mirrors set_as_rrect() for a clockwise contour starting at an
-// even index (a line first).
+// rrect_path mirrors set_as_rrect() for a clockwise contour.
 fn rrect_path(rr RRect, start int) Path {
-	b := rr.rect
-	ul := rr.radii[int(Corner.upper_left)]
-	ur := rr.radii[int(Corner.upper_right)]
-	lr := rr.radii[int(Corner.lower_right)]
-	ll := rr.radii[int(Corner.lower_left)]
-	l, t, r, bt := b.left(), b.top(), b.right(), b.bottom()
-	rrect_pts := [Point{l + ul.x, t}, Point{r - ur.x, t}, Point{r, t + ur.y}, Point{r, bt - lr.y},
-		Point{r - lr.x, bt}, Point{l + ll.x, bt}, Point{l, bt - ll.y}, Point{l, t + ul.y}]!
-	rect := rect_points(b)
-	rect_start := start / 2
-	mut points := [rrect_pts[start % 8]]
-	mut ri := start
-	mut qi := rect_start
-	for _ in 0 .. 4 {
-		ri++
-		points << rrect_pts[ri % 8]
-		qi++
-		points << rect[qi % 4]
-		ri++
-		points << rrect_pts[ri % 8]
-	}
-	return Path{
-		verbs:   [PathVerb.move, .line, .conic, .line, .conic, .line, .conic, .line, .conic, .close]
-		points:  points
-		weights: [sk_root2_over_2, sk_root2_over_2, sk_root2_over_2, sk_root2_over_2]
-	}
+	return rrect_path_dir(rr, .cw, start)
 }
 
 // Contour is a contour found by MidpointContourParser: its verbs, the index

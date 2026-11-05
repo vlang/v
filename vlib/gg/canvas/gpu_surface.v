@@ -305,7 +305,13 @@ fn (mut s GpuSurface) device_draw_drrect(outer RRect, inner RRect, paint Paint) 
 	o := outer.rect
 	i := inner.rect
 	if paint.style != .fill {
-		return error('gg.canvas: stroked double rounded rectangles need the path renderer')
+		// SkDevice::drawDRRect(): both contours in an even-odd path.
+		mut b := PathBuilder{}
+		b.add_rrect(outer, .cw, 6)
+		b.add_rrect(inner, .cw, 6)
+		b.set_fill_type(.even_odd)
+		s.draw_path(b.detach(), paint)!
+		return
 	}
 	// Device::drawDRRect(): equal insets on all sides may be a stroked rrect.
 	gap := [i.vals[0] - o.vals[0], i.vals[1] - o.vals[1], i.vals[2] - o.vals[2], i.vals[3] - o.vals[3]]!

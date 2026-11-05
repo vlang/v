@@ -25,14 +25,15 @@ Supported so far: filled, stroked and hairline rects, rounded rects and ovals
 (the analytic rrect and non-AA bounds renderers, including Graphite's inner
 fills), single-sampled and 4x MSAA surfaces, uploaded backdrops (loaded into
 MSAA passes with Graphite's LoadMSAAFromResolve draw), BGRA8 premultiplied
-readback, double rounded rects (`draw_drrect`), and clips: `save`/`restore`,
+readback, filled and stroked double rounded rects (`draw_drrect`), and clips: `save`/`restore`,
 intersect and difference `clip_rect` and `clip_rrect` under scales, flips,
 90-degree rotations and other affine transforms (a port of Graphite's
 ClipStack: element simplification, geometric intersection of draws with
 clips, scissors, the analytic clip shaders, and depth-only draws in a 4x MSAA
 pass for further elements: convex wedges for difference elements, winding
 stencil wedges with an inverse cover of the scissor for intersect elements).
-Filled paths (`Path`, built with `PathBuilder` like `SkPathBuilder`) are drawn
+Filled paths (`Path`, built with `PathBuilder` like `SkPathBuilder`, including
+its rect, oval and rrect contours) are drawn
 like Graphite's `drawPath`: rect, oval and nested-rect paths use those
 renderers, convex paths the shaded convex wedges and other paths the MSAA
 stencil-and-cover wedges (winding and even-odd), including Skia's path
