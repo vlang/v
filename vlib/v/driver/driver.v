@@ -2931,6 +2931,10 @@ const v3_parallel_cc_units_per_job = 4
 const v3_parallel_cc_monolithic_define = 'v3_parallel_cc_monolithic'
 const v3_parallel_cc_monolithic_exit_code = 125
 const v3_parallel_cc_monolithic_message = 'v3 parallel C source requires monolithic regeneration'
+// With this variable set, a program that cannot be split stops with this exit code
+// instead of regenerating one C unit, so a caller can choose its own fallback.
+const v3_parallel_cc_require_split_env = 'V3_PARALLEL_CC_REQUIRE_SPLIT'
+const v3_parallel_cc_split_refused_exit_code = 3
 const v3_parallel_cc_cache_format = 'v3-parallel-cc-cache-v1'
 
 struct V3ParallelCCompileTask {
@@ -3355,6 +3359,7 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 	header_path := os.join_path_single(build_dir, header_name)
 	header, header_is_safe, quoted_includes := v3_parallel_c_declaration_header(prefix, vroot)
 	trace := show_command || os.getenv('V3_PARALLEL_CC_TRACE') != ''
+		|| os.getenv(v3_parallel_cc_require_split_env) != ''
 	if !header_is_safe {
 		if trace {
 			eprintln('parallel C: the native directives own static storage; compiling one C unit')
@@ -16427,6 +16432,10 @@ pub fn run(args []string) {
 			if result.exit_code == v3_parallel_cc_monolithic_exit_code
 				&& result.output == v3_parallel_cc_monolithic_message {
 				cleanup_c_build_dir(cc_dir)
+				if os.getenv(v3_parallel_cc_require_split_env) != '' {
+					eprintln('error: -parallel-cc cannot split this program into C units (${v3_parallel_cc_require_split_env} is set; the reasons are listed above)')
+					exit(v3_parallel_cc_split_refused_exit_code)
+				}
 				mut regeneration_args := ['-d', v3_parallel_cc_monolithic_define]
 				for arg in args {
 					if arg != macos_v3_compat_c99_flag {

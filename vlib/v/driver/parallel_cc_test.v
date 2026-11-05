@@ -224,6 +224,35 @@ fn test_v3_parallel_cc_falls_back_for_native_static_state() {
 	}
 }
 
+fn test_v3_parallel_cc_require_split_refuses_instead_of_one_c_unit() {
+	$if !windows {
+		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_require_split_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		old_value := os.getenv_opt(v3_parallel_cc_require_split_env)
+		os.setenv(v3_parallel_cc_require_split_env, '1', true)
+		defer {
+			if value := old_value {
+				os.setenv(v3_parallel_cc_require_split_env, value, true)
+			} else {
+				os.unsetenv(v3_parallel_cc_require_split_env)
+			}
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path_single(root, 'main.v')
+		header := os.join_path_single(root, 'state.h')
+		output := os.join_path_single(root, 'main')
+		os.write_file(header, 'static int v3_parallel_state;\nstatic inline int v3_parallel_next(void) { return ++v3_parallel_state; }\n')!
+		os.write_file(source, '#flag -I @DIR\n#include "state.h"\n\nfn C.v3_parallel_next() int\n\nfn first() int { return C.v3_parallel_next() }\nfn second() int { return C.v3_parallel_next() }\nfn main() { println(first())\nprintln(second()) }\n')!
+		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', 'cc', '-nocache',
+			'-o', output, source])
+		assert build.exit_code == v3_parallel_cc_split_refused_exit_code, build.output
+		assert build.output.contains('cannot split this program into C units'), build.output
+		assert build.output.contains('state.h'), build.output
+		assert !os.exists(output)
+	}
+}
+
 fn test_v3_parallel_cc_falls_back_for_native_function_local_static_state() {
 	$if bsd || linux {
 		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_local_static_${os.getpid()}')
