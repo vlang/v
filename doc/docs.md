@@ -741,6 +741,10 @@ Pointer subtraction returns `int`, including in translated C code.
 
 ### 128-bit integers
 
+The native ARM64 backend compares `i128` and `u128` using both 64-bit limbs.
+Signed ordering uses the high limb's sign; equality compares every bit.
+Ordering follows the signedness of the leftmost 128-bit operand, as in the C backend.
+
 `i128` and `u128` hold 128 bits. The usual operators work on them: arithmetic,
 bitwise, shifts, comparisons, and casts to and from the other numeric types.
 
@@ -10754,16 +10758,16 @@ arguments, and 64-bit integer, pointer, or void returns. Unsupported callback co
 including floating-point, narrow integer, aggregate, and variadic signatures, produce a diagnostic.
 
 Native 128-bit integers currently support integer widening, copying, bitwise `&`, `|`, `^`,
-addition, subtraction, and shifts with constant counts from 0 through 127. Signed scalar
-widening sign-extends for both `i128` and `u128`; unsigned scalar widening zero-extends.
+addition, subtraction, comparisons, and shifts with constant counts from 0 through 127.
+Signed scalar widening sign-extends for both `i128` and `u128`; unsigned scalar widening
+zero-extends.
 Signed `i128 >>` preserves the sign; `u128 >>` and `>>>` fill with zeroes.
-Comparisons, multiplication, division, remainder, unary negation and complement, variable shifts,
+Multiplication, division, remainder, unary negation and complement, variable shifts,
 compound assignments, increment/decrement, narrowing casts, and conversions to or from
-floating-point values are unsupported and produce a diagnostic. Matching, range iteration,
-and range membership with 128-bit values are also unsupported. Array and string indices and
-slice bounds must use scalar integers. Integer literals must fit in a single 64-bit limb;
-construct larger values with shifts and bitwise operations. Array `.index()` searches on
-128-bit elements are unsupported.
+floating-point values are unsupported and produce a diagnostic. Range iteration with 128-bit
+values is also unsupported. Array and string indices and slice bounds must use scalar integers.
+Integer literals must fit in a single 64-bit limb; construct larger values with shifts and
+bitwise operations.
 Use the C backend for the full set of 128-bit operations.
 
 Currently there is no debugging support for binaries created by the native backends.
