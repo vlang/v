@@ -117,3 +117,34 @@ fn main() {
 		assert msg.contains('does not support @[skip] or @[required] on embedded field'), '@[${attribute}]: ${msg}'
 	}
 }
+
+// fastc_required_refusal_message is fastc_refusal_message without `building_v`: that flag skips
+// the struct-literal checks, so the required check only runs with it off.
+fn fastc_required_refusal_message(name string, source string) string {
+	root := os.join_path(os.vtmp_dir(), 'fastc_required_${name}_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
+	mut prefs := fastc_default_attribute_prefs()
+	prefs.building_v = false
+	generate_files([root], prefs) or { return err.msg() }
+	return ''
+}
+
+// A named field with a default and `@[required]` must still be initialized: the default does not
+// count, as the checker reports.
+fn test_fastc_required_field_with_default_must_be_initialized() {
+	$if !macos && !linux {
+		return
+	}
+	msg := fastc_required_refusal_message('required_default_missing', 'module main
+struct Config {
+	m int = 3 @[required]
+}
+fn main() {
+	c := Config{}
+	println(c.m)
+}
+')
+	assert msg.contains('field `Config.m` must be initialized'), msg
+}
