@@ -378,3 +378,76 @@ fn test_msaa_trigger_reports_depth_exhaustion_on_flush() {
 	}
 	assert false, 'void trigger API lost its capacity error'
 }
+
+fn uniform_limit_paint(i int) Paint {
+	return Paint.rgba8(u8(i), u8(i >> 8), 0, 255)
+}
+
+fn test_uniform_limit_allows_reuse_and_rejects_a_new_block_atomically() {
+	mut s := recording_surface(64, 48, identity_values)
+	for i in 0 .. max_batch_colors {
+		s.draw_rect(Rect.ltrb(1, 1, 2, 2), uniform_limit_paint(i))!
+	}
+	assert s.uniforms.len == max_batch_colors
+	s.draw_rect(Rect.ltrb(1, 1, 2, 2), uniform_limit_paint(0))!
+	before := s.draws.len
+	depth := s.depth_index
+	mut rejected := false
+	s.draw_rect(Rect.ltrb(1, 1, 2, 2), Paint.rgba8(0, 0, 1, 255)) or {
+		assert err.msg().contains('uniform limit')
+		rejected = true
+	}
+	assert rejected
+	assert s.uniforms.len == max_batch_colors && s.draws.len == before
+	assert s.depth_index == depth
+	// The non-fallible trigger API retains the error until flush.
+	s.draw_msaa_trigger()
+	s.flush() or {
+		assert err.msg().contains('uniform limit')
+		return
+	}
+	assert false, 'oversized trigger uniforms were accepted'
+}
+
+fn test_uniform_limit_reserves_pending_clip_matrices() {
+	mut s := recording_surface(64, 48, identity_values)
+	s.clip_rect(Rect.ltrb(10, 10, 20, 20), .difference, false)!
+	s.clip_rect(Rect.ltrb(30, 15, 40, 25), .difference, false)!
+	for i in 0 .. max_batch_colors - 1 {
+		s.draw_rect(Rect.ltrb(0, 0, 64, 48), uniform_limit_paint(i))!
+	}
+	mut rejected := false
+	s.draw_rect(Rect.ltrb(0, 0, 64, 48), uniform_limit_paint(max_batch_colors - 1)) or {
+		assert err.msg().contains('uniform limit')
+		rejected = true
+	}
+	assert rejected && s.uniforms.len == max_batch_colors - 1
+	s.record_deferred_clip_draws()
+	assert s.uniforms.len == max_batch_colors
+	s.draw_rect(Rect.ltrb(0, 0, 64, 48), uniform_limit_paint(0))!
+}
+
+fn test_uniform_limit_checks_both_path_steps_before_recording() {
+	mut s := recording_surface(64, 48, identity_values)
+	for i in 0 .. max_batch_colors - 1 {
+		s.draw_rect(Rect.ltrb(1, 1, 2, 2), uniform_limit_paint(i))!
+	}
+	mut b := PathBuilder{}
+	b.move_to(0, 0)
+	b.line_to(60, 0)
+	b.line_to(30, 20)
+	b.line_to(60, 40)
+	b.line_to(0, 40)
+	b.close()
+	path := b.detach()
+	assert !path.is_convex()
+	before := s.draws.len
+	depth := s.depth_index
+	s.draw_path(path, Paint.rgba8(0, 0, 1, 255)) or {
+		assert err.msg().contains('uniform limit')
+		assert s.draws.len == before && s.depth_index == depth
+		assert s.uniforms.len == max_batch_colors - 1
+		return
+	}
+	assert false, 'part of an oversized two-step path was recorded'
+}

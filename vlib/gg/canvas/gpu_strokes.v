@@ -649,6 +649,8 @@ fn (mut s GpuSurface) draw_stroke(path Path, shape ClipShape, paint Paint) ! {
 	shading, gradient := paint.shading()!
 	opaque := color.is_opaque() && (!shading.is_gradient() || gradient.opaque)
 	depends_on_dst := !clip.analytic.is_empty() || !opaque
+	uniforms := stroke_uniforms(color, shading, gradient, s.transform, clip.analytic)
+	s.check_uniform_capacity([uniforms], clip.elements)!
 	depth := s.next_draw_depth()!
 	mut order := DrawOrder{
 		depth: depth
@@ -666,8 +668,7 @@ fn (mut s GpuSurface) draw_stroke(path Path, shape ClipShape, paint Paint) ! {
 	mut w := new_stroke_writer(s.transform.matrix, s.transform.max_scale, paint.stroke_width * f32(0.5),
 		join_type, depth_as_float(order.depth))
 	write_stroke_patches(mut w, path, paint.cap)!
-	s.record_step(.tessellate_strokes, depends_on_dst, w.out, stroke_uniforms(color, shading, gradient, s.transform,
-		clip.analytic),
+	s.record_step(.tessellate_strokes, depends_on_dst, w.out, uniforms,
 		order, 0, 0, DrawClip{
 			scissor:      clip.scissor
 			draw_bounds:  clip.draw_bounds

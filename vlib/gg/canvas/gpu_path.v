@@ -109,6 +109,25 @@ fn (mut s GpuSurface) draw_path_fill(path Path, paint Paint) ! {
 	shading, gradient := paint.shading()!
 	opaque := color.is_opaque() && (!shading.is_gradient() || gradient.opaque)
 	depends_on_dst := clipped || !opaque
+	matrix := local_to_device_uniforms(s.transform.matrix)
+	uniforms := PaintUniforms{
+		color:    color
+		shading:  shading
+		gradient: gradient
+		clipped:  clipped
+		clip:     clip_uniforms
+	}
+	shaded_matrix := PaintUniforms{
+		...matrix
+		color:      color
+		shading:    shading
+		gradient:   gradient
+		with_color: true
+		clipped:    clipped
+		clip:       clip_uniforms
+	}
+	s.check_uniform_capacity(if convex { [shaded_matrix] } else { [matrix, uniforms] },
+		clip.elements)!
 	depth := s.next_draw_depth()!
 	mut order := DrawOrder{
 		depth: depth
@@ -125,17 +144,9 @@ fn (mut s GpuSurface) draw_path_fill(path Path, paint Paint) ! {
 	}
 	mut patches := []u8{}
 	count, n4 := write_wedge_patches(mut patches, path, s.transform.matrix, order.depth)!
-	matrix := local_to_device_uniforms(s.transform.matrix)
 	if convex {
-		s.record_step(.wedges_shaded, depends_on_dst, patches, PaintUniforms{
-			...matrix
-			color:      color
-			shading:    shading
-			gradient:   gradient
-			with_color: true
-			clipped:    clipped
-			clip:       clip_uniforms
-		}, order, 0, 0, draw_clip, u32(count))
+		s.record_step(.wedges_shaded, depends_on_dst, patches, shaded_matrix, order, 0, 0,
+			draw_clip, u32(count))
 		s.draws[s.draws.len - 1].template_count = wedge_vertex_count(n4)
 	} else {
 		order.stencil_index = s.add_disjoint_stencil(order.paint_order, clip.draw_bounds)
@@ -157,13 +168,7 @@ fn (mut s GpuSurface) draw_path_fill(path Path, paint Paint) ! {
 		} else {
 			write_cover_bounds_instance(mut cover, path.bounds(), s.transform, order.depth, 0)
 		}
-		s.record_step(cover_step, depends_on_dst, cover, PaintUniforms{
-			color:    color
-			shading:  shading
-			gradient: gradient
-			clipped:  clipped
-			clip:     clip_uniforms
-		}, order, 1, 0, draw_clip, 1)
+		s.record_step(cover_step, depends_on_dst, cover, uniforms, order, 1, 0, draw_clip, 1)
 	}
 	s.bounds.record_draw(clip.draw_bounds, order.paint_order)
 }

@@ -242,6 +242,31 @@ fn (mut s GpuSurface) next_draw_depth() !u16 {
 	return s.depth_index
 }
 
+// Reserve every uniform block of a draw before recording any of its steps,
+// including the matrices of clips that will be recorded later at restore/flush.
+fn (s &GpuSurface) check_uniform_capacity(uniforms []PaintUniforms, clip_elements []int) ! {
+	if s.uniforms.len + uniforms.len + s.clip.elements.len <= max_batch_colors {
+		return
+	}
+	mut candidates := uniforms.clone()
+	for i, element in s.clip.elements {
+		if element.has_pending_draw() || i in clip_elements {
+			candidates << local_to_device_uniforms(element.l2d.matrix)
+		}
+	}
+	mut additional := []PaintUniforms{}
+	for candidate in candidates {
+		if s.uniforms.any(same_paint_uniforms(it, candidate))
+			|| additional.any(same_paint_uniforms(it, candidate)) {
+			continue
+		}
+		if s.uniforms.len + additional.len >= max_batch_colors {
+			return error('gg.canvas: draw-list uniform limit reached; flush before drawing again')
+		}
+		additional << candidate
+	}
+}
+
 // write_pixels replaces the surface contents with BGRA8 premultiplied pixels,
 // discarding pending draws.
 pub fn (mut s GpuSurface) write_pixels(pixels voidptr, pitch int) ! {
@@ -665,6 +690,10 @@ pub fn (mut s GpuSurface) draw_msaa_trigger() {
 		top.draw_msaa_trigger()
 		return
 	}
+	s.check_uniform_capacity([identity_local_to_device, PaintUniforms{}], []) or {
+		s.deferred_error = err.msg()
+		return
+	}
 	depth := s.next_draw_depth() or {
 		s.deferred_error = err.msg()
 		return
@@ -793,6 +822,7 @@ fn (mut s GpuSurface) draw_shape(geometry_in ShapeGeometry, paint Paint) ! {
 	// analytic clip) always reads the destination; without coverage only a
 	// translucent paint does.
 	depends_on_dst := coverage || clipped || !opaque
+	s.check_uniform_capacity([uniforms], clip.elements)!
 	depth := s.next_draw_depth()!
 	mut order := DrawOrder{
 		depth: depth
@@ -903,6 +933,7 @@ fn (mut s GpuSurface) draw_flood_fill(clip ClipResult, paint Paint) ! {
 		return
 	}
 	depends_on_dst := clipped || !opaque
+	s.check_uniform_capacity([uniforms], clip.elements)!
 	depth := s.next_draw_depth()!
 	mut order := DrawOrder{
 		depth: depth
@@ -1200,6 +1231,11 @@ pub fn (mut s GpuSurface) flush() ! {
 			}
 			if slot < 0 {
 				slot = batch_uniforms[b].len
+				if slot >= max_batch_colors {
+					s.reset_draws()
+					s.free_retired_layers()
+					return error('gg.canvas: batch exceeds the shader uniform block')
+				}
 				batch_uniforms[b] << draw.uniforms
 			}
 			stride := instance_stride(draw.step)
