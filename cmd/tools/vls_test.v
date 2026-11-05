@@ -97,7 +97,9 @@ fn test_vls_check_reports_manifest_and_stale_installations() ! {
 	) + '}')!
 	result := os.exec([tool_exe, '--check'])
 	assert result.exit_code == 0, result.output
-	assert result.output.contains('installed at: ${tool_exe}'), result.output
+	// --check escapes backslashes in the displayed path, including in text mode.
+	displayed_tool_exe := tool_exe.replace(r'\', r'\\')
+	assert result.output.contains('installed at: ${displayed_tool_exe}'), result.output
 	os.write_file(manifest_path, '{"server_path":' + json2.encode(tool_exe + '.missing',
 		escape_unicode: true
 		time_as_unix:   true

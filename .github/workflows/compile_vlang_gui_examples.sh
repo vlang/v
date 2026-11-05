@@ -2,6 +2,12 @@
 
 set -e
 
+phase="${1-all}"
+if [[ $# -gt 1 ]] || [[ "$phase" != all && "$phase" != tests && "$phase" != examples ]]; then
+	printf 'Usage: %s [all|tests|examples]\n' "$0" >&2
+	exit 2
+fi
+
 function show() {
 	printf "\u001b[35m$1\u001b[0m\n"
 }
@@ -20,10 +26,14 @@ git -C ~/.vmodules/gui/ log -1 --oneline
 if [[ "$(uname)" == 'Darwin' ]]; then
 	export VFLAGS="${VFLAGS:-} -cc clang"
 fi
-show "Check module for syntax and semantic errors"
-v -shared -check ~/.vmodules/gui
-show "Execute Tests"
-v test ~/.vmodules/gui/
-show "Compile Examples"
-v should-compile-all -no-parallel ~/.vmodules/gui/examples/
+if [[ "$phase" != examples ]]; then
+	show "Check module for syntax and semantic errors"
+	v -shared -check ~/.vmodules/gui
+	show "Execute Tests"
+	v test ~/.vmodules/gui/
+fi
+if [[ "$phase" != tests ]]; then
+	show "Compile Examples"
+	v should-compile-all -no-parallel ~/.vmodules/gui/examples/
+fi
 rm -rf ~/.vmodules/gui/ ~/.vmodules/vglyph/

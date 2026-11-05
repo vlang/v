@@ -5053,6 +5053,26 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 	}
 	if param_shape.has(.pointer) && !t.is_sum_type_name(param_base_id)
 		&& !t.is_interface_type(param_type_id) {
+		if arg_node.is_mut
+			&& !t.transform_param_type_is_void_pointer(t.normalize_type_alias(param_base_id))
+			&& t.normalize_type_alias(if arg_node.kind == .ident {
+				t.typeof_var_type(arg_node.value)
+			} else {
+				t.raw_expr_type_without_smartcast(arg_id)
+			}) == flat.source_type_voidptr {
+			// A raw pointer already addresses the mutable value. Coercing it to
+			// the pointee first would borrow a copy and dereference null pointers.
+			value := t.transform_opaque_pointer_value(arg_id)
+			if t.a.nodes[int(value)].kind == .ident {
+				return value
+			}
+			// A field or promoted pointer read is an address value, not a slot
+			// that the call should reference. Copy only the pointer into typed storage.
+			tmp_name := t.new_temp('raw_ptr_arg')
+			t.pending_stmts << t.make_decl_assign_typed(tmp_name,
+				t.make_cast(param_type_id, value, param_type_id), param_type_id)
+			return t.make_ident(tmp_name)
+		}
 		if arg_node.kind == .ident && t.pointer_value_lvalues[arg_node.value] {
 			storage_type := t.var_type(arg_node.value)
 			if arg_node.value in t.heaped_amp_locals

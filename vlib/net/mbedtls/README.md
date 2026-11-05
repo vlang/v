@@ -14,3 +14,13 @@ existing `connection was not open` error without releasing resources a second ti
 On Linux, TLS sends suppress SIGPIPE for each socket operation. A peer that closes
 the connection produces a connection-reset error without terminating the process
 or changing its SIGPIPE handler. Nonblocking backpressure remains retryable.
+
+## Thread safety
+
+`SSLConn` does not synchronize access to its TLS context. Serialize calls on the same
+connection, including reads, writes, timeout changes, and shutdown. Concurrent calls from
+one reader thread and one writer thread are unsupported. A blocking read held under a
+mutex can prevent the writer from progressing; the mutex alone is not a duplex adapter.
+
+Keep a connected `SSLConn` at a stable address and stop all users before shutdown.
+See [`net.ssl` thread safety](../ssl/README.md#thread-safety) for retry and lifetime guidance.
