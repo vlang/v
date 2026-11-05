@@ -29,7 +29,13 @@ path_owner() {
 }
 
 path_permissions() {
-	stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1" 2>/dev/null
+	# BSD's %Lp omits the sticky, setuid, and setgid bits. Read the full
+	# octal mode and discard only the file type, matching GNU stat's %a.
+	permissions=$(stat -c %a "$1" 2>/dev/null || stat -f %Op "$1" 2>/dev/null) || return 1
+	case "$permissions" in
+		''|*[!0-7]*) return 1 ;;
+	esac
+	printf '%o\n' "$((0$permissions & 07777))"
 }
 
 validate_trusted_temp_root() {
