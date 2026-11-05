@@ -58,6 +58,11 @@ ctx.flow()
 | `imp.FlowDep{id: 'clean'}`                 | skipped along with its flow |
 | `imp.FlowDep{id: 'clean', required: true}` | always runs, pre before the skip check |
 
+A later post hook waits for the remaining post work of earlier hooks. A hook
+that needs an active flow waits for that flow to produce its outputs. Cycles of
+post hooks run each flow once; their pending work finishes before continuations
+waiting outside the cycle resume.
+
 ## flags
 | declaration                                | result |
 |--------------------------------------------|--------|

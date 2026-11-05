@@ -379,6 +379,32 @@ fn visits(ids []string) []Step {
 	})
 }
 
+// finish_index returns the position of the finish step of `id`, or -1.
+fn finish_index(steps []Step, id string) int {
+	for i, step in steps {
+		if step.finish && step.id == id {
+			return i
+		}
+	}
+	return -1
+}
+
+// finish_after_work keeps the work of a post-hook cycle ahead of every finish
+// step in it, so that outside waiters cannot observe a partly completed cycle.
+fn finish_after_work(steps []Step) []Step {
+	mut work := []Step{}
+	mut finishes := []Step{}
+	for step in steps {
+		if step.finish {
+			finishes << step
+		} else {
+			work << step
+		}
+	}
+	work << finishes
+	return work
+}
+
 // Pass is the progress of one requested flow and everything it pulls in.
 struct Pass {
 mut:
@@ -417,13 +443,16 @@ fn (c &Context) visit(id string, then []Step, mut pass Pass) ! {
 		.ran {
 			// the outputs are ready, which is all a dependency needs, but what comes
 			// after the post work waits for it: the post work completes at its finish
-			// step, which is held back, not scheduled yet, or further up the stack,
-			// and goes on regardless. Only when `then` holds that step itself, as a
-			// cycle of post hooks led back here, would waiting never end.
-			if then.len > 0 && !then.any(it.finish && it.id == id) {
+			// step, which is held back, not scheduled yet, or further up the stack.
+			end := finish_index(then, id)
+			if end >= 0 {
+				// A post-hook cycle led back here. Its work can carry on, but none of
+				// its flows can release outside waiters before all that work finishes.
+				mut steps := finish_after_work(then[..end + 1])
+				steps << then[end + 1..]
+				c.sequence(steps, mut pass)!
+			} else if then.len > 0 {
 				pass.park(id, then, false)
-			} else {
-				c.sequence(then, mut pass)!
 			}
 			return
 		}
@@ -492,24 +521,23 @@ fn (c &Context) finish(id string, mut pass Pass) ! {
 
 // drain runs the sequences still waiting at the end of a pass. Every body has
 // run by then, so they can only wait for each other, through a cycle of post
-// hooks. Each round breaks one such cycle, at the flow in it waited for first,
-// and leaves the waits leading into the cycle in place.
+// hooks. Each round joins one cycle's work into a sequence before its finish
+// steps, leaving outside continuations waiting for those steps.
 fn (c &Context) drain(mut pass Pass) ! {
 	for pass.waiting.len > 0 {
 		id := pass.cycle_start()
-		c.finish(id, mut pass)!
-		// a complete flow is never waited for again, so each round ends a wait
-		if id in pass.waiting {
-			return error('flow `${id}` is still waited for after its post work, a bug in imp')
+		steps := pass.cycle_steps(id)!
+		if steps.len == 0 {
+			// No finish step is held for this flow, so it has no remaining work.
+			c.finish(id, mut pass)!
+		} else {
+			c.sequence(steps, mut pass)!
 		}
 	}
 }
 
-// cycle_start returns the flow waited for first among a cycle of flows whose
-// post work waits for each other. `waiting` must not be empty.
-fn (pass &Pass) cycle_start() string {
-	// the post work of a flow is complete at its finish step, which is held in
-	// `waiting` for exactly one flow
+// finish_holders maps each queued finish step to the flow it is waiting for.
+fn (pass &Pass) finish_holders() map[string]string {
 	mut holder := map[string]string{}
 	for id, queued in pass.waiting {
 		for steps in queued {
@@ -520,6 +548,63 @@ fn (pass &Pass) cycle_start() string {
 			}
 		}
 	}
+	return holder
+}
+
+// cycle_steps takes the cyclic continuations selected by `cycle_start`, keeping
+// their work in the order of breaking that cycle at `id`. Their finish steps all
+// follow the work; any suffix outside the cycle still waits for its own owner.
+fn (mut pass Pass) cycle_steps(id string) ![]Step {
+	holder := pass.finish_holders()
+	if id !in holder {
+		return []Step{}
+	}
+	mut cycle := []string{}
+	mut member := id
+	for {
+		cycle << member
+		member = holder[member] or { return error('post work cycle has no finish for `${member}`') }
+		if member == id {
+			break
+		}
+	}
+	mut steps := []Step{}
+	// Finishing a member releases the preceding member in this holder walk.
+	for i := cycle.len - 1; i >= 0; i-- {
+		owner := cycle[i]
+		waits_for := holder[owner]
+		mut queued := pass.waiting[waits_for] or { [][]Step{} }
+		mut index := -1
+		mut end := -1
+		for j, continuation in queued {
+			end = finish_index(continuation, owner)
+			if end >= 0 {
+				index = j
+				break
+			}
+		}
+		if index < 0 {
+			return error('post work cycle lost the finish of `${owner}`')
+		}
+		continuation := queued[index]
+		queued.delete(index)
+		if queued.len == 0 {
+			pass.waiting.delete(waits_for)
+		} else {
+			pass.waiting[waits_for] = queued
+		}
+		steps << continuation[..end + 1]
+		if end + 1 < continuation.len {
+			pass.park(owner, continuation[end + 1..], false)
+		}
+	}
+	return finish_after_work(steps)
+}
+
+// cycle_start returns the flow waited for first among a cycle of flows whose
+// post work waits for each other. `waiting` must not be empty.
+fn (pass &Pass) cycle_start() string {
+	holder := pass.finish_holders()
 	waited := pass.order.filter(it in pass.waiting)
 	// following the holders from any flow leads into a cycle
 	// each step adds a flow to the path or ends the walk, so it always ends
