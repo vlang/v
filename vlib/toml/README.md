@@ -228,6 +228,14 @@ or `.f32()` to retrieve these special floating-point values.
 
 Read more about values in the [TOML specification](https://toml.io/en/v1.0.0#spec).
 
+## Nesting depth limit
+
+Value parsing accepts container nesting up to 1024 array/inline-table levels
+in a document. Deeper `parse_text` or `parse_file` input returns a bounded
+`exceeded the maximum nesting depth` error instead of recursing to a stack
+overflow. The limit is set above the 1001-level documents of the external
+TOML test suites, which keep parsing (see issue #31946).
+
 ## TOML to JSON
 
 The `toml.to` module supports easy serialization of any TOML to JSON.

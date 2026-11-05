@@ -695,6 +695,7 @@ pub:
 }
 
 // parse_file parses the TOML file in `path`.
+// Input nested deeper than 1024 array/inline-table levels errors.
 pub fn parse_file(path string) !Doc {
 	input_config := input.Config{
 		file_path: path
@@ -713,6 +714,7 @@ pub fn parse_file(path string) !Doc {
 }
 
 // parse_text parses the TOML document provided in `text`.
+// Input nested deeper than 1024 array/inline-table levels errors.
 pub fn parse_text(text string) !Doc {
 	input_config := input.Config{
 		text: text
