@@ -11,11 +11,13 @@ fn test_native_int_uses_platform_width() {
 	$if macos && arm64 {
 		source := 'module main
 #include <unistd.h>
+#include <stdlib.h>
 fn C.exit(int)
 fn increment(value int) int { return value + 1 }
 fn read_int(value &int) int { return *value }
 fn write_int(value &int, n int) { unsafe { *value = n } }
 fn C.strcoll(&char, &char) int
+fn C.strtoul(&char, &&char, int) uint
 __global C.optind int
 fn native_compare_strings() int { return C.strcoll(c"a", c"b") }
 fn native_text() string { return "abc" }
@@ -46,6 +48,9 @@ fn main() {
 	C.optind = -7
 	if C.optind != -7 { C.exit(11) }
 	C.optind = original_optind
+	if C.strtoul(c"4294967296", unsafe { nil }, 10) != uint(4294967296) { C.exit(12) }
+	parse_unsigned := C.strtoul
+	if parse_unsigned(c"4294967296", unsafe { nil }, 10) != uint(4294967296) { C.exit(13) }
 }
 '
 		path := os.join_path(os.vtmp_dir(), 'arm64_int_width_${os.getpid()}.v')

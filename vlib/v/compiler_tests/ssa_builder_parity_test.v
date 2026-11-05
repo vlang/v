@@ -856,3 +856,54 @@ fn c_array_size() int { return sizeof(C.Array) }
 	}
 	assert found_external
 }
+
+fn test_c_uint_uses_size_t_width_in_parameters_returns_callbacks_and_structs() {
+	for pointer_size in [4, 8] {
+		a, tc := parse_checked_source('c_size_t_${pointer_size}', 'fn C.malloc(n uint) voidptr
+fn C.calloc(count uint, bytes uint) voidptr
+fn C.memcpy(destination voidptr, source voidptr, count uint) voidptr
+fn C.size_value(n uint) uint
+fn C.size_callback(callback fn (uint) uint) fn (uint) uint
+struct C.Sized { count uint
+ code int }
+fn allocate(n uint) voidptr { return C.malloc(n) }
+fn zero_allocate(n uint) voidptr { return C.calloc(n, n) }
+fn copy(destination voidptr, source voidptr, n uint) voidptr {
+ return C.memcpy(destination, source, n)
+}
+fn c_sized_size() int { return sizeof(C.Sized) }
+')
+		m := ssa.build_with_options(a, map[string]bool{}, tc, ssa.BuildOptions{
+			target: ssa.TargetData{ ptr_size: pointer_size }
+		})
+		for name, size_arguments in {
+			'allocate':      [1]
+			'zero_allocate': [1, 2]
+			'copy':          [3]
+		} {
+			mut calls := 0
+			for instruction in func_instrs(m, name) {
+				if instruction.op != .call { continue }
+				calls++
+				for index in size_arguments {
+					argument := m.values[instruction.operands[index]]
+					assert m.type_store.types[argument.typ].kind == .int_t
+					assert m.type_store.types[argument.typ].width == pointer_size * 8
+				}
+			}
+			assert calls == 1
+		}
+		size_value := find_func(m, 'C.size_value')
+		assert m.type_store.types[size_value.typ].width == pointer_size * 8
+		callback := find_func(m, 'C.size_callback')
+		signature := m.type_store.types[callback.typ]
+		assert signature.kind == .func_t
+		assert m.type_store.types[signature.ret_type].width == pointer_size * 8
+		assert m.type_store.types[signature.params[0]].width == pointer_size * 8
+		assert_native_int_constant_return(m, 'c_sized_size', if pointer_size == 8 {
+			'16'
+		} else {
+			'8'
+		})
+	}
+}

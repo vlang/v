@@ -17806,7 +17806,7 @@ fn (mut b Builder) resolve_c_decl_type(name_id u32) TypeID {
 		return b.resolve_c_decl_type(flat.source_type_syntax(name_id).first_dot_suffix())
 	}
 	if name_id == flat.source_type_int { return b.i32_type }
-	if name_id == flat.source_type_uint { return b.u32_type }
+	// uint is USize (C size_t), so it keeps normal target-width resolution.
 	if target := b.type_alias_target(name_id) {
 		if target != name_id { return b.resolve_c_decl_type(target) }
 	}
