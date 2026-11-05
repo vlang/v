@@ -14,3 +14,9 @@ pub fn Typeface.from_file(path string) !&Typeface {
 pub fn Typeface.from_ct_font(ct_font voidptr) !&Typeface {
 	return error('gg.canvas: typefaces require macOS CoreText')
 }
+
+// free is a no-op on platforms without native typefaces.
+pub fn (mut t Typeface) free() {}
+
+// clear_text_cache is a no-op on platforms without a text backend.
+pub fn clear_text_cache() {}

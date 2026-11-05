@@ -42,6 +42,9 @@ pub fn Typeface.from_data(data []u8) !&Typeface {
 // Typeface.from_file loads the first face of a font file.
 pub fn Typeface.from_file(path string) !&Typeface {
 	data := os.read_bytes(path)!
+	defer {
+		unsafe { data.free() }
+	}
 	return Typeface.from_data(data)
 }
 
@@ -59,4 +62,15 @@ pub fn Typeface.from_ct_font(ct_font voidptr) !&Typeface {
 		ct_font:          C.v_canvas_cf_retain(ct_font)
 		has_color_glyphs: C.v_canvas_ct_font_traits(ct_font) & ct_color_glyphs_trait != 0
 	}
+}
+
+// free releases this face's retained font and cached strikes. It is idempotent;
+// do not draw with the face afterwards. Text drawing and cleanup must be serial.
+pub fn (mut t Typeface) free() {
+	if t.ct_font == unsafe { nil } {
+		return
+	}
+	release_typeface_strikes(t.id)
+	C.v_canvas_cf_release(t.ct_font)
+	t.ct_font = unsafe { nil }
 }

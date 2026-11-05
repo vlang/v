@@ -81,6 +81,15 @@ pre-blend, subpixel glyph positioning, and the lowp `SkRasterPipeline` mask
 blit into BGRA8 premultiplied pixels. Synthetic bold, color glyphs, aliased
 text and glyphs that Skia draws as paths (over 256px) return an error.
 
+Text drawing and cleanup run serially on the drawing thread. The process-wide
+strike cache retains at most 32 scaler contexts in least-recently-used order.
+Each strike caches at most 256 glyphs and 256 KiB of masks; larger individual
+glyph masks (over 512 pixels in either dimension) return an error. Eviction
+releases masks, the copied font, and the native bitmap/context. Call
+`canvas.clear_text_cache()` to release all strikes while keeping typefaces
+usable, and `typeface.free()` when the caller finishes with a face. The latter
+also evicts that face's strikes and releases its retained native font.
+
 ```v
 import gg.canvas
 

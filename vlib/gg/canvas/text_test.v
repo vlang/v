@@ -113,7 +113,8 @@ fn test_glyph_runs_match_skia() {
 			eprintln('skipping ${c.name}: ${c.font} is missing')
 			continue
 		}
-		typeface := Typeface.from_file(c.font)!
+		mut typeface := Typeface.from_file(c.font)!
+		defer { typeface.free() }
 		mut font := Font{
 			typeface:       typeface
 			size:           c.size
@@ -157,7 +158,8 @@ fn test_gradient_text_is_rejected_without_changing_pixels() {
 	$if !macos {
 		return
 	}
-	face := Typeface.from_file('/System/Library/Fonts/Supplemental/Arial.ttf')!
+	mut face := Typeface.from_file('/System/Library/Fonts/Supplemental/Arial.ttf')!
+	defer { face.free() }
 	mut s := new_raster_surface(width: 40, height: 40)!
 	s.clear(0xff123456)
 	paint := Paint{

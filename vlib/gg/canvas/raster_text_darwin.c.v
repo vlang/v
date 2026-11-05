@@ -9,6 +9,9 @@ pub fn (mut s RasterSurface) draw_glyphs(font Font, glyphs []u16, positions []Po
 	if font.typeface == unsafe { nil } {
 		return error('gg.canvas: font without a typeface')
 	}
+	if font.typeface.ct_font == unsafe { nil } {
+		return error('gg.canvas: typeface has been freed')
+	}
 	if paint.style != .fill {
 		return error('gg.canvas: stroked text is not supported yet')
 	}
@@ -54,7 +57,7 @@ pub fn (mut s RasterSurface) draw_glyphs(font Font, glyphs []u16, positions []Po
 		}
 		mapped := rounding.map_point(pos)
 		packed := pack_glyph_id(glyph_id, mapped, mask_x, mask_y)
-		g := strike.glyph(packed)
+		g := strike.glyph(packed)!
 		if g.is_empty() || !g.has_image {
 			continue
 		}

@@ -56,8 +56,11 @@ fn internal_contrast(c f32) u8 {
 	return u8(scaled + f32(0.5))
 }
 
-fn (r &ScalerRec) key() string {
-	return '${r.typeface_id}|${f32_bits(r.text_size)}|${f32_bits(r.pre_scale_x)}|${f32_bits(r.pre_skew_x)}|${f32_bits(r.post2x2[0])}|${f32_bits(r.post2x2[1])}|${f32_bits(r.post2x2[2])}|${f32_bits(r.post2x2[3])}|${f32_bits(r.frame_width)}|${r.lum_bits}|${r.device_gamma}|${r.contrast}|${r.mask_format}|${r.flags}'
+fn (r &ScalerRec) key() [14]u32 {
+	return [r.typeface_id, f32_bits(r.text_size), f32_bits(r.pre_scale_x), f32_bits(r.pre_skew_x),
+		f32_bits(r.post2x2[0]), f32_bits(r.post2x2[1]), f32_bits(r.post2x2[2]), f32_bits(r.post2x2[3]),
+		f32_bits(r.frame_width), r.lum_bits, u32(r.device_gamma), u32(r.contrast), u32(r.mask_format),
+		u32(r.flags)]!
 }
 
 fn f32_bits(x f32) u32 {
@@ -294,26 +297,84 @@ mut:
 	sub_pos     bool
 	glyph_index map[u32]int
 	glyphs      []Glyph
+	image_bytes int
 }
+
+// Text APIs and this process-wide cache are used serially on the drawing thread.
+const max_text_strikes = 32
+const max_strike_glyphs = 256
+const max_strike_image_bytes = 256 * 1024
+const max_glyph_dimension = 512
 
 struct StrikeCache {
 mut:
-	keys    []string
+	// Least recently used first; a hit moves the strike to the end.
 	strikes []&Strike
 }
 
 const strike_cache = &StrikeCache{}
 
+fn (mut s Strike) clear_glyphs() {
+	for glyph in s.glyphs {
+		unsafe { glyph.image.free() }
+	}
+	s.glyphs.clear()
+	s.glyph_index.clear()
+	s.image_bytes = 0
+}
+
+fn (mut s Strike) release() {
+	s.clear_glyphs()
+	C.v_canvas_ct_offscreen_free(s.offscreen)
+	C.v_canvas_cf_release(s.ct_font)
+	s.offscreen = unsafe { nil }
+	s.ct_font = unsafe { nil }
+	unsafe {
+		s.pre_blend.free()
+		s.glyphs.free()
+		s.glyph_index.free()
+	}
+}
+
+fn (mut cache StrikeCache) remove(index int) {
+	mut strike := cache.strikes[index]
+	cache.strikes.delete(index)
+	strike.release()
+	unsafe { free(strike) }
+}
+
+// clear_text_cache releases cached glyph masks, sized fonts and native contexts.
+// Call serially with text drawing; live typefaces remain usable afterwards.
+pub fn clear_text_cache() {
+	mut cache := unsafe { strike_cache }
+	for cache.strikes.len > 0 {
+		cache.remove(cache.strikes.len - 1)
+	}
+}
+
+fn release_typeface_strikes(id u32) {
+	mut cache := unsafe { strike_cache }
+	for i := cache.strikes.len - 1; i >= 0; i-- {
+		if cache.strikes[i].rec.typeface_id == id {
+			cache.remove(i)
+		}
+	}
+}
+
 fn find_or_create_strike(rec ScalerRec, typeface &Typeface) !&Strike {
 	key := rec.key()
 	mut cache := unsafe { strike_cache }
-	for i, k in cache.keys {
-		if k == key {
-			return cache.strikes[i]
+	for i, strike in cache.strikes {
+		if strike.rec.key() == key {
+			cache.strikes.delete(i)
+			cache.strikes << strike
+			return strike
 		}
 	}
 	strike := new_strike(rec, typeface)!
-	cache.keys << key
+	if cache.strikes.len == max_text_strikes {
+		cache.remove(0)
+	}
 	cache.strikes << strike
 	return strike
 }
@@ -333,17 +394,23 @@ fn new_strike(rec ScalerRec, typeface &Typeface) !&Strike {
 	if ct == unsafe { nil } {
 		return error('gg.canvas: CoreText could not size the font')
 	}
+	offscreen := C.v_canvas_ct_offscreen_new()
+	if offscreen == unsafe { nil } {
+		C.v_canvas_cf_release(ct)
+		return error('gg.canvas: could not allocate the glyph context')
+	}
 	mut pre_blend := []u8{}
 	if !(rec.contrast == 0 && rec.device_gamma == internal_gamma(1)) {
 		gamma := new_mask_gamma(f32(rec.contrast) / f32(255), f32(rec.device_gamma) / f32(1 << 6))
 		pre_blend = gamma.green_table(rec.lum_bits).clone()
+		unsafe { gamma.tables.free() }
 	}
 	return &Strike{
 		rec:       rec
 		ct_font:   ct
 		transform: t
 		inverse:   inv
-		offscreen: C.v_canvas_ct_offscreen_new()
+		offscreen: offscreen
 		pre_blend: pre_blend
 		sub_pos:   rec.flags & flag_subpixel_positioning != 0
 	}
@@ -357,11 +424,15 @@ fn sk_fixed_to_float(x int) f32 {
 
 // glyph returns the glyph for a packed ID (glyph | sub_x << 0 | sub_y << 18,
 // as SkPackedGlyphID), generating its metrics and image on first use.
-fn (mut s Strike) glyph(packed u32) &Glyph {
+fn (mut s Strike) glyph(packed u32) !&Glyph {
 	if i := s.glyph_index[packed] {
 		return &s.glyphs[i]
 	}
-	mut g := s.make_glyph(packed)
+	mut g := s.make_glyph(packed)!
+	if s.glyphs.len >= max_strike_glyphs || s.image_bytes + g.image.len > max_strike_image_bytes {
+		s.clear_glyphs()
+	}
+	s.image_bytes += g.image.len
 	s.glyphs << g
 	s.glyph_index[packed] = s.glyphs.len - 1
 	return &s.glyphs[s.glyphs.len - 1]
@@ -381,7 +452,7 @@ fn packed_sub_y_fixed(packed u32) int {
 
 // make_glyph mirrors SkScalerContext::internalMakeGlyph() with
 // SkScalerContext_Mac::generateMetrics() and generateImage().
-fn (mut s Strike) make_glyph(packed u32) Glyph {
+fn (mut s Strike) make_glyph(packed u32) !Glyph {
 	mut g := Glyph{}
 	glyph_id := packed_glyph_id(packed)
 	mut advance := [2]f32{}
@@ -422,6 +493,9 @@ fn (mut s Strike) make_glyph(packed u32) Glyph {
 		g.width = 0
 		g.height = 0
 		return g
+	}
+	if g.width > max_glyph_dimension || g.height > max_glyph_dimension {
+		return error('gg.canvas: glyph mask exceeds the text cache size limit')
 	}
 	s.generate_image(mut g, packed)
 	return g
@@ -488,5 +562,6 @@ fn C.v_canvas_ct_smooth_behavior() int
 fn C.v_canvas_ct_font_exact_copy(base voidptr, size f64, opsz_set int, opsz f64) voidptr
 fn C.v_canvas_cg_invert(t &f64, out &f64)
 fn C.v_canvas_ct_offscreen_new() voidptr
+fn C.v_canvas_ct_offscreen_free(offscreen voidptr)
 fn C.v_canvas_ct_glyph_metrics(font voidptr, transform &f64, glyph u16, advance &f32, bounds &f64) int
 fn C.v_canvas_ct_draw_glyph(offscreen voidptr, font voidptr, transform &f64, inverse &f64, glyph u16, left int, top int, width int, height int, sub_x f32, sub_y f32, do_aa int, do_lcd int, row_bytes &u64) &u32
