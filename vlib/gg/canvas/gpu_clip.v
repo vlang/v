@@ -27,6 +27,8 @@ enum ClipShapeKind {
 	rrect
 	// A path draw; the clip stack only uses its bounds (in `rect`).
 	path
+	// A stroked line draw, with its bounding box in `rect`.
+	line
 }
 
 // ClipShape is the part of Graphite's Shape that clips and the draws of
@@ -57,7 +59,7 @@ fn rrect_shape(rr RRect) ClipShape {
 fn (s ClipShape) bounds() Rect {
 	return match s.kind {
 		.empty { Rect.ltrb(0, 0, 0, 0) }
-		.rect, .path { s.rect }
+		.rect, .path, .line { s.rect }
 		.rrect { s.rrect.rect }
 	}
 }
@@ -86,7 +88,7 @@ fn (mut s ClipShape) reset() {
 // conservative_contains mirrors Shape::conservativeContains(Rect).
 fn (s ClipShape) conservative_contains(r Rect) bool {
 	return match s.kind {
-		.empty, .path { false }
+		.empty, .path, .line { false }
 		.rect { s.rect.contains(r) }
 		.rrect { s.rrect.contains_rect(r) }
 	}
@@ -95,7 +97,7 @@ fn (s ClipShape) conservative_contains(r Rect) bool {
 // conservative_contains_point mirrors Shape::conservativeContains(float2).
 fn (s ClipShape) conservative_contains_point(x f32, y f32) bool {
 	return match s.kind {
-		.empty, .path { false }
+		.empty, .path, .line { false }
 		.rect { s.rect.contains(Rect.ltrb(x, y, x, y)) }
 		.rrect { s.rrect.contains_point(x, y) }
 	}
@@ -306,7 +308,7 @@ fn (e RawElement) transformed_shape() TransformedShape {
 fn (e RawElement) clip_type() ClipState {
 	return match e.shape.kind {
 		.empty { ClipState.empty }
-		.path { ClipState.complex }
+		.path, .line { ClipState.complex }
 		.rect {
 			if e.op == .intersect && e.l2d.typ == .identity { .device_rect } else { .complex }
 		}
@@ -1048,7 +1050,7 @@ fn (mut d DrawShape) apply_style(paint Paint, device Rect) bool {
 	}
 	stroked := paint.style == .stroke
 	hairline := stroked && paint.stroke_width == 0
-	if !d.shape.inverted && (w == 0 || h == 0) {
+	if !d.shape.inverted && (d.shape.kind == .line || w == 0 || h == 0) {
 		if !stroked || (paint.cap == .butt && w == 0 && h == 0) {
 			return false
 		}
@@ -1063,15 +1065,13 @@ fn (mut d DrawShape) apply_style(paint Paint, device Rect) bool {
 		mut local_outset := f32(0)
 		if stroked && !hairline {
 			// SkStrokeRec::GetInflationRadius(). Rects and rrects have
-			// neither miters nor caps; paths have both.
+			// neither miters nor caps, lines only caps, paths both.
 			mut multiplier := f32(1)
-			if d.shape.kind == .path {
-				if paint.join == .miter {
-					multiplier = max_f32(multiplier, paint.miter_limit)
-				}
-				if paint.cap == .square {
-					multiplier = max_f32(multiplier, f32(1.41421356))
-				}
+			if d.shape.kind == .path && paint.join == .miter {
+				multiplier = max_f32(multiplier, paint.miter_limit)
+			}
+			if (d.shape.kind == .path || d.shape.kind == .line) && paint.cap == .square {
+				multiplier = max_f32(multiplier, f32(1.41421356))
 			}
 			half := paint.stroke_width / f32(2)
 			local_outset = half * multiplier

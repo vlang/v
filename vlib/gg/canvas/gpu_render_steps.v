@@ -171,6 +171,9 @@ fn depth_as_float(depth u16) f32 {
 enum GeometryKind {
 	rect
 	rrect
+	// A stroked line from (left, top) to (right, bottom) of `rect`, which is
+	// not sorted (Graphite's line Shape).
+	line
 }
 
 struct ShapeGeometry {
@@ -180,11 +183,16 @@ struct ShapeGeometry {
 }
 
 fn (g ShapeGeometry) bounds() Rect {
-	return if g.kind == .rect { g.rect } else { g.rrect.rect }
+	return match g.kind {
+		.rect { g.rect }
+		.rrect { g.rrect.rect }
+		// Sorting the end points computes the segment's bounding box.
+		.line { g.rect.sorted() }
+	}
 }
 
 fn (g ShapeGeometry) is_rect() bool {
-	return g.kind == .rect || g.rrect.is_rect()
+	return g.kind == .rect || (g.kind == .rrect && g.rrect.is_rect())
 }
 
 // write_analytic_rrect_instance mirrors AnalyticRRectRenderStep::writeVertices()
@@ -197,8 +205,15 @@ fn write_analytic_rrect_instance(mut out []u8, geometry ShapeGeometry, transform
 	stroked := paint.style == .stroke
 	if stroked {
 		stroke_radius := max_f32(0, paint.stroke_radius())
-		size_x := bounds.width()
-		size_y := bounds.height()
+		is_line := geometry.kind == .line
+		mut size_x := bounds.width()
+		mut size_y := bounds.height()
+		if is_line {
+			// A line's size is its length by zero.
+			d := Point{geometry.rect.right() - geometry.rect.left(), geometry.rect.bottom() - geometry.rect.top()}
+			size_x = C.sqrtf(dot2(d, d))
+			size_y = 0
+		}
 		// skvx: size - 2 * halfWidth, the product rounded first.
 		double_radius := f32(2) * stroke_radius
 		gap_x := size_x - double_radius
@@ -215,11 +230,12 @@ fn write_analytic_rrect_instance(mut out []u8, geometry ShapeGeometry, transform
 				x_radii[i] = geometry.rrect.radii[i].x
 			}
 		}
-		if stroke_radius > 0 {
+		if stroke_radius > 0 || is_line {
 			mut join_style := stroke_join_limit(paint)
 			empty_x := size_x == 0
 			empty_y := size_y == 0
-			if empty_x && empty_y {
+			// Lines and points produce caps, which look like the paired joins.
+			if is_line || (empty_x && empty_y) {
 				join_style = match paint.cap {
 					.round { -1 }
 					.butt { 0 }
@@ -233,13 +249,14 @@ fn write_analytic_rrect_instance(mut out []u8, geometry ShapeGeometry, transform
 				}
 			}
 			put_f32(mut out, -2)
-			put_f32(mut out, 0)
+			put_f32(mut out, if is_line { f32(1) } else { f32(0) })
 			put_f32(mut out, stroke_radius)
 			put_f32(mut out, join_style)
 			for v in x_radii {
 				put_f32(mut out, v)
 			}
-			put_ltrb(mut out, bounds)
+			// A line writes its end points.
+			put_ltrb(mut out, if is_line { geometry.rect } else { bounds })
 		} else {
 			for v in x_radii {
 				put_f32(mut out, f32(-2) - v)
@@ -307,6 +324,9 @@ fn put_ltrb(mut out []u8, r Rect) {
 }
 
 fn opposite_insets_intersect(geometry ShapeGeometry, stroke_radius f32, aa_radius f32) bool {
+	if geometry.kind == .line {
+		return stroke_radius <= aa_radius
+	}
 	if geometry.kind == .rect {
 		limit := f32(2) * (stroke_radius + aa_radius)
 		return geometry.rect.width() <= limit || geometry.rect.height() <= limit

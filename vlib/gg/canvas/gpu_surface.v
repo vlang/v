@@ -212,6 +212,35 @@ pub fn (mut s GpuSurface) draw_rect(r Rect, paint Paint) ! {
 	s.device_draw_rect(rect, paint)!
 }
 
+// draw_line strokes a line like SkCanvas::drawLine(): drawPoints() in lines
+// mode with the paint as a stroke (or hairline) style.
+pub fn (mut s GpuSurface) draw_line(x0 f32, y0 f32, x1 f32, y1 f32, paint Paint) ! {
+	if !s.transform.valid() {
+		return
+	}
+	mut stroke := paint
+	if stroke.style == .fill {
+		stroke.style = .stroke
+	}
+	// SkCanvas::onDrawPoints() quick-rejects the sorted end points.
+	if s.quick_reject(Rect.ltrb(x0, y0, x1, y1).sorted(), stroke) {
+		return
+	}
+	s.device_draw_line(Point{x0, y0}, Point{x1, y1}, paint)!
+}
+
+// device_draw_line mirrors Device::drawPoints() for one line: the line
+// Shape with SkStrokeRec(paint, kStroke_Style), which the analytic rrect
+// renderer strokes with caps.
+fn (mut s GpuSurface) device_draw_line(p0 Point, p1 Point, paint Paint) ! {
+	mut stroke := paint
+	stroke.style = .stroke
+	s.draw_shape(ShapeGeometry{
+		kind: .line
+		rect: Rect.ltrb(p0.x, p0.y, p1.x, p1.y)
+	}, stroke)!
+}
+
 // device_draw_rect mirrors Device::drawRect(), after SkCanvas sorted and
 // quick-rejected the rectangle.
 fn (mut s GpuSurface) device_draw_rect(r Rect, paint Paint) ! {
@@ -552,10 +581,19 @@ fn (mut s GpuSurface) draw_shape(geometry_in ShapeGeometry, paint Paint) ! {
 			return
 		}
 	}
-	clip_shape := if geometry_in.kind == .rect {
-		rect_shape(geometry_in.rect)
-	} else {
-		rrect_shape(geometry_in.rrect)
+	clip_shape := match geometry_in.kind {
+		.rect {
+			rect_shape(geometry_in.rect)
+		}
+		.rrect {
+			rrect_shape(geometry_in.rrect)
+		}
+		.line {
+			ClipShape{
+				kind: .line
+				rect: geometry_in.bounds()
+			}
+		}
 	}
 	clip := s.visit_clip_stack_for_draw(clip_shape, paint)!
 	if clip.clipped_out {
@@ -584,6 +622,10 @@ fn (mut s GpuSurface) draw_shape(geometry_in ShapeGeometry, paint Paint) ! {
 			}
 			.empty {
 				return error('gg.canvas: draws replaced by a flood fill are not supported')
+			}
+			.path, .line {
+				// Only filled rects and rrects can be modified.
+				geometry_in
 			}
 		}
 	}

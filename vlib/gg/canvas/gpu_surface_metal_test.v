@@ -291,3 +291,46 @@ fn f32_bytes(values []f32) []u8 {
 	}
 	return out
 }
+
+fn test_lines_are_stroked_with_caps_by_the_analytic_renderer() {
+	mut ctx := new_gpu_context() or {
+		eprintln('skipping: ${err}')
+		return
+	}
+	defer {
+		ctx.free()
+	}
+	mut s := ctx.new_surface(width: test_width, height: test_height)!
+	defer {
+		s.free()
+	}
+	s.clear(Color4f{})
+	paint := Paint{
+		color:        Color4f.from_rgba8(10, 20, 30, 255)
+		style:        .stroke
+		stroke_width: 4
+		cap:          .square
+	}
+	s.draw_line(6, 12, 20, 12, paint)!
+	assert s.draws.len == 1 && s.draws[0].step == .analytic_rrect
+	// -2 marks a stroke, then the line flag, the stroke radius and the
+	// square cap's miter join style, the zero radii and the end points.
+	assert s.draws[0].instance[0..48] == f32_bytes([f32(-2), 1, 2, 1, 0, 0, 0, 0, 6, 12, 20, 12])
+	// A filled line path draws nothing; a stroked one draws the same line.
+	mut b := PathBuilder{}
+	b.move_to(6, 20)
+	b.line_to(20, 20)
+	line := b.detach()
+	s.draw_path(line, Paint{
+		color: paint.color
+	})!
+	assert s.draws.len == 1
+	s.draw_path(line, paint)!
+	assert s.draws.len == 2
+	mut px := []u8{len: test_width * test_height * 4}
+	s.read_pixels(px.data, test_width * 4)!
+	// Square caps extend the line by the stroke radius.
+	assert pixel(px, 4, 12) == [u8(30), 20, 10, 255]
+	assert pixel(px, 21, 20) == [u8(30), 20, 10, 255]
+	assert pixel(px, 13, 16) == [u8(0), 0, 0, 0]
+}

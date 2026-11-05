@@ -20,9 +20,11 @@ pub fn (mut s GpuSurface) draw_path(path Path, paint Paint) ! {
 		return
 	}
 	// Device::drawPath()
-	if _, _ := path.is_line() {
+	if p0, p1 := path.is_line() {
+		// A line has no area: strokes are drawPoints() lines, fills draw
+		// nothing.
 		if paint.style != .fill {
-			return error('gg.canvas: stroked lines are not supported')
+			s.device_draw_line(p0, p1, paint)!
 		}
 		return
 	}
