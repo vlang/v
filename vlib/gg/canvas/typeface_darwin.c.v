@@ -13,17 +13,6 @@ fn C.v_canvas_cf_retain(ref voidptr) voidptr
 // kCTFontColorGlyphsTrait
 const ct_color_glyphs_trait = u32(1) << 13
 
-// Typeface is a font face loaded from font data through CoreText, like
-// SkTypeface_Mac created by SkFontMgr_New_CoreText()->makeFromStream().
-@[heap]
-pub struct Typeface {
-pub:
-	id u32
-mut:
-	ct_font          voidptr
-	has_color_glyphs bool
-}
-
 struct TypefaceIds {
 mut:
 	next u32 = 1

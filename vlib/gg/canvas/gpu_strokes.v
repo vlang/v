@@ -2,6 +2,8 @@ module canvas
 
 import math
 
+fn C.copysignf(x f32, y f32) f32
+
 // Graphite's TessellateStrokesRenderStep: strokes of paths, and of rrects
 // that the analytic renderer cannot stroke, drawn as patches of a fixed-count
 // triangle strip in a 4x MSAA pass.

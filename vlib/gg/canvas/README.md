@@ -70,7 +70,9 @@ matrix, like SkCanvas. Fractional rectangular layer bounds use PerEdgeAAQuad's
 16 template vertices, 29 indices, 80-byte instances and coverage shader.
 
 Only Metal is supported: the reproduced output is Graphite's Metal output on
-the same GPU.
+the same GPU. Geometry and recording code can be imported on other platforms;
+typeface creation and raster text return unsupported-platform errors there.
+CoreText implementation files are compiled only on macOS.
 
 `RasterSurface` reproduces Skia's CPU raster text on macOS (`draw_glyphs`,
 like `SkCanvas::drawTextBlob` with one positioned run): the scaler record,
