@@ -451,7 +451,7 @@ fn rect_subtract_exact(a Rect, b Rect) ?Rect {
 // and draws whose fast bounds miss the device (outset by 1px for AA) are
 // dropped before they reach the device and take a depth value.
 fn (s &GpuSurface) quick_reject(bounds Rect, paint Paint) bool {
-	if !bounds.is_finite() || paint.color.a == 0 {
+	if !bounds.is_finite() || nothing_to_draw(paint) {
 		return true
 	}
 	radius := inflation_radius(paint)
@@ -473,6 +473,13 @@ fn (s &GpuSurface) quick_reject(bounds Rect, paint Paint) bool {
 }
 
 // inflation_radius mirrors SkStrokeRec::GetInflationRadius() for a paint.
+// nothing_to_draw mirrors SkPaint::nothingToDraw() for src-over: the alpha
+// rounds to zero in SkPaint::getAlpha(), `floor(double(a * 255) + 0.5)`.
+fn nothing_to_draw(paint Paint) bool {
+	scaled := paint.color.a * f32(255)
+	return u8(i64(math.floor(f64(scaled) + 0.5))) == 0
+}
+
 fn inflation_radius(paint Paint) f32 {
 	if paint.style == .fill {
 		return 0

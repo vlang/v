@@ -510,3 +510,22 @@ fn test_gradient_paths_match_graphite_pixels() {
 	assert gradient_path_hash(mut ctx, false)! == '034ed0ac42400a65'
 	assert gradient_path_hash(mut ctx, true)! == '44d14951e590f9a8'
 }
+
+// SkCanvas skips src-over draws whose alpha rounds to 0 in SkPaint::getAlpha().
+fn test_paints_whose_alpha_rounds_to_zero_draw_nothing() {
+	mut ctx := new_gpu_context() or {
+		eprintln('skipping: ${err}')
+		return
+	}
+	defer {
+		ctx.free()
+	}
+	mut s := ctx.new_surface(width: test_width, height: test_height)!
+	defer {
+		s.free()
+	}
+	r := Rect.ltrb(2, 2, 20, 20)
+	assert s.quick_reject(r, Paint{ color: Color4f{1, 0, 0, f32(0.0019)} })
+	assert !s.quick_reject(r, Paint{ color: Color4f{1, 0, 0, f32(0.002)} })
+	assert s.quick_reject(r, Paint{ color: Color4f{1, 0, 0, 0} })
+}
