@@ -39,11 +39,10 @@ fn test_should_compile_all_reuses_native_module_cache() ! {
 	built := run_should_compile_cache_command(@VEXE, ['-o', tool,
 		os.join_path(@VEXEROOT, 'cmd', 'tools', 'vshould-compile-all.v')], environment)
 	assert built.exit_code == 0, built.output
-	// Warm the same C flags and interface set as the examples, independently of
-	// the tool's os/log imports and their different object configuration.
-	warmup := os.join_path(root, 'warmup.v')
-	os.write_file(warmup, 'import strconv\nimport strings\nfn main() {\ncount := strconv.atoi("1") or { panic(err) }\nassert strings.repeat(120, count).len == count\n}\n')!
-	warmed := run_should_compile_cache_command(@VEXE, [warmup], environment)
+	// Use make's native warmup, independently of the tool's os/log imports and
+	// their different C flags and interface set.
+	warmup := os.join_path(@VEXEROOT, 'cmd', 'tools', 'cache_basic_modules.v')
+	warmed := run_should_compile_cache_command(@VEXE, ['-new-compiler', 'run', warmup], environment)
 	assert warmed.exit_code == 0, warmed.output
 	builtin_objects := os.walk_ext(cache, '.o').filter(os.file_name(it).starts_with('builtin_'))
 	assert builtin_objects.len > 0, warmed.output

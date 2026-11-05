@@ -184,11 +184,12 @@ Current release and artifact exceptions that intentionally use floating runners:
 
 ## Ecosystem module cache
 
-`make` warms the core module cache used by the ecosystem checks. Keep its C compiler
-configuration aligned with the later builds: the macOS GUI jobs select `-cc clang`
+`make` warms separate core module cache entries for native programs and tests, using
+the same compiler and GC flags for both. Keep its C compiler configuration aligned
+with the later builds: the macOS GUI jobs select `-cc clang`
 before `make`, matching the GUI script. The other app and VPM jobs retain their
 default compiler selection. Explicit compiler, debug, and production options use
-their own cache configurations.
+their own cache configurations, as do different C flags and interface implementations.
 
 `should-compile-all` uses the default C backend for ordinary native examples so they
 can link the cached modules. It still selects JS and Wasm for their filename suffixes
