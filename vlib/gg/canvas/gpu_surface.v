@@ -1039,6 +1039,16 @@ pub fn (mut s GpuSurface) flush() ! {
 			size: u32(instances.len)
 		})
 	}
+	// Create the pipelines before the pass, so a failure leaves no pass open.
+	for b in 0 .. batches.len - 1 {
+		draw := s.draws[keys[batches[b]].draw]
+		pipeline := ctx.pipeline(draw.step, samples, draw.blend, draw.uniforms.clipped,
+			draw.uniforms.shading)
+		if pipeline.id == 0 || gfx.query_pipeline_state(pipeline) != .valid {
+			s.reset_draws()
+			return error('gg.canvas: could not create a pipeline (sokol.gfx pools exhausted?)')
+		}
+	}
 	mut pass := gfx.Pass{
 		attachments: attachments
 	}
@@ -1148,7 +1158,7 @@ fn serialize_uniforms(blocks []PaintUniforms) []f32 {
 	mut out := []f32{cap: blocks.len * clip_uniform_size / 4}
 	for u in blocks {
 		if u.shading.is_gradient() {
-			u.gradient.serialize(u.shading.stops(), mut out)
+			u.gradient.serialize(u.shading, mut out)
 		} else if !u.local_to_device || u.with_color {
 			out << u.color.r
 			out << u.color.g

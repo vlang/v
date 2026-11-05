@@ -1,6 +1,7 @@
 // Pieces of the MSL that Skia Graphite generates for dithered linear and
 // radial gradient paints, which gpu_gradient.v combines with the solid-color
-// shaders of each render step.
+// shaders of each render step. The `_alpha` bodies multiply the gradient by
+// a translucent paint's alpha (its blocks are numbered after that blend).
 // @@ preamble
 struct sampler2D {texture2d<float> tex;sampler smp;};float4 sample(sampler2D i, float2 p, float b=-0.475) { return i.tex.sample(i.smp, p, bias(b)); }float4 sample(sampler2D i, float3 p, float b=-0.475) { return i.tex.sample(i.smp, p.xy / p.z, bias(b)); }float4 sampleLod(sampler2D i, float2 p, float lod) { return i.tex.sample(i.smp, p, level(lod)); }float4 sampleLod(sampler2D i, float3 p, float lod) {return i.tex.sample(i.smp, p.xy / p.z, level(lod));}float4 sampleGrad(sampler2D i, float2 p, float2 dPdx, float2 dPdy) {return i.tex.sample(i.smp, p, gradient2d(dPdx, dPdy));}
 // @@ fields_4
@@ -237,3 +238,38 @@ _28_sk_csxform_prealpha = float4(_29_a.xyz * _32_d, _31_c);
 }
 float _33_e = sample(_globals.ditherLUT_6, float4(_fragCoord.x, _fragCoord.y, 0.0, _fragCoord.w).xy * 0.125).x - 0.5f;
 float4 outColor_1 = float4(clamp(_28_sk_csxform_prealpha.xyz + _33_e * _globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].range_6, 0.0f, _28_sk_csxform_prealpha.w), _28_sk_csxform_prealpha.w);
+// @@ main_linear_alpha
+float2 _30_g = float2(_in.LocalMatrix_3_Var.x + 1e-05, 1.0);
+_30_g = v_Qf2if2(_globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].tilemode_5, _30_g);
+float4 _31_h = w_Qh4f4f4f2(_globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].colors_5, _globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].offsets_5, _30_g);
+float4 _32_sk_csxform_prealpha;
+float4 _33_a = interpolated_to_rgb_unpremul_Qh4h4ii(_31_h, _globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].colorSpace_5, _globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].doUnPremul_5);
+float _34_b = _globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].mode_6;
+if (_34_b < 0.0f) {
+_32_sk_csxform_prealpha = float4(_33_a.xyz / max(_33_a.w, 0.0001f), _33_a.w);
+} else {
+float _35_c = max(_33_a.w, _34_b - 1.0f);
+float _36_d = max(_35_c, 1.0f - _34_b);
+_32_sk_csxform_prealpha = float4(_33_a.xyz * _36_d, _35_c);
+}
+float4 _37_a = _32_sk_csxform_prealpha * _globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].paintColor.w;
+float _38_e = sample(_globals.ditherLUT_9, float4(_fragCoord.x, _fragCoord.y, 0.0, _fragCoord.w).xy * 0.125).x - 0.5f;
+float4 outColor_1 = float4(clamp(_37_a.xyz + _38_e * _globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].range_9, 0.0f, _37_a.w), _37_a.w);
+// @@ main_radial_alpha
+float _34_b = length(_in.LocalMatrix_3_Var);
+float2 _35_g = float2(_34_b, 1.0);
+_35_g = v_Qf2if2(_globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].tilemode_5, _35_g);
+float4 _36_h = w_Qh4f4f4f2(_globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].colors_5, _globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].offsets_5, _35_g);
+float4 _37_sk_csxform_prealpha;
+float4 _38_a = interpolated_to_rgb_unpremul_Qh4h4ii(_36_h, _globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].colorSpace_5, _globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].doUnPremul_5);
+float _39_b = _globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].mode_6;
+if (_39_b < 0.0f) {
+_37_sk_csxform_prealpha = float4(_38_a.xyz / max(_38_a.w, 0.0001f), _38_a.w);
+} else {
+float _40_c = max(_38_a.w, _39_b - 1.0f);
+float _41_d = max(_40_c, 1.0f - _39_b);
+_37_sk_csxform_prealpha = float4(_38_a.xyz * _41_d, _40_c);
+}
+float4 _42_a = _37_sk_csxform_prealpha * _globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].paintColor.w;
+float _43_e = sample(_globals.ditherLUT_9, float4(_fragCoord.x, _fragCoord.y, 0.0, _fragCoord.w).xy * 0.125).x - 0.5f;
+float4 outColor_1 = float4(clamp(_42_a.xyz + _43_e * _globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].range_9, 0.0f, _42_a.w), _42_a.w);

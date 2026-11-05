@@ -75,7 +75,7 @@ fn step_uniform_size(step RenderStep, clipped bool, shading Shading) int {
 	if shading.is_gradient() {
 		// The gradient replaces the color; the clip data and the step's
 		// transform follow it.
-		mut size := gradient_uniform_size(shading.stops())
+		mut size := gradient_uniform_size(shading)
 		if clipped {
 			size += clip_block_size
 		}
@@ -128,8 +128,8 @@ const load_msaa_from_resolve = $embed_file('shaders/load_msaa_from_resolve.metal
 
 // The capacity of the shader and pipeline caches: more than the combinations
 // of render steps, clipping, shading, sample counts and blending.
-const max_shaders = 64
-const max_pipelines = 256
+const max_shaders = 128
+const max_pipelines = 512
 
 // GpuContext owns the GPU resources shared by all surfaces: shaders,
 // pipelines and the static vertex data of the render steps. It uses the
@@ -423,8 +423,15 @@ fn (mut ctx GpuContext) pipeline(step RenderStep, sample_count int, blend bool, 
 			return entry.pipeline
 		}
 	}
+	shader := ctx.shader(step, clipped, shading)
+	if gfx.query_shader_state(shader) != .valid {
+		// The shader pool is exhausted (or compilation failed): cache an
+		// invalid pipeline, which flush() reports.
+		ctx.pipelines << GpuPipelineEntry{step, clipped, shading, sample_count, blend, gfx.Pipeline{}}
+		return gfx.Pipeline{}
+	}
 	mut desc := gfx.PipelineDesc{
-		shader:         ctx.shader(step, clipped, shading)
+		shader:         shader
 		primitive_type: .triangle_strip
 		sample_count:   sample_count
 		cull_mode:      .none

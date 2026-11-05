@@ -58,13 +58,18 @@ pub fn Gradient.two_point_conical(start Point, start_radius f32, end Point, end_
 }
 
 // Shading selects the paint part of a draw's shaders: a solid color, or a
-// dithered gradient with up to 4 or 8 stops.
+// dithered gradient with up to 4 or 8 stops, multiplied by the paint's alpha
+// for the `_alpha` variants.
 enum Shading {
 	solid
 	linear_4
 	linear_8
 	radial_4
 	radial_8
+	linear_4_alpha
+	linear_8_alpha
+	radial_4_alpha
+	radial_8_alpha
 }
 
 fn (s Shading) is_gradient() bool {
@@ -72,14 +77,37 @@ fn (s Shading) is_gradient() bool {
 }
 
 fn (s Shading) stops() int {
-	return if s in [.linear_8, .radial_8] { 8 } else { 4 }
+	return if s in [.linear_8, .radial_8, .linear_8_alpha, .radial_8_alpha] { 8 } else { 4 }
+}
+
+fn (s Shading) is_linear() bool {
+	return s in [.linear_4, .linear_8, .linear_4_alpha, .linear_8_alpha]
+}
+
+// is_translucent reports the gradients that Graphite blends with the paint's
+// alpha (SrcIn with an AlphaOnlyPaintColor block).
+fn (s Shading) is_translucent() bool {
+	return s in [.linear_4_alpha, .linear_8_alpha, .radial_4_alpha, .radial_8_alpha]
+}
+
+// with_alpha returns the translucent variant of a gradient shading.
+fn (s Shading) with_alpha() Shading {
+	return match s {
+		.linear_4 { .linear_4_alpha }
+		.linear_8 { .linear_8_alpha }
+		.radial_4 { .radial_4_alpha }
+		.radial_8 { .radial_8_alpha }
+		else { s }
+	}
 }
 
 // gradient_uniform_size is the size of a gradient paint's uniforms in
 // CombinedUniformData: upper2x2, translation, the colors and offsets,
-// tilemode, colorSpace, doUnPremul, mode and range, padded to 16 bytes.
-fn gradient_uniform_size(stops int) int {
-	return if stops == 4 { 144 } else { 224 }
+// tilemode, colorSpace, doUnPremul, mode, the paint color of translucent
+// paints and range, padded to 16 bytes.
+fn gradient_uniform_size(shading Shading) int {
+	size := if shading.stops() == 4 { 144 } else { 224 }
+	return if shading.is_translucent() { size + 16 } else { size }
 }
 
 // GradientUniforms are the uniforms of Graphite's LocalMatrix, gradient,
@@ -94,6 +122,8 @@ mut:
 	color_space int
 	do_unpremul int
 	mode        f32
+	// The paint's RGB and alpha (AlphaOnlyPaintColor) for translucent paints.
+	paint_color Color4f
 	range       f32
 	// The paint does not read the destination: the colors are opaque and the
 	// tile mode is not decal.
@@ -103,7 +133,9 @@ mut:
 fn same_gradient_uniforms(a GradientUniforms, b GradientUniforms) bool {
 	if a.upper2x2 != b.upper2x2 || a.translation != b.translation || a.offsets != b.offsets
 		|| a.tile_mode != b.tile_mode || a.color_space != b.color_space
-		|| a.do_unpremul != b.do_unpremul || a.mode != b.mode || a.range != b.range {
+		|| a.do_unpremul != b.do_unpremul || a.mode != b.mode || a.range != b.range
+		|| a.paint_color.r != b.paint_color.r || a.paint_color.g != b.paint_color.g
+		|| a.paint_color.b != b.paint_color.b || a.paint_color.a != b.paint_color.a {
 		return false
 	}
 	for i in 0 .. 8 {
@@ -116,7 +148,8 @@ fn same_gradient_uniforms(a GradientUniforms, b GradientUniforms) bool {
 	return true
 }
 
-fn (u GradientUniforms) serialize(stops int, mut out []f32) {
+fn (u GradientUniforms) serialize(shading Shading, mut out []f32) {
+	stops := shading.stops()
 	start := out.len
 	for v in u.upper2x2 {
 		out << v
@@ -138,8 +171,15 @@ fn (u GradientUniforms) serialize(stops int, mut out []f32) {
 	out << math.f32_from_bits(u32(u.color_space))
 	out << math.f32_from_bits(u32(u.do_unpremul))
 	out << u.mode
+	if shading.is_translucent() {
+		// float4 paintColor, already 16-byte aligned after mode.
+		out << u.paint_color.r
+		out << u.paint_color.g
+		out << u.paint_color.b
+		out << u.paint_color.a
+	}
 	out << u.range
-	for out.len - start < gradient_uniform_size(stops) / 4 {
+	for out.len - start < gradient_uniform_size(shading) / 4 {
 		out << 0
 	}
 }
@@ -396,7 +436,7 @@ fn gradient_vertex_source(solid string, step RenderStep, shading Shading, clippe
 		}
 		lines << line
 	}
-	return rename_clip_block(lines.join('\n'))
+	return translucent_blocks(rename_clip_block(lines.join('\n')), shading)
 }
 
 // gradient_fragment_source turns a solid-color fragment shader into the one
@@ -448,8 +488,9 @@ fn gradient_fragment_source(solid string, shading Shading, clipped bool) string 
 	k := t.index('fragment Outputs') or { 0 }
 	head := t[..k]
 	mut main := t[k..]
-	kind := if shading in [.linear_4, .linear_8] { 'linear' } else { 'radial' }
-	mut body := snippets['main_${kind}']
+	kind := if shading.is_linear() { 'linear' } else { 'radial' }
+	alpha := if shading.is_translucent() { '_alpha' } else { '' }
+	mut body := snippets['main_${kind}${alpha}']
 	if stops == 8 {
 		body = body.replace('w_Qh4f4f4f2', 'x_Qh4f4f4f2')
 	}
@@ -457,7 +498,30 @@ fn gradient_fragment_source(solid string, shading Shading, clipped bool) string 
 	ssbo := '_globals.uniformSsboIndex = _in.ssboIndexVar;\n'
 	main = main.replace(ssbo, '')
 	main = main.replace('float4 outColor_1 = _in.SolidColor_1_Var;\n', ssbo + body)
-	return renumber_temporaries(rename_clip_block(head + main))
+	return translucent_blocks(renumber_temporaries(rename_clip_block(head + main)), shading)
+}
+
+// The gradient blocks' uniforms before and after a translucent paint's
+// alpha blend renumbers the paint blocks.
+const translucent_renames = [['upper2x2_2', 'upper2x2_3'], ['translation_2', 'translation_3'],
+	['colors_4', 'colors_5'], ['offsets_4', 'offsets_5'], ['tilemode_4', 'tilemode_5'],
+	['colorSpace_4', 'colorSpace_5'], ['doUnPremul_4', 'doUnPremul_5'], ['mode_5', 'mode_6'],
+	['range_6', 'range_9'], ['LocalMatrix_2_Var', 'LocalMatrix_3_Var'], ['rect_10', 'rect_13'],
+	['radiusPlusHalf_10', 'radiusPlusHalf_13'], ['edgeSelect_10', 'edgeSelect_13'],
+	['outColor_10', 'outColor_13']]
+
+// translucent_blocks renumbers a gradient shader's blocks for a translucent
+// paint, whose alpha follows `mode` as the paintColor uniform.
+fn translucent_blocks(t string, shading Shading) string {
+	if !shading.is_translucent() {
+		return t
+	}
+	mut out := t.replace('float range_6;\n', 'float4 paintColor;\nfloat range_6;\n')
+	for r in translucent_renames {
+		out = replace_identifier(out, r[0], r[1])
+	}
+	// ditherLUT_6 also prefixes the texture and sampler parameter names.
+	return out.replace('ditherLUT_6', 'ditherLUT_9')
 }
 
 // gradient_varyings replaces the solid color varying with the flat uniform

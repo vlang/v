@@ -54,14 +54,19 @@ fn (p Paint) is_hairline() bool {
 }
 
 // shading returns the paint's shading and gradient uniforms. Gradients need
-// an opaque paint color and dithering.
+// dithering; a translucent paint color multiplies the gradient by its alpha,
+// like Graphite's ShadingParams::handlePaintAlpha().
 fn (p Paint) shading() !(Shading, GradientUniforms) {
 	g := p.gradient or { return Shading.solid, GradientUniforms{} }
-	if p.color.a != 1 {
-		return error('gg.canvas: translucent gradient paints are not supported')
-	}
 	if !p.dither {
 		return error('gg.canvas: gradients without dithering are not supported')
 	}
-	return gradient_uniforms(g)!
+	mut shading, mut u := gradient_uniforms(g)!
+	if p.color.a != 1 {
+		shading = shading.with_alpha()
+		// KeyContext's paint color: the opaque RGB with the paint's alpha.
+		u.paint_color = p.color
+		u.opaque = false
+	}
+	return shading, u
 }

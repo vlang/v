@@ -55,8 +55,8 @@ analytic renderer with caps, like Graphite's `drawPoints`.
 Shapes, path fills and strokes can also be painted with dithered linear and
 radial gradients (`Paint.gradient`, like `SkShaders::LinearGradient` and
 `RadialGradient` with up to 8 stops, every tile mode, premultiplied or
-unpremultiplied interpolation and a local matrix), with or without analytic
-clips. Their shaders combine each renderer's solid-color shaders with pieces
+unpremultiplied interpolation, a local matrix and the paint's alpha), with or
+without analytic clips. Their shaders combine each renderer's solid-color shaders with pieces
 of Graphite's gradient MSL (`shaders/gradient_snippets.metal`), and the uniforms
 follow `SkGradientBaseShader`'s stop normalization and Graphite's gradient,
 local matrix, color space and dither blocks. Gradient pipelines are compiled

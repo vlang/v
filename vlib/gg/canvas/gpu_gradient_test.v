@@ -16,7 +16,7 @@ struct GradientShaderCase {
 
 // The SHA-256 prefixes of the shaders Skia Graphite (Chromium 155) compiles
 // for dithered gradients on rects, rrects, convex path fills and strokes,
-// captured with a Metal trace. Stencil-and-cover fills cover with the
+// with opaque and translucent paints, captured with a Metal trace. Stencil-and-cover fills cover with the
 // cover-bounds shaders.
 const gradient_shader_cases = [
 	GradientShaderCase{.cover_bounds, false, .linear_4, '635a618cbe4139a4', 'be5d04eb806189e9'},
@@ -51,6 +51,27 @@ const gradient_shader_cases = [
 	GradientShaderCase{.tessellate_strokes, true, .linear_8, 'c23798e7cf17c4e9', 'c13c4fdf579b5fee'},
 	GradientShaderCase{.tessellate_strokes, true, .radial_4, 'd15a6633e979d9df', '5cabdbb32963d986'},
 	GradientShaderCase{.tessellate_strokes, true, .radial_8, 'c23798e7cf17c4e9', '8e3991386a011e67'},
+	GradientShaderCase{.cover_bounds, false, .linear_4_alpha, 'f3b2e3e0db9f20dc', '7c47590e4ae91fc1'},
+	GradientShaderCase{.cover_bounds, false, .linear_8_alpha, 'b3ef0200b6ae274d', '8253c119f2cba826'},
+	GradientShaderCase{.cover_bounds, false, .radial_4_alpha, 'f3b2e3e0db9f20dc', '8d82c0d0a3ddfc5d'},
+	GradientShaderCase{.analytic_rrect, false, .linear_4_alpha, '7cebdcd470dd90ef', '1f84ec4cd32d6eb0'},
+	GradientShaderCase{.analytic_rrect, false, .linear_8_alpha, '6a2fc7f5b08e5f79', '03fde2e8267d4173'},
+	GradientShaderCase{.analytic_rrect, false, .radial_4_alpha, '7cebdcd470dd90ef', 'c762ef09ab5226b8'},
+	GradientShaderCase{.analytic_rrect, true, .linear_4_alpha, '9db4020d8a250189', 'b20050519a587e8c'},
+	GradientShaderCase{.analytic_rrect, true, .linear_8_alpha, '6c99bc685a02cbfd', '6abd2db2bfb7ee0c'},
+	GradientShaderCase{.analytic_rrect, true, .radial_4_alpha, '9db4020d8a250189', 'daa14d48c6fb5b51'},
+	GradientShaderCase{.wedges_shaded, false, .linear_4_alpha, '609e2f67b4082a32', 'dadb4bacfa2b9964'},
+	GradientShaderCase{.wedges_shaded, false, .linear_8_alpha, '5724497f41526540', '7511e4d812ee1686'},
+	GradientShaderCase{.wedges_shaded, false, .radial_4_alpha, '609e2f67b4082a32', '39caa69a8fed8ab3'},
+	GradientShaderCase{.wedges_shaded, true, .linear_4_alpha, '279aaa44b8dd04bd', '5f37c37721bed730'},
+	GradientShaderCase{.wedges_shaded, true, .linear_8_alpha, '1013a8ea696ff2d6', '7441be65d7f0bac3'},
+	GradientShaderCase{.wedges_shaded, true, .radial_4_alpha, '279aaa44b8dd04bd', '40bf2bf108289f15'},
+	GradientShaderCase{.tessellate_strokes, false, .linear_4_alpha, 'a910870eb0b3bce5', 'cc37761069a95731'},
+	GradientShaderCase{.tessellate_strokes, false, .linear_8_alpha, 'fefdac84fdd0075b', '12ebb6ce81164c20'},
+	GradientShaderCase{.tessellate_strokes, false, .radial_4_alpha, 'a910870eb0b3bce5', '1eccbd35c37d0a71'},
+	GradientShaderCase{.tessellate_strokes, true, .linear_4_alpha, '766201b36f27afac', '1fa2e896daafad8e'},
+	GradientShaderCase{.tessellate_strokes, true, .linear_8_alpha, '76f810b8d7a2f36a', '1e3d03fda237ae0f'},
+	GradientShaderCase{.tessellate_strokes, true, .radial_4_alpha, '766201b36f27afac', '07d8a1c13aba0355'},
 ]
 
 fn test_gradient_shaders_match_graphite() {
@@ -69,6 +90,26 @@ fn test_gradient_uniform_sizes_follow_the_struct_layout() {
 	assert step_uniform_size(.analytic_rrect, true, .radial_8) == 272
 	assert step_uniform_size(.wedges_shaded, false, .linear_4) == 208
 	assert step_uniform_size(.tessellate_strokes, true, .linear_4) == 224
+	// A translucent paint's color follows `mode`.
+	assert step_uniform_size(.cover_bounds, false, .linear_4_alpha) == 160
+	assert step_uniform_size(.analytic_rrect, true, .radial_8_alpha) == 288
+}
+
+// Graphite's uniforms for the linear gradient above with a paint alpha of 0.5.
+fn test_translucent_gradient_uniforms_match_graphite() {
+	_, u := Paint{
+		color:    Color4f{0, 0, 0, 0.5}
+		dither:   true
+		gradient: Gradient{
+			kind:      .linear
+			p0:        Point{4, 4}
+			p1:        Point{60, 40}
+			colors:    three_stops
+			positions: [f32(0), 0.5, 1]
+		}
+	}.shading()!
+	assert uniform_hex(.linear_4_alpha, u) == 'a0044f3c421505bc4215053ca0044f3cf10caabdbdde93bc00000000000000000000803f00000000000000000000803f000000000000803f000000000000803f00000000000000000000803f0000803f00000000000000000000803f0000803f000000000000003f0000803f0000803f0000000000000000000000000000803f0000000000000000000000000000003f8180803b000000000000000000000000'
+	assert !u.opaque
 }
 
 fn test_dither_lut_matches_graphite_upload() {
@@ -77,7 +118,7 @@ fn test_dither_lut_matches_graphite_upload() {
 
 fn uniform_hex(shading Shading, u GradientUniforms) string {
 	mut floats := []f32{}
-	u.serialize(shading.stops(), mut floats)
+	u.serialize(shading, mut floats)
 	mut bytes := []u8{}
 	for f in floats {
 		bits := math_f32_bits(f)
