@@ -228,6 +228,13 @@ assertions.
 The other sanitizer jobs continue using the distribution library. OpenSSL remains a system
 dependency, so this does not claim that every external library has MemorySanitizer coverage.
 
+## Release upgrade checks
+
+The upgrade checks in `vup_works.yml` extract release ZIPs with `ditto` on macOS and
+`unzip` on Linux. The macOS archives contain symbolic links for their bundled libraries.
+All four upgrade scenarios start with a fresh extraction and stop if extraction fails
+or the released compiler is missing or not executable.
+
 ## Rebuilding release binaries
 
 `Release CI` builds without publishing when its workflow file changes on `master`.
