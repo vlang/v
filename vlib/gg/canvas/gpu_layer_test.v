@@ -33,6 +33,7 @@ const image_shader_cases = [
 	ImageShaderCase{.analytic_rrect, false, '265ca8e40a98f98e', 'bce37212a7e9b04c'},
 	ImageShaderCase{.analytic_rrect, true, '6bd167b773b51698', 'fa38f10477a8e205'},
 	ImageShaderCase{.cover_bounds, true, 'bd321cbf69fbe2d6', '4f8ff0b0d5e814c1'},
+	ImageShaderCase{.per_edge_aa_quad, false, '01bf3ddc467a63cb', '375f0e8b6f17d935'},
 ]
 
 fn test_image_shaders_match_graphite() {
@@ -86,4 +87,44 @@ fn test_layers_match_graphite_pixels() {
 	}
 	assert layer_scene_hash(mut ctx, false)! == '13893267e421a9e1'
 	assert layer_scene_hash(mut ctx, true)! == '96a69c16c9ee468c'
+}
+
+// A fractional rectangular clip trims the restored image to an edge-AA quad.
+// Graphite's bytes come from the fractional-layer scene in Vox's oracle.
+fn test_fractional_layer_restore_matches_graphite_pixels() {
+	$if !macos {
+		return
+	}
+	mut ctx := new_gpu_context()!
+	defer {
+		ctx.free()
+	}
+	mut s := ctx.new_surface(width: 64, height: 48)!
+	defer {
+		s.free()
+	}
+	s.clear(Color4f{})
+	s.clip_rect(Rect.ltrb(2.5, 2.25, 60.5, 44.75), .intersect, true)!
+	s.save_layer(none)!
+	s.draw_rect(Rect.ltrb(0, 0, 64, 48), Paint{
+		color:      Color4f{f32(0.9), f32(0.1), f32(0.1), 1}
+		anti_alias: true
+	})!
+	s.restore()
+	// This must exercise the quad renderer, rather than a fallback path.
+	assert s.draws.any(it.step == .per_edge_aa_quad)
+	mut pixels := []u8{len: 64 * 48 * 4}
+	s.read_pixels(pixels.data, 64 * 4)!
+	assert sha256.sum(pixels).hex() == '7779e12274bb7dfbf6f6b16453ed7187db993420c79b51a01a84871f27cb8407'
+}
+
+fn test_per_edge_quad_shaders_match_graphite() {
+	for c in [
+		ImageShaderCase{.per_edge_aa_quad, false, '21204b5c2895ba41', '6a40e8d3e6ceeaae'},
+		ImageShaderCase{.per_edge_aa_quad, true, 'c7c35201c9f99121', 'ce5a507b35487892'},
+	] {
+		vert, frag := solid_shader_sources(c.step, c.clipped)
+		assert sha256.sum(vert.bytes()).hex()[..16] == c.vertex
+		assert sha256.sum(frag.bytes()).hex()[..16] == c.fragment
+	}
 }

@@ -744,16 +744,19 @@ fn (mut s GpuSurface) draw_shape(geometry_in ShapeGeometry, paint Paint) ! {
 	clipped := !clip.analytic.is_empty()
 	// Graphite draws a layer as an edge-AA quad: a pixel-aligned rect uses the
 	// bounds renderer, another rect the per-edge AA quad renderer.
-	if paint.layer_image != none && geometry.kind == .rect
-		&& !is_pixel_aligned(geometry.rect, s.transform) {
-		return error('gg.canvas: the per-edge AA quad renderer is not ported')
-	}
 	uniforms, opaque := shaded_uniforms(paint, clip.analytic)!
 	pixel_aligned := !stroked && geometry.kind == .rect && is_pixel_aligned(geometry.rect, s.transform)
-	step := if pixel_aligned { RenderStep.cover_bounds } else { RenderStep.analytic_rrect }
+	step := if pixel_aligned {
+		RenderStep.cover_bounds
+	} else if paint.layer_image != none && geometry.kind == .rect {
+		RenderStep.per_edge_aa_quad
+	} else {
+		RenderStep.analytic_rrect
+	}
+	coverage := step in [.analytic_rrect, .per_edge_aa_quad]
 	// Renderers with analytic coverage include their 1px AA ramp in the
 	// bounds used for ordering (Clip::outsetBoundsForAA()).
-	draw_bounds := if step == .analytic_rrect {
+	draw_bounds := if coverage {
 		clip.draw_bounds.outset(1).intersect(clip.scissor)
 	} else {
 		clip.draw_bounds
@@ -761,7 +764,7 @@ fn (mut s GpuSurface) draw_shape(geometry_in ShapeGeometry, paint Paint) ! {
 	draw_clip := DrawClip{
 		scissor:      clip.scissor
 		draw_bounds:  draw_bounds
-		shape_bounds: if step == .analytic_rrect {
+		shape_bounds: if coverage {
 			clip.shape_bounds.outset(1)
 		} else {
 			clip.shape_bounds
@@ -770,7 +773,7 @@ fn (mut s GpuSurface) draw_shape(geometry_in ShapeGeometry, paint Paint) ! {
 	// DstUsage: src-over with analytic coverage (from the renderer or an
 	// analytic clip) always reads the destination; without coverage only a
 	// translucent paint does.
-	depends_on_dst := step == .analytic_rrect || clipped || !opaque
+	depends_on_dst := coverage || clipped || !opaque
 	s.depth_index++
 	mut order := DrawOrder{
 		depth: s.depth_index
@@ -805,10 +808,12 @@ fn (mut s GpuSurface) draw_shape(geometry_in ShapeGeometry, paint Paint) ! {
 	mut instance := []u8{cap: analytic_rrect_instance_stride}
 	if step == .cover_bounds {
 		write_cover_bounds_instance(mut instance, geometry.rect, s.transform, order.depth, 0)
+	} else if step == .per_edge_aa_quad {
+		write_per_edge_quad_instance(mut instance, geometry.rect, s.transform, order.depth, 0)
 	} else {
 		write_analytic_rrect_instance(mut instance, geometry, s.transform, paint, order.depth, 0)
 	}
-	s.record(step, step == .analytic_rrect || depends_on_dst, instance, uniforms, order,
+	s.record(step, coverage || depends_on_dst, instance, uniforms, order,
 		draw_clip)
 	s.bounds.record_draw(draw_bounds, order.paint_order)
 	$if gg_canvas_debug ? {
@@ -981,6 +986,7 @@ fn patch_u32(mut bytes []u8, offset int, value u32) {
 fn instance_stride(step RenderStep) int {
 	return match step {
 		.analytic_rrect { analytic_rrect_instance_stride }
+		.per_edge_aa_quad { per_edge_quad_instance_stride }
 		.stencil_wedges_winding, .stencil_wedges_even_odd, .convex_wedges, .wedges_shaded {
 			wedge_instance_stride
 		}
@@ -1180,6 +1186,7 @@ pub fn (mut s GpuSurface) flush() ! {
 			stride := instance_stride(draw.step)
 			ssbo_offset := match draw.step {
 				.analytic_rrect { 68 }
+				.per_edge_aa_quad { 40 }
 				.stencil_wedges_winding, .stencil_wedges_even_odd, .convex_wedges, .wedges_shaded {
 					wedge_ssbo_offset
 				}
@@ -1273,6 +1280,12 @@ pub fn (mut s GpuSurface) flush() ! {
 			true)
 		mut bindings := gfx.Bindings{}
 		match draw.step {
+			.per_edge_aa_quad {
+				bindings.vertex_buffers[0] = ctx.quad_vertices
+				bindings.vertex_buffers[1] = ctx.instances
+				bindings.vertex_buffer_offsets[1] = base + offsets[first]
+				bindings.index_buffer = ctx.quad_indices
+			}
 			.analytic_rrect {
 				bindings.vertex_buffers[0] = ctx.rrect_vertices
 				bindings.vertex_buffers[1] = ctx.instances
@@ -1314,6 +1327,7 @@ pub fn (mut s GpuSurface) flush() ! {
 		}
 		match draw.step {
 			.analytic_rrect { gfx.draw(0, analytic_rrect_index_count, count) }
+			.per_edge_aa_quad { gfx.draw(0, per_edge_quad_index_count, count) }
 			.stencil_wedges_winding, .stencil_wedges_even_odd, .convex_wedges, .wedges_shaded,
 			.tessellate_strokes {
 				gfx.draw(0, int(template_count), count)

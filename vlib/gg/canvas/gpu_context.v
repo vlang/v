@@ -53,6 +53,8 @@ enum RenderStep {
 	// wedges (CoverBounds_InverseCover): the draw's scissor where the stencil
 	// is zero.
 	cover_inverse_fill
+	// Graphite's edge-antialiased quads, used for fractional layer restores.
+	per_edge_aa_quad
 }
 
 // is_wedge_step reports the steps that draw tessellated wedge patches.
@@ -121,6 +123,10 @@ const wedge_solid_uniform_size = 80
 const analytic_rrect_frag = $embed_file('shaders/analytic_rrect_solid.frag.metal')
 const cover_bounds_vert = $embed_file('shaders/cover_bounds_solid.vert.metal')
 const cover_bounds_frag = $embed_file('shaders/cover_bounds_solid.frag.metal')
+const per_edge_quad_vert = $embed_file('shaders/per_edge_quad_solid.vert.metal')
+const per_edge_quad_frag = $embed_file('shaders/per_edge_quad_solid.frag.metal')
+const per_edge_quad_clip_vert = $embed_file('shaders/per_edge_quad_solid_clip.vert.metal')
+const per_edge_quad_clip_frag = $embed_file('shaders/per_edge_quad_solid_clip.frag.metal')
 // The same render steps with Graphite's analytic NonMSAAClip in the paint.
 const analytic_rrect_clip_vert = $embed_file('shaders/analytic_rrect_solid_clip.vert.metal')
 const analytic_rrect_clip_frag = $embed_file('shaders/analytic_rrect_solid_clip.frag.metal')
@@ -150,6 +156,8 @@ mut:
 	pipelines          []GpuPipelineEntry
 	rrect_vertices     gfx.Buffer
 	rrect_indices      gfx.Buffer
+	quad_vertices      gfx.Buffer
+	quad_indices       gfx.Buffer
 	wedge_vertices     gfx.Buffer
 	wedge_indices      gfx.Buffer
 	instances          gfx.Buffer
@@ -227,6 +235,21 @@ pub fn new_gpu_context() !&GpuContext {
 			size: u32(sizeof(u16) * u32(indices.len))
 		}
 	})
+	quad_vertices := per_edge_quad_vertex_data()
+	ctx.quad_vertices = gfx.make_buffer(&gfx.BufferDesc{
+		data: gfx.Range{
+			ptr:  quad_vertices.data
+			size: u32(quad_vertices.len)
+		}
+	})
+	quad_indices := per_edge_quad_indices
+	ctx.quad_indices = gfx.make_buffer(&gfx.BufferDesc{
+		@type: .indexbuffer
+		data:  gfx.Range{
+			ptr:  unsafe { &quad_indices[0] }
+			size: u32(sizeof(u16) * u32(quad_indices.len))
+		}
+	})
 	wedge_vertices := wedge_vertex_data()
 	ctx.wedge_vertices = gfx.make_buffer(&gfx.BufferDesc{
 		data: gfx.Range{
@@ -274,6 +297,8 @@ pub fn (mut ctx GpuContext) free() {
 	}
 	gfx.destroy_buffer(ctx.rrect_vertices)
 	gfx.destroy_buffer(ctx.rrect_indices)
+	gfx.destroy_buffer(ctx.quad_vertices)
+	gfx.destroy_buffer(ctx.quad_indices)
 	gfx.destroy_buffer(ctx.wedge_vertices)
 	gfx.destroy_buffer(ctx.wedge_indices)
 	gfx.destroy_buffer(ctx.instances)
@@ -289,7 +314,7 @@ pub fn (mut ctx GpuContext) free() {
 // which a program usually needs few, are created on first use; the caches
 // have room for every pipeline, so that never reallocates them.
 pub fn (mut ctx GpuContext) precompile() {
-	for step in [RenderStep.analytic_rrect, .cover_bounds] {
+	for step in [RenderStep.analytic_rrect, .cover_bounds, .per_edge_aa_quad] {
 		for clipped in [false, true] {
 			for sample_count in [1, 4] {
 				for blend in [true, false] {
@@ -346,6 +371,8 @@ fn solid_shader_sources(step RenderStep, clipped bool) (string, string) {
 		step == .tessellate_strokes { strokes_solid_vert, strokes_solid_frag }
 		step == .analytic_rrect && clipped { analytic_rrect_clip_vert, analytic_rrect_clip_frag }
 		step == .analytic_rrect { analytic_rrect_vert, analytic_rrect_frag }
+		step == .per_edge_aa_quad && clipped { per_edge_quad_clip_vert, per_edge_quad_clip_frag }
+		step == .per_edge_aa_quad { per_edge_quad_vert, per_edge_quad_frag }
 		clipped { cover_bounds_clip_vert, cover_bounds_clip_frag }
 		else { cover_bounds_vert, cover_bounds_frag }
 	}
@@ -496,6 +523,24 @@ fn (mut ctx GpuContext) pipeline(step RenderStep, sample_count int, blend bool, 
 			for i, format in formats {
 				desc.layout.attrs[i] = gfx.VertexAttrDesc{
 					buffer_index: 0
+					offset:       offsets[i]
+					format:       format
+				}
+			}
+		}
+		.per_edge_aa_quad {
+			desc.index_type = .uint16
+			desc.layout.buffers[0].stride = per_edge_quad_vertex_stride
+			desc.layout.buffers[1].stride = per_edge_quad_instance_stride
+			desc.layout.buffers[1].step_func = .per_instance
+			desc.layout.attrs[0] = gfx.VertexAttrDesc{ buffer_index: 0, format: .uint }
+			desc.layout.attrs[1] = gfx.VertexAttrDesc{ buffer_index: 0, offset: 4, format: .float2 }
+			formats := [gfx.VertexFormat.ubyte4n, .float4, .float4, .float, .uint, .float3, .float3,
+				.float3]
+			offsets := [0, 4, 20, 36, 40, 44, 56, 68]
+			for i, format in formats {
+				desc.layout.attrs[2 + i] = gfx.VertexAttrDesc{
+					buffer_index: 1
 					offset:       offsets[i]
 					format:       format
 				}
