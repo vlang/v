@@ -11707,7 +11707,7 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 		for i in 1 .. node.children_count {
 			t.mark_callback_method_value_receiver_escape(t.a.child(&node, i), amp_sources, ptr_aliases, local_stack_names)
 		}
-		t.mark_call_provenance_argument_escapes(id, node, amp_sources, ptr_aliases)
+		t.mark_call_provenance_argument_escapes(id, node, amp_sources, ptr_aliases, reference_backing_sources)
 		t.mark_implicit_reference_argument_escapes(id, node, amp_sources, ptr_aliases, local_stack_names)
 		t.mark_fixed_array_reference_argument_escapes(id, node, amp_ptrs, amp_sources, ptr_aliases, local_stack_names)
 	}

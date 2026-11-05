@@ -66,13 +66,60 @@ fn retain_payload(value int, mut sink Sink) {
  envelope := Envelope{inner: Payload{pointer: &local}}
  _ = envelope.retain(mut sink) or { return }
 }
+fn retain_argument(mut envelope Envelope, mut sink Sink) !bool {
+ return retain_copy(envelope.inner, mut sink)
+}
+fn retain_indirect_receiver(value int, mut sink Sink) {
+ local := value
+ envelope := Envelope{inner: Payload{pointer: &local}}
+ alias := &envelope
+ _ = (*alias).retain(mut sink) or { return }
+}
+fn retain_indirect_argument(value int, mut sink Sink) {
+ local := value
+ mut envelope := Envelope{inner: Payload{pointer: &local}}
+ alias := &envelope
+ _ = retain_argument(mut *alias, mut sink) or { return }
+}
+fn retain_loop_receiver(value int, mut sink Sink) {
+ local := value
+ mut items := [Envelope{inner: Payload{pointer: &local}}]!
+ for mut item in items {
+  _ = item.retain(mut sink) or { return }
+ }
+}
+fn retain_loop_argument(value int, mut sink Sink) {
+ local := value
+ mut items := [Envelope{inner: Payload{pointer: &local}}]!
+ for mut item in items {
+  _ = retain_argument(mut item, mut sink) or { return }
+ }
+}
 fn retain_receiver(cols &Cols) !&Cols { return cols }
 fn escaping_receiver() &Cols {
  cols := Cols{n: 1}
  return retain_receiver(cols) or { panic("unreachable") }
 }
-fn main() {}
+fn main() {
+ mut sink := Sink{}
+ retain_payload(11, mut sink)
+ assert *sink.pointer == 11
+ retain_indirect_receiver(12, mut sink)
+ assert *sink.pointer == 12
+ retain_indirect_argument(13, mut sink)
+ assert *sink.pointer == 13
+ retain_loop_receiver(14, mut sink)
+ assert *sink.pointer == 14
+ retain_loop_argument(15, mut sink)
+ assert *sink.pointer == 15
+}
 '
+
+fn call_storage_borrow_result_function_body(generated string, name string) string {
+	headers := generated.split_into_lines().filter((it.contains(' ${name}(') || it.contains(' main__${name}(')) && it.ends_with(' {'))
+	assert headers.len == 1, name
+	return generated.all_after(headers[0]).all_before('\n}')
+}
 
 fn test_consumed_result_keeps_proven_storage_borrows_without_losing_embedded_aliases() {
 	path := os.join_path(os.vtmp_dir(), 'call_storage_borrow_result_${os.getpid()}.v')
@@ -103,7 +150,8 @@ fn test_consumed_result_keeps_proven_storage_borrows_without_losing_embedded_ali
 				summary := t.fixed_array_borrow_params[i] or { []bool{} }
 				assert summary.len == 0 || !summary[0], node.value
 			}
-			if node.value in ['Cols.is_zero', 'zero_from_cols', 'Cols.slice', 'Envelope.retain'] {
+			if node.value in ['Cols.is_zero', 'zero_from_cols', 'Cols.slice', 'Envelope.retain',
+				'retain_argument'] {
 				summary := t.fixed_array_borrow_params[i] or { []bool{} }
 				assert summary.len > 0, node.value
 				assert summary[0], node.value
@@ -114,20 +162,21 @@ fn test_consumed_result_keeps_proven_storage_borrows_without_losing_embedded_ali
 		mut gen := cgen.FlatGen.new()
 		generated := gen.gen_with_used(a, used, &tc)
 		for name in ['read_receiver', 'read_argument', 'read_unwrapped', 'read_slice'] {
-			assert generated.contains('${name}('), name
-			body := generated.all_after_last('${name}(').all_after('{').all_before('\n}')
+			body := call_storage_borrow_result_function_body(generated, name)
 			assert !body.contains('memdup('), '${name}: ${body}'
 		}
-		for name in ['retain_payload', 'escaping_receiver', 'read_slice_direct'] {
-			assert generated.contains('${name}('), name
-			body := generated.all_after_last('${name}(').all_after('{').all_before('\n}')
-			if name == 'retain_payload' {
+		for name in ['retain_payload', 'retain_indirect_receiver', 'retain_indirect_argument',
+			'retain_loop_receiver', 'retain_loop_argument', 'escaping_receiver', 'read_slice_direct'] {
+			body := call_storage_borrow_result_function_body(generated, name)
+			if name.starts_with('retain_') {
 				assert body.split_into_lines().any(it.contains('local =') && it.contains('memdup(')), body
 			} else {
 				assert body.contains('memdup('), '${name}: ${body}'
 			}
 		}
 	}
+	run := os.exec([@VEXE, '-cc', @CCOMPILER, '-no-retry-compilation', '-nocache', 'run', path])
+	assert run.exit_code == 0, run.output
 }
 
 fn test_imported_result_borrow_has_no_per_call_heap_allocation() {
@@ -195,9 +244,7 @@ fn main() {
 	assert compiled.exit_code == 0, compiled.output
 	generated := os.read_file(cpath)!
 	for name in ['read_method', 'read_parameter', 'read_or'] {
-		headers := generated.split_into_lines().filter((it.contains(' ${name}(') || it.contains(' main__${name}(')) && it.ends_with(' {'))
-		assert headers.len == 1, name
-		body := generated.all_after(headers[0]).all_before('\n}')
+		body := call_storage_borrow_result_function_body(generated, name)
 		assert !body.contains('memdup('), '${name}: ${body}'
 	}
 	run := os.exec([@VEXE, '-cc', @CCOMPILER, '-no-retry-compilation', '-nocache', 'run', main])

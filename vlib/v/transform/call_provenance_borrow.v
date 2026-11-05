@@ -286,7 +286,7 @@ fn (t &Transformer) call_provenance_known_borrow(id flat.NodeId, call flat.Node)
 
 // Effects happen even when a later pure scalar call discards the inner call's
 // provenance. Preserve unproven argument sources when the call is evaluated.
-fn (mut t Transformer) mark_call_provenance_argument_escapes(id flat.NodeId, call flat.Node, amp_sources map[string][]string, ptr_aliases map[string]string) {
+fn (mut t Transformer) mark_call_provenance_argument_escapes(id flat.NodeId, call flat.Node, amp_sources map[string][]string, ptr_aliases map[string]string, reference_backing_sources map[string][]string) {
 	if !t.preserve_call_provenance {
 		return
 	}
@@ -327,13 +327,17 @@ fn (mut t Transformer) mark_call_provenance_argument_escapes(id flat.NodeId, cal
 			for source in t.escape_aggregate_address_sources(receiver, amp_sources, ptr_aliases) {
 				t.escaping_amp_sources[source] = true
 			}
-			// A storage-only proof protects the receiver address while the aggregate
-			// provenance above still preserves aliases carried inside its value.
-			// Interface dispatch passes the object, never the header's address, and a
-			// receiver that already is a pointer passes its value, never its own address.
-			if types.unalias_type(t.tc.resolve_type(receiver)) !in [types.Interface, types.Pointer]
+			// A storage-only proof protects named locals whose aggregate provenance
+			// is recorded above. Reference iteration bindings and dereferences need
+			// conservative address provenance to preserve their embedded aliases.
+			// Interface dispatch passes the object, never the header's address, and an
+			// ordinary pointer receiver passes its value, never its own address. Reference
+			// iteration instead needs its delayed backing sources propagated.
+			if (types.unalias_type(t.tc.resolve_type(receiver)) !in [types.Interface, types.Pointer]
+				|| t.call_provenance_reference_iteration_operand(receiver, reference_backing_sources))
 				&& t.method_receiver_is_reference(id, receiver, callee.value)
-				&& !t.escape_call_storage_borrow(id, call).borrows(0) {
+				&& !(t.call_provenance_storage_borrow_operand(receiver, reference_backing_sources)
+					&& t.escape_call_storage_borrow(id, call).borrows(0)) {
 				for source in t.escape_address_sources(receiver, amp_sources, ptr_aliases) {
 					t.escaping_amp_sources[source] = true
 				}
@@ -354,12 +358,25 @@ fn (mut t Transformer) mark_call_provenance_argument_escapes(id flat.NodeId, cal
 		implicit_reference := call_provenance_pointer_depth(param_type) >
 			call_provenance_pointer_depth(t.tc.resolve_type(argument))
 		if (actual.is_mut || implicit_reference)
-			&& !t.escape_call_storage_borrow(id, call).borrows(i) {
+			&& !(t.call_provenance_storage_borrow_operand(argument, reference_backing_sources)
+				&& t.escape_call_storage_borrow(id, call).borrows(i)) {
 			for source in t.escape_address_sources(argument, amp_sources, ptr_aliases) {
 				t.escaping_amp_sources[source] = true
 			}
 		}
 	}
+}
+
+// call_provenance_storage_borrow_operand excludes indirect values and loop bindings
+// whose payload aliases are only represented by delayed backing-source propagation.
+fn (t &Transformer) call_provenance_storage_borrow_operand(id flat.NodeId, reference_backing_sources map[string][]string) bool {
+	if !t.escape_storage_borrow_ident(id) { return false }
+	return !t.call_provenance_reference_iteration_operand(id, reference_backing_sources)
+}
+
+fn (t &Transformer) call_provenance_reference_iteration_operand(id flat.NodeId, reference_backing_sources map[string][]string) bool {
+	operand := t.a.node(t.fixed_array_unwrap_arg(id))
+	return operand.kind == .ident && operand.value_text() in reference_backing_sources
 }
 
 fn call_provenance_pointer_depth(typ types.Type) int {
