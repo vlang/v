@@ -58,6 +58,9 @@ struct PipelineKey {
 	shading Shading
 }
 
+// One depth value beyond the final shaded draw is reserved for deferred clips.
+const max_draw_depth = u16(0xfffe)
+
 // GpuSurface records draws into a BGRA8 premultiplied render target and
 // renders them like Skia Graphite does, so the pixels read back match a
 // Graphite SkSurface with the same draws exactly.
@@ -226,6 +229,17 @@ fn (mut s GpuSurface) reset_draws() {
 	s.textures.clear()
 	s.disjoint = map[u16][][]Rect{}
 	s.depth_index = 0
+}
+
+fn (mut s GpuSurface) next_draw_depth() !u16 {
+	if s.deferred_error != '' {
+		return error(s.deferred_error)
+	}
+	if s.depth_index >= max_draw_depth {
+		return error('gg.canvas: draw-list depth limit reached; flush before drawing again')
+	}
+	s.depth_index++
+	return s.depth_index
 }
 
 // write_pixels replaces the surface contents with BGRA8 premultiplied pixels,
@@ -651,13 +665,16 @@ pub fn (mut s GpuSurface) draw_msaa_trigger() {
 		top.draw_msaa_trigger()
 		return
 	}
-	s.depth_index++
+	depth := s.next_draw_depth() or {
+		s.deferred_error = err.msg()
+		return
+	}
 	// A transparent, dst-dependent paint after the empty clip, in the first
 	// disjoint stencil set.
 	order := DrawOrder{
 		paint_order:   1
 		stencil_index: 0
-		depth:         s.depth_index
+		depth:         depth
 	}
 	// Step 0 tessellates three wedges with the 64-byte localToDevice matrix
 	// uniform (never equal to a paint color); step 1 covers them with the
@@ -776,9 +793,9 @@ fn (mut s GpuSurface) draw_shape(geometry_in ShapeGeometry, paint Paint) ! {
 	// analytic clip) always reads the destination; without coverage only a
 	// translucent paint does.
 	depends_on_dst := coverage || clipped || !opaque
-	s.depth_index++
+	depth := s.next_draw_depth()!
 	mut order := DrawOrder{
-		depth: s.depth_index
+		depth: depth
 	}
 	// The draw follows the depth-only draws of the clip elements it uses.
 	clip_order := s.update_clip_state_for_draw(clip.elements, draw_bounds, order.depth)
@@ -886,9 +903,9 @@ fn (mut s GpuSurface) draw_flood_fill(clip ClipResult, paint Paint) ! {
 		return
 	}
 	depends_on_dst := clipped || !opaque
-	s.depth_index++
+	depth := s.next_draw_depth()!
 	mut order := DrawOrder{
-		depth: s.depth_index
+		depth: depth
 	}
 	clip_order := s.update_clip_state_for_draw(clip.elements, clip.draw_bounds, order.depth)
 	order.depends_on_paint_order(clip_order)

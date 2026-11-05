@@ -332,3 +332,49 @@ fn test_failed_drrect_unwinds_only_its_internal_clip_save() {
 	s.restore()
 	assert s.save_count == 0
 }
+
+fn test_depth_limit_rejects_before_wrapping_and_clear_starts_a_new_list() {
+	mut s := recording_surface(2, 2, identity_values)
+	for _ in 0 .. int(max_draw_depth) {
+		s.draw_rect(Rect.ltrb(0, 0, 1, 1), Paint.rgba8(255, 0, 0, 255))!
+	}
+	assert s.draws.len == int(max_draw_depth)
+	assert s.draws[0].order.depth == 1
+	assert s.draws.last().order.depth == max_draw_depth
+	mut rejected := false
+	s.draw_rect(Rect.ltrb(0, 0, 1, 1), Paint.rgba8(0, 255, 0, 255)) or {
+		assert err.msg().contains('depth limit')
+		rejected = true
+	}
+	assert rejected
+	assert s.depth_index == max_draw_depth && s.draws.len == int(max_draw_depth)
+	s.clear(Color4f{})
+	s.draw_rect(Rect.ltrb(0, 0, 1, 1), Paint.rgba8(0, 255, 0, 255))!
+	assert s.draws.len == 1 && s.draws[0].order.depth == 1
+}
+
+fn test_last_draw_depth_leaves_room_for_deferred_clip_draws() {
+	mut s := recording_surface(64, 48, identity_values)
+	s.depth_index = max_draw_depth - 1
+	s.clip_rect(Rect.ltrb(10, 10, 20, 20), .difference, false)!
+	s.clip_rect(Rect.ltrb(30, 15, 40, 25), .difference, false)!
+	s.draw_rect(Rect.ltrb(0, 0, 64, 48), Paint.rgba8(255, 0, 0, 255))!
+	assert s.depth_index == max_draw_depth
+	assert s.clip.elements.any(it.has_pending_draw())
+	s.record_deferred_clip_draws()
+	assert s.depth_index == u16(0xffff)
+	assert s.draws.all(it.order.depth > 0)
+}
+
+fn test_msaa_trigger_reports_depth_exhaustion_on_flush() {
+	mut s := recording_surface(64, 48, identity_values)
+	s.depth_index = max_draw_depth
+	s.draw_msaa_trigger()
+	assert s.draws.len == 0 && s.depth_index == max_draw_depth
+	s.flush() or {
+		assert err.msg().contains('depth limit')
+		assert s.depth_index == 0
+		return
+	}
+	assert false, 'void trigger API lost its capacity error'
+}

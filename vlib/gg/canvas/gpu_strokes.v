@@ -649,9 +649,9 @@ fn (mut s GpuSurface) draw_stroke(path Path, shape ClipShape, paint Paint) ! {
 	shading, gradient := paint.shading()!
 	opaque := color.is_opaque() && (!shading.is_gradient() || gradient.opaque)
 	depends_on_dst := !clip.analytic.is_empty() || !opaque
-	s.depth_index++
+	depth := s.next_draw_depth()!
 	mut order := DrawOrder{
-		depth: s.depth_index
+		depth: depth
 	}
 	clip_order := s.update_clip_state_for_draw(clip.elements, clip.draw_bounds, order.depth)
 	order.depends_on_paint_order(clip_order)
