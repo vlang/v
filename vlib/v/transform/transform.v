@@ -19482,7 +19482,7 @@ fn (mut t Transformer) transform_match_expr_for_type(_id flat.NodeId, node flat.
 	t.pending_stmts.clear()
 
 	mut prelude := []flat.NodeId{}
-	prelude << t.make_decl_assign_typed(tmp_name, t.zero_value_for_type(actual_result_type), actual_result_type)
+	prelude << t.make_staging_value_decl(tmp_name, actual_result_type)
 	for stmt in t.build_match_value_stmts(node, tmp_name, actual_result_type) {
 		prelude << stmt
 	}
@@ -19516,6 +19516,9 @@ fn (t &Transformer) match_expr_common_value_type(node flat.Node) u32 {
 		for tail.kind in [.expr_stmt, .block, .paren] && tail.children_count > 0 {
 			tail_id = t.a.child(&tail, tail.children_count - 1)
 			tail = t.a.nodes[int(tail_id)]
+		}
+		if t.stmt_tail_exits(tail_id) {
+			continue
 		}
 		if tail.kind == .enum_val {
 			enum_shorthand = true

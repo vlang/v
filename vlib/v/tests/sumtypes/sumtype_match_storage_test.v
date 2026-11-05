@@ -14,6 +14,37 @@ type MatchNum = int | i64 | bool
 type MatchFloat = f64 | string
 type MatchPromoted = int | f64 | string
 
+struct MatchUnusedDefault {
+	n int = match unused_match_default() {
+		7 { 7 }
+		else { 0 }
+	}
+}
+
+type MatchSideEffectValue = MatchUnusedDefault | MatchName
+
+fn unused_match_default() int {
+	os.setenv('V_MATCH_UNUSED_DEFAULT_CALLS', (os.getenv('V_MATCH_UNUSED_DEFAULT_CALLS').int() + 1).str(), true)
+	return 7
+}
+
+fn test_match_staging_does_not_construct_an_unused_sum_variant() {
+	os.setenv('V_MATCH_UNUSED_DEFAULT_CALLS', '0', true)
+	defer { os.unsetenv('V_MATCH_UNUSED_DEFAULT_CALLS') }
+	for k in 0 .. 2 {
+		mut items := []MatchSideEffectValue{}
+		items << match k {
+			0 { MatchName{ s: 'first' } }
+			else { MatchName{ s: 'second' } }
+		}
+		assert os.getenv('V_MATCH_UNUSED_DEFAULT_CALLS') == '0'
+		assert (items[0] as MatchName).s == if k == 0 { 'first' } else { 'second' }
+	}
+	value := MatchSideEffectValue{}
+	assert os.getenv('V_MATCH_UNUSED_DEFAULT_CALLS') == '1'
+	assert (value as MatchUnusedDefault).n == 7
+}
+
 enum MatchColor {
 	red
 	blue

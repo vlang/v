@@ -142,3 +142,37 @@ fn test_sum_match_promotes_deeply_nested_specialized_generic_arms() {
 		}
 	}
 }
+
+fn test_sum_match_ignores_panicking_arms_during_numeric_promotion() {
+	for k in 0 .. 2 {
+		mut items := []NumericExpressionValue{}
+		items << match k {
+			0 { 5 }
+			1 { 2.5 }
+			else { panic('unreachable numeric arm') }
+		}
+		value := items[0]
+		assert value is f64
+		assert (value as f64) == if k == 0 { 5.0 } else { 2.5 }
+	}
+}
+
+fn numeric_match_with_return(k int) []NumericExpressionValue {
+	mut items := []NumericExpressionValue{}
+	items << match k {
+		0 { 5 }
+		1 { 2.5 }
+		else { return []NumericExpressionValue{} }
+	}
+	return items
+}
+
+fn test_sum_match_ignores_returning_arms_during_numeric_promotion() {
+	for k in 0 .. 2 {
+		items := numeric_match_with_return(k)
+		value := items[0]
+		assert value is f64
+		assert (value as f64) == if k == 0 { 5.0 } else { 2.5 }
+	}
+	assert numeric_match_with_return(2).len == 0
+}
