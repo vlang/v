@@ -1,5 +1,7 @@
 module canvas
 
+import math
+
 const clip_device = Rect.ltrb(0, 0, 64, 48)
 
 fn identity_transform() Transform {
@@ -279,4 +281,41 @@ fn test_clipped_wedge_and_stroke_uniforms_put_the_clip_after_the_color() {
 	assert strokes.len * 4 == step_uniform_size(.tessellate_strokes, true)
 	assert strokes[4..16] == clip_block
 	assert strokes[16..] == [f32(2), 0, 0, 3, 5, 7, 3, 0]
+}
+
+fn test_concat_affine_adds_like_sk_m44_set_concat() {
+	a := Matrix{
+		m: [f32(17.5405407), -6.2682929, -16.8372097, -0.5, 2.2, 7.3, 0, 0, 1]!
+	}
+	b := Matrix{
+		m: [f32(0.1), 0.3, -7.1276598, 0.2, 0.7, 10.7358494, 0, 0, 1]!
+	}
+	// Values from the same float operations compiled with -ffp-contract=off:
+	// the translation is a0*b2 + (a1*b5 + a2), which differs from adding left
+	// to right (0xc35127d9) in the last bit.
+	got := concat_affine(a, b).m[..6].map(math.f32_bits(it))
+	assert got == [u32(0x3f0019ea), 0x3f5fd5e0, 0xc35127da, 0x3ec7ae15, 0x3fb1eb85, 0x4209ee49]
+}
+
+fn test_clips_in_relatively_axis_aligned_spaces_intersect_draws() {
+	// Neither transform is the identity, but the relative transform of the
+	// draw to the clip (a scale by 2) keeps rects rects.
+	clip_l2d := Transform.new(Matrix{
+		m: [f32(2), 0, 3, 0, 2, 5, 0, 0, 1]!
+	})
+	draw_l2d := Transform.new(Matrix{
+		m: [f32(4), 0, 3, 0, 4, 5, 0, 0, 1]!
+	})
+	mut shape := rect_shape(Rect.ltrb(0, 0, 10, 10))
+	assert intersect_shape(clip_l2d, rect_shape(Rect.ltrb(2, 4, 30, 30)), draw_l2d, mut shape)
+	assert shape.kind == .rect && shape.rect == Rect.ltrb(1, 2, 10, 10)
+	// Clips and draws under unrelated rotations stay separate.
+	r30 := Transform.new(Matrix{
+		m: [f32(0.8660254), -0.5, 20, 0.5, 0.8660254, 4, 0, 0, 1]!
+	})
+	r45 := Transform.new(Matrix{
+		m: [f32(0.70710677), -0.70710677, 0, 0.70710677, 0.70710677, 0, 0, 0, 1]!
+	})
+	mut other := rect_shape(Rect.ltrb(0, 0, 10, 10))
+	assert !intersect_shape(r45, rect_shape(Rect.ltrb(2, 2, 30, 30)), r30, mut other)
 }

@@ -683,7 +683,7 @@ fn combine_elements(mut e RawElement, other RawElement) !bool {
 	if other.op != .intersect || e.op != .intersect {
 		return false
 	}
-	if intersect_shape(other.l2d, other.shape, e.l2d, mut e.shape)! {
+	if intersect_shape(other.l2d, other.shape, e.l2d, mut e.shape) {
 		e.outer = e.outer.intersect(other.outer)
 		e.inner = e.inner.intersect(other.inner)
 		e.shape.inverted = true
@@ -695,7 +695,7 @@ fn combine_elements(mut e RawElement, other RawElement) !bool {
 // intersect_shape mirrors intersect_shape() in ClipStack.cpp: it replaces
 // `shape` (drawn with `l2d`) with its intersection with `other` (drawn with
 // `other_l2d`) when that is a rect or rrect in the same coordinate space.
-fn intersect_shape(other_l2d Transform, other ClipShape, l2d Transform, mut shape ClipShape) !bool {
+fn intersect_shape(other_l2d Transform, other ClipShape, l2d Transform, mut shape ClipShape) bool {
 	shape_ok := shape.kind == .rect || shape.kind == .rrect || shape.is_flood_fill()
 	other_ok := other.kind == .rect || other.kind == .rrect
 	if !shape_ok || !other_ok {
@@ -715,7 +715,12 @@ fn intersect_shape(other_l2d Transform, other ClipShape, l2d Transform, mut shap
 			inverse: other_l2d.matrix
 		}
 	} else {
-		return error('gg.canvas: clips and draws in unrelated coordinate spaces are not supported')
+		// The relative transform (otherToDevice)^-1 * localToDevice must keep
+		// rects rects.
+		local_to_other = Transform.new(concat_affine(other_l2d.inverse, l2d.matrix))
+		if int(local_to_other.typ) > rect_stays_rect {
+			return false
+		}
 	}
 	mut local_other_rect := other.bounds()
 	if relative {
@@ -1120,7 +1125,7 @@ fn (mut d DrawShape) reset_to_flood_fill() {
 }
 
 fn (mut d DrawShape) intersect_clip_element(e RawElement) !bool {
-	if d.can_be_modified() && intersect_shape(e.l2d, e.shape, d.l2d, mut d.shape)! {
+	if d.can_be_modified() && intersect_shape(e.l2d, e.shape, d.l2d, mut d.shape) {
 		if d.outer.is_empty_negative_or_nan() {
 			d.outer = e.outer
 			d.inner = e.inner

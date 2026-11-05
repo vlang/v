@@ -293,3 +293,30 @@ fn invert_2x2(a f32, b f32, c f32, d f32) ?[4]f32 {
 	}
 	return out
 }
+
+// concat_affine mirrors SkM44::setConcat(a, b) for affine matrices embedded
+// in SkM44s: each column of the product is c0*r[0] + (c1*r[1] + (c2*r[2] +
+// c3*r[3])) over a's columns c0..c3 and b's column r, with every product and
+// sum rounded separately (no FMAs).
+fn concat_affine(a Matrix, b Matrix) Matrix {
+	am := a.m
+	bm := b.m
+	mut out := [9]f32{}
+	// b's columns as (r0, r1, r3): sx/ky, kx/sy and tx/ty; r2 is 0 for all.
+	for j, r in [[bm[0], bm[3], f32(0)], [bm[1], bm[4], f32(0)], [bm[2], bm[5], f32(1)]] {
+		// The rows x and y; a's third column is (0, 0, 1, 0).
+		for i in 0 .. 2 {
+			p0 := am[i * 3] * r[0]
+			p1 := am[i * 3 + 1] * r[1]
+			p2 := f32(0) * f32(0)
+			p3 := am[i * 3 + 2] * r[2]
+			s23 := p2 + p3
+			s123 := p1 + s23
+			out[i * 3 + j] = p0 + s123
+		}
+	}
+	out[8] = 1
+	return Matrix{
+		m: out
+	}
+}
