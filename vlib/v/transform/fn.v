@@ -260,6 +260,7 @@ fn fn_type_return_type_text(typ_id u32) ?u32 {
 }
 
 // is_known_fn_name reports whether is known fn name applies in transform.
+@[direct_array_access]
 fn (t &Transformer) is_known_fn_name(name string) bool {
 	if isnil(t.fn_return_name_cache) || name.len == 0 {
 		return t.is_known_fn_name_uncached(name)
@@ -1136,10 +1137,44 @@ fn (t &Transformer) alias_receiver_method_candidates_probed(method string, metho
 // alias_target_type_preserving_main_lock returns the underlying type while retaining
 // an explicit `main.` lock introduced by generic specialization. The lock prevents
 // an imported generic body from rebasing a program type to a same-named local type.
+@[direct_array_access]
 fn (t &Transformer) alias_target_type_preserving_main_lock(base_type_id u32) ?u32 {
 	if isnil(t.tc) || base_type_id == u32(0) {
 		return none
 	}
+	if isnil(t.alias_target_cache) {
+		return t.alias_target_type_preserving_main_lock_uncached(base_type_id)
+	}
+	// Hot under struct and receiver lookups, with few distinct spellings per
+	// body: memoize per (module, file, alias table) like the other type fronts.
+	mut cache := t.alias_target_cache
+	alias_count := t.tc.type_aliases.ids.len
+	if !same_transform_text(cache.module, t.cur_module)
+		|| !same_transform_text(cache.file, t.cur_file) || cache.alias_count != alias_count {
+		cache.module = t.cur_module
+		cache.file = t.cur_file
+		cache.alias_count = alias_count
+		cache.generation++
+	}
+	slot := int(base_type_id & 1023)
+	if cache.generations[slot] == cache.generation && cache.keys[slot] == base_type_id {
+		if cache.states[slot] > 0 {
+			return cache.results[slot]
+		}
+		return none
+	}
+	cache.keys[slot] = base_type_id
+	cache.generations[slot] = cache.generation
+	target_source_id := t.alias_target_type_preserving_main_lock_uncached(base_type_id) or {
+		cache.states[slot] = -1
+		return none
+	}
+	cache.states[slot] = 1
+	cache.results[slot] = target_source_id
+	return target_source_id
+}
+
+fn (t &Transformer) alias_target_type_preserving_main_lock_uncached(base_type_id u32) ?u32 {
 	trimmed_id := transform_trimmed_type_id(base_type_id)
 	clean := if flat.source_type_shape(trimmed_id).has(.pointer) {
 		flat.source_type_syntax(trimmed_id).pointer_raw_base()
@@ -3070,14 +3105,12 @@ fn (t &Transformer) call_name_for_node(id flat.NodeId, node flat.Node) string {
 						&& name.starts_with(t.cur_module) && name[t.cur_module.len] == `.` {
 						return name
 					}
-					qname := '${t.cur_module}.${short_name}'
-					if t.fn_ret_types.contains(qname) || qname in t.tc.fn_ret_types {
-						return qname
-					}
-					// The lowered spelling is only needed when the plain one is not declared.
-					lowered_qname := c_name(qname)
-					if t.fn_ret_types.contains(lowered_qname) || lowered_qname in t.tc.fn_ret_types {
-						return qname
+					// Most bare callees that resolve unqualified are builtin functions
+					// called from every module; remember per module which short names
+					// have no qualified declaration instead of spelling and looking
+					// up two candidates each time.
+					if t.module_declares_qualified_fn(short_name) {
+						return '${t.cur_module}.${short_name}'
 					}
 				}
 			}
@@ -3085,6 +3118,43 @@ fn (t &Transformer) call_name_for_node(id flat.NodeId, node flat.Node) string {
 		}
 	}
 	return t.resolve_call_name(node)
+}
+
+// module_declares_qualified_fn reports whether `cur_module.short_name`, plainly
+// or in its lowered C spelling, names a declared function; memoized per
+// (module, short name) until the signature tables change.
+@[direct_array_access]
+fn (t &Transformer) module_declares_qualified_fn(short_name string) bool {
+	if isnil(t.call_qualified_name_cache) || short_name.len == 0 {
+		return t.module_declares_qualified_fn_uncached(short_name)
+	}
+	mut cache := t.call_qualified_name_cache
+	if !same_transform_text(cache.module, t.cur_module) || cache.fn_count != t.fn_ret_types.ids.len
+		|| cache.tc_rets != t.tc.fn_ret_types.len || cache.tc_revision != t.tc.fn_ret_types_revision {
+		cache.module = t.cur_module
+		cache.fn_count = t.fn_ret_types.ids.len
+		cache.tc_rets = t.tc.fn_ret_types.len
+		cache.tc_revision = t.tc.fn_ret_types_revision
+		cache.states = [512]i8{}
+	}
+	slot := resolved_name_cache_slot(short_name, 511)
+	if cache.states[slot] != 0 && same_transform_text(cache.names[slot], short_name) {
+		return cache.states[slot] > 0
+	}
+	declared := t.module_declares_qualified_fn_uncached(short_name)
+	cache.names[slot] = short_name
+	cache.states[slot] = if declared { i8(1) } else { i8(-1) }
+	return declared
+}
+
+fn (t &Transformer) module_declares_qualified_fn_uncached(short_name string) bool {
+	qname := '${t.cur_module}.${short_name}'
+	if t.fn_ret_types.contains(qname) || qname in t.tc.fn_ret_types {
+		return true
+	}
+	// The lowered spelling is only needed when the plain one is not declared.
+	lowered_qname := c_name(qname)
+	return t.fn_ret_types.contains(lowered_qname) || lowered_qname in t.tc.fn_ret_types
 }
 
 // call_param_offset updates call param offset state for Transformer.
@@ -3360,7 +3430,7 @@ fn (t &Transformer) call_selector_callee_id(node flat.Node) ?flat.NodeId {
 
 fn (t &Transformer) selector_call_name_has_receiver_param(call_name string, method string, params []types.Type) bool {
 	if params.len == 0 || method == '' || call_name == ''
-		|| !call_name.ends_with('.${method}') {
+		|| !ends_with_dot_suffix(call_name, method) {
 		return false
 	}
 	clean_first := t.trim_pointer_type(t.normalize_type_alias(t.semantic_type_name(params[0])))
@@ -3374,6 +3444,16 @@ fn (t &Transformer) selector_call_name_has_receiver_param(call_name string, meth
 		return true
 	}
 	return false
+}
+
+// ends_with_dot_suffix is `name.ends_with('.' + suffix)` without building the
+// joined spelling.
+@[direct_array_access; inline]
+fn ends_with_dot_suffix(name string, suffix string) bool {
+	if name.len <= suffix.len || name[name.len - suffix.len - 1] != `.` {
+		return false
+	}
+	return unsafe { vmemcmp(name.str + name.len - suffix.len, suffix.str, suffix.len) == 0 }
 }
 
 fn (mut t Transformer) transform_method_callee_receiver_for_param(callee_id flat.NodeId, param_type_id u32) ?flat.NodeId {
@@ -4973,6 +5053,26 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 	}
 	if param_shape.has(.pointer) && !t.is_sum_type_name(param_base_id)
 		&& !t.is_interface_type(param_type_id) {
+		if arg_node.is_mut
+			&& !t.transform_param_type_is_void_pointer(t.normalize_type_alias(param_base_id))
+			&& t.normalize_type_alias(if arg_node.kind == .ident {
+				t.typeof_var_type(arg_node.value)
+			} else {
+				t.raw_expr_type_without_smartcast(arg_id)
+			}) == flat.source_type_voidptr {
+			// A raw pointer already addresses the mutable value. Coercing it to
+			// the pointee first would borrow a copy and dereference null pointers.
+			value := t.transform_opaque_pointer_value(arg_id)
+			if t.a.nodes[int(value)].kind == .ident {
+				return value
+			}
+			// A field or promoted pointer read is an address value, not a slot
+			// that the call should reference. Copy only the pointer into typed storage.
+			tmp_name := t.new_temp('raw_ptr_arg')
+			t.pending_stmts << t.make_decl_assign_typed(tmp_name,
+				t.make_cast(param_type_id, value, param_type_id), param_type_id)
+			return t.make_ident(tmp_name)
+		}
 		if arg_node.kind == .ident && t.pointer_value_lvalues[arg_node.value] {
 			storage_type := t.var_type(arg_node.value)
 			if arg_node.value in t.heaped_amp_locals
@@ -5184,6 +5284,11 @@ fn (t &Transformer) imported_global_name(name string) ?string {
 // const_suffixes sees every transitive module and must not decide ownership.
 fn (t &Transformer) current_module_declares_const(name string) bool {
 	if name == '' || isnil(t.tc) {
+		return false
+	}
+	// Every key probed below shares the short name of `name`; the frozen filter
+	// rules the whole family out without building the qualified spelling.
+	if !t.const_selector_may_match(name) {
 		return false
 	}
 	if name.contains('.') {
@@ -18591,7 +18696,14 @@ fn (t &Transformer) explicit_generic_call_arg_ids(node flat.Node) []u32 {
 }
 
 fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_id flat.NodeId) bool {
-	receiver_name := method_name.all_before_last('.')
+	// A borrowed view avoids copying the method name; it is only interned, and
+	// source_type_id copies spellings it stores.
+	receiver_dot := method_name.last_index_u8(`.`)
+	receiver_name := if receiver_dot < 0 {
+		method_name
+	} else {
+		unsafe { tos(method_name.str, receiver_dot) }
+	}
 	if receiver_name.len == 0 {
 		return true
 	}
@@ -20119,7 +20231,7 @@ fn (t &Transformer) current_generic_receiver_call_return_type(node flat.Node) ?u
 		}
 	}
 	for name, ret in t.fn_ret_types.ids {
-		if !name.ends_with('.${callee.value}') { continue }
+		if !ends_with_dot_suffix(name, callee.value) { continue }
 		decl_receiver := flat.source_type_id(name.all_before_last('.'))
 		decl_syntax := flat.source_type_syntax(decl_receiver)
 		decl_base := if decl_syntax.generic_app_valid() {
@@ -20134,6 +20246,7 @@ fn (t &Transformer) current_generic_receiver_call_return_type(node flat.Node) ?u
 	return none
 }
 
+@[direct_array_access]
 fn (t &Transformer) checker_resolved_non_builtin_return_type(id flat.NodeId, node flat.Node) ?u32 {
 	if isnil(t.resolved_call_return_cache) {
 		return t.checker_resolved_non_builtin_return_type_uncached(id, node)
@@ -20172,7 +20285,7 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 			}
 		}
 	}
-	decl_module := t.tc.fn_type_modules[name] or { '' }
+	decl_module, decl_has_generics := t.resolved_call_decl_facts(name)
 	same_decl_module := decl_module == t.cur_module
 		|| (decl_module in ['', 'main'] && t.cur_module in ['', 'main'])
 	if !same_decl_module && node.children_count > 0 {
@@ -20215,7 +20328,7 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 	// The expression cache can contain a parser-inferred multi-return tail such as
 	// `!(m.Match, _)`. Prefer the resolved declaration, whose complete return type
 	// is authoritative, before falling back to that provisional expression type.
-	if param_ids := t.tc.fn_generic_params[name] {
+	if param_ids := t.resolved_call_generic_param_ids(name, decl_has_generics) {
 		params := types.generic_param_texts(param_ids)
 		if params == ['T'] {
 			if ret_text_source_id := t.tc.fn_ret_type_texts.type_id(name) {
@@ -20267,6 +20380,47 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 		}
 	}
 	return none
+}
+
+// resolved_call_decl_facts returns the declaring module of a resolved call name
+// ('' when unknown) and whether its declaration has generic parameters, from
+// the per-name memo when the checker's signature tables have not changed.
+@[direct_array_access]
+fn (t &Transformer) resolved_call_decl_facts(name string) (string, bool) {
+	if isnil(t.resolved_call_decl_cache) || name.len == 0 {
+		return t.tc.fn_type_modules[name] or { '' }, name in t.tc.fn_generic_params
+	}
+	mut cache := t.resolved_call_decl_cache
+	if cache.tc != voidptr(t.tc) || cache.revision != t.tc.fn_ret_types_revision
+		|| cache.modules_len != t.tc.fn_type_modules.len
+		|| cache.generics_len != t.tc.fn_generic_params.len {
+		cache.tc = voidptr(t.tc)
+		cache.revision = t.tc.fn_ret_types_revision
+		cache.modules_len = t.tc.fn_type_modules.len
+		cache.generics_len = t.tc.fn_generic_params.len
+		cache.states = [1024]i8{}
+	}
+	slot := resolved_name_cache_slot(name, 1023)
+	if cache.states[slot] != 0 && same_transform_text(cache.names[slot], name) {
+		return cache.modules[slot], cache.has_generics[slot]
+	}
+	decl_module := t.tc.fn_type_modules[name] or { '' }
+	has_generics := name in t.tc.fn_generic_params
+	cache.names[slot] = name
+	cache.modules[slot] = decl_module
+	cache.has_generics[slot] = has_generics
+	cache.states[slot] = 1
+	return decl_module, has_generics
+}
+
+// resolved_call_generic_param_ids is `tc.fn_generic_params[name]` when the
+// memoized facts say the declaration has generic parameters.
+@[inline]
+fn (t &Transformer) resolved_call_generic_param_ids(name string, has_generics bool) ?[]u32 {
+	if !has_generics {
+		return none
+	}
+	return t.tc.fn_generic_params[name] or { return none }
 }
 
 fn (t &Transformer) call_return_type_name_in_module(ret_name_id u32, node flat.Node, module_name string) u32 {

@@ -150,6 +150,7 @@ fn (t &Transformer) interface_target_should_share_source(id flat.NodeId, target_
 }
 
 // resolve_interface_type_name resolves resolve interface type name information for transform.
+@[direct_array_access]
 fn (t &Transformer) resolve_interface_type_name(name_id u32) u32 {
 	if name_id == 0 || isnil(t.tc) { return 0 }
 	if isnil(t.interface_type_cache) { return t.resolve_interface_type_name_uncached(name_id) }

@@ -581,6 +581,12 @@ fn (mut g FlatGen) gen_fixed_array_pointer_lvalue_arg(id flat.NodeId, expected t
 		return false
 	}
 	node := g.a.nodes[int(id)]
+	// A literal is never a fixed array and an address is a pointer: both are
+	// rejected below without resolving the expression.
+	if node.kind in [.int_literal, .float_literal, .bool_literal, .char_literal, .string_literal,
+		.string_interp] || (node.kind == .prefix && node.op == .amp) {
+		return false
+	}
 	// A parameter's declared type wins; resolve the expression type only otherwise.
 	mut actual := types.Type(types.void_)
 	mut has_param_type := false
@@ -694,6 +700,14 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 	}
 	gated := node.op == .gated_index
 	if base_is_string {
+		if g.race {
+			g.write(if gated { 'string__substr_ni(' } else { 'string__substr(' })
+			if !g.gen_race_string_read(base_id) {
+				g.write(base_value_str)
+			}
+			g.write(', ${start_str}, ${end_str})')
+			return
+		}
 		if gated {
 			g.write('string__substr_ni(${base_value_str}, ${start_str}, ${end_str})')
 		} else {

@@ -9006,7 +9006,11 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.for_stmt()
 		}
 		.key_fn {
-			if p.peek() in [.lpar, .lsbr] {
+			next := p.peek()
+			if next == .decl_assign {
+				return p.recover_keyword_variable_decl()
+			}
+			if next in [.lpar, .lsbr] {
 				if p.cur_fn != '' && p.method_decl_follows() {
 					p.report_fn_decl_inside_fn(p.tok_pos, p.tok_end)
 					return p.fn_decl()
@@ -9025,7 +9029,11 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.const_decl()
 		}
 		.key_match {
-			if p.peek() == .lpar && !p.parenthesized_match_header_starts_block() {
+			next := p.peek()
+			if next == .decl_assign {
+				return p.recover_keyword_variable_decl()
+			}
+			if next == .lpar && !p.parenthesized_match_header_starts_block() {
 				return p.assign_or_expr_stmt()
 			}
 			return p.match_stmt(false)
@@ -9170,6 +9178,9 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.goto_stmt()
 		}
 		.key_go, .key_spawn {
+			if p.peek() == .decl_assign {
+				return p.recover_keyword_variable_decl()
+			}
 			keyword := if p.tok == .key_go { 'go' } else { 'spawn' }
 			spawn_pos := p.span_start()
 			p.next()
@@ -9249,6 +9260,17 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.assign_or_expr_stmt()
 		}
 	}
+}
+
+// recover_keyword_variable_decl reports a keyword name and parses its declaration for recovery.
+fn (mut p Parser) recover_keyword_variable_decl() flat.NodeId {
+	name := p.tok.str()
+	p.record_diagnostic_span('cannot use keyword `${name}` as a variable name', p.tok_pos,
+		p.tok_end)
+	// Recover as a declaration so its initializer does not become a keyword operand.
+	p.tok = .name
+	p.lit = name
+	return p.assign_or_expr_stmt()
 }
 
 fn (mut p Parser) debugger_stmt() flat.NodeId {
@@ -16310,6 +16332,14 @@ fn (mut p Parser) translated_sizeof_name_is_const(name string) bool {
 	}
 	// A visible local or parameter cannot select a module constant.
 	if !p.is_translated && p.is_local_binding(name) {
+		return false
+	}
+	// An imported module name followed by `.` selects a qualified member: a
+	// const of that name would conflict with the import. Reading it as a const
+	// operand would index every sibling file of a module that only measures
+	// another module's types, such as sizeof(flat.Node).
+	if !p.is_translated && p.tok == .name && p.lit == name && p.peek() == .dot
+		&& p.imported_module_names[name] {
 		return false
 	}
 	// A type that this module already declared is never read as a const operand,

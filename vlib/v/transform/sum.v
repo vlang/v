@@ -35,6 +35,7 @@ fn (mut t Transformer) mark_sum_moving_read(source flat.NodeId, value flat.NodeI
 }
 
 // trim_pointer_type transforms trim pointer type data for transform.
+@[direct_array_access]
 fn (t &Transformer) trim_pointer_type(typ_id u32) u32 {
 	if !flat.source_type_shape(typ_id).has(.pointer) { return typ_id }
 	if !isnil(t.alias_cache) {
@@ -182,6 +183,7 @@ fn (t &Transformer) generic_sum_arg_variant_for_pattern(sum_name_id u32, variant
 }
 
 // resolve_sum_name resolves resolve sum name information for transform.
+@[direct_array_access]
 fn (t &Transformer) resolve_sum_name(type_id u32) u32 {
 	if type_id == 0 { return 0 }
 	if isnil(t.sum_cache) {
@@ -1999,6 +2001,9 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 		return storage
 	}
 	expr := t.a.nodes[int(expr_id)]
+	if expr.kind == .paren && expr.children_count == 1 {
+		return t.wrap_sum_value_with_storage(t.a.child(&expr, 0), target_sum_id, storage_boundary)
+	}
 	constructor_type := match expr.kind {
 		.cast_expr, .struct_init { t.normalize_type_alias(expr.source_value_id()) }
 		else { u32(0) }
@@ -2020,10 +2025,21 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 			return lowered
 		}
 	}
+	if expr.kind == .match_stmt {
+		if lowered := t.transform_match_expr_for_type(expr_id, expr, storage_sum_source_id) {
+			return lowered
+		}
+	}
 	if fixed := t.fixed_array_sum_literal_expr(expr_id, expr, resolved_sum_source_id_6) {
 		return t.make_sum_literal(resolved_sum_source_id_6, fixed.variant, fixed.expr)
 	}
 	mut expr_type := t.node_type(expr_id)
+	if expr.kind == .call && t.resolve_sum_name(expr_type) == resolved_sum_source_id_6 {
+		call_type := t.get_call_return_type(expr_id, expr)
+		if call_type != 0 {
+			expr_type = call_type
+		}
+	}
 	if expr.kind in [.ident, .selector] {
 		if expr.kind == .ident && expr.value.len > 0 {
 			local_type_source_id := t.raw_var_type(expr.value)
@@ -2046,6 +2062,20 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 				expr_type = const_type_source_id_2
 			}
 		}
+	}
+	if expr.kind == .enum_val && t.resolve_sum_name(expr_type) == resolved_sum_source_id_6 {
+		mut enum_type := u32(0)
+		for candidate in variants {
+			candidate_enum := t.enum_type_name_for_expected(candidate, t.cur_module)
+			if candidate_enum != 0 {
+				if enum_type != 0 {
+					enum_type = 0
+					break
+				}
+				enum_type = candidate_enum
+			}
+		}
+		if enum_type != 0 { expr_type = enum_type }
 	}
 	mut variant := expr_type
 	mut expr_smartcast := SmartcastContext{}
@@ -2149,6 +2179,15 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 			}
 		}
 	}
+	if !matches && expr.kind == .int_literal {
+		for candidate in variants {
+			if candidate in [flat.source_type_f32, flat.source_type_f64] {
+				matches = true
+				matched_variant = candidate
+				break
+			}
+		}
+	}
 	if !matches && t.is_integer_type_name(clean_variant) {
 		mut enum_variant := u32(0)
 		for v_source_id_3 in variants {
@@ -2197,7 +2236,9 @@ fn (mut t Transformer) wrap_sum_value_with_storage(expr_id flat.NodeId, target_s
 
 	needs_variant_conversion := matched_clean_comparison_type_id != value_clean_comparison_type_id
 		&& t.sum_variant_type_accepts_value_type(matched_clean_source_id, value_clean_source_id)
-	mut inner := if needs_variant_conversion {
+	mut inner := if expr.kind == .enum_val {
+		t.transform_enum_shorthand(expr_id, expr, matched_variant)
+	} else if needs_variant_conversion {
 		// An array literal keeps its own element type (`[u8(1), 2]` holds two `u8`s)
 		// and is converted element by element, instead of being retyped as `[]Sum`.
 		if expr.kind == .array_literal {

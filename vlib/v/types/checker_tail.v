@@ -2032,6 +2032,10 @@ fn (tc &TypeChecker) mut_param_binding_matches_lvalue(name string) bool {
 	if tc.cur_scope == unsafe { nil } {
 		return false
 	}
+	// Most functions declare no `mut` parameter or local: nothing to look up.
+	if tc.fn_context.mut_param_owners.len == 0 && tc.fn_context.mut_local_owners.len == 0 {
+		return false
+	}
 	if param_owner := tc.fn_context.mut_param_owners[name] {
 		if owner := tc.cur_scope.lookup_owner(name) {
 			return voidptr(owner.scope) == voidptr(param_owner.scope)
@@ -4822,6 +4826,15 @@ fn (mut tc TypeChecker) call_callee_indexes_container(callee &flat.Node) bool {
 // check_call validates check call state for types.
 @[direct_array_access]
 fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
+	// The callee's declared value type is asked for up to three times while
+	// this call is resolved (see selector_declared_value_type_at).
+	previous_callee := tc.sel_decl_memo_callee
+	tc.sel_decl_memo_callee = int(tc.a.child(&node, 0))
+	tc.sel_decl_memo_id = -1
+	defer {
+		tc.sel_decl_memo_callee = previous_callee
+		tc.sel_decl_memo_id = -1
+	}
 	if type_name_id := tc.translated_named_cast_call_name_id(id, node) {
 		tc.check_cast_expr(id, flat.Node{
 			...node
@@ -4999,8 +5012,8 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 			// `main__main`), so calling it is allowed just like in test builds.
 			tc.record_error_at(.call_arg_mismatch, 'the `main` function cannot be called in the program', id, node.pos)
 		}
-		if callee.kind == .ident && (callee.value in tc.fn_generic_params
-			|| tc.qualify_fn_name(callee.value) in tc.fn_generic_params) {
+		if callee.kind == .ident && (tc.fn_has_generic_params(callee.value)
+			|| tc.fn_has_generic_params(tc.qualify_fn_name(callee.value))) {
 			for i in 1 .. node.children_count {
 				arg_id := tc.call_arg_value(tc.a.child(&node, i))
 				arg := tc.a.node(arg_id)
@@ -5126,7 +5139,7 @@ fn (mut tc TypeChecker) check_call(id flat.NodeId, node flat.Node) {
 					return
 				}
 			}
-			if wrapped_fn := tc.selector_declared_value_type(*callee) {
+			if wrapped_fn := tc.selector_declared_value_type_at(callee_id, *callee) {
 				if wrapped_fn is OptionType && fn_type_from_type(wrapped_fn.base_type) != none {
 					smart_fn := tc.smartcast_type(tc.a.child(&node, 0)) or { builtin_void_type }
 					if fn_type_from_type(smart_fn) == none {
@@ -5751,6 +5764,9 @@ fn os_raw_io_unsupported_type_message(path string, type_name string) string {
 }
 
 fn (tc &TypeChecker) is_declared_unsafe_fn(name string) bool {
+	if tc.unsafe_fn_bloom.excludes(name, u64(tc.unsafe_fn_modules.len)) {
+		return false
+	}
 	modules := tc.unsafe_fn_modules[name] or { return false }
 	// Bare names are shared by signature aliases from different modules. The
 	// unsafe attribute belongs to the declaration selected by call resolution.
@@ -6128,13 +6144,13 @@ fn (tc &TypeChecker) call_closing_paren_pos(node flat.Node) token.Pos {
 
 fn (tc &TypeChecker) call_generic_params(name string) []u32 {
 	qualified := tc.qualify_fn_name(name)
-	if params := tc.fn_generic_params[qualified] {
+	if params := tc.declared_fn_generic_params(qualified) {
 		return params
 	}
 	if qualified != name && tc.fn_signature_known(qualified) {
 		return []u32{}
 	}
-	return tc.fn_generic_params[name] or { []u32{} }
+	return tc.declared_fn_generic_params(name) or { []u32{} }
 }
 
 fn (mut tc TypeChecker) record_chained_bare_generic_struct_method_inference_error(id flat.NodeId, node flat.Node, info CallInfo) {
@@ -6571,7 +6587,7 @@ fn (mut tc TypeChecker) resolve_generic_compile_error_instantiation(call flat.No
 	}
 	decl_id := flat.NodeId(decl.idx)
 	fn_node := tc.a.node(decl_id)
-	generic_params := tc.fn_generic_params[info.name] or {
+	generic_params := tc.declared_fn_generic_params(info.name) or {
 		tc.enclosing_generic_params_by_node[decl.idx] or {
 			tc.infer_decl_generic_param_ids(fn_node)
 		}
@@ -7646,7 +7662,8 @@ fn (mut tc TypeChecker) record_deprecation(id flat.NodeId, kind string, deprecat
 		return
 	}
 	error_after := time.parse_iso8601(deprecation.after) or { return }
-	tc.record_notice_at(.unknown_fn, '${kind} `${deprecation.name}` will be deprecated after ${deprecation.after}, and will become an error after ${error_after.add_days(180).strftime('%Y-%m-%d')}${custom}', id, pos)
+	// Calendar fields also format deadlines beyond the Windows CRT time range.
+	tc.record_notice_at(.unknown_fn, '${kind} `${deprecation.name}` will be deprecated after ${deprecation.after}, and will become an error after ${error_after.add_days(180).ymmdd()}${custom}', id, pos)
 }
 
 fn (tc &TypeChecker) deprecated_call_diagnostic_pos(node flat.Node, is_method bool) token.Pos {
@@ -9753,7 +9770,9 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 		}
 		// Resolve the declared field/global/const type once for both the plain and
 		// the Option/Result-wrapped function value checks.
-		declared_value_type := tc.selector_declared_value_type(fn_node) or { builtin_void_type }
+		declared_value_type := tc.selector_declared_value_type_at(tc.a.child(&node, 0), fn_node) or {
+			builtin_void_type
+		}
 		if fn_typ := fn_type_from_type(declared_value_type) {
 			return CallInfo{
 				name:         ''
@@ -17719,12 +17738,14 @@ fn (mut tc TypeChecker) call_info_with_inferred_receiver(node flat.Node, info Ca
 }
 
 fn (mut tc TypeChecker) infer_call_info_receiver(node flat.Node, info CallInfo) CallInfo {
+	mut callee_id := tc.a.child(&node, 0)
 	mut callee := tc.a.child_node(&node, 0)
 	if callee.kind == .index && callee.children_count > 0 {
+		callee_id = tc.a.child(callee, 0)
 		callee = tc.a.child_node(callee, 0)
 		// `recv.fns[i](...)` indexes a field that holds functions, unlike the generic
 		// method call `recv.method[T](...)`, so `recv` is not a receiver.
-		if callee.kind == .selector && tc.selector_declared_value_type(*callee) != none {
+		if callee.kind == .selector && tc.selector_declared_value_type_at(callee_id, *callee) != none {
 			return info
 		}
 	}
@@ -17744,7 +17765,9 @@ fn (mut tc TypeChecker) infer_call_info_receiver(node flat.Node, info CallInfo) 
 	if callee.kind != .selector || callee.children_count == 0 {
 		return info
 	}
-	declared_value_type := tc.selector_declared_value_type(*callee) or { builtin_void_type }
+	declared_value_type := tc.selector_declared_value_type_at(callee_id, *callee) or {
+		builtin_void_type
+	}
 	if fn_type_from_type(declared_value_type) != none
 		|| wrapped_fn_type_from_type(declared_value_type) != none {
 		return info
@@ -19665,7 +19688,7 @@ fn (mut tc TypeChecker) specialized_plain_generic_call_info(node flat.Node, info
 	if tc.call_has_explicit_generic_type_args(node) {
 		return info
 	}
-	generic_params := tc.fn_generic_params[info.name] or { return info }
+	generic_params := tc.declared_fn_generic_params(info.name) or { return info }
 	param_texts := tc.fn_param_type_texts.type_ids(info.name) or { return info }
 	if generic_params.len == 0 || node.children_count == 0
 		|| (node.children_count == 1 && !info.has_receiver)
@@ -21824,7 +21847,51 @@ fn struct_type_from_type(typ Type) ?Struct {
 	return none
 }
 
-@[direct_array_access]
+// selector_declared_value_type_at is selector_declared_value_type for the
+// selector node `id`, remembered across the resolutions one check_call makes
+// of its callee (the preamble, resolve_call_info_uncached and the receiver
+// inference). Queries outside that active callee do not read or populate the
+// memo: smartcast values can change between queries without changing map size.
+// The answer holds while nothing else it was computed from changed:
+// the scope and its bindings, the smartcasts, the errors, the function and
+// whether the base already has a checked type; check_call clears it on exit.
+@[direct_array_access; inline]
+fn (tc &TypeChecker) selector_declared_value_type_at(id flat.NodeId, node flat.Node) ?Type {
+	if int(id) != tc.sel_decl_memo_callee || isnil(tc.cur_scope) || node.children_count == 0 {
+		return tc.selector_declared_value_type(node)
+	}
+	base_cached := !isnil(tc.cached_expr_type_ref(tc.a.child(&node, 0)))
+	if tc.sel_decl_memo_id == int(id) && tc.sel_decl_memo_scope == voidptr(tc.cur_scope)
+		&& tc.sel_decl_memo_names == tc.cur_scope.names.len
+		&& tc.sel_decl_memo_lifetime == tc.cur_scope.lifetime
+		&& tc.sel_decl_memo_errors == tc.errors.len
+		&& tc.sel_decl_memo_smartcasts == tc.smartcasts.len
+		&& tc.sel_decl_memo_fn == tc.fn_context.node_id
+		&& tc.sel_decl_memo_base_cached == base_cached {
+		if tc.sel_decl_memo_found {
+			return tc.sel_decl_memo_type
+		}
+		return none
+	}
+	result := tc.selector_declared_value_type(node)
+	mut wtc := unsafe { tc }
+	wtc.sel_decl_memo_id = int(id)
+	wtc.sel_decl_memo_scope = voidptr(tc.cur_scope)
+	wtc.sel_decl_memo_names = tc.cur_scope.names.len
+	wtc.sel_decl_memo_lifetime = tc.cur_scope.lifetime
+	wtc.sel_decl_memo_errors = tc.errors.len
+	wtc.sel_decl_memo_smartcasts = tc.smartcasts.len
+	wtc.sel_decl_memo_fn = tc.fn_context.node_id
+	wtc.sel_decl_memo_base_cached = base_cached
+	if typ := result {
+		wtc.sel_decl_memo_found = true
+		wtc.sel_decl_memo_type = typ
+	} else {
+		wtc.sel_decl_memo_found = false
+	}
+	return result
+}
+
 fn (tc &TypeChecker) selector_declared_value_type(node flat.Node) ?Type {
 	if node.children_count == 0 {
 		return none

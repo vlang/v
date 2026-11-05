@@ -2218,7 +2218,10 @@ fn (mut g Parser) validate_expression_stream_token(expression_tokens []FastcExpr
 		state.mutation_operator = g.tok
 		state.tokens_before_mutation = source_token_count
 		if g.selfhost && g.tok == .assign {
-			target_type := (g.infer_expression_type(expression_tokens[..source_token_count]) or { u32(0) })
+			// Every token read so far is the target. `source_token_count` can differ
+			// from their number, since `.filter(...)`, `${...}` and similar are folded
+			// into one token.
+			target_type := (g.infer_expression_type(expression_tokens) or { u32(0) })
 			if target_type != u32(0) {
 				g.expected_expression_type = target_type
 			}

@@ -55,7 +55,7 @@ fn install_iconv() {
 }
 
 fn test_pure_v_math_module() {
-	exec_args(['v', '-silent', '-exclude', '@vlib/math/*.c.v', 'test', 'vlib/math/'])
+	exec_args(['v', '-silent', '-d', 'pure_v_math', '-exclude', '@vlib/math/*.c.v', 'test', 'vlib/math/'])
 }
 
 fn self_tests() {

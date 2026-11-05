@@ -67,6 +67,39 @@ fn main() {
 	}
 }
 
+fn test_fastc_warns_about_each_form_a_deprecated_integer_type_can_take() {
+	root := os.join_path(os.vtmp_dir(), 'deprecated_integer_forms_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	for name, source in {
+		'parameter':     'fn f(x usize) {}\nfn main() { f(1) }\n'
+		'return':        'fn f() usize { return 1 }\nfn main() { f() }\n'
+		'field':         'struct S { x usize }\nfn main() { _ = S{} }\n'
+		'array':         'fn main() { _ = []usize{} }\n'
+		'generic':       'struct B[T] { v T }\nfn main() { _ = B[usize]{v: 1} }\n'
+		'interpolation': "fn main() { println('a \${usize(1)} b') }\n"
+	} {
+		dir := os.join_path(root, name)
+		os.mkdir_all(dir) or { panic(err) }
+		os.write_file(os.join_path(dir, 'main.v'), source) or { panic(err) }
+		built := cmdexec.run(@VEXE, ['-b', 'fastc', '-o', os.join_path(root, name + '.c'), dir])
+		assert built.exit_code == 0, built.output
+		assert built.output.contains('`usize` is deprecated; use `uint` instead'), '${name}: ${built.output}'
+	}
+}
+
+fn test_fastc_does_not_warn_about_a_mention_in_a_comment_or_string() {
+	root := os.join_path(os.vtmp_dir(), 'deprecated_integer_mentions_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), "// usize and isize\nfn main() {\n\tprintln('usize isize')\n}\n") or {
+		panic(err)
+	}
+	built := cmdexec.run(@VEXE, ['-b', 'fastc', '-o', os.join_path(root, 'out.c'), root])
+	assert built.exit_code == 0, built.output
+	assert !built.output.contains('is deprecated; use'), built.output
+}
+
 fn test_nested_explicit_generic_arguments_use_canonical_integer_names() {
 	root := os.join_path(os.vtmp_dir(), 'nested_legacy_integer_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }

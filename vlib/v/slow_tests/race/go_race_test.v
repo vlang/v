@@ -24,10 +24,10 @@ const run_marker = '=== RUN   '
 const done_marker = '=== DONE'
 const skip_marker = '--- SKIP: '
 const max_runs = 3
-// gcc's ThreadSanitizer instrumentation does not see the reads and writes of whole struct
+// gcc's ThreadSanitizer instrumentation can miss reads and writes of whole struct
 // values in call arguments and results (a struct passed by value, a struct result stored
 // through the return slot), which V uses for strings, arrays and maps. `v -race` prefers
-// clang for that reason; these tests only pass with it.
+// clang for that reason; this list records known gcc instrumentation limitations.
 const gcc_known_misses = ['issues.test_race_issue12664', 'map.test_race_map_variable',
 	'map.test_race_map_variable2', 'map.test_race_map_variable3', 'mop2.test_race_complex128_ww',
 	'mop3.test_race_as_func1', 'mop3.test_race_panic_arg', 'mop3.test_race_slice_slice',

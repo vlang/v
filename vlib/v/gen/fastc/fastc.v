@@ -1734,6 +1734,27 @@ fn (mut timer FastcPhaseTimer) mark(name string) {
 	timer.last_us = now_us
 }
 
+// fastc_source_uses_deprecated_integer reports whether the driver has to run the
+// full parser on `source` to warn about `isize` or `usize`. Comments and plain
+// strings that only mention the names do not count, which keeps sources like the
+// compiler's own out of that second parse. A source with any scanner diagnostic,
+// warnings included, also counts, so the parser sees it and reports what it finds.
+fn fastc_source_uses_deprecated_integer(source string, path string, prefs &pref.Preferences) bool {
+	if !source.contains('isize') && !source.contains('usize') {
+		return false
+	}
+	mut scan := scanner.new_scanner(prefs, .normal)
+	scan.init(token.File.unindexed(path, source.len), source)
+	mut tok := scan.scan()
+	for tok != .eof {
+		if tok == .name && (scan.lit == 'isize' || scan.lit == 'usize') {
+			return true
+		}
+		tok = scan.scan()
+	}
+	return scan.diagnostics.len > 0
+}
+
 // generate_files_with_source_paths emits C and reports every source read from entry files,
 // entry directories, and their imports.
 pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences) !GenerationResult {
@@ -1755,7 +1776,7 @@ pub fn generate_files_with_native_aliases(paths []string, prefs &pref.Preference
 	for source_file in sources {
 		source_paths << source_file.path
 		if source_file.header.module_name != 'builtin'
-			&& (source_file.source.contains('isize') || source_file.source.contains('usize')) {
+			&& fastc_source_uses_deprecated_integer(source_file.source, source_file.path, &scoped_prefs) {
 			deprecated_integer_paths << source_file.path
 		}
 	}
@@ -2163,6 +2184,60 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		if c_name.starts_with('main__')
 			&& ((constants[key] or { '' }) == c_name || (globals[key] or { '' }) == c_name) {
 			function_c_names[key] = '__vf_function_${c_name['main__'.len..]}'
+		}
+	}
+	// A method is named `<module>__<Receiver>_<method>`, which a free function of the
+	// same module can also be named (`string.index_pair` and `string_index_pair` were
+	// both `builtin__string_index_pair`). The method keeps its name, which generated
+	// code calls directly (`builtin__string_plus`), and the free function moves to
+	// FastC's own namespace.
+	mut method_c_names := map[string]bool{}
+	for key, signature in functions {
+		if key.starts_with('C.') || !key.contains('.') {
+			continue
+		}
+		if key.all_before_last('.') != signature.module_name {
+			c_name := function_c_names[key] or { fastc_signature_c_name(key, signature) }
+			method_c_names[c_name] = true
+		}
+	}
+	mut colliding_keys := []string{}
+	for key, signature in functions {
+		if key.starts_with('C.') || key == 'main' || signature.is_global
+			|| (key.contains('.') && key.all_before_last('.') != signature.module_name) {
+			continue
+		}
+		c_name := function_c_names[key] or { fastc_signature_c_name(key, signature) }
+		if c_name in method_c_names {
+			colliding_keys << key
+		}
+	}
+	if colliding_keys.len > 0 {
+		// The constant collision pass above allocates in `__vf_function_` too, so the new
+		// name must be one that no function, global or export spells yet. Generic instances
+		// are named while generating, outside `functions`, and are not covered here.
+		mut used_c_names := map[string]bool{}
+		for key, signature in functions {
+			c_name := function_c_names[key] or { fastc_signature_c_name(key, signature) }
+			used_c_names[c_name] = true
+			if signature.export_name != '' {
+				used_c_names[signature.export_name] = true
+			}
+		}
+		for _, c_name in globals {
+			used_c_names[c_name] = true
+		}
+		colliding_keys.sort()
+		for key in colliding_keys {
+			c_name := function_c_names[key] or { fastc_signature_c_name(key, functions[key]) }
+			mut renamed := '__vf_function_${c_name}'
+			mut suffix := 1
+			for used_c_names[renamed] {
+				renamed = '__vf_function_${c_name}_${suffix}'
+				suffix++
+			}
+			used_c_names[renamed] = true
+			function_c_names[key] = renamed
 		}
 	}
 	for key, signature in functions {

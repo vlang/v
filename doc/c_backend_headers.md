@@ -44,6 +44,10 @@ On FreeBSD and OpenBSD, builds with system headers include `<sys/sysctl.h>` for
 `os.executable()` and retain its native `sysctl` declaration. Headerless builds supply
 the sysctl constants and prototype directly.
 
+On Linux, Android, Termux, FreeBSD and OpenBSD, builds with system headers use the native
+`sem_*` declarations from `<semaphore.h>`, including when compiling cached modules.
+Headerless builds retain V's semaphore prototypes.
+
 Win32 API names in headerless C declarations receive `WINAPI` and their wide export
 names only for Windows targets. On other targets, names such as `Sleep` and `CreateFile`
 keep the spelling and calling convention of the program's own C functions.
@@ -76,6 +80,8 @@ On macOS, existing or external object inputs still select the platform C compile
 Wrappers that expand Boehm allocation macros include the collector header explicitly.
 Warm incremental builds share the cached declaration prefix's string storage and retain
 new program literals and cleanup hooks after source edits.
+Top-level assembly definitions stay with their declaring module or program, outside the shared
+declaration prefix used by cached and parallel C builds.
 Warm builds using `os` also retain system-header ownership, so platform stat macros do not
 conflict with compatibility declarations. Windows standalone and custom-libc builds keep
 their required native layouts.

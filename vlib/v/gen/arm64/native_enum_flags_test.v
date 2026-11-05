@@ -45,11 +45,11 @@ mut:
 }
 struct NativeArray {
     data voidptr
-    offset i32
-    len i32
-    cap i32
+    offset int
+    len int
+    cap int
     flags u32
-    element_size i32
+    element_size int
 }
 fn mutate_flags(mut flags FeatureAlias) {
     flags.set(.write)

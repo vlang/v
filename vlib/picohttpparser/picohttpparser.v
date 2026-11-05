@@ -467,23 +467,25 @@ fn advance_token(tok_start &u8, tok_end &u8, mut pret Pret) string {
 	return unsafe { tos(tok_start, pret.ret) }
 }
 
-// advance_token2 is a less safe version of advance_token
+// advance_token2 scans pipeline tokens without validating each character.
 @[inline]
-fn advance_token2(tok_start &u8, _tok_end &u8, mut pret Pret) string {
+fn advance_token2(tok_start &u8, tok_end &u8, mut pret Pret) string {
 	mut len := 0
 	mut i := 0
-	for {
+	for unsafe { tok_start + i < tok_end } {
 		if unsafe { *(tok_start + i) == ` ` } {
 			len = i
-			for unsafe { *(tok_start + i) == ` ` } {
+			for unsafe { tok_start + i < tok_end && *(tok_start + i) == ` ` } {
 				i++
 			}
-			break
+			pret.ret = i
+			return unsafe { tos(tok_start, len) }
 		}
 		i++
 	}
-	pret.ret = i
-	return unsafe { tos(tok_start, len) }
+	pret.ret = -1
+	pret.err = 'error parsing request: no request found'
+	return ''
 }
 
 @[inline]
