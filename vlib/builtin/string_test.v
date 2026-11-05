@@ -885,6 +885,16 @@ fn test_replace_each_preserves_nul_bytes_and_match_precedence() {
 	assert original.bytes() == [u8(97), 0, 98]
 }
 
+fn test_replace_each_skips_consumed_spans() {
+	n := 8192
+	run := 'a'.repeat(n)
+	needle := 'a'.repeat(n / 2)
+	assert run.replace_each(['a', 'X', needle, 'Y']) == 'X'.repeat(n)
+	assert (run + '\x00' + run).replace_each(['\x00', 'X', needle, 'Y']) == 'YYXYY'
+	assert ('a\x00'.repeat(n) + run).replace_each(['\x00', 'X', needle, 'Y']) ==
+		'aX'.repeat(n) + 'YY'
+}
+
 fn test_format() {
 	template := 'First: {0}, First again: {0}, Second: {1}, Third: {2}'
 	assert template.format('A', 'B', 'C') == 'First: A, First again: A, Second: B, Third: C'

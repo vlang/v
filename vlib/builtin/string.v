@@ -477,35 +477,39 @@ pub fn (s string) replace_each(vals []string) string {
 			continue
 		}
 		mut idx := 0
-		for {
-			idx = s.index_after_(rep, idx)
-			if idx == -1 {
-				break
+		for idx < s.len {
+			for idx < s.len && consumed[idx] {
+				idx++
 			}
-			mut overlaps := false
-			for i in idx .. idx + rep.len {
-				if consumed[i] {
-					overlaps = true
+			mut end := idx
+			for end < s.len && !consumed[end] {
+				end++
+			}
+			// Search only unconsumed spans, so overlapping matches cannot restart the search.
+			span := s.substr_borrowed(idx, end)
+			span_start := idx
+			mut offset := 0
+			for {
+				offset = span.index_after_(rep, offset)
+				if offset == -1 {
 					break
 				}
+				idx = span_start + offset
+				// Track matches separately so every byte, including NUL, remains searchable.
+				for i in idx .. idx + rep.len {
+					consumed[i] = true
+				}
+				if with.len > rep.len && new_len > max_int - 1 - (with.len - rep.len) {
+					panic('string.replace_each(): result is too large')
+				}
+				new_len += with.len - rep.len
+				idxs << RepIndex{
+					idx:     idx
+					val_idx: rep_i
+				}
+				offset += rep.len
 			}
-			if overlaps {
-				idx++
-				continue
-			}
-			// Track matches separately so every byte, including NUL, remains searchable.
-			for i in idx .. idx + rep.len {
-				consumed[i] = true
-			}
-			if with.len > rep.len && new_len > max_int - 1 - (with.len - rep.len) {
-				panic('string.replace_each(): result is too large')
-			}
-			new_len += with.len - rep.len
-			idxs << RepIndex{
-				idx:     idx
-				val_idx: rep_i
-			}
-			idx += rep.len
+			idx = end
 		}
 	}
 	if idxs.len == 0 {
