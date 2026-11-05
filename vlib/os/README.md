@@ -16,6 +16,9 @@ values. If the operating system cannot provide an environment block, it returns 
 
 ### Console input
 
+`os.get_raw_stdin()` reads to EOF and returns all input bytes, including newlines and NUL bytes.
+Use `os.get_raw_line()` to read a single line instead.
+
 On Windows, `os.input()` supports both console and redirected standard input.
 It returns an empty string when the standard input handle is invalid.
 

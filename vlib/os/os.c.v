@@ -813,7 +813,7 @@ pub fn get_raw_line() string {
 	}
 }
 
-// get_raw_stdin will get the raw input from stdin.
+// get_raw_stdin reads all bytes from stdin until EOF, preserving newlines and NUL bytes.
 pub fn get_raw_stdin() []u8 {
 	$if windows {
 		unsafe {
@@ -827,7 +827,7 @@ pub fn get_raw_stdin() []u8 {
 				pos := buf + offset
 				res := C.ReadFile(h_input, pos, block_bytes, voidptr(&bytes_read), 0)
 				offset += bytes_read
-				if !res {
+				if !res || bytes_read == 0 {
 					break
 				}
 				new_size := offset + block_bytes + (block_bytes - bytes_read)
@@ -842,21 +842,23 @@ pub fn get_raw_stdin() []u8 {
 			}
 		}
 	} $else {
-		max := uint(0)
-		buf := &u8(unsafe { nil })
-		nr_chars := unsafe { C.getline(voidptr(&buf), &max, C.stdin) }
-		$if race ? {
-			// A read that failed does not happen after the writes to stdin.
-			if nr_chars >= 0 || C.ferror(C.stdin) == 0 {
-				race_file_read()
+		mut result := []u8{}
+		mut buf := [4096]u8{}
+		for {
+			// Use stdio so reads share the buffer used by get_raw_line.
+			nread := int(C.fread(&buf[0], 1, buf.len, C.stdin))
+			$if race ? {
+				// A read that failed does not happen after the writes to stdin.
+				if nread > 0 || C.ferror(C.stdin) == 0 {
+					race_file_read()
+				}
 			}
+			if nread == 0 {
+				break
+			}
+			result << buf[..nread]
 		}
-		return array{
-			element_size: 1
-			data:         voidptr(buf)
-			len:          if nr_chars < 0 { 0 } else { nr_chars }
-			cap:          int(max)
-		}
+		return result
 	}
 }
 
