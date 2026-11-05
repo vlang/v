@@ -456,3 +456,96 @@ fn test_windows_vc_compat_relocates_includes_and_preserves_snapshot_bytes() ! {
 	assert os.read_file(output)! == expected
 	assert os.read_file(source)! == text
 }
+
+fn test_windows_arm64_release_reads_snapshot_from_shell_location() ! {
+	powershell := os.find_abs_path_of_executable('pwsh') or { return }
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'vc_arm64_location_${os.getpid()}')
+	checkout := os.join_path(root, 'checkout with spaces')
+	tools := os.join_path(checkout, 'cmd', 'tools')
+	os.mkdir_all(tools)!
+	os.mkdir_all(os.join_path(checkout, 'vc'))!
+	defer { os.rmdir_all(root) or {} }
+	os.cp(os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat_uint.ps1'),
+		os.join_path(tools, 'vc_compat_uint.ps1'))!
+	snapshot := os.join_path(checkout, 'vc', 'v_win.c')
+	output := os.join_path(root, 'filtered.c')
+	text := 'const char *binary = "${[u8(0xff), u8(0xfe)].bytestr()}";\n'
+	os.write_file(snapshot, text)!
+	driver := os.join_path(root, 'location.ps1')
+	os.write_file(driver, r'
+param($ReleaseScript, $Checkout, $Destination)
+$ErrorActionPreference = "Stop"
+$tokens = $null
+$errors = $null
+$ast = [Management.Automation.Language.Parser]::ParseFile($ReleaseScript, [ref]$tokens, [ref]$errors)
+if ($errors.Count) { throw ($errors | Out-String) }
+$calls = @($ast.FindAll({
+    param($node)
+    $node -is [Management.Automation.Language.CommandAst] -and
+        $node.GetCommandName() -eq "./cmd/tools/vc_compat_uint.ps1"
+}, $true))
+if ($calls.Count -ne 1) { throw "Expected one snapshot compatibility invocation" }
+$root = $Checkout
+$snapshot = $Destination
+$oldDirectory = [Environment]::CurrentDirectory
+Push-Location $root
+try {
+    [Environment]::CurrentDirectory = [IO.Path]::GetDirectoryName($Destination)
+    & ([ScriptBlock]::Create($calls[0].Extent.Text))
+} finally {
+    [Environment]::CurrentDirectory = $oldDirectory
+    Pop-Location
+}
+')!
+	checked := os.exec([powershell, '-NoProfile', '-File', driver,
+		os.join_path(@VEXEROOT, 'cmd', 'tools', 'builders', 'windows_arm64_release.ps1'), checkout,
+		output])
+	assert checked.exit_code == 0, checked.output
+	assert os.read_file(output)! == text
+	assert os.read_file(snapshot)! == text
+}
+
+fn test_windows_vc_compat_protects_source_type_scratch_arrays_from_small_macro() ! {
+	powershell := $if windows {
+		os.find_abs_path_of_executable('powershell')!
+	} $else {
+		os.find_abs_path_of_executable('pwsh') or { return }
+	}
+	root := os.join_path(os.vtmp_dir(), 'vc_compat_small_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'snapshot.c')
+	output := os.join_path(root, 'filtered.c')
+	executable := os.join_path(root, 'snapshot')
+	for function_name in ['source_type_id', 'composite_source_type_id'] {
+		text := '#define small char
+#define __inline
+typedef unsigned int u32;
+typedef struct { int unused; } types__Type;
+__inline u32 types__Type__${function_name}(types__Type* t) {
+    u32 small[16] = {0};
+    small[0] = 42;
+    return small[0];
+}
+const char* embedded = "u32 types__Type__${function_name}(types__Type* t) {";
+int main(void) { return types__Type__${function_name}(0) != 42 || embedded[0] != 117; }
+'
+		os.write_file(source, text)!
+		filtered := os.exec([powershell, '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+			os.join_path(@VEXEROOT, 'cmd', 'tools', 'vc_compat_uint.ps1'), '-Source', source,
+			'-Destination', output])
+		assert filtered.exit_code == 0, filtered.output
+		assert os.read_file(source)! == text
+		result := os.read_file(output)!
+		assert result.contains('#ifdef small\n#undef small\n#endif\n__inline u32 types__Type__${function_name}')
+		assert result.contains('const char* embedded = "u32 types__Type__${function_name}(types__Type* t) {";')
+		$if !windows {
+			cc := os.getenv_opt('CC') or { 'cc' }
+			broken := os.exec([cc, '-std=c99', '-fsyntax-only', source])
+			assert broken.exit_code != 0, broken.output
+			compiled := os.exec([cc, '-std=c99', '-o', executable, output])
+			assert compiled.exit_code == 0, compiled.output
+			assert os.exec([executable]).exit_code == 0
+		}
+	}
+}

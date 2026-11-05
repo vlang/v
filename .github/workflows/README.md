@@ -169,6 +169,7 @@ inventory.
 | `ubuntu-22.04` | Some sanitizer, release, and architecture lanes. |
 | `windows-2025` | GCC Windows lane and selected Windows checks. |
 | `windows-2022` | MSVC and TCC Windows lanes. |
+| `windows-11-arm` | Native ARM64 Windows release artifact lane. |
 | `macos-14` | Apple Silicon CI lanes. |
 | `macos-15-intel` | Intel macOS release artifact lane. |
 | `*-latest` | Small utility, smoke, or intentionally floating lanes. |
@@ -177,6 +178,13 @@ Current release and artifact exceptions that intentionally use floating runners:
 
 - `release_ci.yml` uses `windows-latest` for `v_windows.zip` so the published
   Windows artifact tracks GitHub's current hosted Windows toolchain.
+- Its `windows-11-arm` lane builds `v_windows_arm64.zip` with native MSVC tools using
+  `cmd/tools/builders/windows_arm64_release.ps1`. The script checks PE architecture
+  for the x64 bootstrap and the native ARM64 compiler stages, application smoke test,
+  and release tools. The transient x64 bootstrap runs under Windows 11's emulation;
+  all shipped binaries are ARM64.
+  The ARM64 package uses `-cc msvc` and does not contain the x64 TCC bundle.
+  Tags that predate the ARM64 bootstrap script skip this lane and its archive.
 - `release_ci.yml` uses `ubuntu-latest` only for the release publishing job; the
   job assembles already-built artifacts and does not compile platform binaries.
 - `prebuilt.yml` uses `macos-latest` and `windows-latest` to smoke-test the
@@ -240,7 +248,8 @@ or the released compiler is missing or not executable.
 `Release CI` builds without publishing when its workflow file changes on `master`.
 To publish ZIPs for an existing `weekly.*` or `0.*` tag, dispatch the workflow from `master`
 and set `release_tag`, for example `weekly.2026.41`. It checks out and verifies that tag,
-builds all five platform archives, and attaches them to the corresponding release. Existing
+builds the five original platform archives and, when supported by the tag, Windows ARM64,
+and attaches them to the corresponding release. Existing
 assets with the same filenames are replaced; release descriptions, names, and prerelease status
 are kept. The publishing job runs only after every platform build succeeds, and upload errors
 fail it. Tag pushes do not start workflows.

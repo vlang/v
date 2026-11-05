@@ -438,6 +438,39 @@ fn test_vup_rebuilds_for_transitive_dependencies_and_honors_rebuild_options() ! 
 	assert os.read_file(log)!.contains('v self\n')
 }
 
+fn test_vup_preserves_native_windows_arm64_on_bootstrap_rebuild() ! {
+	$if windows {
+		return
+	}
+	root, home, _, bin_dir := vup_report_fixture()!
+	defer { os.rmdir_all(root) or {} }
+	// Exercise the ARM64 command path with process fixtures on this host. The
+	// Windows C-generation test also checks the unmodified target-specific code.
+	source := os.read_file(os.join_path(vroot, 'cmd', 'tools', 'vup.v'))!
+	assert source.count('$if windows && arm64 {') == 3
+	file := os.join_path(root, 'vup_arm64.v')
+	os.write_file(file, source.replace('$if windows && arm64 {', '$if !windows {'))!
+	tool := os.join_path(root, 'vup_arm64')
+	build := os.exec([vexe, '-o', tool, file])
+	assert build.exit_code == 0, build.output
+	bootstrap_log := os.join_path(root, 'bootstrap.log')
+	bootstrap := os.join_path(root, 'cmd', 'tools', 'builders', 'windows_arm64_release.ps1')
+	write_executable(os.join_path(bin_dir, 'pwsh'), '#!/bin/sh\n' +
+		'printf "%s\\n" "\$@" > ' + os.quoted_path(bootstrap_log) + '\nexit 0\n')!
+	result := run_vup(root, home, tool, bin_dir, '-skip_v_self')!
+	assert result.exit_code == 0, result.output
+	assert os.read_file(bootstrap_log)!.split_into_lines() == ['-NoProfile', '-ExecutionPolicy',
+		'Bypass', '-File', bootstrap]
+	calls := os.read_file(os.join_path(root, 'calls.log'))!
+	assert !calls.contains('make'), calls
+	assert !calls.contains('latest_tcc'), calls
+	write_executable(os.join_path(bin_dir, 'pwsh'), '#!/bin/sh\necho "ARM64 bootstrap failed"\nexit 9\n')!
+	failed := run_vup(root, home, tool, bin_dir, '-skip_v_self')!
+	assert failed.exit_code != 0, failed.output
+	assert failed.output.contains('ARM64 bootstrap failed'), failed.output
+	assert failed.output.contains('Recompiling V *failed*.'), failed.output
+}
+
 fn test_vup_reports_both_groups_and_names_the_scope_to_use() ! {
 	$if windows {
 		return
@@ -593,6 +626,11 @@ fn test_vup_generates_windows_c_without_handle_type_errors() ! {
 		assert result.exit_code == 0, result.output
 		assert os.is_file(c_file)
 	}
+	arm64 := os.join_path(test_root, 'vup_arm64.c')
+	arm64_result := os.exec([compiler, '-new-compiler', '-g', '-gc', 'none', '-nocache', '-os',
+		'windows', '-arch', 'arm64', '-cc', 'msvc', '-o', arm64, source])
+	assert arm64_result.exit_code == 0, arm64_result.output
+	assert os.is_file(arm64)
 }
 
 fn write_executable(path string, content string) ! {

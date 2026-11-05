@@ -5,6 +5,10 @@ module stdatomic
 
 $if windows {
 	#flag -I @VEXEROOT/thirdparty/stdatomic/win
+	$if arm64 && msvc {
+		// The Windows atomic shim's pause helper needs the ARM64 yield intrinsic.
+		#flag -D_mm_pause=__yield
+	}
 	#insert "@VEXEROOT/thirdparty/stdatomic/win/atomic.h"
 } $else {
 	#flag -I @VEXEROOT/thirdparty/stdatomic/nix
