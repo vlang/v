@@ -51,6 +51,21 @@ fn test_empty_anonymous_union_literal_infers_a_concrete_local_type() {
 	assert value.str() == 'union {}'
 }
 
+fn test_nested_empty_anonymous_union_literal_infers_concrete_member_types() {
+	value := union { nested: union {} }
+	nested := unsafe { value.nested }
+	assert nested.str() == 'union {}'
+	assert sizeof(value) == sizeof(nested)
+	container := struct { nested: union {} }
+	assert container.nested.str() == 'union {}'
+}
+
+fn test_nested_anonymous_union_literal_defers_unresolved_member_types() {
+	value := union { nested: union { number: anonymous_union_number() } }
+	assert unsafe { value.nested.number } == 23
+	assert sizeof(value) == sizeof(u8)
+}
+
 fn test_anonymous_union_literal_infers_a_local_value() {
 	text := 'local'
 	value := union { text: text }

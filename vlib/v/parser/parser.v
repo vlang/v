@@ -18445,7 +18445,9 @@ fn (p &Parser) infer_anonymous_struct_literal_type(node flat.Node) ?u32 {
 			}
 		}
 		.struct_init {
-			if node.source_value_id() != 0 && node.source_value_id() != flat.source_type_id('struct') {
+			if node.source_value_id() != 0
+				&& node.source_value_id() !in [flat.source_type_id('struct'),
+					flat.source_type_id('union')] {
 				return node.source_value_id()
 			}
 		}

@@ -189,7 +189,7 @@ fn source_type_spelling_flags(text string) (SourceTypeShape, SourceTypeQuery) {
 	if text.contains('generic') { query.set(.generic_word) }
 	unknown := text.contains('unknown')
 	if unknown { query.set(.unknown_fragment) }
-	if unknown || text in ['array', 'map', 'struct']
+	if unknown || text in ['array', 'map', 'struct', 'union']
 		|| (text.starts_with('Option') && (text.len == 'Option'.len || text['Option'.len] == `_`))
 		|| (text.starts_with('__v_option') && (text.len == '__v_option'.len
 			|| text['__v_option'.len] == `_`))
@@ -248,7 +248,7 @@ fn source_type_spelling_flags(text string) (SourceTypeShape, SourceTypeQuery) {
 // Declaration fallback rejects these provisional spellings before alias resolution.
 // Only ASCII spaces are removed from wrapper names; raw-name checks stay exact.
 fn source_type_spelling_unusable_decl(text string, shape SourceTypeShape) bool {
-	if text in ['unknown', 'array', 'map', 'struct'] || text.contains('unknown')
+	if text in ['unknown', 'array', 'map', 'struct', 'union'] || text.contains('unknown')
 		|| shape.has(.typeof_expr) {
 		return true
 	}
