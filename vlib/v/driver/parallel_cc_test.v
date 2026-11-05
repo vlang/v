@@ -177,6 +177,7 @@ fn test_v3_parallel_cc_keeps_test_binaries_in_one_unit() {
 
 fn test_v3_parallel_cc_does_not_shadow_user_parallel_header() {
 	$if bsd || linux {
+		cc := os.find_abs_path_of_executable('clang') or { return }
 		root := os.join_path(os.vtmp_dir(), 'v3_parallel_cc_header_${os.getpid()}')
 		os.rmdir_all(root) or {}
 		os.mkdir_all(root)!
@@ -188,7 +189,7 @@ fn test_v3_parallel_cc_does_not_shadow_user_parallel_header() {
 		output := os.join_path_single(root, 'main')
 		os.write_file(header, '#ifndef V3_USER_PARALLEL_H\n#define V3_USER_PARALLEL_H\nstatic inline int v3_user_parallel_header_value(void) { return 42; }\n#endif\n')!
 		os.write_file(source, '#flag -I @DIR\n#include "parallel.h"\n\nfn C.v3_user_parallel_header_value() int\n\nfn main() { println(C.v3_user_parallel_header_value()) }\n')!
-		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', 'cc', '-nocache',
+		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', cc, '-nocache',
 			'-showcc', '-o', output, source])
 		assert build.exit_code == 0, build.output
 		// A header with only an inline function is the same in every unit, so the
@@ -212,7 +213,7 @@ fn test_v3_parallel_cc_falls_back_for_native_static_state() {
 		header := os.join_path_single(root, 'state.h')
 		output := os.join_path_single(root, 'main')
 		os.write_file(header, 'static int v3_parallel_state;\nstatic inline int v3_parallel_next(void) { return ++v3_parallel_state; }\n')!
-		os.write_file(source, '#flag -I @DIR\n#include "state.h"\n\nfn C.v3_parallel_next() int\n\nfn first() int { return C.v3_parallel_next() }\nfn second() int { return C.v3_parallel_next() }\nfn main() { println(first())\nprintln(second()) }\n')!
+		os.write_file(source, '#flag -I @DIR\n#include <state.h>\n\nfn C.v3_parallel_next() int\n\nfn first() int { return C.v3_parallel_next() }\nfn second() int { return C.v3_parallel_next() }\nfn main() { println(first())\nprintln(second()) }\n')!
 		build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', 'cc', '-nocache',
 			'-showcc', '-o', output, source])
 		assert build.exit_code == 0, build.output
@@ -250,6 +251,11 @@ fn test_v3_parallel_cc_require_split_refuses_instead_of_one_c_unit() {
 		assert build.output.contains('cannot split this program into C units'), build.output
 		assert build.output.contains('state.h'), build.output
 		assert !os.exists(output)
+		object_build := cmdexec.run(v3_parallel_cc_test_compiler(), ['-parallel-cc', '-cc', 'cc',
+			'-nocache', '-o', output + '.o', source])
+		assert object_build.exit_code == v3_parallel_cc_split_refused_exit_code, object_build.output
+		assert object_build.output.contains('selected compiler or build options'), object_build.output
+		assert !os.exists(output + '.o')
 	}
 }
 

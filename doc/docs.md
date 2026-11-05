@@ -11117,6 +11117,12 @@ Module-cache builds keep that runtime in the program prefix; cached objects use 
 Exports in builds without a V `main` also share one guarded runtime initializer across
 cached modules, including the backtrace stubs used on musl systems.
 Native headers that cannot safely share state across units use a single compilation unit.
+Clang builds can use its declaration and macro metadata to split programs with native headers;
+other C compilers retain the conservative fallback when this metadata is unavailable.
+Native-source callers stay in the first unit, and embedded file payloads are defined once.
+Set `V3_PARALLEL_CC_TRACE=1` (or use `-showcc`) to report split decisions and fallback reasons.
+Set `V3_PARALLEL_CC_REQUIRE_SPLIT=1` to exit with status 3 when a requested split cannot be used,
+instead of silently rebuilding the program as one C unit.
 The Windows stack overflow reporter supports parallel C compilation.
 
 To select C23 with a compiler that supports it, use

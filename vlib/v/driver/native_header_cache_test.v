@@ -95,7 +95,8 @@ fn test_shipped_and_system_native_inputs_keep_the_caches() {
 	assert 'os' !in inputs.module_inputs
 }
 
-fn test_parallel_c_generation_checks_quoted_native_headers_after_preprocessing() ! {
+fn test_parallel_c_generation_uses_native_toolchain_metadata_for_quoted_headers() ! {
+	os.find_abs_path_of_executable('clang') or { return }
 	prefix := '/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */\n#include "not_present/native.h"\n/* V3CACHE_NATIVE_DIRECTIVES_END */\nvoid main__main(void);\n'
 	header, safe, quoted := v3_parallel_c_declaration_header(prefix, @VEXEROOT)
 	assert safe
@@ -132,13 +133,14 @@ fn test_parallel_c_generation_keeps_shipped_headers_opaque() {
 	prefix := '/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */\n#include "${helper}"\n#include <stdio.h>\n/* V3CACHE_NATIVE_DIRECTIVES_END */\nvoid main__main(void);\n'
 	header, safe, quoted := v3_parallel_c_declaration_header(prefix, @VEXEROOT)
 	assert safe
-	assert quoted == ['"${helper}"']
+	assert quoted == ['"${helper}"', '<stdio.h>']
 	assert header.contains('#include "${helper}"')
 	assert !header.contains('v_flat_payload_ptr_get')
 	assert header.contains('#include <stdio.h>')
 }
 
 fn test_parallel_c_generation_keeps_segfault_handler_state_in_owner() ! {
+	os.find_abs_path_of_executable('clang') or { return }
 	$if bsd || linux {
 		helper := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'segfault_handler_nix.h')
 		prefix := '/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */\n#include "${helper}"\n/* V3CACHE_NATIVE_DIRECTIVES_END */\n'
@@ -356,11 +358,23 @@ fn test_heap_guard_keeps_ordinary_module_caching_without_header_inspection() {
 	assert guard in closure.inputs['builtin']
 }
 
-// header_hazards preprocesses a unit after the first that includes `declarations`
-// as its declaration header, and returns that header's replication hazards.
+// header_hazards asks the native toolchain for the replication hazards of a unit
+// that includes `declarations`, without reading or parsing the native headers.
 fn header_hazards(declarations string) ![]V3ParallelCHeaderHazard {
 	unit := declarations + '.unit.c'
-	source := v3_parallel_c_preprocess('cc', []string{}, false, v3_parallel_c_unit_source(declarations,
-		'', false, false), unit)!
-	return v3_parallel_c_preprocessed_hazards(source, [declarations, unit])
+	manifest := v3_parallel_c_native_manifest('clang', []string{}, false,
+		v3_parallel_c_unit_source(declarations, '', false, false), unit, [
+			declarations,
+			unit,
+		],
+		map[string]bool{}, true)!
+	return manifest.hazards
+}
+
+fn test_parallel_c_generation_checks_owner_source_directives() {
+	prefix := '/* V3CACHE_SOURCE_DIRECTIVES_BEGIN */\n#include "native.m"\n/* V3CACHE_SOURCE_DIRECTIVES_END */\n'
+	header, safe, includes := v3_parallel_c_declaration_header(prefix, @VEXEROOT)
+	assert safe
+	assert includes == ['"native.m"']
+	assert !header.contains('#include "native.m"')
 }

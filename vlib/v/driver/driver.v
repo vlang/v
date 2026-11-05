@@ -3102,8 +3102,8 @@ fn v3_include_directive_argument(line string) ?string {
 
 // v3_parallel_c_declaration_header returns the header that every unit after the
 // first includes, whether the generated native directive text is safe to repeat
-// in each unit, and the quoted native headers those directives include. Quoted
-// headers are checked after preprocessing, see v3_parallel_c_check_native_code.
+// in each unit, and the quoted native headers those directives include. The native toolchain supplies
+// safety metadata for them; see v3_parallel_c_check_native_code.
 fn v3_parallel_c_declaration_header(prefix string, vroot string) (string, bool, []string) {
 	mut native_directives := strings.new_builder(1024)
 	mut in_native_directives := false
@@ -3118,13 +3118,17 @@ fn v3_parallel_c_declaration_header(prefix string, vroot string) (string, bool, 
 			in_native_directives = false
 			continue
 		}
-		if !in_native_directives { continue }
+		// Native source includes outside the shared directives declare owner-only names.
+		// Inspect their generated directive, without opening the included file.
 		if argument := v3_include_directive_argument(line) {
 			// This compiler-owned guard has no declarations or storage. Its
 			// contract is fixed; its body is never opened or inspected here.
 			guard := '"' + c_include_path(os.join_path(vroot, 'vlib', 'builtin', 'track_heap_checks.h')) + '"'
-			if !argument.starts_with('<') && argument != guard { quoted_includes << argument }
+			if argument != guard && (in_native_directives || !argument.starts_with('<')) {
+				quoted_includes << argument
+			}
 		}
+		if !in_native_directives { continue }
 		native_directives.writeln(line)
 	}
 	native_source := native_directives.str()
@@ -3381,6 +3385,7 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 	// cap (limit_pool_size: 3 workers on macOS) must not apply; it halved the
 	// compile parallelism. Pool.run also lets the calling thread take tasks.
 	mut pool := workers.new_subprocess_pool(job_count - 1)
+	defer { pool.close() }
 	owner_source := v3_parallel_c_unit_source('', prefix, true, is_shared)
 	hazards, owner_names := v3_parallel_c_check_native_code(c_compiler, small_compile_flags,
 		objective_c, header_path, quoted_includes.len > 0, owner_source, parts, is_shared, mut pool)
@@ -11728,6 +11733,11 @@ pub fn run(args []string) {
 		&& effective_c_compiler != 'msvc' && !is_o && coverage_dir.len == 0 && profile_file.len == 0
 		&& !is_trace_calls
 		&& v3_parallel_cc_monolithic_define !in user_defines
+	if parallel_cc && !c_only && !use_parallel_c_compilation
+		&& os.getenv(v3_parallel_cc_require_split_env) != '' {
+		eprintln('error: -parallel-cc cannot split this program into C units with the selected compiler or build options (${v3_parallel_cc_require_split_env} is set)')
+		exit(v3_parallel_cc_split_refused_exit_code)
+	}
 	// `-keepc` and explicit `-b c` promise a complete generated C translation unit.
 	// The module cache splits imported implementations into separate objects, so its main source
 	// alone cannot reproduce the build. Literal output uses a deliberately reduced
