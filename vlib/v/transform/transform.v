@@ -342,6 +342,10 @@ mut:
 	resolved_call_return_cache             &ResolvedCallReturnCache   = unsafe { nil }
 	fn_return_name_cache                   &FnReturnNameCache         = unsafe { nil }
 	variant_match_cache                    &VariantMatchCache         = unsafe { nil }
+	alias_target_cache                     &AliasTargetCache          = unsafe { nil }
+	noreturn_names                         &NoreturnNameList          = unsafe { nil }
+	resolved_call_decl_cache               &ResolvedCallDeclCache     = unsafe { nil }
+	call_qualified_name_cache              &CallQualifiedNameCache    = unsafe { nil }
 	interface_type_cache                   &ContextLookupCache        = unsafe { nil }
 	alias_equivalent_names_cache           &EquivalentNamesCache      = unsafe { nil }
 	enum_expected_cache                    &EnumExpectedCache         = unsafe { nil }
@@ -1041,6 +1045,79 @@ mut:
 	results     [1024]u32
 }
 
+// AliasTargetCache memoizes alias_target_type_preserving_main_lock per source
+// context. The answer depends on the spelling, the current module and file
+// (import aliases) and the alias table, which the generation covers.
+struct AliasTargetCache {
+mut:
+	module      string
+	file        string
+	alias_count int
+	generation  u32 = 1
+	keys        [1024]u32
+	generations [1024]u32
+	results     [1024]u32
+	states      [1024]i8
+}
+
+// ResolvedCallDeclCache memoizes, per resolved call name, the two declaration
+// facts that checker_resolved_non_builtin_return_type_uncached reads from
+// string-keyed checker tables on every call: the declaring module and whether
+// the declaration has generic parameters. The snapshot fields drop the entries
+// when the checker registers more signatures.
+struct ResolvedCallDeclCache {
+mut:
+	tc           voidptr
+	revision     u64
+	modules_len  int
+	generics_len int
+	names        [1024]string
+	modules      [1024]string
+	has_generics [1024]bool
+	states       [1024]i8
+}
+
+// CallQualifiedNameCache remembers, per (module, short callee name), whether
+// call_name_for_node found a module-qualified declaration for a bare callee
+// whose resolved name is unqualified. Only the answer is kept: a positive one
+// rebuilds the spelling, so no scope-allocated text is retained.
+struct CallQualifiedNameCache {
+mut:
+	module      string
+	fn_count    int
+	tc_rets     int
+	tc_revision u64
+	names       [512]string
+	states      [512]i8
+}
+
+// resolved_name_cache_slot hashes a non-empty name into a 512/1024-slot front.
+@[direct_array_access; inline]
+fn resolved_name_cache_slot(name string, mask int) int {
+	n := uint(name.len)
+	return int((n * 31 + uint(name[0]) * 7 + uint(name[n / 2]) * 3 + uint(name[n - 1]) +
+		(uint(name[(n * 3) / 4]) << 4)) & uint(mask))
+}
+
+// NoreturnNameList is a read-only snapshot of the keys of the AST's noreturn
+// table, so is_noreturn_call can scan the candidates without cloning every key
+// out of the map on each call. `count` detects a table that grew afterwards.
+struct NoreturnNameList {
+	count int
+	names []string
+}
+
+fn new_noreturn_name_list(a &flat.FlatAst) &NoreturnNameList {
+	mut names := []string{cap: a.noreturn_fns.len}
+	for name, _ in a.noreturn_fns {
+		names << name
+	}
+	return &NoreturnNameList{
+		count: a.noreturn_fns.len
+		names: names
+	}
+}
+
 struct VariantMatchCache {
 mut:
 	generation  u32 = 1
@@ -1157,7 +1234,7 @@ fn var_type_index_cache_slot(name string) int {
 	return int((uint(name.str) >> 3 ^ uint(name.len)) & 127)
 }
 
-@[inline]
+@[direct_array_access; inline]
 fn (c &VarTypeIndexCache) get(name string, binding_count int) int {
 	slot := var_type_index_cache_slot(name)
 	// A declaration with the same spelling may use another string allocation.
@@ -1169,7 +1246,7 @@ fn (c &VarTypeIndexCache) get(name string, binding_count int) int {
 	return -2
 }
 
-@[inline]
+@[direct_array_access; inline]
 fn (mut c VarTypeIndexCache) put(name string, index int, binding_count int) {
 	slot := var_type_index_cache_slot(name)
 	c.names[slot] = name
@@ -1339,7 +1416,9 @@ mut:
 }
 
 const used_fn_name_cache_slots = 1024
-const used_fn_name_cache_key_bytes = 58
+// Method names of long receivers in dotted modules exceed 58 bytes; a pair that
+// does not fit is reprocessed on every call, so the key holds longer spellings.
+const used_fn_name_cache_key_bytes = 122
 
 // used_fn_name_cache_slot hashes a non-empty name and its module into a
 // UsedFnNameCache slot.
@@ -1657,7 +1736,7 @@ fn (t &Transformer) clear_fn_return_name_cache() {
 	}
 }
 
-@[inline]
+@[direct_array_access; inline]
 fn (t &Transformer) checker_fn_return_type_name(name string) ?u32 {
 	if isnil(t.tc) {
 		return none
@@ -3016,6 +3095,10 @@ fn (mut t Transformer) prepare() {
 	t.resolved_call_return_cache = &ResolvedCallReturnCache{}
 	t.fn_return_name_cache = new_fn_return_name_cache()
 	t.variant_match_cache = &VariantMatchCache{}
+	t.alias_target_cache = &AliasTargetCache{}
+	t.noreturn_names = new_noreturn_name_list(t.a)
+	t.resolved_call_decl_cache = &ResolvedCallDeclCache{}
+	t.call_qualified_name_cache = &CallQualifiedNameCache{}
 	t.interface_type_cache = &ContextLookupCache{
 		entries: map[u32]u32{}
 		misses:  map[u32]bool{}
@@ -5633,6 +5716,10 @@ fn (t &Transformer) fork_worker_with_state(ast &flat.FlatAst, wtc &types.TypeChe
 	w.resolved_call_return_cache = &ResolvedCallReturnCache{}
 	w.fn_return_name_cache = new_fn_return_name_cache()
 	w.variant_match_cache = &VariantMatchCache{}
+	w.alias_target_cache = &AliasTargetCache{}
+	w.noreturn_names = t.noreturn_names
+	w.resolved_call_decl_cache = &ResolvedCallDeclCache{}
+	w.call_qualified_name_cache = &CallQualifiedNameCache{}
 	w.interface_type_cache = &ContextLookupCache{
 		entries: map[u32]u32{}
 		misses:  map[u32]bool{}
@@ -5780,6 +5867,10 @@ fn (t &Transformer) fork_scan_worker(wtc &types.TypeChecker) &Transformer {
 	w.resolved_call_return_cache = &ResolvedCallReturnCache{}
 	w.fn_return_name_cache = new_fn_return_name_cache()
 	w.variant_match_cache = &VariantMatchCache{}
+	w.alias_target_cache = &AliasTargetCache{}
+	w.noreturn_names = t.noreturn_names
+	w.resolved_call_decl_cache = &ResolvedCallDeclCache{}
+	w.call_qualified_name_cache = &CallQualifiedNameCache{}
 	w.interface_type_cache = &ContextLookupCache{
 		entries: map[u32]u32{}
 		misses:  map[u32]bool{}
@@ -9274,6 +9365,7 @@ fn escape_call_may_return_receiver_address(a &flat.FlatAst, tc &types.TypeChecke
 // rooted at a `mut`/`&` parameter (or has no local root at all). Its address
 // then points into caller-owned storage: the escape walk may record that root,
 // but no declaration in this frame is moved to the heap because of it.
+@[direct_array_access]
 fn (t &Transformer) escape_arg_is_frame_independent(id flat.NodeId) bool {
 	mut cur := id
 	for int(cur) >= 0 && int(cur) < t.a.nodes.len {
@@ -9414,20 +9506,31 @@ fn (mut t Transformer) escape_subtree_may_need_scan(id flat.NodeId) bool {
 	if node.kind == .prefix && node.op == .amp {
 		return true
 	}
-	if escape_call_may_return_receiver_address(t.a, t.tc, id, node)
-		&& !t.escape_arg_is_frame_independent(t.a.child(t.a.child_node(&node, 0), 0)) {
-		return true
-	}
 	// Void pointers, mutable interface views, and references to inline fixed-array
 	// storage can outlive a local.
 	// Checked direct calls expose their exact signature here; unresolved function-value
 	// calls stay conservative and use the full escape walk.
 	if node.kind == .call && node.children_count > 0 {
+		// A method whose receiver is a pointer and whose result is not a scalar
+		// can return the receiver's address (escape_call_may_return_receiver_address);
+		// both tests read the same resolved signature, so it is looked up once.
 		if isnil(t.tc) {
 			return true
 		}
+		callee := t.a.child_node(&node, 0)
 		name := t.tc.resolved_call_name(id) or { return true }
 		params := t.tc.fn_param_types[name] or { return true }
+		if callee.kind == .selector && callee.children_count > 0 && params.len > 0
+			&& types.unalias_type(params[0]) is types.Pointer {
+			mut may_return_receiver_address := true
+			if result_type := t.tc.fn_ret_types[name] {
+				may_return_receiver_address = !escape_type_is_scalar_value(result_type)
+			}
+			if may_return_receiver_address
+				&& !t.escape_arg_is_frame_independent(t.a.child(callee, 0)) {
+				return true
+			}
+		}
 		mut has_reference_param := false
 		for param_idx, param in params {
 			if escape_type_is_void_pointer(param) || escape_type_is_interface(param) {
@@ -9511,11 +9614,22 @@ fn (t &Transformer) save_heaped_local_state() HeapedLocalState {
 	}
 	return HeapedLocalState{
 		cloned:                true
-		heaped_amp_locals:     t.heaped_amp_locals.clone()
-		pointer_value_lvalues: t.pointer_value_lvalues.clone()
-		pointer_value_rvalues: t.pointer_value_rvalues.clone()
+		heaped_amp_locals:     clone_heaped_marks(t.heaped_amp_locals)
+		pointer_value_lvalues: clone_heaped_marks(t.pointer_value_lvalues)
+		pointer_value_rvalues: clone_heaped_marks(t.pointer_value_rvalues)
 		bindings:              t.heaped_local_bindings()
 	}
+}
+
+// clone_heaped_marks copies one mark set for a saved scope state. A set that was
+// cleared keeps its hash storage, so copying it would allocate for nothing; an
+// empty set is represented by a fresh map, which reads and clones the same way.
+@[inline]
+fn clone_heaped_marks(marks map[string]bool) map[string]bool {
+	if marks.len == 0 {
+		return map[string]bool{}
+	}
+	return marks.clone()
 }
 
 // heaped_local_bindings returns, in declaration order, the bindings of the locals
@@ -28502,7 +28616,7 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 				// void pointer itself as a new sum variant on a later transform pass.
 				// The operand is still lowered: in `&i8(address_of(&local))`, a local
 				// moved to the heap is already the address.
-				operand := t.transform_expr_preserving_pointer_value(child_id)
+				operand := t.transform_opaque_pointer_value(child_id)
 				if operand == child_id || t.rewrite_children_in_place(id, [operand]) {
 					return id
 				}
@@ -28553,7 +28667,7 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 		mut new_children := []flat.NodeId{cap: int(node.children_count)}
 		for i in 0 .. node.children_count {
 			child_id := t.a.child(&node, i)
-			new_children << t.transform_expr_preserving_pointer_value(child_id)
+			new_children << t.transform_opaque_pointer_value(child_id)
 		}
 		if t.rewrite_children_in_place(id, new_children) {
 			return id
@@ -29594,11 +29708,15 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 			if smartcasted := t.smartcast_ident_value(node.value_text()) {
 				return smartcasted
 			}
+			// The checker's fn-value resolution is queried once; the fallback
+			// below reuses this answer while the node is left untouched.
+			mut checker_fn_value_missing := false
 			if !t.in_call_callee && !isnil(t.tc) {
 				if fn_name := t.tc.resolved_fn_value_name(id) {
 					t.set_node_value(int(id), fn_name)
 					return id
 				}
+				checker_fn_value_missing = true
 			}
 			mut typ := t.var_type(node.value_text())
 			if typ != 0 {
@@ -29620,6 +29738,7 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 					typ = t.globals.value_id(global_name)
 					is_global = true
 					t.set_node_value(int(id), global_name)
+					checker_fn_value_missing = false
 				}
 			}
 			is_file_import_selector_base := t.in_selector_base
@@ -29649,7 +29768,9 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 			// allocating a fresh node) avoids cascading rebuilds of every enclosing
 			// expression and the associated allocations (critical under -gc none).
 			if !t.in_call_callee {
-				if fn_name := t.resolved_ident_fn_value(id, node.value_text()) {
+				if fn_name := t.resolved_ident_fn_value_after_checker(id, node.value_text(),
+					checker_fn_value_missing)
+				{
 					t.set_node_value(int(id), fn_name)
 					return id
 				}
@@ -29669,11 +29790,20 @@ fn (mut t Transformer) transform_ident_expr(id flat.NodeId, node flat.Node) flat
 }
 
 fn (t &Transformer) resolved_ident_fn_value(id flat.NodeId, name string) ?string {
+	return t.resolved_ident_fn_value_after_checker(id, name, false)
+}
+
+// resolved_ident_fn_value_after_checker is resolved_ident_fn_value for a caller
+// that already asked the checker for this node's fn value and found none
+// (`checker_missing`), with no write to the node since.
+fn (t &Transformer) resolved_ident_fn_value_after_checker(id flat.NodeId, name string, checker_missing bool) ?string {
 	if isnil(t.tc) {
 		return t.resolve_fn_value_ident(name)
 	}
-	if fn_name := t.tc.resolved_fn_value_name(id) {
-		return fn_name
+	if !checker_missing {
+		if fn_name := t.tc.resolved_fn_value_name(id) {
+			return fn_name
+		}
 	}
 	// resolve_fn_value_ident answers none for a bound local whatever the checker
 	// says about its type, so there is nothing to resolve for one.
@@ -30470,6 +30600,7 @@ fn (t &Transformer) concrete_variant_matches_generic_pattern(concrete_id u32, pa
 	return base_short in flat.source_type_syntax(concrete_short).underscore_prefixes()
 }
 
+@[direct_array_access]
 fn (t &Transformer) variant_names_match(a_id u32, b_id u32) bool {
 	if a_id == b_id { return true }
 	if isnil(t.variant_match_cache) {

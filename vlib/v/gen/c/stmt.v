@@ -760,6 +760,7 @@ fn (g &FlatGen) collect_prelude_scan_from(id flat.NodeId, mut scan FnPreludeScan
 	g.collect_prelude_scan_node(id, node, mut scan, collect_defers)
 }
 
+@[direct_array_access]
 fn (g &FlatGen) collect_prelude_scan_node(id flat.NodeId, node &flat.Node, mut scan FnPreludeScan, collect_defers bool) {
 	mut child_collect_defers := collect_defers
 	if collect_defers
@@ -793,10 +794,23 @@ fn (g &FlatGen) collect_prelude_scan_node(id flat.NodeId, node &flat.Node, mut s
 	}
 	start := node.children_start
 	end := start + int(node.children_count)
-	if start >= 0 && end <= g.a.children.len {
+	// The walk never grows the AST, so its arrays can be read through local headers
+	// instead of being reloaded through `g.a` after every scan update.
+	children := g.a.children
+	if start >= 0 && end <= children.len {
+		nodes := g.a.nodes
 		for i in start .. end {
 			// The child range is checked above; avoid per-child bounds checks in this hot walk.
-			g.collect_prelude_scan_from(unsafe { g.a.children[i] }, mut scan, child_collect_defers)
+			child_id := int(children[i])
+			if child_id < 0 || child_id >= nodes.len {
+				continue
+			}
+			child := unsafe { &nodes[child_id] }
+			if child.children_count == 0
+				&& child.kind !in [.defer_stmt, .lock_expr, .label_stmt] {
+				continue
+			}
+			g.collect_prelude_scan_node(flat.NodeId(child_id), child, mut scan, child_collect_defers)
 		}
 	}
 	if pushed_lock {
@@ -10585,7 +10599,7 @@ fn (mut g FlatGen) precompute_local_name_exceptions() {
 
 // A missing bit proves that none of the immutable global tables can resolve
 // the name. Collisions only retain the complete lookup.
-@[inline]
+@[direct_array_access; inline]
 fn global_name_filter_slot(name string) int {
 	mut hash := u32(name.len) * 131
 	if name.len > 0 {

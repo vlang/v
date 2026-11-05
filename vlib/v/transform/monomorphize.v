@@ -16894,6 +16894,7 @@ fn (t &Transformer) generic_args_have_placeholders(args_ids []u32) bool {
 	return false
 }
 
+@[direct_array_access]
 fn (t &Transformer) generic_arg_is_unresolved(arg_id u32) bool {
 	if t.skip_generics {
 		// Anonymous literals still need materialization in nongeneric programs.

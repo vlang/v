@@ -2109,6 +2109,7 @@ fn is_type_metadata_node_of_class(node &flat.Node, class u8, mut cache TypeMetad
 		&& cache.may_need_array_typedef(node.value_text())
 }
 
+@[direct_array_access]
 fn is_optional_sizeof_node(node &flat.Node) bool {
 	return node.kind == .sizeof_expr && node.children_count == 0 && node.value_text().len > 1
 		&& node.value_text()[0] in [`?`, `!`]
@@ -4397,7 +4398,6 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.writeln('#define V3CACHE_PROGRAM_UNIT 1')
 		g.string_literals()
 		g.gen_embed_file_blobs()
-		g.gen_top_level_asm()
 		if g.incremental_fn_names.len > 0 {
 			g.writeln('/* V3CACHE_SUPPORT_BEGIN */')
 			g.multi_return_forward_decls()
@@ -4422,6 +4422,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		}
 		g.release_scoped_fn_items()
 		g.writeln('/* V3CACHE_BODY_BEGIN */')
+		g.gen_top_level_asm()
 		g.writeln('/* V3CACHE_MODULE main */')
 		for segment in g.fn_segs {
 			g.sb.write_string(segment)
@@ -4522,8 +4523,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.register_interface_strings()
 	g.string_literals()
 	g.gen_embed_file_blobs()
-	g.gen_top_level_asm()
 	if !g.cache_split {
+		g.gen_top_level_asm()
 		if g.parallel_interface_stubs.len > 0 {
 			g.sb.write_string(g.parallel_interface_stubs)
 			unsafe { g.parallel_interface_stubs.free() }
@@ -4546,6 +4547,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	unsafe { const_code.free() }
 	if g.cache_split {
 		g.writeln('/* V3CACHE_BODY_BEGIN */')
+		g.gen_top_level_asm()
 		g.emit_cache_module_constants()
 		// `_vinit` and interface stubs depend on the complete entry program, but
 		// remain stable across function-body literal edits. Keep them with the
@@ -12839,7 +12841,7 @@ fn (mut g FlatGen) apply_fn_signature_registration_group(registration FnSignatur
 }
 
 fn (mut g FlatGen) register_fn_decl_node(name string, module_name string, id flat.NodeId) {
-	g.register_fn_decl_node_by_name(name, id)
+	g.register_fn_decl_node_by_name(name, module_name, id)
 	g.register_fn_decl_node_by_short(name, id)
 	g.register_fn_decl_node_by_module_short(name, module_name, id)
 }
@@ -12859,7 +12861,7 @@ fn (mut g FlatGen) register_fn_decl_nodes(regs []FnDeclNodeReg, which int) {
 	match which {
 		0 {
 			for reg in regs {
-				g.register_fn_decl_node_by_name(reg.name, reg.id)
+				g.register_fn_decl_node_by_name(reg.name, reg.module, reg.id)
 			}
 		}
 		1 {
@@ -12876,9 +12878,15 @@ fn (mut g FlatGen) register_fn_decl_nodes(regs []FnDeclNodeReg, which int) {
 }
 
 @[inline]
-fn (mut g FlatGen) register_fn_decl_node_by_name(name string, id flat.NodeId) {
+fn (mut g FlatGen) register_fn_decl_node_by_name(name string, module_name string, id flat.NodeId) {
 	if name !in g.fn_decl_nodes_by_name {
 		g.fn_decl_nodes_by_name[name] = id
+	}
+	if name.ends_with('.free') {
+		// Receiver cleanup depends on the exact declaration, even when another
+		// module declares the same receiver type and method name.
+		g.fn_decl_nodes_by_name[fn_decl_module_key(module_name, name)] = id
+		g.fn_decl_nodes_by_name['${module_name}.${name}'] = id
 	}
 }
 
@@ -14430,11 +14438,12 @@ fn (g &FlatGen) sum_variant_accepts_actual(actual &types.Type, variant &types.Ty
 }
 
 fn (mut g FlatGen) sum_cast_actual_type(id flat.NodeId) types.Type {
-	mut actual_type := g.body_resolve_type(id)
 	if int(id) < 0 || int(id) >= g.a.nodes.len {
-		return actual_type
+		return g.body_resolve_type(id)
 	}
 	node := g.a.nodes[int(id)]
+	// The literal and declaration shapes below decide the type themselves; the
+	// expression is resolved only when none of them applies.
 	match node.kind {
 		.int_literal {
 			return types.Type(types.int_)
@@ -14515,7 +14524,7 @@ fn (mut g FlatGen) sum_cast_actual_type(id flat.NodeId) types.Type {
 			return *lit_type
 		}
 	}
-	return actual_type
+	return g.body_resolve_type(id)
 }
 
 // pointer_variant_expr_creates_owned_value reports pointer expressions whose pointee is
@@ -22035,6 +22044,12 @@ fn (mut g FlatGen) headerless_utsname_struct() {
 	g.writeln('#else')
 	g.writeln('struct utsname { char sysname[65]; char nodename[65]; char release[65]; char version[65]; char machine[65]; char domainname[65]; };')
 	g.writeln('#endif')
+	// FreeBSD's exported uname symbol uses the legacy 32-byte field ABI. Its
+	// native header wraps __xuname with the field width of the current struct.
+	g.writeln('#ifdef __FreeBSD__')
+	g.writeln('int __xuname(int, void*);')
+	g.writeln('static inline int uname(struct utsname* name) { return __xuname((int)sizeof(name->sysname), (void*)name); }')
+	g.writeln('#endif')
 }
 
 fn (mut g FlatGen) headerless_stat_struct() {
@@ -23713,11 +23728,11 @@ fn (mut g FlatGen) atomic_thread_fence_compat_decls() {
 	g.writeln('extern void _V_atomic_thread_fence(int order);')
 	g.writeln('#define atomic_thread_fence(order) _V_atomic_thread_fence(order)')
 	g.writeln('#define __atomic_thread_fence(order) _V_atomic_thread_fence(order)')
-	// OpenBSD amd64 links the plain symbol from atomic.S. A headerless unit
+	// FreeBSD and OpenBSD amd64 link the plain symbol from atomic.S. A headerless unit
 	// still needs its prototype; preserve the enum-typed declaration if a
-	// stdatomic header has already supplied the public fence macro.
-	g.writeln('#elif defined(__TINYC__) && defined(__OpenBSD__) && defined(__x86_64__)')
-	g.writeln('#ifndef atomic_thread_fence')
+	// stdatomic header has already supplied either direction of the fence alias.
+	g.writeln('#elif defined(__TINYC__) && (defined(__FreeBSD__) || defined(__OpenBSD__)) && defined(__x86_64__)')
+	g.writeln('#if !defined(atomic_thread_fence) && !defined(__atomic_thread_fence)')
 	g.writeln('extern void __atomic_thread_fence(int order);')
 	g.writeln('#define atomic_thread_fence(order) __atomic_thread_fence(order)')
 	g.writeln('#endif')
@@ -25396,6 +25411,11 @@ fn (mut g FlatGen) global_decls() {
 		section_prefix := g.global_linker_section_prefix(name) + linkage_attr
 		if fixed := array_fixed_type(unalias_type(decl_typ)) {
 			c_elem, dims := g.fixed_array_decl_parts(fixed)
+			if extern_name := g.c_extern_global_names[name] {
+				// Native code owns this array, including any initialized lookup table.
+				g.writeln('extern ${vq}${c_elem} ${extern_name}${dims};')
+				continue
+			}
 			if val_id := g.global_inits[name] {
 				if name in g.global_cinit_names || g.global_fixed_array_is_static(val_id, decl_typ) {
 					g.write('${section_prefix}${vq}${c_elem} ${g.global_c_name(name)}${dims} = ')
@@ -25813,6 +25833,10 @@ fn (mut g FlatGen) emit_global_inits() {
 	skip_closure_runtime_globals := !g.needs_closure_runtime_init()
 	for qname in g.global_init_order {
 		g.in_global_array_pointer_init = false
+		if qname in g.c_extern_global_names {
+			// Native code owns both the storage and its initial contents.
+			continue
+		}
 		if g.cache_const_modules[g.global_modules[qname] or { '' }]
 			&& (g.global_files[qname] or { '' }).ends_with('.vh') {
 			continue
@@ -27051,8 +27075,11 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 	if v_type is types.Array || ct == 'Array' {
 		is_static_const = false
 	}
-	if v_type is types.ArrayFixed && v_type.elem_type is types.ArrayFixed {
-		is_static_const = false
+	if fixed := array_fixed_type(unalias_type(v_type)) {
+		elem_type := unalias_type(fixed.elem_type)
+		if elem_type is types.ArrayFixed || elem_type is types.Array {
+			is_static_const = false
+		}
 	}
 	if !is_static_const {
 		if fixed := array_fixed_type(unalias_type(v_type)) {
@@ -27435,8 +27462,10 @@ fn (mut g FlatGen) write_fixed_array_elem_initializer(mut builder strings.Builde
 		builder.write_string(g.new_map_expr_string(clean_elem_type.key_type, clean_elem_type.value_type))
 		return
 	}
-	if node.kind == .array_init && clean_elem_type is types.Array {
-		builder.write_string(g.array_allocation_expr(clean_elem_type.elem_type, '0', '0'))
+	if clean_elem_type is types.Array {
+		// Dynamic arrays need Array values, including when their literal is a
+		// constant expression. A brace list would initialize Array's fields.
+		builder.write_string(g.expr_to_string_with_expected_type(val_id, elem_type))
 		return
 	}
 	if g.is_const_expr(val_id) && !(node.kind == .prefix && node.op == .amp) {
@@ -28864,7 +28893,7 @@ fn (g &FlatGen) op_str(op flat.Op) string {
 	}
 }
 
-@[inline]
+@[direct_array_access; inline]
 fn (mut g FlatGen) write(s string) {
 	if g.line_start {
 		g.write_indent()
