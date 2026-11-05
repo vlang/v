@@ -10176,6 +10176,21 @@ fn (mut g FlatGen) gen_stack_value_free_receiver(base_id flat.NodeId, method_nam
 	mut releases_receiver := false
 	for call_id in g.a.free_method_receiver_calls(decl_id) {
 		resolved := g.resolved_call_name(call_id) or { '' }
+		if resolved.len == 0 {
+			call := g.a.node(call_id)
+			callee := g.a.child_node(call, 0)
+			if callee.value == 'free' {
+				// An unchanged cached method may not have been checked in an
+				// incremental build. Resolve shadowing in its own lexical scope.
+				if source_file := g.a.source_files[callee.pos.id] {
+					module_name := g.tc.file_modules[source_file.name] or { '' }
+					if g.tc.module_declares_fn(module_name, 'free')
+						|| g.selective_import_call_key_in_file('free', source_file.name) != none {
+						continue
+					}
+				}
+			}
+		}
 		if resolved.len == 0 || resolved in ['free', 'builtin.free'] {
 			releases_receiver = true
 			break
