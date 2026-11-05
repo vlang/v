@@ -10774,6 +10774,7 @@ so they always
 build as if `-gc none` was passed. For x64, `-prod` enables SSA optimization, scalar register
 allocation, and optimized C helpers. Very large x64 modules may skip the global SSA pass to
 bound compiler memory. The ARM64 backend retains its existing optimization behavior.
+ARM64 executable linking is silent by default; use `-stats` to display compiler stage timings.
 ARM64 builds reject native source files included with `#include`, `#insert`, `#preinclude`, or
 `#postinclude`, because its linker cannot link those sources yet. Use the C backend for them.
 ARM64 resolves a fixed set of platform C constants. Other C constants produce an error;
