@@ -143,7 +143,7 @@ fn v3_parallel_c_native_manifest(compiler string, flags []string, objective_c bo
 fn (mut manifest V3ParallelCManifest) collect_declaration(decl V3ParallelCDecl, used map[string]bool, generated []string, check_header bool, previous_file string) string {
 	mut file := if decl.loc.file.len > 0 { decl.loc.file } else { previous_file }
 	if decl.name in used && decl.kind !in ['FieldDecl', 'IndirectFieldDecl'] {
-		manifest.declared[decl.name] = true
+		manifest.declared[decl.name.clone()] = true
 	}
 	// Enum constants and anonymous record typedefs are nested declarations;
 	// function-local names must not enter the set visible to other units.
@@ -207,7 +207,7 @@ fn (mut manifest V3ParallelCManifest) collect_declaration(decl V3ParallelCDecl, 
 		}
 	}
 	if reason.len > 0 {
-		manifest.hazards << V3ParallelCHeaderHazard{ file: file, line: decl.loc.line, reason: reason }
+		manifest.hazards << V3ParallelCHeaderHazard{ file: file.clone(), line: decl.loc.line, reason: reason }
 	}
 	return file
 }
@@ -242,7 +242,7 @@ fn v3_parallel_c_macro_manifest(text string, used map[string]bool) map[string]st
 		mut end := 0
 		for end < definition.len && (definition[end].is_alnum() || definition[end] == `_`) { end++ }
 		name := definition[..end]
-		if name in used { macros[name] = definition }
+		if name in used { macros[name.clone()] = definition.clone() }
 	}
 	return macros
 }
@@ -394,11 +394,24 @@ fn (mut r V3ParallelCManifestReader) quoted() !string {
 	r.space()
 	start := r.pos
 	r.take(`"`)!
+	mut escaped := false
 	for r.pos < r.text.len {
 		c := r.text[r.pos]
 		r.pos++
-		if c == `"` { return strconv.unquote(r.text[start..r.pos])! }
-		if c == `\\` { r.pos++ }
+		if c == `"` {
+			if !escaped {
+				// The decoder owns its input throughout declaration collection. Borrow
+				// ordinary JSON strings; only names and paths retained in the manifest
+				// are cloned. This keeps native analysis within small memory budgets.
+				return r.text.substr_unsafe(start + 1, r.pos - 1)
+			}
+			return strconv.unquote(r.text.substr_unsafe(start, r.pos))!
+		}
+		if c < ` ` { return error('invalid control character in native metadata string') }
+		if c == `\\` {
+			escaped = true
+			r.pos++
+		}
 	}
 	return error('unterminated native metadata string')
 }
