@@ -4716,12 +4716,13 @@ fn (mut t Transformer) collect_types() {
 				// The type of `C.va_arg(T, ap)` is `T`, not a declared return type.
 				if node.typ != 0 && node.value_text() !in ['C.va_arg', 'va_arg'] {
 					ret_typ_source_id_2 := t.normalize_type_in_module(node.typ, cur_mod)
-
-					t.fn_ret_types.set_id(node.value_text(), ret_typ_source_id_2)
-					if node.value_text().starts_with('C.') {
-						t.fn_ret_types.set_id(node.value_text()[2..], ret_typ_source_id_2)
-					} else {
-						t.fn_ret_types.set_id('C.${node.value_text()}', ret_typ_source_id_2)
+					name := node.value_text()
+					bare_name := if name.starts_with('C.') { name[2..] } else { name }
+					c_name := if name.starts_with('C.') { name } else { 'C.${name}' }
+					t.fn_ret_types.set_id(c_name, ret_typ_source_id_2)
+					// A C alias must not replace a V function's return type, such as malloc's &u8.
+					if isnil(t.tc) || bare_name !in t.tc.v_fn_semantic_names {
+						t.fn_ret_types.set_id(bare_name, ret_typ_source_id_2)
 					}
 				}
 			}
