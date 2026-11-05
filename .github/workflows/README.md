@@ -218,6 +218,16 @@ When migrating a workflow, keep the job's explicit install step until CI proves 
 profile is sufficient. The cache action speeds up installs; it should not hide which
 packages the workflow actually needs.
 
+## MemorySanitizer dependencies
+
+The `memory-clang` self-test job builds a pinned libpq with MemorySanitizer, including its
+bundled support objects. The distribution library is not instrumented and can leave sanitizer
+shadow memory stale when it constructs buffers inside `PQconnectdb`. The job selects the private
+build through `PKG_CONFIG_PATH` and `LD_LIBRARY_PATH`; PostgreSQL tests keep their normal
+assertions.
+The other sanitizer jobs continue using the distribution library. OpenSSL remains a system
+dependency, so this does not claim that every external library has MemorySanitizer coverage.
+
 ## Rebuilding release binaries
 
 `Release CI` builds without publishing when its workflow file changes on `master`.
