@@ -645,7 +645,7 @@ fn (mut g Parser) parse_defer() ! {
 			source_name := if local.c_name != '' {
 				local.c_name
 			} else {
-				fastc_c_identifier(name)
+				fastc_c_value_identifier(name)
 			}
 			capture_assignments << '${capture_name} = ${source_name};'
 			g.locals[name] = FastcLocal{
@@ -1346,7 +1346,7 @@ fn (mut g Parser) parse_return() !bool {
 			if !local.is_reference {
 				local_type := fastc_normalize_inferred_type(local.typ)
 				temporary := g.temporary_name('return_reference')
-				expression = '({ ${flat.source_type_name(local_type)} ${temporary} = (${fastc_c_identifier(local_name)}); (${g.return_type_text()})v_fastc_interface_box(&${temporary}, sizeof(${flat.source_type_name(local_type)})); })'
+				expression = '({ ${flat.source_type_name(local_type)} ${temporary} = (${fastc_c_value_identifier(local_name)}); (${g.return_type_text()})v_fastc_interface_box(&${temporary}, sizeof(${flat.source_type_name(local_type)})); })'
 			}
 		}
 	}
@@ -1616,12 +1616,12 @@ fn (mut g Parser) parse_simple_statement() ! {
 					local.smartcast_origin_source
 				}
 			} else if local.is_reference {
-				'(*${fastc_c_identifier(name)})'
+				'(*${fastc_c_value_identifier(name)})'
 			} else {
-				fastc_c_identifier(name)
+				fastc_c_value_identifier(name)
 			}
 		} else {
-			fastc_c_identifier(name)
+			fastc_c_value_identifier(name)
 		}
 		g.next()
 		if g.tok.is_assignment() || g.tok in [.inc, .dec] {
@@ -2269,7 +2269,7 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 				} else {
 					fastc_normalize_inferred_type(value_types[i])
 				}
-				g.write_line('${flat.source_type_name(value_type)} ${fastc_c_identifier(name)} = ${temporaries[i]};')
+				g.write_line('${flat.source_type_name(value_type)} ${fastc_c_value_identifier(name)} = ${temporaries[i]};')
 				g.set_scoped_local(name, FastcLocal{
 					is_mut: mutability[i]
 					typ:    value_type
@@ -2301,7 +2301,7 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 			} else {
 				'uint'
 			}
-			c_name := fastc_c_identifier(name)
+			c_name := fastc_c_value_identifier(name)
 			c_type := fastc_output_c_type(component_type)
 			g.write_line('${c_type} ${c_name} = (${c_type}){0};')
 			g.write_line('memcpy(&${c_name}, V_FASTC_MULTI_SOURCE(${temporary}.values[${i}], sizeof(${c_name})), sizeof(${c_name}));')
@@ -2532,7 +2532,7 @@ fn (mut g Parser) parse_parallel_option_tuple(names []string, mutability []bool,
 			}
 			component_type := fastc_normalize_inferred_type(component_types[i])
 			c_type := fastc_output_c_type(flat.source_type_name(component_type))
-			g.write_line('${c_type} ${fastc_c_identifier(name)} = (${c_type}){0};')
+			g.write_line('${c_type} ${fastc_c_value_identifier(name)} = (${c_type}){0};')
 			g.set_scoped_local(name, FastcLocal{
 				is_mut: mutability[i]
 				typ:    component_type
@@ -2554,7 +2554,7 @@ fn (mut g Parser) parse_parallel_option_tuple(names []string, mutability []bool,
 				continue
 			}
 			target := if is_declaration {
-				fastc_c_identifier(name)
+				fastc_c_value_identifier(name)
 			} else {
 				assignment_targets[i].source
 			}
@@ -2570,7 +2570,7 @@ fn (mut g Parser) parse_parallel_option_tuple(names []string, mutability []bool,
 			continue
 		}
 		target := if is_declaration {
-			fastc_c_identifier(name)
+			fastc_c_value_identifier(name)
 		} else {
 			assignment_targets[i].source
 		}
@@ -2594,9 +2594,9 @@ fn (g &Parser) validate_parallel_assignment_targets(names []string) ![]FastcRend
 			}
 			target = FastcRenderedExpression{
 				source: if local.is_reference {
-					'(*${fastc_c_identifier(name)})'
+					'(*${fastc_c_value_identifier(name)})'
 				} else {
-					fastc_c_identifier(name)
+					fastc_c_value_identifier(name)
 				}
 				typ:    (if local.is_reference {
 					fastc_trim_pointer_type(local.typ)
@@ -3311,7 +3311,7 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 	// direct path preserve V's `:=` without running any inference or type checker.
 	// A self-host has already inferred the C type, so spelling that type directly
 	// avoids duplicating large statement expressions in the generated source.
-	c_name := fastc_c_identifier(name)
+	c_name := fastc_c_value_identifier(name)
 	normalized_type := fastc_normalize_inferred_type(g.last_expression_type)
 	local_type_id := if g.selfhost && g.last_expression_type == u32(0) {
 		flat.source_type_int
@@ -4319,7 +4319,7 @@ fn (mut g Parser) parse_orm_sql_select_declaration(name string, is_mut bool) ! {
 	// The `[]<Table>` result array is often not otherwise constructed in the program,
 	// so register it as a composite type to force its `Array_<Table>` typedef.
 	fastc_register_composite_type(flat.source_type_id(result_type), mut g.composite_types)
-	c_name := fastc_c_identifier(name)
+	c_name := fastc_c_value_identifier(name)
 	g.write_line('${result_type} ${c_name};')
 	g.write_line('{')
 	g.indent++
@@ -4346,7 +4346,7 @@ fn (mut g Parser) parse_orm_sql_select_assignment(name string) ! {
 	lowering, result_type := g.build_orm_select_lowering(db_source, block_source, trailing, or_source)!
 	g.consume_statement_end()
 	fastc_register_composite_type(flat.source_type_id(result_type), mut g.composite_types)
-	c_name := fastc_c_identifier(name)
+	c_name := fastc_c_value_identifier(name)
 	g.write_line('{')
 	g.indent++
 	g.emit_orm_lowering_statements(lowering)!

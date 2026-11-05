@@ -11524,10 +11524,6 @@ pub fn run(args []string) {
 			if os.getenv('FASTC_BENCH_PHASES') != '' {
 				eprintln('fastc-phase driver.generated ${driver_sw.elapsed().microseconds()}us')
 			}
-			if report_deprecated_integer_types(fastc_generation.deprecated_integer_paths, prefs,
-				warns_are_errors) {
-				exit(1)
-			}
 			fastc_artifact_path := canonical_v3_fastc_output_path(fastc_artifact_file)
 			for source_path in fastc_generation.source_paths {
 				if fastc_artifact_path != '' && fastc_artifact_path == source_path

@@ -3487,6 +3487,9 @@ fn fastc_emit_enum_declaration(mut scan scanner.Scanner, source_file FastcSource
 	tok = scan.scan()
 	if tok == .key_as {
 		tok = scan.scan()
+		if tok == .name && scan.lit in ['isize', 'usize'] {
+			return error('fastc parser does not support ${fastc_removed_integer_type(scan.lit)} in ${source_file.path}')
+		}
 		// Accept any integer backing type (`as u32`, `as u8`, ...). The C typedef is
 		// still `int` (or `u64` for flag enums); values are emitted with an explicit
 		// cast, so a narrower/wider spelling does not change the generated C.

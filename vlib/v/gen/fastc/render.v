@@ -3120,7 +3120,7 @@ fn (g &Parser) render_refined_enum_logical_expression(left_tokens []FastcExpress
 	} else {
 		return none
 	}
-	subject := fastc_c_identifier(local_name)
+	subject := fastc_c_value_identifier(local_name)
 	access := if flat.source_type_query(boxed_type).has(.c_pointer_suffix) { '->' } else { '.' }
 	type_test := '((${subject}${access}_typ) == __v_typeid_${flat.source_type_name(enum_type)})'
 	concrete := '*((${flat.source_type_name(enum_type)} *)${subject}${access}_object)'
@@ -4815,7 +4815,7 @@ fn (g &Parser) render_selfhost_scalar_call_argument(tokens []FastcExpressionToke
 		return none
 	}
 	if !is_scalar && !g.is_plain_aggregate_value_type(expected_type) { return none }
-	return if local.c_name != '' { local.c_name } else { fastc_c_identifier(item.lit) }
+	return if local.c_name != '' { local.c_name } else { fastc_c_value_identifier(item.lit) }
 }
 
 // render_selfhost_plain_member_call_argument preserves the ordinary member

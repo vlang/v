@@ -511,7 +511,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 		}
 		// C pointer differences use the signed pointer-sized integer formatter.
 		if interpolation_type_id == fastc_type_ptrdiff_t {
-			interpolation_type_id = flat.source_type_isize
+			interpolation_type_id = flat.source_type_int
 		}
 		interpolation_type := flat.source_type_name(interpolation_type_id)
 		mut format_specifier := ''

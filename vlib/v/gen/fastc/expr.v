@@ -347,7 +347,7 @@ fn (mut g Parser) try_read_atomic_expression(stops []token.Token, allow_mutation
 			source = if local_c_name != '' {
 				local_c_name
 			} else {
-				fastc_c_identifier(original_lit)
+				fastc_c_value_identifier(original_lit)
 			}
 		}
 		.number {
@@ -462,7 +462,11 @@ fn (mut g Parser) try_read_atomic_member_expression(stops []token.Token, allow_m
 		return FastcAtomicExpression{}
 	}
 	separator := if is_pointer { '->' } else { '.' }
-	root_source := if local.c_name != '' { local.c_name } else { fastc_c_identifier(original_lit) }
+	root_source := if local.c_name != '' {
+		local.c_name
+	} else {
+		fastc_c_value_identifier(original_lit)
+	}
 	g.last_expression = [
 		FastcExpressionToken{ tok: .name, lit: original_lit, unsafe_depth: g.unsafe_depth },
 		FastcExpressionToken{ tok: .dot, lit: dot_lit, unsafe_depth: g.unsafe_depth },
@@ -2331,16 +2335,35 @@ fn (mut g Parser) render_expression_stream_token(mut expression_tokens []FastcEx
 		''
 	}
 	selfhost_bare_name := g.selfhost && stored_tok == .name && previous_token != .dot
+	mut offsetof_member := false
 	mut piece := if keyword_module_alias {
 		g.expression_name(previous_token, qualified_name_owner)!
-	} else if selfhost_bare_name {
+	} else if selfhost_bare_name && !fastc_is_removed_integer_name(g.lit) {
 		fastc_c_identifier(g.lit)
 	} else if g.tok in [.key_module, .key_type] {
 		g.expression_name(previous_token, qualified_name_owner)!
 	} else if stored_tok == .name && previous_token == .dot && g.tok.is_keyword() {
 		g.lit
 	} else {
-		g.expression_token(previous_token, previous_lit, qualified_name_owner, module_separator)!
+		// Only legacy spellings need the extra context checks. Keep ordinary
+		// self-host names on the direct path above.
+		if stored_tok == .name && previous_token != .dot && fastc_is_removed_integer_name(g.lit) {
+			// __offsetof's second operand is a member, even if a local shares its name.
+			if previous_token == .comma {
+				open := fastc_innermost_open_index(expression_tokens)
+				offsetof_member = open > 0 && expression_tokens[open].tok == .lpar
+					&& expression_tokens[open - 1].lit == '__offsetof'
+					&& fastc_call_argument_index(expression_tokens, open) == 1
+			}
+			if !offsetof_member && g.expression_name_is_type_argument(expression_tokens) {
+				return g.unsupported(fastc_removed_integer_type(g.lit))
+			}
+		}
+		if offsetof_member {
+			fastc_c_identifier(g.lit)
+		} else {
+			g.expression_token(previous_token, previous_lit, qualified_name_owner, module_separator)!
+		}
 	}
 	mut monomorphized_name := false
 	if g.selfhost && g.tok == .name && g.lit in g.generic_method_names {
@@ -2351,7 +2374,7 @@ fn (mut g Parser) render_expression_stream_token(mut expression_tokens []FastcEx
 			g.consume_monomorphized_type_arguments()
 		}
 	}
-	if stored_tok == .name && previous_token != .dot {
+	if stored_tok == .name && previous_token != .dot && !offsetof_member {
 		// A name after `.` is a field or method: never substitute a local
 		// (a mut parameter's deref form) that happens to share its name.
 		if selfhost_bare_name {
@@ -3755,6 +3778,37 @@ fn fastc_innermost_open_index(tokens []FastcExpressionToken) int {
 		}
 	}
 	return -1
+}
+
+// expression_name_is_type_argument distinguishes explicit generic arguments from
+// indices into value bindings, even when a local shadows a removed type spelling.
+fn (g &Parser) expression_name_is_type_argument(tokens []FastcExpressionToken) bool {
+	if tokens.last().lit in g.imports {
+		mut look := g.s
+		if look.scan() == .dot {
+			return false
+		}
+	}
+	open := fastc_innermost_open_index(tokens)
+	if open < 1 || tokens[open].tok != .lsbr || tokens[open - 1].tok != .name {
+		return false
+	}
+	name := tokens[open - 1].lit
+	if open >= 2 && tokens[open - 2].tok == .dot {
+		if open >= 3 && tokens[open - 3].tok == .name
+			&& tokens[open - 3].lit in g.imports && tokens[open - 3].lit !in g.locals {
+			return g.function_key_for_call(tokens, open - 1) in g.generic_method_sources
+		}
+		receiver_start := fastc_method_receiver_start(tokens, open - 2)
+		receiver_type := g.infer_expression_type(tokens[receiver_start..open - 2]) or {
+			return false
+		}
+		receiver_base := fastc_trim_pointer_type(fastc_normalize_inferred_type(receiver_type))
+		return '${flat.source_type_name(receiver_base)}.${name}' in g.generic_method_sources
+	}
+	return name !in g.locals && g.unqualified_global_key(name) == none
+		&& fastc_constant_key(g.module_name, name) !in g.constants
+		&& fastc_constant_key('builtin', name) !in g.constants
 }
 
 // fastc_call_argument_index returns the index of the argument being read in the call whose `(`
