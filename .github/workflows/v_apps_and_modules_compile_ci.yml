@@ -366,14 +366,16 @@ jobs:
       - name: Clone gitly
         run: v retry -- git clone --depth 1 -b $env:GITLY_BRANCH $env:GITLY_REPO gitly
       - name: Apply gitly first-run compatibility fixes
-        shell: bash
+        shell: pwsh
         run: |
           # Remove this patch when the ci/windows-first-run branch includes the fixes.
-          if git -C gitly apply --check ../.github/gitly_windows_first_run.patch; then
+          git -C gitly apply --check ../.github/gitly_windows_first_run.patch
+          if ($LASTEXITCODE -eq 0) {
             git -C gitly apply ../.github/gitly_windows_first_run.patch
-          else
+          } else {
             git -C gitly apply --reverse --check ../.github/gitly_windows_first_run.patch
-          fi
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compile gitly CSS
         uses: gha-utilities/sass-build@c15aba209f1cfe51f43e319f2724558112cd9336 # v0.6.1
         with:
