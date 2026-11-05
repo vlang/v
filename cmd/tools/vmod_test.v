@@ -12,9 +12,8 @@ fn has_project_ancestor(path string) bool {
 		if os.is_file(os.join_path(current, 'v.mod')) {
 			return true
 		}
-		parent := os.dir(current)
-		if parent == current { break }
-		current = parent
+		// Keep Windows drive roots absolute and stop before returning to `.`.
+		current = os.parent_dir(current)
 	}
 	return false
 }
