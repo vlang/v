@@ -65,6 +65,7 @@ pub fn (mut s GpuSurface) draw_path(path Path, paint Paint) ! {
 // PathRendererStrategy::kTessellation: convex paths use the shaded convex
 // wedges, others the stencil-and-cover wedges.
 fn (mut s GpuSurface) draw_path_fill(path Path, paint Paint) ! {
+	paint.solid_only()!
 	if !s.transform.valid() {
 		return
 	}

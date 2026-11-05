@@ -52,6 +52,7 @@ struct PipelineKey {
 	step    RenderStep
 	blend   bool
 	clipped bool
+	shading Shading
 }
 
 // GpuSurface records draws into a BGRA8 premultiplied render target and
@@ -631,15 +632,21 @@ fn (mut s GpuSurface) draw_shape(geometry_in ShapeGeometry, paint Paint) ! {
 	}
 	clipped := !clip.analytic.is_empty()
 	color := paint.color.premul()
+	shading, gradient := paint.shading()!
 	uniforms := PaintUniforms{
-		color:   color
-		clipped: clipped
-		clip:    if clipped {
+		color:    color
+		shading:  shading
+		gradient: gradient
+		clipped:  clipped
+		clip:     if clipped {
 			analytic_clip_uniforms(clip.analytic)
 		} else {
 			AnalyticClipUniforms{}
 		}
 	}
+	// A gradient paint is opaque when its colors are, like
+	// SkShader::isOpaque().
+	opaque := color.is_opaque() && (!shading.is_gradient() || gradient.opaque)
 	pixel_aligned := !stroked && geometry.kind == .rect && is_pixel_aligned(geometry.rect, s.transform)
 	step := if pixel_aligned { RenderStep.cover_bounds } else { RenderStep.analytic_rrect }
 	// Renderers with analytic coverage include their 1px AA ramp in the
@@ -661,7 +668,7 @@ fn (mut s GpuSurface) draw_shape(geometry_in ShapeGeometry, paint Paint) ! {
 	// DstUsage: src-over with analytic coverage (from the renderer or an
 	// analytic clip) always reads the destination; without coverage only a
 	// translucent paint does.
-	depends_on_dst := step == .analytic_rrect || clipped || !color.is_opaque()
+	depends_on_dst := step == .analytic_rrect || clipped || !opaque
 	s.depth_index++
 	mut order := DrawOrder{
 		depth: s.depth_index
@@ -677,7 +684,7 @@ fn (mut s GpuSurface) draw_shape(geometry_in ShapeGeometry, paint Paint) ! {
 	}
 	// With an analytic clip the destination is not only read by the renderer,
 	// so there is no inner fill.
-	if !stroked && step == .analytic_rrect && color.is_opaque() && !clipped {
+	if !stroked && step == .analytic_rrect && opaque && !clipped {
 		// The destination is only read for the coverage ramp, so Graphite
 		// fills the interior with an extra non-AA draw at the same depth.
 		inner := inner_fill_bounds(geometry, s.transform)
@@ -713,6 +720,7 @@ fn (mut s GpuSurface) draw_shape(geometry_in ShapeGeometry, paint Paint) ! {
 // coverage-less bounds renderer fills the scissor, or an opaque fill of the
 // whole surface clears the pending draws.
 fn (mut s GpuSurface) draw_flood_fill(clip ClipResult, paint Paint) ! {
+	paint.solid_only()!
 	clipped := !clip.analytic.is_empty()
 	color := paint.color.premul()
 	if !clipped && color.is_opaque() && clip.elements.len == 0
@@ -770,7 +778,7 @@ fn (mut s GpuSurface) record(step RenderStep, blend bool, instance []u8, uniform
 // record_step assigns the render step's pipeline and uniform cache indices
 // in insertion order, like DrawList::recordDraw().
 fn (mut s GpuSurface) record_step(step RenderStep, blend bool, instance []u8, uniforms PaintUniforms, order DrawOrder, step_index u32, phantom_instances u32, clip DrawClip, instance_count u32) {
-	key := PipelineKey{step, blend, uniforms.clipped}
+	key := PipelineKey{step, blend, uniforms.clipped, uniforms.shading}
 	mut pipeline_index := s.pipelines.index(key)
 	if pipeline_index < 0 {
 		pipeline_index = s.pipelines.len
@@ -826,6 +834,12 @@ fn instance_stride(step RenderStep) int {
 
 // TextureDataCache::kInvalidIndex, the texture field of draws without textures.
 const texture_index_invalid = u64(4096)
+
+// draw_texture_index returns a draw's index in the draw list's texture
+// binding cache: gradient draws share the dither LUT binding, the only one.
+fn draw_texture_index(draw GpuDraw) u64 {
+	return if draw.uniforms.shading.is_gradient() { 0 } else { texture_index_invalid }
+}
 
 // UniformDataCache::kInvalidIndex, the uniform field of draws without uniforms.
 const uniform_index_invalid = 4096
@@ -907,7 +921,7 @@ pub fn (mut s GpuSurface) flush() ! {
 	for i, draw in s.draws {
 		keys << SortKey{
 			pipeline_key: (u64(draw.order.paint_order) << 48) | (u64(draw.order.stencil_index) << 32) | (u64(draw.step_index) << 30) | u64(draw.pipeline_index)
-			uniform_key:  (u64(draw.uniform_index) << 30) | texture_index_invalid
+			uniform_key:  (u64(draw.uniform_index) << 30) | draw_texture_index(draw)
 			draw:         i
 		}
 	}
@@ -930,7 +944,7 @@ pub fn (mut s GpuSurface) flush() ! {
 	mut last_pipeline := u32(0xffffffff)
 	for i, key in keys {
 		draw := s.draws[key.draw]
-		uniform_size := u32(step_uniform_size(draw.step, draw.uniforms.clipped))
+		uniform_size := u32(step_uniform_size(draw.step, draw.uniforms.clipped, draw.uniforms.shading))
 		rebind := if has_uniforms(draw.step) {
 			tracker.write_uniforms(int(draw.uniform_index), uniform_size, mut buffers)
 		} else {
@@ -1071,7 +1085,8 @@ pub fn (mut s GpuSurface) flush() ! {
 			template_count = math.max(template_count, s.draws[keys[i].draw].template_count)
 		}
 		draw := s.draws[keys[first].draw]
-		gfx.apply_pipeline(ctx.pipeline(draw.step, samples, draw.blend, draw.uniforms.clipped))
+		gfx.apply_pipeline(ctx.pipeline(draw.step, samples, draw.blend, draw.uniforms.clipped,
+			draw.uniforms.shading))
 		sc := real_scissors[first]
 		gfx.apply_scissor_rect(int(sc.left()), int(sc.top()), int(sc.width()), int(sc.height()),
 			true)
@@ -1093,6 +1108,9 @@ pub fn (mut s GpuSurface) flush() ! {
 				bindings.vertex_buffers[0] = ctx.instances
 				bindings.vertex_buffer_offsets[0] = base + offsets[first]
 			}
+		}
+		if draw.uniforms.shading.is_gradient() {
+			bindings.fs.images[0], bindings.fs.samplers[0] = ctx.dither_bindings()
 		}
 		gfx.apply_bindings(&bindings)
 		paint_uniforms := serialize_uniforms(batch_uniforms[b])
@@ -1127,7 +1145,9 @@ pub fn (mut s GpuSurface) flush() ! {
 fn serialize_uniforms(blocks []PaintUniforms) []f32 {
 	mut out := []f32{cap: blocks.len * clip_uniform_size / 4}
 	for u in blocks {
-		if !u.local_to_device || u.with_color {
+		if u.shading.is_gradient() {
+			u.gradient.serialize(u.shading.stops(), mut out)
+		} else if !u.local_to_device || u.with_color {
 			out << u.color.r
 			out << u.color.g
 			out << u.color.b

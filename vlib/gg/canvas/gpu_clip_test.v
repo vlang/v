@@ -264,7 +264,7 @@ fn test_clipped_wedge_and_stroke_uniforms_put_the_clip_after_the_color() {
 		clipped:    true
 		clip:       clip
 	}])
-	assert wedges.len * 4 == step_uniform_size(.wedges_shaded, true)
+	assert wedges.len * 4 == step_uniform_size(.wedges_shaded, true, .solid)
 	assert wedges[..4] == [f32(0.25), 0.5, 0.75, 1]
 	assert wedges[4..16] == clip_block
 	assert wedges[16] == 1 && wedges[21] == 1 && wedges[31] == 1
@@ -278,7 +278,7 @@ fn test_clipped_wedge_and_stroke_uniforms_put_the_clip_after_the_color() {
 		radius:     4
 		edge_flags: analytic_left_edge | analytic_bottom_edge
 	})])
-	assert strokes.len * 4 == step_uniform_size(.tessellate_strokes, true)
+	assert strokes.len * 4 == step_uniform_size(.tessellate_strokes, true, .solid)
 	assert strokes[4..16] == clip_block
 	assert strokes[16..] == [f32(2), 0, 0, 3, 5, 7, 3, 0]
 }

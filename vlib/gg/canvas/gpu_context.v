@@ -70,8 +70,12 @@ fn has_uniforms(step RenderStep) bool {
 
 // step_uniform_size returns the size of a step's uniform block: the
 // localToDevice matrix of wedge steps (after the color for shaded wedges),
-// or the paint color with the analytic clip data.
-fn step_uniform_size(step RenderStep, clipped bool) int {
+// or the paint's color or gradient with the analytic clip data.
+fn step_uniform_size(step RenderStep, clipped bool, shading Shading) int {
+	if shading.is_gradient() {
+		size := gradient_uniform_size(shading.stops())
+		return if clipped { size + clip_block_size } else { size }
+	}
 	return match true {
 		step == .wedges_shaded && clipped { wedge_solid_uniform_size + clip_block_size }
 		step == .wedges_shaded { wedge_solid_uniform_size }
@@ -113,6 +117,11 @@ const cover_depth_vert = $embed_file('shaders/cover_bounds_depth.vert.metal')
 // attachment before the pass's draws.
 const load_msaa_from_resolve = $embed_file('shaders/load_msaa_from_resolve.metal')
 
+// The capacity of the shader and pipeline caches: more than the combinations
+// of render steps, clipping, shading, sample counts and blending.
+const max_shaders = 64
+const max_pipelines = 256
+
 // GpuContext owns the GPU resources shared by all surfaces: shaders,
 // pipelines and the static vertex data of the render steps. It uses the
 // application's sokol.gfx context, or sets up a headless Metal one when
@@ -132,17 +141,22 @@ mut:
 	msaa_load_shader   gfx.Shader
 	msaa_load_pipeline gfx.Pipeline
 	msaa_load_sampler  gfx.Sampler
+	// The dither LUT of gradient paints and its nearest, repeating sampler.
+	dither_lut     gfx.Image
+	dither_sampler gfx.Sampler
 }
 
 struct GpuShaderEntry {
 	step    RenderStep
 	clipped bool
+	shading Shading
 	shader  gfx.Shader
 }
 
 struct GpuPipelineEntry {
 	step         RenderStep
 	clipped      bool
+	shading      Shading
 	sample_count int
 	blend        bool
 	pipeline     gfx.Pipeline
@@ -154,7 +168,10 @@ pub fn new_gpu_context() !&GpuContext {
 	$if !macos {
 		return error('gg.canvas: GPU rendering requires Metal')
 	}
-	mut ctx := &GpuContext{}
+	mut ctx := &GpuContext{
+		shaders:   []GpuShaderEntry{cap: max_shaders}
+		pipelines: []GpuPipelineEntry{cap: max_pipelines}
+	}
 	if !gfx.is_valid() {
 		mut desc := gfx.Desc{}
 		desc.environment.defaults.color_format = .bgra8
@@ -163,6 +180,8 @@ pub fn new_gpu_context() !&GpuContext {
 		desc.environment.metal.device = C.v_canvas_metal_device()
 		// Large batches upload up to 64KB of uniforms per draw call.
 		desc.uniform_buffer_size = 16 * 1024 * 1024
+		desc.shader_pool_size = max_shaders
+		desc.pipeline_pool_size = max_pipelines
 		if desc.environment.metal.device == unsafe { nil } {
 			return error('gg.canvas: no Metal device')
 		}
@@ -226,6 +245,11 @@ pub fn (mut ctx GpuContext) free() {
 		gfx.destroy_sampler(ctx.msaa_load_sampler)
 		ctx.msaa_load_pipeline = gfx.Pipeline{}
 	}
+	if ctx.dither_lut.id != 0 {
+		gfx.destroy_image(ctx.dither_lut)
+		gfx.destroy_sampler(ctx.dither_sampler)
+		ctx.dither_lut = gfx.Image{}
+	}
 	gfx.destroy_buffer(ctx.rrect_vertices)
 	gfx.destroy_buffer(ctx.rrect_indices)
 	gfx.destroy_buffer(ctx.wedge_vertices)
@@ -237,31 +261,33 @@ pub fn (mut ctx GpuContext) free() {
 	}
 }
 
-// precompile creates every shader and pipeline that surfaces may use, so later
-// draws compile nothing. Embedders whose allocations are scoped can call it
-// where long-lived allocations belong.
+// precompile creates every shader and pipeline that solid-color draws may
+// use, so later draws compile nothing. Embedders whose allocations are scoped
+// can call it where long-lived allocations belong. Gradient pipelines, of
+// which a program usually needs few, are created on first use; the caches
+// have room for every pipeline, so that never reallocates them.
 pub fn (mut ctx GpuContext) precompile() {
 	for step in [RenderStep.analytic_rrect, .cover_bounds] {
 		for clipped in [false, true] {
 			for sample_count in [1, 4] {
 				for blend in [true, false] {
-					ctx.pipeline(step, sample_count, blend, clipped)
+					ctx.pipeline(step, sample_count, blend, clipped, .solid)
 				}
 			}
 		}
 	}
-	ctx.pipeline(.convex_wedges, 4, false, false)
-	ctx.pipeline(.cover_inverse_clip, 4, false, false)
-	ctx.pipeline(.cover_clip, 4, false, false)
+	ctx.pipeline(.convex_wedges, 4, false, false, .solid)
+	ctx.pipeline(.cover_inverse_clip, 4, false, false, .solid)
+	ctx.pipeline(.cover_clip, 4, false, false, .solid)
 	for step in [RenderStep.stencil_wedges_winding, .stencil_wedges_even_odd] {
-		ctx.pipeline(step, 4, false, false)
+		ctx.pipeline(step, 4, false, false, .solid)
 	}
 	for step in [RenderStep.cover_fill, .wedges_shaded, .tessellate_strokes] {
 		for blend in [true, false] {
-			ctx.pipeline(step, 4, blend, false)
+			ctx.pipeline(step, 4, blend, false, .solid)
 		}
 		// Analytic clips need coverage blending.
-		ctx.pipeline(step, 4, true, true)
+		ctx.pipeline(step, 4, true, true, .solid)
 	}
 	ctx.load_msaa_pipeline()
 }
@@ -284,12 +310,9 @@ fn (mut ctx GpuContext) ensure_instance_capacity(bytes int) {
 	ctx.instance_capacity = capacity
 }
 
-fn (mut ctx GpuContext) shader(step RenderStep, clipped bool) gfx.Shader {
-	for entry in ctx.shaders {
-		if entry.step == step && entry.clipped == clipped {
-			return entry.shader
-		}
-	}
+// solid_shader_sources returns the vertex and fragment MSL of a render step
+// with a solid color paint.
+fn solid_shader_sources(step RenderStep, clipped bool) (string, string) {
 	// Depth-only steps have no fragment function, like Graphite's; their
 	// fragment entry is unused.
 	vert, frag := match true {
@@ -304,11 +327,23 @@ fn (mut ctx GpuContext) shader(step RenderStep, clipped bool) gfx.Shader {
 		clipped { cover_bounds_clip_vert, cover_bounds_clip_frag }
 		else { cover_bounds_vert, cover_bounds_frag }
 	}
+	return vert.to_string(), frag.to_string()
+}
+
+fn (mut ctx GpuContext) shader(step RenderStep, clipped bool, shading Shading) gfx.Shader {
+	for entry in ctx.shaders {
+		if entry.step == step && entry.clipped == clipped && entry.shading == shading {
+			return entry.shader
+		}
+	}
+	mut vs_source, mut fs_source := solid_shader_sources(step, clipped)
+	if shading.is_gradient() {
+		vs_source = gradient_vertex_source(vs_source, shading, clipped)
+		fs_source = gradient_fragment_source(fs_source, shading, clipped)
+	}
 	// The per-draw uniform block: the localToDevice matrix of wedge steps, or
 	// the paint color with the analytic clip data.
-	paint_uniform_size := step_uniform_size(step, clipped)
-	vs_source := vert.to_string()
-	fs_source := frag.to_string()
+	paint_uniform_size := step_uniform_size(step, clipped, shading)
 	mut desc := gfx.ShaderDesc{}
 	desc.vs.source = &char(vs_source.str)
 	desc.vs.entry = c'vertexMain'
@@ -322,22 +357,65 @@ fn (mut ctx GpuContext) shader(step RenderStep, clipped bool) gfx.Shader {
 			stage.uniform_blocks[1].size = u32(paint_uniform_size * max_batch_colors)
 		}
 	}
+	if shading.is_gradient() {
+		// The Dither block's LUT: texture(0) with sampler(0).
+		desc.fs.images[0] = gfx.ShaderImageDesc{
+			used:        true
+			image_type:  ._2d
+			sample_type: .float
+		}
+		desc.fs.samplers[0] = gfx.ShaderSamplerDesc{
+			used:         true
+			sampler_type: .filtering
+		}
+		desc.fs.image_sampler_pairs[0] = gfx.ShaderImageSamplerPairDesc{
+			used:         true
+			image_slot:   0
+			sampler_slot: 0
+		}
+	}
 	gfx.mtl_set_shader_compile_options(graphite_msl_major, graphite_msl_minor, true)
 	shader := gfx.make_shader(&desc)
 	gfx.mtl_set_shader_compile_options(0, 0, false)
-	ctx.shaders << GpuShaderEntry{step, clipped, shader}
+	ctx.shaders << GpuShaderEntry{step, clipped, shading, shader}
 	return shader
 }
 
-fn (mut ctx GpuContext) pipeline(step RenderStep, sample_count int, blend bool, clipped bool) gfx.Pipeline {
+// dither_bindings returns the dither LUT and its sampler, creating them on
+// first use: an 8x8 R8 texture sampled with nearest filtering and repeat
+// tiling, like Graphite's DitherShaderBlock.
+fn (mut ctx GpuContext) dither_bindings() (gfx.Image, gfx.Sampler) {
+	if ctx.dither_lut.id == 0 {
+		lut := dither_lut()
+		mut desc := gfx.ImageDesc{
+			width:        8
+			height:       8
+			pixel_format: .r8
+		}
+		desc.data.subimage[0][0] = gfx.Range{
+			ptr:  lut.data
+			size: u32(lut.len)
+		}
+		ctx.dither_lut = gfx.make_image(&desc)
+		ctx.dither_sampler = gfx.make_sampler(&gfx.SamplerDesc{
+			min_filter: .nearest
+			mag_filter: .nearest
+			wrap_u:     .repeat
+			wrap_v:     .repeat
+		})
+	}
+	return ctx.dither_lut, ctx.dither_sampler
+}
+
+fn (mut ctx GpuContext) pipeline(step RenderStep, sample_count int, blend bool, clipped bool, shading Shading) gfx.Pipeline {
 	for entry in ctx.pipelines {
-		if entry.step == step && entry.clipped == clipped && entry.sample_count == sample_count
-			&& entry.blend == blend {
+		if entry.step == step && entry.clipped == clipped && entry.shading == shading
+			&& entry.sample_count == sample_count && entry.blend == blend {
 			return entry.pipeline
 		}
 	}
 	mut desc := gfx.PipelineDesc{
-		shader:         ctx.shader(step, clipped)
+		shader:         ctx.shader(step, clipped, shading)
 		primitive_type: .triangle_strip
 		sample_count:   sample_count
 		cull_mode:      .none
@@ -498,7 +576,7 @@ fn (mut ctx GpuContext) pipeline(step RenderStep, sample_count int, blend bool, 
 		else {}
 	}
 	pipeline := gfx.make_pipeline(&desc)
-	ctx.pipelines << GpuPipelineEntry{step, clipped, sample_count, blend, pipeline}
+	ctx.pipelines << GpuPipelineEntry{step, clipped, shading, sample_count, blend, pipeline}
 	return pipeline
 }
 

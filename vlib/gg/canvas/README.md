@@ -52,6 +52,15 @@ fills, curved path clips under rotations, ...) return an error instead of
 rendering differently.
 Lines (`draw_line`, and paths that are a single line) are stroked by the
 analytic renderer with caps, like Graphite's `drawPoints`.
+Rects, rrects and ovals can also be painted with dithered linear and radial
+gradients (`Paint.gradient`, like `SkShaders::LinearGradient` and
+`RadialGradient` with up to 8 stops, every tile mode, premultiplied or
+unpremultiplied interpolation and a local matrix), with or without analytic
+clips. Their shaders combine the solid-color shaders with pieces of
+Graphite's gradient MSL (`shaders/gradient_snippets.metal`), and the uniforms
+follow `SkGradientBaseShader`'s stop normalization and Graphite's gradient,
+local matrix, color space and dither blocks. Gradient pipelines are compiled
+on first use.
 
 Only Metal is supported: the reproduced output is Graphite's Metal output on
 the same GPU.

@@ -1,6 +1,8 @@
 // vtest build: macos
 module canvas
 
+import crypto.sha256
+
 const test_width = 32
 const test_height = 24
 
@@ -388,4 +390,60 @@ fn test_path_clips_are_drawn_into_the_depth_attachment() {
 	s.clip_path(b.detach(), .intersect, false)!
 	assert s.clip.elements.len == 0 || s.clip.elements.all(it.shape.kind == .rect)
 	s.restore()
+}
+
+const gradient_stops = [Color4f{1, 0, 0, 1}, Color4f{0, 1, 0, 1}, Color4f{0, 0, 1, 1}]
+
+fn gradient_scene_hash(mut ctx GpuContext, rotated_radial bool) !string {
+	mut s := ctx.new_surface(width: 64, height: 48)!
+	defer {
+		s.free()
+	}
+	s.clear(Color4f{})
+	mut paint := Paint{
+		anti_alias: true
+		dither:     true
+	}
+	if rotated_radial {
+		s.clip_rrect(RRect.rect_radii(Rect.ltrb(4, 4, 60, 44), [Point{12, 12}, Point{12, 12},
+			Point{12, 12}, Point{12, 12}]!), .intersect, true)!
+		paint.gradient = Gradient{
+			kind:      .radial
+			p0:        Point{32, 24}
+			radius:    30
+			colors:    gradient_stops
+			positions: [f32(0), 0.5, 1]
+			premul:    true
+		}
+		s.set_matrix(Matrix.values([f32(0.8660254), -0.5, 20, 0.5, 0.8660254, -6, 0, 0, 1]!))
+		s.draw_rect(Rect.ltrb(4, 4, 40, 30), paint)!
+	} else {
+		paint.gradient = Gradient{
+			kind:      .linear
+			p0:        Point{4, 4}
+			p1:        Point{60, 40}
+			colors:    gradient_stops
+			positions: [f32(0), 0.5, 1]
+		}
+		s.draw_rect(Rect.ltrb(2, 2, 62, 46), paint)!
+	}
+	mut px := []u8{len: 64 * 48 * 4}
+	s.read_pixels(px.data, 64 * 4)!
+	return sha256.sum(px).hex()[..16]
+}
+
+// The SHA-256 prefixes of Skia Graphite's pixels for the same draws: a
+// pixel-aligned linear gradient rect (cover bounds), and a rotated rect with
+// a premultiplied radial gradient under an rrect clip (analytic rrect with
+// the analytic clip shader).
+fn test_gradients_match_graphite_pixels() {
+	mut ctx := new_gpu_context() or {
+		eprintln('skipping: ${err}')
+		return
+	}
+	defer {
+		ctx.free()
+	}
+	assert gradient_scene_hash(mut ctx, false)! == '3b90b310064516c5'
+	assert gradient_scene_hash(mut ctx, true)! == '2dded391c5fb0c20'
 }

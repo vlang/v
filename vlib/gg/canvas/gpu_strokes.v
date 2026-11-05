@@ -631,6 +631,7 @@ fn stroke_uniforms(color Color4f, t Transform, clip AnalyticClip) PaintUniforms 
 // tessellated stroke renderer: `path` is the geometry as a path and `shape`
 // the shape the clip stack sees.
 fn (mut s GpuSurface) draw_stroke(path Path, shape ClipShape, paint Paint) ! {
+	paint.solid_only()!
 	if !s.transform.valid() {
 		return
 	}

@@ -402,3 +402,88 @@ fn (mut m RasterMatrix) map_rect(r Rect) Rect {
 	}
 	return Rect.ltrb(l, t, rr, b)
 }
+
+// set_sin_cos mirrors SkMatrix::setSinCos(sinV, cosV, px, py): a rotation
+// about (px, py).
+fn RasterMatrix.sin_cos(sin_v f32, cos_v f32, px f32, py f32) RasterMatrix {
+	one_minus_cos := f32(1) - cos_v
+	return RasterMatrix{
+		m:         [cos_v, -sin_v, sdot(sin_v, py, one_minus_cos, px), sin_v, cos_v,
+			sdot(-sin_v, px, one_minus_cos, py), 0, 0, 1]!
+		type_mask: type_unknown | type_only_perspective_valid
+	}
+}
+
+// post_scale mirrors SkMatrix::postScale(sx, sy).
+fn (mut m RasterMatrix) post_scale(sx f32, sy f32) {
+	if sx == 1 && sy == 1 {
+		return
+	}
+	m.post_concat(RasterMatrix.scale(sx, sy))
+}
+
+// invert mirrors SkMatrix::invert(): scale and translate matrices invert
+// in float, others through the double-precision determinant.
+fn (mut m RasterMatrix) invert() ?RasterMatrix {
+	mask := m.get_type()
+	if mask == type_identity {
+		return m
+	}
+	v := m.m
+	if mask & ~(type_scale | type_translate) == 0 {
+		if mask & type_scale != 0 {
+			inv_sx := f32(1) / v[mat_scale_x]
+			inv_sy := f32(1) / v[mat_scale_y]
+			if !is_finite_f32(inv_sx) || !is_finite_f32(inv_sy) {
+				return none
+			}
+			inv_tx := -v[mat_trans_x] * inv_sx
+			inv_ty := -v[mat_trans_y] * inv_sy
+			if !is_finite_f32(inv_tx) || !is_finite_f32(inv_ty) {
+				return none
+			}
+			return RasterMatrix{
+				m:         [inv_sx, f32(0), inv_tx, 0, inv_sy, inv_ty, 0, 0, 1]!
+				type_mask: mask | type_rect_stays_rect
+			}
+		}
+		if !is_finite_f32(v[mat_trans_x]) || !is_finite_f32(v[mat_trans_y]) {
+			return none
+		}
+		return RasterMatrix.translate(-v[mat_trans_x], -v[mat_trans_y])
+	}
+	if mask & type_perspective != 0 {
+		return none
+	}
+	// sk_inv_determinant()
+	det := dcross(v[mat_scale_x], v[mat_scale_y], v[mat_skew_x], v[mat_skew_y])
+	nearly_zero := f32(1) / f32(4096)
+	if abs_f32(f32(det)) <= nearly_zero * nearly_zero * nearly_zero {
+		return none
+	}
+	inv_det := 1.0 / det
+	mut inv := RasterMatrix{
+		type_mask: m.type_mask
+	}
+	inv.m[mat_scale_x] = f32(f64(v[mat_scale_y]) * inv_det)
+	inv.m[mat_skew_x] = f32(f64(-v[mat_skew_x]) * inv_det)
+	inv.m[mat_trans_x] = f32(dcross(v[mat_skew_x], v[mat_trans_y], v[mat_scale_y], v[mat_trans_x]) * inv_det)
+	inv.m[mat_skew_y] = f32(f64(-v[mat_skew_y]) * inv_det)
+	inv.m[mat_scale_y] = f32(f64(v[mat_scale_x]) * inv_det)
+	inv.m[mat_trans_y] = f32(dcross(v[mat_skew_y], v[mat_trans_x], v[mat_scale_x], v[mat_trans_y]) * inv_det)
+	inv.m[mat_persp_2] = 1
+	for x in inv.m {
+		if !is_finite_f32(x) {
+			return none
+		}
+	}
+	return inv
+}
+
+// dcross mirrors SkMatrix.cpp's dcross(): `a * b - c * d` in double.
+@[inline]
+fn dcross(a f64, b f64, c f64, d f64) f64 {
+	ab := a * b
+	cd := c * d
+	return ab - cd
+}
