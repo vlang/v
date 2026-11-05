@@ -34,6 +34,9 @@ struct GpuDraw {
 	// The instances in `instance` of a real draw.
 	instance_count u32 = 1
 	clip           DrawClip
+	// The draw's texture and its index in the texture binding cache.
+	texture       TextureBinding
+	texture_index u64 = texture_index_invalid
 mut:
 	// The index count of a wedge draw's fixed-count template.
 	template_count u32 = wedge_base_index_count
@@ -88,6 +91,29 @@ mut:
 	dynamic_msaa        gfx.Image
 	dynamic_depth       gfx.Image
 	dynamic_attachments gfx.Attachments
+	// The render target's size: the device size, except for layers, whose
+	// textures are approximately sized (SkBackingFit::kApprox).
+	texture_width  int
+	texture_height int
+	// The draw list's texture bindings, in insertion order.
+	textures []TextureBinding
+	// The canvas matrix (the global CTM) and this device's mapping from the
+	// global coordinates (a translation for layers).
+	ctm              Matrix = Matrix.identity()
+	global_to_device Matrix = Matrix.identity()
+	// The active layer, which receives the draws, clips and saves until the
+	// save that created it is restored, and the restored layers this device
+	// samples until it flushes.
+	layer    &GpuSurface = unsafe { nil }
+	retired  []&GpuSurface
+	is_layer bool
+	origin_x int
+	origin_y int
+	// The saves made on this device, and the canvas matrix of each.
+	save_count     int
+	saved_matrices []Matrix
+	// An error of a layer's restore(), reported by the next flush().
+	deferred_error string
 }
 
 // new_surface creates an offscreen surface, initially transparent black.
@@ -98,46 +124,54 @@ pub fn (mut ctx GpuContext) new_surface(cfg GpuSurfaceConfig) !&GpuSurface {
 	if cfg.sample_count != 1 && cfg.sample_count != 4 {
 		return error('gg.canvas: unsupported sample count ${cfg.sample_count}')
 	}
+	return ctx.new_sized_surface(cfg.width, cfg.height, cfg.width, cfg.height, cfg.sample_count)!
+}
+
+// new_sized_surface creates a device of `width` x `height` pixels whose
+// render target is `texture_width` x `texture_height`.
+fn (mut ctx GpuContext) new_sized_surface(width int, height int, texture_width int, texture_height int, sample_count int) !&GpuSurface {
 	mut s := &GpuSurface{
-		ctx:          unsafe { ctx }
-		width:        cfg.width
-		height:       cfg.height
-		sample_count: cfg.sample_count
-		transform:    Transform.new(Matrix.identity())
-		bounds:       new_bounds_manager(cfg.width, cfg.height)
-		clip:         new_clip_stack(cfg.width, cfg.height)
+		ctx:            unsafe { ctx }
+		width:          width
+		height:         height
+		texture_width:  texture_width
+		texture_height: texture_height
+		sample_count:   sample_count
+		transform:      Transform.new(Matrix.identity())
+		bounds:         new_bounds_manager(width, height)
+		clip:           new_clip_stack(width, height)
 	}
 	s.color = gfx.make_image(&gfx.ImageDesc{
 		render_target: true
-		width:         cfg.width
-		height:        cfg.height
+		width:         texture_width
+		height:        texture_height
 		pixel_format:  .bgra8
 		sample_count:  1
 	})
-	if cfg.sample_count > 1 {
+	if sample_count > 1 {
 		s.msaa = gfx.make_image(&gfx.ImageDesc{
 			render_target: true
-			width:         cfg.width
-			height:        cfg.height
+			width:         texture_width
+			height:        texture_height
 			pixel_format:  .bgra8
-			sample_count:  cfg.sample_count
+			sample_count:  sample_count
 		})
 	}
 	s.depth = gfx.make_image(&gfx.ImageDesc{
 		render_target: true
-		width:         cfg.width
-		height:        cfg.height
+		width:         texture_width
+		height:        texture_height
 		// Graphite's multisampled passes have a combined depth/stencil
 		// attachment (Depth32Float_Stencil8).
-		pixel_format:  if cfg.sample_count > 1 {
+		pixel_format:  if sample_count > 1 {
 			gfx.PixelFormat.depth_stencil
 		} else {
 			gfx.PixelFormat.depth
 		}
-		sample_count:  cfg.sample_count
+		sample_count:  sample_count
 	})
 	mut desc := gfx.AttachmentsDesc{}
-	if cfg.sample_count > 1 {
+	if sample_count > 1 {
 		desc.colors[0].image = s.msaa
 		desc.resolves[0].image = s.color
 	} else {
@@ -153,6 +187,12 @@ pub fn (mut ctx GpuContext) new_surface(cfg GpuSurfaceConfig) !&GpuSurface {
 }
 
 pub fn (mut s GpuSurface) free() {
+	if s.layer != unsafe { nil } {
+		mut top := s.layer
+		top.free()
+		s.layer = unsafe { nil }
+	}
+	s.free_retired_layers()
 	if s.dynamic_msaa.id != 0 {
 		gfx.destroy_attachments(s.dynamic_attachments)
 		gfx.destroy_image(s.dynamic_depth)
@@ -168,6 +208,11 @@ pub fn (mut s GpuSurface) free() {
 
 // clear discards pending draws and fills the surface with `color`.
 pub fn (mut s GpuSurface) clear(color Color4f) {
+	if s.layer != unsafe { nil } {
+		mut top := s.layer
+		top.clear(color)
+		return
+	}
 	s.reset_draws()
 	s.clear_color = color.premul()
 	s.load = false
@@ -178,6 +223,7 @@ fn (mut s GpuSurface) reset_draws() {
 	s.pipelines.clear()
 	s.uniforms.clear()
 	s.bounds = new_bounds_manager(s.width, s.height)
+	s.textures.clear()
 	s.disjoint = map[u16][][]Rect{}
 	s.depth_index = 0
 }
@@ -185,8 +231,11 @@ fn (mut s GpuSurface) reset_draws() {
 // write_pixels replaces the surface contents with BGRA8 premultiplied pixels,
 // discarding pending draws.
 pub fn (mut s GpuSurface) write_pixels(pixels voidptr, pitch int) ! {
+	if s.layer != unsafe { nil } {
+		return error('gg.canvas: cannot write pixels under a layer')
+	}
 	s.reset_draws()
-	if !gfx.write_image(s.color, 0, 0, s.width, s.height, pixels, pitch) {
+	if !gfx.write_image(s.color, 0, 0, s.texture_width, s.texture_height, pixels, pitch) {
 		return error('gg.canvas: could not upload pixels')
 	}
 	s.load = true
@@ -194,18 +243,42 @@ pub fn (mut s GpuSurface) write_pixels(pixels voidptr, pitch int) ! {
 
 // set_matrix replaces the local to device transform of later draws.
 pub fn (mut s GpuSurface) set_matrix(m Matrix) {
-	s.transform = Transform.new(m)
+	if s.layer != unsafe { nil } {
+		mut top := s.layer
+		top.set_matrix(m)
+		return
+	}
+	s.ctm = m
+	s.transform = Transform.new(s.device_matrix())
+}
+
+// device_matrix maps the canvas matrix to this device, like
+// SkDevice::setGlobalCTM(): layers translate it to their origin with
+// SkM44's arithmetic.
+fn (s &GpuSurface) device_matrix() Matrix {
+	return if s.is_layer { concat_affine(s.global_to_device, s.ctm) } else { s.ctm }
 }
 
 // concat multiplies the current matrix by the affine matrix `m`, like
 // SkCanvas::concat(SkM44): the product is rounded like SkM44::setConcat().
 pub fn (mut s GpuSurface) concat(m Matrix) {
-	s.transform = Transform.new(concat_affine(s.transform.matrix, m))
+	if s.layer != unsafe { nil } {
+		mut top := s.layer
+		top.concat(m)
+		return
+	}
+	s.ctm = concat_affine(s.ctm, m)
+	s.transform = Transform.new(s.device_matrix())
 }
 
 // draw_rect draws a rectangle like SkCanvas::drawRect() on a Graphite device.
 // It returns an error for draws that need renderers which are not ported yet.
 pub fn (mut s GpuSurface) draw_rect(r Rect, paint Paint) ! {
+	if s.layer != unsafe { nil } {
+		mut top := s.layer
+		top.draw_rect(r, paint)!
+		return
+	}
 	if !s.transform.valid() {
 		return
 	}
@@ -222,6 +295,11 @@ pub fn (mut s GpuSurface) draw_rect(r Rect, paint Paint) ! {
 // draw_line strokes a line like SkCanvas::drawLine(): drawPoints() in lines
 // mode with the paint as a stroke (or hairline) style.
 pub fn (mut s GpuSurface) draw_line(x0 f32, y0 f32, x1 f32, y1 f32, paint Paint) ! {
+	if s.layer != unsafe { nil } {
+		mut top := s.layer
+		top.draw_line(x0, y0, x1, y1, paint)!
+		return
+	}
 	if !s.transform.valid() {
 		return
 	}
@@ -265,6 +343,11 @@ fn (mut s GpuSurface) device_draw_rect(r Rect, paint Paint) ! {
 
 // draw_oval draws an ellipse inscribed in `r`, like SkCanvas::drawOval().
 pub fn (mut s GpuSurface) draw_oval(r Rect, paint Paint) ! {
+	if s.layer != unsafe { nil } {
+		mut top := s.layer
+		top.draw_oval(r, paint)!
+		return
+	}
 	if s.quick_reject(r.sorted(), paint) {
 		return
 	}
@@ -279,6 +362,11 @@ pub fn (mut s GpuSurface) draw_oval(r Rect, paint Paint) ! {
 // draw_rrect draws a rounded rectangle like SkCanvas::drawRRect() on a
 // Graphite device.
 pub fn (mut s GpuSurface) draw_rrect(rr RRect, paint Paint) ! {
+	if s.layer != unsafe { nil } {
+		mut top := s.layer
+		top.draw_rrect(rr, paint)!
+		return
+	}
 	if rr.is_rect() {
 		s.draw_rect(rr.rect, paint)!
 		return
@@ -316,6 +404,11 @@ fn (mut s GpuSurface) draw_rrect_unchecked(rr RRect, paint Paint) ! {
 // draw_drrect fills the area between two rounded rectangles, like
 // SkCanvas::drawDRRect() on a Graphite device.
 pub fn (mut s GpuSurface) draw_drrect(outer RRect, inner RRect, paint Paint) ! {
+	if s.layer != unsafe { nil } {
+		mut top := s.layer
+		top.draw_drrect(outer, inner, paint)!
+		return
+	}
 	if outer.is_empty() {
 		return
 	}
@@ -551,6 +644,11 @@ fn (s &GpuSurface) snap_rect_to_pixels(rect Rect, paint Paint) (Rect, f32) {
 // the later draws are sorted and batched. Use it on 4x MSAA surfaces where
 // the reproduced renderer drew that path.
 pub fn (mut s GpuSurface) draw_msaa_trigger() {
+	if s.layer != unsafe { nil } {
+		mut top := s.layer
+		top.draw_msaa_trigger()
+		return
+	}
 	s.depth_index++
 	// A transparent, dst-dependent paint after the empty clip, in the first
 	// disjoint stencil set.
@@ -644,22 +742,13 @@ fn (mut s GpuSurface) draw_shape(geometry_in ShapeGeometry, paint Paint) ! {
 		}
 	}
 	clipped := !clip.analytic.is_empty()
-	color := paint.color.premul()
-	shading, gradient := paint.shading()!
-	uniforms := PaintUniforms{
-		color:    color
-		shading:  shading
-		gradient: gradient
-		clipped:  clipped
-		clip:     if clipped {
-			analytic_clip_uniforms(clip.analytic)
-		} else {
-			AnalyticClipUniforms{}
-		}
+	// Graphite draws a layer as an edge-AA quad: a pixel-aligned rect uses the
+	// bounds renderer, another rect the per-edge AA quad renderer.
+	if paint.layer_image != none && geometry.kind == .rect
+		&& !is_pixel_aligned(geometry.rect, s.transform) {
+		return error('gg.canvas: the per-edge AA quad renderer is not ported')
 	}
-	// A gradient paint is opaque when its colors are, like
-	// SkShader::isOpaque().
-	opaque := color.is_opaque() && (!shading.is_gradient() || gradient.opaque)
+	uniforms, opaque := shaded_uniforms(paint, clip.analytic)!
 	pixel_aligned := !stroked && geometry.kind == .rect && is_pixel_aligned(geometry.rect, s.transform)
 	step := if pixel_aligned { RenderStep.cover_bounds } else { RenderStep.analytic_rrect }
 	// Renderers with analytic coverage include their 1px AA ramp in the
@@ -728,17 +817,53 @@ fn (mut s GpuSurface) draw_shape(geometry_in ShapeGeometry, paint Paint) ! {
 	}
 }
 
+// shaded_uniforms returns a draw's uniforms for its paint and analytic clip,
+// and whether the paint is opaque (a gradient's colors are, like
+// SkShader::isOpaque(); a layer's image is not).
+fn shaded_uniforms(paint Paint, analytic AnalyticClip) !(PaintUniforms, bool) {
+	clipped := !analytic.is_empty()
+	color := paint.color.premul()
+	mut shading, gradient := paint.shading()!
+	mut image := ImageUniforms{}
+	mut texture := TextureBinding{}
+	if layer := paint.layer_image {
+		shading = .image
+		image = ImageUniforms{
+			// The identity local matrix of drawSpecial()'s Rect2Rect(src, dst).
+			upper2x2:       [f32(1), 0, 0, 1]!
+			inv_dimensions: [f32(1) / f32(layer.texture_width), f32(1) / f32(layer.texture_height)]!
+		}
+		texture = TextureBinding{
+			kind:  .image
+			image: layer.image
+		}
+	}
+	opaque := color.is_opaque() && shading != .image
+		&& (!shading.is_gradient() || gradient.opaque)
+	return PaintUniforms{
+		color:    color
+		shading:  shading
+		gradient: gradient
+		image:    image
+		texture:  texture
+		clipped:  clipped
+		clip:     if clipped {
+			analytic_clip_uniforms(analytic)
+		} else {
+			AnalyticClipUniforms{}
+		}
+	}, opaque
+}
+
 // draw_flood_fill mirrors Device::drawGeometry() for a draw the clip stack
 // replaced with a flood fill (an inverse-filled empty shape): the
 // coverage-less bounds renderer fills the scissor, or an opaque fill of the
 // whole surface clears the pending draws.
 fn (mut s GpuSurface) draw_flood_fill(clip ClipResult, paint Paint) ! {
-	if paint.gradient != none {
-		return error('gg.canvas: gradient flood fills are not supported')
-	}
 	clipped := !clip.analytic.is_empty()
-	color := paint.color.premul()
-	if !clipped && color.is_opaque() && clip.elements.len == 0
+	uniforms, opaque := shaded_uniforms(paint, clip.analytic)!
+	color := uniforms.color
+	if !clipped && opaque && uniforms.shading == .solid && clip.elements.len == 0
 		&& clip.scissor.contains(s.device_bounds()) {
 		if s.sample_count != 1 {
 			return error('gg.canvas: clearing a multisampled pass is not supported')
@@ -748,20 +873,12 @@ fn (mut s GpuSurface) draw_flood_fill(clip ClipResult, paint Paint) ! {
 		s.draws.clear()
 		s.pipelines.clear()
 		s.uniforms.clear()
+		s.textures.clear()
 		s.clear_color = color
 		s.load = false
 		return
 	}
-	uniforms := PaintUniforms{
-		color:   color
-		clipped: clipped
-		clip:    if clipped {
-			analytic_clip_uniforms(clip.analytic)
-		} else {
-			AnalyticClipUniforms{}
-		}
-	}
-	depends_on_dst := clipped || !color.is_opaque()
+	depends_on_dst := clipped || !opaque
 	s.depth_index++
 	mut order := DrawOrder{
 		depth: s.depth_index
@@ -812,6 +929,31 @@ fn (mut s GpuSurface) record_step(step RenderStep, blend bool, instance []u8, un
 		uniform_index = s.uniforms.len
 		s.uniforms << uniforms
 	}
+	// TextureDataCache: gradients share the dither LUT binding.
+	texture := if uniforms.shading == .image {
+		uniforms.texture
+	} else if uniforms.shading.is_gradient() {
+		TextureBinding{
+			kind: .dither
+		}
+	} else {
+		TextureBinding{}
+	}
+	mut texture_index := texture_index_invalid
+	if texture.kind != .none {
+		mut found := -1
+		for i, t in s.textures {
+			if same_texture_binding(t, texture) {
+				found = i
+				break
+			}
+		}
+		if found < 0 {
+			found = s.textures.len
+			s.textures << texture
+		}
+		texture_index = u64(found)
+	}
 	s.draws << GpuDraw{
 		step:              step
 		instance:          instance
@@ -824,6 +966,8 @@ fn (mut s GpuSurface) record_step(step RenderStep, blend bool, instance []u8, un
 		phantom_instances: phantom_instances
 		instance_count:    instance_count
 		clip:              clip
+		texture:           texture
+		texture_index:     texture_index
 	}
 }
 
@@ -849,12 +993,6 @@ fn instance_stride(step RenderStep) int {
 
 // TextureDataCache::kInvalidIndex, the texture field of draws without textures.
 const texture_index_invalid = u64(4096)
-
-// draw_texture_index returns a draw's index in the draw list's texture
-// binding cache: gradient draws share the dither LUT binding, the only one.
-fn draw_texture_index(draw GpuDraw) u64 {
-	return if draw.uniforms.shading.is_gradient() { 0 } else { texture_index_invalid }
-}
 
 // UniformDataCache::kInvalidIndex, the uniform field of draws without uniforms.
 const uniform_index_invalid = 4096
@@ -915,6 +1053,16 @@ pub fn (mut s GpuSurface) read_pixels(pixels voidptr, pitch int) ! {
 
 // flush renders the pending draws.
 pub fn (mut s GpuSurface) flush() ! {
+	if s.layer != unsafe { nil } {
+		return error('gg.canvas: a layer is still active')
+	}
+	if s.deferred_error != '' {
+		message := s.deferred_error
+		s.deferred_error = ''
+		s.reset_draws()
+		s.free_retired_layers()
+		return error(message)
+	}
 	s.record_deferred_clip_draws()
 	if s.draws.len == 0 && s.load {
 		return
@@ -936,7 +1084,7 @@ pub fn (mut s GpuSurface) flush() ! {
 	for i, draw in s.draws {
 		keys << SortKey{
 			pipeline_key: (u64(draw.order.paint_order) << 48) | (u64(draw.order.stencil_index) << 32) | (u64(draw.step_index) << 30) | u64(draw.pipeline_index)
-			uniform_key:  (u64(draw.uniform_index) << 30) | draw_texture_index(draw)
+			uniform_key:  (u64(draw.uniform_index) << 30) | draw.texture_index
 			draw:         i
 		}
 	}
@@ -957,6 +1105,8 @@ pub fn (mut s GpuSurface) flush() ! {
 	mut scissor_of := []Rect{len: keys.len}
 	mut scissor := device
 	mut last_pipeline := u32(0xffffffff)
+	// TextureTracker: the last valid binding.
+	mut last_texture := texture_index_invalid
 	for i, key in keys {
 		draw := s.draws[key.draw]
 		uniform_size := u32(step_uniform_size(draw.step, draw.uniforms.clipped, draw.uniforms.shading))
@@ -966,10 +1116,15 @@ pub fn (mut s GpuSurface) flush() ! {
 			false
 		}
 		new_scissor, scissor_changes := draw_scissor(draw.clip, scissor, device)
+		texture_changes := draw.texture_index != texture_index_invalid
+			&& draw.texture_index != last_texture
+		if texture_changes {
+			last_texture = draw.texture_index
+		}
 		if draw.pipeline_index != last_pipeline {
 			writer.new_pipeline_state(u32(instance_stride(draw.step)), mut buffers)
 			last_pipeline = draw.pipeline_index
-		} else if rebind || scissor_changes {
+		} else if rebind || scissor_changes || texture_changes {
 			writer.flush()
 		}
 		if scissor_changes {
@@ -1094,7 +1249,8 @@ pub fn (mut s GpuSurface) flush() ! {
 		gfx.apply_bindings(&bindings)
 		gfx.draw(0, 4, 1)
 	}
-	intrinsics := [f32(0), 0, f32(2) / f32(s.width), -(f32(2) / f32(s.height)), 0, 0, 0, 0]!
+	intrinsics := [f32(0), 0, f32(2) / f32(s.texture_width), -(f32(2) / f32(s.texture_height)),
+		0, 0, 0, 0]!
 	intrinsic_range := gfx.Range{
 		ptr:  unsafe { &intrinsics[0] }
 		size: intrinsic_uniform_size
@@ -1134,8 +1290,15 @@ pub fn (mut s GpuSurface) flush() ! {
 				bindings.vertex_buffer_offsets[0] = base + offsets[first]
 			}
 		}
-		if draw.uniforms.shading.is_gradient() {
-			bindings.fs.images[0], bindings.fs.samplers[0] = ctx.dither_bindings()
+		match draw.texture.kind {
+			.dither {
+				bindings.fs.images[0], bindings.fs.samplers[0] = ctx.dither_bindings()
+			}
+			.image {
+				bindings.fs.images[0] = draw.texture.image
+				bindings.fs.samplers[0] = ctx.layer_sampler()
+			}
+			.none {}
 		}
 		gfx.apply_bindings(&bindings)
 		paint_uniforms := serialize_uniforms(batch_uniforms[b])
@@ -1160,8 +1323,17 @@ pub fn (mut s GpuSurface) flush() ! {
 	}
 	gfx.end_pass()
 	s.reset_draws()
+	// The pass sampled the restored layers.
+	s.free_retired_layers()
 	// Later flushes draw on top of the rendered pixels.
 	s.load = true
+}
+
+fn (mut s GpuSurface) free_retired_layers() {
+	for mut layer in s.retired {
+		layer.free()
+	}
+	s.retired.clear()
 }
 
 // serialize_uniforms writes a batch's uniform blocks like Graphite's
@@ -1172,6 +1344,8 @@ fn serialize_uniforms(blocks []PaintUniforms) []f32 {
 	for u in blocks {
 		if u.shading.is_gradient() {
 			u.gradient.serialize(u.shading, mut out)
+		} else if u.shading == .image {
+			u.image.serialize(mut out)
 		} else if !u.local_to_device || u.with_color {
 			out << u.color.r
 			out << u.color.g
@@ -1228,15 +1402,15 @@ fn (mut s GpuSurface) dynamic_msaa_attachments() !gfx.Attachments {
 	if s.dynamic_msaa.id == 0 {
 		s.dynamic_msaa = gfx.make_image(&gfx.ImageDesc{
 			render_target: true
-			width:         s.width
-			height:        s.height
+			width:         s.texture_width
+			height:        s.texture_height
 			pixel_format:  .bgra8
 			sample_count:  4
 		})
 		s.dynamic_depth = gfx.make_image(&gfx.ImageDesc{
 			render_target: true
-			width:         s.width
-			height:        s.height
+			width:         s.texture_width
+			height:        s.texture_height
 			pixel_format:  .depth_stencil
 			sample_count:  4
 		})

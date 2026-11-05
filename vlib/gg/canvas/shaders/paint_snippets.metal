@@ -1,7 +1,9 @@
-// Pieces of the MSL that Skia Graphite generates for dithered linear and
-// radial gradient paints, which gpu_gradient.v combines with the solid-color
-// shaders of each render step. The `_alpha` bodies multiply the gradient by
-// a translucent paint's alpha (its blocks are numbered after that blend).
+// Pieces of the MSL that Skia Graphite generates for paints other than solid
+// colors, which gpu_gradient.v and gpu_layer.v combine with the solid-color
+// shaders of each render step: dithered linear and radial gradients (the
+// `_alpha` bodies multiply the gradient by a translucent paint's alpha, and
+// their blocks are numbered after that blend), and images sampled with
+// hardware tiling (the layers drawn by restore()).
 // @@ preamble
 struct sampler2D {texture2d<float> tex;sampler smp;};float4 sample(sampler2D i, float2 p, float b=-0.475) { return i.tex.sample(i.smp, p, bias(b)); }float4 sample(sampler2D i, float3 p, float b=-0.475) { return i.tex.sample(i.smp, p.xy / p.z, bias(b)); }float4 sampleLod(sampler2D i, float2 p, float lod) { return i.tex.sample(i.smp, p, level(lod)); }float4 sampleLod(sampler2D i, float3 p, float lod) {return i.tex.sample(i.smp, p.xy / p.z, level(lod));}float4 sampleGrad(sampler2D i, float2 p, float2 dPdx, float2 dPdy) {return i.tex.sample(i.smp, p, gradient2d(dPdx, dPdy));}
 // @@ fields_4
@@ -273,3 +275,24 @@ _37_sk_csxform_prealpha = float4(_38_a.xyz * _41_d, _40_c);
 float4 _42_a = _37_sk_csxform_prealpha * _globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].paintColor.w;
 float _43_e = sample(_globals.ditherLUT_9, float4(_fragCoord.x, _fragCoord.y, 0.0, _fragCoord.w).xy * 0.125).x - 0.5f;
 float4 outColor_1 = float4(clamp(_42_a.xyz + _43_e * _globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].range_9, 0.0f, _42_a.w), _42_a.w);
+// @@ fields_image
+float4 upper2x2_1;
+float2 translation_1;
+float2 invDimensions_3;
+float mode_6;
+// @@ vertex_image
+float2 LocalMatrix_1_Var = float2x2(_globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].upper2x2_1.xy, _globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].upper2x2_1.zw) * stepLocalCoords + _globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].translation_1;
+_out.CoordNormalize_3_Var = _globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].invDimensions_3 * LocalMatrix_1_Var;
+_out.ssboIndexVar = _globals.uniformSsboIndex;
+// @@ main_image
+float4 _10_sk_csxform_prealpha;
+float4 _11_a = sample(_globals.image_4, _in.CoordNormalize_3_Var);
+float _12_b = _globals._anonInterface0->combinedUniformData[_globals.uniformSsboIndex].mode_6;
+if (_12_b < 0.0f) {
+_10_sk_csxform_prealpha = float4(_11_a.xyz / max(_11_a.w, 0.0001f), _11_a.w);
+} else {
+float _13_c = max(_11_a.w, _12_b - 1.0f);
+float _14_d = max(_13_c, 1.0f - _12_b);
+_10_sk_csxform_prealpha = float4(_11_a.xyz * _14_d, _13_c);
+}
+float4 outColor_1 = _10_sk_csxform_prealpha;

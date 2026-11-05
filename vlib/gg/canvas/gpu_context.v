@@ -72,6 +72,9 @@ fn has_uniforms(step RenderStep) bool {
 // localToDevice matrix of wedge steps (after the color for shaded wedges),
 // or the paint's color or gradient with the analytic clip data.
 fn step_uniform_size(step RenderStep, clipped bool, shading Shading) int {
+	if shading == .image {
+		return if clipped { image_uniform_size + clip_block_size } else { image_uniform_size }
+	}
 	if shading.is_gradient() {
 		// The gradient replaces the color; the clip data and the step's
 		// transform follow it.
@@ -153,6 +156,8 @@ mut:
 	// The dither LUT of gradient paints and its nearest, repeating sampler.
 	dither_lut     gfx.Image
 	dither_sampler gfx.Sampler
+	// The nearest, clamping sampler of layer images.
+	image_sampler gfx.Sampler
 }
 
 struct GpuShaderEntry {
@@ -259,6 +264,10 @@ pub fn (mut ctx GpuContext) free() {
 		gfx.destroy_sampler(ctx.dither_sampler)
 		ctx.dither_lut = gfx.Image{}
 	}
+	if ctx.image_sampler.id != 0 {
+		gfx.destroy_sampler(ctx.image_sampler)
+		ctx.image_sampler = gfx.Sampler{}
+	}
 	gfx.destroy_buffer(ctx.rrect_vertices)
 	gfx.destroy_buffer(ctx.rrect_indices)
 	gfx.destroy_buffer(ctx.wedge_vertices)
@@ -346,7 +355,9 @@ fn (mut ctx GpuContext) shader(step RenderStep, clipped bool, shading Shading) g
 		}
 	}
 	mut vs_source, mut fs_source := solid_shader_sources(step, clipped)
-	if shading.is_gradient() {
+	if shading == .image {
+		vs_source, fs_source = image_shader_sources(vs_source, fs_source, clipped)
+	} else if shading.is_gradient() {
 		vs_source = gradient_vertex_source(vs_source, step, shading, clipped)
 		fs_source = gradient_fragment_source(fs_source, shading, clipped)
 	}
@@ -366,8 +377,8 @@ fn (mut ctx GpuContext) shader(step RenderStep, clipped bool, shading Shading) g
 			stage.uniform_blocks[1].size = u32(paint_uniform_size * max_batch_colors)
 		}
 	}
-	if shading.is_gradient() {
-		// The Dither block's LUT: texture(0) with sampler(0).
+	if shading != .solid {
+		// The Dither block's LUT or the image: texture(0) with sampler(0).
 		desc.fs.images[0] = gfx.ShaderImageDesc{
 			used:        true
 			image_type:  ._2d
@@ -388,6 +399,20 @@ fn (mut ctx GpuContext) shader(step RenderStep, clipped bool, shading Shading) g
 	gfx.mtl_set_shader_compile_options(0, 0, false)
 	ctx.shaders << GpuShaderEntry{step, clipped, shading, shader}
 	return shader
+}
+
+// layer_sampler returns the sampler of layer images: nearest filtering and
+// clamped coordinates, like SkSamplingOptions() with hardware tiling.
+fn (mut ctx GpuContext) layer_sampler() gfx.Sampler {
+	if ctx.image_sampler.id == 0 {
+		ctx.image_sampler = gfx.make_sampler(&gfx.SamplerDesc{
+			min_filter: .nearest
+			mag_filter: .nearest
+			wrap_u:     .clamp_to_edge
+			wrap_v:     .clamp_to_edge
+		})
+	}
+	return ctx.image_sampler
 }
 
 // dither_bindings returns the dither LUT and its sampler, creating them on

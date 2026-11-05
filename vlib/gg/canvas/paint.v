@@ -33,6 +33,9 @@ pub mut:
 	gradient ?Gradient
 	// Dither the shading, like SkPaint::setDither(); gradients require it.
 	dither bool
+mut:
+	// The layer drawn by restore() (Graphite's image shader for drawSpecial).
+	layer_image ?LayerImage
 }
 
 // Paint.rgba8 creates a fill paint from 8-bit components, like SkPaint::setColor().

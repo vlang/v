@@ -196,6 +196,7 @@ fn recording_surface(width int, height int, m [9]f32) GpuSurface {
 		height:       height
 		sample_count: 1
 		transform:    Transform.new(Matrix.values(m))
+		ctm:          Matrix.values(m)
 		bounds:       new_bounds_manager(width, height)
 		clip:         new_clip_stack(width, height)
 	}

@@ -57,10 +57,16 @@ radial gradients (`Paint.gradient`, like `SkShaders::LinearGradient` and
 `RadialGradient` with up to 8 stops, every tile mode, premultiplied or
 unpremultiplied interpolation, a local matrix and the paint's alpha), with or
 without analytic clips. Their shaders combine each renderer's solid-color shaders with pieces
-of Graphite's gradient MSL (`shaders/gradient_snippets.metal`), and the uniforms
+of Graphite's gradient MSL (`shaders/paint_snippets.metal`), and the uniforms
 follow `SkGradientBaseShader`'s stop normalization and Graphite's gradient,
 local matrix, color space and dither blocks. Gradient pipelines are compiled
 on first use.
+`save_layer` mirrors SkCanvas::saveLayer() without a paint: later draws go to
+an approximately sized offscreen texture covering the clip bounds, which the
+matching `restore` renders in its own pass and draws back through the clip
+with Graphite's image shader (on the bounds or analytic rrect renderer, with
+the analytic clip or stencil clip elements). `save`/`restore` also restore the
+matrix, like SkCanvas.
 
 Only Metal is supported: the reproduced output is Graphite's Metal output on
 the same GPU.

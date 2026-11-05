@@ -449,17 +449,43 @@ fn (s &GpuSurface) device_bounds() Rect {
 	return Rect.ltrb(0, 0, f32(s.width), f32(s.height))
 }
 
-// save mirrors SkCanvas::save(): the clip can be restored later.
+// save mirrors SkCanvas::save(): the matrix and the clip can be restored
+// later.
 pub fn (mut s GpuSurface) save() {
+	if s.layer != unsafe { nil } {
+		mut top := s.layer
+		top.save()
+		return
+	}
 	s.clip.saves[s.clip.saves.len - 1].deferred_saves++
+	s.saved_matrices << s.ctm
+	s.save_count++
 }
 
-// restore mirrors SkCanvas::restore(): it restores the clip of the matching
-// save, recording the depth-only draws of the removed elements.
+// restore mirrors SkCanvas::restore(): it restores the matrix and the clip
+// of the matching save, recording the depth-only draws of the removed
+// elements. Restoring the save of save_layer() draws the layer.
 pub fn (mut s GpuSurface) restore() {
+	if s.layer != unsafe { nil } {
+		mut top := s.layer
+		if top.layer != unsafe { nil } || top.save_count > 0 {
+			top.restore()
+		} else {
+			s.restore_layer()
+		}
+		return
+	}
+	s.device_restore()
+}
+
+// device_restore restores this device's matrix and clip to its last save.
+fn (mut s GpuSurface) device_restore() {
 	if s.clip.saves.len == 1 && s.clip.saves[0].deferred_saves == 0 {
 		return
 	}
+	s.save_count--
+	s.ctm = s.saved_matrices.pop()
+	s.transform = Transform.new(s.device_matrix())
 	last := s.clip.saves.len - 1
 	s.clip.saves[last].deferred_saves--
 	if s.clip.saves[last].deferred_saves >= 0 {
@@ -483,6 +509,11 @@ pub fn (mut s GpuSurface) restore() {
 // clip_rect clips later draws to `r` in local coordinates, like
 // SkCanvas::clipRect() on a Graphite device.
 pub fn (mut s GpuSurface) clip_rect(r Rect, op ClipOp, anti_alias bool) ! {
+	if s.layer != unsafe { nil } {
+		mut top := s.layer
+		top.clip_rect(r, op, anti_alias)!
+		return
+	}
 	if !r.is_finite() {
 		return
 	}
@@ -492,6 +523,11 @@ pub fn (mut s GpuSurface) clip_rect(r Rect, op ClipOp, anti_alias bool) ! {
 // clip_rrect clips later draws to a rounded rectangle, like
 // SkCanvas::clipRRect() on a Graphite device.
 pub fn (mut s GpuSurface) clip_rrect(rr RRect, op ClipOp, anti_alias bool) ! {
+	if s.layer != unsafe { nil } {
+		mut top := s.layer
+		top.clip_rrect(rr, op, anti_alias)!
+		return
+	}
 	if rr.is_rect() {
 		s.clip_rect(rr.rect, op, anti_alias)!
 		return
@@ -505,6 +541,11 @@ pub fn (mut s GpuSurface) clip_rrect(rr RRect, op ClipOp, anti_alias bool) ! {
 // into the depth attachment regardless of `anti_alias`. Paths of 50 or more
 // verbs are not supported yet.
 pub fn (mut s GpuSurface) clip_path(path Path, op ClipOp, anti_alias bool) ! {
+	if s.layer != unsafe { nil } {
+		mut top := s.layer
+		top.clip_path(path, op, anti_alias)!
+		return
+	}
 	if !path.is_inverse_fill() && int(s.transform.typ) <= int(TransformType.rect_stays_rect) {
 		if r, _ := path.is_rect() {
 			s.clip_rect(r, op, anti_alias)!
@@ -1031,9 +1072,12 @@ fn analytic_clip_uniforms(c AnalyticClip) AnalyticClipUniforms {
 // draws with an analytic clip, the clip data; or for wedge steps without a
 // paint, their localToDevice matrix.
 struct PaintUniforms {
-	color           Color4f
-	shading         Shading
-	gradient        GradientUniforms
+	color    Color4f
+	shading  Shading
+	gradient GradientUniforms
+	image    ImageUniforms
+	// The texture the paint samples; not part of the uniform data.
+	texture         TextureBinding
 	clipped         bool
 	clip            AnalyticClipUniforms
 	local_to_device bool
@@ -1324,6 +1368,10 @@ fn same_paint_uniforms(a PaintUniforms, b PaintUniforms) bool {
 	}
 	if a.shading.is_gradient() {
 		if !same_gradient_uniforms(a.gradient, b.gradient) {
+			return false
+		}
+	} else if a.shading == .image {
+		if !same_image_uniforms(a.image, b.image) {
 			return false
 		}
 	} else if (!a.local_to_device || a.with_color) && (a.color.r != b.color.r

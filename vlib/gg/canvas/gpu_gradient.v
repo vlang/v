@@ -70,10 +70,12 @@ enum Shading {
 	linear_8_alpha
 	radial_4_alpha
 	radial_8_alpha
+	// A texture sampled with hardware tiling (a restored layer).
+	image
 }
 
 fn (s Shading) is_gradient() bool {
-	return s != .solid
+	return s !in [.solid, .image]
 }
 
 fn (s Shading) stops() int {
@@ -385,7 +387,7 @@ fn dither_lut() []u8 {
 	return data
 }
 
-const gradient_snippet_file = $embed_file('shaders/gradient_snippets.metal')
+const gradient_snippet_file = $embed_file('shaders/paint_snippets.metal')
 
 // gradient_snippets splits the pieces of Graphite's gradient MSL by name.
 fn gradient_snippets() map[string]string {
@@ -424,7 +426,7 @@ fn gradient_vertex_source(solid string, step RenderStep, shading Shading, clippe
 		t = t.replace_once(anchor, anchor + assign)
 	}
 	t = t.replace('float4 color_1;\n', snippets['fields_${shading.stops()}'])
-	t = gradient_varyings(t, clipped)
+	t = paint_varyings(t, clipped, gradient_varying)
 	mut lines := []string{}
 	for line in t.split('\n') {
 		if line.starts_with('_out.SolidColor_1_Var = ') {
@@ -450,7 +452,7 @@ fn gradient_fragment_source(solid string, shading Shading, clipped bool) string 
 	mut t := solid.replace('struct CombinedUniformData {',
 		snippets['preamble'] + 'struct CombinedUniformData {')
 	t = t.replace('float4 color_1;\n', snippets['fields_${stops}'])
-	t = gradient_varyings(t, clipped)
+	t = paint_varyings(t, clipped, gradient_varying)
 	if !t.contains('uint uniformSsboIndex;') {
 		t = t.replace('    const device CombinedUniforms* _anonInterface0;\n',
 			'    const device CombinedUniforms* _anonInterface0;\n    uint uniformSsboIndex;\n')
@@ -524,13 +526,13 @@ fn translucent_blocks(t string, shading Shading) string {
 	return out.replace('ditherLUT_6', 'ditherLUT_9')
 }
 
-// gradient_varyings replaces the solid color varying with the flat uniform
-// index and the gradient's local coordinates.
-fn gradient_varyings(t string, clipped bool) string {
+// paint_varyings replaces the solid color varying with the flat uniform
+// index and the paint's varying (`varying`, at locn1).
+fn paint_varyings(t string, clipped bool, varying string) string {
 	if clipped {
 		// The uniform index is already a varying of clipped draws.
 		return t.replace('    float4 SolidColor_1_Var [[user(locn1) center_no_perspective]];\n',
-			'    float2 LocalMatrix_2_Var [[user(locn1)]];\n')
+			varying)
 	}
 	mut out := []u8{cap: t.len + 128}
 	marker := '[[user(locn'
@@ -553,8 +555,10 @@ fn gradient_varyings(t string, clipped bool) string {
 		i++
 	}
 	return out.bytestr().replace('    float4 SolidColor_1_Var [[user(locn0) center_no_perspective]];\n',
-		'    uint ssboIndexVar [[user(locn0) flat]];\n    float2 LocalMatrix_2_Var [[user(locn1)]];\n')
+		'    uint ssboIndexVar [[user(locn0) flat]];\n' + varying)
 }
+
+const gradient_varying = '    float2 LocalMatrix_2_Var [[user(locn1)]];\n'
 
 // rename_clip_block renames the analytic clip block's uniforms and output,
 // whose block index follows the paint's blocks.

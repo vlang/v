@@ -7,6 +7,11 @@ module canvas
 // need renderers which are not ported yet (strokes, inverse fills, large
 // complex paths).
 pub fn (mut s GpuSurface) draw_path(path Path, paint Paint) ! {
+	if s.layer != unsafe { nil } {
+		mut top := s.layer
+		top.draw_path(path, paint)!
+		return
+	}
 	if !path.is_finite() {
 		return
 	}
