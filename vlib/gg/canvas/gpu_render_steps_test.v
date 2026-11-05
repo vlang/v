@@ -306,3 +306,29 @@ fn test_concat_multiplies_like_skm44() {
 	assert s.transform.matrix.m == concat_affine(parent, m).m
 	assert s.transform.typ == Transform.new(concat_affine(parent, m)).typ
 }
+
+fn test_failed_drrect_unwinds_only_its_internal_clip_save() {
+	mut s := recording_surface(64, 48, identity_values)
+	s.save()
+	before := s.save_count
+	unsupported := Paint{
+		gradient: Gradient{
+			p1:     Point{50, 0}
+			colors: [Color4f{1, 0, 0, 1}, Color4f{0, 0, 1, 1}]
+		}
+	}
+	mut rejected := false
+	s.draw_drrect(RRect.from_rect(Rect.ltrb(0, 0, 50, 40)),
+		RRect.from_rect(Rect.ltrb(10, 5, 35, 25)), unsupported) or {
+		assert err.msg().contains('without dithering')
+		rejected = true
+	}
+	assert rejected
+	assert s.save_count == before
+	assert s.clip.elements.len == 0
+	// This lies inside the temporary hole and must remain visible.
+	s.draw_rect(Rect.ltrb(15, 10, 20, 15), Paint.rgba8(255, 0, 0, 255))!
+	assert s.draws.len == 1
+	s.restore()
+	assert s.save_count == 0
+}

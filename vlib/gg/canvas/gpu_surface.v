@@ -523,6 +523,9 @@ fn (mut s GpuSurface) device_draw_drrect(outer RRect, inner RRect, paint Paint) 
 	}
 	// Otherwise the outer shape is drawn with the inner one clipped out.
 	s.save()
+	defer {
+		s.restore()
+	}
 	if inner.is_rect() {
 		s.clip_shape(rect_shape(inner.rect), .difference, !paint.anti_alias)!
 	} else {
@@ -533,7 +536,6 @@ fn (mut s GpuSurface) device_draw_drrect(outer RRect, inner RRect, paint Paint) 
 	} else {
 		s.draw_rrect_unchecked(outer, paint)!
 	}
-	s.restore()
 }
 
 // rect_subtract_exact mirrors SkRectPriv::Subtract(): `a` minus `b`, or none
