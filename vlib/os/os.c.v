@@ -1357,13 +1357,67 @@ fn normalize_drive_letter(path string) {
 // fork will fork the current system process and return the pid of the fork.
 pub fn fork() int {
 	mut pid := -1
-	$if !windows {
-		pid = C.fork()
-	}
 	$if windows {
 		panic('os.fork not supported in windows') // TODO
+	} $else $if freestanding || syscalls {
+		$if amd64 {
+			unsafe {
+				asm amd64 {
+					mov rax, 57
+					syscall
+					; =a (pid)
+					;
+					; rcx
+					  r11
+					  memory
+				}
+			}
+		} $else {
+			panic('os.fork not supported on this architecture in freestanding builds')
+		}
+	} $else {
+		pid = C.fork()
 	}
 	return pid
+}
+
+// wait4 blocks until the child process `pid` exits and writes its status to `status`.
+pub fn wait4(pid int, status &int, options int, rusage voidptr) int {
+	$if freestanding || syscalls {
+		$if amd64 {
+			mut res := 0
+			_ = pid
+			_ = status
+			_ = options
+			_ = rusage
+			unsafe {
+				asm amd64 {
+					mov rax, 61
+					mov rdi, pid
+					mov rsi, status
+					mov rdx, options
+					mov r10, rusage
+					syscall
+					; =a (res)
+					; D (pid)
+					  S (status)
+					  d (options)
+					  r (rusage)
+					; rcx
+					  r11
+					  memory
+				}
+			}
+			return res
+		} $else {
+			return -1
+		}
+	} $else {
+		$if windows {
+			panic('os.wait4 not supported on windows')
+		}
+		return C.wait4(pid, status, options, rusage)
+	}
 }
 
 // wait blocks the calling process until one of its child processes exits or a signal is received.
@@ -1515,13 +1569,43 @@ pub fn execve(cmdpath string, cmdargs []string, envs []string) ! {
 	mut res := int(0)
 	$if windows {
 		res = C._execve(&char(cmdpath.str), cargv.data, cenvs.data)
+	} $else $if freestanding || syscalls {
+		$if amd64 {
+			path_ptr := &char(cmdpath.str)
+			cargv_ptr := cargv.data
+			cenvp_ptr := cenvs.data
+			unsafe {
+				asm amd64 {
+					mov rax, 59
+					mov rdi, path_ptr
+					mov rsi, cargv_ptr
+					mov rdx, cenvp_ptr
+					syscall
+					; =a (res)
+					; D (path_ptr)
+					  S (cargv_ptr)
+					  d (cenvp_ptr)
+					; rcx
+					  r11
+					  memory
+				}
+			}
+		} $else {
+			res = -1
+		}
 	} $else {
 		res = C.execve(&char(cmdpath.str), cargv.data, cenvs.data)
 	}
 	// Note: normally execve does not return at all.
 	// If it returns, then something went wrong...
-	if res == -1 {
-		return error_posix()
+	$if freestanding || syscalls {
+		if res < 0 {
+			return error('execve failed')
+		}
+	} $else {
+		if res == -1 {
+			return error_posix()
+		}
 	}
 }
 
