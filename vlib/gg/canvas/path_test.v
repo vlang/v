@@ -231,3 +231,26 @@ fn test_conic_quads_midpoint_follows_sk_conic_chop() {
 	assert math.abs(mid.x - 14.142136) < 1e-5 && math.abs(mid.y - 14.142136) < 1e-5
 	assert conic_quads_midpoint(Point{0, 0}, Point{1, 1}, Point{2, 0}, -1) == none
 }
+
+fn test_path_contains_point_follows_sk_path_priv_contains() {
+	square := polygon([Point{0, 0}, Point{10, 0}, Point{10, 10}, Point{0, 10}], true)
+	assert path_contains_point(square, 5, 5)? == true
+	assert path_contains_point(square, 15, 5)? == false
+	// Points on an edge count as inside.
+	assert path_contains_point(square, 0, 5)? == true
+	assert path_contains_point(square, 5, 0)? == true
+	// An open contour is closed by the edge iterator.
+	open := polygon([Point{0, 0}, Point{10, 0}, Point{10, 10}, Point{0, 10}], false)
+	assert path_contains_point(open, 5, 5)? == true
+	// Nested squares with the even-odd rule leave a hole.
+	mut b := PathBuilder{}
+	b.add_rect(Rect.ltrb(0, 0, 10, 10), .cw, 0)
+	b.add_rect(Rect.ltrb(2, 2, 8, 8), .cw, 0)
+	b.set_fill_type(.even_odd)
+	nested := b.detach()
+	assert path_contains_point(nested, 5, 5)? == false
+	assert path_contains_point(nested, 1, 5)? == true
+	// Curves are not supported.
+	b.add_oval(Rect.ltrb(0, 0, 10, 10), .cw, 1)
+	assert path_contains_point(b.detach(), 5, 5) == none
+}

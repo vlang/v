@@ -1121,3 +1121,185 @@ fn check_edge_against_rect(p0 Point, p1 Point, r Rect, dir PathDirection) bool {
 	}
 	return true
 }
+
+// path_line_edges mirrors SkPathEdgeIter over a path of lines: every edge,
+// plus a closing line after each contour that has edges (even when it ends
+// at its start).
+fn path_line_edges(p Path) [][2]Point {
+	mut edges := [][2]Point{}
+	mut needs_close := false
+	mut start := Point{}
+	mut last := Point{}
+	mut pi := 0
+	for verb in p.verbs {
+		match verb {
+			.move {
+				if needs_close {
+					edges << [last, start]!
+					needs_close = false
+				}
+				start = p.points[pi]
+				last = start
+				pi++
+			}
+			.close {
+				if needs_close {
+					edges << [last, start]!
+					needs_close = false
+				}
+			}
+			.line {
+				edges << [last, p.points[pi]]!
+				last = p.points[pi]
+				pi++
+				needs_close = true
+			}
+			else {}
+		}
+	}
+	if needs_close {
+		edges << [last, start]!
+	}
+	return edges
+}
+
+fn sign_as_int(v f32) int {
+	return if v < 0 {
+		-1
+	} else if v > 0 {
+		1
+	} else {
+		0
+	}
+}
+
+// check_on_curve mirrors checkOnCurve() in SkPathPriv.cpp.
+fn check_on_curve(x f32, y f32, start Point, end Point) bool {
+	if start.y == end.y {
+		return between_f32(start.x, x, end.x) && x != end.x
+	}
+	return x == start.x && y == start.y
+}
+
+// winding_line mirrors winding_line() in SkPathPriv.cpp: the edge's winding
+// contribution at (x, y) and whether the point lies on it.
+fn winding_line(p0 Point, p1 Point, x f32, y f32) (int, bool) {
+	mut y0 := p0.y
+	mut y1 := p1.y
+	dy := y1 - y0
+	mut dir := 1
+	if y0 > y1 {
+		y0, y1 = y1, y0
+		dir = -1
+	}
+	if y < y0 || y > y1 {
+		return 0, false
+	}
+	if check_on_curve(x, y, p0, p1) {
+		return 0, true
+	}
+	if y == y1 {
+		return 0, false
+	}
+	dx := p1.x - p0.x
+	ty := y - p0.y
+	tx := x - p0.x
+	a := dx * ty
+	b := dy * tx
+	cross := a - b
+	if cross == 0 {
+		// On the line, excluding its end point.
+		return 0, x != p1.x || y != p1.y
+	} else if sign_as_int(cross) == dir {
+		dir = 0
+	}
+	return dir, false
+}
+
+// tangent_line mirrors tangent_line() in SkPathPriv.cpp.
+fn tangent_line(p0 Point, p1 Point, x f32, y f32) ?Point {
+	if !between_f32(p0.y, y, p1.y) || !between_f32(p0.x, x, p1.x) {
+		return none
+	}
+	dx := p1.x - p0.x
+	dy := p1.y - p0.y
+	tx := x - p0.x
+	ty := y - p0.y
+	a := tx * dy
+	b := dx * ty
+	if abs_f32(a - b) > sk_scalar_nearly_zero {
+		return none
+	}
+	return Point{dx, dy}
+}
+
+// SK_ScalarNearlyZero.
+const sk_scalar_nearly_zero = f32(1) / f32(1 << 12)
+
+// path_contains_point mirrors SkPathPriv::Contains() with the path's fill
+// rule, not inverted, for paths of lines. It returns none for curves.
+fn path_contains_point(p Path, x f32, y f32) ?bool {
+	if p.verbs.any(it in [.quad, .conic, .cubic]) {
+		return none
+	}
+	if p.verbs.len == 0 {
+		return false
+	}
+	b := p.bounds()
+	if !(b.left() <= x && x <= b.right() && b.top() <= y && y <= b.bottom()) {
+		return false
+	}
+	edges := path_line_edges(p)
+	mut w := 0
+	mut on_curve := 0
+	for e in edges {
+		dw, on := winding_line(e[0], e[1], x, y)
+		w += dw
+		if on {
+			on_curve++
+		}
+	}
+	even_odd := p.is_even_odd()
+	if even_odd {
+		w &= 1
+	}
+	if w != 0 {
+		return true
+	}
+	if on_curve <= 1 {
+		return on_curve != 0
+	}
+	if on_curve & 1 != 0 || even_odd {
+		return on_curve & 1 != 0
+	}
+	// An even number of edges touch the point under the winding rule:
+	// tangents that coincide in opposite directions cancel.
+	mut tangents := []Point{}
+	for e in edges {
+		t := tangent_line(e[0], e[1], x, y) or { continue }
+		tangents << t
+		last := tangents.len - 1
+		xx := t.x * t.x
+		yy := t.y * t.y
+		if abs_f32(xx + yy) <= sk_scalar_nearly_zero {
+			tangents.delete(last)
+			continue
+		}
+		for index in 0 .. last {
+			test := tangents[index]
+			c1 := test.x * t.y
+			c2 := test.y * t.x
+			sx := t.x * test.x
+			sy := t.y * test.y
+			if abs_f32(c1 - c2) <= sk_scalar_nearly_zero && sign_as_int(sx) <= 0
+				&& sign_as_int(sy) <= 0 {
+				tangents.delete(last)
+				// SkTDArray::removeShuffle(): the last element replaces it.
+				tangents[index] = tangents[tangents.len - 1]
+				tangents.delete(tangents.len - 1)
+				break
+			}
+		}
+	}
+	return tangents.len != 0
+}

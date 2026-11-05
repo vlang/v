@@ -48,8 +48,8 @@ convex-180 chops. Convex
 path fills and strokes apply the analytic clip in their fragment shaders.
 Curves that need more than 32 parametric segments are chopped like Graphite's
 PatchWriter, in fills and strokes. Draws that need other renderers (inverse
-fills, path clips that need point containment under rotations, ...) return
-an error instead of rendering differently.
+fills, curved path clips under rotations, ...) return an error instead of
+rendering differently.
 Lines (`draw_line`, and paths that are a single line) are stroked by the
 analytic renderer with caps, like Graphite's `drawPoints`.
 

@@ -179,16 +179,20 @@ fn (a TransformedShape) contains(o TransformedShape) !bool {
 	}
 	// A convex shape contains `o` when all four corners of its bounds are
 	// inside.
-	if a.shape.kind == .path {
-		if !a.shape.path.is_convex() {
-			return false
-		}
-		return error('gg.canvas: path clips and draws in rotated or skewed spaces are not supported')
+	if a.shape.kind == .path && !a.shape.path.is_convex() {
+		return false
 	}
 	device := map_rect_corners(o.l2d.matrix, o.shape.bounds())
 	for p in device {
 		local := map_point_affine(a.l2d.inverse, p)
-		if !a.shape.conservative_contains_point(local.x, local.y) {
+		if a.shape.kind == .path {
+			inside := path_contains_point(a.shape.path, local.x, local.y) or {
+				return error('gg.canvas: curved path clips and draws in rotated or skewed spaces are not supported')
+			}
+			if !inside {
+				return false
+			}
+		} else if !a.shape.conservative_contains_point(local.x, local.y) {
 			return false
 		}
 	}
