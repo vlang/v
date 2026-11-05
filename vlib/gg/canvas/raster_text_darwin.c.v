@@ -12,6 +12,9 @@ pub fn (mut s RasterSurface) draw_glyphs(font Font, glyphs []u16, positions []Po
 	if paint.style != .fill {
 		return error('gg.canvas: stroked text is not supported yet')
 	}
+	if paint.gradient != none {
+		return error('gg.canvas: gradient text is not supported yet')
+	}
 	color := paint.color.to_sk_color()!
 	if color >> 24 == 0 {
 		// SkPaint::nothingToDraw() for src-over.

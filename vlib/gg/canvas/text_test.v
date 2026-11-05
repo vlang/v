@@ -153,6 +153,28 @@ fn test_glyph_runs_match_skia() {
 	}
 }
 
+fn test_gradient_text_is_rejected_without_changing_pixels() {
+	$if !macos {
+		return
+	}
+	face := Typeface.from_file('/System/Library/Fonts/Supplemental/Arial.ttf')!
+	mut s := new_raster_surface(width: 40, height: 40)!
+	s.clear(0xff123456)
+	paint := Paint{
+		gradient: Gradient{
+			p1:     Point{40, 0}
+			colors: [Color4f{1, 0, 0, 1}, Color4f{0, 0, 1, 1}]
+		}
+		dither:   true
+	}
+	s.draw_glyphs(Font{ typeface: face }, [u16(36)], [Point{5, 25}], Point{}, paint) or {
+		assert err.msg().contains('gradient text')
+		assert s.pixels.all(it == 0xff123456)
+		return
+	}
+	assert false, 'unsupported gradient text was drawn as a solid color'
+}
+
 fn test_lowp_div255_is_exact() {
 	// The NEON lowp div255 rounds correctly for every product of two bytes.
 	for v in u32(0) .. 255 * 255 + 1 {
