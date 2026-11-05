@@ -4,22 +4,31 @@ module brotli
 import os
 import dl
 
-const msan_unpoison_symbol = find_msan_unpoison()
+// Bind the sanitizer helper directly, including static runtimes whose symbols
+// are unavailable to dlsym. The C compiler owns sanitizer feature detection.
+#define V_BROTLI_MSAN_DATA const volatile void
+#if defined(__has_feature)
+#if __has_feature(memory_sanitizer)
+#define v_brotli_msan_unpoison __msan_unpoison
+#else
+#define v_brotli_msan_unpoison v_brotli_unpoison_noop
+#endif
+#else
+#define v_brotli_msan_unpoison v_brotli_unpoison_noop
+#endif
 
-type FNMSanUnpoison = fn (voidptr, uint)
+@[c_extern]
+fn C.v_brotli_msan_unpoison(data &C.V_BROTLI_MSAN_DATA, len uint)
 
-fn find_msan_unpoison() voidptr {
-	$if linux {
-		// A dynamically loaded Brotli library is usually not instrumented.
-		// MSan exports its runtime helper from the current process.
-		return dl.sym(unsafe { nil }, '__msan_unpoison')
-	}
-	return unsafe { nil }
-}
+@[markused; export: 'v_brotli_unpoison_noop']
+fn unpoison_noop(_ &C.V_BROTLI_MSAN_DATA, _ uint) {}
 
 fn unpoison_output(data voidptr, len uint) {
-	if len > 0 && msan_unpoison_symbol != unsafe { nil } {
-		FNMSanUnpoison(msan_unpoison_symbol)(data, len)
+	$if !native {
+		if len > 0 {
+			// The cast adds the sanitizer interface's C pointer qualifiers.
+			C.v_brotli_msan_unpoison(unsafe { &C.V_BROTLI_MSAN_DATA(data) }, len)
+		}
 	}
 }
 

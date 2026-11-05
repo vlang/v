@@ -37,8 +37,19 @@ fn test_native_interface_contract_requires_known_paths_and_complete_manifest() !
 		assert os.is_file(input), input
 	}
 	assert v3_native_interface_closure(&a, &prefs, [], compiler, &inputs).inputs == closure.inputs
-	for override in ['-DMBEDTLS_CONFIG_FILE="custom.h"', '-DMBEDTLS_USER_CONFIG_FILE="custom.h"',
-		'-Wp,-include,custom.h', '@custom.rsp'] {
+	configuration_names := ['MBEDTLS_CONFIG_FILE', 'MBEDTLS_USER_CONFIG_FILE',
+		'MBEDTLS_PSA_CRYPTO_CONFIG', 'MBEDTLS_PSA_CRYPTO_CONFIG_FILE',
+		'MBEDTLS_PSA_CRYPTO_USER_CONFIG_FILE']
+	for name in configuration_names {
+		assert v3_native_interface_closure(&a, &prefs, ['-D${name}="custom.h"'], compiler, &inputs).unassignable != '', name
+		for directive in ['define', 'undef'] {
+			mut configured := flat.FlatAst.new()
+			configured.add_node(flat.Node{ kind: .directive, value: directive, typ: flat.source_type_id('${name} "custom.h"') })
+			assert v3_native_interface_closure(&configured, &prefs, [], compiler, &inputs).unassignable != '', '${directive} ${name}'
+		}
+		assert_native_interface_environment_override(name, &a, &prefs, compiler, &inputs)
+	}
+	for override in ['-Wp,-include,custom.h', '@custom.rsp'] {
 		assert v3_native_interface_closure(&a, &prefs, [override], compiler, &inputs).unassignable != ''
 	}
 	mut first := V3ModuleCacheState{}
@@ -54,11 +65,18 @@ fn test_native_interface_contract_requires_known_paths_and_complete_manifest() !
 		assert v3_native_interface_closure(&a, &prefs, [], compiler, &inputs).unassignable != '', macro_name
 		os.write_file(nested, '#define PROBE_DELAYED ${macro_name}\n')!
 		assert v3_native_interface_closure(&a, &prefs, [], compiler, &inputs).unassignable != '', 'delayed ${macro_name}'
+		// Forced headers precede the probe's poison pragma. A guard keeps the
+		// later ordinary include from independently diagnosing the macro.
+		os.write_file(nested, '#ifndef PROBE_FORCED_HEADER\n#define PROBE_FORCED_HEADER\nstatic const char *probe_build = ${macro_name};\n#endif\n')!
+		for flags in [['-include', nested], ['-w', '-include', nested],
+			['-Xclang', '-w', '-include', nested], ['-Xclang=-w', '-include', nested],
+			['-Xclang', '-Wno-date-time', '-include', nested], ['--no-warnings', '-include', nested],
+			['-Xclang', '--no-warnings', '-include', nested]] {
+			assert v3_native_interface_closure(&a, &prefs, flags, compiler, &inputs).unassignable != '', '${macro_name}: ${flags}'
+		}
 	}
 	os.write_file(nested, 'typedef int other_value;\n')!
-	mut configured := flat.FlatAst.new()
-	configured.add_node(flat.Node{ kind: .directive, value: 'define', typ: flat.source_type_id('MBEDTLS_USER_CONFIG_FILE "custom.h"') })
-	assert v3_native_interface_closure(&configured, &prefs, [], compiler, &inputs).unassignable != ''
+	assert v3_native_interface_closure(&a, &prefs, ['-w', '-include', nested], compiler, &inputs).unassignable == ''
 	os.rm(nested)!
 	assert v3_native_interface_closure(&a, &prefs, [], compiler, &inputs).unassignable != ''
 	assert !v3_web_native_interface(os.join_path(root, 'thirdparty', 'zstd', 'zstd.c'), root)
@@ -71,6 +89,28 @@ fn test_native_interface_contract_requires_known_paths_and_complete_manifest() !
 		}
 	}
 	assert v3_native_interface_closure(&a, &prefs, [], compiler, &forced).unassignable != ''
+}
+
+fn assert_native_interface_environment_override(name string, a &flat.FlatAst, prefs &pref.Preferences, compiler string, inputs &cgen.CacheNativeInputs) {
+	original := os.getenv_opt(name)
+	defer {
+		if value := original { os.setenv(name, value, true) } else { os.unsetenv(name) }
+	}
+	os.setenv(name, 'custom.h', true)
+	assert v3_native_interface_closure(a, prefs, [], compiler, inputs).unassignable != '', name
+}
+
+fn test_native_interface_diagnostics_preserve_operands_when_removing_warning_suppression() {
+	assert v3_native_interface_diagnostic_flags(['-w', '-include', '-w', '-I', '-w', '-D', '-w',
+		'-Xclang', '-w', '-Xpreprocessor', '-w', '-Wno-date-time', '-Xclang=-w', '-Xclang',
+		'-Wno-everything', '--no-warnings', '-Xclang', '--no-warnings', '-Xclang=--no-warnings']) == [
+		'-include',
+		'-w',
+		'-I',
+		'-w',
+		'-D',
+		'-w',
+	]
 }
 
 fn test_tinycc_interface_contract_pin_rejects_bundle_edits() ! {

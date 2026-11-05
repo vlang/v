@@ -62,9 +62,10 @@ The shipped mbedTLS public include tree and V's two mbedTLS helper headers have 
 interface-only contract: ABI types and inline helpers may appear in every cached unit, while
 library state belongs to the separate `#flag` objects. A fresh C compiler dependency manifest
 tracks their complete include closure before reuse. Other native headers and forced macro files
-keep the conservative fallback. Alternate mbedTLS configuration files and opaque compiler options
-also bypass this contract. The selected C preprocessor rejects date/time macro uses with
-`-Werror=date-time`, and its output is discarded. TinyCC requires the audited bundled interface
+keep the conservative fallback. Alternate mbedTLS and PSA configuration files, PSA configuration
+overrides, and opaque compiler options also bypass this contract. The selected C preprocessor
+rejects date/time macro uses with `-Werror=date-time`, with warning suppression removed from this
+safety check, and its output is discarded. TinyCC requires the audited bundled interface
 snapshot, verified by an opaque SHA-256 inventory. Editing, adding, or removing a bundled
 interface header retains the fallback until its ownership and determinism are reviewed and the
 snapshot is updated. V does not infer contracts by inspecting header contents.
