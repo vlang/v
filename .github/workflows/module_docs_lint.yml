@@ -6,9 +6,6 @@ on:
       - master
     paths:
       - '**/cmd/tools/vdoc/theme/**'
-  pull_request:
-    paths:
-      - '**/cmd/tools/vdoc/theme/**'
 
 concurrency:
   group: module-docs-lint-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}

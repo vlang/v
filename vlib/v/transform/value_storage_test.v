@@ -8,8 +8,8 @@ fn test_conditional_borrows_outer_storage_and_preserves_pointer_results() {
 		mut a := flat.FlatAst.new()
 		mut tc := types.TypeChecker.new(&a)
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
-		t.sum_types.set('Value', ['int', 'string'])
-		tc.sum_types.set('Value', ['int', 'string'])
+		t.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
+		tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
 		t.fn_ret_types.set('first', typ)
 		t.fn_ret_types.set('second', typ)
 		first := t.make_call_typed('first', [], flat.source_type_id(typ))
@@ -77,8 +77,8 @@ fn test_generic_sum_storage_keeps_its_specialization() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.sum_types.set('model.Value', ['int', 'model.Item[T]'])
-	tc.sum_generic_params['model.Value'] = ['T']
+	t.sum_types.set(flat.source_type_id('model.Value'), ['int', 'model.Item[T]'])
+	tc.sum_generic_params[flat.source_type_id('model.Value')] = types.generic_param_ids(['T'])
 	sum_name := 'model.Value[payload.Token]'
 	variants := ['int', 'model.Item[payload.Token]']
 	t.set_var_type('value', flat.source_type_id(sum_name))

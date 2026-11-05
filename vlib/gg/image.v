@@ -54,22 +54,22 @@ pub fn (mut ctx Context) cache_image(img Image) int {
 	return image_idx
 }
 
-const missing_image = Image{}
-
 // get_cached_image_by_idx returns a cached `Image` identified by `image_idx`.
-// If image not found, returns `Image{ok: false}`
+// If image not found, returns a fresh `Image{ok: false}` placeholder, so
+// callers can never mutate shared state through the returned pointer.
 //
 // See also: cache_image
 // See also: remove_cached_image_by_idx
 pub fn (mut ctx Context) get_cached_image_by_idx(image_idx int) &Image {
 	if image_idx < 0 || image_idx > ctx.image_cache.len - 1 {
-		return unsafe { &missing_image }
+		return &Image{}
 	}
 	return &ctx.image_cache[image_idx]
 }
 
 // remove_cached_image_by_idx removes an `Image` identified by `image_idx` from the
-// image cache.
+// image cache. The slot is kept (marked invalid), with its `id` preserved,
+// so the `img.id == cache index` invariant still holds for stale handles.
 //
 // See also: cache_image
 // See also: get_cached_image_by_idx
@@ -78,7 +78,9 @@ pub fn (mut ctx Context) remove_cached_image_by_idx(image_idx int) {
 		return
 	}
 	ctx.image_cache[image_idx].destroy()
-	ctx.image_cache[image_idx] = unsafe { &missing_image }
+	ctx.image_cache[image_idx] = Image{
+		id: image_idx
+	}
 }
 
 // Draw part of an image using uv coordinates

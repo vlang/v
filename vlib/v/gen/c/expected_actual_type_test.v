@@ -48,7 +48,7 @@ fn test_expected_actual_declared_selector_storage_overrides_checked_and_known_ty
 	mut tc := types.TypeChecker.new(&a)
 	int_type := types.Type(types.int_)
 	pointer := types.Type(types.Pointer{ base_type: int_type })
-	tc.structs['Holder'] = [types.StructField{ name: 'value', typ: pointer }]
+	tc.structs[flat.source_type_id('Holder')] = [types.StructField{ name: 'value', typ: pointer }]
 	tc.register_synth_type(field, types.Type(types.string_))
 	mut g := FlatGen.new()
 	g.a = &a
@@ -70,7 +70,7 @@ fn test_expected_actual_optional_selector_annotation_wins_over_storage() {
 		base := a.add_val(.ident, 'holder')
 		field := expected_actual_node(mut a, .selector, .none, 'value', annotation, [base])
 		mut tc := types.TypeChecker.new(&a)
-		tc.structs['Holder'] = [types.StructField{ name: 'value', typ: types.Type(types.string_) }]
+		tc.structs[flat.source_type_id('Holder')] = [types.StructField{ name: 'value', typ: types.Type(types.string_) }]
 		mut g := FlatGen.new()
 		g.a = &a
 		g.tc = &tc

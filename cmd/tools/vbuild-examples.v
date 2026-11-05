@@ -9,10 +9,13 @@ const vroot = os.dir(os.real_path(os.getenv_opt('VEXE') or { @VEXE }))
 // build as a project folder
 const efolders = [
 	'examples/viewer',
+	'examples/mini_software_emulator',
 	'examples/fasthttp',
 	'examples/veb_orm_jwt',
 	'examples/veb_fullstack',
 ]
+
+const macos_efolders = ['examples/macos_tray']
 
 pub fn normalised_vroot_path(path string) string {
 	return os.real_path(os.join_path_single(vroot, path)).replace('\\', '/')
@@ -24,14 +27,20 @@ fn main() {
 	mut requested_flags := vflags.tokenize_to_args(os.getenv('VFLAGS'))
 	requested_flags << vflags.tokenize_to_args(params)
 	strict_v3 := '-old-compiler' !in requested_flags
+	mut project_folders := efolders.clone()
+	$if macos {
+		project_folders << macos_efolders
+	}
 	mut skip_prefixes := efolders.map(normalised_vroot_path(it))
-	res := testing.v_build_failing_skipped(params, 'examples', skip_prefixes, fn [strict_v3] (mut session testing.TestSession) {
+	// Support files remain excluded even when their project cannot run on this host.
+	skip_prefixes << macos_efolders.map(normalised_vroot_path(it))
+	res := testing.v_build_failing_skipped(params, 'examples', skip_prefixes, fn [strict_v3, project_folders] (mut session testing.TestSession) {
 		if strict_v3 {
 			// V3 has only a limited JavaScript compatibility generator. Keep full-backend
 			// examples visible as skips unless the legacy compiler was explicitly selected.
 			session.skip_files << session.files.filter(it.ends_with('.js.v'))
 		}
-		for x in efolders {
+		for x in project_folders {
 			pathsegments := x.split_any('/')
 			fpath := os.real_path(os.join_path(vroot, ...pathsegments))
 			session.skip_files = session.skip_files.filter(it != fpath)

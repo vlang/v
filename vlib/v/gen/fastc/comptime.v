@@ -194,7 +194,7 @@ fn fastc_scan_selected_comptime_branch(mut scan scanner.Scanner, first token.Tok
 	return FastcComptimeBlock{}
 }
 
-fn fastc_collect_selected_comptime_function_signatures(source string, source_offset int, path string, header FastcSourceHeader, prefs &pref.Preferences, skips []int, declared_types map[string]bool, declared_type_c_names flat.TypeTextBindings, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
+fn fastc_collect_selected_comptime_function_signatures(source string, source_offset int, path string, header FastcSourceHeader, prefs &pref.Preferences, skips []int, declared_types map[u32]bool, declared_type_c_names flat.TypeTextBindings, params_structs map[string]bool, mut functions map[string]FastcFunctionSignature) ! {
 	file := token.File.unindexed(path, source.len)
 	mut scan := scanner.new_scanner(prefs, .normal)
 	scan.init(file, source)
@@ -268,7 +268,7 @@ fn (mut g Parser) parse_comptime_if_statement() !bool {
 	g.expect(.lcbr)!
 	mut terminates := false
 	if condition {
-		terminates = g.parse_block_body()!
+		terminates = g.parse_selected_comptime_block()!
 	} else {
 		g.skip_open_block()!
 	}
@@ -292,7 +292,7 @@ fn (mut g Parser) parse_comptime_if_statement() !bool {
 		g.skip_open_block()!
 		return terminates
 	}
-	return g.parse_block_body()!
+	return g.parse_selected_comptime_block()!
 }
 
 // parse_comptime_match_statement selects a type branch from `$match T` or
@@ -384,17 +384,18 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 	if g.tok != .name {
 		return g.unsupported('`\$for` iterable member')
 	}
-	mut type_key := ''
+	mut c_type := ''
 	mut member := g.lit
 	if member in ['fields', 'values'] {
-		type_key = g.resolve_declared_type_key(first) or {
+		type_key := g.resolve_declared_type_key(first) or {
 			return g.unsupported('`\$for` over unknown type `${first}`')
 		}
+		c_type = fastc_c_declared_type_name(flat.source_type_name(type_key))
 		g.next()
 	} else {
 		// Qualified `mod.Type.fields` / `mod.Type.values`.
 		module_name := g.imports[first] or { first }
-		type_key = fastc_type_key(module_name, g.lit)
+		c_type = fastc_c_declared_type_name(fastc_type_key(module_name, g.lit))
 		g.next()
 		g.expect(.dot)!
 		if g.tok != .name || g.lit !in ['fields', 'values'] {
@@ -404,7 +405,6 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 		g.next()
 	}
 	g.expect(.lcbr)!
-	c_type := fastc_c_declared_type_name(type_key)
 	// Capture the body source (from the first body token up to the matching `}`).
 	body_start := g.s.pos
 	mut depth := 0
@@ -579,18 +579,24 @@ fn (g &Parser) substitute_comptime_field(source_file FastcSourceFile, loop_var s
 					tok = s.scan()
 					continue
 				}
-				if member == .name && s.lit == 'is_embed' {
-					is_embed := field.name.starts_with('__embedded_')
+				if member == .name && s.lit in ['is_embed', 'is_shared'] {
+					matches := if s.lit == 'is_shared' {
+						field.is_shared
+					} else {
+						field.name.starts_with('__embedded_')
+					}
 					edits << FastcSourceEdit{
 						start:       var_pos
 						end:         s.offset
-						replacement: if is_embed { 'true' } else { 'false' }
+						replacement: if matches { 'true' } else { 'false' }
 					}
-					previous = if is_embed { token.Token.key_true } else { token.Token.key_false }
+					previous = if matches { token.Token.key_true } else { token.Token.key_false }
 					tok = s.scan()
 					continue
 				}
 				if member == .name && s.lit == 'attrs' {
+					attrs_end := s.offset
+					attrs_scan := s
 					after_attrs := s.scan()
 					if after_attrs == .dot {
 						contains_tok := s.scan()
@@ -617,11 +623,12 @@ fn (g &Parser) substitute_comptime_field(source_file FastcSourceFile, loop_var s
 					}
 					edits << FastcSourceEdit{
 						start:       var_pos
-						end:         s.offset
-						replacement: if field.is_skip { "['skip']" } else { "['']" }
+						end:         attrs_end
+						replacement: if field.is_skip { "['skip']" } else { '[]string{}' }
 					}
+					s = attrs_scan
 					previous = member
-					tok = after_attrs
+					tok = s.scan()
 					continue
 				}
 				if member == .name && s.lit == 'typ' {
@@ -791,7 +798,7 @@ fn (g &Parser) resolve_type_name_c(name string) string {
 		return name
 	}
 	key := g.resolve_declared_type_key(name) or { return name }
-	return fastc_c_declared_type_name(key)
+	return fastc_c_declared_type_name(flat.source_type_name(key))
 }
 
 fn (mut g Parser) parse_comptime_or() !bool {
@@ -837,6 +844,19 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 		actual := g.lit.trim('\'"')
 		g.next()
 		operator := g.tok
+		if operator in [.key_in, .not_in] {
+			g.next()
+			g.expect(.lsbr)!
+			mut found := false
+			for g.tok != .rsbr {
+				if g.tok != .string { return g.unsupported('compile-time string membership value') }
+				found = found || actual == g.lit.trim('\'"')
+				g.next()
+				if g.tok == .comma { g.next() }
+			}
+			g.next()
+			return if operator == .key_in { found } else { !found }
+		}
 		if operator !in [.eq, .ne] {
 			return g.unsupported('compile-time string comparison operator `${g.token_source()}`')
 		}
@@ -903,7 +923,7 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 		expected := g.lit.int()
 		g.next()
 		resolved := g.comptime_named_type(name)
-		actual := flat.source_type_name(resolved).len - flat.source_type_name(resolved).trim_right('*').len + subject_pointer_depth
+		actual := flat.source_type_syntax(resolved).c_pointer_depth() + subject_pointer_depth
 		return match operator {
 			.eq { actual == expected }
 			.ne { actual != expected }
@@ -932,14 +952,14 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 		}
 		mut left_type := g.comptime_named_type(name)
 		if subject_pointer_depth > 0 {
-			left_type = flat.source_type_id(flat.source_type_name(left_type) + '*'.repeat(subject_pointer_depth))
+			left_type = fastc_with_pointer_depth(left_type, subject_pointer_depth)
 		}
 		if unaliased {
 			left_type = g.underlying_alias_type(left_type)
 		}
 		if pointee_type {
 			left_type = (if flat.source_type_query(left_type).has(.c_pointer_suffix) {
-				flat.source_type_id(flat.source_type_name(left_type)[..flat.source_type_name(left_type).len - 1])
+				flat.source_type_syntax(left_type).c_pointer_base()
 			} else {
 				flat.source_type_void
 			})
@@ -989,7 +1009,7 @@ fn (g &Parser) comptime_named_type(name string) u32 {
 	if local := g.locals[name] { return local.typ }
 	if primitive := fastc_primitive_c_type(name) { return flat.source_type_id(primitive) }
 	if key := g.resolve_declared_type_key(name) {
-		return flat.source_type_id(fastc_c_declared_type_name(key))
+		return flat.source_type_id(fastc_c_declared_type_name(flat.source_type_name(key)))
 	}
 	if name.len <= 3 && name[0].is_capital() { return flat.source_type_voidptr }
 	return flat.source_type_id(name)
@@ -1004,13 +1024,13 @@ fn (g &Parser) comptime_type_matches(left_type u32, target_type u32, target_is_g
 	original_key := g.semantic_type_key(left_type)
 	return match flat.source_type_name(target_type) {
 		'array' {
-			flat.source_type_name(left).starts_with('Array_') || left == fastc_type_array
+			flat.source_type_query(left).has(.c_array_prefix) || left == fastc_type_array
 		}
 		'array_fixed' {
-			flat.source_type_name(left).starts_with('FixedArray_')
+			flat.source_type_query(left).has(.c_fixed_array_prefix)
 		}
 		'map' {
-			flat.source_type_name(left).starts_with('Map_') || left == fastc_type_map
+			flat.source_type_query(left).has(.c_map_prefix) || left == fastc_type_map
 		}
 		'string' {
 			left == flat.source_type_string
@@ -1025,16 +1045,16 @@ fn (g &Parser) comptime_type_matches(left_type u32, target_type u32, target_is_g
 			left in [flat.source_type_f32, flat.source_type_f64]
 		}
 		'struct' {
-			flat.source_type_name(left_key) in g.declared_kinds && g.declared_kinds[flat.source_type_name(left_key)] == .struct_
+			left_key in g.declared_kinds && g.declared_kinds[left_key] == .struct_
 		}
 		'enum' {
-			flat.source_type_name(left_key) in g.declared_kinds && g.declared_kinds[flat.source_type_name(left_key)] == .enum_
+			left_key in g.declared_kinds && g.declared_kinds[left_key] == .enum_
 		}
 		'interface' {
-			flat.source_type_name(left_key) in g.declared_kinds && g.declared_kinds[flat.source_type_name(left_key)] == .interface_
+			left_key in g.declared_kinds && g.declared_kinds[left_key] == .interface_
 		}
 		'alias' {
-			flat.source_type_name(original_key) in g.declared_kinds && g.declared_kinds[flat.source_type_name(original_key)] == .alias_
+			original_key in g.declared_kinds && g.declared_kinds[original_key] == .alias_
 		}
 		else {
 			false
@@ -1103,9 +1123,8 @@ fn (mut g Parser) read_comptime_d_expression() !string {
 }
 
 // read_comptime_embed_file lowers `$embed_file('path')` by reading the file at
-// generation time. The compiler chain uses the result as `.to_string()` /
-// `.to_bytes()`, so those two accessors are supported directly; the file bytes
-// become a C string literal or a `[]u8` array, exactly what the accessors return.
+// generation time. Direct string accessors lower to a literal; the full runtime
+// also supports an EmbedFileData descriptor whose payload is already available.
 fn (mut g Parser) read_comptime_embed_file() !string {
 	g.expect(.name)! // consume `embed_file`
 	g.expect(.lpar)!
@@ -1129,6 +1148,15 @@ fn (mut g Parser) read_comptime_embed_file() !string {
 	} else {
 		os.join_path(os.dir(g.path), embed_path)
 	}
+	if g.selfhost && !g.prefs.selfhost {
+		if !os.is_file(resolved) {
+			return g.unsupported('`\$embed_file` cannot read `${resolved}`')
+		}
+		typ := fastc_c_declared_type_name('v.embed_file.EmbedFileData')
+		g.last_expression_type = flat.source_type_id(typ)
+		g.last_expression = []FastcExpressionToken{}
+		return '((${typ}){.path=_S(${fastc_c_string_value(embed_path)}), .apath=_S(${fastc_c_string_value(resolved)}), .len=${os.file_size(resolved)}, .uncompressed=(u8*)${fastc_embed_symbol(resolved)}})'
+	}
 	content := os.read_file(resolved) or {
 		return g.unsupported('`\$embed_file` cannot read `${resolved}`')
 	}
@@ -1147,12 +1175,108 @@ fn (mut g Parser) read_comptime_embed_file() !string {
 		'to_string', 'str' {
 			g.last_expression_type = flat.source_type_string
 			g.last_expression = []FastcExpressionToken{}
-			return '_S(${fastc_c_string_value(content)})'
+			return '_S(${fastc_embed_c_string_value(content)})'
 		}
 		else {
 			return g.unsupported('`\$embed_file` accessor `.${accessor}()`')
 		}
 	}
+}
+
+fn fastc_embed_symbol(path string) string {
+	return '__vf_embed_${fastc_fnv_hash(u64(14695981039346656037), os.real_path(path)).hex()}'
+}
+
+// fastc_collect_embedded_payloads emits each resource once, outside expressions.
+// Keeping large payloads out of expression tokens bounds initializer scratch memory.
+struct FastcEmbeddedPayloadResult {
+	payloads      map[string]string
+	error_message string
+}
+
+fn fastc_collect_source_embedded_payloads(sources []FastcSourceFile, prefs &pref.Preferences) FastcEmbeddedPayloadResult {
+	mut payloads := map[string]string{}
+	for source in sources {
+		fastc_collect_embedded_payloads(source.source, source.path, prefs, mut payloads) or {
+			return FastcEmbeddedPayloadResult{ error_message: err.msg() }
+		}
+	}
+	return FastcEmbeddedPayloadResult{ payloads: payloads }
+}
+
+fn fastc_collect_embedded_payloads(source string, path string, prefs &pref.Preferences, mut payloads map[string]string) ! {
+	if !source.contains('$embed_file') {
+		return
+	}
+	mut scan := scanner.new_scanner(prefs, .normal)
+	scan.init(token.File.unindexed(path, source.len), source)
+	mut tok := scan.scan()
+	for tok != .eof {
+		if tok == .dollar {
+			mut look := scan
+			next := look.scan()
+			if next == .key_if {
+				if selected := fastc_scan_selected_comptime_branch(mut look, next, path, prefs) {
+					fastc_collect_embedded_payloads(selected.source, path, prefs, mut payloads)!
+					scan = look
+					tok = selected.tok
+					continue
+				}
+			} else if next == .name && look.lit == 'embed_file' && look.scan() == .lpar
+				&& look.scan() == .string {
+				embed_path := fastc_string_literal_content(look.lit)
+					.replace('@VEXEROOT', prefs.vroot)
+					.replace('@VMODROOT', fastc_vmod_root_for_file(path))
+				resolved := if os.is_abs_path(embed_path) {
+					embed_path
+				} else {
+					os.join_path(os.dir(path), embed_path)
+				}
+				name := fastc_embed_symbol(resolved)
+				if name !in payloads {
+					content := os.read_file(resolved) or { return error('fastc cannot read embedded file `${resolved}`') }
+					payloads[name] = 'const u8 ${name}[] = ${fastc_embed_c_string_value(content)};\n'
+				}
+				scan = look
+			}
+		}
+		tok = scan.scan()
+	}
+}
+
+// fastc_embed_c_string_value preserves every byte, including NUL and non-UTF-8
+// data. Three-digit octal escapes cannot absorb a following hexadecimal digit.
+@[direct_array_access]
+fn fastc_embed_c_string_value(content string) string {
+	mut length := content.len + 2
+	for c in content {
+		if c == `"` || c == `\\` {
+			length++
+		} else if c < 32 || c >= 127 {
+			length += 3
+		}
+	}
+	mut result := []u8{len: length}
+	result[0] = `"`
+	mut offset := 1
+	for c in content {
+		if c == `"` || c == `\\` {
+			result[offset] = `\\`
+			result[offset + 1] = c
+			offset += 2
+		} else if c < 32 || c >= 127 {
+			result[offset] = `\\`
+			result[offset + 1] = `0` + (c >> 6)
+			result[offset + 2] = `0` + ((c >> 3) & 7)
+			result[offset + 3] = `0` + (c & 7)
+			offset += 4
+		} else {
+			result[offset] = c
+			offset++
+		}
+	}
+	result[offset] = `"`
+	return result.bytestr()
 }
 
 // fastc_string_literal_content returns the raw text inside a scanned string
@@ -1279,6 +1403,9 @@ fn (g &Parser) comptime_pseudo_expression(name string) ?string {
 
 fn (mut g Parser) read_comptime_if_expression() !string {
 	g.expect(.dollar)!
+	if g.tok == .name && g.lit == 'zero' {
+		return g.read_comptime_zero_expression()!
+	}
 	if g.tok == .name && g.lit == 'd' {
 		return g.read_comptime_d_expression()!
 	}
@@ -1342,6 +1469,42 @@ fn (mut g Parser) read_comptime_if_expression() !string {
 	g.expect(.rcbr)!
 	g.last_expression_type = value_type
 	g.last_option_value_type = option_value_type
+	g.last_expression = []FastcExpressionToken{}
+	return value
+}
+
+fn (mut g Parser) read_comptime_zero_expression() !string {
+	g.expect(.name)!
+	g.expect(.lpar)!
+	typ := g.parse_type()!
+	g.expect(.rpar)!
+	layout := g.underlying_alias_type(typ)
+	fastc_register_composite_type(typ, mut g.composite_types)
+	value := if fastc_is_pointer_type(layout) || fastc_is_numeric_expression_type(layout)
+		|| layout in [flat.source_type_bool, flat.source_type_string] {
+		if layout == flat.source_type_string {
+			'_SLIT0'
+		} else {
+			'((${fastc_output_c_type(flat.source_type_name(typ))})0)'
+		}
+	} else if flat.source_type_query(layout).has(.c_array_prefix)
+		|| flat.source_type_query(layout).has(.c_map_prefix) {
+		g.map_lookup_missing_value_expression(typ)
+	} else if enum_key := g.underlying_enum_type_key(g.semantic_type_key(layout)) {
+		names := g.enum_field_names[flat.source_type_name(layout)]
+		if !g.enum_flags[enum_key] && names.len > 0 {
+			'${flat.source_type_name(layout)}__${names[0]}'
+		} else {
+			'((${flat.source_type_name(typ)})0)'
+		}
+	} else if layout == fastc_type_option {
+		'(Option){.state=2}'
+	} else if g.declared_kinds[g.semantic_type_key(layout)] == .struct_ {
+		g.render_empty_struct_initializer(typ)
+	} else {
+		return g.unsupported('`\$zero` for `${flat.source_type_name(typ)}`')
+	}
+	g.last_expression_type = typ
 	g.last_expression = []FastcExpressionToken{}
 	return value
 }
@@ -1758,8 +1921,8 @@ fn (g &Parser) fastc_veb_context_name() string {
 		return 'ctx'
 	}
 	for name, local in g.locals {
-		base := local.typ_text().trim_right('*')
-		if base == 'Context' || base.ends_with('__Context') {
+		base := fastc_trim_pointer_type(local.typ)
+		if base == flat.source_type_id('Context') || flat.source_type_syntax(base).last_double_underscore_suffix() == flat.source_type_id('Context') {
 			return name
 		}
 	}
@@ -1811,4 +1974,13 @@ fn (mut g Parser) parse_veb_html_return() !bool {
 	g.indent--
 	g.write_line('}')
 	return true
+}
+
+fn (mut g Parser) parse_selected_comptime_block() !bool {
+	g.write_line('{')
+	g.indent++
+	terminates := g.parse_block_body()!
+	g.indent--
+	g.write_line('}')
+	return terminates
 }

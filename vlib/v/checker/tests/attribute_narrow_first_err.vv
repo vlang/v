@@ -1,0 +1,15 @@
+@[attribute]
+struct Route {
+	path string
+}
+
+@[Route('/x')]
+@[deprecated: 'old']
+fn index() {
+}
+
+fn main() {
+	$for attr in index.attributes {
+		println(attr.path)
+	}
+}

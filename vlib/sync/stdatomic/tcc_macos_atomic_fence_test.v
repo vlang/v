@@ -29,7 +29,8 @@ fn main() {
 }
 ')!
 	exe := os.join_path(root, 'main')
-	for compiler_args in [([]string{}), ['-cc', 'tcc']] {
+	compiler_variants := [([]string{}), ['-cc', 'tcc']]
+	for compiler_args in compiler_variants {
 		for gc_mode in ['none', 'boehm'] {
 			mut args := ['-new-compiler', '-nocache', '-no-retry-compilation', '-gc', gc_mode,
 				...compiler_args, '-o', exe, source]

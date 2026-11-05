@@ -494,10 +494,10 @@ enum Wide as u64 { first }
 enum Marked { first }
 fn main() {}
 ') or { panic(err) }
-	assert e.enum_types['Ordinary'].target == flat.source_type_i32
-	assert e.enum_types['Narrow'].target == flat.source_type_u8
-	assert e.enum_types['Wide'].target == flat.source_type_u64
-	assert e.enum_types['Marked'].target == flat.source_type_i32
+	assert e.enum_types[flat.source_type_id('Ordinary')].target == flat.source_type_i32
+	assert e.enum_types[flat.source_type_id('Narrow')].target == flat.source_type_u8
+	assert e.enum_types[flat.source_type_id('Wide')].target == flat.source_type_u64
+	assert e.enum_types[flat.source_type_id('Marked')].target == flat.source_type_i32
 }
 
 fn test_eval_sizeof_fixed_array_aggregate_elements_matches_compiler() {

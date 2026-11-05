@@ -114,6 +114,14 @@ fn retry_state(value &RetryState) &RetryState {
 }
 
 fn main() {
+	$if windows {
+		disable_windows_loader_dialogs()
+	}
+	$if prealloc {
+		// The compiler's arenas live until the process ends; the OS reclaims them
+		// with less work than unmapping each block in the exit handler.
+		unsafe { prealloc_keep_memory_at_exit() }
+	}
 	vexe := os.real_path(os.executable())
 	// Ownership helpers reset VEXE for their own tool dispatch, but module cache
 	// isolation must keep identifying the primary compiler that launched them.
@@ -125,7 +133,7 @@ fn main() {
 	}, true)
 	os.setenv('VEXE', vexe, true)
 	os.setenv('VCHILD', 'true', true)
-	mut args := merged_v_args()
+	mut args := remove_obsolete_skip_unused_flag(merged_v_args())
 	if args.len == 0 {
 		run_external_tool(args, -1, 'repl')
 		return
@@ -221,6 +229,9 @@ fn main() {
 	if v3_exact_output_fixture_args(args) && '-nocache' !in args {
 		args.prepend('-nocache')
 	}
+	if full_compiler_is_required(compiler_args_before_program(args)) {
+		launch_full_compiler(args)
+	}
 	if ownership_compiler_is_required(compiler_args_before_program(args))
 		&& !ownership_checker_is_compiled() {
 		launch_ownership_compiler(args)
@@ -239,6 +250,10 @@ fn race_build_requested(args []string) bool {
 // driver runs the input of `run` and `crun`, a `.vsh` script, and the input that follows
 // `-raw-vsh-tmp-prefix`; `-` is the input that reads the program from stdin.
 fn compiler_option_requested(args []string, option string) bool {
+	return compiler_option_index(args, option) >= 0
+}
+
+fn compiler_option_index(args []string, option string) int {
 	mut option_value_follows := false
 	mut runs_input := false
 	mut input_seen := false
@@ -248,10 +263,10 @@ fn compiler_option_requested(args []string, option string) bool {
 			continue
 		}
 		if is_inline_source_option(arg) {
-			return false
+			return -1
 		}
 		if arg == option {
-			return true
+			return i
 		}
 		if arg in ['-prof', '-profile'] {
 			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
@@ -267,19 +282,43 @@ fn compiler_option_requested(args []string, option string) bool {
 		if arg.starts_with('-') && arg != '-' {
 			continue
 		}
-		if !input_seen && arg in ['run', 'crun'] {
+		if !input_seen && !runs_input && arg in ['run', 'crun'] {
 			runs_input = true
 			continue
 		}
-		if !input_seen && arg in ['build', 'test'] {
+		if !input_seen && !runs_input && arg in ['build', 'test'] {
 			continue
 		}
 		if runs_input || arg.ends_with('.vsh') {
-			return false
+			return -1
 		}
 		input_seen = true
 	}
-	return false
+	return -1
+}
+
+// remove_obsolete_skip_unused_flag keeps the old spelling as a notice-only no-op.
+// Option values, tool arguments and arguments of the executed program are preserved.
+fn remove_obsolete_skip_unused_flag(args []string) []string {
+	mut result := args.clone()
+	mut noticed := false
+	for {
+		command_index, command := find_command(result)
+		options := if command in external_commands || command == 'help' {
+			result[..command_index]
+		} else {
+			result
+		}
+		index := compiler_option_index(options, '-skip-unused')
+		if index < 0 {
+			return result
+		}
+		if !noticed {
+			eprintln('notice: `-skip-unused` is no longer needed; unused code is skipped by default. Use `-no-skip-unused` to retain it.')
+			noticed = true
+		}
+		result.delete(index)
+	}
 }
 
 fn ownership_checker_is_compiled() bool {
@@ -363,49 +402,55 @@ fn launch_ownership_compiler(args []string) {
 			exit(1)
 		}
 	}
-	compiler_source := os.join_path(vroot, 'cmd', 'v')
 	// A regular V3 compiler is deliberately allowed to create the ownership-enabled
 	// executable. Do not recursively dispatch that bootstrap compilation to itself.
 	if ownership_bootstrap_can_use_current_compiler(args, vroot) {
 		driver.run(args)
 		exit(0)
 	}
+	launch_optional_compiler(vexe, vroot, 'v3_ownership', 'V3 ownership', ownership_compiler_build_args, args)
+}
+
+// launch_optional_compiler shares source validation, locking, and cache publication with tools.
+@[noreturn]
+fn launch_optional_compiler(vexe string, vroot string, name string, description string, build_args []string, args []string) {
+	compiler_source := os.join_path(vroot, 'cmd', 'v')
 	if tool_cache_is_disabled() {
-		run_uncached_ownership_compiler(vexe, compiler_source, args)
+		run_uncached_optional_compiler(vexe, compiler_source, name, description, build_args, args)
 	}
-	entry := tool_cache_entry(vexe, vroot, 'v3_ownership', compiler_source, ownership_compiler_build_args) or {
-		eprintln('cannot find a writable cache for the V3 ownership compiler')
+	entry := tool_cache_entry(vexe, vroot, name, compiler_source, build_args) or {
+		eprintln('cannot find a writable cache for the ${description} compiler')
 		eprintln(err.msg())
 		exit(1)
 	}
 	reason := tool_cache_stale_reason(entry)
 	if reason != '' {
 		if tool_cache_is_verbose() {
-			eprintln('> recompiling `v3_ownership`, because ${reason}')
+			eprintln('> recompiling `${name}`, because ${reason}')
 		}
 		build_tool_binary(vexe, entry) or {
-			eprintln('cannot build the V3 ownership compiler:\n${err.msg().trim_space()}')
+			eprintln('cannot build the ${description} compiler:\n${err.msg().trim_space()}')
 			exit(1)
 		}
 	}
 	exec_cached_tool(entry.binary, args)
 }
 
-// run_uncached_ownership_compiler honours `VTOOLS_NO_CACHE` for the ownership compiler, the way
+// run_uncached_optional_compiler honours `VTOOLS_NO_CACHE` for optional compilers, the way
 // `launch_external_tool` does for the other tools: nothing is read from or written to the tool
 // cache. The compiler is built into a new private folder in `VTMP`, where every compilation
 // already keeps its generated C, run once with `args`, and removed again.
 @[noreturn]
-fn run_uncached_ownership_compiler(vexe string, compiler_source string, args []string) {
+fn run_uncached_optional_compiler(vexe string, compiler_source string, name string, description string, compiler_build_args []string, args []string) {
 	stage_dir := create_tool_cache_stage_dir(os.vtmp_dir()) or {
-		eprintln('cannot build the V3 ownership compiler: ${err.msg()}')
+		eprintln('cannot build the ${description} compiler: ${err.msg()}')
 		exit(1)
 	}
-	binary := os.join_path(stage_dir, 'v3_ownership${tool_exe_suffix()}')
+	binary := os.join_path(stage_dir, '${name}${tool_exe_suffix()}')
 	if tool_cache_is_verbose() {
-		eprintln('> ${tool_cache_disable_env} is set, building `v3_ownership` in `${stage_dir}`')
+		eprintln('> ${tool_cache_disable_env} is set, building `${name}` in `${stage_dir}`')
 	}
-	mut build_args := ownership_compiler_build_args.clone()
+	mut build_args := compiler_build_args.clone()
 	build_args << ['-o', binary, compiler_source]
 	mut environment := os.environ()
 	// As in `build_tool_binary`: the build has to fail loudly rather than retry with the
@@ -420,7 +465,7 @@ fn run_uncached_ownership_compiler(vexe string, compiler_source string, args []s
 	build.close()
 	if build_code != 0 || !os.is_file(binary) {
 		os.rmdir_all(stage_dir) or {}
-		eprintln('cannot build the V3 ownership compiler')
+		eprintln('cannot build the ${description} compiler')
 		exit(1)
 	}
 	mut compiler := os.new_process(binary)

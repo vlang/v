@@ -398,7 +398,11 @@ fn (qb_ &QueryBuilder[T]) v_sql_update_many_and_zero(values []T, key_field strin
 }
 
 fn (qb &QueryBuilder[T]) v_sql_field_name(field string) string {
-	for meta_field in qb.meta {
+	return meta_sql_field_name(qb.meta, field)
+}
+
+fn meta_sql_field_name(meta []TableField, field string) string {
+	for meta_field in meta {
 		if meta_field.name == field || sql_field_name(meta_field) == field {
 			return sql_field_name(meta_field)
 		}
@@ -591,14 +595,21 @@ fn (mut ss MyTextScanner) next_tok() string {
 
 // parse_conditions update `qb` by parsing the `conds` string
 fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
-	// conditions: '(a > ? AND b <= ?) OR (c <> ? AND (x = ? OR y = ?))'
 	mut qb := unsafe { qb_ }
+	parse_query_conditions(conds, params, qb.meta, qb.valid_sql_field_names, qb.config.table,
+		@FN, mut qb.where)!
+}
+
+// The condition grammar depends on runtime metadata, not the model type. Keep one
+// parser body shared by all QueryBuilder specializations (issue #31282).
+fn parse_query_conditions(conds string, params []Primitive, meta []TableField, valid_sql_field_names []string, table Table, caller string, mut where QueryData) ! {
+	// conditions: '(a > ? AND b <= ?) OR (c <> ? AND (x = ? OR y = ?))'
 	if conds.len == 0 {
-		return error('${@FN}(): empty condition')
+		return error('${caller}(): empty condition')
 	}
 	required_params := conds.count('?')
 	if required_params != params.len {
-		parse_error('${@FN}(): condition requires `${required_params}` params but got `${params.len}`',
+		parse_error('${caller}(): condition requires `${required_params}` params but got `${params.len}`',
 			0, conds)!
 	}
 
@@ -620,20 +631,20 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
 		match state {
 			.field {
 				// only support valid field names
-				mapped_field := qb.v_sql_field_name(tok)
-				if mapped_field in qb.valid_sql_field_names {
+				mapped_field := meta_sql_field_name(meta, tok)
+				if mapped_field in valid_sql_field_names {
 					current_field = mapped_field
 					state = .op
 				} else if tok == '(' {
-					paren_stack << qb.where.fields.len
+					paren_stack << where.fields.len
 				} else if tok == ')' {
 					if paren_stack.len == 0 {
-						parse_error('${@FN}: unexpected `)`', s.last_tok_start, conds)!
+						parse_error('${caller}: unexpected `)`', s.last_tok_start, conds)!
 					}
 					start_pos := paren_stack.pop()
-					qb.where.parentheses << [start_pos, qb.where.fields.len - 1]
+					where.parentheses << [start_pos, where.fields.len - 1]
 				} else {
-					parse_error("${@FN}: table `${qb.config.table}` has no field's name: `${tok}`",
+					parse_error("${caller}: table `${table}` has no field's name: `${tok}`",
 						s.last_tok_start, conds)!
 				}
 			}
@@ -679,20 +690,20 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
 						OperationKind.not_in
 					}
 					else {
-						parse_error('${@FN}(): unsupported operator: `${tok}`', s.last_tok_start,
+						parse_error('${caller}(): unsupported operator: `${tok}`', s.last_tok_start,
 							conds)!
 						OperationKind.eq
 					}
 				}
 
 				if current_op in [.is_null, .is_not_null]! {
-					qb.where.fields << current_field
-					qb.where.kinds << current_op
+					where.fields << current_field
+					where.kinds << current_op
 					if is_first_field {
 						is_first_field = false
 					} else {
 						// skip first field
-						qb.where.is_and << current_is_and
+						where.is_and << current_is_and
 					}
 				}
 				state = .qm
@@ -700,22 +711,22 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
 			.qm {
 				if tok == '?' {
 					// finish an expr, update `qb`
-					qb.where.fields << current_field
-					qb.where.data << params[i]
-					qb.where.kinds << current_op
+					where.fields << current_field
+					where.data << params[i]
+					where.kinds << current_op
 					if is_first_field {
 						is_first_field = false
 					} else {
 						// skip first field
-						qb.where.is_and << current_is_and
+						where.is_and << current_is_and
 					}
 					i++
 				} else if tok == ')' {
 					if paren_stack.len == 0 {
-						parse_error('${@FN}: unexpected `)`', s.last_tok_start, conds)!
+						parse_error('${caller}: unexpected `)`', s.last_tok_start, conds)!
 					}
 					start_pos := paren_stack.pop()
-					qb.where.parentheses << [start_pos, qb.where.fields.len - 1]
+					where.parentheses << [start_pos, where.fields.len - 1]
 				} else if tok == 'AND' {
 					current_is_and = true
 					state = .field
@@ -729,7 +740,7 @@ fn (qb_ &QueryBuilder[T]) parse_conditions(conds string, params []Primitive) ! {
 					current_is_and = false
 					state = .field
 				} else {
-					parse_error('${@FN}(): unexpected `${tok}`, maybe `AND`,`OR`',
+					parse_error('${caller}(): unexpected `${tok}`, maybe `AND`,`OR`',
 						s.last_tok_start, conds)!
 				}
 			}
@@ -1165,6 +1176,24 @@ fn row_primitive_to_bool(value Primitive) bool {
 	}
 }
 
+// Keep the remaining dynamic sum type casts outside model field loops. Inlining
+// `value as Type` into map_row would repeat the complete cast error switch for
+// every string and time field in every model.
+@[noinline]
+fn row_primitive_to_string(value Primitive) string {
+	return value as string
+}
+
+@[noinline]
+fn row_primitive_to_time(value Primitive) time.Time {
+	return value as time.Time
+}
+
+@[noinline]
+fn row_primitive_to_time_string(value Primitive) !time.Time {
+	return time.parse(value as string)!
+}
+
 struct MappedRowField {
 	typ   int
 	index int
@@ -1225,12 +1254,12 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 						} $else $if sub.unaliased_typ is bool || sub.unaliased_typ is ?bool {
 							embedded.$(sub.name) = row_primitive_to_bool(value)
 						} $else $if sub.unaliased_typ is string || sub.unaliased_typ is ?string {
-							embedded.$(sub.name) = value as string
+							embedded.$(sub.name) = row_primitive_to_string(value)
 						} $else $if sub.unaliased_typ is time.Time || sub.unaliased_typ is ?time.Time {
 							if mapped.typ == time_ {
-								embedded.$(sub.name) = value as time.Time
+								embedded.$(sub.name) = row_primitive_to_time(value)
 							} else if mapped.typ == type_string {
-								embedded.$(sub.name) = time.parse(value as string)!
+								embedded.$(sub.name) = row_primitive_to_time_string(value)!
 							}
 						}
 					}
@@ -1273,12 +1302,12 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 					} $else $if field.unaliased_typ is bool || field.unaliased_typ is ?bool {
 						instance.$(field.name) = row_primitive_to_bool(value)
 					} $else $if field.unaliased_typ is string || field.unaliased_typ is ?string {
-						instance.$(field.name) = value as string
+						instance.$(field.name) = row_primitive_to_string(value)
 					} $else $if field.unaliased_typ is time.Time || field.unaliased_typ is ?time.Time {
 						if mapped.typ == time_ {
-							instance.$(field.name) = value as time.Time
+							instance.$(field.name) = row_primitive_to_time(value)
 						} else if mapped.typ == type_string {
-							instance.$(field.name) = time.parse(value as string)!
+							instance.$(field.name) = row_primitive_to_time_string(value)!
 						}
 					}
 				}
@@ -1288,48 +1317,50 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 	parent_key := qb.selected_primary_value(row) or { Primitive(Null{}) }
 	mut conn := qb.conn
 	$for field in T.fields {
-		field_type_name := typeof(field).name
-		if relation_should_load(qb.relation_load_mode, qb.include_paths, field.name) {
-			child_paths := include_child_paths(qb.include_paths, field.name)
-			$if field.unaliased_typ is $array {
-				fkey := orm_field_fkey(field.attrs)
-				if fkey.len > 0 && parent_key != Primitive(Null{}) {
-					instance.$(field.name) = query_relation_array_like(mut conn, parent_key, fkey,
-						qb.relation_load_mode, child_paths, instance.$(field.name))!
-				}
-			} $else $if field.typ is $option {
-				if orm_type_name_is_optional_array(field_type_name) {
+		// Scalar fields must not specialize unreachable relationship queries and metadata lookups.
+		$if field.unaliased_typ is time.Time || field.unaliased_typ is ?time.Time {
+		} $else $if field.is_array || field.is_struct {
+			field_type_name := typeof(field).name
+			if relation_should_load(qb.relation_load_mode, qb.include_paths, field.name) {
+				child_paths := include_child_paths(qb.include_paths, field.name)
+				$if field.unaliased_typ is $array {
 					fkey := orm_field_fkey(field.attrs)
 					if fkey.len > 0 && parent_key != Primitive(Null{}) {
-						instance.$(field.name) = query_relation_optional_array_like(mut conn,
-							parent_key, fkey, qb.relation_load_mode, child_paths,
-							instance.$(field.name))!
+						instance.$(field.name) = query_relation_array_like(mut conn, parent_key, fkey,
+							qb.relation_load_mode, child_paths, instance.$(field.name))!
 					}
-				} else if field.is_struct && !orm_type_name_is_time(field_type_name) {
-					mm := qb.meta.filter(it.name == field.name)
-					if mm.len != 0 {
-						index := qb.config.fields.index(sql_field_name(mm[0]))
-						if index >= 0 && index < row.len
-							&& orm_relation_lookup_key_has_value(row[index]) {
-							related := query_relation_one_optional_like(mut conn, row[index],
-								qb.relation_load_mode, child_paths, instance.$(field.name))!
-							if related.len > 0 {
-								instance.$(field.name) = related[0]
+				} $else $if field.typ is $option {
+					if orm_type_name_is_optional_array(field_type_name) {
+						fkey := orm_field_fkey(field.attrs)
+						if fkey.len > 0 && parent_key != Primitive(Null{}) {
+							instance.$(field.name) = query_relation_optional_array_like(mut conn,
+								parent_key, fkey, qb.relation_load_mode, child_paths,
+								instance.$(field.name))!
+						}
+					} else if field.is_struct && !orm_type_name_is_time(field_type_name) {
+						mm := qb.meta.filter(it.name == field.name)
+						if mm.len != 0 {
+							index := qb.config.fields.index(sql_field_name(mm[0]))
+							if index >= 0 && index < row.len
+								&& orm_relation_lookup_key_has_value(row[index]) {
+								related := query_relation_one_optional_like(mut conn, row[index],
+									qb.relation_load_mode, child_paths, instance.$(field.name))!
+								if related.len > 0 {
+									instance.$(field.name) = related[0]
+								}
 							}
 						}
 					}
-				}
-			} $else $if field.unaliased_typ is time.Time {
-			} $else $if field.unaliased_typ is ?time.Time {
-			} $else $if field.unaliased_typ is $struct {
-				if !orm_type_name_is_time(field_type_name) {
-					mm := qb.meta.filter(it.name == field.name)
-					if mm.len != 0 {
-						index := qb.config.fields.index(sql_field_name(mm[0]))
-						if index >= 0 && index < row.len
-							&& orm_relation_lookup_key_has_value(row[index]) {
-							instance.$(field.name) = query_relation_one_like(mut conn, row[index],
-								qb.relation_load_mode, child_paths, instance.$(field.name))!
+				} $else $if field.unaliased_typ is $struct {
+					if !orm_type_name_is_time(field_type_name) {
+						mm := qb.meta.filter(it.name == field.name)
+						if mm.len != 0 {
+							index := qb.config.fields.index(sql_field_name(mm[0]))
+							if index >= 0 && index < row.len
+								&& orm_relation_lookup_key_has_value(row[index]) {
+								instance.$(field.name) = query_relation_one_like(mut conn, row[index],
+									qb.relation_load_mode, child_paths, instance.$(field.name))!
+							}
 						}
 					}
 				}
@@ -1342,31 +1373,37 @@ fn (qb &QueryBuilder[T]) map_row(row []Primitive) !T {
 // prepare QueryBuilder, ready for gen SQL
 fn (qb_ &QueryBuilder[T]) prepare() ! {
 	mut qb := unsafe { qb_ }
-	if qb.builder_error.len > 0 {
-		return error(qb.builder_error)
+	prepare_query(qb.meta, qb.where, qb.builder_error, @FN, mut qb.config)!
+}
+
+// Query preparation uses the resolved field metadata, so it can be shared by all
+// model types just like condition parsing.
+fn prepare_query(meta []TableField, where QueryData, builder_error string, caller string, mut config SelectConfig) ! {
+	if builder_error.len > 0 {
+		return error(builder_error)
 	}
 
 	// check for mismatch `(` and `)`
-	for p in qb.where.parentheses {
+	for p in where.parentheses {
 		if p[1] == -1 {
-			return error('${@FN}(): missing `)`')
+			return error('${caller}(): missing `)`')
 		}
 	}
 
 	// auto fill field's names if not set by `select`
-	if qb.config.fields.len == 0 {
-		for field in qb.meta {
+	if config.fields.len == 0 {
+		for field in meta {
 			if !field.is_arr {
-				qb.config.fields << sql_field_name(field)
+				config.fields << sql_field_name(field)
 			}
 		}
 	}
 
-	if qb.config.select_exprs.len != qb.config.fields.len {
-		mut select_exprs := []string{cap: qb.config.fields.len}
-		for f in qb.config.fields {
+	if config.select_exprs.len != config.fields.len {
+		mut select_exprs := []string{cap: config.fields.len}
+		for f in config.fields {
 			mut select_expr := f
-			for ff in qb.meta {
+			for ff in meta {
 				if sql_field_name(ff) == f {
 					select_expr = sql_field_select_expr(ff)
 					break
@@ -1374,20 +1411,20 @@ fn (qb_ &QueryBuilder[T]) prepare() ! {
 			}
 			select_exprs << select_expr
 		}
-		qb.config.select_exprs = select_exprs
+		config.select_exprs = select_exprs
 	}
 
-	if qb.config.types.len == 0 {
+	if config.types.len == 0 {
 		// set field's types
-		mut types := []int{cap: qb.config.fields.len}
-		for f in qb.config.fields {
-			for ff in qb.meta {
+		mut types := []int{cap: config.fields.len}
+		for f in config.fields {
+			for ff in meta {
 				if sql_field_name(ff) == f {
 					types << ff.typ
 				}
 			}
 		}
-		qb.config.types = types
+		config.types = types
 	}
 }
 
@@ -1720,7 +1757,10 @@ fn (qb_ &QueryBuilder[T]) v_sql_upsert_and_last_id(value T, initialized_fields [
 	if count == 0 {
 		qb.conn.insert(qb.config.table, prepared.insert_data)!
 	} else if count == 1 {
-		qb.conn.update(qb.config.table, prepared.insert_data, prepared.where)!
+		update_data := filter_insert_only_update_fields(prepared.insert_data, qb.meta)
+		if update_data.fields.len > 0 {
+			qb.conn.update(qb.config.table, update_data, prepared.where)!
+		}
 	} else {
 		upsert_ambiguous_error(qb.config.table)!
 	}
@@ -1788,7 +1828,7 @@ pub fn (qb_ &QueryBuilder[T]) insert_many[T](values []T) !&QueryBuilder[T] {
 	return qb
 }
 
-// save updates all mapped fields in `value` using the struct primary key or `id` field.
+// save updates mapped fields except sql_insert_only fields, using the primary key or `id`.
 pub fn save[T](conn Connection, value T) ! {
 	mut qb := new_query_internal[T](conn)
 	data, where := build_save_query_data[T](qb.meta, qb.config.table.name, value)!
@@ -1813,6 +1853,9 @@ fn build_save_query_data[T](meta []TableField, table_name string, value T) !(Que
 			where_data.data << data.data[i]
 			continue
 		}
+		if orm_insert_only_field(meta, field_name) != none {
+			continue
+		}
 		update_data.fields << field_name
 		update_data.data << data.data[i]
 	}
@@ -1823,6 +1866,42 @@ fn build_save_query_data[T](meta []TableField, table_name string, value T) !(Que
 		return error('${@FN}(): no updatable fields were found for table `${table_name}`')
 	}
 	return update_data, where_data
+}
+
+fn orm_insert_only_field(meta []TableField, name string) ?TableField {
+	// Callers have already mapped V field names to their SQL column names.
+	for field in meta {
+		for attr in field.attrs {
+			if attr.name == 'sql_insert_only'
+				&& sql_field_name(field).to_lower() == name.to_lower() {
+				return field
+			}
+		}
+	}
+	return none
+}
+
+fn validate_update_fields[T](meta []TableField, fields []string) ! {
+	for name in fields {
+		if field := orm_insert_only_field(meta, name) {
+			return error('ORM: cannot update insert-only field `${T.name}.${field.name}` (@[sql_insert_only])')
+		}
+	}
+}
+
+fn filter_insert_only_update_fields(data QueryData, meta []TableField) QueryData {
+	mut out := QueryData{}
+	for i, name in data.fields {
+		if orm_insert_only_field(meta, name) != none {
+			continue
+		}
+		out.fields << name
+		out.data << data.data[i]
+		if i < data.types.len {
+			out.types << data.types[i]
+		}
+	}
+	return out
 }
 
 fn find_save_primary_field_name(meta []TableField) ?string {
@@ -2641,7 +2720,7 @@ fn fill_data_with_struct[T](value T, meta []TableField) QueryData {
 	return qb
 }
 
-// update update record(s) in the database
+// update updates records, rejecting assignments to sql_insert_only fields.
 pub fn (qb_ &QueryBuilder[T]) update() !&QueryBuilder[T] {
 	mut qb := unsafe { qb_ }
 	defer {
@@ -2651,18 +2730,23 @@ pub fn (qb_ &QueryBuilder[T]) update() !&QueryBuilder[T] {
 	if qb.data.fields.len == 0 {
 		return error('${@FN}(): `update` need at least one `set` clause')
 	}
+	validate_update_fields[T](qb.meta, qb.data.fields)!
 	qb.conn.update(qb.config.table, qb.data, qb.where)!
 	return qb
 }
 
 // update_many updates multiple records by a key field, using batch CASE WHEN for efficiency.
 // key_field is the column used to match rows (e.g. 'id').
-// field_names selects which columns to update; if empty, all struct fields except key_field are updated.
+// field_names selects columns to update; sql_insert_only fields are rejected.
+// If empty, all mapped fields except key_field and sql_insert_only fields are updated.
 pub fn update_many[T](mut conn Connection, values []T, key_field string, field_names ...string) ! {
 	if values.len == 0 {
 		return error('${@FN}(): need at least one record')
 	}
 	mut qb := new_query_internal[T](conn)
+	key_name := qb.v_sql_field_name(key_field)
+	selected_fields := field_names.map(qb.v_sql_field_name(it))
+	validate_update_fields[T](qb.meta, selected_fields)!
 
 	// Build the field list from the first value
 	first := fill_data_with_struct[T](values[0], qb.meta)
@@ -2671,9 +2755,10 @@ pub fn update_many[T](mut conn Connection, values []T, key_field string, field_n
 	mut value_indexes := []int{}
 
 	for i, field in first.fields {
-		if field == key_field {
+		if field == key_name {
 			key_index = i
-		} else if field_names.len == 0 || field in field_names {
+		} else if (selected_fields.len == 0 || field in selected_fields)
+			&& orm_insert_only_field(qb.meta, field) == none {
 			value_fields << field
 			value_indexes << i
 		}
@@ -2690,7 +2775,7 @@ pub fn update_many[T](mut conn Connection, values []T, key_field string, field_n
 	mut update_data := QueryData{
 		fields:     value_fields
 		batch_rows: values.len
-		batch_key:  key_field
+		batch_key:  key_name
 	}
 
 	// Build data: per value_field, per row: [key_value, value_field_value]
@@ -2716,7 +2801,7 @@ pub fn update_many[T](mut conn Connection, values []T, key_field string, field_n
 	}
 
 	mut where_data := QueryData{
-		fields: [key_field]
+		fields: [key_name]
 		data:   [Primitive(key_values)]
 		kinds:  [.in]
 	}

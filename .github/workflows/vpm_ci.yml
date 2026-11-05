@@ -7,10 +7,6 @@ on:
     paths:
       - '**/vpm_ci.yml'
       - '**/cmd/tools/vpm/**'
-  pull_request:
-    paths:
-      - '**/vpm_ci.yml'
-      - '**/cmd/tools/vpm/**'
 
 concurrency:
   group: vpm-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}

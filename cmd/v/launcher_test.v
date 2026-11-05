@@ -30,6 +30,7 @@ fn test_native_backend_is_refused_except_for_vfmt() {
 	// Unrelated backends are untouched.
 	assert !native_backend_rejected('run', ['-b', 'c', 'main.v'])
 	assert !native_backend_rejected('run', ['-b', 'fastc', 'main.v'])
+	assert !native_backend_rejected('run', ['-b', 'x64', 'main.v'])
 }
 
 fn test_v1_fallback_drops_private_restart_options() {
@@ -769,6 +770,11 @@ fn test_prod_refuses_tinycc_under_another_name_once_it_resolves() {
 	// The name has no `tcc`, so only the resolved compiler gives it away.
 	alias_path := os.join_path(dir, 'cc_alias.exe')
 	os.cp(bundled, alias_path) or { panic(err) }
+	// Shared TinyCC builds need their adjacent DLL even to print the version.
+	libtcc := os.join_path(os.dir(bundled), 'libtcc.dll')
+	if os.is_file(libtcc) {
+		os.cp(libtcc, os.join_path(dir, 'libtcc.dll')) or { panic(err) }
+	}
 	source := os.join_path(dir, 'main.v')
 	os.write_file(source, 'fn main() {\n\tprintln(1)\n}\n') or { panic(err) }
 	// `-old-compiler` must refuse the alias too, before the compatibility compiler is started.
@@ -1094,4 +1100,33 @@ fn test_cold_formatter_cache_accepts_tinycc_production_environment() {
 	result := run_launcher_test_process(@VEXE, ['fmt', '--help'], os.getwd(), environment)
 	assert result.exit_code == 0, result.output
 	assert !result.output.contains('tcc is not allowed with -prod'), result.output
+}
+
+fn test_obsolete_skip_unused_cleanup_preserves_option_values_and_execution_boundaries() {
+	for command in ['run', 'crun'] {
+		for input in ['run', 'crun', 'build', 'test'] {
+			args := [command, input, '-skip-unused']
+			assert remove_obsolete_skip_unused_flag(args) == args
+			assert remove_obsolete_skip_unused_flag(['-skip-unused', ...args]) == args
+		}
+	}
+	assert remove_obsolete_skip_unused_flag(['-raw-vsh-tmp-prefix', 'prefix', 'run', '-skip-unused']) == [
+		'-raw-vsh-tmp-prefix',
+		'prefix',
+		'run',
+		'-skip-unused',
+	]
+	for args in [['-o', '-skip-unused', 'main.v'], ['-cflags', '-skip-unused', 'main.v'],
+		['run', 'main.v', '-skip-unused'], ['crun', 'main.v', '-skip-unused'],
+		['main.vsh', '-skip-unused'], ['-e', 'println("-skip-unused")', '-skip-unused'],
+		['complete', 'bash', 'v', '-skip-unused']] {
+		assert remove_obsolete_skip_unused_flag(args) == args
+	}
+	assert remove_obsolete_skip_unused_flag(['-skip-unused', '-o', '-skip-unused', 'main.v']) == [
+		'-o',
+		'-skip-unused',
+		'main.v',
+	]
+	assert remove_obsolete_skip_unused_flag(['-skip-unused', '-skip-unused', 'run', 'main.v',
+		'-skip-unused']) == ['run', 'main.v', '-skip-unused']
 }

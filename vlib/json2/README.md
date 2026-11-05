@@ -37,6 +37,9 @@
 
 `json2` is an experimental JSON parser written from scratch on V.
 
+Aliases of `Any` decode through the selected concrete variant, including at the
+root of a JSON value or as array and map elements.
+
 ## Typed map keys
 
 Integer map keys are parsed as the declared integer type with range checks. Invalid
@@ -209,6 +212,25 @@ escaping. Integer keys therefore place `"10"` before `"2"`. This applies to nest
 maps and maps held in `Any`, and to compact, pretty, and appended output.
 
 #### decode[T]
+
+`decode_standard[T](text, options)` decodes standard JSON without generating a JSON5
+decoder for `T`. Use it for HTTP APIs, protocol messages and other standard JSON input
+to reduce generated code. It keeps the same lenient defaults and `strict: true` type
+conversion as `decode`. It always rejects JSON5 syntax, even if `options.json5` is true.
+Existing `decode[T](text)` and `decode[T](text, json5: true)` calls keep their behavior.
+
+```v
+import json2
+
+struct User {
+	name string
+}
+
+fn main() {
+	user := json2.decode_standard[User]('{"name":"V"}')!
+	println(user.name)
+}
+```
 
 `decode_reuse[T](text, mut buffer, options)` accepts a `DecodeBuffer` and retains its
 token storage for the next call. It uses the same validation and decoding rules as

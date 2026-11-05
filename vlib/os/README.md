@@ -223,6 +223,11 @@ These arguments are literal on Windows too: `%PATH%` stays `%PATH%`, and quotes
 and trailing backslashes are preserved. Expand environment variables explicitly
 with `os.getenv()` when that is intended.
 
+The deprecated `os.execute` and `os.raw_execute` APIs capture both standard streams
+without adding shell redirections to the command. Explicit redirections control each stream:
+`>file` redirects stdout while stderr remains captured; `>file 2>&1` sends both to the file.
+Windows shell output retains significant trailing spaces, including those produced by `echo`.
+
 Call `process.wait()` before `process.close()`, including after `process.signal_kill()`.
 On POSIX systems, waiting reaps the killed child and records its signal exit status.
 Repeated waits preserve the exit status already collected by `wait()` or `is_alive()`.
@@ -376,3 +381,12 @@ is rejected.
 `LOCALAPPDATA` and `APPDATA` on Windows, falling back to `AppData/Local` and `AppData/Roaming`.
 On POSIX they use nonempty, absolute `XDG_CACHE_HOME` and `XDG_CONFIG_HOME`; empty values
 fall back to `~/.cache` and `~/.config`. Variables from the other platform are ignored.
+
+### Experimental vlibc file operations
+
+With `-d vlibc`, Unix C builds use the experimental raw syscall runtime for `read_file`,
+`read_bytes`, `write_file`, `write_bytes`, and `exists`. This applies to hosted builds and
+`-freestanding` builds. Hosted builds retain the normal C runtime startup.
+New files use mode `0666` filtered by the process umask. Read and write errors retain their
+POSIX error codes; interrupted operations retry. `exists` follows symbolic links.
+See [the vlibc runtime notes](../builtin/README.vlibc.md) for supported platforms and limitations.

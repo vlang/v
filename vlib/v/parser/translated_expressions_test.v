@@ -1,6 +1,7 @@
 module parser
 
 import os
+import v.flat
 import v.pref
 
 fn test_translated_expressions_and_file_scope() {
@@ -961,6 +962,6 @@ fn test_shared_sizeof_scan_preserves_deferred_sibling_constant_context() {
 		choice_key := p.translated_sizeof_declaration_key('Choice')
 		assert p.translated_sizeof_const_names[enabled_key]
 		assert p.translated_sizeof_const_names[choice_key]
-		assert p.translated_sizeof_type_names[choice_key]
+		assert p.translated_sizeof_type_names[p.translated_sizeof_type_key(flat.source_type_id('Choice'))]
 	}
 }

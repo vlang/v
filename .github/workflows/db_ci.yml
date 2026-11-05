@@ -11,13 +11,6 @@ on:
       - '!**/db_ci.yml'
       - 'examples/**'
       - 'doc/**'
-  pull_request:
-    paths-ignore:
-      - '**.md'
-      - '**.yml'
-      - '!**/db_ci.yml'
-      - 'examples/**'
-      - 'doc/**'
 
 concurrency:
   group: db-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -28,6 +21,7 @@ permissions:
 
 jobs:
   mysql-driver-tests:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     services:
@@ -58,6 +52,7 @@ jobs:
         run: ./v -d network -d started_mysqld -silent test vlib/db/mysql/
 
   postgres-driver-tests:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     services:
@@ -87,6 +82,7 @@ jobs:
         run: ./v -d network -d started_postgres -silent test vlib/db/pg/
 
   mssql-driver-tests:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     services:

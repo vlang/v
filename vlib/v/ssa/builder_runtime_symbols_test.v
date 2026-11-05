@@ -5,6 +5,55 @@ import v.parser
 import v.pref
 import v.types
 
+fn test_source_c_declarations_refine_predeclared_runtime_return_types() {
+	mut p := parser.Parser.new(pref.new_preferences())
+	a := p.parse_text('extern_return_types.v', 'module main
+fn C.open(&char, int, ...int) int
+fn C.v_os_exec_capture_start(voidptr, voidptr, voidptr) int
+fn C.custom_unsigned() u32
+fn main() {
+	if C.open(c"missing", 0) != -1 { C.custom_unsigned() }
+	if C.v_os_exec_capture_start(unsafe { nil }, unsafe { nil }, unsafe { nil }) != -1 {
+		C.custom_unsigned()
+	}
+}
+')
+	assert p.diagnostics.len == 0, p.diagnostics.str()
+	mut tc := types.TypeChecker.new(a)
+	tc.collect(a)
+	tc.annotate_types()
+	assert tc.errors.len == 0, tc.errors.str()
+	m := build_with_options(a, map[string]bool{}, &tc, BuildOptions{
+		use_native_c_sources: true
+	})
+	mut found := map[string]bool{}
+	main_fns := m.funcs.filter(it.name == 'main')
+	assert main_fns.len == 1
+	mut source_calls := []Instruction{}
+	for block_id in main_fns[0].blocks {
+		for value_id in m.blocks[block_id].instrs {
+			source_calls << m.instrs[m.values[value_id].index]
+		}
+	}
+	for instr in source_calls {
+		if instr.op != .call || instr.operands.len == 0 {
+			continue
+		}
+		callee := m.values[instr.operands[0]]
+		if callee.name !in ['open', 'C.open', 'v_os_exec_capture_start', 'C.v_os_exec_capture_start',
+			'custom_unsigned', 'C.custom_unsigned'] {
+			continue
+		}
+		f := m.funcs[callee.index]
+		assert f.is_c_extern
+		assert m.type_store.types[f.typ].width == 32, f.name
+		assert m.type_store.types[instr.typ].width == 32, f.name
+		assert m.type_store.types[instr.typ].is_unsigned == f.name.ends_with('custom_unsigned')
+		found[f.name.trim_string_left('C.')] = true
+	}
+	assert found.len == 3, found.str()
+}
+
 fn test_retained_c_symbols_do_not_select_unreachable_v_library_functions() ! {
 	dir := os.join_path(os.vtmp_dir(), 'ssa_c_symbols_${os.getpid()}')
 	os.mkdir_all(dir)!
@@ -66,7 +115,13 @@ fn assert_runtime_symbol_source_body(m &Module, name string, expected string) {
 		last := m.blocks[f.blocks[0]].instrs.last()
 		instruction := m.instrs[m.values[last].index]
 		assert instruction.op == .ret, name
-		assert m.values[instruction.operands[0]].name == expected, name
+		returned := m.values[instruction.operands[0]]
+		assert m.type_store.types[returned.typ].width == 32, name
+		assert returned.kind == .instruction, name
+		conversion := m.instrs[returned.index]
+		assert conversion.op == .trunc && conversion.operands.len == 1, name
+		literal := m.values[conversion.operands[0]]
+		assert literal.kind == .constant && literal.name == expected, name
 		found++
 	}
 	assert found == 1, name
@@ -183,8 +238,15 @@ fn test_runtime_replacement_filters_respect_module_ownership() {
 		assert b.skip_source_fn_in_module(name, 'os'), name
 		assert !b.skip_source_fn_in_module(name, 'example.os'), name
 	}
-	assert b.skip_source_fn_in_module('fxx_to_str_l_parse', 'strconv')
-	assert !b.skip_source_fn_in_module('fxx_to_str_l_parse', 'other')
+	for name in ['f32_to_str_l', 'f64_to_str_l_with_dot'] {
+		assert b.skip_source_fn_in_module(name, 'strconv'), name
+		assert !b.skip_source_fn_in_module(name, 'other'), name
+	}
+	// Decimal-string parsing retains its V implementation; only float entry points are replaced.
+	for name in ['fxx_to_str_l_parse', 'fxx_to_str_l_parse_with_dot'] {
+		assert !b.skip_source_fn_in_module(name, 'strconv'), name
+		assert !b.skip_source_fn_in_module(name, 'other'), name
+	}
 	assert b.skip_source_fn_in_module('PRNG.u64', 'rand')
 	assert !b.skip_source_fn_in_module('PRNG.u64', 'other')
 	assert b.skip_source_fn_in_module('Decoder.decompress', 'embed_file')

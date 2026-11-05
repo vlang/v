@@ -87,14 +87,13 @@ fn (mut b Builder) preserve_sum_variant(expr_id flat.NodeId, variant_name_id u32
 	}
 	sum_type := b.sum_storage_type(addr) or { return }
 	sum_name_source_id := b.sum_name_for_type_id(sum_type) or { return }
-	sum_name := flat.source_type_name(sum_name_source_id)
 	if variant_name_id != 0 {
 		if variant_source_id := b.find_sum_variant(sum_name_source_id, variant_name_id) {
 			b.sum_guard_variants[addr] = variant_source_id
 		}
 		return
 	}
-	variants := b.sum_type_variants.type_ids(sum_name) or { return }
+	variants := b.sum_type_variants.type_ids(sum_name_source_id) or { return }
 	if tag > 0 && tag <= variants.len {
 		b.sum_guard_variants[addr] = variants[tag - 1]
 	}

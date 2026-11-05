@@ -1,3 +1,5 @@
+// vtest vflags: -w
+// Explicit `none` defaults deliberately exercise a redundant-default warning.
 import imported_defaults_dep
 import imported_defaults_mod
 

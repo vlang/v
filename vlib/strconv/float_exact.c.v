@@ -1,10 +1,9 @@
 module strconv
 
-import strings
-
-// exact_float_decimal returns the exact, unsigned decimal significand and exponent.
+// exact_float_decimal_digits writes the exact, unsigned decimal significand and returns its
+// length and exponent. Every finite f64 fits in 767 decimal digits and 86 base-1e9 limbs.
 // Multiplying by powers of five converts a negative binary exponent into a decimal one.
-fn exact_float_decimal(f f64) (string, int) {
+fn exact_float_decimal_digits(f f64, mut decimal_buf [768]u8) (int, int) {
 	mut bits := Uf64{}
 	bits.f = f
 	u := unsafe { bits.u }
@@ -16,15 +15,18 @@ fn exact_float_decimal(f f64) (string, int) {
 		binary_exponent = exponent - 1075
 	}
 	if mantissa == 0 {
-		return '0', 0
+		decimal_buf[0] = `0`
+		return 1, 0
 	}
 	for binary_exponent < 0 && mantissa & 1 == 0 {
 		mantissa >>= 1
 		binary_exponent++
 	}
-	mut limbs := []u64{}
+	mut limbs := [86]u64{}
+	mut limb_count := 0
 	for mantissa > 0 {
-		limbs << mantissa % 1000000000
+		limbs[limb_count] = mantissa % 1000000000
+		limb_count++
 		mantissa /= 1000000000
 	}
 	decimal_exponent := if binary_exponent < 0 { binary_exponent } else { 0 }
@@ -40,24 +42,36 @@ fn exact_float_decimal(f f64) (string, int) {
 			multiplier *= if binary_exponent < 0 { u64(5) } else { u64(2) }
 		}
 		mut carry := u64(0)
-		for i in 0 .. limbs.len {
+		for i in 0 .. limb_count {
 			product := limbs[i] * multiplier + carry
 			limbs[i] = product % 1000000000
 			carry = product / 1000000000
 		}
 		if carry > 0 {
-			limbs << carry
+			limbs[limb_count] = carry
+			limb_count++
 		}
 		remaining -= chunk
 	}
-	mut decimal_digits := strings.new_builder(limbs.len * 9)
-	decimal_digits.write_string(limbs.last().str())
-	for i := limbs.len - 2; i >= 0; i-- {
-		part := limbs[i].str()
-		decimal_digits.write_string('0'.repeat(9 - part.len))
-		decimal_digits.write_string(part)
+	mut digit_count := 0
+	for i := limb_count - 1; i >= 0; i-- {
+		width := if i == limb_count - 1 { dec_digits(limbs[i]) } else { 9 }
+		mut part := limbs[i]
+		for j := digit_count + width - 1; j >= digit_count; j-- {
+			decimal_buf[j] = u8(part % 10) + `0`
+			part /= 10
+		}
+		digit_count += width
 	}
-	return decimal_digits.str(), decimal_exponent
+	return digit_count, decimal_exponent
+}
+
+// exact_float_decimal returns the exact, unsigned decimal significand and exponent.
+fn exact_float_decimal(f f64) (string, int) {
+	mut decimal_buf := [768]u8{}
+	length, exponent := exact_float_decimal_digits(f, mut decimal_buf)
+	// The returned string must outlive the stack buffer.
+	return unsafe { tos(&decimal_buf[0], length).clone() }, exponent
 }
 
 // rounded_float_integer rounds decimal decimal_digits to an integer, half up.

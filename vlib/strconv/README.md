@@ -133,6 +133,14 @@ Large integer values retain every digit, and precision can expose digits beyond 
 decimal representation: `format_fl(0.1, len1: 20)` returns `0.10000000000000000555`.
 `BF_param.positive` supplies the sign when calling `format_fl` directly.
 
+`format_fl_sb(f, p, mut builder)` appends the same fixed notation to a `strings.Builder`.
+On the C backend, finite values use stack storage for conversion and rounding; only growth of
+the destination builder can allocate. The `str_intp` runtime uses this path for fixed-precision
+`f32` and `f64` values, including field width, sign, zero padding, and uppercase formats.
+For unpadded interpolation operands with up to 126 fractional digits, the C compiler uses
+bounded stack buffers until concatenation copies them into the result, preserving its existing
+rounding behaviour.
+
 `write_dec` and `write_dec_u` write a decimal integer into a caller-provided `[]u8`
 buffer. They return the number of bytes written, or `-1` when the buffer is too small.
 

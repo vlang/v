@@ -1,0 +1,24 @@
+import db.sqlite
+
+struct AuditFields {
+	creator string @[sql_insert_only; sql: 'created_by']
+}
+
+struct InsertOnlyUser {
+	AuditFields
+	id int @[primary; sql_insert_only]
+	name string
+}
+
+fn main() {
+	db := sqlite.connect(':memory:')!
+	sql db {
+		update InsertOnlyUser set id = 2 where id == 1
+	}!
+	sql db {
+		update InsertOnlyUser set created_by = 'other' where id == 1
+	}!
+	sql db {
+		update InsertOnlyUser set creator = 'other' where id == 1
+	}!
+}

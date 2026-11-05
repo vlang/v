@@ -77,29 +77,46 @@ fn C._chsize_s(i32, u64) i32
 // read_bytes returns all bytes read from file in `path`.
 @[manualfree]
 pub fn read_bytes(path string) ![]u8 {
-	mut fp := vfopen(path, 'rb')!
-	defer {
-		C.fclose(fp)
+	$if vlibc ? {
+		mut data, e := vlibc_read_file(path)
+		if e != .enoerror {
+			unsafe { data.free() }
+			return error_with_code('read_bytes failed: ${e}', int(e))
+		}
+		return data
+	} $else {
+		mut fp := vfopen(path, 'rb')!
+		defer {
+			C.fclose(fp)
+		}
+		fsize := find_cfile_size(fp)!
+		if fsize == 0 {
+			mut sb := slurp_file_in_builder(fp)!
+			return unsafe { sb.reuse_as_plain_u8_array() }
+		}
+		mut res := []u8{len: fsize}
+		nr_read_elements := int(C.fread(res.data, 1, fsize, fp))
+		if nr_read_elements == 0 && fsize > 0 {
+			return error('fread failed')
+		}
+		race_file_read()
+		res.trim(nr_read_elements)
+		return res
 	}
-	fsize := find_cfile_size(fp)!
-	if fsize == 0 {
-		mut sb := slurp_file_in_builder(fp)!
-		return unsafe { sb.reuse_as_plain_u8_array() }
-	}
-	mut res := []u8{len: fsize}
-	nr_read_elements := int(C.fread(res.data, 1, fsize, fp))
-	if nr_read_elements == 0 && fsize > 0 {
-		return error('fread failed')
-	}
-	race_file_read()
-	res.trim(nr_read_elements)
-	return res
 }
 
 // write_bytes writes all the `bytes` to `path`.
 @[manualfree]
 pub fn write_bytes(path string, bytes []u8) ! {
-	write_file_array(path, bytes)!
+	$if vlibc ? {
+		e := vlibc_write_file(path, bytes)
+		if e != .enoerror {
+			return error_with_code('write_bytes failed: ${e}', int(e))
+		}
+		return
+	} $else {
+		write_file_array(path, bytes)!
+	}
 }
 
 fn find_cfile_size(fp &C.FILE) !int {
@@ -159,41 +176,50 @@ fn slurp_file_in_builder(fp &C.FILE) !strings.Builder {
 // read_file reads the file in `path` and returns the contents.
 @[manualfree]
 pub fn read_file(path string) !string {
-	mode := 'rb'
-	mut fp := vfopen(path, mode)!
-	defer {
-		C.fclose(fp)
-	}
-	allocate := find_cfile_size(fp)!
-	if allocate == 0 {
-		mut sb := slurp_file_in_builder(fp)!
-		res := sb.str()
-		unsafe { sb.free() }
-		return res
-	}
-	unsafe {
-		mut str := malloc_noscan(allocate + 1)
-		nelements := int(C.fread(str, 1, allocate, fp))
-		is_eof := int(C.feof(fp))
-		is_error := int(C.ferror(fp))
-		if is_eof == 0 && is_error != 0 {
-			free(str)
-			return error('fread failed')
+	$if vlibc ? {
+		mut data, e := vlibc_read_file(path)
+		defer { unsafe { data.free() } }
+		if e != .enoerror {
+			return error_with_code('read_file failed: ${e}', int(e))
 		}
-		race_file_read()
-		str[nelements] = 0
-		if nelements == 0 {
-			// It is highly likely that the file was a virtual file from
-			// /sys or /proc, with information generated on the fly, so
-			// fsize was not reliably reported. Using vstring() here is
-			// slower (it calls strlen internally), but will return more
-			// consistent results.
-			// For example reading from /sys/class/sound/card0/id produces
-			// a `PCH\n` string, but fsize is 4096, and otherwise you would
-			// get a V string with .len = 4096 and .str = "PCH\n\\000".
-			return str.vstring()
+		return data.bytestr()
+	} $else {
+		mode := 'rb'
+		mut fp := vfopen(path, mode)!
+		defer {
+			C.fclose(fp)
 		}
-		return str.vstring_with_len(nelements)
+		allocate := find_cfile_size(fp)!
+		if allocate == 0 {
+			mut sb := slurp_file_in_builder(fp)!
+			res := sb.str()
+			unsafe { sb.free() }
+			return res
+		}
+		unsafe {
+			mut str := malloc_noscan(allocate + 1)
+			nelements := int(C.fread(str, 1, allocate, fp))
+			is_eof := int(C.feof(fp))
+			is_error := int(C.ferror(fp))
+			if is_eof == 0 && is_error != 0 {
+				free(str)
+				return error('fread failed')
+			}
+			race_file_read()
+			str[nelements] = 0
+			if nelements == 0 {
+				// It is highly likely that the file was a virtual file from
+				// /sys or /proc, with information generated on the fly, so
+				// fsize was not reliably reported. Using vstring() here is
+				// slower (it calls strlen internally), but will return more
+				// consistent results.
+				// For example reading from /sys/class/sound/card0/id produces
+				// a `PCH\n` string, but fsize is 4096, and otherwise you would
+				// get a V string with .len = 4096 and .str = "PCH\n\\000".
+				return str.vstring()
+			}
+			return str.vstring_with_len(nelements)
+		}
 	}
 }
 
@@ -355,16 +381,27 @@ pub fn vfopen(path string, mode string) !&C.FILE {
 	if path == '' {
 		return error('vfopen called with ""')
 	}
-	mut fp := &C.FILE(unsafe { nil })
 	$if windows {
-		fp = C._wfopen(path.to_wide(), mode.to_wide())
+		w_path := path.to_wide()
+		w_mode := mode.to_wide()
+		defer {
+			unsafe {
+				free(w_path)
+				free(w_mode)
+			}
+		}
+		fp := C._wfopen(w_path, w_mode)
+		if isnil(voidptr(fp)) {
+			return error_posix(msg: 'failed to open file "${path}"')
+		}
+		return fp
 	} $else {
-		fp = C.fopen(&char(path.str), &char(mode.str))
+		fp := C.fopen(&char(path.str), &char(mode.str))
+		if isnil(voidptr(fp)) {
+			return error_posix(msg: 'failed to open file "${path}"')
+		}
+		return fp
 	}
-	if isnil(voidptr(fp)) {
-		return error_posix(msg: 'failed to open file "${path}"')
-	}
-	return fp
 }
 
 // fileno returns the file descriptor of an opened C file.
@@ -506,7 +543,10 @@ pub fn system(cmd string) int {
 // Consider using lstat() for a less ambiguous result about whether a path is occupied or not;
 // whether lstat returns any result or a "not exists" error gives a clear indication of whether the path is occupied.
 pub fn exists(path string) bool {
-	$if windows {
+	$if vlibc ? {
+		_, e := vlibc_stat(path)
+		return e == .enoerror
+	} $else $if windows {
 		// GetFileAttributesW is a Win32 call, so a longPathAware executable can use paths
 		// past MAX_PATH with it, where the CRT's _waccess cannot.
 		p := path.replace('/', '\\')
@@ -590,6 +630,7 @@ pub fn is_readable(path string) bool {
 // rm removes file in `path`.
 // On Windows it clears the file's read-only attribute for deletion and preserves
 // its other attributes. If deletion fails, it attempts to restore the original attributes.
+// A directory symlink or junction is removed itself, without touching its target.
 pub fn rm(path string) ! {
 	mut rc := 0
 	$if windows {
@@ -599,9 +640,13 @@ pub fn rm(path string) ! {
 			unsafe { free(wpath) }
 		}
 		attrs := C.GetFileAttributesW(wpath)
+		is_dir_link := attrs != u32(C.INVALID_FILE_ATTRIBUTES)
+			&& attrs & u32(C.FILE_ATTRIBUTE_DIRECTORY) != 0
+			&& attrs & u32(C.FILE_ATTRIBUTE_REPARSE_POINT) != 0
 		mut changed := false
+		// The attributes of a link are its own, so clearing them never touches the target.
 		if attrs != u32(C.INVALID_FILE_ATTRIBUTES)
-			&& attrs & u32(C.FILE_ATTRIBUTE_DIRECTORY) == 0
+			&& (attrs & u32(C.FILE_ATTRIBUTE_DIRECTORY) == 0 || is_dir_link)
 			&& attrs & u32(C.FILE_ATTRIBUTE_READONLY) != 0 {
 			without_read_only := attrs & ~u32(C.FILE_ATTRIBUTE_READONLY)
 			new_attrs := if without_read_only == 0 {
@@ -610,6 +655,21 @@ pub fn rm(path string) ! {
 				without_read_only
 			}
 			changed = C.SetFileAttributesW(wpath, new_attrs)
+		}
+		if is_dir_link {
+			// _wremove (DeleteFileW) refuses directory reparse points with EACCES,
+			// even dangling ones; RemoveDirectoryW deletes only the link itself.
+			if !C.RemoveDirectoryW(wpath) {
+				code := int(C.GetLastError())
+				if changed {
+					C.SetFileAttributesW(wpath, attrs)
+				}
+				return error_win32(
+					msg:  'Failed to remove "${path}"'
+					code: code
+				)
+			}
+			return
 		}
 		rc = C._wremove(wpath)
 		if rc == -1 {
@@ -966,6 +1026,12 @@ pub fn chdir(path string) ! {
 // getwd returns the absolute path of the current directory.
 @[manualfree]
 pub fn getwd() string {
+	$if vlibc ? {
+		$if linux && freestanding {
+			wd, e := vlibc_getcwd()
+			return if e == .enoerror { wd } else { '' }
+		}
+	}
 	unsafe {
 		$if windows {
 			buf := [max_path_buffer_size]u8{}
@@ -1008,7 +1074,9 @@ fn normalize_windows_extended_path_prefix(path string) string {
 fn working_directory_is(path &char) bool {
 	mut named := C.stat{}
 	mut current := C.stat{}
-	return C.stat(path, &named) == 0 && C.stat(c'.', &current) == 0 && named.st_dev == current.st_dev
+	// path is a NUL-terminated C string; stat writes into the local structures.
+	return unsafe { C.stat(path, &named) } == 0 && unsafe { C.stat(c'.', &current) } == 0
+		&& named.st_dev == current.st_dev
 		&& named.st_ino == current.st_ino
 }
 
@@ -1028,7 +1096,8 @@ fn relative_path_from_cwd(fpath string, buf voidptr, size int) int {
 			// getcwd allocated the path for this call.
 			unsafe { C.free(cwd) }
 		}
-		cwd_len := int(C.strlen(&char(cwd)))
+		// getcwd returned a NUL-terminated, libc-owned string.
+		cwd_len := int(unsafe { C.strlen(&char(cwd)) })
 		// `cwd` is a C string of cwd_len bytes: reading its first byte needs no bounds
 		// that V could check.
 		if cwd_len == 0 || unsafe { cwd[0] } != `/` || cwd_len + 1 + fpath.len >= size {

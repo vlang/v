@@ -32,14 +32,14 @@ fn fastc_smartcast_gate_parser(selfhost bool, mode int) Parser {
 		last_multi_return_types:  flat.TypeTextList.from_names(['int', 'string'])
 		expected_expression_type: flat.source_type_bool
 		declared_types:           {
-			'Holder': true
-			'Record': true
-			'Choice': true
+			flat.source_type_id('Holder'): true
+			flat.source_type_id('Record'): true
+			flat.source_type_id('Choice'): true
 		}
 		declared_kinds:           {
-			'Holder': .struct_
-			'Record': .struct_
-			'Choice': .alias_
+			flat.source_type_id('Holder'): .struct_
+			flat.source_type_id('Record'): .struct_
+			flat.source_type_id('Choice'): .alias_
 		}
 		sum_types:                {
 			'Choice': true

@@ -27,6 +27,14 @@ pub fn run[T](input []T, worker fn (T), opt Params) {
 	if input.len == 0 {
 		return
 	}
+	$if native ? {
+		// Native channel lowering is not available yet; preserve the result and
+		// error-propagating execution order by running the work serially.
+		for item in input {
+			worker(item)
+		}
+		return
+	}
 	workers := limited_workers(opt.workers, input.len)
 	ch := chan T{cap: workers * 2}
 	mut wg := sync.new_waitgroup()
@@ -65,6 +73,13 @@ struct Task[T, R] {
 pub fn amap[T, R](input []T, worker fn (T) R, opt Params) []R {
 	if input.len == 0 {
 		return []
+	}
+	$if native ? {
+		mut output := []R{cap: input.len}
+		for item in input {
+			output << worker(item)
+		}
+		return output
 	}
 	mut tasks := []Task[T, R]{len: input.len}
 	// the tasks array will be passed to the closure of each worker by reference, so that it could

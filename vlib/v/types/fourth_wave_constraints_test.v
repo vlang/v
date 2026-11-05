@@ -101,7 +101,7 @@ fn test_fourth_constraints_accept_deep_struct_embedding_families() {
 fn test_fourth_constraints_struct_embedding_cycles_terminate() {
 	tc := TypeChecker{
 		a:                      &flat.FlatAst{}
-		struct_embed_receivers: flat.TypeTextListBindings.from_names({
+		struct_embed_receivers: flat.SourceTypeListBindings.from_names({
 			'CycleA': ['CycleB', 'Exit']
 			'CycleB': ['CycleA']
 			'Exit':   ['Base']

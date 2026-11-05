@@ -419,7 +419,7 @@ fn test_serial_scoped_monomorphization_preserves_lifted_callback_signatures() {
 	}
 	mut emitted := GenericFnSpecBoolMap{}
 	mut generated := []string{}
-	assert t.drain_pending_generic_fn_specs(map[string]GenericStructDecl{}, map[string]GenericSumDecl{}, mut emitted, mut generated)
+	assert t.drain_pending_generic_fn_specs(map[u32]GenericStructDecl{}, map[u32]GenericSumDecl{}, mut emitted, mut generated)
 	assert isnil(a.worker_pool)
 	assert t.pending_generic_fn_specs.len == 0
 	for arg in ['int', 'string'] {

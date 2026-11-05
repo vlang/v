@@ -5,22 +5,22 @@ module protobuf
 // encoding spec and must not be reordered.
 pub enum WireType {
 	// varint carries bool, the integer types, and enums as base 128.
-	varint           = 0
+	varint = 0
 	// fixed64 carries fixed64, sfixed64, and double as eight little-endian
 	// bytes.
-	fixed64          = 1
+	fixed64 = 1
 	// length_delimited carries string, bytes, embedded messages, and packed
 	// repeated fields, each behind a varint byte count.
 	length_delimited = 2
 	// start_group opens a group, a proto2 construct the spec deprecated and
 	// proto3 forbids. Listed for tag decoding only; this module cannot encode
 	// or skip one.
-	start_group      = 3
+	start_group = 3
 	// end_group closes a group. See WireType.start_group.
-	end_group        = 4
+	end_group = 4
 	// fixed32 carries fixed32, sfixed32, and float as four little-endian
 	// bytes.
-	fixed32          = 5
+	fixed32 = 5
 }
 
 // wire_type_valid reports whether `n` names a wire type this encoding spec

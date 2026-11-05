@@ -5,7 +5,9 @@ WebAssembly binary directly. It shares SSA construction and optimization with th
 `-prod` runs the SSA optimizer, including scalar local promotion and phi elimination, before
 WebAssembly generation. No C compiler, Emscripten, or Binaryen is needed to emit the module.
 
-The standard compiler includes the backend. Rebuild it, then compile a program:
+The standard compiler builds only the C backend by default. A WebAssembly request automatically
+builds and runs a cached full compiler; subsequent requests reuse it while its sources are current.
+Compile a program with:
 
 ```sh
 ./v self

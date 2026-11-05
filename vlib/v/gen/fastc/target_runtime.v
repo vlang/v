@@ -38,7 +38,7 @@ static inline v_fastc_native_pair_u64 v_fastc_native_pair_from_multi(MultiReturn
 
 // fastc_target_collect_native_context tracks qualified C references and header
 // ownership in V source, following only selected compile-time branches. C headers
-// belong to the C compiler and are never opened or parsed by FastC.
+// keep their C signatures; quoted local headers are checked for native facade ownership.
 fn fastc_target_collect_native_context(source string, path string, prefs &pref.Preferences, mut references map[string]bool, mut declarations map[string]bool) bool {
 	return fastc_target_collect_native_facts(source, path, prefs, mut references, mut declarations).has_header
 }
@@ -47,6 +47,9 @@ struct FastcNativeSourceFacts {
 mut:
 	has_header   bool
 	links_native bool
+	needs_bridge bool
+	// local_headers lists the resolved paths of selected `#include "path"` headers.
+	local_headers []string
 }
 
 // fastc_target_collect_native_facts also records whether the file's selected
@@ -73,6 +76,8 @@ fn fastc_target_collect_native_facts(source string, path string, prefs &pref.Pre
 						branch := fastc_target_collect_native_facts(selected.source, path, prefs, mut references, mut declarations)
 						facts.has_header = facts.has_header || branch.has_header
 						facts.links_native = facts.links_native || branch.links_native
+						facts.needs_bridge = facts.needs_bridge || branch.needs_bridge
+						facts.local_headers << branch.local_headers
 					}
 					scan = selected_scan
 					tok = selected.tok
@@ -89,11 +94,20 @@ fn fastc_target_collect_native_facts(source string, path string, prefs &pref.Pre
 					'dragonfly', 'solaris', 'android'] || pref.comptime_flag_value(prefs, qualifier) {
 					if directive[0] != 'flag' {
 						facts.has_header = true
+						if directive[0] == 'include' {
+							if header := fastc_native_quoted_include_path(scan.lit, path, prefs) {
+								facts.local_headers << header
+								facts.needs_bridge = facts.needs_bridge || header.ends_with('.m') || header.ends_with('.mm')
+							}
+						}
 					} else if directive[1..].any(!it.starts_with('-')
 						&& (it.ends_with('.c') || it.ends_with('.cpp') || it.ends_with('.cc')
 							|| it.ends_with('.m') || it.ends_with('.mm') || it.ends_with('.o')
 							|| it.ends_with('.obj'))) {
 						facts.links_native = true
+					}
+					if directive[0] == 'flag' && directive.any(it == '-framework' || it.starts_with('-fobjc-')) {
+						facts.needs_bridge = true
 					}
 				}
 			}
@@ -124,10 +138,14 @@ fn fastc_target_collect_native_facts(source string, path string, prefs &pref.Pre
 
 struct FastcNativeSourceContext {
 mut:
+	needs_bridge                 bool
 	references                   map[string]bool
 	files_with_headers           map[string]bool
 	files_linking_native_sources map[string]bool
 	declaration_paths            map[string][]string
+	references_by_file           map[string][]string
+	// local_headers maps a V source path to its selected quoted-include headers.
+	local_headers map[string][]string
 }
 
 fn fastc_native_source_context_chunk(sources []FastcSourceFile, prefs &pref.Preferences, start int, end int) FastcNativeSourceContext {
@@ -135,12 +153,19 @@ fn fastc_native_source_context_chunk(sources []FastcSourceFile, prefs &pref.Pref
 	for i in start .. end {
 		source := sources[i]
 		mut declarations := map[string]bool{}
-		facts := fastc_target_collect_native_facts(source.source, source.path, prefs, mut context.references, mut declarations)
+		mut references := map[string]bool{}
+		facts := fastc_target_collect_native_facts(source.source, source.path, prefs, mut references, mut declarations)
+		context.references_by_file[source.path] = references.keys()
+		for name, _ in references { context.references[name] = true }
+		context.needs_bridge = context.needs_bridge || facts.needs_bridge
 		if facts.has_header {
 			context.files_with_headers[source.path] = true
 		}
 		if facts.links_native {
 			context.files_linking_native_sources[source.path] = true
+		}
+		if facts.local_headers.len > 0 {
+			context.local_headers[source.path] = facts.local_headers
 		}
 		for name, _ in declarations {
 			mut paths := context.declaration_paths[name] or { []string{} }
@@ -154,6 +179,10 @@ fn fastc_native_source_context_chunk(sources []FastcSourceFile, prefs &pref.Pref
 // Merge contiguous source chunks in order so duplicate declarations retain
 // every origin in the same order as the serial scanner.
 fn fastc_merge_native_source_context(mut context FastcNativeSourceContext, chunk FastcNativeSourceContext) {
+	context.needs_bridge = context.needs_bridge || chunk.needs_bridge
+	for path, references in chunk.references_by_file {
+		context.references_by_file[path] = references
+	}
 	for name, _ in chunk.references {
 		context.references[name] = true
 	}
@@ -163,6 +192,9 @@ fn fastc_merge_native_source_context(mut context FastcNativeSourceContext, chunk
 	for path, _ in chunk.files_linking_native_sources {
 		context.files_linking_native_sources[path] = true
 	}
+	for path, headers in chunk.local_headers {
+		context.local_headers[path] = headers
+	}
 	for name, chunk_paths in chunk.declaration_paths {
 		mut paths := context.declaration_paths[name] or { []string{} }
 		paths << chunk_paths
@@ -170,8 +202,29 @@ fn fastc_merge_native_source_context(mut context FastcNativeSourceContext, chunk
 	}
 }
 
-// fastc_target_libc_declares leaves the standard headers' exact qualifiers
-// and integer widths intact rather than redeclaring their approximate V view.
+// fastc_native_quoted_include_path resolves the `"path"` operand of an `#include`
+// directive body the way the C compiler will see it: `@VEXEROOT`/`@VMODROOT`
+// expanded and relative paths taken from the including V file's directory.
+// System (`<...>`) includes return none.
+fn fastc_native_quoted_include_path(directive string, source_path string, prefs &pref.Preferences) ?string {
+	open_quote := directive.index('"') or { return none }
+	close_quote := directive.index_after_('"', open_quote + 1)
+	if close_quote <= open_quote + 1 {
+		return none
+	}
+	mut header := directive[open_quote + 1..close_quote]
+	if header.contains('@VEXEROOT') || header.contains('@VROOT') {
+		header = header.replace('@VEXEROOT', prefs.vroot).replace('@VROOT', prefs.vroot)
+	}
+	if header.contains('@VMODROOT') {
+		header = header.replace('@VMODROOT', fastc_vmod_root_for_file(source_path))
+	}
+	if !os.is_abs_path(header) {
+		header = os.join_path(os.dir(source_path), header)
+	}
+	return header
+}
+
 fn fastc_target_libc_declares(name string) bool {
 	return name in ['malloc', 'calloc', 'realloc', 'free', 'exit', 'abort', 'atoi', 'atol', 'atoll',
 		'atof', 'qsort', 'bsearch', 'getenv', 'setenv', 'unsetenv', 'rand', 'srand', 'memcpy',

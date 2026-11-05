@@ -7,9 +7,9 @@ import v.types
 fn test_sum_fixed_array_pointer_storage_and_addressable_projection() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.sum_types.set('Recursive', ['int', '&[2]Recursive', '&int'])
-	tc.type_aliases.set_id('PairPointer', flat.source_type_id('&[2]Recursive'))
-	tc.sum_types.set('Aliased', ['int', 'PairPointer'])
+	tc.sum_types.set(flat.source_type_id('Recursive'), ['int', '&[2]Recursive', '&int'])
+	tc.type_aliases.set_id(flat.source_type_id('PairPointer'), flat.source_type_id('&[2]Recursive'))
+	tc.sum_types.set(flat.source_type_id('Aliased'), ['int', 'PairPointer'])
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc

@@ -68,7 +68,7 @@ fn test_map_runtime_mixed_signatures_and_recursive_structs_keep_maps() {
 		value_type: types.Type(types.int_)
 	})
 	self_type := types.Type(types.Struct{ name_id: flat.source_type_id('Recursive') })
-	tc.structs['Recursive'] = [
+	tc.structs[flat.source_type_id('Recursive')] = [
 		types.StructField{ name: 'marker', typ: types.Type(types.int_) },
 		types.StructField{ name: 'next', typ: types.Type(types.Pointer{ base_type: self_type }) },
 		types.StructField{ name: 'values', typ: types.Type(types.ArrayFixed{ elem_type: mapped, len: 2 }) },
@@ -97,7 +97,7 @@ fn test_map_runtime_mixed_signatures_and_recursive_structs_keep_maps() {
 fn test_map_runtime_generic_placeholders_and_unknowns_keep_existing_results() {
 	mut a := flat.FlatAst.new()
 	tc := types.TypeChecker.new(&a)
-	generic := types.Type(types.Unknown{ reason: 'generic placeholder T' })
+	generic := types.Type(types.Unknown{ reason: 'generic placeholder T', generic: true })
 	unknown := types.Type(types.Unknown{ reason: 'unresolved value' })
 	mut scan := RuntimeHelpersScan{}
 	assert scan.type_needs_map_runtime(generic, &tc)
@@ -121,7 +121,7 @@ fn test_map_runtime_nominal_primitive_spelling_keeps_semantic_cache_order() {
 	for leaf in [types.Type(types.int_), types.Type(types.String{})] {
 		name := leaf.name()
 		nominal := types.Type(types.Struct{ name_id: flat.source_type_id(name) })
-		tc.structs[name] = [types.StructField{ name: 'values', typ: mapped }]
+		tc.structs[flat.source_type_id(name)] = [types.StructField{ name: 'values', typ: mapped }]
 		for leaf_first in [false, true] {
 			mut scan := RuntimeHelpersScan{}
 			if leaf_first {

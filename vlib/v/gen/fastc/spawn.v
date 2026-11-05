@@ -34,63 +34,24 @@ fn fastc_name_key(text string) string {
 	return fastc_take_string(mut encoded)
 }
 
-fn fastc_name_key_hex_value(value u8) ?u8 {
-	if value >= `0` && value <= `9` {
-		return u8(value - `0`)
-	}
-	if value >= `a` && value <= `f` {
-		return u8(value - `a` + 10)
-	}
-	return none
-}
-
-fn fastc_decode_name_key(encoded string) ?string {
-	mut decoded := strings.new_builder(encoded.len)
-	mut i := 0
-	for i < encoded.len {
-		if encoded[i] != `_` {
-			decoded.write_u8(encoded[i])
-			i++
-			continue
-		}
-		if i + 2 >= encoded.len {
-			return none
-		}
-		high := fastc_name_key_hex_value(encoded[i + 1])?
-		low := fastc_name_key_hex_value(encoded[i + 2])?
-		decoded.write_u8((high << 4) | low)
-		i += 3
-	}
-	return fastc_take_string(mut decoded)
-}
-
 fn fastc_thread_type_name(value_type string) string {
-	if value_type in ['', 'void'] {
-		return '${fastc_thread_type_prefix}void'
-	}
-	return '${fastc_thread_type_prefix}k${fastc_name_key(value_type)}'
+	return flat.source_type_name(flat.source_type_composition_one(.fastc_thread_handle,
+		flat.source_type_id(value_type)))
 }
 
 fn fastc_thread_value_type_from_name(thread_type_id u32) ?u32 {
-	thread_type := flat.source_type_name(thread_type_id)
-	name := thread_type.trim_right('*')
-	if name == '${fastc_thread_type_prefix}void' {
-		return u32(0)
-	}
-	value_prefix := '${fastc_thread_type_prefix}k'
-	if !name.starts_with(value_prefix) {
-		return none
-	}
-	return flat.source_type_id(fastc_decode_name_key(name[value_prefix.len..])?)
+	name_id := fastc_trim_pointer_type(thread_type_id)
+	syntax := flat.source_type_syntax(name_id)
+	if !syntax.thread_value_type_valid() { return none }
+	return syntax.thread_value_type()
 }
 
 fn (g &Parser) fastc_thread_value_type(thread_type_id u32) ?u32 {
-	thread_type := flat.source_type_name(thread_type_id)
-	name := thread_type.trim_right('*')
-	if value_type := g.thread_value_types.type_id(name) {
+	name_id := fastc_trim_pointer_type(thread_type_id)
+	if value_type := g.thread_value_types.type_id(flat.source_type_name(name_id)) {
 		return value_type
 	}
-	return fastc_thread_value_type_from_name(flat.source_type_id(name))
+	return fastc_thread_value_type_from_name(name_id)
 }
 
 fn fastc_thread_wait_name(thread_type string) string {
@@ -167,22 +128,53 @@ fn (mut g Parser) read_spawn_expression() !string {
 			g.next()
 			method_key, _ := g.resolve_method(receiver_type, method_name)
 			method_signature := g.functions[method_key] or {
-				return g.unsupported('spawn of undeclared method `${callee}.${method_name}`')
+				field := g.struct_field_metadata(receiver_type, method_name) or { return g.unsupported('spawn of undeclared method `${callee}.${method_name}`') }
+				callback := if field.is_function {
+					FastcFunctionSignature{ parameter_types: field.fn_parameter_types, return_type: field.fn_return_type, option_type: field.fn_option_value_type }
+				} else {
+					g.functions[field.typ_text()] or { fastc_callable_signature(field.typ) or { return g.unsupported('spawn of non-callable field') } }
+				}
+				mut parameters := [flat.source_type_voidptr]
+				parameters << callback.parameter_types.ids
+				thunk := '__vf_spawn_field_' + fastc_name_key(flat.source_type_name(receiver_type)) + '_' + method_name
+				mut declarations := ['voidptr callback']
+				mut values := []string{}
+				for i, parameter in callback.parameter_types.ids {
+					declarations << '${fastc_output_c_type(flat.source_type_name(parameter))} arg${i}'
+					values << 'arg${i}'
+				}
+				return_type := fastc_output_c_type(callback.return_type_text())
+				g.spawn_helpers[thunk] = '${return_type} ${thunk}(${declarations.join(', ')}) { ${if callback.return_type == flat.source_type_void {
+					''
+				} else {
+					'return '
+				}}((${return_type} (*)(${fastc_c_prototype_parameters(callback.parameter_types.ids)}))callback)(${values.join(', ')}); }'
+				g.mono_functions[thunk] = FastcFunctionSignature{ ...callback, parameter_types: flat.TypeTextList{ ids: parameters } }
+				receiver_arg = '(voidptr)(${receiver.source}${if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
+					'->'
+				} else {
+					'.'
+				}}${fastc_c_identifier(method_name)})'
+				method_target = thunk
+				function_key = thunk
+				g.mono_functions[thunk]
 			}
 			if method_signature.parameter_types.ids.len == 0 {
 				return g.unsupported('spawn of method `${method_name}` without a receiver parameter')
 			}
-			expected_receiver := method_signature.parameter_types.ids[0]
-			receiver_is_pointer := flat.source_type_query(receiver_type).has(.c_pointer_suffix)
-			receiver_arg = if flat.source_type_query(expected_receiver).has(.c_pointer_suffix) && !receiver_is_pointer {
-				'&(${receiver.source})'
-			} else if !flat.source_type_query(expected_receiver).has(.c_pointer_suffix) && receiver_is_pointer {
-				'*(${receiver.source})'
-			} else {
-				receiver.source
+			if method_target == '' {
+				expected_receiver := method_signature.parameter_types.ids[0]
+				receiver_is_pointer := flat.source_type_query(receiver_type).has(.c_pointer_suffix)
+				receiver_arg = if flat.source_type_query(expected_receiver).has(.c_pointer_suffix) && !receiver_is_pointer {
+					'&(${receiver.source})'
+				} else if !flat.source_type_query(expected_receiver).has(.c_pointer_suffix) && receiver_is_pointer {
+					'*(${receiver.source})'
+				} else {
+					receiver.source
+				}
+				method_target = g.c_method_name(method_key, method_signature.module_name, flat.source_type_name(expected_receiver), method_name)
+				function_key = method_key
 			}
-			method_target = g.c_method_name(method_key, method_signature.module_name, flat.source_type_name(expected_receiver), method_name)
-			function_key = method_key
 			callee = method_name
 		} else {
 			return g.unsupported('spawn on unimported qualifier `${callee}`')
@@ -191,7 +183,9 @@ fn (mut g Parser) read_spawn_expression() !string {
 		function_key = g.unqualified_function_key(callee)
 	}
 	signature := g.functions[function_key] or {
-		return g.unsupported('spawn of undeclared function `${callee}`')
+		g.mono_functions[function_key] or {
+			return g.unsupported('spawn of undeclared function `${callee}`')
+		}
 	}
 	// Ordinary disabled calls elide the call and its arguments. A spawn cannot
 	// provide a valid thread handle for an elided call, so reject it before
@@ -338,7 +332,7 @@ fn (mut g Parser) read_spawn_expression() !string {
 	} else {
 		signature.return_type
 	}
-	thread_type := g.fastc_unclaimed_generated_name(fastc_thread_type_name(flat.source_type_name(value_type)))
+	thread_type := g.fastc_unclaimed_generated_name(flat.source_type_name(flat.source_type_composition_one(.fastc_thread_handle, value_type)))
 	thread_type_id := flat.source_type_id(thread_type)
 	start_name := g.fastc_unclaimed_generated_name('__vf_spawn_start_${g.fastc_spawn_target_stem(function_key)}')
 	g.register_spawn_helpers(function_key, thread_type, value_type, signature.parameter_types.ids, start_name, method_target)
@@ -418,7 +412,7 @@ fn (mut g Parser) register_thread_type_helpers(thread_type string, value_type_so
 	wait_name := g.fastc_unclaimed_generated_name(fastc_thread_wait_name(thread_type))
 	if wait_name !in g.spawn_helpers {
 		mut waiter := ''
-		if value_type == '' {
+		if value_type_source_id == 0 {
 			waiter = 'static void ${wait_name}(${thread_type} t) {
 	int join_code = pthread_join(t.handle, NULL);
 	if (join_code != 0) {
@@ -466,10 +460,10 @@ fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string
 	args_struct := g.fastc_unclaimed_generated_name('__vf_spawn_args_${target_stem}')
 	run_name := g.fastc_unclaimed_generated_name('__vf_spawn_run_${target_stem}')
 	mut fields := ''
-	if value_type != '' {
+	if value_type_source_id != 0 {
 		fields += '\t${fastc_output_c_type(value_type)} result;\n'
 	}
-	if value_type == '' && parameter_types.len == 0 {
+	if value_type_source_id == 0 && parameter_types.len == 0 {
 		// C forbids empty struct definitions.
 		fields += '\tint unused;\n'
 	}
@@ -489,7 +483,7 @@ fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string
 	if parameters == '' {
 		parameters = 'void'
 	}
-	call := if value_type == '' {
+	call := if value_type_source_id == 0 {
 		'\t${target}(${forwards});'
 	} else {
 		'\targs->result = ${target}(${forwards});'

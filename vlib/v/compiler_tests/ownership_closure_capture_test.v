@@ -18,16 +18,36 @@ fn testsuite_end() {
 }
 
 fn check_capture(name string, code string, serial bool) os.Result {
+	return check_capture_in_mode(name, code, serial, '-ownership')
+}
+
+fn check_capture_in_mode(name string, code string, serial bool, mode string) os.Result {
 	source := os.join_path(capture_tmp, '${name}.v')
 	os.write_file(source, code) or { panic(err) }
 	vlib := os.join_path(capture_root, 'vlib')
-	mut command := [capture_compiler, '-nocache', '-ownership', '-d', 'ownership', '-path',
+	mut command := [capture_compiler, '-nocache', mode, '-d', 'ownership', '-path',
 		'${vlib}|@vlib|@vmodules']
 	if serial {
 		command << '-no-parallel'
 	}
 	command << ['run', source]
 	return os.exec(command)
+}
+
+fn test_nested_array_lambda_capture_can_be_regenerated_for_assertions() {
+	code := r'fn invoke(callback fn () string) string { return callback() }
+fn main() {
+ first := [["one".to_owned()], ["two".to_owned()]]
+ assert invoke(|| first[0][0] + first[1][0]) == "onetwo"
+ second := [["three".to_owned()], ["four".to_owned()]]
+ assert invoke(|| second[0][0] + second[1][0]) == "threefour"
+}'
+	for serial in [true, false] {
+		for mode in ['-ownership', '-autofree'] {
+			result := check_capture_in_mode('nested_array_lambda', code, serial, mode)
+			assert result.exit_code == 0, '${mode}: ${result.output}'
+		}
+	}
 }
 
 fn test_aggregate_capture_checks_the_whole_source_before_transferring_it() {

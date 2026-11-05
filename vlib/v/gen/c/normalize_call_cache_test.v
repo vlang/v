@@ -8,8 +8,16 @@ fn test_normalize_call_key_cache_follows_alternating_file_and_module_contexts() 
 	mut tc := types.TypeChecker.new(&a)
 	tc.fn_param_types['first.target'] = []types.Type{}
 	tc.fn_param_types['second.target'] = []types.Type{}
-	tc.file_selective_imports['first.v\ntarget'] = ['first.target']
-	tc.file_selective_imports['second.v\ntarget'] = ['second.target']
+	tc.selective_import_files['first.v'] = &types.FileImportInfo{
+		selective_imports: {
+			flat.source_type_id('target'): [flat.source_type_id('first.target')]
+		}
+	}
+	tc.selective_import_files['second.v'] = &types.FileImportInfo{
+		selective_imports: {
+			flat.source_type_id('target'): [flat.source_type_id('second.target')]
+		}
+	}
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc

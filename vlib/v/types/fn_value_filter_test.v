@@ -12,9 +12,9 @@ fn test_fn_value_filter_snapshot_hits_misses_collisions_and_empty_names() {
 	assert forked.resolved_fn_value_name(3)? == 'main.callback'
 	assert forked.resolved_fn_value_name(5)? == ''
 	assert forked.resolved_fn_value_name(4) == none
-	// 258 hashes to the same bit as 3; the final map lookup rejects it.
-	assert sparse_fn_value_filter_bit(258) == sparse_fn_value_filter_bit(3)
-	assert forked.resolved_fn_value_name(258) == none
+	// 4098 hashes to the same bit as 3; the final map lookup rejects it.
+	assert sparse_fn_value_filter_bit(4098) == sparse_fn_value_filter_bit(3)
+	assert forked.resolved_fn_value_name(4098) == none
 	assert forked.resolved_fn_value_name(-1) == none
 }
 

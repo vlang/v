@@ -14,7 +14,7 @@ fn test_collect_interface_impls_includes_boxed_maps() {
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	g.interfaces['Any'] = []string{}
+	g.interfaces[flat.source_type_id('Any')] = []string{}
 	g.interface_boxed_types[interface_dispatch_boxed_type_key(flat.source_type_id('Any'), flat.source_type_id('map[string]int'))] = true
 	g.interface_boxed_types_done = true
 
@@ -34,8 +34,8 @@ fn test_interface_impls_preserves_qualified_identity_and_worker_lists() {
 	beta_id := flat.source_type_id('beta.Any')
 	alpha_map_id := flat.source_type_id('map[string]int')
 	beta_map_id := flat.source_type_id('map[string]bool')
-	g.interfaces['alpha.Any'] = []string{}
-	g.interfaces['beta.Any'] = []string{}
+	g.interfaces[flat.source_type_id('alpha.Any')] = []string{}
+	g.interfaces[flat.source_type_id('beta.Any')] = []string{}
 	g.interface_boxed_types[interface_dispatch_boxed_type_key(alpha_id, alpha_map_id)] = true
 	g.interface_boxed_types[interface_dispatch_boxed_type_key(beta_id, beta_map_id)] = true
 	g.interface_boxed_types_done = true
@@ -95,7 +95,7 @@ fn test_interface_init_typ_id_uses_canonical_source_value() {
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc
-	g.interfaces['Speaker'] = []string{}
+	g.interfaces[flat.source_type_id('Speaker')] = []string{}
 	g.iface_type_ids[interface_dispatch_boxed_type_key(iface_id, concrete_id)] = 7
 
 	assert (g.interface_init_typ_id(*a.node(init)) or { 0 }) == 7

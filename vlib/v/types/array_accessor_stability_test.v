@@ -25,8 +25,8 @@ fn test_array_accessor_map_spread_stability_checks_key_and_value_clones() {
 	builtin_clone := add_array_accessor_spread_for_test(mut a, 'map[string]int')
 	mut tc := TypeChecker.new(&a)
 	tc.cur_module = 'main'
-	tc.structs['Key'] = []StructField{}
-	tc.structs['Mutator'] = []StructField{}
+	tc.structs[flat.source_type_id('Key')] = []StructField{}
+	tc.structs[flat.source_type_id('Mutator')] = []StructField{}
 	key_type := Type(Struct{
 		name_id: flat.source_type_id('Key')
 	})

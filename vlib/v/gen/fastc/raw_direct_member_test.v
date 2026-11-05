@@ -57,18 +57,18 @@ fn fastc_raw_direct_member29_parser(source string) Parser {
 		last_option_value_type:   flat.source_type_string
 		last_multi_return_types:  flat.TypeTextList.from_names(['int', 'string'])
 		declared_kinds:           {
-			'Record':       .struct_
-			'string':       .struct_
-			'Alias':        .alias_
-			'Iface':        .interface_
-			'Mode':         .enum_
-			'Shade':        .alias_
-			'PointerShade': .alias_
+			flat.source_type_id('Record'):       .struct_
+			flat.source_type_id('string'):       .struct_
+			flat.source_type_id('Alias'):        .alias_
+			flat.source_type_id('Iface'):        .interface_
+			flat.source_type_id('Mode'):         .enum_
+			flat.source_type_id('Shade'):        .alias_
+			flat.source_type_id('PointerShade'): .alias_
 		}
 		declared_types:           {
-			'Mode':         true
-			'Shade':        true
-			'PointerShade': true
+			flat.source_type_id('Mode'):         true
+			flat.source_type_id('Shade'):        true
+			flat.source_type_id('PointerShade'): true
 		}
 		alias_base_types:         aliases
 		sum_types:                {
@@ -303,9 +303,9 @@ fn (g &Parser) raw_direct_member29_legacy(tokens []FastcExpressionToken) ?string
 			} else {
 				fastc_primitive_c_type(item.lit) or { '' }
 			}
-			is_c_cast := i >= 2 && tokens[i - 2].tok == .name && tokens[i - 2].lit == 'C' && tokens[i - 1].tok == .dot && item.lit.len > 0 && 'C.${item.lit}' !in g.functions && fastc_call_has_one_argument(tokens, i + 1) && (item.lit[0].is_capital() || '#Cstruct#${item.lit}' in g.declared_types || '#Ctypedef#${item.lit}' in g.declared_types)
+			is_c_cast := i >= 2 && tokens[i - 2].tok == .name && tokens[i - 2].lit == 'C' && tokens[i - 1].tok == .dot && item.lit.len > 0 && 'C.${item.lit}' !in g.functions && fastc_call_has_one_argument(tokens, i + 1) && (item.lit[0].is_capital() || flat.source_type_id('#Cstruct#${item.lit}') in g.declared_types || flat.source_type_id('#Ctypedef#${item.lit}') in g.declared_types)
 			if is_c_cast {
-				cast_type = if '#Cstruct#${item.lit}' in g.declared_types {
+				cast_type = if flat.source_type_id('#Cstruct#${item.lit}') in g.declared_types {
 					'struct ${item.lit}'
 				} else {
 					item.lit
@@ -313,7 +313,7 @@ fn (g &Parser) raw_direct_member29_legacy(tokens []FastcExpressionToken) ?string
 			}
 			if cast_type == '' && !is_member_call {
 				if type_key := g.resolve_declared_type_key(item.lit) {
-					cast_type = fastc_c_declared_type_name(type_key)
+					cast_type = fastc_c_declared_type_name(flat.source_type_name(type_key))
 				}
 			}
 			if cast_type != '' {

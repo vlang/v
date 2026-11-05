@@ -301,7 +301,7 @@ pub fn (tc &TypeChecker) skips_library_body_in_file(node flat.Node, file string,
 		return false
 	}
 	// A generic body is checked for its type parameters, whoever instantiates it.
-	return tc.infer_decl_generic_param_names(node).len == 0
+	return tc.infer_decl_generic_param_ids(node).len == 0
 }
 
 // library_fn_body_key qualifies late body checks without publishing a raw name hint.

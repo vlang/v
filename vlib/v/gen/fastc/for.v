@@ -132,7 +132,7 @@ fn (mut g Parser) parse_for() !bool {
 					return g.unsupported('mutable iteration over immutable collection `${start}`')
 				}
 			}
-			if flat.source_type_name(collection_layout_type).trim_right('*').starts_with('Map_') {
+			if flat.source_type_query(collection_layout_type).has(.c_map_prefix) {
 				key_type_source_id, map_value_type_source_id := g.map_key_value_types(collection_layout_type) or {
 					return g.unsupported('map iteration type `${flat.source_type_name(collection_type)}`')
 				}
@@ -166,8 +166,9 @@ fn (mut g Parser) parse_for() !bool {
 				if value_name != '' && value_name != '_' {
 					g.write_line('${g.collection_storage_type(map_value_type)} ${fastc_c_identifier(value_name)} = ((${g.collection_storage_type(map_value_type)} *)${values_name}.data)[${index_name}];')
 					g.locals[value_name] = FastcLocal{
-						is_mut: value_is_mut
-						typ:    map_value_type
+						is_mut:            value_is_mut
+						typ:               map_value_type
+						option_value_type: fastc_typed_option_payload(map_value_type) or { u32(0) }
 					}
 				}
 				_ = g.parse_loop_block_body()!
@@ -196,7 +197,7 @@ fn (mut g Parser) parse_for() !bool {
 				}
 			}
 			element_c_type := fastc_output_c_type(flat.source_type_name(element_type))
-			fixed_length := fastc_fixed_array_length(flat.source_type_name(collection_layout_type).trim_right('*')) or {
+			fixed_length := fastc_fixed_array_length_id(fastc_trim_pointer_type(collection_layout_type)) or {
 				''
 			}
 			is_fixed_array := fixed_length != ''
@@ -273,7 +274,7 @@ fn (mut g Parser) parse_for() !bool {
 						g.locals[actual_value_name] = FastcLocal{
 							is_mut:       true
 							is_reference: true
-							typ:          flat.source_type_id(flat.source_type_name(element_type) + '*')
+							typ:          flat.source_type_composition_two(.concat, element_type, flat.source_type_id('*'))
 						}
 					}
 				} else if is_ordinary_string {
@@ -284,7 +285,7 @@ fn (mut g Parser) parse_for() !bool {
 				} else if !is_fixed_array && flat.source_type_query(collection_layout_type).has(.c_pointer_suffix) && fastc_trim_pointer_type(collection_layout_type) != flat.source_type_string {
 					g.write_line('${element_c_type} *${c_value_name} = &(((${element_c_type} *)${collection_data})[${index_name}]);')
 					g.locals[actual_value_name] = FastcLocal{
-						typ: flat.source_type_id(flat.source_type_name(element_type) + '*')
+						typ: flat.source_type_composition_two(.concat, element_type, flat.source_type_id('*'))
 					}
 				} else {
 					g.write_line('${element_c_type} ${c_value_name} = ((${element_c_type} *)${collection_data})[${index_name}];')
@@ -296,6 +297,15 @@ fn (mut g Parser) parse_for() !bool {
 			if value_name != '' && name != '_' {
 				g.locals[name] = FastcLocal{
 					typ: flat.source_type_int
+				}
+			}
+			if signature := g.callable_signature_for_expression(start_expression) {
+				if signature.callable_index_depth == 1 {
+					callback_name := if value_name == '' { name } else { value_name }
+					local := g.locals[callback_name] or { FastcLocal{} }
+					key := g.temporary_name('iter_callback_signature')
+					g.mono_functions[key] = FastcFunctionSignature{ ...signature, callable_index_depth: 0 }
+					g.locals[callback_name] = FastcLocal{ ...local, fn_return_type: signature.return_type, fn_option_value_type: signature.option_type, fn_signature_key: key }
 				}
 			}
 			_ = g.parse_loop_block_body()!
@@ -323,11 +333,13 @@ fn (mut g Parser) parse_for() !bool {
 			g.next()
 			initial := g.read_expression([token.Token.semicolon])!
 			initial_type := fastc_normalize_inferred_type(g.last_expression_type)
+			initial_option_type := g.option_value_type_for_expression(g.last_expression)
 			g.expect(.semicolon)!
 			if is_declaration {
 				g.locals[name] = FastcLocal{
-					is_mut: true
-					typ:    initial_type
+					is_mut:            true
+					typ:               initial_type
+					option_value_type: initial_option_type
 				}
 			}
 			condition := g.read_expression([token.Token.semicolon])!
@@ -350,7 +362,7 @@ fn (mut g Parser) parse_for() !bool {
 			return false
 		}
 		g.validate_expression_name(name, .unknown)!
-		condition := g.read_expression_with_prefix(name, [token.Token.lcbr])!
+		condition := g.read_loop_condition(name)!
 		condition_tokens := g.last_expression.clone()
 		g.expect(.lcbr)!
 		if g.write_condition_loop(condition, condition_tokens)! {
@@ -363,7 +375,7 @@ fn (mut g Parser) parse_for() !bool {
 		g.write_line('}')
 		return false
 	}
-	condition := g.read_expression([token.Token.lcbr])!
+	condition := g.read_loop_condition('')!
 	condition_tokens := g.last_expression.clone()
 	g.expect(.lcbr)!
 	if g.write_condition_loop(condition, condition_tokens)! {
@@ -388,7 +400,7 @@ fn (mut g Parser) write_condition_loop(condition string, condition_tokens []Fast
 		return false
 	}
 	plans, rewritten_condition := g.detect_member_smartcasts(condition_tokens, condition)
-	if plans.len == 0 {
+	if plans.len == 0 && !condition.contains('break;') && !condition.contains('continue;') {
 		return false
 	}
 	loop_condition := if rewritten_condition != '' { rewritten_condition } else { condition }
@@ -442,6 +454,9 @@ fn (mut g Parser) write_condition_loop(condition string, condition_tokens []Fast
 }
 
 fn (g &Parser) mutable_collection_expression(tokens []FastcExpressionToken) bool {
+	if fastc_tokens_are_plain_call(tokens) && g.expression_tokens_are_statement(tokens) {
+		return true
+	}
 	for i, item in tokens {
 		if item.tok != .name {
 			continue
@@ -477,8 +492,7 @@ struct FastcIteratorNext {
 
 // iterator_next_method finds the `next() ?T` method of `collection_type`, if it has one.
 fn (g &Parser) iterator_next_method(collection_type_source_id u32) ?FastcIteratorNext {
-	collection_type := flat.source_type_name(collection_type_source_id)
-	key, path := g.resolve_method(flat.source_type_id(fastc_trim_pointer_suffix(collection_type)), 'next')
+	key, path := g.resolve_method(fastc_trim_pointer_type(collection_type_source_id), 'next')
 	signature := g.functions[key] or { return none }
 	if path.len > 0 || signature.parameter_types.ids.len != 1 || signature.return_type != fastc_type_option
 		|| signature.option_type in [u32(0), flat.source_type_void, fastc_type_multi_return] {
@@ -539,4 +553,18 @@ fn (mut g Parser) parse_for_in_iterator(iterator FastcIteratorNext, start string
 		g.locals.delete(value_name)
 	}
 	g.write_line('}')
+}
+
+// read_loop_condition makes control flow in an option fallback target this loop.
+fn (mut g Parser) read_loop_condition(prefix string) !string {
+	label := if g.parsing_loop_labels.len > 0 { g.parsing_loop_labels.last() } else { '' }
+	g.loop_labels << label
+	g.loop_defer_block_starts << g.deferred_block_starts.len
+	g.loop_has_breaks << false
+	defer {
+		g.loop_has_breaks.delete_last()
+		g.loop_defer_block_starts.delete_last()
+		g.loop_labels.delete_last()
+	}
+	return g.read_expression_with_prefix(prefix, [token.Token.lcbr])!
 }

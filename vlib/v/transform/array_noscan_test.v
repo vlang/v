@@ -6,8 +6,8 @@ import v.types
 fn test_array_new_selects_noscan_for_scalar_elements() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set_id('ScalarAlias', flat.source_type_f64)
-	tc.type_aliases.set_id('ScalarAliasChain', flat.source_type_id('ScalarAlias'))
+	tc.type_aliases.set_id(flat.source_type_id('ScalarAlias'), flat.source_type_f64)
+	tc.type_aliases.set_id(flat.source_type_id('ScalarAliasChain'), flat.source_type_id('ScalarAlias'))
 	mut t := new_transformer(mut a, &tc, {
 		'main': true
 	})
@@ -34,8 +34,8 @@ fn test_array_new_selects_noscan_for_scalar_elements() {
 fn test_array_new_keeps_pointer_bearing_and_unknown_elements_scanned() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.type_aliases.set_id('PointerAlias', flat.source_type_id('&f64'))
-	tc.structs['PointerValue'] = [types.StructField{
+	tc.type_aliases.set_id(flat.source_type_id('PointerAlias'), flat.source_type_id('&f64'))
+	tc.structs[flat.source_type_id('PointerValue')] = [types.StructField{
 		name: 'pointer'
 		typ:  *tc.parse_type(flat.source_type_id('&f64'))
 	}]

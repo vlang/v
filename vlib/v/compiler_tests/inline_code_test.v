@@ -87,7 +87,7 @@ fn assert_inline_interrupt_cleanup(eval_args []string, ready_message string, sig
 	}
 	prefix := '.v3_inline_${process.pid}_'
 	before := os.ls(root) or { panic(err) }
-	interrupt := os.exec(['/bin/kill', '-${signal}', '-${process.pid}'])
+	interrupt := os.exec(['/bin/kill', '-${signal}', '--', '-${process.pid}'])
 	for _ in 0 .. 100 {
 		output += process.stdout_read() + process.stderr_read()
 		if !process.is_alive() {

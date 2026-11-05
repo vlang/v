@@ -69,8 +69,8 @@ fn test_map_callbacks_resolve_aliases_and_keep_fixed_array_helpers() {
 			'BlockKey':  '[2]u64'
 		}
 		for name, base in aliases {
-			tc.type_aliases.set_id(name, flat.source_type_id(base))
-			tc.type_alias_modules[name] = 'main'
+			tc.type_aliases.set_id(flat.source_type_id(name), flat.source_type_id(base))
+			tc.type_alias_modules[flat.source_type_id(name)] = 'main'
 		}
 		t := Transformer{
 			a:          &a

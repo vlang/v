@@ -7,40 +7,42 @@ import v.flat
 // (see check_generic_fn_body).
 
 const combination_budget = 256
+const combination_param_t = flat.source_type_id('T')
+const combination_param_u = flat.source_type_id('U')
 
 fn test_closing_numeric_type_choices_preserves_recursive_parameter_boundaries() {
 	choices := {
-		'T': flat.source_type_id('Box[U]')
-		'U': flat.source_type_int
+		combination_param_t: flat.source_type_id('Box[U]')
+		combination_param_u: flat.source_type_int
 	}
 	closed := closed_type_param_texts(choices)
-	assert closed['T'] == flat.source_type_id('Box[int]')
-	assert closed['U'] == flat.source_type_int
-	assert choices['T'] == flat.source_type_id('Box[U]')
+	assert closed[combination_param_t] == flat.source_type_id('Box[int]')
+	assert closed[combination_param_u] == flat.source_type_int
+	assert choices[combination_param_t] == flat.source_type_id('Box[U]')
 	recursive := {
-		'T': flat.source_type_id('Box[T]')
+		combination_param_t: flat.source_type_id('Box[T]')
 	}
-	assert closed_type_param_texts(recursive)['T'] == recursive['T']
+	assert closed_type_param_texts(recursive)[combination_param_t] == recursive[combination_param_t]
 }
 
 // numbered_texts gives each of `names` the types `<name>0`, `<name>1`, ... up
 // to `count` of them.
-fn numbered_texts(names []string, count int) map[string][]u32 {
-	mut texts := map[string][]u32{}
+fn numbered_texts(names []string, count int) map[u32][]u32 {
+	mut texts := map[u32][]u32{}
 	for name in names {
-		texts[name] = []u32{len: count, init: flat.source_type_id('${name}${index}')}
+		texts[flat.source_type_id(name)] = []u32{len: count, init: flat.source_type_id('${name}${index}')}
 	}
 	return texts
 }
 
 // missing_pairs returns the pairs of types of two type parameters of `texts`
 // that no combination of `combinations` gives them together.
-fn missing_pairs(texts map[string][]u32, combinations []map[string]u32) []string {
+fn missing_pairs(texts map[u32][]u32, combinations []map[u32]u32) []string {
 	mut met := map[string]bool{}
 	for combination in combinations {
 		for first, a in combination {
 			for second, b in combination {
-				met['${first}=${flat.source_type_name(a)} ${second}=${flat.source_type_name(b)}'] = true
+				met['${flat.source_type_name(first)}=${flat.source_type_name(a)} ${flat.source_type_name(second)}=${flat.source_type_name(b)}'] = true
 			}
 		}
 	}
@@ -52,7 +54,7 @@ fn missing_pairs(texts map[string][]u32, combinations []map[string]u32) []string
 			}
 			for a in first_types {
 				for b in second_types {
-					pair := '${first}=${flat.source_type_name(a)} ${second}=${flat.source_type_name(b)}'
+					pair := '${flat.source_type_name(first)}=${flat.source_type_name(a)} ${flat.source_type_name(second)}=${flat.source_type_name(b)}'
 					if pair !in met {
 						missing << pair
 					}
@@ -65,19 +67,19 @@ fn missing_pairs(texts map[string][]u32, combinations []map[string]u32) []string
 
 fn test_every_combination_of_the_types_is_checked_within_the_budget() {
 	texts := {
-		'T': [flat.source_type_int, flat.source_type_f64, flat.source_type_string]
-		'U': [flat.source_type_bool, flat.source_type_rune]
+		combination_param_t: [flat.source_type_int, flat.source_type_f64, flat.source_type_string]
+		combination_param_u: [flat.source_type_bool, flat.source_type_rune]
 	}
 	combinations := type_param_combinations(texts, combination_budget)
 	assert combinations.len == 6
 	mut seen := map[string]bool{}
 	for combination in combinations {
-		seen['${combination['T']} ${combination['U']}'] = true
+		seen['${combination[combination_param_t]} ${combination[combination_param_u]}'] = true
 	}
 	assert seen.len == 6
 	// The first gives each type parameter its first type.
-	assert combinations[0]['T'] == flat.source_type_int
-	assert combinations[0]['U'] == flat.source_type_bool
+	assert combinations[0][combination_param_t] == flat.source_type_int
+	assert combinations[0][combination_param_u] == flat.source_type_bool
 }
 
 fn test_a_single_type_parameter_is_checked_with_each_of_its_types() {
@@ -86,7 +88,7 @@ fn test_a_single_type_parameter_is_checked_with_each_of_its_types() {
 	assert combinations.len == combination_budget + 44
 	mut seen := map[u32]bool{}
 	for combination in combinations {
-		seen[combination['T']] = true
+		seen[combination[combination_param_t]] = true
 	}
 	assert seen.len == combination_budget + 44
 }

@@ -168,21 +168,21 @@ pub fn (ctx Context) take_input_response(key string) ?string {
 // `key`, if this request already carries one.
 pub fn (ctx Context) take_elicit_result(key string) ?ElicitResult {
 	raw := ctx.take_input_response(key) or { return none }
-	return json.decode[ElicitResult](raw) or { none }
+	return json.decode_standard[ElicitResult](raw) or { none }
 }
 
 // take_roots_result returns the roots answer the client supplied for `key`, if
 // this request already carries one.
 pub fn (ctx Context) take_roots_result(key string) ?ListRootsResult {
 	raw := ctx.take_input_response(key) or { return none }
-	return json.decode[ListRootsResult](raw) or { none }
+	return json.decode_standard[ListRootsResult](raw) or { none }
 }
 
 // take_sampling_result returns the sampling answer the client supplied for
 // `key`, if this request already carries one.
 pub fn (ctx Context) take_sampling_result(key string) ?CreateMessageResult {
 	raw := ctx.take_input_response(key) or { return none }
-	return json.decode[CreateMessageResult](raw) or { none }
+	return json.decode_standard[CreateMessageResult](raw) or { none }
 }
 
 // require_elicit signals that this request cannot finish without an
@@ -232,7 +232,7 @@ fn extract_input_responses(params string) map[string]string {
 	if trimmed.len == 0 || trimmed == null.str() {
 		return responses
 	}
-	wrapper := json.decode[RetryParams](trimmed) or { return responses }
+	wrapper := json.decode_standard[RetryParams](trimmed) or { return responses }
 	for key, value in wrapper.input_responses {
 		responses[key] = json.encode(value)
 	}
@@ -245,7 +245,7 @@ fn extract_request_state(params string) string {
 	if trimmed.len == 0 || trimmed == null.str() {
 		return ''
 	}
-	wrapper := json.decode[RetryParams](trimmed) or { return '' }
+	wrapper := json.decode_standard[RetryParams](trimmed) or { return '' }
 	return wrapper.request_state
 }
 
@@ -3263,7 +3263,7 @@ fn extract_progress_token(params string) string {
 	if trimmed.len == 0 || trimmed == null.str() {
 		return ''
 	}
-	wrapper := json.decode[MetaParams](trimmed) or { return '' }
+	wrapper := json.decode_standard[MetaParams](trimmed) or { return '' }
 	return wrapper.meta.progress_token.trim_space()
 }
 
@@ -3285,7 +3285,7 @@ fn extract_stateless_meta(params string) StatelessMeta {
 	if trimmed.len == 0 || trimmed == null.str() {
 		return StatelessMeta{}
 	}
-	wrapper := json.decode[MetaParams](trimmed) or { return StatelessMeta{} }
+	wrapper := json.decode_standard[MetaParams](trimmed) or { return StatelessMeta{} }
 	meta := wrapper.meta
 	return StatelessMeta{
 		protocol_version:    meta.protocol_version.trim_space()
@@ -3303,7 +3303,7 @@ fn decode_client_info(raw string) Implementation {
 	if trimmed.len == 0 || trimmed == null.str() {
 		return Implementation{}
 	}
-	return json.decode[Implementation](trimmed) or { Implementation{} }
+	return json.decode_standard[Implementation](trimmed) or { Implementation{} }
 }
 
 fn decode_optional_params[T](raw string) !T {
@@ -3428,19 +3428,16 @@ fn normalize_response_error(err IError) ResponseError {
 }
 
 fn build_sse_response(message string) string {
-	mut lines := []string{}
-	for line in message.split('\n') {
-		lines << 'data: ${line}'
-	}
-	return lines.join('\n') + '\n\n'
+	return http.SSEEvent{
+		data: message
+	}.encode()
 }
 
 fn build_sse_event(event LoggedEvent) string {
-	mut lines := ['id: ${event.id}']
-	for line in event.body.split('\n') {
-		lines << 'data: ${line}'
-	}
-	return lines.join('\n') + '\n\n'
+	return http.SSEEvent{
+		id:   event.id.str()
+		data: event.body
+	}.encode()
 }
 
 fn build_sse_stream(events []LoggedEvent) string {

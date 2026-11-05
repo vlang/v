@@ -160,6 +160,40 @@ fn test_const_helper_does_not_recurse_into_shadowed_fn_callee() {
 	assert 'wrong_dep' !in g.const_get_deps(call)
 }
 
+fn test_const_helper_does_not_resolve_native_call_to_v_method() {
+	mut a := flat.FlatAst.new()
+	add_const_deps_test_node(mut a, .module_decl, 'main', [])
+	value := add_const_deps_test_node(mut a, .int_literal, '41', [])
+	wrong_read := const_deps_test_read(mut a, 'wrong_dep')
+	method := const_deps_test_fn(mut a, 'File.close', [wrong_read])
+	base := add_const_deps_test_node(mut a, .ident, 'C', [])
+	callee := add_const_deps_test_node(mut a, .selector, 'close', [base])
+	argument := add_const_deps_test_node(mut a, .ident, 'fd', [])
+	call := add_const_deps_test_node(mut a, .call, '', [callee, argument])
+
+	mut tc := types.TypeChecker.new(&a)
+	tc.cur_module = 'main'
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	g.const_vals = {
+		'wrong_dep': value
+		'fd':        value
+	}
+	g.const_modules = {
+		'wrong_dep': 'main'
+		'fd':        'main'
+	}
+	assert g.const_get_deps(call) == ['fd']
+
+	// Cover the indexed lookup used by full program generation as well as
+	// the AST scan used before its declaration indexes are populated.
+	g.fn_decl_nodes_by_name['File.close'] = method
+	g.fn_decl_nodes_by_short['close'] = method
+	g.fn_decl_nodes_by_module_short['main\x01close'] = method
+	assert g.const_get_deps(call) == ['fd']
+}
+
 fn test_const_helper_deps_resolve_receiver_method_before_suffix_fallback() {
 	mut a := flat.FlatAst.new()
 	wrong_value := add_const_deps_test_node(mut a, .int_literal, '7', [])

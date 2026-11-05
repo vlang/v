@@ -13,33 +13,57 @@ module goroutines
 
 // gopark puts the current goroutine into a waiting state.
 // The goroutine can be made runnable again by calling goready.
+// Callers must synchronize wakeups so goready runs only after the context is parked.
+// Channel operations provide this synchronization through their internal lock handoff.
 // reason describes why the goroutine is parking (for debugging).
 // Translated from Go's gopark() in proc.go.
 pub fn gopark(reason string) {
+	gopark_unlock(reason, unsafe { nil })
+}
+
+// gopark_unlock releases lock only after the worker context has been saved.
+// Channel waiters remain protected by that lock until the scheduler can ready them.
+fn gopark_unlock(reason string, held_lock &SpinLock) {
+	mut unlock := unsafe { held_lock }
 	mut mp := get_current_m()
-	if mp == unsafe { nil } {
+	if mp == unsafe { nil } || mp.curg == unsafe { nil } {
+		if unlock != unsafe { nil } {
+			unlock.release()
+		}
 		return
 	}
 	mut gp := mp.curg
-	if gp == unsafe { nil } {
+	gp.wait_reason = reason
+	if is_main_g(gp) {
+		gp.status = .waiting
+		if unlock != unsafe { nil } {
+			unlock.release()
+		}
+		// The main thread has no scheduler context. The semaphore also retains
+		// a wakeup that arrives before wait() starts.
+		gsched.main_park.wait()
+		gp.status = .running
+		gp.wait_reason = ''
 		return
 	}
-
-	gp.status = .waiting
-	gp.wait_reason = reason
-
-	// Dissociate G from M
+	mp.handoff_g = gp
+	mp.handoff = .parked
+	mp.park_unlock = unlock
 	mp.curg = unsafe { nil }
 	gp.m = unsafe { nil }
-
-	// Switch back to the scheduler (M's g0 context)
 	context_switch(mut &gp.context, &mp.g0.context)
 }
 
 // goready puts a waiting goroutine back on a run queue.
+// The caller must synchronize with the goroutine's completed park operation.
 // Translated from Go's goready() in proc.go.
 pub fn goready(gp &Goroutine) {
 	if gp == unsafe { nil } {
+		return
+	}
+	if is_main_g(gp) {
+		// The semaphore retains a wakeup between unlocking the channel and wait().
+		gsched.main_park.post()
 		return
 	}
 	mut g := unsafe { gp }
@@ -72,21 +96,29 @@ pub fn gosched() {
 	if gp == unsafe { nil } {
 		return
 	}
-	mut pp := mp.p
+	if is_main_g(gp) {
+		// Goroutines run on worker threads, and the main thread has no scheduler
+		// context to yield to.
+		return
+	}
+	pp := mp.p
 	if pp == unsafe { nil } {
 		return
 	}
 
-	// Put the current G back on the run queue as runnable
-	gp.status = .runnable
+	// Publish the runnable G only after the scheduler has saved this context.
+	mp.handoff_g = gp
+	mp.handoff = .yielded
 	mp.curg = unsafe { nil }
 	gp.m = unsafe { nil }
-
-	// Put on local queue
-	runq_put(mut pp, gp, false)
-
-	// Switch back to scheduler
 	context_switch(mut &gp.context, &mp.g0.context)
+}
+
+// is_main_g reports whether gp is the main goroutine. It compares pointers, since
+// `==` on two references compares the pointed-to structs when the pointers differ.
+@[inline]
+fn is_main_g(gp &Goroutine) bool {
+	return voidptr(gp) == voidptr(gsched.main_g)
 }
 
 // Sudog represents a G in a wait list (e.g., channel wait queue).

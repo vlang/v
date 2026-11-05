@@ -44,12 +44,21 @@ fn test_module_type_normalization_ids_preserve_trimming_and_grammar() {
 fn test_module_type_normalization_ids_keep_selective_import_fallbacks() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['alpha.Item'] = []types.StructField{}
-	tc.structs['beta.Item'] = []types.StructField{}
-	tc.structs['dep.Item'] = []types.StructField{}
-	tc.file_selective_imports[file_import_key('single.v', 'Item')] = ['missing.Item', 'alpha.Item',
-		'alpha.Item']
-	tc.file_selective_imports[file_import_key('ambiguous.v', 'Item')] = ['alpha.Item', 'beta.Item']
+	tc.structs[flat.source_type_id('alpha.Item')] = []types.StructField{}
+	tc.structs[flat.source_type_id('beta.Item')] = []types.StructField{}
+	tc.structs[flat.source_type_id('dep.Item')] = []types.StructField{}
+	tc.selective_import_files['single.v'] = &types.FileImportInfo{
+		selective_imports: {
+			flat.source_type_id('Item'): [flat.source_type_id('missing.Item'),
+				flat.source_type_id('alpha.Item'), flat.source_type_id('alpha.Item')]
+		}
+	}
+	tc.selective_import_files['ambiguous.v'] = &types.FileImportInfo{
+		selective_imports: {
+			flat.source_type_id('Item'): [flat.source_type_id('alpha.Item'),
+				flat.source_type_id('beta.Item')]
+		}
+	}
 	mut t := Transformer{
 		tc:                &tc
 		cur_module:        'dep'
@@ -72,13 +81,13 @@ fn test_module_type_normalization_ids_keep_selective_import_fallbacks() {
 fn test_module_type_normalization_ids_expand_applied_owner_alias_first() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['dep.Item'] = []types.StructField{}
-	tc.type_aliases.set_id('dep.Next', flat.source_type_id('dep.Item'))
-	tc.type_aliases.set_id('dep.Alias', flat.source_type_id('dep.Next'))
-	tc.type_aliases.set_id('dep.Values', flat.source_type_id('[]T'))
-	tc.type_alias_generic_params['dep.Values'] = ['T']
-	tc.type_aliases.set_id('Values', flat.source_type_id('map[string]T'))
-	tc.type_alias_generic_params['Values'] = ['T']
+	tc.structs[flat.source_type_id('dep.Item')] = []types.StructField{}
+	tc.type_aliases.set_id(flat.source_type_id('dep.Next'), flat.source_type_id('dep.Item'))
+	tc.type_aliases.set_id(flat.source_type_id('dep.Alias'), flat.source_type_id('dep.Next'))
+	tc.type_aliases.set_id(flat.source_type_id('dep.Values'), flat.source_type_id('[]T'))
+	tc.type_alias_generic_params[flat.source_type_id('dep.Values')] = types.generic_param_ids(['T'])
+	tc.type_aliases.set_id(flat.source_type_id('Values'), flat.source_type_id('map[string]T'))
+	tc.type_alias_generic_params[flat.source_type_id('Values')] = types.generic_param_ids(['T'])
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	t.cur_file = 'main.v'

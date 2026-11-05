@@ -65,7 +65,7 @@ fn test_sql_interpolation_replaces_callback_binding_only() {
 fn test_sql_dynamic_guard_infers_bound_callback_field_type() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.structs['MapSqlOptionalKey'] = [
+	tc.structs[flat.source_type_id('MapSqlOptionalKey')] = [
 		types.StructField{ name: 'optional_id', typ: tc.parse_type(flat.source_type_id('?int')) },
 	]
 	mut t := new_transformer(mut a, &tc, map[string]bool{})

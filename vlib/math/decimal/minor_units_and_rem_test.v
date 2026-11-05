@@ -16,6 +16,7 @@ fn test_from_minor_units() {
 	assert decimal.from_minor_units(1999, 2)!.str() == '19.99'
 	assert decimal.from_minor_units(-5, 3)!.str() == '-0.005'
 	assert decimal.from_minor_units(100, 2)!.str() == '1'
+	assert decimal.from_minor_units(100, 2)!.scale() == 2
 	assert decimal.from_minor_units(0, 2)!.is_zero()
 	assert decimal.from_minor_units(min_i64, 0)!.str() == '-9223372036854775808'
 	decimal.from_minor_units(1, -1) or {
@@ -33,6 +34,9 @@ fn test_to_minor_units() {
 	assert must_decimal('0').to_minor_units(30)! == 0
 	assert must_decimal('1').to_minor_units(18)! == 1_000_000_000_000_000_000
 	assert must_decimal('0.1').to_minor_units(19)! == 1_000_000_000_000_000_000
+	assert must_decimal('5.000').to_minor_units(2)! == 500
+	assert must_decimal('19.990').to_minor_units(2)! == 1999
+	assert must_decimal('0.000').to_minor_units(0)! == 0
 }
 
 fn test_to_minor_units_i64_bounds() {
@@ -83,6 +87,47 @@ fn test_rem_with_fractions() {
 	assert false
 }
 
+// Each row holds a dividend and a divisor, then the quotient and remainder of
+// the truncated, floored and Euclidean conventions.
+const division_conventions = [
+	['-7.5', '2', '-3', '-1.5', '-4', '0.5', '-4', '0.5'],
+	['7.5', '-2', '-3', '1.5', '-4', '-0.5', '-3', '1.5'],
+	['-7.5', '-2', '3', '-1.5', '3', '-1.5', '4', '0.5'],
+	['7.5', '2', '3', '1.5', '3', '1.5', '3', '1.5'],
+	['-6', '3', '-2', '0', '-2', '0', '-2', '0'],
+	['6', '-3', '-2', '0', '-2', '0', '-2', '0'],
+	['-1', '0.3', '-3', '-0.1', '-4', '0.2', '-4', '0.2'],
+	['0.2', '-5', '0', '0.2', '-1', '-4.8', '0', '0.2'],
+	['0', '-5', '0', '0', '0', '0', '0', '0'],
+]
+
+fn test_division_conventions() {
+	for row in division_conventions {
+		a := must_decimal(row[0])
+		b := must_decimal(row[1])
+		results := [
+			[a.div(b, 0, .down)!, a.rem(b)!],
+			[a.floor_div(b)!, a.floor_mod(b)!],
+			[a.div_euclid(b)!, a.mod_euclid(b)!],
+		]
+		for i, result in results {
+			assert result[0].str() == row[2 + 2 * i], '${row} quotient ${i}'
+			assert result[1].str() == row[3 + 2 * i], '${row} remainder ${i}'
+			assert result[0] * b + result[1] == a, '${row} identity ${i}'
+		}
+	}
+}
+
+fn test_floor_and_euclid_reject_zero_divisor() {
+	one := must_decimal('1')
+	mut errors := []string{}
+	one.floor_div(decimal.zero) or { errors << err.msg() }
+	one.floor_mod(decimal.zero) or { errors << err.msg() }
+	one.div_euclid(decimal.zero) or { errors << err.msg() }
+	one.mod_euclid(decimal.zero) or { errors << err.msg() }
+	assert errors == ['math.decimal: cannot divide by zero'].repeat(4)
+}
+
 fn test_sign() {
 	assert must_decimal('-0.5').sign() == -1
 	assert must_decimal('0.000').sign() == 0
@@ -97,4 +142,6 @@ fn test_min_and_max() {
 	assert decimal.min(b, a).str() == '-2'
 	assert decimal.max(b, a).str() == '1.5'
 	assert decimal.min(must_decimal('1.10'), must_decimal('1.1')).str() == '1.1'
+	assert decimal.min(must_decimal('1.10'), must_decimal('1.1')).scale() == 2
+	assert decimal.max(must_decimal('1.1'), must_decimal('1.10')).scale() == 1
 }

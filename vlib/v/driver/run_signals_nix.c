@@ -162,7 +162,13 @@ static void v3_run_forward_signal(int signal_number) {
         }
         _exit(128 + signal_number);
     }
-    if ((is_stop && v3_run_bridging_stop) || signal_number == v3_run_bridging_interrupt) {
+    if (is_stop && signal_number == v3_run_bridging_stop) {
+        v3_run_bridging_stop = 0;
+        errno = saved_errno;
+        return;
+    }
+    if (signal_number == v3_run_bridging_interrupt) {
+        v3_run_bridging_interrupt = 0;
         errno = saved_errno;
         return;
     }
@@ -242,7 +248,9 @@ static void v3_run_restore_terminal(void) {
 static int v3_run_foreground_child(void) {
     if (v3_run_handoff_terminal && v3_run_terminal_fd >= 0
         && v3_run_tcgetpgrp(v3_run_terminal_fd) == v3_run_owner_group) {
-        return v3_run_set_foreground((int)v3_run_child_pid);
+        int group = v3_run_getpgid((int)v3_run_child_pid);
+        if (group < 0) return -1;
+        return v3_run_set_foreground(group);
     }
     return 0;
 }
@@ -265,6 +273,9 @@ static void v3_run_observer_interrupt(int signal_number) {
  * until its group and dispositions are ready, including a fast terminal handoff. */
 static int v3_run_start_observer(const sigset_t *previous_mask) {
     if (!v3_run_handoff_terminal) return 0;
+    /* The app may rejoin the owner's job. That job receives terminal signals
+     * directly and no longer has an isolated group for an observer to join. */
+    if (v3_run_getpgid((int)v3_run_child_pid) != v3_run_child_pid) return 0;
     int control[2];
     if (v3_run_pipe(control)) return -1;
     if (v3_run_fcntl(control[0], F_SETFD, FD_CLOEXEC) < 0
@@ -360,10 +371,9 @@ static int v3_run_observer_exit(int status) {
         }
         v3_run_bridging_interrupt = signal_number;
         kill(-v3_run_owner_group, signal_number);
-        /* Drain our own group notification under the existing handler, including
-         * when finish entered with all forwarded signals blocked. */
+        /* Any compiler thread can receive this process-directed notification.
+         * Its handler consumes the marker, even if the owner unblocks first. */
         v3_run_sigprocmask(V3_RUN_UNBLOCK, &selected, 0);
-        v3_run_bridging_interrupt = 0;
     }
     v3_run_sigprocmask(V3_RUN_SETMASK, &previous_mask, 0);
     return WIFEXITED(status) && WEXITSTATUS(status) == 125 ? -1 : 0;
@@ -456,11 +466,17 @@ int v3_run_signals_set_pid(int child_pid) {
     int result = 0;
     if (child_pid <= 0) {
         result = -1;
-    } else if (v3_run_setpgid(child_pid, child_pid)) {
-        int set_error = errno;
-        int group = v3_run_getpgid(child_pid);
-        if (group != child_pid && set_error != ESRCH && !(group < 0 && errno == ESRCH)) {
+    } else {
+        for (int attempt = 0; attempt < 2; attempt++) {
+            if (!v3_run_setpgid(child_pid, child_pid)) break;
+            int set_error = errno;
+            int group = v3_run_getpgid(child_pid);
+            if (group == child_pid || set_error == ESRCH || (group < 0 && errno == ESRCH)) break;
+            /* Darwin can report EPERM while the child creates this same group.
+             * Retry once, still verifying the group before publishing it. */
+            if (set_error == EPERM && attempt == 0) continue;
             result = -1;
+            break;
         }
     }
     if (!result) {
@@ -479,21 +495,44 @@ int v3_run_signals_set_pid(int child_pid) {
     return result;
 }
 
+/* A child may have left the group that was verified at launch. A successful
+ * group signal still reaches its remaining members; the PID fallback reaches
+ * the app when that group is gone. Never wait for a stop that was not sent. */
+static int v3_run_signal_child(int signal_number) {
+    if (!kill(-(int)v3_run_child_pid, signal_number)
+        && v3_run_getpgid((int)v3_run_child_pid) == v3_run_child_pid) return 0;
+    return kill((int)v3_run_child_pid, signal_number);
+}
+
 /* A terminal stop can be caught by the app. The observer still suspends the
  * shell's original job and restores its terminal, without re-signalling the app. */
 static int v3_run_suspend_owner(int stop_signal, int forwarded_stop) {
     v3_run_restore_terminal();
-    v3_run_bridging_stop = 1;
+    /* Only the owner's own copy of this group stop is swallowed. A forwarded stop
+     * sends none, and a stop that arrives as the job resumes is a new one. */
     if (v3_run_terminal_fd >= 0 && !forwarded_stop
         && (stop_signal == V3_RUN_TSTP || stop_signal == V3_RUN_TTIN
             || stop_signal == V3_RUN_TTOU)) {
+        v3_run_bridging_stop = stop_signal;
         kill(-v3_run_owner_group, stop_signal);
     }
-    kill((int)v3_run_owner_pid, V3_RUN_STOP);
-    v3_run_bridging_stop = 0;
-    if (v3_run_foreground_child()) return -1;
-    kill(-(int)v3_run_child_pid, V3_RUN_CONT);
-    return 0;
+    sigset_t previous_mask;
+    for (;;) {
+        v3_run_forwarded_stop = 0;
+        kill((int)v3_run_owner_pid, V3_RUN_STOP);
+        /* A later stop must reach the app after its SIGCONT, not before it. */
+        if (v3_run_block_signals(&previous_mask)) return -1;
+        /* A stop forwarded while the app was still stopped, such as a pipeline
+         * peer reading the terminal right after `bg`, suspends the job again. */
+        if (!v3_run_forwarded_stop) break;
+        v3_run_sigprocmask(V3_RUN_SETMASK, &previous_mask, 0);
+    }
+    int result = v3_run_foreground_child();
+    if (!result) result = v3_run_signal_child(V3_RUN_CONT);
+    int saved_errno = errno;
+    v3_run_sigprocmask(V3_RUN_SETMASK, &previous_mask, 0);
+    errno = saved_errno;
+    return result ? -1 : 0;
 }
 
 void v3_run_signals_kill(int child_pid) {
@@ -519,8 +558,11 @@ int v3_run_signals_wait(int *code, int *signal_number) {
             if (WIFSTOPPED(status)) { v3_run_observer_stopped = 1; continue; }
             if (v3_run_observer_exit(status)) return -1;
             if (v3_run_observed_stop) {
-                v3_run_observed_stop = 0;
-                if (v3_run_suspend_owner(V3_RUN_TSTP, 0)) return -1;
+                /* A caught/ignored terminal stop can leave the app in read().
+                 * Stop it and wait for its status before returning the tty to
+                 * the shell, or that read can consume the shell's next command. */
+                if (v3_run_signal_child(V3_RUN_STOP)) return -1;
+                continue;
             }
             sigset_t previous_mask;
             if (v3_run_block_signals(&previous_mask)) return -1;
@@ -533,7 +575,7 @@ int v3_run_signals_wait(int *code, int *signal_number) {
         if (WIFSTOPPED(status)) {
             /* Terminal reads and TOSTOP writes can race the initial handoff. */
             if ((WSTOPSIG(status) == V3_RUN_TTIN || WSTOPSIG(status) == V3_RUN_TTOU)
-                && !v3_run_forwarded_stop && v3_run_handoff_terminal
+                && !v3_run_forwarded_stop && !v3_run_observed_stop && v3_run_handoff_terminal
                 && v3_run_terminal_fd >= 0
                 && v3_run_tcgetpgrp(v3_run_terminal_fd) == v3_run_child_pid) {
                 kill(-(int)v3_run_child_pid, V3_RUN_CONT);
@@ -543,7 +585,7 @@ int v3_run_signals_wait(int *code, int *signal_number) {
             v3_run_forwarded_stop = 0;
             /* A debugger can stop/resume only the child without stopping its waiter. */
             if (v3_run_terminal_fd < 0 && !forwarded_stop) continue;
-            int stop_signal = WSTOPSIG(status);
+            int stop_signal = v3_run_observed_stop ? V3_RUN_TSTP : WSTOPSIG(status);
             /* Reap the observer before suspending: otherwise its pending stop
              * notification could suspend the same job again after fg. */
             if (v3_run_close_observer()) return -1;

@@ -58,18 +58,18 @@ fn fastc_atomic_member_parser(source string) Parser {
 		last_option_value_type:   flat.source_type_string
 		last_multi_return_types:  flat.TypeTextList.from_names(['int', 'string'])
 		declared_kinds:           {
-			'Record':       .struct_
-			'string':       .struct_
-			'Alias':        .alias_
-			'Iface':        .interface_
-			'Mode':         .enum_
-			'Shade':        .alias_
-			'PointerShade': .alias_
+			flat.source_type_id('Record'):       .struct_
+			flat.source_type_id('string'):       .struct_
+			flat.source_type_id('Alias'):        .alias_
+			flat.source_type_id('Iface'):        .interface_
+			flat.source_type_id('Mode'):         .enum_
+			flat.source_type_id('Shade'):        .alias_
+			flat.source_type_id('PointerShade'): .alias_
 		}
 		declared_types:           {
-			'Mode':         true
-			'Shade':        true
-			'PointerShade': true
+			flat.source_type_id('Mode'):         true
+			flat.source_type_id('Shade'):        true
+			flat.source_type_id('PointerShade'): true
 		}
 		alias_base_types:         aliases
 		sum_types:                {

@@ -71,9 +71,9 @@ NB: the build flags are shared with the run command too:
     * `c` (default)       - V outputs C source code, which is then passed to a C compiler.
     * `fastc`             - V parses supported source directly to C without an AST and compiles
                             it with the bundled TinyCC; available on macOS, Linux, and Windows
-                            hosts. V executables built from `cmd/v` (`make`, `makev.bat`,
-                            `v self`, `v up`) include it unless they are built with
-                            `-d skip_fastc`.
+                            hosts. C-only compilers automatically build and run a cached
+                            full compiler when an omitted backend is selected.
+                            Use `v -compile-backend fastc self` to include FastC in `v` itself.
                             Supports array/map literals, checked array indexing, and `in`/`!in`.
                             See doc/fastc.md for supported constructs and current limitations.
     * `go`                - V outputs Go source code, which is then passed to a Go compiler.
@@ -82,13 +82,14 @@ NB: the build flags are shared with the run command too:
     * `js_node`           - V outputs JS source code to run with nodejs.
     * `js_freestanding`   - V outputs JS source code with no hard runtime dependency.
     * `arm64`             - V outputs a native ARM64 executable directly on macOS.
-                            Enable it with `v -compile-backend arm64 self`, then use
-                            `v -b arm64 -gc none file.v` (EXPERIMENTAL).
+                            Use `v -b arm64 -gc none file.v` (EXPERIMENTAL).
+    * `x64`               - V outputs a native AMD64 executable directly on Linux.
+                            Use `v -b x64 file.v` (EXPERIMENTAL). Add `-prod`
+                            to optimize generated runtime code.
     * `wasm`              - V outputs a WebAssembly module directly
 	                        (see -os wasi|browser) (EXPERIMENTAL).
 
-    `-b native` has been replaced by `-b arm64`. A native AMD64 backend is not available yet;
-    use `v -b c -arch amd64 file.v` for AMD64 compilation through the C backend.
+    `-b native` has been replaced by `-b arm64` and `-b x64`.
 
   -d <flag>[=<value>], -define <flag>[=<value>]
     Define the provided flag.
@@ -273,7 +274,8 @@ NB: the build flags are shared with the run command too:
     Generate C/JS code for all functions, including those that are provably not used by your
     project. By default, V skips them, which speeds up compilation, and reduces the generated
     output size. Use this option if your program breaks only because of that, and please
-    report the issue.
+    report the issue. The obsolete -skip-unused flag has no effect and prints a notice
+    that unused code is skipped by default.
 
   -stats
     Enable more detailed statistics reporting, while compiling test files.
@@ -342,6 +344,13 @@ NB: the build flags are shared with the run command too:
     without verbose compiler traces. -silent suppresses this summary, as does writing
     generated C to stdout with -o -.
 
+  -show-instructions
+    Like -show-timings, and also prints the retired CPU instructions of each compiler
+    stage, summed over all threads, plus the total for the whole process. Instruction
+    counts are less sensitive to machine load than elapsed time, which makes them useful
+    when comparing compiler changes. They are read from the kernel on macOS; on other
+    systems, only the timings are printed.
+
     Related to -show-timings, is the ability to compile a special instrumented
     v compiler with this command:
     `v -d time_parsing -d time_checking -d time_cgening -d time_v self`
@@ -369,12 +378,6 @@ NB: the build flags are shared with the run command too:
     These should be moved in .c.v and .js.v .
     NB: in the future, this will be turned ON by default,
     and will become an error, after vlib modules are cleaned up.
-
-  -check-return
-    Note about all calls, that ignore the return value of
-    the corresponding fn/method.
-    NB: this is still experimental, the rules for it will
-    change, it may be dropped completely, or it may become the default.
 
 For C-specific build flags, use `v help build-c`.
 For JS-specific build flags, use `v help build-js`.

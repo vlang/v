@@ -1,28 +1,53 @@
 # Native inputs in the module cache
 
-With `-new-compiler -cc cc`, applications importing `compress.zstd`, including `veb`
-applications, can use the module and program caches. Cached module objects share one
-copy of V's bundled zstd implementation in the program translation unit. Other units
-use the public declarations embedded in the bundled amalgamation. Changes to the
-native source remain cache inputs and invalidate affected entries. Embedded resources in omitted
-cached function bodies retain their dependency records after their current content and metadata
-are verified. Editing or removing a resource invalidates reuse. Bundled mbedTLS headers are checked
-with the selected C preprocessor, using the generated units' C
-or Objective-C language, and their active dependencies are tracked. C++ contexts,
-custom native configuration directives, SDK macro overrides, renamed SDK bindings, and forced
-headers keep the conservative fallback when their original context cannot be reconstructed.
-Compiler response files and config/spec files also retain the fallback.
-Production, shared, and GNU89 inline modes retain this fallback for bundled mbedTLS headers.
+V leaves C headers to the C toolchain. It does not parse header declarations, expand nested
+includes, or project native interfaces for TCC. C bindings declare their types and functions in V.
+The header-parsing bridge introduced by commit `4563cf06ba` has been removed.
 
-Module object cache keys distinguish system libc headers from V's fallback declarations.
-A program import or `#include` can select system headers for the whole program, changing native
-type layouts even in modules whose V source is unchanged. Objects from these two header modes
-are kept separate, including when reusing a cache populated by an older compiler.
+Outside the native owner path described below, user native inputs and bundled native files
+without an explicit ownership contract bypass module and program caches. Forced headers and macro
+files use the same conservative fallback. The
+compiler no longer scans bundled mbedTLS or other headers to decide whether their contents can be
+replicated into cached objects. Embedded resources retain their ordinary dependency records.
 
-Set `V3_CACHE_TRACE=1` to inspect cache decisions, and use `-show-timings` to see
-`monomorphize (cached)` on an unchanged build. External native inputs without a safe
-ownership or replication policy still fall back to an uncached build. TCC selection
-continues to follow the compiler's existing cache eligibility rules.
+On macOS, cached development builds with Objective-C sources can compile the application unit
+with TCC and link a native development dylib. Clang compiles the native owner and external V
+modules. Application-directory modules remain in the TCC unit; other modules retain cached
+objects and V declaration interfaces.
 
-`-print-watched-files` and `-dump-files` parse source bodies to include every embedded resource,
-including resources omitted from warm declaration headers.
+Native function pointer declarations come solely from explicit `fn C...` bindings. Their V types
+must match the native ABI. C headers remain includes for the selected C compiler, including
+headers with guarded include cycles. Types and macros private to a native source are not inferred:
+expose them through a C-compatible header or explicit native helpers. Objective-C implementations
+must use `.m` or `.mm` source files. Native source includes belong to the owner; their code is not
+copied into every cached object. For a header with private implementation code, keep its public C
+types outside a `V3CACHE_NATIVE_INTERFACE` guard and place implementation under
+`!defined(V3CACHE_NATIVE_INTERFACE) || defined(V3CACHE_NATIVE_OWNER)`. The C compiler selects the
+interface or implementation; V does not inspect either branch. Imported and explicitly exported V
+functions retain their ordinary symbols when called through a C binding.
+Mixed Objective-C and Objective-C++ source contexts retain the fallback; `-no-retry-compilation`
+rejects unsupported contexts instead of changing compilers.
+
+The C compiler supplies a fresh dependency manifest before cache reuse. Editing a nested header
+invalidates dependent artifacts. The native compiler rejects date/time macros before publishing
+the owner and V module objects. Embedded resources remain dependencies of their owning V modules,
+including resources omitted from warm V declaration interfaces. Use `-showcc` to confirm the final
+TCC invocation and `V3_CACHE_TRACE=1` to inspect module reuse. The consumer's compiler-generated
+dependency manifest also selects framework link flags for nested C includes.
+
+Parallel C builds outside this explicit owner path keep quoted native includes in one translation
+unit when their ownership is unknown. The preprocessed TCC prelude cache and its readers have
+been removed. Possible date/time dependencies disable executable reuse without preprocessing
+the unit to inspect header output.
+
+C compiler dependency manifests can still name headers for dependency reporting and opaque file
+identity checks. A dependency list alone cannot establish missing include candidates or time macro
+context, so executable reuse is bypassed when that information would require reading headers.
+
+`-cross -o output.c` preserves local header and native source includes. Supply those files and
+their include paths on the machine compiling the C output; V does not recursively embed them.
+
+Set `V3_CACHE_TRACE=1` to inspect cache decisions and `-showcc` to inspect the native
+compiler command.
+`-print-watched-files` and `-dump-files` parse V source bodies to include embedded resources,
+including resources omitted from warm V declaration headers.

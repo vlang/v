@@ -27,6 +27,27 @@ fn C.timegm(&C.tm) C.time_t
 // from docs localtime_r is thread safe,
 fn C.localtime_r(t &C.time_t, tm &C.tm)
 
+// c_local_epoch_offset returns how many seconds east of UTC the local zone is at
+// the instant `sec`; `loc_tm` is the caller's localtime_r result for `sec`. glibc,
+// macOS and the BSDs carry it in struct tm's tm_gmtoff. Solaris's struct tm has no
+// such member, so there it is the local calendar fields read as UTC, minus `sec`.
+@[inline]
+fn c_local_epoch_offset(sec i64, loc_tm C.tm) i64 {
+	$if solaris {
+		return local_offset_from_fields(sec, &loc_tm)
+	} $else {
+		return i64(loc_tm.tm_gmtoff)
+	}
+}
+
+// local_offset_from_fields returns the UTC offset of the local zone at the instant
+// `sec`, from `loc_tm`, the localtime_r result for `sec`. It uses only the calendar
+// fields, so it works where struct tm has no tm_gmtoff.
+@[inline]
+fn local_offset_from_fields(sec i64, loc_tm &C.tm) i64 {
+	return portable_timegm(loc_tm) - sec
+}
+
 fn make_unix_time(t C.tm) i64 {
 	return unsafe { i64(C.timegm(&t)) }
 }
@@ -55,7 +76,7 @@ pub fn (t Time) local() Time {
 	loc_tm := C.tm{}
 	t_ := t.unix()
 	C.localtime_r(voidptr(&t_), &loc_tm)
-	return convert_ctime_with_unix(loc_tm, t.nanosecond, t_ + i64(loc_tm.tm_gmtoff))
+	return convert_ctime_with_unix(loc_tm, t.nanosecond, t_ + c_local_epoch_offset(t_, loc_tm))
 }
 
 // in most systems, these are __quad_t, which is an i64
@@ -102,7 +123,8 @@ fn linux_now() Time {
 	C.clock_gettime(C.CLOCK_REALTIME, &ts)
 	loc_tm := C.tm{}
 	C.localtime_r(voidptr(&ts.tv_sec), &loc_tm)
-	return convert_ctime_with_unix(loc_tm, int(ts.tv_nsec), i64(ts.tv_sec) + i64(loc_tm.tm_gmtoff))
+	return convert_ctime_with_unix(loc_tm, int(ts.tv_nsec), i64(ts.tv_sec) + c_local_epoch_offset(i64(ts.tv_sec),
+		loc_tm))
 }
 
 fn linux_utc() Time {

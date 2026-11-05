@@ -611,6 +611,14 @@ fn (mut p InlineParser) try_strikethrough() ?&Node {
 	return node
 }
 
+// link_text_opts returns the options for parsing the text of a link, in which a bare URL is
+// not linkified, since a link cannot contain another link.
+fn (p &InlineParser) link_text_opts() Options {
+	mut opts := p.opts
+	opts.linkify = false
+	return opts
+}
+
 // try_link_or_footnote handles [ and attempts to parse a link or footnote ref.
 fn (mut p InlineParser) try_link_or_footnote() ?[]&Node {
 	saved := p.pos
@@ -640,7 +648,7 @@ fn (mut p InlineParser) try_link_or_footnote() ?[]&Node {
 	if p.pos < p.src.len && p.src[p.pos] == `(` {
 		dest, title, end := parse_inline_link_dest_from(p.src, p.pos + 1)
 		if end >= 0 {
-			inner_nodes := parse_inline(link_text, p.opts, p.ref_map)
+			inner_nodes := parse_inline(link_text, p.link_text_opts(), p.ref_map)
 			if contains_link(inner_nodes) {
 				// A link cannot contain another link.
 				p.pos = saved
@@ -666,7 +674,7 @@ fn (mut p InlineParser) try_link_or_footnote() ?[]&Node {
 			label := normalize_label(if raw_label.len > 0 { raw_label } else { link_text })
 			if label in p.ref_map {
 				ref := p.ref_map[label]
-				inner_nodes := parse_inline(link_text, p.opts, p.ref_map)
+				inner_nodes := parse_inline(link_text, p.link_text_opts(), p.ref_map)
 				if contains_link(inner_nodes) {
 					// A link cannot contain another link.
 					p.pos = saved
@@ -693,7 +701,7 @@ fn (mut p InlineParser) try_link_or_footnote() ?[]&Node {
 	label := normalize_label(link_text)
 	if label in p.ref_map {
 		ref := p.ref_map[label]
-		inner_nodes := parse_inline(link_text, p.opts, p.ref_map)
+		inner_nodes := parse_inline(link_text, p.link_text_opts(), p.ref_map)
 		if contains_link(inner_nodes) {
 			// A link cannot contain another link.
 			p.pos = saved
@@ -984,11 +992,11 @@ fn try_autolink(s string) int {
 	}
 	for i := 0; i < inner.len; i++ {
 		c := inner[i]
-		if c == ` ` || c == `\t` || c == `\n` || c == `\r` || c == `<` {
+		if c <= 0x20 || c == 0x7f || c == `<` {
 			return -1
 		}
 	}
-	// Absolute URI: scheme ':' + at least one more character.
+	// Absolute URI: scheme ':' + zero or more non-control characters.
 	idx := inner.index(':') or { -1 }
 	if idx > 0 {
 		scheme := inner[..idx]
@@ -1001,7 +1009,7 @@ fn try_autolink(s string) int {
 					break
 				}
 			}
-			if ok && idx + 1 < inner.len {
+			if ok {
 				return end
 			}
 		}
@@ -1230,10 +1238,10 @@ fn (mut p InlineParser) try_entity() ?&Node {
 			return text_node(multi)
 		}
 	}
-	// Out-of-range numeric references (> U+10FFFF) are not entities at all
-	// (they stay literal); zero and surrogates decode to U+FFFD below.
+	// CommonMark limits the digit count, not the numeric value. Invalid
+	// Unicode values, zero, and surrogates decode to U+FFFD below.
 	if candidate.len > 3 && candidate[1] == `#` {
-		if numeric_entity_too_large(candidate[2..candidate.len - 1]) {
+		if numeric_entity_too_long(candidate[2..candidate.len - 1]) {
 			return none
 		}
 	}
@@ -1251,39 +1259,13 @@ const multi_rune_entities = {
 	'ngE': '≧̸'
 }
 
-// numeric_entity_too_large reports whether a numeric entity body (the part
-// between `&#` and `;`, with optional `x` prefix) denotes a value above
-// U+10FFFF. Malformed bodies return false (the decoder rejects them).
-fn numeric_entity_too_large(body string) bool {
-	mut entity_digits := body
-	mut base := 10
-	if entity_digits.len > 0 && (entity_digits[0] == `x` || entity_digits[0] == `X`) {
-		base = 16
-		entity_digits = entity_digits[1..]
+// numeric_entity_too_long checks CommonMark's decimal and hexadecimal digit limits.
+// Malformed bodies within these limits are rejected by the entity decoder.
+fn numeric_entity_too_long(body string) bool {
+	if body.len > 0 && (body[0] == `x` || body[0] == `X`) {
+		return body.len - 1 > 6
 	}
-	if entity_digits.len == 0 {
-		return false
-	}
-	limit := u64(0x10ffff)
-	mut v := u64(0)
-	for i := 0; i < entity_digits.len; i++ {
-		c := entity_digits[i]
-		mut d := u64(0)
-		if c >= `0` && c <= `9` {
-			d = u64(c - `0`)
-		} else if base == 16 && c >= `a` && c <= `f` {
-			d = u64(c - `a`) + 10
-		} else if base == 16 && c >= `A` && c <= `F` {
-			d = u64(c - `A`) + 10
-		} else {
-			return false
-		}
-		if v > (limit - d) / u64(base) {
-			return true
-		}
-		v = v * u64(base) + d
-	}
-	return v > limit
+	return body.len > 7
 }
 
 // parse_newline handles a newline character.
@@ -1299,20 +1281,38 @@ fn (mut p InlineParser) parse_newline() &Node {
 
 // try_linkify matches a bare URL (linkify extension).
 fn (mut p InlineParser) try_linkify() ?&Node {
+	// Like in GFM, a URL starts a line or follows a space, `*`, `_`, `~` or `(`, so a scheme
+	// in the middle of a word, like in `foohttps://`, is not a link.
+	if p.pos > 0 && p.src[p.pos - 1] !in [` `, `\t`, `\n`, `\r`, `*`, `_`, `~`, `(`] {
+		return none
+	}
 	rest := p.src[p.pos..]
 	for _, scheme in ['https://', 'http://', 'ftp://', 'mailto:'] {
 		if rest.starts_with(scheme) {
 			mut end := scheme.len
+			mut opening := 0
+			mut closing := 0
 			for end < rest.len {
 				ch := rest[end]
 				if ch == ` ` || ch == `<` || ch == `>` || ch == `"` || ch == `\n` || ch == `\t` {
 					break
 				}
+				if ch == `(` {
+					opening++
+				} else if ch == `)` {
+					closing++
+				}
 				end++
 			}
+			// Like in GFM, trailing punctuation is not part of the URL, and neither is a `)`
+			// that closes no `(` of the URL, as in `(see https://vlang.io)`, while
+			// `https://w.org/Clamp_(function)` keeps it.
 			for end > scheme.len {
 				last := rest[end - 1]
-				if last == `.` || last == `,` || last == `;` || last == `!` || last == `?` {
+				if last in [`.`, `,`, `;`, `:`, `!`, `?`, `*`, `_`, `~`] {
+					end--
+				} else if last == `)` && closing > opening {
+					closing--
 					end--
 				} else {
 					break

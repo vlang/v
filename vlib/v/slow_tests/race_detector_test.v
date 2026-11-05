@@ -830,3 +830,19 @@ fn test_race_close_error_is_published_with_the_close() {
 	assert !res.output.contains('ThreadSanitizer'), res.output
 	assert res.output.contains('received: custom close error'), res.output
 }
+
+// A program that only prints literals parses a reduced builtin on macOS. Its printing
+// functions call the race runtime, so a `-race` build of it needs that runtime too, and
+// with it race_options.c, which reads VRACE.
+fn test_race_literal_output_program_links_the_race_runtime() {
+	if !thread_sanitizer_runs() {
+		return
+	}
+	exe := build_race_program('literal_output', "fn main() {\n\tprintln('literal output')\n}\n")
+	res := os.exec([exe])
+	assert res.exit_code == 0, res.output
+	assert res.output.trim_space() == 'literal output', res.output
+	help := os.exec(['env', 'VRACE=help=1', exe])
+	assert help.exit_code == 0, help.output
+	assert help.output.contains('Available flags for ThreadSanitizer'), help.output
+}

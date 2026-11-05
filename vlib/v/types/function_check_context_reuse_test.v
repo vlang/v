@@ -8,7 +8,7 @@ import v.pref
 fn test_function_check_context_reset_detaches_shared_arrays_and_clears_semantic_state() {
 	mut scope := new_scope(unsafe { nil })
 	owner := scope.insert_with_owner('value', builtin_int_type)
-	params := ['T', 'U']
+	params := generic_param_ids(['T', 'U'])
 	unsafe_states := [[{
 		'value': true
 	}]]
@@ -49,6 +49,10 @@ fn test_function_check_context_reset_detaches_shared_arrays_and_clears_semantic_
 	ctx.closure_forbidden_captures['value'] = true
 	ctx.local_decl_rhs_by_name['value'] = [LocalDeclRhs{ rhs: flat.NodeId(1) }]
 	ctx.bool_condition_exprs['value'] = flat.NodeId(1)
+	ctx.preflight_option_layers[flat.NodeId(1)] = PreflightOptionLayer{
+		keys:                ['value']
+		restores_smartcasts: true
+	}
 	ctx.unsafe_alias_break_states = unsafe_states
 	ctx.pointer_alias_break_states = pointer_states
 	ctx.pointer_alias_continue_states = pointer_states
@@ -65,7 +69,7 @@ fn test_function_check_context_reset_detaches_shared_arrays_and_clears_semantic_
 	cloned := clone_function_check_context(ctx)
 	ctx.reset_for_sibling_check()
 	assert ctx == new_function_check_context()
-	assert params == ['T', 'U']
+	assert params == generic_param_ids(['T', 'U'])
 	assert unsafe_states == [[{
 		'value': true
 	}]]
@@ -73,6 +77,8 @@ fn test_function_check_context_reset_detaches_shared_arrays_and_clears_semantic_
 		'value': ['target']
 	}]]
 	assert cloned.method_value_locals['value']
+	assert cloned.preflight_option_layers[flat.NodeId(1)].keys == ['value']
+	assert cloned.preflight_option_layers[flat.NodeId(1)].restores_smartcasts
 	assert (cloned.mut_param_base_types['value'] or { panic('lost cloned type') }) == builtin_int_type
 	assert (cloned.mut_local_owners['value'] or { panic('lost cloned owner') }).storage_key() == owner.storage_key()
 	// Reset retains a usable typed map, including maps that contain owners/arrays.
@@ -89,7 +95,7 @@ fn test_function_check_context_reset_detaches_shared_arrays_and_clears_semantic_
 fn context_reuse_seed_outer(mut tc TypeChecker) string {
 	owner := tc.cur_scope.insert_with_owner('outer', builtin_int_type)
 	tc.fn_context.node_id = -1
-	tc.fn_context.generic_params = ['Outer']
+	tc.fn_context.generic_params = generic_param_ids(['Outer'])
 	tc.fn_context.return_type = builtin_string_type
 	tc.fn_context.mut_local_owners['outer'] = owner
 	tc.fn_context.pointer_binding_value_keys['outer'] = ['outer_target']
@@ -97,7 +103,7 @@ fn context_reuse_seed_outer(mut tc TypeChecker) string {
 }
 
 fn context_reuse_assert_outer(tc &TypeChecker, key string) {
-	assert tc.fn_context.generic_params == ['Outer']
+	assert tc.fn_context.generic_params == generic_param_ids(['Outer'])
 	assert tc.fn_context.return_type == builtin_string_type
 	assert tc.fn_context.mut_local_owners.len == 1
 	owner := tc.fn_context.mut_local_owners['outer'] or { panic('lost outer owner') }

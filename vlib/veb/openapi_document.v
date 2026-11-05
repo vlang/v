@@ -5,6 +5,19 @@ import net.http
 import os
 import v.vmod
 
+// OpenApiTagConfig defines a public tag and maps reflected controller names to it.
+// A controller listed by multiple definitions receives all of those tags.
+pub struct OpenApiTagConfig {
+pub:
+	name          string
+	summary       string
+	parent        string
+	description   string
+	kind          string = 'nav'
+	external_docs map[string]json2.Any
+	controllers   []string
+}
+
 // OpenApiConfig configures an additive, typed OpenAPI document.
 @[params]
 pub struct OpenApiConfig {
@@ -27,6 +40,7 @@ pub:
 	response_descriptions map[string]string
 	servers               []map[string]json2.Any
 	tags                  []map[string]json2.Any
+	tag_definitions       []OpenApiTagConfig
 	// Wrap successful typed responses in an object with this property, if nonempty.
 	success_field string
 }
@@ -67,6 +81,37 @@ pub:
 	envelope ?string
 }
 
+// OpenApi links a route handler to a typed OpenAPI metadata method on its controller.
+@[attribute]
+pub struct OpenApi {
+pub:
+	handler string
+}
+
+// OpenApiHandler supplies the mounted operation to a handler's typed metadata method.
+// Register that method with `@[veb.OpenApi('method_name')]` on the route handler.
+pub struct OpenApiHandler {
+mut:
+	doc    &OpenApiDocument = unsafe { nil }
+	path   string
+	method http.Method
+}
+
+// request documents a request DTO using the operation's mounted path and HTTP method.
+pub fn (mut handler OpenApiHandler) request[T](options OpenApiRequest) ! {
+	handler.doc.request[T](handler.path, handler.method, options)!
+}
+
+// response documents a response DTO using the operation's mounted path and HTTP method.
+pub fn (mut handler OpenApiHandler) response[T](options OpenApiResponse) ! {
+	handler.doc.response[T](handler.path, handler.method, options)!
+}
+
+// raw_response documents a complete response, including custom envelopes and headers.
+pub fn (mut handler OpenApiHandler) raw_response(status int, response map[string]json2.Any) ! {
+	handler.doc.raw_response(handler.path, handler.method, status, response)!
+}
+
 // OpenApiDocument collects dispatcher routes and explicitly configured DTO metadata.
 pub struct OpenApiDocument {
 	config OpenApiConfig
@@ -83,11 +128,15 @@ pub fn new_openapi(config OpenApiConfig) !OpenApiDocument {
 	} else {
 		config.version
 	}
-	patch := config.openapi_version.all_after('3.0.')
-	if !config.openapi_version.starts_with('3.0.') || patch == '' || patch.bytes().any(!it.is_digit()) {
-		return error('OpenAPI version must be 3.0.x')
+	modern := config.openapi_version.starts_with('3.2.')
+	prefix := if modern { '3.2.' } else { '3.0.' }
+	patch := config.openapi_version.all_after(prefix)
+	if !config.openapi_version.starts_with(prefix) || patch == '' || patch.bytes().any(!it.is_digit()) {
+		return error('OpenAPI version must be 3.0.x or 3.2.x')
 	}
-	return OpenApiDocument{ config: OpenApiConfig{ ...config, version: version } }
+	doc := OpenApiDocument{ config: OpenApiConfig{ ...config, version: version } }
+	_ = doc.configured_tags()!
+	return doc
 }
 
 // add_app includes root routes and all recursively mounted controllers.
@@ -148,7 +197,7 @@ pub fn (mut doc OpenApiDocument) add_app[A, X](app &A) ! {
 			mut operation := map[string]json2.Any{
 				'summary':     json2.Any(route.name)
 				'operationId': json2.Any(openapi_id(route.controller + '_' + route.name + '_' + verb + '_' + path))
-				'tags':        json2.Any([json2.Any(route.controller)])
+				'tags':        json2.Any(doc.controller_tags(route.controller))
 				'parameters':  json2.Any(params)
 				'responses':   json2.Any(responses)
 			}
@@ -184,6 +233,12 @@ pub fn (mut doc OpenApiDocument) add_app[A, X](app &A) ! {
 			}
 			item[verb] = operation
 			doc.paths[path] = item
+			if route.openapi_metadata_name != '' {
+				if route.openapi_metadata == unsafe { nil } {
+					return error('unknown OpenAPI metadata method `${route.openapi_metadata_name}` for ${route.controller}.${route.name}; expected fn (app &Controller) metadata(mut handler veb.OpenApiHandler) !')
+				}
+				route.openapi_metadata(mut doc, path, method)!
+			}
 		}
 	}
 }
@@ -231,6 +286,16 @@ pub fn (mut doc OpenApiDocument) request[T](path string, method http.Method, opt
 		$if T is $struct {
 			$for field in T.fields {
 				$if field.typ is string || field.typ is int || field.typ is bool {
+					// An explicit DTO replaces a reflected query field with the same name.
+					mut retained := []json2.Any{}
+					for existing in parameters {
+						parameter := existing.as_map()
+						if (parameter['in'] or { json2.Any('') }).str() != 'query'
+							|| (parameter['name'] or { json2.Any('') }).str() != field.name {
+							retained << existing
+						}
+					}
+					parameters = retained
 					parameters << map[string]json2.Any{
 						'name':     json2.Any(field.name)
 						'in':       json2.Any('query')
@@ -332,8 +397,7 @@ pub fn (doc &OpenApiDocument) json(pretty bool) !string {
 	}
 	mut paths := map[string]json2.Any{}
 	mut ids := map[string]bool{}
-	mut tags := map[string]json2.Any{}
-	for tag in doc.config.tags { tags[(tag['name'] or { json2.Any(json2.null) }).str()] = tag }
+	mut tags := doc.configured_tags()!
 	for path, methods in doc.paths {
 		mut item := map[string]json2.Any{}
 		for method, stored_operation in methods {
@@ -381,10 +445,7 @@ pub fn (doc &OpenApiDocument) json(pretty bool) !string {
 	if doc.config.security_schemes.len > 0 {
 		components['securitySchemes'] = doc.config.security_schemes
 	}
-	mut names := tags.keys()
-	names.sort()
-	mut sorted_tags := []json2.Any{}
-	for name in names { sorted_tags << (tags[name] or { json2.Any(json2.null) }) }
+	sorted_tags := openapi_order_tags(tags)!
 	mut result := map[string]json2.Any{
 		'openapi':    json2.Any(doc.config.openapi_version)
 		'info':       json2.Any(info)
@@ -446,4 +507,74 @@ pub fn (doc &OpenApiDocument) serve(mut ctx Context, pretty bool) !Result {
 
 fn (doc &OpenApiDocument) response_description(status int) string {
 	return doc.config.response_descriptions[status.str()] or { http.status_from_int(status).str() }
+}
+
+fn (doc &OpenApiDocument) controller_tags(controller string) []json2.Any {
+	mut tags := []json2.Any{}
+	for definition in doc.config.tag_definitions {
+		if controller in definition.controllers { tags << definition.name }
+	}
+	if tags.len == 0 { tags << controller }
+	return tags
+}
+
+fn (doc &OpenApiDocument) configured_tags() !map[string]json2.Any {
+	mut tags := map[string]json2.Any{}
+	for tag in doc.config.tags {
+		name := (tag['name'] or { json2.Any('') }).str()
+		if name.trim_space() == '' { return error('OpenAPI tag names must not be empty') }
+		if name in tags { return error('duplicate OpenAPI tag: ${name}') }
+		tags[name] = tag
+	}
+	for definition in doc.config.tag_definitions {
+		if definition.name.trim_space() == '' {
+			return error('OpenAPI tag names must not be empty')
+		}
+		if definition.name in tags { return error('duplicate OpenAPI tag: ${definition.name}') }
+		mut tag := map[string]json2.Any{
+			'name': json2.Any(definition.name)
+		}
+		if definition.description != '' { tag['description'] = definition.description }
+		if definition.external_docs.len > 0 { tag['externalDocs'] = definition.external_docs }
+		if definition.parent != '' { tag['parent'] = definition.parent }
+		if doc.config.openapi_version.starts_with('3.2.') {
+			if definition.summary != '' { tag['summary'] = definition.summary }
+			if definition.kind != '' { tag['kind'] = definition.kind }
+		}
+		tags[definition.name] = tag
+	}
+	for name, value in tags {
+		tag := value.as_map()
+		parent := (tag['parent'] or { json2.Any('') }).str()
+		if parent != '' {
+			if !doc.config.openapi_version.starts_with('3.2.') {
+				return error('OpenAPI tag parents require version 3.2.x: ${name}')
+			}
+			if parent !in tags { return error('undefined OpenAPI tag parent: ${parent}') }
+		}
+	}
+	_ = openapi_order_tags(tags)!
+	return tags
+}
+
+fn openapi_order_tags(tags map[string]json2.Any) ![]json2.Any {
+	mut names := tags.keys()
+	names.sort()
+	mut result := []json2.Any{}
+	mut emitted := map[string]bool{}
+	for result.len < names.len {
+		mut progressed := false
+		for name in names {
+			if name in emitted { continue }
+			tag := (tags[name] or { json2.Any(json2.null) }).as_map()
+			parent := (tag['parent'] or { json2.Any('') }).str()
+			if parent == '' || parent in emitted {
+				result << json2.Any(tag)
+				emitted[name] = true
+				progressed = true
+			}
+		}
+		if !progressed { return error('OpenAPI tag parents must not contain cycles') }
+	}
+	return result
 }

@@ -6,14 +6,20 @@ import v.flat
 // annotation; other spellings keep their ID without reading their bytes.
 @[inline]
 fn shift_inferred_type_id(typ u32, shift int) u32 {
-	if !flat.source_type_shape(typ).has(.typeof_expr) {
+	if !flat.source_type_query(typ).has(.inferred_witness) {
 		return typ
 	}
-	text := flat.source_type_name(typ)
-	if !text.contains('typeof(__expr_') {
+	syntax := flat.source_type_syntax(typ)
+	if syntax.inferred_annotations().len == 0 {
 		return typ
 	}
-	return flat.source_type_id(shift_inferred_type(text, shift))
+	mut parts := []u32{cap: syntax.inferred_parts().len + syntax.inferred_annotations().len}
+	for i, expression_bits in syntax.inferred_expr_ids() {
+		parts << syntax.inferred_parts()[i]
+		parts << flat.source_type_composition_one(.inferred_expression, u32(int(expression_bits) + shift))
+	}
+	parts << syntax.inferred_parts()[syntax.inferred_parts().len - 1]
+	return flat.source_type_composition(.concat, parts)
 }
 
 // shift_inferred_value relocates `typeof(expr)` links held in a node's value.
@@ -34,16 +40,5 @@ fn shift_inferred_value(kind flat.NodeKind, value string, shift int) string {
 // Parser workers merge local ASTs with shifted node ids. `typeof(expr)` type
 // annotations hold expression links and relocate with the ordinary child links.
 fn shift_inferred_type(typ string, shift int) string {
-	mut result := typ
-	mut offset := 0
-	marker := 'typeof(__expr_'
-	for offset < result.len {
-		start := result[offset..].index(marker) or { break } + offset
-		end := result[start..].index(')') or { break } + start
-		value := result[start + marker.len..end].int()
-		replacement := marker + (value + shift).str() + ')'
-		result = result[..start] + replacement + result[end + 1..]
-		offset = start + replacement.len
-	}
-	return result
+	return flat.source_type_name(shift_inferred_type_id(flat.source_type_id(typ), shift))
 }

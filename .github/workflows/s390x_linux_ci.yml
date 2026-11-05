@@ -13,34 +13,6 @@ on:
       - '!**/s390x_linux_ci.yml'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
-  pull_request:
-    paths:
-      - 'cmd/v/**'
-      - 'cmd/tools/builders/**.v'
-      - 'vlib/arrays/**'
-      - 'vlib/builtin/**'
-      - 'vlib/encoding/binary/**'
-      - 'vlib/os/**'
-      - 'vlib/time/**'
-      - 'vlib/runtime/**'
-      - 'vlib/term/**'
-      - 'vlib/net/**'
-      - 'vlib/crypto/rand/**'
-      - 'vlib/picoev/**'
-      - 'vlib/rand/**'
-      - 'vlib/strconv/**'
-      - 'vlib/strings/**'
-      - 'vlib/sync/**'
-      - 'vlib/v/**'
-      - 'thirdparty/**'
-      - 'vc/**'
-      - 'v.mod'
-      - 'GNUmakefile'
-      - 'Makefile'
-      - '.github/problem-matchers/**'
-      - '!**.md'
-      - '!**.yml'
-      - '.github/workflows/s390x_linux_ci.yml'
 
 concurrency:
   group: s390x-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -52,6 +24,7 @@ permissions:
 
 jobs:
   s390x_linux:
+    if: github.ref == 'refs/heads/master'
     # The host should always be Linux
     runs-on: ubuntu-22.04
     # Embedding the Linux-default V3 compiler makes both bootstrap stages slow under QEMU.

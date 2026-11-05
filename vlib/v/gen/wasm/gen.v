@@ -586,7 +586,7 @@ fn wasm_aggregate_param_ok(tc &types.TypeChecker, typ types.Type, depth int) boo
 			return wasm_aggregate_param_ok(tc, typ.base_type, depth)
 		}
 		types.Struct {
-			st := tc.structs[typ.name()] or { return false }
+			st := tc.structs[typ.source_type_id()] or { return false }
 			for f in st {
 				if !wasm_aggregate_param_ok(tc, f.typ, depth + 1) {
 					return false

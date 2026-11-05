@@ -49,17 +49,10 @@ fn main() {
 		// compiling by default, i.e. `v self`:
 		unam := os.uname()
 		if host_os == 'macos' {
-			// Apple Silicon's bundled TCC is much faster for compiler rebuilds. The
+			// The bundled TCC is much faster for compiler rebuilds. The
 			// generated compiler uses pthread-backed allocator state because native
-			// TinyCC TLS is not reliable on macOS. Newer macOS releases cannot load what
-			// TCC links at all (see pref.host_rejects_tcc_executables).
-			default_cc := if unam.machine in ['arm64', 'aarch64']
-				&& !pref.host_rejects_tcc_executables() {
-				'tcc'
-			} else {
-				'cc'
-			}
-			args << ['-cc', os.getenv_opt('CC') or { default_cc }]
+			// TinyCC TLS is not reliable on macOS.
+			args << ['-cc', os.getenv_opt('CC') or { 'tcc' }]
 		} else if host_os == 'linux'
 			&& (unam.machine in ['arm64', 'aarch64'] || pref.host_arch() == 'arm32') {
 			// Bundled TCC can hang while bootstrapping V on Linux ARM64, so
@@ -75,6 +68,11 @@ fn main() {
 	}
 	if !has_gc_arg(effective_args) {
 		args << ['-gc', 'none']
+	}
+	if c_self_build {
+		// Older host compilers keep optional cmd/v backends by default. Prune them
+		// explicitly so the first rebuild already produces the small compiler.
+		args << self_build_backend_skips(effective_args)
 	}
 	effective_args = effective_self_build_args(args)
 	if !fastc_self_build && ('-prod' in effective_args || arm64_self_build)
@@ -93,13 +91,6 @@ fn main() {
 		// flag explicitly so the first `v up` built by an older compiler gets
 		// the bounded-memory implementation too.
 		args << '-prealloc'
-	}
-	effective_args = effective_self_build_args(args)
-	if c_self_build && !self_build_sets_fastc_inclusion(effective_args) {
-		// Compilers built from `cmd/v` keep the FastC backend by default. Pass that
-		// explicitly too, so the first `v up` run by an older compiler, whose driver
-		// still pruned FastC from `cmd/v`, already produces a V that accepts `-b fastc`.
-		args << ['-compile-backend', 'fastc']
 	}
 	// A replacement compiler has to be built entirely from the checked-out sources.
 	// Reusing a whole-program cache entry here can carry stale checker/codegen state
@@ -210,6 +201,48 @@ fn self_build_backend(args []string) string {
 		}
 	}
 	return backend
+}
+
+fn self_build_backend_skips(args []string) []string {
+	mut included := [self_build_backend(args)]
+	mut i := 0
+	for i < args.len {
+		arg := args[i]
+		if arg in ['-all-backends', '--all-backends'] {
+			return []
+		}
+		if arg in ['-compile-backend', '--compile-backend'] && i + 1 < args.len {
+			included << args[i + 1].split(',').map(it.trim_space())
+			i += 2
+			continue
+		}
+		if (arg == '-cf' || pref.option_may_consume_value(arg)) && i + 1 < args.len {
+			i += 2
+		} else {
+			i++
+		}
+	}
+	mut skips := []string{}
+	mut needs_ssa := false
+	for backend, aliases in {
+		'fastc': ['fastc']
+		'arm64': ['arm64', 'aarch64']
+		'x64':   ['x64', 'amd64', 'x86_64', 'x86-64']
+		'wasm':  ['wasm', 'wasm32']
+		'eval':  ['eval']
+	} {
+		if aliases.any(it in included) {
+			if backend in ['arm64', 'x64', 'wasm'] {
+				needs_ssa = true
+			}
+			continue
+		}
+		skips << ['-d', 'skip_${backend}']
+	}
+	if !needs_ssa {
+		skips << ['-d', 'skip_ssa']
+	}
+	return skips
 }
 
 fn normalize_fastc_backend_args(args []string) []string {
@@ -337,29 +370,6 @@ fn has_gc_arg(args []string) bool {
 			return true
 		}
 		if arg.starts_with('-gc=') {
-			return true
-		}
-	}
-	return false
-}
-
-// self_build_sets_fastc_inclusion reports whether the arguments already decide
-// whether FastC is compiled in, or select the compatibility compiler, which has
-// no `-compile-backend` option.
-fn self_build_sets_fastc_inclusion(args []string) bool {
-	for i, arg in args {
-		if arg in ['-old-compiler', '-all-backends', '--all-backends'] {
-			return true
-		}
-		if arg in ['-compile-backend', '--compile-backend'] && i + 1 < args.len
-			&& args[i + 1].split(',').any(it.trim_space() == 'fastc') {
-			return true
-		}
-		if arg in ['-d', '-define'] && i + 1 < args.len
-			&& args[i + 1].all_before('=').trim_space() == 'skip_fastc' {
-			return true
-		}
-		if arg.starts_with('-d') && arg.len > 2 && arg[2..].all_before('=') == 'skip_fastc' {
 			return true
 		}
 	}
@@ -649,8 +659,10 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 		eprintln(err.msg())
 		return false
 	}
-	mut training_args := ['-nocache', '-gc', 'none', '-prealloc', '-compile-backend', 'fastc',
-		'-building-v', '-o', training_output]
+	mut training_args := ['-nocache', '-gc', 'none', '-prealloc', '-building-v', '-o', training_output]
+	if self_build_trains_fastc(effective_self_build_args(args)) {
+		training_args << ['-compile-backend', 'fastc']
+	}
 	no_parallel := '-no-parallel' in effective_self_build_args(args)
 	if no_parallel {
 		training_args << '-no-parallel'
@@ -717,6 +729,7 @@ fn compile_with_pgo(vroot string, vexe string, args []string, out_binary string,
 }
 
 fn self_build_trains_fastc(args []string) bool {
+	mut includes_fastc := false
 	for i, arg in args {
 		if arg == '-old-compiler' {
 			return false
@@ -728,8 +741,15 @@ fn self_build_trains_fastc(args []string) bool {
 		if arg.starts_with('-d') && arg.len > 2 && arg[2..].all_before('=') == 'skip_fastc' {
 			return false
 		}
+		if arg in ['-all-backends', '--all-backends'] {
+			includes_fastc = true
+		}
+		if arg in ['-compile-backend', '--compile-backend'] && i + 1 < args.len
+			&& args[i + 1].split(',').any(it.trim_space() == 'fastc') {
+			includes_fastc = true
+		}
 	}
-	return true
+	return includes_fastc
 }
 
 fn bootstrap_self_build(vroot string, args []string, final_binary string) ! {
@@ -862,15 +882,24 @@ fn backup_old_version_and_rename_newer(short_v_name string) !bool {
 	if os.exists(bak_file) {
 		os.rm(bak_file) or { errors << 'failed removing ${bak_file}: ${err.msg()}' }
 	}
+	if os.is_file('${bak_file}.manifest') {
+		os.rm('${bak_file}.manifest')!
+	}
 
 	list_folder(short_v_name, '', 'moving ${v_file} to ${bak_file} ...')
 	os.mv(v_file, bak_file) or { errors << err.msg() }
+	if os.is_file('${v_file}.manifest') {
+		os.mv('${v_file}.manifest', '${bak_file}.manifest')!
+	}
 
 	list_folder(short_v_name, '', 'removing ${v_file} ...')
 	os.rm(v_file) or {}
 
 	list_folder(short_v_name, '', 'moving ${v2_file} to ${v_file} ...')
 	os.mv_by_cp(v2_file, v_file) or { panic(err.msg()) }
+	if os.is_file('${v2_file}.manifest') {
+		os.mv('${v2_file}.manifest', '${v_file}.manifest')!
+	}
 
 	list_folder(short_v_name, 'after:', '')
 

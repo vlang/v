@@ -16,6 +16,9 @@ pub fn bytes(bytes_needed int) ![]u8 {
 }
 
 // read fills `buffer` with random bytes from the OS.
+// On Android, reads require the getrandom syscall (Linux 3.17 or a kernel backport).
+// They may block until the kernel's entropy pool is initialized. If the syscall
+// is unavailable or denied, an error is returned; no weaker random source is used.
 pub fn read(mut buffer []u8) ! {
 	internal.read(mut buffer)!
 }

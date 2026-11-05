@@ -27,8 +27,8 @@ fn assert_div_error(dividend string, divisor string, precision int, expected str
 fn test_new_and_getters() {
 	value := decimal.new(big.integer_from_string('123400') or { panic(err) }, 4)
 	assert value.str() == '12.34'
-	assert value.coefficient().str() == '1234'
-	assert value.scale() == 2
+	assert value.coefficient().str() == '123400'
+	assert value.scale() == 4
 }
 
 fn test_from_ints() {
@@ -37,7 +37,7 @@ fn test_from_ints() {
 	assert decimal.from_u64(123456789).str() == '123456789'
 }
 
-fn test_from_string_normalizes_trailing_zeroes() {
+fn test_from_string_formats_without_trailing_zeroes() {
 	assert must_decimal('00123.4500').str() == '123.45'
 	assert must_decimal('-0.5000').str() == '-0.5'
 	assert must_decimal('.25').str() == '0.25'
@@ -183,4 +183,90 @@ fn test_round_and_div_errors() {
 	must_decimal('1').div(must_decimal('3'), -1, .floor) or { messages << err.msg() }
 	assert messages == ['math.decimal: precision cannot be negative',
 		'math.decimal: cannot divide by zero', 'math.decimal: precision cannot be negative']
+}
+
+fn test_stored_scale_and_normalization() {
+	for row in [['00123.4500', '1234500', '4', '123.45'], ['-0.5000', '-5000', '4', '-0.5'],
+		['0.000', '0', '3', '0'], ['1.50e1', '150', '1', '15'], ['1.50e-1', '150', '3', '0.15'],
+		['5.', '5', '0', '5'], ['+0.00e-100', '0', '102', '0']] {
+		value := must_decimal(row[0])
+		assert value.coefficient().str() == row[1], row[0]
+		assert value.scale() == row[2].int(), row[0]
+		assert value.str() == row[3], row[0]
+		normalized := value.normalize()
+		assert normalized == value
+		assert normalized.str() == value.str()
+	}
+	assert must_decimal('5.00').normalize().scale() == 0
+	assert must_decimal('-1.2500').normalize().scale() == 2
+	assert must_decimal('0.000').normalize().scale() == 0
+}
+
+fn test_arithmetic_keeps_internal_scale() {
+	a := must_decimal('1.50')
+	b := must_decimal('2.5')
+	sum := a + b
+	assert sum.coefficient().str() == '400'
+	assert sum.scale() == 2
+	assert sum.str() == '4'
+	difference := a - must_decimal('1.5')
+	assert difference.is_zero()
+	assert difference.scale() == 2
+	assert difference.str() == '0'
+	product := a * must_decimal('2.0')
+	assert product.coefficient().str() == '3000'
+	assert product.scale() == 3
+	assert product.str() == '3'
+	assert must_decimal('-1.20').abs().scale() == 2
+	assert must_decimal('-1.20').neg().scale() == 2
+	padded := a.round(3, .up)!
+	assert padded.coefficient().str() == '1500'
+	assert padded.scale() == 3
+	assert padded.str() == '1.5'
+	quotient := must_decimal('7').div(must_decimal('2'), 2, .half_up)!
+	assert quotient.coefficient().str() == '350'
+	assert quotient.scale() == 2
+	assert quotient.str() == '3.5'
+}
+
+fn test_comparison_ignores_stored_scale() {
+	assert must_decimal('5.0') == must_decimal('5.00')
+	assert must_decimal('0') == must_decimal('0.000')
+	assert must_decimal('-1.10') == must_decimal('-1.1')
+	assert must_decimal('1.10') != must_decimal('1.101')
+	assert !(must_decimal('5.0') < must_decimal('5.00'))
+	assert must_decimal('5.0') <= must_decimal('5.00')
+	assert must_decimal('-1.100') < must_decimal('-1.09')
+}
+
+fn test_str_fixed_rounds_half_up_and_pads() {
+	for row in [['5.00', '2', '5.00'], ['5', '0', '5'], ['1.5', '3', '1.500'], ['1.234', '2', '1.23'],
+		['1.235', '2', '1.24'], ['-1.235', '2', '-1.24'], ['9.995', '2', '10.00'],
+		['-9.995', '2', '-10.00'], ['-0.004', '2', '0.00'], ['-0.005', '2', '-0.01'],
+		['0.000', '4', '0.0000'], ['2.5', '0', '3'], ['-2.5', '0', '-3'],
+		['0.0000001', '8', '0.00000010']] {
+		value := must_decimal(row[0])
+		assert value.str_fixed(row[1].int())! == row[2], row[0]
+		assert value.scale() == must_decimal(row[0]).scale()
+	}
+	must_decimal('1.2').str_fixed(-1) or {
+		assert err.msg() == 'math.decimal: precision cannot be negative'
+		return
+	}
+	assert false
+}
+
+fn test_division_precision_is_independent_of_operand_scale() {
+	for input in ['0.000000000000000000012', '-0.000000000000000000012', '1.000000000000000012'] {
+		value := must_decimal(input)
+		for divisor in ['1', '1.0', '1.00'] {
+			result := value / must_decimal(divisor)
+			assert result == value.div_prec(decimal.from_int(1), decimal.default_division_precision)!
+			assert result.scale() == decimal.default_division_precision
+			assert value.div_prec(must_decimal(divisor), 21)! == value
+		}
+	}
+	assert (must_decimal('0.000000000000000000012') / decimal.from_int(1)).str() == '0'
+	assert (must_decimal('10.00') / must_decimal('4')).str() == '2.5'
+	assert (must_decimal('2') / must_decimal('-3')).str() == '-0.6666666666666667'
 }

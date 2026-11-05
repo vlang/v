@@ -11,13 +11,13 @@ fn test_qualification_cache_preserves_context_and_late_generic_declarations() {
 	tc.cur_file = 'generic.v'
 	assert tc.qualify_name('Cell') == 'Cell'
 	assert tc.qualify_name('[]Cell') == '[]Cell'
-	tc.structs['generic.Cell'] = []StructField{}
+	tc.structs[flat.source_type_id('generic.Cell')] = []StructField{}
 	assert tc.qualify_name('Cell') == 'generic.Cell'
 	assert tc.qualify_name('[]Cell') == '[]generic.Cell'
 	tc.cur_module = 'caller'
 	tc.cur_file = 'caller.v'
 	assert tc.qualify_name('Cell') == 'Cell'
-	tc.structs['caller.Cell'] = []StructField{}
+	tc.structs[flat.source_type_id('caller.Cell')] = []StructField{}
 	assert tc.qualify_name('[]Cell') == '[]caller.Cell'
 	tc.cur_module = 'generic'
 	tc.cur_file = 'generic.v'
@@ -57,8 +57,8 @@ fn test_numeric_qualification_keeps_file_imports_separate() {
 	mut tc := TypeChecker.new(&a)
 	tc.qualify_name_cache = &QualifyNameCache{}
 	tc.cur_module = 'main'
-	tc.structs['one.Cell'] = []StructField{}
-	tc.structs['two.Cell'] = []StructField{}
+	tc.structs[flat.source_type_id('one.Cell')] = []StructField{}
+	tc.structs[flat.source_type_id('two.Cell')] = []StructField{}
 	tc.cur_file = 'one.v'
 	tc.register_file_import('dep', 'one')
 	tc.cur_file = 'two.v'
@@ -88,7 +88,7 @@ fn test_numeric_qualification_invalidates_for_module_mode_and_late_types() {
 	array_id := flat.source_type_id('[]Cell')
 	assert tc.qualify_type_name(id) == id
 	assert tc.qualify_type_name(array_id) == array_id
-	tc.structs['generic.Cell'] = []StructField{}
+	tc.structs[flat.source_type_id('generic.Cell')] = []StructField{}
 	assert tc.qualify_type_name(id) == flat.source_type_id('generic.Cell')
 	assert tc.qualify_type_name(array_id) == flat.source_type_id('[]generic.Cell')
 	tc.cur_module = 'caller'
@@ -97,7 +97,7 @@ fn test_numeric_qualification_invalidates_for_module_mode_and_late_types() {
 	assert tc.qualify_type_name(id) == flat.source_type_id('caller.Cell')
 	tc.resolution_type_mode = true
 	assert tc.qualify_type_name(id) == id
-	tc.structs['caller.Cell'] = []StructField{}
+	tc.structs[flat.source_type_id('caller.Cell')] = []StructField{}
 	assert tc.qualify_type_name(array_id) == flat.source_type_id('[]caller.Cell')
 	tc.cur_module = 'generic'
 	assert tc.qualify_type_name(array_id) == flat.source_type_id('[]generic.Cell')
@@ -111,15 +111,15 @@ fn test_numeric_resolution_qualification_preserves_global_fallback_and_local_pri
 	tc.cur_file = 'generic.v'
 	global_id := flat.source_type_id('Cell')
 	local_id := flat.source_type_id('generic.Cell')
-	tc.structs['Cell'] = []StructField{}
+	tc.structs[flat.source_type_id('Cell')] = []StructField{}
 	// The resolution helper keeps an existing capitalized global even while
 	// ordinary registration qualification still adds the current module.
 	assert tc.qualify_type_name(global_id) == local_id
 	assert tc.qualify_resolution_type_name(global_id) == global_id
 	assert tc.qualify_resolution_type_name(global_id) == global_id
-	tc.structs['generic.Cell'] = []StructField{}
+	tc.structs[flat.source_type_id('generic.Cell')] = []StructField{}
 	assert tc.qualify_resolution_type_name(global_id) == local_id
-	tc.structs['lower'] = []StructField{}
+	tc.structs[flat.source_type_id('lower')] = []StructField{}
 	assert tc.qualify_resolution_type_name(flat.source_type_id('lower')) == flat.source_type_id('generic.lower')
 	assert tc.qualify_resolution_type_name(flat.source_type_id('Missing')) == flat.source_type_id('generic.Missing')
 	assert tc.qualify_resolution_type_name(u32(0)) == flat.source_type_id('generic.')

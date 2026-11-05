@@ -2,6 +2,81 @@ struct InitializerHolder {
 	items []ObservedPayload
 }
 
+struct InitializerWrapper {
+mut:
+	payload ObservedPayload
+}
+
+fn check_compound_initializers() {
+	mut clones := 0
+	mut evaluations := 0
+	holder := &InitializerHolder{
+		items: [ObservedPayload{
+			values: ['left']
+			clones: &clones
+		}, ObservedPayload{
+			values: ['right']
+			clones: &clones
+		}]
+	}
+	mut wrapped := []InitializerWrapper{len: 2, init: InitializerWrapper{
+		payload: holder.items[index]
+	}}
+	assert clones == 2
+	wrapped[0].payload.values[0] = 'changed'
+	assert wrapped[1].payload.values[0] == 'right'
+	assert holder.items[0].values[0] == 'left'
+	mut fixed_wrapped := [2]InitializerWrapper{init: InitializerWrapper{
+		payload: holder.items[index]
+	}}
+	assert clones == 4
+	fixed_wrapped[1].payload.values[0] = 'changed'
+	assert holder.items[1].values[0] == 'right'
+	mut nested := [][]ObservedPayload{len: 2, init: [holder.items[index]]}
+	assert clones == 6
+	nested[0][0].values[0] = 'changed'
+	assert nested[1][0].values[0] == 'right'
+	assert holder.items[0].values[0] == 'left'
+	mut fixed_nested := [2][]ObservedPayload{init: [holder.items[index]]}
+	assert clones == 8
+	fixed_nested[1][0].values[0] = 'changed'
+	assert holder.items[1].values[0] == 'right'
+	mut selected := []ObservedPayload{len: 2, init: if index == 0 {
+		holder.items[0]
+	} else {
+		fresh_initializer_payload(&evaluations, &clones, index)
+	}}
+	assert clones == 9
+	assert evaluations == 1
+	selected[0].values[0] = 'changed'
+	assert selected[1].values[0] == 'fresh 1'
+	assert holder.items[0].values[0] == 'left'
+	mut fixed_selected := [2]ObservedPayload{init: if index == 0 {
+		holder.items[0]
+	} else {
+		fresh_initializer_payload(&evaluations, &clones, index)
+	}}
+	assert clones == 10
+	assert evaluations == 2
+	fixed_selected[0].values[0] = 'changed'
+	assert fixed_selected[1].values[0] == 'fresh 1'
+	assert holder.items[0].values[0] == 'left'
+	mut shadowed := [][]ObservedPayload{len: 2, init: []ObservedPayload{len: 2, init: holder.items[index]}}
+	assert clones == 14
+	assert shadowed[0][1].values[0] == 'right'
+	assert shadowed[1][0].values[0] == 'left'
+	shadowed[0][0].values[0] = 'changed'
+	assert shadowed[1][0].values[0] == 'left'
+	assert holder.items[0].values[0] == 'left'
+	mut fixed_shadowed := [2][]ObservedPayload{init: []ObservedPayload{len: 2, init: holder.items[index]}}
+	assert clones == 18
+	assert fixed_shadowed[0][1].values[0] == 'right'
+	assert fixed_shadowed[1][0].values[0] == 'left'
+	fixed_shadowed[1][1].values[0] = 'changed'
+	assert fixed_shadowed[0][1].values[0] == 'right'
+	assert holder.items[1].values[0] == 'right'
+}
+
 fn fresh_initializer_payload(evaluations &int, clones &int, index int) ObservedPayload {
 	// The caller keeps this counter alive throughout initializer evaluation.
 	unsafe {
@@ -69,4 +144,5 @@ fn main() {
 	assert empty.len == 0
 	assert evaluations == 4
 	assert clones == 8
+	check_compound_initializers()
 }

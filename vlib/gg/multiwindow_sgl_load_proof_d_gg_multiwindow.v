@@ -97,7 +97,7 @@ $if test {
 			window:      window
 			// render.Context has no int id; its own address is a stable identity
 			// for the lifetime of the context, and is never nil here.
-			context_id:  unsafe { u64(usize(voidptr(context))) }
+			context_id:  unsafe { u64(uint(voidptr(context))) }
 			target_key:  target_key
 		}
 		multiwindow_sgl_load_proof.count++

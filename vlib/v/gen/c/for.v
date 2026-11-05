@@ -142,6 +142,17 @@ fn (mut g FlatGen) gen_loop_continue_label(label string) {
 	}
 }
 
+fn (g &FlatGen) loop_condition_has_transfer(id flat.NodeId) bool {
+	if int(id) < 0 { return false }
+	node := g.a.nodes[int(id)]
+	if node.kind in [.break_stmt, .continue_stmt] { return true }
+	if node.kind in [.for_stmt, .for_in_stmt, .fn_literal, .lambda_expr] { return false }
+	for i in 0 .. node.children_count {
+		if g.loop_condition_has_transfer(g.a.child(&node, i)) { return true }
+	}
+	return false
+}
+
 // gen_for emits for output for c.
 @[direct_array_access]
 fn (mut g FlatGen) gen_for(node flat.Node) {
@@ -154,6 +165,10 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	cond_node := g.a.nodes[int(cond_id)]
 	post_node := g.a.child_node(&node, 2)
 	wrap_init := init_node.kind != .empty
+	// TCC parses a loop's condition before entering its control-flow scope.
+	// An `or { break }` or `or { continue }` must therefore run inside its body.
+	lower_condition := (g.tcc_program_unit || g.ccompiler == 'tinyc')
+		&& g.loop_condition_has_transfer(cond_id)
 
 	if wrap_init {
 		g.writeln('{')
@@ -170,12 +185,16 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	if init_node.kind == .empty && cond_node.kind == .empty && post_node.kind == .empty {
 		g.writeln('for (;;) {')
 	} else if init_node.kind == .empty && post_node.kind == .empty {
-		g.write('while (')
-		g.gen_expr(cond_id)
-		g.writeln(') {')
+		if lower_condition {
+			g.writeln('for (;;) {')
+		} else {
+			g.write('while (')
+			g.gen_expr(cond_id)
+			g.writeln(') {')
+		}
 	} else {
 		g.write('for (; ')
-		if cond_node.kind != .empty {
+		if cond_node.kind != .empty && !lower_condition {
 			g.gen_expr(cond_id)
 		}
 		g.write('; ')
@@ -187,9 +206,26 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	g.indent++
 	g.gen_labelled_continue_skip_drops_var(label_state.label)
 	g.loop_depth++
+	if lower_condition {
+		g.write('if (!(')
+		g.gen_expr(cond_id)
+		g.writeln(')) break;')
+	}
 	mut emitted_continue_label := false
+	mut emitted_post_cleanup := false
 	mut body_reachable := true
 	for i in 3 .. node.children_count {
+		if g.is_loop_continue_label(g.a.child(&node, i), label_state.label)
+			&& i + 1 < node.children_count {
+			// The moved post follows this label. Clean the body before it;
+			// continue has already cleaned up and jumps past this boundary.
+			g.gen_defers_from(defer_start)
+			g.trim_defers(defer_start)
+			if !node.skip_ownership_drops() {
+				g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
+			}
+			emitted_post_cleanup = true
+		}
 		result := g.gen_loop_body_node(g.a.child(&node, i), label_state.label,
 			body_reachable, i + 1 < node.children_count)
 		emitted_continue_label = result.emitted_continue_label || emitted_continue_label
@@ -200,7 +236,7 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	if !emitted_continue_label {
 		g.gen_loop_continue_label(label_state.label)
 	}
-	if !node.skip_ownership_drops() {
+	if !node.skip_ownership_drops() && !emitted_post_cleanup {
 		g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
 	}
 	g.trim_defers(defer_start)
@@ -434,11 +470,9 @@ fn (mut g FlatGen) gen_for_in(node flat.Node) {
 				mut container_str := g.expr_to_string(container_id)
 				if container_node.kind == .ident {
 					if raw_source_id := g.local_storage_raw_type(container_node.value) {
-						raw := flat.source_type_name(raw_source_id)
-
-						clean_raw := raw.trim_space()
-						if clean_raw.starts_with('?')
-							&& clean_raw[1..].trim_space().starts_with('[]') {
+						clean_raw := flat.source_type_syntax(raw_source_id).trimmed()
+						if flat.source_type_shape(clean_raw).has(.option_type)
+							&& flat.source_type_shape(flat.source_type_syntax(flat.source_type_syntax(clean_raw).raw_base()).trimmed()).has(.array_type) {
 							container_str = '(${container_str}).value'
 						}
 					}

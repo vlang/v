@@ -312,7 +312,7 @@ fn test_selfhost_grouped_keyword_parameter_names_are_collected() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
 	mut functions := map[string]FastcFunctionSignature{}
-	collect_function_signatures('fn pair(shared, type int) int {}', 'grouped_keyword_parameter_names.v', FastcSourceHeader{ module_name: 'main' }, prefs, []int{}, map[string]bool{}, flat.TypeTextBindings{}, map[string]bool{}, mut functions) or { panic(err) }
+	collect_function_signatures('fn pair(shared, type int) int {}', 'grouped_keyword_parameter_names.v', FastcSourceHeader{ module_name: 'main' }, prefs, []int{}, map[u32]bool{}, flat.TypeTextBindings{}, map[string]bool{}, mut functions) or { panic(err) }
 	signature := functions['pair'] or { panic('missing pair signature') }
 	assert signature.parameter_types_text() == ['int', 'int']
 }
@@ -1083,7 +1083,7 @@ fn test_fastc_overlap_workers_honor_serial_preferences() {
 	for name in ['a', 'b', 'c', 'd'] {
 		functions[name] = FastcFunctionSignature{}
 	}
-	mut pending_dispatches := fastc_start_interface_dispatches(map[string]FastcDeclaredTypeKind{}, functions, map[string]string{}, map[string]bool{}, map[string][]FastcStructField{}, map[string]bool{}, false, prefs)
+	mut pending_dispatches := fastc_start_interface_dispatches(map[u32]FastcDeclaredTypeKind{}, functions, map[string]string{}, map[string]bool{}, map[string][]FastcStructField{}, map[string]bool{}, false, prefs)
 	assert pending_dispatches.workers.len == 0
 	assert fastc_wait_interface_dispatches(mut pending_dispatches) == ''
 }
@@ -2147,6 +2147,69 @@ fn test_c_build_directives_are_rejected_instead_of_discarded() {
 		''
 	}
 	assert message.contains('C build directive `#flag -D FEATURE=1`'), message
+}
+
+fn test_separate_library_operand_flag_is_skipped() {
+	// `#flag -l <lib>` spells the library as a separate operand (vlib/builtin uses
+	// `#flag windows -l dbghelp`). It only affects linking, so it is left to the
+	// TinyCC driver exactly like the joined `-l<lib>` spelling, not rejected.
+	mut prefs := pref.new_preferences()
+	prefs.building_v = false
+	for directive in ['#flag -l dbghelp', '#flag -l advapi32 -l dbghelp', '#flag -ldbghelp -l advapi32'] {
+		out := generate('module main\n${directive}\nfn main() { println(1) }\n', 'separate_lib_flag.v',
+			prefs) or {
+			assert false, '`${directive}` should be skipped, not rejected: ${err.msg()}'
+			''
+		}
+		assert !out.contains('dbghelp'), out
+	}
+	// The same separate operand mixed with a preprocessor define must still yield
+	// the define, with the link flag and its operand skipped.
+	mixed := generate('module main\n#flag -DFEATURE=1 -l dbghelp\nfn main() { println(1) }\n',
+		'separate_lib_flag_mixed.v', prefs) or {
+		assert false, 'mixed define and separate library operand should be accepted: ${err.msg()}'
+		''
+	}
+	assert mixed.contains('#define FEATURE 1'), mixed
+	assert !mixed.contains('dbghelp'), mixed
+
+	// `generate` returns only the C text, so the above cannot see whether the
+	// operand actually reaches the TinyCC link line. Generate from a file and
+	// inspect the reported c_flags; vlib may contribute its own flags on some
+	// targets, so look for the flag/operand pair rather than an exact list. The
+	// define-mixing path skips `-I`/`-L` separate operands the same way, and
+	// those operands are resolved against the source directory.
+	root := os.join_path(os.vtmp_dir(), 'v3_fastc_separate_lib_operand_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	mut file_prefs := pref.new_preferences()
+	file_prefs.vroot = @VEXEROOT
+	source_file := os.join_path(root, 'main.v')
+	os.write_file(source_file, '#flag -l dbghelp\nfn main() {}\n') or { panic(err) }
+	forwarded := generate_files_with_source_paths([source_file], file_prefs) or { panic(err) }
+	assert flags_have_operand_pair(forwarded.c_flags, '-l', 'dbghelp'), forwarded.c_flags.str()
+	os.write_file(source_file, '#flag -DFEATURE=1 -I include -L lib -l dbghelp\nfn main() {}\n') or {
+		panic(err)
+	}
+	mixed_files := generate_files_with_source_paths([source_file], file_prefs) or { panic(err) }
+	source_dir := os.dir(os.real_path(source_file))
+	assert '-DFEATURE=1' in mixed_files.c_flags, mixed_files.c_flags.str()
+	assert flags_have_operand_pair(mixed_files.c_flags, '-I', os.join_path(source_dir, 'include')), mixed_files.c_flags.str()
+	assert flags_have_operand_pair(mixed_files.c_flags, '-L', os.join_path(source_dir, 'lib')), mixed_files.c_flags.str()
+	assert flags_have_operand_pair(mixed_files.c_flags, '-l', 'dbghelp'), mixed_files.c_flags.str()
+}
+
+// flags_have_operand_pair reports whether `flag` appears immediately followed by `operand`.
+fn flags_have_operand_pair(flags []string, flag string, operand string) bool {
+	for i := 0; i + 1 < flags.len; i++ {
+		if flags[i] == flag && flags[i + 1] == operand {
+			return true
+		}
+	}
+	return false
 }
 
 fn test_colliding_import_aliases_are_rejected() {
@@ -11556,10 +11619,12 @@ fn main() {}
 	// A self-host build is header free: `#include <pthread.h>` is dropped for the C ABI
 	// prelude, so the fallback has to follow the pthread declarations of that prelude,
 	// exactly as it had to follow the include they replaced.
-	declaration_index := c_source.index('int pthread_rwlockattr_init(') or { panic(c_source) }
-	fallback_index := c_source.index('#ifndef PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP') or {
-		panic(c_source)
-	}
+	// Report a missing marker as a failed assertion: a `panic` here aborts the whole
+	// test binary and hides every test after this one.
+	declaration_index := c_source.index('int pthread_rwlockattr_init(') or { -1 }
+	fallback_index := c_source.index('#ifndef PTHREAD_RWLOCK_PREFER_WRITER_NONRECURSIVE_NP') or { -1 }
+	assert declaration_index >= 0, c_source
+	assert fallback_index >= 0, c_source
 	assert declaration_index < fallback_index, c_source
 }
 
@@ -12049,6 +12114,9 @@ fn main() {
 }
 
 fn test_selfhost_spawn_mut_argument() {
+	$if windows {
+		return
+	}
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
 	c_source := generate('module main

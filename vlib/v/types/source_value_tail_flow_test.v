@@ -219,8 +219,8 @@ fn test_generic_struct_init_inference_reads_source_operand_and_legacy_fallback()
 	tc.reset_node_caches(a.nodes.len)
 	tc.cur_module = 'fixture'
 	tc.top_level_idx = [i32(module_id), i32(declaration)]
-	tc.structs['fixture.Box'] = [StructField{ name: 'value', typ: unknown_type('T') }]
-	tc.struct_generic_params['fixture.Box'] = ['T']
+	tc.structs[flat.source_type_id('fixture.Box')] = [StructField{ name: 'value', typ: unknown_type('T') }]
+	tc.struct_generic_params[flat.source_type_id('fixture.Box')] = generic_param_ids(['T'])
 	for node in [legacy, a.nodes[int(canonicalized)], a.nodes[int(indexed)]] {
 		inferred := tc.infer_generic_struct_init_type(node) or {
 			panic('failed to infer Box from original struct operand')

@@ -22,19 +22,19 @@ fn fastc_aggregate_argument_parser() Parser {
 		declared_type_c_names: names
 		alias_base_types:      aliases
 		declared_kinds:        {
-			'fixture.Record':   .struct_
-			'Empty':            .struct_
-			'Alias':            .alias_
-			'ArrayAlias':       .alias_
-			'MapAlias':         .alias_
-			'Callable':         .alias_
-			'Choice':           .alias_
-			'Iface':            .interface_
-			'Number':           .enum_
-			'Union':            .union_
-			'Option':           .struct_
-			'__v_result':       .struct_
-			'FixedArray_2_int': .struct_
+			flat.source_type_id('fixture.Record'):   .struct_
+			flat.source_type_id('Empty'):            .struct_
+			flat.source_type_id('Alias'):            .alias_
+			flat.source_type_id('ArrayAlias'):       .alias_
+			flat.source_type_id('MapAlias'):         .alias_
+			flat.source_type_id('Callable'):         .alias_
+			flat.source_type_id('Choice'):           .alias_
+			flat.source_type_id('Iface'):            .interface_
+			flat.source_type_id('Number'):           .enum_
+			flat.source_type_id('Union'):            .union_
+			flat.source_type_id('Option'):           .struct_
+			flat.source_type_id('__v_result'):       .struct_
+			flat.source_type_id('FixedArray_2_int'): .struct_
 		}
 		sum_types:             {
 			'Choice': true

@@ -90,6 +90,8 @@ struct Foo {
 - `[sql: 'name']` sets a custom column name for the field
 - `[sql_type: 'SQL TYPE']` explicitly sets the type in SQL
 - `[sql_select: 'SQL expression']` uses a custom expression in `SELECT` for the field
+- `@[sql_insert_only]` allows insertion and reads, but prevents later model-aware ORM updates.
+  It takes no arguments and applies only to struct fields. It does not change V field mutability.
 - `[default: 'raw_sql']` inserts `raw_sql` verbatim in a "DEFAULT" clause when
   creating a new table, allowing for SQL functions like `CURRENT_TIME`.
   A plain string default has to be surrounded with backticks (\`), so that it is
@@ -106,6 +108,34 @@ struct Foo {
 - `[references]` or `[references: 'tablename']` or `[references: 'tablename(field_id)']`
 - `[comment: 'field_comment']` set comment
 - `[index]` creates index
+
+For example, an audit field can be supplied when inserting a row:
+
+```v ignore
+struct Account {
+    id         int    @[primary; sql_insert_only]
+    creator_id string @[sql_insert_only; sql: 'created_by']
+    name       string
+}
+```
+
+Explicit `UPDATE` assignments to `id` or `creator_id` are compile-time errors, including
+dynamic assignment blocks with known targets. Runtime `orm.QueryData` and Function Call API
+updates return an error before executing an update. Diagnostics identify the model and field.
+Renamed columns and fields in embedded structs carry the same restriction.
+Protected fields remain usable in `SELECT`, `WHERE`, joins, and ordering.
+
+`orm.save` and `orm.update_many` without a field list omit insert-only fields automatically.
+An explicit bulk field list containing a protected field returns an error before writing rows.
+These helpers return an error if no updatable fields remain. An `upsert` includes protected
+fields on insertion and omits them on the update branch; an empty update is a no-op.
+Defaults and nullable fields retain their insertion behavior. Inserting `NULL` does not allow
+the column to be populated by a later update.
+
+This policy applies to model-aware ORM operations. Raw SQL and untyped `Connection.update`
+calls do not carry model field attributes; use database constraints or triggers when every
+database writer must enforce the invariant. The existing `@[immutable]` annotation has no
+ORM write-policy meaning.
 
 ## Queries in array callbacks
 
@@ -525,7 +555,7 @@ sql db {
 
 For a Rails-style full-record save, load a struct, mutate it, then call `orm.save`.
 The helper uses the struct primary key, or an `id` field when present, for the
-`WHERE` clause and updates the remaining mapped fields automatically.
+`WHERE` clause and updates the remaining mapped fields except `@[sql_insert_only]` fields.
 
 ```v ignore
 import orm

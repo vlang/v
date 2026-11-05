@@ -1,12 +1,14 @@
 module arm64
 
-import os
-import strings
-import v.parser
-import v.pref
-import v.ssa
-import v.transform
-import v.types
+$if macos && arm64 {
+	import os
+	import strings
+	import v.parser
+	import v.pref
+	import v.ssa
+	import v.transform
+	import v.types
+}
 
 fn test_native_constructor_returns_more_than_256_mixed_fields() {
 	$if macos && arm64 {

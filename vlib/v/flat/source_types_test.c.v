@@ -33,12 +33,44 @@ fn test_source_type_readers_can_finish_on_an_old_index_after_growth() {
 	table.grow()
 	C.atomic_store_u32(&g_source_types_lock, 0)
 	assert previous != source_type_index_load(table)
-	assert source_type_find(table, previous, text, hash.sum64_string(text, 0)) == id
+	assert source_type_find(table, previous, text, u32(hash.sum64_string(text, 0))) == id
 	assert source_type_id(text) == id
 	new_text := 'source_types.AfterGrowth'
 	new_id := source_type_id(new_text)
-	assert source_type_find(table, previous, new_text, hash.sum64_string(new_text, 0)) == 0
+	assert source_type_find(table, previous, new_text, u32(hash.sum64_string(new_text, 0))) == 0
 	assert source_type_id(new_text) == new_id
+}
+
+fn test_source_type_hash_fingerprint_collision_checks_complete_spellings() {
+	left_text := 'intern_compact.Collision_32255'
+	right_text := 'intern_compact.Collision_68267'
+	left_hash := hash.sum64_string(left_text, 0)
+	right_hash := hash.sum64_string(right_text, 0)
+	assert left_hash != right_hash
+	assert u32(left_hash) == u32(right_hash)
+	// Bypass the recent cache so both insertion and index hits see the collision.
+	left := source_type_id_uncached(left_text)
+	right := source_type_id_uncached(right_text)
+	assert left != right
+	assert source_type_id_uncached(left_text) == left
+	assert source_type_id_uncached(right_text) == right
+	assert source_type_name(left) == left_text
+	assert source_type_name(right) == right_text
+	mut table := source_type_table_load()
+	previous := source_type_index_load(table)
+	assert source_type_find(table, previous, left_text, u32(left_hash)) == left
+	assert source_type_find(table, previous, right_text, u32(right_hash)) == right
+	source_type_lock()
+	table.grow()
+	C.atomic_store_u32(&g_source_types_lock, 0)
+	current := source_type_index_load(table)
+	assert current != previous
+	assert source_type_find(table, current, left_text, u32(left_hash)) == left
+	assert source_type_find(table, current, right_text, u32(right_hash)) == right
+	assert source_type_find(table, previous, left_text, u32(left_hash)) == left
+	assert source_type_find(table, previous, right_text, u32(right_hash)) == right
+	assert source_type_id(left_text) == left
+	assert source_type_id(right_text) == right
 }
 
 fn intern_source_types_concurrently(worker int, shared []u32) []u32 {

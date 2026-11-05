@@ -135,7 +135,9 @@ pub fn (mut c SSLCerts) cleanup() {
 	C.mbedtls_pk_free(&c.client_key)
 }
 
-// SSLConn is the current connection
+// SSLConn is a TLS connection. It does not synchronize access to its TLS context.
+// Calls on the same connection must be serialized, including read, write, timeout
+// changes, and close/shutdown. One reader and one writer must not call it concurrently.
 pub struct SSLConn {
 mut:
 	initialized bool
@@ -391,7 +393,7 @@ fn (mut l SSLListener) init_sni(get_cert_callback fn (mut SSLListener, string) !
 	}, &l.conf)
 }
 
-// accepts a new connection and returns a SSLConn of the connected client
+// accept accepts a new connection and returns an SSLConn of the connected client.
 pub fn (mut l SSLListener) accept() !&SSLConn {
 	mut conn := l.accept_tcp_connection()!
 
@@ -404,7 +406,7 @@ pub fn (mut l SSLListener) accept() !&SSLConn {
 			ret)
 	}
 
-	C.mbedtls_ssl_set_bio(&conn.ssl, &conn.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv,
+	C.mbedtls_ssl_set_bio(&conn.ssl, &conn.server_fd, C.v_mbedtls_net_send, C.mbedtls_net_recv,
 		C.mbedtls_net_recv_timeout)
 	conn.server_handshake(net.infinite_timeout)!
 	return conn
@@ -509,7 +511,7 @@ pub fn (mut conn SSLConn) complete_handshake(timeout time.Duration) ! {
 	deadline := ssl_timeout_deadline(timeout)
 	conn.do_handshake_loop(deadline)!
 	net.set_blocking(conn.handle, true)!
-	C.mbedtls_ssl_set_bio(&conn.ssl, &conn.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv,
+	C.mbedtls_ssl_set_bio(&conn.ssl, &conn.server_fd, C.v_mbedtls_net_send, C.mbedtls_net_recv,
 		C.mbedtls_net_recv_timeout)
 }
 
@@ -795,7 +797,9 @@ fn (mut s SSLConn) init() ! {
 
 	if unsafe { s.certs != nil } {
 		C.mbedtls_ssl_conf_ca_chain(&s.conf, &s.certs.cacert, 0)
-		C.mbedtls_ssl_conf_own_cert(&s.conf, &s.certs.client_cert, &s.certs.client_key)
+		if s.config.cert != '' || s.config.cert_key != '' {
+			C.mbedtls_ssl_conf_own_cert(&s.conf, &s.certs.client_cert, &s.certs.client_key)
+		}
 	}
 
 	if s.config.validate {
@@ -834,7 +838,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 			ret)
 	}
 	s.server_fd.fd = s.handle
-	C.mbedtls_ssl_set_bio(&s.ssl, &s.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv,
+	C.mbedtls_ssl_set_bio(&s.ssl, &s.server_fd, C.v_mbedtls_net_send, C.mbedtls_net_recv,
 		C.mbedtls_net_recv_timeout)
 	ret = C.mbedtls_ssl_handshake(&s.ssl)
 	// WANT_READ/WANT_WRITE are not errors -- mbedtls's own docs require every
@@ -883,7 +887,7 @@ pub fn (mut s SSLConn) dial(hostname string, port int) ! {
 	if ret != 0 {
 		return error_with_code('net.mbedtls SSLConn.dial, failed to connect to host', ret)
 	}
-	C.mbedtls_ssl_set_bio(&s.ssl, &s.server_fd, C.mbedtls_net_send, C.mbedtls_net_recv,
+	C.mbedtls_ssl_set_bio(&s.ssl, &s.server_fd, C.v_mbedtls_net_send, C.mbedtls_net_recv,
 		C.mbedtls_net_recv_timeout)
 	s.handle = s.server_fd.fd
 	ret = C.mbedtls_ssl_handshake(&s.ssl)

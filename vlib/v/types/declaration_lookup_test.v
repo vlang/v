@@ -75,7 +75,7 @@ fn test_private_declaration_lookup_preserves_test_and_c_mirror_bypasses() {
 		kind:        .struct_decl
 	}
 	assert tc.private_declaration('C.Hidden') != none
-	tc.c_struct_scoped_fields[c_struct_module_key('consumer', 'C.Hidden')] = []StructField{}
+	tc.c_struct_scoped_fields[c_struct_module_key('consumer', flat.source_type_id('C.Hidden'))] = []StructField{}
 	assert tc.private_declaration('C.Hidden') == none
 	tc.c_struct_scoped_fields.clear()
 	for file in ['consumer_test.v', 'consumer_test.vv'] {

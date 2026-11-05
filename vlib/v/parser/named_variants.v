@@ -117,7 +117,7 @@ fn (mut p Parser) named_sum_type_decl(name string, is_pub bool, language_prefix 
 			variant_ids << p.add_node(flat.Node{
 				kind:         .ident
 				source_value: if variant.has_payload {
-					flat.source_type_id('${variant.text_text()}(${variant.payload_text()})')
+					flat.source_type_composition_two(.concat, variant.text, flat.source_type_composition_one(.multi_return, variant.payload))
 				} else {
 					variant.text
 				}
@@ -264,7 +264,7 @@ fn (mut p Parser) named_variant_owner(lhs flat.NodeId, variant string) ?u32 {
 		text := p.s.src[start..end]
 		bracket := text.index_u8(`[`)
 		if bracket > 0 && text.ends_with(']') {
-			return flat.source_type_id(flat.source_type_name(base_name_id) + text[bracket..])
+			return flat.source_type_composition_two(.concat, base_name_id, flat.source_type_id(text[bracket..]))
 		}
 	}
 	return none
@@ -293,6 +293,7 @@ fn (mut p Parser) is_imported_named_variant_owner_name(module_alias string, name
 		}
 	}
 	key := '${p.cur_file}\x00${module_alias}'
+	context_id := flat.source_type_id(key)
 	if !p.named_variant_import_scans[key] {
 		p.named_variant_import_scans[key] = true
 		for node in p.a.nodes {
@@ -323,13 +324,14 @@ fn (mut p Parser) is_imported_named_variant_owner_name(module_alias string, name
 				}
 				declarations.scan_translated_sizeof_source(source)
 				for type_key in declarations.translated_sizeof_type_names.keys() {
-					p.named_variant_import_types['${key}\x00${type_key.all_after_last('\x00')}'] = true
+					p.named_variant_import_types[parser_type_declaration_key(context_id, u32(type_key))] = true
 				}
 			}
 			break
 		}
 	}
-	return p.named_variant_import_types['${key}\x00${name}']
+	name_id := flat.source_type_existing_id(name) or { return false }
+	return p.named_variant_import_types[parser_type_declaration_key(context_id, name_id)]
 }
 
 // imported_named_variant_pattern_starts_here recognizes a generated owner
@@ -397,7 +399,6 @@ fn (mut p Parser) named_variant_constructor(sum_id u32, variant string, lhs flat
 }
 
 fn (mut p Parser) named_variant_init(sum_id u32, variant string, payload flat.NodeId, lhs flat.NodeId) flat.NodeId {
-	sum := flat.source_type_name(sum_id)
 	mut fields := []flat.NodeId{}
 	if int(payload) >= 0 {
 		fields << p.add_node_from(flat.Node{
@@ -409,15 +410,18 @@ fn (mut p Parser) named_variant_init(sum_id u32, variant string, payload flat.No
 	}
 	fields_start := p.add_children(fields)
 	// `Opt[int]` and `Some` name the variant struct `Opt@variant@Some[int]`.
-	bracket := sum.index_u8(`[`)
-	hidden := if bracket > 0 {
-		flat.named_variant_type_name(sum[..bracket], variant) + sum[bracket..]
+	sum_syntax := flat.source_type_syntax(sum_id)
+	hidden_id := if sum_syntax.generic_base() != 0 {
+		flat.source_type_composition(.concat, [sum_syntax.generic_base(),
+			flat.source_type_id(flat.named_variant_marker), flat.source_type_id(variant),
+			sum_syntax.bracket_from()])
 	} else {
-		flat.named_variant_type_name(sum, variant)
+		flat.source_type_composition(.concat, [sum_id, flat.source_type_id(flat.named_variant_marker),
+			flat.source_type_id(variant)])
 	}
 	init := p.add_node_from(flat.Node{
 		kind:           .struct_init
-		source_value:   flat.source_type_id(hidden)
+		source_value:   hidden_id
 		children_start: fields_start
 		children_count: flat.child_count(fields.len)
 	}, lhs)
@@ -432,33 +436,28 @@ fn (mut p Parser) named_variant_init(sum_id u32, variant string, payload flat.No
 // named_variant_pattern_type maps a variant written in a type position, as in
 // `e is Expr.Count` or a `match` branch, to its hidden struct spelling ID.
 fn (mut p Parser) named_variant_pattern_type(type_name_id u32) ?u32 {
-	type_name := flat.source_type_name(type_name_id)
-	if p.prefs.is_fmt || p.is_translated || !type_name.contains('.') {
+	if p.prefs.is_fmt || p.is_translated || !flat.source_type_shape(type_name_id).has(.dotted) {
 		return none
 	}
 	// Dots inside generic arguments belong to their payload types, not the variant.
-	mut depth := 0
-	mut dot := -1
-	for i, c in type_name {
-		if c == `[` {
-			depth++
-		} else if c == `]` {
-			depth--
-		} else if c == `.` && depth == 0 {
-			dot = i
-		}
-	}
-	if dot < 0 || !is_plain_capitalized_ident(type_name[dot + 1..]) {
+	syntax := flat.source_type_syntax(type_name_id)
+	if !syntax.named_variant_dot_valid() {
 		return none
 	}
-	owner := type_name[..dot]
-	base := owner.all_before('[')
-	args := owner[base.len..]
-	parts := base.split('.')
-	if (parts.len == 1 && p.is_named_variant_owner_name(parts[0]))
-		|| (parts.len == 2 && parts[0] in p.imported_module_names
-			&& !p.is_local_binding(parts[0]) && p.is_imported_named_variant_owner_name(parts[0], parts[1])) {
-		return flat.source_type_id(flat.named_variant_type_name(base, type_name[dot + 1..]) + args)
+	variant_id := syntax.named_variant_dot_suffix()
+	variant_syntax := flat.source_type_syntax(variant_id)
+	if !variant_syntax.first_capital() || !variant_syntax.plain_type_name() {
+		return none
+	}
+	owner_syntax := flat.source_type_syntax(syntax.named_variant_dot_prefix())
+	base_id := owner_syntax.generic_base()
+	parts := flat.source_type_syntax(base_id).dotted_parts()
+	if (parts.len == 1 && p.is_named_variant_owner_name(flat.source_type_name(parts[0])))
+		|| (parts.len == 2 && flat.source_type_name(parts[0]) in p.imported_module_names
+			&& !p.is_local_binding(flat.source_type_name(parts[0]))
+			&& p.is_imported_named_variant_owner_name(flat.source_type_name(parts[0]), flat.source_type_name(parts[1]))) {
+		return flat.source_type_composition(.concat, [base_id,
+			flat.source_type_id(flat.named_variant_marker), variant_id, owner_syntax.bracket_from()])
 	}
 	return none
 }
@@ -482,7 +481,7 @@ fn (mut p Parser) named_variant_pattern_type_name_bytes() string {
 // variant name. The binding is stored as a `.param` child of the pattern node.
 fn (mut p Parser) named_variant_match_pattern(type_name_id u32, start int) ?flat.NodeId {
 	type_name := flat.source_type_name(type_name_id)
-	is_variant_spelling := type_name.contains('.')
+	is_variant_spelling := flat.source_type_shape(type_name_id).has(.dotted)
 	if p.prefs.is_fmt {
 		if p.tok != .lpar || !is_variant_spelling {
 			return none
@@ -529,7 +528,6 @@ fn (mut p Parser) named_variant_match_pattern(type_name_id u32, start int) ?flat
 		}
 		return none
 	}
-	hidden := flat.source_type_name(hidden_id)
 	mut binding := flat.empty_node
 	if p.tok == .lpar {
 		binding_start := p.tok_pos
@@ -557,15 +555,16 @@ fn (mut p Parser) named_variant_match_pattern(type_name_id u32, start int) ?flat
 			p.skip_named_variant_binding_rest()
 		}
 	}
-	if dot := top_level_dot_index(hidden) {
-		base_id := p.add_val(.ident, hidden[..dot])
+	hidden_syntax := flat.source_type_syntax(hidden_id)
+	if hidden_syntax.top_level_dot_valid() {
+		base_id := p.add_val(.ident, flat.source_type_name(hidden_syntax.top_level_dot_prefix()))
 		mut children := [base_id]
 		if int(binding) >= 0 {
 			children << binding
 		}
 		return p.add_node(flat.Node{
 			kind:           .selector
-			value:          hidden[dot + 1..]
+			value:          flat.source_type_name(hidden_syntax.top_level_dot_suffix())
 			children_start: p.add_children(children)
 			children_count: flat.child_count(children.len)
 			pos:            p.span_to(start)

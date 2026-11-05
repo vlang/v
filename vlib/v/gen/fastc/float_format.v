@@ -64,7 +64,7 @@ fn (mut g Parser) fastc_float_format_helper(fixed bool) string {
 // the third exponent digit some CRTs print) and v3_f64_trimmed, so a FastC build prints
 // formatted floats exactly as the C backend does. Character codes are numeric: 45 `-`,
 // 43 `+`, 46 `.`, 48 `0`, 57 `9`, 69 `E`, 101 `e`.
-const fastc_float_format_c = r'double pow(double, double);
+const fastc_float_format_c = r'double (pow)(double, double);
 string v_fastc_f64_fixed(double x, int precision) {
 	u64 v_bits;
 	memcpy(&v_bits, &x, sizeof(v_bits));

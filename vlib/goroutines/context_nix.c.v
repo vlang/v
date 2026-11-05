@@ -45,3 +45,13 @@ pub fn context_switch(mut from Context, to &Context) {
 pub fn context_set(to &Context) {
 	C.goroutines_context_set(to.uctx)
 }
+
+// context_detach_dead returns nil: the ucontext buffer of an exiting goroutine stays with it
+// and is reused by context_init, so the scheduler has nothing to release.
+fn context_detach_dead(mut ctx Context) voidptr {
+	return unsafe { nil }
+}
+
+// context_release_dead does nothing on ucontext platforms (see context_detach_dead).
+fn context_release_dead(handle voidptr) {
+}

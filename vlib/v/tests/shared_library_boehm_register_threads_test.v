@@ -44,4 +44,22 @@ fn test_shared_library_boehm_emits_allow_register_threads() {
 	vinit_body := c_src[vinit_start..vinit_end]
 	assert vinit_body.contains('GC_allow_register_threads();'), 'expected `GC_allow_register_threads()` inside `_vinit`, got:\n${vinit_body}'
 	assert vinit_body.contains('#if (defined(_VGCBOEHM) || defined(CUSTOM_DEFINE_gcboehm)) && defined(GC_THREADS)'), 'expected `GC_THREADS` guard around the call, got:\n${vinit_body}'
+	shared_start := c_src.index('void _vinit_caller(void) {') or { panic('missing shared initializer') }
+	shared_end := c_src.index_after('\n}\n', shared_start) or { panic('missing initializer end') }
+	shared_body := c_src[shared_start..shared_end]
+	markers := shared_body.index('GC_set_markers_count(1);') or {
+		panic('missing private collector marker policy: ${shared_body}')
+	}
+	init := shared_body.index('_vno_main_init_caller();') or { panic('missing runtime initialization') }
+	assert markers < init, shared_body
+	assert shared_body.contains('if (GC_is_init_called() == 0) {'), shared_body
+
+	without_gc := os.exec([vexe, '-gc', 'none', '-shared', '-o', lib_c, lib_src])
+	assert without_gc.exit_code == 0, without_gc.output
+	assert !os.read_file(lib_c)!.contains('GC_set_markers_count(1);')
+	program := os.join_path(workdir, 'program.v')
+	os.write_file(program, 'fn main() {}') or { panic(err) }
+	ordinary := os.exec([vexe, '-gc', 'boehm', '-o', lib_c, program])
+	assert ordinary.exit_code == 0, ordinary.output
+	assert !os.read_file(lib_c)!.contains('GC_set_markers_count(1);')
 }

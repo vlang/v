@@ -1,0 +1,7 @@
+vlib/v/checker/tests/attribute_narrow_first_err.vv:13:11: error: attribute field `path` requires narrowing with `$if attr is Schema`
+   11 | fn main() {
+   12 |     $for attr in index.attributes {
+   13 |         println(attr.path)
+      |                 ~~~~~~~~~
+   14 |     }
+   15 | }

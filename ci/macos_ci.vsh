@@ -55,19 +55,39 @@ fn install_iconv() {
 }
 
 fn test_pure_v_math_module() {
-	exec_args(['v', '-silent', '-exclude', '@vlib/math/*.c.v', 'test', 'vlib/math/'])
+	exec_args(['v', '-silent', '-d', 'pure_v_math', '-exclude', '@vlib/math/*.c.v', 'test', 'vlib/math/'])
 }
 
 fn self_tests() {
+	$if macos {
+		// Metal frame callbacks stop when the display sleeps. Keep the real GPU
+		// probes running, and release the assertion even if a failed command exits.
+		mut display_guard := os.new_process('/usr/bin/caffeinate')
+		display_guard.set_args(['-d', '-u', '-w', os.getpid().str()])
+		display_guard.run()
+		defer {
+			display_guard.signal_term()
+			display_guard.wait()
+			display_guard.close()
+		}
+		run_self_tests()
+	} $else {
+		run_self_tests()
+	}
+}
+
+fn run_self_tests() {
 	// Do not select the V1 compatibility compiler here. It is a separate V 0.5.2
 	// installation, so `test-self vlib` would resolve `vlib` under *its* VROOT and
 	// test the release's own standard library instead of this repository's.
 	// Individual files still fall back to it when the default compiler cannot
 	// build them.
-	// Exercise default caching throughout the standard library suite. Use every
-	// core on the 7 GB runners unless the aggregate runner requires fail-fast.
+	// Exercise default caching throughout the standard library suite. Respect the
+	// workflow's worker count as well as the aggregate runner's serial setting.
 	if common.is_github_job {
-		vjobs := if os.getenv('VTEST_FAIL_FAST') == '1' { '1' } else { '${runtime.nr_cpus()}' }
+		vjobs := os.getenv_opt('VJOBS') or {
+			if os.getenv('VTEST_FAIL_FAST') == '1' { '1' } else { '${runtime.nr_cpus()}' }
+		}
 		exec_args(['env', 'VJOBS=' + '${vjobs}', 'v', '-no-memory-limit', '-silent', 'test-self',
 			'vlib'])
 	} else {
@@ -261,6 +281,21 @@ fn save_ci_progress(path string, task_name string) ! {
 	os.rename(tmp_path, path)!
 }
 
+// check_macho_signing runs the native signing tests without resume or test filters.
+fn check_macho_signing() {
+	$if macos {
+		vexe := os.getenv_opt('V_CI_VEXE') or { os.join_path_single(@VEXEROOT, 'v') }
+		tcc := os.join_path(os.dir(os.real_path(vexe)), 'thirdparty', 'tcc', 'tcc.exe')
+		if !os.is_executable(tcc) {
+			eprintln('Mach-O signing check requires TinyCC at ${tcc}; run `make` first.')
+			exit(1)
+		}
+		eprintln('Checking Mach-O signing before resuming CI tasks.')
+		// Run the file directly so test filters and saved successes cannot skip it.
+		exec_args(['env', 'VTEST_ONLY_FN=', 'v', '-silent', 'vlib/v/util/machosign/macho_sign_test.v'])
+	}
+}
+
 // run_ci_tasks mirrors the active ci/macos_ci.vsh steps in
 // .github/workflows/macos_ci.yml. The generic `all` mode intentionally remains
 // exhaustive, including tasks that are currently disabled in the workflow.
@@ -280,6 +315,8 @@ fn run_ci_tasks(reset bool) ! {
 	os.setenv('VTEST_SKIP_OWNERSHIP', '1', true)
 	os.setenv('V_MACOS_V3_NO_FALLBACK', '1', true)
 	os.setenv('V_MACOS_MULTIWINDOW_TESTS', '0', true)
+
+	check_macho_signing()
 
 	progress_path := ci_progress_path()
 	progress_dir := '${progress_path}.d'

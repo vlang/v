@@ -38,9 +38,9 @@ fn test_builtin_call_shape_preserves_primitive_named_and_generic_casts() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	tc.begin_sparse_transform_node_caches(0)
-	tc.structs['Target'] = []types.StructField{}
-	tc.structs['Box'] = []types.StructField{}
-	tc.structs['Box[int]'] = []types.StructField{}
+	tc.structs[flat.source_type_id('Target')] = []types.StructField{}
+	tc.structs[flat.source_type_id('Box')] = []types.StructField{}
+	tc.structs[flat.source_type_id('Box[int]')] = []types.StructField{}
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	for target in ['int', 'Target', 'Box[int]'] {
 		call := t.make_call_expr_typed(t.make_ident(target), [t.make_int_literal(1)],
@@ -91,7 +91,7 @@ fn test_builtin_call_shape_preserves_static_assoc_with_generic_index_wrapper() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
-	t.structs['Box'] = StructInfo{ name: flat.source_type_id('Box'), module: 'main' }
+	t.structs[flat.source_type_id('Box')] = StructInfo{ name: flat.source_type_id('Box'), module: 'main' }
 	static_name := flat.encode_static_type_method_name('Box', 'make')
 	t.fn_ret_types.set_id(static_name, flat.source_type_int)
 	for generic in [false, true] {
@@ -134,8 +134,8 @@ fn test_builtin_call_shape_preserves_selector_folding_and_c_interop() {
 fn test_builtin_call_shape_preserves_flag_enum_zero() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)
-	tc.enum_names['Flags'] = true
-	tc.flag_enums['Flags'] = true
+	tc.enum_names[flat.source_type_id('Flags')] = true
+	tc.flag_enums[flat.source_type_id('Flags')] = true
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	selector := t.make_selector(t.make_ident('Flags'), 'zero', u32(0))
 	call := t.make_call_expr_typed(selector, []flat.NodeId{}, flat.source_type_id('Flags'))

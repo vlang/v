@@ -22,7 +22,7 @@ fn (tc &TypeChecker) indexed_type_cache() &IndexedTypeCache {
 	return cache.indexed_types
 }
 
-@[inline]
+@[direct_array_access; inline]
 fn (tc &TypeChecker) invalidate_checked_type_id(idx int) {
 	if idx < 0 || isnil(tc.type_cache) || isnil(tc.type_cache.indexed_types) {
 		return
@@ -122,7 +122,7 @@ pub fn (tc &TypeChecker) parse_type_id(text u32) ?TypeId {
 		return none
 	}
 	value := tc.parse_type(text)
-	if tc.type_param_texts.ids.len == 0 && !isnil(tc.type_cache)
+	if tc.type_param_texts.len == 0 && !isnil(tc.type_cache)
 		&& tc.type_cache.alias_parse_stack.len == 0 {
 		cache := tc.type_cache.parsed_scalars
 		if !isnil(cache) && cache.owner == tc.type_interner && text != 0 {

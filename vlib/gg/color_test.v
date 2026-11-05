@@ -54,7 +54,7 @@ fn test_add() {
 fn test_sub() {
 	a := gg.rgba(100, 100, 100, 50)
 	b := gg.rgba(100, 100, 100, 100)
-	r := gg.rgba(0, 0, 0, 100)
+	r := gg.rgba(0, 0, 0, 50)
 	assert (a - b) == r
 
 	assert gg.white - gg.green == gg.magenta
@@ -63,10 +63,16 @@ fn test_sub() {
 }
 
 fn test_mult() {
+	// normalized channel-wise multiply with rounding: (c1 * c2 + 127) / 255
 	a := gg.rgba(10, 10, 10, 10)
 	b := gg.rgba(10, 10, 10, 10)
-	r := gg.rgba(100, 100, 100, 100)
-	assert (a * b) == r
+	assert (a * b) == gg.rgba(0, 0, 0, 0)
+	c := gg.rgba(200, 200, 200, 200)
+	assert (c * c) == gg.rgba(157, 157, 157, 157)
+	// white is the neutral element
+	assert gg.white * gg.white == gg.white
+	assert gg.red * gg.white == gg.red
+	assert gg.red * gg.red == gg.red
 }
 
 fn test_div() {
@@ -74,6 +80,10 @@ fn test_div() {
 	b := gg.rgba(10, 10, 10, 10)
 	r := gg.rgba(10, 10, 10, 10)
 	assert (a / b) == r
+	// a zero divisor channel saturates instead of panicking
+	z := gg.rgba(0, 0, 0, 0)
+	assert (a / z) == gg.rgba(255, 255, 255, 255)
+	assert (z / z) == gg.rgba(0, 0, 0, 0)
 }
 
 fn test_rgba8() {
@@ -127,4 +137,13 @@ fn test_over() {
 	assert semi_b.over(r) == gg.Color{126, 0, 128, 255}
 	assert semi_b.over(g) == gg.Color{0, 126, 128, 255}
 	assert semi_b.over(b) == gg.Color{0, 0, 255, 255} // preserve pure blue
+
+	// fully transparent over fully transparent stays transparent (no divide by zero)
+	transparent := gg.Color{
+		r: 0
+		g: 0
+		b: 0
+		a: 0
+	}
+	assert transparent.over(transparent) == transparent
 }

@@ -30,7 +30,9 @@ fn test_target_module_static_signature_keeps_empty_missing_and_alias_fallbacks()
 			'return_only', 'return_with_arg' {
 				tc.fn_ret_types['short.work'] = types.Type(types.int_)
 			}
-			'generic_only', 'generic_with_arg' { tc.fn_generic_params['short.work'] = ['T'] }
+			'generic_only', 'generic_with_arg' {
+				tc.fn_generic_params['short.work'] = types.generic_param_ids(['T'])
+			}
 			'wrong_static_arity' { tc.fn_param_types['short.work'] = [types.Type(types.int_)] }
 			else {}
 		}

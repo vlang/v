@@ -88,7 +88,7 @@ fn test_runtime_callee_base_is_still_spilled_into_an_ordering_temp() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	t.set_var_type('holder', flat.source_type_id('Holder'))
-	t.structs['Holder'] = StructInfo{
+	t.structs[flat.source_type_id('Holder')] = StructInfo{
 		name: flat.source_type_id('Holder')
 	}
 
@@ -105,7 +105,7 @@ fn test_untyped_but_bound_receiver_is_still_spilled_into_an_ordering_temp() {
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'main'
 	t.set_var_type('cloned', flat.source_type_id('Holder'))
-	t.structs['Holder'] = StructInfo{
+	t.structs[flat.source_type_id('Holder')] = StructInfo{
 		name: flat.source_type_id('Holder')
 	}
 
@@ -200,7 +200,11 @@ fn test_global_function_values_are_snapshotted_before_later_preludes() {
 			else { 'producer.callback' }
 		}
 		if context == 'imported' {
-			tc.file_selective_imports[file_import_key('consumer.v', 'callback')] = [global_name]
+			tc.selective_import_files['consumer.v'] = &types.FileImportInfo{
+				selective_imports: {
+					flat.source_type_id('callback'): [flat.source_type_id(global_name)]
+				}
+			}
 		}
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
 		t.cur_module = if context == 'main' { 'main' } else { 'consumer' }

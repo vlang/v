@@ -11,32 +11,6 @@ on:
       - '!**/termux_ci.yml'
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
-  pull_request:
-    paths:
-      - 'cmd/v/**'
-      - 'cmd/tools/builders/**.v'
-      - 'vlib/builtin/**'
-      - 'vlib/os/**'
-      - 'vlib/time/**'
-      - 'vlib/runtime/**'
-      - 'vlib/term/**'
-      - 'vlib/net/**'
-      - 'vlib/crypto/rand/**'
-      - 'vlib/picoev/**'
-      - 'vlib/strconv/**'
-      - 'vlib/strings/**'
-      - 'vlib/sync/**'
-      - 'vlib/v/**'
-      - 'thirdparty/**'
-      - 'vc/**'
-      - 'v.mod'
-      - 'GNUmakefile'
-      - 'Makefile'
-      - '.github/problem-matchers/**'
-      - '.github/workflows/retry.sh'
-      - '!**.md'
-      - '!**.yml'
-      - '.github/workflows/termux_ci.yml'
 
 concurrency:
   group: termux-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -47,6 +21,7 @@ permissions:
 
 jobs:
   termux-build:
+    if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -62,7 +37,7 @@ jobs:
           git log -n4
           echo "running docker ..."
           docker run --rm --mount type=bind,source=/home/runner/work/v/v,destination=/src -w /src termux/termux-docker:latest bash -c '
-            set -o xtrace
+            set -exo pipefail
             echo "running inside docker"
             whoami
             cp -r /src ~/vproject; cd ~/vproject
@@ -71,7 +46,11 @@ jobs:
             echo "previous TERMUX_VERSION: $TERMUX_VERSION"
             export TERMUX_VERSION=0.118.3
             echo "explicit TERMUX_VERSION: $TERMUX_VERSION"
-            bash .github/workflows/retry.sh pkg update -y
+            # Use the official primary mirror for reproducible package setup.
+            termux_mirror="${PREFIX:?}/etc/termux/mirrors/europe/packages.termux.dev"
+            test -f "$termux_mirror"
+            ln -sfn "$termux_mirror" "$PREFIX/etc/termux/chosen_mirrors"
+            bash .github/workflows/retry.sh pkg --check-mirror update -y
             bash .github/workflows/retry.sh pkg install -y clang libexecinfo libgc libgc-static make git
             git log -n4
             VFLAGS="-cc cc" make
@@ -85,6 +64,7 @@ jobs:
           '
 
   termux-build-arm64-tcc:
+    if: github.ref == 'refs/heads/master'
     # Diagnostic job for vlang/v#27207: reproduces the Termux/AArch64 tcc
     # bootstrap failure on a real arm64 runner so we can collect logs without
     # local hardware. Allowed to fail until the upstream tcc AArch64 bug is
@@ -106,11 +86,15 @@ jobs:
           mkdir -p "$RUNNER_TEMP/termux-logs"
           chmod 777 "$RUNNER_TEMP/termux-logs"
           docker run --rm --platform=linux/arm64 --mount type=bind,source=/home/runner/work/v/v,destination=/src --mount type=bind,source="$RUNNER_TEMP/termux-logs",destination=/logs -w /src termux/termux-docker:aarch64 bash -c '
-            set -o xtrace
+            set -exo pipefail
             uname -a
             cp -r /src ~/vproject; cd ~/vproject
             export TERMUX_VERSION=0.118.3
-            bash .github/workflows/retry.sh pkg update -y
+            # Use the official primary mirror for reproducible package setup.
+            termux_mirror="${PREFIX:?}/etc/termux/mirrors/europe/packages.termux.dev"
+            test -f "$termux_mirror"
+            ln -sfn "$termux_mirror" "$PREFIX/etc/termux/chosen_mirrors"
+            bash .github/workflows/retry.sh pkg --check-mirror update -y
             bash .github/workflows/retry.sh pkg install -y clang libexecinfo libgc libgc-static make git gdb file
             git log -n4
             ulimit -c unlimited || true

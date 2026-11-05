@@ -45,8 +45,8 @@ fn test_attribute_schema_collection_trims_source_ids_and_skips_embeds() {
 fn test_attribute_schema_field_ids_keep_alias_and_wrapper_classification() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.type_aliases.set_id('Count', flat.source_type_int)
-	tc.enum_names['Method'] = true
+	tc.type_aliases.set_id(flat.source_type_id('Count'), flat.source_type_int)
+	tc.enum_names[flat.source_type_id('Method')] = true
 	assert tc.attribute_field_kind(flat.source_type_id('Count')) == .integer
 	assert tc.attribute_field_kind(flat.source_type_bool) == .boolean
 	assert tc.attribute_field_kind(flat.source_type_id('Method')) == .enum_
@@ -61,15 +61,15 @@ fn test_attribute_schema_enum_id_keeps_written_module_and_short_lookup_order() {
 	local := a.add_val(.enum_decl, 'current.Method')
 	short := a.add_val(.enum_decl, 'Method')
 	mut tc := TypeChecker.new(&a)
-	tc.first_type_declaration_ids['declared.Method'] = int(written)
-	tc.first_type_declaration_ids['current.Method'] = int(local)
-	tc.first_type_declaration_ids['Method'] = int(short)
+	tc.first_type_declaration_ids[flat.source_type_id('declared.Method')] = int(written)
+	tc.first_type_declaration_ids[flat.source_type_id('current.Method')] = int(local)
+	tc.first_type_declaration_ids[flat.source_type_id('Method')] = int(short)
 	id := flat.source_type_id('declared.Method')
 	assert tc.attribute_enum_decl(id, 'current')? == written
-	tc.first_type_declaration_ids.delete('declared.Method')
+	tc.first_type_declaration_ids.delete(flat.source_type_id('declared.Method'))
 	assert tc.attribute_enum_decl(id, 'current')? == local
-	tc.first_type_declaration_ids.delete('current.Method')
+	tc.first_type_declaration_ids.delete(flat.source_type_id('current.Method'))
 	assert tc.attribute_enum_decl(id, 'current')? == short
-	tc.first_type_declaration_ids.delete('Method')
+	tc.first_type_declaration_ids.delete(flat.source_type_id('Method'))
 	assert tc.attribute_enum_decl(id, 'current') == none
 }

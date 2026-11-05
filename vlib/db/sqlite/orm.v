@@ -37,8 +37,8 @@ pub fn (db DB) select(config orm.SelectConfig, data orm.QueryData, where orm.Que
 		if step == sqlite_done {
 			break
 		}
-		if step != sqlite_ok && step != sqlite_row {
-			break
+		if is_error(step) {
+			return db.error_message(step, query)
 		}
 		mut row := []orm.Primitive{}
 		for i, typ in config.types {

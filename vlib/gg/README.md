@@ -5,9 +5,39 @@ It is currently implemented using `sokol`, and makes easy creating
 apps that just need a way to draw simple 2D shapes, and to react to
 user's keyboard/mouse input.
 
+On macOS, the default backend uses Metal shaders and requires an available Metal device. If a
+virtual machine does not provide GPU access, `gg` stops during initialization with a message
+explaining that no Metal device is available.
+
 With `ui_mode: true`, call `context.refresh_ui()` to request a redraw. The C backend accepts
 requests from any thread and preserves requests made while a frame is being drawn. Drawing and
 the trailing frames after a refresh are handled by the frame thread.
+
+Text drawing temporarily selects the font shader and restores the previously selected render
+pipeline afterward, including for translucent text. On Android, resizing or rotating the window
+recomputes `Context.scale` to fit the configured design dimensions to the new framebuffer.
+
+Drawing coordinates use logical pixels. Configured line lengths, thicknesses, dash spacing,
+and ellipse radii scale with `Context.scale`, including rotated ellipses. A configured line
+starts at its first endpoint and clips its final dash at the second endpoint. On macOS,
+`native_rendering` draws both axis-aligned and diagonal lines on the native Cocoa surface.
+
+## Image buffers and cache IDs
+
+Image loaders produce four-channel RGBA pixels. When initializing an `Image` directly with
+`init_sokol_image()`, provide non-null RGBA data; missing data or another channel count leaves the
+image uninitialized. `update_pixel_data()` ignores null buffers and images with nonpositive
+width, height or channel count. A valid update buffer must contain the full image's pixel data.
+
+For a manually initialized image, `Image.nr_mipmaps` limits the total number of levels, including
+its base image. Set it to `1` before `init_sokol_image()` to generate no extra levels, or below one
+for as many levels as the image dimensions and backend permit. Initialization records the actual
+level count in that field. Generated levels use a box filter; their temporary CPU buffer is freed
+after GPU upload.
+
+Cache IDs start at zero, which is a valid `draw_image_with_config(img_id: 0)` selection, including
+native macOS rendering. Out-of-range lookups return independent `Image{ok: false}` placeholders.
+Removing an image keeps its cache slot and ID while marking it invalid, preserving other IDs.
 
 ## Example
 
@@ -128,6 +158,10 @@ After a window generation is sealed, state/capability queries and new service,
 readback, and native-borrow admissions fail as stale. Already admitted work
 follows the terminal or cancellation flow, and queued terminals remain
 deliverable.
+
+Within a render frame, `WindowContext.with_swapchain_sgl()` and `with_offscreen_sgl()`
+submit the drawing commands from a successful callback to the selected target before
+returning. Renderer errors propagate through the managed pass cleanup.
 
 `examples/gg/multiwindow_render_runtime.v` is an unattended CI probe, not an
 interactive launch target. Backend lanes compile it with `-d gg_multiwindow`

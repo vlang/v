@@ -4,7 +4,7 @@ import os
 import v.cmdexec
 import v.pref
 
-fn test_fastc_string_appends_copy_borrowed_bytes_and_preserve_bulk_semantics() {
+fn test_fastc_string_appends_share_storage_and_preserve_bulk_semantics() {
 	$if !macos && !linux {
 		return
 	}
@@ -28,7 +28,7 @@ mut:
 	value int
 }
 fn mutate_original(value string) {
-	// Keep the allocation alive and change its bytes to detect accidental sharing.
+	// Keep the allocation alive and change its bytes to detect descriptor sharing.
 	unsafe { value.str[0] = `X` }
 }
 fn returned(mut calls Counter) string {
@@ -44,46 +44,51 @@ fn main() {
 	values << local
 	mutate_original(local)
 	assert local == "Xocal"
-	assert values[0] == "local", "local string append"
+	assert values[0] == "Xocal", "local string append"
 	mut holder := Holder{text: "field".clone()}
 	values << holder.text
 	mutate_original(holder.text)
-	assert values[1] == "field", "field string append"
+	assert values[1] == "Xield", "field string append"
 	mut source := ["index".clone()]
 	values << source[0]
 	mutate_original(source[0])
-	assert values[2] == "index", "indexed string append"
+	assert values[2] == "Xndex", "indexed string append"
 	mut slice_source := ["sliced".clone()]
 	mut slice_values := []string{}
 	slice_values << slice_source[..][0]
 	mutate_original(slice_source[0])
-	assert slice_values[0] == "sliced", "slice-indexed string append"
+	assert slice_values[0] == "Xliced", "slice-indexed string append"
 	member := "member".clone()
 	holder.items << member
 	mutate_original(member)
-	assert holder.items[0] == "member", "member array target"
+	assert holder.items[0] == "Xember", "member array target"
 	map_value := "mapped".clone()
 	mut mapped := map[string][]string{}
 	mapped["out"] = []string{}
 	mapped["out"] << map_value
 	mutate_original(map_value)
-	assert mapped["out"][0] == "mapped", "map array target"
+	assert mapped["out"][0] == "Xapped", "map array target"
 	nested_value := "nested".clone()
 	mut nested := [][]string{len: 1}
 	nested[0] << nested_value
 	mutate_original(nested_value)
-	assert nested[0][0] == "nested", "nested array target"
+	assert nested[0][0] == "Xested", "nested array target"
 	mut incoming := ["bulk".clone()]
 	mut bulk := []string{}
 	bulk << incoming
 	mutate_original(incoming[0])
-	// The C backend copies descriptors for bulk append; it does not clone each string.
+	// Single and bulk append both copy string descriptors.
 	assert bulk[0] == "Xulk", "bulk append keeps descriptor sharing"
 	alias_value := Text("alias".clone())
 	mut aliases := []Text{}
 	aliases << alias_value
 	mutate_original(alias_value)
-	assert aliases[0] == Text("alias"), "string alias append"
+	assert aliases[0] == Text("Xlias"), "string alias append"
+	clone_value := "cloned".clone()
+	mut copies := []string{}
+	copies << clone_value.clone()
+	mutate_original(clone_value)
+	assert copies[0] == "cloned", "explicit clone keeps independent bytes"
 	mut calls := Counter{}
 	values << returned(mut calls)
 	values << "literal"

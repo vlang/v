@@ -6,7 +6,7 @@ import v.parser
 import v.pref
 import v.types
 
-// The wasm backend lowers dynamic arrays of primitive elements, so the
+// The wasm backend lowers dynamic arrays of primitive and string elements, so the
 // driver gate must admit them while still rejecting maps, structs, fixed
 // arrays and nested arrays. A rejection here is a hard error before any wasm
 // is emitted; an admission it should not make would miscompile silently
@@ -50,6 +50,11 @@ fn test_wasm_gate_admits_primitive_arrays() {
 	assert wasm_gate_check('module main\nfn main() {\n\tz := []int{len: 4, init: 7}\n\tprintln(z.len)\n}\n') == ''
 }
 
+fn test_wasm_gate_admits_string_arrays() {
+	assert wasm_gate_check("module main\nfn main() {\n\ta := ['one', 'two']\n\tprintln(a[0])\n}\n") == ''
+	assert wasm_gate_check("module main\nfn main() {\n\ta := []string{len: 2, init: 'v'}\n\tprintln(a.len)\n}\n") == ''
+}
+
 // Struct literals are admitted when every field has a lowering, which is what
 // lets lesson pages with structs run client-side. The rejection direction is
 // still pinned: a struct holding a map has no field-wise wasm lowering, so it
@@ -77,10 +82,10 @@ fn test_wasm_gate_rejects_maps_structs_fixed_nested() {
 
 fn test_wasm_supported_array_elem() {
 	for t in ['int', 'i8', 'i16', 'i32', 'i64', 'u8', 'u16', 'u32', 'u64', 'uint', 'f32', 'f64',
-		'bool', 'char', 'rune'] {
+		'bool', 'char', 'rune', 'string'] {
 		assert wasm_supported_array_elem(flat.source_type_id('[]' + t)), t
 	}
-	for t in ['', '[]', 'int', 'map[string]int', 'Point', '[2]int', '[][]int', '[]Point', '[]string',
+	for t in ['', '[]', 'int', 'map[string]int', 'Point', '[2]int', '[][]int', '[][]string', '[]Point',
 		' []int', '[]int ', '[] int', '[]builtin.int'] {
 		assert !wasm_supported_array_elem(flat.source_type_id(t)), t
 	}

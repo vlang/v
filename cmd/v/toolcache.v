@@ -414,6 +414,12 @@ fn binary_identity(path string) string {
 	return 'sha256:${sha256.sum256(contents).hex()}'
 }
 
+// tool_application_manifest_identity detects sidecar edits even within one timestamp tick.
+fn tool_application_manifest_identity(path string) string {
+	contents := os.read_bytes(path) or { return file_stamp_missing }
+	return 'sha256:${sha256.sum256(contents).hex()}'
+}
+
 // last_modified returns the modification time of a path, or the largest possible time when
 // it cannot be determined, so that an unreadable input always counts as changed.
 fn last_modified(path string) i64 {
@@ -537,6 +543,7 @@ fn recorded_input_contents_changed(manifest string, manifest_path string) string
 			'm' { module_root_stamp(path) }
 			'p' { module_directory_stamp(path) }
 			'b' { binary_identity(path) }
+			'a' { tool_application_manifest_identity(path) }
 			else { file_stamp(path) }
 		}
 		if current != recorded {
@@ -1324,7 +1331,18 @@ fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 	// and leave one build's executable paired with the other's manifest. Recording the pairing
 	// lets a reader see that and rebuild, instead of running stale code that a fresh manifest
 	// vouches for.
-	manifest := encode_tool_cache_manifest(source_files, started) + 'b${tool_cache_field_separator}${entry.binary}${tool_cache_field_separator}${binary_identity(staged)}\n'
+	staged_sidecar := '${staged}.manifest'
+	sidecar := '${entry.binary}.manifest'
+	manifest := encode_tool_cache_manifest(source_files, started) + 'b${tool_cache_field_separator}${entry.binary}${tool_cache_field_separator}${binary_identity(staged)}\n' + 'a${tool_cache_field_separator}${sidecar}${tool_cache_field_separator}${tool_application_manifest_identity(staged_sidecar)}\n'
+	// Publish the application manifest through the same pinned directory as the
+	// executable. Track absence too, so a removed or replaced sidecar is a cache miss.
+	if os.is_file(staged_sidecar) {
+		if !cache_entry.publish(staged_sidecar, os.file_name(sidecar)) {
+			return error('cannot install the application manifest of `${entry.name}`')
+		}
+	} else {
+		cache_entry.remove(os.file_name(sidecar))
+	}
 	// Publish the executable before its manifest. A lookup requires both, so the worst that
 	// a concurrent reader can observe is "binary present, manifest not updated yet", which
 	// is simply treated as a miss. The reverse order could hand out a stale binary.
@@ -1348,12 +1366,7 @@ fn build_tool_binary(vexe string, entry ToolCacheEntry) !string {
 @[noreturn]
 fn exec_cached_tool(executable string, tool_args []string) {
 	$if windows {
-		mut process := os.new_process(executable)
-		process.set_args(tool_args)
-		process.wait()
-		code := process.code
-		process.close()
-		exit(code)
+		exit(run_windows_cached_tool(executable, tool_args))
 	} $else {
 		os.execvp(executable, tool_args) or {
 			eprintln('cannot start `${executable}`: ${err}')
@@ -1364,6 +1377,40 @@ fn exec_cached_tool(executable string, tool_args []string) {
 	// The explicit exit keeps both the current and the bootstrap compiler satisfied that
 	// every path out of this `@[noreturn]` function ends in one.
 	exit(1)
+}
+
+// run_windows_cached_tool waits for the child before wiping caches, so a cached vup.exe
+// has released its image lock. Only a successful updater requests the private exit code.
+fn run_windows_cached_tool(executable string, tool_args []string) int {
+	// Private handshake; keep in sync with cmd/tools/vup.v.
+	deferred_wipe_exit_code := 80
+	is_updater := os.file_name(executable).to_lower_ascii() == 'vup.exe'
+	mut process := os.new_process(executable)
+	process.set_args(tool_args)
+	if is_updater {
+		mut environment := os.environ()
+		environment['VUP_DEFER_CACHE_WIPE'] = '1'
+		process.set_environment(environment)
+	}
+	process.wait()
+	code := process.code
+	process.close()
+	if !is_updater || code != deferred_wipe_exit_code {
+		return code
+	}
+	// This process retains the caller's working directory and cache environment.
+	opts := parse_wipe_cache_options([], []) or {
+		eprintln(err.msg())
+		return 1
+	}
+	lines := wipe_caches(opts) or {
+		eprintln('v up: wiping caches failed: ${err}')
+		return 1
+	}
+	for line in lines {
+		println(line)
+	}
+	return 0
 }
 
 struct WipeCacheOptions {
@@ -1378,6 +1425,7 @@ struct WipeCacheOptions {
 }
 
 const wipe_cache_help_text = 'Remove V cache folders (VCACHE, VTMP, V3CACHE, and compiled tool caches).
+Stop and return a nonzero status if a cache folder cannot be removed or recreated.
 
 Usage:
   v wipe-cache [options]
@@ -1571,14 +1619,16 @@ fn is_v3_cache_subdir(name string) bool {
 	return false
 }
 
-fn wipe_cache_directory(path string, label string, recreate bool, opts WipeCacheOptions, mut lines []string) {
+fn wipe_cache_directory(path string, label string, recreate bool, opts WipeCacheOptions, mut lines []string) ! {
 	if opts.dry_run {
 		if os.is_link(path) {
 			lines << 'Would wipe ${label} folder ${path} (symbolic link).'
 		} else if os.is_dir(path) {
 			lines << 'Would wipe ${label} folder ${path}.'
 			if opts.verbose {
-				mut entries := os.ls(path) or { []string{} }
+				mut entries := os.ls(path) or {
+					return error('v wipe-cache: could not list ${label} folder ${path}: ${err}')
+				}
 				entries.sort()
 				for entry in entries {
 					lines << '  would remove ${os.join_path(path, entry)}'
@@ -1595,33 +1645,43 @@ fn wipe_cache_directory(path string, label string, recreate bool, opts WipeCache
 		if opts.verbose {
 			lines << '  removing symbolic link ${path}'
 		}
-		os.rm(path) or {}
+		os.rm(path) or {
+			return error('v wipe-cache: could not remove ${label} folder ${path}: ${err}')
+		}
 	} else if os.is_dir(path) {
 		if opts.verbose {
-			mut entries := os.ls(path) or { []string{} }
+			mut entries := os.ls(path) or {
+				return error('v wipe-cache: could not list ${label} folder ${path}: ${err}')
+			}
 			entries.sort()
 			for entry in entries {
 				lines << '  removing ${os.join_path(path, entry)}'
 			}
 		}
-		os.rmdir_all(path) or {}
+		os.rmdir_all(path) or {
+			return error('v wipe-cache: could not remove ${label} folder ${path}: ${err}')
+		}
 	} else if os.exists(path) {
-		os.rm(path) or {}
+		os.rm(path) or {
+			return error('v wipe-cache: could not remove ${label} folder ${path}: ${err}')
+		}
 	} else if opts.verbose {
 		lines << '  ${path} does not exist'
 	}
 	if recreate {
-		os.mkdir_all(path) or {}
+		os.mkdir_all(path) or {
+			return error('v wipe-cache: could not create ${label} folder ${path}: ${err}')
+		}
 	}
 	lines << '${label} folder ${path} was wiped.'
 }
 
-// wipe_caches executes the requested cache cleanup (or dry-run) and returns the output lines.
-fn wipe_caches(opts WipeCacheOptions) []string {
+// wipe_caches returns cleanup output, stopping at the first filesystem error.
+fn wipe_caches(opts WipeCacheOptions) ![]string {
 	mut lines := []string{}
 	if opts.vcache {
 		cache_path := os.getenv_opt('VCACHE') or { os.join_path(os.vmodules_dir(), '.cache') }
-		wipe_cache_directory(cache_path, 'V cache', true, opts, mut lines)
+		wipe_cache_directory(cache_path, 'V cache', true, opts, mut lines)!
 	}
 	mut tool_lines := []string{}
 	if opts.tools {
@@ -1638,7 +1698,7 @@ fn wipe_caches(opts WipeCacheOptions) []string {
 			}
 			if os.exists(target) || os.is_link(target) {
 				wiped_any_tool_cache = true
-				wipe_cache_directory(target, label, false, opts, mut tool_lines)
+				wipe_cache_directory(target, label, false, opts, mut tool_lines)!
 			} else if opts.verbose {
 				tool_lines << '${label} folder ${target} does not exist, skipping.'
 			}
@@ -1653,17 +1713,19 @@ fn wipe_caches(opts WipeCacheOptions) []string {
 		}
 	}
 	if opts.vtmp {
-		wipe_cache_directory(os.vtmp_dir(), 'V tmp.c and tests', true, opts, mut lines)
+		wipe_cache_directory(os.vtmp_dir(), 'V tmp.c and tests', true, opts, mut lines)!
 	}
 	if opts.v3cache {
 		vtmp_path := os.vtmp_dir()
 		configured_v3 := os.getenv('V3CACHE').trim_space()
 		if configured_v3 != '' && os.abs_path(configured_v3) != os.abs_path(vtmp_path) {
-			wipe_cache_directory(configured_v3, 'V3 cache', true, opts, mut lines)
+			wipe_cache_directory(configured_v3, 'V3 cache', true, opts, mut lines)!
 		} else if !opts.vtmp {
 			mut v3_dirs := []string{}
 			if os.is_dir(vtmp_path) {
-				mut entries := os.ls(vtmp_path) or { []string{} }
+				mut entries := os.ls(vtmp_path) or {
+					return error('v wipe-cache: could not list V3 cache folders in ${vtmp_path}: ${err}')
+				}
 				entries.sort()
 				for entry in entries {
 					if is_v3_cache_subdir(entry) {
@@ -1676,7 +1738,7 @@ fn wipe_caches(opts WipeCacheOptions) []string {
 			}
 			if v3_dirs.len > 0 {
 				for dir in v3_dirs {
-					wipe_cache_directory(dir, 'V3 cache', false, opts, mut lines)
+					wipe_cache_directory(dir, 'V3 cache', false, opts, mut lines)!
 				}
 			} else if opts.dry_run {
 				lines << 'Would wipe V3 cache folders in ${vtmp_path} (none exist).'
@@ -1705,7 +1767,11 @@ fn run_wipe_cache(args []string, command_index int) {
 		println(wipe_cache_help_text)
 		return
 	}
-	for line in wipe_caches(opts) {
+	lines := wipe_caches(opts) or {
+		eprintln(err.msg())
+		exit(1)
+	}
+	for line in lines {
 		println(line)
 	}
 }

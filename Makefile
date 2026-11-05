@@ -148,7 +148,12 @@ v:
 	./v -new-compiler run ./cmd/tools/detect_tcc.v; \
 	echo "V has been successfully built"; \
 	./v version; \
-	./v -new-compiler run .github/problem-matchers/register_all.vsh
+	./v -new-compiler run .github/problem-matchers/register_all.vsh; \
+	cache_gcflags=; \
+	if [ ! -f thirdparty/tcc/lib/libgc.a ] && [ ! -f thirdparty/tcc/lib/libgc.dylib ]; then \
+		cache_gcflags='-gc none'; \
+	fi; \
+	./v $$cache_gcflags $(VFLAGS) -new-compiler cmd/tools/cache_basic_modules_test.v
 
 v1:
 	@set -e; \

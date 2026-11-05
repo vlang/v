@@ -14,7 +14,7 @@ fn test_required_field_filter_invalidates_after_ast_growth() {
 	start := a.begin_children()
 	a.add_child(field_id)
 	decl_id := a.add_node(flat.Node{ kind: .struct_decl, value: 'Required', children_start: start, children_count: 1 })
-	tc.type_declaration_ids['Required'] = [int(decl_id)]
+	tc.type_declaration_ids[flat.source_type_id('Required')] = [int(decl_id)]
 	assert tc.required_fields_ast_nodes != a.nodes.len
 	assert tc.missing_required_struct_fields(flat.source_type_id('Required'), map[string]bool{}, []u32{}) == ['Required.value']
 	tc.prepare_check_name_filters()

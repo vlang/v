@@ -4,6 +4,97 @@ import os
 import v.cmdexec
 import v.pref
 
+fn test_fastc_deferred_embedded_payloads_keep_selected_branches_and_errors() {
+	root := os.join_path(os.vtmp_dir(), 'fastc_deferred_embed_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'payload.bin'), '\x00\xff') or { panic(err) }
+	source := r'module main
+$if false { const unused = $embed_file("missing.bin") }
+$else { const resource = $embed_file("payload.bin") }
+'
+	sources := [FastcSourceFile{ path: os.join_path(root, 'one.v'), source: source },
+		FastcSourceFile{ path: os.join_path(root, 'two.v'), source: source },
+		FastcSourceFile{ path: os.join_path(root, 'three.v'), source: source },
+		FastcSourceFile{ path: os.join_path(root, 'four.v'), source: source }]
+	for serial in [true, false] {
+		mut prefs := pref.new_preferences()
+		prefs.building_v = true
+		prefs.no_parallel = serial
+		mut pending := fastc_start_embedded_payloads(sources, prefs)
+		payloads := fastc_wait_embedded_payloads(mut pending) or { panic(err) }
+		assert payloads.len == 1
+		assert payloads.values()[0].contains(r'"\000\377"')
+		assert fastc_wait_embedded_payloads(mut pending) or { panic(err) } == payloads
+		missing := [
+			FastcSourceFile{ path: os.join_path(root, 'missing.v'), source: r'const resource = $embed_file("missing.bin")' },
+			FastcSourceFile{ path: os.join_path(root, 'other_missing.v'), source: r'const other = $embed_file("missing.bin")' },
+			FastcSourceFile{ path: os.join_path(root, 'third_missing.v'), source: r'const third = $embed_file("missing.bin")' },
+			FastcSourceFile{ path: os.join_path(root, 'fourth_missing.v'), source: r'const fourth = $embed_file("missing.bin")' },
+		]
+		mut failed := fastc_start_embedded_payloads(missing, prefs)
+		mut message := ''
+		_ := fastc_wait_embedded_payloads(mut failed) or {
+			message = err.msg()
+			map[string]string{}
+		}
+		assert message.contains('fastc cannot read embedded file'), message
+		assert message.contains('missing.bin'), message
+	}
+}
+
+fn test_fastc_embed_file_descriptors_preserve_binary_payloads() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_embed_descriptor_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	mut payload := []u8{}
+	for i in 0 .. 256 {
+		payload << u8(i)
+	}
+	os.write_file_array(os.join_path(root, 'payload.bin'), payload) or { panic(err) }
+	os.write_file(os.join_path(root, 'empty.bin'), '') or { panic(err) }
+	os.write_file(os.join_path(root, 'main.v'), r'module main
+
+const resource = $embed_file("payload.bin")
+const empty = $embed_file("empty.bin")
+
+fn main() {
+	assert resource.len == 256
+	assert resource.path == "payload.bin"
+	mut bytes := resource.to_bytes()
+	assert bytes.len == 256
+	for i, value in bytes {
+		assert value == u8(i)
+	}
+	text := resource.to_string()
+	assert text.len == 256
+	assert text.bytes() == bytes
+	assert $embed_file("payload.bin").to_string() == text
+	assert $embed_file("payload.bin").to_bytes() == bytes
+	local := $embed_file("payload.bin")
+	assert local.to_bytes() == bytes
+	unsafe { assert local.data()[0] == 0 }
+	bytes[0] = 99
+	assert resource.to_bytes()[0] == 0
+	assert empty.len == 0
+	assert empty.to_string() == ""
+	assert empty.to_bytes().len == 0
+}
+') or { panic(err) }
+	program := os.join_path(root, 'program')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-nocache', '-o', program, root])
+	assert build.exit_code == 0, build.output
+	os.rm(os.join_path(root, 'payload.bin')) or { panic(err) }
+	os.rm(os.join_path(root, 'empty.bin')) or { panic(err) }
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+}
+
 fn test_fastc_embed_file_resolves_compiler_and_module_roots() {
 	mut prefs := pref.new_preferences()
 	tcc := os.join_path(prefs.vroot, 'thirdparty', 'tcc', 'tcc.exe')

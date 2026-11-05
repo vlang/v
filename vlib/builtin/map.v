@@ -1108,6 +1108,16 @@ pub fn (m &map) clone() map {
 	return res
 }
 
+// map_clone_sharing_keys stores at `dest` a copy of the map at `src`. This
+// backend clones every key.
+@[unsafe]
+pub fn map_clone_sharing_keys(dest voidptr, src voidptr) {
+	source := unsafe { &map(src) }
+	unsafe {
+		*(&map(dest)) = source.clone()
+	}
+}
+
 // free releases all memory resources occupied by the `map`.
 @[unsafe]
 pub fn (m &map) free() {

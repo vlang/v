@@ -130,7 +130,7 @@ fn test_entries_with_data_descriptors_roundtrip() {
 	root := validation_root('descriptor')
 	defer { os.rmdir_all(root) or {} }
 	path := os.join_path(root, 'input.zip')
-	validation_archive(path, 'entry.txt', .no_compression)
+	validation_archive(path, 'résumé/東京.txt', .no_compression)
 	original := os.read_bytes(path)!
 	central := validation_u32(original, original.len - 6)
 	for signature in [false, true] {
@@ -141,14 +141,82 @@ fn test_entries_with_data_descriptors_roundtrip() {
 		bytes << descriptor
 		bytes << original[central..]
 		bytes[6] |= 8
+		bytes[7] |= 8
 		for i in 14 .. 26 { bytes[i] = 0 }
 		bytes[central + descriptor.len + 8] |= 8
+		bytes[central + descriptor.len + 9] |= 8
 		validation_set_u32(mut bytes, bytes.len - 6, central + descriptor.len)
 		os.write_file_array(path, bytes)!
 		mut z := szip.open(path, .no_compression, .read_only)!
-		z.open_entry('entry.txt')!
+		z.open_entry('résumé/東京.txt')!
 		mut contents := []u8{len: int(z.size())}
 		z.read_entry_buf(contents.data, contents.len)!
 		assert contents.bytestr() == 'archive contents'.repeat(20)
+		z.close()
+		mut appended := szip.open(path, .no_compression, .append)!
+		appended.open_entry('added.txt')!
+		appended.write_entry('added'.bytes())!
+		appended.close()
+		flushed := os.read_bytes(path)!
+		flushed_central := validation_u32(flushed, flushed.len - 6)
+		// Appending rewrites descriptors into header metadata, retaining UTF-8 names.
+		assert validation_u16(flushed, 6) == 0x0800
+		assert validation_u16(flushed, flushed_central + 8) == 0x0800
+		mut reader := szip.open(path, .no_compression, .read_only)!
+		reader.open_entry('résumé/東京.txt')!
+		reader.read_entry_buf(contents.data, contents.len)!
+		assert contents.bytestr() == 'archive contents'.repeat(20)
+	}
+}
+
+fn validation_u16(data []u8, pos int) u16 {
+	return u16(data[pos]) | (u16(data[pos + 1]) << 8)
+}
+
+fn test_written_utf8_names_are_marked_in_both_headers() {
+	root := validation_root('utf8_write')
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'input.zip')
+	validation_archive(path, 'résumé/東京.txt', .no_compression)
+	bytes := os.read_bytes(path)!
+	central := validation_u32(bytes, bytes.len - 6)
+	// ZIP readers decode names as CP437 unless general-purpose flag bit 11 is set.
+	assert validation_u16(bytes, 6) & 0x0800 != 0
+	assert validation_u16(bytes, central + 8) & 0x0800 != 0
+}
+
+fn test_append_preserves_existing_name_encoding() {
+	root := validation_root('utf8_append')
+	defer { os.rmdir_all(root) or {} }
+	path := os.join_path(root, 'input.zip')
+	for utf8 in [false, true] {
+		validation_archive(path, 'résumé/東京.txt', .no_compression)
+		mut original := os.read_bytes(path)!
+		central := validation_u32(original, original.len - 6)
+		// Simulate an external archive, including legacy CP437 names kept as raw bytes.
+		original[6] = 0
+		original[central + 8] = 0
+		original[7] = if utf8 { u8(8) } else { u8(0) }
+		original[central + 9] = original[7]
+		if !utf8 {
+			original[30] = 0x82
+			original[central + 46] = 0x82
+		}
+		os.write_file_array(path, original)!
+		mut appended := szip.open(path, .no_compression, .append)!
+		appended.open_entry('new.txt')!
+		appended.write_entry('new payload'.bytes())!
+		appended.close()
+		bytes := os.read_bytes(path)!
+		new_central := validation_u32(bytes, bytes.len - 6)
+		expected := if utf8 { u16(0x0800) } else { u16(0) }
+		assert validation_u16(bytes, 6) == expected
+		assert validation_u16(bytes, new_central + 8) == expected
+		assert bytes[30..30 + 'résumé/東京.txt'.len] == original[30..30 + 'résumé/東京.txt'.len]
+		mut reader := szip.open(path, .no_compression, .read_only)!
+		reader.open_entry('new.txt')!
+		mut contents := []u8{len: int(reader.size())}
+		reader.read_entry_buf(contents.data, contents.len)!
+		assert contents.bytestr() == 'new payload'
 	}
 }

@@ -391,6 +391,9 @@ fn (mut t Transport) h2_dial_and_do(req &Request, key string, raw string, method
 	call.mu.unlock()
 	call.cv.broadcast()
 	if orphan != unsafe { nil } {
+		// Let an idle reader stop on its next timeout instead of repeatedly
+		// taking the TLS I/O lock while release() waits to close the transport.
+		orphan.shutdown_when_idle()
 		orphan.release()
 	}
 	if evicted.h1 != unsafe { nil } {

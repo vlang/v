@@ -44,7 +44,7 @@ fn test_import_caches_do_not_survive_into_the_next_generation() {
 	g.a = &first_a
 	g.tc = &first_tc
 	assert g.cached_file_import('shared.v', 'model')? == 'first.model'
-	assert g.file_selective_import_candidates('shared.v', 'Item') == none
+	assert g.tc.file_selective_import_ids_by_name('shared.v', 'Item') == none
 
 	c_source := generate_import_cache_reuse_source(mut g)
 	// A Windows target has a wide entry point, see windows_entry_point_test.v.
@@ -52,7 +52,12 @@ fn test_import_caches_do_not_survive_into_the_next_generation() {
 	assert c_source.contains(entry_point), c_source
 	// The same file/alias keys now resolve through the new program's checker.
 	g.tc.file_imports['shared.v\nmodel'] = 'second.model'
-	g.tc.file_selective_imports['shared.v\nItem'] = ['second.Item']
+	item_id := flat.source_type_id('second.Item')
+	g.tc.selective_import_files['shared.v'] = &types.FileImportInfo{
+		selective_imports: {
+			flat.source_type_id('Item'): [item_id]
+		}
+	}
 	assert g.cached_file_import('shared.v', 'model')? == 'second.model'
-	assert g.file_selective_import_candidates('shared.v', 'Item')? == ['second.Item']
+	assert g.tc.file_selective_import_ids_by_name('shared.v', 'Item')? == [item_id]
 }

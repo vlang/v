@@ -161,6 +161,34 @@ pub fn test_pipeline_single_request_sets_prev_len() {
 	assert r.path == '/a'
 }
 
+fn test_pipeline_delimiter_bounds_at_all_alignments() {
+	for offset in 0 .. 4 {
+		for suffix in ['', '\r', '\r\n', '\r\n\r', '\r\n\r\n'] {
+			request := 'GET /aligned HTTP/1.1\r\nX: value' + suffix
+			buffer := ('x'.repeat(offset) + request + '\r\n\r\n').bytes()
+			// A delimiter beyond the string's declared end must not complete it.
+			input := unsafe { tos(&buffer[offset], request.len) }
+			mut r := Request{}
+			mut parse_error := ''
+			n := r.parse_request_path_pipeline(input) or {
+				parse_error = err.msg()
+				-1
+			}
+			if suffix.len == 4 {
+				assert parse_error == '', parse_error
+				assert n == request.len
+				assert r.prev_len == request.len
+			} else {
+				assert parse_error == 'error parsing request: no request found'
+				assert n == -1
+				assert r.prev_len == 0
+			}
+			assert r.method == 'GET'
+			assert r.path == '/aligned'
+		}
+	}
+}
+
 pub fn test_pipeline_without_final_blank_line_is_rejected() {
 	mut r := Request{}
 	mut got_err := ''
@@ -185,6 +213,6 @@ pub fn test_pipeline_empty_input_has_no_request() {
 	assert n == -99, 'ret ${n}'
 	assert got_err == 'error parsing request: no request found', got_err
 	assert r.prev_len == 0, 'prev_len ${r.prev_len}'
-	// NOTE: `advance_token2` has no end-of-buffer check, so `method` and `path`
-	// hold bytes read past the empty buffer. They are deliberately not asserted.
+	assert r.method == ''
+	assert r.path == ''
 }

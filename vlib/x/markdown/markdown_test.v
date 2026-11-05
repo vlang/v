@@ -399,3 +399,30 @@ fn test_fenced_code_preserves_literal_tabs() {
 	assert html.contains('a\tb')
 	assert to_html('    a\tb\n').contains('a\tb')
 }
+
+fn test_linkify_leaves_out_a_closing_parenthesis_that_is_not_part_of_the_url() {
+	mut md := Markdown.new(extensions: [Extension(linkify())])
+	assert md.convert('(see https://vlang.io)') == '<p>(see <a href="https://vlang.io">https://vlang.io</a>)</p>\n'
+	assert md.convert('(see https://vlang.io).') == '<p>(see <a href="https://vlang.io">https://vlang.io</a>).</p>\n'
+	// A parenthesis that the URL opens is part of it.
+	assert md.convert('https://en.wikipedia.org/wiki/Clamp_(function)') == '<p><a href="https://en.wikipedia.org/wiki/Clamp_(function)">https://en.wikipedia.org/wiki/Clamp_(function)</a></p>\n'
+	assert md.convert('(https://w.org/a_(b))') == '<p>(<a href="https://w.org/a_(b)">https://w.org/a_(b)</a>)</p>\n'
+}
+
+fn test_linkify_keeps_the_destination_of_a_link_whose_text_is_a_url() {
+	mut md := Markdown.new(extensions: [Extension(linkify())])
+	assert md.convert('[https://vlang.io](https://docs.vlang.io)') == '<p><a href="https://docs.vlang.io">https://vlang.io</a></p>\n'
+	assert md.convert('[https://vlang.io][docs]\n\n[docs]: https://docs.vlang.io') == '<p><a href="https://docs.vlang.io">https://vlang.io</a></p>\n'
+	assert md.convert('[https://vlang.io]\n\n[https://vlang.io]: https://docs.vlang.io') == '<p><a href="https://docs.vlang.io">https://vlang.io</a></p>\n'
+	// Also inside emphasis in the text of the link.
+	assert md.convert('[*https://vlang.io*](https://docs.vlang.io)') == '<p><a href="https://docs.vlang.io"><em>https://vlang.io</em></a></p>\n'
+}
+
+fn test_linkify_follows_the_gfm_boundaries_of_a_url() {
+	mut md := Markdown.new(extensions: [Extension(linkify())])
+	// A scheme in the middle of a word does not start a link.
+	assert md.convert('foohttps://vlang.io') == '<p>foohttps://vlang.io</p>\n'
+	// Trailing emphasis markers are not part of the URL.
+	assert md.convert('*https://vlang.io*') == '<p><em><a href="https://vlang.io">https://vlang.io</a></em></p>\n'
+	assert md.convert('see https://vlang.io: it') == '<p>see <a href="https://vlang.io">https://vlang.io</a>: it</p>\n'
+}

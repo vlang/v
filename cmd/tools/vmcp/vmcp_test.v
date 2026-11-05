@@ -955,6 +955,50 @@ fn test_decode_args_reads_the_documented_shapes() {
 	assert args.list('missing').len == 0
 }
 
+fn test_decode_args_preserves_integer_precision_and_bounds() {
+	max_value := if sizeof(int) == 8 { int(0x7fffffffffffffff) } else { int(0x7fffffff) }
+	min_value := -max_value - 1
+	args := decode_args('{"max":${max_value},"min":${min_value},"max_decimal":${max_value}.75,"min_decimal":${min_value}.75}')
+	assert args.int('max', 0) == max_value
+	assert args.int('min', 0) == min_value
+	assert args.int('max_decimal', 0) == max_value
+	assert args.int('min_decimal', 0) == min_value
+	if sizeof(int) == 8 {
+		assert decode_args('{"value":9007199254740993}').int('value', 0) == int(9007199254740993)
+		assert decode_args('{"value":-9007199254740993}').int('value', 0) == int(-9007199254740993)
+		assert decode_args('{"value":9.223372036854775807e18}').int('value', 0) == max_value
+		assert decode_args('{"value":-9.223372036854775808e18}').int('value', 0) == min_value
+	}
+}
+
+fn test_decode_args_truncates_fractions_and_falls_back_on_overflow() {
+	args := decode_args('{"positive":12.75,"negative":-12.75,"exponent":123.75e-1,"small":-0.75,"tiny":-7.5e-10}')
+	assert args.int('positive', 99) == 12
+	assert args.int('negative', 99) == -12
+	assert args.int('exponent', 99) == 12
+	assert args.int('small', 99) == 0
+	assert args.int('tiny', 99) == 0
+	for literal in ['9223372036854775808', '-9223372036854775809', '1e99', '-1e99'] {
+		assert decode_args('{"value":${literal}}').int('value', 37) == 37, literal
+	}
+	if sizeof(int) == 4 {
+		assert decode_args('{"value":2147483648}').int('value', 37) == 37
+		assert decode_args('{"value":-2147483649}').int('value', 37) == 37
+	}
+}
+
+fn test_decode_args_numbers_respect_property_names_and_nesting() {
+	assert decode_args('{"limit":7,"nested":{"limit":8},"list":[9,{"limit":10}]}').int('limit', 0) == 7
+	args := decode_args('{"limit":7,"nested":{"limit":8},"list":[9,{"limit":10}],"text":"[\\\"limit\\\":11]","li\\u006dit":13}')
+	assert args.int('limit', 0) == 13
+	assert decode_args('{"value":7,"value":"23"}').int('value', 0) == 23
+	assert decode_args('{"value":7,"value":true}').int('value', 0) == 1
+	assert decode_args('{"value":7,"value":null}').int('value', 99) == 0
+	assert decode_args('{"value":7,"value":{"value":9}}').int('value', 99) == 0
+	assert decode_args('{"value":"23","value":7}').int('value', 0) == 7
+	assert decode_args('{"":13}').int('', 0) == 13
+}
+
 fn test_decode_args_tolerates_a_missing_or_broken_payload() {
 	empty := decode_args('')
 	assert empty.text('path', '') == ''

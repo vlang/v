@@ -17,13 +17,32 @@ fn test_oldv_runs_shell_commands_in_the_old_checkout() {
 		os.join_path(@VEXEROOT, 'cmd', 'tools', 'oldv.v')], 120_000)
 	assert built.exit_code == 0, built.output
 	dir_command := if os.user_os() == 'windows' { 'cd' } else { 'pwd' }
-	command := 'mkdir "copy destination" && echo copied > "copy destination${os.path_separator}result.txt" && ${dir_command} > "root.txt" && echo shell-command-ok'
+	previous := os.getenv_opt('V_OLDV_TEST_VALUE')
+	os.setenv('V_OLDV_TEST_VALUE', 'expanded', true)
+	defer {
+		if value := previous {
+			os.setenv('V_OLDV_TEST_VALUE', value, true)
+		} else {
+			os.unsetenv('V_OLDV_TEST_VALUE')
+		}
+	}
+	mut command := 'mkdir "copy destination" && echo copied > "copy destination${os.path_separator}result.txt" && ${dir_command} > "root.txt" && echo shell-command-ok'
+	$if windows {
+		command += ' && (for %i in (one two) do @echo %i) > "loop.txt" && echo "left&right!%V_OLDV_TEST_VALUE%" > "quoted.txt"'
+	}
 	args := ['--cache=false', '--workdir', root, '--command', command, 'HEAD']
 	result := cmdexec.run_with_timeout(oldv, args, 30_000)
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('shell-command-ok'), result.output
 	assert os.read_file(os.join_path(checkout, 'copy destination', 'result.txt'))!.trim_space() == 'copied'
 	assert os.real_path(os.read_file(os.join_path(checkout, 'root.txt'))!.trim_space()) == os.real_path(checkout)
+	$if windows {
+		assert os.read_file(os.join_path(checkout, 'loop.txt'))!.trim_space().split_into_lines().map(it.trim_space()) == [
+			'one',
+			'two',
+		]
+		assert os.read_file(os.join_path(checkout, 'quoted.txt'))!.trim_space() == '"left&right!expanded"'
+	}
 	failure := cmdexec.run_with_timeout(oldv, ['--cache=false', '--workdir', root, '--command',
 		'exit 37', 'HEAD'], 30_000)
 	assert failure.exit_code == 37, failure.output

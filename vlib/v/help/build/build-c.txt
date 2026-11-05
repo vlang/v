@@ -378,10 +378,28 @@ see also `v help build`.
       a system libgc selected with `-d dynamic_boehm`; use a system libgc built
       without thread-local allocation for that case.
 
+      On Linux and macOS, `-d gc_parallel_mark` compiles V's bundled source
+      copy of Boehm (used e.g. by `-prod`) with parallel marking: helper
+      threads, one per extra CPU core (at most 15), mark the heap together
+      with the collecting thread. This shortens GC pauses for large live
+      heaps, but can slow down programs with small heaps that allocate a lot,
+      and programs with many allocating threads. The prebuilt library used by
+      default TCC builds always has parallel marking; set `GC_MARKERS=1` to
+      mark with a single thread at run time.
+
       The option `-gc boehm_leak` is intended for leak detection in
       manual memory management. The function `gc_check_leaks()`
       can be called to get detection results. This function is a no-op
       when `-gc boehm_leak` is not supplied.
+
+      On Linux and macOS, V's bundled source copy of Boehm (used for example by
+      `-prod` with gcc or clang, and by `-d use_bundled_libgc`) is compiled with
+      HANDLE_FORK, as the prebuilt library of default TCC builds on Linux amd64
+      and macOS is. A child process that calls fork() without exec() from a
+      multi-threaded program can then allocate and collect garbage. HANDLE_FORK
+      is left out with `-d no_gc_threads`, and with TCC on 32-bit ARM. A
+      system libgc selected with `-d dynamic_boehm` keeps the setting it was
+      built with.
 
       Use `-gc none` to completely disable the garbage collector, in case of
       wanting to handle memory manually, or strictly using `-autofree`.

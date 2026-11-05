@@ -1,6 +1,20 @@
 module flat
 
 import os
+import hash
+import v.token
+
+// discard_name identifies an ignored local by its source file and byte span.
+// File table indices change when cached headers replace parsed source files.
+// Synthetic positions without a named source retain a separate index namespace.
+pub fn (a &FlatAst) discard_name(pos token.Pos) string {
+	if file := a.source_files[pos.id] {
+		if file.name.len > 0 {
+			return '__discard_${hash.sum64_string(file.name, 0)}_${pos.offset}_${pos.end}'
+		}
+	}
+	return '__discard_synthetic_${pos.id}_${pos.offset}_${pos.end}'
+}
 
 // record_source_path returns os.real_path(path) through the table of resolved
 // source paths. Until resolve_source_paths freezes the table it also adds the
