@@ -62,6 +62,45 @@ pub fn (app &App) create_item(mut ctx Context) veb.Result {
 }
 ```
 
+## Typed metadata beside handlers
+
+Link a handler to a typed metadata method with `veb.OpenApi('method_name')`. The companion method
+receives the operation already resolved to its mounted path and HTTP method:
+
+```v ignore
+@['/items'; post; veb.OpenApi('create_metadata')]
+pub fn (app &Items) create(mut ctx Context) veb.Result {
+    // Decode CreateItem and return the application's usual response.
+    return ctx.text('created')
+}
+
+fn (app &Items) create_metadata(mut operation veb.OpenApiHandler) ! {
+    operation.request[CreateItem]()!
+    operation.response[Item](status: 201)!
+    operation.response[ApiError](status: 422)!
+}
+```
+
+`add_app()` calls the companion for each documented method and mount, without invoking the
+handler. Companion methods must have an immutable receiver, one mutable `veb.OpenApiHandler`
+parameter, and return `!`. They may be private, and their ordinary generic calls keep DTO types
+checked by the compiler. Module-qualified types, shared DTOs and all existing schema reflection
+work here, including nested DTOs, optional fields, JSON names, maps, arrays, enums and sums.
+V attributes currently carry scalar metadata rather than type arguments, so the handler links
+to this typed companion instead of naming DTO types in attribute strings.
+
+Use `request[T]` with no options for a JSON body on POST/PUT/PATCH or query fields on
+GET/DELETE/HEAD. `response[T]` supports multiple status codes and inherits `success_field` for
+successful responses. `raw_response` supports full custom envelopes. Registering explicit
+`doc.request`, `doc.response` or `doc.raw_response` after `add_app()` overrides the corresponding
+reflected body or response; query fields with the same name are replaced. Handlers without an
+`OpenApi` attribute keep the existing defaults.
+Conditional compilation and nested controller mounting follow the dispatcher's route metadata.
+
+To migrate a centralized metadata block, move each route's `request` and `response` calls into
+its companion, remove their path and HTTP method arguments, and add the handler attribute.
+Only `add_app()` remains in the document setup, avoiding duplicated mount and path strings.
+
 ## Requests and schemas
 
 `request[T]` documents a required JSON body for POST, PUT and PATCH, and query parameters

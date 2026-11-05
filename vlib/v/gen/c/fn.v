@@ -9212,7 +9212,10 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 				receiver_wants_shared :=
 					g.fn_param_is_shared_for_call(0, actual_fn, emitted_callee_name, method_name, fn_name)
 						|| g.fn_param_is_shared_for_call(0, base_method_name, g.cname(base_method_name), '', '')
-				if param_types.len > 0 && g.gen_indirect_value_argument(base_id, param_types[0]) {
+				if receiver_wants_ptr && base_declares_method
+					&& g.gen_stack_value_free_receiver(base_id, method_name) {
+					// handled
+				} else if param_types.len > 0 && g.gen_indirect_value_argument(base_id, param_types[0]) {
 				} else if receiver_wants_shared && (g.gen_shared_local_receiver_arg(base_id)
 					|| g.gen_shared_storage_expr(base_id)) {
 					arg_start = 1
@@ -10143,6 +10146,48 @@ fn (mut g FlatGen) gen_current_mut_param_method_receiver(base_id flat.NodeId, wa
 	} else {
 		g.write(g.current_param_use_cname(base.value))
 	}
+	return true
+}
+
+fn (mut g FlatGen) gen_stack_value_free_receiver(base_id flat.NodeId, method_name string) bool {
+	if !method_name.ends_with('.free') || int(base_id) < 0 || int(base_id) >= g.a.nodes.len {
+		return false
+	}
+	mut value_id := base_id
+	mut base := g.a.node(value_id)
+	// Lowered method calls have already added the receiver's address. An
+	// explicit source pointer expression keeps its normal pointer semantics.
+	if base.kind == .prefix && base.op == .amp && base.children_count == 1
+		&& !base.pos.is_valid() {
+		value_id = g.a.child(base, 0)
+		base = g.a.node(value_id)
+	}
+	if base.kind != .ident || g.receiver_ident_storage_is_pointer(value_id)
+		|| g.current_param_is_mut(base.value) {
+		return false
+	}
+	base_type := g.receiver_base_type(value_id)
+	if cgen_type_is_pointer_like(base_type) || cgen_type_is_pointer_like(g.usable_expr_type(value_id)) {
+		return false
+	}
+	decl_id := g.fn_decl_nodes_by_name[fn_decl_module_key(g.tc.cur_module, method_name)] or {
+		g.fn_decl_nodes_by_name[method_name] or { return false }
+	}
+	mut releases_receiver := false
+	for call_id in g.a.free_method_receiver_calls(decl_id) {
+		resolved := g.resolved_call_name(call_id) or { '' }
+		if resolved.len == 0 || resolved in ['free', 'builtin.free'] {
+			releases_receiver = true
+			break
+		}
+	}
+	if !releases_receiver {
+		return false
+	}
+	// A value's self-deallocating free method must receive a heap copy, not its
+	// stack address. Keep child-only cleanup and existing heap receivers in place.
+	base_ct := g.tc.c_type(base_type)
+	g.write(g.heap_local_memdup_expr(g.expr_to_string(value_id).trim_space(), base_type, base_ct, false))
 	return true
 }
 
@@ -16207,7 +16252,10 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 	}
 	g.write(emitted_name)
 	g.write('(')
-	if g.gen_indirect_value_argument(receiver_id, params[0]) {
+	if receiver_wants_ptr && receiver_declares_method
+		&& g.gen_stack_value_free_receiver(receiver_id, fn_node.value) {
+		// handled
+	} else if g.gen_indirect_value_argument(receiver_id, params[0]) {
 	} else if receiver_wants_shared
 		&& (g.gen_shared_local_receiver_arg(receiver_id) || g.gen_shared_storage_expr(receiver_id)) {
 		// handled

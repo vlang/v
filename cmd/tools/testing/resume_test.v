@@ -149,6 +149,80 @@ fn test_resume_failed_replacement_keeps_the_previous_contents() ! {
 	assert os.read_file(destination)! == 'previous record'
 }
 
+fn save_resume_after_release(ts &TestSession, file string, ready chan bool, start chan bool) string {
+	ready <- true
+	_ = <-start
+	resume := ts.test_resume(file) or { return err.msg() }
+	resume.save() or { return err.msg() }
+	return ''
+}
+
+fn test_resume_parallel_workers_create_shared_progress_directory() ! {
+	root := os.join_path(os.temp_dir(), 'vtest-resume-parallel-${rand.ulid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	mut files := []string{}
+	for worker in 0 .. 16 {
+		file := os.join_path(root, '${worker}_test.v')
+		os.write_file(file, 'fn test_ok() {}\n')!
+		files << file
+	}
+	for round in 0 .. 8 {
+		ts := TestSession{
+			vexe:         os.executable()
+			will_compile: true
+			exec_mode:    .compile_and_run
+			resume_dir:   os.join_path(root, '${round}', 'nested', 'progress')
+		}
+		ready := chan bool{cap: 16}
+		start := chan bool{}
+		mut workers := []thread string{}
+		for file in files {
+			workers << spawn save_resume_after_release(&ts, file, ready, start)
+		}
+		for _ in files {
+			assert <-ready
+		}
+		start.close()
+		for result in workers.wait() {
+			assert result == '', result
+		}
+		for file in files {
+			resume := ts.test_resume(file)!
+			assert resume.passed
+			assert os.read_file(resume.path)! == resume.contents
+		}
+	}
+}
+
+fn test_resume_directory_setup_errors_keep_the_existing_file() ! {
+	root := os.join_path(os.temp_dir(), 'vtest-resume-blocked-${rand.ulid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	file := os.join_path(root, 'a_test.v')
+	os.write_file(file, 'fn test_ok() {}\n')!
+	blocker := os.join_path(root, 'blocked')
+	os.write_file(blocker, 'keep this file')!
+	ts := TestSession{
+		vexe:         os.executable()
+		will_compile: true
+		exec_mode:    .compile_and_run
+		resume_dir:   os.join_path(blocker, 'progress')
+	}
+	mut rejected := false
+	if resume := ts.test_resume(file) {
+		resume.save() or { rejected = true }
+	} else {
+		rejected = true
+	}
+	assert rejected, 'a file blocking the progress directory must remain an error'
+	assert os.read_file(blocker)! == 'keep this file'
+}
+
 // hold_record_open opens `path` as a reader does, reports on `opened` whether it could,
 // and releases the record after `delay`. The handle is owned by this thread alone.
 fn hold_record_open(path string, delay time.Duration, opened chan bool) {

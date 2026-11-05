@@ -30,9 +30,13 @@ fn (app &DescribedApiApp) raw_description(mut ctx DescribedApiContext) Result {
 }
 
 @[description: '"Create" an item: first line.\nSecond line.']
-@['/items'; get; post; host: 'api.example.com']
+@['/items'; get; post; host: 'api.example.com'; OpenApi('items_metadata')]
 fn (app &DescribedApiChild) items(mut ctx DescribedApiContext) !Result {
 	return ctx.text('items')
+}
+
+fn (app &DescribedApiChild) items_metadata(mut handler OpenApiHandler) ! {
+	handler.response[string]()!
 }
 
 fn described_api() !&DescribedApiApp {
@@ -80,6 +84,9 @@ fn test_openapi_handler_descriptions_follow_mounts_and_index_aliases() {
 		operation := description_operation(doc, '/v1/items', method)
 		assert operation['description']!.str() == '"Create" an item: first line.\nSecond line.'
 		assert operation['x-veb-host']!.str() == 'api.example.com'
+		response := operation['responses']!.as_map()['200']!.as_map()
+		schema := response['content']!.as_map()['application/json']!.as_map()['schema']!.as_map()
+		assert schema['type']!.str() == 'string'
 	}
 	assert 'description' !in description_operation(doc, '/plain', 'get')
 	assert description_operation(doc, '/raw', 'get')['description']!.str() == r'C:\items'
