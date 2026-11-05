@@ -668,7 +668,7 @@ fn (g &Parser) temporary_namespace(kind string) string {
 		prefix := namespace + '_'
 		mut collision := false
 		for local_name in g.locals.keys() {
-			if fastc_c_identifier(local_name).starts_with(prefix) {
+			if fastc_c_value_identifier(local_name).starts_with(prefix) {
 				collision = true
 				break
 			}
@@ -870,7 +870,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		} else {
 			receiver_type
 		}
-		params << '${fastc_output_c_type(flat.source_type_name(receiver_parameter_type))} ${fastc_c_identifier(receiver_name)}'
+		params << '${fastc_output_c_type(flat.source_type_name(receiver_parameter_type))} ${fastc_c_value_identifier(receiver_name)}'
 		g.type_memo.clear()
 		g.locals[receiver_name] = FastcLocal{
 			is_mut:       receiver_is_mut
@@ -1571,7 +1571,7 @@ fn (mut g Parser) parse_parameters(function_key string, parameter_offset int) ![
 				blank_index++
 				'_fastc_unused_${blank_index}'
 			} else {
-				fastc_c_identifier(parameter_name)
+				fastc_c_value_identifier(parameter_name)
 			}
 			if is_fn_pointer {
 				// Declare a real function pointer with the type's prototype, so `f(x)`
@@ -1795,7 +1795,12 @@ fn fastc_primitive_c_type_id(raw_type u32) ?u32 {
 	return none
 }
 
+// fastc_primitive_c_type accepts V primitive spellings, excluding removed aliases.
+// The emitter still uses its private C storage identities internally.
 fn fastc_primitive_c_type(raw_type string) ?string {
+	if raw_type == 'isize' || raw_type == 'usize' {
+		return none
+	}
 	mapped := fastc_primitive_c_type_id(flat.source_type_id(raw_type)) or { return none }
 	return flat.source_type_name(mapped)
 }
@@ -1851,4 +1856,9 @@ fn fastc_all_true(values []bool) bool {
 		}
 	}
 	return true
+}
+
+fn fastc_removed_integer_type(name string) string {
+	replacement := if name == 'isize' { 'int' } else { 'uint' }
+	return 'type `${name}`; use `${replacement}` instead'
 }

@@ -818,7 +818,7 @@ fn fastc_is_entry_module(sources []FastcSourceFile, module_name string, prefs &p
 
 fn fastc_monomorphize_sources(sources []FastcSourceFile, prefs &pref.Preferences) ![]FastcSourceFile {
 	after_functions := fastc_monomorphize_functions(sources, prefs)!
-	return fastc_monomorphize_structs(after_functions, prefs)
+	return fastc_monomorphize_structs(after_functions, prefs)!
 }
 
 // fastc_monomorphize_functions repeatedly applies one monomorphization pass until
@@ -1088,9 +1088,14 @@ fn fastc_type_param_substitutions(type_param string, concrete string) map[string
 		if index < concretes.len {
 			concrete_type := concretes[index]
 			// On-demand inference uses C type names. Reparse pointer arguments
-			// with V's prefix spelling instead of inserting a C `T*` token pair.
+			// with V's prefix spelling and canonical platform integer names.
 			syntax := flat.source_type_syntax(concrete_type)
-			mut v_type := syntax.c_pointer_raw_base()
+			base_type := syntax.c_pointer_raw_base()
+			mut v_type := match base_type {
+				flat.source_type_usize { flat.source_type_uint }
+				flat.source_type_isize { flat.source_type_int }
+				else { base_type }
+			}
 			for _ in 0 .. syntax.c_pointer_depth() {
 				v_type = flat.source_type_composition_one(.pointer, v_type)
 			}
@@ -1528,6 +1533,7 @@ fn fastc_scan_generic_calls(source string, path string, prefs &pref.Preferences,
 				concrete, bracket_next := fastc_read_bracket_names(mut s)
 				tok = bracket_next
 				if tok == .rsbr {
+					fastc_validate_source_type_arguments(concrete, path)!
 					after := s.offset
 					if concrete in type_param_names {
 						unresolvable[name] = true
@@ -1873,7 +1879,7 @@ fn fastc_record_concrete(name string, concrete u32, mut pairs []FastcConcretePai
 // as functions: it emits a concrete copy per instantiation `S[Concrete]` and
 // rewrites every reference. A struct is left untouched unless every reference is
 // a concrete instantiation and its body has no nested generic type references.
-fn fastc_monomorphize_structs(sources []FastcSourceFile, prefs &pref.Preferences) []FastcSourceFile {
+fn fastc_monomorphize_structs(sources []FastcSourceFile, prefs &pref.Preferences) ![]FastcSourceFile {
 	mut structs := []FastcGenericFn{}
 	for i, source_file in sources {
 		if !fastc_is_entry_module(sources, source_file.header.module_name, prefs) {
@@ -1926,7 +1932,7 @@ fn fastc_monomorphize_structs(sources []FastcSourceFile, prefs &pref.Preferences
 		if !fastc_is_entry_module(sources, source_file.header.module_name, prefs) {
 			continue
 		}
-		fastc_scan_generic_struct_instances(source_file.source, source_file.path, prefs, i, by_name, receiver_skip, mut refs, mut unresolvable, mut pairs, mut seen_pair, mut has_concrete)
+		fastc_scan_generic_struct_instances(source_file.source, source_file.path, prefs, i, by_name, receiver_skip, mut refs, mut unresolvable, mut pairs, mut seen_pair, mut has_concrete)!
 	}
 	for name in method_problematic.keys() {
 		unresolvable[name] = true
@@ -2127,6 +2133,16 @@ fn fastc_body_has_nested_generic(body string, prefs &pref.Preferences) bool {
 	return false
 }
 
+// fastc_validate_source_type_arguments rejects removed source types before
+// monomorphization can substitute their canonical internal storage names.
+fn fastc_validate_source_type_arguments(concrete string, path string) ! {
+	for part in flat.source_type_syntax(flat.source_type_id(concrete)).plain_comma_parts() {
+		if part == flat.source_type_isize || part == flat.source_type_usize {
+			return error('fastc parser does not support ${fastc_removed_integer_type(flat.source_type_name(part))} in ${path}')
+		}
+	}
+}
+
 // fastc_all_concrete_type_args reports whether every comma-joined argument of a
 // (possibly multi-parameter) instantiation is a concrete type.
 fn fastc_all_concrete_type_args(concrete string) bool {
@@ -2157,7 +2173,7 @@ fn fastc_is_concrete_type_arg_id(name_id u32) bool {
 // known generic struct, or marks the struct unresolvable when a reference is not
 // a plain concrete instantiation (a type-parameter argument, a complex type
 // argument, or a bare reference).
-fn fastc_scan_generic_struct_instances(source string, path string, prefs &pref.Preferences, source_index int, by_name map[string]FastcGenericFn, receiver_skip map[string]bool, mut refs []FastcGenericCall, mut unresolvable map[string]bool, mut pairs []FastcConcretePair, mut seen_pair map[string]bool, mut has_concrete map[string]bool) {
+fn fastc_scan_generic_struct_instances(source string, path string, prefs &pref.Preferences, source_index int, by_name map[string]FastcGenericFn, receiver_skip map[string]bool, mut refs []FastcGenericCall, mut unresolvable map[string]bool, mut pairs []FastcConcretePair, mut seen_pair map[string]bool, mut has_concrete map[string]bool) ! {
 	file := token.File.unindexed(path, source.len)
 	mut s := scanner.new_scanner(prefs, .normal)
 	s.init(file, source)
@@ -2197,6 +2213,7 @@ fn fastc_scan_generic_struct_instances(source string, path string, prefs &pref.P
 			previous = tok
 			continue
 		}
+		fastc_validate_source_type_arguments(concrete, path)!
 		after := s.offset
 		if !fastc_all_concrete_type_args(concrete) {
 			unresolvable[name] = true

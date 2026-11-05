@@ -391,6 +391,18 @@ fn fastc_c_identifier(name string) string {
 	}
 }
 
+// fastc_c_value_identifier keeps value bindings from shadowing the emitter's
+// private integer typedefs. Fields use a separate C namespace and keep their names.
+fn fastc_c_value_identifier(name string) string {
+	if name.len > 1 && name[0] == `@` {
+		return fastc_c_value_identifier(name[1..])
+	}
+	if name == 'isize' || name == 'usize' {
+		return '__vf_keyword_${name}'
+	}
+	return fastc_c_identifier(name)
+}
+
 const c_selfhost_preamble = r'#include <stdbool.h>
 
 #include <stdint.h>
@@ -1188,10 +1200,8 @@ pub struct GenerationResult {
 pub:
 	c_pieces     []string
 	source_paths []string
-	// Only these files need the frontend pass that locates deprecated type spellings.
-	deprecated_integer_paths []string
-	uses_threads             bool
-	c_flags                  []string
+	uses_threads bool
+	c_flags      []string
 	// units describes how c_pieces split into translation units that the
 	// drivers can compile in parallel (see fastc_write_c_units).
 	units FastcUnitLayout
@@ -1734,27 +1744,6 @@ fn (mut timer FastcPhaseTimer) mark(name string) {
 	timer.last_us = now_us
 }
 
-// fastc_source_uses_deprecated_integer reports whether the driver has to run the
-// full parser on `source` to warn about `isize` or `usize`. Comments and plain
-// strings that only mention the names do not count, which keeps sources like the
-// compiler's own out of that second parse. A source with any scanner diagnostic,
-// warnings included, also counts, so the parser sees it and reports what it finds.
-fn fastc_source_uses_deprecated_integer(source string, path string, prefs &pref.Preferences) bool {
-	if !source.contains('isize') && !source.contains('usize') {
-		return false
-	}
-	mut scan := scanner.new_scanner(prefs, .normal)
-	scan.init(token.File.unindexed(path, source.len), source)
-	mut tok := scan.scan()
-	for tok != .eof {
-		if tok == .name && (scan.lit == 'isize' || scan.lit == 'usize') {
-			return true
-		}
-		tok = scan.scan()
-	}
-	return scan.diagnostics.len > 0
-}
-
 // generate_files_with_source_paths emits C and reports every source read from entry files,
 // entry directories, and their imports.
 pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences) !GenerationResult {
@@ -1772,13 +1761,8 @@ pub fn generate_files_with_native_aliases(paths []string, prefs &pref.Preference
 	sources, module_aliases := fastc_resolve_source_files_deferring_memo(entries, &scoped_prefs, mut pending_memo_store)!
 	timer.mark('resolve')
 	mut source_paths := []string{cap: sources.len}
-	mut deprecated_integer_paths := []string{}
 	for source_file in sources {
 		source_paths << source_file.path
-		if source_file.header.module_name != 'builtin'
-			&& fastc_source_uses_deprecated_integer(source_file.source, source_file.path, &scoped_prefs) {
-			deprecated_integer_paths << source_file.path
-		}
 	}
 	// The layout comes back through a parameter: a struct of arrays as a
 	// multi-return component is not carried correctly by the self-hosted
@@ -1791,14 +1775,13 @@ pub fn generate_files_with_native_aliases(paths []string, prefs &pref.Preference
 	fastc_wait_memo_store(mut pending_memo_store)
 	timer.mark('generate_total')
 	return GenerationResult{
-		c_pieces:                 c_pieces
-		source_paths:             source_paths
-		deprecated_integer_paths: deprecated_integer_paths
-		uses_threads:             uses_threads
-		c_flags:                  c_flags
-		units:                    units
-		native_symbols:           native_symbols
-		native_declarations:      native_declarations
+		c_pieces:            c_pieces
+		source_paths:        source_paths
+		uses_threads:        uses_threads
+		c_flags:             c_flags
+		units:               units
+		native_symbols:      native_symbols
+		native_declarations: native_declarations
 	}
 }
 

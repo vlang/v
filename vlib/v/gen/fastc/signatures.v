@@ -1517,6 +1517,12 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 			parameter_is_mut = true
 			tok = look.scan()
 		}
+		if tok == .name && (look.lit == 'isize' || look.lit == 'usize') {
+			mut next := look
+			if next.scan() in [.comma, .semicolon, .rpar] {
+				return error('fastc parser does not support ${fastc_removed_integer_type(look.lit)} in ${path}')
+			}
+		}
 		if !fastc_parameter_is_type_only(look, tok, path, module_name, imports, declared_types,
 			allow_short_placeholders) {
 			tok = look.scan()
@@ -1801,6 +1807,9 @@ fn fastc_scan_type_bytes(mut scan scanner.Scanner, first token.Token, path strin
 		type_module = imported_module
 		is_imported_type = type_module != module_name
 	}
+	if type_module != 'C' && (raw_type == 'isize' || raw_type == 'usize') {
+		return error('fastc parser does not support ${fastc_removed_integer_type(raw_type)} in ${path}')
+	}
 	type_key := fastc_type_key(type_module, raw_type)
 	if is_imported_type && type_module != 'builtin' && fastc_source_type_key_exists(declared_types, type_key) && !fastc_source_type_key_value(declared_types, type_key) {
 		return error('fastc parser does not support private type `${raw_type}` from imported module `${type_module}` in ${path}')
@@ -1935,8 +1944,10 @@ fn fastc_fixed_length_atom(tokens []FastcExpressionToken, start int, module_name
 		return error('fastc parser does not support fixed array dimension token `${item.tok.str()}`')
 	}
 	if start + 1 < tokens.len && tokens[start + 1].tok == .lpar {
-		if item.lit !in ['int', 'u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64', 'uint', 'usize',
-			'isize'] {
+		if item.lit == 'isize' || item.lit == 'usize' {
+			return error('fastc parser does not support ${fastc_removed_integer_type(item.lit)}')
+		}
+		if item.lit !in ['int', 'u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64', 'uint'] {
 			return error('fastc parser does not support function call in fixed array dimension')
 		}
 		value, end := fastc_fixed_length_expression(tokens, start + 2, 1, module_name, imports, declared_types)!

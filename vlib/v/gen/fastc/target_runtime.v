@@ -6,10 +6,14 @@ import v.pref
 import v.scanner
 import v.token
 
-// fastc_target_runtime_preferences selects bodyless libc bindings supplied by
-// the target headers and FastC's native declaration emitter.
+// fastc_target_runtime_preferences selects FastC's canonical integer declarations
+// and the libc bindings supplied by target headers when requested.
 fn fastc_target_runtime_preferences(prefs &pref.Preferences) pref.Preferences {
 	mut scoped := *prefs
+	if 'fastc_backend' !in scoped.user_defines {
+		scoped.user_defines = scoped.user_defines.clone()
+		scoped.user_defines << 'fastc_backend'
+	}
 	if scoped.target_libc_headers {
 		scoped.user_defines = scoped.user_defines.clone()
 		for define in ['v3_c_extern_declarations', 'no_segfault_handler'] {

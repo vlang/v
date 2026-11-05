@@ -347,7 +347,7 @@ fn (mut g Parser) try_read_atomic_expression(stops []token.Token, allow_mutation
 			source = if local_c_name != '' {
 				local_c_name
 			} else {
-				fastc_c_identifier(original_lit)
+				fastc_c_value_identifier(original_lit)
 			}
 		}
 		.number {
@@ -462,7 +462,11 @@ fn (mut g Parser) try_read_atomic_member_expression(stops []token.Token, allow_m
 		return FastcAtomicExpression{}
 	}
 	separator := if is_pointer { '->' } else { '.' }
-	root_source := if local.c_name != '' { local.c_name } else { fastc_c_identifier(original_lit) }
+	root_source := if local.c_name != '' {
+		local.c_name
+	} else {
+		fastc_c_value_identifier(original_lit)
+	}
 	g.last_expression = [
 		FastcExpressionToken{ tok: .name, lit: original_lit, unsafe_depth: g.unsafe_depth },
 		FastcExpressionToken{ tok: .dot, lit: dot_lit, unsafe_depth: g.unsafe_depth },
@@ -2333,7 +2337,7 @@ fn (mut g Parser) render_expression_stream_token(mut expression_tokens []FastcEx
 	selfhost_bare_name := g.selfhost && stored_tok == .name && previous_token != .dot
 	mut piece := if keyword_module_alias {
 		g.expression_name(previous_token, qualified_name_owner)!
-	} else if selfhost_bare_name {
+	} else if selfhost_bare_name && g.lit != 'isize' && g.lit != 'usize' {
 		fastc_c_identifier(g.lit)
 	} else if g.tok in [.key_module, .key_type] {
 		g.expression_name(previous_token, qualified_name_owner)!

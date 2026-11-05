@@ -336,8 +336,8 @@ fn (mut g Parser) parse_comptime_match_statement() !bool {
 			branch_matches = !selected
 		} else {
 			for {
-				target_type := g.parse_type()!
-				branch_matches = branch_matches || g.underlying_alias_type(subject_type) == g.underlying_alias_type(target_type)
+				target_type := g.parse_comptime_type_pattern()!
+				branch_matches = branch_matches || g.comptime_type_matches(subject_type, target_type, false)
 				if g.tok != .comma {
 					break
 				}
@@ -791,11 +791,14 @@ fn (g &Parser) read_comptime_is_type(mut s scanner.Scanner) (string, int, token.
 	return g.resolve_type_name_c(name), name_end, next_token
 }
 
-// resolve_type_name_c resolves an unqualified type name to its C spelling: a
-// primitive keeps its own name, a declared type maps through the type key.
+// resolve_type_name_c resolves the storage spelling used by field type patterns.
 fn (g &Parser) resolve_type_name_c(name string) string {
-	if fastc_primitive_c_type(name) != none {
-		return name
+	if name == 'isize' || name == 'usize' {
+		// An unknown type group cannot match a scalar or a container element.
+		return '@removed_integer'
+	}
+	if primitive := fastc_primitive_c_type(name) {
+		return primitive
 	}
 	key := g.resolve_declared_type_key(name) or { return name }
 	return fastc_c_declared_type_name(flat.source_type_name(key))
@@ -948,7 +951,7 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 			target_type = flat.source_type_id(g.lit)
 			g.next()
 		} else {
-			target_type = g.parse_type()!
+			target_type = g.parse_comptime_type_pattern()!
 		}
 		mut left_type := g.comptime_named_type(name)
 		if subject_pointer_depth > 0 {
@@ -1015,7 +1018,18 @@ fn (g &Parser) comptime_named_type(name string) u32 {
 	return flat.source_type_id(name)
 }
 
+// parse_comptime_type_pattern leaves legacy compatibility branches unreachable.
+// These names are not constructible FastC types, including uint's private C spelling.
+fn (mut g Parser) parse_comptime_type_pattern() !u32 {
+	if g.tok == .name && (g.lit == 'isize' || g.lit == 'usize') {
+		g.next()
+		return 0
+	}
+	return g.parse_type()!
+}
+
 fn (g &Parser) comptime_type_matches(left_type u32, target_type u32, target_is_group bool) bool {
+	if target_type == 0 { return false }
 	left := g.underlying_alias_type(left_type)
 	if !target_is_group {
 		return left == g.underlying_alias_type(target_type)

@@ -97,7 +97,7 @@ fn (mut g Parser) parse_for() !bool {
 				c_name := if name == '_' {
 					g.temporary_name('range_index')
 				} else {
-					fastc_c_identifier(name)
+					fastc_c_value_identifier(name)
 				}
 				// V evaluates both range bounds exactly once, from left to right.
 				start_type := g.declaration_c_type(start_expression_type, start)
@@ -158,13 +158,13 @@ fn (mut g Parser) parse_for() !bool {
 				g.write_line('for (int ${index_name} = 0; ${index_name} < ${keys_name}.len; ${index_name}++) {')
 				g.indent++
 				if name != '_' {
-					g.write_line('${g.collection_storage_type(key_type)} ${fastc_c_identifier(name)} = ((${g.collection_storage_type(key_type)} *)${keys_name}.data)[${index_name}];')
+					g.write_line('${g.collection_storage_type(key_type)} ${fastc_c_value_identifier(name)} = ((${g.collection_storage_type(key_type)} *)${keys_name}.data)[${index_name}];')
 					g.locals[name] = FastcLocal{
 						typ: key_type
 					}
 				}
 				if value_name != '' && value_name != '_' {
-					g.write_line('${g.collection_storage_type(map_value_type)} ${fastc_c_identifier(value_name)} = ((${g.collection_storage_type(map_value_type)} *)${values_name}.data)[${index_name}];')
+					g.write_line('${g.collection_storage_type(map_value_type)} ${fastc_c_value_identifier(value_name)} = ((${g.collection_storage_type(map_value_type)} *)${values_name}.data)[${index_name}];')
 					g.locals[value_name] = FastcLocal{
 						is_mut:            value_is_mut
 						typ:               map_value_type
@@ -210,7 +210,7 @@ fn (mut g Parser) parse_for() !bool {
 			} else if name == '_' {
 				g.temporary_name('index')
 			} else {
-				fastc_c_identifier(name)
+				fastc_c_value_identifier(name)
 			}
 			access := if flat.source_type_query(collection_layout_type).has(.c_pointer_suffix) {
 				'->'
@@ -256,7 +256,7 @@ fn (mut g Parser) parse_for() !bool {
 			g.indent++
 			actual_value_name := if value_name == '' { name } else { value_name }
 			if actual_value_name != '_' {
-				c_value_name := fastc_c_identifier(actual_value_name)
+				c_value_name := fastc_c_value_identifier(actual_value_name)
 				// `for i, mut x in arr` makes the value variable a mutable reference to the
 				// element exactly like `for mut x in arr`; the `mut` is just carried on the
 				// second binding (`value_is_mut`) instead of the first.
@@ -347,9 +347,9 @@ fn (mut g Parser) parse_for() !bool {
 			update := g.read_statement_expression([token.Token.lcbr])!
 			g.expect(.lcbr)!
 			initializer := if is_declaration {
-				'${g.declaration_c_type(initial_type, initial)} ${fastc_c_identifier(name)} = (${initial})'
+				'${g.declaration_c_type(initial_type, initial)} ${fastc_c_value_identifier(name)} = (${initial})'
 			} else {
-				'${fastc_c_identifier(name)} = (${initial})'
+				'${fastc_c_value_identifier(name)} = (${initial})'
 			}
 			g.write_line('for (${initializer}; ${condition}; ${update}) {')
 			g.indent++
@@ -512,7 +512,7 @@ fn (mut g Parser) parse_for_in_iterator(iterator FastcIteratorNext, start string
 	iterator_name := g.temporary_name('iterator')
 	option_name := g.temporary_name('iterator_next')
 	index_name := if value_name != '' && name != '_' {
-		fastc_c_identifier(name)
+		fastc_c_value_identifier(name)
 	} else {
 		g.temporary_name('index')
 	}
@@ -536,7 +536,7 @@ fn (mut g Parser) parse_for_in_iterator(iterator FastcIteratorNext, start string
 		} else {
 			'*((${flat.source_type_name(iterator.element_type)} *)${option_name}.data)'
 		}
-		g.write_line('${flat.source_type_name(iterator.element_type)} ${fastc_c_identifier(value)} = ${payload};')
+		g.write_line('${flat.source_type_name(iterator.element_type)} ${fastc_c_value_identifier(value)} = ${payload};')
 		g.locals[value] = FastcLocal{
 			typ: iterator.element_type
 		}
