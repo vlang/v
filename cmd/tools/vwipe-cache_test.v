@@ -82,6 +82,10 @@ fn prepare_wipe_tool(root string) !(string, map[string]string) {
 	env['HOME'] = home
 	env['USERPROFILE'] = home
 	env['VTMP'] = vtmp
+	// The default wipe also clears the V3 and module caches. Point them below `root`, or an
+	// inherited value (the test runner's own temp folder) gets wiped.
+	env['V3CACHE'] = os.join_path(root, 'v3')
+	env['VCACHE'] = os.join_path(root, 'vcache')
 	env.delete('VTOOLS_NO_CACHE')
 	return tool, env
 }
@@ -250,6 +254,47 @@ fn test_wipe_cache_tool_removes_a_directory_link_without_following_it() ! {
 	assert code == 0, output
 	assert !os.is_link(link), output
 	assert os.is_file(os.join_path(target, 'keep.txt')), output
+}
+
+// The default wipe also cleans the V tmp folder, which holds the `tools` cache folder. Removing
+// that folder with its parent would take the entry and lock file of a running build.
+fn test_wipe_cache_default_run_keeps_a_live_build_under_vtmp_tools() ! {
+	root := os.join_path(os.vtmp_dir(), 'vwipe_cache_vtmp_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	tool, env := prepare_wipe_tool(root)!
+	vtmp := os.join_path(root, 'vtmp')
+	vtmp_tools := os.join_path(vtmp, 'tools')
+	lock_suffix := '.${os.getuid()}.toolcache.lock'
+	busy_entry := os.join_path(vtmp_tools, 'vtest-' + 'a'.repeat(64) + '.0')
+	staged_binary := os.join_path(busy_entry, '.v-toolcache-stage-0-1-2-0', 'vtest' + exe_suffix())
+	busy_lock := os.join_path(vtmp_tools, '.vtest${lock_suffix}')
+	stray := os.join_path(vtmp, 'stray.c')
+	os.mkdir_all(os.dir(staged_binary))!
+	os.write_file(staged_binary, 'half built')!
+	os.write_file(busy_lock, '')!
+	os.write_file(stray, 'tmp')!
+	release_path := os.join_path(root, 'lock.release')
+	mut holder := start_lock_holder(busy_lock, release_path)!
+	defer {
+		os.write_file(release_path, '') or {}
+		holder.wait()
+		holder.close()
+	}
+	code, output := run_wipe_tool(tool, []string{}, env)
+	assert code == 0, output
+	assert os.is_file(staged_binary), output
+	assert os.is_file(busy_lock), output
+	assert os.is_dir(vtmp_tools), output
+	assert !os.exists(stray), output
+	// `--vtmp` alone skips the tool pass, so the V tmp wipe must protect the same entry itself.
+	vtmp_code, vtmp_output := run_wipe_tool(tool, ['--vtmp'], env)
+	assert vtmp_code == 0, vtmp_output
+	assert os.is_file(staged_binary), vtmp_output
+	assert os.is_file(busy_lock), vtmp_output
 }
 
 fn test_wipe_cache_tool_claims_an_entry_by_creating_its_lock_file() ! {

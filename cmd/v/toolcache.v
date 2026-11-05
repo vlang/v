@@ -1440,7 +1440,7 @@ Options:
       --tools     Wipe only compiled tool caches (VTOOLS_CACHE_DIR, ~/.cache/v/tools,
                   <VTMP>/tools, ~/.vtools, ~/.v/tools, and moved-aside .untrusted-* folders).
       --vcache    Wipe only the V module/object cache (VCACHE or ~/.vmodules/.cache).
-      --vtmp      Wipe only the V temporary folder (VTMP).
+      --vtmp      Wipe only the V temporary folder (VTMP), keeping tool entries a build holds.
       --v3cache   Wipe only the V3 module and object caches (V3CACHE).
   -h, --help      Display this help message.'
 
@@ -1930,6 +1930,44 @@ fn wipe_cache_directory(path string, label string, recreate bool, opts WipeCache
 	lines << '${label} folder ${path} was wiped.'
 }
 
+// wipe_vtmp_directory wipes the V tmp folder. Its tool cache folder is wiped lock-aware, so
+// entries and lock files that a running build holds survive, and the rest of the folder is
+// removed around them.
+fn wipe_vtmp_directory(opts WipeCacheOptions, mut lines []string) ! {
+	vtmp := os.vtmp_dir()
+	tools_dir := os.join_path(vtmp, 'tools')
+	if !os.is_link(vtmp) && os.is_dir(vtmp) && (os.exists(tools_dir) || os.is_link(tools_dir)) {
+		if !opts.tools {
+			wipe_tool_cache_directory(tools_dir, 'V tool cache', opts, mut lines)!
+		}
+		if os.exists(tools_dir) || os.is_link(tools_dir) {
+			if opts.dry_run {
+				lines << 'Would wipe V tmp.c and tests folder ${vtmp}, except ${tools_dir}.'
+				return
+			}
+			entries := os.ls(vtmp) or {
+				return error('v wipe-cache: could not list V tmp.c and tests folder ${vtmp}: ${err}')
+			}
+			for entry in entries {
+				path := os.join_path(vtmp, entry)
+				if path == tools_dir {
+					continue
+				}
+				if os.is_dir(path) && !os.is_link(path) {
+					os.rmdir_all(path) or {
+						return error('v wipe-cache: could not remove ${path}: ${err}')
+					}
+				} else {
+					os.rm(path) or { return error('v wipe-cache: could not remove ${path}: ${err}') }
+				}
+			}
+			lines << 'V tmp.c and tests folder ${vtmp} was wiped, except ${tools_dir}, which keeps entries in use.'
+			return
+		}
+	}
+	wipe_cache_directory(vtmp, 'V tmp.c and tests', true, opts, mut lines)!
+}
+
 // wipe_caches returns cleanup output, stopping at the first filesystem error.
 fn wipe_caches(opts WipeCacheOptions) ![]string {
 	mut lines := []string{}
@@ -1967,7 +2005,7 @@ fn wipe_caches(opts WipeCacheOptions) ![]string {
 		}
 	}
 	if opts.vtmp {
-		wipe_cache_directory(os.vtmp_dir(), 'V tmp.c and tests', true, opts, mut lines)!
+		wipe_vtmp_directory(opts, mut lines)!
 	}
 	if opts.v3cache {
 		vtmp_path := os.vtmp_dir()

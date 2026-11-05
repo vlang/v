@@ -77,6 +77,8 @@ build in progress) are left in place and named in the output, so a build running
 alongside `v up` does not make the cleanup fail. Lock files that cannot be opened are
 repaired, so they can be locked again. Entries of a tool whose lock cannot be created,
 for example because the filesystem has no hard links or a directory is in the way, are kept.
+The tool cache folder inside VTMP (`<VTMP>/tools`) gets the same treatment whether or not
+`--tools` is given, so `v wipe-cache --vtmp` also keeps entries and lock files of running builds.
 
 `make` also warms the default test configuration's builtin module bundle, including
 `strings`, `strconv`, `hash` and `bits`. Compatible test builds reuse these objects
