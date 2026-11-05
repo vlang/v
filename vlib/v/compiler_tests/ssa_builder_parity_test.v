@@ -318,6 +318,8 @@ fn test_c_fn_decl_registers_extern_signature() {
 	m := build_source('c_fn_decl', '
 fn C.abs(x int) int
 fn C.fixed_i32(x i32) i32
+fn C.read_int(x &int) int
+fn C.callback(value fn (int) int) fn (int) int
 
 fn main() {
 	_ := C.abs(-3)
@@ -328,9 +330,19 @@ fn main() {
 	assert f.is_c_extern
 	ret_type := m.type_store.types[f.typ]
 	assert ret_type.kind == .int_t
-	assert ret_type.width == m.target.ptr_size * 8
+	assert ret_type.width == 32
 	fixed := find_func(m, 'C.fixed_i32')
 	assert fixed.is_c_extern
+	for instruction in func_instrs(m, 'main') {
+		if instruction.op == .call && m.values[instruction.operands[0]].name in ['abs', 'C.abs'] {
+			assert m.type_store.types[m.values[instruction.operands[1]].typ].width == 32
+		}
+	}
+	callback := find_func(m, 'C.callback')
+	callback_type := m.type_store.types[callback.typ]
+	assert callback_type.kind == .func_t
+	assert m.type_store.types[callback_type.ret_type].width == 32
+	assert m.type_store.types[callback_type.params[0]].width == 32
 	assert m.type_store.types[fixed.typ].kind == .int_t
 	assert m.type_store.types[fixed.typ].width == 32
 }
@@ -768,10 +780,25 @@ fn main() {
 			continue
 		}
 		suffix := m.values[instr.operands[2]]
-		assert suffix.name == '.vvmrc'
-		assert suffix.kind == .string_literal
 		assert suffix.typ == m.values[instr.operands[1]].typ
-		return
+		assert suffix.kind == .instruction
+		load := m.instrs[suffix.index]
+		assert load.op == .load
+		slot := load.operands[0]
+		for store in func_instrs(m, 'main') {
+			if store.op != .store { continue }
+			address := m.values[store.operands[1]]
+			if address.kind != .instruction { continue }
+			field := m.instrs[address.index]
+			if field.op == .get_element_ptr && field.operands[0] == slot
+				&& m.values[field.operands[1]].name == '0' {
+				data := m.values[store.operands[0]]
+				assert data.kind == .string_literal
+				assert data.name == '.vvmrc'
+				return
+			}
+		}
+		assert false, 'missing materialized suffix bytes'
 	}
 	assert false, 'missing call to consume'
 }
@@ -800,7 +827,32 @@ fn cache_item(cache &Cache) string {
 	return cache.recent[2]
 }
 ')
-	assert_native_int_constant_return(m, 'cache_size', '64')
+	assert_native_int_constant_return(m, 'cache_size', '96')
 	assert !has_call_to(m, 'cache_item', 'array_get')
 	assert has_instr_op(m, 'cache_item', .load)
+}
+
+fn test_native_c_struct_integer_layout_remains_the_c_abi() {
+	m := build_source('c_integer_layout', 'struct C.Pair { first int
+ second int }
+struct Pair { first int
+ second int }
+struct C.Array { values [2]int }
+__global C.native_count int
+fn c_pair_size() int { return sizeof(C.Pair) }
+fn v_pair_size() int { return sizeof(Pair) }
+fn c_array_size() int { return sizeof(C.Array) }
+')
+	assert_native_int_constant_return(m, 'c_pair_size', '8')
+	assert_native_int_constant_return(m, 'v_pair_size', '16')
+	assert_native_int_constant_return(m, 'c_array_size', '8')
+	mut found_external := false
+	for global in m.globals {
+		if global.name == 'native_count' {
+			assert global.linkage == .external
+			assert m.type_store.types[global.typ].width == 32
+			found_external = true
+		}
+	}
+	assert found_external
 }

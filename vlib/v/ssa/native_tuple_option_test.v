@@ -31,10 +31,10 @@ fn main() {}
 		payload := m.type_store.types[payload_id]
 		assert payload.kind == .struct_t, name
 		assert payload.field_names == ['arg0', 'arg1'], name
-		assert m.type_size(payload.fields[0]) == 16
-		assert m.type_size(payload.fields[1]) == if name == 'result_pair' { 4 } else { 16 }
+		assert m.type_size(payload.fields[0]) == 24
+		assert m.type_size(payload.fields[1]) == if name == 'result_pair' { 8 } else { 24 }
 		if name == 'optional_pair' {
-			assert m.type_size(function.typ) == 40
+			assert m.type_size(function.typ) == 56
 		}
 		mut saw_tuple := false
 		mut saw_return := false
