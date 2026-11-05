@@ -44,6 +44,7 @@ on:
       - 'vlib/json2/**.v'
       - '**/sanitized_ci.yml'
       - '.github/workflows/build_msan_libpq.sh'
+      - '.github/workflows/build_msan_sqlite.sh'
 
 concurrency:
   group: sanitized-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -169,6 +170,13 @@ jobs:
           ./v retry -- sudo apt install --quiet -y bison flex
           prefix="$RUNNER_TEMP/v-msan-libpq"
           bash .github/workflows/build_msan_libpq.sh "$prefix"
+          echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+      - name: Build instrumented SQLite for MemorySanitizer
+        if: ${{ matrix.name == 'memory-clang' }}
+        run: |
+          prefix="$RUNNER_TEMP/v-msan-sqlite"
+          bash .github/workflows/build_msan_sqlite.sh "$prefix"
           echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
           echo "LD_LIBRARY_PATH=$prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
       - name: Recompile V with -cstrict
