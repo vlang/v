@@ -837,8 +837,35 @@ fn (mut tc TypeChecker) check_branch_node(id flat.NodeId, value_tail bool) {
 	}
 }
 
+fn (mut tc TypeChecker) record_preflight_option_layer(id flat.NodeId, condition flat.NodeId, bindings []LocalBinding) {
+	mut keys := []string{}
+	for binding in bindings {
+		target := unalias_type(binding.typ)
+		if target !is OptionType
+			|| !tc.condition_refines_type_of_key(condition, binding.name, 0) {
+			continue
+		}
+		previous := tc.smartcasts[binding.name] or {
+			tc.cur_scope.lookup(binding.name) or { builtin_void_type }
+		}
+		// Rechecking the same optional variant preserves its earlier none guard.
+		if unalias_type(previous).source_type_id() != target.source_type_id() {
+			keys << binding.name
+		}
+	}
+	tc.fn_context.preflight_option_layers[id] = PreflightOptionLayer{ keys: keys }
+}
+
 fn (mut tc TypeChecker) apply_post_if_exit_smartcasts(id flat.NodeId) {
-	for binding in tc.post_if_exit_smartcasts(id) {
+	bindings := tc.post_if_exit_smartcasts(id)
+	if tc.comptime_static_depth > 0 && tc.cur_comptime_variant_loop_vars.len > 0
+		&& tc.valid_node_id(id) {
+		node := tc.a.node(id)
+		if node.kind == .if_expr && node.children_count > 0 {
+			tc.record_preflight_option_layer(id, tc.a.child(node, 0), bindings)
+		}
+	}
+	for binding in bindings {
 		if valid_string_data(binding.name) {
 			tc.smartcasts[binding.name] = binding.typ
 		}
@@ -859,7 +886,11 @@ fn (mut tc TypeChecker) apply_post_assert_smartcasts(id flat.NodeId) {
 		&& tc.option_none_cmp_binding(condition) != none {
 		return
 	}
-	for binding in tc.extract_smartcasts(condition_id) {
+	bindings := tc.extract_smartcasts(condition_id)
+	if tc.comptime_static_depth > 0 && tc.cur_comptime_variant_loop_vars.len > 0 {
+		tc.record_preflight_option_layer(id, condition_id, bindings)
+	}
+	for binding in bindings {
 		if valid_string_data(binding.name) {
 			tc.smartcasts[binding.name] = binding.typ
 		}
@@ -871,6 +902,55 @@ fn (mut tc TypeChecker) apply_post_assert_smartcasts(id flat.NodeId) {
 // that unwrap to new declarations (`y := key` gets the option's base type), unlike
 // the other fallthrough narrowings (`!is` guards, asserts, `||` conditions).
 fn (tc &TypeChecker) none_guard_fallthrough_unwraps(id flat.NodeId, key string) bool {
+	return tc.none_guard_fallthrough_unwraps_in_layer(id, key, false)
+}
+
+fn (tc &TypeChecker) condition_refines_type_of_key(id flat.NodeId, key string, depth int) bool {
+	if depth > 64 || !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	if node.kind == .is_expr {
+		return node.children_count > 0 && tc.expr_key_matches(tc.a.child(node, 0), key)
+	}
+	if node.kind in [.paren, .prefix] && node.children_count > 0 {
+		return tc.condition_refines_type_of_key(tc.a.child(node, 0), key, depth + 1)
+	}
+	if node.kind == .infix && node.op in [.logical_and, .logical_or] && node.children_count >= 2 {
+		return tc.condition_refines_type_of_key(tc.a.child(node, 0), key, depth + 1)
+			|| tc.condition_refines_type_of_key(tc.a.child(node, 1), key, depth + 1)
+	}
+	if node.kind == .ident {
+		if owner := tc.visible_binding_storage_key(node.value) {
+			if source := tc.fn_context.bool_condition_exprs[owner] {
+				return tc.condition_refines_type_of_key(source, key, depth + 1)
+			}
+		}
+	}
+	return false
+}
+
+fn (tc &TypeChecker) statement_refines_type_of_key(id flat.NodeId, key string, depth int) bool {
+	if depth > 64 || !tc.valid_node_id(id) {
+		return false
+	}
+	node := tc.a.node(id)
+	layer := tc.fn_context.preflight_option_layers[id]
+	if node.kind in [.for_stmt, .for_in_stmt] {
+		if node.kind == .for_stmt && layer.restores_smartcasts {
+			return false
+		}
+		start := if node.kind == .for_stmt { 3 } else { node.value.int() }
+		for i in start .. node.children_count {
+			if tc.statement_refines_type_of_key(tc.a.child(node, i), key, depth + 1) {
+				return true
+			}
+		}
+	}
+	return key in layer.keys
+}
+
+fn (tc &TypeChecker) none_guard_fallthrough_unwraps_in_layer(id flat.NodeId, key string, stop_at_refinement bool) bool {
 	if key.len == 0 || !valid_string_data(key) {
 		return false
 	}
@@ -897,6 +977,33 @@ fn (tc &TypeChecker) none_guard_fallthrough_unwraps(id flat.NodeId, key string) 
 				}
 				if tc.subtree_assigns_key(sibling_id, key) {
 					return false
+				}
+				if stop_at_refinement && tc.statement_refines_type_of_key(sibling_id, key, 0) {
+					return false
+				}
+			}
+			if stop_at_refinement && parent.kind == .for_stmt && index >= 3
+				&& tc.condition_refines_type_of_key(tc.a.child(parent, 1), key, 0) {
+				return false
+			}
+		}
+		if stop_at_refinement && parent.kind == .if_expr && parent.children_count >= 2
+			&& tc.a.child(parent, 0) != current
+			&& tc.condition_refines_type_of_key(tc.a.child(parent, 0), key, 0) {
+			return false
+		}
+		if stop_at_refinement && parent.kind == .match_stmt && parent.children_count > 0
+			&& tc.a.child(parent, 0) != current
+			&& tc.expr_key_matches(tc.a.child(parent, 0), key) {
+			for i in 1 .. parent.children_count {
+				branch := tc.a.child_node(parent, i)
+				if branch.kind != .match_branch || branch.value == 'else' {
+					continue
+				}
+				for j in 0 .. branch.value.int() {
+					if tc.match_type_pattern(tc.a.child_node(branch, j)) != none {
+						return false
+					}
 				}
 			}
 		}
@@ -17681,6 +17788,14 @@ fn (tc &TypeChecker) smartcast_type_miss(id flat.NodeId, parsed bool, state u32)
 		return none
 	}
 	if typ := tc.smartcasts[key] {
+		if tc.comptime_static_depth > 0 && tc.cur_comptime_variant_loop_vars.len > 0 {
+			// A reflected option payload must retain lexical none-guard unwrapping.
+			// Writes and later type refinements end the current guard's option layer.
+			concrete := unalias_type(typ)
+			if concrete is OptionType && tc.none_guard_fallthrough_unwraps_in_layer(id, key, true) {
+				return *concrete.base_type
+			}
+		}
 		return typ
 	}
 	if !parsed {

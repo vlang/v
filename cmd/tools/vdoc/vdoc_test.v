@@ -648,6 +648,22 @@ fn test_markdown_renderer_highlights_only_v_code_blocks() ! {
 	assert out.contains('<span class="token keyword">fn</span> <span class="token function">f</span>')
 }
 
+fn test_markdown_renderer_supports_github_flavored_markdown() {
+	mut renderer := new_doc_markdown_renderer('')
+	// Bare URLs are links, without a `)` that closes no `(` of the URL.
+	out := markdown.render('See https://vlang.io for more (or https://docs.vlang.io).', mut
+		renderer)
+	assert out.contains('See <a href="https://vlang.io">https://vlang.io</a> for more')
+	assert out.contains('(or <a href="https://docs.vlang.io">https://docs.vlang.io</a>).')
+	// Tables, strikethrough and task lists.
+	assert markdown.render('| a | b |\n|---|---|\n| 1 | 2 |', mut renderer).contains('<td>1</td>')
+	assert markdown.render('~~old~~', mut renderer).contains('<del>old</del>')
+	assert markdown.render('- [x] done', mut renderer).contains('type="checkbox"')
+	// A link whose text is a URL keeps its destination, and is not nested in another link.
+	assert render_doc_markdown(prepare_markdown_for_html('[https://vlang.io](https://docs.vlang.io)'), mut
+		renderer) == '<p><a href="https://docs.vlang.io">https://vlang.io</a></p>'
+}
+
 fn test_doc_multi_skips_modules_without_valid_files_for_platform() {
 	// https://github.com/vlang/v/issues/27464
 	// A module whose only V files are filtered out for the target platform (e.g.

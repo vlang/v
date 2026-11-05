@@ -67,6 +67,37 @@ pub:
 	envelope ?string
 }
 
+// OpenApi links a route handler to a typed OpenAPI metadata method on its controller.
+@[attribute]
+pub struct OpenApi {
+pub:
+	handler string
+}
+
+// OpenApiHandler supplies the mounted operation to a handler's typed metadata method.
+// Register that method with `@[veb.OpenApi('method_name')]` on the route handler.
+pub struct OpenApiHandler {
+mut:
+	doc    &OpenApiDocument = unsafe { nil }
+	path   string
+	method http.Method
+}
+
+// request documents a request DTO using the operation's mounted path and HTTP method.
+pub fn (mut handler OpenApiHandler) request[T](options OpenApiRequest) ! {
+	handler.doc.request[T](handler.path, handler.method, options)!
+}
+
+// response documents a response DTO using the operation's mounted path and HTTP method.
+pub fn (mut handler OpenApiHandler) response[T](options OpenApiResponse) ! {
+	handler.doc.response[T](handler.path, handler.method, options)!
+}
+
+// raw_response documents a complete response, including custom envelopes and headers.
+pub fn (mut handler OpenApiHandler) raw_response(status int, response map[string]json2.Any) ! {
+	handler.doc.raw_response(handler.path, handler.method, status, response)!
+}
+
 // OpenApiDocument collects dispatcher routes and explicitly configured DTO metadata.
 pub struct OpenApiDocument {
 	config OpenApiConfig
@@ -184,6 +215,12 @@ pub fn (mut doc OpenApiDocument) add_app[A, X](app &A) ! {
 			}
 			item[verb] = operation
 			doc.paths[path] = item
+			if route.openapi_metadata_name != '' {
+				if route.openapi_metadata == unsafe { nil } {
+					return error('unknown OpenAPI metadata method `${route.openapi_metadata_name}` for ${route.controller}.${route.name}; expected fn (app &Controller) metadata(mut handler veb.OpenApiHandler) !')
+				}
+				route.openapi_metadata(mut doc, path, method)!
+			}
 		}
 	}
 }
@@ -231,6 +268,16 @@ pub fn (mut doc OpenApiDocument) request[T](path string, method http.Method, opt
 		$if T is $struct {
 			$for field in T.fields {
 				$if field.typ is string || field.typ is int || field.typ is bool {
+					// An explicit DTO replaces a reflected query field with the same name.
+					mut retained := []json2.Any{}
+					for existing in parameters {
+						parameter := existing.as_map()
+						if (parameter['in'] or { json2.Any('') }).str() != 'query'
+							|| (parameter['name'] or { json2.Any('') }).str() != field.name {
+							retained << existing
+						}
+					}
+					parameters = retained
 					parameters << map[string]json2.Any{
 						'name':     json2.Any(field.name)
 						'in':       json2.Any('query')
