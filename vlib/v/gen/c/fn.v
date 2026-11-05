@@ -798,7 +798,10 @@ fn (mut g FlatGen) gen_executable_cleanup_registration() {
 
 fn (g &FlatGen) needs_no_main_runtime_init_caller() bool {
 	// A native consumer can call an object's exports without entering its V main.
-	return g.test_files.len == 0 && (g.object_file_mode || g.suppress_main || !g.has_entry_main())
+	// Cached exports must use the same protocol for scripts and explicit mains:
+	// their object can be reused by either, while the guard belongs to the program.
+	return g.test_files.len == 0
+		&& (g.cache_split || g.object_file_mode || g.suppress_main || !g.has_entry_main())
 		&& (g.a.export_fn_names.len > 0 || g.is_shared)
 }
 

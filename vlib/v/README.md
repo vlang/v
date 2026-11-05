@@ -535,6 +535,9 @@ before `PATH`. Windows explicit paths use the implicit `.exe` suffix and expand 
 renamed PE files with other extensions can also be queried.
 
 Cached programs retain the element layouts required by fixed-array aliases and option payloads.
+Cached native exports share a program-local runtime initialization guard with the entry point,
+so a module object built for a script can also be linked by a program with `fn main()`.
+Calls through exported C symbols do not repeat module initialization or replace process arguments.
 Cached standard-library headers retain their source classification so headerless C bindings keep
 their complete layouts, including the Boehm GC stack type used by interface stringification.
 Generated fixed-array map-key helpers declare their cached builtin callees before their definitions.
