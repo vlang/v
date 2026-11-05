@@ -20099,7 +20099,7 @@ fn (mut tc TypeChecker) check_struct_field_defaults(node_id flat.NodeId, node fl
 		}
 		unknown_struct_init := if default_node.kind == .struct_init {
 			init_type_id := default_node.source_value_id()
-			init_type_id != checker_source_struct
+			init_type_id !in [checker_source_struct, checker_source_union]
 				&& !flat.source_type_shape(init_type_id).has(.channel_type)
 				&& init_type_id != checker_source_chan && !tc.type_name_known(init_type_id)
 		} else {

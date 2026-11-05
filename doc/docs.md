@@ -3744,6 +3744,28 @@ initializing the selected member. This also applies to interfaces inside nested 
 An inactive interface member with no valid type tag formats as `unknown interface value`.
 Accessing an inactive member still requires `unsafe` and does not create a valid interface value.
 
+Anonymous unions can be declared as fields and initialized with `union { ... }`,
+using the field's declared union type. Initialize at most one member, just as with named unions:
+
+```v
+struct Packet {
+	data union {
+		number u64
+		text   string
+	}
+}
+
+packet := Packet{
+	data: union { text: 'hello' }
+}
+assert unsafe { packet.data.text } == 'hello'
+```
+
+Anonymous union values format as `union { ... }`, without an internal generated type name.
+
+An anonymous literal cannot yet initialize a C anonymous aggregate declared in a header.
+Anonymous C structs have the same limitation.
+
 ### Why use unions?
 
 One reason, as stated above, is to use less memory for storing things.  Since the size of a union

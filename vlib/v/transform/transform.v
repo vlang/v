@@ -15,6 +15,7 @@ const transform_source_type_array = flat.source_type_id('array')
 const transform_source_type_map = flat.source_type_id('map')
 const transform_source_type_map_pointer = flat.source_type_id('map*')
 const transform_source_type_struct = flat.source_type_id('struct')
+const transform_source_type_union = flat.source_type_id('union')
 const transform_source_type_c_va_list = flat.source_type_id('C.va_list')
 const transform_source_type_main = flat.source_type_id('main')
 const transform_source_type_builtin = flat.source_type_id('builtin')
@@ -25565,12 +25566,13 @@ fn (mut t Transformer) transform_if_expr(id flat.NodeId, node flat.Node) flat.No
 }
 
 fn transform_is_anonymous_struct_name(name_id u32) bool {
-	return flat.source_type_query(flat.source_type_syntax(name_id).unqualified()).has(.anon_struct_prefix)
+	query := flat.source_type_query(flat.source_type_syntax(name_id).unqualified())
+	return query.has(.anon_struct_prefix) || query.has(.anon_union_prefix)
 }
 
 // transform_struct_init transforms transform struct init data for transform.
 fn (mut t Transformer) transform_struct_init(id flat.NodeId, node flat.Node) flat.NodeId {
-	if node.value_text() == 'struct' || transform_is_anonymous_struct_name(node.source_value_id()) {
+	if node.value_text() in ['struct', 'union'] || transform_is_anonymous_struct_name(node.source_value_id()) {
 		mut concrete_type := t.raw_checker_node_type(id)
 		if !transform_is_anonymous_struct_name(concrete_type) && t.expected_expr_node == int(id)
 			&& transform_is_anonymous_struct_name(t.expected_expr_type) {
@@ -28678,7 +28680,7 @@ fn (mut t Transformer) transform_cast_expr(id flat.NodeId, node flat.Node) flat.
 	if node.children_count == 1 && transform_is_anonymous_struct_name(target_type_source_id) {
 		child_id := t.a.child(&node, 0)
 		child := t.a.nodes[int(child_id)]
-		if child.kind == .struct_init && child.value_text() == 'struct' {
+		if child.kind == .struct_init && child.value_text() in ['struct', 'union'] {
 			mut concrete := child
 			concrete.set_source_value_id(target_type_source_id)
 			concrete.typ = target_type_source_id
