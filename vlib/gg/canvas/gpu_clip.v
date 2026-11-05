@@ -1330,7 +1330,8 @@ fn (mut s GpuSurface) update_clip_state_for_draw(elements []int, draw_bounds Rec
 // their largest depth, with its pending usage as the scissor. Difference
 // elements are convex and use the depth-only convex wedges; intersect
 // elements are inverse fills, which chooseMSAARenderer() draws with the
-// winding stencil wedges and an inverse cover of the scissor.
+// stencil wedges of the shape's fill type (even-odd for rects and rrects) and
+// an inverse cover of the scissor.
 fn (mut s GpuSurface) draw_clip(e RawElement) {
 	if !e.has_pending_draw() {
 		return
@@ -1361,7 +1362,8 @@ fn (mut s GpuSurface) draw_clip(e RawElement) {
 	if e.shape.inverted {
 		mut stencil_order := order
 		stencil_order.stencil_index = s.add_disjoint_stencil(order.paint_order, draw_bounds)
-		s.record_step(.stencil_wedges_winding, false, instance, uniforms, stencil_order, 0, 0,
+		// Shape::fillType() of rects and rrects is (inverse) even-odd.
+		s.record_step(.stencil_wedges_even_odd, false, instance, uniforms, stencil_order, 0, 0,
 			clip, u32(count))
 		s.draws[s.draws.len - 1].template_count = wedge_vertex_count(n4)
 		// CoverBoundsRenderStep writes an inverse fill's integer scissor as

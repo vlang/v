@@ -456,7 +456,8 @@ fn (mut ctx GpuContext) pipeline(step RenderStep, sample_count int, blend bool, 
 					pass_op:       if winding { gfx.StencilOp.decr_wrap } else { .invert }
 				}
 				read_mask:  0xff
-				write_mask: 0xff
+				// kToggle only flips the lowest bit.
+				write_mask: if winding { u8(0xff) } else { u8(0x01) }
 			}
 		}
 		.cover_fill {

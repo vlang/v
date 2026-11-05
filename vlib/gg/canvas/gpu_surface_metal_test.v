@@ -268,7 +268,7 @@ fn test_intersect_clips_are_stenciled_and_inverse_covered_in_the_depth_attachmen
 	})!
 	s.restore()
 	s.record_deferred_clip_draws()
-	stencil := s.draws.filter(it.step == .stencil_wedges_winding)
+	stencil := s.draws.filter(it.step == .stencil_wedges_even_odd)
 	cover := s.draws.filter(it.step == .cover_inverse_clip)
 	assert stencil.len == 1 && cover.len == 1
 	assert cover[0].uniform_index == uniform_index_invalid
