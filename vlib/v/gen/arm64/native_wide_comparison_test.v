@@ -31,6 +31,32 @@ fn compare_signed(a i128, b i128) int {
 	if a >= b { mask += 32 }
 	return mask
 }
+fn compare_unsigned_signed(a u128, b i128) int {
+	mut mask := 0
+	if a == b { mask += 1 }
+	if a != b { mask += 2 }
+	if a < b { mask += 4 }
+	if a <= b { mask += 8 }
+	if a > b { mask += 16 }
+	if a >= b { mask += 32 }
+	return mask
+}
+fn compare_signed_unsigned(a i128, b u128) int {
+	mut mask := 0
+	if a == b { mask += 1 }
+	if a != b { mask += 2 }
+	if a < b { mask += 4 }
+	if a <= b { mask += 8 }
+	if a > b { mask += 16 }
+	if a >= b { mask += 32 }
+	return mask
+}
+fn compare_scalar_signed(a i64, b i128) bool {
+	return a > b
+}
+fn compare_scalar_unsigned(a i64, b u128) bool {
+	return a < b
+}
 fn main() {
 	one := u128(1)
 	high := one << 100
@@ -54,6 +80,18 @@ fn main() {
 	values := [one, high, high + one]
 	if values.index(high) != 1 { C.exit(16) }
 	if values.index(u128(7)) != -1 { C.exit(17) }
+	if compare_unsigned_signed(one << 127, i128(0)) != 50 { C.exit(18) }
+	if compare_unsigned_signed(u128(0), i128(1) << 127) != 14 { C.exit(19) }
+	if compare_signed_unsigned(i128(1) << 127, u128(0)) != 14 { C.exit(20) }
+	if compare_signed_unsigned(i128(0), one << 127) != 50 { C.exit(21) }
+	if compare_unsigned_signed(high, i128(high)) != 41 { C.exit(22) }
+	if compare_signed_unsigned(i128(high), high) != 41 { C.exit(23) }
+	if compare_unsigned_signed(high + one, i128(high)) != 50 { C.exit(24) }
+	if compare_unsigned_signed(high, i128(high + one)) != 14 { C.exit(25) }
+	if compare_signed_unsigned(i128(high + one), high) != 50 { C.exit(26) }
+	if compare_signed_unsigned(i128(high), high + one) != 14 { C.exit(27) }
+	if !compare_scalar_signed(i64(0), negative) { C.exit(28) }
+	if !compare_scalar_unsigned(i64(0), one << 127) { C.exit(29) }
 }
 '
 		path := os.join_path(os.vtmp_dir(), 'arm64_wide_comparison_${os.getpid()}.v')
@@ -78,10 +116,17 @@ fn main() {
 		g.write_and_link(output)
 		result := os.exec([output])
 		assert result.exit_code == 0, result.output
-		compiled := os.exec([@VEXE, '-b', 'c', '-nocache', '-gc', 'none', '-o', output + '_c',
-			path])
-		assert compiled.exit_code == 0, compiled.output
-		c_result := os.exec([output + '_c'])
-		assert c_result.exit_code == 0, c_result.output
+		for portable in [false, true] {
+			mut args := [@VEXE, '-b', 'c', '-cc', 'clang', '-nocache', '-gc', 'none', '-o',
+				output + '_c']
+			if portable {
+				args << ['-d', 'v3_no_native_int128']
+			}
+			args << path
+			compiled := os.exec(args)
+			assert compiled.exit_code == 0, compiled.output
+			c_result := os.exec([output + '_c'])
+			assert c_result.exit_code == 0, c_result.output
+		}
 	}
 }

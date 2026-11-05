@@ -12361,7 +12361,12 @@ fn (mut b Builder) build_wide_integer_comparison(node flat.Node) ValueID {
 		return b.block_instr2(.xor, b.cur_block, b.i1_type, equal,
 			b.m.get_or_add_const(b.i1_type, '1'))
 	}
-	signed := b.is_signed_wide_integer_expr(lhs_id) || b.is_signed_wide_integer_expr(rhs_id)
+	// Match the C backend: the first wide operand selects the comparison family.
+	signed := if b.is_wide_integer_expr(lhs_id) {
+		b.is_signed_wide_integer_expr(lhs_id)
+	} else {
+		b.is_signed_wide_integer_expr(rhs_id)
+	}
 	less := node.op in [.lt, .le]
 	high_op := if less {
 		if signed { OpCode.lt } else { OpCode.ult }
