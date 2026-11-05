@@ -272,6 +272,7 @@ fn (mut t Transformer) begin_borrow_param_mentions(c BorrowCandidate, node &flat
 	}
 }
 
+@[direct_array_access]
 fn (t &Transformer) fixed_array_mentioned_params(id flat.NodeId) u64 {
 	idx := int(id)
 	if idx < 0 || idx >= t.a.nodes.len {

@@ -351,7 +351,7 @@ pub fn (a string) clone() string {
 		len: a.len
 	}
 	unsafe {
-		vmemcpy(b.str, a.str, a.len)
+		vmemcpy_unchecked(b.str, a.str, a.len)
 		b.str[a.len] = 0
 	}
 	return b
@@ -944,10 +944,10 @@ fn string_concat_pair(s string, a string) string {
 	}
 	unsafe {
 		if slen > 0 {
-			vmemcpy(res.str, s.str, slen)
+			vmemcpy_unchecked(res.str, s.str, slen)
 		}
 		if alen > 0 {
-			vmemcpy(res.str + slen, a.str, alen)
+			vmemcpy_unchecked(res.str + slen, a.str, alen)
 		}
 		res.str[new_len] = 0 // V strings are not null terminated, but just in case
 	}
@@ -985,7 +985,7 @@ fn string_plus_many_general(data_len int, input_base &string) string {
 			part := input_base[i]
 			part_len := if part.len > 0 { part.len } else { 0 }
 			if part_len > 0 {
-				vmemcpy(res.str + offset, part.str, part_len)
+				vmemcpy_unchecked(res.str + offset, part.str, part_len)
 				offset += part_len
 			}
 		}
@@ -1007,13 +1007,13 @@ fn (s string) plus_two(a string, b string) string {
 	}
 	unsafe {
 		if slen > 0 {
-			vmemcpy(res.str, s.str, slen)
+			vmemcpy_unchecked(res.str, s.str, slen)
 		}
 		if alen > 0 {
-			vmemcpy(res.str + slen, a.str, alen)
+			vmemcpy_unchecked(res.str + slen, a.str, alen)
 		}
 		if blen > 0 {
-			vmemcpy(res.str + slen + alen, b.str, blen)
+			vmemcpy_unchecked(res.str + slen + alen, b.str, blen)
 		}
 		res.str[new_len] = 0 // V strings are not null terminated, but just in case
 	}
@@ -1383,7 +1383,7 @@ pub fn (s string) substr(start int, _end int) string {
 		len: len
 	}
 	unsafe {
-		vmemcpy(res.str, s.str + start, len)
+		vmemcpy_unchecked(res.str, s.str + start, len)
 		res.str[len] = 0
 	}
 	return res
@@ -1455,7 +1455,7 @@ pub fn (s string) substr_with_check(start int, _end int) !string {
 		len: len
 	}
 	unsafe {
-		vmemcpy(res.str, s.str + start, len)
+		vmemcpy_unchecked(res.str, s.str + start, len)
 		res.str[len] = 0
 	}
 	return res
@@ -1499,7 +1499,7 @@ pub fn (s string) substr_ni(_start int, _end int) string {
 		len: len
 	}
 	unsafe {
-		vmemcpy(res.str, s.str + start, len)
+		vmemcpy_unchecked(res.str, s.str + start, len)
 		res.str[len] = 0
 	}
 	return res

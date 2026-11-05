@@ -487,13 +487,23 @@ fn c_call_needs_prelude_scan(a &flat.FlatAst, node &flat.Node) bool {
 	return base.kind == .empty || (base.kind == .ident && base.value == 'C')
 }
 
+@[direct_array_access]
 fn exact_flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId, windows_target bool, mut c_extern_refs map[string]bool, mut stack []flat.NodeId) (int, bool) {
 	mut cost := 0
 	mut needs_prelude_scan := false
-	stack.clear()
-	stack << node_id
-	for stack.len > 0 {
-		id := stack.pop()
+	// `stack` is a reusable buffer: `top` is the live depth, entries below the
+	// array length are overwritten in place and only a deeper tree appends, so no
+	// per-node push/pop bookkeeping runs. The visiting order is unchanged.
+	mut top := 0
+	if stack.len == 0 {
+		stack << node_id
+	} else {
+		stack[0] = node_id
+	}
+	top = 1
+	for top > 0 {
+		top--
+		id := stack[top]
 		idx := int(id)
 		if idx < 0 || idx >= a.nodes.len {
 			continue
@@ -523,7 +533,12 @@ fn exact_flat_fn_gen_item_cost(a &flat.FlatAst, node_id flat.NodeId, windows_tar
 		for i in 0 .. node.children_count {
 			child_id := a.children[node.children_start + i]
 			if int(child_id) >= 0 {
-				stack << child_id
+				if top < stack.len {
+					stack[top] = child_id
+				} else {
+					stack << child_id
+				}
+				top++
 			}
 		}
 	}
@@ -943,15 +958,48 @@ fn (g &FlatGen) top_level_file_module_name(file_node flat.Node) string {
 }
 
 fn (mut g FlatGen) gen_top_level_asm() {
+	mut program_files := map[string]bool{}
 	for file_idx in g.top_level_nodes() {
 		file_node := g.a.nodes[file_idx]
 		if file_node.kind != .file {
 			continue
 		}
+		if g.cache_split {
+			if !g.has_top_level_asm(flat.NodeId(file_idx)) {
+				continue
+			}
+			module_name := g.top_level_file_module_name(file_node)
+			is_program := module_name in ['', 'main'] || g.test_files[file_node.value]
+				|| g.file_is_cache_program_file(file_node.value, mut program_files)
+			if g.program_body_only && !is_program {
+				continue
+			}
+			owner := if is_program { 'main' } else { module_name }
+			// Keep conditional wrappers and their assembly in the same owning unit.
+			g.writeln('/* V3CACHE_MODULE ${owner} */')
+		}
 		for i in 0 .. file_node.children_count {
 			g.gen_top_level_asm_node(g.a.child(&file_node, i))
 		}
 	}
+}
+
+fn (g &FlatGen) has_top_level_asm(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind == .asm_stmt {
+		return true
+	}
+	if node.kind in [.file, .block, .comptime_if] {
+		for i in 0 .. node.children_count {
+			if g.has_top_level_asm(g.a.child(&node, i)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (mut g FlatGen) gen_top_level_asm_node(id flat.NodeId) {
@@ -9164,7 +9212,10 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 				receiver_wants_shared :=
 					g.fn_param_is_shared_for_call(0, actual_fn, emitted_callee_name, method_name, fn_name)
 						|| g.fn_param_is_shared_for_call(0, base_method_name, g.cname(base_method_name), '', '')
-				if param_types.len > 0 && g.gen_indirect_value_argument(base_id, param_types[0]) {
+				if receiver_wants_ptr && base_declares_method
+					&& g.gen_stack_value_free_receiver(base_id, method_name) {
+					// handled
+				} else if param_types.len > 0 && g.gen_indirect_value_argument(base_id, param_types[0]) {
 				} else if receiver_wants_shared && (g.gen_shared_local_receiver_arg(base_id)
 					|| g.gen_shared_storage_expr(base_id)) {
 					arg_start = 1
@@ -9751,20 +9802,33 @@ fn (g &FlatGen) expr_is_non_string_scalar_value(id flat.NodeId) bool {
 		|| clean is types.ISize || clean is types.USize || clean is types.Enum
 }
 
+// Every synthetic drop spelling starts with `drop_owned`; one byte test rejects
+// the ordinary call names that reach these checks.
+@[direct_array_access; inline]
 fn ownership_synthetic_drop_name(name string) bool {
+	if name.len < 10 || name[0] != `d` || !name.starts_with('drop_owned') {
+		return false
+	}
 	return name == 'drop_owned' || name.starts_with('drop_owned_T_')
 		|| name == 'drop_owned_v3_interface' || name.starts_with('drop_owned_v3_interface_T_')
 }
 
+@[direct_array_access]
 fn (g &FlatGen) ownership_drop_intrinsic_name(name string) bool {
-	if name in ['builtin.drop_owned', 'builtin__drop_owned']
-		|| name.starts_with('builtin.drop_owned_T_') || name.starts_with('builtin__drop_owned_T_')
-		|| name in ['builtin.drop_owned_v3_interface', 'builtin__drop_owned_v3_interface']
-		|| name.starts_with('builtin.drop_owned_v3_interface_T_')
-		|| name.starts_with('builtin__drop_owned_v3_interface_T_') {
-		return true
+	if name.len < 10 {
+		return false
 	}
-	if !ownership_synthetic_drop_name(name) {
+	if name[0] == `b` {
+		// Only a builtin-qualified drop spelling is accepted here; the synthetic
+		// spellings below all start with `drop_owned`.
+		return (name.starts_with('builtin.drop_owned') || name.starts_with('builtin__drop_owned'))
+			&& (name in ['builtin.drop_owned', 'builtin__drop_owned']
+				|| name.starts_with('builtin.drop_owned_T_') || name.starts_with('builtin__drop_owned_T_')
+				|| name in ['builtin.drop_owned_v3_interface', 'builtin__drop_owned_v3_interface']
+				|| name.starts_with('builtin.drop_owned_v3_interface_T_')
+				|| name.starts_with('builtin__drop_owned_v3_interface_T_'))
+	}
+	if name[0] != `d` || !ownership_synthetic_drop_name(name) {
 		return false
 	}
 	if module_name := g.tc.fn_type_modules[name] {
@@ -10082,6 +10146,48 @@ fn (mut g FlatGen) gen_current_mut_param_method_receiver(base_id flat.NodeId, wa
 	} else {
 		g.write(g.current_param_use_cname(base.value))
 	}
+	return true
+}
+
+fn (mut g FlatGen) gen_stack_value_free_receiver(base_id flat.NodeId, method_name string) bool {
+	if !method_name.ends_with('.free') || int(base_id) < 0 || int(base_id) >= g.a.nodes.len {
+		return false
+	}
+	mut value_id := base_id
+	mut base := g.a.node(value_id)
+	// Lowered method calls have already added the receiver's address. An
+	// explicit source pointer expression keeps its normal pointer semantics.
+	if base.kind == .prefix && base.op == .amp && base.children_count == 1
+		&& !base.pos.is_valid() {
+		value_id = g.a.child(base, 0)
+		base = g.a.node(value_id)
+	}
+	if base.kind != .ident || g.receiver_ident_storage_is_pointer(value_id)
+		|| g.current_param_is_mut(base.value) {
+		return false
+	}
+	base_type := g.receiver_base_type(value_id)
+	if cgen_type_is_pointer_like(base_type) || cgen_type_is_pointer_like(g.usable_expr_type(value_id)) {
+		return false
+	}
+	decl_id := g.fn_decl_nodes_by_name[fn_decl_module_key(g.tc.cur_module, method_name)] or {
+		g.fn_decl_nodes_by_name[method_name] or { return false }
+	}
+	mut releases_receiver := false
+	for call_id in g.a.free_method_receiver_calls(decl_id) {
+		resolved := g.resolved_call_name(call_id) or { '' }
+		if resolved.len == 0 || resolved in ['free', 'builtin.free'] {
+			releases_receiver = true
+			break
+		}
+	}
+	if !releases_receiver {
+		return false
+	}
+	// A value's self-deallocating free method must receive a heap copy, not its
+	// stack address. Keep child-only cleanup and existing heap receivers in place.
+	base_ct := g.tc.c_type(base_type)
+	g.write(g.heap_local_memdup_expr(g.expr_to_string(value_id).trim_space(), base_type, base_ct, false))
 	return true
 }
 
@@ -16146,7 +16252,10 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 	}
 	g.write(emitted_name)
 	g.write('(')
-	if g.gen_indirect_value_argument(receiver_id, params[0]) {
+	if receiver_wants_ptr && receiver_declares_method
+		&& g.gen_stack_value_free_receiver(receiver_id, fn_node.value) {
+		// handled
+	} else if g.gen_indirect_value_argument(receiver_id, params[0]) {
 	} else if receiver_wants_shared
 		&& (g.gen_shared_local_receiver_arg(receiver_id) || g.gen_shared_storage_expr(receiver_id)) {
 		// handled
@@ -17009,6 +17118,12 @@ fn (mut g FlatGen) gen_sum_variant_arg(arg_id flat.NodeId, expected types.Type) 
 	if expected_type is types.SumType {
 		return false
 	}
+	if int(arg_id) >= 0 && int(arg_id) < g.a.nodes.len
+		&& g.a.node(arg_id).kind in [.int_literal, .float_literal, .bool_literal, .char_literal,
+			.string_literal, .string_interp] {
+		// A literal has a builtin type and is never a sum value.
+		return false
+	}
 	actual0 := types.unwrap_pointer(g.body_resolve_type(arg_id))
 	mut actual := actual0
 	if actual0 is types.Alias {
@@ -17568,20 +17683,23 @@ fn (g &FlatGen) collect_c_extern_referenced_symbols_in(node &flat.Node, mut refs
 		return
 	}
 	// Visit the children that `g.a.child` would return; out-of-range slots are empty there.
+	// The walk never grows the AST, so its arrays can be read through local headers.
+	children := g.a.children
+	nodes := g.a.nodes
 	mut start := int(node.children_start)
 	mut end := start + int(node.children_count)
 	if start < 0 {
 		start = 0
 	}
-	if end > g.a.children.len {
-		end = g.a.children.len
+	if end > children.len {
+		end = children.len
 	}
 	for i in start .. end {
-		child_id := int(g.a.children[i])
-		if child_id < 0 || child_id >= g.a.nodes.len {
+		child_id := int(children[i])
+		if child_id < 0 || child_id >= nodes.len {
 			continue
 		}
-		child := unsafe { &g.a.nodes[child_id] }
+		child := unsafe { &nodes[child_id] }
 		// A leaf that is not an identifier can neither name C nor reach a node that does.
 		if child.children_count <= 0 && child.kind != .ident {
 			continue
@@ -17746,7 +17864,8 @@ fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 		return false
 	}
 	if cfn in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait', 'sem_wait']
-		&& g.target.os in ['linux', 'android', 'termux'] && g.c_directives_use_system_libc() {
+		&& g.target.os in ['linux', 'android', 'termux', 'freebsd', 'openbsd']
+		&& g.c_directives_use_system_libc() {
 		return false
 	}
 	if cfn in c_system_libc_preamble_declared_fns && g.c_directives_use_system_libc() {

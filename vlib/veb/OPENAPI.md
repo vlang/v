@@ -48,6 +48,45 @@ replaces application-specific source-comment parsing: migrate each `@summary`,
 `@description`, `@tag` and `@security` into `OpenApiOperation`, and each `@response` into
 `response[T]` or `raw_response`. Source comments and decorative dividers are never parsed.
 
+## Typed metadata beside handlers
+
+Link a handler to a typed metadata method with `veb.OpenApi('method_name')`. The companion method
+receives the operation already resolved to its mounted path and HTTP method:
+
+```v ignore
+@['/items'; post; veb.OpenApi('create_metadata')]
+pub fn (app &Items) create(mut ctx Context) veb.Result {
+    // Decode CreateItem and return the application's usual response.
+    return ctx.text('created')
+}
+
+fn (app &Items) create_metadata(mut operation veb.OpenApiHandler) ! {
+    operation.request[CreateItem]()!
+    operation.response[Item](status: 201)!
+    operation.response[ApiError](status: 422)!
+}
+```
+
+`add_app()` calls the companion for each documented method and mount, without invoking the
+handler. Companion methods must have an immutable receiver, one mutable `veb.OpenApiHandler`
+parameter, and return `!`. They may be private, and their ordinary generic calls keep DTO types
+checked by the compiler. Module-qualified types, shared DTOs and all existing schema reflection
+work here, including nested DTOs, optional fields, JSON names, maps, arrays, enums and sums.
+V attributes currently carry scalar metadata rather than type arguments, so the handler links
+to this typed companion instead of naming DTO types in attribute strings.
+
+Use `request[T]` with no options for a JSON body on POST/PUT/PATCH or query fields on
+GET/DELETE/HEAD. `response[T]` supports multiple status codes and inherits `success_field` for
+successful responses. `raw_response` supports full custom envelopes. Registering explicit
+`doc.request`, `doc.response` or `doc.raw_response` after `add_app()` overrides the corresponding
+reflected body or response; query fields with the same name are replaced. Handlers without an
+`OpenApi` attribute keep the existing defaults.
+Conditional compilation and nested controller mounting follow the dispatcher's route metadata.
+
+To migrate a centralized metadata block, move each route's `request` and `response` calls into
+its companion, remove their path and HTTP method arguments, and add the handler attribute.
+Only `add_app()` remains in the document setup, avoiding duplicated mount and path strings.
+
 ## Requests and schemas
 
 `request[T]` documents a required JSON body for POST, PUT and PATCH, and query parameters
@@ -73,6 +112,8 @@ can omit. Optional fields are omitted from `required` unless marked `required` o
 `omitempty` can still omit them. Set `nullable_options` to allow null for options, including
 referenced structs and sums. `json_null` fields allow null independently of that setting.
 Pointer schemas always allow null, including response values and array or map elements.
+OpenAPI 3.0.x uses `nullable: true`; 3.2.x uses a JSON Schema `anyOf` with a `type: null`
+branch, retaining the non-null branch's references and enum constraints.
 
 Types with a custom `json2.JsonEncoder` or `json2.Encodable` implementation use an unconstrained
 named component, since their methods can emit any JSON shape. Supply `custom_schema` for a precise
@@ -110,9 +151,45 @@ responses unless `security_errors: false`. Undefined scheme names return an erro
 
 ## Rendering and serving
 
-The default format is OpenAPI 3.0.3; `openapi_version` accepts other 3.0.x versions.
+The default format is OpenAPI 3.0.3; `openapi_version` accepts 3.0.x and 3.2.x versions.
 Configure `title`, `description`, `version`, `tags` and `servers`, or set `version_file`
 to read a v.mod manifest. JSON keys are sorted, strings escaped and operation IDs checked.
 `json(pretty)!` renders, `write(path, pretty)!` saves, and `serve(mut ctx, pretty)!` sends
 an `application/json` response from a veb handler. Viewer integrations can consume the
 same endpoint without coupling the generator to a particular UI.
+
+
+## Public tag hierarchy
+
+Use `tag_definitions` as the public taxonomy instead of exposing internal module paths.
+No hierarchy is inferred from module names or URL prefixes: those are implementation details
+and may differ from the API domains presented to readers.
+
+```v ignore
+mut doc := veb.new_openapi(
+    title: 'Shop'
+    openapi_version: '3.2.0'
+    tag_definitions: [
+        veb.OpenApiTagConfig{ name: 'catalog', summary: 'Catalog' },
+        veb.OpenApiTagConfig{
+            name: 'catalog.items'
+            summary: 'Items'
+            parent: 'catalog'
+            controllers: [typeof(Items{}).name]
+        },
+    ]
+)!
+doc.add_app[App, Context](app)!
+```
+
+Each definition supports `name`, `summary`, `description`, `parent`, `kind` (default `nav`),
+`external_docs` (an OpenAPI External Documentation Object), and `controllers`. A controller
+can appear in multiple definitions to give all its operations multiple public tags. Controllers
+without a mapping retain their reflected name as a flat tag. Explicit `operation(..., tags: [...])`
+overrides the controller mapping; these tags are declared automatically in the document too.
+Mounted controller paths and shared controllers use the same mapping regardless of mount prefix.
+
+Names must be nonempty and unique across `tags` and `tag_definitions`. Parents must exist and
+parent chains cannot contain cycles. Rendering orders parents before descendants deterministically.
+OpenAPI 3.0.x accepts controller mappings and flat descriptions, but rejects parents and omits the
+3.2-only `summary` and `kind` fields. Use 3.2.x for native hierarchical tags.

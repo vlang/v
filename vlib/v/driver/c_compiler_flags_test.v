@@ -1364,11 +1364,13 @@ fn test_v3_implicit_tcc_cpp_native_object_uses_platform_headers() {
 		'-no-retry-compilation', '-o', output, v_source], root)
 	assert !no_retry.output.contains('failed to build C object'), no_retry.output
 	if no_retry.exit_code != 0 {
-		// TinyCC may not find the platform C++ runtime without its compiler's search paths.
+		// TinyCC may not find the platform C++ runtime or its GCC support libraries
+		// without the platform compiler's search paths.
 		runtime := $if macos { 'c++' } $else { 'stdc++' }
+		missing_runtime := [runtime, 'libgcc.so', 'gcc_s'].any(no_retry.output.contains("tcc: error: library '${it}' not found"))
 		assert no_retry.output.contains('C compilation error: implicit tcc could not be used for this build')
 			|| (no_retry.output.contains('C compilation error (from ')
-				&& no_retry.output.contains("tcc: error: library '${runtime}' not found")), no_retry.output
+				&& missing_runtime), no_retry.output
 		assert !no_retry.output.contains('regenerating it with'), no_retry.output
 	}
 	// The normal implicit-TinyCC policy must still compile and run the native helper.
