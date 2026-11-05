@@ -1416,7 +1416,7 @@ pub fn wait4(pid int, status &int, options int, rusage voidptr) int {
 		$if windows {
 			panic('os.wait4 not supported on windows')
 		}
-		return C.wait4(pid, status, options, rusage)
+		return C.waitpid(pid, status, options)
 	}
 }
 
