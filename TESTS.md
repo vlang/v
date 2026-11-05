@@ -56,6 +56,10 @@ recursively.
 `v -stats test folder` - same, but will also produce timing reports
 about how fast each test_ function in each _test.v file ran.
 
+The `v test` runner is built for the host using the C backend. Backend and target options such
+as `-b arm64` apply to the test programs it compiles. Architecture-suffixed test discovery
+uses the requested `-arch`, including when it differs from the runner's host architecture.
+
 By default, `v test` uses at most four parallel workers and budgets one worker per 8 GiB
 of memory. On Linux it uses the lower of physical memory and the active cgroup memory limit.
 Set `VJOBS` to a positive value to explicitly choose a different worker count when your test
