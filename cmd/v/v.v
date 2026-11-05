@@ -757,9 +757,15 @@ fn external_tool_args_without_prod(args []string) []string {
 fn external_tool_args_without_target(args []string) []string {
 	mut result := []string{cap: args.len}
 	mut skip_target_value := false
-	for arg in args {
+	mut value_follows := false
+	for i, arg in args {
 		if skip_target_value {
 			skip_target_value = false
+			continue
+		}
+		if value_follows {
+			result << arg
+			value_follows = false
 			continue
 		}
 		if arg in ['-os', '-arch'] {
@@ -770,6 +776,11 @@ fn external_tool_args_without_target(args []string) []string {
 			continue
 		}
 		result << arg
+		value_follows = if arg in ['-prof', '-profile'] {
+			v1_fallback_profile_option_consumes_value(args, i)
+		} else {
+			arg == '-cf' || pref.option_may_consume_value(arg)
+		}
 	}
 	return result
 }
@@ -778,8 +789,12 @@ fn split_tool_backend_args(args []string) ([]string, []string) {
 	mut backend_args := []string{}
 	mut other_args := []string{}
 	mut backend_value_follows := false
-	for arg in args {
-		if backend_value_follows {
+	mut value_follows := false
+	for i, arg in args {
+		if value_follows {
+			other_args << arg
+			value_follows = false
+		} else if backend_value_follows {
 			backend_args << arg
 			backend_value_follows = false
 		} else if arg in ['-b', '-backend'] {
@@ -789,6 +804,11 @@ fn split_tool_backend_args(args []string) ([]string, []string) {
 			backend_args << arg
 		} else {
 			other_args << arg
+			value_follows = if arg in ['-prof', '-profile'] {
+				v1_fallback_profile_option_consumes_value(args, i)
+			} else {
+				arg == '-cf' || pref.option_may_consume_value(arg)
+			}
 		}
 	}
 	return backend_args, other_args

@@ -50,6 +50,8 @@ fn testsuite_begin() {
 	other_arch := if host_arch == 'amd64' { 'arm64' } else { 'amd64' }
 	write_selection_fixture('directory space.with.dots/host_test.${host_arch}.v', passing)
 	write_selection_fixture('incompatible/arch_test.${other_arch}.v', failing)
+	write_selection_fixture('target_arch/invalid_test.${other_arch}.v',
+		'fn test_target_selected() { assert VTEST_TARGET_ARCH_DISCOVERY_MARKER }\n')
 	write_selection_fixture('incompatible/backend_test.wasm.v', failing)
 	other_os := selection_other_os()
 	write_selection_fixture('incompatible/os_${other_os}_test.v', failing)
@@ -199,4 +201,40 @@ fn test_explicit_multiwindow_build_constraints_still_apply() {
 	result := run_selection(['test', 'constraints/multiwindow_test.v'])
 	assert_selection_summary(result, 0, '1 skipped, 1 total')
 	assert !result.output.split_into_lines().any(it.trim_space() == selection_failure_marker), result.output
+}
+
+fn test_architecture_suffix_uses_the_requested_target() {
+	other_arch := if pref.host_arch() == 'amd64' { 'arm64' } else { 'amd64' }
+	// A checker error proves that discovery selected the file without requiring
+	// an installed cross compiler or an emulator for the requested architecture.
+	for prefix in [['-arch', other_arch], ['-arch', pref.host_arch(), '-arch', other_arch],
+		['-cflags', '-arch', '-cflags', pref.host_arch(), '-arch', other_arch]] {
+		for path in ['target_arch/invalid_test.${other_arch}.v', 'target_arch'] {
+			mut args := prefix.clone()
+			args << ['test', path]
+			result := run_selection(args)
+			assert_selection_summary(result, 1, '1 failed, 1 total')
+			assert result.output.contains('VTEST_TARGET_ARCH_DISCOVERY_MARKER'), result.output
+		}
+	}
+}
+
+fn test_architecture_suffix_uses_the_vflags_target() {
+	other_arch := if pref.host_arch() == 'amd64' { 'arm64' } else { 'amd64' }
+	old_vflags := os.getenv_opt('VFLAGS')
+	defer {
+		if value := old_vflags {
+			os.setenv('VFLAGS', value, true)
+		} else {
+			os.unsetenv('VFLAGS')
+		}
+	}
+	os.setenv('VFLAGS', '-arch ${other_arch}', true)
+	result := run_selection(['test', 'target_arch/invalid_test.${other_arch}.v'])
+	assert_selection_summary(result, 1, '1 failed, 1 total')
+	assert result.output.contains('VTEST_TARGET_ARCH_DISCOVERY_MARKER'), result.output
+	// Explicit arguments override the environment just as compilation does.
+	incompatible := run_selection(['-arch', pref.host_arch(), 'test',
+		'target_arch/invalid_test.${other_arch}.v'])
+	assert_selection_summary(incompatible, 0, '1 skipped, 1 total')
 }

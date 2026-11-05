@@ -1144,3 +1144,16 @@ fn test_test_launcher_builds_host_helper_and_preserves_test_target() {
 		}
 	}
 }
+
+fn test_host_tool_filters_preserve_other_option_operands() {
+	for value in ['-arch', '-os', '-cross', '-arch=amd64', '-os=linux', '-b', '-backend=wasm'] {
+		for option in ['-cflags', '-ldflags', '-d', '-o', '-cf'] {
+			prefix := [option, value]
+			assert external_tool_compile_args('vtest', prefix) == prefix
+			assert external_tool_build_args('vtest', prefix) == prefix
+		}
+	}
+	prefix := ['-cc', 'clang', '-cflags', '-arch', '-cflags', 'arm64', '-arch', 'amd64']
+	assert external_tool_compile_args('vtest', prefix) == ['-cc', 'clang', '-cflags', '-arch',
+		'-cflags', 'arm64']
+}
