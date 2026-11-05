@@ -1,5 +1,7 @@
 module canvas
 
+import math
+
 // The expected instance data was captured from the Metal command stream of
 // Skia Graphite (Chromium 155 revision, macOS) for the same single draws on a
 // 64x48 surface. The data is independent of the GPU; it decides the shader
@@ -255,4 +257,42 @@ fn test_elliptical_strokes_use_the_stroke_renderer() {
 	s.draw_rrect(rr, stroke)!
 	assert s.draws.len == 1 && s.draws[0].step == .tessellate_strokes
 	assert s.draws[0].instance_count == 8
+}
+
+fn patch_floats(bytes []u8, patch int) []f32 {
+	mut out := []f32{}
+	for i in 0 .. 8 {
+		o := patch * wedge_instance_stride + i * 4
+		out << math.f32_from_bits(u32(bytes[o]) | (u32(bytes[o + 1]) << 8) | (u32(bytes[o + 2]) << 16) | (u32(bytes[o +
+			3]) << 24))
+	}
+	return out
+}
+
+fn test_long_curves_are_chopped_like_patch_writer() {
+	mut b := PathBuilder{}
+	b.move_to(0, 0)
+	b.cubic_to(2000, 0, -1000, 2000, 1000, 1000)
+	b.close()
+	path := b.detach()
+	n4 := cubic_p4(4, Point{0, 0}, Point{2000, 0}, Point{-1000, 2000}, Point{1000, 1000},
+		Matrix.identity())
+	chops := account_for_curve(n4) or { panic('not chopped') }
+	assert chops == int(C.ceilf(C.sqrtf(C.sqrtf(n4 / max_parametric_segments_p4))))
+	mut out := []u8{}
+	count, max_n4 := write_wedge_patches(mut out, path, Matrix.identity(), 1)!
+	// The chopped cubics, then the closing line.
+	assert count == chops + 1
+	// Chopped patches use the largest template.
+	assert max_n4 == max_parametric_segments_p4
+	first := patch_floats(out, 0)
+	assert first[0] == 0 && first[1] == 0
+	last := patch_floats(out, chops - 1)
+	assert last[6] == 1000 && last[7] == 1000
+	// Consecutive pieces share their end points.
+	for i in 1 .. chops {
+		assert patch_floats(out, i - 1)[6..8] == patch_floats(out, i)[0..2]
+	}
+	// A curve that fits one patch is not chopped.
+	assert account_for_curve(max_parametric_segments_p4) == none
 }

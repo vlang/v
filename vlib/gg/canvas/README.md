@@ -44,9 +44,10 @@ Strokes of paths, and of rrects the analytic renderer cannot stroke
 first patches joined to closing patches, miter, round and bevel joins, butt,
 round and square caps, cusps, hairlines and cubic convex-180 chops. Convex
 path fills and strokes apply the analytic clip in their fragment shaders.
-Draws that need other renderers (inverse fills, curves with more than 32
-parametric segments, path clips, ...) return an error instead of rendering
-differently.
+Filled curves that need more than 32 parametric segments are chopped like
+Graphite's PatchWriter. Draws that need other renderers (inverse fills,
+stroked curves that need chopping, path clips, ...) return an error instead of
+rendering differently.
 
 Only Metal is supported: the reproduced output is Graphite's Metal output on
 the same GPU.
