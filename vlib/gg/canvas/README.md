@@ -64,8 +64,8 @@ import gg.canvas
 mut ctx := canvas.new_gpu_context()!
 mut surface := ctx.new_surface(width: 64, height: 48)!
 surface.clear(canvas.Color4f{})
-surface.draw_rrect(canvas.RRect.rect_radii(canvas.Rect.ltrb(4.5, 4, 60, 44), [
-	canvas.Point{6, 6}, canvas.Point{6, 6}, canvas.Point{6, 6}, canvas.Point{6, 6}]!),
+r := canvas.Point{6, 6}
+surface.draw_rrect(canvas.RRect.rect_radii(canvas.Rect.ltrb(4.5, 4, 60, 44), [r, r, r, r]!),
 	canvas.Paint.rgba8(35, 167, 79, 255))!
 mut pixels := []u8{len: 64 * 48 * 4}
 surface.read_pixels(pixels.data, 64 * 4)! // BGRA, premultiplied
