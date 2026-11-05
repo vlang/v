@@ -88,6 +88,8 @@ Source bootstrapping also needs Visual Studio's x64 C++ tools and Windows 11's x
 to run the downloaded Windows snapshot. The script then explicitly targets ARM64 for the
 compiler stages, release tools, and application smoke test, checking their PE architecture.
 It builds and runs an application before packaging and does not require an x64 TCC bundle.
+On native Windows ARM64, `v up -skip_v_self` uses this same bootstrap script and requires
+native ARM64 PowerShell 7 and both Visual Studio toolchains; it keeps the compiler native.
 `makev.bat -clang` keeps Clang's installed target: LLVM-MinGW uses its GNU runtime,
 while Visual Studio's Clang uses the adjacent `clang-cl.exe` and the MSVC SDK.
 Note: On FreeBSD, OpenBSD, NetBSD, DragonFly, and Solaris, install GNU `make` and run it as

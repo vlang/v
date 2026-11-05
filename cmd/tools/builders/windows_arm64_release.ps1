@@ -91,7 +91,7 @@ try {
     }
     Invoke-Checked git @('-C', 'vc', 'rev-parse', 'HEAD')
     $snapshot = Join-Path $work 'v_win_compat.c'
-    & ./cmd/tools/vc_compat_uint.ps1 -Source 'vc/v_win.c' -Destination $snapshot
+    & ./cmd/tools/vc_compat_uint.ps1 -Source (Join-Path $root 'vc/v_win.c') -Destination $snapshot
     $bootstrapNative = @('vlib/time/ticks_windows.c', 'vlib/v/winthread_helper_windows.c', 'cmd/v/toolcache_windows_helpers.c')
     $stageNative = @('vlib/builtin/core_windows.c', 'vlib/v/modulecache/file_metadata.c') + $bootstrapNative + @('vlib/sync/thread_helper.c')
     $common = @('/nologo', '/volatile:ms', '/bigobj', '/MD', '/utf-8', '/w', '/std:c11', '/D_CRT_DECLARE_NONSTDC_NAMES=1', "/Fo$work\")
