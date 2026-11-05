@@ -1,4 +1,5 @@
 import os
+import encoding.hex
 
 // Reading the test runner's own stdin would block whenever the suite is
 // started from a terminal, and would return whatever the runner happened to
@@ -20,11 +21,11 @@ fn main() {
 			println(os.get_lines_joined())
 		}
 		'get_raw_stdin' {
-			println(os.get_raw_stdin().bytestr())
+			println(os.get_raw_stdin().hex())
 		}
 		'get_raw_line_then_stdin' {
 			os.get_raw_line()
-			println(os.get_raw_stdin().bytestr())
+			println(os.get_raw_stdin().hex())
 		}
 		'get_raw_lines' {
 			println(os.get_raw_lines().str())
@@ -95,14 +96,20 @@ fn (p StdinProbe) feed(mode string, payload string) string {
 	child.set_args([mode])
 	child.set_redirect_stdio()
 	child.set_stdin_path(input)
-	child.wait()
+	child.run()
 	out := child.stdout_slurp()
 	errs := child.stderr_slurp()
+	child.wait()
 	code := child.code
 	child.close()
 	assert code == 0, errs
 	assert out.ends_with(stdin_marker), out
-	return out[..out.len - stdin_marker.len]
+	value := out[..out.len - stdin_marker.len]
+	if mode in ['get_raw_stdin', 'get_raw_line_then_stdin'] {
+		// Keep invalid UTF-8 and embedded NUL bytes out of Windows text capture.
+		return (hex.decode(value) or { panic(err) }).bytestr()
+	}
+	return value
 }
 
 fn test_get_line_returns_one_line_without_its_newline() {
@@ -205,7 +212,8 @@ fn test_get_raw_stdin_reads_every_byte_until_eof() {
 	assert p.feed('get_raw_stdin', 'a\r\n\n\x00b\xff') == 'a\r\n\n\x00b\xff'
 	assert p.feed('get_raw_stdin', '') == ''
 	assert p.feed('get_raw_stdin', 'unterminated') == 'unterminated'
-	payload := '0123456789'.repeat(1000) + '\x00tail'
+	// The encoded output exceeds common pipe capacities and must drain before wait.
+	payload := '0123456789'.repeat(20_000) + '\x00tail'
 	assert p.feed('get_raw_stdin', payload) == payload
 }
 
