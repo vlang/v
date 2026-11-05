@@ -31,11 +31,14 @@ fn test_native_cache_keys_cover_header_and_toolchain_environment() {
 		for index, key in first {
 			assert second[index] != key, '${name}, cache key ${index}'
 		}
-		os.setenv(name, '', true)
-		empty := native_environment_keys(compiler)
-		os.unsetenv(name)
-		unset := native_environment_keys(compiler)
-		assert empty != unset, name
+		$if !windows {
+			// Windows removes environment variables when their value is empty.
+			os.setenv(name, '', true)
+			empty := native_environment_keys(compiler)
+			os.unsetenv(name)
+			unset := native_environment_keys(compiler)
+			assert empty != unset, name
+		}
 		if value := saved {
 			os.setenv(name, value, true)
 		} else {
