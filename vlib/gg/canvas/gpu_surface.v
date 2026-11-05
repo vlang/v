@@ -1071,7 +1071,7 @@ pub fn (mut s GpuSurface) flush() ! {
 	// A pass with a draw that requires MSAA (depth-only clip draws, path steps)
 	// is multisampled, even on a single-sampled surface.
 	requires_msaa := s.draws.any(is_wedge_step(it.step) || it.step in [.cover_fill,
-		.tessellate_strokes, .cover_inverse_clip, .cover_clip])
+		.cover_inverse_fill, .tessellate_strokes, .cover_inverse_clip, .cover_clip])
 	samples := if s.sample_count == 1 && requires_msaa { 4 } else { s.sample_count }
 	attachments := if samples == s.sample_count {
 		s.attachments

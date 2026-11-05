@@ -3,9 +3,9 @@ module canvas
 // draw_path draws a path like SkCanvas::drawPath() on a Graphite device.
 // Paths that Graphite draws as rects, ovals or double rects use those
 // renderers; other filled paths use the MSAA tessellation renderers (convex
-// wedges, or stencil-and-cover wedges). It returns an error for draws that
-// need renderers which are not ported yet (strokes, inverse fills, large
-// complex paths).
+// wedges, or stencil-and-cover wedges, with an inverse cover for inverse
+// fills). It returns an error for draws that need renderers which are not
+// ported yet (inverse strokes, large complex paths).
 pub fn (mut s GpuSurface) draw_path(path Path, paint Paint) ! {
 	if s.layer != unsafe { nil } {
 		mut top := s.layer
@@ -15,11 +15,24 @@ pub fn (mut s GpuSurface) draw_path(path Path, paint Paint) ! {
 	if !path.is_finite() {
 		return
 	}
-	if path.is_inverse_fill() {
-		return error('gg.canvas: inverse-filled paths are not supported')
-	}
 	if paint.style == .stroke_and_fill {
 		return error('gg.canvas: stroke-and-fill needs the tessellating stroke renderer')
+	}
+	if path.is_inverse_fill() {
+		// SkCanvas::onDrawPath(): inverse fills are not quick-rejected; an
+		// empty one covers everything (drawPaint()).
+		if paint.style != .fill {
+			return error('gg.canvas: inverse-filled strokes are not supported')
+		}
+		bounds := path.bounds()
+		if bounds.width() <= 0 && bounds.height() <= 0 {
+			return error('gg.canvas: empty inverse fills (drawPaint) are not supported')
+		}
+		if nothing_to_draw(paint) {
+			return
+		}
+		s.draw_path_fill(path, paint)!
+		return
 	}
 	if s.quick_reject(path.bounds(), paint) {
 		return
@@ -80,8 +93,9 @@ fn (mut s GpuSurface) draw_path_fill(path Path, paint Paint) ! {
 	if clip.clipped_out {
 		return
 	}
-	// Device::chooseMSAARenderer()
-	convex := path.is_convex()
+	// Device::chooseMSAARenderer(): inverse fills always stencil and cover.
+	inverse := path.is_inverse_fill()
+	convex := !inverse && path.is_convex()
 	if !convex && path.verbs.len >= 50 && clip.shape_bounds.area() > f32(256 * 256) {
 		return error('gg.canvas: the tessellated curves and triangles renderer is not ported')
 	}
@@ -125,7 +139,7 @@ fn (mut s GpuSurface) draw_path_fill(path Path, paint Paint) ! {
 		s.draws[s.draws.len - 1].template_count = wedge_vertex_count(n4)
 	} else {
 		order.stencil_index = s.add_disjoint_stencil(order.paint_order, clip.draw_bounds)
-		step := if path.fill_type == .even_odd {
+		step := if path.is_even_odd() {
 			RenderStep.stencil_wedges_even_odd
 		} else {
 			RenderStep.stencil_wedges_winding
@@ -133,8 +147,17 @@ fn (mut s GpuSurface) draw_path_fill(path Path, paint Paint) ! {
 		s.record_step(step, false, patches, matrix, order, 0, 0, draw_clip, u32(count))
 		s.draws[s.draws.len - 1].template_count = wedge_vertex_count(n4)
 		mut cover := []u8{cap: cover_bounds_instance_stride}
-		write_cover_bounds_instance(mut cover, path.bounds(), s.transform, order.depth, 0)
-		s.record_step(.cover_fill, depends_on_dst, cover, PaintUniforms{
+		cover_step := if inverse { RenderStep.cover_inverse_fill } else { RenderStep.cover_fill }
+		if inverse {
+			// Inverse fills encode device-space bounds as [right, bottom, left, top].
+			sc := clip.scissor
+			write_cover_bounds_instance(mut cover, Rect{
+				vals: [sc.right(), sc.bottom(), -sc.left(), -sc.top()]!
+			}, s.transform, order.depth, 0)
+		} else {
+			write_cover_bounds_instance(mut cover, path.bounds(), s.transform, order.depth, 0)
+		}
+		s.record_step(cover_step, depends_on_dst, cover, PaintUniforms{
 			color:    color
 			shading:  shading
 			gradient: gradient

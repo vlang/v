@@ -529,3 +529,32 @@ fn test_paints_whose_alpha_rounds_to_zero_draw_nothing() {
 	assert !s.quick_reject(r, Paint{ color: Color4f{1, 0, 0, f32(0.002)} })
 	assert s.quick_reject(r, Paint{ color: Color4f{1, 0, 0, 0} })
 }
+
+// Graphite's pixels for an inverse even-odd path: even-odd stencil wedges,
+// then the inverse cover of the scissor where the stencil is zero.
+fn test_inverse_fills_match_graphite_pixels() {
+	mut ctx := new_gpu_context() or {
+		eprintln('skipping: ${err}')
+		return
+	}
+	defer {
+		ctx.free()
+	}
+	mut s := ctx.new_surface(width: 64, height: 48)!
+	defer {
+		s.free()
+	}
+	s.clear(Color4f{})
+	mut b := PathBuilder{}
+	b.move_to(4.4044533115656295, 9.05474489751748)
+	b.cubic_to(5.275330990981304, 8.44699277472387, 5.630927183102384, 6.323505941470868,
+		2.0960942432789023, 5.116001526384584)
+	b.cubic_to(2.6403499688462855, 8.264720441454003, 4.3405849236372935, 6.065771144271345,
+		2.2923395909772486, 6.1651676076721085)
+	b.close()
+	b.set_fill_type(.inverse_even_odd)
+	s.draw_path(b.detach(), Paint{})!
+	mut px := []u8{len: 64 * 48 * 4}
+	s.read_pixels(px.data, 64 * 4)!
+	assert sha256.sum(px).hex()[..16] == '9b08627a29d8eb90'
+}

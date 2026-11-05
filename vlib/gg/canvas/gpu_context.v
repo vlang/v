@@ -49,6 +49,10 @@ enum RenderStep {
 	// (CoverBounds_RegularCover with no paint): its bounds where the stencil
 	// is non-zero.
 	cover_clip
+	// The shaded inverse cover of an inverse-filled path after its stencil
+	// wedges (CoverBounds_InverseCover): the draw's scissor where the stencil
+	// is zero.
+	cover_inverse_fill
 }
 
 // is_wedge_step reports the steps that draw tessellated wedge patches.
@@ -300,7 +304,7 @@ pub fn (mut ctx GpuContext) precompile() {
 	for step in [RenderStep.stencil_wedges_winding, .stencil_wedges_even_odd] {
 		ctx.pipeline(step, 4, false, false, .solid)
 	}
-	for step in [RenderStep.cover_fill, .wedges_shaded, .tessellate_strokes] {
+	for step in [RenderStep.cover_fill, .cover_inverse_fill, .wedges_shaded, .tessellate_strokes] {
 		for blend in [true, false] {
 			ctx.pipeline(step, 4, blend, false, .solid)
 		}
@@ -599,7 +603,8 @@ fn (mut ctx GpuContext) pipeline(step RenderStep, sample_count int, blend bool, 
 				write_mask: 0xff
 			}
 		}
-		.cover_inverse_clip {
+		.cover_inverse_clip, .cover_inverse_fill {
+			// kInverseCoverPass (kPassZero).
 			face := gfx.StencilFaceState{
 				compare:       .equal
 				fail_op:       .zero

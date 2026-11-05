@@ -47,9 +47,9 @@ round and square caps, cubic, quad and conic cusps, hairlines and cubic
 convex-180 chops. Convex
 path fills and strokes apply the analytic clip in their fragment shaders.
 Curves that need more than 32 parametric segments are chopped like Graphite's
-PatchWriter, in fills and strokes. Draws that need other renderers (inverse
-fills, curved path clips under rotations, ...) return an error instead of
-rendering differently.
+PatchWriter, in fills and strokes. Inverse fills use the stencil wedges with
+an inverse cover of the clip. Draws that need other renderers (curved path
+clips under rotations, ...) return an error instead of rendering differently.
 Lines (`draw_line`, and paths that are a single line) are stroked by the
 analytic renderer with caps, like Graphite's `drawPoints`.
 Shapes, path fills and strokes can also be painted with dithered linear and
