@@ -15,6 +15,14 @@ pub const space_formatting = [token.Kind.whitespace, .tab]
 pub const keys_and_space_formatting = [token.Kind.whitespace, .tab, .minus, .bare, .quoted, .boolean,
 	.number, .underscore]
 
+// max_nesting_depth guards the `value_into` recursion of nested arrays and
+// inline tables: the C/WASM backends run on a fixed-size stack, which the
+// parser's mutual recursion can exhaust at a few thousand nesting levels
+// (measured ~4,400 arrays / ~2,800 inline tables on an 8 MiB main-thread
+// stack). 1024 keeps the 1001-level valid fixtures of the external TOML
+// test suites parseable while leaving stack headroom. See issue #31946.
+const max_nesting_depth = 1024
+
 type DottedKey = []string
 
 // str returns the dotted key as a string.
@@ -58,6 +66,9 @@ mut:
 	// Array of Tables state
 	last_aot       DottedKey
 	last_aot_index int
+	// nesting_depth is the depth of nested arrays/inline tables reached by
+	// the current value_into chain; see max_nesting_depth.
+	nesting_depth int
 	// Root of the tree
 	ast_root &ast.Root = &ast.Root{}
 }
@@ -1640,12 +1651,26 @@ fn (mut p Parser) value_into(mut value ast.Value) ! {
 		'parsing value from token "${p.tok.kind}" "${p.tok.lit}"...')
 	match p.tok.kind {
 		.lsbr {
+			if p.nesting_depth >= max_nesting_depth {
+				return error('exceeded the maximum nesting depth')
+			}
+			p.nesting_depth++
+			defer {
+				p.nesting_depth--
+			}
 			value = ast.Value([]ast.Value{})
 			if mut value is []ast.Value {
 				p.array_into(mut value)!
 			}
 		}
 		.lcbr {
+			if p.nesting_depth >= max_nesting_depth {
+				return error('exceeded the maximum nesting depth')
+			}
+			p.nesting_depth++
+			defer {
+				p.nesting_depth--
+			}
 			p.ignore_while(space_formatting)!
 			value = ast.Value(map[string]ast.Value{})
 			if mut value is map[string]ast.Value {
