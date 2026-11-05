@@ -14621,6 +14621,11 @@ pub fn run(args []string) {
 			exit(1)
 		}
 	} else if backend == 'arm64' {
+		if msg := unsupported_arm64_c_source_error(a) {
+			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			eprintln(msg)
+			exit(1)
+		}
 		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
 			eprintln(msg)
@@ -20658,6 +20663,24 @@ fn compare_print_notices(a &types.TypeError, b &types.TypeError) int {
 		return if a_is_unused_param { 1 } else { -1 }
 	}
 	return int(a.node) - int(b.node)
+}
+
+// unsupported_arm64_c_source_error rejects native source includes the ARM64 linker cannot link.
+fn unsupported_arm64_c_source_error(a &flat.FlatAst) ?string {
+	for node in a.nodes {
+		if node.kind != .directive || node.value !in ['include', 'insert', 'preinclude', 'postinclude'] {
+			continue
+		}
+		path := node.typ_text().trim_space().trim('"<>')
+		if !path.ends_with('.c') && !path.ends_with('.cc') && !path.ends_with('.cpp')
+			&& !path.ends_with('.cxx') && !path.ends_with('.C') && !path.ends_with('.m')
+			&& !path.ends_with('.mm') && !path.ends_with('.s') && !path.ends_with('.S') {
+			continue
+		}
+		location := backend_node_location(a, node)
+		return '${location}error: the V arm64 backend does not support including native source `${path}`; use the C backend'
+	}
+	return none
 }
 
 fn unsupported_backend_error(a &flat.FlatAst, tc &types.TypeChecker, used_fns map[string]bool, backend string) ?string {
