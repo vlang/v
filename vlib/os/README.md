@@ -356,6 +356,7 @@ messages. Error text returned by operations using it retains the message's punct
 
 On Windows, `os.exec()` captures bytes from successful child-pipe reads only. Closing the output
 pipe does not append a previous chunk again. Commands with no output return an empty output string.
+Both capture-pipe handles are released after execution, including when starting the child fails.
 
 ### Writing arrays
 
