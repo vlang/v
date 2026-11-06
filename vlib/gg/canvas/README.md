@@ -90,6 +90,24 @@ releases masks, the copied font, and the native bitmap/context. Call
 usable, and `typeface.free()` when the caller finishes with a face. The latter
 also evicts that face's strikes and releases its retained native font.
 
+The native text tests render the available glyph-run cases (five with all fixture fonts) and
+check nonempty premultiplied pixels, cache reuse/regeneration, and integer translation with
+clipping. A missing optional system font skips its case with a diagnostic; at least one case must
+run. Fixed A8 mask vectors separately check exact compositor pixels for opaque and translucent
+sources and destinations. These checks do not depend on another machine's CoreGraphics
+rasterization.
+
+The original Skia m144 whole-image hashes remain available as a reference-host check:
+
+```sh
+V_CANVAS_TEXT_SKIA_GOLDENS=1 ./v vlib/gg/canvas/text_test.v
+```
+
+Use this only with the fonts, CoreGraphics version and font-smoothing configuration that produced
+the captures. The original capture environment was not recorded, so the hashes are not a portable
+macOS baseline. This opt-in check supplies the whole-image Skia comparison; the default tests
+cover native text integration and exact mask compositing without claiming cross-host pixel parity.
+
 ```v
 import gg.canvas
 
