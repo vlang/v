@@ -7,7 +7,10 @@ import os
 // drawing the same runs into BGRA8 premultiplied sRGB surfaces with the
 // Chromium text settings Vox uses (subpixel positioning, linear metrics,
 // zero contrast). The glyph masks come from CoreGraphics, so the hashes are
-// specific to the macOS fonts and CoreGraphics of the capturing host.
+// specific to the fonts, CoreGraphics and font-smoothing configuration of the
+// capturing host. That environment was not recorded with the captures. Keep
+// them as an opt-in reference-host comparison; the normal native tests below
+// check every run without assuming that another host has identical masks.
 
 struct TextCase {
 	name       string
@@ -104,10 +107,50 @@ fn text_cases() []TextCase {
 	]
 }
 
-fn test_glyph_runs_match_skia() {
+fn text_case_font(c TextCase, typeface &Typeface) Font {
+	mut font := Font{
+		typeface:       typeface
+		size:           c.size
+		subpixel:       true
+		linear_metrics: true
+		edging:         .subpixel_antialias
+	}
+	if c.antialias {
+		font.edging = .antialias
+		font.hinting = .none
+	}
+	return font
+}
+
+fn render_text_case(c TextCase, font Font, offset Point, padding int) ![]u32 {
+	mut surface := new_raster_surface(
+		width:  c.width + 2 * padding
+		height: c.height + 2 * padding
+		props:  SurfaceProps{
+			text_contrast: 0
+			text_gamma:    if c.antialias { f32(1) } else { f32(0) }
+		}
+	)!
+	surface.clear(c.background)
+	m := c.matrix
+	surface.set_matrix(Matrix.values([m[0], m[2], m[4] + offset.x + f32(padding), m[1], m[3],
+		m[5] + offset.y + f32(padding), 0, 0, 1]!))
+	mut positions := []Point{}
+	for p in c.positions {
+		positions << Point{p.x + c.origin.x, p.y + c.origin.y}
+	}
+	surface.draw_glyphs(font, c.glyphs, positions, Point{}, Paint.rgba8(c.color[0],
+		c.color[1], c.color[2], c.color[3]))!
+	return surface.pixels
+}
+
+fn test_glyph_runs_preserve_pixels_across_cache_and_integer_translation() {
 	$if !macos {
 		return
 	}
+	clear_text_cache()
+	defer { clear_text_cache() }
+	mut rendered := 0
 	for c in text_cases() {
 		if !os.exists(c.font) {
 			eprintln('skipping ${c.name}: ${c.font} is missing')
@@ -115,36 +158,74 @@ fn test_glyph_runs_match_skia() {
 		}
 		mut typeface := Typeface.from_file(c.font)!
 		defer { typeface.free() }
-		mut font := Font{
-			typeface:       typeface
-			size:           c.size
-			subpixel:       true
-			linear_metrics: true
-			edging:         .subpixel_antialias
-		}
-		if c.antialias {
-			font.edging = .antialias
-			font.hinting = .none
-		}
-		mut surface := new_raster_surface(
-			width:  c.width
-			height: c.height
-			props:  SurfaceProps{
-				text_contrast: 0
-				text_gamma:    if c.antialias { f32(1) } else { f32(0) }
+		font := text_case_font(c, typeface)
+		pixels := render_text_case(c, font, Point{}, 0)!
+		rendered++
+		assert pixels.any(it != c.background), c.name
+		for p in pixels {
+			alpha := p >> 24
+			assert (p & 0xff) <= alpha && ((p >> 8) & 0xff) <= alpha
+				&& ((p >> 16) & 0xff) <= alpha, c.name
+			if c.background >> 24 == 255 {
+				assert alpha == 255, c.name
 			}
-		)!
-		surface.clear(c.background)
-		m := c.matrix
-		surface.set_matrix(Matrix.values([m[0], m[2], m[4], m[1], m[3], m[5], 0, 0, 1]!))
-		mut positions := []Point{}
-		for p in c.positions {
-			positions << Point{p.x + c.origin.x, p.y + c.origin.y}
 		}
-		surface.draw_glyphs(font, c.glyphs, positions, Point{}, Paint.rgba8(c.color[0],
-			c.color[1], c.color[2], c.color[3]))!
-		mut bytes := []u8{len: surface.pixels.len * 4}
-		for i, p in surface.pixels {
+		if c.background == 0 {
+			assert pixels.all((it & 0xffffff) == 0), c.name
+			assert pixels.any((it >> 24) > 0 && (it >> 24) < 255), c.name
+		}
+		assert render_text_case(c, font, Point{}, 0)! == pixels, '${c.name}: cached glyphs'
+		clear_text_cache()
+		assert render_text_case(c, font, Point{}, 0)! == pixels, '${c.name}: regenerated glyphs'
+		// Check that the original surface did not discard any mask pixels. The
+		// translation comparisons below can then use its full raster as input.
+		padding := 32
+		padded := render_text_case(c, font, Point{}, padding)!
+		padded_width := c.width + 2 * padding
+		for y in 0 .. c.height + 2 * padding {
+			for x in 0 .. padded_width {
+				expected := if x >= padding && x < padding + c.width && y >= padding
+					&& y < padding + c.height {
+					pixels[(y - padding) * c.width + x - padding]
+				} else {
+					c.background
+				}
+				assert padded[y * padded_width + x] == expected, '${c.name}: source bounds'
+			}
+		}
+		// Integer device translations preserve subpixel buckets and the masks.
+		// The negative translation also clips the beginning/top of these runs.
+		for offset in [Point{7, 5}, Point{-12, -16}] {
+			mut shifted := []u32{len: pixels.len, init: c.background}
+			for y in 0 .. c.height {
+				for x in 0 .. c.width {
+					dx := x + int(offset.x)
+					dy := y + int(offset.y)
+					if dx >= 0 && dx < c.width && dy >= 0 && dy < c.height {
+						shifted[dy * c.width + dx] = pixels[y * c.width + x]
+					}
+				}
+			}
+			assert shifted.any(it != c.background), c.name
+			assert render_text_case(c, font, offset, 0)! == shifted, '${c.name}: integer translation ${offset}'
+		}
+	}
+	assert rendered > 0, 'none of the native glyph-run test fonts are installed'
+}
+
+fn test_glyph_runs_match_skia() {
+	$if !macos {
+		return
+	}
+	if os.getenv('V_CANVAS_TEXT_SKIA_GOLDENS') != '1' {
+		return
+	}
+	for c in text_cases() {
+		mut typeface := Typeface.from_file(c.font)!
+		defer { typeface.free() }
+		pixels := render_text_case(c, text_case_font(c, typeface), Point{}, 0)!
+		mut bytes := []u8{len: pixels.len * 4}
+		for i, p in pixels {
 			bytes[4 * i] = u8(p)
 			bytes[4 * i + 1] = u8(p >> 8)
 			bytes[4 * i + 2] = u8(p >> 16)
