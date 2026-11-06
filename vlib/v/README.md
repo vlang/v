@@ -537,6 +537,7 @@ renamed PE files with other extensions can also be queried.
 Cached programs retain the element layouts required by fixed-array aliases and option payloads.
 Cached native exports share a program-local runtime initialization guard with the entry point,
 so a module object built for a script can also be linked by a program with `fn main()`.
+Cached headers retain export metadata even when the entry module declares no native exports.
 Calls through exported C symbols do not repeat module initialization or replace process arguments.
 In executables, native calls before `main` leave runtime initialization pending until process
 arguments are available. Direct `@[_naked]` exports contain no generated initialization calls;
