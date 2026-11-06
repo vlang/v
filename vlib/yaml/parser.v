@@ -145,6 +145,10 @@ fn (mut p Parser) parse_mapping_value(rest_in string, indent int) !Any {
 		next_indent := p.peek_next_indent()
 		if next_indent > indent {
 			p.parse_node(next_indent)!
+		} else if next_indent == indent && p.peek_next_is_sequence_entry() {
+			// YAML 1.2 §8.2.3: a block sequence may sit at the same
+			// indentation as the key it is the value of (`key:\n- item`).
+			p.parse_sequence(indent)!
 		} else {
 			null
 		}
@@ -481,6 +485,21 @@ fn (p &Parser) peek_next_indent() int {
 		return p.line_indent(i) or { -1 }
 	}
 	return -1
+}
+
+// peek_next_is_sequence_entry reports whether the next non-ignorable line is a
+// block sequence entry (`- item` or a bare `-`).
+fn (p &Parser) peek_next_is_sequence_entry() bool {
+	mut i := p.idx
+	for i < p.lines.len {
+		trimmed := strip_comments(p.lines[i]).trim_space()
+		if p.is_ignorable_line(trimmed) {
+			i++
+			continue
+		}
+		return trimmed == '-' || trimmed.starts_with('- ')
+	}
+	return false
 }
 
 fn (p &Parser) current_content() !string {
