@@ -82,6 +82,14 @@ resp := http.fetch(
 
 HTTPS requests use HTTP/1.1 by default. Set `enable_http2: true` in
 `http.fetch` or a `http.Request` to opt in to HTTP/2 when the server supports it.
+Set `use_tls13: true` to use the experimental `x.net.tls.Conn` TLS 1.3 transport
+for HTTPS instead of the platform TLS backend. It supports HTTP/1.1 and pooled
+keep-alive connections, but not HTTP/2, HTTP/3, proxies, or client certificates;
+combining `use_tls13` with those options returns an error. It is opt-in and does
+not change the default backend. TLS verification uses the TLS13 stack's system
+root bundle unless a custom `verify` bundle is supplied. Since TLS13 connection
+timeouts are fixed at dial time, read/write timeout settings are part of its
+connection-pool key, and the shorter positive timeout bounds both directions.
 
 Cookies given in `cookies` of `http.fetch`, or added with `Request.add_cookie`, are sent in
 one `Cookie` header as `name=value` pairs. A value goes through `sanitize_cookie_value`. A
