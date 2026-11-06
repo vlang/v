@@ -129,6 +129,7 @@ fn main() {
 	passed := if args.len > 0 && args[0] == 'tool' { args[1..] } else { args }
 	mut fp := flag.new_flag_parser(passed)
 	fp.application('v tool')
+	fp.version('0.0.1')
 	fp.description('Run a tool module by name.')
 	fp.arguments_description('[--] [NAME] [ARG]...')
 	show_help := fp.bool('help', `h`, false, 'Show this help.')
