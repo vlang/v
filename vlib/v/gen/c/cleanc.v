@@ -20788,6 +20788,24 @@ fn (mut g FlatGen) headerless_execinfo_declarations() {
 }
 
 fn (mut g FlatGen) system_libc_preamble() {
+	if 'freestanding' in g.compile_defines {
+		// A freestanding program links no pthread and no stdio; emit only the
+		// data shape and stubs that stay linkable with -nostdlib. The spawn
+		// stub never runs: freestanding programs do not create threads.
+		g.writeln('typedef struct { void* handle; } __v_thread;')
+		g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
+		g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return a.handle == b.handle; }')
+		g.writeln('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;')
+		g.writeln('static void* __v_thread_alloc(size_t size) { return malloc(size); }')
+		g.writeln('static void __v_thread_free(void* ptr) { free(ptr); }')
+		g.writeln('static __v_thread __v_thread_spawn(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
+		g.writeln('\tif (cleanup) { cleanup(arg); }')
+		g.writeln('\treturn (__v_thread){0};')
+		g.writeln('}')
+		g.writeln('static void* __v_thread_join(__v_thread thread) { (void)thread; return (void*)0; }')
+		g.thread_signal_stack_runtime()
+		return
+	}
 	g.writeln('#ifndef _WIN32')
 	g.writeln('extern char** environ;')
 	g.writeln('#endif')
@@ -22053,6 +22071,12 @@ fn (mut g FlatGen) headerless_utsname_struct() {
 	g.writeln('#endif')
 	// FreeBSD's exported uname symbol uses the legacy 32-byte field ABI. Its
 	// native header wraps __xuname with the field width of the current struct.
+	// A freestanding program links no libc, so it has no __xuname: the os module
+	// reads uname through the runtime there, and the wrapper is left out, because
+	// the C.uname prototype would make the C compiler emit it anyway.
+	if 'freestanding' in g.compile_defines {
+		return
+	}
 	g.writeln('#ifdef __FreeBSD__')
 	g.writeln('int __xuname(int, void*);')
 	g.writeln('static inline int uname(struct utsname* name) { return __xuname((int)sizeof(name->sysname), (void*)name); }')

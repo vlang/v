@@ -12,12 +12,15 @@ __global g_main_thread_id = signal_thread_id()
 
 @[inline]
 fn signal_thread_id() u64 {
-	$if vlibc ? {
-		$if freestanding {
-			return u64(vlibc_sys_gettid())
-		}
+	// `$else` keeps pthread_self out of freestanding builds, whose native backends
+	// would otherwise still emit the unreachable call
+	$if vlibc ?&& freestanding {
+		return u64(vlibc_sys_gettid())
+	} $else $if freestanding || syscalls {
+		return bf_gettid()
+	} $else {
+		return u64(C.pthread_self())
 	}
-	return u64(C.pthread_self())
 }
 
 // is_main_thread returns whether the current thread is the main thread.

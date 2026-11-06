@@ -52,3 +52,12 @@ int uname(struct utsname* name) { return __xuname(32, name); }
 	ran := cmdexec.run(executable, [])
 	assert ran.exit_code == 0, 'exit ${ran.exit_code}: ${ran.output}'
 }
+
+fn test_headerless_freebsd_uname_wrapper_is_left_out_of_freestanding_builds() {
+	mut g := FlatGen.new()
+	g.compile_defines << 'freestanding'
+	g.headerless_utsname_struct()
+	out := g.sb.str()
+	assert out.contains('struct utsname')
+	assert !out.contains('__xuname'), out
+}

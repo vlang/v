@@ -1,5 +1,6 @@
 module arm64
 
+import encoding.binary
 import v.ssa
 
 // Gen stores state for ARM64 code generation.
@@ -26,6 +27,10 @@ mut:
 	string_cache         map[string]int
 	cur_func_ret_type    ssa.TypeID
 	cur_func_sret_offset int
+	// prune_unused emits only the functions reachable from main (freestanding
+	// objects, whose runtime registers helpers the program may never call).
+pub mut:
+	prune_unused bool
 }
 
 // PendingJmp represents pending jmp data used by arm64.
@@ -75,7 +80,11 @@ fn new_gen_with_text_capacity(m &ssa.Module, text_capacity int) &Gen {
 // gen supports gen handling for Gen.
 pub fn (mut g Gen) gen() {
 	g.gen_pre_pass()
+	reachable := if g.prune_unused { g.reachable_functions() } else { []bool{} }
 	for fi in 0 .. g.m.funcs.len {
+		if reachable.len > 0 && !reachable[fi] {
+			continue
+		}
 		g.gen_func(fi)
 	}
 	g.materialize_text()
@@ -376,6 +385,39 @@ fn arm64_max_int(a int, b int) int {
 	return if a > b { a } else { b }
 }
 
+// reachable_functions marks the functions reachable from main through function
+// references in the instructions of each reachable body.
+fn (g &Gen) reachable_functions() []bool {
+	mut reach := []bool{len: g.m.funcs.len}
+	mut work := []int{}
+	for i, f in g.m.funcs {
+		if f.name == 'main' {
+			reach[i] = true
+			work << i
+		}
+	}
+	for work.len > 0 {
+		fi := work.pop()
+		for bid in g.m.funcs[fi].blocks {
+			for vid in g.m.blocks[bid].instrs {
+				instr := g.m.instrs[g.m.values[vid].index]
+				for op in instr.operands {
+					if op <= 0 || op >= g.m.values.len {
+						continue
+					}
+					v := g.m.values[op]
+					if v.kind == .func_ref && v.index >= 0 && v.index < g.m.funcs.len
+						&& !reach[v.index] {
+						reach[v.index] = true
+						work << v.index
+					}
+				}
+			}
+		}
+	}
+	return reach
+}
+
 // gen_pre_pass emits pre pass output for arm64.
 fn (mut g Gen) gen_pre_pass() {
 	mut data_offset := u64(0)
@@ -392,6 +434,30 @@ fn (mut g Gen) gen_pre_pass() {
 
 // gen_post_pass emits post pass output for arm64.
 fn (mut g Gen) gen_post_pass() {
+	// `C._wyp` is a generated C constant that map hashing reads by name. Its
+	// bytes follow the globals' data, so the globals' offsets stay valid.
+	mut globals_end := u64(0)
+	for gi in 0 .. g.m.globals.len {
+		if g.m.globals[gi].linkage == .external {
+			continue
+		}
+		globals_end = (globals_end + 7) & ~u64(7)
+		size := g.m.type_size(g.m.globals[gi].typ)
+		globals_end += u64(if size > 0 { size } else { 8 })
+	}
+	for g.macho.data_data.len < int(globals_end) {
+		g.macho.data_data << 0
+	}
+	g.macho.add_symbol('__wyp', u64(g.macho.data_data.len), true, 3)
+	secrets := [u64(0x2d358dccaa6c78a5), u64(0x8bb84b93962eacc9), u64(0x4b33a62ed433d4a3),
+		u64(0x4d5a2da51de1aa47)]
+	for secret in secrets {
+		mut bytes := []u8{len: 8}
+		for i in 0 .. 8 {
+			bytes[i] = u8(secret >> (i * 8))
+		}
+		g.macho.data_data << bytes
+	}
 	for gi in 0 .. g.m.globals.len {
 		if g.m.globals[gi].linkage == .external {
 			continue
@@ -426,7 +492,7 @@ fn (mut g Gen) gen_func(func_idx int) {
 	if func.blocks.len == 0 {
 		fn_start := g.text_offset()
 		sym_name := '_' + func.name
-		g.macho.add_symbol(sym_name, u64(fn_start), false, 1)
+		g.macho.add_symbol(sym_name, u64(fn_start), true, 1)
 		g.emit32(asm_ret())
 		g.fn_offsets[func.name] = fn_start
 		return
@@ -511,7 +577,7 @@ fn (mut g Gen) gen_func(func_idx int) {
 
 	fn_start := g.text_offset()
 	sym_name := '_' + func.name
-	g.macho.add_symbol(sym_name, u64(fn_start), false, 1)
+	g.macho.add_symbol(sym_name, u64(fn_start), true, 1)
 	g.fn_offsets[func.name] = fn_start
 
 	// Prologue: stp fp, lr, [sp, -16]! ; mov fp, sp ; sub sp, sp, #frame
@@ -1362,6 +1428,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 			}
 		}
 		.struct_init {}
+		.inline_asm {
+			g.gen_inline_asm(val_id)
+		}
 		else {}
 	}
 }
@@ -1533,7 +1602,7 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 	}
 	fn_ref_id := instr.operands[0]
 	is_indirect := instr.op == .call_indirect
-	is_c_extern := !is_indirect && fn_ref_id >= 0 && fn_ref_id < g.m.values.len
+	mut is_c_extern := !is_indirect && fn_ref_id >= 0 && fn_ref_id < g.m.values.len
 		&& g.m.values[fn_ref_id].kind == .func_ref && g.m.values[fn_ref_id].index >= 0
 		&& g.m.values[fn_ref_id].index < g.m.funcs.len
 		&& g.m.funcs[g.m.values[fn_ref_id].index].is_c_extern
@@ -1547,6 +1616,11 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 	mut fn_name := ''
 	if !is_indirect {
 		fn_name = fn_ref.name
+		// A libc-shaped name the freestanding runtime defines calls that body.
+		if mapped := g.m.export_c_names[fn_name] {
+			fn_name = mapped
+			is_c_extern = false
+		}
 	}
 	mut c_return_hfa := Arm64HfaLayout{}
 	if is_c_extern {

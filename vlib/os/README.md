@@ -394,3 +394,30 @@ With `-d vlibc`, Unix C builds use the experimental raw syscall runtime for `rea
 New files use mode `0666` filtered by the process umask. Read and write errors retain their
 POSIX error codes; interrupted operations retry. `exists` follows symbolic links.
 See [the vlibc runtime notes](../builtin/README.vlibc.md) for supported platforms and limitations.
+
+### `-freestanding` backend
+
+With `-freestanding` (and without `-d vlibc`), the os module keeps its API while linking no
+libc: file, environment and process calls go through builtin's `bf_*` layer, which makes raw
+syscalls through each target's runtime (`builtin/linux_bare`, `freebsd_bare`, `netbsd_bare`,
+`dragonfly_bare`, `macos_bare`, `solaris_bare`, and `freestanding_d_freestanding.c.v` for the
+native backends), following the shapes of Zig's `std/os/linux.zig` (per-arch syscall tables,
+raw `syscall0..syscall6` entries, and kernel errnos normalized to the Linux numbers).
+`-syscalls` uses the same layer in a libc-linked build. This covers the file and environment
+core: `open_file`, `open`, `create`, the standard files in `stdin`/`stdout`/`stderr`,
+`File.read/2` and the write/read/seek surface of `os.File`, `write_file`, `read_file`,
+`read_bytes`, `write_bytes`, `rename`, `truncate`, `mkdir`, `ls`, `rm`, `rmdir`, `chmod`,
+`stat`, `lstat`, `exists`, `is_file`, `is_dir`, `is_executable`, `is_writable`, `getwd`,
+`chdir`, `executable`, `getpid`, `getppid`, `uname`, `getenv`, and `environ`, plus the
+process calls `fork`, `execve` and `wait4`. Error strings come from an in-module errno table
+instead of `strerror(3)`, `last_error` reads the runtime's errno, and `sleep_ms` and the
+`os.fd_*` calls go through syscalls as well. On illumos, `wait4` follows its libc: it is
+emulated with `waitid` and fills only the approximate times in `rusage`.
+
+Two purity notes: `real_path` makes a path absolute and resolves `.` and `..` lexically,
+without chasing symbolic links (there is no `realpath` syscall); and `setenv`/`unsetenv`
+return -1, because the startup environment snapshot in the kernel is immutable and a
+freestanding process has no saved envp block to rewrite. Operations that need libc (for
+example `system`, `exec`, `mmap`, threads) pull libc symbols at link time, which
+`-nostdlib` then reports as missing-symbol errors; A freestanding build stops supporting
+such functions when they are used.
