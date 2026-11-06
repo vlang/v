@@ -3,6 +3,19 @@ module driver
 import os
 import v.cmdexec
 
+fn deprecated_integer_backend_args(backend string) []string {
+	if backend != 'fastc' {
+		return ['-b', backend]
+	}
+	// GCC CI sets VFLAGS for the C backend. FastC needs its own supported C compiler.
+	$if !windows {
+		if os.exists_in_system_path('clang') {
+			return ['-b', backend, '-cc', 'clang']
+		}
+	}
+	return ['-b', backend, '-cc', 'tcc']
+}
+
 fn test_platform_signed_c_binding_preserves_values_above_32_bits() {
 	$if !macos && !linux {
 		return
@@ -22,7 +35,8 @@ fn main() {
 ') or { panic(err) }
 	for backend in ['c', 'fastc'] {
 		program := os.join_path(root, backend)
-		built := cmdexec.run(@VEXE, ['-b', backend, '-o', program, root])
+		built := cmdexec.run(@VEXE, [...deprecated_integer_backend_args(backend), '-o', program,
+			root])
 		assert built.exit_code == 0, built.output
 		ran := cmdexec.run(program, [])
 		assert ran.exit_code == 0, ran.output
@@ -46,7 +60,7 @@ fn main() {
 ') or { panic(err) }
 	for backend in ['c', 'fastc'] {
 		output := os.join_path(root, backend + '.c')
-		args := ['-b', backend, '-o', output, root]
+		args := [...deprecated_integer_backend_args(backend), '-o', output, root]
 		built := cmdexec.run(@VEXE, args)
 		assert built.exit_code == 0, built.output
 		assert built.output.contains('`isize` is deprecated; use `int` instead'), built.output
@@ -55,7 +69,12 @@ fn main() {
 		assert built.output.contains('main.v:4:'), built.output
 		$if macos || linux {
 			program := os.join_path(root, backend)
-			compiled := cmdexec.run(@VEXE, ['-b', backend, '-o', program, root])
+			compiled := cmdexec.run(@VEXE, [
+				...deprecated_integer_backend_args(backend),
+				'-o',
+				program,
+				root,
+			])
 			assert compiled.exit_code == 0, compiled.output
 			ran := cmdexec.run(program, [])
 			assert ran.exit_code == 0, ran.output
@@ -82,7 +101,8 @@ fn test_fastc_warns_about_each_form_a_deprecated_integer_type_can_take() {
 		dir := os.join_path(root, name)
 		os.mkdir_all(dir) or { panic(err) }
 		os.write_file(os.join_path(dir, 'main.v'), source) or { panic(err) }
-		built := cmdexec.run(@VEXE, ['-b', 'fastc', '-o', os.join_path(root, name + '.c'), dir])
+		built := cmdexec.run(@VEXE, [...deprecated_integer_backend_args('fastc'), '-o',
+			os.join_path(root, name + '.c'), dir])
 		assert built.exit_code == 0, built.output
 		assert built.output.contains('`usize` is deprecated; use `uint` instead'), '${name}: ${built.output}'
 	}
@@ -95,7 +115,8 @@ fn test_fastc_does_not_warn_about_a_mention_in_a_comment_or_string() {
 	os.write_file(os.join_path(root, 'main.v'), "// usize and isize\nfn main() {\n\tprintln('usize isize')\n}\n") or {
 		panic(err)
 	}
-	built := cmdexec.run(@VEXE, ['-b', 'fastc', '-o', os.join_path(root, 'out.c'), root])
+	built := cmdexec.run(@VEXE, [...deprecated_integer_backend_args('fastc'), '-o',
+		os.join_path(root, 'out.c'), root])
 	assert built.exit_code == 0, built.output
 	assert !built.output.contains('is deprecated; use'), built.output
 }
