@@ -369,14 +369,55 @@ $if freestanding && native && linux {
 		}
 	}
 
+	// bmem_aligned_alloc returns `n` bytes at an `align`-aligned address, for a power
+	// of two above the header size. The mapping starts with its length; the user size
+	// and the displacement from the mapping start sit just before the user pointer,
+	// so free and realloc find the mapping from the aligned pointer alone.
+	fn bmem_aligned_alloc(n u64, align u64) voidptr {
+		mapping := n + align + 2 * bare_block_header_size
+		a, _ := bsys_mmap(unsafe { nil }, mapping)
+		if a == unsafe { nil } {
+			return unsafe { nil }
+		}
+		base := uint(a)
+		user := (base + 2 * uint(bare_block_header_size) + uint(align) - 1) & ~(uint(align) - 1)
+		unsafe {
+			*&u64(voidptr(a)) = mapping
+			*&u64(voidptr(user - uint(bare_block_header_size))) = n
+			*&u64(voidptr(user - 8)) = u64(user - base)
+			return voidptr(user)
+		}
+	}
+
+	// bmem_displacement is zero for a plain block, whose word before the size is unused.
+	fn bmem_displacement(ptr voidptr) u64 {
+		unsafe {
+			return *&u64(voidptr(uint(ptr) - 8))
+		}
+	}
+
 	// bmem_block_start reads the mapping start for a user pointer.
 	fn bmem_block_start(ptr voidptr) &u8 {
+		disp := bmem_displacement(ptr)
 		unsafe {
-			return &u8(voidptr(uint(ptr) - uint(bare_block_header_size)))
+			if disp == 0 {
+				return &u8(voidptr(uint(ptr) - uint(bare_block_header_size)))
+			}
+			return &u8(voidptr(uint(ptr) - uint(disp)))
 		}
 	}
 
 	fn bmem_block_size(ptr voidptr) u64 {
+		unsafe {
+			return *&u64(voidptr(uint(ptr) - uint(bare_block_header_size)))
+		}
+	}
+
+	// bmem_mapping_len is the length of the mapping a user pointer lives in.
+	fn bmem_mapping_len(ptr voidptr) u64 {
+		if bmem_displacement(ptr) == 0 {
+			return bmem_block_size(ptr) + bare_block_header_size
+		}
 		unsafe {
 			return *&u64(voidptr(bmem_block_start(ptr)))
 		}
@@ -812,7 +853,7 @@ $if freestanding && native && linux {
 			return
 		}
 		unsafe {
-			bsys_munmap(bmem_block_start(ptr), bmem_block_size(ptr) + bare_block_header_size)
+			bsys_munmap(bmem_block_start(ptr), bmem_mapping_len(ptr))
 		}
 	}
 
@@ -834,7 +875,7 @@ $if freestanding && native && linux {
 			}
 			min_size := if old_size < u64(new_size) { old_size } else { u64(new_size) }
 			memcpy(new_addr, old_area, uint(min_size))
-			bsys_munmap(bmem_block_start(old_area), old_size + bare_block_header_size)
+			bsys_munmap(bmem_block_start(old_area), bmem_mapping_len(old_area))
 			return new_addr
 		}
 	}

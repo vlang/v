@@ -248,13 +248,15 @@ $if freestanding || syscalls {
 			return '.'
 		}
 		mut comps := []string{cap: 24}
-		mut absolute := false
+		if !fpath.starts_with('/') {
+			for p in getwd().split('/') {
+				if p != '' {
+					comps << p
+				}
+			}
+		}
 		for p in fpath.split('/') {
 			if p == '' || p == '.' {
-				// a leading empty element marks an absolute path
-				if p == '' && comps.len == 0 {
-					absolute = true
-				}
 				continue
 			}
 			if p == '..' {
@@ -265,17 +267,10 @@ $if freestanding || syscalls {
 			}
 			comps << p
 		}
-		if absolute {
-			if comps.len == 0 {
-				return '/'
-			}
-			return '/' + comps.join('/')
-		}
-		wd := getwd()
 		if comps.len == 0 {
-			return wd
+			return '/'
 		}
-		return wd + '/' + comps.join('/')
+		return '/' + comps.join('/')
 	}
 
 	// fsys_ioctl issues `request` on `fd` (FIONREAD) through the bf surface.

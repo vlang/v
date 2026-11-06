@@ -13,32 +13,58 @@ module builtin
 
 $if (freestanding || syscalls) && !i386 {
 
-	// Linux syscall numbers (amd64 table; arm64 openat/lseek/getdents64/statx/mem
-	// match this file because it only reaches its *at/64-bit entries).
-	const bf_nr_read = u64(0)
-	const bf_nr_write = u64(1)
-	const bf_nr_close = u64(3)
-	const bf_nr_lseek = u64(8)
-	const bf_nr_openat = u64(257)
-	const bf_nr_getdents64 = u64(217)
-	const bf_nr_statx = u64(332)
-	const bf_nr_getcwd = u64(79)
-	const bf_nr_chdir = u64(80)
-	const bf_nr_nanosleep = u64(35)
-	const bf_nr_mkdir = u64(83)
-	const bf_nr_unlink = u64(87)
-	const bf_nr_rmdir = u64(84)
-	const bf_nr_rename = u64(82)
-	const bf_nr_readlink = u64(89)
-	const bf_nr_ftruncate = u64(77)
-	const bf_nr_fchmodat = u64(268)
-	const bf_nr_ioctl = u64(16)
-	const bf_nr_thr_self = u64(186)
-	const bf_nr_getppid = u64(110)
-	const bf_nr_uname = u64(63)
-	const bf_nr_statfs = u64(137)
+	// Linux syscall numbers, per architecture. arm64 (asm-generic) has no legacy
+	// path calls: mkdir, unlink, rmdir, rename and readlink take their *at forms there,
+	// which the functions below select with $if arm64.
+	$if arm64 {
+		const bf_nr_read = u64(63)
+		const bf_nr_write = u64(64)
+		const bf_nr_close = u64(57)
+		const bf_nr_lseek = u64(62)
+		const bf_nr_openat = u64(56)
+		const bf_nr_getdents64 = u64(61)
+		const bf_nr_statx = u64(291)
+		const bf_nr_getcwd = u64(17)
+		const bf_nr_chdir = u64(49)
+		const bf_nr_nanosleep = u64(101)
+		const bf_nr_mkdirat = u64(34)
+		const bf_nr_unlinkat = u64(35)
+		const bf_nr_renameat = u64(38)
+		const bf_nr_readlinkat = u64(78)
+		const bf_nr_ftruncate = u64(46)
+		const bf_nr_fchmodat = u64(53)
+		const bf_nr_ioctl = u64(29)
+		const bf_nr_thr_self = u64(178)
+		const bf_nr_getppid = u64(173)
+		const bf_nr_uname = u64(160)
+		const bf_nr_statfs = u64(43)
+	} $else {
+		const bf_nr_read = u64(0)
+		const bf_nr_write = u64(1)
+		const bf_nr_close = u64(3)
+		const bf_nr_lseek = u64(8)
+		const bf_nr_openat = u64(257)
+		const bf_nr_getdents64 = u64(217)
+		const bf_nr_statx = u64(332)
+		const bf_nr_getcwd = u64(79)
+		const bf_nr_chdir = u64(80)
+		const bf_nr_nanosleep = u64(35)
+		const bf_nr_mkdir = u64(83)
+		const bf_nr_unlink = u64(87)
+		const bf_nr_rmdir = u64(84)
+		const bf_nr_rename = u64(82)
+		const bf_nr_readlink = u64(89)
+		const bf_nr_ftruncate = u64(77)
+		const bf_nr_fchmodat = u64(268)
+		const bf_nr_ioctl = u64(16)
+		const bf_nr_thr_self = u64(186)
+		const bf_nr_getppid = u64(110)
+		const bf_nr_uname = u64(63)
+		const bf_nr_statfs = u64(137)
+	}
 
 	const bf_at_fdcwd = u32(4294967196) // -100 as u32, seen by the kernel register
+	const bf_at_removedir = u64(0x200) // AT_REMOVEDIR, for unlinkat on arm64
 
 	// The idea here is to ride linux_bare: sys_callN are this build's asm
 	// trampolines. Their errno returns in kernel form; bf_ semantics accept both
@@ -180,24 +206,46 @@ $if (freestanding || syscalls) && !i386 {
 	}
 
 	pub fn bf_mkdir(path string, mode u64) int {
-		return bf_errno_of(sys_call2(bf_nr_mkdir, u64(path.str), mode))
+		$if arm64 {
+			return bf_errno_of(sys_call3(bf_nr_mkdirat, u64(bf_at_fdcwd), u64(path.str), mode))
+		} $else {
+			return bf_errno_of(sys_call2(bf_nr_mkdir, u64(path.str), mode))
+		}
 	}
 
 	pub fn bf_unlink(path string) int {
-		return bf_errno_of(sys_call1(bf_nr_unlink, u64(path.str)))
+		$if arm64 {
+			return bf_errno_of(sys_call3(bf_nr_unlinkat, u64(bf_at_fdcwd), u64(path.str), 0))
+		} $else {
+			return bf_errno_of(sys_call1(bf_nr_unlink, u64(path.str)))
+		}
 	}
 
 	pub fn bf_rmdir(path string) int {
-		return bf_errno_of(sys_call1(bf_nr_rmdir, u64(path.str)))
+		$if arm64 {
+			return bf_errno_of(sys_call3(bf_nr_unlinkat, u64(bf_at_fdcwd), u64(path.str), bf_at_removedir))
+		} $else {
+			return bf_errno_of(sys_call1(bf_nr_rmdir, u64(path.str)))
+		}
 	}
 
 	pub fn bf_rename(src string, dst string) int {
-		return bf_errno_of(sys_call2(bf_nr_rename, u64(src.str), u64(dst.str)))
+		$if arm64 {
+			return bf_errno_of(sys_call4(bf_nr_renameat, u64(bf_at_fdcwd), u64(src.str),
+				u64(bf_at_fdcwd), u64(dst.str)))
+		} $else {
+			return bf_errno_of(sys_call2(bf_nr_rename, u64(src.str), u64(dst.str)))
+		}
 	}
 
 	pub fn bf_readlink(path string, buf &u8, size int) (int, int) {
-		rc := sys_call3(bf_nr_readlink, u64(path.str), u64(buf), u64(size))
-		return bf_split_int(rc)
+		$if arm64 {
+			return bf_split_int(sys_call4(bf_nr_readlinkat, u64(bf_at_fdcwd), u64(path.str),
+				u64(buf), u64(size)))
+		} $else {
+			rc := sys_call3(bf_nr_readlink, u64(path.str), u64(buf), u64(size))
+			return bf_split_int(rc)
+		}
 	}
 
 	pub fn bf_fchmodat(path string, mode u64) int {
@@ -455,9 +503,7 @@ $if (freestanding || syscalls) && !i386 {
 	// walk of bf_getenv, collecting every KEY=VALUE pair).
 	// bf_ioctl issues `request` (FIONREAD) on `fd` with an integer arg pointer.
 	pub fn bf_ioctl(fd int, request u64, arg voidptr) int {
-		rc, er := sys_call3(bf_nr_ioctl, u64(fd), request, u64(arg))
-		_ = rc
-		return if er == 0 { 0 } else { bf_norm_errno(unsafe { VlibcErrno(er) }) }
+		return bf_errno_of(sys_call3(bf_nr_ioctl, u64(fd), request, u64(arg)))
 	}
 	pub fn bf_environ() map[string]string {
 		mut res := map[string]string{}

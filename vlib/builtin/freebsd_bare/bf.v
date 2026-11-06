@@ -28,7 +28,6 @@ $if (freestanding || syscalls) && !i386 {
 	const bf_nr_fchmodat = u64(490)
 	const bf_nr_thr_self = u64(432)
 	const bf_nr_ioctl = u64(54)
-	u64(432)
 	const bf_nr_sysctl = u64(202)
 
 	const bf_at_fdcwd = i64(-100)
@@ -36,18 +35,25 @@ $if (freestanding || syscalls) && !i386 {
 	const bf_at_removedir = u64(0x800)
 
 	fn bf_norm_errno(e VlibcErrno) int {
-		// values normalized to the Linux numbers for the os message tables
+		// values normalized to the Linux numbers for the os message tables; an
+		// errno with no Linux counterpart reads as EIO, never as success
 		return match e {
+			.enoerror { 0 }
 			.eperm { 1 }
 			.enoent { 2 }
 			.esrch { 3 }
 			.eintr { 4 }
 			.eio { 5 }
 			.enxio { 6 }
+			.e2big { 7 }
+			.enoexec { 8 }
 			.ebadf { 9 }
-			.edeadlk { 45 }
+			.echild { 10 }
+			.edeadlk { 35 }
 			.enomem { 12 }
 			.eacces { 13 }
+			.efault { 14 }
+			.enotblk { 15 }
 			.ebusy { 16 }
 			.eexist { 17 }
 			.exdev { 18 }
@@ -68,11 +74,54 @@ $if (freestanding || syscalls) && !i386 {
 			.edom { 33 }
 			.erange { 34 }
 			.eagain { 11 }
+			.einprogress { 116 }
+			.ealready { 115 }
+			.enotsock { 88 }
+			.edestaddrreq { 89 }
+			.emsgsize { 90 }
+			.eprototype { 91 }
+			.enoprotoopt { 92 }
+			.eprotonosupport { 93 }
+			.esocktnosupport { 94 }
+			.eopnotsupp { 95 }
+			.epfnosupport { 96 }
+			.eafnosupport { 97 }
+			.eaddrinuse { 98 }
+			.eaddrnotavail { 99 }
+			.enetdown { 101 }
+			.enetunreach { 102 }
+			.enetreset { 103 }
+			.econnaborted { 104 }
+			.econnreset { 105 }
+			.enobufs { 106 }
+			.eisconn { 107 }
+			.enotconn { 108 }
+			.eshutdown { 109 }
+			.etoomanyrefs { 110 }
+			.etimedout { 111 }
+			.econnrefused { 112 }
 			.eloop { 40 }
 			.enametoolong { 36 }
+			.ehostdown { 113 }
+			.ehostunreach { 114 }
 			.enotempty { 39 }
+			.eusers { 87 }
+			.edquot { 123 }
+			.estale { 117 }
+			.eremote { 66 }
+			.enolck { 37 }
 			.enosys { 38 }
-			else { 0 }
+			.eidrm { 43 }
+			.enomsg { 42 }
+			.eoverflow { 75 }
+			.ecanceled { 126 }
+			.eilseq { 84 }
+			.ebadmsg { 74 }
+			.emultihop { 72 }
+			.enolink { 67 }
+			.eproto { 71 }
+			.enotrecoverable { 132 }
+			else { 5 }
 		}
 	}
 
@@ -274,10 +323,15 @@ $if (freestanding || syscalls) && !i386 {
 		return 20
 	}
 
+	// bf_gettid returns the calling thread's id: thr_self(long *id) writes it
+	// through its argument and its status is the syscall result.
 	pub fn bf_gettid() u64 {
-		rc, er := sys_call0(bf_nr_thr_self)
-		_ = er
-		return rc
+		mut id := u64(0)
+		_, er := sys_call1(bf_nr_thr_self, u64(voidptr(&id)))
+		if er != 0 {
+			return 0
+		}
+		return id
 	}
 
 	// FSysStatRaw matches FreeBSD `struct stat` from sys/stat.h (sysroot-verified

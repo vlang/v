@@ -861,6 +861,7 @@ pub fn (mut f File) read_raw_at[T](pos u64) !T {
 	}
 	$if !freestanding && !syscalls {
 		f.seek(pos, .start)!
+		nbytes := fread(voidptr(&t), 1, tsize, f.cfile)!
 		f.seek(0, .end)!
 		if nbytes != tsize {
 			return error_with_code('incomplete struct read', nbytes)

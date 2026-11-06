@@ -124,26 +124,26 @@ $if freestanding && native && linux {
 		return acc * power
 	}
 
-	// posix_memalign resolves through our mmap allocator's aligned path.
+	// posix_memalign returns `size` bytes at an address that is a multiple of
+	// `alignment`, a power of two and a multiple of the pointer size. Alignments up to
+	// the plain allocator's own alignment come from it; larger ones take the aligned path.
 	@[export: 'posix_memalign']
 	@[markused]
 	fn bf_posix_memalign(memptr &voidptr, alignment uint, size uint) int {
-		// hardcoded-mmap blocks are 0x1000 aligned; bigger alignments ride the
-		// same padding the mexican allocator uses
-		mut pad := uint(0)
-		if alignment > 4096 {
-			pad = alignment
+		if alignment == 0 || alignment & (alignment - 1) != 0 || alignment % uint(sizeof(voidptr)) != 0 {
+			return 22 // EINVAL
 		}
-		p := unsafe { __malloc(uint(size + pad)) }
+		n := if size == 0 { u64(1) } else { u64(size) }
+		p := if alignment <= 16 {
+			unsafe { __malloc(uint(n)) }
+		} else {
+			unsafe { bmem_aligned_alloc(n, u64(alignment)) }
+		}
 		if p == unsafe { nil } {
 			return 12 // ENOMEM normalized to linux numbers by callers
 		}
 		unsafe {
-			addr := uint(p)
-			if alignment > 1 && addr & (alignment - 1) != 0 {
-				addr = (addr + alignment) & ~(alignment - 1)
-			}
-			*memptr = voidptr(addr)
+			*memptr = p
 		}
 		return 0
 	}

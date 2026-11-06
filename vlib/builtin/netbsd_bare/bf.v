@@ -39,17 +39,25 @@ $if (freestanding || syscalls) && !i386 {
 	const bf_o_directory = u64(0x200000)
 
 	fn bf_norm_errno(e VlibcErrno) int {
+		// values normalized to the Linux numbers for the os message tables; an
+		// errno with no Linux counterpart reads as EIO, never as success
 		return match e {
+			.enoerror { 0 }
 			.eperm { 1 }
 			.enoent { 2 }
 			.esrch { 3 }
 			.eintr { 4 }
 			.eio { 5 }
 			.enxio { 6 }
+			.e2big { 7 }
+			.enoexec { 8 }
 			.ebadf { 9 }
-			.edeadlk { 45 }
+			.echild { 10 }
+			.edeadlk { 35 }
 			.enomem { 12 }
 			.eacces { 13 }
+			.efault { 14 }
+			.enotblk { 15 }
 			.ebusy { 16 }
 			.eexist { 17 }
 			.exdev { 18 }
@@ -70,11 +78,52 @@ $if (freestanding || syscalls) && !i386 {
 			.edom { 33 }
 			.erange { 34 }
 			.eagain { 11 }
+			.einprogress { 116 }
+			.ealready { 115 }
+			.enotsock { 88 }
+			.edestaddrreq { 89 }
+			.emsgsize { 90 }
+			.eprototype { 91 }
+			.enoprotoopt { 92 }
+			.eprotonosupport { 93 }
+			.esocktnosupport { 94 }
+			.eopnotsupp { 95 }
+			.epfnosupport { 96 }
+			.eafnosupport { 97 }
+			.eaddrinuse { 98 }
+			.eaddrnotavail { 99 }
+			.enetdown { 101 }
+			.enetunreach { 102 }
+			.enetreset { 103 }
+			.econnaborted { 104 }
+			.econnreset { 105 }
+			.enobufs { 106 }
+			.eisconn { 107 }
+			.enotconn { 108 }
+			.eshutdown { 109 }
+			.etoomanyrefs { 110 }
+			.etimedout { 111 }
+			.econnrefused { 112 }
 			.eloop { 40 }
 			.enametoolong { 36 }
+			.ehostdown { 113 }
+			.ehostunreach { 114 }
 			.enotempty { 39 }
+			.eusers { 87 }
+			.edquot { 123 }
+			.estale { 117 }
+			.eremote { 66 }
+			.enolck { 37 }
 			.enosys { 38 }
-			else { 0 }
+			.eidrm { 43 }
+			.enomsg { 42 }
+			.eoverflow { 75 }
+			.eilseq { 84 }
+			.ecanceled { 126 }
+			.ebadmsg { 74 }
+			.emultihop { 72 }
+			.enolink { 67 }
+			else { 5 }
 		}
 	}
 
@@ -166,7 +215,7 @@ $if (freestanding || syscalls) && !i386 {
 	}
 
 	pub fn bf_lseek(fd int, offset i64, whence i64) (i64, int) {
-		rc, er := sys_call3(bf_nr_lseek, u64(fd), u64(offset), u64(whence))
+		rc, er := sys_call4(bf_nr_lseek, u64(fd), 0, u64(offset), u64(whence))
 		if er != 0 {
 			return i64(-1), bf_err_of(rc, er)
 		}
