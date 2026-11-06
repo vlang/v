@@ -34,6 +34,11 @@ make -j2 libsqlite3.so CFLAGS="$msan_cflags" LDFLAGS='-fsanitize=memory'
 make install-dll install-headers install-pc \
   CFLAGS="$msan_cflags" LDFLAGS='-fsanitize=memory'
 
+# Select the instrumented library only for programs linked through pkg-config.
+# The system sqlite3 CLI must keep using its uninstrumented library so that
+# test feature detection can still run sqlite3 --version.
+sed -i '/^Libs:/s|$| -Wl,-rpath,${libdir}|' "$prefix/lib/pkgconfig/sqlite3.pc"
+
 # Verify the installed library is instrumented.
 nm -D "$prefix/lib/libsqlite3.so" > "$build_dir/sqlite-symbols.txt"
 grep -q '__msan_' "$build_dir/sqlite-symbols.txt"

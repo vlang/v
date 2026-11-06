@@ -178,7 +178,6 @@ jobs:
           prefix="$RUNNER_TEMP/v-msan-sqlite"
           bash .github/workflows/build_msan_sqlite.sh "$prefix"
           echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
       - name: Recompile V with -cstrict
         run: |
           export GITHUB_JOB="$SANITIZER_GITHUB_JOB"
