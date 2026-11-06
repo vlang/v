@@ -63,6 +63,7 @@ fn C.pointer(&C.Pair) i64
 fn C.labs(i64) i64
 fn C.strlen(&u8) u64
 fn C.pow(f64, f64) f64
+fn C.exp(f64) f64
 fn C.strcmp(&u8, &u8) int
 fn C.printf(&u8, ...voidptr) int
 fn C.exit(int)
@@ -70,6 +71,7 @@ fn C.apply_integer(fn (i64) i64, i64) i64
 fn C.apply_pointer(fn (voidptr) voidptr, voidptr) voidptr
 fn C.apply_float(fn (f64) f64, f64) f64
 fn C.apply_narrow(fn (int) int, int) int
+fn C.apply_narrow_callback(fn (&u8, &u8) int, &u8, &u8) int
 fn C.apply_aggregate(fn (C.Pair) C.Pair) i64
 fn C.apply_variadic(fn (...i64) i64) i64
 fn C.apply_nested(fn (fn (f64) f64) i64) i64
@@ -85,7 +87,7 @@ fn variadic_callback(x ...i64) i64 { return x.len }
 fn nested_callback(x fn (f64) f64) i64 { return 0 }
 fn nested_variadic_callback(x fn (...i64) i64) i64 { return 0 }
 struct Callbacks {
-    scalar fn (i64) i64
+    scalar  fn (i64) i64
     pointer fn (&u8) u64
 }
 fn main() {
@@ -122,8 +124,8 @@ fn assert_typed_c_reference(g &Gen, name string) {
 	assert false, 'source C function address must retain its signature: ${name}'
 }
 
-fn test_scalar_and_pointer_c_function_addresses_are_allowed() {
-	for name in ['scalar', 'pointer'] {
+fn test_scalar_pointer_and_float_c_function_addresses_are_allowed() {
+	for name in ['scalar', 'pointer', 'strcmp', 'pow'] {
 		g := c_reference_fixture('callback := C.${name}\n_ = callback')
 		assert_typed_c_reference(g, name)
 		g.validate_c_extern_calls()!
@@ -144,7 +146,7 @@ fn test_c_aggregate_function_addresses_are_rejected_before_indirect_calls() {
 }
 
 fn test_unsupported_scalar_c_function_addresses_are_rejected() {
-	for name in ['pow', 'strcmp', 'printf'] {
+	for name in ['printf'] {
 		g := c_reference_fixture('callback := C.${name}\n_ = callback')
 		assert_typed_c_reference(g, name)
 		g.validate_c_extern_calls() or {
@@ -157,18 +159,20 @@ fn test_unsupported_scalar_c_function_addresses_are_rejected() {
 }
 
 fn test_direct_c_scalar_calls_keep_their_calling_convention() {
-	c_reference_fixture("_ = C.pow(2.0, 3.0)\n_ = C.strcmp(c'a', c'b')\n_ = C.printf(c'%d', 1)").validate_c_extern_calls()!
+	c_reference_fixture("_ = C.pow(2.0, 3.0)\n_ = C.exp(2.0)\n_ = C.strcmp(c'a', c'b')\n_ = C.printf(c'%d', 1)").validate_c_extern_calls()!
 }
 
 fn test_c_callback_parameters_preserve_their_declared_signatures() {
 	for body in ['_ = C.apply_integer(integer_callback, 7)',
-		'_ = C.apply_pointer(pointer_callback, voidptr(0))'] {
+		'_ = C.apply_pointer(pointer_callback, voidptr(0))',
+		"_ = C.apply_narrow_callback(C.strcmp, c'a', c'b')"] {
 		g := c_reference_fixture(body)
 		mut found := false
 		for instr in g.m.instrs {
 			if instr.op == .call && instr.operands.len > 1 {
 				callee := g.m.values[instr.operands[0]]
-				if callee.name.trim_string_left('C.') in ['apply_integer', 'apply_pointer'] {
+				if callee.name.trim_string_left('C.') in ['apply_integer', 'apply_pointer',
+					'apply_narrow_callback'] {
 					assert g.m.type_store.types[g.call_param_type(instr, 0)].kind == .func_t
 					found = true
 				}
@@ -182,7 +186,6 @@ fn test_c_callback_parameters_preserve_their_declared_signatures() {
 fn test_unsupported_c_callbacks_are_rejected_at_calls_and_addresses() {
 	for name, callback in {
 		'apply_float':           'float_callback, 1.0'
-		'apply_narrow':          'narrow_callback, 1'
 		'apply_aggregate':       'aggregate_callback'
 		'apply_variadic':        'variadic_callback'
 		'apply_nested':          'nested_callback'
@@ -196,12 +199,15 @@ fn test_unsupported_c_callbacks_are_rejected_at_calls_and_addresses() {
 				assert err.msg().contains(name)
 				continue
 			}
+			if body.starts_with('callback :=') {
+				continue
+			}
 			assert false, 'unsupported C callback convention must produce a diagnostic: ${name}'
 		}
 	}
 }
 
-fn test_unsupported_c_callback_results_are_rejected() {
+fn test_c_callback_results_can_be_stored() {
 	for body in ['_ = C.make_callback()', 'callback := C.make_callback\n_ = callback'] {
 		g := c_reference_fixture(body)
 		mut found := false
@@ -212,12 +218,7 @@ fn test_unsupported_c_callback_results_are_rejected() {
 			}
 		}
 		assert found
-		g.validate_c_extern_calls() or {
-			assert err.msg().contains('C callback')
-			assert err.msg().contains('make_callback')
-			continue
-		}
-		assert false, 'unsupported returned C callback must produce a diagnostic'
+		g.validate_c_extern_calls()!
 	}
 }
 
@@ -244,8 +245,9 @@ fn test_supported_callbacks_cross_the_c_boundary_in_both_directions() {
 			mut g := c_reference_fixture('if C.apply_integer(integer_callback, 13) != 13 { C.exit(1) }
 	p := voidptr(u64(23))
 	if C.apply_pointer(pointer_callback, p) != p { C.exit(2) }
+	if C.apply_narrow(narrow_callback, -13) != -13 { C.exit(3) }
 	callback := C.make_integer_callback()
-	if callback(-13) != 13 { C.exit(3) }')
+	if callback(-13) != 13 { C.exit(4) }')
 			g.optimize_runtime = optimize
 			g.validate_c_extern_calls()!
 			g.gen()
@@ -260,6 +262,7 @@ fn test_supported_callbacks_cross_the_c_boundary_in_both_directions() {
 			g.write_file(object)
 			os.write_file(c_source, 'long apply_integer(long (*callback)(long), long x) { return callback(x); }
 	void *apply_pointer(void *(*callback)(void *), void *x) { return callback(x); }
+	int apply_narrow(int (*callback)(int), int x) { return callback(x); }
 	static long callback_abs(long x) { return x < 0 ? -x : x; }
 	long (*make_integer_callback(void))(long) { return callback_abs; }
 	')!

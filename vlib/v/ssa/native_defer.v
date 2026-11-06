@@ -37,6 +37,7 @@ fn (mut b Builder) initialize_deferred_stmts(body_ids []flat.NodeId) {
 
 fn (mut b Builder) activate_deferred_stmt(body_id flat.NodeId) {
 	if active := b.defer_active_slots[body_id] {
+		b.defer_body_enabled[body_id] = true
 		one := b.m.get_or_add_const(b.i1_type, '1')
 		b.emit2(.store, b.void_type, one, active)
 	}
@@ -45,6 +46,9 @@ fn (mut b Builder) activate_deferred_stmt(body_id flat.NodeId) {
 fn (mut b Builder) emit_deferred_stmts() {
 	for i := b.defer_body_ids.len; i > 0; i-- {
 		body_id := b.defer_body_ids[i - 1]
+		if !b.defer_body_enabled[body_id] {
+			continue
+		}
 		active_slot := b.defer_active_slots[body_id] or { continue }
 		active := b.emit1(.load, b.i1_type, active_slot)
 		run_block := b.m.add_block(b.cur_func, 'defer_run')

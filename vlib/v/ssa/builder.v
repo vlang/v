@@ -143,6 +143,7 @@ mut:
 	label_blocks             map[string]BlockID
 	defer_body_ids           []flat.NodeId
 	defer_active_slots       map[flat.NodeId]ValueID
+	defer_body_enabled       map[flat.NodeId]bool
 	pending_loop_label       string
 	loop_targets             []LoopTargets
 	top_level_main           bool
@@ -265,6 +266,8 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 		c_fn_types:               map[string]TypeID{}
 		label_blocks:             map[string]BlockID{}
 		defer_body_ids:           []flat.NodeId{}
+		defer_active_slots:       map[flat.NodeId]ValueID{}
+		defer_body_enabled:       map[flat.NodeId]bool{}
 		loop_targets:             []LoopTargets{}
 		skip_modules:             map[string]bool{}
 		type_aliases:             map[u32]TypeID{}
@@ -8865,6 +8868,7 @@ fn (b &Builder) c_variant_function_names() map[string]bool {
 fn (mut b Builder) build_functions() {
 	c_variant_names := b.c_variant_function_names()
 	mut cur_module := ''
+	mut built_functions := 0
 	for node in b.a.nodes {
 		if node.kind == .file {
 			cur_module = ''
@@ -8920,6 +8924,12 @@ fn (mut b Builder) build_functions() {
 				continue
 			}
 			b.build_function(node, cur_module)
+			built_functions++
+			if built_functions % 100 == 0 {
+				$if !prealloc ? {
+					gc_collect()
+				}
+			}
 		}
 	}
 	if b.top_level_main && !b.skip_fn_bodies && b.hot_fn.len == 0 {
@@ -9337,6 +9347,7 @@ fn (mut b Builder) reset_function_state() {
 	b.pending_loop_label = ''
 	b.defer_body_ids.clear()
 	b.defer_active_slots.clear()
+	b.defer_body_enabled.clear()
 	b.pending_loop_label = ''
 	b.loop_targets.clear()
 	for name, val_id in b.global_vars {
@@ -12482,6 +12493,16 @@ fn (mut b Builder) build_wide_integer_expr(node flat.Node) ?ValueID {
 					carry)
 				return b.make_wide_integer(b.cur_block, combined_low, next_high)
 			}
+			if node.op in [.div, .mod] {
+				if b.is_signed_wide_integer_expr(lhs_id)
+					|| b.is_signed_wide_integer_expr(rhs_id) {
+					panic('ssa: unsupported 128-bit signed integer operation: ${node.op}')
+				}
+				lhs := b.wide_integer_operand(lhs_id)
+				rhs := b.wide_integer_operand(rhs_id)
+				quotient, remainder := b.build_wide_unsigned_divrem(lhs, rhs)
+				return if node.op == .div { quotient } else { remainder }
+			}
 			if node.op !in [.pipe, .amp, .xor, .plus, .minus] {
 				panic('ssa: unsupported 128-bit integer operation: ${node.op}')
 			}
@@ -12525,6 +12546,147 @@ fn (mut b Builder) build_wide_integer_expr(node flat.Node) ?ValueID {
 			return none
 		}
 	}
+}
+
+fn (mut b Builder) build_wide_unsigned_divrem(lhs ValueID, rhs ValueID) (ValueID, ValueID) {
+	entry := b.cur_block
+	ptr_u64 := b.m.type_store.get_ptr(b.u64_type)
+	zero := b.m.get_or_add_const(b.u64_type, '0')
+	one := b.m.get_or_add_const(b.u64_type, '1')
+	zero_i64 := b.m.get_or_add_const(b.i64_type, '0')
+	one_i64 := b.m.get_or_add_const(b.i64_type, '1')
+	sign_bit := b.m.get_or_add_const(b.u64_type, '63')
+
+	lhs_low, lhs_high := b.wide_integer_limbs(entry, lhs)
+	rhs_low, rhs_high := b.wide_integer_limbs(entry, rhs)
+	q_low_slot := b.block_instr0(.alloca, entry, ptr_u64)
+	q_high_slot := b.block_instr0(.alloca, entry, ptr_u64)
+	r_low_slot := b.block_instr0(.alloca, entry, ptr_u64)
+	r_high_slot := b.block_instr0(.alloca, entry, ptr_u64)
+	bit_slot := b.block_instr0(.alloca, entry, ptr_u64)
+	index_slot := b.block_instr0(.alloca, entry, b.m.type_store.get_ptr(b.i64_type))
+	b.block_instr2(.store, entry, b.void_type, zero, q_low_slot)
+	b.block_instr2(.store, entry, b.void_type, zero, q_high_slot)
+	b.block_instr2(.store, entry, b.void_type, zero, r_low_slot)
+	b.block_instr2(.store, entry, b.void_type, zero, r_high_slot)
+	b.block_instr2(.store, entry, b.void_type,
+		b.m.get_or_add_const(b.i64_type, '128'), index_slot)
+
+	zero_block := b.m.add_block(b.cur_func, 'wide_div_zero')
+	check_block := b.m.add_block(b.cur_func, 'wide_div_check')
+	body_block := b.m.add_block(b.cur_func, 'wide_div_body')
+	low_bit_block := b.m.add_block(b.cur_func, 'wide_div_low_bit')
+	high_bit_block := b.m.add_block(b.cur_func, 'wide_div_high_bit')
+	shift_block := b.m.add_block(b.cur_func, 'wide_div_shift')
+	subtract_block := b.m.add_block(b.cur_func, 'wide_div_subtract')
+	low_quotient_block := b.m.add_block(b.cur_func, 'wide_div_low_quotient')
+	high_quotient_block := b.m.add_block(b.cur_func, 'wide_div_high_quotient')
+	done_block := b.m.add_block(b.cur_func, 'wide_div_done')
+
+	low_zero := b.block_instr2(.eq, entry, b.i1_type, rhs_low, zero)
+	high_zero := b.block_instr2(.eq, entry, b.i1_type, rhs_high, zero)
+	divisor_zero := b.block_instr2(.and_, entry, b.i1_type, low_zero, high_zero)
+	b.block_instr3(.br, entry, b.void_type, divisor_zero, ValueID(zero_block),
+		ValueID(check_block))
+
+	if panic_id := b.fn_ids['panic'] {
+		message := b.m.add_value(.string_literal, b.str_type, 'division by zero', 0)
+		panic_ref := b.m.add_value(.func_ref, b.void_type, 'panic', panic_id)
+		b.block_instr2(.call, zero_block, b.void_type, panic_ref, message)
+	} else {
+		b.block_instr2(.udiv, zero_block, b.u64_type, lhs_low, zero)
+	}
+	b.block_instr0(.unreachable, zero_block, b.void_type)
+
+	index := b.block_instr1(.load, check_block, b.i64_type, index_slot)
+	active := b.block_instr2(.gt, check_block, b.i1_type, index, zero_i64)
+	b.block_instr3(.br, check_block, b.void_type, active, ValueID(body_block),
+		ValueID(done_block))
+
+	next_index := b.block_instr2(.sub, body_block, b.i64_type, index, one_i64)
+	b.block_instr2(.store, body_block, b.void_type, next_index, index_slot)
+	high_half := b.block_instr2(.ge, body_block, b.i1_type, next_index,
+		b.m.get_or_add_const(b.i64_type, '64'))
+	b.block_instr3(.br, body_block, b.void_type, high_half, ValueID(high_bit_block),
+		ValueID(low_bit_block))
+
+	low_shifted := b.block_instr2(.lshr, low_bit_block, b.u64_type, lhs_low, next_index)
+	low_bit := b.block_instr2(.and_, low_bit_block, b.u64_type, low_shifted, one)
+	b.block_instr2(.store, low_bit_block, b.void_type, low_bit, bit_slot)
+	b.block_instr1(.jmp, low_bit_block, b.void_type, ValueID(shift_block))
+
+	high_index := b.block_instr2(.sub, high_bit_block, b.i64_type, next_index,
+		b.m.get_or_add_const(b.i64_type, '64'))
+	high_shifted := b.block_instr2(.lshr, high_bit_block, b.u64_type, lhs_high, high_index)
+	high_bit := b.block_instr2(.and_, high_bit_block, b.u64_type, high_shifted, one)
+	b.block_instr2(.store, high_bit_block, b.void_type, high_bit, bit_slot)
+	b.block_instr1(.jmp, high_bit_block, b.void_type, ValueID(shift_block))
+
+	remainder_low := b.block_instr1(.load, shift_block, b.u64_type, r_low_slot)
+	remainder_high := b.block_instr1(.load, shift_block, b.u64_type, r_high_slot)
+	bit := b.block_instr1(.load, shift_block, b.u64_type, bit_slot)
+	shifted_low := b.block_instr2(.shl, shift_block, b.u64_type, remainder_low, one)
+	shift_carry := b.block_instr2(.lshr, shift_block, b.u64_type, remainder_low, sign_bit)
+	shifted_high_base := b.block_instr2(.shl, shift_block, b.u64_type, remainder_high, one)
+	shifted_high := b.block_instr2(.or_, shift_block, b.u64_type, shifted_high_base,
+		shift_carry)
+	shifted_low_with_bit := b.block_instr2(.or_, shift_block, b.u64_type, shifted_low, bit)
+	b.block_instr2(.store, shift_block, b.void_type, shifted_low_with_bit, r_low_slot)
+	b.block_instr2(.store, shift_block, b.void_type, shifted_high, r_high_slot)
+
+	overflow := b.block_instr2(.lshr, shift_block, b.u64_type, remainder_high, sign_bit)
+	high_equal := b.block_instr2(.eq, shift_block, b.i1_type, shifted_high, rhs_high)
+	high_greater := b.block_instr2(.ugt, shift_block, b.i1_type, shifted_high, rhs_high)
+	low_greater_equal := b.block_instr2(.uge, shift_block, b.i1_type, shifted_low_with_bit,
+		rhs_low)
+	equal_and_low := b.block_instr2(.and_, shift_block, b.i1_type, high_equal,
+		low_greater_equal)
+	wide_greater_equal := b.block_instr2(.or_, shift_block, b.i1_type, high_greater,
+		equal_and_low)
+	overflowed := b.block_instr2(.ne, shift_block, b.i1_type, overflow, zero)
+	subtract := b.block_instr2(.or_, shift_block, b.i1_type, overflowed,
+		wide_greater_equal)
+	b.block_instr3(.br, shift_block, b.void_type, subtract, ValueID(subtract_block),
+		ValueID(check_block))
+
+	candidate_low := b.block_instr2(.sub, subtract_block, b.u64_type, shifted_low_with_bit,
+		rhs_low)
+	borrow := b.block_instr2(.ult, subtract_block, b.i1_type, shifted_low_with_bit,
+		rhs_low)
+	candidate_high_base := b.block_instr2(.sub, subtract_block, b.u64_type, shifted_high,
+		rhs_high)
+	borrow64 := b.block_instr1(.zext, subtract_block, b.u64_type, borrow)
+	candidate_high := b.block_instr2(.sub, subtract_block, b.u64_type, candidate_high_base,
+		borrow64)
+	b.block_instr2(.store, subtract_block, b.void_type, candidate_low, r_low_slot)
+	b.block_instr2(.store, subtract_block, b.void_type, candidate_high, r_high_slot)
+	b.block_instr3(.br, subtract_block, b.void_type, high_half,
+		ValueID(high_quotient_block), ValueID(low_quotient_block))
+
+	low_quotient := b.block_instr1(.load, low_quotient_block, b.u64_type, q_low_slot)
+	low_mask := b.block_instr2(.shl, low_quotient_block, b.u64_type, one, next_index)
+	next_low_quotient := b.block_instr2(.or_, low_quotient_block, b.u64_type,
+		low_quotient, low_mask)
+	b.block_instr2(.store, low_quotient_block, b.void_type, next_low_quotient,
+		q_low_slot)
+	b.block_instr1(.jmp, low_quotient_block, b.void_type, ValueID(check_block))
+
+	high_quotient := b.block_instr1(.load, high_quotient_block, b.u64_type, q_high_slot)
+	high_mask := b.block_instr2(.shl, high_quotient_block, b.u64_type, one, high_index)
+	next_high_quotient := b.block_instr2(.or_, high_quotient_block, b.u64_type,
+		high_quotient, high_mask)
+	b.block_instr2(.store, high_quotient_block, b.void_type, next_high_quotient,
+		q_high_slot)
+	b.block_instr1(.jmp, high_quotient_block, b.void_type, ValueID(check_block))
+
+	final_q_low := b.block_instr1(.load, done_block, b.u64_type, q_low_slot)
+	final_q_high := b.block_instr1(.load, done_block, b.u64_type, q_high_slot)
+	final_r_low := b.block_instr1(.load, done_block, b.u64_type, r_low_slot)
+	final_r_high := b.block_instr1(.load, done_block, b.u64_type, r_high_slot)
+	quotient := b.make_wide_integer(done_block, final_q_low, final_q_high)
+	remainder := b.make_wide_integer(done_block, final_r_low, final_r_high)
+	b.cur_block = done_block
+	return quotient, remainder
 }
 
 // Compare the high limb first, then the unsigned low limb on a tie.
@@ -13178,8 +13340,18 @@ fn (mut b Builder) build_cast_expr(node flat.Node) ValueID {
 	if b.is_interface_type_id(target_type) {
 		return b.box_interface_value(target_type, checked_name_source_id, value)
 	}
-	if from_type == b.wide_integer_type() || target_type == b.wide_integer_type() {
-		panic('ssa: unsupported 128-bit integer conversion to or from a scalar value')
+	if from_type == b.wide_integer_type() {
+		if b.is_int_type(target_type) {
+			low, _ := b.wide_integer_limbs(b.cur_block, value)
+			return b.coerce_numeric_value(low, target_type)
+		}
+		panic('ssa: unsupported 128-bit integer conversion to a non-integer value')
+	}
+	if target_type == b.wide_integer_type() {
+		if b.is_int_type(from_type) {
+			return b.wide_integer_from_scalar(value)
+		}
+		panic('ssa: unsupported 128-bit integer conversion from a non-integer value')
 	}
 	if b.is_pointer_type(target_type) || b.is_pointer_type(from_type) {
 		return b.emit1(.bitcast, target_type, value)
@@ -13517,11 +13689,23 @@ fn (mut b Builder) build_prefix(node flat.Node, _id flat.NodeId) ValueID {
 		return b.build_expr(b.a.child(&child, 0))
 	}
 	val := b.build_expr(child_id)
-	if b.value_type(val) == b.wide_integer_type() && node.op !in [.amp, .mul] {
+	val_type := b.value_type(val)
+	is_wide := val_type == b.wide_integer_type()
+	if is_wide && node.op !in [.amp, .mul, .minus, .bit_not] {
 		panic('ssa: unsupported 128-bit integer operation: unary ${node.op}')
 	}
 	match node.op {
 		.minus {
+			if is_wide {
+				low, high := b.wide_integer_limbs(b.cur_block, val)
+				zero := b.m.get_or_add_const(b.u64_type, '0')
+				next_low := b.emit2(.sub, b.u64_type, zero, low)
+				borrow := b.emit2(.ne, b.i1_type, low, zero)
+				borrow64 := b.emit1(.zext, b.u64_type, borrow)
+				high_base := b.emit2(.sub, b.u64_type, zero, high)
+				next_high := b.emit2(.sub, b.u64_type, high_base, borrow64)
+				return b.make_wide_integer(b.cur_block, next_low, next_high)
+			}
 			typ := b.value_type(val)
 			if b.m.type_store.types[typ].kind == .float_t {
 				negative_zero := b.m.get_or_add_const(typ, '-0.0')
@@ -13535,6 +13719,13 @@ fn (mut b Builder) build_prefix(node flat.Node, _id flat.NodeId) ValueID {
 			return b.emit2(.eq, b.i1_type, val, zero)
 		}
 		.bit_not {
+			if is_wide {
+				low, high := b.wide_integer_limbs(b.cur_block, val)
+				all_bits := b.m.get_or_add_const(b.u64_type, '18446744073709551615')
+				next_low := b.emit2(.xor, b.u64_type, low, all_bits)
+				next_high := b.emit2(.xor, b.u64_type, high, all_bits)
+				return b.make_wide_integer(b.cur_block, next_low, next_high)
+			}
 			minus_one := b.m.get_or_add_const(b.i64_type, '-1')
 			return b.emit2(.xor, b.value_type(val), val, minus_one)
 		}
@@ -14337,6 +14528,14 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		fn_idx = b.runtime_fn_ids[resolved_name]
 	} else if idx := b.fn_ids[resolved_name] {
 		fn_idx = idx
+		if b.m.funcs[idx].is_prototype || b.m.funcs[idx].blocks.len == 0 {
+			if stub_id := b.register_interface_method_stub(resolved_name, base_id,
+				fn_node.value) {
+				resolved_name = b.m.funcs[stub_id].name
+				fn_idx = stub_id
+				is_method = true
+			}
+		}
 	} else {
 		mut callee_var_names := [actual_name, fn_node.value]
 		if b.cur_module.len > 0 {
@@ -14634,9 +14833,6 @@ fn (mut b Builder) register_interface_method_stub(name string, base_id flat.Node
 	if interface_id == 0 {
 		return none
 	}
-	if existing := b.fn_ids[name] {
-		return existing
-	}
 	decl_key := b.tc.interface_method_signature_key(interface_id, method_name) or {
 		'${interface_name}.${method_name}'
 	}
@@ -14650,17 +14846,20 @@ fn (mut b Builder) register_interface_method_stub(name string, base_id flat.Node
 	}
 	ret_type := b.ssa_type_from_checker_type(ret)
 	stub_name := if name.len > 0 { name } else { '${interface_name}.${method_name}' }
-	stub_id := b.register_synthetic_function(stub_name, ret_type, ssa_params)
-	b.generate_interface_method_dispatch(stub_id, interface_id, stub_name, method_name, ssa_params,
-		ret_type)
+	stub_id := if existing := b.fn_ids[stub_name] {
+		existing
+	} else {
+		b.register_synthetic_function(stub_name, ret_type, ssa_params)
+	}
+	if b.m.funcs[stub_id].blocks.len == 0 {
+		b.generate_interface_method_dispatch(stub_id, interface_id, stub_name, method_name,
+			ssa_params, ret_type)
+	}
 	return stub_id
 }
 
 fn (mut b Builder) generate_interface_method_dispatch(func_id int, interface_id u32, func_name string, method string, param_types []TypeID, ret_type TypeID) {
 	impl_ids := b.tc.interface_impl_names(interface_id)
-	if impl_ids.len == 0 {
-		return
-	}
 	old_func := b.cur_func
 	old_block := b.cur_block
 	old_ret_type := b.cur_func_ret_type
@@ -14818,6 +15017,9 @@ fn (mut b Builder) register_builtin_method_stub(name string, call_id flat.NodeId
 		return none
 	}
 	if existing := b.fn_ids[name] {
+		if b.m.funcs[existing].blocks.len == 0 {
+			b.generate_empty_function_body(existing)
+		}
 		return existing
 	}
 	mut params := []TypeID{cap: node.children_count}
@@ -14832,7 +15034,28 @@ fn (mut b Builder) register_builtin_method_stub(name string, call_id flat.NodeId
 		}
 	}
 	ret_type := b.call_expr_result_type(call_id, node)
-	return b.register_synthetic_function(name, ret_type, params)
+	stub_id := b.register_synthetic_function(name, ret_type, params)
+	b.generate_empty_function_body(stub_id)
+	return stub_id
+}
+
+fn (mut b Builder) generate_empty_function_body(func_id int) {
+	old_func := b.cur_func
+	old_block := b.cur_block
+	old_ret_type := b.cur_func_ret_type
+	b.cur_func = func_id
+	b.cur_func_ret_type = u32(0)
+	entry := b.m.add_block(func_id, 'synthetic_stub')
+	b.cur_block = entry
+	ret_type := b.m.funcs[func_id].typ
+	if ret_type == b.void_type {
+		b.block_instr0(.ret, entry, b.void_type)
+	} else {
+		b.block_instr1(.ret, entry, b.void_type, b.default_value_for_type(ret_type))
+	}
+	b.cur_func = old_func
+	b.cur_block = old_block
+	b.cur_func_ret_type = old_ret_type
 }
 
 // register_missing_call_stub materializes a checker-validated call whose native
@@ -15224,8 +15447,18 @@ fn (b &Builder) flag_enum_expr_type_name(id flat.NodeId) u32 {
 
 fn (mut b Builder) coerce_int_value(value ValueID, to_type TypeID) ValueID {
 	from_type := b.value_type(value)
-	if (from_type == b.wide_integer_type()) != (to_type == b.wide_integer_type()) {
-		panic('ssa: unsupported 128-bit integer conversion to or from a scalar value')
+	if from_type == b.wide_integer_type() && to_type != b.wide_integer_type() {
+		if !b.is_int_type(to_type) {
+			panic('ssa: unsupported 128-bit integer conversion to a non-integer value')
+		}
+		low, _ := b.wide_integer_limbs(b.cur_block, value)
+		return b.coerce_numeric_value(low, to_type)
+	}
+	if from_type != b.wide_integer_type() && to_type == b.wide_integer_type() {
+		if !b.is_int_type(from_type) {
+			panic('ssa: unsupported 128-bit integer conversion from a non-integer value')
+		}
+		return b.wide_integer_from_scalar(value)
 	}
 	if !b.is_int_type(from_type) || !b.is_int_type(to_type) {
 		return value
