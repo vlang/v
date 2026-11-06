@@ -274,11 +274,11 @@ pub fn uname() Uname {
 		// return 0, and both return -1 on error, so anything non-negative
 		// means the struct is filled.
 		if C.uname(d) >= 0 {
-			u.sysname = cstring_to_vstring(d.sysname)
-			u.nodename = cstring_to_vstring(d.nodename)
-			u.release = cstring_to_vstring(d.release)
-			u.version = cstring_to_vstring(d.version)
-			u.machine = cstring_to_vstring(d.machine)
+			u.sysname = cstring_to_vstring(&d.sysname[0])
+			u.nodename = cstring_to_vstring(&d.nodename[0])
+			u.release = cstring_to_vstring(&d.release[0])
+			u.version = cstring_to_vstring(&d.version[0])
+			u.machine = cstring_to_vstring(&d.machine[0])
 		}
 		free(d)
 	}
