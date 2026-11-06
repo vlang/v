@@ -3199,7 +3199,9 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 			field_names << scan.lit
 			tok = scan.scan()
 		}
-		if tok in [.semicolon, .rcbr, .assign] {
+		if tok in [.semicolon, .rcbr, .assign, .attribute] {
+			// An attribute may follow an embedded type with or without a default.
+			tok, _, _ = fastc_scan_struct_field_attributes(mut scan, tok)!
 			embedded_key := if qualified_embed_key != 0 {
 				qualified_embed_key
 			} else {
