@@ -2093,7 +2093,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		}
 		if variadic_idx < 0 && param_idx < params.len {
 			arg_type := t.tc.resolve_type(arg_id)
-			if arg_type is types.MultiReturn && arg_type.types.len == params.len - param_idx {
+			if arg_type is types.MultiReturn && arg_type.types.len <= params.len - param_idx {
 				items := arg_type.types
 				multi_type_source_id := t.multi_return_type_name(items)
 
@@ -15496,6 +15496,32 @@ fn (t &Transformer) fixed_array_reference_arg_needs_durable_header(id flat.NodeI
 	return false
 }
 
+// call_argument_param_index maps a source argument to its first parameter before
+// multi-return arguments have been expanded. Ordering snapshots can replace a
+// multi-return call with an identifier, so use its checked type, not its node kind.
+fn (t &Transformer) call_argument_param_index(node flat.Node, child_index int, offset int, param_count int, is_variadic bool) int {
+	unexpanded_index := child_index - 1 + offset
+	if child_index <= 1 || is_variadic || isnil(t.tc) {
+		return unexpanded_index
+	}
+	// A checked call with one ordinary argument per parameter needs no expansion.
+	// Named fields can collapse into one argument, so exclude that form here.
+	if int(node.children_count) - 1 + offset == param_count
+		&& t.a.child_node(&node, int(node.children_count) - 1).kind != .field_init {
+		return unexpanded_index
+	}
+	mut param_index := offset
+	for i in 1 .. child_index {
+		arg_type := t.tc.resolve_type(t.a.child(&node, i))
+		if arg_type is types.MultiReturn && arg_type.types.len <= param_count - param_index {
+			param_index += arg_type.types.len
+		} else {
+			param_index++
+		}
+	}
+	return param_index
+}
+
 // call_argument_param_type maps each unpacked variadic argument to the tail element type.
 fn call_argument_param_type(params []types.Type, param_idx int, variadic_idx int) ?types.Type {
 	if param_idx < 0 {
@@ -15516,7 +15542,7 @@ fn call_argument_param_type(params []types.Type, param_idx int, variadic_idx int
 
 fn (t &Transformer) call_has_mut_fixed_array_args(node flat.Node, params []types.Type, offset int, variadic_idx int) bool {
 	for i in 1 .. node.children_count {
-		param_idx := i - 1 + offset
+		param_idx := t.call_argument_param_index(node, i, offset, params.len, variadic_idx >= 0)
 		param_type := call_argument_param_type(params, param_idx, variadic_idx) or { continue }
 		payload_type := fixed_array_reference_param_payload(param_type)
 		array_ref_type := t.comptime_normalize_type_alias_chain(t.semantic_type_name(payload_type))
@@ -19515,7 +19541,7 @@ fn (mut t Transformer) transform_receiver_method_args_with_params(node flat.Node
 		}
 		if variadic_idx < 0 && param_idx < params.len {
 			arg_type := t.tc.resolve_type(arg_id)
-			if arg_type is types.MultiReturn && arg_type.types.len == params.len - param_idx {
+			if arg_type is types.MultiReturn && arg_type.types.len <= params.len - param_idx {
 				items := arg_type.types
 				multi_type_source_id_2 := t.multi_return_type_name(items)
 
