@@ -34,10 +34,18 @@ $if (freestanding || syscalls) && !i386 {
 	const bf_at_symlink_nofollow = u64(0x200)
 	const bf_at_removedir = u64(0x800)
 
+	// bf_last_errno_cell stores the last error the bf wrappers normalized (Linux
+	// numbers), the freestanding reading for os.last_error.
+	__global bf_last_errno_cell = int(0)
+
+	pub fn bf_last_errno() int {
+		return bf_last_errno_cell
+	}
+
 	fn bf_norm_errno(e VlibcErrno) int {
 		// values normalized to the Linux numbers for the os message tables; an
 		// errno with no Linux counterpart reads as EIO, never as success
-		return match e {
+		n := match e {
 			.enoerror { 0 }
 			.eperm { 1 }
 			.enoent { 2 }
@@ -74,8 +82,8 @@ $if (freestanding || syscalls) && !i386 {
 			.edom { 33 }
 			.erange { 34 }
 			.eagain { 11 }
-			.einprogress { 116 }
-			.ealready { 115 }
+			.einprogress { 115 }
+			.ealready { 114 }
 			.enotsock { 88 }
 			.edestaddrreq { 89 }
 			.emsgsize { 90 }
@@ -88,41 +96,43 @@ $if (freestanding || syscalls) && !i386 {
 			.eafnosupport { 97 }
 			.eaddrinuse { 98 }
 			.eaddrnotavail { 99 }
-			.enetdown { 101 }
-			.enetunreach { 102 }
-			.enetreset { 103 }
-			.econnaborted { 104 }
-			.econnreset { 105 }
-			.enobufs { 106 }
-			.eisconn { 107 }
-			.enotconn { 108 }
-			.eshutdown { 109 }
-			.etoomanyrefs { 110 }
-			.etimedout { 111 }
-			.econnrefused { 112 }
+			.enetdown { 100 }
+			.enetunreach { 101 }
+			.enetreset { 102 }
+			.econnaborted { 103 }
+			.econnreset { 104 }
+			.enobufs { 105 }
+			.eisconn { 106 }
+			.enotconn { 107 }
+			.eshutdown { 108 }
+			.etoomanyrefs { 109 }
+			.etimedout { 110 }
+			.econnrefused { 111 }
 			.eloop { 40 }
 			.enametoolong { 36 }
-			.ehostdown { 113 }
-			.ehostunreach { 114 }
+			.ehostdown { 112 }
+			.ehostunreach { 113 }
 			.enotempty { 39 }
 			.eusers { 87 }
-			.edquot { 123 }
-			.estale { 117 }
+			.edquot { 122 }
+			.estale { 116 }
 			.eremote { 66 }
 			.enolck { 37 }
 			.enosys { 38 }
 			.eidrm { 43 }
 			.enomsg { 42 }
 			.eoverflow { 75 }
-			.ecanceled { 126 }
+			.ecanceled { 125 }
 			.eilseq { 84 }
 			.ebadmsg { 74 }
 			.emultihop { 72 }
 			.enolink { 67 }
 			.eproto { 71 }
-			.enotrecoverable { 132 }
+			.enotrecoverable { 131 }
 			else { 5 }
 		}
+		bf_last_errno_cell = n
+		return n
 	}
 
 	fn bf_err_of(rc u64, er u64) int {
@@ -130,6 +140,197 @@ $if (freestanding || syscalls) && !i386 {
 			return 0
 		}
 		return bf_norm_errno(unsafe { VlibcErrno(er) })
+	}
+
+	const bf_nr_getppid = u64(39)
+
+	pub fn bf_getppid() int {
+		rc, er := sys_call0(bf_nr_getppid)
+		if er != 0 {
+			bf_err_of(rc, er)
+			return -1
+		}
+		return int(rc)
+	}
+
+	const bf_nr_fork = u64(2)
+	const bf_nr_execve = u64(59)
+	const bf_nr_wait4 = u64(7)
+
+	// bf_fork forks the process: the child's pid in the parent, 0 in the child,
+	// -1 with the errno cell set on failure. The kernel marks the child with 1
+	// in the second result register; the first one is not 0 there.
+	pub fn bf_fork() int {
+		first, second, er := bsd_sys_call0_pair(bf_nr_fork)
+		if er != 0 {
+			bf_err_of(first, er)
+			return -1
+		}
+		return if second != 0 { 0 } else { int(first) }
+	}
+
+	// bf_execve replaces the process image; it only returns on failure (-1).
+	pub fn bf_execve(path &char, argv voidptr, envp voidptr) int {
+		rc, er := sys_call3(bf_nr_execve, u64(path), u64(argv), u64(envp))
+		bf_err_of(rc, er)
+		return -1
+	}
+
+	// bf_wait4 waits for child `pid`, storing its wait status and, when `rusage`
+	// is not nil, its resource usage. `options` uses the Linux W* numbers:
+	// WNOHANG and WUNTRACED match, WCONTINUED is 4 here.
+	pub fn bf_wait4(pid int, status &int, options int, rusage voidptr) int {
+		mut opts := u64(options & 0x3)
+		if options & 0x8 != 0 {
+			opts |= 4
+		}
+		rc, er := sys_call4(bf_nr_wait4, u64(i64(pid)), u64(status), opts, u64(rusage))
+		if er != 0 {
+			bf_err_of(rc, er)
+			return -1
+		}
+		return int(rc)
+	}
+
+	const bf_nr_statfs = u64(555)
+
+	// FSysFreebsdStatfs is FreeBSD's `struct statfs` (sys/mount.h, 2344 bytes on
+	// amd64 and arm64): block counts are in f_bsize (fragment) units.
+	struct FSysFreebsdStatfs {
+		f_version        u32
+		f_type           u32
+		f_flags          u64
+		f_bsize          u64
+		f_iosize         u64
+		f_blocks         u64
+		f_bfree          u64
+		f_bavail         i64
+		f_files          u64
+		f_ffree          i64
+		f_syncwrites     u64
+		f_asyncwrites    u64
+		f_syncreads      u64
+		f_asyncreads     u64
+		f_nvnodelistsize u32
+		f_spare0         u32
+		f_spare          [9]u64
+		f_namemax        u32
+		f_owner          u32
+		f_fsid           [2]i32
+		f_charspare      [80]u8
+		f_fstypename     [16]u8
+		f_mntfromname    [1024]u8
+		f_mntonname      [1024]u8
+	}
+
+	// FSysLinuxStatfs is the Linux x86_64 `struct statfs` that bf_statfs fills on
+	// every target: block counts are in f_frsize units.
+	struct FSysLinuxStatfs {
+	mut:
+		f_type    i64
+		f_bsize   i64
+		f_blocks  u64
+		f_bfree   u64
+		f_bavail  u64
+		f_files   u64
+		f_ffree   u64
+		f_fsid    [2]i32
+		f_namelen i64
+		f_frsize  i64
+		f_flags   i64
+		f_spare   [4]i64
+	}
+
+	// bf_statfs fills the Linux `struct statfs` layout for `path` from FreeBSD's
+	// statfs(2). FreeBSD's fragment size becomes f_frsize and its optimal I/O size
+	// f_bsize; the read-only, nosuid and noexec mount flags map to their ST_ values.
+	pub fn bf_statfs(path string, buf &u8) int {
+		mut fb := FSysFreebsdStatfs{}
+		rc, er := sys_call2(bf_nr_statfs, u64(path.str), u64(voidptr(&fb)))
+		if er != 0 {
+			bf_err_of(rc, er)
+			return -1
+		}
+		mut out := unsafe { &FSysLinuxStatfs(voidptr(buf)) }
+		mut flags := i64(0)
+		if fb.f_flags & 0x1 != 0 { // MNT_RDONLY
+			flags |= 1 // ST_RDONLY
+		}
+		if fb.f_flags & 0x8 != 0 { // MNT_NOSUID
+			flags |= 2 // ST_NOSUID
+		}
+		if fb.f_flags & 0x4 != 0 { // MNT_NOEXEC
+			flags |= 8 // ST_NOEXEC
+		}
+		unsafe {
+			*out = FSysLinuxStatfs{
+				f_type:    i64(fb.f_type)
+				f_bsize:   i64(fb.f_iosize)
+				f_blocks:  fb.f_blocks
+				f_bfree:   fb.f_bfree
+				f_bavail:  if fb.f_bavail < 0 { u64(0) } else { u64(fb.f_bavail) }
+				f_files:   fb.f_files
+				f_ffree:   if fb.f_ffree < 0 { u64(0) } else { u64(fb.f_ffree) }
+				f_fsid:    fb.f_fsid
+				f_namelen: i64(fb.f_namemax)
+				f_frsize:  i64(fb.f_bsize)
+				f_flags:   flags
+			}
+		}
+		return 0
+	}
+
+	// bf_uname_field copies the sysctl string at [top, leaf] into one 65-byte
+	// field of the Linux utsname layout. Like uname(3), it turns the newlines and
+	// tabs of kern.version into spaces and trims the trailing ones.
+	fn bf_uname_field(top i32, leaf i32, dst &u8) bool {
+		mut mib := [2]i32{}
+		mib[0] = top
+		mib[1] = leaf
+		mut tmp := [512]u8{}
+		mut size := u64(tmp.len)
+		rc, er := sys_call6(bf_nr_sysctl, u64(voidptr(&mib[0])), u64(2), u64(voidptr(&tmp[0])),
+			u64(voidptr(&size)), u64(0), u64(0))
+		if er != 0 {
+			bf_err_of(rc, er)
+			return false
+		}
+		mut n := 0
+		for n < 64 && n < int(size) && tmp[n] != 0 {
+			c := tmp[n]
+			unsafe {
+				dst[n] = if c == `\n` || c == `\t` { ` ` } else { c }
+			}
+			n++
+		}
+		for n > 0 && unsafe { dst[n - 1] } == ` ` {
+			n--
+		}
+		unsafe {
+			dst[n] = 0
+		}
+		return true
+	}
+
+	// bf_uname fills the Linux utsname layout (six 65-byte fields: sysname,
+	// nodename, release, version, machine, domainname) from the kern.ostype,
+	// kern.hostname, kern.osrelease, kern.version and hw.machine sysctls, the
+	// same sources uname(3) reads. domainname stays empty.
+	pub fn bf_uname(buf &u8) int {
+		for i in 0 .. 6 * 65 {
+			unsafe {
+				buf[i] = 0
+			}
+		}
+		// CTL_KERN = 1: KERN_OSTYPE = 1, KERN_HOSTNAME = 10, KERN_OSRELEASE = 2,
+		// KERN_VERSION = 4; CTL_HW = 6: HW_MACHINE = 1
+		if !bf_uname_field(1, 1, buf) || !bf_uname_field(1, 10, unsafe { buf + 65 })
+			|| !bf_uname_field(1, 2, unsafe { buf + 130 })
+			|| !bf_uname_field(1, 4, unsafe { buf + 195 })
+			|| !bf_uname_field(6, 1, unsafe { buf + 260 }) {
+			return -1
+		}
+		return 0
 	}
 
 	// bf_flags transposes Linux o_* numbers (what the os consts carry under

@@ -75,8 +75,8 @@ $if (freestanding || syscalls) && !i386 {
 			.edom { 33 }
 			.erange { 34 }
 			.eagain { 11 }
-			.einprogress { 116 }
-			.ealready { 115 }
+			.einprogress { 115 }
+			.ealready { 114 }
 			.enotsock { 88 }
 			.edestaddrreq { 89 }
 			.emsgsize { 90 }
@@ -89,37 +89,37 @@ $if (freestanding || syscalls) && !i386 {
 			.eafnosupport { 97 }
 			.eaddrinuse { 98 }
 			.eaddrnotavail { 99 }
-			.enetdown { 101 }
-			.enetunreach { 102 }
-			.enetreset { 103 }
-			.econnaborted { 104 }
-			.econnreset { 105 }
-			.enobufs { 106 }
-			.eisconn { 107 }
-			.enotconn { 108 }
-			.eshutdown { 109 }
-			.etoomanyrefs { 110 }
-			.etimedout { 111 }
-			.econnrefused { 112 }
+			.enetdown { 100 }
+			.enetunreach { 101 }
+			.enetreset { 102 }
+			.econnaborted { 103 }
+			.econnreset { 104 }
+			.enobufs { 105 }
+			.eisconn { 106 }
+			.enotconn { 107 }
+			.eshutdown { 108 }
+			.etoomanyrefs { 109 }
+			.etimedout { 110 }
+			.econnrefused { 111 }
 			.eloop { 40 }
 			.enametoolong { 36 }
-			.ehostdown { 113 }
-			.ehostunreach { 114 }
+			.ehostdown { 112 }
+			.ehostunreach { 113 }
 			.enotempty { 39 }
 			.eusers { 87 }
-			.edquot { 123 }
-			.estale { 117 }
+			.edquot { 122 }
+			.estale { 116 }
 			.eremote { 66 }
 			.enolck { 37 }
 			.enosys { 38 }
 			.eilseq { 84 }
 			.eoverflow { 75 }
-			.ecanceled { 126 }
+			.ecanceled { 125 }
 			.eidrm { 43 }
 			.enomsg { 42 }
 			.ebadmsg { 74 }
-			.enotrecoverable { 132 }
-			.eownerdead { 131 }
+			.enotrecoverable { 131 }
+			.eownerdead { 130 }
 			.eproto { 71 }
 			else { 5 }
 		}

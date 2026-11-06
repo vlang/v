@@ -507,6 +507,7 @@ $if !i386 {
 			xor rbp, rbp
 			mov rdi, [rsp]
 			lea rsi, [rsp + 8]
+			and rsp, -16
 			call main
 			mov rdi, rax
 			mov rax, 1

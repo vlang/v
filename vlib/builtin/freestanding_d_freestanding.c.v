@@ -36,6 +36,9 @@ $if freestanding && native && linux {
 		const bare_sys_nr_thr_self = u64(186)
 		const bare_sys_nr_getppid = u64(110)
 		const bare_sys_nr_uname = u64(63)
+		const bare_sys_nr_fork = u64(57)
+		const bare_sys_nr_execve = u64(59)
+		const bare_sys_nr_wait4 = u64(61)
 		const bare_sys_nr_statfs = u64(137)
 	} $else $if arm64 {
 		const bare_sys_nr_read = u64(63)
@@ -62,6 +65,9 @@ $if freestanding && native && linux {
 		const bare_sys_nr_thr_self = u64(178)
 		const bare_sys_nr_getppid = u64(173)
 		const bare_sys_nr_uname = u64(160)
+		const bare_sys_nr_clone = u64(220) // arm64 has no fork: clone(SIGCHLD, 0, 0, 0, 0)
+		const bare_sys_nr_execve = u64(221)
+		const bare_sys_nr_wait4 = u64(260)
 		const bare_sys_nr_statfs = u64(43)
 	}
 
@@ -593,6 +599,38 @@ $if freestanding && native && linux {
 			return -1
 		}
 		return int(rc)
+	}
+
+	// bf_native_ret turns a raw Linux syscall result into the libc convention: the
+	// value, or -1 with the errno cell set.
+	fn bf_native_ret(rc u64) int {
+		if i64(rc) < 0 && i64(rc) > -4096 {
+			bf_last_errno_cell = int(-i64(rc))
+			return -1
+		}
+		return int(rc)
+	}
+
+	// bf_fork forks the process: the child's pid in the parent, 0 in the child,
+	// -1 with the errno cell set on failure.
+	pub fn bf_fork() int {
+		$if arm64 {
+			return bf_native_ret(bsys_call5(bare_sys_nr_clone, 17, 0, 0, 0, 0)) // SIGCHLD
+		} $else {
+			return bf_native_ret(bsys_call1(bare_sys_nr_fork, 0))
+		}
+	}
+
+	// bf_execve replaces the process image; it only returns on failure (-1).
+	pub fn bf_execve(path &char, argv voidptr, envp voidptr) int {
+		return bf_native_ret(bsys_call3(bare_sys_nr_execve, u64(path), u64(argv), u64(envp)))
+	}
+
+	// bf_wait4 waits for child `pid`, storing its wait status and, when `rusage`
+	// is not nil, its resource usage. `options` uses the Linux W* numbers.
+	pub fn bf_wait4(pid int, status &int, options int, rusage voidptr) int {
+		return bf_native_ret(bsys_call4(bare_sys_nr_wait4, u64(i64(pid)), u64(status),
+			u64(i64(options)), u64(rusage)))
 	}
 
 	pub fn bf_nanosleep(ms i64) int {

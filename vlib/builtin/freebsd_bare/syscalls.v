@@ -242,6 +242,57 @@ $if !i386 {
 		return res, err
 	}
 
+	// bsd_sys_call0_pair is sys_call0 that also returns the second result register
+	// (rdx/x1): fork reports the child there.
+	fn bsd_sys_call0_pair(scn u64) (u64, u64, u64) {
+		mut first := u64(0)
+		mut second := u64(0)
+		mut err := u64(0)
+		$if arm64 {
+			asm volatile arm64 {
+				mov x8, scn
+				svc 0
+				mov first, x0
+				mov second, x1
+				mov err, xzr
+				b.cc '1f'
+				mov err, x0
+				1:
+				; =r (first)
+				  =r (second)
+				  =r (err)
+				; r (scn)
+				; x0
+				  x1
+				  x8
+				  cc
+				  memory
+			}
+		} $else {
+			asm volatile amd64 {
+				mov rax, scn
+				syscall
+				mov first, rax
+				mov second, rdx
+				mov err, 0
+				jnc '1f'
+				mov err, rax
+				1:
+				; =r (first)
+				  =r (second)
+				  =r (err)
+				; r (scn)
+				; rax
+				  rdx
+				  rcx
+				  r11
+				  cc
+				  memory
+			}
+		}
+		return first, second, err
+	}
+
 	fn sys_call1(scn u64, arg1 u64) (u64, u64) {
 		mut res := u64(0)
 		mut err := u64(0)
@@ -596,16 +647,21 @@ $if !i386 {
 	}
 
 	$if freestanding {
-		// _start is the process entry point: argc at the stack pointer, then
-		// argv, envp, ... It calls `main(argc, argv)` and exits with its result.
+		// _start is the process entry point. FreeBSD's exec_setregs passes the
+		// address of argc (followed by argv, envp, ...) in rdi/x0 and only aligns
+		// the stack pointer like a call frame (rsp % 16 == 8), so argc is not
+		// always at the stack pointer. It realigns the stack to 16 bytes, calls
+		// `main(argc, argv)` and exits with its result.
 		$if amd64 {
 			asm amd64 {
 				.pushsection .text
 				.globl _start
 				_start:
 				xor rbp, rbp
-				mov rdi, [rsp]
-				lea rsi, [rsp + 8]
+				mov rsi, rdi
+				mov rdi, [rsi]
+				add rsi, 8
+				and rsp, -16
 				call main
 				mov rdi, rax
 				mov rax, 1
@@ -619,8 +675,9 @@ $if !i386 {
 				_start:
 				mov x29, 0
 				mov x30, 0
-				ldr x0, [sp]
-				add x1, sp, 8
+				mov x9, x0
+				ldr x0, [x9]
+				add x1, x9, 8
 				bl main
 				mov x8, 1
 				svc 0

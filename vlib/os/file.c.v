@@ -598,6 +598,7 @@ pub fn (f &File) read_bytes_with_newline(mut buf []u8) !int {
 	if buf.len == 0 {
 		return error(@FN + ': `buf.len` == 0')
 	}
+	newline := 10
 	$if freestanding || syscalls {
 		mut cbuf := []u8{len: 1}
 		mut buf_ptr := 0
@@ -629,7 +630,6 @@ pub fn (f &File) read_bytes_with_newline(mut buf []u8) !int {
 		return nbytes
 	}
 	$if !freestanding && !syscalls {
-		newline := 10
 		mut c := 0
 		mut buf_ptr := 0
 		mut nbytes := 0

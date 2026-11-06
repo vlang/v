@@ -1,6 +1,6 @@
 // Regressions for the native inline-asm lowering (secondary outputs, the unsuffixed
-// `div`), the -syscalls path and ioctl, and the aligned allocation of the freestanding
-// runtime. Each program is compiled and run, so the checks are what the binaries do.
+// `div`, wide immediates), the -syscalls path, ioctl, newline reads and wait4, and the
+// aligned allocation of the freestanding runtime. Each program is compiled and run, so the checks are what the binaries do.
 import os
 
 const vexe = @VEXE
@@ -80,6 +80,83 @@ fn main() {
 }
 "
 
+const native_asm_imm_program = 'fn main() {
+	initial := u64(1)
+	mut result := u64(0)
+	asm amd64 {
+		addq rax, 256
+		subq rax, -129
+		xorq rax, 0x7fff0000
+		; =a (result)
+		; a (initial)
+		; cc
+	}
+	println(result)
+}
+'
+
+const native_asm_imm_too_wide_program = 'fn main() {
+	mut result := u64(0)
+	asm amd64 {
+		xorq rax, 0x80000000
+		; =a (result)
+		; a (result)
+		; cc
+	}
+	println(result)
+}
+'
+
+const syscalls_newline_program = "import os
+
+fn main() {
+	path := os.args[1]
+	os.write_file(path, 'ab\\ncd')!
+	f := os.open(path)!
+	mut buf := []u8{len: 16}
+	n1 := f.read_bytes_with_newline(mut buf)!
+	first := buf[..n1].bytestr()
+	n2 := f.read_bytes_with_newline(mut buf)!
+	println('\${n1} \${first.trim_space()} \${n2} \${buf[..n2].bytestr()}')
+}
+"
+
+const wait4_rusage_program = "import os
+
+fn main() {
+	pid := os.fork()
+	if pid == 0 {
+		exit(3)
+	}
+	mut status := 0
+	mut usage := []u8{len: 256, init: 0xaa}
+	got := os.wait4(pid, &status, 0, usage.data)
+	println('\${got == pid} \${(status >> 8) & 0xff} \${usage.any(it != 0xaa)}')
+}
+"
+
+const fork_execve_program = "import os
+
+fn main() {
+	pid := os.fork()
+	if pid == 0 {
+		os.execve('/bin/sh', ['-c', 'exit 7'], []) or { exit(99) }
+	}
+	mut status := 0
+	got := os.wait4(pid, &status, 0, unsafe { nil })
+	println('reaped=\${got == pid} exit=\${(status >> 8) & 0xff}')
+	pid2 := os.fork()
+	if pid2 == 0 {
+		os.execve('/nonexistent/x', [], []) or {
+			println('child: \${err.code()}')
+			exit(3)
+		}
+	}
+	os.wait4(pid2, &status, 0, unsafe { nil })
+	println('exit2=\${(status >> 8) & 0xff}')
+}
+"
+
 // test_native_asm_secondary_outputs_and_div_lower checks that a two-output asm block
 // with three inputs stores both halves, and that `div` lowers like `divq`.
 fn test_native_asm_secondary_outputs_and_div_lower() {
@@ -141,4 +218,107 @@ fn test_freestanding_posix_memalign_is_aligned_and_freeable() {
 	run := os.exec([exe])
 	assert run.exit_code == 0, run.output
 	assert run.output == 'bad=0\n', run.output
+}
+
+// test_native_asm_wide_immediates checks that arithmetic immediates outside -128..127
+// keep their value on the x64 backend, and that ones without a 32-bit encoding are
+// rejected instead of being truncated.
+fn test_native_asm_wide_immediates() {
+	$if !amd64 || !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'native_asm_imm_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, native_asm_imm_program)!
+	exe := os.join_path(root, 'main')
+	build := os.exec([vexe, '-nocache', '-b', 'x64', '-o', exe, source])
+	assert build.exit_code == 0, build.output
+	run := os.exec([exe])
+	assert run.exit_code == 0, run.output
+	assert run.output == '2147418498\n', run.output
+	wide_source := os.join_path(root, 'wide.v')
+	os.write_file(wide_source, native_asm_imm_too_wide_program)!
+	wide := os.exec([vexe, '-nocache', '-b', 'x64', '-o', os.join_path(root, 'wide'), wide_source])
+	assert wide.exit_code != 0, wide.output
+	assert wide.output.contains('does not fit a sign-extended 32-bit immediate'), wide.output
+}
+
+// test_syscalls_read_bytes_with_newline checks that File.read_bytes_with_newline
+// compiles and stops at the newline under -syscalls.
+fn test_syscalls_read_bytes_with_newline() {
+	$if !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'syscalls_newline_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, syscalls_newline_program)!
+	exe := os.join_path(root, 'main')
+	build := os.exec([vexe, '-nocache', '-syscalls', '-o', exe, source])
+	assert build.exit_code == 0, build.output
+	run := os.exec([exe, os.join_path(root, 'data.txt')])
+	assert run.exit_code == 0, run.output
+	assert run.output == '3 ab 2 cd\n', run.output
+}
+
+// test_wait4_fills_rusage checks that os.wait4 reaps the child and fills the
+// resource-usage buffer, both hosted and under -syscalls.
+fn test_wait4_fills_rusage() {
+	$if !linux || !amd64 {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'wait4_rusage_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, wait4_rusage_program)!
+	for mode in ['', '-syscalls'] {
+		exe := os.join_path(root, 'main${mode}')
+		mut args := [vexe, '-nocache']
+		if mode != '' {
+			args << mode
+		}
+		args << ['-o', exe, source]
+		build := os.exec(args)
+		assert build.exit_code == 0, '${mode}: ${build.output}'
+		run := os.exec([exe])
+		assert run.exit_code == 0, '${mode}: ${run.output}'
+		assert run.output == 'true 3 true\n', '${mode}: ${run.output}'
+	}
+}
+
+// test_fork_execve_wait4_through_bf checks os.fork, os.execve and os.wait4, which go
+// through the runtime's bf_fork/bf_execve/bf_wait4, hosted, under -syscalls and in a
+// freestanding x64 build, including the errno a failed execve reports.
+fn test_fork_execve_wait4_through_bf() {
+	$if !linux || !amd64 {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fork_execve_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, fork_execve_program)!
+	for i, mode in [[]string{}, ['-syscalls'], ['-freestanding', '-b', 'x64']] {
+		exe := os.join_path(root, 'main_${i}')
+		mut args := [vexe, '-nocache']
+		args << mode
+		args << ['-o', exe, source]
+		build := os.exec(args)
+		assert build.exit_code == 0, '${mode}: ${build.output}'
+		run := os.exec([exe])
+		assert run.exit_code == 0, '${mode}: ${run.output}'
+		assert run.output == 'reaped=true exit=7\nchild: 2\nexit2=3\n', '${mode}: ${run.output}'
+	}
 }

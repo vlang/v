@@ -35,10 +35,18 @@ $if (freestanding || syscalls) && amd64 {
 
 	const bf_o_directory = u64(0x1000000)
 
+	// bf_last_errno_cell stores the last error the bf wrappers normalized (Linux
+	// numbers), the freestanding reading for os.last_error.
+	__global bf_last_errno_cell = int(0)
+
+	pub fn bf_last_errno() int {
+		return bf_last_errno_cell
+	}
+
 	fn bf_norm_errno(e VlibcErrno) int {
 		// values normalized to the Linux numbers for the os message tables; an
 		// errno with no Linux counterpart reads as EIO, never as success
-		return match e {
+		n := match e {
 			.enoerror { 0 }
 			.eperm { 1 }
 			.enoent { 2 }
@@ -75,8 +83,8 @@ $if (freestanding || syscalls) && amd64 {
 			.edom { 33 }
 			.erange { 34 }
 			.eagain { 11 }
-			.einprogress { 116 }
-			.ealready { 115 }
+			.einprogress { 115 }
+			.ealready { 114 }
 			.enotsock { 88 }
 			.edestaddrreq { 89 }
 			.emsgsize { 90 }
@@ -89,42 +97,44 @@ $if (freestanding || syscalls) && amd64 {
 			.eafnosupport { 97 }
 			.eaddrinuse { 98 }
 			.eaddrnotavail { 99 }
-			.enetdown { 101 }
-			.enetunreach { 102 }
-			.enetreset { 103 }
-			.econnaborted { 104 }
-			.econnreset { 105 }
-			.enobufs { 106 }
-			.eisconn { 107 }
-			.enotconn { 108 }
-			.eshutdown { 109 }
-			.etoomanyrefs { 110 }
-			.etimedout { 111 }
-			.econnrefused { 112 }
+			.enetdown { 100 }
+			.enetunreach { 101 }
+			.enetreset { 102 }
+			.econnaborted { 103 }
+			.econnreset { 104 }
+			.enobufs { 105 }
+			.eisconn { 106 }
+			.enotconn { 107 }
+			.eshutdown { 108 }
+			.etoomanyrefs { 109 }
+			.etimedout { 110 }
+			.econnrefused { 111 }
 			.eloop { 40 }
 			.enametoolong { 36 }
-			.ehostdown { 113 }
-			.ehostunreach { 114 }
+			.ehostdown { 112 }
+			.ehostunreach { 113 }
 			.enotempty { 39 }
 			.eusers { 87 }
-			.edquot { 123 }
-			.estale { 117 }
+			.edquot { 122 }
+			.estale { 116 }
 			.eremote { 66 }
 			.enolck { 37 }
 			.enosys { 38 }
 			.eidrm { 43 }
 			.enomsg { 42 }
 			.eoverflow { 75 }
-			.ecanceled { 126 }
+			.ecanceled { 125 }
 			.eilseq { 84 }
 			.ebadmsg { 74 }
 			.emultihop { 72 }
 			.enolink { 67 }
 			.eproto { 71 }
-			.enotrecoverable { 132 }
-			.eownerdead { 131 }
+			.enotrecoverable { 131 }
+			.eownerdead { 130 }
 			else { 5 }
 		}
+		bf_last_errno_cell = n
+		return n
 	}
 
 	fn bf_err_of(rc u64, er u64) int {
@@ -132,6 +142,131 @@ $if (freestanding || syscalls) && amd64 {
 			return 0
 		}
 		return bf_norm_errno(unsafe { VlibcErrno(er) })
+	}
+
+	const bf_nr_uname = u64(135)
+
+	pub fn bf_getppid() int {
+		// illumos has no getppid syscall: getpid returns the parent in rdx.
+		ppid, er := sol_sys_call0_secondary(u64(20))
+		if er != 0 {
+			bf_err_of(ppid, er)
+			return -1
+		}
+		return int(ppid)
+	}
+
+	const bf_nr_forksys = u64(142)
+	const bf_nr_execve = u64(59)
+	const bf_nr_waitid = u64(107)
+	const bf_nr_pgrpsys = u64(39)
+
+	// bf_fork forks through forksys(0, 0), illumos' forkx(0): the child's pid in
+	// the parent, 0 in the child (marked by 1 in rdx), -1 with errno on failure.
+	pub fn bf_fork() int {
+		first, second, er := sol_sys_call0_pair(bf_nr_forksys)
+		if er != 0 {
+			bf_err_of(first, er)
+			return -1
+		}
+		return if second != 0 { 0 } else { int(first) }
+	}
+
+	// bf_execve replaces the process image; it only returns on failure (-1).
+	pub fn bf_execve(path &char, argv voidptr, envp voidptr) int {
+		rc, er := sys_call3(bf_nr_execve, u64(path), u64(argv), u64(envp))
+		bf_err_of(rc, er)
+		return -1
+	}
+
+	// bf_wait4 emulates wait4 with waitid, as illumos libc's waitpid does; there
+	// is no wait4 syscall. `options` uses the Linux W* numbers. `rusage` is not
+	// filled. The siginfo offsets are from sys/siginfo.h (256 bytes on amd64).
+	pub fn bf_wait4(pid int, status &int, options int, rusage voidptr) int {
+		_ = rusage
+		// idtype: P_PID = 0, P_PGID = 2, P_ALL = 7
+		mut idtype := u64(0)
+		mut id := i64(pid)
+		if pid == -1 {
+			idtype = 7
+			id = 0
+		} else if pid == 0 {
+			pg, pe := sys_call1(bf_nr_pgrpsys, 0) // getpgrp
+			if pe != 0 {
+				bf_err_of(pg, pe)
+				return -1
+			}
+			idtype = 2
+			id = i64(pg)
+		} else if pid < -1 {
+			idtype = 2
+			id = -i64(pid)
+		}
+		// WEXITED | WTRAPPED, plus WNOHANG (0x40), WUNTRACED (4), WCONTINUED (8)
+		mut opts := u64(0x1 | 0x2)
+		if options & 0x1 != 0 {
+			opts |= 0x40
+		}
+		if options & 0x2 != 0 {
+			opts |= 0x4
+		}
+		if options & 0x8 != 0 {
+			opts |= 0x8
+		}
+		mut info := [256]u8{}
+		rc, er := sys_call4(bf_nr_waitid, idtype, u64(id), u64(voidptr(&info[0])), opts)
+		if er != 0 {
+			bf_err_of(rc, er)
+			return -1
+		}
+		code := unsafe { *(&int(voidptr(&info[4]))) }
+		child := unsafe { *(&int(voidptr(&info[16]))) }
+		cst := unsafe { *(&int(voidptr(&info[32]))) }
+		if child == 0 {
+			return 0 // WNOHANG and no child changed state
+		}
+		// the classic wait status, as illumos libc's wstat() builds it
+		w := match code {
+			1 { (cst & 0xff) << 8 } // CLD_EXITED
+			2 { cst & 0x7f } // CLD_KILLED
+			3 { (cst & 0x7f) | 0x80 } // CLD_DUMPED
+			4, 5 { ((cst & 0xff) << 8) | 0x7f } // CLD_TRAPPED, CLD_STOPPED
+			6 { 0xffff } // CLD_CONTINUED
+			else { 0 }
+		}
+		if status != unsafe { nil } {
+			unsafe {
+				*status = w
+			}
+		}
+		return child
+	}
+
+	// bf_uname fills the Linux utsname layout (six 65-byte fields) from the
+	// illumos uname syscall, whose five fields are 257 bytes each (_SYS_NMLN).
+	// domainname stays empty.
+	pub fn bf_uname(buf &u8) int {
+		mut sol := [5 * 257]u8{}
+		rc, er := sys_call1(bf_nr_uname, u64(voidptr(&sol[0])))
+		if er != 0 {
+			bf_err_of(rc, er)
+			return -1
+		}
+		for i in 0 .. 6 * 65 {
+			unsafe {
+				buf[i] = 0
+			}
+		}
+		for f in 0 .. 5 {
+			mut n := 0
+			for n < 64 && sol[f * 257 + n] != 0 {
+				unsafe {
+					buf[f * 65 + n] = sol[f * 257 + n]
+				}
+				n++
+			}
+		}
+		return 0
 	}
 
 	// bf_flags transposes Linux o_* numbers (what the os consts carry under

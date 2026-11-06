@@ -4,6 +4,7 @@
 
 module x64
 
+import strconv
 import v.ssa
 
 // Structured inline-asm lowering for the x64 native backend.
@@ -251,14 +252,17 @@ fn (mut g Gen) lower_x64_asm_mov(mut st AsmLowerState, dst string, src string, s
 }
 
 // lower_x64_asm_regop lowers add/adc/sub/xor/or/and with 64-bit register
-// shapes: `opq reg, reg`, `opq reg, value` and `opq reg, imm8`.
+// shapes: `opq reg, reg`, `opq reg, value` and `opq reg, imm32`.
 fn (mut g Gen) lower_x64_asm_regop(mut st AsmLowerState, mnemonic string, dst string, src string, spec &ssa.InlineAsmSpec, instr ssa.Instruction, val_id int) {
 	dst_reg := asm_register_of(dst) or {
 		panic('x64: inline asm `${mnemonic}` destination must be a register: ${mnemonic} ${dst}, ${src}')
 	}
 	if imm := asm_small_imm_of(src) {
-		// 83 /opext imm8
-		asm_imm8_reg_op(mut g, mnemonic, dst_reg, imm)
+		// 83 /x ib or 81 /x id; both sign-extend to 64 bits
+		if imm < i64(min_i32) || imm > i64(max_i32) {
+			panic('x64: inline asm `${mnemonic}` immediate ${src.trim_space()} does not fit a sign-extended 32-bit immediate; load it into a register first')
+		}
+		asm_imm_reg_op(mut g, mnemonic, dst_reg, imm)
 		return
 	}
 	src_val := asm_alias_value(src, spec, instr, val_id)
@@ -279,13 +283,16 @@ fn (mut g Gen) lower_x64_asm_regop(mut st AsmLowerState, mnemonic string, dst st
 }
 
 // asm_small_imm_of parses a plain integer immediate, none when the token has
-// other shape.
+// other shape. A token shaped like a number that does not parse as a signed
+// 64-bit integer panics instead of being silently truncated.
 fn asm_small_imm_of(token string) ?i64 {
 	name := token.trim_space()
 	if !(name[0].is_digit() || (name[0] == `-` && name.len > 1)) {
 		return none
 	}
-	return name.i64()
+	return strconv.parse_int(name, 0, 64) or {
+		panic('x64: inline asm immediate `${name}` is not a valid signed 64-bit integer: ${err}')
+	}
 }
 
 // asm_instruction_operand_reg resolves a one-operand instruction's argument
@@ -465,8 +472,8 @@ const asm_regop_opcodes = {
 	'xorq': 0x31
 }
 
-// asm_imm8_op_exts maps the 83 /x imm8 forms.
-const asm_imm8_op_exts = {
+// asm_imm_op_exts maps the /x extension of the 83 /x ib and 81 /x id forms.
+const asm_imm_op_exts = {
 	'addq': 0
 	'orq':  1
 	'adcq': 2
@@ -504,19 +511,29 @@ fn asm_two_reg_op(mut g Gen, mnemonic string, dst Reg, src Reg) {
 	g.emit(u8(0xC0 | ((int(src) & 7) << 3) | (int(dst) & 7)))
 }
 
-// asm_imm8_reg_op emits `83 /x imm8 op r64` for the add-family.
-fn asm_imm8_reg_op(mut g Gen, mnemonic string, dst Reg, imm i64) {
-	op_ext := asm_imm8_op_exts[mnemonic] or {
-		panic('x64: inline asm `${mnemonic}` has no imm8 encoding table entry')
+// asm_imm_reg_op emits `83 /x ib` for immediates in -128..127 and `81 /x id`
+// for the rest of the signed 32-bit range, for the add-family on r64. The
+// caller rejects immediates outside the signed 32-bit range.
+fn asm_imm_reg_op(mut g Gen, mnemonic string, dst Reg, imm i64) {
+	op_ext := asm_imm_op_exts[mnemonic] or {
+		panic('x64: inline asm `${mnemonic}` has no immediate encoding table entry')
 	}
 	mut rex := u8(0x48)
 	if int(dst) >= 8 {
 		rex |= 0x01 // REX.B
 	}
 	g.emit(rex)
-	g.emit(0x83)
+	if imm >= -128 && imm <= 127 {
+		g.emit(0x83)
+		g.emit(u8(0xC0 | (op_ext << 3) | (int(dst) & 7)))
+		g.emit(u8(imm & 0xFF))
+		return
+	}
+	g.emit(0x81)
 	g.emit(u8(0xC0 | (op_ext << 3) | (int(dst) & 7)))
-	g.emit(u8(imm & 0xFF))
+	for i in 0 .. 4 {
+		g.emit(u8((imm >> (8 * i)) & 0xFF))
+	}
 }
 
 // asm_mov_mem_base_reg emits `mov [base], src` for the 64-bit register form.

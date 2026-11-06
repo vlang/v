@@ -38,6 +38,9 @@ $if (freestanding || syscalls) && !i386 {
 		const bf_nr_getppid = u64(173)
 		const bf_nr_uname = u64(160)
 		const bf_nr_statfs = u64(43)
+		const bf_nr_clone = u64(220) // arm64 has no fork: clone(SIGCHLD, 0, 0, 0, 0)
+		const bf_nr_execve = u64(221)
+		const bf_nr_wait4 = u64(260)
 	} $else {
 		const bf_nr_read = u64(0)
 		const bf_nr_write = u64(1)
@@ -61,6 +64,9 @@ $if (freestanding || syscalls) && !i386 {
 		const bf_nr_getppid = u64(110)
 		const bf_nr_uname = u64(63)
 		const bf_nr_statfs = u64(137)
+		const bf_nr_fork = u64(57)
+		const bf_nr_execve = u64(59)
+		const bf_nr_wait4 = u64(61)
 	}
 
 	const bf_at_fdcwd = u32(4294967196) // -100 as u32, seen by the kernel register
@@ -303,6 +309,38 @@ $if (freestanding || syscalls) && !i386 {
 			return -1
 		}
 		return int(rc)
+	}
+
+	// bf_ret_int turns a raw Linux syscall result into the libc convention: the
+	// value, or -1 with the errno cell set.
+	fn bf_ret_int(rc u64) int {
+		if i64(rc) < 0 && i64(rc) > -4096 {
+			bf_last_errno_cell = int(-i64(rc))
+			return -1
+		}
+		return int(rc)
+	}
+
+	// bf_fork forks the process: the child's pid in the parent, 0 in the child,
+	// -1 with the errno cell set on failure.
+	pub fn bf_fork() int {
+		$if arm64 {
+			return bf_ret_int(sys_call5(bf_nr_clone, 17, 0, 0, 0, 0)) // SIGCHLD
+		} $else {
+			return bf_ret_int(sys_call0(bf_nr_fork))
+		}
+	}
+
+	// bf_execve replaces the process image; it only returns on failure (-1).
+	pub fn bf_execve(path &char, argv voidptr, envp voidptr) int {
+		return bf_ret_int(sys_call3(bf_nr_execve, u64(path), u64(argv), u64(envp)))
+	}
+
+	// bf_wait4 waits for child `pid`, storing its wait status and, when `rusage`
+	// is not nil, its resource usage. `options` uses the Linux W* numbers.
+	pub fn bf_wait4(pid int, status &int, options int, rusage voidptr) int {
+		return bf_ret_int(sys_call4(bf_nr_wait4, u64(i64(pid)), u64(status), u64(i64(options)),
+			u64(rusage)))
 	}
 
 	// bf_uname fills the linux utsname layout: six NUL-gapped char fields of

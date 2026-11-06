@@ -25,6 +25,10 @@ fn C.getline(voidptr, voidptr, voidptr) i32
 
 fn C.sigaction(i32, voidptr, i32) i32
 
+fn C.wait4(pid i32, status &int, options i32, rusage &C.rusage) i32
+
+struct C.rusage {}
+
 fn C.open(&char, i32, ...int) i32
 
 fn C._wopen(&u16, i32, ...int) i32
@@ -1356,67 +1360,26 @@ fn normalize_drive_letter(path string) {
 
 // fork will fork the current system process and return the pid of the fork.
 pub fn fork() int {
-	mut pid := -1
 	$if windows {
 		panic('os.fork not supported in windows') // TODO
 	} $else $if freestanding || syscalls {
-		$if amd64 {
-			unsafe {
-				asm amd64 {
-					mov rax, 57
-					syscall
-					; =a (pid)
-					;
-					; rcx
-					  r11
-					  memory
-				}
-			}
-		} $else {
-			panic('os.fork not supported on this architecture in freestanding builds')
-		}
+		return bf_fork()
 	} $else {
-		pid = C.fork()
+		return C.fork()
 	}
-	return pid
 }
 
 // wait4 blocks until the child process `pid` exits and writes its status to `status`.
+// When `rusage` is not nil, it must point to a `struct rusage`, which receives the
+// child's resource usage (except on illumos under -freestanding/-syscalls, where
+// wait4 is emulated with waitid and `rusage` is left untouched).
 pub fn wait4(pid int, status &int, options int, rusage voidptr) int {
 	$if freestanding || syscalls {
-		$if amd64 {
-			mut res := 0
-			_ = pid
-			_ = status
-			_ = options
-			_ = rusage
-			unsafe {
-				asm amd64 {
-					mov rax, 61
-					mov rdi, pid
-					mov rsi, status
-					mov rdx, options
-					mov r10, rusage
-					syscall
-					; =a (res)
-					; D (pid)
-					  S (status)
-					  d (options)
-					  r (rusage)
-					; rcx
-					  r11
-					  memory
-				}
-			}
-			return res
-		} $else {
-			return -1
-		}
+		return bf_wait4(pid, status, options, rusage)
+	} $else $if windows {
+		panic('os.wait4 not supported on windows')
 	} $else {
-		$if windows {
-			panic('os.wait4 not supported on windows')
-		}
-		return C.waitpid(pid, status, options)
+		return C.wait4(pid, status, options, unsafe { &C.rusage(rusage) })
 	}
 }
 
@@ -1570,37 +1533,15 @@ pub fn execve(cmdpath string, cmdargs []string, envs []string) ! {
 	$if windows {
 		res = C._execve(&char(cmdpath.str), cargv.data, cenvs.data)
 	} $else $if freestanding || syscalls {
-		$if amd64 {
-			path_ptr := &char(cmdpath.str)
-			cargv_ptr := cargv.data
-			cenvp_ptr := cenvs.data
-			unsafe {
-				asm amd64 {
-					mov rax, 59
-					mov rdi, path_ptr
-					mov rsi, cargv_ptr
-					mov rdx, cenvp_ptr
-					syscall
-					; =a (res)
-					; D (path_ptr)
-					  S (cargv_ptr)
-					  d (cenvp_ptr)
-					; rcx
-					  r11
-					  memory
-				}
-			}
-		} $else {
-			res = -1
-		}
+		res = bf_execve(&char(cmdpath.str), cargv.data, cenvs.data)
 	} $else {
 		res = C.execve(&char(cmdpath.str), cargv.data, cenvs.data)
 	}
 	// Note: normally execve does not return at all.
 	// If it returns, then something went wrong...
 	$if freestanding || syscalls {
-		if res < 0 {
-			return error('execve failed')
+		if res == -1 {
+			return last_error()
 		}
 	} $else {
 		if res == -1 {
