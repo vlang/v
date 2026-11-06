@@ -287,7 +287,7 @@ fn (mut st ArmAsmState) pick() int {
 // finish_arm64_asm_outputs stores the outputs: the first output is the
 // instruction's result, the others go through their pointer operands.
 fn (mut g Gen) finish_arm64_asm_outputs(mut st ArmAsmState, instr &ssa.Instruction, val_id int, spec &ssa.InlineAsmSpec) {
-	input_count := spec.asm_input_start()
+	input_count := spec.asm_input_count()
 	mut ordinal := 0
 	for io_index, io in spec.ios {
 		if !io.constraint.starts_with('=') {

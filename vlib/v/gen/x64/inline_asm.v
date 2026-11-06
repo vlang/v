@@ -169,7 +169,7 @@ fn (mut g Gen) lower_x64_asm_line(mut st AsmLowerState, line string, spec &ssa.I
 			}
 			g.lower_x64_asm_mov(mut st, asm_operands[0], asm_operands[1], spec, instr, val_id)
 		}
-		'mulq', 'imulq', 'divq', 'idivq' {
+		'mulq', 'imulq', 'divq', 'idivq', 'div', 'idiv' {
 			if asm_operands.len != 1 {
 				panic('x64: inline asm `${mnemonic}` expects one operand: ${line}')
 			}
@@ -177,8 +177,8 @@ fn (mut g Gen) lower_x64_asm_line(mut st AsmLowerState, line string, spec &ssa.I
 			op_ext := match mnemonic {
 				'mulq' { 4 }
 				'imulq' { 5 }
-				'divq' { 6 }
-				'idivq' { 7 }
+				'divq', 'div' { 6 }
+				'idivq', 'idiv' { 7 }
 				else { 4 }
 			}
 			// F7 /4..7, modrm 11 op rm (REX.W + REX.B for r8..r15)
@@ -336,7 +336,7 @@ fn asm_operand_value(io_index int, spec &ssa.InlineAsmSpec, instr &ssa.Instructi
 
 // asm_output_ptr_operand returns the pointer operand id of a secondary output.
 fn asm_output_ptr_operand(output_index int, instr &ssa.Instruction, spec &ssa.InlineAsmSpec) int {
-	input_count := spec.asm_input_start()
+	input_count := spec.asm_input_count()
 	slot := (output_index - 1)
 	if slot < 0 || slot >= instr.operands.len - input_count {
 		panic('x64: inline asm secondary output ${output_index} has no pointer operand')
@@ -451,6 +451,8 @@ const asm_muldiv_op_exts = {
 	'imulq': 5
 	'divq':  6
 	'idivq': 7
+	'div':   6
+	'idiv':  7
 }
 
 // asm_regop_opcodes maps the reg,r64 forms: op r/m64, r64.

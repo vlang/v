@@ -132,6 +132,19 @@ pub fn (spec &InlineAsmSpec) asm_input_start() int {
 	return spec.ios.len
 }
 
+// asm_input_count returns how many input operands spec.ios declares. The builder
+// stores that many input values before the secondary-output pointers, so it is
+// the offset of the first pointer operand; asm_input_start is the output count.
+pub fn (spec &InlineAsmSpec) asm_input_count() int {
+	mut n := 0
+	for io in spec.ios {
+		if !io.constraint.starts_with('=') {
+			n++
+		}
+	}
+	return n
+}
+
 // split_inline_asm_sections splits the block body on unquoted `;` separators,
 // the section structure `instructions ; outputs ; inputs ; clobbers` follows.
 // The comment-stripped body keeps quotes balanced, so a single quote state
