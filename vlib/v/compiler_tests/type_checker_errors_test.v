@@ -1522,6 +1522,28 @@ fn test_plain_enum_match_must_be_exhaustive() {
 	run_bad(v3_bin, 'bad_enum_match_shared_value_missing_field', multi_enum + 'fn f(k Mv) int {\n\treturn match k {\n\t\t.a { 1 }\n\t\t.b { 9 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(.d)))\n}\n', 'match must be exhaustive (add match branches for: `.d` or `else {}` at the end)')
 }
 
+fn test_plain_enum_match_parenthesized_fields_must_be_exhaustive() {
+	v3_bin := build_v3()
+	enum_kind := 'enum Kind {\n\ta\n\tb\n\tc\n}\n'
+	run_bad(v3_bin, 'bad_enum_match_parenthesized_missing_field', enum_kind + 'fn f(k Kind) int {\n\treturn match k {\n\t\t(Kind.a) { 1 }\n\t\t((Kind.b)) { 2 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(.c)))\n}\n', 'match must be exhaustive (add match branches for: `.c` or `else {}` at the end)')
+	all := run_good(v3_bin, 'good_enum_match_parenthesized_all_fields', enum_kind + 'fn f(k Kind) int {\n\treturn match k {\n\t\t(Kind.a), ((Kind.b)) { 1 }\n\t\t(Kind.c) { 3 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(.a) + f(.b) + f(.c)))\n}\n')
+	assert all == '5'
+}
+
+fn test_plain_enum_match_unknown_discriminants() {
+	v3_bin := build_v3()
+	// A character initializer is valid even when the static enum evaluator cannot fold it.
+	letters := '@[_allow_multiple_values]\nenum Letter {\n\talias = `a`\n\ta = 97\n\tb = 98\n\tc = 99\n}\n'
+	unnamed_unknown := run_good(v3_bin, 'good_enum_match_unnamed_unknown_value', letters + 'fn f(k Letter) int {\n\treturn match k {\n\t\t.a { 1 }\n\t\t.b { 2 }\n\t\t.c { 3 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(.alias) + f(.a) + f(.b) + f(.c)))\n}\n')
+	assert unnamed_unknown == '7'
+	named_unknown := run_good(v3_bin, 'good_enum_match_named_unknown_value', letters + 'fn f(k Letter) int {\n\treturn match k {\n\t\t.alias { 1 }\n\t\t.b { 2 }\n\t\t.c { 3 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(.alias) + f(.a) + f(.b) + f(.c)))\n}\n')
+	assert named_unknown == '7'
+	// Unknown unnamed values do not hide a known value missing from known conditions.
+	run_bad(v3_bin, 'bad_enum_match_unknown_and_known_missing_values', letters + 'fn f(k Letter) int {\n\treturn match k {\n\t\t.a { 1 }\n\t\t.b { 2 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(.c)))\n}\n', 'match must be exhaustive (add match branches for: `.c` or `else {}` at the end)')
+	conditional := run_good(v3_bin, 'good_enum_match_conditional_duplicate_value', '@[_allow_multiple_values]\nenum Choice {\n\talias = if true { 9 } else { 10 }\n\ta = 9\n\tb = 10\n}\nfn f(k Choice) int {\n\treturn match k {\n\t\t.a { 1 }\n\t\t.b { 2 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(.alias) + f(.a) + f(.b)))\n}\n')
+	assert conditional == '4'
+}
+
 fn test_voidptr_variadic_spread_requires_voidptr_array() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'bad_voidptr_variadic_int_spread', 'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\txs := [1, 2]\n\tprintln(int_str(sink(...xs)))\n}\n', 'cannot use `...int` as `...voidptr` in argument 1 to `sink`')

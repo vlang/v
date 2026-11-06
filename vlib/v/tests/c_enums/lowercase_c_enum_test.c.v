@@ -46,6 +46,19 @@ fn test_same_enum_c_copy_remains_symbolic() {
 	assert int(copied) == 3
 }
 
+fn classify_same_enum_copy(value SameEnumCopy) int {
+	return match value {
+		.first { 10 }
+		.next { 20 }
+	}
+}
+
+fn test_match_same_enum_c_copy_does_not_require_duplicate_branch() {
+	assert classify_same_enum_copy(.first) == 10
+	assert classify_same_enum_copy(.copied) == 10
+	assert classify_same_enum_copy(.next) == 20
+}
+
 enum UnknownReset {
 	first = C.enum_first_opt
 	next

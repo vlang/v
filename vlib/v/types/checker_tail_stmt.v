@@ -2207,10 +2207,6 @@ fn (mut tc TypeChecker) check_match_enum_exhaustiveness(id flat.NodeId, node fla
 		|| enum_subject.source_type_id() in tc.flag_enums {
 		return
 	}
-	cases := tc.comptime_static_enum_decl_value_cases(enum_name)
-	if cases.len == 0 {
-		return
-	}
 	mut covered := map[string]bool{}
 	for i in 1 .. node.children_count {
 		branch := tc.a.child_node(&node, i)
@@ -2225,23 +2221,33 @@ fn (mut tc TypeChecker) check_match_enum_exhaustiveness(id flat.NodeId, node fla
 			return
 		}
 		for j in 0 .. n_conds {
-			field := tc.match_enum_condition_field(tc.a.child_node(branch, j), enum_name) or {
+			cond_id := tc.unwrap_paren_expr_id(tc.a.child(branch, j))
+			field := tc.match_enum_condition_field(tc.a.node(cond_id), enum_name) or {
 				return
 			}
 			covered[field] = true
 		}
 	}
+	cases := tc.comptime_static_enum_decl_value_cases(enum_name)
+	if cases.len == 0 {
+		return
+	}
 	// Under @[_allow_multiple_values] two fields may share a value, and naming
 	// one of them covers the other.
 	mut covered_values := map[i64]bool{}
 	for c in cases {
-		if c.name in covered && c.has_value && !c.value_from_c {
+		if c.name in covered {
+			// An unresolved named value may also cover any omitted field.
+			if !c.has_value || c.value_from_c {
+				return
+			}
 			covered_values[c.value] = true
 		}
 	}
 	mut missing := []string{}
 	for c in cases {
-		if c.name in covered || (c.has_value && !c.value_from_c && c.value in covered_values) {
+		// An unresolved omitted value may equal one of the known covered values.
+		if c.name in covered || !c.has_value || c.value_from_c || c.value in covered_values {
 			continue
 		}
 		missing << '`.${c.name}`'
