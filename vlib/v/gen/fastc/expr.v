@@ -2487,6 +2487,10 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 	// The brace_depth at which each still-open unsafe/lock block was opened, so a `}` is matched
 	// to the innermost open construct (a nested struct literal vs. the unsafe block itself).
 	mut unsafe_open_brace_depths := []int{}
+	// Where the outermost transparent unsafe block began in `result` and
+	// `expression_tokens`, so a member access after its `}` can group its value.
+	mut unsafe_block_result_start := -1
+	mut unsafe_block_token_start := 0
 	mut struct_types := []u32{}
 	mut struct_depths := []int{}
 	mut struct_paren_depths := []int{}
@@ -2599,9 +2603,31 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		}
 		if g.tok in [.key_unsafe, .key_lock, .key_rlock]
 			|| (unsafe_expression_depth > 0 && g.tok in [.rcbr, .semicolon]) {
+			opening_depth := unsafe_expression_depth
 			transparent := g.read_transparent_expression_block(previous_token, brace_depth, unsafe_expression_depth, mut unsafe_open_brace_depths)!
 			unsafe_expression_depth = transparent.unsafe_expression_depth
+			if opening_depth == 0 && unsafe_expression_depth > 0 {
+				unsafe_block_result_start = result.len
+				unsafe_block_token_start = expression_tokens.len
+			}
 			if transparent.handled {
+				if opening_depth > 0 && unsafe_expression_depth == 0 && unsafe_block_result_start >= 0 && g.tok == .dot {
+					// `unsafe { *y }.a`: a transparent block adds no parens, so its
+					// prefix `*` would bind to `y.a`. Group the block's value first.
+					block_source := result.str()
+					result = strings.new_builder(64)
+					result.write_string(block_source[..unsafe_block_result_start])
+					result.write_string('(')
+					result.write_string(block_source[unsafe_block_result_start..])
+					result.write_string(')')
+					expression_tokens.insert(unsafe_block_token_start, FastcExpressionToken{ tok: .lpar, lit: '(' })
+					expression_tokens << FastcExpressionToken{ tok: .rpar, lit: ')' }
+					previous_token = .rpar
+					previous_lit = ')'
+				}
+				if unsafe_expression_depth == 0 {
+					unsafe_block_result_start = -1
+				}
 				continue
 			}
 		}

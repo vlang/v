@@ -44,6 +44,20 @@ fn main() {
 }
 '
 
+const pointer_member_unsafe_deref_source = 'module main
+
+struct Foo {
+	a int = 7
+}
+
+fn main() {
+	x := &Foo{}
+	y := x
+	v := unsafe { *y }.a
+	println(v)
+}
+'
+
 // run_pointer_member_fastc_program compiles `source` with the fastc backend, runs it,
 // and returns its stdout. A clang `.`/`->` mismatch surfaces as a build failure.
 fn run_pointer_member_fastc_program(name string, source string) !string {
@@ -86,6 +100,16 @@ fn test_fastc_pointer_local_member_access_emits_arrow() {
 		return
 	}
 	output := run_pointer_member_fastc_program('pointer_local', pointer_member_local_source) or {
+		panic(err)
+	}
+	assert output.trim_space() == '7'
+}
+
+fn test_fastc_unsafe_deref_member_access_groups_the_deref() {
+	$if !macos && !linux {
+		return
+	}
+	output := run_pointer_member_fastc_program('unsafe_deref', pointer_member_unsafe_deref_source) or {
 		panic(err)
 	}
 	assert output.trim_space() == '7'
