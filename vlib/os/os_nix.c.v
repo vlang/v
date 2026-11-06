@@ -285,21 +285,23 @@ pub fn uname() Uname {
 			}
 		}
 		free(d)
-		return u
-	}
-	unsafe {
-		d := &C.utsname(malloc_noscan(int(sizeof(C.utsname))))
-		// illumos returns 1 on success (SysV heritage), Linux and the BSDs
-		// return 0, and both return -1 on error, so anything non-negative
-		// means the struct is filled.
-		if C.uname(d) >= 0 {
-			u.sysname = cstring_to_vstring(d.sysname)
-			u.nodename = cstring_to_vstring(d.nodename)
-			u.release = cstring_to_vstring(d.release)
-			u.version = cstring_to_vstring(d.version)
-			u.machine = cstring_to_vstring(d.machine)
+	} $else {
+		// `$else` keeps libc's uname out of freestanding builds: on FreeBSD the
+		// C preamble's inline uname calls libc's __xuname
+		unsafe {
+			d := &C.utsname(malloc_noscan(int(sizeof(C.utsname))))
+			// illumos returns 1 on success (SysV heritage), Linux and the BSDs
+			// return 0, and both return -1 on error, so anything non-negative
+			// means the struct is filled.
+			if C.uname(d) >= 0 {
+				u.sysname = cstring_to_vstring(d.sysname)
+				u.nodename = cstring_to_vstring(d.nodename)
+				u.release = cstring_to_vstring(d.release)
+				u.version = cstring_to_vstring(d.version)
+				u.machine = cstring_to_vstring(d.machine)
+			}
+			free(d)
 		}
-		free(d)
 	}
 	return u
 }
@@ -757,4 +759,3 @@ pub fn disk_usage(path string) !DiskUsage {
 		used:      unit * (f_blocks - f_bfree)
 	}
 }
-

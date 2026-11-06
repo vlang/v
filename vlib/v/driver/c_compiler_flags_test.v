@@ -37,6 +37,8 @@ fn test_input_is_cmd_v_accepts_relative_entry_file() {
 
 fn test_v3_tcc_backtrace_enabled() {
 	assert !v3_tcc_backtrace_enabled('macos', 'arm64', false)
+	assert !v3_tcc_backtrace_enabled('windows', 'amd64', false)
+	assert v3_tcc_backtrace_enabled('windows', 'x86', false)
 	assert v3_tcc_backtrace_enabled('macos', 'amd64', false)
 	assert v3_tcc_backtrace_enabled('linux', 'arm64', false)
 	assert !v3_tcc_backtrace_enabled('linux', 'arm64', true)
@@ -1362,11 +1364,13 @@ fn test_v3_implicit_tcc_cpp_native_object_uses_platform_headers() {
 		'-no-retry-compilation', '-o', output, v_source], root)
 	assert !no_retry.output.contains('failed to build C object'), no_retry.output
 	if no_retry.exit_code != 0 {
-		// TinyCC may not find the platform C++ runtime without its compiler's search paths.
+		// TinyCC may not find the platform C++ runtime or its GCC support libraries
+		// without the platform compiler's search paths.
 		runtime := $if macos { 'c++' } $else { 'stdc++' }
+		missing_runtime := [runtime, 'libgcc.so', 'gcc_s'].any(no_retry.output.contains("tcc: error: library '${it}' not found"))
 		assert no_retry.output.contains('C compilation error: implicit tcc could not be used for this build')
 			|| (no_retry.output.contains('C compilation error (from ')
-				&& no_retry.output.contains("tcc: error: library '${runtime}' not found")), no_retry.output
+				&& missing_runtime), no_retry.output
 		assert !no_retry.output.contains('regenerating it with'), no_retry.output
 	}
 	// The normal implicit-TinyCC policy must still compile and run the native helper.
@@ -1432,6 +1436,37 @@ fn test_v3_tcc_flag_plan_skips_backtrace_on_macos_arm64() {
 	assert '-L${tcc_install_dir}' in plan.before_inputs
 }
 
+fn test_v3_tcc_flag_plan_honors_no_backtrace() {
+	for no_backtrace in [false, true] {
+		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+			is_tcc:       true
+			target_os:    'linux'
+			target_arch:  'amd64'
+			vroot:        os.join_path(os.temp_dir(), 'v3_no_backtrace_flag_plan')
+			no_backtrace: no_backtrace
+		})
+		assert ('-bt25' in plan.before_inputs) == !no_backtrace
+	}
+}
+
+fn test_v3_windows_amd64_tcc_flag_plan_preserves_exception_handlers() {
+	plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
+		is_tcc:      true
+		target_os:   'windows'
+		target_arch: 'amd64'
+		vroot:       os.join_path(os.temp_dir(), 'v3_windows_tcc_flag_plan')
+	})
+	assert '-bt25' !in plan.before_inputs
+	mut defines := ['custom']
+	add_v3_tcc_compat_defines(mut defines, 'windows', 'amd64', false, true)
+	assert defines == ['custom', 'no_backtrace', 'windows_tcc_unhandled_filter']
+	add_v3_tcc_compat_defines(mut defines, 'windows', 'amd64', false, true)
+	assert defines == ['custom', 'no_backtrace', 'windows_tcc_unhandled_filter']
+	mut shared_defines := []string{}
+	add_v3_tcc_compat_defines(mut shared_defines, 'windows', 'amd64', true, true)
+	assert shared_defines == ['no_backtrace']
+}
+
 fn test_v3_freestanding_flag_plan_links_no_host_libraries() {
 	for is_tcc in [false, true] {
 		plan := v3_c_compiler_flag_plan(V3CCompilerFlagOptions{
@@ -1450,6 +1485,9 @@ fn test_v3_freestanding_flag_plan_links_no_host_libraries() {
 		assert '-static' in plan.after_inputs && '-nostdlib' in plan.after_inputs, 'tcc=${is_tcc}'
 		assert '-lm' !in plan.after_inputs && '-lpthread' !in plan.after_inputs, 'tcc=${is_tcc}'
 		assert ('-ltcc1' in plan.after_inputs) == is_tcc
+		assert ('-ffunction-sections' in plan.before_inputs) == !is_tcc
+		assert ('-fdata-sections' in plan.before_inputs) == !is_tcc
+		assert ('-Wl,--gc-sections' in plan.after_inputs) == !is_tcc
 	}
 }
 

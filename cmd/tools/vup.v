@@ -38,6 +38,7 @@ const usage = 'Usage: v up [options]\n' +
 	'  -prod              Compile the updated V with the -prod flag.\n' +
 	'  -skills            Refresh the installed agent skills that fell behind.\n' +
 	'  -skip_v_self       Rebuild with make or makev.bat instead of `v self`.\n' +
+	'                     Windows ARM64 uses the native PowerShell bootstrap script.\n' +
 	'  -skip_current      Recompile even when the checkout is already at the\n' +
 	'                     revision.\n' +
 	'  -h, -help, --help  Show this help and exit.\n' +
@@ -344,11 +345,16 @@ fn v_upstream_pull_command() string {
 }
 
 fn (app App) update_tcc() bool {
+	$if windows && arm64 {
+		app.vprintln('> Windows ARM64 uses MSVC; no bundled TCC update is needed.')
+		return true
+	}
 	command := get_tcc_update_cmd()
 	if os.user_os() != 'windows' {
 		make_sure_cmd_is_available(get_tcc_make_cmd_name())
 	}
-	println('> updating TCC ...')
+	println('> checking for TCC updates ...')
+	old_revision := tcc_revision()
 	result := os.exec(if os.user_os() == 'windows' && command == 'makev.bat' {
 		['cmd.exe', '/d', '/c', 'makev.bat']
 	} else {
@@ -360,8 +366,30 @@ fn (app App) update_tcc() bool {
 		return false
 	}
 	app.vprintln(result.output)
-	println('> done updating TCC.')
+	new_revision := tcc_revision()
+	if new_revision == '' {
+		println('> done updating TCC.')
+	} else if new_revision == old_revision {
+		println('> TCC is already up to date.')
+	} else {
+		println('> updated TCC to ${new_revision#[..7]}.')
+	}
 	return true
+}
+
+// tcc_revision returns the commit of the bundled TCC checkout, or '' when there is
+// no such checkout or git cannot read it.
+fn tcc_revision() string {
+	tcc_dir := os.join_path('thirdparty', 'tcc')
+	// Without its own .git, git would report the revision of the V checkout around it.
+	if !os.exists(os.join_path(tcc_dir, '.git')) {
+		return ''
+	}
+	result := os.exec(['git', '-C', tcc_dir, 'rev-parse', 'HEAD'])
+	if result.exit_code != 0 {
+		return ''
+	}
+	return result.output.trim_space()
 }
 
 // compiler_sources_unchanged checks whether nothing the compiler is built from
@@ -437,11 +465,18 @@ fn (app App) recompile_vup() bool {
 fn (app App) make(_vself string) bool {
 	println('> running make ...')
 	make := get_make_cmd_name()
-	make_result := os.exec(if os.user_os() == 'windows' {
-		['cmd.exe', '/d', '/c', 'makev.bat']
-	} else {
-		[make]
-	})
+	mut command := []string{}
+	$if windows && arm64 {
+		command = ['pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+			os.join_path(app.vroot, 'cmd', 'tools', 'builders', 'windows_arm64_release.ps1')]
+	} $else {
+		command = if os.user_os() == 'windows' {
+			['cmd.exe', '/d', '/c', 'makev.bat']
+		} else {
+			[make]
+		}
+	}
+	make_result := os.exec(command)
 	if make_result.exit_code != 0 {
 		eprintln('> ${make} failed:')
 		eprintln('> make output:')
@@ -587,6 +622,9 @@ fn (app App) install_git() {
 }
 
 fn get_make_cmd_name() string {
+	$if windows && arm64 {
+		return 'cmd/tools/builders/windows_arm64_release.ps1'
+	}
 	if os.user_os() == 'windows' {
 		return 'makev.bat'
 	}

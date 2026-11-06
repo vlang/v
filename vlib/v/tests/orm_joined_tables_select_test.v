@@ -8,15 +8,15 @@ struct VieterDb {
 pub struct GitRepoArch {
 pub:
 	id      int @[primary; sql: serial]
-	repo_id int @[nonull]
+	repo_id int @['nonull']
 	// repo string
-	value string @[nonull]
+	value string @['nonull']
 }
 
 pub struct GitRepo {
 pub mut:
 	id   int           @[optional; primary; sql: serial]
-	repo string        @[nonull]
+	repo string        @['nonull']
 	arch []GitRepoArch @[fkey: 'repo_id']
 }
 

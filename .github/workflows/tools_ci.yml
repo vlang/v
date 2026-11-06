@@ -126,6 +126,9 @@ jobs:
       # running the whole suite to completion; the remaining files
       # add no signal.
       VTEST_FAIL_FAST: '1'
+      # Use the same worker count as the dedicated Windows CI jobs.
+      # The automatic memory budget selects one worker on these runners.
+      VJOBS: '4'
       VFLAGS: -cc ${{ matrix.cc }}
     steps:
       - uses: actions/checkout@v7
@@ -235,7 +238,7 @@ jobs:
         run: |
           # A custom VM shell does not imply GitHub's usual fail-fast options.
           set -eu
-          sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
+          sudo pkg install -y git pkgconf sqlite3 gmake boehm-gc-threaded libiconv
           if [ "$VFLAGS" = "-cc gcc" ]; then
             sudo pkg install -y gcc
           fi

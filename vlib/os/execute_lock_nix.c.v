@@ -18,8 +18,8 @@ fn v_os_execute_mutex_ptr() voidptr {
 
 fn init() {
 	$if freestanding || syscalls {
-		// freestanding programs are built for a single thread today, so the
-		// serialize-execute mutex stays a no-op
+		// freestanding and -syscalls programs (including -d vlibc) do not use the
+		// hosted process capture mutex, so the serialize-execute mutex stays a no-op
 		return
 	}
 	C.pthread_mutex_init(v_os_execute_mutex_ptr(), unsafe { nil })

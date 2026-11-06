@@ -1,6 +1,5 @@
 import gg
 import sokol.sapp
-import sokol.sgl
 import x.ttf
 import x.ttf.render_sokol
 import os
@@ -46,10 +45,10 @@ fn my_init(mut app App_data) {
 
 fn draw_frame(mut app App_data) {
 	app.gg.begin()
-	sgl.defaults()
-	sgl.matrix_mode_projection()
-	sgl.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
-	sgl.c4b(0, 0, 0, 255) // black
+	app.gg.r.defaults()
+	app.gg.r.matrix_mode_projection()
+	app.gg.r.ortho(0.0, f32(sapp.width()), f32(sapp.height()), 0.0, -1.0, 1.0)
+	app.gg.r.c4b(0, 0, 0, 255) // black
 	// draw text only if the app is already initialized
 	if app.init_flag != true {
 		app.gg.end()

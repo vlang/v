@@ -609,6 +609,18 @@ fn (t &Transformer) node_is_local_ident(id flat.NodeId, name string) bool {
 // subst_comptime_scalar_locals substitutes bare value names, leaving members, quotes and type tests alone.
 fn (t &Transformer) subst_comptime_scalar_locals(cond string) string {
 	if cond.contains(' is ') || cond.contains(' !is ') {
+		clean := comptime_condition_strip_outer_parens(trimmed_transform_text(cond))
+		for op in ['||', '&&'] {
+			idx := comptime_condition_top_level_index(clean, op)
+			if idx >= 0 {
+				left := t.subst_comptime_scalar_locals(trimmed_transform_text(clean[..idx]))
+				right := t.subst_comptime_scalar_locals(trimmed_transform_text(clean[idx + op.len..]))
+				return '(${left}) ${op} (${right})'
+			}
+		}
+		if clean.starts_with('!') {
+			return '!(' + t.subst_comptime_scalar_locals(clean[1..]) + ')'
+		}
 		return cond
 	}
 	mut out := strings.new_builder(cond.len)

@@ -208,6 +208,7 @@ mut:
 	local_type_decls_indexed          bool
 	local_type_scopes                 []LocalTypeScope
 	anonymous_struct_types            AnonymousStructShapeCache
+	anonymous_union_types             AnonymousStructShapeCache
 	anonymous_struct_count            int
 	sql_query_data_aliases            map[string]bool
 	export_records                    []ExportRecord
@@ -332,6 +333,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 		translated_sizeof_const_names:  map[string]bool{}
 		translated_sizeof_global_names: map[string]bool{}
 		anonymous_struct_types:         AnonymousStructShapeCache{}
+		anonymous_union_types:          AnonymousStructShapeCache{}
 		comptime_const_values:          map[string]string{}
 		comptime_local_values:          map[string]string{}
 		imported_module_names:          map[string]bool{}
@@ -527,6 +529,7 @@ fn (mut p Parser) reset_file_state(path string) {
 	p.local_type_decls_by_block = map[int][]string{}
 	p.local_type_decls_indexed = false
 	p.anonymous_struct_types = AnonymousStructShapeCache{}
+	p.anonymous_union_types = AnonymousStructShapeCache{}
 	p.anonymous_struct_count = 0
 	p.sql_query_data_aliases.clear()
 	p.accepted_line_directives.clear()
@@ -9008,7 +9011,11 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.for_stmt()
 		}
 		.key_fn {
-			if p.peek() in [.lpar, .lsbr] {
+			next := p.peek()
+			if next == .decl_assign {
+				return p.recover_keyword_variable_decl()
+			}
+			if next in [.lpar, .lsbr] {
 				if p.cur_fn != '' && p.method_decl_follows() {
 					p.report_fn_decl_inside_fn(p.tok_pos, p.tok_end)
 					return p.fn_decl()
@@ -9021,13 +9028,20 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.fn_decl()
 		}
 		.key_struct, .key_union {
+			if p.tok == .key_union && p.peek() == .lcbr {
+				return p.assign_or_expr_stmt()
+			}
 			return p.struct_decl()
 		}
 		.key_const {
 			return p.const_decl()
 		}
 		.key_match {
-			if p.peek() == .lpar && !p.parenthesized_match_header_starts_block() {
+			next := p.peek()
+			if next == .decl_assign {
+				return p.recover_keyword_variable_decl()
+			}
+			if next == .lpar && !p.parenthesized_match_header_starts_block() {
 				return p.assign_or_expr_stmt()
 			}
 			return p.match_stmt(false)
@@ -9172,6 +9186,9 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.goto_stmt()
 		}
 		.key_go, .key_spawn {
+			if p.peek() == .decl_assign {
+				return p.recover_keyword_variable_decl()
+			}
 			keyword := if p.tok == .key_go { 'go' } else { 'spawn' }
 			spawn_pos := p.span_start()
 			p.next()
@@ -9251,6 +9268,17 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.assign_or_expr_stmt()
 		}
 	}
+}
+
+// recover_keyword_variable_decl reports a keyword name and parses its declaration for recovery.
+fn (mut p Parser) recover_keyword_variable_decl() flat.NodeId {
+	name := p.tok.str()
+	p.record_diagnostic_span('cannot use keyword `${name}` as a variable name', p.tok_pos,
+		p.tok_end)
+	// Recover as a declaration so its initializer does not become a keyword operand.
+	p.tok = .name
+	p.lit = name
+	return p.assign_or_expr_stmt()
 }
 
 fn (mut p Parser) debugger_stmt() flat.NodeId {
@@ -11725,7 +11753,7 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 
 // inline_asm_c_lowering_arches are the architectures whose inline assembly the C backend
 // lowers to GNU `asm()`.
-const inline_asm_c_lowering_arches = ['amd64', 'arm64', 'x86']
+const inline_asm_c_lowering_arches = ['amd64', 'arm64', 'x86', 'riscv64']
 
 fn (p &Parser) supports_c_inline_asm_lowering() bool {
 	return p.prefs.backend == 'c' && p.prefs.target.arch in inline_asm_c_lowering_arches
@@ -13794,22 +13822,34 @@ fn (mut p Parser) prefix_expr(stop_at_struct_field bool) flat.NodeId {
 		.key_fn {
 			return p.fn_literal()
 		}
-		.key_struct {
+		.key_struct, .key_union {
+			is_union := p.tok == .key_union
 			p.next()
-			mut init_id := p.struct_init(flat.source_type_id('struct'))
+			mut init_id := p.struct_init(flat.source_type_id(if is_union {
+				'union'
+			} else {
+				'struct'
+			}))
 			init := p.a.nodes[int(init_id)]
-			if name_id := p.anonymous_struct_type_for_literal(init) {
-				p.a.nodes[int(init_id)].set_source_value_id(name_id)
-				p.a.nodes[int(init_id)].typ = name_id
-			} else if name_id := p.create_anonymous_struct_type_for_literal(init) {
-				p.a.nodes[int(init_id)].set_source_value_id(name_id)
-				p.a.nodes[int(init_id)].typ = name_id
-			} else if name_id := p.create_anonymous_struct_type_from_type_init(init) {
-				if p.tok == .lcbr {
-					init_id = p.struct_init(name_id)
-				} else {
+			if is_union {
+				if name_id := p.anonymous_union_type_for_literal(init) {
 					p.a.nodes[int(init_id)].set_source_value_id(name_id)
 					p.a.nodes[int(init_id)].typ = name_id
+				}
+			} else {
+				if name_id := p.anonymous_struct_type_for_literal(init) {
+					p.a.nodes[int(init_id)].set_source_value_id(name_id)
+					p.a.nodes[int(init_id)].typ = name_id
+				} else if name_id := p.create_anonymous_struct_type_for_literal(init) {
+					p.a.nodes[int(init_id)].set_source_value_id(name_id)
+					p.a.nodes[int(init_id)].typ = name_id
+				} else if name_id := p.create_anonymous_struct_type_from_type_init(init) {
+					if p.tok == .lcbr {
+						init_id = p.struct_init(name_id)
+					} else {
+						p.a.nodes[int(init_id)].set_source_value_id(name_id)
+						p.a.nodes[int(init_id)].typ = name_id
+					}
 				}
 			}
 			if p.prefs.is_fmt {
@@ -16324,6 +16364,14 @@ fn (mut p Parser) translated_sizeof_name_is_const(name string) bool {
 	if !p.is_translated && p.is_local_binding(name) {
 		return false
 	}
+	// An imported module name followed by `.` selects a qualified member: a
+	// const of that name would conflict with the import. Reading it as a const
+	// operand would index every sibling file of a module that only measures
+	// another module's types, such as sizeof(flat.Node).
+	if !p.is_translated && p.tok == .name && p.lit == name && p.peek() == .dot
+		&& p.imported_module_names[name] {
+		return false
+	}
 	// A type that this module already declared is never read as a const operand,
 	// whatever its other files declare, so no other module is indexed for one of
 	// its own types either.
@@ -18162,6 +18210,45 @@ fn (mut p Parser) diagnose_map_second_key(key string) {
 		key_start, key_start + second_key.len)
 }
 
+// A literal supplies only the active member; contextual checking may later replace
+// this inferred shape with the full anonymous union declared by its field or parameter.
+fn (mut p Parser) anonymous_union_type_for_literal(init flat.Node) ?u32 {
+	mut field_names := []string{cap: int(init.children_count)}
+	mut field_types := []u32{cap: int(init.children_count)}
+	mut field_positions := []token.Pos{cap: int(init.children_count)}
+	for i in 0 .. init.children_count {
+		field := p.a.child_node(&init, i)
+		if field.kind != .field_init || field.value.len == 0 || field.children_count != 1 {
+			return none
+		}
+		value := p.a.child_node(field, 0)
+		typ := p.infer_anonymous_struct_literal_type(value) or { return none }
+		field_names << field.value
+		field_types << typ
+		field_positions << field.pos
+	}
+	// An empty literal needs the complete type from its context, when one exists.
+	if init.children_count == 0 { return none }
+	if candidates := p.anonymous_union_types.typed_candidates(field_names, field_types) {
+		for candidate in candidates {
+			if p.a.contextual_anon_struct_types[candidate]
+				&& flat.source_type_query(candidate).has(.anon_union_prefix) {
+				return candidate
+			}
+		}
+	}
+	mut fields := []flat.NodeId{cap: field_names.len}
+	for i, name in field_names {
+		fields << p.a.add_node(flat.Node{
+			kind:  .field_decl
+			value: name
+			typ:   field_types[i]
+			pos:   field_positions[i]
+		})
+	}
+	return p.register_anonymous_aggregate_type(fields, field_names, field_types, true, true, -1)
+}
+
 fn (mut p Parser) anonymous_struct_type_for_literal(init flat.Node) ?u32 {
 	mut field_names := []string{cap: int(init.children_count)}
 	mut field_types := []u32{cap: int(init.children_count)}
@@ -18392,7 +18479,9 @@ fn (p &Parser) infer_anonymous_struct_literal_type(node flat.Node) ?u32 {
 			}
 		}
 		.struct_init {
-			if node.source_value_id() != 0 && node.source_value_id() != flat.source_type_id('struct') {
+			if node.source_value_id() != 0
+				&& node.source_value_id() !in [flat.source_type_id('struct'),
+					flat.source_type_id('union')] {
 				return node.source_value_id()
 			}
 		}
@@ -18690,9 +18779,16 @@ fn (mut p Parser) register_anonymous_aggregate_type(ids []flat.NodeId, field_nam
 			p.a.formatter_sources[int(decl_id)] = p.s.src[source_start..source_end].clone()
 		}
 	}
-	p.anonymous_struct_types.append_typed(field_names, field_types, name_id)
-	if !inferred {
-		p.anonymous_struct_types.append_declared(field_names, name_id)
+	if is_union {
+		p.anonymous_union_types.append_typed(field_names, field_types, name_id)
+		if !inferred {
+			p.anonymous_union_types.append_declared(field_names, name_id)
+		}
+	} else {
+		p.anonymous_struct_types.append_typed(field_names, field_types, name_id)
+		if !inferred {
+			p.anonymous_struct_types.append_declared(field_names, name_id)
+		}
 	}
 	return name_id
 }

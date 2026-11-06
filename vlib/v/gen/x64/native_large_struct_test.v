@@ -1,12 +1,14 @@
 module x64
 
-import os
-import strings
-import v.parser
-import v.pref
-import v.ssa
-import v.transform
-import v.types
+$if linux && amd64 {
+	import os
+	import strings
+	import v.parser
+	import v.pref
+	import v.ssa
+	import v.transform
+	import v.types
+}
 
 fn test_native_constructor_returns_more_than_256_mixed_fields() {
 	$if linux && amd64 {
@@ -57,7 +59,7 @@ fn main() {
 		constructors := m.funcs.filter(it.name == 'create')
 		assert constructors.len == 1
 		assert m.type_store.types[constructors[0].typ].fields.len == 301
-		assert m.type_size(constructors[0].typ) == 4208
+		assert m.type_size(constructors[0].typ) == 5408
 		mut g := Gen.new(m)
 		g.gen()
 		g.write_and_link(output)

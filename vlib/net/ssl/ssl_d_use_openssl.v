@@ -2,6 +2,9 @@ module ssl
 
 import net.openssl
 
+// SSLConn is a TLS connection. Calls on the same connection must be serialized,
+// including read, write, timeout changes, and close/shutdown, with either backend.
+// One reader and one writer must not call it concurrently.
 pub type SSLConn = openssl.SSLConn
 pub type SSLListener = openssl.SSLListener
 pub type SSLListenerOptions = openssl.SSLListenerOptions

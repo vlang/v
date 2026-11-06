@@ -1811,8 +1811,9 @@ fn test_explicit_c_backend_retains_complete_cached_translation_unit() {
 		output := os.join_path(root, build_name)
 		// The retained C is linked by a plain `cc` below, without the runtime objects that V
 		// links in itself (Boehm GC since 02ab53a091, the segfault handler since aae3f51f7d).
+		// Disable TinyCC's backtracer for the same reason.
 		compile := run_driver_with_environment(v3_bin, ['-silent', '-no-parallel', '-gc', 'none',
-			'-d', 'no_segfault_handler', '-b', 'c', '-o', output, source], environment)
+			'-d', 'no_segfault_handler', '-d', 'no_backtrace', '-b', 'c', '-o', output, source], environment)
 		assert compile.exit_code == 0, compile.output
 		retained_c = output + '.c'
 		assert os.is_file(retained_c)

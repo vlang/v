@@ -323,7 +323,10 @@ fn test_vup_requests_deferred_windows_cleanup_only_after_success() ! {
 			assert calls == '', calls
 		}
 	}
-	write_executable(os.join_path(bin_dir, 'make'), '#!/bin/sh\nexit 9\n')!
+	// TCC refresh uses gmake on the BSDs and Solaris, and make on other Unix hosts.
+	for make_name in ['make', 'gmake'] {
+		write_executable(os.join_path(bin_dir, make_name), '#!/bin/sh\nexit 9\n')!
+	}
 	failed := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v'),
 		'VUP_DEFER_CACHE_WIPE=1', tool])
 	assert failed.exit_code == 1, failed.output
@@ -433,6 +436,39 @@ fn test_vup_rebuilds_for_transitive_dependencies_and_honors_rebuild_options() ! 
 	assert unknown_checkout.exit_code == 0, unknown_checkout.output
 	assert !unknown_checkout.output.contains('V is already updated.'), unknown_checkout.output
 	assert os.read_file(log)!.contains('v self\n')
+}
+
+fn test_vup_preserves_native_windows_arm64_on_bootstrap_rebuild() ! {
+	$if windows {
+		return
+	}
+	root, home, _, bin_dir := vup_report_fixture()!
+	defer { os.rmdir_all(root) or {} }
+	// Exercise the ARM64 command path with process fixtures on this host. The
+	// Windows C-generation test also checks the unmodified target-specific code.
+	source := os.read_file(os.join_path(vroot, 'cmd', 'tools', 'vup.v'))!
+	assert source.count('$if windows && arm64 {') == 3
+	file := os.join_path(root, 'vup_arm64.v')
+	os.write_file(file, source.replace('$if windows && arm64 {', '$if !windows {'))!
+	tool := os.join_path(root, 'vup_arm64')
+	build := os.exec([vexe, '-o', tool, file])
+	assert build.exit_code == 0, build.output
+	bootstrap_log := os.join_path(root, 'bootstrap.log')
+	bootstrap := os.join_path(root, 'cmd', 'tools', 'builders', 'windows_arm64_release.ps1')
+	write_executable(os.join_path(bin_dir, 'pwsh'), '#!/bin/sh\n' +
+		'printf "%s\\n" "\$@" > ' + os.quoted_path(bootstrap_log) + '\nexit 0\n')!
+	result := run_vup(root, home, tool, bin_dir, '-skip_v_self')!
+	assert result.exit_code == 0, result.output
+	assert os.read_file(bootstrap_log)!.split_into_lines() == ['-NoProfile', '-ExecutionPolicy',
+		'Bypass', '-File', bootstrap]
+	calls := os.read_file(os.join_path(root, 'calls.log'))!
+	assert !calls.contains('make'), calls
+	assert !calls.contains('latest_tcc'), calls
+	write_executable(os.join_path(bin_dir, 'pwsh'), '#!/bin/sh\necho "ARM64 bootstrap failed"\nexit 9\n')!
+	failed := run_vup(root, home, tool, bin_dir, '-skip_v_self')!
+	assert failed.exit_code != 0, failed.output
+	assert failed.output.contains('ARM64 bootstrap failed'), failed.output
+	assert failed.output.contains('Recompiling V *failed*.'), failed.output
 }
 
 fn test_vup_reports_both_groups_and_names_the_scope_to_use() ! {
@@ -590,6 +626,11 @@ fn test_vup_generates_windows_c_without_handle_type_errors() ! {
 		assert result.exit_code == 0, result.output
 		assert os.is_file(c_file)
 	}
+	arm64 := os.join_path(test_root, 'vup_arm64.c')
+	arm64_result := os.exec([compiler, '-new-compiler', '-g', '-gc', 'none', '-nocache', '-os',
+		'windows', '-arch', 'arm64', '-cc', 'msvc', '-o', arm64, source])
+	assert arm64_result.exit_code == 0, arm64_result.output
+	assert os.is_file(arm64)
 }
 
 fn write_executable(path string, content string) ! {
@@ -753,4 +794,41 @@ fn test_vup_rejects_unknown_options_before_updating() ! {
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('V is already updated.'), result.output
 	assert os.read_file(calls_log)!.contains('git pull'), result.output
+}
+
+fn test_vup_says_whether_tcc_changed() ! {
+	$if windows {
+		return
+	}
+	root, home, tool, bin_dir := vup_report_fixture()!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	// The git stand-in reports the TCC checkout at the revision in `tcc_head`, and
+	// the TCC refresh moves it to the one in `tcc_next`, when there is one. Only
+	// the stand-ins are on PATH, so they use shell builtins. The BSDs and Solaris
+	// refresh TCC with `gmake`, so both names get the refresh.
+	os.mkdir_all(os.join_path(root, 'thirdparty', 'tcc', '.git'))!
+	tcc_head := os.join_path(root, 'tcc_head')
+	tcc_next := os.join_path(root, 'tcc_next')
+	os.write_file(tcc_head, '1111111111111111111111111111111111111111\n')!
+	write_executable(os.join_path(bin_dir, 'git'), '#!/bin/sh\n' +
+		'if [ "\$1" = "-C" ] && [ "\$3" = "rev-parse" ]; then\n' +
+		'  read -r rev < ${os.quoted_path(tcc_head)}\n  echo "\$rev"\nfi\nexit 0\n')!
+	for make_name in ['make', 'gmake'] {
+		write_executable(os.join_path(bin_dir, make_name), '#!/bin/sh\n' +
+			'if [ -f ${os.quoted_path(tcc_next)} ]; then\n' +
+			'  read -r rev < ${os.quoted_path(tcc_next)}\n  echo "\$rev" > ${os.quoted_path(tcc_head)}\n' +
+			'fi\nexit 0\n')!
+	}
+
+	unchanged := run_vup(root, home, tool, bin_dir)!
+	assert unchanged.output.contains('> checking for TCC updates ...'), unchanged.output
+	assert unchanged.output.contains('> TCC is already up to date.'), unchanged.output
+	assert !unchanged.output.contains('> updated TCC'), unchanged.output
+
+	os.write_file(tcc_next, '2222222222222222222222222222222222222222\n')!
+	updated := run_vup(root, home, tool, bin_dir)!
+	assert updated.output.contains('> updated TCC to 2222222.'), updated.output
+	assert !updated.output.contains('already up to date'), updated.output
 }

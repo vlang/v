@@ -625,6 +625,11 @@ fn windows_execute_command_line(command_line_text string, application_name strin
 			output:    'exec failed (CreatePipe): ${error_msg}'
 		}
 	}
+	defer {
+		// Setup failures still leave both pipe handles owned by this process.
+		close_valid_handle(&child_stdout_read)
+		close_valid_handle(&child_stdout_write)
+	}
 	set_handle_info_ok := C.SetHandleInformation(child_stdout_read, C.HANDLE_FLAG_INHERIT, 0)
 	if !set_handle_info_ok {
 		error_num := int(C.GetLastError())
@@ -668,8 +673,7 @@ fn windows_execute_command_line(command_line_text string, application_name strin
 			output:    'exec failed (CreateProcess) with code ${error_num}: ${error_msg} cmd: ${display_cmd}'
 		}
 	}
-	C.CloseHandle(child_stdin)
-	C.CloseHandle(child_stdout_write)
+	close_valid_handle(&child_stdout_write)
 	buf := [4096]u8{}
 	mut read_data := strings.new_builder(1024)
 	for {

@@ -5,12 +5,6 @@ import time
 import v.pref
 import v.vmod
 
-// external_module_dependencies_for_tool is the legacy dependency snapshot.
-// Installation reads each tool's current manifest through dev_dependencies_for_tool.
-pub const external_module_dependencies_for_tool = {
-	'vdoc': ['markdown']
-}
-
 // external_modules_for_tool returns the external dependencies in the tool's manifest.
 pub fn external_modules_for_tool(tool_name string) []string {
 	return dev_dependencies_for_tool(tool_name)

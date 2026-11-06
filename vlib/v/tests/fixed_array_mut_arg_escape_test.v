@@ -1414,7 +1414,7 @@ fn test_map_fixed_pointer_values_keep_the_original_storage_identity() {
 	mut row := [761, 762]!
 	mut rows := map[string]&[2]int{}
 	rows['row'] = unsafe { &row }
-	kept := retain_immutable_array_reference(rows['row'])
+	kept := retain_immutable_array_reference(rows['row'] or { panic('missing row') })
 	row[0] = 763
 	unsafe { rows.free() }
 	assert read_retained_optional_fixed_reference(kept) == [763, 762]

@@ -260,6 +260,7 @@ fn fn_type_return_type_text(typ_id u32) ?u32 {
 }
 
 // is_known_fn_name reports whether is known fn name applies in transform.
+@[direct_array_access]
 fn (t &Transformer) is_known_fn_name(name string) bool {
 	if isnil(t.fn_return_name_cache) || name.len == 0 {
 		return t.is_known_fn_name_uncached(name)
@@ -1136,10 +1137,44 @@ fn (t &Transformer) alias_receiver_method_candidates_probed(method string, metho
 // alias_target_type_preserving_main_lock returns the underlying type while retaining
 // an explicit `main.` lock introduced by generic specialization. The lock prevents
 // an imported generic body from rebasing a program type to a same-named local type.
+@[direct_array_access]
 fn (t &Transformer) alias_target_type_preserving_main_lock(base_type_id u32) ?u32 {
 	if isnil(t.tc) || base_type_id == u32(0) {
 		return none
 	}
+	if isnil(t.alias_target_cache) {
+		return t.alias_target_type_preserving_main_lock_uncached(base_type_id)
+	}
+	// Hot under struct and receiver lookups, with few distinct spellings per
+	// body: memoize per (module, file, alias table) like the other type fronts.
+	mut cache := t.alias_target_cache
+	alias_count := t.tc.type_aliases.ids.len
+	if !same_transform_text(cache.module, t.cur_module)
+		|| !same_transform_text(cache.file, t.cur_file) || cache.alias_count != alias_count {
+		cache.module = t.cur_module
+		cache.file = t.cur_file
+		cache.alias_count = alias_count
+		cache.generation++
+	}
+	slot := int(base_type_id & 1023)
+	if cache.generations[slot] == cache.generation && cache.keys[slot] == base_type_id {
+		if cache.states[slot] > 0 {
+			return cache.results[slot]
+		}
+		return none
+	}
+	cache.keys[slot] = base_type_id
+	cache.generations[slot] = cache.generation
+	target_source_id := t.alias_target_type_preserving_main_lock_uncached(base_type_id) or {
+		cache.states[slot] = -1
+		return none
+	}
+	cache.states[slot] = 1
+	cache.results[slot] = target_source_id
+	return target_source_id
+}
+
+fn (t &Transformer) alias_target_type_preserving_main_lock_uncached(base_type_id u32) ?u32 {
 	trimmed_id := transform_trimmed_type_id(base_type_id)
 	clean := if flat.source_type_shape(trimmed_id).has(.pointer) {
 		flat.source_type_syntax(trimmed_id).pointer_raw_base()
@@ -2058,7 +2093,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		}
 		if variadic_idx < 0 && param_idx < params.len {
 			arg_type := t.tc.resolve_type(arg_id)
-			if arg_type is types.MultiReturn && arg_type.types.len == params.len - param_idx {
+			if arg_type is types.MultiReturn && arg_type.types.len <= params.len - param_idx {
 				items := arg_type.types
 				multi_type_source_id := t.multi_return_type_name(items)
 
@@ -3070,14 +3105,12 @@ fn (t &Transformer) call_name_for_node(id flat.NodeId, node flat.Node) string {
 						&& name.starts_with(t.cur_module) && name[t.cur_module.len] == `.` {
 						return name
 					}
-					qname := '${t.cur_module}.${short_name}'
-					if t.fn_ret_types.contains(qname) || qname in t.tc.fn_ret_types {
-						return qname
-					}
-					// The lowered spelling is only needed when the plain one is not declared.
-					lowered_qname := c_name(qname)
-					if t.fn_ret_types.contains(lowered_qname) || lowered_qname in t.tc.fn_ret_types {
-						return qname
+					// Most bare callees that resolve unqualified are builtin functions
+					// called from every module; remember per module which short names
+					// have no qualified declaration instead of spelling and looking
+					// up two candidates each time.
+					if t.module_declares_qualified_fn(short_name) {
+						return '${t.cur_module}.${short_name}'
 					}
 				}
 			}
@@ -3085,6 +3118,43 @@ fn (t &Transformer) call_name_for_node(id flat.NodeId, node flat.Node) string {
 		}
 	}
 	return t.resolve_call_name(node)
+}
+
+// module_declares_qualified_fn reports whether `cur_module.short_name`, plainly
+// or in its lowered C spelling, names a declared function; memoized per
+// (module, short name) until the signature tables change.
+@[direct_array_access]
+fn (t &Transformer) module_declares_qualified_fn(short_name string) bool {
+	if isnil(t.call_qualified_name_cache) || short_name.len == 0 {
+		return t.module_declares_qualified_fn_uncached(short_name)
+	}
+	mut cache := t.call_qualified_name_cache
+	if !same_transform_text(cache.module, t.cur_module) || cache.fn_count != t.fn_ret_types.ids.len
+		|| cache.tc_rets != t.tc.fn_ret_types.len || cache.tc_revision != t.tc.fn_ret_types_revision {
+		cache.module = t.cur_module
+		cache.fn_count = t.fn_ret_types.ids.len
+		cache.tc_rets = t.tc.fn_ret_types.len
+		cache.tc_revision = t.tc.fn_ret_types_revision
+		cache.states = [512]i8{}
+	}
+	slot := resolved_name_cache_slot(short_name, 511)
+	if cache.states[slot] != 0 && same_transform_text(cache.names[slot], short_name) {
+		return cache.states[slot] > 0
+	}
+	declared := t.module_declares_qualified_fn_uncached(short_name)
+	cache.names[slot] = short_name
+	cache.states[slot] = if declared { i8(1) } else { i8(-1) }
+	return declared
+}
+
+fn (t &Transformer) module_declares_qualified_fn_uncached(short_name string) bool {
+	qname := '${t.cur_module}.${short_name}'
+	if t.fn_ret_types.contains(qname) || qname in t.tc.fn_ret_types {
+		return true
+	}
+	// The lowered spelling is only needed when the plain one is not declared.
+	lowered_qname := c_name(qname)
+	return t.fn_ret_types.contains(lowered_qname) || lowered_qname in t.tc.fn_ret_types
 }
 
 // call_param_offset updates call param offset state for Transformer.
@@ -3360,7 +3430,7 @@ fn (t &Transformer) call_selector_callee_id(node flat.Node) ?flat.NodeId {
 
 fn (t &Transformer) selector_call_name_has_receiver_param(call_name string, method string, params []types.Type) bool {
 	if params.len == 0 || method == '' || call_name == ''
-		|| !call_name.ends_with('.${method}') {
+		|| !ends_with_dot_suffix(call_name, method) {
 		return false
 	}
 	clean_first := t.trim_pointer_type(t.normalize_type_alias(t.semantic_type_name(params[0])))
@@ -3374,6 +3444,16 @@ fn (t &Transformer) selector_call_name_has_receiver_param(call_name string, meth
 		return true
 	}
 	return false
+}
+
+// ends_with_dot_suffix is `name.ends_with('.' + suffix)` without building the
+// joined spelling.
+@[direct_array_access; inline]
+fn ends_with_dot_suffix(name string, suffix string) bool {
+	if name.len <= suffix.len || name[name.len - suffix.len - 1] != `.` {
+		return false
+	}
+	return unsafe { vmemcmp(name.str + name.len - suffix.len, suffix.str, suffix.len) == 0 }
 }
 
 fn (mut t Transformer) transform_method_callee_receiver_for_param(callee_id flat.NodeId, param_type_id u32) ?flat.NodeId {
@@ -4973,6 +5053,26 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 	}
 	if param_shape.has(.pointer) && !t.is_sum_type_name(param_base_id)
 		&& !t.is_interface_type(param_type_id) {
+		if arg_node.is_mut
+			&& !t.transform_param_type_is_void_pointer(t.normalize_type_alias(param_base_id))
+			&& t.normalize_type_alias(if arg_node.kind == .ident {
+				t.typeof_var_type(arg_node.value)
+			} else {
+				t.raw_expr_type_without_smartcast(arg_id)
+			}) == flat.source_type_voidptr {
+			// A raw pointer already addresses the mutable value. Coercing it to
+			// the pointee first would borrow a copy and dereference null pointers.
+			value := t.transform_opaque_pointer_value(arg_id)
+			if t.a.nodes[int(value)].kind == .ident {
+				return value
+			}
+			// A field or promoted pointer read is an address value, not a slot
+			// that the call should reference. Copy only the pointer into typed storage.
+			tmp_name := t.new_temp('raw_ptr_arg')
+			t.pending_stmts << t.make_decl_assign_typed(tmp_name,
+				t.make_cast(param_type_id, value, param_type_id), param_type_id)
+			return t.make_ident(tmp_name)
+		}
 		if arg_node.kind == .ident && t.pointer_value_lvalues[arg_node.value] {
 			storage_type := t.var_type(arg_node.value)
 			if arg_node.value in t.heaped_amp_locals
@@ -5135,9 +5235,9 @@ fn (t &Transformer) current_module_global_type(name string) ?u32 {
 		return none
 	}
 	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
-		qname := '${t.cur_module}.${name}'
-		if qname in t.globals.ids {
-			return t.globals.value_id(qname)
+		// The key is only looked up, never stored: build it in the scratch buffer.
+		if id := t.globals.ids[t.qualified_name_view(t.cur_module, name)] {
+			return id
 		}
 		return none
 	}
@@ -5186,6 +5286,11 @@ fn (t &Transformer) current_module_declares_const(name string) bool {
 	if name == '' || isnil(t.tc) {
 		return false
 	}
+	// Every key probed below shares the short name of `name`; the frozen filter
+	// rules the whole family out without building the qualified spelling.
+	if !t.const_selector_may_match(name) {
+		return false
+	}
 	if name.contains('.') {
 		base := name.all_before_last('.')
 		if base in ['main', 'builtin'] {
@@ -5198,7 +5303,7 @@ fn (t &Transformer) current_module_declares_const(name string) bool {
 		return name in t.tc.const_types && t.tc.const_owner_module(name) == t.cur_module
 	}
 	if t.cur_module.len > 0 && t.cur_module != 'main' && t.cur_module != 'builtin' {
-		return '${t.cur_module}.${name}' in t.tc.const_types
+		return t.qualified_name_view(t.cur_module, name) in t.tc.const_types
 	}
 	return name in t.tc.const_types
 }
@@ -7724,7 +7829,7 @@ fn (mut t Transformer) build_auto_str_helper_fn(aggregate_id u32) {
 		t.lower_sum_str(value, aggregate_id)
 	} else {
 		t.lower_struct_str(value, aggregate_id) or {
-			t.make_string_literal('${struct_string_display_name(aggregate_id)}{}')
+			t.make_string_literal('${t.struct_string_display_name(aggregate_id)}{}')
 		}
 	}
 	mut stmts := t.pending_stmts.clone()
@@ -8410,7 +8515,7 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type_id u32) ?f
 	}
 	if flat.source_type_shape(struct_type_id).has(.dotted)
 		&& flat.source_type_syntax(struct_type_id).unqualified() == flat.source_type_id('Array_string') {
-		return t.make_string_literal('${struct_string_display_name(struct_type_id)}{}')
+		return t.make_string_literal('${t.struct_string_display_name(struct_type_id)}{}')
 	}
 	stack_count := t.stringify_stack_count(struct_type_id)
 	recurse_limit := if t.struct_autostr_allows_recurse(struct_type_id) { 3 } else { 2 }
@@ -8426,7 +8531,7 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type_id u32) ?f
 		t.stringify_stack.delete_last()
 	}
 	if info.fields.len == 0 {
-		return t.make_string_literal('${struct_string_display_name(struct_type_id)}{}')
+		return t.make_string_literal('${t.struct_string_display_name(struct_type_id)}{}')
 	}
 	expr_node := t.a.nodes[int(expr)]
 	mut value_expr := expr
@@ -8459,7 +8564,7 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type_id u32) ?f
 			address_type,
 		], flat.source_type_void))
 	}
-	display := struct_string_display_name(struct_type_id)
+	display := t.struct_string_display_name(struct_type_id)
 	mut result := t.make_string_literal('${display}{\n')
 	decl_metas := t.struct_field_decl_metas_in_module(comptime_struct_info_cache_key(info), info.module)
 	for field in info.fields {
@@ -8483,7 +8588,7 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type_id u32) ?f
 			}
 		}
 		mut field_str := if field_type == struct_type_id {
-			t.make_string_literal('${struct_string_display_name(field_type)}{}')
+			t.make_string_literal('${t.struct_string_display_name(field_type)}{}')
 		} else {
 			t.struct_field_str_value(t.make_selector(base, field.name, field_type), raw_field_type,
 				field_type, flat.source_type_query(struct_type_id).has(.c_prefix) || info.is_c_anon)
@@ -8616,10 +8721,14 @@ fn (t &Transformer) struct_autostr_allows_recurse(struct_type_id u32) bool {
 		|| t.struct_autostr_recurse_types[flat.source_type_syntax(decl_id).unqualified()]
 }
 
-fn struct_string_display_name(typ u32) string {
+fn (t &Transformer) struct_string_display_name(typ u32) string {
 	syntax := flat.source_type_syntax(typ)
-	if flat.source_type_id('AnonStruct') in flat.source_type_syntax(syntax.unqualified()).underscore_prefixes() {
+	query := flat.source_type_query(syntax.unqualified())
+	if query.has(.anon_struct_prefix) {
 		return 'struct '
+	}
+	if query.has(.anon_union_prefix) && t.a.synthesized_anon_struct_types[syntax.unqualified()] {
+		return 'union '
 	}
 	if flat.source_type_query(typ).has(.main_prefix) {
 		return flat.source_type_name(syntax.unqualified())
@@ -8644,15 +8753,15 @@ fn (t &Transformer) alias_string_display_name(alias_name_id u32, base_type_id u3
 				continue
 			}
 			if matched.len > 0 && matched != candidate {
-				return struct_string_display_name(alias_name_id)
+				return t.struct_string_display_name(alias_name_id)
 			}
 			matched = candidate
 		}
 		if matched.len > 0 {
-			return struct_string_display_name(flat.source_type_id(matched))
+			return t.struct_string_display_name(flat.source_type_id(matched))
 		}
 	}
-	return struct_string_display_name(alias_name_id)
+	return t.struct_string_display_name(alias_name_id)
 }
 
 // struct_field_str_value stringifies one struct field for the auto-generated struct str.
@@ -14072,6 +14181,7 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	mut capture_heap_snapshots := map[string]bool{}
 	mut capture_array_param_snapshots := map[string]bool{}
 	mut capture_pointer_value_aliases := map[string]bool{}
+	mut capture_mut_pointer_params := map[string]bool{}
 	mut capture_is_ref_param := map[string]bool{}
 	mut body_ids := []flat.NodeId{}
 	for i in 0 .. node.children_count {
@@ -14132,11 +14242,22 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 				if capture_type == 0 || capture_type == flat.source_type_unknown {
 					capture_type = flat.source_type_int
 				}
-				// Mutable parameter captures retain the caller's array header reference.
-				if !child.is_mut && t.mut_param_values[child.value]
+				if t.mut_param_values[child.value] && t.pointer_value_rvalues[child.value]
+					&& flat.source_type_shape(capture_type).has(.pointer) {
+					// `mut p &T` stores the caller's pointer in an extra reference slot.
+					// A mutable capture keeps that slot; an immutable one snapshots &T.
+					capture_type = t.var_type(child.value)
+					if child.is_mut {
+						capture_mut_pointer_params[child.value] = true
+					} else {
+						capture_type = t.trim_pointer_type(capture_type)
+						capture_heap_snapshots[child.value] = true
+					}
+				} else if !child.is_mut && t.mut_param_values[child.value]
 					&& !t.pointer_value_rvalues[child.value]
 					&& flat.source_type_shape(capture_type).has(.pointer)
 					&& flat.source_type_shape(t.comptime_normalize_type_alias_chain(capture_type)).has(.pointer_array) {
+					// Mutable parameter captures retain the caller's array header reference.
 					capture_type = t.trim_pointer_type(capture_type)
 					capture_array_param_snapshots[child.value] = true
 				}
@@ -14326,9 +14447,20 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 	}
 	outer_pending := t.pending_stmts.clone()
 	t.pending_stmts.clear()
-	t.mark_local_closure_cleanup_decls(lifted_body)
+	outer_locals_in_scope := t.fn_body_locals_in_scope
+	t.fn_body_locals_in_scope = false
+	has_ordinary_escape_proof := t.scan_escaping_amp_ptrs(lifted_body)
+	t.mark_local_closure_cleanup_decls_with_proof(lifted_body, has_ordinary_escape_proof)
+	for body_id in body_ids {
+		t.collect_mut_capture_sources(body_id)
+	}
+	t.clear_node_type_memo()
+	if !isnil(t.selector_type_cache) {
+		t.selector_type_cache.generation++
+	}
+	t.fn_body_locals_in_scope = true
 	mut new_body := []flat.NodeId{}
-	if capture_is_ref_param.len == 0 {
+	if capture_is_ref_param.len == 0 && capture_mut_pointer_params.len == 0 {
 		new_body = t.transform_stmts(lifted_body)
 	} else {
 		new_body = t.transform_stmts(lifted_body[..synthetic_decl_count])
@@ -14337,9 +14469,18 @@ fn (mut t Transformer) lift_fn_literal(_id flat.NodeId, node flat.Node) flat.Nod
 		for capture_name, _ in capture_is_ref_param {
 			t.mark_var_as_ref_param(capture_name)
 		}
+		for capture_name, _ in capture_mut_pointer_params {
+			// Restore the same implicit-reference semantics as the source parameter,
+			// including pointer replacement and captures made by nested closures.
+			t.set_var_type(capture_name, capture_types[capture_name])
+			t.mut_param_values[capture_name] = true
+			t.pointer_value_lvalues[capture_name] = true
+			t.pointer_value_rvalues[capture_name] = true
+		}
 		new_body << t.transform_stmts(lifted_body[synthetic_decl_count..])
 	}
 	t.pending_stmts = outer_pending
+	t.fn_body_locals_in_scope = outer_locals_in_scope
 	t.restore_function_local_state(saved_locals)
 	t.cur_fn_name = saved_fn_name
 	t.set_cur_fn_ret_type(saved_ret_type_source_id)
@@ -15355,6 +15496,32 @@ fn (t &Transformer) fixed_array_reference_arg_needs_durable_header(id flat.NodeI
 	return false
 }
 
+// call_argument_param_index maps a source argument to its first parameter before
+// multi-return arguments have been expanded. Ordering snapshots can replace a
+// multi-return call with an identifier, so use its checked type, not its node kind.
+fn (t &Transformer) call_argument_param_index(node flat.Node, child_index int, offset int, param_count int, is_variadic bool) int {
+	unexpanded_index := child_index - 1 + offset
+	if child_index <= 1 || is_variadic || isnil(t.tc) {
+		return unexpanded_index
+	}
+	// A checked call with one ordinary argument per parameter needs no expansion.
+	// Named fields can collapse into one argument, so exclude that form here.
+	if int(node.children_count) - 1 + offset == param_count
+		&& t.a.child_node(&node, int(node.children_count) - 1).kind != .field_init {
+		return unexpanded_index
+	}
+	mut param_index := offset
+	for i in 1 .. child_index {
+		arg_type := t.tc.resolve_type(t.a.child(&node, i))
+		if arg_type is types.MultiReturn && arg_type.types.len <= param_count - param_index {
+			param_index += arg_type.types.len
+		} else {
+			param_index++
+		}
+	}
+	return param_index
+}
+
 // call_argument_param_type maps each unpacked variadic argument to the tail element type.
 fn call_argument_param_type(params []types.Type, param_idx int, variadic_idx int) ?types.Type {
 	if param_idx < 0 {
@@ -15375,7 +15542,7 @@ fn call_argument_param_type(params []types.Type, param_idx int, variadic_idx int
 
 fn (t &Transformer) call_has_mut_fixed_array_args(node flat.Node, params []types.Type, offset int, variadic_idx int) bool {
 	for i in 1 .. node.children_count {
-		param_idx := i - 1 + offset
+		param_idx := t.call_argument_param_index(node, i, offset, params.len, variadic_idx >= 0)
 		param_type := call_argument_param_type(params, param_idx, variadic_idx) or { continue }
 		payload_type := fixed_array_reference_param_payload(param_type)
 		array_ref_type := t.comptime_normalize_type_alias_chain(t.semantic_type_name(payload_type))
@@ -16455,7 +16622,13 @@ fn (mut t Transformer) try_lower_receiver_method_call(id flat.NodeId, node flat.
 			}
 			arg_id := t.a.child(&node, 1)
 			expected := t.normalize_type_alias(flat.source_type_syntax(builtin_base_type_comparison_type_id).raw_base())
-			actual := t.normalize_type_alias(t.specialized_expr_type_name(arg_id))
+			// Heap promotion changes storage, not the source value type or active smartcast.
+			heaped_arg := t.heaped_amp_local_arg_name(arg_id)
+			actual := t.normalize_type_alias(if heaped_arg.len > 0 && !t.has_smartcast(heaped_arg) {
+				t.typeof_var_type(heaped_arg)
+			} else {
+				t.specialized_expr_type_name(arg_id)
+			})
 			actual_is_pointer := flat.source_type_shape(actual).has(.pointer)
 			arg := t.a.nodes[int(arg_id)]
 			if method == 'try_pop' && !arg.is_mut && !isnil(t.tc)
@@ -18553,7 +18726,14 @@ fn (t &Transformer) explicit_generic_call_arg_ids(node flat.Node) []u32 {
 }
 
 fn (t &Transformer) receiver_method_matches_base_type(method_name string, base_id flat.NodeId) bool {
-	receiver_name := method_name.all_before_last('.')
+	// A borrowed view avoids copying the method name; it is only interned, and
+	// source_type_id copies spellings it stores.
+	receiver_dot := method_name.last_index_u8(`.`)
+	receiver_name := if receiver_dot < 0 {
+		method_name
+	} else {
+		unsafe { tos(method_name.str, receiver_dot) }
+	}
 	if receiver_name.len == 0 {
 		return true
 	}
@@ -19361,7 +19541,7 @@ fn (mut t Transformer) transform_receiver_method_args_with_params(node flat.Node
 		}
 		if variadic_idx < 0 && param_idx < params.len {
 			arg_type := t.tc.resolve_type(arg_id)
-			if arg_type is types.MultiReturn && arg_type.types.len == params.len - param_idx {
+			if arg_type is types.MultiReturn && arg_type.types.len <= params.len - param_idx {
 				items := arg_type.types
 				multi_type_source_id_2 := t.multi_return_type_name(items)
 
@@ -20081,7 +20261,7 @@ fn (t &Transformer) current_generic_receiver_call_return_type(node flat.Node) ?u
 		}
 	}
 	for name, ret in t.fn_ret_types.ids {
-		if !name.ends_with('.${callee.value}') { continue }
+		if !ends_with_dot_suffix(name, callee.value) { continue }
 		decl_receiver := flat.source_type_id(name.all_before_last('.'))
 		decl_syntax := flat.source_type_syntax(decl_receiver)
 		decl_base := if decl_syntax.generic_app_valid() {
@@ -20096,6 +20276,7 @@ fn (t &Transformer) current_generic_receiver_call_return_type(node flat.Node) ?u
 	return none
 }
 
+@[direct_array_access]
 fn (t &Transformer) checker_resolved_non_builtin_return_type(id flat.NodeId, node flat.Node) ?u32 {
 	if isnil(t.resolved_call_return_cache) {
 		return t.checker_resolved_non_builtin_return_type_uncached(id, node)
@@ -20134,7 +20315,7 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 			}
 		}
 	}
-	decl_module := t.tc.fn_type_modules[name] or { '' }
+	decl_module, decl_has_generics := t.resolved_call_decl_facts(name)
 	same_decl_module := decl_module == t.cur_module
 		|| (decl_module in ['', 'main'] && t.cur_module in ['', 'main'])
 	if !same_decl_module && node.children_count > 0 {
@@ -20177,7 +20358,7 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 	// The expression cache can contain a parser-inferred multi-return tail such as
 	// `!(m.Match, _)`. Prefer the resolved declaration, whose complete return type
 	// is authoritative, before falling back to that provisional expression type.
-	if param_ids := t.tc.fn_generic_params[name] {
+	if param_ids := t.resolved_call_generic_param_ids(name, decl_has_generics) {
 		params := types.generic_param_texts(param_ids)
 		if params == ['T'] {
 			if ret_text_source_id := t.tc.fn_ret_type_texts.type_id(name) {
@@ -20229,6 +20410,47 @@ fn (t &Transformer) checker_resolved_non_builtin_return_type_uncached(id flat.No
 		}
 	}
 	return none
+}
+
+// resolved_call_decl_facts returns the declaring module of a resolved call name
+// ('' when unknown) and whether its declaration has generic parameters, from
+// the per-name memo when the checker's signature tables have not changed.
+@[direct_array_access]
+fn (t &Transformer) resolved_call_decl_facts(name string) (string, bool) {
+	if isnil(t.resolved_call_decl_cache) || name.len == 0 {
+		return t.tc.fn_type_modules[name] or { '' }, name in t.tc.fn_generic_params
+	}
+	mut cache := t.resolved_call_decl_cache
+	if cache.tc != voidptr(t.tc) || cache.revision != t.tc.fn_ret_types_revision
+		|| cache.modules_len != t.tc.fn_type_modules.len
+		|| cache.generics_len != t.tc.fn_generic_params.len {
+		cache.tc = voidptr(t.tc)
+		cache.revision = t.tc.fn_ret_types_revision
+		cache.modules_len = t.tc.fn_type_modules.len
+		cache.generics_len = t.tc.fn_generic_params.len
+		cache.states = [1024]i8{}
+	}
+	slot := resolved_name_cache_slot(name, 1023)
+	if cache.states[slot] != 0 && same_transform_text(cache.names[slot], name) {
+		return cache.modules[slot], cache.has_generics[slot]
+	}
+	decl_module := t.tc.fn_type_modules[name] or { '' }
+	has_generics := name in t.tc.fn_generic_params
+	cache.names[slot] = name
+	cache.modules[slot] = decl_module
+	cache.has_generics[slot] = has_generics
+	cache.states[slot] = 1
+	return decl_module, has_generics
+}
+
+// resolved_call_generic_param_ids is `tc.fn_generic_params[name]` when the
+// memoized facts say the declaration has generic parameters.
+@[inline]
+fn (t &Transformer) resolved_call_generic_param_ids(name string, has_generics bool) ?[]u32 {
+	if !has_generics {
+		return none
+	}
+	return t.tc.fn_generic_params[name] or { return none }
 }
 
 fn (t &Transformer) call_return_type_name_in_module(ret_name_id u32, node flat.Node, module_name string) u32 {

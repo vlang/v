@@ -49,7 +49,7 @@ fn test_entry_writes_to_cloned_map_captured_by_closure() {
 	})
 	result := merged(own, inherited, false)
 	assert result.len == 2
-	assert result['b'].value.id == 7
+	assert (result['b'] or { panic('missing b') }).value.id == 7
 	assert own.len == 1
 	assert merged(own, inherited, true).len >= 1
 }

@@ -53,7 +53,7 @@ pub fn (mut con TcpConn) read_line_max(max_line_len int) string {
 	}
 	bstart := unsafe { &buf[0] }
 	for {
-		n := C.recv(con.sock.handle, bstart, max_read - 1, msg_peek | msg_nosignal)
+		n := con.read_line_recv(bstart, max_read - 1, msg_peek | msg_nosignal)
 		if n <= 0 {
 			return res.str()
 		}
@@ -74,16 +74,29 @@ pub fn (mut con TcpConn) read_line_max(max_line_len int) string {
 			// Ensure that the block till the first \n (including it)
 			// is removed from the socket's receive queue, so that it does
 			// not get read again.
-			C.recv(con.sock.handle, bstart, lend, msg_nosignal)
+			con.read_line_recv(bstart, lend, msg_nosignal)
 			unsafe { res.write_ptr(bstart, lend) }
 			break
 		}
 		// recv returned a buffer without \n in it, just store it for now:
-		C.recv(con.sock.handle, bstart, n, msg_nosignal)
+		con.read_line_recv(bstart, n, msg_nosignal)
 		unsafe { res.write_ptr(bstart, lend) }
 		if res.len > max_line_len {
 			break
 		}
 	}
 	return res.str()
+}
+
+// Signals such as GC thread suspension can interrupt a blocking receive.
+// Retry them for both the peek and the subsequent consuming read.
+fn (con &TcpConn) read_line_recv(buf &u8, len int, flags int) int {
+	for {
+		n := C.recv(con.sock.handle, buf, uint(len), i32(flags))
+		if n < 0 && error_code() == C.EINTR {
+			continue
+		}
+		return int(n)
+	}
+	return 0
 }

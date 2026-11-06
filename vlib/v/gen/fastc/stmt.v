@@ -3256,6 +3256,23 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 	mut expression := g.read_expression([token.Token.semicolon, token.Token.rcbr,
 		token.Token.attribute])!
 	g.expected_expression_type = previous_declaration_expected
+	if g.selfhost && g.last_expression.len == 1 && g.last_expression[0].tok == .name
+		&& !g.last_expression[0].has_source() {
+		if local := g.locals[g.last_expression[0].lit] {
+			if local.smartcast_copy_is_boxed {
+				g.last_expression_type = if local.original_is_reference() {
+					flat.source_type_syntax(local.smartcast_origin_type).c_pointer_base()
+				} else {
+					local.smartcast_origin_type
+				}
+				expression = if local.original_is_reference() {
+					'(*${local.smartcast_origin_source})'
+				} else {
+					local.smartcast_origin_source
+				}
+			}
+		}
+	}
 	g.skip_statement_attributes()!
 	if expression.len == 0 {
 		return g.unsupported('empty declaration')

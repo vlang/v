@@ -145,6 +145,19 @@ remote_has_branch() {
 	run_git ls-remote --exit-code --heads "$tcc_repo" "refs/heads/$1" >/dev/null 2>&1
 }
 
+# origin_branch_sha prints the commit that branch $1 points to on the origin of the
+# existing TCC checkout, which is the repository latest_bundle fetches from; that can
+# be a mirror chosen when the checkout was created. It fails when the branch is
+# missing or the repository cannot be reached.
+origin_branch_sha() {
+	local refs
+	refs="$(run_git -C "$tcc_dir" ls-remote --exit-code --heads origin "refs/heads/$1" 2>/dev/null)" \
+		|| return 1
+	refs="${refs%%[[:space:]]*}"
+	[ -n "$refs" ] || return 1
+	printf '%s\n' "$refs"
+}
+
 clone_branch() {
 	local branch="$1"
 	rm -rf "$tcc_dir"
@@ -278,6 +291,37 @@ validate_system_marker() {
 		&& grep -Fqx 'mode=system' "$metadata"
 }
 
+# keep_unchanged_bundle succeeds, without fetching or checking out anything, when
+# the selection made for the upstream head $3 still holds. Rewriting unchanged
+# files would also invalidate the cached objects that use them as native inputs.
+keep_unchanged_bundle() {
+	local current_branch="$1"
+	local current_sha="$2"
+	local remote_head_sha="$3"
+	local metadata="$tcc_dir/.git/$marker_name/metadata"
+	if [ "$current_branch" = "$expected_branch" ]; then
+		if [ "$current_sha" != "$remote_head_sha" ] || ! probe_bundle; then
+			return 1
+		fi
+		echo "TCC ${expected_branch}@${current_sha} is already up to date."
+		return 0
+	fi
+	grep -Fqx "remote_head_sha=$remote_head_sha" "$metadata" 2> /dev/null || return 1
+	if [ -z "$current_branch" ]; then
+		# The host can change independently of the recorded revision, so a pinned
+		# bundle is checked again before it is kept.
+		probe_bundle || return 1
+		echo "Using newest host-compatible TCC commit ${current_sha} from ${expected_branch}."
+		return 0
+	fi
+	# The system-compiler fallback: every commit of the unchanged branch already
+	# failed the host check, and checking them again downloads each bundle.
+	if tcc_is_required; then
+		return 1
+	fi
+	echo "No host-compatible TCC commit was found on ${expected_branch}@${remote_head_sha}; continuing with the system compiler. Run 'make fresh_tcc' to check the branch again."
+}
+
 fresh_bundle() {
 	if ! remote_has_branch "$expected_branch"; then
 		echo "Pre-built TCC not available for ${expected_branch} at ${tcc_repo}." >&2
@@ -330,7 +374,8 @@ latest_bundle() {
 		fi
 	fi
 
-	if ! remote_has_branch "$expected_branch"; then
+	local advertised_sha
+	if ! advertised_sha="$(origin_branch_sha "$expected_branch")"; then
 		if [ "$current_branch" = "$unknown_branch" ] && remote_has_branch "$unknown_branch"; then
 			if tcc_is_required; then
 				echo "Pre-built TCC is still unavailable for ${expected_branch}; explicit '-cc tcc' cannot continue." >&2
@@ -340,8 +385,11 @@ latest_bundle() {
 			echo "Pre-built TCC is still unavailable for ${expected_branch}; continuing with the system compiler."
 			return 0
 		fi
-		echo "Unable to refresh ${expected_branch} from ${tcc_repo}; preserving the current TCC checkout." >&2
+		echo "Unable to refresh ${expected_branch} from the origin of ${tcc_dir}; preserving the current TCC checkout." >&2
 		return 1
+	fi
+	if keep_unchanged_bundle "$current_branch" "$current_sha" "$advertised_sha"; then
+		return 0
 	fi
 
 	run_git -C "$tcc_dir" fetch --quiet origin "refs/heads/${expected_branch}:refs/remotes/origin/${expected_branch}"
@@ -351,14 +399,6 @@ latest_bundle() {
 		&& ! run_git -C "$tcc_dir" merge-base --is-ancestor "$current_sha" "$remote_head_sha"; then
 		echo "Refusing to overwrite local TCC commits on ${expected_branch}; run 'make fresh_tcc' after preserving them." >&2
 		return 1
-	fi
-	# Keep a validated historical bundle in place while upstream is unchanged.
-	# Checking out the incompatible head and back rewrites native cache inputs.
-	if [ -z "$current_branch" ] \
-		&& grep -Fqx "remote_head_sha=$remote_head_sha" "$tcc_dir/.git/$marker_name/metadata" \
-		&& probe_bundle; then
-		echo "Using newest host-compatible TCC commit ${current_sha} from ${expected_branch}."
-		return
 	fi
 	run_git -C "$tcc_dir" checkout --detach --quiet "$remote_head_sha"
 	if probe_bundle; then

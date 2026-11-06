@@ -283,6 +283,7 @@ endif
 	if [ ! -f "$(TMPTCC)/lib/libgc.a" ] && [ ! -f "$(TMPTCC)/lib/libgc.dylib" ]; then \
 		cache_gcflags='-gc none'; \
 	fi; \
+	$(VEXE)$(EXE_EXT) $$cache_gcflags $(VFLAGS) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler run cmd/tools/cache_basic_modules.v; \
 	$(VEXE)$(EXE_EXT) $$cache_gcflags $(VFLAGS) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler cmd/tools/cache_basic_modules_test.v
 
 v1:
@@ -366,7 +367,27 @@ ifdef WIN32
 		cd "$(TMPTCC)" && $(GIT) checkout -- lib/advapi32.def > /dev/null 2> /dev/null || true; \
 	fi
 endif
-	cd $(TMPTCC) && $(GITCLEANPULL)
+# A pull fetches every platform branch, so skip it while the upstream that the pull would
+# follow has not moved. `clean` keeps changed tracked files; leave those to the pull to report,
+# as well as a missing or local upstream.
+	@set -e; cd $(TMPTCC); $(GIT) clean -xf; \
+	tcc_branch="$$($(GIT) symbolic-ref --quiet --short HEAD || true)"; \
+	tcc_upstream_remote=; \
+	tcc_upstream_ref=; \
+	if [ -n "$$tcc_branch" ]; then \
+		tcc_upstream_remote="$$($(GIT) config --get "branch.$$tcc_branch.remote" || true)"; \
+		tcc_upstream_ref="$$($(GIT) config --get "branch.$$tcc_branch.merge" || true)"; \
+	fi; \
+	tcc_remote_sha=; \
+	if [ -n "$$tcc_upstream_remote" ] && [ "$$tcc_upstream_remote" != . ] && [ -n "$$tcc_upstream_ref" ] \
+		&& [ -z "$$($(GIT) status --porcelain --untracked-files=no)" ]; then \
+		tcc_remote_sha="$$($(GIT) ls-remote "$$tcc_upstream_remote" "$$tcc_upstream_ref" 2> /dev/null | cut -f1)"; \
+	fi; \
+	if [ -n "$$tcc_remote_sha" ] && [ "$$tcc_remote_sha" = "$$($(GIT) rev-parse HEAD)" ]; then \
+		echo "TCC $$tcc_branch is already up to date."; \
+	else \
+		$(GIT) pull --rebase --quiet; \
+	fi
 ifdef WIN32
 	@if [ -f "$(TMPTCC)/lib/advapi32.def" ]; then \
 		for sym in RegEnumKeyExW RegEnumValueW RegQueryInfoKeyW; do \

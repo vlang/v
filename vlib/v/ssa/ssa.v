@@ -466,7 +466,9 @@ pub:
 @[heap]
 pub struct Module {
 pub mut:
-	name       string
+	name string
+	// errors contains unsupported source expressions encountered during SSA construction.
+	errors     []string
 	target     TargetData
 	track_uses bool = true
 	type_store TypeStore

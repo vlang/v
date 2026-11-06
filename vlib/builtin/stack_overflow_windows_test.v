@@ -11,7 +11,7 @@ static inline LONG CALLBACK v_test_exception_handler(EXCEPTION_POINTERS* excepti
 
 static inline void v_test_add_exception_handler(void) {
 	// This child exits immediately afterwards; TCC imports omit the remove API.
-	AddVectoredExceptionHandler(1, v_test_exception_handler);
+	AddVectoredExceptionHandler(0, v_test_exception_handler);
 }
 
 static inline void v_test_first_chance_exception(void) {
@@ -40,7 +40,6 @@ import os
 
 fn C.v_test_add_exception_handler()
 fn C.v_test_first_chance_exception()
-fn C.v_install_windows_stack_overflow_handler()
 fn C.v_test_stack_guarantee() int
 fn C.v_test_disable_error_dialog()
 
@@ -68,10 +67,9 @@ fn main() {
 			println(p.value)
 		}
 		"first_chance" {
-			// Order the handlers as V overflow -> test catcher -> TCC backtrace.
-			// TCC otherwise treats this handled first-chance exception as fatal.
+			// A later handler must get a chance to recover from this exception.
+			// Diagnostic runtimes must not terminate it on first notification.
 			C.v_test_add_exception_handler()
-			C.v_install_windows_stack_overflow_handler()
 			C.v_test_first_chance_exception()
 			println("handled first-chance exception")
 		}
@@ -117,14 +115,15 @@ fn test_windows_stack_overflow_in_main_and_spawned_threads() ! {
 		first_chance := os.exec([binary, 'first_chance'])
 		assert first_chance.exit_code == 0, first_chance.output
 		assert first_chance.output.trim_space() == 'handled first-chance exception', first_chance.output
-		if build_mode == 'normal' {
+		tcc_no_backtrace_diagnostics := $if tinyc && amd64 { true } $else { false }
+		if build_mode == 'normal'
+			|| (build_mode == 'no_backtrace' && tcc_no_backtrace_diagnostics) {
 			fault := os.exec([binary, 'nil'])
 			assert fault.exit_code != 0, fault.output
-			$if tinyc {
-				// TCC's first-chance backtrace handler reports this before V's filter.
+			$if tinyc && !amd64 {
 				assert fault.output.contains('RUNTIME ERROR: invalid memory access'), fault.output
 			} $else {
-				assert fault.output.contains('Unhandled Exception'), fault.output
+				assert fault.output.contains('Unhandled Exception 0xc0000005 at '), fault.output
 			}
 			assert !fault.output.contains('stack overflow'), fault.output
 		}

@@ -2188,7 +2188,9 @@ fn native_lifetime_registry_snapshot(authority &NativeOperationAuthority) Native
 	}
 }
 
-fn native_proof_assert_snapshots_equal(expected NativeAuthorityProofSnapshot, actual NativeAuthorityProofSnapshot) {
+// Borrow the independent snapshots instead of copying two large trace buffers through the C ABI.
+// TinyCC on ARM64 miscompiles the stack address of the second large value argument.
+fn native_proof_assert_snapshots_equal(expected &NativeAuthorityProofSnapshot, actual &NativeAuthorityProofSnapshot) {
 	assert actual.app_identity == expected.app_identity
 	assert actual.app_lifetime_token == expected.app_lifetime_token
 	assert actual.renderer_attempt_token == expected.renderer_attempt_token

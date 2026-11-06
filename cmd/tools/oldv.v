@@ -97,7 +97,7 @@ fn sync_cache() {
 }
 
 fn oldv_required_tools(use_cache bool, cc string) []string {
-	mut tools := ['git', 'wc', 'make']
+	mut tools := ['git', 'wc', vgit.tcc_make_command()]
 	if os.user_os() == 'windows' {
 		if use_cache {
 			tools << 'robocopy'

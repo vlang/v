@@ -424,16 +424,27 @@ pub fn vfopen(path string, mode string) !&C.FILE {
 	if path == '' {
 		return error('vfopen called with ""')
 	}
-	mut fp := &C.FILE(unsafe { nil })
 	$if windows {
-		fp = C._wfopen(path.to_wide(), mode.to_wide())
+		w_path := path.to_wide()
+		w_mode := mode.to_wide()
+		defer {
+			unsafe {
+				free(w_path)
+				free(w_mode)
+			}
+		}
+		fp := C._wfopen(w_path, w_mode)
+		if isnil(voidptr(fp)) {
+			return error_posix(msg: 'failed to open file "${path}"')
+		}
+		return fp
 	} $else {
-		fp = C.fopen(&char(path.str), &char(mode.str))
+		fp := C.fopen(&char(path.str), &char(mode.str))
+		if isnil(voidptr(fp)) {
+			return error_posix(msg: 'failed to open file "${path}"')
+		}
+		return fp
 	}
-	if isnil(voidptr(fp)) {
-		return error_posix(msg: 'failed to open file "${path}"')
-	}
-	return fp
 }
 
 // fileno returns the file descriptor of an opened C file.
@@ -696,6 +707,7 @@ pub fn is_readable(path string) bool {
 // rm removes file in `path`.
 // On Windows it clears the file's read-only attribute for deletion and preserves
 // its other attributes. If deletion fails, it attempts to restore the original attributes.
+// A directory symlink or junction is removed itself, without touching its target.
 pub fn rm(path string) ! {
 	$if freestanding || syscalls {
 		// C.remove() unlinks both files and empty directories; try both
@@ -721,9 +733,13 @@ pub fn rm(path string) ! {
 				unsafe { free(wpath) }
 			}
 			attrs := C.GetFileAttributesW(wpath)
+			is_dir_link := attrs != u32(C.INVALID_FILE_ATTRIBUTES)
+				&& attrs & u32(C.FILE_ATTRIBUTE_DIRECTORY) != 0
+				&& attrs & u32(C.FILE_ATTRIBUTE_REPARSE_POINT) != 0
 			mut changed := false
+			// The attributes of a link are its own, so clearing them never touches the target.
 			if attrs != u32(C.INVALID_FILE_ATTRIBUTES)
-				&& attrs & u32(C.FILE_ATTRIBUTE_DIRECTORY) == 0
+				&& (attrs & u32(C.FILE_ATTRIBUTE_DIRECTORY) == 0 || is_dir_link)
 				&& attrs & u32(C.FILE_ATTRIBUTE_READONLY) != 0 {
 				without_read_only := attrs & ~u32(C.FILE_ATTRIBUTE_READONLY)
 				new_attrs := if without_read_only == 0 {
@@ -732,6 +748,21 @@ pub fn rm(path string) ! {
 					without_read_only
 				}
 				changed = C.SetFileAttributesW(wpath, new_attrs)
+			}
+			if is_dir_link {
+				// _wremove (DeleteFileW) refuses directory reparse points with EACCES,
+				// even dangling ones; RemoveDirectoryW deletes only the link itself.
+				if !C.RemoveDirectoryW(wpath) {
+					code := int(C.GetLastError())
+					if changed {
+						C.SetFileAttributesW(wpath, attrs)
+					}
+					return error_win32(
+						msg:  'Failed to remove "${path}"'
+						code: code
+					)
+				}
+				return
 			}
 			rc = C._wremove(wpath)
 			if rc == -1 {
@@ -885,7 +916,7 @@ pub fn get_raw_line() string {
 	}
 }
 
-// get_raw_stdin will get the raw input from stdin.
+// get_raw_stdin reads all bytes from stdin until EOF, preserving newlines and NUL bytes.
 pub fn get_raw_stdin() []u8 {
 	$if windows {
 		unsafe {
@@ -899,7 +930,7 @@ pub fn get_raw_stdin() []u8 {
 				pos := buf + offset
 				res := C.ReadFile(h_input, pos, block_bytes, voidptr(&bytes_read), 0)
 				offset += bytes_read
-				if !res {
+				if !res || bytes_read == 0 {
 					break
 				}
 				new_size := offset + block_bytes + (block_bytes - bytes_read)
@@ -914,21 +945,23 @@ pub fn get_raw_stdin() []u8 {
 			}
 		}
 	} $else {
-		max := uint(0)
-		buf := &u8(unsafe { nil })
-		nr_chars := unsafe { C.getline(voidptr(&buf), &max, C.stdin) }
-		$if race ? {
-			// A read that failed does not happen after the writes to stdin.
-			if nr_chars >= 0 || C.ferror(C.stdin) == 0 {
-				race_file_read()
+		mut result := []u8{}
+		mut buf := [4096]u8{}
+		for {
+			// Use stdio so reads share the buffer used by get_raw_line.
+			nread := int(C.fread(&buf[0], 1, buf.len, C.stdin))
+			$if race ? {
+				// A read that failed does not happen after the writes to stdin.
+				if nread > 0 || C.ferror(C.stdin) == 0 {
+					race_file_read()
+				}
 			}
+			if nread == 0 {
+				break
+			}
+			result << buf[..nread]
 		}
-		return array{
-			element_size: 1
-			data:         voidptr(buf)
-			len:          if nr_chars < 0 { 0 } else { nr_chars }
-			cap:          int(max)
-		}
+		return result
 	}
 }
 
@@ -1128,6 +1161,12 @@ pub fn chdir(path string) ! {
 // getwd returns the absolute path of the current directory.
 @[manualfree]
 pub fn getwd() string {
+	$if vlibc ? {
+		$if linux && freestanding {
+			wd, e := vlibc_getcwd()
+			return if e == .enoerror { wd } else { '' }
+		}
+	}
 	unsafe {
 		$if freestanding || syscalls {
 			mut buf := [4096]u8{}

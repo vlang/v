@@ -100,7 +100,7 @@ fn test_source_type_existing_id_while_the_shared_table_grows() {
 	}
 	table := source_type_table_load()
 	count := C.atomic_load_u32(&table.count)
-	capacity := source_type_index_load(table).capacity
+	capacity := source_type_index_load().capacity
 	race := &SourceTypeLookupRace{}
 	mut readers := []thread string{}
 	for reader in 0 .. int(lookup_race_readers) {
@@ -124,7 +124,7 @@ fn test_source_type_existing_id_while_the_shared_table_grows() {
 	// spread over new chunks and several index generations during the reads.
 	added := u32(lookup_race_writers * lookup_race_spellings_per_writer)
 	assert C.atomic_load_u32(&table.count) == count + added
-	assert source_type_index_load(table).capacity >= capacity * 8
+	assert source_type_index_load().capacity >= capacity * 8
 	for spellings in growing {
 		for text in spellings {
 			id := source_type_existing_id(text) or { panic('${text} missing') }

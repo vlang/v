@@ -222,6 +222,47 @@ fn string_bytes_equal(a &u8, b &u8, size int) bool {
 	return unsafe { C.memcmp(a, b, uint(size)) == 0 }
 }
 
+// vmemcpy_unchecked copies `n` bytes between two valid buffers that do not
+// overlap. The callers copy into storage they just allocated from a string or
+// array element they hold, so the nil-pointer guards of vmemcpy, paid on tens
+// of millions of copies per compile, are not needed; the inline small copies
+// are the same as in vmemcpy.
+@[inline; unsafe]
+fn vmemcpy_unchecked(dest voidptr, const_src voidptr, n int) {
+	if n <= 0 {
+		return
+	}
+	$if prod && !tinyc && !msvc && !native {
+		if n <= 64 {
+			// Fixed-size copies become unaligned loads/stores. The source and
+			// destination do not overlap, so overlapping head/tail copies are safe.
+			unsafe {
+				dst := &u8(dest)
+				src := &u8(const_src)
+				if n >= 32 {
+					C.memcpy(dst, src, 32)
+					C.memcpy(dst + n - 32, src + n - 32, 32)
+				} else if n >= 16 {
+					C.memcpy(dst, src, 16)
+					C.memcpy(dst + n - 16, src + n - 16, 16)
+				} else if n >= 8 {
+					C.memcpy(dst, src, 8)
+					C.memcpy(dst + n - 8, src + n - 8, 8)
+				} else if n >= 4 {
+					C.memcpy(dst, src, 4)
+					C.memcpy(dst + n - 4, src + n - 4, 4)
+				} else {
+					dst[0] = src[0]
+					dst[n >> 1] = src[n >> 1]
+					dst[n - 1] = src[n - 1]
+				}
+			}
+			return
+		}
+	}
+	unsafe { C.memcpy(dest, const_src, n) }
+}
+
 // string_content_equal preserves vmemcmp's guarded and traced string comparison.
 @[inline]
 fn string_content_equal(a &u8, b &u8, size int) bool {
@@ -266,37 +307,8 @@ pub fn vmemcpy(dest voidptr, const_src voidptr, n int) voidptr {
 	if n == 0 || uint(dest) <= 0xFFFF || uint(const_src) <= 0xFFFF {
 		return dest
 	}
-	$if prod && !tinyc && !msvc && !native {
-		if n > 0 && n <= 64 {
-			// Fixed-size copies become unaligned loads/stores. The source and
-			// destination do not overlap, so overlapping head/tail copies are safe.
-			unsafe {
-				dst := &u8(dest)
-				src := &u8(const_src)
-				if n >= 32 {
-					C.memcpy(dst, src, 32)
-					C.memcpy(dst + n - 32, src + n - 32, 32)
-				} else if n >= 16 {
-					C.memcpy(dst, src, 16)
-					C.memcpy(dst + n - 16, src + n - 16, 16)
-				} else if n >= 8 {
-					C.memcpy(dst, src, 8)
-					C.memcpy(dst + n - 8, src + n - 8, 8)
-				} else if n >= 4 {
-					C.memcpy(dst, src, 4)
-					C.memcpy(dst + n - 4, src + n - 4, 4)
-				} else {
-					dst[0] = src[0]
-					dst[n >> 1] = src[n >> 1]
-					dst[n - 1] = src[n - 1]
-				}
-			}
-			return dest
-		}
-	}
-	unsafe {
-		return C.memcpy(dest, const_src, n)
-	}
+	unsafe { vmemcpy_unchecked(dest, const_src, n) }
+	return dest
 }
 
 // vmemmove copies n bytes from memory area `src` to memory area `dest`.

@@ -16,6 +16,9 @@ values. If the operating system cannot provide an environment block, it returns 
 
 ### Console input
 
+`os.get_raw_stdin()` reads to EOF and returns all input bytes, including newlines and NUL bytes.
+Use `os.get_raw_line()` to read a single line instead.
+
 On Windows, `os.input()` supports both console and redirected standard input.
 It returns an empty string when the standard input handle is invalid.
 
@@ -356,6 +359,7 @@ messages. Error text returned by operations using it retains the message's punct
 
 On Windows, `os.exec()` captures bytes from successful child-pipe reads only. Closing the output
 pipe does not append a previous chunk again. Commands with no output return an empty output string.
+Both capture-pipe handles are released after execution, including when starting the child fails.
 
 ### Writing arrays
 
@@ -394,16 +398,21 @@ See [the vlibc runtime notes](../builtin/README.vlibc.md) for supported platform
 ### `-freestanding` backend
 
 With `-freestanding` (and without `-d vlibc`), the os module keeps its API while linking no
-libc: file, environment and process information calls use raw Linux syscalls from
-`freestanding_d_freestanding.c.v`, following the shapes of Zig's `std/os/linux.zig` (per-arch syscall
-tables, raw `syscall0..syscall6` entries, and a kernel-errno decoder). On x86_64 and arm64
-this covers the file and environment core: `open_file`, `open`, `create`, the standard
-files in `stdin`/`stdout`/`stderr`, `File.read/2` and the write/read/seek surface of
-`os.File`, `write_file`, `read_file`, `read_bytes`, `write_bytes`, `rename`, `truncate`,
-`mkdir`, `ls`, `rm`, `rmdir`, `chmod`, `stat`, `lstat`, `exists`, `is_file`, `is_dir`,
-`is_executable`, `is_writable`, `getwd`, `chdir`, `executable`, `getpid`, `getenv`, and
-`environ`. Error strings come from an in-module errno table instead of `strerror(3)`, and
-`sleep_ms` and the `os.fd_*` calls go through syscalls as well.
+libc: file, environment and process calls go through builtin's `bf_*` layer, which makes raw
+syscalls through each target's runtime (`builtin/linux_bare`, `freebsd_bare`, `netbsd_bare`,
+`dragonfly_bare`, `macos_bare`, `solaris_bare`, and `freestanding_d_freestanding.c.v` for the
+native backends), following the shapes of Zig's `std/os/linux.zig` (per-arch syscall tables,
+raw `syscall0..syscall6` entries, and kernel errnos normalized to the Linux numbers).
+`-syscalls` uses the same layer in a libc-linked build. This covers the file and environment
+core: `open_file`, `open`, `create`, the standard files in `stdin`/`stdout`/`stderr`,
+`File.read/2` and the write/read/seek surface of `os.File`, `write_file`, `read_file`,
+`read_bytes`, `write_bytes`, `rename`, `truncate`, `mkdir`, `ls`, `rm`, `rmdir`, `chmod`,
+`stat`, `lstat`, `exists`, `is_file`, `is_dir`, `is_executable`, `is_writable`, `getwd`,
+`chdir`, `executable`, `getpid`, `getppid`, `uname`, `getenv`, and `environ`, plus the
+process calls `fork`, `execve` and `wait4`. Error strings come from an in-module errno table
+instead of `strerror(3)`, `last_error` reads the runtime's errno, and `sleep_ms` and the
+`os.fd_*` calls go through syscalls as well. On illumos, `wait4` is emulated with `waitid`
+and does not fill `rusage`.
 
 Two purity notes: `real_path` makes a path absolute and resolves `.` and `..` lexically,
 without chasing symbolic links (there is no `realpath` syscall); and `setenv`/`unsetenv`
