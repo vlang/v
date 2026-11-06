@@ -2,8 +2,8 @@ import crypto.sha256
 import os
 
 const cached_export_environment_variables = ['V3CACHE', 'V3_INTERNAL_CACHE_FORCE_SOURCE',
-	'V3_CACHE_FORCE_SOURCE', 'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE', 'VFLAGS', 'VOSARGS',
-	'CFLAGS', 'LDFLAGS']
+	'V3_CACHE_FORCE_SOURCE', 'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE', 'VFLAGS', 'VOSARGS', 'CFLAGS',
+	'LDFLAGS']
 
 fn prepare_cached_export_environment() map[string]string {
 	mut previous := map[string]string{}
@@ -159,8 +159,8 @@ fn main() {
 	os.setenv('V3CACHE', cache, true)
 	executable := os.join_path(root, 'naked')
 	// Unlike -keepc and -o file.c, -cg retains C without disabling module caching.
-	compiled := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', cc,
-		'-gc', 'none', '-cg', '-o', executable, source])
+	compiled := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', cc, '-gc', 'none',
+		'-cg', '-o', executable, source])
 	assert compiled.exit_code == 0, compiled.output
 	assert cached_export_objects(cache).len > 0, 'no cached export module in ${cache}'
 	signature := '__attribute__((naked)) void naked_probe(void) {'
