@@ -229,6 +229,13 @@ fn (mut s GpuSurface) reset_draws() {
 	s.textures.clear()
 	s.disjoint = map[u16][][]Rect{}
 	s.depth_index = 0
+	// Clip geometry and saves survive a new draw list, but their pending
+	// usage/order/depth refer only to the draws that were just discarded.
+	for mut element in s.clip.elements {
+		element.usage = Rect.infinite_inverted()
+		element.order = no_intersection
+		element.max_z = 0
+	}
 }
 
 fn (mut s GpuSurface) next_draw_depth() !u16 {

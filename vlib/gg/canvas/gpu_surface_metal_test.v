@@ -6,6 +6,27 @@ import crypto.sha256
 const test_width = 32
 const test_height = 24
 
+fn test_clear_preserves_active_clip_geometry_for_later_draws() {
+	mut ctx := new_gpu_context()!
+	defer { ctx.free() }
+	mut s := ctx.new_surface(width: 8, height: 8)!
+	defer { s.free() }
+	s.save()
+	s.clip_rect(Rect.ltrb(1, 1, 2, 2), .difference, false)!
+	s.clip_rect(Rect.ltrb(4, 4, 5, 5), .difference, false)!
+	s.draw_rect(Rect.ltrb(0, 0, 8, 8), Paint.rgba8(255, 0, 0, 255))!
+	s.clear(Color4f{0, 0, 1, 1})
+	s.draw_rect(Rect.ltrb(0, 0, 8, 8), Paint.rgba8(0, 255, 0, 255))!
+	s.restore()
+	mut pixels := []u8{len: 8 * 8 * 4}
+	s.read_pixels(pixels.data, 8 * 4)!
+	assert pixels[0..4] == [u8(0), 255, 0, 255]
+	for coordinate in [1, 4] {
+		i := (coordinate * 8 + coordinate) * 4
+		assert pixels[i..i + 4] == [u8(255), 0, 0, 255]
+	}
+}
+
 fn pixel(px []u8, x int, y int) []u8 {
 	i := (y * test_width + x) * 4
 	return px[i..i + 4].clone()

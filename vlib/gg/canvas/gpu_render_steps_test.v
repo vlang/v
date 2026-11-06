@@ -451,3 +451,18 @@ fn test_uniform_limit_checks_both_path_steps_before_recording() {
 	}
 	assert false, 'part of an oversized two-step path was recorded'
 }
+
+fn test_clear_discards_deferred_clip_depth_before_restore() {
+	mut s := recording_surface(64, 48, identity_values)
+	s.save()
+	s.clip_rect(Rect.ltrb(10, 10, 20, 20), .difference, false)!
+	s.clip_rect(Rect.ltrb(30, 15, 40, 25), .difference, false)!
+	for _ in 0 .. int(max_draw_depth) {
+		s.draw_rect(Rect.ltrb(0, 0, 64, 48), Paint.rgba8(255, 0, 0, 255))!
+	}
+	s.clear(Color4f{})
+	s.restore()
+	// The discarded draws must not consume depth in the new draw list.
+	s.draw_rect(Rect.ltrb(0, 0, 1, 1), Paint.rgba8(0, 255, 0, 255))!
+	assert s.draws.len == 1 && s.draws[0].order.depth == 1
+}
