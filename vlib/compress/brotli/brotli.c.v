@@ -2,17 +2,35 @@
 module brotli
 
 import os
+import dl
 
-$if linux {
-	#flag -ldl
+// Bind the sanitizer helper directly, including static runtimes whose symbols
+// are unavailable to dlsym. The C compiler owns sanitizer feature detection.
+#define V_BROTLI_MSAN_DATA const volatile void
+#if defined(__has_feature)
+#if __has_feature(memory_sanitizer)
+#define v_brotli_msan_unpoison __msan_unpoison
+#else
+#define v_brotli_msan_unpoison v_brotli_unpoison_noop
+#endif
+#else
+#define v_brotli_msan_unpoison v_brotli_unpoison_noop
+#endif
+
+@[c_extern]
+fn C.v_brotli_msan_unpoison(data &C.V_BROTLI_MSAN_DATA, len uint)
+
+@[markused; export: 'v_brotli_unpoison_noop']
+fn unpoison_noop(_ &C.V_BROTLI_MSAN_DATA, _ uint) {}
+
+fn unpoison_output(data voidptr, len uint) {
+	$if !native {
+		if len > 0 {
+			// The cast adds the sanitizer interface's C pointer qualifiers.
+			C.v_brotli_msan_unpoison(unsafe { &C.V_BROTLI_MSAN_DATA(data) }, len)
+		}
+	}
 }
-
-#insert "@VEXEROOT/vlib/compress/brotli/brotli_dl.h"
-
-fn C.v_brotli_open(const_name &char) voidptr
-fn C.v_brotli_sym(handle voidptr, const_name &char) voidptr
-fn C.v_brotli_close(handle voidptr) int
-fn C.v_brotli_msan_unpoison(ptr voidptr, len uint)
 
 const min_quality = 0
 const max_quality = 11
@@ -60,7 +78,7 @@ pub:
 pub struct DecompressParams {}
 
 fn open_library_name(name string) voidptr {
-	return C.v_brotli_open(&char(name.str))
+	return dl.open(name, dl.rtld_lazy)
 }
 
 fn open_env_library(env_name string) voidptr {
@@ -134,11 +152,11 @@ fn open_decoder_library() !voidptr {
 }
 
 fn close_library(handle voidptr) {
-	C.v_brotli_close(handle)
+	dl.close(handle)
 }
 
 fn library_symbol(handle voidptr, name string, kind string) !voidptr {
-	sym := C.v_brotli_sym(handle, &char(name.str))
+	sym := dl.sym(handle, name)
 	if sym == 0 {
 		return error('brotli: could not load ${kind} symbol ${name}')
 	}
@@ -196,7 +214,7 @@ pub fn compress(data []u8, params CompressParams) ![]u8 {
 	if ok == 0 {
 		return error('brotli: compression failed')
 	}
-	C.v_brotli_msan_unpoison(dst.data, encoded_size)
+	unpoison_output(dst.data, encoded_size)
 	keep_dst = true
 	return dst[..int(encoded_size)]
 }
@@ -245,7 +263,7 @@ pub fn decompress(data []u8, _ DecompressParams) ![]u8 {
 			&total_out)
 		produced := chunk.len - int(available_out)
 		if produced > 0 {
-			C.v_brotli_msan_unpoison(chunk.data, uint(produced))
+			unpoison_output(chunk.data, uint(produced))
 			out << chunk[..produced]
 		}
 		match result {
