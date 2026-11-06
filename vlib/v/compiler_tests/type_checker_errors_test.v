@@ -1492,6 +1492,36 @@ fn test_bool_match_single_branch_is_exhaustive() {
 	run_bad(v3_bin, 'bad_bool_pointer_match_not_exhaustive', 'fn f(b &bool) int {\n\tmatch b {\n\t\ttrue, false {\n\t\t\treturn 1\n\t\t}\n\t}\n}\n\nfn main() {\n\tmut b := true\n\tprintln(int_str(f(&b)))\n}\n', 'missing return')
 }
 
+// A `match` over a plain enum must list every field or end with `else`: an
+// unlisted value would otherwise run whichever branch the generated code reaches.
+fn test_plain_enum_match_must_be_exhaustive() {
+	v3_bin := build_v3()
+	enum_kind := 'enum Kind {\n\ta\n\tb\n\tc\n}\n'
+	run_bad(v3_bin, 'bad_enum_match_expr_missing_field', enum_kind + 'fn f(k Kind) int {\n\treturn match k {\n\t\t.a { 1 }\n\t\t.b { 2 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(.c)))\n}\n', 'match must be exhaustive (add match branches for: `.c` or `else {}` at the end)')
+	run_bad(v3_bin, 'bad_enum_match_stmt_missing_fields', enum_kind + "fn main() {\n\tk := Kind.c\n\tmatch k {\n\t\t.a {\n\t\t\tprintln('a')\n\t\t}\n\t}\n}\n", 'match must be exhaustive (add match branches for: `.b`, `.c` or `else {}` at the end)')
+	run_bad(v3_bin, 'bad_enum_match_qualified_missing_field', enum_kind + 'fn f(k Kind) int {\n\treturn match k {\n\t\tKind.a, Kind.c { 1 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(.b)))\n}\n', 'match must be exhaustive (add match branches for: `.b` or `else {}` at the end)')
+	run_bad(v3_bin, 'bad_enum_alias_match_missing_field', enum_kind + 'type Kind2 = Kind\nfn f(k Kind2) int {\n\treturn match k {\n\t\t.a { 1 }\n\t\t.c { 3 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(.b)))\n}\n', 'match must be exhaustive (add match branches for: `.b` or `else {}` at the end)')
+	run_bad(v3_bin, 'bad_enum_match_many_missing_fields', 'enum Big {\n\tf0\n\tf1\n\tf2\n\tf3\n\tf4\n\tf5\n\tf6\n\tf7\n\tf8\n\tf9\n\tf10\n\tf11\n\tf12\n}\nfn f(k Big) int {\n\treturn match k {\n\t\t.f0 { 1 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(.f1)))\n}\n', 'match must be exhaustive (add match branches for: `.f1`, `.f2`, `.f3`, `.f4`, `.f5`, `.f6`, `.f7`, `.f8`, `.f9`, `.f10`, and 2 others ... or `else {}` at the end)')
+	all := run_good(v3_bin, 'good_enum_match_all_fields', enum_kind + 'fn f(k Kind) int {\n\treturn match k {\n\t\t.a { 1 }\n\t\t.b { 2 }\n\t\t.c { 3 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(.a) + f(.b) + f(.c)))\n}\n')
+	assert all == '6'
+	multi := run_good(v3_bin, 'good_enum_match_several_per_branch', enum_kind + 'fn f(k Kind) int {\n\treturn match k {\n\t\t.a, Kind.b { 1 }\n\t\tKind.c { 3 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(.a) + f(.b) + f(.c)))\n}\n')
+	assert multi == '5'
+	with_else := run_good(v3_bin, 'good_enum_match_else', enum_kind + 'fn f(k Kind) int {\n\treturn match k {\n\t\t.a { 1 }\n\t\telse { 9 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(.a) + f(.c)))\n}\n')
+	assert with_else == '10'
+	alias_all := run_good(v3_bin, 'good_enum_alias_match_all_fields', enum_kind + 'type Kind2 = Kind\nfn f(k Kind2) int {\n\treturn match k {\n\t\t.a { 1 }\n\t\t.b, .c { 2 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(.a) + f(.c)))\n}\n')
+	assert alias_all == '3'
+	stmt_all := run_good(v3_bin, 'good_enum_match_stmt_all_fields', enum_kind + "fn main() {\n\tk := Kind.b\n\tmatch k {\n\t\t.a {\n\t\t\tprintln('a')\n\t\t}\n\t\t.b, .c {\n\t\t\tprintln('bc')\n\t\t}\n\t}\n}\n")
+	assert stmt_all == 'bc'
+	// A constant condition leaves the covered fields unknown, so it is not diagnosed.
+	by_const := run_good(v3_bin, 'good_enum_match_const_condition', enum_kind + 'const first = Kind.a\nfn f(k Kind) int {\n\treturn match k {\n\t\tfirst { 1 }\n\t\t.b, .c { 2 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(.a) + f(.c)))\n}\n')
+	assert by_const == '3'
+	// Under @[_allow_multiple_values] naming one field covers every field of its value.
+	multi_enum := '@[_allow_multiple_values]\nenum Mv {\n\ta\n\tb = 9\n\tc = 9\n\td\n}\n'
+	shared := run_good(v3_bin, 'good_enum_match_shared_value', multi_enum + 'fn f(k Mv) int {\n\treturn match k {\n\t\t.a { 1 }\n\t\t.c { 9 }\n\t\t.d { 4 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(.a) + f(.b) + f(.d)))\n}\n')
+	assert shared == '14'
+	run_bad(v3_bin, 'bad_enum_match_shared_value_missing_field', multi_enum + 'fn f(k Mv) int {\n\treturn match k {\n\t\t.a { 1 }\n\t\t.b { 9 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(.d)))\n}\n', 'match must be exhaustive (add match branches for: `.d` or `else {}` at the end)')
+}
+
 fn test_voidptr_variadic_spread_requires_voidptr_array() {
 	v3_bin := build_v3()
 	run_bad(v3_bin, 'bad_voidptr_variadic_int_spread', 'fn sink(args ...voidptr) int {\n\treturn args.len\n}\n\nfn main() {\n\txs := [1, 2]\n\tprintln(int_str(sink(...xs)))\n}\n', 'cannot use `...int` as `...voidptr` in argument 1 to `sink`')
