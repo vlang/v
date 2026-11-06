@@ -64,7 +64,10 @@ permissions:
 jobs:
   sanitize-linux:
     if: github.ref == 'refs/heads/master'
-    runs-on: ubuntu-22.04
+    # Ubuntu 22.04's Clang 14 lacks the stat64/lstat64 MSan interceptors used
+    # by SQLite's large-file pathname checks. Keep all MSan builds on the
+    # Ubuntu 24.04 Clang 18 toolchain, including the private database libraries.
+    runs-on: ${{ matrix.sanitizer == 'memory' && 'ubuntu-24.04' || 'ubuntu-22.04' }}
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
@@ -145,6 +148,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
+        # The shared cache key does not include the Ubuntu version. MSan uses
+        # the explicit install below to avoid restoring 22.04 packages on 24.04.
+        if: ${{ matrix.sanitizer != 'memory' }}
         with:
           profile: sanitizers
       - uses: ./.github/actions/setup-v
