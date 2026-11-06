@@ -238,8 +238,24 @@ fn (mut checker Decoder) check_nested_value(message string) ! {
 	}
 }
 
+// max_nesting_depth guards the recursion of check_array/check_object:
+// V's C/WASM backends run on fixed-size stacks, which the checker's
+// recursion can exhaust at a few thousand nesting levels (measured ~2,600
+// on an 8 MiB main-thread stack; Go has no comparable bound because
+// goroutine stacks grow). A bounded parsing error is preferable to the
+// process abort that unchecked recursion produces.
+const max_nesting_depth = 512
+
 @[markused]
 fn (mut checker Decoder) check_array() ! {
+	if checker.checker_depth >= max_nesting_depth {
+		return checker.checker_error('exceeded the maximum nesting depth')
+	}
+	checker.checker_depth++
+	defer {
+		checker.checker_depth--
+	}
+
 	checker.increment('expected array end')!
 
 	checker.skip_whitespace('expected array end')!
@@ -262,6 +278,14 @@ fn (mut checker Decoder) check_array() ! {
 
 @[markused]
 fn (mut checker Decoder) check_object() ! {
+	if checker.checker_depth >= max_nesting_depth {
+		return checker.checker_error('exceeded the maximum nesting depth')
+	}
+	checker.checker_depth++
+	defer {
+		checker.checker_depth--
+	}
+
 	checker.increment('expected object end')!
 
 	checker.skip_whitespace('expected object end')!

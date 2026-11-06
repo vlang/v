@@ -1001,6 +1001,14 @@ fn test_formatter_preserves_anonymous_aggregate_types() {
 	assert vfmt('anonymous_aggregate_types_twice', out) == out
 }
 
+fn test_formatter_preserves_anonymous_union_literals() {
+	source := 'struct Box {\n\tvalue union { number int }\n}\n\nfn main() {\n\t_ = Box{ value: union { number: 42 } }\n}\n'
+	out := vfmt('anonymous_union_literal', source)
+	assert out.contains('union { number: 42 }'), out
+	assert !out.contains('AnonUnion_'), out
+	assert vfmt('anonymous_union_literal_twice', out) == out
+}
+
 fn test_formatter_fixes_indented_anonymous_union() {
 	source := 'struct LaborUnion {\n\trespect_workers bool\n\tcontent         union {\nworkers []string\n\t}\n}\n'
 	out := vfmt('indented_union', source)

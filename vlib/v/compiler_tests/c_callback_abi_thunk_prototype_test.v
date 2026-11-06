@@ -49,10 +49,13 @@ fn test_c_callback_abi_thunk_defers_to_the_header_prototype() {
 	// so the header's `const char *` parameter type decides the conversion.
 	assert c_source.contains('native_run((void*)'), c_source
 	// clang 16+ rejects mismatched function pointers by default on Linux.
-	if os.exists_in_system_path('clang') {
-		exe := os.join_path(os.dir(src), 'main_clang')
-		run := os.exec([thunk_vexe, '-cc', 'clang', '-o', exe, 'run', '${src}'])
-		assert run.exit_code == 0, run.output
-		assert run.output.trim_space() == '5'
+	// Windows installations can target the MSVC ABI, which `-cc clang` cannot use.
+	$if !windows {
+		if os.exists_in_system_path('clang') {
+			exe := os.join_path(os.dir(src), 'main_clang')
+			run := os.exec([thunk_vexe, '-cc', 'clang', '-o', exe, 'run', '${src}'])
+			assert run.exit_code == 0, run.output
+			assert run.output.trim_space() == '5'
+		}
 	}
 }

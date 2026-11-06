@@ -57,13 +57,9 @@ const h2_pooled_write_stall_limit = 30 * time.second
 // internal synchronization whatsoever for a single mbedtls_ssl_context's
 // read/write reentrancy (its MBEDTLS_THREADING_C mutexes only ever protect
 // unrelated shared-global resources — readdir, gmtime, PSA key-slots/RNG).
-// OpenSSL's SSL_read/SSL_write do support one-reader-thread/one-writer-thread
-// on a single SSL object natively, but this adapter is used uniformly for
-// both backends rather than branching on `$if use_openssl`: OpenSSL's
-// server-side TLS path in this codebase is a stub, so mbedTLS must keep
-// working regardless, and a second, much-less-tested concurrency model is not
-// worth the marginal mutex overhead it would save (real-world HTTP/2 latency
-// is dominated by network RTT/HPACK/app processing, not TLS-call overhead).
+// OpenSSL also requires serialized access to a single SSL object, even with
+// one reader and one writer. This adapter therefore uses the same locking
+// model with both backends.
 //
 // All actual TLS-library calls (read()/write() on the wrapped conn) are
 // serialized behind io_mu. On the write side, waiting for socket readiness

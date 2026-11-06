@@ -5053,6 +5053,26 @@ fn (mut t Transformer) transform_call_arg_for_param_isolated(arg_id flat.NodeId,
 	}
 	if param_shape.has(.pointer) && !t.is_sum_type_name(param_base_id)
 		&& !t.is_interface_type(param_type_id) {
+		if arg_node.is_mut
+			&& !t.transform_param_type_is_void_pointer(t.normalize_type_alias(param_base_id))
+			&& t.normalize_type_alias(if arg_node.kind == .ident {
+				t.typeof_var_type(arg_node.value)
+			} else {
+				t.raw_expr_type_without_smartcast(arg_id)
+			}) == flat.source_type_voidptr {
+			// A raw pointer already addresses the mutable value. Coercing it to
+			// the pointee first would borrow a copy and dereference null pointers.
+			value := t.transform_opaque_pointer_value(arg_id)
+			if t.a.nodes[int(value)].kind == .ident {
+				return value
+			}
+			// A field or promoted pointer read is an address value, not a slot
+			// that the call should reference. Copy only the pointer into typed storage.
+			tmp_name := t.new_temp('raw_ptr_arg')
+			t.pending_stmts << t.make_decl_assign_typed(tmp_name,
+				t.make_cast(param_type_id, value, param_type_id), param_type_id)
+			return t.make_ident(tmp_name)
+		}
 		if arg_node.kind == .ident && t.pointer_value_lvalues[arg_node.value] {
 			storage_type := t.var_type(arg_node.value)
 			if arg_node.value in t.heaped_amp_locals
@@ -7809,7 +7829,7 @@ fn (mut t Transformer) build_auto_str_helper_fn(aggregate_id u32) {
 		t.lower_sum_str(value, aggregate_id)
 	} else {
 		t.lower_struct_str(value, aggregate_id) or {
-			t.make_string_literal('${struct_string_display_name(aggregate_id)}{}')
+			t.make_string_literal('${t.struct_string_display_name(aggregate_id)}{}')
 		}
 	}
 	mut stmts := t.pending_stmts.clone()
@@ -8495,7 +8515,7 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type_id u32) ?f
 	}
 	if flat.source_type_shape(struct_type_id).has(.dotted)
 		&& flat.source_type_syntax(struct_type_id).unqualified() == flat.source_type_id('Array_string') {
-		return t.make_string_literal('${struct_string_display_name(struct_type_id)}{}')
+		return t.make_string_literal('${t.struct_string_display_name(struct_type_id)}{}')
 	}
 	stack_count := t.stringify_stack_count(struct_type_id)
 	recurse_limit := if t.struct_autostr_allows_recurse(struct_type_id) { 3 } else { 2 }
@@ -8511,7 +8531,7 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type_id u32) ?f
 		t.stringify_stack.delete_last()
 	}
 	if info.fields.len == 0 {
-		return t.make_string_literal('${struct_string_display_name(struct_type_id)}{}')
+		return t.make_string_literal('${t.struct_string_display_name(struct_type_id)}{}')
 	}
 	expr_node := t.a.nodes[int(expr)]
 	mut value_expr := expr
@@ -8544,7 +8564,7 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type_id u32) ?f
 			address_type,
 		], flat.source_type_void))
 	}
-	display := struct_string_display_name(struct_type_id)
+	display := t.struct_string_display_name(struct_type_id)
 	mut result := t.make_string_literal('${display}{\n')
 	decl_metas := t.struct_field_decl_metas_in_module(comptime_struct_info_cache_key(info), info.module)
 	for field in info.fields {
@@ -8568,7 +8588,7 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type_id u32) ?f
 			}
 		}
 		mut field_str := if field_type == struct_type_id {
-			t.make_string_literal('${struct_string_display_name(field_type)}{}')
+			t.make_string_literal('${t.struct_string_display_name(field_type)}{}')
 		} else {
 			t.struct_field_str_value(t.make_selector(base, field.name, field_type), raw_field_type,
 				field_type, flat.source_type_query(struct_type_id).has(.c_prefix) || info.is_c_anon)
@@ -8701,10 +8721,14 @@ fn (t &Transformer) struct_autostr_allows_recurse(struct_type_id u32) bool {
 		|| t.struct_autostr_recurse_types[flat.source_type_syntax(decl_id).unqualified()]
 }
 
-fn struct_string_display_name(typ u32) string {
+fn (t &Transformer) struct_string_display_name(typ u32) string {
 	syntax := flat.source_type_syntax(typ)
-	if flat.source_type_id('AnonStruct') in flat.source_type_syntax(syntax.unqualified()).underscore_prefixes() {
+	query := flat.source_type_query(syntax.unqualified())
+	if query.has(.anon_struct_prefix) {
 		return 'struct '
+	}
+	if query.has(.anon_union_prefix) && t.a.synthesized_anon_struct_types[syntax.unqualified()] {
+		return 'union '
 	}
 	if flat.source_type_query(typ).has(.main_prefix) {
 		return flat.source_type_name(syntax.unqualified())
@@ -8729,15 +8753,15 @@ fn (t &Transformer) alias_string_display_name(alias_name_id u32, base_type_id u3
 				continue
 			}
 			if matched.len > 0 && matched != candidate {
-				return struct_string_display_name(alias_name_id)
+				return t.struct_string_display_name(alias_name_id)
 			}
 			matched = candidate
 		}
 		if matched.len > 0 {
-			return struct_string_display_name(flat.source_type_id(matched))
+			return t.struct_string_display_name(flat.source_type_id(matched))
 		}
 	}
-	return struct_string_display_name(alias_name_id)
+	return t.struct_string_display_name(alias_name_id)
 }
 
 // struct_field_str_value stringifies one struct field for the auto-generated struct str.

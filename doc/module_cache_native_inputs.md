@@ -52,6 +52,11 @@ compiler command.
 `-print-watched-files` and `-dump-files` parse V source bodies to include embedded resources,
 including resources omitted from warm V declaration headers.
 
+Native object identities include the environment that selects C headers and libraries, including
+`CPATH`, `C_INCLUDE_PATH`, `CPLUS_INCLUDE_PATH`, MSVC's `INCLUDE`/`LIB` and toolchain/SDK selection.
+Changing those variables invalidates link plans and object manifests even if the previous headers
+still exist unchanged. Prebuilt objects supplied by the application remain application inputs.
+
 The web stack's Brotli binding uses `dl` directly, so it has no bundled native loader header.
 Zstd is built as a separate `#flag` object, whose C compiler dependency manifest controls reuse;
 its implementation is not copied into V module objects. With Clang or GCC on Unix, importing

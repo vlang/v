@@ -135,10 +135,14 @@ pub fn (mut c SSLCerts) cleanup() {
 	C.mbedtls_pk_free(&c.client_key)
 }
 
-// SSLConn is the current connection
+// SSLConn is a TLS connection. It does not synchronize access to its TLS context.
+// Calls on the same connection must be serialized, including read, write, timeout
+// changes, and close/shutdown. One reader and one writer must not call it concurrently.
 pub struct SSLConn {
 mut:
 	initialized bool
+	// Accepted connections borrow the allocations referenced by their config copy.
+	owns_config bool = true
 pub:
 	config SSLConnectConfig
 pub mut:
@@ -396,8 +400,8 @@ pub fn (mut l SSLListener) accept() !&SSLConn {
 	mut conn := l.accept_tcp_connection()!
 
 	C.mbedtls_ssl_init(&conn.ssl)
-	C.mbedtls_ssl_config_init(&conn.conf)
-	ret := C.mbedtls_ssl_setup(&conn.ssl, &l.conf)
+	conn.conf = l.conf
+	ret := C.mbedtls_ssl_setup(&conn.ssl, &conn.conf)
 	if ret != 0 {
 		conn.shutdown() or {}
 		return error_with_code('net.mbedtls SSLListener.accept, mbedtls_ssl_setup SSL setup failed ret: ${ret}',
@@ -413,6 +417,7 @@ pub fn (mut l SSLListener) accept() !&SSLConn {
 fn (mut l SSLListener) accept_tcp_connection() !&SSLConn {
 	mut conn := &SSLConn{
 		config:       l.config
+		owns_config:  false
 		duration:     ssl_listener_read_timeout(l.config)
 		read_timeout: ssl_listener_read_timeout(l.config)
 		opened:       true
@@ -485,12 +490,12 @@ pub fn (mut l SSLListener) accept_raw_with_timeout(accept_timeout time.Duration)
 	mut conn := l.accept_tcp_connection()!
 
 	C.mbedtls_ssl_init(&conn.ssl)
-	C.mbedtls_ssl_config_init(&conn.conf)
+	conn.conf = l.conf
 	net.set_blocking(conn.handle, false) or {
 		conn.shutdown() or {}
 		return err
 	}
-	ret := C.mbedtls_ssl_setup(&conn.ssl, &l.conf)
+	ret := C.mbedtls_ssl_setup(&conn.ssl, &conn.conf)
 	if ret != 0 {
 		conn.shutdown() or {}
 		return error_with_code('net.mbedtls SSLListener.accept, mbedtls_ssl_setup SSL setup failed ret: ${ret}',
@@ -637,7 +642,12 @@ pub fn (mut s SSLConn) shutdown() ! {
 		s.certs = unsafe { nil }
 	}
 	C.mbedtls_ssl_free(&s.ssl)
-	C.mbedtls_ssl_config_free(&s.conf)
+	if s.owns_config {
+		C.mbedtls_ssl_config_free(&s.conf)
+	} else {
+		// Only the listener releases the allocations shared by accepted configs.
+		C.mbedtls_ssl_config_init(&s.conf)
+	}
 	free_rng(mut s.ctr_drbg, mut s.entropy)
 	if s.alpn_list != unsafe { nil } {
 		unsafe {
@@ -696,6 +706,7 @@ fn (mut s SSLConn) init() ! {
 	C.mbedtls_net_init(&s.server_fd)
 	C.mbedtls_ssl_init(&s.ssl)
 	C.mbedtls_ssl_config_init(&s.conf)
+	s.owns_config = true
 	init_rng(mut s.ctr_drbg, mut s.entropy)!
 	s.initialized = true
 	mut ret := 0

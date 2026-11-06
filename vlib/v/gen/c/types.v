@@ -1639,7 +1639,7 @@ fn (g &FlatGen) type_contains_generic_placeholder(t &types.Type) bool {
 			// earlier checker entry has no nominal storage type; prefer the concrete
 			// lowered annotation instead of emitting `v_struct` for its container.
 			shape := flat.source_type_shape(t.name_id)
-			if shape.has(.anonymous_struct) {
+			if shape.has(.anonymous_struct) || flat.source_type_syntax(t.name_id).unqualified() == struct_init_union_source_type {
 				return true
 			}
 			// A stale generic-call annotation can carry the concrete C function name

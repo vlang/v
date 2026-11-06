@@ -35,7 +35,9 @@ fn (tc &TypeChecker) inferred_anonymous_struct_field_expr(base_id flat.NodeId, n
 			}
 		}
 		.struct_init {
-			if node.source_value_id() != checker_source_struct { return none }
+			if node.source_value_id() !in [checker_source_struct, checker_source_union] {
+				return none
+			}
 			for i in 0 .. node.children_count {
 				field := tc.a.child_node(node, i)
 				if field.kind == .field_init && field.value == name && field.children_count == 1 {

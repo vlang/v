@@ -3497,6 +3497,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		fn_decl_mut_receivers:              g.fn_decl_mut_receivers
 		specialized_method_c_names:         g.specialized_method_c_names
 		fn_decl_ret_types:                  g.fn_decl_ret_types
+		fn_decl_nodes_by_name:              g.fn_decl_nodes_by_name
 		non_generic_fn_names_by_module:     g.non_generic_fn_names_by_module
 		generic_fn_keys_by_short:           g.generic_fn_keys_by_short
 		generic_fn_keys_by_cname:           g.generic_fn_keys_by_cname

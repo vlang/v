@@ -12841,7 +12841,7 @@ fn (mut g FlatGen) apply_fn_signature_registration_group(registration FnSignatur
 }
 
 fn (mut g FlatGen) register_fn_decl_node(name string, module_name string, id flat.NodeId) {
-	g.register_fn_decl_node_by_name(name, id)
+	g.register_fn_decl_node_by_name(name, module_name, id)
 	g.register_fn_decl_node_by_short(name, id)
 	g.register_fn_decl_node_by_module_short(name, module_name, id)
 }
@@ -12861,7 +12861,7 @@ fn (mut g FlatGen) register_fn_decl_nodes(regs []FnDeclNodeReg, which int) {
 	match which {
 		0 {
 			for reg in regs {
-				g.register_fn_decl_node_by_name(reg.name, reg.id)
+				g.register_fn_decl_node_by_name(reg.name, reg.module, reg.id)
 			}
 		}
 		1 {
@@ -12878,9 +12878,15 @@ fn (mut g FlatGen) register_fn_decl_nodes(regs []FnDeclNodeReg, which int) {
 }
 
 @[inline]
-fn (mut g FlatGen) register_fn_decl_node_by_name(name string, id flat.NodeId) {
+fn (mut g FlatGen) register_fn_decl_node_by_name(name string, module_name string, id flat.NodeId) {
 	if name !in g.fn_decl_nodes_by_name {
 		g.fn_decl_nodes_by_name[name] = id
+	}
+	if name.ends_with('.free') {
+		// Receiver cleanup depends on the exact declaration, even when another
+		// module declares the same receiver type and method name.
+		g.fn_decl_nodes_by_name[fn_decl_module_key(module_name, name)] = id
+		g.fn_decl_nodes_by_name['${module_name}.${name}'] = id
 	}
 }
 
@@ -13438,6 +13444,9 @@ fn (mut g FlatGen) gen_expr_as_string(id flat.NodeId) {
 		g.write(')')
 		return
 	}
+	if g.race && g.gen_race_string_read(id) {
+		return
+	}
 	g.gen_expr(id)
 }
 
@@ -13911,6 +13920,10 @@ fn (mut g FlatGen) gen_expr_with_expected_type_inner(id flat.NodeId, expected_ty
 		return
 	}
 	if g.gen_current_mut_param_value_read(id, semantic_expected) {
+		return
+	}
+	if g.race && semantic_expected is types.String && semantic_actual is types.String
+		&& g.gen_race_string_read(id) {
 		return
 	}
 	if expected is types.Pointer && g.gen_pointer_alias_value_cast_expr(id, expected) {
@@ -24047,7 +24060,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 		g.writeln('	u8* out = malloc_noscan((ptrdiff_t)(n + 1));')
 		g.writeln('	memcpy(out, s, (size_t)n);')
 		g.writeln('	out[n] = 0;')
-		g.writeln('	return (string){.str = (char*)out, .len = n, .is_lit = 0};')
+		g.writeln('	return (string){.str = out, .len = n, .is_lit = 0};')
 		g.writeln('}')
 	}
 	g.writeln('static inline i64 v3_map_signed(void* p, int bytes) { if (bytes == 1) return *(signed char*)p; if (bytes == 2) return *(short*)p; if (bytes == 8) return *(long long*)p; return *(int*)p; }')
@@ -27069,8 +27082,11 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 	if v_type is types.Array || ct == 'Array' {
 		is_static_const = false
 	}
-	if v_type is types.ArrayFixed && v_type.elem_type is types.ArrayFixed {
-		is_static_const = false
+	if fixed := array_fixed_type(unalias_type(v_type)) {
+		elem_type := unalias_type(fixed.elem_type)
+		if elem_type is types.ArrayFixed || elem_type is types.Array {
+			is_static_const = false
+		}
 	}
 	if !is_static_const {
 		if fixed := array_fixed_type(unalias_type(v_type)) {
@@ -27453,8 +27469,10 @@ fn (mut g FlatGen) write_fixed_array_elem_initializer(mut builder strings.Builde
 		builder.write_string(g.new_map_expr_string(clean_elem_type.key_type, clean_elem_type.value_type))
 		return
 	}
-	if node.kind == .array_init && clean_elem_type is types.Array {
-		builder.write_string(g.array_allocation_expr(clean_elem_type.elem_type, '0', '0'))
+	if clean_elem_type is types.Array {
+		// Dynamic arrays need Array values, including when their literal is a
+		// constant expression. A brace list would initialize Array's fields.
+		builder.write_string(g.expr_to_string_with_expected_type(val_id, elem_type))
 		return
 	}
 	if g.is_const_expr(val_id) && !(node.kind == .prefix && node.op == .amp) {

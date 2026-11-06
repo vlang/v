@@ -2450,9 +2450,9 @@ fn test_module_cache_materializes_cached_body_string_definitions() {
 	stable_symbol := module_cache_string_symbol('stable')
 	before_symbol := module_cache_string_symbol('before')
 	after_symbol := module_cache_string_symbol('after')
-	stable_definition := 'static const string ${stable_symbol} = {"stable", 6, 1};'
-	before_definition := 'static const string ${before_symbol} = {"before", 6, 1};'
-	after_definition := 'static const string ${after_symbol} = {"after", 5, 1};'
+	stable_definition := 'static const string ${stable_symbol} = {(u8*)"stable", 6, 1};'
+	before_definition := 'static const string ${before_symbol} = {(u8*)"before", 6, 1};'
+	after_definition := 'static const string ${after_symbol} = {(u8*)"after", 5, 1};'
 	cached := '// V3CACHE_BASELINE ${stable_definition}\n// V3CACHE_BASELINE ${before_definition}\n/* V3CACHE_BODY_BEGIN */\nconsume(${stable_symbol});\nconsume(${before_symbol});\n'
 	materialized := modulecache.materialize_cached_body_string_definitions(cached)
 	assert materialized.contains(stable_definition)
@@ -2473,8 +2473,8 @@ fn test_module_cache_materializes_cached_body_string_definitions() {
 fn test_module_cache_string_symbol_rewrite_handles_swapped_literals() {
 	alpha_symbol := module_cache_string_symbol('alpha')
 	beta_symbol := module_cache_string_symbol('beta')
-	alpha_definition := 'static const string ${alpha_symbol} = {"alpha", 5, 1};'
-	beta_definition := 'static const string ${beta_symbol} = {"beta", 4, 1};'
+	alpha_definition := 'static const string ${alpha_symbol} = {(u8*)"alpha", 5, 1};'
+	beta_definition := 'static const string ${beta_symbol} = {(u8*)"beta", 4, 1};'
 	source := '${alpha_definition}\n${beta_definition}\n/* V3CACHE_BODY_BEGIN */\nconsume(${alpha_symbol});\nconsume(${beta_symbol});\n'
 	rewritten := modulecache.rewrite_cached_runtime_strings(source, ['alpha', 'beta'], [
 		'beta',

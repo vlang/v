@@ -107,7 +107,7 @@ fn tools_ci_compilers(job string) ![]string {
 fn tools_ci_expected_commands(job string, compiler string) []string {
 	mut commands := []string{}
 	if job == 'tools-freebsd' {
-		commands << 'pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv'
+		commands << 'pkg install -y git pkgconf sqlite3 gmake boehm-gc-threaded libiconv'
 		if compiler == 'gcc' {
 			commands << 'pkg install -y gcc'
 		}
@@ -135,6 +135,9 @@ fn tools_ci_write_executable(path string, source string) ! {
 fn tools_ci_create_fixtures(root string, sh string) ! {
 	bin_dir := os.join_path(root, 'bin')
 	os.mkdir_all(bin_dir)!
+	// The probe needs printf even when the shell has no builtin for it.
+	printf := os.find_abs_path_of_executable('printf')!
+	os.symlink(printf, os.join_path(bin_dir, 'printf'))!
 	shebang := '#!${sh}\n'
 	tools_ci_write_executable(os.join_path(root, 'probe'), shebang + tools_ci_probe)!
 	for command in ['pkg', 'pkg_add', 'hostname', 'uname', 'git', 'gmake', 'v'] {

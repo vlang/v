@@ -269,7 +269,7 @@ fn (mut doc OpenApiDocument) schema_struct_fields[T](value T, mut properties map
 fn (mut doc OpenApiDocument) schema_field[T](value T, attrs []string) OpenApiSchema {
 	mut schema := doc.schema_value(value)
 	$if T is $option {
-		if 'json_null' in attrs { schema = openapi_nullable_schema(schema) }
+		if 'json_null' in attrs { schema = doc.nullable_schema(schema) }
 	}
 	if '$ref' in schema && attrs.any(it.starts_with('description:') || it.starts_with('example:')) {
 		schema = {
@@ -289,10 +289,21 @@ fn (mut doc OpenApiDocument) schema_field[T](value T, attrs []string) OpenApiSch
 
 fn (mut doc OpenApiDocument) schema_optional[T](_value ?T) OpenApiSchema {
 	schema := doc.schema[T]()
-	return if doc.config.nullable_options { openapi_nullable_schema(schema) } else { schema }
+	return if doc.config.nullable_options { doc.nullable_schema(schema) } else { schema }
 }
 
-fn openapi_nullable_schema(base OpenApiSchema) OpenApiSchema {
+fn (doc &OpenApiDocument) nullable_schema(base OpenApiSchema) OpenApiSchema {
+	if doc.config.openapi_version.starts_with('3.2.') {
+		// JSON Schema evaluates both references and enum constraints on the non-null branch.
+		return {
+			'anyOf': json2.Any([
+				json2.Any({
+					'type': json2.Any('null')
+				}),
+				json2.Any(base),
+			])
+		}
+	}
 	if '$ref' in base || 'type' !in base || 'enum' in base {
 		// OpenAPI 3.0 needs an explicit type for nullable; preserve referenced constraints.
 		return {
@@ -341,7 +352,7 @@ fn (mut doc OpenApiDocument) schema_map[K, T](_value map[K]T) OpenApiSchema {
 }
 
 fn (mut doc OpenApiDocument) schema_pointer[T](_value &T) OpenApiSchema {
-	return openapi_nullable_schema(doc.schema[T]())
+	return doc.nullable_schema(doc.schema[T]())
 }
 
 fn openapi_field_name(name string, attrs []string) string {

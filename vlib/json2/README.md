@@ -52,6 +52,14 @@ text such as `"65"` for the code point of `A` should use `"A"` instead. A digit 
 such as `"1"` means the character `1`; empty and multi-character keys are rejected.
 `json2.decode[map[rune]int](json2.encode(values))` round-trips the rune keys.
 
+## Nesting depth limit
+
+Standard decoding accepts container nesting up to 512 array/object levels in a
+document. Deeper `parse`, `decode[T]` or `decode_reuse[T]` input returns a bounded
+error instead of recursing to a stack overflow. The limit is implemented for
+standard JSON only: the `json5: true` option uses its own parser
+(`vlib/json2/json5_decode.v`), whose depth handling is not covered by this limit.
+
 ## JSON5
 
 Set `json5: true` on the existing encoding or decoding options to use JSON5:
