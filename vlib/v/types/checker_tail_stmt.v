@@ -11041,7 +11041,7 @@ fn (tc &TypeChecker) current_function_is_unsafe() bool {
 	if fn_node.kind != .fn_decl {
 		return false
 	}
-	return fn_node.value in tc.unsafe_c_fns
+	return fn_node.value in tc.unsafe_fn_modules
 }
 
 // record_unsafe_null_return_error rejects an `unsafe { nil }` (or equivalent) pointer that is

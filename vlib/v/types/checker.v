@@ -11694,7 +11694,7 @@ fn (tc &TypeChecker) cached_expr_type(id flat.NodeId) ?Type {
 // Dense slots point at immutable canonical types. Sparse map values need stable
 // copies because later insertions can move the map backing storage. A nil pointer
 // represents a cache miss without an optional-result wrapper on this hot path.
-@[direct_array_access; inline]
+@[direct_array_access; inline; unsafe]
 fn (tc &TypeChecker) cached_expr_type_ref(id flat.NodeId) &Type {
 	idx := int(id)
 	if isnil(tc.storage_query_probe) && (!tc.parallel_check_sparse || tc.in_check_range(idx)) {
@@ -11712,7 +11712,7 @@ fn (tc &TypeChecker) cached_expr_type_ref(id flat.NodeId) &Type {
 	return sparse
 }
 
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn (tc &TypeChecker) cached_expr_type_ref_sparse(id flat.NodeId) &Type {
 	idx := int(id)
 	if !isnil(tc.storage_query_probe) {

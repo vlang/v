@@ -6686,6 +6686,7 @@ fn (g &FlatGen) ident_callee_declared_return_type(name string) (bool, types.Type
 	return found, ret, canonical
 }
 
+@[unsafe]
 fn (g &FlatGen) ident_callee_declared_return_type_uncached(name string) (bool, types.Type, &types.Type) {
 	if ret := g.module_c_fn_return_type(name) {
 		return true, ret, unsafe { nil }

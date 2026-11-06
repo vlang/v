@@ -478,7 +478,7 @@ fn (mut b Builder) register_types() {
 					b.struct_field_types.set_id(cur_module + '.' + short_name + '.' + f.value, field_type_name_id)
 				}
 			}
-			if abi := native_c_struct_abi(node.value_text(), b.m.target.ptr_size) {
+			if abi := native_c_struct_abi(node.value_text(), b.m.target.ptr_size, b.m.target.os_is_linux) {
 				field_names = abi.field_names.clone()
 				field_types = []TypeID{cap: abi.field_types.ids.len}
 				for field_type in abi.field_types.ids {
@@ -597,7 +597,7 @@ struct NativeCStructAbi {
 	field_types flat.TypeTextList
 }
 
-fn native_c_struct_abi(struct_name string, pointer_size int) ?NativeCStructAbi {
+fn native_c_struct_abi(struct_name string, pointer_size int, os_is_linux bool) ?NativeCStructAbi {
 	if struct_name == 'C.utsname' && pointer_size == 8 {
 		$if linux {
 			// Native ABI overrides follow the compiler host OS. Linux includes
@@ -617,27 +617,35 @@ fn native_c_struct_abi(struct_name string, pointer_size int) ?NativeCStructAbi {
 		}
 	}
 	if struct_name == 'C.sem_t' {
+		// Linux glibc sem_t is 32 bytes; other targets keep the previous estimate.
+		size := if os_is_linux { '[4]u64' } else { '[16]u64' }
 		return NativeCStructAbi{
 			field_names: ['opaque']
-			field_types: flat.TypeTextList.from_names(['[16]u64'])
+			field_types: flat.TypeTextList.from_names([size])
 		}
 	}
 	if struct_name == 'C.pthread_mutex_t' {
+		// Linux glibc pthread_mutex_t is 40 bytes.
+		size := if os_is_linux { '[5]u64' } else { '[8]u64' }
 		return NativeCStructAbi{
 			field_names: ['opaque']
-			field_types: flat.TypeTextList.from_names(['[8]u64'])
+			field_types: flat.TypeTextList.from_names([size])
 		}
 	}
 	if struct_name == 'C.pthread_rwlock_t' {
+		// Linux glibc pthread_rwlock_t is 56 bytes.
+		size := if os_is_linux { '[7]u64' } else { '[25]u64' }
 		return NativeCStructAbi{
 			field_names: ['opaque']
-			field_types: flat.TypeTextList.from_names(['[25]u64'])
+			field_types: flat.TypeTextList.from_names([size])
 		}
 	}
 	if struct_name == 'C.pthread_rwlockattr_t' {
+		// Linux glibc pthread_rwlockattr_t is 8 bytes.
+		size := if os_is_linux { '[1]u64' } else { '[3]u64' }
 		return NativeCStructAbi{
 			field_names: ['opaque']
-			field_types: flat.TypeTextList.from_names(['[3]u64'])
+			field_types: flat.TypeTextList.from_names([size])
 		}
 	}
 	if struct_name == 'C.pthread_cond_t' {
@@ -647,9 +655,11 @@ fn native_c_struct_abi(struct_name string, pointer_size int) ?NativeCStructAbi {
 		}
 	}
 	if struct_name == 'C.pthread_condattr_t' {
+		// Linux glibc pthread_condattr_t is 8 bytes.
+		size := if os_is_linux { '[1]u64' } else { '[2]u64' }
 		return NativeCStructAbi{
 			field_names: ['opaque']
-			field_types: flat.TypeTextList.from_names(['[2]u64'])
+			field_types: flat.TypeTextList.from_names([size])
 		}
 	}
 	if struct_name == 'C.task_basic_info' {
@@ -2184,6 +2194,15 @@ fn (mut b Builder) register_functions() {
 						if checker_type_is_function(checked) {
 							param_type = b.ssa_type_from_checker_type(checked)
 						}
+					}
+					// Channel parameters are passed by pointer (reference type), mirroring
+					// the built function signature. Without this, fn_types records the
+					// struct type while the built function takes a pointer, and call-site
+					// coercion emits a spurious load that corrupts the channel pointer.
+					if typ_name_source_id != 0
+						&& flat.source_type_shape(typ_name_source_id).has(.channel_type)
+						&& !b.is_pointer_type(param_type) {
+						param_type = b.m.type_store.get_ptr(param_type)
 					}
 					param_types << param_type
 					param_idx++
@@ -16226,6 +16245,33 @@ fn (b &Builder) should_pass_ident_addr_for_ptr_param(addr ValueID, param_type Ty
 	return arg.kind != .ptr_t
 }
 
+// build_channel_len_closed lowers ch.len and ch.closed property access to
+// direct Channel field reads, mirroring the C backend's inline expansion
+// (Channel.len returns read_avail; closed tests the closed flag). Returns
+// none when the base is not a channel, letting the caller fall back to
+// generic field handling.
+fn (mut b Builder) build_channel_len_closed(base_id flat.NodeId, addr ValueID, field_name string) ?ValueID {
+	if field_name != 'len' && field_name != 'closed' {
+		return none
+	}
+	type_name_id := b.checked_expr_type_name(base_id)
+	if type_name_id == 0 {
+		return none
+	}
+	if !flat.source_type_name(type_name_id).starts_with('chan ') {
+		return none
+	}
+	if field_name == 'len' {
+		field_ptr := b.get_field_ptr(addr, 'read_avail')
+		len_val := b.emit1(.load, b.u32_type, field_ptr)
+		return b.coerce_numeric_value(len_val, b.i32_type)
+	}
+	field_ptr := b.get_field_ptr(addr, 'closed')
+	closed_val := b.emit1(.load, b.u16_type, field_ptr)
+	zero := b.m.get_or_add_const(b.u16_type, '0')
+	return b.emit2(.ne, b.i1_type, closed_val, zero)
+}
+
 fn (mut b Builder) build_selector(node flat.Node) ValueID {
 	if node.value_text() == 'readsem' {
 	}
@@ -16329,10 +16375,6 @@ fn (mut b Builder) build_selector(node flat.Node) ValueID {
 		return b.m.get_or_add_const(b.i64_type, '0')
 	}
 
-	if base.kind == .ident && base.value_text() == 'ch' && field_name == 'cap' {
-	}
-	if base.kind == .ident && base.value_text() == 'ch' {
-	}
 	if base.kind == .ident {
 		const_name := base.value_text() + '.' + field_name
 		if expr_id := b.lookup_const_expr(const_name) {
@@ -16345,6 +16387,11 @@ fn (mut b Builder) build_selector(node flat.Node) ValueID {
 			}
 			if field_name == 'len' && b.deref_type(addr) == b.map_type {
 				return b.load_map_len(addr)
+			}
+			if field_name in ['len', 'closed'] {
+				if len_val := b.build_channel_len_closed(base_id, addr, field_name) {
+					return len_val
+				}
 			}
 			if field := b.load_smartcast_sum_selector(addr, base_id, field_name) {
 				return field
@@ -16370,6 +16417,11 @@ fn (mut b Builder) build_selector(node flat.Node) ValueID {
 		return b.emit1(.load, b.deref_type(field_ptr), field_ptr)
 	}
 	base_val := b.build_expr(base_id)
+	if field_name in ['len', 'closed'] {
+		if len_val := b.build_channel_len_closed(base_id, base_val, field_name) {
+			return len_val
+		}
+	}
 	base_typ := b.value_type(base_val)
 	if field_name == 'len' && base_typ == b.map_type {
 		alloca := b.emit0(.alloca, b.m.type_store.get_ptr(base_typ))
@@ -17092,18 +17144,27 @@ fn (mut b Builder) build_struct_init(id flat.NodeId, node flat.Node) ValueID {
 		elem_type := b.resolve_type(elem_type_name_id)
 		elem_size := b.m.type_size(elem_type)
 		size_const := b.m.get_or_add_const(b.i32_type, elem_size.str())
-		// Call sync.new_channel_st(cap, sizeof(elem))
+		// Call sync.new_channel_st(cap, sizeof(elem)). resolve_type already
+		// yields a pointer for channel types; do not wrap it again or every
+		// use site dereferences one level too many.
+		mut chan_ptr_type := b.resolve_type(type_id)
+		if !b.is_pointer_type(chan_ptr_type) {
+			chan_ptr_type = b.m.type_store.get_ptr(chan_ptr_type)
+		}
 		if fn_id := b.fn_ids['sync.new_channel_st'] {
 			fn_type := b.fn_types['sync.new_channel_st']
 			fn_ref := b.m.add_value(.func_ref, fn_type, 'sync.new_channel_st', fn_id)
-			result := b.emit3(.call, b.m.type_store.get_ptr(b.resolve_type(type_id)), fn_ref, cap_val, size_const)
+			result := b.emit3(.call, chan_ptr_type, fn_ref, cap_val, size_const)
 			return result
 		}
 		// Fallback: try to register the function
-		if fn_id := b.register_runtime_c_function('sync.new_channel_st', b.m.type_store.get_ptr(b.resolve_type(type_id)), [b.i32_type, b.i32_type]) {
+		if fn_id := b.register_runtime_c_function('sync.new_channel_st', chan_ptr_type, [
+			b.i32_type,
+			b.i32_type,
+		]) {
 			fn_type := b.fn_types['sync.new_channel_st']
 			fn_ref := b.m.add_value(.func_ref, fn_type, 'sync.new_channel_st', fn_id)
-			result := b.emit3(.call, b.m.type_store.get_ptr(b.resolve_type(type_id)), fn_ref, cap_val, size_const)
+			result := b.emit3(.call, chan_ptr_type, fn_ref, cap_val, size_const)
 			return result
 		}
 	}

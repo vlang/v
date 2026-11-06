@@ -552,12 +552,23 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 		if g.m.globals.any(it.name == 'g_main_argv') {
 			g.store_entry_arg_to_global(int(rsi), 'g_main_argv', 8)
 		}
-		// Initialize closure runtime.
-		asm_xor_eax_eax(mut g)
-		asm_call_rel32(mut g)
-		sym_idx := g.elf.add_undefined('closure.closure_init')
-		g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, r_x86_64_plt32, -4)
-		g.emit_u32(0)
+		// Initialize closure runtime, but only when the closure runtime is
+		// actually linked into this module. Unconditional calls break plain
+		// programs whose modules never referenced any closure helper.
+		mut has_closure_runtime := false
+		for f in g.m.funcs {
+			if f.name == 'closure.closure_init' {
+				has_closure_runtime = true
+				break
+			}
+		}
+		if has_closure_runtime {
+			asm_xor_eax_eax(mut g)
+			asm_call_rel32(mut g)
+			sym_idx := g.elf.add_undefined('closure.closure_init')
+			g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, r_x86_64_plt32, -4)
+			g.emit_u32(0)
+		}
 	}
 
 	// Move Params (ABI: RDI, RSI, RDX, RCX, R8, R9)
@@ -2164,15 +2175,15 @@ fn (mut g Gen) load_call_arg_to_reg(reg int, val_id int, arg_idx int, instr ssa.
 	if param_type > 0 && param_type < g.m.type_store.types.len {
 		param := g.m.type_store.types[param_type]
 		// Channel values are already pointers; pass by value, not by address.
-	is_channel_value := value.typ > 0 && value.typ < g.m.type_store.types.len
-		&& g.m.type_store.types[value.typ].kind == .struct_t
-		&& g.m.type_store.types[value.typ].field_names.len > 0
-		&& g.m.type_store.types[value.typ].field_names[0] == 'ringbuf'
-	if param.kind == .ptr_t && param.elem_type == value.typ
-		&& g.is_aggregate_type(value.typ) && !is_channel_value {
-		g.load_address_of_val_to_reg(reg, val_id)
-		return
-	}
+		is_channel_value := value.typ > 0 && value.typ < g.m.type_store.types.len
+			&& g.m.type_store.types[value.typ].kind == .struct_t
+			&& g.m.type_store.types[value.typ].field_names.len > 0
+			&& g.m.type_store.types[value.typ].field_names[0] == 'ringbuf'
+		if param.kind == .ptr_t && param.elem_type == value.typ
+			&& g.is_aggregate_type(value.typ) && !is_channel_value {
+			g.load_address_of_val_to_reg(reg, val_id)
+			return
+		}
 	}
 	g.load_val_to_reg(reg, val_id)
 }
