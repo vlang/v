@@ -335,6 +335,20 @@ f.close()
 </tr>
 </table>
 
+To create a file only if it does not exist yet, use the `x` mode of `os.open_file`, with `w`
+or `a`, instead of checking `os.exists` first. The file is created atomically, and opening
+fails if the path exists at that moment. On Unix, the umask still applies to the permissions.
+
+```v ignore
+mut f := os.open_file('path/to/data.db', 'wx', 0o600) or {
+    eprintln('cannot create the file: ${err}')
+    return
+}
+defer {
+    f.close()
+}
+```
+
 **Proven affected functions** <br>
 The following functions should be used with care and only when used correctly.
 

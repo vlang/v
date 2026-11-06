@@ -42,6 +42,15 @@ fn fix_windows_path(path string) string {
 }
 
 // open_file tries to open or create a file with custom flags and permissions.
+// `mode` combines `r` (read), `w` (write, creating or truncating the file),
+// `a` (append, creating the file), `+` (read and write) and `b` (binary). On
+// Unix, `s`, `n` and `c` also set `O_SYNC`, `O_NONBLOCK` and `O_NOCTTY`.
+// `x` combines with `w` or `a` (`wx`, `wx+`, `ax`): it atomically creates a new
+// file, and fails if the path exists at creation time (`O_CREAT | O_EXCL`).
+// `options[0]` sets the permissions of a newly created file (default `0o666`).
+// On Unix, the umask clears bits from them, as for any `open` call; on Windows,
+// they only select read-only or read-write. With `x`, they apply to a file the
+// call itself created, never to an existing one.
 @[noinline]
 pub fn open_file(path string, mode string, options ...int) !File {
 	mut flags := 0
@@ -70,12 +79,18 @@ pub fn open_file(path string, mode string, options ...int) !File {
 			`c` {
 				flags |= o_noctty
 			}
+			`x` {
+				flags |= o_create | o_excl
+			}
 			`+` {
 				flags &= ~o_wronly
 				flags |= o_rdwr
 			}
 			else {}
 		}
+	}
+	if flags & o_excl != 0 && !mode.contains_any('wa') {
+		return error('os.open_file: mode `x` must be combined with `w` or `a`')
 	}
 	if mode == 'r+' {
 		flags = o_rdwr
@@ -100,8 +115,11 @@ pub fn open_file(path string, mode string, options ...int) !File {
 	if fd == -1 {
 		return error_posix()
 	}
-	mut cfile := C.fdopen(fd, &char(mode.str))
+	// `x` only matters to `open`; not every C library accepts it in fdopen.
+	fdopen_mode := mode.replace('x', '')
+	mut cfile := C.fdopen(fd, &char(fdopen_mode.str))
 	if isnil(cfile) {
+		fd_close(fd)
 		return error('Failed to open or create file "${path}"')
 	}
 	mut res := File{
