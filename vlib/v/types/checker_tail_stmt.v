@@ -2207,8 +2207,8 @@ fn (mut tc TypeChecker) check_match_enum_exhaustiveness(id flat.NodeId, node fla
 		|| enum_subject.source_type_id() in tc.flag_enums {
 		return
 	}
-	fields := tc.comptime_static_enum_decl_value_cases(enum_name).map(it.name)
-	if fields.len == 0 {
+	cases := tc.comptime_static_enum_decl_value_cases(enum_name)
+	if cases.len == 0 {
 		return
 	}
 	mut covered := map[string]bool{}
@@ -2231,11 +2231,20 @@ fn (mut tc TypeChecker) check_match_enum_exhaustiveness(id flat.NodeId, node fla
 			covered[field] = true
 		}
 	}
-	mut missing := []string{}
-	for field in fields {
-		if field !in covered {
-			missing << '`.${field}`'
+	// Under @[_allow_multiple_values] two fields may share a value, and naming
+	// one of them covers the other.
+	mut covered_values := map[i64]bool{}
+	for c in cases {
+		if c.name in covered && c.has_value && !c.value_from_c {
+			covered_values[c.value] = true
 		}
+	}
+	mut missing := []string{}
+	for c in cases {
+		if c.name in covered || (c.has_value && !c.value_from_c && c.value in covered_values) {
+			continue
+		}
+		missing << '`.${c.name}`'
 	}
 	if missing.len == 0 {
 		return

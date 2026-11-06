@@ -1515,6 +1515,11 @@ fn test_plain_enum_match_must_be_exhaustive() {
 	// A constant condition leaves the covered fields unknown, so it is not diagnosed.
 	by_const := run_good(v3_bin, 'good_enum_match_const_condition', enum_kind + 'const first = Kind.a\nfn f(k Kind) int {\n\treturn match k {\n\t\tfirst { 1 }\n\t\t.b, .c { 2 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(.a) + f(.c)))\n}\n')
 	assert by_const == '3'
+	// Under @[_allow_multiple_values] naming one field covers every field of its value.
+	multi_enum := '@[_allow_multiple_values]\nenum Mv {\n\ta\n\tb = 9\n\tc = 9\n\td\n}\n'
+	shared := run_good(v3_bin, 'good_enum_match_shared_value', multi_enum + 'fn f(k Mv) int {\n\treturn match k {\n\t\t.a { 1 }\n\t\t.c { 9 }\n\t\t.d { 4 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(.a) + f(.b) + f(.d)))\n}\n')
+	assert shared == '14'
+	run_bad(v3_bin, 'bad_enum_match_shared_value_missing_field', multi_enum + 'fn f(k Mv) int {\n\treturn match k {\n\t\t.a { 1 }\n\t\t.b { 9 }\n\t}\n}\nfn main() {\n\tprintln(int_str(f(.d)))\n}\n', 'match must be exhaustive (add match branches for: `.d` or `else {}` at the end)')
 }
 
 fn test_voidptr_variadic_spread_requires_voidptr_array() {
