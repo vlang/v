@@ -1,7 +1,7 @@
 module canvas
 
 fn test_unsupported_text_platform_returns_errors_without_drawing() {
-	$if macos {
+	$if macos || linux {
 		return
 	}
 	if _ := Typeface.from_data([u8(1)]) {

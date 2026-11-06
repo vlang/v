@@ -1,9 +1,8 @@
 module canvas
 
-// CPU glyph rendering that reproduces Skia's raster text path on macOS:
-// SkScalerContext record construction, SkScalerContext_Mac glyph masks
-// (CoreGraphics output with Skia's linearization and mask gamma), glyph
-// positioning with subpixel buckets and the legacy ARGB32 mask blitters.
+// CPU glyph rendering uses CoreText on macOS and FreeType on Linux. The native
+// masks share scaler records, mask gamma, subpixel positioning and the BGRA8
+// compositor. The macOS backend reproduces Skia's CoreGraphics raster text path.
 
 pub enum FontEdging {
 	alias

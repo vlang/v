@@ -158,7 +158,19 @@ fn test_svg_arcs_match_sk_path_builder_bit_for_bit() {
 		got << math.f32_bits(pt.x)
 		got << math.f32_bits(pt.y)
 	}
-	assert got == expected
+	$if linux {
+		// Independently captured with skia-python 144.1 on Linux x86_64/glibc 2.41.
+		// Native sincosf rounds the sine of float32 angle bits 0xc06d4d34 one
+		// ULP below Apple's __sincosf_stret, changing only this coordinate.
+		// Accept either captured Skia vector on Linux: its libm/architecture
+		// need not use glibc's rounding. Keep the macOS fixture exact below.
+		// Reproduce the Linux capture with testdata/skia_svg_arc_reference.py.
+		mut linux_expected := expected.clone()
+		linux_expected[3] = 0x42a20496
+		assert got == linux_expected || got == expected
+	} $else {
+		assert got == expected
+	}
 	assert p.verbs == [PathVerb.move, .conic, .conic]
 	assert p.weights.map(math.f32_bits(it)) == [u32(0x3f3504f2), 0x3f3504f2]
 	// Zero radii and coincident end points become lines.
