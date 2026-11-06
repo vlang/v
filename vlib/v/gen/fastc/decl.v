@@ -3213,11 +3213,13 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 				first_default_token := scan.scan()
 				default_start := scan.pos
 				default_source_offset = source_file.source_offset + default_start
-				tok = fastc_skip_field_default_from_token(mut scan, first_default_token)!
+				tok = fastc_skip_struct_field_default_from_token(mut scan, first_default_token)!
 				default_source = source_file.source[default_start..scan.pos].trim_space().trim_right(';').trim_space()
 				if default_source == '' {
 					return error('fastc parser does not support empty default for struct `${name}` embedded field `${field_names[0]}` in ${source_file.path}')
 				}
+				// Attributes may follow the default; the default skipper stops at them.
+				tok, _, _ = fastc_scan_struct_field_attributes(mut scan, tok)!
 			}
 			if !is_c_struct {
 				out.writeln('\t${fastc_c_declared_type_name(flat.source_type_name(embedded_key))} __embedded_${embedded_id};')

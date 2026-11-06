@@ -17,7 +17,22 @@ pub mut:
 	other int
 }
 
+// An embedded field with a default followed by an attribute uses the same skipper.
+struct Inner {
+pub mut:
+	a int
+}
+
+pub struct Outer {
+pub mut:
+	Inner = Inner{a: 1} @[json: '-']
+	b      int
+}
+
 fn main() {
+	o := Outer{}
+	assert o.a == 1
+	assert o.b == 0
 	g := Graph{}
 	assert g.n == 3
 	assert g.name == 'graph'
