@@ -337,7 +337,8 @@ $if (freestanding || syscalls) && !i386 {
 	}
 
 	// bf_wait4 waits for child `pid`, storing its wait status and, when `rusage`
-	// is not nil, its resource usage. `options` uses the Linux W* numbers.
+	// is not nil, its resource usage. `options` takes the Linux W* values, passed
+	// through unchanged as the libc wait4 of a hosted build does.
 	pub fn bf_wait4(pid int, status &int, options int, rusage voidptr) int {
 		return bf_ret_int(sys_call4(bf_nr_wait4, u64(i64(pid)), u64(status), u64(i64(options)),
 			u64(rusage)))

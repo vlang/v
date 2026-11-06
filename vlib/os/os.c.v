@@ -1409,6 +1409,8 @@ pub fn fork() int {
 }
 
 // wait4 blocks until the child process `pid` exits and writes its status to `status`.
+// `options` takes the target system's own W* values (for example WNOHANG) in every
+// build mode, including -freestanding and -syscalls.
 // When `rusage` is not nil, it must point to a `struct rusage`, which receives the
 // child's resource usage (except on illumos under -freestanding/-syscalls, where
 // wait4 is emulated with waitid and `rusage` is left untouched).

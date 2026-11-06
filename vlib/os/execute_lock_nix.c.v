@@ -17,24 +17,22 @@ fn v_os_execute_mutex_ptr() voidptr {
 }
 
 fn init() {
-	$if freestanding || syscalls {
-		// freestanding and -syscalls programs (including -d vlibc) do not use the
-		// hosted process capture mutex, so the serialize-execute mutex stays a no-op
-		return
+	// freestanding and -syscalls programs (including -d vlibc) do not use the
+	// hosted process capture mutex, so the serialize-execute mutex stays a no-op;
+	// the guard keeps the pthread calls out of their link
+	$if !freestanding && !syscalls {
+		C.pthread_mutex_init(v_os_execute_mutex_ptr(), unsafe { nil })
 	}
-	C.pthread_mutex_init(v_os_execute_mutex_ptr(), unsafe { nil })
 }
 
 fn v_os_execute_lock() {
-	$if freestanding || syscalls {
-		return
+	$if !freestanding && !syscalls {
+		C.pthread_mutex_lock(v_os_execute_mutex_ptr())
 	}
-	C.pthread_mutex_lock(v_os_execute_mutex_ptr())
 }
 
 fn v_os_execute_unlock() {
-	$if freestanding || syscalls {
-		return
+	$if !freestanding && !syscalls {
+		C.pthread_mutex_unlock(v_os_execute_mutex_ptr())
 	}
-	C.pthread_mutex_unlock(v_os_execute_mutex_ptr())
 }

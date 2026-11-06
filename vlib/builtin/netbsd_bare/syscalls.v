@@ -232,14 +232,15 @@ $if !i386 {
 	}
 
 	// bsd_sys_call0_pair is sys_call0 that also returns the second result register
-	// (rdx/x1): fork reports the child there.
+	// (rdx/x1): fork reports the child there. Like sys_call0, the arm64 form passes
+	// the syscall number in x17, NetBSD's indirect syscall register.
 	fn bsd_sys_call0_pair(scn u64) (u64, u64, u64) {
 		mut first := u64(0)
 		mut second := u64(0)
 		mut err := u64(0)
 		$if arm64 {
 			asm volatile arm64 {
-				mov x8, scn
+				mov x17, scn
 				svc 0
 				mov first, x0
 				mov second, x1
@@ -253,7 +254,7 @@ $if !i386 {
 				; r (scn)
 				; x0
 				  x1
-				  x8
+				  x17
 				  cc
 				  memory
 			}

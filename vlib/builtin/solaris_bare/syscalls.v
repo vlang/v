@@ -94,7 +94,6 @@ $if !i386 {
 	}
 
 	const sol_nr_exit = u64(1)
-	const sol_nr_fork = u64(2)
 	const sol_nr_read = u64(3)
 	const sol_nr_write = u64(4)
 	const sol_nr_open = u64(5)

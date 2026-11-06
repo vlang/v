@@ -179,10 +179,16 @@ $if (freestanding || syscalls) && amd64 {
 		return -1
 	}
 
-	// bf_wait4 emulates wait4 with waitid, as illumos libc's waitpid does; there
-	// is no wait4 syscall. `options` uses the Linux W* numbers. `rusage` is not
-	// filled. The siginfo offsets are from sys/siginfo.h (256 bytes on amd64).
+	// bf_wait4 emulates wait4 with waitid, as illumos libc's wait4 does; there is
+	// no wait4 syscall. `options` takes the illumos W* values, as the libc wait4 of
+	// a hosted build does: WNOHANG (0x40), WUNTRACED (4), WCONTINUED (8) and
+	// WNOWAIT (0x80); anything else is EINVAL. `rusage` is not filled. The siginfo
+	// offsets are from sys/siginfo.h (256 bytes on amd64).
 	pub fn bf_wait4(pid int, status &int, options int, rusage voidptr) int {
+		if options & ~(0x40 | 0x4 | 0x8 | 0x80) != 0 {
+			bf_last_errno_cell = 22 // EINVAL
+			return -1
+		}
 		_ = rusage
 		// idtype: P_PID = 0, P_PGID = 2, P_ALL = 7
 		mut idtype := u64(0)
@@ -202,17 +208,8 @@ $if (freestanding || syscalls) && amd64 {
 			idtype = 2
 			id = -i64(pid)
 		}
-		// WEXITED | WTRAPPED, plus WNOHANG (0x40), WUNTRACED (4), WCONTINUED (8)
-		mut opts := u64(0x1 | 0x2)
-		if options & 0x1 != 0 {
-			opts |= 0x40
-		}
-		if options & 0x2 != 0 {
-			opts |= 0x4
-		}
-		if options & 0x8 != 0 {
-			opts |= 0x8
-		}
+		// libc's wait4 always adds WEXITED (1) and WTRAPPED (2)
+		opts := u64(options) | 0x1 | 0x2
 		mut info := [256]u8{}
 		rc, er := sys_call4(bf_nr_waitid, idtype, u64(id), u64(voidptr(&info[0])), opts)
 		if er != 0 {

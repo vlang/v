@@ -18,7 +18,7 @@ $if freestanding && native && linux {
 		const bare_sys_nr_munmap = u64(11)
 		const bare_sys_nr_mremap = u64(25)
 		const bare_sys_nr_exit_group = u64(231)
-		const bare_sys_nr_close = u64(3)
+		const bare_sys_nr_close = u64(57)
 		const bare_sys_nr_lseek = u64(8)
 		const bare_sys_nr_openat = u64(257)
 		const bare_sys_nr_getdents64 = u64(217)
@@ -47,7 +47,7 @@ $if freestanding && native && linux {
 		const bare_sys_nr_munmap = u64(215)
 		const bare_sys_nr_mremap = u64(216)
 		const bare_sys_nr_exit_group = u64(94)
-		const bare_sys_nr_close = u64(3)
+		const bare_sys_nr_close = u64(57)
 		const bare_sys_nr_lseek = u64(62)
 		const bare_sys_nr_openat = u64(56)
 		const bare_sys_nr_getdents64 = u64(61)
@@ -627,7 +627,8 @@ $if freestanding && native && linux {
 	}
 
 	// bf_wait4 waits for child `pid`, storing its wait status and, when `rusage`
-	// is not nil, its resource usage. `options` uses the Linux W* numbers.
+	// is not nil, its resource usage. `options` takes the Linux W* values, passed
+	// through unchanged as the libc wait4 of a hosted build does.
 	pub fn bf_wait4(pid int, status &int, options int, rusage voidptr) int {
 		return bf_native_ret(bsys_call4(bare_sys_nr_wait4, u64(i64(pid)), u64(status),
 			u64(i64(options)), u64(rusage)))
