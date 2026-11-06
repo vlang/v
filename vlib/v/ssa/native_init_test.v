@@ -23,18 +23,25 @@ fn main() { println(message) }
 	call := m.instrs[first.index]
 	assert call.op == .call
 	assert m.values[call.operands[0]].name == '__ssa_init'
-	mut stores := 0
+	message := m.values.filter(it.kind == .global && it.name == 'message')[0]
+	count := m.values.filter(it.kind == .global && it.name == 'count')[0]
+	mut message_stores := 0
+	mut count_stores := 0
 	mut called_init := false
 	for instruction in native_startup_instructions(m) {
 		if instruction.op == .store {
-			stores++
+			if instruction.operands[1] == message.id {
+				message_stores++
+			} else if instruction.operands[1] == count.id {
+				count_stores++
+			}
 		} else if instruction.op == .call {
 			called_init = called_init || m.values[instruction.operands[0]].name == 'init'
 		}
 	}
-	assert stores == 2
+	assert message_stores == 1
+	assert count_stores == 1
 	assert called_init
-	message := m.values.filter(it.kind == .global && it.name == 'message')[0]
 	assert m.type_store.types[message.typ].elem_type == m.funcs.filter(it.name == 'tos3')[0].typ
 }
 

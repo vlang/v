@@ -1,0 +1,52 @@
+name: Musl smoke diagnostics
+
+'on':
+  pull_request:
+    paths:
+      - '.github/workflows/musl-smoke-diagnostics.yml'
+      - 'cmd/tools/test_if_v_test_system_works.v'
+      - 'cmd/tools/test_if_v_test_system_works_test.v'
+
+permissions:
+  contents: read
+
+jobs:
+  cold-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      VTEST_FAIL_FAST: '1'
+    container:
+      image: thevlang/vlang@sha256:6bdb6206d0523c91b4ffeccd7eacecad41c2c9621a3f02da87ace639fd6e5255
+      env:
+        V_CI_MUSL: 1
+        V_CI_UBUNTU_MUSL: 1
+        VFLAGS: -cc musl-gcc -gc none -d use_bundled_libgc
+      volumes:
+        - ${{ github.workspace }}:/opt/vlang
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V using the original CI command
+        run: make -j4 && ./v -cg -o v cmd/v
+      - name: Record toolchain for the cold smoke control
+        run: |
+          git config --global --add safe.directory /__w/v/v
+          cc --version
+          musl-gcc --version
+          nproc
+          ulimit -s
+          printf 'VJOBS=%s\n' "${VJOBS-unset}"
+          test "${VJOBS+x}" != x
+      - name: Verify `v test` works
+        env:
+          VTOOLS_CACHE_VERBOSE: '1'
+          VTEST_SHOW_CMD: '1'
+          VTEST_SHOW_START: '1'
+        run: |
+          ./v cmd/tools/test_if_v_test_system_works.v
+          ./cmd/tools/test_if_v_test_system_works
+      - name: Verify progress remains visible when a nested command stalls
+        run: ./v cmd/tools/test_if_v_test_system_works_test.v

@@ -2720,10 +2720,19 @@ fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut stack []flat.N
 		g.preintern_ast_string_literals()
 	}
 	mut cost := 0
-	stack.clear()
-	stack << node_id
-	for stack.len > 0 {
-		current_id := stack.pop()
+	// `stack` is a reusable buffer: `top` is the live depth, entries below the
+	// array length are overwritten in place and only a deeper tree appends, so no
+	// per-node push/pop bookkeeping runs. The visiting order is unchanged.
+	mut top := 0
+	if stack.len == 0 {
+		stack << node_id
+	} else {
+		stack[0] = node_id
+	}
+	top = 1
+	for top > 0 {
+		top--
+		current_id := stack[top]
 		idx := int(current_id)
 		if idx < 0 || idx >= g.a.nodes.len {
 			continue
@@ -2750,7 +2759,12 @@ fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut stack []flat.N
 		for i := node.children_count - 1; i >= 0; i-- {
 			child_id := g.a.children[node.children_start + i]
 			if int(child_id) >= 0 {
-				stack << child_id
+				if top < stack.len {
+					stack[top] = child_id
+				} else {
+					stack << child_id
+				}
+				top++
 			}
 		}
 	}
@@ -2759,10 +2773,19 @@ fn (mut g FlatGen) fn_item_cost_and_prep(node_id flat.NodeId, mut stack []flat.N
 
 fn (mut g FlatGen) fn_item_cost_and_c_extern_prep(node_id flat.NodeId, mut stack []flat.NodeId) int {
 	mut cost := 0
-	stack.clear()
-	stack << node_id
-	for stack.len > 0 {
-		current_id := stack.pop()
+	// `stack` is a reusable buffer: `top` is the live depth, entries below the
+	// array length are overwritten in place and only a deeper tree appends, so no
+	// per-node push/pop bookkeeping runs. The visiting order is unchanged.
+	mut top := 0
+	if stack.len == 0 {
+		stack << node_id
+	} else {
+		stack[0] = node_id
+	}
+	top = 1
+	for top > 0 {
+		top--
+		current_id := stack[top]
 		idx := int(current_id)
 		if idx < 0 || idx >= g.a.nodes.len {
 			continue
@@ -2775,7 +2798,12 @@ fn (mut g FlatGen) fn_item_cost_and_c_extern_prep(node_id flat.NodeId, mut stack
 		for i := node.children_count - 1; i >= 0; i-- {
 			child_id := g.a.children[node.children_start + i]
 			if int(child_id) >= 0 {
-				stack << child_id
+				if top < stack.len {
+					stack[top] = child_id
+				} else {
+					stack << child_id
+				}
+				top++
 			}
 		}
 	}
@@ -2811,10 +2839,17 @@ fn (mut g FlatGen) prepare_parallel_items(items []FlatFnGenItem) {
 
 // prepare_parallel_node supports prepare parallel node handling for FlatGen.
 fn (mut g FlatGen) prepare_parallel_node(id flat.NodeId, mut stack []flat.NodeId, mut type_text_cache map[u32]bool) {
-	stack.clear()
-	stack << id
-	for stack.len > 0 {
-		current_id := stack.pop()
+	// Same reusable-buffer walk as exact_flat_fn_gen_item_cost_and_prep.
+	mut top := 0
+	if stack.len == 0 {
+		stack << id
+	} else {
+		stack[0] = id
+	}
+	top = 1
+	for top > 0 {
+		top--
+		current_id := stack[top]
 		idx := int(current_id)
 		if idx < 0 || idx >= g.a.nodes.len {
 			continue
@@ -2834,7 +2869,12 @@ fn (mut g FlatGen) prepare_parallel_node(id flat.NodeId, mut stack []flat.NodeId
 		for i := node.children_count - 1; i >= 0; i-- {
 			child_id := g.a.children[node.children_start + i]
 			if int(child_id) >= 0 {
-				stack << child_id
+				if top < stack.len {
+					stack[top] = child_id
+				} else {
+					stack << child_id
+				}
+				top++
 			}
 		}
 	}
@@ -2904,10 +2944,19 @@ fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, item_id
 	a := g.a
 	mut cost := 0
 	mut needs_prelude_scan := false
-	stack.clear()
-	stack << node_id
-	for stack.len > 0 {
-		id := stack.pop()
+	// `stack` is a reusable buffer: `top` is the live depth, entries below the
+	// array length are overwritten in place and only a deeper tree appends, so no
+	// per-node push/pop bookkeeping runs. The visiting order is unchanged.
+	mut top := 0
+	if stack.len == 0 {
+		stack << node_id
+	} else {
+		stack[0] = node_id
+	}
+	top = 1
+	for top > 0 {
+		top--
+		id := stack[top]
 		idx := int(id)
 		if idx < 0 || idx >= a.nodes.len {
 			continue
@@ -2957,7 +3006,12 @@ fn exact_flat_fn_gen_item_cost_and_prep(g &FlatGen, node_id flat.NodeId, item_id
 		for i := node.children_count - 1; i >= 0; i-- {
 			child_id := a.children[node.children_start + i]
 			if int(child_id) >= 0 {
-				stack << child_id
+				if top < stack.len {
+					stack[top] = child_id
+				} else {
+					stack << child_id
+				}
+				top++
 			}
 		}
 	}
@@ -3443,6 +3497,7 @@ fn (g &FlatGen) new_parallel_worker_config(worker_id int, result_only bool) &Fla
 		fn_decl_mut_receivers:              g.fn_decl_mut_receivers
 		specialized_method_c_names:         g.specialized_method_c_names
 		fn_decl_ret_types:                  g.fn_decl_ret_types
+		fn_decl_nodes_by_name:              g.fn_decl_nodes_by_name
 		non_generic_fn_names_by_module:     g.non_generic_fn_names_by_module
 		generic_fn_keys_by_short:           g.generic_fn_keys_by_short
 		generic_fn_keys_by_cname:           g.generic_fn_keys_by_cname

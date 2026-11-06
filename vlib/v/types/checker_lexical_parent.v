@@ -320,7 +320,15 @@ fn (tc &TypeChecker) lexical_smartcasts_unused(idx int) bool {
 		tc.collect_smartcast_keys(mut filter)
 	}
 	if filter.index.len > 0 {
-		return false
+		// A function with many keys indexes them. An identifier's key is its
+		// own text, so its absence is answered without building anything;
+		// other expressions still take the keyed path.
+		node := tc.a.node(flat.NodeId(idx))
+		if node.kind != .ident {
+			return false
+		}
+		key := node.value_text()
+		return key.len > 0 && valid_string_data(key) && key !in filter.index
 	}
 	for key in filter.keys {
 		if tc.expr_key_matches(flat.NodeId(idx), key) {

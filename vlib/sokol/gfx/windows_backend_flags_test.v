@@ -379,8 +379,10 @@ fn main() {
 	assert !c_source.contains('#define SOKOL_GFX_IMPL'), c_source
 	assert !c_source.contains('#define SOKOL_IMPL'), c_source
 	post_path := os.join_path(@VEXEROOT, 'vlib', 'sokol', 'c', 'sokol_v_post').replace('\\', '/')
-	assert c_source.contains('#include "${post_path}.h"'), c_source
-	assert c_source.contains('#include "${post_path}.c"'), c_source
+	// Windows includes can combine native and forward path separators.
+	normalized_c_source := c_source.replace('\\', '/')
+	assert normalized_c_source.contains('#include "${post_path}.h"'), c_source
+	assert normalized_c_source.contains('#include "${post_path}.c"'), c_source
 	assert c_source.contains('v_sapp_read_rgba_pixels'), c_source
 	assert !c_source.contains('defined(_SAPP_WIN32)'), c_source
 	assert !c_source.contains('sokol.sapp screenshots are not supported with -d sokol_d3d11'), c_source

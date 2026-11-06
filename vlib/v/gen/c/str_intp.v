@@ -535,7 +535,7 @@ fn (mut g FlatGen) write_string_literal_def(id int, s string) {
 	}
 	g.write('static const string _str_')
 	g.sb.write_decimal(i64(id))
-	g.sb.write_string(' = {"')
+	g.sb.write_string(' = {(u8*)"')
 	c_literal_escape_into(mut g.sb, s)
 	g.sb.write_string('", ')
 	g.sb.write_decimal(i64(s.len))

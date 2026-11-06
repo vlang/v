@@ -364,7 +364,7 @@ fn unhandled_exception_handler(e &ExceptionPointers) C.LONG {
 			return 0
 		}
 		else {
-			eprintln('Unhandled Exception 0x' + ptr_str(e.exception_record.code) + ' at ' +
+			eprintln('Unhandled Exception 0x' + e.exception_record.code.hex() + ' at ' +
 				ptr_str(e.exception_record.address))
 			flush_stdout()
 			flush_stderr()

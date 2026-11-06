@@ -51,3 +51,8 @@ Set `V3_CACHE_TRACE=1` to inspect cache decisions and `-showcc` to inspect the n
 compiler command.
 `-print-watched-files` and `-dump-files` parse V source bodies to include embedded resources,
 including resources omitted from warm V declaration headers.
+
+Native object identities include the environment that selects C headers and libraries, including
+`CPATH`, `C_INCLUDE_PATH`, `CPLUS_INCLUDE_PATH`, MSVC's `INCLUDE`/`LIB` and toolchain/SDK selection.
+Changing those variables invalidates link plans and object manifests even if the previous headers
+still exist unchanged. Prebuilt objects supplied by the application remain application inputs.

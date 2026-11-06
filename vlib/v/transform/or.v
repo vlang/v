@@ -1488,7 +1488,14 @@ fn (mut t Transformer) make_stack_value_decl_assign_typed(name string, rhs flat.
 // make_staging_value_decl reserves a temporary assigned by every continuing branch.
 // Preserve its typed initializer for other backends; C needs only zeroed storage.
 fn (mut t Transformer) make_staging_value_decl(name string, typ_id u32) flat.NodeId {
-	decl := t.make_stack_value_decl_assign_typed(name, t.zero_value_for_type(typ_id), typ_id)
+	// Sum storage has no active variant until a branch assigns it. Constructing the
+	// first variant here would evaluate field defaults before the branch runs.
+	zero := if t.is_sum_type_name(typ_id) {
+		t.make_struct_init(typ_id)
+	} else {
+		t.zero_value_for_type(typ_id)
+	}
+	decl := t.make_stack_value_decl_assign_typed(name, zero, typ_id)
 	t.a.nodes[int(decl)].value = zeroed_stack_value_decl_marker
 	return decl
 }
@@ -2770,14 +2777,19 @@ fn (t &Transformer) is_noreturn_call(id flat.NodeId) bool {
 			main_or_builtin = resolved_module == 'main' || resolved_module == 'builtin'
 			short_name = unsafe { tos(resolved.str + dot + 1, resolved.len - dot - 1) }
 		}
-		for candidate, _ in t.a.noreturn_fns {
-			if candidate.contains_u8(`.`) {
-				if resolved.len > candidate.len && resolved[resolved.len - candidate.len - 1] == `.`
-					&& resolved.ends_with(candidate) {
+		// Iterating the map clones every key; the snapshot taken when the caches
+		// were created lists the same names (the table is complete after parsing).
+		if !isnil(t.noreturn_names) && t.noreturn_names.count == t.a.noreturn_fns.len {
+			for candidate in t.noreturn_names.names {
+				if noreturn_candidate_matches(candidate, resolved, short_name, main_or_builtin) {
 					return true
 				}
-			} else if main_or_builtin && short_name == candidate {
-				return true
+			}
+		} else {
+			for candidate, _ in t.a.noreturn_fns {
+				if noreturn_candidate_matches(candidate, resolved, short_name, main_or_builtin) {
+					return true
+				}
 			}
 		}
 	}
@@ -2789,6 +2801,18 @@ fn (t &Transformer) is_noreturn_call(id flat.NodeId) bool {
 	name := t.resolve_call_name(node)
 	return name in ['panic', 'exit', 'os.exit', 'C.exit', 'builtin.panic']
 		|| name in t.a.noreturn_fns
+}
+
+// noreturn_candidate_matches reports whether a noreturn table entry names the
+// resolved callee: a dotted entry as a `.`-separated suffix, a bare entry as the
+// short name of a main/builtin function.
+@[direct_array_access; inline]
+fn noreturn_candidate_matches(candidate string, resolved string, short_name string, main_or_builtin bool) bool {
+	if candidate.contains_u8(`.`) {
+		return resolved.len > candidate.len && resolved[resolved.len - candidate.len - 1] == `.`
+			&& resolved.ends_with(candidate)
+	}
+	return main_or_builtin && short_name == candidate
 }
 
 // base_type_text resolves the indexed source type spelling.

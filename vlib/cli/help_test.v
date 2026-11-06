@@ -198,3 +198,45 @@ fn test_help_message_omits_empty_optional_sections() {
 	// No description, no flags, no commands, no examples, no learn_more.
 	assert cmd.help_message() == 'Usage: app\n'
 }
+
+fn test_help_message_long_flag_before_abbreviation() {
+	for posix_mode in [false, true] {
+		mut cmd := Command{
+			name:       'tool'
+			posix_mode: posix_mode
+			flags:      [
+				Flag{ flag: .bool, name: 'allow-weak-password', description: 'Accept a short password.' },
+				Flag{ flag: .string, name: 'output', abbrev: 'o', description: 'Write the result.' },
+			]
+			commands:   [Command{ name: 'run', description: 'Run the tool.' }]
+		}
+		help := cmd.help_message()
+		if posix_mode {
+			assert help.contains('      --allow-weak-password  Accept a short password.\n')
+			assert help.contains('  -o  --output               Write the result.\n')
+			assert help.contains('  run                        Run the tool.\n')
+		} else {
+			assert help.contains('      -allow-weak-password  Accept a short password.\n')
+			assert help.contains('  -o  -output               Write the result.\n')
+			assert help.contains('  run                       Run the tool.\n')
+		}
+		cmd.flags.reverse_in_place()
+		reordered := cmd.help_message()
+		for line in help.split_into_lines() {
+			assert line in reordered.split_into_lines()
+		}
+	}
+}
+
+fn test_help_message_long_flag_before_automatic_help_abbreviation() {
+	mut cmd := Command{
+		name:       'tool'
+		posix_mode: true
+		flags:      [Flag{ flag: .bool, name: 'allow-weak-password', description: 'Accept a short password.' }]
+	}
+	cmd.parse_defaults()
+	help := cmd.help_message()
+	assert help.contains('      --allow-weak-password  Accept a short password.\n')
+	assert help.contains('  -h  --help                 Print help information\n')
+	assert help.contains('      --man                  Print the auto-generated manpage\n')
+}
