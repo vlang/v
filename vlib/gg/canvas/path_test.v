@@ -143,6 +143,16 @@ fn test_midpoint_contours_split_at_moves() {
 	assert contours[1].verb_start == 4 && contours[1].verb_end == 6
 }
 
+fn test_sin_cos_snap_to_zero_preserves_float_argument() {
+	// In particular, 0.5 must not be promoted to a double when calling the
+	// platform math library: the low 32 bits of that double are zero.
+	for sign in [f32(1), -1] {
+		s, c := sin_cos_snap_to_zero(sign * f32(0.5))
+		assert math.abs(s - sign * f32(0.47942555)) < f32(0.000001)
+		assert math.abs(c - f32(0.87758255)) < f32(0.000001)
+	}
+}
+
 fn test_svg_arcs_match_sk_path_builder_bit_for_bit() {
 	// Points and weights produced by SkPathBuilder::arcTo() of the pinned
 	// Skia for the same arguments.
