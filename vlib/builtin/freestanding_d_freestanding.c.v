@@ -18,7 +18,7 @@ $if freestanding && native && linux {
 		const bare_sys_nr_munmap = u64(11)
 		const bare_sys_nr_mremap = u64(25)
 		const bare_sys_nr_exit_group = u64(231)
-		const bare_sys_nr_close = u64(57)
+		const bare_sys_nr_close = u64(3)
 		const bare_sys_nr_lseek = u64(8)
 		const bare_sys_nr_openat = u64(257)
 		const bare_sys_nr_getdents64 = u64(217)

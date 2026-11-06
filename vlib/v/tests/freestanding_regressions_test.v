@@ -157,6 +157,15 @@ fn main() {
 }
 "
 
+const native_file_close_program = "import os
+
+fn main() {
+	path := os.args[1]
+	os.write_file(path, 'abc')!
+	println(os.read_file(path)!)
+}
+"
+
 // test_native_asm_secondary_outputs_and_div_lower checks that a two-output asm block
 // with three inputs stores both halves, and that `div` lowers like `divq`.
 fn test_native_asm_secondary_outputs_and_div_lower() {
@@ -321,4 +330,26 @@ fn test_fork_execve_wait4_through_bf() {
 		assert run.exit_code == 0, '${mode}: ${run.output}'
 		assert run.output == 'reaped=true exit=7\nchild: 2\nexit2=3\n', '${mode}: ${run.output}'
 	}
+}
+
+// test_native_freestanding_file_close_closes checks that the native x64 runtime's
+// close syscall number is close: with fork's number in its place, every file the
+// program closes spawns a copy that prints again.
+fn test_native_freestanding_file_close_closes() {
+	$if !linux || !amd64 {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'native_close_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, native_file_close_program)!
+	exe := os.join_path(root, 'main')
+	build := os.exec([vexe, '-nocache', '-freestanding', '-b', 'x64', '-o', exe, source])
+	assert build.exit_code == 0, build.output
+	run := os.exec([exe, os.join_path(root, 'data.txt')])
+	assert run.exit_code == 0, run.output
+	assert run.output == 'abc\n', run.output
 }

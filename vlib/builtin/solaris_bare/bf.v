@@ -159,7 +159,6 @@ $if (freestanding || syscalls) && amd64 {
 	const bf_nr_forksys = u64(142)
 	const bf_nr_execve = u64(59)
 	const bf_nr_waitid = u64(107)
-	const bf_nr_pgrpsys = u64(39)
 
 	// bf_fork forks through forksys(0, 0), illumos' forkx(0): the child's pid in
 	// the parent, 0 in the child (marked by 1 in rdx), -1 with errno on failure.
@@ -179,37 +178,52 @@ $if (freestanding || syscalls) && amd64 {
 		return -1
 	}
 
-	// bf_wait4 emulates wait4 with waitid, as illumos libc's wait4 does; there is
-	// no wait4 syscall. `options` takes the illumos W* values, as the libc wait4 of
-	// a hosted build does: WNOHANG (0x40), WUNTRACED (4), WCONTINUED (8) and
-	// WNOWAIT (0x80); anything else is EINVAL. `rusage` is not filled. The siginfo
-	// offsets are from sys/siginfo.h (256 bytes on amd64).
+	const bf_nr_times = u64(43)
+	const bf_nr_sysconfig = u64(137)
+	const bf_config_clk_tck = u64(7) // _CONFIG_CLK_TCK
+
+	// FSysSolTms is illumos' `struct tms`: four clock_t tick counts (32 bytes).
+	struct FSysSolTms {
+		tms_utime  i64
+		tms_stime  i64
+		tms_cutime i64
+		tms_cstime i64
+	}
+
+	// bf_wait4 is illumos libc's wait4 (usr/src/lib/libc/port/gen/waitpid.c) on raw
+	// syscalls, since the kernel has no wait4: the same option check, the same child
+	// selection on top of waitid, and the same rusage approximation. `options` takes
+	// the illumos W* values; only WNOHANG (0x40), WUNTRACED (4) and WCONTINUED (8)
+	// are accepted, anything else (WNOWAIT included) is EINVAL. Like libc, a negative
+	// `pid` waits for process group -pid (-1 is group 1, the SunOS 4.x semantics) and
+	// 0 waits for any child. `rusage` is zeroed, then only ru_utime and ru_stime are
+	// filled, from the change in the children's times(2) ticks. The siginfo offsets
+	// are from sys/siginfo.h (256 bytes on amd64).
 	pub fn bf_wait4(pid int, status &int, options int, rusage voidptr) int {
-		if options & ~(0x40 | 0x4 | 0x8 | 0x80) != 0 {
+		if rusage != unsafe { nil } {
+			unsafe { vmemset(rusage, 0, 144) } // sizeof(struct rusage)
+		}
+		mut before := FSysSolTms{}
+		tr, te := sys_call1(bf_nr_times, u64(voidptr(&before)))
+		if te != 0 {
+			bf_err_of(tr, te)
+			return -1
+		}
+		if options & ~(0x40 | 0x4 | 0x8) != 0 {
 			bf_last_errno_cell = 22 // EINVAL
 			return -1
 		}
-		_ = rusage
+		// WEXITED (1) and WTRAPPED (2) are always added
+		opts := u64(options) | 0x1 | 0x2
 		// idtype: P_PID = 0, P_PGID = 2, P_ALL = 7
 		mut idtype := u64(0)
 		mut id := i64(pid)
-		if pid == -1 {
-			idtype = 7
-			id = 0
-		} else if pid == 0 {
-			pg, pe := sys_call1(bf_nr_pgrpsys, 0) // getpgrp
-			if pe != 0 {
-				bf_err_of(pg, pe)
-				return -1
-			}
-			idtype = 2
-			id = i64(pg)
-		} else if pid < -1 {
+		if pid < 0 {
 			idtype = 2
 			id = -i64(pid)
+		} else if pid == 0 {
+			idtype = 7
 		}
-		// libc's wait4 always adds WEXITED (1) and WTRAPPED (2)
-		opts := u64(options) | 0x1 | 0x2
 		mut info := [256]u8{}
 		rc, er := sys_call4(bf_nr_waitid, idtype, u64(id), u64(voidptr(&info[0])), opts)
 		if er != 0 {
@@ -219,17 +233,37 @@ $if (freestanding || syscalls) && amd64 {
 		code := unsafe { *(&int(voidptr(&info[4]))) }
 		child := unsafe { *(&int(voidptr(&info[16]))) }
 		cst := unsafe { *(&int(voidptr(&info[32]))) }
-		if child == 0 {
+		if options & 0x40 != 0 && child == 0 {
 			return 0 // WNOHANG and no child changed state
 		}
-		// the classic wait status, as illumos libc's wstat() builds it
+		if rusage != unsafe { nil } {
+			mut after := FSysSolTms{}
+			ar, ae := sys_call1(bf_nr_times, u64(voidptr(&after)))
+			if ae != 0 {
+				bf_err_of(ar, ae)
+				return -1
+			}
+			hr, he := sys_call1(bf_nr_sysconfig, bf_config_clk_tck)
+			hz := if he != 0 || i64(hr) <= 0 { i64(100) } else { i64(hr) }
+			diffu := after.tms_cutime - before.tms_cutime
+			diffs := after.tms_cstime - before.tms_cstime
+			mut tv := unsafe { &i64(rusage) } // ru_utime, then ru_stime: timeval pairs
+			unsafe {
+				tv[0] = diffu / hz
+				tv[1] = (diffu % hz) * (1000000 / hz)
+				tv[2] = diffs / hz
+				tv[3] = (diffs % hz) * (1000000 / hz)
+			}
+		}
+		// the classic wait status, as libc's wstat() builds it
+		base := cst & 0o377
 		w := match code {
-			1 { (cst & 0xff) << 8 } // CLD_EXITED
-			2 { cst & 0x7f } // CLD_KILLED
-			3 { (cst & 0x7f) | 0x80 } // CLD_DUMPED
-			4, 5 { ((cst & 0xff) << 8) | 0x7f } // CLD_TRAPPED, CLD_STOPPED
-			6 { 0xffff } // CLD_CONTINUED
-			else { 0 }
+			1 { base << 8 } // CLD_EXITED
+			2 { base } // CLD_KILLED
+			3 { base | 0o200 } // CLD_DUMPED: WCOREFLG
+			4, 5 { (base << 8) | 0o177 } // CLD_TRAPPED, CLD_STOPPED: WSTOPFLG
+			6 { 0o177777 } // CLD_CONTINUED: WCONTFLG
+			else { base }
 		}
 		if status != unsafe { nil } {
 			unsafe {

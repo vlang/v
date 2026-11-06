@@ -1412,8 +1412,8 @@ pub fn fork() int {
 // `options` takes the target system's own W* values (for example WNOHANG) in every
 // build mode, including -freestanding and -syscalls.
 // When `rusage` is not nil, it must point to a `struct rusage`, which receives the
-// child's resource usage (except on illumos under -freestanding/-syscalls, where
-// wait4 is emulated with waitid and `rusage` is left untouched).
+// child's resource usage (on illumos, like its libc, only the approximate user and
+// system times are filled).
 pub fn wait4(pid int, status &int, options int, rusage voidptr) int {
 	$if freestanding || syscalls {
 		return bf_wait4(pid, status, options, rusage)

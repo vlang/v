@@ -411,8 +411,8 @@ core: `open_file`, `open`, `create`, the standard files in `stdin`/`stdout`/`std
 `chdir`, `executable`, `getpid`, `getppid`, `uname`, `getenv`, and `environ`, plus the
 process calls `fork`, `execve` and `wait4`. Error strings come from an in-module errno table
 instead of `strerror(3)`, `last_error` reads the runtime's errno, and `sleep_ms` and the
-`os.fd_*` calls go through syscalls as well. On illumos, `wait4` is emulated with `waitid`
-and does not fill `rusage`.
+`os.fd_*` calls go through syscalls as well. On illumos, `wait4` follows its libc: it is
+emulated with `waitid` and fills only the approximate times in `rusage`.
 
 Two purity notes: `real_path` makes a path absolute and resolves `.` and `..` lexically,
 without chasing symbolic links (there is no `realpath` syscall); and `setenv`/`unsetenv`
