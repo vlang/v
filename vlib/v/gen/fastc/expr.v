@@ -2962,14 +2962,19 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		if g.tok == .dot {
 			// A field sharing a mutable local's name keeps its own value/reference type.
 			// Resolve the complete receiver instead of applying that local's dereference.
-			if piece in ['.', '->'] && expression_tokens.len >= 4
-				&& expression_tokens[expression_tokens.len - 3].tok == .dot {
+			if piece in ['.', '->'] && expression_tokens.len >= 2 {
 				dot_index := expression_tokens.len - 1
 				receiver_start := fastc_method_receiver_start(expression_tokens, dot_index)
 				receiver_tokens := expression_tokens[receiver_start..dot_index]
-				if receiver_type_source_id := g.infer_member_access_type(receiver_tokens, 0, receiver_tokens.len) {
-					receiver_type := receiver_type_source_id
-
+				// A bare receiver (`p` in `p.a`) is a name, not a member chain, so
+				// infer_member_access_type cannot type it; infer the expression instead.
+				mut receiver_type := u32(0)
+				if receiver_tokens.len == 1 {
+					receiver_type = g.infer_expression_type(receiver_tokens) or { u32(0) }
+				} else if member_type := g.infer_member_access_type(receiver_tokens, 0, receiver_tokens.len) {
+					receiver_type = member_type
+				}
+				if receiver_type != 0 {
 					piece = if fastc_is_pointer_type(g.underlying_alias_type(receiver_type)) {
 						'->'
 					} else {
