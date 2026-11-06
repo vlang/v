@@ -352,3 +352,46 @@ fn test_hash_inside_a_plain_scalar_is_not_a_comment() ! {
 	assert items[1].string() == 'c'
 	assert doc.value('lead').string() == 'x'
 }
+
+fn test_block_sequence_at_the_indentation_of_its_key() ! {
+	// YAML 1.2 §8.2.3: a sequence may be indented like the key it belongs to
+	// (`key:\n- item`), the form PyYAML writes by default.
+	doc := parse_text('a:\n  b:\n  - x\n  - y\n  c: 1\n')!
+	assert doc.value('a.b').array().len == 2
+	assert doc.value('a.b[0]').string() == 'x'
+	assert doc.value('a.b[1]').string() == 'y'
+	assert doc.value('a.c').int() == 1
+	top := parse_text('a:\n- x\nb: 1\n')!
+	assert top.value('a').array().len == 1
+	assert top.value('a[0]').string() == 'x'
+	assert top.value('b').int() == 1
+	// A comment or blank line between the key and its sequence, and a bare `-`.
+	gap := parse_text('a:\n# note\n\n-\n- y\n')!
+	items := gap.value('a').array()
+	assert items.len == 2
+	assert items[0] is Null
+	assert items[1].string() == 'y'
+	// An empty value followed by a sibling key stays null.
+	empty := parse_text('a:\nb: 1\n')!
+	assert empty.value('a') is Null
+	assert empty.value('b').int() == 1
+	anchored := parse_text('a: &l\n- x\nb: *l\n')!
+	assert anchored.value('b[0]').string() == 'x'
+}
+
+fn test_block_sequence_at_key_indentation_with_mapping_items() ! {
+	doc := parse_text('buses:\n- name: CAN1\n  ids:\n  - 1\n  - 2\n  rate: 500\n- name: CAN2\nend: true\n')!
+	buses := doc.value('buses').array()
+	assert buses.len == 2
+	assert doc.value('buses[0].name').string() == 'CAN1'
+	assert doc.value('buses[0].ids').array().len == 2
+	assert doc.value('buses[0].ids[1]').int() == 2
+	assert doc.value('buses[0].rate').int() == 500
+	assert doc.value('buses[1].name').string() == 'CAN2'
+	assert doc.value('end').bool()
+	// The same form inside a sequence item's own mapping.
+	item := parse_text('- a:\n  - x\n  b: 1\n- c\n')!
+	assert item.value('[0].a[0]').string() == 'x'
+	assert item.value('[0].b').int() == 1
+	assert item.value('[1]').string() == 'c'
+}
