@@ -146,6 +146,7 @@ fn main() { assert count(nil, nil) == 2; println("ok") }
 	}
 }
 
+@[unsafe]
 fn test_fastc_nil_still_rejects_erased_function_and_typed_pointer_storage() {
 	$if !macos && !linux {
 		return

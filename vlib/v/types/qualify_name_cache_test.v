@@ -27,6 +27,7 @@ fn test_qualification_cache_preserves_context_and_late_generic_declarations() {
 	}
 }
 
+@[unsafe]
 fn test_numeric_qualification_preserves_builtin_set_and_string_cache_interoperation() {
 	a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)

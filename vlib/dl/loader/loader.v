@@ -116,6 +116,7 @@ pub fn (mut dl_loader DynamicLibLoader) open() !voidptr {
 }
 
 // close closes the dynamic library.
+@[unsafe]
 pub fn (mut dl_loader DynamicLibLoader) close() ! {
 	if !isnil(dl_loader.handle) {
 		if dl.close(dl_loader.handle) {

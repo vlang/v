@@ -241,6 +241,7 @@ mut:
 }
 
 // new creates a new instance of `Dlmalloc` with the given system allocator.
+@[unsafe]
 pub fn new(system_allocator Allocator) Dlmalloc {
 	return Dlmalloc{
 		smallmap:         0

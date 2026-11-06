@@ -147,6 +147,7 @@ fn test_support_http_1() {
 
 // utility code:
 
+@[unsafe]
 fn simple_tcp_client() !&net.TcpConn {
 	mut client := &net.TcpConn(unsafe { nil })
 	mut tries := 0

@@ -1,5 +1,6 @@
 module types
 
+@[unsafe]
 fn test_scope_contains_tracks_visible_bindings_and_reuse() {
 	mut parent := new_scope(unsafe { nil })
 	parent.insert('inherited', unknown_type('unresolved binding'))
@@ -34,6 +35,7 @@ fn test_scope_contains_tracks_visible_bindings_and_reuse() {
 	}
 }
 
+@[unsafe]
 fn test_scope_lookup_keeps_binding_identity_for_copied_names_and_collisions() {
 	mut parent := new_scope(unsafe { nil })
 	parent.insert('value', Type(string_))

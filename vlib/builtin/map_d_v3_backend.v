@@ -90,7 +90,7 @@ mut:
 	values      &u8 = unsafe { nil }
 }
 
-@[inline]
+@[inline; unsafe]
 fn new_dense_array(key_bytes int, value_bytes int, key_alignment u8, value_alignment u8) DenseArray {
 	cap := 8
 	return DenseArray{
@@ -427,6 +427,7 @@ fn (mut m VMapData) remember_string_key(key voidptr) {
 	}
 }
 
+@[unsafe]
 fn new_map_data(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn,
 	free_fn MapFreeFn) &VMapData {
 	// Arenas retain old metadata slabs, so reserve a modest probe tail before
@@ -529,6 +530,7 @@ fn new_map_update_init(update &map, n int, key_bytes int, value_bytes int, keys 
 
 // move moves the map to a new location in memory and resets the old location
 // to an empty map.
+@[unsafe]
 pub fn (mut m map) move() map {
 	r := *m
 	if m.data == unsafe { nil } || m.data == &map_empty_data {
@@ -548,6 +550,7 @@ pub fn (mut m map) clear() {
 	m.data.clear()
 }
 
+@[unsafe]
 fn (mut m VMapData) clear() {
 	if m.metas == unsafe { nil } {
 		return
@@ -600,7 +603,7 @@ fn (m &VMapData) keys_equal(a voidptr, b voidptr) bool {
 	return m.key_eq_fn(a, b)
 }
 
-@[inline]
+@[inline; unsafe]
 fn (m &VMapData) key_to_index(pkey voidptr) (u32, u32) {
 	hash := if m.hash_kind & 1 != 0 {
 		map_hash_string(pkey)
@@ -715,6 +718,7 @@ fn (mut m VMapData) set(key voidptr, value voidptr) {
 	m.set_general(key, value)
 }
 
+@[unsafe]
 fn (mut m VMapData) set_general(key voidptr, value voidptr) {
 	if m.metas == unsafe { nil } {
 		// Most compiler bookkeeping maps remain empty. Allocate backing storage
@@ -803,6 +807,7 @@ pub fn (mut m map) reserve(n u32) {
 	m.data.reserve(n)
 }
 
+@[unsafe]
 fn (mut m VMapData) reserve(n u32) {
 	if m.count == 0 {
 		old_index := m.even_index
@@ -869,6 +874,7 @@ fn (mut m map) get_and_set(key voidptr, zero voidptr) voidptr {
 	return m.data.get_and_set(key, zero)
 }
 
+@[unsafe]
 fn (mut m VMapData) get_and_set(key voidptr, zero voidptr) voidptr {
 	$if race ? {
 		// Used for `m[key] += x`, `m[key]++` and the like: a write of the map, as in set().

@@ -24,6 +24,7 @@ fn decompress_error(data []u8) string {
 
 // callback_error returns the error message of decompress_with_callback() for `data`,
 // '' for no error.
+@[unsafe]
 fn callback_error(data []u8) string {
 	decompress_with_callback(data, fn (chunk []u8, _ voidptr) int {
 		return chunk.len

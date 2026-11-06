@@ -50,6 +50,7 @@ fn optional_value(value ?HasValue) int {
 	return (value or { return -1 }).value
 }
 
+@[unsafe]
 fn test_nil_pointer_alias_interface_field_is_safe() {
 	missing := ValueRecordPtr(unsafe { nil })
 	assert optional_value(missing) == 0
@@ -68,6 +69,7 @@ fn (r AliasOnlyPtr) address() voidptr {
 	return voidptr(r)
 }
 
+@[unsafe]
 fn optional_address(value ?HasAddress) voidptr {
 	return (value or { return unsafe { nil } }).address()
 }

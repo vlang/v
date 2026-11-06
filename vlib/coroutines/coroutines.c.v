@@ -102,6 +102,7 @@ fn init_photon_vcpu() {
 	}
 }
 
+@[unsafe]
 fn init() {
 	$if gcboehm ? {
 		// NOTE `sp_corrector` only works for platforms with the stack growing down

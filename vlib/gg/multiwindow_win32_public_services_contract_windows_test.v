@@ -57,6 +57,7 @@ fn win32_public_state_is_observed(state WindowState) bool {
 		&& state.fullscreen != .unknown && state.position.known
 }
 
+@[unsafe]
 fn win32_public_hwnd(mut app App, window WindowId) !voidptr {
 	mut probe := &Win32PublicHwndProbe{}
 	callback := fn [mut probe] (mut lease NativeWindowLease) ! {
@@ -272,6 +273,7 @@ fn test_win32_public_services_stay_disabled_without_opt_in() {
 	}
 }
 
+@[unsafe]
 fn test_win32_public_hwnd_borrow_route_red() {
 	$if windows {
 		$if gg_multiwindow ? {

@@ -51,6 +51,7 @@ fn C.sendfile(out_fd i32, in_fd i32, offset voidptr, count uint) i32
 @[typedef]
 pub struct C.sigset_t {}
 
+@[unsafe]
 fn C.sigemptyset(set &C.sigset_t)
 
 fn C.sigaddset(set &C.sigset_t, signum i32) i32

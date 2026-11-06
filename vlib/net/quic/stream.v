@@ -257,11 +257,13 @@ pub mut:
 }
 
 // has_send reports whether this stream has a send half on this endpoint.
+@[unsafe]
 pub fn (s &QuicStream) has_send() bool {
 	return s.send != unsafe { nil }
 }
 
 // has_recv reports whether this stream has a receive half on this endpoint.
+@[unsafe]
 pub fn (s &QuicStream) has_recv() bool {
 	return s.recv != unsafe { nil }
 }

@@ -157,6 +157,7 @@ fn test_storage_observers_preserve_annotation_reads_and_private_nested_writes() 
 	assert tc.fork_overlay.resolved_call_names[int(id)] == 'main.overlay_call'
 }
 
+@[unsafe]
 fn test_potential_binding_sources_include_exact_conditional_and_rebound_sources() {
 	path := os.join_path(os.vtmp_dir(), 'v3_potential_binding_sources_${os.getpid()}.v')
 	os.write_file(path, '@[heap]
@@ -430,6 +431,7 @@ fn main() {
 	assert !certificates.storage_query_probe_cached_history(use_id, [call_id], map[string]flat.NodeId{})
 }
 
+@[unsafe]
 fn test_param_storage_sources_distinguish_interpolation_from_captures_and_side_effects() {
 	path := os.join_path(os.vtmp_dir(), 'v3_interpolated_storage_sources_${os.getpid()}.v')
 	os.write_file(path, 'struct Payload {

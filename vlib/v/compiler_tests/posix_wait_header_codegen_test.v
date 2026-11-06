@@ -410,6 +410,7 @@ fn main() {
 	assert lines[2] == '5000000000', run.output
 }
 
+@[unsafe]
 fn test_windows_crt_underscore_c_decls_use_target_headers() {
 	v3_bin := wait_header_build_v3()
 	source := 'module main
@@ -461,6 +462,7 @@ fn test_windows_sdk_types_come_from_target_headers() {
 @[typedef]
 struct C.SECURITY_ATTRIBUTES {}
 
+@[unsafe]
 fn C.CreateHardLinkW(&u16, &u16, &C.SECURITY_ATTRIBUTES) int
 
 fn main() {
@@ -485,6 +487,7 @@ fn main() {
 	wait_header_check_windows_c('windows_sdk_type_order')
 }
 
+@[unsafe]
 fn test_winapi_declarations_come_from_target_headers() {
 	v3_bin := wait_header_build_v3()
 	source := 'module main
@@ -513,6 +516,7 @@ fn main() {
 	wait_header_check_windows_c('winapi_calling_convention')
 }
 
+@[unsafe]
 fn test_unsuffixed_winapi_decls_use_wide_exports() {
 	v3_bin := wait_header_build_v3()
 	source := 'module main
@@ -587,6 +591,7 @@ fn main() {
 	}
 }
 
+@[unsafe]
 fn test_synthesized_c_extern_prototypes_preserve_const_pointer_params() {
 	v3_bin := wait_header_build_v3()
 	c_code := wait_header_gen_c(v3_bin, 'c_extern_const_pointer_params', 'module main
@@ -889,6 +894,7 @@ fn test_net_import_keeps_native_socket_headers() {
 
 import net
 
+@[unsafe]
 fn C.getaddrinfo(&char, &char, &C.addrinfo, &&C.addrinfo) int
 fn C.freeaddrinfo(&C.addrinfo)
 
@@ -941,6 +947,7 @@ mut:
 	ai_addr     voidptr
 }
 
+@[unsafe]
 fn C.getaddrinfo(&char, &char, &C.addrinfo, &&C.addrinfo) int
 fn C.freeaddrinfo(&C.addrinfo)
 

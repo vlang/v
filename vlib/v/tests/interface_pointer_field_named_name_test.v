@@ -12,10 +12,12 @@ fn (f &NamedFlag) id() int {
 	return f.n
 }
 
+@[unsafe]
 fn (v NamedVar) has_name() bool {
 	return v.name != unsafe { nil }
 }
 
+@[unsafe]
 fn named_var_first_byte(v NamedVar) u8 {
 	if v.name == unsafe { nil } {
 		return 0

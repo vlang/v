@@ -20,7 +20,7 @@ pub:
 
 pub struct Gen {
 	m &ssa.Module
-mut:
+pub mut:
 	elf              &elf.ElfObject
 	optimize_runtime bool
 
@@ -177,7 +177,18 @@ fn (g &Gen) is_aggregate_type(typ_id ssa.TypeID) bool {
 	if typ_id <= 0 || typ_id >= g.m.type_store.types.len {
 		return false
 	}
-	return g.m.type_store.types[typ_id].kind in [.struct_t, .array_t]
+	typ := g.m.type_store.types[typ_id]
+	// Channels are reference types (pointers), not aggregates.
+	if typ.kind == .struct_t && typ.field_names.len > 0 && typ.field_names[0] == 'ringbuf' {
+		return false
+	}
+	if typ.kind == .ptr_t && typ.elem_type > 0 && typ.elem_type < g.m.type_store.types.len {
+		et := g.m.type_store.types[typ.elem_type]
+		if et.kind == .struct_t && et.field_names.len > 0 && et.field_names[0] == 'ringbuf' {
+			return false
+		}
+	}
+	return typ.kind in [.struct_t, .array_t]
 }
 
 fn (g &Gen) is_float_type(typ_id ssa.TypeID) bool {
@@ -283,6 +294,10 @@ fn (mut g Gen) gen_post_pass() {
 
 fn (mut g Gen) gen_func(func ssa.Function) {
 	if func.is_c_extern {
+		return
+	}
+	// Channel methods close are implemented in the V runtime's C code, not in SSA.
+	if func.name.contains('Channel.') && (func.name.ends_with('.close')) {
 		return
 	}
 	dump_filter := os.getenv('V_X64_DUMP_SSA')
@@ -466,9 +481,10 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 				}
 			}
 
-			// Keep full stack storage for struct/array values
+			// Keep full stack storage for struct/array values (but not channels, which are pointers)
 			val_typ := g.m.type_store.types[val.typ]
-			if val_typ.kind == .struct_t || val_typ.kind == .array_t {
+			is_channel_type := (val_typ.kind == .struct_t && val_typ.field_names.len > 0 && val_typ.field_names[0] == 'ringbuf') || (val_typ.kind == .ptr_t && val_typ.elem_type > 0 && val_typ.elem_type < g.m.type_store.types.len && g.m.type_store.types[val_typ.elem_type].kind == .struct_t && g.m.type_store.types[val_typ.elem_type].field_names.len > 0 && g.m.type_store.types[val_typ.elem_type].field_names[0] == 'ringbuf')
+			if (val_typ.kind == .struct_t || val_typ.kind == .array_t) && !is_channel_type {
 				mut struct_size := g.type_size(val.typ)
 				if struct_size <= 0 {
 					struct_size = if val_typ.fields.len > 0 { val_typ.fields.len * 8 } else { 8 }
@@ -536,6 +552,12 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 		if g.m.globals.any(it.name == 'g_main_argv') {
 			g.store_entry_arg_to_global(int(rsi), 'g_main_argv', 8)
 		}
+		// Initialize closure runtime.
+		asm_xor_eax_eax(mut g)
+		asm_call_rel32(mut g)
+		sym_idx := g.elf.add_undefined('closure.closure_init')
+		g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, r_x86_64_plt32, -4)
+		g.emit_u32(0)
 	}
 
 	// Move Params (ABI: RDI, RSI, RDX, RCX, R8, R9)
@@ -1931,8 +1953,16 @@ fn (g &Gen) call_is_c_extern(instr ssa.Instruction) bool {
 		return false
 	}
 	callee := g.m.values[instr.operands[0]]
-	return callee.kind == .func_ref && callee.index >= 0 && callee.index < g.m.funcs.len
-		&& g.m.funcs[callee.index].is_c_extern
+	if !(callee.kind == .func_ref && callee.index >= 0 && callee.index < g.m.funcs.len) {
+		return false
+	}
+	func := g.m.funcs[callee.index]
+	if func.is_c_extern {
+		return true
+	}
+	// Channel methods are implemented in the V runtime's C code.
+	// Treat them as C externs so the x64 backend emits a proper call.
+	return func.name.contains('Channel.') && (func.name.contains('try_') || func.name.ends_with('.pop') || func.name.ends_with('.close'))
 }
 
 // gen_c_extern_call applies the SysV scalar argument convention used by C
@@ -2028,7 +2058,8 @@ fn (mut g Gen) gen_c_extern_call(val_id int, instr ssa.Instruction) {
 		asm_call_r10(mut g)
 	} else {
 		asm_call_rel32(mut g)
-		sym_idx := g.elf.add_undefined(fn_val.name)
+		sym_name := fn_val.name
+		sym_idx := g.elf.add_undefined(sym_name)
 		g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, r_x86_64_plt32, -4)
 		g.emit_u32(0)
 	}
@@ -2132,11 +2163,16 @@ fn (mut g Gen) load_call_arg_to_reg(reg int, val_id int, arg_idx int, instr ssa.
 	value := g.m.values[val_id]
 	if param_type > 0 && param_type < g.m.type_store.types.len {
 		param := g.m.type_store.types[param_type]
-		if param.kind == .ptr_t && param.elem_type == value.typ
-			&& g.is_aggregate_type(value.typ) {
-			g.load_address_of_val_to_reg(reg, val_id)
-			return
-		}
+		// Channel values are already pointers; pass by value, not by address.
+	is_channel_value := value.typ > 0 && value.typ < g.m.type_store.types.len
+		&& g.m.type_store.types[value.typ].kind == .struct_t
+		&& g.m.type_store.types[value.typ].field_names.len > 0
+		&& g.m.type_store.types[value.typ].field_names[0] == 'ringbuf'
+	if param.kind == .ptr_t && param.elem_type == value.typ
+		&& g.is_aggregate_type(value.typ) && !is_channel_value {
+		g.load_address_of_val_to_reg(reg, val_id)
+		return
+	}
 	}
 	g.load_val_to_reg(reg, val_id)
 }

@@ -112,6 +112,7 @@ void verify_layout(void) {
 '.replace('PACKET_TYPE', packet_type).replace('CACHELINE_TYPE', cacheline_type))
 }
 
+@[unsafe]
 fn test_fastc_grouped_global_function_pointers_preserve_option_results() {
 	$if !macos && !linux {
 		return

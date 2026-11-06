@@ -1,5 +1,6 @@
 module transform
 
+@[unsafe]
 fn test_ast_snapshot_rejects_empty_or_inverted_ranges() {
 	assert snapshot_ast_buffer(unsafe { nil }, 0, 0) == none
 	value := u64(0)

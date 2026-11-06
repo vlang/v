@@ -75,6 +75,7 @@ fn (r &BorrowBodyResult) matches_proven_summaries(t &Transformer) bool {
 // Monomorphization starts from the summaries the transform stage computed before lowering and
 // summarises only the declarations appended since; a call into an earlier declaration borrows
 // as its summary says.
+@[unsafe]
 fn (mut t Transformer) prepare_fixed_array_borrow_params() {
 	if isnil(t.tc) {
 		return

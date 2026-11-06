@@ -3,7 +3,7 @@ module pool
 import sync
 import runtime
 
-@[trusted]
+@[trusted; unsafe]
 fn C.atomic_fetch_add_u32(voidptr, u32) u32
 
 pub const no_result = unsafe { nil }
@@ -46,6 +46,7 @@ pub:
 //      2) idx - the index of the currently processed item
 //      3) task_id - the index of the worker thread in which the callback
 //            function is running.
+@[unsafe]
 pub fn new_pool_processor(context PoolProcessorConfig) &PoolProcessor {
 	if context.callback == unsafe { nil } {
 		panic('You need to pass a valid callback to new_pool_processor.')

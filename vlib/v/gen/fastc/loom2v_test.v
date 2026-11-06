@@ -4,6 +4,7 @@ import os
 import v.cmdexec
 import v.pref
 
+@[unsafe]
 fn test_fastc_directory_entry_with_toml_and_function_literals() {
 	$if !macos && !linux {
 		return

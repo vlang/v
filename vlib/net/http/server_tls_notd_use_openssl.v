@@ -43,6 +43,7 @@ fn tls_accept_timeouts(accept_timeout time.Duration, handshake_fallback time.Dur
 
 // listen_and_serve_tls is the TLS counterpart of listen_and_serve. It is
 // dispatched to by listen_and_serve when `s.cert` and `s.cert_key` are set.
+@[unsafe]
 fn (mut s Server) listen_and_serve_tls() {
 	// Pick a default port that's distinct from the plain-HTTP default if the
 	// user hasn't overridden it.

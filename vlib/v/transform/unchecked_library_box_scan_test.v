@@ -63,6 +63,7 @@ fn test_unchecked_box_scan_falls_back_for_incomplete_or_reordered_declaration_in
 	assert t.unchecked_library_box_nodes().len == 0
 }
 
+@[unsafe]
 fn test_unchecked_box_scan_preserves_full_and_generic_builds_and_nil_checker() {
 	mut a, checker, _ := unchecked_box_scan_fixture()
 	mut tc := checker

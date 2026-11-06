@@ -607,7 +607,7 @@ $if darwin && sokol_metal ?&& gg_multiwindow ? {
 		}
 	}
 
-	@[markused]
+	@[markused; unsafe]
 	fn appkit_readback_window_native(mut app App, window WindowId) !(voidptr, voidptr, int) {
 		mut pointers := []voidptr{len: 2, init: unsafe { nil }}
 		mut framebuffer_only := []int{len: 1, init: -2}
@@ -820,6 +820,7 @@ fn test_appkit_metal_readback_rendererless_honesty_red() {
 	}
 }
 
+@[unsafe]
 fn test_appkit_metal_readback_frame_region_and_exactly_once_red() {
 	$if darwin && sokol_metal ?&& gg_multiwindow ? {
 		if !appkit_readback_runtime_requested() {
@@ -919,6 +920,7 @@ fn test_appkit_metal_readback_cancel_exactly_once_red() {
 	}
 }
 
+@[unsafe]
 fn test_appkit_metal_readback_cancel_preserves_matching_sibling_slot_runtime_red() {
 	$if darwin && sokol_metal ?&& gg_multiwindow ? {
 		if !appkit_readback_runtime_requested() {
@@ -981,6 +983,7 @@ fn test_appkit_metal_readback_cancel_preserves_matching_sibling_slot_runtime_red
 	}
 }
 
+@[unsafe]
 fn test_appkit_metal_readback_offscreen_slot_two_windows_and_odd_widths_red() {
 	$if darwin && sokol_metal ?&& gg_multiwindow ? {
 		if !appkit_readback_runtime_requested() {
@@ -1156,6 +1159,7 @@ fn test_appkit_metal_readback_mixed_window_submit_and_callback_error_red() {
 	}
 }
 
+@[unsafe]
 fn test_appkit_metal_readback_completion_barrier_and_deferred_failure_red() {
 	$if darwin && sokol_metal ?&& gg_multiwindow ? {
 		if !appkit_readback_runtime_requested() {
@@ -1234,6 +1238,7 @@ fn test_appkit_metal_readback_completion_barrier_and_deferred_failure_red() {
 	}
 }
 
+@[unsafe]
 fn test_appkit_metal_readback_ready_result_is_reaped_on_teardown_red() {
 	$if darwin && sokol_metal ?&& gg_multiwindow ? {
 		if !appkit_readback_runtime_requested() {
@@ -1271,6 +1276,7 @@ fn test_appkit_metal_readback_ready_result_is_reaped_on_teardown_red() {
 	}
 }
 
+@[unsafe]
 fn test_appkit_metal_readback_hook_reinstalls_after_renderer_restart_red() {
 	$if darwin && sokol_metal ?&& gg_multiwindow ? {
 		if !appkit_readback_runtime_requested() {

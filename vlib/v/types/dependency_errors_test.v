@@ -25,6 +25,7 @@ fn dependency_checker_source(source string, parallel bool) !TypeChecker {
 	return tc
 }
 
+@[unsafe]
 fn test_dependency_function_values_keep_their_errors() {
 	for source in [
 		'module main\nimport dep\nfn main() { f := dep.rename; println(f(dep.Item{})) }\n',

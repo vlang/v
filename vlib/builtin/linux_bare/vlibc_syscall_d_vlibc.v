@@ -391,6 +391,7 @@ $if !i386 {
 	}
 
 	// vlibc_sys_mmap maps memory using native protection and mapping flags.
+	@[unsafe]
 	pub fn vlibc_sys_mmap(addr voidptr, len u64, prot int, flags int, fd i64, off u64) (voidptr, VlibcErrno) {
 		rc := sys_call6(vlibc_sys_nr_mmap, u64(addr), len, u64(prot), u64(flags), u64(fd), off)
 		if i64(rc) < 0 {

@@ -4,6 +4,7 @@ import os
 import v.cmdexec
 import v.pref
 
+@[unsafe]
 fn test_fastc_optional_callback_alias_parameters_and_nested_fields_execute() {
 	$if !macos && !linux {
 		return

@@ -8,6 +8,7 @@ import fixed_array_default_mod { Request }
 // The default has to be copied after the literal closes, like an explicitly
 // set fixed-array field.
 
+@[unsafe]
 fn test_imported_struct_keeps_its_fixed_array_field_default() {
 	req := Request{
 		response: unsafe { nil }
@@ -20,6 +21,7 @@ fn test_imported_struct_keeps_its_fixed_array_field_default() {
 	assert req.revision == 0
 }
 
+@[unsafe]
 fn test_explicitly_set_field_still_wins_over_the_default() {
 	req := Request{
 		tags:     [1, 2, 3]!
@@ -32,6 +34,7 @@ fn test_explicitly_set_field_still_wins_over_the_default() {
 	assert req.id[0] == u64(0xc7b1dd30df4c8b88)
 }
 
+@[unsafe]
 fn test_heap_initializer_keeps_the_default() {
 	req := &Request{
 		response: unsafe { nil }

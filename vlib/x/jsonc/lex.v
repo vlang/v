@@ -138,6 +138,7 @@ fn (mut r LexResult) record(message string, start Pos, end int) {
 // The walk is deliberately tolerant: an unterminated string or block comment
 // stops it rather than raising an error, because the underlying JSON5 parser
 // reports malformed input with better positions than this pass could.
+@[unsafe]
 fn lex(text string) LexResult {
 	// A reference field has to be initialized explicitly, and `unsafe { nil }`
 	// is the idiom for "no violation yet".
@@ -219,6 +220,7 @@ fn is_rfc_escape(code int) bool {
 // RFC 8259 set, and an unescaped control character.
 //
 // An unterminated literal stops the scan and is left to the JSON5 parser.
+@[unsafe]
 fn lex_string(mut c Cursor, quote_code int, mut res LexResult) {
 	if quote_code == r_quote_dbl {
 		lex_string_body(mut c, quote_code, mut res)

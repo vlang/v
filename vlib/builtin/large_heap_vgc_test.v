@@ -13,6 +13,7 @@ const vgc_test_big_size = uint(vgc_arena_size + vgc_page_size)
 // runs. Its objects are never written, so on Linux, macOS and the BSDs they take address space,
 // but almost no memory. Windows commits every arena, so there it runs with VTEST_VGC_BIG_HEAP=1
 // only. VTEST_VGC_BIG_HEAP=0 turns it off on small machines.
+@[unsafe]
 fn vgc_test_big_heap_enabled() bool {
 	$if x32 {
 		return false
@@ -30,6 +31,7 @@ fn vgc_test_big_heap_enabled() bool {
 
 // vgc_test_allocate_big allocates n objects of vgc_test_big_size bytes without writing them,
 // then writes their first and last bytes, and checks that vgc finds each one from both ends.
+@[unsafe]
 fn vgc_test_allocate_big(n int) []voidptr {
 	mut objs := []voidptr{cap: n}
 	for _ in 0 .. n {
@@ -70,6 +72,7 @@ fn vgc_test_spans_of(objs []voidptr) []&VGC_Span {
 }
 
 // vgc_test_drop clears the pointers, so that a collection frees the objects.
+@[unsafe]
 fn vgc_test_drop(mut objs []voidptr) {
 	for i in 0 .. objs.len {
 		objs[i] = unsafe { nil }
@@ -77,6 +80,7 @@ fn vgc_test_drop(mut objs []voidptr) {
 	objs.clear()
 }
 
+@[unsafe]
 fn test_a_pointer_past_the_first_64_mb_of_an_object_is_found() {
 	$if vgc ? {
 		size := uint(96 * 1024 * 1024)
@@ -89,6 +93,7 @@ fn test_a_pointer_past_the_first_64_mb_of_an_object_is_found() {
 	}
 }
 
+@[unsafe]
 fn test_the_arena_table_grows() {
 	$if vgc ? {
 		start := vgc_heap.narenas

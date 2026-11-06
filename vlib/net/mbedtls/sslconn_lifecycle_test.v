@@ -1,5 +1,6 @@
 module mbedtls
 
+@[unsafe]
 fn test_shutdown_releases_unconnected_client_context() ! {
 	mut conn := new_ssl_conn(alpn_protocols: ['http/1.1'])!
 	assert conn.alpn_list != unsafe { nil }

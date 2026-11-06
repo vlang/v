@@ -11,6 +11,7 @@ fn mut_param_address(mut hdr MutParamHeader) u64 {
 	return u64(hdr)
 }
 
+@[unsafe]
 fn mut_param_is_nil(mut hdr MutParamHeader) bool {
 	return hdr == unsafe { nil }
 }

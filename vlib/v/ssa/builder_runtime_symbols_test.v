@@ -5,6 +5,7 @@ import v.parser
 import v.pref
 import v.types
 
+@[unsafe]
 fn test_source_c_declarations_refine_predeclared_runtime_return_types() {
 	mut p := parser.Parser.new(pref.new_preferences())
 	a := p.parse_text('extern_return_types.v', 'module main
@@ -54,6 +55,7 @@ fn main() {
 	assert found.len == 3, found.str()
 }
 
+@[unsafe]
 fn test_retained_c_symbols_do_not_select_unreachable_v_library_functions() ! {
 	dir := os.join_path(os.vtmp_dir(), 'ssa_c_symbols_${os.getpid()}')
 	os.mkdir_all(dir)!
@@ -253,6 +255,7 @@ fn test_runtime_replacement_filters_respect_module_ownership() {
 	assert !b.skip_source_fn_in_module('Decoder.decompress', 'other')
 }
 
+@[unsafe]
 fn test_runtime_replacements_preserve_nested_module_declarations() {
 	dir := os.join_path(os.vtmp_dir(), 'ssa_runtime_nested_symbols_${os.getpid()}')
 	os.mkdir_all(dir)!
@@ -286,6 +289,7 @@ pub fn check_fread() int { return 47 }
 	assert runtime_builder
 }
 
+@[unsafe]
 fn test_empty_source_module_override_preserves_builtin_ownership() {
 	dir := os.join_path(os.vtmp_dir(), 'ssa_runtime_builtin_owner_${os.getpid()}')
 	os.mkdir_all(dir)!

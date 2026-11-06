@@ -108,6 +108,7 @@ fn main() {
 	}
 }
 
+@[unsafe]
 fn test_ownership_mutable_formal_returns_keep_earlier_local_storage_diagnostics() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_mutable_formal_borrow_${os.getpid()}')
 	os.mkdir_all(root)!
@@ -141,6 +142,7 @@ fn main() {
 	}
 }
 
+@[unsafe]
 fn test_ownership_mutable_map_sources_preserve_value_and_header_semantics() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_mutable_map_source_${os.getpid()}')
 	os.mkdir_all(root)!
@@ -485,6 +487,7 @@ fn main() {}
 	assert result.exit_code == 0, result.output
 }
 
+@[unsafe]
 fn test_ownership_pointer_slot_arguments_still_reject_local_references() {
 	root := os.join_path(os.vtmp_dir(), 'ownership_pointer_slot_${os.getpid()}')
 	os.mkdir_all(root)!
