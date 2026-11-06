@@ -21,7 +21,8 @@ $if (freestanding || syscalls) && !i386 {
 	const bf_nr_lstat64 = u64(0x2000154) // lstat64 is syscall 340 in XNU
 	const bf_nr_getdirentries64 = u64(0x2000158)
 	const bf_nr_chdir = u64(0x200000c)
-	const bf_nr_nanosleep = u64(0x20000f0)
+	// __semwait_signal (XNU 334): XNU has no nanosleep syscall, so sleeping goes through it.
+	const bf_nr_semwait_signal = u64(0x200014e)
 	const bf_nr_ioctl = u64(0x2000036)
 	const bf_nr_mkdir = u64(0x2000088)
 	const bf_nr_unlink = u64(0x200000a)
@@ -280,21 +281,21 @@ $if (freestanding || syscalls) && !i386 {
 		tv_nsec i64
 	}
 
+	// bf_nanosleep sleeps `ms` milliseconds. With no semaphores and a relative timeout,
+	// __semwait_signal just waits, and it fails with ETIMEDOUT once the time has passed.
+	// XNU returns no remainder, so an interrupted wait restarts with the full interval.
 	pub fn bf_nanosleep(ms i64) int {
-		mut req := FSysTimespec{ms / 1000, 1_000_000 * (ms % 1000)}
-		mut rem := FSysTimespec{}
+		sec := u64(ms / 1000)
+		nsec := u64(1_000_000 * (ms % 1000))
 		for {
-			rc, er := sys_call2(bf_nr_nanosleep, u64(voidptr(&req)), u64(voidptr(&rem)))
-			if er == 0 {
+			_, er := sys_call6(bf_nr_semwait_signal, 0, 0, 1, 1, sec, nsec)
+			if er == 0 || er == 60 { // ETIMEDOUT: the interval has passed
 				return 0
 			}
-			ee := bf_err_of(rc, er)
-			if ee == 4 { // EINTR
-				req.tv_sec = rem.tv_sec
-				req.tv_nsec = rem.tv_nsec
+			if er == 4 { // EINTR
 				continue
 			}
-			return ee
+			return bf_err_of(0, er)
 		}
 	}
 
