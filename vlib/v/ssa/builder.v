@@ -13449,7 +13449,13 @@ fn (mut b Builder) build_prefix(node flat.Node, _id flat.NodeId) ValueID {
 				} else {
 					b.emit1(.bitcast, ptr_i8, slot)
 				}
-				channel_ptr := channel_val
+				mut channel_ptr := channel_val
+				if b.m.values[channel_val].kind == .instruction {
+					instr := b.m.instrs[b.m.values[channel_val].index]
+					if instr.op == .alloca {
+						channel_ptr = b.emit1(.load, b.deref_type(channel_val), channel_val)
+					}
+				}
 
 				if pop_id := b.fn_ids['sync.Channel.pop'] {
 					pop_fn_type := b.fn_types['sync.Channel.pop']
