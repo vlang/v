@@ -2611,7 +2611,9 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				unsafe_block_token_start = expression_tokens.len
 			}
 			if transparent.handled {
-				if opening_depth > 0 && unsafe_expression_depth == 0 && unsafe_block_result_start >= 0 && g.tok == .dot {
+				if opening_depth > 0 && unsafe_expression_depth == 0 && g.tok == .dot
+					&& unsafe_block_result_start >= 0 && unsafe_block_result_start <= result.len
+					&& unsafe_block_token_start <= expression_tokens.len {
 					// `unsafe { *y }.a`: a transparent block adds no parens, so its
 					// prefix `*` would bind to `y.a`. Group the block's value first.
 					block_source := result.str()
@@ -2994,7 +2996,20 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				receiver_tokens := expression_tokens[receiver_start..dot_index]
 				// Infer the whole receiver first: this also types parenthesized (`(x)` from an
 				// unsafe block) and call (`mk()`) roots, which infer_member_access_type cannot.
-				mut receiver_type := g.infer_expression_type(receiver_tokens) or { u32(0) }
+				// A plain local receiver is typed from its declaration directly; full inference
+				// runs once per field access, so the common case must not pay for it.
+				mut receiver_type := u32(0)
+				if receiver_tokens.len == 1 && receiver_tokens[0].tok == .name && receiver_tokens[0].typ == 0
+					&& receiver_tokens[0].lit !in g.member_smartcasts {
+					if local := g.locals[receiver_tokens[0].lit] {
+						if local.smartcast_origin_type == 0 {
+							receiver_type = local.typ
+						}
+					}
+				}
+				if receiver_type == 0 {
+					receiver_type = g.infer_expression_type(receiver_tokens) or { u32(0) }
+				}
 				if receiver_type == 0 && receiver_tokens.len >= 3 {
 					receiver_type = g.infer_member_access_type(receiver_tokens, 0, receiver_tokens.len) or { u32(0) }
 				}
