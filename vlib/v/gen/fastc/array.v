@@ -1224,6 +1224,9 @@ fn (g &Parser) render_raw_expression_tokens_impl(tokens []FastcExpressionToken, 
 				item.lit
 			} else if previous == .dot {
 				fastc_c_identifier(item.lit)
+			} else if previous == .comma && fastc_is_removed_integer_name(item.lit)
+				&& fastc_token_is_offsetof_member(tokens, i) {
+				fastc_c_identifier(item.lit)
 			} else {
 				g.resolved_expression_name(item.lit, previous)
 			}
@@ -1277,6 +1280,16 @@ fn (g &Parser) render_raw_expression_tokens_impl(tokens []FastcExpressionToken, 
 		previous_module_separator = module_separator
 	}
 	return g.render_enum_alias_member_references(tokens, fastc_take_string(mut result))
+}
+
+// __offsetof's second argument names a field even when a local has the same name.
+// Raw rendering is also used for nested calls and array elements, after the
+// streaming expression reader has already resolved the field correctly.
+fn fastc_token_is_offsetof_member(tokens []FastcExpressionToken, index int) bool {
+	prefix := tokens[..index + 1]
+	open := fastc_innermost_open_index(prefix)
+	return open > 0 && prefix[open].tok == .lpar && prefix[open - 1].lit == '__offsetof'
+		&& fastc_call_argument_index(prefix, open) == 1
 }
 
 fn (g &Parser) expression_dot_is_module_separator(tokens []FastcExpressionToken, index int) bool {

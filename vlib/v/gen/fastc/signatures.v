@@ -1517,14 +1517,7 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 			parameter_is_mut = true
 			tok = look.scan()
 		}
-		if tok == .name && (look.lit == 'isize' || look.lit == 'usize') {
-			mut next := look
-			if next.scan() in [.comma, .semicolon, .rpar] {
-				return error('fastc parser does not support ${fastc_removed_integer_type(look.lit)} in ${path}')
-			}
-		}
-		if !fastc_parameter_is_type_only(look, tok, path, module_name, imports, declared_types,
-			allow_short_placeholders) {
+		if !fastc_parameter_is_type_only(look, tok, path, module_name, imports, declared_types, allow_short_placeholders) {
 			tok = look.scan()
 		}
 		parameter_type_source_id_2_2_2_2, next_token := fastc_scan_type(mut look, tok, path, module_name, imports, declared_types, allow_short_placeholders)!
@@ -1564,7 +1557,26 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 fn fastc_parameter_is_type_only(scan scanner.Scanner, first token.Token, path string, module_name string, imports map[string]string, declared_types map[u32]bool, allow_short_placeholders bool) bool {
 	mut look := scan
 	_, next_token := fastc_scan_type(mut look, first, path, module_name, imports, declared_types,
-		allow_short_placeholders) or { return false }
+		allow_short_placeholders) or {
+		if !err.msg().contains(fastc_removed_integer_type('isize'))
+			&& !err.msg().contains(fastc_removed_integer_type('usize')) {
+			return false
+		}
+		// A removed spelling can still be a parameter name or an array dimension
+		// in a named parameter, as in `usize []int` or `map [usize]int`.
+		if first in [.name, .key_shared, .key_module, .key_type] {
+			mut named := scan
+			type_token := named.scan()
+			if _, after_type := fastc_scan_type(mut named, type_token, path, module_name,
+				imports, declared_types, allow_short_placeholders) {
+				if after_type in [.comma, .semicolon, .rpar] {
+					return false
+				}
+			}
+		}
+		// Preserve the removed-type diagnostic when there is no valid named form.
+		return true
+	}
 	return next_token in [.comma, .semicolon, .rpar]
 }
 

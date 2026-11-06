@@ -367,7 +367,13 @@ fn (g &Parser) capture_type_source(typ_id u32) ?string {
 		return 'map[' + g.capture_type_source(key)? + ']' + g.capture_type_source(value)?
 	}
 	if fastc_primitive_c_type_id(typ_id) != none {
-		return typ
+		// Capture parameters are parsed as V source again, so private integer
+		// spellings must use their public names, including within composite types.
+		return match typ_id {
+			flat.source_type_isize { 'int' }
+			flat.source_type_usize { 'uint' }
+			else { typ }
+		}
 	}
 	signature := g.functions[typ] or { g.mono_functions[typ] or { fastc_callable_signature(typ_id) or { FastcFunctionSignature{} } } }
 	if signature.return_type != 0 {

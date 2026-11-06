@@ -2350,10 +2350,7 @@ fn (mut g Parser) render_expression_stream_token(mut expression_tokens []FastcEx
 		if stored_tok == .name && previous_token != .dot && fastc_is_removed_integer_name(g.lit) {
 			// __offsetof's second operand is a member, even if a local shares its name.
 			if previous_token == .comma {
-				open := fastc_innermost_open_index(expression_tokens)
-				offsetof_member = open > 0 && expression_tokens[open].tok == .lpar
-					&& expression_tokens[open - 1].lit == '__offsetof'
-					&& fastc_call_argument_index(expression_tokens, open) == 1
+				offsetof_member = fastc_token_is_offsetof_member(expression_tokens, expression_tokens.len - 1)
 			}
 			if !offsetof_member && g.expression_name_is_type_argument(expression_tokens) {
 				return g.unsupported(fastc_removed_integer_type(g.lit))
