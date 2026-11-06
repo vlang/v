@@ -8,8 +8,9 @@ fn test_mixed_multi_return_arguments_preserve_fixed_array_reference_checks() {
 		mut a := flat.FlatAst.new()
 		mut tc := types.TypeChecker.new(&a)
 		mut t := new_transformer(mut a, &tc, map[string]bool{})
-		pair_type := types.Type(types.MultiReturn{ types: [types.Type(types.int_),
-			types.Type(types.int_)] })
+		pair_type := types.Type(types.MultiReturn{
+			types: [types.Type(types.int_), types.Type(types.int_)]
+		})
 		pair := if snapshot {
 			t.make_ident('pair_snapshot')
 		} else {
