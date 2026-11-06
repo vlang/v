@@ -109,7 +109,7 @@ fn population_test_state(root string, cold_modules []string, module_sources map[
 	return state
 }
 
-fn test_large_cache_population_of_compiler_modules() ! {
+fn test_large_cache_population_is_bounded() ! {
 	root := os.join_path(os.vtmp_dir(), 'v3_population_gate_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root)!
@@ -123,37 +123,49 @@ fn test_large_cache_population_of_compiler_modules() ! {
 		'small': [small]
 		'again': [small]
 	}
-	limit := compiler_tree_large_cold_cache_node_limit
+	limit := large_cold_cache_population_node_limit
+	compiler_limit := compiler_tree_large_cold_cache_node_limit
 	large := scoped_large_cold_cache_node_limit
-	// Other programs keep the bypass, and so does a graph above the limit.
+	// A graph beyond the scoped limit may populate the cache within these bounds.
 	warm := population_test_state(root, [], sources)
-	assert v3_large_cache_population(false, warm, large) == .bypass
-	assert v3_large_cache_population(true, warm, limit) == .bypass
+	assert v3_large_cache_population(false, warm, large) == .populate
+	// Existing cache hits are not limited by cold-population bounds.
+	assert v3_large_cache_population(false, warm, limit) == .populate
+	assert v3_large_cache_population(true, warm, compiler_limit) == .populate
+	assert v3_large_cache_population(false, warm, limit - 1) == .populate
+	assert v3_large_cache_population(true, warm, compiler_limit - 1) == .populate
 	// Nothing to publish: no lock is needed.
-	assert v3_large_cache_population(true, warm, limit - 1) == .populate
 	assert !os.exists(os.join_path(warm.manager.dir, v3_cache_population_lock_name))
 
 	cold := population_test_state(root, ['small'], sources)
-	assert v3_large_cache_population(false, cold, large) == .bypass
-	assert v3_large_cache_population(true, cold, limit - 1) == .populate
+	assert v3_large_cache_population(false, cold, large) == .populate
+	assert v3_large_cache_population(false, cold, limit - 1) == .populate
+	// Cold population above the bound keeps the bypass.
+	assert v3_large_cache_population(false, cold, limit) == .bypass
+	assert v3_large_cache_population(true, cold, compiler_limit) == .bypass
 	assert os.exists(os.join_path(cold.manager.dir, v3_cache_population_lock_name))
 	// Asking again keeps the lock this build already holds. (On POSIX a process can
 	// take its own record lock again anyway; Windows refuses a second handle.)
-	assert v3_large_cache_population(true, cold, limit - 1) == .populate
+	assert v3_large_cache_population(false, cold, limit - 1) == .populate
 
 	// The sources of every imported module count, cached or not, each file once.
 	huge := os.join_path(root, 'huge.v')
-	os.write_file(huge, 'x'.repeat(int(compiler_tree_large_cold_cache_source_limit) + 1))!
+	os.write_file(huge, 'x')!
 	mut huge_sources := sources.clone()
 	huge_sources['huge'] = [huge]
 	too_large := population_test_state(root, ['small'], huge_sources)
-	assert v3_cache_module_source_bytes(too_large) == compiler_tree_large_cold_cache_source_limit +
-		1 + os.file_size(small)
-	assert v3_large_cache_population(true, too_large, limit - 1) == .bypass
+	os.truncate(huge, u64(large_cold_cache_population_source_limit + 1 - os.file_size(small)))!
+	assert v3_cache_module_source_bytes(too_large) == large_cold_cache_population_source_limit + 1
+	assert v3_large_cache_population(false, too_large, limit - 1) == .bypass
 	// The limit itself is admitted.
-	os.write_file(huge, 'x'.repeat(int(compiler_tree_large_cold_cache_source_limit - os.file_size(small))))!
-	assert v3_cache_module_source_bytes(too_large) == compiler_tree_large_cold_cache_source_limit
-	assert v3_large_cache_population(true, too_large, limit - 1) == .populate
+	os.truncate(huge, u64(large_cold_cache_population_source_limit - os.file_size(small)))!
+	assert v3_cache_module_source_bytes(too_large) == large_cold_cache_population_source_limit
+	assert v3_large_cache_population(false, too_large, limit - 1) == .populate
+	// Compiler-module tests retain lower node and source bounds.
+	os.truncate(huge, u64(compiler_tree_large_cold_cache_source_limit + 1 - os.file_size(small)))!
+	assert v3_large_cache_population(true, too_large, limit - 1) == .bypass
+	os.truncate(huge, u64(compiler_tree_large_cold_cache_source_limit - os.file_size(small)))!
+	assert v3_large_cache_population(true, too_large, compiler_limit - 1) == .populate
 	// The builtin bundle counts too.
 	bundled := V3ModuleCacheState{
 		manager:        too_large.manager
