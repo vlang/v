@@ -3175,6 +3175,13 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 				if default_source == '' {
 					return error('fastc parser does not support empty default for struct `${name}` embedded field `${field_names[0]}` in ${source_file.path}')
 				}
+				// Embedded fields do not carry skip/required flags, so refuse them rather than ignore them.
+				mut embedded_attribute_is_required := false
+				mut embedded_attribute_is_skip := false
+				tok, embedded_attribute_is_required, embedded_attribute_is_skip = fastc_skip_struct_field_attributes(mut scan, tok)!
+				if embedded_attribute_is_required || embedded_attribute_is_skip {
+					return error('fastc parser does not support @[skip] or @[required] on embedded field `${field_names[0]}` with a default in ${source_file.path}')
+				}
 			}
 			if !is_c_struct {
 				out.writeln('\t${fastc_c_declared_type_name(flat.source_type_name(embedded_key))} __embedded_${embedded_id};')
@@ -3236,15 +3243,14 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 		if field_option_value != 0 {
 			fastc_register_composite_type(field_option_value, mut composite_types)
 		}
+		// Attributes may come before or after the default: `T @[a] = v` and `T = v @[a]`.
+		mut attribute_is_required := false
+		mut attribute_is_skip := false
 		mut is_required := false
 		mut is_skip := false
-		for tok == .attribute {
-			mut attribute_is_required := false
-			mut attribute_is_skip := false
-			tok, attribute_is_required, attribute_is_skip = fastc_scan_struct_field_attribute(mut scan)!
-			is_required = is_required || attribute_is_required
-			is_skip = is_skip || attribute_is_skip
-		}
+		tok, attribute_is_required, attribute_is_skip = fastc_skip_struct_field_attributes(mut scan, tok)!
+		is_required = is_required || attribute_is_required
+		is_skip = is_skip || attribute_is_skip
 		mut default_source := ''
 		mut default_source_offset := 0
 		if tok == .assign {
@@ -3256,6 +3262,9 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 			if default_source == '' {
 				return error('fastc parser does not support empty default for struct `${name}` field `${field_names[0]}` in ${source_file.path}')
 			}
+			tok, attribute_is_required, attribute_is_skip = fastc_skip_struct_field_attributes(mut scan, tok)!
+			is_required = is_required || attribute_is_required
+			is_skip = is_skip || attribute_is_skip
 		}
 		for field_name in field_names {
 			c_field_name := fastc_c_identifier(field_name)

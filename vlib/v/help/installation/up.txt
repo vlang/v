@@ -38,6 +38,7 @@ Options:
   -skills            Refresh the installed agent skills that fell behind, in
                      ~/.agents/skills, like `v skills update --global` does.
   -skip_v_self       Rebuild with make or makev.bat instead of `v self`.
+                     Windows ARM64 uses the native PowerShell bootstrap script.
   -skip_current      Recompile even when the checkout is already at the
                      revision.
   -h, -help, --help  Show this help and exit.

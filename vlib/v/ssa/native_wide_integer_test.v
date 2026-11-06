@@ -19,6 +19,9 @@ fn probe(signed i64, unsigned u64) {
     remainder := other % u128(3)
     narrowed := u64(other)
     pointer := &value
+    equal := value == i128(other)
+    less := value < i128(-1)
+    at_least := other >= u128(1)
     same_pointer := pointer == pointer
     copy := unsafe { *pointer }
 }
@@ -125,7 +128,7 @@ fn main() {}
 	assert eq_count >= 10
 	assert unsigned_low_comparisons >= 12
 	assert signed_high_comparisons >= 4
-	assert selects == 8
+	assert selects == 0
 }
 
 fn test_unsupported_wide_integer_operations_fail_before_scalar_lowering() {
@@ -158,7 +161,7 @@ fn main() {
 ') or { panic(err) }
 	built := cmdexec.run(@VEXE, ['-gc', 'none', '-o', driver, driver_source])
 	assert built.exit_code == 0, built.output
-	mut cases := [
+	cases := [
 		'fn probe(x u128, y u128) u128 { return x * y }',
 		'fn probe(x i128, y i128) i128 { return x / y }',
 		'fn probe(x i128, y i128) i128 { return x % y }',

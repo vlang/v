@@ -239,7 +239,7 @@ fn (mut b Builder) generate_native_float_trimmed_body(func_id int) {
 	data_ptr := b.block_struct_field_ptr(prepare, s_slot, b.str_type, 0)
 	len_ptr := b.block_struct_field_ptr(prepare, s_slot, b.str_type, 1)
 	data := b.block_instr1(.load, prepare, ptr_i8, data_ptr)
-	len32 := b.block_instr1(.load, prepare, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(prepare, len_ptr)
 	len := b.block_instr1(.zext, prepare, b.i64_type, len32)
 	b.block_instr2(.store, prepare, b.void_type, zero, i_slot)
 	b.block_instr2(.store, prepare, b.void_type, minus_one, dot_slot)

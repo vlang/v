@@ -169,6 +169,7 @@ inventory.
 | `ubuntu-22.04` | Some sanitizer, release, and architecture lanes. |
 | `windows-2025` | GCC Windows lane and selected Windows checks. |
 | `windows-2022` | MSVC and TCC Windows lanes. |
+| `windows-11-arm` | Native ARM64 Windows release artifact lane. |
 | `macos-14` | Apple Silicon CI lanes. |
 | `macos-15-intel` | Intel macOS release artifact lane. |
 | `*-latest` | Small utility, smoke, or intentionally floating lanes. |
@@ -177,10 +178,31 @@ Current release and artifact exceptions that intentionally use floating runners:
 
 - `release_ci.yml` uses `windows-latest` for `v_windows.zip` so the published
   Windows artifact tracks GitHub's current hosted Windows toolchain.
+- Its `windows-11-arm` lane builds `v_windows_arm64.zip` with native MSVC tools using
+  `cmd/tools/builders/windows_arm64_release.ps1`. The script checks PE architecture
+  for the x64 bootstrap and the native ARM64 compiler stages, application smoke test,
+  and release tools. The transient x64 bootstrap runs under Windows 11's emulation;
+  all shipped binaries are ARM64.
+  The ARM64 package uses `-cc msvc` and does not contain the x64 TCC bundle.
+  Tags that predate the ARM64 bootstrap script skip this lane and its archive.
 - `release_ci.yml` uses `ubuntu-latest` only for the release publishing job; the
   job assembles already-built artifacts and does not compile platform binaries.
 - `prebuilt.yml` uses `macos-latest` and `windows-latest` to smoke-test the
   published release ZIPs against GitHub's current hosted macOS and Windows images.
+
+## Ecosystem module cache
+
+`make` warms separate core module cache entries for native programs and tests, using
+the same compiler and GC flags for both. Keep its C compiler configuration aligned
+with the later builds: the macOS GUI jobs select `-cc clang`
+before `make`, matching the GUI script. The other app and VPM jobs retain their
+default compiler selection. Explicit compiler, debug, and production options use
+their own cache configurations, as do different C flags and interface implementations.
+
+`should-compile-all` uses the default C backend for ordinary native examples so they
+can link the cached modules. It still selects JS and Wasm for their filename suffixes
+and overrides an inherited backend when selecting C examples. An explicit `-b c`
+requests a complete C translation unit and bypasses the module cache.
 
 ## Apt package cache profiles
 
@@ -204,12 +226,30 @@ When migrating a workflow, keep the job's explicit install step until CI proves 
 profile is sufficient. The cache action speeds up installs; it should not hide which
 packages the workflow actually needs.
 
+## MemorySanitizer dependencies
+
+The `memory-clang` self-test job builds a pinned libpq with MemorySanitizer, including its
+bundled support objects. The distribution library is not instrumented and can leave sanitizer
+shadow memory stale when it constructs buffers inside `PQconnectdb`. The job selects the private
+build through `PKG_CONFIG_PATH` and `LD_LIBRARY_PATH`; PostgreSQL tests keep their normal
+assertions.
+The other sanitizer jobs continue using the distribution library. OpenSSL remains a system
+dependency, so this does not claim that every external library has MemorySanitizer coverage.
+
+## Release upgrade checks
+
+The upgrade checks in `vup_works.yml` extract release ZIPs with `ditto` on macOS and
+`unzip` on Linux. The macOS archives contain symbolic links for their bundled libraries.
+All four upgrade scenarios start with a fresh extraction and stop if extraction fails
+or the released compiler is missing or not executable.
+
 ## Rebuilding release binaries
 
 `Release CI` builds without publishing when its workflow file changes on `master`.
 To publish ZIPs for an existing `weekly.*` or `0.*` tag, dispatch the workflow from `master`
 and set `release_tag`, for example `weekly.2026.41`. It checks out and verifies that tag,
-builds all five platform archives, and attaches them to the corresponding release. Existing
+builds the five original platform archives and, when supported by the tag, Windows ARM64,
+and attaches them to the corresponding release. Existing
 assets with the same filenames are replaced; release descriptions, names, and prerelease status
 are kept. The publishing job runs only after every platform build succeeds, and upload errors
 fail it. Tag pushes do not start workflows.

@@ -28,11 +28,11 @@ fn test_source_type_readers_can_finish_on_an_old_index_after_growth() {
 	text := 'source_types.Snapshot'
 	id := source_type_id(text)
 	mut table := source_type_table_load()
-	previous := source_type_index_load(table)
+	previous := source_type_index_load()
 	source_type_lock()
 	table.grow()
 	C.atomic_store_u32(&g_source_types_lock, 0)
-	assert previous != source_type_index_load(table)
+	assert previous != source_type_index_load()
 	assert source_type_find(table, previous, text, u32(hash.sum64_string(text, 0))) == id
 	assert source_type_id(text) == id
 	new_text := 'source_types.AfterGrowth'
@@ -57,13 +57,13 @@ fn test_source_type_hash_fingerprint_collision_checks_complete_spellings() {
 	assert source_type_name(left) == left_text
 	assert source_type_name(right) == right_text
 	mut table := source_type_table_load()
-	previous := source_type_index_load(table)
+	previous := source_type_index_load()
 	assert source_type_find(table, previous, left_text, u32(left_hash)) == left
 	assert source_type_find(table, previous, right_text, u32(right_hash)) == right
 	source_type_lock()
 	table.grow()
 	C.atomic_store_u32(&g_source_types_lock, 0)
-	current := source_type_index_load(table)
+	current := source_type_index_load()
 	assert current != previous
 	assert source_type_find(table, current, left_text, u32(left_hash)) == left
 	assert source_type_find(table, current, right_text, u32(right_hash)) == right
@@ -132,4 +132,26 @@ fn test_source_type_index_and_spelling_outlive_the_inserting_worker() {
 	id := handle.wait()
 	assert source_type_name(id) == 'source_types.Disposable'
 	assert source_type_id('source_types.Disposable') == id
+}
+
+fn test_source_type_growth_retains_all_index_generations() {
+	text := 'source_types.RetainedGeneration'
+	id := source_type_id(text)
+	mut table := source_type_table_load()
+	previous := source_type_index_load()
+	source_type_lock()
+	for _ in 0 .. 3 {
+		table.grow()
+	}
+	C.atomic_store_u32(&g_source_types_lock, 0)
+	mut index := source_type_index_load()
+	// Reach every replaced generation through the owner, as a reader holding
+	// any of those snapshots may still be probing its slots after publication.
+	for _ in 0 .. 3 {
+		assert !isnil(index.previous)
+		assert index.capacity == index.previous.capacity * 2
+		assert source_type_find(table, index.previous, text, u32(hash.sum64_string(text, 0))) == id
+		index = index.previous
+	}
+	assert voidptr(index) == voidptr(previous)
 }

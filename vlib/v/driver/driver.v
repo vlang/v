@@ -1909,11 +1909,13 @@ fn write_c_object_manifest(manifest_path string, object_path string, dependencie
 fn c_object_compiler_identity(compiler string, mut stats CObjectCacheStats) (string, string) {
 	compiler_path := os.find_abs_path_of_executable(compiler) or { compiler }
 	if compiler_path in stats.compiler_versions {
-		return compiler_path, stats.compiler_versions[compiler_path]
+		return compiler_path, stats.compiler_versions[compiler_path] + '\x00' + v3_link_environment_signature()
 	}
 	version := c_object_compiler_version(compiler, compiler_path)
 	stats.compiler_versions[compiler_path] = version
-	return compiler_path, version
+	// Dependency manifests describe the previous header search, not the files
+	// selected after a change to CPATH, INCLUDE, or the active SDK.
+	return compiler_path, version + '\x00' + v3_link_environment_signature()
 }
 
 // c_object_compiler_version returns the output of `compiler --version`. TinyCC
@@ -11705,6 +11707,7 @@ pub fn run(args []string) {
 	reusable_c_output := keep_c || backend_explicit || dump_c_flags.len > 0
 	cache_salt := [
 		'cc=${cc_identity}',
+		'c_environment=${v3_link_environment_signature()}',
 		'tcc_dylib=${tcc_dylib}',
 		'ccompiler=${prefs.ccompiler}',
 		'vexe=${compiler_executable_identity}',
@@ -18912,6 +18915,7 @@ fn v3_cached_object_compile_signature(compiler V3CachedObjectCompiler, c_standar
 	flags = flags.filter(!c_flag_is_object_file(it))
 	mut signature := [
 		'native_owner_protocol=program-prefix-v1',
+		'c_environment=${v3_link_environment_signature()}',
 		'objective_c=${objective_c}',
 		'c_standard=${c_standard.trim_space()}',
 		'optimization=${opt_flag.trim_space()}',

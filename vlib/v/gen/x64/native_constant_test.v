@@ -61,7 +61,7 @@ fn assert_native_integer_constant_storage(m &ssa.Module) {
 		typ := m.type_store.types[globals[0].typ]
 		if name == 'dynamic_values' {
 			assert typ.kind == .struct_t
-			assert m.type_size(globals[0].typ) == 32
+			assert m.type_size(globals[0].typ) == 48
 		} else {
 			assert typ.kind == .array_t, name
 			assert typ.len == 3
@@ -255,7 +255,7 @@ fn native_constant_fixture(name string, sources []string) os.Result {
 		for global_name in ['__const_ssa__bench_runtime_stub_names', '__const_neighboring'] {
 			globals := m.globals.filter(it.name == global_name)
 			assert globals.len == 1, global_name
-			assert m.type_size(globals[0].typ) == 32, global_name
+			assert m.type_size(globals[0].typ) == 48, global_name
 		}
 	}
 	mut g := Gen.new(m)

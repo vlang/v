@@ -1,12 +1,14 @@
 module ssa
 
+import v.flat
+
 fn (mut b Builder) register_native_string_format_helpers() {
 	for name in ['v3_string_zpad', 'v3_f64_zpad'] {
 		id := b.register_synthetic_function(name, b.str_type, [b.str_type, b.i32_type])
 		b.generate_native_string_zpad_body(id, name == 'v3_f64_zpad')
 	}
 	for name, value_type in {
-		'v3_int_zpad': b.i32_type
+		'v3_int_zpad': b.resolve_type(flat.source_type_int)
 		'v3_i64_zpad': b.i64_type
 		'v3_u64_zpad': b.u64_type
 	} {
@@ -42,7 +44,7 @@ fn (mut b Builder) generate_native_string_zpad_body(func_id int, is_float bool) 
 	data_ptr := b.block_struct_field_ptr(entry, s_slot, b.str_type, 0)
 	len_ptr := b.block_struct_field_ptr(entry, s_slot, b.str_type, 1)
 	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
-	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(entry, len_ptr)
 	len := b.block_instr1(.zext, entry, b.i64_type, len32)
 	already_wide := b.block_instr2(.ge, entry, b.i1_type, len32, width)
 	original := b.m.add_block(func_id, 'zpad_original')
@@ -146,7 +148,7 @@ fn (mut b Builder) generate_native_upper_ascii_body(func_id int) {
 	data_ptr := b.block_struct_field_ptr(entry, s_slot, b.str_type, 0)
 	len_ptr := b.block_struct_field_ptr(entry, s_slot, b.str_type, 1)
 	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
-	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(entry, len_ptr)
 	len := b.block_instr1(.zext, entry, b.i64_type, len32)
 	zero := b.m.get_or_add_const(b.i64_type, '0')
 	one := b.m.get_or_add_const(b.i64_type, '1')
@@ -196,7 +198,7 @@ fn (mut b Builder) generate_native_plus_sign_body(func_id int) {
 	s_slot := b.block_instr0(.alloca, entry, b.m.type_store.get_ptr(b.str_type))
 	b.block_instr2(.store, entry, b.void_type, s, s_slot)
 	len_ptr := b.block_struct_field_ptr(entry, s_slot, b.str_type, 1)
-	len := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	len := b.block_load_native_int(entry, len_ptr)
 	zero := b.m.get_or_add_const(b.i32_type, '0')
 	nonempty := b.block_instr2(.gt, entry, b.i1_type, len, zero)
 	check_sign := b.m.add_block(func_id, 'plus_sign_check')
@@ -227,7 +229,7 @@ fn (mut b Builder) generate_native_rpad_zero_body(func_id int) {
 	s_slot := b.block_instr0(.alloca, entry, b.m.type_store.get_ptr(b.str_type))
 	b.block_instr2(.store, entry, b.void_type, s, s_slot)
 	len_ptr := b.block_struct_field_ptr(entry, s_slot, b.str_type, 1)
-	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(entry, len_ptr)
 	already_wide := b.block_instr2(.ge, entry, b.i1_type, len32, width)
 	original := b.m.add_block(func_id, 'rpad_original')
 	pad := b.m.add_block(func_id, 'rpad_fill')

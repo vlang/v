@@ -286,9 +286,9 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 	b.f64_type = b.m.type_store.get_float(64)
 	mut str_fields := []TypeID{}
 	str_fields << b.m.type_store.get_ptr(b.i8_type)
-	str_fields << b.i32_type
+	str_fields << b.resolve_type(flat.source_type_int)
 	// Keep `is_lit` named so string ownership checks resolve its target-specific offset.
-	str_fields << b.i32_type
+	str_fields << b.resolve_type(flat.source_type_int)
 	mut str_field_names := []string{}
 	str_field_names << 'str'
 	str_field_names << 'len'
@@ -301,11 +301,11 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	mut array_fields := []TypeID{}
 	array_fields << ptr_i8
+	array_fields << b.resolve_type(flat.source_type_int)
+	array_fields << b.resolve_type(flat.source_type_int)
+	array_fields << b.resolve_type(flat.source_type_int)
 	array_fields << b.i32_type
-	array_fields << b.i32_type
-	array_fields << b.i32_type
-	array_fields << b.i32_type
-	array_fields << b.i32_type
+	array_fields << b.resolve_type(flat.source_type_int)
 	mut array_field_names := []string{}
 	array_field_names << 'data'
 	array_field_names << 'offset'
@@ -376,6 +376,7 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 		b.build_native_initialization()
 	}
 	if b.m.target.ptr_size == 4 { b.canonicalize_internal_function_refs() }
+	if b.m.target.ptr_size == 8 { b.materialize_native_string_literals() }
 	return b.m
 }
 
@@ -466,7 +467,11 @@ fn (mut b Builder) register_types() {
 				field_type_name_id := native_c_struct_field_type(node.value_text(), f.value) or {
 					qualify_type_ref_name(declared_type, cur_module)
 				}
-				field_type := b.resolve_struct_storage_type(field_type_name_id, cur_module)
+				field_type := if node.value_text().starts_with('C.') {
+					b.resolve_c_struct_storage_type(field_type_name_id)
+				} else {
+					b.resolve_struct_storage_type(field_type_name_id, cur_module)
+				}
 				field_types << field_type
 				field_names << f.value
 				b.struct_field_types.set_id(node.value_text() + '.' + f.value, field_type_name_id)
@@ -1490,7 +1495,11 @@ fn (mut b Builder) register_globals() {
 						'g_main_argc' { b.i64_type }
 						'g_main_argv' { b.m.type_store.get_ptr(b.m.type_store.get_ptr(b.i8_type)) }
 						else {
-							b.resolve_struct_storage_type(type_name, cur_module)
+							if f.value.starts_with('C.') {
+								b.resolve_c_struct_storage_type(type_name)
+							} else {
+								b.resolve_struct_storage_type(type_name, cur_module)
+							}
 						}
 					}
 					if f.value.starts_with('C.') {
@@ -2095,7 +2104,7 @@ fn (mut b Builder) register_functions() {
 		if b.tc != unsafe { nil } {
 			if checked := b.tc.fn_ret_types[checker_name] {
 				if checker_type_contains_function(checked) {
-					ret_type = b.ssa_type_from_checker_type(checked)
+					ret_type = b.ssa_c_type_from_checker_type(checked)
 				}
 			}
 		}
@@ -2111,7 +2120,7 @@ fn (mut b Builder) register_functions() {
 				mut param_type := b.resolve_c_decl_type(child.typ)
 				if checked := b.checker_param_type(checker_name, '', param_types.len) {
 					if checker_type_contains_function(checked) {
-						param_type = b.ssa_type_from_checker_type(checked)
+						param_type = b.ssa_c_type_from_checker_type(checked)
 					}
 				}
 				param_types << param_type
@@ -2868,6 +2877,7 @@ fn (mut b Builder) block_instr0(op OpCode, block_id BlockID, typ TypeID) ValueID
 
 // block_instr1 supports block instr1 handling for Builder.
 fn (mut b Builder) block_instr1(op OpCode, block_id BlockID, typ TypeID, a ValueID) ValueID {
+	if op in [.zext, .sext, .trunc] && typ == b.value_type(a) { return a }
 	mut ops := []ValueID{}
 	ops << a
 	return b.m.add_instr(op, block_id, typ, ops)
@@ -2906,33 +2916,7 @@ fn (mut b Builder) block_struct_field_ptr(block_id BlockID, base_addr ValueID, t
 		mut builtin_field_type := TypeID(0)
 		mut builtin_offset := 0
 		mut has_builtin_layout := false
-		if typ_id == b.str_type {
-			has_builtin_layout = true
-			if field_idx == 0 {
-				builtin_field_type = b.m.type_store.get_ptr(b.i8_type)
-				builtin_offset = 0
-			} else if field_idx == 1 {
-				builtin_field_type = b.i32_type
-				builtin_offset = 8
-			} else if field_idx == 2 {
-				// is_lit (i32) shares the trailing word with len; it sits at offset 12,
-				// matching `struct_field_offset` used by the field readers.
-				builtin_field_type = b.i32_type
-				builtin_offset = 12
-			} else {
-				builtin_field_type = b.i64_type
-				builtin_offset = field_idx * 8
-			}
-		} else if typ_id == b.array_type {
-			has_builtin_layout = true
-			if field_idx == 0 {
-				builtin_field_type = b.m.type_store.get_ptr(b.i8_type)
-				builtin_offset = 0
-			} else {
-				builtin_field_type = b.i32_type
-				builtin_offset = 8 + (field_idx - 1) * 4
-			}
-		} else if typ_id == b.map_state_type {
+		if typ_id == b.map_state_type {
 			has_builtin_layout = true
 			builtin_field_type = b.m.type_store.types[typ_id].fields[field_idx]
 			builtin_offset = if b.m.target.ptr_size == 8 {
@@ -2962,7 +2946,7 @@ fn (mut b Builder) block_struct_field_ptr(block_id BlockID, base_addr ValueID, t
 // block_load_array_int_field supports block load array int field handling for Builder.
 fn (mut b Builder) block_load_array_int_field(block_id BlockID, arr_ptr ValueID, field_idx int) ValueID {
 	field_ptr := b.block_struct_field_ptr(block_id, arr_ptr, b.array_type, field_idx)
-	field32 := b.block_instr1(.load, block_id, b.i32_type, field_ptr)
+	field32 := b.block_load_native_int(block_id, field_ptr)
 	return b.block_instr1(.zext, block_id, b.i64_type, field32)
 }
 
@@ -3037,7 +3021,7 @@ fn (mut b Builder) generate_plus_sign_body(func_id int) {
 	b.block_instr2(.store, entry, b.void_type, s, s_slot)
 	len_ptr := b.block_struct_field_ptr(entry, s_slot, b.str_type, 1)
 	data_ptr := b.block_struct_field_ptr(entry, s_slot, b.str_type, 0)
-	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(entry, len_ptr)
 	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
 	len := b.block_instr1(.zext, entry, b.i64_type, len32)
 	one := b.m.get_or_add_const(b.i64_type, '1')
@@ -3323,7 +3307,7 @@ fn (mut b Builder) generate_string_int_body(func_id int) {
 	data_ptr := b.block_struct_field_ptr(entry, s_slot, b.str_type, 0)
 	len_ptr := b.block_struct_field_ptr(entry, s_slot, b.str_type, 1)
 	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
-	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(entry, len_ptr)
 	len := b.block_instr1(.zext, entry, b.i64_type, len32)
 
 	zero64 := b.m.get_or_add_const(b.i64_type, '0')
@@ -3560,7 +3544,7 @@ fn (mut b Builder) generate_string_pad_body(func_id int) {
 	data_ptr := b.block_struct_field_ptr(norm_block, s_slot, b.str_type, 0)
 	len_ptr := b.block_struct_field_ptr(norm_block, s_slot, b.str_type, 1)
 	data := b.block_instr1(.load, norm_block, ptr_i8, data_ptr)
-	len32 := b.block_instr1(.load, norm_block, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(norm_block, len_ptr)
 	already_wide := b.block_instr2(.ge, norm_block, b.i1_type, len32, width)
 	return_original := b.m.add_block(func_id, 'string_pad_return_original')
 	pad_block := b.m.add_block(func_id, 'string_pad_alloc')
@@ -3658,7 +3642,7 @@ fn (mut b Builder) generate_int_zpad_body(func_id int, value_type TypeID, is_uns
 	data_ptr := b.block_struct_field_ptr(prepare, text_slot, b.str_type, 0)
 	len_ptr := b.block_struct_field_ptr(prepare, text_slot, b.str_type, 1)
 	data := b.block_instr1(.load, prepare, ptr_i8, data_ptr)
-	len32 := b.block_instr1(.load, prepare, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(prepare, len_ptr)
 	width32 := b.block_instr1(.load, prepare, b.i32_type, width_slot)
 	already_wide := b.block_instr2(.ge, prepare, b.i1_type, len32, width32)
 	b.block_instr3(.br, prepare, b.void_type, already_wide, ValueID(return_original),
@@ -3772,8 +3756,7 @@ fn (mut b Builder) register_string_plus_stubs() {
 
 // emit_make_string emits emit make string output for ssa.
 // emit_make_string builds a `string{ str: data, len: len64, is_lit: is_lit }` value.
-// `is_lit` must be set explicitly because the field shares the trailing struct word and
-// is otherwise stack garbage that string.free could misread: pass 1 for a literal /
+// `is_lit` must be set explicitly to avoid stack garbage that string.free could misread: pass 1 for a literal /
 // borrowed view of static data that must never be freed, and 0 for an owned heap string
 // whose `data` is an allocation start (so free() gets the right pointer). For an owned
 // copy of a borrowed/interior buffer use emit_make_owned_string.
@@ -3785,7 +3768,7 @@ fn (mut b Builder) emit_make_string(block_id BlockID, data ValueID, len64 ValueI
 	is_lit_ptr := b.block_struct_field_ptr(block_id, alloca_out, b.str_type, 2)
 	b.block_instr2(.store, block_id, b.void_type, data, data_ptr)
 	b.block_instr2(.store, block_id, b.void_type, len64, len_ptr)
-	is_lit_const := b.m.get_or_add_const(b.i32_type, is_lit.str())
+	is_lit_const := b.m.get_or_add_const(b.resolve_type(flat.source_type_int), is_lit.str())
 	b.block_instr2(.store, block_id, b.void_type, is_lit_const, is_lit_ptr)
 	return b.block_instr1(.load, block_id, b.str_type, alloca_out)
 }
@@ -3829,8 +3812,8 @@ fn (mut b Builder) generate_string_plus_body(func_id int) {
 	right_len_ptr := b.block_struct_field_ptr(entry, alloca_right, b.str_type, 1)
 	left_data := b.block_instr1(.load, entry, ptr_i8, left_data_ptr)
 	right_data := b.block_instr1(.load, entry, ptr_i8, right_data_ptr)
-	left_len32 := b.block_instr1(.load, entry, b.i32_type, left_len_ptr)
-	right_len32 := b.block_instr1(.load, entry, b.i32_type, right_len_ptr)
+	left_len32 := b.block_load_native_int(entry, left_len_ptr)
+	right_len32 := b.block_load_native_int(entry, right_len_ptr)
 	left_len := b.block_instr1(.zext, entry, b.i64_type, left_len32)
 	right_len := b.block_instr1(.zext, entry, b.i64_type, right_len32)
 	total_len := b.block_instr2(.add, entry, b.i64_type, left_len, right_len)
@@ -3882,7 +3865,7 @@ fn (mut b Builder) generate_string_plus_many_body(func_id int) {
 	sum_item_off := b.block_instr2(.mul, sum_body, b.i64_type, i_sum, stride)
 	sum_item_ptr := b.block_instr2(.get_element_ptr, sum_body, ptr_string, input_base, sum_item_off)
 	sum_len_ptr := b.block_struct_field_ptr(sum_body, sum_item_ptr, b.str_type, 1)
-	sum_len32 := b.block_instr1(.load, sum_body, b.i32_type, sum_len_ptr)
+	sum_len32 := b.block_load_native_int(sum_body, sum_len_ptr)
 	sum_len := b.block_instr1(.zext, sum_body, b.i64_type, sum_len32)
 	old_total := b.block_instr1(.load, sum_body, b.i64_type, alloca_total)
 	new_total := b.block_instr2(.add, sum_body, b.i64_type, old_total, sum_len)
@@ -3913,7 +3896,7 @@ fn (mut b Builder) generate_string_plus_many_body(func_id int) {
 	copy_data_ptr := b.block_struct_field_ptr(copy_body, copy_item_ptr, b.str_type, 0)
 	copy_len_ptr := b.block_struct_field_ptr(copy_body, copy_item_ptr, b.str_type, 1)
 	copy_data := b.block_instr1(.load, copy_body, ptr_i8, copy_data_ptr)
-	copy_len32 := b.block_instr1(.load, copy_body, b.i32_type, copy_len_ptr)
+	copy_len32 := b.block_load_native_int(copy_body, copy_len_ptr)
 	copy_len := b.block_instr1(.zext, copy_body, b.i64_type, copy_len32)
 	written := b.block_instr1(.load, copy_body, b.i64_type, alloca_written)
 	dest := b.block_instr2(.add, copy_body, ptr_i8, out_data, written)
@@ -4065,7 +4048,8 @@ fn (mut b Builder) register_array_runtime_stubs() {
 	for sort_type in ['int', 'i8', 'i16', 'i64', 'u8', 'u16', 'u32', 'u64', 'isize', 'uint', 'rune',
 		'char'] {
 		elem_type := match sort_type {
-			'int', 'rune' { b.i32_type }
+			'int' { b.resolve_type(flat.source_type_int) }
+			'rune' { b.i32_type }
 			'i8' { b.i8_type }
 			'i16' { b.m.type_store.get_int(16) }
 			'i64', 'isize' { b.i64_type }
@@ -4189,7 +4173,7 @@ fn (mut b Builder) generate_scalar_array_sort_body(func_id int, elem_type TypeID
 	zero := b.m.get_or_add_const(b.i64_type, '0')
 	one := b.m.get_or_add_const(b.i64_type, '1')
 	elem_size_ptr := b.block_struct_field_ptr(entry, arr, b.array_type, 5)
-	elem_size32 := b.block_instr1(.load, entry, b.i32_type, elem_size_ptr)
+	elem_size32 := b.block_load_native_int(entry, elem_size_ptr)
 	elem_size := b.block_instr1(.zext, entry, b.i64_type, elem_size32)
 	has_multiple := b.block_instr2(.gt, entry, b.i1_type, len, one)
 	outer_init := b.m.add_block(func_id, 'sort_outer_init')
@@ -4283,7 +4267,7 @@ fn (mut b Builder) generate_print_body(func_id int, fd_value string, newline boo
 	data_ptr := b.block_struct_field_ptr(entry, message_slot, b.str_type, 0)
 	len_ptr := b.block_struct_field_ptr(entry, message_slot, b.str_type, 1)
 	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
-	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(entry, len_ptr)
 	len := b.block_instr1(.zext, entry, b.i64_type, len32)
 	fd := b.m.get_or_add_const(b.i64_type, fd_value)
 	write_ref := b.m.add_value(.func_ref, b.void_type, 'write', b.runtime_fn_id('write'))
@@ -4401,9 +4385,9 @@ fn (mut b Builder) emit_builder_append(func_id int, entry BlockID, builder_ptr V
 	data_ptr := b.block_struct_field_ptr(entry, builder_ptr, b.array_type, 0)
 	len_ptr := b.block_struct_field_ptr(entry, builder_ptr, b.array_type, 2)
 	cap_ptr := b.block_struct_field_ptr(entry, builder_ptr, b.array_type, 3)
-	old_len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	old_len32 := b.block_load_native_int(entry, len_ptr)
 	old_len := b.block_instr1(.zext, entry, b.i64_type, old_len32)
-	cap32 := b.block_instr1(.load, entry, b.i32_type, cap_ptr)
+	cap32 := b.block_load_native_int(entry, cap_ptr)
 	cap := b.block_instr1(.zext, entry, b.i64_type, cap32)
 	needed := b.block_instr2(.add, entry, b.i64_type, old_len, add_len)
 	needs_grow := b.block_instr2(.gt, entry, b.i1_type, needed, cap)
@@ -4453,7 +4437,7 @@ fn (mut b Builder) generate_builder_write_string_body(func_id int, add_newline b
 	// pointer puts it, and on a 4-byte pointer target that word is `is_lit`.
 	len_ptr := b.block_struct_field_ptr(entry, alloca_s, b.str_type, 1)
 	str_ptr := b.block_instr1(.load, entry, ptr_i8, str_ptr_ptr)
-	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(entry, len_ptr)
 	len64 := b.block_instr1(.zext, entry, b.i64_type, len32)
 	end_block := b.emit_builder_append(func_id, entry, builder_ptr, str_ptr, len64)
 	if add_newline {
@@ -4603,7 +4587,7 @@ fn (mut b Builder) generate_builder_str_body(func_id int) {
 	data_ptr := b.block_struct_field_ptr(entry, builder_ptr, b.array_type, 0)
 	len_ptr := b.block_struct_field_ptr(entry, builder_ptr, b.array_type, 2)
 	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
-	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(entry, len_ptr)
 	len := b.block_instr1(.zext, entry, b.i64_type, len32)
 	// Return an owned copy, not the builder's live buffer (matches strings.Builder.str,
 	// which memdups): the result is marked non-literal and may be freed independently.
@@ -4623,7 +4607,7 @@ fn (mut b Builder) generate_builder_last_n_body(func_id int) {
 	data_ptr := b.block_struct_field_ptr(entry, builder_ptr, b.array_type, 0)
 	len_ptr := b.block_struct_field_ptr(entry, builder_ptr, b.array_type, 2)
 	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
-	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(entry, len_ptr)
 	len := b.block_instr1(.zext, entry, b.i64_type, len32)
 	zero := b.m.get_or_add_const(b.i64_type, '0')
 	non_positive := b.block_instr2(.le, entry, b.i1_type, n, zero)
@@ -5821,7 +5805,7 @@ fn (mut b Builder) emit_cstring_from_string(block_id BlockID, value ValueID) Val
 	data_ptr := b.block_struct_field_ptr(block_id, value_alloca, b.str_type, 0)
 	len_ptr := b.block_struct_field_ptr(block_id, value_alloca, b.str_type, 1)
 	data := b.block_instr1(.load, block_id, ptr_i8, data_ptr)
-	len32 := b.block_instr1(.load, block_id, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(block_id, len_ptr)
 	len := b.block_instr1(.zext, block_id, b.i64_type, len32)
 	one := b.m.get_or_add_const(b.i64_type, '1')
 	alloc_len := b.block_instr2(.add, block_id, b.i64_type, len, one)
@@ -6333,7 +6317,7 @@ fn (mut b Builder) generate_array_string_join_body(func_id int) {
 	data_ptr := b.block_struct_field_ptr(entry, arr_alloca, b.array_type, 0)
 	len_ptr := b.block_struct_field_ptr(entry, arr_alloca, b.array_type, 2)
 	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
-	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(entry, len_ptr)
 	len := b.block_instr1(.zext, entry, b.i64_type, len32)
 
 	loop := b.m.add_block(func_id, 'array_join_loop')
@@ -6386,7 +6370,7 @@ fn (mut b Builder) generate_array_bytestr_body(func_id int) {
 	data_ptr := b.block_struct_field_ptr(entry, alloca_arr, b.array_type, 0)
 	len_ptr := b.block_struct_field_ptr(entry, alloca_arr, b.array_type, 2)
 	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
-	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(entry, len_ptr)
 	len := b.block_instr1(.zext, entry, b.i64_type, len32)
 
 	one := b.m.get_or_add_const(b.i64_type, '1')
@@ -6418,7 +6402,7 @@ fn (mut b Builder) generate_array_rune_string_body(func_id int) {
 	data_ptr := b.block_struct_field_ptr(entry, arr_alloca, b.array_type, 0)
 	len_ptr := b.block_struct_field_ptr(entry, arr_alloca, b.array_type, 2)
 	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
-	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(entry, len_ptr)
 	len := b.block_instr1(.zext, entry, b.i64_type, len32)
 
 	new_ref := b.m.add_value(.func_ref, b.array_type, 'strings.new_builder',
@@ -6622,7 +6606,7 @@ fn (mut b Builder) register_ierror_stubs() {
 	}
 	mut p_error_code := []TypeID{}
 	p_error_code << b.str_type
-	p_error_code << b.i32_type
+	p_error_code << b.resolve_type(flat.source_type_int)
 	if error_id := b.register_runtime_function('error_with_code', interface_type, p_error_code) {
 		b.generate_error_boxing_body(error_id, interface_type, message_error_type, true)
 	}
@@ -6633,7 +6617,7 @@ fn (mut b Builder) generate_error_boxing_body(func_id int, interface_type TypeID
 	message := b.func_add_argument(func_id, b.str_type, 'message')
 	mut code := ValueID(0)
 	if has_code {
-		code = b.func_add_argument(func_id, b.i32_type, 'code')
+		code = b.func_add_argument(func_id, b.resolve_type(flat.source_type_int), 'code')
 	}
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	ptr_message_error := b.m.type_store.get_ptr(message_error_type)
@@ -6644,7 +6628,7 @@ fn (mut b Builder) generate_error_boxing_body(func_id int, interface_type TypeID
 	code_value := if has_code {
 		code
 	} else {
-		b.m.get_or_add_const(b.i32_type, '0')
+		b.m.get_or_add_const(b.resolve_type(flat.source_type_int), '0')
 	}
 	b.block_instr2(.store, entry, b.void_type, code_value, code_ptr)
 	size := b.m.get_or_add_const(b.i64_type, '${b.m.type_size(message_error_type)}')
@@ -6686,11 +6670,10 @@ fn (mut b Builder) generate_ierror_code_body(func_id int, ptr_ierror TypeID) {
 	err := b.func_add_argument(func_id, ptr_ierror, 'err')
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
 	object := b.block_instr1(.bitcast, entry, ptr_i8, err)
-	offset := b.m.get_or_add_const(b.i64_type, '16')
-	code_ptr := b.block_instr2(.get_element_ptr, entry, b.m.type_store.get_ptr(b.i32_type),
+	offset := b.m.get_or_add_const(b.i64_type, b.m.type_size(b.str_type).str())
+	code_ptr := b.block_instr2(.get_element_ptr, entry, b.m.type_store.get_ptr(b.resolve_type(flat.source_type_int)),
 		object, offset)
-	code := b.block_instr1(.load, entry, b.i32_type, code_ptr)
-	result := b.block_instr1(.sext, entry, b.i64_type, code)
+	result := b.block_load_native_int(entry, code_ptr)
 	b.block_instr1(.ret, entry, b.void_type, result)
 }
 
@@ -6831,13 +6814,13 @@ fn (mut b Builder) generate_array_index_string_body(func_id int) {
 	b.block_instr1(.jmp, entry, b.void_type, ValueID(blk_loop))
 
 	i := b.block_instr1(.load, blk_loop, b.i64_type, alloca_i)
-	len32 := b.block_instr1(.load, blk_loop, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(blk_loop, len_ptr)
 	len := b.block_instr1(.zext, blk_loop, b.i64_type, len32)
 	in_range := b.block_instr2(.lt, blk_loop, b.i1_type, i, len)
 	b.block_instr3(.br, blk_loop, b.void_type, in_range, ValueID(blk_body), ValueID(blk_not_found))
 
 	data := b.block_instr1(.load, blk_body, ptr_i8, data_ptr)
-	elem_size32 := b.block_instr1(.load, blk_body, b.i32_type, elem_size_ptr)
+	elem_size32 := b.block_load_native_int(blk_body, elem_size_ptr)
 	elem_size := b.block_instr1(.zext, blk_body, b.i64_type, elem_size32)
 	offset := b.block_instr2(.mul, blk_body, b.i64_type, i, elem_size)
 	slot := b.block_instr2(.add, blk_body, ptr_i8, data, offset)
@@ -6883,13 +6866,13 @@ fn (mut b Builder) generate_array_index_int_body(func_id int) {
 	b.block_instr1(.jmp, entry, b.void_type, ValueID(blk_loop))
 
 	i := b.block_instr1(.load, blk_loop, b.i64_type, alloca_i)
-	len32 := b.block_instr1(.load, blk_loop, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(blk_loop, len_ptr)
 	len := b.block_instr1(.zext, blk_loop, b.i64_type, len32)
 	in_range := b.block_instr2(.lt, blk_loop, b.i1_type, i, len)
 	b.block_instr3(.br, blk_loop, b.void_type, in_range, ValueID(blk_body), ValueID(blk_not_found))
 
 	data := b.block_instr1(.load, blk_body, ptr_i8, data_ptr)
-	elem_size32 := b.block_instr1(.load, blk_body, b.i32_type, elem_size_ptr)
+	elem_size32 := b.block_load_native_int(blk_body, elem_size_ptr)
 	elem_size := b.block_instr1(.zext, blk_body, b.i64_type, elem_size32)
 	offset := b.block_instr2(.mul, blk_body, b.i64_type, i, elem_size)
 	slot := b.block_instr2(.add, blk_body, ptr_i8, data, offset)
@@ -7613,7 +7596,7 @@ fn (mut b Builder) generate_array_get_body(func_id int) {
 	data_ptr := b.block_struct_field_ptr(entry, alloca_arr, b.array_type, 0)
 	elem_size_ptr := b.block_struct_field_ptr(entry, alloca_arr, b.array_type, 5)
 	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
-	elem_size32 := b.block_instr1(.load, entry, b.i32_type, elem_size_ptr)
+	elem_size32 := b.block_load_native_int(entry, elem_size_ptr)
 	elem_size := b.block_instr1(.zext, entry, b.i64_type, elem_size32)
 	offset := b.block_instr2(.mul, entry, b.i64_type, idx, elem_size)
 	result := b.block_instr2(.add, entry, ptr_i8, data, offset)
@@ -7636,7 +7619,7 @@ fn (mut b Builder) generate_array_slice_body(func_id int) {
 	data_ptr := b.block_struct_field_ptr(entry, alloca_arr, b.array_type, 0)
 	elem_size_ptr := b.block_struct_field_ptr(entry, alloca_arr, b.array_type, 5)
 	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
-	elem_size32 := b.block_instr1(.load, entry, b.i32_type, elem_size_ptr)
+	elem_size32 := b.block_load_native_int(entry, elem_size_ptr)
 	elem_size := b.block_instr1(.zext, entry, b.i64_type, elem_size32)
 	offset := b.block_instr2(.mul, entry, b.i64_type, start, elem_size)
 	slice_data := b.block_instr2(.add, entry, ptr_i8, data, offset)
@@ -7646,7 +7629,7 @@ fn (mut b Builder) generate_array_slice_body(func_id int) {
 	safe_slice_len := b.block_instr3(.select, entry, b.i64_type, negative_len, zero_i64,
 		slice_len)
 	old_offset_ptr := b.block_struct_field_ptr(entry, alloca_arr, b.array_type, 1)
-	old_offset32 := b.block_instr1(.load, entry, b.i32_type, old_offset_ptr)
+	old_offset32 := b.block_load_native_int(entry, old_offset_ptr)
 	old_offset := b.block_instr1(.zext, entry, b.i64_type, old_offset32)
 	total_offset := b.block_instr2(.add, entry, b.i64_type, old_offset, offset)
 	flags_ptr := b.block_struct_field_ptr(entry, alloca_arr, b.array_type, 4)
@@ -7706,8 +7689,8 @@ fn (mut b Builder) generate_array_eq_string_body(func_id int) {
 
 	left_len_ptr := b.block_struct_field_ptr(entry, left_slot, b.array_type, 2)
 	right_len_ptr := b.block_struct_field_ptr(entry, right_slot, b.array_type, 2)
-	left_len32 := b.block_instr1(.load, entry, b.i32_type, left_len_ptr)
-	right_len32 := b.block_instr1(.load, entry, b.i32_type, right_len_ptr)
+	left_len32 := b.block_load_native_int(entry, left_len_ptr)
+	right_len32 := b.block_load_native_int(entry, right_len_ptr)
 	same_len := b.block_instr2(.eq, entry, b.i1_type, left_len32, right_len32)
 	check_empty := b.m.add_block(func_id, 'array_eq_string_check_empty')
 	return_false := b.m.add_block(func_id, 'array_eq_string_false')
@@ -7769,8 +7752,8 @@ fn (mut b Builder) generate_array_eq_raw_body(func_id int) {
 	b.block_instr2(.store, entry, b.void_type, right, right_slot)
 	left_len_ptr := b.block_struct_field_ptr(entry, left_slot, b.array_type, 2)
 	right_len_ptr := b.block_struct_field_ptr(entry, right_slot, b.array_type, 2)
-	left_len32 := b.block_instr1(.load, entry, b.i32_type, left_len_ptr)
-	right_len32 := b.block_instr1(.load, entry, b.i32_type, right_len_ptr)
+	left_len32 := b.block_load_native_int(entry, left_len_ptr)
+	right_len32 := b.block_load_native_int(entry, right_len_ptr)
 	same_len := b.block_instr2(.eq, entry, b.i1_type, left_len32, right_len32)
 	check_empty := b.m.add_block(func_id, 'array_eq_raw_check_empty')
 	return_false := b.m.add_block(func_id, 'array_eq_raw_false')
@@ -7815,10 +7798,10 @@ fn (mut b Builder) generate_array_eq_array_body(func_id int) {
 	right_len_ptr := b.block_struct_field_ptr(entry, right_slot, b.array_type, 2)
 	left_elem_size_ptr := b.block_struct_field_ptr(entry, left_slot, b.array_type, 5)
 	right_elem_size_ptr := b.block_struct_field_ptr(entry, right_slot, b.array_type, 5)
-	left_len := b.block_instr1(.load, entry, b.i32_type, left_len_ptr)
-	right_len := b.block_instr1(.load, entry, b.i32_type, right_len_ptr)
-	left_elem_size := b.block_instr1(.load, entry, b.i32_type, left_elem_size_ptr)
-	right_elem_size := b.block_instr1(.load, entry, b.i32_type, right_elem_size_ptr)
+	left_len := b.block_load_native_int(entry, left_len_ptr)
+	right_len := b.block_load_native_int(entry, right_len_ptr)
+	left_elem_size := b.block_load_native_int(entry, left_elem_size_ptr)
+	right_elem_size := b.block_load_native_int(entry, right_elem_size_ptr)
 	len_eq := b.block_instr2(.eq, entry, b.i1_type, left_len, right_len)
 	elem_size_eq := b.block_instr2(.eq, entry, b.i1_type, left_elem_size, right_elem_size)
 	result := b.block_instr2(.and_, entry, b.i1_type, len_eq, elem_size_eq)
@@ -7905,11 +7888,11 @@ fn (mut b Builder) generate_array_clone_body(func_id int) {
 	cap_ptr := b.block_struct_field_ptr(entry, alloca_arr, b.array_type, 3)
 	elem_size_ptr := b.block_struct_field_ptr(entry, alloca_arr, b.array_type, 5)
 	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
-	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(entry, len_ptr)
 	len := b.block_instr1(.zext, entry, b.i64_type, len32)
-	cap32 := b.block_instr1(.load, entry, b.i32_type, cap_ptr)
+	cap32 := b.block_load_native_int(entry, cap_ptr)
 	cap := b.block_instr1(.zext, entry, b.i64_type, cap32)
-	elem_size32 := b.block_instr1(.load, entry, b.i32_type, elem_size_ptr)
+	elem_size32 := b.block_load_native_int(entry, elem_size_ptr)
 	elem_size := b.block_instr1(.zext, entry, b.i64_type, elem_size32)
 
 	new_ref := b.m.add_value(.func_ref, b.void_type, 'array_new', b.runtime_fn_id('array_new'))
@@ -7941,11 +7924,11 @@ fn (mut b Builder) generate_array_clone_ptr_body(func_id int) {
 	cap_ptr := b.block_struct_field_ptr(entry, arr_ptr, b.array_type, 3)
 	elem_size_ptr := b.block_struct_field_ptr(entry, arr_ptr, b.array_type, 5)
 	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
-	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(entry, len_ptr)
 	len := b.block_instr1(.zext, entry, b.i64_type, len32)
-	cap32 := b.block_instr1(.load, entry, b.i32_type, cap_ptr)
+	cap32 := b.block_load_native_int(entry, cap_ptr)
 	cap := b.block_instr1(.zext, entry, b.i64_type, cap32)
-	elem_size32 := b.block_instr1(.load, entry, b.i32_type, elem_size_ptr)
+	elem_size32 := b.block_load_native_int(entry, elem_size_ptr)
 	elem_size := b.block_instr1(.zext, entry, b.i64_type, elem_size32)
 
 	new_ref := b.m.add_value(.func_ref, b.void_type, 'array_new', b.runtime_fn_id('array_new'))
@@ -7980,9 +7963,9 @@ fn (mut b Builder) generate_array_repeat_to_depth_body(func_id int) {
 	len_ptr := b.block_struct_field_ptr(entry, alloca_arr, b.array_type, 2)
 	elem_size_ptr := b.block_struct_field_ptr(entry, alloca_arr, b.array_type, 5)
 	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
-	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(entry, len_ptr)
 	len := b.block_instr1(.zext, entry, b.i64_type, len32)
-	elem_size32 := b.block_instr1(.load, entry, b.i32_type, elem_size_ptr)
+	elem_size32 := b.block_load_native_int(entry, elem_size_ptr)
 	elem_size := b.block_instr1(.zext, entry, b.i64_type, elem_size32)
 	total_len := b.block_instr2(.mul, entry, b.i64_type, len, count)
 
@@ -8031,9 +8014,9 @@ fn (mut b Builder) generate_array_push_body(func_id int) {
 	cap_ptr := b.block_struct_field_ptr(entry, arr_ptr, b.array_type, 3)
 	flags_ptr := b.block_struct_field_ptr(entry, arr_ptr, b.array_type, 4)
 	elem_size_ptr := b.block_struct_field_ptr(entry, arr_ptr, b.array_type, 5)
-	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(entry, len_ptr)
 	len := b.block_instr1(.zext, entry, b.i64_type, len32)
-	cap32 := b.block_instr1(.load, entry, b.i32_type, cap_ptr)
+	cap32 := b.block_load_native_int(entry, cap_ptr)
 	cap := b.block_instr1(.zext, entry, b.i64_type, cap32)
 	needs_grow := b.block_instr2(.ge, entry, b.i1_type, len, cap)
 
@@ -8054,7 +8037,7 @@ fn (mut b Builder) generate_array_push_body(func_id int) {
 	new_cap := b.block_instr2(.add, blk_grow, b.i64_type, double_cap, empty_addend_scaled)
 	if b.m.target.ptr_size == 4 {
 		old_data := b.block_instr1(.load, blk_grow, ptr_i8, data_ptr)
-		elem_size_grow32 := b.block_instr1(.load, blk_grow, b.i32_type, elem_size_ptr)
+		elem_size_grow32 := b.block_load_native_int(blk_grow, elem_size_ptr)
 		elem_size_grow := b.block_instr1(.zext, blk_grow, b.i64_type, elem_size_grow32)
 		new_size := b.block_instr2(.mul, blk_grow, b.i64_type, new_cap, elem_size_grow)
 		realloc_ref := b.m.add_value(.func_ref, b.void_type, 'realloc', b.runtime_fn_id('realloc'))
@@ -8083,7 +8066,7 @@ fn (mut b Builder) generate_array_push_body(func_id int) {
 	b.block_instr1(.jmp, blk_unique, b.void_type, ValueID(blk_store))
 
 	data := b.block_instr1(.load, blk_store, ptr_i8, data_ptr)
-	elem_size32 := b.block_instr1(.load, blk_store, b.i32_type, elem_size_ptr)
+	elem_size32 := b.block_load_native_int(blk_store, elem_size_ptr)
 	elem_size := b.block_instr1(.zext, blk_store, b.i64_type, elem_size32)
 	offset := b.block_instr2(.mul, blk_store, b.i64_type, len, elem_size)
 	dest := b.block_instr2(.add, blk_store, ptr_i8, data, offset)
@@ -8113,9 +8096,9 @@ fn (mut b Builder) generate_array_push_many_body(func_id int) {
 	len_ptr := b.block_struct_field_ptr(blk_check_cap, arr_ptr, b.array_type, 2)
 	cap_ptr := b.block_struct_field_ptr(blk_check_cap, arr_ptr, b.array_type, 3)
 	elem_size_ptr := b.block_struct_field_ptr(blk_check_cap, arr_ptr, b.array_type, 5)
-	len32 := b.block_instr1(.load, blk_check_cap, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(blk_check_cap, len_ptr)
 	len := b.block_instr1(.zext, blk_check_cap, b.i64_type, len32)
-	cap32 := b.block_instr1(.load, blk_check_cap, b.i32_type, cap_ptr)
+	cap32 := b.block_load_native_int(blk_check_cap, cap_ptr)
 	cap := b.block_instr1(.zext, blk_check_cap, b.i64_type, cap32)
 	new_len := b.block_instr2(.add, blk_check_cap, b.i64_type, len, count)
 	needs_grow := b.block_instr2(.gt, blk_check_cap, b.i1_type, new_len, cap)
@@ -8130,7 +8113,7 @@ fn (mut b Builder) generate_array_push_many_body(func_id int) {
 	new_cap := b.block_instr2(.add, blk_grow, b.i64_type, new_cap_base, two)
 	if b.m.target.ptr_size == 4 {
 		old_data := b.block_instr1(.load, blk_grow, ptr_i8, data_ptr)
-		elem_size_grow32 := b.block_instr1(.load, blk_grow, b.i32_type, elem_size_ptr)
+		elem_size_grow32 := b.block_load_native_int(blk_grow, elem_size_ptr)
 		elem_size_grow := b.block_instr1(.zext, blk_grow, b.i64_type, elem_size_grow32)
 		new_size := b.block_instr2(.mul, blk_grow, b.i64_type, new_cap, elem_size_grow)
 		realloc_ref := b.m.add_value(.func_ref, b.void_type, 'realloc', b.runtime_fn_id('realloc'))
@@ -8144,7 +8127,7 @@ fn (mut b Builder) generate_array_push_many_body(func_id int) {
 	b.block_instr1(.jmp, blk_grow, b.void_type, ValueID(blk_copy))
 
 	data := b.block_instr1(.load, blk_copy, ptr_i8, data_ptr)
-	elem_size32 := b.block_instr1(.load, blk_copy, b.i32_type, elem_size_ptr)
+	elem_size32 := b.block_load_native_int(blk_copy, elem_size_ptr)
 	elem_size := b.block_instr1(.zext, blk_copy, b.i64_type, elem_size32)
 	offset := b.block_instr2(.mul, blk_copy, b.i64_type, len, elem_size)
 	dest := b.block_instr2(.add, blk_copy, ptr_i8, data, offset)
@@ -8170,7 +8153,7 @@ fn (mut b Builder) generate_array_push_many_array_body(func_id int) {
 	data_ptr := b.block_struct_field_ptr(entry, src_alloca, b.array_type, 0)
 	len_ptr := b.block_struct_field_ptr(entry, src_alloca, b.array_type, 2)
 	data := b.block_instr1(.load, entry, ptr_i8, data_ptr)
-	len32 := b.block_instr1(.load, entry, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(entry, len_ptr)
 	len := b.block_instr1(.zext, entry, b.i64_type, len32)
 	push_many_ref := b.m.add_value(.func_ref, b.void_type, 'array.push_many',
 		b.runtime_fn_id('array.push_many'))
@@ -8241,10 +8224,10 @@ fn (mut b Builder) generate_string_trim_right_body(func_id int) {
 	cut_data_ptr := b.block_struct_field_ptr(entry, alloca_cutset, b.str_type, 0)
 	cut_len_ptr := b.block_struct_field_ptr(entry, alloca_cutset, b.str_type, 1)
 	s_data := b.block_instr1(.load, entry, ptr_i8, s_data_ptr)
-	s_len32 := b.block_instr1(.load, entry, b.i32_type, s_len_ptr)
+	s_len32 := b.block_load_native_int(entry, s_len_ptr)
 	s_len := b.block_instr1(.zext, entry, b.i64_type, s_len32)
 	cut_data := b.block_instr1(.load, entry, ptr_i8, cut_data_ptr)
-	cut_len32 := b.block_instr1(.load, entry, b.i32_type, cut_len_ptr)
+	cut_len32 := b.block_load_native_int(entry, cut_len_ptr)
 	cut_len := b.block_instr1(.zext, entry, b.i64_type, cut_len32)
 	zero64 := b.m.get_or_add_const(b.i64_type, '0')
 	one64 := b.m.get_or_add_const(b.i64_type, '1')
@@ -8350,10 +8333,10 @@ fn (mut b Builder) generate_string_all_last_body(func_id int, before bool) {
 	sub_data_ptr := b.block_struct_field_ptr(entry, alloca_sub, b.str_type, 0)
 	sub_len_ptr := b.block_struct_field_ptr(entry, alloca_sub, b.str_type, 1)
 	s_data := b.block_instr1(.load, entry, ptr_i8, s_data_ptr)
-	s_len32 := b.block_instr1(.load, entry, b.i32_type, s_len_ptr)
+	s_len32 := b.block_load_native_int(entry, s_len_ptr)
 	s_len := b.block_instr1(.zext, entry, b.i64_type, s_len32)
 	sub_data := b.block_instr1(.load, entry, ptr_i8, sub_data_ptr)
-	sub_len32 := b.block_instr1(.load, entry, b.i32_type, sub_len_ptr)
+	sub_len32 := b.block_load_native_int(entry, sub_len_ptr)
 	sub_len := b.block_instr1(.zext, entry, b.i64_type, sub_len32)
 	zero := b.m.get_or_add_const(b.i64_type, '0')
 	one := b.m.get_or_add_const(b.i64_type, '1')
@@ -8431,8 +8414,8 @@ fn (mut b Builder) generate_string_eq_body(func_id int) {
 	b_len_ptr := b.block_struct_field_ptr(entry, alloca_b, b.str_type, 1)
 	a_str := b.block_instr1(.load, entry, ptr_i8, a_str_ptr)
 	b_str := b.block_instr1(.load, entry, ptr_i8, b_str_ptr)
-	a_len := b.block_instr1(.load, entry, b.i32_type, a_len_ptr)
-	b_len := b.block_instr1(.load, entry, b.i32_type, b_len_ptr)
+	a_len := b.block_load_native_int(entry, a_len_ptr)
+	b_len := b.block_load_native_int(entry, b_len_ptr)
 	len_eq := b.block_instr2(.eq, entry, b.i1_type, a_len, b_len)
 
 	blk_cmp := b.m.add_block(func_id, 'string_eq_cmp')
@@ -8453,14 +8436,14 @@ fn (mut b Builder) generate_string_eq_body(func_id int) {
 fn (mut b Builder) generate_string_lt_body(func_id int) {
 	ptr_string := b.m.type_store.get_ptr(b.str_type)
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
-	ptr_i32 := b.m.type_store.get_ptr(b.i32_type)
+	ptr_int := b.m.type_store.get_ptr(b.resolve_type(flat.source_type_int))
 	entry := b.m.add_block(func_id, 'entry')
 	param_a := b.func_add_argument(func_id, b.str_type, 'a')
 	param_b := b.func_add_argument(func_id, b.str_type, 'b')
 
 	alloca_a := b.block_instr0(.alloca, entry, ptr_string)
 	alloca_b := b.block_instr0(.alloca, entry, ptr_string)
-	alloca_min := b.block_instr0(.alloca, entry, ptr_i32)
+	alloca_min := b.block_instr0(.alloca, entry, ptr_int)
 	b.block_instr2(.store, entry, b.void_type, param_a, alloca_a)
 	b.block_instr2(.store, entry, b.void_type, param_b, alloca_b)
 
@@ -8473,8 +8456,8 @@ fn (mut b Builder) generate_string_lt_body(func_id int) {
 	b_len_ptr := b.block_struct_field_ptr(entry, alloca_b, b.str_type, 1)
 	a_str := b.block_instr1(.load, entry, ptr_i8, a_str_ptr)
 	b_str := b.block_instr1(.load, entry, ptr_i8, b_str_ptr)
-	a_len := b.block_instr1(.load, entry, b.i32_type, a_len_ptr)
-	b_len := b.block_instr1(.load, entry, b.i32_type, b_len_ptr)
+	a_len := b.block_load_native_int(entry, a_len_ptr)
+	b_len := b.block_load_native_int(entry, b_len_ptr)
 	a_shorter := b.block_instr2(.lt, entry, b.i1_type, a_len, b_len)
 
 	blk_a_min := b.m.add_block(func_id, 'string_lt_a_min')
@@ -8492,7 +8475,7 @@ fn (mut b Builder) generate_string_lt_body(func_id int) {
 	b.block_instr2(.store, blk_b_min, b.void_type, b_len, alloca_min)
 	b.block_instr1(.jmp, blk_b_min, b.void_type, ValueID(blk_cmp))
 
-	min_len := b.block_instr1(.load, blk_cmp, b.i32_type, alloca_min)
+	min_len := b.block_load_native_int(blk_cmp, alloca_min)
 	min_len64 := b.block_instr1(.zext, blk_cmp, b.i64_type, min_len)
 	fn_ref := b.m.add_value(.func_ref, b.void_type, 'memcmp', b.runtime_fn_id('memcmp'))
 	// memcmp returns C int; its upper register bits are outside the ABI result.
@@ -10235,7 +10218,7 @@ fn (mut b Builder) build_string_for_in(node flat.Node, key_id flat.NodeId, val_i
 	b.cur_block = cond_block
 	idx := b.emit1(.load, b.i64_type, idx_alloca)
 	len_ptr := b.get_field_ptr(str_alloca, 'len')
-	len32 := b.emit1(.load, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(b.cur_block, len_ptr)
 	len := b.emit1(.zext, b.i64_type, len32)
 	in_range := b.emit2(.lt, b.i1_type, idx, len)
 	b.emit3(.br, b.void_type, in_range, ValueID(body_block), ValueID(exit_block))
@@ -11010,11 +10993,23 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 				'max_i16' {
 					return b.m.get_or_add_const(b.i64_type, '32767')
 				}
-				'min_i32', 'min_int' {
+				'min_i32' {
 					return b.m.get_or_add_const(b.i64_type, '-2147483648')
 				}
-				'max_i32', 'max_int' {
+				'max_i32' {
 					return b.m.get_or_add_const(b.i64_type, '2147483647')
+				}
+				'min_int' {
+					return b.m.get_or_add_const(b.resolve_type(flat.source_type_int),
+						if b.m.target.ptr_size == 4 {
+							'-2147483648'
+						} else {
+							'-9223372036854775808'
+						})
+				}
+				'max_int' {
+					return b.m.get_or_add_const(b.resolve_type(flat.source_type_int),
+						if b.m.target.ptr_size == 4 { '2147483647' } else { '9223372036854775807' })
 				}
 				'min_i64' {
 					return b.m.get_or_add_const(b.i64_type, '-9223372036854775808')
@@ -11442,8 +11437,8 @@ fn (mut b Builder) build_array_literal(id flat.NodeId, node flat.Node) ValueID {
 		}
 		values << value
 	}
-	// Integer literals type wider than the array element: an untyped `1` is
-	// i64 while `[]int` holds i32. Take the width from the array type when the
+	// Integer literals can be wider than the array element on 32-bit targets.
+	// Take the width from the array type when the
 	// checker knows it, or the header stride disagrees with every reader,
 	// which all use the element type, and elements read back shifted.
 	arr_type_id := b.checked_expr_type_name(id)
@@ -11463,7 +11458,7 @@ fn (mut b Builder) build_array_literal(id flat.NodeId, node flat.Node) ValueID {
 			}
 		}
 		if all_int_literals {
-			elem_type = b.i32_type
+			elem_type = b.resolve_type(flat.source_type_int)
 		}
 	}
 	mut coerced_values := []ValueID{cap: values.len}
@@ -12507,18 +12502,55 @@ fn (mut b Builder) build_wide_unsigned_divrem(lhs ValueID, rhs ValueID) (ValueID
 	return quotient, remainder
 }
 
+// Compare the high limb first, then the unsigned low limb on a tie.
+fn (mut b Builder) build_wide_integer_comparison(node flat.Node) ValueID {
+	lhs_id := b.a.child(&node, 0)
+	rhs_id := b.a.child(&node, 1)
+	lhs := b.wide_integer_operand(lhs_id)
+	rhs := b.wide_integer_operand(rhs_id)
+	lhs_low, lhs_high := b.wide_integer_limbs(b.cur_block, lhs)
+	rhs_low, rhs_high := b.wide_integer_limbs(b.cur_block, rhs)
+	high_equal := b.block_instr2(.eq, b.cur_block, b.i1_type, lhs_high, rhs_high)
+	if node.op in [.eq, .ne] {
+		low_equal := b.block_instr2(.eq, b.cur_block, b.i1_type, lhs_low, rhs_low)
+		equal := b.block_instr2(.and_, b.cur_block, b.i1_type, high_equal, low_equal)
+		if node.op == .eq { return equal }
+		return b.block_instr2(.xor, b.cur_block, b.i1_type, equal,
+			b.m.get_or_add_const(b.i1_type, '1'))
+	}
+	// Match the C backend: the first wide operand selects the comparison family.
+	signed := if b.is_wide_integer_expr(lhs_id) {
+		b.is_signed_wide_integer_expr(lhs_id)
+	} else {
+		b.is_signed_wide_integer_expr(rhs_id)
+	}
+	less := node.op in [.lt, .le]
+	high_op := if less {
+		if signed { OpCode.lt } else { OpCode.ult }
+	} else {
+		if signed { OpCode.gt } else { OpCode.ugt }
+	}
+	low_op := match node.op {
+		.lt { OpCode.ult }
+		.le { OpCode.ule }
+		.gt { OpCode.ugt }
+		else { OpCode.uge }
+	}
+	high_order := b.block_instr2(high_op, b.cur_block, b.i1_type, lhs_high, rhs_high)
+	low_order := b.block_instr2(low_op, b.cur_block, b.i1_type, lhs_low, rhs_low)
+	tied_order := b.block_instr2(.and_, b.cur_block, b.i1_type, high_equal, low_order)
+	return b.block_instr2(.or_, b.cur_block, b.i1_type, high_order, tied_order)
+}
+
 fn (mut b Builder) build_infix(id flat.NodeId, node flat.Node) ValueID {
 	// Comparisons have a bool result, so the result-type wide dispatch cannot
-	// catch them. Compare the two 64-bit limbs instead of sending an aggregate
-	// to a scalar instruction.
-	if node.children_count >= 2 && node.op in [.eq, .ne, .lt, .le, .gt, .ge]
-		&& (b.is_wide_integer_expr(b.a.child(&node, 0))
-			|| b.is_wide_integer_expr(b.a.child(&node, 1))) {
-		return b.build_wide_integer_comparison(node)
-	}
+	// catch them. Never send either wide operand to a scalar instruction.
 	if node.children_count >= 2
 		&& (b.is_wide_integer_expr(b.a.child(&node, 0))
 			|| b.is_wide_integer_expr(b.a.child(&node, 1))) {
+		if node.op in [.eq, .ne, .lt, .le, .gt, .ge] {
+			return b.build_wide_integer_comparison(node)
+		}
 		panic('ssa: unsupported 128-bit integer operation: ${node.op}')
 	}
 	if node.op == .power {
@@ -12778,64 +12810,6 @@ fn (mut b Builder) build_infix(id flat.NodeId, node flat.Node) ValueID {
 	}
 	result_type := if node.op in [.eq, .ne, .lt, .gt, .le, .ge] { b.i1_type } else { lhs_type }
 	return b.emit2(op, result_type, lhs, rhs)
-}
-
-fn (mut b Builder) build_wide_integer_comparison(node flat.Node) ValueID {
-	lhs_id := b.a.child(&node, 0)
-	rhs_id := b.a.child(&node, 1)
-	lhs := b.wide_integer_operand(lhs_id)
-	rhs := b.wide_integer_operand(rhs_id)
-	lhs_low, lhs_high := b.wide_integer_limbs(b.cur_block, lhs)
-	rhs_low, rhs_high := b.wide_integer_limbs(b.cur_block, rhs)
-	match node.op {
-		.eq {
-			low_equal := b.block_instr2(.eq, b.cur_block, b.i1_type, lhs_low, rhs_low)
-			high_equal := b.block_instr2(.eq, b.cur_block, b.i1_type, lhs_high, rhs_high)
-			return b.block_instr2(.and_, b.cur_block, b.i1_type, low_equal, high_equal)
-		}
-		.ne {
-			low_not_equal := b.block_instr2(.ne, b.cur_block, b.i1_type, lhs_low, rhs_low)
-			high_not_equal := b.block_instr2(.ne, b.cur_block, b.i1_type, lhs_high, rhs_high)
-			return b.block_instr2(.or_, b.cur_block, b.i1_type, low_not_equal,
-				high_not_equal)
-		}
-		.lt, .le, .gt, .ge {
-			high_equal := b.block_instr2(.eq, b.cur_block, b.i1_type, lhs_high, rhs_high)
-			signed := b.is_signed_wide_integer_expr(lhs_id)
-				|| b.is_signed_wide_integer_expr(rhs_id)
-			low_op := match node.op {
-				.lt { OpCode.ult }
-				.le { OpCode.ule }
-				.gt { OpCode.ugt }
-				.ge { OpCode.uge }
-				else { OpCode.eq }
-			}
-			high_op := if signed {
-				match node.op {
-					.lt { OpCode.lt }
-					.le { OpCode.le }
-					.gt { OpCode.gt }
-					.ge { OpCode.ge }
-					else { OpCode.eq }
-				}
-			} else {
-				match node.op {
-					.lt { OpCode.ult }
-					.le { OpCode.ule }
-					.gt { OpCode.ugt }
-					.ge { OpCode.uge }
-					else { OpCode.eq }
-				}
-			}
-			low_result := b.block_instr2(low_op, b.cur_block, b.i1_type, lhs_low, rhs_low)
-			high_result := b.block_instr2(high_op, b.cur_block, b.i1_type, lhs_high, rhs_high)
-			return b.block_instr3(.select, b.cur_block, b.i1_type, high_equal, low_result,
-				high_result)
-		}
-		else {
-			panic('ssa: unsupported 128-bit integer comparison: ${node.op}')
-		}
-	}
 }
 
 fn (mut b Builder) build_mixed_integer_comparison(op flat.Op, lhs ValueID, rhs ValueID) ValueID {
@@ -14597,8 +14571,7 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 }
 
 // fix_native_map_callback_args keeps the standard integer callbacks in sync
-// with the lowered key size. Some transforms select platform-word callbacks for
-// `int`, while V's `int` storage remains 32-bit on every supported target.
+// with the lowered key size, including platform-width `int` storage.
 fn (mut b Builder) fix_native_map_callback_args(mut args []ValueID) []ValueID {
 	key_size_value := b.m.values[args[1]]
 	if key_size_value.kind != .constant {
@@ -15311,11 +15284,11 @@ fn (mut b Builder) build_array_len_mutator_call(base_id flat.NodeId, method stri
 	len_ptr := b.get_field_ptr(arr_addr, 'len')
 	zero := b.m.get_or_add_const(b.i64_type, '0')
 	if method == 'delete_last' {
-		len32 := b.emit1(.load, b.i32_type, len_ptr)
+		len32 := b.block_load_native_int(b.cur_block, len_ptr)
 		len64 := b.emit1(.zext, b.i64_type, len32)
 		one := b.m.get_or_add_const(b.i64_type, '1')
 		new_len := b.emit2(.sub, b.i64_type, len64, one)
-		new_len32 := b.emit1(.trunc, b.i32_type, new_len)
+		new_len32 := b.coerce_numeric_value(new_len, b.deref_type(len_ptr))
 		b.emit2(.store, b.void_type, new_len32, len_ptr)
 	} else {
 		zero32 := b.m.get_or_add_const(b.i32_type, '0')
@@ -15329,7 +15302,7 @@ fn (mut b Builder) build_array_pop_call(id flat.NodeId, base_id flat.NodeId) Val
 	base := b.emit1(.load, b.array_type, arr_addr)
 	elem_type := b.array_method_elem_type(id, base_id)
 	len_ptr := b.get_field_ptr(arr_addr, 'len')
-	len32 := b.emit1(.load, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(b.cur_block, len_ptr)
 	len64 := b.emit1(.zext, b.i64_type, len32)
 	one := b.m.get_or_add_const(b.i64_type, '1')
 	index := b.emit2(.sub, b.i64_type, len64, one)
@@ -15338,7 +15311,7 @@ fn (mut b Builder) build_array_pop_call(id flat.NodeId, base_id flat.NodeId) Val
 	elem_ptr := b.emit3(.call, ptr_i8, fn_ref, base, index)
 	typed_ptr := b.emit1(.bitcast, b.m.type_store.get_ptr(elem_type), elem_ptr)
 	value := b.emit1(.load, elem_type, typed_ptr)
-	new_len32 := b.emit1(.trunc, b.i32_type, index)
+	new_len32 := b.coerce_numeric_value(index, b.deref_type(len_ptr))
 	b.emit2(.store, b.void_type, new_len32, len_ptr)
 	return value
 }
@@ -15352,22 +15325,22 @@ fn (mut b Builder) build_array_pop_left_call(id flat.NodeId, base_id flat.NodeId
 	data := b.emit1(.load, ptr_i8, data_ptr)
 	typed_ptr := b.emit1(.bitcast, b.m.type_store.get_ptr(elem_type), data)
 	value := b.emit1(.load, elem_type, typed_ptr)
-	elem_size32 := b.emit1(.load, b.i32_type, elem_size_ptr)
+	elem_size32 := b.block_load_native_int(b.cur_block, elem_size_ptr)
 	elem_size := b.emit1(.zext, b.i64_type, elem_size32)
 	next_data := b.emit2(.add, ptr_i8, data, elem_size)
 	b.emit2(.store, b.void_type, next_data, data_ptr)
 	offset_ptr := b.get_field_ptr(arr_addr, 'offset')
-	offset32 := b.emit1(.load, b.i32_type, offset_ptr)
+	offset32 := b.block_load_native_int(b.cur_block, offset_ptr)
 	offset64 := b.emit1(.sext, b.i64_type, offset32)
 	next_offset := b.emit2(.add, b.i64_type, offset64, elem_size)
-	b.emit2(.store, b.void_type, b.emit1(.trunc, b.i32_type, next_offset), offset_ptr)
+	b.emit2(.store, b.void_type, b.coerce_numeric_value(next_offset, b.deref_type(offset_ptr)), offset_ptr)
 	for field in ['len', 'cap'] {
 		field_ptr := b.get_field_ptr(arr_addr, field)
-		field32 := b.emit1(.load, b.i32_type, field_ptr)
+		field32 := b.block_load_native_int(b.cur_block, field_ptr)
 		field64 := b.emit1(.sext, b.i64_type, field32)
 		updated64 := b.emit2(.sub, b.i64_type, field64,
 			b.m.get_or_add_const(b.i64_type, '1'))
-		b.emit2(.store, b.void_type, b.emit1(.trunc, b.i32_type, updated64), field_ptr)
+		b.emit2(.store, b.void_type, b.coerce_numeric_value(updated64, b.deref_type(field_ptr)), field_ptr)
 	}
 	return value
 }
@@ -15430,7 +15403,7 @@ fn (mut b Builder) build_array_join_call(base_id flat.NodeId, sep_id flat.NodeId
 	data_ptr := b.get_field_ptr(arr_alloca, 'data')
 	len_ptr := b.get_field_ptr(arr_alloca, 'len')
 	data := b.emit1(.load, ptr_i8, data_ptr)
-	len32 := b.emit1(.load, b.i32_type, len_ptr)
+	len32 := b.block_load_native_int(b.cur_block, len_ptr)
 	len := b.emit1(.zext, b.i64_type, len32)
 
 	loop := b.m.add_block(b.cur_func, 'array_join_loop')
@@ -15602,7 +15575,20 @@ fn (mut b Builder) build_indirect_call(id flat.NodeId, node flat.Node, callee_id
 
 fn (mut b Builder) build_indirect_call_value(id flat.NodeId, node flat.Node, callee_id flat.NodeId, callee ValueID) ValueID {
 	mut param_types := []TypeID{}
-	if b.m.target.ptr_size == 4 && b.tc != unsafe { nil } {
+	result_type := b.call_expr_result_type(id, node)
+	mut abi_result_type := result_type
+	mut signature_type := b.value_type(callee)
+	if b.is_pointer_type(signature_type) {
+		signature_type = b.m.type_store.types[signature_type].elem_type
+	}
+	has_signature := signature_type > 0 && signature_type < b.m.type_store.types.len
+		&& b.m.type_store.types[signature_type].kind == .func_t
+	if has_signature {
+		signature := b.m.type_store.types[signature_type]
+		param_types = signature.params.clone()
+		abi_result_type = signature.ret_type
+	}
+	if !has_signature && b.m.target.ptr_size == 4 && b.tc != unsafe { nil } {
 		mut callee_type := types.unalias_type(b.tc.expr_type(callee_id) or {
 			b.tc.resolve_type(callee_id)
 		})
@@ -15625,7 +15611,8 @@ fn (mut b Builder) build_indirect_call_value(id flat.NodeId, node flat.Node, cal
 		}
 		args << arg
 	}
-	return b.m.add_instr(.call_indirect, b.cur_block, b.call_expr_result_type(id, node), args)
+	result := b.m.add_instr(.call_indirect, b.cur_block, abi_result_type, args)
+	return b.coerce_numeric_value(result, result_type)
 }
 
 fn (mut b Builder) build_interface_dispatch_call(stub_id int, node flat.Node, base_id flat.NodeId) ValueID {
@@ -15636,7 +15623,27 @@ fn (mut b Builder) build_interface_dispatch_call(stub_id int, node flat.Node, ba
 	fn_ref := b.m.add_value(.func_ref, b.void_type, fn_name, stub_id)
 	mut args := []ValueID{}
 	args << fn_ref
-	args << b.build_typed_call_arg(base_id, param_types[0], false)
+	param_type := param_types[0]
+	base_node := b.a.nodes[int(base_id)]
+	parameter := b.m.type_store.types[param_type]
+	if parameter.kind == .ptr_t && b.is_interface_type_id(parameter.elem_type)
+		&& b.resolve_type(b.receiver_type_name(base_id)) == parameter.elem_type
+		&& (base_node.kind in [.ident, .selector, .index]
+			|| (base_node.kind == .prefix && base_node.op == .mul)) {
+		// Mutable interface fields must keep the caller's storage when it exists.
+		args << b.build_lvalue_addr(base_id)
+	} else {
+		receiver := b.build_typed_call_arg(base_id, param_type, false)
+		if parameter.kind == .ptr_t && parameter.elem_type == b.value_type(receiver)
+			&& b.is_interface_type_id(parameter.elem_type) {
+			// A temporary interface is an aggregate; the dispatch stub receives its address.
+			slot := b.emit0(.alloca, param_type)
+			b.emit2(.store, b.void_type, receiver, slot)
+			args << slot
+		} else {
+			args << receiver
+		}
+	}
 	for i in 1 .. node.children_count {
 		arg_id := b.a.child(&node, i)
 		if i < param_types.len {
@@ -17874,7 +17881,7 @@ fn (mut b Builder) resolve_type(name_id u32) TypeID {
 fn (mut b Builder) primitive_type_id(name_id u32) ?TypeID {
 	return match name_id {
 		flat.source_type_int {
-			b.i32_type
+			if b.m.target.ptr_size == 4 { b.i32_type } else { b.i64_type }
 		}
 		flat.source_type_isize {
 			if b.m.target.ptr_size == 4 { b.i32_type } else { b.i64_type }
@@ -18069,9 +18076,18 @@ fn (mut b Builder) resolve_type_in_module(name_id u32, module_name string) TypeI
 
 // resolve_c_decl_type lowers a source spelling using C declaration rules.
 fn (mut b Builder) resolve_c_decl_type(name_id u32) TypeID {
-	if flat.source_type_shape(name_id).has(.variadic) { return b.m.type_store.get_ptr(b.i8_type) }
+	shape := flat.source_type_shape(name_id)
+	if shape.has(.variadic) { return b.m.type_store.get_ptr(b.i8_type) }
+	if shape.has(.pointer) {
+		return b.m.type_store.get_ptr(b.resolve_c_decl_type(flat.source_type_syntax(name_id).raw_base()))
+	}
 	if flat.source_type_query(name_id).has(.c_prefix) {
-		return b.resolve_type(flat.source_type_syntax(name_id).first_dot_suffix())
+		return b.resolve_c_decl_type(flat.source_type_syntax(name_id).first_dot_suffix())
+	}
+	if name_id == flat.source_type_int { return b.i32_type }
+	// uint is USize (C size_t), so it keeps normal target-width resolution.
+	if target := b.type_alias_target(name_id) {
+		if target != name_id { return b.resolve_c_decl_type(target) }
 	}
 	return b.resolve_type(name_id)
 }
@@ -18249,6 +18265,7 @@ fn (mut b Builder) emit0(op OpCode, typ TypeID) ValueID {
 }
 
 fn (mut b Builder) emit1(op OpCode, typ TypeID, a ValueID) ValueID {
+	if op in [.zext, .sext, .trunc] && typ == b.value_type(a) { return a }
 	mut ops := []ValueID{}
 	ops << a
 	return b.m.add_instr(op, b.cur_block, typ, ops)
