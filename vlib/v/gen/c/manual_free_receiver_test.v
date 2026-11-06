@@ -41,6 +41,63 @@ fn main() {
 	}
 }
 
+fn test_manual_free_shadowing_with_unchanged_method_body() ! {
+	root := os.join_path(os.vtmp_dir(), 'manual_free_selected_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	freefn := os.join_path(root, 'freefn.vh')
+	shadowdrop := os.join_path(root, 'shadowdrop.vh')
+	main := os.join_path(root, 'main.v')
+	os.write_file(freefn, 'module freefn
+pub fn free(_ voidptr)
+')!
+	os.write_file(main, 'import shadowdrop
+fn main() {
+	mut shadow := shadowdrop.Resource{value: 21}
+	shadow.free()
+}
+')!
+	for declaration in ['import freefn { free }', 'pub fn free(_ voidptr) {}', ''] {
+		os.write_file(shadowdrop, 'module shadowdrop
+${declaration}
+pub struct Resource {
+pub mut:
+	value int
+}
+pub fn (mut value Resource) free() {
+	value.value = 22
+	unsafe { free(value) }
+}
+')!
+		for lowered in [false, true] {
+			mut p := parser.Parser.new(pref.new_preferences())
+			mut a := p.parse_files([freefn, shadowdrop, main])
+			assert p.diagnostics.len == 0, p.diagnostics.str()
+			mut tc := types.TypeChecker.new(a)
+			tc.collect(a)
+			// Incremental builds check the edited program, leaving the cached
+			// method body without resolved call names for its free call.
+			tc.check_semantics_selected({
+				'main': true
+			})
+			assert tc.errors.len == 0, tc.errors.str()
+			if lowered {
+				transform.transform(mut a, &tc)
+				tc.annotate_types()
+			}
+			used := markused.mark_used(a, tc)
+			mut g := FlatGen.new()
+			g.set_target(pref.target_from('linux', 'amd64')!)
+			generated := g.gen_with_used_options(a, used, &tc, true)
+			if declaration.len == 0 {
+				assert generated.contains('shadowdrop__Resource__free((shadowdrop__Resource*)memdup(&shadow,'), generated
+			} else {
+				assert generated.contains('shadowdrop__Resource__free(&shadow)'), generated
+			}
+		}
+	}
+}
+
 fn test_manual_free_imported_receivers_in_cold_and_warm_cache() ! {
 	cc := os.find_abs_path_of_executable('gcc') or {
 		os.find_abs_path_of_executable('clang') or { return }

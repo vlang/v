@@ -2567,7 +2567,7 @@ pub fn rewrite_cached_runtime_strings(cached_source string, old_values []string,
 			continue
 		}
 		new_symbol := cached_c_string_symbol(new_value)
-		new_definition := 'static const string ${new_symbol} = {"${cached_c_escape(new_value)}", ${new_value.len}, 1};'
+		new_definition := 'static const string ${new_symbol} = {(u8*)"${cached_c_escape(new_value)}", ${new_value.len}, 1};'
 		if defined_symbols[new_symbol] {
 			target_definitions_present[new_symbol] = true
 		}

@@ -713,9 +713,9 @@ fn install_external_tool_modules(tool_name string, tool_source string, compile_a
 // they can start even when libgc cannot allocate executable pages or cannot be loaded.
 fn external_tool_compile_args(tool_name string, prefix_args []string) []string {
 	mut compile_args := clean_compiler_selection_flags(prefix_args)
-	if tool_name in ['vfmt', 'vself'] {
-		// Backend/target options describe formatting rules or the replacement
-		// compiler. The launcher helper itself must run on the host C backend.
+	if tool_name in ['vfmt', 'vself', 'vtest'] {
+		// Backend/target options describe formatting rules, the replacement
+		// compiler, or test programs. Build the helper for the host C backend.
 		_, native_args := split_tool_backend_args(compile_args)
 		compile_args = external_tool_args_without_target(native_args)
 	}
@@ -757,9 +757,15 @@ fn external_tool_args_without_prod(args []string) []string {
 fn external_tool_args_without_target(args []string) []string {
 	mut result := []string{cap: args.len}
 	mut skip_target_value := false
-	for arg in args {
+	mut value_follows := false
+	for i, arg in args {
 		if skip_target_value {
 			skip_target_value = false
+			continue
+		}
+		if value_follows {
+			result << arg
+			value_follows = false
 			continue
 		}
 		if arg in ['-os', '-arch'] {
@@ -770,6 +776,11 @@ fn external_tool_args_without_target(args []string) []string {
 			continue
 		}
 		result << arg
+		value_follows = if arg in ['-prof', '-profile'] {
+			v1_fallback_profile_option_consumes_value(args, i)
+		} else {
+			arg == '-cf' || pref.option_may_consume_value(arg)
+		}
 	}
 	return result
 }
@@ -778,8 +789,12 @@ fn split_tool_backend_args(args []string) ([]string, []string) {
 	mut backend_args := []string{}
 	mut other_args := []string{}
 	mut backend_value_follows := false
-	for arg in args {
-		if backend_value_follows {
+	mut value_follows := false
+	for i, arg in args {
+		if value_follows {
+			other_args << arg
+			value_follows = false
+		} else if backend_value_follows {
 			backend_args << arg
 			backend_value_follows = false
 		} else if arg in ['-b', '-backend'] {
@@ -789,6 +804,11 @@ fn split_tool_backend_args(args []string) ([]string, []string) {
 			backend_args << arg
 		} else {
 			other_args << arg
+			value_follows = if arg in ['-prof', '-profile'] {
+				v1_fallback_profile_option_consumes_value(args, i)
+			} else {
+				arg == '-cf' || pref.option_may_consume_value(arg)
+			}
 		}
 	}
 	return backend_args, other_args

@@ -107,7 +107,7 @@ fn tools_ci_compilers(job string) ![]string {
 fn tools_ci_expected_commands(job string, compiler string) []string {
 	mut commands := []string{}
 	if job == 'tools-freebsd' {
-		commands << 'pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv'
+		commands << 'pkg install -y git pkgconf sqlite3 gmake boehm-gc-threaded libiconv'
 		if compiler == 'gcc' {
 			commands << 'pkg install -y gcc'
 		}

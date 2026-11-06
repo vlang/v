@@ -16,6 +16,9 @@ values. If the operating system cannot provide an environment block, it returns 
 
 ### Console input
 
+`os.get_raw_stdin()` reads to EOF and returns all input bytes, including newlines and NUL bytes.
+Use `os.get_raw_line()` to read a single line instead.
+
 On Windows, `os.input()` supports both console and redirected standard input.
 It returns an empty string when the standard input handle is invalid.
 
@@ -356,6 +359,7 @@ messages. Error text returned by operations using it retains the message's punct
 
 On Windows, `os.exec()` captures bytes from successful child-pipe reads only. Closing the output
 pipe does not append a previous chunk again. Commands with no output return an empty output string.
+Both capture-pipe handles are released after execution, including when starting the child fails.
 
 ### Writing arrays
 

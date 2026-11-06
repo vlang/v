@@ -127,7 +127,7 @@ fn (mut b Builder) generate_native_float_decimal_body(func_id int) {
 	data_field := b.block_struct_field_ptr(entry, source_slot, b.str_type, 0)
 	len_field := b.block_struct_field_ptr(entry, source_slot, b.str_type, 1)
 	data := b.block_instr1(.load, entry, ptr_i8, data_field)
-	len32 := b.block_instr1(.load, entry, b.i32_type, len_field)
+	len32 := b.block_load_native_int(entry, len_field)
 	len := b.block_instr1(.zext, entry, b.i64_type, len32)
 	digits_type := b.m.type_store.register(Type{ kind: .array_t, elem_type: b.i8_type, len: 32 })
 	digits_slot := b.block_instr0(.alloca, entry, b.m.type_store.get_ptr(digits_type))

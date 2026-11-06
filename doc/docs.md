@@ -732,6 +732,7 @@ voidptr // this one is mostly used for [C interoperability](#v-and-c)
 > `int` is a platform-width signed integer: 64 bits on 64-bit targets and 32 bits on 32-bit
 > targets. Use `i32` or `i64` when you need a fixed width.
 > Integer literal casts to `int` are checked against the target platform's width.
+> Native ARM64 builds use the same platform width for `int`, `min_int`, and `max_int`.
 > `uint` has the same width and is unsigned.
 
 `isize` and `usize` are deprecated. Replace `isize` with `int` and `usize` with `uint`.
@@ -740,6 +741,10 @@ the full unsigned range. Existing spellings still compile with deprecation warni
 Pointer subtraction returns `int`, including in translated C code.
 
 ### 128-bit integers
+
+The native ARM64 backend compares `i128` and `u128` using both 64-bit limbs.
+Signed ordering uses the high limb's sign; equality compares every bit.
+Ordering follows the signedness of the leftmost 128-bit operand, as in the C backend.
 
 `i128` and `u128` hold 128 bits. The usual operators work on them: arithmetic,
 bitwise, shifts, comparisons, and casts to and from the other numeric types.
@@ -1877,6 +1882,10 @@ the called function only reads or writes scalar fields and array elements, or pa
 reference, or the address of an element (`&buf[i]`), straight on to a function that does the
 same. Calls that may retain the storage still move it to the heap; `-warn-about-allocs` reports
 these moves.
+This also applies to reference receivers and implicitly referenced arguments when the callee
+calls a Result-returning function. Handling that Result with `!` or `or` does not itself
+require heap storage for a borrowed local. Pointers carried inside an aggregate still retain
+their original storage when the callee saves or returns them.
 Calls through local function values remain conservative, including values that shadow
 function names.
 Explicitly destroying owned source elements invalidates views of those elements, as with other
@@ -2582,6 +2591,12 @@ typ := match c {
 println(typ)
 // 'lowercase'
 ```
+
+A `match` value assigned to a sum type may return its variants directly, including in map
+values, appended array elements, and struct fields. Different variant arms are wrapped individually;
+numeric arms retain their usual numeric promotion.
+Arms that exit through `return` or a non-returning call do not affect that promotion.
+Temporary match storage does not construct an unused sum variant or evaluate its field defaults.
 
 A match statement also can match the variant types of a `sumtype`. Note that
 in that case, the match is exhaustive, since all variant types are mentioned
@@ -3728,6 +3743,28 @@ When constructing a union that contains interface storage, V clears the entire s
 initializing the selected member. This also applies to interfaces inside nested union members.
 An inactive interface member with no valid type tag formats as `unknown interface value`.
 Accessing an inactive member still requires `unsafe` and does not create a valid interface value.
+
+Anonymous unions can be declared as fields and initialized with `union { ... }`,
+using the field's declared union type. Initialize at most one member, just as with named unions:
+
+```v
+struct Packet {
+	data union {
+		number u64
+		text   string
+	}
+}
+
+packet := Packet{
+	data: union { text: 'hello' }
+}
+assert unsafe { packet.data.text } == 'hello'
+```
+
+Anonymous union values format as `union { ... }`, without an internal generated type name.
+
+An anonymous literal cannot yet initialize a C anonymous aggregate declared in a header.
+Anonymous C structs have the same limitation.
 
 ### Why use unions?
 
@@ -7157,9 +7194,11 @@ storage; it does not require moving the containing local or by-value parameter t
 An address into an inline fixed array can require moving its owner instead.
 Casting a local address to an integer preserves the lifetime of the addressed storage.
 Calling through an interface field likewise borrows the interface's object, without retaining
-the address of the interface header. Unwrapping a Result into a narrow scalar can leave its
-arguments on the stack when the callee is proven to only read their values. Unknown callees
-and callees that store or forward an argument retain its address sources conservatively,
+the address of the interface header. Unwrapping a Result into a narrow scalar can leave named
+receiver values and identifier arguments on the stack when the callee is proven to borrow only
+their storage. Embedded pointers still retain the storage they reference. Dereferenced operands
+and mutable reference-iteration bindings remain conservative. Unknown callees and callees that
+store or forward an argument retain its address sources conservatively,
 including calls evaluated inside another call's arguments. Integer results as wide as a pointer
 and floating point or multiple results can carry encoded pointers and retain those arguments
 conservatively.
@@ -10735,10 +10774,13 @@ so they always
 build as if `-gc none` was passed. For x64, `-prod` enables SSA optimization, scalar register
 allocation, and optimized C helpers. Very large x64 modules may skip the global SSA pass to
 bound compiler memory. The ARM64 backend retains its existing optimization behavior.
+ARM64 executable linking is silent by default; use `-stats` to display compiler stage timings.
 ARM64 builds reject native source files included with `#include`, `#insert`, `#preinclude`, or
 `#postinclude`, because its linker cannot link those sources yet. Use the C backend for them.
 ARM64 resolves a fixed set of platform C constants. Other C constants produce an error;
 use the C backend when a header defines a constant the native backend does not support.
+The supported set includes the memory-order and pthread compatibility constants used by
+V's synchronization runtime.
 The x64 backend is experimental. Calls without a native implementation fail compilation
 or linking rather than producing placeholder implementations.
 It requires a Linux AMD64 host. Passing or returning C structs and arrays by value is
@@ -10752,16 +10794,16 @@ arguments, and 64-bit integer, pointer, or void returns. Unsupported callback co
 including floating-point, narrow integer, aggregate, and variadic signatures, produce a diagnostic.
 
 Native 128-bit integers currently support integer widening, copying, bitwise `&`, `|`, `^`,
-addition, subtraction, and shifts with constant counts from 0 through 127. Signed scalar
-widening sign-extends for both `i128` and `u128`; unsigned scalar widening zero-extends.
+addition, subtraction, comparisons, and shifts with constant counts from 0 through 127.
+Signed scalar widening sign-extends for both `i128` and `u128`; unsigned scalar widening
+zero-extends.
 Signed `i128 >>` preserves the sign; `u128 >>` and `>>>` fill with zeroes.
-Comparisons, multiplication, division, remainder, unary negation and complement, variable shifts,
+Multiplication, division, remainder, unary negation and complement, variable shifts,
 compound assignments, increment/decrement, narrowing casts, and conversions to or from
-floating-point values are unsupported and produce a diagnostic. Matching, range iteration,
-and range membership with 128-bit values are also unsupported. Array and string indices and
-slice bounds must use scalar integers. Integer literals must fit in a single 64-bit limb;
-construct larger values with shifts and bitwise operations. Array `.index()` searches on
-128-bit elements are unsupported.
+floating-point values are unsupported and produce a diagnostic. Range iteration with 128-bit
+values is also unsupported. Array and string indices and slice bounds must use scalar integers.
+Integer literals must fit in a single 64-bit limb; construct larger values with shifts and
+bitwise operations.
 Use the C backend for the full set of 128-bit operations.
 
 Currently there is no debugging support for binaries created by the native backends.

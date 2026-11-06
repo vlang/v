@@ -123,7 +123,7 @@ fn test_windows_stack_overflow_in_main_and_spawned_threads() ! {
 			$if tinyc && !amd64 {
 				assert fault.output.contains('RUNTIME ERROR: invalid memory access'), fault.output
 			} $else {
-				assert fault.output.contains('Unhandled Exception'), fault.output
+				assert fault.output.contains('Unhandled Exception 0xc0000005 at '), fault.output
 			}
 			assert !fault.output.contains('stack overflow'), fault.output
 		}
