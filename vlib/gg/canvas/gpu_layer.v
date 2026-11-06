@@ -130,12 +130,18 @@ pub fn (mut s GpuSurface) save_layer(bounds ?Rect) ! {
 	}
 	if layer_bounds.is_empty_negative_or_nan() {
 		// abortLayer: the save clips everything out.
-		s.clip_shape(rect_shape(Rect{}), .intersect, true)!
+		s.clip_shape(rect_shape(Rect{}), .intersect, true) or {
+			s.restore()
+			return err
+		}
 		return
 	}
 	ox := layer_bounds.left()
 	oy := layer_bounds.top()
-	mut layer := s.ctx.new_layer_surface(int(layer_bounds.width()), int(layer_bounds.height()))!
+	mut layer := s.ctx.new_layer_surface(int(layer_bounds.width()), int(layer_bounds.height())) or {
+		s.restore()
+		return err
+	}
 	layer.is_layer = true
 	layer.origin_x = int(ox)
 	layer.origin_y = int(oy)

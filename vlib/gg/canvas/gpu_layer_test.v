@@ -1,6 +1,7 @@
 module canvas
 
 import crypto.sha256
+import sokol.gfx
 
 fn test_approx_size_follows_skia() {
 	// skgpu::GetApproxSize(): at least 16, powers of two up to 1024, then
@@ -126,5 +127,38 @@ fn test_per_edge_quad_shaders_match_graphite() {
 		vert, frag := solid_shader_sources(c.step, c.clipped)
 		assert sha256.sum(vert.bytes()).hex()[..16] == c.vertex
 		assert sha256.sum(frag.bytes()).hex()[..16] == c.fragment
+	}
+}
+
+fn test_failed_layer_allocation_preserves_the_callers_save_and_matrix() {
+	$if macos {
+		mut desc := gfx.Desc{}
+		desc.environment.metal.device = C.v_canvas_metal_device()
+		desc.environment.defaults.color_format = .bgra8
+		desc.environment.defaults.depth_format = .none
+		desc.environment.defaults.sample_count = 1
+		// The parent uses the only attachment slot, forcing the layer to fail.
+		desc.attachments_pool_size = 1
+		gfx.setup(&desc)
+		defer { gfx.shutdown() }
+		mut ctx := new_gpu_context()!
+		defer { ctx.free() }
+		mut s := ctx.new_surface(width: 8, height: 8)!
+		defer { s.free() }
+		s.save()
+		s.set_matrix(Matrix.translate(4, 0))
+		mut rejected := false
+		s.save_layer(none) or {
+			assert err.msg().contains('could not create the render target')
+			rejected = true
+		}
+		assert rejected
+		assert s.save_count == 1
+		s.restore()
+		s.draw_rect(Rect.ltrb(0, 0, 1, 1), Paint.rgba8(255, 0, 0, 255))!
+		mut pixels := []u8{len: 8 * 8 * 4}
+		s.read_pixels(pixels.data, 8 * 4)!
+		assert pixels[2] == 255
+		assert pixels[4 * 4 + 2] == 0
 	}
 }
