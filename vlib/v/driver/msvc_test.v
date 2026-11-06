@@ -91,3 +91,17 @@ fn test_only_cl_rejects_gnu_inline_assembly() {
 	assert !c_compiler_rejects_gnu_asm('C:/Program Files/LLVM/bin/clang-cl.exe')
 	assert !c_compiler_rejects_gnu_asm('clang')
 }
+
+fn test_msvc_checker_fixture_header_probe() {
+	$if windows && msvc {
+		compiler := v3_c_compiler_command_alias(@CCOMPILER, 'windows')
+		saved := msvc_require_cl(compiler, 'windows', pref.host_target())
+		defer {
+			msvc_restore_environment(saved)
+		}
+		assert checker_fixture_header_exists('<stdio.h>', @FILE, compiler)
+		assert checker_fixture_header_exists('<errno.h>', @FILE, compiler)
+		assert !checker_fixture_header_exists('<v_missing_msvc_checker_fixture_header.h>', @FILE,
+			compiler)
+	}
+}
