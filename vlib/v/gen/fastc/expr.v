@@ -2992,13 +2992,11 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 				dot_index := expression_tokens.len - 1
 				receiver_start := fastc_method_receiver_start(expression_tokens, dot_index)
 				receiver_tokens := expression_tokens[receiver_start..dot_index]
-				// A bare receiver (`p` in `p.a`) is a name, not a member chain, so
-				// infer_member_access_type cannot type it; infer the expression instead.
-				mut receiver_type := u32(0)
-				if receiver_tokens.len == 1 {
-					receiver_type = g.infer_expression_type(receiver_tokens) or { u32(0) }
-				} else if member_type := g.infer_member_access_type(receiver_tokens, 0, receiver_tokens.len) {
-					receiver_type = member_type
+				// Infer the whole receiver first: this also types parenthesized (`(x)` from an
+				// unsafe block) and call (`mk()`) roots, which infer_member_access_type cannot.
+				mut receiver_type := g.infer_expression_type(receiver_tokens) or { u32(0) }
+				if receiver_type == 0 && receiver_tokens.len >= 3 {
+					receiver_type = g.infer_member_access_type(receiver_tokens, 0, receiver_tokens.len) or { u32(0) }
 				}
 				if receiver_type != 0 {
 					piece = if fastc_is_pointer_type(g.underlying_alias_type(receiver_type)) {

@@ -58,6 +58,29 @@ fn main() {
 }
 '
 
+const pointer_member_receiver_shapes_source = 'module main
+
+struct Foo {
+	a int = 7
+}
+
+fn make_foo() &Foo {
+	return &Foo{}
+}
+
+fn read_mut(mut p Foo) int {
+	return p.a
+}
+
+fn main() {
+	x := &Foo{}
+	println(unsafe { x }.a)
+	println(make_foo().a)
+	mut z := Foo{}
+	println(read_mut(mut z))
+}
+'
+
 // run_pointer_member_fastc_program compiles `source` with the fastc backend, runs it,
 // and returns its stdout. A clang `.`/`->` mismatch surfaces as a build failure.
 fn run_pointer_member_fastc_program(name string, source string) !string {
@@ -113,6 +136,16 @@ fn test_fastc_unsafe_deref_member_access_groups_the_deref() {
 		panic(err)
 	}
 	assert output.trim_space() == '7'
+}
+
+fn test_fastc_pointer_receiver_shapes_emit_arrow() {
+	$if !macos && !linux {
+		return
+	}
+	output := run_pointer_member_fastc_program('receiver_shapes', pointer_member_receiver_shapes_source) or {
+		panic(err)
+	}
+	assert output.split_into_lines() == ['7', '7', '7']
 }
 
 fn test_fastc_value_struct_member_access_keeps_dot() {
