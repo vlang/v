@@ -232,7 +232,12 @@ pub fn (st Stat) get_mode() FileMode {
 // is_dir returns a `bool` indicating whether the given `path` is a directory.
 pub fn is_dir(path string) bool {
 	w_path := path.replace('/', '\\')
-	attr := C.GetFileAttributesW(w_path.to_wide())
+	mut attr := C.GetFileAttributesW(w_path.to_wide())
+	if attr == u32(C.INVALID_FILE_ATTRIBUTES) && windows_needs_extended_path(path) {
+		// Retry through the extended-length form, which plain Win32 calls
+		// cannot resolve past MAX_PATH when long paths are disabled in the OS.
+		attr = C.GetFileAttributesW(windows_extended_path(path).to_wide())
+	}
 	if attr == u32(C.INVALID_FILE_ATTRIBUTES) {
 		return false
 	}
@@ -247,7 +252,11 @@ pub fn is_dir(path string) bool {
 // (for more information: https://github.com/vlang/v/blob/master/vlib/os/README.md)
 pub fn is_link(path string) bool {
 	path_ := path.replace('/', '\\')
-	attr := C.GetFileAttributesW(path_.to_wide())
+	mut attr := C.GetFileAttributesW(path_.to_wide())
+	if attr == u32(C.INVALID_FILE_ATTRIBUTES) && windows_needs_extended_path(path) {
+		// Retry through the extended-length form, see `is_dir` above.
+		attr = C.GetFileAttributesW(windows_extended_path(path).to_wide())
+	}
 	return int(attr) != int(C.INVALID_FILE_ATTRIBUTES) && (attr & 0x400) != 0
 }
 

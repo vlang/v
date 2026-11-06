@@ -674,6 +674,13 @@ pub fn rm(path string) ! {
 		rc = C._wremove(wpath)
 		if rc == -1 {
 			code := int(C.errno)
+			// The CRT cannot resolve paths past MAX_PATH when long paths are
+			// disabled in the OS, while listing them (Win32) still works, so
+			// `rmdir_all` and `v wipe-cache` fail with ENOENT on files that
+			// exist. Retry such paths through their extended-length form.
+			if windows_needs_extended_path(path) && rm_windows_extended(path) {
+				return
+			}
 			if changed {
 				C.SetFileAttributesW(wpath, attrs)
 			}
@@ -694,16 +701,32 @@ pub fn rm(path string) ! {
 // rmdir removes a specified directory.
 pub fn rmdir(path string) ! {
 	$if windows {
-		rc := C.RemoveDirectory(path.to_wide())
-		if !rc {
-			// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya - 0 == false, is failure
-			// we must save error immediately, or it will be overwritten by other API function calls.
-			code := int(C.GetLastError())
-			return error_win32(
-				msg:  'Failed to remove "${path}"'
-				code: code
-			)
+		wpath := path.to_wide()
+		defer {
+			unsafe { free(wpath) }
 		}
+		if C.RemoveDirectory(wpath) {
+			return
+		}
+		// https://docs.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-removedirectorya - 0 == false, is failure
+		// we must save error immediately, or it will be overwritten by other API function calls.
+		code := int(C.GetLastError())
+		// Like `os.rm` above, retry paths past MAX_PATH through their
+		// extended-length form, which plain Win32 calls cannot resolve when
+		// long paths are disabled in the OS.
+		if windows_needs_extended_path(path) {
+			wext := windows_extended_path(path).to_wide()
+			defer {
+				unsafe { free(wext) }
+			}
+			if C.RemoveDirectoryW(wext) {
+				return
+			}
+		}
+		return error_win32(
+			msg:  'Failed to remove "${path}"'
+			code: code
+		)
 	} $else {
 		rc := C.rmdir(&char(path.str))
 		if rc == -1 {
