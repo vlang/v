@@ -3127,13 +3127,20 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 	mut embedded_id := 0
 	mut fields_are_public := is_c_struct
 	mut fields_are_mutable := false
+	// Flags of attributes written before a field name; they apply to the next field.
+	mut leading_is_required := false
+	mut leading_is_skip := false
 	for tok != .rcbr && tok != .eof {
 		if tok in [.semicolon, .comma] {
 			tok = scan.scan()
 			continue
 		}
 		if tok == .attribute {
-			tok = fastc_skip_attribute(mut scan)!
+			mut leading_attribute_required := false
+			mut leading_attribute_skip := false
+			tok, leading_attribute_required, leading_attribute_skip = fastc_scan_struct_field_attributes(mut scan, tok)!
+			leading_is_required = leading_is_required || leading_attribute_required
+			leading_is_skip = leading_is_skip || leading_attribute_skip
 			continue
 		}
 		// `pub string` names a field `pub`; only `pub:` / `pub mut:` start a section.
@@ -3200,6 +3207,9 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 			tok = scan.scan()
 		}
 		if tok in [.semicolon, .rcbr, .assign, .attribute] {
+			// Leading attributes of an embedded field are not recorded, so drop their flags here.
+			leading_is_required = false
+			leading_is_skip = false
 			// An attribute may follow an embedded type with or without a default.
 			tok, _, _ = fastc_scan_struct_field_attributes(mut scan, tok)!
 			embedded_key := if qualified_embed_key != 0 {
@@ -3283,9 +3293,15 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 		if field_option_value != 0 {
 			fastc_register_composite_type(field_option_value, mut composite_types)
 		}
-		mut is_required := false
-		mut is_skip := false
-		tok, is_required, is_skip = fastc_scan_struct_field_attributes(mut scan, tok)!
+		mut is_required := leading_is_required
+		mut is_skip := leading_is_skip
+		leading_is_required = false
+		leading_is_skip = false
+		mut trailing_is_required := false
+		mut trailing_is_skip := false
+		tok, trailing_is_required, trailing_is_skip = fastc_scan_struct_field_attributes(mut scan, tok)!
+		is_required = is_required || trailing_is_required
+		is_skip = is_skip || trailing_is_skip
 		mut default_source := ''
 		mut default_source_offset := 0
 		if tok == .assign {
