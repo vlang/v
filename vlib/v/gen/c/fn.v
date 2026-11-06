@@ -846,9 +846,18 @@ fn (mut g FlatGen) gen_no_main_runtime_init_caller() {
 	storage := if g.cache_split { '' } else { 'static ' }
 	g.writeln('${storage}void _vno_main_init_caller(void) {')
 	g.writeln('\tif (_v3_no_main_initialized) { return; }')
+	// Native constructors can reach an export before main supplies argv. Leave
+	// executable initialization for main; libraries must still initialize on call.
+	if g.has_builtins && !g.object_file_mode && !g.suppress_main && !g.is_shared {
+		has_main := g.has_entry_main() || g.top_level_stmts().len > 0
+			|| (!g.has_no_main_module() && g.postinclude_directives.len == 0)
+		if has_main {
+			g.writeln('\tif (g_main_argv == 0) { return; }')
+		}
+	}
 	g.writeln('\t_v3_no_main_initialized = true;')
-	// The argument globals are already zero-initialized for library callers.
-	// A script main can reach this helper after setting its process arguments.
+	// The argument globals stay zero-initialized for library callers.
+	// An executable main reaches this helper after setting its process arguments.
 	g.gen_trace_startup()
 	g.gen_profile_startup_enable()
 	if g.runtime_init_is_needed() {
@@ -5784,7 +5793,8 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	// before emitting the body so lookup/preparation work cannot affect spelling.
 	g.tmp_count = 0
 	g.indent++
-	if is_direct_no_main_export {
+	// Naked bodies may contain only the user's assembly, never a generated call.
+	if is_direct_no_main_export && !is_naked_fn {
 		g.writeln('_vno_main_init_caller();')
 	}
 	// The entry counter must be the first thing in the body: a function whose

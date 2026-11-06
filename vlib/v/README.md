@@ -538,6 +538,9 @@ Cached programs retain the element layouts required by fixed-array aliases and o
 Cached native exports share a program-local runtime initialization guard with the entry point,
 so a module object built for a script can also be linked by a program with `fn main()`.
 Calls through exported C symbols do not repeat module initialization or replace process arguments.
+In executables, native calls before `main` leave runtime initialization pending until process
+arguments are available. Direct `@[_naked]` exports contain no generated initialization calls;
+startup remains the caller's responsibility. Renamed exports initialize through ordinary wrappers.
 Cached standard-library headers retain their source classification so headerless C bindings keep
 their complete layouts, including the Boehm GC stack type used by interface stringification.
 Generated fixed-array map-key helpers declare their cached builtin callees before their definitions.
