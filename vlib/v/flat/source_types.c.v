@@ -351,16 +351,20 @@ struct SourceTypeTable {
 mut:
 	chunks [source_type_chunk_count]voidptr
 	count  u32
-	index  &SourceTypeIndex = unsafe { nil }
 }
 
 struct SourceTypeIndex {
 	slots    &u32 = unsafe { nil }
 	capacity u32
+	previous &SourceTypeIndex = unsafe { nil }
 }
 
 __global g_source_types &SourceTypeTable
 __global g_source_types_lock u32
+
+// Index headers and slots contain only C allocations. Root their generation
+// chain directly, independently of the GC-managed entry table and worker arenas.
+__global g_source_type_index &SourceTypeIndex
 
 // A whole program uses a few hundred thousand spellings; a small direct-mapped
 // cache keeps evicting entries that are about to be asked for again.
@@ -432,19 +436,19 @@ fn source_type_table_publish(table &SourceTypeTable) {
 }
 
 @[inline]
-fn source_type_index_load(table &SourceTypeTable) &SourceTypeIndex {
+fn source_type_index_load() &SourceTypeIndex {
 	$if x32 {
-		return unsafe { &SourceTypeIndex(voidptr(C.atomic_load_u32(voidptr(&table.index)))) }
+		return unsafe { &SourceTypeIndex(voidptr(C.atomic_load_u32(voidptr(&g_source_type_index)))) }
 	} $else {
-		return unsafe { &SourceTypeIndex(voidptr(C.atomic_load_u64(voidptr(&table.index)))) }
+		return unsafe { &SourceTypeIndex(voidptr(C.atomic_load_u64(voidptr(&g_source_type_index)))) }
 	}
 }
 
-fn source_type_index_publish(table &SourceTypeTable, index &SourceTypeIndex) {
+fn source_type_index_publish(index &SourceTypeIndex) {
 	$if x32 {
-		C.atomic_store_u32(voidptr(&table.index), u32(voidptr(index)))
+		C.atomic_store_u32(voidptr(&g_source_type_index), u32(voidptr(index)))
 	} $else {
-		C.atomic_store_u64(voidptr(&table.index), u64(voidptr(index)))
+		C.atomic_store_u64(voidptr(&g_source_type_index), u64(voidptr(index)))
 	}
 }
 
@@ -457,7 +461,7 @@ fn source_type_entry(table &SourceTypeTable, id u32) &SourceTypeEntry {
 }
 
 fn (mut table SourceTypeTable) grow() {
-	previous := source_type_index_load(table)
+	previous := source_type_index_load()
 	capacity := if isnil(previous) { u32(2048) } else { previous.capacity * 2 }
 	// The hash index holds integers only; its storage belongs to the process,
 	// independently of the calling worker's disposable allocation arena.
@@ -477,13 +481,14 @@ fn (mut table SourceTypeTable) grow() {
 	}
 	// A reader can still be probing any previous index. Keep old generations for
 	// the process lifetime; geometric growth retains less than twice the latest
-	// slot allocation. Neither the index nor its slots belong to a worker arena.
-	mut index := unsafe { &SourceTypeIndex(node_payload_alloc_zeroed(sizeof(SourceTypeIndex))) }
+	// slot allocation. The owning chain uses the same C heap as the slots, so it
+	// remains reachable independently of the GC and disposable worker arenas.
+	mut index := unsafe { &SourceTypeIndex(C.calloc(1, sizeof(SourceTypeIndex))) }
 	if isnil(index) {
 		panic('could not allocate the source type index')
 	}
-	unsafe { *index = SourceTypeIndex{ slots: slots, capacity: capacity } }
-	source_type_index_publish(table, index)
+	unsafe { *index = SourceTypeIndex{ slots: slots, capacity: capacity, previous: previous } }
+	source_type_index_publish(index)
 }
 
 fn source_type_find(table &SourceTypeTable, index &SourceTypeIndex, text string, hashed u32) u32 {
@@ -521,7 +526,7 @@ pub fn source_type_existing_id(text string) ?u32 {
 	if isnil(table) {
 		return none
 	}
-	id := source_type_find(table, source_type_index_load(table), text, u32(hash.sum64_string(text,
+	id := source_type_find(table, source_type_index_load(), text, u32(hash.sum64_string(text,
 		0)))
 	if id == 0 {
 		return none
@@ -599,7 +604,7 @@ fn source_type_id_uncached(text string) u32 {
 	hashed := u32(hash.sum64_string(text, 0))
 	mut table := source_type_table_load()
 	if !isnil(table) {
-		id := source_type_find(table, source_type_index_load(table), text, hashed)
+		id := source_type_find(table, source_type_index_load(), text, hashed)
 		if id != 0 {
 			return id
 		}
@@ -620,10 +625,10 @@ fn source_type_id_uncached(text string) u32 {
 		source_type_flags_table_create()
 		source_type_table_publish(table)
 	}
-	mut index := source_type_index_load(table)
+	mut index := source_type_index_load()
 	if isnil(index) || (table.count + 1) * 4 >= index.capacity * 3 {
 		table.grow()
-		index = source_type_index_load(table)
+		index = source_type_index_load()
 	}
 	// Another writer may have inserted the spelling, or grown the index, while
 	// this caller waited for the lock. Probe the current generation again.
