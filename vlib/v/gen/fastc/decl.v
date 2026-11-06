@@ -3009,6 +3009,49 @@ fn fastc_scan_declaration_attribute(mut scan scanner.Scanner, path string, prefs
 	}
 }
 
+// fastc_scan_struct_field_attributes consumes the `@[...]` attributes starting at `first`
+// and reports whether any of them is `required` or `skip`.
+fn fastc_scan_struct_field_attributes(mut scan scanner.Scanner, first token.Token) !(token.Token, bool, bool) {
+	mut tok := first
+	mut is_required := false
+	mut is_skip := false
+	for tok == .attribute {
+		mut attribute_is_required := false
+		mut attribute_is_skip := false
+		tok, attribute_is_required, attribute_is_skip = fastc_scan_struct_field_attribute(mut scan)!
+		is_required = is_required || attribute_is_required
+		is_skip = is_skip || attribute_is_skip
+	}
+	return tok, is_required, is_skip
+}
+
+// fastc_skip_struct_field_default_from_token skips a struct field default. Unlike
+// fastc_skip_field_default_from_token, it counts `@[` as an opening bracket and stops at a
+// top-level `@[`, so the attributes after the default can be parsed. The scanner's `pos`
+// is then the start of that `@[`, so the default source slice excludes it.
+fn fastc_skip_struct_field_default_from_token(mut scan scanner.Scanner, first token.Token) !token.Token {
+	mut tok := first
+	mut parens := 0
+	mut brackets := 0
+	mut braces := 0
+	for tok != .eof {
+		if parens == 0 && brackets == 0 && braces == 0 && tok in [.semicolon, .rcbr, .attribute] {
+			return tok
+		}
+		match tok {
+			.lpar { parens++ }
+			.rpar { parens-- }
+			.lsbr, .attribute { brackets++ }
+			.rsbr { brackets-- }
+			.lcbr { braces++ }
+			.rcbr { braces-- }
+			else {}
+		}
+		tok = scan.scan()
+	}
+	return tok
+}
+
 fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attributes FastcDeclarationAttribute, source_file FastcSourceFile, declared_types map[u32]bool, allow_short_placeholders bool, target_libc_headers bool, mut struct_fields map[string]flat.TypeTextBindings, mut struct_field_info map[string][]FastcStructField, mut composite_types map[string]bool, mut out strings.Builder) !token.Token {
 	mut tok := scan.scan()
 	if tok != .name {
@@ -3238,24 +3281,24 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 		}
 		mut is_required := false
 		mut is_skip := false
-		for tok == .attribute {
-			mut attribute_is_required := false
-			mut attribute_is_skip := false
-			tok, attribute_is_required, attribute_is_skip = fastc_scan_struct_field_attribute(mut scan)!
-			is_required = is_required || attribute_is_required
-			is_skip = is_skip || attribute_is_skip
-		}
+		tok, is_required, is_skip = fastc_scan_struct_field_attributes(mut scan, tok)!
 		mut default_source := ''
 		mut default_source_offset := 0
 		if tok == .assign {
 			first_default_token := scan.scan()
 			default_start := scan.pos
 			default_source_offset = source_file.source_offset + default_start
-			tok = fastc_skip_field_default_from_token(mut scan, first_default_token)!
+			tok = fastc_skip_struct_field_default_from_token(mut scan, first_default_token)!
 			default_source = source_file.source[default_start..scan.pos].trim_space().trim_right(';').trim_space()
 			if default_source == '' {
 				return error('fastc parser does not support empty default for struct `${name}` field `${field_names[0]}` in ${source_file.path}')
 			}
+			// Attributes may also follow the default; the default skipper stops at them.
+			mut default_attr_required := false
+			mut default_attr_skip := false
+			tok, default_attr_required, default_attr_skip = fastc_scan_struct_field_attributes(mut scan, tok)!
+			is_required = is_required || default_attr_required
+			is_skip = is_skip || default_attr_skip
 		}
 		for field_name in field_names {
 			c_field_name := fastc_c_identifier(field_name)
