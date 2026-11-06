@@ -16,13 +16,15 @@ const r_x86_64_plt32 = 4
 pub struct GenOptions {
 pub:
 	optimize_runtime bool
+	target_os        string = 'linux'
 }
 
 pub struct Gen {
 	m &ssa.Module
-mut:
+pub mut:
 	elf              &elf.ElfObject
 	optimize_runtime bool
+	target_os        string = 'linux'
 
 	stack_map      map[int]int
 	alloca_offsets map[int]int
@@ -69,6 +71,7 @@ pub fn Gen.new_with_options(m &ssa.Module, opts GenOptions) &Gen {
 		m:                m
 		elf:              elf.ElfObject.new(elf.em_x86_64)
 		optimize_runtime: opts.optimize_runtime
+		target_os:        opts.target_os
 	}
 }
 
@@ -97,9 +100,8 @@ pub fn (g &Gen) validate_c_extern_calls() ! {
 			signature := g.m.type_store.types[value.typ]
 			if signature.kind == .func_t {
 				return_type := g.m.type_store.types[signature.ret_type]
-				if function.is_variadic || return_type.kind == .float_t
-					|| (return_type.kind == .int_t && return_type.width < 64) {
-					return error('x64: C function addresses with variadic, floating-point or narrow integer return conventions are not supported yet: ${function.name}')
+				if function.is_variadic || return_type.kind == .float_t {
+					return error('x64: C function addresses with variadic or floating-point return conventions are not supported yet: ${function.name}')
 				}
 				for param_type in signature.params {
 					g.validate_c_callback_type(param_type, function.name)!
@@ -146,15 +148,13 @@ fn (g &Gen) validate_c_callback_type(typ_id ssa.TypeID, name string) ! {
 		return
 	}
 	return_type := g.m.type_store.types[typ.ret_type]
-	if g.is_aggregate_type(typ.ret_type) || return_type.kind == .float_t
-		|| (return_type.kind == .int_t && return_type.width < 64) {
+	if g.is_aggregate_type(typ.ret_type) || return_type.kind == .float_t {
 		return error('x64: unsupported C callback return convention: ${name}')
 	}
 	g.validate_c_callback_type(typ.ret_type, name)!
 	for param_type in typ.params {
 		param := g.m.type_store.types[param_type]
-		if g.is_aggregate_type(param_type) || param.kind == .float_t
-			|| (param.kind == .int_t && param.width < 64) {
+		if g.is_aggregate_type(param_type) || param.kind == .float_t {
 			return error('x64: unsupported C callback argument convention: ${name}')
 		}
 		g.validate_c_callback_type(param_type, name)!
@@ -526,25 +526,40 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 		}
 	}
 
-	// The C entry point `main` receives argc in RDI and argv in RSI.
+	// The C entry point `main` receives argc/argv in registers.
+	// System V: RDI=argc, RSI=argv. Windows x64: RCX=argc, RDX=argv.
 	// Persist them to builtin globals so `os.args` / `arguments()` work.
-	// Must happen before param spilling overwrites RDI/RSI.
+	// Must happen before param spilling overwrites the registers.
 	if func.name == 'main' {
+		argc_reg := if g.target_os == 'windows' { int(rcx) } else { int(rdi) }
+		argv_reg := if g.target_os == 'windows' { int(rdx) } else { int(rsi) }
 		if g.m.globals.any(it.name == 'g_main_argc') {
-			g.store_entry_arg_to_global(int(rdi), 'g_main_argc', 4)
+			g.store_entry_arg_to_global(argc_reg, 'g_main_argc', 4)
 		}
 		if g.m.globals.any(it.name == 'g_main_argv') {
-			g.store_entry_arg_to_global(int(rsi), 'g_main_argv', 8)
+			g.store_entry_arg_to_global(argv_reg, 'g_main_argv', 8)
 		}
 	}
 
-	// Move Params (ABI: RDI, RSI, RDX, RCX, R8, R9)
-	// For sret functions, hidden pointer consumes RDI.
-	abi_regs := [7, 6, 2, 1, 8, 9]
-	arg_reg_base := if g.cur_func_abi_ret_indirect { 1 } else { 0 }
-	num_reg_args := 6 - arg_reg_base
+	// Move Params. System V: RDI,RSI,RDX,RCX,R8,R9. Windows x64: RCX,RDX,R8,R9.
+	// For sret functions, hidden pointer consumes the first arg register.
+	mut abi_regs := []int{}
+	mut stack_param_base := 16
+	if g.target_os == 'windows' {
+		abi_regs = if g.cur_func_abi_ret_indirect { [2, 8, 9] } else { [1, 2, 8, 9] }
+		stack_param_base = 48 // 32-byte shadow space + 8 return + 8 saved rbp
+	} else {
+		abi_regs = if g.cur_func_abi_ret_indirect { [6, 2, 1, 8, 9] } else { [7, 6, 2, 1, 8, 9] }
+		stack_param_base = 16
+	}
+	arg_reg_base := 0
+	num_reg_args := abi_regs.len
 	if g.cur_func_abi_ret_indirect && g.sret_save_offset != 0 {
-		asm_store_rbp_disp_reg(mut g, g.sret_save_offset, rdi)
+		if g.target_os == 'windows' {
+			asm_store_rbp_disp_reg(mut g, g.sret_save_offset, rcx)
+		} else {
+			asm_store_rbp_disp_reg(mut g, g.sret_save_offset, rdi)
+		}
 	}
 	for i, pid in func.params {
 		is_indirect_param := i < g.cur_func_param_indirect.len
@@ -560,8 +575,8 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 				asm_store_rbp_disp_reg(mut g, offset, Reg(src))
 			}
 		} else {
-			// Stack parameters start at [rbp+16].
-			stack_param_offset := 16 + (i - num_reg_args) * 8
+			// Stack parameters.
+			stack_param_offset := stack_param_base + (i - num_reg_args) * 8
 			// Load from stack into RAX, then store to our slot
 			asm_load_reg_rbp_disp(mut g, rax, stack_param_offset)
 			if is_indirect_param {
@@ -1215,14 +1230,25 @@ fn (mut g Gen) gen_instr(val_id int) {
 					}
 				}
 			}
-			// SysV: rdi=1, rsi=size
-			asm_mov_reg_imm32(mut g, rdi, 1)
-			asm_mov_reg_imm32(mut g, rsi, u32(alloc_size))
+			// C calling convention: calloc(1, size). System V: RDI,RSI. Windows: RCX,RDX.
+			if g.target_os == 'windows' {
+				asm_mov_reg_imm32(mut g, rcx, 1)
+				asm_mov_reg_imm32(mut g, rdx, u32(alloc_size))
+			} else {
+				asm_mov_reg_imm32(mut g, rdi, 1)
+				asm_mov_reg_imm32(mut g, rsi, u32(alloc_size))
+			}
 			asm_xor_eax_eax(mut g)
+			if g.target_os == 'windows' {
+				asm_sub_rsp_imm8(mut g, 32)
+			}
 			asm_call_rel32(mut g)
 			sym_idx := g.elf.add_undefined('calloc')
 			g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 4, -4)
 			g.emit_u32(0)
+			if g.target_os == 'windows' {
+				asm_add_rsp_imm8(mut g, 32)
+			}
 			g.store_reg_to_val(0, val_id)
 		}
 		.get_element_ptr {
@@ -1865,10 +1891,11 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 	}
 	is_indirect := instr.op == .call_indirect
 	ret_indirect := g.is_indirect_return(instr.typ)
-	abi_regs := if ret_indirect {
-		[6, 2, 1, 8, 9]
+	mut abi_regs := []int{}
+	if g.target_os == 'windows' {
+		abi_regs = if ret_indirect { [2, 8, 9] } else { [1, 2, 8, 9] }
 	} else {
-		[7, 6, 2, 1, 8, 9]
+		abi_regs = if ret_indirect { [6, 2, 1, 8, 9] } else { [7, 6, 2, 1, 8, 9] }
 	}
 	num_args := instr.operands.len - 1
 	max_reg_args := abi_regs.len
@@ -1886,7 +1913,11 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 	}
 
 	if ret_indirect {
-		g.load_address_of_val_to_reg(int(rdi), val_id)
+		if g.target_os == 'windows' {
+			g.load_address_of_val_to_reg(int(rcx), val_id)
+		} else {
+			g.load_address_of_val_to_reg(int(rdi), val_id)
+		}
 	}
 	for i in 1 .. instr.operands.len {
 		if i - 1 < max_reg_args {
@@ -1896,6 +1927,10 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 
 	fn_val := g.m.values[instr.operands[0]]
 	asm_xor_eax_eax(mut g)
+	if g.target_os == 'windows' {
+		// Allocate 32-byte shadow (home) space before the call.
+		asm_sub_rsp_imm8(mut g, 32)
+	}
 	if is_indirect {
 		g.load_val_to_reg(int(r10), instr.operands[0])
 		asm_call_r10(mut g)
@@ -1907,6 +1942,9 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 	} else {
 		g.load_val_to_reg(int(r10), instr.operands[0])
 		asm_call_r10(mut g)
+	}
+	if g.target_os == 'windows' {
+		asm_add_rsp_imm8(mut g, 32)
 	}
 
 	if stack_args > 0 {
@@ -1941,12 +1979,26 @@ fn (g &Gen) call_is_c_extern(instr ssa.Instruction) bool {
 fn (mut g Gen) gen_c_extern_call(val_id int, instr ssa.Instruction) {
 	is_indirect := instr.op == .call_indirect
 	ret_indirect := g.is_indirect_return(instr.typ)
-	gp_regs := [7, 6, 2, 1, 8, 9]
-	mut gp_index := if ret_indirect { 1 } else { 0 }
+	is_win := g.target_os == 'windows'
+
+	mut gp_regs := []int{}
+	mut max_float_regs := 0
+	mut max_reg_slots := 0
+	if is_win {
+		gp_regs = [1, 2, 8, 9] // rcx, rdx, r8, r9
+		max_reg_slots = 4
+		max_float_regs = 4
+	} else {
+		gp_regs = [7, 6, 2, 1, 8, 9] // rdi, rsi, rdx, rcx, r8, r9
+		max_reg_slots = 6
+		max_float_regs = 8
+	}
 
 	mut args := []CCallArg{}
 	mut stack_args := 0
 	mut float_args := 0
+	mut gp_index := if ret_indirect { 1 } else { 0 }
+	mut slot := if ret_indirect { 1 } else { 0 }
 	for arg_index in 1 .. instr.operands.len {
 		value_id := instr.operands[arg_index]
 		param_index := arg_index - 1
@@ -1954,14 +2006,24 @@ fn (mut g Gen) gen_c_extern_call(val_id int, instr ssa.Instruction) {
 		if arg_typ == 0 {
 			arg_typ = g.m.values[value_id].typ
 		}
-		if g.is_float_type(arg_typ) {
-			if float_args < 8 {
-				args << CCallArg{
-					value_id: value_id
-					typ:      arg_typ
-					reg:      float_args
+		if is_win {
+			// Position-based: each argument occupies one slot (0..3) shared
+			// between GP and XMM register files.
+			if slot < max_reg_slots {
+				if g.is_float_type(arg_typ) {
+					args << CCallArg{
+						value_id: value_id
+						typ:      arg_typ
+						reg:      slot // xmm index
+					}
+					float_args++
+				} else {
+					args << CCallArg{
+						value_id: value_id
+						typ:      arg_typ
+						reg:      gp_regs[slot]
+					}
 				}
-				float_args++
 			} else {
 				args << CCallArg{
 					value_id: value_id
@@ -1970,25 +2032,48 @@ fn (mut g Gen) gen_c_extern_call(val_id int, instr ssa.Instruction) {
 				}
 				stack_args++
 			}
-		} else if gp_index < gp_regs.len {
-			args << CCallArg{
-				value_id: value_id
-				typ:      arg_typ
-				reg:      gp_regs[gp_index]
-			}
-			gp_index++
+			slot++
 		} else {
-			args << CCallArg{
-				value_id: value_id
-				typ:      arg_typ
-				on_stack: true
+			if g.is_float_type(arg_typ) {
+				if float_args < max_float_regs {
+					args << CCallArg{
+						value_id: value_id
+						typ:      arg_typ
+						reg:      float_args
+					}
+					float_args++
+				} else {
+					args << CCallArg{
+						value_id: value_id
+						typ:      arg_typ
+						on_stack: true
+					}
+					stack_args++
+				}
+			} else if gp_index < gp_regs.len {
+				args << CCallArg{
+					value_id: value_id
+					typ:      arg_typ
+					reg:      gp_regs[gp_index]
+				}
+				gp_index++
+			} else {
+				args << CCallArg{
+					value_id: value_id
+					typ:      arg_typ
+					on_stack: true
+				}
+				stack_args++
 			}
-			stack_args++
 		}
 	}
 
 	if ret_indirect {
-		g.load_address_of_val_to_reg(int(rdi), val_id)
+		if is_win {
+			g.load_address_of_val_to_reg(int(rcx), val_id)
+		} else {
+			g.load_address_of_val_to_reg(int(rdi), val_id)
+		}
 	}
 	padding := stack_args % 2
 	if padding == 1 {
@@ -2019,10 +2104,14 @@ fn (mut g Gen) gen_c_extern_call(val_id int, instr ssa.Instruction) {
 	}
 
 	asm_xor_eax_eax(mut g)
-	if float_args > 0 {
+	if !is_win && float_args > 0 {
 		asm_mov_reg_imm32(mut g, rax, u32(float_args))
 	}
 	fn_val := g.m.values[instr.operands[0]]
+	if is_win {
+		// Allocate 32-byte shadow (home) space before the call.
+		asm_sub_rsp_imm8(mut g, 32)
+	}
 	if is_indirect {
 		g.load_val_to_reg(int(r10), instr.operands[0])
 		asm_call_r10(mut g)
@@ -2031,6 +2120,9 @@ fn (mut g Gen) gen_c_extern_call(val_id int, instr ssa.Instruction) {
 		sym_idx := g.elf.add_undefined(fn_val.name)
 		g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, r_x86_64_plt32, -4)
 		g.emit_u32(0)
+	}
+	if is_win {
+		asm_add_rsp_imm8(mut g, 32)
 	}
 
 	if stack_args + padding > 0 {
