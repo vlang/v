@@ -4,16 +4,20 @@ import io
 import net
 import time
 
-fn test_dispose_releases_initial_tls_context_for_plain_and_tls_clients() {
+fn test_dispose_releases_only_initialized_tls_contexts() {
 	for address in ['ws://127.0.0.1:1', 'wss://127.0.0.1:1'] {
 		mut client := new_client(address) or { panic(err) }
 		client.dispose()
 		client.dispose()
 		assert client.get_state() == .closed
 		assert isnil(client.conn)
-		$if use_openssl ? {
-			assert isnil(client.ssl_conn.ssl)
-			assert isnil(client.ssl_conn.sslctx)
+		if client.is_ssl {
+			$if use_openssl ? {
+				assert isnil(client.ssl_conn.ssl)
+				assert isnil(client.ssl_conn.sslctx)
+			}
+		} else {
+			assert isnil(client.ssl_conn)
 		}
 	}
 }

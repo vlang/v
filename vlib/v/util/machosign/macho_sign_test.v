@@ -62,10 +62,8 @@ fn test_sign_adhoc_matches_codesign() {
 	assert removed.exit_code == 0, removed.output
 	unsigned_signature := os.exec(['codesign', '--verify', '--strict', exe_path])
 	assert unsigned_signature.exit_code != 0, unsigned_signature.output
-	$if arm64 {
-		unsigned := os.exec([exe_path])
-		assert unsigned.exit_code != 0
-	}
+	// Signature verification establishes the fixture's state. Whether an
+	// unsigned executable can run depends on the host's execution policy.
 	sign_adhoc(exe_path) or { panic(err) }
 	signed := os.exec([exe_path])
 	assert signed.exit_code == 0, signed.output

@@ -2567,7 +2567,7 @@ pub fn rewrite_cached_runtime_strings(cached_source string, old_values []string,
 			continue
 		}
 		new_symbol := cached_c_string_symbol(new_value)
-		new_definition := 'static const string ${new_symbol} = {"${cached_c_escape(new_value)}", ${new_value.len}, 1};'
+		new_definition := 'static const string ${new_symbol} = {(u8*)"${cached_c_escape(new_value)}", ${new_value.len}, 1};'
 		if defined_symbols[new_symbol] {
 			target_definitions_present[new_symbol] = true
 		}
@@ -6775,6 +6775,7 @@ fn declaration_node_needs_source(a &flat.FlatAst, id flat.NodeId) bool {
 		return false
 	}
 	if node.generic_params().len > 0 || fn_decl_has_generic_receiver(a, node)
+		|| a.free_method_receiver_calls(id).len > 0
 		|| declaration_contains_fn_literal(a, node)
 		|| (node.kind in [.const_decl, .struct_decl, .global_decl]
 			&& declaration_has_unserializable_initializer(a, node))

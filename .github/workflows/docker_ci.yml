@@ -109,6 +109,10 @@ jobs:
       - name: Build V
         run: echo "$VFLAGS" && make -j4 && ./v -cg -o v cmd/v
       - name: Verify `v test` works
+        env:
+          VTOOLS_CACHE_VERBOSE: '1'
+          VTEST_SHOW_CMD: '1'
+          VTEST_SHOW_START: '1'
         run: |
           echo "$VFLAGS"
           ./v cmd/tools/test_if_v_test_system_works.v

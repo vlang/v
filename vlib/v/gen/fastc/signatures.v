@@ -42,6 +42,22 @@ fn fastc_shared_parameter_is_name(scan scanner.Scanner, path string, module_name
 	return boundary in [.comma, .semicolon, .rpar, .eof]
 }
 
+// fastc_skip_struct_field_attributes consumes every `@[...]` attribute that follows a
+// field's type or default. It returns the next token and the required/skip flags.
+fn fastc_skip_struct_field_attributes(mut scan scanner.Scanner, first token.Token) !(token.Token, bool, bool) {
+	mut tok := first
+	mut is_required := false
+	mut is_skip := false
+	for tok == .attribute {
+		mut attribute_is_required := false
+		mut attribute_is_skip := false
+		tok, attribute_is_required, attribute_is_skip = fastc_scan_struct_field_attribute(mut scan)!
+		is_required = is_required || attribute_is_required
+		is_skip = is_skip || attribute_is_skip
+	}
+	return tok, is_required, is_skip
+}
+
 fn fastc_scan_struct_field_attribute(mut scan scanner.Scanner) !(token.Token, bool, bool) {
 	mut tok := scan.scan()
 	mut depth := 1
@@ -92,7 +108,8 @@ fn fastc_skip_field_default_from_token(mut scan scanner.Scanner, first token.Tok
 	mut brackets := 0
 	mut braces := 0
 	for tok != .eof {
-		if parens == 0 && brackets == 0 && braces == 0 && tok in [.semicolon, .rcbr] {
+		// A top-level `@[` ends the default: the caller parses the field attributes.
+		if parens == 0 && brackets == 0 && braces == 0 && tok in [.semicolon, .rcbr, .attribute] {
 			return tok
 		}
 		match tok {

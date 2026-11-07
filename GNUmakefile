@@ -283,6 +283,7 @@ endif
 	if [ ! -f "$(TMPTCC)/lib/libgc.a" ] && [ ! -f "$(TMPTCC)/lib/libgc.dylib" ]; then \
 		cache_gcflags='-gc none'; \
 	fi; \
+	$(VEXE)$(EXE_EXT) $$cache_gcflags $(VFLAGS) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler run cmd/tools/cache_basic_modules.v; \
 	$(VEXE)$(EXE_EXT) $$cache_gcflags $(VFLAGS) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler cmd/tools/cache_basic_modules_test.v
 
 v1:

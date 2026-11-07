@@ -4398,7 +4398,6 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		g.writeln('#define V3CACHE_PROGRAM_UNIT 1')
 		g.string_literals()
 		g.gen_embed_file_blobs()
-		g.gen_top_level_asm()
 		if g.incremental_fn_names.len > 0 {
 			g.writeln('/* V3CACHE_SUPPORT_BEGIN */')
 			g.multi_return_forward_decls()
@@ -4423,6 +4422,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 		}
 		g.release_scoped_fn_items()
 		g.writeln('/* V3CACHE_BODY_BEGIN */')
+		g.gen_top_level_asm()
 		g.writeln('/* V3CACHE_MODULE main */')
 		for segment in g.fn_segs {
 			g.sb.write_string(segment)
@@ -4523,8 +4523,8 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	g.register_interface_strings()
 	g.string_literals()
 	g.gen_embed_file_blobs()
-	g.gen_top_level_asm()
 	if !g.cache_split {
+		g.gen_top_level_asm()
 		if g.parallel_interface_stubs.len > 0 {
 			g.sb.write_string(g.parallel_interface_stubs)
 			unsafe { g.parallel_interface_stubs.free() }
@@ -4547,6 +4547,7 @@ pub fn (mut g FlatGen) gen_with_used_options(a &flat.FlatAst, used_fns map[strin
 	unsafe { const_code.free() }
 	if g.cache_split {
 		g.writeln('/* V3CACHE_BODY_BEGIN */')
+		g.gen_top_level_asm()
 		g.emit_cache_module_constants()
 		// `_vinit` and interface stubs depend on the complete entry program, but
 		// remain stable across function-body literal edits. Keep them with the
@@ -12840,7 +12841,7 @@ fn (mut g FlatGen) apply_fn_signature_registration_group(registration FnSignatur
 }
 
 fn (mut g FlatGen) register_fn_decl_node(name string, module_name string, id flat.NodeId) {
-	g.register_fn_decl_node_by_name(name, id)
+	g.register_fn_decl_node_by_name(name, module_name, id)
 	g.register_fn_decl_node_by_short(name, id)
 	g.register_fn_decl_node_by_module_short(name, module_name, id)
 }
@@ -12860,7 +12861,7 @@ fn (mut g FlatGen) register_fn_decl_nodes(regs []FnDeclNodeReg, which int) {
 	match which {
 		0 {
 			for reg in regs {
-				g.register_fn_decl_node_by_name(reg.name, reg.id)
+				g.register_fn_decl_node_by_name(reg.name, reg.module, reg.id)
 			}
 		}
 		1 {
@@ -12877,9 +12878,15 @@ fn (mut g FlatGen) register_fn_decl_nodes(regs []FnDeclNodeReg, which int) {
 }
 
 @[inline]
-fn (mut g FlatGen) register_fn_decl_node_by_name(name string, id flat.NodeId) {
+fn (mut g FlatGen) register_fn_decl_node_by_name(name string, module_name string, id flat.NodeId) {
 	if name !in g.fn_decl_nodes_by_name {
 		g.fn_decl_nodes_by_name[name] = id
+	}
+	if name.ends_with('.free') {
+		// Receiver cleanup depends on the exact declaration, even when another
+		// module declares the same receiver type and method name.
+		g.fn_decl_nodes_by_name[fn_decl_module_key(module_name, name)] = id
+		g.fn_decl_nodes_by_name['${module_name}.${name}'] = id
 	}
 }
 
@@ -13437,6 +13444,9 @@ fn (mut g FlatGen) gen_expr_as_string(id flat.NodeId) {
 		g.write(')')
 		return
 	}
+	if g.race && g.gen_race_string_read(id) {
+		return
+	}
 	g.gen_expr(id)
 }
 
@@ -13910,6 +13920,10 @@ fn (mut g FlatGen) gen_expr_with_expected_type_inner(id flat.NodeId, expected_ty
 		return
 	}
 	if g.gen_current_mut_param_value_read(id, semantic_expected) {
+		return
+	}
+	if g.race && semantic_expected is types.String && semantic_actual is types.String
+		&& g.gen_race_string_read(id) {
 		return
 	}
 	if expected is types.Pointer && g.gen_pointer_alias_value_cast_expr(id, expected) {
@@ -20774,6 +20788,24 @@ fn (mut g FlatGen) headerless_execinfo_declarations() {
 }
 
 fn (mut g FlatGen) system_libc_preamble() {
+	if 'freestanding' in g.compile_defines {
+		// A freestanding program links no pthread and no stdio; emit only the
+		// data shape and stubs that stay linkable with -nostdlib. The spawn
+		// stub never runs: freestanding programs do not create threads.
+		g.writeln('typedef struct { void* handle; } __v_thread;')
+		g.writeln('typedef void* (*__v_thread_start_fn)(void*);')
+		g.writeln('static bool __v_thread_equal(__v_thread a, __v_thread b) { return a.handle == b.handle; }')
+		g.writeln('static const size_t __v_thread_stack_size = V_THREAD_STACK_SIZE;')
+		g.writeln('static void* __v_thread_alloc(size_t size) { return malloc(size); }')
+		g.writeln('static void __v_thread_free(void* ptr) { free(ptr); }')
+		g.writeln('static __v_thread __v_thread_spawn(__v_thread_start_fn start, void* arg, void (*cleanup)(void*)) {')
+		g.writeln('\tif (cleanup) { cleanup(arg); }')
+		g.writeln('\treturn (__v_thread){0};')
+		g.writeln('}')
+		g.writeln('static void* __v_thread_join(__v_thread thread) { (void)thread; return (void*)0; }')
+		g.thread_signal_stack_runtime()
+		return
+	}
 	g.writeln('#ifndef _WIN32')
 	g.writeln('extern char** environ;')
 	g.writeln('#endif')
@@ -22039,6 +22071,12 @@ fn (mut g FlatGen) headerless_utsname_struct() {
 	g.writeln('#endif')
 	// FreeBSD's exported uname symbol uses the legacy 32-byte field ABI. Its
 	// native header wraps __xuname with the field width of the current struct.
+	// A freestanding program links no libc, so it has no __xuname: the os module
+	// reads uname through the runtime there, and the wrapper is left out, because
+	// the C.uname prototype would make the C compiler emit it anyway.
+	if 'freestanding' in g.compile_defines {
+		return
+	}
 	g.writeln('#ifdef __FreeBSD__')
 	g.writeln('int __xuname(int, void*);')
 	g.writeln('static inline int uname(struct utsname* name) { return __xuname((int)sizeof(name->sysname), (void*)name); }')
@@ -24046,7 +24084,7 @@ fn (mut g FlatGen) builtin_abi_decls() {
 		g.writeln('	u8* out = malloc_noscan((ptrdiff_t)(n + 1));')
 		g.writeln('	memcpy(out, s, (size_t)n);')
 		g.writeln('	out[n] = 0;')
-		g.writeln('	return (string){.str = (char*)out, .len = n, .is_lit = 0};')
+		g.writeln('	return (string){.str = out, .len = n, .is_lit = 0};')
 		g.writeln('}')
 	}
 	g.writeln('static inline i64 v3_map_signed(void* p, int bytes) { if (bytes == 1) return *(signed char*)p; if (bytes == 2) return *(short*)p; if (bytes == 8) return *(long long*)p; return *(int*)p; }')
@@ -25404,6 +25442,11 @@ fn (mut g FlatGen) global_decls() {
 		section_prefix := g.global_linker_section_prefix(name) + linkage_attr
 		if fixed := array_fixed_type(unalias_type(decl_typ)) {
 			c_elem, dims := g.fixed_array_decl_parts(fixed)
+			if extern_name := g.c_extern_global_names[name] {
+				// Native code owns this array, including any initialized lookup table.
+				g.writeln('extern ${vq}${c_elem} ${extern_name}${dims};')
+				continue
+			}
 			if val_id := g.global_inits[name] {
 				if name in g.global_cinit_names || g.global_fixed_array_is_static(val_id, decl_typ) {
 					g.write('${section_prefix}${vq}${c_elem} ${g.global_c_name(name)}${dims} = ')
@@ -25821,6 +25864,10 @@ fn (mut g FlatGen) emit_global_inits() {
 	skip_closure_runtime_globals := !g.needs_closure_runtime_init()
 	for qname in g.global_init_order {
 		g.in_global_array_pointer_init = false
+		if qname in g.c_extern_global_names {
+			// Native code owns both the storage and its initial contents.
+			continue
+		}
 		if g.cache_const_modules[g.global_modules[qname] or { '' }]
 			&& (g.global_files[qname] or { '' }).ends_with('.vh') {
 			continue
@@ -27059,8 +27106,11 @@ fn (mut g FlatGen) emit_const(name string, val_id flat.NodeId) {
 	if v_type is types.Array || ct == 'Array' {
 		is_static_const = false
 	}
-	if v_type is types.ArrayFixed && v_type.elem_type is types.ArrayFixed {
-		is_static_const = false
+	if fixed := array_fixed_type(unalias_type(v_type)) {
+		elem_type := unalias_type(fixed.elem_type)
+		if elem_type is types.ArrayFixed || elem_type is types.Array {
+			is_static_const = false
+		}
 	}
 	if !is_static_const {
 		if fixed := array_fixed_type(unalias_type(v_type)) {
@@ -27443,8 +27493,10 @@ fn (mut g FlatGen) write_fixed_array_elem_initializer(mut builder strings.Builde
 		builder.write_string(g.new_map_expr_string(clean_elem_type.key_type, clean_elem_type.value_type))
 		return
 	}
-	if node.kind == .array_init && clean_elem_type is types.Array {
-		builder.write_string(g.array_allocation_expr(clean_elem_type.elem_type, '0', '0'))
+	if clean_elem_type is types.Array {
+		// Dynamic arrays need Array values, including when their literal is a
+		// constant expression. A brace list would initialize Array's fields.
+		builder.write_string(g.expr_to_string_with_expected_type(val_id, elem_type))
 		return
 	}
 	if g.is_const_expr(val_id) && !(node.kind == .prefix && node.op == .amp) {

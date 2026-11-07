@@ -407,9 +407,10 @@ fn test_wasm32_and_native_string_layouts() {
 			pointer_type := m.type_store.types[string_type].fields[0]
 			assert m.type_size(pointer_type) == pointer_size
 			assert m.type_align(pointer_type) == pointer_size
+			assert m.type_store.types[m.type_store.types[string_type].fields[1]].width == pointer_size * 8
 			assert m.struct_field_offset(string_type, 1) == pointer_size
-			assert m.struct_field_offset(string_type, 2) == pointer_size + 4
-			assert m.type_size(string_type) == pointer_size + 8
+			assert m.struct_field_offset(string_type, 2) == pointer_size * 2
+			assert m.type_size(string_type) == pointer_size * 3
 			found = true
 		}
 		assert found

@@ -220,6 +220,35 @@ $if !i386 {
 		return res, err
 	}
 
+	// bsd_sys_call0_pair is sys_call0 that also returns the second result register
+	// (rdx/x1): fork reports the child there.
+	fn bsd_sys_call0_pair(scn u64) (u64, u64, u64) {
+		mut first := u64(0)
+		mut second := u64(0)
+		mut err := u64(0)
+		asm volatile amd64 {
+			mov rax, scn
+			syscall
+			mov first, rax
+			mov second, rdx
+			mov err, 0
+			jnc '1f'
+			mov err, rax
+			1:
+			; =r (first)
+			  =r (second)
+			  =r (err)
+			; r (scn)
+			; rax
+			  rdx
+			  rcx
+			  r11
+			  cc
+			  memory
+		}
+		return first, second, err
+	}
+
 	fn sys_call1(scn u64, arg1 u64) (u64, u64) {
 		mut res := u64(0)
 		mut err := u64(0)
@@ -440,13 +469,18 @@ $if !i386 {
 	}
 
 	$if freestanding {
+		// _start: like FreeBSD's, DragonFly's exec_setregs passes the address of
+		// argc in rdi and aligns rsp only like a call frame, so the stack is
+		// realigned to 16 bytes before calling `main(argc, argv)`.
 		asm amd64 {
 			.pushsection .text
 			.globl _start
 			_start:
 			xor rbp, rbp
-			mov rdi, [rsp]
-			lea rsi, [rsp + 8]
+			mov rsi, rdi
+			mov rdi, [rsi]
+			add rsi, 8
+			and rsp, -16
 			call main
 			mov rdi, rax
 			mov rax, 1

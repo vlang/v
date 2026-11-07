@@ -700,6 +700,14 @@ fn (mut g FlatGen) gen_slice_expr(node flat.Node, base_id flat.NodeId, base_type
 	}
 	gated := node.op == .gated_index
 	if base_is_string {
+		if g.race {
+			g.write(if gated { 'string__substr_ni(' } else { 'string__substr(' })
+			if !g.gen_race_string_read(base_id) {
+				g.write(base_value_str)
+			}
+			g.write(', ${start_str}, ${end_str})')
+			return
+		}
 		if gated {
 			g.write('string__substr_ni(${base_value_str}, ${start_str}, ${end_str})')
 		} else {

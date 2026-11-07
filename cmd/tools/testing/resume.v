@@ -28,6 +28,15 @@ fn test_resume_dir() string {
 	return os.abs_path(dir)
 }
 
+fn (ts &TestSession) prepare_test_resume_dir() ! {
+	// Workers share this directory, so finish creating all components under one lock.
+	ts.benchmark_mu.lock()
+	defer {
+		ts.benchmark_mu.unlock()
+	}
+	os.mkdir_all(ts.resume_dir)!
+}
+
 fn (ts &TestSession) test_resume(file string) !TestResume {
 	is_test_file := ts.will_compile && ts.exec_mode == .compile_and_run
 		&& (file.ends_with('_test.v') || file.ends_with('_test.c.v')
@@ -36,6 +45,7 @@ fn (ts &TestSession) test_resume(file string) !TestResume {
 	if ts.resume_dir == '' || (!is_test_file && !is_source_check) {
 		return TestResume{}
 	}
+	ts.prepare_test_resume_dir()!
 	// Separate files and compiler options, including function filters. Hash the
 	// test source too, so editing a previously successful test makes it pending.
 	context := [

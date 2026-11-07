@@ -295,7 +295,7 @@ fn test_linux_family_system_libc_owns_itimerspec_and_semaphore_declarations() {
 	}
 }
 
-fn test_headerless_and_cross_target_keep_itimerspec_and_semaphore_declarations() {
+fn test_headerless_linux_family_keeps_itimerspec_and_semaphore_declarations() {
 	for target_os in ['linux', 'android', 'termux'] {
 		headerless := posix_declaration_filter_gen(target_os, false)
 		assert !headerless.c_directives_use_system_libc()
@@ -304,12 +304,23 @@ fn test_headerless_and_cross_target_keep_itimerspec_and_semaphore_declarations()
 			assert headerless.should_emit_c_extern_decl(name), '${target_os}: ${name}'
 		}
 	}
+}
 
-	cross_target := posix_declaration_filter_gen('freebsd', true)
-	assert cross_target.c_directives_use_system_libc()
-	assert !cross_target.skip_builtin_struct('C.itimerspec')
-	for name in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait', 'sem_wait'] {
-		assert cross_target.should_emit_c_extern_decl(name), name
+fn test_bsd_semaphore_declarations_follow_system_headers() {
+	for target_os in ['freebsd', 'openbsd'] {
+		for system_libc in [false, true] {
+			for cache_split in [false, true] {
+				mut g := posix_declaration_filter_gen(target_os, system_libc)
+				g.set_cache_split(cache_split)
+				assert g.c_directives_use_system_libc() == system_libc
+				assert !g.skip_builtin_struct('C.itimerspec'), target_os
+				for name in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait',
+					'sem_wait'] {
+					assert g.should_emit_c_extern_decl(name) == !system_libc, '${target_os}: ${name}: system_libc=${system_libc}, cache_split=${cache_split}'
+				}
+				assert g.should_emit_c_extern_decl('user_semaphore_api')
+			}
+		}
 	}
 }
 

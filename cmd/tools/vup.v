@@ -38,6 +38,7 @@ const usage = 'Usage: v up [options]\n' +
 	'  -prod              Compile the updated V with the -prod flag.\n' +
 	'  -skills            Refresh the installed agent skills that fell behind.\n' +
 	'  -skip_v_self       Rebuild with make or makev.bat instead of `v self`.\n' +
+	'                     Windows ARM64 uses the native PowerShell bootstrap script.\n' +
 	'  -skip_current      Recompile even when the checkout is already at the\n' +
 	'                     revision.\n' +
 	'  -h, -help, --help  Show this help and exit.\n' +
@@ -344,6 +345,10 @@ fn v_upstream_pull_command() string {
 }
 
 fn (app App) update_tcc() bool {
+	$if windows && arm64 {
+		app.vprintln('> Windows ARM64 uses MSVC; no bundled TCC update is needed.')
+		return true
+	}
 	command := get_tcc_update_cmd()
 	if os.user_os() != 'windows' {
 		make_sure_cmd_is_available(get_tcc_make_cmd_name())
@@ -460,11 +465,18 @@ fn (app App) recompile_vup() bool {
 fn (app App) make(_vself string) bool {
 	println('> running make ...')
 	make := get_make_cmd_name()
-	make_result := os.exec(if os.user_os() == 'windows' {
-		['cmd.exe', '/d', '/c', 'makev.bat']
-	} else {
-		[make]
-	})
+	mut command := []string{}
+	$if windows && arm64 {
+		command = ['pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+			os.join_path(app.vroot, 'cmd', 'tools', 'builders', 'windows_arm64_release.ps1')]
+	} $else {
+		command = if os.user_os() == 'windows' {
+			['cmd.exe', '/d', '/c', 'makev.bat']
+		} else {
+			[make]
+		}
+	}
+	make_result := os.exec(command)
 	if make_result.exit_code != 0 {
 		eprintln('> ${make} failed:')
 		eprintln('> make output:')
@@ -610,6 +622,9 @@ fn (app App) install_git() {
 }
 
 fn get_make_cmd_name() string {
+	$if windows && arm64 {
+		return 'cmd/tools/builders/windows_arm64_release.ps1'
+	}
 	if os.user_os() == 'windows' {
 		return 'makev.bat'
 	}

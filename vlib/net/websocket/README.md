@@ -53,6 +53,10 @@ V's `int` range. Oversized lengths are rejected before allocating the payload bu
 
 ## Owning a client connection
 
+Plain `ws://` clients and accepted server connections do not create TLS contexts.
+Only `wss://` clients allocate them, including the fresh context retained for reconnection
+after `close`.
+
 `client.connect_with_dialer(dialer)` accepts a callback with the signature
 `fn (address string) !&net.TcpConn`. The callback returns a connected TCP socket and releases
 any failed candidates itself. After it returns successfully, the WebSocket client owns the

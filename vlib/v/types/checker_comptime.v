@@ -2619,7 +2619,7 @@ fn (mut tc TypeChecker) check_nonliteral_node(id flat.NodeId) {
 		return
 	}
 	if kind_id == 46 {
-		tc.check_for_stmt(node)
+		tc.check_for_stmt(id, node)
 		return
 	}
 	if kind_id == 47 {
@@ -2964,7 +2964,7 @@ fn (mut tc TypeChecker) check_nonliteral_node(id flat.NodeId) {
 		if node.kind == .infix && node.op in [.eq, .ne] && node.children_count >= 2 {
 			child := tc.a.node(child_id)
 			if child.kind == .struct_init
-				&& is_contextual_anonymous_struct_literal(child.source_value_id()) {
+				&& tc.is_contextual_anonymous_struct_literal(child.source_value_id()) {
 				other_idx := if i == 0 { 1 } else { 0 }
 				other_type := tc.resolve_type(tc.a.child(&node, other_idx))
 				if tc.anonymous_struct_literal_compatible(child, other_type) {
@@ -5340,7 +5340,7 @@ fn (mut tc TypeChecker) check_cast_expr(id flat.NodeId, node flat.Node) {
 		// `[]u8([1, 2])` does for a dynamic one.
 		tc.check_node_with_expected_context(child_id, unalias_type(target))
 	} else if cast_child.kind == .struct_init
-		&& is_contextual_anonymous_struct_literal(cast_child.source_value_id())
+		&& tc.is_contextual_anonymous_struct_literal(cast_child.source_value_id())
 		&& tc.anonymous_struct_literal_compatible(cast_child, unalias_type(target)) {
 		// An alias cast supplies the otherwise unnamed struct literal's shape:
 		// `AliasToAnon(struct { ... })` initializes the alias target directly.
@@ -10362,7 +10362,7 @@ fn (mut tc TypeChecker) array_append_rhs_compatible(rhs_id flat.NodeId, rhs_type
 		return true
 	}
 	rhs := tc.a.node(rhs_id)
-	if rhs.kind == .struct_init && is_contextual_anonymous_struct_literal(rhs.source_value_id())
+	if rhs.kind == .struct_init && tc.is_contextual_anonymous_struct_literal(rhs.source_value_id())
 		&& tc.anonymous_struct_literal_compatible(rhs, elem_type) {
 		tc.register_synth_type(rhs_id, elem_type)
 		return true
@@ -15433,7 +15433,7 @@ fn (tc &TypeChecker) block_is_comptime_expression_value(id flat.NodeId) bool {
 }
 
 // check_for_stmt validates check for stmt state for types.
-fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
+fn (mut tc TypeChecker) check_for_stmt(id flat.NodeId, node flat.Node) {
 	tc.push_scope()
 	$if ownership ? {
 		if node.children_count > 0 {
@@ -15468,6 +15468,12 @@ fn (mut tc TypeChecker) check_for_stmt(node flat.Node) {
 					tc.smartcasts[sc.name] = sc.typ
 				}
 			}
+		}
+	}
+	// Keep the decision even if the post statement later invalidates a condition alias.
+	if tc.comptime_static_depth > 0 && tc.cur_comptime_variant_loop_vars.len > 0 {
+		tc.fn_context.preflight_option_layers[id] = PreflightOptionLayer{
+			restores_smartcasts: has_cond_smartcasts
 		}
 	}
 	unsafe_alias_base := tc.fn_context.unsafe_reference_alias_owners.clone()

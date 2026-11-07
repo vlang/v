@@ -798,7 +798,10 @@ fn (mut g FlatGen) gen_executable_cleanup_registration() {
 
 fn (g &FlatGen) needs_no_main_runtime_init_caller() bool {
 	// A native consumer can call an object's exports without entering its V main.
-	return g.test_files.len == 0 && (g.object_file_mode || g.suppress_main || !g.has_entry_main())
+	// Cached exports must use the same protocol for scripts and explicit mains:
+	// their object can be reused by either, while the guard belongs to the program.
+	return g.test_files.len == 0
+		&& (g.cache_split || g.object_file_mode || g.suppress_main || !g.has_entry_main())
 		&& (g.a.export_fn_names.len > 0 || g.is_shared)
 }
 
@@ -843,9 +846,18 @@ fn (mut g FlatGen) gen_no_main_runtime_init_caller() {
 	storage := if g.cache_split { '' } else { 'static ' }
 	g.writeln('${storage}void _vno_main_init_caller(void) {')
 	g.writeln('\tif (_v3_no_main_initialized) { return; }')
+	// Native constructors can reach an export before main supplies argv. Leave
+	// executable initialization for main; libraries must still initialize on call.
+	if g.has_builtins && !g.object_file_mode && !g.suppress_main && !g.is_shared {
+		has_main := g.has_entry_main() || g.top_level_stmts().len > 0
+			|| (!g.has_no_main_module() && g.postinclude_directives.len == 0)
+		if has_main {
+			g.writeln('\tif (g_main_argv == 0) { return; }')
+		}
+	}
 	g.writeln('\t_v3_no_main_initialized = true;')
-	// The argument globals are already zero-initialized for library callers.
-	// A script main can reach this helper after setting its process arguments.
+	// The argument globals stay zero-initialized for library callers.
+	// An executable main reaches this helper after setting its process arguments.
 	g.gen_trace_startup()
 	g.gen_profile_startup_enable()
 	if g.runtime_init_is_needed() {
@@ -958,15 +970,48 @@ fn (g &FlatGen) top_level_file_module_name(file_node flat.Node) string {
 }
 
 fn (mut g FlatGen) gen_top_level_asm() {
+	mut program_files := map[string]bool{}
 	for file_idx in g.top_level_nodes() {
 		file_node := g.a.nodes[file_idx]
 		if file_node.kind != .file {
 			continue
 		}
+		if g.cache_split {
+			if !g.has_top_level_asm(flat.NodeId(file_idx)) {
+				continue
+			}
+			module_name := g.top_level_file_module_name(file_node)
+			is_program := module_name in ['', 'main'] || g.test_files[file_node.value]
+				|| g.file_is_cache_program_file(file_node.value, mut program_files)
+			if g.program_body_only && !is_program {
+				continue
+			}
+			owner := if is_program { 'main' } else { module_name }
+			// Keep conditional wrappers and their assembly in the same owning unit.
+			g.writeln('/* V3CACHE_MODULE ${owner} */')
+		}
 		for i in 0 .. file_node.children_count {
 			g.gen_top_level_asm_node(g.a.child(&file_node, i))
 		}
 	}
+}
+
+fn (g &FlatGen) has_top_level_asm(id flat.NodeId) bool {
+	if int(id) < 0 || int(id) >= g.a.nodes.len {
+		return false
+	}
+	node := g.a.nodes[int(id)]
+	if node.kind == .asm_stmt {
+		return true
+	}
+	if node.kind in [.file, .block, .comptime_if] {
+		for i in 0 .. node.children_count {
+			if g.has_top_level_asm(g.a.child(&node, i)) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn (mut g FlatGen) gen_top_level_asm_node(id flat.NodeId) {
@@ -5748,7 +5793,8 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	// before emitting the body so lookup/preparation work cannot affect spelling.
 	g.tmp_count = 0
 	g.indent++
-	if is_direct_no_main_export {
+	// Naked bodies may contain only the user's assembly, never a generated call.
+	if is_direct_no_main_export && !is_naked_fn {
 		g.writeln('_vno_main_init_caller();')
 	}
 	// The entry counter must be the first thing in the body: a function whose
@@ -9179,7 +9225,10 @@ fn (mut g FlatGen) gen_call(id flat.NodeId, node &flat.Node) {
 				receiver_wants_shared :=
 					g.fn_param_is_shared_for_call(0, actual_fn, emitted_callee_name, method_name, fn_name)
 						|| g.fn_param_is_shared_for_call(0, base_method_name, g.cname(base_method_name), '', '')
-				if param_types.len > 0 && g.gen_indirect_value_argument(base_id, param_types[0]) {
+				if receiver_wants_ptr && base_declares_method
+					&& g.gen_stack_value_free_receiver(base_id, method_name) {
+					// handled
+				} else if param_types.len > 0 && g.gen_indirect_value_argument(base_id, param_types[0]) {
 				} else if receiver_wants_shared && (g.gen_shared_local_receiver_arg(base_id)
 					|| g.gen_shared_storage_expr(base_id)) {
 					arg_start = 1
@@ -10110,6 +10159,63 @@ fn (mut g FlatGen) gen_current_mut_param_method_receiver(base_id flat.NodeId, wa
 	} else {
 		g.write(g.current_param_use_cname(base.value))
 	}
+	return true
+}
+
+fn (mut g FlatGen) gen_stack_value_free_receiver(base_id flat.NodeId, method_name string) bool {
+	if !method_name.ends_with('.free') || int(base_id) < 0 || int(base_id) >= g.a.nodes.len {
+		return false
+	}
+	mut value_id := base_id
+	mut base := g.a.node(value_id)
+	// Lowered method calls have already added the receiver's address. An
+	// explicit source pointer expression keeps its normal pointer semantics.
+	if base.kind == .prefix && base.op == .amp && base.children_count == 1
+		&& !base.pos.is_valid() {
+		value_id = g.a.child(base, 0)
+		base = g.a.node(value_id)
+	}
+	if base.kind != .ident || g.receiver_ident_storage_is_pointer(value_id)
+		|| g.current_param_is_mut(base.value) {
+		return false
+	}
+	base_type := g.receiver_base_type(value_id)
+	if cgen_type_is_pointer_like(base_type) || cgen_type_is_pointer_like(g.usable_expr_type(value_id)) {
+		return false
+	}
+	decl_id := g.fn_decl_nodes_by_name[fn_decl_module_key(g.tc.cur_module, method_name)] or {
+		g.fn_decl_nodes_by_name[method_name] or { return false }
+	}
+	mut releases_receiver := false
+	for call_id in g.a.free_method_receiver_calls(decl_id) {
+		resolved := g.resolved_call_name(call_id) or { '' }
+		if resolved.len == 0 {
+			call := g.a.node(call_id)
+			callee := g.a.child_node(call, 0)
+			if callee.value == 'free' {
+				// An unchanged cached method may not have been checked in an
+				// incremental build. Resolve shadowing in its own lexical scope.
+				if source_file := g.a.source_files[callee.pos.id] {
+					module_name := g.tc.file_modules[source_file.name] or { '' }
+					if g.tc.module_declares_fn(module_name, 'free')
+						|| g.selective_import_call_key_in_file('free', source_file.name) != none {
+						continue
+					}
+				}
+			}
+		}
+		if resolved.len == 0 || resolved in ['free', 'builtin.free'] {
+			releases_receiver = true
+			break
+		}
+	}
+	if !releases_receiver {
+		return false
+	}
+	// A value's self-deallocating free method must receive a heap copy, not its
+	// stack address. Keep child-only cleanup and existing heap receivers in place.
+	base_ct := g.tc.c_type(base_type)
+	g.write(g.heap_local_memdup_expr(g.expr_to_string(value_id).trim_space(), base_type, base_ct, false))
 	return true
 }
 
@@ -16174,7 +16280,10 @@ fn (mut g FlatGen) gen_transformed_method_ident_call(id flat.NodeId, node flat.N
 	}
 	g.write(emitted_name)
 	g.write('(')
-	if g.gen_indirect_value_argument(receiver_id, params[0]) {
+	if receiver_wants_ptr && receiver_declares_method
+		&& g.gen_stack_value_free_receiver(receiver_id, fn_node.value) {
+		// handled
+	} else if g.gen_indirect_value_argument(receiver_id, params[0]) {
 	} else if receiver_wants_shared
 		&& (g.gen_shared_local_receiver_arg(receiver_id) || g.gen_shared_storage_expr(receiver_id)) {
 		// handled
@@ -17783,7 +17892,8 @@ fn (g &FlatGen) should_emit_c_extern_decl(cfn string) bool {
 		return false
 	}
 	if cfn in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait', 'sem_wait']
-		&& g.target.os in ['linux', 'android', 'termux'] && g.c_directives_use_system_libc() {
+		&& g.target.os in ['linux', 'android', 'termux', 'freebsd', 'openbsd']
+		&& g.c_directives_use_system_libc() {
 		return false
 	}
 	if cfn in c_system_libc_preamble_declared_fns && g.c_directives_use_system_libc() {

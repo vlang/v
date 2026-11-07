@@ -8,6 +8,7 @@ import v.types { unalias_type }
 import strings
 
 const struct_init_option_source_type = flat.source_type_id('__v_option')
+const struct_init_union_source_type = flat.source_type_id('union')
 const cgen_embed_file_data_source_type = flat.source_type_id('embed_file.EmbedFileData')
 
 struct PromotedStructInitField {
@@ -160,7 +161,8 @@ fn (mut g FlatGen) gen_struct_field_expr(value_id flat.NodeId, expected types.Ty
 }
 
 fn is_anonymous_struct_type_name(name_id u32) bool {
-	return flat.source_type_query(flat.source_type_syntax(name_id).unqualified()).has(.anon_struct_prefix)
+	query := flat.source_type_query(flat.source_type_syntax(name_id).unqualified())
+	return query.has(.anon_struct_prefix) || query.has(.anon_union_prefix)
 }
 
 fn struct_init_has_main_type_lock(type_name string) bool {
@@ -189,7 +191,7 @@ fn (mut g FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Nod
 		// that clone, so it must not replace the explicit spelling.
 		return node.source_value_id()
 	}
-	if node.source_value_id() == flat.source_type_id('struct') {
+	if node.source_value_id() == flat.source_type_id('struct') || node.source_value_id() == struct_init_union_source_type {
 		expected := types.unwrap_pointer(g.expected_expr_type)
 		if expected is types.Struct && is_anonymous_struct_type_name(expected.source_type_id()) {
 			return expected.source_type_id()

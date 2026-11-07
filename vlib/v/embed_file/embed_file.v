@@ -42,6 +42,7 @@ fn join_chunks_buffer(size int) &u8 {
 // `data()` free of the lazy mutation that two threads reading the same embedded
 // constant would race on.
 //
+// If the chunk table ends before len bytes, the remaining bytes are zero-filled.
 // The buffer lives as long as the program, like the static bytes it replaces.
 @[markused]
 pub fn join_chunks(chunks &EmbedFileChunk, len int) &u8 {
@@ -65,6 +66,9 @@ pub fn join_chunks(chunks &EmbedFileChunk, len int) &u8 {
 			vmemcpy(buffer + offset, chunk.data, int(n))
 			offset += n
 			chunk++
+		}
+		if offset < len {
+			vmemset(buffer + offset, 0, len - offset)
 		}
 		return buffer
 	}
