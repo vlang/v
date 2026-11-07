@@ -275,6 +275,15 @@ pub fn sigint_to_signal_name(si int) string {
 // rmdir_all recursively removes the specified directory.
 // It continues after deletion errors and returns the first error's message and code.
 pub fn rmdir_all(path string) ! {
+	if is_link(path) {
+		// A symlinked root is never traversed: unlinking the link mirrors
+		// `rm -rf`, which errors on nothing and leaves the target's contents
+		// untouched. Without this guard, `ls(path)` enumerated the target
+		// through the link and deleted everything reachable from it before
+		// the trailing `rmdir(path)` failed with `Not a directory`.
+		rm(path)!
+		return
+	}
 	items := ls(path)!
 	// Report the first failure, not the last. The last is almost always the
 	// closing `rmdir(path)` on Windows, which fails with ERROR_DIR_NOT_EMPTY
