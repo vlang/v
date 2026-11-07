@@ -56,10 +56,30 @@ $if !skip_fastc ? {
 	}
 
 	struct V3FastcNativeBridge {
-		functions    []string
+		functions []string
+		// adapters carry the calls whose arguments TinyCC cannot place on the stack.
+		adapters     []fastc.FastcNativeArgsAdapter
 		sources      []string
 		dependencies []string
 		library      string
+	}
+
+	// v3_fastc_native_args_adapters lists the bridge functions that TinyCC calls through
+	// an argument struct (see fastc.FastcNativeArgsAdapter). Only arm64 packs stack
+	// arguments differently from TinyCC.
+	fn v3_fastc_native_args_adapters(generation &fastc.GenerationResult, prefs &pref.Preferences, functions map[string]bool) []fastc.FastcNativeArgsAdapter {
+		mut adapters := []fastc.FastcNativeArgsAdapter{}
+		if prefs.target.arch != 'arm64' {
+			return adapters
+		}
+		mut names := functions.keys()
+		names.sort()
+		for name in names {
+			if adapter := fastc.fastc_native_args_adapter(name, generation.native_declarations[name]) {
+				adapters << adapter
+			}
+		}
+		return adapters
 	}
 
 	fn v3_fastc_native_bridge(generation &fastc.GenerationResult, prefs &pref.Preferences, flags []string, sdk string) !V3FastcNativeBridge {
@@ -97,7 +117,11 @@ $if !skip_fastc ? {
 		// Only the platform compiler opens the headers and native implementations.
 		dir := os.join_path(os.vtmp_dir(), 'v3_fastc_native')
 		ensure_native_object_cache_dir(dir)!
-		owner := v3_fastc_native_declarations(dir, head.str()) + v3_tcc_dylib_function_bindings(functions).owner
+		mut owner := v3_fastc_native_declarations(dir, head.str()) + v3_tcc_dylib_function_bindings(functions).owner
+		adapters := v3_fastc_native_args_adapters(generation, prefs, functions)
+		for adapter in adapters {
+			owner += adapter.native_side()
+		}
 		if bench_phases {
 			eprintln('fastc-phase native.owner ${sw.elapsed().microseconds()}us')
 		}
@@ -132,7 +156,7 @@ $if !skip_fastc ? {
 			if bench_phases {
 				eprintln('fastc-phase native.validated ${sw.elapsed().microseconds()}us dependencies=${cached.dependencies.len}')
 			}
-			return V3FastcNativeBridge{ functions: functions.keys(), sources: sources, dependencies: cached.dependencies, library: cached.library }
+			return V3FastcNativeBridge{ functions: functions.keys(), adapters: adapters, sources: sources, dependencies: cached.dependencies, library: cached.library }
 		}
 		deps := c_object_dependencies('/usr/bin/clang', args, path)
 		if deps.used_fallback {
@@ -181,7 +205,7 @@ $if !skip_fastc ? {
 			publish_native_c_object(staged, library)!
 		}
 		write_c_object_manifest(manifest, library, dependencies, mut stats) or {}
-		return V3FastcNativeBridge{ functions: functions.keys(), sources: sources, dependencies: dependencies, library: library }
+		return V3FastcNativeBridge{ functions: functions.keys(), adapters: adapters, sources: sources, dependencies: dependencies, library: library }
 	}
 
 	// v3_fastc_native_declarations derives the native owner's declarations from the program
@@ -399,6 +423,9 @@ $if !skip_fastc ? {
 		for name in bridge.functions {
 			prototype := generation.native_declarations[name]
 			declarations.writeln('extern ' + prototype.replace(name + '(', '(*v3_native_bridge_' + name + ')('))
+		}
+		for adapter in bridge.adapters {
+			declarations.write_string(adapter.program_side())
 		}
 		for i := generation.units.head_end - 1; i >= 0; i-- {
 			if i !in generation.units.extern_indexes && !(i >= generation.units.prototype_start && i < generation.units.prototype_end) {

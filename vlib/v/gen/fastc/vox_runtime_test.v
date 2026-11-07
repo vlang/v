@@ -175,3 +175,37 @@ const lengths = [1, 2, 3]
 	})
 	assert output == 'ok'
 }
+
+// TinyCC does not lay out arm64 stack arguments as Apple's ABI does. A native call
+// with more arguments than registers goes through the bridge's argument adapter.
+fn test_fastc_native_call_passes_stack_arguments() {
+	$if !macos {
+		return
+	}
+	output := fastc_run_program('native_stack_arguments', {
+		'native.m': '#include <stdio.h>
+int sig(const float *data, int count, int flag, float a0, float a1, float a2, float a3, float a4,
+	float a5, float a6, float a7, float a8, float a9, int stroke, float width, int cap, int join,
+	float b0, float b1, float b2, float b3, int spread, const float *stops, int stop_count,
+	float opacity) {
+	printf("%d %d %d %d %d %d %d %g %g %g %g %g %d %d\\n", count, flag, stroke, cap, join,
+		spread, stop_count, a0, a9, width, b3, opacity, (int)data[0], (int)stops[0]);
+	return count + stop_count;
+}
+'
+		'main.v':   r'module main
+
+#include "@DIR/native.m"
+
+fn C.sig(data &f32, count int, flag int, a0 f32, a1 f32, a2 f32, a3 f32, a4 f32, a5 f32, a6 f32, a7 f32, a8 f32, a9 f32, stroke int, width f32, cap int, join int, b0 f32, b1 f32, b2 f32, b3 f32, spread int, stops &f32, stop_count int, opacity f32) int
+
+fn main() {
+	data := [f32(7)]
+	stops := [f32(42)]
+	result := C.sig(&data[0], 3, 1, 1.5, 2, 3, 4, 5, 6, 7, 8, 9, 10.5, 11, 12.5, 13, 14, 15, 16, 17, 18.5, 19, &stops[0], 20, 0.75)
+	assert result == 23
+}
+'
+	})
+	assert output == '3 1 11 13 14 19 20 1.5 10.5 12.5 18.5 0.75 7 42'
+}
