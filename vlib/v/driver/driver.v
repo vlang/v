@@ -1830,15 +1830,25 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 
 // publish_native_c_object publishes once: GCC's LTO linker reopens the path,
 // so replacing even a complete object can change its internal symbol IDs mid-link.
+// On Windows, an antivirus or another process can briefly hold the completed
+// temporary object without file sharing. Retry only that sharing violation;
+// never replace a published object or hide a different filesystem error.
 fn publish_native_c_object(temporary string, destination string) !bool {
 	defer { os.rm(temporary) or {} }
-	os.link(temporary, destination) or {
-		if !os.is_file(destination) {
-			return error('failed to publish cached C object ${destination}: ${err}')
+	for attempt in 0 .. 20 {
+		os.link(temporary, destination) or {
+			if os.is_file(destination) {
+				return false
+			}
+			if os.user_os() != 'windows' || err.code() != 32 || attempt == 19 {
+				return error('failed to publish cached C object ${destination}: ${err}')
+			}
+			time.sleep(50 * time.millisecond)
+			continue
 		}
-		return false
+		return true
 	}
-	return true
+	return error('failed to publish cached C object ${destination}: retry limit reached')
 }
 
 fn c_object_manifest_path(cache_dir string, obj_path string, compiler string, compile_args []string, target pref.Target, mut stats CObjectCacheStats) string {
