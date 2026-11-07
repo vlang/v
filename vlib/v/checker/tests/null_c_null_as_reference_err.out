@@ -1,0 +1,112 @@
+vlib/v/checker/tests/null_c_null_as_reference_err.vv:9:12: error: cannot use `C.NULL` as `&Node` outside `unsafe`, use `unsafe { nil }`
+    7 | struct Holder {
+    8 | mut:
+    9 |     a &Node = C.NULL
+      |               ~~~~~~
+   10 |     b &Node = voidptr(const_zero)
+   11 |     c &Node = unsafe { nil }
+vlib/v/checker/tests/null_c_null_as_reference_err.vv:10:12: error: cannot use `voidptr(0)` as `&Node` outside `unsafe`, use `unsafe { nil }`
+    8 | mut:
+    9 |     a &Node = C.NULL
+   10 |     b &Node = voidptr(const_zero)
+      |               ~~~~~~~~~~~~~~~~~~~
+   11 |     c &Node = unsafe { nil }
+   12 | }
+vlib/v/checker/tests/null_c_null_as_reference_err.vv:19:9: error: cannot use `C.NULL` as `&Node` outside `unsafe`, use `unsafe { nil }`
+   17 | 
+   18 | fn return_c_null() &Node {
+   19 |     return C.NULL
+      |            ~~~~~~
+   20 | }
+   21 |
+vlib/v/checker/tests/null_c_null_as_reference_err.vv:24:6: error: cannot use `C.NULL` as `&Node` outside `unsafe`, use `unsafe { nil }`
+   22 | fn main() {
+   23 |     mut p := &Node{}
+   24 |     p = C.NULL
+      |         ~~~~~~
+   25 |     println(take(C.NULL))
+   26 |     println(take(voidptr(0)))
+vlib/v/checker/tests/null_c_null_as_reference_err.vv:25:15: error: cannot use `C.NULL` as `&Node` outside `unsafe`, use `unsafe { nil }`
+   23 |     mut p := &Node{}
+   24 |     p = C.NULL
+   25 |     println(take(C.NULL))
+      |                  ~~~~~~
+   26 |     println(take(voidptr(0)))
+   27 |     println(take(voidptr(const_zero)))
+vlib/v/checker/tests/null_c_null_as_reference_err.vv:26:15: error: cannot use `voidptr(0)` as `&Node` outside `unsafe`, use `unsafe { nil }`
+   24 |     p = C.NULL
+   25 |     println(take(C.NULL))
+   26 |     println(take(voidptr(0)))
+      |                  ~~~~~~~~~~
+   27 |     println(take(voidptr(const_zero)))
+   28 |     println(take(voidptr(1 - 1)))
+vlib/v/checker/tests/null_c_null_as_reference_err.vv:27:15: error: cannot use `voidptr(0)` as `&Node` outside `unsafe`, use `unsafe { nil }`
+   25 |     println(take(C.NULL))
+   26 |     println(take(voidptr(0)))
+   27 |     println(take(voidptr(const_zero)))
+      |                  ~~~~~~~~~~~~~~~~~~~
+   28 |     println(take(voidptr(1 - 1)))
+   29 |     _ = &Node(C.NULL)
+vlib/v/checker/tests/null_c_null_as_reference_err.vv:28:15: error: cannot use `voidptr(0)` as `&Node` outside `unsafe`, use `unsafe { nil }`
+   26 |     println(take(voidptr(0)))
+   27 |     println(take(voidptr(const_zero)))
+   28 |     println(take(voidptr(1 - 1)))
+      |                  ~~~~~~~~~~~~~~
+   29 |     _ = &Node(C.NULL)
+   30 |     _ = &Node(voidptr(0))
+vlib/v/checker/tests/null_c_null_as_reference_err.vv:29:6: error: cannot null cast a struct pointer, use &Node(unsafe { nil })
+   27 |     println(take(voidptr(const_zero)))
+   28 |     println(take(voidptr(1 - 1)))
+   29 |     _ = &Node(C.NULL)
+      |         ~~~~~~~~~~~~~
+   30 |     _ = &Node(voidptr(0))
+   31 |     _ = &Node(voidptr(const_zero))
+vlib/v/checker/tests/null_c_null_as_reference_err.vv:30:6: error: cannot null cast a struct pointer, use &Node(unsafe { nil })
+   28 |     println(take(voidptr(1 - 1)))
+   29 |     _ = &Node(C.NULL)
+   30 |     _ = &Node(voidptr(0))
+      |         ~~~~~~~~~~~~~~~~~
+   31 |     _ = &Node(voidptr(const_zero))
+   32 |     _ = &Node(voidptr(1 - 1))
+vlib/v/checker/tests/null_c_null_as_reference_err.vv:31:6: error: cannot null cast a struct pointer, use &Node(unsafe { nil })
+   29 |     _ = &Node(C.NULL)
+   30 |     _ = &Node(voidptr(0))
+   31 |     _ = &Node(voidptr(const_zero))
+      |         ~~~~~~~~~~~~~~~~~~~~~~~~~~
+   32 |     _ = &Node(voidptr(1 - 1))
+   33 |     _ = &int(C.NULL)
+vlib/v/checker/tests/null_c_null_as_reference_err.vv:32:6: error: cannot null cast a struct pointer, use &Node(unsafe { nil })
+   30 |     _ = &Node(voidptr(0))
+   31 |     _ = &Node(voidptr(const_zero))
+   32 |     _ = &Node(voidptr(1 - 1))
+      |         ~~~~~~~~~~~~~~~~~~~~~
+   33 |     _ = &int(C.NULL)
+   34 |     _ = &Node(1 - 1)
+vlib/v/checker/tests/null_c_null_as_reference_err.vv:33:6: error: cannot null cast a pointer, use &int(unsafe { nil })
+   31 |     _ = &Node(voidptr(const_zero))
+   32 |     _ = &Node(voidptr(1 - 1))
+   33 |     _ = &int(C.NULL)
+      |         ~~~~~~~~~~~~
+   34 |     _ = &Node(1 - 1)
+   35 |     _ = &Node(0 * 5)
+vlib/v/checker/tests/null_c_null_as_reference_err.vv:34:6: error: cannot null cast a struct pointer, use &Node(unsafe { nil })
+   32 |     _ = &Node(voidptr(1 - 1))
+   33 |     _ = &int(C.NULL)
+   34 |     _ = &Node(1 - 1)
+      |         ~~~~~~~~~~~~
+   35 |     _ = &Node(0 * 5)
+   36 |     mut h := Holder{
+vlib/v/checker/tests/null_c_null_as_reference_err.vv:35:6: error: cannot null cast a struct pointer, use &Node(unsafe { nil })
+   33 |     _ = &int(C.NULL)
+   34 |     _ = &Node(1 - 1)
+   35 |     _ = &Node(0 * 5)
+      |         ~~~~~~~~~~~~
+   36 |     mut h := Holder{
+   37 |         a: C.NULL
+vlib/v/checker/tests/null_c_null_as_reference_err.vv:37:6: error: cannot use `C.NULL` as `&Node` outside `unsafe`, use `unsafe { nil }`
+   35 |     _ = &Node(0 * 5)
+   36 |     mut h := Holder{
+   37 |         a: C.NULL
+      |            ~~~~~~
+   38 |     }
+   39 |     println(p.x + h.a.x)

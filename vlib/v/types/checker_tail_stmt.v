@@ -10949,8 +10949,8 @@ fn (tc &TypeChecker) expr_tail_is_nil(id flat.NodeId) bool {
 }
 
 // null_constant_expr_text returns how `id` spells a compile-time null pointer: `nil`,
-// `0` or `voidptr(0)`, with or without parentheses around it. Anything else, including
-// `unsafe { nil }`, yields an empty string.
+// `0`, `voidptr(0)` or `C.NULL`, with or without parentheses around it. Anything
+// else, including `unsafe { nil }`, yields an empty string.
 fn (tc &TypeChecker) null_constant_expr_text(id flat.NodeId) string {
 	value_id := tc.unwrap_paren_expr_id(id)
 	if !tc.valid_node_id(value_id) {
@@ -10963,8 +10963,14 @@ fn (tc &TypeChecker) null_constant_expr_text(id flat.NodeId) string {
 	if value.kind == .int_literal && numeric_literal_is_zero(value.value) {
 		return '0'
 	}
+	if value.kind == .selector && value.value == 'NULL' && value.children_count == 1 {
+		base := tc.a.child_node(value, 0)
+		if base.kind == .ident && base.value == 'C' {
+			return 'C.NULL'
+		}
+	}
 	if value.kind == .cast_expr && value.source_value_id() == flat.source_type_voidptr && value.children_count == 1
-		&& tc.is_zero_literal(tc.unwrap_paren_expr_id(tc.a.child(value, 0))) {
+		&& tc.cast_operand_is_null_pointer(value_id) {
 		return 'voidptr(0)'
 	}
 	return ''

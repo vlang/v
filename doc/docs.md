@@ -9820,7 +9820,8 @@ fields that can use the value `0`, understanding that it is unsafe, and that it 
 cause a panic.
 
 A null reference has to be written as `unsafe { nil }`: outside `unsafe`, the compiler
-rejects direct `nil`, `0` and `voidptr(0)` constants where a non-option reference is expected.
+rejects direct `nil`, `0`, `voidptr(0)`, `C.NULL` and compile-time zero constants
+where a non-option reference is expected.
 The same rule applies to explicitly typed global initializers when globals are enabled.
 Raw `voidptr` targets, C declarations, `.c.v` files and translated code retain their
 C interop rules. Comparisons with null values and optional references remain accepted.
@@ -10947,7 +10948,8 @@ Typed pointers must use the C element representation. For a C `int` array declar
 `fn C.sum(values [2]int) int`, use `i32` storage such as `values := [i32(10), 20]` and
 pass `&values[0]`; V's platform-width `int` storage is incompatible on 64-bit targets.
 Pointer constants such as `C.NULL` and `C.INVALID_HANDLE_VALUE` retain their pointer type
-in assignments and comparisons.
+in assignments and comparisons. Converting `C.NULL` to a typed `&T` reference now
+requires `unsafe`, like `voidptr(0)` does.
 
 Ordinary V identifiers such as `near`, `far`, `pascal`, `cdecl`, `min`, and `max` can also be
 used when compiling for Windows. The C backend escapes these names to avoid Windows header
