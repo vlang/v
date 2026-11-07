@@ -8,7 +8,8 @@ fn test_callback_clang_mingw_target_filter() {
 	for triple in ['x86_64-w64-mingw32', 'x86_64-w64-windows-gnu', 'x86_64-pc-windows-gnu'] {
 		assert callback_test_clang_uses_mingw_abi(triple), triple
 	}
-	for triple in ['x86_64-pc-windows-msvc', 'aarch64-apple-darwin', 'x86_64-unknown-linux-gnu', ''] {
+	for triple in ['x86_64-pc-windows-msvc', 'aarch64-apple-darwin', 'x86_64-unknown-linux-gnu',
+		''] {
 		assert !callback_test_clang_uses_mingw_abi(triple), triple
 	}
 }
