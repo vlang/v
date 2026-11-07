@@ -1228,6 +1228,9 @@ pub mut:
 	solo_prototype_ids   []int
 	shared_prototype_ids []int
 	tail_prototype_ids   []int
+	// tail_unit is the first unit that needs tail_prototype_ids: the last source
+	// file's bodies, followed by units of on-demand generic instances.
+	tail_unit int
 	// define_texts are the same pieces with `static` dropped, for the first
 	// unit: a static definition would not satisfy the other units' externs.
 	define_texts []string
@@ -2562,10 +2565,19 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut mono_names := mono_definitions.keys()
 	mono_names.sort()
 	timer.mark('stitch')
+	mono_body_start := body_len
+	// Generic instances become several units, so one TinyCC job does not compile them all.
+	mut mono_unit_offsets := []int{}
+	mut mono_unit_size := 0
 	for mono_name in mono_names {
 		mono_definition := mono_definitions[mono_name]
+		if mono_unit_offsets.len == 0 || mono_unit_size >= fastc_mono_unit_bytes {
+			mono_unit_offsets << body_len
+			mono_unit_size = 0
+		}
 		body_pieces << fastc_piece(mono_definition)
 		body_len += mono_definition.len
+		mono_unit_size += mono_definition.len
 	}
 	if prefs.is_test {
 		// The test main synthesized below is this program's entry.
@@ -3049,14 +3061,34 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	// unit; the generic instances (after the last file) join the last unit.
 	// Conditional blocks would be body text shared by every unit, so a
 	// program with any keeps a single unit.
-	mut unit_starts := []int{cap: outputs.len + 2}
+	mut unit_starts := []int{cap: outputs.len + mono_unit_offsets.len + 2}
 	if kept_conditional_ranges.len == 0 && outputs.len > 0 {
 		for i, _ in outputs {
 			window_start := output_body_offsets[i]
-			window_end := if i + 1 < outputs.len { output_body_offsets[i + 1] } else { body_len }
+			window_end := if i + 1 < outputs.len {
+				output_body_offsets[i + 1]
+			} else {
+				mono_body_start
+			}
 			unit_starts << pieces.len
 			fastc_collect_c_piece_ranges(mut pieces, body_pieces, fastc_window_ranges(kept_body_ranges, window_start, window_end))
 		}
+		for m, window_start in mono_unit_offsets {
+			window_end := if m + 1 < mono_unit_offsets.len {
+				mono_unit_offsets[m + 1]
+			} else {
+				body_len
+			}
+			if m > 0 {
+				unit_starts << pieces.len
+				if unit_ref_starts.len > 0 {
+					// Generic instances read their declarations through tail_prototype_ids.
+					unit_ref_starts << unit_ref_ids.len
+				}
+			}
+			fastc_collect_c_piece_ranges(mut pieces, body_pieces, fastc_window_ranges(kept_body_ranges, window_start, window_end))
+		}
+		units.tail_unit = outputs.len - 1
 	} else {
 		fastc_collect_c_piece_ranges(mut pieces, body_pieces, kept_body_ranges)
 	}
@@ -3306,8 +3338,9 @@ fn fastc_conditional_directives_only(pieces []string) bool {
 			if clean == '' { continue }
 			if !clean.starts_with('#') { return false }
 			word := clean[1..].trim_left(' \t').all_before(' ').all_before('\t')
+			// Macro definitions are shared like the unconditional ones hoisted to the head.
 			if word !in ['if', 'ifdef', 'ifndef', 'else', 'elif', 'endif', 'include', 'import',
-				'error', 'warning'] {
+				'error', 'warning', 'define', 'undef'] {
 				return false
 			}
 		}
@@ -3924,7 +3957,7 @@ fn fastc_render_c_unit(pieces []string, units &FastcUnitLayout, g int, first_uni
 				needed[units.unit_ref_ids[r]] = true
 			}
 		}
-		if end_unit == units.unit_starts.len - 1 {
+		if end_unit > units.tail_unit {
 			for id in units.tail_prototype_ids {
 				needed[id] = true
 			}
@@ -3946,6 +3979,9 @@ fn fastc_render_c_unit(pieces []string, units &FastcUnitLayout, g int, first_uni
 	}
 	return fastc_take_string(mut out)
 }
+
+// fastc_mono_unit_bytes is roughly how much generic instance code forms one unit.
+const fastc_mono_unit_bytes = 1 << 20
 
 fn fastc_descending_size_order(sizes []int) []int {
 	mut order := []int{cap: sizes.len}
@@ -4175,7 +4211,7 @@ pub fn fastc_generation_link_cache_key(tcc string, compile_args []string, final_
 			stable_final_args << arg
 		}
 	}
-	configuration := 'fastc-generation-link-v3\x00${fastc_unit_cache_configuration(tcc, compile_args)}\x00${stable_final_args.join('\x00')}\x00${jobs}\x00${units.head_end}\x00${units.solo_end}\x00${units.prototype_start}\x00${units.prototype_end}\x00${units.unit_starts}\x00${units.extern_indexes}\x00${units.unit_ref_starts}\x00${units.unit_ref_ids}\x00${units.solo_prototype_ids}\x00${units.shared_prototype_ids}\x00${units.tail_prototype_ids}'
+	configuration := 'fastc-generation-link-v3\x00${fastc_unit_cache_configuration(tcc, compile_args)}\x00${stable_final_args.join('\x00')}\x00${jobs}\x00${units.head_end}\x00${units.solo_end}\x00${units.prototype_start}\x00${units.prototype_end}\x00${units.unit_starts}\x00${units.extern_indexes}\x00${units.unit_ref_starts}\x00${units.unit_ref_ids}\x00${units.solo_prototype_ids}\x00${units.shared_prototype_ids}\x00${units.tail_prototype_ids}\x00${units.tail_unit}'
 	mut hash := fastc_unit_cache_hash(configuration, u64(0x510e527fade682d1))
 	for piece in pieces {
 		hash = fastc_unit_cache_hash(piece, hash ^ u64(piece.len))

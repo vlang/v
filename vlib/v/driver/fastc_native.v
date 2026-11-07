@@ -40,9 +40,10 @@ $if !skip_fastc ? {
 			// TinyCC must reopen its own selected header branches on every build.
 			// The native owner's dependency manifest validates only the native library.
 
-			return compile_v3_fastc_source(pieces, generation.units, bin_file, prefs, [], program_flags, [], link_flags, sdk, is_debug, generation.uses_threads, false, mut prestarted)
+			// Native inputs rule out executable caching; the payload object names none of them.
+			return compile_v3_fastc_source(pieces, generation.units, bin_file, prefs, [], program_flags, [], link_flags, sdk, is_debug, generation.uses_threads, false, cache_enabled, mut prestarted)
 		}
-		return compile_v3_fastc_source(generation.c_pieces, generation.units, bin_file, prefs, environment_flags, generation.c_flags, user_flags, link_flags, sdk, is_debug, generation.uses_threads, cache_enabled, mut prestarted)
+		return compile_v3_fastc_source(generation.c_pieces, generation.units, bin_file, prefs, environment_flags, generation.c_flags, user_flags, link_flags, sdk, is_debug, generation.uses_threads, cache_enabled, cache_enabled, mut prestarted)
 	}
 
 	struct V3FastcNativeBridge {

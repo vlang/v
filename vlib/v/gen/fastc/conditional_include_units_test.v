@@ -30,5 +30,7 @@ fn helper() int { return C.CONDITIONAL_VALUE }
 	run := cmdexec.run(program, [])
 	assert run.exit_code == 0, run.output
 	assert !fastc_conditional_directives_only(['#if 1\nint value;\n#endif\n'])
-	assert !fastc_conditional_directives_only(['#if 1\n#define VALUE 42\n#endif\n'])
+	assert !fastc_conditional_directives_only(['#if 1\n#define VALUE 42\nint value;\n#endif\n'])
+	// Macro-only blocks are shared like the unconditional directives hoisted to the head.
+	assert fastc_conditional_directives_only(['#if 1\n#define VALUE 42\n#else\n#undef VALUE\n#endif\n'])
 }

@@ -9458,7 +9458,7 @@ $if !skip_fastc ? {
 		return V3FastCCompileResult{ success: true, command: command, output: output }
 	}
 
-	fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, link_ld_flags []string, macos_sdk_root string, is_debug bool, uses_threads bool, cache_enabled bool, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
+	fn compile_v3_fastc_source(pieces []string, generated_units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, link_ld_flags []string, macos_sdk_root string, is_debug bool, uses_threads bool, cache_enabled bool, payload_cache_enabled bool, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
 		bench_phases := os.getenv('FASTC_BENCH_PHASES') != ''
 		cc_sw := time.new_stopwatch()
 		tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
@@ -9492,6 +9492,9 @@ $if !skip_fastc ? {
 		mut compile_args := compile_base_args.clone()
 		compile_args << user_compile_args
 		jobs := fastc.fastc_tcc_job_count(prefs)
+		// Embedded files of a split build compile as their own cached object.
+		payload := fastc.fastc_split_payload_unit(pieces, generated_units, jobs)
+		units := payload.units
 		mut uses_prestarted := false
 		$if macos {
 			uses_prestarted = fastc.fastc_prestarted_c_units_match(&prestarted, compile_args, jobs)
@@ -9535,6 +9538,8 @@ $if !skip_fastc ? {
 				}
 			}
 		}
+		payload_compile := spawn fastc.fastc_payload_object(tcc_path, compile_args, payload.source,
+			build_dir, payload_cache_enabled)
 		// The program's translation units are compiled by concurrent TinyCC
 		// processes and linked; a program that does not split is compiled as
 		// one file.
@@ -9565,6 +9570,17 @@ $if !skip_fastc ? {
 				&& final_args[0] == os.join_path(build_dir, 'host_support_darwin.c')
 		}
 		generation_link_cache_key := fastc.fastc_generation_link_cache_key(tcc_path, compile_args, final_args, pieces, units, jobs, cache_enabled && !final_args.any(fastc.fastc_flag_is_native_input(it)))
+		// The pieces already identify the payload, wherever its object is stored.
+		payload_object := payload_compile.wait()
+		if payload_object.error != '' {
+			return V3FastCCompileResult{
+				command: cmdexec.display(tcc_path, compile_args)
+				output:  payload_object.error
+			}
+		}
+		if payload_object.path != '' {
+			final_args << payload_object.path
+		}
 		if fastc.fastc_restore_link_cache(generation_link_cache_key, staged_binary) {
 			if bench_phases {
 				now_us := cc_sw.elapsed().microseconds()
