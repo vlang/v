@@ -1359,7 +1359,10 @@ struct FastcConstantValue {
 	value        string
 	typ          u32
 	dependencies []string
-	is_runtime   bool
+	// call_dependencies are the constants that the functions it calls read (see
+	// fastc_constant_call_dependencies).
+	call_dependencies []string
+	is_runtime        bool
 }
 
 struct FastcComptimeCondition {

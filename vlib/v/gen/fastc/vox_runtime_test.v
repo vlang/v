@@ -20,13 +20,14 @@ fn fastc_run_program(name string, files map[string]string) string {
 }
 
 // A directory program runs on FastC's full runtime. It keeps the program's collector,
-// as with the C backend; Vox frees its own pages with `GC_free`.
+// as with the C backend; Vox frees its own pages with `GC_free`. HTTP/2's HPACK table
+// is a constant built by a call that reads a constant of another file.
 fn test_fastc_directory_program_runs_like_the_c_backend() {
 	$if !macos && !linux {
 		return
 	}
 	output := fastc_run_program('vox_runtime', {
-		'main.v': r'module main
+		'main.v':       r'module main
 
 import json2
 
@@ -95,6 +96,17 @@ fn scale(value f64) int {
 	return int(value)
 }
 
+// table is built by a call that reads `lengths`, a constant of a later file.
+const table = build_table()
+
+fn build_table() []int {
+	return scaled(2)
+}
+
+fn scaled(factor int) []int {
+	return lengths.map(it * factor)
+}
+
 fn work(id int) int {
 	mut total := 0
 	for _ in 0 .. 20 {
@@ -116,6 +128,7 @@ fn main() {
 	$if prealloc {
 		assert false
 	}
+	assert table == [2, 4, 6]
 	release(new_page())
 	coordinates := payload(?Inner(Inner{ x: 7 })) or { panic("none") }
 	clobber(3)
@@ -154,6 +167,10 @@ fn main() {
 	assert json2.encode(shapes) == "[{\"x\":1,\"_type\":\"Inner\"},2,\"three\"]"
 	println("ok")
 }
+'
+		'zz_lengths.v': 'module main
+
+const lengths = [1, 2, 3]
 '
 	})
 	assert output == 'ok'

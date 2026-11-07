@@ -1970,6 +1970,20 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 			dependencies: dependencies
 		}
 	}
+	mut constant_key_set := map[string]bool{}
+	for value in values {
+		constant_key_set[value.key] = true
+	}
+	mut call_scan := FastcConstantCallScan{}
+	for index, value in values {
+		if value.is_runtime {
+			values[index] = FastcConstantValue{
+				...value
+				call_dependencies: fastc_constant_call_dependencies(value, constant_key_set,
+					functions, function_c_names, prefs, mut call_scan)
+			}
+		}
+	}
 	mut runtime_constants := map[string]bool{}
 	for value in values {
 		if value.is_runtime {
@@ -2008,13 +2022,10 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 			compile_time_values[value.c_name] = value.value
 		}
 	}
-	mut initializer_order := []int{}
-	mut visiting := []int{}
-	mut visited := []int{}
-	for i, value in values {
-		if value.key in runtime_constants {
-			fastc_append_runtime_constant(i, values, runtime_constants, mut visiting, mut visited, mut initializer_order)!
-		}
+	// The constants read by called functions order initializers where they can; a
+	// cycle through them keeps the order of the direct references.
+	initializer_order := fastc_runtime_constant_order(values, runtime_constants, true) or {
+		fastc_runtime_constant_order(values, runtime_constants, false)!
 	}
 	mut module_initializers := map[string]string{}
 	for index in initializer_order {
@@ -2138,7 +2149,21 @@ fn fastc_rendered_constant_dependencies(source string, keys map[string]string, m
 	}
 }
 
-fn fastc_append_runtime_constant(index int, values []FastcConstantValue, runtime_constants map[string]bool, mut visiting []int, mut visited []int, mut ordered []int) ! {
+// fastc_runtime_constant_order orders the runtime constants after the constants they
+// depend on; `with_calls` adds the dependencies through called functions.
+fn fastc_runtime_constant_order(values []FastcConstantValue, runtime_constants map[string]bool, with_calls bool) ![]int {
+	mut ordered := []int{}
+	mut visiting := []int{}
+	mut visited := []int{}
+	for i, value in values {
+		if value.key in runtime_constants {
+			fastc_append_runtime_constant(i, values, runtime_constants, with_calls, mut visiting, mut visited, mut ordered)!
+		}
+	}
+	return ordered
+}
+
+fn fastc_append_runtime_constant(index int, values []FastcConstantValue, runtime_constants map[string]bool, with_calls bool, mut visiting []int, mut visited []int, mut ordered []int) ! {
 	if index in visited {
 		return
 	}
@@ -2146,13 +2171,18 @@ fn fastc_append_runtime_constant(index int, values []FastcConstantValue, runtime
 		return error('fastc parser does not support cyclic runtime constant initialization involving `${values[index].key}`')
 	}
 	visiting << index
-	for dependency in values[index].dependencies {
+	mut dependencies := []string{}
+	if with_calls {
+		dependencies << values[index].call_dependencies
+	}
+	dependencies << values[index].dependencies
+	for dependency in dependencies {
 		if dependency !in runtime_constants {
 			continue
 		}
 		for dependency_index, value in values {
 			if value.key == dependency {
-				fastc_append_runtime_constant(dependency_index, values, runtime_constants, mut visiting, mut visited, mut ordered)!
+				fastc_append_runtime_constant(dependency_index, values, runtime_constants, with_calls, mut visiting, mut visited, mut ordered)!
 				break
 			}
 		}
