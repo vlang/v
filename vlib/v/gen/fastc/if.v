@@ -1845,6 +1845,16 @@ fn (g &Parser) fastc_common_sum_type(a u32, b u32) ?u32 {
 	return none
 }
 
+// fastc_tokens_have_none reports a `none` token.
+fn fastc_tokens_have_none(tokens []FastcExpressionToken) bool {
+	for item in tokens {
+		if item.tok == .key_none {
+			return true
+		}
+	}
+	return false
+}
+
 // fastc_tokens_have_top_level_or reports a `||` outside any brackets.
 fn fastc_tokens_have_top_level_or(tokens []FastcExpressionToken) bool {
 	mut depth := 0
@@ -1901,7 +1911,14 @@ fn (mut g Parser) read_if_expression() !string {
 	}
 	g.expected_expression_type = u32(0)
 	mut condition := g.read_condition_expression([token.Token.semicolon, token.Token.lcbr])!
-	condition_tokens := g.last_expression.clone()
+	// `if opt != none { … }` narrows the option local to its value in the branch, as in
+	// the statement form. Only a condition naming `none` without a top-level `||` can.
+	narrowed_options := if fastc_tokens_have_none(g.last_expression)
+		&& !fastc_tokens_have_top_level_or(g.last_expression) {
+		g.detect_option_none_narrowings(g.last_expression)
+	} else {
+		[]string{}
+	}
 	mut guard_name := ''
 	mut guard_type := u32(0)
 	mut guard_option := ''
@@ -2019,21 +2036,19 @@ fn (mut g Parser) read_if_expression() !string {
 			}
 		}
 	}
-	// `if opt != none { … }` narrows the option local to its value in the branch, as in
-	// the statement form.
-	mut previous_option_narrowings := map[string]FastcMemberSmartcast{}
-	mut had_option_narrowings := map[string]bool{}
-	if guard_name == '' && !fastc_tokens_have_top_level_or(condition_tokens) {
-		for opt_name in g.detect_option_none_narrowings(condition_tokens) {
+	mut narrowed_names := []string{}
+	mut narrowed_had := []bool{}
+	mut narrowed_previous := []FastcMemberSmartcast{}
+	if guard_name == '' {
+		for opt_name in narrowed_options {
 			if opt_name in previous_member_smartcasts || opt_name in had_local_shadows {
 				continue
 			}
 			local := g.locals[opt_name] or { continue }
 			base := local.option_value_type
-			had_option_narrowings[opt_name] = opt_name in g.member_smartcasts
-			previous_option_narrowings[opt_name] = g.member_smartcasts[opt_name] or {
-				FastcMemberSmartcast{}
-			}
+			narrowed_names << opt_name
+			narrowed_had << (opt_name in g.member_smartcasts)
+			narrowed_previous << g.member_smartcasts[opt_name] or { FastcMemberSmartcast{} }
 			g.member_smartcasts[opt_name] = FastcMemberSmartcast{
 				typ:    base
 				source: if g.prefs.target_libc_headers {
@@ -2049,9 +2064,9 @@ fn (mut g Parser) read_if_expression() !string {
 	} else {
 		g.read_block_expression_value()!
 	}
-	for path, present in had_option_narrowings {
-		if present {
-			g.member_smartcasts[path] = previous_option_narrowings[path]
+	for i, path in narrowed_names {
+		if narrowed_had[i] {
+			g.member_smartcasts[path] = narrowed_previous[i]
 		} else {
 			g.member_smartcasts.delete(path)
 		}
