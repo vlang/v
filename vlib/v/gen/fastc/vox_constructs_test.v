@@ -182,3 +182,72 @@ fn main() {
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space() == 'ok'
 }
+
+// fastc_vox_construct_program builds the directory program `source` with FastC and
+// checks that it prints `ok`.
+fn fastc_vox_construct_program(name string, source string) {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_vox_construct_${name}_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), source) or { panic(err) }
+	program := os.join_path(root, 'program')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-nocache', '-enable-globals', '-o', program, root])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'ok'
+}
+
+// A member narrowed past `if x.f !is T { return }` is read again after the condition,
+// so a path that calls a function, also in an index, is not narrowed: the call runs
+// once, as with the C backend.
+fn test_fastc_vox_constructs_fallthrough_subject_is_evaluated_once() {
+	fastc_vox_construct_program('fallthrough', r'module main
+
+__global count = 0
+
+struct First {
+	x int
+}
+
+struct Second {
+	x int
+}
+
+type Value = First | Second
+
+struct Holder {
+	value Value
+}
+
+fn next_holder() Holder {
+	count++
+	return Holder{First{1}}
+}
+
+fn next_index() int {
+	count++
+	return 0
+}
+
+fn main() {
+	if next_holder().value !is First {
+		return
+	}
+	holders := [Holder{First{2}}]
+	if holders[next_index()].value !is First {
+		return
+	}
+	assert count == 2
+	plain := Holder{First{3}}
+	if plain.value !is First {
+		return
+	}
+	assert plain.value.x == 3
+	println("ok")
+}
+')
+}

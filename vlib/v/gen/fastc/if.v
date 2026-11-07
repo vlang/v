@@ -1351,6 +1351,13 @@ fn (mut g Parser) bind_negated_member_fallthrough(cond_tokens []FastcExpressionT
 	if !path.contains('.') {
 		return
 	}
+	// The narrowed member is read again after the condition; a call in its path, also in
+	// an index, would run twice.
+	for item in left_tokens {
+		if item.tok == .lpar {
+			return
+		}
+	}
 	mut left_type := fastc_normalize_inferred_type(g.infer_member_access_type(left_tokens, 0,
 		left_tokens.len) or { return })
 	previous_cast := g.member_smartcasts[path] or { FastcMemberSmartcast{} }
