@@ -48,8 +48,7 @@ fn C.epoll_wait(__epfd i32, __events &C.epoll_event, __maxevents i32, __timeout 
 
 fn C.sendfile(out_fd i32, in_fd i32, offset voidptr, count uint) i32
 
-@[typedef]
-pub struct C.sigset_t {}
+#include <signal.h>
 
 fn C.sigemptyset(set &C.sigset_t)
 

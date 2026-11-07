@@ -28,8 +28,7 @@ pub fn is_main_thread() bool {
 	return g_main_thread_id == signal_thread_id()
 }
 
-@[typedef]
-pub struct C.sigset_t {}
+#include <signal.h>
 
 fn C.sigaddset(set &C.sigset_t, signum i32) i32
 fn C.sigemptyset(set &C.sigset_t)
