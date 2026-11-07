@@ -208,7 +208,7 @@ fn test_formatter_backend_options_are_runtime_preferences() {
 			'fmt',
 			'source.v',
 		]
-		assert external_tool_compile_args('vtest', prefix) == prefix
+		assert external_tool_compile_args('vtest', prefix) == ['-cc', 'clang', '-gc', 'none']
 		joined_prefix := ['-cc', 'clang', '${flag}=js', '-gc', 'none']
 		assert external_tool_compile_args('vfmt', joined_prefix) == ['-cc', 'clang', '-gc', 'none']
 		assert external_tool_runtime_args('fmt', joined_prefix, ['fmt', 'source.v']) == [
@@ -216,7 +216,7 @@ fn test_formatter_backend_options_are_runtime_preferences() {
 			'fmt',
 			'source.v',
 		]
-		assert external_tool_compile_args('vtest', joined_prefix) == joined_prefix
+		assert external_tool_compile_args('vtest', joined_prefix) == ['-cc', 'clang', '-gc', 'none']
 	}
 }
 
@@ -770,6 +770,11 @@ fn test_prod_refuses_tinycc_under_another_name_once_it_resolves() {
 	// The name has no `tcc`, so only the resolved compiler gives it away.
 	alias_path := os.join_path(dir, 'cc_alias.exe')
 	os.cp(bundled, alias_path) or { panic(err) }
+	// Shared TinyCC builds need their adjacent DLL even to print the version.
+	libtcc := os.join_path(os.dir(bundled), 'libtcc.dll')
+	if os.is_file(libtcc) {
+		os.cp(libtcc, os.join_path(dir, 'libtcc.dll')) or { panic(err) }
+	}
 	source := os.join_path(dir, 'main.v')
 	os.write_file(source, 'fn main() {\n\tprintln(1)\n}\n') or { panic(err) }
 	// `-old-compiler` must refuse the alias too, before the compatibility compiler is started.
@@ -1124,4 +1129,31 @@ fn test_obsolete_skip_unused_cleanup_preserves_option_values_and_execution_bound
 	]
 	assert remove_obsolete_skip_unused_flag(['-skip-unused', '-skip-unused', 'run', 'main.v',
 		'-skip-unused']) == ['run', 'main.v', '-skip-unused']
+}
+
+fn test_test_launcher_builds_host_helper_and_preserves_test_target() {
+	for backend in ['arm64', 'x64', 'wasm', 'js'] {
+		for flag in ['-b', '-backend'] {
+			for prefix in [[flag, backend, '-os', 'linux', '-arch', 'arm64'],
+				['${flag}=${backend}', '-os=linux', '-arch=arm64']] {
+				assert external_tool_compile_args('vtest', prefix) == []string{}
+				mut expected := prefix.clone()
+				expected << ['test', 'one_test.v']
+				assert external_tool_runtime_args('test', prefix, ['test', 'one_test.v']) == expected
+			}
+		}
+	}
+}
+
+fn test_host_tool_filters_preserve_other_option_operands() {
+	for value in ['-arch', '-os', '-cross', '-arch=amd64', '-os=linux', '-b', '-backend=wasm'] {
+		for option in ['-cflags', '-ldflags', '-d', '-o', '-cf'] {
+			prefix := [option, value]
+			assert external_tool_compile_args('vtest', prefix) == prefix
+			assert external_tool_build_args('vtest', prefix) == prefix
+		}
+	}
+	prefix := ['-cc', 'clang', '-cflags', '-arch', '-cflags', 'arm64', '-arch', 'amd64']
+	assert external_tool_compile_args('vtest', prefix) == ['-cc', 'clang', '-cflags', '-arch',
+		'-cflags', 'arm64']
 }

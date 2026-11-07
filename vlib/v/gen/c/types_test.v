@@ -376,7 +376,7 @@ fn test_specialized_generic_struct_default_value_preserves_field_defaults() {
 	g.a = &ast
 	g.tc = &tc
 	g.register_struct_decl_info_at(int(box_id), 'GenericBox', 'GenericBox', 'main', 'main.v',
-		box_decl)
+		'main.v', box_decl)
 
 	// `GenericBox[int]` has no declaration of its own; its defaults come from the
 	// generic source, specialized with the concrete argument.

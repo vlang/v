@@ -201,6 +201,44 @@ pub fn commit() {
 	C.sg_commit()
 }
 
+// flush submits all GPU work recorded so far in the current frame and waits
+// until the GPU has finished it. It must be called outside of a pass.
+// Later passes of the same frame continue normally.
+@[inline]
+pub fn flush() bool {
+	return C.sg_v_flush()
+}
+
+// read_image copies a `width` x `height` rectangle of a single-sampled 2D
+// image, including a render target, into `pixels` with a row stride of
+// `pitch` bytes. It waits for all previously recorded GPU work, so it must
+// be called outside of a pass. It returns false for unsupported images and
+// on backends without readback support (currently D3D11 and WebGPU).
+@[inline]
+pub fn read_image(img Image, x int, y int, width int, height int, pixels voidptr, pitch int) bool {
+	return C.sg_v_read_image(img, x, y, width, height, pixels, pitch)
+}
+
+// write_image replaces a rectangle of a single-sampled 2D image, including a
+// render target, with `pixels` (row stride `pitch` bytes). The new contents
+// are visible to every pass started afterwards. It must be called outside of
+// a pass and returns false for unsupported images and backends.
+@[inline]
+pub fn write_image(img Image, x int, y int, width int, height int, pixels voidptr, pitch int) bool {
+	return C.sg_v_write_image(img, x, y, width, height, pixels, pitch)
+}
+
+// mtl_set_shader_compile_options selects the Metal Shading Language version
+// (for example `2, 3` for MSL 2.3) and fast-math mode for shaders created
+// from source code afterwards. `language_major == 0` restores the Metal
+// defaults. Other backends ignore it. Floating-point results depend on these
+// options, so shaders that must reproduce another renderer's pixels exactly
+// need that renderer's settings.
+@[inline]
+pub fn mtl_set_shader_compile_options(language_major int, language_minor int, fast_math bool) {
+	C.sg_v_mtl_set_shader_compile_options(language_major, language_minor, fast_math)
+}
+
 // getting information
 @[inline]
 pub fn query_desc() Desc {

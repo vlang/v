@@ -705,12 +705,13 @@ fn assign_goid() u64 {
 fn proc_yield(count int) {
 	for _ in 0 .. count {
 		// CPU pause instruction to reduce power and contention
-		$if amd64 {
+		$if msvc {
+			yield_processor()
+		} $else $if amd64 {
 			asm volatile amd64 {
 				pause
 			}
-		}
-		$if arm64 {
+		} $else $if arm64 {
 			asm volatile arm64 {
 				yield
 			}

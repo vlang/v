@@ -371,8 +371,10 @@ fn (mut g FlatGen) value_unalias_type(typ &types.Type) types.Type {
 		if target_source_id := g.tc.type_aliases.type_id(name_id) {
 			return *unalias_type(g.tc.parse_type(target_source_id))
 		}
-		if target_source_id := main_type_alias_id(g.tc.type_aliases, name_id) {
-			return *unalias_type(g.tc.parse_type(target_source_id))
+		if !g.main_type_aliases_absent {
+			if target_source_id := main_type_alias_id(g.tc.type_aliases, name_id) {
+				return *unalias_type(g.tc.parse_type(target_source_id))
+			}
 		}
 	}
 	return *clean_type
@@ -710,7 +712,7 @@ fn (g &FlatGen) canonical_import_alias_type_for_node(typ &types.Type, node &flat
 	// This function receives a semantic Type, not raw source text. Preserve an
 	// exact registered name before repairing stale alias-qualified spellings;
 	// otherwise a current file import can retarget a canonical type from a call.
-	if exact := g.exact_known_import_type_text(source_id) {
+	if exact := g.exact_known_import_type_text_memo(source_id) {
 		return exact
 	}
 	// Only dotted names can reference an import alias. Primitive and local
@@ -722,11 +724,39 @@ fn (g &FlatGen) canonical_import_alias_type_for_node(typ &types.Type, node &flat
 	}
 	canonical_source_id := g.canonical_import_alias_type_text_in_file(source_id, file)
 	if canonical_source_id != source_id {
-		if exact := g.exact_known_import_type_text(canonical_source_id) {
+		if exact := g.exact_known_import_type_text_memo(canonical_source_id) {
 			return exact
 		}
 	}
 	return *typ
+}
+
+// exact_known_import_type_text_memo is exact_known_import_type_text memoized for
+// the active body. The answer depends only on the spelling id and the registered
+// declaration tables, which are fixed for the rest of cgen; the body memo keeps
+// results from one body's scratch arena from outliving it.
+@[direct_array_access]
+fn (g &FlatGen) exact_known_import_type_text_memo(typ_id u32) ?types.Type {
+	mut memo := g.usable_expr_type_memo
+	if isnil(memo) || !memo.active || memo.exact_import_gens.len == 0 {
+		return g.exact_known_import_type_text(typ_id)
+	}
+	slot := int(typ_id & u32(body_exact_import_slots - 1))
+	if memo.exact_import_gens[slot] == memo.generation && memo.exact_import_ids[slot] == typ_id {
+		if memo.exact_import_found[slot] {
+			return memo.exact_import_values[slot]
+		}
+		return none
+	}
+	memo.exact_import_ids[slot] = typ_id
+	memo.exact_import_gens[slot] = memo.generation
+	if exact := g.exact_known_import_type_text(typ_id) {
+		memo.exact_import_found[slot] = true
+		memo.exact_import_values[slot] = exact
+		return exact
+	}
+	memo.exact_import_found[slot] = false
+	return none
 }
 
 // Primitive containers already have canonical names. Inspect their leaves
@@ -1033,6 +1063,9 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 	// Calls without a resolved expression type and `sizeof` operands are the only
 	// optional-type sources not covered by the shared declaration-signature scan.
 	mut seen_type_ids := map[u32]bool{}
+	// Direct-mapped view of seen_type_ids: a slot holding the id was inserted, so
+	// the repeated spellings of a program skip the map.
+	mut recent_seen := [4096]u32{}
 	metadata_nodes := g.type_metadata_nodes()
 	for metadata_pos in 0 .. metadata_nodes.len {
 		// `metadata_pos` is in range; read the id without a bounds check.
@@ -1054,7 +1087,8 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 			continue
 		}
 		type_id := node.type_text_id()
-		if seen_type_ids[type_id] {
+		recent_slot := int(type_id & 4095)
+		if recent_seen[recent_slot] == type_id || seen_type_ids[type_id] {
 			continue
 		}
 		if idx < g.tc.resolved_call_set.len && g.tc.resolved_call_set[idx] {
@@ -1067,6 +1101,7 @@ fn (mut g FlatGen) collect_unresolved_call_optional_types() {
 			}
 		}
 		seen_type_ids[type_id] = true
+		recent_seen[recent_slot] = type_id
 		g.collect_optional_typedef_type(g.parse_node_type(node))
 	}
 	g.collect_sizeof_optional_types()
@@ -1604,7 +1639,7 @@ fn (g &FlatGen) type_contains_generic_placeholder(t &types.Type) bool {
 			// earlier checker entry has no nominal storage type; prefer the concrete
 			// lowered annotation instead of emitting `v_struct` for its container.
 			shape := flat.source_type_shape(t.name_id)
-			if shape.has(.anonymous_struct) {
+			if shape.has(.anonymous_struct) || flat.source_type_syntax(t.name_id).unqualified() == struct_init_union_source_type {
 				return true
 			}
 			// A stale generic-call annotation can carry the concrete C function name

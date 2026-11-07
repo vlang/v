@@ -310,10 +310,11 @@ const c_target_option_runtime = r'
     __vf_inline_payload; \
 })
 /* Narrowed optional members can also be mutated. This accessor takes only
-   original wrapper storage, never the temporary used by OPTION_VALUE. */
+   original wrapper storage, never the temporary used by OPTION_VALUE.
+   Put may_alias on a new wrapper: GCC ignores it on an already-defined aggregate. */
 #define V_FASTC_OPTION_STORAGE(type, expression) ({ \
     __typeof__(&(expression)) __vf_inline_storage = &(expression); \
-    typedef type __vf_inline_alias __attribute__((__may_alias__)); \
+    typedef struct __attribute__((__may_alias__)) { type value; } __vf_inline_alias; \
     (__vf_inline_alias *)(__vf_inline_storage->is_inline ? (void *)&__vf_inline_storage->inline_bits : __vf_inline_storage->data); \
 })
 
@@ -984,6 +985,10 @@ struct FastcLocal {
 	smartcast_origin_type u32
 	// Keep the declared slot mode distinct from a narrowed payload reference.
 	smartcast_origin_is_reference bool
+	// A terminal guard narrows accesses to the payload, but a new local copied from
+	// its fall-through view keeps the boxed type. Explicit branch smart-casts still
+	// infer the concrete variant when copied.
+	smartcast_copy_is_boxed bool
 	// C expression that still names the original boxed value while this local is narrowed.
 	// Mutable calls accepting the sum type must receive this storage, not the concrete payload
 	// pointer, because their ABI expects the sum-type tag/object wrapper.
@@ -1204,18 +1209,22 @@ pub:
 // (the globals), with extern_texts holding those declarations.
 pub struct FastcUnitLayout {
 pub mut:
-	head_end           int
-	solo_end           int
-	unit_starts        []int
-	extern_indexes     []int
-	extern_texts       []string
-	prototype_start    int
-	prototype_end      int
-	prototype_texts    []string
-	unit_ref_starts    []int
-	unit_ref_ids       []int
-	solo_prototype_ids []int
-	tail_prototype_ids []int
+	head_end       int
+	solo_end       int
+	unit_starts    []int
+	extern_indexes []int
+	extern_texts   []string
+	// native_headers have consumers fully described by V's function bindings.
+	// Keep their implementations in the native owner, without opening the headers.
+	native_headers       []string
+	prototype_start      int
+	prototype_end        int
+	prototype_texts      []string
+	unit_ref_starts      []int
+	unit_ref_ids         []int
+	solo_prototype_ids   []int
+	shared_prototype_ids []int
+	tail_prototype_ids   []int
 	// define_texts are the same pieces with `static` dropped, for the first
 	// unit: a static definition would not satisfy the other units' externs.
 	define_texts []string
@@ -1281,6 +1290,7 @@ struct FastcGlobalDeclarations {
 	uses_pthread_tls    bool
 	declarations        string
 	module_initializers map[string]string
+	early_initializers  map[string]string
 	composite_types     map[string]bool
 	fixed_array_types   flat.TypeTextBindings
 }
@@ -1724,6 +1734,27 @@ fn (mut timer FastcPhaseTimer) mark(name string) {
 	timer.last_us = now_us
 }
 
+// fastc_source_uses_deprecated_integer reports whether the driver has to run the
+// full parser on `source` to warn about `isize` or `usize`. Comments and plain
+// strings that only mention the names do not count, which keeps sources like the
+// compiler's own out of that second parse. A source with any scanner diagnostic,
+// warnings included, also counts, so the parser sees it and reports what it finds.
+fn fastc_source_uses_deprecated_integer(source string, path string, prefs &pref.Preferences) bool {
+	if !source.contains('isize') && !source.contains('usize') {
+		return false
+	}
+	mut scan := scanner.new_scanner(prefs, .normal)
+	scan.init(token.File.unindexed(path, source.len), source)
+	mut tok := scan.scan()
+	for tok != .eof {
+		if tok == .name && (scan.lit == 'isize' || scan.lit == 'usize') {
+			return true
+		}
+		tok = scan.scan()
+	}
+	return scan.diagnostics.len > 0
+}
+
 // generate_files_with_source_paths emits C and reports every source read from entry files,
 // entry directories, and their imports.
 pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences) !GenerationResult {
@@ -1745,7 +1776,7 @@ pub fn generate_files_with_native_aliases(paths []string, prefs &pref.Preference
 	for source_file in sources {
 		source_paths << source_file.path
 		if source_file.header.module_name != 'builtin'
-			&& (source_file.source.contains('isize') || source_file.source.contains('usize')) {
+			&& fastc_source_uses_deprecated_integer(source_file.source, source_file.path, &scoped_prefs) {
 			deprecated_integer_paths << source_file.path
 		}
 	}
@@ -2110,6 +2141,16 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	fastc_promote_embedded_interface_methods(embed_embedders, embed_embeddeds, mut functions, mut interface_methods)
 	mut function_c_names := fastc_compact_function_c_names(functions,
 		prefs.building_v && !prefs.target_libc_headers)
+	mut native_context := FastcNativeSourceContext{}
+	if prefs.fastc_native_bridge {
+		native_context = fastc_native_source_context(sources, prefs)
+		if native_context.needs_bridge {
+			for name, declaration in fastc_native_bridge_declarations(functions, native_context, prefs.vroot) {
+				native_declarations[name] = declaration
+				function_c_names['C.' + name] = 'v3_native_bridge_' + name
+			}
+		}
+	}
 	for name in native_aliases {
 		function_c_names['C.' + name] = 'v3_native_bridge_' + name
 	}
@@ -2143,6 +2184,60 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		if c_name.starts_with('main__')
 			&& ((constants[key] or { '' }) == c_name || (globals[key] or { '' }) == c_name) {
 			function_c_names[key] = '__vf_function_${c_name['main__'.len..]}'
+		}
+	}
+	// A method is named `<module>__<Receiver>_<method>`, which a free function of the
+	// same module can also be named (`string.index_pair` and `string_index_pair` were
+	// both `builtin__string_index_pair`). The method keeps its name, which generated
+	// code calls directly (`builtin__string_plus`), and the free function moves to
+	// FastC's own namespace.
+	mut method_c_names := map[string]bool{}
+	for key, signature in functions {
+		if key.starts_with('C.') || !key.contains('.') {
+			continue
+		}
+		if key.all_before_last('.') != signature.module_name {
+			c_name := function_c_names[key] or { fastc_signature_c_name(key, signature) }
+			method_c_names[c_name] = true
+		}
+	}
+	mut colliding_keys := []string{}
+	for key, signature in functions {
+		if key.starts_with('C.') || key == 'main' || signature.is_global
+			|| (key.contains('.') && key.all_before_last('.') != signature.module_name) {
+			continue
+		}
+		c_name := function_c_names[key] or { fastc_signature_c_name(key, signature) }
+		if c_name in method_c_names {
+			colliding_keys << key
+		}
+	}
+	if colliding_keys.len > 0 {
+		// The constant collision pass above allocates in `__vf_function_` too, so the new
+		// name must be one that no function, global or export spells yet. Generic instances
+		// are named while generating, outside `functions`, and are not covered here.
+		mut used_c_names := map[string]bool{}
+		for key, signature in functions {
+			c_name := function_c_names[key] or { fastc_signature_c_name(key, signature) }
+			used_c_names[c_name] = true
+			if signature.export_name != '' {
+				used_c_names[signature.export_name] = true
+			}
+		}
+		for _, c_name in globals {
+			used_c_names[c_name] = true
+		}
+		colliding_keys.sort()
+		for key in colliding_keys {
+			c_name := function_c_names[key] or { fastc_signature_c_name(key, functions[key]) }
+			mut renamed := '__vf_function_${c_name}'
+			mut suffix := 1
+			for used_c_names[renamed] {
+				renamed = '__vf_function_${c_name}_${suffix}'
+				suffix++
+			}
+			used_c_names[renamed] = true
+			function_c_names[key] = renamed
 		}
 	}
 	for key, signature in functions {
@@ -2276,7 +2371,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	for global_type in global_types.ids.values() {
 		fastc_register_composite_type(global_type, mut composite_types)
 	}
-	startup_initializers := fastc_generate_startup_initializers(ordered_sources, constant_output.module_initializers, global_output.module_initializers, module_init_calls, function_c_names)!
+	startup_initializers := fastc_generate_startup_initializers(ordered_sources, constant_output.module_initializers, global_output.module_initializers, global_output.early_initializers, module_init_calls, function_c_names)!
 	timer.mark('startup_initializers')
 	mut used_function_names := fastc_wait_referenced_function_names(mut pending_references)
 	for key, signature in functions {
@@ -2524,9 +2619,44 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	hoisted_body := fastc_partition_c_directive_ranges(body_len, body_directive_lines)
 	timer.mark('partition_directives')
 	mut kept_body_ranges := hoisted_body.body_ranges.clone()
-	mut kept_conditional_ranges := hoisted_body.conditional_ranges.clone()
+	mut kept_conditional_ranges := []int{}
+	mut shared_conditional_includes := []string{}
+	mut conditional_ranges := []int{}
+	for i := 0; i + 1 < hoisted_body.conditional_ranges.len; i += 2 {
+		start := hoisted_body.conditional_ranges[i]
+		end := hoisted_body.conditional_ranges[i + 1]
+		if conditional_ranges.len > 0 && conditional_ranges.last() == start {
+			conditional_ranges[conditional_ranges.len - 1] = end
+		} else {
+			conditional_ranges << [start, end]
+		}
+	}
+	for i := 0; i + 1 < conditional_ranges.len; i += 2 {
+		start := conditional_ranges[i]
+		end := conditional_ranges[i + 1]
+		mut inside_function := false
+		for oi, output in outputs {
+			for fi := 0; fi + 1 < output.function_spans.len; fi += 2 {
+				if start < output_body_offsets[oi] + output.function_spans[fi + 1]
+					&& end > output_body_offsets[oi] + output.function_spans[fi] {
+					inside_function = true
+					break
+				}
+			}
+			if inside_function { break }
+		}
+		mut fragments := []string{}
+		fastc_collect_c_piece_ranges(mut fragments, body_pieces, [start, end])
+		if !inside_function && fastc_conditional_directives_only(fragments) {
+			shared_conditional_includes << fragments
+		} else {
+			kept_conditional_ranges << [start, end]
+		}
+	}
 	mut kept_proto_ranges := [0, proto_len]
 	mut solo_prototype_ids := []int{}
+	mut shared_prototype_ids := []int{}
+	fastc_collect_c_name_ids(constant_output.macros, 0, constant_output.macros.len, function_ids, mut shared_prototype_ids)
 	mut enum_helpers_len := 0
 	for helper_text in type_output.enum_helper_texts {
 		enum_helpers_len += helper_text.len
@@ -2769,24 +2899,18 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		pieces << include
 	}
 
-	native_context := if prefs.target_libc_headers || c_flags.any(it.ends_with('.c') || it.ends_with('.o'))
+	if !prefs.fastc_native_bridge && (prefs.target_libc_headers || c_flags.any(it.ends_with('.c') || it.ends_with('.o'))
 		|| (prefs.normalized_target_os() == 'macos' && prefs.ccompiler == 'tinyc'
-			&& c_flags.any(it == '-framework' || it.starts_with('-fobjc-'))) {
-		fastc_native_source_context(sources, prefs)
-	} else {
-		FastcNativeSourceContext{}
+			&& c_flags.any(it == '-framework' || it.starts_with('-fobjc-')))) {
+		native_context = fastc_native_source_context(sources, prefs)
 	}
 	if prefs.normalized_target_os() == 'macos' && prefs.ccompiler == 'tinyc' {
-		mut symbols := native_context.references.clone()
-		for key, signature in functions {
-			if key.starts_with('C.') && !signature.is_disabled {
-				name := key[2..]
-				symbols[name] = true
-				native_declarations[name] = fastc_native_function_declaration(name, signature)
-			}
+		if !prefs.fastc_native_bridge {
+			native_declarations = fastc_native_bridge_declarations(functions, native_context, prefs.vroot)
 		}
-		native_symbols = symbols.keys()
+		native_symbols = native_context.references.keys()
 	}
+	units.native_headers = fastc_native_function_only_headers(sources, functions, declared_types, native_context)
 	pieces << fastc_c_extern_prototypes_for_source_inputs(functions, c_flags, native_context,
 		prefs.vroot)
 	if prefs.target_libc_headers {
@@ -2846,6 +2970,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	// The interface dispatch functions are definitions, so they belong to
 	// one unit; every unit sees their prototypes.
 	pieces << fastc_definition_prototypes(interface_dispatches)
+	pieces << shared_conditional_includes
 	head_end := pieces.len
 	pieces << fastc_piece(runtime_definitions)
 	fastc_collect_c_piece_ranges(mut pieces, type_output.enum_helper_texts, kept_helper_ranges)
@@ -2920,6 +3045,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		units.unit_ref_starts = unit_ref_starts
 		units.unit_ref_ids = unit_ref_ids
 		units.solo_prototype_ids = solo_prototype_ids
+		units.shared_prototype_ids = shared_prototype_ids
 		units.tail_prototype_ids = tail_prototype_ids
 	}
 	timer.mark('assemble')
@@ -2963,7 +3089,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 					break
 				}
 			}
-			if module_name in global_output.module_initializers
+			if module_name in global_output.module_initializers || module_name in global_output.early_initializers
 				|| module_name in constant_output.module_initializers {
 				live_modules[module_id] = true
 			}
@@ -3025,6 +3151,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		}
 		c_flags = c_flags.filter(!fastc_flag_is_native_input(it) || it in required_native_inputs)
 	}
+	c_flags = fastc_deduplicate_native_files(c_flags)
 	return pieces, spawn_typedefs.len > 0 || global_output.uses_pthread_tls, c_flags
 }
 
@@ -3130,30 +3257,81 @@ fn fastc_vlib_native_helper_has_input(name string, paths []string, inputs []stri
 			&& it.replace('\\', '/').starts_with(vlib))) {
 		return false
 	}
-	// Like cgen's collected header declarations: a facade that a declaring file's
-	// own included header already declares (core_windows.h owns
-	// `v_set_unhandled_exception_filter`) keeps the header's exact C signature
-	// rather than a conflicting redeclaration from its approximate V view.
-	return !fastc_local_header_declares(name, paths, context)
-}
-
-// fastc_local_header_declares reports whether a quoted header included by any
-// of the declaring V files `paths` declares the C function `name`.
-fn fastc_local_header_declares(name string, paths []string, context FastcNativeSourceContext) bool {
-	for path in paths {
-		for header in context.local_headers[path] or { continue } {
-			text := os.read_file(header) or { continue }
-			if fastc_c_header_declares_function(text, name) {
-				return true
-			}
-		}
-	}
-	return false
+	return name !in ['v_set_unhandled_exception_filter', 'v_builtin_windows_stream',
+		'v_builtin_windows_debugbreak']
 }
 
 fn fastc_c_extern_prototypes_for_inputs(functions map[string]FastcFunctionSignature, inputs []string) string {
 	return fastc_c_extern_prototypes_for_source_inputs(functions, inputs, FastcNativeSourceContext{},
 		'')
+}
+
+// Conditional directives without generated bodies can be shared by the C units.
+fn fastc_conditional_directives_only(pieces []string) bool {
+	for piece in pieces {
+		for line in piece.split_into_lines() {
+			clean := line.trim_space()
+			if clean == '' { continue }
+			if !clean.starts_with('#') { return false }
+			word := clean[1..].trim_left(' \t').all_before(' ').all_before('\t')
+			if word !in ['if', 'ifdef', 'ifndef', 'else', 'elif', 'endif', 'include', 'import',
+				'error', 'warning'] {
+				return false
+			}
+		}
+	}
+	return pieces.len > 0
+}
+
+// Only V tokens establish ownership. Native constants or undeclared native
+// types keep their module's headers in the consumer for the C compiler.
+fn fastc_native_function_only_headers(sources []FastcSourceFile, functions map[string]FastcFunctionSignature, declared_types map[u32]bool, context FastcNativeSourceContext) []string {
+	mut needs_headers := map[string]bool{}
+	for source in sources {
+		for name in context.references_by_file[source.path] {
+			if 'C.' + name !in functions
+				&& !fastc_source_type_key_exists(declared_types, '#Cstruct#' + name)
+				&& !fastc_source_type_key_exists(declared_types, '#Ctypedef#' + name) {
+				needs_headers[source.header.module_name] = true
+			}
+		}
+	}
+	mut headers := []string{}
+	for source in sources {
+		if needs_headers[source.header.module_name] { continue }
+		references := context.references_by_file[source.path]
+		if references.len == 0 || references.any('C.' + it !in functions) { continue }
+		for header in context.local_headers[source.path] {
+			if header !in headers { headers << header }
+		}
+	}
+	return headers
+}
+
+fn fastc_native_bridge_declarations(functions map[string]FastcFunctionSignature, context FastcNativeSourceContext, vroot string) map[string]string {
+	mut declarations := map[string]string{}
+	vlib_root := os.real_path(os.join_path(vroot, 'vlib')) + os.path_separator
+	for key, signature in functions {
+		if !key.starts_with('C.') || signature.is_disabled { continue }
+		name := key[2..]
+		if !context.references[name] || name.starts_with('__builtin_') || name.starts_with('__atomic_') || name.starts_with('__sync_') || name in [
+			'va_arg',
+			'va_start',
+			'va_end',
+			'va_copy',
+		] {
+			continue
+		}
+		paths := context.declaration_paths[name]
+		for path in paths {
+			if !os.real_path(path).starts_with(vlib_root) || path.contains('/vlib/macos/')
+				|| (context.local_headers[path] or { []string{} }).any(it.ends_with('.m') || it.ends_with('.mm')) {
+				declarations[name] = fastc_native_function_declaration(name, signature)
+				break
+			}
+		}
+	}
+	return declarations
 }
 
 fn fastc_native_function_declaration(name string, signature FastcFunctionSignature) string {
@@ -3537,6 +3715,7 @@ fn fastc_c_unit_plan(prefix string, pieces []string, units FastcUnitLayout, jobs
 	}
 	groups := if jobs < unit_count { jobs } else { unit_count }
 	mut first_overhead := 1
+	mut first_weight := 1
 	mut shared_overhead := 1
 	for k in 0 .. units.head_end {
 		if units.prototype_start < units.prototype_end && k >= units.prototype_start
@@ -3545,20 +3724,27 @@ fn fastc_c_unit_plan(prefix string, pieces []string, units FastcUnitLayout, jobs
 		}
 		mut first_text := pieces[k]
 		mut shared_text := pieces[k]
+		mut embedded_payload := false
 		for e, index in units.extern_indexes {
 			if index == k {
 				first_text = units.define_texts[e]
 				shared_text = units.extern_texts[e]
+				embedded_payload = shared_text.starts_with('extern const u8 __vf_embed_')
 				break
 			}
 		}
 		first_overhead += first_text.len
+		// Escaped resource strings are much cheaper to compile per byte than
+		// function bodies. Counting their full size puts almost all code in
+		// the last worker, while the resource worker finishes early.
+		first_weight += if embedded_payload { first_text.len / 8 } else { first_text.len }
 		shared_overhead += shared_text.len
 	}
 	for k in units.head_end .. units.solo_end {
 		first_overhead += pieces[k].len
+		first_weight += pieces[k].len
 	}
-	first_units := fastc_unit_group_starts(unit_sizes, groups, first_overhead, shared_overhead)
+	first_units := fastc_unit_group_starts(unit_sizes, groups, first_weight, shared_overhead)
 	if first_units.len == 0 {
 		return FastcCUnitPlan{}
 	}
@@ -3693,6 +3879,9 @@ fn fastc_render_c_unit(pieces []string, units &FastcUnitLayout, g int, first_uni
 	if units.prototype_start < units.prototype_end && units.prototype_texts.len > 0
 		&& units.unit_ref_starts.len == units.unit_starts.len {
 		mut needed := []bool{len: units.prototype_texts.len}
+		for id in units.shared_prototype_ids {
+			needed[id] = true
+		}
 		if g == 0 {
 			for id in units.solo_prototype_ids {
 				needed[id] = true
@@ -3954,7 +4143,7 @@ pub fn fastc_generation_link_cache_key(tcc string, compile_args []string, final_
 			stable_final_args << arg
 		}
 	}
-	configuration := 'fastc-generation-link-v2\x00${fastc_unit_cache_configuration(tcc, compile_args)}\x00${stable_final_args.join('\x00')}\x00${jobs}\x00${units.head_end}\x00${units.solo_end}\x00${units.prototype_start}\x00${units.prototype_end}\x00${units.unit_starts}\x00${units.extern_indexes}\x00${units.unit_ref_starts}\x00${units.unit_ref_ids}\x00${units.solo_prototype_ids}\x00${units.tail_prototype_ids}'
+	configuration := 'fastc-generation-link-v3\x00${fastc_unit_cache_configuration(tcc, compile_args)}\x00${stable_final_args.join('\x00')}\x00${jobs}\x00${units.head_end}\x00${units.solo_end}\x00${units.prototype_start}\x00${units.prototype_end}\x00${units.unit_starts}\x00${units.extern_indexes}\x00${units.unit_ref_starts}\x00${units.unit_ref_ids}\x00${units.solo_prototype_ids}\x00${units.shared_prototype_ids}\x00${units.tail_prototype_ids}'
 	mut hash := fastc_unit_cache_hash(configuration, u64(0x510e527fade682d1))
 	for piece in pieces {
 		hash = fastc_unit_cache_hash(piece, hash ^ u64(piece.len))

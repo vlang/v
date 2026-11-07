@@ -3,10 +3,15 @@ import time
 import net
 import net.unix
 
+fn testsuite_begin() {
+	// Relative socket names stay within sun_path even when the CI scratch path is long.
+	os.chdir(os.vtmp_dir()) or { panic(err) }
+}
+
 // A read deadline that was set wins over the connection's read timeout, as in net. In its own
 // file: unix_socket_test.v is on the test runner's flaky list, which ignores its failures.
 fn test_a_read_deadline_wins_over_the_timeout() ! {
-	path := os.join_path(os.vtmp_dir(), 'v_unix_deadline_${os.getpid()}.sock')
+	path := 'v_unix_deadline_${os.getpid()}.sock'
 	os.rm(path) or {}
 	mut l := unix.listen_stream(path)!
 	defer {
@@ -36,7 +41,7 @@ fn unix_connect_after_deadline_delay(path string) {
 
 fn test_epoch_subsecond_accept_deadlines_are_due() ! {
 	for nanosecond in [1, 999999999] {
-		path := os.join_path(os.vtmp_dir(), 'v_unix_epoch_${os.getpid()}_${nanosecond}.sock')
+		path := 'v_unix_epoch_${os.getpid()}_${nanosecond}.sock'
 		os.rm(path) or {}
 		mut listener := unix.listen_stream(path)!
 		defer {
@@ -58,7 +63,7 @@ fn test_epoch_subsecond_accept_deadlines_are_due() ! {
 
 fn test_unset_accept_deadlines_allow_waiting_without_a_timeout() ! {
 	for i, deadline in [time.Time{}, time.unix(0)] {
-		path := os.join_path(os.vtmp_dir(), 'v_unix_unset_${os.getpid()}_${i}.sock')
+		path := 'v_unix_unset_${os.getpid()}_${i}.sock'
 		os.rm(path) or {}
 		mut listener := unix.listen_stream(path)!
 		defer {
@@ -85,7 +90,7 @@ fn unix_write_after_deadline_delay(path string) {
 
 fn test_far_future_unix_deadlines_allow_delayed_readiness() ! {
 	deadline := time.parse_iso8601('9999-12-31T23:59:59Z')!
-	path := os.join_path(os.vtmp_dir(), 'v_unix_future_${os.getpid()}.sock')
+	path := 'v_unix_future_${os.getpid()}.sock'
 	os.rm(path) or {}
 	mut listener := unix.listen_stream(path)!
 	defer {

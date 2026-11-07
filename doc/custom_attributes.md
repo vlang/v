@@ -21,8 +21,13 @@ distance). An attribute call `@[Name(args)]` warns once, on its name, never per 
 Whole-string metadata such as `@['legacy']` does not warn. Independently written names,
 such as `@[foo; foo_bar]`, are checked separately, even when one name prefixes another.
 
+Struct attributes such as `heap`, `minify`, and `autostr` are builtins and do not require schemas.
+
 The standard `flag` module's metadata names, including `doc`, `xdoc`, `footer`, `name`,
 `version`, and `ignore`, are recognized builtins and do not require a custom attribute schema.
+
+The `veb` metadata names `description` and `example`, and its HTTP method attributes, including
+`connect` and `trace`, are also recognized. Builtin names are case-sensitive.
 
 ## Structured reflection on fields and enum values
 

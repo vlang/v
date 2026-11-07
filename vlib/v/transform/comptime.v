@@ -2551,7 +2551,13 @@ fn (mut t Transformer) comptime_method_metas(base_type_id u32) []MethodMeta {
 			attributes:  comptime_attribute_metas_from_raw(raw_attr_data.attrs, raw_attr_data.kinds)
 		}
 	}
-	t.comptime_method_metas_cache[cache_key][context] = methods
+	if mut contexts := t.comptime_method_metas_cache[cache_key] {
+		contexts[context] = methods
+	} else {
+		t.comptime_method_metas_cache[cache_key] = {
+			context: methods
+		}
+	}
 	return methods
 }
 
@@ -4488,10 +4494,49 @@ fn (mut t Transformer) make_comptime_enum_value(item EnumValueMeta) flat.NodeId 
 // variable its dual meaning: a VariantData value in ordinary expressions and a concrete type in
 // `is`/`$if`/`typeof(variant.typ)` compile-time positions.
 fn (mut t Transformer) clone_variant_subst(id flat.NodeId, var_name string, item VariantMeta) ?flat.NodeId {
-	return t.clone_variant_subst_with_smartcast(id, var_name, item, '', u32(0), []string{})
+	return t.clone_variant_subst_with_smartcast(id, var_name, item, []string{}, u32(0), []string{})
 }
 
-fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_name string, item VariantMeta, smartcast_name string, return_context_id u32, inner_vars []string) ?flat.NodeId {
+// variant_guard_smartcasts finds a refinement guaranteed by a true variant guard.
+fn (t &Transformer) variant_guard_smartcasts(id flat.NodeId, var_name string, item VariantMeta) []string {
+	if int(id) < 0 {
+		return []string{}
+	}
+	return t.variant_guard_smartcasts_name(&t.a.nodes[int(id)], var_name, item.typ)
+}
+
+// variant_guard_smartcasts_name finds a reflected variant guard that holds in the
+// then branch. Conjunctions preserve the guard; disjunctions do not.
+fn (t &Transformer) variant_guard_smartcasts_name(cond &flat.Node, var_name string, variant_type u32) []string {
+	if cond.kind == .is_expr && cond.children_count > 0 {
+		guard_type := cond.source_value_id()
+		if guard_type == variant_type || guard_type == flat.source_type_id(var_name) {
+			base := t.a.child_node(cond, 0)
+			if base.kind == .ident {
+				return [base.value]
+			}
+		}
+		return []string{}
+	}
+	if cond.kind == .paren && cond.children_count > 0 {
+		return t.variant_guard_smartcasts_name(t.a.child_node(cond, 0), var_name, variant_type)
+	}
+	if cond.kind == .infix && cond.op == .logical_and && cond.children_count >= 2 {
+		mut names := []string{}
+		for i in 0 .. cond.children_count {
+			refinements := t.variant_guard_smartcasts_name(t.a.child_node(cond, i), var_name, variant_type)
+			for name in refinements {
+				if name !in names {
+					names << name
+				}
+			}
+		}
+		return names
+	}
+	return []string{}
+}
+
+fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_name string, item VariantMeta, smartcast_names []string, return_context_id u32, inner_vars []string) ?flat.NodeId {
 	if int(id) < 0 {
 		return id
 	}
@@ -4561,10 +4606,12 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 	}
 	mut comptime_cond := ''
 	if node.kind == .comptime_if && (comptime_cond_references_ident(node.value, var_name)
-		|| (smartcast_name != '' && comptime_cond_references_ident(node.value, smartcast_name))) {
+		|| (smartcast_names.len > 0 && smartcast_names.any(comptime_cond_references_ident(node.value, it)))) {
 		mut cond := t.subst_variant_cond(node.value, var_name, item)
-		if smartcast_name != '' {
-			cond = comptime_cond_replace_bare_ident(cond, smartcast_name, item.typ_text())
+		if smartcast_names.len > 0 {
+			for name in smartcast_names {
+				cond = comptime_cond_replace_bare_ident(cond, name, item.typ_text())
+			}
 		}
 		if !comptime_cond_has_any_loop_member_ref(cond, inner_vars) {
 			if !comptime_cond_has_loop_member_ref(cond, var_name) {
@@ -4573,7 +4620,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 					if branch_idx >= int(node.children_count) {
 						return none
 					}
-					return t.clone_variant_subst_with_smartcast(t.a.child(&node, branch_idx), var_name, item, smartcast_name, return_context_id, inner_vars)
+					return t.clone_variant_subst_with_smartcast(t.a.child(&node, branch_idx), var_name, item, smartcast_names, return_context_id, inner_vars)
 				}
 			}
 			if !t.comptime_condition_needs_local_value(cond, node) {
@@ -4583,17 +4630,11 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		// A nested `$for` decides the rest, with this loop's variable already substituted.
 		comptime_cond = cond
 	}
-	mut branch_smartcast := ''
+	mut branch_smartcasts := []string{}
 	if node.kind == .if_expr && node.children_count >= 2 {
 		cond := t.a.child_node(&node, 0)
-		if cond.kind == .is_expr && cond.source_value_id() in [
-			flat.source_type_id(var_name),
-			item.typ,
-		] && cond.children_count > 0 {
-			base := t.a.child_node(cond, 0)
-			if base.kind == .ident {
-				branch_smartcast = base.value
-			}
+		if cond.kind in [.is_expr, .paren] || (cond.kind == .infix && cond.op == .logical_and) {
+			branch_smartcasts = t.variant_guard_smartcasts(t.a.child(&node, 0), var_name, item)
 		}
 	}
 	argument_types_source_ids := t.generic_clone_call_param_types(node, t.active_specialization_args.ids, return_context_id)
@@ -4601,12 +4642,16 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 	child_vars := comptime_nested_loop_vars(node, var_name, inner_vars)
 	mut children := []flat.NodeId{cap: int(node.children_count)}
 	for i in 0 .. node.children_count {
-		child_smartcast := if i == 1 && branch_smartcast.len > 0 {
-			branch_smartcast
-		} else {
-			smartcast_name
+		mut child_smartcasts := smartcast_names
+		if i == 1 && branch_smartcasts.len > 0 {
+			child_smartcasts = smartcast_names.clone()
+			for name in branch_smartcasts {
+				if name !in child_smartcasts {
+					child_smartcasts << name
+				}
+			}
 		}
-		if child := t.clone_variant_subst_with_smartcast(t.a.child(&node, i), var_name, item, child_smartcast, t.generic_clone_child_return_context(node, i, return_context_id, argument_types_source_ids.clone()), child_vars) {
+		if child := t.clone_variant_subst_with_smartcast(t.a.child(&node, i), var_name, item, child_smartcasts, t.generic_clone_child_return_context(node, i, return_context_id, argument_types_source_ids.clone()), child_vars) {
 			children << child
 		}
 	}
@@ -4625,14 +4670,14 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		}
 	}
 	mut call_node := node
-	if node.kind == .call && smartcast_name != '' && !t.call_has_source_generic_args(node) {
+	if node.kind == .call && smartcast_names.len > 0 && !t.call_has_source_generic_args(node) {
 		// The checker can leave an inferred generic argument from the sum alias.
 		// Each reflected variant needs inference from its narrowed argument instead.
 		if call_node.call_type_args().len > 0 {
 			call_node.set_call_type_args([]u32{})
 		}
 	}
-	retargeted_call_type := if node.kind == .call && smartcast_name != '' {
+	retargeted_call_type := if node.kind == .call && smartcast_names.len > 0 {
 		t.retarget_cloned_generic_call(call_node, mut children, t.active_specialization_args.ids, return_context_id)
 	} else {
 		u32(0)
@@ -4642,7 +4687,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 	} else {
 		node.typ
 	})
-	if node.kind == .ident && smartcast_name != '' && node.value == smartcast_name {
+	if node.kind == .ident && smartcast_names.len > 0 && node.value in smartcast_names {
 		typ = item.typ
 	} else if node.kind == .ident && t.mut_param_values[node.value] {
 		storage_type_id := t.var_type(node.value)
@@ -4661,7 +4706,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 	}
 	if t.specialization_node_start >= 0 && node.kind == .decl_assign && children.len >= 2 {
 		rhs := t.a.nodes[int(children[1])]
-		rhs_typ := (if rhs.kind == .ident && smartcast_name != '' && rhs.value == smartcast_name
+		rhs_typ := (if rhs.kind == .ident && smartcast_names.len > 0 && rhs.value in smartcast_names
 			&& rhs.typ != 0 {
 			rhs.typ
 		} else {
@@ -4709,7 +4754,7 @@ fn (mut t Transformer) clone_variant_subst_with_smartcast(id flat.NodeId, var_na
 		children_start: start
 		children_count: flat.child_count(children.len)
 	})
-	if node.kind == .ident && smartcast_name != '' && node.value == smartcast_name {
+	if node.kind == .ident && smartcast_names.len > 0 && node.value in smartcast_names {
 		// Keep the loop variant refinement separate from the function-scope type.
 		// Later generic-call inference runs after the smartcast stack has unwound.
 		t.record_refined_node_type(int(clone_id), item.typ)

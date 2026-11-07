@@ -42,6 +42,22 @@ fn fastc_shared_parameter_is_name(scan scanner.Scanner, path string, module_name
 	return boundary in [.comma, .semicolon, .rpar, .eof]
 }
 
+// fastc_skip_struct_field_attributes consumes every `@[...]` attribute that follows a
+// field's type or default. It returns the next token and the required/skip flags.
+fn fastc_skip_struct_field_attributes(mut scan scanner.Scanner, first token.Token) !(token.Token, bool, bool) {
+	mut tok := first
+	mut is_required := false
+	mut is_skip := false
+	for tok == .attribute {
+		mut attribute_is_required := false
+		mut attribute_is_skip := false
+		tok, attribute_is_required, attribute_is_skip = fastc_scan_struct_field_attribute(mut scan)!
+		is_required = is_required || attribute_is_required
+		is_skip = is_skip || attribute_is_skip
+	}
+	return tok, is_required, is_skip
+}
+
 fn fastc_scan_struct_field_attribute(mut scan scanner.Scanner) !(token.Token, bool, bool) {
 	mut tok := scan.scan()
 	mut depth := 1
@@ -92,7 +108,8 @@ fn fastc_skip_field_default_from_token(mut scan scanner.Scanner, first token.Tok
 	mut brackets := 0
 	mut braces := 0
 	for tok != .eof {
-		if parens == 0 && brackets == 0 && braces == 0 && tok in [.semicolon, .rcbr] {
+		// A top-level `@[` ends the default: the caller parses the field attributes.
+		if parens == 0 && brackets == 0 && braces == 0 && tok in [.semicolon, .rcbr, .attribute] {
 			return tok
 		}
 		match tok {
@@ -348,18 +365,20 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 					return error('fastc parser does not support function `${name}` parameter token `${tok.str()}` in ${path}')
 				}
 				parameter_name_or_type := scan.lit
+				parameter_scan := scan
 				tok = scan.scan()
 				mut parameter_names := [parameter_name_or_type]
 				if is_c_function && tok == .dot {
-					tok = scan.scan()
-					if parameter_name_or_type != 'C' || tok != .name {
-						return error('fastc parser does not support qualified C parameter type in ${path}')
-					}
-					parameter_types << flat.source_type_id(scan.lit)
+					// Reparse from the type's first token so imported V types and
+					// native C types follow the same qualified-type rules.
+					mut type_scan := parameter_scan
+					parameter_type, next_token := fastc_scan_type(mut type_scan, .name, path, header.module_name, header.imports, declared_types, prefs.building_v)!
+					parameter_types << parameter_type
 					parameter_mutability << false
 					parameter_constness << false
 					parameter_generic_values << false
-					tok = scan.scan()
+					scan = type_scan
+					tok = next_token
 					if tok == .comma {
 						tok = scan.scan()
 					}

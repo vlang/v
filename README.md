@@ -80,6 +80,16 @@ PowerShell.
 To build with Visual Studio, run `makev.bat -msvc`. If the bundled TCC bootstrap cannot be
 compiled or fails while building the next compiler stage, the script retries with MSVC,
 then Clang and GCC.
+Windows ARM64 releases are available as `v_windows_arm64.zip`. Install Visual Studio's
+C++ ARM64 build tools and a Windows SDK, then use `v -cc msvc file.v` to build native
+applications with the C backend. To build the compiler and release tools from source,
+run `./cmd/tools/builders/windows_arm64_release.ps1` in native ARM64 PowerShell 7 on Windows 11.
+Source bootstrapping also needs Visual Studio's x64 C++ tools and Windows 11's x64 emulation
+to run the downloaded Windows snapshot. The script then explicitly targets ARM64 for the
+compiler stages, release tools, and application smoke test, checking their PE architecture.
+It builds and runs an application before packaging and does not require an x64 TCC bundle.
+On native Windows ARM64, `v up -skip_v_self` uses this same bootstrap script and requires
+native ARM64 PowerShell 7 and both Visual Studio toolchains; it keeps the compiler native.
 `makev.bat -clang` keeps Clang's installed target: LLVM-MinGW uses its GNU runtime,
 while Visual Studio's Clang uses the adjacent `clang-cl.exe` and the MSVC SDK.
 Note: On FreeBSD, OpenBSD, NetBSD, DragonFly, and Solaris, install GNU `make` and run it as
@@ -126,10 +136,9 @@ v up
 ```
 
 This also refreshes the bundled TCC binaries used for fast C compilation.
-Previously cached modules are validated with the updated compiler. Successful checks that
-produce no output remain quiet; `Caching module <name>...` reports actual C compilation.
-Different build configurations can compile the same module separately.
-Use `v up -v` to show progress for every checked cache configuration, including reused objects.
+It then runs `v wipe-cache` to clear module, object, temporary, and compiled tool caches,
+even when V is already up to date. Subsequent builds recreate the caches they need;
+`v up` does not replay previously recorded build configurations or test selectors.
 
 > [!NOTE]
 > If you run into any trouble, or you have a different operating

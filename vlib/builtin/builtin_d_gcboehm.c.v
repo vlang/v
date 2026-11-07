@@ -1,5 +1,11 @@
 module builtin
 
+$if musl ? {
+	// musl has no getcontext implementation. Use the collector's register-saving
+	// fallback when compiling the bundled source with musl-gcc.
+	#flag -DNO_GETCONTEXT=1
+}
+
 $if macos || linux {
 	// The bundled amalgamation otherwise enables unmapping only with HAVE_CONFIG_H.
 	// Unmapping requires the mmap-based heap. libgc selects it on its own only on
@@ -68,10 +74,18 @@ $if !no_gc_threads ? {
 }
 
 $if use_bundled_libgc ? {
-	#flag -DGC_BUILTIN_ATOMIC=1
 	#flag -I @VEXEROOT/thirdparty/libgc/include
 	#flag -DALL_INTERIOR_POINTERS=1
-	#flag @VEXEROOT/thirdparty/libgc/gc.o
+	$if windows && tinyc {
+		#flag -I @VEXEROOT/thirdparty/libatomic_ops
+		#flag @VEXEROOT/vlib/builtin/gc_tinyc_windows.o
+	} $else {
+		$if !msvc {
+			// MSVC uses libatomic_ops from the Windows branch below.
+			#flag -DGC_BUILTIN_ATOMIC=1
+		}
+		#flag @VEXEROOT/thirdparty/libgc/gc.o
+	}
 }
 
 $if dynamic_boehm ? {
@@ -209,9 +223,9 @@ $if dynamic_boehm ? {
 		#flag -DCONSOLE_LOG=1
 		#flag -luser32
 		$if tinyc {
-			#flag -DGC_BUILTIN_ATOMIC=1
 			#flag -I @VEXEROOT/thirdparty/libgc/include
 			$if !use_bundled_libgc ? {
+				#flag -DGC_BUILTIN_ATOMIC=1
 				#flag @VEXEROOT/thirdparty/tcc/lib/libgc.a
 			}
 		} $else $if msvc {
@@ -266,16 +280,18 @@ fn C.GC_REALLOC(ptr voidptr, n uint) voidptr
 fn C.GC_FREE(ptr voidptr)
 
 $if !windows {
+	struct C.pthread_t {}
+
 	@[markused]
 	fn C.v_gc_pthread_create(thread voidptr, attr voidptr, start_routine voidptr, arg voidptr) i32
 	@[markused]
-	fn C.v_gc_pthread_join(thread voidptr, retval voidptr) i32
+	fn C.v_gc_pthread_join(thread C.pthread_t, retval voidptr) i32
 	@[markused]
-	fn C.v_gc_pthread_detach(thread voidptr) i32
+	fn C.v_gc_pthread_detach(thread C.pthread_t) i32
 	@[markused]
 	fn C.v_gc_pthread_sigmask(how i32, const_set voidptr, oldset voidptr) i32
 	@[markused]
-	fn C.v_gc_pthread_cancel(thread voidptr) i32
+	fn C.v_gc_pthread_cancel(thread C.pthread_t) i32
 	@[markused]
 	fn C.v_gc_pthread_exit(result voidptr)
 	@[markused]

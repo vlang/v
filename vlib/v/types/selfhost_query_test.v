@@ -310,9 +310,15 @@ fn test_branch_snapshots_keep_map_and_array_storage_independent() {
 		'key': [owner]
 	}
 	mut owner_snapshot := clone_scope_binding_owner_map(owners)
-	owner_snapshot['key'][0] = ScopeBindingOwner{ index: 2, name: 'changed' }
-	owner_snapshot['key'] << owner
-	assert owners['key'] == [owner]
+	// The map is unchanged while this checked pointer borrows its array header.
+	mut snapshot_owners := unsafe { &owner_snapshot['key'] or { panic('missing owner snapshot') } }
+	(*snapshot_owners)[0] = ScopeBindingOwner{ index: 2, name: 'changed' }
+	(*snapshot_owners) << owner
+	assert (owner_snapshot['key'] or { panic('missing owner snapshot') }) == [
+		ScopeBindingOwner{ index: 2, name: 'changed' },
+		owner,
+	]
+	assert (owners['key'] or { panic('missing owner') }) == [owner]
 }
 
 fn test_pointer_binding_merge_preserves_order_fallbacks_and_independent_values() {

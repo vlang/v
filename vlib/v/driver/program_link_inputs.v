@@ -30,10 +30,9 @@ mut:
 	// build and leaves it: what it names depends on where the output goes.
 	relative_paths bool
 	// The parts of the name of a macro for the time of the compilation that the
-	// command, a header or the unit has: see v3_c_time_name_parts.
+	// command or generated unit has: see v3_c_time_name_parts.
 	time_parts []string
-	// Why the C of the program may ask for the time of its compilation, for as
-	// long as nothing has told whether it does, or ''.
+	// Why a possible time dependency prevents executable reuse, or ''.
 	time_question string
 }
 
@@ -46,21 +45,6 @@ fn (inputs &V3ProgramLinkInputs) reason() string {
 		return inputs.time_question
 	}
 	return inputs.unknown_option
-}
-
-// settle_time takes the answer to `time_question`: whether the C of the program
-// asks for the time of its compilation, or none when the preprocessor did not
-// tell. An executable of a C that does is good for the moment in which it was
-// compiled, and none is kept of a C of which that is not known.
-fn (mut inputs V3ProgramLinkInputs) settle_time(asks ?bool) {
-	if answer := asks {
-		if answer && inputs.unknown.len == 0 {
-			inputs.unknown = 'the C of the program asks for the time of its compilation'
-		}
-	} else if inputs.unknown.len == 0 {
-		inputs.unknown = 'the preprocessor did not tell whether the C of the program asks for the time of its compilation'
-	}
-	inputs.time_question = ''
 }
 
 // inputs_can_be_told reports whether nothing of the command stands in the way of
@@ -1013,12 +997,14 @@ fn v3_default_link_library_dirs(manager &modulecache.Manager, linker string, bas
 const v3_link_environment_names = ['LIBRARY_PATH', 'CPATH', 'C_INCLUDE_PATH', 'OBJC_INCLUDE_PATH',
 	'COMPILER_PATH', 'GCC_EXEC_PREFIX', 'LD_RUN_PATH', 'LD_LIBRARY_PATH', 'GNUTARGET', 'LDEMULATION',
 	'SDKROOT', 'MACOSX_DEPLOYMENT_TARGET', 'DEVELOPER_DIR', 'TOOLCHAINS', 'CCC_OVERRIDE_OPTIONS',
-	'SOURCE_DATE_EPOCH', 'ZERO_AR_DATE']
+	'SOURCE_DATE_EPOCH', 'ZERO_AR_DATE', 'CPLUS_INCLUDE_PATH', 'INCLUDE', 'LIB', 'LIBPATH', 'CL',
+	'_CL_', 'LINK', '_LINK_', 'VCINSTALLDIR', 'VCToolsInstallDir', 'VCToolsVersion', 'WindowsSdkDir',
+	'WindowsSDKVersion', 'UniversalCRTSdkDir', 'UCRTVersion']
 
 // v3_link_environment_signature returns the part of the environment that decides,
 // along with its arguments, what a command that compiles and links a program
 // reads and makes. It belongs to the identity of an executable that a later build
-// may take in place of running the command: the files that the command read can
+// or native object that a later build may take in place of running the command: the files that the command read can
 // all be as they were while the environment sends it to others.
 fn v3_link_environment_signature() string {
 	mut parts := []string{cap: v3_link_environment_names.len}

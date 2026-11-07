@@ -1,7 +1,6 @@
 module driver
 
 import os
-import v.cmdexec
 import v.modulecache
 
 // The executable of a program is kept for the next build of the same inputs (see
@@ -12,9 +11,8 @@ import v.modulecache
 // that V generates, and a header that an installer replaces, or one that appears
 // where an `#include` finds it first, changes what the same C compiles to.
 //
-// TinyCC tells what it read in the line markers of what it preprocesses: the record
-// that tcc_prelude.v keeps of the headers of a unit holds it. A compiler driver
-// writes it down while it compiles, when it is asked to with `-MD`.
+// The C compiler writes a dependency manifest while compiling with `-MD`.
+// V reads that file list, never preprocessed header contents.
 
 // v3_program_dependency_file is where the C compiler writes the files that it read
 // for the program, in the directory of the build.
@@ -252,9 +250,8 @@ fn (mut inputs V3ProgramLinkInputs) add_header_inputs(headers &V3HeaderInputs) {
 		inputs.unknown = headers.unknown
 		return
 	}
-	// Whether a C that names a macro for the time of its compilation asks for
-	// it is told by what the preprocessor makes of it: see settle_time. A part of
-	// such a name can come from the command, from a header and from the unit.
+	// Time-dependent inputs conservatively disable executable reuse. V never
+	// preprocesses the unit or its headers to try to clear that uncertainty.
 	if headers.mentions_time && inputs.time_question.len == 0 {
 		inputs.time_question = 'the C of the program names a macro for the time of its compilation'
 	}
@@ -280,50 +277,6 @@ fn (mut inputs V3ProgramLinkInputs) add_header_inputs(headers &V3HeaderInputs) {
 			inputs.missing << path
 		}
 	}
-}
-
-// v3_program_time_file is where the unit of a program is preprocessed to, in the
-// directory of the build, to tell whether it asks for the time.
-const v3_program_time_file = 'v3_program_unit.time.i'
-
-// v3_time_question_args returns the command `args`, which compiles and links the
-// unit of a program with a compiler driver, as one that preprocesses the unit to
-// v3_program_time_file. A warning is no error in it: of what the command links,
-// a driver that preprocesses uses nothing, and says so.
-fn v3_time_question_args(args []string) []string {
-	mut question := []string{cap: args.len + 5}
-	mut i := 0
-	for i < args.len {
-		arg := args[i].trim_space()
-		if arg in ['-o', '-MF', '-MT', '-MQ'] {
-			i += 2
-		} else if arg in ['-MD', '-MMD'] {
-			i++
-		} else {
-			question << args[i]
-			i++
-		}
-	}
-	question << ['-Wno-error', '-w', '-E', '-o', v3_program_time_file]
-	return question
-}
-
-// v3_preprocessed_c_asks_for_time reports whether the C that the command `args`
-// of `compiler` preprocesses to v3_program_time_file, in `cc_dir`, holds what a
-// macro for the time of the compilation expands to: a string with a date or a
-// time of day in it. A string that the C spells out so looks the same. It returns
-// none for a command that fails, which tells nothing.
-fn v3_preprocessed_c_asks_for_time(compiler string, args []string, cc_dir string) ?bool {
-	output := os.join_path_single(cc_dir, v3_program_time_file)
-	os.rm(output) or {}
-	defer {
-		os.rm(output) or {}
-	}
-	if cmdexec.run_in(compiler, args, cc_dir).exit_code != 0 {
-		return none
-	}
-	preprocessed := os.read_file(output) or { return none }
-	return v3_c_has_time_literal(preprocessed)
 }
 
 // add_compiled_headers adds the headers that a C compiler read when it ran a

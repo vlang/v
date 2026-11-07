@@ -4,8 +4,11 @@ import os
 import v.parser
 import v.pref
 import v.ssa
-import v.transform
 import v.types
+
+$if macos && arm64 {
+	import v.transform
+}
 
 fn test_native_cloned_array_fields_survive_return_statement_deferred_restoration() {
 	$if macos && arm64 {
@@ -133,17 +136,17 @@ fn C.free(voidptr)
 fn C.memcpy(voidptr, voidptr, uint) voidptr
 struct NativeArray {
     data voidptr
-    offset i32
-    len i32
-    cap i32
+    offset int
+    len int
+    cap int
     flags u32
-    element_size i32
+    element_size int
 }
 fn main() {
-    allocation := C.malloc(48)
+    allocation := C.malloc(80)
     data := unsafe { &u8(allocation) + 16 }
     unsafe { *(&voidptr(allocation)) = allocation }
-    header := NativeArray{data: data, len: 8, cap: 8, flags: 16, element_size: 4}
+    header := NativeArray{data: data, len: 8, cap: 8, flags: 16, element_size: 8}
     mut values := []int{}
     C.memcpy(&values, &header, sizeof(NativeArray))
     values[0] = 10
@@ -158,7 +161,7 @@ fn main() {
     nested := old[1..3]
     mut nested_header := NativeArray{}
     C.memcpy(&nested_header, &nested, sizeof(NativeArray))
-    if nested_header.offset != 8 || nested_header.flags != 80 { C.exit(1) }
+    if nested_header.offset != 16 || nested_header.flags != 80 { C.exit(1) }
     if unsafe { *(&u8(allocation) + 8) } != u8(1) { C.exit(2) }
     values << 18
     if values.len != 9 { C.exit(30) }
@@ -218,11 +221,11 @@ fn (mut b Builder) write_u8(value u8) {}
 fn (mut b Builder) str() string { return "" }
 struct NativeArray {
     data voidptr
-    offset i32
-    len i32
-    cap i32
+    offset int
+    len int
+    cap int
     flags u32
-    element_size i32
+    element_size int
 }
 fn main() {
     allocation := C.malloc(18)

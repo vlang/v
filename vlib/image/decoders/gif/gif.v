@@ -708,7 +708,7 @@ fn copy_sub_blocks(data []u8, start int, mut dst []u8) {
 			if count == 0 {
 				break
 			}
-			for k in 0 .. count {
+			for _ in 0 .. count {
 				dst[dp] = data[sp]
 				dp++
 				sp++

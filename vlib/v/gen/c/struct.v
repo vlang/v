@@ -8,6 +8,7 @@ import v.types { unalias_type }
 import strings
 
 const struct_init_option_source_type = flat.source_type_id('__v_option')
+const struct_init_union_source_type = flat.source_type_id('union')
 const cgen_embed_file_data_source_type = flat.source_type_id('embed_file.EmbedFileData')
 
 struct PromotedStructInitField {
@@ -160,7 +161,8 @@ fn (mut g FlatGen) gen_struct_field_expr(value_id flat.NodeId, expected types.Ty
 }
 
 fn is_anonymous_struct_type_name(name_id u32) bool {
-	return flat.source_type_query(flat.source_type_syntax(name_id).unqualified()).has(.anon_struct_prefix)
+	query := flat.source_type_query(flat.source_type_syntax(name_id).unqualified())
+	return query.has(.anon_struct_prefix) || query.has(.anon_union_prefix)
 }
 
 fn struct_init_has_main_type_lock(type_name string) bool {
@@ -189,7 +191,7 @@ fn (mut g FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Nod
 		// that clone, so it must not replace the explicit spelling.
 		return node.source_value_id()
 	}
-	if node.source_value_id() == flat.source_type_id('struct') {
+	if node.source_value_id() == flat.source_type_id('struct') || node.source_value_id() == struct_init_union_source_type {
 		expected := types.unwrap_pointer(g.expected_expr_type)
 		if expected is types.Struct && is_anonymous_struct_type_name(expected.source_type_id()) {
 			return expected.source_type_id()
@@ -411,6 +413,7 @@ fn (g &FlatGen) embed_payload_node_indexes() []i32 {
 fn (mut g FlatGen) gen_embed_file_blobs() {
 	mut defined := 0
 	mut seen := map[string]bool{}
+	linkage_attr := g.object_file_variable_linkage()
 	for i in g.embed_payload_node_indexes() {
 		node := unsafe { &g.a.nodes[i] }
 		if node.kind != .string_literal || !node.is_embed_payload() {
@@ -429,7 +432,7 @@ fn (mut g FlatGen) gen_embed_file_blobs() {
 			// `.incbin`; see embed_incbin_payloads. No size split is needed there:
 			// the C object size limit is about initializers, which that object
 			// does not have.
-			g.writeln('extern const unsigned char _v_embed_blob_${sym}[];')
+			g.writeln('${linkage_attr}extern const unsigned char _v_embed_blob_${sym}[];')
 			defined++
 			continue
 		}
@@ -444,7 +447,7 @@ fn (mut g FlatGen) gen_embed_file_blobs() {
 		// prefix per unit, and a `static` pointer would leave every unit but the
 		// one that runs `_vinit` holding its own null copy. gen_embed_blob_joined
 		// defines it, next to the `_vinit` that fills it.
-		g.writeln('extern u8* _v_embed_joined_${sym};')
+		g.writeln('${linkage_attr}extern u8* _v_embed_joined_${sym};')
 		defined++
 	}
 	if defined > 0 {
@@ -572,8 +575,9 @@ fn (mut g FlatGen) embed_payload_uses_incbin(sym string) bool {
 // gen_embed_blob_joined defines the buffers that _vinit fills, and is emitted
 // right before it so that the definition lands in the same translation unit.
 fn (mut g FlatGen) gen_embed_blob_joined() {
+	linkage_attr := g.object_file_variable_linkage()
 	for blob in g.chunked_embed_blobs() {
-		g.writeln('u8* _v_embed_joined_${blob.sym} = NULL;')
+		g.writeln('${linkage_attr}u8* _v_embed_joined_${blob.sym} = NULL;')
 	}
 }
 
@@ -984,6 +988,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		[]int{}
 	}
 	interface_fixed_tmp := if interface_fixed_fields.len > 0 { g.tmp_name() } else { '' }
+	cpp_start := g.sb.len
 	if interface_fixed_fields.len > 0 {
 		g.write('({${name} ${interface_fixed_tmp} = ')
 	}
@@ -1178,6 +1183,7 @@ fn (mut g FlatGen) gen_struct_init(id flat.NodeId) {
 		}
 		g.write(' ${interface_fixed_tmp};})')
 	}
+	g.cpp_order_struct_initializer(cpp_start, name, lookup_name)
 }
 
 // interface_init_fixed_array_fields returns the positions of the fields of an
@@ -1554,6 +1560,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields(node flat.Node, name 
 // compound literal). When `heap`, the temp is `memdup`'d and a pointer returned,
 // for `&Struct{...}` initializers.
 fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, name string, init_module string, heap bool) {
+	cpp_start := g.sb.len
 	tmp := g.tmp_name()
 	if heap {
 		g.write('(${name}*)')
@@ -1745,6 +1752,7 @@ fn (mut g FlatGen) gen_struct_init_with_fixed_array_fields_impl(node flat.Node, 
 	} else {
 		g.write(' ${tmp};})')
 	}
+	g.cpp_order_struct_initializer(cpp_start, name, lookup_name)
 }
 
 // gen_fixed_array_copy_source emits a `memcpy` source for assigning into a fixed
@@ -1757,7 +1765,7 @@ fn (mut g FlatGen) gen_fixed_array_copy_source(value_id flat.NodeId, field_type 
 		if fixed := array_fixed_type(field_type) {
 			literal := g.fixed_array_compound_literal_expr(value_id, fixed)
 			if trimmed_space(literal).len > 0 {
-				g.write(literal)
+				g.write(g.cpp_copy_source(literal))
 				return
 			}
 			g.gen_fixed_array_data_arg(value_id, fixed)
@@ -1935,6 +1943,7 @@ fn channel_init_field(node flat.Node, a &flat.FlatAst, name string) ?flat.NodeId
 
 // gen_heap_struct_init emits heap struct init output for c.
 fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
+	cpp_start := g.sb.len
 	canonical_value_id := g.canonical_import_alias_type_text_in_file(node.source_value_id(), g.node_source_file(&node))
 	canonical_base := flat.source_type_syntax(flat.source_type_syntax(canonical_value_id).source_wrapper_base()).generic_base()
 	if canonical_value_id != node.source_value_id() && g.exact_known_import_type_text(canonical_base) != none {
@@ -2205,6 +2214,7 @@ fn (mut g FlatGen) gen_heap_struct_init(node flat.Node) {
 	} else {
 		g.write('}, sizeof(${name}))')
 	}
+	g.cpp_order_struct_initializer(cpp_start, name, lookup_name)
 }
 
 fn (g &FlatGen) struct_init_has_named_field(node flat.Node, name string) bool {
@@ -2803,13 +2813,18 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 			variant_type := unalias_type(g.tc.parse_type(variant))
 			ct := g.value_c_type(clean_typ)
 			variant_field := string(sum_field_name(flat.source_type_name(variant)))
+			g.write(g.sum_initializer_prefix(sum_name_id, ct, g.sum_type_index(sum_name_id, variant), variant_field, false))
 			if variant_type is types.Pointer {
-				g.write('(${ct}){.typ = ${g.sum_type_index(sum_name_id, variant)}, .${variant_field} = NULL}')
+				g.write('NULL')
+				g.write(g.sum_initializer_suffix(false))
 				return
 			}
-			g.write('(${ct}){.typ = ${g.sum_type_index(sum_name_id, variant)}, .${variant_field} = ')
-			g.gen_default_value_for_type(variant_type)
-			g.write('}')
+			if variant_type is types.ArrayFixed {
+				g.write(g.empty_fixed_array_initializer_string(variant_type))
+			} else {
+				g.gen_default_value_for_type(variant_type)
+			}
+			g.write(g.sum_initializer_suffix(false))
 			return
 		}
 	}
@@ -2822,6 +2837,7 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 	if clean_typ is types.Struct
 		&& (!flat.source_type_query(clean_typ.source_type_id()).has(.c_prefix) || g.struct_needs_default_init(clean_typ.source_type_id())) {
 		ct := g.tc.c_type(raw_typ)
+		cpp_start := g.sb.len
 		g.write('(${ct}){')
 		mut set_fields := map[string]bool{}
 		mut has_field := g.gen_struct_default_fields(clean_typ.source_type_id(), mut set_fields, false)
@@ -2847,6 +2863,7 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 			})
 		}
 		g.write('}')
+		g.cpp_order_struct_initializer(cpp_start, ct, sname_id)
 		return
 	}
 	ct := g.value_c_type(clean_typ)
@@ -3262,10 +3279,13 @@ fn (g &FlatGen) scalar_zero_init(c_type string) string {
 
 // StructDeclInfo stores struct decl info metadata used by c.
 struct StructDeclInfo {
-	node          flat.Node
-	node_id       int
-	module        string
-	file          string
+	node    flat.Node
+	node_id int
+	module  string
+	file    string
+	// Native ownership follows the original V declaration, while file keeps the
+	// parsed header's import context for expressions such as field defaults.
+	original_file string
 	full_name     u32
 	shared_fields []flat.NodeId
 }
@@ -5898,6 +5918,11 @@ fn (g &FlatGen) embedded_field_for_promoted_field(type_name_id u32, field_name s
 // which resolves unambiguously) as set, so the flattened-defaults pass does not
 // re-emit them after the whole embed was initialized via `Embed: value`.
 fn (g &FlatGen) mark_embedded_promoted_fields_set(embed_type_name_id u32, owner_type_id u32, mut set_fields map[string]bool) {
+	mut seen := map[u32]bool{}
+	g.mark_embedded_promoted_fields_set_inner(embed_type_name_id, owner_type_id, mut set_fields, mut seen)
+}
+
+fn (g &FlatGen) mark_embedded_promoted_fields_set_inner(embed_type_name_id u32, owner_type_id u32, mut set_fields map[string]bool, mut seen map[u32]bool) {
 	embed_type_name := flat.source_type_name(embed_type_name_id)
 
 	if embed_type_name_id == 0 {
@@ -5906,6 +5931,8 @@ fn (g &FlatGen) mark_embedded_promoted_fields_set(embed_type_name_id u32, owner_
 	set_fields[embed_type_name] = true
 	set_fields[c_field_name(embed_type_name)] = true
 	info := g.find_struct_decl(embed_type_name_id) or { return }
+	if seen[info.full_name] { return }
+	seen[info.full_name] = true
 	for i in 0 .. info.node.children_count {
 		field := g.a.child_node(&info.node, i)
 		if field.kind != .field_decl || field.value.len == 0 {
@@ -5923,7 +5950,10 @@ fn (g &FlatGen) mark_embedded_promoted_fields_set(embed_type_name_id u32, owner_
 		// A nested embedded field_decl has value == typ; recurse into it, keeping the
 		// original owner so its direct fields still win over deeper promoted names.
 		if field.source_value_id() == field.typ {
-			g.mark_embedded_promoted_fields_set(field.source_value_id(), owner_type_id, mut set_fields)
+			// A raw embedded name is relative to this declaration, not the caller.
+			embedded := g.canonical_import_alias_type_in_file(field.typ, info.file)
+			g.mark_embedded_promoted_fields_set_inner(embedded.source_type_id(), owner_type_id,
+				mut set_fields, mut seen)
 		}
 	}
 }
@@ -6352,7 +6382,10 @@ fn (mut g FlatGen) gen_assoc_tmp_decl_by_fields(node flat.Node, tmp string, ct s
 		}
 	}
 	if copied.len == 0 {
-		return false
+		g.write('(void)(')
+		g.gen_expr(g.a.child(&node, 0))
+		g.write('); ${ct} ${tmp} = (${ct}){0};')
+		return true
 	}
 	source_ct := g.tc.c_type(source_type)
 	source_tmp := g.tmp_name()
@@ -6800,6 +6833,7 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 		}
 		if name_id := flat.source_type_existing_id(name) {
 			if info := g.struct_decl_infos[name_id] {
+				source_file := info.c_source_file()
 				// Headerless vlib bindings supply their own complete C layouts.
 				// Keep externally supplied types opaque when headers own their definitions.
 				// A c_struct_header_guards type is V's to lay out: the generated C includes its
@@ -6807,8 +6841,8 @@ fn (g &FlatGen) skip_builtin_struct(name string) bool {
 				// unless the program's C can follow the type block, where the guard cannot see a
 				// header it includes; such a program keeps this rule (can_emit_c_after_types).
 				if !(name in c_struct_header_guards && !g.can_emit_c_after_types())
-					&& (info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file))
-					&& (g.c_directives_use_system_libc() || !g.c_source_file_is_in_vlib(info.file)) {
+					&& (source_file.ends_with('.c.v') || c_source_looks_header_backed(source_file))
+					&& (g.c_directives_use_system_libc() || !g.c_source_file_is_in_vlib(source_file)) {
 					return true
 				}
 			}
@@ -6991,6 +7025,10 @@ fn c_source_looks_header_backed(path string) bool {
 		}
 	}
 	return false
+}
+
+fn (info &StructDeclInfo) c_source_file() string {
+	return if info.original_file.len > 0 { info.original_file } else { info.file }
 }
 
 fn (g &FlatGen) struct_decl_head(name string) string {
@@ -7515,14 +7553,24 @@ fn (mut g FlatGen) referenced_c_structs() map[u32]bool {
 		g.tc.cur_module = old_module
 	}
 	// These operators have integer result types, so their type operands do not
-	// appear in the checked expression-type tables below.
-	for idx in 0 .. g.a.nodes.len {
-		// The AST stays immutable while collecting references.
-		node := unsafe { &g.a.nodes[idx] }
-		if node.kind == .offsetof_expr || (node.kind == .sizeof_expr && node.children_count == 0) {
+	// appear in the checked expression-type tables below. collect_gen_info indexes
+	// them; standalone generators without that index scan every node.
+	if g.sizeof_offsetof_nodes_ready {
+		for idx in g.sizeof_offsetof_node_ids {
+			// The AST stays immutable while collecting references.
+			node := unsafe { &g.a.nodes[idx] }
 			g.tc.cur_file = g.node_source_file(node)
 			g.tc.cur_module = g.tc.file_modules[g.tc.cur_file] or { old_module }
 			g.collect_c_struct_type_refs(g.tc.parse_type(node.source_value_id()), mut seen)
+		}
+	} else {
+		for idx in 0 .. g.a.nodes.len {
+			node := unsafe { &g.a.nodes[idx] }
+			if node.kind == .offsetof_expr || (node.kind == .sizeof_expr && node.children_count == 0) {
+				g.tc.cur_file = g.node_source_file(node)
+				g.tc.cur_module = g.tc.file_modules[g.tc.cur_file] or { old_module }
+				g.collect_c_struct_type_refs(g.tc.parse_type(node.source_value_id()), mut seen)
+			}
 		}
 	}
 	// Alias preseeding can emit wrappers, array typedefs, and callback signatures
@@ -7804,7 +7852,8 @@ fn (g &FlatGen) header_c_struct_needs_compat_typedef(name string) bool {
 		return true
 	}
 	if info := g.struct_decl_infos[flat.source_type_id(name)] {
-		return info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file)
+		source_file := info.c_source_file()
+		return source_file.ends_with('.c.v') || c_source_looks_header_backed(source_file)
 	}
 	return false
 }
@@ -7877,7 +7926,8 @@ fn (g &FlatGen) soa_companion_has_c_typedef(soa_name string) bool {
 		return true
 	}
 	if info := g.struct_decl_infos[c_decl_id] {
-		return info.file.ends_with('.c.v') || c_source_looks_header_backed(info.file)
+		source_file := info.c_source_file()
+		return source_file.ends_with('.c.v') || c_source_looks_header_backed(source_file)
 	}
 	return false
 }

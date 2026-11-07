@@ -769,6 +769,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 	// Temps: 0=RAX, 1=RCX
 
 	match op {
+		.inline_asm {
+			g.gen_inline_asm(val_id)
+		}
 		.fadd, .fsub, .fmul, .fdiv, .frem {
 			g.gen_float_binop(op, instr.operands[0], instr.operands[1], val_id)
 		}
@@ -1901,7 +1904,7 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 		asm_call_r10(mut g)
 	} else if fn_val.name != '' && fn_val.kind in [.unknown, .func_ref] {
 		asm_call_rel32(mut g)
-		sym_idx := g.elf.add_undefined(fn_val.name)
+		sym_idx := g.elf.add_undefined(g.c_symbol(fn_val.name))
 		g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, r_x86_64_plt32, -4)
 		g.emit_u32(0)
 	} else {
@@ -1924,6 +1927,16 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 			g.store_reg_to_val(0, val_id)
 		}
 	}
+}
+
+// c_symbol resolves a callee name against the freestanding `@[export]`
+// shadow table: a libc-shaped name whose body the binary itself provides
+// emits its internal symbol instead of an undefined libc reference.
+fn (g &Gen) c_symbol(name string) string {
+	if mapped := g.m.export_c_names[name] {
+		return mapped
+	}
+	return name
 }
 
 fn (g &Gen) call_is_c_extern(instr ssa.Instruction) bool {
@@ -2028,7 +2041,7 @@ fn (mut g Gen) gen_c_extern_call(val_id int, instr ssa.Instruction) {
 		asm_call_r10(mut g)
 	} else {
 		asm_call_rel32(mut g)
-		sym_idx := g.elf.add_undefined(fn_val.name)
+		sym_idx := g.elf.add_undefined(g.c_symbol(fn_val.name))
 		g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, r_x86_64_plt32, -4)
 		g.emit_u32(0)
 	}

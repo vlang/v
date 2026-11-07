@@ -6420,7 +6420,7 @@ fn (mut tc TypeChecker) ownership_add_loop_continuation_frame(frame OwnershipFra
 	}
 }
 
-fn (mut tc TypeChecker) ownership_record_current_loop_iteration_drops() {
+fn (mut tc TypeChecker) ownership_record_current_loop_iteration_drops(end_body_lifetimes bool) {
 	// Keep one snapshot for every syntactic loop, including an unreachable
 	// iteration tail after an unconditional break or continue. C generation
 	// consumes these snapshots in source order, so omitting an empty snapshot
@@ -6451,6 +6451,10 @@ fn (mut tc TypeChecker) ownership_record_current_loop_iteration_drops() {
 	st.drop_loop_iteration_counts[st.cur_fn] = index + 1
 	st.drop_at_loop_iterations['${st.cur_fn}\x01${index}'] = entries
 	tc.ownership_note_drop_types(st.cur_fn, entries)
+	if end_body_lifetimes {
+		// The body is cleaned before the post. Its exits must only drop still-live owners.
+		tc.ownership_restore_frame(ownership_frame_without_loop_locals(base, snapshot))
+	}
 }
 
 fn (mut tc TypeChecker) ownership_record_loop_control_drops(base OwnershipFrame, snapshot OwnershipFrame) {

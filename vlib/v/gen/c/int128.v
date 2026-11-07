@@ -429,7 +429,9 @@ fn (mut g FlatGen) int128_narrow_c_type(t types.Type) ?string {
 	clean := types.Type(*unalias_type(t))
 	match clean {
 		types.Primitive {
-			if clean.props.has(.integer) && clean.size > 0 && clean.size < 128 {
+			// The platform `int` has size 0 in the type model, but its C type is
+			// still narrower than 128 bits and needs the same truncation helper.
+			if clean.props.has(.integer) && clean.size < 128 {
 				return g.value_c_type(t)
 			}
 		}

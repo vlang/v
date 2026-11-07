@@ -4,7 +4,6 @@
 module arm64
 
 import os
-import time
 
 // C.open declares the C open symbol used by arm64.
 fn C.open(charptr, int, ...int) int
@@ -242,8 +241,6 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	// Pre-allocate buffer with estimated size to avoid reallocations
 	estimated_size := l.macho.text_data.len + l.macho.str_data.len + l.macho.data_data.len + 0x10000
 	l.buf = []u8{cap: estimated_size}
-	mut t := time.now()
-	mut t_total := time.now()
 
 	// First pass: collect all defined symbols (except external ones)
 	mut defined_syms := map[string]bool{}
@@ -500,17 +497,11 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	// Patch LINKEDIT segment with actual values (including signature)
 	l.patch_linkedit(linkedit_start, bind_off, l.linkedit_size)
 
-	println('  headers+cmds: ${time.since(t)}')
-	t = time.now()
-
 	// Pad to code start (after header + load commands)
 	l.pad_to(l.code_start)
 
 	// Write text section with relocations applied
 	l.write_text_with_relocations()
-
-	println('  text+relocs: ${time.since(t)}')
-	t = time.now()
 
 	// Write cstring section
 	l.buf << l.macho.str_data
@@ -545,9 +536,6 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	// Align code signature start in LINKEDIT.
 	l.write_zeros(cs_pad)
 
-	println('  padding+data: ${time.since(t)}')
-	t = time.now()
-
 	// Generate and write code signature (ad-hoc signing)
 	signature := l.generate_code_signature(ident)
 	l.buf << signature
@@ -559,9 +547,6 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 		write_u32_le_at(mut l.buf, codesig_cmd_start + 12, u32(actual_cs_size))
 	}
 
-	println('  codesign: ${time.since(t)}')
-	t = time.now()
-
 	tmp_output_path := '${output_path}.tmp.${os.getpid()}'
 	if !write_file_array_raw(tmp_output_path, l.buf) {
 		panic('failed to write output file')
@@ -572,9 +557,6 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	if !replace_output_file(tmp_output_path, output_path) {
 		panic('failed to rename output file')
 	}
-
-	println('  file write: ${time.since(t)}')
-	println('  TOTAL linker: ${time.since(t_total)}')
 }
 
 // replace_output_file publishes the completed output using the host rename semantics.

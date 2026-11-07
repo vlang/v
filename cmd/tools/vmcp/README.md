@@ -11,6 +11,10 @@ Tests limit raw catalogue strings to 12,000 bytes and the complete `tools/list`
 stdio response, including its newline, to 13,000 bytes. These are byte budgets;
 token counts depend on the client's model.
 
+Integer arguments retain the precision of their JSON number text, including at
+the signed `int` bounds. Fractions truncate toward zero; numbers outside the
+integer range after truncation use the argument's default.
+
 Paths stay inside the selected workspace even when an editing request creates a
 new file. Existing symlink parents are resolved before the boundary is checked;
 dangling symlinks are refused.

@@ -206,7 +206,7 @@ fn test_nocache_disables_default_module_and_executable_caching() {
 		assert cold.contains('C module plan'), cold
 		assert run_built(root, 'cold') == '42'
 		warm := build(root, flags, main_file, 'warm')
-		assert warm.contains('cc (cached)'), warm
+		assert warm.contains('cc (cached)') || warm.contains('V3 program executable not cached: native headers require C compiler processing'), warm
 		assert run_built(root, 'warm') == '42'
 		for option in ['-nocache', '--no-cache'] {
 			mut disabled_flags := flags.clone()

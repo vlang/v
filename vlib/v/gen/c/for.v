@@ -212,8 +212,20 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 		g.writeln(')) break;')
 	}
 	mut emitted_continue_label := false
+	mut emitted_post_cleanup := false
 	mut body_reachable := true
 	for i in 3 .. node.children_count {
+		if g.is_loop_continue_label(g.a.child(&node, i), label_state.label)
+			&& i + 1 < node.children_count {
+			// The moved post follows this label. Clean the body before it;
+			// continue has already cleaned up and jumps past this boundary.
+			g.gen_defers_from(defer_start)
+			g.trim_defers(defer_start)
+			if !node.skip_ownership_drops() {
+				g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
+			}
+			emitted_post_cleanup = true
+		}
 		result := g.gen_loop_body_node(g.a.child(&node, i), label_state.label,
 			body_reachable, i + 1 < node.children_count)
 		emitted_continue_label = result.emitted_continue_label || emitted_continue_label
@@ -224,7 +236,7 @@ fn (mut g FlatGen) gen_for(node flat.Node) {
 	if !emitted_continue_label {
 		g.gen_loop_continue_label(label_state.label)
 	}
-	if !node.skip_ownership_drops() {
+	if !node.skip_ownership_drops() && !emitted_post_cleanup {
 		g.gen_loop_iteration_ownership_drops_for_label(label_state.label)
 	}
 	g.trim_defers(defer_start)

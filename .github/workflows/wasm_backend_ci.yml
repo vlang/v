@@ -51,6 +51,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Prepare private tool cache
+        if: runner.os == 'Windows'
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
+
       - name: Build V
         if: runner.os != 'Windows'
         run: make -j4

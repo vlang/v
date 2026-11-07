@@ -31,6 +31,11 @@ fn C._vcleanup()
 // exit terminates execution immediately and returns exit `code` to the shell.
 @[noreturn]
 pub fn exit(code int) {
+	$if freestanding && linux {
+		// the freestanding runtime (builtin/freestanding.c.v or linux_bare)
+		// supplies __exit with the exit_group syscall
+		__exit(code)
+	}
 	C.exit(code)
 	for {}
 }

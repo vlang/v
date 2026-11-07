@@ -153,6 +153,7 @@ v:
 	if [ ! -f thirdparty/tcc/lib/libgc.a ] && [ ! -f thirdparty/tcc/lib/libgc.dylib ]; then \
 		cache_gcflags='-gc none'; \
 	fi; \
+	./v $$cache_gcflags $(VFLAGS) -new-compiler run cmd/tools/cache_basic_modules.v; \
 	./v $$cache_gcflags $(VFLAGS) -new-compiler cmd/tools/cache_basic_modules_test.v
 
 v1:

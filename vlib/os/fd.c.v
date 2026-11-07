@@ -13,7 +13,12 @@ pub fn fd_close(fd int) int {
 	if fd == -1 {
 		return 0
 	}
-	return C.close(fd)
+	$if freestanding || syscalls {
+		return bf_close(fd)
+	}
+	$if !freestanding && !syscalls {
+		return C.close(fd)
+	}
 }
 
 // fd_write writes the given string to the file descriptor.
@@ -22,15 +27,33 @@ pub fn fd_write(fd int, s string) {
 	if fd == -1 {
 		return
 	}
-	mut sp := s.str
-	mut remaining := s.len
-	for remaining > 0 {
-		written := int(C.write(fd, sp, remaining))
-		if written < 0 {
-			return
+	$if freestanding || syscalls {
+		mut sp_fs := s.str
+		mut remaining_fs := s.len
+		for remaining_fs > 0 {
+			written, we := bf_write(fd, sp_fs, remaining_fs)
+			if we == 4 { // EINTR
+				continue
+			}
+			if we != 0 || written == 0 {
+				return
+			}
+			remaining_fs = remaining_fs - written
+			sp_fs = unsafe { voidptr(uint(sp_fs) + uint(written)) }
 		}
-		remaining = remaining - written
-		sp = unsafe { voidptr(uint(sp) + uint(written)) }
+		return
+	}
+	$if !freestanding && !syscalls {
+		mut sp := s.str
+		mut remaining := s.len
+		for remaining > 0 {
+			written := int(C.write(fd, sp, remaining))
+			if written < 0 {
+				return
+			}
+			remaining = remaining - written
+			sp = unsafe { voidptr(uint(sp) + uint(written)) }
+		}
 	}
 }
 
@@ -59,29 +82,48 @@ pub fn fd_read(fd int, maxbytes int) (string, int) {
 		return '', 0
 	}
 	unsafe {
-		mut buf := malloc_noscan(maxbytes + 1)
-		mut nbytes := 0
-		for {
-			$if !windows {
-				C.errno = 0
+		$if freestanding || syscalls {
+			mut buf := malloc_noscan(maxbytes + 1)
+			nr, re := bf_read(fd, buf, maxbytes)
+			for re == 4 { // EINTR
+				nr, re = bf_read(fd, buf, maxbytes)
 			}
-			nbytes = int(C.read(fd, buf, maxbytes))
-			if nbytes >= 0 {
+			if re != 0 || nr < 0 {
+				free(buf)
+				return '', re
+			}
+			if nr == 0 {
+				free(buf)
+				return '', 0
+			}
+			buf[nr] = 0
+			return tos(buf, nr), nr
+		}
+		$if !freestanding && !syscalls {
+			mut buf := malloc_noscan(maxbytes + 1)
+			mut nbytes := 0
+			for {
+				$if !windows {
+					C.errno = 0
+				}
+				nbytes = int(C.read(fd, buf, maxbytes))
+				if nbytes >= 0 {
+					break
+				}
+				$if !windows {
+					if C.errno == C.EINTR {
+						continue
+					}
+				}
 				break
 			}
-			$if !windows {
-				if C.errno == C.EINTR {
-					continue
-				}
+			if nbytes < 0 {
+				free(buf)
+				return '', nbytes
 			}
-			break
+			buf[nbytes] = 0
+			return tos(buf, nbytes), nbytes
 		}
-		if nbytes < 0 {
-			free(buf)
-			return '', nbytes
-		}
-		buf[nbytes] = 0
-		return tos(buf, nbytes), nbytes
 	}
 }
 
@@ -117,32 +159,42 @@ pub fn fd_is_pending(fd int) bool {
 		return false
 	}
 	mut bytes_avail := int(0)
-	$if windows {
-		handle := voidptr(C._get_osfhandle(fd))
-		if handle != voidptr(-1) {
-			if C.PeekNamedPipe(handle, unsafe { nil }, int(0), unsafe { nil },
-				voidptr(&bytes_avail), unsafe { nil })
-			{
+	$if freestanding || syscalls {
+		// FIONREAD answers directly; there is no select-based fallback for
+		// fds that dislike the ioctl. The request code is per OS: linux
+		// 0x541B, BSD/Darwin 0x4004667f.
+		request := $if linux ? { u64(0x541B) } $else { u64(0x4004667f) }
+		ic := fsys_ioctl(fd, request, &bytes_avail)
+		return ic == 0 && bytes_avail > 0
+	}
+	$if !freestanding && !syscalls {
+		$if windows {
+			handle := voidptr(C._get_osfhandle(fd))
+			if handle != voidptr(-1) {
+				if C.PeekNamedPipe(handle, unsafe { nil }, int(0), unsafe { nil },
+					voidptr(&bytes_avail), unsafe { nil })
+				{
+					return bytes_avail > 0
+				}
+			}
+		} $else {
+			if C.ioctl(fd, u64(C.FIONREAD), &bytes_avail) == 0 {
 				return bytes_avail > 0
 			}
 		}
-	} $else {
-		if C.ioctl(fd, u64(C.FIONREAD), &bytes_avail) == 0 {
-			return bytes_avail > 0
+		read_set := C.fd_set{}
+		C.FD_ZERO(&read_set)
+		C.FD_SET(fd, &read_set)
+		mut ts := C.timeval{
+			tv_sec:  0
+			tv_usec: 0
 		}
-	}
-	read_set := C.fd_set{}
-	C.FD_ZERO(&read_set)
-	C.FD_SET(fd, &read_set)
-	mut ts := C.timeval{
-		tv_sec:  0
-		tv_usec: 0
-	}
-	res := C.select(fd + 1, &read_set, unsafe { nil }, unsafe { nil }, &ts)
-	if res > 0 {
-		if C.FD_ISSET(fd, &read_set) != 0 {
-			return true
+		res := C.select(fd + 1, &read_set, unsafe { nil }, unsafe { nil }, &ts)
+		if res > 0 {
+			if C.FD_ISSET(fd, &read_set) != 0 {
+				return true
+			}
 		}
+		return false
 	}
-	return false
 }
