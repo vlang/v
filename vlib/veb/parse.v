@@ -161,7 +161,19 @@ fn json_form_value(value json2.Any) ?string {
 	return value.str()
 }
 
-// has_route_attributes checks if a method has attributes that indicate it should be a route handler
+// route_attrs_strings converts the typed comptime attribute view (`[]VAttribute`)
+// into the legacy string-token form consumed by parse_attrs / has_route_attributes.
+fn route_attrs_strings(attrs []VAttribute) []string {
+	mut out := []string{}
+	for attr in attrs {
+		if attr.has_arg {
+			out << '${attr.name}: ${attr.arg}'
+		} else {
+			out << attr.name
+		}
+	}
+	return out
+}
 fn has_route_attributes(attrs []string) bool {
 	if attrs.len == 0 {
 		return false

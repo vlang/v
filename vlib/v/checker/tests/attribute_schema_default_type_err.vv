@@ -1,6 +1,6 @@
 @[attribute]
 struct Route {
-	path string = '/x'
+	count int = 'x'
 }
 
 fn main() {

@@ -1,0 +1,7 @@
+vlib/v/checker/tests/attribute_schema_default_type_err.vv:3:14: error: cannot initialize field `count` with `string`; expected `int`
+    1 | @[attribute]
+    2 | struct Route {
+    3 |     count int = 'x'
+      |                 ~~~
+    4 | }
+    5 |

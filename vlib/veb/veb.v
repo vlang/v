@@ -36,7 +36,6 @@ struct Route {
 	host            string
 	parameter_names []string
 	parameter_kinds []ParamKind
-	attrs           []string
 	handler         RouteHandler = unsafe { nil }
 mut:
 	middlewares       []RouteMiddleware
@@ -73,7 +72,6 @@ fn insert_route_metadata(mut routes map[string]Route, name string, attrs []strin
 		host:            host
 		parameter_names: parameter_names
 		parameter_kinds: parameter_kinds
-		attrs:           attrs
 		handler:         handler
 	}
 }
@@ -129,10 +127,10 @@ fn generate_routes[A, X](app &A) !map[string]Route {
 					}
 				}
 			}
-			insert_route_metadata(mut routes, method.name, method.attrs, parameter_names, parameter_kinds, handler)!
+			insert_route_metadata(mut routes, method.name, route_attrs_strings(method.attributes), parameter_names, parameter_kinds, handler)!
 		} $else {
 			// If we have route attributes, but the wrong return type, return an error
-			if has_route_attributes(method.attrs) {
+			if has_route_attributes(route_attrs_strings(method.attributes)) {
 				return error('method `${method.name}` at `${method.location}` has route attributes but invalid return type. Handler methods must return `veb.Result` or `!veb.Result`')
 			}
 		}
@@ -675,7 +673,7 @@ fn dispatch_route[X](mut user_context X, url urllib.URL, host string, routes &ma
 				return
 			}
 			if !matched.from_data && args.len != route.parameter_names.len {
-				eprintln('[veb] warning: uneven parameters count (${route.parameter_names.len + 1}) in `${matched.name}`, compared to the veb route `${route.attrs}` (${args.len})')
+				eprintln('[veb] warning: uneven parameters count (${route.parameter_names.len + 1}) in `${matched.name}`, compared to the veb route `${route.path}` (${args.len})')
 			}
 		}
 		$if trace_prealloc ? {
