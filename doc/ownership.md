@@ -93,6 +93,8 @@ just by binding it to a variable. Primitive scalar types (int, f64, bool, ...) r
 These value-level rules do not disable ownership inference for aggregate types.
 Returning a scalar field or scalar array element copies its value, including when accessed through
 a pointer to local storage. Scalar copies do not keep a reference to that storage.
+Storing a scalar field in a local through a cast also copies its value without moving its source.
+Returning an owning global's address borrows its storage; returning its value still attempts a move.
 Interpolation with multiple parts copies their storage. A sole string part can pass through
 unchanged, and closures retain their captured references.
 Capturing an owned aggregate transfers its root and owned descendants together. Earlier moves
