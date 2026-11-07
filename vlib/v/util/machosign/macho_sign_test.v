@@ -87,3 +87,56 @@ fn test_sign_adhoc_matches_codesign() {
 	assert shrunk.exit_code == 0, shrunk.output
 	assert os.exec([exe_path]).output.trim_space() == 'signed'
 }
+
+// TinyCC records macOS 10.6 as the SDK, so AppKit lays out its controls as for a
+// 2009 program. Signing records the running macOS instead; dyld then wants the UUID
+// and no repeated rpath of a platform-linked program.
+fn test_sign_adhoc_records_the_host_sdk() {
+	if os.user_os() != 'macos' {
+		return
+	}
+	tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	host_version := fastc_host_macos_version()
+	if !os.is_file(tcc) || host_version == 0 {
+		return
+	}
+	test_dir := os.join_path(os.temp_dir(), 'fastc_macho_sdk_${os.getpid()}')
+	os.mkdir_all(test_dir) or { panic(err) }
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	source_path := os.join_path_single(test_dir, 'hello.c')
+	exe_path := os.join_path_single(test_dir, 'hello')
+	os.write_file(source_path, 'int puts(const char *);\nint main(void) { puts("modern"); return 0; }\n') or {
+		panic(err)
+	}
+	tcc_lib := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'lib')
+	mut args := ['-std=gnu11', '-B${tcc_lib}', '-I${os.join_path_single(tcc_lib, 'include')}',
+		'-L${tcc_lib}']
+	mut sdk_root := os.getenv('SDKROOT')
+	if !os.is_dir(sdk_root) {
+		result := os.exec(['xcrun', '--show-sdk-path'])
+		if result.exit_code == 0 {
+			sdk_root = result.output.trim_space()
+		}
+	}
+	if os.is_dir(sdk_root) {
+		args << '-L${os.join_path(sdk_root, 'usr', 'lib')}'
+	}
+	args << ['-w', '-Wl,-rpath,${test_dir}', '-Wl,-rpath,${test_dir}', '-o', exe_path, source_path]
+	compiled := os.exec([tcc, ...args])
+	assert compiled.exit_code == 0, compiled.output
+	sign_adhoc(exe_path) or { panic(err) }
+	run := os.exec([exe_path])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == 'modern'
+	verify := os.exec(['codesign', '--verify', '--strict', exe_path])
+	assert verify.exit_code == 0, verify.output
+	commands := os.exec(['otool', '-l', exe_path])
+	assert commands.exit_code == 0, commands.output
+	major := host_version >> 16
+	minor := (host_version >> 8) & 0xff
+	assert commands.output.contains('sdk ${major}.${minor}'), commands.output
+	assert commands.output.contains('cmd LC_UUID'), commands.output
+	assert commands.output.count('cmd LC_RPATH') == 1, commands.output
+}
