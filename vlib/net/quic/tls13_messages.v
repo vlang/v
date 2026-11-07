@@ -117,6 +117,20 @@ pub fn compute_finished_verify_data(base_secret []u8, transcript_hash []u8) ![]u
 	return hmac.new(finished_key, transcript_hash, sha256.sum256, sha256.block_size)
 }
 
+// build_finished constructs a complete Finished handshake message (RFC 8446
+// §4.4.4) from `base_secret`/`transcript_hash`, framed via
+// encode_handshake_message. Side-agnostic like compute_finished_verify_data
+// itself, which this function wraps directly -- the caller picks which
+// traffic secret to sign with (client_handshake_traffic_secret for the
+// client's own Finished, server_handshake_traffic_secret for the server's)
+// and which transcript_hash checkpoint applies; see
+// compute_finished_verify_data's own doc comment for the exact checkpoint
+// each side uses.
+pub fn build_finished(base_secret []u8, transcript_hash []u8) ![]u8 {
+	verify_data := compute_finished_verify_data(base_secret, transcript_hash)!
+	return encode_handshake_message(.finished, verify_data)!
+}
+
 // verify_finished checks a peer-supplied Finished message's verify_data
 // against the expected value computed from our own key schedule and
 // transcript state, using a constant-time comparison

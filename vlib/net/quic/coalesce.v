@@ -219,6 +219,35 @@ pub fn split_coalesced_datagram(datagram []u8) ![]CoalescedPacket {
 	return packets
 }
 
+// find_first_initial_header scans `raw` for the first Initial-type packet
+// and returns its parsed long header. Fails with split_coalesced_datagram's
+// own specific error when THAT rejects the datagram outright (a genuine
+// RFC 9000 §12.2 coalescing violation), or a generic "no Initial packet
+// found" otherwise (too short, unsupported version, not an Initial type,
+// or simply no Initial among otherwise-valid packets) -- a Result, not a
+// bare Option, specifically so a caller that wants the real reason (accept()
+// does; a caller just deciding whether to drop the datagram, like the
+// listener's own new-connection-attempt routing, can ignore it via a plain
+// `or { return }`) can get it instead of a single undifferentiated "not
+// found." Shared by accept() (accept.v, which needs the full header to
+// bootstrap a new connection) and the listener's new-connection-attempt
+// routing (listener.v, which only needs the header's token/dcid/scid to
+// decide Retry-vs-accept) -- one parsing path, not two independently
+// maintained ones.
+pub fn find_first_initial_header(raw []u8) !QuicLongHeader {
+	packets := split_coalesced_datagram(raw)!
+	for p in packets {
+		if p.form != .long {
+			continue
+		}
+		h, _ := parse_long_header(p.bytes) or { continue }
+		if h.typ == .initial {
+			return h
+		}
+	}
+	return error('quic: no Initial packet found in datagram')
+}
+
 // min_initial_datagram_size is RFC 9000 §14.1's minimum UDP datagram size
 // for any datagram carrying an Initial packet -- an anti-amplification
 // measure (a server must not be usable to amplify traffic toward a spoofed

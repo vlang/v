@@ -61,6 +61,43 @@ fn test_decoder_decode_field_section_no_ack_when_ric_zero() {
 	assert result.decoder_instructions.len == 0
 }
 
+fn test_decoder_decode_field_section_bounds_decoded_field_count() {
+	mut d := new_qpack_decoder(0)
+	mut buf := []u8{cap: 2 + max_qpack_decoded_field_lines + 1}
+	buf << [u8(0x00), 0x00] // RIC=0, Base=0
+	indexed := encode_indexed_static(17) // :method GET, one encoded byte
+	assert indexed.len == 1
+	for _ in 0 .. max_qpack_decoded_field_lines + 1 {
+		buf << indexed
+	}
+	d.decode_field_section(0, buf) or {
+		assert err.code() == int(H3ErrorCode.excessive_load)
+		assert err.msg().contains('${max_qpack_decoded_field_lines}-field limit')
+		return
+	}
+	assert false, 'expected the decoded field-count limit to reject the section'
+}
+
+fn test_decoder_decode_field_section_bounds_decoded_field_size() {
+	mut d := new_qpack_decoder(0)
+	// 64 literal lines remain comfortably below the encoded HEADERS limit,
+	// while RFC field-section accounting includes 32 bytes of overhead each
+	// and pushes the decoded list one byte past its independent limit.
+	value_len := int(max_qpack_decoded_field_section_size / 64) - 33
+	mut buf := []u8{cap: int(max_qpack_decoded_field_section_size)}
+	buf << [u8(0x00), 0x00] // RIC=0, Base=0
+	for i in 0 .. 64 {
+		value := if i == 63 { 'x'.repeat(value_len + 1) } else { 'x'.repeat(value_len) }
+		buf << encode_literal_with_literal_name(false, 'n', value)
+	}
+	d.decode_field_section(0, buf) or {
+		assert err.code() == int(H3ErrorCode.excessive_load)
+		assert err.msg().contains('${max_qpack_decoded_field_section_size}-byte limit')
+		return
+	}
+	assert false, 'expected the decoded field-size limit to reject the section'
+}
+
 fn test_decoder_decode_field_section_rejects_reference_beyond_declared_ric() {
 	mut d := new_qpack_decoder(1000)
 	d.apply_encoder_instruction(encode_qpack_set_dynamic_table_capacity(1000)) or {

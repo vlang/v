@@ -1146,7 +1146,9 @@ next:
   (`request.v`/`http.v`), not silently left as a surprise. Likewise,
   `req.validate` (skip-verification) and `req.cert`/`req.cert_key`
   (mutual TLS) are not honorable on the h3 path in v1, both also
-  documented there.
+  documented there. **Also needs `-d http3` to build at all** (added by
+  PR #28286, 2026-09-01, after 12d itself landed) — see "Scope decisions
+  in effect" below for the full requirement and why it exists.
 
 **Phase A adversarial-verification pass (done)**: a multi-agent Workflow (5
 independent finder lenses — rfc/concurrency/pool-lifecycle/error-edges/
@@ -1231,9 +1233,387 @@ way a closed TCP port does, so auto-racing every `https://` request
 against h3 would regress the common case; real happy-eyeballs-style
 fallback is deferred as a separate follow-up feature).
 
-13. Server support — explicitly out of committed scope, but Phases 1-9 are
-    designed to need no rework for it (`role` field already present).
-14. 0-RTT — explicitly out of committed scope.
+## Phase 13: Server support — IN PROGRESS (13a started)
+
+Opened following a scoping pass mapping the completed client against what
+server support needs (see tracking issue #27675 comment). Phases 1-9's core
+QUIC layer is already role-parameterized (`role QuicRole` on `QuicConn`;
+`is_locally_initiated`/`initial_*_limit_for_stream` already take a role
+explicitly) — none of that foundation needs rework. Same one-sub-phase-per-
+stacked-PR convention as Phase 12's 12a-12d.
+
+- [x] **13a** — TLS 1.3 server handshake:
+  - [x] Message construction, all five pieces (`tls13_server_hello.v`,
+        `tls13_certificate.v`, `tls13_messages.v`): `build_server_hello`,
+        `build_encrypted_extensions`, `encode_certificate`,
+        `encode_certificate_verify` (ECDSA P-256 signing only —
+        `sig_scheme_ecdsa_secp256r1_sha256`; RSA-PSS signing needs a
+        `mbedtls_pk_sign_ext` V wrapper that doesn't exist yet, only the
+        verify side does), `build_finished` (verified against the real RFC
+        8448 §3 vector, not just round-tripped against this module's own
+        parser), `build_hello_retry_request`. Every function round-trips
+        through its ALREADY-EXISTING, independently-written parse
+        counterpart — a real cross-check, not tautological. Caught one
+        real bug this way before commit: a server's `key_share` is a bare
+        `KeyShareEntry` (RFC 8446 §4.2.8), not the client's list-wrapped
+        shape.
+  - [x] Server-side state machine (`tls13_server_handshake.v`):
+        `Tls13ServerHandshake.respond_to_client_hello` — parses+validates a
+        ClientHello (cipher suite, TLS 1.3, secp256r1 key_share,
+        ecdsa_secp256r1_sha256 in signature_algorithms, ALPN common
+        protocol, RFC 9000 §7.3 transport-parameter role restrictions —
+        added `parse_client_hello`/`decode_alpn_offer`/
+        `parse_key_share_extension_client`/
+        `parse_signature_algorithms_extension_client`/
+        `parse_supported_versions_from_client` to `tls13_client_hello.v`
+        for this, none of which existed before), does real ECDH against
+        the client's offered key_share, then builds the ENTIRE response
+        flight (ServerHello through this server's own Finished) in one
+        call — RFC 8446 §7.1/Figure 3 lets application traffic secrets
+        derive right after the server's own Finished, no dependency on the
+        client's Finished arriving. `process_finished` verifies the
+        client's Finished and confirms the handshake. Simpler state
+        machine than the client's (2 states, not 6): a server never waits
+        on a peer message between ClientHello and its own Finished.
+        HelloRetryRequest is NOT wired in (group mismatch is a hard
+        failure) — the SAME deliberate-defer scope choice
+        `Tls13ClientHandshake.process_server_hello` already made for its
+        own first-HRR gap; `build_hello_retry_request` exists and is
+        unit-tested at the message layer but not yet driven by this state
+        machine. Verified via a REAL client-vs-server integration test
+        (`tls13_server_handshake_test.v`): fresh ECDHE keys on both
+        sides (not fixed RFC vectors), the client's own real
+        `process_server_hello`/`process_encrypted_extensions`/
+        `verify_finished` all independently accept this server's real
+        output, and this server's `process_finished` accepts a real client
+        Finished built the same way. Certificate/CertificateVerify chain
+        verification is NOT exercised end-to-end (no EC certificate
+        fixture in this repo — the same documented gap as
+        `encode_certificate_verify`'s own tests).
+- [x] **13b** — Retry + address validation:
+  - [x] `encode_retry_packet` (`retry.v`) — builds a complete Retry packet,
+        reusing `compute_retry_integrity_tag` directly (already
+        side-agnostic). Round-trips through the already-existing,
+        independently-written client-role `verify_retry_integrity_tag`/
+        `parse_retry_packet` — the strongest cross-check available: not
+        just "well-formed," but "the exact code that will receive this in
+        production accepts it."
+  - [x] `generate_retry_token`/`validate_retry_token`/
+        `validate_retry_token_for_attempt` (`retry_token.v`, new file) —
+        AEAD-sealed (AES-128-GCM), authenticated address-validation tokens
+        satisfying RFC 9000 §8.1.4's difficult-to-guess and integrity
+        requirements via the AEAD tag itself. NEW_TOKEN-frame issuance
+        (§8.1.3, tokens reusable across future connections) is explicitly
+        out of scope — v1 only issues tokens via Retry. Single-use replay
+        tracking beyond a short expiry window is deferred to 13d, once a
+        real listening socket exists to own a consumed-token cache's
+        lifetime; a short `max_age_ms` window satisfies §8.1.4's "prevented
+        OR limited" replay requirement in the interim.
+  - [x] `AntiAmplificationLimiter` (`anti_amplification.v`, new file) —
+        RFC 9000 §8.1's 3x pre-validation send limit, mirroring
+        `flow_control.v`'s `FlowControlWindow` shape deliberately. A
+        standalone, tested accounting primitive — not yet wired into any
+        connection/datagram-processing loop, since that loop doesn't exist
+        until 13d.
+  - **Found and flagged, not fixed here (out of scope for this PR)**: while
+    picking a CSPRNG for the token nonce, discovered `conn.v`'s `dial()`
+    uses V's general-purpose `rand` module (wyrand-backed, NOT
+    cryptographically secure) for `original_dcid`/`scid`/`client_random` —
+    all three are security-relevant values that should use `crypto.rand`
+    instead (same API, OS-backed, already used elsewhere in this codebase).
+    This is a real gap in already-merged code (Phase 9, PR #28129), not
+    Phase 13 work — flagged as a separate follow-up task, not fixed inline.
+- [x] **13c** — Connection ID lifecycle:
+  - [x] `NewConnectionIdFrame`/`RetireConnectionIdFrame` wire codec
+        (`frame.v`) — `encode_new_connection_id_frame`/
+        `parse_new_connection_id_frame` and their RETIRE_CONNECTION_ID
+        counterparts, types 0x18/0x19, previously falling through
+        `parse_frame`'s generic "not yet implemented" branch. Enforces the
+        two frame-local RFC 9000 §19.15 requirements (`retire_prior_to` ≤
+        `sequence_number`; connection ID length in 1-20 bytes), on both the
+        encode and decode sides so a caller can't construct a frame this
+        module's own parser would then reject. Every OTHER §19.15/§19.16
+        requirement (zero-length-DCID prohibition, duplicate/conflicting
+        sequence numbers, a RETIRE_CONNECTION_ID referencing the current
+        packet's own DCID) needs connection state `parse_frame` doesn't
+        have — deferred to the caller, the same division already
+        established for `HandshakeDoneFrame`'s role check.
+  - [x] `generate_stateless_reset_token` (`stateless_reset.v`) — RFC 9000
+        §10.3.2's recommended construction, `HMAC-SHA-256(static_key,
+        connection_id)` truncated to 16 bytes: a server-instance-local
+        secret plus the connection ID deterministically reproduces the
+        SAME token, so an endpoint that has lost all per-connection state
+        (the entire premise of a stateless reset) can still recompute it.
+        Cross-checked against `StatelessResetTracker.is_stateless_reset`
+        (already-existing, independently-written matching logic) — proving
+        a token this function generates is actually recognized by the
+        exact code that would validate it in production.
+  - **Deliberately still out of scope** (per `stateless_reset.v`'s own
+    long-standing note, unchanged by 13c): driving an ACTIVE SET of usable
+    connection IDs — issuing more as the peer retires them,
+    `active_connection_id_limit` accounting, `CONNECTION_ID_LIMIT_ERROR`
+    enforcement. That full lifecycle exists to support connection
+    migration, which PROGRESS.md already lists as a separate, explicitly
+    deferrable follow-up below — 13c ships the wire codec and the token
+    primitive it depends on, not the state machine that would consume them.
+- [x] **13d-1** — Server-role handshake wiring: `QuicConn` gained real
+      `.server`-role support (role-aware directional key selection, a
+      role-branched handshake dispatch, RFC 9001 §4.1.2's role-asymmetric
+      handshake-confirmation semantics, server-side HANDSHAKE_DONE sending)
+      and a new `accept()` constructor (`accept.v`) mirroring `dial()`.
+      Found + fixed two RFC-conformance bugs via adversarial review before
+      commit: the RFC 9000 §7.2 bootstrap-DCID exception for a server's
+      first-received ClientHello, and RFC 9001 §4.9.1's send-vs-receive
+      Initial-key-discard trigger asymmetry between roles (a naive
+      client-shaped trigger applied to both roles discarded the server's
+      Initial keys before the client had sent anything back, stalling the
+      handshake on ordinary first-round-trip packet loss). Also closed a
+      missing RFC 9000 §14.1 anti-amplification floor check in `accept()`.
+      `accept()` deliberately does NOT decide Retry-vs-direct-accept policy
+      (needs cross-connection-attempt state only 13d-2's listener has) and
+      does not fragment a large certificate chain's Handshake CRYPTO flight
+      across multiple packets (both documented scope limits, not blockers).
+- [x] **13d-2** — `QuicListener` (`listener.v`): one caller-driven, transport-
+      agnostic socket-facing type routing many concurrent connections by
+      connection ID (not 4-tuple, since QUIC supports migration); the
+      new-connection acceptance path (unrecognized DCID → Retry-or-accept,
+      wiring 13b's `AntiAmplificationLimiter`/Retry machinery — previously
+      dead code with zero production call sites — into `QuicConn` itself,
+      and into `13d-1`'s `accept()`). Two rounds of adversarial review before
+      commit found and fixed real bugs: RFC 9000 §8.1's 3x send limit was
+      unenforced (now wired into `QuicConn`'s own send path, including a
+      size-aware check for the one send — the Handshake CRYPTO flush — whose
+      size can dwarf the budget in one shot since large certificate chains
+      aren't fragmented across packets); `poll()`'s known-connection path
+      replied to whichever address the current call was invoked with instead
+      of the address recorded at accept() time (reflection/spoofing risk);
+      no dedup for new-attempt datagrams let a replayed Retry token or an
+      ordinary PTO retransmission spawn unbounded duplicate connections for
+      one logical attempt (closed via a stateless `pending_by_dcid` index);
+      `send_retry` was missing the RFC 9000 §14.1 1200-byte floor check.
+      Also found and fixed a PRE-EXISTING, previously-unreachable CLIENT-role
+      bug newly exposed by a real listener processing untrusted network
+      input: `process_one_packet`'s Retry/Version-Negotiation dispatch had no
+      role check, and `process_retry` incorrectly latched `peer_scid` to the
+      Retry's own one-time SCID, permanently discarding every subsequent real
+      server packet — found via this phase's own real dial()-through-Retry-
+      through-accept()-through-established-handshake integration test.
+- [x] **13e** — `h3_server_d_http3.v` (net.http, renamed from `h3_server.v`
+      2026-09-02 to close a gap #28286 left open — see "Scope decisions in
+      effect" below for the full `-d http3` requirement): a caller-driven
+      `H3Server` bridging
+      one real UDP socket to `quic.QuicListener`/`quic.H3Conn`'s poll()-based
+      surface, mirroring `h2_server.v`'s Handler dispatch and request/
+      response construction (pseudo-header validation, content-length
+      cross-check, trailer emission — reusing `h2_server.v`'s own
+      `h2_request_field_error`/`h2_conn_specific_headers`/`h2_field_value_
+      has_forbidden_octet` directly, since RFC 9114 §4.1.1/§4.2 mirror RFC
+      9113 §8.1.2.2/§8.2.2 verbatim). Deliberately NOT thread-per-connection
+      like `h2_server.v`'s own model — QUIC multiplexes many connections
+      behind one UDP socket via a single shared demux table, so `H3Server`
+      drives every connection from one loop instead, generalizing
+      `h3_mux_conn.v`'s own single-driver-thread client shape via
+      `QuicListener`.
+      Required making `quic.H3Conn` itself role-aware for the first time:
+      a server-role connection now treats a peer-(client-)opened bidi
+      stream as an incoming request (new `request_headers`/`request_data`/
+      `request_trailers`/`request_ended` H3Events) and answers via new
+      `send_response_headers`/`send_response_data`, reusing the identical
+      underlying per-stream message-framing state machine a client-role
+      connection already used for responses (RFC 9114 §4.1's grammar is
+      symmetric between a request and a response) — see `h3_conn.v`'s own
+      updated module doc comment.
+      Two rounds of adversarial testing (a real dial()/accept() pair driven
+      through a genuine end-to-end request/response exchange at the
+      `quic.H3Conn` level, then a REAL loopback-UDP `H3Server`/`serve()`
+      goroutine round trip) found and fixed three real, independently
+      significant bugs, none specific to 13e's own new code — all
+      pre-existing, and all invisible to every earlier phase's tests because
+      none had previously driven either "many `process_timeouts()` calls
+      while something stays unacked" or "a server-role connection with a
+      caller-omitted transport parameter" for long enough to trip them:
+      (1) `QuicConn.process_timeouts` called RFC 9002's
+      `on_loss_detection_timeout` **unconditionally on every call** instead
+      of only once the timer's own computed deadline had actually elapsed —
+      in a caller-driven poll loop (this whole stack's own architecture,
+      with no native per-connection timer thread) this fired a brand-new
+      PTO probe on every single call as long as anything was unacked,
+      advancing `pto_count`'s exponential backoff far faster than real time
+      without the backoff ever actually slowing the send rate — a real,
+      universally-reachable CPU-exhaustion hang for any deployment where a
+      peer stops responding without a clean close, not merely a 13e test
+      artifact. (2) `ReceiveWindow.should_advertise_more()` degenerated to
+      `0 >= 0` (permanently true) for a stream/connection configured with
+      `initial_limit == 0` — reachable the moment a caller's own
+      `transport_parameters` omits an Option field (e.g.
+      `initial_max_stream_data_uni`, which every real HTTP/3 connection
+      needs non-zero for its own control/QPACK streams to function at all),
+      spinning `drain_flow_control_raises` forever on a raise that could
+      never make progress. (3) `H3Server.absorb_and_dispatch` dropped its
+      own local `H3Conn` wrapper on an H3-level protocol violation without
+      closing the underlying `QuicConn`, leaving a still-alive connection to
+      silently get a brand-new blank `H3Conn` wrapper (re-opening a second
+      set of control/QPACK streams, losing all in-flight request state) on
+      its very next event instead of tearing the connection down — fixed by
+      calling `qc.close()`, mirroring how `h3_mux_conn.v`'s own client
+      driver answers the identical error via `fail_conn()`.
+- [x] Review round on PR #28164 (2026-08-27): a maintainer-relayed "Local
+      AI check" comment (issuecomment-5440010074) and a same-day Codex
+      review (pullrequestreview-5044139767) each found real, independent
+      bugs in already-reviewed 13e code. `net.http`'s `h3_now_ms()` divided
+      `time.sys_mono_now()` by 1_000_000 before feeding it to every
+      `quic.QuicConn`/`H3Conn` `now u64` parameter, which this whole module
+      treats as a raw nanosecond instant — undercounted elapsed time by
+      ~1e6x, so a 30s idle timeout would not actually fire for ~347 days.
+      Renamed to `h3_now_ns()`, fixed. Fixing it ALONE then broke a
+      previously-passing real end-to-end test
+      (`test_h3_server_real_udp_request_response_round_trip`), which led to
+      finding two more bugs the ns/ms bug had been masking: `listener.v`'s
+      retry-token expiry check compared a raw nanosecond `now` against
+      `retry_token_max_age_ms` (genuinely millisecond-scale, by name and by
+      its 30000=30s default) with no conversion, so once `now` was
+      genuinely nanosecond-scale every retry token appeared expired within
+      30 MICROseconds of issuance — permanently breaking every handshake
+      for `always_retry: true` (the default); fixed with an explicit
+      `now / 1_000_000` at the two call sites. Codex independently found
+      the SAME underlying stall from a different angle plus two more real
+      bugs: `H3Server.absorb_and_dispatch` derived its dispatch set purely
+      from `QuicListenerPollResult.events`, so a connection touched with
+      zero new QUIC events (e.g. a second UDP datagram continuing an
+      already-open request stream) was never driven at all — fixed via a
+      new `touched_conns []&QuicConn` field, populated unconditionally in
+      `merge_conn_result`; `conn.v`'s `send_pto_probe` appended PING-only
+      probes with no anti-amplification gating at all (unlike every send in
+      the sibling `drain_outgoing`), letting an unbounded PTO backoff drive
+      a server accepted without Retry past RFC 9000 §8.1's 3x-received cap
+      indefinitely — fixed with the same `has_amplification_budget()`/
+      `record_amplification_sent()` gating every arm; and
+      `h3_validate_request_pseudo` required `:path`/`:scheme`
+      unconditionally, rejecting every conforming CONNECT request (RFC 9114
+      §4.4 mandates omitting both) as malformed — fixed with a method-aware
+      branch. All five bugs Phase-R'd (reproduced against the pre-fix code
+      before applying each fix) with regression tests; full net.quic
+      (60/60) and net.http (31/35, 4 platform skips) suites pass. Noted,
+      not fixed (out of scope — different file/protocol layer):
+      `h2_server.v` has the identical CONNECT pseudo-header gap.
+- [ ] *(optional, deferrable)* Connection migration (`PATH_CHALLENGE`/
+      `PATH_RESPONSE`) — both unimplemented today; a minimal v1 server can
+      ship without full migration support, same as the client structurally
+      deferred it.
+
+Still out of scope regardless: 0-RTT (see the renumbered entry below); server
+push stays permanently disabled (RFC 9114 §7.2.7, a Phase 12 decision
+independent of server support existing at all).
+
+## Phase 14: Connection migration (RFC 9000 §5.1, §9) — SCOPED, not started
+
+Opened following a scoping pass over every deferred/TODO/"out of scope"
+comment left across `vlib/net/quic/*.v` and `h3_server_d_http3.v` (13a-13e's own
+scope-limit notes plus everything predating them), same convention as
+Phase 13's own opening. Migration is the one item this scoping pass singled
+out to bundle into a phase of its own — it is the single largest remaining
+protocol-conformance gap, it is cohesive (every sub-item below is part of
+the same RFC 9000 §5.1/§9 feature area), and it's already what PR #28164's
+own closing note flagged as "the" deferred follow-up, not an arbitrary pick.
+
+**What's already in place, from earlier phases:**
+- 13c shipped the `NewConnectionIdFrame`/`RetireConnectionIdFrame` wire codec
+  (`frame.v`) and `generate_stateless_reset_token` (`stateless_reset.v`) —
+  cross-checked against `StatelessResetTracker.is_stateless_reset` already.
+  Neither is wired into any connection-state machine yet (13c's own note:
+  "deferred to the caller").
+- `transport_parameters.v` already parses/encodes/validates
+  `active_connection_id_limit` (RFC 9000 §18.2, min 2) — the parameter
+  plumbing exists, nothing consumes the value yet.
+- `QuicListener` already demuxes by connection ID, not 4-tuple (13d-2's own
+  design choice, made explicitly "since QUIC supports migration") — the
+  routing layer doesn't need rework, only extension (14d below).
+- 13b's `AntiAmplificationLimiter` is a directly reusable shape for the new
+  path's own pre-validation send budget (RFC 9000 §9.3).
+
+**What's fully missing:**
+- `PATH_CHALLENGE`/`PATH_RESPONSE` (RFC 9000 §19.17/§19.18, types 0x1a/0x1b)
+  have no wire codec at all — `parse_frame` falls through to the generic
+  "not yet implemented" error for both (confirmed by grep, 2026-08-26).
+- No active CID set on either role: nothing issues local CIDs via
+  NEW_CONNECTION_ID up to the peer's advertised limit, nothing consumes a
+  peer's issued CIDs into a usable pool, no `CONNECTION_ID_LIMIT_ERROR`
+  enforcement (RFC 9000 §5.1.1/§5.1.2).
+- No path-validation state machine — nothing reacts to a packet arriving
+  from an unexpected remote address on an established connection.
+- `conn.v`'s own module doc comment (line ~27) is now **stale**: it still
+  says "no NEW_CONNECTION_ID/RETIRE_CONNECTION_ID" as a blanket v1-scope
+  statement, which 13c's wire codec already partially contradicts (the
+  codec exists; only the state machine consuming it doesn't). Needs
+  updating as part of 14b, not left to drift further.
+
+**Sub-phases (same one-sub-phase-per-stacked-PR convention as 12/13):**
+- [ ] **14a** — `PATH_CHALLENGE`/`PATH_RESPONSE` frame wire codec: 8-byte
+      opaque data each, both are probing frames (RFC 9000 §9.1's
+      probing/non-probing frame classification matters for 14c's migration
+      detection). Paired `_test.v`, RFC vector or round-trip cross-check
+      per this project's established convention.
+- [ ] **14b** — Active connection ID set: issue local CIDs via
+      NEW_CONNECTION_ID up to the peer's `active_connection_id_limit`;
+      consume the peer's issued CIDs into a pool this endpoint can migrate
+      to; send/receive RETIRE_CONNECTION_ID; enforce
+      `CONNECTION_ID_LIMIT_ERROR`. Update `conn.v`'s stale module doc
+      comment in the same change.
+- [ ] **14c** — Path validation state machine: detect a new remote address
+      on an established connection (distinguish probing-only traffic —
+      simple NAT rebinding, RFC 9000 §9.3 — from an intentional migration);
+      send PATH_CHALLENGE, validate the PATH_RESPONSE; gate any non-probing
+      use of the new path behind validation plus a fresh anti-amplification
+      budget (reusing 13b's limiter shape) until validated; rotate to a
+      fresh local CID on migration per §9.5's linkability guidance.
+- [ ] **14d** — `QuicListener` wiring: once a path validates, re-pin the
+      connection's recorded peer address (extends 13d-2's fix, which
+      pinned it once at accept() time and never revisits it); handle a
+      connection's packets legitimately arriving from either the old or
+      new address during the validation window.
+- [ ] **14e** *(stretch, split out if 14a-14d already ran long)* —
+      this endpoint proactively initiating its own migration (§9.1),
+      as opposed to only validating and accepting a peer-initiated one.
+      A NAT-rebinding-only endpoint (react to address changes, no CID
+      rotation, no active probing) may be a smaller, separately-shippable
+      subset if 14c/14d alone prove to be enough for a first PR.
+
+**Explicitly out of Phase 14's scope** (flagged during this pass, deliberately
+NOT bundled in — each is independent of migration and better scoped as its
+own later follow-up):
+- 0-RTT / session resumption / PSK — still explicitly out of committed
+  project scope (originally "Phase 14" in the tracking issue's own numbering;
+  renumbered here since migration claimed the 14 slot — see the note below).
+- HelloRetryRequest, both handshake directions (`tls13_handshake.v`,
+  `tls13_server_handshake.v`) — a self-contained TLS-layer gap, unrelated to
+  transport-layer migration despite both sounding like "handshake edge
+  cases."
+- RSA-PSS `CertificateVerify` signing (`tls13_certificate.v`) — only
+  `ecdsa_secp256r1_sha256` is wired; a separate crypto-capability gap.
+- NEW_TOKEN frame issuance (RFC 9000 §8.1.3, `retry_token.v`'s own noted
+  scope limit) — a separate address-validation mechanism; Retry-based
+  validation already exists and migration doesn't need this.
+- The preferred_address transport parameter (RFC 9000 §9.6) — a distinct,
+  optional migration-*adjacent* feature; a candidate follow-up to Phase 14,
+  not part of it.
+- `h3_server_d_http3.v`'s three documented v1 limits (request trailers not
+  delivered to the Handler, no per-stream RST/STOP_SENDING, no graceful
+  GOAWAY-on-shutdown) — HTTP/3-layer hardening, orthogonal to transport-layer
+  migration.
+- Large certificate chain fragmentation across multiple Handshake CRYPTO
+  packets (13d-1's own noted limit) — a handshake-robustness gap, separate
+  axis from migration.
+- `dial()`'s non-crypto `rand.bytes` for `original_dcid`/`scid`/
+  `client_random` (flagged in 13b) — already fixed and merged to master
+  independently of this branch: vlang/v#28165 (`a7e86f537f`, 2026-08-26).
+  This branch should pick it up on its next rebase; not Phase 14 work.
+
+**Numbering note:** the tracking issue's original phase list reserved "14"
+for 0-RTT specifically. Phase 13 grew far beyond the issue's one-line
+"server support" into 13a-13e, and migration — not 0-RTT, which stays out
+of committed scope — is what PR #28164's own closing note flagged as the
+natural next step. This phase reuses the "14" slot for migration; 0-RTT, if
+ever picked up, takes a later number (15+) rather than reclaiming this one.
 
 ## Scope decisions in effect (see tracking issue for rationale)
 
@@ -1243,6 +1623,30 @@ fallback is deferred as a separate follow-up feature).
 - Single-threaded, caller-driven event loop (`poll()`/`process_timeouts()`),
   not a background thread per connection — matches V's lack of native
   async I/O and QUIC's one-socket-many-connections-by-CID model.
+- **Building anything HTTP/3 requires `-d http3`.** `net.quic`'s TLS 1.3
+  stack pulls in `crypto.ecdsa`, which hard-requires the OpenSSL development
+  headers (`<openssl/ecdsa.h>`) — see `vlib/crypto/ecdsa/ecdsa.c.v`'s own
+  `#flag`/`#include` lines. Importing `net.quic` unconditionally from
+  `net.http` would force OpenSSL onto every `net.http`/`veb` user, even
+  plain HTTP/1.1/2 callers who never touch QUIC. PR #28286 (2026-09-01)
+  fixed this for the client side by renaming every `net.quic`-importing
+  `net.http` file to `*_d_http3.v` (V's real `-d <flag>` file-selection
+  convention — compiled only when the flag is passed) plus a
+  `transport_h3_notd_http3.v` stub for the flag-off case. `h3_server.v`
+  (Phase 13e) landed on this branch **after** #28286 merged and was missed
+  by it (it didn't exist yet); fixed the same way 2026-09-02, renamed to
+  `h3_server_d_http3.v`, no `_notd_http3.v` stub needed since nothing else
+  in `module http` calls into `H3Server`/`H3ServerParams`/`new_h3_server`
+  (confirmed via a full-module grep). **Any future new file that imports
+  `net.quic`/`crypto.ecdsa` from `module http` needs the same `_d_http3.v`
+  suffix, or this gap reopens** — there's no compiler-enforced guard
+  against it, just this note. Test files stay unrenamed but need both
+  `// vtest build: present_openssl?` and `// vtest vflags: -d http3`
+  directives (see any `h3_*_test.v` file for the pattern) so the vtest
+  runner skips them cleanly without OpenSSL and passes the flag when it's
+  present. Building with `-d http3` needs the OpenSSL dev headers
+  available — see the tracking issue / this repo's CI config for
+  per-platform install steps.
 
 ## Validation workflow (apply to every new phase)
 

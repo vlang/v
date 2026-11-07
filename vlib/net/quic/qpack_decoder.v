@@ -1,5 +1,16 @@
 module quic
 
+// max_qpack_decoded_field_section_size bounds one decoded header list using
+// RFC 9114 §4.1.1's name length + value length + 32 bytes per-field accounting.
+// An encoded section can be much smaller than its decoded representation when
+// it repeatedly references static/dynamic table entries, so the encoded
+// HEADERS-frame limit alone is not a memory bound.
+const max_qpack_decoded_field_section_size = u64(1024 * 1024)
+
+// max_qpack_decoded_field_lines separately bounds the number of retained V
+// QpackFieldLine values, including repeated tiny indexed representations.
+const max_qpack_decoded_field_lines = 16 * 1024
+
 // QpackApplyInstructionResult is the result of processing one encoder-
 // stream instruction (RFC 9204 §4.3): whether a complete instruction was
 // available, how many bytes it consumed, and any decoder-stream bytes this
@@ -155,10 +166,20 @@ pub fn (mut d QpackDecoder) decode_field_section(stream_id u64, buf []u8) !Qpack
 		}
 	}
 	mut lines := []QpackFieldLine{}
+	mut decoded_size := u64(0)
 	mut max_ref := -1
 	mut pos := prefix_len
 	for pos < buf.len {
+		if lines.len >= max_qpack_decoded_field_lines {
+			return error_with_code('qpack: decoded field section exceeds the ${max_qpack_decoded_field_lines}-field limit', int(H3ErrorCode.excessive_load))
+		}
 		decoded := decode_qpack_field_line(buf[pos..], prefix.base, &d.dynamic_table)!
+		line_size := u64(decoded.line.name.len) + u64(decoded.line.value.len) + 32
+		if line_size > max_qpack_decoded_field_section_size
+			|| decoded_size > max_qpack_decoded_field_section_size - line_size {
+			return error_with_code('qpack: decoded field section exceeds the ${max_qpack_decoded_field_section_size}-byte limit', int(H3ErrorCode.excessive_load))
+		}
+		decoded_size += line_size
 		lines << decoded.line
 		if idx := decoded.referenced_index {
 			if idx >= prefix.required_insert_count {

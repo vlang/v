@@ -122,7 +122,24 @@ pub fn (mut w ReceiveWindow) note_read(new_total_read u64) {
 // hitting zero available window in ordinary steady-state use (avoiding a
 // throughput stall) while still bounding how much unread data this
 // endpoint commits to buffering at once.
+//
+// Guarded against a degenerate zero-width window: if `initial_limit` is 0
+// (a caller-configured limit of 0 for this stream class -- e.g. a
+// transport_parameters value the caller forgot to set, which defaults to
+// none/0 via QuicTransportParameters' own Option fields -- see
+// initial_receive_limit_for_stream), `next_advertised_limit()` would
+// return `w.advertised + 0`, a NO-OP raise mark_advertised then silently
+// drops (non-regressing: `0 > 0` is false). Without this guard, `read >=
+// advertised/2` degenerates to `0 >= 0` at advertised==0, permanently
+// true, and drain_flow_control_raises would build a new (empty-progress)
+// MAX_DATA/MAX_STREAM_DATA packet on EVERY single poll()/process_timeouts()
+// call forever -- a real, caller-reachable CPU-exhaustion hang, found via
+// 13e's own end-to-end server-role test tripping it through an omitted
+// initial_max_stream_data_uni.
 pub fn (w &ReceiveWindow) should_advertise_more() bool {
+	if w.initial_limit == 0 {
+		return false
+	}
 	return w.read >= w.advertised / 2
 }
 
