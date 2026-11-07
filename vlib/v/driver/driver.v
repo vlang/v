@@ -17519,6 +17519,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 	program_specializations := split.modules['__v3_program_specializations'] or { '' }
 	program_support := split.modules['__v3_program_support'] or { '' }
 	program_generated_support := program_specializations + program_support + main_body
+	program_prefix := prune_cached_program_wrappers(split.prefix, program_generated_support)
 	mut native_bindings := V3TccDylibBindings{}
 	if state.native_bridge {
 		mut functions := map[string]bool{}
@@ -17530,7 +17531,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		}
 		native_bindings = v3_tcc_dylib_function_bindings(functions)
 	}
-	raw_main_prefix := v3_cached_c_unit_source(prune_cache_only_function_prototypes(prune_cached_native_function_prototypes(cache_source_without_cached_native_inputs(split.prefix, state, true), state, [
+	raw_main_prefix := v3_cached_c_unit_source(prune_cache_only_function_prototypes(prune_cached_native_function_prototypes(cache_source_without_cached_native_inputs(program_prefix, state, true), state, [
 		'main',
 	]), cache_used_fns, program_generated_support, tc, state), true)
 	main_prefix := if state.native_bridge {
@@ -17550,7 +17551,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		dylib_prefix = modulecache.prune_unreferenced_static_string_definitions(main_prefix + program_specializations + program_support)
 	}
 	if !state.objects_only && !state.no_program_declarations {
-		main_declarations = v3_cached_c_unit_source(prune_cache_only_function_prototypes(cache_source_without_cached_native_inputs(modulecache.declaration_header(split.prefix + program_specializations + program_support), state, false), cache_used_fns, program_generated_support, tc, state), false)
+		main_declarations = v3_cached_c_unit_source(prune_cache_only_function_prototypes(cache_source_without_cached_native_inputs(modulecache.declaration_header(program_prefix + program_specializations + program_support), state, false), cache_used_fns, program_generated_support, tc, state), false)
 		if state.native_bridge {
 			dylib_prefix += native_bindings.owner
 		}
@@ -19476,6 +19477,33 @@ fn v3_opaque_program_wrappers(source string) string {
 		}
 	}
 	return opaque.str()
+}
+
+// prune_cached_program_wrappers keeps the wrappers referenced by the program's
+// bodies and prefix. Cached module objects own their other wrappers and targets.
+// Helpers and initializers outside the wrapper sections also belong to the
+// program prefix, so their references must remain roots of the pruning walk.
+fn prune_cached_program_wrappers(prefix string, body string) string {
+	if !prefix.contains(v3_program_wrappers_begin) {
+		return prefix
+	}
+	mut roots := strings.new_builder(prefix.len + body.len)
+	roots.writeln(body)
+	mut in_wrappers := false
+	for line in prefix.split_into_lines() {
+		if line == v3_program_wrappers_begin {
+			in_wrappers = true
+			continue
+		}
+		if line == v3_program_wrappers_end {
+			in_wrappers = false
+			continue
+		}
+		if !in_wrappers {
+			roots.writeln(line)
+		}
+	}
+	return prune_foreign_program_wrappers(prefix, roots.str())
 }
 
 // prune_foreign_program_wrappers drops, from the declarations that a module
