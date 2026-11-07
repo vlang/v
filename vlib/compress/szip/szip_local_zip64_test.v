@@ -69,8 +69,13 @@ fn test_invalid_zip64_local_sizes_are_rejected() {
 		duplicate,
 	] {
 		os.write_file_array(path, local_zip64_with_extra(extra))!
+		// `open` only reads the central directory: a local header is checked when
+		// its entry is read.
+		mut archive := szip.open(path, .no_compression, .read_only)!
+		archive.open_entry('entry.txt')!
 		mut rejected := false
-		szip.open(path, .no_compression, .read_only) or { rejected = true }
+		archive.read_entry_bytes() or { rejected = true }
+		archive.close()
 		assert rejected, 'invalid ZIP64 local extra field ${extra} was accepted'
 	}
 }
