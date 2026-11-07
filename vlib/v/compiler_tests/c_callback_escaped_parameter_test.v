@@ -1,5 +1,18 @@
 import os
 
+fn callback_test_clang_uses_mingw_abi(triple string) bool {
+	return triple.contains('mingw') || triple.trim_space().ends_with('windows-gnu')
+}
+
+fn test_callback_clang_mingw_target_filter() {
+	for triple in ['x86_64-w64-mingw32', 'x86_64-w64-windows-gnu', 'x86_64-pc-windows-gnu'] {
+		assert callback_test_clang_uses_mingw_abi(triple), triple
+	}
+	for triple in ['x86_64-pc-windows-msvc', 'aarch64-apple-darwin', 'x86_64-unknown-linux-gnu', ''] {
+		assert !callback_test_clang_uses_mingw_abi(triple), triple
+	}
+}
+
 fn test_native_callback_escaped_parameter_keeps_its_enum_type() {
 	root := os.join_path(os.vtmp_dir(), 'native_callback_escaped_param_${os.getpid()}')
 	os.mkdir_all(os.join_path(root, 'wrapper')) or { panic(err) }
@@ -62,6 +75,15 @@ fn main() { wrapper.exercise() }
 	mut compiler_flags := [[]string{}]
 	for compiler in ['clang', 'gcc'] {
 		if _ := os.find_abs_path_of_executable(compiler) {
+			$if windows {
+				// LLVM.org Clang targets MSVC on Windows; V's Clang backend requires MinGW.
+				if compiler == 'clang' {
+					triple := os.exec([compiler, '-dumpmachine'])
+					if triple.exit_code != 0 || !callback_test_clang_uses_mingw_abi(triple.output) {
+						continue
+					}
+				}
+			}
 			compiler_flags << ['-cc', compiler]
 		}
 	}
