@@ -37,7 +37,7 @@ fn v3_gc_mode_defines(gc_mode string, disable_gc bool) ![]string {
 // in. Selecting the Boehm builtin set anyway would only add source files whose
 // declarations the backend cannot satisfy.
 fn v3_gc_is_disabled(building_v bool, cross_output bool, target_os string, target_arch string, backend string, gc_mode string) bool {
-	if building_v || cross_output {
+	if building_v {
 		return true
 	}
 	if backend in ['arm64', 'x64'] {
