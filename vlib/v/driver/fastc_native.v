@@ -329,25 +329,36 @@ $if !skip_fastc ? {
 		// The TinyCC framework include directory contains symlinks to SDK Headers.
 		// Canonical manifest paths retain their owning .framework for link selection.
 		canonical := dependencies.map(os.real_path(it))
-		v3_fastc_write_program_dependencies(manifest, canonical.filter(it != canonical_path), mut stats)
+		mut reported := []string{cap: dependencies.len}
+		for i, dependency in dependencies {
+			if canonical[i] != canonical_path { reported << dependency }
+		}
+		v3_fastc_write_program_dependencies(manifest, reported, mut stats)
 		return canonical
 	}
 
-	const v3_fastc_program_dependencies_format = 'format=v3-fastc-program-dependencies-v1'
+	const v3_fastc_program_dependencies_format = 'format=v3-fastc-program-dependencies-v2'
 
-	fn v3_fastc_write_program_dependencies(manifest string, dependencies []string, mut stats CObjectCacheStats) {
-		mut out := strings.new_builder(64 + dependencies.len * 96)
+	// v3_fastc_write_program_dependencies records each header the C compiler reported
+	// opening with the file it resolved to and that file's signature. A symlink in an
+	// include path can be retargeted to another framework without changing either file.
+	fn v3_fastc_write_program_dependencies(manifest string, reported []string, mut stats CObjectCacheStats) {
+		mut out := strings.new_builder(64 + reported.len * 160)
 		out.writeln(v3_fastc_program_dependencies_format)
-		for dependency in dependencies {
-			signature := c_object_file_signature(dependency, false, mut stats)
+		for dependency in reported {
+			resolved := os.real_path(dependency)
+			signature := c_object_file_signature(resolved, false, mut stats)
 			if signature == '' { return }
-			out.writeln('dependency=${dependency}\t${signature}')
+			out.writeln('dependency=${dependency}\t${resolved}\t${signature}')
 		}
 		staged := manifest + '.tmp.' + tempname.unique_token()
 		os.write_file(staged, out.str()) or { return }
 		os.mv(staged, manifest) or { os.rm(staged) or {} }
 	}
 
+	// v3_fastc_cached_program_dependencies returns the resolved headers of a manifest
+	// while every reported path still resolves to the recorded file and every file keeps
+	// its signature.
 	fn v3_fastc_cached_program_dependencies(manifest string, jobs int) ?[]string {
 		lines := (os.read_file(manifest) or { return none }).split_into_lines()
 		if lines.len < 2 || lines[0] != v3_fastc_program_dependencies_format { return none }
@@ -356,10 +367,16 @@ $if !skip_fastc ? {
 		for line in lines[1..] {
 			if !line.starts_with('dependency=') { return none }
 			entry := line.all_after('dependency=')
-			tab := entry.last_index('\t') or { return none }
-			if tab == 0 || tab + 1 >= entry.len { return none }
-			dependencies << entry[..tab]
-			signatures << entry[tab + 1..]
+			signature_tab := entry.last_index('\t') or { return none }
+			paths := entry[..signature_tab]
+			resolved_tab := paths.last_index('\t') or { return none }
+			if resolved_tab == 0 || resolved_tab + 1 >= paths.len || signature_tab + 1 >= entry.len {
+				return none
+			}
+			resolved := paths[resolved_tab + 1..]
+			if os.real_path(paths[..resolved_tab]) != resolved { return none }
+			dependencies << resolved
+			signatures << entry[signature_tab + 1..]
 		}
 		if !v3_fastc_native_signatures_match(dependencies, signatures, jobs) { return none }
 		return dependencies

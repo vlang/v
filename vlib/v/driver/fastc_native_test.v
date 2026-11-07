@@ -54,13 +54,44 @@ fn test_fastc_program_dependencies_reuse_requires_unchanged_headers() ! {
 			cached := v3_fastc_cached_program_dependencies(manifest, jobs) or {
 				panic('valid program dependency manifest rejected')
 			}
-			assert cached == dependencies
+			assert cached == dependencies.map(os.real_path(it))
 		}
 		os.write_file(dependencies.last(), 'modified')!
 		assert v3_fastc_cached_program_dependencies(manifest, 1) == none
 		assert v3_fastc_cached_program_dependencies(manifest, 8) == none
 		os.write_file(manifest, 'format=v3-c-object-manifest-v1\n')!
 		assert v3_fastc_cached_program_dependencies(manifest, 8) == none
+	}
+}
+
+// A header reached through a symlink is reused only while the symlink still leads to
+// the recorded file: retargeting it to another framework changes link selection even
+// when neither header changes.
+fn test_fastc_program_dependencies_reuse_requires_the_same_symlink_target() ! {
+	$if !skip_fastc ? {
+		$if windows {
+			return
+		}
+		root := os.join_path(os.vtmp_dir(), 'fastc_program_dependency_links_${os.getpid()}')
+		os.mkdir_all(os.join_path(root, 'Old.framework', 'Headers'))!
+		os.mkdir_all(os.join_path(root, 'New.framework', 'Headers'))!
+		defer { os.rmdir_all(root) or {} }
+		old_header := os.join_path(root, 'Old.framework', 'Headers', 'selected.h')
+		new_header := os.join_path(root, 'New.framework', 'Headers', 'selected.h')
+		os.write_file(old_header, 'int selected;\n')!
+		os.write_file(new_header, 'int selected;\n')!
+		link := os.join_path(root, 'selected.h')
+		os.symlink(old_header, link)!
+		manifest := os.join_path(root, 'program.manifest')
+		mut stats := CObjectCacheStats{}
+		v3_fastc_write_program_dependencies(manifest, [link], mut stats)
+		cached := v3_fastc_cached_program_dependencies(manifest, 1) or {
+			panic('valid program dependency manifest rejected')
+		}
+		assert cached == [os.real_path(old_header)]
+		os.rm(link)!
+		os.symlink(new_header, link)!
+		assert v3_fastc_cached_program_dependencies(manifest, 1) == none
 	}
 }
 
