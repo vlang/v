@@ -43,6 +43,18 @@ fn main() {
 	assert generated.contains('return (s).str[i];'), generated
 }
 
+fn test_string_indexes_use_checked_helpers_for_wide_integers() {
+	generated := string_bounds_c('fn signed_wide(s string, i i128) u8 { return s[i] }
+fn unsigned_wide(s string, i u128) u8 { return s[i] }
+fn main() {
+    _ = signed_wide("abc", 1)
+    _ = unsigned_wide("abc", 1)
+}
+')
+	assert generated.contains('return string__at_i128(s, i);'), generated
+	assert generated.contains('return string__at_u128(s, i);'), generated
+}
+
 fn test_string_indexes_panic_at_invalid_signed_and_unsigned_positions() {
 	root := os.join_path(os.vtmp_dir(), 'string_bounds_runtime_${os.getpid()}')
 	os.mkdir_all(root)!

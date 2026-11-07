@@ -18800,15 +18800,21 @@ fn (mut g FlatGen) gen_nonliteral_expr(id flat.NodeId, node &flat.Node) {
 							if !g.direct_array_access && g.unsafe_depth == 0 {
 								index_id := g.a.child(node, 1)
 								index_type := cgen_unalias_type(g.usable_expr_type(index_id))
-								helper := match index_type.source_type_id() {
-									flat.source_type_i64, flat.source_type_isize {
-										'string__at_i64'
+								helper := if index_type.name() == 'i128' {
+									'string__at_i128'
+								} else if index_type.name() == 'u128' {
+									'string__at_u128'
+								} else {
+									match index_type.source_type_id() {
+										flat.source_type_i64, flat.source_type_isize {
+											'string__at_i64'
+										}
+										flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
+										flat.source_type_u64, cgen_uint_source_type {
+											'string__at_u64'
+										}
+										else { 'string__at' }
 									}
-									flat.source_type_u8, flat.source_type_u16, flat.source_type_u32,
-									flat.source_type_u64, cgen_uint_source_type {
-										'string__at_u64'
-									}
-									else { 'string__at' }
 								}
 								g.write('${helper}(')
 								g.gen_expr(base_id)
