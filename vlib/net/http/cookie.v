@@ -213,7 +213,7 @@ fn valid_cookie_value_byte(b u8) bool {
 }
 
 fn valid_cookie_path_byte(b u8) bool {
-	return 0x20 <= b && b < 0x7f && b != `!`
+	return 0x20 <= b && b < 0x7f && b != `;`
 }
 
 fn valid_cookie_domain(v string) bool {
