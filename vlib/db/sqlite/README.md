@@ -90,3 +90,31 @@ db := sqlite.connect('foo.db') or { panic(err) }
 db.synchronization_mode(sqlite.SyncMode.off)!
 db.journal_mode(sqlite.JournalMode.memory)!
 ```
+
+# Concurrent Access
+
+When several connections use the same database file, write-ahead logging lets readers work
+while a transaction writes; there is still only one writer at a time, so applications must
+handle `SQLITE_BUSY`. An `.immediate` transaction takes the write lock when it starts, waiting
+for it up to the busy timeout. A `.deferred` transaction, the default, takes it at its first
+write; if it has already read by then, SQLite can return `SQLITE_BUSY` without waiting.
+
+```v
+import db.sqlite
+
+mut db := sqlite.connect('app.db') or { panic(err) }
+defer {
+	db.close() or {}
+}
+db.busy_timeout(5000)
+db.journal_mode(.wal)!
+if db.current_journal_mode()! != .wal {
+	eprintln('write-ahead logging is not available for this database')
+}
+db.begin(transaction_level: .immediate)!
+db.exec('CREATE TABLE IF NOT EXISTS t (x INTEGER)')!
+db.commit()!
+```
+
+`journal_mode` can leave the current mode in place without an error, e.g. an in-memory database
+stays in `.memory` mode: `current_journal_mode` returns the mode that applies.
