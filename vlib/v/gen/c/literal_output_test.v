@@ -7,6 +7,15 @@ import v.parser
 import v.pref
 import v.types
 
+// Literal-output tests must not inherit CI's VFLAGS: C flags disable the
+// allocation-free code-generation path these tests are asserting.
+fn run_literal_output_v(args []string) os.Result {
+	return cmdexec.run_in_merged_with_env(@VEXE, args, '', {
+		'VEXE':   @VEXE
+		'VFLAGS': ''
+	})
+}
+
 fn windows_literal_output_source(program string) ?string {
 	return platform_literal_output_source(program, 'windows')
 }
@@ -232,7 +241,7 @@ fn test_windows_literal_cli_output_matches_native_crt_declarations() ! {
 		'fn main() { print("a\\x00b"); eprintln("c"); print("d") }'] {
 		os.write_file(source, program)!
 		for cc in ['clang', 'msvc'] {
-			generated := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-os', 'windows', '-arch',
+			generated := run_literal_output_v(['-new-compiler', '-nocache', '-os', 'windows', '-arch',
 				'amd64', '-cc', cc, '-o', c_file, source])
 			assert generated.exit_code == 0, generated.output
 			code := os.read_file(c_file)!
@@ -261,7 +270,7 @@ fn test_windows_literal_cli_output_matches_native_crt_declarations() ! {
 		}
 	}
 	os.write_file(source, 'fn main() { println("привет") }')!
-	generated := cmdexec.run(@VEXE, ['-new-compiler', '-nocache', '-gc', 'none', '-os', 'windows',
+	generated := run_literal_output_v(['-new-compiler', '-nocache', '-gc', 'none', '-os', 'windows',
 		'-arch', 'amd64', '-o', c_file, source])
 	assert generated.exit_code == 0, generated.output
 	assert os.read_file(c_file)!.contains('MultiByteToWideChar'), 'Unicode console support must remain reachable'
@@ -280,7 +289,7 @@ fn test_portable_literal_output_retains_snapshot_runtime_and_metadata() {
 	for flags in [['-os', 'cross'], ['-cross']] {
 		mut args := flags.clone()
 		args << ['-o', code_file, source]
-		generated := cmdexec.run(@VEXE, args)
+		generated := run_literal_output_v(args)
 		assert generated.exit_code == 0, generated.output
 		code := os.read_file(code_file)!
 		// The C compiler's target decides the width of `int`.
@@ -292,7 +301,7 @@ fn test_portable_literal_output_retains_snapshot_runtime_and_metadata() {
 		assert code.contains('portable literal'), flags.str()
 	}
 	// Ordinary host output remains allocation-free after snapshot generation.
-	generated := cmdexec.run(@VEXE, ['-o', code_file, source])
+	generated := run_literal_output_v(['-o', code_file, source])
 	assert generated.exit_code == 0, generated.output
 	code := os.read_file(code_file)!
 	assert code.len < 256 && code.contains('puts("portable literal")'), code
@@ -318,13 +327,13 @@ fn test_literal_output_keeps_bytes_streams_and_call_order() {
 	println("quoted \\"text\\" \\\\")
 }
 ')!
-	generated := cmdexec.run(@VEXE, ['-o', code_file, source])
+	generated := run_literal_output_v(['-o', code_file, source])
 	assert generated.exit_code == 0, generated.output
 	code := os.read_file(code_file)!
 	assert code.contains('__PTRDIFF_TYPE__ write('), code
 	assert !code.contains('GC_') && !code.contains('malloc') && !code.contains('#include'), code
 	for cc in ['clang', 'tcc'] {
-		compiled := cmdexec.run(@VEXE, ['-cc', cc, '-showcc', '-no-retry-compilation', '-o', binary,
+		compiled := run_literal_output_v(['-cc', cc, '-showcc', '-no-retry-compilation', '-o', binary,
 			source])
 		assert compiled.exit_code == 0, compiled.output
 		assert !compiled.output.contains('atomic_') && !compiled.output.contains('libgc'), compiled.output
@@ -355,11 +364,11 @@ fn test_literal_output_with_empty_strings_and_explicit_main() {
 	code_file := os.join_path(root, 'main.c')
 	for program in ['fn main() { println("") }', 'print("")\neprint("")'] {
 		os.write_file(source, program)!
-		generated := cmdexec.run(@VEXE, ['-o', code_file, source])
+		generated := run_literal_output_v(['-o', code_file, source])
 		assert generated.exit_code == 0, generated.output
 		code := os.read_file(code_file)!
 		assert code.len < 256 && !code.contains('gc_'), code
-		run := cmdexec.run(@VEXE, ['-no-retry-compilation', 'run', source])
+		run := run_literal_output_v(['-no-retry-compilation', 'run', source])
 		assert run.exit_code == 0, run.output
 		assert run.output == if program.contains('println') { '\n' } else { '' }, run.output
 	}
@@ -382,7 +391,7 @@ fn init() {
 	captured()
 }
 ')!
-	run := cmdexec.run(@VEXE, ['-nocache', '-cc', 'clang', '-gc', 'none', '-no-retry-compilation',
+	run := run_literal_output_v(['-nocache', '-cc', 'clang', '-gc', 'none', '-no-retry-compilation',
 		'-file-list', listed_source, 'run', source])
 	assert run.exit_code == 0, run.output
 	assert run.output == 'closure init\nmain literal\n', run.output
@@ -402,7 +411,7 @@ fn test_literal_output_preserves_freestanding_runtime() {
 		mut args := ['-nocache', '-gc', 'none']
 		args << flags
 		args << ['-o', code_file, source]
-		generated := cmdexec.run(@VEXE, args)
+		generated := run_literal_output_v(args)
 		assert generated.exit_code == 0, generated.output
 		code := os.read_file(code_file)!
 		assert code.contains('void println(string s) {'), code
@@ -428,12 +437,12 @@ fn main() {
 	println(values.join(" "))
 }
 ')!
-	generated := cmdexec.run(@VEXE, ['-gc', 'boehm', '-o', code_file, source])
+	generated := run_literal_output_v(['-gc', 'boehm', '-o', code_file, source])
 	assert generated.exit_code == 0, generated.output
 	code := os.read_file(code_file)!
 	assert code.contains('gc_runtime_init'), code
 	assert code.contains('v_gc_malloc'), code
-	run := cmdexec.run(@VEXE, ['-gc', 'boehm', '-no-retry-compilation', 'run', source])
+	run := run_literal_output_v(['-gc', 'boehm', '-no-retry-compilation', 'run', source])
 	assert run.exit_code == 0, run.output
 	assert run.output == 'init\nhello\ncleanup\n', run.output
 }
@@ -450,7 +459,7 @@ fn test_literal_output_retries_partial_writes() {
 	stub_file := os.join_path(root, 'partial.c')
 	binary := os.join_path(root, 'main')
 	os.write_file(source, 'println("abcd\\x00e")')!
-	generated := cmdexec.run(@VEXE, ['-o', code_file, source])
+	generated := run_literal_output_v(['-o', code_file, source])
 	assert generated.exit_code == 0, generated.output
 	// A short-writing sink independently checks every byte and the remaining
 	// length on each call, including the NUL byte and appended newline.
