@@ -185,6 +185,17 @@ fn (g &Parser) render_map_expression(tokens []FastcExpressionToken) ?FastcRender
 			}
 		}
 	}
+	// A typed literal with entries, `map[K]V{key: value}`.
+	if literal_open > 0 && literal_open + 1 < tokens.len - 1 && tokens.last().tok == .rcbr
+		&& tokens[0].tok == .name && tokens[0].lit == 'map' {
+		if map_type := g.map_initializer_type(tokens[..literal_open]) {
+			if !flat.source_type_query(map_type).has(.c_pointer_suffix) {
+				if literal := g.render_map_literal_argument(tokens[literal_open..], map_type) {
+					return literal
+				}
+			}
+		}
+	}
 	if update := g.render_map_index_compound_assignment(tokens) {
 		return update
 	}
@@ -1385,7 +1396,9 @@ fn (g &Parser) render_assignment_expression(tokens []FastcExpressionToken) ?Fast
 	if g.selfhost && operator == .assign && left_type in [fastc_type_option, fastc_type_result] && option_payload_type != u32(0) {
 		rhs_type := fastc_normalize_inferred_type(g.infer_expression_type(rhs_tokens) or { u32(0) })
 		if rhs_type !in [fastc_type_option, fastc_type_result] && fastc_typed_option_payload(rhs_type) == none {
-			if fastc_trim_pointer_type(rhs_type) == fastc_type_ierror {
+			// An `IError` stores an error, except into a `?IError` whose payload it is.
+			if fastc_trim_pointer_type(rhs_type) == fastc_type_ierror
+				&& fastc_trim_pointer_type(option_payload_type) != fastc_type_ierror {
 				right = '(__v_result){.err=${right}, .state=1}'
 			} else {
 				// `right` already holds the fully lowered RHS; for a narrowing boolean it
@@ -3478,8 +3491,18 @@ fn (g &Parser) render_struct_comparison_expression_impl(tokens []FastcExpression
 			right_tokens := tokens[i + 1..]
 			left_inferred_type := g.infer_expression_type(left_tokens) or { return none }
 			right_inferred_type := g.infer_expression_type(right_tokens) or { return none }
-			left_type := fastc_normalize_inferred_type(left_inferred_type)
-			right_type := fastc_normalize_inferred_type(right_inferred_type)
+			mut left_type := fastc_normalize_inferred_type(left_inferred_type)
+			mut right_type := fastc_normalize_inferred_type(right_inferred_type)
+			// A member narrowed to a struct variant reads through a pointer view, but
+			// `a.v == b.v` still compares the variant values.
+			left_view := g.narrowed_member_value_type(left_tokens)
+			right_view := g.narrowed_member_value_type(right_tokens)
+			if left_view != u32(0) {
+				left_type = left_view
+			}
+			if right_view != u32(0) {
+				right_type = right_view
+			}
 			if fastc_is_pointer_type(left_type) || fastc_is_pointer_type(right_type) {
 				return none
 			}
@@ -3524,8 +3547,14 @@ fn (g &Parser) render_struct_comparison_expression_impl(tokens []FastcExpression
 			if left_layout != right_layout || left_key !in g.declared_kinds || g.declared_kinds[left_key] != .struct_ || !g.struct_equality_is_supported(left_type, []u32{}) {
 				return none
 			}
-			left := g.render_comparison_operand(left_tokens, left_type) or { return none }
-			right := g.render_comparison_operand(right_tokens, right_type) or { return none }
+			mut left := g.render_comparison_operand(left_tokens, left_type) or { return none }
+			mut right := g.render_comparison_operand(right_tokens, right_type) or { return none }
+			if left_view != u32(0) {
+				left = '(*(${left}))'
+			}
+			if right_view != u32(0) {
+				right = '(*(${right}))'
+			}
 			equality := g.struct_equality_source('__vf_eq_left', '__vf_eq_right', left_type, []u32{}, 0)
 			result := if item.tok == .ne { '!(${equality})' } else { equality }
 			return FastcRenderedExpression{
@@ -3535,6 +3564,22 @@ fn (g &Parser) render_struct_comparison_expression_impl(tokens []FastcExpression
 		}
 	}
 	return none
+}
+
+// narrowed_member_value_type returns the value variant type of a member path narrowed to a
+// struct variant, whose view is a pointer to the boxed payload, or 0.
+fn (g &Parser) narrowed_member_value_type(tokens []FastcExpressionToken) u32 {
+	path := fastc_indexed_member_chain_path(tokens) or { return u32(0) }
+	cast := g.member_smartcasts[path] or { return u32(0) }
+	value_type := if cast.value_type != u32(0) {
+		cast.value_type
+	} else {
+		fastc_trim_pointer_type(cast.typ)
+	}
+	if !fastc_is_pointer_type(cast.typ) || fastc_is_pointer_type(value_type) {
+		return u32(0)
+	}
+	return value_type
 }
 
 // render_sum_type_equality lowers `left == SumType(operand)` (both of sum type

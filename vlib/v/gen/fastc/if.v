@@ -968,6 +968,9 @@ fn (mut g Parser) parse_if() !bool {
 				smartcast_origin_source:       smartcast_storage
 			})
 		}
+		if then_terminates && smartcast_name == '' && !condition_has_top_level_and {
+			g.bind_negated_member_fallthrough(cond_tokens)
+		}
 		return false
 	}
 	g.next()
@@ -1315,6 +1318,71 @@ fn fastc_split_top_level_and(tokens []FastcExpressionToken) [][]FastcExpressionT
 }
 
 // fastc_first_top_level_is returns the index of the first top-level `is` in tokens.
+// bind_negated_member_fallthrough narrows a member past `if x.f !is T || … { return }`:
+// the block is left only when `x.f` is `T`, so later reads see the variant until the
+// enclosing block ends. Bare locals are narrowed by parse_if itself.
+fn (mut g Parser) bind_negated_member_fallthrough(cond_tokens []FastcExpressionToken) {
+	mut depth := 0
+	mut operand_end := cond_tokens.len
+	mut not_is := -1
+	for i, item in cond_tokens {
+		match item.tok {
+			.lpar, .lsbr, .lcbr { depth++ }
+			.rpar, .rsbr, .rcbr { depth-- }
+			.not_is {
+				if depth == 0 && not_is < 0 {
+					not_is = i
+				}
+			}
+			.logical_or {
+				if depth == 0 {
+					operand_end = i
+					break
+				}
+			}
+			else {}
+		}
+	}
+	if not_is <= 0 || not_is + 1 >= operand_end {
+		return
+	}
+	left_tokens := cond_tokens[..not_is]
+	path := fastc_indexed_member_chain_path(left_tokens) or { return }
+	if !path.contains('.') {
+		return
+	}
+	mut left_type := fastc_normalize_inferred_type(g.infer_member_access_type(left_tokens, 0,
+		left_tokens.len) or { return })
+	previous_cast := g.member_smartcasts[path] or { FastcMemberSmartcast{} }
+	if previous_cast.subject_type != u32(0) {
+		left_type = previous_cast.subject_type
+	}
+	target_type := g.type_from_expression_tokens(cond_tokens[not_is + 1..operand_end]) or {
+		return
+	}
+	if left_type == u32(0) || target_type == u32(0) || !g.is_boxed_type(left_type) {
+		return
+	}
+	mut left_source := g.render_member_receiver(left_tokens) or { return }
+	if previous_cast.subject_source != '' {
+		left_source = previous_cast.subject_source
+	}
+	value_type := fastc_normalize_inferred_type(target_type)
+	variant := fastc_trim_pointer_type(value_type)
+	access := if flat.source_type_query(left_type).has(.c_pointer_suffix) { '->' } else { '.' }
+	member_tmp := g.temporary_name('smartcast_member')
+	variant_c_type := fastc_output_c_type(flat.source_type_name(variant))
+	g.write_line('${variant_c_type} *${member_tmp} = (${variant_c_type} *)(${left_source})${access}_object;')
+	view_type, view_source := g.narrowed_member_view(variant, value_type, member_tmp)
+	g.set_scoped_member_smartcast(path, FastcMemberSmartcast{
+		typ:            view_type
+		value_type:     value_type
+		source:         view_source
+		subject_source: left_source
+		subject_type:   left_type
+	})
+}
+
 fn fastc_first_top_level_is(tokens []FastcExpressionToken) int {
 	mut depth := 0
 	for i, item in tokens {

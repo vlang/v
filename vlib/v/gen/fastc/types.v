@@ -734,6 +734,16 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 
 				return array_type
 			}
+			if tokens[start].tok == .name && tokens[start].lit == 'map' {
+				// `map[K]V{...}`, with or without entries.
+				if close := fastc_matching_delimiter_before(tokens, init_open, end, .lcbr, .rcbr) {
+					if close == end - 1 {
+						if map_type := g.map_initializer_type(tokens[start..init_open]) {
+							return map_type
+						}
+					}
+				}
+			}
 			break
 		}
 	}

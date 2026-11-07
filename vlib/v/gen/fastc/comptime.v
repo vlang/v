@@ -386,7 +386,7 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 	}
 	mut c_type := ''
 	mut member := g.lit
-	if member in ['fields', 'values'] {
+	if member in ['fields', 'values', 'attributes'] {
 		type_key := g.resolve_declared_type_key(first) or {
 			return g.unsupported('`\$for` over unknown type `${first}`')
 		}
@@ -398,8 +398,8 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 		c_type = fastc_c_declared_type_name(fastc_type_key(module_name, g.lit))
 		g.next()
 		g.expect(.dot)!
-		if g.tok != .name || g.lit !in ['fields', 'values'] {
-			return g.unsupported('`\$for` only supports `.fields` or `.values`')
+		if g.tok != .name || g.lit !in ['fields', 'values', 'attributes'] {
+			return g.unsupported('`\$for` only supports `.fields`, `.values` or `.attributes`')
 		}
 		member = g.lit
 		g.next()
@@ -446,9 +446,23 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 	// Build one substituted body per iteration item: a struct field for `.fields`,
 	// or an enum value for `.values`.
 	mut substituted_bodies := []FastcSourceFile{}
-	if member == 'values' {
-		for value_name in g.enum_field_names[c_type] {
-			substituted_bodies << g.substitute_comptime_enum_value(body_source, loop_var, c_type, value_name)
+	if member == 'attributes' {
+		// Only enum declarations record their attributes.
+		if c_type !in g.enum_field_names {
+			return g.unsupported('`\$for` over the attributes of non-enum type `${c_type}`')
+		}
+		for attr in g.enum_attrs[c_type] or { []string{} } {
+			substituted_bodies << g.substitute_comptime_attribute(body_source, loop_var, attr)
+		}
+	} else if member == 'values' {
+		value_attrs := g.enum_field_attrs[c_type] or { [][]string{} }
+		for value_index, value_name in g.enum_field_names[c_type] {
+			attrs := if value_index < value_attrs.len {
+				value_attrs[value_index]
+			} else {
+				[]string{}
+			}
+			substituted_bodies << g.substitute_comptime_enum_value(body_source, loop_var, c_type, value_name, attrs)
 		}
 	} else {
 		for field in g.struct_field_info[c_type] {
@@ -679,10 +693,11 @@ fn (g &Parser) substitute_comptime_field(source_file FastcSourceFile, loop_var s
 }
 
 // substitute_comptime_enum_value rewrites one `$for x in Enum.values { ... }` body
-// for a single enum value: `<var>.name` becomes the value-name string literal and
-// `<var>.value` becomes the enum's C constant. Other `<var>.<member>` forms are left
-// as-is so they surface as unsupported when re-parsed.
-fn (g &Parser) substitute_comptime_enum_value(source_file FastcSourceFile, loop_var string, enum_c_type string, value_name string) FastcSourceFile {
+// for a single enum value: `<var>.name` becomes the value-name string literal,
+// `<var>.value` becomes the enum's C constant, and `<var>.attrs` becomes a string array
+// literal of the value's attributes. Other `<var>.<member>` forms are left as-is so they
+// surface as unsupported when re-parsed.
+fn (g &Parser) substitute_comptime_enum_value(source_file FastcSourceFile, loop_var string, enum_c_type string, value_name string, attrs []string) FastcSourceFile {
 	body := source_file.source
 	mut file_set := token.FileSet.new()
 	mut file := file_set.add_file('cv', body.len)
@@ -715,6 +730,15 @@ fn (g &Parser) substitute_comptime_enum_value(source_file FastcSourceFile, loop_
 					tok = s.scan()
 					continue
 				}
+				if member == .name && s.lit == 'attrs' {
+					edits << FastcSourceEdit{
+						start:       var_pos
+						end:         s.offset
+						replacement: fastc_string_array_literal(attrs)
+					}
+					tok = s.scan()
+					continue
+				}
 				tok = s.scan()
 				continue
 			}
@@ -724,6 +748,72 @@ fn (g &Parser) substitute_comptime_enum_value(source_file FastcSourceFile, loop_
 		tok = s.scan()
 	}
 	return fastc_apply_mapped_source_edits(source_file, edits)
+}
+
+// substitute_comptime_attribute rewrites one `$for x in Type.attributes { ... }` body for a
+// single attribute entry `name` or `name: arg`: `<var>.name`, `<var>.arg` and `<var>.has_arg`
+// become literals. Other `<var>.<member>` forms are left as-is so they surface as unsupported.
+fn (g &Parser) substitute_comptime_attribute(source_file FastcSourceFile, loop_var string, attr string) FastcSourceFile {
+	has_arg := attr.contains(':')
+	name := if has_arg { attr.all_before(':').trim_space() } else { attr }
+	mut arg := if has_arg { attr.all_after(':').trim_space() } else { '' }
+	if arg.len >= 2 && ((arg[0] == `'` && arg[arg.len - 1] == `'`)
+		|| (arg[0] == `"` && arg[arg.len - 1] == `"`)) {
+		arg = arg[1..arg.len - 1]
+	}
+	body := source_file.source
+	file := token.File.unindexed('ca', body.len)
+	mut s := scanner.new_scanner(g.prefs, .normal)
+	s.init(file, body)
+	mut edits := []FastcSourceEdit{}
+	mut tok := s.scan()
+	for tok != .eof {
+		if fastc_comptime_loop_var_token(tok) && s.lit == loop_var {
+			var_pos := s.pos
+			after := s.scan()
+			if after == .dot {
+				member := s.scan()
+				if member == .name && s.lit in ['name', 'arg', 'has_arg'] {
+					replacement := match s.lit {
+						'name' { fastc_string_literal(name) }
+						'arg' { fastc_string_literal(arg) }
+						else {
+							if has_arg { 'true' } else { 'false' }
+						}
+					}
+					edits << FastcSourceEdit{
+						start:       var_pos
+						end:         s.offset
+						replacement: replacement
+					}
+				}
+				tok = s.scan()
+				continue
+			}
+			tok = after
+			continue
+		}
+		tok = s.scan()
+	}
+	return fastc_apply_mapped_source_edits(source_file, edits)
+}
+
+// fastc_string_literal spells `value` as a single-quoted V string literal.
+fn fastc_string_literal(value string) string {
+	escaped := value.replace('\\', '\\\\').replace("'", "\\'").replace('$', '\\$')
+	return "'${escaped}'"
+}
+
+// fastc_string_array_literal spells `values` as a V `[]string` literal.
+fn fastc_string_array_literal(values []string) string {
+	if values.len == 0 {
+		return '[]string{}'
+	}
+	mut quoted := []string{cap: values.len}
+	for value in values {
+		quoted << fastc_string_literal(value)
+	}
+	return '[${quoted.join(', ')}]'
 }
 
 // read_comptime_is_type reads the type on the right of `<var>.typ is <Type>` and

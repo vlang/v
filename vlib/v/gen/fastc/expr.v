@@ -3892,6 +3892,13 @@ fn (g &Parser) semicolon_continues_expression() bool {
 		// The next `.field` starts the following map entry, not a member chain.
 		return false
 	}
+	if g.s.src[offset] == `.` {
+		// `.name:` can only be an enum-shorthand map key starting the next entry.
+		mut probe := g.s
+		if probe.scan() == .dot && probe.scan() == .name && probe.scan() == .colon {
+			return false
+		}
+	}
 	next := g.s.src[offset]
 	if next in [`*`, `-`, `+`] {
 		// Statement readers must keep unary prefixes separate (`record(err)\n*default`).

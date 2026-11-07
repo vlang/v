@@ -225,6 +225,10 @@ fn (mut g Parser) parse_c_directive() ! {
 	if c_directive.starts_with('insert ') {
 		c_directive = 'include ' + c_directive['insert '.len..]
 	}
+	// Ordinary headers already precede the generated V declarations.
+	if c_directive.starts_with('preinclude ') {
+		c_directive = 'include ' + c_directive['preinclude '.len..]
+	}
 	if c_directive.starts_with('include ') {
 		remainder := c_directive['include '.len..]
 		qualifier := remainder.all_before(' ')
@@ -642,6 +646,11 @@ fn (mut g Parser) skip_top_level_declaration() ! {
 		} else if g.tok == .semicolon && brace_depth == 0 && paren_depth == 0 && bracket_depth == 0 {
 			g.next()
 			if type_declaration && g.tok == .pipe {
+				continue
+			}
+			// A constant or global value can continue on the next line with a leading
+			// binary operator (`|| other`); no top-level item starts with one.
+			if !body_declaration && !type_declaration && fastc_token_continues_top_level_value(g.tok) {
 				continue
 			}
 			return

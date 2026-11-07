@@ -1011,6 +1011,9 @@ struct FastcLocalScopeChange {
 	name         string
 	previous     FastcLocal
 	had_previous bool
+	// A member narrowing (`x.f`) scoped to the block, restored like a local.
+	is_member       bool
+	member_previous FastcMemberSmartcast
 }
 
 struct FastcFunctionDeferBlock {
@@ -1293,6 +1296,10 @@ struct FastcGlobalDeclarations {
 	early_initializers  map[string]string
 	composite_types     map[string]bool
 	fixed_array_types   flat.TypeTextBindings
+	// Function literals initializing globals (`__global f = fn () {}`): their hoisted
+	// definitions and `__vf_fn_type_` typedefs, keyed by C name.
+	function_definitions map[string]string
+	function_typedefs    map[string]string
 }
 
 struct FastcConstantDeclarations {
@@ -1355,9 +1362,14 @@ struct FastcDeclarationAttribute {
 }
 
 struct FastcEnumInfo {
-	c_name  string
-	name    u32
-	fields  []string
+	c_name string
+	name   u32
+	fields []string
+	// field_attrs holds each value's attribute texts, parallel to fields; empty when
+	// no value has attributes.
+	field_attrs [][]string
+	// attrs holds the enum's own attribute texts (`json_as_number`).
+	attrs   []string
 	is_flag bool
 }
 
@@ -1377,6 +1389,11 @@ struct FastcTypeDeclarations {
 	// Value names declared by each enum, keyed by the enum's C name, in source
 	// order. Used to unroll `$for x in Enum.values { ... }`.
 	enum_field_names map[string][]string
+	// Attribute texts of each enum value, parallel to enum_field_names; only enums
+	// with attributed values are present.
+	enum_field_attrs map[string][][]string
+	// Attribute texts of each enum declaration with attributes, keyed by its C name.
+	enum_attrs map[string][]string
 	// Declared C names of sum types (`type X = A | B`). They share the boxed
 	// `{void*_object; uintptr_t _typ;}` layout with interfaces; construction boxes a
 	// variant and `match` dispatches on `_typ`.
@@ -1461,6 +1478,8 @@ struct Parser {
 	enum_flags             map[u32]bool
 	enum_field_types       flat.TypeTextBindings
 	enum_field_names       map[string][]string
+	enum_field_attrs       map[string][][]string
+	enum_attrs             map[string][]string
 	alias_base_types       flat.TypeTextBindings
 	fn_alias_return_types  flat.TypeTextBindings
 	sum_types              map[string]bool
@@ -1565,6 +1584,7 @@ mut:
 	or_value_captured           string
 	or_value_expected_type      u32
 	defer_depth                 int
+	defer_loop_base             int // loop nesting at the innermost `defer` block's start
 	captured_defer_lines        []string
 	deferred_lines              []string
 	deferred_block_starts       []int
@@ -1818,6 +1838,8 @@ struct FastcFileGenContext {
 	enum_flags                map[u32]bool
 	enum_field_types          flat.TypeTextBindings
 	enum_field_names          map[string][]string
+	enum_field_attrs          map[string][][]string
+	enum_attrs                map[string][]string
 	alias_base_types          flat.TypeTextBindings
 	fn_alias_return_types     flat.TypeTextBindings
 	sum_types                 map[string]bool
@@ -1949,6 +1971,8 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		enum_flags:                    ctx.enum_flags
 		enum_field_types:              ctx.enum_field_types
 		enum_field_names:              ctx.enum_field_names
+		enum_field_attrs:              ctx.enum_field_attrs
+		enum_attrs:                    ctx.enum_attrs
 		alias_base_types:              ctx.alias_base_types
 		fn_alias_return_types:         ctx.fn_alias_return_types
 		sum_types:                     ctx.sum_types
@@ -2430,6 +2454,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		enum_flags:                enum_flags
 		enum_field_types:          enum_field_types
 		enum_field_names:          type_output.enum_field_names
+		enum_field_attrs:          type_output.enum_field_attrs
+		enum_attrs:                type_output.enum_attrs
 		alias_base_types:          type_output.alias_base_types
 		fn_alias_return_types:     type_output.fn_alias_return_types
 		sum_types:                 type_output.sum_types
@@ -2519,6 +2545,12 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 			spawn_helpers[name] = text
 		}
 		c_flags << output.c_flags
+	}
+	for name, text in global_output.function_typedefs {
+		spawn_typedefs[name] = text
+	}
+	for name, text in global_output.function_definitions {
+		spawn_helpers[name] = text
 	}
 	for name, array_type_id in generation.fixed_array_types.ids {
 		fixed_array_types.set_id(name, array_type_id)

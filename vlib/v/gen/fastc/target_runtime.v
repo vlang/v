@@ -219,6 +219,10 @@ fn fastc_native_quoted_include_path(directive string, source_path string, prefs 
 	if header.contains('@VMODROOT') {
 		header = header.replace('@VMODROOT', fastc_vmod_root_for_file(source_path))
 	}
+	if header.contains('@DIR') {
+		// Match the emitted directive (fastc_resolve_c_pseudo_paths).
+		header = header.replace('@DIR', os.real_path(os.dir(os.real_path(source_path))))
+	}
 	if !os.is_abs_path(header) {
 		header = os.join_path(os.dir(source_path), header)
 	}

@@ -29,6 +29,41 @@ fn fastc_skip_attribute(mut scan scanner.Scanner) !token.Token {
 	return tok
 }
 
+// fastc_scan_attribute_texts consumes one `@[...]` attribute and returns the token after it,
+// plus each `;`-separated entry as written in the source, trimmed (`json: 'Red'`).
+fn fastc_scan_attribute_texts(mut scan scanner.Scanner) !(token.Token, []string) {
+	start := scan.offset
+	mut tok := scan.scan()
+	mut depth := 1
+	mut texts := []string{}
+	mut entry_start := start
+	for {
+		if tok == .eof {
+			return error('fastc parser does not support unfinished attribute')
+		}
+		if tok == .lsbr {
+			depth++
+		} else if tok == .rsbr {
+			depth--
+			if depth == 0 {
+				break
+			}
+		} else if tok == .semicolon && depth == 1 && scan.lit == ';' {
+			text := scan.src[entry_start..scan.pos].trim_space()
+			if text != '' {
+				texts << text
+			}
+			entry_start = scan.offset
+		}
+		tok = scan.scan()
+	}
+	text := scan.src[entry_start..scan.pos].trim_space()
+	if text != '' {
+		texts << text
+	}
+	return scan.scan(), texts
+}
+
 fn fastc_shared_parameter_is_name(scan scanner.Scanner, path string, module_name string, imports map[string]string, declared_types map[u32]bool, allow_short_placeholders bool) bool {
 	mut lookahead := scan
 	first := lookahead.scan()
@@ -723,6 +758,10 @@ fn fastc_skip_global_declaration(mut scan scanner.Scanner, path string) !token.T
 	mut expression_can_end := false
 	for tok != .eof {
 		if depth == 0 {
+			if tok == .semicolon && fastc_semicolon_continues_value(scan) {
+				tok = scan.scan()
+				continue
+			}
 			if tok in [.semicolon, .rpar] {
 				return tok
 			}

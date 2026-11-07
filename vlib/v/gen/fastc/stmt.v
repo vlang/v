@@ -90,9 +90,37 @@ fn (mut g Parser) set_scoped_local(name string, local FastcLocal) {
 	g.locals[name] = local
 }
 
+// set_scoped_member_smartcast narrows the member path `path` until the current block ends.
+fn (mut g Parser) set_scoped_member_smartcast(path string, cast FastcMemberSmartcast) {
+	if g.local_scope_depth > 0 {
+		if previous := g.member_smartcasts[path] {
+			g.local_scope_changes << FastcLocalScopeChange{
+				name:            path
+				had_previous:    true
+				is_member:       true
+				member_previous: previous
+			}
+		} else {
+			g.local_scope_changes << FastcLocalScopeChange{
+				name:      path
+				is_member: true
+			}
+		}
+	}
+	g.member_smartcasts[path] = cast
+}
+
 fn (mut g Parser) restore_local_scope(start int) {
 	for i := g.local_scope_changes.len - 1; i >= start; i-- {
 		change := g.local_scope_changes[i]
+		if change.is_member {
+			if change.had_previous {
+				g.member_smartcasts[change.name] = change.member_previous
+			} else {
+				g.member_smartcasts.delete(change.name)
+			}
+			continue
+		}
 		if change.had_previous {
 			g.locals[change.name] = change.previous
 		} else {
@@ -150,6 +178,25 @@ fn (mut g Parser) skip_disabled_function_statement() !bool {
 	return true
 }
 
+// defer_loop_jump_stays_inside reports whether the `break`/`continue` at the current token
+// targets a loop that starts inside the enclosing `defer` block.
+fn (g &Parser) defer_loop_jump_stays_inside() bool {
+	if g.parsing_loop_labels.len <= g.defer_loop_base {
+		return false
+	}
+	mut look := g.s
+	if look.scan() == .name {
+		label := look.lit
+		for i in g.defer_loop_base .. g.parsing_loop_labels.len {
+			if g.parsing_loop_labels[i] == label {
+				return true
+			}
+		}
+		return false
+	}
+	return true
+}
+
 fn (mut g Parser) parse_statement() !bool {
 	if g.skip_disabled_function_statement()! {
 		return false
@@ -160,7 +207,10 @@ fn (mut g Parser) parse_statement() !bool {
 				return g.unsupported('`return` not allowed inside a `defer` block')
 			}
 			.key_break, .key_continue {
-				return g.unsupported('`${g.tok.str()}` is not allowed in defer statements')
+				// A loop inside the deferred block may be left; one around it may not.
+				if !g.defer_loop_jump_stays_inside() {
+					return g.unsupported('`${g.tok.str()}` is not allowed in defer statements')
+				}
 			}
 			.key_goto {
 				return g.unsupported('goto is not allowed in defer statements')
@@ -656,9 +706,12 @@ fn (mut g Parser) parse_defer() ! {
 	}
 	g.capturing_defer = true
 	g.defer_depth++
+	previous_defer_loop_base := g.defer_loop_base
+	g.defer_loop_base = g.parsing_loop_labels.len
 	g.captured_defer_lines = []string{}
 	_ = g.parse_block_body()!
 	block := g.captured_defer_lines.clone()
+	g.defer_loop_base = previous_defer_loop_base
 	g.defer_depth--
 	g.capturing_defer = previous_capture
 	g.captured_defer_lines = previous_lines.clone()
@@ -1899,7 +1952,8 @@ fn (mut g Parser) parse_simple_statement() ! {
 				fastc_type_option,
 				fastc_type_result,
 			] && actual_type !in [fastc_type_option, fastc_type_result] && fastc_typed_option_payload(actual_type) == none {
-				if fastc_trim_pointer_type(actual_type) == fastc_type_ierror {
+				if fastc_trim_pointer_type(actual_type) == fastc_type_ierror
+					&& fastc_trim_pointer_type(statement_local.option_value_type) != fastc_type_ierror {
 					assigned_value = '(__v_result){.err=${value}, .state=1}'
 				} else {
 					payload_type := if statement_local.option_value_type != u32(0) {
@@ -2841,6 +2895,17 @@ fn (g &Parser) option_value_type_for_expression(tokens []FastcExpressionToken) u
 			}
 		}
 	}
+	// The module-qualified form, `mod.Enum.from_string(s)`.
+	if tokens.len >= 6 && tokens[0].tok == .name && tokens[1].tok == .dot && tokens[2].tok == .name
+		&& tokens[3].tok == .dot && tokens[4].tok == .name && tokens[4].lit == 'from_string'
+		&& tokens[5].tok == .lpar {
+		module_name := g.imports[tokens[0].lit] or { tokens[0].lit }
+		if enum_key := flat.source_type_existing_id(fastc_type_key(module_name, tokens[2].lit)) {
+			if g.declared_kinds[enum_key] == .enum_ {
+				return flat.source_type_id(fastc_c_declared_type_name(flat.source_type_name(enum_key)))
+			}
+		}
+	}
 	if map_lookup := g.render_map_lookup_option_expression(tokens) {
 		return map_lookup.typ
 	}
@@ -3111,6 +3176,16 @@ fn (g &Parser) expression_tokens_are_statement(expression_tokens []FastcExpressi
 			}
 			// Calling a value whose type is a `type X = fn (...)` alias is a statement.
 			if g.fn_alias_return_types.contains(flat.source_type_name(fastc_trim_pointer_type(local.typ))) {
+				return true
+			}
+		} else if global_key := g.unqualified_global_key(name) {
+			// So is calling a function value held by a `__global`.
+			global_type := g.global_types.type_id(global_key) or { u32(0) }
+			// An initializer `fn () {}` types it with its literal's `__vf_fn_type_` typedef.
+			global_type_name := flat.source_type_name(fastc_trim_pointer_type(global_type))
+			if global_type != u32(0) && (fastc_callable_signature(global_type) != none
+				|| global_type_name.starts_with('__vf_fn_type_')
+				|| g.fn_alias_return_types.contains(global_type_name)) {
 				return true
 			}
 		}
