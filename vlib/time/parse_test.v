@@ -39,7 +39,9 @@ fn test_parse_rfc2822() {
 	}
 	assert t2.year == 2019 && t2.month == 12 && t2.day == 12 && t2.hour == 6 && t2.minute == 7
 		&& t2.second == 45
-	assert t2.unix() == 1576130865
+	// 06:07:45 at +0800 is 22:07:45 UTC the day before.
+	assert t2.unix() == 1576102065
+	assert t2.zone()!.offset == 8 * time.seconds_per_hour
 }
 
 fn test_parse_rfc2822_invalid() {
@@ -469,4 +471,87 @@ fn test_parse_rfc2822_rejects_day_past_end_of_month() {
 fn test_parse_accepts_last_day_of_month() {
 	assert time.parse('2024-02-29 10:00:00')!.day == 29
 	assert time.parse_rfc3339('2024-04-30T10:00:00Z')!.day == 30
+}
+
+fn test_parse_rfc2822_applies_the_zone() {
+	utc := time.parse_rfc2822('Sun, 01 Nov 2026 12:00:00 +0000')!
+	assert utc.unix() == 1793534400
+	for zone, offset in {
+		'+0100': 3600
+		'-0500': -18000
+		'+0530': 19800
+		'-0000': 0
+		'GMT':   0
+		'UT':    0
+		'EST':   -18000
+		'pdt':   -25200
+		'Z':     0
+		'a':     0
+	} {
+		t := time.parse_rfc2822('Sun, 01 Nov 2026 12:00:00 ${zone}')!
+		assert t.unix() == 1793534400 - offset, zone
+		assert t.hour == 12, zone
+	}
+	// The same instant as parse_rfc3339 gives.
+	assert time.parse_rfc2822('Sun, 01 Nov 2026 12:00:00 +0100')!.unix() == time.parse_rfc3339('2026-11-01T12:00:00+01:00')!.unix()
+}
+
+fn test_parse_rfc2822_accepts_the_optional_forms() {
+	expected := i64(1793530800) // 2026-11-01 11:00:00 UTC
+	for s in [
+		'01 Nov 2026 12:00:00 +0100',
+		'Sun, 01 Nov 2026 12:00 +0100',
+		'sun, 01 nov 2026 12:00:00 +0100',
+		'SUN, 1 NOV 2026 12:00:00 +0100',
+		'Sun,01 Nov 2026 12:00:00 +0100',
+		'Sun, 01  Nov\t2026 12:00:00 +0100',
+		'Sun, 01 Nov 2026 12:00:00 +0100 (CET)',
+		'Sun, 01 Nov 2026 12:00:00 +0100(CET)',
+		'Sun, 01 Nov 2026 12:00:00 +0100 (Central (European) Time) (CET)',
+		r'Sun, 01 Nov 2026 12:00:00 +0100 (a \) b)',
+		r'Sun, 01 Nov 2026 12:00:00 +0100 (a \( b)',
+		r'Sun, 01 Nov 2026 12:00:00 +0100 (a \\)',
+		'Sun, 01 Nov 26 12:00:00 +0100',
+		'Sun, 01 Nov 126 12:00:00 +0100',
+	] {
+		t := time.parse_rfc2822(s) or {
+			assert false, '`${s}`: ${err}'
+			return
+		}
+		assert t.unix() == expected, s
+	}
+	assert time.parse_rfc2822('Thu, 01 Jan 70 00:00:00 +0000')!.year == 1970
+	// Without a zone, the time is read as UTC.
+	assert time.parse_rfc2822('Sun, 01 Nov 2026 11:00:00')!.unix() == expected
+}
+
+fn test_parse_rfc2822_rejects_invalid_dates() {
+	for s in [
+		'Mon, 01 Nov 2026 12:00:00 +0000', // 2026-11-01 is a Sunday
+		'Abc, 01 Nov 2026 12:00:00 +0000',
+		'Sun, 01 Nov 2026 12:00:00 +01',
+		'Sun, 01 Nov 2026 12:00:00 +0160',
+		'Sun, 01 Nov 2026 12:00:00 CET',
+		'Sun, 01 Nov 2026 12:00:00 J',
+		'Sun, 01 Nov 2026 12:00:00 +0100 extra',
+		'Sun, 01 Nov 2026 12:00:00 +0100 (CET) extra (CET)',
+		'Sun, 01 Nov 2026 12:00:00 +0100 CET)',
+		r'Sun, 01 Nov 2026 12:00:00 +0100 (CET\)',
+		'01 Nov 1888 12:00:00 +0000',
+		'00 Nov 2026 12:00:00 +0000',
+		'0 Nov 2026 12:00:00 +0000',
+		'32 Oct 2026 12:00:00 +0000',
+		'Sun, 01 Nov 2026 12:00:60 +0000',
+		'Sun, 01 Nov 2026 24:00:00 +0000',
+		'Sun, 01 Nov 2026 12:60:00 +0000',
+		'Sun, 01 Nov 2026 12:00:0 +0000',
+		'Sun, 01 Nov 2026 12 +0000',
+		'Sun, 001 Nov 2026 12:00:00 +0000',
+		'Sun, 01 November 2026 12:00:00 +0000',
+		'Sun, 01 Nov 2026',
+	] {
+		if t := time.parse_rfc2822(s) {
+			assert false, '`${s}` parsed as ${t}'
+		}
+	}
 }
