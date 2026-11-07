@@ -123,13 +123,14 @@ fn test_stopwatch_restart_zeros_the_elapsed_time() {
 
 fn test_ticks_advances() {
 	first := time.ticks()
-	// A millisecond count can have a coarser resolution, as GetTickCount64
-	// does on Windows. Bound the wait with an independent monotonic clock
-	// so a broken ticks() implementation still fails instead of hanging.
+	// Windows' default timer resolution is ~15.6 ms, so a short sleep may
+	// not advance the millisecond clock; loop until it does. Bound the wait
+	// with an independent monotonic clock so a broken ticks() implementation
+	// still fails instead of hanging.
 	deadline := time.sys_mono_now() + time.second
 	mut second := first
 	for second <= first && time.sys_mono_now() < deadline {
-		time.sleep(time.millisecond)
+		time.sleep(1 * time.millisecond)
 		second = time.ticks()
 	}
 	assert second > first

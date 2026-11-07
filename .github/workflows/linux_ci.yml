@@ -406,6 +406,20 @@ jobs:
         if: ${{ success() && !cancelled() && steps.build_examples.outcome == 'success' }}
         run: v run ci/linux_ci.vsh build_modules_clang
 
+  fastc-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V
+        run: make -j4 && ./v symlink
+      - name: fastc backend smoke
+        run: |
+          ./v -b fastc -o /tmp/hello_fastc examples/hello_world.v
+          /tmp/hello_fastc
+
   package2-linux:
     if: github.ref == 'refs/heads/master'
     name: Linux ${{ matrix.compiler }}
