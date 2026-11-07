@@ -1,15 +1,13 @@
 module builtin
 
-// freestanding_math.c.v: the SSA native float formatter reaches for the libc
-// math names (pow/fabs/floor) at C level; under -freestanding those resolve
-// through these pure V exports on both the C backend and the SSA one. No
-// dlmalloc dependency here, so any bf.v additions can call into this file.
+// freestanding_math.c.v: the libc math names (pow/fabs/floor) that the native
+// SSA float formatter, and on the BSD and Solaris bare runtimes the C backend's
+// float formatter, reach for; under -freestanding those resolve through these
+// pure V exports. No dlmalloc dependency here, so any bf.v additions can call
+// into this file. linux_bare/exports_d_freestanding.v carries the Linux C
+// backend's set, and a freestanding macOS program still links libSystem.
 
-$if freestanding && native && linux {
-
-	// Links for the SSA/x64 pipeline: the native float formatter reaches for
-	// these libc math names; drive them with pure V under -freestanding.
-
+$if freestanding && ((native && linux) || (!i386 && (freebsd || netbsd || dragonfly || solaris))) {
 	@[export: 'fabs']
 	@[markused]
 	fn bf_fabs(x f64) f64 {
@@ -19,34 +17,37 @@ $if freestanding && native && linux {
 	@[export: 'floor']
 	@[markused]
 	fn bf_floor(x f64) f64 {
-		mut r := x
-		if r < 0 {
-			mut t := -r
-			if t > 0 && t != f64(i64(t)) {
-				t++
-			}
-			r = -f64(i64(t))
-			return r
+		// Zero of either sign, NaN, the infinities and every |x| >= 2^52 are their
+		// own floor; the rest fit i64, whose conversion truncates toward zero.
+		if x == 0 || x != x || x <= -4503599627370496.0 || x >= 4503599627370496.0 {
+			return x
 		}
-		return f64(i64(r))
+		t := f64(i64(x))
+		return if t > x { t - 1 } else { t }
 	}
 
-	// bf_pow covers the formatting-needed cases: integer exponents fast path,
-	// exp/log fallback for fractional exponents.
+	// bf_pow takes the integer exponents the float formatter needs by exact
+	// repeated squaring, and the rest through exp and ln.
 	@[export: 'pow']
 	@[markused]
 	fn bf_pow(x f64, y f64) f64 {
+		if y == 0 || x == 1 {
+			return 1
+		}
+		if x != x || y != y {
+			return f64(0) / 0
+		}
 		if x == 0 {
-			return 0
+			return if y < 0 { f64(1) / 0 } else { 0 }
 		}
-		if x < 0 && y != f64(int(y)) { // NaN for fractional exponents of negatives
-			return f64(-1) / 0
+		y_is_int := bf_floor(y) == y
+		if x < 0 && !y_is_int {
+			return f64(0) / 0
 		}
-		iy := int(y)
-		if f64(iy) == y {
+		if y_is_int && y >= -2147483647 && y <= 2147483647 {
 			mut acc := 1.0
 			mut base := x
-			mut exp := iy
+			mut exp := int(y)
 			if exp < 0 {
 				exp = -exp
 				base = 1 / base
@@ -60,17 +61,24 @@ $if freestanding && native && linux {
 			}
 			return acc
 		}
-		// exp/log fallback via series approximation (freestanding has no libm)
+		if x < 0 {
+			// an integer exponent past the int range: its parity sets the sign
+			r := bf_exp(y * bf_ln(-x))
+			return if bf_floor(y / 2) * 2 == y { r } else { -r }
+		}
 		return bf_exp(y * bf_ln(x))
 	}
 
+	// bf_ln is the natural logarithm through the atanh series on [0.5, 2).
 	fn bf_ln(x f64) f64 {
-		// atanh series on (0,2]
 		if x == 0 {
 			return f64(-1) / 0
 		}
-		if x < 0 {
+		if x < 0 || x != x {
 			return f64(0) / 0
+		}
+		if x > 1.7976931348623157e308 {
+			return x
 		}
 		mut k := x
 		mut scale := 0
@@ -82,48 +90,52 @@ $if freestanding && native && linux {
 			k = k * 2
 			scale--
 		}
-		mut m := (k - 1) / (k + 1)
-		mut m2 := m * m
+		m := (k - 1) / (k + 1)
+		m2 := m * m
 		mut acc := m
 		mut term := m
 		for n in 1 .. 24 {
 			term *= m2
 			acc += term / f64(2 * n + 1)
 		}
-		// reduce: ln(2)=0.6931471805599453
 		return 2 * acc + f64(scale) * 0.6931471805599453
 	}
 
+	// bf_exp is e^x as 2^k * e^r, with k = trunc(x / ln 2) and a Taylor series
+	// for e^r.
 	fn bf_exp(x f64) f64 {
-		// e^x = 2^k * e^r with k = round(x/ln2), r |< ln2/2
+		if x != x {
+			return x
+		}
 		if x < -745 {
 			return 0
 		}
+		if x > 709.782712893384 {
+			return f64(1) / 0
+		}
 		k := int(x / 0.6931471805599453)
-		mut r := x - f64(k) * 0.6931471805599453
+		r := x - f64(k) * 0.6931471805599453
 		mut term := 1.0
 		mut acc := 1.0
 		for n in 1 .. 18 {
 			term *= r / f64(n)
 			acc += term
 		}
-		// scale by 2^k
 		mut power := 1.0
 		mut kk := k
-		if kk > 0 {
-			for kk > 0 {
-				power *= 2
-				kk--
-			}
-		} else {
-			for kk < 0 {
-				power = power / 2
-				kk++
-			}
+		for kk > 0 {
+			power *= 2
+			kk--
+		}
+		for kk < 0 {
+			power = power / 2
+			kk++
 		}
 		return acc * power
 	}
+}
 
+$if freestanding && native && linux {
 	// posix_memalign returns `size` bytes at an address that is a multiple of
 	// `alignment`, a power of two and a multiple of the pointer size. Alignments up to
 	// the plain allocator's own alignment come from it; larger ones take the aligned path.

@@ -825,7 +825,26 @@ fn print_c_errno() {
 // get_raw_line returns a one-line string from stdin along with `\n` if there is any.
 @[manualfree]
 pub fn get_raw_line() string {
-	$if windows {
+	$if freestanding || syscalls {
+		// libc's getline allocates the line with libc's malloc, which the bare
+		// runtime's own free must not release. Read one byte at a time, so stdin
+		// is not consumed past the line.
+		mut line := []u8{cap: 128}
+		mut ch := u8(0)
+		for {
+			nr, e := bf_read(0, &ch, 1)
+			if e != 0 || nr <= 0 {
+				break
+			}
+			line << ch
+			if ch == `\n` {
+				break
+			}
+		}
+		res := line.bytestr()
+		unsafe { line.free() }
+		return res
+	} $else $if windows {
 		is_console := is_atty(0) > 0
 		wide_char_size := if is_console { 2 } else { 1 }
 		h_input := C.GetStdHandle(C.STD_INPUT_HANDLE)
