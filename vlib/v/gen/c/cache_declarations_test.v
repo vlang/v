@@ -145,6 +145,53 @@ fn test_cached_header_retains_its_vlib_source_classification() {
 	assert !g.c_source_file_is_in_vlib('/repo/project/user.v')
 }
 
+fn test_vlib_assembled_from_links_classifies_both_spellings() {
+	$if windows {
+		return
+	}
+	base := os.real_path(os.join_path(os.vtmp_dir(), 'vlib_link_membership_${os.getpid()}'))
+	os.rmdir_all(base) or {}
+	defer {
+		os.rmdir_all(base) or {}
+	}
+	library := os.join_path(base, 'library')
+	staged := os.join_path(base, 'staged')
+	copy := os.join_path(base, 'copy')
+	for dir in [os.join_path(library, 'vlib', 'os'), os.join_path(library, 'vlib', 'term', 'termios'),
+		os.join_path(staged, 'vlib'), os.join_path(copy, 'vlib', 'os')] {
+		os.mkdir_all(dir) or { panic(err) }
+	}
+	for file in [os.join_path(library, 'vlib', 'os', 'os.c.v'),
+		os.join_path(library, 'vlib', 'term', 'termios', 'termios_nix.c.v'),
+		os.join_path(copy, 'vlib', 'os', 'os.c.v'), os.join_path(base, 'user.v')] {
+		os.write_file(file, 'module x\n') or { panic(err) }
+	}
+	// Like a staged runtime: the vlib folder is real, its modules are links.
+	for name in ['os', 'term'] {
+		os.symlink(os.join_path(library, 'vlib', name), os.join_path(staged, 'vlib', name)) or {
+			panic(err)
+		}
+	}
+	mut a := flat.FlatAst.new()
+	mut g := FlatGen.new()
+	g.a = &a
+	// The source is spelled through the link, the root is the link target's.
+	g.compiler_vroot = library
+	assert g.c_source_file_is_in_vlib('${staged}/vlib/os/os.c.v')
+	assert g.core_native_header_is_redeclared('${staged}/vlib/term/termios/termios_nix.c.v',
+		'<termios.h>')
+	// The source is the link target, the root is the staged one.
+	g.compiler_vroot = staged
+	assert g.c_source_file_is_in_vlib('${library}/vlib/os/os.c.v')
+	assert g.core_native_header_is_redeclared('${library}/vlib/term/termios/termios_nix.c.v',
+		'<termios.h>')
+	// An equally named file of another vlib is not the compiler's.
+	assert !g.c_source_file_is_in_vlib('${copy}/vlib/os/os.c.v')
+	assert !g.c_source_file_is_in_vlib('${base}/user.v')
+	assert !g.c_source_file_is_in_vlib('${copy}/vlib/missing.v')
+	assert (vlib_relative_source_path(staged, '${library}/vlib/os/os.c.v') or { '' }) == 'os/os.c.v'
+}
+
 fn test_cache_declaration_references_ignore_literals_and_comments() {
 	mut g := FlatGen.new()
 	g.cache_collect_declaration_refs('needed("quoted \\\" ignored", \'x\'); /* hidden */ // hidden_too\nother_2;')

@@ -6480,7 +6480,39 @@ fn (g &FlatGen) c_source_file_is_in_vlib(source_file string) bool {
 	} else {
 		g.a.cached_header_sources[source_file] or { source_file }
 	}
-	return source.replace('\\', '/').starts_with('${root}/vlib/')
+	return vlib_relative_source_path(root, source) != none
+}
+
+// vlib_relative_source_path returns the path of `source` inside `root`'s vlib
+// folder, or none when `source` is not one of its files. `root` uses `/`.
+// A vlib can be assembled from links, like a staged runtime that links the
+// library's module folders. Source paths then reach the generator spelled
+// either through the link or as its target, so a path under another
+// `/vlib/` folder also counts when it names the same file below `root`.
+fn vlib_relative_source_path(root string, source string) ?string {
+	if root.len == 0 {
+		return none
+	}
+	path := source.replace('\\', '/')
+	prefix := root + '/vlib/'
+	if path.starts_with(prefix) {
+		return path[prefix.len..]
+	}
+	mut real_source := ''
+	mut idx := path.index_after_('/vlib/', 0)
+	for idx >= 0 {
+		relative := path[idx + 6..]
+		if relative.len > 0 {
+			if real_source.len == 0 {
+				real_source = os.real_path(path)
+			}
+			if os.real_path(prefix + relative) == real_source {
+				return relative
+			}
+		}
+		idx = path.index_after_('/vlib/', idx + 1)
+	}
+	return none
 }
 
 // core_native_header_is_redeclared matches shipped bindings whose complete storage
@@ -6514,11 +6546,7 @@ fn (g &FlatGen) core_native_header_is_redeclared(source_file string, include_arg
 // core_native_source_header_is_redeclared is core_native_header_is_redeclared for
 // an include in the V source file `source`.
 fn (g &FlatGen) core_native_source_header_is_redeclared(root string, source string, include_arg string) bool {
-	path := source.replace('\\', '/')
-	if root.len == 0 || !path.starts_with(root + '/vlib/') {
-		return false
-	}
-	relative := path[root.len + 6..]
+	relative := vlib_relative_source_path(root, source) or { return false }
 	if relative.starts_with('term/termios/termios_') && relative.ends_with('.c.v') {
 		return include_arg in ['<termios.h>', '<sys/ioctl.h>']
 	}

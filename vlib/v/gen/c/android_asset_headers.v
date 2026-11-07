@@ -8,9 +8,11 @@ fn (g &FlatGen) is_android_asset_binding(source_file string) bool {
 	if source := g.a.cached_header_sources[source_file] {
 		// A module cache header combines the os declarations and records its
 		// first source file, rather than the asset binding's original filename.
-		return source.replace('\\', '/').starts_with(root + '/vlib/os/')
+		relative := vlib_relative_source_path(root, source) or { return false }
+		return relative.starts_with('os/')
 	}
-	return source_file.replace('\\', '/') == root + '/vlib/os/os_android_outside_termux.c.v'
+	relative := vlib_relative_source_path(root, source_file) or { return false }
+	return relative == 'os/os_android_outside_termux.c.v'
 }
 
 fn (g &FlatGen) omits_unused_android_asset_sdk() bool {

@@ -18225,11 +18225,8 @@ fn (g &FlatGen) should_emit_c_extern_decl_from_file(cfn string, source_file stri
 		}
 	}
 	if g.target.os == 'vinix' {
-		normalized_file := source_file.replace('\\', '/')
 		normalized_root := g.compiler_vroot.replace('\\', '/').trim_right('/')
-		is_vlib_file := normalized_root.len > 0
-			&& normalized_file.starts_with('${normalized_root}/vlib/')
-		if !is_vlib_file {
+		if vlib_relative_source_path(normalized_root, source_file) == none {
 			if cfn.starts_with('__builtin_') {
 				return false
 			}
