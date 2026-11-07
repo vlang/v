@@ -456,8 +456,19 @@ fn vmemory_block_new_sized(prev &VMemoryBlock, at_least int, align int, min_bloc
 					}
 				}
 				if unsafe { v.start == 0 } {
-					mmap_ptr := unsafe {
+					mut mmap_ptr := unsafe {
 						C.mmap(0, uint(block_size), C.PROT_READ | C.PROT_WRITE, C.MAP_ANONYMOUS | C.MAP_PRIVATE, -1, 0)
+					}
+					$if !prealloc_no_recycle ? {
+						if mmap_ptr == C.MAP_FAILED && C.errno == C.ENOMEM {
+							// Cached blocks still count against process memory limits.
+							// Release them when none is large enough for this request,
+							// then retry before falling back to libc allocation.
+							unsafe { prealloc_block_pool_free() }
+							mmap_ptr = unsafe {
+								C.mmap(0, uint(block_size), C.PROT_READ | C.PROT_WRITE, C.MAP_ANONYMOUS | C.MAP_PRIVATE, -1, 0)
+							}
+						}
 					}
 					if mmap_ptr != C.MAP_FAILED {
 						v.start = &u8(mmap_ptr)
