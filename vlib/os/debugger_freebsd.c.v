@@ -1,5 +1,6 @@
 module os
 
+@[unsafe]
 fn C.ptrace(i32, u32, voidptr, i32) i32
 
 // debugger_present returns a bool indicating if the process is being debugged.

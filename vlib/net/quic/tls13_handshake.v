@@ -233,6 +233,7 @@ pub fn (h &Tls13ClientHandshake) handshake_secrets() HandshakeSecrets {
 // ecdsa.PrivateKey.free() has no equivalent self-guard, so a bare second
 // h.ecdhe_private.free() call would still double-free even if
 // verified_chain's own check were copied here).
+@[unsafe]
 pub fn (mut h Tls13ClientHandshake) free() {
 	if h.freed {
 		return

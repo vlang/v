@@ -17,6 +17,7 @@ pub type Values = Properties
 
 pub type MutableValues = Values
 
+@[unsafe]
 pub fn (mut p Properties) ensure_cache() &LayoutCache {
 	if p.cache == unsafe { nil } {
 		p.cache = &LayoutCache{}

@@ -10,6 +10,7 @@ $if windows && tinyc {
 
 #insert "@VMODROOT/vlib/gg/testdata/multiwindow_probe_watchdog/watchdog_windows_helpers.h"
 
+@[unsafe]
 fn C.v_multiwindow_watchdog_spawn(application &u16, command_line &u16, work_directory &u16, environment &u16) voidptr
 fn C.v_multiwindow_watchdog_pid(state voidptr) u32
 fn C.v_multiwindow_watchdog_leader_alive(state voidptr) int

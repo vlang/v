@@ -91,6 +91,7 @@ fn new_h3_dial_call() &H3DialCall {
 // usable it falls to a singleflight dial (h3_dial_and_do). Always returns a
 // complete result or a genuine error -- there is no "not handled, try
 // something else" outcome, unlike h2_round_trip's own h1-fallback branches.
+@[unsafe]
 fn (mut t Transport) h3_round_trip(req &Request, key string, method Method, host string, port int, path string, data string, header Header) !Response {
 	if req.cert != '' || req.cert_key != '' {
 		// v1's TLS 1.3 stack rejects any CertificateRequest outright (no
@@ -154,6 +155,7 @@ fn (mut t Transport) h3_round_trip(req &Request, key string, method Method, host
 // minus every ALPN-probe-outcome branch h2's version needs: an h3 dial
 // either succeeds into a real H3MuxConn or fails outright, with no
 // "turned out to be h1" case to fall back through.
+@[unsafe]
 fn (mut t Transport) h3_dial_and_do(req &Request, key string, method Method, host string, port int, path string, data string, header Header) !Response {
 	t.mu.lock()
 	if mut existing := t.h3_dialing[key] {
@@ -364,6 +366,7 @@ fn h3_do_on_fresh_conn(req &Request, mut conn H3MuxConn, method Method, host str
 // (transport_h2.v). Reuses h2_client.v's h2_authority helper directly (RFC
 // 9114 §4.1.1 mirrors RFC 9113 here, so :authority construction needs no
 // h3-specific version).
+@[unsafe]
 fn do_h3(req &Request, mut conn H3MuxConn, method Method, host string, port int, path string, data string, header Header) !Response {
 	h3req := req.to_h3_request(method, h2_authority(host, port), path, data, header)
 	h3resp := conn.do(h3req)!

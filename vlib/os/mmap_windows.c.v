@@ -1,5 +1,6 @@
 module os
 
+@[unsafe]
 fn C.CreateFileMappingW(h voidptr, attrs voidptr, protect u32, maxhi u32, maxlo u32, name &u16) voidptr
 fn C.FlushFileBuffers(h voidptr) bool
 fn C.MapViewOfFile(h voidptr, access u32, offhi u32, offlo u32, nbytes uint) voidptr

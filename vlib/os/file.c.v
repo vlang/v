@@ -260,6 +260,7 @@ pub fn (f &File) eof() bool {
 }
 
 // reopen allows a `File` to be reused. It is mostly useful for reopening standard input and output.
+@[unsafe]
 pub fn (mut f File) reopen(path string, mode string) ! {
 	$if freestanding || syscalls {
 		// there is no FILE* stream to reattach to in -freestanding builds

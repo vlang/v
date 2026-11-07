@@ -110,6 +110,7 @@ fn test_option_and_result_appends_keep_operand_and_fallback_addresses() {
 	assert *values[4] == 105
 }
 
+@[unsafe]
 fn append_through_branch_aliases(mut values []&u64, data u64, choose_first bool) {
 	block_local := data
 	if_first := data * 2

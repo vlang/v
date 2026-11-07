@@ -195,6 +195,7 @@ fn test_headerless_runtime_prototypes_survive_warm_module_cache() {
 	}
 }
 
+@[unsafe]
 fn test_boehm_dlopen_uses_platform_gc_redirects() {
 	$if windows || freestanding || vinix {
 		return

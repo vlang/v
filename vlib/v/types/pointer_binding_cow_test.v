@@ -2,6 +2,7 @@ module types
 
 import v.flat
 
+@[unsafe]
 fn test_pointer_binding_snapshots_detach_on_parameter_unknown_and_invalidation_updates() {
 	mut tc := TypeChecker{}
 	tc.cur_scope = new_scope(unsafe { nil })

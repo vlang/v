@@ -69,6 +69,7 @@ fn new_group_internal(parent context.Context, config GroupConfig) &Group {
 //
 // Calling go after wait has started returns an error. The task should not
 // panic; panics in spawned work are not recovered by x.async.
+@[unsafe]
 pub fn (mut g Group) go(f JobFn) ! {
 	if f == unsafe { nil } {
 		return error(err_nil_job)

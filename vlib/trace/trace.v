@@ -71,6 +71,7 @@ pub fn (mut t Tracer) span(name string) Span {
 }
 
 // end closes the measurement, attributing the elapsed time to its name.
+@[unsafe]
 pub fn (mut s Span) end() {
 	if s.ended || s.tracer == unsafe { nil } {
 		return

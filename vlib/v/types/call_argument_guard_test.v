@@ -53,6 +53,7 @@ fn test_implicit_integer_constant_guard_preserves_all_type_spellings() {
 	}
 }
 
+@[unsafe]
 fn test_call_argument_guards_preserve_diagnostics() {
 	cases := [
 		'fn accept(value u8) {}\nfn main() { accept(255); accept(256); accept(-1) }',

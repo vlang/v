@@ -17,6 +17,7 @@ mut:
 	closed bool
 }
 
+@[unsafe]
 fn stream_result_from_guard(mut guard MySQLConnectionGuard) !StreamResult {
 	result := C.mysql_use_result(guard.conn)
 	if result == unsafe { nil } && get_errno(guard.conn) != 0 {
@@ -33,6 +34,7 @@ fn stream_result_from_guard(mut guard MySQLConnectionGuard) !StreamResult {
 	}
 }
 
+@[unsafe]
 fn drain_remaining_stream_results(conn &C.MYSQL) {
 	if conn == unsafe { nil } {
 		return
@@ -69,6 +71,7 @@ pub fn (db &DB) query_stream(query string) !StreamResult {
 }
 
 // fields returns metadata for the streamed result columns.
+@[unsafe]
 pub fn (r &StreamResult) fields() []Field {
 	if r.state == unsafe { nil } {
 		return []Field{}
@@ -78,6 +81,7 @@ pub fn (r &StreamResult) fields() []Field {
 
 // next_batch reads at most `size` rows from the server. An empty batch means
 // that the result is exhausted. Exhausting the result closes it automatically.
+@[unsafe]
 pub fn (mut r StreamResult) next_batch(size int) ![]NullableRow {
 	if size <= 0 {
 		return error('db.mysql: stream batch size must be greater than zero')
@@ -122,6 +126,7 @@ pub fn (mut r StreamResult) next_batch(size int) ![]NullableRow {
 	return rows
 }
 
+@[unsafe]
 fn (mut state StreamResultState) close() {
 	if state.closed {
 		return
@@ -138,6 +143,7 @@ fn (mut state StreamResultState) close() {
 // close frees an unbuffered result, discards any later results from a
 // multi-statement query, and releases its connection lock. It is safe to call
 // close more than once, including through copied handles.
+@[unsafe]
 pub fn (mut r StreamResult) close() {
 	if r.state == unsafe { nil } {
 		return
@@ -169,6 +175,7 @@ mut:
 
 // prepare_stream prepares a one-shot statement for streaming. Call execute,
 // read rows with next_batch, and close it if it is not read to exhaustion.
+@[unsafe]
 pub fn (db &DB) prepare_stream(query string) !StreamStmt {
 	mut guard := db.acquire_connection_guard()!
 	stmt := C.mysql_stmt_init(guard.conn)
@@ -192,6 +199,7 @@ pub fn (db &DB) prepare_stream(query string) !StreamStmt {
 }
 
 // execute binds string parameters and starts the unbuffered statement result.
+@[unsafe]
 pub fn (mut stmt StreamStmt) execute(params []string) ! {
 	if stmt.state == unsafe { nil } {
 		return error('db.mysql: cannot execute an uninitialized stream statement')
@@ -260,6 +268,7 @@ pub fn (mut stmt StreamStmt) execute(params []string) ! {
 }
 
 // fields returns metadata for the prepared statement result columns.
+@[unsafe]
 pub fn (stmt &StreamStmt) fields() []Field {
 	if stmt.state == unsafe { nil } {
 		return []Field{}
@@ -269,6 +278,7 @@ pub fn (stmt &StreamStmt) fields() []Field {
 
 // next_batch reads at most `size` rows from the prepared statement result. An
 // empty batch means that the result is exhausted and has been closed.
+@[unsafe]
 pub fn (mut stmt StreamStmt) next_batch(size int) ![]NullableRow {
 	if size <= 0 {
 		return error('db.mysql: stream batch size must be greater than zero')
@@ -339,6 +349,7 @@ pub fn (mut stmt StreamStmt) next_batch(size int) ![]NullableRow {
 	return rows
 }
 
+@[unsafe]
 fn (mut state StreamStmtState) close() {
 	if state.closed {
 		return
@@ -358,6 +369,7 @@ fn (mut state StreamStmtState) close() {
 
 // close frees pending statement results, closes the statement, and releases
 // its connection lock. It is safe to call close more than once.
+@[unsafe]
 pub fn (mut stmt StreamStmt) close() {
 	if stmt.state == unsafe { nil } {
 		return

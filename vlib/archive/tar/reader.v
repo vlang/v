@@ -81,6 +81,7 @@ fn (mut b Read) set_long_path(long_path &LongPath) {
 
 // get_path returns the path of this read. The path is valid for blocks of types
 // directory, file and file data.
+@[unsafe]
 pub fn (b Read) get_path() string {
 	if b.long_path != unsafe { nil } {
 		return b.long_path.get_path()

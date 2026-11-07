@@ -13,6 +13,7 @@ fn nested_mul(a int, b int) int {
 	return a * b
 }
 
+@[unsafe]
 fn nested_outer(x int, cb fn (int, int) int, p voidptr) int {
 	extra := if p == unsafe { nil } { 0 } else { 1000 }
 	return cb(x, 10) + extra

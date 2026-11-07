@@ -402,6 +402,7 @@ fn connect_slot(conninfo string) !IdleSlot {
 
 // physical_close_handle tears down a raw libpq handle. Used by the pool when
 // it discards an expired/broken slot or unwinds during shutdown.
+@[unsafe]
 fn physical_close_handle(handle voidptr) {
 	if handle != unsafe { nil } {
 		C.PQfinish(handle)
@@ -418,6 +419,7 @@ fn slot_expired(slot IdleSlot, max_lifetime time.Duration) bool {
 }
 
 // slot_bad reports whether the libpq handle in `slot` is no longer usable.
+@[unsafe]
 fn slot_bad(slot IdleSlot) bool {
 	if slot.bad {
 		return true
@@ -441,6 +443,7 @@ fn (mut c Conn) ensure_active() ! {
 
 // is_bad reports whether the underlying libpq connection has gone bad
 // (e.g. dropped TCP, server idle-timeout).
+@[unsafe]
 pub fn (mut c Conn) is_bad() bool {
 	if c.bad {
 		return true
@@ -785,6 +788,7 @@ fn (mut c Conn) handle_error(res voidptr, elabel string) ! {
 
 // copy_expert executes COPY command
 // https://www.postgresql.org/docs/9.5/libpq-copy.html
+@[unsafe]
 pub fn (mut c Conn) copy_expert(query string, mut file io.ReaderWriter) !int {
 	c.ensure_active()!
 	mut res := C.PQexec(c.conn, &char(query.str))
@@ -1029,6 +1033,7 @@ pub fn (mut c Conn) unlisten_all() ! {
 
 // escape_literal returns `value` as a quoted PostgreSQL literal that is safe to interpolate into
 // a query. Prefer parameterized queries when they can express the operation.
+@[unsafe]
 pub fn (mut c Conn) escape_literal(value string) !string {
 	c.ensure_active()!
 	escaped := C.PQescapeLiteral(c.conn, &char(value.str), uint(value.len))
@@ -1080,6 +1085,7 @@ pub fn (mut c Conn) consume_input() !bool {
 // get_notification returns the next pending notification from the server, if any.
 // Returns none if there are no pending notifications.
 // You should call consume_input() before this to ensure all pending notifications are available.
+@[unsafe]
 pub fn (mut c Conn) get_notification() ?Notification {
 	c.ensure_active() or { return none }
 	notify := C.PQnotifies(c.conn)

@@ -1,5 +1,6 @@
 module os
 
+@[unsafe]
 fn C.GetEnvironmentVariableW(name &u16, buffer &u16, size u32) u32
 
 // windows_env_lookup reads `name` from the process environment block, which is what

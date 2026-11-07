@@ -421,6 +421,7 @@ fn gg_init_sokol_window(user_data voidptr) {
 	}
 }
 
+@[unsafe]
 fn gg_frame_fn(mut ctx Context) {
 	ctx.frame++
 	if ctx.config.frame_fn == unsafe { nil } {
@@ -502,6 +503,7 @@ fn (mut ctx Context) pace_frame() {
 	ctx.frame_timer.restart()
 }
 
+@[unsafe]
 fn gg_event_fn(ce voidptr, user_data voidptr) {
 	// e := unsafe { &sapp.Event(ce) }
 	mut e := unsafe { &Event(ce) }
@@ -652,6 +654,7 @@ fn gg_event_fn(ce voidptr, user_data voidptr) {
 	}
 }
 
+@[unsafe]
 fn gg_cleanup_fn(user_data voidptr) {
 	mut ctx := unsafe { &Context(user_data) }
 	if ctx.config.cleanup_fn != unsafe { nil } {
@@ -664,6 +667,7 @@ fn gg_cleanup_fn(user_data voidptr) {
 	gg_release_gfx_render_owner(.legacy_context, user_data)
 }
 
+@[unsafe]
 fn gg_fail_fn(msg &char, user_data voidptr) {
 	mut ctx := unsafe { &Context(user_data) }
 	vmsg := unsafe { tos3(msg) }
@@ -687,6 +691,7 @@ pub fn start(cfg Config) {
 }
 
 // new_context returns an initialized `Context` allocated on the heap.
+@[unsafe]
 pub fn new_context(cfg Config) &Context {
 	mut ctx := &Context{
 		user_data:        cfg.user_data
@@ -735,6 +740,7 @@ fn (mut ctx Context) set_cached_window_size(width int, height int) {
 	ctx.window.height = height
 }
 
+@[unsafe]
 fn gg_apply_window_resizable() {
 	$if macos {
 		window := sapp.macos_get_window()
@@ -756,6 +762,7 @@ fn gg_apply_window_resizable() {
 	}
 }
 
+@[unsafe]
 fn gg_resize_window(width int, height int) {
 	if width <= 0 || height <= 0 {
 		return
@@ -804,6 +811,7 @@ fn gg_resize_window(width int, height int) {
 }
 
 // run starts the main loop of the context.
+@[unsafe]
 pub fn (mut ctx Context) run() {
 	// set context late, in case it changed (e.g., due to embedding)
 	ctx.window = sapp.Desc{
@@ -1089,6 +1097,7 @@ pub fn high_dpi() bool {
 }
 
 // screen_size returns the size of the active screen.
+@[unsafe]
 pub fn screen_size() Size {
 	$if macos {
 		return gg_get_screen_size()

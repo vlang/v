@@ -58,7 +58,7 @@ fn churn_allocations() {
 // at least the array's size, starting just before V's data (V's array header
 // plus Boehm's debug header). A dropped block is either unknown to GC_base or
 // has been reused for smaller objects.
-@[noinline]
+@[noinline; unsafe]
 fn array_block_intact(holder &ArrayHolder) bool {
 	block := unsafe { voidptr(u64(holder.items.data) - u64(holder.items.offset)) }
 	base := C.GC_base(block)

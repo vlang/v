@@ -9,6 +9,7 @@ import net
 // tcp_conn and must keep it open until the returned TLS connection is shut down.
 // With validate enabled, verify supplies the CA certificates trusted for client
 // authentication. alpn_protocols configures the server's protocol selection.
+@[unsafe]
 pub fn new_ssl_server_conn(mut tcp_conn net.TcpConn, config SSLConnectConfig) !&SSLConn {
 	if config.cert == '' || config.cert_key == '' {
 		return error('net.openssl new_ssl_server_conn, no certificate or key provided')

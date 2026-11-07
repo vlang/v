@@ -456,6 +456,7 @@ fn get_all_commands() []Command {
 	return res
 }
 
+@[unsafe]
 fn (mut cmd Command) run() ? {
 	// Changing the current directory is needed for some of the compiler tests,
 	// vlib/v/tests/local_test.v and vlib/v/tests/repl/repl_test.v

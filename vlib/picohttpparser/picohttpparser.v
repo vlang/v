@@ -105,6 +105,7 @@ fn (mut r Request) phr_parse_request_path_pipeline(buf_start &u8, buf_end &u8, m
 	pret.err = 'error parsing request: no request found'
 }
 
+@[unsafe]
 fn (mut r Request) phr_parse_request(buf_start &u8, buf_end &u8, mut pret Pret) &u8 {
 	// make copy of `buf_start` that can be mutated
 	mut buf := unsafe { buf_start }
@@ -181,7 +182,7 @@ fn (mut r Request) phr_parse_request(buf_start &u8, buf_end &u8, mut pret Pret) 
 	return r.parse_headers(buf, buf_end, mut pret)
 }
 
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn (mut r Request) parse_headers(buf_start &u8, buf_end &u8, mut pret Pret) &u8 {
 	mut buf := unsafe { buf_start }
 
@@ -295,6 +296,7 @@ fn (mut r Request) parse_headers(buf_start &u8, buf_end &u8, mut pret Pret) &u8 
 }
 
 // is_complete checks if an http request is done
+@[unsafe]
 fn is_complete(buf_start &u8, buf_end &u8, last_len int, mut pret Pret) &u8 {
 	mut ret_cnt := 0
 	// get the last 3 characters of the request buffer

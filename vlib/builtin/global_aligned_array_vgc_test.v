@@ -12,6 +12,7 @@ __global vgc_global_aligned_cells = &[1]VgcGlobalAlignedCell{init: VgcGlobalAlig
 	value: 'managed field'.repeat(16)
 }}
 
+@[unsafe]
 fn test_global_aligned_array_is_scanned_by_vgc() {
 	$if vgc ? {
 		assert uint(voidptr(vgc_global_aligned_cells)) % 512 == 0
@@ -37,6 +38,7 @@ fn test_global_aligned_array_is_rooted_without_stack_references() {
 	}
 }
 
+@[unsafe]
 fn vgc_test_object_is_marked(value voidptr) bool {
 	$if vgc ? {
 		span := vgc_find_span(value)

@@ -47,6 +47,7 @@ fn test_cached_module_closure_dependencies_outlive_prepare_scope() {
 	}
 }
 
+@[unsafe]
 fn test_cached_module_preserves_generated_closure_dependencies() {
 	mut state := V3ModuleCacheState{
 		module_sources: {
@@ -80,6 +81,7 @@ fn test_cached_module_preserves_generated_closure_dependencies() {
 	assert cache_dependency_modules(&state, ['other']) == ['closure']
 }
 
+@[unsafe]
 fn test_cached_modules_keep_their_own_wrapper_closure_dependencies() {
 	mut state := V3ModuleCacheState{
 		module_sources: {

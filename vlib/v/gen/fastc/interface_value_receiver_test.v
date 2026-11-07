@@ -5,6 +5,7 @@ import v.cmdexec
 import v.flat
 import v.pref
 
+@[unsafe]
 fn test_fastc_mutable_interface_dispatches_value_and_pointer_receivers() {
 	$if !macos && !linux {
 		return

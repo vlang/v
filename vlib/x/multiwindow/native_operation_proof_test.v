@@ -69,6 +69,7 @@ $if linux {
 		#flag -include @VMODROOT/vlib/x/multiwindow/testdata/native_egl_release_oracle_helpers.h
 		#insert "@VMODROOT/vlib/x/multiwindow/testdata/native_egl_release_oracle_helpers.h"
 
+		@[unsafe]
 		fn C.v_multiwindow_test_egl_release_oracle_reset()
 		fn C.v_multiwindow_test_release_oracle_reset_sequence()
 		fn C.v_multiwindow_test_egl_release_oracle_count() u64
@@ -529,6 +530,7 @@ fn test_native_primitive_darwin_generated_c_has_no_linux_egl_boundary() {
 	assert generated.contains('VMultiwindowNativePrimitive')
 }
 
+@[unsafe]
 fn test_native_proof_authority_has_exact_bounds_and_explicit_lifecycle() {
 	assert native_primitive_plan_capacity == 8
 	assert native_operation_trace_capacity == $if linux && sokol_wayland ? {
@@ -855,6 +857,7 @@ fn test_native_lifetime_retirement_survives_trace_overflow_and_preserves_prefix(
 	assert authority.disarm_proof()
 }
 
+@[unsafe]
 fn test_native_proof_generation_exhaustion_is_sticky_and_never_wraps() {
 	mut authority := NativeOperationAuthority{}
 	native_bind_renderer_authority_for_test(mut authority, 929, 937)!
@@ -963,6 +966,7 @@ fn test_native_plan_rejects_duplicate_and_capacity_overflow_without_mutation() {
 	}
 }
 
+@[unsafe]
 fn test_gg_native_plan_pair_rolls_back_duplicate_secondary_and_disarms() {
 	$if gg_multiwindow ? {
 		baseline := native_proof_baseline_context()
@@ -2041,6 +2045,7 @@ fn native_lifetime_claim_succeeds_for_test(mut authority NativeOperationAuthorit
 	return true
 }
 
+@[unsafe]
 fn native_lifetime_release_start_for_test(authority &NativeOperationAuthority, ticket_context NativeOperationContext) int {
 	if authority.proof == unsafe { nil } {
 		return -1
@@ -2124,6 +2129,7 @@ fn native_proof_call_primitive(valid_mask u64, return_value i64, handle u64, nat
 	return raw
 }
 
+@[unsafe]
 fn native_proof_snapshot(authority &NativeOperationAuthority) NativeAuthorityProofSnapshot {
 	if authority.proof == unsafe { nil } {
 		return NativeAuthorityProofSnapshot{
@@ -5356,6 +5362,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		multiwindow_probe_gate.await_parent_release(2 * time.second)!
 	}
 
+	@[unsafe]
 	fn native_appkit_admit_window_for_test(app &App, window WindowId) ! {
 		$if darwin {
 			app.assert_owner_thread()!
@@ -5767,6 +5774,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 			&& context.target_lease_epoch == lease.target_epoch && context.ordinal != 0
 	}
 
+	@[unsafe]
 	fn native_find_sokol_boundary_context_for_test(app &App, lease RenderTargetLease, target RenderWindowSnapshot, domain NativeRenderDomain, operation NativeRenderOperation, has_target_identity bool) NativeOperationContext {
 		assert app.backend.native_operations.proof != unsafe { nil }
 		assert !app.backend.native_operations.proof.trace_overflow
@@ -5786,6 +5794,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		return result
 	}
 
+	@[unsafe]
 	fn native_assert_successful_boundary_trace_for_test(authority &NativeOperationAuthority, context NativeOperationContext) NativePrimitiveCapture {
 		assert authority.proof != unsafe { nil }
 		assert !authority.proof.trace_overflow
@@ -5911,6 +5920,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_assert_d3d11_sokol_attachment_for_test(app &App, record multiwindow_sokol_trace.Record, lease RenderTargetLease, target RenderWindowSnapshot) ! {
 		$if windows && sokol_d3d11 ? {
 			state := app.render_backend_state()!
@@ -6034,6 +6044,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		native_proof_assert_invalid_trace_tail(snapshot)
 	}
 
+	@[unsafe]
 	fn native_assert_proof_drained_for_test(authority &NativeOperationAuthority) {
 		assert authority.proof != unsafe { nil }
 		native_assert_proof_snapshot_drained_for_test(native_proof_snapshot(authority))
@@ -6209,6 +6220,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		native_proof_assert_invalid_trace_tail(snapshot)
 	}
 
+	@[unsafe]
 	fn native_assert_egl_failure_capture_for_test(authority &NativeOperationAuthority, primary NativeOperationContext, egl_error i64) {
 		assert authority.proof != unsafe { nil }
 		native_assert_egl_failure_capture_in_snapshot_for_test(native_proof_snapshot(authority),
@@ -6346,6 +6358,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		return first_error, first
 	}
 
+	@[unsafe]
 	fn native_egl_lifetime_is_cleared_for_test(app &App) bool {
 		return match app.backend.kind {
 			.x11 {
@@ -6477,6 +6490,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_acceptance_index_for_test(authority &NativeOperationAuthority, context NativeOperationContext) int {
 		assert authority.proof != unsafe { nil }
 		return native_acceptance_index_in_snapshot_for_test(native_proof_snapshot(authority),
@@ -6496,6 +6510,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		return matches[0]
 	}
 
+	@[unsafe]
 	fn native_egl_actual_binding_queries_for_test(authority &NativeOperationAuthority) []NativeOperationTraceEntry {
 		mut result := []NativeOperationTraceEntry{}
 		if authority.proof == unsafe { nil } {
@@ -6512,6 +6527,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		return result
 	}
 
+	@[unsafe]
 	fn native_find_real_operation_context_for_test(authority &NativeOperationAuthority, operation NativeRenderOperation) !NativeOperationContext {
 		if authority.proof == unsafe { nil } {
 			return error('native proof is not armed')
@@ -6571,12 +6587,14 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		assert accepted.display_error == expected_display_error
 	}
 
+	@[unsafe]
 	fn native_assert_wayland_compound_capture_for_test(authority &NativeOperationAuthority, primary NativeOperationContext, expected NativeRenderDisposition, expected_errno i64, expected_display_error i64) {
 		assert authority.proof != unsafe { nil }
 		native_assert_wayland_compound_capture_in_snapshot_for_test(native_proof_snapshot(authority),
 			primary, expected, expected_errno, expected_display_error)
 	}
 
+	@[unsafe]
 	fn native_wayland_trace_start_for_test(authority &NativeOperationAuthority, context NativeOperationContext) !int {
 		if authority.proof == unsafe { nil } {
 			return error('native proof is not armed')
@@ -6591,6 +6609,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		return error('native trace contains no exact `${context.operation}` context')
 	}
 
+	@[unsafe]
 	fn native_assert_wayland_plan_consumed_for_test(authority &NativeOperationAuthority, primary NativeOperationContext, injected NativePrimitiveEvidence, display_error i64) {
 		assert authority.proof != unsafe { nil }
 		query := native_wayland_display_error_context_from_authority_for_test(authority,
@@ -6619,6 +6638,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		assert query_matches == 1
 	}
 
+	@[unsafe]
 	fn native_assert_wayland_plan_still_armed_for_test(authority &NativeOperationAuthority, primary NativeOperationContext) {
 		assert authority.proof != unsafe { nil }
 		query := native_wayland_display_error_context_from_authority_for_test(authority,
@@ -6685,12 +6705,14 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		return error('native retry did not execute a successful uninjected `${operation}` boundary')
 	}
 
+	@[unsafe]
 	fn native_assert_wayland_uninjected_success_after_for_test(authority &NativeOperationAuthority, operation NativeRenderOperation, start_index int) !NativeOperationContext {
 		assert authority.proof != unsafe { nil }
 		return native_assert_wayland_uninjected_success_after_in_snapshot_for_test(native_proof_snapshot(authority),
 			operation, start_index)
 	}
 
+	@[unsafe]
 	fn native_wayland_has_successful_acceptance_after_for_test(authority &NativeOperationAuthority, operation NativeRenderOperation, start_index int) bool {
 		if authority.proof == unsafe { nil } {
 			return false
@@ -6705,6 +6727,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		return false
 	}
 
+	@[unsafe]
 	fn native_clear_trace_preserving_consumed_plan_for_test(mut authority NativeOperationAuthority) [native_primitive_plan_capacity]NativePrimitivePlanEntry {
 		assert authority.proof != unsafe { nil }
 		expected_plan := authority.proof.plan
@@ -6753,6 +6776,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		return cleared
 	}
 
+	@[unsafe]
 	fn native_reset_or_clear_proof_for_test(mut authority NativeOperationAuthority) {
 		assert authority.proof != unsafe { nil }
 		if authority.has_live_tickets_for_proof_generation(authority.proof.generation) {
@@ -6799,6 +6823,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_wayland_display_error_context_from_authority_for_test(authority &NativeOperationAuthority, ordinal u64) NativeOperationContext {
 		assert authority.proof != unsafe { nil }
 		return native_wayland_display_error_context_from_snapshot_for_test(native_proof_snapshot(authority),
@@ -6830,6 +6855,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		assert !armed_prepare
 	}
 
+	@[unsafe]
 	fn native_assert_wayland_prepare_balance_for_test(authority &NativeOperationAuthority) {
 		assert authority.proof != unsafe { nil }
 		native_assert_wayland_prepare_balance_in_snapshot_for_test(native_proof_snapshot(authority))
@@ -6846,6 +6872,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		return count
 	}
 
+	@[unsafe]
 	fn native_real_call_count_for_test(authority &NativeOperationAuthority, operation NativeRenderOperation) int {
 		if authority.proof == unsafe { nil } {
 			return 0
@@ -6879,6 +6906,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_assert_dxgi_compound_capture_for_test(authority &NativeOperationAuthority, primary NativeOperationContext, query NativeOperationContext, expected NativeRenderDisposition, operation_hresult i64, removal_hresult i64) int {
 		assert authority.proof != unsafe { nil }
 		mut start := -1
@@ -7005,6 +7033,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_dxgi_assert_durable_slots_cleared_for_test(app &App) {
 		$if windows && sokol_d3d11 ? {
 			assert app.backend.win32.device == unsafe { nil }
@@ -7543,6 +7572,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 			after_oracle, released_callback_tickets)
 	}
 
+	@[unsafe]
 	fn native_wayland_dispatch_injected_read_at_sync_boundary_for_test(mut app App, injected NativePrimitiveEvidence) !(NativeRenderResult, NativeOperationContext) {
 		$if linux && sokol_wayland ? {
 			if !app.backend.native_operations.owner_thread_is_current() {
@@ -7629,6 +7659,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_wayland_dispatch_sync_for_test(mut app App) !NativeWaylandSyncDispatchProof {
 		$if linux && sokol_wayland ? {
 			if !app.backend.native_operations.owner_thread_is_current() {
@@ -7795,6 +7826,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		return error('EGL target loss did not produce an eligible distinct replacement')
 	}
 
+	@[unsafe]
 	fn native_egl_exercise_bad_surface(post_commit bool) ! {
 		backend := native_runtime_backend_for_test()!
 		mut app := native_runtime_new_app_for_test(backend)!
@@ -8143,6 +8175,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		native_assert_phase_a_ticket_retirement_for_test(stopped, remaining_tickets, 0)
 	}
 
+	@[unsafe]
 	fn native_egl_exercise_bad_native_window() ! {
 		backend := native_runtime_backend_for_test()!
 		mut app := native_runtime_new_app_for_test(backend)!
@@ -8845,6 +8878,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		return state.target
 	}
 
+	@[unsafe]
 	fn native_egl_exercise_bad_current_surface() ! {
 		backend := native_runtime_backend_for_test()!
 		mut app := native_runtime_new_app_for_test(backend)!
@@ -9508,6 +9542,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		native_stop_twice_with_exact_proof_for_test(mut app)!
 	}
 
+	@[unsafe]
 	fn native_wayland_exercise_fatal_transport_cleanup() ! {
 		mut app := native_runtime_new_app_for_test(.wayland)!
 		window := native_runtime_new_window_for_test(mut app,
@@ -9698,6 +9733,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_assert_egl_display_acquire_rejected_after_real_call_for_test(authority &NativeOperationAuthority, context NativeOperationContext) {
 		assert authority.proof != unsafe { nil }
 		mut real_call_count := 0
@@ -9741,6 +9777,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		assert health_count == 1
 	}
 
+	@[unsafe]
 	fn native_assert_linux_failed_start_all_clean_for_test(backend &Backend) {
 		assert backend.teardown_notices.len == 0
 		assert backend.pending_delivery.len == 0
@@ -10097,6 +10134,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		assert native_proof_result_equal(snapshot.trace[start + 5].result, accepted.result)
 	}
 
+	@[unsafe]
 	fn native_wayland_exercise_normal_frame_callback_retirement() ! {
 		mut app := native_runtime_new_app_for_test(.wayland)!
 		window := native_runtime_new_window_for_test(mut app,
@@ -10229,6 +10267,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 			.wayland, 3, callback_ticket.native_identity) == callback_oracle.callback_completions[0].sequence
 	}
 
+	@[unsafe]
 	fn native_wayland_exercise_frame_callback_trampoline_post_destroy_completion() ! {
 		mut app := native_runtime_new_app_for_test(.wayland)!
 		window := native_runtime_new_window_for_test(mut app,
@@ -10323,6 +10362,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_wayland_exercise_pending_callback_child_first_stop() ! {
 		mut app := native_runtime_new_app_for_test(.wayland)!
 		window := native_runtime_new_window_for_test(mut app,
@@ -10361,6 +10401,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		native_assert_phase_a_ticket_retirement_for_test(stopped, tickets, 0)
 	}
 
+	@[unsafe]
 	fn native_wayland_retire_pending_frame_callback_for_test(mut app App, window WindowId) ! {
 		if app.backend.kind != .wayland {
 			return
@@ -10659,6 +10700,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 			created_callback) == callback_destroy_sequence
 	}
 
+	@[unsafe]
 	fn native_wayland_window_counts_for_test(app &App, window WindowId) !(int, int, int) {
 		$if linux && sokol_wayland ? {
 			index := app.backend.wayland.window_record_index(window) or {
@@ -11357,6 +11399,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_dxgi_exercise_startup_failure(operation_hresult i64, expect_null bool) ! {
 		mut app := native_dxgi_new_uninitialized_app_for_test()!
 		assert app.backend.native_operations.arm_proof()
@@ -11962,6 +12005,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		return records
 	}
 
+	@[unsafe]
 	fn native_dxgi_exercise_physical_resize_failure_for_test() ! {
 		$if windows && sokol_d3d11 ? {
 			mut app := native_runtime_new_app_for_test(.win32)!
@@ -12261,6 +12305,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		native_appkit_assert_release_bijection_for_test(authority, operations)
 	}
 
+	@[unsafe]
 	fn native_appkit_create_release_probe_for_test(generation u64, subject NativeAppKitSideEffectSubject, created_after_operation_count int) !NativeAppKitExpectedReleaseProbe {
 		$if darwin {
 			assert generation != 0
@@ -13755,6 +13800,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_win32_assert_backend_start_all_clean_for_test(backend &Backend) {
 		$if windows {
 			assert backend.kind == .win32
@@ -13786,6 +13832,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_win32_exercise_renderer_probe_and_process_commit_for_test() ! {
 		$if windows {
 			$if sokol_d3d11 ? {
@@ -14021,6 +14068,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_win32_exercise_phase_b_registry_edges() ! {
 		$if windows {
 			$if sokol_d3d11 ? {
@@ -14459,6 +14507,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_appkit_assert_backend_start_all_clean_for_test(backend &Backend) {
 		$if darwin {
 			assert backend.kind == .appkit
@@ -14481,6 +14530,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_appkit_exercise_renderer_probe_and_process_commit_for_test() ! {
 		$if darwin {
 			mut probe_backend := new_backend(.appkit, true)!
@@ -14630,6 +14680,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		return entries[1].actual.handle
 	}
 
+	@[unsafe]
 	fn native_appkit_exercise_effective_anchor_rejection_for_test() ! {
 		$if darwin {
 			native_appkit_lifetime_oracle_reset_for_test()
@@ -14693,6 +14744,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_appkit_exercise_effective_pool_rejection_for_test() ! {
 		$if darwin {
 			native_appkit_lifetime_oracle_reset_for_test()
@@ -14756,6 +14808,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_appkit_exercise_effective_drawable_rejection_for_test() ! {
 		$if darwin {
 			native_appkit_lifetime_oracle_reset_for_test()
@@ -14900,6 +14953,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_appkit_prepare_phase_b_registry_main_thread_for_test(mut authority NativeOperationAuthority, mut backend AppKitBackend, backend_ptr voidptr, mut state NativeAppKitRegistryMainThreadState) ! {
 		$if darwin {
 			native_appkit_lifetime_oracle_reset_for_test()
@@ -14982,6 +15036,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_appkit_release_phase_b_registry_device_for_test(mut authority NativeOperationAuthority, mut backend AppKitBackend, state NativeAppKitRegistryMainThreadState) ! {
 		$if darwin {
 			device_probe := state.probes[0]
@@ -15020,6 +15075,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_appkit_release_phase_b_registry_window_for_test(mut authority NativeOperationAuthority, mut backend AppKitBackend, state NativeAppKitRegistryMainThreadState) ! {
 		$if darwin {
 			window_probe := state.probes[1]
@@ -15061,6 +15117,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_appkit_release_phase_b_registry_anchor_for_test(mut authority NativeOperationAuthority, mut backend AppKitBackend, mut state NativeAppKitRegistryMainThreadState) ! {
 		$if darwin {
 			anchor_probe := state.probes[2]
@@ -15142,6 +15199,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_appkit_exercise_phase_b_registry_nonmain_release_for_test() ! {
 		$if darwin {
 			native_appkit_lifetime_oracle_reset_for_test()
@@ -15687,6 +15745,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		assert app.backend.native_operations.disarm_proof()
 	}
 
+	@[unsafe]
 	fn native_appkit_exercise_physical_nil_window_for_test() ! {
 		$if darwin {
 			native_appkit_lifetime_oracle_reset_for_test()
@@ -15856,6 +15915,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_appkit_exercise_physical_nil_anchor_for_test() ! {
 		$if darwin {
 			native_appkit_lifetime_oracle_reset_for_test()
@@ -15988,6 +16048,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_appkit_exercise_anchor_drawable_chain_for_test() ! {
 		$if darwin {
 			native_appkit_lifetime_oracle_reset_for_test()
@@ -16153,6 +16214,7 @@ $if gg_multiwindow ?|| x_multiwindow_render ? {
 		}
 	}
 
+	@[unsafe]
 	fn native_appkit_exercise_phase_b_lifetimes() ! {
 		$if darwin {
 			native_appkit_exercise_anchor_drawable_chain_for_test()!

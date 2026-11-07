@@ -62,6 +62,7 @@ fn make_tree(depth int) &Node {
 	}
 }
 
+@[unsafe]
 fn tree_sum(n &Node) int {
 	if n == unsafe { nil } {
 		return 0

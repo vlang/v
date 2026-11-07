@@ -39,6 +39,7 @@ fn test_termios_keeps_the_flag_fields() {
 
 // NOTE: termios_windows.c.v is a stub, so nothing is implemented there.
 $if windows {
+	@[unsafe]
 	fn test_the_windows_stub_reports_that_termios_is_unimplemented() {
 		mut t := Termios{}
 		assert tcgetattr(0, mut t) == -1

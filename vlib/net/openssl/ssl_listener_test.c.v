@@ -149,6 +149,7 @@ fn test_ssl_listener_loads_in_memory_credentials_without_temp_files() ! {
 	}
 }
 
+@[unsafe]
 fn test_ssl_listener_shutdown_is_idempotent() ! {
 	mut listener := new_ssl_listener('127.0.0.1:0', SSLConnectConfig{
 		cert:                   load_test_certificate_pem()!

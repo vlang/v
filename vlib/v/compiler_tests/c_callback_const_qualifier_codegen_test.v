@@ -55,6 +55,7 @@ typedef struct late_alias_desc {
 	return path
 }
 
+@[unsafe]
 fn test_c_callback_const_qualifier_codegen() {
 	v3_bin := const_cb_build_v3()
 	src := const_cb_write_project('module main
@@ -167,6 +168,7 @@ fn main() {
 	assert !generated.contains('.plain = plain_event_callback_adapter_'), generated
 }
 
+@[unsafe]
 fn test_generic_heap_positional_c_callback_codegen() {
 	v3_bin := const_cb_build_v3()
 	src := const_cb_write_project('module main
@@ -226,6 +228,7 @@ fn main() {
 	assert !generated.contains('.cb = concrete_event,'), generated
 }
 
+@[unsafe]
 fn test_c_callback_c_alias_declared_after_field_codegen() {
 	v3_bin := const_cb_build_v3()
 	src := const_cb_write_project('module main
@@ -287,6 +290,7 @@ fn main() {
 	assert !generated.contains('desc.cb = late_alias_event;'), generated
 }
 
+@[unsafe]
 fn test_c_callback_const_qualifier_parallel_worker_codegen() {
 	v3_bin := const_cb_build_v3_parallel()
 	mut src := strings.new_builder(96 * 1024)

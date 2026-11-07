@@ -121,6 +121,7 @@ pub fn (mut tf_skl TTF_render_Sokol) create_text_block(in_txt string, in_w int, 
 *
 ******************************************************************************/
 // create_texture creates the sokol texture from the internal buffer state.
+@[unsafe]
 pub fn (mut tf_skl TTF_render_Sokol) create_texture() {
 	w := tf_skl.bmp.width
 	h := tf_skl.bmp.height

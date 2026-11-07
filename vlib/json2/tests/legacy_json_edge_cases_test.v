@@ -233,6 +233,7 @@ struct InnerNilPointers {
 	b &&&int
 }
 
+@[unsafe]
 fn test_encode_inner_nil_pointers() {
 	inner := &int(unsafe { nil })
 	middle := &&int(unsafe { nil })

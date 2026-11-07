@@ -514,6 +514,7 @@ fn x11_grab_error_handler() {
 	C.XSetErrorHandler(voidptr(x11_error_handler))
 }
 
+@[unsafe]
 fn x11_release_error_handler() {
 	C.XSync(g_sapp_state.x11.display, x_false)
 	C.XSetErrorHandler(unsafe { nil })
@@ -748,6 +749,7 @@ fn make_keymap_entry(key KeyCode, name string) X11KeymapEntry {
 	return e
 }
 
+@[unsafe]
 fn x11_init_keytable() {
 	for i in 0 .. max_keycodes {
 		g_sapp_state.keycodes[i] = .invalid
@@ -942,6 +944,7 @@ fn x11_init_keytable() {
 
 // === DPI ===
 
+@[unsafe]
 fn x11_query_system_dpi() {
 	mut dpi_ok := false
 	rms := C.XResourceManagerString(g_sapp_state.x11.display)
@@ -1091,6 +1094,7 @@ pub fn set_resizable(resizable bool) {
 	}
 }
 
+@[unsafe]
 fn x11_set_resizable(resizable bool) {
 	if g_sapp_state.x11.display == unsafe { nil } || g_sapp_state.x11.window == x_window_none {
 		return
@@ -1115,6 +1119,7 @@ fn x11_set_resizable(resizable bool) {
 	C.XFlush(g_sapp_state.x11.display)
 }
 
+@[unsafe]
 fn x11_create_window(visual_ &C.Visual, depth int) {
 	mut vis := unsafe { visual_ }
 	mut dep := depth
@@ -1198,6 +1203,7 @@ fn x11_show_window() {
 	}
 }
 
+@[unsafe]
 fn x11_update_window_title() {
 	title := &char(&g_sapp_state.window_title[0])
 	C.Xutf8SetWMProperties(g_sapp_state.x11.display, g_sapp_state.x11.window, title, title,
@@ -1213,6 +1219,7 @@ fn x11_update_window_title() {
 
 // === Cursors ===
 
+@[unsafe]
 fn x11_create_hidden_cursor() {
 	mut img := C.XcursorImageCreate(16, 16)
 	if img == unsafe { nil } {
@@ -1225,6 +1232,7 @@ fn x11_create_hidden_cursor() {
 	C.XcursorImageDestroy(img)
 }
 
+@[unsafe]
 fn x11_create_standard_cursor(cursor MouseCursor, name &char, theme &char, size int, fallback_native u32) {
 	idx := int(cursor)
 	if theme != unsafe { nil } {
@@ -1337,6 +1345,7 @@ fn x11_lock_mouse(do_lock bool) {
 
 // === Clipboard ===
 
+@[unsafe]
 fn x11_set_clipboard_string(_str &char) {
 	if !g_sapp_state.clipboard.enabled || g_sapp_state.clipboard.buffer == unsafe { nil } {
 		return
@@ -1345,6 +1354,7 @@ fn x11_set_clipboard_string(_str &char) {
 		g_sapp_state.x11.window, current_time)
 }
 
+@[unsafe]
 fn x11_get_clipboard_string() &char {
 	if !g_sapp_state.clipboard.enabled || g_sapp_state.clipboard.buffer == unsafe { nil } {
 		return unsafe { nil }
@@ -1542,6 +1552,7 @@ fn x11_get_window_property(window Window, property Atom, req_type Atom, value &&
 	return uint(item_count)
 }
 
+@[unsafe]
 fn x11_get_window_state() int {
 	mut result := withdrawn_state
 	mut state := &u8(unsafe { nil })
@@ -1559,6 +1570,7 @@ fn x11_get_window_state() int {
 
 // === Dropped files ===
 
+@[unsafe]
 fn x11_parse_dropped_files_list(src &char) bool {
 	if src == unsafe { nil } || g_sapp_state.drop.buffer == unsafe { nil } {
 		return false
@@ -1982,6 +1994,7 @@ fn x11_linux_frame() {
 	C.eglSwapBuffers(g_sapp_state.egl.display, g_sapp_state.egl.surface)
 }
 
+@[unsafe]
 fn x11_run() {
 	C.XInitThreads()
 	C.XrmInitialize()

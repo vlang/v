@@ -29,6 +29,7 @@ pub fn (mut s System) init(sc SystemConfig) {
 	}
 }
 
+@[unsafe]
 pub fn (mut s System) update(dt f64) {
 	mut p := &Particle(unsafe { nil })
 	mut moved := 0
@@ -69,6 +70,7 @@ pub fn (mut s System) reset() {
 	}
 }
 
+@[unsafe]
 pub fn (mut s System) explode(x f32, y f32) {
 	mut reserve := 500
 	center := vec.Vec2[f64]{x, y}

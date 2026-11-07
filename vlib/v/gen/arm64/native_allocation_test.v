@@ -7,6 +7,7 @@ import v.ssa
 import v.transform
 import v.types
 
+@[unsafe]
 fn test_native_aligned_memdup_copies_bytes_and_honors_alignment() {
 	$if macos && arm64 {
 		run_native_allocation_fixture('aligned', 'module main
@@ -37,6 +38,7 @@ fn main() {
 	}
 }
 
+@[unsafe]
 fn test_native_heap_array_copies_header_and_retains_data_view() {
 	$if macos && arm64 {
 		run_native_allocation_fixture('array', 'module main

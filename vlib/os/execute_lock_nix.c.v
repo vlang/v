@@ -16,6 +16,7 @@ fn v_os_execute_mutex_ptr() voidptr {
 	return unsafe { voidptr(&g_v_os_execute_mutex_storage[0]) }
 }
 
+@[unsafe]
 fn init() {
 	// freestanding and -syscalls programs (including -d vlibc) do not use the
 	// hosted process capture mutex, so the serialize-execute mutex stays a no-op;
