@@ -47,7 +47,12 @@ jobs:
     timeout-minutes: 40
     strategy:
       matrix:
+        suite: [default, strict]
+        shard: [0, 1]
         cc: [tcc, gcc, clang]
+        exclude:
+          - cc: tcc
+            suite: strict
       fail-fast: false
     env:
       # Stop a failing test session at its first failure instead of
@@ -55,6 +60,10 @@ jobs:
       # add no signal.
       VTEST_FAIL_FAST: '1'
       VFLAGS: -cc ${{ matrix.cc }}
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
+      VTEST_SELF_SHARD_COUNT: '2'
+      VTEST_SHOW_START: '1'
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: '3'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -62,31 +71,56 @@ jobs:
       - name: Build V
         run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
       - name: Code in cmd/ is formatted
+        if: matrix.suite == 'default' && matrix.shard == 0
         run: ./v fmt -verify cmd/
       - name: Check build-tools
+        if: matrix.suite == 'default' && matrix.shard == 0
         run: ./v -silent -N -W -check build-tools
       - name: Test tools
+        if: matrix.suite == 'default'
         run: ./v -silent test-self cmd
       - name: Test tools (-cstrict)
-        if: ${{ matrix.cc != 'tcc' }}
+        if: matrix.suite == 'strict'
         run: ./v -silent -W -cstrict test-self cmd
-      - name: Test sanitized
-        if: ${{ matrix.cc != 'tcc' }}
-        run: |
-          export VNATIVE_SKIP_LIBC_VV=1
-          if [[ ${{ matrix.cc }} == "clang" ]]; then
-            cmd="./v -silent -cc clang -cflags -fsanitize=undefined test-self -ubsan-compiler cmd"
-            echo "$cmd" && $cmd
-            cmd="./v -silent -gc none -cc clang -cflags -fsanitize=memory    test-self -msan-compiler cmd"
-            echo "$cmd" && $cmd
-          else
-            cmd="./v -silent -cc gcc -cflags -fsanitize=thread test-self cmd"
-            echo "$cmd" && $cmd
-            cmd="./v -silent -cc gcc -cflags -fsanitize=address,leak,undefined,shift,shift-exponent,shift-base,integer-divide-by-zero,unreachable,vla-bound,null,return,signed-integer-overflow,bounds,bounds-strict,alignment,object-size,float-divide-by-zero,float-cast-overflow,nonnull-attribute,returns-nonnull-attribute,bool,enum,vptr test-self -asan-compiler cmd/tools"
-            echo "$cmd" && $cmd
-            ## cmd="./v -silent -cc gcc -cflags -fsanitize=kernel-address test-self -asan-compiler cmd"
-            ## echo "$cmd" && $cmd
-          fi
+
+  tools-linux-sanitized:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+        variant:
+          - { cc: clang, sanitizer: undefined }
+          - { cc: clang, sanitizer: memory }
+          - { cc: gcc, sanitizer: thread }
+          - { cc: gcc, sanitizer: address }
+    env:
+      VFLAGS: -cc ${{ matrix.variant.cc }}
+      VTEST_FAIL_FAST: '1'
+      VNATIVE_SKIP_LIBC_VV: '1'
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
+      VTEST_SELF_SHARD_COUNT: '3'
+      VTEST_SHOW_START: '1'
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: '3'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Build V
+        run: make && ./v -showcc -o v cmd/v && ./v symlink && ./v doctor
+      - name: Test tools with undefined behavior sanitizer
+        if: matrix.variant.sanitizer == 'undefined'
+        run: ./v -silent -cc clang -cflags -fsanitize=undefined test-self -ubsan-compiler cmd
+      - name: Test tools with memory sanitizer
+        if: matrix.variant.sanitizer == 'memory'
+        run: ./v -silent -gc none -cc clang -cflags -fsanitize=memory test-self -msan-compiler cmd
+      - name: Test tools with thread sanitizer
+        if: matrix.variant.sanitizer == 'thread'
+        run: ./v -silent -cc gcc -cflags -fsanitize=thread test-self cmd
+      - name: Test tools with address sanitizer
+        if: matrix.variant.sanitizer == 'address'
+        run: ./v -silent -cc gcc -cflags -fsanitize=address,leak,undefined,shift,shift-exponent,shift-base,integer-divide-by-zero,unreachable,vla-bound,null,return,signed-integer-overflow,bounds,bounds-strict,alignment,object-size,float-divide-by-zero,float-cast-overflow,nonnull-attribute,returns-nonnull-attribute,bool,enum,vptr test-self -asan-compiler cmd/tools
 
   tools-macos:
     runs-on: macos-14
@@ -116,10 +150,17 @@ jobs:
 
   tools-windows:
     runs-on: windows-2025
-    timeout-minutes: 20
+    timeout-minutes: 40
     strategy:
       matrix:
+        suite: [default, strict]
+        shard: [0, 1, 2]
         cc: [tcc, gcc, msvc]
+        exclude:
+          - cc: tcc
+            suite: strict
+          - cc: gcc
+            suite: strict
       fail-fast: false
     env:
       # Stop a failing test session at its first failure instead of
@@ -130,6 +171,10 @@ jobs:
       # The automatic memory budget selects one worker on these runners.
       VJOBS: '4'
       VFLAGS: -cc ${{ matrix.cc }}
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
+      VTEST_SELF_SHARD_COUNT: '3'
+      VTEST_SHOW_START: '1'
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: '3'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -156,20 +201,31 @@ jobs:
       - name: Install SQLite (needed by vsqlite tool)
         run: .\.github\workflows\windows-install-sqlite.bat
       - name: Check build tools
+        if: matrix.suite == 'default' && matrix.shard == 0
         run: ./v build-tools
       - name: Test tools
+        if: matrix.suite == 'default'
         run: ./v -silent test-self cmd
       - name: Test tools (-cstrict)
-        if: ${{ matrix.cc == 'msvc' }}
+        if: matrix.suite == 'strict'
         run: ./v -silent -W -cstrict test-self cmd
 
   tools-docker-ubuntu-musl:
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        suite: [default, strict]
+        shard: [0, 1]
     env:
       # Stop a failing test session at its first failure instead of
       # running the whole suite to completion; the remaining files
       # add no signal.
       VTEST_FAIL_FAST: '1'
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
+      VTEST_SELF_SHARD_COUNT: '2'
+      VTEST_SHOW_START: '1'
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: '3'
     timeout-minutes: 35
     container:
       image: thevlang/vlang:ubuntu-build
@@ -189,6 +245,7 @@ jobs:
       - name: Ensure git commands can be used with no prompts on modern Git versions
         run: git config --global --add safe.directory /__w/v/v
       - name: Verify `v test` works
+        if: matrix.suite == 'default' && matrix.shard == 0
         run: |
           ./v cmd/tools/test_if_v_test_system_works.v
           ./cmd/tools/test_if_v_test_system_works
@@ -202,21 +259,35 @@ jobs:
           make -j"$(nproc)"
           make install_sw
       - name: Check build tools
+        if: matrix.suite == 'default' && matrix.shard == 0
         run: ./v -silent -N -W -check build-tools
       - name: Test tools
+        if: matrix.suite == 'default'
         run: ./v -silent test-self cmd
       - name: Test tools (-cstrict)
+        if: matrix.suite == 'strict'
         run: ./v -silent -W -cstrict test-self cmd
 
   tools-freebsd:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # VM bootstrap takes up to ten minutes before any tool tests can start.
+    timeout-minutes: 25
     strategy:
       matrix:
+        suite: [default, strict]
+        shard: [0, 1, 2]
         cc: [tcc, gcc, clang]
+        exclude:
+          - cc: tcc
+            suite: strict
       fail-fast: false
     env:
       VFLAGS: -cc ${{ matrix.cc }}
+      V_CI_SUITE: ${{ matrix.suite }}
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
+      VTEST_SELF_SHARD_COUNT: '3'
+      VTEST_SHOW_START: '1'
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: '3'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -231,7 +302,7 @@ jobs:
           cpu_count: 2
           shell: sh
           sync_files: runner-to-vm
-          environment_variables: VFLAGS
+          environment_variables: VFLAGS V_CI_SUITE VTEST_SELF_SHARD_INDEX VTEST_SELF_SHARD_COUNT VTEST_SHOW_START VTEST_SHOW_LONGEST_BY_TOTALTIME
 
       - name: Tests tools on FreeBSD with ${{ matrix.cc }}
         shell: cpa.sh {0}
@@ -259,34 +330,48 @@ jobs:
           echo "::group::v doctor"
           ./v doctor
           echo "::endgroup::"
-          # Code in cmd/ is formatted
-          echo "::group::Check code in cmd/ is formatted"
-          ./v fmt -verify cmd/
-          echo "::endgroup::"
-          # Check build-tools
-          echo "::group::Check build tools"
-          ./v -silent -N -W -check build-tools
-          echo "::endgroup::"
-          # Test tools
-          echo "::group::Test tools"
-          ./v -silent test-self cmd
-          echo "::endgroup::"
-          # Test tools (-cstrict)
-          if [ "$VFLAGS" != "-cc tcc" ]; then
+          # Keep compiler-wide checks in one job; every test suite is sharded.
+          if [ "$V_CI_SUITE" = "default" ] && [ "$VTEST_SELF_SHARD_INDEX" = "0" ]; then
+            echo "::group::Check code in cmd/ is formatted"
+            ./v fmt -verify cmd/
+            echo "::endgroup::"
+            echo "::group::Check build tools"
+            ./v -silent -N -W -check build-tools
+            echo "::endgroup::"
+          fi
+          if [ "$V_CI_SUITE" = "default" ]; then
+            echo "::group::Test tools"
+            ./v -silent test-self cmd
+            echo "::endgroup::"
+          elif [ "$V_CI_SUITE" = "strict" ] && [ "$VFLAGS" != "-cc tcc" ]; then
             echo "::group::Test tools (-cstrict)"
             ./v -silent -W -cstrict test-self cmd
             echo "::endgroup::"
+          else
+            echo "Unsupported tools suite: $V_CI_SUITE ($VFLAGS)" >&2
+            exit 1
           fi
 
   tools-openbsd:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # VM bootstrap takes up to ten minutes before any tool tests can start.
+    timeout-minutes: 25
     strategy:
       matrix:
+        suite: [default, strict]
+        shard: [0, 1, 2]
         cc: [tcc, clang]
+        exclude:
+          - cc: tcc
+            suite: strict
       fail-fast: false
     env:
       VFLAGS: -cc ${{ matrix.cc }}
+      V_CI_SUITE: ${{ matrix.suite }}
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
+      VTEST_SELF_SHARD_COUNT: '3'
+      VTEST_SHOW_START: '1'
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: '3'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -300,7 +385,7 @@ jobs:
           memory: 8G
           cpu_count: 2
           sync_files: runner-to-vm
-          environment_variables: VFLAGS
+          environment_variables: VFLAGS V_CI_SUITE VTEST_SELF_SHARD_INDEX VTEST_SELF_SHARD_COUNT VTEST_SHOW_START VTEST_SHOW_LONGEST_BY_TOTALTIME
 
       - name: Tests tools on OpenBSD with ${{ matrix.cc }}
         shell: cpa.sh {0}
@@ -317,8 +402,9 @@ jobs:
           echo "::group::Build V"
           git config --global --add safe.directory .
           printf "VFLAGS = %s\n" "$VFLAGS"
-          # V3 self-hosting can exceed OpenBSD's default per-process data limit.
-          ulimit -d 4194304
+          # Cold V3 builds reserve more than 4 GiB of data; give compiler arenas
+          # 6 GiB within this 8 GiB VM, matching the main OpenBSD workflow.
+          ulimit -d 6291456
           # Non-final commands in an && list are exempt from set -e.
           gmake
           ./v -showcc -o v cmd/v
@@ -327,21 +413,24 @@ jobs:
           echo "::group::v doctor"
           ./v doctor
           echo "::endgroup::"
-          # Code in cmd/ is formatted
-          echo "::group::Check code in cmd/ is formatted"
-          ./v fmt -verify cmd/
-          echo "::endgroup::"
-          # Check build-tools
-          echo "::group::Check build tools"
-          ./v -silent -N -W -check build-tools
-          echo "::endgroup::"
-          # Test tools
-          echo "::group::Test tools"
-          ./v -silent test-self cmd
-          echo "::endgroup::"
-          # Test tools (-cstrict)
-          if [ "$VFLAGS" != "-cc tcc" ]; then
+          # Keep compiler-wide checks in one job; every test suite is sharded.
+          if [ "$V_CI_SUITE" = "default" ] && [ "$VTEST_SELF_SHARD_INDEX" = "0" ]; then
+            echo "::group::Check code in cmd/ is formatted"
+            ./v fmt -verify cmd/
+            echo "::endgroup::"
+            echo "::group::Check build tools"
+            ./v -silent -N -W -check build-tools
+            echo "::endgroup::"
+          fi
+          if [ "$V_CI_SUITE" = "default" ]; then
+            echo "::group::Test tools"
+            ./v -silent test-self cmd
+            echo "::endgroup::"
+          elif [ "$V_CI_SUITE" = "strict" ] && [ "$VFLAGS" != "-cc tcc" ]; then
             echo "::group::Test tools (-cstrict)"
             ./v -silent -W -cstrict test-self cmd
             echo "::endgroup::"
+          else
+            echo "Unsupported tools suite: $V_CI_SUITE ($VFLAGS)" >&2
+            exit 1
           fi

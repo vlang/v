@@ -259,7 +259,7 @@ fn test_gradient_text_is_rejected_without_changing_pixels() {
 }
 
 fn test_lowp_div255_is_exact() {
-	$if macos {
+	$if macos || linux {
 		// The NEON lowp div255 rounds correctly for every product of two bytes.
 		for v in u32(0) .. 255 * 255 + 1 {
 			assert div255(v) == (v + 127) / 255
@@ -268,7 +268,7 @@ fn test_lowp_div255_is_exact() {
 }
 
 fn test_pipeline_color_matches_append_constant_color() {
-	$if macos {
+	$if macos || linux {
 		// uniform_color slots hold (uint16_t)(premul * 255 + 0.5) of the float color.
 		c := PipelineColor.from_sk_color(0x80c81e1e)
 		assert c.r == 100 && c.g == 15 && c.b == 15 && c.a == 128
@@ -278,7 +278,7 @@ fn test_pipeline_color_matches_append_constant_color() {
 }
 
 fn test_packed_glyph_id_subpixel_buckets() {
-	$if macos {
+	$if macos || linux {
 		// x keeps two subpixel bits, y is snapped when the baseline is horizontal.
 		assert pack_glyph_id(7, Point{10.125, 3.5}, 3, 0) == u32(7) << 2
 		assert pack_glyph_id(7, Point{10.375, 3.5}, 3, 0) == (u32(7) << 2 | 1)

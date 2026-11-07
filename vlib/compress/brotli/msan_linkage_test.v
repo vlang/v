@@ -19,7 +19,8 @@ fn test_msan_unpoison_links_to_a_runtime_without_dynamic_exports() ! {
 	os.write_file(header, '#include <stddef.h>\nvoid __msan_unpoison(const volatile void *ptr, size_t len);\n' +
 		'int brotli_msan_calls(void);\nint brotli_msan_exported(void);\n')!
 	runtime := os.join_path(root, 'runtime.c')
-	os.write_file(runtime, '#include "runtime.h"\n#include <dlfcn.h>\nstatic int calls;\n' +
+	// Older glibc headers expose RTLD_DEFAULT only with GNU extensions enabled.
+	os.write_file(runtime, '#define _GNU_SOURCE 1\n#include "runtime.h"\n#include <dlfcn.h>\nstatic int calls;\n' +
 		'__attribute__((visibility("hidden"))) void __msan_unpoison(const volatile void *ptr, size_t len) { if (ptr && len) calls++; }\n' +
 		'int brotli_msan_calls(void) { return calls; }\n' +
 		'int brotli_msan_exported(void) { return dlsym(RTLD_DEFAULT, "__msan_unpoison") != NULL; }\n')!

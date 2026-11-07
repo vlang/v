@@ -1830,15 +1830,25 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 
 // publish_native_c_object publishes once: GCC's LTO linker reopens the path,
 // so replacing even a complete object can change its internal symbol IDs mid-link.
+// On Windows, an antivirus or another process can briefly hold the completed
+// temporary object without file sharing. Retry only that sharing violation;
+// never replace a published object or hide a different filesystem error.
 fn publish_native_c_object(temporary string, destination string) !bool {
 	defer { os.rm(temporary) or {} }
-	os.link(temporary, destination) or {
-		if !os.is_file(destination) {
-			return error('failed to publish cached C object ${destination}: ${err}')
+	for attempt in 0 .. 20 {
+		os.link(temporary, destination) or {
+			if os.is_file(destination) {
+				return false
+			}
+			if os.user_os() != 'windows' || err.code() != 32 || attempt == 19 {
+				return error('failed to publish cached C object ${destination}: ${err}')
+			}
+			time.sleep(50 * time.millisecond)
+			continue
 		}
-		return false
+		return true
 	}
-	return true
+	return error('failed to publish cached C object ${destination}: retry limit reached')
 }
 
 fn c_object_manifest_path(cache_dir string, obj_path string, compiler string, compile_args []string, target pref.Target, mut stats CObjectCacheStats) string {
@@ -3750,7 +3760,21 @@ fn v3_tcc_host_system_flags(target_os string, macos_sdk_root string) []string {
 			flags << '-L${os.join_path(macos_sdk_root, 'usr', 'lib')}'
 		}
 	}
+	flags << v3_tcc_linux_uapi_flags(target_os, pref.host_arch())
 	return flags
+}
+
+// v3_tcc_linux_uapi_flags returns the defines that let TinyCC parse the host's
+// Linux UAPI headers. arm64 kernel headers declare `__u128` fields in
+// <asm/sigcontext.h>, which <signal.h> includes, but <linux/types.h> defines
+// `__u128` only for compilers with `__int128`. TinyCC has none; its `__uint128_t`
+// stand-in has the same size and alignment. Keep it in sync with the bundle
+// probe in cmd/tools/select_linux_tcc.sh.
+fn v3_tcc_linux_uapi_flags(target_os string, host_arch string) []string {
+	if target_os != 'linux' || host_arch != 'arm64' {
+		return []
+	}
+	return ['-D__u128=__uint128_t']
 }
 
 // v3_tcc_cpp_runtime_flags lets native Linux TinyCC links find the platform C++
@@ -17529,6 +17553,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 	program_specializations := split.modules['__v3_program_specializations'] or { '' }
 	program_support := split.modules['__v3_program_support'] or { '' }
 	program_generated_support := program_specializations + program_support + main_body
+	program_prefix := prune_cached_program_wrappers(split.prefix, program_generated_support)
 	mut native_bindings := V3TccDylibBindings{}
 	if state.native_bridge {
 		mut functions := map[string]bool{}
@@ -17540,7 +17565,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		}
 		native_bindings = v3_tcc_dylib_function_bindings(functions)
 	}
-	raw_main_prefix := v3_cached_c_unit_source(prune_cache_only_function_prototypes(prune_cached_native_function_prototypes(cache_source_without_cached_native_inputs(split.prefix, state, true), state, [
+	raw_main_prefix := v3_cached_c_unit_source(prune_cache_only_function_prototypes(prune_cached_native_function_prototypes(cache_source_without_cached_native_inputs(program_prefix, state, true), state, [
 		'main',
 	]), cache_used_fns, program_generated_support, tc, state), true)
 	main_prefix := if state.native_bridge {
@@ -17560,7 +17585,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 		dylib_prefix = modulecache.prune_unreferenced_static_string_definitions(main_prefix + program_specializations + program_support)
 	}
 	if !state.objects_only && !state.no_program_declarations {
-		main_declarations = v3_cached_c_unit_source(prune_cache_only_function_prototypes(cache_source_without_cached_native_inputs(modulecache.declaration_header(split.prefix + program_specializations + program_support), state, false), cache_used_fns, program_generated_support, tc, state), false)
+		main_declarations = v3_cached_c_unit_source(prune_cache_only_function_prototypes(cache_source_without_cached_native_inputs(modulecache.declaration_header(program_prefix + program_specializations + program_support), state, false), cache_used_fns, program_generated_support, tc, state), false)
 		if state.native_bridge {
 			dylib_prefix += native_bindings.owner
 		}
@@ -19486,6 +19511,33 @@ fn v3_opaque_program_wrappers(source string) string {
 		}
 	}
 	return opaque.str()
+}
+
+// prune_cached_program_wrappers keeps the wrappers referenced by the program's
+// bodies and prefix. Cached module objects own their other wrappers and targets.
+// Helpers and initializers outside the wrapper sections also belong to the
+// program prefix, so their references must remain roots of the pruning walk.
+fn prune_cached_program_wrappers(prefix string, body string) string {
+	if !prefix.contains(v3_program_wrappers_begin) {
+		return prefix
+	}
+	mut roots := strings.new_builder(prefix.len + body.len)
+	roots.writeln(body)
+	mut in_wrappers := false
+	for line in prefix.split_into_lines() {
+		if line == v3_program_wrappers_begin {
+			in_wrappers = true
+			continue
+		}
+		if line == v3_program_wrappers_end {
+			in_wrappers = false
+			continue
+		}
+		if !in_wrappers {
+			roots.writeln(line)
+		}
+	}
+	return prune_foreign_program_wrappers(prefix, roots.str())
 }
 
 // prune_foreign_program_wrappers drops, from the declarations that a module
