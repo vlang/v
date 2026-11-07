@@ -134,6 +134,11 @@ fn main() {
 	os.setenv('VEXE', vexe, true)
 	os.setenv('VCHILD', 'true', true)
 	mut args := remove_obsolete_skip_unused_flag(merged_v_args())
+	command_index, command := find_command(args)
+	if command !in ['version', '-version', '--version'] {
+		driver.maybe_delegate_to_vvmrc(vvmrc_command_target(args, command_index),
+			compiler_option_requested(args, '-v'))
+	}
 	if args.len == 0 {
 		run_external_tool(args, -1, 'repl')
 		return
@@ -142,7 +147,6 @@ fn main() {
 		return
 	}
 	compiler_args := compiler_args_before_program(args)
-	command_index, command := find_command(args)
 	// Tool arguments belong to the tool, including a completion query for the removed flag.
 	option_args := if command in external_commands || command == 'help' {
 		args[..command_index]
@@ -537,6 +541,77 @@ fn find_command(args []string) (int, string) {
 		}
 	}
 	return -1, ''
+}
+
+// vvmrc_command_target finds a command's existing target, or the working directory.
+// Option values and program arguments must never become paths for project lookup.
+fn vvmrc_command_target(args []string, command_index int) string {
+	workdir := os.getwd()
+	command := if command_index >= 0 { args[command_index] } else { '' }
+	if command in ['help', '-h', '--help', 'complete', 'env', 'mod'] {
+		return workdir
+	}
+	mut command_prefix_follows := command_index < 0 || command == 'watch'
+	mut option_value_follows := false
+	for i, arg in args {
+		if option_value_follows {
+			option_value_follows = false
+			continue
+		}
+		if i == command_index {
+			continue
+		}
+		if is_inline_source_option(arg) {
+			return workdir
+		}
+		if arg == '-' {
+			return workdir
+		}
+		if arg in ['-prof', '-profile'] {
+			option_value_follows = v1_fallback_profile_option_consumes_value(args, i)
+			continue
+		}
+		if vvmrc_option_consumes_value(command, arg, i > command_index && command_index >= 0) {
+			option_value_follows = true
+			continue
+		}
+		if arg.starts_with('-') {
+			continue
+		}
+		if command_prefix_follows {
+			if arg in ['run', 'crun'] {
+				command_prefix_follows = false
+				continue
+			}
+			if arg == 'build' {
+				continue
+			}
+		}
+		if os.exists(arg) {
+			return arg
+		}
+		// Stop at the first positional argument: later arguments may belong to a program.
+		return workdir
+	}
+	return workdir
+}
+
+fn vvmrc_option_consumes_value(command string, arg string, tool_option bool) bool {
+	if tool_option {
+		match command {
+			'doc' { return arg in ['-f', '-o', '-os', '-theme-dir'] }
+			'fmt' { return arg in ['-b', '-backend', '-path', '-worker'] }
+			'vet' { return false }
+			'watch' {
+				if arg in ['-a', '-add', '--add', '-i', '-ignore', '--ignore', '-o', '-only-watch',
+					'--only-watch', '-before', '--before', '-after', '--after'] {
+					return true
+				}
+			}
+			else {}
+		}
+	}
+	return arg == '-cf' || pref.option_may_consume_value(arg)
 }
 
 fn run_external_tool(args []string, command_index int, command string) {

@@ -105,9 +105,10 @@ and left alone; see `v skills update` below.
 
 ## Project-local compiler versions with `.vvmrc`
 
-If a project contains a `.vvmrc` file, commands like `v run .`, `v run file.v`,
-or `v file.v` will try to find and delegate to the requested V compiler version.
-This makes it easier to keep a project pinned to a known compiler release.
+If a project contains a `.vvmrc` file, V delegates the complete command to the
+requested compiler before dispatching tools. Builds, `run`, `test`, `fmt`, `vet`,
+`doc`, and other tools therefore use the project's compiler version.
+Version-reporting commands continue to describe the running compiler.
 
 The file should contain one version per project, for example:
 
@@ -120,6 +121,11 @@ Both `0.4.12` and `v0.4.12` are accepted. The special aliases `latest` and
 
 V searches for `.vvmrc` from the target path upward and stops at repository and
 project boundaries such as `.git`, `.hg`, `.svn`, and `.v.mod.stop`.
+With no target path, the search starts in the working directory. The nearest
+`.vvmrc` wins, including in nested projects. A pin matching the running compiler
+uses it directly. A missing pinned compiler stops the command with an error.
+Install the requested compiler before retrying, or set `V_SKIP_VVMRC=1` to
+explicitly use the running compiler.
 
 ## The default compiler
 
