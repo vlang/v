@@ -186,6 +186,40 @@ fn test_reverse_proxy_end_to_end() {
 	assert parse_response(compressed.bytestr())!.body == 'compressed response'
 }
 
+// run_chunked_upstream serves one fixed chunked-encoded response per accepted
+// connection (with a mismatching Content-Length), then closes it.
+fn run_chunked_upstream(mut listener net.TcpListener) {
+	for {
+		mut conn := listener.accept_only() or { break }
+		conn.set_sock() or { break }
+		conn.set_read_timeout(2 * time.second)
+		mut buf := [8192]u8{}
+		_ = conn.read(mut buf) or { 0 }
+		conn.write('HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 999\r\nConnection: close\r\n\r\nA\r\n0123456789\r\n0\r\n\r\n'.bytes()) or { 0 }
+		conn.close() or {}
+	}
+}
+
+// test_reverse_proxy_drops_content_length_of_chunked_upstream runs a hostile
+// upstream that answers chunked-encoded while attaching a Content-Length that
+// describes the encoded body; the proxy must not re-frame the decoded body
+// with it downstream.
+fn test_reverse_proxy_drops_content_length_of_chunked_upstream() {
+	mut upstream := net.listen_tcp(.ip, '127.0.0.1:0')!
+	upstream_addr := upstream.addr()!.str()
+	spawn run_chunked_upstream(mut upstream)
+	defer { upstream.close() or {} }
+
+	rp := new_single_host_reverse_proxy('http://${upstream_addr}/')!
+	resp := rp.handle(Request{ url: '/chunked' })
+	assert resp.status_code == 200
+	assert resp.body == '0123456789'
+	// The stale Content-Length of the encoded body must not survive: the proxy
+	// decodes chunked upstream bodies, so downstream framing has to be derived
+	// from the decoded body instead (handle_conn re-adds the right one).
+	assert !resp.header.contains(.content_length)
+}
+
 fn test_reverse_proxy_invalid_config() {
 	if _ := new_single_host_reverse_proxy('ftp://example.com') {
 		assert false
