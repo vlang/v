@@ -1351,10 +1351,13 @@ fn (mut g Parser) bind_negated_member_fallthrough(cond_tokens []FastcExpressionT
 	if !path.contains('.') {
 		return
 	}
-	// The narrowed member is read again after the condition; a call in its path, also in
-	// an index, would run twice.
+	// The narrowed member is read again after the condition, so its path, including any
+	// index, may only read: a call, an `if` or `match`, an increment or a channel receive
+	// would run twice.
 	for item in left_tokens {
-		if item.tok == .lpar {
+		if item.tok !in [.name, .number, .string, .char, .dot, .lsbr, .rsbr, .plus, .minus, .mul,
+			.div, .mod, .amp, .xor, .pipe, .left_shift, .right_shift, .key_true, .key_false]
+			|| (item.has_source() && !fastc_rendered_read_only(item.source_text())) {
 			return
 		}
 	}
@@ -2434,4 +2437,27 @@ fn (mut g Parser) bind_else_non_none_option(tokens []FastcExpressionToken) {
 	shadow := g.temporary_name('nonnull_option')
 	g.write_line('${fastc_output_c_type(flat.source_type_name(payload))} ${shadow} = ${g.option_value_expression(payload, g.local_c_name(name))};')
 	g.set_scoped_local(name, FastcLocal{ ...local, typ: payload, option_value_type: 0, c_name: shadow })
+}
+
+// fastc_rendered_read_only reports whether the C text of an already rendered operand
+// only reads: no statement expression, conditional, increment, assignment or call.
+fn fastc_rendered_read_only(text string) bool {
+	for i, c in text {
+		if c in [`;`, `{`, `?`, `=`] {
+			return false
+		}
+		if i > 0 && ((c == `+` && text[i - 1] == `+`) || (c == `-` && text[i - 1] == `-`)) {
+			return false
+		}
+		if c == `(` {
+			mut j := i - 1
+			for j >= 0 && text[j] == ` ` {
+				j--
+			}
+			if j >= 0 && (text[j].is_letter() || text[j].is_digit() || text[j] == `_`) {
+				return false
+			}
+		}
+	}
+	return true
 }

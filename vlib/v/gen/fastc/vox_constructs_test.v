@@ -202,8 +202,8 @@ fn fastc_vox_construct_program(name string, source string) {
 }
 
 // A member narrowed past `if x.f !is T { return }` is read again after the condition,
-// so a path that calls a function, also in an index, is not narrowed: the call runs
-// once, as with the C backend.
+// so a path with a side effect, such as a call or an `if` in an index, is not narrowed:
+// it runs once, as with the C backend.
 fn test_fastc_vox_constructs_fallthrough_subject_is_evaluated_once() {
 	fastc_vox_construct_program('fallthrough', r'module main
 
@@ -242,6 +242,15 @@ fn main() {
 		return
 	}
 	assert count == 2
+	if holders[if true {
+		count++
+		0
+	} else {
+		0
+	}].value !is First {
+		return
+	}
+	assert count == 3
 	plain := Holder{First{3}}
 	if plain.value !is First {
 		return
