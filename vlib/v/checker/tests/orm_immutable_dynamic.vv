@@ -1,9 +1,9 @@
 import db.sqlite
 
 struct InsertOnlyUser {
-	id int @[primary]
-	creator string @[sql_insert_only]
-	name string
+	id      int    @[primary]
+	creator string @[immutable]
+	name    string
 }
 
 fn main() {
