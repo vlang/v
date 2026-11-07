@@ -6,8 +6,9 @@ Select `-cc clang` to compile the emitted C with Clang, including Objective-C in
 Ordinary default builds and explicit `-cc tcc` builds compile generated V code and link with
 TinyCC. FastC reports TinyCC compilation failures directly.
 TinyCC compiles the program as parallel units. Conditional blocks that hold only preprocessor
-directives, including `#define`, are shared by every unit; other conditional blocks outside
-functions keep the program in one unit. Generic instances form units of about 1 MiB.
+directives, including `#define`, are shared by every unit, unless a block defines a macro and
+includes a header, which can select the header's definitions. Such blocks and other conditional
+blocks outside functions keep the program in one unit. Generic instances form units of about 1 MiB.
 In a split build, embedded files totalling at least 1 MiB form a separate object that names no
 header. It is reused while its text, TinyCC and flags are unchanged; `-nocache` rebuilds it.
 On macOS, Objective-C interop uses a cached native library built by the platform compiler.

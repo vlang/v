@@ -3432,6 +3432,8 @@ fn fastc_c_extern_prototypes_for_inputs(functions map[string]FastcFunctionSignat
 
 // Conditional directives without generated bodies can be shared by the C units.
 fn fastc_conditional_directives_only(pieces []string) bool {
+	mut has_macro := false
+	mut has_include := false
 	for piece in pieces {
 		for line in piece.split_into_lines() {
 			clean := line.trim_space()
@@ -3443,9 +3445,13 @@ fn fastc_conditional_directives_only(pieces []string) bool {
 				'error', 'warning', 'define', 'undef'] {
 				return false
 			}
+			has_macro = has_macro || word in ['define', 'undef']
+			has_include = has_include || word in ['include', 'import']
 		}
 	}
-	return pieces.len > 0
+	// A macro beside an include can select the header's definitions, as with
+	// `#define X_IMPLEMENTATION`; a copy in every unit would define them in each.
+	return pieces.len > 0 && !(has_macro && has_include)
 }
 
 // Only V tokens establish ownership. Native constants or undeclared native
