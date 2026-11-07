@@ -74,6 +74,13 @@ On Windows, the cached updater exits before its launcher wipes the caches,
 so the running executable does not block cleanup. Cleanup failures are returned
 by the launcher.
 
+On Windows, file paths reaching past `MAX_PATH` (260 characters) fail in the
+CRT and plain Win32 calls while the machine long-path policy is disabled,
+which can make cache cleanup fail on deep tool-cache entries. `v doctor`
+reports the policy as `Win32 long paths`; run `v enable-long-paths` in an
+administrator terminal to enable it (the same switch as the Python
+installer's "Disable path length limit" option).
+
 `make` also warms the default test configuration's builtin module bundle, including
 `strings`, `strconv`, `hash` and `bits`. Compatible test builds reuse these objects
 when the program introduces new error types, retaining builtin error dispatch ID dependencies.
