@@ -56,6 +56,68 @@ fn test_syscalls_program_runs_os_on_raw_syscalls() {
 	}
 }
 
+fn test_file_writes_respect_umask_and_preserve_existing_permissions() {
+	$if !linux {
+		return
+	}
+	$if !amd64 && !arm64 {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'syscall_file_permissions_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, "import os
+
+fn main() {
+	match os.args[2] {
+		'text' { os.write_file(os.args[1], 'written')! }
+		'bytes' { os.write_bytes(os.args[1], [u8(1), 0, 2])! }
+		'empty' { os.write_file(os.args[1], '')! }
+		'create' {
+			mut file := os.create(os.args[1])!
+			file.close()
+		}
+		else { assert false }
+	}
+}
+")!
+	for mode in ['hosted', 'syscalls', 'freestanding'] {
+		exe := os.join_path(root, mode)
+		mut args := [vexe, '-new-compiler', '-no-retry-compilation', '-nocache', '-gc', 'none']
+		if mode != 'hosted' {
+			args << '-${mode}'
+		}
+		args << ['-o', exe, source]
+		build := os.exec(args)
+		assert build.exit_code == 0, '${mode}: ${build.output}'
+		for mask in [0o000, 0o022, 0o077] {
+			for writer in ['text', 'bytes', 'empty', 'create'] {
+				path := os.join_path(root, 'data')
+				command := ['/bin/sh', '-c', 'umask ${mask:o}; exec "$@"', 'sh', exe, path, writer]
+				created := os.exec(command)
+				assert created.exit_code == 0, '${mode}/${writer}: ${created.output}'
+				permissions := os.stat(path)!.mode & 0o777
+				assert permissions == (0o666 & ~mask), '${mode}/${writer}/${mask:o}: ${permissions:o}'
+				expected := match writer {
+					'text' { 'written'.bytes() }
+					'bytes' { [u8(1), 0, 2] }
+					else { []u8{} }
+				}
+				assert os.read_bytes(path)! == expected
+				// Truncation must keep existing permissions under every umask.
+				os.write_file(path, 'previous longer contents')!
+				os.chmod(path, 0o640)!
+				rewritten := os.exec(command)
+				assert rewritten.exit_code == 0, '${mode}/${writer}: ${rewritten.output}'
+				assert os.stat(path)!.mode & 0o777 == 0o640, '${mode}/${writer}/${mask:o}'
+				assert os.read_bytes(path)! == expected
+				os.rm(path)!
+			}
+		}
+	}
+}
+
 // test_syscalls_is_rejected_where_it_is_not_supported checks the combinations that
 // have no runtime yet: a native backend, and `-freestanding` (which is a separate runtime).
 fn test_syscalls_is_rejected_where_it_is_not_supported() {
