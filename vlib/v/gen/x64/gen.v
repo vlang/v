@@ -20,7 +20,7 @@ pub:
 
 pub struct Gen {
 	m &ssa.Module
-mut:
+pub mut:
 	elf              &elf.ElfObject
 	optimize_runtime bool
 
