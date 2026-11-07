@@ -4,6 +4,48 @@ Every compiler fix must preserve or improve self-compilation efficiency. Agents 
 retired instructions before and after compiler changes and resolve regressions before merging.
 Keep correctness tests and generated-output checks alongside performance measurements.
 
+## Option/result payload identity, 2026-11-04
+
+The final fixes in PR #31882 show no measurable systematic instruction change on the fixed workload.
+Baseline `73c784a0d5c6ab437c733fbd7e900a83b0af949e` and candidate
+`8e1238eb44d4f28043f06153a84a414ff4cd1178` use matched Apple Clang production builds, without PGO:
+
+```sh
+./v -prod -cc /usr/bin/clang -gc none -prealloc -compile-backend fastc -nocache \
+  -o ./v-perf31474-production cmd/v
+```
+
+Both builds and measurements use `VJOBS=1`, `SOURCE_DATE_EPOCH=0`, cleared compiler overrides,
+and `V_MACOS_V3_NO_FALLBACK=1`. Both executable roles run from the same path in the unchanged
+baseline tree, compiling its `cmd/v` to the same C output with `-nocache`. All 22 runs succeed:
+one warmup per role, then ten alternating AB/BA pairs. Warmups are excluded below.
+
+| Median metric | Baseline | Candidate |
+| --- | ---: | ---: |
+| Retired instructions | 39,915,971,674.5 | 39,917,502,965 |
+| Instructions/parsed physical line | 80,112.4973 | 80,115.5707 |
+| Peak RSS, MiB | 1,101.789 | 1,102.164 |
+| Peak memory footprint, MiB | 1,088.861 | 1,089.197 |
+| Elapsed time, s | 6.600 | 6.470 |
+| CPU cycles | 18,684,857,851.5 | 18,993,525,191.5 |
+
+The instruction median changes by **+0.00384%**, and the median paired difference is
+**+11,315,550.5 instructions**; **5/10 pairs are higher** for the candidate. The paired differences
+range from -82,616,882 to +83,426,599 instructions. The mixed directions and much larger sample
+variation do not establish a systematic regression or improvement. No speedup is claimed.
+Elapsed time and cycles are contextual under concurrent host load.
+
+Verbose inventories match: **498,249 physical lines in 465 `.v` files**, no `.vh` files.
+Generated C is byte-identical without normalization and passes Clang syntax checking.
+The retained directory `/Users/alex/code/v-issues20c-20261104/perf-31882-review-final/` contains all
+timing/stdout/stderr/exit logs, exact commands and environment, source inventories and hashes,
+production executable hashes, output verification, paired samples, and interpretation notes.
+Candidate executable SHA256 is
+`98164753cc359b87ccfa4f1386836cc835967aa151c2644c256cae99a015c14a`.
+The final compiler source matches this measured revision. A subsequent optional optimization
+was reverted after its build hit the disk reserve guard; it is absent from the final source.
+The earlier comparison and incomplete optional-build receipts are retained separately.
+
 ## Profile-driven follow-up, 2026-11-03 (round 2)
 
 The same self-host command retires **3.39% fewer instructions** at the median of ten alternating

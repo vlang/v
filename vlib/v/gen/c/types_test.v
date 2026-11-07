@@ -1449,3 +1449,66 @@ fn test_shared_generic_substitution_preserves_composite_spelling_rules() {
 		assert substitute_shared_generic_type_text(flat.source_type_id(input), params, args) == flat.source_type_id(expected[i])
 	}
 }
+
+fn test_optional_tuple_typedef_requires_a_concrete_or_cached_tuple() {
+	mut a := flat.FlatAst.new()
+	mut tc := types.TypeChecker.new(&a)
+	tc.structs[flat.source_type_id('Config')] = []types.StructField{}
+	tc.structs[flat.source_type_id('other.Config')] = []types.StructField{}
+	mut g := FlatGen.new()
+	g.a = &a
+	g.tc = &tc
+	tuple := types.Type(types.MultiReturn{
+		types: [
+			types.Type(types.Struct{ name_id: flat.source_type_id('main.Config') }),
+			types.Type(types.Array{ elem_type: types.Type(types.string_) }),
+		]
+	})
+	g.collect_known_concrete_multi_return_type(tuple)
+	valid := g.multi_return_c_type_name(tuple as types.MultiReturn)
+	assert g.emit_optional_typedef('__v_result_${valid}', valid)
+	stale := 'multi_return_other__Config_Array'
+	assert !g.emit_optional_typedef('__v_result_${stale}', stale)
+	assert !g.sb.str().contains('${stale} value;')
+	cached := 'multi_return_cached__Config_Array'
+	g.cached_support_identifiers[cached] = true
+	assert g.emit_optional_typedef('__v_result_${cached}', cached)
+	c_name := 'multi_return_Native'
+	c_type := flat.source_type_id('C.${c_name}')
+	tc.structs[c_type] = []types.StructField{}
+	tc.c_typedef_structs[c_type] = true
+	assert g.emit_optional_typedef('__v_result_${c_name}', c_name)
+	c_alias := 'multi_return_ScalarAlias'
+	tc.type_aliases.set_id(flat.source_type_id('C.${c_alias}'), flat.source_type_int)
+	assert g.emit_optional_typedef('__v_result_${c_alias}', c_alias)
+	c_enum := 'multi_return_NativeEnum'
+	tc.enum_names[flat.source_type_id('C.${c_enum}')] = true
+	assert g.emit_optional_typedef('__v_result_${c_enum}', c_enum)
+	opaque := 'multi_return_Opaque'
+	opaque_id := flat.source_type_id('C.${opaque}')
+	assert opaque_id !in tc.structs && opaque_id !in tc.enum_names
+	assert !tc.type_aliases.contains(opaque_id)
+	assert g.emit_optional_typedef('__v_option_${opaque}ptr', '${opaque}*')
+	assert g.emit_optional_typedef('__v_result_${opaque}ptr', '${opaque}*')
+}
+
+fn test_optional_tuple_prefix_preserves_registered_v_payloads() {
+	for precomputed in [false, true] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		tc.structs[flat.source_type_id('multi_return_models.Config')] = []types.StructField{}
+		tc.enum_names[flat.source_type_id('multi_return_models.Mode')] = true
+		mut g := FlatGen.new()
+		g.a = &a
+		g.tc = &tc
+		if precomputed {
+			g.precompute_qualified_struct_c_types()
+		}
+		for payload in ['multi_return_models__Config', 'multi_return_models__Mode'] {
+			assert g.emit_optional_typedef('__v_result_${payload}', payload)
+			assert g.emit_optional_typedef('__v_option_${payload}', payload)
+		}
+		assert !g.emit_optional_typedef('__v_result_multi_return_stale__Config',
+			'multi_return_stale__Config')
+	}
+}

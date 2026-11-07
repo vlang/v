@@ -1738,6 +1738,23 @@ fn (g &FlatGen) type_name_contains_generic_placeholder(name_id u32) bool {
 	return false
 }
 
+// optional_payload_is_nominal_type distinguishes nominal types from generated tuple names.
+fn (g &FlatGen) optional_payload_is_nominal_type(c_type string) bool {
+	// A C-qualified source type may be declared only in its opaque C header.
+	if cgen_existing_qualified_type_id('C', c_type) != none {
+		return true
+	}
+	if c_type in g.qualified_struct_c_types(c_type) {
+		return true
+	}
+	for source_id, _ in g.tc.enum_names {
+		if g.cname(flat.source_type_name(source_id)) == c_type {
+			return true
+		}
+	}
+	return c_type in g.qualified_interface_c_types(c_type) || g.is_known_sum_c_type(c_type)
+}
+
 // emit_optional_typedef emits emit optional typedef output for c.
 fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool {
 	if opt_name in g.emitted_optional_types {
@@ -1748,6 +1765,14 @@ fn (mut g FlatGen) emit_optional_typedef(opt_name string, val_type string) bool 
 		return false
 	}
 	bare_val_type := val_type.trim_right('*')
+	if bare_val_type.starts_with('multi_return_') && !g.multi_return_type_names[bare_val_type]
+		&& !g.cached_support_identifiers[bare_val_type]
+		&& !g.optional_payload_is_nominal_type(bare_val_type) {
+		// A stale checker annotation can register an optional tuple without a
+		// concrete tuple declaration. Its specialization registers the usable ABI.
+		g.emitted_optional_types[opt_name] = true
+		return false
+	}
 	interface_matches := g.qualified_interface_c_types(bare_val_type.all_after_last('__'))
 	is_known_interface := bare_val_type in interface_matches
 	is_known_sum_type := g.is_known_sum_c_type(bare_val_type)
