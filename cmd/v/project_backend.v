@@ -1,6 +1,7 @@
 module main
 
 import os
+import v.driver
 import v.pref
 import v.vmod
 
@@ -11,7 +12,7 @@ const project_backends = ['c', 'fastc', 'arm64', 'x64', 'wasm']
 // such as `backend: 'fastc'`, when the command line does not select one with `-b`.
 fn with_project_backend(args []string) []string {
 	compiler_args := compiler_args_before_program(args)
-	if backend_option_given(compiler_args) {
+	if backend_option_given(compiler_args) || driver.no_project_backend_flag in compiler_args {
 		return args
 	}
 	backend := project_backend(compiler_input_path(compiler_args))

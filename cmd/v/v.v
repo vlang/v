@@ -222,6 +222,13 @@ fn main() {
 	if command in external_commands
 		|| command in ['new', 'init', 'generate', 'install', 'link', 'list', 'outdated', 'remove',
 			'registry', 'search', 'show', 'unlink', 'update', 'upgrade', 'vlib-docs'] {
+		if command == 'test' {
+			// `vtest` selects the test files and evaluates their `// vtest build:` constraints for
+			// the backend in the options before `test`, so the project's backend must be there.
+			test_args := with_project_backend(args)
+			run_external_tool(test_args, command_index + test_args.len - args.len, command)
+			return
+		}
 		run_external_tool(args, command_index, command)
 		return
 	}

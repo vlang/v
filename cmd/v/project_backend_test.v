@@ -78,3 +78,60 @@ fn test_unknown_project_backend_is_reported_with_its_manifest() {
 	// An explicit backend does not read the manifest's choice.
 	assert with_project_backend(['-b', 'c', root]) == ['-b', 'c', root]
 }
+
+// run_launcher_in runs this launcher from `dir`, the way a shell in that folder would.
+fn run_launcher_in(dir string, args []string, stdin_path string) os.Result {
+	mut environment := os.environ()
+	environment['VFLAGS'] = ''
+	environment[v3_no_fallback_env] = '1'
+	mut process := os.new_process(@VEXE)
+	process.set_args(args)
+	process.set_work_folder(dir)
+	process.set_environment(environment)
+	if stdin_path != '' {
+		process.set_stdin_path(stdin_path)
+	}
+	process.set_redirect_stdio()
+	process.run()
+	process.wait()
+	result := os.Result{
+		exit_code: process.code
+		output:    process.stdout_slurp() + process.stderr_slurp()
+	}
+	process.close()
+	return result
+}
+
+fn test_inline_source_and_stdin_belong_to_no_project() {
+	// The launcher rejects this manifest as soon as it applies it, so success proves that the
+	// temporary sources that `-e` and `run -` write into the folder skip it.
+	root := project_backend_fixture('inline', "Module {\n\tname: 'app'\n\tbackend: 'pascal'\n}\n")
+	inline := run_launcher_in(root, ['-e', 'println(41 + 1)'], '')
+	assert inline.exit_code == 0, inline.output
+	assert inline.output.contains('42'), inline.output
+	stdin_source := os.join_path(os.dir(root), 'inline_stdin.v')
+	os.write_file(stdin_source, 'println(43)\n')!
+	piped := run_launcher_in(root, ['run', '-'], stdin_source)
+	assert piped.exit_code == 0, piped.output
+	assert piped.output.contains('43'), piped.output
+	// The folder's own sources still use the manifest.
+	project := run_launcher_in(root, ['run', '.'], '')
+	assert project.exit_code == 1, project.output
+	assert project.output.contains('unknown backend `pascal`'), project.output
+}
+
+fn test_test_command_hands_the_project_backend_to_the_test_runner() {
+	// The runner selects files and evaluates `// vtest build:` constraints for the backend in
+	// the options before `test`; its reproduction command shows those options.
+	root := project_backend_fixture('vtest', "Module {\n\tname: 'app'\n\tbackend: 'c'\n}\n")
+	os.write_file(os.join_path(root, 'sub', 'a_test.v'), 'fn test_a() {\n\tassert false\n}\n')!
+	tested := run_launcher_in(root, ['test', 'sub'], '')
+	assert tested.exit_code == 1, tested.output
+	assert tested.output.contains(' -b c '), tested.output
+	// An unknown manifest backend stops `v test` before the runner starts.
+	unknown := project_backend_fixture('vtest_unknown', "Module {\n\tname: 'app'\n\tbackend: 'pascal'\n}\n")
+	rejected := run_launcher_in(unknown, ['test', '.'], '')
+	assert rejected.exit_code == 1, rejected.output
+	assert rejected.output.contains('unknown backend `pascal`'), rejected.output
+	assert !rejected.output.contains('Summary for all V _test.v files'), rejected.output
+}

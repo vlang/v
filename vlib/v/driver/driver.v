@@ -180,6 +180,10 @@ const v3_internal_force_cache_source_flag = '-v3-internal-force-cache-source'
 const v3_internal_tcc_dylib_flag = '-v3-internal-tcc-dylib'
 const v3_internal_tcc_no_retry_flag = '-v3-internal-tcc-no-retry'
 const v3_internal_implicit_tcc_warning_prefix = '-v3-internal-implicit-tcc-warning='
+// no_project_backend_flag marks the compiler that runs `-e` code or standard input. Its
+// temporary source lies in the working directory, but belongs to no project there, so the
+// launcher must not apply the `backend` of that directory's v.mod.
+pub const no_project_backend_flag = '-v3-internal-no-project-backend'
 const v3_embedded_env = 'V_MACOS_V3_EMBEDDED'
 
 fn v3_parser_diagnostics_printed(value bool) bool {
@@ -2383,8 +2387,9 @@ fn run_v_source_from_stdin(args []string, input_index int) {
 		eprintln('cannot create temporary stdin source file: ${err.msg()}')
 		exit(1)
 	}
-	mut child_args := args.clone()
-	child_args[input_index] = temporary_source
+	mut child_args := [no_project_backend_flag]
+	child_args << args
+	child_args[input_index + 1] = temporary_source
 	mut process := os.new_process(os.executable())
 	process.set_args(child_args)
 	process.wait()
@@ -2405,7 +2410,8 @@ fn run_v_inline_source(args []string, option_index int, consumed int, source str
 		eprintln('cannot create temporary inline source file: ${err.msg()}')
 		exit(1)
 	}
-	mut child_args := args[..option_index].clone()
+	mut child_args := [no_project_backend_flag]
+	child_args << args[..option_index]
 	child_args << ['run', temporary_source]
 	child_args << args[option_index + consumed..]
 	exit_code := run_binary(os.executable(), child_args, false)
@@ -10373,6 +10379,8 @@ pub fn run(args []string) {
 			i++
 		} else if args[i] == v3_internal_force_cache_source_flag {
 			force_cache_source = true
+			i++
+		} else if args[i] == no_project_backend_flag {
 			i++
 		} else if args[i] == v3_internal_all_cached_declarations_flag {
 			keep_all_cached_declarations = true
