@@ -48,7 +48,7 @@ jobs:
         id: tests-freebsd-tcc
         shell: cpa.sh {0}
         run: |
-          sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
+          sudo pkg install -y git pkgconf sqlite3 gmake boehm-gc-threaded libiconv
           # Install DB packages needed to build examples
           sudo pkg install -y mariadb118-client postgresql18-client
           # Install packages needed by Sokol to build examples
@@ -93,7 +93,7 @@ jobs:
         id: tests-freebsd-clang
         shell: cpa.sh {0}
         run: |
-          sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv
+          sudo pkg install -y git pkgconf sqlite3 gmake boehm-gc-threaded libiconv
           # Install DB packages needed to build examples
           sudo pkg install -y mariadb118-client postgresql18-client
           # Install packages needed by Sokol to build examples
@@ -138,7 +138,7 @@ jobs:
         id: tests-freebsd-gcc
         shell: cpa.sh {0}
         run: |
-          sudo pkg install -y git sqlite3 gmake boehm-gc-threaded libiconv gcc
+          sudo pkg install -y git pkgconf sqlite3 gmake boehm-gc-threaded libiconv gcc
           # Install DB packages needed to build examples
           sudo pkg install -y mariadb118-client postgresql18-client
           # Install packages needed by Sokol to build examples

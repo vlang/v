@@ -1,11 +1,14 @@
 module arm64
 
 import os
-import v.parser
-import v.pref
-import v.ssa
-import v.transform
-import v.types
+
+$if macos && arm64 {
+	import v.parser
+	import v.pref
+	import v.ssa
+	import v.transform
+	import v.types
+}
 
 const native_test_compiler = os.join_path(os.vtmp_dir(), 'arm64_float_literal_compiler_${os.getpid()}')
 

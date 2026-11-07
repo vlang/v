@@ -24,6 +24,8 @@ fn test_vfopen_fileno_fd_write_fd_slurp_roundtrip() {
 	assert wfd > 0
 	os.fd_write(wfd, 'the quick brown fox\n')
 	os.fd_write(wfd, 'and one more line')
+	// Windows can keep the path's file size stale while the writer is open.
+	assert os.fd_close(wfd) == 0
 	assert os.file_size(path) == 'the quick brown fox\nand one more line'.len
 
 	fr := os.vfopen(path, 'rb')!
@@ -33,7 +35,6 @@ fn test_vfopen_fileno_fd_write_fd_slurp_roundtrip() {
 	// The descriptor is exhausted, so a second slurp reads nothing.
 	assert os.fd_slurp(rfd) == []string{}
 	assert os.fd_close(rfd) == 0
-	assert os.fd_close(wfd) == 0
 	assert os.is_file(path)
 }
 

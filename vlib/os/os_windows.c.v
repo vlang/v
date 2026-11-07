@@ -37,8 +37,12 @@ const executable_suffixes = ['.com', '.exe', '.bat', '.cmd', '']
 
 // Windows CRT file type and permission bits, also exposed for parity with Unix.
 const s_ifmt = 0xF000 // type of file
+const s_ifsock = 0xC000 // socket
 const s_ifdir = 0x4000 // directory
 const s_ifreg = 0x8000 // regular file
+const s_ifblk = 0x6000 // block device
+const s_ifchr = 0x2000 // character device
+const s_ififo = 0x1000 // FIFO
 const s_iflnk = 0xa000 // link
 const s_isuid = 0o4000 // SUID
 const s_isgid = 0o2000 // SGID
@@ -598,12 +602,10 @@ fn raw_execute_shell(cmd string) Result {
 	if cmd.contains('./') {
 		pcmd = pcmd.replace('./', '.\\')
 	}
-	if cmd.contains('2>') {
-		pcmd = 'cmd /c "${pcmd}"'
-	} else {
-		pcmd = 'cmd /c "${pcmd} 2>&1"'
-	}
-	return windows_execute_command_line(pcmd, '', cmd, true)
+	// Both standard handles already point to the capture pipe. Appending a
+	// redirection changes echo output and overrides the caller's stdout redirection.
+	// /s removes only this wrapper's outer quotes, preserving the command inside.
+	return windows_execute_command_line('cmd /s /c "${pcmd}"', '', cmd, true)
 }
 
 fn windows_execute_command_line(command_line_text string, application_name string, display_cmd string, expand_environment bool) Result {
@@ -622,6 +624,11 @@ fn windows_execute_command_line(command_line_text string, application_name strin
 			exit_code: error_num
 			output:    'exec failed (CreatePipe): ${error_msg}'
 		}
+	}
+	defer {
+		// Setup failures still leave both pipe handles owned by this process.
+		close_valid_handle(&child_stdout_read)
+		close_valid_handle(&child_stdout_write)
 	}
 	set_handle_info_ok := C.SetHandleInformation(child_stdout_read, C.HANDLE_FLAG_INHERIT, 0)
 	if !set_handle_info_ok {
@@ -666,8 +673,7 @@ fn windows_execute_command_line(command_line_text string, application_name strin
 			output:    'exec failed (CreateProcess) with code ${error_num}: ${error_msg} cmd: ${display_cmd}'
 		}
 	}
-	C.CloseHandle(child_stdin)
-	C.CloseHandle(child_stdout_write)
+	close_valid_handle(&child_stdout_write)
 	buf := [4096]u8{}
 	mut read_data := strings.new_builder(1024)
 	for {

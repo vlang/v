@@ -16,6 +16,9 @@ values. If the operating system cannot provide an environment block, it returns 
 
 ### Console input
 
+`os.get_raw_stdin()` reads to EOF and returns all input bytes, including newlines and NUL bytes.
+Use `os.get_raw_line()` to read a single line instead.
+
 On Windows, `os.input()` supports both console and redirected standard input.
 It returns an empty string when the standard input handle is invalid.
 
@@ -30,6 +33,8 @@ insufficient output buffer as an error.
 
 `os.executable()` returns the process executable path. On Linux, NetBSD, and DragonFly,
 it uses the exact byte count returned by `readlink`, without requiring a NUL terminator.
+Targets without a platform-specific lookup, including Android, use `os.args[0]`, the startup
+directory, and `PATH` as a best-effort fallback.
 
 `os.base()` removes all trailing separators before returning the final path element.
 For example, `os.base('a///')` returns `a`. An empty path returns `.`, and a path made
@@ -223,6 +228,11 @@ These arguments are literal on Windows too: `%PATH%` stays `%PATH%`, and quotes
 and trailing backslashes are preserved. Expand environment variables explicitly
 with `os.getenv()` when that is intended.
 
+The deprecated `os.execute` and `os.raw_execute` APIs capture both standard streams
+without adding shell redirections to the command. Explicit redirections control each stream:
+`>file` redirects stdout while stderr remains captured; `>file 2>&1` sends both to the file.
+Windows shell output retains significant trailing spaces, including those produced by `echo`.
+
 Call `process.wait()` before `process.close()`, including after `process.signal_kill()`.
 On POSIX systems, waiting reaps the killed child and records its signal exit status.
 Repeated waits preserve the exit status already collected by `wait()` or `is_alive()`.
@@ -351,6 +361,7 @@ messages. Error text returned by operations using it retains the message's punct
 
 On Windows, `os.exec()` captures bytes from successful child-pipe reads only. Closing the output
 pipe does not append a previous chunk again. Commands with no output return an empty output string.
+Both capture-pipe handles are released after execution, including when starting the child fails.
 
 ### Writing arrays
 
@@ -385,3 +396,32 @@ With `-d vlibc`, Unix C builds use the experimental raw syscall runtime for `rea
 New files use mode `0666` filtered by the process umask. Read and write errors retain their
 POSIX error codes; interrupted operations retry. `exists` follows symbolic links.
 See [the vlibc runtime notes](../builtin/README.vlibc.md) for supported platforms and limitations.
+
+### `-freestanding` backend
+
+With `-freestanding` (and without `-d vlibc`), the os module keeps its API while linking no
+libc: file, environment and process calls go through builtin's `bf_*` layer, which makes raw
+syscalls through each target's runtime (`builtin/linux_bare`, `freebsd_bare`, `netbsd_bare`,
+`dragonfly_bare`, `macos_bare`, `solaris_bare`, and `freestanding_d_freestanding.c.v` for the
+native backends), following the shapes of Zig's `std/os/linux.zig` (per-arch syscall tables,
+raw `syscall0..syscall6` entries, and kernel errnos normalized to the Linux numbers).
+`-syscalls` uses the same layer in a libc-linked build. This covers the file and environment
+core: `open_file`, `open`, `create`, the standard files in `stdin`/`stdout`/`stderr`,
+`File.read/2` and the write/read/seek surface of `os.File`, `write_file`, `read_file`,
+`read_bytes`, `write_bytes`, `rename`, `truncate`, `mkdir`, `ls`, `rm`, `rmdir`, `chmod`,
+`stat`, `lstat`, `exists`, `is_file`, `is_dir`, `is_executable`, `is_writable`, `getwd`,
+`chdir`, `executable`, `getpid`, `getppid`, `uname`, `getenv`, and `environ`, plus the
+process calls `fork`, `execve` and `wait4`. Error strings come from an in-module errno table
+instead of `strerror(3)`, `last_error` reads the runtime's errno, and `sleep_ms` and the
+`os.fd_*` calls go through syscalls as well. On illumos, `wait4` follows its libc: it is
+emulated with `waitid` and fills only the approximate times in `rusage`.
+New files created by `create`, `write_file`, or `write_bytes` use mode `0666`, filtered by the
+process umask. Writing an existing file preserves its permission bits.
+
+Two purity notes: `real_path` makes a path absolute and resolves `.` and `..` lexically,
+without chasing symbolic links (there is no `realpath` syscall); and `setenv`/`unsetenv`
+return -1, because the startup environment snapshot in the kernel is immutable and a
+freestanding process has no saved envp block to rewrite. Operations that need libc (for
+example `system`, `exec`, `mmap`, threads) pull libc symbols at link time, which
+`-nostdlib` then reports as missing-symbol errors; A freestanding build stops supporting
+such functions when they are used.

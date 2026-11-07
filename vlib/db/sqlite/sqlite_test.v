@@ -56,7 +56,11 @@ fn test_sqlite() {
 	assert username[0].vals[0] == 'Sam'
 
 	// this insert will be rejected due to duplicated id
-	db.exec("insert into users (id,name) values (1,'Silly')")!
+	if _ := db.exec("insert into users (id,name) values (1,'Silly')") {
+		assert false, 'the duplicate insert should fail'
+	} else {
+		assert err.code() == int(sqlite.Result.constraint)
+	}
 	assert db.get_affected_rows_count() == 0
 
 	mut users := db.exec('select * from users')!

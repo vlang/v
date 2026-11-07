@@ -4,7 +4,9 @@ import io
 import net
 import time
 
-// SSLConn is the current connection
+// SSLConn is a TLS connection. It does not synchronize access to its TLS context.
+// Calls on the same connection must be serialized, including read, write, timeout
+// changes, and close/shutdown. One reader and one writer must not call it concurrently.
 pub struct SSLConn {
 pub:
 	config SSLConnectConfig
@@ -292,7 +294,7 @@ pub fn (mut s SSLConn) connect(mut tcp_conn net.TcpConn, hostname string) ! {
 	if res != 1 {
 		return error('net.openssl SSLConn.connect, could not set host name')
 	}
-	if C.SSL_set_fd(voidptr(s.ssl), tcp_conn.sock.handle) != 1 {
+	if C.v_net_openssl_SSL_set_fd(voidptr(s.ssl), tcp_conn.sock.handle) != 1 {
 		return error('net.openssl SSLConn.connect, could not assign ssl to socket.')
 	}
 	net.set_blocking(tcp_conn.sock.handle, false)!

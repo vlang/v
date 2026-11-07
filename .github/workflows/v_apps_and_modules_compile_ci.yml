@@ -96,9 +96,6 @@ jobs:
           echo "Run vsql/connection_test.v"
           v vsql/connection_test.v
 
-      - name: Test vlang/gui
-        if: ${{ github.event_name != 'pull_request' && !cancelled() && steps.build.outcome == 'success' }}
-        run: .github/workflows/compile_vlang_gui_examples.sh
       - name: Test discord.v
         if: ${{ false && !cancelled() && steps.build.outcome == 'success' }} # disabled: upstream uses deprecated json2.raw_decode
         run: .github/workflows/compile_discordv.sh
@@ -181,7 +178,14 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: |
           echo "Clone v-analyzer"
-          v retry -- git clone --depth=1 --branch=master --filter=blob:none --recursive --shallow-submodules https://github.com/vlang/v-analyzer /tmp/v-analyzer
+          v retry -- git clone --depth=1 --filter=blob:none --recursive --shallow-submodules https://github.com/vlang/v-analyzer /tmp/v-analyzer
+          # Remove this patch once the default branch supports the current compiler.
+          analyzer_patch="$GITHUB_WORKSPACE/.github/v_analyzer_current_v.patch"
+          if git -C /tmp/v-analyzer apply --check "$analyzer_patch"; then
+            git -C /tmp/v-analyzer apply "$analyzer_patch"
+          else
+            git -C /tmp/v-analyzer apply --reverse --check "$analyzer_patch"
+          fi
           cd /tmp/v-analyzer
           echo "Installing dependencies"
           v install
@@ -256,6 +260,61 @@ jobs:
       #     echo "Run Vex Tests"
       #     v test ~/.vmodules/nedpals/vex
 
+  # GUI tests and examples each take tens of minutes with one compiler worker.
+  # Keep compilation serial while giving each phase a separate time budget.
+  v-gui:
+    if: github.ref == 'refs/heads/master' && (github.event_name != 'schedule' || github.repository == 'vlang/v')
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-14]
+        phase: [tests, examples]
+      fail-fast: false
+      max-parallel: 2
+    runs-on: ${{ matrix.os }}
+    env:
+      VTEST_FAIL_FAST: '1'
+      # Match the GUI script's compiler before make warms the module cache.
+      VFLAGS: ${{ startsWith(matrix.os, 'macos-') && '-cc clang' || '' }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Cache apt packages
+        if: runner.os == 'Linux'
+        uses: ./.github/actions/cache-apt-packages-action
+        with:
+          profile: graphics
+
+      - name: Cache Homebrew downloads
+        if: runner.os == 'macOS'
+        uses: actions/cache@v6
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-${{ matrix.os }}-v_gui-${{ hashFiles('.github/workflows/v_apps_and_modules_compile_ci.yml') }}
+          restore-keys: |
+            brew-${{ matrix.os }}-v_gui-
+            brew-${{ matrix.os }}-v_apps-
+            brew-${{ matrix.os }}-
+
+      - name: Build V
+        run: make && sudo ./v symlink
+
+      - name: Install dependencies
+        run: |
+          if [ "$RUNNER_OS" == 'Linux' ]; then
+            .github/workflows/disable_azure_mirror.sh
+            v retry -- sudo apt -qq update
+            v retry -- sudo apt -qq install libgc-dev libsodium-dev libssl-dev sqlite3 libsqlite3-dev
+            v retry -- sudo apt -qq install libfreetype6-dev libxi-dev libxcursor-dev libgl-dev libxrandr-dev libasound2-dev xfonts-75dpi xfonts-base libegl-dev libharfbuzz-dev libfribidi-dev libfontconfig1-dev libpango1.0-dev libglib2.0-dev libdbus-1-dev
+          else
+            v retry brew install libsodium pango fribidi pkg-config
+          fi
+
+      - name: Test vlang/gui (${{ matrix.phase }})
+        run: .github/workflows/compile_vlang_gui_examples.sh "${{ matrix.phase }}"
+
   vpm-site-compile:
     if: github.ref == 'refs/heads/master' && (github.event_name != 'schedule' || github.repository == 'vlang/v')
     strategy:
@@ -308,6 +367,17 @@ jobs:
           v retry -- v install pcre
       - name: Clone gitly
         run: v retry -- git clone --depth 1 -b $env:GITLY_BRANCH $env:GITLY_REPO gitly
+      - name: Apply gitly first-run compatibility fixes
+        shell: pwsh
+        run: |
+          # Remove this patch when the ci/windows-first-run branch includes the fixes.
+          git -C gitly apply --check ../.github/gitly_windows_first_run.patch
+          if ($LASTEXITCODE -eq 0) {
+            git -C gitly apply ../.github/gitly_windows_first_run.patch
+          } else {
+            git -C gitly apply --reverse --check ../.github/gitly_windows_first_run.patch
+          }
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Compile gitly CSS
         uses: gha-utilities/sass-build@c15aba209f1cfe51f43e319f2724558112cd9336 # v0.6.1
         with:

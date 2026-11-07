@@ -955,6 +955,20 @@ fn test_formatter_resolves_implied_imports_in_selector_scope() {
 	assert vfmt('scope_aware_implied_import_twice', out) == out
 }
 
+fn test_formatter_does_not_infer_imports_for_translated_selectors() {
+	// A translated project declares its C globals in another source file.
+	// `trace.x` must keep referring to that global, not the vlib trace module.
+	source := '@[translated]\nmodule main\n\nimport os\n\nfn read_value() int {\n\treturn trace.x + os.args.len\n}\n'
+	out := vfmt('translated_global_selector', source)
+	assert out.count('import os') == 1, out
+	assert !out.contains('import trace'), out
+	assert out.contains('trace.x + os.args.len'), out
+	assert vfmt('translated_global_selector_twice', out) == out
+	// Ordinary V files retain the existing implied-import behavior.
+	native := vfmt('native_global_selector', source.replace('@[translated]\n', ''))
+	assert native.contains('import trace'), native
+}
+
 fn test_formatter_does_not_duplicate_a_conditional_import() {
 	source := 'module builtin\n\n\$if !nofloat ? {\n\timport strconv\n}\n\nfn format_float(x f64) string {\n\treturn strconv.f64_to_str_l(x)\n}\n'
 	out := vfmt('conditional_implied_import', source)
@@ -985,6 +999,14 @@ fn test_formatter_preserves_anonymous_aggregate_types() {
 	assert out.contains('value struct{ foo string }'), out
 	assert out.contains("accept(struct { foo: 'ok' })"), out
 	assert vfmt('anonymous_aggregate_types_twice', out) == out
+}
+
+fn test_formatter_preserves_anonymous_union_literals() {
+	source := 'struct Box {\n\tvalue union { number int }\n}\n\nfn main() {\n\t_ = Box{ value: union { number: 42 } }\n}\n'
+	out := vfmt('anonymous_union_literal', source)
+	assert out.contains('union { number: 42 }'), out
+	assert !out.contains('AnonUnion_'), out
+	assert vfmt('anonymous_union_literal_twice', out) == out
 }
 
 fn test_formatter_fixes_indented_anonymous_union() {

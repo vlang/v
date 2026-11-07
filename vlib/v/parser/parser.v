@@ -208,6 +208,7 @@ mut:
 	local_type_decls_indexed          bool
 	local_type_scopes                 []LocalTypeScope
 	anonymous_struct_types            AnonymousStructShapeCache
+	anonymous_union_types             AnonymousStructShapeCache
 	anonymous_struct_count            int
 	sql_query_data_aliases            map[string]bool
 	export_records                    []ExportRecord
@@ -332,6 +333,7 @@ pub fn Parser.new(prefs &pref.Preferences) &Parser {
 		translated_sizeof_const_names:  map[string]bool{}
 		translated_sizeof_global_names: map[string]bool{}
 		anonymous_struct_types:         AnonymousStructShapeCache{}
+		anonymous_union_types:          AnonymousStructShapeCache{}
 		comptime_const_values:          map[string]string{}
 		comptime_local_values:          map[string]string{}
 		imported_module_names:          map[string]bool{}
@@ -527,6 +529,7 @@ fn (mut p Parser) reset_file_state(path string) {
 	p.local_type_decls_by_block = map[int][]string{}
 	p.local_type_decls_indexed = false
 	p.anonymous_struct_types = AnonymousStructShapeCache{}
+	p.anonymous_union_types = AnonymousStructShapeCache{}
 	p.anonymous_struct_count = 0
 	p.sql_query_data_aliases.clear()
 	p.accepted_line_directives.clear()
@@ -586,7 +589,8 @@ fn (mut p Parser) parse_buffer(path string, stable_src string) {
 	p.has_veb_template = false
 	p.may_have_local_types = source_has_struct_or_union(stable_src)
 	p.unsupported_inline_asm_guards.clear()
-	if !p.prefs.supports_inline_asm && !p.supports_c_inline_asm_lowering() {
+	if !p.prefs.supports_inline_asm && !p.supports_c_inline_asm_lowering()
+		&& !p.supports_native_inline_asm_lowering() {
 		p.precollect_unsupported_inline_asm_guards(stable_src, p.prefs.target.arch)
 	}
 	if path.ends_with('.v') || path.ends_with('.vv') {
@@ -2210,7 +2214,12 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type_
 			is_mut:         is_v_header_decl || is_trusted_c_decl
 		})
 		p.record_formatter_param_list_end(id, param_list_end)
-		p.pending_export = ''
+		if is_v_header_decl {
+			// Cached export wrappers still require the program's runtime initializer.
+			p.register_pending_export(name)
+		} else {
+			p.pending_export = ''
+		}
 		p.register_pending_noreturn(name, interop_prefix)
 		return id
 	}
@@ -4937,6 +4946,7 @@ fn (p &Parser) known_bare_comptime_flag(name string) bool {
 		'prealloc',
 		'no_bounds_checking',
 		'freestanding',
+		'syscalls',
 		'threads',
 		'js_node',
 		'js_browser',
@@ -8353,7 +8363,7 @@ fn (mut p Parser) parse_comptime_expr() flat.NodeId {
 		return p.add_val_id(5, env_val)
 	}
 	if p.tok == .name && p.lit == 'embed_file' {
-		return p.parse_embed_file_expr()
+		return p.parse_embed_file_expr(dollar_pos)
 	}
 	if p.tok == .name && p.lit == 'vml' {
 		return p.parse_removed_vml_expr(dollar_pos)
@@ -8665,8 +8675,7 @@ fn (mut p Parser) comptime_type_arg_has_empty_literal_suffix() bool {
 	return false
 }
 
-fn (mut p Parser) parse_embed_file_expr() flat.NodeId {
-	embed_start := int_max(0, p.span_start() - 1)
+fn (mut p Parser) parse_embed_file_expr(embed_start int) flat.NodeId {
 	p.next() // skip embed_file
 	if p.tok != .lpar {
 		return flat.empty_node
@@ -9007,7 +9016,11 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.for_stmt()
 		}
 		.key_fn {
-			if p.peek() in [.lpar, .lsbr] {
+			next := p.peek()
+			if next == .decl_assign {
+				return p.recover_keyword_variable_decl()
+			}
+			if next in [.lpar, .lsbr] {
 				if p.cur_fn != '' && p.method_decl_follows() {
 					p.report_fn_decl_inside_fn(p.tok_pos, p.tok_end)
 					return p.fn_decl()
@@ -9020,13 +9033,20 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.fn_decl()
 		}
 		.key_struct, .key_union {
+			if p.tok == .key_union && p.peek() == .lcbr {
+				return p.assign_or_expr_stmt()
+			}
 			return p.struct_decl()
 		}
 		.key_const {
 			return p.const_decl()
 		}
 		.key_match {
-			if p.peek() == .lpar && !p.parenthesized_match_header_starts_block() {
+			next := p.peek()
+			if next == .decl_assign {
+				return p.recover_keyword_variable_decl()
+			}
+			if next == .lpar && !p.parenthesized_match_header_starts_block() {
 				return p.assign_or_expr_stmt()
 			}
 			return p.match_stmt(false)
@@ -9171,6 +9191,9 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.goto_stmt()
 		}
 		.key_go, .key_spawn {
+			if p.peek() == .decl_assign {
+				return p.recover_keyword_variable_decl()
+			}
 			keyword := if p.tok == .key_go { 'go' } else { 'spawn' }
 			spawn_pos := p.span_start()
 			p.next()
@@ -9250,6 +9273,17 @@ fn (mut p Parser) stmt() flat.NodeId {
 			return p.assign_or_expr_stmt()
 		}
 	}
+}
+
+// recover_keyword_variable_decl reports a keyword name and parses its declaration for recovery.
+fn (mut p Parser) recover_keyword_variable_decl() flat.NodeId {
+	name := p.tok.str()
+	p.record_diagnostic_span('cannot use keyword `${name}` as a variable name', p.tok_pos,
+		p.tok_end)
+	// Recover as a declaration so its initializer does not become a keyword operand.
+	p.tok = .name
+	p.lit = name
+	return p.assign_or_expr_stmt()
 }
 
 fn (mut p Parser) debugger_stmt() flat.NodeId {
@@ -11702,9 +11736,11 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	can_lower := (!has_unsupported_content && has_memory_clobber)
 		|| (p.supports_c_inline_asm_lowering()
 			&& comptime_flag_is_target_arch(asm_arch, p.prefs.target.arch))
+		|| (p.supports_native_inline_asm_lowering()
+			&& comptime_flag_is_target_arch(asm_arch, p.prefs.target.arch))
 	if !p.prefs.is_fmt && !p.prefs.supports_inline_asm && !can_lower
 		&& (has_memory_clobber || has_unsupported_content) {
-		p.record_diagnostic('inline assembly is not supported by the selected V3 backend', asm_pos)
+		p.record_diagnostic(p.unsupported_inline_asm_message(asm_arch), asm_pos)
 	}
 	id := p.add_node(flat.Node{
 		kind:           .asm_stmt
@@ -11720,8 +11756,77 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	return id
 }
 
+// inline_asm_c_lowering_arches are the architectures whose inline assembly the C backend
+// lowers to GNU `asm()`.
+const inline_asm_c_lowering_arches = ['amd64', 'arm64', 'x86', 'riscv64']
+
 fn (p &Parser) supports_c_inline_asm_lowering() bool {
-	return p.prefs.backend == 'c' && p.prefs.target.arch in ['amd64', 'arm64', 'x86']
+	return p.prefs.backend == 'c' && p.prefs.target.arch in inline_asm_c_lowering_arches
+}
+
+// supports_native_inline_asm_lowering reports whether the SSA native backend lowers
+// an inline assembly block for its own target architecture. A block for another
+// architecture is declined, which keeps a `$if` guard for it effective.
+fn (p &Parser) supports_native_inline_asm_lowering() bool {
+	return (p.prefs.backend == 'x64' && p.prefs.target.arch == 'amd64')
+		|| (p.prefs.backend == 'arm64' && p.prefs.target.arch == 'arm64')
+}
+
+// inline_asm_comptime_flag returns the `$if` flag that is true only in a build for the
+// canonical architecture `arch`. The block header accepts more spellings than `$if` does
+// (`x86_64`, `i686`, `riscv64`), and `$if x64` tests the pointer width rather than the
+// architecture, so a hint cannot echo the spelling the block used.
+fn inline_asm_comptime_flag(arch string) string {
+	return match arch {
+		'x86' { 'i386' }
+		'riscv64' { 'rv64' }
+		'riscv32' { 'rv32' }
+		else { arch }
+	}
+}
+
+// unsupported_inline_asm_message explains why an inline assembly block cannot be lowered.
+// The C backend lowers a block for the build's own architecture, so a block for another
+// architecture is a mismatch with the target, not a missing feature; the message names the
+// `$if` guard and, where the C backend can lower that architecture, the `-arch` flag that
+// fixes it. Other backends do not lower inline assembly.
+fn (p &Parser) unsupported_inline_asm_message(asm_arch string) string {
+	target := p.prefs.target.arch
+	// `asm raw {` names a modifier where the architecture belongs.
+	named := asm_arch !in ['', 'raw', 'intel']
+	arch := pref.normalized_arch(asm_arch)
+	if named && !pref.is_supported_arch(arch) {
+		return 'unknown inline assembly architecture `${asm_arch}`'
+	}
+	// A guard only helps when it is false in this build.
+	guard := if named && arch != target {
+		'; guard the block with `\$if ${inline_asm_comptime_flag(arch)} {}`'
+	} else {
+		''
+	}
+	if !p.supports_c_inline_asm_lowering() {
+		if p.prefs.backend == 'c' {
+			return 'inline assembly is not supported by the C backend for the `${target}` target${guard}'
+		}
+		return 'inline assembly is not supported by the `${p.prefs.backend}` backend${guard}'
+	}
+	if !named {
+		return 'inline assembly must name its architecture, for example `asm ${target} { ... }`'
+	}
+	// `asm x32` names the x86 target by a spelling the block header does not accept.
+	accepted := comptime_flag_is_target_arch(asm_arch, arch)
+	if arch == target {
+		return '`asm ${asm_arch}` does not name the `${target}` target; write `asm ${target} { ... }`'
+	}
+	mut hint := guard
+	if arch in inline_asm_c_lowering_arches {
+		hint += if accepted {
+			' or build with `-arch ${arch}`'
+		} else {
+			', or write `asm ${arch} { ... }` and build with `-arch ${arch}`'
+		}
+	}
+	return '`asm ${asm_arch}` block in a build for the `${target}` target${hint}'
 }
 
 // ==================== expressions (Pratt parser) ====================
@@ -13722,22 +13827,34 @@ fn (mut p Parser) prefix_expr(stop_at_struct_field bool) flat.NodeId {
 		.key_fn {
 			return p.fn_literal()
 		}
-		.key_struct {
+		.key_struct, .key_union {
+			is_union := p.tok == .key_union
 			p.next()
-			mut init_id := p.struct_init(flat.source_type_id('struct'))
+			mut init_id := p.struct_init(flat.source_type_id(if is_union {
+				'union'
+			} else {
+				'struct'
+			}))
 			init := p.a.nodes[int(init_id)]
-			if name_id := p.anonymous_struct_type_for_literal(init) {
-				p.a.nodes[int(init_id)].set_source_value_id(name_id)
-				p.a.nodes[int(init_id)].typ = name_id
-			} else if name_id := p.create_anonymous_struct_type_for_literal(init) {
-				p.a.nodes[int(init_id)].set_source_value_id(name_id)
-				p.a.nodes[int(init_id)].typ = name_id
-			} else if name_id := p.create_anonymous_struct_type_from_type_init(init) {
-				if p.tok == .lcbr {
-					init_id = p.struct_init(name_id)
-				} else {
+			if is_union {
+				if name_id := p.anonymous_union_type_for_literal(init) {
 					p.a.nodes[int(init_id)].set_source_value_id(name_id)
 					p.a.nodes[int(init_id)].typ = name_id
+				}
+			} else {
+				if name_id := p.anonymous_struct_type_for_literal(init) {
+					p.a.nodes[int(init_id)].set_source_value_id(name_id)
+					p.a.nodes[int(init_id)].typ = name_id
+				} else if name_id := p.create_anonymous_struct_type_for_literal(init) {
+					p.a.nodes[int(init_id)].set_source_value_id(name_id)
+					p.a.nodes[int(init_id)].typ = name_id
+				} else if name_id := p.create_anonymous_struct_type_from_type_init(init) {
+					if p.tok == .lcbr {
+						init_id = p.struct_init(name_id)
+					} else {
+						p.a.nodes[int(init_id)].set_source_value_id(name_id)
+						p.a.nodes[int(init_id)].typ = name_id
+					}
 				}
 			}
 			if p.prefs.is_fmt {
@@ -15815,6 +15932,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 		outer_defer_result_allowed := p.defer_result_allowed
 		outer_nested_block_depth := p.nested_block_depth
 		outer_active_lambda_param_counts := p.active_lambda_param_counts.clone()
+		outer_local_binding_counts := p.local_binding_counts
 		// Skipped compile-time bodies in this literal belong to its node, not to
 		// the enclosing named function or literal.
 		p.cur_fn_offset = fn_start
@@ -15822,6 +15940,9 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 		p.defer_result_allowed = false
 		p.nested_block_depth = 0
 		p.active_lambda_param_counts.clear()
+		// Only parameters and explicit captures enter an anonymous function's local scope.
+		// Uncaptured enclosing locals must not shadow names declared in its body.
+		p.local_binding_counts = map[string]int{}
 		body_start := p.tok_pos
 		p.push_local_type_scope(p.fn_literal_local_type_scope(fn_start))
 		p.begin_comptime_value_scope()
@@ -15856,6 +15977,7 @@ fn (mut p Parser) fn_literal() flat.NodeId {
 		}
 		p.check(.rcbr)
 		p.end_local_binding_scope()
+		p.local_binding_counts = outer_local_binding_counts
 		p.end_comptime_value_scope()
 		p.pop_local_type_scope()
 		p.cur_fn_offset = prev_fn_offset
@@ -16245,6 +16367,14 @@ fn (mut p Parser) translated_sizeof_name_is_const(name string) bool {
 	}
 	// A visible local or parameter cannot select a module constant.
 	if !p.is_translated && p.is_local_binding(name) {
+		return false
+	}
+	// An imported module name followed by `.` selects a qualified member: a
+	// const of that name would conflict with the import. Reading it as a const
+	// operand would index every sibling file of a module that only measures
+	// another module's types, such as sizeof(flat.Node).
+	if !p.is_translated && p.tok == .name && p.lit == name && p.peek() == .dot
+		&& p.imported_module_names[name] {
 		return false
 	}
 	// A type that this module already declared is never read as a const operand,
@@ -18085,6 +18215,45 @@ fn (mut p Parser) diagnose_map_second_key(key string) {
 		key_start, key_start + second_key.len)
 }
 
+// A literal supplies only the active member; contextual checking may later replace
+// this inferred shape with the full anonymous union declared by its field or parameter.
+fn (mut p Parser) anonymous_union_type_for_literal(init flat.Node) ?u32 {
+	mut field_names := []string{cap: int(init.children_count)}
+	mut field_types := []u32{cap: int(init.children_count)}
+	mut field_positions := []token.Pos{cap: int(init.children_count)}
+	for i in 0 .. init.children_count {
+		field := p.a.child_node(&init, i)
+		if field.kind != .field_init || field.value.len == 0 || field.children_count != 1 {
+			return none
+		}
+		value := p.a.child_node(field, 0)
+		typ := p.infer_anonymous_struct_literal_type(value) or { return none }
+		field_names << field.value
+		field_types << typ
+		field_positions << field.pos
+	}
+	// An empty literal needs the complete type from its context, when one exists.
+	if init.children_count == 0 { return none }
+	if candidates := p.anonymous_union_types.typed_candidates(field_names, field_types) {
+		for candidate in candidates {
+			if p.a.contextual_anon_struct_types[candidate]
+				&& flat.source_type_query(candidate).has(.anon_union_prefix) {
+				return candidate
+			}
+		}
+	}
+	mut fields := []flat.NodeId{cap: field_names.len}
+	for i, name in field_names {
+		fields << p.a.add_node(flat.Node{
+			kind:  .field_decl
+			value: name
+			typ:   field_types[i]
+			pos:   field_positions[i]
+		})
+	}
+	return p.register_anonymous_aggregate_type(fields, field_names, field_types, true, true, -1)
+}
+
 fn (mut p Parser) anonymous_struct_type_for_literal(init flat.Node) ?u32 {
 	mut field_names := []string{cap: int(init.children_count)}
 	mut field_types := []u32{cap: int(init.children_count)}
@@ -18315,7 +18484,9 @@ fn (p &Parser) infer_anonymous_struct_literal_type(node flat.Node) ?u32 {
 			}
 		}
 		.struct_init {
-			if node.source_value_id() != 0 && node.source_value_id() != flat.source_type_id('struct') {
+			if node.source_value_id() != 0
+				&& node.source_value_id() !in [flat.source_type_id('struct'),
+					flat.source_type_id('union')] {
 				return node.source_value_id()
 			}
 		}
@@ -18613,9 +18784,16 @@ fn (mut p Parser) register_anonymous_aggregate_type(ids []flat.NodeId, field_nam
 			p.a.formatter_sources[int(decl_id)] = p.s.src[source_start..source_end].clone()
 		}
 	}
-	p.anonymous_struct_types.append_typed(field_names, field_types, name_id)
-	if !inferred {
-		p.anonymous_struct_types.append_declared(field_names, name_id)
+	if is_union {
+		p.anonymous_union_types.append_typed(field_names, field_types, name_id)
+		if !inferred {
+			p.anonymous_union_types.append_declared(field_names, name_id)
+		}
+	} else {
+		p.anonymous_struct_types.append_typed(field_names, field_types, name_id)
+		if !inferred {
+			p.anonymous_struct_types.append_declared(field_names, name_id)
+		}
 	}
 	return name_id
 }

@@ -4,6 +4,88 @@ Every compiler fix must preserve or improve self-compilation efficiency. Agents 
 retired instructions before and after compiler changes and resolve regressions before merging.
 Keep correctness tests and generated-output checks alongside performance measurements.
 
+## Profile-driven follow-up, 2026-11-03 (round 2)
+
+The same self-host command retires **3.39% fewer instructions** at the median of ten alternating
+pairs against master `0fe95943038a0fd2a5f278f50cb3a4ff4f037291` (which includes the previous
+round); the requested 5% was not reached. The median paired difference is `-1.704 G`, **2/10 pairs
+regress** (both load spikes in a candidate run), the minima are 44.944 G against 43.282 G, and the
+serial (`VJOBS=1`) run goes from 39.96 G to 38.5 G (-3.9%).
+
+| Median metric | Before | After |
+| --- | ---: | ---: |
+| Retired instructions | 45,394,049,406.5 | 43,857,074,914 |
+| Parsed physical source lines | 492,696 | 492,696 |
+| Retired instructions/parsed line | 92,133.99 | 89,014.47 |
+| Peak memory footprint, MiB | 1,022 | 1,031 |
+| Elapsed time, s | 1.33 | 1.25 |
+
+This round was driven by `v -profile`: a production compiler built with `-profile` compiled the
+fixed input serially and reported exact call counts per function (3.28 G calls). The counts, not
+the instrumented times, chose the work: 83 M map operations, 131 M string comparisons, 30 M
+allocations, 130 M bounds-checked array reads, 52 M type-registry entry reads. The changes read
+spelling shapes and syntax entries through dense per-id tables, check accessor bounds with one
+comparison, copy into fresh string and array storage without pointer guards, memoize the callee's
+declared value type and per-name declaration facts, and skip repeated promotion, reachability,
+smartcast and resolution lookups in the checker, transformer and C generator.
+
+Generated C is identical for the self-host build and for 114 example programs; the self-hosted
+compiler builds and runs `hello_world`. Both compilers use the user's recipe, the same fixed input
+tree, one warmup per role and alternating AB/BA order under host load 16-18. The retained
+`base-*.out` and `cand-*.out` logs in `/Users/alex/code/v-self6-tools/ab/int2/` agree on the
+complete inventory: **492,696 physical lines in 458 parsed `.v` files**, with no `.vh` files.
+Both normalized medians divide the exact median instruction totals by that common line count;
+warmups are excluded. The table now uses the exact totals from the retained timing samples.
+
+Left for a next round, measured but not changed: after transform the AST has 3.57 M nodes while
+the C generator's trusted type cache covers the first 1.88 M, so every transform-created node is
+re-resolved from scratch on each query (489k slow resolutions from the C generator, about
+1.3 G of `node_type_uncached` in the transformer); the checker's existing per-function resolve
+memo could serve them, but the C generator changes scope, binding and smartcast state at 51
+sites that would each have to advance the memo's epoch. Also: the transformer's node-type memo
+recomputes 705k identical answers after conservative invalidation, `call_info` makes about seven
+lookups per call, the reachability walk costs ~1.2 G, markused's three per-body walks ~1.9 G,
+and the parallel parse merge ~1.1 G.
+
+## Memory churn and per-area follow-up, 2026-11-03
+
+The user's self-host command, `cd vlib/v && ../../v -gc none -prealloc -prod -o v3 v.v &&
+./v3 -nocache -building-v -o v4 -v v.v` (default parallel workers), retires **3.76% fewer
+instructions** at the median of ten alternating pairs against master
+`a2068ec9092e26b8678515f47617e3a631fc7c08`; the requested 5% was not reached. The median paired
+difference is `-1.510 G`, **1/10 pairs regress** (a load spike in one candidate run), and the
+minima are 46.442 G against 44.906 G. The serial (`VJOBS=1`) run goes from about 40.9 G to 39.7 G.
+
+| Median metric | Before | After |
+| --- | ---: | ---: |
+| Retired instructions | 47,197,000,000 | 45,422,000,000 |
+| Peak memory footprint, MiB | 1,001 | 1,022 |
+| Elapsed time, s | 1.39 | 1.39 |
+
+The kernel's work counts towards the process total on macOS: a first-touch fault of a 16 KB page
+costs about 7.8k instructions and an `munmap` about 1.6k per resident page. The baseline mapped
+2.9 GB and unmapped 2.3 GB for a 1 GB peak, because the per-thread arena caches held freed blocks
+idle while other threads mapped fresh ones. A process-wide pool of freed arena blocks, a plain
+build that leaves the arenas freed after cgen to the OS, and the exit handler skipping its unmaps
+remove most of that churn (page faults 115k to 93k, mmap+munmap calls 2,900 to 560). The map hash
+takes one product per 16 bytes of key. The checker, the C generator and the transformer skip
+repeated per-node lookups, size their indexes once, share read-only indexes between parallel
+jobs, and answer hot name and type probes from node-indexed memos.
+
+Generated C is identical for the self-host build and for 114 example programs (build hash and
+compiler path masked); the self-hosted compiler builds and runs `hello_world`. Both compilers were
+built with the user's recipe from the same `vlib/v/v.v`, measured from the same fixed input tree
+with one warmup per role, in alternating AB/BA order, with `/usr/bin/time -l` under host load 9-15.
+Elapsed time is a contextual measurement under shared host load. The parsed inventory is the same
+458 `.v` files in both roles.
+
+Left for a next round: the parallel mode itself costs 2.2 G more than the serial one with two
+workers already (parse merge probes per node, two pre-collect passes over every source byte,
+per-batch checker forks), the eager parse of every new type spelling into all of its views
+(`flat.source_type_syntax_miss`, 1.2% inclusive), the markused fallback inference for
+alias-typed parameters (0.6 G), and the 1.69 M transform-created nodes that every later stage
+types again under `-building-v`.
+
 ## Follow-up optimization, 2026-10-26
 
 The pinned follow-up uses **8.0317% fewer retired instructions**,

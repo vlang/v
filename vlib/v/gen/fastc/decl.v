@@ -812,6 +812,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 	declared_type_key_by_name := fastc_declared_type_key_by_name(declared_types)
 	mut out := strings.new_builder(1024)
 	mut module_initializers := map[string]string{}
+	mut early_initializers := map[string]string{}
 	mut uses_pthread_tls := false
 	mut option_types := flat.TypeTextBindings{}
 	mut composite_types := map[string]bool{}
@@ -884,8 +885,18 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 			fixed_array_types.set_id(name, array_type_id)
 		}
 		if initializers.len > 0 {
-			previous := module_initializers[source_file.header.module_name] or { '' }
-			module_initializers[source_file.header.module_name] = previous + initializers.str()
+			module_name := source_file.header.module_name
+			for line in initializers.str().split_into_lines() {
+				// Only dependency-free values may precede runtime constants. Empty
+				// array allocation is a runtime representation detail of struct defaults.
+				value := line.all_after(' = ').trim_right(';')
+				if line.contains(' = ') && line.ends_with(';')
+					&& gen.global_initializer_is_constant(value.replace('builtin____new_array(', 'sizeof('), true) {
+					early_initializers[module_name] += line + '\n'
+				} else {
+					module_initializers[module_name] += line + '\n'
+				}
+			}
 		}
 	}
 	if out.len > 0 {
@@ -896,6 +907,7 @@ fn fastc_generate_global_declarations(ordered_sources []FastcSourceFile, global_
 		declarations:        out.str()
 		uses_pthread_tls:    uses_pthread_tls
 		module_initializers: module_initializers
+		early_initializers:  early_initializers
 		composite_types:     composite_types
 		fixed_array_types:   fixed_array_types
 	}
@@ -1231,7 +1243,7 @@ fn (g &Parser) global_initializer_is_constant(source string, allow_temporaries b
 		if previous == `.` || name in ['NULL', 'true', 'false', 'sizeof', '_S', 'struct', 'union',
 			'void', 'signed', 'unsigned', 'long', 'short', 'size_t', 'uintptr_t', 'intptr_t']
 			|| fastc_primitive_c_type(name) != none || g.declared_type_c_names.contains(name)
-			|| name.starts_with('FixedArray_') || fastc_source_type_key_exists(g.declared_types, '#Cstruct#${name}')
+			|| name.starts_with('FixedArray_') || name.starts_with('Array_') || fastc_source_type_key_exists(g.declared_types, '#Cstruct#${name}')
 			|| fastc_source_type_key_exists(g.declared_types, '#Ctypedef#${name}') {
 			previous = `a`
 			continue
@@ -3163,6 +3175,13 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 				if default_source == '' {
 					return error('fastc parser does not support empty default for struct `${name}` embedded field `${field_names[0]}` in ${source_file.path}')
 				}
+				// Embedded fields do not carry skip/required flags, so refuse them rather than ignore them.
+				mut embedded_attribute_is_required := false
+				mut embedded_attribute_is_skip := false
+				tok, embedded_attribute_is_required, embedded_attribute_is_skip = fastc_skip_struct_field_attributes(mut scan, tok)!
+				if embedded_attribute_is_required || embedded_attribute_is_skip {
+					return error('fastc parser does not support @[skip] or @[required] on embedded field `${field_names[0]}` with a default in ${source_file.path}')
+				}
 			}
 			if !is_c_struct {
 				out.writeln('\t${fastc_c_declared_type_name(flat.source_type_name(embedded_key))} __embedded_${embedded_id};')
@@ -3224,15 +3243,14 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 		if field_option_value != 0 {
 			fastc_register_composite_type(field_option_value, mut composite_types)
 		}
+		// Attributes may come before or after the default: `T @[a] = v` and `T = v @[a]`.
+		mut attribute_is_required := false
+		mut attribute_is_skip := false
 		mut is_required := false
 		mut is_skip := false
-		for tok == .attribute {
-			mut attribute_is_required := false
-			mut attribute_is_skip := false
-			tok, attribute_is_required, attribute_is_skip = fastc_scan_struct_field_attribute(mut scan)!
-			is_required = is_required || attribute_is_required
-			is_skip = is_skip || attribute_is_skip
-		}
+		tok, attribute_is_required, attribute_is_skip = fastc_skip_struct_field_attributes(mut scan, tok)!
+		is_required = is_required || attribute_is_required
+		is_skip = is_skip || attribute_is_skip
 		mut default_source := ''
 		mut default_source_offset := 0
 		if tok == .assign {
@@ -3244,6 +3262,9 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 			if default_source == '' {
 				return error('fastc parser does not support empty default for struct `${name}` field `${field_names[0]}` in ${source_file.path}')
 			}
+			tok, attribute_is_required, attribute_is_skip = fastc_skip_struct_field_attributes(mut scan, tok)!
+			is_required = is_required || attribute_is_required
+			is_skip = is_skip || attribute_is_skip
 		}
 		for field_name in field_names {
 			c_field_name := fastc_c_identifier(field_name)

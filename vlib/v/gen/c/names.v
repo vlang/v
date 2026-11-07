@@ -720,12 +720,18 @@ fn c_escape(s string) string {
 // c_escape_into appends the C-escaped form of s to out, without the temporary
 // builder and copy that c_escape needs for its return value.
 fn c_escape_into(mut out strings.Builder, s string) {
+	c_escape_bytes_into(mut out, s, false)
+}
+
+// c_escape_bytes_into can restrict literal bodies to ASCII without changing
+// the filename spelling used by C include and line directives.
+fn c_escape_bytes_into(mut out strings.Builder, s string, ascii_only bool) {
 	// Copy runs of bytes that need no escape in one write; literal tables are
 	// mostly plain text, and a per-byte write dominated emitting them.
 	mut run_start := 0
 	for i in 0 .. s.len {
 		b := s[i]
-		if b >= 32 && b != 127 && b != `\\` && b != `"` {
+		if b >= 32 && b != 127 && b != `\\` && b != `"` && (!ascii_only || b < 128) {
 			continue
 		}
 		if i > run_start {
@@ -749,7 +755,7 @@ fn c_escape_into(mut out strings.Builder, s string) {
 				out.write_string('\\r')
 			}
 			else {
-				if b < 32 || b == 127 {
+				if b < 32 || b == 127 || (ascii_only && b >= 128) {
 					v := int(b)
 					out.write_u8(`\\`)
 					out.write_u8(u8(`0` + ((v >> 6) & 7)))
@@ -767,7 +773,8 @@ fn c_escape_into(mut out strings.Builder, s string) {
 }
 
 // c_literal_escape_into splits escaped literal bodies between complete escapes.
-// Even a four-byte octal escape fits within the source-line chunk bound.
+// Octal escapes preserve arbitrary V bytes in UTF-8 C source, including malformed
+// UTF-8 that MSVC cannot preprocess. Each escape fits within the source-line bound.
 fn c_literal_escape_into(mut out strings.Builder, s string) {
 	max_bytes := c_string_literal_chunk_len / 4
 	mut start := 0
@@ -783,7 +790,7 @@ fn c_literal_escape_into(mut out strings.Builder, s string) {
 		if end == start {
 			end = if s.len - start > max_bytes { start + max_bytes } else { s.len }
 		}
-		c_escape_into(mut out, s[start..end])
+		c_escape_bytes_into(mut out, s[start..end], true)
 		start = end
 	}
 }

@@ -1,12 +1,9 @@
 module main
 
 import os
-import v.cmdexec
-import v.pref
 import v.skills
 import v.util.version
 import v.util.recompilation
-import v.util.cache_refresh
 
 const vexe = os.real_path(os.getenv_opt('VEXE') or { @VEXE })
 
@@ -37,10 +34,11 @@ const args = arguments()
 const usage = 'Usage: v up [options]\n' +
 	'\n' +
 	'Options:\n' +
-	'  -v                 Print more details, including unchanged cache configurations.\n' +
+	'  -v                 Print more details.\n' +
 	'  -prod              Compile the updated V with the -prod flag.\n' +
 	'  -skills            Refresh the installed agent skills that fell behind.\n' +
 	'  -skip_v_self       Rebuild with make or makev.bat instead of `v self`.\n' +
+	'                     Windows ARM64 uses the native PowerShell bootstrap script.\n' +
 	'  -skip_current      Recompile even when the checkout is already at the\n' +
 	'                     revision.\n' +
 	'  -h, -help, --help  Show this help and exit.\n' +
@@ -90,18 +88,19 @@ fn main() {
 	}
 	app := new_app()
 	recompilation.must_be_enabled(app.vroot, 'Please install V from source, to use `v up` .')
-	// Keep caller-relative cache locations stable for both collection and the
-	// updated compiler's refresh children after entering the checkout.
-	if cache := os.getenv_opt('V3CACHE') {
-		os.setenv('V3CACHE', os.abs_path(cache), true)
+	// Keep caller-relative cache locations stable for wipe-cache after entering the checkout.
+	vcache := os.getenv_opt('VCACHE') or { os.join_path(os.vmodules_dir(), '.cache') }
+	if vcache.trim_space() != '' {
+		os.setenv('VCACHE', os.abs_path(vcache), true)
+	}
+	for name in ['V3CACHE', 'VTOOLS_CACHE_DIR'] {
+		if cache := os.getenv_opt(name) {
+			if cache.trim_space() != '' {
+				os.setenv(name, os.abs_path(cache), true)
+			}
+		}
 	}
 	os.setenv('VTMP', os.abs_path(os.vtmp_dir()), true)
-	// Save the old compiler's cache inventory before replacing it. Its cache
-	// configuration includes the executable identity, which changes on rebuild.
-	cached_modules := cache_refresh.collect(app.vroot, app.current_vexe_path()) or {
-		eprintln('v up: could not read the module cache: ${err}')
-		exit(1)
-	}
 	os.chdir(app.vroot)!
 	println('Updating V...')
 	app.update_from_master()
@@ -131,10 +130,7 @@ fn main() {
 				exit(1)
 			}
 		}
-		app.show_current_v_version()
-		app.refresh_cached_modules(cached_modules)
-		app.report_skills()
-		app.report_fmt_hook()
+		app.finish_update()
 		return
 	}
 	if os.user_os() == 'windows' {
@@ -156,87 +152,38 @@ fn main() {
 		eprintln('`v up` failed. Run `cd ${os.quoted_path(app.vroot)} && ${v_upstream_pull_command()} && ${get_make_cmd_name()}` to finish updating V.')
 		exit(1)
 	}
+	app.finish_update()
+}
+
+// finish_update lets the Windows launcher clean caches after this executable exits.
+fn (app App) finish_update() {
+	// Private handshake; keep in sync with cmd/v/toolcache.v.
+	deferred_wipe_exit_code := 80
 	app.show_current_v_version()
-	app.refresh_cached_modules(cached_modules)
+	defer_cleanup := $if windows {
+		os.getenv('VUP_DEFER_CACHE_WIPE') == '1'
+	} $else {
+		false
+	}
+	if !defer_cleanup {
+		app.wipe_cache()
+	}
 	app.report_skills()
 	app.report_fmt_hook()
+	if defer_cleanup {
+		exit(deferred_wipe_exit_code)
+	}
 }
 
-fn (app App) refresh_cached_modules(requests []cache_refresh.Request) {
-	cache_refresh.refresh(app.current_vexe_path(), tcc_cache_requests(app.vroot, requests),
-		verbose: app.is_verbose
-	) or {
-		eprintln('v up: refreshing cached vlib modules failed: ${err}')
+fn (app App) wipe_cache() {
+	result := os.exec([app.current_vexe_path(), 'wipe-cache'])
+	if result.output != '' {
+		println(result.output.trim_space())
+	}
+	if result.exit_code != 0 {
+		eprintln('v up: wiping caches failed; try running `v wipe-cache`.')
 		exit(1)
 	}
-}
-
-// tcc_cache_requests selects the default compiler's caches without rebuilding
-// configurations recorded for other C compilers. Those refresh on their next build.
-fn tcc_cache_requests(root string, requests []cache_refresh.Request) []cache_refresh.Request {
-	bundled := os.join_path(root, 'thirdparty', 'tcc', 'tcc.exe')
-	default_tcc := if os.is_executable(bundled) {
-		bundled
-	} else {
-		os.find_abs_path_of_executable('tcc') or { '' }
-	}
-	mut selected := []cache_refresh.Request{}
-	mut compiler_kinds := map[string]bool{}
-	for request in requests {
-		index := request.args.index('-cc')
-		if index < 0 {
-			if default_tcc != '' {
-				selected << cache_refresh.Request{
-					...request
-					args: [...request.args, '-cc', default_tcc]
-				}
-			}
-			continue
-		}
-		if index + 1 >= request.args.len { continue }
-		compiler := request.args[index + 1]
-		if compiler in ['tcc', 'tinyc'] {
-			selected << request
-			continue
-		}
-		path := if os.is_abs_path(compiler) {
-			compiler
-		} else if compiler.contains('/') || compiler.contains('\\') {
-			os.join_path(if request.cwd != '' { request.cwd } else { root }, compiler)
-		} else {
-			os.find_abs_path_of_executable(compiler) or { continue }
-		}
-		cwd := if request.cwd != '' { request.cwd } else { root }
-		key := path + '\x00' + cwd
-		is_tcc := compiler_kinds[key] or {
-			kind := is_tcc_cache_compiler(path, bundled, cwd)
-			compiler_kinds[key] = kind
-			kind
-		}
-		if is_tcc {
-			selected << request
-		}
-	}
-	return selected
-}
-
-fn is_tcc_cache_compiler(path string, bundled string, cwd string) bool {
-	resolved := os.real_path(path)
-	name := os.file_name(resolved).to_lower_ascii()
-	// Same file-name rule as the launcher and driver, so `notcc` or `distcc` is not TinyCC by name.
-	if resolved == os.real_path(bundled) || pref.tinycc_file_name(name) {
-		return true
-	}
-	// Match the driver's effective compiler classification, including renamed
-	// executables and wrappers whose version output identifies TinyCC.
-	if name.contains('clang') || name.contains('gcc') || name.contains('mingw')
-		|| name in ['cl', 'cl.exe'] || name.contains('msvc') || name.contains('++') {
-		return false
-	}
-	if os.user_os() in ['macos', 'ios'] && resolved == '/usr/bin/cc' { return false }
-	if !os.is_executable(path) { return false }
-	compiler_version := cmdexec.run_in(path, ['--version'], cwd).output.to_lower_ascii()
-	return pref.ccompiler_version_is_tinycc(compiler_version)
 }
 
 // skills_refresh_hint is what the report tells the user to run.
@@ -398,11 +345,16 @@ fn v_upstream_pull_command() string {
 }
 
 fn (app App) update_tcc() bool {
+	$if windows && arm64 {
+		app.vprintln('> Windows ARM64 uses MSVC; no bundled TCC update is needed.')
+		return true
+	}
 	command := get_tcc_update_cmd()
 	if os.user_os() != 'windows' {
 		make_sure_cmd_is_available(get_tcc_make_cmd_name())
 	}
-	println('> updating TCC ...')
+	println('> checking for TCC updates ...')
+	old_revision := tcc_revision()
 	result := os.exec(if os.user_os() == 'windows' && command == 'makev.bat' {
 		['cmd.exe', '/d', '/c', 'makev.bat']
 	} else {
@@ -414,8 +366,30 @@ fn (app App) update_tcc() bool {
 		return false
 	}
 	app.vprintln(result.output)
-	println('> done updating TCC.')
+	new_revision := tcc_revision()
+	if new_revision == '' {
+		println('> done updating TCC.')
+	} else if new_revision == old_revision {
+		println('> TCC is already up to date.')
+	} else {
+		println('> updated TCC to ${new_revision#[..7]}.')
+	}
 	return true
+}
+
+// tcc_revision returns the commit of the bundled TCC checkout, or '' when there is
+// no such checkout or git cannot read it.
+fn tcc_revision() string {
+	tcc_dir := os.join_path('thirdparty', 'tcc')
+	// Without its own .git, git would report the revision of the V checkout around it.
+	if !os.exists(os.join_path(tcc_dir, '.git')) {
+		return ''
+	}
+	result := os.exec(['git', '-C', tcc_dir, 'rev-parse', 'HEAD'])
+	if result.exit_code != 0 {
+		return ''
+	}
+	return result.output.trim_space()
 }
 
 // compiler_sources_unchanged checks whether nothing the compiler is built from
@@ -491,11 +465,18 @@ fn (app App) recompile_vup() bool {
 fn (app App) make(_vself string) bool {
 	println('> running make ...')
 	make := get_make_cmd_name()
-	make_result := os.exec(if os.user_os() == 'windows' {
-		['cmd.exe', '/d', '/c', 'makev.bat']
-	} else {
-		[make]
-	})
+	mut command := []string{}
+	$if windows && arm64 {
+		command = ['pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+			os.join_path(app.vroot, 'cmd', 'tools', 'builders', 'windows_arm64_release.ps1')]
+	} $else {
+		command = if os.user_os() == 'windows' {
+			['cmd.exe', '/d', '/c', 'makev.bat']
+		} else {
+			[make]
+		}
+	}
+	make_result := os.exec(command)
 	if make_result.exit_code != 0 {
 		eprintln('> ${make} failed:')
 		eprintln('> make output:')
@@ -641,6 +622,9 @@ fn (app App) install_git() {
 }
 
 fn get_make_cmd_name() string {
+	$if windows && arm64 {
+		return 'cmd/tools/builders/windows_arm64_release.ps1'
+	}
 	if os.user_os() == 'windows' {
 		return 'makev.bat'
 	}

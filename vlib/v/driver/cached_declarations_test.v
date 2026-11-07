@@ -63,13 +63,13 @@ fn main() {
 }
 '
 
-fn parse_cached_interface(name string) (&flat.FlatAst, string) {
+fn parse_cached_interface(name string, extra_declarations ...string) (&flat.FlatAst, string) {
 	root := os.join_path(os.vtmp_dir(), 'v3_driver_${name}_${os.getpid()}')
 	os.rmdir_all(root) or {}
 	os.mkdir_all(root) or { panic(err) }
 	header := os.join_path(root, 'cachedmod.vh')
 	program := os.join_path(root, 'main.v')
-	os.write_file(header, cached_interface) or { panic(err) }
+	os.write_file(header, cached_interface + extra_declarations.join('\n')) or { panic(err) }
 	os.write_file(program, cached_interface_user) or { panic(err) }
 	mut p := parser.Parser.new(pref.new_preferences())
 	mut a := p.parse_files([header, program])
@@ -144,6 +144,24 @@ fn test_functions_of_a_module_that_a_stage_names_stay_in_that_module() {
 	assert kinds['never_called'] == .empty
 	assert kinds['named_by_a_stage'] == .empty
 	assert pruned.count == 2
+}
+
+fn test_synthesized_trace_hooks_keep_cached_declarations() {
+	mut a, root := parse_cached_interface('trace_hooks', '
+pub fn before_call_hook(name string)
+pub fn after_call_hook(name string)
+pub fn irrelevant_hook(name string)
+')
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	header := os.join_path(root, 'cachedmod.vh')
+	prune_unreferenced_cached_functions(mut a, cached_runtime_function_names,
+		cached_module_function_names, cached_function_name_patterns)
+	kinds := function_kinds(a, header)
+	assert kinds['before_call_hook'] == .fn_decl
+	assert kinds['after_call_hook'] == .fn_decl
+	assert kinds['irrelevant_hook'] == .empty
 }
 
 fn test_functions_of_a_file_that_is_not_a_cached_interface_stay() {
@@ -627,6 +645,42 @@ fn stage_built_function_name_patterns() []string {
 	return fitting
 }
 
+fn built_pattern_is_covered_by_named_functions(text string, libraries []V3LibraryFunctions) bool {
+	pattern := v3_name_pattern(text)
+	mut matched := false
+	for library in libraries {
+		module_name := library.module_name.all_after_last('.')
+		for name in library.names {
+			if !pattern.fits(module_name, name) {
+				continue
+			}
+			matched = true
+			if name !in cached_runtime_function_names
+				&& '${module_name}.${name}' !in cached_module_function_names {
+				return false
+			}
+		}
+	}
+	return matched
+}
+
+fn test_built_patterns_still_require_every_matching_function_to_be_kept() {
+	hooks := [V3LibraryFunctions{
+		module_name: 'v.debug'
+		names:       ['before_call_hook', 'after_call_hook']
+	}]
+	assert built_pattern_is_covered_by_named_functions('*.before_call_hook', hooks)
+	assert built_pattern_is_covered_by_named_functions('*.after_call_hook', hooks)
+	assert !built_pattern_is_covered_by_named_functions('*.missing_hook', hooks)
+	assert !built_pattern_is_covered_by_named_functions('*.before_call_hook', [
+		...hooks,
+		V3LibraryFunctions{
+			module_name: 'other'
+			names:       ['before_call_hook']
+		},
+	])
+}
+
 fn test_function_name_patterns_cover_what_the_stages_build() {
 	built := stage_built_name_patterns()
 	assert built.len > 50
@@ -641,15 +695,17 @@ fn test_function_name_patterns_cover_what_the_stages_build() {
 	patterns := stage_built_function_name_patterns()
 	assert patterns.len > 10 && patterns.len < built.len
 	assert '*_str' in patterns && 'map_hash_int_*' in patterns
+	libraries := library_plain_functions()
 	mut missing := []string{}
 	for pattern in patterns {
-		if pattern !in cached_function_name_patterns {
+		if pattern !in cached_function_name_patterns
+			&& !built_pattern_is_covered_by_named_functions(pattern, libraries) {
 			missing << pattern
 		}
 	}
 	// A stage that puts the name of a function together can look for its
 	// declaration, and do something else without a word where there is none. Add
-	// the names to cached_function_name_patterns in cached_declarations.v.
+	// a pattern unless every match is already kept by the explicit function lists.
 	assert missing == [], 'names of functions that a stage builds: ${missing}'
 	// A pattern that fits no function of a library keeps nothing, and is tried
 	// against every function all the same.

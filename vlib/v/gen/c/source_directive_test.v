@@ -295,7 +295,7 @@ fn test_linux_family_system_libc_owns_itimerspec_and_semaphore_declarations() {
 	}
 }
 
-fn test_headerless_and_cross_target_keep_itimerspec_and_semaphore_declarations() {
+fn test_headerless_linux_family_keeps_itimerspec_and_semaphore_declarations() {
 	for target_os in ['linux', 'android', 'termux'] {
 		headerless := posix_declaration_filter_gen(target_os, false)
 		assert !headerless.c_directives_use_system_libc()
@@ -304,12 +304,23 @@ fn test_headerless_and_cross_target_keep_itimerspec_and_semaphore_declarations()
 			assert headerless.should_emit_c_extern_decl(name), '${target_os}: ${name}'
 		}
 	}
+}
 
-	cross_target := posix_declaration_filter_gen('freebsd', true)
-	assert cross_target.c_directives_use_system_libc()
-	assert !cross_target.skip_builtin_struct('C.itimerspec')
-	for name in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait', 'sem_wait'] {
-		assert cross_target.should_emit_c_extern_decl(name), name
+fn test_bsd_semaphore_declarations_follow_system_headers() {
+	for target_os in ['freebsd', 'openbsd'] {
+		for system_libc in [false, true] {
+			for cache_split in [false, true] {
+				mut g := posix_declaration_filter_gen(target_os, system_libc)
+				g.set_cache_split(cache_split)
+				assert g.c_directives_use_system_libc() == system_libc
+				assert !g.skip_builtin_struct('C.itimerspec'), target_os
+				for name in ['sem_destroy', 'sem_init', 'sem_post', 'sem_timedwait', 'sem_trywait',
+					'sem_wait'] {
+					assert g.should_emit_c_extern_decl(name) == !system_libc, '${target_os}: ${name}: system_libc=${system_libc}, cache_split=${cache_split}'
+				}
+				assert g.should_emit_c_extern_decl('user_semaphore_api')
+			}
+		}
 	}
 }
 
@@ -600,24 +611,75 @@ fn test_target_libc_headers_own_errno_accessor_declarations() {
 	}
 }
 
-fn test_freestanding_c_uses_target_errno_header() ! {
+fn test_target_libc_headers_own_generated_errno_declarations() ! {
 	dir := os.join_path(os.vtmp_dir(), 'target_errno_${os.getpid()}')
 	os.mkdir_all(dir)!
 	defer { os.rmdir_all(dir) or {} }
 	source := os.join_path(dir, 'main.v')
 	output := os.join_path(dir, 'main.c')
 	os.write_file(source, 'fn main() { println(1) }\n')!
-	// -target-libc-headers rejects Windows targets and the target OS defaults to the host's,
-	// so pin Linux. Writing `.c` output only generates C; no Linux toolchain is needed.
-	result := os.exec([@VEXE, '-freestanding', '-target-libc-headers', '-gc', 'none', '-nocache',
-		'-os', 'linux', '-o', output, source])
-	assert result.exit_code == 0, result.output
-	generated := os.read_file(output)!
-	assert generated.contains('#include <errno.h>')
-	for name in ['__error', '__errno', '__errno_location', '___errno', '_errno', '_errnop',
-		'__get_errno_ptr'] {
-		assert !generated.contains('i32* ' + name + '('), name
+	// Pin a supported Linux bare runtime. Writing `.c` output only generates C;
+	// no Linux toolchain is needed, even when the host is Windows or macOS.
+	for freestanding in [false, true] {
+		for target_headers in [false, true] {
+			mut args := [@VEXE, '-new-compiler', '-no-retry-compilation', '-gc', 'none', '-nocache',
+				'-os', 'linux', '-arch', 'amd64']
+			if freestanding {
+				args << '-freestanding'
+			}
+			if target_headers {
+				args << '-target-libc-headers'
+			}
+			args << ['-o', output, source]
+			result := os.exec(args)
+			assert result.exit_code == 0, result.output
+			generated := os.read_file(output)!
+			assert generated.contains('#include <errno.h>') == target_headers
+			// The bare runtime owns this definition. Header ownership suppresses C
+			// binding declarations, but must not remove the V-provided implementation.
+			expected_bodies := if freestanding { 1 } else { 0 }
+			assert generated.count('i32* __errno_location(void) {') == expected_bodies
+			for name in ['__error', '__errno', '__errno_location', '___errno', '_errno', '_errnop',
+				'__get_errno_ptr'] {
+				expected := !target_headers || (freestanding && name == '__errno_location')
+				assert generated.contains('i32* ' + name + '(') == expected, '${freestanding}/${target_headers}: ${name}'
+				if target_headers {
+					expected_count := if expected { 1 } else { 0 }
+					assert generated.count(' ${name}(void);') == expected_count, '${freestanding}/${target_headers}: ${name}'
+				}
+			}
+		}
 	}
+}
+
+fn test_freestanding_errno_export_matches_linux_header() ! {
+	$if !linux || (!amd64 && !arm64) {
+		return
+	}
+	cc := os.find_abs_path_of_executable('cc') or { return }
+	dir := os.join_path(os.vtmp_dir(), 'freestanding_errno_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer { os.rmdir_all(dir) or {} }
+	source := os.join_path(dir, 'main.c.v')
+	executable := os.join_path(dir, 'main')
+	// Let the C compiler check the runtime's exported accessor against the real
+	// Linux header. Both the macro and the function must address the same cell.
+	os.write_file(source, '#include <errno.h>
+fn main() {
+	p := C.__errno_location()
+	unsafe { *p = 22 }
+	assert C.errno == 22
+	C.errno = 2
+	assert unsafe { *p } == 2
+	println("errno ok")
+}
+')!
+	built := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-nocache', '-freestanding',
+		'-gc', 'none', '-cstrict', '-cc', cc, '-o', executable, source])
+	assert built.exit_code == 0, built.output
+	ran := os.exec([executable])
+	assert ran.exit_code == 0, ran.output
+	assert ran.output == 'errno ok\n', ran.output
 }
 
 fn test_builtin_boehm_directives_use_system_libc() {
@@ -770,4 +832,26 @@ fn test_portable_output_keeps_other_target_linkage_metadata() {
 		// every binding it calls, whatever its link inputs.)
 		assert !selected.c_extern_decl_has_no_header(source, 'bindings'), flag
 	}
+}
+
+fn test_heap_guard_does_not_select_system_headers_or_own_builtin_declarations() {
+	mut g := FlatGen.new()
+	g.compiler_vroot = @VEXEROOT
+	g.set_target(pref.host_target())
+	helper := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'track_heap_checks.h')
+	assert c_include_arg_is_heap_guard('"${helper}"', @VEXEROOT)
+	g.c_directives << CDirective{ module: 'builtin', text: '#include "${helper}"' }
+	assert !g.c_directives_use_system_libc()
+}
+
+fn test_objective_cpp_prototypes_ignore_headers_from_other_modules() {
+	mut g := FlatGen.new()
+	g.c_directives << CDirective{ module: 'other', text: '#include "missing.h"' }
+	g.objective_cpp_source_requests << ObjectiveCppSourceRequest{
+		module:      'sample'
+		source_path: '/project/impl.mm'
+		defined_fns: ['sample_answer']
+	}
+	g.materialize_objective_cpp_sources()
+	assert g.c_extern_forced_decls['sample_answer']
 }

@@ -202,6 +202,29 @@ fn test_fixed_array_reference_value_parameter_promotion_preserves_reference_abi(
 	assert entry2.len == 0
 }
 
+fn test_shared_parameters_keep_caller_storage_when_their_payload_address_escapes() {
+	for inner in ['int', '[2]int'] {
+		mut a := flat.FlatAst.new()
+		mut tc := types.TypeChecker.new(&a)
+		mut t := new_transformer(mut a, &tc, map[string]bool{})
+		raw := flat.source_type_composition_one(.shared_type, flat.source_type_id(inner))
+		param := a.add_node(flat.Node{ kind: .param, value: 'value', typ: raw })
+		start := a.children.len
+		a.children << param
+		fn_node := flat.Node{ kind: .fn_decl, value: 'forward', children_start: start, children_count: 1 }
+		t.set_var_type_with_raw('value', flat.source_type_id(inner), raw)
+		t.escaping_amp_sources['value'] = true
+		if inner == '[2]int' {
+			t.escaping_fixed_array_view_sources['value'] = true
+		}
+		replacements, entry := t.heap_fixed_array_view_params(fn_node, [tc.parse_type(flat.source_type_id(inner))])
+		assert replacements.len == 0
+		assert entry.len == 0
+		assert t.raw_var_type('value') == raw
+		assert 'value' !in t.heaped_amp_locals
+	}
+}
+
 fn test_fixed_array_reference_pointer_field_does_not_promote_its_containing_value() {
 	mut a := flat.FlatAst.new()
 	mut tc := types.TypeChecker.new(&a)

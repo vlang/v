@@ -1,5 +1,6 @@
 module eval
 
+import encoding.binary
 import os
 import v.parser
 
@@ -4018,6 +4019,17 @@ fn main() {
 	assert e.stdout() == expected
 }
 
+fn assert_linux_arm64_object(path string) {
+	object := os.read_bytes(path) or { panic(err) }
+	assert object.len >= 64
+	assert object[..4] == [u8(0x7f), `E`, `L`, `F`]
+	assert object[4] == 2 // ELF64
+	assert object[5] == 1 // little endian
+	assert binary.little_endian_u16(object[16..18]) == 1 // ET_REL
+	assert binary.little_endian_u16(object[18..20]) == 183 // EM_AARCH64
+	os.rm(path) or { panic(err) }
+}
+
 fn test_v3_eval_backend_cli() {
 	v3_bin := os.join_path(os.temp_dir(), 'v3_eval_backend_test')
 	build :=
@@ -4040,11 +4052,22 @@ fn main() {
 ') or {
 		panic(err)
 	}
-	result := os.exec([v3_bin, '${src}', '-b', 'eval'])
+	result := os.exec([v3_bin, '-b', 'eval', src])
 	assert result.exit_code == 0
 	assert result.output.contains('21\n8\n512\n')
 
 	for backend in ['wasm', 'arm64'] {
+		extension := if backend == 'arm64' && os.user_os() == 'linux' {
+			'.o'
+		} else if backend == 'wasm' {
+			'.wasm'
+		} else {
+			''
+		}
+		output := os.join_path(os.temp_dir(),
+			'v3_${backend}_power' + extension)
+		defer { os.rm(output) or {} }
+		backend_args := ['-b', backend, '-o', output]
 		for operator, expression in {
 			'**':  'println(2 ** 3)'
 			'**=': 'mut value := 2\n\tvalue **= 3'
@@ -4052,7 +4075,7 @@ fn main() {
 			unsupported_src := os.join_path(os.temp_dir(),
 				'v3_${backend}_unsupported_power_${operator.len}.v')
 			os.write_file(unsupported_src, 'fn main() {\n\t${expression}\n}\n') or { panic(err) }
-			unsupported := os.exec([v3_bin, '-b', '${backend}', '${unsupported_src}'])
+			unsupported := os.exec([v3_bin, ...backend_args, '${unsupported_src}'])
 			assert unsupported.exit_code != 0
 			assert unsupported.output.contains('operator `${operator}` is not supported by the V3 ${backend} backend'), unsupported.output
 		}
@@ -4061,7 +4084,7 @@ fn main() {
 			'enum Powered {\n\ta = 2 ** 3\n}\n\nfn main() {\n\tprintln(Powered.a)\n}\n') or {
 			panic(err)
 		}
-		enum_result := os.exec([v3_bin, '-b', '${backend}', '${enum_src}'])
+		enum_result := os.exec([v3_bin, ...backend_args, '${enum_src}'])
 		assert enum_result.exit_code != 0, enum_result.output
 		assert enum_result.output.contains('operator `**` is not supported by the V3 ${backend} backend'), enum_result.output
 		inactive_src := os.join_path(os.temp_dir(), 'v3_${backend}_inactive_generic_power.v')
@@ -4078,12 +4101,28 @@ fn main() {
 }
 '
 		os.write_file(inactive_src, inactive_code) or { panic(err) }
-		inactive := os.exec([v3_bin, '-b', '${backend}', '${inactive_src}'])
+		mut inactive_args := [v3_bin, '-b', backend]
+		object_path := inactive_src + '.o'
+		if backend == 'arm64' {
+			// Linux ARM64 supports relocatable objects, independently of the host.
+			inactive_args << ['-os', 'linux', '-arch', 'arm64', '-o', object_path]
+		} else {
+			inactive_args << ['-o', output]
+		}
+		inactive_args << inactive_src
+		inactive := os.exec(inactive_args)
 		assert inactive.exit_code == 0, inactive.output
 		assert !inactive.output.contains('operator `**` is not supported by the V3 ${backend} backend'), inactive.output
+		if backend == 'arm64' {
+			assert_linux_arm64_object(object_path)
+			executable := os.exec([v3_bin, '-b', backend, '-os', 'linux', '-arch', 'arm64', '-o',
+				inactive_src + '.exe', inactive_src])
+			assert executable.exit_code != 0
+			assert executable.output.contains('the experimental Linux ARM64 backend supports object output only; use -o file.o'), executable.output
+		}
 		active_src := os.join_path(os.temp_dir(), 'v3_${backend}_active_generic_power.v')
 		os.write_file(active_src, inactive_code.replace('[string]', '[int]')) or { panic(err) }
-		active := os.exec([v3_bin, '-b', '${backend}', '${active_src}'])
+		active := os.exec([v3_bin, ...backend_args, '${active_src}'])
 		assert active.exit_code != 0, active.output
 		assert active.output.contains('operator `**` is not supported by the V3 ${backend} backend'), active.output
 		for name, consts in {
@@ -4100,7 +4139,7 @@ fn main() {
 			os.write_file(const_src, '${consts}\n\nfn main() {\n\t${const_use}\n}\n') or {
 				panic(err)
 			}
-			const_result := os.exec([v3_bin, '-b', '${backend}', '${const_src}'])
+			const_result := os.exec([v3_bin, ...backend_args, '${const_src}'])
 			assert const_result.exit_code != 0, const_result.output
 			assert const_result.output.contains('operator `**` is not supported by the V3 ${backend} backend'), const_result.output
 		}
@@ -4118,7 +4157,7 @@ fn main() {
 			os.write_file(global_src, '${declarations}\n\nfn main() {\n\t${global_use}\n}\n') or {
 				panic(err)
 			}
-			global_result := os.exec([v3_bin, '-enable-globals', '-b', '${backend}', '${global_src}'])
+			global_result := os.exec([v3_bin, '-enable-globals', ...backend_args, '${global_src}'])
 			assert global_result.exit_code != 0, global_result.output
 			assert global_result.output.contains('operator `**` is not supported by the V3 ${backend} backend'), global_result.output
 		}
@@ -4127,9 +4166,19 @@ fn main() {
 			'const v3_unreachable_power_const_27908 = 2 ** 3\n\nfn main() {\n\tv3_unreachable_power_const_27908 := 1\n\tprintln(v3_unreachable_power_const_27908)\n}\n') or {
 			panic(err)
 		}
-		shadowed := os.exec([v3_bin, '-b', '${backend}', '${shadowed_src}'])
+		mut shadowed_args := [v3_bin, '-b', backend]
+		if backend == 'arm64' {
+			shadowed_args << ['-os', 'linux', '-arch', 'arm64', '-o', shadowed_src + '.o']
+		} else {
+			shadowed_args << ['-o', output]
+		}
+		shadowed_args << shadowed_src
+		shadowed := os.exec(shadowed_args)
 		assert shadowed.exit_code == 0, shadowed.output
 		assert !shadowed.output.contains('operator `**` is not supported by the V3 ${backend} backend'), shadowed.output
+		if backend == 'arm64' {
+			assert_linux_arm64_object(shadowed_src + '.o')
+		}
 	}
 }
 

@@ -3,7 +3,7 @@ module fastc
 import os
 import v.cmdexec
 
-fn test_fastc_macos_default_and_explicit_tcc_keep_cocoa_on_tcc() {
+fn test_fastc_macos_cocoa_keeps_tcc_without_header_projection() {
 	$if !macos {
 		return
 	}
@@ -35,6 +35,7 @@ fn test_fastc_macos_default_and_explicit_tcc_keep_cocoa_on_tcc() {
 			if mode == 'no_retry' { args << '-no-retry-compilation' }
 			args << root
 			build := cmdexec.run(@VEXE, args)
+
 			assert build.exit_code == 0, build.output
 			assert build.output.contains('tcc.exe'), build.output
 			assert !build.output.contains('regenerating it with'), build.output
@@ -78,21 +79,27 @@ fn test_fastc_objective_c_include_can_use_v_types() {
 		'        return [text length] + NATIVE_LENGTH_OFFSET + TEST_NATIVE_EXTRA;\n' +
 		'    }\n}\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'native.h'), 'int native_answer(void);\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'included.c'), 'int included_answer(void) { return 17; }\n') or { panic(err) }
+	os.write_file(os.join_path(root, 'consumer.h'), '#include <CoreFoundation/CoreFoundation.h>\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'native.cpp'), 'extern "C" int native_answer() { return 42; }\n') or { panic(err) }
 	os.write_file(os.join_path(root, 'main.c.v'), r'module main
 
 #flag darwin -framework Foundation
 #flag darwin -framework Cocoa
 #flag darwin -framework CoreGraphics
+#flag darwin -framework CoreFoundation
 #flag darwin -fobjc-arc
 #flag @VMODROOT/native.o
 #define NATIVE_LENGTH_OFFSET 3
 #include "@VMODROOT/helper.m"
 #undef NATIVE_LENGTH_OFFSET
 #include "@VMODROOT/native.h"
+#include "@VMODROOT/included.c"
+#include "@VMODROOT/consumer.h"
 
 fn C.native_length(value string) int
 fn C.native_answer() int
+fn C.included_answer() int
 fn C.CGColorCreateGenericRGB(r f64, g f64, b f64, a f64) voidptr
 fn C.CGColorRelease(color voidptr)
 
@@ -105,6 +112,8 @@ fn main() {
 	assert C.native_length("hello") == 8
 	assert invoke_length(C.native_length) == 8
 	assert C.native_answer() == 42
+	assert C.included_answer() == 17
+	assert C.kCFBooleanTrue != unsafe { nil }
 	color := C.CGColorCreateGenericRGB(0, 0, 0, 1)
 	assert color != unsafe { nil }
 	C.CGColorRelease(color)
@@ -119,6 +128,7 @@ fn main() {
 		if mode == 'prod' { args << '-prod' }
 		args << root
 		build := cmdexec.run(@VEXE, args)
+
 		assert build.exit_code == 0, build.output
 		run := cmdexec.run(program, [])
 		assert run.exit_code == 0, run.output
@@ -129,10 +139,117 @@ fn main() {
 	source_path := os.join_path(root, 'main.c.v')
 	source := os.read_file(source_path) or { panic(err) }
 	os.write_file(source_path, source.replace('== 8', '== 9').replace('== 42', '== 43')) or { panic(err) }
-	program := os.join_path(root, 'program_changed')
-	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-cc', 'tcc', '-no-retry-compilation', '-o', program,
-		root])
-	assert build.exit_code == 0, build.output
-	run := cmdexec.run(program, [])
-	assert run.exit_code == 0, run.output
+	for compiler in ['tcc', 'clang'] {
+		program := os.join_path(root, 'program_changed_' + compiler)
+		build := cmdexec.run(@VEXE, ['-b', 'fastc', '-cc', compiler, '-no-retry-compilation', '-o',
+			program, root])
+		assert build.exit_code == 0, build.output
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+	}
+}
+
+fn test_fastc_native_bridge_preserves_executable_linker_options() ! {
+	$if !macos {
+		return
+	}
+	if !os.is_file(os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe'))
+		|| os.find_abs_path_of_executable('clang') == none {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_native_link_flags_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.c.v')
+	for native in [false, true] {
+		prefix := if native {
+			'#flag darwin -framework Foundation\n#flag darwin -fobjc-arc\n#include <Foundation/Foundation.h>\n'
+		} else {
+			''
+		}
+		os.write_file(source, prefix + 'fn main() { println(@CCOMPILER) }\n')!
+		program := os.join_path(root, 'program_${native}')
+		built := cmdexec.run('env', ['LDFLAGS=-Wl,--export-dynamic', @VEXE, '-b', 'fastc', '-cc',
+			'tcc', '-no-retry-compilation', '-nocache', '-showcc', '-ldflags', '-rdynamic', '-o',
+			program, root])
+		assert built.exit_code == 0, built.output
+		assert built.output.contains('tcc.exe'), built.output
+		environment_option := built.output.index('-Wl,--export-dynamic') or { panic(built.output) }
+		command_option := built.output.index('-rdynamic') or { panic(built.output) }
+		assert environment_option < command_option, built.output
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == 'tinyc', run.output
+	}
+	// An executable-only option must reach TinyCC even when TinyCC cannot implement it.
+	// Clang's native dylib invocation must not receive the executable's stack size.
+	for origin in ['command', 'environment'] {
+		program := os.join_path(root, 'unsupported_${origin}')
+		mut args := [
+			'LDFLAGS=' + if origin == 'environment' { '-Wl,-stack_size,0x4000000' } else { '' },
+			@VEXE,
+			'-b',
+			'fastc',
+			'-cc',
+			'tcc',
+			'-no-retry-compilation',
+			'-nocache',
+			'-o',
+			program,
+		]
+		if origin == 'command' { args << ['-ldflags', '-Wl,-stack_size,0x4000000'] }
+		args << root
+		built := cmdexec.run('env', args)
+		assert built.exit_code != 0, built.output
+		assert built.output.contains("unsupported linker option '-stack_size'"), built.output
+		assert !built.output.contains('only be used when linking a main executable'), built.output
+		assert !os.exists(program)
+	}
+}
+
+fn test_fastc_native_cache_tracks_named_and_force_loaded_archives() ! {
+	$if !macos {
+		return
+	}
+	if !os.is_file(os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe'))
+		|| os.find_abs_path_of_executable('clang') == none {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_native_archives_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	for mode in ['named', 'force_loaded'] {
+		project := os.join_path(root, mode)
+		lib := os.join_path(project, 'lib')
+		os.mkdir_all(lib)!
+		os.write_file(os.join_path(project, 'v.mod'), "Module { name: 'archive_cache' }")!
+		archive := os.join_path(lib, 'libfastc_archive.a')
+		c_source := os.join_path(lib, 'archive.c')
+		object := os.join_path(lib, 'archive.o')
+		link_flags := if mode == 'named' {
+			'#flag -L @VMODROOT/lib\n#flag -lfastc_archive\n'
+		} else {
+			'#flag -Wl,-force_load,@VMODROOT/lib/libfastc_archive.a\n'
+		}
+		os.write_file(os.join_path(project, 'owner.m'),
+			'int archive_value(void);\nint native_value(void) { return archive_value(); }\n')!
+		os.write_file(os.join_path(project, 'main.c.v'),
+			'#flag darwin -framework Foundation\n' + link_flags +
+				'#include "@VMODROOT/owner.m"\nfn C.native_value() int\n' +
+				'fn main() { println(C.native_value()) }\n')!
+		for value in [17, 29] {
+			os.write_file(c_source, 'int archive_value(void) { return ${value}; }\n')!
+			compiled := cmdexec.run('clang', ['-c', c_source, '-o', object])
+			assert compiled.exit_code == 0, compiled.output
+			archived := cmdexec.run('ar', ['rcs', archive, object])
+			assert archived.exit_code == 0, archived.output
+			program := os.join_path(project, 'program')
+			built := cmdexec.run(@VEXE, ['-b', 'fastc', '-cc', 'tcc', '-no-retry-compilation',
+				'-o', program, project])
+			assert built.exit_code == 0, built.output
+			run := cmdexec.run(program, [])
+			assert run.exit_code == 0, run.output
+			assert run.output.trim_space() == value.str(), '${mode}: ${run.output}'
+		}
+	}
 }

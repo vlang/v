@@ -43,6 +43,8 @@ on:
       - 'vlib/v/markused/**.v'
       - 'vlib/json2/**.v'
       - '**/sanitized_ci.yml'
+      - '.github/workflows/build_msan_libpq.sh'
+      - '.github/workflows/build_msan_sqlite.sh'
 
 concurrency:
   group: sanitized-${{ github.workflow }}-${{ github.ref == 'refs/heads/master' && github.sha || github.ref }}
@@ -62,7 +64,10 @@ permissions:
 jobs:
   sanitize-linux:
     if: github.ref == 'refs/heads/master'
-    runs-on: ubuntu-22.04
+    # Ubuntu 22.04's Clang 14 lacks the stat64/lstat64 MSan interceptors used
+    # by SQLite's large-file pathname checks. Keep all MSan builds on the
+    # Ubuntu 24.04 Clang 18 toolchain, including the private database libraries.
+    runs-on: ${{ matrix.sanitizer == 'memory' && 'ubuntu-24.04' || 'ubuntu-22.04' }}
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
@@ -103,7 +108,12 @@ jobs:
             sanitizer: memory
             gc: none
             timeout: 300
-            vflags: -cc clang -gc none -cflags -fno-omit-frame-pointer
+            # Some tests explicitly select Boehm. Build its source with MSan too;
+            # the prebuilt archive cannot update the sanitizer's shadow memory.
+            # AES-NI intrinsics let MSan track mbedTLS output writes on this x86_64 runner.
+            vflags: >-
+              -cc clang -gc none -d use_bundled_libgc -cflags -fno-omit-frame-pointer
+              -cflags -maes -cflags -mpclmul
           - name: memory-clang-compiler
             cc: clang
             sanitizer: memory
@@ -138,6 +148,9 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/cache-apt-packages-action
+        # The shared cache key does not include the Ubuntu version. MSan uses
+        # the explicit install below to avoid restoring 22.04 packages on 24.04.
+        if: ${{ matrix.sanitizer != 'memory' }}
         with:
           profile: sanitizers
       - uses: ./.github/actions/setup-v
@@ -157,6 +170,20 @@ jobs:
           ./v retry -- sudo apt install --quiet -y $SANITIZER_BASE_PACKAGES
           ./v retry -- sudo apt install --quiet -y $SANITIZER_GRAPHICS_PACKAGES
           ./v retry -- sudo apt install $SANITIZER_CLANG_PACKAGES
+      - name: Build instrumented libpq for MemorySanitizer
+        if: ${{ matrix.name == 'memory-clang' }}
+        run: |
+          ./v retry -- sudo apt install --quiet -y bison flex
+          prefix="$RUNNER_TEMP/v-msan-libpq"
+          bash .github/workflows/build_msan_libpq.sh "$prefix"
+          echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$prefix/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" >> "$GITHUB_ENV"
+      - name: Build instrumented SQLite for MemorySanitizer
+        if: ${{ matrix.name == 'memory-clang' }}
+        run: |
+          prefix="$RUNNER_TEMP/v-msan-sqlite"
+          bash .github/workflows/build_msan_sqlite.sh "$prefix"
+          echo "PKG_CONFIG_PATH=$prefix/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}" >> "$GITHUB_ENV"
       - name: Recompile V with -cstrict
         run: |
           export GITHUB_JOB="$SANITIZER_GITHUB_JOB"

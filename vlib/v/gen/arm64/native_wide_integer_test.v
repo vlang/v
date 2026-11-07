@@ -1,11 +1,13 @@
 module arm64
 
-import os
-import v.parser
-import v.pref
-import v.ssa
-import v.transform
-import v.types
+$if macos && arm64 {
+	import os
+	import v.parser
+	import v.pref
+	import v.ssa
+	import v.transform
+	import v.types
+}
 
 fn test_native_wide_integer_sign_extension_and_right_shifts() {
 	$if macos && arm64 {

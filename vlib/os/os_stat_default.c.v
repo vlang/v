@@ -5,24 +5,33 @@ module os
 // Note: symlinks are followed, and the resulting Stat for their target will be returned.
 // If this is not desired, call lstat/1 instead.
 pub fn stat(path string) !Stat {
-	mut s := C.stat{}
-	unsafe {
-		res := C.stat(&char(path.str), &s)
-		if res != 0 {
-			return error_posix()
+	$if freestanding || syscalls {
+		stx, e := bf_stat(path, true)
+		if e != 0 {
+			return error_with_code(fsys_errno_message(e), e)
 		}
-		return Stat{
-			dev:   u64(s.st_dev)
-			inode: s.st_ino
-			nlink: s.st_nlink
-			mode:  s.st_mode
-			uid:   s.st_uid
-			gid:   s.st_gid
-			rdev:  u64(s.st_rdev)
-			size:  u64(s.st_size)
-			atime: s.st_atime
-			mtime: s.st_mtime
-			ctime: s.st_ctime
+		return fsys_stat_from_norm(stx)
+	}
+	$if !freestanding && !syscalls {
+		mut s := C.stat{}
+		unsafe {
+			res := C.stat(&char(path.str), &s)
+			if res != 0 {
+				return error_posix()
+			}
+			return Stat{
+				dev:   u64(s.st_dev)
+				inode: s.st_ino
+				nlink: s.st_nlink
+				mode:  s.st_mode
+				uid:   s.st_uid
+				gid:   s.st_gid
+				rdev:  u64(s.st_rdev)
+				size:  u64(s.st_size)
+				atime: s.st_atime
+				mtime: s.st_mtime
+				ctime: s.st_ctime
+			}
 		}
 	}
 }
@@ -30,50 +39,59 @@ pub fn stat(path string) !Stat {
 // lstat is similar to stat/1 for normal files/folders.
 // Unlike stat/1, however, it will return the stat info for a symlink, instead of its target.
 pub fn lstat(path string) !Stat {
-	mut s := C.stat{}
-	unsafe {
-		res := C.lstat(&char(path.str), &s)
-		if res != 0 {
-			return error_posix()
+	$if freestanding || syscalls {
+		stx, e := bf_stat(path, false)
+		if e != 0 {
+			return error_with_code(fsys_errno_message(e), e)
 		}
-		return Stat{
-			dev:   u64(s.st_dev)
-			inode: s.st_ino
-			nlink: s.st_nlink
-			mode:  s.st_mode
-			uid:   s.st_uid
-			gid:   s.st_gid
-			rdev:  u64(s.st_rdev)
-			size:  u64(s.st_size)
-			atime: s.st_atime
-			mtime: s.st_mtime
-			ctime: s.st_ctime
+		return fsys_stat_from_norm(stx)
+	}
+	$if !freestanding && !syscalls {
+		mut s := C.stat{}
+		unsafe {
+			res := C.lstat(&char(path.str), &s)
+			if res != 0 {
+				return error_posix()
+			}
+			return Stat{
+				dev:   u64(s.st_dev)
+				inode: s.st_ino
+				nlink: s.st_nlink
+				mode:  s.st_mode
+				uid:   s.st_uid
+				gid:   s.st_gid
+				rdev:  u64(s.st_rdev)
+				size:  u64(s.st_size)
+				atime: s.st_atime
+				mtime: s.st_mtime
+				ctime: s.st_ctime
+			}
 		}
 	}
 }
 
 // get_filetype returns the FileType from the Stat struct.
 pub fn (st Stat) get_filetype() FileType {
-	match st.mode & u32(C.S_IFMT) {
-		u32(C.S_IFREG) {
+	match st.mode & s_ifmt {
+		s_ifreg {
 			return .regular
 		}
-		u32(C.S_IFDIR) {
+		s_ifdir {
 			return .directory
 		}
-		u32(C.S_IFCHR) {
+		s_ifchr {
 			return .character_device
 		}
-		u32(C.S_IFBLK) {
+		s_ifblk {
 			return .block_device
 		}
-		u32(C.S_IFIFO) {
+		s_ififo {
 			return .fifo
 		}
-		u32(C.S_IFLNK) {
+		s_iflnk {
 			return .symbolic_link
 		}
-		u32(C.S_IFSOCK) {
+		s_ifsock {
 			return .socket
 		}
 		else {
@@ -87,19 +105,19 @@ pub fn (st Stat) get_mode() FileMode {
 	return FileMode{
 		typ:    st.get_filetype()
 		owner:  FilePermission{
-			read:    (st.mode & u32(C.S_IRUSR)) != 0
-			write:   (st.mode & u32(C.S_IWUSR)) != 0
-			execute: (st.mode & u32(C.S_IXUSR)) != 0
+			read:    (st.mode & s_irusr) != 0
+			write:   (st.mode & s_iwusr) != 0
+			execute: (st.mode & s_ixusr) != 0
 		}
 		group:  FilePermission{
-			read:    (st.mode & u32(C.S_IRGRP)) != 0
-			write:   (st.mode & u32(C.S_IWGRP)) != 0
-			execute: (st.mode & u32(C.S_IXGRP)) != 0
+			read:    (st.mode & s_irgrp) != 0
+			write:   (st.mode & s_iwgrp) != 0
+			execute: (st.mode & s_ixgrp) != 0
 		}
 		others: FilePermission{
-			read:    (st.mode & u32(C.S_IROTH)) != 0
-			write:   (st.mode & u32(C.S_IWOTH)) != 0
-			execute: (st.mode & u32(C.S_IXOTH)) != 0
+			read:    (st.mode & s_iroth) != 0
+			write:   (st.mode & s_iwoth) != 0
+			execute: (st.mode & s_ixoth) != 0
 		}
 	}
 }

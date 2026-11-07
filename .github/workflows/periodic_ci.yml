@@ -31,7 +31,7 @@ jobs:
       fail-fast: false
     runs-on: ${{ matrix.os }}
     if: github.ref == 'refs/heads/master' && (github.event_name != 'schedule' || github.repository == 'vlang/v')
-    timeout-minutes: 30
+    timeout-minutes: ${{ matrix.os == 'windows-latest' && 60 || 30 }}
     env:
       # Stop a failing test session at its first failure instead of
       # running the whole suite to completion; the remaining files
@@ -43,6 +43,9 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+      - name: Prepare private tool cache (Windows)
+        if: runner.os == 'Windows'
+        run: .\.github\workflows\setup_windows_tool_cache.ps1
       - name: Build
         if: runner.os != 'Windows'
         run: make -j4 && ./v -showcc -o v cmd/v && ./v doctor
@@ -55,16 +58,24 @@ jobs:
           $opensslBin = 'C:\Program Files\OpenSSL\bin'
           $libDir = 'C:\Program Files\OpenSSL\lib\VC\x64\MD'
           $cryptoLib = Join-Path $libDir 'libcrypto.lib'
-          if (-not (Test-Path $opensslBin) -or -not (Test-Path $cryptoLib)) {
+          $sslLib = Join-Path $libDir 'libssl.lib'
+          if (-not (Test-Path $opensslBin) -or -not (Test-Path $cryptoLib) -or -not (Test-Path $sslLib)) {
             choco install openssl --version=3.5.4 --allow-downgrade -y --no-progress
             if ($LASTEXITCODE -ne 0) {
               throw "Chocolatey failed to install OpenSSL 3.5.4 (exit $LASTEXITCODE)"
             }
           }
-          if (-not (Test-Path $opensslBin) -or -not (Test-Path $cryptoLib)) {
+          if (-not (Test-Path $opensslBin) -or -not (Test-Path $cryptoLib) -or -not (Test-Path $sslLib)) {
             throw "OpenSSL installation is incomplete under C:\Program Files\OpenSSL"
           }
           Add-Content -Path $env:GITHUB_PATH -Value $opensslBin
+          # pkg-config's -lssl/-lcrypto become ssl.lib/crypto.lib under MSVC.
+          # The installer ships both import libraries with a lib prefix.
           Copy-Item -Path $cryptoLib -Destination (Join-Path $libDir 'crypto.lib') -Force
+          Copy-Item -Path $sslLib -Destination (Join-Path $libDir 'ssl.lib') -Force
       - name: Test
+        env:
+          # The conservative memory budget selects one Windows test worker.
+          # Match the four-worker limit used by the Windows MSVC job.
+          VJOBS: ${{ runner.os == 'Windows' && '4' || '' }}
         run: ./v -d network -silent test-self vlib/net

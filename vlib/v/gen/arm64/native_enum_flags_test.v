@@ -1,11 +1,13 @@
 module arm64
 
-import os
-import v.parser
-import v.pref
-import v.ssa
-import v.transform
-import v.types
+$if macos && arm64 {
+	import os
+	import v.parser
+	import v.pref
+	import v.ssa
+	import v.transform
+	import v.types
+}
 
 fn test_native_enum_flag_methods_preserve_array_alias_headers_and_mutable_storage() {
 	$if macos && arm64 {
@@ -43,11 +45,11 @@ mut:
 }
 struct NativeArray {
     data voidptr
-    offset i32
-    len i32
-    cap i32
+    offset int
+    len int
+    cap int
     flags u32
-    element_size i32
+    element_size int
 }
 fn mutate_flags(mut flags FeatureAlias) {
     flags.set(.write)

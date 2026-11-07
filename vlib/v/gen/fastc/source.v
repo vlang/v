@@ -7,6 +7,7 @@ import v.pref
 import v.scanner
 import v.token
 import v.util
+import v.vmod
 
 fn fastc_vmod_root_for_file(source_file string) string {
 	mut dir := if source_file.len > 0 { os.dir(source_file) } else { os.getwd() }
@@ -993,7 +994,7 @@ fn fastc_run_memo_task(task FastcMemoTask, index int, prefs &pref.Preferences, c
 		}
 	}
 	if task.kind == 1 {
-		if task.stamps.len == 1 {
+		if task.stamps.len == 1 && !os.is_file(os.join_path_single(task.dir, 'v.mod')) {
 			// The memoized listing stands while the directory's own stamp is
 			// unchanged (adding, removing or renaming an entry updates it) and
 			// old enough to trust.
@@ -1254,6 +1255,11 @@ fn fastc_write_memo_entry_line(mut out strings.Builder, path string, real_path_c
 // stamp and the listing it had, so a later run reuses the listing while the
 // directory is unchanged.
 fn fastc_write_memo_dir_line(mut out strings.Builder, dir string, module_dir_files map[string][]string) {
+	// A manifest can select sources in other directories, whose additions do
+	// not change the root directory's stamp. Resolve those listings afresh.
+	if os.is_file(os.join_path_single(dir, 'v.mod')) {
+		return
+	}
 	out.write_string('D\t' + dir)
 	if files := module_dir_files[dir] {
 		stamp := fastc_file_stamp(dir) or { FastcFileStamp{} }
@@ -1386,9 +1392,19 @@ fn fastc_module_source_files(module_dir string, prefs &pref.Preferences, mut mod
 // fastc_list_module_sources lists the backend-relevant .v files of `dir`.
 fn fastc_list_module_sources(dir string, prefs &pref.Preferences) []string {
 	mut module_files := []string{}
-	for module_file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(dir, prefs.user_defines, prefs.target)) {
-		if fastc_source_file_matches_backend(module_file) {
-			module_files << module_file
+	mut source_dirs := [dir]
+	if manifest := vmod.from_file(os.join_path_single(dir, 'v.mod')) {
+		source_root := manifest.source_root(dir)
+		source_dirs = [source_root]
+		for subdir in manifest.unknown['subdirs'] or { []string{} } {
+			source_dirs << os.join_path_single(source_root, subdir)
+		}
+	}
+	for source_dir in source_dirs {
+		for module_file in prefs.without_excluded(pref.get_v_files_from_dir_for_target(source_dir, prefs.user_defines, prefs.target)) {
+			if fastc_source_file_matches_backend(module_file) && module_file !in module_files {
+				module_files << module_file
+			}
 		}
 	}
 	return module_files
@@ -1574,7 +1590,7 @@ fn fastc_module_lifecycle_calls(ordered_sources []FastcSourceFile, functions map
 	return calls
 }
 
-fn fastc_generate_startup_initializers(ordered_sources []FastcSourceFile, constant_initializers map[string]string, global_initializers map[string]string, module_init_calls []string, function_c_names map[string]string) !string {
+fn fastc_generate_startup_initializers(ordered_sources []FastcSourceFile, constant_initializers map[string]string, global_initializers map[string]string, early_initializers map[string]string, module_init_calls []string, function_c_names map[string]string) !string {
 	mut seen_modules := map[string]bool{}
 	mut out := strings.new_builder(1024)
 	for source_file in ordered_sources {
@@ -1585,6 +1601,7 @@ fn fastc_generate_startup_initializers(ordered_sources []FastcSourceFile, consta
 		seen_modules[module_name] = true
 		constant_initializer := constant_initializers[module_name] or { '' }
 		global_initializer := global_initializers[module_name] or { '' }
+		out.write_string(early_initializers[module_name] or { '' })
 		out.write_string(constant_initializer)
 		out.write_string(global_initializer)
 		function_key := fastc_function_key(module_name, 'init')

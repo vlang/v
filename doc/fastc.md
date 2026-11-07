@@ -3,10 +3,16 @@
 Select FastC with `v -b fastc run program.v`. It reads scanner tokens and emits C directly,
 without the regular parser, checker, or AST pipeline, then compiles with bundled TinyCC.
 Select `-cc clang` to compile the emitted C with Clang, including Objective-C interop on macOS.
-Default builds and explicit `-cc tcc` builds compile generated V code and link with TinyCC.
-FastC reports TinyCC failures without retrying with another compiler.
-On macOS, Objective-C interop uses a separate cached native library built by the platform compiler;
-generated V bodies remain on TinyCC, including when `-no-retry-compilation` is set.
+Ordinary default builds and explicit `-cc tcc` builds compile generated V code and link with
+TinyCC. FastC reports TinyCC compilation failures directly.
+On macOS, Objective-C interop uses a cached native library built by the platform compiler.
+Generated V code and the executable link remain on TinyCC, including with
+`-no-retry-compilation`. Native bindings come from explicit V declarations; V never infers
+declarations from native headers. Dependency manifests produced by the native compiler
+validate the library cache, including transitive headers and native link inputs. A changed or
+unverifiable native input requires rebuilding the native library.
+`-ldflags` and `LDFLAGS` apply to the executable link, including with the native library.
+TinyCC reports executable linker options it does not support.
 Native implementation includes follow generated V types, while ordinary C headers precede them.
 Explicit macro directives retain their source-file order around native implementations.
 With `-o program.c`, FastC writes C without invoking a native compiler or linker.
@@ -94,6 +100,7 @@ Empty map initializers use their expected key and value storage, including map a
 On glibc Linux, thread IDs use the system call without requiring glibc 2.30. Generic
 parameter shadowing ends with its function and does not affect later constants.
 Function-pointer fields and parameters support mixed named and unnamed parameter types.
+Native function parameters can also name imported V types, such as `gg.Color`.
 Function aliases support nested callback parameter types, including callbacks taking callbacks.
 Field iteration supports `field.is_shared` and passing `field.attrs` to helper functions.
 Member and operator continuations can follow comments on a new line.
@@ -103,6 +110,7 @@ handle both missing indices and stored `none` elements. Struct equality compares
 map, array, sum-type, and interface fields by value. Function values retain their signatures
 through options, collections, captures, and returned callbacks; `spawn` accepts callback fields.
 Project imports honor explicit `-path` search roots, including replacements for vlib modules.
+Imported modules may keep all their sources in `v.mod` subdirectories, including under `base_url`.
 Embedded files can be stored or passed as `embed_file.EmbedFileData` values and read with
 `.data()`, `.to_string()`, or `.to_bytes()`. Their payloads are emitted once per file and remain
 available after the original files are removed; binary bytes and empty files are preserved.
@@ -133,6 +141,9 @@ Channel type declarations accept ordinary V whitespace.
 Negated sum-type guards retain pointer identity and read mutable scalar variants as values
 in arithmetic, including numeric aliases.
 Fixed arrays and their aliases support checked indexing, including pointer elements.
+Fixed-array equality preserves temporary storage under TinyCC; `map`, `filter`, `all`, `any`,
+and `count` support fixed arrays, including struct fields and returned values.
+Optional and Result returns copy raw fixed-array fields into their value wrappers.
 Pointer elements retain their identity when passed or copied. Omitted option fields are `none`.
 Dynamic pointer arrays use pointer identity for `.index()` and `.last_index()` searches.
 Explicit integer and pointer casts preserve pointer values, including through pointer aliases.
@@ -171,6 +182,9 @@ Optional sum-type lookups preserve `none` fallbacks and successful payloads.
 Typed pointers to `IError` implementations can be successful `voidptr` Result payloads.
 Direct integer tuple returns store each component at its declared width, including literal values.
 Assertions preserve the following fallback statement when it begins with a unary operator.
+Struct updates accept a fallible constructor with an `or` fallback as their spread value.
+Dependency-free global defaults are available before runtime constants in their module.
+Generic methods taking `map[K]V` can infer both type arguments from a map value.
 Standalone `unsafe` blocks preserve local scopes. Forward labels remain reachable after a return
 in translated code.
 

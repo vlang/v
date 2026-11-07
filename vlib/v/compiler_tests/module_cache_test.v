@@ -1128,6 +1128,83 @@ fn main() {
 	assert module_cache_artifact(cache_dir, 'wrapper_', '.o').len == 0
 }
 
+fn test_cached_capturing_callbacks_keep_their_own_adapters() {
+	$if !linux && !macos {
+		return
+	}
+	v3_bin := module_cache_compiler()
+	root := create_module_cache_shipped_project('v3_cached_callback_adapters_${os.getpid()}')
+	defer { os.rmdir_all(os.dir(os.dir(root))) or {} }
+	// libc supplies the C caller, so there are no custom native inputs that
+	// could disable module caching before the callback adapters are generated.
+	// The sibling module is shipped in this vroot, so warm builds read its header.
+	write_module_cache_file(os.dir(root), 'callbackprobe/probe.c.v', 'module callbackprobe
+
+fn C.bsearch(key voidptr, base voidptr, count uint, size uint, compare fn (voidptr, voidptr) int) voidptr
+
+pub fn result(offset int) int {
+	key := 42
+	values := [45]!
+	found := C.bsearch(&key, &values[0], 1, sizeof(int), fn [offset] (left voidptr, right voidptr) int {
+		return unsafe { *(&int(left)) - *(&int(right)) } + offset
+	})
+	assert found != unsafe { nil }
+	return unsafe { *(&int(found)) }
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	mut first_object := ''
+	mut first_hash := u64(0)
+	for phase in ['cold', 'warm', 'repeat', 'edited'] {
+		// Changing the entry module's literals changes the generated callback
+		// names while the imported module's cached object remains reusable.
+		extra := if phase == 'cold' {
+			'identity := fn (value int) int { return value }\nassert identity(3) == 3\n'
+		} else {
+			''
+		}
+		base := if phase == 'edited' { 4 } else { 3 }
+		source := os.join_path(root, if phase == 'cold' { 'cold.c.v' } else { 'warm.c.v' })
+		os.write_file(source, 'import callbackprobe
+
+fn main() {
+	${extra}
+	base := ${base}
+	key := 4
+	values := [${base + 4}]!
+	found := C.bsearch(&key, &values[0], 1, sizeof(int), fn [base] (left voidptr, right voidptr) int {
+		return unsafe { *(&int(left)) - *(&int(right)) } + base
+	})
+	assert found != unsafe { nil }
+	assert unsafe { *(&int(found)) } == ${base + 4}
+	assert callbackprobe.result(3) == 45
+	println("ok")
+}
+')!
+		output := os.join_path(root, phase)
+		compiled := os.exec(['env', 'V3CACHE=${cache_dir}', 'VFLAGS=', 'VOSARGS=', 'CFLAGS=', 'LDFLAGS=',
+			'V3_INTERNAL_CACHE_FORCE_SOURCE=', 'V3_CACHE_FORCE_SOURCE=',
+			'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', 'V_MACOS_V3_NO_FALLBACK=1', v3_bin, '-new-compiler',
+			'-no-retry-compilation', '-cc', 'cc', '-gc', 'none', '-show-timings', '-o', output,
+			source])
+		assert compiled.exit_code == 0, '${phase}: ${compiled.output}'
+		object := module_cache_artifact(cache_dir, 'callbackprobe_', '.o')
+		assert object.len > 0, '${phase}: no cached callback module'
+		if phase == 'cold' {
+			first_object = object
+			first_hash = module_cache_object_hash(object)
+		} else {
+			header := module_cache_artifact(cache_dir, 'callbackprobe_', '.vh')
+			assert header.len > 0 && compiled.output.contains(header), compiled.output
+			assert !compiled.output.contains('Caching module callbackprobe...'), compiled.output
+			assert object == first_object
+			assert module_cache_object_hash(object) == first_hash
+		}
+		// Both the program-owned and cached-module-owned captured callbacks run.
+		assert run_module_cache_binary(output) == 'ok'
+	}
+}
+
 fn test_cached_cgen_dependency_inputs_restore_only_allowed_groups() {
 	root := os.join_path(os.temp_dir(), 'v3_cgen_dependency_restore_${os.getpid()}')
 	os.rmdir_all(root) or {}
@@ -1208,7 +1285,7 @@ int cached_after_branch(void) {
 	assert header.count('#endif') == 1, header
 }
 
-fn test_cached_header_preserves_include_search_path_names() {
+fn test_opaque_headers_preserve_include_search_names_without_cache() {
 	v3_bin := module_cache_compiler()
 	root := create_module_cache_shipped_project('v3_module_cache_include_search_${os.getpid()}')
 	defer {
@@ -1237,10 +1314,9 @@ fn main() {
 	first_output := os.join_path(root, 'first')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
 	assert run_module_cache_binary(first_output) == '42'
-	header_path := module_cache_artifact(cache_dir, 'wrapper_', '.vh')
-	assert header_path.len > 0
-	header := os.read_file(header_path) or { panic(err) }
-	assert header.contains('#include "cached_value.h"'), header
+	// The native compiler resolves the original include through -I. V cannot
+	// infer ownership from that header, so no cached V interface is published.
+	assert module_cache_artifact(cache_dir, 'wrapper_', '.vh') == ''
 
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
@@ -2451,9 +2527,9 @@ fn test_module_cache_materializes_cached_body_string_definitions() {
 	stable_symbol := module_cache_string_symbol('stable')
 	before_symbol := module_cache_string_symbol('before')
 	after_symbol := module_cache_string_symbol('after')
-	stable_definition := 'static const string ${stable_symbol} = {"stable", 6, 1};'
-	before_definition := 'static const string ${before_symbol} = {"before", 6, 1};'
-	after_definition := 'static const string ${after_symbol} = {"after", 5, 1};'
+	stable_definition := 'static const string ${stable_symbol} = {(u8*)"stable", 6, 1};'
+	before_definition := 'static const string ${before_symbol} = {(u8*)"before", 6, 1};'
+	after_definition := 'static const string ${after_symbol} = {(u8*)"after", 5, 1};'
 	cached := '// V3CACHE_BASELINE ${stable_definition}\n// V3CACHE_BASELINE ${before_definition}\n/* V3CACHE_BODY_BEGIN */\nconsume(${stable_symbol});\nconsume(${before_symbol});\n'
 	materialized := modulecache.materialize_cached_body_string_definitions(cached)
 	assert materialized.contains(stable_definition)
@@ -2474,8 +2550,8 @@ fn test_module_cache_materializes_cached_body_string_definitions() {
 fn test_module_cache_string_symbol_rewrite_handles_swapped_literals() {
 	alpha_symbol := module_cache_string_symbol('alpha')
 	beta_symbol := module_cache_string_symbol('beta')
-	alpha_definition := 'static const string ${alpha_symbol} = {"alpha", 5, 1};'
-	beta_definition := 'static const string ${beta_symbol} = {"beta", 4, 1};'
+	alpha_definition := 'static const string ${alpha_symbol} = {(u8*)"alpha", 5, 1};'
+	beta_definition := 'static const string ${beta_symbol} = {(u8*)"beta", 4, 1};'
 	source := '${alpha_definition}\n${beta_definition}\n/* V3CACHE_BODY_BEGIN */\nconsume(${alpha_symbol});\nconsume(${beta_symbol});\n'
 	rewritten := modulecache.rewrite_cached_runtime_strings(source, ['alpha', 'beta'], [
 		'beta',
@@ -2521,7 +2597,7 @@ fn test_module_cache_string_symbol_rewrite_rejects_partially_changed_duplicates(
 	}
 }
 
-fn test_module_cache_rebuilds_objects_when_c_flags_change() {
+fn test_opaque_headers_bypass_object_cache_when_c_flags_change() {
 	v3_bin := module_cache_compiler()
 	root := create_module_cache_shipped_project('v3_module_cache_c_flags_${os.getpid()}')
 	defer {
@@ -2560,7 +2636,9 @@ fn main() {
 	assert run_module_cache_binary(first_output) == '1'
 	first_wrapper_stamps :=
 		os.walk_ext(cache_dir, '.o.stamp').filter(os.file_name(it).starts_with('wrapper_'))
-	assert first_wrapper_stamps.len == 1
+	// Unknown header ownership bypasses object reuse; changing flags must
+	// still change the executable produced by the native compiler.
+	assert first_wrapper_stamps.len == 0
 
 	write_module_cache_file(root, 'main.v', 'module main
 
@@ -2577,11 +2655,10 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '2'
 	second_wrapper_stamps :=
 		os.walk_ext(cache_dir, '.o.stamp').filter(os.file_name(it).starts_with('wrapper_'))
-	assert second_wrapper_stamps.len == 2
-	assert second_wrapper_stamps.any(it !in first_wrapper_stamps)
+	assert second_wrapper_stamps.len == 0
 }
 
-fn test_cgen_cache_tracks_pkgconfig_output() {
+fn test_pkgconfig_output_changes_with_opaque_native_headers() {
 	$if windows {
 		return
 	}
@@ -2631,7 +2708,8 @@ fn main() {
 		os.exec(['env', 'V3CACHE=' + '${cache_dir}', v3_bin, '-cc', 'cc', '-show-timings',
 			'-enable-globals', '-o', warm_output, main_file])
 	assert warm.exit_code == 0, warm.output
-	assert warm.output.contains('cgen (cached)'), warm.output
+	// Header contents remain C compiler inputs on every build.
+	assert !warm.output.contains('cgen (cached)'), warm.output
 	assert run_module_cache_binary(warm_output) == '41'
 
 	os.setenv('V3_TEST_PKGCONFIG_FLAGS', '-DV3_PKG_VALUE=42', true)
@@ -2728,9 +2806,9 @@ fn main() {
 
 	write_module_cache_file(root, 'main.v', 'module main
 
-#flag -DV3_CACHE_RESTART_STDIO_PROBE
-
 import wrapper
+
+#flag -DV3_CACHE_RESTART_STDIO_PROBE
 
 fn C.v3_missing_restart_stdio_symbol() int
 
@@ -2741,9 +2819,10 @@ fn main() {
 	second_output := os.join_path(root, 'second')
 	stdout_file := os.join_path(root, 'stdout.txt')
 	stderr_file := os.join_path(root, 'stderr.txt')
+	// Exercise the current driver's stderr without the launcher's compatibility retry.
 	result :=
-		cache_capture_files([v3_bin, '-cc', 'cc', '-show-timings', '-enable-globals', '-o',
-			second_output, main_file], stdout_file, stderr_file, {
+		cache_capture_files([v3_bin, '-new-compiler', '-cc', 'cc', '-show-timings', '-enable-globals',
+			'-o', second_output, main_file], stdout_file, stderr_file, {
 			'V3CACHE': cache_dir
 		})
 	assert result.exit_code != 0
@@ -2808,7 +2887,9 @@ fn main() {
 	// The manifest costs a digest of every parsed source: a caller asks for it.
 	environment['V_MACOS_V3_SOURCE_MANIFEST'] = '1'
 	mut process := os.new_process(v3_bin)
-	process.set_args(['-silent', '-no-memory-limit', 'run', main_file, side_effect_file])
+	// Keep the caller's transport paths instead of letting the launcher replace them.
+	process.set_args(['-new-compiler', '-silent', '-no-memory-limit', 'run', main_file,
+		side_effect_file])
 	process.set_environment(environment)
 	process.set_redirect_stdio()
 	process.run()
@@ -2827,7 +2908,7 @@ fn main() {
 	assert staged_files == ['v_source_digests', 'v_sources'], staged_files.str()
 }
 
-fn test_cached_objects_receive_forced_include_flags() {
+fn test_forced_include_flags_bypass_object_cache() {
 	v3_bin := module_cache_compiler()
 	root := create_module_cache_shipped_project('v3_module_cache_forced_include_${os.getpid()}')
 	defer {
@@ -2861,7 +2942,7 @@ fn main() {
 	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
 	assert run_module_cache_binary(first_output) == '55'
 	first_hashes := module_cache_object_hashes(cache_dir)
-	assert first_hashes.keys().any(it.starts_with('wrapper_')), first_hashes.str()
+	assert first_hashes.len == 0, first_hashes.str()
 
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
@@ -2876,10 +2957,10 @@ fn main() {
 	compile_module_cache_project(v3_bin, cache_dir, main_file, third_output)
 	assert run_module_cache_binary(third_output) == '66'
 	changed := changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir))
-	assert changed.any(it.starts_with('wrapper_')), changed.str()
+	assert changed.len == 0, changed.str()
 }
 
-fn test_cached_header_preserves_c_preprocessor_state() {
+fn test_opaque_header_preserves_c_preprocessor_state() {
 	v3_bin := module_cache_compiler()
 	root := create_module_cache_shipped_project('v3_module_cache_preprocessor_state_${os.getpid()}')
 	defer {
@@ -2923,19 +3004,9 @@ fn main() {
 	first_output := os.join_path(root, 'first')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
 	assert run_module_cache_binary(first_output) == '73'
-	header_path := module_cache_artifact(cache_dir, 'wrapper_', '.vh')
-	assert header_path.len > 0
-	header := os.read_file(header_path) or { panic(err) }
-	define_pos := header.index('#define V3_CACHE_USE_FEATURE 1') or { -1 }
-	if_pos := header.index('#if defined(V3_CACHE_USE_FEATURE)') or { -1 }
-	pragma_pos := header.index('#pragma GCC diagnostic push') or { -1 }
-	insert_pos := header.index('#insert ') or { -1 }
-	endif_pos := header.last_index('#endif') or { -1 }
-	assert define_pos >= 0, header
-	assert header.count('#if defined(V3_CACHE_USE_FEATURE)') == 2, header
-	assert header.count('#endif') == 2, header
-	assert define_pos < if_pos && if_pos < pragma_pos && pragma_pos < insert_pos, header
-	assert insert_pos < endif_pos, header
+	// Preprocessor state is preserved in the C unit; no V cache interface is
+	// published for an opaque implementation header.
+	assert module_cache_artifact(cache_dir, 'wrapper_', '.vh') == ''
 
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
@@ -3004,7 +3075,7 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '42'
 }
 
-fn test_cached_objects_honor_strict_c_warnings() {
+fn test_opaque_headers_honor_strict_c_warnings() {
 	v3_bin := module_cache_compiler()
 	root := create_module_cache_shipped_project('v3_module_cache_strict_c_${os.getpid()}')
 	defer {
@@ -3055,7 +3126,7 @@ fn main() {
 	assert run_module_cache_binary(first_output) == '91'
 	first_wrapper_stamps :=
 		os.walk_ext(cache_dir, '.o.stamp').filter(os.file_name(it).starts_with('wrapper_'))
-	assert first_wrapper_stamps.len == 1
+	assert first_wrapper_stamps.len == 0
 
 	strict_output := os.join_path(root, 'strict')
 	strict_result :=
@@ -3065,8 +3136,7 @@ fn main() {
 	assert run_module_cache_binary(strict_output) == '91'
 	strict_wrapper_stamps :=
 		os.walk_ext(cache_dir, '.o.stamp').filter(os.file_name(it).starts_with('wrapper_'))
-	assert strict_wrapper_stamps.len == 2, strict_wrapper_stamps.str()
-	assert strict_wrapper_stamps.any(it !in first_wrapper_stamps)
+	assert strict_wrapper_stamps.len == 0, strict_wrapper_stamps.str()
 
 	write_module_cache_file(root, 'wrapper/strict_probe.h', 'static inline int cached_strict_call(void) {
 	return cached_strict_implicit_helper();
@@ -3097,7 +3167,7 @@ fn main() {
 	}
 }
 
-fn test_module_cache_rebuilds_objects_when_external_inputs_change() {
+fn test_opaque_headers_and_resources_rebuild_when_inputs_change() {
 	v3_bin := module_cache_compiler()
 	root := create_module_cache_shipped_project('v3_module_cache_external_inputs_${os.getpid()}')
 	defer {
@@ -3152,8 +3222,8 @@ fn main() {
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
 	assert run_module_cache_binary(second_output) == '2\n6'
 	changed := changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir))
-	assert changed.any(it.starts_with('assets_')), changed.str()
-	assert changed.any(it.starts_with('wrapper_')), changed.str()
+	assert first_hashes.len == 0, first_hashes.str()
+	assert changed.len == 0, changed.str()
 }
 
 fn test_cached_main_object_rebuilds_when_imported_preserved_header_changes() {
@@ -3353,7 +3423,8 @@ fn main() {
 		os.exec(['env', 'V3CACHE=' + '${cache_dir}', v3_bin, '-cc', 'cc', '-show-timings',
 			'-enable-globals', '-o', warm_output, main_file])
 	assert warm.exit_code == 0, warm.output
-	assert warm.output.contains('cgen (cached)'), warm.output
+	// Opaque native inputs are resolved afresh by the C compiler.
+	assert !warm.output.contains('cgen (cached)'), warm.output
 	assert run_module_cache_binary(warm_output) == '1'
 
 	write_module_cache_file(root, 'first/value.h', 'static inline int v3_include_value(void) {
@@ -3412,7 +3483,8 @@ fn main() {
 		os.exec(['env', 'V3CACHE=' + '${cache_dir}', v3_bin, '-cc', 'cc', '-show-timings',
 			'-enable-globals', '-o', warm_output, main_file])
 	assert warm.exit_code == 0, warm.output
-	assert warm.output.contains('cgen (cached)'), warm.output
+	// Opaque native inputs are resolved afresh by the C compiler.
+	assert !warm.output.contains('cgen (cached)'), warm.output
 	assert run_module_cache_binary(warm_output) == '1'
 
 	write_module_cache_file(root, 'second_target/value.h', 'static inline int v3_include_value(void) {
@@ -3469,7 +3541,7 @@ fn main() {
 	assert run_module_cache_binary(second_output) == 'second'
 }
 
-fn test_cached_dependents_rebuild_when_imported_external_inputs_change() {
+fn test_opaque_header_dependents_rebuild_when_external_inputs_change() {
 	v3_bin := module_cache_compiler()
 	root := create_module_cache_shipped_project('v3_module_cache_dependency_inputs_${os.getpid()}')
 	defer {
@@ -3519,7 +3591,8 @@ fn main() {
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
 	assert run_module_cache_binary(second_output) == '42'
 	changed := changed_module_cache_objects(first_hashes, module_cache_object_hashes(cache_dir))
-	assert changed.any(it.starts_with('bar_')), changed.str()
+	assert first_hashes.len == 0, first_hashes.str()
+	assert changed.len == 0, changed.str()
 }
 
 fn test_cached_object_rebuilds_when_import_resolves_to_new_header() {
@@ -4435,7 +4508,7 @@ fn main() {
 	assert run_module_cache_binary(second_output) == first_run
 }
 
-fn test_cached_comptime_body_resolves_relative_insert() {
+fn test_comptime_body_resolves_opaque_relative_insert() {
 	$if windows {
 		return
 	}
@@ -4477,11 +4550,7 @@ fn main() {
 	first_output := os.join_path(root, 'first')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
 	assert run_module_cache_binary(first_output) == '42'
-	cache_header_path := module_cache_artifact(cache_dir, 'wrapper_', '.vh')
-	assert cache_header_path.len > 0
-	cache_header := os.read_file(cache_header_path) or { panic(err) }
-	assert cache_header.contains(os.real_path(header_path)), cache_header
-	assert !cache_header.contains('@DIR/api.h'), cache_header
+	assert module_cache_artifact(cache_dir, 'wrapper_', '.vh') == ''
 
 	second_output := os.join_path(root, 'second')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, second_output)
@@ -6397,7 +6466,7 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '42'
 }
 
-fn test_incremental_program_cache_keeps_main_native_insert() {
+fn test_main_native_header_bypasses_incremental_program_cache() {
 	$if !macos {
 		return
 	}
@@ -6448,8 +6517,8 @@ fn main() {
 		os.exec(['env', 'V3CACHE=' + '${cache_dir}', v3_bin, '-cc', 'cc', '-show-timings',
 			'-enable-globals', '-o', incremental_output, main_file])
 	assert incremental.exit_code == 0, incremental.output
-	assert incremental.output.contains('check (incremental)'), incremental.output
-	assert incremental.output.contains('cgen (incremental)'), incremental.output
+	assert !incremental.output.contains('check (incremental)'), incremental.output
+	assert !incremental.output.contains('cgen (incremental)'), incremental.output
 	assert run_module_cache_binary(incremental_output) == '42'
 }
 
@@ -7775,7 +7844,7 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '42'
 }
 
-fn test_cached_native_type_declarations_from_inserted_header_root() {
+fn test_inserted_header_root_types_bypass_module_cache() {
 	v3_bin := module_cache_compiler()
 	root := create_module_cache_shipped_project('v3_cached_inserted_header_type_${os.getpid()}')
 	defer {
@@ -7830,8 +7899,8 @@ fn main() {
 	first_output := os.join_path(root, 'first')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
 	assert run_module_cache_binary(first_output) == '42'
-	assert module_cache_artifact(cache_dir, 'owner_', '.o').len > 0
-	assert module_cache_artifact(cache_dir, 'caller_', '.o').len > 0
+	assert module_cache_artifact(cache_dir, 'owner_', '.o') == ''
+	assert module_cache_artifact(cache_dir, 'caller_', '.o') == ''
 
 	first_hashes := module_cache_object_hashes(cache_dir)
 	second_output := os.join_path(root, 'second')
@@ -7914,7 +7983,7 @@ fn main() {
 	assert run_module_cache_binary(second_output) == '42'
 }
 
-fn test_cached_native_type_declarations_from_macro_invocation() {
+fn test_macro_declared_native_types_bypass_module_cache() {
 	v3_bin := module_cache_compiler()
 	root := create_module_cache_shipped_project('v3_cached_macro_native_type_${os.getpid()}')
 	defer {
@@ -7968,8 +8037,8 @@ fn main() {
 	first_output := os.join_path(root, 'first')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
 	assert run_module_cache_binary(first_output) == '42'
-	assert module_cache_artifact(cache_dir, 'owner_', '.o').len > 0
-	assert module_cache_artifact(cache_dir, 'caller_', '.o').len > 0
+	assert module_cache_artifact(cache_dir, 'owner_', '.o') == ''
+	assert module_cache_artifact(cache_dir, 'caller_', '.o') == ''
 
 	first_hashes := module_cache_object_hashes(cache_dir)
 	second_output := os.join_path(root, 'second')
@@ -8048,7 +8117,7 @@ fn main() {
 	assert run_module_cache_binary(third_output) == '52'
 }
 
-fn test_cached_native_type_declarations_repeat_header_in_unknown_branches() {
+fn test_unknown_native_header_branches_bypass_module_cache() {
 	v3_bin := module_cache_compiler()
 	root := create_module_cache_shipped_project('v3_cached_native_repeated_branch_type_${os.getpid()}')
 	defer {
@@ -8104,8 +8173,8 @@ fn main() {
 	first_output := os.join_path(root, 'first')
 	compile_module_cache_project(v3_bin, cache_dir, main_file, first_output)
 	assert run_module_cache_binary(first_output) == '42'
-	assert module_cache_artifact(cache_dir, 'owner_', '.o').len > 0
-	assert module_cache_artifact(cache_dir, 'caller_', '.o').len > 0
+	assert module_cache_artifact(cache_dir, 'owner_', '.o') == ''
+	assert module_cache_artifact(cache_dir, 'caller_', '.o') == ''
 
 	first_hashes := module_cache_object_hashes(cache_dir)
 	second_output := os.join_path(root, 'second')

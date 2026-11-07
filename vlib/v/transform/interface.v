@@ -150,6 +150,7 @@ fn (t &Transformer) interface_target_should_share_source(id flat.NodeId, target_
 }
 
 // resolve_interface_type_name resolves resolve interface type name information for transform.
+@[direct_array_access]
 fn (t &Transformer) resolve_interface_type_name(name_id u32) u32 {
 	if name_id == 0 || isnil(t.tc) { return 0 }
 	if isnil(t.interface_type_cache) { return t.resolve_interface_type_name_uncached(name_id) }
@@ -1018,6 +1019,9 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 		source_type = adjusted_source_id_2
 	}
 	source_node := t.a.nodes[int(source_id)]
+	// Stabilizing a constructor or returned value below creates an addressable
+	// temporary, but that temporary cannot back an interface retained by a callee.
+	share_source_storage := share_source && t.expr_can_take_address(source_id)
 	source_is_mut_pointer_slot := source_node.kind == .ident
 		&& (t.pointer_value_rvalues[source_node.value]
 			|| source_node.value in t.mut_param_values)
@@ -1110,7 +1114,7 @@ fn (mut t Transformer) make_interface_literal_from_expr(id flat.NodeId, iface_na
 	// type and emit the matching `_typ` dispatch id.
 	object_expr := if is_ptr {
 		source
-	} else if share_source && !source_is_pointer_alias && t.expr_can_take_address(source) {
+	} else if share_source_storage && !source_is_pointer_alias && t.expr_can_take_address(source) {
 		addr := t.make_prefix(.amp, source)
 		t.set_node_typ(int(addr), flat.source_type_composition_one(.pointer, concrete_type))
 		addr

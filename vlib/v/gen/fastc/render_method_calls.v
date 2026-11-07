@@ -622,14 +622,19 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				}
 				continue
 			}
-			if tokens[i].lit == 'str' && g.declared_kinds[g.semantic_type_key(receiver_type)] == .enum_ {
+			enum_key := if tokens[i].lit == 'str' {
+				g.underlying_enum_type_key(g.semantic_type_key(receiver_type)) or { u32(0) }
+			} else {
+				u32(0)
+			}
+			if enum_key != 0 {
 				// `enum_val.str()`: reuse the generated `v_fastc_enum_str_<T>` helper.
 				call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
 				if call_end != i + 2 {
 					continue
 				}
 				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
-				enum_c := flat.source_type_name(fastc_trim_pointer_type(fastc_normalize_inferred_type(receiver_type)))
+				enum_c := fastc_c_declared_type_name(flat.source_type_name(enum_key))
 				receiver_argument := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
 					'*(${receiver.source})'
 				} else {

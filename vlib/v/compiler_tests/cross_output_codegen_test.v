@@ -371,16 +371,11 @@ fn test_cross_output_uses_getentropy_instead_of_the_linux_syscall_where_unavaila
 	assert condition.contains('__APPLE__'), 'getentropy is guarded by `${condition}`, which does not select Apple'
 	assert condition.contains('__OpenBSD__'), 'getentropy is guarded by `${condition}`, which does not select OpenBSD'
 	assert body[getentropy_at..linux_at].contains('#else'), 'the Linux helper is not in the fallback branch: ${body}'
-	// The helper is defined for Linux alone, with the syscall that the other
-	// hosts lack.
-	helper_signature := 'static inline long v_crypto_getrandom(void* buf, size_t n) {'
-	helper_at := c_code.index(helper_signature) or {
-		assert false, 'the Linux entropy helper is missing from the snapshot'
-		return
-	}
-	guards := enclosing_guards_at(c_code, helper_at)
-	assert guards.any(it in ['#if defined(__linux__)', '#ifdef __linux__']), 'the Linux entropy helper is guarded by ${guards}, which also hold outside Linux'
-	assert function_body(c_code, helper_signature).contains('syscall(SYS_getrandom'), 'the syscall is missing from the Linux entropy helper'
+	// The Linux-only helper remains in its own header. V must preserve the
+	// include rather than opening the header to inline its implementation.
+	helper := os.join_path(@VEXEROOT, 'vlib', 'crypto', 'rand', 'internal', 'getrandom_linux.h').replace('\\', '/')
+	assert c_code.contains('#include "${helper}"'), c_code
+	assert !c_code.contains('static inline long v_crypto_getrandom(void* buf, size_t n) {')
 }
 
 fn test_cross_output_keeps_the_linux_calls_of_the_diagnostics_server_behind_linux_guards() {
@@ -425,19 +420,9 @@ fn test_cross_output_lets_the_target_libc_pick_the_poll_header() {
 	// check is folded for the generating host, so the target C preprocessor has to
 	// pick the header from the libc it actually compiles against.
 	c_code := cross_generate_with('-cross -os linux', 'cmdexec_poll', "module main\n\nimport v.cmdexec\n\nfn main() {\n\tprintln(cmdexec.run('true', []string{}).exit_code)\n}\n")
-	sys_poll_at := c_code.index('#include <sys/poll.h>') or {
-		assert false, 'the glibc poll header is missing from the snapshot'
-		return
-	}
-	before := c_code[..sys_poll_at]
-	guard_at := before.last_index('#if ') or {
-		assert false, '<sys/poll.h> is not behind any preprocessor guard'
-		return
-	}
-	condition := before[guard_at..].all_before('\n')
-	assert condition.contains('__GLIBC__'), '<sys/poll.h> is guarded by `${condition}`, which does not check for glibc'
-	fallback := c_code[sys_poll_at..].all_before('#endif')
-	assert fallback.contains('#else\n#include <poll.h>'), 'musl and the other targets lost <poll.h>: ${fallback}'
+	header := os.join_path(@VEXEROOT, 'vlib', 'v', 'cmdexec', 'cmdexec_poll.h').replace('\\', '/')
+	assert c_code.contains('#include "${header}"'), c_code
+	assert !c_code.contains('static inline short v_cmdexec_poll_revents('), c_code
 }
 
 fn test_glibc_hello_world_declares_the_array_constructors_it_calls() {
