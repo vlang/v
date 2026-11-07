@@ -346,3 +346,41 @@ fn test_invalid_registered_claims_are_rejected() {
 		}
 	}
 }
+
+fn payload_of(token string) string {
+	_, payload := decode_raw(token) or { panic(err) }
+	return payload
+}
+
+// StandardClaims.aud reads both forms of RFC 7519 §4.1.3, and writes a single
+// recipient as a string.
+fn test_standard_claims_audience() {
+	options := VerifyOptions{
+		algorithm: .hs256
+	}
+	one := sign_with_secret(StandardClaims{ aud: Audience.new('api') }, 'secret', SignOptions{})!
+	assert payload_of(one).contains('"aud":"api"')
+	got := verify_with_secret[StandardClaims](one, 'secret', options)!
+	assert got.claims.aud or { Audience{} }.values == ['api']
+	many := sign_with_secret(StandardClaims{ aud: Audience.new('account', 'api') }, 'secret', SignOptions{})!
+	assert payload_of(many).contains('"aud":["account","api"]')
+	got_many := verify_with_secret[StandardClaims](many, 'secret', VerifyOptions{
+		...options
+		expected_audience: 'api'
+	})!
+	audience := got_many.claims.aud or { Audience{} }
+	assert audience.values == ['account', 'api']
+	assert audience.contains('account') && !audience.contains('other')
+	absent := sign_with_secret(StandardClaims{ sub: 'x' }, 'secret', SignOptions{})!
+	assert !payload_of(absent).contains('aud')
+	assert verify_with_secret[StandardClaims](absent, 'secret', options)!.claims.aud == none
+}
+
+fn test_decode_rejects_invalid_audiences() {
+	for aud in ['1', '["api",2]', '{}', 'null'] {
+		token := '${base64.url_encode('{"alg":"HS256"}'.bytes())}.${base64.url_encode('{"aud":${aud}}'.bytes())}.c2ln'
+		if _ := decode[StandardClaims](token) {
+			assert false, 'decoded the audience ${aud}'
+		}
+	}
+}
