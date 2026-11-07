@@ -15,9 +15,26 @@ pub fn divide(hi u64, lo u64, y u64) u64 {
 	return q ^ r
 }
 ")!
-	generated := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-no-parallel', '-nocache',
-		'-gc', 'none', '-cross', '-cc', 'msvc', '-os', 'windows', '-arch', 'amd64', '-is_o', '-o',
-		c_source, source])
+	generated := os.exec([
+		@VEXE,
+		'-new-compiler',
+		'-no-retry-compilation',
+		'-no-parallel',
+		'-nocache',
+		'-gc',
+		'none',
+		'-cross',
+		'-cc',
+		'msvc',
+		'-os',
+		'windows',
+		'-arch',
+		'amd64',
+		'-is_o',
+		'-o',
+		c_source,
+		source,
+	])
 	assert generated.exit_code == 0, generated.output
 	code := os.read_file(c_source)!
 	start := code.index('__inline multi_return_u64_u64 bits__div_64(') or {
