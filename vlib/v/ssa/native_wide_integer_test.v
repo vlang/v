@@ -21,6 +21,13 @@ fn probe(signed i64, unsigned u64) {
     at_least := other >= u128(1)
     same_pointer := pointer == pointer
     copy := unsafe { *pointer }
+    product := value * i128(other)
+    quotient := other / u128(unsigned)
+    remainder := value % i128(signed)
+    shifted := other << signed
+    negated := -value
+    flipped := ~other
+    narrowed := u32(other)
 }
 fn main() {}
 '
@@ -68,7 +75,7 @@ fn main() {}
 	assert pointer_comparisons == 1
 }
 
-fn test_unsupported_wide_integer_operations_fail_before_scalar_lowering() {
+fn test_wide_integer_operations_build_and_unsupported_ones_fail_before_scalar_lowering() {
 	// Build one small source-pipeline driver, then isolate each expected panic in
 	// its own process. Every fixture must pass parsing and type checking first.
 	dir := os.join_path(os.vtmp_dir(), 'ssa_wide_diagnostics_${os.getpid()}')
@@ -98,31 +105,45 @@ fn main() {
 ') or { panic(err) }
 	built := cmdexec.run(@VEXE, ['-gc', 'none', '-o', driver, driver_source])
 	assert built.exit_code == 0, built.output
-	cases := [
+	supported := [
 		'fn probe(x i128) i128 { return -x }',
 		'fn probe(x u128) u128 { return ~x }',
 		'fn probe(x u128, y u128) u128 { return x * y }',
 		'fn probe(x u128, y u128) u128 { return x / y }',
-		'fn probe(x u128, y u128) u128 { return x % y }',
+		'fn probe(x i128, y i128) i128 { return x % y }',
 		'fn probe(x u128, shift int) u128 { return x << shift }',
 		'fn probe(x i128, shift int) i128 { return x >> shift }',
-		'fn probe(x i128, shift int) i128 { return x >>> shift }',
+		'fn probe(x i128, shift u128) i128 { return x >>> shift }',
 		'fn probe() { mut x := u128(1)\nx += u128(1) }',
-		'struct Box { mut: value u128 }\nfn probe() { mut x := Box{value: u128(1)}\nx.value += u128(1) }',
-		'fn probe() { mut x := [u128(1)]\nx[0] += u128(1) }',
-		'fn probe(mut x u128) { x += u128(1) }',
-		'fn probe() { mut x := u128(1)\np := &x\nunsafe { *p += u128(1) } }',
+		'fn probe() { mut x := i128(1)\nx *= 3 }',
+		'struct Box { mut: value u128 }\nfn probe() { mut x := Box{value: u128(1)}\nx.value /= u128(1) }',
+		'fn probe() { mut x := [u128(1)]\nx[0] <<= 3 }',
+		'struct Box { mut: value u128 }\nfn probe(mut x Box) { x.value %= u128(7) }',
+		'fn probe() { mut x := u128(1)\np := &x\nunsafe { *p -= u128(1) } }',
 		'fn probe() { mut x := u128(1)\nx++ }',
-		'fn probe() { mut x := u128(1)\nx-- }',
+		'fn probe() { mut x := i128(1)\nx-- }',
 		'fn probe(x f64) i128 { return i128(x) }',
+		'fn probe(x f32) u128 { return u128(x) }',
 		'fn probe(x i128) f64 { return f64(x) }',
+		'fn probe(x u128) f32 { return f32(x) }',
 		'fn probe(x u128) u64 { return u64(x) }',
+		'fn probe(x i128) i8 { return i8(x) }',
 		'fn probe(x u128) voidptr { return voidptr(x) }',
 		'fn probe(x voidptr) u128 { return u128(x) }',
 		'fn probe() { for n in u128(1)..u128(3) {} }',
 		'fn probe() u128 { return u128(0x10000000000000000) }',
 		'fn probe() u128 { return u128(18446744073709551616) }',
+		'fn probe() i128 { return i128(-170141183460469231731687303715884105728) }',
 		'struct Box { value u128 }\nfn probe(x u128) Box { return Box{value: ~x} }',
+	]
+	for index, source in supported {
+		path := os.join_path(dir, 'supported_${index}.v')
+		os.write_file(path, 'module main\n${source}\nfn main() {}\n') or { panic(err) }
+		result := os.exec([driver, path])
+		assert result.exit_code == 0, '${source}\n${result.output}'
+	}
+	// Indices and slice bounds must still be scalar integers.
+	cases := [
 		'fn probe(i u128) int { a := [1, 2, 3]!\nreturn a[i] }',
 		'fn probe(i u128) int { a := [1, 2, 3]\nreturn a[i] }',
 		'fn probe(i u128) u8 { return "abc"[i] }',
