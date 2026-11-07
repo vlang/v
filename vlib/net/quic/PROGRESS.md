@@ -414,8 +414,10 @@ The largest, highest-risk phase. Sub-phases, in build order:
       `initial_secrets_test.v` (duplicated locally since V compiles each
       `_test.v` file as its own independent unit — top-level consts aren't
       shared across sibling test files in the same module).
-      `encrypt_packet_payload`/`decrypt_packet_payload` wrap
-      `crypto.aes.AesGcm`; the AEAD nonce XORs the packet's FULL,
+      `encrypt_packet_payload`/`decrypt_packet_payload` originally wrapped
+      `crypto.aes.AesGcm`; they now use one-shot mbedTLS contexts
+      (`packet_crypto.c.v`), about 1000x faster with `-prod`, byte-for-byte
+      equivalent and checked against the same RFC vectors. The AEAD nonce XORs the packet's FULL,
       RECONSTRUCTED packet number (never the truncated wire bytes) into the
       low 8 bytes of the 12-byte IV. `protect_packet`/`unprotect_packet`
       combine packet + header protection in the one correct order (encrypt
