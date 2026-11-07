@@ -1390,7 +1390,12 @@ fn (mut g Parser) parse_return() !bool {
 		expression = '*(${expression})'
 		actual_type = g.return_type
 	}
-	if g.selfhost && flat.source_type_query(g.return_type).has(.c_pointer_suffix) && actual_type == g.return_type && g.last_expression.len == 2 && g.last_expression[0].tok == .amp && g.last_expression[1].tok == .name {
+	// The pointer a `?&T`/`!&T` function returns is its payload.
+	wraps_payload := g.return_type in [fastc_type_option, fastc_type_result]
+	returned_pointer_type := if wraps_payload { g.option_return_type } else { g.return_type }
+	if g.selfhost && flat.source_type_query(returned_pointer_type).has(.c_pointer_suffix)
+		&& (actual_type == returned_pointer_type || (wraps_payload && fastc_is_pointer_type(actual_type)))
+		&& g.last_expression.len == 2 && g.last_expression[0].tok == .amp && g.last_expression[1].tok == .name {
 		// A pointer returned from a V local escapes the function. Taking its C address
 		// directly leaves a dangling stack pointer (for example `return &pool` in
 		// sync.pool.new_pool_processor), so copy the local into heap-backed storage.
@@ -1399,7 +1404,12 @@ fn (mut g Parser) parse_return() !bool {
 			if !local.is_reference {
 				local_type := fastc_normalize_inferred_type(local.typ)
 				temporary := g.temporary_name('return_reference')
-				expression = '({ ${flat.source_type_name(local_type)} ${temporary} = (${fastc_c_identifier(local_name)}); (${g.return_type_text()})v_fastc_interface_box(&${temporary}, sizeof(${flat.source_type_name(local_type)})); })'
+				pointer_text := if wraps_payload {
+					fastc_output_c_type(flat.source_type_name(actual_type))
+				} else {
+					g.return_type_text()
+				}
+				expression = '({ ${flat.source_type_name(local_type)} ${temporary} = (${fastc_c_identifier(local_name)}); (${pointer_text})v_fastc_interface_box(&${temporary}, sizeof(${flat.source_type_name(local_type)})); })'
 			}
 		}
 	}

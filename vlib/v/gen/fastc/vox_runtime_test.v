@@ -72,6 +72,19 @@ fn release(page &Page) {
 	}
 }
 
+fn payload[T](value ?T) ?&T {
+	snapshot := value or { return none }
+	return &snapshot
+}
+
+fn clobber(n int) int {
+	mut values := [64]int{}
+	for i in 0 .. 64 {
+		values[i] = n * i
+	}
+	return values[63]
+}
+
 fn work(id int) int {
 	mut total := 0
 	for _ in 0 .. 20 {
@@ -94,6 +107,9 @@ fn main() {
 		assert false
 	}
 	release(new_page())
+	coordinates := payload(?Inner(Inner{ x: 7 })) or { panic("none") }
+	clobber(3)
+	assert coordinates.x == 7
 	mut threads := []thread int{}
 	for i in 0 .. 4 {
 		threads << spawn work(i)
