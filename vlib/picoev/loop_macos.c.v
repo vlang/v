@@ -8,15 +8,7 @@ fn C.kevent(i32, changelist voidptr, nchanges i32, eventlist voidptr, nevents i3
 fn C.kqueue() i32
 fn C.EV_SET(kev voidptr, ident uint, filter i16, flags u16, fflags u32, data C.ptrdiff_t, udata voidptr)
 
-pub struct C.kevent {
-pub mut:
-	ident  uint
-	filter i16
-	flags  u16
-	fflags u32
-	data   int
-	udata  voidptr
-}
+// C.kevent comes from <sys/event.h> (included above).
 
 @[heap]
 pub struct KqueueLoop {
