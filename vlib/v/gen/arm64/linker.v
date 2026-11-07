@@ -184,6 +184,10 @@ pub struct Linker {
 	// Frameworks to link (e.g. ['Metal', 'Cocoa', 'QuartzCore'])
 pub mut:
 	frameworks []string
+	// freestanding keeps the program's own definitions of libc-named symbols
+	// (the `-freestanding` runtime's malloc/free/memcpy/exit/...) instead of
+	// forcing them to libSystem.
+	freestanding bool
 
 	// Output buffer
 mut:
@@ -219,6 +223,31 @@ mut:
 
 	// Code start offset (after header + load commands)
 	code_start int
+
+	// force_external_syms entries that a freestanding program defines itself
+	local_runtime_syms map[string]bool
+}
+
+// is_forced_external reports whether `name` must bind to libSystem even when the
+// object defines it. Hosted V wrappers (malloc, free, exit) call the libc symbol
+// of the same name, so the import keeps them from recursing; a freestanding
+// runtime supplies those bodies itself, and its definitions win.
+fn (l &Linker) is_forced_external(name string) bool {
+	return name in force_external_syms && name !in l.local_runtime_syms
+}
+
+// collect_local_runtime_syms records the force_external_syms entries that a
+// freestanding object defines in one of its sections.
+fn (mut l Linker) collect_local_runtime_syms() {
+	if !l.freestanding {
+		return
+	}
+	for sym in l.macho.symbols {
+		// N_SECT (0x0E) means the symbol is defined in a section
+		if (sym.type_ & 0x0E) == 0x0E && sym.name in force_external_syms {
+			l.local_runtime_syms[sym.name] = true
+		}
+	}
 }
 
 // new creates a Linker value for arm64.
@@ -242,13 +271,14 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	estimated_size := l.macho.text_data.len + l.macho.str_data.len + l.macho.data_data.len + 0x10000
 	l.buf = []u8{cap: estimated_size}
 
+	l.collect_local_runtime_syms()
 	// First pass: collect all defined symbols (except external ones)
 	mut defined_syms := map[string]bool{}
 	for sym in l.macho.symbols {
 		// N_SECT (0x0E) means symbol is defined in a section
 		if (sym.type_ & 0x0E) == 0x0E {
 			// Don't track external symbols as defined - they should come from libc
-			if sym.name !in force_external_syms {
+			if !l.is_forced_external(sym.name) {
 				defined_syms[sym.name] = true
 			}
 		}
@@ -264,7 +294,7 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 	// are intentionally left out so they keep resolving to their local definition.
 	for sym in l.macho.symbols {
 		is_undefined_extern := sym.type_ == 0x01 && sym.name !in defined_syms
-		if (sym.name in force_external_syms || is_undefined_extern) && sym.name !in l.extern_syms {
+		if (l.is_forced_external(sym.name) || is_undefined_extern) && sym.name !in l.extern_syms {
 			l.extern_syms << sym.name
 			l.sym_to_got[sym.name] = l.extern_syms.len - 1
 		}
@@ -425,7 +455,7 @@ pub fn (mut l Linker) link(output_path string, entry_name string) {
 			// Skip undefined symbols
 			continue
 		}
-		if sym.name in force_external_syms {
+		if l.is_forced_external(sym.name) {
 			continue
 		}
 
@@ -1154,7 +1184,7 @@ fn (mut l Linker) write_text_with_relocations() {
 		// N_SECT (0x0E) means symbol is defined in a section
 		if (sym.type_ & 0x0E) == 0x0E {
 			// Skip external symbols - they should always resolve to libc
-			is_external := sym.name in force_external_syms
+			is_external := l.is_forced_external(sym.name)
 			if sym.sect == 1 {
 				// Text section symbol (code)
 				addr := code_vmaddr + sym.value

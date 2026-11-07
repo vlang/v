@@ -162,22 +162,26 @@ $if !i386 {
 		return i64(rc_in), VlibcErrno.enoerror
 	}
 
+	// On arm64 the BSD class is masked off in V before x16 is loaded, and the
+	// kernel's error carry flag turns into a mask (`adc` then `sub` from xzr)
+	// that keeps x0, the errno, only on failure: the trampolines need neither a
+	// logical immediate nor a branch, which keeps them in the subset the native
+	// arm64 backend lowers as well as the C backend.
 	fn sys_call0(scn u64) (u64, u64) {
 		mut res := u64(0)
 		mut err := u64(0)
 		$if arm64 {
+			num := scn & 0xffffff
 			asm volatile arm64 {
-				mov x16, scn
-				and x16, x16, #0xffffff
+				mov x16, num
 				svc 0x80
 				mov res, x0
-				mov err, xzr
-				b.cc '1f'
-				mov err, x0
-				1:
+				adc err, xzr, xzr
+				sub err, xzr, err
+				and err, err, x0
 				; =r (res)
 				  =r (err)
-				; r (scn)
+				; r (num)
 				; x0
 				  x1
 				  x16
@@ -212,20 +216,19 @@ $if !i386 {
 		mut second := u64(0)
 		mut err := u64(0)
 		$if arm64 {
+			num := scn & 0xffffff
 			asm volatile arm64 {
-				mov x16, scn
-				and x16, x16, #0xffffff
+				mov x16, num
 				svc 0x80
 				mov first, x0
 				mov second, x1
-				mov err, xzr
-				b.cc '1f'
-				mov err, x0
-				1:
+				adc err, xzr, xzr
+				sub err, xzr, err
+				and err, err, x0
 				; =r (first)
 				  =r (second)
 				  =r (err)
-				; r (scn)
+				; r (num)
 				; x0
 				  x1
 				  x16
@@ -261,19 +264,18 @@ $if !i386 {
 		mut res := u64(0)
 		mut err := u64(0)
 		$if arm64 {
+			num := scn & 0xffffff
 			asm volatile arm64 {
-				mov x16, scn
-				and x16, x16, #0xffffff
+				mov x16, num
 				mov x0, arg1
 				svc 0x80
 				mov res, x0
-				mov err, xzr
-				b.cc '1f'
-				mov err, x0
-				1:
+				adc err, xzr, xzr
+				sub err, xzr, err
+				and err, err, x0
 				; =r (res)
 				  =r (err)
-				; r (scn)
+				; r (num)
 				  r (arg1)
 				; x0
 				  x1
@@ -309,20 +311,19 @@ $if !i386 {
 		mut res := u64(0)
 		mut err := u64(0)
 		$if arm64 {
+			num := scn & 0xffffff
 			asm volatile arm64 {
-				mov x16, scn
-				and x16, x16, #0xffffff
+				mov x16, num
 				mov x0, arg1
 				mov x1, arg2
 				svc 0x80
 				mov res, x0
-				mov err, xzr
-				b.cc '1f'
-				mov err, x0
-				1:
+				adc err, xzr, xzr
+				sub err, xzr, err
+				and err, err, x0
 				; =r (res)
 				  =r (err)
-				; r (scn)
+				; r (num)
 				  r (arg1)
 				  r (arg2)
 				; x0
@@ -360,21 +361,20 @@ $if !i386 {
 		mut res := u64(0)
 		mut err := u64(0)
 		$if arm64 {
+			num := scn & 0xffffff
 			asm volatile arm64 {
-				mov x16, scn
-				and x16, x16, #0xffffff
+				mov x16, num
 				mov x0, arg1
 				mov x1, arg2
 				mov x2, arg3
 				svc 0x80
 				mov res, x0
-				mov err, xzr
-				b.cc '1f'
-				mov err, x0
-				1:
+				adc err, xzr, xzr
+				sub err, xzr, err
+				and err, err, x0
 				; =r (res)
 				  =r (err)
-				; r (scn)
+				; r (num)
 				  r (arg1)
 				  r (arg2)
 				  r (arg3)
@@ -416,22 +416,21 @@ $if !i386 {
 		mut res := u64(0)
 		mut err := u64(0)
 		$if arm64 {
+			num := scn & 0xffffff
 			asm volatile arm64 {
-				mov x16, scn
-				and x16, x16, #0xffffff
+				mov x16, num
 				mov x0, arg1
 				mov x1, arg2
 				mov x2, arg3
 				mov x3, arg4
 				svc 0x80
 				mov res, x0
-				mov err, xzr
-				b.cc '1f'
-				mov err, x0
-				1:
+				adc err, xzr, xzr
+				sub err, xzr, err
+				and err, err, x0
 				; =r (res)
 				  =r (err)
-				; r (scn)
+				; r (num)
 				  r (arg1)
 				  r (arg2)
 				  r (arg3)
@@ -478,9 +477,9 @@ $if !i386 {
 		mut res := u64(0)
 		mut err := u64(0)
 		$if arm64 {
+			num := scn & 0xffffff
 			asm volatile arm64 {
-				mov x16, scn
-				and x16, x16, #0xffffff
+				mov x16, num
 				mov x0, arg1
 				mov x1, arg2
 				mov x2, arg3
@@ -488,13 +487,12 @@ $if !i386 {
 				mov x4, arg5
 				svc 0x80
 				mov res, x0
-				mov err, xzr
-				b.cc '1f'
-				mov err, x0
-				1:
+				adc err, xzr, xzr
+				sub err, xzr, err
+				and err, err, x0
 				; =r (res)
 				  =r (err)
-				; r (scn)
+				; r (num)
 				  r (arg1)
 				  r (arg2)
 				  r (arg3)
@@ -546,9 +544,9 @@ $if !i386 {
 		mut res := u64(0)
 		mut err := u64(0)
 		$if arm64 {
+			num := scn & 0xffffff
 			asm volatile arm64 {
-				mov x16, scn
-				and x16, x16, #0xffffff
+				mov x16, num
 				mov x0, arg1
 				mov x1, arg2
 				mov x2, arg3
@@ -557,13 +555,12 @@ $if !i386 {
 				mov x5, arg6
 				svc 0x80
 				mov res, x0
-				mov err, xzr
-				b.cc '1f'
-				mov err, x0
-				1:
+				adc err, xzr, xzr
+				sub err, xzr, err
+				and err, err, x0
 				; =r (res)
 				  =r (err)
-				; r (scn)
+				; r (num)
 				  r (arg1)
 				  r (arg2)
 				  r (arg3)

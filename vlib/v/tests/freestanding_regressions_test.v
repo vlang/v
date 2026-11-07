@@ -1,6 +1,6 @@
 // Regressions for the native inline-asm lowering (secondary outputs, the unsuffixed
 // `div`, wide immediates), the -syscalls path, ioctl, newline reads and wait4, and the
-// aligned allocation of the freestanding runtime. Each program is compiled and run, so the checks are what the binaries do.
+// aligned allocation of the freestanding runtime, and the macOS arm64 freestanding build. Each program is compiled and run, so the checks are what the binaries do.
 import os
 
 const vexe = @VEXE
@@ -352,4 +352,66 @@ fn test_native_freestanding_file_close_closes() {
 	run := os.exec([exe, os.join_path(root, 'data.txt')])
 	assert run.exit_code == 0, run.output
 	assert run.output == 'abc\n', run.output
+}
+
+const macos_arm64_freestanding_program = "import os
+
+fn helper() int {
+	return 1
+}
+
+fn main() {
+	path := os.args[1]
+	os.write_file(path, 'abc')!
+	println(os.read_file(path)!)
+	println(os.getenv('V_FREESTANDING_PROBE'))
+	if os.args.len > 2 {
+		helper := fn () int {
+			return 2
+		}
+		println(helper())
+	}
+	println(helper())
+	narrow := i32(os.args.len) - 10
+	println(narrow >>> 28)
+	print(os.get_raw_line())
+}
+"
+
+// test_macos_arm64_freestanding_builds_and_runs checks that `-freestanding` on the
+// native arm64 backend takes the macos_bare runtime: the os module's bf_* surface
+// resolves, `-b arm64` selects the arm64 asm on any host, and the result is an
+// arm64 Mach-O whose stdin line reader does not import libSystem's getline (its
+// line would be freed by the runtime's own free). On Apple Silicon the binary also
+// runs its syscalls, a block-local function value that shadows a function, and
+// `>>>` on a negative i32.
+fn test_macos_arm64_freestanding_builds_and_runs() {
+	$if windows {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'macos_arm64_freestanding_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, macos_arm64_freestanding_program)!
+	exe := os.join_path(root, 'main')
+	build := os.exec([vexe, '-nocache', '-freestanding', '-os', 'macos', '-b', 'arm64', '-o', exe,
+		source])
+	assert build.exit_code == 0, build.output
+	header := os.read_bytes(exe)!
+	assert header.len > 8
+	// MH_MAGIC_64 followed by CPU_TYPE_ARM64, both little endian
+	assert header[0..8] == [u8(0xcf), 0xfa, 0xed, 0xfe, 0x0c, 0x00, 0x00, 0x01]
+	assert !header.bytestr().contains('_getline')
+	$if macos && arm64 {
+		os.setenv('V_FREESTANDING_PROBE', 'probe', true)
+		data := os.join_path(root, 'data.txt')
+		run := os.execute('printf "line\\nrest" | ${os.quoted_path(exe)} ${os.quoted_path(data)} shadow')
+		assert run.exit_code == 0, run.output
+		// argc 3: the local `helper` gives 2 inside its block and the function 1 after
+		// it, and -7 >>> 28 is 15 at 32 bits
+		assert run.output == 'abc\nprobe\n2\n1\n15\nline\n', run.output
+	}
 }

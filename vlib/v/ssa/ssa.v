@@ -460,6 +460,26 @@ pub struct TargetData {
 pub:
 	ptr_size      int  = 8
 	endian_little bool = true
+	// os / arch are the target (pref.Target.os: 'linux', 'macos', ...;
+	// .arch: 'amd64', 'arm64'); empty means the compiler host, for callers
+	// that never cross-compile.
+	os   string
+	arch string
+}
+
+// is_linux reports whether the target OS is Linux. The native libc ABI
+// overrides (struct stat/dirent/flock offsets, errno and stdio symbols)
+// follow the target, so a Linux-hosted compiler emitting a macOS binary
+// gets Darwin's layouts.
+pub fn (t TargetData) is_linux() bool {
+	if t.os.len > 0 {
+		return t.os == 'linux'
+	}
+	$if linux {
+		return true
+	} $else {
+		return false
+	}
 }
 
 // Module represents module data used by ssa.

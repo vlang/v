@@ -34,14 +34,14 @@ fn (mut b Builder) register_native_header_helpers() {
 
 fn (mut b Builder) generate_native_filelock_body(func_id int, unlock bool) {
 	mut flock_type := TypeID(0)
-	$if linux {
+	if b.m.target.is_linux() {
 		// Linux x86_64 struct flock: type/whence, start/len, pid.
 		flock_type = b.m.type_store.register(Type{
 			kind:        .struct_t
 			fields:      [b.u16_type, b.u16_type, b.i64_type, b.i64_type, b.i32_type]
 			field_names: ['l_type', 'l_whence', 'l_start', 'l_len', 'l_pid']
 		})
-	} $else {
+	} else {
 		// Darwin struct flock: off_t start/len, pid_t pid, short type/whence.
 		flock_type = b.m.type_store.register(Type{
 			kind:        .struct_t
@@ -53,7 +53,7 @@ fn (mut b Builder) generate_native_filelock_body(func_id int, unlock bool) {
 	fd := b.func_add_argument(func_id, b.i32_type, 'fd')
 	zero32 := b.m.get_or_add_const(b.i32_type, '0')
 	mut setlk_value := '8'
-	$if linux {
+	if b.m.target.is_linux() {
 		setlk_value = '6'
 	}
 	setlk := b.m.get_or_add_const(b.i32_type, setlk_value)
@@ -64,10 +64,10 @@ fn (mut b Builder) generate_native_filelock_body(func_id int, unlock bool) {
 		immediate := b.func_add_argument(func_id, b.i32_type, 'immediate')
 		is_exclusive := b.block_instr2(.ne, entry, b.i1_type, exclusive, zero32)
 		exclusive16 := b.block_instr1(.zext, entry, b.u16_type, is_exclusive)
-		$if linux {
+		if b.m.target.is_linux() {
 			// Linux uses F_RDLCK=0 and F_WRLCK=1.
 			lock_type = exclusive16
-		} $else {
+		} else {
 			one16 := b.m.get_or_add_const(b.u16_type, '1')
 			two16 := b.m.get_or_add_const(b.u16_type, '2')
 			write_bit := b.block_instr2(.mul, entry, b.u16_type, exclusive16, two16)
@@ -86,7 +86,7 @@ fn (mut b Builder) generate_native_filelock_body(func_id int, unlock bool) {
 	size := b.m.get_or_add_const(b.i64_type, '${b.m.type_size(flock_type)}')
 	memset := b.m.add_value(.func_ref, ptr_i8, 'memset', b.fn_ids['memset'])
 	b.block_instr4(.call, entry, ptr_i8, memset, bytes, zero, size)
-	$if linux {
+	if b.m.target.is_linux() {
 		for index, value in [lock_type, ValueID(0), start, length] {
 			if index == 1 {
 				continue
@@ -94,7 +94,7 @@ fn (mut b Builder) generate_native_filelock_body(func_id int, unlock bool) {
 			field := b.block_struct_field_ptr(entry, flock, flock_type, index)
 			b.block_instr2(.store, entry, b.void_type, value, field)
 		}
-	} $else {
+	} else {
 		for index, value in [start, length, ValueID(0), lock_type] {
 			if index == 2 {
 				continue

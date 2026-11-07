@@ -202,15 +202,15 @@ fn test_native_c_tm_uses_the_platform_abi_layout() {
 
 // test_native_task_basic_info_uses_the_platform_abi_layout validates this v3 regression case.
 fn test_native_task_basic_info_uses_the_platform_abi_layout() {
-	abi := native_c_struct_abi('C.task_basic_info', 8) or { panic('missing task info ABI') }
+	abi := native_c_struct_abi('C.task_basic_info', TargetData{ ptr_size: 8 }) or { panic('missing task info ABI') }
 	assert abi.field_names[1] == 'resident_size'
 	assert abi.field_types_text() == ['u64', 'u64', 'u64', 'i32', 'i32', 'i32', 'i32', 'i32', 'i32']
-	assert native_c_struct_abi('C.other', 8) == none
+	assert native_c_struct_abi('C.other', TargetData{ ptr_size: 8 }) == none
 }
 
 // test_native_rusage_uses_the_platform_abi_layout validates this v3 regression case.
 fn test_native_rusage_uses_the_platform_abi_layout() {
-	abi := native_c_struct_abi('C.rusage', 8) or { panic('missing rusage ABI') }
+	abi := native_c_struct_abi('C.rusage', TargetData{ ptr_size: 8 }) or { panic('missing rusage ABI') }
 	assert abi.field_names[4] == 'ru_maxrss'
 	assert abi.field_types_text().len == 18
 	assert abi.field_types_text().all(it == 'i64')
@@ -226,7 +226,7 @@ fn test_native_darwin_pthread_types_use_the_platform_abi_layout() {
 		'C.pthread_condattr_t':   '[2]u64'
 	}
 	for name, field_type in expected {
-		abi := native_c_struct_abi(name, 8) or { panic('missing ${name} ABI') }
+		abi := native_c_struct_abi(name, TargetData{ ptr_size: 8 }) or { panic('missing ${name} ABI') }
 		assert abi.field_names == ['opaque']
 		assert abi.field_types_text() == [field_type]
 	}

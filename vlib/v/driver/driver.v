@@ -9739,6 +9739,15 @@ fn v3_parallel_transform_allowed(parallel_transform bool, no_parallel bool) bool
 	return parallel_transform && !no_parallel
 }
 
+// native_freestanding_uses_bare_dir reports whether a `-freestanding` build on a
+// native SSA backend takes its runtime from the per-OS bare builtin directory.
+// Linux targets use builtin's own freestanding_d_freestanding.c.v instead; macOS
+// keeps libSystem startup, so macos_bare's syscall surface serves it directly.
+fn native_freestanding_uses_bare_dir(prefs &pref.Preferences) bool {
+	return 'freestanding' in prefs.user_defines && prefs.backend == 'arm64'
+		&& prefs.target.os in ['macos', 'darwin']
+}
+
 // append_hosted_vlibc_files keeps runtime discovery outside the compiler driver.
 fn append_hosted_vlibc_files(prefs &pref.Preferences, builtin_dir string, builtin_defines []string, mut builtin_files []string) {
 	os_name := prefs.target.os
@@ -10857,6 +10866,12 @@ pub fn run(args []string) {
 	compatibility_host := pref.host_target()
 	target_arch = v3_target_arch_for_request(compatibility_host, target_os, target_arch,
 		target_arch_explicit, c_compiler_explicit)
+	if backend == 'arm64' && !target_arch_explicit {
+		// The native arm64 backend emits only arm64 code, so an implicit
+		// architecture follows it: `$if arm64` and arm64 asm blocks must be
+		// selected even when the host is an amd64 machine.
+		target_arch = 'arm64'
+	}
 	// `-os cross` is not a platform. It asks for portable C that is not tied to
 	// one OS, architecture or C compiler, so that a single generated snapshot
 	// (`vc/v.c`) bootstraps V everywhere. Generate against the host target and
@@ -11876,7 +11891,7 @@ pub fn run(args []string) {
 		}
 	}
 	if ('freestanding' in prefs.user_defines || 'syscalls' in prefs.user_defines)
-		&& prefs.backend == 'c' {
+		&& (prefs.backend == 'c' || native_freestanding_uses_bare_dir(prefs)) {
 		bare_dir := if bare_builtin_dir.len > 0 {
 			bare_builtin_dir
 		} else {
@@ -14574,6 +14589,10 @@ pub fn run(args []string) {
 				test_run_only:        run_only
 				exact_used_fns:       true
 				use_native_c_sources: true
+				target:               ssa.TargetData{
+					os:   prefs.target.os
+					arch: 'amd64'
+				}
 			})
 			b.step('ssa build')
 			b.metric('SSA values before optimize', m.values.len, 'values')
@@ -14691,6 +14710,10 @@ pub fn run(args []string) {
 				test_files:        test_files
 				test_run_only:     run_only
 				hot_fn:            prefs.hot_fn
+				target:            ssa.TargetData{
+					os:   prefs.target.os
+					arch: 'arm64'
+				}
 			})
 			if m.errors.len > 0 {
 				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
@@ -14715,6 +14738,7 @@ pub fn run(args []string) {
 
 			mut g := arm64.Gen.new(m)
 			g.prune_unused = 'freestanding' in prefs.user_defines
+			g.freestanding = 'freestanding' in prefs.user_defines
 			g.gen()
 			b.step('arm64 gen')
 
