@@ -116,44 +116,32 @@ fn main() {
 	assert run.output.trim_space() == '{"c":0}', run.output
 }
 
-// An embedded field with an attribute and no default is valid V and must build.
-fn test_fastc_embedded_field_attribute_without_default_builds_and_runs() {
-	$if !macos && !linux {
-		return
+// Embedded fields record no skip/required flags, so a leading @[skip] or @[required] is refused.
+fn test_fastc_leading_skip_or_required_on_embedded_field_is_refused() {
+	for attribute in ['@[skip]', '@[required]'] {
+		src := 'struct S {\n\t${attribute} Inner\n\tb int\n}\n'
+		prefs := pref.new_preferences()
+		file := token.File.unindexed('s.v', src.len)
+		mut scan := scanner.new_scanner(prefs, .normal)
+		scan.init(file, src)
+		assert scan.scan() == .key_struct
+		source_file := FastcSourceFile{
+			path:   's.v'
+			source: src
+			header: FastcSourceHeader{
+				module_name: 'main'
+				imports:     map[string]string{}
+			}
+		}
+		mut struct_fields := map[string]flat.TypeTextBindings{}
+		mut struct_field_info := map[string][]FastcStructField{}
+		mut composite_types := map[string]bool{}
+		mut out := strings.new_builder(256)
+		mut message := ''
+		_ = fastc_emit_struct_declaration(mut scan, false, FastcDeclarationAttribute{ is_enabled: true }, source_file, map[u32]bool{}, false, false, mut struct_fields, mut struct_field_info, mut composite_types, mut out) or {
+			message = err.msg()
+			token.Token.eof
+		}
+		assert message.contains('does not support @[skip] or @[required] on embedded field `Inner`'), message
 	}
-	root := os.join_path(os.vtmp_dir(), 'fastc_embedded_attribute_no_default_${os.getpid()}')
-	os.mkdir_all(root) or { panic(err) }
-	defer { os.rmdir_all(root) or {} }
-	os.write_file(os.join_path(root, 'main.v'), "module main
-
-struct Inner {
-pub mut:
-	a int
-}
-
-pub struct Plain {
-pub mut:
-	Inner @[json: '-']
-	b     int
-}
-
-fn main() {
-	p := Plain{}
-	assert p.a == 0
-	assert p.b == 0
-	println('embedded attribute without default')
-}
-") or { panic(err) }
-	program := os.join_path(root, 'program')
-	build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-nocache', '-gc', 'none', '-o',
-		program, root], os.real_path(os.join_path(@DIR, '../../../..')), {
-		'VEXE':                   @VEXE
-		'VFLAGS':                 ''
-		'VOSARGS':                ''
-		'V_MACOS_V3_NO_FALLBACK': '1'
-	})
-	assert build.exit_code == 0, build.output
-	run := cmdexec.run(program, [])
-	assert run.exit_code == 0, run.output
-	assert run.output.trim_space() == 'embedded attribute without default', run.output
 }

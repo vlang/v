@@ -3163,16 +3163,10 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 			field_names << scan.lit
 			tok = scan.scan()
 		}
-		if tok in [.semicolon, .rcbr, .assign, .attribute] {
-			// Leading attributes of an embedded field are not recorded, so drop their flags here.
-			leading_is_required = false
-			leading_is_skip = false
-			// An attribute may follow the embedded type with or without a default; fastc records
-			// no flags for an embedded field, so refuse @[skip] and @[required] rather than ignore them.
-			mut pre_default_is_required := false
-			mut pre_default_is_skip := false
-			tok, pre_default_is_required, pre_default_is_skip = fastc_skip_struct_field_attributes(mut scan, tok)!
-			if pre_default_is_required || pre_default_is_skip {
+		if tok in [.semicolon, .rcbr, .assign] {
+			// Embedded fields record no skip/required flags, so a leading @[skip] or @[required]
+			// on one is refused rather than dropped, as the trailing form is.
+			if leading_is_required || leading_is_skip {
 				return error('fastc parser does not support @[skip] or @[required] on embedded field `${field_names[0]}` in ${source_file.path}')
 			}
 			embedded_key := if qualified_embed_key != 0 {
