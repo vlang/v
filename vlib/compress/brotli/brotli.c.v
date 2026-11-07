@@ -7,6 +7,7 @@ import dl
 // Bind the sanitizer helper directly, including static runtimes whose symbols
 // are unavailable to dlsym. The C compiler owns sanitizer feature detection.
 #define V_BROTLI_MSAN_DATA const volatile void
+#include "@VEXEROOT/vlib/compress/brotli/brotli_msan.h"
 #if defined(__has_feature)
 #if __has_feature(memory_sanitizer)
 #define v_brotli_msan_unpoison __msan_unpoison
@@ -19,9 +20,6 @@ import dl
 
 @[c_extern]
 fn C.v_brotli_msan_unpoison(data &C.V_BROTLI_MSAN_DATA, len uint)
-
-@[markused; export: 'v_brotli_unpoison_noop']
-fn unpoison_noop(_ &C.V_BROTLI_MSAN_DATA, _ uint) {}
 
 fn unpoison_output(data voidptr, len uint) {
 	$if !native {
