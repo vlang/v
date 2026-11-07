@@ -100,6 +100,14 @@ int main(void) {
 }
 EOF
 
+# Mirror the TinyCC defines that V adds for Linux UAPI headers (see
+# v3_tcc_linux_uapi_flags in vlib/v/driver/driver.v): arm64 kernel headers use
+# `__u128` in <asm/sigcontext.h>, which <signal.h> includes through <gc/gc.h>.
+probe_defines=()
+case "$tcc_arch" in
+	aarch64 | arm64) probe_defines+=('-D__u128=__uint128_t') ;;
+esac
+
 probe_bundle() {
 	: > "$probe_log"
 	: > "$search_dirs_log"
@@ -130,6 +138,7 @@ probe_bundle() {
 		"$tcc_dir/tcc.exe" \
 			-I"$vroot/thirdparty/libgc/include" \
 			-DGC_THREADS=1 -DTHREAD_LOCAL_ALLOC=1 -DGC_BUILTIN_ATOMIC=1 \
+			${probe_defines[@]+"${probe_defines[@]}"} \
 			-o "$probe_exe" "$probe_source" "$tcc_dir/lib/libgc.a" -ldl -lpthread
 	) \
 		>> "$probe_log" 2>&1; then

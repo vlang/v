@@ -1596,6 +1596,16 @@ fn test_v3_tcc_flag_plan_restores_native_local_prefix() {
 		assert '-I/usr/local/include' in plan.before_inputs
 		assert '-L/usr/local/lib' in plan.before_inputs
 	}
+	native_linux_arm64 := host_os == 'linux' && pref.host_arch() == 'arm64'
+	assert ('-D__u128=__uint128_t' in plan.before_inputs) == native_linux_arm64
+}
+
+fn test_v3_tcc_linux_uapi_flags_define_u128_only_for_linux_arm64() {
+	assert v3_tcc_linux_uapi_flags('linux', 'arm64') == ['-D__u128=__uint128_t']
+	assert v3_tcc_linux_uapi_flags('linux', 'amd64') == []
+	assert v3_tcc_linux_uapi_flags('linux', 'arm32') == []
+	assert v3_tcc_linux_uapi_flags('macos', 'arm64') == []
+	assert v3_tcc_linux_uapi_flags('freebsd', 'arm64') == []
 }
 
 fn test_v3_windows_prod_build_uses_the_platform_compiler_in_one_build() {
