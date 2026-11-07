@@ -245,6 +245,7 @@ mut:
 	objects                   map[string]string
 	headers                   map[string]string
 	import_resolutions        V3ImportResolutions
+	windows_pchs              map[string]string // the precompiled Windows SDK header of each flag set of this build, '' for none, see v3_windows_pch
 }
 
 struct V3ParseTiming {
@@ -17604,7 +17605,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			} else {
 				prune_foreign_program_wrappers(declarations, bundle_code) + bundle_code
 			}
-			compiled := compile_v3_cached_object(state.object_compiler, state.manager.object_entry('builtin', state.bundle_sources, bundle_signature), module_source, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c, bundle_dependencies, state, 'builtin') or {
+			compiled := compile_v3_cached_object(state.object_compiler, state.manager.object_entry('builtin', state.bundle_sources, bundle_signature), module_source, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c, bundle_dependencies, mut state, 'builtin', bundle_compile_scope) or {
 				prealloc_scope_leave_for_v3(bundle_compile_scope)
 				message := err.msg().clone()
 				prealloc_scope_free_for_v3(bundle_compile_scope)
@@ -17686,7 +17687,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 			} else {
 				prune_foreign_program_wrappers(declarations, body) + body
 			}
-			compiled := compile_v3_cached_object(state.object_compiler, entry, module_source, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c, dependencies, state, module_name) or {
+			compiled := compile_v3_cached_object(state.object_compiler, entry, module_source, c_standard, opt_flag, pic_flag, warning_flags, generated_c_flags, objective_c, dependencies, mut state, module_name, module_compile_scope) or {
 				prealloc_scope_leave_for_v3(module_compile_scope)
 				message := err.msg().clone()
 				prealloc_scope_free_for_v3(module_compile_scope)
@@ -19626,7 +19627,7 @@ fn (state &V3ModuleCacheState) print_module_cache_notice(module_name string) {
 	}
 }
 
-fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.Entry, source string, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, dependencies map[string]string, state &V3ModuleCacheState, module_name string) !bool {
+fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.Entry, source string, c_standard string, opt_flag string, pic_flag string, warning_flags string, generated_c_flags []string, objective_c bool, dependencies map[string]string, mut state V3ModuleCacheState, module_name string, scope voidptr) !bool {
 	// Whole-program declarations include literals from other modules, including
 	// the V build hash. Only literals referenced by this object belong in its C.
 	// V module bodies use C pointers to Objective-C runtime objects. ARC belongs
@@ -19665,9 +19666,59 @@ fn compile_v3_cached_object(compiler V3CachedObjectCompiler, entry modulecache.E
 	}
 	append_v3_c_compile_mode_flags(mut args, c_standard, opt_flag, pic_flag)
 	args << cgen.tokenize_c_flag(warning_flags)
-	args << ['-Wno-int-conversion', '-c', '-o', tmp_object, tmp_source]
-	args << flags
-	result := cmdexec.run(compiler.path, args)
+	args << '-Wno-int-conversion'
+	// A Windows Clang build parses the SDK headers once per flag set, not once
+	// per module: the unit's prelude is replaced by its precompiled form.
+	mut pch := ''
+	if !objective_c && v3_windows_pch_applies(c_source) {
+		mut pch_args := args.clone()
+		pch_args << flags
+		// The answer is kept for the other modules of the build: allocate it in
+		// the parent arena, not in this module's disposable scope.
+		mut scope_state := unsafe { nil }
+		$if prealloc {
+			scope_state = unsafe { prealloc_scope_suspend(scope) }
+		}
+		pch = v3_windows_pch(compiler, pch_args, os.dir(entry.object), mut state.windows_pchs) or {
+			''
+		}
+		$if prealloc {
+			unsafe { prealloc_scope_resume(scope, scope_state) }
+		}
+	}
+	mut compile_args := args.clone()
+	if pch != '' {
+		compile_args << ['-include-pch', pch]
+	}
+	compile_args << ['-c', '-o', tmp_object, tmp_source]
+	compile_args << flags
+	mut result := cmdexec.run(compiler.path, compile_args)
+	if result.exit_code != 0 && pch != '' {
+		// The compiler may have rejected the precompiled header (the SDK or the
+		// compiler changed under it, or this unit does not fit it after all): the
+		// unit compiles the headers itself. When that compiles, the header was at
+		// fault and is dropped, so that the next build rebuilds it and the rest of
+		// this one does without; a unit that fails either way keeps the header for
+		// the others.
+		if os.getenv('V3_CACHE_TRACE') != '' {
+			eprintln('  V3 module cache: compiling ${os.file_name(entry.c_source)} without the Windows SDK precompiled header:\n${result.output}')
+		}
+		os.rm(tmp_object) or {}
+		compile_args = args.clone()
+		compile_args << ['-c', '-o', tmp_object, tmp_source]
+		compile_args << flags
+		result = cmdexec.run(compiler.path, compile_args)
+		if result.exit_code == 0 {
+			mut scope_state := unsafe { nil }
+			$if prealloc {
+				scope_state = unsafe { prealloc_scope_suspend(scope) }
+			}
+			v3_windows_pch_discard(pch, mut state.windows_pchs)
+			$if prealloc {
+				unsafe { prealloc_scope_resume(scope, scope_state) }
+			}
+		}
+	}
 	if result.exit_code != 0 {
 		os.rm(tmp_object) or {}
 		return error('failed to build cached module object ${entry.object}:\n${result.output}')
