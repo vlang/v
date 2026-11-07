@@ -23,6 +23,8 @@ such an executable can create, check and open files past `MAX_PATH`.
   executables cross-compiled on another system get no manifest either.
 * If the manifest cannot be added, the build still succeeds. V then prints a warning with
   `-v` or `-showcc`, or when the build directory had to move (see below).
+* `-v` and `-showcc` print the manifest step after the link, for example
+  `> wrote app.exe.manifest (longPathAware; app.exe is not rewritten)`.
 
 V leaves the linked executable intact, preserving its COFF symbols and DWARF debug sections
 for `-g` and `-cg` builds. On Windows hosts, icons selected with `-icon` are linked as resource

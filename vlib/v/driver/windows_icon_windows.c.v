@@ -72,29 +72,62 @@ fn windows_executable_has_manifest(exe_path string) !bool {
 	return false
 }
 
+// windows_manifest_step_for gathers what is beside `exe_path` and returns the manifest
+// step for it. Reading the embedded resources is skipped when a sidecar or MSVC decides first.
+fn windows_manifest_step_for(exe_path string, is_msvc bool) !WindowsManifestStep {
+	sidecar := '${exe_path}.manifest'
+	has_sidecar := os.is_file(sidecar)
+	generated := has_sidecar && (os.read_file(sidecar) or { '' }) == windows_long_path_manifest
+	embedded := if is_msvc || has_sidecar {
+		false
+	} else {
+		windows_executable_has_manifest(exe_path)!
+	}
+	return windows_manifest_step(is_msvc, has_sidecar, generated, embedded)
+}
+
 // add_windows_long_path_manifest writes a sidecar only when neither the linker nor
 // the user supplied a manifest. Updating PE resources after linking would strip
 // the COFF symbol table and DWARF sections with long names.
 fn add_windows_long_path_manifest(exe_path string) !bool {
-	if os.is_file('${exe_path}.manifest') || windows_executable_has_manifest(exe_path)! {
+	if windows_manifest_step_for(exe_path, false)! != .write_sidecar {
 		return false
 	}
 	os.write_file('${exe_path}.manifest', windows_long_path_manifest)!
 	return true
 }
 
-fn ensure_windows_long_path_manifest(exe_path string, is_msvc bool, report_failure bool) {
-	if is_msvc {
-		// An earlier build of the same output may have generated a sidecar. Keep
-		// user manifests, but do not opt MSVC's dbghelp startup into long paths.
-		remove_generated_windows_long_path_manifest(exe_path)
-		return
-	}
-	add_windows_long_path_manifest(exe_path) or {
+// ensure_windows_long_path_manifest applies the manifest step for a linked executable.
+// `trace` prints the step, as `-v` and `-showcc` do for every other step after the link.
+fn ensure_windows_long_path_manifest(exe_path string, is_msvc bool, report_failure bool, trace bool) {
+	// An earlier build of the same output may have generated a sidecar, which MSVC output
+	// must not keep: its startup dbghelp would hang with a long TMP in a longPathAware
+	// process. User manifests stay.
+	step := windows_manifest_step_for(exe_path, is_msvc) or {
 		if report_failure {
 			eprintln('warning: ${exe_path} is not longPathAware: ${err.msg()}')
 		}
-		false
+		return
+	}
+	match step {
+		.write_sidecar {
+			os.write_file('${exe_path}.manifest', windows_long_path_manifest) or {
+				if report_failure {
+					eprintln('warning: ${exe_path} is not longPathAware: ${err.msg()}')
+				}
+				return
+			}
+		}
+		.remove_generated_sidecar {
+			os.rm('${exe_path}.manifest') or {}
+		}
+		else {}
+	}
+	if trace {
+		message := windows_manifest_step_message(step, exe_path)
+		if message != '' {
+			println(message)
+		}
 	}
 }
 
