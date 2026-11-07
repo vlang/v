@@ -180,6 +180,10 @@ const v3_internal_force_cache_source_flag = '-v3-internal-force-cache-source'
 const v3_internal_tcc_dylib_flag = '-v3-internal-tcc-dylib'
 const v3_internal_tcc_no_retry_flag = '-v3-internal-tcc-no-retry'
 const v3_internal_implicit_tcc_warning_prefix = '-v3-internal-implicit-tcc-warning='
+// The temporary sources of `-e` code and of standard input start with these names. They are
+// written to the working directory so that its modules resolve, but belong to no project.
+const v3_inline_source_prefix = '.v3_inline_'
+const v3_stdin_source_prefix = '.v3_stdin_'
 const v3_embedded_env = 'V_MACOS_V3_EMBEDDED'
 
 fn v3_parser_diagnostics_printed(value bool) bool {
@@ -2376,9 +2380,20 @@ fn run_binary(bin_file string, args []string, remove_after_run bool) int {
 	return exit_code
 }
 
+// is_generated_source reports whether `path` is the temporary source that the compiler writes
+// for `-e` code or standard input. Such a source belongs to no project, so the launcher does not
+// apply the `backend` of the v.mod in the folder that holds it. Recognizing the name, instead of
+// marking the child command line, keeps the command that a `.vvmrc` forwards to another compiler
+// version unchanged.
+pub fn is_generated_source(path string) bool {
+	name := os.file_name(path)
+	return (name.starts_with(v3_inline_source_prefix) && name.ends_with('.vsh'))
+		|| (name.starts_with(v3_stdin_source_prefix) && name.ends_with('.v'))
+}
+
 fn run_v_source_from_stdin(args []string, input_index int) {
 	stdin_source := os.get_raw_lines_joined()
-	temporary_source := os.join_path(os.getwd(), '.v3_stdin_${os.getpid()}_${tempname.unique_token()}.v')
+	temporary_source := os.join_path(os.getwd(), '${v3_stdin_source_prefix}${os.getpid()}_${tempname.unique_token()}.v')
 	os.write_file(temporary_source, stdin_source) or {
 		eprintln('cannot create temporary stdin source file: ${err.msg()}')
 		exit(1)
@@ -2400,7 +2415,7 @@ fn run_v_source_from_stdin(args []string, input_index int) {
 }
 
 fn run_v_inline_source(args []string, option_index int, consumed int, source string) {
-	temporary_source := os.join_path(os.getwd(), '.v3_inline_${os.getpid()}_${tempname.unique_token()}.vsh')
+	temporary_source := os.join_path(os.getwd(), '${v3_inline_source_prefix}${os.getpid()}_${tempname.unique_token()}.vsh')
 	os.write_file(temporary_source, source) or {
 		eprintln('cannot create temporary inline source file: ${err.msg()}')
 		exit(1)

@@ -23,6 +23,10 @@ as with the C backend.
 FastC is experimental and supports a subset of V. An unsupported construct produces an error
 with its source byte offset; FastC does not silently switch to the C backend.
 
+A project can make FastC its default with `backend: 'fastc'` in its `v.mod`. Builds, runs, and
+tests of files under that `v.mod` then use FastC without `-b fastc`; an explicit `-b c` selects
+the C backend again.
+
 Ordinary `v self` builds include only the C backend. The first `-b fastc` request automatically
 builds a full compiler in the tool cache and runs it; subsequent requests reuse that compiler.
 Use `v -compile-backend fastc self` to include FastC in the main executable instead.
