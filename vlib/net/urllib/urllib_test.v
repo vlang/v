@@ -41,9 +41,14 @@ fn test_parse_query_orders() {
 }
 
 fn test_parse_missing_host() {
-	// issue #10311
+	// issue #10311: serializing a scheme-only URL (no host) must not crash.
+	// `http:///` round-trips exactly: it used to emit `http://///`, each
+	// parse → str cycle growing the path by two slashes (the authority
+	// separator was swallowed into the path).
 	url := urllib.parse('http:///')!
-	assert url.str() == 'http://///'
+	assert url.path == '/'
+	assert url.str() == 'http:///'
+	assert urllib.parse(url.str())!.str() == 'http:///'
 }
 
 // testing the case where the key as a null value
@@ -256,4 +261,22 @@ fn test_parse_empty_and_question_only_relative_urls() ! {
 	w := urllib.parse('/p?a=1?#fragment?')!
 	assert w.raw_query == 'a=1?'
 	assert w.fragment == 'fragment?'
+}
+
+// A URL with a scheme and an empty authority (`file:///c:/x/y`, `http:///x`)
+// must not swallow the authority separator into the path, or `parse` → `str`
+// round trips grow by two slashes each cycle:
+// `file:///c:/x/y` used to become `file://///c:/x/y`.
+fn test_parse_str_round_trip_scheme_with_empty_authority() {
+	u := urllib.parse('file:///c:/x/y')!
+	assert u.path == '/c:/x/y'
+	assert u.str() == 'file:///c:/x/y'
+	v := urllib.parse('http:///x')!
+	assert v.path == '/x'
+	assert v.str() == 'http:///x'
+	// scheme-less relative references still keep `///` in their path:
+	assert urllib.parse('///')!.str() == '///'
+	// re-serialization must be stable:
+	assert urllib.parse(u.str())!.str() == 'file:///c:/x/y'
+	assert urllib.parse(v.str())!.str() == 'http:///x'
 }
