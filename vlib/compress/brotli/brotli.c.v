@@ -7,7 +7,7 @@ import dl
 // Keep the sanitizer helper in a separate native object so its symbol survives
 // module-cache splitting. The C compiler owns MemorySanitizer feature detection.
 #define V_BROTLI_MSAN_DATA const volatile void
-#flag @VMODROOT/brotli_msan.c
+#flag @VMODROOT/vlib/compress/brotli/brotli_msan.c
 
 @[c_extern]
 fn C.v_brotli_msan_unpoison(data &C.V_BROTLI_MSAN_DATA, len uint)
