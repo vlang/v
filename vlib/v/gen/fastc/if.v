@@ -1845,6 +1845,24 @@ fn (g &Parser) fastc_common_sum_type(a u32, b u32) ?u32 {
 	return none
 }
 
+// fastc_tokens_have_top_level_or reports a `||` outside any brackets.
+fn fastc_tokens_have_top_level_or(tokens []FastcExpressionToken) bool {
+	mut depth := 0
+	for item in tokens {
+		match item.tok {
+			.lpar, .lsbr, .lcbr { depth++ }
+			.rpar, .rsbr, .rcbr { depth-- }
+			.logical_or {
+				if depth == 0 {
+					return true
+				}
+			}
+			else {}
+		}
+	}
+	return false
+}
+
 fn (mut g Parser) read_if_expression() !string {
 	outer_expected_type_source_id := g.expected_expression_type
 	outer_expected_type := outer_expected_type_source_id
@@ -1883,6 +1901,7 @@ fn (mut g Parser) read_if_expression() !string {
 	}
 	g.expected_expression_type = u32(0)
 	mut condition := g.read_condition_expression([token.Token.semicolon, token.Token.lcbr])!
+	condition_tokens := g.last_expression.clone()
 	mut guard_name := ''
 	mut guard_type := u32(0)
 	mut guard_option := ''
@@ -2000,10 +2019,42 @@ fn (mut g Parser) read_if_expression() !string {
 			}
 		}
 	}
+	// `if opt != none { … }` narrows the option local to its value in the branch, as in
+	// the statement form.
+	mut previous_option_narrowings := map[string]FastcMemberSmartcast{}
+	mut had_option_narrowings := map[string]bool{}
+	if guard_name == '' && !fastc_tokens_have_top_level_or(condition_tokens) {
+		for opt_name in g.detect_option_none_narrowings(condition_tokens) {
+			if opt_name in previous_member_smartcasts || opt_name in had_local_shadows {
+				continue
+			}
+			local := g.locals[opt_name] or { continue }
+			base := local.option_value_type
+			had_option_narrowings[opt_name] = opt_name in g.member_smartcasts
+			previous_option_narrowings[opt_name] = g.member_smartcasts[opt_name] or {
+				FastcMemberSmartcast{}
+			}
+			g.member_smartcasts[opt_name] = FastcMemberSmartcast{
+				typ:    base
+				source: if g.prefs.target_libc_headers {
+					'(V_FASTC_OPTION_STORAGE(${fastc_output_c_type(flat.source_type_name(base))}, (${fastc_c_identifier(opt_name)}))->value)'
+				} else {
+					'(*((${fastc_output_c_type(flat.source_type_name(base))} *)${fastc_c_identifier(opt_name)}.data))'
+				}
+			}
+		}
+	}
 	mut then_expression := if g.tok == .key_return {
 		g.read_return_expression_branch()!
 	} else {
 		g.read_block_expression_value()!
+	}
+	for path, present in had_option_narrowings {
+		if present {
+			g.member_smartcasts[path] = previous_option_narrowings[path]
+		} else {
+			g.member_smartcasts.delete(path)
+		}
 	}
 	if fastc_fixed_array_element_type(g.last_expression_type) != none && g.fixed_array_uses_raw_storage(g.last_expression) {
 		then_expression = g.render_call_argument_expression(g.last_expression, g.last_expression_type) or { then_expression }

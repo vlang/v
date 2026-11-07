@@ -238,6 +238,9 @@ fn (g &Parser) typeof_display_name(typ_id u32) string {
 	if fastc_primitive_c_type_id(typ_id) != none {
 		return typ
 	}
+	if payload := fastc_typed_option_payload(typ_id) {
+		return '?' + g.typeof_display_name(payload)
+	}
 	if flat.source_type_query(typ_id).has(.c_array_prefix) {
 		if element := g.array_element_type(typ_id) {
 			return '[]' + g.typeof_display_name(element)

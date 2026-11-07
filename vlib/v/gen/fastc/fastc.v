@@ -398,6 +398,8 @@ const c_selfhost_preamble = r'#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+/* vlib/math declares its libm functions with `fn C.` and no header. */
+#include <math.h>
 /* V __offsetof(T, field) */
 #ifndef __offsetof
 #define __offsetof(st, m) offsetof(st, m)
@@ -590,6 +592,8 @@ const c_selfhost_preamble_includes = r'#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+/* vlib/math declares its libm functions with `fn C.` and no header. */
+#include <math.h>
 /* V __offsetof(T, field) */
 #ifndef __offsetof
 #define __offsetof(st, m) offsetof(st, m)
@@ -1562,6 +1566,8 @@ mut:
 	constant_types              flat.TypeTextBindings
 	sum_leaf_variants_memo      map[u32][]u32
 	interface_equality_variants map[u32][]u32
+	// interface_method_names_memo lists each interface's declared method names.
+	interface_method_names_memo map[u32][]string
 	global_option_types         flat.TypeTextBindings
 	global_types                flat.TypeTextBindings
 	return_type                 u32

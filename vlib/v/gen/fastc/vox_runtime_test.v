@@ -1,0 +1,83 @@
+module fastc
+
+import os
+import v.cmdexec
+
+// fastc_run_program builds the directory program `files` with FastC and returns its output.
+fn fastc_run_program(name string, files map[string]string) string {
+	root := os.join_path(os.vtmp_dir(), 'fastc_${name}_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	for file, text in files {
+		os.write_file(os.join_path(root, file), text) or { panic(err) }
+	}
+	program := os.join_path(root, 'program')
+	build := cmdexec.run(@VEXE, ['-b', 'fastc', '-nocache', '-o', program, root])
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	return run.output.trim_space()
+}
+
+// A directory program runs on FastC's full runtime, where json2 decodes and encodes
+// structs, maps of `json2.Any` and sum types as with the C backend.
+fn test_fastc_directory_program_runs_like_the_c_backend() {
+	$if !macos && !linux {
+		return
+	}
+	output := fastc_run_program('vox_runtime', {
+		'main.v': r'module main
+
+import json2
+
+enum Mode {
+	light
+	dark @[json: "Dark"]
+}
+
+struct Inner {
+	x int
+	y ?string
+}
+
+struct Settings {
+	name   string
+	mode   Mode
+	tags   []string
+	inner  Inner
+	opt    ?Inner
+	counts map[string]int
+}
+
+type Shape = Inner | int | string
+
+fn main() {
+	settings := Settings{
+		name:   "vox"
+		mode:   .dark
+		tags:   ["a", "b"]
+		inner:  Inner{3, "why"}
+		counts: {
+			"k": 2
+		}
+	}
+	encoded := json2.encode(settings)
+	assert encoded == "{\"name\":\"vox\",\"mode\":\"Dark\",\"tags\":[\"a\",\"b\"],\"inner\":{\"x\":3,\"y\":\"why\"},\"counts\":{\"k\":2}}"
+	decoded := json2.decode[Settings](encoded) or { panic(err) }
+	assert decoded.mode == .dark
+	assert decoded.inner.y or { "" } == "why"
+	assert decoded.opt == none
+	assert decoded.counts["k"] == 2
+	text := "{\"a\":[1,2.5,\"x\",null,true],\"b\":{\"c\":\"d\"}}"
+	values := json2.decode[map[string]json2.Any](text) or { panic(err) }
+	assert json2.encode(values) == text
+	any := json2.decode[json2.Any](text) or { panic(err) }
+	assert json2.encode(any) == text
+	shapes := [Shape(Inner{1, none}), Shape(2), Shape("three")]
+	assert json2.encode(shapes) == "[{\"x\":1,\"_type\":\"Inner\"},2,\"three\"]"
+	println("ok")
+}
+'
+	})
+	assert output == 'ok'
+}

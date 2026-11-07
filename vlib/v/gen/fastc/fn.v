@@ -1804,6 +1804,19 @@ fn fastc_primitive_c_type_id(raw_type u32) ?u32 {
 	return none
 }
 
+// fastc_scalar_zero_literal_type returns the C type of `name{}` for a number, bool,
+// rune or pointer type, whose zero value is a plain `0`.
+fn fastc_scalar_zero_literal_type(name string) ?string {
+	if name in ['string', 'array', 'map', 'chan', 'Option', '__v_result'] {
+		return none
+	}
+	mapped := fastc_primitive_c_type(name) or { return none }
+	if mapped in ['string', 'array', 'map', 'chan', 'Option', '__v_result'] {
+		return none
+	}
+	return fastc_output_c_type(mapped)
+}
+
 fn fastc_primitive_c_type(raw_type string) ?string {
 	mapped := fastc_primitive_c_type_id(flat.source_type_id(raw_type)) or { return none }
 	return flat.source_type_name(mapped)

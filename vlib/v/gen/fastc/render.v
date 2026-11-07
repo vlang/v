@@ -5670,6 +5670,12 @@ fn (g &Parser) should_box_variant(expected_type u32, actual_type u32) bool {
 	if actual_type == 0 || fastc_is_pointer_type(expected_type) || !g.is_boxed_type(expected_type) {
 		return false
 	}
+	// An Option or Result wraps a value; only a declared option variant is boxed as one.
+	unwrapped := fastc_trim_pointer_type(fastc_normalize_inferred_type(actual_type))
+	if unwrapped in [fastc_type_option, fastc_type_result]
+		|| fastc_typed_option_payload(unwrapped) != none {
+		return g.sumtype_has_variant(expected_type, unwrapped)
+	}
 	resolved_actual := g.underlying_alias_type(actual_type)
 	if g.declared_kinds[g.semantic_type_key(resolved_actual)] == .struct_ {
 		return true

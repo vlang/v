@@ -750,6 +750,31 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 				}
 				continue
 			}
+			if tokens[i].lit == 'type_idx' && g.is_boxed_type(fastc_normalize_inferred_type(receiver_type)) {
+				// `x.type_idx()` on a sum type / interface is its runtime tag.
+				call_end := fastc_matching_rpar(tokens, i + 1) or { continue }
+				if call_end != i + 2 {
+					continue
+				}
+				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
+				access := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) { '->' } else { '.' }
+				call_source := '((i64)((${receiver.source})${access}_typ))'
+				if receiver_start == 0 && call_end == tokens.len - 1 {
+					return FastcRenderedExpression{
+						source: call_source
+						typ:    flat.source_type_int
+					}
+				}
+				raw_call := g.render_raw_expression_tokens(tokens[receiver_start..call_end + 1]) or {
+					continue
+				}
+				replaced := fastc_replace(rendered, raw_call, call_source)
+				if replaced.str != rendered.str {
+					rendered = replaced
+					changed = true
+				}
+				continue
+			}
 			if tokens[i].lit == 'type_name' && g.is_boxed_type(fastc_normalize_inferred_type(receiver_type)) {
 				// `x.type_name()` on a sum type / interface: switch on the runtime tag.
 				call_end := fastc_matching_rpar(tokens, i + 1) or { continue }

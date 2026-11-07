@@ -734,6 +734,10 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 
 				return array_type
 			}
+			if init_open == start + 1 && init_open + 2 == end && tokens[init_open + 1].tok == .rcbr
+				&& fastc_scalar_zero_literal_type(tokens[start].lit) != none {
+				return flat.source_type_id(fastc_primitive_c_type(tokens[start].lit) or { tokens[start].lit })
+			}
 			if tokens[start].tok == .name && tokens[start].lit == 'map' {
 				// `map[K]V{...}`, with or without entries.
 				if close := fastc_matching_delimiter_before(tokens, init_open, end, .lcbr, .rcbr) {
@@ -1048,6 +1052,9 @@ fn (g &Parser) infer_expression_type_range_impl(tokens []FastcExpressionToken, e
 		}
 		if tokens[i].lit == 'type_name' && g.is_boxed_type(fastc_normalize_inferred_type(receiver_type)) {
 			return flat.source_type_string
+		}
+		if tokens[i].lit == 'type_idx' && g.is_boxed_type(fastc_normalize_inferred_type(receiver_type)) {
+			return flat.source_type_int
 		}
 	}
 	if end - start >= 3 && tokens[end - 2].tok == .dot && tokens[end - 1].tok == .name {

@@ -386,7 +386,7 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 	}
 	mut c_type := ''
 	mut member := g.lit
-	if member in ['fields', 'values', 'attributes'] {
+	if member in ['fields', 'values', 'attributes', 'variants'] {
 		type_key := g.resolve_declared_type_key(first) or {
 			return g.unsupported('`\$for` over unknown type `${first}`')
 		}
@@ -398,8 +398,8 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 		c_type = fastc_c_declared_type_name(fastc_type_key(module_name, g.lit))
 		g.next()
 		g.expect(.dot)!
-		if g.tok != .name || g.lit !in ['fields', 'values', 'attributes'] {
-			return g.unsupported('`\$for` only supports `.fields`, `.values` or `.attributes`')
+		if g.tok != .name || g.lit !in ['fields', 'values', 'attributes', 'variants'] {
+			return g.unsupported('`\$for` only supports `.fields`, `.values`, `.attributes` or `.variants`')
 		}
 		member = g.lit
 		g.next()
@@ -446,7 +446,14 @@ fn (mut g Parser) parse_comptime_for_statement() !bool {
 	// Build one substituted body per iteration item: a struct field for `.fields`,
 	// or an enum value for `.values`.
 	mut substituted_bodies := []FastcSourceFile{}
-	if member == 'attributes' {
+	if member == 'variants' {
+		if c_type !in g.sum_types {
+			return g.unsupported('`\$for` over the variants of non-sum type `${c_type}`')
+		}
+		for variant in g.sum_type_variant_list(flat.source_type_id(c_type)) {
+			substituted_bodies << g.substitute_comptime_variant(body_source, loop_var, variant)
+		}
+	} else if member == 'attributes' {
 		// Only enum declarations record their attributes.
 		if c_type !in g.enum_field_names {
 			return g.unsupported('`\$for` over the attributes of non-enum type `${c_type}`')
@@ -745,6 +752,141 @@ fn (g &Parser) substitute_comptime_enum_value(source_file FastcSourceFile, loop_
 			tok = after
 			continue
 		}
+		tok = s.scan()
+	}
+	return fastc_apply_mapped_source_edits(source_file, edits)
+}
+
+// comptime_variant_matches evaluates `variant.typ is <type_c>` for the spelling returned
+// by read_comptime_is_type: `?T` for an option, `@group` for a type group, else a type.
+fn (g &Parser) comptime_variant_matches(variant u32, type_c string) bool {
+	if type_c.starts_with('?') {
+		payload := fastc_typed_option_payload(variant) or { return false }
+		return payload == flat.source_type_id(type_c[1..])
+	}
+	if type_c.starts_with('@') {
+		return g.comptime_type_matches(variant, flat.source_type_id(type_c[1..]), true)
+	}
+	target := flat.source_type_id(type_c)
+	if variant != target && g.declared_kinds[g.semantic_type_key(target)] == .interface_ {
+		return g.type_implements_interface(variant, target)
+	}
+	return variant == target
+}
+
+// substitute_comptime_variant rewrites one `$for v in Sum.variants { ... }` body for a single
+// variant, as the C backend does: `v.typ is T` and `typeof(v.typ).name` are evaluated (also
+// through `.unaliased_typ`), `is v` and `$zero(v.typ)` name the variant type, `v.typ` is its
+// runtime type id elsewhere, and a bare `v` (`T(v)`) is the variant's zero value.
+fn (g &Parser) substitute_comptime_variant(source_file FastcSourceFile, loop_var string, variant u32) FastcSourceFile {
+	body := source_file.source
+	variant_c := flat.source_type_name(variant)
+	unaliased := g.underlying_alias_type(variant)
+	file := token.File.unindexed('cvariant', body.len)
+	mut s := scanner.new_scanner(g.prefs, .normal)
+	s.init(file, body)
+	mut edits := []FastcSourceEdit{}
+	mut previous := token.Token.unknown
+	mut previous_lit := ''
+	mut before_previous := token.Token.unknown
+	mut before_previous_lit := ''
+	mut tok := s.scan()
+	for tok != .eof {
+		if tok == .key_typeof || (tok == .name && s.lit == 'typeof') {
+			start := s.pos
+			mut look := s
+			if look.scan() == .lpar && fastc_comptime_loop_var_token(look.scan()) && look.lit == loop_var
+				&& look.scan() == .dot && look.scan() == .name && look.lit == 'typ' {
+				mut next := look.scan()
+				mut typ := variant
+				if next == .dot {
+					if look.scan() != .name || look.lit != 'unaliased_typ' {
+						previous = tok
+						tok = s.scan()
+						continue
+					}
+					typ = unaliased
+					next = look.scan()
+				}
+				if next == .rpar && look.scan() == .dot && look.scan() == .name && look.lit == 'name' {
+					edits << FastcSourceEdit{
+						start:       start
+						end:         look.offset
+						replacement: fastc_string_literal(g.typeof_display_name(typ))
+					}
+					s = look
+					previous = .string
+					tok = s.scan()
+					continue
+				}
+			}
+		}
+		if fastc_comptime_loop_var_token(tok) && s.lit == loop_var && previous != .dot {
+			var_pos := s.pos
+			mut look := s
+			if look.scan() == .dot && look.scan() == .name && look.lit == 'typ' {
+				mut typ := variant
+				mut end := look.offset
+				mut after := look
+				mut next := after.scan()
+				if next == .dot {
+					mut unaliased_look := after
+					if unaliased_look.scan() == .name && unaliased_look.lit == 'unaliased_typ' {
+						typ = unaliased
+						end = unaliased_look.offset
+						after = unaliased_look
+						next = after.scan()
+					}
+				}
+				if next in [.key_is, .not_is] {
+					type_c, type_end, next_after := g.read_comptime_is_type(mut after)
+					if type_c != '' {
+						matches := g.comptime_variant_matches(typ, type_c) == (next == .key_is)
+						edits << FastcSourceEdit{
+							start:       var_pos
+							end:         type_end
+							replacement: if matches { 'true' } else { 'false' }
+						}
+						s = after
+						previous = if matches {
+							token.Token.key_true
+						} else {
+							token.Token.key_false
+						}
+						tok = next_after
+						continue
+					}
+				}
+				in_zero := previous == .lpar && before_previous == .name && before_previous_lit == 'zero'
+				edits << FastcSourceEdit{
+					start:       var_pos
+					end:         end
+					replacement: if in_zero {
+						flat.source_type_name(typ)
+					} else {
+						'C.__v_typeid_${flat.source_type_name(typ)}'
+					}
+				}
+				s = after
+				before_previous = previous
+				previous = .name
+				tok = next
+				continue
+			}
+			edits << FastcSourceEdit{
+				start:       var_pos
+				end:         s.offset
+				replacement: if previous in [.key_is, .not_is] {
+					variant_c
+				} else {
+					'\$zero(${variant_c})'
+				}
+			}
+		}
+		before_previous = previous
+		before_previous_lit = previous_lit
+		previous = tok
+		previous_lit = s.lit
 		tok = s.scan()
 	}
 	return fastc_apply_mapped_source_edits(source_file, edits)
@@ -1108,7 +1250,12 @@ fn (g &Parser) comptime_named_type(name string) u32 {
 fn (g &Parser) comptime_type_matches(left_type u32, target_type u32, target_is_group bool) bool {
 	left := g.underlying_alias_type(left_type)
 	if !target_is_group {
-		return left == g.underlying_alias_type(target_type)
+		target := g.underlying_alias_type(target_type)
+		if left != target && g.declared_kinds[g.semantic_type_key(target)] == .interface_ {
+			// `$if T is Decoder` holds for every implementation of the interface.
+			return g.type_implements_interface(left_type, target)
+		}
+		return left == target
 	}
 	left_key := g.semantic_type_key(left)
 	original_key := g.semantic_type_key(left_type)
@@ -1135,7 +1282,9 @@ fn (g &Parser) comptime_type_matches(left_type u32, target_type u32, target_is_g
 			left in [flat.source_type_f32, flat.source_type_f64]
 		}
 		'struct' {
-			left_key in g.declared_kinds && g.declared_kinds[left_key] == .struct_
+			// Builtin `string`, `array` and `map` are structs in FastC but not in V.
+			left !in [flat.source_type_string, fastc_type_array, fastc_type_map]
+				&& left_key in g.declared_kinds && g.declared_kinds[left_key] == .struct_
 		}
 		'enum' {
 			left_key in g.declared_kinds && g.declared_kinds[left_key] == .enum_
@@ -1146,10 +1295,60 @@ fn (g &Parser) comptime_type_matches(left_type u32, target_type u32, target_is_g
 		'alias' {
 			original_key in g.declared_kinds && g.declared_kinds[original_key] == .alias_
 		}
+		'sumtype' {
+			!fastc_is_pointer_type(left) && flat.source_type_name(left) in g.sum_types
+		}
+		'array_dynamic' {
+			!fastc_is_pointer_type(left) && !flat.source_type_query(left).has(.c_fixed_array_prefix)
+				&& (flat.source_type_query(left).has(.c_array_prefix) || left == fastc_type_array)
+		}
+		'option' {
+			left_type == fastc_type_option || fastc_typed_option_payload(left_type) != none
+		}
+		'pointer' {
+			fastc_is_pointer_type(left_type)
+				|| left in [flat.source_type_voidptr, flat.source_type_byteptr,
+					flat.source_type_charptr]
+		}
+		'function' {
+			fastc_callable_signature(left) != none
+				|| flat.source_type_name(left).starts_with('__vf_fn_type_')
+				|| g.fn_alias_return_types.contains(flat.source_type_name(left))
+		}
 		else {
 			false
 		}
 	}
+}
+
+// type_implements_interface reports whether `typ` has every method `iface` declares.
+fn (g &Parser) type_implements_interface(typ u32, iface u32) bool {
+	if typ == u32(0) || g.is_boxed_type(typ) {
+		return false
+	}
+	iface_key := g.semantic_type_key(iface)
+	mut names := g.interface_method_names_memo[iface_key] or {
+		prefix := flat.source_type_name(iface_key) + '.'
+		mut found := []string{}
+		for key, _ in g.functions {
+			if key.starts_with(prefix) && !key[prefix.len..].contains('.') {
+				found << key[prefix.len..]
+			}
+		}
+		mut w := unsafe { &Parser(g) }
+		w.interface_method_names_memo[iface_key] = found
+		found
+	}
+	if names.len == 0 {
+		return false
+	}
+	for name in names {
+		key, _ := g.resolve_method(typ, name)
+		if key !in g.functions {
+			return false
+		}
+	}
+	return true
 }
 
 fn (mut g Parser) skip_open_block() ! {
