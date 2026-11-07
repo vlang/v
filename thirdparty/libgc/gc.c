@@ -41579,12 +41579,19 @@ GC_remove_all_threads_but_me(void)
     store_to_threads_table(hv, NULL);
   }
 
-#    if defined(CPPCHECK) || defined(LINT2)
-  if (NULL == me)
-    ABORT("Current thread is not found after fork");
-#    else
-  GC_ASSERT(me != NULL);
-#    endif
+  if (NULL == me) {
+    /*
+     * The thread that called `fork()` was never registered with the
+     * collector: a C library forked on a thread it created itself (for
+     * instance libdbus autolaunching the session bus on a libmpv thread).
+     * There is no entry to keep, so the table stays empty.  Writing
+     * through `me` here would crash the child while it still holds the
+     * allocator lock, and the child would then hang forever in any
+     * signal handler that allocates.  Such a child only gets as far as
+     * `exec` or `_exit`; one that wants to allocate must register itself.
+     */
+    return;
+  }
   /*
    * Update `pthreads` id as it is not guaranteed to be the same between
    * this (child) process and the parent one.

@@ -22,6 +22,28 @@ fn test_forked_child_of_a_multi_threaded_program_can_collect() {
 	}
 }
 
+// A C library may fork on a thread it created itself, which the collector never registered
+// (libdbus autolaunching the session bus on a libmpv thread). The fork handler then has no
+// thread table entry for the forking thread; the child must still reach its exec or _exit.
+fn test_fork_from_a_thread_the_collector_does_not_know() {
+	test_dir := os.join_path(os.vtmp_dir(), 'gc_fork_unregistered_${os.getpid()}')
+	os.mkdir_all(test_dir)!
+	defer {
+		os.rmdir_all(test_dir) or {}
+	}
+	program := os.join_path(test_dir, 'fork_unregistered')
+	fixture := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'testdata',
+		'gc_fork_unregistered_thread.c.v')
+	build := os.exec([@VEXE, '-prod', '-cc', 'cc', '-gc', 'boehm', '-d', 'use_bundled_libgc', '-o',
+		program, fixture])
+	assert build.exit_code == 0, build.output
+	for run in 0 .. 5 {
+		result := os.exec([program])
+		assert result.exit_code == 0, 'run ${run}: exit code ${result.exit_code}\n${result.output}'
+		assert result.output.contains('child ok'), result.output
+	}
+}
+
 // HANDLE_FORK is only passed with GC threads. On macOS it would otherwise make a collector
 // without threads refuse incremental mode, and print a `GC Warning` at startup.
 fn test_incremental_mode_without_gc_threads() {
