@@ -3009,6 +3009,7 @@ fn fastc_scan_declaration_attribute(mut scan scanner.Scanner, path string, prefs
 	mut is_c_extern := false
 	mut is_markused := false
 	mut export_name := ''
+	mut c_symbol := ''
 	mut linker_section := ''
 	mut alignment := ''
 	mut is_cinit := false
@@ -3057,7 +3058,8 @@ fn fastc_scan_declaration_attribute(mut scan scanner.Scanner, path string, prefs
 			}
 		}
 		if depth == 1 && at_item_start {
-			if scan.lit in ['export', '_linker_section', 'aligned'] {
+			if scan.lit in ['export', '_linker_section', 'aligned']
+				|| (tok == .name && scan.lit == 'c') {
 				name := scan.lit
 				tok = scan.scan()
 				if tok != .colon {
@@ -3070,6 +3072,7 @@ fn fastc_scan_declaration_attribute(mut scan scanner.Scanner, path string, prefs
 				}
 				match name {
 					'export' { export_name = fastc_string_literal_content(scan.lit) }
+					'c' { c_symbol = fastc_string_literal_content(scan.lit) }
 					'_linker_section' { linker_section = fastc_string_literal_content(scan.lit) }
 					else { alignment = scan.lit }
 				}
@@ -3102,6 +3105,7 @@ fn fastc_scan_declaration_attribute(mut scan scanner.Scanner, path string, prefs
 		is_c_extern:    is_c_extern
 		is_markused:    is_markused
 		export_name:    export_name
+		c_symbol:       c_symbol
 		linker_section: linker_section
 		alignment:      alignment
 		is_cinit:       is_cinit

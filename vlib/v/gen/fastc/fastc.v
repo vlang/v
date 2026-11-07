@@ -271,6 +271,8 @@ static string v_fastc_bool_str(bool value) { return value ? "true" : "false"; }
 #define print(value) V_FASTC_PRINT_SELECT(value, v_fastc_print_string, v_fastc_print_bool, v_fastc_print_char, v_fastc_print_signed, v_fastc_print_unsigned)
 #define println(value) V_FASTC_PRINT_SELECT(value, v_fastc_println_string, v_fastc_println_bool, v_fastc_println_char, v_fastc_println_signed, v_fastc_println_unsigned)
 
+#define V_FASTC_SCANNED_ALLOC(size) malloc(size)
+#define V_FASTC_SCANNED_FREE(pointer) free(pointer)
 static void *v_fastc_interface_box(const void *value, usize size) {
 	void *copy = malloc(size);
 	if (copy != NULL) memcpy(copy, value, size);
@@ -502,8 +504,23 @@ typedef struct { MultiReturnValue values[8]; } MultiReturn;
 /* Option, result, and interface payloads are boxed on the heap and never
    freed. Boxing through malloc made every option-returning call pay for a
    locked, zero-filling allocation, so each thread bumps its boxes out of a
-   private chunk instead; only oversized payloads still go through malloc. */
-#if !defined(_WIN32) && !defined(V_FASTC_TARGET_LIBC)
+   private chunk instead; only oversized payloads still go through malloc.
+   When V allocates from the Boehm collector (V_FASTC_GC_HEAP), a box can hold
+   the only reference to collected memory, and the collector does not scan
+   malloc memory, so boxes come from its heap there. */
+#if defined(V_FASTC_GC_HEAP)
+extern void *GC_malloc(size_t);
+extern void GC_free(void *);
+#define V_FASTC_SCANNED_ALLOC(size) GC_malloc(size)
+#define V_FASTC_SCANNED_FREE(pointer) GC_free(pointer)
+static void *v_fastc_interface_box(const void *value, usize size) {
+	void *copy = GC_malloc(size);
+	if (copy != NULL) memcpy(copy, value, size);
+	return copy;
+}
+#elif !defined(_WIN32) && !defined(V_FASTC_TARGET_LIBC)
+#define V_FASTC_SCANNED_ALLOC(size) malloc(size)
+#define V_FASTC_SCANNED_FREE(pointer) free(pointer)
 typedef struct { unsigned char *cursor; unsigned char *end; } v_fastc_box_arena;
 static pthread_key_t v_fastc_box_arena_key;
 static pthread_once_t v_fastc_box_arena_once = PTHREAD_ONCE_INIT;
@@ -534,6 +551,8 @@ static void *v_fastc_interface_box(const void *value, usize size) {
 	return copy;
 }
 #else
+#define V_FASTC_SCANNED_ALLOC(size) malloc(size)
+#define V_FASTC_SCANNED_FREE(pointer) free(pointer)
 static void *v_fastc_interface_box(const void *value, usize size) {
 	void *copy = malloc(size);
 	if (copy != NULL) memcpy(copy, value, size);
@@ -852,7 +871,7 @@ static array builtin__array_sorted(array *values) {
 	array result = *values;
 	if (values != NULL && values->len > 0) {
 		size_t bytes = (size_t)values->len * (size_t)values->element_size;
-		result.data = malloc(bytes);
+		result.data = V_FASTC_SCANNED_ALLOC(bytes);
 		if (result.data != NULL && values->data != NULL) memcpy(result.data, values->data, bytes);
 		result.offset = 0;
 		result.cap = values->len;
@@ -893,8 +912,10 @@ struct FastcFunctionSignature {
 	// Leading array dimensions before a stored function value's signature.
 	callable_index_depth int
 	export_name          string
-	module_name          string
-	path                 string
+	// c_symbol is the native name a `@[c: 'name'] fn C.X` binding calls instead of `X`.
+	c_symbol    string
+	module_name string
+	path        string
 	// position is the byte offset of the declaration's `fn` in the file at `path`.
 	position int
 }
@@ -1362,6 +1383,7 @@ struct FastcDeclarationAttribute {
 	is_c_extern    bool
 	is_markused    bool
 	export_name    string
+	c_symbol       string
 	linker_section string
 	alignment      string
 	is_cinit       bool
@@ -2404,7 +2426,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	for global_type in global_types.ids.values() {
 		fastc_register_composite_type(global_type, mut composite_types)
 	}
-	startup_initializers := fastc_generate_startup_initializers(ordered_sources, constant_output.module_initializers, global_output.module_initializers, global_output.early_initializers, module_init_calls, function_c_names)!
+	startup_initializers := fastc_gc_startup_initializer(prefs, functions, function_c_names) +
+		fastc_generate_startup_initializers(ordered_sources, constant_output.module_initializers, global_output.module_initializers, global_output.early_initializers, module_init_calls, function_c_names)!
 	timer.mark('startup_initializers')
 	mut used_function_names := fastc_wait_referenced_function_names(mut pending_references)
 	for key, signature in functions {
@@ -2657,12 +2680,14 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	scalar_fixed_array_declarations := fastc_generate_fixed_array_declarations(scalar_fixed_array_types)
 	fixed_array_declarations := fastc_generate_fixed_array_declarations(aggregate_fixed_array_types)
 	callback_fixed_array_declarations := fastc_generate_fixed_array_declarations(callback_fixed_array_types)
+	// V_FASTC_GC_HEAP makes the runtime box values in the collector's heap.
+	gc_heap := if fastc_program_uses_gc(prefs) { '#define V_FASTC_GC_HEAP 1\n' } else { '' }
 	preamble := if prefs.target_libc_headers {
 		fastc_target_libc_preamble() + c_target_option_runtime
 	} else if header_free {
-		c_selfhost_preamble.replace('#include <stdbool.h>', '#ifndef __cplusplus\ntypedef _Bool bool;\n#define true ((bool)1)\n#define false ((bool)0)\n#endif').replace(c_selfhost_preamble_includes, fastc_c_abi_prelude(prefs.target.os, prefs.target.arch, ''))
+		gc_heap + c_selfhost_preamble.replace('#include <stdbool.h>', '#ifndef __cplusplus\ntypedef _Bool bool;\n#define true ((bool)1)\n#define false ((bool)0)\n#endif').replace(c_selfhost_preamble_includes, fastc_c_abi_prelude(prefs.target.os, prefs.target.arch, ''))
 	} else if prefs.building_v {
-		c_selfhost_preamble
+		gc_heap + c_selfhost_preamble
 	} else {
 		c_preamble + c_collection_runtime
 	}
@@ -2962,7 +2987,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	}
 	units.native_headers = fastc_native_function_only_headers(sources, functions, declared_types, native_context)
 	pieces << fastc_c_extern_prototypes_for_source_inputs(functions, c_flags, native_context,
-		prefs.vroot)
+		prefs.vroot) + fastc_gc_thread_redirects(prefs)
 	if prefs.target_libc_headers {
 		pieces << fastc_target_c_extern_prototypes_for_context(functions, used_function_names, prefs, native_context)
 	}
@@ -3276,6 +3301,72 @@ fn fastc_definition_prototypes(text string) string {
 	return out.str()
 }
 
+// fastc_program_uses_gc reports whether a full-runtime build allocates from the Boehm
+// collector. The bootstrap runtime has no collector, and `-prealloc` allocates from
+// arenas the collector does not scan.
+fn fastc_program_uses_gc(prefs &pref.Preferences) bool {
+	return prefs.building_v && !prefs.target_libc_headers && 'gcboehm' in prefs.user_defines
+		&& 'prealloc' !in prefs.user_defines
+}
+
+// fastc_gc_startup_initializer starts the collector before the first allocation, as the
+// C backend's main does. It is the first statement of `v_fastc_init_globals`.
+fn fastc_gc_startup_initializer(prefs &pref.Preferences, functions map[string]FastcFunctionSignature, function_c_names map[string]string) string {
+	if !fastc_program_uses_gc(prefs) {
+		return ''
+	}
+	key := fastc_function_key('builtin', 'gc_runtime_init')
+	signature := functions[key] or { return '' }
+	if signature.is_disabled {
+		return ''
+	}
+	c_name := function_c_names[key] or { fastc_signature_c_name(key, signature) }
+	return '\t${c_name}();\n'
+}
+
+// fastc_gc_thread_redirects routes thread calls through V's collector helpers
+// (builtin/gc_boehm_helpers.c), as the C backend does: the collector must stop and scan
+// every thread that can hold a collected pointer. A header that already redirects a
+// call keeps its own redirect.
+fn fastc_gc_thread_redirects(prefs &pref.Preferences) string {
+	if !fastc_program_uses_gc(prefs) || prefs.normalized_target_os() == 'windows' {
+		return ''
+	}
+	return '#if !defined(_WIN32)
+int v_gc_pthread_create(pthread_t *, const pthread_attr_t *, void *(*)(void *), void *);
+int v_gc_pthread_join(pthread_t, void **);
+int v_gc_pthread_detach(pthread_t);
+int v_gc_pthread_sigmask(int, const sigset_t *, sigset_t *);
+void v_gc_pthread_exit(void *);
+void *v_gc_dlopen(const char *, int);
+#ifndef pthread_create
+#define pthread_create v_gc_pthread_create
+#endif
+#ifndef pthread_join
+#define pthread_join v_gc_pthread_join
+#endif
+#ifndef pthread_detach
+#define pthread_detach v_gc_pthread_detach
+#endif
+#ifndef pthread_sigmask
+#define pthread_sigmask v_gc_pthread_sigmask
+#endif
+#ifndef pthread_exit
+#define pthread_exit v_gc_pthread_exit
+#endif
+#ifndef dlopen
+#define dlopen v_gc_dlopen
+#endif
+#if !defined(__ANDROID__)
+int v_gc_pthread_cancel(pthread_t);
+#ifndef pthread_cancel
+#define pthread_cancel v_gc_pthread_cancel
+#endif
+#endif
+#endif
+'
+}
+
 // fastc_c_extern_prototypes emits declarations explicitly requested with `@[c_extern]`.
 // Such symbols come from linked system libraries rather than an included header, so C99 must
 // see their V-declared ABI before a call (matching the main C backend's behavior).
@@ -3432,6 +3523,15 @@ fn fastc_c_extern_prototypes_for_source_inputs(functions map[string]FastcFunctio
 			continue
 		}
 		name := key.all_after_first('C.')
+		if signature.c_symbol != '' {
+			// `@[c: 'v_gc_malloc'] fn C.GC_MALLOC` calls a symbol of V's own native
+			// objects, which no header declares. A header macro of the same name wins.
+			out.writeln('#ifndef ${name}')
+			out.writeln('extern ' + fastc_native_function_declaration(signature.c_symbol, signature))
+			out.writeln('#define ${name} ${signature.c_symbol}')
+			out.writeln('#endif')
+			continue
+		}
 		paths := context.declaration_paths[name] or { [signature.path] }
 		if !signature.is_c_extern && !paths.any(!context.files_with_headers[it]
 			&& fastc_c_declaration_has_native_input(it, inputs))

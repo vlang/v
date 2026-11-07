@@ -192,6 +192,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 	mut next_declaration_is_c_extern := false
 	mut next_declaration_is_markused := false
 	mut next_export_name := ''
+	mut next_c_symbol := ''
 	mut previous_tok := token.Token.unknown
 	mut skip_index := 0
 	mut tok := scan.scan()
@@ -214,6 +215,9 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 			if attribute.export_name != '' {
 				next_export_name = attribute.export_name
 			}
+			if attribute.c_symbol != '' {
+				next_c_symbol = attribute.c_symbol
+			}
 			continue
 		}
 		if brace_depth == 0 && tok == .key_global {
@@ -224,6 +228,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 			next_declaration_is_c_extern = false
 			next_declaration_is_markused = false
 			next_export_name = ''
+			next_c_symbol = ''
 			previous_tok = .unknown
 			continue
 		}
@@ -242,6 +247,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 					next_declaration_is_c_extern = false
 					next_declaration_is_markused = false
 					next_export_name = ''
+					next_c_symbol = ''
 					previous_tok = .unknown
 					continue
 				}
@@ -558,6 +564,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 				is_c_extern:                   is_c_function && next_declaration_is_c_extern
 				is_markused:                   !is_c_function && next_declaration_is_markused
 				export_name:                   if is_c_function { '' } else { next_export_name }
+				c_symbol:                      if is_c_function { next_c_symbol } else { '' }
 				module_name:                   header.module_name
 				path:                          path
 				position:                      declaration_offset
@@ -573,6 +580,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 						next_declaration_is_c_extern = false
 						next_declaration_is_markused = false
 						next_export_name = ''
+						next_c_symbol = ''
 						continue
 					}
 				}
@@ -582,6 +590,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 			next_declaration_is_c_extern = false
 			next_declaration_is_markused = false
 			next_export_name = ''
+			next_c_symbol = ''
 			continue
 		}
 		if brace_depth == 0 && tok in [.key_struct, .key_enum, .key_interface, .key_type, .key_union,
@@ -590,6 +599,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 			next_declaration_is_c_extern = false
 			next_declaration_is_markused = false
 			next_export_name = ''
+			next_c_symbol = ''
 		}
 		if tok == .lcbr && brace_depth == 0 {
 			skipped, next_skip := fastc_skip_recorded_body(mut scan, skips, skip_index)
@@ -1040,6 +1050,10 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 	}
 	for name in top_level_references.keys() {
 		used[name] = true
+	}
+	if fastc_program_uses_gc(prefs) {
+		// The startup sequence calls it (see fastc_gc_startup_initializer).
+		used['gc_runtime_init'] = true
 	}
 	// Native callers enter exported V functions without a V call site. Their
 	// transitive callees must participate in the same reachability traversal.

@@ -419,7 +419,7 @@ fn (mut g Parser) register_thread_type_helpers(thread_type string, value_type_so
 		fprintf(stderr, "spawn: thread join failed (%d)\\n", join_code);
 		exit(1);
 	}
-	free(t.packed);
+	V_FASTC_SCANNED_FREE(t.packed);
 }'
 		} else {
 			result_type := fastc_output_c_type(value_type)
@@ -430,7 +430,7 @@ fn (mut g Parser) register_thread_type_helpers(thread_type string, value_type_so
 		exit(1);
 	}
 	${result_type} result = *(${result_type} *)t.packed;
-	free(t.packed);
+	V_FASTC_SCANNED_FREE(t.packed);
 	return result;
 }'
 		}
@@ -490,7 +490,6 @@ fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string
 	}
 	creation := if g.prefs.target_libc_headers {
 		'\tif (pthread_create(&t.handle, NULL, ${run_name}, args) != 0) {
-		free(args);
 		fprintf(stderr, "spawn: thread creation failed\\n");
 		exit(1);
 	}
@@ -498,19 +497,16 @@ fn (mut g Parser) register_spawn_helpers(function_key string, thread_type string
 	} else {
 		'\tpthread_attr_t attributes;
 	if (pthread_attr_init(&attributes) != 0) {
-		free(args);
 		fprintf(stderr, "spawn: thread attribute init failed\\n");
 		exit(1);
 	}
 	if (pthread_attr_setstacksize(&attributes, 8 * 1024 * 1024) != 0) {
 		pthread_attr_destroy(&attributes);
-		free(args);
 		fprintf(stderr, "spawn: thread stack size setup failed\\n");
 		exit(1);
 	}
 	if (pthread_create(&t.handle, &attributes, ${run_name}, args) != 0) {
 		pthread_attr_destroy(&attributes);
-		free(args);
 		fprintf(stderr, "spawn: thread creation failed\\n");
 		exit(1);
 	}
@@ -527,7 +523,7 @@ ${call}
 }
 
 static ${thread_type} ${start_name}(${parameters}) {
-	${args_struct} *args = (${args_struct} *)malloc(sizeof(${args_struct}));
+	${args_struct} *args = (${args_struct} *)V_FASTC_SCANNED_ALLOC(sizeof(${args_struct}));
 	if (args == NULL) {
 		fprintf(stderr, "spawn: out of memory\\n");
 		exit(1);

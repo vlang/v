@@ -19,8 +19,8 @@ fn fastc_run_program(name string, files map[string]string) string {
 	return run.output.trim_space()
 }
 
-// A directory program runs on FastC's full runtime, where json2 decodes and encodes
-// structs, maps of `json2.Any` and sum types as with the C backend.
+// A directory program runs on FastC's full runtime. It keeps the program's collector,
+// as with the C backend; Vox frees its own pages with `GC_free`.
 fn test_fastc_directory_program_runs_like_the_c_backend() {
 	$if !macos && !linux {
 		return
@@ -29,6 +29,11 @@ fn test_fastc_directory_program_runs_like_the_c_backend() {
 		'main.v': r'module main
 
 import json2
+
+$if gcboehm ? {
+	@[c_extern]
+	fn C.GC_free(voidptr)
+}
 
 enum Mode {
 	light
@@ -51,7 +56,49 @@ struct Settings {
 
 type Shape = Inner | int | string
 
+struct Page {
+	values [64]int
+}
+
+fn new_page() &Page {
+	return &Page{}
+}
+
+fn release(page &Page) {
+	$if gcboehm ? {
+		C.GC_free(page)
+	} $else {
+		unsafe { free(page) }
+	}
+}
+
+fn work(id int) int {
+	mut total := 0
+	for _ in 0 .. 20 {
+		mut items := []&Inner{}
+		for i in 0 .. 500 {
+			items << &Inner{
+				x: i
+				y: "v${i}"
+			}
+		}
+		for item in items {
+			total += item.x + (item.y or { "" }).len
+		}
+	}
+	return total + id
+}
+
 fn main() {
+	$if prealloc {
+		assert false
+	}
+	release(new_page())
+	mut threads := []thread int{}
+	for i in 0 .. 4 {
+		threads << spawn work(i)
+	}
+	assert threads.wait() == [work(0), work(1), work(2), work(3)]
 	settings := Settings{
 		name:   "vox"
 		mode:   .dark

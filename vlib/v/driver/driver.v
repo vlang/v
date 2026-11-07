@@ -10983,12 +10983,16 @@ pub fn run(args []string) {
 	compiler_tree_input := input_is_compiler_tree(input_file)
 	fastc_test_file := backend == 'fastc' && (is_v3_test_file(input_file, backend, target)
 		|| is_v3_test_file(input_file, 'c', target))
+	// fastc_real_builtin_program marks an ordinary program that sets `building_v` only to
+	// reach FastC's full runtime. It keeps the program's own allocator and defines.
+	mut fastc_real_builtin_program := false
 	if backend == 'fastc' && ('fastc_real_builtin' in user_defines || os.is_dir(input_file)
 		|| fastc_test_file) {
 		// Opt-in: compile an ordinary program through FastC's real-`builtin` path
 		// (real `struct string`, error system, and the full runtime) instead of the
 		// bootstrap `const char*` runtime. Directory entries use the same path, and so
 		// does a test file, whose harness reports through V strings and errors.
+		fastc_real_builtin_program = !building_v && !cmd_v_build
 		building_v = true
 	}
 	// Large serial compiler-module builds create the same transform and C-generation
@@ -11014,7 +11018,10 @@ pub fn run(args []string) {
 		}
 	}
 
-	if (building_v || cmd_v_build) && !target_libc_headers {
+	// A compiler build defaults to the parallel generator and the prealloc arena. A
+	// program keeps its collector: prealloc never frees, so the program's own `GC_free`
+	// or `free` of a V allocation would release arena memory.
+	if (building_v || cmd_v_build) && !fastc_real_builtin_program && !target_libc_headers {
 		if no_parallel {
 			// This controls the current build only. Keep parallel support in the output
 			// compiler so its module graph does not depend on how it was bootstrapped.
