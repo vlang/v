@@ -251,3 +251,28 @@ fn main() {
 }
 ')
 }
+
+// A whole-string enum attribute is its decoded text without an argument, also when it
+// contains a colon; a quoted argument is decoded, as with the C backend.
+fn test_fastc_vox_constructs_enum_attributes_are_decoded() {
+	fastc_vox_construct_program('attributes', r'module main
+
+@["baz"]
+@["a: b"]
+@[key: "v\x41"]
+@[flag]
+enum Level {
+	low
+	high
+}
+
+fn main() {
+	mut attributes := []string{}
+	$for attr in Level.attributes {
+		attributes << "${attr.name}|${attr.arg}|${attr.has_arg}"
+	}
+	assert attributes == ["baz||false", "a: b||false", "key|vA|true", "flag||false"]
+	println("ok")
+}
+')
+}

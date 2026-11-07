@@ -896,13 +896,7 @@ fn (g &Parser) substitute_comptime_variant(source_file FastcSourceFile, loop_var
 // single attribute entry `name` or `name: arg`: `<var>.name`, `<var>.arg` and `<var>.has_arg`
 // become literals. Other `<var>.<member>` forms are left as-is so they surface as unsupported.
 fn (g &Parser) substitute_comptime_attribute(source_file FastcSourceFile, loop_var string, attr string) FastcSourceFile {
-	has_arg := attr.contains(':')
-	name := if has_arg { attr.all_before(':').trim_space() } else { attr }
-	mut arg := if has_arg { attr.all_after(':').trim_space() } else { '' }
-	if arg.len >= 2 && ((arg[0] == `'` && arg[arg.len - 1] == `'`)
-		|| (arg[0] == `"` && arg[arg.len - 1] == `"`)) {
-		arg = arg[1..arg.len - 1]
-	}
+	name, arg, has_arg := fastc_attribute_parts(attr)
 	body := source_file.source
 	file := token.File.unindexed('ca', body.len)
 	mut s := scanner.new_scanner(g.prefs, .normal)
@@ -938,6 +932,106 @@ fn (g &Parser) substitute_comptime_attribute(source_file FastcSourceFile, loop_v
 		tok = s.scan()
 	}
 	return fastc_apply_mapped_source_edits(source_file, edits)
+}
+
+// fastc_attribute_parts decodes one attribute entry as the C backend does: a single
+// string literal (`@['baz']`, `@[r'a: b']`) is the whole name, without an argument;
+// otherwise `name: arg` splits at the first colon. Quoted parts are decoded.
+fn fastc_attribute_parts(attr string) (string, string, bool) {
+	clean := attr.trim_space()
+	if fastc_is_single_string_literal(clean) {
+		return fastc_attribute_string_value(clean), '', false
+	}
+	colon := clean.index_u8(`:`)
+	if colon < 0 {
+		return clean, '', false
+	}
+	return fastc_attribute_string_value(clean[..colon].trim_space()), fastc_attribute_string_value(clean[colon + 1..].trim_space()), true
+}
+
+// fastc_is_single_string_literal reports whether `text` is one V string literal,
+// optionally raw.
+fn fastc_is_single_string_literal(text string) bool {
+	raw := text.len >= 3 && text[0] == `r` && text[1] in [`'`, `"`]
+	start := if raw { 1 } else { 0 }
+	if text.len - start < 2 || text[start] !in [`'`, `"`] || text[text.len - 1] != text[start] {
+		return false
+	}
+	quote := text[start]
+	mut i := start + 1
+	for i < text.len - 1 {
+		if !raw && text[i] == `\\` {
+			i += 2
+			continue
+		}
+		if text[i] == quote {
+			return false
+		}
+		i++
+	}
+	return i == text.len - 1
+}
+
+// fastc_attribute_string_value is the value of a string literal attribute part: a raw
+// string's text, a quoted string's decoded text, or `text` itself when unquoted.
+fn fastc_attribute_string_value(text string) string {
+	if text.len >= 3 && text[0] == `r` && text[1] in [`'`, `"`] && text[text.len - 1] == text[1] {
+		return text[2..text.len - 1]
+	}
+	if text.len >= 2 && text[0] in [`'`, `"`] && text[text.len - 1] == text[0] {
+		return fastc_unescape_v_string(text[1..text.len - 1])
+	}
+	return text
+}
+
+// fastc_unescape_v_string decodes the escapes of a quoted V string's content.
+fn fastc_unescape_v_string(value string) string {
+	if value.index_u8(`\\`) < 0 {
+		return value
+	}
+	mut out := []u8{cap: value.len}
+	mut i := 0
+	for i < value.len {
+		c := value[i]
+		if c != `\\` || i + 1 >= value.len {
+			out << c
+			i++
+			continue
+		}
+		next := value[i + 1]
+		i += 2
+		match next {
+			`n` { out << `\n` }
+			`t` { out << `\t` }
+			`r` { out << `\r` }
+			`0` { out << 0 }
+			`\\`, `'`, `"`, `$`, `\``, `{`, `}` { out << next }
+			`x` {
+				if i + 2 <= value.len && value[i].is_hex_digit() && value[i + 1].is_hex_digit() {
+					out << u8(fastc_escape_hex_digit(value[i]) * 16 + fastc_escape_hex_digit(value[i + 1]))
+					i += 2
+					continue
+				}
+				out << `\\`
+				out << next
+			}
+			else {
+				out << `\\`
+				out << next
+			}
+		}
+	}
+	return out.bytestr()
+}
+
+fn fastc_escape_hex_digit(c u8) int {
+	return if c <= `9` {
+		int(c - `0`)
+	} else if c <= `F` {
+		int(c - `A`) + 10
+	} else {
+		int(c - `a`) + 10
+	}
 }
 
 // fastc_string_literal spells `value` as a single-quoted V string literal.
