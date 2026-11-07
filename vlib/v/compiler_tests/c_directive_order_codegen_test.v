@@ -1210,7 +1210,9 @@ fn test_unresolved_quoted_include_is_preserved() {
 	define_idx := directive_order_index(c_code, '#define AFTER_QUOTED_INCLUDE 1')
 	assert include_idx >= 0, c_code
 	assert define_idx >= 0, c_code
-	assert include_idx < define_idx, c_code
+	// The global preamble can define this macro earlier, too. The source
+	// directives must still appear together in their original order.
+	assert c_code.contains('#include "external_missing.h"\n#define AFTER_QUOTED_INCLUDE 1'), c_code
 }
 
 fn test_nested_system_include_stays_inside_its_unexpanded_header() {
@@ -1288,16 +1290,24 @@ fn test_poll_in_native_header_uses_preserved_system_struct() {
 	assert !c_code.contains('struct pollfd {\n'), c_code
 }
 
-fn test_rwmutex_keeps_32bit_rwlock_prototypes() {
+fn test_rwmutex_keeps_native_lock_prototypes() {
 	c_code := directive_order_gen_c_rwmutex(directive_order_build_v3())
-	// sync declares these returns as i32, preserving C's ABI when V int is pointer-sized.
-	assert c_code.contains('i32 pthread_rwlockattr_setkind_np(void*, i32);'), c_code
-	assert c_code.contains('i32 pthread_rwlockattr_init(void*);'), c_code
-	assert c_code.contains('i32 pthread_rwlockattr_destroy(void*);'), c_code
-	assert c_code.contains('i32 pthread_rwlock_init(void*, void*);'), c_code
-	assert c_code.contains('i32 pthread_rwlock_wrlock(void*);'), c_code
-	assert c_code.contains('i32 pthread_rwlock_unlock(void*);'), c_code
-	assert !c_code.contains('__v_int pthread_rwlock'), c_code
+	$if windows {
+		// Windows RwMutex uses SRWLOCK, not the Unix pthread API.
+		assert c_code.contains('InitializeSRWLock(&m->mx);'), c_code
+		assert c_code.contains('AcquireSRWLockExclusive(&m->mx);'), c_code
+		assert c_code.contains('ReleaseSRWLockExclusive(&m->mx);'), c_code
+		assert !c_code.contains('i32 pthread_rwlock_init(void*, void*);'), c_code
+	} $else {
+		// sync declares these returns as i32, preserving C's ABI when V int is pointer-sized.
+		assert c_code.contains('i32 pthread_rwlockattr_setkind_np(void*, i32);'), c_code
+		assert c_code.contains('i32 pthread_rwlockattr_init(void*);'), c_code
+		assert c_code.contains('i32 pthread_rwlockattr_destroy(void*);'), c_code
+		assert c_code.contains('i32 pthread_rwlock_init(void*, void*);'), c_code
+		assert c_code.contains('i32 pthread_rwlock_wrlock(void*);'), c_code
+		assert c_code.contains('i32 pthread_rwlock_unlock(void*);'), c_code
+		assert !c_code.contains('__v_int pthread_rwlock'), c_code
+	}
 }
 
 fn test_shared_runtime_keeps_rwmutex_init_prototypes() {
