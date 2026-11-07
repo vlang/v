@@ -85,6 +85,16 @@ fn clobber(n int) int {
 	return values[63]
 }
 
+fn scale(value f64) int {
+	if value >= f64(2147483647) {
+		return 2147483647
+	}
+	if value <= f64(-2147483648) {
+		return -2147483648
+	}
+	return int(value)
+}
+
 fn work(id int) int {
 	mut total := 0
 	for _ in 0 .. 20 {
@@ -110,6 +120,10 @@ fn main() {
 	coordinates := payload(?Inner(Inner{ x: 7 })) or { panic("none") }
 	clobber(3)
 	assert coordinates.x == 7
+	assert scale(16 * 65536) == 1048576
+	assert scale(-3e9) == -2147483648
+	negative := -5
+	assert negative < 3000000000
 	mut threads := []thread int{}
 	for i in 0 .. 4 {
 		threads << spawn work(i)
