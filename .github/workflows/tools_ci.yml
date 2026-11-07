@@ -150,10 +150,17 @@ jobs:
 
   tools-windows:
     runs-on: windows-2025
-    timeout-minutes: 20
+    timeout-minutes: 40
     strategy:
       matrix:
+        suite: [default, strict]
+        shard: [0, 1, 2]
         cc: [tcc, gcc, msvc]
+        exclude:
+          - cc: tcc
+            suite: strict
+          - cc: gcc
+            suite: strict
       fail-fast: false
     env:
       # Stop a failing test session at its first failure instead of
@@ -164,6 +171,10 @@ jobs:
       # The automatic memory budget selects one worker on these runners.
       VJOBS: '4'
       VFLAGS: -cc ${{ matrix.cc }}
+      VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
+      VTEST_SELF_SHARD_COUNT: '3'
+      VTEST_SHOW_START: '1'
+      VTEST_SHOW_LONGEST_BY_TOTALTIME: '3'
     steps:
       - uses: actions/checkout@v7
         with:
@@ -190,11 +201,13 @@ jobs:
       - name: Install SQLite (needed by vsqlite tool)
         run: .\.github\workflows\windows-install-sqlite.bat
       - name: Check build tools
+        if: matrix.suite == 'default' && matrix.shard == 0
         run: ./v build-tools
       - name: Test tools
+        if: matrix.suite == 'default'
         run: ./v -silent test-self cmd
       - name: Test tools (-cstrict)
-        if: ${{ matrix.cc == 'msvc' }}
+        if: matrix.suite == 'strict'
         run: ./v -silent -W -cstrict test-self cmd
 
   tools-docker-ubuntu-musl:
