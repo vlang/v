@@ -46,3 +46,42 @@ fn test_web_imports_retain_the_module_cache() ! {
 		}
 	}
 }
+
+fn test_brotli_unpoison_helper_survives_module_cache() ! {
+	$if !linux && !macos {
+		return
+	}
+	compiler := os.find_abs_path_of_executable('clang') or { return }
+	root := os.join_path(os.vtmp_dir(), 'brotli_noop_cache_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	program := os.join_path(root, 'main')
+	cache := os.join_path(root, 'cache')
+	program_source := 'import compress.brotli\n' +
+		'fn main() {\n' +
+		'\tencoded := brotli.compress([]u8{}, brotli.CompressParams{}) or { panic(err) }\n' +
+		'\t_ := brotli.decompress(encoded, brotli.DecompressParams{}) or { panic(err) }\n' +
+		'}\n'
+	os.write_file(source, program_source)!
+	environment := {
+		'VFLAGS':                 ''
+		'VTMP':                   os.join_path(root, 'tmp')
+		'V3CACHE':                cache
+		'V3_CACHE_TRACE':         '1'
+		'V_MACOS_V3_NO_FALLBACK': '1'
+	}
+	mut count := 0
+	for build in 0 .. 2 {
+		result := cmdexec.run_in_merged_with_env(@VEXE, ['-cc', compiler, '-o', program, source], @VEXEROOT, environment)
+		assert result.exit_code == 0, result.output
+		assert !result.output.contains('module cache fallback'), result.output
+		objects := os.walk_ext(cache, '.o')
+		assert objects.len > 0, '${build}: no module objects were cached: ${result.output}'
+		if build == 0 {
+			count = objects.len
+		} else {
+			assert objects.len == count
+		}
+	}
+}
