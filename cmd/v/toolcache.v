@@ -1429,7 +1429,8 @@ Stop and return a nonzero status if a cache folder cannot be removed or recreate
 Leave the entries of tools that another process has locked right now (a build in progress)
 in place and name them in the output. Lock files that cannot be opened are repaired, so they can be locked again.
 Entries of a tool whose lock cannot be created, for example because the filesystem has no hard
-links or a directory is in the way, are kept.
+links or a directory is in the way, are kept. A tool cache folder inside another folder being
+wiped gets the same treatment, whichever options select that folder.
 
 Usage:
   v wipe-cache [options]
@@ -1761,6 +1762,7 @@ fn wipe_except_text(busy []string, unlockable []string) string {
 // afterwards, as `os.rmdir_all` does. The root itself is removed when
 // nothing in it was kept. If that removal fails, the failure is an error unless a build that
 // started during the wipe put new entries in the root; those are its own, and are reported.
+// A folder in the root that holds another tool cache root is wiped around it.
 fn wipe_tool_cache_directory(path string, label string, opts WipeCacheOptions, mut lines []string) ! {
 	if os.is_link(path) || !os.is_dir(path) {
 		return wipe_cache_directory(path, label, false, opts, mut lines)
@@ -1784,6 +1786,27 @@ fn wipe_tool_cache_directory(path string, label string, opts WipeCacheOptions, m
 		// Another wipe may have removed this entry since the listing.
 		if !os.exists(full) && !os.is_link(full) {
 			continue
+		}
+		// Before the name is read as an entry's: a folder keyed by a hash can hold a root.
+		if os.is_dir(full) && !os.is_link(full) {
+			inner := wipe_tool_roots_in(full, opts, mut lines) or {
+				if first_error == '' {
+					first_error = err.msg()
+				}
+				kept << full
+				continue
+			}
+			if inner.len > 0 {
+				if !opts.dry_run && full !in inner {
+					clear_around_tool_roots(full, inner) or {
+						if first_error == '' {
+							first_error = err.msg()
+						}
+					}
+				}
+				kept << full
+				continue
+			}
 		}
 		if name.starts_with('.') && name.ends_with(suffix) && name.len > suffix.len + 1
 			&& os.is_file(full) && !os.is_link(full) {
@@ -1930,42 +1953,102 @@ fn wipe_cache_directory(path string, label string, recreate bool, opts WipeCache
 	lines << '${label} folder ${path} was wiped.'
 }
 
-// wipe_vtmp_directory wipes the V tmp folder. Its tool cache folder is wiped lock-aware, so
-// entries and lock files that a running build holds survive, and the rest of the folder is
-// removed around them.
-fn wipe_vtmp_directory(opts WipeCacheOptions, mut lines []string) ! {
-	vtmp := os.vtmp_dir()
-	tools_dir := os.join_path(vtmp, 'tools')
-	if !os.is_link(vtmp) && os.is_dir(vtmp) && (os.exists(tools_dir) || os.is_link(tools_dir)) {
-		if !opts.tools {
-			wipe_tool_cache_directory(tools_dir, 'V tool cache', opts, mut lines)!
+// tool_cache_roots_in lists the outermost tool cache roots inside `folder`, `folder` included. A
+// root is known by its lock file: every build creates one before it touches an entry. The
+// environment cannot tell, since a build can have had another `VTOOLS_CACHE_DIR`, and the only
+// spelling that led to its root can be gone. Links are not followed.
+fn tool_cache_roots_in(folder string) []string {
+	mut inner := []string{}
+	names := os.ls(folder) or { return inner }
+	suffix := tool_cache_lock_file_suffix()
+	mut is_root := false
+	for name in names {
+		path := os.join_path(folder, name)
+		if os.is_link(path) {
+			continue
 		}
-		if os.exists(tools_dir) || os.is_link(tools_dir) {
-			if opts.dry_run {
-				lines << 'Would wipe V tmp.c and tests folder ${vtmp}, except ${tools_dir}.'
-				return
-			}
-			entries := os.ls(vtmp) or {
-				return error('v wipe-cache: could not list V tmp.c and tests folder ${vtmp}: ${err}')
-			}
-			for entry in entries {
-				path := os.join_path(vtmp, entry)
-				if path == tools_dir {
-					continue
-				}
-				if os.is_dir(path) && !os.is_link(path) {
-					os.rmdir_all(path) or {
-						return error('v wipe-cache: could not remove ${path}: ${err}')
-					}
-				} else {
-					os.rm(path) or { return error('v wipe-cache: could not remove ${path}: ${err}') }
-				}
-			}
-			lines << 'V tmp.c and tests folder ${vtmp} was wiped, except ${tools_dir}, which keeps entries in use.'
-			return
+		if os.is_dir(path) {
+			inner << tool_cache_roots_in(path)
+		} else if name.starts_with('.') && name.ends_with(suffix) && name.len > suffix.len + 1 {
+			is_root = true
 		}
 	}
-	wipe_cache_directory(vtmp, 'V tmp.c and tests', true, opts, mut lines)!
+	return if is_root { [folder] } else { inner }
+}
+
+// wipe_tool_roots_in wipes every tool cache root inside `folder` lock-aware, and returns those
+// that kept something: their lock files, and the entries of the builds that hold them. A root
+// inside one of them is wiped by that root's own wipe.
+fn wipe_tool_roots_in(folder string, opts WipeCacheOptions, mut lines []string) ![]string {
+	roots := tool_cache_roots_in(folder)
+	for root in roots {
+		if os.is_dir(root) {
+			wipe_tool_cache_directory(root, 'V tool cache', opts, mut lines)!
+		}
+	}
+	return roots.filter(os.is_dir(it))
+}
+
+// path_holds reports whether `path` is `folder` or lies inside it.
+fn path_holds(folder string, path string) bool {
+	return path == folder || path.starts_with(folder.trim_right(os.path_separator) + os.path_separator)
+}
+
+// clear_around_tool_roots removes everything inside `folder`, except `roots` and the folders that
+// lead to them. Every item is attempted and the first failure is reported afterwards, as
+// `os.rmdir_all` does.
+fn clear_around_tool_roots(folder string, roots []string) ! {
+	entries := os.ls(folder) or { return error('v wipe-cache: could not list ${folder}: ${err}') }
+	mut first_error := ''
+	for entry in entries {
+		path := os.join_path(folder, entry)
+		if path in roots {
+			continue
+		}
+		mut problem := ''
+		if roots.any(path_holds(path, it)) {
+			clear_around_tool_roots(path, roots) or { problem = err.msg() }
+		} else if os.is_dir(path) && !os.is_link(path) {
+			os.rmdir_all(path) or { problem = 'v wipe-cache: could not remove ${path}: ${err}' }
+		} else {
+			os.rm(path) or { problem = 'v wipe-cache: could not remove ${path}: ${err}' }
+		}
+		if first_error == '' {
+			first_error = problem
+		}
+	}
+	if first_error != '' {
+		return error(first_error)
+	}
+}
+
+// wipe_folder_around_tool_roots wipes a folder that can hold tool cache roots, since those can be
+// anywhere. Such a root is wiped lock-aware, so entries and lock files that a running build holds
+// survive, and the rest of the folder is removed around what is left of it.
+fn wipe_folder_around_tool_roots(path string, label string, recreate bool, opts WipeCacheOptions, mut lines []string) ! {
+	if os.is_link(path) || !os.is_dir(path) {
+		return wipe_cache_directory(path, label, recreate, opts, mut lines)
+	}
+	kept := wipe_tool_roots_in(path, opts, mut lines)!
+	if kept.len == 0 {
+		return wipe_cache_directory(path, label, recreate, opts, mut lines)
+	}
+	// A root that is the folder itself was just wiped lock-aware, and holds all there was to wipe.
+	if path in kept {
+		lines << if opts.dry_run {
+			'Would wipe ${label} folder ${path}, which is a tool cache folder too.'
+		} else {
+			'${label} folder ${path} was wiped, as the tool cache folder it also is.'
+		}
+		return
+	}
+	kept_text := kept.join(', ')
+	if opts.dry_run {
+		lines << 'Would wipe ${label} folder ${path}, except ${kept_text}.'
+		return
+	}
+	clear_around_tool_roots(path, kept)!
+	lines << '${label} folder ${path} was wiped, except the tool cache folders in it: ${kept_text}.'
 }
 
 // wipe_caches returns cleanup output, stopping at the first filesystem error.
@@ -1973,7 +2056,7 @@ fn wipe_caches(opts WipeCacheOptions) ![]string {
 	mut lines := []string{}
 	if opts.vcache {
 		cache_path := os.getenv_opt('VCACHE') or { os.join_path(os.vmodules_dir(), '.cache') }
-		wipe_cache_directory(cache_path, 'V cache', true, opts, mut lines)!
+		wipe_folder_around_tool_roots(cache_path, 'V cache', true, opts, mut lines)!
 	}
 	mut tool_lines := []string{}
 	if opts.tools {
@@ -2005,13 +2088,13 @@ fn wipe_caches(opts WipeCacheOptions) ![]string {
 		}
 	}
 	if opts.vtmp {
-		wipe_vtmp_directory(opts, mut lines)!
+		wipe_folder_around_tool_roots(os.vtmp_dir(), 'V tmp.c and tests', true, opts, mut lines)!
 	}
 	if opts.v3cache {
 		vtmp_path := os.vtmp_dir()
 		configured_v3 := os.getenv('V3CACHE').trim_space()
 		if configured_v3 != '' && os.abs_path(configured_v3) != os.abs_path(vtmp_path) {
-			wipe_cache_directory(configured_v3, 'V3 cache', true, opts, mut lines)!
+			wipe_folder_around_tool_roots(configured_v3, 'V3 cache', true, opts, mut lines)!
 		} else if !opts.vtmp {
 			mut v3_dirs := []string{}
 			if os.is_dir(vtmp_path) {
@@ -2030,7 +2113,7 @@ fn wipe_caches(opts WipeCacheOptions) ![]string {
 			}
 			if v3_dirs.len > 0 {
 				for dir in v3_dirs {
-					wipe_cache_directory(dir, 'V3 cache', false, opts, mut lines)!
+					wipe_folder_around_tool_roots(dir, 'V3 cache', false, opts, mut lines)!
 				}
 			} else if opts.dry_run {
 				lines << 'Would wipe V3 cache folders in ${vtmp_path} (none exist).'
@@ -2040,7 +2123,14 @@ fn wipe_caches(opts WipeCacheOptions) ![]string {
 		}
 	}
 	lines << tool_lines
-	return lines
+	// A root inside a wiped folder is reached by that folder's pass and by the tool pass.
+	mut unique := []string{cap: lines.len}
+	for line in lines {
+		if line !in unique {
+			unique << line
+		}
+	}
+	return unique
 }
 
 fn run_wipe_cache(args []string, command_index int) {
