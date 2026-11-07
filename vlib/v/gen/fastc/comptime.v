@@ -984,7 +984,10 @@ fn fastc_attribute_string_value(text string) string {
 	return text
 }
 
-// fastc_unescape_v_string decodes the escapes of a quoted V string's content.
+// fastc_unescape_v_string decodes the escapes of a quoted V string's content with the
+// C backend's rules (see comptime_cond_unescape in v.transform): `\x`, `\u` and `\U` hex
+// codes, the single-character escapes, and line continuations. Other escapes stay as
+// written.
 fn fastc_unescape_v_string(value string) string {
 	if value.index_u8(`\\`) < 0 {
 		return value
@@ -992,45 +995,101 @@ fn fastc_unescape_v_string(value string) string {
 	mut out := []u8{cap: value.len}
 	mut i := 0
 	for i < value.len {
-		c := value[i]
-		if c != `\\` || i + 1 >= value.len {
-			out << c
+		if value[i] != `\\` || i + 1 >= value.len {
+			out << value[i]
 			i++
 			continue
 		}
 		next := value[i + 1]
-		i += 2
-		match next {
-			`n` { out << `\n` }
-			`t` { out << `\t` }
-			`r` { out << `\r` }
-			`0` { out << 0 }
-			`\\`, `'`, `"`, `$`, `\``, `{`, `}` { out << next }
-			`x` {
-				if i + 2 <= value.len && value[i].is_hex_digit() && value[i + 1].is_hex_digit() {
-					out << u8(fastc_escape_hex_digit(value[i]) * 16 + fastc_escape_hex_digit(value[i + 1]))
-					i += 2
-					continue
-				}
-				out << `\\`
-				out << next
+		if next == `\n` || (next == `\r` && i + 2 < value.len && value[i + 2] == `\n`) {
+			i += if next == `\n` { 2 } else { 3 }
+			for i < value.len && value[i] in [` `, `\t`, `\r`] {
+				i++
 			}
-			else {
-				out << `\\`
-				out << next
+			continue
+		}
+		digits := match next {
+			`x` { 2 }
+			`u` { 4 }
+			`U` { 8 }
+			else { 0 }
+		}
+		if digits > 0 {
+			code := fastc_escape_hex_code(value, i + 2, digits)
+			if code >= 0 {
+				if next == `x` {
+					out << u8(code)
+				} else {
+					fastc_push_utf8(mut out, u32(code))
+				}
+				i += 2 + digits
+				continue
 			}
 		}
+		decoded := match next {
+			`n` { 10 }
+			`t` { 9 }
+			`r` { 13 }
+			`\\`, `'`, `"`, `$` { int(next) }
+			`0` { 0 }
+			`a` { 7 }
+			`b` { 8 }
+			`f` { 12 }
+			`v` { 11 }
+			else { -1 }
+		}
+		if decoded >= 0 {
+			out << u8(decoded)
+		} else {
+			out << `\\`
+			out << next
+		}
+		i += 2
 	}
 	return out.bytestr()
 }
 
-fn fastc_escape_hex_digit(c u8) int {
-	return if c <= `9` {
-		int(c - `0`)
-	} else if c <= `F` {
-		int(c - `A`) + 10
+// fastc_escape_hex_code reads `count` hex digits of `value` from `start`, or -1.
+fn fastc_escape_hex_code(value string, start int, count int) i64 {
+	if start + count > value.len {
+		return -1
+	}
+	mut code := i64(0)
+	for k in 0 .. count {
+		c := value[start + k]
+		digit := if c >= `0` && c <= `9` {
+			int(c - `0`)
+		} else if c >= `a` && c <= `f` {
+			int(c - `a`) + 10
+		} else if c >= `A` && c <= `F` {
+			int(c - `A`) + 10
+		} else {
+			-1
+		}
+		if digit < 0 {
+			return -1
+		}
+		code = code * 16 + digit
+	}
+	return code
+}
+
+// fastc_push_utf8 appends the UTF-8 encoding of `code`.
+fn fastc_push_utf8(mut out []u8, code u32) {
+	if code < 0x80 {
+		out << u8(code)
+	} else if code < 0x800 {
+		out << u8(0xc0 | (code >> 6))
+		out << u8(0x80 | (code & 0x3f))
+	} else if code < 0x10000 {
+		out << u8(0xe0 | (code >> 12))
+		out << u8(0x80 | ((code >> 6) & 0x3f))
+		out << u8(0x80 | (code & 0x3f))
 	} else {
-		int(c - `a`) + 10
+		out << u8(0xf0 | (code >> 18))
+		out << u8(0x80 | ((code >> 12) & 0x3f))
+		out << u8(0x80 | ((code >> 6) & 0x3f))
+		out << u8(0x80 | (code & 0x3f))
 	}
 }
 
