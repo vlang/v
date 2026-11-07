@@ -2,6 +2,12 @@ module os
 
 fn C.setpgid(pid i32, pgid i32) i32
 
+// The posix_spawn calls are in a C object of their own: an `#include <spawn.h>` in this file
+// would put V's whole platform header block into every program that imports `os`.
+#flag linux @VEXEROOT/vlib/os/posix_spawn_nix.o
+
+fn C.v_os_posix_spawn(exe &char, argv &&char, envp &&char, use_pgroup i32, stdin_path &char, redirect i32, stdin_fd i32, out_fd i32, err_fd i32, close_fds &i32, n_close i32) i32
+
 // child_spawn_code_prefix is the `; code: N` separator that `IError.str()` adds.
 // It is a literal, so the forked child can copy it without allocating.
 const child_spawn_code_prefix = '; code: '
@@ -139,6 +145,37 @@ fn unix_child_report_errno(prefix string) {
 	unsafe { C.write(2, &buf[0], uint(n)) }
 }
 
+// unix_try_posix_spawn starts the child with posix_spawn and returns its pid, or -1 when the
+// spawn has to be done by fork() instead. fork() copies the page tables of the parent, which
+// costs about 30 ms per spawn in a compiler process of 1 GB; posix_spawn shares the address
+// space until the child has called execve. A spawn that needs a work folder, or whose
+// executable cannot be resolved, or that posix_spawn refuses for any reason, is left to the
+// fork path, which has the established way of reporting those errors from the child.
+fn (p &Process) unix_try_posix_spawn(plan UnixSpawnPlan, pipeset [6]i32) int {
+	if p.work_folder != '' || plan.resolve_error.len > 0 {
+		return -1
+	}
+	mut close_fds := [6]i32{}
+	mut n_close := 0
+	if p.use_stdio_ctl {
+		// The child only keeps the redirected 0, 1 and 2.
+		for fd in [pipeset[0], pipeset[1], pipeset[2], pipeset[3], pipeset[4], pipeset[5]] {
+			if fd > 2 && !(fd == pipeset[0] && p.has_stdin_path)
+				&& !(fd == pipeset[1] && p.has_stdin_path)
+				&& !(p.merge_stdio && (fd == pipeset[4] || fd == pipeset[5])) {
+				close_fds[n_close] = fd
+				n_close++
+			}
+		}
+	}
+	stdin_path := if p.has_stdin_path { &char(p.stdin_path.str) } else { &char(unsafe { nil }) }
+	err_fd := if p.merge_stdio { pipeset[3] } else { pipeset[5] }
+	child := C.v_os_posix_spawn(&char(plan.exe.str), plan.argv.data, plan.envp.data,
+		if p.use_pgroup { 1 } else { 0 }, stdin_path, if p.use_stdio_ctl { 1 } else { 0 },
+		pipeset[0], pipeset[3], err_fd, &close_fds[0], n_close)
+	return int(child)
+}
+
 fn (mut p Process) unix_spawn_process() int {
 	// Each `C.pipe` writes two C `int` file descriptors; back them with `i32` so the
 	// buffer matches the C ABI (a V `[6]int` is six 64-bit slots now that `int` is
@@ -159,7 +196,13 @@ fn (mut p Process) unix_spawn_process() int {
 	// Resolve the executable and build the C argv/envp vectors *before* forking;
 	// doing it in the child would allocate, and can deadlock there.
 	plan := p.unix_prepare_spawn()
-	pid := fork()
+	mut pid := -1
+	$if linux {
+		pid = p.unix_try_posix_spawn(plan, pipeset)
+	}
+	if pid < 0 {
+		pid = fork()
+	}
 	if pid != 0 {
 		// This is the parent process after the fork.
 		// Note: pid contains the process ID of the child process
