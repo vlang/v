@@ -18,6 +18,12 @@ validate the library cache, including transitive headers and native link inputs.
 unverifiable native input requires rebuilding the native library.
 `-ldflags` and `LDFLAGS` apply to the executable link, including with the native library.
 TinyCC reports executable linker options it does not support.
+On arm64 macOS, a native function whose arguments do not all fit in registers is called
+through an adapter in the native library, because TinyCC does not lay out stack arguments as
+Apple's ABI packs them.
+A TinyCC executable on macOS records the running macOS as its SDK version, as the platform
+linker does, with a UUID and without repeated rpaths. TinyCC records macOS 10.6, for which
+AppKit keeps its 10.6 control layout and image formats.
 Native implementation includes follow generated V types, while ordinary C headers precede them.
 `#preinclude` headers are ordinary headers. A header named with `@DIR` belongs to the native
 library like any other include of its directory.
@@ -226,6 +232,11 @@ Native C helpers are compiled before the static archives they call, including th
 for both serial builds and parallel builds using macOS's in-process linker.
 Under TinyCC on macOS and Linux, preallocation uses pthread storage to keep each thread's
 arena independent. The required pthread library is linked even without `spawn`.
+A program directory or test file compiles on the full runtime and keeps the program's `-gc`
+setting, as with the C backend; `-prealloc` remains opt-in. With the Boehm collector, boxed
+option, result and interface values, and spawned threads' arguments, come from the collector.
+A constant initialized by a call follows the constants of its module that the called
+functions read, also when they are declared in a later file.
 Dynamic array literals with complex element expressions evaluate those elements before copying
 the array, avoiding nested C aggregate initializers unsupported by bundled Linux TinyCC.
 Their temporaries avoid collisions with local and parameter names.
