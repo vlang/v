@@ -1125,13 +1125,9 @@ pub fn executable() string {
 				res := unsafe { (&result[0]).vstring_with_len(count).clone() }
 				return res
 			}
-			$if solaris {
-			}
-			$if haiku {
-			}
-			return executable_fallback()
 		}
 	}
+	return executable_fallback()
 }
 
 struct PathKind {

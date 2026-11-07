@@ -33,6 +33,8 @@ insufficient output buffer as an error.
 
 `os.executable()` returns the process executable path. On Linux, NetBSD, and DragonFly,
 it uses the exact byte count returned by `readlink`, without requiring a NUL terminator.
+Targets without a platform-specific lookup, including Android, use `os.args[0]`, the startup
+directory, and `PATH` as a best-effort fallback.
 
 `os.base()` removes all trailing separators before returning the final path element.
 For example, `os.base('a///')` returns `a`. An empty path returns `.`, and a path made
