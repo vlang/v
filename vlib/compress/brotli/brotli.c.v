@@ -4,19 +4,10 @@ module brotli
 import os
 import dl
 
-// Bind the sanitizer helper directly, including static runtimes whose symbols
-// are unavailable to dlsym. The C compiler owns sanitizer feature detection.
+// Keep the sanitizer helper in a separate native object so its symbol survives
+// module-cache splitting. The C compiler owns MemorySanitizer feature detection.
 #define V_BROTLI_MSAN_DATA const volatile void
-#include "@VEXEROOT/vlib/compress/brotli/brotli_msan.h"
-#if defined(__has_feature)
-#if __has_feature(memory_sanitizer)
-#define v_brotli_msan_unpoison __msan_unpoison
-#else
-#define v_brotli_msan_unpoison v_brotli_unpoison_noop
-#endif
-#else
-#define v_brotli_msan_unpoison v_brotli_unpoison_noop
-#endif
+#flag @VMODROOT/brotli_msan.c
 
 @[c_extern]
 fn C.v_brotli_msan_unpoison(data &C.V_BROTLI_MSAN_DATA, len uint)
