@@ -1774,6 +1774,18 @@ fn (mut g Parser) rewrite_expression_initializer(mut result strings.Builder, exp
 			struct_depths << brace_depth
 			struct_paren_depths << paren_depth
 			is_struct_literal = true
+		} else if scalar := fastc_scalar_zero_literal_type(previous_lit) {
+			mut look := g.s
+			if look.scan() == .rcbr {
+				// `int{}` (often a substituted `T{}`) is the zero value.
+				result.go_back(previous_lit.len)
+				piece = '(${scalar}){0'
+				brace_depth++
+				struct_types << flat.source_type_id(scalar)
+				struct_depths << brace_depth
+				struct_paren_depths << paren_depth
+				is_struct_literal = true
+			}
 		}
 	}
 	if !is_struct_literal && brace_depth > 0 {
@@ -3891,6 +3903,13 @@ fn (g &Parser) semicolon_continues_expression() bool {
 	if g.in_enum_keyed_map_value && g.s.src[offset] == `.` {
 		// The next `.field` starts the following map entry, not a member chain.
 		return false
+	}
+	if g.s.src[offset] == `.` {
+		// `.name:` can only be an enum-shorthand map key starting the next entry.
+		mut probe := g.s
+		if probe.scan() == .dot && probe.scan() == .name && probe.scan() == .colon {
+			return false
+		}
 	}
 	next := g.s.src[offset]
 	if next in [`*`, `-`, `+`] {
