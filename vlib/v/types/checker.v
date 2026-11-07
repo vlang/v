@@ -19523,8 +19523,8 @@ fn (mut tc TypeChecker) warn_unknown_attribute_names(node_id flat.NodeId, node f
 		if hint.len > 0 {
 			message = 'unknown attribute `${name}`.${hint}'
 		}
-		message += ' Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.'
-		tc.record_warning_at(.assignment_mismatch, message, node_id,
+		message += ' Unvalidated attributes are not allowed; declare a schema with `@[attribute]` or drop the attribute.'
+		tc.record_error_at(.assignment_mismatch, message, node_id,
 			token.new_span(node.pos.id, offset, offset + name.len))
 		warned[name] = true
 	}

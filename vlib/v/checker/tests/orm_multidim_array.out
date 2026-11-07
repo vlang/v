@@ -1,4 +1,4 @@
-vlib/v/checker/tests/orm_multidim_array.vv:5:11: warning: unknown attribute `pimary`. Did you mean `primary`? Unvalidated attributes are deprecated; declare a schema with `@[attribute]` or drop the attribute.
+vlib/v/checker/tests/orm_multidim_array.vv:5:11: error: unknown attribute `pimary`. Did you mean `primary`? Unvalidated attributes are not allowed; declare a schema with `@[attribute]` or drop the attribute.
     3 | @[table: users]
     4 | struct User {
     5 |     id int @[pimary]
