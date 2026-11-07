@@ -674,3 +674,43 @@ fn assert_c_flag_directive_order(main_flags string, sys_flags string, expected [
 	g.collect_c_flags_from_directives()
 	assert g.c_flags() == expected
 }
+
+fn test_os_execute_capture_flags_match_target_and_freestanding_mode() {
+	root := @VEXEROOT
+	os_dir := os.join_path(root, 'vlib', 'os')
+	helper := os.join_path(os_dir, 'execute_capture_nix.o')
+	for target_os in ['windows', 'linux', 'macos', 'freebsd', 'openbsd', 'netbsd', 'dragonfly',
+		'android', 'termux', 'ios', 'solaris', 'qnx', 'haiku', 'serenity', 'vinix', 'wasm32_emscripten'] {
+		for freestanding in [false, true] {
+			for cross in [false, true] {
+				mut prefs := pref.new_preferences()
+				prefs.vroot = root
+				arch := if target_os == 'wasm32_emscripten' { 'wasm32' } else { 'amd64' }
+				prefs.target = pref.target_from(target_os, arch) or { panic(err) }
+				prefs.output_cross_c = cross
+				if freestanding {
+					prefs.user_defines << 'freestanding'
+				}
+				files := pref.get_v_files_from_dir_for_target(os_dir, prefs.user_defines, prefs.target)
+					.filter(os.file_name(it).starts_with('execute_capture_'))
+				mut p := parser.Parser.new(prefs)
+				a := p.parse_files(files)
+				assert p.diagnostics.len == 0, p.diagnostics.str()
+				expected := if target_os != 'windows' && !freestanding {
+					[helper]
+				} else {
+					[]string{}
+				}
+				flags := cache_directive_flags(a, root, prefs.target, map[string]string{})
+				assert flags == expected, '${target_os}, freestanding=${freestanding}, cross=${cross}: ${flags}'
+				mut g := FlatGen.new()
+				g.a = a
+				g.target = prefs.target
+				g.compiler_vroot = root
+				g.output_cross_c = cross
+				g.collect_c_flags_from_directives()
+				assert g.c_flags() == expected
+			}
+		}
+	}
+}
