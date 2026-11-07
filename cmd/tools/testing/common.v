@@ -79,11 +79,34 @@ pub const separator = '-'.repeat(max_header_len) + '\n'
 
 pub const max_compilation_retries = get_max_compilation_retries()
 
+// default_test_timeout_s is how long one test program may run, in seconds, before `v test` kills
+// it and its child processes and reports `timed out`. Without a bound, a test that hangs holds a
+// worker for as long as the CI job lasts (121 minutes), and the empty output of a hang then
+// triggers an automatic retry that hangs as long again. The longest test in vlib runs for about
+// two minutes on a CI runner, so five minutes leaves room; a suite with slower tests raises it
+// with `-timeout <seconds>` or `VTEST_TIMEOUT`, and `0` turns the bound off.
+pub const default_test_timeout_s = 300
+
+pub const test_timeout_env = 'VTEST_TIMEOUT'
+
+// VTEST_RETRY_TIMEOUT=1 makes a timed out test run again like any other failed run.
+pub const retry_timeout_env = 'VTEST_RETRY_TIMEOUT'
+
 const c_error_bug_report_disabled_env = 'V_C_ERROR_BUG_REPORT_DISABLED'
 // Each worker compiles a separate test program, so bound automatic parallelism
 // by a conservative memory budget. VJOBS remains an explicit override.
 const test_job_memory_budget = u64(8) * 1024 * 1024 * 1024
 const max_automatic_test_jobs = 4
+
+// get_test_timeout_s returns the per-test wall limit in seconds: `VTEST_TIMEOUT` when it is set to
+// a number, else default_test_timeout_s.
+pub fn get_test_timeout_s() int {
+	text := os.getenv(test_timeout_env)
+	if text == '' || !text.bytes().all(it.is_digit()) {
+		return default_test_timeout_s
+	}
+	return text.int()
+}
 
 fn get_max_compilation_retries() int {
 	return os.getenv_opt('VTEST_MAX_COMPILATION_RETRIES') or { '3' }.int()
@@ -319,6 +342,9 @@ pub mut:
 
 	exec_mode ActionMode = .compile // .compile_and_run only for `v test`
 
+	timeout_s      int = default_test_timeout_s // wall limit of one test run; 0 means no limit
+	retry_timeouts bool // retry a test that timed out, as for any other failure
+
 	build_environment build_constraint.Environment // see the documentation in v.build_constraint
 	custom_defines    []string                     // for adding custom defines, known only to the individual runners
 mut:
@@ -539,6 +565,24 @@ pub fn (mut ts TestSession) exec(args []string, mtc MessageThreadContext) os.Res
 	return os.exec(args)
 }
 
+// exec_timed is exec for the run of a test: after `ts.timeout_s` seconds the process and the
+// processes it started are killed, and the second result is true. The output of a killed run is
+// what it had written until then.
+pub fn (mut ts TestSession) exec_timed(args []string, mtc MessageThreadContext) (os.Result, bool) {
+	if ts.timeout_s <= 0 {
+		return ts.exec(args, mtc), false
+	}
+	if show_cmd {
+		ts.append_message(.info, '> execute cmd: ${args.join(' ')} (limit ${ts.timeout_s} s)', mtc)
+	}
+	return cmdexec.run_merged_timed(args[0], args[1..], i64(ts.timeout_s) * 1000, false)
+}
+
+// timed_out_message is the line that names a test that was killed for running too long.
+pub fn timed_out_message(timeout_s int) string {
+	return 'timed out after ${timeout_s} s: the test and its child processes were killed'
+}
+
 // system runs a legacy command string.
 @[deprecated: 'use TestSession.system_args with an argument array to avoid shell injection']
 pub fn (mut ts TestSession) system(cmd string, mtc MessageThreadContext) int {
@@ -560,6 +604,7 @@ pub fn (mut ts TestSession) system_args(args []string, mtc MessageThreadContext)
 fn should_retry_execution(result os.Result) bool {
 	output := result.output.trim_space()
 	return output.len == 0 || output.starts_with('exec failed')
+		|| output.starts_with('os: failed to find executable')
 		|| (output.starts_with('exec(') && output.ends_with(') failed'))
 }
 
@@ -607,6 +652,8 @@ pub fn new_test_session(_vargs string, will_compile bool) TestSession {
 		progress_mode: _vargs.contains('-progress')
 		resume_dir:    test_resume_dir()
 	}
+	ts.timeout_s = get_test_timeout_s()
+	ts.retry_timeouts = os.getenv(retry_timeout_env) == '1'
 	if keep_session {
 		ts.rm_binaries = false
 		println('> vtmp_dir: ${new_vtmp_dir}')
@@ -932,7 +979,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 	if ts.show_stats {
 		ts.append_message(.cmd_begin, cmd, mtc)
 		d_cmd := time.new_stopwatch()
-		mut res := ts.exec(compile_argv, mtc)
+		mut res, stats_run_timed_out := ts.exec_timed(compile_argv, mtc)
 		mut status := res.exit_code
 		if res.output != '' {
 			output_kind := if status == 0 { MessageKind.stats_output } else { .stats_error }
@@ -942,8 +989,20 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		cmd_duration = d_cmd.elapsed()
 		ts.append_message_with_duration(.cmd_end, '', cmd_duration, mtc)
 
+		if stats_run_timed_out && !ts.retry_timeouts {
+			ts.benchmark_fail()
+			tls_bench.fail()
+			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
+				'${normalised_relative_file}\n>> ${timed_out_message(ts.timeout_s)}', cmd_duration),
+				cmd_duration, mtc)
+			ts.add_failed_cmd(reproduce_cmd)
+			return pool.no_result
+		}
 		if status != 0 {
 			add_automatic_execution_retry(mut details, res)
+			if stats_run_timed_out && details.retry == 0 {
+				details.retry = 1
+			}
 			os.setenv('VTEST_RETRY_MAX', '${details.retry}', true)
 			for retry := 1; retry <= details.retry; retry++ {
 				if !details.hide_retries {
@@ -1024,15 +1083,31 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 		mut failure_output := strings.new_builder(1024)
 		ts.append_message(.cmd_begin, run_cmd, mtc)
 		d_cmd := time.new_stopwatch()
-		mut r := ts.exec(os.split_args(run_cmd) or { panic(err) }, mtc)
+		mut r, first_run_timed_out := ts.exec_timed(os.split_args(run_cmd) or { panic(err) }, mtc)
+		mut run_timed_out := first_run_timed_out
 		cmd_duration = d_cmd.elapsed()
 		ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
+		if run_timed_out && !ts.retry_timeouts {
+			// A test that hangs would hang again: fail it by name, and do not run it a second time.
+			ts.benchmark_fail()
+			tls_bench.fail()
+			ts.append_message_with_duration(.fail, tls_bench.step_message_with_label_and_duration(benchmark.b_fail,
+				'${normalised_relative_file}\n>> ${timed_out_message(ts.timeout_s)}\n${r.output.trim_space()}',
+				cmd_duration,
+				preparation: compile_cmd_duration
+			), cmd_duration, mtc)
+			ts.add_failed_cmd(reproduce_cmd)
+			return pool.no_result
+		}
 		if ts.show_asserts && r.exit_code == 0 {
 			println(r.output.split_into_lines().filter(it.contains(' assert')).join('\n'))
 		}
 		if r.exit_code != 0 {
 			mut trimmed_output := r.output.trim_space()
 			add_automatic_execution_retry(mut details, r)
+			if run_timed_out && details.retry == 0 {
+				details.retry = 1 // -retry-timeouts: a killed run has output, so it is not retried by default
+			}
 			if details.retry != 0 {
 				failure_output.write_string(separator)
 				failure_output.writeln(' retry: 0 ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
@@ -1046,7 +1121,7 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				os.setenv('VTEST_RETRY', '${retry}', true)
 				ts.append_message(.cmd_begin, run_cmd, mtc)
 				d_cmd_2 := time.new_stopwatch()
-				r = ts.exec(os.split_args(run_cmd) or { panic(err) }, mtc)
+				r, run_timed_out = ts.exec_timed(os.split_args(run_cmd) or { panic(err) }, mtc)
 				cmd_duration = d_cmd_2.elapsed()
 				ts.append_message_with_duration(.cmd_end, r.output, cmd_duration, mtc)
 
@@ -1059,6 +1134,9 @@ fn worker_trunner(mut p pool.PoolProcessor, idx int, thread_id int) voidptr {
 				failure_output.write_string(separator)
 				failure_output.writeln(' retry: ${retry} ; max_retry: ${details.retry} ; r.exit_code: ${r.exit_code} ; trimmed_output.len: ${trimmed_output.len}')
 				failure_output.writeln(trimmed_output)
+				if run_timed_out {
+					failure_output.writeln(timed_out_message(ts.timeout_s))
+				}
 				time.sleep(fail_retry_delay_ms)
 			}
 			full_failure_output := failure_output.str().trim_space()
