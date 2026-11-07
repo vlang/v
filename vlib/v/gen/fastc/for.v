@@ -70,9 +70,16 @@ fn (mut g Parser) parse_for() !bool {
 			start := if value_name != '' && g.tok == .lcbr {
 				g.read_inferred_map_literal()!
 			} else {
-				g.read_expression([token.Token.dotdot, token.Token.lcbr])!
+				g.read_expression([token.Token.dotdot, token.Token.lcbr, token.Token.semicolon])!
 			}
 			start_expression_type := g.last_expression_type
+			if g.tok == .semicolon {
+				// The body may open on the next line after a multi-line collection.
+				mut look := g.s
+				if look.scan() == .lcbr {
+					g.next()
+				}
+			}
 			start_expression := g.last_expression
 			if g.tok == .dotdot {
 				if item_is_mut || value_name != '' {

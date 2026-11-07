@@ -5,6 +5,12 @@ without the regular parser, checker, or AST pipeline, then compiles with bundled
 Select `-cc clang` to compile the emitted C with Clang, including Objective-C interop on macOS.
 Ordinary default builds and explicit `-cc tcc` builds compile generated V code and link with
 TinyCC. FastC reports TinyCC compilation failures directly.
+TinyCC compiles the program as parallel units. Conditional blocks that hold only preprocessor
+directives, including `#define`, are shared by every unit, unless a block defines a macro and
+includes a header, which can select the header's definitions. Such blocks and other conditional
+blocks outside functions keep the program in one unit. Generic instances form units of about 1 MiB.
+In a split build, embedded files totalling at least 1 MiB form a separate object that names no
+header. It is reused while its text, TinyCC and flags are unchanged; `-nocache` rebuilds it.
 On macOS, Objective-C interop uses a cached native library built by the platform compiler.
 Generated V code and the executable link remain on TinyCC, including with
 `-no-retry-compilation`. Native bindings come from explicit V declarations; V never infers
@@ -13,7 +19,19 @@ validate the library cache, including transitive headers and native link inputs.
 unverifiable native input requires rebuilding the native library.
 `-ldflags` and `LDFLAGS` apply to the executable link, including with the native library.
 TinyCC reports executable linker options it does not support.
+On arm64 macOS, a native function whose arguments do not all fit in registers is called
+through an adapter in the native library, because TinyCC does not lay out stack arguments as
+Apple's ABI packs them.
+A TinyCC executable on macOS records the running macOS as its SDK version, as the platform
+linker does, with a UUID and without repeated rpaths. TinyCC records macOS 10.6, for which
+AppKit keeps its 10.6 control layout and image formats. On arm64, signing also corrects
+TinyCC's addresses of stack offsets of 4 KiB and more, which it computed from the zero register
+instead of the stack pointer.
 Native implementation includes follow generated V types, while ordinary C headers precede them.
+`#preinclude` headers are ordinary headers. A header named with `@DIR` belongs to the native
+library like any other include of its directory.
+The C compiler's list of headers opened by the TinyCC program is reused while the program's
+preprocessor lines, compiler and flags are unchanged and every listed header keeps its content.
 Explicit macro directives retain their source-file order around native implementations.
 With `-o program.c`, FastC writes C without invoking a native compiler or linker.
 C output is published only after the buffered writes, final flush, and close succeed.
@@ -103,6 +121,8 @@ Function-pointer fields and parameters support mixed named and unnamed parameter
 Native function parameters can also name imported V types, such as `gg.Color`.
 Function aliases support nested callback parameter types, including callbacks taking callbacks.
 Field iteration supports `field.is_shared` and passing `field.attrs` to helper functions.
+Enum value iteration provides each value's `attrs`, and `$for attr in Enum.attributes` provides
+the `name`, `arg` and `has_arg` of the enum's own attributes.
 Member and operator continuations can follow comments on a new line.
 `$zero(Type)` supports scalars, pointers, enums, structs, dynamic arrays, and maps.
 Optional collection elements preserve their payload types. Array guards and `or` fallbacks
@@ -187,6 +207,14 @@ Dependency-free global defaults are available before runtime constants in their 
 Generic methods taking `map[K]V` can infer both type arguments from a map value.
 Standalone `unsafe` blocks preserve local scopes. Forward labels remain reachable after a return
 in translated code.
+Typed map literals with entries, `map[K]V{key: value}`, build their map in any expression,
+including generic call arguments. A new line starting with `.name:` begins the next entry of an
+enum-keyed map literal. As with the C backend, constants and globals continue on the next line
+after a leading binary operator other than `*` and `&`. `Enum.from_string` accepts a module
+qualifier. A loop inside a `defer` block may use `break` and `continue`. A `__global` initialized
+with a function literal can be called. A member tested with `if x.f !is T || ... { return }`
+stays narrowed to `T` for the rest of the block, and `==` between members narrowed to a struct
+variant compares their values. Assigning an `IError` to a `?IError` stores it as the value.
 
 Capturing callbacks proven local to a block release their runtime slot and captured context
 when the block exits, including through `return`, `break`, and `continue`. Callbacks that escape
@@ -207,6 +235,11 @@ Native C helpers are compiled before the static archives they call, including th
 for both serial builds and parallel builds using macOS's in-process linker.
 Under TinyCC on macOS and Linux, preallocation uses pthread storage to keep each thread's
 arena independent. The required pthread library is linked even without `spawn`.
+A program directory or test file compiles on the full runtime and keeps the program's `-gc`
+setting, as with the C backend; `-prealloc` remains opt-in. With the Boehm collector, boxed
+option, result and interface values, and spawned threads' arguments, come from the collector.
+A constant initialized by a call follows the constants of its module that the called
+functions read, also when they are declared in a later file.
 Dynamic array literals with complex element expressions evaluate those elements before copying
 the array, avoiding nested C aggregate initializers unsupported by bundled Linux TinyCC.
 Their temporaries avoid collisions with local and parameter names.

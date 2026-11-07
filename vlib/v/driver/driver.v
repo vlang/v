@@ -9458,7 +9458,7 @@ $if !skip_fastc ? {
 		return V3FastCCompileResult{ success: true, command: command, output: output }
 	}
 
-	fn compile_v3_fastc_source(pieces []string, units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, link_ld_flags []string, macos_sdk_root string, is_debug bool, uses_threads bool, cache_enabled bool, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
+	fn compile_v3_fastc_source(pieces []string, generated_units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, link_ld_flags []string, macos_sdk_root string, is_debug bool, uses_threads bool, cache_enabled bool, payload_cache_enabled bool, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
 		bench_phases := os.getenv('FASTC_BENCH_PHASES') != ''
 		cc_sw := time.new_stopwatch()
 		tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
@@ -9492,6 +9492,9 @@ $if !skip_fastc ? {
 		mut compile_args := compile_base_args.clone()
 		compile_args << user_compile_args
 		jobs := fastc.fastc_tcc_job_count(prefs)
+		// Embedded files of a split build compile as their own cached object.
+		payload := fastc.fastc_split_payload_unit(pieces, generated_units, jobs)
+		units := payload.units
 		mut uses_prestarted := false
 		$if macos {
 			uses_prestarted = fastc.fastc_prestarted_c_units_match(&prestarted, compile_args, jobs)
@@ -9535,6 +9538,8 @@ $if !skip_fastc ? {
 				}
 			}
 		}
+		payload_compile := spawn fastc.fastc_payload_object(tcc_path, compile_args, payload.source,
+			build_dir, payload_cache_enabled)
 		// The program's translation units are compiled by concurrent TinyCC
 		// processes and linked; a program that does not split is compiled as
 		// one file.
@@ -9565,6 +9570,17 @@ $if !skip_fastc ? {
 				&& final_args[0] == os.join_path(build_dir, 'host_support_darwin.c')
 		}
 		generation_link_cache_key := fastc.fastc_generation_link_cache_key(tcc_path, compile_args, final_args, pieces, units, jobs, cache_enabled && !final_args.any(fastc.fastc_flag_is_native_input(it)))
+		// The pieces already identify the payload, wherever its object is stored.
+		payload_object := payload_compile.wait()
+		if payload_object.error != '' {
+			return V3FastCCompileResult{
+				command: cmdexec.display(tcc_path, compile_args)
+				output:  payload_object.error
+			}
+		}
+		if payload_object.path != '' {
+			final_args << payload_object.path
+		}
 		if fastc.fastc_restore_link_cache(generation_link_cache_key, staged_binary) {
 			if bench_phases {
 				now_us := cc_sw.elapsed().microseconds()
@@ -10967,12 +10983,16 @@ pub fn run(args []string) {
 	compiler_tree_input := input_is_compiler_tree(input_file)
 	fastc_test_file := backend == 'fastc' && (is_v3_test_file(input_file, backend, target)
 		|| is_v3_test_file(input_file, 'c', target))
+	// fastc_real_builtin_program marks an ordinary program that sets `building_v` only to
+	// reach FastC's full runtime. It keeps the program's own allocator and defines.
+	mut fastc_real_builtin_program := false
 	if backend == 'fastc' && ('fastc_real_builtin' in user_defines || os.is_dir(input_file)
 		|| fastc_test_file) {
 		// Opt-in: compile an ordinary program through FastC's real-`builtin` path
 		// (real `struct string`, error system, and the full runtime) instead of the
 		// bootstrap `const char*` runtime. Directory entries use the same path, and so
 		// does a test file, whose harness reports through V strings and errors.
+		fastc_real_builtin_program = !building_v && !cmd_v_build
 		building_v = true
 	}
 	// Large serial compiler-module builds create the same transform and C-generation
@@ -10998,7 +11018,10 @@ pub fn run(args []string) {
 		}
 	}
 
-	if (building_v || cmd_v_build) && !target_libc_headers {
+	// A compiler build defaults to the parallel generator and the prealloc arena. A
+	// program keeps its collector: prealloc never frees, so the program's own `GC_free`
+	// or `free` of a V allocation would release arena memory.
+	if (building_v || cmd_v_build) && !fastc_real_builtin_program && !target_libc_headers {
 		if no_parallel {
 			// This controls the current build only. Keep parallel support in the output
 			// compiler so its module graph does not depend on how it was bootstrapped.
