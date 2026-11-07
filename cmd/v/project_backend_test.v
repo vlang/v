@@ -60,6 +60,42 @@ fn test_project_backend_is_the_default_for_the_project() {
 	assert with_project_backend(['run', '-']) == ['run', '-']
 }
 
+fn test_generated_sources_belong_to_no_project() {
+	root := project_backend_fixture('generated', "Module {\n\tname: 'app'\n\tbackend: 'fastc'\n}\n")
+	inline := os.join_path(root, '.v3_inline_1_abc.vsh')
+	stdin := os.join_path(root, '.v3_stdin_1_abc.v')
+	os.write_file(inline, 'println(1)\n')!
+	os.write_file(stdin, 'println(1)\n')!
+	assert with_project_backend(['run', inline]) == ['run', inline]
+	assert with_project_backend(['run', stdin]) == ['run', stdin]
+	// Only the compiler's own names are exempt.
+	other := os.join_path(root, 'v3_inline_1_abc.vsh')
+	os.write_file(other, 'println(1)\n')!
+	assert with_project_backend(['run', other]) == ['-b', 'fastc', 'run', other]
+}
+
+fn test_test_targets_are_run_with_their_own_project_backends() {
+	c_project := project_backend_fixture('runs_c', "Module {\n\tname: 'app'\n\tbackend: 'c'\n}\n")
+	fastc_project := project_backend_fixture('runs_fastc', "Module {\n\tname: 'app'\n\tbackend: 'fastc'\n}\n")
+	plain := project_backend_fixture('runs_plain', '')
+	c_test := os.join_path(c_project, 'sub', 'a_test.v')
+	assert project_test_runs(['-g', 'test', c_project, '-run-only', 'test_a', fastc_project, plain,
+		c_test], 1) == [
+		['-b', 'c', '-g', 'test', '-run-only', 'test_a', c_project, c_test],
+		['-b', 'fastc', '-g', 'test', '-run-only', 'test_a', fastc_project],
+		['-g', 'test', '-run-only', 'test_a', plain],
+	]
+	// Targets of one backend keep the command line as it is.
+	assert project_test_runs(['test', c_project, '-v', c_test], 0) == [
+		['-b', 'c', 'test', c_project, '-v', c_test],
+	]
+	assert project_test_runs(['test', plain], 0) == [['test', plain]]
+	// An explicit backend applies to every target.
+	assert project_test_runs(['-b', 'c', 'test', fastc_project, plain], 2) == [
+		['-b', 'c', 'test', fastc_project, plain],
+	]
+}
+
 fn test_project_without_backend_keeps_the_command_line() {
 	plain := project_backend_fixture('plain', "Module {\n\tname: 'app'\n}\n")
 	assert with_project_backend([plain]) == [plain]
@@ -134,4 +170,47 @@ fn test_test_command_hands_the_project_backend_to_the_test_runner() {
 	assert rejected.exit_code == 1, rejected.output
 	assert rejected.output.contains('unknown backend `pascal`'), rejected.output
 	assert !rejected.output.contains('Summary for all V _test.v files'), rejected.output
+}
+
+fn test_test_targets_of_different_projects_keep_their_backends() {
+	plain := project_backend_fixture('multi_plain', '')
+	c_project := project_backend_fixture('multi_c', "Module {\n\tname: 'app'\n\tbackend: 'c'\n}\n")
+	os.write_file(os.join_path(c_project, 'sub', 'a_test.v'), 'fn test_a() {\n\tassert false\n}\n')!
+	// The first target has no backend; the second project's own backend still reaches the
+	// runner that selects and builds its tests.
+	tested := run_launcher_in(os.dir(plain), ['test', plain, c_project], '')
+	assert tested.exit_code == 1, tested.output
+	assert tested.output.count('Summary for all V _test.v files') == 2, tested.output
+	assert tested.output.contains(' -b c '), tested.output
+	assert tested.output.contains(os.join_path(c_project, 'sub', 'a_test.v')), tested.output
+}
+
+fn test_generated_sources_reach_a_pinned_compiler_unchanged() {
+	$if windows {
+		// The pinned compiler below is a shell script.
+		return
+	}
+	root := project_backend_fixture('pinned', '')
+	os.write_file(os.join_path(root, '.vvmrc'), '9.8.7\n')!
+	vvm_home := os.join_path(os.dir(root), 'pinned_vvm')
+	pinned := os.join_path(vvm_home, '9.8.7', 'bin', 'v')
+	os.mkdir_all(os.dir(pinned))!
+	os.write_file(pinned, '#!/bin/sh\necho "pinned: $*"\n')!
+	os.chmod(pinned, 0o755)!
+	os.setenv('VVM_HOME', vvm_home, true)
+	defer {
+		os.unsetenv('VVM_HOME')
+	}
+	inline := run_launcher_in(root, ['-e', 'println(1)'], '')
+	assert inline.exit_code == 0, inline.output
+	assert inline.output.contains('pinned: run '), inline.output
+	assert inline.output.contains('.v3_inline_'), inline.output
+	assert !inline.output.contains('-v3-internal'), inline.output
+	stdin_source := os.join_path(os.dir(root), 'pinned_stdin.v')
+	os.write_file(stdin_source, 'println(1)\n')!
+	piped := run_launcher_in(root, ['run', '-'], stdin_source)
+	assert piped.exit_code == 0, piped.output
+	assert piped.output.contains('pinned: run '), piped.output
+	assert piped.output.contains('.v3_stdin_'), piped.output
+	assert !piped.output.contains('-v3-internal'), piped.output
 }

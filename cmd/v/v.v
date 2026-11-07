@@ -223,10 +223,11 @@ fn main() {
 		|| command in ['new', 'init', 'generate', 'install', 'link', 'list', 'outdated', 'remove',
 			'registry', 'search', 'show', 'unlink', 'update', 'upgrade', 'vlib-docs'] {
 		if command == 'test' {
-			// `vtest` selects the test files and evaluates their `// vtest build:` constraints for
-			// the backend in the options before `test`, so the project's backend must be there.
-			test_args := with_project_backend(args)
-			run_external_tool(test_args, command_index + test_args.len - args.len, command)
+			runs := project_test_runs(args, command_index)
+			if runs.len > 1 {
+				exit(run_project_tests(runs))
+			}
+			run_external_tool(runs[0], command_index + runs[0].len - args.len, command)
 			return
 		}
 		run_external_tool(args, command_index, command)

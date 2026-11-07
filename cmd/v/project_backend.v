@@ -12,16 +12,98 @@ const project_backends = ['c', 'fastc', 'arm64', 'x64', 'wasm']
 // such as `backend: 'fastc'`, when the command line does not select one with `-b`.
 fn with_project_backend(args []string) []string {
 	compiler_args := compiler_args_before_program(args)
-	if backend_option_given(compiler_args) || driver.no_project_backend_flag in compiler_args {
+	if backend_option_given(compiler_args) {
 		return args
 	}
-	backend := project_backend(compiler_input_path(compiler_args))
+	input := compiler_input_path(compiler_args)
+	if driver.is_generated_source(input) {
+		// `-e` code and standard input belong to no project, even in a project folder.
+		return args
+	}
+	backend := project_backend(input)
 	if backend == '' {
 		return args
 	}
 	mut result := ['-b', backend]
 	result << args
 	return result
+}
+
+// project_test_runs returns the command lines that run `v test` for `args`, where `test` is
+// at `command_index`. The test runner selects files and evaluates their `// vtest build:`
+// constraints for the backend in the options before `test`, so the targets of each project
+// backend get a run of their own with that backend there. Runs follow the first target of each
+// backend; the targets keep their order. An explicit `-b` makes one run of all targets.
+fn project_test_runs(args []string, command_index int) [][]string {
+	prefix := args[..command_index]
+	if backend_option_given(prefix) {
+		return [args]
+	}
+	mut options := []string{}
+	mut backends := []string{}
+	mut targets := [][]string{}
+	mut value_follows := false
+	for arg in args[command_index + 1..] {
+		if value_follows || arg.starts_with('-') {
+			options << arg
+			value_follows = !value_follows && arg == '-run-only'
+			continue
+		}
+		backend := project_backend(arg)
+		mut index := backends.index(backend)
+		if index < 0 {
+			backends << backend
+			targets << []string{}
+			index = backends.len - 1
+		}
+		targets[index] << arg
+	}
+	if backends.len <= 1 {
+		backend := if backends.len == 0 { '' } else { backends[0] }
+		if backend == '' {
+			return [args]
+		}
+		mut run := ['-b', backend]
+		run << args
+		return [run]
+	}
+	mut runs := [][]string{}
+	for i, backend in backends {
+		mut run := []string{}
+		if backend != '' {
+			run << ['-b', backend]
+		}
+		run << prefix
+		run << 'test'
+		run << options
+		run << targets[i]
+		runs << run
+	}
+	return runs
+}
+
+// run_project_tests runs each command line of project_test_runs with this launcher, one after
+// another, and returns 1 when any of them failed. `-fail-fast` stops after the first failure.
+fn run_project_tests(runs [][]string) int {
+	// The command lines already hold the options of VFLAGS; the runs must not add them again.
+	mut environment := os.environ()
+	environment.delete('VFLAGS')
+	mut status := 0
+	for run in runs {
+		mut process := os.new_process(os.executable())
+		process.set_args(run)
+		process.set_environment(environment)
+		process.wait()
+		failed := process.code != 0
+		process.close()
+		if failed {
+			status = 1
+			if '-fail-fast' in run {
+				break
+			}
+		}
+	}
+	return status
 }
 
 // backend_option_given reports whether the compiler options in `args` select a backend.

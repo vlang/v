@@ -8406,8 +8406,9 @@ project that locks other revisions of the same packages switches them back. Use
    by default. It applies to every build, run, and test whose input file or
    folder belongs to that `v.mod`, the same as passing `-b fastc`. An explicit
    `-b` on the command line still wins, so `v -b c .` uses the C backend. Code
-   given with `-e` or on standard input belongs to no project. The accepted
-   values are `c`, `fastc`, `arm64`, `x64`, and `wasm`.
+   given with `-e` or on standard input belongs to no project, and each target
+   of `v test` uses the backend of its own `v.mod`. The accepted values are `c`,
+   `fastc`, `arm64`, `x64`, and `wasm`.
 
    The name of your package should be used with the `module` directive
    at the top of all files in your package. For `mypackage.v`:
