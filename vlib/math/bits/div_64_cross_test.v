@@ -37,6 +37,22 @@ typedef struct { u64 arg0; u64 arg1; } multi_return_u64_u64;
 multi_return_u64_u64 bits__div_64_default(u64, u64, u64);
 __attribute__((used)) ${function}
 ')!
+	// Some Clang installations (notably OpenBSD) have intrin.h but lack its
+	// transitive intrin0.h. Keep the C generation check, but only try the
+	// optional Windows compilation when its intrinsic headers are usable.
+	intrin_probe := os.join_path(root, 'intrin_probe.c')
+	os.write_file(intrin_probe, '#include <intrin.h>\n')!
+	probe := os.exec([clang, '-target', 'x86_64-pc-windows-msvc', '-ffreestanding',
+		'-fsyntax-only', intrin_probe])
+	if probe.exit_code != 0 {
+		if probe.output.contains('file not found') {
+			if probe.output.contains("'intrin.h'") || probe.output.contains("'intrin0.h'") {
+				eprintln('Skipping Windows intrinsic compile: ${probe.output}')
+				return
+			}
+		}
+		assert probe.exit_code == 0, probe.output
+	}
 	object := os.join_path(root, 'check.obj')
 	checked := os.exec([clang, '-target', 'x86_64-pc-windows-msvc', '-ffreestanding',
 		'-Werror=implicit-function-declaration', '-c', check_source, '-o', object])
