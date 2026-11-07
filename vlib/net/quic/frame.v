@@ -211,6 +211,52 @@ pub:
 // analogous note).
 pub struct HandshakeDoneFrame {}
 
+// NewTokenFrame represents a NEW_TOKEN frame (type 0x07, RFC 9000 §19.7): an
+// address-validation token a server offers for a future connection. An
+// empty token is rejected by parse_frame (FRAME_ENCODING_ERROR); the
+// server-must-reject-it rule needs the endpoint's role and is the caller's.
+pub struct NewTokenFrame {
+pub:
+	token []u8
+}
+
+// NewConnectionIdFrame represents a NEW_CONNECTION_ID frame (type 0x18, RFC
+// 9000 §19.15): the sender offering an additional connection ID and the
+// stateless reset token that goes with it. parse_frame enforces the frame's
+// own field rules (1-20 byte connection ID, retire_prior_to not above
+// sequence_number); everything that needs connection state (limits,
+// duplicates, retirement) is the caller's.
+pub struct NewConnectionIdFrame {
+pub:
+	sequence_number       u64
+	retire_prior_to       u64
+	connection_id         []u8
+	stateless_reset_token []u8 // always exactly 16 bytes
+}
+
+// RetireConnectionIdFrame represents a RETIRE_CONNECTION_ID frame (type
+// 0x19, RFC 9000 §19.16): the sender will no longer use the connection ID
+// with this sequence number. Every check in §19.16 needs connection state
+// and is the caller's.
+pub struct RetireConnectionIdFrame {
+pub:
+	sequence_number u64
+}
+
+// PathChallengeFrame represents a PATH_CHALLENGE frame (type 0x1a, RFC 9000
+// §19.17): 8 bytes the peer must echo back in a PATH_RESPONSE.
+pub struct PathChallengeFrame {
+pub:
+	data []u8 // always exactly 8 bytes
+}
+
+// PathResponseFrame represents a PATH_RESPONSE frame (type 0x1b, RFC 9000
+// §19.18): the echo of a PATH_CHALLENGE's 8 bytes.
+pub struct PathResponseFrame {
+pub:
+	data []u8 // always exactly 8 bytes
+}
+
 pub type QuicFrame = AckFrame
 	| ConnectionCloseFrame
 	| CryptoFrame
@@ -219,9 +265,14 @@ pub type QuicFrame = AckFrame
 	| MaxDataFrame
 	| MaxStreamDataFrame
 	| MaxStreamsFrame
+	| NewConnectionIdFrame
+	| NewTokenFrame
 	| PaddingFrame
+	| PathChallengeFrame
+	| PathResponseFrame
 	| PingFrame
 	| ResetStreamFrame
+	| RetireConnectionIdFrame
 	| StopSendingFrame
 	| StreamDataBlockedFrame
 	| StreamFrame
@@ -234,6 +285,7 @@ const frame_type_ack_ecn = u64(0x03)
 const frame_type_reset_stream = u64(0x04)
 const frame_type_stop_sending = u64(0x05)
 const frame_type_crypto = u64(0x06)
+const frame_type_new_token = u64(0x07)
 const frame_type_stream_base = u64(0x08) // 0x08-0x0f, OFF/LEN/FIN bits in the low 3 bits
 
 const frame_type_max_data = u64(0x10)
@@ -244,9 +296,25 @@ const frame_type_data_blocked = u64(0x14)
 const frame_type_stream_data_blocked = u64(0x15)
 const frame_type_streams_blocked_bidi = u64(0x16)
 const frame_type_streams_blocked_uni = u64(0x17)
+const frame_type_new_connection_id = u64(0x18)
+const frame_type_retire_connection_id = u64(0x19)
+const frame_type_path_challenge = u64(0x1a)
+const frame_type_path_response = u64(0x1b)
 const frame_type_connection_close_transport = u64(0x1c)
 const frame_type_connection_close_application = u64(0x1d)
 const frame_type_handshake_done = u64(0x1e)
+
+// quic_error_frame_encoding is RFC 9000 §20.1's FRAME_ENCODING_ERROR, for a
+// frame that is badly formatted (truncated, or a field outside its range).
+const quic_error_frame_encoding = u64(0x07)
+
+// path_data_length is the fixed Data length of PATH_CHALLENGE and
+// PATH_RESPONSE frames (RFC 9000 §19.17-§19.18).
+const path_data_length = 8
+
+// stateless_reset_token_length is the fixed length of a stateless reset
+// token (RFC 9000 §10.3).
+const stateless_reset_token_length = 16
 
 // parse_frame parses exactly one frame from the start of `buf`, returning
 // the frame and the number of bytes consumed. A run of consecutive PADDING
@@ -324,7 +392,119 @@ pub fn parse_frame(buf []u8) !(QuicFrame, int) {
 		return QuicFrame(HandshakeDoneFrame{}), typ_len
 	}
 
-	return error('quic: frame type 0x${typ:02x} is not yet implemented by this module')
+	if typ == frame_type_new_token {
+		return parse_new_token_frame(buf, typ_len)
+	}
+
+	if typ == frame_type_new_connection_id {
+		return parse_new_connection_id_frame(buf, typ_len)
+	}
+
+	if typ == frame_type_retire_connection_id {
+		return parse_retire_connection_id_frame(buf, typ_len)
+	}
+
+	if typ == frame_type_path_challenge || typ == frame_type_path_response {
+		return parse_path_frame(buf, typ_len, typ == frame_type_path_response)
+	}
+
+	// Every frame type RFC 9000 defines is handled above. RFC 9000 §12.4:
+	// "An endpoint MUST treat the receipt of a frame of unknown type as a
+	// connection error of type FRAME_ENCODING_ERROR."
+	return frame_encoding_error('unknown frame type 0x${typ:02x} (RFC 9000 §12.4)')
+}
+
+// frame_encoding_error reports a malformed frame as FRAME_ENCODING_ERROR.
+fn frame_encoding_error(msg string) IError {
+	return error_with_code('quic: ${msg}', int(quic_error_frame_encoding))
+}
+
+// decode_frame_varint decodes one varint field of a frame, reporting a
+// truncated field as FRAME_ENCODING_ERROR.
+fn decode_frame_varint(buf []u8, offset int, frame_name string, field string) !(u64, int) {
+	if offset >= buf.len {
+		return frame_encoding_error('${frame_name} frame: missing ${field}')
+	}
+	return decode_varint(buf[offset..]) or {
+		return frame_encoding_error('${frame_name} frame: truncated ${field}')
+	}
+}
+
+fn parse_new_token_frame(buf []u8, start int) !(QuicFrame, int) {
+	length, n := decode_frame_varint(buf, start, 'NEW_TOKEN', 'Token Length')!
+	offset := start + n
+	// RFC 9000 §19.7: "A client MUST treat receipt of a NEW_TOKEN frame with
+	// an empty Token field as a connection error of type FRAME_ENCODING_ERROR."
+	if length == 0 {
+		return frame_encoding_error('NEW_TOKEN frame: empty Token field (RFC 9000 §19.7)')
+	}
+	if length > u64(buf.len - offset) {
+		return frame_encoding_error('NEW_TOKEN frame: Token Length ${length} exceeds the remaining ${buf.len - offset} bytes')
+	}
+	end := offset + int(length)
+	return QuicFrame(NewTokenFrame{
+		token: buf[offset..end].clone()
+	}), end
+}
+
+fn parse_new_connection_id_frame(buf []u8, start int) !(QuicFrame, int) {
+	sequence_number, n1 := decode_frame_varint(buf, start, 'NEW_CONNECTION_ID', 'Sequence Number')!
+	mut offset := start + n1
+	retire_prior_to, n2 := decode_frame_varint(buf, offset, 'NEW_CONNECTION_ID', 'Retire Prior To')!
+	offset += n2
+	// RFC 9000 §19.15: "Receiving a value in the Retire Prior To field that
+	// is greater than that in the Sequence Number field MUST be treated as a
+	// connection error of type FRAME_ENCODING_ERROR."
+	if retire_prior_to > sequence_number {
+		return frame_encoding_error('NEW_CONNECTION_ID frame: retire_prior_to ${retire_prior_to} exceeds sequence_number ${sequence_number} (RFC 9000 §19.15)')
+	}
+	if offset >= buf.len {
+		return frame_encoding_error('NEW_CONNECTION_ID frame: missing Length')
+	}
+	length := int(buf[offset])
+	offset++
+	// RFC 9000 §19.15: "Values less than 1 and greater than 20 are invalid
+	// and MUST be treated as a connection error of type FRAME_ENCODING_ERROR."
+	if length < 1 || length > quic_v1_max_cid_len {
+		return frame_encoding_error('NEW_CONNECTION_ID frame: connection ID length ${length} is outside 1-${quic_v1_max_cid_len} (RFC 9000 §19.15)')
+	}
+	if buf.len - offset < length + stateless_reset_token_length {
+		return frame_encoding_error('NEW_CONNECTION_ID frame: truncated Connection ID or Stateless Reset Token')
+	}
+	connection_id := buf[offset..offset + length].clone()
+	offset += length
+	token := buf[offset..offset + stateless_reset_token_length].clone()
+	offset += stateless_reset_token_length
+	return QuicFrame(NewConnectionIdFrame{
+		sequence_number:       sequence_number
+		retire_prior_to:       retire_prior_to
+		connection_id:         connection_id
+		stateless_reset_token: token
+	}), offset
+}
+
+fn parse_retire_connection_id_frame(buf []u8, start int) !(QuicFrame, int) {
+	sequence_number, n := decode_frame_varint(buf, start, 'RETIRE_CONNECTION_ID', 'Sequence Number')!
+	return QuicFrame(RetireConnectionIdFrame{
+		sequence_number: sequence_number
+	}), start + n
+}
+
+fn parse_path_frame(buf []u8, start int, is_response bool) !(QuicFrame, int) {
+	name := if is_response { 'PATH_RESPONSE' } else { 'PATH_CHALLENGE' }
+	if buf.len - start < path_data_length {
+		return frame_encoding_error('${name} frame: Data shorter than ${path_data_length} bytes')
+	}
+	end := start + path_data_length
+	data := buf[start..end].clone()
+	if is_response {
+		return QuicFrame(PathResponseFrame{
+			data: data
+		}), end
+	}
+	return QuicFrame(PathChallengeFrame{
+		data: data
+	}), end
 }
 
 fn parse_ack_frame(buf []u8, start int, has_ecn_counts bool) !(QuicFrame, int) {
@@ -837,6 +1017,67 @@ pub fn encode_streams_blocked_frame(direction StreamDirection, maximum_streams u
 	}
 	mut out := encode_varint(typ)!
 	out << encode_varint(maximum_streams)!
+	return out
+}
+
+// encode_new_token_frame serializes a NEW_TOKEN frame. `token` must not be
+// empty (RFC 9000 §19.7).
+pub fn encode_new_token_frame(token []u8) ![]u8 {
+	if token.len == 0 {
+		return error('quic: encode_new_token_frame: token must not be empty (RFC 9000 §19.7)')
+	}
+	mut out := encode_varint(frame_type_new_token)!
+	out << encode_varint(u64(token.len))!
+	out << token
+	return out
+}
+
+// encode_new_connection_id_frame serializes a NEW_CONNECTION_ID frame,
+// applying the same field rules parse_frame enforces (RFC 9000 §19.15).
+pub fn encode_new_connection_id_frame(sequence_number u64, retire_prior_to u64, connection_id []u8, stateless_reset_token []u8) ![]u8 {
+	if retire_prior_to > sequence_number {
+		return error('quic: encode_new_connection_id_frame: retire_prior_to ${retire_prior_to} exceeds sequence_number ${sequence_number} (RFC 9000 §19.15)')
+	}
+	if connection_id.len < 1 || connection_id.len > quic_v1_max_cid_len {
+		return error('quic: encode_new_connection_id_frame: connection ID length ${connection_id.len} is outside 1-${quic_v1_max_cid_len} (RFC 9000 §19.15)')
+	}
+	if stateless_reset_token.len != stateless_reset_token_length {
+		return error('quic: encode_new_connection_id_frame: stateless reset token must be ${stateless_reset_token_length} bytes, got ${stateless_reset_token.len}')
+	}
+	mut out := encode_varint(frame_type_new_connection_id)!
+	out << encode_varint(sequence_number)!
+	out << encode_varint(retire_prior_to)!
+	out << u8(connection_id.len)
+	out << connection_id
+	out << stateless_reset_token
+	return out
+}
+
+// encode_retire_connection_id_frame serializes a RETIRE_CONNECTION_ID frame.
+pub fn encode_retire_connection_id_frame(sequence_number u64) ![]u8 {
+	mut out := encode_varint(frame_type_retire_connection_id)!
+	out << encode_varint(sequence_number)!
+	return out
+}
+
+// encode_path_challenge_frame serializes a PATH_CHALLENGE frame carrying
+// exactly 8 bytes of `data`.
+pub fn encode_path_challenge_frame(data []u8) ![]u8 {
+	return encode_path_frame(frame_type_path_challenge, data)
+}
+
+// encode_path_response_frame serializes a PATH_RESPONSE frame echoing
+// exactly 8 bytes of `data`.
+pub fn encode_path_response_frame(data []u8) ![]u8 {
+	return encode_path_frame(frame_type_path_response, data)
+}
+
+fn encode_path_frame(typ u64, data []u8) ![]u8 {
+	if data.len != path_data_length {
+		return error('quic: path validation frame data must be ${path_data_length} bytes, got ${data.len}')
+	}
+	mut out := encode_varint(typ)!
+	out << data
 	return out
 }
 

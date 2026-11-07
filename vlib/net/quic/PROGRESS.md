@@ -483,7 +483,10 @@ The largest, highest-risk phase. Sub-phases, in build order:
       exact expected wire bytes hardcoded. Every other frame type (STREAM,
       MAX_DATA, ...) reports "not yet implemented" rather than a
       wire-format error, since they're real, valid QUIC frames just
-      deferred to later phases.
+      deferred to later phases. (Since track A2, 2026-10-31, every RFC 9000
+      frame type is parsed, NEW_TOKEN, NEW_CONNECTION_ID,
+      RETIRE_CONNECTION_ID, PATH_CHALLENGE and PATH_RESPONSE included, and an
+      unknown type is FRAME_ENCODING_ERROR per §12.4.)
 - [x] `crypto_stream.v` — per-encryption-level CRYPTO frame reassembly,
       tolerating out-of-order arrival and overlapping retransmissions (RFC
       9000 §19.6); a content mismatch on any overlap — including between
