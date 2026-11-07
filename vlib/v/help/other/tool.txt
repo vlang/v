@@ -7,6 +7,10 @@ you have to know and keep correct.
 Usage:
   v tool                List the tool modules that can be seen.
   v tool NAME           Run the tool module called NAME.
+  v tool NAME ARGS      Run the tool module called NAME with it's own ARGS.
+
+Use `v tool -- NAME ARGS` to send command line options (like `-x` or `--help`)
+to the tool rather than to `v tool` itself.
 
 `v tool NAME` resolves NAME the way an import would, then builds and runs the
 module. That means it finds a tool installed with `v install`, and equally a

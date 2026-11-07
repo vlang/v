@@ -91,7 +91,7 @@ fn list_tools(p &pref.Preferences) ! {
 
 // run_tool resolves `name` and hands it to `v run`, so that a tool is built and
 // run exactly the way any other V program is.
-fn run_tool(p &pref.Preferences, name string) ! {
+fn run_tool(p &pref.Preferences, name string, args []string) ! {
 	root := p.get_module_path(name, os.getwd() + os.path_separator + '.')
 	if root == '' || !os.is_dir(root) {
 		eprintln('v tool: no module named `${name}` in the module search path.')
@@ -104,15 +104,16 @@ fn run_tool(p &pref.Preferences, name string) ! {
 		exit(1)
 	}
 	vexe := os.real_path(os.getenv_opt('VEXE') or { os.executable() })
-	exit(os.system_args([vexe, 'run', root]))
+	exit(os.system_args([vexe, 'run', root, ...args]))
 }
 
 fn print_help(fp &flag.FlagParser) {
 	println(fp.usage())
 	println('')
 	println('Usage:')
-	println('  v tool                List the tool modules that can be seen.')
-	println('  v tool NAME           Run the tool module called NAME.')
+	println('  v tool                    List the tool modules that can be seen.')
+	println('  v tool NAME               Run the tool module called NAME.')
+	println('  v tool [--] NAME ARGS     Run the tool module called NAME with arguments.')
 	println('')
 	println('A module is a tool when its root holds a `main.v`.')
 	println('')
@@ -130,7 +131,7 @@ fn main() {
 	fp.application('v tool')
 	fp.version('0.0.1')
 	fp.description('Run a tool module by name.')
-	fp.arguments_description('[NAME]')
+	fp.arguments_description('[--] [NAME] [ARG]...')
 	show_help := fp.bool('help', `h`, false, 'Show this help.')
 	rest := fp.finalize() or {
 		eprintln('v tool: ${err.msg()}')
@@ -146,10 +147,5 @@ fn main() {
 		list_tools(p)!
 		return
 	}
-	if rest.len > 1 {
-		eprintln('v tool: expected at most one tool name, got ${rest.len}.')
-		print_help(fp)
-		exit(1)
-	}
-	run_tool(p, rest[0])!
+	run_tool(p, rest[0], rest#[1..])!
 }
