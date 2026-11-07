@@ -151,7 +151,11 @@ class BootstrapConfigurationTests(unittest.TestCase):
                                if line.lstrip().startswith('"!clang_cl_exe!" '))
                 self.assertIn('/std:c11', command)
                 self.assertIn('/link /STACK:33554432', command)
+                self.assertIn('/DV_INT128_PORTABLE=1', command)
                 self.assertNotIn('-municode', command)
+                gnu_command = next(line.strip() for line in routine(label).splitlines()
+                                   if line.lstrip().startswith('"!clang_exe!" '))
+                self.assertNotIn('V_INT128_PORTABLE', gnu_command)
         self.assertIn('set updated_vflags=!clang_vflags!', routine('clang_strap'))
 
     def test_directly_linked_stage_does_not_require_gc(self):
