@@ -11,7 +11,7 @@ import v.types
 // allocation-free code-generation path these tests are asserting.
 fn run_literal_output_v(args []string) os.Result {
 	return cmdexec.run_in_merged_with_env(@VEXE, args, '', {
-		'VE...': @VEXE
+		'VEXE':   @VEXE
 		'VFLAGS': ''
 	})
 }

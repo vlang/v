@@ -6,7 +6,7 @@ import v.cmdexec
 // run_headerless_v keeps CI's inherited VFLAGS out of the literal-output probe.
 fn run_headerless_v(args []string) os.Result {
 	return cmdexec.run_in_merged_with_env(@VEXE, args, '', {
-		'VE...': @VEXE
+		'VEXE':   @VEXE
 		'VFLAGS': ''
 	})
 }
