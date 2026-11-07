@@ -30,6 +30,20 @@ jobs:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: bootstrap
+            tasks: v_doctor build_v_with_prealloc verify_v_test_works build_fast_script
+          - suite: modules
+            tasks: check_math check_compress test_inline_assembly test_vwatch_stdin
+          - suite: essential
+            tasks: run_essential_tests
+          - suite: examples
+            tasks: build_examples
+    env:
+      V_CI_TASKS: ${{ matrix.tasks }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -44,11 +58,13 @@ jobs:
           memory: 8G
           cpu_count: 2
           sync_files: runner-to-vm
+          environment_variables: V_CI_TASKS
 
       - name: Tests on OpenBSD with tcc
         id: tests-openbsd-tcc
         shell: cpa.sh {0}
         run: |
+          set -eu
           sudo pkg_add git sqlite3 gmake boehm-gc libiconv openssl
           # Install packages needed to build examples
           sudo pkg_add mariadb-client postgresql-client
@@ -59,9 +75,9 @@ jobs:
           echo "::endgroup::"
           echo "::group::Build V"
           git config --global --add safe.directory .
-          # V3 is now part of the first bootstrap target and can exceed OpenBSD's
-          # default per-process data-segment limit even though the VM has 8 GiB.
-          ulimit -d 4194304
+          # Cold V3 builds of the fast tool reserve more than 4 GiB of data.
+          # Give compiler arenas 6 GiB within this 8 GiB VM.
+          ulimit -d 6291456
           gmake
           sudo ./v symlink
           export VTEST_SHOW_LONGEST_BY_RUNTIME=3
@@ -69,12 +85,30 @@ jobs:
           export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
           export VFLAGS='-cc tcc -no-retry-compilation'
           echo "::endgroup::"
-          ./v run ci/openbsd_ci.vsh all
+          status=0
+          for task in $V_CI_TASKS; do
+            ./v run ci/openbsd_ci.vsh "$task" || status=$?
+          done
+          exit "$status"
 
   clang-openbsd:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: bootstrap
+            tasks: v_doctor build_v_with_prealloc verify_v_test_works build_fast_script
+          - suite: modules
+            tasks: check_math check_compress test_inline_assembly test_vwatch_stdin
+          - suite: essential
+            tasks: run_essential_tests
+          - suite: examples
+            tasks: build_examples
+    env:
+      V_CI_TASKS: ${{ matrix.tasks }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -89,11 +123,13 @@ jobs:
           memory: 8G
           cpu_count: 2
           sync_files: runner-to-vm
+          environment_variables: V_CI_TASKS
 
       - name: Tests on OpenBSD with clang
         id: tests-openbsd-clang
         shell: cpa.sh {0}
         run: |
+          set -eu
           sudo pkg_add git sqlite3 gmake boehm-gc libiconv openssl
           # Install packages needed to build examples
           sudo pkg_add mariadb-client postgresql-client
@@ -105,9 +141,9 @@ jobs:
           echo "::endgroup::"
           echo "::group::Build V"
           git config --global --add safe.directory .
-          # V3 is now part of the first bootstrap target and can exceed OpenBSD's
-          # default per-process data-segment limit even though the VM has 8 GiB.
-          ulimit -d 4194304
+          # Cold V3 builds of the fast tool reserve more than 4 GiB of data.
+          # Give compiler arenas 6 GiB within this 8 GiB VM.
+          ulimit -d 6291456
           gmake
           sudo ./v symlink
           export VTEST_SHOW_LONGEST_BY_RUNTIME=3
@@ -115,4 +151,8 @@ jobs:
           export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
           export VFLAGS='-cc clang'
           echo "::endgroup::"
-          ./v run ci/openbsd_ci.vsh all
+          status=0
+          for task in $V_CI_TASKS; do
+            ./v run ci/openbsd_ci.vsh "$task" || status=$?
+          done
+          exit "$status"
