@@ -94,7 +94,7 @@ change you made.
 
 1. Make the change with the narrowest tool that fits.
 2. `v_check` — does it compile.
-3. `v_test_run` — does it behave.
+3. `v_affected`, then `v_test_run` — does it behave.
 4. `v_format` on what you touched.
 
 Skipping step 4 is the common one, and it is the one a reviewer will notice.

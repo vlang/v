@@ -50,7 +50,13 @@ pub fn tool_specs() []ToolSpec {
 	specs << spec_stdlib_doc()
 	// Does it build.
 	specs << spec_check()
+	specs << spec_build()
+	specs << spec_fmt_check()
+	specs << spec_vet()
 	specs << spec_test_run()
+	specs << spec_affected()
+	// Repo orientation.
+	specs << spec_repo_brief()
 	// Environment and skills.
 	specs << spec_doctor()
 	specs << spec_veb_routes()
