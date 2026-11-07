@@ -56,6 +56,37 @@ fn test_syscalls_program_runs_os_on_raw_syscalls() {
 	}
 }
 
+const syscalls_stdin_program = 'import os
+
+fn main() {
+	println(input_character())
+	print(os.get_raw_line())
+	print(os.get_raw_line())
+}
+'
+
+// test_syscalls_stdin_readers_share_the_libc_buffer checks that os.get_raw_line
+// continues where input_character stopped: under `-syscalls` both read stdin
+// through libc's buffer, so the rest of the first line is not stranded there.
+fn test_syscalls_stdin_readers_share_the_libc_buffer() {
+	$if !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'syscalls_stdin_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, syscalls_stdin_program)!
+	exe := os.join_path(root, 'main')
+	build := os.exec([vexe, '-nocache', '-syscalls', '-o', exe, source])
+	assert build.exit_code == 0, build.output
+	run := os.exec(['sh', '-c', 'printf "abc\\nde\\nrest" | "$@"', 'sh', exe])
+	assert run.exit_code == 0, run.output
+	assert run.output == '97\nbc\nde\n', run.output
+}
+
 // test_syscalls_is_rejected_where_it_is_not_supported checks the combinations that
 // have no runtime yet: a native backend, and `-freestanding` (which is a separate runtime).
 fn test_syscalls_is_rejected_where_it_is_not_supported() {

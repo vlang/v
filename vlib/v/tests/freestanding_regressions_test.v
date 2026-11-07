@@ -408,7 +408,7 @@ fn test_macos_arm64_freestanding_builds_and_runs() {
 	$if macos && arm64 {
 		os.setenv('V_FREESTANDING_PROBE', 'probe', true)
 		data := os.join_path(root, 'data.txt')
-		run := os.execute('printf "line\\nrest" | ${os.quoted_path(exe)} ${os.quoted_path(data)} shadow')
+		run := os.exec(['sh', '-c', 'printf "line\\nrest" | "$@"', 'sh', exe, data, 'shadow'])
 		assert run.exit_code == 0, run.output
 		// argc 3: the local `helper` gives 2 inside its block and the function 1 after
 		// it, and -7 >>> 28 is 15 at 32 bits

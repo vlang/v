@@ -825,10 +825,12 @@ fn print_c_errno() {
 // get_raw_line returns a one-line string from stdin along with `\n` if there is any.
 @[manualfree]
 pub fn get_raw_line() string {
-	$if freestanding || syscalls {
+	$if freestanding {
 		// libc's getline allocates the line with libc's malloc, which the bare
 		// runtime's own free must not release. Read one byte at a time, so stdin
-		// is not consumed past the line.
+		// is not consumed past the line. `-syscalls` keeps libc's allocator and
+		// stdio, so it stays on getline and shares stdin's buffer with
+		// input_character and get_raw_stdin.
 		mut line := []u8{cap: 128}
 		mut ch := u8(0)
 		for {
