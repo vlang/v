@@ -91,10 +91,10 @@ jobs:
       matrix:
         shard: [0, 1, 2]
         variant:
-          - {cc: clang, sanitizer: undefined}
-          - {cc: clang, sanitizer: memory}
-          - {cc: gcc, sanitizer: thread}
-          - {cc: gcc, sanitizer: address}
+          - { cc: clang, sanitizer: undefined }
+          - { cc: clang, sanitizer: memory }
+          - { cc: gcc, sanitizer: thread }
+          - { cc: gcc, sanitizer: address }
     env:
       VFLAGS: -cc ${{ matrix.variant.cc }}
       VTEST_FAIL_FAST: '1'
