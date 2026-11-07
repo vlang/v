@@ -241,8 +241,8 @@ fn test_windows_literal_cli_output_matches_native_crt_declarations() ! {
 		'fn main() { print("a\\x00b"); eprintln("c"); print("d") }'] {
 		os.write_file(source, program)!
 		for cc in ['clang', 'msvc'] {
-			generated := run_literal_output_v(['-new-compiler', '-nocache', '-os', 'windows', '-arch',
-				'amd64', '-cc', cc, '-o', c_file, source])
+			generated := run_literal_output_v(['-new-compiler', '-nocache', '-os', 'windows',
+				'-arch', 'amd64', '-cc', cc, '-o', c_file, source])
 			assert generated.exit_code == 0, generated.output
 			code := os.read_file(c_file)!
 			assert code.len < 2048, code
@@ -333,8 +333,8 @@ fn test_literal_output_keeps_bytes_streams_and_call_order() {
 	assert code.contains('__PTRDIFF_TYPE__ write('), code
 	assert !code.contains('GC_') && !code.contains('malloc') && !code.contains('#include'), code
 	for cc in ['clang', 'tcc'] {
-		compiled := run_literal_output_v(['-cc', cc, '-showcc', '-no-retry-compilation', '-o', binary,
-			source])
+		compiled := run_literal_output_v(['-cc', cc, '-showcc', '-no-retry-compilation', '-o',
+			binary, source])
 		assert compiled.exit_code == 0, compiled.output
 		assert !compiled.output.contains('atomic_') && !compiled.output.contains('libgc'), compiled.output
 		mut process := os.new_process(binary)
