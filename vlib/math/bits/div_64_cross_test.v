@@ -59,8 +59,8 @@ __attribute__((used)) ${function}
 	// optional Windows compilation when its intrinsic headers are usable.
 	intrin_probe := os.join_path(root, 'intrin_probe.c')
 	os.write_file(intrin_probe, '#include <intrin.h>\n')!
-	probe := os.exec([clang, '-target', 'x86_64-pc-windows-msvc', '-ffreestanding',
-		'-fsyntax-only', intrin_probe])
+	probe := os.exec([clang, '-target', 'x86_64-pc-windows-msvc', '-ffreestanding', '-fsyntax-only',
+		intrin_probe])
 	if probe.exit_code != 0 {
 		if probe.output.contains('file not found') {
 			if probe.output.contains("'intrin.h'") || probe.output.contains("'intrin0.h'") {
