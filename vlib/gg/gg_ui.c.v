@@ -1,11 +1,42 @@
 module gg
 
+import math
+
 // Stuff for ui from now for screenshot (that would be interesting for gg if screenshot is implemented also for gg)
 
 // required for ui.DrawDevice interface (with &gg.Context as an instance)
 pub fn (ctx &Context) scissor_rect(x int, y int, w int, h int) {
 	ctx.r.scissor_rect(int(ctx.scale * x), int(ctx.scale * y), int(ctx.scale * w),
 		int(ctx.scale * h), true)
+}
+
+struct PixelScissorRect {
+	x      int
+	y      int
+	width  int
+	height int
+}
+
+fn pixel_scissor_rect(x f64, y f64, w f64, h f64, scale f64) PixelScissorRect {
+	s := if scale > 0 { scale } else { 1.0 }
+	x0 := int(math.floor(x * s))
+	y0 := int(math.floor(y * s))
+	x1 := int(math.ceil((x + math.max(w, 0)) * s))
+	y1 := int(math.ceil((y + math.max(h, 0)) * s))
+	return PixelScissorRect{
+		x:      x0
+		y:      y0
+		width:  math.max(0, x1 - x0)
+		height: math.max(0, y1 - y0)
+	}
+}
+
+// scissor_rectf converts logical clip edges to framebuffer pixels once,
+// rounding the outer edges away from the clip. Scaling an integer origin and
+// extent separately truncates twice and can leave a one- or two-pixel seam.
+pub fn (ctx &Context) scissor_rectf(x f64, y f64, w f64, h f64) {
+	clip := pixel_scissor_rect(x, y, w, h, f64(ctx.scale))
+	ctx.r.scissor_rect(clip.x, clip.y, clip.width, clip.height, true)
 }
 
 // empty function
