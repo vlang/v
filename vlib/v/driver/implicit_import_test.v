@@ -68,10 +68,11 @@ fn test_c_executable_bin_file_uses_target_postfix() {
 }
 
 fn test_c_compiler_output_name_uses_target_postfix() {
-	assert c_compiler_output_name_for_target('windows', false, false) == 'out.exe'
-	assert c_compiler_output_name_for_target('linux', false, false) == 'out'
-	assert c_compiler_output_name_for_target('windows', true, false) == 'out'
-	assert c_compiler_output_name_for_target('windows', false, true) == 'out.obj'
+	assert c_compiler_output_name_for_target('windows', false, false, 'app.exe') == 'out.exe'
+	assert c_compiler_output_name_for_target('linux', false, false, 'app') == 'out'
+	assert c_compiler_output_name_for_target('windows', true, false, 'bin/library.dll') == 'library.dll'
+	assert c_compiler_output_name_for_target('linux', true, false, 'bin/library.so') == 'out'
+	assert c_compiler_output_name_for_target('windows', false, true, 'unit.o') == 'out.obj'
 }
 
 fn scan_implicit_import_source(name string, source string) ImplicitImportScan {
