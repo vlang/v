@@ -107,6 +107,25 @@ fn scaled(factor int) []int {
 	return lengths.map(it * factor)
 }
 
+struct BigPayload {
+mut:
+	data [4900]u8
+	tag  int
+}
+
+struct SmallPayload {
+	a string
+	b string
+	c string
+	d string
+}
+
+// The copy of `small` lies past the copy of `big` in the outgoing arguments, more
+// than 4096 bytes from the stack pointer.
+fn take_payload(small SmallPayload, big BigPayload) int {
+	return small.a.len + big.tag + big.data[10]
+}
+
 fn work(id int) int {
 	mut total := 0
 	for _ in 0 .. 20 {
@@ -129,6 +148,11 @@ fn main() {
 		assert false
 	}
 	assert table == [2, 4, 6]
+	mut big := BigPayload{
+		tag: 40
+	}
+	big.data[10] = 2
+	assert take_payload(SmallPayload{ a: "abc" }, big) == 45
 	release(new_page())
 	coordinates := payload(?Inner(Inner{ x: 7 })) or { panic("none") }
 	clobber(3)

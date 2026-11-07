@@ -99,6 +99,9 @@ mut:
 	// The chained fixups that fastc_trim_chained_fixup_pages changed, if any.
 	fixups_start int
 	fixups_end   int
+	// The code that fastc_fix_tinycc_arm64_sp_offsets changed, if any.
+	text_start int
+	text_end   int
 }
 
 fn fastc_macho_sign_capacity(original_len int, ident string) int {
@@ -148,6 +151,12 @@ fn fastc_sign_macho_adhoc_buffered(path string) ! {
 			return err
 		}
 	}
+	if patch.text_end > patch.text_start {
+		out.write_to(u64(patch.text_start), file[patch.text_start..patch.text_end]) or {
+			out.close()
+			return err
+		}
+	}
 	out.write_to(u64(patch.tail_start), file[patch.tail_start..patch.final_len]) or {
 		out.close()
 		return err
@@ -170,6 +179,8 @@ fn fastc_patch_macho_signature(mut file []u8, original_len int, path string) !Fa
 	if original_len < macho_header_size || fastc_read_u32_le(file, 0) != macho_magic_64 {
 		return error('`${path}` is not a 64-bit Mach-O file')
 	}
+	// Before the build version changes: it identifies a TinyCC executable.
+	text_start, text_end := fastc_fix_tinycc_arm64_sp_offsets(mut file, original_len)
 	written_load_end := fastc_modernize_tinycc_load_commands(mut file, original_len,
 		fastc_host_macos_version())
 	mut ncmds := int(fastc_read_u32_le(file, 16))
@@ -274,7 +285,94 @@ fn fastc_patch_macho_signature(mut file []u8, original_len int, path string) !Fa
 		final_len:    code_limit + signature.len
 		fixups_start: fixups_start
 		fixups_end:   fixups_end
+		text_start:   text_start
+		text_end:     text_end
 	}
+}
+
+// fastc_fix_tinycc_arm64_sp_offsets corrects the stack addresses that TinyCC computes
+// for offsets of 4096 and more on arm64. Its `arm64_spoff` emits `add xd, xzr, x30`
+// (the shifted-register form, where register 31 is the zero register) where
+// `add xd, sp, x30, uxtx` was meant, so a struct argument copied that far into the
+// outgoing arguments was written to the address of its offset. TinyCC emits this
+// instruction nowhere else, and no compiler emits it on purpose: it moves x30.
+// It returns the range of `file` that changed; an empty one when nothing did.
+fn fastc_fix_tinycc_arm64_sp_offsets(mut file []u8, original_len int) (int, int) {
+	if fastc_read_u32_le(file, 4) != macho_cpu_type_arm64 {
+		return 0, 0
+	}
+	ncmds := int(fastc_read_u32_le(file, 16))
+	load_end := macho_header_size + int(fastc_read_u32_le(file, 20))
+	if load_end > original_len {
+		return 0, 0
+	}
+	mut is_tinycc := false
+	mut text_offset := 0
+	mut text_size := 0
+	mut offset := macho_header_size
+	for _ in 0 .. ncmds {
+		if offset + 8 > load_end {
+			return 0, 0
+		}
+		cmd := fastc_read_u32_le(file, offset)
+		cmdsize := int(fastc_read_u32_le(file, offset + 4))
+		if cmdsize < 8 || offset + cmdsize > load_end {
+			return 0, 0
+		}
+		if cmd == macho_lc_build_version && cmdsize >= 24
+			&& fastc_read_u32_le(file, offset + 8) == macho_platform_macos
+			&& fastc_read_u32_le(file, offset + 12) == tinycc_macos_version
+			&& fastc_read_u32_le(file, offset + 16) == tinycc_macos_version {
+			is_tinycc = true
+		} else if cmd == macho_lc_segment_64 && fastc_c_string_at(file, offset + 8, 16) == '__TEXT' {
+			nsects := int(fastc_read_u32_le(file, offset + 64))
+			for k in 0 .. nsects {
+				section := offset + 72 + k * 80
+				if section + 80 > offset + cmdsize {
+					break
+				}
+				if fastc_c_string_at(file, section, 16) == '__text' {
+					text_size = int(fastc_read_u64_le(file, section + 40))
+					text_offset = int(fastc_read_u32_le(file, section + 48))
+				}
+			}
+		}
+		offset += cmdsize
+	}
+	if !is_tinycc || text_size <= 0 || text_offset < load_end
+		|| text_offset + text_size > original_len {
+		return 0, 0
+	}
+	return fastc_rewrite_tinycc_sp_adds(mut file, text_offset, text_offset + (text_size & ~3))
+}
+
+// fastc_rewrite_tinycc_sp_adds rewrites `add/sub xd, xzr, x30` to
+// `add/sub xd, sp, x30, uxtx` in the 4-byte aligned code file[start..end].
+@[direct_array_access]
+fn fastc_rewrite_tinycc_sp_adds(mut file []u8, start int, end int) (int, int) {
+	mut changed_start := 0
+	mut changed_end := 0
+	if start % 4 != 0 {
+		return 0, 0
+	}
+	// Mach-O code is little endian, like every host that runs V; one load per word
+	// keeps the scan of a large program's code to a few milliseconds.
+	words := unsafe { &u32(&u8(file.data) + start) }
+	for i in 0 .. (end - start) / 4 {
+		word := unsafe { words[i] }
+		// Bit 30 selects add or sub, bits 0-4 the destination.
+		if word & 0xbfffffe0 == 0x8b1e03e0 {
+			unsafe {
+				words[i] = (word & 0xc000001f) | 0x0b3e63e0
+			}
+			at := start + i * 4
+			if changed_end == 0 {
+				changed_start = at
+			}
+			changed_end = at + 4
+		}
+	}
+	return changed_start, changed_end
 }
 
 // fastc_host_macos_version returns the running macOS version in the Mach-O encoding

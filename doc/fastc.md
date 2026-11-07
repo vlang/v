@@ -23,7 +23,9 @@ through an adapter in the native library, because TinyCC does not lay out stack 
 Apple's ABI packs them.
 A TinyCC executable on macOS records the running macOS as its SDK version, as the platform
 linker does, with a UUID and without repeated rpaths. TinyCC records macOS 10.6, for which
-AppKit keeps its 10.6 control layout and image formats.
+AppKit keeps its 10.6 control layout and image formats. On arm64, signing also corrects
+TinyCC's addresses of stack offsets of 4 KiB and more, which it computed from the zero register
+instead of the stack pointer.
 Native implementation includes follow generated V types, while ordinary C headers precede them.
 `#preinclude` headers are ordinary headers. A header named with `@DIR` belongs to the native
 library like any other include of its directory.
