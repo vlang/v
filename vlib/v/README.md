@@ -275,6 +275,13 @@ production self-builds therefore compile only changed units. `-nocache` disables
 uses one C unit per compiler job to avoid repeatedly parsing the shared declarations. Other
 parallel C builds are limited to eight jobs.
 
+The C subprocess pool uses the selected job count independently of the arena-memory limits on
+V stages. `workers.new_subprocess_pool` creates a pool for waiting on child processes without
+that stage limit; callers reserve one job for the thread that also drains the task queue.
+Native-header splitting uses metadata supplied by Clang, with conservative fallback when the
+selected toolchain cannot establish safety. See the parallel C flags in `doc/docs.md` for
+fallback tracing and `V3_PARALLEL_CC_REQUIRE_SPLIT`.
+
 ## Fast C backend
 
 `-b fastc` selects the embedded V3 driver and its AST-free parser for the shortest edit-run cycle.

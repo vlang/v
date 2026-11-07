@@ -95,39 +95,64 @@ fn test_shipped_and_system_native_inputs_keep_the_caches() {
 	assert 'os' !in inputs.module_inputs
 }
 
-fn test_parallel_c_generation_leaves_native_header_ownership_to_c_compiler() {
+fn test_parallel_c_generation_uses_native_toolchain_metadata_for_quoted_headers() ! {
+	os.find_abs_path_of_executable('clang') or { return }
 	prefix := '/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */\n#include "not_present/native.h"\n/* V3CACHE_NATIVE_DIRECTIVES_END */\nvoid main__main(void);\n'
-	header, safe := v3_parallel_c_declaration_header(prefix, @VEXEROOT)
-	assert !safe
+	header, safe, quoted := v3_parallel_c_declaration_header(prefix, @VEXEROOT)
+	assert safe
+	assert quoted == ['"not_present/native.h"']
 	assert header.contains('#include "not_present/native.h"')
 	root := os.join_path(os.vtmp_dir(), 'parallel_user_header_${os.getpid()}_${time.now().unix_nano()}')
 	os.mkdir_all(root)!
 	defer {
 		os.rmdir_all(root) or {}
 	}
+	// A header of declarations and functions without static locals is the same in every unit.
 	user_header := os.join_path(root, 'native.h')
 	os.write_file(user_header, 'static inline int native_value(void) { return 1; }\n')!
 	user_prefix := '/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */\n#include "${user_header}"\n/* V3CACHE_NATIVE_DIRECTIVES_END */\nvoid main__main(void);\n'
-	_, user_safe := v3_parallel_c_declaration_header(user_prefix, @VEXEROOT)
-	assert !user_safe
+	user_header_text, user_safe, user_quoted := v3_parallel_c_declaration_header(user_prefix,
+		@VEXEROOT)
+	assert user_safe
+	assert user_quoted == ['"${user_header}"']
+	declarations := os.join_path(root, 'declarations.h')
+	os.write_file(declarations, user_header_text)!
+	assert header_hazards(declarations)! == []
+	// Const storage still has an observable address, so its identity has one owner.
+	os.write_file(user_header, 'static const int native_table[2] = { 1, 2 };\n')!
+	constant_hazards := header_hazards(declarations)!
+	assert constant_hazards.map(it.reason) == [
+		'static constant `native_table` would get a separate identity in every unit',
+	]
+	// State a header owns would be copied into every unit, and the build stays in one.
+	os.write_file(user_header, 'static int native_state;\nint native_counter = 0;\n')!
+	hazards := header_hazards(declarations)!
+	assert hazards.map(it.reason) == [
+		'mutable static `native_state` would get a separate copy in every unit',
+		'external object `native_counter` would be defined in every unit',
+	]
+	assert hazards[0].file.ends_with('native.h') && hazards[0].line == 1
 }
 
 fn test_parallel_c_generation_keeps_shipped_headers_opaque() {
 	helper := os.join_path(@VEXEROOT, 'vlib', 'v', 'flat', 'flat_payload_helpers.h')
 	prefix := '/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */\n#include "${helper}"\n#include <stdio.h>\n/* V3CACHE_NATIVE_DIRECTIVES_END */\nvoid main__main(void);\n'
-	header, safe := v3_parallel_c_declaration_header(prefix, @VEXEROOT)
-	assert !safe
+	header, safe, quoted := v3_parallel_c_declaration_header(prefix, @VEXEROOT)
+	assert safe
+	assert quoted == ['"${helper}"', '<stdio.h>']
 	assert header.contains('#include "${helper}"')
 	assert !header.contains('v_flat_payload_ptr_get')
 	assert header.contains('#include <stdio.h>')
 }
 
 fn test_parallel_c_generation_keeps_segfault_handler_state_in_owner() ! {
+	os.find_abs_path_of_executable('clang') or { return }
 	$if bsd || linux {
 		helper := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'segfault_handler_nix.h')
 		prefix := '/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */\n#include "${helper}"\n/* V3CACHE_NATIVE_DIRECTIVES_END */\n'
-		header, safe := v3_parallel_c_declaration_header(prefix, @VEXEROOT)
-		assert !safe
+		header, safe, quoted := v3_parallel_c_declaration_header(prefix, @VEXEROOT)
+		assert safe
+		assert quoted == ['"${helper}"']
 		assert header.contains('#include "${helper}"')
 		root := os.join_path(os.vtmp_dir(), 'parallel_segfault_header_${os.getpid()}_${time.now().unix_nano()}')
 		os.mkdir_all(root)!
@@ -167,10 +192,24 @@ fn test_parallel_c_generation_keeps_segfault_handler_state_in_owner() ! {
 fn test_parallel_c_generation_splits_with_the_segfault_handler() {
 	helper := os.join_path(@VEXEROOT, 'vlib', 'builtin', 'segfault_handler_nix.h')
 	prefix := '/* V3CACHE_NATIVE_DIRECTIVES_BEGIN */\n#include "${helper}"\n/* V3CACHE_NATIVE_DIRECTIVES_END */\n'
-	header, safe := v3_parallel_c_declaration_header(prefix, @VEXEROOT)
-	assert !safe
+	header, safe, quoted := v3_parallel_c_declaration_header(prefix, @VEXEROOT)
+	assert safe
+	assert quoted == ['"${helper}"']
 	assert header.contains('#include "${helper}"')
 	assert !header.contains('void v_install_segfault_handler(void* fallback, void* main_argv);')
+	// The handler's saved state belongs to the first unit, so the other units can
+	// compile the header and the build splits.
+	root := os.join_path(os.vtmp_dir(), 'parallel_segfault_split_${os.getpid()}_${time.now().unix_nano()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	declarations := os.join_path(root, 'declarations.h')
+	os.write_file(declarations, header) or { panic(err) }
+	hazards := header_hazards(declarations) or {
+		panic(err)
+	}
+	assert hazards == []
 }
 
 fn test_native_dependency_list_uses_compiler_manifest_without_reading_headers() {
@@ -231,9 +270,9 @@ fn test_cached_signal_header_has_one_owner_with_shared_program_declarations() ! 
 		os.write_file(incremental_path, v3_incremental_main_source(declarations_path, tcc_declarations, body))!
 		// A cached combined source may later be split for parallel compilation.
 		// The owner prelude copied into its declaration header cannot promote a body unit.
-		parallel_header, safe := v3_parallel_c_declaration_header(owner_source,
+		parallel_header, _, quoted := v3_parallel_c_declaration_header(owner_source,
 			@VEXEROOT)
-		assert !safe
+		assert quoted.len == 1
 		parallel_header_path := os.join_path(root, 'parallel.h')
 		parallel_path := os.join_path(root, 'parallel.c')
 		os.write_file(parallel_header_path, parallel_header)!
@@ -323,4 +362,25 @@ fn test_heap_guard_keeps_ordinary_module_caching_without_header_inspection() {
 	closure := v3_native_input_closure(&inputs)
 	assert closure.unassignable == ''
 	assert guard in closure.inputs['builtin']
+}
+
+// header_hazards asks the native toolchain for the replication hazards of a unit
+// that includes `declarations`, without reading or parsing the native headers.
+fn header_hazards(declarations string) ![]V3ParallelCHeaderHazard {
+	unit := declarations + '.unit.c'
+	manifest := v3_parallel_c_native_manifest('clang', []string{}, false,
+		v3_parallel_c_unit_source(declarations, '', false, false), unit, [
+			declarations,
+			unit,
+		],
+		map[string]bool{}, true)!
+	return manifest.hazards
+}
+
+fn test_parallel_c_generation_checks_owner_source_directives() {
+	prefix := '/* V3CACHE_SOURCE_DIRECTIVES_BEGIN */\n#include "native.m"\n/* V3CACHE_SOURCE_DIRECTIVES_END */\n'
+	header, safe, includes := v3_parallel_c_declaration_header(prefix, @VEXEROOT)
+	assert safe
+	assert includes == ['"native.m"']
+	assert !header.contains('#include "native.m"')
 }
