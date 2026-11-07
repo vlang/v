@@ -678,7 +678,8 @@ fn assert_c_flag_directive_order(main_flags string, sys_flags string, expected [
 fn test_os_execute_capture_flags_match_target_and_freestanding_mode() {
 	root := @VEXEROOT
 	os_dir := os.join_path(root, 'vlib', 'os')
-	helper := os.join_path(os_dir, 'execute_capture_nix.o')
+	// Directive expansion retains '/' separators; host-joined paths use '\\' on Windows.
+	helper := os.to_slash(os.join_path(os_dir, 'execute_capture_nix.o'))
 	for target_os in ['windows', 'linux', 'macos', 'freebsd', 'openbsd', 'netbsd', 'dragonfly',
 		'android', 'termux', 'ios', 'solaris', 'qnx', 'haiku', 'serenity', 'vinix', 'wasm32_emscripten'] {
 		for freestanding in [false, true] {
@@ -701,7 +702,7 @@ fn test_os_execute_capture_flags_match_target_and_freestanding_mode() {
 				} else {
 					[]string{}
 				}
-				flags := cache_directive_flags(a, root, prefs.target, map[string]string{})
+				flags := cache_directive_flags(a, root, prefs.target, map[string]string{}).map(os.to_slash(it))
 				assert flags == expected, '${target_os}, freestanding=${freestanding}, cross=${cross}: ${flags}'
 				mut g := FlatGen.new()
 				g.a = a
@@ -709,7 +710,7 @@ fn test_os_execute_capture_flags_match_target_and_freestanding_mode() {
 				g.compiler_vroot = root
 				g.output_cross_c = cross
 				g.collect_c_flags_from_directives()
-				assert g.c_flags() == expected
+				assert g.c_flags().map(os.to_slash(it)) == expected
 			}
 		}
 	}
