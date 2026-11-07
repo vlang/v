@@ -1,0 +1,128 @@
+// Raw x86 templates whose `mul` and `div` results are bound through the `A` constraint, the
+// `eax`:`edx` register pair on 32-bit x86, so neither register needs a clobber.
+fn raw_mul_pair_output_declares_both(x u64, y u32) u64 {
+	mut r := x
+	asm x86 raw {
+		"mull %[y]"
+		; "+A" (r)
+		; [y] "r" (y)
+		; cc
+	}
+	return r
+}
+
+fn raw_div_pair_output_declares_both(x u64, y u32) u64 {
+	mut r := x
+	asm x86 raw {
+		"divl %[y]"
+		; "+A" (r)
+		; [y] "r" (y)
+		; cc
+	}
+	return r
+}
+
+fn raw_pair_output_with_alias(x u64, y u32) u64 {
+	mut r := x
+	asm x86 raw {
+		"mull %[y]"
+		; [r] "=A" (r)
+		; [y] "r" (y)
+		  "0" (x)
+		; cc
+	}
+	return r
+}
+
+fn raw_single_word_pair_output_beside_d(x u32, y u32) u32 {
+	// `=d` takes `edx`, so the 32-bit `A` operand can only occupy `eax`; both are declared.
+	mut r := x
+	mut hi := u32(0)
+	asm x86 raw {
+		"mull %[y]"
+		; "+A" (r)
+		  [hi] "=d" (hi)
+		; [y] "r" (y)
+		; cc
+	}
+	return r + hi
+}
+
+fn raw_single_word_pair_output_beside_rdx_clobber(x u32, y u32) u32 {
+	mut r := x
+	asm x86 raw {
+		"mull %[y]"
+		; "+A" (r)
+		; [y] "r" (y)
+		; rdx
+		  cc
+	}
+	return r
+}
+
+fn raw_two_single_word_pair_outputs_fill_the_pair(x u32, y u32) u32 {
+	// Two outputs never share a register, so `lo` and `hi` take `eax` and `edx` between them.
+	mut lo := x
+	mut hi := u32(0)
+	asm x86 raw {
+		"mull %[y]"
+		; "+A" (lo)
+		  "=A" (hi)
+		; [y] "r" (y)
+		; cc
+	}
+	return lo + hi
+}
+
+fn raw_single_word_pair_output_beside_explicit_register(x u32, y u32) u32 {
+	mut r := x
+	mut hi := u32(0)
+	asm x86 raw {
+		"mull %[y]"
+		; "+A" (r)
+		  [hi] "={edx}" (hi)
+		; [y] "r" (y)
+		; cc
+	}
+	return r + hi
+}
+
+fn raw_single_word_pair_output_beside_early_clobber(x u32, y u32) u32 {
+	mut r := x
+	mut lo := u32(0)
+	asm x86 raw {
+		"mull %[y]"
+		; "+A" (r)
+		  [lo] "=&a" (lo)
+		; [y] "r" (y)
+		; cc
+	}
+	return r + lo
+}
+
+fn raw_pair_operand_reference_has_the_low_register_width(x u64, y u32) u32 {
+	// `%[r]` of a 64-bit `A` operand prints its low 32-bit register, so `movl` fits it.
+	mut r := x
+	mut low := u32(0)
+	asm x86 raw {
+		"mull %[y]\n\t"
+		"movl %[r], %[low]"
+		; [r] "+A" (r)
+		  [low] "=r" (low)
+		; [y] "r" (y)
+		; cc
+	}
+	return low
+}
+
+fn main() {
+	println(raw_mul_pair_output_declares_both(6, 7))
+	println(raw_div_pair_output_declares_both(42, 7))
+	println(raw_single_word_pair_output_beside_d(6, 7))
+	println(raw_single_word_pair_output_beside_rdx_clobber(6, 7))
+	println(raw_two_single_word_pair_outputs_fill_the_pair(6, 7))
+	println(raw_single_word_pair_output_beside_explicit_register(6, 7))
+	println(raw_single_word_pair_output_beside_early_clobber(6, 7))
+	println(raw_pair_operand_reference_has_the_low_register_width(6, 7))
+	println(raw_pair_output_with_alias(6, 7) + undefined_total)
+}

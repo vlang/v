@@ -1,0 +1,70 @@
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:8:5: error: `mull` writes a register of the `rax`:`rdx` pair in this raw assembly template, but the `A` constraint binds the 32-bit operand `r` to only one of them; bind a 64-bit operand, or use `a` or `d` and add the other register to the clobbers
+    6 |     asm x86 raw {
+    7 |         "mull %[y]"
+    8 |         ; "+A" (r)
+      |           ~~~~~~~~
+    9 |         ; [y] "r" (y)
+   10 |         ; cc
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:19:5: error: `mulq` writes a register of the `rax`:`rdx` pair in this raw assembly template, but the `A` constraint binds the 64-bit operand `r` to only one of them; use `a` or `d` and add the other register to the clobbers
+   17 |     asm amd64 raw {
+   18 |         "mulq %[y]"
+   19 |         ; "+A" (r)
+      |           ~~~~~~~~
+   20 |         ; [y] "r" (y)
+   21 |         ; cc
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:29:15: error: `movl` writes `rcx` in this raw assembly template, but `rcx` is neither an output operand nor in the clobber list; add `rcx` to the clobbers
+   27 |     mut r := x
+   28 |     asm x86 raw {
+   29 |         "movl %[y], %%ecx\n\t"
+      |                     ~~~~~
+   30 |         "mull %%ecx"
+   31 |         ; "+A" (r)
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:41:4: error: `mull` sets the condition flags in this raw assembly template, but the clobbers do not list `cc`; add `cc` to the clobbers
+   39 |     mut r := x
+   40 |     asm x86 raw {
+   41 |         "mull %[y]"
+      |          ~~~~
+   42 |         ; "+A" (r)
+   43 |         ; [y] "r" (y)
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:51:4: error: `mull` writes `rax` in this raw assembly template, but `rax` is neither an output operand nor in the clobber list; add `rax` to the clobbers
+   49 |     mut out := u32(0)
+   50 |     asm x86 raw {
+   51 |         "mull %[y]\n\t"
+      |          ~~~~
+   52 |         "movl %%edx, %[out]"
+   53 |         ; [out] "=r" (out)
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:51:4: error: `mull` writes `rdx` in this raw assembly template, but `rdx` is neither an output operand nor in the clobber list; add `rdx` to the clobbers
+   49 |     mut out := u32(0)
+   50 |     asm x86 raw {
+   51 |         "mull %[y]\n\t"
+      |          ~~~~
+   52 |         "movl %%edx, %[out]"
+   53 |         ; [out] "=r" (out)
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:70:5: error: `mull` writes a register of the `rax`:`rdx` pair in this raw assembly template, but the `A` constraint binds the 32-bit operand `h.lo` to only one of them; bind a 64-bit operand, or use `a` or `d` and add the other register to the clobbers
+   68 |     asm x86 raw {
+   69 |         "mull %[y]"
+   70 |         ; "+A" (h.lo)
+      |           ~~~~~~~~~~~
+   71 |         ; [y] "r" (y)
+   72 |         ; cc
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:82:5: error: `movl` writes a register of the `rax`:`rdx` pair in this raw assembly template, but the `A` constraint binds the 32-bit operand `r` to only one of them; bind a 64-bit operand, or use `a` or `d` and add the other register to the clobbers
+   80 |         "movl $1, %%eax\n\t"
+   81 |         "movl $2, %%edx"
+   82 |         ; "+A" (r)
+      |           ~~~~~~~~
+   83 |         ;
+   84 |         ;
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:94:15: error: `movq` operates on 64-bit operands here, but `%[low]` is 32-bit; use a size suffix that matches the operand, or an operand modifier that selects a 64-bit register
+   92 |     asm x86 raw {
+   93 |         "mull %[y]\n\t"
+   94 |         "movq %[r], %[low]"
+      |                     ~~~~~~
+   95 |         ; [r] "+A" (r)
+   96 |           [low] "=r" (low)
+vlib/v/checker/tests/asm_raw_clobber_pair_undeclared.vv:94:9: error: `movq` operates on 64-bit operands here, but `%[r]` is 32-bit; use a size suffix that matches the operand, or an operand modifier that selects a 64-bit register
+   92 |     asm x86 raw {
+   93 |         "mull %[y]\n\t"
+   94 |         "movq %[r], %[low]"
+      |               ~~~~
+   95 |         ; [r] "+A" (r)
+   96 |           [low] "=r" (low)
