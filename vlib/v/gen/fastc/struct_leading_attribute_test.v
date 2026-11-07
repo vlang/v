@@ -184,3 +184,68 @@ fn main() {
 	assert build.exit_code != 0, build.output
 	assert build.output.contains('does not support type `@[`'), build.output
 }
+
+// fastc_leading_flags_emit emits one struct declaration and returns its field table.
+fn fastc_leading_flags_emit(src string) !map[string][]FastcStructField {
+	prefs := pref.new_preferences()
+	file := token.File.unindexed('s.v', src.len)
+	mut scan := scanner.new_scanner(prefs, .normal)
+	scan.init(file, src)
+	assert scan.scan() == .key_struct
+	source_file := FastcSourceFile{
+		path:   's.v'
+		source: src
+		header: FastcSourceHeader{
+			module_name: 'main'
+			imports:     map[string]string{}
+		}
+	}
+	mut struct_fields := map[string]flat.TypeTextBindings{}
+	mut struct_field_info := map[string][]FastcStructField{}
+	mut composite_types := map[string]bool{}
+	mut out := strings.new_builder(256)
+	fastc_emit_struct_declaration(mut scan, false, FastcDeclarationAttribute{ is_enabled: true }, source_file, map[u32]bool{}, false, false, mut struct_fields, mut struct_field_info, mut composite_types, mut out)!
+	return struct_field_info
+}
+
+// Two leading attribute groups before one field both contribute their flags.
+fn test_fastc_struct_consecutive_leading_groups_both_apply() {
+	info := fastc_leading_flags_emit('struct S {\n\t@[skip]\n\t@[required]\n\ta int = 1\n\tb int\n}\n') or {
+		panic(err)
+	}
+	fields := info[fastc_c_declared_type_name(fastc_type_key('main', 'S'))] or {
+		panic('missing struct S')
+	}
+	assert fields.len == 2
+	assert fields[0].name == 'a' && fields[0].is_skip && fields[0].is_required
+	assert fields[1].name == 'b' && !fields[1].is_skip && !fields[1].is_required
+}
+
+// Every route into the embedded branch refuses a leading @[skip] or @[required].
+fn test_fastc_leading_skip_or_required_refused_on_every_embedded_route() {
+	sources := [
+		'struct S {\n\t@[skip] Inner = Inner{}\n\tb int\n}\n',
+		'struct S {\n\t@[skip] mod.Inner\n\tb int\n}\n',
+		'struct S {\n\t@[skip] Inner;\n\tb int\n}\n',
+		'struct S {\n\t@[skip] Inner }\n',
+	]
+	for src in sources {
+		mut message := ''
+		fastc_leading_flags_emit(src) or { message = err.msg() }
+		assert message.contains('does not support @[skip] or @[required] on embedded field'), '${src}: ${message}'
+	}
+}
+
+// A leading attribute before `mut:` skips the next field, as it does before `pub mut:`.
+fn test_fastc_struct_leading_attribute_before_mut_section_applies_to_next_field() {
+	info := fastc_leading_flags_emit('struct S {\n\tpub mut:\n\tc int\n\t@[skip]\n\tmut:\n\ta int\n\tb int\n}\n') or {
+		panic(err)
+	}
+	fields := info[fastc_c_declared_type_name(fastc_type_key('main', 'S'))] or {
+		panic('missing struct S')
+	}
+	assert fields.len == 3
+	assert fields[0].name == 'c' && !fields[0].is_skip
+	assert fields[1].name == 'a' && fields[1].is_skip
+	assert fields[2].name == 'b' && !fields[2].is_skip
+}
