@@ -221,10 +221,9 @@ fn test_fastc_struct_consecutive_leading_groups_both_apply() {
 	assert fields[1].name == 'b' && !fields[1].is_skip && !fields[1].is_required
 }
 
-// Every route into the embedded branch refuses a leading @[skip] or @[required].
+// Every route without a default refuses a leading @[skip] or @[required], as V does.
 fn test_fastc_leading_skip_or_required_refused_on_every_embedded_route() {
 	sources := [
-		'struct S {\n\t@[skip] Inner = Inner{}\n\tb int\n}\n',
 		'struct S {\n\t@[skip] mod.Inner\n\tb int\n}\n',
 		'struct S {\n\t@[skip] Inner;\n\tb int\n}\n',
 		'struct S {\n\t@[skip] Inner }\n',
@@ -248,4 +247,46 @@ fn test_fastc_struct_leading_attribute_before_mut_section_applies_to_next_field(
 	assert fields[0].name == 'c' && !fields[0].is_skip
 	assert fields[1].name == 'a' && fields[1].is_skip
 	assert fields[2].name == 'b' && !fields[2].is_skip
+}
+
+// The default compiler accepts a leading @[skip] on an embedded field with a default and
+// ignores the flag; fastc must build it and produce the same JSON.
+fn test_fastc_leading_skip_on_embedded_field_with_default_builds_as_v_does() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_leading_skip_embedded_default_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), 'module main
+
+import json2
+
+struct Inner {
+pub mut:
+	a int = 7
+}
+
+pub struct Outer {
+pub mut:
+	@[skip] Inner = Inner{a: 3}
+	b int = 2
+}
+
+fn main() {
+	println(json2.encode(Outer{}))
+}
+') or { panic(err) }
+	program := os.join_path(root, 'program')
+	build := cmdexec.run_in_merged_with_env(@VEXE, ['-b', 'fastc', '-nocache', '-gc', 'none', '-o',
+		program, root], os.real_path(os.join_path(@DIR, '../../../..')), {
+		'VEXE':                   @VEXE
+		'VFLAGS':                 ''
+		'VOSARGS':                ''
+		'V_MACOS_V3_NO_FALLBACK': '1'
+	})
+	assert build.exit_code == 0, build.output
+	run := cmdexec.run(program, [])
+	assert run.exit_code == 0, run.output
+	assert run.output.trim_space() == '{"a":3,"b":2}', run.output
 }

@@ -3164,11 +3164,14 @@ fn fastc_emit_struct_declaration(mut scan scanner.Scanner, is_union bool, attrib
 			tok = scan.scan()
 		}
 		if tok in [.semicolon, .rcbr, .assign] {
-			// Embedded fields record no skip/required flags, so a leading @[skip] or @[required]
-			// on one is refused rather than dropped.
-			if leading_is_required || leading_is_skip {
+			// Embedded fields record no skip/required flags. Without a default V rejects a leading
+			// @[skip] or @[required] on one, so fastc refuses it; with a default V accepts and ignores
+			// it, so fastc does too. Either way the pending flags end here.
+			if (leading_is_required || leading_is_skip) && tok != .assign {
 				return error('fastc parser does not support @[skip] or @[required] on embedded field `${field_names[0]}` in ${source_file.path}')
 			}
+			leading_is_required = false
+			leading_is_skip = false
 			embedded_key := if qualified_embed_key != 0 {
 				qualified_embed_key
 			} else {
