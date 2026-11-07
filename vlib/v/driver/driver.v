@@ -3750,7 +3750,21 @@ fn v3_tcc_host_system_flags(target_os string, macos_sdk_root string) []string {
 			flags << '-L${os.join_path(macos_sdk_root, 'usr', 'lib')}'
 		}
 	}
+	flags << v3_tcc_linux_uapi_flags(target_os, pref.host_arch())
 	return flags
+}
+
+// v3_tcc_linux_uapi_flags returns the defines that let TinyCC parse the host's
+// Linux UAPI headers. arm64 kernel headers declare `__u128` fields in
+// <asm/sigcontext.h>, which <signal.h> includes, but <linux/types.h> defines
+// `__u128` only for compilers with `__int128`. TinyCC has none; its `__uint128_t`
+// stand-in has the same size and alignment. Keep it in sync with the bundle
+// probe in cmd/tools/select_linux_tcc.sh.
+fn v3_tcc_linux_uapi_flags(target_os string, host_arch string) []string {
+	if target_os != 'linux' || host_arch != 'arm64' {
+		return []
+	}
+	return ['-D__u128=__uint128_t']
 }
 
 // v3_tcc_cpp_runtime_flags lets native Linux TinyCC links find the platform C++
