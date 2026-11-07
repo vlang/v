@@ -43,7 +43,8 @@ $if freestanding || syscalls {
 	// partial write and EINTR retries (an interrupted write never reaches callers
 	// as an error).
 	fn fsys_write_file(path string, data []u8) ! {
-		fd, e := bf_openat(path.str, u64(o_wronly | o_create | o_trunc), u64(0o644))
+		// As with create(), the kernel applies the process umask to new files.
+		fd, e := bf_openat(path.str, u64(o_wronly | o_create | o_trunc), u64(0o666))
 		if e != 0 {
 			return error_with_code('write_file failed: errno ${e}', e)
 		}
