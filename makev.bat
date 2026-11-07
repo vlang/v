@@ -571,7 +571,8 @@ call :configure_clang_target
 if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
 echo  ^> Attempting to build "%V_BOOTSTRAP%" (from %V_C_FILE%) with Clang
 if !clang_msvc! EQU 1 (
-	"!clang_cl_exe!" /nologo %VC_BOOTSTRAP_DEFINE% /bigobj /MD /utf-8 /w /std:c11 /D_CRT_DECLARE_NONSTDC_NAMES=1 /Fe"%V_BOOTSTRAP%" "%V_C_FILE%" %V_BOOTSTRAP_NATIVE% kernel32.lib user32.lib dbghelp.lib ws2_32.lib bcrypt.lib advapi32.lib /link /STACK:33554432
+	REM Older snapshots select native __int128, whose helpers are absent from the MSVC runtime.
+	"!clang_cl_exe!" /nologo %VC_BOOTSTRAP_DEFINE% /DV_INT128_PORTABLE=1 /bigobj /MD /utf-8 /w /std:c11 /D_CRT_DECLARE_NONSTDC_NAMES=1 /Fe"%V_BOOTSTRAP%" "%V_C_FILE%" %V_BOOTSTRAP_NATIVE% kernel32.lib user32.lib dbghelp.lib ws2_32.lib bcrypt.lib advapi32.lib /link /STACK:33554432
 ) else (
 	"!clang_exe!" %VC_BOOTSTRAP_DEFINE% -std=c99 -municode -g -w -fwrapv -Wno-error=implicit-function-declaration -Wno-error=incompatible-function-pointer-types -o "%V_BOOTSTRAP%" "%V_C_FILE%" %V_BOOTSTRAP_NATIVE% -ladvapi32 -lws2_32 -lbcrypt -Wl,--stack=33554432
 )
@@ -645,7 +646,8 @@ call :generate_stage_c
 if !ERRORLEVEL! NEQ 0 exit /b !ERRORLEVEL!
 echo  ^> Compiling "%V_STAGE%" from "%V_STAGE_C%" with Clang
 if !clang_msvc! EQU 1 (
-	"!clang_cl_exe!" /nologo /bigobj /MD /utf-8 /w /std:c11 /D_CRT_DECLARE_NONSTDC_NAMES=1 /Fe"%V_STAGE%" "%V_STAGE_C%" %V_STAGE_NATIVE% kernel32.lib user32.lib dbghelp.lib ws2_32.lib bcrypt.lib advapi32.lib /link /STACK:33554432
+	REM The snapshot compiler also embeds its old int128 helper header in this stage.
+	"!clang_cl_exe!" /nologo /DV_INT128_PORTABLE=1 /bigobj /MD /utf-8 /w /std:c11 /D_CRT_DECLARE_NONSTDC_NAMES=1 /Fe"%V_STAGE%" "%V_STAGE_C%" %V_STAGE_NATIVE% kernel32.lib user32.lib dbghelp.lib ws2_32.lib bcrypt.lib advapi32.lib /link /STACK:33554432
 ) else (
 	"!clang_exe!" -std=gnu11 -municode -g -w -fwrapv -Wno-int-conversion -o "%V_STAGE%" "%V_STAGE_C%" %V_STAGE_NATIVE% -ldbghelp -lws2_32 -L"%~dp0vlib\crypto\rand\internal\libraries\bcrypt" -lbcrypt -I "%~dp0thirdparty\stdatomic\win" -ladvapi32 -Wl,--stack=33554432
 )

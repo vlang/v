@@ -786,12 +786,18 @@ overflow wraps.
 
 The compiler does not require a 128-bit C type. Every operation becomes a call
 to a small helper, and the helper has two implementations: the C compiler's own
-`__int128` where it exists (gcc, clang), and one built from 64-bit limbs
-everywhere else (tcc, MSVC, every 32-bit target), where a 128-bit value is a
-struct. Both answer identically, down to the rounding of a cast to `f64`: the
-whole 128-bit magnitude is rounded once, rather than each limb on its own. Pass
+`__int128` where the C toolchain supports it, and one built from 64-bit limbs
+elsewhere, where a 128-bit value is a struct. The MSVC ABI uses this struct
+representation with both MSVC and `clang-cl`; its runtime does not supply Clang's
+native 128-bit division helpers. GCC and Clang for other ABIs keep using the
+native type where available. Both implementations answer identically, down to
+the rounding of a cast to `f64`: the whole 128-bit magnitude is rounded once,
+rather than each limb on its own. Pass
 `-d v3_no_native_int128` to force the portable implementation on a compiler that
 has the native type.
+
+C functions exchanging these values with V must use declarations matching the
+selected representation, including the struct representation with `clang-cl`.
 
 Managed arrays of wide integers and structs containing them retain 16-byte
 element alignment on both 32-bit and 64-bit targets, including after growth or cloning.
