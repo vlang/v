@@ -1,0 +1,11 @@
+fn main() {
+	println(1 << 62)
+	println(1 << 63)
+	println(1 << 64)
+	println(1 << 100)
+	println(0xff >> 64)
+	x := u64(1) << 63
+	println(x)
+	const_ok := 1 << 40
+	println(const_ok)
+}
