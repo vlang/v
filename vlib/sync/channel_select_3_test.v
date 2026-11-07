@@ -155,7 +155,8 @@ fn test_select_else_skips_closed_buffered_receive() {
 	assert did_else
 	assert received == []
 	assert ch.len == 1
-	assert <-ch == 1
+	remaining := <-ch
+	assert remaining == 1
 }
 
 fn test_select_expr_false_on_closed_buffered_receive() {
@@ -177,5 +178,6 @@ fn test_select_expr_false_on_closed_buffered_receive() {
 	assert ran_branch == false
 	assert ran_else == false
 	assert ch.len == 1
-	assert <-ch == 1
+	remaining := <-ch
+	assert remaining == 1
 }

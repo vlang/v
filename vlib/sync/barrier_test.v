@@ -55,6 +55,8 @@ fn test_barrier_single_leader_per_round() {
 // A barrier of one passes immediately and reports leadership.
 fn test_barrier_single_thread() {
 	mut b := sync.new_barrier(1)
-	assert b.wait() == true, 'single-thread barrier must pass and lead'
-	assert b.wait() == true, 'single-thread barrier must be reusable'
+	led := b.wait()
+	assert led == true, 'single-thread barrier must pass and lead'
+	led_again := b.wait()
+	assert led_again == true, 'single-thread barrier must be reusable'
 }

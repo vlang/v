@@ -1,0 +1,38 @@
+import sync
+
+fn answer() ?int {
+	return 1
+}
+
+fn main() {
+	ch := chan int{cap: 4}
+	ch <- 1
+	ch <- 2
+	ch <- 3
+	// the receive is not done by a build that removes the assert (`-prod`)
+	assert <-ch == 1
+	assert (<-ch) + 0 == 2
+	mut n := 0
+	assert n++ == 0
+	assert '${n--}' == '1'
+	t := spawn fn () int {
+		return 7
+	}()
+	assert t.wait() == 7
+	// these have no effect: no notice
+	assert n == 0
+	assert ch.len == 1
+	assert 'abc'.contains('b')
+	assert if v := answer() {
+		v == 1
+	} else {
+		false
+	}
+	received := <-ch
+	assert received == 3
+	mut wg := sync.new_waitgroup()
+	wg.add(1)
+	wg.done()
+	wg.wait()
+	assert n == 0, 'plain message'
+}
