@@ -646,3 +646,40 @@ fn main() {
 my: custom', output
 	}
 }
+// A literal of a generic instance initializes the arrays of the structs it
+// embeds, so pushing into them keeps the pushed elements.
+fn test_generic_instance_embedded_defaults() {
+	$if macos && arm64 {
+		output := run_arm64('generic_embedded_defaults', "struct ChildList {
+mut:
+	children []&int
+	names    map[string]int
+}
+
+struct Core {
+	ChildList
+mut:
+	id int
+}
+
+struct GOuter[P] {
+	Core
+	props P
+}
+
+fn main() {
+	x := 5
+	mut c := GOuter[int]{}
+	c.children << &x
+	c.names['k'] = 2
+	mut d := &GOuter[string]{
+		props: 's'
+	}
+	d.children << &x
+	println('\${*c.children[0]} \${*d.children[0]} \${c.names}')
+}
+")
+		assert output == "5 5 {'k': 2}", output
+	}
+}
+

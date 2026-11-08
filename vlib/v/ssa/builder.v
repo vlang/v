@@ -18332,11 +18332,20 @@ fn (mut b Builder) register_checker_generic_struct(name string) ?TypeID {
 	mut field_types := []TypeID{cap: fields.len}
 	mut field_names := []string{cap: fields.len}
 	mut embeds := []int{}
+	canonical_name := flat.source_type_name(canonical_id)
 	for i, field in fields {
 		field_types << b.ssa_type_from_checker_type(field.typ)
 		field_names << field.name
 		if field.is_embed {
 			embeds << i
+		}
+		// Field defaults look up the source type by owner and field name. Without
+		// it, an embedded `Core` of a `Node[int]` literal was zero-filled, leaving
+		// its arrays without an element size.
+		field_source_id := field.typ.source_type_id()
+		b.struct_field_types.set_id(name + '.' + field.name, field_source_id)
+		if canonical_name != name {
+			b.struct_field_types.set_id(canonical_name + '.' + field.name, field_source_id)
 		}
 	}
 	// `node.id` on a `Node[P]` that embeds `Core` reaches `Core.id` through
