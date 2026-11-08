@@ -147,7 +147,7 @@ fn test_fastc_native_preprocessed_cache_ignores_only_unused_macros() ! {
 		assert preprocessed.path == second_preprocessed.path
 		library := os.join_path(root, 'native.dylib')
 		os.write_file(library, 'native cache fixture')!
-		write_c_object_manifest(manifest, library, [first, header], mut stats)!
+		fastc_write_test_native_manifest(manifest, library, [first, header], mut stats)!
 		assert v3_fastc_native_cached_library(manifest, 1) != none
 		// A header can consume the generated macro. Clang must then distinguish it.
 		os.write_file(header, 'int native_value(void) { return build_time; }\n')!
@@ -187,6 +187,8 @@ fn test_fastc_native_cache_hashes_every_dependency_before_reuse() ! {
 		manifest := os.join_path(root, 'native.manifest')
 		mut stats := CObjectCacheStats{}
 		write_c_object_manifest(manifest, library, dependencies, mut stats)!
+		assert v3_fastc_native_cached_library(manifest, 8) == none
+		fastc_write_test_native_manifest(manifest, library, dependencies, mut stats)!
 		for jobs in [1, 8] {
 			cached := v3_fastc_native_cached_library(manifest, jobs) or { panic('valid native manifest rejected') }
 			assert cached.library == library
@@ -270,5 +272,44 @@ fn test_fastc_program_dependency_key_ignores_only_declarations() {
 		assert v3_fastc_preprocessor_lines('%:include <a.h>\nint x;\n') == '%:include <a.h>\n'
 		assert v3_fastc_preprocessor_lines('// note \\\n#include <a.h>\n') == '// note \\\n#include <a.h>\n'
 		assert v3_fastc_preprocessor_lines('int a = 1 \\\r\n+ 2;\n') == 'int a = 1 \\\r\n+ 2;\n'
+	}
+}
+
+fn fastc_write_test_native_manifest(manifest string, library string, dependencies []string, mut stats CObjectCacheStats) ! {
+	$if !skip_fastc ? {
+		mut signatures := []string{}
+		for dependency in dependencies {
+			signatures << v3_fastc_native_file_signature(dependency, false, mut stats)
+		}
+		v3_fastc_native_publish_library('', library, [manifest], dependencies, signatures, mut stats)!
+	}
+}
+
+fn test_fastc_native_signatures_cover_block_boundaries_and_refresh() ! {
+	$if !skip_fastc ? {
+		root := os.join_path(os.vtmp_dir(), 'fastc_native_signatures_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		path := os.join_path(root, 'input.h')
+		mut stats := CObjectCacheStats{}
+		assert v3_fastc_native_file_signature(path, false, mut stats) == ''
+		mut signatures := []string{}
+		for size in [0, 1, 65535, 65536, 65537, 131073] {
+			os.write_file_array(path, []u8{len: size, init: u8(index % 251)})!
+			signature := v3_fastc_native_file_signature(path, true, mut stats)
+			assert signature.starts_with('word-v1:')
+			assert signature !in signatures
+			signatures << signature
+		}
+		original := signatures.last()
+		for offset in [0, 65535, 65536, 131072] {
+			mut bytes := []u8{len: 131073, init: u8(index % 251)}
+			bytes[offset] ^= 1
+			os.write_file_array(path, bytes)!
+			assert v3_fastc_native_file_signature(path, false, mut stats) == original
+			assert v3_fastc_native_file_signature(path, true, mut stats) != original
+			os.write_file_array(path, []u8{len: 131073, init: u8(index % 251)})!
+			assert v3_fastc_native_file_signature(path, true, mut stats) == original
+		}
 	}
 }

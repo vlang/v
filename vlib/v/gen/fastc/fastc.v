@@ -1056,6 +1056,7 @@ struct FastcExpressionToken {
 	is_statement         bool
 	is_capturing_closure bool
 	is_storage           bool
+	is_build_metadata    bool
 mut:
 	typ u32
 	lit string

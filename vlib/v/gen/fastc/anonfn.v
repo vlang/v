@@ -359,6 +359,11 @@ fn (g &Parser) capture_type_source(typ_id u32) ?string {
 		element := g.array_element_type(typ_id)?
 		return '[]' + g.capture_type_source(element)?
 	}
+	if flat.source_type_query(typ_id).has(.c_fixed_array_prefix) {
+		length := fastc_fixed_array_length_id(typ_id)?
+		element := fastc_fixed_array_element_type(typ_id)?
+		return '[' + length + ']' + g.capture_type_source(element)?
+	}
 	if flat.source_type_query(typ_id).has(.c_map_prefix) {
 		key_source_id, value_source_id := g.map_key_value_types(typ_id)?
 		key := key_source_id
