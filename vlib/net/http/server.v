@@ -28,21 +28,30 @@ pub const default_server_port = 9009
 
 pub const default_https_server_port = 9043
 
+// default_max_http1_request_body_size is the default HTTP/1.1 request body limit.
+pub const default_max_http1_request_body_size = 8 * 1024 * 1024
+
+const http1_request_body_too_large_response = 'HTTP/1.1 413 Request Entity Too Large\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'
+
+const http1_bad_request_response = 'HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'
+
 pub struct Server {
 mut:
 	state           ServerStatus = .closed
 	listener_opened bool
 pub mut:
-	addr                    string          = ':${default_server_port}'
-	handler                 Handler         = DebugHandler{}
-	read_timeout            time.Duration   = 30 * time.second
-	write_timeout           time.Duration   = 30 * time.second
-	accept_timeout          time.Duration   = 30 * time.second
-	tls_handshake_timeout   time.Duration   = 30 * time.second // fallback handshake budget used when accept_timeout is zero or net.infinite_timeout; ignored on non-TLS servers
-	pool_channel_slots      int             = 1024
-	worker_num              int             = runtime.nr_jobs()
-	max_keep_alive_requests int             = 100 // max requests per keep-alive connection (0 = unlimited)
-	listener                net.TcpListener = net.TcpListener{
+	addr                    string        = ':${default_server_port}'
+	handler                 Handler       = DebugHandler{}
+	read_timeout            time.Duration = 30 * time.second
+	write_timeout           time.Duration = 30 * time.second
+	accept_timeout          time.Duration = 30 * time.second
+	tls_handshake_timeout   time.Duration = 30 * time.second // fallback handshake budget used when accept_timeout is zero or net.infinite_timeout; ignored on non-TLS servers
+	pool_channel_slots      int           = 1024
+	worker_num              int           = runtime.nr_jobs()
+	max_keep_alive_requests int           = 100 // max requests per keep-alive connection (0 = unlimited)
+	// max_http1_request_body_size caps HTTP/1.1 request bodies before allocation; 0 means unlimited.
+	max_http1_request_body_size int             = default_max_http1_request_body_size
+	listener                    net.TcpListener = net.TcpListener{
 		sock: net.TcpSocket{
 			Socket: net.Socket{
 				handle: -1
@@ -71,6 +80,10 @@ pub mut:
 // listen_and_serve listens on `s.addr`, or uses an explicitly supplied TCP listener, and
 // uses `s.parse_and_respond` to handle requests on incoming connections with `s.handler`.
 pub fn (mut s Server) listen_and_serve() {
+	if s.max_http1_request_body_size < 0 {
+		eprintln('invalid max_http1_request_body_size `${s.max_http1_request_body_size}`, it should be 0 (unlimited) or a positive number of bytes')
+		return
+	}
 	if s.handler is DebugHandler {
 		eprintln('Server handler not set, using debug handler')
 	}
@@ -102,7 +115,8 @@ pub fn (mut s Server) listen_and_serve() {
 	// Create workers
 	mut ws := []thread{cap: s.worker_num}
 	for wid in 0 .. s.worker_num {
-		ws << new_handler_worker(wid, ch, s.handler, s.max_keep_alive_requests, s.enable_http2)
+		ws << new_handler_worker(wid, ch, s.handler, s.max_keep_alive_requests, s.enable_http2,
+			s.max_http1_request_body_size)
 	}
 
 	if s.show_startup_message {
@@ -190,21 +204,23 @@ pub fn (mut s Server) wait_till_running(params WaitTillRunningParams) !int {
 }
 
 struct HandlerWorker {
-	id                      int
-	ch                      chan &net.TcpConn
-	max_keep_alive_requests int
-	enable_http2            bool
+	id                          int
+	ch                          chan &net.TcpConn
+	max_keep_alive_requests     int
+	enable_http2                bool
+	max_http1_request_body_size int
 pub mut:
 	handler Handler
 }
 
-fn new_handler_worker(wid int, ch chan &net.TcpConn, handler Handler, max_keep_alive_requests int, enable_http2 bool) thread {
+fn new_handler_worker(wid int, ch chan &net.TcpConn, handler Handler, max_keep_alive_requests int, enable_http2 bool, max_http1_request_body_size int) thread {
 	mut w := &HandlerWorker{
-		id:                      wid
-		ch:                      ch
-		handler:                 handler
-		max_keep_alive_requests: max_keep_alive_requests
-		enable_http2:            enable_http2
+		id:                          wid
+		ch:                          ch
+		handler:                     handler
+		max_keep_alive_requests:     max_keep_alive_requests
+		enable_http2:                enable_http2
+		max_http1_request_body_size: max_http1_request_body_size
 	}
 	return spawn w.process_requests()
 }
@@ -244,7 +260,15 @@ fn (mut w HandlerWorker) handle_conn(mut conn net.TcpConn) {
 
 	mut request_count := 0
 	for {
-		mut req := parse_request(mut reader) or {
+		mut req := parse_request_with_body_limit(mut reader, w.max_http1_request_body_size) or {
+			if err is RequestBodyLimitError {
+				conn.write_string(http1_request_body_too_large_response) or {}
+				return
+			}
+			if err is RequestFramingError {
+				conn.write_string(http1_bad_request_response) or {}
+				return
+			}
 			if err !is io.Eof {
 				$if debug {
 					// only show in debug mode to prevent abuse
