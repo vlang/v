@@ -24477,6 +24477,51 @@ fn (mut scan EagerSelfhostScanArgs) scan() {
 	}
 }
 
+// ModuleSourceRead is the text of one module file read by
+// read_module_sources_parallel; `read` is false when the file could not be read.
+struct ModuleSourceRead {
+	path string
+mut:
+	source string
+	read   bool
+}
+
+fn module_source_read_thread(arg voidptr) voidptr {
+	mut item := unsafe { &ModuleSourceRead(arg) }
+	item.source = os.read_file(item.path) or { return unsafe { nil } }
+	item.read = true
+	return unsafe { nil }
+}
+
+// read_module_sources_parallel reads the files of an imported module on the
+// worker pool, as Go's module loader reads the files of the packages it
+// preloads concurrently (cmd/go/internal/load/pkg.go, preload). The text stays
+// in managed storage, so the parser can borrow it as a preloaded source.
+fn read_module_sources_parallel(a &flat.FlatAst, files []string) []ModuleSourceRead {
+	mut reads := []ModuleSourceRead{cap: files.len}
+	for file in files {
+		reads << ModuleSourceRead{
+			path: file
+		}
+	}
+	if files.len < 2 || isnil(a.worker_pool) || a.worker_pool.size() == 0 {
+		for i in 0 .. reads.len {
+			module_source_read_thread(unsafe { voidptr(&reads[i]) })
+		}
+		return reads
+	}
+	mut tasks := []workers.Task{cap: reads.len}
+	for i in 0 .. reads.len {
+		tasks << workers.Task{
+			run:        module_source_read_thread
+			arg:        unsafe { voidptr(&reads[i]) }
+			force_sync: i == 0
+		}
+	}
+	a.worker_pool.run(tasks)
+	return reads
+}
+
 struct EagerSelfhostResolveArgs {
 	prefs          voidptr
 	path           string
@@ -25350,13 +25395,13 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			if module_resolved && (!already_parsed || check_reused_dir) && !prefs.building_v
 				&& !import_uses_explicit_module_alias(prefs, mod_name, importing_file, project_root) {
 				expected_module := mod_name.all_after_last('.')
-				for imported_file in mod_files {
+				// The module's files are read concurrently; their declarations are
+				// still validated in order below.
+				sources := read_module_sources_parallel(a, mod_files)
+				for fi, imported_file in mod_files {
 					// The parser is about to read the same file: keep the text for it.
-					mut imported_source_read := true
-					imported_source := os.read_file(imported_file) or {
-						imported_source_read = false
-						''
-					}
+					imported_source_read := sources[fi].read
+					imported_source := sources[fi].source
 					// Cache signatures still come from disk. Keep their parsing on
 					// that path until cache validation also accepts source snapshots.
 					if imported_source_read && !already_parsed && !cache_state.manager.enabled {
