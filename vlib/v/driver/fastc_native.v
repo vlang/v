@@ -158,11 +158,22 @@ $if !skip_fastc ? {
 			}
 			return V3FastcNativeBridge{ functions: functions.keys(), adapters: adapters, sources: sources, dependencies: cached.dependencies, library: cached.library }
 		}
+		// V macros such as @BUILD_TIMESTAMP can change without affecting native code.
+		// Only Clang may establish that equivalence: headers remain opaque to V.
+		preprocessed_source := v3_fastc_native_preprocessed_source(dir, path, args, archives, mut stats)!
+		preprocessed_manifest := c_object_manifest_path(dir, preprocessed_source, '/usr/bin/clang', prepared, prefs.target, mut stats)
+		if cached := v3_fastc_native_cached_library(preprocessed_manifest, fastc.fastc_tcc_job_count(prefs)) {
+			if bench_phases {
+				eprintln('fastc-phase native.preprocessed_reuse ${sw.elapsed().microseconds()}us')
+			}
+			return V3FastcNativeBridge{ functions: functions.keys(), adapters: adapters, sources: sources, dependencies: cached.dependencies, library: cached.library }
+		}
 		deps := c_object_dependencies('/usr/bin/clang', args, path)
 		if deps.used_fallback {
 			return error('FastC native dependency manifest is unavailable: ' + path)
 		}
 		mut dependencies := deps.files.clone()
+		dependencies << preprocessed_source
 		for archive in archives {
 			if archive !in dependencies { dependencies << archive }
 		}
@@ -191,8 +202,10 @@ $if !skip_fastc ? {
 		if !os.is_file(library) {
 			staged := library + '.tmp.' + tempname.unique_token()
 			defer { os.rm(staged) or {} }
+			// Compile exactly the text that established the secondary cache key,
+			// including Clang's expansion of time-dependent native macros.
 			args << ['-dynamiclib', '-undefined', 'dynamic_lookup', '-Wl,-install_name,' + library,
-				path, '-o', staged, '-x', 'none']
+				'-x', 'objective-c-cpp-output', preprocessed_source, '-o', staged, '-x', 'none']
 			args << prepared.filter(c_flag_is_c_source_file(it))
 			args << link_flags
 			result := cmdexec.run('/usr/bin/clang', args)
@@ -205,7 +218,39 @@ $if !skip_fastc ? {
 			publish_native_c_object(staged, library)!
 		}
 		write_c_object_manifest(manifest, library, dependencies, mut stats) or {}
+		write_c_object_manifest(preprocessed_manifest, library, dependencies, mut stats) or {}
 		return V3FastcNativeBridge{ functions: functions.keys(), adapters: adapters, sources: sources, dependencies: dependencies, library: library }
+	}
+
+	// v3_fastc_native_preprocessed_source keys a second lookup by Clang's expanded
+	// source and dependency paths. Unused macros disappear; macros used by a native
+	// header, including in conditional includes, still affect the result. The original
+	// dependency contents and native inputs are validated before either lookup reuses a library.
+	fn v3_fastc_native_preprocessed_source(dir string, source string, compile_args []string, archives []string, mut stats CObjectCacheStats) !string {
+		staged := os.join_path(dir, 'preprocessed.tmp.' + tempname.unique_token())
+		depfile := staged + '.d'
+		defer {
+			os.rm(staged) or {}
+			os.rm(depfile) or {}
+		}
+		mut args := compile_args.clone()
+		args << ['-E', '-P', '-MD', '-MF', depfile, '-MT', 'v3cache', source, '-o', staged]
+		result := cmdexec.run('/usr/bin/clang', args)
+		if result.exit_code != 0 { return error(result.output) }
+		deps := c_object_dependencies_from_output(os.read_file(depfile)!, source)
+		if deps.used_fallback {
+			return error('FastC native preprocessing dependency manifest is unavailable: ' + source)
+		}
+		signature := c_object_file_signature(staged, false, mut stats)
+		if signature == '' { return error('cannot sign preprocessed native input: ' + source) }
+		canonical_source := os.real_path(source)
+		mut hash := c_hash_bytes(u64(1469598103934665603), 'v3-fastc-preprocessed-v1'.bytes())
+		hash = c_hash_bytes(hash, signature.bytes())
+		hash = c_hash_bytes(hash, deps.files.filter(it != source && it != canonical_source).join('\x00').bytes())
+		hash = c_hash_bytes(hash, archives.join('\x00').bytes())
+		path := os.join_path(dir, 'preprocessed_' + hash.hex() + '.mi')
+		if !os.is_file(path) { publish_native_c_object(staged, path)! }
+		return path
 	}
 
 	// v3_fastc_native_declarations derives the native owner's declarations from the program
