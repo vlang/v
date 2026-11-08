@@ -58,7 +58,8 @@ import hash
 
 // default_min_iterations is the smallest PBKDF2 iteration count a client
 // accepts from a server unless `ClientConfig.min_iterations` says otherwise.
-// RFC 7677 §4 requires clients to reject anything below 4096, because a low
+// RFC 7677 §3 and §4 say that the count a server announces SHOULD be at
+// least 4096; refusing a lower one is this module's policy, because a low
 // count makes an offline attack on an intercepted exchange cheap.
 pub const default_min_iterations = 4096
 
@@ -73,19 +74,20 @@ pub const default_min_iterations = 4096
 pub const default_max_iterations = 1_048_576
 
 // default_iterations is the iteration count used by `new_credentials` when
-// the caller does not pick one. RFC 7677 §4 gives 4096 as the floor; this
+// the caller does not pick one. RFC 7677 §4 recommends at least 4096; this
 // module defaults an order of magnitude above it. Derivation typically takes
 // tens of milliseconds on contemporary desktop CPUs; benchmark the target
 // deployment when sizing authentication capacity.
 pub const default_iterations = 32768
 
 // default_salt_size is the number of random bytes `new_credentials` uses for
-// a salt, matching the 16 octets recommended by RFC 5802 §5.1.
+// a salt. RFC 5802 §9 asks for random salts without fixing a length; 16
+// bytes is a common choice.
 pub const default_salt_size = 16
 
 // nonce_size is the number of random bytes behind a generated nonce. The
-// base64 spelling that goes on the wire is longer, and comfortably above the
-// entropy RFC 5802 §5.1 asks for.
+// base64 spelling that goes on the wire is longer. RFC 5802 §5.1 asks for a
+// nonce that differs for each authentication, without fixing a length.
 const nonce_size = 24
 const max_wire_iterations = 999_999_999
 
@@ -222,9 +224,10 @@ pub fn (c Credentials) str() string {
 // to reproduce an existing record; prefer `new_credentials` for a fresh user,
 // as it picks a random salt for you.
 //
-// Prepare and validate the password before calling: SASLprep for `.sha1`,
-// PRECIS OpaqueString for `.sha256`, and the profile agreed with the peer for
-// `.sha512`. This function hashes the supplied bytes unchanged.
+// Prepare and validate the password before calling, with the profile the
+// application protocol or the peer specifies; RFC 5802 names SASLprep
+// (RFC 4013) for every SCRAM mechanism. This function hashes the supplied
+// bytes unchanged.
 pub fn derive_credentials(mechanism Mechanism, password string, salt []u8, iterations int) !Credentials {
 	if salt.len == 0 {
 		return error('scram: the salt must not be empty')
@@ -245,9 +248,10 @@ pub fn derive_credentials(mechanism Mechanism, password string, salt []u8, itera
 // with a freshly generated random salt of `default_salt_size` bytes and
 // `default_iterations` iterations.
 //
-// Prepare and validate the password before calling: SASLprep for `.sha1`,
-// PRECIS OpaqueString for `.sha256`, and the profile agreed with the peer for
-// `.sha512`. This function hashes the supplied bytes unchanged.
+// Prepare and validate the password before calling, with the profile the
+// application protocol or the peer specifies; RFC 5802 names SASLprep
+// (RFC 4013) for every SCRAM mechanism. This function hashes the supplied
+// bytes unchanged.
 //
 // Example:
 // ```v
