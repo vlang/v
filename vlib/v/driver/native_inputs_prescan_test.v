@@ -72,3 +72,31 @@ fn test_source_user_native_input_classifies_directives_like_the_cache() {
 	assert cgen.source_user_native_input(file, 'fn main() {\n\ts := "#include \\"x.h\\""\n}\n',
 		@VEXEROOT, target, []string{}, no_values) == none
 }
+
+fn test_native_input_build_marker_ignores_cache_and_restart_flags() {
+	plain := v3_native_input_build_marker_for('/project', ['-o', 'app', 'ide'])
+	// The build that restarts without the cache and the next build with the
+	// same arguments share the marker.
+	assert v3_native_input_build_marker_for('/project', ['-nocache', '-o', 'app', 'ide']) == plain
+	assert v3_native_input_build_marker_for('/project', ['-v3-internal-tcc-no-retry', '-o', 'app',
+		'ide']) == plain
+	assert v3_native_input_build_marker_for('/project', ['-o', 'other', 'ide']) != plain
+	assert v3_native_input_build_marker_for('/elsewhere', ['-o', 'app', 'ide']) != plain
+}
+
+fn test_prescan_lists_the_subdirectories_a_module_v_mod_names() {
+	root := prescan_project('subdirs')
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'native', 'v.mod'), "Module { name: 'native' subdirs: ['impl'] }\n") or {
+		panic(err)
+	}
+	os.mkdir_all(os.join_path(root, 'native', 'impl')) or { panic(err) }
+	os.write_file(os.join_path(root, 'native', 'impl', 'native.h'), '#define NATIVE_VALUE 1\n') or {
+		panic(err)
+	}
+	os.write_file(os.join_path(root, 'native', 'impl', 'native.v'), 'module native\n\n#include "@VMODROOT/impl/native.h"\n\npub fn value() int {\n\treturn 1\n}\n') or {
+		panic(err)
+	}
+	assert v3_program_supplies_native_inputs(os.join_path(root, 'main.v'), []string{},
+		prescan_prefs(root), []string{}, false)
+}

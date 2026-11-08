@@ -5489,20 +5489,21 @@ fn v3_program_supplies_native_inputs(input_file string, file_list []string, pref
 		return true
 	}
 	shipped_roots := cgen.c_shipped_native_roots(prefs.vroot)
+	// A module's files are listed as the import resolver lists them, including
+	// the subdirectories its v.mod names; the scratch tree only records paths.
+	mut scratch := flat.FlatAst.new()
 	mut files := []string{}
 	for input in [input_file, ...file_list] {
 		if cgen.c_path_is_within_roots(os.real_path(input), shipped_roots) {
 			continue
 		}
 		if os.is_dir(input) {
-			files << prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(input,
-				prefs.user_defines, prefs.backend, prefs.target))
+			files << v3_prescan_module_files(mut scratch, input, prefs)
 		} else if os.is_file(input) {
 			files << input
 			if pref.is_test_file_for_backend(input, prefs.backend) {
 				// A test file is compiled with the other files of its module.
-				files << prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(os.dir(input),
-					prefs.user_defines, prefs.backend, prefs.target))
+				files << v3_prescan_module_files(mut scratch, os.dir(input), prefs)
 			}
 		}
 	}
@@ -5546,12 +5547,21 @@ fn v3_program_supplies_native_inputs(input_file string, file_list []string, pref
 					continue
 				}
 				visited_dirs[real_dir] = true
-				files << prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(dir,
-					prefs.user_defines, prefs.backend, prefs.target))
+				files << v3_prescan_module_files(mut scratch, dir, prefs)
 			}
 		}
 	}
 	return false
+}
+
+// v3_prescan_module_files lists the files of the module in `dir` as the import
+// resolver does (v3_directory_user_files): a module whose v.mod names
+// subdirectories also takes their files, which can supply native inputs.
+fn v3_prescan_module_files(mut scratch flat.FlatAst, dir string, prefs &pref.Preferences) []string {
+	return v3_directory_user_files(mut scratch, dir, prefs, false, false) or {
+		prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(dir, prefs.user_defines,
+			prefs.backend, prefs.target))
+	}
 }
 
 // Native files are opaque to V. Without an ownership contract and a complete
@@ -12106,6 +12116,19 @@ pub fn run(args []string) {
 		&& v3_program_supplies_native_inputs(input_file, file_list, prefs, user_c_flags, tcc_dylib) {
 		no_cache = true
 	}
+	// A build that keeps the cache for the native bridge learns about the native
+	// inputs it cannot cache only after parsing, and then starts over without the
+	// cache. The next build with the same arguments starts without it directly.
+	native_input_marker := if backend == 'c' && !c_only && tcc_bridge_candidate {
+		v3_native_input_build_marker()
+	} else {
+		''
+	}
+	native_input_marker_found := native_input_marker != '' && os.exists(native_input_marker)
+	if native_input_marker_found && !no_cache {
+		trace_v3_cache_fallback('native C inputs that an earlier build with these arguments found after parsing')
+		no_cache = true
+	}
 	cache_with_tcc := tcc_cache_candidate && !no_cache
 	// A program that only prints literals needs a fraction of builtin, which is
 	// parsed for it each time. The cached builtin is ready without that.
@@ -13053,7 +13076,17 @@ pub fn run(args []string) {
 		// v3_program_supplies_native_inputs turned the cache off for every program
 		// whose files it finds supplying one; this guards against one it misses.
 		trace_v3_cache_fallback('native C inputs that the scan before parsing missed: ${native_inputs.user_supplied}')
+		if native_input_marker != '' {
+			os.mkdir_all(os.dir(native_input_marker)) or {}
+			os.write_file(native_input_marker, '') or {}
+		}
 		restart_v3_without_cache('')
+	}
+	// A build that started without the cache because of the marker checks that
+	// the program still has native inputs; otherwise the next build uses the cache.
+	if native_input_marker_found && !cache_state.manager.enabled
+		&& v3_native_inputs(a, prefs, user_files, native_c_flags).user_supplied.len == 0 {
+		os.rm(native_input_marker) or {}
 	}
 	mut native_closure := if tcc_dylib && cache_state.manager.enabled {
 		v3_tcc_dylib_native_closure(a, prefs, native_c_flags, c_compiler, &native_inputs,
@@ -19137,6 +19170,27 @@ fn valid_v3_large_cold_cache_marker(path string) bool {
 		}
 	}
 	return true
+}
+
+// v3_native_input_build_marker names the file that records that a build with
+// the current arguments, in the current directory, found native C inputs after
+// parsing and so had to be built without the module cache. Restart and cache
+// flags are not part of the key: the build that writes the marker and the one
+// that reads it differ only in those.
+fn v3_native_input_build_marker() string {
+	return v3_native_input_build_marker_for(os.getwd(), os.args[1..])
+}
+
+fn v3_native_input_build_marker_for(dir string, args []string) string {
+	mut parts := [dir]
+	for arg in args {
+		if arg == '-nocache' || arg.starts_with('-v3-internal-') {
+			continue
+		}
+		parts << arg
+	}
+	key := sha256.sum(parts.join('\0').bytes()).hex()[..32]
+	return os.join_path(os.vtmp_dir(), 'v3_native_input_builds', key)
 }
 
 fn restart_v3_without_cache(build_dir string) {
