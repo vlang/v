@@ -35,6 +35,7 @@ preprocessor lines, compiler and flags are unchanged and every listed header kee
 Native bridge libraries can also be reused after an unused V macro changes, such as a build
 timestamp. Clang must produce identical preprocessed code and report the same header paths;
 all recorded native dependencies still require matching contents before reuse.
+Dependency paths and contents must stay unchanged while Clang preprocesses the native owner.
 Explicit macro directives retain their source-file order around native implementations.
 With `-o program.c`, FastC writes C without invoking a native compiler or linker.
 C output is published only after the buffered writes, final flush, and close succeed.
