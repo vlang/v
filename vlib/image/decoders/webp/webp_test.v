@@ -877,3 +877,101 @@ fn test_arena_keeps_owned_headers_across_growth() {
 	assert arena.n == 0
 	assert arena.blocks.len == 0
 }
+
+// --- metadata ----------------------------------------------------------------
+
+fn test_metadata_of_a_file_with_exif() ! {
+	meta := decode_metadata(read_golden('test', 'webp')!)!
+	assert meta.exif.len == 8992
+	// EXIF data starts with a TIFF header, little-endian here.
+	assert meta.exif[..4] == [u8(`I`), `I`, `*`, 0]
+	assert meta.icc_profile.len == 0
+	assert meta.xmp.len == 0
+}
+
+fn test_metadata_of_a_file_without_metadata() ! {
+	meta := decode_metadata(read_golden('lossless_solid_8', 'webp')!)!
+	assert meta.icc_profile.len == 0
+	assert meta.exif.len == 0
+	assert meta.xmp.len == 0
+}
+
+fn test_metadata_returns_each_chunk_as_raw_bytes() ! {
+	// An odd length, so that the file pads the chunk, and bytes that are not UTF-8.
+	icc := [u8(0), 0xff, 0xfe, 1, 2]
+	exif := [u8(`M`), `M`, 0, `*`, 0x80, 0]
+	xmp := '<x:xmpmeta xmlns:x="adobe:ns:meta/"/>'.bytes()
+	data := riff_wrap('WEBP', [
+		chunk_bytes('VP8X', vp8x_bytes(0x2c, 8, 8)),
+		chunk_bytes('ICCP', icc),
+		vp8l_chunk_of('lossless_solid_8')!,
+		chunk_bytes('EXIF', exif),
+		chunk_bytes('XMP ', xmp),
+	])
+	meta := decode_metadata(data)!
+	assert meta.icc_profile == icc
+	assert meta.exif == exif
+	assert meta.xmp == xmp
+	img := decode(data)!
+	assert img.width == 8 && img.height == 8
+}
+
+fn test_metadata_keeps_the_first_chunk_of_each_kind() ! {
+	data := riff_wrap('WEBP', [
+		chunk_bytes('VP8X', vp8x_bytes(0x0c, 8, 8)),
+		vp8l_chunk_of('lossless_solid_8')!,
+		chunk_bytes('EXIF', []u8{}),
+		chunk_bytes('EXIF', [u8(1)]),
+		chunk_bytes('XMP ', [u8(2)]),
+		chunk_bytes('XMP ', [u8(3)]),
+	])
+	meta := decode_metadata(data)!
+	// An empty first chunk is still the first one.
+	assert meta.exif.len == 0
+	assert meta.xmp == [u8(2)]
+}
+
+fn test_metadata_is_a_copy_of_the_input() ! {
+	mut data := riff_wrap('WEBP', [
+		chunk_bytes('VP8X', vp8x_bytes(0x08, 8, 8)),
+		vp8l_chunk_of('lossless_solid_8')!,
+		chunk_bytes('EXIF', [u8(1), 2, 3, 4]),
+	])
+	meta := decode_metadata(data)!
+	for i in 0 .. data.len {
+		data[i] = 0
+	}
+	assert meta.exif == [u8(1), 2, 3, 4]
+}
+
+fn test_metadata_does_not_decode_the_pixels() ! {
+	// A VP8L chunk with a signature and no image data: `decode` rejects the file.
+	data := riff_wrap('WEBP', [
+		chunk_bytes('VP8X', vp8x_bytes(0x08, 8, 8)),
+		chunk_bytes('VP8L', [u8(0x2f), 0, 0, 0, 0]),
+		chunk_bytes('EXIF', [u8(7)]),
+	])
+	expect_fail(data, 'vp8l without image data')!
+	meta := decode_metadata(data)!
+	assert meta.exif == [u8(7)]
+}
+
+fn test_metadata_of_an_animation() ! {
+	data := riff_wrap('WEBP', [
+		chunk_bytes('VP8X', vp8x_bytes(0x0a, 8, 8)),
+		chunk_bytes('ANIM', anim_payload(0xFFFFFFFF, 0)),
+		chunk_bytes('ANMF', anmf_payload(0, 0, 8, 8, 100, 0, vp8l_chunk_of('lossless_solid_8')!)),
+		chunk_bytes('EXIF', [u8(5), 6]),
+	])
+	meta := decode_metadata(data)!
+	assert meta.exif == [u8(5), 6]
+	mut anim := decode_animation(data)!
+	assert anim.frame_count() == 1
+	free_anim(mut anim)
+}
+
+fn test_metadata_of_a_truncated_file_is_an_error() ! {
+	data := read_golden('test', 'webp')!
+	decode_metadata(data[..data.len / 2]) or { return }
+	return error('expected an error for a truncated file')
+}
