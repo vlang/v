@@ -79,9 +79,17 @@ fn (mut b Builder) materialize_native_string_literals() {
 }
 
 // resolve_c_struct_storage_type keeps C integer array members inline and fixed-width.
-fn (mut b Builder) resolve_c_struct_storage_type(name u32) TypeID {
+// Member types and array lengths resolve in `module_name`, the module that
+// declares the C struct, so `[max_iconimages]ImageDesc` in `sokol.sapp` uses
+// that module's constant and type.
+fn (mut b Builder) resolve_c_struct_storage_type(name u32, module_name string) TypeID {
+	previous_module := b.cur_module
+	b.cur_module = module_name
+	defer {
+		b.cur_module = previous_module
+	}
 	if b.is_fixed_array_type_name(name) {
-		element := b.resolve_c_struct_storage_type(b.fixed_array_elem_type_name(name))
+		element := b.resolve_c_struct_storage_type(b.fixed_array_elem_type_name(name), module_name)
 		return b.m.type_store.get_array(element, b.fixed_array_len_text(name).int())
 	}
 	return b.resolve_c_decl_type(name)

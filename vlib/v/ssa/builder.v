@@ -487,7 +487,7 @@ fn (mut b Builder) register_types() {
 					qualify_type_ref_name(declared_type, cur_module)
 				}
 				field_type := if node.value_text().starts_with('C.') {
-					b.resolve_c_struct_storage_type(field_type_name_id)
+					b.resolve_c_struct_storage_type(field_type_name_id, cur_module)
 				} else {
 					b.resolve_struct_storage_type(field_type_name_id, cur_module)
 				}
@@ -1522,7 +1522,7 @@ fn (mut b Builder) register_globals() {
 						'g_main_argv' { b.m.type_store.get_ptr(b.m.type_store.get_ptr(b.i8_type)) }
 						else {
 							if f.value.starts_with('C.') {
-								b.resolve_c_struct_storage_type(type_name)
+								b.resolve_c_struct_storage_type(type_name, cur_module)
 							} else {
 								b.resolve_struct_storage_type(type_name, cur_module)
 							}

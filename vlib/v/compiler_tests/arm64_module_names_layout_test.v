@@ -304,3 +304,62 @@ fn main() {
 		assert output == '42 3', output
 	}
 }
+
+// `[rows][cols]C.item_desc` in a C struct uses `cdesc`'s constants, so the
+// struct has the size C gives it.
+fn test_c_struct_arrays_sized_by_module_constants() {
+	$if macos && arm64 {
+		output := run_arm64('c_struct_arrays', {
+			'desc.h':        '#pragma once
+typedef struct item_desc { int a; int b; } item_desc;
+typedef struct big_desc { int start; item_desc items[4][3]; int end; } big_desc;
+static inline int big_end(const big_desc* d) { return d->end + d->items[3][2].b; }
+static inline int big_size(void) { return (int)sizeof(big_desc); }
+'
+			'cdesc/cdesc.v': 'module cdesc
+
+#include "@VMODROOT/desc.h"
+
+pub const rows = 4
+pub const cols = 3
+
+pub struct C.item_desc {
+pub mut:
+	a int
+	b int
+}
+
+pub struct C.big_desc {
+pub mut:
+	start int
+	items [rows][cols]C.item_desc
+	end   int
+}
+
+pub type BigDesc = C.big_desc
+
+fn C.big_end(d &C.big_desc) int
+fn C.big_size() int
+
+pub fn check(d &BigDesc) int {
+	return C.big_end(d)
+}
+
+pub fn c_size() int {
+	return C.big_size()
+}
+'
+			'main.v':        "module main
+
+import cdesc
+
+fn main() {
+	mut d := cdesc.BigDesc{}
+	d.end = 9
+	println('\${sizeof(cdesc.BigDesc)} \${cdesc.c_size()} \${cdesc.check(&d)}')
+}
+"
+		}, ['-d', 'arm64_external_link'])
+		assert output == '104 104 9', output
+	}
+}
