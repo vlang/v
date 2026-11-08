@@ -1,7 +1,7 @@
 module builtin
 
 fn test_prealloc_string_buffers_pack_bytes_and_preserve_general_alignment() {
-	$if prealloc && !builtin_arena ?&& !trace_malloc ? {
+	$if prealloc && !trace_malloc ? {
 		scope := unsafe { prealloc_scope_begin() }
 		first := 'ab'.clone()
 		second := 'cdef'.clone()

@@ -14,11 +14,10 @@ module builtin
 // realloc on any thread can tell arena memory from heap memory. Its readers
 // take no lock (see arena_registry_find).
 //
-// Only programs that use the `arena` module contain this file and the hooks
-// in the allocation entry points: the compiler defines `builtin_arena` for
-// them. Until such a program creates its first arena, each entry point only
-// checks one atomic global (see g_arena_hooks_ready). -prealloc and -gc vgc builds
-// never call into this file.
+// The hooks in the allocation entry points are part of every program. Until
+// the program creates its first arena, each entry point only checks one
+// atomic global (see g_arena_hooks_ready). -prealloc and -gc vgc builds never
+// call into this file.
 
 const arena_magic = u32(0x41524e41)
 const arena_default_chunk_size = int(64 * 1024)

@@ -5336,6 +5336,92 @@ fn v3_native_inputs(a &flat.FlatAst, prefs &pref.Preferences, user_files []strin
 		cgen.cache_program_file_set(a, user_files))
 }
 
+// v3_program_supplies_native_inputs reports whether the program's own files, or
+// those of the modules they import from outside the trees shipped with V, supply
+// a native input to the build (see v3_native_inputs), which the module cache
+// cannot track. It decides before parsing, whether the build uses the cache: the
+// parse of a cached build reads the declaration headers of cached modules. It
+// reads the files as text, so a native input in a `$if` branch that the build
+// does not take turns the cache off too. The native bridge of a TinyCC dynamic
+// library build tracks native inputs itself.
+fn v3_program_supplies_native_inputs(input_file string, file_list []string, prefs &pref.Preferences, user_c_flags []string, tcc_dylib bool) bool {
+	if tcc_dylib {
+		return false
+	}
+	mut c_flags := user_c_flags.clone()
+	for group in v3_cache_refresh_project_flags() or { []cache_refresh.FlagGroup{} } {
+		c_flags << group.flags
+	}
+	if input := cgen.user_c_flags_native_input(c_flags, prefs.vroot) {
+		trace_v3_cache_fallback('native C inputs require compilation without header inspection: ${input}')
+		return true
+	}
+	shipped_roots := cgen.c_shipped_native_roots(prefs.vroot)
+	mut files := []string{}
+	for input in [input_file, ...file_list] {
+		if cgen.c_path_is_within_roots(os.real_path(input), shipped_roots) {
+			continue
+		}
+		if os.is_dir(input) {
+			files << prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(input,
+				prefs.user_defines, prefs.backend, prefs.target))
+		} else if os.is_file(input) {
+			files << input
+			if pref.is_test_file_for_backend(input, prefs.backend) {
+				// A test file is compiled with the other files of its module.
+				files << prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(os.dir(input),
+					prefs.user_defines, prefs.backend, prefs.target))
+			}
+		}
+	}
+	project_root := project_root_for_files(files)
+	mut path_cache := map[string]string{}
+	mut scanned_files := map[string]bool{}
+	mut visited_dirs := map[string]bool{}
+	mut wave_start := 0
+	for wave_start < files.len {
+		// Look for the directives in the files of a whole wave of modules before
+		// following their imports: a module that supplies a native input usually
+		// is one of the first.
+		wave_end := files.len
+		mut wave_files := []string{cap: wave_end - wave_start}
+		mut wave_sources := []string{cap: wave_end - wave_start}
+		for file in files[wave_start..wave_end] {
+			if scanned_files[file] {
+				continue
+			}
+			scanned_files[file] = true
+			source := os.read_file(file) or { continue }
+			if input := cgen.source_user_native_input(file, source, prefs.vroot, prefs.target,
+				c_flags, prefs.compile_values)
+			{
+				trace_v3_cache_fallback('native C inputs require compilation without header inspection: ${input}')
+				return true
+			}
+			wave_files << file
+			wave_sources << source
+		}
+		wave_start = wave_end
+		for fi, file in wave_files {
+			for imported in source_imports_from(wave_sources[fi]) {
+				dir := resolve_project_or_pref_module_path_cached(prefs, imported, file, project_root, mut
+					path_cache)
+				if dir.len == 0 || !os.is_dir(dir) {
+					continue
+				}
+				real_dir := os.real_path(dir)
+				if visited_dirs[real_dir] || cgen.c_path_is_within_roots(real_dir, shipped_roots) {
+					continue
+				}
+				visited_dirs[real_dir] = true
+				files << prefs.without_excluded(pref.get_v_files_from_dir_for_backend_target(dir,
+					prefs.user_defines, prefs.backend, prefs.target))
+			}
+		}
+	}
+	return false
+}
+
 // Native files are opaque to V. Without an ownership contract and a complete
 // C-compiler dependency manifest, keep their compilation outside module caches.
 struct V3NativeInputClosure {
@@ -8921,6 +9007,8 @@ fn is_minimal_literal_output_builtin_file(path string) bool {
 		'map_notd_gcboehm_opt.v',
 		'string.v',
 		'allocation.c.v',
+		// The allocation entry points check the hooks of scoped arenas in there.
+		'arena.c.v',
 		'backtraces.c.v',
 		'backtraces_nix.c.v',
 		'builtin.c.v',
@@ -11501,9 +11589,6 @@ pub fn run(args []string) {
 	prefs.target_libc_headers = target_libc_headers
 	prefs.force_bounds_checking = force_bounds_checking
 	prefs.enable_globals = enable_globals_compat
-	if v3_builtin_arena_define !in user_defines && v3_input_imports_arena(input_file) {
-		user_defines << v3_builtin_arena_define
-	}
 	// Older bootstrap compilers still require the stdlib's compatibility headers.
 	if backend != 'fastc' {
 		record_user_define(mut user_defines, mut compile_values, 'v3_c_extern_declarations')
@@ -11870,6 +11955,10 @@ pub fn run(args []string) {
 			}
 			return
 		}
+	}
+	if backend == 'c' && !c_only && !no_cache
+		&& v3_program_supplies_native_inputs(input_file, file_list, prefs, user_c_flags, tcc_dylib) {
+		no_cache = true
 	}
 	// The bundled TinyCC builds the objects of the module cache by default and
 	// links them itself. TinyCC reads only the objects that it wrote, so the build
@@ -12487,11 +12576,6 @@ pub fn run(args []string) {
 			restart_v3_with_args([v3_internal_force_cache_source_flag], '')
 		}
 	}
-	if !no_builtin && v3_builtin_arena_define !in prefs.user_defines
-		&& v3_program_uses_arena(a, prefs.vroot) {
-		v3_rerun_with_builtin_arena(args, served.question)
-		return
-	}
 	mut logical_file_order := []int{}
 	if prepared_imports.ready {
 		logical_file_order = prepared_imports.logical_file_order(a, &cache_state) or {
@@ -12828,7 +12912,9 @@ pub fn run(args []string) {
 	}
 	has_external_c_inputs := native_inputs.user_supplied.len > 0
 	if cache_state.manager.enabled && has_external_c_inputs && !tcc_dylib {
-		trace_v3_cache_fallback('native C inputs require compilation without header inspection: ${native_inputs.user_supplied}')
+		// v3_program_supplies_native_inputs turned the cache off for every program
+		// whose files it finds supplying one; this guards against one it misses.
+		trace_v3_cache_fallback('native C inputs that the scan before parsing missed: ${native_inputs.user_supplied}')
 		restart_v3_without_cache('')
 	}
 	mut native_closure := if tcc_dylib && cache_state.manager.enabled {
@@ -20338,54 +20424,6 @@ fn append_declared_import(mut imports []string, line string) {
 	}
 }
 
-// Programs that use the `arena` module (vlib/arena) need the allocator hooks
-// of builtin, which every other program goes without: this define selects
-// them (see vlib/builtin/arena_d_builtin_arena.c.v). Builtin is parsed before
-// the imports of a program are resolved, so the driver adds the define when
-// the input file imports `arena` itself (v3_input_imports_arena), and builds
-// again with it when an imported module does (v3_rerun_with_builtin_arena).
-const v3_builtin_arena_define = 'builtin_arena'
-
-// v3_input_imports_arena reports whether the input file imports `arena`.
-fn v3_input_imports_arena(input_file string) bool {
-	if input_file in ['', '-'] || !os.is_file(input_file) {
-		return false
-	}
-	return 'arena' in declared_imports_in_file(input_file)
-}
-
-// v3_program_uses_arena reports whether the resolved imports of a program
-// include vlib's `arena` module.
-fn v3_program_uses_arena(a &flat.FlatAst, vroot string) bool {
-	mut arena_dir := ''
-	for _, dir in a.resolved_module_dirs {
-		if os.file_name(dir) != 'arena' {
-			continue
-		}
-		if arena_dir.len == 0 {
-			arena_dir = os.real_path(os.join_path(vroot, 'vlib', 'arena'))
-		}
-		if os.real_path(dir) == arena_dir {
-			return true
-		}
-	}
-	return false
-}
-
-// v3_rerun_with_builtin_arena builds the program again with the
-// `builtin_arena` define, for an import of `arena` that only the import
-// resolution found.
-fn v3_rerun_with_builtin_arena(args []string, question string) {
-	if os.getenv('V_DIAGNOSTICS_SERVER') != '' {
-		// The server parsed builtin once, without the define.
-		rerun_as_one_shot_check_with('the program imports `arena`', question, ['-d',
-			v3_builtin_arena_define])
-	}
-	mut rerun_args := ['-d', v3_builtin_arena_define]
-	rerun_args << args
-	run(rerun_args)
-}
-
 fn append_unique_file(mut a flat.FlatAst, mut files []string, mut seen map[string]bool, file string) {
 	key := a.record_source_path(file)
 	if seen[key] {
@@ -23990,15 +24028,8 @@ fn trace_diagnostics_server(message string) {
 // a preparation cannot guarantee to match. A child that was to answer
 // `question` answers it there, as `-line-info` does.
 fn rerun_as_one_shot_check(reason string, question string) {
-	rerun_as_one_shot_check_with(reason, question, []string{})
-}
-
-// rerun_as_one_shot_check_with is rerun_as_one_shot_check with `extra_args`
-// before the original arguments.
-fn rerun_as_one_shot_check_with(reason string, question string, extra_args []string) {
 	trace_diagnostics_server('one-shot check: ${reason}')
-	mut args := extra_args.clone()
-	args << os.args[1..]
+	mut args := os.args[1..].clone()
 	if question != '' && args.len > 0 {
 		// Before the input, which the command line ends with.
 		args.insert(args.len - 1, ['-line-info', question])

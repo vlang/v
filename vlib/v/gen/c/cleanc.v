@@ -2851,6 +2851,77 @@ pub fn cache_native_inputs(a &flat.FlatAst, vroot string, target pref.Target, us
 	return result
 }
 
+// user_c_flags_native_input returns the first native file or search directory that
+// the C flags of the build name outside the trees shipped with V.
+pub fn user_c_flags_native_input(flags []string, vroot string) ?string {
+	return c_flags_user_native_input(flags, c_shipped_native_roots(vroot))
+}
+
+// source_user_native_input is cache_native_inputs for the directives in `source`,
+// the text of `file`, a program file outside the trees shipped with V: it returns
+// the first native input that they supply to the build. It reads the directives
+// as text, before the program is parsed, so it also reports one in a `$if` branch
+// that the build does not take.
+pub fn source_user_native_input(file string, source string, vroot string, target pref.Target, user_c_flags []string, compile_values map[string]string) ?string {
+	shipped_roots := c_shipped_native_roots(vroot)
+	mut include_flags := user_c_flags.clone()
+	mut includes := []string{}
+	mut pos := 0
+	for pos < source.len {
+		mut start := pos
+		for start < source.len && source[start] in [` `, `\t`] {
+			start++
+		}
+		mut end := start
+		for end < source.len && source[end] != `\n` {
+			end++
+		}
+		pos = end + 1
+		if start >= end || source[start] != `#` {
+			continue
+		}
+		directive := source[start..end].trim_space()
+		name := directive[1..].all_before(' ').all_before('\t')
+		arg := directive[1 + name.len..].trim_space()
+		match name {
+			'pkgconfig' {
+				return '#pkgconfig ${arg}'
+			}
+			'flag' {
+				flags := c_flag_args_with_values(arg, vroot, file, target, compile_values)
+				if input := c_flags_user_native_input(flags, shipped_roots) {
+					return input
+				}
+				include_flags << flags
+			}
+			'include', 'insert', 'preinclude', 'postinclude' {
+				includes << arg
+			}
+			else {}
+		}
+	}
+	include_dirs := c_flag_include_dirs(include_flags)
+	for raw in includes {
+		include_arg := c_include_arg_for_target_with_values(raw, vroot, file, target, compile_values)
+		if include_arg.len == 0 || include_arg.starts_with('<')
+			|| c_include_arg_is_builtin_abi_helper(include_arg, vroot) {
+			continue
+		}
+		mut resolved := ''
+		for path in c_include_file_paths(include_arg, vroot, file, include_dirs) {
+			if os.is_file(path) {
+				resolved = os.real_path(path)
+				break
+			}
+		}
+		if resolved.len > 0 && c_path_is_within_roots(resolved, shipped_roots) {
+			continue
+		}
+		return if resolved.len > 0 { resolved } else { include_arg }
+	}
+	return none
+}
+
 // c_define_selects_native_implementation reports whether a `#define` selects the
 // implementation section of a single-header library, as `#define SOKOL_IMPL` or
 // `#define STB_IMAGE_IMPLEMENTATION` do. modulecache.declaration_header omits the
@@ -2877,7 +2948,7 @@ pub fn native_path_is_shipped(path string, vroot string) bool {
 	return c_path_is_within_roots(os.real_path(path), c_shipped_native_roots(vroot))
 }
 
-fn c_shipped_native_roots(vroot string) []string {
+pub fn c_shipped_native_roots(vroot string) []string {
 	if vroot.len == 0 {
 		return []string{}
 	}
@@ -2885,7 +2956,7 @@ fn c_shipped_native_roots(vroot string) []string {
 	return ['vlib', 'thirdparty', 'cmd'].map(os.join_path_single(real_vroot, it))
 }
 
-fn c_path_is_within_roots(path string, roots []string) bool {
+pub fn c_path_is_within_roots(path string, roots []string) bool {
 	for root in roots {
 		if path == root || (path.starts_with(root) && path.len > root.len
 			&& (path[root.len] == `/` || path[root.len] == `\\`)) {
@@ -25399,7 +25470,7 @@ fn (g &FlatGen) global_is_thread_local(name string) bool {
 }
 
 // Each thread has its own stack of scoped arenas (see
-// vlib/builtin/arena_d_builtin_arena.c.v), so a spawned thread starts with the
+// vlib/builtin/arena.c.v), so a spawned thread starts with the
 // default allocator.
 fn (g &FlatGen) is_builtin_arena_top(name string) bool {
 	return name == 'g_arena_top' && (g.global_modules[name] or { '' }) == 'builtin'

@@ -68,7 +68,6 @@ fn main() {
 * `-prealloc` and `-gc vgc` are not supported, and using `arena` with them is a compile
   time error. `-prealloc` has its own scopes (`prealloc_scope_begin()`).
 
-Programs that do not import `arena` are not affected: V compiles the allocator hooks into
-builtin (with `-d builtin_arena`) only for programs that import the module. Until such a
-program creates its first arena, the hooks cost one atomic check per allocation and `free()`.
+The allocator hooks are part of builtin in every program. Until a program creates its first
+arena, they cost one atomic check per allocation and `free()`.
 The first arena publishes all allocator hooks together, including when another thread is allocating.
