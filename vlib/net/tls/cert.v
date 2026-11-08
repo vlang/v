@@ -32,8 +32,31 @@ fn der_tlv(data []u8) !(u8, []u8, int) {
 	return tag, val, off + length
 }
 
-// parse_cert_pubkey extracts the ECDSA P-256 public key from a TLS 1.3
-// Certificate message body.
+// extract_cert_der returns the first certificate's DER from a Certificate message body.
+pub fn extract_cert_der(cert_msg_body []u8) ![]u8 {
+	if cert_msg_body.len < 4 {
+		return error('tls: truncated Certificate')
+	}
+	mut off := 0
+	ctx_len := int(cert_msg_body[off])
+	off += 1 + ctx_len
+	if off + 3 > cert_msg_body.len {
+		return error('tls: truncated cert list length')
+	}
+	list_len := (int(cert_msg_body[off]) << 16) | (int(cert_msg_body[off + 1]) << 8) | int(cert_msg_body[off + 2])
+	_ = list_len
+	off += 3
+	if off + 3 > cert_msg_body.len {
+		return error('tls: truncated cert entry')
+	}
+	cert_len := (int(cert_msg_body[off]) << 16) | (int(cert_msg_body[off + 1]) << 8) | int(cert_msg_body[off + 2])
+	off += 3
+	if off + cert_len > cert_msg_body.len {
+		return error('tls: truncated cert')
+	}
+	return cert_msg_body[off..off + cert_len].clone()
+}
+
 pub fn parse_cert_pubkey(cert_msg_body []u8) !ecdsa.PublicKey {
 	if cert_msg_body.len < 4 {
 		return error('tls: truncated Certificate')

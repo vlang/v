@@ -4,6 +4,7 @@ import crypto.ecdsa
 import net
 import time
 import crypto.sha256
+import crypto.x509
 
 // Conn is a pure-V TLS 1.3 connection over TCP.
 pub struct Conn {
@@ -260,6 +261,19 @@ pub fn (mut c Conn) handshake() ! {
 					mut chs2 := c.client_hs or { return error('tls: no client hs') }
 					chs2.server_cert_pubkey = pubkey
 					c.client_hs = chs2
+				}
+				if c.cfg.verify && c.cfg.verify_chain {
+					// parse the leaf cert DER from the Certificate message
+					cert_der := extract_cert_der(parsed.body) or { return err }
+					cert := x509.parse_der(cert_der) or { return error(error_bad_signature) }
+					now := time.now()
+					if now.unix() < cert.not_before.unix() {
+						return error(error_chain_untrusted)
+					}
+					if now.unix() > cert.not_after.unix() {
+						return error(error_chain_expired)
+					}
+					cert.check_host(c.cfg.server_name) or { return error(error_hostname_mismatch) }
 				}
 			}
 			.certificate_verify {
