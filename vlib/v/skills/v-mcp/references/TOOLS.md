@@ -136,10 +136,12 @@ Run the tests of a file or directory and report what passed, what failed and wha
 the failures said.
 
 ```json
-{"path": "src", "only": "test_parse*", "silent": true}
+{"path": "src", "only": "parser"}
 ```
 
-`only` is the same glob `VTEST_ONLY_FN` takes. `env` passes extra variables.
+`only` is what `VTEST_ONLY` takes: comma-separated fragments, and a test file
+runs when its path contains one of them. It is not a glob, and it selects files,
+not test functions. The run is always silent, whatever `silent` says.
 
 ### `v_doctor`
 
@@ -187,12 +189,13 @@ behind the bundle. To add one: `v skills add <name>`.
 
 ## Resources
 
-The server also publishes two, readable without a tool call:
+The server also publishes these, readable without a tool call:
 
 | URI | What |
 | --- | --- |
 | `v://version` | the compiler version |
 | `v://help/<topic>` | a `v help` topic |
+| `v://docs/language` | the language reference, the whole `doc/docs.md` |
 
 And it publishes its model instructions at initialization, which describe the
 working order. The same text is what `v mcp serve --instructions` prints.

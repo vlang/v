@@ -3,10 +3,11 @@
 > The tools are listed in `TOOLS.md`. This reference covers the three writing
 > tools, what each guard is for, and when to reach for which.
 
-Three tools write: `v_edit_replace`, `v_rename_symbol` and `v_format`. All three
-default to reporting a plan rather than writing, and the reason is the same — a
-file can change between the moment you read it and the moment you write it, and a
-silent overwrite is how that becomes data loss.
+Three tools write: `v_edit_replace`, `v_rename_symbol` and `v_format`. The last
+two default to reporting a plan rather than writing; `v_edit_replace` writes at
+once, guarded by `expected_old`. The reason is the same — a file can change between
+the moment you read it and the moment you write it, and a silent overwrite is how
+that becomes data loss.
 
 ## v_references before v_rename_symbol
 
@@ -23,7 +24,8 @@ Then:
 {"name": "v_rename_symbol", "arguments": {"name": "load", "new_name": "load_config"}}
 ```
 
-The response is the plan: every file, every position, and `edit_count`. **Read it
+The response is the plan: every file, every position, `files_changed` and
+`edits`. **Read it
 before applying.** A count that includes a file you did not expect is the signal to
 stop and investigate.
 
@@ -75,7 +77,8 @@ The three shapes:
 An insert does not touch the line it is inserted before. A delete removes the
 range. `end_line` defaults to `start_line`.
 
-A `start_line` past the end of the file is an error, not a truncation.
+`start_line` one past the last line appends. Anything further is an error, not a
+truncation.
 
 ## v_format: dry run by default
 
@@ -113,9 +116,11 @@ Skipping step 4 is the common one, and it is the one a reviewer will notice.
 
 ## Do not mix the server and a shell editor mid-change
 
-The guards work because they compare what is on disk with what you last read. If
-you apply an edit in the shell after reading through the server, the next server
-write will be refused — correctly.
+The `expected_old` guard compares the range on disk with what you last read of
+that range, and nothing else. A shell edit to that range makes the next server
+write fail, correctly; a shell edit elsewhere in the file, or any change before an
+insert, goes through unnoticed, and so does a change between the check and the
+write.
 
 Pick one for a given edit: the server for AST-aware and guarded changes, an editor
 for exploratory work. Finish the exploratory pass, then re-read before writing.
