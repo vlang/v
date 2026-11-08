@@ -80,7 +80,8 @@ pub fn div_64(hi u64, lo u64, y1 u64) (u64, u64) {
 
 	mut quo := u64(0)
 	mut rem := u64(0)
-	$if msvc {
+	// Clang also defines _MSC_VER on Windows, but its headers can omit _udiv128.
+	$if msvc && !clang {
 		quo = C._udiv128(hi, lo, y, &rem)
 		return quo, rem
 	} $else $if amd64 && !android {

@@ -33,6 +33,8 @@ insufficient output buffer as an error.
 
 `os.executable()` returns the process executable path. On Linux, NetBSD, and DragonFly,
 it uses the exact byte count returned by `readlink`, without requiring a NUL terminator.
+Targets without a platform-specific lookup, including Android, use `os.args[0]`, the startup
+directory, and `PATH` as a best-effort fallback.
 
 `os.base()` removes all trailing separators before returning the final path element.
 For example, `os.base('a///')` returns `a`. An empty path returns `.`, and a path made
@@ -413,6 +415,8 @@ process calls `fork`, `execve` and `wait4`. Error strings come from an in-module
 instead of `strerror(3)`, `last_error` reads the runtime's errno, and `sleep_ms` and the
 `os.fd_*` calls go through syscalls as well. On illumos, `wait4` follows its libc: it is
 emulated with `waitid` and fills only the approximate times in `rusage`.
+New files created by `create`, `write_file`, or `write_bytes` use mode `0666`, filtered by the
+process umask. Writing an existing file preserves its permission bits.
 
 Two purity notes: `real_path` makes a path absolute and resolves `.` and `..` lexically,
 without chasing symbolic links (there is no `realpath` syscall); and `setenv`/`unsetenv`

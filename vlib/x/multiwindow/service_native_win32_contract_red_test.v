@@ -3749,8 +3749,20 @@ fn win32_w4_clipboard_purge_fault_case(test_now_ns i64) ![]string {
 		sentinel := 'purge failure sentinel 🙂'
 		sentinel_wide := sentinel.to_wide()
 		mut issues := []string{}
-		fixture_ready := C.v_multiwindow_test_win32_set_clipboard(hwnd, sentinel_wide,
-			win32_red_utf16_units(sentinel)) == 1
+		// The desktop clipboard can be briefly busy with another process. Retry its
+		// sentinel setup for a bounded interval; retain the explicit infra failure
+		// if the fixture still cannot be installed.
+		mut fixture_ready := false
+		for attempt in 0 .. 40 {
+			fixture_ready = C.v_multiwindow_test_win32_set_clipboard(hwnd, sentinel_wide,
+				win32_red_utf16_units(sentinel)) == 1
+			if fixture_ready {
+				break
+			}
+			if attempt < 39 {
+				time.sleep(25 * time.millisecond)
+			}
+		}
 		if !fixture_ready {
 			win32_w4_add_infra(mut issues,
 				'purge-fault oracle could not install the clipboard sentinel')

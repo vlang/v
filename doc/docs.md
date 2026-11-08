@@ -794,12 +794,18 @@ overflow wraps.
 
 The compiler does not require a 128-bit C type. Every operation becomes a call
 to a small helper, and the helper has two implementations: the C compiler's own
-`__int128` where it exists (gcc, clang), and one built from 64-bit limbs
-everywhere else (tcc, MSVC, every 32-bit target), where a 128-bit value is a
-struct. Both answer identically, down to the rounding of a cast to `f64`: the
-whole 128-bit magnitude is rounded once, rather than each limb on its own. Pass
+`__int128` where the C toolchain supports it, and one built from 64-bit limbs
+elsewhere, where a 128-bit value is a struct. The MSVC ABI uses this struct
+representation with both MSVC and `clang-cl`; its runtime does not supply Clang's
+native 128-bit division helpers. GCC and Clang for other ABIs keep using the
+native type where available. Both implementations answer identically, down to
+the rounding of a cast to `f64`: the whole 128-bit magnitude is rounded once,
+rather than each limb on its own. Pass
 `-d v3_no_native_int128` to force the portable implementation on a compiler that
 has the native type.
+
+C functions exchanging these values with V must use declarations matching the
+selected representation, including the struct representation with `clang-cl`.
 
 Managed arrays of wide integers and structs containing them retain 16-byte
 element alignment on both 32-bit and 64-bit targets, including after growth or cloning.
@@ -8409,6 +8415,14 @@ project that locks other revisions of the same packages switches them back. Use
    source directories, including external `subdirs` and the `base_url` source folder.
    An unrelated enclosing Git checkout does not override this root. Without a
    manifest, a discovered Git root is used instead.
+
+   `backend: 'fastc'` makes the project build with the [FastC backend](fastc.md)
+   by default. It applies to every build, run, and test whose input file or
+   folder belongs to that `v.mod`, the same as passing `-b fastc`. An explicit
+   `-b` on the command line still wins, so `v -b c .` uses the C backend. Code
+   given with `-e` or on standard input belongs to no project, and each target
+   of `v test` uses the backend of its own `v.mod`. The accepted values are `c`,
+   `fastc`, `arm64`, `x64`, and `wasm`.
 
    The name of your package should be used with the `module` directive
    at the top of all files in your package. For `mypackage.v`:

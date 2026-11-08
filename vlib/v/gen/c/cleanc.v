@@ -21365,6 +21365,8 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('#ifndef _IONBF')
 	g.writeln('#define _IONBF 2')
 	g.writeln('#endif')
+	// This callback alias belongs to V, including when the target supplies libc headers.
+	g.writeln('typedef int (*qsort_callback_func)(const void*, const void*);')
 	if g.target_libc_headers {
 		// Everything below declares a hosted libc: FILE, the POSIX structs, and the
 		// prototypes that go with them. A kernel defines those itself, in its own
@@ -21385,7 +21387,6 @@ fn (mut g FlatGen) headerless_libc_preamble() {
 	g.writeln('typedef struct FILE FILE;')
 	g.writeln('#endif')
 	g.writeln('typedef struct DIR DIR;')
-	g.writeln('typedef int (*qsort_callback_func)(const void*, const void*);')
 	g.writeln('#if !defined(_SSIZE_T) && !defined(_SSIZE_T_DEFINED) && !defined(__ssize_t_defined) && !defined(_SSIZE_T_DECLARED)')
 	g.writeln('typedef intptr_t ssize_t;')
 	g.writeln('#endif')

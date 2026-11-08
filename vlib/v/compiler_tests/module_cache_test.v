@@ -1128,6 +1128,83 @@ fn main() {
 	assert module_cache_artifact(cache_dir, 'wrapper_', '.o').len == 0
 }
 
+fn test_cached_capturing_callbacks_keep_their_own_adapters() {
+	$if !linux && !macos {
+		return
+	}
+	v3_bin := module_cache_compiler()
+	root := create_module_cache_shipped_project('v3_cached_callback_adapters_${os.getpid()}')
+	defer { os.rmdir_all(os.dir(os.dir(root))) or {} }
+	// libc supplies the C caller, so there are no custom native inputs that
+	// could disable module caching before the callback adapters are generated.
+	// The sibling module is shipped in this vroot, so warm builds read its header.
+	write_module_cache_file(os.dir(root), 'callbackprobe/probe.c.v', 'module callbackprobe
+
+fn C.bsearch(key voidptr, base voidptr, count uint, size uint, compare fn (voidptr, voidptr) int) voidptr
+
+pub fn result(offset int) int {
+	key := 42
+	values := [45]!
+	found := C.bsearch(&key, &values[0], 1, sizeof(int), fn [offset] (left voidptr, right voidptr) int {
+		return unsafe { *(&int(left)) - *(&int(right)) } + offset
+	})
+	assert found != unsafe { nil }
+	return unsafe { *(&int(found)) }
+}
+')
+	cache_dir := os.join_path(root, 'cache')
+	mut first_object := ''
+	mut first_hash := u64(0)
+	for phase in ['cold', 'warm', 'repeat', 'edited'] {
+		// Changing the entry module's literals changes the generated callback
+		// names while the imported module's cached object remains reusable.
+		extra := if phase == 'cold' {
+			'identity := fn (value int) int { return value }\nassert identity(3) == 3\n'
+		} else {
+			''
+		}
+		base := if phase == 'edited' { 4 } else { 3 }
+		source := os.join_path(root, if phase == 'cold' { 'cold.c.v' } else { 'warm.c.v' })
+		os.write_file(source, 'import callbackprobe
+
+fn main() {
+	${extra}
+	base := ${base}
+	key := 4
+	values := [${base + 4}]!
+	found := C.bsearch(&key, &values[0], 1, sizeof(int), fn [base] (left voidptr, right voidptr) int {
+		return unsafe { *(&int(left)) - *(&int(right)) } + base
+	})
+	assert found != unsafe { nil }
+	assert unsafe { *(&int(found)) } == ${base + 4}
+	assert callbackprobe.result(3) == 45
+	println("ok")
+}
+')!
+		output := os.join_path(root, phase)
+		compiled := os.exec(['env', 'V3CACHE=${cache_dir}', 'VFLAGS=', 'VOSARGS=', 'CFLAGS=', 'LDFLAGS=',
+			'V3_INTERNAL_CACHE_FORCE_SOURCE=', 'V3_CACHE_FORCE_SOURCE=',
+			'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1', 'V_MACOS_V3_NO_FALLBACK=1', v3_bin, '-new-compiler',
+			'-no-retry-compilation', '-cc', 'cc', '-gc', 'none', '-show-timings', '-o', output,
+			source])
+		assert compiled.exit_code == 0, '${phase}: ${compiled.output}'
+		object := module_cache_artifact(cache_dir, 'callbackprobe_', '.o')
+		assert object.len > 0, '${phase}: no cached callback module'
+		if phase == 'cold' {
+			first_object = object
+			first_hash = module_cache_object_hash(object)
+		} else {
+			header := module_cache_artifact(cache_dir, 'callbackprobe_', '.vh')
+			assert header.len > 0 && compiled.output.contains(header), compiled.output
+			assert !compiled.output.contains('Caching module callbackprobe...'), compiled.output
+			assert object == first_object
+			assert module_cache_object_hash(object) == first_hash
+		}
+		// Both the program-owned and cached-module-owned captured callbacks run.
+		assert run_module_cache_binary(output) == 'ok'
+	}
+}
+
 fn test_cached_cgen_dependency_inputs_restore_only_allowed_groups() {
 	root := os.join_path(os.temp_dir(), 'v3_cgen_dependency_restore_${os.getpid()}')
 	os.rmdir_all(root) or {}

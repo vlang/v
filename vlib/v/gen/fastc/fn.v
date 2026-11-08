@@ -225,6 +225,10 @@ fn (mut g Parser) parse_c_directive() ! {
 	if c_directive.starts_with('insert ') {
 		c_directive = 'include ' + c_directive['insert '.len..]
 	}
+	// Ordinary headers already precede the generated V declarations.
+	if c_directive.starts_with('preinclude ') {
+		c_directive = 'include ' + c_directive['preinclude '.len..]
+	}
 	if c_directive.starts_with('include ') {
 		remainder := c_directive['include '.len..]
 		qualifier := remainder.all_before(' ')
@@ -642,6 +646,11 @@ fn (mut g Parser) skip_top_level_declaration() ! {
 		} else if g.tok == .semicolon && brace_depth == 0 && paren_depth == 0 && bracket_depth == 0 {
 			g.next()
 			if type_declaration && g.tok == .pipe {
+				continue
+			}
+			// A constant or global value can continue on the next line with a leading
+			// binary operator (`|| other`); no top-level item starts with one.
+			if !body_declaration && !type_declaration && fastc_token_continues_top_level_value(g.tok) {
 				continue
 			}
 			return
@@ -1793,6 +1802,19 @@ fn fastc_primitive_c_type_id(raw_type u32) ?u32 {
 	if raw_type == flat.source_type_uint { return flat.source_type_usize }
 	if raw_type == fastc_primitive_any { return flat.source_type_voidptr }
 	return none
+}
+
+// fastc_scalar_zero_literal_type returns the C type of `name{}` for a number, bool,
+// rune or pointer type, whose zero value is a plain `0`.
+fn fastc_scalar_zero_literal_type(name string) ?string {
+	if name in ['string', 'array', 'map', 'chan', 'Option', '__v_result'] {
+		return none
+	}
+	mapped := fastc_primitive_c_type(name) or { return none }
+	if mapped in ['string', 'array', 'map', 'chan', 'Option', '__v_result'] {
+		return none
+	}
+	return fastc_output_c_type(mapped)
 }
 
 fn fastc_primitive_c_type(raw_type string) ?string {

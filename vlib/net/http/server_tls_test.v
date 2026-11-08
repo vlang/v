@@ -105,6 +105,58 @@ fn test_server_tls_round_trip() {
 	assert resp.body == 'tls hello /hello'
 }
 
+fn test_default_fetch_rejects_the_untrusted_server_certificate() {
+	assert http.FetchConfig{}.validate
+	assert http.Request{}.validate
+	$if use_openssl ? {
+		eprintln('skipping: TLS server not implemented for -d use_openssl yet')
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	mut srv := &http.Server{
+		addr:                   '127.0.0.1:${port}'
+		cert:                   server_tls_cert
+		cert_key:               server_tls_key
+		in_memory_verification: true
+		accept_timeout:         tls_handshake_budget
+		handler:                EchoHandler{}
+		show_startup_message:   false
+	}
+	t := spawn srv.listen_and_serve()
+	srv.wait_till_running() or {
+		srv.close()
+		t.wait()
+		assert false, 'server failed to start: ${err}'
+		return
+	}
+	defer {
+		srv.close()
+		t.wait()
+	}
+	time.sleep(50 * time.millisecond)
+
+	// One attempt: a rejected certificate is an error, not a reason to retry the handshake.
+	if resp := http.fetch(
+		url:         'https://127.0.0.1:${port}/hello'
+		max_retries: 1
+	) {
+		assert false, 'untrusted certificate was accepted: ${resp.status_code} ${resp.body}'
+		return
+	}
+	resp := http.fetch(
+		url:      'https://127.0.0.1:${port}/hello'
+		validate: false
+	) or {
+		assert false, 'fetch with the check skipped failed: ${err}'
+		return
+	}
+	assert resp.status_code == 200
+	assert resp.body == 'tls hello /hello'
+}
+
 fn test_server_tls_stop() {
 	$if use_openssl ? {
 		eprintln('skipping: TLS server not implemented for -d use_openssl yet')

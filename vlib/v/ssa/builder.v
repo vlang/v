@@ -484,7 +484,7 @@ fn (mut b Builder) register_types() {
 					b.struct_field_types.set_id(cur_module + '.' + short_name + '.' + f.value, field_type_name_id)
 				}
 			}
-			if abi := native_c_struct_abi(node.value_text(), b.m.target.ptr_size) {
+			if abi := native_c_struct_abi(node.value_text(), b.m.target) {
 				field_names = abi.field_names.clone()
 				field_types = []TypeID{cap: abi.field_types.ids.len}
 				for field_type in abi.field_types.ids {
@@ -603,10 +603,11 @@ struct NativeCStructAbi {
 	field_types flat.TypeTextList
 }
 
-fn native_c_struct_abi(struct_name string, pointer_size int) ?NativeCStructAbi {
+fn native_c_struct_abi(struct_name string, target TargetData) ?NativeCStructAbi {
+	pointer_size := target.ptr_size
 	if struct_name == 'C.utsname' && pointer_size == 8 {
-		$if linux {
-			// Native ABI overrides follow the compiler host OS. Linux includes
+		if target.is_linux() {
+			// Native ABI overrides follow the target OS. Linux includes
 			// domainname even when the V declaration exposes only five fields.
 			return NativeCStructAbi{
 				field_names: ['sysname', 'nodename', 'release', 'version', 'machine', 'domainname']
@@ -1422,12 +1423,11 @@ fn (mut b Builder) register_consts() {
 }
 
 // register_globals updates register globals state for ssa.
-fn c_standard_stream_symbol(name string) string {
-	$if linux {
+fn c_standard_stream_symbol(name string, target TargetData) string {
+	if target.is_linux() {
 		return name
-	} $else {
-		return '__${name}p'
 	}
+	return '__${name}p'
 }
 
 fn (mut b Builder) register_globals() {
@@ -1510,9 +1510,9 @@ fn (mut b Builder) register_globals() {
 							continue
 						}
 						symbol := match f.value {
-							'C.stdin' { c_standard_stream_symbol('stdin') }
-							'C.stdout' { c_standard_stream_symbol('stdout') }
-							'C.stderr' { c_standard_stream_symbol('stderr') }
+							'C.stdin' { c_standard_stream_symbol('stdin', b.m.target) }
+							'C.stdout' { c_standard_stream_symbol('stdout', b.m.target) }
+							'C.stderr' { c_standard_stream_symbol('stderr', b.m.target) }
 							else { f.value.all_after('C.') }
 						}
 						b.vars[f.value] = b.m.add_external_global(symbol, typ)
@@ -5788,9 +5788,10 @@ fn (mut b Builder) generate_os_stat_kind_body(func_id int, stat_fn string, expec
 	b.block_instr1(.ret, fail_block, b.void_type, false_val)
 
 	mut mode_offset := '4'
-	$if linux {
-		// Linux x86_64 struct stat stores st_mode after dev, ino and nlink.
-		mode_offset = '24'
+	if b.m.target.is_linux() {
+		// Linux x86_64 struct stat stores st_mode after dev, ino and nlink;
+		// arm64 uses the generic layout, st_mode right after dev and ino.
+		mode_offset = if b.m.target.arch == 'arm64' { '16' } else { '24' }
 	}
 	mode_off := b.m.get_or_add_const(b.i64_type, mode_offset)
 	mode_raw_ptr := b.block_instr2(.get_element_ptr, ok_block, ptr_i8, stat_buf, mode_off)
@@ -5840,7 +5841,7 @@ fn (mut b Builder) generate_os_ls_body(func_id int, result_type TypeID) {
 	b.block_instr3(.br, blk_loop, b.void_type, ent_is_null, ValueID(blk_done), ValueID(blk_check))
 
 	mut name_offset := '21'
-	$if linux {
+	if b.m.target.is_linux() {
 		// Linux x86_64 dirent: ino(8), off(8), reclen(2), type(1), d_name.
 		name_offset = '19'
 	}
@@ -13132,6 +13133,21 @@ fn (mut b Builder) emit_runtime_call(name string, ret_type TypeID, values []Valu
 	return b.m.get_or_add_const(ret_type, '0')
 }
 
+// is_entry_argv_load reports whether `value` is a read of g_main_argv. builtin
+// declares that global voidptr while it keeps the entry ABI's &&i8 here, so its
+// value looks like a pointer to the checked type without being any storage
+// slot; a cast such as &&u8(g_main_argv) must not load through it (that read
+// argv[0] in place of argv and crashed every getenv on macOS arm64).
+fn (b &Builder) is_entry_argv_load(value ValueID) bool {
+	argv_global := b.vars['g_main_argv'] or { return false }
+	val := b.m.values[value]
+	if val.kind != .instruction {
+		return false
+	}
+	instr := b.m.instrs[val.index]
+	return instr.op == .load && instr.operands.len == 1 && instr.operands[0] == argv_global
+}
+
 fn (mut b Builder) build_cast_expr(node flat.Node) ValueID {
 	if node.children_count == 0 {
 		return b.m.get_or_add_const(b.i64_type, '0')
@@ -13160,7 +13176,7 @@ fn (mut b Builder) build_cast_expr(node flat.Node) ValueID {
 	if checked_name_source_id != 0 && checked_name_source_id != flat.source_type_unknown {
 		checked_type := b.resolve_type(checked_name_source_id)
 		if b.is_pointer_type(b.value_type(value)) && b.value_type(value) != checked_type
-			&& b.deref_type(value) == checked_type {
+			&& b.deref_type(value) == checked_type && !b.is_entry_argv_load(value) {
 			// Mutable values can retain their storage pointer inside a cast. Read
 			// the semantic value before performing the explicit conversion.
 			value = b.emit1(.load, checked_type, value)
@@ -14321,6 +14337,13 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		if has_receiver := b.fn_signature_has_receiver(resolved_name, node.children_count - 1) {
 			is_method = has_receiver
 		}
+	}
+
+	// A local function value shadows a function of the same name: in
+	// `open := FnOpen(p); open(...)` the call goes through the local, not
+	// to C's open() (which b.fn_ids would otherwise resolve first).
+	if !is_c_call && fn_node.kind == .ident && b.is_local_function_value(id, fn_node_id) {
+		return b.build_indirect_call(id, node, fn_node_id)
 	}
 
 	mut fn_idx := 0
@@ -15617,6 +15640,22 @@ fn (b &Builder) is_function_value_expr(id flat.NodeId) bool {
 	return b.is_function_type_name(typ)
 }
 
+// is_local_function_value reports whether the call `call_id` goes through the
+// ident `id` as a local variable (not a global) whose checked type is a
+// function type. The checker names the function a direct call resolves to and
+// leaves a call through a variable unnamed; b.vars alone is not block-scoped on
+// 64-bit targets, so it still holds a block's local after the block ends.
+fn (b &Builder) is_local_function_value(call_id flat.NodeId, id flat.NodeId) bool {
+	if _ := b.resolved_call_name(call_id) {
+		return false
+	}
+	addr := b.vars[b.a.nodes[int(id)].value_text()] or { return false }
+	if b.m.values[addr].kind == .global {
+		return false
+	}
+	return b.is_function_value_expr(id)
+}
+
 fn (b &Builder) is_function_field_expr(id flat.NodeId) bool {
 	node := b.a.nodes[int(id)]
 	if node.kind != .selector || node.children_count == 0 {
@@ -16395,7 +16434,7 @@ fn (mut b Builder) build_selector(node flat.Node) ValueID {
 			}
 			else {}
 		}
-		if value := native_platform_constant(field_name) {
+		if value := native_platform_constant(field_name, b.m.target) {
 			typ := if field_name == 'MAP_FAILED' {
 				b.m.type_store.get_ptr(b.i8_type)
 			} else {

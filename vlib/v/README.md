@@ -542,6 +542,8 @@ Calls through exported C symbols do not repeat module initialization or replace 
 In executables, native calls before `main` leave runtime initialization pending until process
 arguments are available. Direct `@[_naked]` exports contain no generated initialization calls;
 startup remains the caller's responsibility. Renamed exports initialize through ordinary wrappers.
+Cached program prefixes retain the callback adapters they reference; cached module objects keep
+their own adapters and captured function bodies when a warm build assigns different helper names.
 Cached standard-library headers retain their source classification so headerless C bindings keep
 their complete layouts, including the Boehm GC stack type used by interface stringification.
 Generated fixed-array map-key helpers declare their cached builtin callees before their definitions.
