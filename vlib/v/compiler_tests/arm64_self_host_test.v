@@ -646,6 +646,7 @@ fn main() {
 my: custom', output
 	}
 }
+
 // A literal of a generic instance initializes the arrays of the structs it
 // embeds, so pushing into them keeps the pushed elements.
 fn test_generic_instance_embedded_defaults() {
@@ -718,3 +719,61 @@ fn main() {
 	}
 }
 
+// The 128-bit operations that native_wide_integer_test.v no longer lists as
+// unsupported print what the C backend prints.
+fn test_128_bit_operations_match_c() {
+	$if macos && arm64 {
+		output := run_arm64('wide_ops_match_c', "struct Box {
+	value u128
+}
+
+fn main() {
+	a := -((i128(0x7fffffffffffffff) << 64) | i128(0x7fffffffffffffff))
+	x := (u128(0x123456789abcdef0) << 64) | u128(0xfedcba9876543210)
+	y := (u128(1) << 64) | u128(0xf)
+	println(-a)
+	println(~x)
+	println(x * y)
+	println(x / y)
+	println(x % y)
+	for s in [0, 1, 63, 64, 65, 127] {
+		println('\${x << s} \${a >> s}')
+	}
+	mut z := u128(5)
+	z++
+	z--
+	z++
+	println(z)
+	println(i128(-12345678.9))
+	println(f64(a))
+	println(u64(x))
+	v := voidptr(u128(4096))
+	println(u128(v))
+	mut count := 0
+	for n in u128(1) .. u128(4) {
+		count += int(n)
+	}
+	println(count)
+	println(Box{value: ~y}.value)
+}
+")
+		assert output == '170141183460469231722463931679029329919
+316084509717671728581528299684233989615
+21173125052858388816905667882345492208
+1311768467463790319
+17134975606245761551
+24197857203266734881846307747534221840 -170141183460469231722463931679029329919
+48395714406533469763692615495068443680 -85070591730234615861231965839514664960
+169385000422867146257980133266434293760 -18446744073709551615
+338770000845734292515960266532868587520 -9223372036854775808
+337257634770530121568545925633968963584 -4611686018427387904
+0 -1
+6
+-12345678
+-1.7014118346046923e+38
+18364758544493064720
+4096
+6
+340282366920938463444927863358058659824', output
+	}
+}
