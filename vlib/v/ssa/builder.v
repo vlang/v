@@ -7571,7 +7571,7 @@ fn (mut b Builder) generate_map_set_sized_body(func_id int) {
 	cap := b.map_state_load_i64(blk_insert, state, 2)
 	needs_grow := b.block_instr2(.ge, blk_insert, b.i1_type, len, cap)
 	blk_grow := b.m.add_block(func_id, 'map_set_grow')
-	blk_store := b.m.add_block(func_id, 'map_set_store')
+	mut blk_store := b.m.add_block(func_id, 'map_set_store')
 	b.block_instr3(.br, blk_insert, b.void_type, needs_grow, ValueID(blk_grow), ValueID(blk_store))
 
 	two := b.m.get_or_add_const(b.i64_type, '2')
@@ -7644,6 +7644,37 @@ fn (mut b Builder) generate_map_set_sized_body(func_id int) {
 	memcpy_ref_val := b.m.add_value(.func_ref, b.void_type, 'memcpy', b.runtime_fn_id('memcpy'))
 	b.block_instr4(.call, blk_store, ptr_i8, memcpy_ref_key, key_dest, key_ptr, key_size)
 	b.block_instr4(.call, blk_store, ptr_i8, memcpy_ref_val, val_dest, val_ptr, val_size)
+	// Like `map_clone_string` in vlib/builtin/map.v, the map owns a copy of a new string
+	// key, so a key built in a reused buffer keeps its bytes.
+	string_key_size := b.m.get_or_add_const(b.i64_type, '${b.m.type_size(b.str_type)}')
+	is_string_key := b.block_instr2(.eq, blk_store, b.i1_type, key_size, string_key_size)
+	blk_clone_key := b.m.add_block(func_id, 'map_set_clone_key')
+	blk_stored := b.m.add_block(func_id, 'map_set_stored')
+	b.block_instr3(.br, blk_store, b.void_type, is_string_key, ValueID(blk_clone_key),
+		ValueID(blk_stored))
+	int_type := b.resolve_type(flat.source_type_int)
+	str_field_ptr := b.block_struct_field_ptr(blk_clone_key, key_dest, b.str_type, 0)
+	len_field_ptr := b.block_struct_field_ptr(blk_clone_key, key_dest, b.str_type, 1)
+	lit_field_ptr := b.block_struct_field_ptr(blk_clone_key, key_dest, b.str_type, 2)
+	src_str := b.block_instr1(.load, blk_clone_key, ptr_i8, str_field_ptr)
+	src_len_int := b.block_instr1(.load, blk_clone_key, int_type, len_field_ptr)
+	src_len := if int_type == b.i64_type {
+		src_len_int
+	} else {
+		b.block_instr1(.sext, blk_clone_key, b.i64_type, src_len_int)
+	}
+	one_byte := b.m.get_or_add_const(b.i64_type, '1')
+	clone_bytes := b.block_instr2(.add, blk_clone_key, b.i64_type, src_len, one_byte)
+	clone_calloc_ref := b.m.add_value(.func_ref, ptr_i8, 'calloc', b.runtime_fn_id('calloc'))
+	cloned := b.block_instr3(.call, blk_clone_key, ptr_i8, clone_calloc_ref, clone_bytes,
+		one_byte)
+	clone_memcpy_ref := b.m.add_value(.func_ref, b.void_type, 'memcpy', b.runtime_fn_id('memcpy'))
+	b.block_instr4(.call, blk_clone_key, ptr_i8, clone_memcpy_ref, cloned, src_str, src_len)
+	b.block_instr2(.store, blk_clone_key, b.void_type, cloned, str_field_ptr)
+	b.block_instr2(.store, blk_clone_key, b.void_type, b.m.get_or_add_const(int_type, '0'),
+		lit_field_ptr)
+	b.block_instr1(.jmp, blk_clone_key, b.void_type, ValueID(blk_stored))
+	blk_store = blk_stored
 	one := b.m.get_or_add_const(b.i64_type, '1')
 	new_len := b.block_instr2(.add, blk_store, b.i64_type, len, one)
 	b.map_state_store_i64(blk_store, state, 3, new_len)

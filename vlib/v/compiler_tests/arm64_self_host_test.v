@@ -452,3 +452,27 @@ fn test_map_iteration_by_reference() {
 {'a': ['z']}", output
 	}
 }
+
+// A new string key is copied into the map, so reusing its buffer keeps the entry.
+fn test_map_owns_string_keys() {
+	$if macos && arm64 {
+		output := run_arm64('map_string_key_clone', "import strings
+
+fn main() {
+	mut m := map[string]int{}
+	mut sb := strings.new_builder(16)
+	sb.write_string('changed')
+	m[unsafe { tos(sb.data, sb.len) }] = 3
+	sb.go_back_to(0)
+	sb.write_string('xxxxxxx')
+	println('changed' in m)
+	mut buf := []u8{len: 3, init: `a`}
+	m[unsafe { tos(buf.data, 3) }] = 4
+	buf[0] = `z`
+	println(m)
+}
+")
+		assert output == "true
+{'changed': 3, 'aaa': 4}", output
+	}
+}
