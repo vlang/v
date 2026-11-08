@@ -323,3 +323,37 @@ fn test_fastc_skip_name_after_semicolon_in_attribute_group_is_the_flag() {
 	assert fields[0].name == 'a' && fields[0].is_skip
 	assert fields[1].name == 'b' && !fields[1].is_skip
 }
+
+// A comma inside a call's parentheses separates arguments, not attribute names, so `skip`
+// after it is an argument as in V, leading or trailing.
+fn test_fastc_skip_after_comma_inside_call_argument_is_not_the_flag() {
+	leading := fastc_leading_flags_emit('struct S {\n\t@[foo(bar, skip)] a int = 1\n\tb int\n}\n') or {
+		panic(err)
+	}
+	leading_fields := leading[fastc_c_declared_type_name(fastc_type_key('main', 'S'))] or {
+		panic('missing struct S')
+	}
+	assert leading_fields.len == 2
+	assert leading_fields[0].name == 'a' && !leading_fields[0].is_skip
+	trailing := fastc_leading_flags_emit('struct S {\n\ta int = 1 @[foo(bar, skip)]\n\tb int\n}\n') or {
+		panic(err)
+	}
+	trailing_fields := trailing[fastc_c_declared_type_name(fastc_type_key('main', 'S'))] or {
+		panic('missing struct S')
+	}
+	assert trailing_fields.len == 2
+	assert trailing_fields[0].name == 'a' && !trailing_fields[0].is_skip
+}
+
+// A `skip` name after a call's closing parenthesis and a top-level `;` is still the flag.
+fn test_fastc_skip_name_after_call_and_semicolon_is_the_flag() {
+	info := fastc_leading_flags_emit('struct S {\n\t@[foo(bar, skip); skip] a int = 1\n\tb int\n}\n') or {
+		panic(err)
+	}
+	fields := info[fastc_c_declared_type_name(fastc_type_key('main', 'S'))] or {
+		panic('missing struct S')
+	}
+	assert fields.len == 2
+	assert fields[0].name == 'a' && fields[0].is_skip
+	assert fields[1].name == 'b' && !fields[1].is_skip
+}

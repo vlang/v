@@ -64,20 +64,27 @@ fn fastc_scan_struct_field_attribute(mut scan scanner.Scanner) !(token.Token, bo
 	mut is_required := false
 	mut is_skip := false
 	// `at_name` is true where an attribute name may start: after `@[` and after a top-level
-	// `;` or `,`. `skip` or `required` elsewhere, such as the argument in `@[foo: skip]`, is not
-	// the flag, as V reads it.
+	// `;` or `,`. `skip` or `required` elsewhere, such as the argument in `@[foo: skip]` or
+	// `@[foo(bar, skip)]`, is not the flag, as V reads it. A comma inside `(...)` separates
+	// call arguments, so `parens` must be zero for a separator to start a name.
 	mut at_name := true
+	mut parens := 0
 	for depth > 0 {
 		if tok == .eof {
 			return error('fastc parser does not support unfinished struct field attribute')
 		}
-		if depth == 1 && at_name && tok == .name && scan.lit == 'required' {
+		if depth == 1 && parens == 0 && at_name && tok == .name && scan.lit == 'required' {
 			is_required = true
 		}
-		if depth == 1 && at_name && tok == .name && scan.lit == 'skip' {
+		if depth == 1 && parens == 0 && at_name && tok == .name && scan.lit == 'skip' {
 			is_skip = true
 		}
-		at_name = depth == 1 && tok in [.semicolon, .comma]
+		at_name = depth == 1 && parens == 0 && tok in [.semicolon, .comma]
+		if tok == .lpar {
+			parens++
+		} else if tok == .rpar {
+			parens--
+		}
 		if tok == .lsbr {
 			depth++
 		} else if tok == .rsbr {
