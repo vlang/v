@@ -333,6 +333,12 @@ fn arm64_external_link(side Arm64CSide, opts Arm64ExternalLink) ! {
 	link_args << [opts.object, support_object]
 	link_args << link_flags
 	link_args << opts.link_ld_flags
+	if opts.target.os == 'macos' {
+		// The same 64 MiB main stack as the C backend's executables and the
+		// built-in linker's LC_MAIN: recursive passes such as the compiler's
+		// checker need it, the more so while each SSA value has its own slot.
+		link_args << '-Wl,-stack_size,0x4000000'
+	}
 	link_args << ['-o', opts.output]
 	if opts.show_cc {
 		println('${side.compiler} ${link_args.join(' ')}')
