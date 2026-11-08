@@ -115,9 +115,16 @@ fn closure_current_thread_id_platform() u64 {
 
 @[inline]
 fn closure_init_once_platform() {
-	eprintln('closure_init_once_platform')
-	if isnil(g_closure.closure_ptr) {
-		closure_init_body()
-		g_closure_once_done = true
+	$if freestanding || vinix {
+		if isnil(g_closure.closure_ptr) {
+			closure_init_body()
+		}
+	} $else {
+		C.pthread_mutex_lock(&g_closure_once_mutex)
+		if !g_closure_once_done {
+			closure_init_body()
+			g_closure_once_done = true
+		}
+		C.pthread_mutex_unlock(&g_closure_once_mutex)
 	}
 }

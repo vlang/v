@@ -1440,9 +1440,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 			end_pos := g.text_offset()
 			g.emit32(rv_jal(rv_reg_zero, 0))
 			target := g.text_offset()
-			g.patch_jal(false_pos, target)
+			g.patch_jal(false_pos, target - false_pos)
 			g.emit_phi_copy_value(instr.operands[2], val_id)
-			g.patch_jal(end_pos, g.text_offset())
+			g.patch_jal(end_pos, g.text_offset() - end_pos)
 		}
 		.phi {}
 		.assign {
@@ -1612,6 +1612,12 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 	if ret_indirect {
 		arg_reg = 1 // a0 reserved for the aggregate destination pointer
 	}
+	mut is_var_call := false
+	if fn_ref_id >= 0 && fn_ref_id < g.m.values.len
+		&& g.m.values[fn_ref_id].kind == .func_ref
+		&& g.m.values[fn_ref_id].index >= 0 && g.m.values[fn_ref_id].index < g.m.funcs.len {
+		is_var_call = g.m.funcs[g.m.values[fn_ref_id].index].is_variadic
+	}
 	mut stack_off := 0
 	for ai in 1 .. instr.operands.len {
 		arg_id := instr.operands[ai]
@@ -1703,13 +1709,19 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 				}
 			}
 		}
-		if g.is_float_type(arg_val.typ) && is_c_extern {
+		if g.is_float_type(arg_val.typ) {
 			if float_arg_reg < 8 {
 				src_reg := g.load_val(arg_id, rv_reg_t0)
 				if src_reg != rv_reg_t0 {
 					g.emit32(rv_addi(rv_reg_t0, src_reg, 0))
 				}
 				g.emit32(rv_fmv_d_x(10 + float_arg_reg, rv_reg_t0))
+				if is_c_extern && is_var_call && arg_reg < 8 {
+					// Variadic C calls also take the float bits in the next
+					// integer register (mirrors the C compiler ABI).
+					g.emit32(rv_addi(rv_reg_a0 + arg_reg, rv_reg_t0, 0))
+					arg_reg++
+				}
 				float_arg_reg++
 			} else {
 				src_reg := g.load_val(arg_id, rv_reg_t0)
@@ -2581,19 +2593,19 @@ fn rv_mul(rd int, rs1 int, rs2 int) u32 {
 }
 
 fn rv_div(rd int, rs1 int, rs2 int) u32 {
-	return (0x20 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (4 << 12) | (u32(rd) << 7) | 0x33
+	return (1 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (4 << 12) | (u32(rd) << 7) | 0x33
 }
 
 fn rv_divu(rd int, rs1 int, rs2 int) u32 {
-	return (0x20 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (5 << 12) | (u32(rd) << 7) | 0x33
+	return (1 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (5 << 12) | (u32(rd) << 7) | 0x33
 }
 
 fn rv_rem(rd int, rs1 int, rs2 int) u32 {
-	return (0x20 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (6 << 12) | (u32(rd) << 7) | 0x33
+	return (1 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (6 << 12) | (u32(rd) << 7) | 0x33
 }
 
 fn rv_remu(rd int, rs1 int, rs2 int) u32 {
-	return (0x20 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (7 << 12) | (u32(rd) << 7) | 0x33
+	return (1 << 25) | (u32(rs2) << 20) | (u32(rs1) << 15) | (7 << 12) | (u32(rd) << 7) | 0x33
 }
 
 fn rv_and(rd int, rs1 int, rs2 int) u32 {

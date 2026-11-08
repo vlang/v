@@ -1089,9 +1089,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 					}
 					.frem {
 						g.load_val(instr.operands[0], rv_reg_t0)
-						g.emit32(rv_fmv_d_x(10, rv_reg_t0))
+						g.emit32(rv_fmv_d_x(0, rv_reg_t0))
 						g.load_val(instr.operands[1], rv_reg_t0)
-						g.emit32(rv_fmv_d_x(11, rv_reg_t0))
+						g.emit32(rv_fmv_d_x(1, rv_reg_t0))
 						if is_f32 {
 							g.call_extern('fmodf')
 						} else {
@@ -1212,9 +1212,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 					}
 					.frem {
 						g.load_val(instr.operands[0], rv_reg_t0)
-						g.emit32(rv_fmv_d_x(10, rv_reg_t0))
+						g.emit32(rv_fmv_d_x(0, rv_reg_t0))
 						g.load_val(instr.operands[1], rv_reg_t0)
-						g.emit32(rv_fmv_d_x(11, rv_reg_t0))
+						g.emit32(rv_fmv_d_x(1, rv_reg_t0))
 						if is_f32 {
 							g.call_extern('fmodf')
 						} else {
@@ -1480,9 +1480,9 @@ fn (mut g Gen) gen_instr(val_id int) {
 			end_pos := g.text_offset()
 			g.emit32(rv_jal(rv_reg_zero, 0))
 			target := g.text_offset()
-			g.patch_jal(false_pos, target)
+			g.patch_jal(false_pos, target - false_pos)
 			g.emit_phi_copy_value(instr.operands[2], val_id)
-			g.patch_jal(end_pos, g.text_offset())
+			g.patch_jal(end_pos, g.text_offset() - end_pos)
 		}
 		.phi {}
 		.assign {
@@ -1613,7 +1613,7 @@ fn (mut g Gen) gen_ret(val_id int, instr ssa.Instruction) {
 				if src_reg != rv_reg_t0 {
 					g.emit32(rv_addi(rv_reg_t0, src_reg, 0))
 				}
-				g.emit32(rv_fmv_d_x(10, rv_reg_t0))
+				g.emit32(rv_fmv_d_x(0, rv_reg_t0))
 			} else {
 				src_reg := g.load_val(ret_id, rv_reg_a0)
 				if src_reg != rv_reg_a0 {
@@ -1743,7 +1743,7 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 				}
 			}
 		}
-		if g.is_float_type(arg_val.typ) && is_c_extern {
+		if g.is_float_type(arg_val.typ) {
 			mut is_var := false
 			if fn_ref_id >= 0 && fn_ref_id < g.m.values.len && g.m.values[fn_ref_id].kind == .func_ref
 				&& g.m.values[fn_ref_id].index >= 0 && g.m.values[fn_ref_id].index < g.m.funcs.len {
@@ -1755,7 +1755,7 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 					g.emit32(rv_addi(rv_reg_t0, src_reg, 0))
 				}
 				g.emit32(rv_fmv_d_x(float_arg_reg, rv_reg_t0))
-				if is_var && arg_reg < 8 {
+				if is_c_extern && is_var && arg_reg < 8 {
 					g.emit32(rv_addi(rv_reg_a0 + arg_reg, rv_reg_t0, 0))
 					arg_reg++
 				}
@@ -2162,8 +2162,7 @@ fn (mut g Gen) emit_copy_ptr_to_fp(src_ptr_reg int, dst_off int, size int) {
 fn (mut g Gen) emit_branch_to_block(blk_id int) {
 	if target := g.block_offset(blk_id) {
 		offset := target - g.text_offset()
-		uoff := u32(offset)
-		g.emit32(0x50000000 | ((uoff & 0x3ffff) << 8))
+		g.emit32(la_b_offset(offset))
 	} else {
 		g.pending_jmps << PendingJmp{
 			text_pos: g.text_offset()
@@ -2279,7 +2278,7 @@ fn (mut g Gen) resolve_all_pending() {
 
 // patch_jal rewrites the imm20 field of the jal placeholder at text_pos.
 fn (mut g Gen) patch_jal(text_pos int, offset int) {
-	w := 0x50000000 | ((u32(offset) & 0x3ffff) << 8)
+	w := la_b_offset(offset)
 	g.elf.text_data[text_pos] = u8(w)
 	g.elf.text_data[text_pos + 1] = u8(w >> 8)
 	g.elf.text_data[text_pos + 2] = u8(w >> 16)
@@ -2784,9 +2783,15 @@ fn rv_auipc(rd int, imm int) u32 {
 }
 
 fn rv_jal(rd int, offset int) u32 {
-	// LoongArch bl: offset in bytes, encoded as (offset << 8) for small offsets
-	uoff := u32(offset)
-	return 0x54000000 | ((uoff & 0x3ffff) << 8)
+	// LoongArch bl: imm26 = offset >> 2 split as low16 @ [25:10], high10 @ [9:0]
+	imm := u32((offset >> 2) & 0x3ffffff)
+	return 0x54000000 | ((imm & 0xffff) << 10) | ((imm >> 16) & 0x3ff)
+}
+
+fn la_b_offset(offset int) u32 {
+	// LoongArch b: same imm26 layout as bl with opcode 0x50000000
+	imm := u32((offset >> 2) & 0x3ffffff)
+	return 0x50000000 | ((imm & 0xffff) << 10) | ((imm >> 16) & 0x3ff)
 }
 
 fn rv_jalr(rd int, rs1 int, imm int) u32 {
