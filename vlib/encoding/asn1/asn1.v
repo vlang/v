@@ -58,6 +58,178 @@ pub fn encode_bool(b bool) []u8 {
 	return wrap(0x01, [v])
 }
 
+// encode_null encodes a DER NULL.
+pub fn encode_null() []u8 {
+	return wrap(0x05, []u8{})
+}
+
+// decode_null validates a DER NULL.
+pub fn decode_null(data []u8) ! {
+	tag, content := unwrap(data)!
+	if tag != 0x05 || content.len != 0 {
+		return error('asn1: not a null')
+	}
+}
+
+// encode_enumerated encodes an integer as DER ENUMERATED.
+pub fn encode_enumerated(n i64) []u8 {
+	// Same content octets as INTEGER, different tag.
+	inner := encode_int(n)
+	return wrap(0x0a, inner[2..].clone())
+}
+
+// decode_enumerated decodes a DER ENUMERATED.
+pub fn decode_enumerated(data []u8) !i64 {
+	tag, content := unwrap(data)!
+	if tag != 0x0a {
+		return error('asn1: not an enumerated')
+	}
+	return decode_int(wrap(0x02, content.clone()))
+}
+
+// encode_utf8string encodes s as DER UTF8String.
+pub fn encode_utf8string(s string) []u8 {
+	return wrap(0x0c, s.bytes())
+}
+
+// decode_utf8string decodes a DER UTF8String.
+pub fn decode_utf8string(data []u8) !string {
+	tag, content := unwrap(data)!
+	if tag != 0x0c {
+		return error('asn1: not a utf8string')
+	}
+	return content.bytestr()
+}
+
+// encode_bitstring encodes data with unused_bits trailing pad bits
+// as DER BIT STRING.
+pub fn encode_bitstring(data []u8, unused_bits u8) ![]u8 {
+	if unused_bits > 7 {
+		return error('asn1: unused bits out of range')
+	}
+	if data.len == 0 && unused_bits != 0 {
+		return error('asn1: unused bits with empty data')
+	}
+	mut content := []u8{cap: data.len + 1}
+	content << unused_bits
+	content << data
+	return wrap(0x03, content)
+}
+
+// decode_bitstring decodes a DER BIT STRING into data and unused bits.
+pub fn decode_bitstring(data []u8) !([]u8, u8) {
+	tag, content := unwrap(data)!
+	if tag != 0x03 || content.len == 0 {
+		return error('asn1: not a bit string')
+	}
+	if content[0] > 7 {
+		return error('asn1: bad unused bits count')
+	}
+	return content[1..].clone(), content[0]
+}
+
+// encode_oid encodes a dotted OID (e.g. "1.2.840.113549") as DER.
+pub fn encode_oid(oid string) ![]u8 {
+	parts := oid.split('.')
+	if parts.len < 2 {
+		return error('asn1: bad oid `${oid}`')
+	}
+	mut arcs := []u64{}
+	for p in parts {
+		arcs << p.u64()
+	}
+	if arcs[0] > 2 || (arcs[0] < 2 && arcs[1] >= 40) {
+		return error('asn1: bad oid arcs `${oid}`')
+	}
+	mut body := []u8{}
+	body << u8(arcs[0] * 40 + arcs[1])
+	for a in arcs[2..] {
+		body << encode_base128(a)
+	}
+	return wrap(0x06, body)
+}
+
+// decode_oid decodes a DER OID into dotted form.
+pub fn decode_oid(data []u8) !string {
+	tag, content := unwrap(data)!
+	if tag != 0x06 || content.len == 0 {
+		return error('asn1: not an oid')
+	}
+	first := u64(content[0])
+	mut arcs := if first < 40 {
+		[u64(0), first]
+	} else if first < 80 {
+		[u64(1), first - 40]
+	} else {
+		[u64(2), first - 80]
+	}
+	mut pos := 1
+	for pos < content.len {
+		mut v := u64(0)
+		for {
+			if pos >= content.len {
+				return error('asn1: truncated oid')
+			}
+			b := content[pos]
+			pos++
+			v = (v << 7) | u64(b & 0x7f)
+			if b & 0x80 == 0 {
+				break
+			}
+		}
+		arcs << v
+	}
+	return arcs.map(fn (a u64) string { return a.str() }).join('.')
+}
+
+fn encode_base128(n u64) []u8 {
+	if n == 0 {
+		return [u8(0)]
+	}
+	mut v := n
+	mut tmp := []u8{}
+	for v > 0 {
+		tmp << u8(v & 0x7f)
+		v >>= 7
+	}
+	mut out := []u8{}
+	for i := tmp.len - 1; i >= 0; i-- {
+		mut b := tmp[i]
+		if i != 0 {
+			b |= 0x80
+		}
+		out << b
+	}
+	return out
+}
+
+// encode_set encodes parts as DER SET.
+pub fn encode_set(parts [][]u8) []u8 {
+	mut content := []u8{}
+	for p in parts {
+		content << p
+	}
+	return wrap(0x30 + 1, content)
+}
+
+// decode_set decodes a DER SET into its element encodings.
+pub fn decode_set(data []u8) ![][]u8 {
+	tag, content := unwrap(data)!
+	if tag != 0x31 {
+		return error('asn1: not a set')
+	}
+	return split_tlvs(content)
+}
+
+// encode_explicit wraps inner (a complete TLV) in context-specific
+// constructed tag [n].
+pub fn encode_explicit(n u8, inner []u8) ![]u8 {
+	if n > 30 {
+		return error('asn1: explicit tag out of range')
+	}
+	return wrap(0xa0 + n, inner.clone())
+}
+
 pub fn decode_bool(data []u8) !bool {
 	tag, content := unwrap(data)!
 	if tag != 0x01 || content.len != 1 {
@@ -91,6 +263,10 @@ pub fn decode_sequence(data []u8) ![][]u8 {
 	if tag != 0x30 {
 		return error('asn1: not a sequence')
 	}
+	return split_tlvs(content)
+}
+
+fn split_tlvs(content []u8) ![][]u8 {
 	mut out := [][]u8{}
 	mut pos := 0
 	for pos < content.len {
