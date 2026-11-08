@@ -187,6 +187,11 @@ fn encode_macos_version(version string) u32 {
 // to libSystem; the object does the same by renaming the V definitions to
 // private symbols, so neither V code nor C libraries linked next to it can
 // recurse into the wrapper.
+//
+// The `v3_*` runtime helpers the generator synthesizes (`v3_pthread_create`,
+// `v3_modulecache_file_metadata`, ...) are the native copies of C helpers that
+// a program may also link as objects (`#flag @VEXEROOT/.../pthread_helper.o`).
+// They stay local to the object, so both can be linked.
 pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! {
 	text_len := m.text_data.len
 	const_addr := text_len
@@ -217,7 +222,7 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 				shadowed[i] = true
 				local_syms << i
 				undef_syms << i
-			} else if sym.type_ & n_ext != 0 {
+			} else if sym.type_ & n_ext != 0 && !sym.name.starts_with('_v3_') {
 				ext_syms << i
 			} else {
 				local_syms << i
