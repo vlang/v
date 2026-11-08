@@ -280,6 +280,28 @@ pub fn (mut c Conn) handshake() ! {
 							return error(error_chain_expired)
 						}
 						cert.check_host(c.cfg.server_name) or { return error(error_hostname_mismatch) }
+						store := if c.cfg.ca_store.roots.len > 0 {
+							c.cfg.ca_store
+						} else {
+							load_system_roots() or { return error(error_chain_untrusted) }
+						}
+						mut trusted := store.contains(cert)
+						if !trusted {
+							for r in store.roots {
+								rpk := r.public_key() or { continue }
+								match rpk {
+									x509.EcdsaP256PublicKey {
+										verify_cert_signature_ecdsa(cert_der, rpk.point) or { continue }
+										trusted = true
+										break
+									}
+									else {}
+								}
+							}
+						}
+						if !trusted {
+							return error(error_chain_untrusted)
+						}
 					}
 				}
 			}

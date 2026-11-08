@@ -51,6 +51,7 @@ pub fn new_conn(cfg Config) !&Conn {
 pub fn (c &Conn) is_closed() bool {
 	return c.closed
 }
+
 pub const tls_version_1_3 = u16(0x0303)
 
 // ProtocolVersion as used inside the supported_versions extension.
@@ -153,9 +154,11 @@ pub mut:
 	in_memory   bool
 	pq_mode     PostQuantumMode
 	// Min/max TLS version. Only 1.3 is supported in v1.
-	min_version u16 = tls_version_1_3
-	max_version u16 = tls_version_1_3
+	min_version  u16  = tls_version_1_3
+	max_version  u16  = tls_version_1_3
 	verify_chain bool = true
+	// Optional trust store for chain verification. If empty, system roots are used.
+	ca_store CertStore
 }
 
 // Conn is defined in conn.v.
