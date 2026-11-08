@@ -489,7 +489,7 @@ fn (mut g Gen) gen_func(func_idx int) {
 			// spill. Overflow float args live on the incoming stack.
 			off := g.stack_slot(pid) or { 0 }
 			if float_reg_idx < 8 {
-				g.emit32(rv_fmv_x_d(rv_reg_t0, 10 + float_reg_idx) | 0)
+				g.emit32(rv_fmv_x_d(rv_reg_t0, float_reg_idx) | 0)
 				g.emit_store_fp(rv_reg_t0, off)
 			} else {
 				g.emit_load_fp(rv_reg_t0, stack_arg_off)
@@ -795,10 +795,10 @@ fn (g &Gen) stack_alloca_remaining(ptr_id int) ?int {
 // gen_instr emits the instruction for `val_id` (integer core coverage;
 // unsupported float ops are deferred).
 fn (mut g Gen) gen_instr(val_id int) {
+	val := g.m.values[val_id]
 	if val_id <= 0 || val_id >= g.m.values.len {
 		return
 	}
-	val := g.m.values[val_id]
 	if val.kind != .instruction {
 		return
 	}
@@ -1001,22 +1001,34 @@ fn (mut g Gen) gen_instr(val_id int) {
 					.fptosi {
 						g.load_val(instr.operands[0], rv_reg_t0)
 						g.emit32(rv_fmv_d_x(0, rv_reg_t0))
-						dst_width := if val.typ > 0 && val.typ < g.m.type_store.types.len { g.m.type_store.types[val.typ].width } else { 32 }
-						if dst_width <= 32 {
-							g.emit32(rv_fcvt_w_s(rv_reg_t0, 0))
+						dst_width := if val.typ > 0 && val.typ < g.m.type_store.types.len {
+							g.m.type_store.types[val.typ].width
 						} else {
-							g.emit32(rv_fcvt_l_s(rv_reg_t0, 0))
+							32
+						}
+						if dst_width <= 32 {
+							g.emit32(0x011a8400)
+							g.emit32(0x0114b40c)
+						} else {
+							g.emit32(0x011aa400)
+							g.emit32(0x0114b80c)
 						}
 						g.store_val(rv_reg_t0, val_id)
 					}
 					.fptoui {
 						g.load_val(instr.operands[0], rv_reg_t0)
 						g.emit32(rv_fmv_d_x(0, rv_reg_t0))
-						dst_width := if val.typ > 0 && val.typ < g.m.type_store.types.len { g.m.type_store.types[val.typ].width } else { 32 }
-						if dst_width <= 32 {
-							g.emit32(rv_fcvt_wu_s(rv_reg_t0, 0))
+						dst_width := if val.typ > 0 && val.typ < g.m.type_store.types.len {
+							g.m.type_store.types[val.typ].width
 						} else {
-							g.emit32(rv_fcvt_lu_s(rv_reg_t0, 0))
+							32
+						}
+						if dst_width <= 32 {
+							g.emit32(0x011a8400)
+							g.emit32(0x0114b40c)
+						} else {
+							g.emit32(0x011aa400)
+							g.emit32(0x0114b80c)
 						}
 						g.store_val(rv_reg_t0, val_id)
 					}
@@ -1024,20 +1036,18 @@ fn (mut g Gen) gen_instr(val_id int) {
 						g.load_val(instr.operands[0], rv_reg_t0)
 						src_id := instr.operands[0]
 						src_typ := g.m.values[src_id].typ
-						src_width := if src_typ > 0 && src_typ < g.m.type_store.types.len { g.m.type_store.types[src_typ].width } else { 32 }
+						src_width := if src_typ > 0 && src_typ < g.m.type_store.types.len {
+							g.m.type_store.types[src_typ].width
+						} else {
+							32
+						}
 						signed := g.is_signed_int_type(src_typ)
 						if src_width <= 32 {
-							if signed {
-								g.emit32(rv_fcvt_s_w(0, rv_reg_t0))
-							} else {
-								g.emit32(rv_fcvt_s_wu(0, rv_reg_t0))
-							}
+							g.emit32(0x0114a580)
+							g.emit32(0x011d1000)
 						} else {
-							if signed {
-								g.emit32(rv_fcvt_s_l(0, rv_reg_t0))
-							} else {
-								g.emit32(rv_fcvt_s_lu(0, rv_reg_t0))
-							}
+							g.emit32(0x0114a980)
+							g.emit32(0x011d1800)
 						}
 						g.emit32(rv_fmv_x_d(rv_reg_t0, 0))
 						g.store_val(rv_reg_t0, val_id)
@@ -1046,12 +1056,13 @@ fn (mut g Gen) gen_instr(val_id int) {
 						g.load_val(instr.operands[0], rv_reg_t0)
 						src_id := instr.operands[0]
 						src_typ := g.m.values[src_id].typ
-						src_width := if src_typ > 0 && src_typ < g.m.type_store.types.len { g.m.type_store.types[src_typ].width } else { 32 }
-						if src_width <= 32 {
-							g.emit32(rv_fcvt_s_wu(0, rv_reg_t0))
+						src_width := if src_typ > 0 && src_typ < g.m.type_store.types.len {
+							g.m.type_store.types[src_typ].width
 						} else {
-							g.emit32(rv_fcvt_s_lu(0, rv_reg_t0))
+							32
 						}
+						g.emit32(0x0114a980)
+						g.emit32(0x011d1800)
 						g.emit32(rv_fmv_x_d(rv_reg_t0, 0))
 						g.store_val(rv_reg_t0, val_id)
 					}
@@ -1065,7 +1076,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 						} else {
 							g.call_extern('fmod')
 						}
-						g.emit32(rv_fmv_x_d(rv_reg_t0, 10))
+						g.emit32(rv_fmv_x_d(rv_reg_t0, 0))
 						g.store_val(rv_reg_t0, val_id)
 					}
 					else {
@@ -1113,22 +1124,34 @@ fn (mut g Gen) gen_instr(val_id int) {
 					.fptosi {
 						g.load_val(instr.operands[0], rv_reg_t0)
 						g.emit32(rv_fmv_d_x(0, rv_reg_t0))
-						dst_width := if val.typ > 0 && val.typ < g.m.type_store.types.len { g.m.type_store.types[val.typ].width } else { 64 }
-						if dst_width <= 32 {
-							g.emit32(rv_fcvt_w_d(rv_reg_t0, 0))
+						dst_width := if val.typ > 0 && val.typ < g.m.type_store.types.len {
+							g.m.type_store.types[val.typ].width
 						} else {
-							g.emit32(rv_fcvt_l_d(rv_reg_t0, 0))
+							64
+						}
+						if dst_width <= 32 {
+							g.emit32(0x011a8800)
+							g.emit32(0x0114b40c)
+						} else {
+							g.emit32(0x011aa800)
+							g.emit32(0x0114b80c)
 						}
 						g.store_val(rv_reg_t0, val_id)
 					}
 					.fptoui {
 						g.load_val(instr.operands[0], rv_reg_t0)
 						g.emit32(rv_fmv_d_x(0, rv_reg_t0))
-						dst_width := if val.typ > 0 && val.typ < g.m.type_store.types.len { g.m.type_store.types[val.typ].width } else { 64 }
-						if dst_width <= 32 {
-							g.emit32(rv_fcvt_wu_d(rv_reg_t0, 0))
+						dst_width := if val.typ > 0 && val.typ < g.m.type_store.types.len {
+							g.m.type_store.types[val.typ].width
 						} else {
-							g.emit32(rv_fcvt_lu_d(rv_reg_t0, 0))
+							64
+						}
+						if dst_width <= 32 {
+							g.emit32(0x011a8800)
+							g.emit32(0x0114b40c)
+						} else {
+							g.emit32(0x011aa800)
+							g.emit32(0x0114b80c)
 						}
 						g.store_val(rv_reg_t0, val_id)
 					}
@@ -1136,20 +1159,18 @@ fn (mut g Gen) gen_instr(val_id int) {
 						g.load_val(instr.operands[0], rv_reg_t0)
 						src_id := instr.operands[0]
 						src_typ := g.m.values[src_id].typ
-						src_width := if src_typ > 0 && src_typ < g.m.type_store.types.len { g.m.type_store.types[src_typ].width } else { 64 }
+						src_width := if src_typ > 0 && src_typ < g.m.type_store.types.len {
+							g.m.type_store.types[src_typ].width
+						} else {
+							64
+						}
 						signed := g.is_signed_int_type(src_typ)
 						if src_width <= 32 {
-							if signed {
-								g.emit32(rv_fcvt_d_w(0, rv_reg_t0))
-							} else {
-								g.emit32(rv_fcvt_d_wu(0, rv_reg_t0))
-							}
+							g.emit32(0x0114a580)
+							g.emit32(0x011d2000)
 						} else {
-							if signed {
-								g.emit32(rv_fcvt_d_l(0, rv_reg_t0))
-							} else {
-								g.emit32(rv_fcvt_d_lu(0, rv_reg_t0))
-							}
+							g.emit32(0x0114a980)
+							g.emit32(0x011d2800)
 						}
 						g.emit32(rv_fmv_x_d(rv_reg_t0, 0))
 						g.store_val(rv_reg_t0, val_id)
@@ -1158,12 +1179,13 @@ fn (mut g Gen) gen_instr(val_id int) {
 						g.load_val(instr.operands[0], rv_reg_t0)
 						src_id := instr.operands[0]
 						src_typ := g.m.values[src_id].typ
-						src_width := if src_typ > 0 && src_typ < g.m.type_store.types.len { g.m.type_store.types[src_typ].width } else { 64 }
-						if src_width <= 32 {
-							g.emit32(rv_fcvt_d_wu(0, rv_reg_t0))
+						src_width := if src_typ > 0 && src_typ < g.m.type_store.types.len {
+							g.m.type_store.types[src_typ].width
 						} else {
-							g.emit32(rv_fcvt_d_lu(0, rv_reg_t0))
+							64
 						}
+						g.emit32(0x0114a980)
+						g.emit32(0x011d2800)
 						g.emit32(rv_fmv_x_d(rv_reg_t0, 0))
 						g.store_val(rv_reg_t0, val_id)
 					}
@@ -1177,7 +1199,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 						} else {
 							g.call_extern('fmod')
 						}
-						g.emit32(rv_fmv_x_d(rv_reg_t0, 10))
+						g.emit32(rv_fmv_x_d(rv_reg_t0, 0))
 						g.store_val(rv_reg_t0, val_id)
 					}
 					else {
@@ -1297,28 +1319,46 @@ fn (mut g Gen) gen_instr(val_id int) {
 			if g.is_float_type(lhs_typ) {
 				is_f32_cmp := g.is_f32_type(lhs_typ)
 				g.load_val(lhs_id, rv_reg_t0)
-				g.emit32(rv_fmv_d_x(0, rv_reg_t0))
-				g.load_val(rhs_id, rv_reg_t0)
 				g.emit32(rv_fmv_d_x(1, rv_reg_t0))
+				g.load_val(rhs_id, rv_reg_t0)
+				g.emit32(rv_fmv_d_x(0, rv_reg_t0))
 				match instr.op {
 					.eq {
-						if is_f32_cmp { g.emit32(rv_feq_s(rv_reg_t0, 0, 1)) } else { g.emit32(rv_feq_d(rv_reg_t0, 0, 1)) }
+						g.emit32(rv_addi(rv_reg_t0, rv_reg_zero, 1))
+						if is_f32_cmp { g.emit32(0x0c120020) } else { g.emit32(0x0c220020) }
+						g.emit32(0x48000900)
+						g.emit32(0x0280000c)
 					}
 					.ne {
-						if is_f32_cmp { g.emit32(rv_feq_s(rv_reg_t0, 0, 1)) } else { g.emit32(rv_feq_d(rv_reg_t0, 0, 1)) }
+						g.emit32(rv_addi(rv_reg_t0, rv_reg_zero, 1))
+						if is_f32_cmp { g.emit32(0x0c120020) } else { g.emit32(0x0c220020) }
+						g.emit32(0x48000900)
+						g.emit32(0x0280000c)
 						g.emit32(rv_xori(rv_reg_t0, rv_reg_t0, 1))
 					}
 					.lt {
-						if is_f32_cmp { g.emit32(rv_flt_s(rv_reg_t0, 0, 1)) } else { g.emit32(rv_flt_d(rv_reg_t0, 0, 1)) }
+						g.emit32(rv_addi(rv_reg_t0, rv_reg_zero, 1))
+						if is_f32_cmp { g.emit32(0x0c118020) } else { g.emit32(0x0c218020) }
+						g.emit32(0x48000900)
+						g.emit32(0x0280000c)
 					}
 					.gt {
-						if is_f32_cmp { g.emit32(rv_flt_s(rv_reg_t0, 1, 0)) } else { g.emit32(rv_flt_d(rv_reg_t0, 1, 0)) }
+						g.emit32(rv_addi(rv_reg_t0, rv_reg_zero, 1))
+						if is_f32_cmp { g.emit32(0x0c118400) } else { g.emit32(0x0c218400) }
+						g.emit32(0x48000900)
+						g.emit32(0x0280000c)
 					}
 					.le {
-						if is_f32_cmp { g.emit32(rv_fle_s(rv_reg_t0, 0, 1)) } else { g.emit32(rv_fle_d(rv_reg_t0, 0, 1)) }
+						g.emit32(rv_addi(rv_reg_t0, rv_reg_zero, 1))
+						if is_f32_cmp { g.emit32(0x0c138020) } else { g.emit32(0x0c238020) }
+						g.emit32(0x48000900)
+						g.emit32(0x0280000c)
 					}
 					.ge {
-						if is_f32_cmp { g.emit32(rv_fle_s(rv_reg_t0, 1, 0)) } else { g.emit32(rv_fle_d(rv_reg_t0, 1, 0)) }
+						g.emit32(rv_addi(rv_reg_t0, rv_reg_zero, 1))
+						if is_f32_cmp { g.emit32(0x0c138400) } else { g.emit32(0x0c238400) }
+						g.emit32(0x48000900)
+						g.emit32(0x0280000c)
 					}
 					else {
 						g.emit32(rv_addi(rv_reg_t0, rv_reg_zero, 0))
@@ -1683,12 +1723,21 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 			}
 		}
 		if g.is_float_type(arg_val.typ) && is_c_extern {
+			mut is_var := false
+			if fn_ref_id >= 0 && fn_ref_id < g.m.values.len && g.m.values[fn_ref_id].kind == .func_ref
+				&& g.m.values[fn_ref_id].index >= 0 && g.m.values[fn_ref_id].index < g.m.funcs.len {
+				is_var = g.m.funcs[g.m.values[fn_ref_id].index].is_variadic
+			}
 			if float_arg_reg < 8 {
 				src_reg := g.load_val(arg_id, rv_reg_t0)
 				if src_reg != rv_reg_t0 {
 					g.emit32(rv_addi(rv_reg_t0, src_reg, 0))
 				}
-				g.emit32(rv_fmv_d_x(10 + float_arg_reg, rv_reg_t0))
+				g.emit32(rv_fmv_d_x(float_arg_reg, rv_reg_t0))
+				if is_var && arg_reg < 8 {
+					g.emit32(rv_addi(rv_reg_a0 + arg_reg, rv_reg_t0, 0))
+					arg_reg++
+				}
 				float_arg_reg++
 			} else {
 				src_reg := g.load_val(arg_id, rv_reg_t0)
@@ -1750,7 +1799,7 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 		// before spilling into the result slot.
 		g.emit32(rv_addi(rv_reg_t0, rv_reg_a0, 0))
 		if g.is_float_type(instr.typ) {
-			g.emit32(rv_fmv_x_d(rv_reg_t0, 10))
+			g.emit32(rv_fmv_x_d(rv_reg_t0, 0))
 		}
 		g.store_val(rv_reg_t0, val_id)
 	}
@@ -1767,7 +1816,7 @@ fn (mut g Gen) call_extern(name string) {
 // using PCALA relocations (works for both defined and undefined symbols).
 fn (mut g Gen) call_sym_addr(sym_idx int) {
 	bl_pos := g.text_offset()
-	g.emit32(rv_jal(rv_reg_ra, 0))  // bl placeholder, patched by linker
+	g.emit32(rv_jal(rv_reg_ra, 0)) // bl placeholder, patched by linker
 	g.elf.add_text_reloc(u64(bl_pos), sym_idx, rv_reloc_call_plt, 0)
 }
 
@@ -1923,6 +1972,8 @@ fn (mut g Gen) load_float_bits_to_reg(val_id int, reg int) {
 				g.emit_mov_imm(reg, i64(bits))
 			} else {
 				f_val := val.name.f64()
+				for ci in 0 .. val.name.len {
+				}
 				bits := *unsafe { &u64(&f_val) }
 				g.emit_mov_imm(reg, i64(bits))
 			}
@@ -1991,10 +2042,10 @@ fn decode_c_string_literal(raw []u8) []u8 {
 // emit_pcrel_addr lowers `pcaddu12i reg, hi ; addi.d reg, reg, lo` relocations.
 fn (mut g Gen) emit_pcrel_addr(reg int, sym_idx int) {
 	pcalau_pos := g.text_offset()
-	g.emit32(0x1a000000 | (u32(reg)))  // pcalau12i rd, 0 (placeholder)
+	g.emit32(0x1a000000 | (u32(reg))) // pcalau12i rd, 0 (placeholder)
 	g.elf.add_text_reloc(u64(pcalau_pos), sym_idx, rv_reloc_hi20, 0)
 	addi_pos := g.text_offset()
-	g.emit32(rv_addi(reg, reg, 0))  // addi.d rd, rd, 0 (placeholder, patched by LO12)
+	g.emit32(rv_addi(reg, reg, 0)) // addi.d rd, rd, 0 (placeholder, patched by LO12)
 	g.elf.add_text_reloc(u64(addi_pos), sym_idx, rv_reloc_lo12_i, 0)
 }
 
@@ -2004,11 +2055,11 @@ fn (mut g Gen) emit_pcrel_addr(reg int, sym_idx int) {
 fn (mut g Gen) emit_global_addr(reg int, name string) {
 	sym_idx := g.elf.add_undefined(libc_name(name))
 	pcalau_pos := g.text_offset()
-	g.emit32(0x1a000000 | (u32(reg)))  // pcalau12i rd, 0
-	g.elf.add_text_reloc(u64(pcalau_pos), sym_idx, 75, 0)  // R_LARCH_GOT_PC_HI20
+	g.emit32(0x1a000000 | (u32(reg))) // pcalau12i rd, 0
+	g.elf.add_text_reloc(u64(pcalau_pos), sym_idx, 75, 0) // R_LARCH_GOT_PC_HI20
 	ld_pos := g.text_offset()
-	g.emit32(0x28c00000 | (u32(0) << 10) | (u32(reg) << 5) | u32(reg))  // ld.d rd, rd, 0
-	g.elf.add_text_reloc(u64(ld_pos), sym_idx, 76, 0)  // R_LARCH_GOT_PC_LO12
+	g.emit32(0x28c00000 | (u32(0) << 10) | (u32(reg) << 5) | u32(reg)) // ld.d rd, rd, 0
+	g.elf.add_text_reloc(u64(ld_pos), sym_idx, 76, 0) // R_LARCH_GOT_PC_LO12
 }
 
 // find_global_idx_by_name supports find global idx by name handling for Gen.
@@ -2704,11 +2755,11 @@ fn rv_sb(rd int, rs1 int, imm int) u32 {
 }
 
 fn rv_lui(rd int, imm u32) u32 {
-	return 0x14000000 | ((imm & 0xfffff) << 5) | u32(rd)  // lu12i.w: op<<25? need check
+	return 0x14000000 | ((imm & 0xfffff) << 5) | u32(rd) // lu12i.w: op<<25? need check
 }
 
 fn rv_auipc(rd int, imm int) u32 {
-	return 0x18000000 | (u32(imm) & 0x1ffff) << 5 | u32(rd)  // pcaddi
+	return 0x18000000 | (u32(imm) & 0x1ffff) << 5 | u32(rd) // pcaddi
 }
 
 fn rv_jal(rd int, offset int) u32 {
@@ -2754,158 +2805,61 @@ fn libc_name(name string) string {
 }
 
 fn rv_fmv_x_d(rd int, fs int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
+	// movfr2gr.d rd, fs
+	return 0x0114b800 | (u32(rd)) | (u32(fs) << 5)
 }
 
 fn rv_fmv_d_x(fd int, rs int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
+	// movgr2fr.d fd, rs
+	return 0x0114a800 | (u32(fd)) | (u32(rs) << 5)
 }
 
 fn rv_fadd_d(rd int, rs1 int, rs2 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
+	// fadd.d rd, rs1, rs2
+	return (0x0202 << 15) | (u32(rs2) << 10) | (u32(rs1) << 5) | u32(rd)
 }
 
 fn rv_fsub_d(rd int, rs1 int, rs2 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
+	// fsub.d rd, rs1, rs2
+	return (0x0206 << 15) | (u32(rs2) << 10) | (u32(rs1) << 5) | u32(rd)
 }
 
 fn rv_fmul_d(rd int, rs1 int, rs2 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
+	// fmul.d rd, rs1, rs2
+	return (0x020a << 15) | (u32(rs2) << 10) | (u32(rs1) << 5) | u32(rd)
 }
 
 fn rv_fdiv_d(rd int, rs1 int, rs2 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
+	// fdiv.d rd, rs1, rs2
+	return (0x020e << 15) | (u32(rs2) << 10) | (u32(rs1) << 5) | u32(rd)
 }
 
 fn rv_fadd_s(rd int, rs1 int, rs2 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
+	// fadd.s rd, rs1, rs2
+	return (0x0201 << 15) | (u32(rs2) << 10) | (u32(rs1) << 5) | u32(rd)
 }
 
 fn rv_fsub_s(rd int, rs1 int, rs2 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
+	// fsub.s rd, rs1, rs2
+	return (0x0205 << 15) | (u32(rs2) << 10) | (u32(rs1) << 5) | u32(rd)
 }
 
 fn rv_fmul_s(rd int, rs1 int, rs2 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
+	// fmul.s rd, rs1, rs2
+	return (0x0209 << 15) | (u32(rs2) << 10) | (u32(rs1) << 5) | u32(rd)
 }
 
 fn rv_fdiv_s(rd int, rs1 int, rs2 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fcvt_w_d(rd int, rs1 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fcvt_wu_d(rd int, rs1 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fcvt_l_d(rd int, rs1 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fcvt_lu_d(rd int, rs1 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fcvt_d_w(rd int, rs1 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fcvt_d_wu(rd int, rs1 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fcvt_d_l(rd int, rs1 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fcvt_d_lu(rd int, rs1 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fcvt_w_s(rd int, rs1 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fcvt_wu_s(rd int, rs1 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fcvt_l_s(rd int, rs1 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fcvt_lu_s(rd int, rs1 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fcvt_s_w(rd int, rs1 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fcvt_s_wu(rd int, rs1 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fcvt_s_l(rd int, rs1 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fcvt_s_lu(rd int, rs1 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fcvt_s_d(rd int, rs1 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fcvt_d_s(rd int, rs1 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_feq_d(rd int, rs1 int, rs2 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_flt_d(rd int, rs1 int, rs2 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fle_d(rd int, rs1 int, rs2 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_feq_s(rd int, rs1 int, rs2 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_flt_s(rd int, rs1 int, rs2 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fle_s(rd int, rs1 int, rs2 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fsqrt_d(rd int, rs1 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fmin_d(rd int, rs1 int, rs2 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
-}
-
-fn rv_fmax_d(rd int, rs1 int, rs2 int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
+	// fdiv.s rd, rs1, rs2
+	return (0x020d << 15) | (u32(rs2) << 10) | (u32(rs1) << 5) | u32(rd)
 }
 
 fn rv_fmv_x_w(rd int, fs int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
+	// movfr2gr.s rd, fs
+	return 0x0114b400 | (u32(rd)) | (u32(fs) << 5)
 }
 
 fn rv_fmv_w_x(fd int, rs int) u32 {
-	return 0x03400000  // nop (andi zero, zero, 0)
+	// movgr2fr.w fd, rs
+	return 0x0114a400 | (u32(fd)) | (u32(rs) << 5)
 }
-

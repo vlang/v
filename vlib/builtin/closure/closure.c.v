@@ -322,7 +322,15 @@ const closure_size_1 = if 2 * u32(sizeof(voidptr)) > u32(closure_thunk.len) {
 } else {
 	u32(closure_thunk.len) + u32(sizeof(voidptr)) - 1
 }
-const closure_size = int(closure_size_1 & ~(u32(sizeof(voidptr)) - 1))
+
+fn closure_slot_size() int {
+	closure_size_1 := if 2 * u32(sizeof(voidptr)) > u32(closure_thunk.len) {
+		2 * u32(sizeof(voidptr))
+	} else {
+		u32(closure_thunk.len) + u32(sizeof(voidptr)) - 1
+	}
+	return int(closure_size_1 & ~(u32(sizeof(voidptr)) - 1))
+}
 
 @[inline]
 fn closure_exec_ptr(closure voidptr) voidptr {
@@ -367,7 +375,7 @@ fn closure_is_managed(exec_ptr voidptr) bool {
 		page_addr := unsafe { uint(page.exec_page_start) }
 		if exec_addr >= page_addr && exec_addr < page_addr + uint(g_closure.v_page_size) {
 			slot_offset := exec_addr - page_addr
-			return slot_offset >= uint(closure_size) && slot_offset % uint(closure_size) == 0
+			return slot_offset >= uint(closure_slot_size()) && slot_offset % uint(closure_slot_size()) == 0
 		}
 		page = page.next
 	}
@@ -516,7 +524,7 @@ fn closure_release_no_lock(exec_ptr voidptr, generation u64) bool {
 	unsafe {
 		mut p := closure_slot_meta(exec_ptr)
 		// Rewind a released top slot so sequential capacity is reusable immediately.
-		if &u8(exec_ptr) + closure_size == g_closure.closure_ptr {
+		if &u8(exec_ptr) + closure_slot_size() == g_closure.closure_ptr {
 			p[0] = nil
 			g_closure.closure_ptr = exec_ptr
 			g_closure.closure_cap++
@@ -768,7 +776,7 @@ fn closure_alloc() {
 	}
 	// Setup executable and guard pages
 	x := unsafe { p + g_closure.v_page_size } // End of guard page
-	mut remaining := g_closure.v_page_size / closure_size // Calculate slot count
+	mut remaining := g_closure.v_page_size / closure_slot_size() // Calculate slot count
 	closure_register_page(x)
 	g_closure.closure_ptr = x // Current allocation pointer
 	g_closure.closure_cap = remaining // Remaining slot count
@@ -778,7 +786,7 @@ fn closure_alloc() {
 		unsafe { vmemcpy(x, &closure_thunk[0], closure_thunk.len) } // Copy template
 		remaining--
 		unsafe {
-			x += closure_size // Move to next slot
+			x += closure_slot_size() // Move to next slot
 		}
 	}
 	closure_memory_protect_platform(g_closure.closure_ptr, g_closure.v_page_size, .read_exec)
@@ -830,7 +838,7 @@ fn closure_init_body() {
 
 	// Advance allocation pointer past header
 	unsafe {
-		g_closure.closure_ptr = &u8(g_closure.closure_ptr) + closure_size
+		g_closure.closure_ptr = &u8(g_closure.closure_ptr) + closure_slot_size()
 	}
 	g_closure.closure_cap-- // Account for header slot
 }
@@ -869,7 +877,7 @@ fn closure_create_with_data_and_drop(func voidptr, data voidptr, owns_data bool,
 		curr_closure = g_closure.closure_ptr
 		unsafe {
 			// Move to next available slot
-			g_closure.closure_ptr = &u8(g_closure.closure_ptr) + closure_size
+			g_closure.closure_ptr = &u8(g_closure.closure_ptr) + closure_slot_size()
 		}
 	}
 	unsafe {

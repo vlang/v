@@ -552,7 +552,35 @@ fn (mut g Gen) gen_func(func ssa.Function) {
 		if g.m.globals.any(it.name == 'g_main_argv') {
 			g.store_entry_arg_to_global(int(rsi), 'g_main_argv', 8)
 		}
-		// (closure runtime init not yet supported in native backends)
+		// Initialize the closure runtime mutex and runtime, but only when the
+		// closure runtime is actually linked into this module. Unconditional
+		// calls break plain programs whose modules never referenced any closure
+		// helper.
+		mut has_closure_runtime := false
+		for f in g.m.funcs {
+			if f.name == 'closure.closure_init' {
+				has_closure_runtime = true
+				break
+			}
+		}
+		if has_closure_runtime {
+			// pthread_mutex_init(&closure__g_closure_once_mutex, NULL)
+			asm_lea_reg_rip(mut g, rdi)
+			sym_idx := g.elf.add_undefined('closure__g_closure_once_mutex')
+			g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx, 2, -4)
+			g.emit_u32(0)
+			asm_xor_reg_reg(mut g, rsi)
+			asm_call_rel32(mut g)
+			sym_idx2 := g.elf.add_undefined('pthread_mutex_init')
+			g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx2, r_x86_64_plt32, -4)
+			g.emit_u32(0)
+			// closure.closure_init()
+			asm_xor_eax_eax(mut g)
+			asm_call_rel32(mut g)
+			sym_idx3 := g.elf.add_undefined('closure.closure_init')
+			g.elf.add_text_reloc(u64(g.elf.text_data.len), sym_idx3, r_x86_64_plt32, -4)
+			g.emit_u32(0)
+		}
 	}
 
 	// Move Params (ABI: RDI, RSI, RDX, RCX, R8, R9)
