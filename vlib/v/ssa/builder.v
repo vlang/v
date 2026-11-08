@@ -12053,7 +12053,152 @@ fn (b &Builder) fixed_array_len_text(type_name_id u32) string {
 			return value.replace('_', '')
 		}
 	}
+	if value := b.const_int_text_value(raw_len) {
+		return value.str()
+	}
 	return '1'
+}
+
+// const_int_text_value folds an integer constant expression spelled in a type,
+// such as the `64 * 1024` of `[64 * 1024]u8`, the way go/constant folds array
+// lengths: literals, constants, parentheses, unary `-`/`~` and binary integer
+// operators with the usual precedence.
+fn (b &Builder) const_int_text_value(text string) ?i64 {
+	mut p := ConstIntTextParser{
+		text: text
+	}
+	value := p.binary(b, 0)?
+	p.skip_space()
+	if p.pos != text.len {
+		return none
+	}
+	return value
+}
+
+struct ConstIntTextParser {
+	text string
+mut:
+	pos int
+}
+
+fn (mut p ConstIntTextParser) skip_space() {
+	for p.pos < p.text.len && p.text[p.pos] in [` `, `\t`] {
+		p.pos++
+	}
+}
+
+fn const_int_text_precedence(op string) int {
+	return match op {
+		'*', '/', '%', '<<', '>>', '&' { 5 }
+		'+', '-', '|', '^' { 4 }
+		else { 0 }
+	}
+}
+
+fn (mut p ConstIntTextParser) operator() string {
+	p.skip_space()
+	if p.pos >= p.text.len {
+		return ''
+	}
+	if p.pos + 1 < p.text.len {
+		two := p.text[p.pos..p.pos + 2]
+		if two in ['<<', '>>'] {
+			return two
+		}
+	}
+	one := p.text[p.pos..p.pos + 1]
+	if one in ['*', '/', '%', '&', '+', '-', '|', '^'] {
+		return one
+	}
+	return ''
+}
+
+fn (mut p ConstIntTextParser) binary(b &Builder, min_prec int) ?i64 {
+	mut left := p.unary(b)?
+	for {
+		op := p.operator()
+		prec := const_int_text_precedence(op)
+		if op == '' || prec <= min_prec {
+			return left
+		}
+		p.pos += op.len
+		right := p.binary(b, prec)?
+		left = match op {
+			'*' { left * right }
+			'/' {
+				if right == 0 {
+					return none
+				}
+				left / right
+			}
+			'%' {
+				if right == 0 {
+					return none
+				}
+				left % right
+			}
+			'<<' { i64(u64(left) << right) }
+			'>>' { left >> right }
+			'&' { left & right }
+			'+' { left + right }
+			'-' { left - right }
+			'|' { left | right }
+			else { left ^ right }
+		}
+	}
+	return left
+}
+
+fn (mut p ConstIntTextParser) unary(b &Builder) ?i64 {
+	p.skip_space()
+	if p.pos >= p.text.len {
+		return none
+	}
+	ch := p.text[p.pos]
+	if ch == `-` || ch == `~` || ch == `+` {
+		p.pos++
+		value := p.unary(b)?
+		return if ch == `-` {
+			-value
+		} else if ch == `~` {
+			~value
+		} else {
+			value
+		}
+	}
+	if ch == `(` {
+		p.pos++
+		value := p.binary(b, 0)?
+		p.skip_space()
+		if p.pos >= p.text.len || p.text[p.pos] != `)` {
+			return none
+		}
+		p.pos++
+		return value
+	}
+	start := p.pos
+	for p.pos < p.text.len && (p.text[p.pos].is_alnum() || p.text[p.pos] in [`_`, `.`]) {
+		p.pos++
+	}
+	if p.pos == start {
+		return none
+	}
+	word := p.text[start..p.pos]
+	if word[0].is_digit() {
+		clean := word.replace('_', '')
+		if clean.len > 2 && clean[0] == `0` && clean[1] in [`x`, `X`, `o`, `O`, `b`, `B`] {
+			return clean.i64()
+		}
+		for c in clean {
+			if !c.is_digit() {
+				return none
+			}
+		}
+		return clean.i64()
+	}
+	expr_id := b.lookup_const_expr(word)?
+	value := b.const_int_literal_value(expr_id)?
+	return value.replace('_', '').i64()
 }
 
 // fixed_array_literal_lengths spells the lengths of a fixed array type that
@@ -12087,6 +12232,12 @@ fn (mut b Builder) fixed_array_literal_lengths(name_id u32, module_name string) 
 		if value := b.const_int_literal_value(id) {
 			return flat.source_type_id('[${value.replace('_', '')}]${flat.source_type_name(elem)}')
 		}
+	}
+	b.cur_module = module_name
+	folded := b.const_int_text_value(raw_len)
+	b.cur_module = previous_module
+	if value := folded {
+		return flat.source_type_id('[${value}]${flat.source_type_name(elem)}')
 	}
 	return name_id
 }

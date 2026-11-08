@@ -498,3 +498,32 @@ fn test_map_clear_after_delete() {
 2", output
 	}
 }
+
+// A fixed array sized by a constant expression gets its full storage, so filling
+// it does not overwrite the locals next to it.
+fn test_fixed_array_length_expression() {
+	$if macos && arm64 {
+		output := run_arm64('fixed_array_len_expr', "const kib = 1024
+
+struct F {
+	cfile voidptr
+	fd    int
+}
+
+fn fill(p &u8, n int) {
+	unsafe { C.memset(p, 0x41, n) }
+}
+
+fn main() {
+	f := F{voidptr(123), 7}
+	mut buffer := [64 * kib]u8{}
+	mut shifted := [(1 << 4) + 2]u16{}
+	fill(&buffer[0], buffer.len)
+	shifted[17] = 9
+	println('\${f.cfile} \${f.fd} \${buffer.len} \${buffer[65535]} \${shifted.len} \${shifted[17]}')
+}
+")
+		assert output == '7b 7 65536 65 18 9', output
+	}
+}
+
