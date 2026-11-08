@@ -1,7 +1,56 @@
 module tls
 
-// TLS 1.3 (RFC 8446) version constant. Only 0x0303 is ever sent on the
-// wire; the real version is negotiated via the supported_versions extension.
+import net
+
+// Listener is a pure-V TLS 1.3 listener.
+pub struct Listener {
+mut:
+	tcp net.TcpListener
+	cfg Config
+}
+
+// listen binds a TLS listener. Default bind address is 127.0.0.1:0.
+pub fn listen(cfg Config) !&Listener {
+	mut tl := net.listen_tcp(.ip, '127.0.0.1:0')!
+	return &Listener{
+		tcp: tl
+		cfg: cfg
+	}
+}
+
+pub fn (mut l Listener) accept() !&Conn {
+	mut tcp := l.tcp.accept()!
+	mut c := &Conn{
+		cfg:       l.cfg
+		tcp:       *tcp
+		is_server: true
+	}
+	c.handshake() or {
+		mut t := c.tcp
+		t.close() or {}
+		return err
+	}
+	return c
+}
+
+pub fn (mut l Listener) close() ! {
+	l.tcp.close()!
+}
+
+pub fn (l &Listener) addr() !net.Addr {
+	return l.tcp.addr()
+}
+
+// new_conn is a placeholder; full handshake lands in Phase 2.
+pub fn new_conn(cfg Config) !&Conn {
+	return &Conn{
+		cfg: cfg
+	}
+}
+
+pub fn (c &Conn) is_closed() bool {
+	return c.closed
+}
 pub const tls_version_1_3 = u16(0x0303)
 
 // ProtocolVersion as used inside the supported_versions extension.
@@ -106,27 +155,10 @@ pub mut:
 	// Min/max TLS version. Only 1.3 is supported in v1.
 	min_version u16 = tls_version_1_3
 	max_version u16 = tls_version_1_3
+	verify_chain bool = true
 }
 
 // Conn is defined in conn.v.
 
-// Listener is a pure-V TLS 1.3 listener.
-pub struct Listener {
-mut:
-	cfg  Config
-	addr string
-}
-
 // ListenerOptions mirrors net.ssl.SSLListenerOptions (placeholder).
 pub struct ListenerOptions {}
-
-// new_conn is a placeholder; full handshake lands in Phase 2.
-pub fn new_conn(cfg Config) !&Conn {
-	return &Conn{
-		cfg: cfg
-	}
-}
-
-pub fn (c &Conn) is_closed() bool {
-	return c.closed
-}

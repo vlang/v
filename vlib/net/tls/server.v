@@ -87,7 +87,7 @@ pub fn (mut s ServerHandshake) process_client_hello(ch_msg []u8) ![]u8 {
 		ek_bytes := client_pub[32..]
 		x_shared := s.echd_priv.x25519(x_cpub) or { return err }
 		// encapsulate to client's ek
-		ct, ss := mlkem.encaps(mlkem.EncapsulationKey{ data: ek_bytes }) or { return err }
+		ct, ss := mlkem.encaps(mlkem.EncapsulationKey{ data: ek_bytes, variant: .ml_kem_768 }) or { return err }
 		shared << x_shared
 		shared << ss
 		// server key_share = X25519 pub || ML-KEM ciphertext
