@@ -18623,6 +18623,14 @@ fn (mut b Builder) resolve_type(name_id u32) TypeID {
 	if name_id in [ssa_u128_source_type, ssa_i128_source_type] {
 		return b.wide_integer_type()
 	}
+	if shape.has(.function_compact) || shape.has(.function_spaced) {
+		// `fn () !Elem` is a function pointer, not the `!Elem` its return type
+		// spells: as a parameter or closure field it is one 8-byte code address.
+		// Spelled function types are not resolved further, so a struct field may
+		// name a function returning a struct that is not registered yet; calls
+		// through such values take their signature from the call.
+		return b.i64_type
+	}
 	if syntax.raw_base() != 0 && (shape.has(.option_type) || shape.has(.result_type)) {
 		return b.option_type_id(syntax.raw_base(), shape.has(.result_type))
 	}

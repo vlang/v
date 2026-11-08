@@ -25,6 +25,29 @@ fn run_arm64(name string, source string) string {
 	return run.output.trim_space()
 }
 
+// run_arm64_project builds a project of several modules (relative path ->
+// source) with `-b arm64` and returns what it prints.
+fn run_arm64_project(name string, files map[string]string) string {
+	root := os.join_path(os.vtmp_dir(), 'arm64_self_host_${name}_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	os.write_file(os.join_path(root, 'v.mod'), '') or { panic(err) }
+	for path, source in files {
+		full := os.join_path(root, path)
+		os.mkdir_all(os.dir(full)) or { panic(err) }
+		os.write_file(full, source) or { panic(err) }
+	}
+	output := os.join_path(root, 'main')
+	compiled := cmdexec.run(@VEXE, ['-b', 'arm64', '-o', output, root])
+	assert compiled.exit_code == 0, compiled.output
+	run := cmdexec.run(output, []string{})
+	assert run.exit_code == 0, run.output
+	return run.output.trim_space()
+}
+
 // u128/i128 multiply, divide, remainder, shifts by a run-time count, negation,
 // complement, increments, `match`/`in` and conversions to and from scalars.
 fn test_128_bit_arithmetic_and_conversions() {
@@ -777,3 +800,82 @@ fn main() {
 340282366920938463444927863358058659824', output
 	}
 }
+
+// A function type spelled in a module (`fn () !Elem`) is one code address: a
+// closure passed to such a parameter is not passed as the `!Elem` it returns.
+fn test_function_types_in_module_signatures() {
+	$if macos && arm64 {
+		output := run_arm64_project('module_fn_types', {
+			'main.v':        'import mymod
+
+fn main() {
+	mymod.run_all()!
+}
+'
+			'mymod/mymod.v': 'module mymod
+
+pub struct Elem {
+pub:
+	kind  int
+	id    string
+	extra [12]u64
+}
+
+pub struct Holder {
+pub mut:
+	run fn () ! = unsafe { nil }
+}
+
+pub struct Node {
+pub mut:
+	count int
+	last  Elem
+}
+
+pub fn (mut n Node) structure(mut h Holder, name string, update fn () !Elem) ! {
+	if update == unsafe { nil } {
+		return error(name)
+	}
+	h.run = fn [mut n, update] () ! {
+		replacement := update()!
+		n.last = replacement
+		n.count += replacement.kind
+	}
+}
+
+pub struct Core {
+pub:
+	id int
+}
+
+pub fn (c &Core) structural() !Elem {
+	return Elem{
+		kind: c.id
+		id:   \'e\${c.id}\'
+	}
+}
+
+pub fn (mut c Core) build(mut n Node, mut h Holder) ! {
+	mut core := &c
+	n.structure(mut h, \'w\', fn [mut core] () !Elem {
+		return core.structural()!
+	})!
+}
+
+pub fn run_all() ! {
+	mut n := &Node{}
+	mut h := Holder{}
+	mut c := &Core{
+		id: 4
+	}
+	c.build(mut n, mut h)!
+	h.run()!
+	h.run()!
+	println(\'\${n.count} \${n.last.id}\')
+}
+'
+		})
+		assert output == '8 e4', output
+	}
+}
+
