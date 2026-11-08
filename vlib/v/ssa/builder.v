@@ -11022,11 +11022,13 @@ fn (mut b Builder) build_match_condition(subject ValueID, branch flat.Node) Valu
 	mut result := ValueID(0)
 	for i in 0 .. n_conds {
 		cond_value := b.build_expr(b.a.child(&branch, i))
-		if b.value_type(subject) == b.wide_integer_type()
+		cmp := if b.value_type(subject) == b.wide_integer_type()
 			|| b.value_type(cond_value) == b.wide_integer_type() {
-			panic('ssa: unsupported 128-bit integer operation: match comparison')
+			b.wide_integer_compare(.eq, b.as_wide_integer(subject), b.as_wide_integer(cond_value),
+				false)
+		} else {
+			b.emit2(.eq, b.i1_type, subject, cond_value)
 		}
-		cmp := b.emit2(.eq, b.i1_type, subject, cond_value)
 		if result == 0 {
 			result = cmp
 		} else {
@@ -11427,7 +11429,11 @@ fn (mut b Builder) build_in_expr(node flat.Node) ValueID {
 		if b.value_type(lhs) == b.wide_integer_type()
 			|| b.value_type(low) == b.wide_integer_type()
 			|| b.value_type(high) == b.wide_integer_type() {
-			panic('ssa: unsupported 128-bit integer operation: range membership')
+			signed := b.is_signed_wide_integer_expr(lhs_id)
+			wide := b.as_wide_integer(lhs)
+			ge_low := b.wide_integer_compare(.ge, wide, b.as_wide_integer(low), signed)
+			lt_high := b.wide_integer_compare(.lt, wide, b.as_wide_integer(high), signed)
+			return b.emit2(.and_, b.i1_type, ge_low, lt_high)
 		}
 		ge_low := b.emit2(.ge, b.i1_type, lhs, low)
 		lt_high := b.emit2(.lt, b.i1_type, lhs, high)
@@ -12403,6 +12409,190 @@ fn (mut b Builder) is_signed_wide_integer_expr(id flat.NodeId) bool {
 		|| b.a.nodes[int(id)].typ == ssa_i128_source_type
 }
 
+// wide_integer_runtime_call calls a compiler-rt helper for a 128-bit
+// division or remainder (`__[u]divti3`, `__[u]modti3`), which libSystem
+// exports. AAPCS64 passes and returns `__int128` in a register pair, like the
+// two-limb struct. Multiplication and shifts are inlined: libSystem has no
+// `__multi3` or `__ashlti3` on arm64.
+fn (mut b Builder) wide_integer_runtime_call(helper string, lhs ValueID, rhs ValueID, rhs_type TypeID) ValueID {
+	wide_type := b.wide_integer_type()
+	if helper !in b.fn_ids {
+		b.register_extern(helper, wide_type, [wide_type, rhs_type])
+	}
+	ref := b.m.add_value(.func_ref, wide_type, helper, b.fn_ids[helper])
+	return b.emit3(.call, wide_type, ref, lhs, rhs)
+}
+
+// convert_wide_integer converts between a 128-bit integer and a scalar: an
+// integer target keeps the low bits, an integer source is widened by its own
+// signedness, and floats go through compiler-rt. `signed` is the signedness
+// of the 128-bit side.
+fn (mut b Builder) convert_wide_integer(value ValueID, target_type TypeID, signed bool) ValueID {
+	wide_type := b.wide_integer_type()
+	from_type := b.value_type(value)
+	if from_type == wide_type {
+		if b.is_float_type(target_type) {
+			helper := if signed { '__floattidf' } else { '__floatuntidf' }
+			if helper !in b.fn_ids {
+				b.register_extern(helper, b.f64_type, [wide_type])
+			}
+			ref := b.m.add_value(.func_ref, b.f64_type, helper, b.fn_ids[helper])
+			double := b.emit2(.call, b.f64_type, ref, value)
+			return b.coerce_numeric_value(double, target_type)
+		}
+		low, _ := b.wide_integer_limbs(b.cur_block, value)
+		if b.is_int_type(target_type) {
+			return b.coerce_numeric_value(low, target_type)
+		}
+		return b.emit1(.bitcast, target_type, low)
+	}
+	if b.is_float_type(from_type) {
+		helper := if signed { '__fixdfti' } else { '__fixunsdfti' }
+		if helper !in b.fn_ids {
+			b.register_extern(helper, wide_type, [b.f64_type])
+		}
+		ref := b.m.add_value(.func_ref, wide_type, helper, b.fn_ids[helper])
+		return b.emit2(.call, wide_type, ref, b.coerce_numeric_value(value, b.f64_type))
+	}
+	if b.is_pointer_type(from_type) {
+		return b.wide_integer_from_scalar(b.emit1(.bitcast, b.u64_type, value))
+	}
+	return b.wide_integer_from_scalar(value)
+}
+
+// wide_integer_add_sub adds or subtracts two 128-bit values limb by limb.
+fn (mut b Builder) wide_integer_add_sub(op OpCode, lhs ValueID, rhs ValueID) ValueID {
+	lhs_low, lhs_high := b.wide_integer_limbs(b.cur_block, lhs)
+	rhs_low, rhs_high := b.wide_integer_limbs(b.cur_block, rhs)
+	low := b.block_instr2(op, b.cur_block, b.u64_type, lhs_low, rhs_low)
+	carry := if op == .add {
+		b.block_instr2(.ult, b.cur_block, b.i1_type, low, lhs_low)
+	} else {
+		b.block_instr2(.ult, b.cur_block, b.i1_type, lhs_low, rhs_low)
+	}
+	high_base := b.block_instr2(op, b.cur_block, b.u64_type, lhs_high, rhs_high)
+	carry64 := b.block_instr1(.zext, b.cur_block, b.u64_type, carry)
+	high := b.block_instr2(op, b.cur_block, b.u64_type, high_base, carry64)
+	return b.make_wide_integer(b.cur_block, low, high)
+}
+
+// wide_integer_compare compares two 128-bit values: the high limb first,
+// then the unsigned low limb on a tie.
+fn (mut b Builder) wide_integer_compare(op token.Token, lhs ValueID, rhs ValueID, signed bool) ValueID {
+	lhs_low, lhs_high := b.wide_integer_limbs(b.cur_block, lhs)
+	rhs_low, rhs_high := b.wide_integer_limbs(b.cur_block, rhs)
+	high_equal := b.block_instr2(.eq, b.cur_block, b.i1_type, lhs_high, rhs_high)
+	if op in [.eq, .ne] {
+		low_equal := b.block_instr2(.eq, b.cur_block, b.i1_type, lhs_low, rhs_low)
+		equal := b.block_instr2(.and_, b.cur_block, b.i1_type, high_equal, low_equal)
+		if op == .eq {
+			return equal
+		}
+		return b.block_instr2(.xor, b.cur_block, b.i1_type, equal, b.m.get_or_add_const(b.i1_type,
+			'1'))
+	}
+	less := op in [.lt, .le]
+	high_op := if less {
+		if signed { OpCode.lt } else { OpCode.ult }
+	} else {
+		if signed { OpCode.gt } else { OpCode.ugt }
+	}
+	low_op := match op {
+		.lt { OpCode.ult }
+		.le { OpCode.ule }
+		.gt { OpCode.ugt }
+		else { OpCode.uge }
+	}
+	high_order := b.block_instr2(high_op, b.cur_block, b.i1_type, lhs_high, rhs_high)
+	low_order := b.block_instr2(low_op, b.cur_block, b.i1_type, lhs_low, rhs_low)
+	tied_order := b.block_instr2(.and_, b.cur_block, b.i1_type, high_equal, low_order)
+	return b.block_instr2(.or_, b.cur_block, b.i1_type, high_order, tied_order)
+}
+
+// as_wide_integer widens a scalar operand that meets a 128-bit one.
+fn (mut b Builder) as_wide_integer(value ValueID) ValueID {
+	if b.value_type(value) == b.wide_integer_type() {
+		return value
+	}
+	return b.convert_wide_integer(value, b.wide_integer_type(), false)
+}
+
+// wide_integer_complement flips every bit of a 128-bit value.
+fn (mut b Builder) wide_integer_complement(value ValueID) ValueID {
+	low, high := b.wide_integer_limbs(b.cur_block, value)
+	ones := b.m.get_or_add_const(b.u64_type, '18446744073709551615')
+	return b.make_wide_integer(b.cur_block, b.block_instr2(.xor, b.cur_block, b.u64_type,
+		low, ones), b.block_instr2(.xor, b.cur_block, b.u64_type, high, ones))
+}
+
+// u64_mul_high returns the high 64 bits of the 128-bit product of two u64
+// values, from four 32-bit partial products.
+fn (mut b Builder) u64_mul_high(x ValueID, y ValueID) ValueID {
+	u64t := b.u64_type
+	mask := b.m.get_or_add_const(u64t, '4294967295')
+	thirty_two := b.m.get_or_add_const(u64t, '32')
+	x0 := b.emit2(.and_, u64t, x, mask)
+	x1 := b.emit2(.lshr, u64t, x, thirty_two)
+	y0 := b.emit2(.and_, u64t, y, mask)
+	y1 := b.emit2(.lshr, u64t, y, thirty_two)
+	p00 := b.emit2(.mul, u64t, x0, y0)
+	p01 := b.emit2(.mul, u64t, x0, y1)
+	p10 := b.emit2(.mul, u64t, x1, y0)
+	p11 := b.emit2(.mul, u64t, x1, y1)
+	mid := b.emit2(.add, u64t, b.emit2(.add, u64t, b.emit2(.lshr, u64t, p00, thirty_two),
+		b.emit2(.and_, u64t, p01, mask)), b.emit2(.and_, u64t, p10, mask))
+	high := b.emit2(.add, u64t, p11, b.emit2(.lshr, u64t, p01, thirty_two))
+	high2 := b.emit2(.add, u64t, high, b.emit2(.lshr, u64t, p10, thirty_two))
+	return b.emit2(.add, u64t, high2, b.emit2(.lshr, u64t, mid, thirty_two))
+}
+
+// wide_integer_mul multiplies two 128-bit values modulo 2^128; signed and
+// unsigned products have the same bits.
+fn (mut b Builder) wide_integer_mul(lhs ValueID, rhs ValueID) ValueID {
+	u64t := b.u64_type
+	a_low, a_high := b.wide_integer_limbs(b.cur_block, lhs)
+	b_low, b_high := b.wide_integer_limbs(b.cur_block, rhs)
+	low := b.emit2(.mul, u64t, a_low, b_low)
+	cross := b.emit2(.add, u64t, b.emit2(.mul, u64t, a_low, b_high), b.emit2(.mul, u64t,
+		a_high, b_low))
+	high := b.emit2(.add, u64t, b.u64_mul_high(a_low, b_low), cross)
+	return b.make_wide_integer(b.cur_block, low, high)
+}
+
+// wide_integer_variable_shift shifts a 128-bit value by a count known only at
+// run time (taken modulo 128), selecting between the in-limb and cross-limb
+// results without branches.
+fn (mut b Builder) wide_integer_variable_shift(left bool, arithmetic bool, value ValueID, count ValueID) ValueID {
+	u64t := b.u64_type
+	low, high := b.wide_integer_limbs(b.cur_block, value)
+	zero := b.m.get_or_add_const(u64t, '0')
+	shift := b.emit2(.and_, u64t, count, b.m.get_or_add_const(u64t, '127'))
+	big := b.emit2(.uge, b.i1_type, shift, b.m.get_or_add_const(u64t, '64'))
+	s := b.emit2(.and_, u64t, shift, b.m.get_or_add_const(u64t, '63'))
+	no_carry := b.emit2(.eq, b.i1_type, s, zero)
+	inverse := b.emit2(.sub, u64t, b.m.get_or_add_const(u64t, '64'), s)
+	if left {
+		carry := b.emit3(.select, u64t, no_carry, zero, b.emit2(.lshr, u64t, low, inverse))
+		small_high := b.emit2(.or_, u64t, b.emit2(.shl, u64t, high, s), carry)
+		small_low := b.emit2(.shl, u64t, low, s)
+		new_high := b.emit3(.select, u64t, big, small_low, small_high)
+		new_low := b.emit3(.select, u64t, big, zero, small_low)
+		return b.make_wide_integer(b.cur_block, new_low, new_high)
+	}
+	right := if arithmetic { OpCode.ashr } else { OpCode.lshr }
+	carry := b.emit3(.select, u64t, no_carry, zero, b.emit2(.shl, u64t, high, inverse))
+	small_low := b.emit2(.or_, u64t, b.emit2(.lshr, u64t, low, s), carry)
+	small_high := b.emit2(right, u64t, high, s)
+	fill := if arithmetic {
+		b.emit2(.ashr, u64t, high, b.m.get_or_add_const(u64t, '63'))
+	} else {
+		zero
+	}
+	new_low := b.emit3(.select, u64t, big, small_high, small_low)
+	new_high := b.emit3(.select, u64t, big, fill, small_high)
+	return b.make_wide_integer(b.cur_block, new_low, new_high)
+}
+
 fn (mut b Builder) make_wide_integer(block BlockID, low ValueID, high ValueID) ValueID {
 	wide_type := b.wide_integer_type()
 	slot := b.block_instr0(.alloca, block, b.m.type_store.get_ptr(wide_type))
@@ -12504,7 +12694,9 @@ fn (mut b Builder) build_wide_integer_expr(node flat.Node) ?ValueID {
 			if literal := b.const_int_literal_value(child_id) {
 				check_wide_integer_literal(literal)
 			}
-			return b.wide_integer_from_scalar(b.build_expr(child_id))
+			target_id := if node.typ != 0 { node.typ } else { node.source_value_id() }
+			return b.convert_wide_integer(b.build_expr(child_id), b.wide_integer_type(),
+				target_id == ssa_i128_source_type)
 		}
 		.paren {
 			if node.children_count == 0 {
@@ -12520,7 +12712,11 @@ fn (mut b Builder) build_wide_integer_expr(node flat.Node) ?ValueID {
 			rhs_id := b.a.child(&node, 1)
 			if node.op in [.left_shift, .right_shift, .right_shift_unsigned] {
 				shift_text := b.const_int_literal_value(rhs_id) or {
-					panic('ssa: unsupported 128-bit integer operation: variable shift')
+					lhs := b.build_expr(lhs_id)
+					count := b.coerce_numeric_value(b.build_expr(rhs_id), b.u64_type)
+					arithmetic := node.op == .right_shift && b.is_signed_wide_integer_expr(lhs_id)
+					return b.wide_integer_variable_shift(node.op == .left_shift, arithmetic,
+						lhs, count)
 				}
 				shift := shift_text.int()
 				if shift < 0 || shift >= 128 {
@@ -12574,6 +12770,26 @@ fn (mut b Builder) build_wide_integer_expr(node flat.Node) ?ValueID {
 				combined_low := b.block_instr2(.or_, b.cur_block, b.u64_type, next_low,
 					carry)
 				return b.make_wide_integer(b.cur_block, combined_low, next_high)
+			}
+			if node.op in [.mul, .div, .mod] {
+				signed := if b.is_wide_integer_expr(lhs_id) {
+					b.is_signed_wide_integer_expr(lhs_id)
+				} else {
+					b.is_signed_wide_integer_expr(rhs_id)
+				}
+				if node.op == .mul {
+					return b.wide_integer_mul(b.wide_integer_operand(lhs_id), b.wide_integer_operand(rhs_id))
+				}
+				helper := match node.op {
+					.div {
+						if signed { '__divti3' } else { '__udivti3' }
+					}
+					else {
+						if signed { '__modti3' } else { '__umodti3' }
+					}
+				}
+				return b.wide_integer_runtime_call(helper, b.wide_integer_operand(lhs_id),
+					b.wide_integer_operand(rhs_id), b.wide_integer_type())
 			}
 			if node.op !in [.pipe, .amp, .xor, .plus, .minus] {
 				panic('ssa: unsupported 128-bit integer operation: ${node.op}')
@@ -12668,6 +12884,9 @@ fn (mut b Builder) build_infix(id flat.NodeId, node flat.Node) ValueID {
 			|| b.is_wide_integer_expr(b.a.child(&node, 1))) {
 		if node.op in [.eq, .ne, .lt, .le, .gt, .ge] {
 			return b.build_wide_integer_comparison(node)
+		}
+		if value := b.build_wide_integer_expr(node) {
+			return value
 		}
 		panic('ssa: unsupported 128-bit integer operation: ${node.op}')
 	}
@@ -13287,7 +13506,12 @@ fn (mut b Builder) build_cast_expr(node flat.Node) ValueID {
 		return b.box_interface_value(target_type, checked_name_source_id, value)
 	}
 	if from_type == b.wide_integer_type() || target_type == b.wide_integer_type() {
-		panic('ssa: unsupported 128-bit integer conversion to or from a scalar value')
+		signed := if target_type == b.wide_integer_type() {
+			target_name_id == ssa_i128_source_type
+		} else {
+			b.is_signed_wide_integer_expr(child_id)
+		}
+		return b.convert_wide_integer(value, target_type, signed)
 	}
 	if b.is_pointer_type(target_type) || b.is_pointer_type(from_type) {
 		return b.emit1(.bitcast, target_type, value)
@@ -13698,7 +13922,21 @@ fn (mut b Builder) build_prefix(node flat.Node, _id flat.NodeId) ValueID {
 	}
 	val := b.build_expr(child_id)
 	if b.value_type(val) == b.wide_integer_type() && node.op !in [.amp, .mul] {
-		panic('ssa: unsupported 128-bit integer operation: unary ${node.op}')
+		match node.op {
+			.minus {
+				zero := b.as_wide_integer(b.m.get_or_add_const(b.u64_type, '0'))
+				return b.wide_integer_add_sub(.sub, zero, val)
+			}
+			.plus {
+				return val
+			}
+			.bit_not {
+				return b.wide_integer_complement(val)
+			}
+			else {
+				panic('ssa: unsupported 128-bit integer operation: unary ${node.op}')
+			}
+		}
 	}
 	match node.op {
 		.minus {
@@ -13779,7 +14017,12 @@ fn (mut b Builder) build_postfix(node flat.Node) ValueID {
 		return b.m.get_or_add_const(b.i64_type, '0')
 	}
 	if value_type == b.wide_integer_type() {
-		panic('ssa: unsupported 128-bit integer operation: postfix ${node.op}')
+		cur := b.emit1(.load, value_type, addr)
+		one := b.as_wide_integer(b.m.get_or_add_const(b.u64_type, '1'))
+		next := b.wide_integer_add_sub(if node.op == .inc { OpCode.add } else { OpCode.sub },
+			cur, one)
+		b.emit2(.store, b.void_type, next, addr)
+		return cur
 	}
 	cur := b.emit1(.load, value_type, addr)
 	one := b.m.get_or_add_const(value_type, '1')
@@ -15496,7 +15739,7 @@ fn (b &Builder) flag_enum_expr_type_name(id flat.NodeId) u32 {
 fn (mut b Builder) coerce_int_value(value ValueID, to_type TypeID) ValueID {
 	from_type := b.value_type(value)
 	if (from_type == b.wide_integer_type()) != (to_type == b.wide_integer_type()) {
-		panic('ssa: unsupported 128-bit integer conversion to or from a scalar value')
+		return b.convert_wide_integer(value, to_type, false)
 	}
 	if !b.is_int_type(from_type) || !b.is_int_type(to_type) {
 		return value
@@ -17613,7 +17856,7 @@ fn (mut b Builder) build_field_value(expr_id flat.NodeId, field_type_name_id u32
 		if expr.kind == .prefix && expr.op == .bit_not && expr.children_count > 0 {
 			value := b.build_field_value(b.a.child(&expr, 0), field_type_name_id)
 			if b.value_type(value) == b.wide_integer_type() {
-				panic('ssa: unsupported 128-bit integer operation: unary bitwise complement')
+				return b.wide_integer_complement(value)
 			}
 			all_bits := b.m.get_or_add_const(b.value_type(value), '-1')
 			return b.emit2(.xor, b.value_type(value), value, all_bits)

@@ -1,0 +1,104 @@
+module main
+
+import os
+import v.cmdexec
+
+// Programs that the V compiler itself needs to build and run with `-b arm64`.
+// Each one must print what the C backend prints.
+
+// run_arm64 builds `source` as a single-file program with `-b arm64` and returns
+// what it prints.
+fn run_arm64(name string, source string) string {
+	root := os.join_path(os.vtmp_dir(), 'arm64_self_host_${name}_${os.getpid()}')
+	os.rmdir_all(root) or {}
+	os.mkdir_all(root) or { panic(err) }
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	path := os.join_path(root, 'main.v')
+	os.write_file(path, source) or { panic(err) }
+	output := os.join_path(root, 'main')
+	compiled := cmdexec.run(@VEXE, ['-b', 'arm64', '-o', output, path])
+	assert compiled.exit_code == 0, compiled.output
+	run := cmdexec.run(output, []string{})
+	assert run.exit_code == 0, run.output
+	return run.output.trim_space()
+}
+
+// u128/i128 multiply, divide, remainder, shifts by a run-time count, negation,
+// complement, increments, `match`/`in` and conversions to and from scalars.
+fn test_128_bit_arithmetic_and_conversions() {
+	$if macos && arm64 {
+		output := run_arm64('wide_integers', "module main
+
+fn mix(a u128, b u128, s int) []string {
+	return [
+		(a * b).str(),
+		(a / b).str(),
+		(a % b).str(),
+		(a << s).str(),
+		(a >> s).str(),
+	]
+}
+
+fn smix(a i128, b i128, s int) []string {
+	return [
+		(a * b).str(),
+		(a / b).str(),
+		(a % b).str(),
+		(a >> s).str(),
+	]
+}
+
+fn main() {
+	big := (u128(0xFFFF_FFFF_FFFF_FFFF) << 32) + u128(12345)
+	println(mix(big, u128(1_000_000_007), 7))
+	println(mix(u128(10), u128(3), 100))
+	println(smix(i128(-1) - (i128(1) << 70), i128(-97), 5))
+	println(smix(i128(123456789), i128(1000), 3))
+}
+
+fn conv(a u128, s i128, n int, f f64) []string {
+	return [
+		u64(a).str(),
+		u32(a).str(),
+		i64(s).str(),
+		u128(n).str(),
+		i128(n).str(),
+		i128(-n).str(),
+		f64(a).str(),
+		f64(s).str(),
+		u128(f).str(),
+		i128(-f).str(),
+	]
+}
+
+fn init() {
+	println(conv((u128(7) << 64) + u128(0x1_0000_0005), i128(-12345678901234), 42, 1.0e20))
+}
+
+fn ops(a i128, u u128) []string {
+	mut x := a
+	x++
+	mut y := u
+	y--
+	kind := match u {
+		u128(0) { 'zero' }
+		u128(5) { 'five' }
+		else { 'other' }
+	}
+	return [(-a).str(), (~u).str(), x.str(), y.str(), kind, (a in i128(-10)..i128(10)).str()]
+}
+
+fn init() {
+	println(ops(i128(-7), u128(5)))
+	println(ops((i128(1) << 80), u128(0)))
+}
+")
+		assert output == "['4294967301', '5', '-12345678901234', '42', '42', '-42', '1.2912720852026183e+20', '-1.2345678901234e+13', '100000000000000000000', '-100000000000000000000']
+['79228163068861475189099358509742967695', '79228161959667203871', '578568288', '10141204801825835211423871409280', '618970019642690137416007776']
+['30', '3', '1', '12676506002282294014967032053760', '0']
+['114517387209588896432225', '12171047636261972200', '-25', '-36893488147419103233']
+['123456789000', '123456', '789', '15432098']", output
+	}
+}
