@@ -309,7 +309,8 @@ See Build & Rebuild for rebuild triggers and flags.
 
 ## Modules and Imports
 * Module names must match their directory name (no hierarchy in the
-  `module` line). Mismatches cause silent import failures.
+  `module` line). A mismatch fails the import with "bad module
+  definition", naming both names.
 * Imports follow the folder hierarchy (e.g. `import abc.def`).
 
 ## C/JS Interop Hygiene
@@ -373,8 +374,9 @@ Common mistakes:
   Runtime `if` will fail to compile if it references platform-specific
   symbols; `$if` excludes the block entirely on non-matching platforms.
 * Forgetting the `?` suffix for custom flags: `$if myflag ? { ... }`.
-  Without `?`, the compiler treats it as a builtin option and silently
-  ignores it.
+  Without `?`, `myflag` is read as an identifier: the branch works while
+  you build with `-d myflag`, and the build fails with
+  `undefined ident: myflag` when the flag is not passed.
 
 ### Compile-time `$for`
 `$for` iterates over type metadata at compile time. It works with:
@@ -519,7 +521,7 @@ When:
 * Tool changes (`cmd/tools/`): Run tool-specific tests. If none exist,
   run the smallest relevant `*_test.v` that exercises the tool.
   Note: `cmd/v/` is compiler scope, not tools.
-  Examples: `cmd/tools/vfmt` -> `cmd/tools/vfmt_test.v` and
+  Examples: `cmd/tools/vfmt.v` -> `cmd/tools/vfmt_test.v` and
   `vlib/v/gen/v/gen_test.v`.
   `cmd/tools/vdoc` -> `cmd/tools/vdoc/vdoc_test.v`.
 * Diagnostic/output changes:
@@ -553,8 +555,9 @@ Types:
 * Output: `.vv` source + `.out` expected output in
   `vlib/v/slow_tests/inout/`.
   Example: `./v -silent vlib/v/slow_tests/inout/compiler_test.v`.
-* `vlib/v/tests/**` may use `.run.out` expectations; run with
-  `./v -silent test vlib/v/tests`.
+* `vlib/v/tests/skip_unused/` holds `.vv` programs with `.run.out`
+  expectations; `./v -silent vlib/v/compiler_errors_test.v` compares
+  them, on Linux only. `./v test vlib/v/tests` does not.
 
 Docs-only guidance: see Reporting.
 If time-boxed, run at least the smallest relevant test and note
@@ -563,9 +566,11 @@ skipped coverage in the summary.
 ### Useful env variables and flags while testing
 * `VAUTOFIX=1` - Auto-update .out files when tests fail (run twice).
   Use only when a behavior change is intended.
-* `VTEST_ONLY=glob_pattern` - Run only tests matching pattern.
+* `VTEST_ONLY=fragment[,fragment]` - Run only the test files whose path
+  contains one of the fragments. Not a glob.
 * `VTEST_HIDE_OK=1` - Hide successful tests, show only failures.
-* `./v -silent test path/to/dir/` - Show only failed tests (if any), and a summary report.
+* `./v -silent test path/to/dir/` - Mostly hide passing tests; failures,
+  occasional progress and the summary remain.
 * `-cc tcc` can speed test builds when TCC is available.
 * Output expectations: update `.out` files only when behavior changes
   are intended; note the rationale in the summary.
@@ -574,8 +579,8 @@ skipped coverage in the summary.
 * See what the C compiler is doing:
   * `-showcc` prints the C compile command.
   * `-show-c-output` prints the C compiler output.
-* Build a temporary compiler for debug flags:
-  * `./v -o ./w -d trace_checker cmd/v`
+* Build a temporary compiler with V line numbers, for a compiler panic:
+  * `./v -g -o ./w cmd/v`
   * Then run: `./w file.v`
 * Keep and inspect generated C:
   * `-keepc -cg` is the common combo.
@@ -584,11 +589,10 @@ skipped coverage in the summary.
     `main__main`). This flag can be repeated to print multiple
     functions. Methods/generics may use more complex C names; use
     `-keepc` to confirm exact symbols.
-* Trace stages:
-  `-d trace_scanner|trace_parser|trace_checker|trace_gen`.
-  These flags can help diagnose a problem when a stage stops earlier
-  than expected.
-* Time stages: `-d time_parsing|time_checking`.
+* Profile stages: `-v` prints verbose stage profiling, which shows
+  where a compilation stops; `-show-timings` prints the stage timings
+  alone; `-show-instructions` adds retired CPU instructions per stage
+  (macOS).
 * V panics: `-keepc -g`.
 * C segfaults: `-keepc -cg -cc clang`.
 * JS/native/wasm: prefer small, focused test files with
@@ -696,8 +700,9 @@ worker count and external C compiler, and state that scope explicitly.
 
 ## Compiler Architecture
 The V compiler has the following stages, orchestrated by `v.driver`:
-`v.scanner` -> `v.parser`/`v.flat` -> `v.types` -> `v.transform` ->
-`v.markused` -> `v.gen.c`.
+`v.scanner` -> `v.parser`/`v.flat` -> `v.types` -> `v.markused` ->
+`v.transform` -> monomorphization -> `v.gen.c`, with interactions
+between these passes.
 Additional backends and lowerings include FastC, WebAssembly, SSA, MIR,
 instruction selection, and native ARM64 generation.
 
@@ -734,9 +739,10 @@ instruction selection, and native ARM64 generation.
   `reflection.v`)
 
 ## Error Reporting (checker/parser)
-Scanner and parser diagnostics carry `v.token.Pos` spans. Type-checker
-diagnostics are collected by `v.types.TypeChecker`; shared diagnostic
-formatting and message types live in `vlib/v/errors/`.
+Scanner diagnostics carry byte offsets, which the parser converts into
+`v.token.Pos` spans. Type-checker diagnostics are `v.types.TypeError`
+values collected by `v.types.TypeChecker`. Formatting and the JSON
+output shared by all of them live in `vlib/v/errors/`.
 
 ## Option/Result Types
 * Syntax: `?Type` (optional, can be none) vs `!Type` (result, can
@@ -755,7 +761,10 @@ formatting and message types live in `vlib/v/errors/`.
   Format only touched files unless explicitly asked to reformat broader
   scope.
 * Treat new files as touched for formatting and markdown checks.
-* Check *all* files are formatted: `./v -silent test-fmt`.
+* Run the formatter over the eligible `.v` files under the current
+  directory: `./v -silent test-fmt`. It
+  checks that formatting succeeds, not that files are already
+  formatted; for that, use `./v fmt -verify <files>`.
   Run only when asked or when validating the full tree.
 * Check markdown: `./v check-md file.md` for touched `.md` files
   (required before commits).
@@ -780,18 +789,18 @@ formatting and message types live in `vlib/v/errors/`.
 * VFLAGS: Pass flags to all V invocations
   (e.g., `VFLAGS='-g' ./v test-all`).
 * VEXE: Path to V compiler executable (useful in CI/scripts).
-* TMPDIR: Controls where `.tmp.c` files are written (V uses
-  `TMPDIR/v/`).
+* VTMP: V's temporary directory, where `.tmp.c` files are written.
+  Defaults to `<system temp dir>/v_<uid>`; the system temp dir follows
+  `TMPDIR`.
 * SOURCE_DATE_EPOCH: Override build timestamp for reproducible builds
   (affects `@BUILD_DATE`, `@BUILD_TIME`, `@BUILD_TIMESTAMP`).
-* V2-specific: `V2CC`, `V2CFLAGS`, `V2VERBOSE` (for v2 development).
 
 ## Gotchas
 * Core modules (`builtin`, `strings`, `os`, `strconv`, `time`) can
   affect the compiler because it is a V program. Rebuild `./v` when
   they change.
-* Module names must match their directory name; mismatches cause silent
-  import failures. See Modules and Imports.
+* Module names must match their directory name; a mismatch fails the
+  import. See Modules and Imports.
 * Some V programs and tools hardcode `os.execute('v ...')` in their
   source. The `./v` workflow does not protect against these; if you
   encounter unexpected behavior from such calls, check whether the
@@ -799,10 +808,11 @@ formatting and message types live in `vlib/v/errors/`.
   accordingly.
 * Stale `./v` can cause confusing failures; rebuild if behavior
   seems off.
-* Output tests require exact matches; whitespace changes break tests.
+* Output tests compare normalized output (line endings, trailing
+  spaces); any other change, whitespace included, breaks them.
 * Formatting reminders: follow Code Style for `fmt` and `check-md`.
 * C compilation errors? Check generated C with `-keepc`
-  (creates `/tmp/*.tmp.c`; see also TMPDIR in Environment Variables).
+  (keeps `<name>.<token>.tmp.c` in VTMP; see Environment Variables).
 * Compile-time code (`$if`, `$for`, `$embed_file`, etc.) is a common
   source of AI mistakes. See Compile-Time Code and Reflection for
   correct usage and pitfalls.
