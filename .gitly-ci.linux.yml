@@ -5,6 +5,9 @@ variables:
   VTEST_FAIL_FAST: '1'
   V_MACOS_V3_NO_FALLBACK: '1'
   VFLAGS: '-cc tcc -no-retry-compilation'
+  V3CACHE: /workspace/.gitly-ci-cache/modules
+  VTOOLS_CACHE_DIR: /workspace/.gitly-ci-cache/tools
+  V_CI_VEXE: /workspace/vprod
   GITHUB_ACTIONS: 'true'
   GITHUB_JOB: tcc-linux
   RUNNER_OS: Linux
@@ -15,16 +18,18 @@ jobs:
     network: true
     steps:
       - name: Build V from the pushed source
-        run: env -u GITHUB_JOB VFLAGS= make -j1
+        run: |
+          env -u GITHUB_JOB VFLAGS= make -j1 VPROD=./vprod CACHE_VFLAGS="$VFLAGS"
+          ./vprod -skip-running -o ci/linux_ci ci/linux_ci.vsh
       - name: V doctor
-        run: ./v run ci/linux_ci.vsh v_doctor_tcc
+        run: ./ci/linux_ci v_doctor_tcc
       - name: V self compilation
-        run: ./v run ci/linux_ci.vsh v_self_compilation_tcc
+        run: ./ci/linux_ci v_self_compilation_tcc
       - name: Verify the V test runner
-        run: ./v run ci/linux_ci.vsh verify_v_test_works_tcc
+        run: ./ci/linux_ci verify_v_test_works_tcc
       - name: Test pure V math
-        run: ./v run ci/linux_ci.vsh test_pure_v_math_module_tcc
+        run: ./ci/linux_ci test_pure_v_math_module_tcc
       - name: Test inline assembly
-        run: ./v run ci/linux_ci.vsh test_inline_assembly
+        run: ./ci/linux_ci test_inline_assembly
       - name: V self tests
-        run: ./v run ci/linux_ci.vsh self_tests_tcc
+        run: ./ci/linux_ci self_tests_vprod_tcc

@@ -148,11 +148,19 @@ GITFASTCLONE := $(GIT) clone --filter=blob:none --quiet
 
 TCCBUILDSCRIPT = $(VROOT)/thirdparty/build_scripts/thirdparty-$(TCCOS)-$(TCCARCH)_tcc.sh
 
-.PHONY: all v1 clean rebuild check fresh_vc fresh_tcc fresh_legacy latest_tcc_source check_for_working_tcc etags ctags
+.PHONY: all v1 cache-basic-modules clean rebuild check fresh_vc fresh_tcc fresh_legacy latest_tcc_source check_for_working_tcc etags ctags
 
 ifdef prod
 VFLAGS+=-prod
 endif
+
+# The compiler can be optimized with Clang while its users compile ordinary
+# programs and tests with another C compiler, such as TCC in Linux CI.
+CACHE_VFLAGS ?= $(VFLAGS)
+# Optional optimized sidecar compiler; leave the bootstrap executable available
+# for the self-hosting checks, and warm caches with the compiler used by tests.
+VPROD ?=
+CACHE_VEXE = $(if $(strip $(VPROD)),$(VPROD),$(VEXE))
 
 # Keep bootstrap C compiler/linker flags aligned with the initial `v1` build.
 BOOTSTRAP_CC_CFLAGS := $(strip $(CFLAGS))
@@ -278,13 +286,22 @@ endif
 	@echo "V has been successfully built"
 	@$(VEXE)$(EXE_EXT) -version
 	@$(VEXE)$(EXE_EXT) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler -gc none run .github/problem-matchers/register_all.vsh
+ifneq ($(strip $(VPROD)),)
+	# A failed self-build may bootstrap through make; that fallback must not
+	# inherit this optional production build and recursively start another one.
+	@VPROD= MAKEFLAGS= MFLAGS= VFLAGS= sh "$(VROOT)/cmd/tools/build_vprod.sh" "$(VEXE)$(EXE_EXT)" "$(VPROD)$(EXE_EXT)" "$(CC)"
+	@"$(VPROD)$(EXE_EXT)" -version
+endif
+	@$(MAKE) --no-print-directory cache-basic-modules
+
+cache-basic-modules:
 	@set -e; \
 	cache_gcflags=; \
 	if [ ! -f "$(TMPTCC)/lib/libgc.a" ] && [ ! -f "$(TMPTCC)/lib/libgc.dylib" ]; then \
 		cache_gcflags='-gc none'; \
 	fi; \
-	$(VEXE)$(EXE_EXT) $$cache_gcflags $(VFLAGS) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler run cmd/tools/cache_basic_modules.v; \
-	$(VEXE)$(EXE_EXT) $$cache_gcflags $(VFLAGS) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler cmd/tools/cache_basic_modules_test.v
+	VFLAGS= $(CACHE_VEXE)$(EXE_EXT) $$cache_gcflags $(CACHE_VFLAGS) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler run cmd/tools/cache_basic_modules.v; \
+	VFLAGS= $(CACHE_VEXE)$(EXE_EXT) $$cache_gcflags $(CACHE_VFLAGS) $(POST_BOOTSTRAP_CCOMPILER_VFLAG) -new-compiler cmd/tools/cache_basic_modules_test.v
 
 v1:
 ifdef LEGACY
