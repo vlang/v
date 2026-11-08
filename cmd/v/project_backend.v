@@ -83,8 +83,10 @@ fn project_test_runs(args []string, command_index int) [][]string {
 }
 
 // run_project_tests runs each command line of project_test_runs with this launcher, one after
-// another, and returns 1 when any of them failed. `-fail-fast` stops after the first failure.
+// another, and returns 1 when any of them failed. Fail-fast, from `-fail-fast` or, as in the test
+// runner, from `VTEST_FAIL_FAST=1`, stops after the first failed run.
 fn run_project_tests(runs [][]string) int {
+	fail_fast_env := os.getenv('VTEST_FAIL_FAST') == '1'
 	// The command lines already hold the options of VFLAGS; the runs must not add them again.
 	mut environment := os.environ()
 	environment.delete('VFLAGS')
@@ -98,7 +100,7 @@ fn run_project_tests(runs [][]string) int {
 		process.close()
 		if failed {
 			status = 1
-			if '-fail-fast' in run {
+			if fail_fast_env || '-fail-fast' in run {
 				break
 			}
 		}
