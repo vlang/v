@@ -11655,6 +11655,9 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 		p.next()
 	}
 	if !p.prefs.is_fmt {
+		if pref.normalized_arch(asm_arch) == 'ppc' && !is_raw {
+			p.record_diagnostic('PowerPC inline assembly requires the `raw` modifier', asm_pos)
+		}
 		if is_goto && p.prefs.backend != 'c' {
 			p.record_diagnostic('`asm goto` is only supported by the C backend', asm_pos)
 		}
@@ -11758,7 +11761,7 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 
 // inline_asm_c_lowering_arches are the architectures whose inline assembly the C backend
 // lowers to GNU `asm()`.
-const inline_asm_c_lowering_arches = ['amd64', 'arm64', 'x86', 'riscv64']
+const inline_asm_c_lowering_arches = ['amd64', 'arm64', 'x86', 'riscv64', 'ppc']
 
 fn (p &Parser) supports_c_inline_asm_lowering() bool {
 	return p.prefs.backend == 'c' && p.prefs.target.arch in inline_asm_c_lowering_arches
