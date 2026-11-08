@@ -1,0 +1,25 @@
+Pin a project to a specific V compiler version using a .vvmrc file.
+
+Create the pin from the running compiler:
+  v --version > .vvmrc
+
+The file holds one version line (0.4.12 or v0.4.12). Both forms are accepted.
+The aliases latest and current keep using the currently running compiler.
+
+Scope: the folder that holds .vvmrc and all of its subfolders, for every v
+command. Outside it the default V is used. The search stops at .git, .hg, .svn
+and .v.mod.stop.
+
+Missing version: v asks on a terminal and fails in CI. Set V_SKIP_VVMRC=1 to
+bypass the pin.
+
+Installed versions are resolved on PATH and under VVM_HOME (default ~/.vvm).
+VVM_HOME and VVM_DIR are both honoured. Accepted values: releases, weekly.*
+tags and commits.
+
+GitHub Actions: vlang/setup-v works with the pin file:
+  - uses: vlang/setup-v@v1.7
+    with:
+      version-file: .vvmrc
+
+See doc/docs.md for the full workflow, Docker guidance and prebuilt binaries.
