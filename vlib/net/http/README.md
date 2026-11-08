@@ -64,6 +64,12 @@ println(resp.status_code)
 println(resp.body)
 ```
 
+`http.get` checks the server certificate, and `http.fetch(..., validate: false)` skips that check.
+`get`, `post`, and the other helpers check the certificate.
+`fetch`, `prepare`, and `download_file_with_progress` accept `validate: false`.
+Leave `verify` empty to use the system trust store on HTTP/1.1 and HTTP/2.
+HTTP/3 ignores `validate: false` and has no system trust store, so set `verify`.
+
 `http.post`, `http.post_json`, `http.post_form`, `http.put`, `http.patch`,
 `http.head` and `http.delete` cover the common verbs. `http.fetch` takes a
 `FetchConfig` when you need headers, cookies, timeouts, redirect control,

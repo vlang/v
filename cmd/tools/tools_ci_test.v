@@ -91,20 +91,20 @@ fn tools_ci_bsd_script(job string) !string {
 	return script
 }
 
-fn tools_ci_compilers(job string) ![]string {
+fn tools_ci_matrix_values(job string, axis string) ![]string {
 	mut matrices := []string{}
 	for line in job.split_into_lines() {
-		if line.starts_with('        cc: [') && line.ends_with(']') {
+		if line.starts_with('        ${axis}: [') && line.ends_with(']') {
 			matrices << line.all_after('[').all_before_last(']')
 		}
 	}
 	if matrices.len != 1 {
-		return error('expected exactly one compiler matrix, found ${matrices.len}')
+		return error('expected exactly one ${axis} matrix, found ${matrices.len}')
 	}
 	return matrices[0].split(',').map(it.trim_space())
 }
 
-fn tools_ci_expected_commands(job string, compiler string) []string {
+fn tools_ci_expected_commands(job string, compiler string, suite string, shard int) []string {
 	mut commands := []string{}
 	if job == 'tools-freebsd' {
 		commands << 'pkg install -y git pkgconf sqlite3 gmake boehm-gc-threaded libiconv'
@@ -117,11 +117,15 @@ fn tools_ci_expected_commands(job string, compiler string) []string {
 	}
 	commands << ['uname -a', 'git config --global --add safe.directory .']
 	if job == 'tools-openbsd' {
-		commands << 'ulimit -d 4194304'
+		commands << 'ulimit -d 6291456'
 	}
-	commands << ['gmake', 'v -showcc -o v cmd/v', 'v symlink', 'v doctor', 'v fmt -verify cmd/',
-		'v -silent -N -W -check build-tools', 'v -silent test-self cmd']
-	if compiler != 'tcc' {
+	commands << ['gmake', 'v -showcc -o v cmd/v', 'v symlink', 'v doctor']
+	if suite == 'default' && shard == 0 {
+		commands << ['v fmt -verify cmd/', 'v -silent -N -W -check build-tools']
+	}
+	if suite == 'default' {
+		commands << 'v -silent test-self cmd'
+	} else {
 		commands << 'v -silent -W -cstrict test-self cmd'
 	}
 	return commands
@@ -147,7 +151,7 @@ fn tools_ci_create_fixtures(root string, sh string) ! {
 	tools_ci_write_executable(os.join_path(bin_dir, 'sudo'), shebang + 'exec "$@"\n')!
 }
 
-fn tools_ci_execute(root string, script string, shell string, errexit bool, compiler string, failure string, code int) !(os.Result, []string) {
+fn tools_ci_execute(root string, script string, shell string, errexit bool, compiler string, suite string, shard int, failure string, code int) !(os.Result, []string) {
 	log := os.join_path(root, 'commands.log')
 	output_path := os.join_path(root, 'output.log')
 	os.write_file(log, '')!
@@ -165,14 +169,17 @@ fn tools_ci_execute(root string, script string, shell string, errexit bool, comp
 	process.set_work_folder(root)
 	// Deliberately do not inherit the environment: PATH contains only fixtures.
 	process.set_environment({
-		'PATH':           os.join_path(root, 'bin')
-		'LC_ALL':         'C'
-		'VFLAGS':         '-cc ${compiler}'
-		'CI_TEST_PROBE':  os.join_path(root, 'probe')
-		'CI_TEST_LOG':    log
-		'CI_TEST_OUTPUT': output_path
-		'CI_TEST_FAIL':   failure
-		'CI_TEST_CODE':   code.str()
+		'PATH':                   os.join_path(root, 'bin')
+		'LC_ALL':                 'C'
+		'VFLAGS':                 '-cc ${compiler}'
+		'V_CI_SUITE':             suite
+		'VTEST_SELF_SHARD_INDEX': shard.str()
+		'VTEST_SELF_SHARD_COUNT': '3'
+		'CI_TEST_PROBE':          os.join_path(root, 'probe')
+		'CI_TEST_LOG':            log
+		'CI_TEST_OUTPUT':         output_path
+		'CI_TEST_FAIL':           failure
+		'CI_TEST_CODE':           code.str()
 	})
 	process.use_pgroup = true
 	process.run()
@@ -236,31 +243,41 @@ fn test_tools_ci_bsd_failure_propagation() {
 	mut failures := 0
 	for job in tools_ci_jobs() {
 		body := tools_ci_job_text(workflow, job.name)!
-		assert tools_ci_compilers(body)! == job.compilers, job.name
+		assert tools_ci_matrix_values(body, 'cc')! == job.compilers, job.name
+		assert tools_ci_matrix_values(body, 'suite')! == ['default', 'strict'], job.name
+		assert tools_ci_matrix_values(body, 'shard')! == ['0', '1', '2'], job.name
+		assert body.contains('        exclude:\n          - cc: tcc\n            suite: strict\n'), job.name
 		script := tools_ci_bsd_script(body)!
 		for compiler in job.compilers {
-			expected := tools_ci_expected_commands(job.name, compiler)
-			for shell in shells {
-				for errexit in [false, true] {
-					label := '${job.name}, ${compiler}, ${shell}, errexit=${errexit}'
-					result, trace := tools_ci_execute(root, script, shell, errexit, compiler, '', 0)!
-					assert result.exit_code == 0, '${label}: ${result.output}'
-					assert trace == expected, '${label}: ${trace}'
-					successes++
-					for index, failure in expected {
-						// Distinct non-1 codes must survive unchanged.
-						code := 41 + index
-						failed, stopped_trace := tools_ci_execute(root, script, shell, errexit, compiler,
-							failure, code)!
-						assert failed.exit_code == code, '${label}, ${failure}: ${failed.output}'
-						assert stopped_trace == expected[..index + 1], '${label}, ${failure}: ${stopped_trace}'
-						failures++
+			for suite in ['default', 'strict'] {
+				if compiler == 'tcc' && suite == 'strict' {
+					continue
+				}
+				for shard in 0 .. 3 {
+					expected := tools_ci_expected_commands(job.name, compiler, suite, shard)
+					for shell in shells {
+						for errexit in [false, true] {
+							label := '${job.name}, ${compiler}, ${suite}, shard=${shard}, ${shell}, errexit=${errexit}'
+							result, trace := tools_ci_execute(root, script, shell, errexit, compiler, suite, shard, '', 0)!
+							assert result.exit_code == 0, '${label}: ${result.output}'
+							assert trace == expected, '${label}: ${trace}'
+							successes++
+							for index, failure in expected {
+								// Distinct non-1 codes must survive unchanged.
+								code := 41 + index
+								failed, stopped_trace := tools_ci_execute(root, script, shell, errexit, compiler, suite, shard,
+									failure, code)!
+								assert failed.exit_code == code, '${label}, ${failure}: ${failed.output}'
+								assert stopped_trace == expected[..index + 1], '${label}, ${failure}: ${stopped_trace}'
+								failures++
+							}
+						}
 					}
 				}
 			}
 		}
 	}
-	assert successes == 10 * shells.len
-	assert failures == 122 * shells.len
+	assert successes == 48 * shells.len
+	assert failures == 482 * shells.len
 	println('BSD shell contracts: ${successes} successful workloads, ${failures} injected failures')
 }

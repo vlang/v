@@ -61,9 +61,9 @@ struct PipelineKey {
 // One depth value beyond the final shaded draw is reserved for deferred clips.
 const max_draw_depth = u16(0xfffe)
 
-// GpuSurface records draws into a BGRA8 premultiplied render target and
-// renders them like Skia Graphite does, so the pixels read back match a
-// Graphite SkSurface with the same draws exactly.
+// GpuSurface records draws using Skia Graphite's render steps. Pixel transfers
+// use premultiplied BGRA8 on both backends; Metal rendering matches Graphite's
+// Metal output, while OpenGL uses the same geometry and paint algorithms.
 @[heap]
 pub struct GpuSurface {
 pub:
@@ -148,7 +148,7 @@ fn (mut ctx GpuContext) new_sized_surface(width int, height int, texture_width i
 		render_target: true
 		width:         texture_width
 		height:        texture_height
-		pixel_format:  .bgra8
+		pixel_format:  ctx.color_format()
 		sample_count:  1
 	})
 	if sample_count > 1 {
@@ -156,7 +156,7 @@ fn (mut ctx GpuContext) new_sized_surface(width int, height int, texture_width i
 			render_target: true
 			width:         texture_width
 			height:        texture_height
-			pixel_format:  .bgra8
+			pixel_format:  ctx.color_format()
 			sample_count:  sample_count
 		})
 	}
@@ -281,8 +281,21 @@ pub fn (mut s GpuSurface) write_pixels(pixels voidptr, pitch int) ! {
 		return error('gg.canvas: cannot write pixels under a layer')
 	}
 	s.reset_draws()
-	if !gfx.write_image(s.color, 0, 0, s.texture_width, s.texture_height, pixels, pitch) {
-		return error('gg.canvas: could not upload pixels')
+	if s.ctx.is_gl {
+		if pixels == unsafe { nil } || pitch < s.texture_width * 4 {
+			return error('gg.canvas: invalid pixel buffer or pitch')
+		}
+		mut rgba := []u8{len: s.texture_width * s.texture_height * 4}
+		swizzle_pixel_channels(pixels, pitch, rgba.data, s.texture_width * 4, s.texture_width,
+			s.texture_height)
+		if !gfx.write_image(s.color, 0, 0, s.texture_width, s.texture_height, rgba.data,
+			s.texture_width * 4) {
+			return error('gg.canvas: could not upload pixels')
+		}
+	} else {
+		if !gfx.write_image(s.color, 0, 0, s.texture_width, s.texture_height, pixels, pitch) {
+			return error('gg.canvas: could not upload pixels')
+		}
 	}
 	s.load = true
 }
@@ -1106,11 +1119,41 @@ fn is_relatively_circular(rx f32, ry f32, tolerance f32) bool {
 // premultiplied `pixels` with a row stride of `pitch` bytes.
 pub fn (mut s GpuSurface) read_pixels(pixels voidptr, pitch int) ! {
 	s.flush()!
-	if !gfx.read_image(s.color, 0, 0, s.width, s.height, pixels, pitch) {
-		return error('gg.canvas: could not read back the surface')
+	if s.ctx.is_gl {
+		if pixels == unsafe { nil } || pitch < s.width * 4 {
+			return error('gg.canvas: invalid pixel buffer or pitch')
+		}
+		mut rgba := []u8{len: s.width * s.height * 4}
+		if !gfx.read_image(s.color, 0, 0, s.width, s.height, rgba.data, s.width * 4) {
+			return error('gg.canvas: could not read back the surface')
+		}
+		swizzle_pixel_channels(rgba.data, s.width * 4, pixels, pitch, s.width, s.height)
+	} else {
+		if !gfx.read_image(s.color, 0, 0, s.width, s.height, pixels, pitch) {
+			return error('gg.canvas: could not read back the surface')
+		}
 	}
 	if s.ctx.owns_gfx {
 		gfx.commit()
+	}
+}
+
+// OpenGL render targets use RGBA8; the public pixel transfer API uses BGRA8.
+// The caller has checked both row pitches and the pixel buffer pointers.
+fn swizzle_pixel_channels(source voidptr, source_pitch int, destination voidptr, destination_pitch int, width int, height int) {
+	src := unsafe { &u8(source) }
+	dst := unsafe { &u8(destination) }
+	for y in 0 .. height {
+		for x in 0 .. width {
+			i := y * source_pitch + x * 4
+			j := y * destination_pitch + x * 4
+			unsafe {
+				dst[j] = src[i + 2]
+				dst[j + 1] = src[i + 1]
+				dst[j + 2] = src[i]
+				dst[j + 3] = src[i + 3]
+			}
+		}
 	}
 }
 
@@ -1223,7 +1266,21 @@ pub fn (mut s GpuSurface) flush() ! {
 	mut instances := []u8{}
 	mut offsets := []int{cap: keys.len}
 	mut batch_uniforms := [][]PaintUniforms{len: batches.len - 1}
+	mut storage_uniforms := []f32{}
 	for b in 0 .. batches.len - 1 {
+		first_draw := s.draws[keys[batches[b]].draw]
+		mut uniform_slot_offset := 0
+		if ctx.is_gl && has_uniforms(first_draw.step) {
+			// Each shader views the same storage buffer as an array of its
+			// own paint struct. Align a batch to that struct's stride and
+			// add its base index to the instances instead of rebinding.
+			stride := step_uniform_size(first_draw.step, first_draw.uniforms.clipped,
+				first_draw.uniforms.shading) / 4
+			for storage_uniforms.len % stride != 0 {
+				storage_uniforms << f32(0)
+			}
+			uniform_slot_offset = storage_uniforms.len / stride
+		}
 		for i in batches[b] .. batches[b + 1] {
 			draw := s.draws[keys[i].draw]
 			offsets << instances.len
@@ -1258,8 +1315,32 @@ pub fn (mut s GpuSurface) flush() ! {
 				else { 20 }
 			}
 			for k in 0 .. int(draw.instance_count) {
-				patch_u32(mut instances, start + k * stride + ssbo_offset, u32(slot))
+				patch_u32(mut instances, start + k * stride + ssbo_offset, u32(slot + uniform_slot_offset))
 			}
+		}
+		if ctx.is_gl && has_uniforms(first_draw.step) {
+			storage_uniforms << serialize_uniforms(batch_uniforms[b])
+		}
+	}
+	mut paint_buffer := gfx.Buffer{}
+	if storage_uniforms.len > 0 {
+		paint_buffer = gfx.make_buffer(&gfx.BufferDesc{
+			@type: .storagebuffer
+			data:  gfx.Range{
+				ptr:  storage_uniforms.data
+				size: u32(storage_uniforms.len * 4)
+			}
+		})
+		if gfx.query_buffer_state(paint_buffer) != .valid {
+			gfx.destroy_buffer(paint_buffer)
+			s.reset_draws()
+			s.free_retired_layers()
+			return error('gg.canvas: could not create the paint storage buffer')
+		}
+	}
+	defer {
+		if paint_buffer.id != 0 {
+			gfx.destroy_buffer(paint_buffer)
 		}
 	}
 	mut base := 0
@@ -1318,8 +1399,11 @@ pub fn (mut s GpuSurface) flush() ! {
 		gfx.apply_bindings(&bindings)
 		gfx.draw(0, 4, 1)
 	}
-	intrinsics := [f32(0), 0, f32(2) / f32(s.texture_width), -(f32(2) / f32(s.texture_height)),
-		0, 0, 0, 0]!
+	// GL row zero is the logical canvas top. Positive viewport Y keeps
+	// fragment coordinates, layer sampling and pixel transfers in the same
+	// coordinate system without flipping textures or readback rows.
+	y_scale := (if ctx.is_gl { f32(2) } else { f32(-2) }) / f32(s.texture_height)
+	intrinsics := [f32(0), 0, f32(2) / f32(s.texture_width), y_scale, 0, 0, 0, 0]!
 	intrinsic_range := gfx.Range{
 		ptr:  unsafe { &intrinsics[0] }
 		size: intrinsic_uniform_size
@@ -1339,7 +1423,7 @@ pub fn (mut s GpuSurface) flush() ! {
 			draw.uniforms.shading))
 		sc := real_scissors[first]
 		gfx.apply_scissor_rect(int(sc.left()), int(sc.top()), int(sc.width()), int(sc.height()),
-			true)
+			!ctx.is_gl)
 		mut bindings := gfx.Bindings{}
 		match draw.step {
 			.per_edge_aa_quad {
@@ -1375,17 +1459,25 @@ pub fn (mut s GpuSurface) flush() ! {
 			}
 			.none {}
 		}
-		gfx.apply_bindings(&bindings)
-		paint_uniforms := serialize_uniforms(batch_uniforms[b])
-		paint_range := gfx.Range{
-			ptr:  paint_uniforms.data
-			size: u32(paint_uniforms.len * 4)
+		if ctx.is_gl && has_uniforms(draw.step) {
+			bindings.vs.storage_buffers[0] = paint_buffer
+			bindings.fs.storage_buffers[0] = paint_buffer
 		}
+		gfx.apply_bindings(&bindings)
 		gfx.apply_uniforms(.vs, 0, &intrinsic_range)
-		gfx.apply_uniforms(.vs, 1, &paint_range)
 		if writes_color(draw.step) {
 			gfx.apply_uniforms(.fs, 0, &intrinsic_range)
-			gfx.apply_uniforms(.fs, 1, &paint_range)
+		}
+		if !ctx.is_gl {
+			paint_uniforms := serialize_uniforms(batch_uniforms[b])
+			paint_range := gfx.Range{
+				ptr:  paint_uniforms.data
+				size: u32(paint_uniforms.len * 4)
+			}
+			gfx.apply_uniforms(.vs, 1, &paint_range)
+			if writes_color(draw.step) {
+				gfx.apply_uniforms(.fs, 1, &paint_range)
+			}
 		}
 		match draw.step {
 			.analytic_rrect { gfx.draw(0, analytic_rrect_index_count, count) }
@@ -1480,7 +1572,7 @@ fn (mut s GpuSurface) dynamic_msaa_attachments() !gfx.Attachments {
 			render_target: true
 			width:         s.texture_width
 			height:        s.texture_height
-			pixel_format:  .bgra8
+			pixel_format:  s.ctx.color_format()
 			sample_count:  4
 		})
 		s.dynamic_depth = gfx.make_image(&gfx.ImageDesc{

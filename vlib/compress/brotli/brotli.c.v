@@ -2,17 +2,24 @@
 module brotli
 
 import os
+import dl
 
-$if linux {
-	#flag -ldl
+// Keep the sanitizer helper in a separate native object so its symbol survives
+// module-cache splitting. The C compiler owns MemorySanitizer feature detection.
+#define V_BROTLI_MSAN_DATA const volatile void
+#flag @VMODROOT/vlib/compress/brotli/brotli_msan.c
+
+@[c_extern]
+fn C.v_brotli_msan_unpoison(data &C.V_BROTLI_MSAN_DATA, len uint)
+
+fn unpoison_output(data voidptr, len uint) {
+	$if !native {
+		if len > 0 {
+			// The cast adds the sanitizer interface's C pointer qualifiers.
+			C.v_brotli_msan_unpoison(unsafe { &C.V_BROTLI_MSAN_DATA(data) }, len)
+		}
+	}
 }
-
-#insert "@VEXEROOT/vlib/compress/brotli/brotli_dl.h"
-
-fn C.v_brotli_open(const_name &char) voidptr
-fn C.v_brotli_sym(handle voidptr, const_name &char) voidptr
-fn C.v_brotli_close(handle voidptr) int
-fn C.v_brotli_msan_unpoison(ptr voidptr, len uint)
 
 const min_quality = 0
 const max_quality = 11
@@ -60,7 +67,7 @@ pub:
 pub struct DecompressParams {}
 
 fn open_library_name(name string) voidptr {
-	return C.v_brotli_open(&char(name.str))
+	return dl.open(name, dl.rtld_lazy)
 }
 
 fn open_env_library(env_name string) voidptr {
@@ -134,11 +141,11 @@ fn open_decoder_library() !voidptr {
 }
 
 fn close_library(handle voidptr) {
-	C.v_brotli_close(handle)
+	dl.close(handle)
 }
 
 fn library_symbol(handle voidptr, name string, kind string) !voidptr {
-	sym := C.v_brotli_sym(handle, &char(name.str))
+	sym := dl.sym(handle, name)
 	if sym == 0 {
 		return error('brotli: could not load ${kind} symbol ${name}')
 	}
@@ -196,7 +203,7 @@ pub fn compress(data []u8, params CompressParams) ![]u8 {
 	if ok == 0 {
 		return error('brotli: compression failed')
 	}
-	C.v_brotli_msan_unpoison(dst.data, encoded_size)
+	unpoison_output(dst.data, encoded_size)
 	keep_dst = true
 	return dst[..int(encoded_size)]
 }
@@ -246,7 +253,7 @@ pub fn decompress(data []u8, _ DecompressParams) ![]u8 {
 			&total_out)
 		produced := chunk.len - int(available_out)
 		if produced > 0 {
-			C.v_brotli_msan_unpoison(chunk.data, uint(produced))
+			unpoison_output(chunk.data, uint(produced))
 			out << chunk[..produced]
 		}
 		match result {

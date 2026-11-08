@@ -2,7 +2,7 @@ module testing
 
 import crypto.sha256
 import os
-import rand
+import sync
 
 // A resume is a continuation of a CI run, not a cache valid across arbitrary
 // source changes. The caller owns this directory and clears it on reset/success.
@@ -79,7 +79,7 @@ fn (r TestResume) save() ! {
 	os.mkdir_all(os.dir(r.path))!
 	// Each worker owns a different temporary directory. Replace the record only after
 	// the complete success record is written, keeping interrupted writes harmless.
-	tmp_dir := '${r.path}.${os.getpid()}.${rand.ulid()}.tmp'
+	tmp_dir := '${r.path}.${os.getpid()}.${sync.thread_id().hex()}.tmp'
 	os.mkdir(tmp_dir, mode: 0o700)!
 	defer {
 		os.rmdir_all(tmp_dir) or {}

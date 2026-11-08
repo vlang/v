@@ -146,12 +146,14 @@ const max_pipelines = 512
 
 // GpuContext owns the GPU resources shared by all surfaces: shaders,
 // pipelines and the static vertex data of the render steps. It uses the
-// application's sokol.gfx context, or sets up a headless Metal one when
-// sokol.gfx is not initialized yet.
+// application's sokol.gfx context, or sets up a headless Metal (macOS) or
+// OpenGL 4.3 (Linux) context when sokol.gfx is not initialized yet.
 @[heap]
 pub struct GpuContext {
 mut:
 	owns_gfx           bool
+	is_gl              bool
+	native_context     voidptr
 	shaders            []GpuShaderEntry
 	pipelines          []GpuPipelineEntry
 	rrect_vertices     gfx.Buffer
@@ -188,11 +190,13 @@ struct GpuPipelineEntry {
 	pipeline     gfx.Pipeline
 }
 
-// new_gpu_context creates a context for exact GPU rendering. Only Metal is
-// supported; the shaders reproduce Skia Graphite's Metal output.
+// new_gpu_context creates a context for GPU rendering using Metal on macOS
+// or OpenGL 4.3 on Linux. An initialized sokol.gfx context is borrowed;
+// otherwise the context owns an offscreen device. Use and free it on the
+// thread where it was created, after freeing its surfaces.
 pub fn new_gpu_context() !&GpuContext {
-	$if !macos {
-		return error('gg.canvas: GPU rendering requires Metal')
+	$if !macos && !linux {
+		return error('gg.canvas: GPU rendering requires macOS or Linux')
 	}
 	mut ctx := &GpuContext{
 		shaders:   []GpuShaderEntry{cap: max_shaders}
@@ -203,22 +207,40 @@ pub fn new_gpu_context() !&GpuContext {
 		desc.environment.defaults.color_format = .bgra8
 		desc.environment.defaults.depth_format = .none
 		desc.environment.defaults.sample_count = 1
-		desc.environment.metal.device = C.v_canvas_metal_device()
+		$if macos {
+			desc.environment.metal.device = C.v_canvas_metal_device()
+			if desc.environment.metal.device == unsafe { nil } {
+				return error('gg.canvas: no Metal device')
+			}
+		} $else $if linux {
+			ctx.native_context = new_egl_gpu_context()!
+			desc.environment.defaults.color_format = .rgba8
+		}
 		// Large batches upload up to 64KB of uniforms per draw call.
 		desc.uniform_buffer_size = 16 * 1024 * 1024
 		desc.shader_pool_size = max_shaders
 		desc.pipeline_pool_size = max_pipelines
-		if desc.environment.metal.device == unsafe { nil } {
-			return error('gg.canvas: no Metal device')
-		}
 		gfx.setup(&desc)
 		if !gfx.is_valid() {
+			ctx.free_native_context()
 			return error('gg.canvas: sokol.gfx setup failed')
 		}
 		ctx.owns_gfx = true
 	}
-	if gfx.query_backend() != .metal_macos {
-		return error('gg.canvas: GPU rendering requires the Metal backend')
+	$if linux {
+		if gfx.query_backend() != .glcore33 || !gfx.query_features().storage_buffer
+			|| !linux_gpu_has_storage_buffers() {
+			if ctx.owns_gfx {
+				gfx.shutdown()
+				ctx.free_native_context()
+			}
+			return error(linux_gpu_requirements)
+		}
+		ctx.is_gl = true
+	} $else {
+		if gfx.query_backend() != .metal_macos {
+			return error('gg.canvas: GPU rendering requires the Metal backend')
+		}
 	}
 	vertices := analytic_rrect_vertex_data()
 	ctx.rrect_vertices = gfx.make_buffer(&gfx.BufferDesc{
@@ -306,6 +328,20 @@ pub fn (mut ctx GpuContext) free() {
 		gfx.shutdown()
 		ctx.owns_gfx = false
 	}
+	ctx.free_native_context()
+}
+
+fn (mut ctx GpuContext) free_native_context() {
+	$if linux {
+		if ctx.native_context != unsafe { nil } {
+			free_egl_gpu_context(ctx.native_context)
+			ctx.native_context = unsafe { nil }
+		}
+	}
+}
+
+fn (ctx &GpuContext) color_format() gfx.PixelFormat {
+	return if ctx.is_gl { .rgba8 } else { .bgra8 }
 }
 
 // precompile creates every shader and pipeline that solid-color draws may
@@ -392,20 +428,51 @@ fn (mut ctx GpuContext) shader(step RenderStep, clipped bool, shading Shading) g
 		vs_source = gradient_vertex_source(vs_source, step, shading, clipped)
 		fs_source = gradient_fragment_source(fs_source, shading, clipped)
 	}
+	if ctx.is_gl {
+		vs_source = glsl_shader_source(vs_source, true) or {
+			eprintln('gg.canvas: ${err}')
+			return gfx.Shader{}
+		}
+		fs_source = if writes_color(step) {
+			glsl_shader_source(fs_source, false) or {
+				eprintln('gg.canvas: ${err}')
+				return gfx.Shader{}
+			}
+		} else {
+			glsl_depth_fragment_source
+		}
+	}
 	// The per-draw uniform block: the localToDevice matrix of wedge steps, or
 	// the paint color with the analytic clip data.
 	paint_uniform_size := step_uniform_size(step, clipped, shading)
 	mut desc := gfx.ShaderDesc{}
 	desc.vs.source = &char(vs_source.str)
 	desc.vs.entry = c'vertexMain'
-	if writes_color(step) {
+	if writes_color(step) || ctx.is_gl {
 		desc.fs.source = &char(fs_source.str)
 		desc.fs.entry = c'fragmentMain'
 	}
 	for stage in [&desc.vs, &desc.fs] {
 		unsafe {
 			stage.uniform_blocks[0].size = intrinsic_uniform_size
-			stage.uniform_blocks[1].size = u32(paint_uniform_size * max_batch_colors)
+			if ctx.is_gl {
+				stage.uniform_blocks[0].uniforms[0] = gfx.ShaderUniformDesc{
+					name:  c'viewport'
+					@type: .float4
+				}
+				stage.uniform_blocks[0].uniforms[1] = gfx.ShaderUniformDesc{
+					name:  c'dstReadBounds'
+					@type: .float4
+				}
+				if has_uniforms(step) {
+					stage.storage_buffers[0] = gfx.ShaderStorageBufferDesc{
+						used:     true
+						readonly: true
+					}
+				}
+			} else {
+				stage.uniform_blocks[1].size = u32(paint_uniform_size * max_batch_colors)
+			}
 		}
 	}
 	if shading != .solid {
@@ -423,6 +490,7 @@ fn (mut ctx GpuContext) shader(step RenderStep, clipped bool, shading Shading) g
 			used:         true
 			image_slot:   0
 			sampler_slot: 0
+			glsl_name:    c'canvas_texture'
 		}
 	}
 	gfx.mtl_set_shader_compile_options(graphite_msl_major, graphite_msl_minor, true)
@@ -586,7 +654,7 @@ fn (mut ctx GpuContext) pipeline(step RenderStep, sample_count int, blend bool, 
 			}
 		}
 	}
-	desc.colors[0].pixel_format = .bgra8
+	desc.colors[0].pixel_format = ctx.color_format()
 	if !writes_color(step) {
 		desc.colors[0].write_mask = .none
 	}
@@ -678,11 +746,15 @@ fn (mut ctx GpuContext) load_msaa_pipeline() gfx.Pipeline {
 	if ctx.msaa_load_pipeline.id != 0 {
 		return ctx.msaa_load_pipeline
 	}
-	source := load_msaa_from_resolve.to_string()
+	mut vs_source := load_msaa_from_resolve.to_string()
+	mut fs_source := vs_source
+	if ctx.is_gl {
+		vs_source, fs_source = glsl_load_msaa_sources()
+	}
 	mut desc := gfx.ShaderDesc{}
-	desc.vs.source = &char(source.str)
+	desc.vs.source = &char(vs_source.str)
 	desc.vs.entry = c'vertexMain'
-	desc.fs.source = &char(source.str)
+	desc.fs.source = &char(fs_source.str)
 	desc.fs.entry = c'fragmentMain'
 	desc.fs.images[0] = gfx.ShaderImageDesc{
 		used:        true
@@ -699,6 +771,7 @@ fn (mut ctx GpuContext) load_msaa_pipeline() gfx.Pipeline {
 		used:         true
 		image_slot:   0
 		sampler_slot: 0
+		glsl_name:    c'canvas_texture'
 	}
 	gfx.mtl_set_shader_compile_options(graphite_msl_major, graphite_msl_minor, true)
 	ctx.msaa_load_shader = gfx.make_shader(&desc)
@@ -709,7 +782,7 @@ fn (mut ctx GpuContext) load_msaa_pipeline() gfx.Pipeline {
 		sample_count:   4
 		cull_mode:      .none
 	}
-	pipeline.colors[0].pixel_format = .bgra8
+	pipeline.colors[0].pixel_format = ctx.color_format()
 	pipeline.depth = gfx.DepthState{
 		pixel_format: .depth_stencil
 		compare:      .always

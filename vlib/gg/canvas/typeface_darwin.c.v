@@ -13,13 +13,6 @@ fn C.v_canvas_cf_retain(ref voidptr) voidptr
 // kCTFontColorGlyphsTrait
 const ct_color_glyphs_trait = u32(1) << 13
 
-struct TypefaceIds {
-mut:
-	next u32 = 1
-}
-
-const typeface_ids = &TypefaceIds{}
-
 // Typeface.from_data loads the first face of TrueType/OpenType font data.
 pub fn Typeface.from_data(data []u8) !&Typeface {
 	if data.len == 0 {

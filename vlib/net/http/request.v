@@ -71,7 +71,7 @@ pub mut:
 	read_timeout  i64 = 30 * time.second
 	write_timeout i64 = 30 * time.second
 
-	validate                 bool // when true, certificate failures will stop further processing
+	validate                 bool = true // abort on an invalid certificate; false skips it, except HTTP/3 which always verifies
 	verify                   string
 	cert                     string
 	cert_key                 string

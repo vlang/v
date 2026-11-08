@@ -79,6 +79,10 @@ fn layer_scene_hash(mut ctx GpuContext, rotated bool) !string {
 // with the image shader), and for a layer under a rotated rrect clip (drawn
 // back in a 4x MSAA pass through the clip's stencil).
 fn test_layers_match_graphite_pixels() {
+	// These oracle hashes were captured from Graphite on Metal.
+	$if !macos {
+		return
+	}
 	mut ctx := new_gpu_context() or {
 		eprintln('skipping: ${err}')
 		return

@@ -669,7 +669,9 @@ fn module_alias_target_from_source(source string) ?string {
 	return target
 }
 
-fn vmod_root_for_dir(start string) ?string {
+// vmod_root_for_dir returns the nearest directory at or above `start` that holds a `v.mod`.
+// A `.v.mod.stop` marker or a `.git`, `.hg` or `.svn` entry ends the walk.
+pub fn vmod_root_for_dir(start string) ?string {
 	mut dir := os.real_path(start)
 	for dir.len > 0 {
 		if os.is_file(os.join_path_single(dir, 'v.mod')) {

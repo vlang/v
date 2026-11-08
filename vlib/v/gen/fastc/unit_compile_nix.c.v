@@ -179,7 +179,7 @@ fn fastc_render_c_unit_stdin(fd int, pieces []string, units &FastcUnitLayout, g 
 				needed[units.unit_ref_ids[r]] = true
 			}
 		}
-		if end_unit == units.unit_starts.len - 1 {
+		if end_unit > units.tail_unit {
 			for id in units.tail_prototype_ids {
 				needed[id] = true
 			}

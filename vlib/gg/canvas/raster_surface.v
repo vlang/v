@@ -1,7 +1,7 @@
 module canvas
 
 // RasterSurface is a CPU pixel buffer in BGRA8 premultiplied order (each u32
-// is 0xAARRGGBB, Skia's kN32 SkPMColor on little-endian Apple platforms)
+// is 0xAARRGGBB, Skia's kN32 SkPMColor on little-endian platforms)
 // that draws like an SkCanvas over SkSurfaces::WrapPixels() with an sRGB
 // color space.
 pub struct RasterSurface {

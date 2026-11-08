@@ -407,8 +407,9 @@ download_release() {
 		bsdtar -xf "$archive" -C "$release_tree" || return 1
 	elif command -v unzip >/dev/null 2>&1; then
 		unzip -q "$archive" -d "$release_tree" || return 1
-	elif command -v tar >/dev/null 2>&1; then
-		tar -xf "$archive" -C "$release_tree" || return 1
+	elif [ -x "$bootstrap_v" ]; then
+		# A minimal CI image may have no system ZIP extractor; tar cannot read ZIPs.
+		"$bootstrap_v" -gc none run cmd/tools/extract_v1_fallback_zip.v "$archive" "$release_tree" || return 1
 	else
 		return 1
 	fi
