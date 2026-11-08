@@ -15626,6 +15626,14 @@ fn (mut b Builder) build_typed_call_arg(id flat.NodeId, param_type TypeID, allow
 		b.emit2(.store, b.void_type, value, slot)
 		return slot
 	}
+	if b.is_pointer_type(param_type) && !b.is_pointer_type(value_type)
+		&& b.m.type_store.types[param_type].elem_type == value_type {
+		// A value passed to a `&T` parameter (`intern(Type(Interface{...}))`)
+		// is passed by the address of a temporary, like C's `&(T){...}`.
+		slot := b.emit0(.alloca, param_type)
+		b.emit2(.store, b.void_type, value, slot)
+		return slot
+	}
 	return b.coerce_value_for_type(value, param_type)
 }
 

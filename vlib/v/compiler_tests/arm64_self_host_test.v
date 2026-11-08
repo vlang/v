@@ -330,3 +330,47 @@ fn main() {
 ok 5', output
 	}
 }
+
+// A value passed to a `&T` parameter is passed by the address of a temporary.
+fn test_rvalue_to_reference_parameter() {
+	$if macos && arm64 {
+		output := run_arm64('rvalue_ref', "struct Iface {
+	name_id u32
+}
+
+struct Ptr {
+	base &Kind
+}
+
+type Kind = Iface | Ptr | int
+
+fn describe(t &Kind) string {
+	return match t {
+		Iface { 'iface \${t.name_id}' }
+		Ptr { 'ptr' }
+		int { 'int \${t}' }
+	}
+}
+
+fn intern(t &Kind) &Kind {
+	return unsafe { t }
+}
+
+fn main() {
+	println(describe(Kind(Iface{
+		name_id: 7
+	})))
+	println(describe(Kind(42)))
+	k := Kind(Ptr{
+		base: intern(Kind(Iface{
+			name_id: 9
+		}))
+	})
+	println(describe(k))
+}
+")
+		assert output == 'iface 7
+int 42
+ptr', output
+	}
+}
