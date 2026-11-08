@@ -12354,15 +12354,14 @@ fn (tc &TypeChecker) direct_parent_id(id flat.NodeId) flat.NodeId {
 	return tc.a.parent(id)
 }
 
-// parsed_parent_id is the parent that the index recorded for a node of the
-// checked tree (see parsed_nodes_len), without checking that the parent still
-// lists it after a rewrite.
-@[inline]
+// parsed_parent_id is the parent of a node of the checked tree (see
+// parsed_parents), as it was when the tree was checked.
+@[direct_array_access; inline]
 fn (tc &TypeChecker) parsed_parent_id(id flat.NodeId) flat.NodeId {
-	if int(id) < 0 || int(id) >= tc.parsed_nodes_len {
+	if int(id) < 0 || int(id) >= tc.parsed_parents.len {
 		return flat.empty_node
 	}
-	return tc.a.recorded_parent(id)
+	return tc.parsed_parents[int(id)]
 }
 
 fn (tc &TypeChecker) enclosing_infix_type_for_or_expr(id flat.NodeId) ?Type {

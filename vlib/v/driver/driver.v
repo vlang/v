@@ -1992,13 +1992,21 @@ fn c_object_compiler_identity(compiler string, mut stats CObjectCacheStats) (str
 // compiler for it was most of the C object cache stage of every build. Other
 // compilers can be shims that run a toolchain chosen elsewhere; they are asked
 // every time.
+// c_object_compiler_version returns the `--version` output of a C compiler,
+// remembered by the metadata of its executable as Go's gccCompilerID remembers
+// a compiler's identity by its stat (cmd/go/internal/work/exec.go). The C
+// compiler that a driver such as macOS's /usr/bin/cc runs is selected by the
+// active developer directory, which is part of the key too.
 fn c_object_compiler_version(compiler string, compiler_path string) string {
-	if !os.file_name(compiler_path).to_lower_ascii().contains('tcc') || !os.is_file(compiler_path) {
+	if !os.is_file(compiler_path) {
 		return cmdexec.run(compiler, ['--version']).output
 	}
-	metadata := modulecache.file_metadata_signature(compiler_path)
+	mut metadata := modulecache.file_metadata_signature(compiler_path)
 	if metadata.len == 0 {
 		return cmdexec.run(compiler, ['--version']).output
+	}
+	$if macos {
+		metadata += '\x00${os.real_path('/var/db/xcode_select_link')}\x00${os.getenv('DEVELOPER_DIR')}\x00${os.getenv('TOOLCHAINS')}'
 	}
 	cache_dir := os.join_path(os.vtmp_dir(), 'v3_thirdparty_objs')
 	path_hash := c_hash_bytes(u64(1469598103934665603), compiler_path.bytes()).hex()
@@ -2076,8 +2084,11 @@ fn c_object_dependencies_in(compiler string, compile_args []string, source_file 
 // cached_c_object_dependencies is c_object_dependencies for a scan that every
 // build of a program repeats on a generated source, under a new name each time.
 // It reuses the list of an earlier scan with the same compiler, arguments and
-// source text while each file in it keeps its contents, as the manifests of
-// cached C objects do, instead of preprocessing all of them again.
+// preprocessor lines of the source while each file in it keeps its contents, as
+// the manifests of cached C objects do and as Zig's Cache.Manifest checks its
+// files, instead of preprocessing all of them again. Only the preprocessor
+// lines decide which files the source includes, so an edit of the program's
+// code reuses the list.
 fn cached_c_object_dependencies(cache_dir string, compiler string, compile_args []string, source_file string, mut stats CObjectCacheStats) CObjectDependencies {
 	source := os.read_file(source_file) or { '' }
 	if cache_dir.len == 0 || source.len == 0 {
@@ -2085,13 +2096,15 @@ fn cached_c_object_dependencies(cache_dir string, compiler string, compile_args 
 	}
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-c-dependency-manifest-v1', compiler_path, compiler_version,
-		compile_args.join('\x00'), source] {
+	for identity in ['v3-c-dependency-manifest-v2', compiler_path, compiler_version,
+		compile_args.join('\x00'), c_preprocessor_lines(source)] {
 		hash = c_hash_bytes(hash, identity.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
 	}
 	manifest_path := os.join_path(cache_dir, 'dependencies_${hash.hex()}.manifest')
+	trim_c_dependency_manifests(cache_dir)
 	if files := valid_c_dependency_manifest(manifest_path, mut stats) {
+		mark_c_dependency_manifest_used(manifest_path)
 		mut all := files.clone()
 		all << source_file
 		all.sort()
@@ -2122,6 +2135,74 @@ fn cached_c_object_dependencies(cache_dir string, compiler string, compile_args 
 	os.write_file(temp_path, out.str()) or { return dependencies }
 	os.mv(temp_path, manifest_path) or { os.rm(temp_path) or {} }
 	return dependencies
+}
+
+// The dependency manifests follow Go's build cache trimming (cmd/go/internal/
+// cache/cache.go, Trim): a manifest that a build uses gets a fresh modification
+// time at most once an hour, and at most once a day a build removes the ones
+// that no build used for c_dependency_manifest_unused_days.
+const c_dependency_manifest_mark_seconds = 3600
+const c_dependency_manifest_trim_seconds = 24 * 3600
+const c_dependency_manifest_unused_days = 5
+
+fn mark_c_dependency_manifest_used(manifest_path string) {
+	now := time.utc().unix()
+	if now - os.file_last_mod_unix(manifest_path) > c_dependency_manifest_mark_seconds {
+		os.utime(manifest_path, now, now) or {}
+	}
+}
+
+fn trim_c_dependency_manifests(cache_dir string) {
+	marker := os.join_path(cache_dir, 'dependencies.trim')
+	now := time.utc().unix()
+	if os.is_file(marker) && now - os.file_last_mod_unix(marker) < c_dependency_manifest_trim_seconds {
+		return
+	}
+	os.write_file(marker, '') or { return }
+	cutoff := now - c_dependency_manifest_unused_days * 24 * 3600
+	entries := os.ls(cache_dir) or { return }
+	for entry in entries {
+		if !entry.starts_with('dependencies_') || !entry.ends_with('.manifest') {
+			continue
+		}
+		path := os.join_path(cache_dir, entry)
+		if os.file_last_mod_unix(path) < cutoff {
+			os.rm(path) or {}
+		}
+	}
+}
+
+// c_preprocessor_lines returns the lines of C `source` that start with `#`
+// (after blanks), which decide the files that the source includes.
+fn c_preprocessor_lines(source string) string {
+	mut out := strings.new_builder(4096)
+	mut pos := 0
+	for pos < source.len {
+		mut end := source.index_after_('\n', pos)
+		if end < 0 {
+			end = source.len
+		}
+		mut start := pos
+		for start < end && source[start] in [` `, `\t`] {
+			start++
+		}
+		if start < end && source[start] == `#` {
+			out.write_string(source[start..end])
+			out.write_u8(`\n`)
+			// A directive continues on the lines after a trailing backslash.
+			for end < source.len && end > start && source[end - 1] == `\\` {
+				start = end + 1
+				end = source.index_after_('\n', start)
+				if end < 0 {
+					end = source.len
+				}
+				out.write_string(source[start..end])
+				out.write_u8(`\n`)
+			}
+		}
+		pos = end + 1
+	}
+	return out.str()
 }
 
 // valid_c_dependency_manifest returns the files of a dependency manifest, when

@@ -1052,3 +1052,21 @@ fn test_disabled_resolution_views_keep_file_context_and_recursive_aliases() {
 	assert tc.parse_resolution_type(flat.source_type_id('Handlers')) == Type(warm)
 	assert isnil(tc.resolution_type_views)
 }
+
+fn test_parsed_parents_survive_wrapping_a_node_in_place() {
+	mut a := flat.FlatAst.new()
+	value := a.add_val(.ident, 'value')
+	start := a.begin_children()
+	a.add_child(value)
+	statement := a.add_node(flat.Node{ kind: .expr_stmt, children_start: start, children_count: 1 })
+	mut tc := TypeChecker.new(&a)
+	tc.build_node_indexes(&a)
+	// Transform wraps `value` as `(value)` inside the statement.
+	wrap_start := a.begin_children()
+	a.add_child(value)
+	wrapper := a.add_node(flat.Node{ kind: .paren, children_start: wrap_start, children_count: 1 })
+	a.set_child_slot(statement, start, wrapper)
+	assert tc.direct_parent_id(value) == wrapper
+	// Lexical narrowing still walks the tree that was checked.
+	assert tc.parsed_parent_id(value) == statement
+}

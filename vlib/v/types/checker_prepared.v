@@ -382,6 +382,7 @@ fn (mut tc TypeChecker) extend_node_indexes(a &flat.FlatAst, start int) {
 	}
 	mut tree := unsafe { a }
 	tree.index_parents()
+	tc.parsed_parents = a.parents.clone()
 	tc.parsed_nodes_len = a.nodes.len
 	chunk := tc.fill_node_indexes_range(a, start, a.nodes.len)
 	tc.merge_node_index_chunk(chunk)

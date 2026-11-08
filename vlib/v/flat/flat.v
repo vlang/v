@@ -886,6 +886,9 @@ pub mut:
 	parents_version          u32 = 1
 	parents_snapshot         []NodeId
 	parents_snapshot_version u32
+	// Snapshots that forked trees can still copy from (see fork_parents_to).
+	// They are freed when the index is reset, once the forks are merged.
+	parents_retired [][]NodeId
 	// In a worker's tree, parents_fork are the parents of the tree it was forked
 	// from. Its first lookup copies them and indexes its own nodes, from
 	// parents_fork_own on, without those that other workers append in between.
@@ -1702,20 +1705,6 @@ pub fn (a &FlatAst) parent(id NodeId) NodeId {
 	return parent_id
 }
 
-// recorded_parent is parent without the check that a rewrite left the parent
-// listing `id`.
-@[direct_array_access; inline]
-pub fn (a &FlatAst) recorded_parent(id NodeId) NodeId {
-	if C.atomic_load_u32(&a.parents_published) != u32(a.nodes.len) {
-		a.index_parents_locked()
-	}
-	idx := int(id)
-	if u64(idx) >= u64(a.parents.len) {
-		return empty_node
-	}
-	return unsafe { a.parents[idx] }
-}
-
 // lists_child reports whether `parent` lists `id` among its children.
 @[direct_array_access]
 pub fn (a &FlatAst) lists_child(parent NodeId, id NodeId) bool {
@@ -1780,7 +1769,10 @@ pub fn (mut a FlatAst) index_parents() {
 pub fn (mut a FlatAst) fork_parents_to(mut worker FlatAst, own_start int) {
 	a.index_parents()
 	if a.parents_snapshot_version != a.parents_version {
-		unsafe { free_parent_storage(mut a.parents_snapshot) }
+		if a.parents_snapshot.cap > 0 {
+			// A worker forked earlier may not have copied it yet.
+			a.parents_retired << a.parents_snapshot
+		}
 		a.parents_snapshot = parent_storage(a.parents.len)
 		unsafe { vmemcpy(a.parents_snapshot.data, a.parents.data, a.parents.len * int(sizeof(NodeId))) }
 		a.parents_snapshot_version = a.parents_version
@@ -1872,6 +1864,7 @@ pub fn (mut a FlatAst) free_parents() {
 		free_parent_storage(mut a.parents)
 		free_parent_storage(mut a.parents_snapshot)
 	}
+	a.free_retired_parent_snapshots()
 	a.parents_indexed = 0
 	a.parents_snapshot_version = 0
 	a.parents_fork = []NodeId{}
@@ -1883,10 +1876,18 @@ pub fn (mut a FlatAst) free_parents() {
 // reset_parents drops the parent index, which the next lookup rebuilds.
 pub fn (mut a FlatAst) reset_parents() {
 	unsafe { a.parents.len = 0 }
+	a.free_retired_parent_snapshots()
 	a.parents_indexed = 0
 	a.parents_rewritten = false
 	a.parents_version++
 	C.atomic_store_u32(&a.parents_published, max_u32)
+}
+
+fn (mut a FlatAst) free_retired_parent_snapshots() {
+	for mut snapshot in a.parents_retired {
+		unsafe { free_parent_storage(mut snapshot) }
+	}
+	a.parents_retired = [][]NodeId{}
 }
 
 // note_parent records that `parent` lists `child`, unless the parent recorded
@@ -1920,10 +1921,14 @@ pub fn (mut a FlatAst) set_child_slot(parent NodeId, slot int, child NodeId) {
 	a.parents_rewritten = true
 	a.parents_version++
 	a.note_parent(child, parent)
-	// A node that wraps the replaced one becomes its parent, as when `x`
-	// becomes `f(x)`.
-	if int(old) >= 0 && int(old) < a.parents.len && a.lists_child(child, old) {
-		a.note_parent(old, child)
+	if int(old) >= 0 && int(old) < a.parents.len {
+		if a.lists_child(child, old) {
+			// A node that wraps the replaced one becomes its parent, as when `x`
+			// becomes `f(x)`.
+			a.note_parent(old, child)
+		} else if a.parents[int(old)] == parent && !a.lists_child(parent, old) {
+			a.parents[int(old)] = empty_node
+		}
 	}
 }
 

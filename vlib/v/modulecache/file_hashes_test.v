@@ -31,3 +31,20 @@ fn test_file_hash_memo_reuses_hashes_until_the_file_changes() {
 	assert file_signature(path) != first
 	assert (file_sha256(path) or { '' }) != digest
 }
+
+fn test_file_hash_memo_skips_files_modified_during_the_build() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_modulecache_recent_hashes_${os.getpid()}')
+	os.mkdir_all(dir)!
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	enable_file_hash_memo(os.join_path(dir, 'memo'))
+	path := os.join_path(dir, 'fresh.h')
+	// Written after the memo started: its timestamp cannot tell a later
+	// same-size edit apart, so it is hashed but not remembered.
+	time.sleep(20 * time.millisecond)
+	os.write_file(path, 'int fresh;\n')!
+	first := file_signature(path)
+	assert first == file_signature_uncached(path)
+	assert 'fnv\t${path}' !in g_file_hash_memo.entries
+}
