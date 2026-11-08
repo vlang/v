@@ -106,7 +106,7 @@ Load it from the shell's startup file; for bash, add
 ```sh
 v time CMD              # how long CMD took, and what it exited with
 v repeat CMD...         # repeat commands and collect statistics
-v retry CMD             # rerun until it succeeds, for up to 10 retries or 10 minutes
+v retry CMD             # rerun until it succeeds, for up to 10 retries or 15 minutes
 ```
 
 `v retry` is the one to reach for when a flaky network call or a busy port is the

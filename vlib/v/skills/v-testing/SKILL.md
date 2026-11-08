@@ -43,11 +43,11 @@ builtin.
 functions, imports, and helpers.
 
 ```v ignore
-// foo_test.v
+// foo_test.v, beside foo.v, which declares `module foo`
 import foo
 
 fn test_it_adds() {
-	assert add(2, 3) == 5
+	assert foo.add(2, 3) == 5
 }
 
 fn test_it_does_not_mutate_its_argument() {
@@ -60,22 +60,25 @@ fn test_it_does_not_mutate_its_argument() {
 **A test function takes no parameters.** Not `*testing.T`, not a context. If you
 are porting a Go or Rust test, this is the first thing to change.
 
-A test file in a library directory does **not** declare `module main`. It imports
-what it needs, like any other file. Only a test file that is the `main` module of
-its project says `module main`.
+A test file beside a library can take either side. Without a `module` line, or
+with `module main`, it is an outside user: it imports the library and calls
+`foo.add`, and sees only what is `pub`. With `module foo`, it is part of the
+module: it calls `add` directly, private functions included, and imports nothing
+for it.
 
 ## Assertions say what they compared
 
-A bare `assert` failure prints `assertion failed` and a line number. That is not
-enough to act on.
+A failed comparison prints the expression with its left and right values, so a
+bare `assert got == want` already shows both sides. What it cannot show is the
+input that produced them. Add a message when the context matters:
 
 ```v ignore
-// Weak: `assertion failed` and nothing else.
+// The runner prints `got` and `expected`, but not which `id` failed.
 assert lookup(users, id) == expected
 
-// Strong: the message is the difference.
+// The message names the input too.
 got := lookup(users, id)
-assert got == expected, 'lookup(${id}) = ${got}, want ${expected}'
+assert got == expected, 'lookup(${id})'
 ```
 
 Put **got before want**. It reads in the order the mind works, and it makes a
