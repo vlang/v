@@ -18001,7 +18001,14 @@ fn (mut b Builder) build_struct_init(id flat.NodeId, node flat.Node) ValueID {
 				field_type := if fi < typ.fields.len { typ.fields[fi] } else { b.i64_type }
 				field_ptr := b.emit2(.get_element_ptr, b.m.type_store.get_ptr(field_type), alloca,
 					off_const)
-				default_value := b.default_field_value(struct_name_id, fname, zero)
+				mut default_value := b.default_field_value(struct_name_id, fname, zero)
+				if fname == '_typ' && b.is_interface_type_id(typ_id) {
+					// The transformer leaves `_typ` out of `I(x)` when `x` is a generic
+					// instance; without it every method dispatch takes the default case.
+					if concrete_type := b.interface_init_concrete_type(node, typ_id) {
+						default_value = b.m.get_or_add_const(field_type, '${concrete_type}')
+					}
+				}
 				b.emit2(.store, b.void_type, default_value, field_ptr)
 			}
 		}
@@ -18406,7 +18413,14 @@ fn (mut b Builder) build_heap_struct_init(id flat.NodeId, node flat.Node) ValueI
 				field_type := if fi < typ.fields.len { typ.fields[fi] } else { b.i64_type }
 				field_ptr := b.emit2(.get_element_ptr, b.m.type_store.get_ptr(field_type), alloca,
 					off_const)
-				default_value := b.default_field_value(struct_name_id, fname, zero)
+				mut default_value := b.default_field_value(struct_name_id, fname, zero)
+				if fname == '_typ' && b.is_interface_type_id(typ_id) {
+					// The transformer leaves `_typ` out of `I(x)` when `x` is a generic
+					// instance; without it every method dispatch takes the default case.
+					if concrete_type := b.interface_init_concrete_type(node, typ_id) {
+						default_value = b.m.get_or_add_const(field_type, '${concrete_type}')
+					}
+				}
 				b.emit2(.store, b.void_type, default_value, field_ptr)
 			}
 		}
