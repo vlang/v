@@ -757,7 +757,11 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 					continue
 				}
 				receiver := g.render_method_receiver_expression(receiver_tokens) or { continue }
-				access := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) { '->' } else { '.' }
+				access := if flat.source_type_query(receiver_type).has(.c_pointer_suffix) {
+					'->'
+				} else {
+					'.'
+				}
 				call_source := '((i64)((${receiver.source})${access}_typ))'
 				if receiver_start == 0 && call_end == tokens.len - 1 {
 					return FastcRenderedExpression{
