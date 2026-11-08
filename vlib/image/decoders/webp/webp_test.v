@@ -560,12 +560,13 @@ fn anmf_payload(x int, y int, w int, h int, dur int, flags int, inner []u8) []u8
 	yh := y / 2
 	wm := w - 1
 	hm := h - 1
+	// `p << a << b` would append `a << b`, a shift, so each field is one array.
 	mut p := []u8{}
-	p << u8(xh & 0xff) << u8((xh >> 8) & 0xff) << u8((xh >> 16) & 0xff)
-	p << u8(yh & 0xff) << u8((yh >> 8) & 0xff) << u8((yh >> 16) & 0xff)
-	p << u8(wm & 0xff) << u8((wm >> 8) & 0xff) << u8((wm >> 16) & 0xff)
-	p << u8(hm & 0xff) << u8((hm >> 8) & 0xff) << u8((hm >> 16) & 0xff)
-	p << u8(dur & 0xff) << u8((dur >> 8) & 0xff) << u8((dur >> 16) & 0xff)
+	p << [u8(xh & 0xff), u8((xh >> 8) & 0xff), u8((xh >> 16) & 0xff)]
+	p << [u8(yh & 0xff), u8((yh >> 8) & 0xff), u8((yh >> 16) & 0xff)]
+	p << [u8(wm & 0xff), u8((wm >> 8) & 0xff), u8((wm >> 16) & 0xff)]
+	p << [u8(hm & 0xff), u8((hm >> 8) & 0xff), u8((hm >> 16) & 0xff)]
+	p << [u8(dur & 0xff), u8((dur >> 8) & 0xff), u8((dur >> 16) & 0xff)]
 	p << u8(flags)
 	p << inner
 	return p
@@ -715,7 +716,7 @@ fn riff_wrap(fourcc string, chunks [][]u8) []u8 {
 	}
 	mut out := []u8{}
 	out << 'RIFF'.bytes()
-	out << le32(4 + body.len)
+	out << le32(body.len)
 	out << body
 	return out
 }
@@ -798,7 +799,7 @@ fn test_malformed_vp8_bad_codeword() ! {
 	// keyframe (bit0=0), show=1, but wrong code word
 	mut body := []u8{}
 	body << [u8(0x10), 0, 0] // keyframe=0, show=1
-	body << [u8(0x00), 0x00, 0x00, 0x00, 0x00, 0x00] // wrong code word + dims
+	body << [u8(0x00), 0x00, 0x00, 0x00, 0x00, 0x00, 0x00] // wrong code word + dims
 	mut vp8 := []u8{}
 	vp8 << 'VP8 '.bytes()
 	vp8 << le32(body.len)
