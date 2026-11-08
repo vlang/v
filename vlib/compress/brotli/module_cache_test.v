@@ -3,11 +3,21 @@ module brotli
 import os
 import v.cmdexec
 
+// Keep Clang as the normal regression compiler; constrained CI can select
+// the bundled TinyCC to exercise the same module cache contract.
+fn module_cache_test_compiler() ?string {
+	selected := os.getenv('V_BROTLI_MODULE_CACHE_TEST_CC')
+	if selected != '' {
+		return selected
+	}
+	return os.find_abs_path_of_executable('clang') or { return none }
+}
+
 fn test_web_imports_retain_the_module_cache() ! {
 	$if !linux && !macos {
 		return
 	}
-	compiler := os.find_abs_path_of_executable('clang') or { return }
+	compiler := module_cache_test_compiler() or { return }
 	root := os.join_path(os.vtmp_dir(), 'brotli_web_cache_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
@@ -51,7 +61,7 @@ fn test_brotli_unpoison_helper_survives_module_cache() ! {
 	$if !linux && !macos {
 		return
 	}
-	compiler := os.find_abs_path_of_executable('clang') or { return }
+	compiler := module_cache_test_compiler() or { return }
 	root := os.join_path(os.vtmp_dir(), 'brotli_noop_cache_${os.getpid()}')
 	os.mkdir_all(root)!
 	defer { os.rmdir_all(root) or {} }
