@@ -342,10 +342,11 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 		write_u32_le(mut buf, 0)
 	}
 
+	text := m.text_with_got_addresses(undef_syms)
 	for buf.len < text_off {
 		buf << 0
 	}
-	buf << m.text_data
+	buf << text
 	buf << m.str_data
 	for buf.len < data_off {
 		buf << 0
@@ -355,7 +356,7 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 		buf << 0
 	}
 	// ld64 expects relocations in descending address order, as compilers emit them.
-	mut relocs := m.relocs.clone()
+	mut relocs := m.object_relocs(undef_syms)
 	relocs.sort(a.addr > b.addr)
 	for r in relocs {
 		write_u32_le(mut buf, u32(r.addr))
@@ -376,6 +377,74 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 	if !write_file_array_raw(path, buf) {
 		return error('failed to write Mach-O object `${path}`')
 	}
+}
+
+// The generator takes the address of a C function with ADRP + ADD, which the
+// built-in linker points at the function's stub. A system linker cannot give a
+// dylib symbol an address that way (ld64: "does not have address"), so in an
+// object the pairs that name an undefined symbol load the address from the GOT
+// instead: ADRP + LDR with GOT_LOAD relocations, as clang emits them.
+fn (m &MachOObject) got_address_pairs(undef_syms []int) map[int]bool {
+	mut undefined := map[int]bool{}
+	for i in undef_syms {
+		undefined[i] = true
+	}
+	mut page_relocs := map[int]int{}
+	for i, r in m.relocs {
+		if r.type_ == arm64_reloc_page21 && undefined[r.sym_idx] {
+			page_relocs[r.addr] = i
+		}
+	}
+	// pairs maps the index of each relocation that moves to the GOT.
+	mut pairs := map[int]bool{}
+	for i, r in m.relocs {
+		if r.type_ != arm64_reloc_pageoff12 || !undefined[r.sym_idx] {
+			continue
+		}
+		if read_u32_le(m.text_data, r.addr) & 0xffc00000 != 0x91000000 {
+			continue
+		}
+		page := page_relocs[r.addr - 4] or { continue }
+		if m.relocs[page].sym_idx != r.sym_idx {
+			continue
+		}
+		pairs[i] = true
+		pairs[page] = true
+	}
+	return pairs
+}
+
+fn (m &MachOObject) text_with_got_addresses(undef_syms []int) []u8 {
+	pairs := m.got_address_pairs(undef_syms)
+	if pairs.len == 0 {
+		return m.text_data
+	}
+	mut text := m.text_data.clone()
+	for i, _ in pairs {
+		r := m.relocs[i]
+		if r.type_ == arm64_reloc_pageoff12 {
+			// add xd, xn, #off -> ldr xd, [xn, #off]
+			instr := read_u32_le(text, r.addr)
+			write_u32_le_at_arr(mut text, r.addr, 0xf9400000 | (instr & 0x3ff))
+		}
+	}
+	return text
+}
+
+fn (m &MachOObject) object_relocs(undef_syms []int) []RelocationInfo {
+	pairs := m.got_address_pairs(undef_syms)
+	mut relocs := m.relocs.clone()
+	for i, _ in pairs {
+		relocs[i] = RelocationInfo{
+			...relocs[i]
+			type_: if relocs[i].type_ == arm64_reloc_page21 {
+				arm64_reloc_got_load_page21
+			} else {
+				arm64_reloc_got_load_pageoff12
+			}
+		}
+	}
+	return relocs
 }
 
 fn write_nlist(mut symtab []u8, mut strtab []u8, name string, typ u8, sect u8, desc u16, value u64) {
