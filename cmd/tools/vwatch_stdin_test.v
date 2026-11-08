@@ -1,5 +1,8 @@
 import os
-import time
+
+$if !windows {
+	import time
+}
 
 const vwatch_stdin_vexe = @VEXE
 
