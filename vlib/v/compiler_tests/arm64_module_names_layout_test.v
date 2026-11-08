@@ -142,3 +142,75 @@ fn main() {
 		assert output == 'heading 24.0 2 1 42', output
 	}
 }
+
+// `sappish.Desc{}` builds `C.big_desc`, not `render.Desc`, which shares its short name.
+fn test_alias_literal_uses_alias_target() {
+	$if macos && arm64 {
+		output := run_arm64('alias_literals', {
+			'desc.h':            '#pragma once
+typedef struct item_desc { int a; int b; } item_desc;
+typedef struct big_desc { int start; item_desc items[4][3]; int end; } big_desc;
+static inline int big_end(const big_desc* d) { return d->end + d->items[3][2].b; }
+static inline int big_size(void) { return (int)sizeof(big_desc); }
+'
+			'sappish/sappish.v': 'module sappish
+
+#include "@VMODROOT/desc.h"
+
+pub struct C.item_desc {
+pub mut:
+	a int
+	b int
+}
+
+pub struct C.big_desc {
+pub mut:
+	start int
+	items [4][3]C.item_desc
+	end   int
+}
+
+pub type Desc = C.big_desc
+
+fn C.big_end(d &C.big_desc) int
+
+pub fn check(d &Desc) int {
+	return C.big_end(d)
+}
+'
+			'render/render.v':   'module render
+
+pub struct Desc {
+pub mut:
+	max_vertices int
+	sample_count int
+}
+
+pub fn samples(d Desc) int {
+	return d.sample_count
+}
+'
+			'main.v':            "module main
+
+import render
+import sappish
+
+fn make(end int) sappish.Desc {
+	return sappish.Desc{
+		start: 1
+		end:   end
+	}
+}
+
+fn main() {
+	d := make(12)
+	r := render.Desc{
+		sample_count: 4
+	}
+	println('\${d.start} \${d.end} \${sappish.check(&d)} \${render.samples(r)}')
+}
+"
+		}, ['-d', 'arm64_external_link'])
+		assert output == '1 12 12 4', output
+	}
+}

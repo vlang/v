@@ -17545,6 +17545,16 @@ fn (b &Builder) struct_literal_type(name_id u32) (TypeID, u32) {
 	if typ := b.registered_struct_type(name_id) {
 		return typ, name_id
 	}
+	// `sapp.Desc{}` names the alias `C.sapp_desc`; its short name `Desc`
+	// may belong to an unrelated struct such as `render.Desc`.
+	if target := b.type_alias_target(name_id) {
+		if target != name_id {
+			typ, target_id := b.struct_literal_type(target)
+			if typ > 0 {
+				return typ, target_id
+			}
+		}
+	}
 	if typ := b.struct_types[short_id] {
 		return typ, short_id
 	}
