@@ -78,6 +78,26 @@ fn test_arm64_link_mode_uses_the_system_linker_for_native_code() {
 	assert mode7 == .external
 }
 
+fn test_arm64_link_mode_uses_the_system_linker_for_project_headers() {
+	// A project header may hold `static inline` functions and macros, which
+	// only exist in the C side.
+	for header in ['"@VMODROOT/desc.h"', '"local.h"', 'darwin "@VMODROOT/desc.h"'] {
+		mut a := flat.FlatAst.new()
+		a.add_node(directive('include', '<stdio.h>'))
+		a.add_node(directive('include', header))
+		mode, reason := arm64_link_mode(a, []string{}, []string{})
+		assert mode == .external, header
+		assert reason.contains('.h'), reason
+	}
+	// System headers and V's own vlib headers keep the built-in linker.
+	mut a := flat.FlatAst.new()
+	for header in ['<stdio.h>', '"@VEXEROOT/vlib/builtin/x.h"', '"@VMODROOT/vlib/os/y.h"'] {
+		a.add_node(directive('include', header))
+	}
+	mode, _ := arm64_link_mode(a, []string{}, []string{})
+	assert mode == .internal
+}
+
 fn test_native_c_support_source_follows_the_target() {
 	mut a := flat.FlatAst.new()
 	a.add_node(directive('include', 'linux <sys/timerfd.h>'))

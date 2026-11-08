@@ -51,6 +51,9 @@ fn arm64_link_mode(a &flat.FlatAst, directive_flags []string, user_defines []str
 	if source := arm64_native_source_include(a) {
 		return .external, '`${source}`'
 	}
+	if header := arm64_project_header_include(a) {
+		return .external, '`${header}`'
+	}
 	mut i := 0
 	for i < directive_flags.len {
 		flag := directive_flags[i].trim_space()
@@ -92,6 +95,33 @@ fn arm64_native_source_include(a &flat.FlatAst) ?string {
 		if ext in ['.c', '.cc', '.cpp', '.cxx', '.C', '.m', '.mm', '.s', '.S'] {
 			return path
 		}
+	}
+	return none
+}
+
+// arm64_project_header_include returns the first header of the program or of
+// its modules (a quoted `#include`, usually `@VMODROOT/...`). Its `static
+// inline` functions and macros only exist in the C side, so the program needs
+// the system linker even without a C source or a library. System headers
+// (`<stdio.h>`) and V's own vlib headers stay on the built-in linker.
+fn arm64_project_header_include(a &flat.FlatAst) ?string {
+	for node in a.nodes {
+		if node.kind != .directive || node.value != 'include' {
+			continue
+		}
+		mut raw := node.typ_text().trim_space()
+		if !raw.starts_with('"') && !raw.starts_with('<') {
+			// A platform prefix: `darwin "@VMODROOT/x.h"`.
+			raw = raw.all_after(' ').trim_space()
+		}
+		if !raw.starts_with('"') {
+			continue
+		}
+		path := raw.trim('"')
+		if path.starts_with('@VEXEROOT/vlib/') || path.starts_with('@VMODROOT/vlib/') {
+			continue
+		}
+		return path
 	}
 	return none
 }

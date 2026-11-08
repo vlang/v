@@ -210,7 +210,7 @@ fn main() {
 	println('\${d.start} \${d.end} \${sappish.check(&d)} \${render.samples(r)}')
 }
 "
-		}, ['-d', 'arm64_external_link'])
+		}, []string{})
 		assert output == '1 12 12 4', output
 	}
 }
@@ -359,7 +359,7 @@ fn main() {
 	println('\${sizeof(cdesc.BigDesc)} \${cdesc.c_size()} \${cdesc.check(&d)}')
 }
 "
-		}, ['-d', 'arm64_external_link'])
+		}, []string{})
 		assert output == '104 104 9', output
 	}
 }
@@ -462,7 +462,7 @@ fn main() {
 	println('\${sizeof(cdesc.BigDesc)} \${cdesc.c_size()} \${cdesc.check(&d)}')
 }
 "
-		}, ['-d', 'arm64_external_link'])
+		}, []string{})
 		assert output == '104 104 39', output
 	}
 }
@@ -531,7 +531,7 @@ fn main() {
 	println(\'\${d.id} \${d.tex == unsafe { nil }} \${C.handle_has_tex(&d)}\')
 }
 '
-		}, ['-d', 'arm64_external_link'])
+		}, []string{})
 		assert output == '1 true 0', output
 	}
 }
