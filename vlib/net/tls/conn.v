@@ -257,23 +257,30 @@ pub fn (mut c Conn) handshake() ! {
 			.encrypted_extensions {}
 			.certificate {
 				if c.cfg.verify {
-					pubkey := parse_cert_pubkey(parsed.body) or { return err }
-					mut chs2 := c.client_hs or { return error('tls: no client hs') }
-					chs2.server_cert_pubkey = pubkey
-					c.client_hs = chs2
-				}
-				if c.cfg.verify && c.cfg.verify_chain {
-					// parse the leaf cert DER from the Certificate message
 					cert_der := extract_cert_der(parsed.body) or { return err }
 					cert := x509.parse_der(cert_der) or { return error(error_bad_signature) }
-					now := time.now()
-					if now.unix() < cert.not_before.unix() {
-						return error(error_chain_untrusted)
+					pk := cert.public_key() or { return error(error_bad_signature) }
+					match pk {
+						x509.EcdsaP256PublicKey {
+							ecdsa_pk := ecdsa.PublicKey.from_uncompressed_bytes(pk.point, ecdsa.CurveOptions{}) or { return err }
+							mut chs2 := c.client_hs or { return error('tls: no client hs') }
+							chs2.server_cert_pubkey = ecdsa_pk
+							c.client_hs = chs2
+						}
+						x509.RsaPublicKey {
+							return error('tls: rsa cert not supported in v1')
+						}
 					}
-					if now.unix() > cert.not_after.unix() {
-						return error(error_chain_expired)
+					if c.cfg.verify_chain {
+						now := time.now()
+						if now.unix() < cert.not_before.unix() {
+							return error(error_chain_untrusted)
+						}
+						if now.unix() > cert.not_after.unix() {
+							return error(error_chain_expired)
+						}
+						cert.check_host(c.cfg.server_name) or { return error(error_hostname_mismatch) }
 					}
-					cert.check_host(c.cfg.server_name) or { return error(error_hostname_mismatch) }
 				}
 			}
 			.certificate_verify {
