@@ -8,6 +8,39 @@ $if !skip_fastc ? {
 }
 // vfmt on
 
+fn test_fastc_native_parallel_cc_selects_more_units_without_overriding_serial_mode() {
+	$if !skip_fastc ? {
+		previous_jobs := os.getenv_opt('VJOBS')
+		previous_serial := os.getenv_opt('V3_FASTC_NO_PARALLEL')
+		defer {
+			if value := previous_jobs {
+				os.setenv('VJOBS', value, true)
+			} else {
+				os.unsetenv('VJOBS')
+			}
+			if value := previous_serial {
+				os.setenv('V3_FASTC_NO_PARALLEL', value, true)
+			} else {
+				os.unsetenv('V3_FASTC_NO_PARALLEL')
+			}
+		}
+		os.unsetenv('VJOBS')
+		os.unsetenv('V3_FASTC_NO_PARALLEL')
+		mut prefs := pref.new_preferences()
+		available := fastc.fastc_tcc_job_count(prefs)
+		assert v3_fastc_native_compile_jobs(prefs, false) == int_min(available, 6)
+		assert v3_fastc_native_compile_jobs(prefs, true) == available
+		os.setenv('VJOBS', '8', true)
+		assert v3_fastc_native_compile_jobs(prefs, false) == 8
+		assert v3_fastc_native_compile_jobs(prefs, true) == 8
+		prefs.no_parallel = true
+		assert v3_fastc_native_compile_jobs(prefs, true) == 1
+		prefs.no_parallel = false
+		os.setenv('V3_FASTC_NO_PARALLEL', '1', true)
+		assert v3_fastc_native_compile_jobs(prefs, true) == 1
+	}
+}
+
 fn test_fastc_native_preprocessing_rejects_dependency_changes() ! {
 	$if macos && !skip_fastc ? {
 		root := os.join_path(os.vtmp_dir(), 'fastc native preprocessing race ${os.getpid()}')

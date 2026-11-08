@@ -40,8 +40,9 @@ Constants using `@BUILD_DATE`, `@BUILD_TIME`, or `@BUILD_TIMESTAMP` are initiali
 startup unit. Their shared declarations stay stable across builds, allowing direct native cache
 reuse while retaining the current build metadata and dependency validation.
 FastC uses all available CPU cores for generation by default. Native bridge programs use up to
-six TinyCC units to reduce repeated header processing. `VJOBS` overrides these defaults;
-`-no-parallel` selects one worker.
+six TinyCC units to reduce repeated header processing. `-parallel-cc` permits up to twelve
+concurrent TinyCC units for these programs, without reducing the C generation worker count.
+`VJOBS` overrides these defaults; `-no-parallel` selects one worker.
 Explicit macro directives retain their source-file order around native implementations.
 With `-o program.c`, FastC writes C without invoking a native compiler or linker.
 C output is published only after the buffered writes, final flush, and close succeed.

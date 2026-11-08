@@ -15,7 +15,15 @@ $if !skip_fastc ? {
 // vfmt on
 
 $if !skip_fastc ? {
-	fn compile_v3_fastc_tcc_generation(generation &fastc.GenerationResult, bin_file string, prefs &pref.Preferences, environment_flags []string, user_flags []string, link_flags []string, sdk string, is_debug bool, cache_enabled bool, keep_c bool, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
+	fn v3_fastc_native_compile_jobs(prefs &pref.Preferences, parallel_cc bool) int {
+		jobs := fastc.fastc_tcc_job_count(prefs)
+		// Each unit reopens the native headers. Keep the measured default,
+		// while allowing -parallel-cc and VJOBS to request more C workers.
+		if !parallel_cc && os.getenv('VJOBS').int() <= 0 && jobs > 6 { return 6 }
+		return jobs
+	}
+
+	fn compile_v3_fastc_tcc_generation(generation &fastc.GenerationResult, bin_file string, prefs &pref.Preferences, environment_flags []string, user_flags []string, link_flags []string, sdk string, is_debug bool, cache_enabled bool, keep_c bool, parallel_cc bool, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
 		mut flags := environment_flags.clone()
 		flags << generation.c_flags
 		flags << user_flags
@@ -51,10 +59,7 @@ $if !skip_fastc ? {
 			// The native owner's dependency manifest validates only the native library.
 
 			// Native inputs rule out executable caching; the payload object names none of them.
-			mut jobs := fastc.fastc_tcc_job_count(prefs)
-			// Every TinyCC unit reopens the native headers. Fewer, larger units
-			// avoid repeating that work while retaining parallel body compilation.
-			if os.getenv('VJOBS').int() <= 0 && jobs > 6 { jobs = 6 }
+			jobs := v3_fastc_native_compile_jobs(prefs, parallel_cc)
 			return compile_v3_fastc_source(pieces, generation.units, bin_file, prefs, [], program_flags, [], link_flags, sdk, is_debug, generation.uses_threads, false, cache_enabled, jobs, mut prestarted)
 		}
 		return compile_v3_fastc_source(generation.c_pieces, generation.units, bin_file, prefs, environment_flags, generation.c_flags, user_flags, link_flags, sdk, is_debug, generation.uses_threads, cache_enabled, cache_enabled, fastc.fastc_tcc_job_count(prefs), mut prestarted)
