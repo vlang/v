@@ -84,11 +84,11 @@ mut:
 	vars               map[string]ValueID
 	// Outer bindings hidden by inner declarations, restored when their scope ends.
 	shadowed_bindings []ShadowedBinding
-	global_vars        map[string]ValueID
-	global_type_names  flat.TypeTextBindings
-	global_imports     map[string]string
-	global_aliases     map[string]string
-	var_type_names     flat.TypeTextBindings
+	global_vars       map[string]ValueID
+	global_type_names flat.TypeTextBindings
+	global_imports    map[string]string
+	global_aliases    map[string]string
+	var_type_names    flat.TypeTextBindings
 	// C extern declarations shadowed by the freestanding runtime's own
 	// `@[export]` functions (C name -> the internal V fn's SSA name).
 	export_fn_c_names map[string]string

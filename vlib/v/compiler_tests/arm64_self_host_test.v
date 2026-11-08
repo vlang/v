@@ -812,7 +812,7 @@ fn main() {
 	mymod.run_all()!
 }
 '
-			'mymod/mymod.v': 'module mymod
+			'mymod/mymod.v': "module mymod
 
 pub struct Elem {
 pub:
@@ -851,13 +851,13 @@ pub:
 pub fn (c &Core) structural() !Elem {
 	return Elem{
 		kind: c.id
-		id:   \'e\${c.id}\'
+		id:   'e\${c.id}'
 	}
 }
 
 pub fn (mut c Core) build(mut n Node, mut h Holder) ! {
 	mut core := &c
-	n.structure(mut h, \'w\', fn [mut core] () !Elem {
+	n.structure(mut h, 'w', fn [mut core] () !Elem {
 		return core.structural()!
 	})!
 }
@@ -871,9 +871,9 @@ pub fn run_all() ! {
 	c.build(mut n, mut h)!
 	h.run()!
 	h.run()!
-	println(\'\${n.count} \${n.last.id}\')
+	println('\${n.count} \${n.last.id}')
 }
-'
+"
 		})
 		assert output == '8 e4', output
 	}
@@ -885,7 +885,7 @@ pub fn run_all() ! {
 fn test_positional_field_defaults_across_modules() {
 	$if macos && arm64 {
 		output := run_arm64_project('module_positional_defaults', {
-			'main.v':          'import colmod
+			'main.v':          "import colmod
 import stymod
 
 fn main() {
@@ -893,9 +893,9 @@ fn main() {
 		size:  3
 		color: colmod.Color{1, 2, 3, 255}
 	}
-	println(\'\${s.bg_color.a} \${s.stroke.a} \${s.color.a} \${stymod.local().bg_color.a}\')
+	println('\${s.bg_color.a} \${s.stroke.a} \${s.color.a} \${stymod.local().bg_color.a}')
 }
-'
+"
 			'colmod/colmod.v': 'module colmod
 
 pub struct Color {
