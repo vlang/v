@@ -172,6 +172,9 @@ mut:
 	allow_missing_fn_stubs bool
 	use_native_c_sources   bool
 	c_constants            map[string]NativeCConstant
+	// Bare struct names that the program's own `main`/`builtin` types own; a
+	// struct of an imported module with the same name must not take them.
+	program_struct_names map[u32]bool
 }
 
 // VarBinding represents var binding data used by ssa.
@@ -1020,6 +1023,22 @@ fn (mut b Builder) register_struct_type_name(name u32, module_name string, typ_i
 	if typ_id > 0 {
 		b.ssa_type_names[typ_id] = flat.source_type_name(name)
 	}
+	short_name := if flat.source_type_shape(name).has(.dotted) {
+		flat.source_type_syntax(name).first_dot_suffix()
+	} else {
+		name
+	}
+	in_module := module_name.len > 0 && module_name != 'main' && module_name != 'builtin'
+	if in_module {
+		qualified_name := flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), short_name)
+		b.struct_types[qualified_name] = typ_id
+		// `gg.App` must not replace the program's own `App`.
+		if b.program_struct_names[name] {
+			return
+		}
+	} else {
+		b.program_struct_names[name] = true
+	}
 	if existing := b.struct_types[name] {
 		if existing > 0 && existing < b.m.type_store.types.len
 			&& b.m.type_store.types[existing].fields.len > 0 {
@@ -1027,17 +1046,8 @@ fn (mut b Builder) register_struct_type_name(name u32, module_name string, typ_i
 		}
 	}
 	b.struct_types[name] = typ_id
-	short_name := if flat.source_type_shape(name).has(.dotted) {
-		flat.source_type_syntax(name).first_dot_suffix()
-	} else {
-		name
-	}
 	if short_name !in b.struct_types {
 		b.struct_types[short_name] = typ_id
-	}
-	if module_name.len > 0 && module_name != 'main' && module_name != 'builtin' {
-		qualified_name := flat.source_type_composition_two(.qualified, flat.source_type_id(module_name), short_name)
-		b.struct_types[qualified_name] = typ_id
 	}
 }
 
