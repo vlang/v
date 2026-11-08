@@ -1004,6 +1004,13 @@ fn (m &Module) type_size_inner(typ_id TypeID, depth int, mut visiting []bool, mu
 			cache[typ_id] = 8
 			return 8
 		}
+		if typ.kind == .struct_t {
+			// An empty struct takes one byte, as in C and V's C backend, so an
+			// embedded `Error` or `Empty` does not share its offset with the next
+			// field and storing its zero value cannot overwrite that field.
+			cache[typ_id] = 1
+			return 1
+		}
 		return 0
 	}
 	if visiting[typ_id] {

@@ -601,3 +601,48 @@ fn main() {
 		assert output == '16586 16586 -1', output
 	}
 }
+
+// An embedded empty struct takes a byte of its own, so the fields after it keep
+// their values and a custom error that embeds `Error` reports its message.
+fn test_embedded_empty_struct() {
+	$if macos && arm64 {
+		output := run_arm64('embedded_empty_struct', "struct Empty {}
+
+struct Tight {
+	Empty
+	a u8
+	b u8
+	c u16
+	d u32
+}
+
+struct MyErr {
+	Error
+	what string
+}
+
+fn (e MyErr) msg() string {
+	return 'my: \${e.what}'
+}
+
+fn fail() ! {
+	return MyErr{
+		what: 'custom'
+	}
+}
+
+fn main() {
+	t := Tight{
+		a: 1
+		b: 2
+		c: 3
+		d: 4
+	}
+	println('\${sizeof(Empty)} \${t.a} \${t.b} \${t.c} \${t.d}')
+	fail() or { println(err.msg()) }
+}
+")
+		assert output == '1 1 2 3 4
+my: custom', output
+	}
+}
