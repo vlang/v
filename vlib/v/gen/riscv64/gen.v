@@ -17,6 +17,7 @@ module riscv64
 
 import v.ssa
 import v.gen.elf
+import encoding.binary
 
 // integer argument registers a0..a7 (RV64 integer calling convention)
 const riscv_arg_regs = [10, 11, 12, 13, 14, 15, 16, 17]!
@@ -319,6 +320,16 @@ fn (mut g Gen) gen_pre_pass() {
 // generate post pass output for riscv64.
 
 fn (mut g Gen) gen_post_pass() {
+	// `C._wyp` is a generated C constant, not a libc symbol. Native builds must
+	// materialize it themselves because map hashing refers to it through SSA.
+	g.elf.add_symbol('_wyp', u64(g.elf.data_data.len), false, 2)
+	secrets := [u64(0x2d358dccaa6c78a5), u64(0x8bb84b93962eacc9), u64(0x4b33a62ed433d4a3),
+		u64(0x4d5a2da51de1aa47)]
+	for secret in secrets {
+		mut bytes := []u8{len: 8}
+		binary.little_endian_put_u64(mut bytes, secret)
+		g.elf.data_data << bytes
+	}
 	for gi in 0 .. g.m.globals.len {
 		if g.m.globals[gi].linkage == .external {
 			continue
