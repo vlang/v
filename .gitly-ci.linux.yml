@@ -5,6 +5,7 @@ variables:
   VTEST_FAIL_FAST: '1'
   V_MACOS_V3_NO_FALLBACK: '1'
   VFLAGS: '-cc tcc -no-retry-compilation'
+  XDG_CACHE_HOME: /workspace/.gitly-ci-cache/xdg
   V3CACHE: /workspace/.gitly-ci-cache/modules
   VTOOLS_CACHE_DIR: /workspace/.gitly-ci-cache/tools
   V_CI_VEXE: /workspace/vprod
