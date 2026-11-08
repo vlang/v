@@ -472,6 +472,16 @@ fn (mut g Gen) gen_func(func_idx int) {
 	if func.name == 'main' {
 		g.store_entry_arg_to_global(rv_reg_a0, 'g_main_argc')
 		g.store_entry_arg_to_global(rv_reg_a0 + 1, 'g_main_argv')
+		mut has_closure_runtime := false
+		for f in g.m.funcs {
+			if f.name == 'closure.closure_init' {
+				has_closure_runtime = true
+				break
+			}
+		}
+		if has_closure_runtime {
+			g.call_extern('closure.closure_init')
+		}
 	}
 
 	// Spill params from registers (and incoming stack args) into slots.
