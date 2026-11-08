@@ -1586,11 +1586,12 @@ mut:
 	// which the parallel pre-pass does not have yet.
 	used_field_defaults bool
 	values              []FastcConstantValue
-	constant_types      flat.TypeTextBindings
-	composite_types     map[string]bool
-	fixed_array_types   flat.TypeTextBindings
-	failed              bool
-	error_message       string
+	// Only this file's additions; callers already own the inherited bindings.
+	constant_types    flat.TypeTextBindings
+	composite_types   map[string]bool
+	fixed_array_types flat.TypeTextBindings
+	failed            bool
+	error_message     string
 }
 
 struct FastcIndexedConstantFileResult {
@@ -1607,7 +1608,7 @@ fn fastc_parse_constant_file(ctx &FastcConstantGenContext, source_file FastcSour
 			// Initializer rendering creates short-lived token and inference tables.
 			// Interned type IDs already outlive this disposable allocation scope.
 			scope := unsafe { prealloc_scope_begin() }
-			result := fastc_parse_constant_file_unscoped(ctx, source_file, constant_types.fork())
+			result := fastc_parse_constant_file_unscoped(ctx, source_file, constant_types.fork_sharing_keys())
 			unsafe { prealloc_scope_leave(scope) }
 			owned := fastc_clone_constant_file_result(result)
 			unsafe { prealloc_scope_free_after(scope) }
@@ -1708,10 +1709,14 @@ fn fastc_parse_constant_file_unscoped(ctx &FastcConstantGenContext, source_file 
 			error_message: 'fastc scanner error at byte ${diagnostic.offset} in ${source_file.path}: ${diagnostic.message}'
 		}
 	}
+	mut added_types := flat.TypeTextBindings{}
+	for value in values {
+		added_types.set_id(value.key, value.typ)
+	}
 	return FastcConstantFileResult{
 		used_field_defaults: gen.used_field_defaults
 		values:              values
-		constant_types:      gen.constant_types.move()
+		constant_types:      added_types
 		composite_types:     gen.composite_types
 		fixed_array_types:   gen.fixed_array_types
 	}
@@ -1787,11 +1792,13 @@ fn fastc_seed_constant_types(ctx &FastcConstantGenContext, candidates []FastcSou
 				continue
 			}
 		}
-		mut result := fastc_parse_constant_file(ctx, candidate, constant_types)
+		result := fastc_parse_constant_file(ctx, candidate, constant_types)
 		if result.failed {
 			return
 		}
-		constant_types = result.constant_types.move()
+		for key, typ in result.constant_types.ids {
+			constant_types.set_id(key, typ)
+		}
 	}
 }
 
@@ -1940,11 +1947,13 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 			}
 		}
 		serial_count++
-		mut serial := fastc_parse_constant_file(&merge_ctx, candidate, constant_types)
+		serial := fastc_parse_constant_file(&merge_ctx, candidate, constant_types)
 		if serial.failed {
 			return error(serial.error_message)
 		}
-		constant_types = serial.constant_types.move()
+		for key, typ in serial.constant_types.ids {
+			constant_types.set_id(key, typ)
+		}
 		values << serial.values
 		for name, _ in serial.composite_types {
 			composite_types[name] = true
@@ -2311,6 +2320,11 @@ fn (g &Parser) constant_expression_requires_runtime_storage(tokens []FastcExpres
 		return true
 	}
 	for i, item in tokens {
+		// Build metadata changes between compilations. Keep its value in the
+		// initializer unit so shared declarations and native owners stay stable.
+		if item.is_build_metadata {
+			return true
+		}
 		if item.tok in [.lcbr, .lsbr] {
 			return true
 		}

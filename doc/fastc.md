@@ -36,6 +36,13 @@ Native bridge libraries can also be reused after an unused V macro changes, such
 timestamp. Clang must produce identical preprocessed code and report the same header paths;
 all recorded native dependencies still require matching contents before reuse.
 Dependency paths and contents must stay unchanged while Clang preprocesses the native owner.
+Constants using `@BUILD_DATE`, `@BUILD_TIME`, or `@BUILD_TIMESTAMP` are initialized in the
+startup unit. Their shared declarations stay stable across builds, allowing direct native cache
+reuse while retaining the current build metadata and dependency validation.
+FastC uses all available CPU cores for generation by default. Native bridge programs use up to
+six TinyCC units to reduce repeated header processing. `-parallel-cc` permits up to twelve
+concurrent TinyCC units for these programs, without reducing the C generation worker count.
+`VJOBS` overrides these defaults; `-no-parallel` selects one worker.
 Explicit macro directives retain their source-file order around native implementations.
 With `-o program.c`, FastC writes C without invoking a native compiler or linker.
 C output is published only after the buffered writes, final flush, and close succeed.
@@ -149,7 +156,8 @@ If a call reaches a generic placeholder without a concrete instance, it reports 
 and exits with an error instead of returning a zero value.
 This path supports standard-library imports such as `os` and `toml`,
 composite sum-type tests, integer and floating point interpolation formats, anonymous functions,
-and closure captures. Mutable value captures retain their state across calls. Float formats support
+and closure captures, including fixed arrays captured by value. Mutable value captures retain
+their state across calls. Float formats support
 precision, width, left alignment, and the
 `f` suffix to retain trailing zeros. A single-file entry can select the same runtime with
 `-d fastc_real_builtin`. As with the C backend, a program file named on its own is compiled
@@ -205,6 +213,13 @@ By-value parameters whose addresses escape to spawned workers retain shared stor
 function returns. Later writes and workers from the same invocation use that storage.
 Escaped keyword fields and locals, and the ESC escape `\e` in runes and strings, are supported.
 Multiline values can continue with leading binary operators or a following `else` branch.
+Expression blocks run their scoped defers before yielding their saved value; branch-local
+cleanup stays inside its branch. `defer(fn)` remains active until the function exits.
+A leading `mut` in a parallel declaration makes every target mutable, matching the C backend.
+References to sum conversions such as `&Sum(variant)` retain both the sum tag and its payload
+after the creating function returns, including within narrowed match branches.
+A newline after a pointer assignment can start an address expression, including the final value
+of an `if` branch; numeric bitwise-AND continuations remain supported.
 Postfix updates used as values return the old value, and trailing variable attributes preserve
 the following statement. Option/Result tuple fallbacks can return an enclosing function's tuple.
 Grouped Option/Result propagation preserves payload types and early returns, including in call

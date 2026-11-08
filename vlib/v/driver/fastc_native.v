@@ -4,6 +4,7 @@ module driver
 $if !skip_fastc ? {
 	import os
 	import strings
+	import hash as contenthash
 	import v.cmdexec
 	import v.modulecache
 	import v.tempname
@@ -14,7 +15,15 @@ $if !skip_fastc ? {
 // vfmt on
 
 $if !skip_fastc ? {
-	fn compile_v3_fastc_tcc_generation(generation &fastc.GenerationResult, bin_file string, prefs &pref.Preferences, environment_flags []string, user_flags []string, link_flags []string, sdk string, is_debug bool, cache_enabled bool, keep_c bool, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
+	fn v3_fastc_native_compile_jobs(prefs &pref.Preferences, parallel_cc bool) int {
+		jobs := fastc.fastc_tcc_job_count(prefs)
+		// Each unit reopens the native headers. Keep the measured default,
+		// while allowing -parallel-cc and VJOBS to request more C workers.
+		if !parallel_cc && os.getenv('VJOBS').int() <= 0 && jobs > 6 { return 6 }
+		return jobs
+	}
+
+	fn compile_v3_fastc_tcc_generation(generation &fastc.GenerationResult, bin_file string, prefs &pref.Preferences, environment_flags []string, user_flags []string, link_flags []string, sdk string, is_debug bool, cache_enabled bool, keep_c bool, parallel_cc bool, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
 		mut flags := environment_flags.clone()
 		flags << generation.c_flags
 		flags << user_flags
@@ -50,9 +59,10 @@ $if !skip_fastc ? {
 			// The native owner's dependency manifest validates only the native library.
 
 			// Native inputs rule out executable caching; the payload object names none of them.
-			return compile_v3_fastc_source(pieces, generation.units, bin_file, prefs, [], program_flags, [], link_flags, sdk, is_debug, generation.uses_threads, false, cache_enabled, mut prestarted)
+			jobs := v3_fastc_native_compile_jobs(prefs, parallel_cc)
+			return compile_v3_fastc_source(pieces, generation.units, bin_file, prefs, [], program_flags, [], link_flags, sdk, is_debug, generation.uses_threads, false, cache_enabled, jobs, mut prestarted)
 		}
-		return compile_v3_fastc_source(generation.c_pieces, generation.units, bin_file, prefs, environment_flags, generation.c_flags, user_flags, link_flags, sdk, is_debug, generation.uses_threads, cache_enabled, cache_enabled, mut prestarted)
+		return compile_v3_fastc_source(generation.c_pieces, generation.units, bin_file, prefs, environment_flags, generation.c_flags, user_flags, link_flags, sdk, is_debug, generation.uses_threads, cache_enabled, cache_enabled, fastc.fastc_tcc_job_count(prefs), mut prestarted)
 	}
 
 	struct V3FastcNativeBridge {
@@ -117,11 +127,16 @@ $if !skip_fastc ? {
 		// Only the platform compiler opens the headers and native implementations.
 		dir := os.join_path(os.vtmp_dir(), 'v3_fastc_native')
 		ensure_native_object_cache_dir(dir)!
-		mut owner := v3_fastc_native_declarations(dir, head.str()) + v3_tcc_dylib_function_bindings(functions).owner
+		declarations := v3_fastc_native_declarations(dir, head.str())
+		bindings := v3_tcc_dylib_function_bindings(functions).owner
 		adapters := v3_fastc_native_args_adapters(generation, prefs, functions)
+		mut owner_builder := strings.new_builder(declarations.len + bindings.len + adapters.len * 512)
+		owner_builder.write_string(declarations)
+		owner_builder.write_string(bindings)
 		for adapter in adapters {
-			owner += adapter.native_side()
+			owner_builder.write_string(adapter.native_side())
 		}
+		owner := owner_builder.str()
 		if bench_phases {
 			eprintln('fastc-phase native.owner ${sw.elapsed().microseconds()}us')
 		}
@@ -137,7 +152,7 @@ $if !skip_fastc ? {
 		// Invalidate owners whose manifests did not validate the preprocessing snapshot.
 		// Archive paths also keep changed library searches from reusing an old owner.
 		mut hash := c_hash_bytes(u64(1469598103934665603), 'v3-fastc-native-v3'.bytes())
-		hash = c_hash_bytes(hash, owner.bytes())
+		hash = contenthash.sum64_string(owner, hash)
 		hash = c_hash_bytes(hash, prepared.join('\x00').bytes())
 		hash = c_hash_bytes(hash, archives.join('\x00').bytes())
 		key := hash.hex()
@@ -194,7 +209,7 @@ $if !skip_fastc ? {
 		for dependency in dependencies {
 			// Preserve the hashes of the inputs Clang actually preprocessed, even
 			// when a header changes before this later collection of native inputs.
-			signature := preprocessing_signatures[dependency] or { c_object_file_signature(dependency, false, mut stats) }
+			signature := preprocessing_signatures[dependency] or { v3_fastc_native_file_signature(dependency, false, mut stats) }
 			if signature == '' { return error('cannot sign native input: ' + dependency) }
 			signatures << signature
 			hash = c_hash_bytes(hash, (dependency + '\x00' + signature).bytes())
@@ -228,7 +243,7 @@ $if !skip_fastc ? {
 			return error('FastC native dependency signatures are incomplete')
 		}
 		for i, dependency in dependencies {
-			if signatures[i] == '' || c_object_file_signature(dependency, true, mut stats) != signatures[i] {
+			if signatures[i] == '' || v3_fastc_native_file_signature(dependency, true, mut stats) != signatures[i] {
 				return error('FastC native input changed during ${phase}: ' + dependency)
 			}
 		}
@@ -276,7 +291,7 @@ $if !skip_fastc ? {
 		}
 		mut signatures := []string{cap: before.files.len}
 		for dependency in before.files {
-			signature := c_object_file_signature(dependency, true, mut stats)
+			signature := v3_fastc_native_file_signature(dependency, true, mut stats)
 			if signature == '' { return error('cannot sign native input: ' + dependency) }
 			signatures << signature
 		}
@@ -292,7 +307,7 @@ $if !skip_fastc ? {
 			return error('FastC native dependencies changed during preprocessing: ' + source)
 		}
 		v3_fastc_native_validate_inputs(before.files, signatures, 'preprocessing', mut stats)!
-		signature := c_object_file_signature(staged, false, mut stats)
+		signature := v3_fastc_native_file_signature(staged, false, mut stats)
 		if signature == '' { return error('cannot sign preprocessed native input: ' + source) }
 		canonical_source := os.real_path(source)
 		mut hash := c_hash_bytes(u64(1469598103934665603), 'v3-fastc-preprocessed-v2'.bytes())
@@ -315,7 +330,7 @@ $if !skip_fastc ? {
 		}
 		mut hash := c_hash_bytes(u64(1469598103934665603), 'v3-fastc-native-declarations-v1'.bytes())
 		hash = c_hash_bytes(hash, '${executable}\x00${identity}\x00'.bytes())
-		hash = c_hash_bytes(hash, head.bytes())
+		hash = contenthash.sum64_string(head, hash)
 		path := os.join_path(dir, 'declarations_${hash.hex()}.h')
 		if cached := os.read_file(path) {
 			return cached
@@ -336,6 +351,38 @@ $if !skip_fastc ? {
 			return if declarations.ends_with('\n') { declarations } else { declarations + '\n' }
 		}
 		return declarations.split_into_lines().filter(!it.contains('/sync/stdatomic/tcc_compat_') && it.trim_space() != '#define inline __attribute((weak)) inline').join('\n') + '\n'
+	}
+
+	// Hash fixed-sized blocks with the word hash used by the compiler's maps.
+	// Filling each block makes signatures independent of short reads. The prefix
+	// separates these signatures from the older byte-at-a-time native manifests.
+	fn v3_fastc_native_file_signature(path string, refresh bool, mut stats CObjectCacheStats) string {
+		canonical := os.real_path(path)
+		key := 'fastc-content:' + canonical
+		if refresh { stats.file_signatures.delete(key) }
+		if signature := stats.file_signatures[key] { return signature }
+		mut file := os.open(canonical) or { return '' }
+		defer { file.close() }
+		mut buffer := [64 * 1024]u8{}
+		mut buffered := 0
+		mut digest := u64(1469598103934665603)
+		for {
+			read := file.read_into_ptr(&buffer[buffered], buffer.len - buffered) or {
+				if err is os.Eof { break }
+				return ''
+			}
+			if read == 0 { break }
+			buffered += read
+			if buffered == buffer.len {
+				digest = contenthash.sum64(buffer[..], digest)
+				buffered = 0
+			}
+		}
+		if buffered > 0 { digest = contenthash.sum64(buffer[..buffered], digest) }
+		signature := 'word-v1:' + digest.hex()
+		stats.file_signatures[key] = signature
+		stats.dependency_file_reads++
+		return signature
 	}
 
 	// Validate opaque native inputs concurrently. SDK manifests contain thousands
@@ -386,7 +433,7 @@ $if !skip_fastc ? {
 	fn v3_fastc_native_dependencies_match(dependencies []string, signatures []string) bool {
 		mut stats := CObjectCacheStats{}
 		for i, dependency in dependencies {
-			if c_object_file_signature(dependency, false, mut stats) != signatures[i] {
+			if v3_fastc_native_file_signature(dependency, false, mut stats) != signatures[i] {
 				return false
 			}
 		}
@@ -401,7 +448,7 @@ $if !skip_fastc ? {
 		}
 		text := source.str()
 		dir := os.join_path(os.vtmp_dir(), 'v3_fastc_native')
-		path := os.join_path(dir, 'consumer_' + c_hash_bytes(u64(1469598103934665603), text.bytes()).hex() + '.c')
+		path := os.join_path(dir, 'consumer_' + contenthash.sum64_string(text, u64(1469598103934665603)).hex() + '.c')
 		if !os.is_file(path) {
 			staged := path + '.tmp.' + tempname.unique_token()
 			os.write_file(staged, text)!
@@ -443,7 +490,7 @@ $if !skip_fastc ? {
 		out.writeln(v3_fastc_program_dependencies_format)
 		for dependency in reported {
 			resolved := os.real_path(dependency)
-			signature := c_object_file_signature(resolved, false, mut stats)
+			signature := v3_fastc_native_file_signature(resolved, false, mut stats)
 			if signature == '' { return }
 			out.writeln('dependency=${dependency}\t${resolved}\t${signature}')
 		}

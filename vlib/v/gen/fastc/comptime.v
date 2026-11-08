@@ -1480,28 +1480,39 @@ fn (g &Parser) type_implements_interface(typ u32, iface u32) bool {
 		return false
 	}
 	iface_key := g.semantic_type_key(iface)
-	mut names := g.interface_method_names_memo[iface_key] or {
-		prefix := flat.source_type_name(iface_key) + '.'
-		mut found := []string{}
-		for key, _ in g.functions {
-			if key.starts_with(prefix) && !key[prefix.len..].contains('.') {
-				found << key[prefix.len..]
+	indexed := iface_key in g.interface_method_names
+	pair := (u64(typ) << 32) | u64(iface_key)
+	if indexed {
+		if implemented := g.interface_implementation_memo[pair] { return implemented }
+	}
+	names := g.interface_method_names[iface_key] or {
+		g.interface_method_names_memo[iface_key] or {
+			prefix := flat.source_type_name(iface_key) + '.'
+			mut found := []string{}
+			for key, _ in g.functions {
+				if key.starts_with(prefix) && !key[prefix.len..].contains('.') {
+					found << key[prefix.len..]
+				}
 			}
+			mut w := unsafe { &Parser(g) }
+			w.interface_method_names_memo[iface_key] = found
+			found
 		}
-		mut w := unsafe { &Parser(g) }
-		w.interface_method_names_memo[iface_key] = found
-		found
 	}
-	if names.len == 0 {
-		return false
-	}
+	mut implemented := names.len > 0
 	for name in names {
 		key, _ := g.resolve_method(typ, name)
 		if key !in g.functions {
-			return false
+			implemented = false
+			break
 		}
 	}
-	return true
+	// Only the shared declaration index guarantees immutable function/type tables.
+	if indexed {
+		mut w := unsafe { &Parser(g) }
+		w.interface_implementation_memo[pair] = implemented
+	}
+	return implemented
 }
 
 fn (mut g Parser) skip_open_block() ! {

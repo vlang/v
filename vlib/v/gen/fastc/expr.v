@@ -333,7 +333,7 @@ fn (mut g Parser) try_read_atomic_expression(stops []token.Token, allow_mutation
 	g.lit = probe.lit
 	if following == .semicolon && (g.semicolon_continues_expression()
 		|| (allow_newline_value_continuation && !allow_mutation_statement
-			&& g.semicolon_continues_value_expression())) {
+			&& g.semicolon_continues_value_expression([atom]))) {
 		g.s = original_scan
 		g.tok = original_tok
 		g.lit = original_lit
@@ -455,7 +455,7 @@ fn (mut g Parser) try_read_atomic_member_expression(stops []token.Token, allow_m
 	g.lit = probe.lit
 	if following == .semicolon && (g.semicolon_continues_expression()
 		|| (allow_newline_value_continuation && !allow_mutation_statement
-			&& g.semicolon_continues_value_expression())) {
+			&& g.semicolon_continues_value_expression([]FastcExpressionToken{}))) {
 		g.s = original_scan
 		g.tok = original_tok
 		g.lit = original_lit
@@ -577,7 +577,7 @@ fn (mut g Parser) try_read_simple_call_expression(stops []token.Token, allow_mut
 	g.lit = probe.lit
 	if following == .semicolon && (g.semicolon_continues_expression()
 		|| (allow_newline_value_continuation && !allow_mutation_statement
-			&& g.semicolon_continues_value_expression())) {
+			&& g.semicolon_continues_value_expression(tokens))) {
 		g.s = original_scan
 		g.tok = original_tok
 		g.lit = original_lit
@@ -2533,7 +2533,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			&& (g.semicolon_continues_expression()
 				|| ((allow_newline_value_continuation || paren_depth > 0 || bracket_depth > 0 || brace_depth > 0)
 					&& (!allow_mutation_statement || operator_state.mutation_operator.is_assignment())
-					&& g.semicolon_continues_value_expression())) {
+					&& g.semicolon_continues_value_expression(expression_tokens))) {
 			g.next()
 			continue
 		}
@@ -2981,10 +2981,11 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			}
 			result.write_string(pseudo)
 			expression_tokens << FastcExpressionToken{
-				tok:    .string
-				lit:    pseudo_name
-				source: fastc_token_source(pseudo)
-				typ:    flat.source_type_string
+				tok:               .string
+				lit:               pseudo_name
+				source:            fastc_token_source(pseudo)
+				typ:               flat.source_type_string
+				is_build_metadata: pseudo_name in ['@BUILD_DATE', '@BUILD_TIME', '@BUILD_TIMESTAMP']
 			}
 			previous_token = .string
 			previous_lit = pseudo_name
@@ -3924,12 +3925,27 @@ fn (g &Parser) semicolon_continues_expression() bool {
 	return next in [`.`, `/`, `%`, `|`, `^`, `<`, `>`, `=`, `?`, `)`]
 }
 
-fn (g &Parser) semicolon_continues_value_expression() bool {
+fn (g &Parser) semicolon_continues_value_expression(tokens []FastcExpressionToken) bool {
 	if g.s.pos < g.s.src.len && g.s.src[g.s.pos] == `;` {
 		return false
 	}
 	mut look := g.s
-	return look.scan() in [.plus, .minus, .mul, .amp]
+	next := look.scan()
+	if next == .amp {
+		mut operand_start := 0
+		for i, item in tokens {
+			if item.tok.is_assignment() { operand_start = i + 1 }
+		}
+		if operand_start < tokens.len {
+			typ := g.infer_expression_type_range(tokens, operand_start, tokens.len) or { u32(0) }
+			// Pointers cannot be operands of bitwise AND. The next line starts
+			// an address expression, often the final value of an if branch.
+			if flat.source_type_query(g.underlying_alias_type(typ)).has(.c_pointer_suffix) {
+				return false
+			}
+		}
+	}
+	return next in [.plus, .minus, .mul, .amp]
 		&& !g.prefix_starts_mutation_statement()
 }
 

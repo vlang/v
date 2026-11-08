@@ -2227,7 +2227,7 @@ fn (mut g Parser) parse_parallel_assignment(initial_names []string, initial_mut 
 	mut written_member_targets := [][]FastcExpressionToken{}
 	for g.tok == .comma {
 		g.next()
-		mut is_mut := false
+		mut is_mut := initial_mut
 		if g.tok == .key_mut {
 			is_mut = true
 			g.next()
