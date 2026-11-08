@@ -683,3 +683,38 @@ fn main() {
 	}
 }
 
+// A declaration that shadows an outer name in an inner scope (allowed in the
+// methods of generic structs) leaves the outer binding intact after the scope.
+fn test_shadowed_declarations_end_with_their_scope() {
+	$if macos && arm64 {
+		output := run_arm64('shadowed_scopes', "struct KL[T] {
+mut:
+	seen []string
+}
+
+fn (mut l KL[T]) reconcile(items []T) {
+	for index, item in items {
+		mut nodes := [1, 2]
+		for index, mut node in nodes {
+			node += index
+		}
+		l.seen << '\${item}:\${index}'
+	}
+	index := 1
+	{
+		index := 5
+		_ = index
+	}
+	l.seen << 'b\${index}'
+}
+
+fn main() {
+	mut l := KL[string]{}
+	l.reconcile(['a', 'b', 'c'])
+	println(l.seen)
+}
+")
+		assert output == "['a:0', 'b:1', 'c:2', 'b1']", output
+	}
+}
+

@@ -82,6 +82,8 @@ mut:
 	cur_func_ret_type  u32
 	cur_block          BlockID
 	vars               map[string]ValueID
+	// Outer bindings hidden by inner declarations, restored when their scope ends.
+	shadowed_bindings []ShadowedBinding
 	global_vars        map[string]ValueID
 	global_type_names  flat.TypeTextBindings
 	global_imports     map[string]string
@@ -193,6 +195,14 @@ struct BuilderScope {
 	active     bool
 	vars       map[string]ValueID
 	type_names flat.TypeTextBindings
+	// Position in Builder.shadowed_bindings when the scope opened.
+	shadow_mark int
+}
+
+// ShadowedBinding is an outer binding that a declaration in an inner scope hid.
+struct ShadowedBinding {
+	name    string
+	binding VarBinding
 }
 
 // IfGuardState stores if guard state state used by ssa.
@@ -9427,6 +9437,7 @@ fn (mut b Builder) build_top_level_main() {
 
 fn (mut b Builder) reset_function_state() {
 	b.vars.clear()
+	b.shadowed_bindings.clear()
 	b.var_type_names.clear()
 	b.mut_pointer_params.clear()
 	b.mut_param_names.clear()
@@ -9931,16 +9942,25 @@ fn (mut b Builder) build_select_placeholder(node flat.Node) {
 
 fn (b &Builder) save_scope() BuilderScope {
 	if b.m.target.ptr_size != 4 {
-		return BuilderScope{}
+		return BuilderScope{
+			shadow_mark: b.shadowed_bindings.len
+		}
 	}
 	return BuilderScope{
-		active:     true
-		vars:       b.vars.clone()
-		type_names: b.var_type_names.clone()
+		active:      true
+		vars:        b.vars.clone()
+		type_names:  b.var_type_names.clone()
+		shadow_mark: b.shadowed_bindings.len
 	}
 }
 
 fn (mut b Builder) restore_scope(scope BuilderScope) {
+	// Undo the declarations that shadowed outer names, innermost first, like a
+	// compiler's scope chain: `{ index := 5 }` must not replace the outer `index`.
+	for b.shadowed_bindings.len > scope.shadow_mark {
+		shadowed := b.shadowed_bindings.pop()
+		b.restore_var_binding(shadowed.name, shadowed.binding)
+	}
 	if scope.active {
 		b.vars = scope.vars.clone()
 		b.var_type_names = scope.type_names.clone()
@@ -10024,6 +10044,12 @@ fn (mut b Builder) build_decl_assign(node flat.Node) {
 		alloca := b.emit0(.alloca, b.m.type_store.get_ptr(rhs_type))
 		b.emit2(.store, b.void_type, rhs_val, alloca)
 		if lhs.kind == .ident {
+			if lhs.value_text() in b.vars {
+				b.shadowed_bindings << ShadowedBinding{
+					name:    lhs.value_text()
+					binding: b.save_var_binding(lhs.value_text())
+				}
+			}
 			b.vars[lhs.value_text()] = alloca
 			rhs_type_name_source_id := b.checked_expr_type_name(rhs_id)
 			b.var_type_names.set_id(lhs.value_text(), if declared_type_source_id != 0 {
