@@ -20,7 +20,9 @@ import inside one is safe.
 | `$tmpl` | render a template |
 | `$env` | read an environment variable |
 | `$d` | read a `-d name=value` define |
-| `$typeof`, `$sizeof`, `$isref`, `$isreftype`, `$isnil`, `$dump` | introspection |
+| `$res` | embed an Android resource |
+| `$pkgconfig` | query pkg-config |
+| `$typeof`, `$sizeof`, `$isreftype`, `$__offsetof`, `$dump` | aliases of `typeof`, `sizeof`, `isreftype`, `__offsetof`, `dump`; prefer those |
 
 ## Built-in `$if` conditions
 
@@ -30,8 +32,9 @@ import inside one is safe.
 
 ## Custom flags
 
-A flag you define needs the `?`. Without it, `$if` expects a builtin and a custom
-name silently fails to match — so your branch is dropped without a word.
+A flag you define needs the `?`. Without it, `$if my_feature {` reads the name as
+an identifier: it works while you build with `-d my_feature`, and the build fails
+with `undefined ident: my_feature` as soon as someone builds without it.
 
 ```v ignore
 // Enabled by: v -d my_feature
@@ -40,7 +43,8 @@ $if my_feature ? {
 }
 ```
 
-The V repo itself uses this: `v -d trace_checker`, `v -d v3`, `v -d tinyc`.
+The standard library uses this throughout, for example `$if trace_ssl ?` and
+`$if ownership ?`.
 
 ## Imports belong inside the $if
 
@@ -82,17 +86,18 @@ parameter.
 
 ## $embed_file
 
-`$embed_file` inlines a file as a compile-time constant. Without `-prod` it
-inlines the **path**, not the contents; with `-prod` it inlines the bytes. This is
-a documented difference and it bites people who test a build and ship a different
-one.
+`$embed_file` returns an `EmbedFileData`, not a string: call `.to_string()` or
+`.to_bytes()` for the contents. With `-prod` the bytes are inlined into the binary.
+Without it, the program reads the file from disk when the contents are first
+asked for, so a development build fails at run time if the file has moved. This
+bites people who test one build and ship the other.
 
 ```v ignore
-// -prod only: the contents
-const help_text = $embed_file('help.txt')
+const help = $embed_file('help.txt')
 
-// Always: the path
-const help_path = $embed_file('help.txt')
+fn main() {
+	println(help.to_string())
+}
 ```
 
 ## Verification
