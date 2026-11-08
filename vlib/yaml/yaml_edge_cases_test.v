@@ -352,3 +352,16 @@ fn test_hash_inside_a_plain_scalar_is_not_a_comment() ! {
 	assert items[1].string() == 'c'
 	assert doc.value('lead').string() == 'x'
 }
+
+fn test_parse_compact_nested_sequence() ! {
+	// `- - a` opens a sequence inside a sequence entry on the same line; its next
+	// entries line up with the inner `-`, so it must not read as bad indentation
+	doc := parse_text('pairs:\n  - - domain.site\n    - 1\n  - - b\n    - 2\n')!
+	assert doc.to_json() == '{"pairs":[["domain.site",1],["b",2]]}'
+	deep := parse_text('- - - x\n    - y\n  - z\n- w\n')!
+	assert deep.to_json() == '[[["x","y"],"z"],"w"]'
+	assert parse_text('- -\n  - b\n')!.to_json() == '[[null,"b"]]'
+	assert parse_text('- - a: 1\n    b: 2\n  - c\n')!.to_json() == '[[{"a":1,"b":2},"c"]]'
+	assert parse_text('-   - a # comment\n    - b\n')!.to_json() == '[["a","b"]]'
+	assert parse_text('- -1\n- - -2\n')!.to_json() == '[-1,[-2]]'
+}
