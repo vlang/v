@@ -109,10 +109,17 @@ fn test_https_chunked_body_is_returned_by_http_get_text() {
 	expected_body := concurrent_large_response_body()
 	server := spawn serve_chunked_html_response(mut listener, expected_body)
 
-	body := http.get_text('https://127.0.0.1:${port}/chunked')
+	resp := http.fetch(
+		url:      'https://127.0.0.1:${port}/chunked'
+		validate: false
+	) or {
+		server.wait()
+		assert false, 'fetch failed: ${err}'
+		return
+	}
 	server.wait()
 
-	assert body == expected_body
+	assert resp.body == expected_body
 }
 
 fn concurrent_large_response_body() string {
