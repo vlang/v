@@ -9713,7 +9713,7 @@ fn (mut b Builder) build_stmt(id flat.NodeId) {
 					if b.is_interface_type_id(ret_type) && b.value_type(val) != ret_type {
 						val = b.box_interface_value(ret_type, b.checked_expr_type_name(expr_id), val)
 					} else {
-						val = b.coerce_value_for_type(val, ret_type)
+						val = b.fixed_array_value(b.coerce_value_for_type(val, ret_type), ret_type)
 					}
 				}
 				if is_option_like && b.value_type(val) != ret_type {
@@ -12335,6 +12335,7 @@ fn (mut b Builder) build_option_value(opt_typ TypeID, ok bool, raw_value ValueID
 		if !ok || value <= 0 {
 			value = b.default_value_for_type(value_typ)
 		}
+		value = b.fixed_array_value(value, value_typ)
 		value_type := b.value_type(value)
 		if value_type != value_typ {
 			if b.is_pointer_type(value_typ) && b.is_pointer_type(value_type) {
@@ -15069,7 +15070,35 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 	if b.call_never_returns(id, resolved_name, is_c_call) {
 		b.emit0(.unreachable, b.void_type)
 	}
-	return result
+	return b.fixed_array_storage(result)
+}
+
+// fixed_array_value loads the value of a fixed array from the storage pointer
+// that stands for it inside a function, when `typ` wants the value itself: a
+// function returns `[3]int` by value (sret), like C returns its array struct.
+fn (mut b Builder) fixed_array_value(value ValueID, typ TypeID) ValueID {
+	if typ <= 0 || typ >= b.m.type_store.types.len || b.m.type_store.types[typ].kind != .array_t {
+		return value
+	}
+	value_type := b.value_type(value)
+	if value_type == typ || !b.is_pointer_type(value_type) {
+		return value
+	}
+	storage := b.emit1(.bitcast, b.m.type_store.get_ptr(typ), value)
+	return b.emit1(.load, typ, storage)
+}
+
+// fixed_array_storage keeps a fixed array returned by value in a slot of the
+// caller and gives the pointer to its elements, the form fixed arrays take
+// inside a function.
+fn (mut b Builder) fixed_array_storage(value ValueID) ValueID {
+	typ := b.value_type(value)
+	if typ <= 0 || typ >= b.m.type_store.types.len || b.m.type_store.types[typ].kind != .array_t {
+		return value
+	}
+	slot := b.emit0(.alloca, b.m.type_store.get_ptr(typ))
+	b.emit2(.store, b.void_type, value, slot)
+	return b.emit1(.bitcast, b.m.type_store.get_ptr(b.m.type_store.types[typ].elem_type), slot)
 }
 
 // fix_native_map_callback_args keeps the standard integer callbacks in sync
@@ -18834,6 +18863,19 @@ fn (mut b Builder) emit2(op OpCode, typ TypeID, a ValueID, c ValueID) ValueID {
 
 fn (mut b Builder) coerce_scalar_store_value(value ValueID, address ValueID, block_id BlockID) ValueID {
 	address_type := b.value_type(address)
+	value_type := b.value_type(value)
+	if b.is_pointer_type(address_type) && value_type > 0 && value_type < b.m.type_store.types.len
+		&& b.m.type_store.types[value_type].kind == .array_t {
+		slot_type := b.m.type_store.types[address_type].elem_type
+		if b.is_pointer_type(slot_type) && slot_type != value_type
+			&& b.m.type_store.types[slot_type].elem_type == b.m.type_store.types[value_type].elem_type {
+			// A fixed array variable holds the address of its elements: give
+			// the value its own storage and store that address.
+			storage := b.block_instr0(.alloca, block_id, b.m.type_store.get_ptr(value_type))
+			b.block_instr2(.store, block_id, b.void_type, value, storage)
+			return b.block_instr1(.bitcast, block_id, slot_type, storage)
+		}
+	}
 	if b.m.target.ptr_size != 4 || !b.is_pointer_type(address_type) {
 		return value
 	}

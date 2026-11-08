@@ -208,3 +208,125 @@ fn main() {
 		assert output == 'false true false false true 73', output
 	}
 }
+
+// Functions return fixed arrays and options of fixed arrays by value.
+fn test_fixed_array_returns() {
+	$if macos && arm64 {
+		output := run_arm64('fixed_returns', "fn plain(x string) [3]string {
+	return ['a', x, 'c']!
+}
+
+fn opt(x string) ?[3]string {
+	return ['a', x, 'c']!
+}
+
+fn opt_none(f bool) ?[3]string {
+	if f {
+		return none
+	}
+	return ['p', 'q', 'r']!
+}
+
+fn main() {
+	p := plain('B')
+	println('\${p[0]}\${p[1]}\${p[2]}')
+	o := opt('B') or { ['x', 'x', 'x']! }
+	println('\${o[0]}\${o[1]}\${o[2]}')
+	n := opt_none(false) or { ['x', 'x', 'x']! }
+	println('\${n[0]}\${n[1]}\${n[2]}')
+	for s in n {
+		print(s)
+	}
+	println('')
+}
+")
+		assert output == 'aBc
+aBc
+pqr
+pqr', output
+	}
+}
+
+fn test_fixed_array_option_unwrap() {
+	$if macos && arm64 {
+		output := run_arm64('fixed_option', "enum Kind {
+	qualified
+	pointer
+	array
+}
+
+fn name_of(n u32) string {
+	return ['main', 'Foo', 'Bar'][n]
+}
+
+fn pieces(kind Kind, parts []u32) ?[5]string {
+	match kind {
+		.qualified {
+			return ['', name_of(parts[0]), '.', name_of(parts[1]), '']!
+		}
+		else {}
+	}
+	prefix := match kind {
+		.pointer { '&' }
+		.array { '[]' }
+		else { return none }
+	}
+	return [prefix, name_of(parts[0]), '', '', '']!
+}
+
+fn small(kind Kind, parts []u32) ?string {
+	ps := pieces(kind, parts) or { return none }
+	mut len := 0
+	for piece in ps {
+		if piece.len > 255 - len {
+			return none
+		}
+		len += piece.len
+	}
+	mut buffer := [256]u8{}
+	mut offset := 0
+	for piece in ps {
+		if piece.len > 0 {
+			unsafe { vmemcpy(&buffer[offset], piece.str, piece.len) }
+			offset += piece.len
+		}
+	}
+	return unsafe { tos(&buffer[0], len) }.clone()
+}
+
+fn main() {
+	println(small(.qualified, [u32(0), 1]) or { 'none' })
+	println(small(.pointer, [u32(2)]) or { 'none' })
+	println(small(.array, [u32(1)]) or { 'none' })
+}
+")
+		assert output == 'main.Foo
+&Bar
+[]Foo', output
+	}
+}
+
+fn test_fixed_array_if_guard() {
+	$if macos && arm64 {
+		output := run_arm64('fixed_guard', "@[noinline]
+fn opt(x int) ?[3]int {
+	if x < 0 {
+		return none
+	}
+	return [1, x, 3]!
+}
+
+fn main() {
+	r := opt(7)
+	println(r != none)
+	if o := opt(5) {
+		println('ok \${o[1]}')
+	} else {
+		println('none')
+	}
+}
+")
+		assert output == 'true
+ok 5', output
+	}
+}
