@@ -22371,7 +22371,6 @@ fn seed_implicit_imports(mut a flat.FlatAst, skip_closure_runtime bool, check_ov
 // seed_implicit_imports_from scans the code from `scan_start`: the user's files
 // start after builtin, or after the modules a diagnostics server prepared.
 fn seed_implicit_imports_from(mut a flat.FlatAst, scan_start int, builtin_field_index ImplicitFieldScanIndex, skip_closure_runtime bool, check_overflow bool) ImplicitImportScan {
-	start := a.nodes.len
 	// Builtin declares the channel ABI even when a program never uses channels.
 	// Start at user code so that declaration alone does not pull the whole sync
 	// module into every program; imported source is scanned wave by wave below.
@@ -22387,6 +22386,16 @@ fn seed_implicit_imports_from(mut a flat.FlatAst, scan_start int, builtin_field_
 		// scan of those modules (see PreparedScan).
 		scan.field_index.record = &ImplicitIndexRecord{}
 	}
+	continue_implicit_imports(mut a, mut scan, skip_closure_runtime, check_overflow)
+	return scan
+}
+
+// continue_implicit_imports scans the nodes appended since `scan` stopped and
+// adds the compiler-provided imports they need, as the import resolver does
+// after each wave of parsed modules. The scan stops before the imports added
+// here: the one that continues it reads them, as it reads any other import.
+fn continue_implicit_imports(mut a flat.FlatAst, mut scan ImplicitImportScan, skip_closure_runtime bool, check_overflow bool) {
+	start := a.nodes.len
 	scan_implicit_imports(a, a.nodes.len, mut scan)
 	if scan.needs_sync && !scan.has_sync {
 		a.add_node(sync_import_node())
@@ -22413,9 +22422,6 @@ fn seed_implicit_imports_from(mut a flat.FlatAst, scan_start int, builtin_field_
 		scan.has_overflow = true
 	}
 	a.intern_node_texts_from(start)
-	// The scan stops before the imports added here: the one that continues it
-	// reads them, as it reads any other import.
-	return scan
 }
 
 fn sync_import_node() flat.Node {
@@ -25007,8 +25013,10 @@ fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferen
 			}
 			// Imported code can be the first user of embed/channel/closure syntax.
 			// Seed those compiler-provided modules before the authoritative resolver
-			// scans the now-complete AST.
-			implicit_imports = seed_implicit_imports(mut a, skip_closure_runtime, check_overflow)
+			// scans the now-complete AST. Continue the scan of the user's code, as
+			// each wave of the resolver does, instead of scanning all of it again.
+			continue_implicit_imports(mut a, mut implicit_imports, skip_closure_runtime,
+				check_overflow)
 		}
 	}
 
