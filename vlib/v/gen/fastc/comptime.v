@@ -780,7 +780,6 @@ fn (g &Parser) comptime_variant_matches(variant u32, type_c string) bool {
 // runtime type id elsewhere, and a bare `v` (`T(v)`) is the variant's zero value.
 fn (g &Parser) substitute_comptime_variant(source_file FastcSourceFile, loop_var string, variant u32) FastcSourceFile {
 	body := source_file.source
-	variant_c := flat.source_type_name(variant)
 	unaliased := g.underlying_alias_type(variant)
 	file := token.File.unindexed('cvariant', body.len)
 	mut s := scanner.new_scanner(g.prefs, .normal)
@@ -862,7 +861,7 @@ fn (g &Parser) substitute_comptime_variant(source_file FastcSourceFile, loop_var
 					start:       var_pos
 					end:         end
 					replacement: if in_zero {
-						flat.source_type_name(typ)
+						g.capture_type_source(typ) or { flat.source_type_name(typ) }
 					} else {
 						'C.__v_typeid_${flat.source_type_name(typ)}'
 					}
@@ -873,13 +872,15 @@ fn (g &Parser) substitute_comptime_variant(source_file FastcSourceFile, loop_var
 				tok = next
 				continue
 			}
+			// Expanded operands are parsed as V again; type-id references keep their C identities.
+			variant_source := g.capture_type_source(variant) or { flat.source_type_name(variant) }
 			edits << FastcSourceEdit{
 				start:       var_pos
 				end:         s.offset
 				replacement: if previous in [.key_is, .not_is] {
-					variant_c
+					variant_source
 				} else {
-					'\$zero(${variant_c})'
+					'\$zero(${variant_source})'
 				}
 			}
 		}

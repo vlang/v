@@ -53,6 +53,8 @@ Use `int` and `uint` for platform-width integers. FastC rejects declarations and
 the deprecated `isize` and `usize` types. Compile-time compatibility patterns for those types,
 including composite patterns such as `[]usize`, never match. Uses inside inactive compile-time
 branches are ignored. FastC does not run the regular parser to produce deprecation warnings.
+Reflected sum variants retain canonical integer spellings in type tests and zero values.
+Option locals named `isize` or `usize` also work in `if` expressions that narrow their payloads.
 
 On Windows, ordinary FastC programs set stdout and stderr to binary mode, preserving `\n`
 without CRT conversion to `\r\n`, as the default C backend does.
