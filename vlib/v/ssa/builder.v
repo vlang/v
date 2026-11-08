@@ -5085,6 +5085,18 @@ fn (mut b Builder) generate_map_clear_body(func_id int) {
 		count_ptr := b.block_struct_field_ptr(blk_clear, state, b.map_state_type, 13)
 		count_zero := b.m.get_or_add_const(b.i32_type, '0')
 		b.block_instr2(.store, blk_clear, b.void_type, count_zero, count_ptr)
+		// Drop the tombstones too: the next insert reuses slot 0, which a stale
+		// deleted flag would hide from lookups and iteration.
+		ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+		bitmap_ptr := b.map_dense_field_ptr(blk_clear, state, 7)
+		bitmap := b.block_instr1(.load, blk_clear, ptr_i8, bitmap_ptr)
+		free_ref := b.m.add_value(.func_ref, b.void_type, 'free', b.fn_ids['free'])
+		b.block_instr2(.call, blk_clear, b.void_type, free_ref, bitmap)
+		b.block_instr2(.store, blk_clear, b.void_type, b.m.get_or_add_const(ptr_i8, '0'),
+			bitmap_ptr)
+		deletes_ptr := b.map_dense_field_ptr(blk_clear, state, 4)
+		b.block_instr2(.store, blk_clear, b.void_type, b.m.get_or_add_const(b.u32_type, '0'),
+			deletes_ptr)
 	}
 	if b.m.target.ptr_size == 8 { b.invalidate_native_map_index(blk_clear, state) }
 	b.block_instr1(.jmp, blk_clear, b.void_type, ValueID(blk_done))

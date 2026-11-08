@@ -476,3 +476,25 @@ fn main() {
 {'changed': 3, 'aaa': 4}", output
 	}
 }
+
+// `clear()` drops deleted entries, so keys added afterwards are found again.
+fn test_map_clear_after_delete() {
+	$if macos && arm64 {
+		output := run_arm64('map_clear_after_delete', "fn main() {
+	mut m := map[string]int{}
+	m['a'] = 1
+	m['b'] = 2
+	m.delete('a')
+	m.clear()
+	m['c'] = 3
+	m['d'] = 4
+	println('c' in m)
+	println(m)
+	println(m.len)
+}
+")
+		assert output == "true
+{'c': 3, 'd': 4}
+2", output
+	}
+}
