@@ -502,3 +502,36 @@ fn main() {
 78 0', output
 	}
 }
+
+// `tex: 0` in a C struct literal stores a null pointer, not a pointer to a 0.
+fn test_integer_in_pointer_field_is_an_address() {
+	$if macos && arm64 {
+		output := run_arm64('int_pointer', {
+			'handle.h': '#pragma once
+typedef struct handle_desc { int id; void* tex; } handle_desc;
+static inline int handle_has_tex(const handle_desc* d) { return d->tex != 0; }
+'
+			'main.v':   'module main
+
+#include "@VMODROOT/handle.h"
+
+pub struct C.handle_desc {
+pub mut:
+	id  int
+	tex voidptr
+}
+
+fn C.handle_has_tex(d &C.handle_desc) int
+
+fn main() {
+	d := C.handle_desc{
+		id:  1
+		tex: 0
+	}
+	println(\'\${d.id} \${d.tex == unsafe { nil }} \${C.handle_has_tex(&d)}\')
+}
+'
+		}, ['-d', 'arm64_external_link'])
+		assert output == '1 true 0', output
+	}
+}

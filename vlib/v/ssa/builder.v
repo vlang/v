@@ -17385,7 +17385,11 @@ fn (mut b Builder) coerce_store_value(source ValueID, target_type TypeID) ValueI
 			return b.emit1(.load, target_type, array_ptr)
 		}
 	}
-	if b.is_pointer_type(target_type) && !b.is_pointer_type(value_type) {
+	if b.is_pointer_type(target_type) && b.is_int_type(value_type) {
+		// An integer such as `0` stored into a pointer field (C structs allow
+		// `d3d11_texture: 0`) is the address itself, not a value to box.
+		return b.emit1(.bitcast, target_type, b.coerce_int_value(value, b.i64_type))
+	} else if b.is_pointer_type(target_type) && !b.is_pointer_type(value_type) {
 		result = b.heap_copy_value(value, value_type)
 	} else if target_type != value_type && b.is_pointer_type(target_type)
 		&& b.is_pointer_type(value_type) {
