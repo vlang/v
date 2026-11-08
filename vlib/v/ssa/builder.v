@@ -14044,6 +14044,80 @@ fn (mut b Builder) build_thread_wait(id flat.NodeId, node flat.Node, thread_id f
 	return result
 }
 
+// build_thread_array_wait lowers `threads.wait()` on a `[]thread T`: it joins
+// every thread in order and returns their results as a `[]T` (nothing for a
+// `[]thread`).
+fn (mut b Builder) build_thread_array_wait(threads_id flat.NodeId, thread_type u32) ValueID {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
+	ptr_array := b.m.type_store.get_ptr(b.array_type)
+	ret_type := if flat.source_type_shape(thread_type).has(.thread_type) {
+		b.resolve_type(flat.source_type_syntax(thread_type).raw_base())
+	} else {
+		b.void_type
+	}
+	threads := b.build_expr(threads_id)
+	threads_alloca := b.emit0(.alloca, ptr_array)
+	b.emit2(.store, b.void_type, threads, threads_alloca)
+	data := b.emit1(.load, ptr_i8, b.get_field_ptr(threads_alloca, 'data'))
+	len32 := b.block_load_native_int(b.cur_block, b.get_field_ptr(threads_alloca, 'len'))
+	len := b.emit1(.zext, b.i64_type, len32)
+	zero := b.m.get_or_add_const(b.i64_type, '0')
+	one := b.m.get_or_add_const(b.i64_type, '1')
+	handle_size := b.m.get_or_add_const(b.i64_type, '${b.m.type_size(b.u64_type)}')
+	ret_size := if ret_type == b.void_type { 0 } else { b.m.type_size(ret_type) }
+	result_alloca := b.emit0(.alloca, ptr_array)
+	if ret_type != b.void_type {
+		new_ref := b.m.add_value(.func_ref, b.array_type, 'array_new', b.runtime_fn_id('array_new'))
+		elem_size := b.m.get_or_add_const(b.i64_type, '${if ret_size > 0 { ret_size } else { 8 }}')
+		results := b.emit4(.call, b.array_type, new_ref, elem_size, len, len)
+		b.emit2(.store, b.void_type, results, result_alloca)
+	}
+	result_slot := b.emit0(.alloca, b.m.type_store.get_ptr(ptr_i8))
+	i_alloca := b.emit0(.alloca, ptr_i64)
+	b.emit2(.store, b.void_type, zero, i_alloca)
+	loop := b.m.add_block(b.cur_func, 'thread_array_wait_loop')
+	body := b.m.add_block(b.cur_func, 'thread_array_wait_body')
+	done := b.m.add_block(b.cur_func, 'thread_array_wait_done')
+	b.emit1(.jmp, b.void_type, ValueID(loop))
+
+	b.cur_block = loop
+	i_val := b.emit1(.load, b.i64_type, i_alloca)
+	more := b.emit2(.lt, b.i1_type, i_val, len)
+	b.emit3(.br, b.void_type, more, ValueID(body), ValueID(done))
+
+	b.cur_block = body
+	handle_offset := b.emit2(.mul, b.i64_type, i_val, handle_size)
+	handle_raw := b.emit2(.add, ptr_i8, data, handle_offset)
+	handle_ptr := b.emit1(.bitcast, b.m.type_store.get_ptr(b.u64_type), handle_raw)
+	handle := b.emit1(.load, b.u64_type, handle_ptr)
+	join_ref := b.m.add_value(.func_ref, b.void_type, 'pthread_join', b.fn_ids['pthread_join'])
+	status := b.emit3(.call, b.i32_type, join_ref, handle, result_slot)
+	b.check_thread_status(status)
+	if ret_type != b.void_type {
+		box_raw := b.emit1(.load, ptr_i8, result_slot)
+		box := b.emit1(.bitcast, b.m.type_store.get_ptr(ret_type), box_raw)
+		value := b.emit1(.load, ret_type, box)
+		results_data := b.emit1(.load, ptr_i8, b.get_field_ptr(result_alloca, 'data'))
+		value_size := b.m.get_or_add_const(b.i64_type, '${ret_size}')
+		value_offset := b.emit2(.mul, b.i64_type, i_val, value_size)
+		value_raw := b.emit2(.add, ptr_i8, results_data, value_offset)
+		value_ptr := b.emit1(.bitcast, b.m.type_store.get_ptr(ret_type), value_raw)
+		b.emit2(.store, b.void_type, value, value_ptr)
+		free_ref := b.m.add_value(.func_ref, b.void_type, 'free', b.fn_ids['free'])
+		b.emit2(.call, b.void_type, free_ref, box_raw)
+	}
+	next_i := b.emit2(.add, b.i64_type, i_val, one)
+	b.emit2(.store, b.void_type, next_i, i_alloca)
+	b.emit1(.jmp, b.void_type, ValueID(loop))
+
+	b.cur_block = done
+	if ret_type == b.void_type {
+		return b.m.get_or_add_const(b.void_type, '0')
+	}
+	return b.emit1(.load, b.array_type, result_alloca)
+}
+
 fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 	fn_node_id := b.a.child(&node, 0)
 	fn_node := b.a.nodes[int(fn_node_id)]
@@ -14109,6 +14183,13 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		thread_type := ssa_pointer_base_source_type(b.receiver_type_name(thread_id))
 		if thread_type == ssa_thread_source_type || flat.source_type_shape(thread_type).has(.thread_type) {
 			return b.build_thread_wait(id, node, thread_id)
+		}
+		thread_type_name := flat.source_type_name(thread_type)
+		if thread_type_name.starts_with('[]') {
+			elem_type := flat.source_type_id(thread_type_name[2..])
+			if elem_type == ssa_thread_source_type || flat.source_type_shape(elem_type).has(.thread_type) {
+				return b.build_thread_array_wait(thread_id, elem_type)
+			}
 		}
 	}
 

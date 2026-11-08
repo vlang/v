@@ -535,3 +535,42 @@ fn main() {
 		assert output == '1 true 0', output
 	}
 }
+
+// `[]thread T.wait()` joins every thread and returns their results in order.
+fn test_thread_array_wait() {
+	$if macos && arm64 {
+		output := run_arm64('thread_array_wait', {
+			'main.v': "fn sq(n int) int {
+	return n * n
+}
+
+fn name(n int) string {
+	return 'w\${n}'
+}
+
+fn work(n int) {
+	_ = n * 2
+}
+
+fn main() {
+	mut ints := []thread int{}
+	for i in 1 .. 5 {
+		ints << spawn sq(i)
+	}
+	println(ints.wait())
+	strs := [spawn name(1), spawn name(2), spawn name(3)]
+	println(strs.wait())
+	voids := [spawn work(1), spawn work(2)]
+	voids.wait()
+	empty := []thread int{}
+	println(empty.wait().len)
+	println('done')
+}
+"
+		}, []string{})
+		assert output == "[1, 4, 9, 16]
+['w1', 'w2', 'w3']
+0
+done", output
+	}
+}
