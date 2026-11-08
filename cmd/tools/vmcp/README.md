@@ -44,6 +44,15 @@ and report `diagnostics_omitted` plus a hint when the array is shortened.
 `error_count` and `warning_count` describe all parsed diagnostics, including the
 omitted ones. `v_run` still returns its program output with the existing line limit.
 
+`v_check` runs the compiler with `-json-errors`. Each diagnostic keeps the span the
+compiler reported (`end_line`, `end_column`), its `label` when it says more than the
+kind (`builder error`), its `details` and its `called_from` call sites. `kind` is
+the compiler's severity, so a `builder error` counts in `error_count`. Output that
+no diagnostic accounts for, like a compiler crash, is returned as `output`.
+`-json-errors` also turns off the automatic retry with the compatibility compiler,
+so `v_check` reports a failure of the default compiler as it is. `v_test_run` and
+`v_run` still read the text form.
+
 `v_format` returns parser diagnostics for malformed source and leaves the file
 untouched, including when `write: true` is requested.
 
