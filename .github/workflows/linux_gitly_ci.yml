@@ -28,5 +28,23 @@ jobs:
           for matcher in "$GITHUB_WORKSPACE"/.github/problem-matchers/*.json; do
             printf '::add-matcher::%s\n' "$matcher"
           done
-      - name: Run Linux pipeline through Gitly CI and stream logs
-        run: /opt/gitly-ci/github_ci_bridge.sh
+      - name: Start isolated Gitly pipeline
+        id: gitly_start
+        run: python3 /opt/gitly-ci/github_ci_steps.py start
+      - name: Build V from the pushed source
+        run: python3 /opt/gitly-ci/github_ci_steps.py wait 1
+      - name: V doctor
+        run: python3 /opt/gitly-ci/github_ci_steps.py wait 2
+      - name: V self compilation
+        run: python3 /opt/gitly-ci/github_ci_steps.py wait 3
+      - name: Verify the V test runner
+        run: python3 /opt/gitly-ci/github_ci_steps.py wait 4
+      - name: Test pure V math
+        run: python3 /opt/gitly-ci/github_ci_steps.py wait 5
+      - name: Test inline assembly
+        run: python3 /opt/gitly-ci/github_ci_steps.py wait 6
+      - name: V self tests
+        run: python3 /opt/gitly-ci/github_ci_steps.py wait 7
+      - name: Finish Gitly pipeline
+        if: ${{ always() && steps.gitly_start.outcome == 'success' }}
+        run: python3 /opt/gitly-ci/github_ci_steps.py finish
