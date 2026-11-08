@@ -1592,19 +1592,21 @@ mut:
 	constant_types              flat.TypeTextBindings
 	sum_leaf_variants_memo      map[u32][]u32
 	interface_equality_variants map[u32][]u32
-	// interface_method_names_memo lists each interface's declared method names.
-	interface_method_names_memo map[u32][]string
-	global_option_types         flat.TypeTextBindings
-	global_types                flat.TypeTextBindings
-	return_type                 u32
-	return_type_is_function     bool
-	return_types_are_functions  []bool
-	return_types                flat.TypeTextList
-	option_return_type          u32
-	current_function            string
-	current_receiver            u32
-	current_method_is_static    bool
-	expected_expression_type    u32
+	// The shared declaration index is immutable; arbitrary parsers memoize misses locally.
+	interface_method_names        map[u32][]string
+	interface_method_names_memo   map[u32][]string
+	interface_implementation_memo map[u64]bool
+	global_option_types           flat.TypeTextBindings
+	global_types                  flat.TypeTextBindings
+	return_type                   u32
+	return_type_is_function       bool
+	return_types_are_functions    []bool
+	return_types                  flat.TypeTextList
+	option_return_type            u32
+	current_function              string
+	current_receiver              u32
+	current_method_is_static      bool
+	expected_expression_type      u32
 	// Scoped to a whole nil reset of a concrete local; erased function values are excluded.
 	allows_nil_local_assignment bool
 	capturing_defer             bool
@@ -1883,6 +1885,7 @@ struct FastcFileGenContext {
 	struct_field_info         map[string][]FastcStructField
 	struct_field_lookup       map[string]map[string]&FastcStructField
 	interface_fields          map[string]FastcInterfaceField
+	interface_method_names    map[u32][]string
 	constants                 map[string]string
 	constant_values           map[string]string
 	public_constants          map[string]bool
@@ -2022,6 +2025,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		mono_functions:                map[string]FastcFunctionSignature{}
 		mono_definitions:              map[string]string{}
 		interface_fields:              ctx.interface_fields
+		interface_method_names:        ctx.interface_method_names
 		constants:                     ctx.constants
 		constant_values:               ctx.constant_values
 		public_constants:              ctx.public_constants
@@ -2503,6 +2507,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		generic_method_names:      fastc_generic_method_names(generic_method_sources)
 		module_aliases:            module_aliases
 		interface_fields:          interface_fields
+		interface_method_names:    fastc_interface_method_names(functions, declared_kinds)
 		constants:                 constants
 		constant_values:           constant_output.compile_time_values
 		public_constants:          public_constants
@@ -4392,6 +4397,27 @@ fn fastc_generic_method_names(generic_method_sources map[string]FastcGenericMeth
 	mut names := map[string]bool{}
 	for key, _ in generic_method_sources {
 		names[key.all_after_last('.')] = true
+	}
+	return names
+}
+
+fn fastc_interface_method_names(functions map[string]FastcFunctionSignature, kinds map[u32]FastcDeclaredTypeKind) map[u32][]string {
+	mut owners := map[string]u32{}
+	mut names := map[u32][]string{}
+	for typ, kind in kinds {
+		if kind == .interface_ {
+			owners[flat.source_type_name(typ)] = typ
+			names[typ] = []string{}
+		}
+	}
+	// Scan once per generation instead of cloning every function key for each
+	// interface queried by each source file and generic specialization.
+	for key, _ in functions {
+		separator := key.last_index_u8(`.`)
+		if separator < 0 { continue }
+		if owner := owners[key[..separator]] {
+			names[owner] << key[separator + 1..]
+		}
 	}
 	return names
 }

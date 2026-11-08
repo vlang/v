@@ -127,11 +127,16 @@ $if !skip_fastc ? {
 		// Only the platform compiler opens the headers and native implementations.
 		dir := os.join_path(os.vtmp_dir(), 'v3_fastc_native')
 		ensure_native_object_cache_dir(dir)!
-		mut owner := v3_fastc_native_declarations(dir, head.str()) + v3_tcc_dylib_function_bindings(functions).owner
+		declarations := v3_fastc_native_declarations(dir, head.str())
+		bindings := v3_tcc_dylib_function_bindings(functions).owner
 		adapters := v3_fastc_native_args_adapters(generation, prefs, functions)
+		mut owner_builder := strings.new_builder(declarations.len + bindings.len + adapters.len * 512)
+		owner_builder.write_string(declarations)
+		owner_builder.write_string(bindings)
 		for adapter in adapters {
-			owner += adapter.native_side()
+			owner_builder.write_string(adapter.native_side())
 		}
+		owner := owner_builder.str()
 		if bench_phases {
 			eprintln('fastc-phase native.owner ${sw.elapsed().microseconds()}us')
 		}

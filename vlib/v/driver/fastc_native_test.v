@@ -1,3 +1,4 @@
+// vtest vflags: -compile-backend fastc
 module driver
 
 // vfmt off
@@ -7,6 +8,12 @@ $if !skip_fastc ? {
 	import v.gen.fastc
 }
 // vfmt on
+
+fn test_fastc_native_backend_is_enabled() {
+	$if skip_fastc ? {
+		assert false, 'native-cache tests require -compile-backend fastc'
+	}
+}
 
 fn test_fastc_native_parallel_cc_selects_more_units_without_overriding_serial_mode() {
 	$if !skip_fastc ? {
