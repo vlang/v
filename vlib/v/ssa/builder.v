@@ -9957,7 +9957,10 @@ fn (mut b Builder) build_decl_assign(node flat.Node) {
 		if declared_storage_type > 0 {
 			rhs_val = b.coerce_value_for_type(rhs_val, declared_storage_type)
 			if b.is_int_type(declared_storage_type) || b.is_float_type(declared_storage_type)
-				|| b.is_pointer_type(declared_storage_type) {
+				|| b.is_pointer_type(declared_storage_type)
+				|| b.value_type(rhs_val) == declared_storage_type {
+				// `__map_val := make_ref()` declared as `Kind` holds the loaded
+				// `Kind`, not the `&Kind` it was initialized from.
 				rhs_type = declared_storage_type
 			}
 		}

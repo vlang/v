@@ -374,3 +374,53 @@ int 42
 ptr', output
 	}
 }
+
+// `m[k] = make_ref()` stores the `Kind` that `make_ref() &Kind` points to: the
+// transformer declares the staging value as `Kind`.
+fn test_implicit_deref_in_typed_declaration() {
+	$if macos && arm64 {
+		output := run_arm64('map_deref', "struct Leaf {
+	n int
+}
+
+struct Ptr {
+	base &Kind
+}
+
+type Kind = Leaf | Ptr
+
+const leaf = Kind(Leaf{5})
+
+fn make_ref() &Kind {
+	return &Kind(Ptr{
+		base: &leaf
+	})
+}
+
+fn clobber(n int) int {
+	mut buf := [64]int{}
+	for i in 0 .. 64 {
+		buf[i] = n * i + 7
+	}
+	return buf[n % 64]
+}
+
+fn describe(k Kind) string {
+	return match k {
+		Leaf { 'leaf \${k.n}' }
+		Ptr { '&' + describe(*k.base) }
+	}
+}
+
+fn main() {
+	mut m := map[string]Kind{}
+	m['a'] = make_ref()
+	_ = clobber(3)
+	println(describe(m['a'] or { Kind(Leaf{0}) }))
+	println(voidptr((m['a'] or { Kind(Leaf{0}) } as Ptr).base) == voidptr(&leaf))
+}
+")
+		assert output == '&leaf 5
+true', output
+	}
+}
