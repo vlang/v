@@ -140,6 +140,9 @@ subdir.
   any public functions, run `./v check-md` for markdown files, and
   keep Markdown lines <= 100 chars. Add or update tests when introducing
   a new public API.
+* Back every factual claim added to a skill under `vlib/v/skills/`
+  with a `v` example that `check-md` compiles, a `v failcompile`
+  example for a rejected form, or a test under `vlib/v/skills/`.
 * For deeper edge cases, consult `CONTRIBUTING.md` and `TESTS.md`.
 
 ## Safety (Keep the Compiler Current)
@@ -214,6 +217,9 @@ See Build & Rebuild for rebuild triggers and flags.
   (README.md, `doc/`, `tutorials/`) and note it.
   For example: README.md for top-level CLI usage, `doc/` for
   compiler/tool docs, `tutorials/` for learning material.
+* If a change alters behavior that a bundled skill describes, update
+  the skill under `vlib/v/skills/` in the same change. Search the
+  skills for the affected flag, command, diagnostic, API or construct.
 * If you add or change a public API, update module docs or README and
   note it. Public API includes stdlib functions/types and user-visible
   compiler flags, diagnostics, tool CLI behavior (including `cmd/tools`
