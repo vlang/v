@@ -213,6 +213,11 @@ By-value parameters whose addresses escape to spawned workers retain shared stor
 function returns. Later writes and workers from the same invocation use that storage.
 Escaped keyword fields and locals, and the ESC escape `\e` in runes and strings, are supported.
 Multiline values can continue with leading binary operators or a following `else` branch.
+Expression blocks run their scoped defers before yielding their saved value; branch-local
+cleanup stays inside its branch. `defer(fn)` remains active until the function exits.
+A leading `mut` in a parallel declaration makes every target mutable, matching the C backend.
+References to sum conversions such as `&Sum(variant)` retain both the sum tag and its payload
+after the creating function returns, including within narrowed match branches.
 A newline after a pointer assignment can start an address expression, including the final value
 of an `if` branch; numeric bitwise-AND continuations remain supported.
 Postfix updates used as values return the old value, and trailing variable attributes preserve
