@@ -131,6 +131,7 @@ mut:
 	struct_embeds            map[TypeID][]int
 	default_struct_types     map[TypeID]bool
 	option_types             map[u32]TypeID
+	option_types_by_payload  map[u64]TypeID
 	sum_type_variants        flat.SourceTypeListBindings
 	sum_type_canonical       flat.SourceTypeBindings
 	enum_types               map[u32]bool
@@ -18760,6 +18761,14 @@ fn (mut b Builder) option_type_id_with_payload(base_name_id u32, base_typ TypeID
 	if typ := b.option_types[key] {
 		return typ
 	}
+	// `?ValueID` and `?int` share one SSA type, as Go's types canonicalize identical
+	// types: an option of an alias is the same value as an option of its target,
+	// and `return m[k] or { return none }` passes one where the other is declared.
+	payload_key := (u64(base_typ) << 1) | u64(is_result)
+	if typ := b.option_types_by_payload[payload_key] {
+		b.option_types[key] = typ
+		return typ
+	}
 	mut fields := []TypeID{}
 	mut field_names := []string{}
 	fields << b.i1_type
@@ -18778,6 +18787,7 @@ fn (mut b Builder) option_type_id_with_payload(base_name_id u32, base_typ TypeID
 		field_names: field_names
 	})
 	b.option_types[key] = typ_id
+	b.option_types_by_payload[payload_key] = typ_id
 	return typ_id
 }
 

@@ -564,3 +564,40 @@ fn main() {
 		assert output == 'true', output
 	}
 }
+
+// An option of an alias is the option of its target, so `return m[k] or { return none }`
+// in a `?ValueID` function returns the value instead of 0.
+fn test_option_of_alias_return() {
+	$if macos && arm64 {
+		output := run_arm64('option_alias_return', "type ValueID = int
+
+struct B {
+	vars map[string]ValueID
+}
+
+fn (b &B) find(name string) ?ValueID {
+	for _ in 0 .. 2 {
+		return b.vars[name] or { return none }
+	}
+	return none
+}
+
+fn (b &B) find_direct(name string) ?ValueID {
+	return b.vars[name] or { return none }
+}
+
+fn main() {
+	b := &B{
+		vars: {
+			't': ValueID(16586)
+		}
+	}
+	x := b.find('t') or { -1 }
+	y := b.find_direct('t') or { -1 }
+	z := b.find_direct('missing') or { -1 }
+	println('\${x} \${y} \${z}')
+}
+")
+		assert output == '16586 16586 -1', output
+	}
+}
