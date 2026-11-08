@@ -25,7 +25,7 @@ PROGRAM
     chmod +x v_tcc_debug
     exit 0
 fi
-[ "$1" = -W ] && [ "$2" = -silent ] && [ "$3" = test-self ] && [ "$4" = vlib ]
+[ "$#" -eq 3 ] && [ "$1" = -W ] && [ "$2" = test-self ] && [ "$3" = vlib ]
 echo tests >> events
 [ "${FAIL_STAGE:-}" != tests ] || exit 9
 MOCK

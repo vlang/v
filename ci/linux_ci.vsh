@@ -110,7 +110,8 @@ fn self_tests_vprod_tcc() {
 	// Keep the optimized test compiler while still checking a TCC debug self-build.
 	exec_args(['v', '-keepc', '-cc', 'tcc', '-g', '-o', 'v_tcc_debug', 'self'])
 	exec_args(['./v_tcc_debug', 'run', 'examples/hello_world.v'])
-	self_tests()
+	// Emit a separate result line for every file instead of hiding successes.
+	exec_args(['v', '-W', 'test-self', 'vlib'])
 }
 
 fn build_examples_tcc() {
