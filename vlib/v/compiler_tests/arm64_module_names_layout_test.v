@@ -363,3 +363,106 @@ fn main() {
 		assert output == '104 104 9', output
 	}
 }
+
+// Indexing `[rows][cols]Item` from `main`, where `rows` and `cols` mean nothing,
+// still steps over whole rows. Through an alias of a C struct too.
+fn test_fixed_array_index_strides_from_other_module() {
+	$if macos && arm64 {
+		output := run_arm64('fixed_array_index', {
+			'grid/grid.v': 'module grid
+
+pub const rows = 4
+pub const cols = 3
+
+pub struct Item {
+pub mut:
+	a i32
+	b i32
+}
+
+pub struct Big {
+pub mut:
+	start i32
+	items [rows][cols]Item
+	end   i32
+}
+'
+			'main.v':      'module main
+
+import grid
+
+fn main() {
+	mut d := grid.Big{}
+	d.items[3][2].b = 30
+	base := unsafe { &u8(&d) }
+	mut set := []int{}
+	for o := 0; o < int(sizeof(grid.Big)); o += 4 {
+		if unsafe { *(&i32(base + o)) } != 0 {
+			set << o
+		}
+	}
+	println(set)
+}
+'
+		}, []string{})
+		assert output == '[96]', output
+	}
+}
+
+fn test_c_struct_array_index_through_alias() {
+	$if macos && arm64 {
+		output := run_arm64('c_struct_index', {
+			'desc.h':        '#pragma once
+typedef struct item_desc { int a; int b; } item_desc;
+typedef struct big_desc { int start; item_desc items[4][3]; int end; } big_desc;
+static inline int big_end(const big_desc* d) { return d->end + d->items[3][2].b; }
+static inline int big_size(void) { return (int)sizeof(big_desc); }
+'
+			'cdesc/cdesc.v': 'module cdesc
+
+#include "@VMODROOT/desc.h"
+
+pub const rows = 4
+pub const cols = 3
+
+pub struct C.item_desc {
+pub mut:
+	a int
+	b int
+}
+
+pub struct C.big_desc {
+pub mut:
+	start int
+	items [rows][cols]C.item_desc
+	end   int
+}
+
+pub type BigDesc = C.big_desc
+
+fn C.big_end(d &C.big_desc) int
+fn C.big_size() int
+
+pub fn check(d &BigDesc) int {
+	return C.big_end(d)
+}
+
+pub fn c_size() int {
+	return C.big_size()
+}
+'
+			'main.v':        "module main
+
+import cdesc
+
+fn main() {
+	mut d := cdesc.BigDesc{}
+	d.end = 9
+	d.items[3][2].b = 30
+	println('\${sizeof(cdesc.BigDesc)} \${cdesc.c_size()} \${cdesc.check(&d)}')
+}
+"
+		}, ['-d', 'arm64_external_link'])
+		assert output == '104 104 39', output
+	}
+}

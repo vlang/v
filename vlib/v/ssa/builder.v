@@ -483,9 +483,8 @@ fn (mut b Builder) register_types() {
 				}
 				// Embedded fields with defaults carry their type in the field name.
 				declared_type := if f.typ == 0 { f.source_value_id() } else { f.typ }
-				field_type_name_id := native_c_struct_field_type(node.value_text(), f.value) or {
-					qualify_type_ref_name(declared_type, cur_module)
-				}
+				field_type_name_id := b.fixed_array_literal_lengths(native_c_struct_field_type(node.value_text(),
+					f.value) or { qualify_type_ref_name(declared_type, cur_module) }, cur_module)
 				field_type := if node.value_text().starts_with('C.') {
 					b.resolve_c_struct_storage_type(field_type_name_id, cur_module)
 				} else {
@@ -11987,6 +11986,41 @@ fn (b &Builder) fixed_array_len_text(type_name_id u32) string {
 	return '1'
 }
 
+// fixed_array_literal_lengths spells the lengths of a fixed array type that
+// `module_name` sizes with constants as numbers: `[rows][cols]Item` becomes
+// `[4][3]Item`. A field type keeps that spelling, so indexing it from another
+// module, where `rows` means nothing, still uses the right element stride.
+fn (mut b Builder) fixed_array_literal_lengths(name_id u32, module_name string) u32 {
+	if !b.is_fixed_array_type_name(name_id) {
+		return name_id
+	}
+	syntax := flat.source_type_syntax(name_id)
+	raw_len_id := if flat.source_type_shape(name_id).has(.leading_bracket) {
+		syntax.first_bracket_raw_inner()
+	} else {
+		syntax.receiver_app_inner()
+	}
+	raw_len := flat.source_type_name(raw_len_id)
+	elem_id := b.fixed_array_elem_type_name(name_id)
+	elem := b.fixed_array_literal_lengths(elem_id, module_name)
+	if raw_len.len == 0 || b.is_decimal_int_text(raw_len.replace('_', '')) {
+		if elem == elem_id {
+			return name_id
+		}
+		return flat.source_type_id('[${raw_len}]${flat.source_type_name(elem)}')
+	}
+	previous_module := b.cur_module
+	b.cur_module = module_name
+	expr_id := b.lookup_const_expr(raw_len)
+	b.cur_module = previous_module
+	if id := expr_id {
+		if value := b.const_int_literal_value(id) {
+			return flat.source_type_id('[${value.replace('_', '')}]${flat.source_type_name(elem)}')
+		}
+	}
+	return name_id
+}
+
 fn (b &Builder) is_decimal_int_text(text string) bool {
 	if text.len == 0 {
 		return false
@@ -17513,6 +17547,14 @@ fn (b &Builder) registered_field_type(struct_name_id u32, field_name string) ?u3
 	name := flat.source_type_name(owner_id)
 	if typ_source_id := b.struct_field_types.type_id(name + '.' + field_name) {
 		return typ_source_id
+	}
+	// `cdesc.BigDesc` names `C.big_desc`, which owns the field types.
+	if target := b.type_alias_target(owner_id) {
+		if target != owner_id {
+			if typ_source_id := b.registered_field_type(target, field_name) {
+				return typ_source_id
+			}
+		}
 	}
 	short_name := flat.source_type_name(flat.source_type_syntax(owner_id).first_dot_suffix())
 	if typ_source_id := b.struct_field_types.type_id(short_name + '.' + field_name) {
