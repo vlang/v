@@ -206,3 +206,55 @@ fn test_unchanged_build_entry_key_belongs_to_this_process() {
 	os.setenv(v3_internal_receipt_entry_env, '${os.getpid() + 1}:other', true)
 	assert v3_unchanged_build_entry_key() == ''
 }
+
+fn test_link_libraries_resolve_to_the_files_the_linker_reads() {
+	root := os.join_path(os.vtmp_dir(), 'v3_receipt_libs_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	lib_dir := os.join_path(root, 'lib')
+	framework_dir := os.join_path(root, 'frameworks', 'Native.framework')
+	os.mkdir_all(lib_dir)!
+	os.mkdir_all(framework_dir)!
+	os.write_file(os.join_path(lib_dir, 'libnative.a'), 'archive')!
+	os.write_file(os.join_path(framework_dir, 'Native'), 'binary')!
+	found := v3_link_library_files(['-L', lib_dir, '-lnative', '-F${os.join_path(root, 'frameworks')}',
+		'-framework', 'Native'], 'linux')
+	assert found.ok
+	assert os.real_path(os.join_path(lib_dir, 'libnative.a')) in found.files
+	assert os.real_path(os.join_path(framework_dir, 'Native')) in found.files
+	// A library that no directory holds cannot be verified on Linux.
+	assert !v3_link_library_files(['-L', lib_dir, '-lmissing_receipt_lib'], 'linux').ok
+	$if macos {
+		// On macOS it may live in the dyld shared cache: the system version stands for it.
+		missing := v3_link_library_files(['-lmissing_receipt_lib'], 'macos')
+		assert missing.ok
+		assert '/System/Library/CoreServices/SystemVersion.plist' in missing.files
+	}
+}
+
+fn test_pkgconfig_directive_packages_skip_options_and_versions() {
+	assert v3_pkgconfig_packages('--cflags --libs gtk+-3.0 >= 3.24 glib-2.0') == ['gtk+-3.0',
+		'glib-2.0']
+	assert v3_pkgconfig_packages('sdl2') == ['sdl2']
+}
+
+fn test_pkgconfig_files_follow_requirements() {
+	if os.find_abs_path_of_executable('pkg-config') or { '' } == '' {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'v3_receipt_pkgconfig_${os.getpid()}')
+	old_path := os.getenv('PKG_CONFIG_PATH')
+	defer {
+		os.setenv('PKG_CONFIG_PATH', old_path, true)
+		os.rmdir_all(root) or {}
+	}
+	os.mkdir_all(root)!
+	os.write_file(os.join_path(root, 'receiptbase.pc'), 'Name: receiptbase\nDescription: base\nVersion: 1\nCflags: -I/tmp/receiptbase\n')!
+	os.write_file(os.join_path(root, 'receipttop.pc'), 'Name: receipttop\nDescription: top\nVersion: 1\nRequires: receiptbase\nLibs: -lreceipttop\n')!
+	os.setenv('PKG_CONFIG_PATH', root, true)
+	found := v3_pkgconfig_files(['receipttop'])
+	assert found.ok
+	assert os.real_path(os.join_path(root, 'receipttop.pc')) in found.files
+	assert os.real_path(os.join_path(root, 'receiptbase.pc')) in found.files
+	assert os.real_path(root) in found.dirs
+	assert !v3_pkgconfig_files(['receipt_missing_package']).ok
+}

@@ -5404,6 +5404,8 @@ struct UnchangedBuildInputs {
 	tcc_include_dir string
 	cache_dir       string
 	build_time      string
+	target_os       string
+	packages        []string
 }
 
 // v3_unchanged_build_inputs collects the inputs of a receipt from a parsed AST.
@@ -5446,7 +5448,21 @@ fn v3_unchanged_build_inputs(a &flat.FlatAst, prefs &pref.Preferences, source_fi
 		}
 		cache_dir:       cache_dir
 		build_time:      v3_unchanged_build_build_time(prefs)
+		target_os:       prefs.target.os.str()
+		packages:        v3_unchanged_build_pkgconfig_packages(a)
 	}
+}
+
+// v3_unchanged_build_pkgconfig_packages returns the packages that the program's
+// `#pkgconfig` directives ask for.
+fn v3_unchanged_build_pkgconfig_packages(a &flat.FlatAst) []string {
+	mut packages := []string{}
+	for node in a.nodes {
+		if node.kind == .directive && node.value == 'pkgconfig' && node.typ != 0 {
+			packages << v3_pkgconfig_packages(flat.source_type_name(node.typ))
+		}
+	}
+	return packages
 }
 
 // v3_unchanged_build_prepare finds the native files of a receipt and signs all
@@ -5486,10 +5502,27 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 			}
 		}
 	}
-	for flag in [...inputs.flags, ...inputs.link_flags] {
+	all_flags := [...inputs.flags, ...inputs.link_flags]
+	for flag in all_flags {
 		clean := flag.trim_space()
 		if clean.len > 0 && !clean.starts_with('-') && os.is_file(clean) {
 			file_set[os.real_path(clean)] = true
+		}
+	}
+	mut dir_list := inputs.dirs.clone()
+	for link_inputs in [v3_link_library_files(all_flags, inputs.target_os),
+		v3_pkgconfig_files(inputs.packages)] {
+		if !link_inputs.ok {
+			unchanged_build_trace('cannot record: a linked library or pkg-config file was not found')
+			return UnchangedBuildStamp{}
+		}
+		for path in link_inputs.files {
+			file_set[path] = true
+		}
+		for dir in link_inputs.dirs {
+			if dir !in dir_list {
+				dir_list << dir
+			}
 		}
 	}
 	mut files := file_set.keys()
@@ -5497,7 +5530,7 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 	return v3_unchanged_build_stamp(UnchangedBuildReceipt{
 		sources:    inputs.sources
 		files:      files
-		dirs:       inputs.dirs
+		dirs:       dir_list
 		output_dir: inputs.output_dir
 	}, inputs.cache_dir, inputs.build_time)
 }
