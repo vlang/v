@@ -214,3 +214,26 @@ fn test_generated_sources_reach_a_pinned_compiler_unchanged() {
 	assert piped.output.contains('.v3_stdin_'), piped.output
 	assert !piped.output.contains('-v3-internal'), piped.output
 }
+
+fn test_fail_fast_stops_before_the_next_project_backend() {
+	plain := project_backend_fixture('fail_fast_plain', '')
+	c_project := project_backend_fixture('fail_fast_c', "Module {\n\tname: 'app'\n\tbackend: 'c'\n}\n")
+	for root in [plain, c_project] {
+		os.write_file(os.join_path(root, 'sub', 'a_test.v'), 'fn test_a() {\n\tassert false\n}\n')!
+	}
+	// Without fail-fast every project group runs.
+	all_groups := run_launcher_in(os.dir(plain), ['test', plain, c_project], '')
+	assert all_groups.exit_code == 1, all_groups.output
+	assert all_groups.output.count('Summary for all V _test.v files') == 2, all_groups.output
+	flag := run_launcher_in(os.dir(plain), ['test', '-fail-fast', plain, c_project], '')
+	assert flag.exit_code == 1, flag.output
+	assert flag.output.count('Summary for all V _test.v files') == 1, flag.output
+	// The test runner also reads fail-fast from the environment.
+	os.setenv('VTEST_FAIL_FAST', '1', true)
+	defer {
+		os.unsetenv('VTEST_FAIL_FAST')
+	}
+	env := run_launcher_in(os.dir(plain), ['test', plain, c_project], '')
+	assert env.exit_code == 1, env.output
+	assert env.output.count('Summary for all V _test.v files') == 1, env.output
+}
