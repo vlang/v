@@ -5412,6 +5412,9 @@ fn (mut b Builder) generate_map_clone_body(func_id int) {
 		b.block_instr1(.jmp, blk_bitmap, b.void_type, ValueID(blk_ready))
 	}
 
+	if b.m.target.ptr_size == 8 {
+		b.invalidate_native_map_index(result_block, new_state)
+	}
 	result_slot := b.block_instr0(.alloca, result_block, ptr_map)
 	result_state_field := b.block_struct_field_ptr(result_block, result_slot, b.map_type, 0)
 	b.block_instr2(.store, result_block, b.void_type, new_state, result_state_field)
@@ -7706,6 +7709,7 @@ fn (mut b Builder) generate_map_set_sized_body(func_id int) {
 			ValueID(blk_finish))
 		b.invalidate_native_map_index(blk_invalidate, state)
 		b.block_instr1(.jmp, blk_invalidate, b.void_type, ValueID(blk_finish))
+		b.update_native_map_index(blk_finish, state)
 		b.block_instr0(.ret, blk_finish, b.void_type)
 	} else {
 		b.block_instr0(.ret, blk_store, b.void_type)

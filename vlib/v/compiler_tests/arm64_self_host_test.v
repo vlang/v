@@ -527,3 +527,40 @@ fn main() {
 	}
 }
 
+// Lookups do not write to the map, so threads can read a shared map at once.
+fn test_concurrent_map_reads() {
+	$if macos && arm64 {
+		output := run_arm64('map_concurrent_reads', "fn count_found(m map[string]int, n int) int {
+	mut found := 0
+	for _ in 0 .. 20 {
+		for i in 0 .. n {
+			if 'key_\${i}' in m {
+				found++
+			}
+		}
+	}
+	return found
+}
+
+fn main() {
+	mut ok := true
+	for _ in 0 .. 10 {
+		mut m := map[string]int{}
+		for i in 0 .. 2000 {
+			m['key_\${i}'] = i
+		}
+		m.delete('key_0')
+		mut c := m.clone()
+		c['extra'] = 1
+		mut threads := []thread int{}
+		for _ in 0 .. 8 {
+			threads << spawn count_found(c, 2000)
+		}
+		ok = ok && threads.wait().all(it == 1999 * 20)
+	}
+	println(ok)
+}
+")
+		assert output == 'true', output
+	}
+}

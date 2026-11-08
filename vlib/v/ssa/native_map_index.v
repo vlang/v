@@ -12,10 +12,22 @@ fn (mut b Builder) register_native_map_index_helpers() {
 	b.generate_native_map_index_body(index_id)
 }
 
+// invalidate_native_map_index rebuilds the index of a map whose dense
+// positions changed. Writers keep the index current so that lookups only read
+// the map, like the C runtime's map and Go's runtime/map.go: other threads may
+// look up a map concurrently once its writer is done with it.
 fn (mut b Builder) invalidate_native_map_index(block BlockID, state ValueID) {
 	indexed_len_ptr := b.map_state_field_ptr(block, state, 8)
 	invalid := b.m.get_or_add_const(b.i64_type, '-1')
 	b.block_instr2(.store, block, b.void_type, invalid, indexed_len_ptr)
+	b.update_native_map_index(block, state)
+}
+
+// update_native_map_index indexes the entries a writer added since the last update.
+fn (mut b Builder) update_native_map_index(block BlockID, state ValueID) {
+	index_ref := b.m.add_value(.func_ref, b.void_type, 'v3_native_map_index',
+		b.fn_ids['v3_native_map_index'])
+	b.block_instr2(.call, block, b.void_type, index_ref, state)
 }
 
 fn (mut b Builder) native_map_key_hash(block BlockID, state ValueID, key ValueID) ValueID {
@@ -196,22 +208,29 @@ fn (mut b Builder) generate_native_map_find_body(func_id int) {
 	len := b.map_state_load_i64(check_len, state, 3)
 	has_entries := b.block_instr2(.gt, check_len, b.i1_type, len, zero)
 	b.block_instr3(.br, check_len, b.void_type, has_entries, ValueID(prepare), ValueID(missing))
-	index_ref := b.m.add_value(.func_ref, b.void_type, 'v3_native_map_index',
-		b.fn_ids['v3_native_map_index'])
-	b.block_instr2(.call, prepare, b.void_type, index_ref, state)
-	keys_ptr := b.map_state_field_ptr(prepare, state, 0)
-	slots_ptr := b.map_state_field_ptr(prepare, state, 6)
-	cap_ptr := b.map_state_field_ptr(prepare, state, 7)
-	keys := b.block_instr1(.load, prepare, ptr_i8, keys_ptr)
-	key_size := b.map_state_load_i64(prepare, state, 4)
-	slots_raw := b.block_instr1(.load, prepare, ptr_i8, slots_ptr)
-	slots := b.block_instr1(.bitcast, prepare, ptr_i64, slots_raw)
-	cap := b.block_instr1(.load, prepare, b.i64_type, cap_ptr)
-	mask := b.block_instr2(.sub, prepare, b.i64_type, cap, one)
-	hash := b.native_map_key_hash(prepare, state, key)
-	initial_slot := b.block_instr2(.and_, prepare, b.i64_type, hash, mask)
-	b.block_instr2(.store, prepare, b.void_type, initial_slot, slot_slot)
-	b.block_instr1(.jmp, prepare, b.void_type, ValueID(probe))
+	// Writers keep the index current, so a lookup normally does not write. Maps
+	// filled by a path that does not index them are indexed here, on first use.
+	indexed_len := b.block_instr1(.load, prepare, b.i64_type, b.map_state_field_ptr(prepare,
+		state, 8))
+	stale := b.block_instr2(.ne, prepare, b.i1_type, indexed_len, len)
+	reindex := b.m.add_block(func_id, 'map_find_reindex')
+	lookup := b.m.add_block(func_id, 'map_find_lookup')
+	b.block_instr3(.br, prepare, b.void_type, stale, ValueID(reindex), ValueID(lookup))
+	b.update_native_map_index(reindex, state)
+	b.block_instr1(.jmp, reindex, b.void_type, ValueID(lookup))
+	keys_ptr := b.map_state_field_ptr(lookup, state, 0)
+	slots_ptr := b.map_state_field_ptr(lookup, state, 6)
+	cap_ptr := b.map_state_field_ptr(lookup, state, 7)
+	keys := b.block_instr1(.load, lookup, ptr_i8, keys_ptr)
+	key_size := b.map_state_load_i64(lookup, state, 4)
+	slots_raw := b.block_instr1(.load, lookup, ptr_i8, slots_ptr)
+	slots := b.block_instr1(.bitcast, lookup, ptr_i64, slots_raw)
+	cap := b.block_instr1(.load, lookup, b.i64_type, cap_ptr)
+	mask := b.block_instr2(.sub, lookup, b.i64_type, cap, one)
+	hash := b.native_map_key_hash(lookup, state, key)
+	initial_slot := b.block_instr2(.and_, lookup, b.i64_type, hash, mask)
+	b.block_instr2(.store, lookup, b.void_type, initial_slot, slot_slot)
+	b.block_instr1(.jmp, lookup, b.void_type, ValueID(probe))
 	slot := b.block_instr1(.load, probe, b.i64_type, slot_slot)
 	slot_offset := b.block_instr2(.mul, probe, b.i64_type, slot, eight)
 	slot_ptr := b.block_instr2(.add, probe, ptr_i64, slots, slot_offset)
