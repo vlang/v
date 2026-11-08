@@ -32,6 +32,10 @@ Native implementation includes follow generated V types, while ordinary C header
 library like any other include of its directory.
 The C compiler's list of headers opened by the TinyCC program is reused while the program's
 preprocessor lines, compiler and flags are unchanged and every listed header keeps its content.
+Native bridge libraries can also be reused after an unused V macro changes, such as a build
+timestamp. Clang must produce identical preprocessed code and report the same header paths;
+all recorded native dependencies still require matching contents before reuse.
+Dependency paths and contents must stay unchanged while Clang preprocesses the native owner.
 Explicit macro directives retain their source-file order around native implementations.
 With `-o program.c`, FastC writes C without invoking a native compiler or linker.
 C output is published only after the buffered writes, final flush, and close succeed.
@@ -48,6 +52,9 @@ the C backend again.
 Ordinary `v self` builds include only the C backend. The first `-b fastc` request automatically
 builds a full compiler in the tool cache and runs it; subsequent requests reuse that compiler.
 Use `v -compile-backend fastc self` to include FastC in the main executable instead.
+Production self-builds (`v -o vprod -prod self`) include and PGO-train FastC automatically
+when using Clang, so FastC requests retain the production compiler's speed. Other production
+C toolchains include FastC without PGO. Pass `-d skip_fastc` to omit it explicitly.
 
 On Windows, ordinary FastC programs set stdout and stderr to binary mode, preserving `\n`
 without CRT conversion to `\r\n`, as the default C backend does.

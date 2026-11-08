@@ -134,9 +134,9 @@ $if !skip_fastc ? {
 		for archive in c_dylib_force_loaded_static_archive_inputs(link_flags) {
 			if archive !in archives { archives << archive }
 		}
-		// Invalidate manifests written before archives were tracked. Include their
-		// resolved paths so a changed library search result cannot reuse an old owner.
-		mut hash := c_hash_bytes(u64(1469598103934665603), 'v3-fastc-native-v2'.bytes())
+		// Invalidate owners whose manifests did not validate the preprocessing snapshot.
+		// Archive paths also keep changed library searches from reusing an old owner.
+		mut hash := c_hash_bytes(u64(1469598103934665603), 'v3-fastc-native-v3'.bytes())
 		hash = c_hash_bytes(hash, owner.bytes())
 		hash = c_hash_bytes(hash, prepared.join('\x00').bytes())
 		hash = c_hash_bytes(hash, archives.join('\x00').bytes())
@@ -158,11 +158,18 @@ $if !skip_fastc ? {
 			}
 			return V3FastcNativeBridge{ functions: functions.keys(), adapters: adapters, sources: sources, dependencies: cached.dependencies, library: cached.library }
 		}
-		deps := c_object_dependencies('/usr/bin/clang', args, path)
-		if deps.used_fallback {
-			return error('FastC native dependency manifest is unavailable: ' + path)
+		// V macros such as @BUILD_TIMESTAMP can change without affecting native code.
+		// Only Clang may establish that equivalence: headers remain opaque to V.
+		preprocessed := v3_fastc_native_preprocessed_source(dir, path, args, archives, '/usr/bin/clang', mut stats)!
+		preprocessed_manifest := c_object_manifest_path(dir, preprocessed.path, '/usr/bin/clang', prepared, prefs.target, mut stats)
+		if cached := v3_fastc_native_cached_library(preprocessed_manifest, fastc.fastc_tcc_job_count(prefs)) {
+			if bench_phases {
+				eprintln('fastc-phase native.preprocessed_reuse ${sw.elapsed().microseconds()}us')
+			}
+			return V3FastcNativeBridge{ functions: functions.keys(), adapters: adapters, sources: sources, dependencies: cached.dependencies, library: cached.library }
 		}
-		mut dependencies := deps.files.clone()
+		mut dependencies := preprocessed.dependencies.clone()
+		dependencies << preprocessed.path
 		for archive in archives {
 			if archive !in dependencies { dependencies << archive }
 		}
@@ -180,32 +187,121 @@ $if !skip_fastc ? {
 			}
 		}
 		mut signatures := []string{}
+		mut preprocessing_signatures := map[string]string{}
+		for i, dependency in preprocessed.dependencies {
+			preprocessing_signatures[dependency] = preprocessed.signatures[i]
+		}
 		for dependency in dependencies {
-			signature := c_object_file_signature(dependency, false, mut stats)
+			// Preserve the hashes of the inputs Clang actually preprocessed, even
+			// when a header changes before this later collection of native inputs.
+			signature := preprocessing_signatures[dependency] or { c_object_file_signature(dependency, false, mut stats) }
 			if signature == '' { return error('cannot sign native input: ' + dependency) }
 			signatures << signature
 			hash = c_hash_bytes(hash, (dependency + '\x00' + signature).bytes())
 		}
 		hash = c_hash_bytes(hash, v3_shared_c_compiler_identity('/usr/bin/clang').bytes())
 		library := os.join_path(dir, hash.hex() + '.dylib')
+		staged := library + '.tmp.' + tempname.unique_token()
+		defer { os.rm(staged) or {} }
 		if !os.is_file(library) {
-			staged := library + '.tmp.' + tempname.unique_token()
-			defer { os.rm(staged) or {} }
+			// Compile exactly the text that established the secondary cache key,
+			// including Clang's expansion of time-dependent native macros.
 			args << ['-dynamiclib', '-undefined', 'dynamic_lookup', '-Wl,-install_name,' + library,
-				path, '-o', staged, '-x', 'none']
+				'-x', 'objective-c-cpp-output', preprocessed.path, '-o', staged, '-x', 'none']
 			args << prepared.filter(c_flag_is_c_source_file(it))
 			args << link_flags
 			result := cmdexec.run('/usr/bin/clang', args)
 			if result.exit_code != 0 { return error(result.output) }
-			for i, dependency in dependencies {
-				if c_object_file_signature(dependency, true, mut stats) != signatures[i] {
-					return error('FastC native input changed during compilation: ' + dependency)
-				}
-			}
-			publish_native_c_object(staged, library)!
 		}
-		write_c_object_manifest(manifest, library, dependencies, mut stats) or {}
+		v3_fastc_native_publish_library(staged, library, [manifest, preprocessed_manifest], dependencies, signatures, mut stats)!
 		return V3FastcNativeBridge{ functions: functions.keys(), adapters: adapters, sources: sources, dependencies: dependencies, library: library }
+	}
+
+	struct V3FastcNativePreprocessedSource {
+		path         string
+		dependencies []string
+		signatures   []string
+	}
+
+	fn v3_fastc_native_validate_inputs(dependencies []string, signatures []string, phase string, mut stats CObjectCacheStats) ! {
+		if dependencies.len != signatures.len {
+			return error('FastC native dependency signatures are incomplete')
+		}
+		for i, dependency in dependencies {
+			if signatures[i] == '' || c_object_file_signature(dependency, true, mut stats) != signatures[i] {
+				return error('FastC native input changed during ${phase}: ' + dependency)
+			}
+		}
+	}
+
+	// v3_fastc_native_publish_library validates the captured inputs before publishing
+	// either the library or its manifests. Serialize those hashes without sampling again.
+	fn v3_fastc_native_publish_library(staged string, library string, manifests []string, dependencies []string, signatures []string, mut stats CObjectCacheStats) ! {
+		v3_fastc_native_validate_inputs(dependencies, signatures, 'compilation', mut stats)!
+		if os.is_file(staged) { publish_native_c_object(staged, library)! }
+		if !os.is_file(library) {
+			return error('FastC native library was not produced: ' + library)
+		}
+		mut out := strings.new_builder(128 + dependencies.len * 96)
+		out.writeln('format=v3-c-object-manifest-v1')
+		out.writeln('object=${library}')
+		for i, dependency in dependencies {
+			out.writeln('dependency=${dependency}\t${signatures[i]}')
+		}
+		text := out.str()
+		for manifest in manifests {
+			temporary := manifest + '.tmp.' + tempname.unique_token()
+			os.write_file(temporary, text) or {
+				os.rm(temporary) or {}
+				continue
+			}
+			os.mv(temporary, manifest) or { os.rm(temporary) or {} }
+		}
+	}
+
+	// v3_fastc_native_preprocessed_source keys a second lookup by Clang's expanded
+	// source and dependency paths. Unused macros disappear; macros used by a native
+	// header, including in conditional includes, still affect the result. The original
+	// dependency contents and native inputs are validated before either lookup reuses a library.
+	fn v3_fastc_native_preprocessed_source(dir string, source string, compile_args []string, archives []string, compiler string, mut stats CObjectCacheStats) !V3FastcNativePreprocessedSource {
+		staged := os.join_path(dir, 'preprocessed.tmp.' + tempname.unique_token())
+		depfile := staged + '.d'
+		defer {
+			os.rm(staged) or {}
+			os.rm(depfile) or {}
+		}
+		before := c_object_dependencies(compiler, compile_args, source)
+		if before.used_fallback {
+			return error('FastC native preprocessing dependency manifest is unavailable: ' + source)
+		}
+		mut signatures := []string{cap: before.files.len}
+		for dependency in before.files {
+			signature := c_object_file_signature(dependency, true, mut stats)
+			if signature == '' { return error('cannot sign native input: ' + dependency) }
+			signatures << signature
+		}
+		mut args := compile_args.clone()
+		args << ['-E', '-P', '-MD', '-MF', depfile, '-MT', 'v3cache', source, '-o', staged]
+		result := cmdexec.run(compiler, args)
+		if result.exit_code != 0 { return error(result.output) }
+		deps := c_object_dependencies_from_output(os.read_file(depfile)!, source)
+		if deps.used_fallback {
+			return error('FastC native preprocessing dependency manifest is unavailable: ' + source)
+		}
+		if deps.files != before.files {
+			return error('FastC native dependencies changed during preprocessing: ' + source)
+		}
+		v3_fastc_native_validate_inputs(before.files, signatures, 'preprocessing', mut stats)!
+		signature := c_object_file_signature(staged, false, mut stats)
+		if signature == '' { return error('cannot sign preprocessed native input: ' + source) }
+		canonical_source := os.real_path(source)
+		mut hash := c_hash_bytes(u64(1469598103934665603), 'v3-fastc-preprocessed-v2'.bytes())
+		hash = c_hash_bytes(hash, signature.bytes())
+		hash = c_hash_bytes(hash, deps.files.filter(it != source && it != canonical_source).join('\x00').bytes())
+		hash = c_hash_bytes(hash, archives.join('\x00').bytes())
+		path := os.join_path(dir, 'preprocessed_' + hash.hex() + '.mi')
+		if !os.is_file(path) { publish_native_c_object(staged, path)! }
+		return V3FastcNativePreprocessedSource{ path: path, dependencies: before.files, signatures: signatures }
 	}
 
 	// v3_fastc_native_declarations derives the native owner's declarations from the program
