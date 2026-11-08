@@ -52,7 +52,7 @@ fn fill_raw(data voidptr, len uint) {
 ## Where interop belongs
 
 The compiler can enforce the separation if you let it. Plain `.v` files should not
-contain `C.` or `JS.` calls; the platform-specific ones go in `*_c.v` or `*_js.v`
+contain `C.` or `JS.` calls; the platform-specific ones go in `*.c.v` or `*.js.v`
 files, and the compiler then knows which code cannot build where.
 
 `-Wimpure-v` turns an interop call that escaped into a plain `.v` file into a
@@ -70,22 +70,25 @@ The rules the C side does not enforce for you:
   of scope is a use-after-free.
 - **It must not free the memory.** Freeing V memory from C, or letting C free and V
   free again, is a double free.
-- **It must not move it.** A `&mut` array can be reallocated by a later append; a
+- **It must not move it.** A V array can be reallocated by a later append; a
   pointer C is holding then points at the old buffer.
-- **A V string is not a C string.** V's `string` carries a length; C wants a NUL.
-  Pass `&char` for a NUL-terminated literal, or send the length too.
+- **A V string is not a C string.** V's `string` carries a length. Most strings
+  also end in a NUL, slices included, because `s[a..b]` copies; but a view does
+  not: `substr_unsafe`, or `tos(ptr, len)` over a buffer C handed you. `s.str` is
+  the pointer; `s.clone()` makes a NUL-terminated copy when you cannot vouch for
+  the original.
 
-```v ignore
-import unsafe
+```v
+fn C.strlen(const_s &char) uint
 
-// c_string returns `s` NUL-terminated. Valid only while the pointer is used
-// immediately; the memory belongs to V and must not be freed by C.
-pub fn c_string(s string) &char {
-	mut copy := s.bytestr()
-	unsafe {
-		copy = &char(copy.c_str())
-	}
-	return copy
+fn main() {
+	text := 'hello world'
+	// A view into `text`: its bytes are followed by ' world', not by a NUL.
+	word := unsafe { text.substr_unsafe(0, 5) }
+	// The clone is NUL-terminated, and it lives until the end of this function,
+	// which outlasts the C call. C does not keep the pointer or free it.
+	n := unsafe { C.strlen(&char(word.clone().str)) }
+	assert n == 5
 }
 ```
 
@@ -96,7 +99,7 @@ error:
 
 | V type | Meaning |
 | --- | --- |
-| `string` | a pointer and a length; may contain no NUL |
+| `string` | a pointer and a length; may contain NUL bytes, may lack a final NUL |
 | `&char` | a NUL-terminated pointer; no length |
 
 A C API expecting `const char*` wants `&char`. A C API taking `(char*, size_t)`
@@ -104,19 +107,17 @@ wants a `[]u8` plus its length.
 
 ## unsafe C symbols
 
-C interop declarations go in a `.c.v` file, and use the `const_` prefix for names
-that would otherwise collide with V keywords:
+C interop declarations go in a `.c.v` file. A parameter whose name starts with
+`const_` is declared `const` in the generated C, which matches the C prototype and
+keeps `-cstrict` and C static analysers quiet:
 
 ```v ignore
-// syscall.c.v
+// strings.c.v
 module main
 
-fn const_TYPE() int
-fn const_NEW() int
+fn C.strlen(const_s &char) uint
+fn C.memcmp(const_a voidptr, const_b voidptr, n uint) int
 ```
-
-Using the prefix keeps the declaration legal in V and keeps it from shadowing a
-built-in.
 
 ## Checking it
 
