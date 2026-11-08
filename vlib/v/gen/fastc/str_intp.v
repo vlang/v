@@ -511,7 +511,7 @@ fn (mut g Parser) read_interpolated_string() !string {
 		}
 		// C pointer differences use the signed pointer-sized integer formatter.
 		if interpolation_type_id == fastc_type_ptrdiff_t {
-			interpolation_type_id = flat.source_type_isize
+			interpolation_type_id = flat.source_type_int
 		}
 		interpolation_type := flat.source_type_name(interpolation_type_id)
 		mut format_specifier := ''
@@ -608,7 +608,8 @@ fn (mut g Parser) read_interpolated_string() !string {
 			integer_str := g.fastc_struct_field_str_expression('__vf_signed', interpolation_type_id) or {
 				return g.unsupported('interpolation format `+` for `${flat.source_type_name(value_type)}`')
 			}
-			parts << '({ ${interpolation_type} __vf_signed = (${value}); string __vf_signed_str = ${integer_str}; __vf_signed >= 0 ? builtin__string_plus(_S("+"), __vf_signed_str) : __vf_signed_str; })'
+			integer_c_type := fastc_output_c_type(interpolation_type)
+			parts << '({ ${integer_c_type} __vf_signed = (${value}); string __vf_signed_str = ${integer_str}; __vf_signed >= 0 ? builtin__string_plus(_S("+"), __vf_signed_str) : __vf_signed_str; })'
 		} else if g.declared_kinds[g.semantic_type_key(interpolation_type_id)] == .enum_ {
 			enum_key := g.semantic_type_key(interpolation_type_id)
 			is_unsigned := g.enum_flags[enum_key]

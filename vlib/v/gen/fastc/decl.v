@@ -1275,9 +1275,10 @@ fn (g &Parser) global_initializer_is_constant(source string, allow_temporaries b
 			&& !is_temporary_copy {
 			return false
 		}
+		// This is generated C, so private integer storage names are valid casts.
 		if previous == `.` || name in ['NULL', 'true', 'false', 'sizeof', '_S', 'struct', 'union',
 			'void', 'signed', 'unsigned', 'long', 'short', 'size_t', 'uintptr_t', 'intptr_t']
-			|| fastc_primitive_c_type(name) != none || g.declared_type_c_names.contains(name)
+			|| fastc_primitive_c_type_id(flat.source_type_id(name)) != none || g.declared_type_c_names.contains(name)
 			|| name.starts_with('FixedArray_') || name.starts_with('Array_') || fastc_source_type_key_exists(g.declared_types, '#Cstruct#${name}')
 			|| fastc_source_type_key_exists(g.declared_types, '#Ctypedef#${name}') {
 			previous = `a`
@@ -3644,6 +3645,9 @@ fn fastc_emit_enum_declaration(mut scan scanner.Scanner, source_file FastcSource
 	tok = scan.scan()
 	if tok == .key_as {
 		tok = scan.scan()
+		if tok == .name && scan.lit in ['isize', 'usize'] {
+			return error('fastc parser does not support ${fastc_removed_integer_type(scan.lit)} in ${source_file.path}')
+		}
 		// Accept any integer backing type (`as u32`, `as u8`, ...). The C typedef is
 		// still `int` (or `u64` for flag enums); values are emitted with an explicit
 		// cast, so a narrower/wider spelling does not change the generated C.
