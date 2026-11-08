@@ -1,7 +1,10 @@
 module canvas
 
 import crypto.sha256
-import sokol.gfx
+
+$if macos {
+	import sokol.gfx
+}
 
 fn test_approx_size_follows_skia() {
 	// skgpu::GetApproxSize(): at least 16, powers of two up to 1024, then

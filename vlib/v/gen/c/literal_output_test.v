@@ -241,8 +241,8 @@ fn test_windows_literal_cli_output_matches_native_crt_declarations() ! {
 		'fn main() { print("a\\x00b"); eprintln("c"); print("d") }'] {
 		os.write_file(source, program)!
 		for cc in ['clang', 'msvc'] {
-			generated := run_literal_output_v(['-new-compiler', '-nocache', '-os', 'windows',
-				'-arch', 'amd64', '-cc', cc, '-o', c_file, source])
+			generated := run_literal_output_v(['-new-compiler', '-nocache', '-os', 'windows', '-arch',
+				'amd64', '-cc', cc, '-o', c_file, source])
 			assert generated.exit_code == 0, generated.output
 			code := os.read_file(c_file)!
 			assert code.len < 2048, code
