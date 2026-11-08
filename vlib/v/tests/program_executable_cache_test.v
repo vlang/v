@@ -33,13 +33,16 @@ fn (s SavedEnv) restore() {
 }
 
 // pin_module_cache points the module cache at `dir`, whatever the runner exports,
-// and makes the compiler say why it does not restore an executable.
+// and makes the compiler say why it does not restore an executable. The receipt
+// of an unchanged build would restore it before this cache is consulted, so these
+// tests turn that receipt off.
 fn pin_module_cache(dir string) []SavedEnv {
 	saved := ['VTMP', 'V3CACHE', 'VFLAGS', 'V3_CACHE_FORCE_SOURCE', 'V3_CACHE_TRACE', 'VMODULES',
-		'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE'].map(save_env(it))
+		'V3_CACHE_DISABLE_PROGRAM_EXECUTABLE', 'V3_DISABLE_UNCHANGED_BUILD_CACHE'].map(save_env(it))
 	os.setenv('VTMP', dir, true)
 	os.setenv('V3CACHE', dir, true)
 	os.setenv('V3_CACHE_TRACE', '1', true)
+	os.setenv('V3_DISABLE_UNCHANGED_BUILD_CACHE', '1', true)
 	os.unsetenv('VFLAGS')
 	os.unsetenv('V3_CACHE_FORCE_SOURCE')
 	os.unsetenv('V3_CACHE_DISABLE_PROGRAM_EXECUTABLE')

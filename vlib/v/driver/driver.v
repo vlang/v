@@ -5095,13 +5095,18 @@ fn persistent_program_cache_enabled(cache_enabled bool, test_input bool, vtmp_di
 		&& (!os.base(vtmp_dir).starts_with('tsession_') || os.getenv('V3CACHE') != '')
 }
 
-const v3_unchanged_build_cache_version = 'v3-unchanged-build-1'
+const v3_unchanged_build_cache_version = 'v3-unchanged-build-2'
 
-fn v3_unchanged_build_cache_opted_in(no_cache bool) bool {
-	// This receipt does not yet track every compile-time and linker input.
-	// Keep ordinary builds on the established dependency-validated caches.
-	return !no_cache && os.getenv('V3_ENABLE_UNCHANGED_BUILD_CACHE') == '1'
-		&& os.getenv('V3_DISABLE_UNCHANGED_BUILD_CACHE') == ''
+// v3_unchanged_build_cache_opted_in reports whether a build may restore the
+// executable of an earlier build of the same program before parsing it. A
+// `-nocache` that the user wrote turns the receipt off, as does
+// V3_DISABLE_UNCHANGED_BUILD_CACHE; the `-nocache` of a build that the compiler
+// restarted without the module cache does not.
+fn v3_unchanged_build_cache_opted_in(args []string, restarted bool) bool {
+	if !restarted && ('-nocache' in args || '--no-cache' in args) {
+		return false
+	}
+	return os.getenv('V3_DISABLE_UNCHANGED_BUILD_CACHE') == ''
 }
 
 // v3_unchanged_build_cache_root is independent of the module cache state, so a
@@ -5116,32 +5121,10 @@ fn v3_unchanged_build_cache_root(vroot string) string {
 	return os.join_path(os.vtmp_dir(), 'v3_unchanged_build_${root_hash}')
 }
 
-fn v3_fast_build_tree_signature(root string) string {
-	mut entries := strings.new_builder(4096)
-	v3_fast_build_tree_signature_into(root, mut entries)
-	return sha256.hexhash(entries.str())
-}
-
-fn v3_fast_build_tree_signature_into(root string, mut entries strings.Builder) {
-	names := os.ls(root) or { return }
-	mut sorted_names := names.clone()
-	sorted_names.sort()
-	for name in sorted_names {
-		if name == '.git' || name == 'thirdparty' {
-			continue
-		}
-		path := os.join_path_single(root, name)
-		if os.is_dir(path) {
-			v3_fast_build_tree_signature_into(path, mut entries)
-			continue
-		}
-		if os.file_ext(name) !in ['.v', '.vh', '.vsh', '.c', '.h'] && name != 'v.mod' {
-			continue
-		}
-		entries.writeln('${path}\t${modulecache.file_metadata_signature(path)}')
-	}
-}
-
+// v3_unchanged_build_key identifies a build by everything that is not a file:
+// the compiler, the C compiler and its identity, the output, the command line
+// and the environment that sends a compiler or a linker to other files. The
+// files of the build are verified from the receipt (v3_restore_unchanged_build).
 fn v3_unchanged_build_key(prefs &pref.Preferences, c_compiler string, bin_file string) string {
 	mut output_args := []string{}
 	for arg in os.args[1..] {
@@ -5151,65 +5134,137 @@ fn v3_unchanged_build_key(prefs &pref.Preferences, c_compiler string, bin_file s
 		}
 		output_args << arg
 	}
+	mut stats := CObjectCacheStats{}
+	_, compiler_identity := c_object_compiler_identity(c_compiler, mut stats)
 	parts := [
 		v3_unchanged_build_cache_version,
 		os.real_path(prefs.vexe),
 		v3_cache_compiler_executable_identity(prefs.vexe),
 		c_compiler,
-		os.real_path(bin_file),
+		compiler_identity,
+		// The directory exists before the first build writes the executable.
+		os.join_path_single(os.real_path(os.dir(bin_file)), os.file_name(bin_file)),
+		os.getwd(),
 		os.getenv('VFLAGS'),
+		os.getenv('VMODULES'),
 		os.getenv('CFLAGS'),
 		os.getenv('LDFLAGS'),
 		os.getenv('PKG_CONFIG_PATH'),
 		v3_link_environment_signature(),
-		v3_fast_build_tree_signature(os.join_path(prefs.vroot, 'vlib')),
 		output_args.join('\x00'),
 	]
 	return sha256.hexhash(parts.join('\x01'))
 }
 
+// UnchangedBuildReceipt lists what an executable was built from (see
+// v3_publish_unchanged_build): the program's V sources, verified one by one and
+// as a whole by their source signature (content digests, `$env` reads, `v.mod`
+// hashes, pkg-config probes and the build-time pseudo variables), the other
+// files it read, verified by content, and the directories whose entries decide
+// which files a module has.
+struct UnchangedBuildReceipt {
+	sources []string
+	files   []string
+	dirs    []string
+	// output_dir is the directory of the executable. Writing the executable
+	// changes its metadata, so its V entries are compared instead.
+	output_dir string
+}
+
+fn unchanged_build_trace(message string) {
+	if os.getenv('V3_CACHE_TRACE') != '' {
+		eprintln('  V3 unchanged build cache ${message}')
+	}
+}
+
+// v3_unchanged_build_build_time returns the build-time pseudo values a build
+// compiles into a program that reads them.
+fn v3_unchanged_build_build_time(prefs &pref.Preferences) string {
+	return '${prefs.build_date} ${prefs.build_time} ${prefs.build_timestamp}'
+}
+
+// v3_unchanged_build_source_signature signs the sources of a receipt, with the
+// build-time values that a source reading them compiles in.
+fn v3_unchanged_build_source_signature(cache_dir string, sources []string, build_time string) string {
+	return modulecache.cached_source_signature_with_build_values(cache_dir, 'unchanged-build',
+		sources, build_time)
+}
+
+const v3_internal_receipt_entry_env = 'V3_INTERNAL_RECEIPT_ENTRY'
+
+// v3_note_unchanged_build_entry_key remembers the receipt key of the build the
+// user started, for a restart of this process (which keeps its pid) into another
+// configuration. A build of another program that this process starts has another
+// pid and ignores it.
+fn v3_note_unchanged_build_entry_key(key string) {
+	if os.getenv(v3_internal_receipt_entry_env) == '' {
+		os.setenv(v3_internal_receipt_entry_env, '${os.getpid()}:${key}', true)
+	}
+}
+
+// v3_unchanged_build_entry_key returns the receipt key noted by the build that
+// restarted into this process, or ''.
+fn v3_unchanged_build_entry_key() string {
+	entry := os.getenv(v3_internal_receipt_entry_env)
+	pid := entry.all_before(':')
+	if entry.len == 0 || pid != os.getpid().str() {
+		return ''
+	}
+	return entry.all_after(':')
+}
+
 // v3_restore_unchanged_build restores a previously successful executable when
-// every source and native input recorded for the same build is still unchanged.
-fn v3_restore_unchanged_build(cache_dir string, key string, destination string) bool {
+// every input recorded for the same build is still unchanged. As in Zig's whole
+// cache manifest, a file is trusted by content: a recorded metadata match is only
+// the memo of a content hash (modulecache.file_signature). Each source is
+// compared on its own first, so an edited file is a miss without signing the rest.
+fn v3_restore_unchanged_build(cache_dir string, key string, destination string, build_time string) bool {
 	stamp_path := os.join_path(cache_dir, '${key}.stamp')
-	lines := os.read_file(stamp_path) or {
-		if os.getenv('V3_CACHE_TRACE') != '' {
-			eprintln('  V3 unchanged build cache miss: stamp is missing')
-		}
+	content := os.read_file(stamp_path) or {
+		unchanged_build_trace('miss: stamp ${key[..12]} is missing')
 		return false
-	}.split_into_lines()
-	if lines.len < 2 || lines[0] != v3_unchanged_build_cache_version {
-		if os.getenv('V3_CACHE_TRACE') != '' {
-			eprintln('  V3 unchanged build cache miss: stamp header changed')
-		}
+	}
+	lines := content.split_into_lines()
+	if lines.len < 3 || lines[0] != v3_unchanged_build_cache_version {
+		unchanged_build_trace('miss: stamp header changed')
 		return false
 	}
 	executable := os.join_path(cache_dir, '${key}.exe')
+	// The cache's own copy is identified by its metadata, as no one else writes it.
 	if lines[1] == '' || modulecache.file_metadata_signature(executable) != lines[1] {
-		if os.getenv('V3_CACHE_TRACE') != '' {
-			eprintln('  V3 unchanged build cache miss: executable changed')
-		}
+		unchanged_build_trace('miss: executable changed')
 		return false
 	}
+	mut sources := []string{}
+	mut source_signature := ''
 	for line in lines[2..] {
 		parts := line.split('\t')
-		if parts.len != 3 {
-			return false
-		}
 		match parts[0] {
-			'file' {
-				if parts[2] == '' || modulecache.file_metadata_signature(parts[1]) != parts[2] {
-					if os.getenv('V3_CACHE_TRACE') != '' {
-						eprintln('  V3 unchanged build cache miss: input changed: ${parts[1]}')
-					}
+			'sources' {
+				if parts.len != 2 || parts[1] == '' {
 					return false
 				}
+				source_signature = parts[1]
 			}
-			'dir' {
-				if v3_large_cold_cache_directory_signature(parts[1]) != parts[2] {
-					if os.getenv('V3_CACHE_TRACE') != '' {
-						eprintln('  V3 unchanged build cache miss: directory changed: ${parts[1]}')
-					}
+			'source', 'file' {
+				if parts.len != 3 || parts[2] == '' || modulecache.file_signature(parts[1]) != parts[2] {
+					unchanged_build_trace('miss: input changed: ${parts[1]}')
+					return false
+				}
+				if parts[0] == 'source' {
+					sources << parts[1]
+				}
+			}
+			'dir', 'listing' {
+				signature := if parts.len != 3 {
+					''
+				} else if parts[0] == 'dir' {
+					modulecache.file_metadata_signature(parts[1])
+				} else {
+					v3_large_cold_cache_directory_signature(parts[1])
+				}
+				if parts.len != 3 || parts[2] == '' || signature != parts[2] {
+					unchanged_build_trace('miss: directory changed: ${parts[1]}')
 					return false
 				}
 			}
@@ -5218,9 +5273,22 @@ fn v3_restore_unchanged_build(cache_dir string, key string, destination string) 
 			}
 		}
 	}
-	temporary := '${destination}.${os.getpid()}.${tempname.unique_token()}.tmp'
-	os.cp(executable, temporary) or {
+	if sources.len == 0 || source_signature == ''
+		|| v3_unchanged_build_source_signature(cache_dir, sources, build_time) != source_signature {
+		unchanged_build_trace('miss: sources changed')
 		return false
+	}
+	return v3_unchanged_build_copy(executable, destination)
+}
+
+// v3_unchanged_build_copy places a copy of `source` at `destination` through a
+// temporary file. On macOS it clones the file, which shares its blocks.
+fn v3_unchanged_build_copy(source string, destination string) bool {
+	temporary := '${destination}.${os.getpid()}.${tempname.unique_token()}.tmp'
+	if !v3_clone_file(source, temporary) {
+		os.cp(source, temporary) or {
+			return false
+		}
 	}
 	if os.user_os() != 'windows' {
 		os.chmod(temporary, 0o755) or {
@@ -5235,47 +5303,84 @@ fn v3_restore_unchanged_build(cache_dir string, key string, destination string) 
 	return true
 }
 
-fn v3_publish_unchanged_build(cache_dir string, key string, executable string, files []string, dirs []string) bool {
-	mut signatures := []string{cap: files.len}
-	for path in files {
-		signature := modulecache.file_metadata_signature(path)
-		if signature == '' {
-			return false
+// UnchangedBuildStamp is the prepared body of a receipt (v3_unchanged_build_stamp),
+// written beside the executable once the build has produced it.
+struct UnchangedBuildStamp {
+	body string
+	ok   bool
+}
+
+// v3_unchanged_build_stamp signs the inputs of a receipt. It fails when one of
+// them cannot be signed or changed during the build, which may have read an
+// earlier version of it (Zig's isProblematicTimestamp).
+fn v3_unchanged_build_stamp(receipt UnchangedBuildReceipt, cache_dir string, build_time string) UnchangedBuildStamp {
+	if receipt.sources.len == 0 {
+		return UnchangedBuildStamp{}
+	}
+	for path in [...receipt.sources, ...receipt.files, ...receipt.dirs] {
+		if path.contains_any('\t\r\n') {
+			return UnchangedBuildStamp{}
 		}
-		signatures << signature
+	}
+	source_signature := v3_unchanged_build_source_signature(cache_dir, receipt.sources,
+		build_time)
+	if source_signature == '' {
+		unchanged_build_trace('cannot record: the sources have no signature')
+		return UnchangedBuildStamp{}
+	}
+	mut stamp := strings.new_builder((receipt.sources.len + receipt.files.len + receipt.dirs.len) * 96)
+	for kind, paths in {
+		'source': receipt.sources
+		'file':   receipt.files
+	} {
+		for path in paths {
+			signature := modulecache.file_signature(path)
+			if signature == '' || modulecache.file_changed_during_build(path) {
+				unchanged_build_trace('cannot record: ${path} has no stable signature')
+				return UnchangedBuildStamp{}
+			}
+			stamp.writeln('${kind}\t${path}\t${signature}')
+		}
+	}
+	for path in receipt.dirs {
+		kind := if path == receipt.output_dir { 'listing' } else { 'dir' }
+		signature := if kind == 'dir' {
+			modulecache.file_metadata_signature(path)
+		} else {
+			v3_large_cold_cache_directory_signature(path)
+		}
+		if signature == '' || (kind == 'dir' && modulecache.file_changed_during_build(path)) {
+			unchanged_build_trace('cannot record: directory ${path} has no stable signature')
+			return UnchangedBuildStamp{}
+		}
+		stamp.writeln('${kind}\t${path}\t${signature}')
+	}
+	stamp.writeln('sources\t${source_signature}')
+	return UnchangedBuildStamp{
+		body: stamp.str()
+		ok:   true
+	}
+}
+
+// v3_publish_unchanged_build records the executable of a successful build with
+// its prepared receipt.
+fn v3_publish_unchanged_build(cache_dir string, key string, executable string, stamp UnchangedBuildStamp) bool {
+	if !stamp.ok {
+		return false
 	}
 	os.mkdir_all(cache_dir, mode: 0o700) or { return false }
 	cache_executable := os.join_path(cache_dir, '${key}.exe')
-	temporary_executable := '${cache_executable}.${os.getpid()}.${tempname.unique_token()}.tmp'
-	os.cp(executable, temporary_executable) or {
+	if !v3_unchanged_build_copy(executable, cache_executable) {
 		return false
 	}
-	if os.user_os() != 'windows' {
-		os.chmod(temporary_executable, 0o755) or {
-			os.rm(temporary_executable) or {}
-			return false
-		}
-	}
-	os.mv(temporary_executable, cache_executable) or {
-		os.rm(temporary_executable) or {}
-		return false
-	}
-	mut stamp := strings.new_builder((files.len + dirs.len) * 96)
-	stamp.writeln(v3_unchanged_build_cache_version)
 	executable_signature := modulecache.file_metadata_signature(cache_executable)
 	if executable_signature == '' {
 		return false
 	}
-	stamp.writeln(executable_signature)
-	for i, path in files {
-		stamp.writeln('file\t${path}\t${signatures[i]}')
-	}
-	for path in dirs {
-		stamp.writeln('dir\t${path}\t${v3_large_cold_cache_directory_signature(path)}')
-	}
 	stamp_path := os.join_path(cache_dir, '${key}.stamp')
 	temporary_stamp := '${stamp_path}.${os.getpid()}.${tempname.unique_token()}.tmp'
-	os.write_file(temporary_stamp, stamp.str()) or { return false }
+	header := '${v3_unchanged_build_cache_version}\n${executable_signature}\n'
+	os.write_file(temporary_stamp, header + stamp.body) or { return false }
 	os.mv(temporary_stamp, stamp_path) or {
 		os.rm(temporary_stamp) or {}
 		return false
@@ -5283,37 +5388,118 @@ fn v3_publish_unchanged_build(cache_dir string, key string, executable string, f
 	return true
 }
 
-fn v3_publish_unchanged_build_from_ast(cache_dir string, key string, executable string, a &flat.FlatAst, source_files []string, native_inputs &cgen.CacheNativeInputs) bool {
-	mut file_set := map[string]bool{}
-	// The caller captures these before transforms mutate or release AST state.
-	for path in source_files {
-		file_set[path] = true
-	}
-	for paths in native_inputs.module_inputs.values() {
-		for path in paths {
-			file_set[os.real_path(path)] = true
-		}
-	}
-	for path in embedded_resource_paths(a) {
-		file_set[os.real_path(path)] = true
-	}
-	mut files := file_set.keys()
-	files.sort()
+// UnchangedBuildInputs are what the receipt of a build takes from its AST, read
+// right after parsing; v3_unchanged_build_prepare signs them on another thread
+// while the build goes on.
+struct UnchangedBuildInputs {
+	sources         []string
+	dirs            []string
+	output_dir      string
+	resources       []string
+	flags           []string
+	link_flags      []string
+	probe           string
+	language        string
+	compiler        string
+	tcc_include_dir string
+	cache_dir       string
+	build_time      string
+}
+
+// v3_unchanged_build_inputs collects the inputs of a receipt from a parsed AST.
+// Besides the parsed sources and embedded resources, the receipt covers the
+// files that the program's native directives read (the C compiler's dependency
+// manifest of those directives, as Zig's whole cache manifest records the -MD
+// output of a compilation) and the objects and libraries its flags name by path.
+fn v3_unchanged_build_inputs(a &flat.FlatAst, prefs &pref.Preferences, source_files []string, c_flags []string, link_flags []string, compiler string, cache_dir string, executable string) UnchangedBuildInputs {
+	mut flags := c_flags.clone()
+	flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
+	tinycc := pref.ccompiler_is_tinycc(compiler)
+	// The program's own files come first: an edited one ends a check early.
+	vroot := os.real_path(prefs.vroot) + os.path_separator
+	mut sources := source_files.filter(!it.starts_with(vroot))
+	sources.sort()
+	mut shipped := source_files.filter(it.starts_with(vroot))
+	shipped.sort()
+	sources << shipped
 	mut dir_set := map[string]bool{}
-	for path in files {
-		if path.contains_any('\t\r\n') {
-			return false
-		}
+	for path in sources {
 		dir_set[os.dir(path)] = true
 	}
 	mut dirs := dir_set.keys()
 	dirs.sort()
-	for path in dirs {
-		if path.contains_any('\t\r\n') {
-			return false
+	return UnchangedBuildInputs{
+		sources:         sources
+		dirs:            dirs
+		output_dir:      os.real_path(os.dir(executable))
+		resources:       embedded_resource_paths(a)
+		flags:           flags
+		link_flags:      link_flags.clone()
+		probe:           cgen.cache_native_dependency_directives(a, prefs.vroot, flags, prefs.target)
+		language:        cache_probe_language(cgen.cache_native_inputs_language(a, prefs.vroot,
+			flags, prefs.c99, prefs.ccompiler, prefs.target), flags)
+		compiler:        compiler
+		tcc_include_dir: if tinycc {
+			v3_tcc_resource_flags(prefs.vroot).include_arg.all_after('-I')
+		} else {
+			''
+		}
+		cache_dir:       cache_dir
+		build_time:      v3_unchanged_build_build_time(prefs)
+	}
+}
+
+// v3_unchanged_build_prepare finds the native files of a receipt and signs all
+// its inputs. It reads no AST, so it runs beside the build.
+fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
+	mut file_set := map[string]bool{}
+	for path in inputs.resources {
+		file_set[os.real_path(path)] = true
+	}
+	if inputs.probe.trim_space().len > 0 {
+		probe_path := os.join_path(os.vtmp_dir(), 'v3_unchanged_native_${tempname.unique_token()}.c')
+		os.write_file(probe_path, inputs.probe) or { return UnchangedBuildStamp{} }
+		defer {
+			os.rm(probe_path) or {}
+		}
+		mut args := c_object_compile_flags(inputs.flags)
+		args << ['-x', inputs.language, '-w']
+		// TinyCC cannot preprocess Objective-C and needs its host SDK flags to
+		// find system headers. The system compiler lists the same user and SDK
+		// headers; TinyCC's own headers are recorded here.
+		manifest_compiler := if inputs.tcc_include_dir.len > 0 { 'cc' } else { inputs.compiler }
+		if inputs.tcc_include_dir.len > 0 {
+			for header in os.walk_ext(inputs.tcc_include_dir, '.h') {
+				file_set[os.real_path(header)] = true
+			}
+		}
+		mut stats := CObjectCacheStats{}
+		deps := cached_c_object_dependencies(inputs.cache_dir, manifest_compiler, args, probe_path, mut
+			stats)
+		if deps.used_fallback {
+			unchanged_build_trace('cannot record: the native dependency manifest is unavailable')
+			return UnchangedBuildStamp{}
+		}
+		for path in deps.files {
+			if path != probe_path {
+				file_set[os.real_path(path)] = true
+			}
 		}
 	}
-	return v3_publish_unchanged_build(cache_dir, key, executable, files, dirs)
+	for flag in [...inputs.flags, ...inputs.link_flags] {
+		clean := flag.trim_space()
+		if clean.len > 0 && !clean.starts_with('-') && os.is_file(clean) {
+			file_set[os.real_path(clean)] = true
+		}
+	}
+	mut files := file_set.keys()
+	files.sort()
+	return v3_unchanged_build_stamp(UnchangedBuildReceipt{
+		sources:    inputs.sources
+		files:      files
+		dirs:       inputs.dirs
+		output_dir: inputs.output_dir
+	}, inputs.cache_dir, inputs.build_time)
 }
 
 // v3_program_executable_link_signature covers what decides the executable of a
@@ -12255,15 +12441,13 @@ pub fn run(args []string) {
 	unchanged_build_cache_enabled := backend == 'c' && explicit_output && !should_run
 		&& !c_only && !is_o && !is_shared && !is_test_command && !is_debug && !race
 		&& !show_cc && !show_c_output && !keep_c && dump_files == ''
-		&& v3_unchanged_build_cache_opted_in(no_cache)
-		&& (cache_enabled || large_cold_cache_bypass
-			|| os.getenv(v3_internal_restart_env) == '1'
-			|| os.getenv('V3CACHE') != '')
+		&& v3_unchanged_build_cache_opted_in(os.args, os.getenv(v3_internal_restart_env) == '1')
 	if unchanged_build_cache_enabled {
 		unchanged_build_cache_dir = v3_unchanged_build_cache_root(prefs.vroot)
 		unchanged_build_cache_key = v3_unchanged_build_key(prefs, c_compiler, bin_file)
+		v3_note_unchanged_build_entry_key(unchanged_build_cache_key)
 		if v3_restore_unchanged_build(unchanged_build_cache_dir, unchanged_build_cache_key,
-			bin_file) {
+			bin_file, v3_unchanged_build_build_time(prefs)) {
 			$if windows {
 				if target.os == 'windows' {
 					ensure_windows_long_path_manifest(bin_file, c_compiler_is_msvc(c_compiler), verbose || show_cc)
@@ -13050,8 +13234,20 @@ pub fn run(args []string) {
 	b.metric('persistent worker threads', a.worker_count(), 'threads')
 	if unchanged_build_cache_enabled {
 		mut source_set := map[string]bool{}
+		// A module read from its cached declaration header is recorded by the
+		// sources it was cached from; the header itself belongs to the cache.
+		cache_root := if cache_state.manager.enabled { os.real_path(cache_state.manager.dir) } else { '' }
 		for _, file in a.source_files {
-			source_set[a.real_source_path(file.name)] = true
+			path := a.real_source_path(file.name)
+			if cache_root.len > 0 && path.starts_with(cache_root) {
+				continue
+			}
+			source_set[path] = true
+		}
+		for module_files in cache_state.module_sources.values() {
+			for module_file in module_files {
+				source_set[a.real_source_path(module_file)] = true
+			}
 		}
 		unchanged_build_source_files = source_set.keys()
 		unchanged_build_source_files.sort()
@@ -13066,6 +13262,14 @@ pub fn run(args []string) {
 	// compiler, even when those flags came from the original program's source.
 	mut native_c_flags := user_c_flags.clone()
 	for group in refresh_project_flags { native_c_flags << group.flags }
+	// The receipt of this build is signed beside the rest of the build; only
+	// recording the executable waits for it at the end.
+	mut unchanged_build_preparation := []thread UnchangedBuildStamp{}
+	if unchanged_build_cache_enabled {
+		unchanged_build_inputs := v3_unchanged_build_inputs(a, prefs, unchanged_build_source_files,
+			native_c_flags, link_ld_flags, c_compiler, unchanged_build_cache_dir, bin_file)
+		unchanged_build_preparation << spawn v3_unchanged_build_prepare(unchanged_build_inputs)
+	}
 	native_inputs := if cache_state.manager.enabled || crun_may_reuse {
 		v3_native_inputs(a, prefs, user_files, native_c_flags)
 	} else {
@@ -17055,11 +17259,25 @@ Please install the corresponding development package/libraries and make sure the
 			cleanup_c_build_dir(cc_dir)
 		}
 		if unchanged_build_cache_enabled {
-			if !v3_publish_unchanged_build_from_ast(unchanged_build_cache_dir,
-				unchanged_build_cache_key, bin_file, a, unchanged_build_source_files,
-				&native_inputs)
-				&& os.getenv('V3_CACHE_TRACE') != '' {
-				eprintln('  V3 unchanged build cache publish failed')
+			stamp := if unchanged_build_preparation.len == 1 {
+				unchanged_build_preparation[0].wait()
+			} else {
+				UnchangedBuildStamp{}
+			}
+			mut published := v3_publish_unchanged_build(unchanged_build_cache_dir,
+				unchanged_build_cache_key, bin_file, stamp)
+			// A build that the compiler restarted in another configuration (without the
+			// module cache, or with the native bridge) also answers the key of the
+			// build that the user started, which restarts into this one.
+			entry_key := v3_unchanged_build_entry_key()
+			if published && entry_key.len > 0 && entry_key != unchanged_build_cache_key {
+				published = v3_publish_unchanged_build(unchanged_build_cache_dir, entry_key,
+					bin_file, stamp)
+			}
+			if published {
+				unchanged_build_trace('recorded ${unchanged_build_cache_key[..12]} (entry ${entry_key#[..12]})')
+			} else {
+				unchanged_build_trace('publish failed')
 			}
 		}
 		wait_release_threads()

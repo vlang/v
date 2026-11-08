@@ -74,6 +74,21 @@ pub fn enable_file_hash_memo(dir string) {
 	g_file_hash_memo = &FileHashMemo{
 		path: os.join_path(dir, file_hash_memo_name)
 	}
+	// Mark the start of the build now, before any input is read.
+	_, _ = build_start_mtime()
+}
+
+// file_changed_during_build reports whether the file or directory at `path` was
+// modified at or after the start of the build, or so recently that its
+// timestamp cannot tell a later edit apart (as for FileHashMemo). A record of
+// the build's inputs must not vouch for such a file: the build may have read
+// an earlier version of it.
+pub fn file_changed_during_build(path string) bool {
+	m := file_metadata_of(path) or { return true }
+	start_seconds, start_nanoseconds := build_start_mtime()
+	return m.mtime_seconds > start_seconds
+		|| (m.mtime_seconds == start_seconds && m.mtime_nanoseconds >= start_nanoseconds)
+		|| coarse_mtime_is_recent(m.mtime_seconds, m.mtime_nanoseconds, time.utc().unix())
 }
 
 struct FileMetadata {
@@ -158,9 +173,13 @@ fn memoized_file_hash(path string, kind string, compute fn (string) string) stri
 	return hash
 }
 
-// file_hash_is_valid reports whether `hash` has the form of a hash of `kind`.
+// file_hash_is_valid reports whether `hash` has the form of a value of `kind`.
 // It keeps out a line that another build was still writing.
 fn file_hash_is_valid(kind string, hash string) bool {
+	if kind == 'facts' {
+		// Source facts are one line of their own encoding (source_file_facts).
+		return hash.len > 0 && hash.len < 4096 && hash[0] == `f` && !hash.contains_any('\t\n\r')
+	}
 	max_len := if kind == 'sha256' { 64 } else { 16 }
 	if hash.len == 0 || hash.len > max_len || (kind == 'sha256' && hash.len != 64) {
 		return false

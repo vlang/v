@@ -521,8 +521,8 @@ pub fn source_signature(source_files []string) string {
 // source_files_use_build_time_pseudo reports whether selected sources depend on build time.
 pub fn source_files_use_build_time_pseudo(source_files []string) bool {
 	for file in source_files {
-		source := os.read_file(file) or { continue }
-		if source_uses_pseudo(source, ['@BUILD_TIMESTAMP', '@BUILD_DATE', '@BUILD_TIME']) {
+		facts := source_file_facts(file) or { continue }
+		if facts.uses_build_pseudo {
 			return true
 		}
 	}
@@ -556,24 +556,21 @@ fn source_signature_details_probed(source_files []string, build_pseudo_values st
 		path := os.real_path(file)
 		hash = hash_bytes(hash, path.bytes())
 		hash = hash_bytes(hash, [u8(0)])
-		content := os.read_bytes(file) or { return SourceSignatureDetails{} }
-		digest := sha256.sum(content)
-		source_digests << digest[..].hex()
-		hash = hash_bytes(hash, content)
+		// The digest and the compile-time facts of a file are remembered by its
+		// metadata (see FileHashMemo), so only the files that changed are read.
+		digest := file_sha256(path) or { return SourceSignatureDetails{} }
+		facts := source_file_facts(path) or { return SourceSignatureDetails{} }
+		source_digests << digest
+		hash = hash_bytes(hash, digest.bytes())
 		hash = hash_bytes(hash, [u8(0xff)])
-		source := content.bytestr()
-		if source_uses_pseudo(source, [
-			'@BUILD_TIMESTAMP',
-			'@BUILD_DATE',
-			'@BUILD_TIME',
-		]) {
+		if facts.uses_build_pseudo {
 			uses_build_pseudo = true
 		}
-		if source_uses_pseudo(source, ['@VHASH', '@VCURRENTHASH']) {
+		if facts.uses_version_pseudo {
 			uses_version_pseudo = true
 		}
-		uses_vmod_hash := source_uses_pseudo(source, ['@VMODHASH'])
-		if uses_vmod_hash || source_uses_pseudo(source, ['@VMODROOT', '@VMOD_FILE', '@VROOT']) {
+		uses_vmod_hash := facts.uses_vmod_hash
+		if uses_vmod_hash || facts.uses_vmod_root {
 			root, vmod_file := signature_vmod_root(file)
 			vmod_metadata := if vmod_file.len > 0 {
 				file_change_signature(vmod_file)
@@ -605,10 +602,10 @@ fn source_signature_details_probed(source_files []string, build_pseudo_values st
 				hash = hash_bytes(hash, [u8(0xff)])
 			}
 		}
-		for name in compile_time_env_names(source) {
+		for name in facts.env_names {
 			env_names[name] = true
 		}
-		for name in compile_time_pkgconfig_names(source) {
+		for name in facts.pkgconfig_names {
 			pkgconfig_names[name] = true
 		}
 	}
@@ -658,6 +655,59 @@ fn source_signature_details_probed(source_files []string, build_pseudo_values st
 		validation:     validation
 		source_digests: source_digests
 		cacheable:      cacheable
+	}
+}
+
+// SourceFileFacts are what a source file's text decides about the compile-time
+// inputs of a build besides the file itself: the pseudo variables it reads, the
+// environment variables its `$env` calls name and the packages it probes.
+struct SourceFileFacts {
+	uses_build_pseudo   bool
+	uses_version_pseudo bool
+	uses_vmod_hash      bool
+	uses_vmod_root      bool
+	env_names           []string
+	pkgconfig_names     []string
+}
+
+// source_file_facts returns the facts of the file at `path`, remembered with its
+// content hashes (memoized_file_hash) so that an unchanged file is not read again.
+fn source_file_facts(path string) ?SourceFileFacts {
+	encoded := memoized_file_hash(path, 'facts', source_file_facts_uncached)
+	if encoded.len == 0 {
+		return none
+	}
+	return decode_source_file_facts(encoded)
+}
+
+fn source_file_facts_uncached(path string) string {
+	source := os.read_file(path) or { return '' }
+	mut flags := []u8{cap: 4}
+	for used in [
+		source_uses_pseudo(source, ['@BUILD_TIMESTAMP', '@BUILD_DATE', '@BUILD_TIME']),
+		source_uses_pseudo(source, ['@VHASH', '@VCURRENTHASH']),
+		source_uses_pseudo(source, ['@VMODHASH']),
+		source_uses_pseudo(source, ['@VMODROOT', '@VMOD_FILE', '@VROOT']),
+	] {
+		flags << if used { u8(`1`) } else { u8(`0`) }
+	}
+	// Names never contain spaces or `|`; the encoding keeps the memo one line.
+	return 'f${flags.bytestr()}|${compile_time_env_names(source).join(' ')}|${compile_time_pkgconfig_names(source).join(' ')}'
+}
+
+fn decode_source_file_facts(encoded string) ?SourceFileFacts {
+	parts := encoded.split('|')
+	if parts.len != 3 || parts[0].len != 5 || parts[0][0] != `f` {
+		return none
+	}
+	flags := parts[0][1..]
+	return SourceFileFacts{
+		uses_build_pseudo:   flags[0] == `1`
+		uses_version_pseudo: flags[1] == `1`
+		uses_vmod_hash:      flags[2] == `1`
+		uses_vmod_root:      flags[3] == `1`
+		env_names:           parts[1].fields()
+		pkgconfig_names:     parts[2].fields()
 	}
 }
 
@@ -893,6 +943,15 @@ fn (m &Manager) source_signature_details(source_files []string) SourceSignatureD
 
 // cached_source_signature returns a content signature while using precise file
 // metadata to avoid rereading unchanged inputs on subsequent compiler runs.
+// cached_source_signature_with_build_values is cached_source_signature for a
+// build whose build-time pseudo variables (@BUILD_DATE, @BUILD_TIME,
+// @BUILD_TIMESTAMP) are `build_values`: the signature covers them when a source
+// reads one of them.
+pub fn cached_source_signature_with_build_values(cache_dir string, namespace string, source_files []string, build_values string) string {
+	return cached_source_signature_details_with_build_values(cache_dir, namespace, source_files,
+		build_values, '').signature
+}
+
 pub fn cached_source_signature(cache_dir string, namespace string, source_files []string) string {
 	return cached_source_signature_details_with_build_values(cache_dir, namespace, source_files, '', '').signature
 }

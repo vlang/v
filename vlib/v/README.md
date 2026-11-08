@@ -729,12 +729,17 @@ full: `-g`, `-cg`, `-keepc`, `-showcc`, `-show-c-output`, shared libraries, obje
 coverage, tests, and an implicit `run` on macOS, which has its own executable cache below.
 `V3_CACHE_TRACE=1` says why an executable was not restored, and
 `V3_CACHE_DISABLE_PROGRAM_EXECUTABLE=1` turns the restoring off. Windows targets always link.
-The experimental unchanged-build receipt is disabled by default. Set
-`V3_ENABLE_UNCHANGED_BUILD_CACHE=1` to enable its early executable restore for explicit binary
-outputs. Its key does not yet cover all compile-time environment, module-search, and linker
-inputs, so it can reuse stale output when those inputs change. `-nocache` and
-`V3_DISABLE_UNCHANGED_BUILD_CACHE=1` both disable this shortcut. Missing file metadata also
-prevents publishing or restoring a receipt.
+Before parsing, a build with an explicit output looks for the receipt of an earlier build
+with the same compiler, C compiler identity, command line, output and environment. The
+receipt lists the program's V sources, checked as a whole by their source signature (content
+digests, `$env` reads, `v.mod` hashes, pkg-config probes and the build-time pseudo variables
+when the program uses them), the files its native directives read (the C compiler's dependency
+manifest of those directives), the bundled TinyCC headers when TinyCC compiles, embedded
+resources, the objects and libraries its flags name by path, and the listings of the source
+directories. When every file still has the recorded content, the build restores the recorded
+executable and does nothing else. It works with or without the module cache; a `-nocache`
+written by the user and `V3_DISABLE_UNCHANGED_BUILD_CACHE=1` turn it off, and
+`V3_CACHE_TRACE=1` says why a receipt was not used or recorded.
 The cache resolves the path of each module source once for a build; the table of resolved paths
 is closed when the imports are resolved, before later stages read it from several threads.
 A build that reads every module from its interface gets all the functions of those modules as

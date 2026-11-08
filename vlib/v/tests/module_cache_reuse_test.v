@@ -33,13 +33,16 @@ fn (s SavedEnv) restore() {
 }
 
 // pin_module_cache points the module cache at `dir`, whatever the runner exports,
-// and makes the compiler say why it does not reuse a cached module.
+// and makes the compiler say why it does not reuse a cached module. These tests
+// rebuild unchanged programs to observe the module cache, which the receipt of
+// an unchanged build would skip, so they turn that receipt off.
 fn pin_module_cache(dir string) []SavedEnv {
 	saved := ['VTMP', 'V3CACHE', 'VFLAGS', 'V3_CACHE_FORCE_SOURCE', 'V3_INTERNAL_CACHE_FORCE_SOURCE',
-		'V3_CACHE_TRACE'].map(save_env(it))
+		'V3_CACHE_TRACE', 'V3_DISABLE_UNCHANGED_BUILD_CACHE'].map(save_env(it))
 	os.setenv('VTMP', dir, true)
 	os.setenv('V3CACHE', dir, true)
 	os.setenv('V3_CACHE_TRACE', '1', true)
+	os.setenv('V3_DISABLE_UNCHANGED_BUILD_CACHE', '1', true)
 	os.unsetenv('VFLAGS')
 	os.unsetenv('V3_CACHE_FORCE_SOURCE')
 	os.unsetenv('V3_INTERNAL_CACHE_FORCE_SOURCE')

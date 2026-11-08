@@ -3,7 +3,6 @@ module driver
 import os
 import crypto.sha256
 import time
-import v.modulecache
 
 fn age_unchanged_build_source(path string) ! {
 	// Recent whole-second mtimes cannot safely identify an unchanged source.
@@ -11,13 +10,44 @@ fn age_unchanged_build_source(path string) ! {
 	os.utime(path, timestamp, timestamp)!
 }
 
-fn assert_unchanged_build_rejects_coarse_executable(cache_dir string, executable string, source string, source_dir string, destination string) ! {
-	assert !v3_publish_unchanged_build(cache_dir, 'test', executable, [source], [source_dir])
-	cached_executable := os.join_path(cache_dir, 'test.exe')
-	assert os.read_file(cached_executable)! == os.read_file(executable)!
-	assert modulecache.file_metadata_signature(cached_executable) == ''
-	assert !os.exists(os.join_path(cache_dir, 'test.stamp'))
-	assert !v3_restore_unchanged_build(cache_dir, 'test', destination)
+struct ReceiptFixture {
+	root        string
+	source_dir  string
+	cache_dir   string
+	source      string
+	header      string
+	executable  string
+	destination string
+}
+
+fn receipt_fixture(name string) !ReceiptFixture {
+	root := os.join_path(os.vtmp_dir(), 'v3_unchanged_build_${name}_${os.getpid()}')
+	source_dir := os.join_path(root, 'source')
+	fixture := ReceiptFixture{
+		root:        root
+		source_dir:  source_dir
+		cache_dir:   os.join_path(root, 'cache')
+		source:      os.join_path(source_dir, 'main.v')
+		header:      os.join_path(source_dir, 'native.h')
+		executable:  os.join_path(root, 'app')
+		destination: os.join_path(root, 'restored')
+	}
+	os.mkdir_all(source_dir)!
+	os.write_file(fixture.source, 'fn main() {}\n')!
+	os.write_file(fixture.header, 'static inline int native_value(void) { return 1; }\n')!
+	age_unchanged_build_source(fixture.source)!
+	age_unchanged_build_source(fixture.header)!
+	age_unchanged_build_source(source_dir)!
+	os.write_file(fixture.executable, 'executable bytes')!
+	return fixture
+}
+
+fn (f ReceiptFixture) receipt() UnchangedBuildReceipt {
+	return UnchangedBuildReceipt{
+		sources: [f.source]
+		files:   [f.header]
+		dirs:    [f.source_dir]
+	}
 }
 
 fn test_file_sha256_streams_large_inputs() {
@@ -32,105 +62,65 @@ fn test_file_sha256_streams_large_inputs() {
 }
 
 fn test_unchanged_build_cache_restores_and_invalidates_source_change() {
-	root := os.join_path(os.vtmp_dir(), 'v3_unchanged_build_${os.getpid()}')
-	defer { os.rmdir_all(root) or {} }
-	source_dir := os.join_path(root, 'source')
-	cache_dir := os.join_path(root, 'cache')
-	source := os.join_path(source_dir, 'main.v')
-	executable := os.join_path(root, 'app')
-	destination := os.join_path(root, 'restored')
-	os.mkdir_all(source_dir)!
-	os.write_file(source, 'fn main() {}\n')!
-	age_unchanged_build_source(source)!
-	os.write_file(executable, 'executable bytes')!
-	assert modulecache.file_metadata_signature(source) != ''
-	has_executable_metadata := modulecache.file_metadata_signature(executable) != ''
-	if has_executable_metadata {
-		assert v3_publish_unchanged_build(cache_dir, 'test', executable, [source], [source_dir])
-		assert v3_restore_unchanged_build(cache_dir, 'test', destination)
-		assert os.read_file(destination)! == 'executable bytes'
-		os.write_file(source, 'fn main() { println("changed") }\n')!
-		assert !v3_restore_unchanged_build(cache_dir, 'test', destination)
-	} else {
-		assert_unchanged_build_rejects_coarse_executable(cache_dir, executable, source, source_dir,
-			destination)!
-	}
+	f := receipt_fixture('source')!
+	defer { os.rmdir_all(f.root) or {} }
+	assert v3_publish_unchanged_build(f.cache_dir, 'test', f.executable, v3_unchanged_build_stamp(f.receipt(), f.cache_dir, ''))
+	assert v3_restore_unchanged_build(f.cache_dir, 'test', f.destination, '')
+	assert os.read_file(f.destination)! == 'executable bytes'
+	// A new timestamp with the same content keeps the receipt.
+	os.utime(f.source, time.utc().unix() - 5, time.utc().unix() - 5)!
+	assert v3_restore_unchanged_build(f.cache_dir, 'test', f.destination, '')
+	os.write_file(f.source, 'fn main() { println("changed") }\n')!
+	assert !v3_restore_unchanged_build(f.cache_dir, 'test', f.destination, '')
+}
+
+fn test_unchanged_build_cache_invalidates_native_header_change() {
+	f := receipt_fixture('header')!
+	defer { os.rmdir_all(f.root) or {} }
+	assert v3_publish_unchanged_build(f.cache_dir, 'test', f.executable, v3_unchanged_build_stamp(f.receipt(), f.cache_dir, ''))
+	assert v3_restore_unchanged_build(f.cache_dir, 'test', f.destination, '')
+	os.write_file(f.header, 'static inline int native_value(void) { return 2; }\n')!
+	assert !v3_restore_unchanged_build(f.cache_dir, 'test', f.destination, '')
 }
 
 fn test_unchanged_build_cache_invalidates_new_source_file() {
-	root := os.join_path(os.vtmp_dir(), 'v3_unchanged_build_new_file_${os.getpid()}')
-	defer { os.rmdir_all(root) or {} }
-	source_dir := os.join_path(root, 'source')
-	cache_dir := os.join_path(root, 'cache')
-	source := os.join_path(source_dir, 'main.v')
-	executable := os.join_path(root, 'app')
-	destination := os.join_path(root, 'restored')
-	os.mkdir_all(source_dir)!
-	os.write_file(source, 'fn main() {}\n')!
-	age_unchanged_build_source(source)!
-	os.write_file(executable, 'executable bytes')!
-	assert modulecache.file_metadata_signature(source) != ''
-	has_executable_metadata := modulecache.file_metadata_signature(executable) != ''
-	if has_executable_metadata {
-		assert v3_publish_unchanged_build(cache_dir, 'test', executable, [source], [source_dir])
-		os.write_file(os.join_path(source_dir, 'added.v'), 'fn added() {}\n')!
-		assert !v3_restore_unchanged_build(cache_dir, 'test', destination)
-	} else {
-		assert_unchanged_build_rejects_coarse_executable(cache_dir, executable, source, source_dir,
-			destination)!
-	}
+	f := receipt_fixture('new_file')!
+	defer { os.rmdir_all(f.root) or {} }
+	assert v3_publish_unchanged_build(f.cache_dir, 'test', f.executable, v3_unchanged_build_stamp(f.receipt(), f.cache_dir, ''))
+	os.write_file(os.join_path(f.source_dir, 'added.v'), 'fn added() {}\n')!
+	assert !v3_restore_unchanged_build(f.cache_dir, 'test', f.destination, '')
 }
 
-fn test_unchanged_build_cache_requires_explicit_opt_in() {
-	old_enable := os.getenv('V3_ENABLE_UNCHANGED_BUILD_CACHE')
+fn test_unchanged_build_cache_checks_build_time_values() {
+	f := receipt_fixture('build_time')!
+	defer { os.rmdir_all(f.root) or {} }
+	os.write_file(f.source, 'fn main() { println(@BUILD_DATE) }\n')!
+	age_unchanged_build_source(f.source)!
+	assert v3_publish_unchanged_build(f.cache_dir, 'test', f.executable, v3_unchanged_build_stamp(f.receipt(), f.cache_dir, '2026-11-08 1'))
+	assert v3_restore_unchanged_build(f.cache_dir, 'test', f.destination, '2026-11-08 1')
+	assert !v3_restore_unchanged_build(f.cache_dir, 'test', f.destination, '2026-11-09 2')
+}
+
+fn test_unchanged_build_cache_rejects_a_changed_cached_executable() {
+	f := receipt_fixture('executable')!
+	defer { os.rmdir_all(f.root) or {} }
+	assert v3_publish_unchanged_build(f.cache_dir, 'test', f.executable, v3_unchanged_build_stamp(f.receipt(), f.cache_dir, ''))
+	os.write_file(os.join_path(f.cache_dir, 'test.exe'), 'other bytes')!
+	assert !v3_restore_unchanged_build(f.cache_dir, 'test', f.destination, '')
+}
+
+fn test_unchanged_build_cache_is_on_unless_the_user_turns_it_off() {
 	old_disable := os.getenv('V3_DISABLE_UNCHANGED_BUILD_CACHE')
 	defer {
-		os.setenv('V3_ENABLE_UNCHANGED_BUILD_CACHE', old_enable, true)
 		os.setenv('V3_DISABLE_UNCHANGED_BUILD_CACHE', old_disable, true)
 	}
-	os.unsetenv('V3_ENABLE_UNCHANGED_BUILD_CACHE')
 	os.unsetenv('V3_DISABLE_UNCHANGED_BUILD_CACHE')
-	assert !v3_unchanged_build_cache_opted_in(false)
-	os.setenv('V3_ENABLE_UNCHANGED_BUILD_CACHE', '1', true)
-	assert v3_unchanged_build_cache_opted_in(false)
-	assert !v3_unchanged_build_cache_opted_in(true)
+	assert v3_unchanged_build_cache_opted_in(['-o', 'app', '.'], false)
+	assert !v3_unchanged_build_cache_opted_in(['-nocache', '-o', 'app', '.'], false)
+	// The compiler's own restart without the module cache keeps the receipt.
+	assert v3_unchanged_build_cache_opted_in(['-nocache', '-o', 'app', '.'], true)
 	os.setenv('V3_DISABLE_UNCHANGED_BUILD_CACHE', '1', true)
-	assert !v3_unchanged_build_cache_opted_in(false)
-}
-
-fn test_unchanged_build_cache_rejects_unavailable_metadata() {
-	root := os.join_path(os.vtmp_dir(), 'v3_unchanged_build_no_metadata_${os.getpid()}')
-	old_disabled := os.getenv('V3_TEST_NO_FILE_METADATA')
-	defer {
-		os.setenv('V3_TEST_NO_FILE_METADATA', old_disabled, true)
-		os.rmdir_all(root) or {}
-	}
-	os.mkdir_all(root)!
-	source := os.join_path(root, 'main.v')
-	executable := os.join_path(root, 'app')
-	cache_dir := os.join_path(root, 'cache')
-	destination := os.join_path(root, 'restored')
-	os.write_file(source, 'fn main() {}\n')!
-	age_unchanged_build_source(source)!
-	os.write_file(executable, 'executable bytes')!
-	assert modulecache.file_metadata_signature(source) != ''
-	has_executable_metadata := modulecache.file_metadata_signature(executable) != ''
-	os.setenv('V3_TEST_NO_FILE_METADATA', source, true)
-	assert !v3_publish_unchanged_build(cache_dir, 'test', executable, [source], [root])
-	os.unsetenv('V3_TEST_NO_FILE_METADATA')
-	if has_executable_metadata {
-		assert v3_publish_unchanged_build(cache_dir, 'test', executable, [source], [root])
-		os.setenv('V3_TEST_NO_FILE_METADATA', source, true)
-		assert !v3_restore_unchanged_build(cache_dir, 'test', destination)
-		// Reject old receipts which recorded an empty signature as though it were valid.
-		stamp := os.join_path(cache_dir, 'test.stamp')
-		lines := os.read_file(stamp)!.split_into_lines()
-		os.write_file(stamp, lines[..2].join('\n') + '\nfile\t${source}\t\n')!
-		assert !v3_restore_unchanged_build(cache_dir, 'test', destination)
-	} else {
-		assert_unchanged_build_rejects_coarse_executable(cache_dir, executable, source, root,
-			destination)!
-	}
+	assert !v3_unchanged_build_cache_opted_in(['-o', 'app', '.'], false)
 }
 
 fn test_parallel_monomorphize_requires_explicit_opt_in() {
@@ -168,7 +158,6 @@ fn test_default_build_rechecks_compile_time_environment() {
 	for expected in ['first', 'second'] {
 		mut environment := os.environ()
 		environment.delete('VFLAGS')
-		environment.delete('V3_ENABLE_UNCHANGED_BUILD_CACHE')
 		environment['V3CACHE'] = os.join_path(root, 'cache')
 		environment['V3_RECEIPT_ENV_REGRESSION'] = expected
 		environment['V_MACOS_V3_NO_FALLBACK'] = '1'
@@ -192,4 +181,28 @@ fn test_default_build_rechecks_compile_time_environment() {
 		assert program_code == 0
 		assert result.trim_space() == expected
 	}
+}
+
+fn test_unchanged_build_cache_does_not_vouch_for_a_file_changed_during_the_build() {
+	f := receipt_fixture('changed_during_build')!
+	defer { os.rmdir_all(f.root) or {} }
+	// Written after the build started: the build may have read the old text.
+	time.sleep(20 * time.millisecond)
+	os.write_file(f.header, 'static inline int native_value(void) { return 3; }\n')!
+	assert !v3_unchanged_build_stamp(f.receipt(), f.cache_dir, '').ok
+}
+
+fn test_unchanged_build_entry_key_belongs_to_this_process() {
+	old := os.getenv(v3_internal_receipt_entry_env)
+	defer {
+		os.setenv(v3_internal_receipt_entry_env, old, true)
+	}
+	os.unsetenv(v3_internal_receipt_entry_env)
+	v3_note_unchanged_build_entry_key('first')
+	// The key of the build the user started stays; a restart notes nothing new.
+	v3_note_unchanged_build_entry_key('second')
+	assert v3_unchanged_build_entry_key() == 'first'
+	// A build of another program started by this one has another pid.
+	os.setenv(v3_internal_receipt_entry_env, '${os.getpid() + 1}:other', true)
+	assert v3_unchanged_build_entry_key() == ''
 }
