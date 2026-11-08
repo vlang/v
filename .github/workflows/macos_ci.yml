@@ -14,11 +14,6 @@ on:
       - 'cmd/tools/**'
       - '!cmd/tools/builders/**.v'
 
-concurrency:
-  # Replace superseded master runs instead of queueing every commit separately.
-  group: macos-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 permissions:
   contents: read
 
