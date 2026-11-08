@@ -67,18 +67,17 @@ pub fn poly_scalar_mul(a Poly, s int) Poly {
 	return r
 }
 
-// ---------- NTT (using zeta table) ----------
+// ---------- NTT (fast, 7-layer CT / GS) ----------
+// Zeta table: 128 entries in bit-reversed 7-bit order, zetas[i] = 17^bitrev7(i) mod q.
 
-const zetas = [int(228), 1099, 1919, 812, 2403, 243, 2019, 1932, 2144, 651, 804, 2250, 101, 1600,
-	161, 126, 1411, 2412, 1902, 2347, 2240, 1296, 1405, 374, 1863, 1217, 1727, 1093, 1778, 255,
-	1872, 1030, 2483, 2054, 288, 387, 1713, 756, 1999, 817, 519, 84, 1818, 1261, 940, 1090, 1278,
-	1536, 736, 2288, 392, 1562, 2455, 1361, 2394, 1419, 1339, 1774, 1928, 134, 2326, 359, 505,
-	191, 1383, 1229, 1493, 1885, 771, 1475, 1808, 2475, 1308, 1907, 1434, 943, 915, 1618, 1006,
-	2081, 2304, 1974, 1464, 1839, 1891, 1353, 1197, 2484, 1899, 2499, 1534, 2459, 1056, 2211, 1373,
-	1034, 2413, 1667, 595, 1266, 1516, 1291, 1481, 1431, 1080, 2308, 1878, 148, 1107, 336, 1438,
-	1882, 1001, 2439, 2163, 300, 1022, 1980, 1095, 2219, 789, 214, 1029, 2172, 2378, 1726, 394,
-	1887, 733, 1478, 1968, 642, 1077, 2154, 1065, 2354, 873, 1605, 1460, 1939, 2491, 1495, 1315,
-	1498, 2341, 1972, 961, 1628]
+const zetas = [int(1), 1729, 2580, 3289, 2642, 630, 1897, 848, 1062, 1919, 193, 797, 2786, 3260,
+	569, 1746, 296, 2447, 1339, 1476, 3046, 56, 2240, 1333, 1426, 2094, 535, 2882, 2393, 2879,
+	1974, 821, 289, 331, 3253, 1756, 1197, 2304, 2277, 2055, 650, 1977, 2513, 632, 2865, 33, 1320,
+	1915, 2319, 1435, 807, 452, 1438, 2868, 1534, 2402, 2647, 2617, 1481, 648, 2474, 3110, 1227,
+	910, 17, 2761, 583, 2649, 1637, 723, 2288, 1100, 1409, 2662, 3281, 233, 756, 2156, 3015, 3050,
+	1703, 1651, 2789, 1789, 1847, 952, 1461, 2687, 939, 2308, 2437, 2388, 733, 2337, 268, 641,
+	1584, 2298, 2037, 3220, 375, 2549, 2090, 1645, 1063, 319, 2773, 757, 2099, 561, 2466, 2594,
+	2804, 1092, 403, 1026, 1143, 2150, 2775, 886, 1722, 1212, 1874, 1029, 2110, 2935, 885, 2154]
 
 fn modpow(a int, e int, m int) int {
 	mut r := 1
@@ -95,30 +94,42 @@ fn modpow(a int, e int, m int) int {
 }
 
 pub fn ntt(mut f Poly) {
-	mut out := Poly{}
-	for i in 0 .. n {
-		mut s := 0
-		for j in 0 .. n {
-			s = (s + f[j] * modpow(17, i * j, q)) % q
+	mut k := 1
+	mut length := 128
+	for length >= 2 {
+		for start := 0; start < 256; start += 2 * length {
+			z := zetas[k]
+			k++
+			for j := start; j < start + length; j++ {
+				u := f[j]
+				t := (f[j + length] * z) % q
+				f[j] = (u + t) % q
+				f[j + length] = (u - t + q) % q
+			}
 		}
-		out[i] = s
-	}
-	for i in 0 .. n {
-		f[i] = out[i]
+		length >>= 1
 	}
 }
 
 pub fn inv_ntt(mut f Poly) {
-	mut out := Poly{}
-	for i in 0 .. n {
-		mut s := 0
-		for j in 0 .. n {
-			s = (s + f[j] * modpow(17, (n - (i * j) % n) % n, q)) % q
+	mut k := 127
+	mut length := 2
+	for length <= 128 {
+		for start := 0; start < 256; start += 2 * length {
+			z := zetas[k]
+			k--
+			for j := start; j < start + length; j++ {
+				u := f[j]
+				v := f[j + length]
+				f[j] = (u + v) % q
+				f[j + length] = ((v - u + q) * z) % q
+			}
 		}
-		out[i] = (s * modpow(n, q - 2, q)) % q
+		length <<= 1
 	}
+	ci := modpow(128, q - 2, q)
 	for i in 0 .. n {
-		f[i] = out[i]
+		f[i] = (f[i] * ci) % q
 	}
 }
 
@@ -137,24 +148,8 @@ pub fn decompress(y int, d int) int {
 // ---------- CBD sampling (eta=2) ----------
 
 pub fn sample_cbd2(b []u8) Poly {
-	// 128 bytes -> 256 coeffs, eta=2
 	mut f := Poly{}
 	for i in 0 .. n {
-		mut a := 0
-		mut bb := 0
-		for j in 0 .. 2 {
-			idx := (4 * i + 2 * j) / 8
-			off := (4 * i + 2 * j) % 8
-			a += (int(b[idx]) >> off) & 1
-			a += (int(b[idx]) >> (off + 1)) & 1 // may cross byte; simplified
-		}
-		// proper: extract 2 bits for a and 2 for b from 4 bits total per coeff
-		_ = bb
-	}
-	// Redo properly
-	f = Poly{}
-	for i in 0 .. n {
-		// 4 bits per coeff: bits [4i, 4i+3], a = bits 0,1 ; b = bits 2,3
 		byte_idx := (4 * i) / 8
 		bit_off := (4 * i) % 8
 		mut val := 0
@@ -271,19 +266,13 @@ fn sha3_512(data []u8) []u8 {
 // ---------- SampleNTT (SHAKE-128 rejection sampling) ----------
 
 fn sample_ntt(rho []u8, i int, j int) Poly {
-	// input to SHAKE-128: rho || j || i (little-endian bytes)
 	mut input := []u8{}
 	input << rho
 	input << u8(j)
 	input << u8(i)
 	mut out := Poly{}
 	mut ctr := 0
-	mut buf := shake128_xof(input, 3 * 256) // 3 bytes per 2? actually 2 bytes per coeff attempt
-	// Rejection sampling: read 2-byte little-endian values, accept if < q*? 
-	// FIPS 203: accept if value < 3329 (q), with 2 bytes giving 0..65535, reject >= q (but q*?).
-	// Actually accept if d < q where d = (buf[0] | buf[1]<<8) & 0xfff? 
-	// FIPS 203 SampleNTT: d = buf[0] + 256*buf[1]; if d < q accept; else reject. Uses 2 bytes (16 bits), d in 0..65535, accept if < q=3329. Very low acceptance ~5%. Need more bytes.
-	// Use rejection with enough bytes.
+	mut buf := shake128_xof(input, 3 * 256)
 	mut pos := 0
 	for ctr < n {
 		if pos + 2 > buf.len {
@@ -301,34 +290,26 @@ fn sample_ntt(rho []u8, i int, j int) Poly {
 
 // ---------- K-PKE ----------
 
-// K-PKE keygen returns (ek, dk) as byte arrays.
-// ek = ByteEncode_12(t) || rho (384+32=416 bytes for k=3? actually 3*384+32=1184)
-// dk = ByteEncode_12(s) (3*384=1152 bytes)
 pub fn kpke_keygen(d []u8) !([]u8, []u8) {
-	// G(d) -> (rho, sigma)
 	g := sha3_512(d)
 	rho := g[..32].clone()
 	sigma := g[32..].clone()
-	// matrix A (k x k) in NTT domain
 	mut a := PolyMat{}
 	for i in 0 .. k {
 		for j in 0 .. k {
 			a[i][j] = sample_ntt(rho, i, j)
 		}
 	}
-	// s vector
 	mut s := PolyVec{}
 	mut nctr := 0
 	for i in 0 .. k {
-		// SamplePolyCBD_eta1(sigma, N)
 		mut inbuf := []u8{}
 		inbuf << sigma
 		inbuf << u8(nctr)
 		nctr++
-		b := shake256_xof(inbuf, 64 * eta1) // 128 bytes for eta=2
+		b := shake256_xof(inbuf, 64 * eta1)
 		s[i] = sample_cbd2(b)
 	}
-	// e vector
 	mut e := PolyVec{}
 	for i in 0 .. k {
 		mut inbuf := []u8{}
@@ -338,7 +319,6 @@ pub fn kpke_keygen(d []u8) !([]u8, []u8) {
 		b := shake256_xof(inbuf, 64 * eta1)
 		e[i] = sample_cbd2(b)
 	}
-	// NTT(s), NTT(e)
 	mut s_hat := PolyVec{}
 	mut e_hat := PolyVec{}
 	for i in 0 .. k {
@@ -347,7 +327,6 @@ pub fn kpke_keygen(d []u8) !([]u8, []u8) {
 		e_hat[i] = e[i]
 		ntt(mut e_hat[i])
 	}
-	// t_hat = A * s_hat + e_hat
 	mut t_hat := PolyVec{}
 	for i in 0 .. k {
 		mut acc := Poly{}
@@ -360,13 +339,11 @@ pub fn kpke_keygen(d []u8) !([]u8, []u8) {
 			t_hat[i][l] = (acc[l] + e_hat[i][l]) % q
 		}
 	}
-	// ek = ByteEncode_12(t_hat) || rho
 	mut ek := []u8{}
 	for i in 0 .. k {
 		ek << poly_to_bytes(t_hat[i])
 	}
 	ek << rho
-	// dk = ByteEncode_12(s_hat)
 	mut dk := []u8{}
 	for i in 0 .. k {
 		dk << poly_to_bytes(s_hat[i])
@@ -374,9 +351,7 @@ pub fn kpke_keygen(d []u8) !([]u8, []u8) {
 	return ek, dk
 }
 
-// K-PKE encrypt: takes ek, m (32 bytes), r (32 bytes) -> ct.
 pub fn kpke_encrypt(ek []u8, m []u8, r []u8) ![]u8 {
-	// parse ek: t_hat (k polys) + rho
 	mut t_hat := PolyVec{}
 	mut off := 0
 	for i in 0 .. k {
@@ -384,14 +359,12 @@ pub fn kpke_encrypt(ek []u8, m []u8, r []u8) ![]u8 {
 		off += 3 * n / 2
 	}
 	rho := ek[off..off + 32]
-	// matrix A
 	mut a := PolyMat{}
 	for i in 0 .. k {
 		for j in 0 .. k {
 			a[i][j] = sample_ntt(rho, i, j)
 		}
 	}
-	// sample r, e1, e2
 	mut rr := PolyVec{}
 	mut nctr := 0
 	for i in 0 .. k {
@@ -417,13 +390,11 @@ pub fn kpke_encrypt(ek []u8, m []u8, r []u8) ![]u8 {
 	b2 := shake256_xof(inbuf2, 64 * eta2)
 	e2 := sample_cbd2(b2)
 
-	// NTT(r)
 	mut r_hat := PolyVec{}
 	for i in 0 .. k {
 		r_hat[i] = rr[i]
 		ntt(mut r_hat[i])
 	}
-	// u = NTT^{-1}(A^T * r_hat) + e1
 	mut u := PolyVec{}
 	for i in 0 .. k {
 		mut acc := Poly{}
@@ -435,7 +406,6 @@ pub fn kpke_encrypt(ek []u8, m []u8, r []u8) ![]u8 {
 		inv_ntt(mut acc)
 		u[i] = poly_add(acc, e1[i])
 	}
-	// v = NTT^{-1}(t_hat^T * r_hat) + e2 + decompress(m, 1)
 	mut acc := Poly{}
 	for i in 0 .. k {
 		for l in 0 .. n {
@@ -443,7 +413,6 @@ pub fn kpke_encrypt(ek []u8, m []u8, r []u8) ![]u8 {
 		}
 	}
 	inv_ntt(mut acc)
-	// message to poly: m is 32 bytes = 256 bits, decompress with d=1
 	mut m_poly := Poly{}
 	for i in 0 .. n {
 		bit := (int(m[i / 8]) >> (i % 8)) & 1
@@ -452,7 +421,6 @@ pub fn kpke_encrypt(ek []u8, m []u8, r []u8) ![]u8 {
 	mut v := poly_add(acc, e2)
 	v = poly_add(v, m_poly)
 
-	// ct = (Compress(u, du), Compress(v, dv))
 	mut ct := []u8{}
 	for i in 0 .. k {
 		ct << poly_compress(u[i], du)
@@ -461,7 +429,6 @@ pub fn kpke_encrypt(ek []u8, m []u8, r []u8) ![]u8 {
 	return ct
 }
 
-// K-PKE decrypt.
 pub fn kpke_decrypt(dk []u8, ct []u8) ![]u8 {
 	mut s_hat := PolyVec{}
 	mut off := 0
@@ -469,7 +436,6 @@ pub fn kpke_decrypt(dk []u8, ct []u8) ![]u8 {
 		s_hat[i] = bytes_to_poly(dk[off..off + 3 * n / 2])
 		off += 3 * n / 2
 	}
-	// ct: u (k polys compressed du) + v (1 poly compressed dv)
 	mut u := PolyVec{}
 	mut uoff := 0
 	for i in 0 .. k {
@@ -480,7 +446,6 @@ pub fn kpke_decrypt(dk []u8, ct []u8) ![]u8 {
 	vl := n * dv / 8
 	v := poly_decompress(ct[uoff..uoff + vl], dv)
 
-	// w = v - NTT^{-1}(s_hat^T * NTT(u))
 	mut u_hat := PolyVec{}
 	for i in 0 .. k {
 		u_hat[i] = u[i]
@@ -494,7 +459,6 @@ pub fn kpke_decrypt(dk []u8, ct []u8) ![]u8 {
 	}
 	inv_ntt(mut acc)
 	mut w := poly_sub(v, acc)
-	// message = Compress(w, 1)
 	mut m := []u8{len: 32}
 	for i in 0 .. n {
 		bit := compress(w[i], 1)
@@ -522,14 +486,11 @@ pub:
 	data []u8
 }
 
-// KeyGen: returns (ek, dk). dk includes s_hat, ek, h, z.
 pub fn keygen() !(EncapsulationKey, DecapsulationKey) {
 	d := rand.bytes(32)!
 	z := rand.bytes(32)!
 	ek, dk_pke := kpke_keygen(d)!
-	// h = H(ek)
 	h := sha3_256(ek)
-	// dk = dk_pke || ek || h || z
 	mut dk := []u8{}
 	dk << dk_pke
 	dk << ek
@@ -540,7 +501,6 @@ pub fn keygen() !(EncapsulationKey, DecapsulationKey) {
 
 pub fn encaps(ek EncapsulationKey) !(Ciphertext, []u8) {
 	m := rand.bytes(32)!
-	// (K_bar, r) = G(m || H(ek))
 	h := sha3_256(ek.data)
 	mut input := []u8{}
 	input << m
@@ -549,7 +509,6 @@ pub fn encaps(ek EncapsulationKey) !(Ciphertext, []u8) {
 	k_bar := g[..32].clone()
 	r := g[32..].clone()
 	ct := kpke_encrypt(ek.data, m, r)!
-	// K = KDF(K_bar || H(ct)) -- use SHAKE-256 or just hash
 	mut ss_input := []u8{}
 	ss_input << k_bar
 	ss_input << sha3_256(ct)
@@ -558,23 +517,18 @@ pub fn encaps(ek EncapsulationKey) !(Ciphertext, []u8) {
 }
 
 pub fn decaps(dk DecapsulationKey, ct Ciphertext) ![]u8 {
-	// parse dk
-	dk_pke := dk.data[..k * 3 * n / 2].clone() // 1152
+	dk_pke := dk.data[..k * 3 * n / 2].clone()
 	ek := dk.data[k * 3 * n / 2..k * 3 * n / 2 + ek_size].clone()
 	h := dk.data[k * 3 * n / 2 + ek_size..k * 3 * n / 2 + ek_size + 32].clone()
 	z := dk.data[k * 3 * n / 2 + ek_size + 32..].clone()
-	// m' = K-PKE.Decrypt(dk_pke, ct)
 	m_prime := kpke_decrypt(dk_pke, ct.data)!
-	// (K_bar', r') = G(m' || h)
 	mut input := []u8{}
 	input << m_prime
 	input << h
 	g := sha3_512(input)
 	k_bar_prime := g[..32].clone()
 	r_prime := g[32..].clone()
-	// re-encrypt
 	ct_prime := kpke_encrypt(ek, m_prime, r_prime)!
-	// compare ct and ct_prime (constant-time)
 	mut fail := false
 	if ct.data.len != ct_prime.len {
 		fail = true
@@ -586,17 +540,13 @@ pub fn decaps(dk DecapsulationKey, ct Ciphertext) ![]u8 {
 		}
 	}
 	if fail {
-		// implicit rejection: K = KDF(z || H(ct))
 		mut ss_input := []u8{}
 		ss_input << z
 		ss_input << sha3_256(ct.data)
 		return sha3_256(ss_input)
 	}
-	// K = KDF(K_bar' || H(ct))
 	mut ss_input := []u8{}
 	ss_input << k_bar_prime
 	ss_input << sha3_256(ct.data)
 	return sha3_256(ss_input)
 }
-
-// end of module
