@@ -606,7 +606,7 @@ skipped coverage in the summary.
   location. This is especially useful when multiple code paths generate
   similar-looking output and you need to identify which path is actually used.
   Example:
-  ```v
+  ```v ignore
   // In vlib/v/gen/c/stmt.v:
   g.write('builtin___option_ok/*tom51*/(&(${styp}[]) { ')
 
