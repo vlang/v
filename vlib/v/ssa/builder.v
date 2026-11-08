@@ -175,6 +175,10 @@ mut:
 	// Bare struct names that the program's own `main`/`builtin` types own; a
 	// struct of an imported module with the same name must not take them.
 	program_struct_names map[u32]bool
+	// Sum types by SSA layout; rebuilt when sums or struct layouts are added.
+	sum_by_ssa_type         map[TypeID]u32
+	sum_by_ssa_type_sums    int = -1
+	sum_by_ssa_type_structs int = -1
 }
 
 // VarBinding represents var binding data used by ssa.
@@ -12289,6 +12293,9 @@ fn (mut b Builder) default_value_for_type(typ TypeID) ValueID {
 	if b.is_option_type(typ) {
 		return b.build_option_value(typ, false, ValueID(0))
 	}
+	if value := b.sum_type_default_value(typ) {
+		return value
+	}
 	if typ == b.str_type {
 		return b.m.add_value(.string_literal, b.str_type, '', 0)
 	}
@@ -13468,6 +13475,78 @@ fn (b &Builder) sum_variant_index(sum_name_id u32, variant_id u32) int {
 	resolved := b.find_sum_variant(sum_name_id, variant_id) or { return 0 }
 	variants := b.sum_type_variants.type_ids(sum_name_id) or { return 0 }
 	return variants.index(resolved) + 1
+}
+
+// sum_type_default_value is the zero value of a sum type: its first variant's
+// zero value, as `type Text = string | int` defaults to `Text('')`. A zeroed
+// sum has no variant tag, so a `match` on it would select no branch.
+fn (mut b Builder) sum_type_default_value(typ TypeID) ?ValueID {
+	sum_name := b.sum_name_for_ssa_type(typ) or { return none }
+	variants := b.sum_type_variants.ids[sum_name] or { return none }
+	if variants.len == 0 {
+		return none
+	}
+	canonical_source_id := b.sum_type_canonical.type_id(sum_name) or { return none }
+	canonical_name := flat.source_type_name(canonical_source_id)
+	module_name := canonical_name.all_before_last('.')
+	variant := variants[0]
+	variant_type := if module_name.len > 0 && module_name != canonical_name {
+		b.resolve_type_in_module(variant, module_name)
+	} else {
+		b.resolve_type(variant)
+	}
+	value := b.default_value_for_type(variant_type)
+	return b.wrap_sum_value(typ, variant, 1, value)
+}
+
+// sum_name_for_ssa_type returns the sum type whose SSA layout is `typ`.
+fn (mut b Builder) sum_name_for_ssa_type(typ TypeID) ?u32 {
+	if typ <= 0 {
+		return none
+	}
+	if b.sum_by_ssa_type_sums != b.sum_type_variants.ids.len
+		|| b.sum_by_ssa_type_structs != b.struct_types.len {
+		b.sum_by_ssa_type = map[TypeID]u32{}
+		for sum_name, _ in b.sum_type_variants.ids {
+			canonical_source_id := b.sum_type_canonical.type_id(sum_name) or { continue }
+			sum_typ := b.registered_struct_type(canonical_source_id) or { continue }
+			if sum_typ !in b.sum_by_ssa_type {
+				b.sum_by_ssa_type[sum_typ] = sum_name
+			}
+		}
+		b.sum_by_ssa_type_sums = b.sum_type_variants.ids.len
+		b.sum_by_ssa_type_structs = b.struct_types.len
+	}
+	return b.sum_by_ssa_type[typ] or { return none }
+}
+
+// wrap_value_in_sum wraps `value` as the variant of the sum type `typ` that
+// has its exact SSA type, or returns none when `typ` is not a sum type or no
+// variant matches.
+fn (mut b Builder) wrap_value_in_sum(typ TypeID, value ValueID) ?ValueID {
+	if typ <= 0 || value <= 0 {
+		return none
+	}
+	value_type := b.value_type(value)
+	if value_type <= 0 || value_type == typ {
+		return none
+	}
+	sum_name := b.sum_name_for_ssa_type(typ) or { return none }
+	variants := b.sum_type_variants.ids[sum_name] or { return none }
+	canonical_source_id := b.sum_type_canonical.type_id(sum_name) or { return none }
+	canonical_name := flat.source_type_name(canonical_source_id)
+	module_name := canonical_name.all_before_last('.')
+	for i, variant in variants {
+		variant_type := if module_name.len > 0 && module_name != canonical_name {
+			b.resolve_type_in_module(variant, module_name)
+		} else {
+			b.resolve_type(variant)
+		}
+		if variant_type == value_type {
+			return b.wrap_sum_value(typ, variant, i + 1, value)
+		}
+	}
+	return none
 }
 
 fn (b &Builder) is_sum_type_id(typ_id TypeID) bool {
@@ -17440,6 +17519,12 @@ fn (mut b Builder) build_sum_init(node flat.Node, typ TypeID, name u32) ValueID 
 }
 
 fn (mut b Builder) coerce_store_value(source ValueID, target_type TypeID) ValueID {
+	if b.value_type(source) != target_type {
+		// `text DisplayText = ''` stores a variant value into a sum type.
+		if wrapped := b.wrap_value_in_sum(target_type, source) {
+			return wrapped
+		}
+	}
 	value := b.coerce_value_for_type(source, target_type)
 	mut result := b.coerce_int_value(value, target_type)
 	value_type := b.value_type(value)

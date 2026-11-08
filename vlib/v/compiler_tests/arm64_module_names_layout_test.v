@@ -574,3 +574,52 @@ fn main() {
 done", output
 	}
 }
+
+// A sum type field starts as its first variant's zero value, and `= ''` or an
+// assignment of a variant value stores it with that variant's tag.
+fn test_sum_type_zero_value_and_variant_stores() {
+	$if macos && arm64 {
+		output := run_arm64('sum_values', {
+			'ui/ui.v': 'module ui
+
+pub type DisplayText = string | int | f64
+
+pub fn (text DisplayText) kind() string {
+	return if text is string {
+		\'string "\${text}"\'
+	} else if text is int {
+		\'int \${text}\'
+	} else if text is f64 {
+		\'f64 \${text}\'
+	} else {
+		\'no variant\'
+	}
+}
+
+@[params]
+pub struct ButtonProps {
+pub mut:
+	id    string
+	text  DisplayText = \'\'
+	other DisplayText
+}
+'
+			'main.v':  "module main
+
+import ui
+
+fn main() {
+	p := ui.ButtonProps{
+		id: 'a'
+	}
+	mut q := ui.ButtonProps{
+		text: 42
+	}
+	q.other = 2.5
+	println('\${p.text.kind()} | \${p.other.kind()} | \${q.text.kind()} | \${q.other.kind()}')
+}
+"
+		}, []string{})
+		assert output == 'string "" | string "" | int 42 | f64 2.5', output
+	}
+}
