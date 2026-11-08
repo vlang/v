@@ -777,6 +777,7 @@ fn (tc &TypeChecker) fork_storage_query_view() &TypeChecker {
 	return tc.fork_storage_query_view_with_annotations(true)
 }
 
+@[unsafe]
 fn (tc &TypeChecker) fork_storage_query_view_with_annotations(copy_annotations bool) &TypeChecker {
 	mut view := tc.fork_program_view(tc.a, map[int][]SymbolId{})
 	view.transform_signature_maps_shared = true

@@ -230,7 +230,7 @@ pub fn (s &Context) set_font(font_id int) {
 
 // draw_text draws the `text` string at position `x`,`y`.
 // The function returns the `x` coordinate of the resulting render.
-@[inline]
+@[inline; unsafe]
 pub fn (s &Context) draw_text(x f32, y f32, text string) f32 {
 	return C.fonsDrawText(s, x, y, &char(text.str), &char(unsafe { nil }))
 }
@@ -244,7 +244,7 @@ pub fn (s &Context) draw_text(x f32, y f32, text string) f32 {
 // `bounds[1]` is the `y` coordinate of the top-left point.
 // `bounds[2]` is the `x` coordinate of the bottom-right point.
 // `bounds[3]` is the `y` coordinate of the bottom-right point.
-@[inline]
+@[inline; unsafe]
 pub fn (s &Context) text_bounds(x f32, y f32, text string, bounds &f32) f32 {
 	return C.fonsTextBounds(s, x, y, &char(text.str), &char(unsafe { nil }), bounds)
 }

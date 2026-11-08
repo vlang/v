@@ -48,6 +48,7 @@ fn test_managed_array_header_survives_slice_offsets() {
 	}
 }
 
+@[unsafe]
 fn test_managed_array_offset_and_noslices_growth_free_original_allocation() {
 	mut values := []u64{len: 2, cap: 2, init: u64(index)}
 	unsafe { values.flags.set(.noslices) }
@@ -66,6 +67,7 @@ fn test_managed_array_offset_and_noslices_growth_free_original_allocation() {
 	assert values.len == 0
 }
 
+@[unsafe]
 fn test_noscan_array_allocations_use_the_same_alignment_and_ownership() {
 	$if gcboehm_opt ? {
 		for initialized in [false, true] {

@@ -11,6 +11,7 @@ pub fn (e &Encoder) encode_value[T](val T, mut wr Writer) ! {
 	assert e.encode_struct[T](val, 1, mut wr)! == 'a'
 }
 
+@[unsafe]
 fn (e &Encoder) encode_struct[U](val U, level int, mut wr Writer) !string {
 	$for field in U.fields {
 		if val.$(field.name) != unsafe { nil } {

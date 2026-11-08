@@ -14,6 +14,7 @@ fn (mut r Recorder) write(buf []u8) !int {
 
 const my_logger = &log.Log{}
 
+@[unsafe]
 fn test_log_info_with_different_name_const() {
 	mut rec := &Recorder{}
 	mut lg := &log.Log{}

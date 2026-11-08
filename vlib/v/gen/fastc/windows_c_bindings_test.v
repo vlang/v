@@ -5,6 +5,7 @@ import strings
 import v.flat
 import v.pref
 
+@[unsafe]
 fn test_c_type_aliases_are_spelled_as_bare_c_typedefs() {
 	// `type C.DWORD = u32` (vlib/builtin/builtin_windows.c.v) names a C typedef.
 	// Locals, casts, pointer arguments and sizeof must spell it `DWORD`, like an

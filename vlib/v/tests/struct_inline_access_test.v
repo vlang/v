@@ -48,6 +48,7 @@ struct AccessKeywordPointer {
 	pub &int = unsafe { nil }
 }
 
+@[unsafe]
 fn test_access_keyword_field_names_keep_composite_types() {
 	array := AccessKeywordArray{ pub: [1, 2] }
 	mapping := AccessKeywordMap{

@@ -5,6 +5,7 @@ mut:
 	len  uint @[required]
 }
 
+@[unsafe]
 pub fn new[T]() Vec[T] {
 	return Vec[T]{
 		data: unsafe { nil }

@@ -17,6 +17,7 @@ mut:
 	bar &Bar
 }
 
+@[unsafe]
 fn main() {
 	// Basic test of assigning nil to a string pointer
 	mut str := 'hi!'

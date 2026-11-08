@@ -5,6 +5,7 @@ fn ret_int_ptr(arg int) !(int, voidptr) {
 	return 1, [1, 2, 3].data
 }
 
+@[unsafe]
 fn test_main() {
 	mut val1 := 0
 	mut val2 := unsafe { nil }

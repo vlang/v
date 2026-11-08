@@ -13,6 +13,7 @@ fn (u &NilCastUnix) recv() int {
 	return u.x
 }
 
+@[unsafe]
 fn nil_cast_pick(real bool) int {
 	mut s := &NilCastSock(unsafe { nil })
 	if real {

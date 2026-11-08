@@ -63,6 +63,7 @@ fn run_ordering(mut once sync.Once, s &OrderingState, c chan bool) {
 	c <- true
 }
 
+@[unsafe]
 fn test_once_with_param_ordering() {
 	mut s := &OrderingState{
 		ready: chan bool{cap: 1}

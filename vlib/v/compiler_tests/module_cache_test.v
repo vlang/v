@@ -481,6 +481,7 @@ fn main() {
 // check_warm_cached_interface_dispatch builds a program whose only dispatch
 // through `Sink` happens inside the cached `sinks` module, after an earlier
 // program warmed that module's object without ever reaching the dispatch.
+@[unsafe]
 fn check_warm_cached_interface_dispatch(name string, sink_type string, sink_decl string) {
 	v3_bin := module_cache_compiler()
 	root := os.join_path(os.temp_dir(), 'v3_cached_iface_dispatch_${name}_${os.getpid()}')

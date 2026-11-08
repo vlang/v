@@ -1224,6 +1224,7 @@ fn (g &Parser) struct_member_type(receiver_type_id u32, field_name string) u32 {
 	return field.typ
 }
 
+@[unsafe]
 fn (g &Parser) struct_field_metadata(receiver_type u32, field_name string) ?&FastcStructField {
 	if g.last_field_known && receiver_type == g.last_field_receiver && field_name == g.last_field_name {
 		if g.last_field == unsafe { nil } {

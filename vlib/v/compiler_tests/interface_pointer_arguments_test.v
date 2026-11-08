@@ -6,6 +6,7 @@ const interface_pointer_args_v_dir = os.dir(os.dir(@FILE))
 const interface_pointer_args_vlib_dir = os.dir(interface_pointer_args_v_dir)
 const interface_pointer_args_v_src = os.join_path(interface_pointer_args_v_dir, 'v.v')
 
+@[unsafe]
 fn test_interface_pointer_arguments_preserve_value_and_storage_types() {
 	work_dir := os.join_path(os.temp_dir(), 'v3_interface_pointer_args_${os.getpid()}')
 	os.mkdir_all(work_dir) or { panic(err) }

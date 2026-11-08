@@ -5,6 +5,7 @@ import v.parser
 import v.pref
 import v.types
 
+@[unsafe]
 fn test_native_test_entrypoint_selects_user_files_hooks_and_function_globs() {
 	path := os.join_path(os.vtmp_dir(), 'ssa_native_harness_${os.getpid()}_test.v')
 	other := os.join_path(os.vtmp_dir(), 'ssa_native_unselected_${os.getpid()}_test.v')
@@ -85,6 +86,7 @@ fn test_result() ! {}
 	assert failed_exits == 2
 }
 
+@[unsafe]
 fn test_native_test_entrypoint_qualifies_an_implicit_main_module() {
 	path := os.join_path(os.vtmp_dir(), 'ssa_native_implicit_main_${os.getpid()}_test.v')
 	defer {

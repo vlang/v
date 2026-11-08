@@ -285,6 +285,7 @@ $if !i386 {
 	}
 
 	// vlibc_sys_mmap maps memory using native protection and mapping flags.
+	@[unsafe]
 	pub fn vlibc_sys_mmap(addr voidptr, len u64, prot int, flags int, fd i64, off u64) (voidptr, VlibcErrno) {
 		rc, er := sys_call6(ob_nr_mmap, u64(addr), len, u64(prot), u64(flags), u64(fd), off)
 		if er != 0 {
@@ -396,11 +397,13 @@ $if !i386 {
 	}
 
 	// vlibc_sleep_ns requests a sleep duration in nanoseconds; signals may interrupt it.
+	@[unsafe]
 	pub fn vlibc_sleep_ns(nsec u64) {
 		mut ts := VlibcTimespec{ sec: i64(nsec / 1_000_000_000), nsec: i64(nsec % 1_000_000_000) }
 		vlibc_sys_nanosleep(&ts, unsafe { nil })
 	}
 
+	@[unsafe]
 	fn vlibc_sysctl_string(mib0 int, mib1 int) string {
 		mut mib := [2]i32{}
 		mib[0] = i32(mib0)
@@ -704,6 +707,7 @@ $if !i386 {
 	}
 
 	// vlibc_execve replaces the process image using string argument and environment arrays.
+	@[unsafe]
 	pub fn vlibc_execve(path string, argv []string, envp []string) int {
 		mut a := []&u8{cap: argv.len + 1}
 		for s in argv {
@@ -720,6 +724,7 @@ $if !i386 {
 	}
 
 	// vlibc_waitpid blocks until the child exits and returns the reaped process ID.
+	@[unsafe]
 	pub fn vlibc_waitpid(pid i64) (i64, VlibcErrno) {
 		mut status := i32(0)
 		return vlibc_sys_wait4(pid, &status, 0, unsafe { nil })
@@ -825,6 +830,7 @@ $if !i386 {
 	}
 
 	// vlibc_accept accepts a connection and returns its descriptor.
+	@[unsafe]
 	pub fn vlibc_accept(fd i64) (i64, VlibcErrno) {
 		return vlibc_sys_accept4(fd, unsafe { nil }, unsafe { nil }, 0)
 	}
@@ -840,6 +846,7 @@ $if !i386 {
 	}
 
 	// vlibc_send sends bytes on a connected socket and returns the number sent and any error.
+	@[unsafe]
 	pub fn vlibc_send(fd i64, data []u8, flags int) (i64, VlibcErrno) {
 		if data.len == 0 {
 			return 0, VlibcErrno.enoerror
@@ -848,6 +855,7 @@ $if !i386 {
 	}
 
 	// vlibc_recv receives bytes into buf and returns the number read and any error.
+	@[unsafe]
 	pub fn vlibc_recv(fd i64, buf []u8, flags int) (i64, VlibcErrno) {
 		if buf.len == 0 {
 			return 0, VlibcErrno.enoerror
@@ -1068,6 +1076,7 @@ $if !i386 {
 	}
 
 	// vlibc_thread_spawn starts a worker with its own argument and stack state.
+	@[unsafe]
 	pub fn vlibc_thread_spawn(fn_ptr VlibcThreadFn, arg u64) (VlibcThread, VlibcErrno) {
 		mut t := VlibcThread{}
 		t.fn_ptr = fn_ptr
@@ -1103,6 +1112,7 @@ $if !i386 {
 	}
 
 	// vlibc_thread_join waits for kernel thread exit before releasing its stack.
+	@[unsafe]
 	pub fn vlibc_thread_join(mut t VlibcThread) VlibcErrno {
 		for {
 			if vlibc_load_u32(&t.start.done) == 0 {
@@ -1129,6 +1139,7 @@ $if !i386 {
 	}
 
 	// vlibc_mutex_lock waits until the mutex is acquired.
+	@[unsafe]
 	pub fn vlibc_mutex_lock(mut m VlibcMutex) {
 		for {
 			if vlibc_cas_u32(&m.state, 0, 1) {
@@ -1139,6 +1150,7 @@ $if !i386 {
 	}
 
 	// vlibc_mutex_unlock releases the mutex.
+	@[unsafe]
 	pub fn vlibc_mutex_unlock(mut m VlibcMutex) {
 		vlibc_store_u32(&m.state, 0)
 		vlibc_sys_futex(&m.state, ob_futex_wake, 1, unsafe { nil }, unsafe { nil })
@@ -1155,6 +1167,7 @@ $if !i386 {
 	}
 
 	// vlibc_cond_wait releases the mutex while waiting, then locks it again before returning.
+	@[unsafe]
 	pub fn vlibc_cond_wait(mut c VlibcCond, mut m VlibcMutex) {
 		v := vlibc_load_u32(&c.seq)
 		vlibc_mutex_unlock(mut m)
@@ -1163,12 +1176,14 @@ $if !i386 {
 	}
 
 	// vlibc_cond_signal advances the condition sequence to notify waiting threads.
+	@[unsafe]
 	pub fn vlibc_cond_signal(mut c VlibcCond) {
 		vlibc_increment_u32(&c.seq)
 		vlibc_sys_futex(&c.seq, ob_futex_wake, 1, unsafe { nil }, unsafe { nil })
 	}
 
 	// vlibc_cond_broadcast advances the condition sequence and wakes all waiters.
+	@[unsafe]
 	pub fn vlibc_cond_broadcast(mut c VlibcCond) {
 		vlibc_increment_u32(&c.seq)
 		vlibc_sys_futex(&c.seq, ob_futex_wake, 0x7fffffff, unsafe { nil }, unsafe { nil })

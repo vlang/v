@@ -3,6 +3,7 @@ module types
 
 import v.flat
 
+@[unsafe]
 fn promotion_test_indirect_payload(typ &Type) voidptr {
 	return match typ {
 		Unknown { voidptr(typ.UnknownDataRef) }
@@ -16,6 +17,7 @@ fn promotion_test_indirect_payload(typ &Type) voidptr {
 	}
 }
 
+@[unsafe]
 fn test_pass2_promotion_retains_scoped_variant_payloads() {
 	$if prealloc {
 		name_id := flat.source_type_id('ScopedType')

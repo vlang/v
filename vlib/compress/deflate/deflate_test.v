@@ -220,6 +220,7 @@ fn test_stored_block_after_huffman_block_with_short_end_of_block_code() {
 	}
 }
 
+@[unsafe]
 fn test_gzip_callback_abort_does_not_validate_unread_trailer() {
 	mut compressed := compress_gzip('partial decoding'.bytes())!
 	compressed[compressed.len - 8] ^= 1

@@ -37,6 +37,7 @@ pub:
 // arguments:
 // - bench_func - function to benchmark. required, if you have no function - you don't need benchmark
 // - params - structure of benchmark parameters
+@[unsafe]
 pub fn setup(bench_func fn () !, params BenchmarkDefaults) !Benchmark {
 	if bench_func == unsafe { nil } {
 		return error('Benchmark function cannot be `nil`')

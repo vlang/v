@@ -11,6 +11,7 @@ struct JsonPointerEncodeEnvelope {
 	by_name map[string]&JsonRecursivePointerNode
 }
 
+@[unsafe]
 fn json_pointer_encode_node(value int, is_nil bool) &JsonRecursivePointerNode {
 	return if is_nil {
 		unsafe { nil }

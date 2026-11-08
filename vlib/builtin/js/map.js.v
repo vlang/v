@@ -24,6 +24,7 @@ fn (mut m map) internal_set(key JS.Any, val JS.Any) {
 	_ := val
 }
 
+@[unsafe]
 fn (mut m map) internal_get(key JS.Any) JS.Any {
 	mut val := JS.Any(unsafe { nil })
 	//$if es5 {

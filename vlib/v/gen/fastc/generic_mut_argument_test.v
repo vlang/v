@@ -348,6 +348,7 @@ fn main() {
 // A call through a function-typed parameter, alias or field converts its arguments and
 // result to the function type's C types, as a direct call does: a negative `int`, an `f32`
 // and an `int` past 32 bits reach the callee intact.
+@[unsafe]
 fn test_fastc_function_pointer_calls_use_the_prototype() {
 	$if !macos && !linux {
 		return
@@ -521,6 +522,7 @@ fn main() {
 	assert run.output.trim_space() == '3\n-7\n-7\n11'
 }
 
+@[unsafe]
 fn test_fastc_function_pointer_prototypes_allow_mixed_parameter_names() {
 	$if !macos && !linux {
 		return

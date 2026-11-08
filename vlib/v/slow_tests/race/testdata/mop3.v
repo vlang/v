@@ -359,6 +359,7 @@ fn test_race_block_call2() {
 	}
 }
 
+@[unsafe]
 fn test_race_block_call3() {
 	done := chan bool{}
 	mut x := &Cell[&int]{
@@ -380,6 +381,7 @@ fn test_race_block_call3() {
 	}
 }
 
+@[unsafe]
 fn test_race_block_call4() {
 	done := chan bool{}
 	mut x := &Cell[int]{}
@@ -401,6 +403,7 @@ fn test_race_block_call4() {
 	}
 }
 
+@[unsafe]
 fn test_race_block_call5() {
 	done := chan bool{}
 	mut x := &Cell[&int]{
@@ -422,6 +425,7 @@ fn test_race_block_call5() {
 	}
 }
 
+@[unsafe]
 fn test_race_block_call6() {
 	done := chan bool{}
 	mut x := &Cell[int]{}
@@ -919,6 +923,7 @@ fn test_race_method_thunk4() {
 const tiny_alloc_p = 4
 const tiny_alloc_n = 1_000_000
 
+@[unsafe]
 fn test_no_race_tiny_alloc() {
 	mut tiny_sink := &Cell[&u8]{
 		v: unsafe { nil }

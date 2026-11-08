@@ -4,6 +4,7 @@ fn map_shift_test_hash(key voidptr) u64 {
 	return unsafe { *&u64(key) }
 }
 
+@[unsafe]
 fn test_map_hash_shift_mask_preserves_all_in_range_shifts() {
 	$if v3_backend ? {
 		mut state := VMapData{

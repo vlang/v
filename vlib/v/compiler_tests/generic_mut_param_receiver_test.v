@@ -33,6 +33,7 @@ fn mut_param_receiver_build_v3() string {
 // generated C did not compile. The shape needs the embedding chain to cross
 // modules: the controller embeds an app struct that embeds a generic middleware
 // struct declared in a third module.
+@[unsafe]
 fn test_generic_mut_param_promoted_method_through_embedded_fields() {
 	v3_bin := mut_param_receiver_build_v3()
 	dir := os.join_path(os.temp_dir(), 'v3_generic_mut_param_receiver')

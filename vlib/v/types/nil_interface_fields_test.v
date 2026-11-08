@@ -25,6 +25,7 @@ fn accept(config Config) { _ = config }
 	return tc.errors.clone()
 }
 
+@[unsafe]
 fn test_interface_fields_accept_explicit_unsafe_nil_in_both_initializer_forms() {
 	errors := nil_interface_field_errors('unsafe_nil', 'fn main() {
 	accept(reader: unsafe { nil }, alias: (unsafe { nil }))
@@ -38,6 +39,7 @@ fn test_interface_fields_accept_explicit_unsafe_nil_in_both_initializer_forms() 
 	assert errors.len == 0, errors.str()
 }
 
+@[unsafe]
 fn test_interface_fields_keep_voidptr_implementation_requirements() {
 	errors := nil_interface_field_errors('voidptr', 'fn main() {
 	p := unsafe { nil }
@@ -60,6 +62,7 @@ fn test_interface_fields_reject_nil_outside_unsafe() {
 	assert errors.all(it.kind == .assignment_mismatch && it.node_value == 'reader'), errors.str()
 }
 
+@[unsafe]
 fn test_non_pointer_fields_still_reject_explicit_unsafe_nil() {
 	errors := nil_interface_field_errors('scalar_nil', '@[params]
 struct ScalarConfig { number int }
@@ -74,6 +77,7 @@ fn main() {
 	assert errors.any(it.msg == 'cannot assign `nil` to struct field `number` with type `int`'), errors.str()
 }
 
+@[unsafe]
 fn test_interface_field_declaration_defaults_still_reject_unsafe_nil() {
 	errors := nil_interface_field_errors('default_nil', 'struct DefaultConfig {
 	reader Reader = unsafe { nil }

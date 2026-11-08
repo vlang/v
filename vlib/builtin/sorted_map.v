@@ -58,6 +58,7 @@ fn new_sorted_map_init(n int, value_bytes int, keys &string, values voidptr) Sor
 // The tree is initialized with an empty node as root to
 // avoid having to check whether the root is null for
 // each insertion.
+@[unsafe]
 fn new_node() &mapnode {
 	return &mapnode{
 		children: unsafe { nil }
@@ -67,6 +68,7 @@ fn new_node() &mapnode {
 
 // This implementation does proactive insertion, meaning
 // that splits are done top-down and not bottom-up.
+@[unsafe]
 fn (mut m SortedMap) set(key string, value voidptr) {
 	mut node := m.root
 	mut child_index := 0
@@ -122,6 +124,7 @@ fn (mut m SortedMap) set(key string, value voidptr) {
 	}
 }
 
+@[unsafe]
 fn (mut n mapnode) split_child(child_index int, mut y mapnode) {
 	mut z := new_node()
 	z.len = mid_index
@@ -160,7 +163,7 @@ fn (mut n mapnode) split_child(child_index int, mut y mapnode) {
 	n.len++
 }
 
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn (m SortedMap) get(key string, out voidptr) bool {
 	mut node := m.root
 	for {
@@ -182,6 +185,7 @@ fn (m SortedMap) get(key string, out voidptr) bool {
 	return false
 }
 
+@[unsafe]
 fn (m SortedMap) exists(key string) bool {
 	if m.root == unsafe { nil } { // TODO: find out why root can be nil
 		return false
@@ -211,6 +215,7 @@ fn (n &mapnode) find_key(k string) int {
 	return idx
 }
 
+@[unsafe]
 fn (mut n mapnode) remove_key(k string) bool {
 	idx := n.find_key(k)
 	if idx < n.len && n.keys[idx] == k {
@@ -247,6 +252,7 @@ fn (mut n mapnode) remove_from_leaf(idx int) {
 	n.len--
 }
 
+@[unsafe]
 fn (mut n mapnode) remove_from_non_leaf(idx int) {
 	k := n.keys[idx]
 	if unsafe { &mapnode(n.children[idx]) }.len >= degree {
@@ -288,6 +294,7 @@ fn (mut n mapnode) fill(idx int) {
 	}
 }
 
+@[unsafe]
 fn (mut n mapnode) borrow_from_prev(idx int) {
 	mut child := unsafe { &mapnode(n.children[idx]) }
 	mut sibling := unsafe { &mapnode(n.children[idx - 1]) }
@@ -315,6 +322,7 @@ fn (mut n mapnode) borrow_from_prev(idx int) {
 	sibling.len--
 }
 
+@[unsafe]
 fn (mut n mapnode) borrow_from_next(idx int) {
 	mut child := unsafe { &mapnode(n.children[idx]) }
 	mut sibling := unsafe { &mapnode(n.children[idx + 1]) }
@@ -342,6 +350,7 @@ fn (mut n mapnode) borrow_from_next(idx int) {
 	sibling.len--
 }
 
+@[unsafe]
 fn (mut n mapnode) merge(idx int) {
 	mut child := unsafe { &mapnode(n.children[idx]) }
 	sibling := unsafe { &mapnode(n.children[idx + 1]) }
@@ -372,6 +381,7 @@ fn (mut n mapnode) merge(idx int) {
 	// free(sibling)
 }
 
+@[unsafe]
 pub fn (mut m SortedMap) delete(key string) {
 	if m.root.len == 0 {
 		return
@@ -395,6 +405,7 @@ pub fn (mut m SortedMap) delete(key string) {
 
 // Insert all keys of the subtree into array `keys`
 // starting at `at`. Keys are inserted in order.
+@[unsafe]
 fn (n &mapnode) subkeys(mut keys []string, at int) int {
 	mut position := at
 	if n.children != unsafe { nil } {
@@ -420,6 +431,7 @@ fn (n &mapnode) subkeys(mut keys []string, at int) int {
 	return position - at
 }
 
+@[unsafe]
 pub fn (m &SortedMap) keys() []string {
 	mut keys := []string{len: m.len}
 	if m.root == unsafe { nil } || m.root.len == 0 {
@@ -433,6 +445,7 @@ fn (mut n mapnode) free() {
 	// TODO
 }
 
+@[unsafe]
 pub fn (mut m SortedMap) free() {
 	if m.root == unsafe { nil } {
 		return

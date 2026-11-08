@@ -13,6 +13,7 @@ fn test_g_main_argv() {
 	assert first_arg.contains('builtin_test')
 }
 
+@[unsafe]
 fn test_c_strstr_is_declared() {
 	found := unsafe { C.strstr(c'hello world', c'world') } != unsafe { nil }
 	assert found

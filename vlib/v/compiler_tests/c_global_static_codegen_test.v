@@ -264,6 +264,7 @@ fn main() {
 	assert !c_code.contains('\tpage_size = (u64)(0x1000);'), c_code
 }
 
+@[unsafe]
 fn test_nil_pointer_global_initializer_is_emitted_at_file_scope() {
 	c_code := gen_c_for_source('nil_pointer_global_static_initializer', '__global early_state = unsafe { nil }
 

@@ -271,6 +271,7 @@ fn main() {
 	}
 }
 
+@[unsafe]
 fn test_borrowed_owned_array_storage_scope_and_retained_headers() {
 	source := '@[has_globals]
 module main

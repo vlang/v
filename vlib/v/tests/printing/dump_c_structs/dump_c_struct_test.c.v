@@ -28,6 +28,7 @@ pub struct C.zz_hostent {
 	h_addr_list &&char
 }
 
+@[unsafe]
 fn test_dump_c_struct() {
 	ev := C.zz_epoll_event{}
 	unsafe { C.memset(&ev, 0, sizeof(ev)) }

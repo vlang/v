@@ -88,7 +88,7 @@ fn (mut w Parser) load_parse_prefix(base &ParsePrefixBase, chunk_index int) {
 // parse_chunk_thread parses one worker's contiguous range of files into the
 // worker's private FlatAst, recording each file's worker-local first node id
 // into its own preallocated slot of the shared starts array.
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn parse_chunk_thread(arg voidptr) voidptr {
 	mut a := unsafe { &ParseChunkArgs(arg) }
 	mut w := unsafe { &Parser(a.worker) }
@@ -112,6 +112,7 @@ fn parse_chunk_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn precollect_const_chunk_thread(arg voidptr) voidptr {
 	mut a := unsafe { &ParseChunkArgs(arg) }
 	a.scope = parser_worker_scope_begin(a.scope_enabled)
@@ -125,6 +126,7 @@ fn precollect_const_chunk_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn precollect_const_names_chunk_thread(arg voidptr) voidptr {
 	mut a := unsafe { &ParseChunkArgs(arg) }
 	mut w := unsafe { &Parser(a.worker) }
@@ -159,6 +161,7 @@ fn clone_comptime_const_prepass_decls(values []ComptimeConstPrepassDecl) []Compt
 	return cloned
 }
 
+@[unsafe]
 fn parser_worker_scope_begin(enabled bool) voidptr {
 	$if prealloc {
 		if enabled {
@@ -168,6 +171,7 @@ fn parser_worker_scope_begin(enabled bool) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn parser_worker_scope_leave(scope voidptr) {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -176,6 +180,7 @@ fn parser_worker_scope_leave(scope voidptr) {
 	}
 }
 
+@[unsafe]
 fn parser_worker_scope_free(scope voidptr) {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -193,7 +198,7 @@ fn (p &Parser) timing_profile(message string) {
 // parse_files_dispatch parses paths in order, appending to p.a exactly like a
 // serial parse_into loop, across worker threads when there is enough work.
 // Returns each file's first node id in p.a and whether threads were used.
-@[direct_array_access]
+@[direct_array_access; unsafe]
 pub fn (mut p Parser) parse_files_dispatch(paths []string, allow_parallel bool) ([]int, bool) {
 	previous_paths := p.parse_batch_paths
 	p.parse_batch_paths = paths.clone()
@@ -1253,7 +1258,7 @@ mut:
 // probe_worker_texts_thread marks the texts of one worker's table that the
 // master's text table does not hold. Nothing writes the master table while the
 // probes run.
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn probe_worker_texts_thread(arg voidptr) voidptr {
 	mut probe := unsafe { &MergeTextProbeArgs(arg) }
 	p := unsafe { &Parser(probe.master) }
@@ -1275,7 +1280,7 @@ fn new_parse_merge_text_cache() &flat.TextProbeCache {
 // serial merge. Chunks write disjoint master ranges, so the copies run
 // concurrently; string payloads stay in the worker scopes until the serial
 // intern pass rebinds them.
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn parse_merge_copy_thread(arg voidptr) voidptr {
 	mut ma := unsafe { &ParseMergeCopyArgs(arg) }
 	mut p := unsafe { &Parser(ma.master) }
@@ -1379,7 +1384,7 @@ fn par_parse_merge_enabled() bool {
 // disjoint ranges across the pool, then the order-sensitive tail (interning,
 // exports, diagnostics) runs serially in chunk order exactly like the serial
 // merge.
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn (mut p Parser) merge_parsed_workers_parallel(mut parser_workers []&Parser, mut starts []int, bounds []int, mut args []ParseChunkArgs) {
 	thread_count := parser_workers.len
 	base_nodes := p.a.nodes.len
@@ -1474,6 +1479,7 @@ fn (mut p Parser) merge_parsed_workers_parallel(mut parser_workers []&Parser, mu
 	p.a.worker_pool.run(free_tasks)
 }
 
+@[unsafe]
 fn parser_worker_scope_free_thread(scope voidptr) voidptr {
 	parser_worker_scope_free(scope)
 	return unsafe { nil }
@@ -1545,7 +1551,7 @@ fn (mut p Parser) merge_parsed_worker_tail(mut w Parser, mut starts []int, chunk
 	p.merge_parsed_worker_bookkeeping(mut w, mut starts, chunk_start, chunk_end, worker_scope, node_shift, [], false)
 }
 
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn (mut p Parser) merge_parsed_worker_bookkeeping(mut w Parser, mut starts []int, chunk_start int, chunk_end int, worker_scope voidptr, node_shift int, pending_files []PendingSourceFile, use_pending bool) {
 	// Per-file region starts move by the merge offset.
 	for i in chunk_start .. chunk_end {

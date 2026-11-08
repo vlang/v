@@ -29,6 +29,7 @@ mut:
 	mouse_y     int = -1
 }
 
+@[unsafe]
 fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	sz := w * h * 4
 	mut img_desc := gfx.ImageDesc{

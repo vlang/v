@@ -30,6 +30,7 @@ const fn_track = AppViewFn{
 	}
 }
 
+@[unsafe]
 fn test_mutual_const_references_inside_anon_fn_bodies_compile() {
 	v := AppView{
 		on_fn: fn_idle

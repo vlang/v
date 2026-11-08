@@ -10,6 +10,7 @@ $if macos && arm64 {
 	import v.types
 }
 
+@[unsafe]
 fn test_native_constructor_returns_more_than_256_mixed_fields() {
 	$if macos && arm64 {
 		mut source := strings.new_builder(16000)

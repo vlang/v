@@ -306,6 +306,7 @@ fn (g &FlatGen) reflection_function_args(node flat.Node, is_method bool, module_
 	return 'new_array_from_c_array(${args.len}, ${args.len}, sizeof(reflection__FunctionArg), (reflection__FunctionArg[]){${args.join(', ')}})'
 }
 
+@[unsafe]
 fn (g &FlatGen) reflection_function(node_id int, node flat.Node) string {
 	file := g.a.source_files[node.pos.id] or { unsafe { nil } }
 	file_name := if isnil(file) { '' } else { file.name }

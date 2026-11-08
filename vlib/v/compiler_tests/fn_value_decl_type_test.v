@@ -552,6 +552,7 @@ fn main() {
 	assert out == '42\n42'
 }
 
+@[unsafe]
 fn test_address_of_local_fn_value_stores_the_callable_value() {
 	v3_bin := build_v3()
 	out := run_good(v3_bin, 'address_of_local_fn_value', 'struct Holder {

@@ -3079,6 +3079,7 @@ fn main() {
 	assert ok_scoped_owned_field.exit_code == 0, ok_scoped_owned_field.output
 }
 
+@[unsafe]
 fn test_ownership_unsafe_expression_does_not_shift_scope_drops() {
 	v3_bin := ownership_build_v3()
 	ok := run_ownership_check(v3_bin, 'unsafe_expression_scope_drop', '

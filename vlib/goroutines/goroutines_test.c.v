@@ -17,6 +17,7 @@ fn testsuite_end() {
 }
 
 // Helper function for test_goroutine_create (must be a plain function, not a closure).
+@[unsafe]
 fn goroutine_test_worker(arg voidptr) {
 	// Signal that the goroutine ran by writing to the shared flag
 	if arg != unsafe { nil } {
@@ -36,6 +37,7 @@ fn test_goroutine_create() {
 }
 
 // Test channel make
+@[unsafe]
 fn test_chan_make() {
 	c := chan_make(int(sizeof(int)), 10)
 	assert c != unsafe { nil }
@@ -170,6 +172,7 @@ fn test_waitq() {
 }
 
 // Test scheduler initialization
+@[unsafe]
 fn test_scheduler_init() {
 	// The scheduler should have been initialized by module init()
 	assert gomaxprocs > 0
@@ -363,6 +366,7 @@ mut:
 	seen []u32
 }
 
+@[unsafe]
 fn queue_stress_worker(arg voidptr) {
 	mut st := unsafe { &QueueStress(arg) }
 	mut id := int(C.goroutines_atomic_fetch_add_u32(&st.next, 1))

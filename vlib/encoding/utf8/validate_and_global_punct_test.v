@@ -20,6 +20,7 @@ fn test_validate_str_rejects_broken_utf8() {
 	assert !utf8.validate_str('a\x80')
 }
 
+@[unsafe]
 fn test_validate_agrees_with_validate_str() {
 	// validate reads raw bytes, validate_str reads a string; both must agree
 	assert utf8.validate(unsafe { nil }, 0) == utf8.validate_str('')

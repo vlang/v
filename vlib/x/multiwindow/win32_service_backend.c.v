@@ -361,6 +361,7 @@ fn win32_service_monitor_ids_for_native(records []Win32ServiceMonitorRecord, nat
 	return []ServiceMonitorId{}
 }
 
+@[unsafe]
 fn win32_service_raw_monitor_snapshot() ![]Win32ServiceRawMonitor {
 	$if windows {
 		snapshot := C.v_multiwindow_win32_service_monitor_snapshot_new()
@@ -443,6 +444,7 @@ fn win32_window_config_with_fullscreen(config WindowConfig, fullscreen bool) Win
 	}
 }
 
+@[unsafe]
 fn (backend &Win32Backend) ensure_service_window(id WindowId) !int {
 	$if windows {
 		if backend.native_operations == unsafe { nil }
@@ -486,6 +488,7 @@ fn (backend &Win32Backend) clipboard_now_ns() i64 {
 	}
 }
 
+@[unsafe]
 fn win32_clipboard_utf16(text string) ![]u16 {
 	$if windows {
 		mut units := uint(0)
@@ -650,6 +653,7 @@ fn (mut backend Win32Backend) finish_clipboard_head(status ServiceStatus, text s
 	}
 }
 
+@[unsafe]
 fn (mut backend Win32Backend) collect_clipboard_events() []Win32NativeQueuedEvent {
 	$if windows {
 		if backend.clipboard_pending.len == 0 {
@@ -817,6 +821,7 @@ fn (backend &Win32Backend) service_raw_window_state(index int) !Win32ServiceRawW
 	}
 }
 
+@[unsafe]
 fn (backend &Win32Backend) service_window_state_with_monitors(index int, monitors []Win32ServiceMonitorRecord) !ServiceWindowState {
 	if index < 0 || index >= backend.windows.len {
 		return error(err_window_not_found)
@@ -886,6 +891,7 @@ fn win32_service_monitor_event(app_instance u64, monitors []ServiceMonitorInfo) 
 	})
 }
 
+@[unsafe]
 fn (backend &Win32Backend) service_app_instance() !u64 {
 	if backend.native_operations == unsafe { nil } || backend.native_operations.app_identity == 0 {
 		return error(err_app_identity_mismatch)
@@ -955,6 +961,7 @@ fn win32_service_monitor_ids_equal(left []ServiceMonitorId, right []ServiceMonit
 	return true
 }
 
+@[unsafe]
 fn (backend &Win32Backend) service_metrics_observation(index int, monitors []Win32ServiceMonitorRecord) !Win32ServiceMetricsObservation {
 	$if windows {
 		if index < 0 || index >= backend.windows.len {
@@ -1006,6 +1013,7 @@ fn (backend &Win32Backend) service_metrics_observation(index int, monitors []Win
 	}
 }
 
+@[unsafe]
 fn (mut backend Win32Backend) collect_service_refresh_events() ![]Win32NativeQueuedEvent {
 	$if windows {
 		app_instance := backend.service_app_instance()!
@@ -1402,6 +1410,7 @@ fn (mut backend Win32Backend) service_request_clipboard_text(id WindowId, reques
 	return BackendClipboardStart{}
 }
 
+@[unsafe]
 fn (backend &Win32Backend) service_native_window_borrow(id WindowId) !BackendNativeWindowBorrow {
 	index := backend.ensure_service_window(id)!
 	$if windows {
@@ -1418,7 +1427,7 @@ fn (backend &Win32Backend) service_native_window_borrow(id WindowId) !BackendNat
 }
 
 $if test {
-	@[markused]
+	@[markused; unsafe]
 	fn win32_service_test_clipboard_pending_count(backend_pointer voidptr) int {
 		if backend_pointer == unsafe { nil } {
 			return 0
@@ -1427,7 +1436,7 @@ $if test {
 		return backend.clipboard_pending.len
 	}
 
-	@[markused]
+	@[markused; unsafe]
 	fn win32_service_test_clipboard_pending_deadline_ns(backend_pointer voidptr, index int) i64 {
 		if backend_pointer == unsafe { nil } {
 			return 0
@@ -1439,7 +1448,7 @@ $if test {
 		return backend.clipboard_pending[index].deadline_ns
 	}
 
-	@[markused]
+	@[markused; unsafe]
 	fn win32_service_test_clipboard_pending_write_matches(backend_pointer voidptr, index int, request_app u64, request_serial u64, window_app u64, window_slot int, window_generation u32, text &u16, units uint) int {
 		if backend_pointer == unsafe { nil } || text == unsafe { nil } {
 			return 0

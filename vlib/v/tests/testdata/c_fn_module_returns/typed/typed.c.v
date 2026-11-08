@@ -1,5 +1,6 @@
 module typed
 
+@[unsafe]
 fn C.memchr(buf &u8, c int, n uint) &u8
 
 // index_of_lf computes a byte offset using this module's typed C return.

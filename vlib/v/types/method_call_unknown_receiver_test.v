@@ -10,6 +10,7 @@ import v.pref
 // rather than become that of a free function sharing the method's name, which
 // would then be cached: `res.write(...) or {}` failed as "does not return an
 // Option" when a C or V function `write` existed.
+@[unsafe]
 fn test_method_call_on_unknown_receiver_is_not_typed_as_a_free_function() {
 	path := os.join_path(os.vtmp_dir(), 'v3_method_unknown_receiver_${os.getpid()}.v')
 	os.write_file(path, 'module main

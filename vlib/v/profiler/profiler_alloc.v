@@ -6,6 +6,7 @@ module profiler
 import time
 
 // profiler_alloc is the allocation function that records allocations
+@[unsafe]
 fn profiler_alloc(size int, ctx voidptr) voidptr {
 	ptr := unsafe { C.malloc(uint(size)) }
 	if ptr == unsafe { nil } {
@@ -55,6 +56,7 @@ fn profiler_alloc(size int, ctx voidptr) voidptr {
 }
 
 // profiler_alloc_with_location records allocation with source location
+@[unsafe]
 pub fn profiler_alloc_with_location(size int, file string, line int) voidptr {
 	ptr := unsafe { C.malloc(uint(size)) }
 	if ptr == unsafe { nil } {
@@ -102,6 +104,7 @@ pub fn profiler_alloc_with_location(size int, file string, line int) voidptr {
 }
 
 // profiler_free records a free operation
+@[unsafe]
 fn profiler_free(ptr voidptr, ctx voidptr) {
 	if ptr == unsafe { nil } {
 		return
@@ -139,6 +142,7 @@ fn profiler_free(ptr voidptr, ctx voidptr) {
 }
 
 // profiler_realloc records a realloc operation
+@[unsafe]
 fn profiler_realloc(ptr voidptr, new_size int, ctx voidptr) voidptr {
 	if ptr == unsafe { nil } {
 		return profiler_alloc(new_size, ctx)
@@ -225,6 +229,7 @@ fn profiler_realloc(ptr voidptr, new_size int, ctx voidptr) voidptr {
 // through it (via profiler.alloc/free/realloc or use_profiler_allocator). It
 // does not intercept V's builtin allocations or raw C.malloc calls that bypass
 // this allocator.
+@[unsafe]
 pub fn profiler_allocator() Allocator {
 	return Allocator{
 		alloc_fn:   profiler_alloc

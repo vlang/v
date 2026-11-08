@@ -22,6 +22,7 @@ fn fastc_review_regression_matches_c(name string, source string, output string) 
 	}
 }
 
+@[unsafe]
 fn test_fastc_function_field_nil_assignment_requires_unsafe() {
 	mut prefs := pref.new_preferences()
 	prefs.building_v = true
@@ -38,6 +39,7 @@ fn test_fastc_function_field_nil_assignment_requires_unsafe() {
 	}
 }
 
+@[unsafe]
 fn test_fastc_negated_mutable_sum_pointer_variant_preserves_nil() {
 	fastc_review_regression_matches_c('pointer_sum', 'module main
 type Value = int | voidptr

@@ -88,7 +88,7 @@ mut:
 	values      &u8 = unsafe { nil }
 }
 
-@[inline]
+@[inline; unsafe]
 fn new_dense_array(key_bytes int, value_bytes int) DenseArray {
 	cap := 8
 	return DenseArray{
@@ -365,6 +365,7 @@ fn new_map_with_dense_array(key_bytes int, value_bytes int, hash_fn MapHashFn, k
 	}
 }
 
+@[unsafe]
 fn new_map(key_bytes int, value_bytes int, hash_fn MapHashFn, key_eq_fn MapEqFn, clone_fn MapCloneFn, free_fn MapFreeFn) map {
 	// for now assume anything bigger than a pointer is a string
 	has_string_keys := key_bytes > int(sizeof(voidptr))
@@ -433,6 +434,7 @@ pub fn (mut m map) move() map {
 // clear clears the map without deallocating the allocated data.
 // It does it by setting the map length to `0`
 // Example: mut m := {'abc': 'xyz', 'def': 'aaa'}; m.clear(); assert m.len == 0
+@[unsafe]
 pub fn (mut m map) clear() {
 	if m.metas == unsafe { nil } {
 		return
@@ -463,7 +465,7 @@ fn (m &map) keys_equal(a voidptr, b voidptr) bool {
 	return m.key_eq_fn(a, b)
 }
 
-@[inline]
+@[inline; unsafe]
 fn (m &map) key_to_index(pkey voidptr) (u32, u32) {
 	if voidptr(m.hash_fn) == unsafe { nil } {
 		unsafe {
@@ -569,6 +571,7 @@ fn (mut m map) set(key voidptr, value voidptr) {
 	m.set_general(key, value)
 }
 
+@[unsafe]
 fn (mut m map) set_general(key voidptr, value voidptr) {
 	if m.metas == unsafe { nil } {
 		// Most compiler bookkeeping maps remain empty. Allocate backing storage
@@ -652,6 +655,7 @@ fn (mut m map) reserve_metas(meta_bytes u32) {
 }
 
 // reserve ensures that the map can store at least `n` entries without rehashing.
+@[unsafe]
 pub fn (mut m map) reserve(n u32) {
 	if m.len == 0 {
 		old_index := m.even_index
@@ -716,6 +720,7 @@ fn (mut m map) cached_rehash(old_cap u32) {
 // get_and_set is used for assignment operators. If the argument-key
 // does not exist in the map, it's added to the map along with the zero/default value.
 // If the key exists, its respective value is returned.
+@[unsafe]
 fn (mut m map) get_and_set(key voidptr, zero voidptr) voidptr {
 	if m.metas == unsafe { nil } {
 		m.set(key, zero)

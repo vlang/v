@@ -26,6 +26,7 @@ $if openbsd {
 
 	type BacktraceFullCallback = fn (data voidptr, pc uint, const_filename &char, lineno i32, const_func &char) i32
 
+	@[unsafe]
 	fn C.backtrace_create_state(filename &char, threaded i32, error_callback BacktraceErrorCallback, data voidptr) &C.backtrace_state
 	fn C.backtrace_full(state &C.backtrace_state, skip i32, cb BacktraceFullCallback, err_cb BacktraceErrorCallback,
 		data voidptr) i32
@@ -47,6 +48,7 @@ $if openbsd {
 		stdin bool = true
 	}
 
+	@[unsafe]
 	fn bt_print_callback(data_ptr voidptr, pc uint, filename_ptr &char, line i32, fn_name_ptr &char) i32 {
 		data := unsafe { &BacktraceOptions(data_ptr) }
 		filename := if filename_ptr == unsafe { nil } {
@@ -70,6 +72,7 @@ $if openbsd {
 		return 0
 	}
 
+	@[unsafe]
 	fn bt_error_callback(data voidptr, msg_ptr &char, errnum i32) {
 		// if data != unsafe { nil } && data.state != unsafe { nil } && data.state.filename != unsafe { nil } {
 		// 	filename := unsafe{ data.state.filename.vstring() }

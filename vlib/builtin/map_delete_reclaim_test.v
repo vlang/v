@@ -34,6 +34,7 @@ mut:
 	data &MapDataLayoutForTest = unsafe { nil }
 }
 
+@[unsafe]
 fn test_map_delete_reclaims_dense_array_tail() {
 	mut m := map[string]string{}
 	raw := unsafe { (&MapLayoutForTest(&m)).data }
@@ -79,6 +80,7 @@ fn test_map_delete_clears_value_storage_without_freeing_shared_values() {
 	assert m['reused'] == value
 }
 
+@[unsafe]
 fn test_empty_map_defers_storage_until_first_write() {
 	// Use pointer-containing keys and values so this exercises the regular map
 	// initializer. Under gcboehm_opt, pointer-free storage uses eager no-scan

@@ -820,6 +820,7 @@ fn test_no_race_chan_wait_group() {
 }
 
 // Test that sender synchronizes with receiver even if the sender was blocked.
+@[unsafe]
 fn test_no_race_blocked_send_sync() {
 	c := chan &Cell[int]{cap: 1}
 	c <- &Cell[int](unsafe { nil })
@@ -842,6 +843,7 @@ fn test_no_race_blocked_send_sync() {
 }
 
 // The same as test_no_race_blocked_send_sync above, but sender unblock happens in a select.
+@[unsafe]
 fn test_no_race_blocked_select_send_sync() {
 	c := chan &Cell[int]{cap: 1}
 	c <- &Cell[int](unsafe { nil })

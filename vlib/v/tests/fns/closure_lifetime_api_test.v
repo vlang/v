@@ -783,6 +783,7 @@ fn test_closure_lifetime_gc_none_reuses_disposed_state_bookkeeping() {
 	assert res.exit_code == 0, res.output
 }
 
+@[unsafe]
 fn test_closure_lifetime_dispose_recycles_state_for_later_lifetimes() {
 	source_path := os.join_path(os.dir(vexe), 'vlib/builtin/closure/closure.c.v')
 	source := os.read_file(source_path) or { panic(err) }

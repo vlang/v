@@ -32,6 +32,7 @@ fn (mut a array_buffer) make_copy() {
 #array_buffer.prototype.make_copy = function() { return array_buffer_make_copy(this) }
 
 // TODO(playX): Should this be implemented fully in JS, use generics or just voidptr?
+@[unsafe]
 fn (a array_buffer) get(ix int) voidptr {
 	mut res := unsafe { nil }
 	#res = a.arr[a.index_start.val + ix.val];
@@ -128,6 +129,7 @@ pub fn (a array) repeat_to_depth(count int, depth int) array {
 }
 
 // last returns the last element of the array.
+@[unsafe]
 pub fn (a array) last() voidptr {
 	mut res := unsafe { nil }
 	#res = a.arr.get(new int(a.len-1));
@@ -135,6 +137,7 @@ pub fn (a array) last() voidptr {
 	return res
 }
 
+@[unsafe]
 fn (a array) get(ix int) voidptr {
 	if ix < 0 || ix >= a.len {
 		return unsafe { nil }
@@ -360,6 +363,7 @@ pub fn (a array) reduce(iter fn (int, int) int, accum_start int) int {
 	return accum_
 }
 
+@[unsafe]
 pub fn (mut a array) pop() voidptr {
 	mut res := unsafe { nil }
 	#a.val.arr.make_copy()
@@ -369,6 +373,7 @@ pub fn (mut a array) pop() voidptr {
 	return res
 }
 
+@[unsafe]
 pub fn (a array) first() voidptr {
 	mut res := unsafe { nil }
 	#res = a.arr.get(new int(0))

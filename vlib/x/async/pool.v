@@ -75,6 +75,7 @@ pub fn new_pool_with_context(parent context.Context, config PoolConfig) !&Pool {
 //
 // It never blocks for queue space. A full backlog returns `async: pool queue is
 // full`, making backpressure explicit for callers.
+@[unsafe]
 pub fn (mut p Pool) try_submit(f JobFn) ! {
 	if f == unsafe { nil } {
 		return error(err_nil_job)
@@ -100,6 +101,7 @@ pub fn (mut p Pool) try_submit(f JobFn) ! {
 //
 // The parent context bounds admission only. Once f is accepted, the job runs with
 // the pool's own context, matching try_submit() and preserving pool lifecycle ownership.
+@[unsafe]
 pub fn (mut p Pool) submit_with_context(parent context.Context, f JobFn) ! {
 	if f == unsafe { nil } {
 		return error(err_nil_job)

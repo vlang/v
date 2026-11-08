@@ -143,6 +143,7 @@ struct RenderTargetClaimPlan {
 	claimed_dirty_epoch u64
 }
 
+@[unsafe]
 fn (mut app App) with_render_batch(include_all bool, teardown bool, f RenderBatchFn) !RenderBatchOutcome {
 	if f == unsafe { nil } {
 		return error(err_render_nil_batch_callback)

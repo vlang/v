@@ -10,6 +10,7 @@ fn (d Struct) a[T]() T {
 	return T{}
 }
 
+@[unsafe]
 fn test_main() {
 	s := Struct{}
 	assert s.a[&int]() == 0

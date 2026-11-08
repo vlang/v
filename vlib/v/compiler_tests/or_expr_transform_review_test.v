@@ -112,6 +112,7 @@ fn test_optional_element_or_rejects_implicit_err() {
 	assert map_output.contains('undefined variable: `err`'), map_output
 }
 
+@[unsafe]
 fn test_map_index_address_or_nil_remains_valid() {
 	v3_bin := build_v3_or_review()
 	out := or_review_run(v3_bin, 'map_index_address_or_nil',

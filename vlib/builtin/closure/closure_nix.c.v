@@ -24,7 +24,7 @@ fn closure_mtx_ptr_platform() voidptr {
 	return unsafe { voidptr(&g_closure.closure_mtx[0]) }
 }
 
-@[inline]
+@[inline; unsafe]
 fn closure_alloc_platform() &u8 {
 	mut p := &u8(unsafe { nil })
 	$if freestanding {

@@ -12,6 +12,7 @@ fn fixed_array_narrow_callback(value i32) i32 {
 	return value + 1
 }
 
+@[unsafe]
 fn test_c_fixed_array_pointer_arguments_use_c_integer_storage() {
 	values := [i32(10), 20]
 	aliases := [CIntStorage(10), 20]

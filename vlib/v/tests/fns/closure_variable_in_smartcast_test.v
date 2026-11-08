@@ -17,6 +17,7 @@ fn my_func(cb MyCallback, ctx voidptr) {
 	}, ctx)
 }
 
+@[unsafe]
 fn test_closure_variable_in_smartcast() {
 	my_func(fn () {
 		println('Foo')

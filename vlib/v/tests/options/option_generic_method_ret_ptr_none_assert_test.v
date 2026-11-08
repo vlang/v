@@ -118,6 +118,7 @@ struct Tag {
 	parent ?&Tag
 }
 
+@[unsafe]
 fn is_nil_field[T](val T) bool {
 	$if T.indirections != 0 {
 		return val == unsafe { nil }
@@ -125,6 +126,7 @@ fn is_nil_field[T](val T) bool {
 	return false
 }
 
+@[unsafe]
 fn is_not_nil_field[T](val T) bool {
 	$if T.indirections != 0 {
 		return val != unsafe { nil }

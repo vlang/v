@@ -21,6 +21,7 @@ fn accept_share_mode(mode C.DWORD) u32 {
 	return u32(mode)
 }
 
+@[unsafe]
 fn test_nested_c_alias_types_are_structurally_compatible() {
 	wide := 'example.txt'.to_wide()
 	assert accept_wide_ptr(wide) == 'example.txt'

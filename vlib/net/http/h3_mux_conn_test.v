@@ -305,6 +305,7 @@ fn h3_test_do_worker(mut c H3MuxConn, req H3ClientRequest, mut outcome H3TestDoO
 // deterministically: it always sleeps before returning, giving the
 // spawned do() call a wide, reliable margin to enqueue before the fatal
 // error is delivered.
+@[unsafe]
 fn test_driver_fails_a_pending_request_stranded_by_a_dying_transport() {
 	mut transport := new_fake_h3_udp_transport()
 	transport.arm_fatal_error('simulated transport death', 300 * time.millisecond)
@@ -334,6 +335,7 @@ fn test_driver_fails_a_pending_request_stranded_by_a_dying_transport() {
 // test_driver_fails_a_second_concurrent_pending_request_too runs the same
 // scenario with TWO concurrent requesters, confirming the fix generalizes
 // past a single-entry c.pending list (fail_conn iterates the whole slice).
+@[unsafe]
 fn test_driver_fails_a_second_concurrent_pending_request_too() {
 	mut transport := new_fake_h3_udp_transport()
 	transport.arm_fatal_error('simulated transport death', 300 * time.millisecond)

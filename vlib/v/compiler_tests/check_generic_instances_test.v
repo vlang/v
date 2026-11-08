@@ -1230,6 +1230,7 @@ fn test_instances_with_arrays_and_maps_of_the_expected_type_stay_valid() {
 // and a name there can then resolve to a constant of the main module, an
 // `[]string` here. Such a body gives no error about the elements of an array or
 // a map.
+@[unsafe]
 fn test_a_local_of_a_comptime_for_body_is_not_taken_for_a_constant() {
 	check := check_with_modules('comptime_for_local', {
 		'main.v':            "import progmod\n\nconst routes = ['/', '/x']\n\nstruct Foo {\n\ta int\n}\n\nfn main() {\n\tprintln(routes)\n\tprintln(progmod.first_routes(Foo{}).routes)\n}\n"

@@ -354,6 +354,7 @@ fn (mut context Context) kill_pgroup() {
 }
 
 // kill_build stops the build in progress, if any. It returns true when there was one.
+@[unsafe]
 fn (mut context Context) kill_build() bool {
 	if unsafe { context.build_process == 0 } {
 		return false
@@ -369,6 +370,7 @@ fn (mut context Context) kill_build() bool {
 }
 
 // stop_app stops the running program, if any.
+@[unsafe]
 fn (mut context Context) stop_app() {
 	context.kill_pgroup()
 	context.child_process = unsafe { nil }
@@ -431,6 +433,7 @@ fn (mut context Context) drain_build_output(mut output []string) {
 // running. A change during a build cancels it and starts a new one, since its
 // result would already be out of date. The status of each build is written to
 // `context.status_path`, where a livereload enabled veb app picks it up.
+@[unsafe]
 fn (mut context Context) build_first_loop() {
 	run_pos := context.opts.index('run')
 	mut build_opts := context.opts#[..run_pos].clone()

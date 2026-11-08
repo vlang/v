@@ -93,6 +93,7 @@ fn test_idle_connections_expire_without_another_request() {
 	transport.mu.unlock()
 }
 
+@[unsafe]
 fn test_idle_reaper_preserves_checked_out_connections_and_can_restart() {
 	mut listener := net.listen_tcp(.ip, '127.0.0.1:0')!
 	defer { listener.close() or {} }

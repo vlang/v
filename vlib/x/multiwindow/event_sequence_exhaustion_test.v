@@ -163,6 +163,7 @@ fn test_win32_native_sequence_exhaustion_is_sticky_without_wrapped_admission() {
 	}
 }
 
+@[unsafe]
 fn win32_w3_cold_start_exhaustion_cleanup() ! {
 	$if windows {
 		saved_sequence := C.v_multiwindow_test_event_sequence_current()

@@ -25,6 +25,7 @@ fn run_startup_probe_server(mut server Server) {
 // A worker serves requests as soon as it runs, and shutdown() returns at once for
 // a server marked stopped. A worker that starts before run() clears that mark lets
 // a shutdown requested in that window report success without stopping anything.
+@[unsafe]
 fn test_workers_start_on_a_server_marked_live() ! {
 	mut probe := &StartupProbe{}
 	mut server := new_server(ServerConfig{

@@ -46,6 +46,7 @@ fn assign_voidptr(target &voidptr, value voidptr) voidptr {
 }
 
 // C: `if ((x = pVtab->pModule->xSync) != 0) rc = x(pVtab);`, translated by c2v.
+@[unsafe]
 fn test_a_function_stored_through_the_address_of_a_local() {
 	holder := Holder{}
 	x := Finder(unsafe { nil })

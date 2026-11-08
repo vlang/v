@@ -60,6 +60,7 @@ fn on_terminating_signal(sig os.Signal) {
 // standard library's term.show_cursor_on_exit, that is left alone: we put it
 // back and rely on the at-exit hook, which still restores the cursor if the
 // application's handler ends the program with exit().
+@[unsafe]
 fn hook_signal(sig os.Signal) {
 	prev := os.signal_opt(sig, on_terminating_signal) or { return }
 	if voidptr(prev) != unsafe { nil } {

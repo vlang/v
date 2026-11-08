@@ -19,6 +19,7 @@ fn vgc_test_marked_from_data(p voidptr) bool {
 	return vgc_test_is_marked(p)
 }
 
+@[unsafe]
 fn vgc_test_is_marked(p voidptr) bool {
 	span := vgc_find_span(p)
 	if span == unsafe { nil } || span.mark_bits == unsafe { nil } {
@@ -28,6 +29,7 @@ fn vgc_test_is_marked(p voidptr) bool {
 	return C.vgc_bitmap_get(span.mark_bits, index) != 0
 }
 
+@[unsafe]
 fn test_a_global_of_the_program_is_a_root() {
 	$if vgc ? {
 		p := vgc_malloc_noscan(200)

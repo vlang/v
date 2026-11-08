@@ -6,6 +6,7 @@ mut:
 	id int
 }
 
+@[unsafe]
 fn (mut app App) callback(buffer voidptr, frames u32) {
 	assert voidptr(app) != unsafe { nil }
 	assert buffer != unsafe { nil }

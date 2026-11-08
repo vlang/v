@@ -23,6 +23,7 @@ $if linux {
 	// v.workers links the shared syscall helpers.
 }
 
+@[unsafe]
 fn C.waitpid(pid int, status &int, options int) int
 fn C.dup2(oldfd int, newfd int) int
 fn C._exit(code int)
@@ -422,6 +423,7 @@ pub fn (mut r Request) keep_busy_with(step fn (voidptr) bool, context voidptr) {
 // `v-diagnostics-server: partial <code> <token>`: the client can show the
 // errors of the program while the rest of the check runs, the instances of its
 // generic functions above all.
+@[unsafe]
 pub fn (mut r Request) print_diagnostics() int {
 	if !r.diagnostics.ready {
 		mut code := 0
@@ -578,6 +580,7 @@ pub fn (mut r Request) keep_inputs(digests map[string]string, imports_hold fn (v
 // allocates for its answers is never freed: after it has grown by
 // V_DIAGNOSTICS_RETIRE_MB (1024 by default) since its first answer, it answers
 // no more, and a new child checks the program for the next question.
+@[unsafe]
 pub fn (mut r Request) next_question(code int) ?string {
 	flush_stdout()
 	flush_stderr()
@@ -930,6 +933,7 @@ fn (mut i Inputs) note_files(digests map[string]string, mut buffer []u8) bool {
 
 // changed reports whether a file holds other bytes than those read, or a
 // directory other names.
+@[unsafe]
 fn (i &Inputs) changed(mut buffer []u8) bool {
 	for file in i.files {
 		// One byte more than was read tells a file that grew.

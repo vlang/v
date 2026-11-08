@@ -266,6 +266,7 @@ fn (mut ctx Context) termios_loop() {
 	}
 }
 
+@[unsafe]
 fn (mut ctx Context) parse_events() {
 	// Stop this from getting stuck in rare cases where something isn't parsed correctly
 	mut nr_iters := 0
@@ -506,6 +507,7 @@ fn event_from_reported_key(codepoint int, raw string, modifiers Modifiers, event
 	}
 }
 
+@[unsafe]
 fn parse_csi_u_key_sequence(single string, buf string) &Event {
 	if buf.len < 4 || buf[0] != `[` || buf[buf.len - 1] != `u` {
 		return unsafe { nil }
@@ -524,6 +526,7 @@ fn parse_csi_u_key_sequence(single string, buf string) &Event {
 	return event_from_reported_key(codepoint, single, modifiers, event_type, text)
 }
 
+@[unsafe]
 fn parse_modify_other_keys_sequence(single string, buf string) &Event {
 	if buf.len < 7 || buf[0] != `[` || buf[buf.len - 1] != `~` {
 		return unsafe { nil }
@@ -594,6 +597,7 @@ fn parse_csi_modified_key_sequence(buf string) (KeyCode, Modifiers, EventType, b
 	return code, modifiers, event_type, code != .null
 }
 
+@[unsafe]
 fn escape_sequence(buf_ string) (&Event, int) {
 	end := escape_end(buf_)
 	single := buf_[..end] // read until the end of the sequence

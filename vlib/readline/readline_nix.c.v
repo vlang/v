@@ -604,6 +604,7 @@ fn (mut r Readline) history_next() {
 }
 
 // completion implements the tab completion feature
+@[unsafe]
 fn (mut r Readline) completion() {
 	// check if completion is used
 	if r.completion_list.len == 0 && r.completion_callback == unsafe { nil } {

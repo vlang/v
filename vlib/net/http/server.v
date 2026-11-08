@@ -79,6 +79,7 @@ pub mut:
 
 // listen_and_serve listens on `s.addr`, or uses an explicitly supplied TCP listener, and
 // uses `s.parse_and_respond` to handle requests on incoming connections with `s.handler`.
+@[unsafe]
 pub fn (mut s Server) listen_and_serve() {
 	if s.max_http1_request_body_size < 0 {
 		eprintln('invalid max_http1_request_body_size `${s.max_http1_request_body_size}`, it should be 0 (unlimited) or a positive number of bytes')
@@ -149,7 +150,7 @@ pub fn (mut s Server) listen_and_serve() {
 }
 
 // stop signals the server that it should not respond anymore.
-@[inline]
+@[inline; unsafe]
 pub fn (mut s Server) stop() {
 	s.state = .stopped
 	if s.on_stopped != unsafe { nil } {
@@ -159,7 +160,7 @@ pub fn (mut s Server) stop() {
 
 // close immediately closes the port and signals the server that it has been closed.
 // A successfully closed listener is cleared so listen_and_serve can reopen it.
-@[inline]
+@[inline; unsafe]
 pub fn (mut s Server) close() {
 	s.state = .closed
 	if s.listener_opened {

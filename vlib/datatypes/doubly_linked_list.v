@@ -103,6 +103,7 @@ pub fn (mut list DoublyLinkedList[T]) push_many(elements []T, direction Directio
 }
 
 // pop_back removes the last element of the linked list
+@[unsafe]
 pub fn (mut list DoublyLinkedList[T]) pop_back() !T {
 	if list.is_empty() {
 		return error('Linked list is empty')
@@ -124,6 +125,7 @@ pub fn (mut list DoublyLinkedList[T]) pop_back() !T {
 }
 
 // pop_front removes the last element of the linked list
+@[unsafe]
 pub fn (mut list DoublyLinkedList[T]) pop_front() !T {
 	if list.is_empty() {
 		return error('Linked list is empty')
@@ -289,6 +291,7 @@ pub fn (list DoublyLinkedList[T]) array() []T {
 
 // next implements the iter interface to use DoublyLinkedList with
 // V's `for x in list {` loop syntax.
+@[unsafe]
 pub fn (mut list DoublyLinkedList[T]) next() ?T {
 	if list.iter == unsafe { nil } {
 		// initialize new iter object
@@ -333,6 +336,7 @@ mut:
 
 // next returns *the next* element of the list, or `none` when the end of the list is reached.
 // It is called by V's `for x in iter{` on each iteration.
+@[unsafe]
 pub fn (mut iter DoublyListIter[T]) next() ?T {
 	if iter.node == unsafe { nil } {
 		return none
@@ -354,6 +358,7 @@ mut:
 
 // next returns *the previous* element of the list, or `none` when the start of the list is reached.
 // It is called by V's `for x in iter{` on each iteration.
+@[unsafe]
 pub fn (mut iter DoublyListIterBack[T]) next() ?T {
 	if iter.node == unsafe { nil } {
 		return none
