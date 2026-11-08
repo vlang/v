@@ -263,3 +263,44 @@ fn main() {
 		assert output == '603', output
 	}
 }
+
+// `frame` names the program's function, not the `.frame` member of an enum
+// in another module.
+fn test_function_wins_over_enum_member() {
+	$if macos && arm64 {
+		output := run_arm64('fn_names', {
+			'phases/phases.v': 'module phases
+
+enum Phase {
+	init
+	frame
+	cleanup
+}
+
+pub fn count() int {
+	return int(Phase.cleanup) + 1
+}
+'
+			'main.v':          "module main
+
+import phases
+
+struct Config {
+	frame_fn fn (int) int = unsafe { nil }
+}
+
+fn frame(n int) int {
+	return n * 2
+}
+
+fn main() {
+	cfg := Config{
+		frame_fn: frame
+	}
+	println('\${cfg.frame_fn(21)} \${phases.count()}')
+}
+"
+		}, []string{})
+		assert output == '42 3', output
+	}
+}

@@ -11258,11 +11258,9 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 			if expr_id := b.lookup_const_expr(node.value_text()) {
 				return b.build_expr(expr_id)
 			}
-			if !b.enum_member_dupes[node.value] {
-				if enum_value := b.enum_member_values[node.value] {
-					return b.m.get_or_add_const(b.i64_type, enum_value.str())
-				}
-			}
+			// A function of this module wins over an enum member that only
+			// shares its name: `frame_fn: frame` in `main` is `main.frame`,
+			// not gg's `MultiWindowRenderPhase.frame`.
 			if fn_idx := b.fn_ids[node.value] {
 				return b.m.add_value(.func_ref, b.i64_type, node.value, fn_idx)
 			}
@@ -11270,6 +11268,11 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 			if qualified_fn_name != node.value {
 				if fn_idx := b.fn_ids[qualified_fn_name] {
 					return b.m.add_value(.func_ref, b.i64_type, qualified_fn_name, fn_idx)
+				}
+			}
+			if !b.enum_member_dupes[node.value] {
+				if enum_value := b.enum_member_values[node.value] {
+					return b.m.get_or_add_const(b.i64_type, enum_value.str())
 				}
 			}
 			return b.m.get_or_add_const(b.i64_type, '0')
