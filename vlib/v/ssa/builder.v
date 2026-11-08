@@ -9117,7 +9117,10 @@ fn (mut b Builder) checker_return_type(fn_name string, module_name string) ?Type
 	for candidate in candidates {
 		if ret := b.tc.fn_ret_types[candidate] {
 			typ_id := b.ssa_type_from_checker_type(ret)
+			// Only fill in a struct layout that is still empty: the id must not
+			// be a shared scalar type such as `i32`.
 			if ret is types.Struct && typ_id > 0 && typ_id < b.m.type_store.types.len
+				&& b.m.type_store.types[typ_id].kind == .struct_t
 				&& b.m.type_store.types[typ_id].fields.len == 0 {
 				fields := b.tc.struct_fields_for_type(ret.source_type_id())
 				if fields.len > 0 {
@@ -18070,6 +18073,11 @@ fn (b &Builder) is_option_type(typ_id TypeID) bool {
 fn (b &Builder) is_enum_type_name(name_id u32) bool {
 	if name_id == 0 { return false }
 	if name_id in b.enum_types { return true }
+	// A qualified struct name is not an enum, even when another module has
+	// an enum with the same short name (`ui.TextStyle` vs `term.TextStyle`).
+	if flat.source_type_shape(name_id).has(.dotted) && name_id in b.struct_types {
+		return false
+	}
 	return flat.source_type_syntax(name_id).first_dot_suffix() in b.enum_types
 }
 

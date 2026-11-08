@@ -80,3 +80,65 @@ fn main() {
 		assert output == '603 3 widgets', output
 	}
 }
+
+// `views.TextStyle` is a struct even though `styles.TextStyle` is an enum; taking
+// it for one gave it the `i32` layout and then overwrote `i32` with the struct.
+fn test_qualified_struct_is_not_another_modules_enum() {
+	$if macos && arm64 {
+		output := run_arm64('enum_names', {
+			'styles/styles.v': 'module styles
+
+pub enum TextStyle {
+	plain
+	bold
+}
+'
+			'views/views.v':   "module views
+
+import styles
+
+pub struct TextStyle {
+pub:
+	size  f64 = 15.0
+	name  string
+	lines int = 1
+}
+
+fn styled(base TextStyle, bold bool) TextStyle {
+	if bold {
+		return TextStyle{
+			...base
+			lines: base.lines + 1
+		}
+	}
+	return base
+}
+
+pub fn heading(size f64) TextStyle {
+	return styled(TextStyle{
+		size: size
+		name: 'heading'
+	}, true)
+}
+
+pub fn plain() styles.TextStyle {
+	return .bold
+}
+"
+			'main.v':          "module main
+
+import views
+
+fn scaled(v i32, by i32) i32 {
+	return v * by
+}
+
+fn main() {
+	style := views.heading(24.0)
+	println('\${style.name} \${style.size} \${style.lines} \${int(views.plain())} \${scaled(i32(7), i32(6))}')
+}
+"
+		}, []string{})
+		assert output == 'heading 24.0 2 1 42', output
+	}
+}
