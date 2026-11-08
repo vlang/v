@@ -136,36 +136,69 @@ struct NativeCSupportSource {
 	has_insert bool
 }
 
-// native_c_support_source collects the program's C preprocessor directives in
-// source order: the same `#define`, `#undef`, `#include` and `#insert` lines
-// that the C backend writes at the top of its translation unit, resolved for
-// `target` (OS prefixes such as `#include linux <sys/timerfd.h>`, `@VEXEROOT`,
-// `$d()`).
+// NativeCDirective is one C preprocessor line of the program's C side.
+struct NativeCDirective {
+	text          string
+	before_import bool
+}
+
+// native_c_support_source collects the program's C preprocessor directives:
+// the same `#define`, `#undef`, `#include` and `#insert` lines that the C
+// backend writes at the top of its translation unit, resolved for `target` (OS
+// prefixes such as `#include linux <sys/timerfd.h>`, `@VEXEROOT`, `$d()`), and
+// in its order: a module's imports come before the module's own lines after
+// its imports (cgen.FlatGen.ordered_c_directives), so `sokol.sgl`'s
+// `util/sokol_gl.h` follows `sokol.gfx`'s `sokol_gfx.h` even when the program
+// imports `sokol.sgl` first.
 fn native_c_support_source(a &flat.FlatAst, vroot string, target pref.Target, compile_values map[string]string) NativeCSupportSource {
-	// Inlined headers can expose atomic and pointer-width helpers without
-	// carrying the standard fixed-width integer declarations they depend on.
-	mut source_text := '#include <stdint.h>\n'
 	mut include_dirs := []string{}
 	mut include_seen := map[string]bool{}
 	mut cur_file := ''
+	mut cur_module := 'main'
+	mut before_import := true
 	mut has_insert := false
+	mut by_module := map[string][]NativeCDirective{}
+	mut module_order := []string{}
+	mut module_imports := map[string][]string{}
 	for node in a.nodes {
-		if node.kind == .file {
-			cur_file = node.value
-			continue
-		}
-		if node.kind != .directive {
-			continue
+		match node.kind {
+			.file {
+				cur_file = node.value
+				cur_module = 'main'
+				before_import = true
+				continue
+			}
+			.module_decl {
+				cur_module = node.value
+				continue
+			}
+			.import_decl {
+				before_import = false
+				dep := node.value
+				if dep.len > 0 {
+					mut deps := module_imports[cur_module] or { []string{} }
+					if dep !in deps {
+						deps << dep
+						module_imports[cur_module] = deps
+					}
+				}
+				continue
+			}
+			.directive {}
+			else {
+				continue
+			}
 		}
 		raw := flat.source_type_name(node.typ).trim_space()
 		if raw.len == 0 {
 			continue
 		}
+		mut line := ''
 		match node.value {
 			'define', 'undef' {
 				arg := cgen.native_directive_arg(raw, target) or { continue }
 				if arg.len > 0 {
-					source_text += '#${node.value} ${arg}\n'
+					line = '#${node.value} ${arg}'
 				}
 			}
 			'include', 'preinclude', 'postinclude', 'insert' {
@@ -175,31 +208,77 @@ fn native_c_support_source(a &flat.FlatAst, vroot string, target pref.Target, co
 					continue
 				}
 				if include_arg.starts_with('<') {
-					source_text += '#include ${include_arg}\n'
-					continue
-				}
-				path := x64_resolve_insert_path(include_arg, cur_file, vroot)
-				if path.len > 0 && os.is_file(path) {
-					if node.value == 'insert' {
-						dir := os.dir(path)
-						if dir.len > 0 && dir !in include_seen {
-							include_seen[dir] = true
-							include_dirs << dir
+					line = '#include ${include_arg}'
+				} else {
+					path := x64_resolve_insert_path(include_arg, cur_file, vroot)
+					if path.len > 0 && os.is_file(path) {
+						if node.value == 'insert' {
+							dir := os.dir(path)
+							if dir.len > 0 && dir !in include_seen {
+								include_seen[dir] = true
+								include_dirs << dir
+							}
 						}
+						line = '#include "${path}"'
+						has_insert = true
+					} else if node.value != 'insert' {
+						line = '#include ${include_arg}'
 					}
-					source_text += '#include "${path}"\n'
-					has_insert = true
-				} else if node.value != 'insert' {
-					source_text += '#include ${include_arg}\n'
 				}
 			}
 			else {}
 		}
+		if line.len == 0 {
+			continue
+		}
+		if cur_module !in by_module {
+			by_module[cur_module] = []NativeCDirective{}
+			module_order << cur_module
+		}
+		by_module[cur_module] << NativeCDirective{
+			text:          line
+			before_import: before_import
+		}
+	}
+	// Inlined headers can expose atomic and pointer-width helpers without
+	// carrying the standard fixed-width integer declarations they depend on.
+	mut lines := ['#include <stdint.h>']
+	mut visiting := map[string]bool{}
+	mut visited := map[string]bool{}
+	for mod in module_order {
+		native_c_visit_directive_module(mod, by_module, module_imports, mut visiting, mut
+			visited, mut lines)
 	}
 	return NativeCSupportSource{
-		text:         source_text
+		text:         lines.join('\n') + '\n'
 		include_dirs: include_dirs
 		has_insert:   has_insert
+	}
+}
+
+fn native_c_visit_directive_module(mod string, by_module map[string][]NativeCDirective, module_imports map[string][]string, mut visiting map[string]bool, mut visited map[string]bool, mut lines []string) {
+	if mod in visited || mod in visiting {
+		return
+	}
+	visiting[mod] = true
+	directives := by_module[mod] or { []NativeCDirective{} }
+	for directive in directives {
+		if directive.before_import {
+			lines << directive.text
+		}
+	}
+	// Modules without directives are traversed too, so a transitive import's
+	// lines still come before an importer's.
+	for dep in module_imports[mod] or { []string{} } {
+		native_c_visit_directive_module(dep, by_module, module_imports, mut visiting, mut
+			visited, mut lines)
+	}
+	visiting.delete(mod)
+	visited[mod] = true
+	for directive in directives {
+		if !directive.before_import {
+			lines << directive.text
+		}
 	}
 }
 
@@ -410,16 +489,10 @@ fn arm64_c_constant_probe_lines(names []string, keep []bool) string {
 	return out.join('\n') + '\n'
 }
 
-// arm64_probe_c_constants returns the values of the arithmetic C constants
-// among `names`, read from the program's C side.
-fn arm64_probe_c_constants(names []string, support_text string, compiler string, compile_args []string) map[string]Arm64CConstant {
-	mut result := map[string]Arm64CConstant{}
-	if names.len == 0 {
-		return result
-	}
-	// Like the C backend's generated C, see the system headers it always
-	// includes: `C.FIONREAD` (sys/ioctl.h) or `C.KERN_SUCCESS` (mach/mach.h)
-	// are used without an `#include` of their own.
+// arm64_probe_preamble includes the system headers that the C backend's
+// generated C always includes, so `C.FIONREAD` (sys/ioctl.h) or `C.KERN_SUCCESS`
+// (mach/mach.h) are seen without an `#include` of their own.
+fn arm64_probe_preamble() string {
 	mut preamble := ''
 	for header in cgen.posix_preamble_headers {
 		preamble += '#include <${header}>\n'
@@ -427,43 +500,79 @@ fn arm64_probe_c_constants(names []string, support_text string, compiler string,
 	for header in cgen.apple_preamble_headers {
 		preamble += '#include <${header}>\n'
 	}
+	return preamble
+}
+
+// arm64_compile_probe compiles `count` probe lines, written by `lines` for the
+// ones still kept, after the program's C side, and returns the symbols with
+// `symbol_prefix` and which lines were kept. Each line carries a `#line` in
+// `probe_file`, so a line that is an error (a name or field the headers do not
+// have) is dropped and the probe is compiled again, as cgo does; each round
+// removes at least one line.
+fn arm64_compile_probe(count int, lines fn ([]bool) string, probe_file string, symbol_prefix string, support_text string, compiler string, compile_args []string) ?(map[string][]u8, []bool) {
 	token := '${os.getpid()}_${tempname.unique_token()}'
-	probe_source := os.join_path(os.vtmp_dir(), 'v3_arm64_cconst_${token}.c')
-	probe_object := os.join_path(os.vtmp_dir(), 'v3_arm64_cconst_${token}.o')
+	probe_source := os.join_path(os.vtmp_dir(), 'v3_arm64_probe_${token}.c')
+	probe_object := os.join_path(os.vtmp_dir(), 'v3_arm64_probe_${token}.o')
 	defer {
 		os.rm(probe_source) or {}
 		os.rm(probe_object) or {}
 	}
-	mut keep := []bool{len: names.len, init: true}
-	// A header can depend on names that are only errors in the probe lines, so
-	// failing lines are dropped and the probe is compiled again. Each round
-	// removes at least one name.
+	preamble := arm64_probe_preamble()
+	mut keep := []bool{len: count, init: true}
+	mut compiled := false
 	for _ in 0 .. 4 {
-		text := support_text + preamble + arm64_c_constant_probe_lines(names, keep)
-		os.write_file(probe_source, text) or { return result }
+		text := support_text + preamble + lines(keep)
+		os.write_file(probe_source, text) or { return none }
 		mut args := compile_args.clone()
 		args << ['-ferror-limit=0', '-c', probe_source, '-o', probe_object]
 		res := cmdexec.run(compiler, args)
 		if res.exit_code == 0 {
+			compiled = true
 			break
 		}
 		mut dropped := false
 		for line in res.output.split_into_lines() {
-			if !line.starts_with('${arm64_c_constant_probe_file}:') {
+			if !line.starts_with('${probe_file}:') {
 				continue
 			}
 			index := line.all_after(':').all_before(':').int() - 1
-			if index >= 0 && index < names.len && keep[index] {
+			if index >= 0 && index < count && keep[index] {
 				keep[index] = false
 				dropped = true
 			}
 		}
 		if !dropped {
 			// The C side itself does not compile; the real compile reports it.
-			return result
+			return none
 		}
 	}
-	symbols := macho_object_symbol_bytes(probe_object, '___v_cconst_') or { return result }
+	if !compiled {
+		return none
+	}
+	symbols := macho_object_symbol_bytes(probe_object, symbol_prefix) or { return none }
+	return symbols, keep
+}
+
+fn arm64_probe_symbol_i64(symbols map[string][]u8, name string) ?i64 {
+	bits := symbols[name] or { return none }
+	if bits.len < 8 {
+		return none
+	}
+	return unsafe { *(&i64(&u8(bits.data))) }
+}
+
+// arm64_probe_c_constants returns the values of the arithmetic C constants
+// among `names`, read from the program's C side.
+fn arm64_probe_c_constants(names []string, support_text string, compiler string, compile_args []string) map[string]Arm64CConstant {
+	mut result := map[string]Arm64CConstant{}
+	if names.len == 0 {
+		return result
+	}
+	symbols, keep := arm64_compile_probe(names.len, fn [names] (keep []bool) string {
+		return arm64_c_constant_probe_lines(names, keep)
+	}, arm64_c_constant_probe_file, '___v_cconst_', support_text, compiler, compile_args) or {
+		return result
+	}
 	for i, name in names {
 		if !keep[i] {
 			continue
@@ -483,14 +592,138 @@ fn arm64_probe_c_constants(names []string, support_text string, compiler string,
 				is_float: true
 			}
 		} else {
-			bits := symbols['___v_cconst_i_${i}'] or { continue }
-			if bits.len < 8 {
-				continue
-			}
-			value := unsafe { *(&i64(&u8(bits.data))) }
+			value := arm64_probe_symbol_i64(symbols, '___v_cconst_i_${i}') or { continue }
 			result[name] = Arm64CConstant{
 				value: value.str()
 			}
+		}
+	}
+	return result
+}
+
+const arm64_c_struct_probe_file = '__v_cstruct__'
+
+// Arm64CStruct is a `struct C.X` declaration: how C names it and the fields
+// the V declaration lists.
+struct Arm64CStruct {
+	v_name string // `C.FT_FaceRec`
+	c_type string // `struct FT_FaceRec`, or `FT_Bitmap` for a typedef
+	fields []string
+}
+
+// Arm64CStructLayout is the size, alignment and field offsets of a C struct.
+struct Arm64CStructLayout {
+	size    int
+	align   int
+	offsets map[string]int
+}
+
+// arm64_c_structs lists the program's `struct C.X` declarations with fields.
+fn arm64_c_structs(a &flat.FlatAst) []Arm64CStruct {
+	mut structs := []Arm64CStruct{}
+	mut seen := map[string]bool{}
+	for node in a.nodes {
+		if node.kind != .struct_decl {
+			continue
+		}
+		v_name := node.value_text()
+		if !v_name.starts_with('C.') || v_name in seen || node.children_count == 0 {
+			continue
+		}
+		c_name := v_name[2..]
+		if !arm64_is_c_identifier(c_name) {
+			continue
+		}
+		attrs := node.typ_text().split(',')
+		c_type := if 'typedef' in attrs {
+			c_name
+		} else if 'union' in attrs {
+			'union ${c_name}'
+		} else {
+			'struct ${c_name}'
+		}
+		mut fields := []string{}
+		for i in 0 .. node.children_count {
+			field := a.child_node(&node, i)
+			name := field.value_text().trim_left('@')
+			if name.len > 0 && arm64_is_c_identifier(name) {
+				fields << name
+			}
+		}
+		seen[v_name] = true
+		structs << Arm64CStruct{
+			v_name: v_name
+			c_type: c_type
+			fields: fields
+		}
+	}
+	return structs
+}
+
+// arm64_c_struct_probe_lines writes one line for the size and alignment of
+// each struct and one per field offset, so a declaration or field that C does
+// not have only drops its own line.
+fn arm64_c_struct_probe_lines(structs []Arm64CStruct, keep []bool) string {
+	mut out := []string{}
+	out << '#include <stddef.h>'
+	out << '#define V_CSTRUCT_KEEP __attribute__((used, visibility("hidden")))'
+	mut line := 0
+	for i, st in structs {
+		if keep[line] {
+			out << '#line ${line + 1} "${arm64_c_struct_probe_file}"'
+			out << 'V_CSTRUCT_KEEP const long long __v_cstruct_s_${i} = (long long)sizeof(${st.c_type}); V_CSTRUCT_KEEP const long long __v_cstruct_a_${i} = (long long)_Alignof(${st.c_type});'
+		}
+		line++
+		for j, field in st.fields {
+			if keep[line] {
+				out << '#line ${line + 1} "${arm64_c_struct_probe_file}"'
+				out << 'V_CSTRUCT_KEEP const long long __v_cstruct_o_${i}_${j} = (long long)offsetof(${st.c_type}, ${field});'
+			}
+			line++
+		}
+	}
+	return out.join('\n') + '\n'
+}
+
+// arm64_probe_c_struct_layouts reads the layouts of the program's C structs
+// from the C compiler, like cgo's -godefs: V declarations of C structs often
+// list only the fields a binding reads (vglyph's `C.FT_GlyphSlotRec`), so their
+// offsets cannot be computed from the V declaration.
+fn arm64_probe_c_struct_layouts(structs []Arm64CStruct, support_text string, compiler string, compile_args []string) map[string]Arm64CStructLayout {
+	mut result := map[string]Arm64CStructLayout{}
+	mut count := 0
+	for st in structs {
+		count += 1 + st.fields.len
+	}
+	if count == 0 {
+		return result
+	}
+	symbols, keep := arm64_compile_probe(count, fn [structs] (keep []bool) string {
+		return arm64_c_struct_probe_lines(structs, keep)
+	}, arm64_c_struct_probe_file, '___v_cstruct_', support_text, compiler, compile_args) or {
+		return result
+	}
+	mut line := 0
+	for i, st in structs {
+		struct_line := line
+		line += 1 + st.fields.len
+		if !keep[struct_line] {
+			continue
+		}
+		size := arm64_probe_symbol_i64(symbols, '___v_cstruct_s_${i}') or { continue }
+		align := arm64_probe_symbol_i64(symbols, '___v_cstruct_a_${i}') or { continue }
+		mut offsets := map[string]int{}
+		for j, field in st.fields {
+			if !keep[struct_line + 1 + j] {
+				continue
+			}
+			offset := arm64_probe_symbol_i64(symbols, '___v_cstruct_o_${i}_${j}') or { continue }
+			offsets[field] = int(offset)
+		}
+		result[st.v_name] = Arm64CStructLayout{
+			size:    int(size)
+			align:   int(align)
+			offsets: offsets
 		}
 	}
 	return result

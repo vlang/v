@@ -14724,6 +14724,7 @@ pub fn run(args []string) {
 		}
 		mut arm64_c_side_info := Arm64CSide{}
 		mut arm64_c_constants := map[string]Arm64CConstant{}
+		mut arm64_c_struct_layouts := map[string]Arm64CStructLayout{}
 		// Like cgo, read the C constants that the builder does not know from the
 		// C compiler even when the built-in linker links the program: system
 		// headers alone (`C.FIONREAD`, `C.KERN_SUCCESS`) need no system linker.
@@ -14760,6 +14761,11 @@ pub fn run(args []string) {
 			arm64_c_constants = arm64_probe_c_constants(constant_names, arm64_c_side_info.support.text,
 				arm64_c_side_info.compiler, arm64_c_side_info.compile_args)
 			b.step('arm64 C constants')
+			if arm64_link_mode == .external {
+				arm64_c_struct_layouts = arm64_probe_c_struct_layouts(arm64_c_structs(a),
+					arm64_c_side_info.support.text, arm64_c_side_info.compiler, arm64_c_side_info.compile_args)
+				b.step('arm64 C struct layouts')
+			}
 		}
 		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
@@ -14774,6 +14780,14 @@ pub fn run(args []string) {
 					is_float: constant.is_float
 				}
 			}
+			mut arm64_ssa_c_struct_layouts := map[string]ssa.NativeCStructLayout{}
+			for name, layout in arm64_c_struct_layouts {
+				arm64_ssa_c_struct_layouts[name] = ssa.NativeCStructLayout{
+					size:    layout.size
+					align:   layout.align
+					offsets: layout.offsets
+				}
+			}
 			// SSA + ARM64 native backend
 			mut m := ssa.build_with_options(a, used_fns, pre_tc, ssa.BuildOptions{
 				track_uses:           is_prod
@@ -14785,6 +14799,7 @@ pub fn run(args []string) {
 				// V-shipped C helpers are linked instead of SSA replacements.
 				use_native_c_sources: arm64_link_mode == .external
 				c_constants:          arm64_ssa_c_constants
+				c_struct_layouts:     arm64_ssa_c_struct_layouts
 				target:               ssa.TargetData{
 					os:   prefs.target.os
 					arch: 'arm64'

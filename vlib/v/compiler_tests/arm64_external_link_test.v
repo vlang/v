@@ -162,3 +162,94 @@ fn test_arm64_links_the_boehm_collector() {
 		assert lines[2] == 'true', run.output
 	}
 }
+
+// `top.h` needs `base.h` first, and the program imports `top` before `base`:
+// the C side keeps the C backend's order, a module's imports before its own
+// lines. `struct top_rec` is declared in V with two of its fields, out of order,
+// so its layout must come from the C compiler.
+const layout_base_header = '#ifndef BASE_H
+#define BASE_H
+#define BASE_SCALE 3
+#endif
+'
+
+const layout_top_header = '#ifndef BASE_H
+#error "include base.h before top.h"
+#endif
+struct top_rec {
+	char tag;
+	double value;
+	short pad[5];
+	int count;
+};
+static struct top_rec top_storage;
+static inline struct top_rec* top_make(int count) {
+	top_storage.tag = 7;
+	top_storage.value = 2.5 * BASE_SCALE;
+	top_storage.count = count;
+	return &top_storage;
+}
+'
+
+const layout_base_module = 'module base
+
+#include "@VMODROOT/base.h"
+
+pub fn scale() int {
+	return C.BASE_SCALE
+}
+'
+
+const layout_top_module = 'module top
+
+import base
+
+#include "@VMODROOT/top.h"
+
+pub struct C.top_rec {
+pub:
+	count int
+	value f64
+}
+
+fn C.top_make(count int) &C.top_rec
+
+pub fn make(count int) &C.top_rec {
+	_ = base.scale()
+	return C.top_make(count)
+}
+'
+
+const layout_program = 'import top
+import base
+
+fn main() {
+	rec := top.make(41)
+	println(rec.count)
+	println(rec.value)
+	println(base.scale())
+}
+'
+
+fn test_arm64_lays_out_c_structs_and_orders_headers_like_the_c_backend() {
+	$if macos && arm64 {
+		root := os.join_path(os.vtmp_dir(), 'arm64_c_layout_${os.getpid()}')
+		os.mkdir_all(os.join_path(root, 'base'))!
+		os.mkdir_all(os.join_path(root, 'top'))!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(root, 'v.mod'), '')!
+		os.write_file(os.join_path(root, 'base.h'), layout_base_header)!
+		os.write_file(os.join_path(root, 'top.h'), layout_top_header)!
+		os.write_file(os.join_path(root, 'base', 'base.v'), layout_base_module)!
+		os.write_file(os.join_path(root, 'top', 'top.v'), layout_top_module)!
+		os.write_file(os.join_path(root, 'main.v'), layout_program)!
+		output := os.join_path(root, 'main')
+		compiled := cmdexec.run(@VEXE, ['-b', 'arm64', '-o', output, root])
+		assert compiled.exit_code == 0, compiled.output
+		run := cmdexec.run(output, []string{})
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == '41\n7.5\n3', run.output
+	}
+}

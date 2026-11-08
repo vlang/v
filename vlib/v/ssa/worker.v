@@ -144,6 +144,8 @@ pub fn (mut m Module) merge_worker_module(w &Module, func_data []FuncSSAData, se
 			is_union:    wt.is_union
 			is_packed:   wt.is_packed
 			alignment:   wt.alignment
+			size:          wt.size
+			field_offsets: wt.field_offsets
 		}
 		new_id := m.type_store.register(new_type)
 		if cache_key.len > 0 {

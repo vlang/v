@@ -135,6 +135,10 @@ pub:
 	is_union    bool // True for union types (all fields overlap at offset 0)
 	is_packed   bool // True when struct fields have byte alignment
 	alignment   int  // Explicit aggregate alignment in bytes; 0 uses the natural alignment
+	// A C struct laid out by the C compiler (cgo-style probe): its size and the
+	// offset of each field, -1 for a field the probe did not find.
+	size          int
+	field_offsets []int
 }
 
 // TypeStore represents type store data used by ssa.
@@ -976,6 +980,10 @@ fn (m &Module) type_size_inner(typ_id TypeID, depth int, mut visiting []bool, mu
 		cache[typ_id] = m.target.ptr_size
 		return m.target.ptr_size
 	}
+	if typ.kind == .struct_t && typ.size > 0 {
+		cache[typ_id] = typ.size
+		return typ.size
+	}
 	if typ.width > 0 {
 		size := (typ.width + 7) / 8
 		cache[typ_id] = size
@@ -1187,6 +1195,9 @@ pub fn (m &Module) struct_field_offset(typ_id TypeID, field_idx int) int {
 	typ := m.type_store.types[typ_id]
 	if typ.kind != .struct_t || field_idx < 0 || field_idx >= typ.fields.len {
 		return 0
+	}
+	if field_idx < typ.field_offsets.len && typ.field_offsets[field_idx] >= 0 {
+		return typ.field_offsets[field_idx]
 	}
 	key := (u64(typ_id) << 32) | u64(field_idx)
 	if cached := m.field_offset_cache[key] {

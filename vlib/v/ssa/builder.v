@@ -175,6 +175,7 @@ mut:
 	allow_missing_fn_stubs bool
 	use_native_c_sources   bool
 	c_constants            map[string]NativeCConstant
+	c_struct_layouts       map[string]NativeCStructLayout
 	// Bare struct names that the program's own `main`/`builtin` types own; a
 	// struct of an imported module with the same name must not take them.
 	program_struct_names map[u32]bool
@@ -237,6 +238,20 @@ pub:
 	// the program's C headers with the C compiler (see the arm64 driver's
 	// arm64_probe_c_constants): name -> value text.
 	c_constants map[string]NativeCConstant
+	// c_struct_layouts holds the layouts of `struct C.X` declarations that the
+	// driver read from the C compiler (arm64_probe_c_struct_layouts): V name,
+	// such as `C.FT_FaceRec`, -> layout.
+	c_struct_layouts map[string]NativeCStructLayout
+}
+
+// NativeCStructLayout is a C struct's layout as the C compiler computes it,
+// like cgo's -godefs: V declarations of C structs often list only the fields a
+// binding reads, in any order.
+pub struct NativeCStructLayout {
+pub:
+	size    int
+	align   int
+	offsets map[string]int
 }
 
 // NativeCConstant is the value of a C preprocessor or enum constant.
@@ -304,6 +319,7 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 		allow_missing_fn_stubs:   opts.allow_missing_fn_stubs
 		use_native_c_sources:     opts.use_native_c_sources
 		c_constants:              opts.c_constants
+		c_struct_layouts:         opts.c_struct_layouts
 	}
 	b.m.track_uses = opts.track_uses
 	b.m.target = opts.target
@@ -538,13 +554,27 @@ fn (mut b Builder) register_types() {
 			}
 			typ_id := b.struct_type_id_for_decl(node.source_value_id(), cur_module)
 			b.struct_embeds[typ_id] = embeds
+			mut c_size := 0
+			mut c_align := struct_decl_alignment(node)
+			mut c_offsets := []int{}
+			if layout := b.c_struct_layouts[node.value_text()] {
+				c_size = layout.size
+				if layout.align > 0 {
+					c_align = layout.align
+				}
+				for name in field_names {
+					c_offsets << layout.offsets[name] or { -1 }
+				}
+			}
 			b.m.type_store.types[typ_id] = Type{
-				kind:        .struct_t
-				fields:      field_types
-				field_names: field_names
-				is_union:    'union' in node.typ_text().split(',')
-				is_packed:   'packed' in node.typ_text().split(',')
-				alignment:   struct_decl_alignment(node)
+				kind:          .struct_t
+				fields:        field_types
+				field_names:   field_names
+				is_union:      'union' in node.typ_text().split(',')
+				is_packed:     'packed' in node.typ_text().split(',')
+				alignment:     c_align
+				size:          c_size
+				field_offsets: c_offsets
 			}
 		}
 	}
