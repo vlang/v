@@ -17996,9 +17996,23 @@ fn (mut b Builder) build_struct_init(id flat.NodeId, node flat.Node) ValueID {
 		mut initialized := map[string]bool{}
 		for i in 0 .. node.children_count {
 			field_node := b.a.child_node(&node, i)
-			field_expr_id := b.a.child(field_node, 0)
+			// A positional literal (`gg.Color{0, 0, 0, 0}`, as a declared field
+			// default is kept) initializes the fields in declaration order.
+			positional := field_node.kind != .field_init || field_node.value.len == 0
+			field_expr_id := if field_node.kind == .field_init && field_node.children_count > 0 {
+				b.a.child(field_node, 0)
+			} else {
+				b.a.child(&node, i)
+			}
+			init_name := if !positional {
+				field_node.value
+			} else if i < typ.field_names.len {
+				typ.field_names[i]
+			} else {
+				''
+			}
 			for fi, fname in typ.field_names {
-				if fname == field_node.value {
+				if fname == init_name {
 					offset := b.m.struct_field_offset(typ_id, fi)
 					off_const := b.m.get_or_add_const(b.i64_type, '${offset}')
 					field_type := if fi < typ.fields.len { typ.fields[fi] } else { b.i64_type }
@@ -18417,9 +18431,23 @@ fn (mut b Builder) build_heap_struct_init(id flat.NodeId, node flat.Node) ValueI
 		mut initialized := map[string]bool{}
 		for i in 0 .. node.children_count {
 			field_node := b.a.child_node(&node, i)
-			field_expr_id := b.a.child(field_node, 0)
+			// A positional literal (`gg.Color{0, 0, 0, 0}`, as a declared field
+			// default is kept) initializes the fields in declaration order.
+			positional := field_node.kind != .field_init || field_node.value.len == 0
+			field_expr_id := if field_node.kind == .field_init && field_node.children_count > 0 {
+				b.a.child(field_node, 0)
+			} else {
+				b.a.child(&node, i)
+			}
+			init_name := if !positional {
+				field_node.value
+			} else if i < typ.field_names.len {
+				typ.field_names[i]
+			} else {
+				''
+			}
 			for fi, fname in typ.field_names {
-				if fname == field_node.value {
+				if fname == init_name {
 					offset := b.m.struct_field_offset(typ_id, fi)
 					off_const := b.m.get_or_add_const(b.i64_type, '${offset}')
 					field_type := if fi < typ.fields.len { typ.fields[fi] } else { b.i64_type }

@@ -879,3 +879,52 @@ pub fn run_all() ! {
 	}
 }
 
+// A literal of another module's struct gets the defaults its declaration spells,
+// positional ones too: `bg_color colmod.Color = colmod.Color{0, 0, 0, 0}` keeps
+// alpha 0 rather than Color's own default of 255.
+fn test_positional_field_defaults_across_modules() {
+	$if macos && arm64 {
+		output := run_arm64_project('module_positional_defaults', {
+			'main.v':          'import colmod
+import stymod
+
+fn main() {
+	s := stymod.Style{
+		size:  3
+		color: colmod.Color{1, 2, 3, 255}
+	}
+	println(\'\${s.bg_color.a} \${s.stroke.a} \${s.color.a} \${stymod.local().bg_color.a}\')
+}
+'
+			'colmod/colmod.v': 'module colmod
+
+pub struct Color {
+pub:
+	r u8
+	g u8
+	b u8
+	a u8 = 255
+}
+'
+			'stymod/stymod.v': 'module stymod
+
+import colmod
+
+pub struct Style {
+pub:
+	color    colmod.Color = colmod.Color{0, 0, 0, 0}
+	bg_color colmod.Color = colmod.Color{0, 0, 0, 0}
+	size     f32
+	stroke   colmod.Color = colmod.Color{0, 0, 0, 0}
+}
+
+pub fn local() Style {
+	return Style{
+		size: 2
+	}
+}
+'
+		})
+		assert output == '0 0 255 0', output
+	}
+}
