@@ -623,3 +623,69 @@ fn main() {
 		assert output == 'string "" | string "" | int 42 | f64 2.5', output
 	}
 }
+
+// `controller.build(...)` calls the function in the `build` field of a generic
+// instance, not some type's `build` method.
+fn test_function_field_call_on_generic_instance() {
+	$if macos && arm64 {
+		output := run_arm64('generic_fn_field', {
+			'lib/lib.v': "module lib
+
+pub struct Props {
+pub:
+	variant int = 2
+}
+
+pub fn (p Props) build(n int) string {
+	return 'Props.build \${p.variant} \${n}'
+}
+
+pub struct Config[T] {
+pub:
+	build fn (mut T) string = unsafe { nil }
+	model T
+}
+
+struct Controller[T] {
+mut:
+	build fn (mut T) string = unsafe { nil }
+	model T
+}
+
+pub fn start[T](config Config[T]) string {
+	mut controller := &Controller[T]{
+		build: config.build
+		model: config.model
+	}
+	return controller.build(mut controller.model)
+}
+"
+			'main.v':    "module main
+
+import lib
+
+struct Calc {
+mut:
+	n int
+}
+
+fn build_calc(mut c Calc) string {
+	c.n++
+	return 'build_calc \${c.n}'
+}
+
+fn main() {
+	println(lib.start(lib.Config[Calc]{
+		build: build_calc
+		model: Calc{
+			n: 41
+		}
+	}))
+	println(lib.Props{}.build(1))
+}
+"
+		}, []string{})
+		assert output == 'build_calc 42
+Props.build 2 1', output
+	}
+}

@@ -15905,7 +15905,21 @@ fn (b &Builder) is_function_field_expr(id flat.NodeId) bool {
 		return false
 	}
 	base_type := ssa_pointer_base_source_type(b.receiver_type_name(b.a.child(&node, 0)))
-	return b.is_function_type_name(b.field_type_name(base_type, node.value_text()))
+	field_type := b.field_type_name(base_type, node.value_text())
+	if field_type != 0 {
+		return b.is_function_type_name(field_type)
+	}
+	// Fields of a generic instance such as `Controller[Calc]` are only known
+	// to the checker. Without this, `controller.build(...)` would be taken for
+	// a call of some type's `build` method.
+	if b.tc != unsafe { nil } && flat.source_type_name(base_type).contains('[') {
+		for field in b.tc.struct_fields_for_type(base_type) {
+			if field.name == node.value_text() {
+				return checker_type_is_function(field.typ)
+			}
+		}
+	}
+	return false
 }
 
 fn (b &Builder) is_function_type_name(typ_id u32) bool {
