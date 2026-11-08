@@ -411,6 +411,16 @@ fn arm64_probe_c_constants(names []string, support_text string, compiler string,
 	if names.len == 0 {
 		return result
 	}
+	// Like the C backend's generated C, see the system headers it always
+	// includes: `C.FIONREAD` (sys/ioctl.h) or `C.KERN_SUCCESS` (mach/mach.h)
+	// are used without an `#include` of their own.
+	mut preamble := ''
+	for header in cgen.posix_preamble_headers {
+		preamble += '#include <${header}>\n'
+	}
+	for header in cgen.apple_preamble_headers {
+		preamble += '#include <${header}>\n'
+	}
 	token := '${os.getpid()}_${tempname.unique_token()}'
 	probe_source := os.join_path(os.vtmp_dir(), 'v3_arm64_cconst_${token}.c')
 	probe_object := os.join_path(os.vtmp_dir(), 'v3_arm64_cconst_${token}.o')
@@ -423,7 +433,7 @@ fn arm64_probe_c_constants(names []string, support_text string, compiler string,
 	// failing lines are dropped and the probe is compiled again. Each round
 	// removes at least one name.
 	for _ in 0 .. 4 {
-		text := support_text + arm64_c_constant_probe_lines(names, keep)
+		text := support_text + preamble + arm64_c_constant_probe_lines(names, keep)
 		os.write_file(probe_source, text) or { return result }
 		mut args := compile_args.clone()
 		args << ['-ferror-limit=0', '-c', probe_source, '-o', probe_object]

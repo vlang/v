@@ -14724,7 +14724,20 @@ pub fn run(args []string) {
 		}
 		mut arm64_c_side_info := Arm64CSide{}
 		mut arm64_c_constants := map[string]Arm64CConstant{}
-		if arm64_link_mode == .external {
+		// Like cgo, read the C constants that the builder does not know from the
+		// C compiler even when the built-in linker links the program: system
+		// headers alone (`C.FIONREAD`, `C.KERN_SUCCESS`) need no system linker.
+		mut arm64_unknown_c_constants := []string{}
+		$if !skip_arm64 ? {
+			if target.os == 'macos' && !is_o && arm64_link_mode == .internal {
+				arm64_unknown_c_constants = arm64_c_constant_names(a).filter(!ssa.has_native_platform_constant(it,
+					ssa.TargetData{
+						os:   prefs.target.os
+						arch: 'arm64'
+					}))
+			}
+		}
+		if arm64_link_mode == .external || arm64_unknown_c_constants.len > 0 {
 			arm64_c_side_info = arm64_c_side(Arm64CSideOptions{
 				a:                  a
 				prefs:              prefs
@@ -14739,8 +14752,13 @@ pub fn run(args []string) {
 				eprintln(err.msg())
 				exit(1)
 			}
-			arm64_c_constants = arm64_probe_c_constants(arm64_c_constant_names(a),
-				arm64_c_side_info.support.text, arm64_c_side_info.compiler, arm64_c_side_info.compile_args)
+			constant_names := if arm64_link_mode == .external {
+				arm64_c_constant_names(a)
+			} else {
+				arm64_unknown_c_constants
+			}
+			arm64_c_constants = arm64_probe_c_constants(constant_names, arm64_c_side_info.support.text,
+				arm64_c_side_info.compiler, arm64_c_side_info.compile_args)
 			b.step('arm64 C constants')
 		}
 		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {

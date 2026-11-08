@@ -71,6 +71,18 @@ const body_promoted_miss_slots = 1024
 const body_struct_decl_query_slots = 256
 const body_alias_type_name_slots = 1024
 
+// posix_preamble_headers are the system headers the generated C of a POSIX
+// target always includes; `C.FIONREAD` and friends come from them.
+pub const posix_preamble_headers = ['dirent.h', 'dlfcn.h', 'fcntl.h', 'netdb.h', 'netinet/in.h',
+	'pthread.h', 'arpa/inet.h', 'netinet/tcp.h', 'semaphore.h', 'sys/file.h', 'sys/ioctl.h',
+	'sys/mman.h', 'sys/resource.h', 'sys/socket.h', 'sys/stat.h', 'sys/statvfs.h', 'sys/time.h',
+	'sys/types.h', 'sys/utsname.h', 'sys/un.h', 'sys/uio.h', 'sys/wait.h', 'termios.h', 'unistd.h',
+	'utime.h']
+
+// apple_preamble_headers are the Apple headers the generated C always includes.
+pub const apple_preamble_headers = ['mach/mach.h', 'mach/mach_vm.h', 'CommonCrypto/CommonDigest.h',
+	'mach/mach_time.h', 'mach-o/dyld.h']
+
 // c_short_name_view returns the suffix after the final dot without allocating.
 @[direct_array_access; inline]
 fn c_short_name_view(name string) string {
@@ -20695,10 +20707,7 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#include <dbghelp.h>')
 	g.writeln('#endif')
 	g.writeln('#else')
-	for header in ['dirent.h', 'dlfcn.h', 'fcntl.h', 'netdb.h', 'netinet/in.h', 'pthread.h',
-		'arpa/inet.h', 'netinet/tcp.h', 'semaphore.h', 'sys/file.h', 'sys/ioctl.h', 'sys/mman.h',
-		'sys/resource.h', 'sys/socket.h', 'sys/stat.h', 'sys/statvfs.h', 'sys/time.h', 'sys/types.h',
-		'sys/utsname.h', 'sys/un.h', 'sys/uio.h', 'sys/wait.h', 'termios.h', 'unistd.h', 'utime.h'] {
+	for header in posix_preamble_headers {
 		g.writeln('#include <${header}>')
 	}
 	// Solaris ships no sys/ptrace.h. Only user code declaring fn C.ptrace needs
@@ -20713,11 +20722,9 @@ fn (mut g FlatGen) system_libc_headers() {
 	g.writeln('#endif')
 	g.writeln('#endif')
 	g.writeln('#ifdef __APPLE__')
-	g.writeln('#include <mach/mach.h>')
-	g.writeln('#include <mach/mach_vm.h>')
-	g.writeln('#include <CommonCrypto/CommonDigest.h>')
-	g.writeln('#include <mach/mach_time.h>')
-	g.writeln('#include <mach-o/dyld.h>')
+	for header in apple_preamble_headers {
+		g.writeln('#include <${header}>')
+	}
 	g.writeln('#endif')
 	g.writeln('#if defined(__linux__) || defined(__ANDROID__)')
 	g.writeln('#include <sys/epoll.h>')

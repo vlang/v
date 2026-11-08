@@ -102,3 +102,18 @@ fn init() {
 ['123456789000', '123456', '789', '15432098']", output
 	}
 }
+
+// `C.FIONREAD` and `C.KERN_SUCCESS` come from headers the C backend always
+// includes, without an `#include` in the program.
+fn test_c_constants_of_the_c_backend_headers() {
+	$if macos && arm64 {
+		output := run_arm64('c_constants', "module main
+
+// No `#include`: the C backend's generated C always includes these headers.
+fn main() {
+	println('\${int(C.FIONREAD) > 0} \${int(C.KERN_SUCCESS)} \${int(C.VM_FLAGS_ANYWHERE)}')
+}
+")
+		assert output == 'true 0 1', output
+	}
+}
