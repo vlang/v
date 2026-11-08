@@ -934,7 +934,12 @@ fn (g &Gen) stack_slot_size(ptr_id int) ?int {
 				if slot_size == 0 {
 					base_id := int(instr.operands[0])
 					base_type := g.ptr_elem_type(base_id)
-					if base_type > 0 && base_type < g.m.type_store.types.len {
+					// A pointer of the base's own type steps over whole elements
+					// (`&arr[i]` in an `alloca T, n`); only a narrower pointer
+					// projects a field. Taking `&arr[0]` for its first field made
+					// stores to it copy one word.
+					if base_type > 0 && base_type < g.m.type_store.types.len
+						&& g.ptr_elem_type(cur) != base_type {
 						base := g.m.type_store.types[base_type]
 						if base.kind == .struct_t {
 							off_id := instr.operands[1]

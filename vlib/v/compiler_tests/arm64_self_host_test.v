@@ -117,3 +117,94 @@ fn main() {
 		assert output == 'true 0 1', output
 	}
 }
+
+// `x in names` over a constant array of strings compares every element.
+fn test_in_a_constant_string_array() {
+	$if macos && arm64 {
+		output := run_arm64('const_in', "const external_commands = [
+	'ast',
+	'bin2v',
+	'bug',
+	'bug-report',
+	'bug-report-send',
+	'build-examples',
+	'build-tools',
+	'build-vbinaries',
+	'bump',
+	'check-md',
+	'clean',
+	'complete',
+	'compress',
+	'cover',
+	'diff',
+	'doc',
+	'doctor',
+	'download',
+	'env',
+	'fmt',
+	'generate',
+	'git-fmt-hook',
+	'gret',
+	'init',
+	'install',
+	'link',
+	'list',
+	'ls',
+	'mcp',
+	'missdoc',
+	'mod',
+	'new',
+	'outdated',
+	'pbgen',
+	'quest',
+	'reduce',
+	'remove',
+	'repl',
+	'repeat',
+	'retry',
+	'search',
+	'self',
+	'setup-freetype',
+	'shader',
+	'share',
+	'skills',
+	'should-compile-all',
+	'show',
+	'sqlite',
+	'symlink',
+	'scan',
+	'test',
+	'test-all',
+	'test-cleancode',
+	'test-fmt',
+	'test-parser',
+	'test-self',
+	'time',
+	'timeout',
+	'tool',
+	'tracev',
+	'translate',
+	'unlink',
+	'up',
+	'update',
+	'upgrade',
+	'vendor',
+	'vet',
+	'vlib-docs',
+	'watch',
+	'where',
+	'why',
+	'wipe-cache',
+]
+
+fn check(s string) bool {
+	return s in external_commands
+}
+
+fn main() {
+	println('\${check('')} \${check('ast')} \${check('as')} \${check('zzz')} \${check('vet')} \${external_commands.len}')
+}
+")
+		assert output == 'false true false false true 73', output
+	}
+}
