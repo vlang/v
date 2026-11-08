@@ -2024,27 +2024,16 @@ fn c_object_file_signature(path string, refresh bool, mut stats CObjectCacheStat
 	} else if canonical in stats.file_signatures {
 		return stats.file_signatures[canonical]
 	}
-	mut file := os.open(canonical) or { return '' }
-	defer { file.close() }
-	// Hash without retaining dependency contents, including when the compiler
-	// uses an arena allocator. The same files are refreshed after compilation.
-	mut buffer := [64 * 1024]u8{}
-	mut hash := u64(1469598103934665603)
-	for {
-		read := file.read_into_ptr(&buffer[0], buffer.len) or {
-			if err is os.Eof {
-				break
-			}
-			return ''
-		}
-		if read == 0 {
-			break
-		}
-		for i in 0 .. read {
-			hash = (hash ^ u64(buffer[i])) * u64(1099511628211)
-		}
+	// A refresh checks that the file did not change while it was compiled, so it
+	// reads the file again instead of trusting its metadata.
+	signature := if refresh {
+		modulecache.file_signature_uncached(canonical)
+	} else {
+		modulecache.file_signature(canonical)
 	}
-	signature := hash.hex()
+	if signature.len == 0 {
+		return ''
+	}
 	stats.file_signatures[canonical] = signature
 	stats.dependency_file_reads++
 	return signature
@@ -2082,6 +2071,84 @@ fn c_object_dependencies_in(compiler string, compile_args []string, source_file 
 		}
 	}
 	return c_object_dependencies_from_output(result.output, source_file)
+}
+
+// cached_c_object_dependencies is c_object_dependencies for a scan that every
+// build of a program repeats on a generated source, under a new name each time.
+// It reuses the list of an earlier scan with the same compiler, arguments and
+// source text while each file in it keeps its contents, as the manifests of
+// cached C objects do, instead of preprocessing all of them again.
+fn cached_c_object_dependencies(cache_dir string, compiler string, compile_args []string, source_file string, mut stats CObjectCacheStats) CObjectDependencies {
+	source := os.read_file(source_file) or { '' }
+	if cache_dir.len == 0 || source.len == 0 {
+		return c_object_dependencies(compiler, compile_args, source_file)
+	}
+	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
+	mut hash := u64(1469598103934665603)
+	for identity in ['v3-c-dependency-manifest-v1', compiler_path, compiler_version,
+		compile_args.join('\x00'), source] {
+		hash = c_hash_bytes(hash, identity.bytes())
+		hash = c_hash_bytes(hash, [u8(0xff)])
+	}
+	manifest_path := os.join_path(cache_dir, 'dependencies_${hash.hex()}.manifest')
+	if files := valid_c_dependency_manifest(manifest_path, mut stats) {
+		mut all := files.clone()
+		all << source_file
+		all.sort()
+		return CObjectDependencies{
+			files: all
+		}
+	}
+	stats.dependency_scans++
+	dependencies := c_object_dependencies(compiler, compile_args, source_file)
+	if dependencies.used_fallback {
+		return dependencies
+	}
+	source_real := os.real_path(source_file)
+	mut out := strings.new_builder(128 + dependencies.files.len * 96)
+	out.writeln('format=v3-c-dependency-manifest-v1')
+	for dependency in dependencies.files {
+		if os.real_path(dependency) == source_real {
+			continue
+		}
+		signature := c_object_file_signature(dependency, false, mut stats)
+		if signature.len == 0 {
+			return dependencies
+		}
+		out.writeln('dependency=${dependency}\t${signature}')
+	}
+	os.mkdir_all(cache_dir) or { return dependencies }
+	temp_path := '${manifest_path}.tmp.${tempname.unique_token()}'
+	os.write_file(temp_path, out.str()) or { return dependencies }
+	os.mv(temp_path, manifest_path) or { os.rm(temp_path) or {} }
+	return dependencies
+}
+
+// valid_c_dependency_manifest returns the files of a dependency manifest, when
+// each of them still has the contents it had when the manifest was written.
+fn valid_c_dependency_manifest(manifest_path string, mut stats CObjectCacheStats) ?[]string {
+	content := os.read_file(manifest_path) or { return none }
+	lines := content.split_into_lines()
+	if lines.len < 1 || lines[0] != 'format=v3-c-dependency-manifest-v1' {
+		return none
+	}
+	mut files := []string{cap: lines.len - 1}
+	for line in lines[1..] {
+		if !line.starts_with('dependency=') {
+			return none
+		}
+		entry := line.all_after('dependency=')
+		tab := entry.last_index('\t') or { return none }
+		path := entry[..tab]
+		expected_signature := entry[tab + 1..]
+		if path.len == 0 || expected_signature.len == 0
+			|| c_object_file_signature(path, false, mut stats) != expected_signature {
+			return none
+		}
+		files << path
+	}
+	stats.dependency_manifest_hits++
+	return files
 }
 
 fn c_object_dependencies_from_output(output string, source_file string) CObjectDependencies {
@@ -4778,23 +4845,7 @@ fn clone_type_errors(values []types.TypeError) []types.TypeError {
 }
 
 fn v3_file_sha256_hex(path string) ?string {
-	mut file := os.open(path) or { return none }
-	defer { file.close() }
-	mut digest := sha256.new()
-	mut buffer := []u8{len: 64 * 1024}
-	for {
-		read := file.read(mut buffer) or {
-			if err is os.Eof {
-				break
-			}
-			return none
-		}
-		if read == 0 {
-			break
-		}
-		digest.write(buffer[..read]) or { return none }
-	}
-	return digest.sum([]).hex()
+	return modulecache.file_sha256(path)
 }
 
 fn v3_cgen_cache_input(a &flat.FlatAst, state &V3ModuleCacheState, user_files []string, user_c_flags []string, vroot string) V3CgenCacheInput {
@@ -11439,6 +11490,8 @@ pub fn run(args []string) {
 	}
 	mut b := bench.new()
 	driver_sw := time.new_stopwatch()
+	// Builds share the hashes of the files they check (see modulecache.FileHashMemo).
+	modulecache.enable_file_hash_memo(os.join_path(os.vtmp_dir(), 'v3_file_hashes'))
 	if !(verbose || show_timings) || silent || c_to_stdout {
 		b.set_quiet()
 	} else if show_instructions {
@@ -11956,19 +12009,25 @@ pub fn run(args []string) {
 			return
 		}
 	}
-	if backend == 'c' && !c_only && !no_cache
-		&& v3_program_supplies_native_inputs(input_file, file_list, prefs, user_c_flags, tcc_dylib) {
-		no_cache = true
-	}
 	// The bundled TinyCC builds the objects of the module cache by default and
 	// links them itself. TinyCC reads only the objects that it wrote, so the build
 	// has to be one that TinyCC completes; the compiler builds itself without them.
-	cache_with_tcc := effective_tcc && bundled_tcc_available
+	tcc_cache_candidate := effective_tcc && bundled_tcc_available
 		&& c_compiler == bundled_tcc && !is_o && !is_shared && !is_liveshared && !is_livemain
-		&& backend == 'c' && !c_only && !no_cache && !no_skip_unused && !no_builtin
+		&& backend == 'c' && !c_only && !no_skip_unused && !no_builtin
 		&& !parallel_cc && !keep_c && !backend_explicit && !building_v && !cmd_v_build
 		&& target.os == host_target.os && target.arch == host_target.arch
 		&& target.os in ['macos', 'linux']
+	// On macOS such a build hands Objective-C and native inputs that TinyCC
+	// cannot compile to the native bridge, which the module cache carries (see
+	// v3_internal_tcc_dylib_flag): the cache has to stay on for it to choose that.
+	tcc_bridge_candidate := tcc_cache_candidate && target.os == 'macos' && !is_prod
+		&& !check_only && !only_check_syntax
+	if backend == 'c' && !c_only && !no_cache && !tcc_bridge_candidate
+		&& v3_program_supplies_native_inputs(input_file, file_list, prefs, user_c_flags, tcc_dylib) {
+		no_cache = true
+	}
+	cache_with_tcc := tcc_cache_candidate && !no_cache
 	// A program that only prints literals needs a fraction of builtin, which is
 	// parsed for it each time. The cached builtin is ready without that.
 	minimal_literal_output := file_list.len == 0 && !is_prof && !is_trace_calls && !no_skip_unused
@@ -12918,7 +12977,8 @@ pub fn run(args []string) {
 		restart_v3_without_cache('')
 	}
 	mut native_closure := if tcc_dylib && cache_state.manager.enabled {
-		v3_tcc_dylib_native_closure(a, prefs, native_c_flags, c_compiler, &native_inputs)
+		v3_tcc_dylib_native_closure(a, prefs, native_c_flags, c_compiler, &native_inputs,
+			cache_state.manager.dir, mut c_object_cache_stats)
 	} else {
 		v3_native_interface_closure(a, prefs, native_c_flags, c_compiler, &native_inputs)
 	}
@@ -16408,7 +16468,8 @@ pub fn run(args []string) {
 				tcc_args << tcc_native_c_source_flags(resolved_c_flags)
 				tcc_args << cached_dev_dylib
 				tcc_args << if tcc_dylib {
-					dependencies := v3_tcc_dylib_program_dependencies(c_compiler, resolved_c_flags, tcc_main_file, c_standard) or {
+					dependencies := v3_tcc_dylib_program_dependencies(c_compiler, resolved_c_flags, tcc_main_file, c_standard,
+						cache_state.manager.dir, mut c_object_cache_stats) or {
 						if retry_compilation { restart_v3_without_cache(cc_dir) }
 						eprintln(err.msg())
 						cleanup_c_build_dir(cc_dir)

@@ -26,7 +26,7 @@ fn v3_tcc_dylib_add_embedded_inputs(mut closure V3NativeInputClosure, state &V3M
 	}
 }
 
-fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_flags []string, compiler string, native_inputs &cgen.CacheNativeInputs) V3NativeInputClosure {
+fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_flags []string, compiler string, native_inputs &cgen.CacheNativeInputs, cache_dir string, mut stats CObjectCacheStats) V3NativeInputClosure {
 	mut flags := user_flags.clone()
 	flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
 	flags = v3_tcc_dylib_native_flags(flags)
@@ -45,7 +45,7 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	language := cache_probe_language(cgen.cache_native_inputs_language(a, prefs.vroot, flags,
 		prefs.c99, prefs.ccompiler, prefs.target), flags)
 	args << ['-x', language]
-	deps := c_object_dependencies(compiler, args, path)
+	deps := cached_c_object_dependencies(cache_dir, compiler, args, path, mut stats)
 	if deps.used_fallback {
 		if os.getenv('V3_CACHE_TRACE') != '' {
 			mut probe_args := args.clone()
@@ -169,10 +169,10 @@ fn v3_tcc_dylib_native_flags(flags []string) []string {
 
 // Ask the C compiler which frameworks the consumer's nested includes use.
 // Only its dependency manifest is read, never preprocessed header contents.
-fn v3_tcc_dylib_program_dependencies(compiler string, flags []string, source_path string, c_standard string) ![]string {
+fn v3_tcc_dylib_program_dependencies(compiler string, flags []string, source_path string, c_standard string, cache_dir string, mut stats CObjectCacheStats) ![]string {
 	mut args := c_object_compile_flags(tcc_cached_main_flags(flags))
 	args << [c_standard, '-w', '-x', 'c', '-D__TINYC__=1', '-D__has_extension(x)=0']
-	deps := c_object_dependencies(compiler, args, source_path)
+	deps := cached_c_object_dependencies(cache_dir, compiler, args, source_path, mut stats)
 	if deps.used_fallback { return error('the TCC program dependency manifest is unavailable') }
 	return deps.files
 }

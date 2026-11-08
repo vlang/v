@@ -28,7 +28,8 @@ fn test_native_bridge_uses_c_abi_names_for_aliased_bindings() ! {
 	mut p := parser.Parser.new(prefs)
 	a := p.parse_files([main, source])
 	assert p.diagnostics.len == 0, p.diagnostics.str()
-	closure := v3_tcc_dylib_native_closure(a, prefs, [], cc, &cgen.CacheNativeInputs{})
+	mut cache_stats := CObjectCacheStats{}
+	closure := v3_tcc_dylib_native_closure(a, prefs, [], cc, &cgen.CacheNativeInputs{}, '', mut cache_stats)
 	assert closure.unassignable == '', closure.unassignable
 	assert 'answer_alias' in closure.functions
 	assert 'second_alias' in closure.functions

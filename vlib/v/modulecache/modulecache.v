@@ -2304,6 +2304,11 @@ pub fn header_signature(header string) string {
 
 // file_signature returns a stable content signature for a cache input file.
 pub fn file_signature(path string) string {
+	return memoized_file_hash(path, 'fnv', file_signature_uncached)
+}
+
+// file_signature_uncached is file_signature that reads the file in any case.
+pub fn file_signature_uncached(path string) string {
 	mut file := os.open(path) or { return '' }
 	defer { file.close() }
 	mut hash := u64(1469598103934665603)
