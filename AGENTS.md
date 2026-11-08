@@ -790,8 +790,8 @@ output shared by all of them live in `vlib/v/errors/`.
   (e.g., `VFLAGS='-g' ./v test-all`).
 * VEXE: Path to V compiler executable (useful in CI/scripts).
 * VTMP: V's temporary directory, where `.tmp.c` files are written.
-  Defaults to `<system temp dir>/v_<uid>`; the system temp dir follows
-  `TMPDIR`.
+  Defaults to `<system temp dir>/v_<uid>`; the system temp dir is
+  `TMPDIR` when set, except on macOS, where it is always `/tmp`.
 * SOURCE_DATE_EPOCH: Override build timestamp for reproducible builds
   (affects `@BUILD_DATE`, `@BUILD_TIME`, `@BUILD_TIMESTAMP`).
 
