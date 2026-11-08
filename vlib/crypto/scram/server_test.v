@@ -166,6 +166,63 @@ fn test_a_wrong_password_is_refused() {
 	assert false, 'a wrong password was accepted'
 }
 
+fn test_dummy_credentials_fail_like_a_wrong_password() {
+	secret := []u8{len: 32, init: u8(index)}
+	mut server := new_server(
+		nonce:  'servernonce'
+		lookup: fn [secret] (username string) !Credentials {
+			return dummy_credentials(.sha256, secret, username, 4096)
+		}
+	)!
+	mut client := new_client(username: 'nobody', password: 'pencil', nonce: 'clientnonce')!
+	run_exchange(mut client, mut server) or {
+		assert err.msg().contains('client proof does not match')
+		assert err is AuthenticationFailed
+		assert !server.done()
+		return
+	}
+	assert false, 'an exchange against dummy credentials succeeded'
+}
+
+// LookupResult is what an application's `lookup` callback remembers about one
+// exchange.
+struct LookupResult {
+mut:
+	unknown bool
+}
+
+// authenticate runs an exchange the way an application should around `Server`:
+// it refuses a name its lookup marked unknown before it sends the
+// server-final-message or accepts the user. The lookup hands out credentials
+// that do verify, so that only the application's own record can refuse.
+fn authenticate(known bool) !string {
+	creds := pencil_credentials(.sha256)
+	mut result := &LookupResult{}
+	mut server := new_server(
+		nonce:  'servernonce'
+		lookup: fn [creds, known, mut result] (username string) !Credentials {
+			result.unknown = !known
+			return creds
+		}
+	)!
+	mut client := new_client(username: 'user', password: 'pencil', nonce: 'clientnonce')!
+	server_final := server.final(client.final(server.first(client.first()!)!)!)!
+	if result.unknown {
+		return error('unknown user')
+	}
+	client.verify(server_final)!
+	return server.username()
+}
+
+fn test_the_application_refuses_an_unknown_name_whatever_the_proof() {
+	assert authenticate(true)! == 'user'
+	authenticate(false) or {
+		assert err.msg() == 'unknown user'
+		return
+	}
+	assert false, 'an unknown name was accepted'
+}
+
 fn test_an_unknown_user_aborts_the_exchange() {
 	mut server := new_server(
 		lookup: fn (username string) !Credentials {

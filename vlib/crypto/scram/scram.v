@@ -228,12 +228,7 @@ pub fn derive_credentials(mechanism Mechanism, password string, salt []u8, itera
 	if salt.len == 0 {
 		return error('scram: the salt must not be empty')
 	}
-	if iterations < 1 {
-		return error('scram: the iteration count must be at least 1, got ${iterations}')
-	}
-	if iterations > max_wire_iterations {
-		return error('scram: the iteration count must not exceed ${max_wire_iterations}, got ${iterations}')
-	}
+	check_iterations(iterations)!
 	salted := mechanism.hi(password.bytes(), salt, iterations)
 	client_key := mechanism.hmac(salted, 'Client Key'.bytes())
 	return Credentials{
@@ -262,6 +257,74 @@ pub fn derive_credentials(mechanism Mechanism, password string, salt []u8, itera
 pub fn new_credentials(mechanism Mechanism, password string) !Credentials {
 	salt := rand.bytes(default_salt_size)!
 	return derive_credentials(mechanism, password, salt, default_iterations)!
+}
+
+// check_iterations rejects an iteration count the wire grammar cannot carry.
+fn check_iterations(iterations int) ! {
+	if iterations < 1 {
+		return error('scram: the iteration count must be at least 1, got ${iterations}')
+	}
+	if iterations > max_wire_iterations {
+		return error('scram: the iteration count must not exceed ${max_wire_iterations}, got ${iterations}')
+	}
+}
+
+// dummy_secret_min_size is the shortest secret `dummy_credentials` accepts.
+const dummy_secret_min_size = 32
+
+// dummy_credentials returns credentials for a user name that has no account,
+// for a `lookup` callback to return instead of an error, so that the exchange
+// goes on as it would for a real user. They are derived with the HMAC of
+// `mechanism` from `secret` and `username`: the same secret, mechanism and
+// user name always give the same salt, and different names get unrelated
+// salts, as real accounts do. The salt is `default_salt_size` bytes long, like
+// the one `new_credentials` writes, and the keys come from no password.
+//
+// `secret` must be random, at least 32 bytes long, kept across restarts and
+// private: a new secret gives every unknown name a new salt, and whoever holds
+// it can tell dummy credentials from real ones. `username` must be the
+// prepared form `lookup` receives, and `iterations` the count real accounts
+// use.
+//
+// This only hides the absence of the account from the client. The application
+// must remember, for this exchange, that the name is unknown, and refuse the
+// authentication after `Server.final` whatever its result. Accounts with
+// another salt length or iteration count, or a lookup that takes longer for
+// unknown names, can still tell them apart.
+//
+// Example:
+// ```v
+// secret := []u8{len: 32, init: u8(index)} // in practice, 32 random bytes kept across restarts
+// a := scram.dummy_credentials(.sha256, secret, 'nobody', 4096)!
+// b := scram.dummy_credentials(.sha256, secret, 'nobody', 4096)!
+// assert a.salt == b.salt
+// assert scram.dummy_credentials(.sha256, secret, 'noone', 4096)!.salt != a.salt
+// ```
+pub fn dummy_credentials(mechanism Mechanism, secret []u8, username string, iterations int) !Credentials {
+	if secret.len < dummy_secret_min_size {
+		return error('scram: the secret must be at least ${dummy_secret_min_size} bytes long, got ${secret.len}')
+	}
+	if username == '' {
+		return error('scram: the user name must not be empty')
+	}
+	check_iterations(iterations)!
+	return Credentials{
+		mechanism:  mechanism
+		salt:       mechanism.hmac(secret, dummy_input('salt', username))[..default_salt_size].clone()
+		iterations: iterations
+		stored_key: mechanism.hmac(secret, dummy_input('stored key', username))
+		server_key: mechanism.hmac(secret, dummy_input('server key', username))
+	}
+}
+
+// dummy_input is the HMAC input `label || 0x00 || username` of
+// `dummy_credentials`. The NUL keeps the label and the name apart.
+fn dummy_input(label string, username string) []u8 {
+	mut input := []u8{cap: label.len + 1 + username.len}
+	input << label.bytes()
+	input << u8(0)
+	input << username.bytes()
+	return input
 }
 
 // encode renders the credentials in this one-line storage format:
