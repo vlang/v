@@ -1,0 +1,27 @@
+name: Linux CI (gitly_ci on play)
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One dedicated runner queues every push; do not cancel earlier commits.
+jobs:
+  linux-gitly-ci:
+    if: github.repository == 'vlang/v' && github.ref == 'refs/heads/master'
+    runs-on: [self-hosted, Linux, X64, gitly-ci-play]
+    timeout-minutes: 70
+    env:
+      GITLY_CI_URL: http://127.0.0.1:8081
+      GITLY_CI_CONFIG_FILE: .gitly-ci.linux.yml
+      GITLY_REPO_ID: ${{ github.repository_id }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: Run Linux pipeline through Gitly CI and stream logs
+        run: /opt/gitly-ci/github_ci_bridge.sh
