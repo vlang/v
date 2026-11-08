@@ -689,3 +689,67 @@ fn main() {
 Props.build 2 1', output
 	}
 }
+
+// `node.id` on a `Node[P]` that embeds `Core` writes and reads `Core.id`.
+fn test_embedded_fields_of_generic_instance() {
+	$if macos && arm64 {
+		output := run_arm64('generic_embed', {
+			'lib/lib.v': "module lib
+
+pub struct Comp {
+pub mut:
+	name string
+}
+
+struct ChildList {
+mut:
+	children []voidptr
+}
+
+struct Core {
+	ChildList
+mut:
+	owner &Comp = unsafe { nil }
+	id    string
+}
+
+pub struct Node[P] {
+	Core
+pub mut:
+	props P
+}
+
+pub fn (n &Node[P]) owner_name() string {
+	return n.owner.name
+}
+
+pub fn new_node[P](mut owner Comp, props P, id string) &Node[P] {
+	mut node := &Node[P]{
+		props: props
+	}
+	node.owner = &owner
+	node.id = id
+	return node
+}
+
+pub fn describe[P](n &Node[P]) string {
+	return '\${n.id} \${n.owner_name()} \${n.props}'
+}
+"
+			'main.v':    "module main
+
+import lib
+
+fn main() {
+	mut comp := lib.Comp{
+		name: 'root'
+	}
+	a := lib.new_node(mut comp, 7, 'seven')
+	b := lib.new_node(mut comp, 'text', 'label')
+	println('\${lib.describe(a)} | \${lib.describe(b)}')
+}
+"
+		}, []string{})
+		assert output == 'seven root 7 | label root text', output
+	}
+}

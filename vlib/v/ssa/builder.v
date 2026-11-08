@@ -461,13 +461,18 @@ fn (mut b Builder) register_types() {
 					typ_id := b.struct_type_id_for_decl(node.source_value_id(), cur_module)
 					mut concrete_fields := []TypeID{cap: checker_fields.len}
 					mut concrete_names := []string{cap: checker_fields.len}
-					for field in checker_fields {
+					mut concrete_embeds := []int{}
+					for field_index, field in checker_fields {
 						field_type := b.ssa_type_from_checker_type(field.typ)
 						concrete_fields << field_type
 						concrete_names << field.name
+						if field.is_embed {
+							concrete_embeds << field_index
+						}
 						b.struct_field_types.set_id(node.value + '.' + field.name,
 							field.typ.source_type_id())
 					}
+					b.struct_embeds[typ_id] = concrete_embeds
 					b.m.type_store.types[typ_id] = Type{
 						kind:        .struct_t
 						fields:      concrete_fields
@@ -17828,10 +17833,17 @@ fn (mut b Builder) register_checker_generic_struct(name string) ?TypeID {
 	b.struct_types[canonical_id] = typ_id
 	mut field_types := []TypeID{cap: fields.len}
 	mut field_names := []string{cap: fields.len}
-	for field in fields {
+	mut embeds := []int{}
+	for i, field in fields {
 		field_types << b.ssa_type_from_checker_type(field.typ)
 		field_names << field.name
+		if field.is_embed {
+			embeds << i
+		}
 	}
+	// `node.id` on a `Node[P]` that embeds `Core` reaches `Core.id` through
+	// these, as for a non-generic struct.
+	b.struct_embeds[typ_id] = embeds
 	b.m.type_store.types[typ_id] = Type{
 		kind:        .struct_t
 		fields:      field_types
