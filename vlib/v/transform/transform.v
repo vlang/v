@@ -3482,7 +3482,7 @@ fn (mut t Transformer) rewrite_children_in_place(id flat.NodeId, children []flat
 	}
 	for i, child in children {
 		slot := int(node.children_start) + i
-		t.a.children[slot] = child
+		t.a.set_child_slot(id, slot, child)
 		t.record_inplace_child_rewrite(slot, child)
 	}
 	t.invalidate_node_type_memo(idx)
@@ -3504,7 +3504,7 @@ fn (mut t Transformer) rewrite_one_child_in_place(id flat.NodeId, child flat.Nod
 	if node.children_count != 1 {
 		return false
 	}
-	t.a.children[node.children_start] = child
+	t.a.set_child_slot(id, int(node.children_start), child)
 	t.record_inplace_child_rewrite(int(node.children_start), child)
 	t.invalidate_node_type_memo(idx)
 	if !t.preserve_inplace_expr_types && !isnil(t.tc) {
@@ -3525,8 +3525,8 @@ fn (mut t Transformer) rewrite_two_children_in_place(id flat.NodeId, first flat.
 	if node.children_count != 2 {
 		return false
 	}
-	t.a.children[node.children_start] = first
-	t.a.children[node.children_start + 1] = second
+	t.a.set_child_slot(id, int(node.children_start), first)
+	t.a.set_child_slot(id, int(node.children_start) + 1, second)
 	t.record_inplace_child_rewrite(int(node.children_start), first)
 	t.record_inplace_child_rewrite(int(node.children_start) + 1, second)
 	t.invalidate_node_type_memo(idx)
@@ -3622,7 +3622,7 @@ fn (mut t Transformer) set_node(idx int, node flat.Node) {
 		t.invalidate_node_type_memo(idx)
 		mut stored := node
 		stored.canonicalize_source_value()
-		t.a.nodes[idx] = stored
+		t.a.set_node(flat.NodeId(idx), stored)
 		t.mark_scoped_owned_base_node(idx)
 		if !isnil(t.tc) {
 			t.tc.invalidate_checked_expr_type(idx)
@@ -3687,10 +3687,10 @@ fn (mut t Transformer) apply_ignored_comptime_for_nodes() {
 fn (mut t Transformer) clear_ignored_comptime_for_node(idx int) {
 	old := t.a.nodes[idx]
 	t.invalidate_node_type_memo(idx)
-	t.a.nodes[idx] = flat.Node{
+	t.a.set_node(flat.NodeId(idx), flat.Node{
 		kind: .empty
 		pos:  old.pos
-	}
+	})
 	t.clear_typechecker_node_cache(idx)
 }
 
@@ -3747,7 +3747,7 @@ fn (mut t Transformer) flush_deferred_base_writes() {
 				}
 				mut stored := w.node
 				stored.canonicalize_source_value()
-				t.a.nodes[w.idx] = stored
+				t.a.set_node(flat.NodeId(w.idx), stored)
 			}
 			4 {
 				t.a.nodes[w.idx].set_source_value_id(w.typ)
@@ -5663,7 +5663,7 @@ fn (t &Transformer) allocate_ast_base_clone(base_nodes int, base_children int) &
 }
 
 fn (t &Transformer) ast_base_clone_with_storage(nodes []flat.Node, children []flat.NodeId) &flat.FlatAst {
-	return &flat.FlatAst{
+	mut cloned := &flat.FlatAst{
 		nodes:                         nodes
 		children:                      children
 		user_code_start:               t.a.user_code_start
@@ -5683,6 +5683,11 @@ fn (t &Transformer) ast_base_clone_with_storage(nodes []flat.Node, children []fl
 		specialized_fn_modules:        t.a.specialized_fn_modules.clone()
 		specialized_fn_files:          t.a.specialized_fn_files.clone()
 	}
+	unsafe {
+		mut master := t.a
+		master.fork_parents_to(mut cloned, nodes.len)
+	}
+	return cloned
 }
 
 // fork_worker builds a worker Transformer that shares this transformer's
@@ -6662,6 +6667,12 @@ fn (mut t Transformer) absorb_region_into(node_start int, node_end int, child_st
 // distance the block moved. `items` lists the function indices this worker owned, so
 // their rewritten top-level nodes can be copied into place.
 fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nodes int, base_children int, clear_node_caches bool) {
+	// The merge renumbers the worker's nodes and rewrites edges of the base.
+	t.a.reset_parents()
+	unsafe {
+		mut worker_tree := w.a
+		worker_tree.free_parents()
+	}
 	// Absorbed regions were written straight into the master arrays, which are
 	// already grown to their final length, so the shifts come from the absorb
 	// pass instead of the current master length.
@@ -7805,34 +7816,34 @@ fn (mut t Transformer) transform_const_decl(node flat.Node) {
 			val := t.a.nodes[int(val_id)]
 			if block_val := t.const_block_value(val) {
 				new_val := t.transform_const_value(block_val)
-				t.a.children[cf.children_start] = new_val
+				t.a.set_child_slot(cf_id, int(cf.children_start), new_val)
 			} else if val.kind == .string_interp {
 				new_val := t.transform_const_string_interp(val_id, val)
-				t.a.children[cf.children_start] = new_val
+				t.a.set_child_slot(cf_id, int(cf.children_start), new_val)
 			} else if val.kind == .or_expr {
 				const_typ_source_id := t.const_field_type_name(cf)
 
 				new_val := t.transform_const_or_expr(val_id, val, const_typ_source_id)
-				t.a.children[cf.children_start] = new_val
+				t.a.set_child_slot(cf_id, int(cf.children_start), new_val)
 			} else if val.kind == .postfix && val.op == .not && val.children_count == 1
 				&& t.a.child_node(&val, 0).kind == .array_literal {
 				new_val := t.transform_const_expr_no_pending(val_id)
-				t.a.children[cf.children_start] = new_val
+				t.a.set_child_slot(cf_id, int(cf.children_start), new_val)
 			} else if val.kind in [.struct_init, .cast_expr, .call, .array_literal, .array_init,
 				.map_init, .fn_literal, .lambda_expr, .sizeof_expr, .selector, .index, .prefix,
 				.paren] {
 				new_val := t.transform_const_expr_no_pending(val_id)
-				t.a.children[cf.children_start] = new_val
+				t.a.set_child_slot(cf_id, int(cf.children_start), new_val)
 			} else if val.kind == .infix && val.children_count >= 2 {
 				new_val := t.transform_const_expr_no_pending(val_id)
 				// Overwrite the field's value slot in place (each const_field owns
 				// its own single-element child range, so this is safe).
-				t.a.children[cf.children_start] = new_val
+				t.a.set_child_slot(cf_id, int(cf.children_start), new_val)
 			} else if t.expr_has_if_guard(val_id) {
 				// `if x := opt { x } else { y }` must unwrap `opt` into `x` in a
 				// statement; it has no plain C expression form.
 				new_val := t.transform_const_expr_no_pending(val_id)
-				t.a.children[cf.children_start] = new_val
+				t.a.set_child_slot(cf_id, int(cf.children_start), new_val)
 			}
 		}
 	}
@@ -7964,18 +7975,18 @@ fn (mut t Transformer) transform_global_decl(node flat.Node) {
 			val := t.a.nodes[int(val_id)]
 			if val.kind == .cast_expr && flat.source_type_shape(val.source_value_id()).has(.pointer) {
 				if preserved := t.transform_global_amp_interface_cast(val, val.source_value_id()) {
-					t.a.children[gf.children_start] = preserved
+					t.a.set_child_slot(gf_id, int(gf.children_start), preserved)
 					continue
 				}
 			}
 			if preserved := t.transform_global_amp_initializer(val_id, val) {
-				t.a.children[gf.children_start] = preserved
+				t.a.set_child_slot(gf_id, int(gf.children_start), preserved)
 				continue
 			}
 			if t.expr_has_if_guard(val_id) {
 				// Keep the guard's unwrap statements with the value (see
 				// transform_const_decl); the runtime init renders the block.
-				t.a.children[gf.children_start] = t.transform_const_expr_no_pending(val_id)
+				t.a.set_child_slot(gf_id, int(gf.children_start), t.transform_const_expr_no_pending(val_id))
 				continue
 			}
 			old_pending := t.pending_stmts.clone()
@@ -7985,7 +7996,7 @@ fn (mut t Transformer) transform_global_decl(node flat.Node) {
 			t.pending_stmts.clear()
 			t.pending_stmts = old_pending
 			if !has_pending {
-				t.a.children[gf.children_start] = new_val
+				t.a.set_child_slot(gf_id, int(gf.children_start), new_val)
 			}
 		}
 	}

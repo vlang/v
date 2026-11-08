@@ -228,6 +228,8 @@ fn index_ranges_overlap(a_start int, a_len int, b_start int, b_len int) bool {
 // their final length first. Returns no moves when the layout breaks that
 // invariant, leaving the copies to merge_worker's serial compaction.
 fn (mut t Transformer) compact_worker_regions_parallel(worker_ptrs []voidptr, node_starts []int, child_starts []int) []RegionCompaction {
+	// The merge renumbers the workers' nodes and rewrites edges of the base.
+	t.a.reset_parents()
 	mut moves := []RegionCompaction{cap: worker_ptrs.len}
 	mut running_nodes := t.a.nodes.len
 	mut running_children := t.a.children.len
@@ -335,6 +337,8 @@ fn transform_clone_storage_free_thread(arg voidptr) voidptr {
 // into its final master slot, in parallel. It records the per-worker shifts
 // for the serial merge that follows and reports how many it prepared.
 fn (mut t Transformer) absorb_worker_regions(worker_ptrs []voidptr, base_nodes int, base_children int) []RegionAbsorbArgs {
+	// The merge renumbers the workers' nodes and rewrites edges of the base.
+	t.a.reset_parents()
 	if worker_ptrs.len == 0 {
 		return []RegionAbsorbArgs{}
 	}
@@ -3578,7 +3582,7 @@ fn shared_region_view(a &flat.FlatAst, nstart int, nend int, cstart int, cend in
 		children.cap = cend
 		children.flags.set(.nogrow)
 	}
-	return &flat.FlatAst{
+	mut view := &flat.FlatAst{
 		nodes:                         nodes
 		children:                      children
 		user_code_start:               a.user_code_start
@@ -3598,6 +3602,11 @@ fn shared_region_view(a &flat.FlatAst, nstart int, nend int, cstart int, cend in
 		specialized_fn_modules:        a.specialized_fn_modules.clone()
 		specialized_fn_files:          a.specialized_fn_files.clone()
 	}
+	unsafe {
+		mut master := a
+		master.fork_parents_to(mut view, nstart)
+	}
+	return view
 }
 
 // bound_shared_expansion keeps the combined map and interpolation lowering

@@ -72,7 +72,7 @@ fn test_lexical_parent_cache_preserves_if_else_and_for_branch_children() {
 	outer_body := lexical_parent_cache_children(mut a, .block, [if_node, loop, negated_if])
 	lexical_parent_cache_children(mut a, .fn_decl, [outer_body])
 	mut tc := TypeChecker.new(&a)
-	tc.build_direct_parent_index(&a)
+	tc.build_node_indexes(&a)
 	tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
 	tc.cur_scope.insert('value', Type(SumType{ name_id: flat.source_type_id('Value') }))
 	for cached in [true, true, false, true] {
@@ -100,7 +100,7 @@ fn test_lexical_parent_cache_rechecks_condition_and_preceding_writes() {
 	if_node := lexical_parent_cache_children(mut a, .if_expr, [cond, body])
 	lexical_parent_cache_children(mut a, .fn_decl, [if_node])
 	mut tc := TypeChecker.new(&a)
-	tc.build_direct_parent_index(&a)
+	tc.build_node_indexes(&a)
 	tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
 	tc.cur_scope.insert('value', Type(SumType{ name_id: flat.source_type_id('Value') }))
 	assert tc.lexical_smartcast_type_in_parents(value, 'value', false)? == Type(int_)
@@ -126,7 +126,7 @@ fn test_lexical_parent_cache_forks_own_slots_and_phase_resets_drop_storage() {
 	value := a.add_val(.ident, 'value')
 	parent := lexical_parent_cache_children(mut a, .fn_literal, [value])
 	mut tc := TypeChecker.new(&a)
-	tc.build_direct_parent_index(&a)
+	tc.build_node_indexes(&a)
 	linked, _, _ := tc.lexical_parent_link(value)
 	assert linked == parent
 	mut forked := tc.fork_program_view(&a, map[int][]SymbolId{})
@@ -172,7 +172,7 @@ fn test_loop_narrowing_resolves_assignment_rhs_before_its_write() {
 	for cached in [false, true] {
 		mut tc := TypeChecker.new(&a)
 		tc.cache_lexical_parents = cached
-		tc.build_direct_parent_index(&a)
+		tc.build_node_indexes(&a)
 		tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
 		sum := Type(SumType{ name_id: flat.source_type_id('Value') })
 		tc.cur_scope.insert('value', sum)

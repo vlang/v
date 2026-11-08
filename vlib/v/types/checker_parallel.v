@@ -195,7 +195,7 @@ struct CollectIndexPrepArgs {
 	start int
 	end   int
 mut:
-	parent_chunk DirectParentChunk
+	parent_chunk NodeIndexChunk
 }
 
 struct CollectDeclarationIndexArgs {
@@ -209,7 +209,7 @@ fn collect_index_prep_thread(arg voidptr) voidptr {
 	mut tc := unsafe { &TypeChecker(a.tc) }
 	match a.kind {
 		0 {
-			a.parent_chunk = tc.fill_direct_parent_edges_range(a.a, a.start, a.end)
+			a.parent_chunk = tc.fill_node_indexes_range(a.a, a.start, a.end)
 		}
 		1 {
 			scope := check_worker_scope_begin(true)
@@ -249,7 +249,7 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 	// The cache groups below reset the node-indexed arrays on pool lanes; the
 	// sparse fn-value store is cleared here, on the collecting thread.
 	tc.reset_sparse_fn_values()
-	tc.init_direct_parent_index(a)
+	tc.init_node_indexes(a)
 	parent_jobs := int_min(16, pool.size() + 1)
 	mut args := []CollectIndexPrepArgs{cap: parent_jobs + 4}
 	mut start := 0
@@ -288,16 +288,16 @@ fn (mut tc TypeChecker) prepare_collect_index_parallel(a &flat.FlatAst) bool {
 	pool.run(tasks)
 	for arg in args {
 		if arg.kind == 0 {
-			tc.merge_direct_parent_chunk(arg.parent_chunk)
+			tc.merge_node_index_chunk(arg.parent_chunk)
 			// The parent walk already found these nodes; avoid streaming the whole
 			// AST again just to collect declaration attributes and builder bindings.
 			for idx in arg.parent_chunk.metadata_node_ids {
-				tc.collect_direct_parent_node_metadata(a, idx, a.node(flat.NodeId(idx)))
+				tc.collect_node_index_metadata(a, idx, a.node(flat.NodeId(idx)))
 			}
 		}
 	}
 	tc.preflight_index_nodes_len = a.nodes.len
-	tc.direct_parent_index_trusted = true
+	tc.node_indexes_trusted = true
 	return true
 }
 
@@ -1241,7 +1241,7 @@ fn (mut tc TypeChecker) check_semantics_scoped_serial() {
 	tc.discard_cascading_fn_redefinition_diagnostics()
 	tc.sort_parallel_check_errors()
 	tc.restore_type_cache_base()
-	tc.direct_parent_index_trusted = false
+	tc.node_indexes_trusted = false
 	tc.resolution_type_mode = true
 }
 
@@ -1264,7 +1264,7 @@ pub fn (mut tc TypeChecker) check_semantics_selected(selected map[string]bool) {
 		}
 	}
 	tc.check_fn_items_serial(selected_items)
-	tc.direct_parent_index_trusted = false
+	tc.node_indexes_trusted = false
 	tc.resolution_type_mode = true
 }
 
@@ -1323,7 +1323,7 @@ pub fn (mut tc TypeChecker) check_semantics_reachable(selected map[string]bool) 
 		prev_tl = i
 	}
 	tc.check_fn_items_serial(items)
-	tc.direct_parent_index_trusted = false
+	tc.node_indexes_trusted = false
 	tc.resolution_type_mode = true
 }
 
@@ -1511,7 +1511,7 @@ fn (mut tc TypeChecker) check_semantics_parallel() bool {
 	tc.restore_type_cache_base()
 	// Match the serial checker: only generated post-check type text may use the
 	// cross-module generic-argument fallback.
-	tc.direct_parent_index_trusted = false
+	tc.node_indexes_trusted = false
 	tc.resolution_type_mode = true
 	tc.timing_profile('  [ttime]   ck tail          ${f64(tailsw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 	return was_parallel
@@ -3279,14 +3279,7 @@ pub fn (mut tc TypeChecker) check_concrete_fn_semantics(fn_idx int, file string,
 pub fn (mut tc TypeChecker) check_concrete_instance_members(fn_idx int, file string, module_name string, args []u32) {
 	errors_start := tc.errors.len
 	notices_start := tc.notices.len
-	// The clone was appended after the parent index was built; without its edges
-	// every parent query of the check scans the whole tree.
-	if tc.concrete_parents_indexed == 0 {
-		tc.refresh_rewritten_parent_index(tc.a)
-	} else {
-		tc.index_rewritten_parents_after(tc.concrete_parents_indexed)
-	}
-	tc.concrete_parents_indexed = tc.a.nodes.len
+	tc.invalidate_lexical_parent_memo()
 	tc.concrete_guard_options = map[flat.NodeId]bool{}
 	tc.checking_concrete_members = true
 	tc.check_concrete_fn_semantics(fn_idx, file, module_name)

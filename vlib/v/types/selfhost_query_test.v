@@ -392,7 +392,7 @@ fn test_empty_lexical_smartcast_filter_preserves_dynamic_types_and_range() {
 	mut a := flat.FlatAst.new()
 	id := selfhost_smartcast_index(mut a)
 	mut tc := TypeChecker.new(&a)
-	tc.build_direct_parent_index(&a)
+	tc.build_node_indexes(&a)
 	tc.smartcast_key_filter = &SmartcastKeyFilter{}
 	tc.smartcast_key_filter.arm(0, a.nodes.len - 1)
 	assert tc.smartcast_type(id) == none
@@ -426,7 +426,7 @@ fn test_empty_lexical_smartcast_filter_avoids_composite_key_allocations() {
 		mut a := flat.FlatAst.new()
 		id := selfhost_smartcast_index(mut a)
 		mut tc := TypeChecker.new(&a)
-		tc.build_direct_parent_index(&a)
+		tc.build_node_indexes(&a)
 		tc.lexical_smartcast_misses = []bool{len: a.nodes.len}
 		tc.smartcast_key_filter = &SmartcastKeyFilter{}
 		tc.smartcast_key_filter.arm(0, a.nodes.len - 1)
@@ -474,7 +474,7 @@ fn test_small_lexical_smartcast_filter_avoids_unrelated_index_key_allocations() 
 		mut a := flat.FlatAst.new()
 		id := selfhost_smartcast_index(mut a)
 		mut tc := TypeChecker.new(&a)
-		tc.build_direct_parent_index(&a)
+		tc.build_node_indexes(&a)
 		tc.lexical_smartcast_misses = []bool{len: a.nodes.len}
 		tc.smartcast_key_filter = &SmartcastKeyFilter{
 			lo:    0

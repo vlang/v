@@ -432,3 +432,34 @@ fn test_text_recent_identity_cache_survives_owned_table_replacement() {
 	assert actual_id == expected_id
 	assert actual.str == ast.text_values[int(expected_id) - 1].str
 }
+
+fn parents_test_paren(mut a FlatAst, child NodeId) NodeId {
+	start := a.begin_children()
+	a.add_child(child)
+	return a.add_node(Node{
+		kind:           .paren
+		children_start: start
+		children_count: 1
+	})
+}
+
+fn test_forked_tree_starts_from_the_parents_of_its_base() {
+	mut base := FlatAst.new()
+	leaf := base.add_val(.ident, 'leaf')
+	outer := parents_test_paren(mut base, leaf)
+	assert base.parent(leaf) == outer
+	// A worker's tree: the base, a node of another worker, then its own nodes.
+	mut worker := FlatAst.new()
+	worker.nodes << base.nodes
+	worker.children << base.children
+	base.fork_parents_to(mut worker, base.nodes.len + 1)
+	worker.add_val(.ident, 'of another worker')
+	own := parents_test_paren(mut worker, leaf)
+	wrapped := parents_test_paren(mut worker, own)
+	assert worker.parent(leaf) == outer
+	assert worker.parent(own) == wrapped
+	assert worker.parent(NodeId(base.nodes.len)) == empty_node
+	// The base keeps its own index.
+	assert base.parent(leaf) == outer
+	assert base.parents.len == base.nodes.len
+}

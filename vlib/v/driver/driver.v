@@ -9043,7 +9043,7 @@ fn suppress_minimal_literal_output_builtin_imports(mut a flat.FlatAst) {
 	// output reachability path neither checks nor emits.
 	for i in 0 .. a.user_code_start {
 		if a.nodes[i].kind == .import_decl && a.nodes[i].value in ['strings', 'strconv'] {
-			a.nodes[i] = flat.Node{}
+			a.set_node(flat.NodeId(i), flat.Node{})
 		}
 	}
 }
@@ -13849,8 +13849,8 @@ pub fn run(args []string) {
 		// Checking and inactive-comptime pruning can add or detach nodes. Rebuild the
 		// parent index once here so markused type queries do not fall back to a full
 		// arena scan for every generated selector base.
-		if !building_v || !pre_tc.reuse_direct_parent_index_for_unchanged_ast(a) {
-			pre_tc.refresh_direct_parent_index(a)
+		if !building_v || !pre_tc.reuse_node_indexes_for_unchanged_ast(a) {
+			pre_tc.refresh_node_indexes(a)
 		}
 		// Freeze parent-index state before the transform helper snapshots the checker.
 		mut prepared_transform_threads := []thread &transform.PreparedSelfhostTransform{}
@@ -14465,14 +14465,9 @@ pub fn run(args []string) {
 		} else {
 			b.step_parallel('transform', transform_was_parallel)
 		}
-		// Self-host C generation consumes the transformer's explicit node types and
-		// the checker's resolved-call sidecars; it does not perform a second semantic
-		// annotation walk. Keep the checked source parent index in that fast path
-		// instead of rebuilding parents for 1M+ appended lowering nodes that no later
-		// stage queries.
-		if !building_v {
-			pre_tc.refresh_rewritten_parent_index(a)
-		}
+		// Transform renumbered and rewrote nodes. The next parent lookup indexes
+		// the tree again; self-host C generation makes none.
+		a.reset_parents()
 		if transform_errors.len > 0 {
 			restart_v3_for_errors_of_pruned_build(&cache_state.manager, transform_errors,
 				&pruned_declarations, checker_notices_printed)
@@ -21722,7 +21717,7 @@ fn check_concrete_generic_bodies_of_check(mut a flat.FlatAst, mut tc types.TypeC
 	// The program's own functions are the roots, reachable or not, as V1 checked
 	// every instance a call asks for.
 	used_fns := tc.diagnosed_fn_keys()
-	tc.refresh_direct_parent_index(a)
+	tc.refresh_node_indexes(a)
 	// The instances come from the types of the bodies that ask for them.
 	tc.complete_incremental_check_for_instances()
 	trace_incremental_check(mut tc)
@@ -21749,7 +21744,7 @@ fn check_concrete_generic_bodies_of_check(mut a flat.FlatAst, mut tc types.TypeC
 // of the same input asks for it.
 fn check_markused(a &flat.FlatAst, mut tc types.TypeChecker, no_skip_unused bool, test_files []string, full_runtime bool) map[string]bool {
 	// As a build does: checking and comptime pruning add and detach nodes.
-	tc.refresh_direct_parent_index(a)
+	tc.refresh_node_indexes(a)
 	// The bodies an incremental check left out need no check first: what is used
 	// only through them is called or named there, which keeps it from being
 	// reported as unused whatever markused finds (see
@@ -24213,6 +24208,8 @@ fn insert_synthetic_imports(mut a flat.FlatAst, insertions []SyntheticInsertion)
 		a.children[k] = flat.NodeId(cid + shift)
 	}
 	a.user_code_start += synthetic_index_shift(insertions, a.user_code_start)
+	// The insertions renumber the nodes after them.
+	a.reset_parents()
 }
 
 // synthetic_index_shift returns how far an original node index moves after the

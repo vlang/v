@@ -540,9 +540,6 @@ mut:
 	// the whole region (using a private overlay itself) so workers do not start
 	// cold and re-derive every memoized type/index.
 	base &TypeCache = unsafe { nil }
-	// Generated nodes have no parsed parent slot. Keep validated scan results
-	// private to the worker, just like the other mutable lookup caches.
-	generated_parent_entries map[int]flat.NodeId
 	// Only ownership-enabled transforms allocate this worker-private overlay.
 	// Generated ids must never be read from the shared base cache.
 	borrowed_projection_clone_copies &BorrowedProjectionCloneCopies = unsafe { nil }
@@ -654,7 +651,6 @@ fn new_type_cache(parse_enabled bool) &TypeCache {
 	mut cache := unsafe { &TypeCache(malloc(int(sizeof(TypeCache)))) }
 	unsafe { vmemset(cache, 0, int(sizeof(TypeCache))) }
 	cache.parse_enabled = parse_enabled
-	cache.generated_parent_entries = map[int]flat.NodeId{}
 	cache.borrowed_projection_clone_copies = unsafe { nil }
 	cache.parse_entries = map[u64]ParseTypeCacheEntry{}
 	cache.parse_context_generics = []u32{}
@@ -1452,7 +1448,6 @@ pub mut:
 	check_generic_bodies          bool                 // the bodies of generic functions whose type parameters all have a constraint are checked
 	type_param_texts              map[u32]u32          // in a fork that checks a generic body with its type parameters as types their constraints admit, the text of each (check_generic_fn_body_as)
 	type_params_expanding         map[u32]bool         // the type parameters of type_param_texts whose own text is being parsed: `T` of `[T Comparable[T]]` stays open inside it
-	concrete_parents_indexed      int                  // nodes the parent index covered when the last concrete clone was checked
 	concrete_guard_options        map[flat.NodeId]bool // in check_concrete_instance_members, the `if x := a` operands declared as an option or result, smartcast to their payload
 	checking_concrete_members     bool                 // check_concrete_instance_members is checking a clone
 	module_diagnostic_root        string
@@ -1649,18 +1644,16 @@ mut:
 	storage_query_probe_scopes []voidptr
 	type_interner              &TypeInterner   = unsafe { nil }
 	symbols                    &SymbolInterner = unsafe { nil }
-	// direct_parent_ids maps a parsed node to the first AST node that references
-	// it as a child. It is immutable during semantic checking and shared by
-	// checker workers. Transformed or appended nodes use the scan fallback in
-	// direct_parent_id.
-	direct_parent_ids           []flat.NodeId
-	preflight_node_ids          []i32
-	preflight_index_nodes_len   int = -1
-	rewritten_parent_ids        []flat.NodeId
-	value_used_nodes            []bool
-	fn_check_costs              []i32
-	direct_parent_index_trusted bool
-	has_goto_nodes              bool
+	// parsed_nodes_len is the number of nodes of the tree that the node indexes
+	// were built for (see build_node_indexes). Lexical narrowing walks the
+	// parents of these nodes only.
+	parsed_nodes_len          int
+	preflight_node_ids        []i32
+	preflight_index_nodes_len int = -1
+	value_used_nodes          []bool
+	fn_check_costs            []i32
+	node_indexes_trusted      bool
+	has_goto_nodes            bool
 	// Memo of comptime_methods_loop_exists for the AST at comptime_methods_scan_ast.
 	comptime_methods_scan_ast   voidptr
 	comptime_methods_scan_len   int
@@ -2086,10 +2079,9 @@ fn (tc &TypeChecker) fork_program_view(ast &flat.FlatAst, direct_dependencies_by
 		check_decl_indexes:                    tc.check_decl_indexes
 		top_level_idx_nodes_len:               tc.top_level_idx_nodes_len
 		synthetic_top_level_type_ids:          tc.synthetic_top_level_type_ids
-		direct_parent_ids:                     tc.direct_parent_ids
-		rewritten_parent_ids:                  tc.rewritten_parent_ids
+		parsed_nodes_len:                      tc.parsed_nodes_len
 		value_used_nodes:                      tc.value_used_nodes
-		direct_parent_index_trusted:           tc.direct_parent_index_trusted
+		node_indexes_trusted:                  tc.node_indexes_trusted
 		preflight_node_ids:                    tc.preflight_node_ids
 		preflight_index_nodes_len:             tc.preflight_index_nodes_len
 		has_goto_nodes:                        tc.has_goto_nodes
@@ -2666,10 +2658,12 @@ fn new_zeroed_name_cache(n int) []&CachedName {
 	return values
 }
 
-fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
+fn (mut tc TypeChecker) init_node_indexes(a &flat.FlatAst) {
 	tc.invalidate_lexical_parent_memo()
-	tc.direct_parent_ids = flat.empty_node_ids(a.nodes.len)
-	tc.rewritten_parent_ids = []flat.NodeId{}
+	mut tree := unsafe { a }
+	tree.reset_parents()
+	tree.index_parents()
+	tc.parsed_nodes_len = a.nodes.len
 	tc.value_used_nodes = []bool{len: a.nodes.len}
 	tc.fn_check_costs = if tc.building_v_fast { []i32{len: a.nodes.len} } else { []i32{} }
 	tc.declaration_attributes = map[int][]string{}
@@ -2686,35 +2680,29 @@ fn (mut tc TypeChecker) init_direct_parent_index(a &flat.FlatAst) {
 	tc.comptime_methods_scan_ast = unsafe { nil }
 }
 
-struct DirectParentEdge {
-	child      flat.NodeId
-	parent     flat.NodeId
-	value_used bool
-}
-
-struct DirectParentChunk {
+struct NodeIndexChunk {
 mut:
-	external_edges     []DirectParentEdge
-	preflight_node_ids []i32
-	metadata_node_ids  []i32
-	synthetic_type_ids []i32
-	has_goto_nodes     bool
+	external_value_uses []flat.NodeId
+	preflight_node_ids  []i32
+	metadata_node_ids   []i32
+	synthetic_type_ids  []i32
+	has_goto_nodes      bool
 }
 
-fn (mut tc TypeChecker) fill_direct_parent_edges(a &flat.FlatAst) {
-	chunk := tc.fill_direct_parent_edges_range(a, 0, a.nodes.len)
-	tc.merge_direct_parent_chunk(chunk)
+fn (mut tc TypeChecker) fill_node_indexes(a &flat.FlatAst) {
+	chunk := tc.fill_node_indexes_range(a, 0, a.nodes.len)
+	tc.merge_node_index_chunk(chunk)
 	// All parent edges are ready; replay the metadata found in the same source-order walk.
 	for idx in chunk.metadata_node_ids {
-		tc.collect_direct_parent_node_metadata(a, idx, a.node(flat.NodeId(idx)))
+		tc.collect_node_index_metadata(a, idx, a.node(flat.NodeId(idx)))
 	}
 	tc.preflight_index_nodes_len = a.nodes.len
 }
 
 // Ranges start immediately after a declaration, where the running cost resets.
 @[direct_array_access]
-fn (mut tc TypeChecker) fill_direct_parent_edges_range(a &flat.FlatAst, start int, end int) DirectParentChunk {
-	mut chunk := DirectParentChunk{}
+fn (mut tc TypeChecker) fill_node_indexes_range(a &flat.FlatAst, start int, end int) NodeIndexChunk {
+	mut chunk := NodeIndexChunk{}
 	mut fn_cost := 0
 	profile_fn_costs := tc.fn_check_costs.len > 0
 	for parent_idx in start .. end {
@@ -2757,15 +2745,14 @@ fn (mut tc TypeChecker) fill_direct_parent_edges_range(a &flat.FlatAst, start in
 			value_used := node.kind !in [.expr_stmt, .block, .match_branch, .fn_decl, .comptime_for]
 			if idx < start || idx >= end {
 				// Each lane writes only its own child slots. Replay cross-range
-				// references after joining, preserving the first parent in source order.
-				chunk.external_edges << DirectParentEdge{child, flat.NodeId(parent_idx), value_used}
+				// value uses after joining.
+				if value_used {
+					chunk.external_value_uses << child
+				}
 				continue
 			}
 			if value_used {
 				tc.value_used_nodes[idx] = true
-			}
-			if tc.direct_parent_ids[idx] == flat.empty_node {
-				tc.direct_parent_ids[idx] = flat.NodeId(parent_idx)
 			}
 		}
 		if node.kind == .fn_decl && parent_idx < tc.fn_check_costs.len {
@@ -2779,26 +2766,20 @@ fn (mut tc TypeChecker) fill_direct_parent_edges_range(a &flat.FlatAst, start in
 	return chunk
 }
 
-fn (mut tc TypeChecker) merge_direct_parent_chunk(chunk DirectParentChunk) {
-	for edge in chunk.external_edges {
-		old_parent := tc.direct_parent_ids[int(edge.child)]
-		if old_parent == flat.empty_node || edge.parent < old_parent {
-			tc.direct_parent_ids[int(edge.child)] = edge.parent
-		}
-		if edge.value_used {
-			tc.value_used_nodes[int(edge.child)] = true
-		}
+fn (mut tc TypeChecker) merge_node_index_chunk(chunk NodeIndexChunk) {
+	for child in chunk.external_value_uses {
+		tc.value_used_nodes[int(child)] = true
 	}
 	tc.preflight_node_ids << chunk.preflight_node_ids
 	tc.synthetic_top_level_type_ids << chunk.synthetic_type_ids
 	tc.has_goto_nodes = tc.has_goto_nodes || chunk.has_goto_nodes
 }
 
-// preflight_nodes reuses the parsed-tree scan while its parent index is valid.
+// preflight_nodes reuses the parsed-tree scan while the node indexes are valid.
 // Standalone checker clients and rewritten ASTs retain the full-scan fallback.
 fn (tc &TypeChecker) preflight_nodes(kind flat.NodeKind) []i32 {
 	mut ids := []i32{}
-	if tc.direct_parent_index_trusted && tc.preflight_index_nodes_len == tc.a.nodes.len {
+	if tc.node_indexes_trusted && tc.preflight_index_nodes_len == tc.a.nodes.len {
 		for id in tc.preflight_node_ids {
 			if tc.a.nodes[id].kind == kind {
 				ids << id
@@ -2829,7 +2810,7 @@ fn (mut tc TypeChecker) comptime_methods_loop_exists() bool {
 		return tc.comptime_methods_loop_found
 	}
 	mut found := false
-	if tc.comptime_methods_scan_len == 0 && tc.direct_parent_index_trusted
+	if tc.comptime_methods_scan_len == 0 && tc.node_indexes_trusted
 		&& tc.preflight_index_nodes_len == n {
 		for id in tc.preflight_node_ids {
 			node := tc.a.nodes[id]
@@ -2852,16 +2833,16 @@ fn (mut tc TypeChecker) comptime_methods_loop_exists() bool {
 	return found
 }
 
-fn (mut tc TypeChecker) collect_direct_parent_metadata(a &flat.FlatAst) {
+fn (mut tc TypeChecker) collect_node_indexes_metadata(a &flat.FlatAst) {
 	for parent_idx in 0 .. a.nodes.len {
 		node := a.node(flat.NodeId(parent_idx))
 		if node.kind in [.decl_assign, .directive] {
-			tc.collect_direct_parent_node_metadata(a, parent_idx, node)
+			tc.collect_node_index_metadata(a, parent_idx, node)
 		}
 	}
 }
 
-fn (mut tc TypeChecker) collect_direct_parent_node_metadata(a &flat.FlatAst, parent_idx int, node &flat.Node) {
+fn (mut tc TypeChecker) collect_node_index_metadata(a &flat.FlatAst, parent_idx int, node &flat.Node) {
 	if node.kind == .decl_assign && node.children_count >= 2 {
 		lhs := a.child_node(node, 0)
 		if lhs.kind == .ident && tc.expr_is_strings_new_builder_call(a.child(node, 1)) {
@@ -2895,76 +2876,32 @@ fn (mut tc TypeChecker) collect_direct_parent_node_metadata(a &flat.FlatAst, par
 	}
 }
 
-fn (mut tc TypeChecker) build_direct_parent_index(a &flat.FlatAst) {
-	tc.init_direct_parent_index(a)
-	tc.fill_direct_parent_edges(a)
-	tc.direct_parent_index_trusted = true
+fn (mut tc TypeChecker) build_node_indexes(a &flat.FlatAst) {
+	tc.init_node_indexes(a)
+	tc.fill_node_indexes(a)
+	tc.node_indexes_trusted = true
 }
 
-// refresh_direct_parent_index rebuilds parent metadata after source-tree pruning.
-pub fn (mut tc TypeChecker) refresh_direct_parent_index(a &flat.FlatAst) {
-	tc.build_direct_parent_index(a)
+// refresh_node_indexes rebuilds the node indexes after source-tree pruning.
+pub fn (mut tc TypeChecker) refresh_node_indexes(a &flat.FlatAst) {
+	tc.build_node_indexes(a)
 }
 
-// reuse_direct_parent_index_for_unchanged_ast restores the parsed-tree index's trusted
-// status when an internal valid-build path has not structurally rewritten the AST.
-pub fn (mut tc TypeChecker) reuse_direct_parent_index_for_unchanged_ast(a &flat.FlatAst) bool {
-	if tc.direct_parent_ids.len != a.nodes.len || tc.value_used_nodes.len != a.nodes.len {
+// reuse_node_indexes_for_unchanged_ast trusts the node indexes again when an
+// internal valid-build path has not structurally rewritten the AST.
+pub fn (mut tc TypeChecker) reuse_node_indexes_for_unchanged_ast(a &flat.FlatAst) bool {
+	if tc.parsed_nodes_len != a.nodes.len || tc.value_used_nodes.len != a.nodes.len {
 		return false
 	}
-	tc.direct_parent_index_trusted = true
+	tc.node_indexes_trusted = true
 	return true
 }
 
-// invalidate_direct_parent_index makes generated-node lookups validate parent metadata.
-pub fn (mut tc TypeChecker) invalidate_direct_parent_index() {
+// invalidate_node_indexes stops trusting the node indexes, as after a rewrite
+// of the tree.
+pub fn (mut tc TypeChecker) invalidate_node_indexes() {
 	tc.invalidate_lexical_parent_memo()
-	tc.direct_parent_index_trusted = false
-}
-
-// refresh_rewritten_parent_index rebuilds the node-parent edges after transform
-// without resetting declaration metadata collected during semantic checking.
-// Rewritten trees can contain hundreds of thousands of new nodes; leaving those
-// nodes outside direct_parent_ids makes every parent query scan the whole AST.
-pub fn (mut tc TypeChecker) refresh_rewritten_parent_index(a &flat.FlatAst) {
-	tc.invalidate_lexical_parent_memo()
-	// Lexical smartcasts deliberately apply only to parsed source nodes, so keep
-	// direct_parent_ids at its original length and index appended nodes separately.
-	tc.rewritten_parent_ids = flat.empty_node_ids(a.nodes.len)
-	for parent_idx, node in a.nodes {
-		for child_idx in 0 .. node.children_count {
-			idx := int(a.child(&node, child_idx))
-			if idx >= tc.direct_parent_ids.len && idx < tc.rewritten_parent_ids.len
-				&& tc.rewritten_parent_ids[idx] == flat.empty_node {
-				tc.rewritten_parent_ids[idx] = flat.NodeId(parent_idx)
-			}
-		}
-	}
-	// Keep validation enabled because transformed trees may intentionally share
-	// a node or rewrite an edge after this index is built.
-	tc.direct_parent_index_trusted = false
-}
-
-// index_rewritten_parents_after adds to that index the nodes appended from
-// `start` on. A clone of a generic function is a new subtree, so its edges are
-// all among those nodes.
-pub fn (mut tc TypeChecker) index_rewritten_parents_after(start int) {
-	tc.invalidate_lexical_parent_memo()
-	n := tc.a.nodes.len
-	for tc.rewritten_parent_ids.len < n {
-		tc.rewritten_parent_ids << flat.empty_node
-	}
-	for parent_idx in start .. n {
-		node := tc.a.nodes[parent_idx]
-		for child_idx in 0 .. node.children_count {
-			idx := int(tc.a.child(&node, child_idx))
-			if idx >= tc.direct_parent_ids.len && idx < n
-				&& tc.rewritten_parent_ids[idx] == flat.empty_node {
-				tc.rewritten_parent_ids[idx] = flat.NodeId(parent_idx)
-			}
-		}
-	}
-	tc.direct_parent_index_trusted = false
+	tc.node_indexes_trusted = false
 }
 
 fn (mut tc TypeChecker) build_type_declaration_index(a &flat.FlatAst) {
@@ -3249,7 +3186,7 @@ fn (mut tc TypeChecker) index_file_declarations(a &flat.FlatAst, entries []i32) 
 	for candidate_idx in tc.strings_builder_candidates {
 		candidate := a.nodes[candidate_idx]
 		lhs := a.child_node(&candidate, 0)
-		mut ancestor := int(tc.direct_parent_ids[candidate_idx])
+		mut ancestor := int(tc.parsed_parent_id(flat.NodeId(candidate_idx)))
 		for ancestor >= 0 && ancestor < a.nodes.len {
 			ancestor_node := a.nodes[ancestor]
 			if ancestor_node.kind == .fn_literal {
@@ -3259,7 +3196,7 @@ fn (mut tc TypeChecker) index_file_declarations(a &flat.FlatAst, entries []i32) 
 				tc.strings_builder_bindings[strings_builder_binding_key(ancestor, lhs.value)] = true
 				break
 			}
-			next := int(tc.direct_parent_ids[ancestor])
+			next := int(tc.parsed_parent_id(flat.NodeId(ancestor)))
 			if next == ancestor {
 				break
 			}
@@ -4351,7 +4288,7 @@ pub fn (mut tc TypeChecker) collect(a &flat.FlatAst) {
 			tc.timing_profile('  [ttime]       ck idx reset ${f64(ck_part_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			ck_part_sw.restart()
 		}
-		tc.build_direct_parent_index(a)
+		tc.build_node_indexes(a)
 		if tc.verbose {
 			tc.timing_profile('  [ttime]       ck idx parent ${f64(ck_part_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 			ck_part_sw.restart()
@@ -12672,7 +12609,7 @@ pub fn (mut tc TypeChecker) check_semantics() {
 	// All ordinary source annotations have now been validated with module-strict
 	// lookup. Later transform/codegen stages also parse synthesized generic type
 	// text, where concrete arguments can legitimately come from another module.
-	tc.direct_parent_index_trusted = false
+	tc.node_indexes_trusted = false
 	tc.resolution_type_mode = true
 }
 
@@ -13106,7 +13043,7 @@ fn (mut tc TypeChecker) check_goto_labels() {
 	}
 	// A goto only depends on labels in its enclosing function or script. Find
 	// those roots through the parsed parent index instead of walking every body.
-	indexed := tc.direct_parent_index_trusted && tc.preflight_index_nodes_len == tc.a.nodes.len
+	indexed := tc.node_indexes_trusted && tc.preflight_index_nodes_len == tc.a.nodes.len
 	mut roots := map[int]bool{}
 	if indexed {
 		for index in tc.preflight_nodes(.goto_stmt) {
@@ -16750,16 +16687,16 @@ fn (tc &TypeChecker) diagnostic_enclosing_fn(node_id flat.NodeId) flat.NodeId {
 	if !tc.valid_node_id(node_id) {
 		return flat.empty_node
 	}
-	if tc.direct_parent_index_trusted {
+	if tc.node_indexes_trusted {
 		mut current := node_id
 		for tc.valid_node_id(current) {
 			if tc.a.node(current).kind == .fn_decl {
 				return current
 			}
-			if int(current) >= tc.direct_parent_ids.len {
+			if int(current) >= tc.parsed_nodes_len {
 				break
 			}
-			parent := tc.direct_parent_ids[int(current)]
+			parent := tc.parsed_parent_id(current)
 			if parent == current {
 				break
 			}

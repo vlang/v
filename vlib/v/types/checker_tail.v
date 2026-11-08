@@ -7152,7 +7152,7 @@ fn (mut tc TypeChecker) prepare_local_decl_rhs_index(fn_id flat.NodeId) {
 	if !tc.valid_node_id(fn_id) {
 		return
 	}
-	if tc.direct_parent_index_trusted && tc.preflight_index_nodes_len == tc.a.nodes.len
+	if tc.node_indexes_trusted && tc.preflight_index_nodes_len == tc.a.nodes.len
 		&& !tc.has_goto_nodes {
 		return
 	}

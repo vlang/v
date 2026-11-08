@@ -293,7 +293,7 @@ pub fn (mut tc TypeChecker) collect_continue(a &flat.FlatAst) bool {
 	tc.cur_scope = tc.file_scope
 	tc.scope_pool_index = 0
 	tc.extend_collect_node_caches(n)
-	tc.extend_direct_parent_index(a, start)
+	tc.extend_node_indexes(a, start)
 	// The top-level index of the new files.
 	mut inactive := []bool{}
 	for k := prepared.file_ids_len; k + 1 < a.file_node_ids.len; k += 2 {
@@ -373,21 +373,23 @@ fn (mut tc TypeChecker) extend_collect_node_caches(n int) {
 	extend_bool_cache(mut tc.lexical_smartcast_misses, n)
 }
 
-// extend_direct_parent_index adds the nodes from `start` on to the parent index.
-fn (mut tc TypeChecker) extend_direct_parent_index(a &flat.FlatAst, start int) {
+// extend_node_indexes adds the nodes from `start` on to the node indexes.
+fn (mut tc TypeChecker) extend_node_indexes(a &flat.FlatAst, start int) {
 	tc.invalidate_lexical_parent_memo()
-	grow := a.nodes.len - tc.direct_parent_ids.len
+	grow := a.nodes.len - tc.parsed_nodes_len
 	if grow > 0 {
-		tc.direct_parent_ids << flat.empty_node_ids(grow)
 		tc.value_used_nodes << []bool{len: grow}
 	}
-	chunk := tc.fill_direct_parent_edges_range(a, start, a.nodes.len)
-	tc.merge_direct_parent_chunk(chunk)
+	mut tree := unsafe { a }
+	tree.index_parents()
+	tc.parsed_nodes_len = a.nodes.len
+	chunk := tc.fill_node_indexes_range(a, start, a.nodes.len)
+	tc.merge_node_index_chunk(chunk)
 	for idx in chunk.metadata_node_ids {
-		tc.collect_direct_parent_node_metadata(a, idx, a.node(flat.NodeId(idx)))
+		tc.collect_node_index_metadata(a, idx, a.node(flat.NodeId(idx)))
 	}
 	tc.preflight_index_nodes_len = a.nodes.len
-	tc.direct_parent_index_trusted = true
+	tc.node_indexes_trusted = true
 }
 
 // enter_last_top_level_file leaves the checker in the file and module of the

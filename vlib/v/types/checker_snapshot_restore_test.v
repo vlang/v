@@ -100,7 +100,7 @@ fn test_nested_if_match_and_sequence_snapshots_keep_outer_state() {
 		return_id := a.add(.return_stmt)
 		sequence := snapshot_restore_children(mut a, .block, [sequence_assert, return_id])
 		mut tc := TypeChecker.new(&a)
-		tc.build_direct_parent_index(&a)
+		tc.build_node_indexes(&a)
 		outer_key := snapshot_restore_seed(mut tc)
 		tc.valid_resolution_fast = fast
 		tc.mark_statement_context(match_id)
@@ -137,7 +137,7 @@ fn test_if_guard_snapshot_keeps_mutable_owner_identity_outside_siblings() {
 		mut_body := a.add(.block)
 		if_id := snapshot_restore_children(mut a, .if_expr, [mut_guard, mut_body, else_if])
 		mut tc := TypeChecker.new(&a)
-		tc.build_direct_parent_index(&a)
+		tc.build_node_indexes(&a)
 		outer_key := snapshot_restore_seed(mut tc)
 		tc.cur_scope.insert('optional', Type(OptionType{ base_type: builtin_int_type }))
 		tc.valid_resolution_fast = fast
@@ -168,7 +168,7 @@ fn test_if_guard_restores_empty_reused_owner_maps() {
 		otherwise := a.add(.block)
 		if_id := snapshot_restore_children(mut a, .if_expr, [guard, body, otherwise])
 		mut tc := TypeChecker.new(&a)
-		tc.build_direct_parent_index(&a)
+		tc.build_node_indexes(&a)
 		tc.cur_scope = new_scope(tc.file_scope)
 		owner := tc.cur_scope.insert_with_owner('optional', Type(OptionType{ base_type: builtin_int_type }))
 		for i in 0 .. 256 {
@@ -203,7 +203,7 @@ fn test_contextual_match_snapshot_survives_compatible_and_rejected_tails() {
 	match_id := snapshot_restore_children(mut a, .match_stmt, [subject, branches[0], branches[1]])
 	snapshot_restore_children(mut a, .return_stmt, [match_id])
 	mut tc := TypeChecker.new(&a)
-	tc.build_direct_parent_index(&a)
+	tc.build_node_indexes(&a)
 	outer_key := snapshot_restore_seed(mut tc)
 	for _ in 0 .. 8 {
 		assert tc.branches_compatible_with(match_id, builtin_int_type)

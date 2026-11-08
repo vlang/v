@@ -52,7 +52,7 @@ fn test_match_parent_cache_keeps_outer_matches_and_function_boundaries() {
 	outer := match_parent_cache_match(mut a, 'value', 'int', body)
 	match_parent_cache_wrap(mut a, .fn_decl, outer)
 	mut tc := TypeChecker.new(&a)
-	tc.build_direct_parent_index(&a)
+	tc.build_node_indexes(&a)
 	tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
 	tc.cur_scope.insert('value', Type(SumType{ name_id: flat.source_type_id('Value') }))
 	tc.cur_scope.insert('other', Type(SumType{ name_id: flat.source_type_id('Value') }))
@@ -78,7 +78,7 @@ fn test_match_parent_cache_resolves_types_after_a_cached_topology_miss() {
 	match_node := match_parent_cache_match(mut a, 'value', 'int', body)
 	match_parent_cache_wrap(mut a, .fn_decl, match_node)
 	mut tc := TypeChecker.new(&a)
-	tc.build_direct_parent_index(&a)
+	tc.build_node_indexes(&a)
 	tc.sum_types.set(flat.source_type_id('Value'), ['string'])
 	tc.cur_scope.insert('value', Type(SumType{ name_id: flat.source_type_id('Value') }))
 	tc.arm_body_resolve_memo(0, a.nodes.len - 1)
@@ -106,7 +106,7 @@ fn test_match_parent_cache_preserves_the_64_parent_limit_for_shorter_suffixes() 
 		match_node := match_parent_cache_match(mut a, 'value', 'int', body)
 		match_parent_cache_wrap(mut a, .fn_decl, match_node)
 		mut tc := TypeChecker.new(&a)
-		tc.build_direct_parent_index(&a)
+		tc.build_node_indexes(&a)
 		tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
 		tc.cur_scope.insert('value', Type(SumType{ name_id: flat.source_type_id('Value') }))
 		tc.arm_body_resolve_memo(0, a.nodes.len - 1)
@@ -133,7 +133,7 @@ fn test_match_parent_cache_revalidates_slot_collisions_and_parent_generations() 
 	second := a.add_val(.ident, 'value')
 	second_parent := match_parent_cache_wrap(mut a, .match_branch, second)
 	mut tc := TypeChecker.new(&a)
-	tc.build_direct_parent_index(&a)
+	tc.build_node_indexes(&a)
 	tc.arm_body_resolve_memo(0, a.nodes.len - 1)
 	for _ in 0 .. 3 {
 		parent, child, depth := tc.lexical_parent_link(first)
@@ -147,7 +147,7 @@ fn test_match_parent_cache_revalidates_slot_collisions_and_parent_generations() 
 	}
 	a.nodes[int(first_parent)].kind = .paren
 	new_parent := match_parent_cache_wrap(mut a, .fn_literal, first_parent)
-	tc.build_direct_parent_index(&a)
+	tc.build_node_indexes(&a)
 	tc.arm_body_resolve_memo(0, a.nodes.len - 1)
 	parent, child, depth := tc.lexical_parent_link(first)
 	assert child == first_parent
@@ -172,7 +172,7 @@ fn test_match_parent_cache_refreshes_rewritten_ancestors_without_a_new_body() {
 	match_node := match_parent_cache_match(mut a, 'value', 'int', body)
 	match_parent_cache_wrap(mut a, .fn_decl, match_node)
 	mut tc := TypeChecker.new(&a)
-	tc.build_direct_parent_index(&a)
+	tc.build_node_indexes(&a)
 	tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
 	tc.cur_scope.insert('value', Type(SumType{ name_id: flat.source_type_id('Value') }))
 	tc.arm_body_resolve_memo(0, a.nodes.len - 1)
@@ -186,7 +186,7 @@ fn test_match_parent_cache_refreshes_rewritten_ancestors_without_a_new_body() {
 	// Keep the same node ids and active body, but turn the intervening block
 	// into a function boundary. Refreshing parent metadata invalidates all links.
 	a.nodes[int(body)].kind = .fn_literal
-	tc.refresh_direct_parent_index(&a)
+	tc.refresh_node_indexes(&a)
 	assert memo.call_generation == call_generation
 	assert tc.lexical_match_smartcast_type(value) == none
 	a.nodes[int(body)].kind = .block
@@ -203,7 +203,7 @@ fn test_match_parent_cache_rechecks_parents_added_by_prepared_collect() {
 	mut a := flat.FlatAst.new()
 	value := a.add_val(.ident, 'value')
 	mut tc := TypeChecker.new(&a)
-	tc.build_direct_parent_index(&a)
+	tc.build_node_indexes(&a)
 	tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
 	tc.cur_scope.insert('value', Type(SumType{ name_id: flat.source_type_id('Value') }))
 	tc.arm_body_resolve_memo(0, a.nodes.len - 1)
@@ -214,7 +214,7 @@ fn test_match_parent_cache_rechecks_parents_added_by_prepared_collect() {
 	match_parent_cache_wrap(mut a, .fn_decl, match_node)
 	// The appended tree assigns a previously parentless node its first parent.
 	// Keep the original body generation active, as a prepared client can do.
-	tc.extend_direct_parent_index(&a, start)
+	tc.extend_node_indexes(&a, start)
 	assert tc.lexical_match_smartcast_type(value)? == Type(int_)
 	tc.disarm_body_resolve_memo()
 	assert tc.lexical_match_smartcast_type(value)? == Type(int_)

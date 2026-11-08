@@ -17804,7 +17804,7 @@ fn (tc &TypeChecker) smartcast_type(id flat.NodeId) ?Type {
 	// are appended after the parent index was built and carry explicit/synthetic
 	// types; walking the full arena to rediscover a parent for each such lookup
 	// makes self-host transformation quadratic.
-	parsed := idx < tc.direct_parent_ids.len
+	parsed := idx < tc.parsed_nodes_len
 	if !parsed && tc.smartcasts.len == 0 {
 		// No dynamic smartcast can match, so the expression key is not needed.
 		return none
@@ -17935,7 +17935,7 @@ fn (tc &TypeChecker) condition_may_smartcast_key(id flat.NodeId, key string) boo
 // conditions even when a closer branch already determined the type.
 fn (tc &TypeChecker) lexical_smartcast_type_in_parents(id flat.NodeId, key string, match_only bool) ?Type {
 	idx := int(id)
-	if idx < 0 || idx >= tc.direct_parent_ids.len || key == '' || !valid_string_data(key) {
+	if idx < 0 || idx >= tc.parsed_nodes_len || key == '' || !valid_string_data(key) {
 		return none
 	}
 	mut current := id
@@ -17944,7 +17944,7 @@ fn (tc &TypeChecker) lexical_smartcast_type_in_parents(id flat.NodeId, key strin
 	mut depth := 1
 	// Every query resolves its narrowing from the current scope. Only the
 	// parent links are shared across repeated queries and function bodies.
-	use_parent_links := tc.cache_lexical_parents && tc.direct_parent_index_trusted
+	use_parent_links := tc.cache_lexical_parents && tc.node_indexes_trusted
 	if use_parent_links {
 		linked_parent, linked_child, linked_depth := tc.lexical_parent_link(id)
 		parent_id = linked_parent

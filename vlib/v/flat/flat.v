@@ -865,6 +865,33 @@ pub mut:
 	nodes           []Node
 	children        []NodeId
 	user_code_start int
+	// parents maps each node to its parent: the first node, in index order, that
+	// lists it among its children, or empty_node. Edges of the nodes from
+	// parents_indexed on are added when a parent is next looked up (see parent),
+	// and set_child_slot and set_node keep it while edges are rewritten in place.
+	parents         []NodeId
+	parents_indexed int
+	// parents_published is parents_indexed once the index of that many nodes is
+	// complete. Lookups that find another value index the tree under
+	// parents_lock, so lookups that run in parallel never index it at once.
+	parents_published u32
+	parents_lock      u32
+	// parents_rewritten is set once an edge was rewritten in place. A recorded
+	// parent can then have dropped the node, so parent checks that it still
+	// lists it.
+	parents_rewritten bool
+	// parents_version changes whenever parents does. parents_snapshot is a copy
+	// of parents at parents_snapshot_version that the workers forked from this
+	// tree share (see fork_parents_to).
+	parents_version          u32 = 1
+	parents_snapshot         []NodeId
+	parents_snapshot_version u32
+	// In a worker's tree, parents_fork are the parents of the tree it was forked
+	// from. Its first lookup copies them and indexes its own nodes, from
+	// parents_fork_own on, without those that other workers append in between.
+	parents_fork           []NodeId
+	parents_fork_rewritten bool
+	parents_fork_own       int
 	// parsed_node_count is the number of nodes the parser produced, or 0 when
 	// it was not recorded. Later stages append synthesized nodes past it, in an
 	// order that can depend on how their work was split across threads.
@@ -1655,6 +1682,274 @@ fn (mut a FlatAst) add_canonicalized_node(node Node) NodeId {
 	canonical.canonicalize_source_value()
 	// Canonicalization clears value, so this enters the immutable append path once.
 	return a.add_node(canonical)
+}
+
+// parent returns the parent of `id` (see FlatAst.parents), or empty_node. It
+// indexes the nodes appended since the last lookup first.
+@[direct_array_access; inline]
+pub fn (a &FlatAst) parent(id NodeId) NodeId {
+	if C.atomic_load_u32(&a.parents_published) != u32(a.nodes.len) {
+		a.index_parents_locked()
+	}
+	idx := int(id)
+	if u64(idx) >= u64(a.parents.len) {
+		return empty_node
+	}
+	parent_id := unsafe { a.parents[idx] }
+	if a.parents_rewritten && parent_id != empty_node && !a.lists_child(parent_id, id) {
+		return empty_node
+	}
+	return parent_id
+}
+
+// recorded_parent is parent without the check that a rewrite left the parent
+// listing `id`.
+@[direct_array_access; inline]
+pub fn (a &FlatAst) recorded_parent(id NodeId) NodeId {
+	if C.atomic_load_u32(&a.parents_published) != u32(a.nodes.len) {
+		a.index_parents_locked()
+	}
+	idx := int(id)
+	if u64(idx) >= u64(a.parents.len) {
+		return empty_node
+	}
+	return unsafe { a.parents[idx] }
+}
+
+// lists_child reports whether `parent` lists `id` among its children.
+@[direct_array_access]
+pub fn (a &FlatAst) lists_child(parent NodeId, id NodeId) bool {
+	pidx := int(parent)
+	if u64(pidx) >= u64(a.nodes.len) {
+		return false
+	}
+	node := unsafe { &a.nodes[pidx] }
+	end := int(node.children_start) + int(node.children_count)
+	if node.children_start < 0 || end > a.children.len {
+		return false
+	}
+	for slot in int(node.children_start) .. end {
+		if unsafe { a.children[slot] } == id {
+			return true
+		}
+	}
+	return false
+}
+
+// index_parents_locked is index_parents for a lookup, which other threads can
+// make at the same time.
+@[noinline]
+fn (a &FlatAst) index_parents_locked() {
+	mut w := unsafe { a }
+	mut unlocked := u32(0)
+	for !C.atomic_compare_exchange_strong_u32(&w.parents_lock, &unlocked, 1) {
+		unlocked = 0
+		C.cpu_relax()
+	}
+	if C.atomic_load_u32(&w.parents_published) != u32(w.nodes.len) {
+		w.index_parents()
+	}
+	C.atomic_store_u32(&w.parents_lock, 0)
+}
+
+// index_parents adds the edges of the nodes appended since the last call to
+// parents. After an edit that renumbers nodes or moves children blocks, call
+// reset_parents instead.
+pub fn (mut a FlatAst) index_parents() {
+	n := a.nodes.len
+	if a.parents_indexed > n || a.parents.len > n {
+		a.reset_parents()
+	}
+	if a.parents.len < n {
+		a.grow_parents(n)
+	}
+	if a.parents_indexed == 0 && a.parents_fork_own > 0 {
+		a.copy_forked_parents()
+	}
+	if a.parents_indexed < n {
+		a.index_parent_range(a.parents_indexed, n)
+		a.parents_version++
+	}
+	a.parents_indexed = n
+	C.atomic_store_u32(&a.parents_published, u32(n))
+}
+
+// fork_parents_to makes the parent lookups of `worker`, a tree forked from this
+// one whose own nodes start at `own_start`, start from the parents of this
+// tree. Call it before the workers run: they share a copy of the index.
+pub fn (mut a FlatAst) fork_parents_to(mut worker FlatAst, own_start int) {
+	a.index_parents()
+	if a.parents_snapshot_version != a.parents_version {
+		unsafe { free_parent_storage(mut a.parents_snapshot) }
+		a.parents_snapshot = parent_storage(a.parents.len)
+		unsafe { vmemcpy(a.parents_snapshot.data, a.parents.data, a.parents.len * int(sizeof(NodeId))) }
+		a.parents_snapshot_version = a.parents_version
+	}
+	worker.reset_parents()
+	worker.parents_fork = a.parents_snapshot
+	worker.parents_fork_rewritten = a.parents_rewritten
+	worker.parents_fork_own = own_start
+}
+
+@[direct_array_access]
+fn (mut a FlatAst) copy_forked_parents() {
+	base_len := int_min(int_min(a.parents_fork.len, a.parents_fork_own), a.parents.len)
+	unsafe { vmemcpy(a.parents.data, a.parents_fork.data, base_len * int(sizeof(NodeId))) }
+	a.parents_fork = []NodeId{}
+	a.parents_rewritten = a.parents_fork_rewritten
+	a.parents_indexed = int_min(a.parents_fork_own, a.parents.len)
+	a.parents_fork_own = 0
+}
+
+@[direct_array_access]
+fn (mut a FlatAst) index_parent_range(from int, to int) {
+	n := a.parents.len
+	for parent_idx in from .. to {
+		node := unsafe { &a.nodes[parent_idx] }
+		start := int(node.children_start)
+		end := start + int(node.children_count)
+		if node.children_count <= 0 || start < 0 || end > a.children.len {
+			continue
+		}
+		for slot in start .. end {
+			child := unsafe { a.children[slot] }
+			cidx := int(child)
+			if u64(cidx) >= u64(n) || cidx == parent_idx {
+				continue
+			}
+			a.note_parent(child, NodeId(parent_idx))
+		}
+	}
+}
+
+// The storage of the parent index comes from the C allocator: a worker's
+// scoped arena would release it when the tree outlives the worker, and nothing
+// in it points to managed memory.
+fn parent_storage(n int) []NodeId {
+	mut storage := []NodeId{}
+	if n > 0 {
+		unsafe {
+			storage.data = C.malloc(uint(n) * sizeof(NodeId))
+			storage.cap = n
+			storage.len = n
+			storage.flags.set(.nofree)
+		}
+	}
+	return storage
+}
+
+@[unsafe]
+fn free_parent_storage(mut storage []NodeId) {
+	if storage.cap > 0 {
+		unsafe { C.free(storage.data) }
+	}
+	storage = []NodeId{}
+}
+
+// grow_parents makes room in parents for `n` nodes, the new ones without a parent.
+fn (mut a FlatAst) grow_parents(n int) {
+	old_len := a.parents.len
+	if n > a.parents.cap {
+		new_cap := int_max(n, a.parents.cap + a.parents.cap / 2)
+		mut grown := parent_storage(new_cap)
+		unsafe {
+			if old_len > 0 {
+				vmemcpy(grown.data, a.parents.data, old_len * int(sizeof(NodeId)))
+			}
+			free_parent_storage(mut a.parents)
+		}
+		a.parents = grown
+	}
+	unsafe {
+		a.parents.len = n
+		vmemset(&a.parents[old_len], 0xff, (n - old_len) * int(sizeof(NodeId)))
+	}
+}
+
+// free_parents releases the parent index of a tree that is no longer used.
+pub fn (mut a FlatAst) free_parents() {
+	unsafe {
+		free_parent_storage(mut a.parents)
+		free_parent_storage(mut a.parents_snapshot)
+	}
+	a.parents_indexed = 0
+	a.parents_snapshot_version = 0
+	a.parents_fork = []NodeId{}
+	a.parents_fork_own = 0
+	a.parents_version++
+	C.atomic_store_u32(&a.parents_published, max_u32)
+}
+
+// reset_parents drops the parent index, which the next lookup rebuilds.
+pub fn (mut a FlatAst) reset_parents() {
+	unsafe { a.parents.len = 0 }
+	a.parents_indexed = 0
+	a.parents_rewritten = false
+	a.parents_version++
+	C.atomic_store_u32(&a.parents_published, max_u32)
+}
+
+// note_parent records that `parent` lists `child`, unless the parent recorded
+// for it still lists it: the first one, in index order, when the tree is indexed.
+@[direct_array_access; inline]
+fn (mut a FlatAst) note_parent(child NodeId, parent NodeId) {
+	cidx := int(child)
+	if u64(cidx) >= u64(a.parents.len) {
+		return
+	}
+	old := unsafe { a.parents[cidx] }
+	if old == empty_node
+		|| (old != parent && a.parents_rewritten && !a.lists_child(old, child)) {
+		unsafe {
+			a.parents[cidx] = parent
+		}
+	}
+}
+
+// set_child_slot stores `child` in the children slot `slot` of `parent`.
+pub fn (mut a FlatAst) set_child_slot(parent NodeId, slot int, child NodeId) {
+	if int(parent) < a.parents_indexed && a.parents_indexed != a.nodes.len {
+		// Index the nodes appended since, which `child` can be one of, first.
+		a.index_parents()
+	}
+	old := a.children[slot]
+	a.children[slot] = child
+	if int(parent) >= a.parents_indexed || old == child {
+		return
+	}
+	a.parents_rewritten = true
+	a.parents_version++
+	a.note_parent(child, parent)
+	// A node that wraps the replaced one becomes its parent, as when `x`
+	// becomes `f(x)`.
+	if int(old) >= 0 && int(old) < a.parents.len && a.lists_child(child, old) {
+		a.note_parent(old, child)
+	}
+}
+
+// set_node replaces node `id`, whose children can differ from the old ones.
+pub fn (mut a FlatAst) set_node(id NodeId, node Node) {
+	idx := int(id)
+	if idx < a.parents_indexed && a.parents_indexed != a.nodes.len {
+		a.index_parents()
+	}
+	a.nodes[idx] = node
+	if idx >= a.parents_indexed {
+		return
+	}
+	a.parents_rewritten = true
+	a.parents_version++
+	start := int(node.children_start)
+	end := start + int(node.children_count)
+	if node.children_count <= 0 || start < 0 || end > a.children.len {
+		return
+	}
+	for slot in start .. end {
+		child := a.children[slot]
+		if int(child) != idx {
+			a.note_parent(child, id)
+		}
+	}
 }
 
 // child_count converts a dynamic child count to Node's compact storage type.

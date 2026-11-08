@@ -6703,7 +6703,7 @@ fn (tc &TypeChecker) source_enclosing_fn_has_generic_param(id flat.NodeId, name 
 		params := tc.enclosing_generic_params_by_node[tc.fn_context.node_id] or { return false }
 		return generic_param_ids_contain_name(params, name)
 	}
-	if tc.direct_parent_index_trusted {
+	if tc.node_indexes_trusted {
 		mut current_idx := int(id)
 		for current_idx >= 0 && current_idx < tc.a.nodes.len {
 			node := tc.a.nodes[current_idx]
@@ -6711,10 +6711,10 @@ fn (tc &TypeChecker) source_enclosing_fn_has_generic_param(id flat.NodeId, name 
 				params := tc.enclosing_generic_params_by_node[current_idx] or { return false }
 				return generic_param_ids_contain_name(params, name)
 			}
-			if current_idx >= tc.direct_parent_ids.len {
+			if current_idx >= tc.parsed_nodes_len {
 				return false
 			}
-			parent_idx := int(tc.direct_parent_ids[current_idx])
+			parent_idx := int(tc.parsed_parent_id(flat.NodeId(current_idx)))
 			if parent_idx == current_idx {
 				return false
 			}
@@ -7585,8 +7585,8 @@ pub fn (tc &TypeChecker) sizeof_value_declaration(name string) ?flat.NodeId {
 pub fn (tc &TypeChecker) sizeof_value_conditions(declaration flat.NodeId) []string {
 	mut child := declaration
 	mut conditions := []string{}
-	for int(child) >= 0 && int(child) < tc.direct_parent_ids.len {
-		parent_id := tc.direct_parent_ids[int(child)]
+	for int(child) >= 0 && int(child) < tc.parsed_nodes_len {
+		parent_id := tc.parsed_parent_id(child)
 		if int(parent_id) < 0 || int(parent_id) >= tc.a.nodes.len || parent_id == child {
 			break
 		}
@@ -7898,8 +7898,8 @@ fn (tc &TypeChecker) first_parsed_child(id flat.NodeId) flat.NodeId {
 	}
 	// Semantic checking may detach a consumed child edge; the immutable parent index
 	// still records the original parsed relationship.
-	for index, parent_id in tc.direct_parent_ids {
-		if parent_id == id {
+	for index in 0 .. tc.parsed_nodes_len {
+		if tc.parsed_parent_id(flat.NodeId(index)) == id {
 			return flat.NodeId(index)
 		}
 	}
@@ -8493,7 +8493,7 @@ fn (tc &TypeChecker) inactive_top_level_comptime_nodes() []bool {
 pub fn (tc &TypeChecker) prune_inactive_top_level_comptime(mut a flat.FlatAst) {
 	for i in tc.inactive_top_level_node_ids {
 		if i < a.nodes.len {
-			a.nodes[i] = flat.Node{}
+			a.set_node(flat.NodeId(i), flat.Node{})
 		}
 	}
 }
@@ -10395,51 +10395,22 @@ fn (tc &TypeChecker) expr_is_standalone_statement(id flat.NodeId) bool {
 	if tc.is_statement_node(id) {
 		return true
 	}
-	// Source ASTs already have a direct-parent index. Nearly every `<<` expression
-	// wrapped by an expr_stmt can be answered from it, without walking the entire
-	// program once per append. Keep the scan below as a fallback for shared or
-	// transform-created nodes after the index is no longer authoritative.
-	if tc.direct_parent_index_trusted {
-		mut current := id
-		for {
-			idx := int(current)
-			if idx < 0 || idx >= tc.direct_parent_ids.len {
-				break
-			}
-			parent_id := tc.direct_parent_ids[idx]
-			if tc.valid_node_id(parent_id) {
-				parent := tc.a.node(parent_id)
-				if parent.kind == .paren && parent.children_count == 1
-					&& tc.a.child(parent, 0) == current {
-					current = parent_id
-					continue
-				}
-				return parent.kind == .expr_stmt && parent.children_count == 1
-					&& tc.a.child(parent, 0) == current
-			}
-			break
-		}
-		// Transform-created nodes are outside the parsed direct-parent index.
-		// Fall through to the shared/generated-node scan for those ids.
-	}
+	// A statement of its own is the only child of an expr_stmt, through parentheses.
 	mut current := id
-	for _ in 0 .. 32 {
-		mut parent_id := flat.empty_node
-		for i in 0 .. tc.a.nodes.len {
-			// Generated-node parent lookup only reads the AST while this borrow is live.
-			candidate := unsafe { &tc.a.nodes[i] }
-			if candidate.kind in [.paren, .expr_stmt] && candidate.children_count == 1
-				&& tc.a.child(candidate, 0) == current {
-				parent_id = flat.NodeId(i)
-				break
-			}
-		}
+	for _ in 0 .. 64 {
+		parent_id := tc.direct_parent_id(current)
 		if !tc.valid_node_id(parent_id) {
 			return false
 		}
 		parent := tc.a.node(parent_id)
+		if parent.children_count != 1 || tc.a.child(parent, 0) != current {
+			return false
+		}
 		if parent.kind == .expr_stmt {
 			return true
+		}
+		if parent.kind != .paren {
+			return false
 		}
 		current = parent_id
 	}
@@ -12376,102 +12347,28 @@ fn (tc &TypeChecker) direct_parent_kind(id flat.NodeId) flat.NodeKind {
 	return .empty
 }
 
-@[direct_array_access; inline]
+// direct_parent_id is the node that lists `id` among its children (see
+// flat.FlatAst.parents).
+@[inline]
 fn (tc &TypeChecker) direct_parent_id(id flat.NodeId) flat.NodeId {
-	idx := int(id)
-	if tc.direct_parent_index_trusted && idx >= 0 && idx < tc.direct_parent_ids.len {
-		return tc.direct_parent_ids[idx]
-	}
-	return tc.direct_parent_id_untrusted(id, idx)
+	return tc.a.parent(id)
 }
 
-// note_generated_parent seeds the worker-private parent cache for a freshly
-// generated node whose only parent is `parent`, so parent queries on it skip
-// the arena scan. An edge found by an earlier query is kept.
-pub fn (tc &TypeChecker) note_generated_parent(child flat.NodeId, parent flat.NodeId) {
-	idx := int(child)
-	if isnil(tc.type_cache) || idx < tc.direct_parent_ids.len {
-		return
-	}
-	mut cache := tc.type_cache
-	if idx !in cache.generated_parent_entries {
-		cache.generated_parent_entries[idx] = parent
-	}
-}
-
-fn (tc &TypeChecker) direct_parent_id_untrusted(id flat.NodeId, idx int) flat.NodeId {
-	if idx < 0 || idx >= tc.a.nodes.len {
+// parsed_parent_id is the parent that the index recorded for a node of the
+// checked tree (see parsed_nodes_len), without checking that the parent still
+// lists it after a rewrite.
+@[inline]
+fn (tc &TypeChecker) parsed_parent_id(id flat.NodeId) flat.NodeId {
+	if int(id) < 0 || int(id) >= tc.parsed_nodes_len {
 		return flat.empty_node
 	}
-	if idx >= 0 && idx < tc.direct_parent_ids.len {
-		parent_id := tc.direct_parent_ids[idx]
-		if parent_id != flat.empty_node {
-			parent := tc.a.node(parent_id)
-			for i in 0 .. parent.children_count {
-				if tc.a.child(parent, i) == id {
-					return parent_id
-				}
-			}
-		}
-		// Parsed nodes that no longer have their indexed parent are detached or
-		// have been rewritten by transform. Treat them as parentless; scanning the
-		// entire arena for every type query makes parallel transform quadratic.
-		return flat.empty_node
-	}
-	if idx >= 0 && idx < tc.rewritten_parent_ids.len {
-		parent_id := tc.rewritten_parent_ids[idx]
-		if parent_id != flat.empty_node {
-			parent := tc.a.node(parent_id)
-			for i in 0 .. parent.children_count {
-				if tc.a.child(parent, i) == id {
-					return parent_id
-				}
-			}
-		}
-		// A later rewrite may replace the first recorded edge while another
-		// parent still references this shared generated node. Fall through to
-		// the arena scan when the indexed edge is stale.
-	}
-	if !isnil(tc.type_cache) {
-		if parent_id := tc.type_cache.generated_parent_entries[idx] {
-			if tc.valid_node_id(parent_id) {
-				parent := tc.a.node(parent_id)
-				for i in 0 .. parent.children_count {
-					if tc.a.child(parent, i) == id {
-						return parent_id
-					}
-				}
-			}
-		}
-	}
-	for parent_idx in 0 .. tc.a.nodes.len {
-		// The fallback only reads node headers while looking up parent edges.
-		candidate := unsafe { &tc.a.nodes[parent_idx] }
-		for i in 0 .. candidate.children_count {
-			if tc.a.child(candidate, i) == id {
-				if !isnil(tc.type_cache) {
-					mut cache := tc.type_cache
-					cache.generated_parent_entries[idx] = flat.NodeId(parent_idx)
-				}
-				return flat.NodeId(parent_idx)
-			}
-		}
-	}
-	return flat.empty_node
+	return tc.a.recorded_parent(id)
 }
 
 fn (tc &TypeChecker) enclosing_infix_type_for_or_expr(id flat.NodeId) ?Type {
-	for idx in 0 .. tc.a.nodes.len {
-		// The borrow ends before resolving the matching parent expression's type.
-		candidate := unsafe { &tc.a.nodes[idx] }
-		if candidate.kind != .infix {
-			continue
-		}
-		for i in 0 .. candidate.children_count {
-			if tc.a.child(candidate, i) == id {
-				return tc.resolve_type(flat.NodeId(idx))
-			}
-		}
+	parent_id := tc.direct_parent_id(id)
+	if tc.valid_node_id(parent_id) && tc.a.node(parent_id).kind == .infix {
+		return tc.resolve_type(parent_id)
 	}
 	return none
 }
@@ -14931,8 +14828,8 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 fn (tc &TypeChecker) is_top_level_discarded_fn_signature(id flat.NodeId) bool {
 	mut current := id
 	mut is_discard_assignment := false
-	for int(current) >= 0 && int(current) < tc.direct_parent_ids.len {
-		parent_id := tc.direct_parent_ids[int(current)]
+	for int(current) >= 0 && int(current) < tc.parsed_nodes_len {
+		parent_id := tc.parsed_parent_id(current)
 		if parent_id == flat.empty_node || int(parent_id) < 0 || int(parent_id) >= tc.a.nodes.len {
 			return false
 		}

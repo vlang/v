@@ -420,17 +420,16 @@ fn test_parent_index_ranges_preserve_cross_range_edges_and_function_costs() {
 	a.add(.fn_decl)
 	mut serial := TypeChecker.new(&a)
 	serial.building_v_fast = true
-	serial.build_direct_parent_index(&a)
+	serial.build_node_indexes(&a)
 	mut split := TypeChecker.new(&a)
 	split.building_v_fast = true
-	split.init_direct_parent_index(&a)
-	// Visit the later range first to exercise source-order parent selection.
-	later := split.fill_direct_parent_edges_range(&a, 3, a.nodes.len)
-	earlier := split.fill_direct_parent_edges_range(&a, 0, 3)
-	split.merge_direct_parent_chunk(earlier)
-	split.merge_direct_parent_chunk(later)
-	assert split.direct_parent_ids == serial.direct_parent_ids
-	assert split.direct_parent_ids[5] == flat.NodeId(1)
+	split.init_node_indexes(&a)
+	// Visit the later range first to exercise the replay of cross-range edges.
+	later := split.fill_node_indexes_range(&a, 3, a.nodes.len)
+	earlier := split.fill_node_indexes_range(&a, 0, 3)
+	split.merge_node_index_chunk(earlier)
+	split.merge_node_index_chunk(later)
+	assert a.parent(flat.NodeId(5)) == flat.NodeId(1)
 	assert split.value_used_nodes == serial.value_used_nodes
 	assert split.fn_check_costs == serial.fn_check_costs
 	assert split.preflight_node_ids == serial.preflight_node_ids
@@ -444,14 +443,14 @@ fn test_preflight_index_falls_back_after_ast_growth_or_invalidation() {
 	loop := a.add(.for_in_stmt)
 	comptime_loop := a.add(.comptime_for)
 	mut tc := TypeChecker.new(&a)
-	tc.build_direct_parent_index(&a)
+	tc.build_node_indexes(&a)
 	assert tc.preflight_nodes(.for_in_stmt) == [i32(loop)]
 	assert tc.preflight_nodes(.comptime_for) == [i32(comptime_loop)]
 	added := a.add(.comptime_for)
 	assert tc.preflight_nodes(.comptime_for) == [i32(comptime_loop), i32(added)]
-	tc.build_direct_parent_index(&a)
+	tc.build_node_indexes(&a)
 	a.nodes[int(loop)].kind = .comptime_for
-	tc.direct_parent_index_trusted = false
+	tc.node_indexes_trusted = false
 	assert tc.preflight_nodes(.for_in_stmt).len == 0
 	assert tc.preflight_nodes(.comptime_for) == [i32(loop), i32(comptime_loop), i32(added)]
 }
@@ -490,14 +489,14 @@ fn test_parent_metadata_replay_matches_full_scan() {
 	a := p.parse_file(path)
 	assert p.diagnostics.len == 0, p.diagnostics.str()
 	mut serial := TypeChecker.new(a)
-	serial.init_direct_parent_index(a)
-	serial.collect_direct_parent_metadata(a)
+	serial.init_node_indexes(a)
+	serial.collect_node_indexes_metadata(a)
 	mut split := TypeChecker.new(a)
-	split.init_direct_parent_index(a)
+	split.init_node_indexes(a)
 	for part in 0 .. 3 {
-		chunk := split.fill_direct_parent_edges_range(a, a.nodes.len * part / 3, a.nodes.len * (part + 1) / 3)
+		chunk := split.fill_node_indexes_range(a, a.nodes.len * part / 3, a.nodes.len * (part + 1) / 3)
 		for idx in chunk.metadata_node_ids {
-			split.collect_direct_parent_node_metadata(a, idx, a.node(flat.NodeId(idx)))
+			split.collect_node_index_metadata(a, idx, a.node(flat.NodeId(idx)))
 		}
 	}
 	assert split.declaration_attributes == serial.declaration_attributes
@@ -508,7 +507,7 @@ fn test_parent_metadata_replay_matches_full_scan() {
 	// The ordinary serial entry must preserve real directive operands/deduplication
 	// and leave builder candidates attached to their enclosing function.
 	mut indexed := TypeChecker.new(a)
-	indexed.build_direct_parent_index(a)
+	indexed.build_node_indexes(a)
 	assert indexed.declaration_attributes == serial.declaration_attributes
 	assert indexed.translated_files == serial.translated_files
 	assert indexed.strings_builder_candidates == serial.strings_builder_candidates
@@ -701,7 +700,7 @@ fn test_parallel_interface_indexes_outlive_worker_scopes() {
 	}
 }
 
-fn test_direct_parent_index_preserves_first_parent_and_falls_back_for_new_nodes() {
+fn test_parent_index_keeps_the_first_parent_and_indexes_appended_nodes() {
 	mut a := flat.FlatAst.new()
 	child := a.add_val(.ident, 'child')
 	first_children := a.begin_children()
@@ -720,11 +719,11 @@ fn test_direct_parent_index_preserves_first_parent_and_falls_back_for_new_nodes(
 	})
 
 	mut tc := TypeChecker.new(&a)
-	tc.build_direct_parent_index(&a)
+	tc.build_node_indexes(&a)
 	assert tc.direct_parent_id(child) == first_parent
 	assert tc.direct_parent_id(first_parent) == flat.empty_node
-	tc.invalidate_direct_parent_index()
-	assert tc.reuse_direct_parent_index_for_unchanged_ast(&a)
+	tc.invalidate_node_indexes()
+	assert tc.reuse_node_indexes_for_unchanged_ast(&a)
 	assert tc.direct_parent_id(child) == first_parent
 
 	appended_child := a.add_val(.ident, 'appended')
@@ -735,21 +734,17 @@ fn test_direct_parent_index_preserves_first_parent_and_falls_back_for_new_nodes(
 		children_start: appended_children
 		children_count: 1
 	})
-	assert !tc.reuse_direct_parent_index_for_unchanged_ast(&a)
+	assert !tc.reuse_node_indexes_for_unchanged_ast(&a)
 	assert tc.direct_parent_id(appended_child) == appended_parent
-
-	tc.refresh_rewritten_parent_index(&a)
-	assert tc.direct_parent_ids.len < a.nodes.len
-	assert tc.rewritten_parent_ids.len == a.nodes.len
-	assert !tc.direct_parent_index_trusted
 	assert tc.direct_parent_id(child) == first_parent
-	assert tc.direct_parent_id(appended_child) == appended_parent
+	// Lexical narrowing keeps to the nodes of the checked tree.
+	assert tc.parsed_parent_id(appended_child) == flat.empty_node
 }
 
-fn test_rewritten_parent_index_falls_back_from_a_stale_shared_edge() {
+fn test_parent_of_a_node_that_its_parent_dropped_waits_for_the_next_index() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.build_direct_parent_index(&a)
+	tc.build_node_indexes(&a)
 
 	shared_child := a.add_val(.ident, 'shared')
 	replacement := a.add_val(.ident, 'replacement')
@@ -767,44 +762,46 @@ fn test_rewritten_parent_index_falls_back_from_a_stale_shared_edge() {
 		children_start: second_children
 		children_count: 1
 	})
-
-	tc.refresh_rewritten_parent_index(&a)
 	assert tc.direct_parent_id(shared_child) == first_parent
 
-	a.children[first_children] = replacement
+	a.set_child_slot(first_parent, first_children, replacement)
+	assert tc.direct_parent_id(replacement) == first_parent
+	assert tc.direct_parent_id(shared_child) == flat.empty_node
+	a.reset_parents()
 	assert tc.direct_parent_id(shared_child) == second_parent
+	assert tc.direct_parent_id(replacement) == first_parent
 }
 
-fn test_generated_parent_lookup_revalidates_cached_edges() {
+fn test_parent_index_follows_replaced_and_wrapped_nodes() {
 	mut a := flat.FlatAst.new()
 	mut tc := TypeChecker.new(&a)
-	tc.build_direct_parent_index(&a)
-	tc.invalidate_direct_parent_index()
+	tc.build_node_indexes(&a)
 	child := a.add_val(.ident, 'value')
 	assert tc.direct_parent_id(child) == flat.empty_node
 	start := a.begin_children()
 	a.add_child(child)
 	first := a.add_node(flat.Node{ kind: .paren, children_start: start, children_count: 1 })
 	assert tc.direct_parent_id(child) == first
-	assert tc.direct_parent_id(child) == first
-	second_start := a.begin_children()
+	// `value` becomes `(value)` inside `first`.
+	wrap_start := a.begin_children()
 	a.add_child(child)
-	second := a.add_node(flat.Node{ kind: .paren, children_start: second_start, children_count: 1 })
-	a.nodes[int(first)].children_count = 0
-	assert tc.direct_parent_id(child) == second
-	a.nodes[int(second)].children_count = 0
-	assert tc.direct_parent_id(child) == flat.empty_node
+	wrapper := a.add_node(flat.Node{ kind: .paren, children_start: wrap_start, children_count: 1 })
+	a.set_child_slot(first, start, wrapper)
+	assert tc.direct_parent_id(wrapper) == first
+	assert tc.direct_parent_id(child) == wrapper
+	a.set_node(first, flat.Node{ kind: .paren })
+	assert tc.direct_parent_id(wrapper) == flat.empty_node
 	assert tc.direct_parent_id(flat.empty_node) == flat.empty_node
 }
 
-fn test_generated_parent_fallback_does_not_allocate_per_ast_node() {
+fn test_parent_lookups_of_appended_nodes_do_not_allocate_per_ast_node() {
 	$if gcboehm ? {
 		mut a := flat.FlatAst.new()
 		for _ in 0 .. 8192 {
 			a.add_node(flat.Node{ kind: .int_literal, value: '0', typ: flat.source_type_int })
 		}
 		mut tc := TypeChecker.new(&a)
-		tc.build_direct_parent_index(&a)
+		tc.build_node_indexes(&a)
 		generated := a.add_node(flat.Node{ kind: .int_literal, value: '1', typ: flat.source_type_int })
 		before := gc_heap_usage().total_bytes
 		for _ in 0 .. 16 {
@@ -813,7 +810,7 @@ fn test_generated_parent_fallback_does_not_allocate_per_ast_node() {
 			assert !tc.expr_is_standalone_statement(generated)
 		}
 		allocated := gc_heap_usage().total_bytes - before
-		assert allocated < 1024 * 1024, 'parent fallbacks allocated ${allocated} bytes'
+		assert allocated < 1024 * 1024, 'parent lookups allocated ${allocated} bytes'
 		first_children := a.begin_children()
 		a.add_child(generated)
 		a.add_child(flat.NodeId(0))
@@ -837,7 +834,8 @@ fn test_generated_parent_fallback_does_not_allocate_per_ast_node() {
 			return
 		}
 		assert infix_type == Type(int_)
-		a.nodes[int(first)].children_count = 0
+		a.set_node(first, flat.Node{ kind: .infix, op: .plus, typ: flat.source_type_int })
+		a.reset_parents()
 		assert tc.direct_parent_id(generated) == second
 		assert tc.enclosing_infix_type_for_or_expr(generated) == none
 		statement_children := a.begin_children()

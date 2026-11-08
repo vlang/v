@@ -7,14 +7,15 @@ import v.flat
 @[heap]
 struct LexicalParentMemo {
 mut:
-	generation  u32 = 1
-	nodes_len   int
-	parents_len int
-	ids         [2048]int
-	generations [2048]u32
-	parents     [2048]flat.NodeId
-	children    [2048]flat.NodeId
-	depths      [2048]int
+	generation      u32 = 1
+	nodes_len       int
+	parents_len     int
+	parents_version u32
+	ids             [2048]int
+	generations     [2048]u32
+	parents         [2048]flat.NodeId
+	children        [2048]flat.NodeId
+	depths          [2048]int
 }
 
 fn (mut memo LexicalParentMemo) invalidate() {
@@ -40,12 +41,13 @@ fn (tc &TypeChecker) invalidate_lexical_parent_memo() {
 @[direct_array_access; inline]
 fn (tc &TypeChecker) lexical_parent_link(id flat.NodeId) (flat.NodeId, flat.NodeId, int) {
 	initial_idx := int(id)
-	if initial_idx < 0 || initial_idx >= tc.direct_parent_ids.len {
+	if initial_idx < 0 || initial_idx >= tc.parsed_nodes_len {
 		return flat.empty_node, id, 1
 	}
 	memo := tc.lexical_parent_memo
 	if !isnil(memo) && memo.nodes_len == tc.a.nodes.len
-		&& memo.parents_len == tc.direct_parent_ids.len {
+		&& memo.parents_len == tc.parsed_nodes_len
+		&& memo.parents_version == tc.a.parents_version {
 		slot := initial_idx & 2047
 		if memo.generations[slot] == memo.generation && memo.ids[slot] == initial_idx {
 			return memo.parents[slot], memo.children[slot], memo.depths[slot]
@@ -60,15 +62,18 @@ fn (tc &TypeChecker) lexical_parent_link_miss(id flat.NodeId) (flat.NodeId, flat
 	mut wtc := unsafe { tc }
 	if isnil(wtc.lexical_parent_memo) {
 		wtc.lexical_parent_memo = &LexicalParentMemo{
-			nodes_len:   tc.a.nodes.len
-			parents_len: tc.direct_parent_ids.len
+			nodes_len:       tc.a.nodes.len
+			parents_len:     tc.parsed_nodes_len
+			parents_version: tc.a.parents_version
 		}
 	}
 	mut memo := wtc.lexical_parent_memo
-	if memo.nodes_len != tc.a.nodes.len || memo.parents_len != tc.direct_parent_ids.len {
+	if memo.nodes_len != tc.a.nodes.len || memo.parents_len != tc.parsed_nodes_len
+		|| memo.parents_version != tc.a.parents_version {
 		memo.invalidate()
 		memo.nodes_len = tc.a.nodes.len
-		memo.parents_len = tc.direct_parent_ids.len
+		memo.parents_len = tc.parsed_nodes_len
+		memo.parents_version = tc.a.parents_version
 	}
 	initial_slot := initial_idx & 2047
 	if memo.generations[initial_slot] == memo.generation && memo.ids[initial_slot] == initial_idx {
@@ -85,7 +90,7 @@ fn (tc &TypeChecker) lexical_parent_link_miss(id flat.NodeId) (flat.NodeId, flat
 	mut depth := 0
 	for {
 		idx := int(current)
-		if idx < 0 || idx >= tc.direct_parent_ids.len {
+		if idx < 0 || idx >= tc.parsed_nodes_len {
 			break
 		}
 		slot := idx & 2047
@@ -100,7 +105,7 @@ fn (tc &TypeChecker) lexical_parent_link_miss(id flat.NodeId) (flat.NodeId, flat
 			path_len++
 		}
 		child = current
-		parent = tc.direct_parent_ids[idx]
+		parent = tc.parsed_parent_id(current)
 		depth++
 		if !tc.valid_node_id(parent)
 			|| tc.a.nodes[int(parent)].kind in [.if_expr, .for_stmt, .match_branch, .match_stmt,
