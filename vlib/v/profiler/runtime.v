@@ -10,6 +10,7 @@ pub fn profiler_init() {
 }
 
 // profiler_enable enables allocation tracking
+@[unsafe]
 pub fn profiler_enable() {
 	if profiler_state.mu == unsafe { nil } {
 		init_profiler_state()
@@ -31,6 +32,7 @@ pub fn profiler_enable() {
 }
 
 // profiler_disable disables allocation tracking
+@[unsafe]
 pub fn profiler_disable() {
 	if profiler_state.mu == unsafe { nil } {
 		return
@@ -43,6 +45,7 @@ pub fn profiler_disable() {
 }
 
 // profiler_is_enabled returns whether profiling is active
+@[unsafe]
 pub fn profiler_is_enabled() bool {
 	if profiler_state.mu == unsafe { nil } {
 		return false
@@ -56,6 +59,7 @@ pub fn profiler_is_enabled() bool {
 
 // frame_end signals the end of a frame and collects frame data
 // Call this at the end of each game/application frame
+@[unsafe]
 pub fn frame_end() {
 	if profiler_state.mu == unsafe { nil } {
 		return
@@ -88,6 +92,7 @@ pub fn frame_end() {
 }
 
 // get_frame_count returns the current frame number
+@[unsafe]
 pub fn get_frame_count() u64 {
 	if profiler_state.mu == unsafe { nil } {
 		return 0
@@ -100,6 +105,7 @@ pub fn get_frame_count() u64 {
 }
 
 // get_frames returns a copy of all frame data
+@[unsafe]
 pub fn get_frames() []FrameData {
 	if profiler_state.mu == unsafe { nil } {
 		return []
@@ -112,6 +118,7 @@ pub fn get_frames() []FrameData {
 }
 
 // get_allocs returns a copy of all allocation records
+@[unsafe]
 pub fn get_allocs() []AllocRecord {
 	if profiler_state.mu == unsafe { nil } {
 		return []
@@ -124,6 +131,7 @@ pub fn get_allocs() []AllocRecord {
 }
 
 // get_leaks returns allocations that were never freed
+@[unsafe]
 pub fn get_leaks() []AllocRecord {
 	if profiler_state.mu == unsafe { nil } {
 		return []
@@ -143,6 +151,7 @@ pub fn get_leaks() []AllocRecord {
 }
 
 // get_allocs_for_frame returns allocations made in a specific frame
+@[unsafe]
 pub fn get_allocs_for_frame(frame_num u64) []AllocRecord {
 	if profiler_state.mu == unsafe { nil } {
 		return []
@@ -162,6 +171,7 @@ pub fn get_allocs_for_frame(frame_num u64) []AllocRecord {
 }
 
 // get_live_allocs returns currently live (not freed) allocations
+@[unsafe]
 pub fn get_live_allocs() []AllocRecord {
 	if profiler_state.mu == unsafe { nil } {
 		return []
@@ -181,6 +191,7 @@ pub fn get_live_allocs() []AllocRecord {
 }
 
 // reset clears all profiler data
+@[unsafe]
 pub fn reset() {
 	if profiler_state.mu == unsafe { nil } {
 		return

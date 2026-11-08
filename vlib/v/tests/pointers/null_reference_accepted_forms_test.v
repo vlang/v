@@ -12,6 +12,7 @@ mut:
 	handle voidptr = voidptr(0)
 }
 
+@[unsafe]
 fn null_node() &Node {
 	return unsafe { nil }
 }
@@ -22,6 +23,7 @@ fn null_node_in_unsafe_block() &Node {
 	}
 }
 
+@[unsafe]
 fn null_node_from_unsafe_expr() &Node {
 	return unsafe { voidptr(0) }
 }
@@ -47,10 +49,12 @@ fn node_from_handle(handle voidptr) &Node {
 	return handle
 }
 
+@[unsafe]
 fn null_of[T]() &T {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn test_explicit_unsafe_null_references() {
 	assert isnil(null_node())
 	assert isnil(null_node_in_unsafe_block())
@@ -77,6 +81,7 @@ fn test_explicit_unsafe_null_references() {
 	assert isnil(h.node)
 }
 
+@[unsafe]
 fn test_comparisons_with_null_constants() {
 	n := &Node{
 		x: 3

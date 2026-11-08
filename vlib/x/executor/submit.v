@@ -8,6 +8,7 @@ import time
 //
 // It never waits for queue capacity. A full queue returns
 // `executor: queue is full`, making backpressure explicit.
+@[unsafe]
 pub fn (mut e Executor) try_post(f JobFn) ! {
 	if f == unsafe { nil } {
 		return error(err_nil_job)
@@ -25,6 +26,7 @@ pub fn (mut e Executor) try_post(f JobFn) ! {
 // Active-owner submissions are accepted while capacity is available. If they
 // would need to wait for capacity, they fail with
 // `executor: owner thread cannot wait for queue capacity`.
+@[unsafe]
 pub fn (mut e Executor) post_with_context(parent context.Context, f JobFn) ! {
 	if f == unsafe { nil } {
 		return error(err_nil_job)
@@ -41,6 +43,7 @@ pub fn (mut e Executor) post_with_context(parent context.Context, f JobFn) ! {
 // Active-owner submissions are accepted while capacity is available. If they
 // would need to wait for capacity, they fail with
 // `executor: owner thread cannot wait for queue capacity`.
+@[unsafe]
 pub fn (mut e Executor) post_with_timeout(timeout time.Duration, f JobFn) ! {
 	if f == unsafe { nil } {
 		return error(err_nil_job)

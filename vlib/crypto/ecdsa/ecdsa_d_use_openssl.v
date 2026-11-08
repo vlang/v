@@ -228,6 +228,7 @@ pub fn (pv PrivateKey) sign_with_options(message []u8, opt SignerOpts) ![]u8 {
 }
 
 // bytes represent private key as bytes.
+@[unsafe]
 pub fn (pv PrivateKey) bytes() ![]u8 {
 	mut bn := &C.BIGNUM(unsafe { nil })
 	// retrieves a BIGNUM value associated with a 'priv' key name
@@ -290,6 +291,7 @@ pub fn (pv PrivateKey) public_key() !PublicKey {
 // EVP_PKEY_derive already returns for EC keys, and is exactly what TLS 1.3's
 // key schedule expects as ECDHE input; it is NOT the full uncompressed point).
 // Both keys must use the same curve.
+@[unsafe]
 pub fn (pv PrivateKey) derive_shared_secret(peer PublicKey) ![]u8 {
 	ctx := C.EVP_PKEY_CTX_new(pv.evpkey, 0)
 	if ctx == 0 {
@@ -365,6 +367,7 @@ pub fn (pb &PublicKey) free() {
 // uncompressed_bytes returns the public key as an uncompressed EC point,
 // `0x04 || X || Y` (SEC1 §2.3.3) — the wire format TLS 1.3's key_share
 // extension uses for the secp256r1 (P-256) group (RFC 8446 §4.2.8.2).
+@[unsafe]
 pub fn (pb PublicKey) uncompressed_bytes() ![]u8 {
 	mut ptr := &u8(unsafe { nil })
 	n := C.EVP_PKEY_get1_encoded_public_key(pb.evpkey, &ptr)
@@ -381,6 +384,7 @@ pub fn (pb PublicKey) uncompressed_bytes() ![]u8 {
 // the wire in a TLS 1.3 key_share extension. `opt.nid` must match the curve
 // the peer actually used (v1 callers of net.quic only ever use `.prime256v1`
 // here, since X25519 is handled entirely by crypto.x25519 instead).
+@[unsafe]
 pub fn PublicKey.from_uncompressed_bytes(bytes []u8, opt CurveOptions) !PublicKey {
 	if bytes.len == 0 {
 		return error('empty public key bytes')
@@ -431,6 +435,7 @@ pub fn PublicKey.from_uncompressed_bytes(bytes []u8, opt CurveOptions) !PublicKe
 // Helpers
 //
 // calc_digest_with_evpkey get the digest of the messages under the EVP_PKEY and options
+@[unsafe]
 fn calc_digest_with_evpkey(key &C.EVP_PKEY, message []u8, opt SignerOpts) ![]u8 {
 	if message.len == 0 {
 		return error('null-length messages')
@@ -685,6 +690,7 @@ fn ec_point_mult(group &C.EC_GROUP, bn &C.BIGNUM) !&C.EC_POINT {
 const default_point_bufsize = 160 // 2 * 64 + 1 + extra
 
 // point_2_buf gets bytes representation of the EC_POINT
+@[unsafe]
 fn point_2_buf(group &C.EC_GROUP, point &C.EC_POINT, fmt int) ![]u8 {
 	ctx := C.BN_CTX_new()
 	mut pbuf := &u8(unsafe { nil })

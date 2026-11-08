@@ -101,6 +101,7 @@ fn test_builder_write_byte_appends_a_single_byte() {
 	assert b.byte_at(3) == `!`
 }
 
+@[unsafe]
 fn test_builder_write_ptr_appends_a_byte_range() {
 	mut b := strings.new_builder(0)
 	b.write_string('>>')

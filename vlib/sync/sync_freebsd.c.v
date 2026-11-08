@@ -82,7 +82,7 @@ pub fn new_mutex() &Mutex {
 
 // init initialises the mutex. It should be called once before the mutex is used,
 // since it creates the associated resources needed for the mutex to work properly.
-@[inline]
+@[inline; unsafe]
 pub fn (mut m Mutex) init() {
 	C.pthread_mutex_init(&m.mutex, unsafe { nil })
 }

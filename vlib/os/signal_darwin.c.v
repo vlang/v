@@ -15,6 +15,7 @@ pub fn is_main_thread() bool {
 	return g_main_thread_id == u64(C.pthread_self())
 }
 
+@[unsafe]
 fn C.sigaddset(set &u32, signum i32) i32
 fn C.sigemptyset(set &u32)
 fn C.sigprocmask(how i32, set &u32, oldset &u32) i32

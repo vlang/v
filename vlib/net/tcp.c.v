@@ -505,6 +505,7 @@ fn listen_tcp_with_addresses(addrs []Addr, saddr string, options ListenOptions) 
 	return error('no addresses resolved for ${saddr}')
 }
 
+@[unsafe]
 fn listen_tcp_addr(addr Addr, saddr string, options ListenOptions) !&TcpListener {
 	mut s := new_tcp_socket(addr.family()) or {
 		return error('${err.msg()}; could not create new socket')

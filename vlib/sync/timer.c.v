@@ -19,6 +19,7 @@ mut:
 	prealloc_scope voidptr
 }
 
+@[unsafe]
 fn new_timer_thread_args(duration time.Duration, output chan time.Time, stop chan chan bool, done chan bool) &TimerThreadArgs {
 	// Keep the channels visible to tracing collectors until the detached worker finishes.
 	mut args := unsafe { &TimerThreadArgs(vcalloc(int(sizeof(TimerThreadArgs)))) }

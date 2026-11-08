@@ -87,30 +87,33 @@ pub fn new_channel[T](n u32) &Channel {
 	}
 }
 
+@[unsafe]
 fn new_channel_st(n u32, st u32) &Channel {
 	wsem := if n > 0 { n } else { 1 }
 	rsem := if n > 0 { u32(0) } else { 1 }
 	rbuf := if n > 0 { unsafe { malloc(int(n * st)) } } else { &u8(unsafe { nil }) }
 	sbuf := if n > 0 { vcalloc_noscan(int(n * 2)) } else { &u8(unsafe { nil }) }
-	mut ch := Channel{
-		objsize:          st
-		cap:              n
-		write_free:       n
-		read_avail:       0
-		ringbuf:          rbuf
-		statusbuf:        sbuf
-		write_subscriber: unsafe { nil }
-		read_subscriber:  unsafe { nil }
-		write_sub_mtx:    new_spin_lock()
-		read_sub_mtx:     new_spin_lock()
+	mut ch := &Channel(unsafe { malloc(int(sizeof(Channel))) })
+	unsafe {
+		ch.objsize = st
+		ch.cap = n
+		ch.write_free = n
+		ch.read_avail = 0
+		ch.ringbuf = rbuf
+		ch.statusbuf = sbuf
+		ch.write_subscriber = unsafe { nil }
+		ch.read_subscriber = unsafe { nil }
+		ch.write_sub_mtx = new_spin_lock()
+		ch.read_sub_mtx = new_spin_lock()
 	}
 	ch.writesem.init(wsem)
 	ch.readsem.init(rsem)
 	ch.writesem_im.init(0)
 	ch.readsem_im.init(0)
-	return &ch
+	return ch
 }
 
+@[unsafe]
 fn new_channel_st_noscan(n u32, st u32) &Channel {
 	$if gcboehm_opt ? {
 		wsem := if n > 0 { n } else { 1 }
@@ -142,6 +145,7 @@ fn new_channel_st_noscan(n u32, st u32) &Channel {
 // close closes the channel and optionally stores an error that will be
 // returned by receive operations that use `or {}` or `?` after the
 // buffered values have been drained.
+@[unsafe]
 pub fn (mut ch Channel) close(errs ...IError) {
 	$if race ? {
 		racedisable()
@@ -293,6 +297,7 @@ pub fn (mut ch Channel) try_push(src voidptr) ChanState {
 	return ch.try_push_priv(src, true)
 }
 
+@[unsafe]
 fn (mut ch Channel) try_push_to_select(src voidptr) bool {
 	ch.read_sub_mtx.lock()
 	defer {
@@ -315,6 +320,7 @@ fn (mut ch Channel) try_push_to_select(src voidptr) bool {
 	return false
 }
 
+@[unsafe]
 fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 	$if race ? {
 		// Like Go: a send is a read of the channel, which races with an unsynchronized close.
@@ -337,6 +343,7 @@ fn (mut ch Channel) try_push_priv(src voidptr, no_block bool) ChanState {
 	return ch.try_push_impl(src, no_block)
 }
 
+@[unsafe]
 fn (mut ch Channel) try_push_impl(src voidptr, no_block bool) ChanState {
 	if C.atomic_load_u16(&ch.closed) != 0 {
 		return .closed
@@ -385,7 +392,7 @@ fn (mut ch Channel) try_push_impl(src voidptr, no_block bool) ChanState {
 			ch.writesem.post()
 			return .closed
 		}
-		if ch.cap == 0 {
+		if ch.ringbuf == unsafe { nil } {
 			// try to advertise current object as readable
 			mut read_in_progress := false
 			race_release_on(src)
@@ -531,6 +538,7 @@ pub fn (mut ch Channel) try_pop(dest voidptr) ChanState {
 	return ch.try_pop_priv(dest, true)
 }
 
+@[unsafe]
 fn (mut ch Channel) try_pop_from_select(dest voidptr) bool {
 	ch.write_sub_mtx.lock()
 	defer {
@@ -562,6 +570,7 @@ fn (mut ch Channel) try_pop_select_priv(dest voidptr) ChanState {
 	return ch.try_pop_impl(dest, true)
 }
 
+@[unsafe]
 fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 	$if race ? {
 		racedisable()
@@ -581,13 +590,14 @@ fn (mut ch Channel) try_pop_priv(dest voidptr, no_block bool) ChanState {
 	return ch.try_pop_impl(dest, no_block)
 }
 
+@[unsafe]
 fn (mut ch Channel) try_pop_impl(dest voidptr, no_block bool) ChanState {
 	spinloops_sem_, spinloops_ := if no_block { u32(1), u32(1) } else { spinloops, spinloops_sem }
 	mut have_swapped := false
 	mut write_in_progress := false
 	for {
 		mut got_sem := false
-		if ch.cap == 0 {
+		if ch.ringbuf == unsafe { nil } {
 			// unbuffered channel - first see if a `push()` has adversized
 			mut rdadr := C.atomic_load_ptr(unsafe { &voidptr(&ch.read_adr) })
 			for rdadr != unsafe { nil } {
@@ -687,7 +697,7 @@ fn (mut ch Channel) try_pop_impl(dest voidptr, no_block bool) ChanState {
 		// try to advertise `dest` as writable
 		race_release_on(dest)
 		C.atomic_store_ptr(unsafe { &voidptr(&ch.write_adr) }, dest)
-		if ch.cap == 0 {
+		if ch.ringbuf == unsafe { nil } {
 			mut rdadr := C.atomic_load_ptr(unsafe { &voidptr(&ch.read_adr) })
 			if rdadr != unsafe { nil } {
 				mut dest2 := dest
@@ -758,6 +768,7 @@ fn (mut ch Channel) try_pop_impl(dest voidptr, no_block bool) ChanState {
 // both missed each other while their state was still `select_state_scanning`.
 // The select with the lowest state address rescans; later selects wake it and
 // remain in the claimable waiting state.
+@[unsafe]
 fn select_recheck_after_waiting(mut channels []&Channel, dir []Direction, state &u32) bool {
 	mut found_later_waiter := false
 	for i, mut ch in channels {
@@ -832,6 +843,7 @@ fn channel_select_lang(mut channels []&Channel, dir []Direction, mut objrefs []v
 	return channel_select_priv(mut channels, dir, mut objrefs, actual_timeout, closed_pop_mode)
 }
 
+@[unsafe]
 fn channel_select_priv(mut channels []&Channel, dir []Direction, mut objrefs []voidptr, timeout i64, closed_pop_mode SelectClosedPopMode) int {
 	$if debug_channels ? {
 		assert channels.len == dir.len

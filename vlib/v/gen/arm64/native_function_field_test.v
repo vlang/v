@@ -9,6 +9,7 @@ $if macos && arm64 {
 	import v.types
 }
 
+@[unsafe]
 fn test_native_function_fields_take_precedence_over_method_names() {
 	$if macos && arm64 {
 		source := r'module main

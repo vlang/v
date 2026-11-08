@@ -257,6 +257,7 @@ fn init_sapp_event(event_type EventType) {
 }
 
 // call_sapp_event dispatches the event to the user's callback.
+@[unsafe]
 fn call_sapp_event(e &Event) bool {
 	if !g_sapp_state.cleanup_called {
 		if g_sapp_state.desc.event_cb != unsafe { nil } {
@@ -273,6 +274,7 @@ fn call_sapp_event(e &Event) bool {
 }
 
 // sapp_call_init calls the user's init callback.
+@[unsafe]
 fn sapp_call_init() {
 	if g_sapp_state.desc.init_cb != unsafe { nil } {
 		g_sapp_state.desc.init_cb()
@@ -283,6 +285,7 @@ fn sapp_call_init() {
 }
 
 // sapp_call_frame calls the user's frame callback.
+@[unsafe]
 fn sapp_call_frame() {
 	if g_sapp_state.desc.frame_cb != unsafe { nil } {
 		g_sapp_state.desc.frame_cb()
@@ -292,6 +295,7 @@ fn sapp_call_frame() {
 }
 
 // sapp_call_cleanup calls the user's cleanup callback.
+@[unsafe]
 fn sapp_call_cleanup() {
 	if !g_sapp_state.cleanup_called {
 		if g_sapp_state.desc.cleanup_cb != unsafe { nil } {
@@ -334,6 +338,7 @@ fn sapp_timing_get_avg(t &SappTiming) f64 {
 
 // === Drop file helpers ===
 
+@[unsafe]
 fn sapp_dropped_file_path_ptr(index int) &char {
 	assert g_sapp_state.drop.buffer != unsafe { nil }
 	assert index >= 0 && index <= g_sapp_state.drop.max_files
@@ -368,6 +373,7 @@ fn sapp_desc_defaults(desc &Desc) Desc {
 	return res
 }
 
+@[unsafe]
 fn sapp_init_state(desc &Desc) {
 	unsafe { C.memset(&g_sapp_state, 0, int(sizeof(g_sapp_state))) }
 	g_sapp_state.desc = sapp_desc_defaults(desc)
@@ -420,6 +426,7 @@ fn sapp_init_state(desc &Desc) {
 	g_sapp_state.mouse.shown = true
 }
 
+@[unsafe]
 fn sapp_discard_state() {
 	if g_sapp_state.clipboard.enabled && g_sapp_state.clipboard.buffer != unsafe { nil } {
 		unsafe { C.free(g_sapp_state.clipboard.buffer) }

@@ -94,6 +94,7 @@ pub fn (mut m Mutex) init() {
 	m.lazy_init()
 }
 
+@[unsafe]
 fn (mut m Mutex) lazy_init() {
 	if C.atomic_load_u32(&m.inited) == 2 {
 		return
@@ -258,6 +259,7 @@ pub fn new_semaphore_init(n u32) &Semaphore {
 // init initialises the Semaphore instance with `n` as its initial counter value.
 // It should be called once before the semaphore is used, since it creates the associated
 // resources needed for the semaphore to work properly.
+@[unsafe]
 pub fn (mut sem Semaphore) init(n u32) {
 	C.atomic_store_u32(&sem.count, n)
 	should_be_zero(C.pthread_mutex_init(&sem.mtx, unsafe { nil }))

@@ -324,6 +324,7 @@ fn test_owned_field_scalar_index_borrows() {
 // A pointer nested inside a non-owning aggregate can still escape the element's lifetime.
 // The final-type check must recurse through the selected aggregate instead of accepting it
 // merely because the aggregate itself has no destructor.
+@[unsafe]
 fn test_owned_nested_pointer_aggregate_escape_is_rejected() {
 	v3_bin := build_v3_array_accessor_borrow_ownership() or { return }
 	compile := compile_v3_uncloneable_array_ownership_program(v3_bin, 'owned_nested_pointer_aggregate_escape', "struct View {

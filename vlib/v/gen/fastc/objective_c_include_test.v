@@ -54,6 +54,7 @@ fn test_fastc_macos_cocoa_keeps_tcc_without_header_projection() {
 	assert !os.exists(program)
 }
 
+@[unsafe]
 fn test_fastc_objective_c_include_can_use_v_types() {
 	$if !macos {
 		return

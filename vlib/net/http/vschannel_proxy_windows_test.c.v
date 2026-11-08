@@ -1,6 +1,7 @@
 // vtest build: windows
 module http
 
+@[unsafe]
 fn C.vschannel_build_proxy_request(&u16, int, &&char, &int) int
 
 fn schannel_proxy_request_for_test(host &u16, port int) (int, string) {
@@ -75,6 +76,7 @@ fn test_schannel_proxy_request_accepts_long_hostname() {
 	assert idn_request == 'CONNECT ${ascii_host}:443 HTTP/1.0\r\nUser-Agent: webclient\r\n\r\n'
 }
 
+@[unsafe]
 fn test_schannel_proxy_request_rejects_invalid_input() {
 	$if no_vschannel ? {
 		return

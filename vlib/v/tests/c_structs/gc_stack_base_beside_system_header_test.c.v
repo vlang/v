@@ -2,6 +2,7 @@
 #include <stdio.h>
 
 // A system header in the program must not leave builtin's C.GC_stack_base an incomplete type.
+@[unsafe]
 fn test_gc_stack_base_is_complete_beside_a_system_header() {
 	$if gcboehm ? {
 		mut sb := C.GC_stack_base{}

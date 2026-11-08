@@ -89,7 +89,7 @@ pub fn (mut pv Picoev) init() {
 }
 
 // add a file descriptor to the event loop.
-@[direct_array_access]
+@[direct_array_access; unsafe]
 pub fn (mut pv Picoev) add(fd int, events int, timeout int, callback voidptr) int {
 	if pv == unsafe { nil } || fd < 0 || fd >= max_fds {
 		return -1 // Invalid arguments
@@ -112,7 +112,7 @@ pub fn (mut pv Picoev) add(fd int, events int, timeout int, callback voidptr) in
 }
 
 // remove a file descriptor from the event loop.
-@[direct_array_access]
+@[direct_array_access; unsafe]
 pub fn (mut pv Picoev) delete(fd int) int {
 	if fd < 0 || fd >= max_fds {
 		return -1 // Invalid fd
@@ -308,6 +308,7 @@ fn default_error_callback(_data voidptr, _req pico_http_parser.Request, mut res 
 }
 
 // new creates a `Picoev` struct and initializes the main loop.
+@[unsafe]
 pub fn new(config Config) !&Picoev {
 	listening_socket_fd := listen(config) or {
 		elog('Error during listen: ${err}')

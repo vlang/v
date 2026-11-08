@@ -1,5 +1,6 @@
 #include <stdlib.h>
 
+@[unsafe]
 fn C.abs(x int) int
 
 struct CFunctionValueHolder {

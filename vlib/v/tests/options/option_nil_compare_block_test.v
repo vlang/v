@@ -2,6 +2,7 @@ struct Tag {
 	id string
 }
 
+@[unsafe]
 fn nil_tag() &Tag {
 	return unsafe { nil }
 }
@@ -54,6 +55,7 @@ fn test_a_nil_operand_block_compares_correctly_for_both_states() {
 }
 
 // The plain spelling must keep working, and must not evaluate anything extra.
+@[unsafe]
 fn test_a_plain_unsafe_nil_operand_still_compares() {
 	empty := ?&Tag(none)
 	present := ?&Tag(&Tag{ id: 'y' })
@@ -100,6 +102,7 @@ fn test_nested_nil_operand_blocks_keep_every_statement() {
 }
 
 // A bare `nil` returned from a function is unaffected by any of the above.
+@[unsafe]
 fn test_comparing_against_a_nil_returning_call() {
 	empty := ?&Tag(none)
 	assert empty == unsafe { nil }

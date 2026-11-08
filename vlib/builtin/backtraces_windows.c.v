@@ -79,7 +79,7 @@ pub fn print_backtrace_skipping_top_frames(skipframes int) bool {
 	return false
 }
 
-@[direct_array_access]
+@[direct_array_access; unsafe]
 fn print_backtrace_skipping_top_frames_msvc(skipframes int) bool {
 	$if msvc {
 		mut offset := u64(0)

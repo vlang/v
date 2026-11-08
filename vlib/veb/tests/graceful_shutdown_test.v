@@ -106,6 +106,7 @@ fn wait_for_server(port int) ! {
 	return error('server did not start listening in time')
 }
 
+@[unsafe]
 fn test_veb_graceful_shutdown_waits_for_in_flight_requests() {
 	mut listener := net.listen_tcp(.ip, '${graceful_shutdown_host}:0') or { panic(err) }
 	port := listener.addr()!.port()!

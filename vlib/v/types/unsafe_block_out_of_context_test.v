@@ -132,6 +132,7 @@ fn main() {
 	assert tc.notices.any(it.msg.contains('reading a union field')), tc.notices.str()
 }
 
+@[unsafe]
 fn test_defer_recheck_uses_lexical_unsafe_context() {
 	path := os.join_path(os.vtmp_dir(), 'v3_defer_exit_unsafe_${os.getpid()}.v')
 	os.write_file(path, 'module main

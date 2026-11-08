@@ -261,6 +261,7 @@ fn translated_handler_address() voidptr {
 	return voidptr(translated_increment)
 }
 
+@[unsafe]
 fn test_translated_callback_address_assignment() {
 	mut callback := TranslatedHandler(unsafe { nil })
 	assert callback == 0

@@ -193,6 +193,7 @@ pub fn new_clipboard() &Clipboard {
 
 // new_x11_clipboard initializes a new clipboard of the given selection type.
 // Multiple clipboard instance types can be initialized and used separately.
+@[unsafe]
 fn new_x11_clipboard(selection AtomType) &Clipboard {
 	if selection !in [.clipboard, .primary, .secondary] {
 		panic('Wrong AtomType. Must be one of .primary, .secondary or .clipboard.')
@@ -227,6 +228,7 @@ fn new_x11_clipboard(selection AtomType) &Clipboard {
 }
 
 // check_availability returns `true` if the clipboard is available for use.
+@[unsafe]
 pub fn (cb &Clipboard) check_availability() bool {
 	return cb.display != unsafe { nil }
 }
@@ -427,6 +429,7 @@ fn (mut cb Clipboard) intern_atoms() {
 	}
 }
 
+@[unsafe]
 fn read_property(d &C.Display, w Window, p Atom) Property {
 	actual_type := Atom(0)
 	actual_format := 0
@@ -519,6 +522,7 @@ fn create_xwindow(display &C.Display) Window {
 		n), C.WhitePixel(display, n))
 }
 
+@[unsafe]
 fn new_display() &C.Display {
 	return C.XOpenDisplay(unsafe { nil })
 }

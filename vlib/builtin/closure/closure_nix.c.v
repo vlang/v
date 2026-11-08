@@ -24,7 +24,7 @@ fn closure_mtx_ptr_platform() voidptr {
 	return unsafe { voidptr(&g_closure.closure_mtx[0]) }
 }
 
-@[inline]
+@[inline; unsafe]
 fn closure_alloc_platform() &u8 {
 	mut p := &u8(unsafe { nil })
 	$if freestanding {
@@ -37,7 +37,7 @@ fn closure_alloc_platform() &u8 {
 		// Main OS environments use mmap to get aligned pages
 		p = unsafe {
 			C.mmap(0, g_closure.v_page_size * 2, C.PROT_READ | C.PROT_WRITE,
-				C.MAP_ANONYMOUS | C.MAP_PRIVATE, -1, 0)
+				32 | C.MAP_PRIVATE, -1, 0)
 		}
 		if p == &u8(C.MAP_FAILED) {
 			return unsafe { nil }
@@ -68,7 +68,7 @@ fn get_page_size_platform() int {
 	mut page_size := 0x4000
 	$if !freestanding {
 		// Query actual page size in OS environments
-		page_size = unsafe { int(C.sysconf(C._SC_PAGESIZE)) }
+		page_size = unsafe { int(C.sysconf(30)) }
 	}
 	// Calculate required allocation size
 	page_size = page_size * (((assumed_page_size - 1) / page_size) + 1)

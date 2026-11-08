@@ -6,6 +6,7 @@ import v.parser
 import v.pref
 import v.types
 
+@[unsafe]
 fn test_scalar_result_provenance_summary_requires_local_consumption() {
 	path := os.join_path(os.vtmp_dir(), 'scalar_result_borrow_${os.getpid()}.v')
 	os.write_file(path, 'module main

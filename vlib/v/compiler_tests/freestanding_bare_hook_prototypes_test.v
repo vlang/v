@@ -5,6 +5,7 @@ const bare_hook_vexe = @VEXE
 // builtin's `-freestanding` branches call hooks that only a bare builtin
 // implementation defines. The generated C must declare each one before its
 // first call, or clang 16+ and gcc 14 reject it as an implicit declaration.
+@[unsafe]
 fn test_freestanding_output_declares_bare_hooks_before_use() {
 	root := os.join_path(os.vtmp_dir(), 'v3_freestanding_bare_hooks_${os.getpid()}')
 	os.rmdir_all(root) or {}

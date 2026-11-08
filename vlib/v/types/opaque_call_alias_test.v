@@ -17,6 +17,7 @@ fn check_alias_source(name string, source string) TypeChecker {
 	return tc
 }
 
+@[unsafe]
 fn test_voidptr_lookup_with_an_unsafe_boundary_does_not_borrow_its_arguments() {
 	tc := check_alias_source('voidptr', 'struct Queryable { mut: on_query fn (&Queryable, uint) voidptr = unsafe { nil } }
 fn (q &Queryable) query(idx uint) voidptr { return q.on_query(q, idx) }
@@ -145,6 +146,7 @@ fn main() {
 	assert tc.errors.any(it.msg == '`alias.x` aliases mutable data from an immutable value'), tc.errors.str()
 }
 
+@[unsafe]
 fn test_voidptr_from_a_stored_callback_still_borrows_its_argument() {
 	tc := check_alias_source('stored', 'struct Item { mut: x int }
 struct Getter { get fn (&Item) voidptr = unsafe { nil } }
@@ -160,6 +162,7 @@ fn main() {
 	assert tc.errors.any(it.msg == '`alias.x` aliases mutable data from an immutable value'), tc.errors.str()
 }
 
+@[unsafe]
 fn container_lookup_source(fields string) string {
 	return 'struct View { mut: render_inc int }
 struct Queryable {
@@ -244,6 +247,7 @@ fn main() {}
 	assert tc.errors.any(it.msg == '`alias.x` aliases mutable data from an immutable value'), tc.errors.str()
 }
 
+@[unsafe]
 fn test_scalar_passed_to_a_stored_callback_reference_parameter_is_borrowed() {
 	tc := check_alias_source('stored_scalar_ref', 'struct Item { mut: x int }
 struct Getter { get fn (&int) &Item = unsafe { nil } }
@@ -257,6 +261,7 @@ fn main() {}
 	assert tc.errors.any(it.msg == '`alias.x` aliases mutable data from an immutable value'), tc.errors.str()
 }
 
+@[unsafe]
 fn test_scalar_passed_by_value_to_a_stored_callback_is_not_borrowed() {
 	tc := check_alias_source('stored_scalar', 'struct Item { mut: x int }
 struct Getter { get fn (int) &Item = unsafe { nil } }

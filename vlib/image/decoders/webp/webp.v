@@ -4010,6 +4010,7 @@ fn (mut a Arena) push_block(block []u8) {
 
 // track registers an owned array so its backing block is freed in free_all().
 // Retain the header without copying the elements. Never call this on a slice view.
+@[unsafe]
 fn (mut a Arena) track[T](arr []T) {
 	if arr.data == unsafe { nil } {
 		return

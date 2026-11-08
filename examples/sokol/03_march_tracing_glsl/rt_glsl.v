@@ -26,6 +26,7 @@ import time
 
 #include "@VMODROOT/rt_glsl.h" # It should be generated with `v shader .` (see the instructions at the top of this file)
 
+@[unsafe]
 fn C.rt_shader_desc(gfx.Backend) &gfx.ShaderDesc
 
 const win_width = 800
@@ -52,6 +53,7 @@ mut:
 /******************************************************************************
 * Texture functions
 ******************************************************************************/
+@[unsafe]
 fn create_texture(w int, h int, buf &u8) (gfx.Image, gfx.Sampler) {
 	sz := w * h * 4
 	mut img_desc := gfx.ImageDesc{

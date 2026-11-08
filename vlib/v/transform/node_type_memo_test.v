@@ -3,6 +3,7 @@ module transform
 import v.flat
 import v.types
 
+@[unsafe]
 fn test_node_type_memo_follows_binding_changes_and_rewritten_descendants() {
 	mut a := flat.FlatAst.new()
 	values := a.add_node(flat.Node{ kind: .ident, value: 'values' })

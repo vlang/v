@@ -75,7 +75,7 @@ pub struct AtomicVal[T] {
 }
 
 // new_atomic creates a new atomic value of `T` type
-@[inline]
+@[inline; unsafe]
 pub fn new_atomic[T](val T) &AtomicVal[T] {
 	$if T is $int {
 		return &AtomicVal[T]{

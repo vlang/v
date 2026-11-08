@@ -89,6 +89,7 @@ mut:
 	speaker &Speaker = unsafe { nil }
 }
 
+@[unsafe]
 fn test_set_nil_to_ref_interface_type_fields() {
 	mut foo := Foo{
 		speaker: unsafe { nil }

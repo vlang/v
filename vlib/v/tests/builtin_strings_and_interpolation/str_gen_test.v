@@ -208,6 +208,7 @@ fn test_struct_with_struct_pointer() {
 	assert w.str() == 'Wrapper4{\n    foo: &Foo{}\n}'
 }
 
+@[unsafe]
 fn test_struct_with_nil() {
 	w := Wrapper4{unsafe { nil }}
 	assert '${w}' == 'Wrapper4{\n    foo: &nil\n}'

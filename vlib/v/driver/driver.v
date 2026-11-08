@@ -48,6 +48,21 @@ $if !skip_arm64 ? {
 $if !skip_x64 ? {
 	import v.gen.x64
 }
+$if !skip_riscv64 ? {
+	import v.gen.riscv64
+}
+$if !skip_loongarch64 ? {
+	import v.gen.loongarch64
+}
+$if !skip_ppc64le ? {
+	import v.gen.ppc64le
+}
+$if !skip_arm32 ? {
+	import v.gen.arm32
+}
+$if !skip_s390x ? {
+	import v.gen.s390x
+}
 
 $if !skip_ssa ? {
 	import v.ssa
@@ -3022,12 +3037,14 @@ fn (plan &V3CCompilerFlagPlan) all_flags(support_inputs []string) []string {
 	return flags
 }
 
+@[unsafe]
 fn run_v3_parallel_c_compile_task(raw_task voidptr) voidptr {
 	mut task := unsafe { &V3ParallelCCompileTask(raw_task) }
 	task.result = cmdexec.run_in(task.compiler, task.args, task.dir)
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn run_v3_parallel_c_dependency_task(raw_task voidptr) voidptr {
 	mut task := unsafe { &V3ParallelCCompileTask(raw_task) }
 	task.dependencies = c_object_dependencies_in(task.compiler, task.dependency_args, task.source_path, task.dir)
@@ -4629,6 +4646,7 @@ fn ownership_checker_compiled() bool {
 }
 
 // prealloc_scope_begin_for_v3 starts a disposable prealloc scope when available.
+@[unsafe]
 fn prealloc_scope_begin_for_v3() voidptr {
 	$if prealloc {
 		return unsafe { prealloc_scope_begin() }
@@ -4654,6 +4672,7 @@ fn prealloc_scope_free_for_v3(scope voidptr) {
 // free_retained_scopes releases the stage arenas kept alive
 // through code generation. Unmapping multi-gigabyte arenas is slow enough to be
 // worth overlapping with the C compiler, which reads only the generated file.
+@[unsafe]
 fn free_retained_scopes(transform_scope voidptr, prepare_scope voidptr) {
 	if transform_scope != unsafe { nil } {
 		prealloc_scope_free_for_v3(transform_scope)
@@ -6852,11 +6871,12 @@ fn clone_flat_node_owned(node flat.Node) flat.Node {
 	return node.clone_owned()
 }
 
+@[unsafe]
 fn clone_flat_ast_after_transform(ast &flat.FlatAst) &flat.FlatAst {
 	return clone_flat_ast_after_transform_from_scope(ast, unsafe { nil })
 }
 
-@[manualfree]
+@[manualfree; unsafe]
 fn clone_flat_ast_after_transform_from_scope(ast &flat.FlatAst, scope voidptr) &flat.FlatAst {
 	mut nodes := []flat.Node{cap: ast.nodes.len}
 	if scope == unsafe { nil } {
@@ -7323,7 +7343,7 @@ fn effective_c_compiler_name(compiler string, target pref.Target) string {
 }
 
 fn v3_effective_c_compiler_for_codegen(backend string, c_compiler string, use_implicit_tcc_semantics bool, target pref.Target) string {
-	if backend in ['arm64', 'x64'] || use_implicit_tcc_semantics {
+	if backend in ['arm64', 'x64', 'riscv64'] || use_implicit_tcc_semantics {
 		return 'tinyc'
 	}
 	return effective_c_compiler_name(c_compiler, target)
@@ -10704,7 +10724,11 @@ pub fn run(args []string) {
 		no_cache = true
 	}
 	should_run = should_run && !skip_running
-	native_linux_object := backend == 'arm64' && target_os == 'linux' && explicit_output
+	native_linux_object := (backend in ['arm64', 'riscv64', 'loongarch64', 'ppc64le', 'arm32', 's390x'] && target_os == 'linux' && explicit_output) || (backend == 'x64' && target_os in [
+		'linux',
+		'macos',
+		'windows',
+	] && explicit_output)
 		&& output_file.ends_with('.o')
 	if is_o && !native_linux_object && (backend !in ['c', 'fastc'] || !explicit_output
 		|| (!output_file.ends_with('.c') && !output_file.ends_with('.o'))) {
@@ -10884,9 +10908,9 @@ pub fn run(args []string) {
 	if ownership_mode {
 		record_user_define(mut user_defines, mut compile_values, 'ownership')
 	}
-	if backend !in ['c', 'fastc', 'arm64', 'x64', 'wasm', 'eval']
+	if backend !in ['c', 'fastc', 'arm64', 'arm32', 'x64', 'riscv64', 'ppc64le', 's390x', 'loongarch64', 'wasm', 'eval']
 		&& !(backend == 'js' && is_checker_fixture) {
-		eprintln('unknown backend `${backend}`; expected c, fastc, arm64, x64, wasm, or eval')
+		eprintln('unknown backend `${backend}`; expected c, fastc, arm64, arm32, x64, riscv64, ppc64le, s390x, loongarch64, wasm, or eval')
 		exit(1)
 	}
 	if hot_fn != '' && backend != 'arm64' {
@@ -10900,7 +10924,7 @@ pub fn run(args []string) {
 	for requested in compile_backends {
 		for name in requested.split(',') {
 			if name.trim_space() !in ['c', 'fastc', 'arm64', 'aarch64', 'x64', 'amd64', 'x86_64',
-				'x86-64', 'wasm', 'wasm32', 'eval'] {
+				'x86-64', 'riscv64', 'riscv', 'rv64', 'loongarch64', 'wasm', 'wasm32', 'eval'] {
 				eprintln('unknown compile backend `${name.trim_space()}`')
 				exit(1)
 			}
@@ -10968,15 +10992,32 @@ pub fn run(args []string) {
 		// module cache, including the native-code bridge used by macOS TCC.
 		no_cache = true
 	}
-	if backend == 'x64' && (target.os != 'linux' || target.arch != 'amd64') {
-		eprintln('the x64 backend currently supports only linux/amd64')
+	if backend == 'x64' && (target.arch != 'amd64' || (target.os != 'linux' && target.os != 'macos' && target.os != 'windows')) {
+		eprintln('the x64 backend currently supports only linux/amd64, macos/amd64 and windows/amd64')
+		exit(1)
+	}
+	if backend == 'riscv64' && (target.os != 'linux' || target.arch != 'riscv64') {
+		eprintln('the riscv64 backend currently supports only linux/riscv64')
+		exit(1)
+	}
+	if backend == 'loongarch64' && (target.os != 'linux' || target.arch != 'loongarch64') {
+		eprintln('the loongarch64 backend currently supports only linux/loongarch64')
+		exit(1)
+	}
+	if backend == 'ppc64le' && (target.os != 'linux' || target.arch != 'ppc64le') {
+		eprintln('the ppc64le backend currently supports only linux/ppc64le')
+		exit(1)
+	}
+	if backend == 'arm32' && (target.os != 'linux' || target.arch != 'arm32') {
+		eprintln('the arm32 backend currently supports only linux/arm')
+		exit(1)
+	}
+	if backend == 's390x' && (target.os != 'linux' || target.arch != 's390x') {
+		eprintln('the s390x backend currently supports only linux/s390x')
 		exit(1)
 	}
 	if backend == 'x64' {
-		$if !linux || !amd64 {
-			eprintln('the x64 backend currently requires a linux/amd64 host')
-			exit(1)
-		}
+		// Allow cross-compilation from any host; x64 codegen is platform-independent.
 	}
 	if backend == 'x64' && is_shared {
 		eprintln('the x64 backend does not support `-shared` yet')
@@ -11145,6 +11186,11 @@ pub fn run(args []string) {
 	mut include_fastc := all_backends
 	mut include_arm64 := all_backends
 	mut include_x64 := all_backends
+	mut include_riscv64 := all_backends
+	mut include_loongarch64 := all_backends
+	mut include_ppc64le := all_backends
+	mut include_arm32 := all_backends
+	mut include_s390x := all_backends
 	mut include_wasm := all_backends
 	mut include_eval := all_backends
 	for cb in compile_backends {
@@ -11158,6 +11204,12 @@ pub fn run(args []string) {
 				}
 				'x64', 'amd64', 'x86_64', 'x86-64' {
 					include_x64 = true
+				}
+				'riscv64', 'riscv', 'rv64' {
+					include_riscv64 = true
+				}
+				'loongarch64', 'loongarch', 'la64' {
+					include_loongarch64 = true
 				}
 				'wasm', 'wasm32' {
 					include_wasm = true
@@ -11181,6 +11233,21 @@ pub fn run(args []string) {
 		'x64' {
 			include_x64 = true
 		}
+		'riscv64' {
+			include_riscv64 = true
+		}
+		'loongarch64' {
+			include_loongarch64 = true
+		}
+		'ppc64le' {
+			include_ppc64le = true
+		}
+		'arm32', 'arm' {
+			include_arm32 = true
+		}
+		's390x' {
+			include_s390x = true
+		}
 		'wasm' {
 			include_wasm = true
 		}
@@ -11199,6 +11266,21 @@ pub fn run(args []string) {
 	if !include_x64 {
 		user_defines << 'skip_x64'
 	}
+	if !include_riscv64 {
+		user_defines << 'skip_riscv64'
+	}
+	if !include_loongarch64 {
+		user_defines << 'skip_loongarch64'
+	}
+	if !include_ppc64le {
+		user_defines << 'skip_ppc64le'
+	}
+	if !include_arm32 {
+		user_defines << 'skip_arm32'
+	}
+	if !include_s390x {
+		user_defines << 'skip_s390x'
+	}
 	if !include_wasm {
 		user_defines << 'skip_wasm'
 	}
@@ -11206,7 +11288,7 @@ pub fn run(args []string) {
 	// from the final skips, so an explicit `-d skip_wasm` also drops the
 	// driver's gated `v.ssa` import.
 	if 'skip_arm64' in user_defines && 'skip_x64' in user_defines
-		&& 'skip_wasm' in user_defines && 'skip_ssa' !in user_defines {
+		&& 'skip_riscv64' in user_defines && 'skip_ppc64le' in user_defines && 'skip_wasm' in user_defines && 'skip_ssa' !in user_defines {
 		user_defines << 'skip_ssa'
 	}
 	if !include_eval {
@@ -13121,7 +13203,7 @@ pub fn run(args []string) {
 		// that only prints literals: the interfaces and the objects it publishes
 		// serve every other program.
 		trivial_literal_output = !prefs.output_cross_c && !is_trace_calls && !no_skip_unused
-			&& backend !in ['arm64', 'x64'] && test_files.len == 0 && !is_checker_fixture
+			&& backend !in ['arm64', 'x64', 'riscv64', 'loongarch64'] && test_files.len == 0 && !is_checker_fixture
 			&& (effective_c_compiler != 'msvc' || (target.os == 'windows' && minimal_literal_output))
 			&& !cache_state.manager.enabled
 			&& is_trivial_literal_output_program_for_target(a, pre_tc.diagnostic_files, target)
@@ -14681,16 +14763,33 @@ pub fn run(args []string) {
 			b.step('x64 gen')
 
 			obj_file := os.join_path(os.vtmp_dir(), 'v3_x64_${os.getpid()}_${tempname.unique_token()}.o')
-			g.write_file(obj_file)
-			b.step('x64 object')
-			x64_object_optimization_flags := v3_prod_c_object_optimization_flags(is_prod,
-				no_prod_options, false, parallel_cc, false)
-			native_support := x64_native_support_object(a, prefs, user_c_flags,
-				x64_object_optimization_flags, c_compiler) or {
-				os.rm(obj_file) or {}
-				eprintln(err.msg())
-				exit(1)
+			if target.os == 'macos' {
+				x64.write_macho_from_elf(g.elf, obj_file)
+			} else if target.os == 'windows' {
+				x64.write_pe_from_elf(g.elf, obj_file)
+			} else {
+				g.write_file(obj_file)
 			}
+			b.step('x64 object')
+			// Object-only mode: skip linking for cross-compilation (host != target)
+			x64_cross_compile := is_o && (pref.host_target().os != target.os || pref.host_target().arch != target.arch)
+			if x64_cross_compile {
+				os.mv(obj_file, bin_file) or {
+					eprintln(err.msg())
+					exit(1)
+				}
+				b.step('link')
+				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+			}
+			if !x64_cross_compile {
+				x64_object_optimization_flags := v3_prod_c_object_optimization_flags(is_prod,
+					no_prod_options, false, parallel_cc, false)
+				native_support := x64_native_support_object(a, prefs, user_c_flags,
+					x64_object_optimization_flags, c_compiler) or {
+					os.rm(obj_file) or {}
+					eprintln(err.msg())
+					exit(1)
+				}
 
 			mut linker_args := ['-no-pie', obj_file, '-o', bin_file]
 			if native_support.object.len > 0 {
@@ -14705,13 +14804,20 @@ pub fn run(args []string) {
 					eprintln(err.msg())
 					exit(1)
 				}
-				mut native_object_stats := CObjectCacheStats{}
-				native_link_flags = prepare_c_flags_for_link(native_link_flags,
-					environment_c_flags, []string{}, x64_object_optimization_flags, c99, no_std,
-					'', target_args, prefs.target, linker, false, os.vtmp_dir(),
-					mut native_object_stats) or {
-					eprintln(err.msg())
-					exit(1)
+				b.step('link')
+				clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+				if should_run {
+					run_result := run_binary(bin_file, run_args, remove_binary_after_run)
+					if run_result != 0 {
+						exit(run_result)
+					}
+					b.step('run')
+				} else if test_files.len > 0 && (!explicit_output || is_checker_fixture || show_test_stats) {
+					test_result := run_test_binary(bin_file, explicit_output)
+					if test_result != 0 {
+						exit(test_result)
+					}
+					b.step('test')
 				}
 			}
 			linker_args << native_link_flags
@@ -14751,6 +14857,191 @@ pub fn run(args []string) {
 		} $else {
 			eprintln('x64 support is not compiled into this executable')
 			eprintln('Rebuild with `v -compile-backend x64 self` on Linux AMD64.')
+			exit(1)
+		}
+	} else if backend == 'riscv64' {
+		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
+			eprintln(msg)
+			exit(1)
+		}
+		$if !skip_riscv64 ? {
+			mut m := ssa.build_with_options(a, used_fns, pre_tc, ssa.BuildOptions{
+				track_uses:        false
+				thread_stack_size: prefs.thread_stack_size
+				test_files:        test_files
+				test_run_only:     run_only
+				exact_used_fns:    true
+				target:            ssa.TargetData{ os: prefs.target.os, arch: 'riscv64' }
+			})
+			b.step('ssa build')
+
+			mut g := riscv64.Gen.new(m)
+			g.gen()
+			b.step('riscv64 gen')
+
+			// The experimental Linux RISC-V64 backend currently supports object
+			// output only, mirroring the ARM64 Linux path.
+			if !is_o {
+				eprintln('the experimental RISC-V64 backend supports object output only; use -o file.o.')
+				exit(1)
+			}
+			obj_file := os.join_path(os.vtmp_dir(), 'v3_riscv64_${os.getpid()}_${tempname.unique_token()}.o')
+			g.write_file(obj_file)
+			b.step('riscv64 object')
+			os.mv(obj_file, bin_file) or {
+				eprintln(err.msg())
+				exit(1)
+			}
+			b.step('link')
+		} $else {
+			eprintln('riscv64 support is not compiled into this executable')
+			exit(1)
+		}
+	} else if backend == 'loongarch64' {
+		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
+			eprintln(msg)
+			exit(1)
+		}
+		$if !skip_loongarch64 ? {
+			mut m := ssa.build_with_options(a, used_fns, pre_tc, ssa.BuildOptions{
+				track_uses:        false
+				thread_stack_size: prefs.thread_stack_size
+				test_files:        test_files
+				test_run_only:     run_only
+				exact_used_fns:    true
+				target:            ssa.TargetData{ os: prefs.target.os, arch: 'loongarch64' }
+			})
+			b.step('ssa build')
+
+			mut g := loongarch64.Gen.new(m)
+			g.gen()
+			b.step('loongarch64 gen')
+
+			if !is_o {
+				eprintln('the experimental loongarch64 backend supports object output only; use -o file.o.')
+				exit(1)
+			}
+			obj_file := os.join_path(os.vtmp_dir(), 'v3_loongarch64_${os.getpid()}_${tempname.unique_token()}.o')
+			g.write_file(obj_file)
+			b.step('loongarch64 object')
+			os.mv(obj_file, bin_file) or {
+				eprintln(err.msg())
+				exit(1)
+			}
+			b.step('link')
+		} $else {
+			eprintln('loongarch64 support is not compiled into this executable')
+			exit(1)
+		}
+	} else if backend == 'ppc64le' {
+		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
+			eprintln(msg)
+			exit(1)
+		}
+		$if !skip_ppc64le ? {
+			mut m := ssa.build_with_options(a, used_fns, pre_tc, ssa.BuildOptions{
+				track_uses:        false
+				thread_stack_size: prefs.thread_stack_size
+				test_files:        test_files
+				test_run_only:     run_only
+				exact_used_fns:    true
+				target:            ssa.TargetData{ os: prefs.target.os, arch: 'ppc64le' }
+			})
+			b.step('ssa build')
+
+			mut g := ppc64le.Gen.new(m)
+			g.gen()
+			b.step('ppc64le gen')
+
+			if !is_o {
+				eprintln('the experimental ppc64le backend supports object output only; use -o file.o.')
+				exit(1)
+			}
+			obj_file := os.join_path(os.vtmp_dir(), 'v3_ppc64le_${os.getpid()}_${tempname.unique_token()}.o')
+			g.write_file(obj_file)
+			b.step('ppc64le object')
+			os.mv(obj_file, bin_file) or {
+				eprintln(err.msg())
+				exit(1)
+			}
+			b.step('link')
+		} $else {
+			eprintln('ppc64le support is not compiled into this executable')
+			eprintln('Rebuild with `v -compile-backend ppc64le self`.')
+			exit(1)
+		}
+	} else if backend == 'arm32' {
+		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
+			eprintln(msg)
+			exit(1)
+		}
+		$if !skip_arm32 ? {
+			mut m := ssa.build_with_options(a, used_fns, pre_tc, ssa.BuildOptions{
+				track_uses:        false
+				thread_stack_size: prefs.thread_stack_size
+				test_files:        test_files
+				test_run_only:     run_only
+				exact_used_fns:    true
+				target:            ssa.TargetData{ ptr_size: 4, os: prefs.target.os, arch: 'arm32' }
+			})
+			b.step('ssa build')
+
+			mut g := arm32.Gen.new(m)
+			g.gen()
+			b.step('arm32 gen')
+
+			if !is_o {
+				eprintln('the experimental arm32 backend supports object output only; use -o file.o.')
+				exit(1)
+			}
+			obj_file := os.join_path(os.vtmp_dir(), 'v3_arm32_${os.getpid()}_${tempname.unique_token()}.o')
+			g.write_file(obj_file)
+			b.step('arm32 object')
+			os.mv(obj_file, bin_file) or {
+				eprintln(err.msg())
+				exit(1)
+			}
+			b.step('link')
+		} $else {
+			eprintln('arm32 support is not compiled into this executable')
+			eprintln('Rebuild with `v -compile-backend arm32 self`.')
+			exit(1)
+		}
+	} else if backend == 's390x' {
+		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
+			eprintln(msg)
+			exit(1)
+		}
+		$if !skip_s390x ? {
+			mut m := ssa.build_with_options(a, used_fns, pre_tc, ssa.BuildOptions{
+				track_uses:        false
+				thread_stack_size: prefs.thread_stack_size
+				test_files:        test_files
+				test_run_only:     run_only
+				exact_used_fns:    true
+				target:            ssa.TargetData{ endian_little: false, os: prefs.target.os, arch: 's390x' }
+			})
+			b.step('ssa build')
+
+			mut g := s390x.Gen.new(m)
+			g.gen()
+			b.step('s390x gen')
+
+			if !is_o {
+				eprintln('the experimental s390x backend supports object output only; use -o file.o.')
+				exit(1)
+			}
+			obj_file := os.join_path(os.vtmp_dir(), 'v3_s390x_${os.getpid()}_${tempname.unique_token()}.o')
+			g.write_file(obj_file)
+			b.step('s390x object')
+			os.mv(obj_file, bin_file) or {
+				eprintln(err.msg())
+				exit(1)
+			}
+			b.step('link')
+		} $else {
+			eprintln('s390x support is not compiled into this executable')
+			eprintln('Rebuild with `v -compile-backend s390x self`.')
 			exit(1)
 		}
 	} else if backend == 'arm64' {
@@ -17822,6 +18113,7 @@ fn prepare_v3_module_cache(generated_source string, cache_used_fns &map[string]b
 
 // cache_record_closure_dependencies preserves the runtime imports of compiled
 // bodies, which declaration-only headers cannot rediscover by scanning syntax.
+@[unsafe]
 fn cache_record_closure_dependencies(bodies map[string]string, prefix string, scope voidptr, mut state V3ModuleCacheState) {
 	closure_module := cache_state_module_name(state, 'builtin.closure') or { return }
 	mut declarations := ''
@@ -21672,6 +21964,7 @@ fn v3_library_source_files(a &flat.FlatAst, tc &types.TypeChecker, vroot string)
 
 // v3_mark_used_for_program runs markused as a plain build of a program does, in a
 // scope of its own when the stage scopes its scratch memory.
+@[unsafe]
 fn v3_mark_used_for_program(a &flat.FlatAst, mut tc types.TypeChecker, scoped bool, full_runtime bool, verbose bool, decl_cache &markused.MarkusedDeclCache) (map[string]bool, bool) {
 	mut scope := unsafe { nil }
 	mut markused_tc := unsafe { &tc }
@@ -21737,6 +22030,15 @@ fn skipped_backend_modules(prefs &pref.Preferences) map[string]bool {
 	}
 	if 'skip_x64' in prefs.user_defines {
 		skipped['v.gen.x64'] = true
+	}
+	if 'skip_ppc64le' in prefs.user_defines {
+		skipped['v.gen.ppc64le'] = true
+	}
+	if 'skip_arm32' in prefs.user_defines {
+		skipped['v.gen.arm32'] = true
+	}
+	if 'skip_s390x' in prefs.user_defines {
+		skipped['v.gen.s390x'] = true
 	}
 	if 'skip_wasm' in prefs.user_defines {
 		skipped['v.gen.wasm'] = true
@@ -23759,6 +24061,7 @@ struct TypeCheckerConfig {
 	missing_imports             int
 }
 
+@[unsafe]
 fn configure_type_checker(mut tc types.TypeChecker, prefs &pref.Preferences, cfg TypeCheckerConfig) {
 	tc.compiler_vroot = prefs.vroot
 	tc.module_search_paths = prefs.module_search_paths.clone()
@@ -24173,12 +24476,14 @@ mut:
 	identity string
 }
 
+@[unsafe]
 fn eager_selfhost_scan_thread(arg voidptr) voidptr {
 	mut scan := unsafe { &EagerSelfhostScanArgs(arg) }
 	scan.scan()
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn eager_selfhost_resolve_thread(arg voidptr) voidptr {
 	mut result := unsafe { &EagerSelfhostResolveArgs(arg) }
 	prefs := unsafe { &pref.Preferences(result.prefs) }
@@ -24551,6 +24856,7 @@ fn discover_eager_selfhost_modules(a &flat.FlatAst, prefs &pref.Preferences, fir
 
 // resolve_imports parses the modules that the parsed code imports, wave by wave.
 // It continues `implicit_imports`, the scan of seed_implicit_imports.
+@[unsafe]
 fn resolve_imports(mut a flat.FlatAst, mut p parser.Parser, prefs &pref.Preferences, initial_files []string, allow_parallel bool, skip_closure_runtime bool, check_overflow bool, mut cache_state V3ModuleCacheState, mut parse_timing V3ParseTiming, mut implicit_imports ImplicitImportScan, mut prepared PreparedImports) bool {
 	initial_deferred_imports := p.resolve_comptime_string_declarations()
 	mut parsed_modules := map[string]bool{}

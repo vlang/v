@@ -391,6 +391,7 @@ fn test_x11_checked_queries_survive_retained_destroyed_window() {
 	}
 }
 
+@[unsafe]
 fn test_x11_checked_query_connection_lifecycle_is_fail_closed() {
 	$if linux && x_multiwindow_x11 ? {
 		if os.getenv('DISPLAY') == '' {
@@ -652,6 +653,7 @@ fn test_x11_configure_observations_publish_move_only_and_preserve_resize_events(
 	assert resize_and_move[2].service.state.position == resize_move_state.position
 }
 
+@[unsafe]
 fn test_x11_native_service_controls_borrow_monitors_and_readback() {
 	$if linux && x_multiwindow_x11 ? {
 		if os.getenv('DISPLAY') == '' {
@@ -1570,6 +1572,7 @@ fn test_x11_late_selection_notify_does_not_complete_the_next_clipboard_read() {
 	}
 }
 
+@[unsafe]
 fn test_x11_all_late_clipboard_reply_forms_are_isolated_from_the_next_read() {
 	$if linux && x_multiwindow_x11 ? {
 		if os.getenv('DISPLAY') == '' {

@@ -14,6 +14,7 @@ pub fn decode[T](val string) !T {
 	return result
 }
 
+@[unsafe]
 fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	$if T is $array {
 		mut array_element := create_array_element(val)
@@ -36,6 +37,7 @@ fn (mut decoder Decoder) decode_value[T](mut val T) ! {
 	}
 }
 
+@[unsafe]
 fn create_array_element[T](array []T) T {
 	a := T{}
 	dump(a)
@@ -44,6 +46,7 @@ fn create_array_element[T](array []T) T {
 	return a
 }
 
+@[unsafe]
 fn create_map_value[K, V](map_ map[K]V) V {
 	a := V{}
 	dump(a)

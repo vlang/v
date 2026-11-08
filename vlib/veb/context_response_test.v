@@ -169,6 +169,7 @@ fn test_time_to_render_counts_from_the_started_tick() {
 	assert ctx.time_to_render() > 1000
 }
 
+@[unsafe]
 fn test_takeover_conn_marks_the_context_and_leaves_the_response_unsent() {
 	mut ctx := resp_ctx(.get, {})
 	ctx.takeover_conn()
@@ -178,6 +179,7 @@ fn test_takeover_conn_marks_the_context_and_leaves_the_response_unsent() {
 	assert ctx.res.status_code == 0
 }
 
+@[unsafe]
 fn test_takeover_conn_reusable_marks_the_context_as_reusable() {
 	mut ctx := resp_ctx(.get, {})
 	ctx.takeover_conn_reusable()

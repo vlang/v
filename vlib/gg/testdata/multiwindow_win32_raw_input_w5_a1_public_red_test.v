@@ -525,6 +525,7 @@ $if windows && gg_multiwindow ? {
 		return w5_a1_green()
 	}
 
+	@[unsafe]
 	fn w5_a1_finalize(mut app gg.App, window gg.WindowId, peer gg.WindowId, mut runtime W5A1Runtime, result W5A1Result) W5A1Result {
 		mut cleanup_failed := false
 		rescue_was_armed := runtime.rescue_armed
@@ -629,6 +630,7 @@ $if windows && gg_multiwindow ? {
 		return result
 	}
 
+	@[unsafe]
 	fn w5_a1_run_windows() W5A1Result {
 		mut app := gg.new_app(backend: .win32, require_renderer: false) or {
 			return w5_a1_infra('app_create', 'app_create_failed', 'no_oracle_mutation')

@@ -15,6 +15,7 @@ mut:
 	reply_to ?&OptionalMessage
 }
 
+@[unsafe]
 fn test_main() {
 	mut json_data := '{"id": 1, "text": "Hello", "reply_to": {"id": 2, "text": "Hi"}}'
 	mut message := json2.decode[Message](json_data)!

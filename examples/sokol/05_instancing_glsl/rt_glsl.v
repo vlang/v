@@ -57,6 +57,7 @@ mut:
 ******************************************************************************/
 #include "@VMODROOT/rt_glsl_instancing.h" # It should be generated with `v shader .` (see the instructions at the top of this file)
 
+@[unsafe]
 fn C.instancing_shader_desc(gfx.Backend) &gfx.ShaderDesc
 
 /******************************************************************************

@@ -71,6 +71,7 @@ mut:
 	items []&InterfaceImplIndex
 }
 
+@[unsafe]
 fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
 	mut a := unsafe { &InterfaceImplChunkArgs(arg) }
 	if a.scoped {
@@ -109,6 +110,7 @@ fn interface_impl_index_chunk_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) prepare_interface_impl_indexes_parallel(iface_names []u32) bool {
 	pool := checker_worker_pool(tc.a)
 	if iface_names.len < 8 || isnil(pool) {
@@ -204,6 +206,7 @@ struct CollectDeclarationIndexArgs {
 	kind u8 // 0 = generic params, 1 = type declarations, 2 = parameter mutability, 3 = visibility, 4 = function names, 5 = file declarations
 }
 
+@[unsafe]
 fn collect_index_prep_thread(arg voidptr) voidptr {
 	mut a := unsafe { &CollectIndexPrepArgs(arg) }
 	mut tc := unsafe { &TypeChecker(a.tc) }
@@ -224,6 +227,7 @@ fn collect_index_prep_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn collect_declaration_index_thread(arg voidptr) voidptr {
 	a := unsafe { &CollectDeclarationIndexArgs(arg) }
 	mut tc := unsafe { &TypeChecker(a.tc) }
@@ -468,6 +472,7 @@ fn (mut tc TypeChecker) collect_pass2_fn_range(start int, end int, mut preps []P
 // private type caches and interners ("TypeIds stay local"), so the produced
 // Type values are plain data and the master's interner keeps its own
 // deterministic id order.
+@[unsafe]
 fn (mut tc TypeChecker) collect_pass2_fn_preps_parallel() ([]Pass2FnPrep, []voidptr) {
 	n := tc.top_level_idx.len
 	pool := checker_worker_pool(tc.a)
@@ -647,6 +652,7 @@ struct Pass2AncillaryArgs {
 	group int
 }
 
+@[unsafe]
 fn pass2_ancillary_thread(arg voidptr) voidptr {
 	a := unsafe { &Pass2AncillaryArgs(arg) }
 	mut tc := unsafe { &TypeChecker(a.tc) }
@@ -665,6 +671,7 @@ mut:
 	scope voidptr // the lane's arena, left for the collecting thread to release
 }
 
+@[unsafe]
 fn pass2_fn_prep_thread(arg voidptr) voidptr {
 	mut a := unsafe { &Pass2PrepArgs(arg) }
 	master := unsafe { &TypeChecker(a.tc) }
@@ -731,6 +738,7 @@ fn (mut p Pass2TypePromotion) promote(scope voidptr, typ Type) Type {
 // Bootstrap compilers can still box Type variants. Taking the address after
 // narrowing finds that box as well as the payload of an inline tagged union.
 // Large immutable variants keep their payload behind an embedded reference.
+@[unsafe]
 fn type_payload_refers_to_scope(scope voidptr, typ &Type) bool {
 	if scope == unsafe { nil } {
 		return false
@@ -780,6 +788,7 @@ fn type_payload_refers_to_scope(scope voidptr, typ &Type) bool {
 
 // type_refers_to_scope inspects actual descriptor references and their metadata storage.
 // A descriptor outside the lane can still refer to its lists, strings or child types.
+@[unsafe]
 fn type_refers_to_scope(scope voidptr, typ &Type) bool {
 	if scope == unsafe { nil } {
 		return false
@@ -869,6 +878,7 @@ fn pass2_owned_string(scope voidptr, s string) string {
 
 // promote_pass2_fn_prep copies what a pass-2 lane computed for one function
 // out of the lane's arena, which is still mapped, into the current one.
+@[unsafe]
 fn promote_pass2_fn_prep(lane_prep Pass2FnPrep, mut types Pass2TypePromotion) Pass2FnPrep {
 	scope := lane_prep.scope
 	if scope == unsafe { nil } {
@@ -921,6 +931,7 @@ mut:
 	alive []bool
 }
 
+@[unsafe]
 fn unused_alive_scan_thread(arg voidptr) voidptr {
 	mut a := unsafe { &UnusedAliveScanArgs(arg) }
 	tc := unsafe { &TypeChecker(a.tc) }
@@ -940,6 +951,7 @@ mut:
 	processed []CheckWorkItem
 }
 
+@[unsafe]
 fn check_chunk_thread(arg voidptr) voidptr {
 	mut a := unsafe { &CheckChunkArgs(arg) }
 	cksw := time.new_stopwatch()
@@ -986,6 +998,7 @@ fn check_chunk_thread(arg voidptr) voidptr {
 // The receiver is a result accumulator; every batch uses a fresh checker fork,
 // then promotes only observable cache entries and diagnostics before its arena
 // is released.
+@[unsafe]
 fn (mut tc TypeChecker) check_scoped_batches(items []CheckWorkItem, batch_limit int) {
 	if items.len == 0 {
 		return
@@ -1034,6 +1047,7 @@ const check_batch_arena_keep_bytes = int(8) * 1024 * 1024
 // begin_check_batch_scope starts the arena of one check batch. A worker that
 // reuses its batch arena rewinds the previous batch's one: unmapping and
 // faulting in the arena again for every batch is slower than reusing it.
+@[unsafe]
 fn (mut tc TypeChecker) begin_check_batch_scope() voidptr {
 	$if prealloc {
 		if tc.reuse_check_batch_scope && tc.check_batch_scope != unsafe { nil } {
@@ -1050,6 +1064,7 @@ fn (mut tc TypeChecker) begin_check_batch_scope() voidptr {
 
 // end_check_batch_scope releases a batch arena once its results are merged, or
 // keeps it for the worker's next batch.
+@[unsafe]
 fn (mut tc TypeChecker) end_check_batch_scope(scope voidptr) {
 	if tc.reuse_check_batch_scope && scope != unsafe { nil } {
 		tc.check_batch_scope = scope
@@ -1070,6 +1085,7 @@ fn scoped_check_batch_count(n_items int, total_cost i64, batch_limit int) int {
 	return int_max(n, 1)
 }
 
+@[unsafe]
 fn check_worker_scope_begin(enabled bool) voidptr {
 	$if prealloc {
 		if enabled {
@@ -1079,6 +1095,7 @@ fn check_worker_scope_begin(enabled bool) voidptr {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn check_worker_scope_leave(scope voidptr) {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -1087,6 +1104,7 @@ fn check_worker_scope_leave(scope voidptr) {
 	}
 }
 
+@[unsafe]
 fn check_worker_scope_free(scope voidptr) {
 	$if prealloc {
 		if scope != unsafe { nil } {
@@ -1115,6 +1133,7 @@ fn free_check_worker_scopes(pool &workers.Pool, scopes []voidptr) {
 	pool.run(tasks)
 }
 
+@[unsafe]
 fn check_worker_scope_free_thread(scope voidptr) voidptr {
 	check_worker_scope_free(scope)
 	return unsafe { nil }
@@ -1134,6 +1153,7 @@ fn checker_serial_only() bool {
 // checker_worker_pool returns the pool a checker pass may fan work out to. It is
 // nil when there is none, and in `v3_no_parallel` builds even when the driver
 // started one, so the pass takes its serial fallback.
+@[unsafe]
 fn checker_worker_pool(a &flat.FlatAst) &workers.Pool {
 	if isnil(a) || checker_serial_only() {
 		return unsafe { nil }
@@ -1144,6 +1164,7 @@ fn checker_worker_pool(a &flat.FlatAst) &workers.Pool {
 // ensure_checker_worker_pool returns the pool for the parallel semantic check,
 // starting one sized from VJOBS when the driver did not. It returns nil, and
 // starts nothing, in `v3_no_parallel` builds.
+@[unsafe]
 fn ensure_checker_worker_pool(mut a flat.FlatAst) &workers.Pool {
 	if checker_serial_only() {
 		return unsafe { nil }
@@ -1792,6 +1813,7 @@ fn (mut tc TypeChecker) check_top_level_declarations_filtered(do_values bool, al
 	}
 }
 
+@[unsafe]
 fn check_top_level_decl_signatures_thread(arg voidptr) voidptr {
 	mut tc := unsafe { &TypeChecker(arg) }
 	tc.check_top_level_declaration_signatures()
@@ -1809,6 +1831,7 @@ mut:
 	notices int
 }
 
+@[unsafe]
 fn check_top_level_decl_signatures_scoped_thread(arg voidptr) voidptr {
 	mut a := unsafe { &SignatureCheckArgs(arg) }
 	master := unsafe { &TypeChecker(a.master) }
@@ -1829,6 +1852,7 @@ fn check_top_level_decl_signatures_scoped_thread(arg voidptr) voidptr {
 // merge_scoped_signature_checks merges what the scoped signature checks found,
 // in the place of the master's own sparse cache writes, and releases their
 // arena.
+@[unsafe]
 fn (mut tc TypeChecker) merge_scoped_signature_checks(mut a SignatureCheckArgs) {
 	if a.checker == unsafe { nil } {
 		check_worker_scope_free(a.scope)
@@ -1868,6 +1892,7 @@ fn merged_scoped_diagnostics(fork []TypeError, master []TypeError, forked int) [
 // top-level declarations along with them, unless `bodies_only`: then it leaves
 // the diagnostics in the order the bodies reported them, after those already
 // found (see complete_incremental_check).
+@[unsafe]
 fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bool) bool {
 	mut ast := unsafe { tc.a }
 	pool := ensure_checker_worker_pool(mut ast)
@@ -3205,6 +3230,7 @@ fn (mut tc TypeChecker) merge_own_sparse_caches() {
 	tc.sparse_checking_nodes.clear()
 }
 
+@[unsafe]
 fn (mut tc TypeChecker) check_fn_items_serial(items []CheckWorkItem) {
 	if isnil(tc.body_resolve_memo) {
 		tc.body_resolve_memo = &BodyResolveMemo{}
@@ -5495,6 +5521,7 @@ fn (mut tc TypeChecker) restore_type_cache_base() {
 	}
 }
 
+@[unsafe]
 fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	mut w := tc.fork_program_view(tc.a, map[int][]SymbolId{})
 	// Semantic forks need their live ancestors' visited instances for recursive
@@ -5592,6 +5619,7 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 // precomputed_check_cache returns the immutable indexes warmed before the
 // parallel region. Scoped forks can share these maps without also inheriting
 // the large, context-sensitive parse cache.
+@[unsafe]
 fn (tc &TypeChecker) precomputed_check_cache() &TypeCache {
 	if isnil(tc.type_cache) {
 		return unsafe { nil }
@@ -5688,6 +5716,7 @@ fn (tc &TypeChecker) probe_check_type_promotion(typ &Type, frozen_interner bool)
 // persistent arena, and expr types are rebound via a read-only interner probe.
 // Types the interner does not know yet are recorded and interned serially in
 // chunk order afterwards, so interner ids match the serial merge exactly.
+@[unsafe]
 fn check_clone_chunk_thread(arg voidptr) voidptr {
 	mut a := unsafe { &CheckCloneChunkArgs(arg) }
 	mut tc := unsafe { &TypeChecker(a.tc) }
@@ -6042,6 +6071,7 @@ fn (mut tc TypeChecker) prepare_tail_decl_ids() {
 	cache.tail_decl_end = end
 }
 
+@[unsafe]
 fn tail_decl_scan_thread(arg voidptr) voidptr {
 	mut a := unsafe { &TailDeclScanArgs(arg) }
 	for i in a.start .. a.end {
@@ -6084,6 +6114,7 @@ mut:
 	names map[string]int
 }
 
+@[unsafe]
 fn selected_fn_scan_thread(arg voidptr) voidptr {
 	mut a := unsafe { &SelectedFnScanArgs(arg) }
 	a.scope = check_worker_scope_begin(true)
@@ -6127,6 +6158,7 @@ fn selected_fn_scan_thread(arg voidptr) voidptr {
 // each task on its own fork of `master`, and the walk then follows those lists.
 // The arenas backing the lists are appended to `body_scopes` for the caller to
 // free once it no longer needs the names. It returns false without a pool.
+@[unsafe]
 fn (mut tc TypeChecker) collect_selected_file_called_fns_walk_parallel(master &TypeChecker, mut body_scopes []voidptr) bool {
 	pool := checker_worker_pool(tc.a)
 	if isnil(pool) || pool.size() == 0 {

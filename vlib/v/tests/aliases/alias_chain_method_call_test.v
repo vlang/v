@@ -32,6 +32,7 @@ type Values = Props
 type MutValues = Values
 type DeepValues = MutValues
 
+@[unsafe]
 fn (mut p Props) ensure() &Cache {
 	if p.cache == unsafe { nil } {
 		p.cache = &Cache{}

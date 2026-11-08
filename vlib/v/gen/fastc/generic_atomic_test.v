@@ -3,6 +3,7 @@ module fastc
 import os
 import v.cmdexec
 
+@[unsafe]
 fn test_fastc_generic_atomic_operations_preserve_width_and_pointer_slots() {
 	$if !macos && !linux {
 		return

@@ -75,6 +75,7 @@ fn pong_side(arg voidptr) {
 	}
 }
 
+@[unsafe]
 fn bench_ping_pong(n int) {
 	bench_n = n
 	bench_chan1 = goroutines.chan_make(int(sizeof(int)), 1)

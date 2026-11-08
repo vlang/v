@@ -13,6 +13,7 @@ pub fn list_new[T]() List[T] {
 	return List[T]{}
 }
 
+@[unsafe]
 pub fn (mut l List[T]) add(value T) {
 	mut node := &ListNode[T]{value, unsafe { nil }}
 	if unsafe { l.head == nil } {

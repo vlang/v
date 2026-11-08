@@ -17,12 +17,14 @@ module goroutines
 // Channel operations provide this synchronization through their internal lock handoff.
 // reason describes why the goroutine is parking (for debugging).
 // Translated from Go's gopark() in proc.go.
+@[unsafe]
 pub fn gopark(reason string) {
 	gopark_unlock(reason, unsafe { nil })
 }
 
 // gopark_unlock releases lock only after the worker context has been saved.
 // Channel waiters remain protected by that lock until the scheduler can ready them.
+@[unsafe]
 fn gopark_unlock(reason string, held_lock &SpinLock) {
 	mut unlock := unsafe { held_lock }
 	mut mp := get_current_m()
@@ -57,6 +59,7 @@ fn gopark_unlock(reason string, held_lock &SpinLock) {
 // goready puts a waiting goroutine back on a run queue.
 // The caller must synchronize with the goroutine's completed park operation.
 // Translated from Go's goready() in proc.go.
+@[unsafe]
 pub fn goready(gp &Goroutine) {
 	if gp == unsafe { nil } {
 		return
@@ -87,6 +90,7 @@ pub fn goready(gp &Goroutine) {
 
 // gosched yields the processor, allowing other goroutines to run.
 // Translated from Go's Gosched() / goschedImpl() in proc.go.
+@[unsafe]
 pub fn gosched() {
 	mut mp := get_current_m()
 	if mp == unsafe { nil } {
@@ -141,6 +145,7 @@ pub mut:
 	last  &Sudog = unsafe { nil }
 }
 
+@[unsafe]
 pub fn (mut q WaitQ) enqueue(s &Sudog) {
 	mut sg := unsafe { s }
 	sg.next = unsafe { nil }
@@ -153,6 +158,7 @@ pub fn (mut q WaitQ) enqueue(s &Sudog) {
 	q.last = sg
 }
 
+@[unsafe]
 pub fn (mut q WaitQ) dequeue() &Sudog {
 	sg := q.first
 	if sg == unsafe { nil } {
@@ -170,6 +176,7 @@ pub fn (mut q WaitQ) dequeue() &Sudog {
 	return s
 }
 
+@[unsafe]
 pub fn (q &WaitQ) empty() bool {
 	return q.first == unsafe { nil }
 }

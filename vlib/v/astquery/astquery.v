@@ -443,6 +443,7 @@ fn source_text(a &flat.FlatAst, id int, mut cache map[int]string) string {
 // the parser measured from the file. A selector's name follows its receiver;
 // matching complete tokens avoids selecting a substring of the receiver's name.
 // Escaped names retain their `@` in scanner literals; the edit starts after it.
+@[unsafe]
 fn name_offset(source string, node &flat.Node, name string) int {
 	start := int(node.pos.offset)
 	end := int(node.pos.end)

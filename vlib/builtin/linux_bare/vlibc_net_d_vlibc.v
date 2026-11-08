@@ -81,6 +81,7 @@ $if !i386 {
 	}
 
 	// vlibc_accept accepts a connection and returns its descriptor.
+	@[unsafe]
 	pub fn vlibc_accept(fd i64) (i64, VlibcErrno) {
 		return vlibc_sys_accept4(fd, unsafe { nil }, unsafe { nil }, 0)
 	}
@@ -95,6 +96,7 @@ $if !i386 {
 	}
 
 	// vlibc_send sends bytes on a connected socket and returns the number sent and any error.
+	@[unsafe]
 	pub fn vlibc_send(fd i64, data []u8, flags int) (i64, VlibcErrno) {
 		if data.len == 0 {
 			return 0, VlibcErrno.enoerror
@@ -103,6 +105,7 @@ $if !i386 {
 	}
 
 	// vlibc_recv receives bytes into buf and returns the number read and any error.
+	@[unsafe]
 	pub fn vlibc_recv(fd i64, buf []u8, flags int) (i64, VlibcErrno) {
 		if buf.len == 0 {
 			return 0, VlibcErrno.enoerror

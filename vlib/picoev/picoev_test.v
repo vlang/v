@@ -1,5 +1,6 @@
 module picoev
 
+@[unsafe]
 fn test_if_all_file_descriptors_are_properly_initialized() {
 	mut pv := &Picoev{}
 	pv.init()

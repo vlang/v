@@ -16,6 +16,7 @@ fn sse_nil_conn(mut ctx SseNilContext) &sse.SSEConnection {
 	return sse.start_connection(mut ctx.Context)
 }
 
+@[unsafe]
 fn test_start_connection_without_a_tcp_conn_reports_nil() {
 	mut ctx := SseNilContext{}
 	mut conn := sse_nil_conn(mut ctx)
@@ -43,6 +44,7 @@ fn test_send_message_with_fields_but_no_tcp_conn_is_an_error() {
 	assert false, 'send_message should have failed without a connection'
 }
 
+@[unsafe]
 fn test_close_without_a_tcp_conn_is_a_no_op() {
 	mut ctx := SseNilContext{}
 	mut conn := sse_nil_conn(mut ctx)

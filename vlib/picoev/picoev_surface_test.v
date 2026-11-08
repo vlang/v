@@ -47,6 +47,7 @@ fn test_a_target_starts_out_unowned_by_any_loop() {
 	assert t.backend == 0
 }
 
+@[unsafe]
 fn test_init_fills_the_descriptor_table_with_isolated_targets() {
 	mut pv := &Picoev{}
 	pv.init()

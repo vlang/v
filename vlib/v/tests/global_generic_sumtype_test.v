@@ -10,6 +10,7 @@ mut:
 	data &T
 }
 
+@[unsafe]
 fn test_main() {
 	assert queue2.data == unsafe { nil }
 }

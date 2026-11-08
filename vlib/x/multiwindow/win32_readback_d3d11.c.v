@@ -167,6 +167,7 @@ fn win32_d3d11_readback_bridge_take_with_ops(context voidptr, take_fn Win32D3D11
 	return false, Win32D3D11ReadbackBridgeResult{}
 }
 
+@[unsafe]
 fn new_win32_d3d11_readback_bridge(device voidptr, context voidptr, state_identity u64, renderer_generation u64) !Win32D3D11ReadbackBridge {
 	$if windows && sokol_d3d11 ? {
 		native := C.v_multiwindow_win32_d3d11_readback_native_create(native_identity(device),
@@ -186,6 +187,7 @@ fn new_win32_d3d11_readback_bridge(device voidptr, context voidptr, state_identi
 	}
 }
 
+@[unsafe]
 fn (bridge &Win32D3D11ReadbackBridge) initialized() bool {
 	return bridge.native != unsafe { nil }
 }
@@ -381,6 +383,7 @@ fn (bridge &Win32D3D11ReadbackBridge) device_removed_reason() i32 {
 	}
 }
 
+@[unsafe]
 fn (mut bridge Win32D3D11ReadbackBridge) destroy() bool {
 	if !bridge.initialized() {
 		return false

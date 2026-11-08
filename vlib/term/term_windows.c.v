@@ -101,6 +101,7 @@ pub fn set_tab_title(title string) bool {
 
 // clear clears current terminal screen.
 // Implementation taken from https://docs.microsoft.com/en-us/windows/console/clearing-the-screen#example-2.
+@[unsafe]
 pub fn clear() bool {
 	hconsole := C.GetStdHandle(C.STD_OUTPUT_HANDLE)
 	mut csbi := C.CONSOLE_SCREEN_BUFFER_INFO{}

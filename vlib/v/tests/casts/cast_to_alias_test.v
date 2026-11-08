@@ -40,6 +40,7 @@ struct Foo {
 
 type Alias = Foo
 
+@[unsafe]
 fn test_cast_to_alias_of_ref_struct() {
 	foo := &Foo(unsafe { nil })
 	println(typeof(foo).name)

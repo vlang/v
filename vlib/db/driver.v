@@ -262,6 +262,7 @@ $if db_mysql ? {
 		return normalized
 	}
 
+	@[unsafe]
 	fn mysql_result_to_rows(result mysql.Result) []DriverRow {
 		if result.result == unsafe { nil } {
 			return []DriverRow{}
@@ -273,6 +274,7 @@ $if db_mysql ? {
 		return mysql_rows_to_rows(result.rows, result.names)
 	}
 
+	@[unsafe]
 	fn (mut driver MysqlDriver) exec(query string) ![]DriverRow {
 		result := driver.conn.query(query)!
 		if result.result == unsafe { nil } {

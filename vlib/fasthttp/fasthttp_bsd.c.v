@@ -62,6 +62,7 @@ const bsd_thread_pool_size = if max_thread_pool_size < 2 { 2 } else { max_thread
 // the socket at accept time (see accept_clients).
 const send_flags = $if openbsd { int(C.MSG_NOSIGNAL) } $else { 0 }
 
+@[unsafe]
 fn C.kevent(kq i32, changelist &C.kevent, nchanges i32, eventlist &C.kevent, nevents i32, timeout &C.timespec) i32
 
 fn C.kqueue() i32
@@ -191,6 +192,7 @@ fn (mut retired RetiredConns) free_all() {
 	retired.items.clear()
 }
 
+@[unsafe]
 fn retire_conn(mut c Conn, c_ptr voidptr) {
 	if c.retired == unsafe { nil } {
 		// Unit tests that construct a Conn outside the event loop do not need batch
@@ -208,6 +210,7 @@ fn (mut c Conn) free_write_buf() {
 	}
 }
 
+@[unsafe]
 fn (mut c Conn) free_request_arena() {
 	$if prealloc {
 		if c.request_arena != unsafe { nil } {
@@ -241,6 +244,7 @@ mut:
 }
 
 // new_server creates and initializes a new Server instance.
+@[unsafe]
 pub fn new_server(config ServerConfig) !&Server {
 	if config.max_request_buffer_size <= 0 {
 		return error('max_request_buffer_size must be greater than 0')
@@ -287,12 +291,14 @@ fn set_nonblocking(fd int) {
 	C.fcntl(fd, C.F_SETFL, flags | C.O_NONBLOCK)
 }
 
+@[unsafe]
 fn add_event(kq int, ident u64, filter i16, flags u16, udata voidptr) int {
 	mut ev := C.kevent{}
 	ev_set(mut &ev, ident, filter, flags, u32(0), int(0), udata)
 	return C.kevent(kq, &ev, 1, unsafe { nil }, 0, unsafe { nil })
 }
 
+@[unsafe]
 fn delete_event(kq int, ident u64, filter i16, udata voidptr) {
 	mut ev := C.kevent{}
 	ev_set(mut &ev, ident, filter, u16(C.EV_DELETE), u32(0), int(0), udata)
@@ -417,6 +423,7 @@ fn complete_response(server &Server, kq int, c_ptr voidptr, mut clients map[int]
 
 // process_request handles a complete HTTP request: decodes, calls the handler,
 // sends the response (or handles takeover/sendfile).
+@[unsafe]
 fn process_request(server &Server, kq int, c_ptr voidptr, frame_total int, mut clients map[int]voidptr) {
 	mut c := unsafe { &Conn(c_ptr) }
 	// A connection owns at most one response. Disable further reads until this
@@ -713,6 +720,7 @@ fn handle_read(server &Server, kq int, c_ptr voidptr, mut clients map[int]voidpt
 	dispatch_buffered_request(server, kq, c_ptr, mut clients)
 }
 
+@[unsafe]
 fn accept_clients(kq int, listen_fd int, worker_state voidptr, retired &RetiredConns, mut clients map[int]voidptr) {
 	for _ in 0 .. accept_batch_size {
 		client_fd := C.accept(listen_fd, unsafe { nil }, unsafe { nil })
@@ -755,6 +763,7 @@ fn close_all_conns(server &Server, kq int, mut clients map[int]voidptr) {
 	}
 }
 
+@[unsafe]
 fn (mut s Server) stop_accepting() {
 	for i := 0; i < bsd_thread_pool_size; i++ {
 		if s.poll_fds[i] >= 0 && s.socket_fd >= 0 {
@@ -810,6 +819,7 @@ fn create_server_socket(server Server) !int {
 	return socket_fd
 }
 
+@[unsafe]
 fn process_events(server &Server, kq int, listen_fd int) {
 	mut events := [kqueue_max_events]C.kevent{}
 	mut clients := map[int]voidptr{}
@@ -911,6 +921,7 @@ fn process_events(server &Server, kq int, listen_fd int) {
 }
 
 // run starts the server and enters the main event loop (Kqueue version).
+@[unsafe]
 pub fn (mut s Server) run() ! {
 	// Ignore SIGPIPE process-wide.  Writing to a disconnected socket raises
 	// SIGPIPE by default, which kills the process.  We suppress it per-send

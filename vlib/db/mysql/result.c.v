@@ -70,6 +70,7 @@ pub:
 	type             FieldType
 }
 
+@[unsafe]
 fn fields_from_result(result &C.MYSQL_RES) []Field {
 	if result == unsafe { nil } {
 		return []Field{}
@@ -107,6 +108,7 @@ fn fields_from_result(result &C.MYSQL_RES) []Field {
 }
 
 // fetch_row fetches the next row from a result.
+@[unsafe]
 pub fn (r Result) fetch_row() &charptr {
 	mut thread_guard := mysql_thread_guard() or { return unsafe { nil } }
 	defer {
@@ -184,6 +186,7 @@ pub fn (r Result) fields() []Field {
 }
 
 // field_names returns the column names for this result set.
+@[unsafe]
 pub fn (r Result) field_names() []string {
 	if r.result == unsafe { nil } {
 		return []string{}

@@ -43,6 +43,7 @@ fn (tx &TxState) ensure_active() ! {
 	}
 }
 
+@[unsafe]
 fn (mut tx TxState) finish(discard bool) {
 	tx.done = true
 	mut conn := tx.conn
@@ -166,6 +167,7 @@ fn transaction_query(command TransactionCommand, name string) string {
 }
 
 // discard invalidates a checked-out handle and closes its physical connection without reset.
+@[unsafe]
 fn (mut c Conn) discard() {
 	mut state := c.state
 	state.mu.lock()

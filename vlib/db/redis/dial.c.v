@@ -3,6 +3,7 @@ module redis
 import net
 import time
 
+@[unsafe]
 fn dial_connection(config Config) !&net.TcpConn {
 	if config.connect_timeout <= 0 {
 		mut conn := net.dial_tcp(endpoint(config)) or { return ConnectionError{ message: err.msg() } }

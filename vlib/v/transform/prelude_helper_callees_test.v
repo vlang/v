@@ -8,6 +8,7 @@ import v.types
 // A generic body is lowered after markused. When its lowering calls a C helper of
 // the cgen prelude, that call has to keep the V functions the helper calls; the
 // map formatter calls `f64.str` even for a map without floats.
+@[unsafe]
 fn monomorphized_used_fns(name string, source string, used map[string]bool) map[string]bool {
 	path := os.join_path(os.vtmp_dir(), '${name}_${os.getpid()}.v')
 	os.write_file(path, source) or { panic(err) }

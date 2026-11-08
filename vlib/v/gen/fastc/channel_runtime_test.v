@@ -74,6 +74,7 @@ fn main() {
 	fastc_channel_runtime_build_run(root, vroot, 'channels work')
 }
 
+@[unsafe]
 fn test_fastc_compiler_workers_run_parallel_batches() {
 	$if !macos && !linux {
 		return

@@ -9,6 +9,7 @@ fn bsd_reregistration_test_handler(_ HttpRequest) !HttpResponse {
 	}
 }
 
+@[unsafe]
 fn test_keep_alive_completion_rearms_kqueue_read_after_consumed_edge() ! {
 	server := new_server(ServerConfig{
 		family:                  .ip

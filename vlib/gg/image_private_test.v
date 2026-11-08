@@ -27,6 +27,7 @@ fn test_load_image_returns_error_for_unsupported_file_contents() {
 	assert false
 }
 
+@[unsafe]
 fn test_sokol_mipmap_counts_base_level() {
 	width := 64
 	height := 64
@@ -54,6 +55,7 @@ fn test_sokol_mipmap_counts_base_level() {
 	assert desc.data.subimage[0][6].ptr != unsafe { nil }
 }
 
+@[unsafe]
 fn test_sokol_mipmap_tiny_image_needs_no_alloc() {
 	mut desc := gfx.ImageDesc{
 		width:  1

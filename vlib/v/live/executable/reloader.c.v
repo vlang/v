@@ -106,6 +106,7 @@ fn current_shared_library_path(mut r live.LiveReloadInfo) (string, string) {
 	return lib_path, lib_path_with_extension
 }
 
+@[unsafe]
 fn load_lib(mut r live.LiveReloadInfo, new_lib_path string) {
 	elog(r, 'live mutex locking...')
 	$if windows {
@@ -135,6 +136,7 @@ fn load_lib(mut r live.LiveReloadInfo, new_lib_path string) {
 	elog(r, 'live mutex unlocked')
 }
 
+@[unsafe]
 fn protected_load_lib(mut r live.LiveReloadInfo, new_lib_path string) {
 	if r.live_lib != 0 {
 		dl.close(r.live_lib)
@@ -153,6 +155,7 @@ fn protected_load_lib(mut r live.LiveReloadInfo, new_lib_path string) {
 }
 
 // Note: r.reloader() is executed in a new, independent thread
+@[unsafe]
 fn reloader(mut r live.LiveReloadInfo) {
 	//	elog(r,'reloader, r: ${r}')
 	mut last_ts := r.last_mod_ts

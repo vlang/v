@@ -4,6 +4,7 @@ import os
 
 type InterfaceFixtureReader = fn () int
 
+@[unsafe]
 fn registered_interface_table_refs(entries voidptr) int {
 	mut table := g_dl_interface_exports
 	for table != unsafe { nil } {

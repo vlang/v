@@ -6,10 +6,12 @@ fn voidptr_identity[T](x T) T {
 	return x
 }
 
+@[unsafe]
 fn voidptr_nil_ref[T]() &T {
 	return unsafe { nil }
 }
 
+@[unsafe]
 fn test_generic_reference_result_passes_its_value_to_voidptr_parameter() {
 	nil_node := unsafe { &VoidptrNode(nil) }
 	assert isnil(voidptr_identity[&VoidptrNode](unsafe { nil }))

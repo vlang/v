@@ -309,6 +309,7 @@ fn draw_details(mut app App) {
 }
 
 // draw_frame is the main frame callback
+@[unsafe]
 pub fn draw_frame(mut app App) {
 	if app.gg == unsafe { nil } {
 		return

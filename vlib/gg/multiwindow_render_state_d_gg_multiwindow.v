@@ -103,6 +103,7 @@ fn new_multiwindow_render_runtime(app_instance u64) &MultiWindowRenderRuntime {
 	}
 }
 
+@[unsafe]
 fn (mut runtime MultiWindowRenderRuntime) register_window(id WindowId, config WindowConfig) ! {
 	if config.sample_count <= 0 {
 		return error(err_multiwindow_render_invalid_sample_count)
@@ -127,6 +128,7 @@ fn (mut runtime MultiWindowRenderRuntime) register_window(id WindowId, config Wi
 	runtime.windows << window
 }
 
+@[unsafe]
 fn (mut runtime MultiWindowRenderRuntime) configure_run(config RunConfig) ! {
 	runtime.mutex.lock()
 	defer {
@@ -356,6 +358,7 @@ fn (runtime &MultiWindowRenderRuntime) target_info(id WindowId) !WindowRenderTar
 	return window.target
 }
 
+@[unsafe]
 fn (runtime &MultiWindowRenderRuntime) has_per_window_frame_callbacks() bool {
 	runtime.mutex.lock()
 	defer {
@@ -369,6 +372,7 @@ fn (runtime &MultiWindowRenderRuntime) has_per_window_frame_callbacks() bool {
 	return false
 }
 
+@[unsafe]
 fn (runtime &MultiWindowRenderRuntime) window_capture_producer(id WindowId) !MultiWindowCaptureProducer {
 	runtime.mutex.lock()
 	defer {
@@ -382,6 +386,7 @@ fn (runtime &MultiWindowRenderRuntime) window_capture_producer(id WindowId) !Mul
 	}
 }
 
+@[unsafe]
 fn (runtime &MultiWindowRenderRuntime) has_pending_window_initializers() bool {
 	runtime.mutex.lock()
 	defer {
@@ -656,6 +661,7 @@ fn (mut runtime MultiWindowRenderRuntime) rollback_destroy(id WindowId) {
 	}
 }
 
+@[unsafe]
 fn (mut runtime MultiWindowRenderRuntime) prepare_cleanup(app &App, id WindowId, info WindowFrameInfo, reason WindowCleanupReason, graphics_available bool) !MultiWindowCleanupPlan {
 	runtime.mutex.lock()
 	defer {
@@ -1135,6 +1141,7 @@ fn (mut runtime MultiWindowRenderRuntime) begin_stop() {
 	runtime.mutex.unlock()
 }
 
+@[unsafe]
 fn (mut runtime MultiWindowRenderRuntime) finish_stop() {
 	runtime.mutex.lock()
 	for i, window in runtime.windows {

@@ -1,6 +1,7 @@
 module fallback
 
 // contains_b uses builtin's declaration without declaring or importing another one.
+@[unsafe]
 pub fn contains_b(buf []u8) bool {
 	return unsafe { C.memchr(buf.data, int(`b`), uint(buf.len)) } != unsafe { nil }
 }

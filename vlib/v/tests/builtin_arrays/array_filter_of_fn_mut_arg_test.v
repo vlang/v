@@ -1,3 +1,4 @@
+@[unsafe]
 fn foo(mut arr []&int) {
 	arr = arr.filter(it != unsafe { nil })
 }

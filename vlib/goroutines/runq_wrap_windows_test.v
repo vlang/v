@@ -2,6 +2,7 @@
 module goroutines
 
 // This file starts no workers, so synthetic goroutines stay on the queues without executing.
+@[unsafe]
 fn test_runq_put_slow_accepts_wrapped_counters() {
 	mut pp := Processor{
 		runq_head: u32(0xffff_ff80)

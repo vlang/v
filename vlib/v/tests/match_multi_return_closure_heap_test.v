@@ -8,6 +8,7 @@ struct Cfg {
 	handler fn (string) = unsafe { nil }
 }
 
+@[unsafe]
 fn call_it(cfg Cfg) {
 	if cfg.handler != unsafe { nil } {
 		cfg.handler('s')

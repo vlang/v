@@ -215,6 +215,7 @@ pub fn (db &DB) query(q string) !Result {
 
 // use_result discards a pending unbuffered result after a low-level query.
 // Use query_stream to execute a query and read its unbuffered rows safely.
+@[unsafe]
 pub fn (db &DB) use_result() {
 	mut guard := db.acquire_connection_guard() or { return }
 	result := C.mysql_use_result(guard.conn)
@@ -560,6 +561,7 @@ pub fn (mut db DB) set_option(option_type int, val voidptr) {
 
 // get_option returns the value of an option, settable by `set_option`.
 // https://dev.mysql.com/doc/c-api/5.7/en/mysql-get-option.html
+@[unsafe]
 pub fn (db &DB) get_option(option_type int) !voidptr {
 	mut guard := db.acquire_connection_guard()!
 	defer {
@@ -619,6 +621,7 @@ pub fn (mut db DB) validate() !bool {
 }
 
 // close closes the connection.
+@[unsafe]
 pub fn (mut db DB) close() ! {
 	if isnil(db.state) {
 		if isnil(db.conn) {
@@ -724,6 +727,7 @@ pub fn debug(debug string) {
 }
 
 // exec executes the `query` on the given `db`, and returns an array of all the results, or an error on failure
+@[unsafe]
 pub fn (db &DB) exec(query string) ![]Row {
 	mut guard := db.acquire_connection_guard()!
 	defer {
@@ -742,6 +746,7 @@ pub fn (db &DB) exec(query string) ![]Row {
 }
 
 // exec_one executes the `query` on the given `db`, and returns either the first row from the result, if the query was successful, or an error
+@[unsafe]
 pub fn (db &DB) exec_one(query string) !Row {
 	mut guard := db.acquire_connection_guard()!
 	defer {
@@ -828,6 +833,7 @@ pub struct StmtHandle {
 // that can then be used to execute the query as many times
 // as needed, which must be closed manually by the user
 // Placeholders are represented by `?`
+@[unsafe]
 pub fn (db &DB) prepare(query string) !StmtHandle {
 	mut guard := db.acquire_connection_guard()!
 	defer {
@@ -862,6 +868,7 @@ pub fn (stmt &StmtHandle) execute(params []string) ![]Row {
 }
 
 // execute_result executes the statement and returns rows with column names.
+@[unsafe]
 pub fn (stmt &StmtHandle) execute_result(params []string) !RowSet {
 	mut guard := stmt.db.acquire_connection_guard()!
 	defer {

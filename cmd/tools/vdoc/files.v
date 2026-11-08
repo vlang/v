@@ -15,6 +15,7 @@ mut:
 	paths    map[string]bool
 }
 
+@[unsafe]
 fn get_modules(path string) []string {
 	mut modules := map[string]bool{}
 	mut owners := map[string]string{}
@@ -91,6 +92,7 @@ fn owner_module_dir(dir string, input_root string, mut source_dirs_cache map[str
 // subdir_files_filter returns a filter that drops the files of the v.mod `subdirs` of
 // the module in `path` that are excluded by `.vdocignore` or by the default ignore rules.
 // The rules are only loaded (once, in `rules_cache`) for modules that declare subdirs.
+@[unsafe]
 fn subdir_files_filter(path string, rules_root string, mut rules_cache map[string]IgnoreRules) fn (string) bool {
 	dir := if os.is_dir(path) { path } else { os.dir(path) }
 	if doc.module_source_dirs(dir).len < 2 {

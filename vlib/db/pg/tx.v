@@ -22,6 +22,7 @@ fn (tx &Tx) ensure_active() ! {
 	}
 }
 
+@[unsafe]
 fn (mut tx Tx) finish() {
 	if tx.done {
 		return

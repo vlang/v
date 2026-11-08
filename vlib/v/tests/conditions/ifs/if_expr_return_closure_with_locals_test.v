@@ -14,6 +14,7 @@ struct Cfg {
 	callback fn (&int, mut Event) = unsafe { nil }
 }
 
+@[unsafe]
 fn resolve(cfg Cfg) fn (&int, mut Event) {
 	user_cb := cfg.callback
 	result := if cfg.wrap && cfg.delay > 0 {

@@ -19,6 +19,7 @@ const darwin_x64_program_symbols = {
 	'stat':      '_stat$INODE64'
 }
 
+@[unsafe]
 fn darwin_x64_symbols_project() !string {
 	root := os.join_path(os.vtmp_dir(), 'darwin_x64_symbols_${os.getpid()}')
 	os.rmdir_all(root) or {}

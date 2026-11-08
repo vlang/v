@@ -60,6 +60,7 @@ $if test {
 		secondary_rejected_disarm_failed
 	}
 
+	@[unsafe]
 	pub fn (mut app App) arm_gg_egl_bad_native_window_for_test(lease RenderTargetLease) !GgEglNativeWindowProofTicket {
 		app.assert_owner_thread()!
 		app.state_mutex.lock()
@@ -163,6 +164,7 @@ $if test {
 		}
 	}
 
+	@[unsafe]
 	pub fn (mut app App) finish_gg_egl_bad_native_window_proof_for_test(ticket GgEglNativeWindowProofTicket) ! {
 		app.assert_owner_thread()!
 		mut authority := &app.backend.native_operations
@@ -246,6 +248,7 @@ $if test {
 		return .armed
 	}
 
+	@[unsafe]
 	fn (mut authority NativeOperationAuthority) rollback_gg_egl_native_window_plan_entry(context NativeOperationContext, evidence NativePrimitiveEvidence) bool {
 		if !authority.owner_thread_is_current() || authority.proof == unsafe { nil } {
 			return false
@@ -270,6 +273,7 @@ $if test {
 		return true
 	}
 
+	@[unsafe]
 	fn gg_egl_native_window_proof_target(app &App, lease RenderTargetLease, frame RenderFrame) !GgEglNativeWindowProofTarget {
 		match app.backend.kind {
 			.x11 {

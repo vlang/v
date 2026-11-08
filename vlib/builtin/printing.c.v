@@ -84,6 +84,7 @@ pub fn eprint(s string) {
 
 // flush_stdout flushes the stdout buffer, ensuring all remaining data is written.
 // See also unbuffer_stdout() .
+@[unsafe]
 pub fn flush_stdout() {
 	$if v2_native_windows_pe_minimal ? {
 		return
@@ -100,6 +101,7 @@ pub fn flush_stdout() {
 }
 
 // flush_stderr flushes the stderr buffer, ensuring all remaining data is written.
+@[unsafe]
 pub fn flush_stderr() {
 	$if v2_native_windows_pe_minimal ? {
 		return
@@ -205,7 +207,7 @@ fn _writeln_to_fd(fd int, s string) {
 	}
 }
 
-@[manualfree]
+@[manualfree; unsafe]
 fn _write_buf_to_fd(fd int, buf &u8, buf_len int) {
 	if buf_len <= 0 {
 		return
