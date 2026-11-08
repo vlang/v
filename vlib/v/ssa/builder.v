@@ -10561,8 +10561,17 @@ fn (mut b Builder) build_map_for_in(node flat.Node, key_id flat.NodeId, val_id f
 	}
 	if val_alloca > 0 {
 		val_ptr := b.emit1(.bitcast, b.m.type_store.get_ptr(val_type), val_raw)
-		val_val := b.emit1(.load, val_type, val_ptr)
-		b.emit2(.store, b.void_type, val_val, val_alloca)
+		if node.op == .amp {
+			// `for k, mut v in m` binds `v` to the entry's own storage, as the C
+			// backend's `map_value_by_ref` does: `v` holds the entry's address and
+			// its uses are dereferenced, so `v = x` updates the map.
+			ref_slot := b.emit0(.alloca, b.m.type_store.get_ptr(b.value_type(val_ptr)))
+			b.emit2(.store, b.void_type, val_ptr, ref_slot)
+			b.vars[val_name] = ref_slot
+		} else {
+			val_val := b.emit1(.load, val_type, val_ptr)
+			b.emit2(.store, b.void_type, val_val, val_alloca)
+		}
 	}
 	b.push_loop_targets(label, node, body_start, exit_block, post_block)
 	b.build_for_in_body(node, body_start)

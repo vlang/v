@@ -424,3 +424,31 @@ fn main() {
 true', output
 	}
 }
+
+// `for k, mut v in m { v = x }` writes the map's own entries.
+fn test_map_iteration_by_reference() {
+	$if macos && arm64 {
+		output := run_arm64('map_mut_iter', "fn main() {
+	mut n := {
+		'k': 1
+		'j': 2
+	}
+	for _, mut v in n {
+		v = v * 10
+	}
+	println(n)
+	mut m := {
+		'a': ['1']
+	}
+	for _, mut values in m {
+		println(values.len)
+		values = ['z']
+	}
+	println(m)
+}
+")
+		assert output == "{'k': 10, 'j': 20}
+1
+{'a': ['z']}", output
+	}
+}
