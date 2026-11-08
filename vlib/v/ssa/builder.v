@@ -17861,6 +17861,18 @@ fn (mut b Builder) resolve_type(name_id u32) TypeID {
 			return typ
 		}
 	}
+	// Inside a module, its own struct wins over an alias with the same bare
+	// name from elsewhere: `Context` in `gg` is `gg.Context`, not
+	// `fontstash.Context = C.FONScontext`.
+	if !shape.has(.dotted) && b.cur_module.len > 0 && b.cur_module !in ['main', 'builtin'] {
+		qualified_name := flat.source_type_composition_two(.qualified, flat.source_type_id(b.cur_module),
+			name_id)
+		if typ := b.struct_types[qualified_name] {
+			if b.tc == unsafe { nil } || b.tc.type_aliases.type_id(qualified_name) == none {
+				return typ
+			}
+		}
+	}
 	if alias_source_id := b.type_alias_target(name_id) {
 		if alias_source_id != name_id {
 			return b.resolve_type(alias_source_id)

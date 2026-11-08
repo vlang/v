@@ -214,3 +214,52 @@ fn main() {
 		assert output == '1 12 12 4', output
 	}
 }
+
+// Inside `outer`, `Context` is `outer.Context`, not the alias `fonts.Context`.
+fn test_module_struct_wins_over_bare_alias() {
+	$if macos && arm64 {
+		output := run_arm64('alias_names', {
+			'fonts/fonts.v': 'module fonts
+
+pub struct C.FONScontext {}
+
+pub type Context = C.FONScontext
+'
+			'outer/outer.v': 'module outer
+
+import fonts
+
+@[heap]
+pub struct Context {
+pub mut:
+	flag  bool = true
+	fons  &fonts.Context = unsafe { nil }
+	width int
+	count int
+}
+
+pub fn new_context(width int) &Context {
+	return &Context{
+		width: width
+		count: 3
+	}
+}
+
+pub fn read_back(user_data voidptr) int {
+	ctx := unsafe { &Context(user_data) }
+	return ctx.width * 10 + ctx.count
+}
+'
+			'main.v':        'module main
+
+import outer
+
+fn main() {
+	ctx := outer.new_context(60)
+	println(outer.read_back(voidptr(ctx)))
+}
+'
+		}, []string{})
+		assert output == '603', output
+	}
+}
