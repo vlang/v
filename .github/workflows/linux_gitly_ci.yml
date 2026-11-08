@@ -23,5 +23,10 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 1
+      - name: Register V problem matchers from the runner checkout
+        run: |
+          for matcher in "$GITHUB_WORKSPACE"/.github/problem-matchers/*.json; do
+            printf '::add-matcher::%s\n' "$matcher"
+          done
       - name: Run Linux pipeline through Gitly CI and stream logs
         run: /opt/gitly-ci/github_ci_bridge.sh

@@ -15,7 +15,7 @@ jobs:
     network: true
     steps:
       - name: Build V from the pushed source
-        run: VFLAGS= make -j1
+        run: env -u GITHUB_JOB VFLAGS= make -j1
       - name: V doctor
         run: ./v run ci/linux_ci.vsh v_doctor_tcc
       - name: V self compilation
