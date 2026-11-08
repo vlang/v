@@ -58,3 +58,20 @@ fn test_explicit() {
 fn unwrap_for_test(data []u8) (u8, []u8) {
 	return data[0], data[2..]
 }
+
+fn test_utctime() {
+	b := encode_utctime('300101000000Z')!
+	assert b[0] == 0x17
+	assert decode_utctime(b)! == '300101000000Z'
+	if _ := encode_utctime('nope') {
+		assert false, 'expected time error'
+	} else {
+		assert err.msg().contains('utctime')
+	}
+}
+
+fn test_generalizedtime() {
+	b := encode_generalizedtime('20300101000000Z')!
+	assert b[0] == 0x18
+	assert decode_generalizedtime(b)! == '20300101000000Z'
+}

@@ -230,6 +230,76 @@ pub fn encode_explicit(n u8, inner []u8) ![]u8 {
 	return wrap(0xa0 + n, inner.clone())
 }
 
+// is_valid_utctime reports whether s looks like DER UTCTime
+// (YYMMDDHHMMSSZ, 13 bytes).
+pub fn is_valid_utctime(s string) bool {
+	if s.len != 13 || !s.ends_with('Z') {
+		return false
+	}
+	for c in s[..12].bytes() {
+		if c < `0` || c > `9` {
+			return false
+		}
+	}
+	return true
+}
+
+// encode_utctime encodes s as DER UTCTime.
+pub fn encode_utctime(s string) ![]u8 {
+	if !is_valid_utctime(s) {
+		return error('asn1: bad utctime `${s}`')
+	}
+	return wrap(0x17, s.bytes())
+}
+
+// decode_utctime decodes a DER UTCTime.
+pub fn decode_utctime(data []u8) !string {
+	tag, content := unwrap(data)!
+	if tag != 0x17 {
+		return error('asn1: not a utctime')
+	}
+	s := content.bytestr()
+	if !is_valid_utctime(s) {
+		return error('asn1: bad utctime content')
+	}
+	return s
+}
+
+// is_valid_generalizedtime reports whether s looks like DER
+// GeneralizedTime (YYYYMMDDHHMMSSZ, 15 bytes).
+pub fn is_valid_generalizedtime(s string) bool {
+	if s.len != 15 || !s.ends_with('Z') {
+		return false
+	}
+	for c in s[..14].bytes() {
+		if c < `0` || c > `9` {
+			return false
+		}
+	}
+	return true
+}
+
+// encode_generalizedtime encodes s as DER GeneralizedTime.
+pub fn encode_generalizedtime(s string) ![]u8 {
+	if !is_valid_generalizedtime(s) {
+		return error('asn1: bad generalizedtime `${s}`')
+	}
+	return wrap(0x18, s.bytes())
+}
+
+// decode_generalizedtime decodes a DER GeneralizedTime.
+pub fn decode_generalizedtime(data []u8) !string {
+	tag, content := unwrap(data)!
+	if tag != 0x18 {
+		return error('asn1: not a generalizedtime')
+	}
+	s := content.bytestr()
+	if !is_valid_generalizedtime(s) {
+		return error('asn1: bad generalizedtime content')
+	}
+	return s
+}
+
 pub fn decode_bool(data []u8) !bool {
 	tag, content := unwrap(data)!
 	if tag != 0x01 || content.len != 1 {
