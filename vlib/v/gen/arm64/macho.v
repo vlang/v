@@ -133,135 +133,274 @@ pub fn (mut m MachOObject) add_reloc(addr int, sym_idx int, typ int, pcrel bool)
 	}
 }
 
-// write supports write handling for MachOObject.
-pub fn (mut m MachOObject) write(path string) {
-	mut buf := []u8{}
+// MachOObjectOptions configures how write_object turns the generated code into a
+// relocatable object for the system linker.
+pub struct MachOObjectOptions {
+pub:
+	// freestanding keeps the program's own definitions of libc-named symbols.
+	freestanding bool
+	// min_os is the minimum macOS version recorded in LC_BUILD_VERSION, as
+	// `major.minor` (default 11.0, the first macOS release for Apple silicon).
+	min_os string = '11.0'
+}
+
+const mh_object = 1
+const lc_dysymtab_cmd = 0xb
+const lc_build_version_cmd = 0x32
+const platform_macos = 1
+const n_ext = u8(0x01)
+const n_undf = u8(0x00)
+const n_sect = u8(0x0e)
+const s_regular = u32(0)
+const s_attr_pure_instructions = u32(0x80000000)
+const s_attr_some_instructions = u32(0x00000400)
+
+// encode_macos_version packs `major.minor[.patch]` as the X.Y.Z nibble format of
+// LC_BUILD_VERSION (xxxx.yy.zz).
+fn encode_macos_version(version string) u32 {
+	parts := version.split('.')
+	major := if parts.len > 0 { parts[0].u32() } else { u32(11) }
+	minor := if parts.len > 1 { parts[1].u32() } else { u32(0) }
+	patch := if parts.len > 2 { parts[2].u32() } else { u32(0) }
+	return (major << 16) | ((minor & 0xff) << 8) | (patch & 0xff)
+}
+
+// write_object writes a relocatable MH_OBJECT that Apple's ld (or ld64.lld)
+// can link together with C objects, static archives, dylibs and frameworks.
+// This is the "external linking" mode (like Go's `-linkmode=external`): the
+// built-in linker is still used for programs that need nothing but libSystem.
+//
+// Layout follows what clang emits for arm64:
+// - sections __TEXT,__text, __TEXT,__const (string literals) and __DATA,__data,
+//   at the same addresses the generator used for its symbol values;
+// - symbols ordered locals, external definitions, undefined, as LC_DYSYMTAB
+//   requires;
+// - LC_BUILD_VERSION, so the linker knows the platform and does not warn.
+//
+// String literals go to a regular `__const` section instead of `__cstring`:
+// the linker splits `S_CSTRING_LITERALS` at NUL bytes and may merge or move the
+// pieces, which breaks V literals that contain NULs or are referenced with an
+// offset.
+//
+// Hosted V wrappers such as `malloc` or `exit` share their name with the libc
+// function they call. The built-in linker sends every reference to those names
+// to libSystem; the object does the same by renaming the V definitions to
+// private symbols, so neither V code nor C libraries linked next to it can
+// recurse into the wrapper.
+pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! {
+	text_len := m.text_data.len
+	const_addr := text_len
+	const_len := m.str_data.len
+	data_addr := (const_addr + const_len + 7) & ~7
+	data_len := m.data_data.len
+
+	// Generator symbol values are already the section addresses used below: text
+	// offsets, `text_len + string offset` and `align8(text_len + strings) + data
+	// offset` (see Gen.gen_post_pass).
+	// Symbol table: locals, then external definitions, then undefined symbols.
+	mut local_syms := []int{}
+	mut ext_syms := []int{}
+	mut undef_syms := []int{}
+	mut local_runtime := map[string]bool{}
+	if opts.freestanding {
+		for sym in m.symbols {
+			if sym.type_ & n_sect == n_sect && sym.name in force_external_syms {
+				local_runtime[sym.name] = true
+			}
+		}
+	}
+	// shadowed: defined libc-named wrappers whose references must go to libc.
+	mut shadowed := map[int]bool{}
+	for i, sym in m.symbols {
+		if sym.type_ & n_sect == n_sect {
+			if sym.name in force_external_syms && sym.name !in local_runtime {
+				shadowed[i] = true
+				local_syms << i
+				undef_syms << i
+			} else if sym.type_ & n_ext != 0 {
+				ext_syms << i
+			} else {
+				local_syms << i
+			}
+		} else {
+			undef_syms << i
+		}
+	}
+	ext_syms.sort_with_compare(fn [m] (a &int, b &int) int {
+		return compare_strings(m.symbols[*a].name, m.symbols[*b].name)
+	})
+	undef_syms.sort_with_compare(fn [m] (a &int, b &int) int {
+		return compare_strings(m.symbols[*a].name, m.symbols[*b].name)
+	})
+
+	mut strtab := []u8{cap: m.str_table.len + 64}
+	strtab << 0
+	mut symtab := []u8{cap: (m.symbols.len + shadowed.len) * 16}
+	// reloc_index maps an old symbol index to the index relocations must use.
+	mut reloc_index := []int{len: m.symbols.len}
+	mut out_index := 0
+	for i in local_syms {
+		sym := m.symbols[i]
+		mut name := sym.name
+		if shadowed[i] {
+			name = 'ltmp_v_shadowed${name}'
+		} else {
+			reloc_index[i] = out_index
+		}
+		write_nlist(mut symtab, mut strtab, name, n_sect, sym.sect, 0, sym.value)
+		out_index++
+	}
+	for i in ext_syms {
+		sym := m.symbols[i]
+		reloc_index[i] = out_index
+		write_nlist(mut symtab, mut strtab, sym.name, n_sect | n_ext, sym.sect, sym.desc, sym.value)
+		out_index++
+	}
+	for i in undef_syms {
+		sym := m.symbols[i]
+		reloc_index[i] = out_index
+		write_nlist(mut symtab, mut strtab, sym.name, n_undf | n_ext, 0, sym.desc, 0)
+		out_index++
+	}
+	for strtab.len % 8 != 0 {
+		strtab << 0
+	}
+	n_syms := out_index
 
 	n_sects := 3
 	header_size := 32
-	seg_cmd_size := 72 + (80 * n_sects)
+	seg_cmd_size := 72 + 80 * n_sects
+	build_version_cmd_size := 24
 	symtab_cmd_size := 24
-	load_cmds_size := seg_cmd_size + symtab_cmd_size
+	dysymtab_cmd_size := 80
+	load_cmds_size := seg_cmd_size + build_version_cmd_size + symtab_cmd_size + dysymtab_cmd_size
 
-	text_off := header_size + load_cmds_size
-	text_len := m.text_data.len
-	cstring_off := text_off + text_len
-	cstring_len := m.str_data.len
-	data_off := cstring_off + cstring_len
-	data_len := m.data_data.len
+	text_off := (header_size + load_cmds_size + 15) & ~15
+	const_off := text_off + const_addr
+	data_off := text_off + data_addr
+	seg_filesize := data_addr + data_len
+	reloc_off := (text_off + seg_filesize + 7) & ~7
+	sym_off := reloc_off + m.relocs.len * 8
+	str_off := sym_off + symtab.len
 
-	reloc_off := data_off + data_len
-	sym_off := reloc_off + (m.relocs.len * 8)
-	sym_len := m.symbols.len * 16
-	str_off := sym_off + sym_len
-	str_size := m.str_table.len
-
-	// 1. Header
+	mut buf := []u8{cap: str_off + strtab.len}
 	write_mh_magic_64(mut buf)
 	write_u32_le(mut buf, u32(cpu_type_arm64))
 	write_u32_le(mut buf, u32(cpu_subtype_arm64_all))
-	write_u32_le(mut buf, 1) // MH_OBJECT
-	write_u32_le(mut buf, 2) // ncmds
+	write_u32_le(mut buf, mh_object)
+	write_u32_le(mut buf, 4) // ncmds
 	write_u32_le(mut buf, u32(load_cmds_size))
-	write_u32_le(mut buf, 0)
-	write_u32_le(mut buf, 0)
+	write_u32_le(mut buf, 0) // flags
+	write_u32_le(mut buf, 0) // reserved
 
-	// 2. LC_SEGMENT_64
+	// LC_SEGMENT_64 (unnamed, as in every relocatable object)
 	write_u32_le(mut buf, u32(lc_segment_64))
 	write_u32_le(mut buf, u32(seg_cmd_size))
-	for _ in 0 .. 16 {
-		buf << 0
-	}
-	write_u64_le(mut buf, 0)
-	write_u64_le(mut buf, u64(text_len + cstring_len + data_len))
-	write_u64_le(mut buf, u64(text_off))
-	write_u64_le(mut buf, u64(text_len + cstring_len + data_len))
-	write_u32_le(mut buf, 7)
-	write_u32_le(mut buf, 7)
+	write_string_fixed(mut buf, '', 16)
+	write_u64_le(mut buf, 0) // vmaddr
+	write_u64_le(mut buf, u64(seg_filesize)) // vmsize
+	write_u64_le(mut buf, u64(text_off)) // fileoff
+	write_u64_le(mut buf, u64(seg_filesize)) // filesize
+	write_u32_le(mut buf, 7) // maxprot
+	write_u32_le(mut buf, 7) // initprot
 	write_u32_le(mut buf, u32(n_sects))
 	write_u32_le(mut buf, 0)
 
-	// Section 1: __text
-	write_string_fixed(mut buf, '__text', 16)
-	write_string_fixed(mut buf, '__TEXT', 16)
-	write_u64_le(mut buf, 0) // Addr 0
-	write_u64_le(mut buf, u64(text_len))
-	write_u32_le(mut buf, u32(text_off))
-	write_u32_le(mut buf, 4)
-	write_u32_le(mut buf, u32(reloc_off))
-	write_u32_le(mut buf, u32(m.relocs.len))
-	write_u32_le(mut buf, u32(0x80000400))
-	write_u32_le(mut buf, 0)
-	write_u32_le(mut buf, 0)
-	write_u32_le(mut buf, 0)
+	write_section_64(mut buf, '__text', '__TEXT', 0, text_len, text_off, 2, reloc_off,
+		m.relocs.len, s_regular | s_attr_pure_instructions | s_attr_some_instructions)
+	write_section_64(mut buf, '__const', '__TEXT', const_addr, const_len, const_off, 0, 0, 0,
+		s_regular)
+	write_section_64(mut buf, '__data', '__DATA', data_addr, data_len, data_off, 3, 0, 0,
+		s_regular)
 
-	// Section 2: __cstring
-	write_string_fixed(mut buf, '__cstring', 16)
-	write_string_fixed(mut buf, '__TEXT', 16)
-	write_u64_le(mut buf, u64(text_len)) // Addr = text_len
-	write_u64_le(mut buf, u64(cstring_len))
-	write_u32_le(mut buf, u32(cstring_off))
-	write_u32_le(mut buf, 0)
-	write_u32_le(mut buf, 0)
-	write_u32_le(mut buf, 0)
-	write_u32_le(mut buf, 2) // S_CSTRING_LITERALS
-	write_u32_le(mut buf, 0)
-	write_u32_le(mut buf, 0)
-	write_u32_le(mut buf, 0)
+	// LC_BUILD_VERSION
+	write_u32_le(mut buf, u32(lc_build_version_cmd))
+	write_u32_le(mut buf, u32(build_version_cmd_size))
+	write_u32_le(mut buf, platform_macos)
+	write_u32_le(mut buf, encode_macos_version(opts.min_os))
+	write_u32_le(mut buf, 0) // sdk: unknown
+	write_u32_le(mut buf, 0) // ntools
 
-	// Section 3: __data
-	write_string_fixed(mut buf, '__data', 16)
-	write_string_fixed(mut buf, '__DATA', 16)
-	write_u64_le(mut buf, u64(text_len + cstring_len)) // Addr = text_len + cstring_len
-	write_u64_le(mut buf, u64(data_len))
-	write_u32_le(mut buf, u32(data_off))
-	write_u32_le(mut buf, 3) // align 8
-	write_u32_le(mut buf, 0)
-	write_u32_le(mut buf, 0)
-	write_u32_le(mut buf, 0)
-	write_u32_le(mut buf, 0)
-	write_u32_le(mut buf, 0)
-	write_u32_le(mut buf, 0)
-
-	// 3. LC_SYMTAB
+	// LC_SYMTAB
 	write_u32_le(mut buf, u32(lc_symtab))
 	write_u32_le(mut buf, u32(symtab_cmd_size))
 	write_u32_le(mut buf, u32(sym_off))
-	write_u32_le(mut buf, u32(m.symbols.len))
+	write_u32_le(mut buf, u32(n_syms))
 	write_u32_le(mut buf, u32(str_off))
-	write_u32_le(mut buf, u32(str_size))
+	write_u32_le(mut buf, u32(strtab.len))
 
+	// LC_DYSYMTAB
+	write_u32_le(mut buf, u32(lc_dysymtab_cmd))
+	write_u32_le(mut buf, u32(dysymtab_cmd_size))
+	write_u32_le(mut buf, 0) // ilocalsym
+	write_u32_le(mut buf, u32(local_syms.len))
+	write_u32_le(mut buf, u32(local_syms.len)) // iextdefsym
+	write_u32_le(mut buf, u32(ext_syms.len))
+	write_u32_le(mut buf, u32(local_syms.len + ext_syms.len)) // iundefsym
+	write_u32_le(mut buf, u32(undef_syms.len))
+	for _ in 0 .. 12 {
+		write_u32_le(mut buf, 0)
+	}
+
+	for buf.len < text_off {
+		buf << 0
+	}
 	buf << m.text_data
 	buf << m.str_data
+	for buf.len < data_off {
+		buf << 0
+	}
 	buf << m.data_data
-
-	for r in m.relocs {
+	for buf.len < reloc_off {
+		buf << 0
+	}
+	// ld64 expects relocations in descending address order, as compilers emit them.
+	mut relocs := m.relocs.clone()
+	relocs.sort(a.addr > b.addr)
+	for r in relocs {
 		write_u32_le(mut buf, u32(r.addr))
-		mut info := u32(r.sym_idx)
+		mut info := u32(reloc_index[r.sym_idx]) & 0xffffff
 		if r.pcrel {
-			info |= (1 << 24)
+			info |= 1 << 24
 		}
-		info |= (u32(r.length) << 25)
+		info |= u32(r.length) << 25
 		if r.extern {
-			info |= (1 << 27)
+			info |= 1 << 27
 		}
-		info |= (u32(r.type_) << 28)
+		info |= u32(r.type_) << 28
 		write_u32_le(mut buf, info)
 	}
-
-	for s in m.symbols {
-		write_u32_le(mut buf, u32(s.name_off))
-		buf << s.type_
-		buf << s.sect
-		write_u16_le(mut buf, s.desc)
-		write_u64_le(mut buf, s.value)
-	}
-
-	buf << m.str_table
+	buf << symtab
+	buf << strtab
 
 	if !write_file_array_raw(path, buf) {
-		panic('failed to write Mach-O object')
+		return error('failed to write Mach-O object `${path}`')
 	}
+}
+
+fn write_nlist(mut symtab []u8, mut strtab []u8, name string, typ u8, sect u8, desc u16, value u64) {
+	write_u32_le(mut symtab, u32(strtab.len))
+	strtab << name.bytes()
+	strtab << 0
+	symtab << typ
+	symtab << sect
+	write_u16_le(mut symtab, desc)
+	write_u64_le(mut symtab, value)
+}
+
+fn write_section_64(mut buf []u8, sectname string, segname string, addr int, size int, offset int, align int, reloff int, nreloc int, flags u32) {
+	write_string_fixed(mut buf, sectname, 16)
+	write_string_fixed(mut buf, segname, 16)
+	write_u64_le(mut buf, u64(addr))
+	write_u64_le(mut buf, u64(size))
+	write_u32_le(mut buf, u32(offset))
+	write_u32_le(mut buf, u32(align))
+	write_u32_le(mut buf, u32(reloff))
+	write_u32_le(mut buf, u32(nreloc))
+	write_u32_le(mut buf, flags)
+	write_u32_le(mut buf, 0)
+	write_u32_le(mut buf, 0)
+	write_u32_le(mut buf, 0)
 }
 
 // write_u32_le writes u32 le output for arm64.

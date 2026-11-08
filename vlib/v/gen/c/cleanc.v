@@ -28996,3 +28996,17 @@ fn (g &FlatGen) expected_enum_text() string {
 fn (kind &CheckedIntKind) name_text() string {
 	return flat.source_type_name(kind.name)
 }
+
+// native_include_arg resolves an `#include`/`#insert` argument for `target` the
+// way this generator does (OS prefixes, `$d()`, `$env()`, `@VEXEROOT`, ...),
+// for native backends that compile the program's C side separately. It returns
+// '' when the directive does not apply to the target.
+pub fn native_include_arg(raw string, vroot string, source_file string, target pref.Target, compile_values map[string]string) string {
+	return c_include_arg_for_target_with_values(raw, vroot, source_file, target, compile_values)
+}
+
+// native_directive_arg returns the argument of a `#define`/`#undef` directive
+// for `target`, or none when its OS prefix excludes the target.
+pub fn native_directive_arg(raw string, target pref.Target) ?string {
+	return c_directive_arg_for_target(raw.trim_space(), target)
+}

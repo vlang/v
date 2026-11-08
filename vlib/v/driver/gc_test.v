@@ -75,9 +75,24 @@ fn test_v3_gc_is_disabled_for_cross_compilation() {
 		assert v3_gc_is_disabled(false, false, cross_os, host.arch, 'c', mode)
 		assert v3_gc_is_disabled(false, false, host.os, cross_arch, 'c', mode)
 		assert v3_gc_is_disabled(false, false, 'cross', host.arch, 'c', mode)
-		// The native backend never has a collector, on any host and target.
-		assert v3_gc_is_disabled(false, false, host.os, host.arch, 'arm64', mode)
+		// x64 never has a collector, on any host and target.
 		assert v3_gc_is_disabled(false, false, host.os, host.arch, 'x64', mode)
+	}
+}
+
+fn test_v3_gc_is_disabled_for_arm64_unless_boehm_on_macos() {
+	host := pref.host_target()
+	// The default stays the libc allocator; Boehm has to be asked for.
+	assert v3_gc_is_disabled(false, false, 'macos', host.arch, 'arm64', '')
+	assert v3_gc_is_disabled(false, false, 'macos', host.arch, 'arm64', 'none')
+	assert v3_gc_is_disabled(false, false, 'macos', host.arch, 'arm64', 'vgc')
+	// Boehm is linked with the system linker, which arm64 uses on macOS only.
+	for mode in ['boehm', 'boehm_incr', 'boehm_full_opt'] {
+		if host.os == 'macos' {
+			assert !v3_gc_is_disabled(false, false, 'macos', host.arch, 'arm64', mode)
+		}
+		assert v3_gc_is_disabled(false, false, 'linux', host.arch, 'arm64', mode)
+		assert v3_gc_is_disabled(true, false, 'macos', host.arch, 'arm64', mode)
 	}
 }
 

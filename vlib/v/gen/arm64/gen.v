@@ -34,6 +34,9 @@ pub mut:
 	// freestanding links the program's own runtime definitions of libc-named
 	// symbols (see Linker.freestanding).
 	freestanding bool
+	// gc_runtime sends libc allocation and thread calls to the Boehm helpers
+	// (see arm64_gc_runtime_symbols); set when the collector is linked in.
+	gc_runtime bool
 }
 
 // PendingJmp represents pending jmp data used by arm64.
@@ -219,6 +222,51 @@ pub fn (mut g Gen) write_and_link(output string) {
 	mut l := Linker.new(g.macho)
 	l.freestanding = g.freestanding
 	l.link(output, '_main')
+}
+
+// c_symbol_name returns the linker symbol for a call to `name`: the
+// `@[c: 'symbol']` binding of a C extern, the collector's version of a libc
+// allocation or thread function (see Gen.gc_runtime), or the name itself.
+fn (g &Gen) c_symbol_name(name string, is_c_extern bool) string {
+	if is_c_extern {
+		if symbol := g.m.c_extern_symbols[name] {
+			return symbol
+		}
+		if g.gc_runtime {
+			if symbol := arm64_gc_runtime_symbols[name] {
+				return symbol
+			}
+		}
+	}
+	return name
+}
+
+// arm64_gc_runtime_symbols sends the generated runtime's libc allocation and
+// thread calls to the Boehm helpers in vlib/builtin/gc_boehm_helpers.c, the
+// way `#include <gc.h>` redirects them in C: blocks must come from the
+// collector's heap, and threads must be registered with it.
+const arm64_gc_runtime_symbols = {
+	'malloc':          'v_native_gc_malloc'
+	'calloc':          'v_native_gc_calloc'
+	'realloc':         'v_native_gc_realloc'
+	'free':            'v_native_gc_free'
+	'aligned_alloc':   'v_native_gc_aligned_alloc'
+	'posix_memalign':  'v_native_gc_posix_memalign'
+	'pthread_create':  'v_gc_pthread_create'
+	'pthread_join':    'v_gc_pthread_join'
+	'pthread_detach':  'v_gc_pthread_detach'
+	'pthread_cancel':  'v_gc_pthread_cancel'
+	'pthread_exit':    'v_gc_pthread_exit'
+	'pthread_sigmask': 'v_gc_pthread_sigmask'
+	'dlopen':          'v_gc_dlopen'
+}
+
+// write_object writes the generated code as a relocatable Mach-O object for
+// the system linker (external linking).
+pub fn (mut g Gen) write_object(output string) ! {
+	g.macho.write_object(output, MachOObjectOptions{
+		freestanding: g.freestanding
+	})!
 }
 
 // reset_value_slots updates reset value slots state for arm64.
@@ -473,6 +521,20 @@ fn (mut g Gen) gen_post_pass() {
 		actual := if size > 0 { size } else { 8 }
 		for _ in 0 .. actual {
 			g.macho.data_data << 0
+		}
+	}
+
+	// `@[export: 'name']` functions are also reachable under their C name, which
+	// C code linked with the program calls (stb_image's allocator callbacks).
+	for fn_name, cname in g.m.export_aliases {
+		if cname == fn_name || (cname in force_external_syms && !g.freestanding) {
+			continue
+		}
+		if idx := g.macho.sym_by_name['_' + fn_name] {
+			sym := g.macho.symbols[idx]
+			if sym.sect == 1 {
+				g.macho.add_symbol('_' + cname, sym.value, true, 1)
+			}
 		}
 	}
 
@@ -1869,7 +1931,7 @@ fn (mut g Gen) gen_call(val_id int, instr ssa.Instruction) {
 		offset := (target - g.text_offset()) / 4
 		g.emit32(asm_bl(i32(offset)))
 	} else {
-		sym_idx := g.macho.add_undefined('_' + fn_name)
+		sym_idx := g.macho.add_undefined('_' + g.c_symbol_name(fn_name, is_c_extern))
 		g.macho.add_reloc(g.text_offset(), sym_idx, arm64_reloc_branch26, true)
 		g.emit32(asm_bl(0))
 	}
@@ -2172,7 +2234,7 @@ fn (mut g Gen) load_val(val_id int, reg int) int {
 		.func_ref {
 			name := if val.index >= 0 && val.index < g.m.funcs.len
 				&& g.m.funcs[val.index].is_c_extern {
-				val.name.trim_string_left('C.')
+				g.c_symbol_name(val.name.trim_string_left('C.'), true)
 			} else {
 				val.name
 			}

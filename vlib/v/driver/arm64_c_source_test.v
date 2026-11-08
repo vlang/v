@@ -1,6 +1,7 @@
 module driver
 
 import v.flat
+import v.pref
 
 fn test_arm64_rejects_native_source_includes() {
 	for directive in ['include', 'insert', 'preinclude', 'postinclude'] {
@@ -12,9 +13,9 @@ fn test_arm64_rejects_native_source_includes() {
 				typ:   flat.source_type_id('"@VMODROOT/native.${ext}"')
 			})
 			message := unsupported_arm64_c_source_error(a) or { '' }
-			assert message.contains('does not support including native source'), message
+			assert message.contains('built-in arm64 linker cannot link native source'), message
 			assert message.contains('native.${ext}'), message
-			assert message.contains('use the C backend'), message
+			assert message.contains('arm64_internal_link'), message
 		}
 	}
 }
@@ -34,4 +35,74 @@ fn test_arm64_accepts_header_includes_and_other_directives() {
 		typ:   flat.source_type_id('-DNAME=file.c')
 	})
 	assert unsupported_arm64_c_source_error(a) == none
+}
+
+fn directive(value string, arg string) flat.Node {
+	return flat.Node{
+		kind:  .directive
+		value: value
+		typ:   flat.source_type_id(arg)
+	}
+}
+
+fn test_arm64_link_mode_keeps_the_builtin_linker_for_libc_programs() {
+	mut a := flat.FlatAst.new()
+	a.add_node(directive('include', '<signal.h>'))
+	mode, reason := arm64_link_mode(a, ['-lm', '-lpthread', '-I', '/x', '-DNAME=1', '-l', 'dl'],
+		[]string{})
+	assert mode == .internal
+	assert reason == ''
+}
+
+fn test_arm64_link_mode_uses_the_system_linker_for_native_code() {
+	mut a := flat.FlatAst.new()
+	mode0, _ := arm64_link_mode(a, ['-framework', 'Metal'], []string{})
+	assert mode0 == .external
+	mode1, reason1 := arm64_link_mode(a, ['-lfreetype'], []string{})
+	assert mode1 == .external
+	assert reason1.contains('-lfreetype')
+	mode2, _ := arm64_link_mode(a, ['/opt/lib/libgc.a'], []string{})
+	assert mode2 == .external
+	mode3, _ := arm64_link_mode(a, ['@VEXEROOT/thirdparty/libgc/gc.o'], []string{})
+	assert mode3 == .external
+	mode4, reason4 := arm64_link_mode(a, []string{}, ['gcboehm'])
+	assert mode4 == .external
+	assert reason4.contains('Boehm')
+	a.add_node(directive('include', '"@VMODROOT/embedder.m"'))
+	mode5, reason5 := arm64_link_mode(a, []string{}, []string{})
+	assert mode5 == .external
+	assert reason5.contains('embedder.m')
+	mode6, _ := arm64_link_mode(a, ['-framework', 'Metal'], ['arm64_internal_link'])
+	assert mode6 == .internal
+	mode7, _ := arm64_link_mode(flat.FlatAst.new(), []string{}, ['arm64_external_link'])
+	assert mode7 == .external
+}
+
+fn test_native_c_support_source_follows_the_target() {
+	mut a := flat.FlatAst.new()
+	a.add_node(directive('include', 'linux <sys/timerfd.h>'))
+	a.add_node(directive('include', 'darwin <mach/mach_time.h>'))
+	a.add_node(directive('define', 'linux V_ONLY_ON_LINUX'))
+	a.add_node(directive('define', 'SOKOL_METAL'))
+	a.add_node(directive('include', '<stdio.h>'))
+	support := native_c_support_source(a, @VEXEROOT, pref.Target{
+		os:   'macos'
+		arch: 'arm64'
+	}, map[string]string{})
+	assert !support.text.contains('timerfd'), support.text
+	assert !support.text.contains('V_ONLY_ON_LINUX'), support.text
+	assert support.text.contains('#include <mach/mach_time.h>'), support.text
+	assert support.text.contains('#define SOKOL_METAL'), support.text
+	assert support.text.index('SOKOL_METAL') or { -1 } < support.text.index('<stdio.h>') or { -1 }
+}
+
+fn test_arm64_c_constant_probe_lines_isolate_each_name() {
+	text := arm64_c_constant_probe_lines(['FOO', 'BAR', 'BAZ'], [true, false, true])
+	assert text.contains('#line 1 "${arm64_c_constant_probe_file}"')
+	assert !text.contains('(BAR)')
+	assert text.contains('#line 3 "${arm64_c_constant_probe_file}"')
+	assert text.contains('__v_cconst_i_2 = (long long)(BAZ)')
+	assert arm64_is_c_identifier('SOKOL_MAX_IMAGES')
+	assert !arm64_is_c_identifier('a.b')
+	assert !arm64_is_c_identifier('1abc')
 }

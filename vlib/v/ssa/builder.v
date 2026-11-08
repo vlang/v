@@ -171,6 +171,7 @@ mut:
 	exact_used_fns         bool
 	allow_missing_fn_stubs bool
 	use_native_c_sources   bool
+	c_constants            map[string]NativeCConstant
 }
 
 // VarBinding represents var binding data used by ssa.
@@ -214,6 +215,17 @@ pub:
 	exact_used_fns         bool                         // materialize only source functions listed in used_fns
 	allow_missing_fn_stubs bool                         // native compile-only fallback for checker-validated calls
 	use_native_c_sources   bool                         // link V-shipped C implementations instead of SSA replacements
+	// c_constants holds values of `C.NAME` constants that the driver read from
+	// the program's C headers with the C compiler (see the arm64 driver's
+	// arm64_probe_c_constants): name -> value text.
+	c_constants map[string]NativeCConstant
+}
+
+// NativeCConstant is the value of a C preprocessor or enum constant.
+pub struct NativeCConstant {
+pub:
+	value    string // decimal integer, or a float literal when is_float
+	is_float bool
 }
 
 // build supports build handling for ssa.
@@ -273,6 +285,7 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 		exact_used_fns:           opts.exact_used_fns
 		allow_missing_fn_stubs:   opts.allow_missing_fn_stubs
 		use_native_c_sources:     opts.use_native_c_sources
+		c_constants:              opts.c_constants
 	}
 	b.m.track_uses = opts.track_uses
 	b.m.target = opts.target
@@ -2658,11 +2671,14 @@ fn (mut b Builder) collect_export_fn_shadows() {
 			module_name = b.source_module_name(node)
 			continue
 		}
-		if node.kind != .fn_decl {
+		if node.kind !in [.fn_decl, .c_fn_decl] {
 			continue
 		}
+		is_c_decl := node.kind == .c_fn_decl
 		fn_name := ssa_fn_name_in_module(module_name, node.value_text())
-		b.v_fn_decl_names[fn_name] = true
+		if !is_c_decl {
+			b.v_fn_decl_names[fn_name] = true
+		}
 		// The attribute node follows the declaration node; the same convention
 		// markused and the checker use.
 		attr_idx := i + 1
@@ -2678,7 +2694,7 @@ fn (mut b Builder) collect_export_fn_shadows() {
 				continue
 			}
 			key := raw.all_before(':').trim_space()
-			if key != 'export' {
+			if key !in ['export', 'c'] {
 				continue
 			}
 			mut cname := raw.all_after(':').trim_space()
@@ -2686,9 +2702,23 @@ fn (mut b Builder) collect_export_fn_shadows() {
 				|| (cname[0] == `"` && cname[cname.len - 1] == `"`)) {
 				cname = cname[1..cname.len - 1]
 			}
-			if cname.len > 0 {
-				b.export_fn_c_names[cname] = fn_name
+			if cname.len == 0 {
+				continue
 			}
+			if key == 'c' {
+				// `@[c: 'v_gc_malloc'] fn C.GC_MALLOC` binds a header macro to a
+				// real function of V's native helper objects; native code calls
+				// that symbol.
+				if is_c_decl {
+					b.m.c_extern_symbols[node.value_text().trim_string_left('C.')] = cname
+				}
+				continue
+			}
+			if is_c_decl {
+				continue
+			}
+			b.export_fn_c_names[cname] = fn_name
+			b.m.export_aliases[fn_name] = cname
 		}
 	}
 }
@@ -14001,7 +14031,10 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		// A callable struct field takes precedence over method-name fallbacks.
 		return b.build_indirect_call(id, node, fn_node_id)
 	}
-	if fn_node.kind == .index && b.is_function_value_expr(fn_node_id) {
+	// A function value read from an array or a map (`hooks[i]()`, which the
+	// transformer lowers to a dereference of the map lookup) is called
+	// indirectly.
+	if fn_node.kind in [.index, .prefix] && b.is_function_value_expr(fn_node_id) {
 		return b.build_indirect_call(id, node, fn_node_id)
 	}
 	if fn_node.kind == .selector && fn_node.children_count > 0 {
@@ -16433,6 +16466,10 @@ fn (mut b Builder) build_selector(node flat.Node) ValueID {
 				return b.m.get_or_add_const(b.f64_type, '2.220446049250313e-16')
 			}
 			else {}
+		}
+		if constant := b.c_constants[field_name] {
+			typ := if constant.is_float { b.f64_type } else { b.i64_type }
+			return b.m.get_or_add_const(typ, constant.value)
 		}
 		if value := native_platform_constant(field_name, b.m.target) {
 			typ := if field_name == 'MAP_FAILED' {

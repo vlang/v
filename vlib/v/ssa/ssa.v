@@ -511,6 +511,11 @@ pub mut:
 	// SSA name. Native codegen resolves libc-shaped calls against the binary's
 	// own bodies with this instead of an undefined reference.
 	export_c_names map[string]string
+	// `@[c: 'symbol'] fn C.NAME` bindings: C name -> the linker symbol native
+	// code calls (header macros such as Boehm's GC_MALLOC have no symbol).
+	c_extern_symbols map[string]string
+	// `@[export: 'name']` functions: SSA function name -> exported C name.
+	export_aliases map[string]string
 mut:
 	// Layout queries are hot in both SSA construction and native codegen. Keep
 	// their scratch and completed sizes on the module instead of allocating two

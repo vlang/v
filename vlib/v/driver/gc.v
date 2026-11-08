@@ -32,16 +32,24 @@ fn v3_gc_mode_defines(gc_mode string, disable_gc bool) ![]string {
 // none. vgc stays in: it is V code and one header (thirdparty/vgc), which picks
 // the target's system calls itself, so it builds for any target that it supports
 // natively.
-// The native backend is in that group for its own reason: it links against
-// libSystem alone and allocates through libc, so no collector is ever compiled
-// in. Selecting the Boehm builtin set anyway would only add source files whose
-// declarations the backend cannot satisfy.
+// The x64 backend is in that group for its own reason: it allocates through
+// libc, so no collector is ever compiled in. The arm64 backend does the same by
+// default; an explicit Boehm `-gc` mode links the prebuilt collector with the
+// system linker on macOS.
 fn v3_gc_is_disabled(building_v bool, cross_output bool, target_os string, target_arch string, backend string, gc_mode string) bool {
 	if building_v || cross_output {
 		return true
 	}
-	if backend in ['arm64', 'x64'] {
+	if backend == 'x64' {
 		return true
+	}
+	if backend == 'arm64' {
+		// arm64 links the collector through the system linker (see
+		// arm64_link_mode), only on macOS and only when asked for explicitly:
+		// the default stays the libc allocator and the built-in linker.
+		if !gc_mode.starts_with('boehm') || pref.normalized_os(target_os.trim_space().to_lower()) != 'macos' {
+			return true
+		}
 	}
 	if gc_mode == 'vgc' {
 		return false
