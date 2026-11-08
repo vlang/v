@@ -17,8 +17,8 @@ fn testsuite_begin() {
 	os.mkdir_all(override_test_root)!
 	test_utils.set_test_env(os.join_path(override_test_root, 'build-store'))
 	os.setenv('VEXE', @VEXE, true)
-	cmd_ok_args(@LOCATION, [@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', @CCOMPILER, '-gc',
-		'none', '-o', override_vpm_exe, os.join_path(@VEXEROOT, 'cmd', 'tools', 'vpm')])
+	cmd_ok_args(@LOCATION, [@VEXE, '-new-compiler', '-no-retry-compilation', '-cc', @CCOMPILER,
+		'-gc', 'none', '-o', override_vpm_exe, os.join_path(@VEXEROOT, 'cmd', 'tools', 'vpm')])
 }
 
 fn testsuite_end() {
