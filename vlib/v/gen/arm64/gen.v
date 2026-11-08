@@ -841,9 +841,47 @@ fn (mut g Gen) emit_zero_aggregate(ptr_reg int, typ_id ssa.TypeID, max_size int)
 	if max_size > 0 && max_size < size {
 		size = max_size
 	}
-	n_words := (size + 7) / 8
-	for wi in 0 .. n_words {
+	for wi in 0 .. size / 8 {
 		g.emit_store_reg_offset(xzr, Reg(ptr_reg), wi * 8)
+	}
+	if size % 8 != 0 {
+		g.emit_store_partial(xzr, Reg(ptr_reg), size / 8 * 8, size % 8)
+	}
+}
+
+// emit_store_partial writes the low `count` bytes (1 to 7) of `src` to
+// `base + offset`. Aggregates whose size is not a multiple of 8 end with such a
+// tail; a full-word store there would overwrite the bytes that follow them.
+// `src` is clobbered.
+fn (mut g Gen) emit_store_partial(src Reg, base Reg, offset int, count int) {
+	addr := if int(src) != 11 && int(base) != 11 {
+		Reg(11)
+	} else if int(src) != 12 && int(base) != 12 {
+		Reg(12)
+	} else {
+		Reg(13)
+	}
+	g.emit_mov_imm(int(addr), i64(offset))
+	g.emit32(asm_add_reg(addr, base, addr))
+	mut left := count
+	if left >= 4 {
+		g.emit32(asm_str_w(src, addr))
+		left -= 4
+		if left > 0 {
+			g.emit32(asm_lsr_imm(src, src, 32))
+			g.emit32(asm_add_imm(addr, addr, 4))
+		}
+	}
+	if left >= 2 {
+		g.emit32(asm_str_h(src, addr))
+		left -= 2
+		if left > 0 {
+			g.emit32(asm_lsr_imm(src, src, 16))
+			g.emit32(asm_add_imm(addr, addr, 2))
+		}
+	}
+	if left == 1 {
+		g.emit32(asm_str_b(src, addr))
 	}
 }
 
@@ -1032,10 +1070,16 @@ fn (mut g Gen) gen_instr(val_id int) {
 				if src_size > 8 && g.is_value_aggregate_type(src_val.typ) {
 					if src_off := g.stack_slot(src_id) {
 						copy_size := g.aggregate_store_size(ptr_id, src_val.typ)
-						n_words := (copy_size + 7) / 8
-						for wi in 0 .. n_words {
+						for wi in 0 .. copy_size / 8 {
 							g.emit_load_fp(8, src_off + wi * 8)
 							g.emit_store_reg_offset(Reg(8), Reg(ptr_reg), wi * 8)
+						}
+						if copy_size % 8 != 0 {
+							// The stack slot is a whole number of words, so the
+							// last word can be read in full.
+							g.emit_load_fp(8, src_off + copy_size / 8 * 8)
+							g.emit_store_partial(Reg(8), Reg(ptr_reg), copy_size / 8 * 8,
+								copy_size % 8)
 						}
 					} else {
 						src_reg := g.load_val(src_id, 8)

@@ -466,3 +466,39 @@ fn main() {
 		assert output == '104 104 39', output
 	}
 }
+
+// Storing a 12-byte struct, or zeroing it, writes 12 bytes: the next array
+// element keeps its first field.
+fn test_aggregate_tail_store_stays_in_bounds() {
+	$if macos && arm64 {
+		output := run_arm64('aggregate_tail', {
+			'main.v': "module main
+
+struct Tail {
+mut:
+	a u32
+	b u32
+	c u32
+}
+
+struct Outer {
+mut:
+	head [26]u32
+	tail Tail
+}
+
+fn main() {
+	mut items := [Outer{}, Outer{}]
+	items[1].head[0] = 77
+	items[0].tail = Tail{1, 2, 3}
+	println('\${items[1].head[0]} \${items[0].tail.c}')
+	items[1].head[0] = 78
+	items[0].tail = Tail{}
+	println('\${items[1].head[0]} \${items[0].tail.c}')
+}
+"
+		}, []string{})
+		assert output == '77 3
+78 0', output
+	}
+}
