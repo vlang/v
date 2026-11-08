@@ -128,6 +128,38 @@ fn test_dummy_credentials_reject_unusable_parameters() {
 	assert false, 'accepted a short secret'
 }
 
+fn test_verify_accepts_the_password_and_nothing_else() {
+	for mechanism in [Mechanism.sha1, .sha256, .sha512] {
+		creds := derive_credentials(mechanism, 'pencil', 'saltsaltsaltsalt'.bytes(), 4096)!
+		assert creds.verify('pencil'), mechanism.name()
+		assert !creds.verify('crayon'), mechanism.name()
+		assert !creds.verify(''), mechanism.name()
+		assert !creds.verify('pencil '), mechanism.name()
+	}
+}
+
+fn test_verify_refuses_records_it_cannot_derive_or_that_do_not_match() {
+	creds := derive_credentials(.sha256, 'pencil', 'saltsaltsaltsalt'.bytes(), 4096)!
+	assert !Credentials{
+		...creds
+		salt: []u8{}
+	}.verify('pencil')
+	assert !Credentials{
+		...creds
+		iterations: 0
+	}.verify('pencil')
+	// Keys derived with another hash, or cut short, never match.
+	assert !Credentials{
+		...creds
+		mechanism: .sha512
+	}.verify('pencil')
+	assert !Credentials{
+		...creds
+		stored_key: creds.stored_key[..16]
+	}.verify('pencil')
+	assert !dummy_credentials(.sha256, dummy_secret, 'nobody', 4096)!.verify('pencil')
+}
+
 fn test_generated_nonces_are_unique_and_printable() {
 	mut seen := map[string]bool{}
 	for _ in 0 .. 256 {

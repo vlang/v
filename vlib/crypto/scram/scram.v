@@ -52,6 +52,7 @@ import crypto.rand
 import crypto.sha1
 import crypto.sha256
 import crypto.sha512
+import crypto.subtle
 import encoding.base64
 import hash
 
@@ -257,6 +258,33 @@ pub fn derive_credentials(mechanism Mechanism, password string, salt []u8, itera
 pub fn new_credentials(mechanism Mechanism, password string) !Credentials {
 	salt := rand.bytes(default_salt_size)!
 	return derive_credentials(mechanism, password, salt, default_iterations)!
+}
+
+// verify reports whether `password` matches the credentials, for a server that
+// checks a clear-text password, as SASL PLAIN sends, against the SCRAM record
+// it stores. Prepare the password the same way as when the credentials were
+// created. It derives the keys again with the stored salt and iteration count,
+// and compares the stored key in constant time; it does not check that
+// `server_key` is consistent with it. A record that cannot be derived, such as
+// one with an empty salt, gives `false`.
+//
+// It runs a full PBKDF2 derivation, which is slow on purpose: keep it off an
+// event loop. Against `dummy_credentials` it costs the same derivation as a
+// real account with the same mechanism, salt length and iteration count, and
+// no password is expected to match; the application must still refuse an
+// unknown account whatever the result.
+//
+// Example:
+// ```v
+// credentials := scram.new_credentials(.sha256, 'pencil')!
+// assert credentials.verify('pencil')
+// assert !credentials.verify('crayon')
+// ```
+pub fn (c Credentials) verify(password string) bool {
+	derived := derive_credentials(c.mechanism, password, c.salt, c.iterations) or {
+		return false
+	}
+	return subtle.constant_time_compare(derived.stored_key, c.stored_key) == 1
 }
 
 // check_iterations rejects an iteration count the wire grammar cannot carry.
