@@ -492,6 +492,13 @@ pub const source_value_kinds = u64(1) << u8(NodeKind.struct_init) | u64(1) << u8
 	u64(1) << u8(NodeKind.sizeof_expr) | u64(1) << u8(NodeKind.typeof_expr) |
 	u64(1) << u8(NodeKind.offsetof_expr)
 
+// name_id returns the interned id (see source_type_id) of the text the node
+// spells, or 0 for an empty one. Scopes and the symbol registry key names by it.
+@[inline]
+pub fn (n &Node) name_id() u32 {
+	return source_type_id(n.value)
+}
+
 @[inline]
 fn (n Node) has_source_value_kind() bool {
 	return u8(n.kind) < 64 && (source_value_kinds >> u8(n.kind)) & 1 != 0

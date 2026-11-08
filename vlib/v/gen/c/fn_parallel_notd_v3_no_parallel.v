@@ -3058,9 +3058,9 @@ fn (g &FlatGen) parallel_cached_expr_type(id flat.NodeId, node &flat.Node) ?type
 	if idx < g.tc.expr_type_set.len && idx < g.tc.expr_type_values.len && g.tc.expr_type_set[idx] {
 		return *g.tc.expr_type_values[idx]
 	}
-	if node.kind == .call && idx < g.tc.resolved_call_set.len && idx < g.tc.resolved_call_names.len
+	if node.kind == .call && idx < g.tc.resolved_call_set.len && idx < g.tc.resolved_calls.len
 		&& g.tc.resolved_call_set[idx] {
-		name := g.tc.resolved_call_names[idx].value
+		name := flat.source_type_name(g.tc.resolved_calls[idx])
 		if t := g.tc.fn_ret_types[name] {
 			return t
 		}
@@ -3197,10 +3197,10 @@ fn (g &FlatGen) parallel_cached_expr_type_with_cache(id flat.NodeId, node &flat.
 			return *g.tc.expr_type_values[idx]
 		}
 		if node.kind != .call || idx >= g.tc.resolved_call_set.len
-			|| idx >= g.tc.resolved_call_names.len || !g.tc.resolved_call_set[idx] {
+			|| idx >= g.tc.resolved_calls.len || !g.tc.resolved_call_set[idx] {
 			return none
 		}
-		name = g.tc.resolved_call_names[idx].value
+		name = flat.source_type_name(g.tc.resolved_calls[idx])
 	}
 	slot := int((u64(voidptr(name.str)) >> 4 ^ u64(name.len)) & 4095)
 	if cache.seen[slot] && cache.ptrs[slot] == voidptr(name.str) && cache.lens[slot] == name.len {
@@ -3924,7 +3924,7 @@ fn (g &FlatGen) clone_parallel_type_checker_legacy() &types.TypeChecker {
 		cur_module:                            g.tc.cur_module
 		cur_file:                              g.tc.cur_file
 		errors:                                g.tc.errors.clone()
-		resolved_call_names:                   g.tc.resolved_call_names
+		resolved_calls:                   g.tc.resolved_calls
 		resolved_call_set:                     g.tc.resolved_call_set
 		statement_nodes:                       g.tc.statement_nodes
 		expr_type_values:                      g.tc.expr_type_values
@@ -3933,7 +3933,7 @@ fn (g &FlatGen) clone_parallel_type_checker_legacy() &types.TypeChecker {
 		parallel_check_sparse:                 g.tc.parallel_check_sparse
 		check_range_lo:                        g.tc.check_range_lo
 		check_range_hi:                        g.tc.check_range_hi
-		sparse_resolved_call_names:            g.tc.sparse_resolved_call_names
+		sparse_resolved_calls:            g.tc.sparse_resolved_calls
 		sparse_resolved_fn_values:             g.tc.sparse_resolved_fn_values
 		sparse_statement_nodes:                g.tc.sparse_statement_nodes
 		sparse_expr_type_values:               g.tc.sparse_expr_type_values

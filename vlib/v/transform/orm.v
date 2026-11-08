@@ -3800,9 +3800,9 @@ fn (t &Transformer) sql_root_value_type_name(value_name string) u32 {
 	}
 	mut typ := t.var_type(bound_name)
 	if typ == 0 && !isnil(t.tc) {
-		if current := t.tc.cur_scope.lookup(bound_name) {
+		if current := t.tc.cur_scope.lookup_id(flat.source_type_id(bound_name)) {
 			typ = current.source_type_id()
-		} else if file := t.tc.file_scope.lookup(bound_name) {
+		} else if file := t.tc.file_scope.lookup_id(flat.source_type_id(bound_name)) {
 			typ = file.source_type_id()
 		}
 	}

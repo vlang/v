@@ -49,7 +49,7 @@ fn test_array_builtin_return_types_and_custom_method_fallback() {
 		mut a := flat.FlatAst.new()
 		call := array_return_type_test_call(mut a, method)
 		mut tc := TypeChecker.new(&a)
-		tc.cur_scope.insert('values', Type(Array{ elem_type: new_type_reference(Type(int_)) }))
+		tc.cur_scope.insert_id(flat.source_type_id('values'), 'values', Type(Array{ elem_type: new_type_reference(Type(int_)) }))
 		tc.fn_ret_types['[]int.custom'] = builtin_string_type
 		tc.fn_ret_types['[]int.custom_with_compare'] = builtin_string_type
 		assert tc.resolve_type_nonliteral(call).name() == name, method
@@ -61,7 +61,7 @@ fn test_array_alias_method_takes_priority_over_builtin_sorting() {
 	call := array_return_type_test_call(mut a, 'sorted_with_compare')
 	mut tc := TypeChecker.new(&a)
 	array := Type(Array{ elem_type: new_type_reference(Type(int_)) })
-	tc.cur_scope.insert('values', Type(Alias{
+	tc.cur_scope.insert_id(flat.source_type_id('values'), 'values', Type(Alias{
 		name_id:   flat.source_type_id('Numbers')
 		base_type: new_type_reference(array)
 	}))
@@ -75,7 +75,7 @@ fn test_fixed_array_methods_keep_their_receiver_gate() {
 		mut a := flat.FlatAst.new()
 		call := array_return_type_test_call(mut a, method)
 		mut tc := TypeChecker.new(&a)
-		tc.cur_scope.insert('values', Type(ArrayFixed{
+		tc.cur_scope.insert_id(flat.source_type_id('values'), 'values', Type(ArrayFixed{
 			elem_type: new_type_reference(Type(int_))
 			len:       3
 		}))

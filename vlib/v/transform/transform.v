@@ -239,10 +239,6 @@ mut:
 	// merge_regions_relocated marks worker regions as already id-relocated in
 	// place (parallel pass), so merge_worker compacts with plain memmoves.
 	merge_regions_relocated bool
-	// merge_call_canon holds, in fork_overlay.resolved_call_names iteration
-	// order, each name's canonical spelling looked up in parallel before the
-	// merge ('' when the name was not interned yet).
-	merge_call_canon []string
 	// merge_regions_absorbed marks worker regions as already relocated *into*
 	// their final master slots by that same parallel pass, so merge_worker skips
 	// the bulk copies entirely and shifts ids with the offsets recorded below.
@@ -6851,20 +6847,9 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 	// under the shifted node ids, so or/return lowering in the late pass and
 	// cgen see them exactly as after a serial transform.
 	if !isnil(w.tc.fork_overlay) {
-		mut call_pos := 0
-		for idx, name in w.tc.fork_overlay.resolved_call_names {
+		for idx, sym in w.tc.fork_overlay.resolved_calls {
 			shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
-			if call_pos < w.merge_call_canon.len && w.merge_call_canon[call_pos].len > 0 {
-				t.set_resolved_call_canonical(shifted, w.merge_call_canon[call_pos])
-			} else {
-				owned_name := if w.worker_scope != unsafe { nil } && !t.retain_worker_results {
-					name.clone()
-				} else {
-					name
-				}
-				t.set_resolved_call_entry(shifted, owned_name)
-			}
-			call_pos++
+			t.set_resolved_call_sym(shifted, sym)
 		}
 		for idx, name in w.tc.fork_overlay.resolved_fn_values {
 			shifted := if idx >= base_nodes { idx + int(node_shift) } else { idx }
@@ -7014,30 +6999,29 @@ fn (mut t Transformer) merge_worker(w &Transformer, items []FnWorkItem, base_nod
 }
 
 fn (mut t Transformer) set_resolved_call_entry(idx int, name string) {
-	t.set_resolved_call_canonical(idx, t.tc.canonical_symbol(name))
+	t.set_resolved_call_sym(idx, flat.source_type_id(name))
 }
 
-// set_resolved_call_canonical records a resolved call whose name is already the
-// checker's canonical spelling.
-fn (mut t Transformer) set_resolved_call_canonical(idx int, canonical string) {
-	if t.tc.parallel_check_sparse && idx >= t.tc.resolved_call_names.len {
-		t.tc.sparse_resolved_call_names[idx] = canonical
+// set_resolved_call_sym records the symbol a call node resolves to.
+fn (mut t Transformer) set_resolved_call_sym(idx int, sym types.SymbolId) {
+	if t.tc.parallel_check_sparse && idx >= t.tc.resolved_calls.len {
+		t.tc.sparse_resolved_calls[idx] = sym
 		return
 	}
-	if t.tc.resolved_call_names.len <= idx {
-		start := t.tc.resolved_call_names.len
+	if t.tc.resolved_calls.len <= idx {
+		start := t.tc.resolved_calls.len
 		set_start := t.tc.resolved_call_set.len
 		amount := idx + 1 - start
 		// Merging an appended worker region can leave a large gap. Initialize
 		// that range once instead of growing both caches one element at a time.
 		unsafe {
-			t.tc.resolved_call_names.grow_len(amount)
+			t.tc.resolved_calls.grow_len(amount)
 			t.tc.resolved_call_set.grow_len(amount)
-			vmemset(&t.tc.resolved_call_names[start], 0, int(amount) * int(sizeof(&types.CachedName)))
+			vmemset(&t.tc.resolved_calls[start], 0, int(amount) * int(sizeof(types.SymbolId)))
 			vmemset(&t.tc.resolved_call_set[set_start], 0, int(amount))
 		}
 	}
-	t.tc.resolved_call_names[idx] = types.cached_name(canonical)
+	t.tc.resolved_calls[idx] = sym
 	t.tc.resolved_call_set[idx] = true
 }
 
@@ -7049,7 +7033,7 @@ fn (mut t Transformer) set_generated_resolved_call(id flat.NodeId, name string) 
 		return
 	}
 	if !isnil(t.tc.fork_overlay) {
-		t.tc.fork_overlay.resolved_call_names[int(id)] = name
+		t.tc.fork_overlay.resolved_calls[int(id)] = flat.source_type_id(name)
 		return
 	}
 	t.set_resolved_call_entry(int(id), name)
@@ -7079,9 +7063,7 @@ fn (mut t Transformer) clear_typechecker_node_cache_range(start int, end int) {
 	if start < call_end {
 		unsafe {
 			vmemset(&t.tc.resolved_call_set[start], 0, call_end - start)
-		}
-		for k in start .. call_end {
-			t.tc.resolved_call_names[k] = unsafe { nil }
+			vmemset(&t.tc.resolved_calls[start], 0, (call_end - start) * int(sizeof(types.SymbolId)))
 		}
 	}
 	expr_end := if end < t.tc.expr_type_set.len { end } else { t.tc.expr_type_set.len }
@@ -7096,11 +7078,11 @@ fn (mut t Transformer) clear_typechecker_node_cache_range(start int, end int) {
 			vmemset(&t.tc.statement_nodes[start], 0, stmt_end - start)
 		}
 	}
-	if t.tc.sparse_resolved_call_names.len > 0 || t.tc.sparse_resolved_fn_values.len > 0
+	if t.tc.sparse_resolved_calls.len > 0 || t.tc.sparse_resolved_fn_values.len > 0
 		|| t.tc.sparse_expr_type_values.len > 0 || t.tc.sparse_statement_nodes.len > 0 {
 		for k in start .. end {
-			if t.tc.sparse_resolved_call_names.len > 0 {
-				t.tc.sparse_resolved_call_names.delete(k)
+			if t.tc.sparse_resolved_calls.len > 0 {
+				t.tc.sparse_resolved_calls.delete(k)
 			}
 			t.tc.clear_resolved_fn_value(flat.NodeId(k))
 			if t.tc.sparse_expr_type_values.len > 0 {
@@ -7118,7 +7100,7 @@ fn (mut t Transformer) clear_typechecker_node_cache(idx int) {
 		return
 	}
 	if idx < t.tc.resolved_call_set.len {
-		t.tc.resolved_call_names[idx] = unsafe { nil }
+		t.tc.resolved_calls[idx] = 0
 		t.tc.resolved_call_set[idx] = false
 	}
 	if idx < t.tc.expr_type_set.len {
@@ -7131,8 +7113,8 @@ fn (mut t Transformer) clear_typechecker_node_cache(idx int) {
 	// sparse mode; after the parallel-check merge they are empty on the master.
 	// Deleting from an empty map still hashes the key — and this runs once per
 	// merged node — so guard on emptiness.
-	if t.tc.sparse_resolved_call_names.len > 0 {
-		t.tc.sparse_resolved_call_names.delete(idx)
+	if t.tc.sparse_resolved_calls.len > 0 {
+		t.tc.sparse_resolved_calls.delete(idx)
 	}
 	t.tc.clear_resolved_fn_value(flat.NodeId(idx))
 	if t.tc.sparse_expr_type_values.len > 0 {
@@ -11594,7 +11576,7 @@ fn (mut t Transformer) scan_escape_pass_nonempty(id flat.NodeId, mut amp_ptrs ma
 				}
 				t.generic_call_spec_misses.delete(idx)
 				if !isnil(t.tc) && !isnil(t.tc.fork_overlay) {
-					t.tc.fork_overlay.resolved_call_names.delete(idx)
+					t.tc.fork_overlay.resolved_calls.delete(idx)
 					t.tc.fork_overlay.resolved_fn_values.delete(idx)
 				}
 			}
@@ -14639,7 +14621,7 @@ fn (mut t Transformer) selected_sizeof_value_type(name string) ?u32 {
 			return none
 		}
 	}
-	typ := t.tc.const_types[key] or { t.tc.file_scope.lookup(key) or { return none } }
+	typ := t.tc.const_types[key] or { t.tc.file_scope.lookup_id(flat.source_type_id(key)) or { return none } }
 	if typ is types.Unknown || typ is types.Void {
 		return none
 	}

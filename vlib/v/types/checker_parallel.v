@@ -3187,8 +3187,8 @@ fn restore_check_load_heap(mut order []int, loads []i64) {
 // discipline) into the shared node-indexed arrays, restoring the state the old
 // serial flow produced with direct writes.
 fn (mut tc TypeChecker) merge_own_sparse_caches() {
-	for idx, name in tc.sparse_resolved_call_names {
-		tc.resolved_call_names[idx] = cached_name(name)
+	for idx, sym in tc.sparse_resolved_calls {
+		tc.resolved_calls[idx] = sym
 		tc.resolved_call_set[idx] = true
 	}
 	for idx, _ in tc.sparse_statement_nodes {
@@ -3199,7 +3199,7 @@ fn (mut tc TypeChecker) merge_own_sparse_caches() {
 		tc.expr_type_values[idx] = tc.intern_type_reference(typ)
 		tc.expr_type_set[idx] = true
 	}
-	tc.sparse_resolved_call_names.clear()
+	tc.sparse_resolved_calls.clear()
 	tc.sparse_statement_nodes.clear()
 	tc.sparse_expr_type_values.clear()
 	tc.sparse_checking_nodes.clear()
@@ -4518,7 +4518,7 @@ fn (tc &TypeChecker) expr_calls_fn_with_duplicate_parameters(id flat.NodeId) boo
 	if node.kind == .call && node.children_count > 0 {
 		callee := tc.a.child_node(node, 0)
 		if callee.kind == .ident {
-			name := (tc.cached_resolved_call(id) or { callee.value }).all_after_last('.')
+			name := (tc.resolved_call_name(id) or { callee.value }).all_after_last('.')
 			if decl_index := tc.fn_decl_short_name_ids[name] {
 				decl := tc.a.node(flat.NodeId(decl_index))
 				mut names := map[string]bool{}
@@ -5521,7 +5521,7 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 	w.parallel_check_sparse = true
 	w.check_range_lo = -1
 	w.check_range_hi = -1
-	w.sparse_resolved_call_names = map[int]string{}
+	w.sparse_resolved_calls = map[int]SymbolId{}
 	w.sparse_resolved_fn_values = map[int]string{}
 	w.sparse_statement_nodes = map[int]bool{}
 	w.sparse_expr_type_values = map[int]Type{}
@@ -5570,7 +5570,6 @@ fn (tc &TypeChecker) fork_for_parallel_check() &TypeChecker {
 		// tables pointing into freed storage. Scoped helpers therefore intern into
 		// private tables and promote their compact results during merge.
 		w.type_interner = new_type_interner()
-		w.symbols = new_symbol_interner()
 		w.type_cache.base = unsafe { nil }
 		if !isnil(precomputed) {
 			// Only immutable semantic values cross the arena boundary. The full
@@ -5619,31 +5618,6 @@ mut:
 	set    [4096]bool
 }
 
-// CheckNamePromotionCache maps a still-alive worker-arena name instance to
-// the single persistent CachedName already published for it. Resolved call
-// names repeat across thousands of nodes, so this avoids one string clone and
-// one box per node. Never retain it across arena frees.
-struct CheckNamePromotionCache {
-mut:
-	ptrs   [1024]voidptr
-	lens   [1024]int
-	values [1024]&CachedName
-}
-
-@[inline]
-fn promote_cached_name_value(name &CachedName, mut cache CheckNamePromotionCache) &CachedName {
-	value := name.value
-	slot := int((u64(voidptr(value.str)) >> 4) & 1023)
-	if cache.ptrs[slot] == voidptr(value.str) && cache.lens[slot] == value.len {
-		return cache.values[slot]
-	}
-	promoted := cached_name(value.clone())
-	cache.ptrs[slot] = voidptr(value.str)
-	cache.lens[slot] = value.len
-	cache.values[slot] = promoted
-	return promoted
-}
-
 @[direct_array_access; inline]
 fn (tc &TypeChecker) cached_check_type_promotion(typ &Type, mut cache CheckTypePromotionCache, promote_missing bool, frozen_interner bool) ?&Type {
 	// Slot selection stays shallow; structural verification below guards collisions
@@ -5677,8 +5651,8 @@ fn (tc &TypeChecker) probe_check_type_promotion(typ &Type, frozen_interner bool)
 }
 
 // check_clone_chunk_thread promotes one chunk's node-cache payloads out of
-// the (still alive) worker scopes: name clones land in the pool thread's
-// persistent arena, and expr types are rebound via a read-only interner probe.
+// the (still alive) worker scopes: resolved calls are global symbol ids and
+// need no promotion; expr types are rebound via a read-only interner probe.
 // Types the interner does not know yet are recorded and interned serially in
 // chunk order afterwards, so interner ids match the serial merge exactly.
 fn check_clone_chunk_thread(arg voidptr) voidptr {
@@ -5686,12 +5660,8 @@ fn check_clone_chunk_thread(arg voidptr) voidptr {
 	mut tc := unsafe { &TypeChecker(a.tc) }
 	items := unsafe { &[]CheckWorkItem(a.items_ptr) }
 	mut cache := CheckTypePromotionCache{}
-	mut names := CheckNamePromotionCache{}
 	for item in *items {
 		for idx in item.range_lo .. item.fn_idx + 1 {
-			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
-				tc.resolved_call_names[idx] = promote_cached_name_value(tc.resolved_call_names[idx], mut names)
-			}
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
 				if canonical := tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, false, true) {
 					tc.expr_type_values[idx] = canonical
@@ -5734,12 +5704,8 @@ fn par_check_clone_enabled() bool {
 @[direct_array_access]
 fn (mut tc TypeChecker) clone_parallel_worker_node_caches(items []CheckWorkItem) {
 	mut cache := CheckTypePromotionCache{}
-	mut names := CheckNamePromotionCache{}
 	for item in items {
 		for idx in item.range_lo .. item.fn_idx + 1 {
-			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
-				tc.resolved_call_names[idx] = promote_cached_name_value(tc.resolved_call_names[idx], mut names)
-			}
 			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
 				tc.expr_type_values[idx] = tc.cached_check_type_promotion(tc.expr_type_values[idx], mut cache, true, false) or {
 					tc.promote_check_type(*tc.expr_type_values[idx])
@@ -5806,19 +5772,6 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 			}
 		}
 	}
-	// Scoped checkers use a private symbol interner. Translate each distinct
-	// spelling once per worker, then replay dependency edges with O(1) ids; the
-	// old per-edge name+intern path repeated the same locked hash probes across
-	// thousands of call sites.
-	mut symbol_remap := []SymbolId{}
-	if scoped && !isnil(w.symbols) {
-		worker_symbols := unsafe { w.symbols }
-		symbol_remap = []SymbolId{len: worker_symbols.names.len + 1}
-		for index, name in worker_symbols.names {
-			id, _ := tc.intern_scoped_symbol(name)
-			symbol_remap[index + 1] = id
-		}
-	}
 	for err in w.errors {
 		tc.errors << if scoped { clone_parallel_type_error(err) } else { err }
 	}
@@ -5845,12 +5798,11 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 	$if ownership ? {
 		tc.ownership_merge_parallel_check_worker(w)
 	}
-	for idx, name in w.sparse_resolved_call_names {
-		owned_name := if scoped { name.clone() } else { name }
+	for idx, sym in w.sparse_resolved_calls {
 		if tc.parallel_check_sparse {
-			tc.sparse_resolved_call_names[idx] = owned_name
+			tc.sparse_resolved_calls[idx] = sym
 		} else {
-			tc.resolved_call_names[idx] = cached_name(owned_name)
+			tc.resolved_calls[idx] = sym
 			tc.resolved_call_set[idx] = true
 		}
 	}
@@ -5880,42 +5832,23 @@ fn (mut tc TypeChecker) merge_parallel_check_worker_scoped(w &TypeChecker, scope
 			tc.expr_type_set[idx] = true
 		}
 	}
+	// Symbols are global interner ids, so worker dependency edges need no
+	// translation; a scoped worker's lists only move out of its arena.
 	for fn_idx, dependencies in w.direct_dependencies_by_fn {
 		if fn_idx !in tc.direct_dependencies_by_fn {
-			if scoped {
-				mut owned := []SymbolId{cap: dependencies.len}
-				for dependency in dependencies {
-					dependency_index := int(dependency)
-					if dependency_index > 0 && dependency_index < symbol_remap.len {
-						owned << symbol_remap[dependency_index]
-					} else {
-						id, _ := tc.intern_scoped_symbol(w.symbol_name(dependency))
-						owned << id
-					}
+			if dependencies.len > 0 {
+				tc.direct_dependencies_by_fn[fn_idx] = if scoped {
+					dependencies.clone()
+				} else {
+					dependencies
 				}
-				if owned.len > 0 {
-					tc.direct_dependencies_by_fn[fn_idx] = owned
-				}
-			} else if dependencies.len > 0 {
-				tc.direct_dependencies_by_fn[fn_idx] = dependencies
 			}
 			continue
 		}
 		mut merged := tc.direct_dependencies_by_fn[fn_idx] or { []SymbolId{} }
 		for dependency in dependencies {
-			owned_dependency := if scoped {
-				dependency_index := int(dependency)
-				if dependency_index > 0 && dependency_index < symbol_remap.len {
-					symbol_remap[dependency_index]
-				} else {
-					id, _ := tc.intern_scoped_symbol(w.symbol_name(dependency))
-					id
-				}
-			} else {
-				dependency
-			}
-			if owned_dependency !in merged {
-				merged << owned_dependency
+			if dependency !in merged {
+				merged << dependency
 			}
 		}
 		if merged.len > 0 {

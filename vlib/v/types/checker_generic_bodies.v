@@ -280,7 +280,7 @@ fn (tc &TypeChecker) instance_type_text(text_id u32) u32 {
 			return tc.type_param_texts[param] or { text_id }
 		}
 	}
-	if typ := tc.cur_scope.lookup(text) {
+	if typ := tc.cur_scope.lookup_id(flat.source_type_id(text)) {
 		if typ !is Unknown { return typ.source_type_id() }
 	}
 	return text_id

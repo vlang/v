@@ -199,7 +199,7 @@ fn test_ordinary_escape_prescreen_rejects_inferred_generic_reference_signature()
 	mut tc := types.TypeChecker.new(&a)
 	// The source placeholder T resolves to a scalar alias in the declaration
 	// parameter view, but the inferred call parameter is a fixed-array pointer.
-	tc.file_scope.insert('T', types.Type(types.Alias{ name_id: flat.source_type_id('T'), base_type: types.Type(types.int_) }))
+	tc.file_scope.insert_id(flat.source_type_id('T'), 'T', types.Type(types.Alias{ name_id: flat.source_type_id('T'), base_type: types.Type(types.int_) }))
 	tc.fn_param_types['retain'] = [types.Type(types.int_)]
 	tc.fn_ret_types['retain'] = types.Type(types.int_)
 	param := a.add_node(flat.Node{ kind: .param, value: 'arg', typ: flat.source_type_id('T') })

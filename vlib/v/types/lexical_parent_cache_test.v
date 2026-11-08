@@ -74,7 +74,7 @@ fn test_lexical_parent_cache_preserves_if_else_and_for_branch_children() {
 	mut tc := TypeChecker.new(&a)
 	tc.build_node_indexes(&a)
 	tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
-	tc.cur_scope.insert('value', Type(SumType{ name_id: flat.source_type_id('Value') }))
+	tc.cur_scope.insert_id(flat.source_type_id('value'), 'value', Type(SumType{ name_id: flat.source_type_id('Value') }))
 	for cached in [true, true, false, true] {
 		tc.cache_lexical_parents = cached
 		assert tc.lexical_smartcast_type_in_parents(then_value, 'value', false)? == Type(int_)
@@ -102,7 +102,7 @@ fn test_lexical_parent_cache_rechecks_condition_and_preceding_writes() {
 	mut tc := TypeChecker.new(&a)
 	tc.build_node_indexes(&a)
 	tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
-	tc.cur_scope.insert('value', Type(SumType{ name_id: flat.source_type_id('Value') }))
+	tc.cur_scope.insert_id(flat.source_type_id('value'), 'value', Type(SumType{ name_id: flat.source_type_id('Value') }))
 	assert tc.lexical_smartcast_type_in_parents(value, 'value', false)? == Type(int_)
 	// Neither the type result nor write analysis is stored in the topology memo.
 	a.nodes[int(cond)].value = 'string'
@@ -175,7 +175,7 @@ fn test_loop_narrowing_resolves_assignment_rhs_before_its_write() {
 		tc.build_node_indexes(&a)
 		tc.sum_types.set(flat.source_type_id('Value'), ['int', 'string'])
 		sum := Type(SumType{ name_id: flat.source_type_id('Value') })
-		tc.cur_scope.insert('value', sum)
+		tc.cur_scope.insert_id(flat.source_type_id('value'), 'value', sum)
 		tc.remember_expr_type(lhs, sum)
 		tc.remember_expr_type(other_lhs, sum)
 		assert tc.lexical_smartcast_type_in_parents(before, 'value', false)? == Type(int_)

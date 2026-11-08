@@ -35,7 +35,7 @@ fn test_inferred_type_witness_uses_current_lexical_scope() {
 	annotation := 'typeof(__expr_${int(value)})'
 	for payload in ['bool', 'string', 'int', 'f64'] {
 		tc.cur_scope = new_scope(tc.file_scope)
-		tc.cur_scope.insert('value', *tc.parse_type(flat.source_type_id(payload)))
+		tc.cur_scope.insert_id(flat.source_type_id('value'), 'value', *tc.parse_type(flat.source_type_id(payload)))
 		assert tc.parse_type(flat.source_type_id(annotation)).name() == payload
 	}
 }

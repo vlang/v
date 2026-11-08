@@ -2983,12 +2983,8 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 			unsafe { prealloc_scope_end(scratch_scope) }
 		}
 	}
-	source_type_lock()
-	defer { C.atomic_store_u32(&g_source_types_lock, 0) }
-	cached := source_type_syntax_find(id)
-	if !isnil(cached) {
-		return &cached.syntax
-	}
+	// The entry is packed in private memory without the writer lock, which
+	// guards only the recheck and the publication below.
 	// Pack eagerly required immutable ID components into one aligned allocation.
 	// Lexical views publish their own storage only when first requested.
 	id_count := if parsed.name_packing {
@@ -3534,6 +3530,13 @@ fn source_type_syntax_miss(id u32) &SourceTypeSyntax {
 				bool_flags: bool_flags
 			}
 		}
+	}
+	source_type_lock()
+	defer { C.atomic_store_u32(&g_source_types_lock, 0) }
+	// Another writer may have published this ID while the entry was packed.
+	cached := source_type_syntax_find(id)
+	if !isnil(cached) {
+		return &cached.syntax
 	}
 	source_type_syntax_publish(id, entry)
 	return &entry.syntax

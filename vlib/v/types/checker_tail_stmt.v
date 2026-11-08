@@ -846,7 +846,7 @@ fn (mut tc TypeChecker) record_preflight_option_layer(id flat.NodeId, condition 
 			continue
 		}
 		previous := tc.smartcasts[binding.name] or {
-			tc.cur_scope.lookup(binding.name) or { builtin_void_type }
+			tc.cur_scope.lookup_id(flat.source_type_id(binding.name)) or { builtin_void_type }
 		}
 		// Rechecking the same optional variant preserves its earlier none guard.
 		if unalias_type(previous).source_type_id() != target.source_type_id() {
@@ -1432,7 +1432,7 @@ fn postfix_operator_closes_group(source string, end int) bool {
 // pointer), so that only a smartcast made its type a payload.
 fn (tc &TypeChecker) if_guard_operand_declared_optional(rhs_node flat.Node) bool {
 	if rhs_node.kind == .ident {
-		if declared := tc.cur_scope.lookup(rhs_node.value) {
+		if declared := tc.cur_scope.lookup_id(rhs_node.name_id()) {
 			clean := unalias_type(unwrap_pointer(declared))
 			return clean is OptionType || clean is ResultType
 		}
@@ -1489,7 +1489,7 @@ fn (mut tc TypeChecker) check_if_guard(id flat.NodeId, node flat.Node) []LocalBi
 		// the declared option.
 		if rhs_type !is OptionType && rhs_type !is ResultType
 			&& tc.if_guard_follows_none_check(id, rhs_node.value) {
-			if declared := tc.cur_scope.lookup(rhs_node.value) {
+			if declared := tc.cur_scope.lookup_id(rhs_node.name_id()) {
 				if declared is OptionType {
 					rhs_type = declared
 				}
@@ -2146,7 +2146,7 @@ fn (mut tc TypeChecker) check_match_type_pattern_subject(subject_id flat.NodeId,
 	if tc.valid_node_id(subject_id) {
 		subject := tc.a.node(subject_id)
 		if subject.kind == .ident {
-			declared := unalias_and_unwrap_pointer_type(tc.cur_scope.lookup(subject.value) or {
+			declared := unalias_and_unwrap_pointer_type(tc.cur_scope.lookup_id(subject.name_id()) or {
 				subject_type
 			})
 			if declared is SumType || declared is Interface || is_ierror_type(declared) {
@@ -3543,7 +3543,7 @@ fn (mut tc TypeChecker) check_is_expr(id flat.NodeId, node flat.Node) {
 	if expr_type !is SumType && expr_type !is Interface {
 		mut declared_type := Type(Unknown{})
 		if expr_node.kind == .ident {
-			declared_type = tc.cur_scope.lookup(expr_node.value) or { Type(Unknown{}) }
+			declared_type = tc.cur_scope.lookup_id(expr_node.name_id()) or { Type(Unknown{}) }
 		} else if expr_node.kind == .selector {
 			declared_type = tc.selector_type(expr_id, expr_node) or { Type(Unknown{}) }
 		}
@@ -4123,7 +4123,7 @@ fn (mut tc TypeChecker) resolve_branch_tail_expr(branch_id flat.NodeId, tail fla
 	if guard_bindings.len > 0 {
 		tc.cur_scope = new_scope(saved_scope)
 		for binding in guard_bindings {
-			owner := tc.cur_scope.insert_with_owner(binding.name, binding.typ)
+			owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id(binding.name), binding.name, binding.typ)
 			if binding.is_mut {
 				tc.prepare_mut_local_owner_write()
 				tc.fn_context.mut_local_owners[binding.name] = owner
@@ -4222,7 +4222,7 @@ fn (mut tc TypeChecker) insert_branch_tail_locals(branch_id flat.NodeId, outer &
 				tc.cur_scope = new_scope(outer)
 			}
 			typ := types[j]
-			tc.cur_scope.insert(lhs.value, typ)
+			tc.cur_scope.insert_id(lhs.name_id(), lhs.value, typ)
 			if typ is Void || type_contains_unknown(typ) {
 				untyped << lhs.value
 			}
@@ -4351,7 +4351,7 @@ fn (tc &TypeChecker) nonmut_mutable_interface_smartcast(expr_id flat.NodeId, pat
 	if root.kind != .ident || !tc.ident_is_mutable_lvalue(root.value) {
 		return false
 	}
-	declared := unalias_and_unwrap_pointer_type(tc.cur_scope.lookup(root.value) or { return false })
+	declared := unalias_and_unwrap_pointer_type(tc.cur_scope.lookup_id(root.name_id()) or { return false })
 	return declared is Interface
 }
 
@@ -7335,7 +7335,7 @@ fn (tc &TypeChecker) visible_binding_storage_key(name string) ?string {
 	if tc.cur_scope == unsafe { nil } {
 		return none
 	}
-	owner := tc.cur_scope.lookup_owner(name) or { return none }
+	owner := tc.cur_scope.lookup_owner_id(flat.source_type_id(name)) or { return none }
 	binding_key := owner.storage_key()
 	if binding_key.len == 0 {
 		return none
@@ -7406,7 +7406,7 @@ fn (tc &TypeChecker) fn_literal_return_capture_is_supported(capture flat.Node) b
 	if !capture.is_mut || capture.value.len == 0 {
 		return false
 	}
-	if typ := tc.cur_scope.lookup(capture.value) {
+	if typ := tc.cur_scope.lookup_id(capture.name_id()) {
 		return unalias_type(typ) is Pointer
 	}
 	return false
@@ -8491,7 +8491,7 @@ fn (tc &TypeChecker) selector_type(_id flat.NodeId, node flat.Node) ?Type {
 		has_smartcast = true
 	}
 	if base_node.kind == .ident && !has_smartcast {
-		if scoped_type := tc.cur_scope.lookup(base_node.value) {
+		if scoped_type := tc.cur_scope.lookup_id(base_node.name_id()) {
 			base_type = scoped_type
 		}
 		if mut_base := tc.mut_param_base_for_current_ident(base_node.value, base_type) {
@@ -9615,7 +9615,7 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 	}
 	if tc.fn_context.closure_forbidden_captures[name]
 		&& tc.fn_context.closure_scope != unsafe { nil } {
-		if owner := tc.cur_scope.lookup_owner(name) {
+		if owner := tc.cur_scope.lookup_owner_id(flat.source_type_id(name)) {
 			if !owner.belongs_to_scope_chain_until(tc.cur_scope, tc.fn_context.closure_scope) {
 				if tc.fn_context.lambda_no_captures {
 					tc.record_error_at(.unknown_ident, 'undefined variable `${name}`', id, tc.node_value_diagnostic_pos(id))
@@ -9742,7 +9742,7 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 	}
 	qname := tc.qualify_name(name)
 	if qname != name {
-		if typ := tc.file_scope.lookup(qname) {
+		if typ := tc.file_scope.lookup_id(flat.source_type_id(qname)) {
 			tc.register_synth_type(id, typ)
 			return
 		}
@@ -9765,7 +9765,7 @@ fn (mut tc TypeChecker) check_ident(id flat.NodeId, node flat.Node) {
 	}
 	// A module-local const shadows an unrelated bare global collected from
 	// another module (notably `time.seconds_per_minute` vs a main global).
-	if typ := tc.file_scope.lookup(name) {
+	if typ := tc.file_scope.lookup_id(flat.source_type_id(name)) {
 		tc.register_synth_type(id, typ)
 		return
 	}
@@ -9863,7 +9863,7 @@ fn (tc &TypeChecker) ident_uses_forbidden_closure_capture(name string) bool {
 		|| tc.fn_context.closure_scope == unsafe { nil } {
 		return false
 	}
-	owner := tc.cur_scope.lookup_owner(name) or { return false }
+	owner := tc.cur_scope.lookup_owner_id(flat.source_type_id(name)) or { return false }
 	return !owner.belongs_to_scope_chain_until(tc.cur_scope, tc.fn_context.closure_scope)
 }
 
@@ -10029,7 +10029,7 @@ fn (mut tc TypeChecker) check_defer_result(id flat.NodeId, node flat.Node) {
 }
 
 fn (tc &TypeChecker) non_file_scope_type(name string) ?Type {
-	owner := tc.cur_scope.lookup_owner(name) or { return none }
+	owner := tc.cur_scope.lookup_owner_id(flat.source_type_id(name)) or { return none }
 	if owner.belongs_to_scope(tc.file_scope) {
 		return none
 	}
@@ -10049,7 +10049,7 @@ fn (tc &TypeChecker) bare_name_is_const_owned_over_global(name string) bool {
 		return false
 	}
 	// A local/param (function scope, parent != nil) out-ranks both; the global is root-scope.
-	if owner := tc.cur_scope.lookup_owner(name) {
+	if owner := tc.cur_scope.lookup_owner_id(flat.source_type_id(name)) {
 		if owner.scope != unsafe { nil } && owner.scope.parent != unsafe { nil } {
 			return false
 		}
@@ -18140,7 +18140,7 @@ fn (tc &TypeChecker) canonical_storage_alias_key(key string) string {
 		}
 	}
 	base := key[..base_len]
-	owner := tc.cur_scope.lookup_owner(base) or { return key }
+	owner := tc.cur_scope.lookup_owner_id(flat.source_type_id(base)) or { return key }
 	storage := owner.storage_key()
 	if storage.len == 0 {
 		return key
@@ -19869,15 +19869,15 @@ fn (tc &TypeChecker) type_from_simple_expr_id(expr_id u32) ?Type {
 	if clean_id == 0 { return none }
 	// Scope and constant registries use source declaration names.
 	clean := flat.source_type_name(clean_id)
-	if typ := tc.cur_scope.lookup(clean) { return typ }
-	if typ := tc.file_scope.lookup(clean) { return typ }
+	if typ := tc.cur_scope.lookup_id(flat.source_type_id(clean)) { return typ }
+	if typ := tc.file_scope.lookup_id(flat.source_type_id(clean)) { return typ }
 	if key := tc.shadowed_builtin_const_key(clean) {
 		return tc.const_types[key] or { builtin_void_type }
 	}
 	qname_id := tc.qualify_type_name(clean_id)
 	if qname_id != clean_id {
 		qname := flat.source_type_name(qname_id)
-		if typ := tc.file_scope.lookup(qname) { return typ }
+		if typ := tc.file_scope.lookup_id(flat.source_type_id(qname)) { return typ }
 		if typ := tc.const_types[qname] { return typ }
 	}
 	if typ := tc.const_types[clean] { return typ }
@@ -21081,7 +21081,7 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 			}
 			qname := tc.qualify_name(name)
 			if qname != name {
-				if typ := tc.file_scope.lookup(qname) {
+				if typ := tc.file_scope.lookup_id(flat.source_type_id(qname)) {
 					return typ
 				}
 			}
@@ -21093,7 +21093,7 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 					return typ
 				}
 			}
-			if typ := tc.file_scope.lookup(name) {
+			if typ := tc.file_scope.lookup_id(flat.source_type_id(name)) {
 				return typ
 			}
 			if typ := tc.const_types[name] {
@@ -21138,7 +21138,7 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 				}
 			}
 			if fn_node.kind == .ident {
-				if typ := tc.cur_scope.lookup(fn_node.value) {
+				if typ := tc.cur_scope.lookup_id(fn_node.name_id()) {
 					if typ is FnType {
 						return *typ.return_type
 					}
@@ -22156,7 +22156,7 @@ fn (tc &TypeChecker) fn_literal_return_type(node flat.Node) &Type {
 		child := tc.a.child_node(&node, i)
 		if child.kind == .param && child.value.len > 0 {
 			parsed := tc.parse_scope_param_type(child.typ)
-			writer.cur_scope.insert(child.value, mut_param_binding_type(parsed, child.is_mut,
+			writer.cur_scope.insert_id(child.name_id(), child.value, mut_param_binding_type(parsed, child.is_mut,
 				child.op == .amp))
 		}
 	}

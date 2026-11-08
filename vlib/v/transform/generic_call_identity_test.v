@@ -59,9 +59,9 @@ fn test_call_name_keeps_qualified_current_module_and_checks_foreign_names() {
 	tc.begin_sparse_transform_node_caches(0)
 	mut t := new_transformer(mut a, &tc, map[string]bool{})
 	t.cur_module = 'worker'
-	tc.sparse_resolved_call_names[int(id)] = 'worker.run'
+	tc.sparse_resolved_calls[int(id)] = flat.source_type_id('worker.run')
 	assert t.call_name_for_node(id, call) == 'worker.run'
-	tc.sparse_resolved_call_names[int(id)] = 'foreign.run'
+	tc.sparse_resolved_calls[int(id)] = flat.source_type_id('foreign.run')
 	assert t.call_name_for_node(id, call) == 'foreign.run'
 	t.fn_ret_types.set('worker.run', 'int')
 	assert t.call_name_for_node(id, call) == 'worker.run'

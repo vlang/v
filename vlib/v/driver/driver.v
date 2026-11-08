@@ -7250,14 +7250,12 @@ fn promote_scoped_type_metadata(mut tc types.TypeChecker) {
 }
 
 fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, a &flat.FlatAst, scope voidptr, generated_start int, rewritten_base_nodes []int) {
-	// The per-id loops write disjoint slots and only allocate clones, so fan
-	// them out over the worker pool; fall back to the serial walk without one.
+	// The per-id loop writes disjoint slots and only allocates clones, so fan
+	// it out over the worker pool; fall back to the serial walk without one.
+	// Resolved calls are global symbol ids and need no promotion.
 	if !transform.promote_scoped_checker_node_caches_parallel(mut tc, a, scope, generated_start) {
-		for idx in 0 .. tc.resolved_call_names.len {
-			if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
-				tc.resolved_call_names[idx] = types.promote_cached_name(tc.resolved_call_names[idx], scope)
-			}
-			if idx >= generated_start && idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
+		for idx in generated_start .. tc.expr_type_values.len {
+			if idx < tc.expr_type_set.len && tc.expr_type_set[idx] {
 				tc.expr_type_values[idx] = types.new_type_reference(types.Type(types.clone_owned_type(tc.expr_type_values[idx])))
 			}
 		}
@@ -7274,8 +7272,8 @@ fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, a &flat.FlatAst,
 	// The dense caches are reserved in the parent arena, but an unexpectedly
 	// large specialization pass may still grow one of them in the stage arena.
 	// Move only those backing arrays before releasing that arena.
-	if scoped_value_owned(scope, tc.resolved_call_names.data) {
-		tc.resolved_call_names = tc.resolved_call_names.clone()
+	if scoped_value_owned(scope, tc.resolved_calls.data) {
+		tc.resolved_calls = tc.resolved_calls.clone()
 	}
 	if scoped_value_owned(scope, tc.resolved_call_set.data) {
 		tc.resolved_call_set = tc.resolved_call_set.clone()
@@ -7292,7 +7290,7 @@ fn promote_scoped_checker_node_caches(mut tc types.TypeChecker, a &flat.FlatAst,
 	if scoped_value_owned(scope, tc.checking_nodes.data) {
 		tc.checking_nodes = tc.checking_nodes.clone()
 	}
-	tc.sparse_resolved_call_names = clone_int_string_map(tc.sparse_resolved_call_names)
+	tc.sparse_resolved_calls = tc.sparse_resolved_calls.clone()
 	tc.sparse_resolved_fn_values = clone_int_string_map(tc.sparse_resolved_fn_values)
 	tc.sparse_statement_nodes = tc.sparse_statement_nodes.clone()
 	tc.sparse_expr_type_values = clone_int_type_map(tc.sparse_expr_type_values)
@@ -13952,7 +13950,6 @@ pub fn run(args []string) {
 		b.metric('functions collected', pre_tc.fn_ret_types.len, 'symbols')
 		b.metric('structs collected', pre_tc.structs.len, 'types')
 		b.metric('canonical semantic types', pre_tc.type_count(), 'types')
-		b.metric('canonical resolved symbols', pre_tc.symbol_count(), 'symbols')
 		type_cache_stats := pre_tc.type_cache_stats()
 		b.metric('type parse cache hits', type_cache_stats.parse_hits, 'lookups')
 		b.metric('type parse cache misses', type_cache_stats.parse_misses, 'lookups')
@@ -14292,7 +14289,6 @@ pub fn run(args []string) {
 			pre_scope_children_data := unsafe { a.children.data }
 			base_specialized_fns := a.specialized_fn_nodes.len
 			base_type_count := pre_tc.type_count()
-			base_symbol_count := pre_tc.symbol_count()
 			base_text_count := a.text_values.len
 			// Only the promotion of a released transform arena compares against these
 			// names; a set of all of them cost several times the list.
@@ -14376,7 +14372,7 @@ pub fn run(args []string) {
 			} else {
 				retained_transform_regions =
 					clone_scoped_transform_regions(retained_transform_regions)
-				pre_tc.promote_scoped_transform_interners(base_type_count, base_symbol_count, transform_scope)
+				pre_tc.promote_scoped_transform_interners(base_type_count, transform_scope)
 				if verbose {
 					eprintln('  [ttime] promote interners  ${f64(post_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
 					post_sw.restart()
@@ -14503,17 +14499,7 @@ pub fn run(args []string) {
 					mut leaked_nv := 0
 					mut leaked_nt := 0
 					mut first_leak := -1
-					for idx in 0 .. pre_tc.resolved_call_names.len {
-						if idx < pre_tc.resolved_call_set.len && pre_tc.resolved_call_set[idx] {
-							name := pre_tc.resolved_call_names[idx]
-							if scoped_value_owned(transform_scope, name)
-								|| scoped_value_owned(transform_scope, name.value.str) {
-								leaked_rc++
-								if first_leak < 0 {
-									first_leak = idx
-								}
-							}
-						}
+					for idx in 0 .. pre_tc.resolved_calls.len {
 						if name := pre_tc.sparse_resolved_fn_values[idx] {
 							if scoped_value_owned(transform_scope, name.str) {
 								leaked_fv++
@@ -14786,7 +14772,7 @@ pub fn run(args []string) {
 			promote_scoped_checker_node_caches(mut pre_tc, a, monomorph_scope, base_monomorph_nodes, []int{})
 			pre_tc.rebuild_scoped_transform_signature_maps()
 			pre_tc.rebuild_fn_param_suffix_index()
-			pre_tc.promote_scoped_transform_interners(0, 0, monomorph_scope)
+			pre_tc.promote_scoped_transform_interners(0, monomorph_scope)
 			promote_scoped_type_metadata(mut pre_tc)
 			pre_tc.errors = clone_type_errors(pre_tc.errors)
 			pre_tc.notices = clone_type_errors(pre_tc.notices)

@@ -219,8 +219,8 @@ fn test_ierror_alias_tracking_keeps_array_get_alias_propagation() {
 	lhs := a.add_val(.ident, 'alias')
 	mut tc := types.TypeChecker.new(&a)
 	tc.cur_scope = types.new_scope(tc.cur_scope)
-	tc.cur_scope.insert('borrowed', types.Type(types.int_))
-	tc.cur_scope.insert('alias', types.Type(types.int_))
+	tc.cur_scope.insert_id(flat.source_type_id('borrowed'), 'borrowed', types.Type(types.int_))
+	tc.cur_scope.insert_id(flat.source_type_id('alias'), 'alias', types.Type(types.int_))
 	mut g := FlatGen.new()
 	g.a = &a
 	g.tc = &tc

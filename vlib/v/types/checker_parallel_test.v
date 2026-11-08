@@ -575,13 +575,13 @@ fn test_nested_parallel_checker_merge_keeps_out_of_range_caches_sparse() {
 	tc.extend_node_caches(a.nodes.len)
 	tc.parallel_check_sparse = true
 	mut worker := tc.fork_for_parallel_check()
-	worker.sparse_resolved_call_names[2] = 'main.answer'
+	worker.sparse_resolved_calls[2] = flat.source_type_id('main.answer')
 	worker.sparse_resolved_fn_values[2] = 'main.callback'
 	worker.sparse_statement_nodes[2] = true
 	worker.sparse_expr_type_values[2] = Type(bool_)
 
 	tc.merge_parallel_check_worker_scoped(worker, true)
-	assert tc.sparse_resolved_call_names[2] == 'main.answer'
+	assert flat.source_type_name(tc.sparse_resolved_calls[2]) == 'main.answer'
 	assert tc.sparse_resolved_fn_values[2] == 'main.callback'
 	assert tc.sparse_statement_nodes[2]
 	if typ := tc.sparse_expr_type_values[2] {
@@ -595,7 +595,7 @@ fn test_nested_parallel_checker_merge_keeps_out_of_range_caches_sparse() {
 
 	tc.parallel_check_sparse = false
 	tc.merge_own_sparse_caches()
-	assert tc.resolved_call_names[2].value == 'main.answer'
+	assert flat.source_type_name(tc.resolved_calls[2]) == 'main.answer'
 	assert tc.resolved_fn_value_name(2)? == 'main.callback'
 	assert tc.statement_nodes[2]
 	assert tc.expr_type_values[2] is Primitive

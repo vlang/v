@@ -502,10 +502,11 @@ created by lowering. V1 and V2 do not need a separate step because their checker
 updates the typed AST/table that later stages keep using directly; v3's flat AST
 keeps those per-node caches outside the nodes.
 
-Resolved call and function-value caches use `types.CachedName` pointers, allocating a string
-header only for occupied slots. The existing set bits guard reads. `types.cached_name()` creates
-an immutable entry; `types.promote_cached_name()` preserves both its header and string bytes
-when a worker or transform arena is released. Text interning uses per-pass `flat.TextProbeCache`
+The resolved-call cache holds one `types.SymbolId` per node, like `Info.Uses` in Go's
+types2: the id of the callee's name in the global spelling interner (`flat.source_type_id`).
+The existing set bits guard reads. Symbol ids are shared by every checker, fork and worker
+and their spellings are owned by the process, so worker results merge and arenas are
+released without translating or copying them. Text interning uses per-pass `flat.TextProbeCache`
 scratch on the stack, while canonical text remains owned by the AST.
 Callback validation retains declared variadic modes when matching a lowered array parameter,
 including callbacks nested in parameters and return types.

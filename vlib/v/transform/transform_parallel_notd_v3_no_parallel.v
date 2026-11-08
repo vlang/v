@@ -522,52 +522,6 @@ fn shared_chunk_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
-struct CallCanonArgs {
-	master voidptr // &Transformer, whose checker symbol table is only read
-	worker voidptr // &Transformer
-}
-
-// lookup_worker_call_names resolves the canonical spelling of every call name the
-// workers recorded, on the pool. Nothing interns while it runs, so the lookups
-// read the symbol table without its lock; merge_worker then interns only the
-// names that were still missing, in the same order as before.
-fn (mut t Transformer) lookup_worker_call_names(worker_ptrs []voidptr) {
-	if isnil(t.tc) || worker_ptrs.len == 0 || isnil(t.a.worker_pool) {
-		return
-	}
-	mut args := []CallCanonArgs{cap: worker_ptrs.len}
-	for w in worker_ptrs {
-		args << CallCanonArgs{
-			master: voidptr(t)
-			worker: w
-		}
-	}
-	mut tasks := []workers.Task{cap: args.len}
-	for i in 0 .. args.len {
-		tasks << workers.Task{
-			run:        worker_call_canon_thread
-			arg:        unsafe { voidptr(&args[i]) }
-			force_sync: i == 0
-		}
-	}
-	t.a.worker_pool.run(tasks)
-}
-
-fn worker_call_canon_thread(arg voidptr) voidptr {
-	a := unsafe { &CallCanonArgs(arg) }
-	master := unsafe { &Transformer(a.master) }
-	mut w := unsafe { &Transformer(a.worker) }
-	if isnil(w.tc) || isnil(w.tc.fork_overlay) {
-		return unsafe { nil }
-	}
-	mut canon := []string{cap: w.tc.fork_overlay.resolved_call_names.len}
-	for _, name in w.tc.fork_overlay.resolved_call_names {
-		canon << master.tc.lookup_canonical_symbol_unlocked(name) or { '' }
-	}
-	w.merge_call_canon = canon
-	return unsafe { nil }
-}
-
 // SharedChunkArgs is the payload handed to each shared-base worker thread.
 struct SharedChunkArgs {
 	items_ptr voidptr // &[]FnWorkItem
@@ -1396,17 +1350,13 @@ fn worker_scope_free_thread(arg voidptr) voidptr {
 	return unsafe { nil }
 }
 
-// checker_cache_promote_thread publishes scope-owned resolved-call /
-// fn-value strings and clones generated-range expression types for this
+// checker_cache_promote_thread clones generated-range expression types for this
 // worker's id range. Slot writes are range-disjoint; clones allocate in the
 // worker's persistent arena, which is never released.
 fn checker_cache_promote_thread(arg voidptr) voidptr {
 	a := unsafe { &CheckerCachePromoteArgs(arg) }
 	mut tc := unsafe { &types.TypeChecker(a.tc) }
 	for idx in a.start .. a.end {
-		if idx < tc.resolved_call_set.len && tc.resolved_call_set[idx] {
-			tc.resolved_call_names[idx] = types.promote_cached_name(tc.resolved_call_names[idx], a.scope)
-		}
 		if idx >= a.generated_start && idx < tc.expr_type_set.len && tc.expr_type_set[idx]
 			&& idx < tc.expr_type_values.len {
 			tc.expr_type_values[idx] = types.new_type_reference(types.Type(types.clone_owned_type(tc.expr_type_values[idx])))
@@ -1459,7 +1409,7 @@ fn free_worker_scopes_parallel(a &flat.FlatAst, scopes []voidptr) bool {
 // checker node-cache promotion over the shared worker pool. Returns false when
 // no pool is available so the caller can run them serially instead.
 pub fn promote_scoped_checker_node_caches_parallel(mut tc types.TypeChecker, a &flat.FlatAst, scope voidptr, generated_start int) bool {
-	n := tc.resolved_call_names.len
+	n := tc.resolved_calls.len
 	if isnil(a.worker_pool) || n < 65536 || os.getenv('V3_NO_PAR_CHECKER_PROMOTE') != '' {
 		return false
 	}
@@ -2996,18 +2946,12 @@ fn (mut t Transformer) absorb_scoped_batch(batch &Transformer, scope voidptr, ne
 	t.clone_deferred_worker_writes_from(deferred_start)
 	transform_stage_scope_resume(t.merge_scratch_scope, publication_state)
 	if !isnil(batch.tc.fork_overlay) {
-		for idx, name in batch.tc.fork_overlay.resolved_call_names {
-			// Names borrowed from the parent or source tables already outlive this
-			// batch. Only bytes in the retiring arena need promotion.
-			owned_name := if transform_scope_owns(scope, name.str) {
-				t.promote_scoped_result_text(name)
-			} else {
-				name
-			}
+		// Resolved calls are global symbol ids, which outlive the batch's arena.
+		for idx, sym in batch.tc.fork_overlay.resolved_calls {
 			if isnil(t.tc.fork_overlay) {
-				t.set_resolved_call_entry(idx, owned_name)
+				t.set_resolved_call_sym(idx, sym)
 			} else {
-				t.tc.fork_overlay.resolved_call_names[idx] = owned_name
+				t.tc.fork_overlay.resolved_calls[idx] = sym
 			}
 		}
 		for idx, name in batch.tc.fork_overlay.resolved_fn_values {
@@ -3890,9 +3834,6 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		&& os.getenv('V3_NO_MERGE_RELOC').len == 0 {
 		t.relocate_worker_regions(unmerged_workers, unmerged_node_starts, unmerged_child_starts)
 	}
-	if unmerged_workers.len > 0 {
-		t.lookup_worker_call_names(unmerged_workers)
-	}
 	// Worker call resolutions for appended nodes land in the master's sparse
 	// call-name map. Size it once for every region instead of rehashing through
 	// each doubling while merging (prealloc keeps the outgrown entry arrays).
@@ -3901,11 +3842,11 @@ fn (mut t Transformer) run_parallel_transform_shared(items []FnWorkItem, base_no
 		for worker in unmerged_workers {
 			ww := unsafe { &Transformer(worker) }
 			if !isnil(ww.tc.fork_overlay) {
-				worker_calls += ww.tc.fork_overlay.resolved_call_names.len
+				worker_calls += ww.tc.fork_overlay.resolved_calls.len
 			}
 		}
 		if worker_calls > 0 {
-			t.tc.sparse_resolved_call_names.reserve(u32(t.tc.sparse_resolved_call_names.len +
+			t.tc.sparse_resolved_calls.reserve(u32(t.tc.sparse_resolved_calls.len +
 				worker_calls))
 		}
 	}

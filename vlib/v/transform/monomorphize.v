@@ -7676,12 +7676,12 @@ fn (mut t Transformer) clear_resolved_call(id flat.NodeId) {
 		return
 	}
 	idx := int(id)
-	if t.tc.parallel_check_sparse && idx >= t.tc.resolved_call_names.len {
-		t.tc.sparse_resolved_call_names.delete(idx)
+	if t.tc.parallel_check_sparse && idx >= t.tc.resolved_calls.len {
+		t.tc.sparse_resolved_calls.delete(idx)
 		return
 	}
-	if idx >= 0 && idx < t.tc.resolved_call_names.len {
-		t.tc.resolved_call_names[idx] = unsafe { nil }
+	if idx >= 0 && idx < t.tc.resolved_calls.len {
+		t.tc.resolved_calls[idx] = 0
 		t.tc.resolved_call_set[idx] = false
 	}
 }
@@ -14178,18 +14178,19 @@ fn (mut t Transformer) copy_cloned_resolution(src_id flat.NodeId, dst_id flat.No
 
 fn (mut t Transformer) copy_cloned_resolution_forked(src_idx int, dst_idx int) {
 	mut overlay := t.tc.fork_overlay
-	mut call_name := if src_idx >= overlay.base_node_count {
-		overlay.resolved_call_names[src_idx] or { '' }
+	mut call_sym := if src_idx >= overlay.base_node_count {
+		overlay.resolved_calls[src_idx] or { types.SymbolId(0) }
 	} else {
-		''
+		types.SymbolId(0)
 	}
-	if call_name.len == 0 && src_idx < t.tc.resolved_call_set.len && t.tc.resolved_call_set[src_idx] {
-		call_name = t.tc.resolved_call_names[src_idx].value
+	if call_sym == 0 && src_idx < t.tc.resolved_call_set.len && t.tc.resolved_call_set[src_idx] {
+		call_sym = t.tc.resolved_calls[src_idx]
 	}
+	call_name := flat.source_type_name(call_sym)
 	if call_name.len > 0 && !t.cloned_call_has_exact_generic_callee(dst_idx)
 		&& (!t.resolved_call_is_generic_fn(call_name)
 			|| t.tc.c_backed_alias_method_name(call_name)) {
-		overlay.resolved_call_names[dst_idx] = call_name
+		overlay.resolved_calls[dst_idx] = call_sym
 	}
 	mut fn_value := if src_idx >= overlay.base_node_count {
 		overlay.resolved_fn_values[src_idx] or { '' }

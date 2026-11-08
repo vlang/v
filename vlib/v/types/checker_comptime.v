@@ -966,7 +966,7 @@ fn (mut tc TypeChecker) check_comptime_static_variant_if_guard(node flat.Node, v
 				$if ownership ? {
 					tc.ownership_note_binding(binding.name, binding.typ, condition_id)
 				}
-				owner := tc.cur_scope.insert_with_owner(binding.name, binding.typ)
+				owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id(binding.name), binding.name, binding.typ)
 				tc.initialize_unknown_pointer_binding(owner, binding.typ)
 				tc.smartcasts.delete(binding.name)
 				if binding.is_mut {
@@ -976,7 +976,7 @@ fn (mut tc TypeChecker) check_comptime_static_variant_if_guard(node flat.Node, v
 			}
 		} else if tc.a.node(branch_id).kind != .if_expr && tc.failure_has_error(condition_id)
 			&& tc.has_ierror_interface() {
-			tc.cur_scope.insert('err', tc.parse_type(ierror_source_interface_name))
+			tc.cur_scope.insert_id(flat.source_type_id('err'), 'err', tc.parse_type(ierror_source_interface_name))
 		}
 		tc.check_comptime_static_body(branch_id, var_name, 'variants', field_cases, value_cases)
 		tc.pop_scope()
@@ -1195,17 +1195,17 @@ fn (tc &TypeChecker) comptime_static_for_value_source_type(raw_id u32) ?u32 {
 
 fn (tc &TypeChecker) comptime_static_for_var_source_type(name string) ?u32 {
 	if tc.cur_scope != unsafe { nil } {
-		if typ := tc.cur_scope.lookup(name) {
+		if typ := tc.cur_scope.lookup_id(flat.source_type_id(name)) {
 			return comptime_static_source_type_name(typ)
 		}
 	}
 	if tc.file_scope != unsafe { nil } {
-		if typ := tc.file_scope.lookup(name) {
+		if typ := tc.file_scope.lookup_id(flat.source_type_id(name)) {
 			return comptime_static_source_type_name(typ)
 		}
 		qname := tc.qualify_name(name)
 		if qname != name {
-			if typ := tc.file_scope.lookup(qname) {
+			if typ := tc.file_scope.lookup_id(flat.source_type_id(qname)) {
 				return comptime_static_source_type_name(typ)
 			}
 		}
@@ -2585,7 +2585,7 @@ fn (mut tc TypeChecker) check_nonliteral_node(id flat.NodeId) {
 			} else {
 				*tc.parse_type(field.typ)
 			}
-			tc.cur_scope.insert(field.value, typ)
+			tc.cur_scope.insert_id(field.name_id(), field.value, typ)
 		}
 		return
 	}
@@ -2819,7 +2819,7 @@ fn (mut tc TypeChecker) check_nonliteral_node(id flat.NodeId) {
 			if (expr_type is Void && !tc.expr_subtree_has_undefined_variable_error(expr_id))
 				|| (expr_type is MultiReturn && expr_type.types.len == 0)
 				|| invalid_selector
-				|| (expr_type is Unknown && expr.kind == .ident && tc.cur_scope.lookup(expr.value) == none
+				|| (expr_type is Unknown && expr.kind == .ident && tc.cur_scope.lookup_id(expr.name_id()) == none
 					&& !undefined_self_reference) {
 				message := if expr.kind == .ident && tc.ident_is_mutable_lvalue(expr.value) {
 					'no known default format for type `void`'
@@ -5049,7 +5049,7 @@ fn (tc &TypeChecker) fixed_array_reference_has_static_storage(id flat.NodeId) bo
 		return false
 	}
 	name := tc.a.node(id).value
-	if owner := tc.cur_scope.lookup_owner(name) {
+	if owner := tc.cur_scope.lookup_owner_id(flat.source_type_id(name)) {
 		if !tc.binding_owner_is_file_scope(owner) {
 			return false
 		}
@@ -7440,7 +7440,7 @@ fn (mut tc TypeChecker) check_as_expr(id flat.NodeId, node flat.Node) {
 		}
 		child := tc.a.node(child_id)
 		if child.kind == .ident {
-			declared := tc.cur_scope.lookup(child.value) or { Type(Unknown{}) }
+			declared := tc.cur_scope.lookup_id(child.name_id()) or { Type(Unknown{}) }
 			clean_declared := unalias_type(unwrap_pointer(declared))
 			// A sum type can itself contain an optional variant. After an `is ?T`
 			// smartcast, the expression type is `?T`, but the `as ?T` operation still
@@ -7460,7 +7460,7 @@ fn (mut tc TypeChecker) check_as_expr(id flat.NodeId, node flat.Node) {
 		child := tc.a.node(child_id)
 		mut declared_type := Type(Unknown{})
 		if child.kind == .ident {
-			declared_type = tc.cur_scope.lookup(child.value) or { Type(Unknown{}) }
+			declared_type = tc.cur_scope.lookup_id(child.name_id()) or { Type(Unknown{}) }
 		} else if child.kind == .selector {
 			declared_type = tc.selector_declared_value_type(*child) or { Type(Unknown{}) }
 		}
@@ -7608,7 +7608,7 @@ fn (tc &TypeChecker) sizeof_value_selector_known(value string) bool {
 	if base.len == 0 {
 		return false
 	}
-	if _ := tc.cur_scope.lookup(base) {
+	if _ := tc.cur_scope.lookup_id(flat.source_type_id(base)) {
 		return true
 	}
 	return tc.global_names[tc.qualify_name(base)]
@@ -7913,7 +7913,7 @@ fn (tc &TypeChecker) interface_pointer_source_root_is_local(id flat.NodeId) bool
 	node := tc.a.node(id)
 	match node.kind {
 		.ident {
-			return node.value.len > 0 && tc.cur_scope.lookup(node.value) != none
+			return node.value.len > 0 && tc.cur_scope.lookup_id(node.name_id()) != none
 		}
 		.selector {
 			if node.children_count == 0 {
@@ -8117,7 +8117,7 @@ fn (mut tc TypeChecker) check_comptime_match_diagnostics(id flat.NodeId, node fl
 			'$string' { flat.source_type_string }
 			else { flat.source_type_int }
 		}
-	} else if typ := tc.cur_scope.lookup(subject) {
+	} else if typ := tc.cur_scope.lookup_id(flat.source_type_id(subject)) {
 		unalias_type(typ).source_type_id()
 	} else {
 		flat.source_type_unknown
@@ -8318,7 +8318,7 @@ fn (tc &TypeChecker) comptime_initializer_is_static_depth(id flat.NodeId, depth 
 			owner := tc.const_modules[key] or { '' }
 			same_owner := owner == module_name || (owner in ['', 'main'] && module_name in ['',
 				'main'])
-			binding := tc.cur_scope.lookup_owner(node.value) or { return false }
+			binding := tc.cur_scope.lookup_owner_id(node.name_id()) or { return false }
 			// A foreign global's bare cache entry does not override an owner constant.
 			if key !in tc.const_exprs || !same_owner || !tc.binding_owner_is_file_scope(binding) {
 				return false
@@ -10510,7 +10510,7 @@ fn (tc &TypeChecker) option_compare_operand_type(id flat.NodeId, typ Type, other
 	}
 	node := tc.a.node(id)
 	declared := match node.kind {
-		.ident { tc.cur_scope.lookup(node.value) or { return typ } }
+		.ident { tc.cur_scope.lookup_id(node.name_id()) or { return typ } }
 		.selector { tc.selector_declared_value_type(*node) or { return typ } }
 		else { return typ }
 	}
@@ -10703,7 +10703,7 @@ fn (mut tc TypeChecker) check_select_stmt(node flat.Node) {
 					var_node := tc.a.nodes[int(var_id)]
 					if var_node.kind == .ident && var_node.value.len > 0 {
 						tc.check_local_binding_global_shadowing(var_id)
-						owner := tc.cur_scope.insert_with_owner(var_node.value, elem_type)
+						owner := tc.cur_scope.insert_with_owner_id(var_node.name_id(), var_node.value, elem_type)
 						tc.initialize_unknown_pointer_binding(owner, elem_type)
 						tc.remember_expr_type(var_id, elem_type)
 						$if ownership ? {
@@ -10850,8 +10850,8 @@ fn (mut tc TypeChecker) check_array_init(id flat.NodeId, node flat.Node) {
 					tc.annotate_expected_expr(expr_id, expected)
 				}
 				tc.push_scope()
-				tc.cur_scope.insert('index', builtin_int_type)
-				tc.cur_scope.insert('it', builtin_int_type)
+				tc.cur_scope.insert_id(flat.source_type_id('index'), 'index', builtin_int_type)
+				tc.cur_scope.insert_id(flat.source_type_id('it'), 'it', builtin_int_type)
 				tc.check_node(child_id)
 				tc.pop_scope()
 				if tc.find_ident_in_node(expr_id, 'it') != none {
@@ -11352,7 +11352,7 @@ fn (mut tc TypeChecker) check_or_expr(id flat.NodeId, node flat.Node) {
 	tc.push_scope()
 	if tc.has_ierror_interface() && (tc.failure_has_error(inner_id)
 		|| int(id) == tc.channel_send_or_expr_id) {
-		tc.cur_scope.insert('err', tc.parse_type(ierror_source_interface_name))
+		tc.cur_scope.insert_id(flat.source_type_id('err'), 'err', tc.parse_type(ierror_source_interface_name))
 	}
 	saved_expected_expr_id := tc.expected_expr_id
 	saved_expected_expr_type := tc.expected_expr_type
@@ -11406,7 +11406,7 @@ fn (mut tc TypeChecker) check_or_expr(id flat.NodeId, node flat.Node) {
 // and after compound guards, where code written for 0.5.2 still had to use `x or {}`.
 // There the unwrap is accepted; its fallback is unreachable.
 fn (tc &TypeChecker) is_legacy_redundant_option_unwrap(id flat.NodeId, node flat.Node) bool {
-	declared := tc.cur_scope.lookup(node.value) or { return true }
+	declared := tc.cur_scope.lookup_id(node.name_id()) or { return true }
 	if unalias_type(declared) !is OptionType {
 		return true
 	}
@@ -12395,7 +12395,7 @@ fn (tc &TypeChecker) or_expr_source_can_fail(id flat.NodeId) bool {
 		return false
 	}
 	if node.kind == .ident {
-		if declared := tc.cur_scope.lookup(node.value) {
+		if declared := tc.cur_scope.lookup_id(node.name_id()) {
 			if type_is_option_or_result(declared) && tc.smartcast_type(id) == none {
 				return true
 			}
@@ -12500,7 +12500,7 @@ fn (mut tc TypeChecker) check_sql_expr(id flat.NodeId, node flat.Node) {
 			tc.record_warning_at(.condition_mismatch, 'comparison with none probably isn\'t intended; use "is none" and "!is none" to select by NULL', id, tc.sql_expr_text_pos(node, ' ${op} ', 1, op.len))
 			continue
 		}
-		if rhs_type := tc.cur_scope.lookup(rhs) {
+		if rhs_type := tc.cur_scope.lookup_id(flat.source_type_id(rhs)) {
 			if unalias_type(rhs_type) is OptionType {
 				tc.record_warning_at(.condition_mismatch, 'comparison with Option value probably isn\'t intended; use "is none" and "!is none" to select by NULL', id, tc.sql_expr_text_pos(node, ' ${op} ', 1, op.len))
 			}
@@ -12512,7 +12512,7 @@ fn (mut tc TypeChecker) check_sql_expr(id flat.NodeId, node flat.Node) {
 		}
 		base_name := tokens[i]
 		field_name := tokens[i + 2]
-		base_type := tc.cur_scope.lookup(base_name) or { continue }
+		base_type := tc.cur_scope.lookup_id(flat.source_type_id(base_name)) or { continue }
 		field_type := tc.sql_struct_field_type(base_type, field_name) or { continue }
 		clean_field := unalias_type(field_type)
 		if clean_field is OptionType {
@@ -13107,7 +13107,7 @@ fn (mut tc TypeChecker) check_sql_insert_type(id flat.NodeId, node flat.Node, to
 		value_name := tokens[i + 1]
 		table_name, _ := sql_checker_table_type_token_from(tokens, i + 3) or { continue }
 		mut actual := tc.smartcasts[value_name] or {
-			tc.cur_scope.lookup(value_name) or {
+			tc.cur_scope.lookup_id(flat.source_type_id(value_name)) or {
 				tc.record_sql_error_at(.unknown_ident, 'undefined ident: `${value_name}`', id, tc.sql_expr_text_pos(node, 'insert ${value_name}', 'insert '.len, value_name.len))
 				continue
 			}
@@ -13317,7 +13317,7 @@ fn (mut tc TypeChecker) check_sql_where_constraints(id flat.NodeId, node flat.No
 			|| (i + 3 < tokens.len && tokens[i + 3] in ['(', '.']) {
 			continue
 		}
-		if _ := tc.cur_scope.lookup(rhs) {
+		if _ := tc.cur_scope.lookup_id(flat.source_type_id(rhs)) {
 			continue
 		}
 		if rhs in field_names && rhs != tokens[i] {
@@ -13754,7 +13754,7 @@ fn (tc &TypeChecker) sql_orm_value_type(tokens []string, start int, end int) ?Ty
 	} else if first.len >= 2 && first[0] in [`'`, `"`] {
 		typ = builtin_string_type
 	} else if sql_like_identifier(first) && (i >= end || tokens[i] != '(') {
-		typ = tc.cur_scope.lookup(first) or { return none }
+		typ = tc.cur_scope.lookup_id(flat.source_type_id(first)) or { return none }
 	} else {
 		return none
 	}
@@ -13855,7 +13855,7 @@ fn (mut tc TypeChecker) mark_invalid_sql_result_void(id flat.NodeId) {
 	for i := 0; i + 1 < assign.children_count; i += 2 {
 		lhs := tc.a.child_node(assign, i)
 		if tc.a.child(assign, i + 1) == result_id && lhs.kind == .ident && lhs.value != '_' {
-			tc.cur_scope.insert(lhs.value, builtin_void_type)
+			tc.cur_scope.insert_id(lhs.name_id(), lhs.value, builtin_void_type)
 			return
 		}
 	}
@@ -14010,7 +14010,7 @@ fn (mut tc TypeChecker) check_sql_bulk_pointer_arrays(id flat.NodeId, node flat.
 }
 
 fn (tc &TypeChecker) sql_ident_is_pointer_array(name string) bool {
-	typ := tc.cur_scope.lookup(name) or { return false }
+	typ := tc.cur_scope.lookup_id(flat.source_type_id(name)) or { return false }
 	clean := unalias_type(typ)
 	if clean is Array {
 		return unalias_type(clean.elem_type) is Pointer
@@ -14056,7 +14056,7 @@ fn (tc &TypeChecker) sql_like_token_type(value string, table_type Type) Type {
 	if value != '' && value[0].is_digit() {
 		return builtin_int_type
 	}
-	if typ := tc.cur_scope.lookup(value) {
+	if typ := tc.cur_scope.lookup_id(flat.source_type_id(value)) {
 		return typ
 	}
 	return tc.sql_struct_field_type(table_type, value) or { unknown_type('unknown SQL operand') }
@@ -14607,12 +14607,12 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 			tc.record_error_at(.assignment_mismatch, 'original `${capture.value}` is immutable, declare it with `mut` to make it mutable', capture_id, tc.node_value_diagnostic_pos(capture_id))
 		} else if capture.kind == .ident && !capture.is_mut && !capture_modifier
 			&& capture.value.len > 0 {
-			if owner := tc.cur_scope.lookup_owner(capture.value) {
+			if owner := tc.cur_scope.lookup_owner_id(capture.name_id()) {
 				closure_copy_owners[capture.value] = owner
 			}
 		}
 		if capture.kind == .ident && capture.value.len > 0 {
-			if capture_type := tc.cur_scope.lookup(capture.value) {
+			if capture_type := tc.cur_scope.lookup_id(capture.name_id()) {
 				if tc.type_has_declaration_attribute(capture_type, 'nocopy') {
 					capture_id := tc.a.child(&node, i)
 					tc.record_error_at(.assignment_mismatch, 'cannot capture @[nocopy] struct by value: use a reference instead', capture_id, tc.node_value_diagnostic_pos(capture_id))
@@ -14687,9 +14687,9 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		if capture.kind != .ident || capture.value.len == 0 {
 			continue
 		}
-		capture_type := tc.cur_scope.lookup(capture.value) or { continue }
+		capture_type := tc.cur_scope.lookup_id(capture.name_id()) or { continue }
 		if tc.current_binding_has_shared_elements(capture.value) {
-			if owner := tc.cur_scope.lookup_owner(capture.value) {
+			if owner := tc.cur_scope.lookup_owner_id(capture.name_id()) {
 				captured_shared_arrays[capture.value] = owner
 				captured_whole_shared_arrays[capture.value] =
 					tc.current_binding_is_shared(capture.value)
@@ -14703,7 +14703,7 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 		if unalias_type(capture_type) !is Pointer {
 			continue
 		}
-		owner := tc.cur_scope.lookup_owner(capture.value) or { continue }
+		owner := tc.cur_scope.lookup_owner_id(capture.name_id()) or { continue }
 		key := owner.storage_key()
 		if key.len > 0 {
 			captured_pointer_values[key] = tc.pointer_binding_ident_values(owner, saved_fn_context.pointer_binding_value_keys)
@@ -14750,7 +14750,7 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 			}
 		}
 		if child.kind == .ident && (child.is_mut || child.typ == checker_source_atomic) && child.value.len > 0 {
-			if owner := tc.cur_scope.lookup_owner(child.value) {
+			if owner := tc.cur_scope.lookup_owner_id(child.name_id()) {
 				tc.prepare_mut_local_owner_write()
 				tc.fn_context.mut_local_owners[child.value] = owner
 				if base := captured_mut_params[child.value] {
@@ -14761,7 +14761,7 @@ fn (mut tc TypeChecker) check_fn_literal(id flat.NodeId, node flat.Node) {
 			}
 		}
 		if child.kind == .ident && child.typ == checker_source_shared && child.value.len > 0 {
-			if owner := tc.cur_scope.lookup_owner(child.value) {
+			if owner := tc.cur_scope.lookup_owner_id(child.name_id()) {
 				tc.mark_shared_binding_owner(child.value, owner)
 			}
 		}
@@ -14924,7 +14924,7 @@ fn (mut tc TypeChecker) check_generic_fn_literal_capture_types(node flat.Node) {
 				if capture.kind != .ident || capture.value.len == 0 {
 					continue
 				}
-				capture_type := tc.cur_scope.lookup(capture.value) or { continue }
+				capture_type := tc.cur_scope.lookup_id(capture.name_id()) or { continue }
 				capture_type_text := tc.current_fn_param_type_text(capture.value) or {
 					capture_type.source_type_id()
 				}
@@ -15075,7 +15075,7 @@ fn (mut tc TypeChecker) record_malformed_fn_literal_call_mismatch(literal flat.N
 		return
 	}
 	arg_name := source[arg_start..arg_end]
-	actual := tc.cur_scope.lookup(arg_name) or { return }
+	actual := tc.cur_scope.lookup_id(flat.source_type_id(arg_name)) or { return }
 	tc.record_error_at(.call_arg_mismatch, 'cannot use `${actual.name()}` as `${param.typ_text()}` in argument 1 to `${name}`', param_id, token.new_span(literal.pos.id, arg_start, arg_end))
 }
 
@@ -15135,7 +15135,7 @@ fn (mut tc TypeChecker) check_lambda_expr(id flat.NodeId, node flat.Node) {
 			} else {
 				unknown_type_quoting('lambda parameter', child.value)
 			}
-			owner := tc.cur_scope.insert_with_owner(child.value, param_type)
+			owner := tc.cur_scope.insert_with_owner_id(child.name_id(), child.value, param_type)
 			tc.initialize_pointer_parameter_binding(owner, param_type)
 			if child.is_mut {
 				tc.fn_context.mut_param_base_types[child.value] = mut_param_base_type(param_type)
@@ -15805,7 +15805,7 @@ fn (mut tc TypeChecker) record_locked_shared_dependency_keys(id flat.NodeId, loc
 	mut dependency_keys := [key, alias_key]
 	dependency_keys << tc.locked_shared_base_owner_alias_keys(id)
 	if node.kind == .ident {
-		if owner := tc.cur_scope.lookup_owner(node.value) {
+		if owner := tc.cur_scope.lookup_owner_id(node.name_id()) {
 			storage_key := owner.storage_key()
 			if storage_key.len > 0 {
 				dependency_keys << locked_shared_storage_key(storage_key)
@@ -15949,7 +15949,7 @@ fn (tc &TypeChecker) locked_shared_base_owner_alias_keys(id flat.NodeId) []strin
 	node := tc.a.node(id)
 	match node.kind {
 		.ident {
-			owner := tc.cur_scope.lookup_owner(node.value) or { return []string{} }
+			owner := tc.cur_scope.lookup_owner_id(node.name_id()) or { return []string{} }
 			mut keys := []string{}
 			for value_key in tc.pointer_binding_ident_values(owner, tc.fn_context.pointer_binding_value_keys) {
 				if value_key.len > 0 {
@@ -17080,7 +17080,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 		if rhs_node.kind == .struct_init && tc.struct_init_has_positional_fields(rhs_node)
 			&& !tc.type_name_known(rhs_node.source_value_id()) {
 			if lhs_node.value != '_' {
-				tc.cur_scope.insert(lhs_node.value, builtin_void_type)
+				tc.cur_scope.insert_id(lhs_node.name_id(), lhs_node.value, builtin_void_type)
 			}
 			i += 2
 			continue
@@ -17095,7 +17095,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 			&& tc.current_binding_is_shared(rhs_node.value) {
 			tc.record_error_at(.assignment_mismatch, '`${rhs_node.value}` is `shared` and must be `rlock`ed or `lock`ed to be used as non-mut right-hand side of assignment', rhs_id, rhs_node.pos)
 			if lhs_node.value != '_' {
-				tc.cur_scope.insert(lhs_node.value, tc.resolve_type(rhs_id))
+				tc.cur_scope.insert_id(lhs_node.name_id(), lhs_node.value, tc.resolve_type(rhs_id))
 			}
 			i += 2
 			continue
@@ -17103,7 +17103,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 		if rhs_node.kind == .map_init && rhs_node.children_count == 0 && rhs_node.source_value_id() == 0 {
 			tc.record_error_at(.assignment_mismatch, 'invalid empty map initialisation syntax, use e.g. map[string]int{} instead', rhs_id, rhs_node.pos)
 			if lhs_node.value != '_' {
-				tc.cur_scope.insert(lhs_node.value, builtin_void_type)
+				tc.cur_scope.insert_id(lhs_node.name_id(), lhs_node.value, builtin_void_type)
 			}
 			i += 2
 			continue
@@ -17111,7 +17111,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 		if rhs_node.kind == .fn_literal && rhs_node.generic_params().len > 0 {
 			tc.record_error_at(.assignment_mismatch, 'cannot assign generic function to a variable', rhs_id, rhs_node.pos)
 			if lhs_node.value != '_' {
-				tc.cur_scope.insert(lhs_node.value, tc.resolve_type(rhs_id))
+				tc.cur_scope.insert_id(lhs_node.name_id(), lhs_node.value, tc.resolve_type(rhs_id))
 			}
 			i += 2
 			continue
@@ -17127,7 +17127,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 		} else if rhs_node.kind == .none_expr {
 			tc.record_error_at(.assignment_mismatch, 'cannot assign a `none` value to a variable', rhs_id, rhs_node.pos)
 			if lhs_node.value != '_' {
-				tc.cur_scope.insert(lhs_node.value, builtin_none_type)
+				tc.cur_scope.insert_id(lhs_node.name_id(), lhs_node.value, builtin_none_type)
 			}
 			i += 2
 			continue
@@ -17136,7 +17136,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 			tc.record_error_at(.assignment_mismatch, '`nil` is only allowed in `unsafe` code', rhs_id, rhs_node.pos)
 			tc.record_error_at(.assignment_mismatch, 'use of untyped nil in assignment (use `unsafe` | false)', rhs_id, rhs_node.pos)
 			if lhs_node.value != '_' {
-				tc.cur_scope.insert(lhs_node.value, builtin_voidptr_type)
+				tc.cur_scope.insert_id(lhs_node.name_id(), lhs_node.value, builtin_voidptr_type)
 			}
 			i += 2
 			continue
@@ -17150,7 +17150,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 		if tc.new_error_kind_since(error_count, .unknown_ident) {
 			if tc.new_errors_are_forward_decl_unknowns(error_count) {
 				if lhs_node.value != '_' {
-					tc.cur_scope.insert(lhs_node.value, unknown_type('initializer contains an unresolved forward declaration'))
+					tc.cur_scope.insert_id(lhs_node.name_id(), lhs_node.value, unknown_type('initializer contains an unresolved forward declaration'))
 				}
 				i += 2
 				continue
@@ -17204,7 +17204,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 			if unknown_return && rhs_node.kind in [.index, .selector] {
 				tc.record_error_at(.unknown_type, 'unknown return type: cannot assign `${tc.source_text_for_node(rhs_id)}` as a function variable', rhs_id, tc.index_suffix_diagnostic_pos(rhs_id))
 				if lhs_node.value != '_' {
-					tc.cur_scope.insert(lhs_node.value, rhs_type)
+					tc.cur_scope.insert_id(lhs_node.name_id(), lhs_node.value, rhs_type)
 				}
 				i += 2
 				continue
@@ -17219,7 +17219,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 			}
 			tc.record_error_at(.assignment_mismatch, message, id, tc.assignment_operator_pos(node, lhs_id, rhs_id))
 			if lhs_node.value != '_' {
-				tc.cur_scope.insert(lhs_node.value, rhs_type)
+				tc.cur_scope.insert_id(lhs_node.name_id(), lhs_node.value, rhs_type)
 			}
 			i += 2
 			continue
@@ -17242,7 +17242,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 		}
 		if rhs_node.kind == .array_literal && rhs_node.children_count == 0 && rhs_node.typ == 0 {
 			if lhs_node.value != '_' {
-				tc.cur_scope.insert(lhs_node.value, builtin_void_type)
+				tc.cur_scope.insert_id(lhs_node.name_id(), lhs_node.value, builtin_void_type)
 			}
 			i += 2
 			continue
@@ -17275,7 +17275,7 @@ fn (mut tc TypeChecker) check_decl_assign(id flat.NodeId, node flat.Node) {
 			tc.record_error_at(.assignment_mismatch, 'use `mut array2 := array1.clone()` instead of `mut array2 := array1` (or use `unsafe`)', id, tc.assignment_operator_pos(node, lhs_id, rhs_id))
 		}
 		if rhs_type is Void && rhs_node.kind == .infix && rhs_node.op == .left_shift {
-			tc.cur_scope.insert(lhs_node.value, rhs_type)
+			tc.cur_scope.insert_id(lhs_node.name_id(), lhs_node.value, rhs_type)
 			tc.remember_expr_type(lhs_id, rhs_type)
 			i += 2
 			continue
@@ -17422,7 +17422,7 @@ fn (tc &TypeChecker) expr_is_reference_alias(id flat.NodeId, unsafe_context bool
 		if unsafe_context {
 			return true
 		}
-		owner := tc.cur_scope.lookup_owner(node.value) or { return false }
+		owner := tc.cur_scope.lookup_owner_id(node.name_id()) or { return false }
 		return tc.fn_context.unsafe_reference_alias_owners[owner.storage_key()]
 	}
 	if unsafe_context && node.kind in [.selector, .index] {
@@ -18024,7 +18024,7 @@ fn (mut tc TypeChecker) call_returned_alias_arguments(id flat.NodeId, mut visiti
 		} else {
 			callee_view.parse_scope_param_type(param.typ)
 		}
-		callee_view.cur_scope.insert(param.value, param_type)
+		callee_view.cur_scope.insert_id(param.name_id(), param.value, param_type)
 		binding_index++
 	}
 	visiting[decl.idx] = true
@@ -18158,7 +18158,7 @@ fn (mut tc TypeChecker) collect_returned_alias_sources_in_scope(id flat.NodeId, 
 				typ := tc.cached_expr_type(binding_id) or {
 					tc.resolve_type(tc.a.child(node, 1))
 				}
-				tc.cur_scope.insert(binding.value, typ)
+				tc.cur_scope.insert_id(binding.name_id(), binding.value, typ)
 			}
 		}
 		// Iterable and range-end handlers still see the enclosing scope.
@@ -18185,7 +18185,7 @@ fn (mut tc TypeChecker) collect_returned_alias_sources_in_scope(id flat.NodeId, 
 			lhs := tc.a.node(lhs_id)
 			if lhs.kind == .ident {
 				typ := tc.return_alias_decl_binding_type(*node, i)
-				owner := tc.cur_scope.insert_with_owner(lhs.value, typ)
+				owner := tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, typ)
 				if tc.condition_type_is_bool_like(typ) && i < tc.multi_assign_rhs_count(*node) {
 					tc.record_bool_condition_binding(owner, tc.multi_assign_rhs_id(*node, i),
 						typ, tc.decl_lhs_is_mut(*node, lhs_id))
@@ -18243,7 +18243,7 @@ fn (mut tc TypeChecker) restore_return_alias_for_in_bindings(node flat.Node) {
 			typ := tc.cached_expr_type(binding_id) or {
 				if i == 0 { key_type } else { value_type }
 			}
-			tc.cur_scope.insert(binding.value, typ)
+			tc.cur_scope.insert_id(binding.name_id(), binding.value, typ)
 		}
 	}
 }
@@ -18310,7 +18310,7 @@ fn (mut tc TypeChecker) restore_return_alias_guard_bindings(cond_id flat.NodeId)
 			builtin_void_type
 		}
 		if binding_type !is Void {
-			tc.cur_scope.insert(lhs.value, binding_type)
+			tc.cur_scope.insert_id(lhs.name_id(), lhs.value, binding_type)
 		}
 	}
 }
@@ -18738,7 +18738,7 @@ fn (mut tc TypeChecker) track_method_value_local(lhs_id flat.NodeId, rhs_id flat
 		tc.fn_context.method_value_local_depth[lhs.value] = tc.cur_scope_depth()
 		tc.mark_method_value_local_owner(lhs.value)
 		if tc.method_value_has_stack_mut_receiver(rhs_id) {
-			if owner := tc.cur_scope.lookup_owner(lhs.value) {
+			if owner := tc.cur_scope.lookup_owner_id(lhs.name_id()) {
 				owner_key := owner.storage_key()
 				if owner_key.len > 0 {
 					tc.fn_context.method_value_stack_mut_owners[owner_key] = true
@@ -18762,7 +18762,7 @@ fn (mut tc TypeChecker) mark_method_value_local_owner(name string) {
 	if tc.cur_scope == unsafe { nil } {
 		return
 	}
-	owner := tc.cur_scope.lookup_owner(name) or { return }
+	owner := tc.cur_scope.lookup_owner_id(flat.source_type_id(name)) or { return }
 	owner_key := owner.storage_key()
 	if owner_key.len == 0 {
 		return
@@ -18781,7 +18781,7 @@ fn (mut tc TypeChecker) unmark_current_method_value_local_owner(name string) {
 	if tc.cur_scope == unsafe { nil } {
 		return
 	}
-	owner := tc.cur_scope.lookup_owner(name) or { return }
+	owner := tc.cur_scope.lookup_owner_id(flat.source_type_id(name)) or { return }
 	owner_key := owner.storage_key()
 	if owner_key.len == 0 {
 		return
@@ -18812,7 +18812,7 @@ fn (tc &TypeChecker) current_binding_is_method_value_local(name string) bool {
 		return true
 	}
 	owners := tc.fn_context.method_value_local_owners[name] or { return true }
-	current_owner := tc.cur_scope.lookup_owner(name) or {
+	current_owner := tc.cur_scope.lookup_owner_id(flat.source_type_id(name)) or {
 		// Fn literals can be checked after their body has been lifted away from the
 		// lexical scope that declared the captured alias. If there is no nearer
 		// binding, keep treating the tracked name as the outer method-value local so
@@ -18834,7 +18834,7 @@ fn (tc &TypeChecker) current_method_value_local_has_stack_mut_receiver(name stri
 	}
 	owners := tc.fn_context.method_value_local_owners[name] or { return false }
 	if tc.cur_scope != unsafe { nil } {
-		if current_owner := tc.cur_scope.lookup_owner(name) {
+		if current_owner := tc.cur_scope.lookup_owner_id(flat.source_type_id(name)) {
 			current_key := current_owner.storage_key()
 			if current_key.len > 0 {
 				return tc.fn_context.method_value_stack_mut_owners[current_key]
@@ -18876,7 +18876,7 @@ fn (mut tc TypeChecker) mark_variadic_fn_value_local_owner(name string) {
 	if tc.cur_scope == unsafe { nil } {
 		return
 	}
-	owner := tc.cur_scope.lookup_owner(name) or { return }
+	owner := tc.cur_scope.lookup_owner_id(flat.source_type_id(name)) or { return }
 	owner_key := owner.storage_key()
 	if owner_key.len == 0 {
 		return
@@ -18895,7 +18895,7 @@ fn (mut tc TypeChecker) unmark_current_variadic_fn_value_local_owner(name string
 	if tc.cur_scope == unsafe { nil } {
 		return
 	}
-	owner := tc.cur_scope.lookup_owner(name) or { return }
+	owner := tc.cur_scope.lookup_owner_id(flat.source_type_id(name)) or { return }
 	owner_key := owner.storage_key()
 	if owner_key.len == 0 {
 		return
@@ -18925,7 +18925,7 @@ fn (tc &TypeChecker) current_binding_is_variadic_fn_value_local(name string) boo
 	}
 	owners := tc.fn_context.fn_value_variadic_local_owners[name] or { return true }
 	for owner in owners {
-		if tc.cur_scope.nearest_binding_owned_by(name, owner) {
+		if tc.cur_scope.nearest_binding_owned_by_id(flat.source_type_id(name), owner) {
 			return true
 		}
 	}
@@ -18936,7 +18936,7 @@ fn (mut tc TypeChecker) mark_capturing_fn_literal_local_owner(name string) {
 	if tc.cur_scope == unsafe { nil } {
 		return
 	}
-	owner := tc.cur_scope.lookup_owner(name) or { return }
+	owner := tc.cur_scope.lookup_owner_id(flat.source_type_id(name)) or { return }
 	owner_key := owner.storage_key()
 	if owner_key.len == 0 {
 		return
@@ -18955,7 +18955,7 @@ fn (mut tc TypeChecker) unmark_current_capturing_fn_literal_local_owner(name str
 	if tc.cur_scope == unsafe { nil } {
 		return
 	}
-	owner := tc.cur_scope.lookup_owner(name) or { return }
+	owner := tc.cur_scope.lookup_owner_id(flat.source_type_id(name)) or { return }
 	owner_key := owner.storage_key()
 	if owner_key.len == 0 {
 		return
@@ -18985,7 +18985,7 @@ fn (tc &TypeChecker) current_binding_is_capturing_fn_literal_local(name string) 
 	}
 	owners := tc.fn_context.capturing_fn_literal_local_owners[name] or { return true }
 	for owner in owners {
-		if tc.cur_scope.nearest_binding_owned_by(name, owner) {
+		if tc.cur_scope.nearest_binding_owned_by_id(flat.source_type_id(name), owner) {
 			return true
 		}
 	}
@@ -19028,14 +19028,14 @@ fn (tc &TypeChecker) current_binding_is_shared(name string) bool {
 	}
 	// Without a `shared` global only the local bindings below can be shared.
 	if tc.shared_global_names.len > 0 {
-		if owner := tc.cur_scope.lookup_owner(name) {
+		if owner := tc.cur_scope.lookup_owner_id(flat.source_type_id(name)) {
 			if tc.binding_owner_is_global(owner) && tc.shared_global_names[name] {
 				return true
 			}
 		}
 		qname := tc.qualify_name(name)
 		if qname != name {
-			if owner := tc.cur_scope.lookup_owner(qname) {
+			if owner := tc.cur_scope.lookup_owner_id(flat.source_type_id(qname)) {
 				if tc.binding_owner_is_global(owner) && tc.shared_global_names[qname] {
 					return true
 				}
@@ -19044,7 +19044,7 @@ fn (tc &TypeChecker) current_binding_is_shared(name string) bool {
 	}
 	owners := tc.fn_context.shared_owners[name] or { return false }
 	for owner in owners {
-		if tc.cur_scope.nearest_binding_owned_by(name, owner) {
+		if tc.cur_scope.nearest_binding_owned_by_id(flat.source_type_id(name), owner) {
 			return true
 		}
 	}
@@ -19061,7 +19061,7 @@ fn (tc &TypeChecker) current_binding_is_shared_array(name string) bool {
 	if !tc.current_binding_is_shared(name) {
 		return false
 	}
-	typ := tc.cur_scope.lookup(name) or { return false }
+	typ := tc.cur_scope.lookup_id(flat.source_type_id(name)) or { return false }
 	return unalias_and_unwrap_pointer_type(typ) is Array
 }
 
@@ -19071,7 +19071,7 @@ fn (tc &TypeChecker) current_binding_has_shared_elements(name string) bool {
 	}
 	if owners := tc.fn_context.shared_array_owners[name] {
 		for owner in owners {
-			if tc.cur_scope.nearest_binding_owned_by(name, owner) {
+			if tc.cur_scope.nearest_binding_owned_by_id(flat.source_type_id(name), owner) {
 				return true
 			}
 		}
@@ -19083,7 +19083,7 @@ fn (tc &TypeChecker) current_binding_is_shared_map(name string) bool {
 	if !tc.current_binding_is_shared(name) {
 		return false
 	}
-	typ := tc.cur_scope.lookup(name) or { return false }
+	typ := tc.cur_scope.lookup_id(flat.source_type_id(name)) or { return false }
 	return unalias_and_unwrap_pointer_type(typ) is Map
 }
 
@@ -19204,7 +19204,7 @@ fn (mut tc TypeChecker) track_capturing_fn_literal_local(lhs_id flat.NodeId, rhs
 	}
 	mut binding_owner := owner
 	if binding_owner.storage_key().len == 0 {
-		binding_owner = tc.cur_scope.lookup_owner(lhs.value) or { ScopeBindingOwner{} }
+		binding_owner = tc.cur_scope.lookup_owner_id(lhs.name_id()) or { ScopeBindingOwner{} }
 	}
 	if binding_owner.storage_key().len == 0 {
 		return
@@ -19247,7 +19247,7 @@ fn (mut tc TypeChecker) decl_assign_inferred_type(rhs_id flat.NodeId) Type {
 			// infers a new declaration from its declared type. Lexical branch and loop
 			// smartcasts, and the `if x == none { return }` unwrap, still infer the
 			// narrowed type.
-			if declared := tc.cur_scope.lookup(rhs.value) {
+			if declared := tc.cur_scope.lookup_id(rhs.name_id()) {
 				return declared
 			}
 		}
@@ -19377,7 +19377,7 @@ fn (tc &TypeChecker) lvalue_is_local_var(lhs_id flat.NodeId) bool {
 	if lhs.value == '_' {
 		return true
 	}
-	return tc.cur_scope.lookup(lhs.value) != none
+	return tc.cur_scope.lookup_id(lhs.name_id()) != none
 }
 
 fn (tc &TypeChecker) selector_base_bound_as_value(node flat.Node) bool {
@@ -19408,10 +19408,10 @@ fn (tc &TypeChecker) name_bound_as_value(name string) bool {
 	if name == '' {
 		return false
 	}
-	if typ := tc.cur_scope.lookup(name) {
+	if typ := tc.cur_scope.lookup_id(flat.source_type_id(name)) {
 		return typ !is Void
 	}
-	if typ := tc.file_scope.lookup(name) {
+	if typ := tc.file_scope.lookup_id(flat.source_type_id(name)) {
 		return typ !is Void
 	}
 	return false
@@ -20495,7 +20495,7 @@ fn (mut tc TypeChecker) insert_decl_lhs(lhs_id flat.NodeId, typ Type, is_mut boo
 			tc.record_error(.assignment_mismatch, 'redefinition of `${lhs.value}`', lhs_id)
 			return ScopeBindingOwner{}
 		}
-		owner := tc.cur_scope.insert_with_owner(lhs.value, typ)
+		owner := tc.cur_scope.insert_with_owner_id(lhs.name_id(), lhs.value, typ)
 		if lhs.value != '_' {
 			// The alias marker is keyed by name; an earlier binding of the same name in
 			// a finished sibling scope must not taint this one. check_decl_assign sets
@@ -20607,7 +20607,7 @@ fn (tc &TypeChecker) condition_references_mutable_binding(id flat.NodeId) bool {
 
 fn (tc &TypeChecker) visible_mut_param_binding_owns_name(name string) bool {
 	param_owner := tc.fn_context.mut_param_owners[name] or { return false }
-	owner := tc.cur_scope.lookup_owner(name) or { return false }
+	owner := tc.cur_scope.lookup_owner_id(flat.source_type_id(name)) or { return false }
 	return voidptr(owner.scope) == voidptr(param_owner.scope) && owner.index == param_owner.index
 		&& owner.generation == param_owner.generation
 }
@@ -21231,7 +21231,7 @@ fn (mut tc TypeChecker) update_unsafe_reference_alias_assignment(lhs_id flat.Nod
 	if lhs.kind != .ident || lhs.value == '_' {
 		return
 	}
-	owner := tc.cur_scope.lookup_owner(lhs.value) or { return }
+	owner := tc.cur_scope.lookup_owner_id(lhs.name_id()) or { return }
 	key := owner.storage_key()
 	if key.len == 0 {
 		return
@@ -21267,7 +21267,7 @@ fn (mut tc TypeChecker) update_pointer_binding_alias_assignment(lhs_id flat.Node
 	if lhs.kind != .ident || lhs.value == '_' {
 		return
 	}
-	owner := tc.cur_scope.lookup_owner(lhs.value) or { return }
+	owner := tc.cur_scope.lookup_owner_id(lhs.name_id()) or { return }
 	left_key := owner.storage_key()
 	values := tc.pointer_binding_alias_values(left_key, rhs_id, lhs_type, rhs_alias_state) or {
 		return
@@ -21286,7 +21286,7 @@ fn (tc &TypeChecker) indirect_pointer_lvalue_storage_keys(id flat.NodeId) ?[]str
 	if target.kind != .ident || target.value == '_' {
 		return none
 	}
-	owner := tc.cur_scope.lookup_owner(target.value) or { return none }
+	owner := tc.cur_scope.lookup_owner_id(target.name_id()) or { return none }
 	values := tc.pointer_binding_ident_values(owner, tc.fn_context.pointer_binding_value_keys)
 	if values.len == 0 || values.any(it.starts_with('@')) {
 		return none
@@ -21308,8 +21308,8 @@ fn (mut tc TypeChecker) invalidate_pointer_binding_alias_after_mut_call(id flat.
 	if node.kind != .ident || node.value == '_' {
 		return
 	}
-	owner := tc.cur_scope.lookup_owner(node.value) or { return }
-	typ := tc.cur_scope.lookup(node.value) or { return }
+	owner := tc.cur_scope.lookup_owner_id(node.name_id()) or { return }
+	typ := tc.cur_scope.lookup_id(node.name_id()) or { return }
 	if unalias_type(typ) !is Pointer {
 		return
 	}
@@ -21346,7 +21346,7 @@ fn (tc &TypeChecker) pointer_binding_alias_values(left_key string, rhs_id flat.N
 		target_id := tc.unwrap_paren_expr_id(tc.a.child(rhs, 0))
 		target := tc.a.node(target_id)
 		if target.kind == .ident && target.value != '_' {
-			target_owner := tc.cur_scope.lookup_owner(target.value) or { return none }
+			target_owner := tc.cur_scope.lookup_owner_id(target.name_id()) or { return none }
 			target_value := tc.pointer_binding_storage_value(target_owner)
 			if target_value.len > 0 {
 				// The address identifies the binding's storage, even when that binding
@@ -21362,7 +21362,7 @@ fn (tc &TypeChecker) pointer_binding_alias_values(left_key string, rhs_id flat.N
 		return [pointer_binding_unknown_value(left_key)]
 	}
 	if rhs.kind == .ident && rhs.value != '_' {
-		rhs_owner := tc.cur_scope.lookup_owner(rhs.value) or { return none }
+		rhs_owner := tc.cur_scope.lookup_owner_id(rhs.name_id()) or { return none }
 		values := tc.pointer_binding_ident_values(rhs_owner, rhs_alias_state)
 		if values.len > 0 {
 			return values
@@ -22347,7 +22347,7 @@ fn (mut tc TypeChecker) collect_comptime_method_calls(id flat.NodeId, method_var
 		for lhs in tc.multi_assign_lhs_ids(node) {
 			binding := tc.a.node(lhs)
 			if binding.kind == .ident && binding.value != '_' {
-				tc.cur_scope.insert(binding.value, unknown_type('local binding'))
+				tc.cur_scope.insert_id(binding.name_id(), binding.value, unknown_type('local binding'))
 			}
 		}
 	}

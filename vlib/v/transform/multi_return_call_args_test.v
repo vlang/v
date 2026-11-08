@@ -20,7 +20,7 @@ fn test_mixed_multi_return_arguments_preserve_fixed_array_reference_checks() {
 		fixed_type := types.Type(types.ArrayFixed{ elem_type: types.Type(types.int_), len: 2 })
 		array_ref := types.Type(types.Pointer{ base_type: types.Type(types.Array{ elem_type: types.Type(types.int_) }) })
 		t.set_var_type('fixed', flat.source_type_id('[2]int'))
-		tc.cur_scope.insert('fixed', fixed_type)
+		tc.cur_scope.insert_id(flat.source_type_id('fixed'), 'fixed', fixed_type)
 		fixed := t.make_ident('fixed')
 		tc.register_synth_type(fixed, fixed_type)
 		params := [types.Type(types.int_), types.Type(types.int_), array_ref]

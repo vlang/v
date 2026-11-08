@@ -163,7 +163,7 @@ fn test_scalar_loop_post_preserves_body_pointer_aliases_with_and_without_cached_
 	})
 	mut tc := TypeChecker.new(&a)
 	tc.disable_explicit_mutability = true
-	tc.cur_scope.insert('counter', Type(int_))
+	tc.cur_scope.insert_id(flat.source_type_id('counter'), 'counter', Type(int_))
 	base := {
 		'pointer': ['before']
 	}

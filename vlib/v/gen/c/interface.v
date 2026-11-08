@@ -1189,7 +1189,7 @@ fn (g &FlatGen) ierror_pointer_payload_root_needs_heap_copy(root flat.Node) bool
 	if param_type := g.cur_param_types[root.value] {
 		return param_type !is types.Pointer
 	}
-	if local_type := g.tc.cur_scope.lookup(root.value) {
+	if local_type := g.tc.cur_scope.lookup_id(root.name_id()) {
 		if local_type is types.Pointer && g.ierror_local_pointer_is_owned(root.value) {
 			return true
 		}

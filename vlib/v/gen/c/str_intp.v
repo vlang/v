@@ -173,7 +173,7 @@ fn (g &FlatGen) string_interp_child_type(child_id flat.NodeId, child flat.Node) 
 	// locals introduced during generation (e.g. the `err` of an or-body lowered here,
 	// or for-loop vars) that resolve_type may stale-cache as `int`.
 	if child.kind == .ident {
-		if scope_typ := g.tc.cur_scope.lookup(child.value) {
+		if scope_typ := g.tc.cur_scope.lookup_id(child.name_id()) {
 			if scope_typ !is types.Void {
 				typ = scope_typ
 			}

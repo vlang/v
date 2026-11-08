@@ -46,7 +46,7 @@ fn test_builtin_call_shape_preserves_primitive_named_and_generic_casts() {
 		call := t.make_call_expr_typed(t.make_ident(target), [t.make_int_literal(1)],
 			flat.source_type_id(target))
 		if target == 'Target' {
-			tc.sparse_resolved_call_names[int(call)] = target
+			tc.sparse_resolved_calls[int(call)] = flat.source_type_id(target)
 		}
 		lowered := t.try_lower_builtin_call(call, a.nodes[int(call)]) or {
 			panic('cast ${target} was skipped')
@@ -58,7 +58,7 @@ fn test_builtin_call_shape_preserves_primitive_named_and_generic_casts() {
 	t.set_var_type('Target', flat.source_type_id('fn (int) int'))
 	shadowed := t.make_call_expr_typed(t.make_ident('Target'), [t.make_int_literal(2)],
 		flat.source_type_int)
-	tc.sparse_resolved_call_names[int(shadowed)] = 'Target'
+	tc.sparse_resolved_calls[int(shadowed)] = flat.source_type_id('Target')
 	assert t.try_lower_builtin_call(shadowed, a.nodes[int(shadowed)]) == none
 }
 

@@ -7475,7 +7475,7 @@ fn global_text(a &flat.FlatAst, tc &types.TypeChecker, module_name string, node 
 
 fn cached_global_source_type_id(tc &types.TypeChecker, module_name string, name string) u32 {
 	for candidate in [name, '${module_name}.${name}', '${module_name.all_after_last('.')}.${name}'] {
-		if typ := tc.file_scope.lookup(candidate) {
+		if typ := tc.file_scope.lookup_id(flat.source_type_id(candidate)) {
 			source_id := typ.source_type_id()
 			if source_id in [flat.source_type_nil, flat.source_type_none, flat.source_type_unknown] {
 				return flat.source_type_voidptr

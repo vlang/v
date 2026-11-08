@@ -16,8 +16,8 @@ fn test_unsafe_alias_shared_snapshots_detach_before_assignment_and_removal() {
 	})
 	mut tc := TypeChecker.new(a)
 	typ := Type(Map{ key_type: &builtin_string_type, value_type: &builtin_int_type })
-	owner := tc.cur_scope.insert_with_owner('alias', typ)
-	tc.cur_scope.insert('plain', typ)
+	owner := tc.cur_scope.insert_with_owner_id(flat.source_type_id('alias'), 'alias', typ)
+	tc.cur_scope.insert_id(flat.source_type_id('plain'), 'plain', typ)
 	tc.fn_context.unsafe_reference_alias_owners['existing'] = true
 	base := tc.share_unsafe_alias_owners()
 	tc.update_unsafe_reference_alias_assignment(alias_id, unsafe_id, typ, .assign)
