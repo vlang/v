@@ -7,126 +7,123 @@
 
 ```
 A slice to process?          -> parallel.amap
-A fixed set of tasks?        -> spawn + WaitGroup
+A fixed set of tasks?        -> spawn, then wait() on the threads
 Tasks need to talk?          -> channel
-Shared mutable state?        -> Mutex, held as briefly as possible
+Shared mutable state?        -> shared + lock, held as briefly as possible
 One value, changed often?    -> AtomicVal
 Fire and forget, truly?      -> nothing waits; make it rare and obvious
 ```
 
 Most "I need concurrency here" is the first row. Reaching for `spawn` when
-`amap` fits means hand-writing a WaitGroup and the chance to forget the `wait()`.
+`amap` fits means collecting the threads yourself and the chance to forget the
+`wait()`.
 
 ## parallel.amap
 
-```v ignore
+```v
+import arrays
 import arrays.parallel
 
-fn test_it_sums_in_parallel() {
+fn main() {
 	items := [1, 2, 3, 4, 5]
-	total := parallel.amap(items, fn (n int) int { n } | math.sum)
-	assert total == 15
+	squares := parallel.amap(items, fn (n int) int {
+		return n * n
+	})
+	assert arrays.sum(squares)! == 55
 }
 ```
 
-`amap` keeps the input order in the output. If the order does not matter, `run`
-avoids allocating the result slice.
+`amap` keeps the input order in the output. If there is nothing to collect,
+`run` takes a `fn (T)` and returns nothing.
 
 For a bounded worker count:
 
 ```v ignore
-	got := parallel.amap(items, worker, parallel.Params{
-		workers: 4
-	})
+got := parallel.amap(items, worker, parallel.Params{
+	workers: 4
+})
 ```
 
-## WaitGroup: the complete form
+## Threads that return their result
 
-```v ignore
+The single-writer pattern without a lock: each thread returns its own result, and
+only the thread that waits assembles them.
+
+```v
+fn fetch(url string) string {
+	return 'fetched ${url}'
+}
+
+fn fetch_all(urls []string) []string {
+	mut threads := []thread string{}
+	for url in urls {
+		threads << spawn fetch(url)
+	}
+	return threads.wait() // in the order the threads were started
+}
+
+fn main() {
+	assert fetch_all(['a', 'b']) == ['fetched a', 'fetched b']
+}
+```
+
+No thread touches another's memory, so there is nothing to lock and nothing to
+race. Prefer this to threads writing into a shared array.
+
+## WaitGroup: when nothing comes back
+
+```v
 import sync
 
-fn run_all(items []string) []string {
-	mut wg := sync.new_waitgroup()
-	mut results := []string{len: items.len}
+fn work(mut wg sync.WaitGroup, id int) {
+	defer {
+		wg.done() // defer, so every return counts down
+	}
+	println('task ${id}')
+}
 
-	for item, i in items {
-		wg.go(fn () {
-			results[i] = fetch(item)
-		})
+fn main() {
+	mut wg := sync.new_waitgroup()
+	for id in 0 .. 3 {
+		wg.add(1)
+		spawn work(mut wg, id)
 	}
 	wg.wait()
-	return results
 }
 ```
 
-`wg.go(f)` does `add(1)`, starts the thread and calls `done()` inside it. That is
-strictly safer than `spawn` plus a manual `add`, because it removes the two ways
-to get the counting wrong.
-
-Writing it by hand is fine when you need a different arrangement:
-
-```v ignore
-	wg.add(1)
-	spawn fn () {
-		defer {
-			wg.done()      // defer, so a panic-free path still counts down
-		}
-		results[i] = fetch(item)
-	}
-```
-
-Note the `defer`: without it, any early return inside the thread leaves the count
-high and `wait()` hangs forever.
-
-## The single-writer pattern
-
-The easiest way to avoid a lock entirely: give each piece of work its own slot, and
-let exactly one thread write the shared structure.
-
-```v ignore
-fn process_all(items []Item) []Result {
-	mut results := []Result{cap: items.len}
-	// Each index is written by exactly one thread, and `results` is not reallocated.
-	parallel.run(items, fn (item Item, i int) {
-		results[i] = process(item)
-	})
-	return results
-}
-```
-
-This is why `parallel.amap` keeps order: the write is to a fixed index, so no two
-threads touch the same memory and no lock is needed. Give the slice a `cap` so it
-is not reallocated under the workers.
+Without the `defer`, an early return inside the thread leaves the count high and
+`wait()` hangs forever. `wg.go(f)` does the `add(1)` for a `fn ()` and calls
+`done()` when it returns.
 
 ## Once for lazy initialisation
 
-```v ignore
+A `sync.Once` must come from `sync.new_once()`. The closure captures a pointer,
+because a captured value would be a copy:
+
+```v
 import sync
 
-struct Registry {
+struct Config {
 mut:
-	once sync.Once
-	mu   sync.Mutex
-	by_name map[string]Entry
+	loaded bool
 }
 
-fn (mut r Registry) lookup(name string) ?Entry {
-	r.once.do(fn () {
-		r.mu.lock()
-		r.by_name = load_all()
-		r.mu.unlock()
-	})
-	r.mu.lock()
-	defer {
-		r.mu.unlock()
+fn main() {
+	mut once := sync.new_once()
+	mut cfg := &Config{}
+	for _ in 0 .. 3 {
+		once.do(fn [mut cfg] () {
+			cfg.loaded = true
+		})
 	}
-	return r.by_name[name]
+	assert cfg.loaded
 }
 ```
 
-`once.do` runs its function exactly once however many threads arrive. Note that
-the map is still protected after initialisation — `once` protects the *setup*, not
-the data.
+`once.do` runs its function exactly once however many threads arrive, and
+returns only after it has completed. `once` protects the *setup*; data that is
+still written afterwards needs its own lock.
 
 ## Lock discipline
 
@@ -140,44 +137,27 @@ The three rules that keep a concurrent program readable:
 
 ```v ignore
 // Wrong: the send can block while holding the lock.
-lock mu {
-	results << compute(x)
+lock state {
+	results <- compute(state.x)
 }
 
-// Right: compute, release, then send.
-value := compute(x)
-results << value
-```
-
-## Pool
-
-`sync.Pool` reuses objects across goroutines, which matters when the allocation is
-expensive and the objects are large:
-
-```v ignore
-mut pool := sync.new_pool[Buf](fn (mut buf Buf) {
-	buf.reset()
-})
-
-buf := pool.get() or { Buf{} }
-defer {
-	pool.put(buf)
+// Right: copy under the lock, release, then send.
+x := rlock state {
+	state.x
 }
+results <- compute(x)
 ```
-
-Do not reach for it before measuring. A pool with the wrong lifetime is harder to
-reason about than the allocation it saves.
 
 ## Patterns that deadlock
 
 | Shape | Why |
 | --- | --- |
-| Send on an unbuffered channel before starting the consumer | producer blocks first |
+| Send before starting the consumer, beyond the buffer | producer blocks first |
 | Two locks taken in different orders | neither thread can proceed |
 | A lock held across a channel operation | the consumer needs the same lock |
 | `wg.add` after `wg.wait` | the count changes while it is being waited on |
 | `wg.done` without a matching `add` | panics on an underflow |
-| A `for` loop over a channel nobody closes | the consumer waits forever |
+| A receive loop on a channel nobody closes | the consumer waits forever |
 
 The fix for all of them is the same: establish the ordering before the threads
 start, close what you opened, and hold locks for the shortest span.
