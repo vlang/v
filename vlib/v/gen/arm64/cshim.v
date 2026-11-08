@@ -13,10 +13,11 @@ import v.ssa
 // each one, a small C function with external linkage into the program's C side.
 // V code then calls `__v_cfn_<name>`.
 //
-// The wrapper's C types are spelled from the SSA types of the call: integers
-// keep their width and signedness, pointers become `void *`, and structs by
-// value become structs with the same members, which arm64 passes and returns
-// exactly like the original type.
+// The wrapper's parameter and result types are spelled from the SSA types of
+// the call: integers keep their width and signedness, pointers become
+// `void *`, and structs by value become structs with the same members, which
+// arm64 passes and returns exactly like the original type. The wrapped
+// function is called with its own C prototype, so C converts the arguments.
 
 // CFunctionKind says why a C function needs a wrapper.
 pub enum CFunctionKind {
@@ -104,22 +105,38 @@ pub fn (mut g Gen) c_function_wrappers(kinds map[string]CFunctionKind) string {
 		mut params := []string{}
 		mut param_types := []string{}
 		mut args := []string{}
+		mut aggregate_param := false
 		for i, param in signature.params {
 			typ := types.spell(g.m, param)
 			params << '${typ} a${i}'
 			param_types << typ
 			args << 'a${i}'
+			if cshim_is_aggregate(g.m, param) {
+				aggregate_param = true
+			}
 		}
 		wrapper := '__v_cfn_${name}'
 		param_list := if params.len == 0 { 'void' } else { params.join(', ') }
-		callee := if kind == .macro {
+		// Like cgo's stubs, call the function with its own prototype, so C
+		// converts the arguments: a V `f64` reaches a `float` parameter as a
+		// float. A struct passed by value has no C spelling here but a layout
+		// twin, so such calls go through a pointer with the twin's signature.
+		callee := if kind == .macro || !aggregate_param {
 			name
 		} else {
 			type_list := if param_types.len == 0 { 'void' } else { param_types.join(', ') }
 			'((${ret} (*)(${type_list}))(&${name}))'
 		}
 		call := '${callee}(${args.join(', ')})'
-		body := if ret == 'void' { '${call};' } else { 'return (${ret})${call};' }
+		body := if ret == 'void' {
+			'${call};'
+		} else if cshim_is_aggregate(g.m, signature.ret) {
+			// A struct result (`CGRectMake`) is copied into its layout twin; C
+			// cannot convert between two struct types.
+			'${ret} r; __typeof__(${call}) v = ${call}; __builtin_memcpy(&r, &v, sizeof(r)); return r;'
+		} else {
+			'return (${ret})${call};'
+		}
 		bodies << '${ret} ${wrapper}(${param_list}) { ${body} }'
 		g.m.c_extern_symbols[name] = wrapper
 	}
@@ -128,6 +145,13 @@ pub fn (mut g Gen) c_function_wrappers(kinds map[string]CFunctionKind) string {
 	}
 	return '\n// V arm64: wrappers for C macros and static functions called from V.\n' +
 		types.decls.join('\n') + '\n' + bodies.join('\n') + '\n'
+}
+
+fn cshim_is_aggregate(m &ssa.Module, typ ssa.TypeID) bool {
+	if typ <= 0 || int(typ) >= m.type_store.types.len {
+		return false
+	}
+	return m.type_store.types[typ].kind in [.struct_t, .array_t]
 }
 
 struct CShimTypes {

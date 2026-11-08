@@ -2165,10 +2165,23 @@ fn (mut b Builder) register_functions() {
 	b.register_extern('fprintf', b.i32_type, p2)
 	b.register_ssa_memdup_helper()
 
+	// A `fn C.x() Rect` in module `macos` names `macos.Rect`: resolve its types
+	// in the module that declares it.
+	saved_c_decl_module := b.cur_module
+	mut c_decl_module := ''
 	for node in b.a.nodes {
+		if node.kind == .file {
+			c_decl_module = ''
+			continue
+		}
+		if node.kind == .module_decl {
+			c_decl_module = b.source_module_name(node)
+			continue
+		}
 		if node.kind != .c_fn_decl {
 			continue
 		}
+		b.cur_module = c_decl_module
 		checker_name := 'C.' + node.value_text().trim_string_left('C.')
 		mut ret_type := b.resolve_c_decl_type(node.typ)
 		if b.tc != unsafe { nil } {
@@ -2207,6 +2220,7 @@ fn (mut b Builder) register_functions() {
 			}
 		}
 	}
+	b.cur_module = saved_c_decl_module
 
 	c_variant_names := b.c_variant_function_names()
 	mut cur_module := ''

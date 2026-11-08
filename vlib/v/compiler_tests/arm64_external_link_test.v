@@ -16,6 +16,8 @@ enum ext_color { EXT_RED = 3, EXT_GREEN = 40 };
 static inline int32_t ext_add_inline(int32_t a, int32_t b) { return a + b; }
 typedef struct ext_pair { double x; double y; } ext_pair;
 static inline double ext_pair_sum(ext_pair p) { return p.x + p.y; }
+static inline ext_pair ext_make_pair(double x, int32_t times) { ext_pair p = { x, x * times }; return p; }
+static inline float ext_half(float x) { return x / 2; }
 int32_t ext_call_back(int32_t value);
 '
 
@@ -39,6 +41,8 @@ struct C.ext_pair {
 fn C.ext_add_inline(a i32, b i32) i32
 fn C.EXT_TWICE(x i32) i32
 fn C.ext_pair_sum(p C.ext_pair) f64
+fn C.ext_make_pair(x f64, times i32) C.ext_pair
+fn C.ext_half(x f64) f64
 fn C.ext_call_back(value i32) i32
 fn C.CFAbsoluteTimeGetCurrent() f64
 
@@ -51,6 +55,9 @@ fn main() {
 	println(C.ext_add_inline(2, 3))
 	println(C.EXT_TWICE(21))
 	println(C.ext_pair_sum(C.ext_pair{ x: 1.5, y: 2.25 }))
+	made := C.ext_make_pair(1.5, 3)
+	println(made.x + made.y)
+	println(C.ext_half(3.0))
 	println(int(C.EXT_RED) + int(C.EXT_LIMIT))
 	println(f64(C.EXT_SCALE))
 	println(C.ext_call_back(4))
@@ -61,6 +68,8 @@ fn main() {
 const external_link_expected = '5
 42
 3.75
+6.0
+1.5
 45
 2.5
 41

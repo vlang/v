@@ -753,3 +753,46 @@ fn main() {
 		assert output == 'seven root 7 | label root text', output
 	}
 }
+
+// `fn C.x() Rect` in module `geo` names `geo.Rect`, an alias of a C struct.
+// Resolved outside its module, the result came out as an integer.
+fn test_c_function_returns_alias_of_its_module() {
+	$if macos && arm64 {
+		output := run_arm64('c_fn_alias', {
+			'geo/geo.h': '#pragma once
+typedef struct geo_rect { double x; double y; double w; double h; } geo_rect;
+static inline geo_rect geo_make(double s) { geo_rect r = { s, s * 2, s * 3, s * 4 }; return r; }
+'
+			'geo/geo.v': 'module geo
+
+#include "@VMODROOT/geo/geo.h"
+
+pub type Rect = C.geo_rect
+
+pub struct C.geo_rect {
+pub mut:
+	x f64
+	y f64
+	w f64
+	h f64
+}
+
+fn C.geo_make(s f64) Rect
+
+pub fn make(s f64) Rect {
+	return C.geo_make(s)
+}
+'
+			'main.v':    "module main
+
+import geo
+
+fn main() {
+	r := geo.make(1.5)
+	println('\${r.x} \${r.y} \${r.w} \${r.h}')
+}
+"
+		}, []string{})
+		assert output == '1.5 3.0 4.5 6.0', output
+	}
+}
