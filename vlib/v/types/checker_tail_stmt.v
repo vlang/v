@@ -4715,7 +4715,7 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 			tc.check_generic_type_constraints(id, node.pos, generic_base_id, generic_args, TypeParamScope{})
 		}
 	}
-	if init_type_id != checker_tail_source_struct && !is_anonymous_struct_id(init_type_id)
+	if !tc.is_contextual_anonymous_struct_literal(init_type_id)
 		&& (!tc.type_name_known(init_type_id) || (init_syntax.c_qualified()
 			&& !tc.type_symbol_known(init_type_id))) {
 		if init_syntax.trimmed() == init_type_id && init_syntax.bare_generic()
@@ -4762,13 +4762,14 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		return
 	}
 	mut init_type := *tc.parse_type(init_type_id)
-	if is_contextual_anonymous_struct_literal(init_type_id) && tc.expected_expr_id >= 0
+	if tc.is_contextual_anonymous_struct_literal(init_type_id) && tc.expected_expr_id >= 0
 		&& tc.expr_is_value_tail_of(flat.NodeId(tc.expected_expr_id), id) {
 		expected := unalias_type(tc.expected_expr_type)
 		// Only a type the parser itself made up may be adopted here. A user-declared
 		// `AnonStruct_Secret` is an ordinary private type, and adopting it would let a
 		// bare literal stand in for a name the caller is not allowed to write.
-		if expected is Struct && tc.is_synthesized_anon_struct(expected.source_type_id()) {
+		if expected is Struct && tc.is_synthesized_anon_struct(expected.source_type_id())
+			&& (!is_anonymous_union_literal_id(init_type_id) || expected.source_type_id() in tc.unions) {
 			init_type = expected
 			tc.remember_expr_type(id, expected)
 		}
@@ -4826,7 +4827,8 @@ fn (mut tc TypeChecker) check_struct_init(id flat.NodeId, node flat.Node) {
 		// another module. Naming an anonymous declaration outright is a different thing
 		// and stays subject to the check, as does a type a user happened to call
 		// `AnonStruct_...`: neither is a name the parser made up for a literal.
-		if init_type_id != checker_tail_source_struct && !tc.a.contextual_anon_struct_types[init_type_id] {
+		if init_type_id !in [checker_tail_source_struct, checker_source_union]
+			&& !tc.a.contextual_anon_struct_types[init_type_id] {
 			if visibility_type_id := tc.struct_init_private_type_id(init_type, init_struct) {
 				private_name := if visibility_type_id == init_struct.source_type_id() {
 					init_struct.name()
@@ -5409,7 +5411,8 @@ fn (tc &TypeChecker) types_match_ignoring_module_qualification(expected &Type, a
 }
 
 fn (mut tc TypeChecker) check_union_struct_init_fields(id flat.NodeId, node flat.Node, init_name_id u32, supplied_fields map[string]bool) {
-	if init_name_id in tc.unions && tc.initialized_union_field_count(init_name_id, supplied_fields) > 1 {
+	if (init_name_id in tc.unions && tc.initialized_union_field_count(init_name_id, supplied_fields) > 1)
+		|| (init_name_id == checker_source_union && supplied_fields.len > 1) {
 		display := flat.source_type_name(init_name_id).all_after_last('.')
 		tc.record_error_at(.assignment_mismatch, 'union `${display}` can have only one field initialised', id, tc.struct_init_head_pos(node))
 		return
@@ -7758,8 +7761,16 @@ fn (mut tc TypeChecker) check_selector(id flat.NodeId, node flat.Node) {
 		return
 	}
 	method_receiver := unalias_and_unwrap_pointer_type(base_type)
-	if method_receiver is Struct && flat.source_type_syntax(method_receiver.source_type_id()).unqualified() == checker_tail_source_struct {
+	if method_receiver is Struct && flat.source_type_syntax(method_receiver.source_type_id()).unqualified() in [
+		checker_tail_source_struct,
+		checker_source_union,
+	] {
 		if field_type := tc.inferred_anonymous_struct_field_type(base_id, node.value) {
+			if flat.source_type_syntax(method_receiver.source_type_id()).unqualified() == checker_source_union
+				&& tc.unsafe_depth == 0 && !tc.expr_is_inside_unsafe_block(id)
+				&& !tc.translated_files[tc.cur_file] && !tc.selector_is_assignment_lhs(id) {
+				tc.record_warning_at(.unknown_field, 'reading a union field (or its address) requires `unsafe`', id, tc.selector_field_diagnostic_pos(id, node.value))
+			}
 			tc.register_synth_type(id, field_type)
 			return
 		}
@@ -10224,7 +10235,7 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 	// When several anonymous structs share the same field names, or a contextual type is
 	// declared after the literal, the parser may leave or infer the literal too early.
 	// Its call/assignment/return context supplies the exact anonymous struct here.
-	if node.kind == .struct_init && is_contextual_anonymous_struct_literal(node.source_value_id())
+	if node.kind == .struct_init && tc.is_contextual_anonymous_struct_literal(node.source_value_id())
 		&& expected !is Pointer && tc.anonymous_struct_literal_compatible(node, expected) {
 		tc.register_synth_type(id, expected_raw)
 		return expected_raw
@@ -10246,7 +10257,7 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 	if node.kind == .prefix && node.op == .amp && node.children_count == 1 && expected is Pointer {
 		child_id := tc.a.child(&node, 0)
 		child := tc.a.nodes[int(child_id)]
-		if child.kind == .struct_init && is_contextual_anonymous_struct_literal(child.source_value_id())
+		if child.kind == .struct_init && tc.is_contextual_anonymous_struct_literal(child.source_value_id())
 			&& tc.anonymous_struct_literal_compatible(child, expected.base_type) {
 			tc.register_synth_type(child_id, expected.base_type)
 			tc.register_synth_type(id, expected_raw)
@@ -10462,7 +10473,13 @@ fn (mut tc TypeChecker) resolve_expr(id flat.NodeId, expected Type) Type {
 			}
 			return actual
 		}
-		if expected is SumType || expected is Enum {
+		if expected is SumType {
+			// The storage context is the sum, but lowering still needs the value's
+			// concrete type to choose its variant and promote numeric match arms.
+			tc.register_synth_type(id, actual)
+			return expected_raw
+		}
+		if expected is Enum {
 			tc.register_synth_type(id, expected_raw)
 			return expected_raw
 		}
@@ -21821,7 +21838,10 @@ fn (tc &TypeChecker) resolve_type_nonliteral(id flat.NodeId) Type {
 				}
 			}
 			if clean is Struct {
-				if flat.source_type_syntax(clean.source_type_id()).unqualified() == checker_tail_source_struct {
+				if flat.source_type_syntax(clean.source_type_id()).unqualified() in [
+					checker_tail_source_struct,
+					checker_source_union,
+				] {
 					if typ := tc.inferred_anonymous_struct_field_type(tc.a.child(node, 0), node.value) {
 						return typ
 					}

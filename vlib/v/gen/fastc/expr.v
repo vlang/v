@@ -1778,6 +1778,18 @@ fn (mut g Parser) rewrite_expression_initializer(mut result strings.Builder, exp
 			struct_depths << brace_depth
 			struct_paren_depths << paren_depth
 			is_struct_literal = true
+		} else if scalar := fastc_scalar_zero_literal_type(previous_lit) {
+			mut look := g.s
+			if look.scan() == .rcbr {
+				// `int{}` (often a substituted `T{}`) is the zero value.
+				result.go_back(previous_lit.len)
+				piece = '(${scalar}){0'
+				brace_depth++
+				struct_types << flat.source_type_id(scalar)
+				struct_depths << brace_depth
+				struct_paren_depths << paren_depth
+				is_struct_literal = true
+			}
 		}
 	}
 	if !is_struct_literal && brace_depth > 0 {
@@ -2507,6 +2519,10 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 	// The brace_depth at which each still-open unsafe/lock block was opened, so a `}` is matched
 	// to the innermost open construct (a nested struct literal vs. the unsafe block itself).
 	mut unsafe_open_brace_depths := []int{}
+	// Where the outermost transparent unsafe block began in `result` and
+	// `expression_tokens`, so a member access after its `}` can group its value.
+	mut unsafe_block_result_start := -1
+	mut unsafe_block_token_start := 0
 	mut struct_types := []u32{}
 	mut struct_depths := []int{}
 	mut struct_paren_depths := []int{}
@@ -2619,9 +2635,33 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		}
 		if g.tok in [.key_unsafe, .key_lock, .key_rlock]
 			|| (unsafe_expression_depth > 0 && g.tok in [.rcbr, .semicolon]) {
+			opening_depth := unsafe_expression_depth
 			transparent := g.read_transparent_expression_block(previous_token, brace_depth, unsafe_expression_depth, mut unsafe_open_brace_depths)!
 			unsafe_expression_depth = transparent.unsafe_expression_depth
+			if opening_depth == 0 && unsafe_expression_depth > 0 {
+				unsafe_block_result_start = result.len
+				unsafe_block_token_start = expression_tokens.len
+			}
 			if transparent.handled {
+				if opening_depth > 0 && unsafe_expression_depth == 0 && g.tok == .dot
+					&& unsafe_block_result_start >= 0 && unsafe_block_result_start <= result.len
+					&& unsafe_block_token_start <= expression_tokens.len {
+					// `unsafe { *y }.a`: a transparent block adds no parens, so its
+					// prefix `*` would bind to `y.a`. Group the block's value first.
+					block_source := result.str()
+					result = strings.new_builder(64)
+					result.write_string(block_source[..unsafe_block_result_start])
+					result.write_string('(')
+					result.write_string(block_source[unsafe_block_result_start..])
+					result.write_string(')')
+					expression_tokens.insert(unsafe_block_token_start, FastcExpressionToken{ tok: .lpar, lit: '(' })
+					expression_tokens << FastcExpressionToken{ tok: .rpar, lit: ')' }
+					previous_token = .rpar
+					previous_lit = ')'
+				}
+				if unsafe_expression_depth == 0 {
+					unsafe_block_result_start = -1
+				}
 				continue
 			}
 		}
@@ -2982,14 +3022,30 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 		if g.tok == .dot {
 			// A field sharing a mutable local's name keeps its own value/reference type.
 			// Resolve the complete receiver instead of applying that local's dereference.
-			if piece in ['.', '->'] && expression_tokens.len >= 4
-				&& expression_tokens[expression_tokens.len - 3].tok == .dot {
+			if piece in ['.', '->'] && expression_tokens.len >= 2 {
 				dot_index := expression_tokens.len - 1
 				receiver_start := fastc_method_receiver_start(expression_tokens, dot_index)
 				receiver_tokens := expression_tokens[receiver_start..dot_index]
-				if receiver_type_source_id := g.infer_member_access_type(receiver_tokens, 0, receiver_tokens.len) {
-					receiver_type := receiver_type_source_id
-
+				// Infer the whole receiver first: this also types parenthesized (`(x)` from an
+				// unsafe block) and call (`mk()`) roots, which infer_member_access_type cannot.
+				// A plain local receiver is typed from its declaration directly; full inference
+				// runs once per field access, so the common case must not pay for it.
+				mut receiver_type := u32(0)
+				if receiver_tokens.len == 1 && receiver_tokens[0].tok == .name && receiver_tokens[0].typ == 0
+					&& receiver_tokens[0].lit !in g.member_smartcasts {
+					if local := g.locals[receiver_tokens[0].lit] {
+						if local.smartcast_origin_type == 0 {
+							receiver_type = local.typ
+						}
+					}
+				}
+				if receiver_type == 0 {
+					receiver_type = g.infer_expression_type(receiver_tokens) or { u32(0) }
+				}
+				if receiver_type == 0 && receiver_tokens.len >= 3 {
+					receiver_type = g.infer_member_access_type(receiver_tokens, 0, receiver_tokens.len) or { u32(0) }
+				}
+				if receiver_type != 0 {
 					piece = if fastc_is_pointer_type(g.underlying_alias_type(receiver_type)) {
 						'->'
 					} else {
@@ -3898,6 +3954,13 @@ fn (g &Parser) semicolon_continues_expression() bool {
 	if g.in_enum_keyed_map_value && g.s.src[offset] == `.` {
 		// The next `.field` starts the following map entry, not a member chain.
 		return false
+	}
+	if g.s.src[offset] == `.` {
+		// `.name:` can only be an enum-shorthand map key starting the next entry.
+		mut probe := g.s
+		if probe.scan() == .dot && probe.scan() == .name && probe.scan() == .colon {
+			return false
+		}
 	}
 	next := g.s.src[offset]
 	if next in [`*`, `-`, `+`] {

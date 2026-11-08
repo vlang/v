@@ -31,7 +31,14 @@ fn C._vcleanup()
 // exit terminates execution immediately and returns exit `code` to the shell.
 @[noreturn]
 pub fn exit(code int) {
-	C.exit(code)
+	$if freestanding && (linux || macos) {
+		// the freestanding runtime (builtin/freestanding.c.v, linux_bare or
+		// macos_bare) supplies __exit with the exit syscall; on the native arm64
+		// backend `C.exit` would bind to this function itself
+		__exit(code)
+	} $else {
+		C.exit(code)
+	}
 	for {}
 }
 

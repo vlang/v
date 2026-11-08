@@ -29,6 +29,41 @@ fn fastc_skip_attribute(mut scan scanner.Scanner) !token.Token {
 	return tok
 }
 
+// fastc_scan_attribute_texts consumes one `@[...]` attribute and returns the token after it,
+// plus each `;`-separated entry as written in the source, trimmed (`json: 'Red'`).
+fn fastc_scan_attribute_texts(mut scan scanner.Scanner) !(token.Token, []string) {
+	start := scan.offset
+	mut tok := scan.scan()
+	mut depth := 1
+	mut texts := []string{}
+	mut entry_start := start
+	for {
+		if tok == .eof {
+			return error('fastc parser does not support unfinished attribute')
+		}
+		if tok == .lsbr {
+			depth++
+		} else if tok == .rsbr {
+			depth--
+			if depth == 0 {
+				break
+			}
+		} else if tok == .semicolon && depth == 1 && scan.lit == ';' {
+			text := scan.src[entry_start..scan.pos].trim_space()
+			if text != '' {
+				texts << text
+			}
+			entry_start = scan.offset
+		}
+		tok = scan.scan()
+	}
+	text := scan.src[entry_start..scan.pos].trim_space()
+	if text != '' {
+		texts << text
+	}
+	return scan.scan(), texts
+}
+
 fn fastc_shared_parameter_is_name(scan scanner.Scanner, path string, module_name string, imports map[string]string, declared_types map[u32]bool, allow_short_placeholders bool) bool {
 	mut lookahead := scan
 	first := lookahead.scan()
@@ -40,6 +75,22 @@ fn fastc_shared_parameter_is_name(scan scanner.Scanner, path string, module_name
 	}
 	_, boundary := fastc_scan_type(mut lookahead, first, path, module_name, imports, declared_types, allow_short_placeholders) or { return false }
 	return boundary in [.comma, .semicolon, .rpar, .eof]
+}
+
+// fastc_skip_struct_field_attributes consumes every `@[...]` attribute that follows a
+// field's type or default. It returns the next token and the required/skip flags.
+fn fastc_skip_struct_field_attributes(mut scan scanner.Scanner, first token.Token) !(token.Token, bool, bool) {
+	mut tok := first
+	mut is_required := false
+	mut is_skip := false
+	for tok == .attribute {
+		mut attribute_is_required := false
+		mut attribute_is_skip := false
+		tok, attribute_is_required, attribute_is_skip = fastc_scan_struct_field_attribute(mut scan)!
+		is_required = is_required || attribute_is_required
+		is_skip = is_skip || attribute_is_skip
+	}
+	return tok, is_required, is_skip
 }
 
 fn fastc_scan_struct_field_attribute(mut scan scanner.Scanner) !(token.Token, bool, bool) {
@@ -92,7 +143,8 @@ fn fastc_skip_field_default_from_token(mut scan scanner.Scanner, first token.Tok
 	mut brackets := 0
 	mut braces := 0
 	for tok != .eof {
-		if parens == 0 && brackets == 0 && braces == 0 && tok in [.semicolon, .rcbr] {
+		// A top-level `@[` ends the default: the caller parses the field attributes.
+		if parens == 0 && brackets == 0 && braces == 0 && tok in [.semicolon, .rcbr, .attribute] {
 			return tok
 		}
 		match tok {
@@ -140,6 +192,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 	mut next_declaration_is_c_extern := false
 	mut next_declaration_is_markused := false
 	mut next_export_name := ''
+	mut next_c_symbol := ''
 	mut previous_tok := token.Token.unknown
 	mut skip_index := 0
 	mut tok := scan.scan()
@@ -162,6 +215,9 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 			if attribute.export_name != '' {
 				next_export_name = attribute.export_name
 			}
+			if attribute.c_symbol != '' {
+				next_c_symbol = attribute.c_symbol
+			}
 			continue
 		}
 		if brace_depth == 0 && tok == .key_global {
@@ -172,6 +228,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 			next_declaration_is_c_extern = false
 			next_declaration_is_markused = false
 			next_export_name = ''
+			next_c_symbol = ''
 			previous_tok = .unknown
 			continue
 		}
@@ -190,6 +247,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 					next_declaration_is_c_extern = false
 					next_declaration_is_markused = false
 					next_export_name = ''
+					next_c_symbol = ''
 					previous_tok = .unknown
 					continue
 				}
@@ -506,6 +564,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 				is_c_extern:                   is_c_function && next_declaration_is_c_extern
 				is_markused:                   !is_c_function && next_declaration_is_markused
 				export_name:                   if is_c_function { '' } else { next_export_name }
+				c_symbol:                      if is_c_function { next_c_symbol } else { '' }
 				module_name:                   header.module_name
 				path:                          path
 				position:                      declaration_offset
@@ -521,6 +580,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 						next_declaration_is_c_extern = false
 						next_declaration_is_markused = false
 						next_export_name = ''
+						next_c_symbol = ''
 						continue
 					}
 				}
@@ -530,6 +590,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 			next_declaration_is_c_extern = false
 			next_declaration_is_markused = false
 			next_export_name = ''
+			next_c_symbol = ''
 			continue
 		}
 		if brace_depth == 0 && tok in [.key_struct, .key_enum, .key_interface, .key_type, .key_union,
@@ -538,6 +599,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 			next_declaration_is_c_extern = false
 			next_declaration_is_markused = false
 			next_export_name = ''
+			next_c_symbol = ''
 		}
 		if tok == .lcbr && brace_depth == 0 {
 			skipped, next_skip := fastc_skip_recorded_body(mut scan, skips, skip_index)
@@ -706,6 +768,10 @@ fn fastc_skip_global_declaration(mut scan scanner.Scanner, path string) !token.T
 	mut expression_can_end := false
 	for tok != .eof {
 		if depth == 0 {
+			if tok == .semicolon && fastc_semicolon_continues_value(scan) {
+				tok = scan.scan()
+				continue
+			}
 			if tok in [.semicolon, .rpar] {
 				return tok
 			}
@@ -984,6 +1050,10 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 	}
 	for name in top_level_references.keys() {
 		used[name] = true
+	}
+	if fastc_program_uses_gc(prefs) {
+		// The startup sequence calls it (see fastc_gc_startup_initializer).
+		used['gc_runtime_init'] = true
 	}
 	// Native callers enter exported V functions without a V call site. Their
 	// transitive callees must participate in the same reachability traversal.

@@ -59,7 +59,7 @@ fn main() {
 		constructors := m.funcs.filter(it.name == 'create')
 		assert constructors.len == 1
 		assert m.type_store.types[constructors[0].typ].fields.len == 301
-		assert m.type_size(constructors[0].typ) == 4208
+		assert m.type_size(constructors[0].typ) == 5408
 		mut g := Gen.new(m)
 		g.gen()
 		g.write_and_link(output)

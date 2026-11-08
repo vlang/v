@@ -798,7 +798,10 @@ fn (mut g FlatGen) gen_executable_cleanup_registration() {
 
 fn (g &FlatGen) needs_no_main_runtime_init_caller() bool {
 	// A native consumer can call an object's exports without entering its V main.
-	return g.test_files.len == 0 && (g.object_file_mode || g.suppress_main || !g.has_entry_main())
+	// Cached exports must use the same protocol for scripts and explicit mains:
+	// their object can be reused by either, while the guard belongs to the program.
+	return g.test_files.len == 0
+		&& (g.cache_split || g.object_file_mode || g.suppress_main || !g.has_entry_main())
 		&& (g.a.export_fn_names.len > 0 || g.is_shared)
 }
 
@@ -843,9 +846,18 @@ fn (mut g FlatGen) gen_no_main_runtime_init_caller() {
 	storage := if g.cache_split { '' } else { 'static ' }
 	g.writeln('${storage}void _vno_main_init_caller(void) {')
 	g.writeln('\tif (_v3_no_main_initialized) { return; }')
+	// Native constructors can reach an export before main supplies argv. Leave
+	// executable initialization for main; libraries must still initialize on call.
+	if g.has_builtins && !g.object_file_mode && !g.suppress_main && !g.is_shared {
+		has_main := g.has_entry_main() || g.top_level_stmts().len > 0
+			|| (!g.has_no_main_module() && g.postinclude_directives.len == 0)
+		if has_main {
+			g.writeln('\tif (g_main_argv == 0) { return; }')
+		}
+	}
 	g.writeln('\t_v3_no_main_initialized = true;')
-	// The argument globals are already zero-initialized for library callers.
-	// A script main can reach this helper after setting its process arguments.
+	// The argument globals stay zero-initialized for library callers.
+	// An executable main reaches this helper after setting its process arguments.
 	g.gen_trace_startup()
 	g.gen_profile_startup_enable()
 	if g.runtime_init_is_needed() {
@@ -5781,7 +5793,8 @@ fn (mut g FlatGen) gen_fn_in_module(node_id flat.NodeId, node flat.Node, module_
 	// before emitting the body so lookup/preparation work cannot affect spelling.
 	g.tmp_count = 0
 	g.indent++
-	if is_direct_no_main_export {
+	// Naked bodies may contain only the user's assembly, never a generated call.
+	if is_direct_no_main_export && !is_naked_fn {
 		g.writeln('_vno_main_init_caller();')
 	}
 	// The entry counter must be the first thing in the body: a function whose
@@ -10176,6 +10189,21 @@ fn (mut g FlatGen) gen_stack_value_free_receiver(base_id flat.NodeId, method_nam
 	mut releases_receiver := false
 	for call_id in g.a.free_method_receiver_calls(decl_id) {
 		resolved := g.resolved_call_name(call_id) or { '' }
+		if resolved.len == 0 {
+			call := g.a.node(call_id)
+			callee := g.a.child_node(call, 0)
+			if callee.value == 'free' {
+				// An unchanged cached method may not have been checked in an
+				// incremental build. Resolve shadowing in its own lexical scope.
+				if source_file := g.a.source_files[callee.pos.id] {
+					module_name := g.tc.file_modules[source_file.name] or { '' }
+					if g.tc.module_declares_fn(module_name, 'free')
+						|| g.selective_import_call_key_in_file('free', source_file.name) != none {
+						continue
+					}
+				}
+			}
+		}
 		if resolved.len == 0 || resolved in ['free', 'builtin.free'] {
 			releases_receiver = true
 			break

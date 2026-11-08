@@ -158,7 +158,8 @@ fn fastc_resolve_c_pseudo_paths(raw string, vroot string, source_file string) st
 	// A quoted C include is relative to the V file that declared it. FastC hoists
 	// directives into one generated C file, so preserve that original include base
 	// by making the path absolute before hoisting.
-	if result.starts_with('include "') || result.starts_with('insert "') {
+	if result.starts_with('include "') || result.starts_with('insert "')
+		|| result.starts_with('preinclude "') {
 		quote_start := result.index_u8(`"`)
 		quote_end := result.last_index_u8(`"`)
 		if quote_start >= 0 && quote_end > quote_start {

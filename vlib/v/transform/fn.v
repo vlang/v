@@ -2093,7 +2093,7 @@ fn (mut t Transformer) transform_call_args(id flat.NodeId, node flat.Node) flat.
 		}
 		if variadic_idx < 0 && param_idx < params.len {
 			arg_type := t.tc.resolve_type(arg_id)
-			if arg_type is types.MultiReturn && arg_type.types.len == params.len - param_idx {
+			if arg_type is types.MultiReturn && arg_type.types.len <= params.len - param_idx {
 				items := arg_type.types
 				multi_type_source_id := t.multi_return_type_name(items)
 
@@ -7829,7 +7829,7 @@ fn (mut t Transformer) build_auto_str_helper_fn(aggregate_id u32) {
 		t.lower_sum_str(value, aggregate_id)
 	} else {
 		t.lower_struct_str(value, aggregate_id) or {
-			t.make_string_literal('${struct_string_display_name(aggregate_id)}{}')
+			t.make_string_literal('${t.struct_string_display_name(aggregate_id)}{}')
 		}
 	}
 	mut stmts := t.pending_stmts.clone()
@@ -8515,7 +8515,7 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type_id u32) ?f
 	}
 	if flat.source_type_shape(struct_type_id).has(.dotted)
 		&& flat.source_type_syntax(struct_type_id).unqualified() == flat.source_type_id('Array_string') {
-		return t.make_string_literal('${struct_string_display_name(struct_type_id)}{}')
+		return t.make_string_literal('${t.struct_string_display_name(struct_type_id)}{}')
 	}
 	stack_count := t.stringify_stack_count(struct_type_id)
 	recurse_limit := if t.struct_autostr_allows_recurse(struct_type_id) { 3 } else { 2 }
@@ -8531,7 +8531,7 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type_id u32) ?f
 		t.stringify_stack.delete_last()
 	}
 	if info.fields.len == 0 {
-		return t.make_string_literal('${struct_string_display_name(struct_type_id)}{}')
+		return t.make_string_literal('${t.struct_string_display_name(struct_type_id)}{}')
 	}
 	expr_node := t.a.nodes[int(expr)]
 	mut value_expr := expr
@@ -8564,7 +8564,7 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type_id u32) ?f
 			address_type,
 		], flat.source_type_void))
 	}
-	display := struct_string_display_name(struct_type_id)
+	display := t.struct_string_display_name(struct_type_id)
 	mut result := t.make_string_literal('${display}{\n')
 	decl_metas := t.struct_field_decl_metas_in_module(comptime_struct_info_cache_key(info), info.module)
 	for field in info.fields {
@@ -8588,7 +8588,7 @@ fn (mut t Transformer) lower_struct_str(expr flat.NodeId, struct_type_id u32) ?f
 			}
 		}
 		mut field_str := if field_type == struct_type_id {
-			t.make_string_literal('${struct_string_display_name(field_type)}{}')
+			t.make_string_literal('${t.struct_string_display_name(field_type)}{}')
 		} else {
 			t.struct_field_str_value(t.make_selector(base, field.name, field_type), raw_field_type,
 				field_type, flat.source_type_query(struct_type_id).has(.c_prefix) || info.is_c_anon)
@@ -8721,10 +8721,14 @@ fn (t &Transformer) struct_autostr_allows_recurse(struct_type_id u32) bool {
 		|| t.struct_autostr_recurse_types[flat.source_type_syntax(decl_id).unqualified()]
 }
 
-fn struct_string_display_name(typ u32) string {
+fn (t &Transformer) struct_string_display_name(typ u32) string {
 	syntax := flat.source_type_syntax(typ)
-	if flat.source_type_id('AnonStruct') in flat.source_type_syntax(syntax.unqualified()).underscore_prefixes() {
+	query := flat.source_type_query(syntax.unqualified())
+	if query.has(.anon_struct_prefix) {
 		return 'struct '
+	}
+	if query.has(.anon_union_prefix) && t.a.synthesized_anon_struct_types[syntax.unqualified()] {
+		return 'union '
 	}
 	if flat.source_type_query(typ).has(.main_prefix) {
 		return flat.source_type_name(syntax.unqualified())
@@ -8749,15 +8753,15 @@ fn (t &Transformer) alias_string_display_name(alias_name_id u32, base_type_id u3
 				continue
 			}
 			if matched.len > 0 && matched != candidate {
-				return struct_string_display_name(alias_name_id)
+				return t.struct_string_display_name(alias_name_id)
 			}
 			matched = candidate
 		}
 		if matched.len > 0 {
-			return struct_string_display_name(flat.source_type_id(matched))
+			return t.struct_string_display_name(flat.source_type_id(matched))
 		}
 	}
-	return struct_string_display_name(alias_name_id)
+	return t.struct_string_display_name(alias_name_id)
 }
 
 // struct_field_str_value stringifies one struct field for the auto-generated struct str.
@@ -15492,6 +15496,32 @@ fn (t &Transformer) fixed_array_reference_arg_needs_durable_header(id flat.NodeI
 	return false
 }
 
+// call_argument_param_index maps a source argument to its first parameter before
+// multi-return arguments have been expanded. Ordering snapshots can replace a
+// multi-return call with an identifier, so use its checked type, not its node kind.
+fn (t &Transformer) call_argument_param_index(node flat.Node, child_index int, offset int, param_count int, is_variadic bool) int {
+	unexpanded_index := child_index - 1 + offset
+	if child_index <= 1 || is_variadic || isnil(t.tc) {
+		return unexpanded_index
+	}
+	// A checked call with one ordinary argument per parameter needs no expansion.
+	// Named fields can collapse into one argument, so exclude that form here.
+	if int(node.children_count) - 1 + offset == param_count
+		&& t.a.child_node(&node, int(node.children_count) - 1).kind != .field_init {
+		return unexpanded_index
+	}
+	mut param_index := offset
+	for i in 1 .. child_index {
+		arg_type := t.tc.resolve_type(t.a.child(&node, i))
+		if arg_type is types.MultiReturn && arg_type.types.len <= param_count - param_index {
+			param_index += arg_type.types.len
+		} else {
+			param_index++
+		}
+	}
+	return param_index
+}
+
 // call_argument_param_type maps each unpacked variadic argument to the tail element type.
 fn call_argument_param_type(params []types.Type, param_idx int, variadic_idx int) ?types.Type {
 	if param_idx < 0 {
@@ -15512,7 +15542,7 @@ fn call_argument_param_type(params []types.Type, param_idx int, variadic_idx int
 
 fn (t &Transformer) call_has_mut_fixed_array_args(node flat.Node, params []types.Type, offset int, variadic_idx int) bool {
 	for i in 1 .. node.children_count {
-		param_idx := i - 1 + offset
+		param_idx := t.call_argument_param_index(node, i, offset, params.len, variadic_idx >= 0)
 		param_type := call_argument_param_type(params, param_idx, variadic_idx) or { continue }
 		payload_type := fixed_array_reference_param_payload(param_type)
 		array_ref_type := t.comptime_normalize_type_alias_chain(t.semantic_type_name(payload_type))
@@ -19511,7 +19541,7 @@ fn (mut t Transformer) transform_receiver_method_args_with_params(node flat.Node
 		}
 		if variadic_idx < 0 && param_idx < params.len {
 			arg_type := t.tc.resolve_type(arg_id)
-			if arg_type is types.MultiReturn && arg_type.types.len == params.len - param_idx {
+			if arg_type is types.MultiReturn && arg_type.types.len <= params.len - param_idx {
 				items := arg_type.types
 				multi_type_source_id_2 := t.multi_return_type_name(items)
 

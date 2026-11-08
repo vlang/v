@@ -23,4 +23,7 @@ one reader thread and one writer thread are unsupported. A blocking read held un
 mutex can prevent the writer from progressing; the mutex alone is not a duplex adapter.
 
 Keep a connected `SSLConn` at a stable address and stop all users before shutdown.
+Accepted connections keep independent read timeouts: `set_read_timeout()` changes only that
+connection. They borrow the listener's TLS credentials and other configuration allocations,
+so shut down all accepted connections before shutting down their listener.
 See [`net.ssl` thread safety](../ssl/README.md#thread-safety) for retry and lifetime guidance.

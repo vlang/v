@@ -21533,14 +21533,25 @@ fn (tc &TypeChecker) is_synthesized_anon_struct(name_id u32) bool {
 	return tc.a.synthesized_anon_struct_types[short_id]
 }
 
-fn is_contextual_anonymous_struct_literal(name_id u32) bool {
-	return name_id == checker_source_struct
-		|| is_anonymous_struct_id(name_id)
+fn is_anonymous_union_literal_id(name_id u32) bool {
+	return name_id == checker_source_union
+		|| flat.source_type_query(flat.source_type_syntax(name_id).unqualified()).has(.anon_union_prefix)
+}
+
+fn (tc &TypeChecker) is_contextual_anonymous_struct_literal(name_id u32) bool {
+	if name_id in [checker_source_struct, checker_source_union] { return true }
+	query := flat.source_type_query(flat.source_type_syntax(name_id).unqualified())
+	return query.has(.anon_struct_prefix)
+		|| (query.has(.anon_union_prefix)
+			&& tc.a.contextual_anon_struct_types[flat.source_type_syntax(name_id).unqualified()])
 }
 
 fn (mut tc TypeChecker) anonymous_struct_literal_compatible(node flat.Node, expected Type) bool {
 	struct_type := struct_type_from_type(expected) or { return false }
 	if !tc.is_synthesized_anon_struct(struct_type.source_type_id()) {
+		return false
+	}
+	if is_anonymous_union_literal_id(node.source_value_id()) && struct_type.source_type_id() !in tc.unions {
 		return false
 	}
 	fields := tc.struct_fields_for_init(struct_type.source_type_id())

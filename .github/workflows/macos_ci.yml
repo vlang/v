@@ -36,7 +36,7 @@ jobs:
     env:
       VFLAGS: -cc clang
       VTEST_SELF_SHARD_INDEX: '0'
-      VTEST_SELF_SHARD_COUNT: '3'
+      VTEST_SELF_SHARD_COUNT: '5'
       # Stop a failing test session at its first failure instead of running the
       # whole suite to completion; the remaining files add no signal.
       VTEST_FAIL_FAST: '1'
@@ -326,14 +326,16 @@ jobs:
     strategy:
       matrix:
         os: [macos-14, macos-15, macos-26]
-        shard: [1, 2]
+        # Three shards still reach the 90-minute limit on macOS 26.
+        # Shard 0 runs in clang-macos; keep the count identical in both jobs.
+        shard: [1, 2, 3, 4]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 90
     env:
       VFLAGS: -cc clang
       VTEST_SELF_SHARD_INDEX: ${{ matrix.shard }}
-      VTEST_SELF_SHARD_COUNT: '3'
+      VTEST_SELF_SHARD_COUNT: '5'
       # Stop a failing test session at its first failure instead of running the
       # whole suite to completion; the remaining files add no signal.
       VTEST_FAIL_FAST: '1'

@@ -19,6 +19,14 @@ if ($text -match '(?m)^u32 flat__source_type_usize;\r?$' -and
     }
 }
 
+# The Windows SDK defines `small` as `char`. Older snapshots use that spelling
+# for source-type scratch arrays. All SDK includes precede the generated V
+# function bodies, so remove the macro before compiling this affected function.
+$text = [regex]::Replace($text, '(?m)^(?:__inline[ \t]+)?u32 types__Type__(?:composite_)?source_type_id\(types__Type\* t\) \{\r?$', {
+    param($sourceTypeFunction)
+    return "#ifdef small`n#undef small`n#endif`n" + $sourceTypeFunction.Value
+})
+
 # Relocate V-owned includes in portable snapshots without opening their headers.
 # Keep existing bytes intact, including non-UTF-8 literals; encode the new path as UTF-8.
 $bootstrapRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '../..')).Path.Replace('\', '/')

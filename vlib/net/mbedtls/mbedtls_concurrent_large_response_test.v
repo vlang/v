@@ -2,6 +2,7 @@
 // vtest retry: 3
 module main
 
+import io
 import net
 import net.html
 import net.http
@@ -146,8 +147,10 @@ fn serve_incomplete_https_response(mut listener mbedtls.SSLListener) bool {
 		conn.write_string('HTTP/1.1 200 OK\r\nContent-Length: 2\r\n') or { return false }
 		conn.set_read_timeout(time.second)
 		mut drain_buf := []u8{len: 128}
-		_ = conn.read(mut drain_buf) or { return err.code() != net.err_timed_out_code }
-		return false
+		// TLS close_notify returns zero; a socket EOF returns io.Eof.
+		// Other errors, including mbedTLS timeouts, do not prove peer closure.
+		read := conn.read(mut drain_buf) or { return err is io.Eof }
+		return read == 0
 	}
 	return false
 }

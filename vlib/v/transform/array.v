@@ -586,6 +586,7 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 	if node.children_count == 0 || !has_len {
 		return new_call
 	}
+	default_pending_start := t.pending_stmts.len
 	if int(init_expr_id) < 0 {
 		clean_elem_type_source_id_2 := t.normalize_type_alias(elem_type)
 		clean_elem_shape := flat.source_type_shape(clean_elem_type_source_id_2)
@@ -601,6 +602,13 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 			return new_call
 		}
 	}
+	// Lowered field defaults belong to the per-element initializer just like
+	// an explicit init expression; their branch preludes must run in the loop.
+	mut default_pending := []flat.NodeId{}
+	if t.pending_stmts.len > default_pending_start {
+		default_pending = t.pending_stmts[default_pending_start..].clone()
+		t.pending_stmts = t.pending_stmts[..default_pending_start].clone()
+	}
 	tmp_name := t.new_temp('arr_init')
 	idx_name := t.new_temp('arr_idx')
 	t.pending_stmts << t.make_decl_assign_typed(tmp_name, new_call, flat.source_type_composition_one(.array, elem_type))
@@ -614,6 +622,7 @@ fn (mut t Transformer) lower_array_init_to_runtime(id flat.NodeId, node flat.Nod
 	index_decl := t.make_decl_assign_typed('index', t.make_ident(idx_name), flat.source_type_int)
 	mut loop_body := []flat.NodeId{}
 	loop_body << index_decl
+	loop_body << default_pending
 	if int(init_expr_id) >= 0 {
 		saved_pending := t.pending_stmts.clone()
 		t.pending_stmts.clear()

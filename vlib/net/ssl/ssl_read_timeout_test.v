@@ -52,10 +52,12 @@ fn accept_answer_then_stall(mut listener mbedtls.SSLListener) {
 
 fn test_read_honors_set_read_timeout_on_a_silent_peer() {
 	mut listener, port := start_silent_server()!
+	server := spawn accept_answer_then_stall(mut listener)
 	defer {
+		// Accepted TLS connections borrow the listener's configuration and certificates.
+		server.wait()
 		listener.shutdown() or {}
 	}
-	spawn accept_answer_then_stall(mut listener)
 
 	mut client := ssl.new_ssl_conn(validate: false)!
 	client.dial('127.0.0.1', port)!
