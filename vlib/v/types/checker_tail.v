@@ -23024,7 +23024,8 @@ fn (tc &TypeChecker) is_known_array_receiver_method(receiver &Type, method strin
 		return method in ['first', 'last', 'pop', 'pop_left', 'contains', 'join', 'index', 'last_index',
 			'repeat', 'repeat_to_depth', 'delete', 'delete_last', 'clear', 'insert', 'prepend',
 			'filter', 'map', 'any', 'all', 'count', 'sort_with_compare', 'sorted_with_compare',
-			'sort', 'sorted', 'clone', 'reverse', 'reverse_in_place', 'equals', 'bytestr', 'wait']
+			'sort', 'sorted', 'clone', 'reverse', 'reverse_in_place', 'equals', 'wait']
+			|| (method == 'bytestr' && is_byte_type(receiver.elem_type))
 	}
 	if receiver is ArrayFixed {
 		array_type := Type(Array{
