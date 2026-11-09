@@ -28,8 +28,9 @@ const regalloc_max_bitset_bytes = 64 * 1024 * 1024
 struct LiveInterval {
 	value int
 mut:
-	start int
-	end   int
+	start   int
+	end     int
+	crosses bool
 }
 
 // value_home_reg returns the register a value lives in, or 0.
@@ -85,24 +86,23 @@ fn (g &Gen) regalloc_successors(blk_id int) ?[]int {
 }
 
 // regalloc_function assigns registers for one function and returns how many
-// callee-saved pairs its prologue must save.
+// callee-saved pairs its prologue must save. The per-value and per-block tables
+// are arrays reused across functions: this runs once per function of the
+// program, and map lookups here were the generator's hot spot.
 fn (mut g Gen) regalloc_function(func &ssa.Function) int {
 	g.clear_value_homes()
-	if g.value_homes.len < g.m.values.len {
-		g.value_homes = []u8{len: g.m.values.len}
-	}
-	mut block_first := map[int]int{}
-	mut block_last := map[int]int{}
-	mut value_block := map[int]int{}
-	mut intervals := map[int]int{} // value -> index in `list`
+	g.ensure_regalloc_tables()
 	mut list := []LiveInterval{}
-	mut crosses := map[int]bool{}
-	mut phi_def_blocks := map[int][]int{}
+	mut crossing := []int{}
+	mut phi_defs := map[int][]int{}
 	mut has_unmodeled_flow := false
+	defer {
+		g.reset_regalloc_tables(func, list)
+	}
 	mut pos := 0
 	// Definitions first: a use can precede its definition in layout order.
 	for blk_id in func.blocks {
-		block_first[blk_id] = pos
+		g.ra_block_first[blk_id] = pos
 		for val_id in g.m.blocks[blk_id].instrs {
 			val := g.m.values[val_id]
 			if val.kind != .instruction {
@@ -118,26 +118,27 @@ fn (mut g Gen) regalloc_function(func &ssa.Function) int {
 				// predecessor, so it is live across the blocks between them.
 				dest := int(instr.operands[0])
 				if g.m.values[dest].kind == .phi_result && g.regalloc_scalar(dest) {
-					if index := intervals[dest] {
+					index := g.ra_interval[dest]
+					if index >= 0 {
 						list[index].start = arm64_min_int(list[index].start, pos)
 						list[index].end = arm64_max_int(list[index].end, pos)
 					} else {
-						intervals[dest] = list.len
+						g.ra_interval[dest] = list.len
 						list << LiveInterval{
 							value: dest
 							start: pos
 							end:   pos
 						}
+						crossing << dest
 					}
-					mut blocks := phi_def_blocks[dest] or { []int{} }
+					mut blocks := phi_defs[dest] or { []int{} }
 					blocks << blk_id
-					phi_def_blocks[dest] = blocks
-					crosses[dest] = true
+					phi_defs[dest] = blocks
 				}
 			}
 			if g.regalloc_eligible(val_id, instr) {
-				value_block[val_id] = blk_id
-				intervals[val_id] = list.len
+				g.ra_value_block[val_id] = blk_id
+				g.ra_interval[val_id] = list.len
 				list << LiveInterval{
 					value: val_id
 					start: pos
@@ -146,7 +147,7 @@ fn (mut g Gen) regalloc_function(func &ssa.Function) int {
 			}
 			pos++
 		}
-		block_last[blk_id] = pos - 1
+		g.ra_block_last[blk_id] = pos - 1
 		if _ := g.regalloc_successors(blk_id) {
 		} else {
 			has_unmodeled_flow = true
@@ -155,7 +156,6 @@ fn (mut g Gen) regalloc_function(func &ssa.Function) int {
 	if list.len == 0 {
 		return 0
 	}
-	mut block_uses := map[int][]int{}
 	pos = 0
 	for blk_id in func.blocks {
 		for val_id in g.m.blocks[blk_id].instrs {
@@ -164,54 +164,82 @@ fn (mut g Gen) regalloc_function(func &ssa.Function) int {
 				instr := g.m.instrs[val.index]
 				for i, operand_id in instr.operands {
 					operand := int(operand_id)
-					if !regalloc_operand_is_value(instr.op, i) || (instr.op == .assign && i == 0) {
+					if !regalloc_operand_is_value(instr.op, i) || (instr.op == .assign && i == 0)
+						|| operand <= 0 || operand >= g.ra_interval.len {
+						continue
+					}
+					index := g.ra_interval[operand]
+					if index < 0 {
 						continue
 					}
 					if instr.op == .phi {
 						// Used on the incoming edge, at the end of the predecessor.
 						pred := int(instr.operands[i + 1])
-						if index := intervals[operand] {
-							if pred in block_last {
-								list[index].end = arm64_max_int(list[index].end, block_last[pred])
+						if pred >= 0 && pred < g.ra_block_last.len && g.ra_block_first[pred] >= 0 {
+							list[index].end = arm64_max_int(list[index].end, g.ra_block_last[pred])
+							if !list[index].crosses {
+								list[index].crosses = true
+								crossing << operand
 							}
-							crosses[operand] = true
-							mut pred_uses := block_uses[pred] or { []int{} }
-							pred_uses << operand
-							block_uses[pred] = pred_uses
+							g.ra_block_uses[pred] << operand
 						}
 						continue
 					}
-					if index := intervals[operand] {
-						list[index].end = arm64_max_int(list[index].end, pos)
-						if operand in phi_def_blocks || value_block[operand] != blk_id {
-							crosses[operand] = true
-							mut uses := block_uses[blk_id] or { []int{} }
-							uses << operand
-							block_uses[blk_id] = uses
+					list[index].end = arm64_max_int(list[index].end, pos)
+					if operand in phi_defs || g.ra_value_block[operand] != blk_id {
+						if !list[index].crosses {
+							list[index].crosses = true
+							crossing << operand
 						}
+						g.ra_block_uses[blk_id] << operand
 					}
 				}
 			}
 			pos++
 		}
 	}
-	mut unused := map[int]bool{}
-	for iv in list {
-		if iv.end == iv.start {
-			unused[iv.value] = true
-		}
+	for val_id, _ in phi_defs {
+		list[g.ra_interval[val_id]].crosses = true
 	}
-	if has_unmodeled_flow || crosses.len * func.blocks.len / 8 > regalloc_max_bitset_bytes {
-		for val_id, _ in crosses {
-			unused[val_id] = true
-		}
-	} else if crosses.len > 0 {
-		g.extend_cross_block_intervals(func, crosses, value_block, phi_def_blocks, block_uses,
-			block_first, block_last, intervals, mut list)
+	mut skip_crossing := has_unmodeled_flow
+	if crossing.len * func.blocks.len / 8 > regalloc_max_bitset_bytes {
+		skip_crossing = true
 	}
-	mut live := list.filter(it.value !in unused)
+	if !skip_crossing && crossing.len > 0 {
+		g.extend_cross_block_intervals(func, crossing, phi_defs, mut list)
+	}
+	mut live := list.filter(it.end > it.start && !(skip_crossing && it.crosses))
 	live.sort(a.start < b.start)
 	return g.linear_scan(mut live)
+}
+
+fn (mut g Gen) ensure_regalloc_tables() {
+	if g.value_homes.len < g.m.values.len {
+		g.value_homes = []u8{len: g.m.values.len}
+	}
+	if g.ra_interval.len < g.m.values.len {
+		g.ra_interval = []int{len: g.m.values.len, init: -1}
+		g.ra_value_block = []int{len: g.m.values.len}
+		g.ra_global_index = []int{len: g.m.values.len, init: -1}
+	}
+	if g.ra_block_first.len < g.m.blocks.len {
+		g.ra_block_first = []int{len: g.m.blocks.len, init: -1}
+		g.ra_block_last = []int{len: g.m.blocks.len}
+		g.ra_block_index = []int{len: g.m.blocks.len, init: -1}
+		g.ra_block_uses = [][]int{len: g.m.blocks.len}
+	}
+}
+
+fn (mut g Gen) reset_regalloc_tables(func &ssa.Function, list []LiveInterval) {
+	for iv in list {
+		g.ra_interval[iv.value] = -1
+		g.ra_global_index[iv.value] = -1
+	}
+	for blk_id in func.blocks {
+		g.ra_block_first[blk_id] = -1
+		g.ra_block_index[blk_id] = -1
+		g.ra_block_uses[blk_id].clear()
+	}
 }
 
 // regalloc_operand_is_value says whether operand `index` of an instruction is a
@@ -228,71 +256,75 @@ fn regalloc_operand_is_value(op ssa.OpCode, index int) bool {
 // extend_cross_block_intervals runs backward liveness over the values used
 // outside their defining block, and widens their intervals to cover each block
 // they are live through, loops included.
-fn (g &Gen) extend_cross_block_intervals(func &ssa.Function, crosses map[int]bool, value_block map[int]int, phi_def_blocks map[int][]int, block_uses map[int][]int, block_first map[int]int, block_last map[int]int, intervals map[int]int, mut list []LiveInterval) {
-	mut global_index := map[int]int{}
-	mut globals := []int{}
-	for val_id, _ in crosses {
-		global_index[val_id] = globals.len
-		globals << val_id
+fn (mut g Gen) extend_cross_block_intervals(func &ssa.Function, crossing []int, phi_defs map[int][]int, mut list []LiveInterval) {
+	for index, val_id in crossing {
+		g.ra_global_index[val_id] = index
 	}
-	words := (globals.len + 63) / 64
-	mut block_index := map[int]int{}
+	words := (crossing.len + 63) / 64
 	for i, blk_id in func.blocks {
-		block_index[blk_id] = i
+		g.ra_block_index[blk_id] = i
 	}
-	mut live_in := [][]u64{len: func.blocks.len, init: []u64{len: words}}
-	mut defs := [][]u64{len: func.blocks.len, init: []u64{len: words}}
-	mut uses := [][]u64{len: func.blocks.len, init: []u64{len: words}}
-	for val_id, index in global_index {
-		if def_blocks := phi_def_blocks[val_id] {
+	nblocks := func.blocks.len
+	mut live_in := []u64{len: nblocks * words}
+	mut live_out := []u64{len: nblocks * words}
+	mut defs := []u64{len: nblocks * words}
+	mut uses := []u64{len: nblocks * words}
+	for index, val_id in crossing {
+		mask := u64(1) << (index % 64)
+		if def_blocks := phi_defs[val_id] {
 			for blk_id in def_blocks {
-				defs[block_index[blk_id]][index / 64] |= u64(1) << (index % 64)
+				defs[g.ra_block_index[blk_id] * words + index / 64] |= mask
 			}
-			continue
-		}
-		b := block_index[value_block[val_id]]
-		defs[b][index / 64] |= u64(1) << (index % 64)
-	}
-	for blk_id, list_of_uses in block_uses {
-		b := block_index[blk_id]
-		for val_id in list_of_uses {
-			index := global_index[val_id]
-			uses[b][index / 64] |= u64(1) << (index % 64)
+		} else {
+			defs[g.ra_block_index[g.ra_value_block[val_id]] * words + index / 64] |= mask
 		}
 	}
-	mut live_out := [][]u64{len: func.blocks.len, init: []u64{len: words}}
+	for bi, blk_id in func.blocks {
+		for val_id in g.ra_block_uses[blk_id] {
+			index := g.ra_global_index[val_id]
+			if index >= 0 {
+				uses[bi * words + index / 64] |= u64(1) << (index % 64)
+			}
+		}
+	}
+	mut succs := [][]int{len: nblocks}
+	for bi, blk_id in func.blocks {
+		for succ in g.regalloc_successors(blk_id) or { []int{} } {
+			if succ >= 0 && succ < g.ra_block_index.len && g.ra_block_index[succ] >= 0 {
+				succs[bi] << g.ra_block_index[succ]
+			}
+		}
+	}
 	mut changed := true
 	for changed {
 		changed = false
-		for bi := func.blocks.len - 1; bi >= 0; bi-- {
-			succs := g.regalloc_successors(func.blocks[bi]) or { []int{} }
+		for bi := nblocks - 1; bi >= 0; bi-- {
+			base := bi * words
 			for w in 0 .. words {
-				mut out := live_out[bi][w]
-				for succ in succs {
-					if si := block_index[succ] {
-						out |= live_in[si][w]
-					}
+				mut out := live_out[base + w]
+				for si in succs[bi] {
+					out |= live_in[si * words + w]
 				}
-				live_out[bi][w] = out
-				updated := uses[bi][w] | (out & ~defs[bi][w])
-				if updated != live_in[bi][w] {
-					live_in[bi][w] = updated
+				live_out[base + w] = out
+				updated := uses[base + w] | (out & ~defs[base + w])
+				if updated != live_in[base + w] {
+					live_in[base + w] = updated
 					changed = true
 				}
 			}
 		}
 	}
-	for index, val_id in globals {
-		list_index := intervals[val_id]
+	for index, val_id in crossing {
+		interval_index := g.ra_interval[val_id]
 		word := index / 64
 		mask := u64(1) << (index % 64)
 		for bi, blk_id in func.blocks {
-			if live_in[bi][word] & mask != 0 {
-				list[list_index].start = arm64_min_int(list[list_index].start, block_first[blk_id])
-				list[list_index].end = arm64_max_int(list[list_index].end, block_last[blk_id])
+			if live_in[bi * words + word] & mask != 0 {
+				list[interval_index].start = arm64_min_int(list[interval_index].start, g.ra_block_first[blk_id])
+				list[interval_index].end = arm64_max_int(list[interval_index].end, g.ra_block_last[blk_id])
 			}
-			if live_out[bi][word] & mask != 0 {
-				list[list_index].end = arm64_max_int(list[list_index].end, block_last[blk_id])
+			if live_out[bi * words + word] & mask != 0 {
+				list[interval_index].end = arm64_max_int(list[interval_index].end, g.ra_block_last[blk_id])
 			}
 		}
 	}

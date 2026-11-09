@@ -113,7 +113,9 @@ fn (mut b Builder) register_native_initializers() {
 				typ := b.resolve_struct_storage_type(type_name_source_id, module_name)
 				addr := b.m.add_global('__const_' + ssa_c_name(name), typ)
 				b.global_vars[name] = addr
-				b.var_templates.clear()
+				for _, mut template in b.var_templates {
+					template.vars[name] = addr
+				}
 				b.global_type_names.set_id(name, type_name_source_id)
 				b.global_aliases[module_name + '.' + field.value] = name
 			}

@@ -21,6 +21,13 @@ mut:
 	current_instr_start  int
 	value_homes          []u8
 	value_home_ids       []int
+	ra_interval          []int
+	ra_value_block       []int
+	ra_global_index      []int
+	ra_block_first       []int
+	ra_block_last        []int
+	ra_block_index       []int
+	ra_block_uses        [][]int
 	transient_stack_size int
 	block_offsets        []i32
 	block_offset_indices []int

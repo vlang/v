@@ -14420,7 +14420,9 @@ fn (mut b Builder) const_global_addr(name string, expr_id flat.NodeId) ?ValueID 
 	}
 	val_id := b.m.add_global(global_name, typ_id)
 	b.global_vars[global_name] = val_id
-	b.var_templates.clear()
+	for _, mut template in b.var_templates {
+		template.vars[global_name] = val_id
+	}
 	b.vars.set(global_name, val_id)
 	return val_id
 }
