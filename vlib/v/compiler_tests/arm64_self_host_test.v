@@ -928,3 +928,17 @@ pub fn local() Style {
 		assert output == '0 0 255 0', output
 	}
 }
+
+// `[3]u64` is as wide as a string, but its bytes are not a string header.
+fn test_map_with_string_sized_keys() {
+	$if macos && arm64 {
+		output := run_arm64('string_sized_keys', "fn main() {
+	mut m := map[[3]u64]int{}
+	m[[u64(1234), 100, 0]!] = 7
+	m[[u64(5678), 100, 0]!] = 8
+	println('\${m[[u64(1234), 100, 0]!]} \${m[[u64(5678), 100, 0]!]} \${m.len}')
+}
+")
+		assert output == '7 8 2', output
+	}
+}

@@ -7588,6 +7588,24 @@ fn (mut b Builder) generate_map_set_default_body(func_id int) {
 	b.block_instr0(.ret, entry, b.void_type)
 }
 
+// native_map_key_is_string reports whether a map's keys are strings. Key size
+// alone cannot say so: `[3]u64` is as wide as a string. Like the runtime map's
+// key comparison in vlib/builtin/map.v, and as Odin keeps the key type in Map_Info
+// (base/runtime/dynamic_map_internal.odin), the map's own equality function
+// decides.
+fn (mut b Builder) native_map_key_is_string(block BlockID, state ValueID, key_size ValueID) ValueID {
+	string_size := b.m.get_or_add_const(b.i64_type, '${b.m.type_size(b.str_type)}')
+	size_matches := b.block_instr2(.eq, block, b.i1_type, key_size, string_size)
+	if b.m.target.ptr_size != 8 {
+		return size_matches
+	}
+	string_eq_id := b.fn_ids['map_eq_string'] or { return size_matches }
+	eq_fn_ptr := b.map_state_field_ptr(block, state, 10)
+	eq_fn := b.block_instr1(.load, block, b.i64_type, eq_fn_ptr)
+	string_eq := b.m.add_value(.func_ref, b.i64_type, 'map_eq_string', string_eq_id)
+	return b.block_instr2(.eq, block, b.i1_type, eq_fn, string_eq)
+}
+
 // generate_map_set_sized_body supports generate map set sized body handling for Builder.
 fn (mut b Builder) generate_map_set_sized_body(func_id int) {
 	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
@@ -7615,6 +7633,18 @@ fn (mut b Builder) generate_map_set_sized_body(func_id int) {
 	b.block_instr3(.br, entry, b.void_type, has_state, ValueID(blk_ready), ValueID(blk_init))
 
 	new_state := b.emit_map_state_alloc(blk_init, key_size_arg, val_size_arg)
+	// A map first written here came from a zeroed value and has no callbacks.
+	if b.m.target.ptr_size == 8 {
+		if string_eq_id := b.fn_ids['map_eq_string'] {
+			string_size := b.m.get_or_add_const(b.i64_type, '${b.m.type_size(b.str_type)}')
+			if_string := b.block_instr2(.eq, blk_init, b.i1_type, key_size_arg, string_size)
+			string_eq := b.m.add_value(.func_ref, b.i64_type, 'map_eq_string', string_eq_id)
+			eq_value := b.block_instr3(.select, blk_init, b.i64_type, if_string, string_eq,
+				b.m.get_or_add_const(b.i64_type, '0'))
+			eq_slot := b.map_state_field_ptr(blk_init, new_state, 10)
+			b.block_instr2(.store, blk_init, b.void_type, eq_value, eq_slot)
+		}
+	}
 	b.block_instr2(.store, blk_init, b.void_type, new_state, state_field_ptr)
 	b.block_instr2(.store, blk_init, b.void_type, new_state, state_slot)
 	b.block_instr1(.jmp, blk_init, b.void_type, ValueID(blk_ready))
@@ -7716,8 +7746,7 @@ fn (mut b Builder) generate_map_set_sized_body(func_id int) {
 	b.block_instr4(.call, blk_store, ptr_i8, memcpy_ref_val, val_dest, val_ptr, val_size)
 	// Like `map_clone_string` in vlib/builtin/map.v, the map owns a copy of a new string
 	// key, so a key built in a reused buffer keeps its bytes.
-	string_key_size := b.m.get_or_add_const(b.i64_type, '${b.m.type_size(b.str_type)}')
-	is_string_key := b.block_instr2(.eq, blk_store, b.i1_type, key_size, string_key_size)
+	is_string_key := b.native_map_key_is_string(blk_store, state, key_size)
 	blk_clone_key := b.m.add_block(func_id, 'map_set_clone_key')
 	blk_stored := b.m.add_block(func_id, 'map_set_stored')
 	b.block_instr3(.br, blk_store, b.void_type, is_string_key, ValueID(blk_clone_key),

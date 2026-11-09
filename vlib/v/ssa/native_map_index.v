@@ -58,8 +58,7 @@ fn (mut b Builder) generate_native_map_hash_body(func_id int) {
 	b.block_instr1(.ret, custom, b.void_type, custom_hash)
 
 	size := b.map_state_load_i64(default, state, 4)
-	string_size := b.m.get_or_add_const(b.i64_type, b.m.type_size(b.str_type).str())
-	is_string := b.block_instr2(.eq, default, b.i1_type, size, string_size)
+	is_string := b.native_map_key_is_string(default, state, size)
 	string_block := b.m.add_block(func_id, 'map_hash_string')
 	bytes_block := b.m.add_block(func_id, 'map_hash_bytes')
 	b.block_instr3(.br, default, b.void_type, is_string, ValueID(string_block),
@@ -270,8 +269,7 @@ fn (mut b Builder) generate_native_map_find_body(func_id int) {
 		stored_key, key)
 	b.block_instr3(.br, custom_compare, b.void_type, equal_custom, ValueID(found),
 		ValueID(next))
-	string_size := b.m.get_or_add_const(b.i64_type, b.m.type_size(b.str_type).str())
-	is_string := b.block_instr2(.eq, typed_compare, b.i1_type, key_size, string_size)
+	is_string := b.native_map_key_is_string(typed_compare, state, key_size)
 	b.block_instr3(.br, typed_compare, b.void_type, is_string, ValueID(string_compare),
 		ValueID(bytes_compare))
 	ptr_string := b.m.type_store.get_ptr(b.str_type)
