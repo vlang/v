@@ -57,13 +57,13 @@ mut:
 // new creates a MachOObject value for arm64.
 pub fn MachOObject.new() &MachOObject {
 	mut m := &MachOObject{
-		text_data:   []u8{}
-		str_data:    []u8{}
-		data_data:   []u8{}
-		relocs:      []RelocationInfo{}
-		symbols:     []Symbol{}
-		str_table:   [u8(0)]
-		sym_by_name: map[string]int{}
+		text_data:          []u8{}
+		str_data:           []u8{}
+		data_data:          []u8{}
+		relocs:             []RelocationInfo{}
+		symbols:            []Symbol{}
+		str_table:          [u8(0)]
+		sym_by_name:        map[string]int{}
 		unwind_saved_pairs: map[string]int{}
 	}
 	return m
@@ -163,6 +163,12 @@ const s_attr_debug = u32(0x02000000)
 const unwind_arm64_mode_frame = u32(0x04000000)
 const s_attr_pure_instructions = u32(0x80000000)
 const s_attr_some_instructions = u32(0x00000400)
+const compact_unwind_entry_size = 32
+
+struct CompactUnwindFunction {
+	symbol int
+	length u32
+}
 
 // encode_macos_version packs `major.minor[.patch]` as the X.Y.Z nibble format of
 // LC_BUILD_VERSION (xxxx.yy.zz).
@@ -222,19 +228,25 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 	mut ext_syms := []int{}
 	mut undef_syms := []int{}
 	mut local_runtime := map[string]bool{}
+	mut force_external := map[string]bool{}
+	for name in force_external_syms {
+		force_external[name] = true
+	}
 	if opts.freestanding {
 		for sym in m.symbols {
-			if sym.type_ & n_sect == n_sect && sym.name in force_external_syms {
+			if sym.type_ & n_sect == n_sect && sym.name in force_external {
 				local_runtime[sym.name] = true
 			}
 		}
 	}
 	// shadowed: defined libc-named wrappers whose references must go to libc.
-	mut shadowed := map[int]bool{}
+	mut shadowed := []bool{len: m.symbols.len}
+	mut shadowed_count := 0
 	for i, sym in m.symbols {
 		if sym.type_ & n_sect == n_sect {
-			if sym.name in force_external_syms && sym.name !in local_runtime {
+			if sym.name in force_external && sym.name !in local_runtime {
 				shadowed[i] = true
+				shadowed_count++
 				local_syms << i
 				undef_syms << i
 			} else if sym.type_ & n_ext != 0 && (opts.exported[sym.name] || sym.name in local_runtime) {
@@ -254,8 +266,8 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 	})
 
 	// The `__bss` symbols move with their section, after `__compact_unwind`.
-	size_only_entries, _ := m.compact_unwind([]int{len: m.symbols.len}, shadowed)
-	unwind_size := size_only_entries.len
+	unwind_functions := m.compact_unwind_functions(shadowed)
+	unwind_size := unwind_functions.len * compact_unwind_entry_size
 	final_bss_addr := (unwind_addr + unwind_size + 15) & ~15
 	bss_section := fn [bss_addr_in_data] (sym Symbol) u8 {
 		return if sym.sect == 3 && sym.value >= u64(bss_addr_in_data) { u8(5) } else { sym.sect }
@@ -269,7 +281,7 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 	}
 	mut strtab := []u8{cap: m.str_table.len + 64}
 	strtab << 0
-	mut symtab := []u8{cap: (m.symbols.len + shadowed.len) * 16}
+	mut symtab := []u8{cap: (m.symbols.len + shadowed_count) * 16}
 	// reloc_index maps an old symbol index to the index relocations must use.
 	mut reloc_index := []int{len: m.symbols.len}
 	mut out_index := 0
@@ -302,7 +314,7 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 	}
 	n_syms := out_index
 
-	unwind_entries, unwind_relocs := m.compact_unwind(reloc_index, shadowed)
+	unwind_entries, unwind_relocs := m.compact_unwind(unwind_functions, reloc_index)
 	unwind_len := unwind_entries.len
 	n_sects := 5
 	bss_addr := (unwind_addr + unwind_len + 15) & ~15
@@ -385,7 +397,8 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 		write_u32_le(mut buf, 0)
 	}
 
-	text := m.text_with_got_addresses(undef_syms)
+	got_pairs := m.got_address_pairs(undef_syms)
+	text := m.text_with_got_addresses(got_pairs)
 	for buf.len < text_off {
 		buf << 0
 	}
@@ -402,22 +415,7 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 	for buf.len < reloc_off {
 		buf << 0
 	}
-	// ld64 expects relocations in descending address order, as compilers emit them.
-	mut relocs := m.object_relocs(undef_syms)
-	relocs.sort(a.addr > b.addr)
-	for r in relocs {
-		write_u32_le(mut buf, u32(r.addr))
-		mut info := u32(reloc_index[r.sym_idx]) & 0xffffff
-		if r.pcrel {
-			info |= 1 << 24
-		}
-		info |= u32(r.length) << 25
-		if r.extern {
-			info |= 1 << 27
-		}
-		info |= u32(r.type_) << 28
-		write_u32_le(mut buf, info)
-	}
+	buf << m.object_reloc_bytes(got_pairs, reloc_index)
 	buf << unwind_relocs
 	buf << symtab
 	buf << strtab
@@ -437,40 +435,52 @@ fn (m &MachOObject) data_file_len() int {
 	return arm64_min_int((end + 15) & ~15, m.data_data.len)
 }
 
+// compact_unwind_functions returns the symbols of the functions that get a
+// `__compact_unwind` entry, by address.
+fn (m &MachOObject) compact_unwind_functions(shadowed []bool) []CompactUnwindFunction {
+	mut symbols := []int{}
+	for i, sym in m.symbols {
+		if sym.type_ & n_sect == n_sect && sym.sect == 1 {
+			symbols << i
+		}
+	}
+	symbols.sort_with_compare(fn [m] (a &int, b &int) int {
+		return int(i64(m.symbols[*a].value) - i64(m.symbols[*b].value))
+	})
+	mut functions := []CompactUnwindFunction{cap: symbols.len}
+	for position, index in symbols {
+		start := m.symbols[index].value
+		end := if position + 1 < symbols.len {
+			m.symbols[symbols[position + 1]].value
+		} else {
+			u64(m.text_data.len)
+		}
+		if end > start && !shadowed[index] {
+			functions << CompactUnwindFunction{
+				symbol: index
+				length: u32(end - start)
+			}
+		}
+	}
+	return functions
+}
+
 // compact_unwind returns the `__LD,__compact_unwind` entries of the object, one
 // per function, and their relocations. Every V function starts with
 // `stp x29, x30, [sp, #-16]!; mov x29, sp`, so each is described by the frame
 // mode encoding. With it the system linker builds `__unwind_info`, and an
 // Objective-C exception or an `_Unwind_Backtrace` can cross V frames. Layout as
 // in Zig's src/link/MachO/UnwindInfo.zig, which reads what compilers emit here.
-fn (m &MachOObject) compact_unwind(reloc_index []int, shadowed map[int]bool) ([]u8, []u8) {
-	mut functions := []int{}
-	for i, sym in m.symbols {
-		if sym.type_ & n_sect == n_sect && sym.sect == 1 {
-			functions << i
-		}
-	}
-	functions.sort_with_compare(fn [m] (a &int, b &int) int {
-		return int(i64(m.symbols[*a].value) - i64(m.symbols[*b].value))
-	})
-	mut entries := []u8{cap: functions.len * 32}
+fn (m &MachOObject) compact_unwind(functions []CompactUnwindFunction, reloc_index []int) ([]u8, []u8) {
+	mut entries := []u8{cap: functions.len * compact_unwind_entry_size}
 	mut relocs := []u8{cap: functions.len * 8}
-	for position, index in functions {
-		start := m.symbols[index].value
-		end := if position + 1 < functions.len {
-			m.symbols[functions[position + 1]].value
-		} else {
-			u64(m.text_data.len)
-		}
-		if end <= start || shadowed[index] {
-			continue
-		}
+	for function in functions {
 		write_u32_le(mut relocs, u32(entries.len))
 		// r_symbolnum, r_length 3 (8 bytes), r_extern, ARM64_RELOC_UNSIGNED
-		write_u32_le(mut relocs, (u32(reloc_index[index]) & 0xffffff) | (3 << 25) | (1 << 27))
+		write_u32_le(mut relocs, (u32(reloc_index[function.symbol]) & 0xffffff) | (3 << 25) | (1 << 27))
 		write_u64_le(mut entries, 0) // the function: an external relocation's addend
-		write_u32_le(mut entries, u32(end - start))
-		saved_pairs := m.unwind_saved_pairs[m.symbols[index].name] or { 0 }
+		write_u32_le(mut entries, function.length)
+		saved_pairs := m.unwind_saved_pairs[m.symbols[function.symbol].name] or { 0 }
 		x_pairs := u32(saved_pairs) & 0xf
 		d_pairs := (u32(saved_pairs) >> 4) & 0xf
 		write_u32_le(mut entries, unwind_arm64_mode_frame | ((u32(1) << x_pairs) - 1) | (((u32(1) << d_pairs) - 1) << 8))
@@ -485,45 +495,36 @@ fn (m &MachOObject) compact_unwind(reloc_index []int, shadowed map[int]bool) ([]
 // dylib symbol an address that way (ld64: "does not have address"), so in an
 // object the pairs that name an undefined symbol load the address from the GOT
 // instead: ADRP + LDR with GOT_LOAD relocations, as clang emits them.
-fn (m &MachOObject) got_address_pairs(undef_syms []int) map[int]bool {
-	mut undefined := map[int]bool{}
+fn (m &MachOObject) got_address_pairs(undef_syms []int) []bool {
+	mut undefined := []bool{len: m.symbols.len}
 	for i in undef_syms {
 		undefined[i] = true
 	}
-	mut page_relocs := map[int]int{}
+	// pairs flags each relocation that moves to the GOT. The generator emits the
+	// ADRP relocation right before the page-offset one it belongs to.
+	mut pairs := []bool{len: m.relocs.len}
 	for i, r in m.relocs {
-		if r.type_ == arm64_reloc_page21 && undefined[r.sym_idx] {
-			page_relocs[r.addr] = i
+		if i == 0 || r.type_ != arm64_reloc_pageoff12 || !undefined[r.sym_idx] {
+			continue
 		}
-	}
-	// pairs maps the index of each relocation that moves to the GOT.
-	mut pairs := map[int]bool{}
-	for i, r in m.relocs {
-		if r.type_ != arm64_reloc_pageoff12 || !undefined[r.sym_idx] {
+		page := m.relocs[i - 1]
+		if page.type_ != arm64_reloc_page21 || page.addr != r.addr - 4 || page.sym_idx != r.sym_idx {
 			continue
 		}
 		if read_u32_le(m.text_data, r.addr) & 0xffc00000 != 0x91000000 {
 			continue
 		}
-		page := page_relocs[r.addr - 4] or { continue }
-		if m.relocs[page].sym_idx != r.sym_idx {
-			continue
-		}
 		pairs[i] = true
-		pairs[page] = true
+		pairs[i - 1] = true
 	}
 	return pairs
 }
 
-fn (m &MachOObject) text_with_got_addresses(undef_syms []int) []u8 {
-	pairs := m.got_address_pairs(undef_syms)
-	if pairs.len == 0 {
-		return m.text_data
-	}
+fn (m &MachOObject) text_with_got_addresses(pairs []bool) []u8 {
 	mut text := m.text_data.clone()
-	for i, _ in pairs {
+	for i, moves_to_got in pairs {
 		r := m.relocs[i]
-		if r.type_ == arm64_reloc_pageoff12 {
+		if moves_to_got && r.type_ == arm64_reloc_pageoff12 {
 			// add xd, xn, #off -> ldr xd, [xn, #off]
 			instr := read_u32_le(text, r.addr)
 			write_u32_le_at_arr(mut text, r.addr, 0xf9400000 | (instr & 0x3ff))
@@ -532,25 +533,54 @@ fn (m &MachOObject) text_with_got_addresses(undef_syms []int) []u8 {
 	return text
 }
 
-fn (m &MachOObject) object_relocs(undef_syms []int) []RelocationInfo {
-	pairs := m.got_address_pairs(undef_syms)
-	mut relocs := m.relocs.clone()
-	for i, _ in pairs {
-		relocs[i] = RelocationInfo{
-			...relocs[i]
-			type_: if relocs[i].type_ == arm64_reloc_page21 {
+// object_reloc_bytes encodes the text relocations in the descending address
+// order ld64 expects, as compilers emit them. The generator records them in
+// ascending order, so they only need reversing.
+fn (m &MachOObject) object_reloc_bytes(pairs []bool, reloc_index []int) []u8 {
+	mut order := []int{len: m.relocs.len, init: index}
+	mut ascending := true
+	for i in 1 .. m.relocs.len {
+		if m.relocs[i - 1].addr >= m.relocs[i].addr {
+			ascending = false
+			break
+		}
+	}
+	if ascending {
+		order.reverse_in_place()
+	} else {
+		order.sort_with_compare(fn [m] (a &int, b &int) int {
+			return m.relocs[*b].addr - m.relocs[*a].addr
+		})
+	}
+	mut bytes := []u8{len: order.len * 8}
+	for position, index in order {
+		r := m.relocs[index]
+		mut type_ := r.type_
+		if pairs[index] {
+			type_ = if r.type_ == arm64_reloc_page21 {
 				arm64_reloc_got_load_page21
 			} else {
 				arm64_reloc_got_load_pageoff12
 			}
 		}
+		mut info := u32(reloc_index[r.sym_idx]) & 0xffffff
+		if r.pcrel {
+			info |= 1 << 24
+		}
+		info |= u32(r.length) << 25
+		if r.extern {
+			info |= 1 << 27
+		}
+		info |= u32(type_) << 28
+		write_u32_le_at_arr(mut bytes, position * 8, u32(r.addr))
+		write_u32_le_at_arr(mut bytes, position * 8 + 4, info)
 	}
-	return relocs
+	return bytes
 }
 
 fn write_nlist(mut symtab []u8, mut strtab []u8, name string, typ u8, sect u8, desc u16, value u64) {
 	write_u32_le(mut symtab, u32(strtab.len))
-	strtab << name.bytes()
+	unsafe { strtab.push_many(name.str, name.len) }
 	strtab << 0
 	symtab << typ
 	symtab << sect
