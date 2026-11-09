@@ -65,8 +65,10 @@ V keeps using the system compiler without checking the branch again; run
 On macOS, TCC builds use its runtime thread fence directly, including when
 preprocessed C identifies ARM64 with `__arm64__` alone.
 
-After a successful update, `v up` runs `v wipe-cache` to clear module, object,
-temporary, and compiled tool caches, even when V is already up to date.
+After a successful update that changes the V checkout or TCC, or rebuilds the compiler,
+`v up` runs `v wipe-cache` to clear module, object, temporary, and compiled tool caches.
+When nothing changes, the caches are preserved. If the TCC revision cannot be determined,
+the caches are cleared conservatively.
 Subsequent builds recreate the caches they need. Previously recorded build
 configurations and test selectors are not replayed. A failed cache cleanup
 makes `v up` fail.
