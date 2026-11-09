@@ -102,6 +102,24 @@ interface i {
 	validate(doc) or { panic(err) }
 }
 
+fn test_validate_duplicate_method() {
+	src := 'package p:q;
+
+interface i {
+	resource r {
+		m: func() -> u32;
+		m: func() -> u32;
+	}
+}
+'
+	doc := parse(src) or { panic(err) }
+	validate(doc) or {
+		assert err.msg().contains('error_duplicate_name')
+		return
+	}
+	panic('expected error')
+}
+
 fn test_parse_list_option_result() {
 	src := '
 package p:q;

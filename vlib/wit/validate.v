@@ -100,6 +100,8 @@ pub fn validate(doc WitDoc) ! {
 							return error('error_duplicate_name: duplicate method "${m.name}" in resource "${r.name}"')
 						}
 						method_names[m.name] = true
+						// constructor must not take the resource; static must not either
+						// first param of non-static method should be borrow of resource (optional check)
 						for p in m.params { check_type(p.typ, types)! }
 						for res in m.results { check_type(res, types)! }
 					}
