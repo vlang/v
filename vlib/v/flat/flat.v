@@ -1914,9 +1914,19 @@ fn (mut a FlatAst) note_parent(child NodeId, parent NodeId) {
 	}
 }
 
+// rewrite_needs_current_parents reports whether the index must be brought up to
+// date before the edges of node `idx` change: it has nodes appended since it was
+// last built, or it is still the snapshot of the tree that this worker was forked
+// from, whose copy would otherwise bring the old edge of `idx` back.
+@[inline]
+fn (a &FlatAst) rewrite_needs_current_parents(idx int) bool {
+	return (idx < a.parents_indexed && a.parents_indexed != a.nodes.len)
+		|| (a.parents_indexed == 0 && idx < a.parents_fork_own)
+}
+
 // set_child_slot stores `child` in the children slot `slot` of `parent`.
 pub fn (mut a FlatAst) set_child_slot(parent NodeId, slot int, child NodeId) {
-	if int(parent) < a.parents_indexed && a.parents_indexed != a.nodes.len {
+	if a.rewrite_needs_current_parents(int(parent)) {
 		// Index the nodes appended since, which `child` can be one of, first.
 		a.index_parents()
 	}
@@ -1942,7 +1952,7 @@ pub fn (mut a FlatAst) set_child_slot(parent NodeId, slot int, child NodeId) {
 // set_node replaces node `id`, whose children can differ from the old ones.
 pub fn (mut a FlatAst) set_node(id NodeId, node Node) {
 	idx := int(id)
-	if idx < a.parents_indexed && a.parents_indexed != a.nodes.len {
+	if a.rewrite_needs_current_parents(idx) {
 		a.index_parents()
 	}
 	a.nodes[idx] = node

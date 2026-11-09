@@ -443,6 +443,50 @@ fn parents_test_paren(mut a FlatAst, child NodeId) NodeId {
 	})
 }
 
+fn parents_test_worker(base &FlatAst) FlatAst {
+	mut worker := FlatAst.new()
+	worker.nodes << base.nodes
+	worker.children << base.children
+	unsafe {
+		mut owner := base
+		owner.fork_parents_to(mut worker, base.nodes.len)
+	}
+	return worker
+}
+
+fn test_rewriting_a_child_slot_before_the_first_parent_lookup_of_a_worker() {
+	mut base := FlatAst.new()
+	original := base.add_val(.ident, 'original')
+	replacement := base.add_val(.ident, 'replacement')
+	outer := parents_test_paren(mut base, original)
+	assert base.parent(original) == outer
+	mut worker := parents_test_worker(&base)
+	worker.set_child_slot(outer, worker.nodes[int(outer)].children_start, replacement)
+	assert worker.parent(original) == empty_node
+	assert worker.parent(replacement) == outer
+	// The tree that the worker was forked from keeps its own edges.
+	assert base.parent(original) == outer
+	assert base.parent(replacement) == empty_node
+}
+
+fn test_replacing_a_node_before_the_first_parent_lookup_of_a_worker() {
+	mut base := FlatAst.new()
+	original := base.add_val(.ident, 'original')
+	replacement := base.add_val(.ident, 'replacement')
+	outer := parents_test_paren(mut base, original)
+	assert base.parent(original) == outer
+	slot := base.children.len
+	base.add_child(replacement)
+	mut worker := parents_test_worker(&base)
+	worker.set_node(outer, Node{
+		kind:           .paren
+		children_start: slot
+		children_count: 1
+	})
+	assert worker.parent(original) == empty_node
+	assert worker.parent(replacement) == outer
+}
+
 fn test_forked_tree_starts_from_the_parents_of_its_base() {
 	mut base := FlatAst.new()
 	leaf := base.add_val(.ident, 'leaf')
