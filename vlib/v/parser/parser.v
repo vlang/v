@@ -11731,7 +11731,8 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	}
 	asm_end := clamp_source_offset(p.prev_tok_end, p.s.src.len)
 	raw_source := if asm_pos >= 0 && asm_pos < asm_end { p.s.src[asm_pos..asm_end] } else { '' }
-	if !p.prefs.is_fmt && normalized_asm_arch == 'ppc' && !is_raw && has_unsupported_content {
+	if !p.prefs.is_fmt && normalized_asm_arch == 'ppc' && !is_raw
+		&& (p.prefs.backend != 'c' || has_unsupported_content) {
 		p.record_diagnostic('PowerPC inline assembly requires the `raw` modifier', asm_pos)
 	}
 	// An empty template with only a memory clobber is architecture independent;

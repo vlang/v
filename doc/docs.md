@@ -11755,8 +11755,9 @@ not a numeric local label.
 The 32-bit PowerPC C target (`-arch ppc`) supports `asm ppc raw`, including named
 operands, clobbers and assembly at module scope. Use GNU PowerPC assembler syntax
 inside the templates; the C compiler must support the target. Structured PowerPC
-assembly without `raw` is not supported. Empty blocks and empty templates with only
-a `memory` clobber are allowed without `raw`, even when building for another target.
+assembly without `raw` is not supported. With the C backend, empty blocks and empty
+templates with only a `memory` clobber are allowed without `raw`, even when building
+for another target. Other backends reject these PowerPC blocks during parsing.
 For example:
 
 ```v ignore
