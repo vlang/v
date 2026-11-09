@@ -41,6 +41,11 @@ world app {
 	generated := doc.to_v()
 	assert generated.contains('pub struct Point')
 	assert generated.contains('pub fn add')
+
+	doc2 := parse(src) or { panic(err) }
+	printed := doc2.str()
+	assert printed.contains('interface types')
+	assert printed.contains('record point')
 }
 
 fn test_parse_list_option_result() {
