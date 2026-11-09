@@ -203,6 +203,14 @@ uncached, cold-cache and warm-cache builds, including nested error payloads:
 ./v test vlib/v/gen/c/detached_spawn_cleanup_test.v
 ```
 
+When MinGW and `windres` are installed, self-tests also cross-compile Windows executables
+with icons, covering all four icon flag aliases with `-g` and `-cg`. The integer formatting
+helpers used by Windows backtraces must work with this reduced runtime. To rerun this check:
+
+```sh
+./v test vlib/v/driver/windows_icon_test.v
+```
+
 ### Testing the resume behavior
 
 On macOS or Linux with a working V compiler, run:
