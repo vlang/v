@@ -1437,6 +1437,8 @@ pub mut:
 	comptime_method_calls_by_decl map[int]map[int]bool
 	check_concrete_generic_bodies bool                 // `-check` checks the concrete clones of the program's generics for fields and methods their types lack, and for arrays and maps with the wrong element layout
 	monomorphize_for_diagnostics  bool                 // a check monomorphizes only for what instances report, such as a shadowed global
+	global_shadow_probe           bool                 // the shadowing scan looks for a binding instead of reporting it
+	global_shadow_probe_hit       bool
 	check_program_lib_instances   bool                 // such a check also checks the instances of library generics that the program's own code asks for (see transform.LibraryBodies)
 	library_instances             int                  // the instances of library generics that such a check cloned
 	library_headers               int                  // how many of them it cloned without their bodies (see transform.LibraryBodies)

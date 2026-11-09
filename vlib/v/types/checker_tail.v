@@ -9054,6 +9054,10 @@ fn (mut tc TypeChecker) record_global_shadow_error_at(id flat.NodeId, name strin
 	if tc.translated_files[file.name] || !tc.shadow_check_owns_file(file.name) {
 		return
 	}
+	if tc.global_shadow_probe {
+		tc.global_shadow_probe_hit = true
+		return
+	}
 	if tc.checker_fixture_mode && tc.global_decl_infers_type(name) {
 		tc.record_notice_at(.duplicate_decl, 'the global variable named `${name}` already exists',
 			id, pos)
@@ -9158,6 +9162,30 @@ fn (mut tc TypeChecker) check_generic_fn_body_global_shadowing(node &flat.Node) 
 	}
 }
 
+// specializations_could_shadow_a_global reports whether a function binds a name of
+// a global in some `$if` branch. A specialization binds no name that its template
+// does not, and every other shadowing was reported when its function was checked,
+// so without such a binding a check has no reason to specialize anything for this
+// diagnostic. Zig (AstGen detectLocalShadowing) reports shadowing before any
+// instantiation too.
+pub fn (mut tc TypeChecker) specializations_could_shadow_a_global() bool {
+	tc.global_shadow_probe = true
+	tc.global_shadow_probe_hit = false
+	defer {
+		tc.global_shadow_probe = false
+	}
+	for fn_idx in tc.top_level_idx {
+		node := tc.a.node(flat.NodeId(fn_idx))
+		if node.kind == .fn_decl {
+			tc.check_generic_fn_body_global_shadowing(node)
+			if tc.global_shadow_probe_hit {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // check_specialized_fn_global_shadowing inspects the concrete generic bodies
 // after monomorphization has selected specialization-dependent `$if` branches.
 pub fn (mut tc TypeChecker) check_specialized_fn_global_shadowing() {
@@ -9216,6 +9244,12 @@ fn (mut tc TypeChecker) check_generic_body_node_global_shadowing(id flat.NodeId)
 			tc.check_comptime_for_global_shadowing(id, *node)
 		}
 		.comptime_if {
+			if tc.global_shadow_probe {
+				for i in 0 .. node.children_count {
+					tc.check_generic_body_node_global_shadowing(tc.a.child(node, i))
+				}
+				return
+			}
 			take_then := tc.comptime_type_condition_value(node.value) or {
 				// Portable output keeps all target-dependent branches for the C
 				// preprocessor. A mixed type or metadata condition stays deferred

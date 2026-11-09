@@ -14169,7 +14169,8 @@ pub fn run(args []string) {
 				served.keep_incremental_record(pre_tc.incremental_instances_record(kept_incremental_record))
 			}
 			if !monomorphized && pre_tc.global_names.len > 0
-				&& os.getenv('V_CHECK_SELECTED_FILES_ONLY') == '' {
+				&& os.getenv('V_CHECK_SELECTED_FILES_ONLY') == ''
+				&& (is_checker_fixture || pre_tc.specializations_could_shadow_a_global()) {
 				check_used_fns, check_uses_generics := markused.mark_used_with_generic_usage(a, &pre_tc)
 				if check_uses_generics {
 					pre_tc.monomorphize_for_diagnostics = true
