@@ -23,7 +23,44 @@ $if !skip_fastc ? {
 		return jobs
 	}
 
-	fn compile_v3_fastc_tcc_generation(generation &fastc.GenerationResult, bin_file string, prefs &pref.Preferences, environment_flags []string, user_flags []string, link_flags []string, sdk string, is_debug bool, cache_enabled bool, keep_c bool, parallel_cc bool, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
+	// v3_fastc_native_compiler executes the native owners and answers the dependency
+	// queries of FastC builds that link native code with TinyCC on macOS.
+	const v3_fastc_native_compiler = '/usr/bin/clang'
+
+	// v3_fastc_native_compiler_version asks the native compiler for its version, the
+	// identity in every native manifest key. The driver asks while it generates C.
+	fn v3_fastc_native_compiler_version() string {
+		return c_object_compiler_version(v3_fastc_native_compiler, v3_fastc_native_compiler)
+	}
+
+	fn compile_v3_fastc_tcc_generation(generation &fastc.GenerationResult, bin_file string, prefs &pref.Preferences, environment_flags []string, user_flags []string, link_flags []string, sdk string, is_debug bool, cache_enabled bool, keep_c bool, parallel_cc bool, native_compiler_version string, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
+		result := compile_v3_fastc_tcc_generation_mode(generation, bin_file, prefs, environment_flags, user_flags, link_flags, sdk, is_debug, cache_enabled, keep_c, parallel_cc, native_compiler_version, true, mut prestarted)
+		if !result.native_inputs_changed {
+			return result
+		}
+		// A native input changed after its manifest was written. Build again and
+		// validate every reused manifest before compiling, as without the overlap.
+		if os.getenv('FASTC_BENCH_PHASES') != '' {
+			eprintln('fastc-phase native.retry 0us')
+		}
+		mut no_prestarted := fastc.FastcPrestartedCUnits{}
+		return compile_v3_fastc_tcc_generation_mode(generation, bin_file, prefs, environment_flags, user_flags, link_flags, sdk, is_debug, cache_enabled, keep_c, parallel_cc, native_compiler_version, false, mut no_prestarted)
+	}
+
+	// compile_v3_fastc_tcc_generation_mode compiles and links a generation. With
+	// `overlap_validation`, reused native manifests are hashed while TinyCC compiles
+	// the program; the link waits for that and reports `native_inputs_changed` when
+	// an input no longer matches, before anything is linked or published.
+	fn compile_v3_fastc_tcc_generation_mode(generation &fastc.GenerationResult, bin_file string, prefs &pref.Preferences, environment_flags []string, user_flags []string, link_flags []string, sdk string, is_debug bool, cache_enabled bool, keep_c bool, parallel_cc bool, native_compiler_version string, overlap_validation bool, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
+		mut validation := V3FastcNativeValidation{
+			overlap: overlap_validation
+		}
+		if native_compiler_version != '' {
+			validation.stats.compiler_versions[v3_fastc_native_compiler] = native_compiler_version
+		}
+		defer {
+			validation.wait()
+		}
 		mut flags := environment_flags.clone()
 		flags << generation.c_flags
 		flags << user_flags
@@ -33,7 +70,7 @@ $if !skip_fastc ? {
 				|| generation.c_pieces[..generation.units.head_end].any(it.starts_with('#include ') && (it.contains('.m"') || it.contains('.mm"')))) {
 			bench_phases := os.getenv('FASTC_BENCH_PHASES') != ''
 			bridge_sw := time.new_stopwatch()
-			bridge := v3_fastc_native_bridge(generation, prefs, flags, sdk) or {
+			bridge := v3_fastc_native_bridge(generation, prefs, flags, sdk, mut validation) or {
 				return V3FastCCompileResult{ command: 'FastC native bridge', output: err.msg() }
 			}
 			if bench_phases {
@@ -48,7 +85,7 @@ $if !skip_fastc ? {
 			mut program_flags := tcc_cached_main_flags(v3_tcc_dylib_native_flags(flags))
 			program_flags << v3_tcc_dylib_sdk_flags(os.dir(bridge.library), bridge.dependencies)
 			program_flags << bridge.library
-			program_deps := v3_fastc_native_program_dependencies(pieces, generation.units, program_flags, sdk, prefs.target, fastc.fastc_tcc_job_count(prefs)) or {
+			program_deps := v3_fastc_native_program_dependencies(pieces, generation.units, program_flags, sdk, prefs.target, fastc.fastc_tcc_job_count(prefs), mut validation) or {
 				return V3FastCCompileResult{ command: 'FastC native dependencies', output: err.msg() }
 			}
 			if bench_phases {
@@ -60,9 +97,41 @@ $if !skip_fastc ? {
 
 			// Native inputs rule out executable caching; the payload object names none of them.
 			jobs := v3_fastc_native_compile_jobs(prefs, parallel_cc)
-			return compile_v3_fastc_source(pieces, generation.units, bin_file, prefs, [], program_flags, [], link_flags, sdk, is_debug, generation.uses_threads, false, cache_enabled, jobs, mut prestarted)
+			return compile_v3_fastc_source(pieces, generation.units, bin_file, prefs, [], program_flags, [], link_flags, sdk, is_debug, generation.uses_threads, false, cache_enabled, jobs, mut prestarted, mut validation)
 		}
-		return compile_v3_fastc_source(generation.c_pieces, generation.units, bin_file, prefs, environment_flags, generation.c_flags, user_flags, link_flags, sdk, is_debug, generation.uses_threads, cache_enabled, cache_enabled, fastc.fastc_tcc_job_count(prefs), mut prestarted)
+		return compile_v3_fastc_source(generation.c_pieces, generation.units, bin_file, prefs, environment_flags, generation.c_flags, user_flags, link_flags, sdk, is_debug, generation.uses_threads, cache_enabled, cache_enabled, fastc.fastc_tcc_job_count(prefs), mut prestarted, mut validation)
+	}
+
+	// V3FastcNativeValidation hashes the inputs of reused native manifests beside
+	// the program's compilation. Nothing may be linked before `wait` reports them
+	// unchanged.
+	struct V3FastcNativeValidation {
+		overlap bool
+	mut:
+		pending []thread bool
+		// stats carries the file signatures and compiler answers that the native
+		// steps of one build share.
+		stats CObjectCacheStats
+	}
+
+	// add starts validating a reused manifest's dependencies (and that each reported
+	// path still resolves to its dependency), or validates them at once without overlap.
+	fn (mut validation V3FastcNativeValidation) add(dependencies []string, signatures []string, reported []string, jobs int) bool {
+		if !validation.overlap {
+			return v3_fastc_native_signatures_match(dependencies, signatures, reported, jobs)
+		}
+		validation.pending << spawn v3_fastc_native_signatures_match(dependencies, signatures, reported, jobs)
+		return true
+	}
+
+	// wait reports whether every pending manifest validated.
+	fn (mut validation V3FastcNativeValidation) wait() bool {
+		mut valid := true
+		for pending in validation.pending {
+			if !pending.wait() { valid = false }
+		}
+		validation.pending.clear()
+		return valid
 	}
 
 	struct V3FastcNativeBridge {
@@ -92,7 +161,7 @@ $if !skip_fastc ? {
 		return adapters
 	}
 
-	fn v3_fastc_native_bridge(generation &fastc.GenerationResult, prefs &pref.Preferences, flags []string, sdk string) !V3FastcNativeBridge {
+	fn v3_fastc_native_bridge(generation &fastc.GenerationResult, prefs &pref.Preferences, flags []string, sdk string, mut validation V3FastcNativeValidation) !V3FastcNativeBridge {
 		bench_phases := os.getenv('FASTC_BENCH_PHASES') != ''
 		sw := time.new_stopwatch()
 		mut head := strings.new_builder(65536)
@@ -144,10 +213,9 @@ $if !skip_fastc ? {
 		if bench_phases {
 			eprintln('fastc-phase native.owner ${sw.elapsed().microseconds()}us')
 		}
-		mut stats := CObjectCacheStats{}
 		mut native_flags := v3_tcc_dylib_native_flags(flags)
 		if sdk != '' { native_flags << ['-isysroot', sdk] }
-		prepared := prepare_c_flags_for_link(native_flags, [], [], ['-O0'], true, false, '', [], prefs.target, '/usr/bin/clang', true, dir, mut stats)!
+		prepared := prepare_c_flags_for_link(native_flags, [], [], ['-O0'], true, false, '', [], prefs.target, '/usr/bin/clang', true, dir, mut validation.stats)!
 		link_flags := c_dylib_link_flags(prepared)
 		mut archives := c_dylib_named_static_archive_inputs(link_flags)
 		for archive in c_dylib_force_loaded_static_archive_inputs(link_flags) {
@@ -170,17 +238,19 @@ $if !skip_fastc ? {
 			'-Wno-typedef-redefinition']
 		args << c_object_compile_flags(prepared)
 		args << ['-x', 'objective-c']
-		manifest := c_object_manifest_path(dir, path, '/usr/bin/clang', prepared, prefs.target, mut stats)
-		if cached := v3_fastc_native_cached_library(manifest, fastc.fastc_tcc_job_count(prefs)) {
-			if bench_phases {
-				eprintln('fastc-phase native.validated ${sw.elapsed().microseconds()}us dependencies=${cached.dependencies.len}')
+		manifest := c_object_manifest_path(dir, path, '/usr/bin/clang', prepared, prefs.target, mut validation.stats)
+		if cached := v3_fastc_native_read_manifest(manifest) {
+			if validation.add(cached.dependencies, cached.signatures, [], fastc.fastc_tcc_job_count(prefs)) {
+				if bench_phases {
+					eprintln('fastc-phase native.validated ${sw.elapsed().microseconds()}us dependencies=${cached.dependencies.len} overlapped=${validation.overlap}')
+				}
+				return V3FastcNativeBridge{ functions: functions.keys(), adapters: adapters, sources: sources, dependencies: cached.dependencies, library: cached.library }
 			}
-			return V3FastcNativeBridge{ functions: functions.keys(), adapters: adapters, sources: sources, dependencies: cached.dependencies, library: cached.library }
 		}
 		// V macros such as @BUILD_TIMESTAMP can change without affecting native code.
 		// Only Clang may establish that equivalence: headers remain opaque to V.
-		preprocessed := v3_fastc_native_preprocessed_source(dir, path, args, archives, '/usr/bin/clang', mut stats)!
-		preprocessed_manifest := c_object_manifest_path(dir, preprocessed.path, '/usr/bin/clang', prepared, prefs.target, mut stats)
+		preprocessed := v3_fastc_native_preprocessed_source(dir, path, args, archives, '/usr/bin/clang', mut validation.stats)!
+		preprocessed_manifest := c_object_manifest_path(dir, preprocessed.path, '/usr/bin/clang', prepared, prefs.target, mut validation.stats)
 		if cached := v3_fastc_native_cached_library(preprocessed_manifest, fastc.fastc_tcc_job_count(prefs)) {
 			if bench_phases {
 				eprintln('fastc-phase native.preprocessed_reuse ${sw.elapsed().microseconds()}us')
@@ -213,7 +283,7 @@ $if !skip_fastc ? {
 		for dependency in dependencies {
 			// Preserve the hashes of the inputs Clang actually preprocessed, even
 			// when a header changes before this later collection of native inputs.
-			signature := preprocessing_signatures[dependency] or { v3_fastc_native_file_signature(dependency, false, mut stats) }
+			signature := preprocessing_signatures[dependency] or { v3_fastc_native_file_signature(dependency, false, mut validation.stats) }
 			if signature == '' { return error('cannot sign native input: ' + dependency) }
 			signatures << signature
 			hash = c_hash_bytes(hash, (dependency + '\x00' + signature).bytes())
@@ -232,7 +302,7 @@ $if !skip_fastc ? {
 			result := cmdexec.run('/usr/bin/clang', args)
 			if result.exit_code != 0 { return error(result.output) }
 		}
-		v3_fastc_native_publish_library(staged, library, [manifest, preprocessed_manifest], dependencies, signatures, mut stats)!
+		v3_fastc_native_publish_library(staged, library, [manifest, preprocessed_manifest], dependencies, signatures, mut validation.stats)!
 		return V3FastcNativeBridge{ functions: functions.keys(), adapters: adapters, sources: sources, dependencies: dependencies, library: library }
 	}
 
@@ -400,6 +470,24 @@ $if !skip_fastc ? {
 	// of files; every byte is still hashed on each reuse, without reading headers
 	// to infer declarations or relying on timestamps for cache correctness.
 	fn v3_fastc_native_cached_library(manifest string, jobs int) ?V3FastcNativeBridge {
+		cached := v3_fastc_native_read_manifest(manifest)?
+		if !v3_fastc_native_signatures_match(cached.dependencies, cached.signatures, [], jobs) {
+			return none
+		}
+		return V3FastcNativeBridge{ library: cached.library, dependencies: cached.dependencies }
+	}
+
+	struct V3FastcNativeManifest {
+		library      string
+		dependencies []string
+		signatures   []string
+		// reported holds the paths the C compiler reported for the dependencies.
+		reported []string
+	}
+
+	// v3_fastc_native_read_manifest reads a native library manifest whose library
+	// still exists. Its dependencies are not validated here.
+	fn v3_fastc_native_read_manifest(manifest string) ?V3FastcNativeManifest {
 		lines := (os.read_file(manifest) or { return none }).split_into_lines()
 		if lines.len < 3 || lines[0] != 'format=v3-c-object-manifest-v1'
 			|| !lines[1].starts_with('object=') {
@@ -417,12 +505,12 @@ $if !skip_fastc ? {
 			dependencies << entry[..tab]
 			signatures << entry[tab + 1..]
 		}
-		if !v3_fastc_native_signatures_match(dependencies, signatures, jobs) { return none }
-		return V3FastcNativeBridge{ library: library, dependencies: dependencies }
+		return V3FastcNativeManifest{ library: library, dependencies: dependencies, signatures: signatures }
 	}
 
 	// v3_fastc_native_signatures_match hashes every dependency again, concurrently.
-	fn v3_fastc_native_signatures_match(dependencies []string, signatures []string, jobs int) bool {
+	// With `reported` paths, each must also still resolve to its dependency.
+	fn v3_fastc_native_signatures_match(dependencies []string, signatures []string, reported []string, jobs int) bool {
 		workers := if dependencies.len < 64 || jobs < 2 {
 			1
 		} else if jobs < 8 {
@@ -434,15 +522,19 @@ $if !skip_fastc ? {
 		for i in 0 .. workers {
 			start := dependencies.len * i / workers
 			end := dependencies.len * (i + 1) / workers
-			pending << spawn v3_fastc_native_dependencies_match(dependencies[start..end], signatures[start..end])
+			pending << spawn v3_fastc_native_dependencies_match(dependencies[start..end], signatures[start..end],
+				if reported.len == 0 { []string{} } else { reported[start..end] })
 		}
 		mut valid := true
 		for worker in pending { if !worker.wait() { valid = false } }
 		return valid
 	}
 
-	fn v3_fastc_native_dependencies_match(dependencies []string, signatures []string) bool {
+	fn v3_fastc_native_dependencies_match(dependencies []string, signatures []string, reported []string) bool {
 		for i, dependency in dependencies {
+			if reported.len > 0 && os.real_path(reported[i]) != dependency {
+				return false
+			}
 			if v3_fastc_native_read_signature(dependency) != signatures[i] {
 				return false
 			}
@@ -450,7 +542,7 @@ $if !skip_fastc ? {
 		return true
 	}
 
-	fn v3_fastc_native_program_dependencies(pieces []string, units fastc.FastcUnitLayout, flags []string, sdk string, target pref.Target, jobs int) ![]string {
+	fn v3_fastc_native_program_dependencies(pieces []string, units fastc.FastcUnitLayout, flags []string, sdk string, target pref.Target, jobs int, mut validation V3FastcNativeValidation) ![]string {
 		mut source := strings.new_builder(65536)
 		for i in 0 .. units.head_end {
 			index := units.extern_indexes.index(i)
@@ -469,14 +561,15 @@ $if !skip_fastc ? {
 		// Declarations cannot change which headers the C compiler opens. Reuse the
 		// compiler's previous answer for the same directives, compiler and flags while
 		// every listed header keeps its content.
-		mut stats := CObjectCacheStats{}
 		directives_key := c_hash_bytes(u64(1469598103934665603), v3_fastc_preprocessor_lines(text).bytes()).hex()
-		manifest := c_object_manifest_path(dir, os.join_path(dir, 'consumer_directives_' + directives_key + '.c'), '/usr/bin/clang', args, target, mut stats)
+		manifest := c_object_manifest_path(dir, os.join_path(dir, 'consumer_directives_' + directives_key + '.c'), '/usr/bin/clang', args, target, mut validation.stats)
 		canonical_path := os.real_path(path)
-		if cached := v3_fastc_cached_program_dependencies(manifest, jobs) {
-			mut dependencies := cached.clone()
-			dependencies << canonical_path
-			return dependencies
+		if cached := v3_fastc_read_program_dependencies(manifest) {
+			if validation.add(cached.dependencies, cached.signatures, cached.reported, jobs) {
+				mut dependencies := cached.dependencies.clone()
+				dependencies << canonical_path
+				return dependencies
+			}
 		}
 		dependencies := v3_tcc_dylib_program_dependencies('/usr/bin/clang', args, path, '-std=gnu11')!
 		// The TinyCC framework include directory contains symlinks to SDK Headers.
@@ -486,7 +579,7 @@ $if !skip_fastc ? {
 		for i, dependency in dependencies {
 			if canonical[i] != canonical_path { reported << dependency }
 		}
-		v3_fastc_write_program_dependencies(manifest, reported, mut stats)
+		v3_fastc_write_program_dependencies(manifest, reported, mut validation.stats)
 		return canonical
 	}
 
@@ -513,10 +606,21 @@ $if !skip_fastc ? {
 	// while every reported path still resolves to the recorded file and every file keeps
 	// its signature.
 	fn v3_fastc_cached_program_dependencies(manifest string, jobs int) ?[]string {
+		cached := v3_fastc_read_program_dependencies(manifest)?
+		if !v3_fastc_native_signatures_match(cached.dependencies, cached.signatures, cached.reported, jobs) {
+			return none
+		}
+		return cached.dependencies
+	}
+
+	// v3_fastc_read_program_dependencies reads a program dependency manifest without
+	// validating the files it names.
+	fn v3_fastc_read_program_dependencies(manifest string) ?V3FastcNativeManifest {
 		lines := (os.read_file(manifest) or { return none }).split_into_lines()
 		if lines.len < 2 || lines[0] != v3_fastc_program_dependencies_format { return none }
 		mut dependencies := []string{cap: lines.len - 1}
 		mut signatures := []string{cap: lines.len - 1}
+		mut reported := []string{cap: lines.len - 1}
 		for line in lines[1..] {
 			if !line.starts_with('dependency=') { return none }
 			entry := line.all_after('dependency=')
@@ -526,13 +630,13 @@ $if !skip_fastc ? {
 			if resolved_tab == 0 || resolved_tab + 1 >= paths.len || signature_tab + 1 >= entry.len {
 				return none
 			}
-			resolved := paths[resolved_tab + 1..]
-			if os.real_path(paths[..resolved_tab]) != resolved { return none }
-			dependencies << resolved
+			// The workers that hash the files also check that each reported path
+			// still resolves to the recorded file.
+			reported << paths[..resolved_tab]
+			dependencies << paths[resolved_tab + 1..]
 			signatures << entry[signature_tab + 1..]
 		}
-		if !v3_fastc_native_signatures_match(dependencies, signatures, jobs) { return none }
-		return dependencies
+		return V3FastcNativeManifest{ dependencies: dependencies, signatures: signatures, reported: reported }
 	}
 
 	// v3_fastc_preprocessor_lines keeps the lines of generated C that can change what
