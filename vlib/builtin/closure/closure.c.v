@@ -790,8 +790,6 @@ fn closure_init_body() {
 	// Determine system page size
 	mut page_size := get_page_size_platform()
 	g_closure.v_page_size = page_size // Store calculated size
-	g_closure.live = map[voidptr]ClosureLiveInfo{}
-	g_closure.active_lifetimes = map[u64]&ClosureLifetimeState{}
 	g_closure.next_generation = 0
 	g_closure.free_lifetime_states = unsafe { nil }
 	g_closure.next_lifetime_generation = 0
