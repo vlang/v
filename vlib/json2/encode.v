@@ -467,7 +467,8 @@ fn (mut encoder Encoder) encode_map[K, T](val map[K]T) {
 				unsafe { key.free() }
 			}
 		}
-		unsafe { source_keys.free() }
+		raw_source_keys := unsafe { &array(&source_keys) }
+		unsafe { raw_source_keys.free() }
 	}
 	mut keys := []EncoderMapKey[K]{cap: val.len}
 	defer {

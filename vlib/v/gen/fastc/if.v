@@ -1733,6 +1733,11 @@ fn fastc_box_expression(value_type string, expression string) string {
 	return '({ ${storage_type} __vf_bv = (${expression}); v_fastc_interface_box(&__vf_bv, sizeof(${storage_type})); })'
 }
 
+fn fastc_heap_copy_expression(value_type string, expression string) string {
+	storage_type := fastc_output_c_type(value_type)
+	return '({ ${storage_type} __vf_heap_value = (${expression}); v_fastc_heap_copy(&__vf_heap_value, sizeof(${storage_type})); })'
+}
+
 // read_if_expression_multi_return_guard lowers `if a, b := opt_multi() { x } else { y }`
 // used as an expression: the option is unwrapped, its multi-return components bound in
 // the then-branch, and the selected branch's value produced as a statement-expression.

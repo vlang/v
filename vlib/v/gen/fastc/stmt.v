@@ -1409,7 +1409,7 @@ fn (mut g Parser) parse_return() !bool {
 				} else {
 					g.return_type_text()
 				}
-				expression = '({ ${flat.source_type_name(local_type)} ${temporary} = (${fastc_c_value_identifier(local_name)}); (${pointer_text})v_fastc_interface_box(&${temporary}, sizeof(${flat.source_type_name(local_type)})); })'
+				expression = '({ ${flat.source_type_name(local_type)} ${temporary} = (${fastc_c_value_identifier(local_name)}); (${pointer_text})v_fastc_heap_copy(&${temporary}, sizeof(${flat.source_type_name(local_type)})); })'
 			}
 		}
 	}
@@ -1551,7 +1551,7 @@ fn (g &Parser) interface_value_expression(interface_type_source_id u32, actual_t
 		}
 		value_type := flat.source_type_syntax(interface_type_source_id).c_pointer_base()
 		value := g.interface_value_expression(value_type, actual_type_source_id, expression)
-		return '({ ${flat.source_type_name(value_type)} __vf_iface_ref = (${value}); (${interface_type})v_fastc_interface_box(&__vf_iface_ref, sizeof(${flat.source_type_name(value_type)})); })'
+		return '({ ${flat.source_type_name(value_type)} __vf_iface_ref = (${value}); (${interface_type})v_fastc_heap_copy(&__vf_iface_ref, sizeof(${flat.source_type_name(value_type)})); })'
 	}
 	actual_layout := g.underlying_alias_type(actual_type_source_id)
 	if interface_type in g.sum_types && actual_layout == interface_type_source_id {
