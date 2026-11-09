@@ -32,6 +32,13 @@ pub fn optimize_with_options(mut m ssa.Module, opts OptimizeOptions) {
 	verify_ssa(m, 'initial normalization')
 	verify_pipeline_checkpoint(m, opts, 'input')
 
+	if opts.mem2reg {
+		inline_functions(mut m)
+		rebuild_use_lists(mut m)
+		build_cfg(mut m)
+		verify_pipeline_checkpoint(m, opts, 'inline')
+	}
+
 	constant_fold(mut m)
 
 	branch_fold(mut m)
@@ -51,6 +58,9 @@ pub fn optimize_with_options(mut m ssa.Module, opts OptimizeOptions) {
 		merge_blocks(mut m)
 		// Unreachable-block removal detaches its instruction uses incrementally;
 		// merge_blocks leaves the final CFG current after batching block edits.
+		// Inlining a function that never returns leaves its continuation block
+		// unreachable; phis must forget edges from blocks that are now gone.
+		prune_phi_operands(mut m)
 
 		// Structural SSA construction: dominators -> mem2reg -> simplify phis.
 		cfg := cfg_data_from_module(m)
@@ -60,6 +70,13 @@ pub fn optimize_with_options(mut m ssa.Module, opts OptimizeOptions) {
 		verify_pipeline_checkpoint(m, opts, 'mem2reg')
 		simplify_phi_nodes(mut m)
 		verify_pipeline_checkpoint(m, opts, 'simplify_phi')
+		// With locals in SSA form, later passes can see through them.
+		constant_fold(mut m)
+		common_subexpression_elimination(mut m)
+		verify_pipeline_checkpoint(m, opts, 'cse')
+		optimize_memory(mut m)
+		verify_pipeline_checkpoint(m, opts, 'memory')
+		simplify_phi_nodes(mut m)
 	}
 
 	// Phi elimination lowers phis to assign copies for backends that cannot

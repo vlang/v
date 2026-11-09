@@ -33,6 +33,10 @@ fn constant_fold(mut m ssa.Module) bool {
 					continue
 				}
 
+				if rewrite_power_of_two(mut m, val_id, instr, lhs, rhs) {
+					changed = true
+					continue
+				}
 				// Algebraic simplifications first (work even with non-constant operands):
 				// x+0, x*1, x*0, x-x, x^x, x&x, x|x, x<<0, x*2 -> x<<1, etc.
 				repl, needs_zero := try_algebraic_simplify(m, val_id, instr, lhs, rhs)
@@ -362,4 +366,43 @@ fn branch_fold(mut m ssa.Module) bool {
 		}
 	}
 	return changed
+}
+
+// rewrite_power_of_two applies the strength reductions of Go's generic rules
+// (_gen/generic.rules): `x * 2^k` to a shift, and unsigned `x / 2^k` and
+// `x % 2^k` to a shift and a mask.
+fn rewrite_power_of_two(mut m ssa.Module, val_id ssa.ValueID, instr ssa.Instruction, lhs ssa.Value, rhs ssa.Value) bool {
+	if instr.op !in [.mul, .udiv, .urem] || (lhs.kind == .constant && rhs.kind == .constant) {
+		return false
+	}
+	mut constant := rhs
+	mut operand := instr.operands[0]
+	if instr.op == .mul && lhs.kind == .constant {
+		constant = lhs
+		operand = instr.operands[1]
+	}
+	if constant.kind != .constant || constant.name == 'undef' {
+		return false
+	}
+	value := integer_constant_value(m, constant) or { return false }
+	if value <= 1 || value & (value - 1) != 0 {
+		return false
+	}
+	mut shift := 0
+	for (i64(1) << shift) != value {
+		shift++
+	}
+	typ := m.values[val_id].typ
+	match instr.op {
+		.mul {
+			m.rewrite_instruction(val_id, .shl, [operand, m.get_or_add_const(typ, shift.str())])
+		}
+		.udiv {
+			m.rewrite_instruction(val_id, .lshr, [operand, m.get_or_add_const(typ, shift.str())])
+		}
+		else {
+			m.rewrite_instruction(val_id, .and_, [operand, m.get_or_add_const(typ, (value - 1).str())])
+		}
+	}
+	return true
 }
