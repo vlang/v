@@ -1,0 +1,7 @@
+package example:demo@0.1.0;
+
+@since(version = 0.1.0)
+interface types {
+	@deprecated
+	old: func() -> u32;
+}

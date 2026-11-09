@@ -1,0 +1,6 @@
+package example:demo@0.1.0;
+
+interface types {
+	resource handle {}
+	take: func(h: own<handle>) -> borrow<handle>;
+}

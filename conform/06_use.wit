@@ -1,0 +1,10 @@
+package example:demo@0.1.0;
+
+interface base {
+	x: func() -> u32;
+}
+
+interface derived {
+	use base.{x};
+	y: func() -> u32;
+}

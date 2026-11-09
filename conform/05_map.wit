@@ -1,0 +1,5 @@
+package example:demo@0.1.0;
+
+interface types {
+	map-fn: func() -> map<string, u32>;
+}

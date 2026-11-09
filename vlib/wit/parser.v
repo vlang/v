@@ -181,14 +181,22 @@ fn (mut p Parser) parse_use() !WitUse {
 	p.expect_ident_val('use')!
 	// path may contain / and :
 	mut path := p.expect_ident()!
-	for p.peek().kind == .punct && (p.peek().val == '/' || p.peek().val == ':') {
+	for p.peek().kind == .punct && (p.peek().val == '/' || p.peek().val == ':' || p.peek().val == '@') {
 		// careful: ':' ends path? use foo.{bar}; path is before '{'
 		if p.peek().val == ':' && p.idx + 1 < p.toks.len && p.toks[p.idx + 1].val == '{' {
 			break
 		}
 		tok := p.peek().val
 		p.advance()
-		if tok == ':' {
+		if tok == '@' {
+			// version may contain dots
+			mut ver := ''
+			for p.peek().kind == .ident || (p.peek().kind == .punct && p.peek().val == '.' && p.idx + 1 < p.toks.len && p.toks[p.idx + 1].kind == .ident) {
+				ver += p.peek().val
+				p.advance()
+			}
+			path += '@' + ver
+		} else if tok == ':' {
 			// maybe namespace:name, keep
 			path += ':'
 			path += p.expect_ident()!
@@ -432,10 +440,15 @@ fn (mut p Parser) parse_type() !WitType {
 			p.expect_punct('>')!
 			return WitType{ kind: .tuple, items: items }
 		}
-		// own/borrow -> named
-		t := p.parse_type()!
+		// own/borrow/map/other -> named, consuming all comma-separated args
+		mut args := []string{}
+		args << p.parse_type()!.str()
+		for p.peek().kind == .punct && p.peek().val == ',' {
+			p.advance()
+			args << p.parse_type()!.str()
+		}
 		p.expect_punct('>')!
-		return WitType{ kind: .named, name: '${name}<${t.str()}>' }
+		return WitType{ kind: .named, name: '${name}<${args.join(", ")}>' }
 	}
 	if is_prim_name(name) {
 		return prim_type(name)

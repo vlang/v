@@ -1,0 +1,10 @@
+package example:demo@0.1.0;
+
+world base {
+	import x: func() -> u32;
+}
+
+world derived {
+	include base;
+	export y: func() -> u32;
+}
