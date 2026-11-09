@@ -60,6 +60,48 @@ fn test_wasi_fs_types_codegen_compiles() {
 	assert res.exit_code == 0, res.output
 }
 
+fn test_validate_unknown_type() {
+	src := 'package p:q;
+
+interface i {
+	f: func(x: unknown_type) -> u32;
+}
+'
+	doc := parse(src) or { panic(err) }
+	validate(doc) or {
+		assert err.msg().contains('error_unknown_type')
+		return
+	}
+	panic('expected error')
+}
+
+fn test_validate_duplicate_name() {
+	src := 'package p:q;
+
+interface i {
+	x: func() -> u32;
+	x: func() -> u32;
+}
+'
+	doc := parse(src) or { panic(err) }
+	validate(doc) or {
+		assert err.msg().contains('error_duplicate_name')
+		return
+	}
+	panic('expected error')
+}
+
+fn test_validate_valid() {
+	src := 'package p:q;
+
+interface i {
+	f: func(x: u32) -> u32;
+}
+'
+	doc := parse(src) or { panic(err) }
+	validate(doc) or { panic(err) }
+}
+
 fn test_parse_list_option_result() {
 	src := '
 package p:q;
