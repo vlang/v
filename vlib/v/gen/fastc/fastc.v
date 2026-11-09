@@ -3497,6 +3497,8 @@ fn fastc_native_function_only_headers(sources []FastcSourceFile, functions map[s
 fn fastc_native_bridge_declarations(functions map[string]FastcFunctionSignature, context FastcNativeSourceContext, vroot string) map[string]string {
 	mut declarations := map[string]string{}
 	vlib_root := os.real_path(os.join_path(vroot, 'vlib')) + os.path_separator
+	// One file declares many C functions; resolve each declaring path once.
+	mut in_vlib := map[string]bool{}
 	for key, signature in functions {
 		if !key.starts_with('C.') || signature.is_disabled { continue }
 		name := key[2..]
@@ -3510,7 +3512,12 @@ fn fastc_native_bridge_declarations(functions map[string]FastcFunctionSignature,
 		}
 		paths := context.declaration_paths[name]
 		for path in paths {
-			if !os.real_path(path).starts_with(vlib_root) || path.contains('/vlib/macos/')
+			path_in_vlib := in_vlib[path] or {
+				resolved_in_vlib := os.real_path(path).starts_with(vlib_root)
+				in_vlib[path] = resolved_in_vlib
+				resolved_in_vlib
+			}
+			if !path_in_vlib || path.contains('/vlib/macos/')
 				|| (context.local_headers[path] or { []string{} }).any(it.ends_with('.m') || it.ends_with('.mm')) {
 				declarations[name] = fastc_native_function_declaration(name, signature)
 				break
