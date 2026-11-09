@@ -9563,9 +9563,8 @@ fn (mut b Builder) reset_function_state() {
 	b.pending_loop_label = ''
 	b.loop_targets.clear()
 	template := b.module_var_template()
-	b.vars = VarTable{
-		base: template
-	}
+	b.vars.clear()
+	b.vars.base = template
 	b.var_type_names.base = &template.type_names
 }
 
