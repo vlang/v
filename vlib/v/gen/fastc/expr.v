@@ -3037,25 +3037,25 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			if piece in ['.', '->'] && expression_tokens.len >= 2 {
 				dot_index := expression_tokens.len - 1
 				receiver_start := fastc_method_receiver_start(expression_tokens, dot_index)
-				receiver_tokens := expression_tokens[receiver_start..dot_index]
+				receiver_len := dot_index - receiver_start
 				// Infer the whole receiver first: this also types parenthesized (`(x)` from an
 				// unsafe block) and call (`mk()`) roots, which infer_member_access_type cannot.
 				// A plain local receiver is typed from its declaration directly; full inference
 				// runs once per field access, so the common case must not pay for it.
 				mut receiver_type := u32(0)
-				if receiver_tokens.len == 1 && receiver_tokens[0].tok == .name && receiver_tokens[0].typ == 0
-					&& receiver_tokens[0].lit !in g.member_smartcasts {
-					if local := g.locals[receiver_tokens[0].lit] {
+				if receiver_len == 1 && expression_tokens[receiver_start].tok == .name && expression_tokens[receiver_start].typ == 0
+					&& expression_tokens[receiver_start].lit !in g.member_smartcasts {
+					if local := g.locals[expression_tokens[receiver_start].lit] {
 						if local.smartcast_origin_type == 0 {
 							receiver_type = local.typ
 						}
 					}
 				}
 				if receiver_type == 0 {
-					receiver_type = g.infer_expression_type(receiver_tokens) or { u32(0) }
+					receiver_type = g.infer_expression_type_range(expression_tokens, receiver_start, dot_index) or { u32(0) }
 				}
-				if receiver_type == 0 && receiver_tokens.len >= 3 {
-					receiver_type = g.infer_member_access_type(receiver_tokens, 0, receiver_tokens.len) or { u32(0) }
+				if receiver_type == 0 && receiver_len >= 3 {
+					receiver_type = g.infer_member_access_type(expression_tokens, receiver_start, dot_index) or { u32(0) }
 				}
 				if receiver_type != 0 {
 					piece = if fastc_is_pointer_type(g.underlying_alias_type(receiver_type)) {
