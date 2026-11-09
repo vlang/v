@@ -29,6 +29,8 @@ pub mut:
 	symbols     []Symbol
 	str_table   []u8
 	sym_by_name map[string]int // symbol name → index in symbols
+	// callee-saved register pairs each function saves, for `__compact_unwind`
+	unwind_saved_pairs map[string]int
 }
 
 // RelocationInfo stores relocation info metadata used by arm64.
@@ -62,6 +64,7 @@ pub fn MachOObject.new() &MachOObject {
 		symbols:     []Symbol{}
 		str_table:   [u8(0)]
 		sym_by_name: map[string]int{}
+		unwind_saved_pairs: map[string]int{}
 	}
 	return m
 }
@@ -434,7 +437,8 @@ fn (m &MachOObject) compact_unwind(reloc_index []int, shadowed map[int]bool) ([]
 		write_u32_le(mut relocs, (u32(reloc_index[index]) & 0xffffff) | (3 << 25) | (1 << 27))
 		write_u64_le(mut entries, 0) // the function: an external relocation's addend
 		write_u32_le(mut entries, u32(end - start))
-		write_u32_le(mut entries, unwind_arm64_mode_frame)
+		saved_pairs := m.unwind_saved_pairs[m.symbols[index].name] or { 0 }
+		write_u32_le(mut entries, unwind_arm64_mode_frame | ((u32(1) << saved_pairs) - 1))
 		write_u64_le(mut entries, 0) // personality
 		write_u64_le(mut entries, 0) // LSDA
 	}

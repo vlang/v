@@ -17,6 +17,10 @@ mut:
 	slot_value_base      int
 	slot_value_count     int
 	stack_size           int
+	saved_callee_pairs   int
+	current_instr_start  int
+	value_homes          []u8
+	value_home_ids       []int
 	transient_stack_size int
 	block_offsets        []i32
 	block_offset_indices []int
@@ -197,6 +201,9 @@ fn (mut g Gen) merge_gen_chunk(chunk &Gen, chunk_index int) {
 		} else {
 			g.macho.add_symbol(name, symbol.value, true, symbol.sect)
 		}
+	}
+	for name, pairs in chunk.macho.unwind_saved_pairs {
+		g.macho.unwind_saved_pairs[name] = pairs
 	}
 	for relocation in chunk.macho.relocs {
 		g.macho.add_reloc(relocation.addr + text_base, symbol_map[relocation.sym_idx], relocation.type_, relocation.pcrel)
@@ -587,9 +594,10 @@ fn (mut g Gen) gen_func(func_idx int) {
 	// Frame layout (all at negative offsets from fp):
 	// fp + 0: saved fp
 	// fp + 8: saved lr
-	// fp - 8: first local slot
-	// fp - 16: second local slot ...
-	mut slot_offset := 0
+	// fp - 8, fp - 16, ...: the callee-saved pairs this function uses
+	// below them: local slots
+	g.saved_callee_pairs = g.regalloc_function(&func)
+	mut slot_offset := g.saved_callee_pairs * 16
 	g.cur_func_ret_type = func.typ
 	g.cur_func_sret_offset = 0
 	if g.is_large_struct_type(func.typ) {
@@ -648,7 +656,7 @@ fn (mut g Gen) gen_func(func_idx int) {
 				g.set_alloca_slot(val_id, -slot_offset, alloc_size, alignment)
 				slot_offset += 8
 			} else if instr.op != .store && instr.op != .ret && instr.op != .br && instr.op != .jmp
-				&& instr.op != .unreachable {
+				&& instr.op != .unreachable && g.value_home_reg(val_id) == 0 {
 				slot_offset = g.reserve_value_stack_slot(val_id, slot_offset)
 			}
 		}
@@ -665,6 +673,10 @@ fn (mut g Gen) gen_func(func_idx int) {
 	g.emit32(asm_stp_fp_lr_pre())
 	g.emit32(asm_mov_fp_sp())
 	g.emit_frame_allocation(g.stack_size)
+	g.emit_save_callee_pairs(g.saved_callee_pairs)
+	if g.saved_callee_pairs > 0 {
+		g.macho.unwind_saved_pairs[sym_name] = g.saved_callee_pairs
+	}
 	if g.cur_func_sret_offset != 0 {
 		g.emit_store_fp(8, g.cur_func_sret_offset)
 	}
@@ -1045,6 +1057,7 @@ fn (g &Gen) stack_alloca_remaining(ptr_id int) ?int {
 
 // gen_instr emits instr output for arm64.
 fn (mut g Gen) gen_instr(val_id int) {
+	g.current_instr_start = g.text_words.len
 	if val_id <= 0 || val_id >= g.m.values.len {
 		return
 	}
@@ -1464,11 +1477,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 						g.emit_store_reg_offset(Reg(8), Reg(9), wi * 8)
 					}
 				}
-				if g.stack_size > 0 {
-					g.emit_add_sp(g.stack_size)
-				}
-				g.emit32(asm_ldp_fp_lr_post())
-				g.emit32(asm_ret())
+				g.emit_function_return()
 				return
 			}
 			// Float returns go in d0 (s0 for f32). Load the return value as a
@@ -1481,11 +1490,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 				if g.is_f32_type(g.cur_func_ret_type) {
 					g.emit32(asm_fcvt_s_d(0, 0))
 				}
-				if g.stack_size > 0 {
-					g.emit_add_sp(g.stack_size)
-				}
-				g.emit32(asm_ldp_fp_lr_post())
-				g.emit32(asm_ret())
+				g.emit_function_return()
 				return
 			}
 			if instr.operands.len > 0 && instr.operands[0] > 0 {
@@ -1522,11 +1527,7 @@ fn (mut g Gen) gen_instr(val_id int) {
 				g.emit_mov_imm(0, 0)
 			}
 			// Epilogue
-			if g.stack_size > 0 {
-				g.emit_add_sp(g.stack_size)
-			}
-			g.emit32(asm_ldp_fp_lr_post())
-			g.emit32(asm_ret())
+			g.emit_function_return()
 		}
 		.br {
 			if instr.operands.len < 3 {
@@ -2119,7 +2120,10 @@ fn (mut g Gen) load_float_bits_to_reg(val_id int, reg int) {
 			return
 		}
 	}
-	g.load_val(val_id, reg)
+	home := g.load_val(val_id, reg)
+	if home != reg {
+		g.emit32(asm_mov_reg(Reg(reg), Reg(home)))
+	}
 }
 
 // call_stack_arg_size updates call stack arg size state for Gen.
@@ -2272,6 +2276,10 @@ fn (mut g Gen) load_val(val_id int, reg int) int {
 		g.emit_mov_imm(reg, 0)
 		return reg
 	}
+	home := g.value_home_reg(val_id)
+	if home != 0 {
+		return home
+	}
 	val := g.m.values[val_id]
 	match val.kind {
 		.constant {
@@ -2343,6 +2351,13 @@ fn (mut g Gen) load_val(val_id int, reg int) int {
 
 // store_val supports store val handling for Gen.
 fn (mut g Gen) store_val(reg int, val_id int) {
+	home := g.value_home_reg(val_id)
+	if home != 0 {
+		if reg != home && !g.retarget_last_instruction(reg, home) {
+			g.emit32(asm_mov_reg(Reg(home), Reg(reg)))
+		}
+		return
+	}
 	if off := g.stack_slot(val_id) {
 		g.emit_store_fp(reg, off)
 	}

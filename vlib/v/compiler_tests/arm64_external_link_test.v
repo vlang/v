@@ -346,3 +346,49 @@ fn main() {
 		}
 	}
 }
+
+// V functions use x19-x28 and restore them, as a C caller that keeps a value
+// there expects.
+fn test_arm64_v_callbacks_preserve_callee_saved_registers() {
+	$if macos && arm64 {
+		root := os.join_path(os.vtmp_dir(), 'arm64_external_callee_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(root, 'v.mod'), '')!
+		os.write_file(os.join_path(root, 'keep.h'), 'long v_clobber(long n);
+static inline long keep_x19(long n) {
+	register long kept __asm__("x19") = 77;
+	__asm__("" : "+r"(kept));
+	long result = v_clobber(n);
+	__asm__("" : "+r"(kept));
+	return kept * 1000 + result;
+}
+')!
+		os.write_file(os.join_path(root, 'main.v'), "#include \"@VMODROOT/keep.h\"
+
+fn C.keep_x19(n i64) i64
+
+@[export: 'v_clobber']
+fn v_clobber(n i64) i64 {
+	mut total := i64(0)
+	for i in 0 .. n {
+		total += i * 3
+	}
+	return total
+}
+
+fn main() {
+	println(C.keep_x19(10))
+}
+")!
+		output := os.join_path(root, 'main')
+		compiled := cmdexec.run(@VEXE, ['-b', 'arm64', '-o', output, os.join_path(root, 'main.v')])
+		assert compiled.exit_code == 0, compiled.output
+		run := cmdexec.run(output, []string{})
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == '77135', run.output
+	}
+}
