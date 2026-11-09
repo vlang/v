@@ -6743,7 +6743,12 @@ fn (mut b Builder) register_pthread_compat_stubs() {
 	p_create << ptr_i8
 	p_create << ptr_i8
 	if create_id := b.register_runtime_c_function('v3_pthread_create', b.i32_type, p_create) {
-		b.generate_pthread_create_body(create_id)
+		// Without real atomics, a target stays on the pool's synchronous fallback.
+		if b.target_lowers_atomics() {
+			b.generate_pthread_create_body(create_id)
+		} else {
+			b.generate_const_body_with_params(create_id, b.i32_type, '11', p_create)
+		}
 	}
 	mut p_setkind := []TypeID{}
 	p_setkind << ptr_i8
