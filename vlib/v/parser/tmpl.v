@@ -832,6 +832,7 @@ fn (mut p Parser) process_tmpl_includes(source_line TemplateSourceLine, mut seen
 		}
 		return []
 	}
+	p.add_node(flat.veb_template_input_node(file_path))
 	// Mark this file as on the current recursion stack while its own includes are
 	// resolved, then pop it so a later sibling include of the same file still expands.
 	seen[file_path] = true
@@ -921,6 +922,7 @@ fn (mut p Parser) compile_template_file(template_file string, bname string, esca
 		return "mut ${bname} := ''\n", []TemplateSourceLine{}
 	}
 	root_path := os.real_path(template_file)
+	p.add_node(flat.veb_template_input_node(root_path))
 	mut lines := []TemplateSourceLine{cap: raw_lines.len}
 	for line_index, line in raw_lines {
 		lines << TemplateSourceLine{

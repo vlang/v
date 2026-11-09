@@ -12451,13 +12451,15 @@ pub fn run(args []string) {
 		}
 		mut watched_files := watched.keys()
 		watched_files.sort()
-		// `$embed_file` reads a non-V file at compile time and puts its bytes in the binary,
-		// which makes it a build input exactly like a source file: changing it has to
+		// `$embed_file` and `$tmpl` read non-V files at compile time and put them in the binary,
+		// which makes them build inputs exactly like a source file: changing one has to
 		// invalidate a cached build, and `v watch` has to rebuild on it. `-print-v-files` is
 		// deliberately left reporting V sources only, the way its name says.
 		mut watched_with_resources := watched_files.clone()
 		mut additional_inputs := map[string]bool{}
-		for resource in embedded_resource_paths(a) {
+		mut resources := embedded_resource_paths(a)
+		resources << template_input_paths(a)
+		for resource in resources {
 			if resource !in watched {
 				additional_inputs[resource] = true
 			}
@@ -22271,6 +22273,21 @@ fn embedded_resource_paths(a &flat.FlatAst) []string {
 			if value.kind == .string_literal && value.value != '' {
 				paths[value.value] = true
 			}
+		}
+	}
+	mut result := paths.keys()
+	result.sort()
+	return result
+}
+
+// template_input_paths returns the files that the `$tmpl` and `$veb.html` templates of
+// this build read, `@include`d ones among them.
+fn template_input_paths(a &flat.FlatAst) []string {
+	mut paths := map[string]bool{}
+	for index in 0 .. a.nodes.len {
+		node := a.nodes[index]
+		if node.is_veb_template_input() {
+			paths[node.value] = true
 		}
 	}
 	mut result := paths.keys()
