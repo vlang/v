@@ -24,7 +24,7 @@ jobs:
       matrix:
         # V3 (vlib/v, `-new-compiler`) is the default compiler on macOS, so
         # exercise it on every arm64 (Apple-silicon) runner image, not just one.
-        os: [macos-14, macos-15, macos-26]
+        os: [macos-15, macos-26]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     timeout-minutes: 120
@@ -320,7 +320,7 @@ jobs:
     if: github.ref == 'refs/heads/master'
     strategy:
       matrix:
-        os: [macos-14, macos-15, macos-26]
+        os: [macos-15, macos-26]
         # Three shards still reach the 90-minute limit on macOS 26.
         # Shard 0 runs in clang-macos; keep the count identical in both jobs.
         shard: [1, 2, 3, 4]
