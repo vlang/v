@@ -70,10 +70,13 @@ pub fn (d WitDoc) to_v() string {
 						out << 'pub type ${to_v_type_name(t.name)} = ${wit_type_to_v(t.typ)}'
 					}
 				}
+				.use {
+					if u := it.use_ {
+						out << '// use ${u.path} { ${u.items.join(', ')} }'
+					}
+				}
 				.func {
 					if f := it.func {
-						params := f.params.map('${to_v_ident(it.name)} ${wit_type_to_v(it.typ)}'.replace(it.name, it.name)).join(', ')
-						_ = params
 						mut ps := []string{}
 						for p in f.params { ps << '${to_v_ident(p.name)} ${wit_type_to_v(p.typ)}' }
 						mut rs := 'void'
