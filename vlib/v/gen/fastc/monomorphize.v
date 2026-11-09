@@ -898,14 +898,15 @@ fn fastc_monomorphize_functions(sources []FastcSourceFile, prefs &pref.Preferenc
 // fastc_monomorphize_functions_once rewrites `sources` for one round, returning the
 // new sources and whether any generic was monomorphized (so the caller can iterate).
 fn fastc_monomorphize_functions_once(sources []FastcSourceFile, prefs &pref.Preferences) !([]FastcSourceFile, bool) {
-	mut generics := []FastcGenericFn{}
+	mut entry_indexes := []int{}
 	for i, source_file in sources {
-		if !fastc_is_entry_module(sources, source_file.header.module_name, prefs) {
-			continue
+		if fastc_is_entry_module(sources, source_file.header.module_name, prefs) {
+			entry_indexes << i
 		}
-		for generic in fastc_scan_generic_fns(source_file.source, source_file.path, prefs, i) {
-			generics << generic
-		}
+	}
+	mut generics := []FastcGenericFn{}
+	for file_generics in fastc_scan_generic_fns_of_files(sources, prefs, entry_indexes) {
+		generics << file_generics
 	}
 	if generics.len == 0 {
 		return sources, false
@@ -942,11 +943,19 @@ fn fastc_monomorphize_functions_once(sources []FastcSourceFile, prefs &pref.Pref
 	mut pairs := []FastcConcretePair{}
 	mut seen_pair := map[string]bool{}
 	mut has_concrete := map[string]bool{}
-	for i, source_file in sources {
-		if !fastc_is_entry_module(sources, source_file.header.module_name, prefs) {
-			continue
+	// Files are scanned apart and merged in source order, as one in-order scan would
+	// record them.
+	for scan in fastc_scan_generic_calls_of_files(sources, prefs, entry_indexes, by_name) {
+		if scan.error_message != '' {
+			return error(scan.error_message)
 		}
-		fastc_scan_generic_calls(source_file.source, source_file.path, prefs, i, by_name, mut calls, mut unresolvable, mut pairs, mut seen_pair, mut has_concrete)!
+		calls << scan.calls
+		for name, _ in scan.unresolvable {
+			unresolvable[name] = true
+		}
+		for pair in scan.pairs {
+			fastc_record_concrete(pair.name, pair.concrete, mut pairs, mut seen_pair, mut has_concrete)
+		}
 	}
 	// A generic is monomorphized only when every call resolves.
 	mut active := map[string]bool{}
@@ -1982,6 +1991,40 @@ fn fastc_record_var(name string, typ u32, mut var_types map[string]u32, mut var_
 		var_types[name] = typ
 	} else if existing != typ {
 		var_ambiguous[name] = true
+	}
+}
+
+// FastcGenericCallScan is what fastc_scan_generic_calls records for one file.
+struct FastcGenericCallScan {
+mut:
+	calls         []FastcGenericCall
+	unresolvable  map[string]bool
+	pairs         []FastcConcretePair
+	seen_pair     map[string]bool
+	has_concrete  map[string]bool
+	error_message string
+}
+
+// fastc_scan_generic_calls_of_file scans one file's generic calls on their own.
+fn fastc_scan_generic_calls_of_file(sources []FastcSourceFile, prefs &pref.Preferences, index int, by_name map[string]FastcGenericFn) FastcGenericCallScan {
+	source_file := sources[index]
+	mut calls := []FastcGenericCall{}
+	mut unresolvable := map[string]bool{}
+	mut pairs := []FastcConcretePair{}
+	mut seen_pair := map[string]bool{}
+	mut has_concrete := map[string]bool{}
+	fastc_scan_generic_calls(source_file.source, source_file.path, prefs, index, by_name, mut calls, mut
+		unresolvable, mut pairs, mut seen_pair, mut has_concrete) or {
+		return FastcGenericCallScan{
+			error_message: err.msg()
+		}
+	}
+	return FastcGenericCallScan{
+		calls:        calls
+		unresolvable: unresolvable
+		pairs:        pairs
+		seen_pair:    seen_pair
+		has_concrete: has_concrete
 	}
 }
 

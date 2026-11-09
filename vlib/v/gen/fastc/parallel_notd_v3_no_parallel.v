@@ -1221,6 +1221,109 @@ fn fastc_parse_constant_file_worker(ctx &FastcConstantGenContext, candidates []F
 	return results
 }
 
+struct FastcIndexedGenericFns {
+	index    int
+	generics []FastcGenericFn
+}
+
+fn fastc_scan_generic_fns_worker(sources []FastcSourceFile, prefs &pref.Preferences, indexes []int, queue &FastcGenQueue) []FastcIndexedGenericFns {
+	mut results := []FastcIndexedGenericFns{}
+	for {
+		slot := fastc_atomic_fetch_add_u32(&queue.next, 1)
+		if slot >= u32(indexes.len) {
+			break
+		}
+		index := indexes[slot]
+		results << FastcIndexedGenericFns{
+			index:    int(slot)
+			generics: fastc_scan_generic_fns(sources[index].source, sources[index].path, prefs,
+				index)
+		}
+	}
+	return results
+}
+
+// fastc_scan_generic_fns_of_files scans the generic functions of the files at
+// `indexes` on parallel workers, returning them per file in `indexes` order.
+fn fastc_scan_generic_fns_of_files(sources []FastcSourceFile, prefs &pref.Preferences, indexes []int) [][]FastcGenericFn {
+	mut results := [][]FastcGenericFn{len: indexes.len}
+	jobs := fastc_parallel_job_count(indexes.len, prefs)
+	if jobs <= 1 {
+		for slot, index in indexes {
+			results[slot] = fastc_scan_generic_fns(sources[index].source, sources[index].path, prefs,
+				index)
+		}
+		return results
+	}
+	mut queue := &FastcGenQueue{
+		next: 0
+	}
+	second_thread := spawn fastc_scan_generic_fns_worker(sources, prefs, indexes, queue)
+	mut threads := [second_thread]
+	for _ in 2 .. jobs {
+		threads << spawn fastc_scan_generic_fns_worker(sources, prefs, indexes, queue)
+	}
+	for indexed in fastc_scan_generic_fns_worker(sources, prefs, indexes, queue) {
+		results[indexed.index] = indexed.generics
+	}
+	for worker in threads {
+		for indexed in worker.wait() {
+			results[indexed.index] = indexed.generics
+		}
+	}
+	return results
+}
+
+struct FastcIndexedGenericCallScan {
+	index int
+	scan  FastcGenericCallScan
+}
+
+fn fastc_scan_generic_calls_worker(sources []FastcSourceFile, prefs &pref.Preferences, indexes []int, by_name map[string]FastcGenericFn, queue &FastcGenQueue) []FastcIndexedGenericCallScan {
+	mut results := []FastcIndexedGenericCallScan{}
+	for {
+		slot := fastc_atomic_fetch_add_u32(&queue.next, 1)
+		if slot >= u32(indexes.len) {
+			break
+		}
+		results << FastcIndexedGenericCallScan{
+			index: int(slot)
+			scan:  fastc_scan_generic_calls_of_file(sources, prefs, indexes[slot], by_name)
+		}
+	}
+	return results
+}
+
+// fastc_scan_generic_calls_of_files scans the generic calls of the files at
+// `indexes` on parallel workers, returning each file's scan in `indexes` order.
+fn fastc_scan_generic_calls_of_files(sources []FastcSourceFile, prefs &pref.Preferences, indexes []int, by_name map[string]FastcGenericFn) []FastcGenericCallScan {
+	mut results := []FastcGenericCallScan{len: indexes.len}
+	jobs := fastc_parallel_job_count(indexes.len, prefs)
+	if jobs <= 1 {
+		for slot, index in indexes {
+			results[slot] = fastc_scan_generic_calls_of_file(sources, prefs, index, by_name)
+		}
+		return results
+	}
+	mut queue := &FastcGenQueue{
+		next: 0
+	}
+	second_thread := spawn fastc_scan_generic_calls_worker(sources, prefs, indexes, by_name, queue)
+	mut threads := [second_thread]
+	for _ in 2 .. jobs {
+		threads << spawn fastc_scan_generic_calls_worker(sources, prefs, indexes, by_name, queue)
+	}
+	for indexed in fastc_scan_generic_calls_worker(sources, prefs, indexes, by_name, queue) {
+		results[indexed.index] = indexed.scan
+	}
+	for worker in threads {
+		for indexed in worker.wait() {
+			results[indexed.index] = indexed.scan
+		}
+	}
+	return results
+}
+
 // fastc_parse_constant_files_parallel parses every candidate file's constants
 // on parallel workers, each starting from the phase's initial constant types.
 // It returns an empty list when the phase runs serially.

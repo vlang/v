@@ -2450,6 +2450,20 @@ fn (mut g Parser) render_expression_stream_token(mut expression_tokens []FastcEx
 	}
 }
 
+// fastc_tokens_end_with_array_type_prefix reports whether the tokens read so far
+// end in an array type prefix (`[]`, `[]?`, `[][]`) that is not an index, so a
+// following `fn` is the element type (`d.callbacks = []fn () {}`), not a literal.
+fn fastc_tokens_end_with_array_type_prefix(tokens []FastcExpressionToken) bool {
+	mut start := tokens.len
+	for start > 0 && tokens[start - 1].tok in [.lsbr, .rsbr, .question] {
+		start--
+	}
+	if tokens.len - start < 2 || tokens[start].tok != .lsbr || tokens[start + 1].tok != .rsbr {
+		return false
+	}
+	return start == 0 || tokens[start - 1].tok !in [.name, .rpar]
+}
+
 fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []token.Token, allow_mutation_statement bool, allow_declaration_guard bool, allow_newline_value_continuation bool) !string {
 	if prefix == '' && g.tok == .lcbr && token.Token.lcbr !in stops {
 		return g.read_inferred_map_literal()!
@@ -2759,8 +2773,7 @@ fn (mut g Parser) read_expression_with_prefix_mode_impl(prefix string, stops []t
 			previous_token_end = g.s.pos
 			continue
 		}
-		if g.selfhost && g.tok == .key_fn && expression_tokens.len >= 2
-			&& expression_tokens.all(it.tok in [.lsbr, .rsbr, .question]) {
+		if g.selfhost && g.tok == .key_fn && fastc_tokens_end_with_array_type_prefix(expression_tokens) {
 			typ := g.parse_type()!
 			fastc_register_composite_type(typ, mut g.composite_types)
 			name := flat.source_type_name(typ)
@@ -3529,9 +3542,24 @@ fn (g &Parser) classify_shared_token(previous token.Token) FastcSharedTokenClass
 
 fn (g &Parser) render_constant_references(tokens []FastcExpressionToken, source string) string {
 	mut rendered := source
+	// Each replacement below rewrites every occurrence of its name, so a repeated name
+	// would only rescan the text. Long initializers repeat names thousands of times.
+	track_seen := tokens.len >= 16
+	mut seen := map[string]bool{}
 	for i, item in tokens {
 		if item.tok != .name || (i > 0 && tokens[i - 1].tok == .dot) || (i + 1 < tokens.len && tokens[i + 1].tok == .colon) || item.lit in g.locals {
 			continue
+		}
+		if track_seen {
+			seen_key := if i + 1 < tokens.len && tokens[i + 1].tok == .lpar {
+				item.lit + '('
+			} else {
+				item.lit
+			}
+			if seen_key in seen {
+				continue
+			}
+			seen[seen_key] = true
 		}
 		if i + 1 < tokens.len && tokens[i + 1].tok == .lpar {
 			if fastc_primitive_c_type(item.lit) != none {
@@ -5397,7 +5425,12 @@ fn (g &Parser) render_channel_property_expression(tokens []FastcExpressionToken,
 		} else {
 			'${g.channel_runtime_name(tokens[i].lit)}(${receiver.source})'
 		}
-		replaced := fastc_replace(rendered, raw, property)
+		mut replaced := fastc_replace(rendered, raw, property)
+		if replaced == rendered {
+			// A channel promoted from an embedded struct renders through its
+			// embedded path (`app->__embedded_0.results`), not the raw spelling.
+			replaced = fastc_replace(rendered, '${receiver.source}.${tokens[i].lit}', property)
+		}
 		if replaced != rendered {
 			rendered = replaced
 			changed = true

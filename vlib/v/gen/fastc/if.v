@@ -2076,6 +2076,18 @@ fn (mut g Parser) read_if_expression() !string {
 	} else {
 		g.read_block_expression_value()!
 	}
+	// Resolve an option branch's payload while the guard and narrowed locals that
+	// the branch reads (`if h := opt { h.flush() } else { none }`) are in scope.
+	then_read_type := g.last_expression_type
+	then_read_option_value_type := if then_read_type in [fastc_type_option, fastc_type_result] {
+		if g.last_expression.len > 0 {
+			g.option_value_type_for_expression(g.last_expression)
+		} else {
+			g.last_option_value_type
+		}
+	} else {
+		u32(0)
+	}
 	for i, path in narrowed_names {
 		if narrowed_had[i] {
 			g.member_smartcasts[path] = narrowed_previous[i]
@@ -2116,7 +2128,10 @@ fn (mut g Parser) read_if_expression() !string {
 		}
 	}
 	mut then_type := g.last_expression_type
-	mut then_option_value_type := (if then_type in [fastc_type_option, fastc_type_result] {
+	mut then_option_value_type := (if then_type in [fastc_type_option, fastc_type_result]
+		&& then_type == then_read_type {
+		then_read_option_value_type
+	} else if then_type in [fastc_type_option, fastc_type_result] {
 		(if g.last_expression.len > 0 {
 			g.option_value_type_for_expression(g.last_expression)
 		} else {

@@ -782,6 +782,18 @@ fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 	// still match: the plan with their current metadata, written back below.
 	mut refreshed_lines := []string{}
 	mut refreshed := false
+	// A plan names hundreds of SDK headers. Read their metadata up front on worker
+	// threads; the checks below consume it in order.
+	mut dependency_paths := []string{}
+	for line in lines {
+		if line.starts_with('dependency=') {
+			entry := line.all_after('dependency=')
+			first_tab := entry.index('\t') or { break }
+			dependency_paths << entry[..first_tab]
+		}
+	}
+	dependency_metadata := c_link_plan_dependency_metadata(dependency_paths)
+	mut dependency_index := 0
 	for line_index, line in lines {
 		if line_index == 0 {
 			continue
@@ -812,7 +824,13 @@ fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 			if path.len == 0 || expected_signature.len == 0 {
 				return none
 			}
-			actual_metadata := modulecache.file_metadata_signature(path)
+			actual_metadata := if dependency_index < dependency_metadata.len
+				&& dependency_paths[dependency_index] == path {
+				dependency_metadata[dependency_index]
+			} else {
+				modulecache.file_metadata_signature(path)
+			}
+			dependency_index++
 			if actual_metadata.len == 0 || actual_metadata != expected_metadata {
 				actual_signature := c_object_file_signature(path, false, mut stats)
 				if actual_signature.len == 0 || actual_signature != expected_signature {
@@ -856,6 +874,32 @@ fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 		os.mv(temp_path, plan_path) or { os.rm(temp_path) or {} }
 	}
 	return plan
+}
+
+// c_link_plan_dependency_metadata returns the metadata signature of every path, read
+// by worker threads when there are many: stat calls scale across threads.
+fn c_link_plan_dependency_metadata(paths []string) []string {
+	if paths.len < 64 {
+		return c_link_plan_metadata_range(paths)
+	}
+	reader_count := 8
+	mut pending := []thread []string{}
+	for i in 0 .. reader_count {
+		pending << spawn c_link_plan_metadata_range(paths[paths.len * i / reader_count..paths.len * (i + 1) / reader_count])
+	}
+	mut metadata := []string{cap: paths.len}
+	for worker in pending {
+		metadata << worker.wait()
+	}
+	return metadata
+}
+
+fn c_link_plan_metadata_range(paths []string) []string {
+	mut metadata := []string{cap: paths.len}
+	for path in paths {
+		metadata << modulecache.file_metadata_signature(path)
+	}
+	return metadata
 }
 
 fn write_c_link_plan(plan_path string, flags []string, stats &CObjectCacheStats) ! {
@@ -9293,6 +9337,9 @@ $if !skip_fastc ? {
 		command        string
 		output         string
 		cached_objects map[string]string
+		// native_inputs_changed reports a reused native manifest whose inputs changed
+		// while the program compiled; nothing was linked.
+		native_inputs_changed bool
 	}
 
 	fn publish_v3_fastc_c_source(pieces []string, output_file string, c_to_stdout bool) ! {
@@ -9483,7 +9530,7 @@ $if !skip_fastc ? {
 		return V3FastCCompileResult{ success: true, command: command, output: output }
 	}
 
-	fn compile_v3_fastc_source(pieces []string, generated_units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, link_ld_flags []string, macos_sdk_root string, is_debug bool, uses_threads bool, cache_enabled bool, payload_cache_enabled bool, jobs int, mut prestarted fastc.FastcPrestartedCUnits) V3FastCCompileResult {
+	fn compile_v3_fastc_source(pieces []string, generated_units fastc.FastcUnitLayout, bin_file string, prefs &pref.Preferences, environment_c_flags []string, source_c_flags []string, user_c_flags []string, link_ld_flags []string, macos_sdk_root string, is_debug bool, uses_threads bool, cache_enabled bool, payload_cache_enabled bool, jobs int, mut prestarted fastc.FastcPrestartedCUnits, mut validation V3FastcNativeValidation) V3FastCCompileResult {
 		bench_phases := os.getenv('FASTC_BENCH_PHASES') != ''
 		cc_sw := time.new_stopwatch()
 		tcc_dir := os.join_path(prefs.vroot, 'thirdparty', 'tcc')
@@ -9562,7 +9609,7 @@ $if !skip_fastc ? {
 				}
 			}
 		}
-		payload_compile := spawn fastc.fastc_payload_object(tcc_path, compile_args, payload.source,
+		payload_compile := spawn fastc.fastc_payload_object(tcc_path, compile_args, payload.pieces,
 			build_dir, payload_cache_enabled)
 		// The program's translation units are compiled by concurrent TinyCC
 		// processes and linked; a program that does not split is compiled as
@@ -9604,6 +9651,12 @@ $if !skip_fastc ? {
 		}
 		if payload_object.path != '' {
 			final_args << payload_object.path
+		}
+		// A restored link reuses the native inputs: they must be validated first.
+		if generation_link_cache_key != '' && !validation.wait() {
+			return V3FastCCompileResult{
+				native_inputs_changed: true
+			}
 		}
 		if fastc.fastc_restore_link_cache(generation_link_cache_key, staged_binary) {
 			if bench_phases {
@@ -9721,6 +9774,15 @@ $if !skip_fastc ? {
 					shim_dir = fastc.fastc_codesign_shim_dir()
 					sign_in_process = shim_dir.dir != ''
 				}
+				// The native library and link flags come from manifests validated while
+				// the units compiled.
+				if !validation.wait() {
+					fastc.fastc_discard_link(mut prepared_link)
+					return V3FastCCompileResult{
+						native_inputs_changed: true
+						cached_objects:        cached_objects
+					}
+				}
 				finish_inputs := if preload_link { []string{} } else { link_inputs }
 				mut finish_final_args := final_args
 				if native_object := fastc.fastc_finish_native_compile(mut native_compile) {
@@ -9738,6 +9800,11 @@ $if !skip_fastc ? {
 			cc_args << ['-o', staged_output_name, 'src.c']
 			cc_args << final_args
 			command = cmdexec.display(tcc_path, cc_args)
+			if !validation.wait() {
+				return V3FastCCompileResult{
+					native_inputs_changed: true
+				}
+			}
 			shim_dir = fastc.fastc_codesign_shim_dir()
 			sign_in_process = shim_dir.dir != ''
 			result = cmdexec.run_in(tcc_path, cc_args, build_dir)
@@ -11599,6 +11666,12 @@ pub fn run(args []string) {
 				eprintln('fastc-phase driver.setup ${driver_sw.elapsed().microseconds()}us')
 			}
 			prefs.fastc_native_bridge = !c_only && prefs.normalized_target_os() == 'macos' && prefs.ccompiler == 'tinyc'
+			// The native compiler's identity keys the native manifests; asking it
+			// takes a process start, which generation hides.
+			mut native_compiler_version_workers := []thread string{}
+			if prefs.fastc_native_bridge && !(c_compiler_explicit && effective_c_compiler == 'clang') {
+				native_compiler_version_workers << spawn v3_fastc_native_compiler_version()
+			}
 			mut fastc_generation := fastc.generate_files_with_source_paths([input_file], prefs) or {
 				eprintln(err.msg())
 				exit(1)
@@ -11607,6 +11680,11 @@ pub fn run(args []string) {
 			if prestart_workers.len > 0 {
 				prestarted_fastc_units = prestart_workers[0].wait()
 				prestart_workers.clear()
+			}
+			native_compiler_version := if native_compiler_version_workers.len > 0 {
+				native_compiler_version_workers[0].wait()
+			} else {
+				''
 			}
 			if os.getenv('FASTC_BENCH_PHASES') != '' {
 				eprintln('fastc-phase driver.generated ${driver_sw.elapsed().microseconds()}us')
@@ -11648,7 +11726,7 @@ pub fn run(args []string) {
 			fastc_result := if c_compiler_explicit && effective_c_compiler == 'clang' {
 				compile_v3_fastc_clang_source(fastc_pieces, fastc_generation.units, fastc_bin_file, prefs, environment_c_flags, fastc_generation.c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, c_compiler, is_debug, fastc_generation.uses_threads)
 			} else {
-				compile_v3_fastc_tcc_generation(&fastc_generation, fastc_bin_file, prefs, environment_c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, is_debug, prefs.building_v && !is_debug && !no_cache && !fastc_bench, keep_c, parallel_cc, mut prestarted_fastc_units)
+				compile_v3_fastc_tcc_generation(&fastc_generation, fastc_bin_file, prefs, environment_c_flags, user_c_flags, link_ld_flags, fastc_sdk_root, is_debug, prefs.building_v && !is_debug && !no_cache && !fastc_bench, keep_c, parallel_cc, native_compiler_version, mut prestarted_fastc_units)
 			}
 
 			if (verbose || show_cc) && fastc_result.command.len > 0 {
