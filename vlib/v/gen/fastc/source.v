@@ -1322,12 +1322,8 @@ fn fastc_resolve_module_dir(module_cache_key string, imported_module string, sou
 		}
 	} else {
 		module_dir = prefs.get_module_path(imported_module, source_path)
-		root := prefs.module_resolution_root
-		if root != '' && module_dir != root && !module_dir.starts_with(root + os.path_separator) {
-			// Only a lookup that left the project can be shadowed by one of its modules.
-			if project_dir := fastc_project_module_dir(imported_module, root) {
-				module_dir = project_dir
-			}
+		if project_dir := fastc_project_module_shadowing_vlib(module_dir, imported_module, source_path, prefs) {
+			module_dir = project_dir
 		}
 	}
 	if prefs.building_v && !canonical && !prefs.target_libc_headers {
@@ -1337,17 +1333,24 @@ fn fastc_resolve_module_dir(module_cache_key string, imported_module string, sou
 	return module_dir
 }
 
-// fastc_project_module_dir resolves an import to a module of the project rooted at
-// `root`, which the C backend's resolver prefers to vlib: a project module named like
-// a vlib module (Vox's `clipboard`) shadows it in every importing directory.
-fn fastc_project_module_dir(imported_module string, root string) ?string {
-	top_name := imported_module.all_before('.')
-	if os.is_dir(os.join_path_single(root, top_name)) {
-		if alias_path := pref.resolve_module_alias_path(root, imported_module) {
-			return alias_path
-		}
-	} else {
+// fastc_project_module_shadowing_vlib returns the project module that shadows the vlib
+// module `module_dir` for an import from a source of the project: a project module named
+// like a vlib module (Vox's `clipboard`) is preferred to vlib, as by the C backend's
+// resolver, from every project directory. Explicit `-path` search roots keep their order,
+// and imports from sources outside the project keep their own resolution.
+fn fastc_project_module_shadowing_vlib(module_dir string, imported_module string, source_path string, prefs &pref.Preferences) ?string {
+	root := prefs.module_resolution_root
+	if root == '' || prefs.module_search_paths.len > 0
+		|| !module_dir.starts_with(os.join_path_single(prefs.vroot, 'vlib') + os.path_separator) {
 		return none
+	}
+	top_name := imported_module.all_before('.')
+	if !os.is_dir(os.join_path_single(root, top_name))
+		|| !os.real_path(source_path).starts_with(root + os.path_separator) {
+		return none
+	}
+	if alias_path := pref.resolve_module_alias_path(root, imported_module) {
+		return alias_path
 	}
 	path := os.join_path_single(root, imported_module.replace('.', os.path_separator))
 	entries := os.ls(path) or { return none }
