@@ -2541,7 +2541,7 @@ fn fastc_collect_file_references(source_file FastcSourceFile, prefs &pref.Prefer
 		}
 		mut function_references := map[string]bool{}
 		if function_name in references {
-			function_references = references[function_name].clone()
+			function_references = references[function_name].move()
 		}
 		mut depth := 1
 		tok = scan.scan()
@@ -2569,7 +2569,7 @@ fn fastc_collect_file_references(source_file FastcSourceFile, prefs &pref.Prefer
 			}
 			tok = scan.scan()
 		}
-		references[function_name] = function_references.clone()
+		references[function_name] = function_references.move()
 		previous = .rcbr
 	}
 }
