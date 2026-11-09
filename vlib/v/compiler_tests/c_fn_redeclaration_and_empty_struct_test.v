@@ -55,11 +55,19 @@ fn test_v3_c_fn_redeclarations_and_empty_struct_defaults() {
 
 	assert !result.output.contains('C compilation failed'), result.output
 
+	// `fcntl` is not provided by the Windows CRT. Keep its cast check on Unix,
+	// and use the portable C `abs` function to check the same cast on Windows.
+	portable_c_call := if os.user_os() == 'windows' {
+		'fn C.abs(value int) int\n\nfn main() {\n\targ := 0\n\t_ = C.abs(arg)\n}\n'
+	} else {
+		'fn C.fcntl(fd int, cmd int, arg int) int\n\nfn main() {\n\targ := 0\n\t_ = C.fcntl(-1, 0, arg)\n}\n'
+	}
+
 	compatible_root := write_c_fn_redecl_v3_project('c_fn_compatible', {
 		'v.mod':       "Module { name: 'c_fn_compatible' }\n"
 		'moda/moda.v': 'module moda\n\nstruct C.Display {}\nstruct C.Widget {\n\tvalue int\n}\n\nfn C.compat_probe(value int, data byteptr, display voidptr, mut state uint) int\nfn C.local_make() &C.Widget\n\npub fn touch() {\n\tmut state := uint(0)\n\tC.compat_probe(0, unsafe { nil }, unsafe { nil }, mut state)\n}\n\npub fn value() int {\n\treturn C.local_make().value\n}\n'
 		'modb/modb.v': 'module modb\n\nstruct C.Display {}\nstruct C.Widget {\n\tvalue int\n}\n\ntype CInt = i32\n\nfn C.compat_probe(value CInt, data &u8, display &C.Display, state &uint) i32\nfn C.local_make() voidptr\n\npub fn touch() {\n\tmut state := uint(0)\n\tC.compat_probe(0, unsafe { nil }, unsafe { nil }, &state)\n}\n\npub fn make() voidptr {\n\treturn C.local_make()\n}\n'
-		'main.v':      'module main\n\nimport moda as _\nimport modb as _\nimport net as _\n\nfn C.fcntl(fd int, cmd int, arg int) int\n\nfn main() {\n\targ := 0\n\t_ = C.fcntl(-1, 0, arg)\n}\n'
+		'main.v':      'module main\n\nimport moda as _\nimport modb as _\nimport net as _\n\n' + portable_c_call
 	})!
 	defer {
 		os.rmdir_all(compatible_root) or {}
@@ -74,9 +82,10 @@ fn test_v3_c_fn_redeclarations_and_empty_struct_defaults() {
 		os.exec([v3_bin, '-no-memory-limit', compatible_root, '-b', 'c', '-o', '${compatible_out}'])
 	assert compatible_result.exit_code == 0, compatible_result.output
 	compatible_c := os.read_file(compatible_out + '.c')!
-	fcntl_calls := compatible_c.split_into_lines().filter(it.contains('fcntl(-1'))
-	assert fcntl_calls.len == 1, fcntl_calls.str()
-	assert fcntl_calls[0].contains('(int)(arg)'), fcntl_calls[0]
+	expected_c_call := if os.user_os() == 'windows' { 'abs(' } else { 'fcntl(-1' }
+	compatible_calls := compatible_c.split_into_lines().filter(it.contains(expected_c_call))
+	assert compatible_calls.len == 1, compatible_calls.str()
+	assert compatible_calls[0].contains('(int)(arg)'), compatible_calls[0]
 
 	empty_root := write_c_fn_redecl_v3_project('empty_struct_default', {
 		'main.v': 'struct Empty {}\n\n__global global_empty Empty\n\nfn make_empty() Empty {\n\treturn Empty{}\n}\n\nfn main() {\n\t_ := make_empty()\n\t_ = global_empty\n}\n'
