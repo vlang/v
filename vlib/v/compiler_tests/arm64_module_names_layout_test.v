@@ -34,6 +34,24 @@ fn run_arm64(name string, files map[string]string, args []string) string {
 	return run.output.trim_space()
 }
 
+// The backend rejects `**` only in reachable code, whatever a quick look at all the
+// nodes of the program finds.
+fn test_unreachable_power_operator_does_not_stop_arm64() {
+	$if macos && arm64 {
+		output := run_arm64('unused_power', {
+			'main.v': 'fn unused(a int) int {
+	return 2 ** a
+}
+
+fn main() {
+	println(7)
+}
+'
+		}, [])
+		assert output == '7'
+	}
+}
+
 // gg's `App` must not take over the layout of the program's own `App`.
 fn test_module_struct_keeps_program_struct_name() {
 	$if macos && arm64 {
