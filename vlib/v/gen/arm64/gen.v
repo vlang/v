@@ -664,9 +664,7 @@ fn (mut g Gen) gen_func(func_idx int) {
 	// Prologue: stp fp, lr, [sp, -16]! ; mov fp, sp ; sub sp, sp, #frame
 	g.emit32(asm_stp_fp_lr_pre())
 	g.emit32(asm_mov_fp_sp())
-	if g.stack_size > 0 {
-		g.emit_sub_sp(g.stack_size)
-	}
+	g.emit_frame_allocation(g.stack_size)
 	if g.cur_func_sret_offset != 0 {
 		g.emit_store_fp(8, g.cur_func_sret_offset)
 	}
@@ -3146,6 +3144,30 @@ fn (mut g Gen) emit_sub_sp(size int) {
 		g.emit_mov_imm(11, i64(size))
 		g.emit32(asm_sub_sp_reg(Reg(11)))
 	}
+}
+
+// emit_frame_allocation reserves a function's frame. Without a register
+// allocator frames can pass the guard page of a thread's stack, so a frame
+// larger than a page touches every page on the way down: a stack overflow must
+// fault, not write past the guard. x9 and x10 are scratch here (AAPCS64). Go
+// checks the stack limit in its prologues (stacksplit in cmd/internal/obj/arm64/
+// obj7.go) because its stacks grow; with fixed stacks, this probe loop is the
+// one in Zig's lib/compiler_rt/stack_probe.zig.
+fn (mut g Gen) emit_frame_allocation(size int) {
+	page := if g.m.target.os == 'linux' { 4096 } else { 16384 }
+	if size < page {
+		g.emit_sub_sp(size)
+		return
+	}
+	g.emit_mov_imm(9, i64(size))
+	g.emit_mov_imm(10, i64(page))
+	g.emit32(asm_subs_reg(Reg(31), Reg(9), Reg(10))) // cmp x9, x10
+	g.emit32(asm_b_cond(cond_lo, 5)) // b.lo done
+	g.emit32(asm_sub_sp_reg(Reg(10)))
+	g.emit32(0xF90003FF) // str xzr, [sp]
+	g.emit32(asm_sub_reg(Reg(9), Reg(9), Reg(10)))
+	g.emit32(asm_b(-5)) // back to the cmp
+	g.emit32(asm_sub_sp_reg(Reg(9)))
 }
 
 // emit_add_sp emits emit add sp output for arm64.

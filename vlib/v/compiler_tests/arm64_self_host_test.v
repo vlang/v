@@ -956,3 +956,29 @@ fn test_128_bit_to_f32_rounds_once() {
 		assert output == 'true\ntrue', output
 	}
 }
+
+// A frame larger than a page touches each page on the way down.
+fn test_frames_larger_than_a_page() {
+	$if macos && arm64 {
+		output := run_arm64('large_frames', 'fn big(n int) int {
+	mut a := [20000]int{}
+	a[n] = n
+	if n > 0 {
+		return big(n - 1) + a[n]
+	}
+	return a[0]
+}
+
+fn worker() int {
+	return big(3)
+}
+
+fn main() {
+	t := spawn worker()
+	println(t.wait())
+	println(big(40))
+}
+')
+		assert output == '6\n820', output
+	}
+}

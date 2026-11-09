@@ -475,6 +475,7 @@ fn asm_b_cond(cond u32, rel19 i32) u32 {
 
 // Condition codes for b.cond
 const cond_eq = u32(0x0) // equal
+const cond_lo = u32(0x3) // lower (unsigned)
 
 const cond_ne = u32(0x1) // not equal
 
