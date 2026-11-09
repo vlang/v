@@ -137,6 +137,9 @@ Avoid switching macOS runners in broad CI changes unless the PR explains the exp
 architecture and toolchain impact.
 
 The main macOS CI matrix uses `macos-15` and `macos-26` Apple Silicon runners.
+The other macOS CI lanes use `macos-15` to retain Apple Silicon coverage on a
+supported image. Prebuilt smoke tests select `macos-15` for ARM64 and
+`macos-15-intel` for x86_64 so each release archive runs on its native architecture.
 GitHub retired macOS 14 images on November 2, 2026; see the
 [retirement announcement](https://github.com/actions/runner-images/issues/13518).
 
@@ -191,8 +194,9 @@ Current release and artifact exceptions that intentionally use floating runners:
   Tags that predate the ARM64 bootstrap script skip this lane and its archive.
 - `release_ci.yml` uses `ubuntu-latest` only for the release publishing job; the
   job assembles already-built artifacts and does not compile platform binaries.
-- `prebuilt.yml` uses `macos-latest` and `windows-latest` to smoke-test the
-  published release ZIPs against GitHub's current hosted macOS and Windows images.
+- `prebuilt.yml` uses `windows-latest` to smoke-test the published Windows release
+  ZIP against GitHub's current hosted Windows image. Its macOS jobs pin the runner
+  architecture to match each release ZIP.
 
 ## Ecosystem module cache
 
