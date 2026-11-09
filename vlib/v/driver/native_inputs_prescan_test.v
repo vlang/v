@@ -100,3 +100,24 @@ fn test_prescan_lists_the_subdirectories_a_module_v_mod_names() {
 	assert v3_program_supplies_native_inputs(os.join_path(root, 'main.v'), []string{},
 		prescan_prefs(root), []string{}, false)
 }
+
+fn test_marker_stays_while_native_inputs_keep_the_build_uncached() {
+	assert !v3_native_inputs_keep_build_uncached(&cgen.CacheNativeInputs{})
+	assert v3_native_inputs_keep_build_uncached(&cgen.CacheNativeInputs{
+		user_supplied: '/project/native.h'
+	})
+	assert v3_native_inputs_keep_build_uncached(&cgen.CacheNativeInputs{
+		module_inputs: {
+			'net': ['/v/vlib/net/afunix.h']
+		}
+		native_paths:  {
+			'/v/vlib/net/afunix.h': true
+		}
+	})
+	// Paths that are only recorded, such as embedded files, do not block the cache.
+	assert !v3_native_inputs_keep_build_uncached(&cgen.CacheNativeInputs{
+		module_inputs: {
+			'main': ['/project/data.bin']
+		}
+	})
+}

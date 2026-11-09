@@ -12335,10 +12335,13 @@ pub fn run(args []string) {
 		&& v3_program_supplies_native_inputs(input_file, file_list, prefs, user_c_flags, tcc_dylib) {
 		no_cache = true
 	}
-	// A build that keeps the cache for the native bridge learns about the native
-	// inputs it cannot cache only after parsing, and then starts over without the
-	// cache. The next build with the same arguments starts without it directly.
-	native_input_marker := if backend == 'c' && !c_only && tcc_bridge_candidate {
+	// A build learns about native inputs it cannot cache only after parsing, and
+	// then starts over without the cache. The next build with the same arguments
+	// starts without it directly, as Go knows a package's cgo files before compiling
+	// it (go/build Context.Import) and a Zig manifest remembers what the last build
+	// read (Build/Cache.zig Manifest.hit).
+	native_input_marker := if backend == 'c' && !c_only && tcc_cache_candidate && !check_only
+		&& !only_check_syntax {
 		v3_native_input_build_marker()
 	} else {
 		''
@@ -13313,17 +13316,16 @@ pub fn run(args []string) {
 		// v3_program_supplies_native_inputs turned the cache off for every program
 		// whose files it finds supplying one; this guards against one it misses.
 		trace_v3_cache_fallback('native C inputs that the scan before parsing missed: ${native_inputs.user_supplied}')
-		if native_input_marker != '' {
-			os.mkdir_all(os.dir(native_input_marker)) or {}
-			os.write_file(native_input_marker, '') or {}
-		}
+		write_v3_native_input_build_marker(native_input_marker)
 		restart_v3_without_cache('')
 	}
 	// A build that started without the cache because of the marker checks that
 	// the program still has native inputs; otherwise the next build uses the cache.
-	if native_input_marker_found && !cache_state.manager.enabled
-		&& v3_native_inputs(a, prefs, user_files, native_c_flags).user_supplied.len == 0 {
-		os.rm(native_input_marker) or {}
+	if native_input_marker_found && !cache_state.manager.enabled {
+		current_native_inputs := v3_native_inputs(a, prefs, user_files, native_c_flags)
+		if !v3_native_inputs_keep_build_uncached(&current_native_inputs) {
+			os.rm(native_input_marker) or {}
+		}
 	}
 	mut native_closure := if tcc_dylib && cache_state.manager.enabled {
 		v3_tcc_dylib_native_closure(a, prefs, native_c_flags, c_compiler, &native_inputs,
@@ -13342,6 +13344,7 @@ pub fn run(args []string) {
 			exit(1)
 		}
 		trace_v3_cache_fallback('external C inputs cannot be assigned to cache units: ${native_closure.unassignable}')
+		write_v3_native_input_build_marker(native_input_marker)
 		restart_v3_without_cache('')
 	}
 
@@ -19433,7 +19436,7 @@ fn v3_native_input_build_marker() string {
 }
 
 fn v3_native_input_build_marker_for(dir string, args []string) string {
-	mut parts := [dir]
+	mut parts := [@VCURRENTHASH, dir]
 	for arg in args {
 		if arg == '-nocache' || arg.starts_with('-v3-internal-') {
 			continue
@@ -19442,6 +19445,31 @@ fn v3_native_input_build_marker_for(dir string, args []string) string {
 	}
 	key := sha256.sum(parts.join('\0').bytes()).hex()[..32]
 	return os.join_path(os.vtmp_dir(), 'v3_native_input_builds', key)
+}
+
+fn write_v3_native_input_build_marker(marker string) {
+	if marker == '' {
+		return
+	}
+	os.mkdir_all(os.dir(marker)) or {}
+	os.write_file(marker, '') or {}
+}
+
+// v3_native_inputs_keep_build_uncached reports whether a build that started
+// without the cache because of the marker still has the kind of input that sent it
+// there. The marker is per compiler, so a compiler that can cache them tries again.
+fn v3_native_inputs_keep_build_uncached(native_inputs &cgen.CacheNativeInputs) bool {
+	if native_inputs.user_supplied.len > 0 {
+		return true
+	}
+	for paths in native_inputs.module_inputs.values() {
+		for path in paths {
+			if native_inputs.native_paths[path] || native_inputs.macro_paths[path] {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 fn restart_v3_without_cache(build_dir string) {
