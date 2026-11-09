@@ -796,3 +796,54 @@ fn main() {
 		assert output == '1.5 3.0 4.5 6.0', output
 	}
 }
+
+// `is_empty` is lowered with the other methods of `@[flag]` enums, for a local
+// value, a field of an imported struct and a function result.
+fn test_flag_enum_is_empty() {
+	$if macos && arm64 {
+		output := run_arm64('flag_is_empty', {
+			'jobs/jobs.v': 'module jobs
+
+@[flag]
+pub enum Reason {
+	paint
+	layout
+}
+
+pub struct Queue {
+pub mut:
+	pending Reason
+}
+
+pub fn (mut q Queue) add(reason Reason) bool {
+	was_empty := q.pending.is_empty()
+	q.pending.set(reason)
+	return was_empty && !q.pending.is_empty()
+}
+'
+			'main.v':      "module main
+
+import jobs
+
+@[flag]
+enum Local {
+	a
+	b
+}
+
+fn local(value Local) Local {
+	return value
+}
+
+fn main() {
+	mut flags := Local.zero()
+	empty := flags.is_empty()
+	flags.set(.b)
+	mut queue := jobs.Queue{}
+	println('\${empty} \${flags.is_empty()} \${local(Local.zero()).is_empty()} \${queue.add(.layout)} \${queue.pending.is_empty()}')
+}
+"
+		}, []string{})
+		assert output == 'true false true true false', output
+	}
+}

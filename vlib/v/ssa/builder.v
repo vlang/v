@@ -14780,7 +14780,7 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		}
 	}
 	if fn_node.kind == .selector && fn_node.children_count > 0
-		&& fn_node.value_text() in ['set', 'clear', 'has', 'all'] {
+		&& fn_node.value_text() in ['set', 'clear', 'has', 'all', 'is_empty'] {
 		if result := b.build_flag_enum_method_call(b.a.child(&fn_node, 0), fn_node.value_text(),
 			node)
 		{
@@ -15919,7 +15919,7 @@ fn (mut b Builder) build_typed_call_arg(id flat.NodeId, param_type TypeID, allow
 }
 
 fn (mut b Builder) build_flag_enum_method_call(base_id flat.NodeId, method string, node flat.Node) ?ValueID {
-	if node.children_count != 2 {
+	if node.children_count != (if method == 'is_empty' { 1 } else { 2 }) {
 		return none
 	}
 	flag_type_name_source_id := b.flag_enum_expr_type_name(base_id)
@@ -15929,6 +15929,10 @@ fn (mut b Builder) build_flag_enum_method_call(base_id flat.NodeId, method strin
 	}
 	base_addr := b.build_lvalue_addr(base_id)
 	flag_type := b.deref_type(base_addr)
+	if method == 'is_empty' {
+		current := b.emit1(.load, flag_type, base_addr)
+		return b.emit2(.eq, b.i1_type, current, b.m.get_or_add_const(flag_type, '0'))
+	}
 	mut flag := if node.children_count > 1 {
 		arg_id := b.a.child(&node, 1)
 		arg_node := b.a.nodes[int(arg_id)]
