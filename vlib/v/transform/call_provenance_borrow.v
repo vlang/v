@@ -345,7 +345,7 @@ fn (mut t Transformer) mark_call_provenance_argument_escapes(id flat.NodeId, cal
 		}
 	}
 	for i in 1 .. call.children_count {
-		index := i - 1 + offset
+		index := t.call_argument_param_index(call, i, offset, param_types.len, is_variadic)
 		if index >= 0 && index < summary.len && summary[index] {
 			continue
 		}

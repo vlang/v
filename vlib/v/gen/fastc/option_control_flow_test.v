@@ -3,6 +3,41 @@ module fastc
 import os
 import v.cmdexec
 
+fn test_explicit_unwrap_after_terminal_none_guard_retains_option_storage() ! {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_option_terminal_guard_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	os.write_file(os.join_path(root, 'main.v'), r'module main
+struct Value { number int }
+fn maybe(present bool) ?&Value {
+    if !present { return none }
+    return &Value{number: 42}
+}
+fn main() {
+    mut total := 0
+    for present in [false, true] {
+        optional := maybe(present)
+        if optional == none { continue }
+        value := optional or { continue }
+        wrapped := [(optional or { panic("unreachable fallback") })]
+        assert wrapped[0] == value
+        total += value.number
+    }
+    assert total == 42
+}
+')!
+	for backend in ['c', 'fastc'] {
+		program := os.join_path(root, 'program_' + backend)
+		build := cmdexec.run(@VEXE, ['-b', backend, '-nocache', '-o', program, root])
+		assert build.exit_code == 0, '${backend}: ${build.output}'
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, '${backend}: ${run.output}'
+	}
+}
+
 fn test_fastc_nested_option_comparisons_and_narrowed_values() {
 	$if !macos && !linux {
 		return

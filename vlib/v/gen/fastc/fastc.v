@@ -271,6 +271,8 @@ static string v_fastc_bool_str(bool value) { return value ? "true" : "false"; }
 #define print(value) V_FASTC_PRINT_SELECT(value, v_fastc_print_string, v_fastc_print_bool, v_fastc_print_char, v_fastc_print_signed, v_fastc_print_unsigned)
 #define println(value) V_FASTC_PRINT_SELECT(value, v_fastc_println_string, v_fastc_println_bool, v_fastc_println_char, v_fastc_println_signed, v_fastc_println_unsigned)
 
+#define V_FASTC_SCANNED_ALLOC(size) malloc(size)
+#define V_FASTC_SCANNED_FREE(pointer) free(pointer)
 static void *v_fastc_interface_box(const void *value, usize size) {
 	void *copy = malloc(size);
 	if (copy != NULL) memcpy(copy, value, size);
@@ -372,23 +374,46 @@ const fastc_c_reserved_identifiers = {
 	'while':    true
 }
 
+@[inline]
 fn fastc_c_identifier(name string) string {
-	if name.len > 1 && name[0] == `@` {
-		return fastc_c_identifier(name[1..])
+	mut plain_name := name
+	for plain_name.len > 1 && plain_name[0] == `@` {
+		plain_name = plain_name[1..]
 	}
-	if name.len < 2 || name.len > 8 {
-		return name
+	if plain_name.len < 2 || plain_name.len > 8 {
+		return plain_name
 	}
-	first := name[0]
+	first := plain_name[0]
 	// Bitset of the initial letters used by the reserved-identifier table (`a` is bit 0).
 	if first < `a` || first > `w` || (u32(8_264_063) & (u32(1) << (first - `a`))) == 0 {
-		return name
+		return plain_name
 	}
-	return if name in fastc_c_reserved_identifiers {
-		'__vf_keyword_${name}'
+	return if plain_name in fastc_c_reserved_identifiers {
+		'__vf_keyword_${plain_name}'
 	} else {
-		name
+		plain_name
 	}
+}
+
+// fastc_is_removed_integer_name recognizes the two legacy spellings without a type lookup.
+@[inline]
+fn fastc_is_removed_integer_name(name string) bool {
+	return name.len == 5 && (name[0] == `i` || name[0] == `u`) && name[1] == `s`
+		&& name[2] == `i` && name[3] == `z` && name[4] == `e`
+}
+
+// fastc_c_value_identifier keeps value bindings from shadowing the emitter's
+// private integer typedefs. Fields use a separate C namespace and keep their names.
+@[inline]
+fn fastc_c_value_identifier(name string) string {
+	mut plain_name := name
+	for plain_name.len > 1 && plain_name[0] == `@` {
+		plain_name = plain_name[1..]
+	}
+	if fastc_is_removed_integer_name(plain_name) {
+		return '__vf_keyword_${plain_name}'
+	}
+	return fastc_c_identifier(plain_name)
 }
 
 const c_selfhost_preamble = r'#include <stdbool.h>
@@ -398,6 +423,8 @@ const c_selfhost_preamble = r'#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+/* vlib/math declares its libm functions with `fn C.` and no header. */
+#include <math.h>
 /* V __offsetof(T, field) */
 #ifndef __offsetof
 #define __offsetof(st, m) offsetof(st, m)
@@ -500,8 +527,23 @@ typedef struct { MultiReturnValue values[8]; } MultiReturn;
 /* Option, result, and interface payloads are boxed on the heap and never
    freed. Boxing through malloc made every option-returning call pay for a
    locked, zero-filling allocation, so each thread bumps its boxes out of a
-   private chunk instead; only oversized payloads still go through malloc. */
-#if !defined(_WIN32) && !defined(V_FASTC_TARGET_LIBC)
+   private chunk instead; only oversized payloads still go through malloc.
+   When V allocates from the Boehm collector (V_FASTC_GC_HEAP), a box can hold
+   the only reference to collected memory, and the collector does not scan
+   malloc memory, so boxes come from its heap there. */
+#if defined(V_FASTC_GC_HEAP)
+extern void *GC_malloc(size_t);
+extern void GC_free(void *);
+#define V_FASTC_SCANNED_ALLOC(size) GC_malloc(size)
+#define V_FASTC_SCANNED_FREE(pointer) GC_free(pointer)
+static void *v_fastc_interface_box(const void *value, usize size) {
+	void *copy = GC_malloc(size);
+	if (copy != NULL) memcpy(copy, value, size);
+	return copy;
+}
+#elif !defined(_WIN32) && !defined(V_FASTC_TARGET_LIBC)
+#define V_FASTC_SCANNED_ALLOC(size) malloc(size)
+#define V_FASTC_SCANNED_FREE(pointer) free(pointer)
 typedef struct { unsigned char *cursor; unsigned char *end; } v_fastc_box_arena;
 static pthread_key_t v_fastc_box_arena_key;
 static pthread_once_t v_fastc_box_arena_once = PTHREAD_ONCE_INIT;
@@ -532,6 +574,8 @@ static void *v_fastc_interface_box(const void *value, usize size) {
 	return copy;
 }
 #else
+#define V_FASTC_SCANNED_ALLOC(size) malloc(size)
+#define V_FASTC_SCANNED_FREE(pointer) free(pointer)
 static void *v_fastc_interface_box(const void *value, usize size) {
 	void *copy = malloc(size);
 	if (copy != NULL) memcpy(copy, value, size);
@@ -590,6 +634,8 @@ const c_selfhost_preamble_includes = r'#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+/* vlib/math declares its libm functions with `fn C.` and no header. */
+#include <math.h>
 /* V __offsetof(T, field) */
 #ifndef __offsetof
 #define __offsetof(st, m) offsetof(st, m)
@@ -848,7 +894,7 @@ static array builtin__array_sorted(array *values) {
 	array result = *values;
 	if (values != NULL && values->len > 0) {
 		size_t bytes = (size_t)values->len * (size_t)values->element_size;
-		result.data = malloc(bytes);
+		result.data = V_FASTC_SCANNED_ALLOC(bytes);
 		if (result.data != NULL && values->data != NULL) memcpy(result.data, values->data, bytes);
 		result.offset = 0;
 		result.cap = values->len;
@@ -889,8 +935,10 @@ struct FastcFunctionSignature {
 	// Leading array dimensions before a stored function value's signature.
 	callable_index_depth int
 	export_name          string
-	module_name          string
-	path                 string
+	// c_symbol is the native name a `@[c: 'name'] fn C.X` binding calls instead of `X`.
+	c_symbol    string
+	module_name string
+	path        string
 	// position is the byte offset of the declaration's `fn` in the file at `path`.
 	position int
 }
@@ -1007,10 +1055,19 @@ fn (local FastcLocal) original_is_reference() bool {
 	return local.is_reference
 }
 
+// Rare terminal option guards keep their boxed storage out of the hot local record.
+struct FastcOptionOrigin {
+	source string
+	typ    u32
+}
+
 struct FastcLocalScopeChange {
 	name         string
 	previous     FastcLocal
 	had_previous bool
+	// A member narrowing (`x.f`) scoped to the block, restored like a local.
+	is_member       bool
+	member_previous FastcMemberSmartcast
 }
 
 struct FastcFunctionDeferBlock {
@@ -1028,6 +1085,7 @@ struct FastcExpressionToken {
 	is_statement         bool
 	is_capturing_closure bool
 	is_storage           bool
+	is_build_metadata    bool
 mut:
 	typ u32
 	lit string
@@ -1188,10 +1246,8 @@ pub struct GenerationResult {
 pub:
 	c_pieces     []string
 	source_paths []string
-	// Only these files need the frontend pass that locates deprecated type spellings.
-	deprecated_integer_paths []string
-	uses_threads             bool
-	c_flags                  []string
+	uses_threads bool
+	c_flags      []string
 	// units describes how c_pieces split into translation units that the
 	// drivers can compile in parallel (see fastc_write_c_units).
 	units FastcUnitLayout
@@ -1225,6 +1281,9 @@ pub mut:
 	solo_prototype_ids   []int
 	shared_prototype_ids []int
 	tail_prototype_ids   []int
+	// tail_unit is the first unit that needs tail_prototype_ids: the last source
+	// file's bodies, followed by units of on-demand generic instances.
+	tail_unit int
 	// define_texts are the same pieces with `static` dropped, for the first
 	// unit: a static definition would not satisfy the other units' externs.
 	define_texts []string
@@ -1293,6 +1352,10 @@ struct FastcGlobalDeclarations {
 	early_initializers  map[string]string
 	composite_types     map[string]bool
 	fixed_array_types   flat.TypeTextBindings
+	// Function literals initializing globals (`__global f = fn () {}`): their hoisted
+	// definitions and `__vf_fn_type_` typedefs, keyed by C name.
+	function_definitions map[string]string
+	function_typedefs    map[string]string
 }
 
 struct FastcConstantDeclarations {
@@ -1324,7 +1387,10 @@ struct FastcConstantValue {
 	value        string
 	typ          u32
 	dependencies []string
-	is_runtime   bool
+	// call_dependencies are the constants that the functions it calls read (see
+	// fastc_constant_call_dependencies).
+	call_dependencies []string
+	is_runtime        bool
 }
 
 struct FastcComptimeCondition {
@@ -1348,6 +1414,7 @@ struct FastcDeclarationAttribute {
 	is_c_extern    bool
 	is_markused    bool
 	export_name    string
+	c_symbol       string
 	linker_section string
 	alignment      string
 	is_cinit       bool
@@ -1355,9 +1422,14 @@ struct FastcDeclarationAttribute {
 }
 
 struct FastcEnumInfo {
-	c_name  string
-	name    u32
-	fields  []string
+	c_name string
+	name   u32
+	fields []string
+	// field_attrs holds each value's attribute texts, parallel to fields; empty when
+	// no value has attributes.
+	field_attrs [][]string
+	// attrs holds the enum's own attribute texts (`json_as_number`).
+	attrs   []string
 	is_flag bool
 }
 
@@ -1377,6 +1449,11 @@ struct FastcTypeDeclarations {
 	// Value names declared by each enum, keyed by the enum's C name, in source
 	// order. Used to unroll `$for x in Enum.values { ... }`.
 	enum_field_names map[string][]string
+	// Attribute texts of each enum value, parallel to enum_field_names; only enums
+	// with attributed values are present.
+	enum_field_attrs map[string][][]string
+	// Attribute texts of each enum declaration with attributes, keyed by its C name.
+	enum_attrs map[string][]string
 	// Declared C names of sum types (`type X = A | B`). They share the boxed
 	// `{void*_object; uintptr_t _typ;}` layout with interfaces; construction boxes a
 	// variant and `match` dispatches on `_typ`.
@@ -1424,6 +1501,12 @@ struct FastcTypeDescriptorMemoEntry {
 	value u32
 }
 
+struct FastcDirectMemberMemoEntry {
+	receiver u32
+	field    string
+	typ      u32
+}
+
 struct FastcTypeDescriptorMemo {
 mut:
 	semantic_keys          [64]FastcTypeDescriptorMemoEntry
@@ -1432,6 +1515,8 @@ mut:
 	direct_member_field    string
 	direct_member_type     u32
 	direct_member_known    bool
+	direct_members         [64]FastcDirectMemberMemoEntry
+	equality_support       map[u32]bool
 }
 
 struct Parser {
@@ -1461,6 +1546,8 @@ struct Parser {
 	enum_flags             map[u32]bool
 	enum_field_types       flat.TypeTextBindings
 	enum_field_names       map[string][]string
+	enum_field_attrs       map[string][][]string
+	enum_attrs             map[string][]string
 	alias_base_types       flat.TypeTextBindings
 	fn_alias_return_types  flat.TypeTextBindings
 	sum_types              map[string]bool
@@ -1534,23 +1621,28 @@ mut:
 	resolved_name_memo          map[string]string
 	declared_type_key_memo      map[u32]FastcMemoEntry
 	locals                      map[string]FastcLocal
+	option_origins              map[string]FastcOptionOrigin
 	local_scope_changes         []FastcLocalScopeChange
 	local_scope_depth           int
 	functions                   map[string]FastcFunctionSignature
 	constant_types              flat.TypeTextBindings
 	sum_leaf_variants_memo      map[u32][]u32
 	interface_equality_variants map[u32][]u32
-	global_option_types         flat.TypeTextBindings
-	global_types                flat.TypeTextBindings
-	return_type                 u32
-	return_type_is_function     bool
-	return_types_are_functions  []bool
-	return_types                flat.TypeTextList
-	option_return_type          u32
-	current_function            string
-	current_receiver            u32
-	current_method_is_static    bool
-	expected_expression_type    u32
+	// The shared declaration index is immutable; arbitrary parsers memoize misses locally.
+	interface_method_names        map[u32][]string
+	interface_method_names_memo   map[u32][]string
+	interface_implementation_memo map[u64]bool
+	global_option_types           flat.TypeTextBindings
+	global_types                  flat.TypeTextBindings
+	return_type                   u32
+	return_type_is_function       bool
+	return_types_are_functions    []bool
+	return_types                  flat.TypeTextList
+	option_return_type            u32
+	current_function              string
+	current_receiver              u32
+	current_method_is_static      bool
+	expected_expression_type      u32
 	// Scoped to a whole nil reset of a concrete local; erased function values are excluded.
 	allows_nil_local_assignment bool
 	capturing_defer             bool
@@ -1565,6 +1657,7 @@ mut:
 	or_value_captured           string
 	or_value_expected_type      u32
 	defer_depth                 int
+	defer_loop_base             int // loop nesting at the innermost `defer` block's start
 	captured_defer_lines        []string
 	deferred_lines              []string
 	deferred_block_starts       []int
@@ -1734,27 +1827,6 @@ fn (mut timer FastcPhaseTimer) mark(name string) {
 	timer.last_us = now_us
 }
 
-// fastc_source_uses_deprecated_integer reports whether the driver has to run the
-// full parser on `source` to warn about `isize` or `usize`. Comments and plain
-// strings that only mention the names do not count, which keeps sources like the
-// compiler's own out of that second parse. A source with any scanner diagnostic,
-// warnings included, also counts, so the parser sees it and reports what it finds.
-fn fastc_source_uses_deprecated_integer(source string, path string, prefs &pref.Preferences) bool {
-	if !source.contains('isize') && !source.contains('usize') {
-		return false
-	}
-	mut scan := scanner.new_scanner(prefs, .normal)
-	scan.init(token.File.unindexed(path, source.len), source)
-	mut tok := scan.scan()
-	for tok != .eof {
-		if tok == .name && (scan.lit == 'isize' || scan.lit == 'usize') {
-			return true
-		}
-		tok = scan.scan()
-	}
-	return scan.diagnostics.len > 0
-}
-
 // generate_files_with_source_paths emits C and reports every source read from entry files,
 // entry directories, and their imports.
 pub fn generate_files_with_source_paths(paths []string, prefs &pref.Preferences) !GenerationResult {
@@ -1772,13 +1844,8 @@ pub fn generate_files_with_native_aliases(paths []string, prefs &pref.Preference
 	sources, module_aliases := fastc_resolve_source_files_deferring_memo(entries, &scoped_prefs, mut pending_memo_store)!
 	timer.mark('resolve')
 	mut source_paths := []string{cap: sources.len}
-	mut deprecated_integer_paths := []string{}
 	for source_file in sources {
 		source_paths << source_file.path
-		if source_file.header.module_name != 'builtin'
-			&& fastc_source_uses_deprecated_integer(source_file.source, source_file.path, &scoped_prefs) {
-			deprecated_integer_paths << source_file.path
-		}
 	}
 	// The layout comes back through a parameter: a struct of arrays as a
 	// multi-return component is not carried correctly by the self-hosted
@@ -1791,14 +1858,13 @@ pub fn generate_files_with_native_aliases(paths []string, prefs &pref.Preference
 	fastc_wait_memo_store(mut pending_memo_store)
 	timer.mark('generate_total')
 	return GenerationResult{
-		c_pieces:                 c_pieces
-		source_paths:             source_paths
-		deprecated_integer_paths: deprecated_integer_paths
-		uses_threads:             uses_threads
-		c_flags:                  c_flags
-		units:                    units
-		native_symbols:           native_symbols
-		native_declarations:      native_declarations
+		c_pieces:            c_pieces
+		source_paths:        source_paths
+		uses_threads:        uses_threads
+		c_flags:             c_flags
+		units:               units
+		native_symbols:      native_symbols
+		native_declarations: native_declarations
 	}
 }
 
@@ -1818,6 +1884,8 @@ struct FastcFileGenContext {
 	enum_flags                map[u32]bool
 	enum_field_types          flat.TypeTextBindings
 	enum_field_names          map[string][]string
+	enum_field_attrs          map[string][][]string
+	enum_attrs                map[string][]string
 	alias_base_types          flat.TypeTextBindings
 	fn_alias_return_types     flat.TypeTextBindings
 	sum_types                 map[string]bool
@@ -1826,6 +1894,7 @@ struct FastcFileGenContext {
 	struct_field_info         map[string][]FastcStructField
 	struct_field_lookup       map[string]map[string]&FastcStructField
 	interface_fields          map[string]FastcInterfaceField
+	interface_method_names    map[u32][]string
 	constants                 map[string]string
 	constant_values           map[string]string
 	public_constants          map[string]bool
@@ -1949,6 +2018,8 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		enum_flags:                    ctx.enum_flags
 		enum_field_types:              ctx.enum_field_types
 		enum_field_names:              ctx.enum_field_names
+		enum_field_attrs:              ctx.enum_field_attrs
+		enum_attrs:                    ctx.enum_attrs
 		alias_base_types:              ctx.alias_base_types
 		fn_alias_return_types:         ctx.fn_alias_return_types
 		sum_types:                     ctx.sum_types
@@ -1963,6 +2034,7 @@ fn fastc_generate_single_file(ctx &FastcFileGenContext, source_file FastcSourceF
 		mono_functions:                map[string]FastcFunctionSignature{}
 		mono_definitions:              map[string]string{}
 		interface_fields:              ctx.interface_fields
+		interface_method_names:        ctx.interface_method_names
 		constants:                     ctx.constants
 		constant_values:               ctx.constant_values
 		public_constants:              ctx.public_constants
@@ -2371,7 +2443,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	for global_type in global_types.ids.values() {
 		fastc_register_composite_type(global_type, mut composite_types)
 	}
-	startup_initializers := fastc_generate_startup_initializers(ordered_sources, constant_output.module_initializers, global_output.module_initializers, global_output.early_initializers, module_init_calls, function_c_names)!
+	startup_initializers := fastc_gc_startup_initializer(prefs, functions, function_c_names) +
+		fastc_generate_startup_initializers(ordered_sources, constant_output.module_initializers, global_output.module_initializers, global_output.early_initializers, module_init_calls, function_c_names)!
 	timer.mark('startup_initializers')
 	mut used_function_names := fastc_wait_referenced_function_names(mut pending_references)
 	for key, signature in functions {
@@ -2430,6 +2503,8 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		enum_flags:                enum_flags
 		enum_field_types:          enum_field_types
 		enum_field_names:          type_output.enum_field_names
+		enum_field_attrs:          type_output.enum_field_attrs
+		enum_attrs:                type_output.enum_attrs
 		alias_base_types:          type_output.alias_base_types
 		fn_alias_return_types:     type_output.fn_alias_return_types
 		sum_types:                 type_output.sum_types
@@ -2441,6 +2516,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		generic_method_names:      fastc_generic_method_names(generic_method_sources)
 		module_aliases:            module_aliases
 		interface_fields:          interface_fields
+		interface_method_names:    fastc_interface_method_names(functions, declared_kinds)
 		constants:                 constants
 		constant_values:           constant_output.compile_time_values
 		public_constants:          public_constants
@@ -2520,6 +2596,12 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 		}
 		c_flags << output.c_flags
 	}
+	for name, text in global_output.function_typedefs {
+		spawn_typedefs[name] = text
+	}
+	for name, text in global_output.function_definitions {
+		spawn_helpers[name] = text
+	}
 	for name, array_type_id in generation.fixed_array_types.ids {
 		fixed_array_types.set_id(name, array_type_id)
 	}
@@ -2530,10 +2612,19 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	mut mono_names := mono_definitions.keys()
 	mono_names.sort()
 	timer.mark('stitch')
+	mono_body_start := body_len
+	// Generic instances become several units, so one TinyCC job does not compile them all.
+	mut mono_unit_offsets := []int{}
+	mut mono_unit_size := 0
 	for mono_name in mono_names {
 		mono_definition := mono_definitions[mono_name]
+		if mono_unit_offsets.len == 0 || mono_unit_size >= fastc_mono_unit_bytes {
+			mono_unit_offsets << body_len
+			mono_unit_size = 0
+		}
 		body_pieces << fastc_piece(mono_definition)
 		body_len += mono_definition.len
+		mono_unit_size += mono_definition.len
 	}
 	if prefs.is_test {
 		// The test main synthesized below is this program's entry.
@@ -2607,12 +2698,14 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	scalar_fixed_array_declarations := fastc_generate_fixed_array_declarations(scalar_fixed_array_types)
 	fixed_array_declarations := fastc_generate_fixed_array_declarations(aggregate_fixed_array_types)
 	callback_fixed_array_declarations := fastc_generate_fixed_array_declarations(callback_fixed_array_types)
+	// V_FASTC_GC_HEAP makes the runtime box values in the collector's heap.
+	gc_heap := if fastc_program_uses_gc(prefs) { '#define V_FASTC_GC_HEAP 1\n' } else { '' }
 	preamble := if prefs.target_libc_headers {
 		fastc_target_libc_preamble() + c_target_option_runtime
 	} else if header_free {
-		c_selfhost_preamble.replace('#include <stdbool.h>', '#ifndef __cplusplus\ntypedef _Bool bool;\n#define true ((bool)1)\n#define false ((bool)0)\n#endif').replace(c_selfhost_preamble_includes, fastc_c_abi_prelude(prefs.target.os, prefs.target.arch, ''))
+		gc_heap + c_selfhost_preamble.replace('#include <stdbool.h>', '#ifndef __cplusplus\ntypedef _Bool bool;\n#define true ((bool)1)\n#define false ((bool)0)\n#endif').replace(c_selfhost_preamble_includes, fastc_c_abi_prelude(prefs.target.os, prefs.target.arch, ''))
 	} else if prefs.building_v {
-		c_selfhost_preamble
+		gc_heap + c_selfhost_preamble
 	} else {
 		c_preamble + c_collection_runtime
 	}
@@ -2912,7 +3005,7 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	}
 	units.native_headers = fastc_native_function_only_headers(sources, functions, declared_types, native_context)
 	pieces << fastc_c_extern_prototypes_for_source_inputs(functions, c_flags, native_context,
-		prefs.vroot)
+		prefs.vroot) + fastc_gc_thread_redirects(prefs)
 	if prefs.target_libc_headers {
 		pieces << fastc_target_c_extern_prototypes_for_context(functions, used_function_names, prefs, native_context)
 	}
@@ -3017,14 +3110,34 @@ fn generate_source_pieces(input_sources []FastcSourceFile, module_aliases map[st
 	// unit; the generic instances (after the last file) join the last unit.
 	// Conditional blocks would be body text shared by every unit, so a
 	// program with any keeps a single unit.
-	mut unit_starts := []int{cap: outputs.len + 2}
+	mut unit_starts := []int{cap: outputs.len + mono_unit_offsets.len + 2}
 	if kept_conditional_ranges.len == 0 && outputs.len > 0 {
 		for i, _ in outputs {
 			window_start := output_body_offsets[i]
-			window_end := if i + 1 < outputs.len { output_body_offsets[i + 1] } else { body_len }
+			window_end := if i + 1 < outputs.len {
+				output_body_offsets[i + 1]
+			} else {
+				mono_body_start
+			}
 			unit_starts << pieces.len
 			fastc_collect_c_piece_ranges(mut pieces, body_pieces, fastc_window_ranges(kept_body_ranges, window_start, window_end))
 		}
+		for m, window_start in mono_unit_offsets {
+			window_end := if m + 1 < mono_unit_offsets.len {
+				mono_unit_offsets[m + 1]
+			} else {
+				body_len
+			}
+			if m > 0 {
+				unit_starts << pieces.len
+				if unit_ref_starts.len > 0 {
+					// Generic instances read their declarations through tail_prototype_ids.
+					unit_ref_starts << unit_ref_ids.len
+				}
+			}
+			fastc_collect_c_piece_ranges(mut pieces, body_pieces, fastc_window_ranges(kept_body_ranges, window_start, window_end))
+		}
+		units.tail_unit = outputs.len - 1
 	} else {
 		fastc_collect_c_piece_ranges(mut pieces, body_pieces, kept_body_ranges)
 	}
@@ -3206,6 +3319,72 @@ fn fastc_definition_prototypes(text string) string {
 	return out.str()
 }
 
+// fastc_program_uses_gc reports whether a full-runtime build allocates from the Boehm
+// collector. The bootstrap runtime has no collector, and `-prealloc` allocates from
+// arenas the collector does not scan.
+fn fastc_program_uses_gc(prefs &pref.Preferences) bool {
+	return prefs.building_v && !prefs.target_libc_headers && 'gcboehm' in prefs.user_defines
+		&& 'prealloc' !in prefs.user_defines
+}
+
+// fastc_gc_startup_initializer starts the collector before the first allocation, as the
+// C backend's main does. It is the first statement of `v_fastc_init_globals`.
+fn fastc_gc_startup_initializer(prefs &pref.Preferences, functions map[string]FastcFunctionSignature, function_c_names map[string]string) string {
+	if !fastc_program_uses_gc(prefs) {
+		return ''
+	}
+	key := fastc_function_key('builtin', 'gc_runtime_init')
+	signature := functions[key] or { return '' }
+	if signature.is_disabled {
+		return ''
+	}
+	c_name := function_c_names[key] or { fastc_signature_c_name(key, signature) }
+	return '\t${c_name}();\n'
+}
+
+// fastc_gc_thread_redirects routes thread calls through V's collector helpers
+// (builtin/gc_boehm_helpers.c), as the C backend does: the collector must stop and scan
+// every thread that can hold a collected pointer. A header that already redirects a
+// call keeps its own redirect.
+fn fastc_gc_thread_redirects(prefs &pref.Preferences) string {
+	if !fastc_program_uses_gc(prefs) || prefs.normalized_target_os() == 'windows' {
+		return ''
+	}
+	return '#if !defined(_WIN32)
+int v_gc_pthread_create(pthread_t *, const pthread_attr_t *, void *(*)(void *), void *);
+int v_gc_pthread_join(pthread_t, void **);
+int v_gc_pthread_detach(pthread_t);
+int v_gc_pthread_sigmask(int, const sigset_t *, sigset_t *);
+void v_gc_pthread_exit(void *);
+void *v_gc_dlopen(const char *, int);
+#ifndef pthread_create
+#define pthread_create v_gc_pthread_create
+#endif
+#ifndef pthread_join
+#define pthread_join v_gc_pthread_join
+#endif
+#ifndef pthread_detach
+#define pthread_detach v_gc_pthread_detach
+#endif
+#ifndef pthread_sigmask
+#define pthread_sigmask v_gc_pthread_sigmask
+#endif
+#ifndef pthread_exit
+#define pthread_exit v_gc_pthread_exit
+#endif
+#ifndef dlopen
+#define dlopen v_gc_dlopen
+#endif
+#if !defined(__ANDROID__)
+int v_gc_pthread_cancel(pthread_t);
+#ifndef pthread_cancel
+#define pthread_cancel v_gc_pthread_cancel
+#endif
+#endif
+#endif
+'
+}
+
 // fastc_c_extern_prototypes emits declarations explicitly requested with `@[c_extern]`.
 // Such symbols come from linked system libraries rather than an included header, so C99 must
 // see their V-declared ABI before a call (matching the main C backend's behavior).
@@ -3268,19 +3447,26 @@ fn fastc_c_extern_prototypes_for_inputs(functions map[string]FastcFunctionSignat
 
 // Conditional directives without generated bodies can be shared by the C units.
 fn fastc_conditional_directives_only(pieces []string) bool {
+	mut has_macro := false
+	mut has_include := false
 	for piece in pieces {
 		for line in piece.split_into_lines() {
 			clean := line.trim_space()
 			if clean == '' { continue }
 			if !clean.starts_with('#') { return false }
 			word := clean[1..].trim_left(' \t').all_before(' ').all_before('\t')
+			// Macro definitions are shared like the unconditional ones hoisted to the head.
 			if word !in ['if', 'ifdef', 'ifndef', 'else', 'elif', 'endif', 'include', 'import',
-				'error', 'warning'] {
+				'error', 'warning', 'define', 'undef'] {
 				return false
 			}
+			has_macro = has_macro || word in ['define', 'undef']
+			has_include = has_include || word in ['include', 'import']
 		}
 	}
-	return pieces.len > 0
+	// A macro beside an include can select the header's definitions, as with
+	// `#define X_IMPLEMENTATION`; a copy in every unit would define them in each.
+	return pieces.len > 0 && !(has_macro && has_include)
 }
 
 // Only V tokens establish ownership. Native constants or undeclared native
@@ -3361,6 +3547,15 @@ fn fastc_c_extern_prototypes_for_source_inputs(functions map[string]FastcFunctio
 			continue
 		}
 		name := key.all_after_first('C.')
+		if signature.c_symbol != '' {
+			// `@[c: 'v_gc_malloc'] fn C.GC_MALLOC` calls a symbol of V's own native
+			// objects, which no header declares. A header macro of the same name wins.
+			out.writeln('#ifndef ${name}')
+			out.writeln('extern ' + fastc_native_function_declaration(signature.c_symbol, signature))
+			out.writeln('#define ${name} ${signature.c_symbol}')
+			out.writeln('#endif')
+			continue
+		}
 		paths := context.declaration_paths[name] or { [signature.path] }
 		if !signature.is_c_extern && !paths.any(!context.files_with_headers[it]
 			&& fastc_c_declaration_has_native_input(it, inputs))
@@ -3384,12 +3579,20 @@ fn fastc_c_extern_prototypes_for_source_inputs(functions map[string]FastcFunctio
 // `ranges` inside [window_start, window_end).
 fn fastc_window_ranges(ranges []int, window_start int, window_end int) []int {
 	mut out := []int{}
-	for i := 0; i + 1 < ranges.len; i += 2 {
+	// Find the first range whose end is beyond the window's start.
+	mut low := 0
+	mut high := ranges.len / 2
+	for low < high {
+		mid := low + (high - low) / 2
+		if ranges[mid * 2 + 1] <= window_start {
+			low = mid + 1
+		} else {
+			high = mid
+		}
+	}
+	for i := low * 2; i + 1 < ranges.len; i += 2 {
 		start := ranges[i]
 		end := ranges[i + 1]
-		if end <= window_start {
-			continue
-		}
 		if start >= window_end {
 			break
 		}
@@ -3400,15 +3603,19 @@ fn fastc_window_ranges(ranges []int, window_start int, window_end int) []int {
 }
 
 fn fastc_range_is_kept(ranges []int, start int, end int) bool {
-	for i := 0; i + 1 < ranges.len; i += 2 {
-		if ranges[i] <= start && end <= ranges[i + 1] {
-			return true
-		}
-		if ranges[i] > start {
-			break
+	// The ranges are ordered and disjoint. Only the last range beginning at
+	// or before start can contain the complete queried span.
+	mut low := 0
+	mut high := ranges.len / 2
+	for low < high {
+		mid := low + (high - low) / 2
+		if ranges[mid * 2] <= start {
+			low = mid + 1
+		} else {
+			high = mid
 		}
 	}
-	return false
+	return low > 0 && end <= ranges[low * 2 - 1]
 }
 
 fn fastc_native_implementation_include(line string) bool {
@@ -3892,7 +4099,7 @@ fn fastc_render_c_unit(pieces []string, units &FastcUnitLayout, g int, first_uni
 				needed[units.unit_ref_ids[r]] = true
 			}
 		}
-		if end_unit == units.unit_starts.len - 1 {
+		if end_unit > units.tail_unit {
 			for id in units.tail_prototype_ids {
 				needed[id] = true
 			}
@@ -3914,6 +4121,9 @@ fn fastc_render_c_unit(pieces []string, units &FastcUnitLayout, g int, first_uni
 	}
 	return fastc_take_string(mut out)
 }
+
+// fastc_mono_unit_bytes is roughly how much generic instance code forms one unit.
+const fastc_mono_unit_bytes = 1 << 20
 
 fn fastc_descending_size_order(sizes []int) []int {
 	mut order := []int{cap: sizes.len}
@@ -4143,7 +4353,7 @@ pub fn fastc_generation_link_cache_key(tcc string, compile_args []string, final_
 			stable_final_args << arg
 		}
 	}
-	configuration := 'fastc-generation-link-v3\x00${fastc_unit_cache_configuration(tcc, compile_args)}\x00${stable_final_args.join('\x00')}\x00${jobs}\x00${units.head_end}\x00${units.solo_end}\x00${units.prototype_start}\x00${units.prototype_end}\x00${units.unit_starts}\x00${units.extern_indexes}\x00${units.unit_ref_starts}\x00${units.unit_ref_ids}\x00${units.solo_prototype_ids}\x00${units.shared_prototype_ids}\x00${units.tail_prototype_ids}'
+	configuration := 'fastc-generation-link-v3\x00${fastc_unit_cache_configuration(tcc, compile_args)}\x00${stable_final_args.join('\x00')}\x00${jobs}\x00${units.head_end}\x00${units.solo_end}\x00${units.prototype_start}\x00${units.prototype_end}\x00${units.unit_starts}\x00${units.extern_indexes}\x00${units.unit_ref_starts}\x00${units.unit_ref_ids}\x00${units.solo_prototype_ids}\x00${units.shared_prototype_ids}\x00${units.tail_prototype_ids}\x00${units.tail_unit}'
 	mut hash := fastc_unit_cache_hash(configuration, u64(0x510e527fade682d1))
 	for piece in pieces {
 		hash = fastc_unit_cache_hash(piece, hash ^ u64(piece.len))
@@ -4208,6 +4418,27 @@ fn fastc_generic_method_names(generic_method_sources map[string]FastcGenericMeth
 	mut names := map[string]bool{}
 	for key, _ in generic_method_sources {
 		names[key.all_after_last('.')] = true
+	}
+	return names
+}
+
+fn fastc_interface_method_names(functions map[string]FastcFunctionSignature, kinds map[u32]FastcDeclaredTypeKind) map[u32][]string {
+	mut owners := map[string]u32{}
+	mut names := map[u32][]string{}
+	for typ, kind in kinds {
+		if kind == .interface_ {
+			owners[flat.source_type_name(typ)] = typ
+			names[typ] = []string{}
+		}
+	}
+	// Scan once per generation instead of cloning every function key for each
+	// interface queried by each source file and generic specialization.
+	for key, _ in functions {
+		separator := key.last_index_u8(`.`)
+		if separator < 0 { continue }
+		if owner := owners[key[..separator]] {
+			names[owner] << key[separator + 1..]
+		}
 	}
 	return names
 }

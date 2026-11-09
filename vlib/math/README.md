@@ -3,6 +3,10 @@
 `math` provides commonly used mathematical functions for
 trigonometry, logarithms, etc.
 
+`math.bits.div_64(hi, lo, y)` divides an unsigned 128-bit dividend by `y`, returning a
+64-bit quotient and remainder. It panics on division by zero or quotient overflow.
+On Windows amd64, both MSVC and Clang support this operation in portable C snapshots.
+
 `factorial(n)` returns `n!` for nonnegative integers and uses `gamma(n + 1)` for other
 values. When the result overflows `f64`, it returns positive infinity, including for
 `n >= 171` and positive infinity. For nonnegative inputs, use `is_inf(result, 1)`

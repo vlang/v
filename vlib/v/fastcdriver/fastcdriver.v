@@ -310,6 +310,11 @@ fn tcc_host_system_flags(target_os string) []string {
 			flags << '-L${os.join_path(sdk_root, 'usr', 'lib')}'
 		}
 	}
+	// Mirror the driver's v3_tcc_linux_uapi_flags: arm64 <signal.h> uses `__u128`,
+	// which <linux/types.h> leaves undefined for TinyCC.
+	if target_os == 'linux' && pref.host_arch() == 'arm64' {
+		flags << '-D__u128=__uint128_t'
+	}
 	return flags
 }
 

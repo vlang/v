@@ -5,7 +5,7 @@ import rand
 import v.vmod
 import test_utils { cmd_fail_args, cmd_ok_args }
 
-const test_path = os.join_path(os.vtmp_dir(), 'vpm_install_local_test_${rand.ulid()}')
+const test_path = os.join_path(os.temp_dir(), 'vpm_local_${rand.ulid()}')
 const local_vpm = os.join_path(test_path, if os.user_os() == 'windows' { 'vpm.exe' } else { 'vpm' })
 
 struct LocalInstallCase {

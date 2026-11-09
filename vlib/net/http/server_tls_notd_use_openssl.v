@@ -86,7 +86,7 @@ fn (mut s Server) listen_and_serve_tls() {
 	mut ws := []thread{cap: s.worker_num}
 	for wid in 0 .. s.worker_num {
 		ws << new_tls_handler_worker(wid, ch, s.handler, s.max_keep_alive_requests,
-			handshake_timeout, idle_conns)
+			handshake_timeout, idle_conns, s.max_http1_request_body_size)
 	}
 
 	if s.show_startup_message {
@@ -146,24 +146,26 @@ fn (mut s Server) listen_and_serve_tls() {
 
 // TlsHandlerWorker serves HTTP/1.1 requests on TLS-wrapped connections.
 struct TlsHandlerWorker {
-	id                      int
-	ch                      chan &mbedtls.SSLConn
-	max_keep_alive_requests int
-	handshake_timeout       time.Duration
+	id                          int
+	ch                          chan &mbedtls.SSLConn
+	max_keep_alive_requests     int
+	handshake_timeout           time.Duration
+	max_http1_request_body_size int
 mut:
 	idle_conns &TlsIdleConnTracker = unsafe { nil }
 pub mut:
 	handler Handler
 }
 
-fn new_tls_handler_worker(wid int, ch chan &mbedtls.SSLConn, handler Handler, max_keep_alive_requests int, handshake_timeout time.Duration, idle_conns &TlsIdleConnTracker) thread {
+fn new_tls_handler_worker(wid int, ch chan &mbedtls.SSLConn, handler Handler, max_keep_alive_requests int, handshake_timeout time.Duration, idle_conns &TlsIdleConnTracker, max_http1_request_body_size int) thread {
 	mut w := &TlsHandlerWorker{
-		id:                      wid
-		ch:                      ch
-		handler:                 handler
-		max_keep_alive_requests: max_keep_alive_requests
-		handshake_timeout:       handshake_timeout
-		idle_conns:              idle_conns
+		id:                          wid
+		ch:                          ch
+		handler:                     handler
+		max_keep_alive_requests:     max_keep_alive_requests
+		handshake_timeout:           handshake_timeout
+		max_http1_request_body_size: max_http1_request_body_size
+		idle_conns:                  idle_conns
 	}
 	return spawn w.process_requests()
 }
@@ -245,7 +247,15 @@ fn (mut w TlsHandlerWorker) handle_conn(mut conn mbedtls.SSLConn) {
 		if !w.idle_conns.mark_idle(conn.handle) {
 			return
 		}
-		mut req := parse_request(mut reader) or {
+		mut req := parse_request_with_body_limit(mut reader, w.max_http1_request_body_size) or {
+			if err is RequestBodyLimitError {
+				conn.write_string(http1_request_body_too_large_response) or {}
+				return
+			}
+			if err is RequestFramingError {
+				conn.write_string(http1_bad_request_response) or {}
+				return
+			}
 			if err !is io.Eof {
 				$if debug {
 					eprintln('error parsing TLS request: ${err}')

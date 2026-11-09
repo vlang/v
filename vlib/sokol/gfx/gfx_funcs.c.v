@@ -43,6 +43,12 @@ fn C.sg_draw(base_element i32, num_elements i32, num_instances i32)
 fn C.sg_end_pass()
 fn C.sg_commit()
 
+// V patch: synchronous image transfers and Metal shader compile options
+fn C.sg_v_flush() bool
+fn C.sg_v_read_image(img C.sg_image, x i32, y i32, width i32, height i32, pixels voidptr, pitch i32) bool
+fn C.sg_v_write_image(img C.sg_image, x i32, y i32, width i32, height i32, pixels voidptr, pitch i32) bool
+fn C.sg_v_mtl_set_shader_compile_options(language_major i32, language_minor i32, fast_math bool)
+
 // getting information
 fn C.sg_query_desc() C.sg_desc
 fn C.sg_query_backend() Backend

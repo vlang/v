@@ -64,6 +64,12 @@ println(resp.status_code)
 println(resp.body)
 ```
 
+`http.get` checks the server certificate, and `http.fetch(..., validate: false)` skips that check.
+`get`, `post`, and the other helpers check the certificate.
+`fetch`, `prepare`, and `download_file_with_progress` accept `validate: false`.
+Leave `verify` empty to use the system trust store on HTTP/1.1 and HTTP/2.
+HTTP/3 ignores `validate: false` and has no system trust store, so set `verify`.
+
 `http.post`, `http.post_json`, `http.post_form`, `http.put`, `http.patch`,
 `http.head` and `http.delete` cover the common verbs. `http.fetch` takes a
 `FetchConfig` when you need headers, cookies, timeouts, redirect control,
@@ -143,6 +149,17 @@ An HTTP/2 request with a field name that is not a token, or a field value with C
 NUL, is malformed: its stream is reset and the handler is not called. A request with more
 than `http.max_headers` fields, counting the `Host` field that `:authority` becomes, is
 answered with `431 Request Header Fields Too Large`.
+
+HTTP/1.1 `Content-Length` bodies are limited to 8 MiB by default before the server allocates
+their storage. Set `Server.max_http1_request_body_size` to another positive byte count to
+change the limit, or to `0` for no limit. A request above the limit receives `413 Request
+Entity Too Large` and the connection is closed. This setting applies to plain and TLS
+HTTP/1.1; HTTP/2 keeps its separate 8 MiB server limit. `parse_request` uses the same safe
+8 MiB default when called directly. Use `parse_request_with_body_limit` when a parser caller
+needs to set a different limit. Use an unlimited setting only when all clients are trusted.
+Negative limits are rejected. Invalid, overflowing, or conflicting `Content-Length` fields,
+and unsupported `Transfer-Encoding` fields, receive `400 Bad Request` and close the
+connection. Chunked request bodies are not supported by this parser.
 
 ## Identifying the client
 

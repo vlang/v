@@ -11902,12 +11902,18 @@ fn (mut t Transformer) mark_implicit_reference_argument_escapes(call_id flat.Nod
 	}
 	call_name := t.call_name_for_node(call_id, call)
 	mut params := t.call_param_types_for_node(call_name, call)
+	mut is_variadic := t.call_is_variadic_for_node(call_name, call)
 	if concrete := t.concrete_generic_call_param_types(call_id, call) {
 		params = concrete.clone()
+		is_variadic = is_variadic || t.concrete_generic_call_is_variadic(call_id, call)
 	}
-	param_offset := t.call_param_offset_for_node(call_name, call, params)
+	param_offset := if t.call_is_selector_form(call) && t.concrete_generic_call_is_method(call_id) {
+		1
+	} else {
+		t.call_param_offset_for_node(call_name, call, params)
+	}
 	for child_idx in 1 .. call.children_count {
-		param_idx := child_idx - 1 + param_offset
+		param_idx := t.call_argument_param_index(call, child_idx, param_offset, params.len, is_variadic)
 		param_type := if param_idx >= 0 && param_idx < params.len {
 			params[param_idx]
 		} else {
@@ -12182,7 +12188,7 @@ fn (mut t Transformer) mark_fixed_array_reference_argument_escapes(call_id flat.
 		if child_idx < 64 && arg_mask & (u64(1) << u64(child_idx)) == 0 {
 			continue
 		}
-		param_idx := child_idx - 1 + offset
+		param_idx := t.call_argument_param_index(call, child_idx, offset, params.len, is_variadic)
 		param_type := call_argument_param_type(params, param_idx, variadic_idx) or { continue }
 		if t.fixed_array_call_param_borrows(call_name, call, param_idx) {
 			continue
@@ -24849,15 +24855,17 @@ fn checked_small_numeric_type(typ types.Type) bool {
 fn (mut t Transformer) resolved_call_argument_param_type(id flat.NodeId, node flat.Node, child_index int) ?types.Type {
 	call_name := t.call_name_for_node(id, node)
 	mut params := t.call_param_types_for_node(call_name, node)
+	mut is_variadic := t.call_is_variadic_for_node(call_name, node)
 	if concrete_params := t.concrete_generic_call_param_types(id, node) {
 		params = concrete_params.clone()
+		is_variadic = is_variadic || t.concrete_generic_call_is_variadic(id, node)
 	}
 	offset := if t.call_is_selector_form(node) && t.concrete_generic_call_is_method(id) {
 		1
 	} else {
 		t.call_param_offset_for_node(call_name, node, params)
 	}
-	param_index := child_index - 1 + offset
+	param_index := t.call_argument_param_index(node, child_index, offset, params.len, is_variadic)
 	if param_index < 0 || param_index >= params.len {
 		return none
 	}
@@ -24938,7 +24946,10 @@ fn (mut t Transformer) mut_pointer_slot_arg_keeps_binding(id flat.NodeId, node f
 	} else {
 		t.call_param_offset_for_node(call_name, node, params)
 	}
-	return t.call_decl_param_is_mut_pointer_slot(call_name, child_index - 1 + offset)
+	is_variadic := t.call_is_variadic_for_node(call_name, node)
+		|| t.concrete_generic_call_is_variadic(id, node)
+	param_index := t.call_argument_param_index(node, child_index, offset, params.len, is_variadic)
+	return t.call_decl_param_is_mut_pointer_slot(call_name, param_index)
 }
 
 // call_decl_param_is_mut_pointer_slot reports whether parameter `param_index` of the
@@ -25000,7 +25011,7 @@ fn (mut t Transformer) snapshot_mut_pointer_slot_arg(id flat.NodeId, node flat.N
 			}
 		}
 		fn_type := t.call_callee_fn_type(callee_id) or { return none }
-		param_index := child_index - 1
+		param_index := t.call_argument_param_index(node, child_index, 0, fn_type.params.len, fn_type.is_variadic)
 		if param_index < 0 || param_index >= fn_type.params.len
 			|| !fn_type.params[param_index].is_mut
 			|| t.normalize_type_alias(t.semantic_type_name(*fn_type.params[param_index].typ)) != t.normalize_type_alias(flat.source_type_syntax(storage_type_source_id).raw_base()) {

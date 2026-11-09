@@ -589,7 +589,8 @@ fn (mut p Parser) parse_buffer(path string, stable_src string) {
 	p.has_veb_template = false
 	p.may_have_local_types = source_has_struct_or_union(stable_src)
 	p.unsupported_inline_asm_guards.clear()
-	if !p.prefs.supports_inline_asm && !p.supports_c_inline_asm_lowering() {
+	if !p.prefs.supports_inline_asm && !p.supports_c_inline_asm_lowering()
+		&& !p.supports_native_inline_asm_lowering() {
 		p.precollect_unsupported_inline_asm_guards(stable_src, p.prefs.target.arch)
 	}
 	if path.ends_with('.v') || path.ends_with('.vv') {
@@ -2213,7 +2214,12 @@ fn (mut p Parser) fn_decl_body(name string, receiver_name string, receiver_type_
 			is_mut:         is_v_header_decl || is_trusted_c_decl
 		})
 		p.record_formatter_param_list_end(id, param_list_end)
-		p.pending_export = ''
+		if is_v_header_decl {
+			// Cached export wrappers still require the program's runtime initializer.
+			p.register_pending_export(name)
+		} else {
+			p.pending_export = ''
+		}
 		p.register_pending_noreturn(name, interop_prefix)
 		return id
 	}
@@ -4940,6 +4946,7 @@ fn (p &Parser) known_bare_comptime_flag(name string) bool {
 		'prealloc',
 		'no_bounds_checking',
 		'freestanding',
+		'syscalls',
 		'threads',
 		'js_node',
 		'js_browser',
@@ -11724,10 +11731,16 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	}
 	asm_end := clamp_source_offset(p.prev_tok_end, p.s.src.len)
 	raw_source := if asm_pos >= 0 && asm_pos < asm_end { p.s.src[asm_pos..asm_end] } else { '' }
+	if !p.prefs.is_fmt && normalized_asm_arch == 'ppc' && !is_raw
+		&& (p.prefs.backend != 'c' || has_unsupported_content) {
+		p.record_diagnostic('PowerPC inline assembly requires the `raw` modifier', asm_pos)
+	}
 	// An empty template with only a memory clobber is architecture independent;
 	// it lowers to a compiler barrier even when the block names another ISA.
 	can_lower := (!has_unsupported_content && has_memory_clobber)
 		|| (p.supports_c_inline_asm_lowering()
+			&& comptime_flag_is_target_arch(asm_arch, p.prefs.target.arch))
+		|| (p.supports_native_inline_asm_lowering()
 			&& comptime_flag_is_target_arch(asm_arch, p.prefs.target.arch))
 	if !p.prefs.is_fmt && !p.prefs.supports_inline_asm && !can_lower
 		&& (has_memory_clobber || has_unsupported_content) {
@@ -11749,10 +11762,18 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 
 // inline_asm_c_lowering_arches are the architectures whose inline assembly the C backend
 // lowers to GNU `asm()`.
-const inline_asm_c_lowering_arches = ['amd64', 'arm64', 'x86', 'riscv64']
+const inline_asm_c_lowering_arches = ['amd64', 'arm64', 'x86', 'riscv64', 'ppc']
 
 fn (p &Parser) supports_c_inline_asm_lowering() bool {
 	return p.prefs.backend == 'c' && p.prefs.target.arch in inline_asm_c_lowering_arches
+}
+
+// supports_native_inline_asm_lowering reports whether the SSA native backend lowers
+// an inline assembly block for its own target architecture. A block for another
+// architecture is declined, which keeps a `$if` guard for it effective.
+fn (p &Parser) supports_native_inline_asm_lowering() bool {
+	return (p.prefs.backend == 'x64' && p.prefs.target.arch == 'amd64')
+		|| (p.prefs.backend == 'arm64' && p.prefs.target.arch == 'arm64')
 }
 
 // inline_asm_comptime_flag returns the `$if` flag that is true only in a build for the
