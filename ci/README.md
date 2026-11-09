@@ -222,6 +222,14 @@ through `net.http`, SOCKS and
 ./v test vlib/v/markused/library_frontier_test.v
 ```
 
+Paths containing `-l`, including private temporary directories such as `build-logs`, must not
+be treated as library options. C flag classification checks argument boundaries and skips
+include, search-path, macro and linker-option operands. Its regression can be run with:
+
+```sh
+./v test vlib/v/gen/c/target_test.v
+```
+
 ### Testing the resume behavior
 
 On macOS or Linux with a working V compiler, run:
