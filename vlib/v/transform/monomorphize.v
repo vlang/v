@@ -10814,6 +10814,17 @@ fn (mut t Transformer) generic_call_arg_type_for_inference(id flat.NodeId) u32 {
 		// The `&?&T` built for a `mut a ?T` parameter: `T` is the payload's type.
 		return view_type
 	}
+	if t.scans_parsed_tree && t.cloning_generic_fn_depth == 0 && !isnil(t.tc)
+		&& node.kind in [.ident, .selector, .index] {
+		// A tree that was not lowered still has `s` here, where a build has the
+		// variant: only the checker knows what `is` or a `match` arm narrowed it to.
+		narrowed := t.tc.smartcast_type_name(id)
+		if generic_inference_arg_type_usable(narrowed)
+			&& !t.generic_arg_is_unresolved(t.normalize_type_alias(narrowed)) {
+			return t.generic_inference_argument_type(narrowed, t.node_module_or(int(id),
+				t.cur_module))
+		}
+	}
 	if node.kind == .string_literal
 		&& !(node.children_count == 1 && node.value_text() in ['__v3_comptime_zero', '__v3_comptime_new']) {
 		// Raw and JavaScript string literals keep their quote mode in `typ` as

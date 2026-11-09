@@ -77,6 +77,74 @@ fn test_instances_that_have_what_the_body_uses_stay_valid() {
 	assert error_lines(res.output) == [], res.output
 }
 
+const box_with_label = 'struct Box[T] {
+	v T
+}
+
+fn (b Box[T]) label() string {
+	return b.v.name
+}
+
+type Sum = Box[int] | string
+
+struct Holder {
+	s Sum
+}
+
+'
+
+// A check monomorphizes the tree as it was parsed. There a smartcast receiver is
+// still the sum type or the option, which the method of the variant does not
+// belong to: only what the checker narrowed it to tells which instance it asks for.
+fn test_an_instance_asked_for_by_a_smartcast_receiver_is_reported() {
+	bodies := {
+		'match_arm':     "fn f(s Sum) string {\n\treturn match s {\n\t\tBox[int] { s.label() }\n\t\tstring { s }\n\t}\n}\n\nfn main() {\n\tprintln(f(Sum('a')))\n}\n"
+		'mut_match_arm': "fn f(mut s Sum) string {\n\treturn match mut s {\n\t\tBox[int] { s.label() }\n\t\tstring { s }\n\t}\n}\n\nfn main() {\n\tmut s := Sum('a')\n\tprintln(f(mut s))\n}\n"
+		'if_is':         "fn f(s Sum) string {\n\tif s is Box[int] {\n\t\treturn s.label()\n\t}\n\treturn ''\n}\n\nfn main() {\n\tprintln(f(Sum('a')))\n}\n"
+		'field':         "fn f(h Holder) string {\n\treturn match h.s {\n\t\tBox[int] { h.s.label() }\n\t\tstring { h.s }\n\t}\n}\n\nfn main() {\n\tprintln(f(Holder{ s: Sum('a') }))\n}\n"
+		'none_guard':    "fn f(b ?Box[int]) string {\n\tif b != none {\n\t\treturn b.label()\n\t}\n\treturn ''\n}\n\nfn main() {\n\tprintln(f(none))\n}\n"
+	}
+	for name, body in bodies {
+		res := check_program('smartcast_${name}', box_with_label + body)
+		assert res.exit_code == 1, '${name}: ${res.output}'
+		assert error_lines(res.output) == ['15:13: `int` has no property `name`'], '${name}: ${res.output}'
+	}
+}
+
+fn test_a_method_with_its_own_parameter_on_a_smartcast_receiver_is_reported() {
+	res := check_program('smartcast_method_param', "struct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) label[U](u U) string {\n\treturn u.name + b.v.str()\n}\n\ntype Sum = Box[int] | string\n\nfn f(s Sum) string {\n\treturn match s {\n\t\tBox[int] { s.label(1) }\n\t\tstring { s }\n\t}\n}\n\nfn main() {\n\tprintln(f(Sum('a')))\n}\n")
+	assert res.exit_code == 1, res.output
+	assert error_lines(res.output) == ['15:11: `int` has no property `name`'], res.output
+}
+
+// Only the variant that the arm narrows to is asked for: `Box[int]` has no arm
+// that calls `label` here, and must not be reported.
+fn test_a_smartcast_receiver_asks_only_for_the_variant_of_its_arm() {
+	res := check_program('smartcast_variant', "struct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) label() string {\n\treturn b.v.name\n}\n\ntype Sum = Box[User] | Box[int] | string\n\nfn f(s Sum) string {\n\treturn match s {\n\t\tBox[User] { s.label() }\n\t\tBox[int] { 'int' }\n\t\tstring { s }\n\t}\n}\n\nfn g(s Sum) string {\n\tif s is Box[User] {\n\t\treturn s.label()\n\t}\n\treturn ''\n}\n\nfn main() {\n\tprintln(f(Sum('a')))\n\tprintln(g(Sum('a')))\n}\n")
+	assert res.exit_code == 0, res.output
+	assert error_lines(res.output) == [], res.output
+}
+
+// The shadowing is found in the clone of `m`, which has to exist in a check too.
+fn test_a_global_shadowed_in_an_instance_of_a_smartcast_receiver_is_reported() {
+	dir := os.join_path(os.vtmp_dir(), 'v3_check_generic_instances_smartcast_global_${os.getpid()}')
+	os.mkdir_all(dir) or { panic(err) }
+	defer {
+		os.rmdir_all(dir) or {}
+	}
+	path := os.join_path(dir, 'main.v')
+	os.write_file(path, "module main\n\n__global gv = 1\n\ntype Sum = Box[int] | string\n\nstruct Box[T] {\n\tv T\n}\n\nfn (b Box[T]) m() T {\n\t\$if T is int {\n\t\tgv := 3\n\t\t_ = gv\n\t}\n\treturn b.v\n}\n\nfn wrap(s Sum) int {\n\treturn match s {\n\t\tBox[int] { s.m() }\n\t\tstring { 0 }\n\t}\n}\n\nfn main() {\n\tprintln(wrap(Sum('a')))\n}\n") or {
+		panic(err)
+	}
+	check := os.exec([@VEXE, '-new-compiler', '-enable-globals', '-check', '-nocolor', path])
+	build := os.exec([@VEXE, '-new-compiler', '-enable-globals', '-nocolor', '-o',
+		os.join_path(dir, 'program'), path])
+	for res in [check, build] {
+		assert res.exit_code == 1, res.output
+		assert error_lines(res.output) == ['13:3: variable `gv` shadows a global variable'], res.output
+	}
+}
+
 // A library module outside the program, where ~/.vmodules keeps them. A check
 // checks the instances of the program's generics only, so the body of an
 // instance of this module matters only where it can ask for one of those.
