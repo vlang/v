@@ -2868,7 +2868,7 @@ fn (b &Builder) skip_source_fn(name string) bool {
 		'Builder.write_rune', 'Builder.free', 'Builder.last_n', 'new_map', 'map__set', 'map__get',
 		'map__exists', 'map__get_check', 'map__get_key_check', 'map__get_or_set', 'map__delete',
 		'map__clear', 'map__clone', 'map__move', 'map__free', 'map__reserve', 'map__keys', 'map__values',
-		'v3_map_find', 'v3_map_set_sized', 'u8.is_digit', 'u8.is_letter', 'u8.is_alnum', 'u8.is_capital',
+		'v3_map_find', 'v3_map_set_sized', 'v3_new_map_bytes', 'u8.is_digit', 'u8.is_letter', 'u8.is_alnum', 'u8.is_capital',
 		'bytestr', '[]u8.bytestr', '[]u8.hex', '[]rune.string', 'Array_u8__bytestr', 'Array_u8__hex',
 		'Array_rune__string', 'array.repeat_to_depth', 'string.all_before_last',
 		'string__all_before_last', 'all_before_last', 'string.all_after_last', 'string__all_after_last',
@@ -4925,10 +4925,16 @@ fn (mut b Builder) register_map_runtime_stubs() {
 		p6 << b.i64_type
 	}
 	if new_id := b.register_runtime_function('new_map', b.map_type, p6) {
-		b.generate_new_map_body(new_id)
+		b.generate_new_map_body(new_id, false)
 		b.runtime_fn_ids['new_map'] = new_id
 		if fn_type := b.fn_types['new_map'] {
 			b.runtime_fn_types['new_map'] = fn_type
+		}
+	}
+	if b.m.target.ptr_size == 8 {
+		if bytes_id := b.register_runtime_function('v3_new_map_bytes', b.map_type, p6) {
+			b.generate_new_map_body(bytes_id, true)
+			b.runtime_fn_ids['v3_new_map_bytes'] = bytes_id
 		}
 	}
 	mut p8 := []TypeID{}
@@ -5429,6 +5435,12 @@ fn (mut b Builder) generate_map_clone_body(func_id int) {
 	b.map_state_store_i64(blk_clone, new_state, 3, len)
 	b.map_state_store_i64(blk_clone, new_state, 4, key_size)
 	b.map_state_store_i64(blk_clone, new_state, 5, val_size)
+	if b.m.target.ptr_size == 8 {
+		string_keys := b.block_instr1(.load, blk_clone, b.i8_type, b.map_has_string_keys_ptr(blk_clone,
+			old_state))
+		b.block_instr2(.store, blk_clone, b.void_type, string_keys, b.map_has_string_keys_ptr(blk_clone,
+			new_state))
+	}
 	mut result_block := blk_clone
 	if b.m.target.ptr_size == 8 {
 		for field_idx in 9 .. 13 {
@@ -5534,6 +5546,10 @@ fn (mut b Builder) generate_map_move_body(func_id int) {
 			b.m.type_store.types[b.map_state_type].fields[16], has_string_keys_ptr)
 		new_has_string_keys_ptr := b.map_state_field_ptr(blk_reset, fresh_state, 8)
 		b.block_instr2(.store, blk_reset, b.void_type, has_string_keys, new_has_string_keys_ptr)
+		reset_string_keys := b.block_instr1(.load, blk_reset, b.i8_type, b.map_has_string_keys_ptr(blk_reset,
+			state))
+		b.block_instr2(.store, blk_reset, b.void_type, reset_string_keys, b.map_has_string_keys_ptr(blk_reset,
+			fresh_state))
 		for field_idx in 9 .. 13 {
 			old_field_ptr := b.map_state_field_ptr(blk_reset, state, field_idx)
 			field_type := b.m.type_store.types[b.map_state_type].fields[field_idx]
@@ -7161,6 +7177,11 @@ fn (mut b Builder) emit_map_state_alloc(block_id BlockID, key_size ValueID, val_
 	b.map_state_store_i64(block_id, state, 4, key_size)
 	b.map_state_store_i64(block_id, state, 5, val_size)
 	if b.m.target.ptr_size == 8 {
+		string_size := b.m.get_or_add_const(b.i64_type, '${b.m.type_size(b.str_type)}')
+		is_string_sized := b.block_instr2(.eq, block_id, b.i1_type, key_size, string_size)
+		flag := b.block_instr3(.select, block_id, b.i8_type, is_string_sized, b.m.get_or_add_const(b.i8_type,
+			'1'), b.m.get_or_add_const(b.i8_type, '0'))
+		b.block_instr2(.store, block_id, b.void_type, flag, b.map_has_string_keys_ptr(block_id, state))
 		dense_type := b.m.type_store.types[b.map_state_type].fields[5]
 		dense_ptr := b.block_struct_field_ptr(block_id, state, b.map_state_type, 5)
 		dense_key_size_ptr := b.block_struct_field_ptr(block_id, dense_ptr, dense_type, 0)
@@ -7287,7 +7308,7 @@ fn (mut b Builder) map_alloc_aligned_buffer(block_id BlockID, count ValueID, ele
 }
 
 // generate_new_map_body supports generate new map body handling for Builder.
-fn (mut b Builder) generate_new_map_body(func_id int) {
+fn (mut b Builder) generate_new_map_body(func_id int, keys_are_bytes bool) {
 	ptr_map := b.m.type_store.get_ptr(b.map_type)
 	entry := b.m.add_block(func_id, 'entry')
 	key_size := b.func_add_argument(func_id, b.i64_type, 'key_size')
@@ -7299,6 +7320,10 @@ fn (mut b Builder) generate_new_map_body(func_id int) {
 
 	alloca_m := b.block_instr0(.alloca, entry, ptr_map)
 	state := b.emit_map_state_alloc(entry, key_size, val_size)
+	if keys_are_bytes {
+		b.block_instr2(.store, entry, b.void_type, b.m.get_or_add_const(b.i8_type, '0'),
+			b.map_has_string_keys_ptr(entry, state))
+	}
 	if b.m.target.ptr_size == 8 {
 		hash_ptr := b.map_state_field_ptr(entry, state, 9)
 		eq_ptr := b.map_state_field_ptr(entry, state, 10)
@@ -7591,21 +7616,22 @@ fn (mut b Builder) generate_map_set_default_body(func_id int) {
 }
 
 // native_map_key_is_string reports whether a map's keys are strings. Key size
-// alone cannot say so: `[3]u64` is as wide as a string. Like the runtime map's
-// key comparison in vlib/builtin/map.v, and as Odin keeps the key type in Map_Info
-// (base/runtime/dynamic_map_internal.odin), the map's own equality function
-// decides.
+// alone cannot say so: `[3]u64` is as wide as a string. The map records it when
+// it is created, the same fact `has_string_keys` holds in vlib/builtin/map.v, as
+// Odin keeps the key's hasher and equality in Map_Info
+// (base/runtime/dynamic_map_internal.odin).
 fn (mut b Builder) native_map_key_is_string(block BlockID, state ValueID, key_size ValueID) ValueID {
 	string_size := b.m.get_or_add_const(b.i64_type, '${b.m.type_size(b.str_type)}')
 	size_matches := b.block_instr2(.eq, block, b.i1_type, key_size, string_size)
 	if b.m.target.ptr_size != 8 {
 		return size_matches
 	}
-	string_eq_id := b.fn_ids['map_eq_string'] or { return size_matches }
-	eq_fn_ptr := b.map_state_field_ptr(block, state, 10)
-	eq_fn := b.block_instr1(.load, block, b.i64_type, eq_fn_ptr)
-	string_eq := b.m.add_value(.func_ref, b.i64_type, 'map_eq_string', string_eq_id)
-	return b.block_instr2(.eq, block, b.i1_type, eq_fn, string_eq)
+	has_string_keys := b.block_instr1(.load, block, b.i8_type, b.map_has_string_keys_ptr(block, state))
+	return b.block_instr2(.ne, block, b.i1_type, has_string_keys, b.m.get_or_add_const(b.i8_type, '0'))
+}
+
+fn (mut b Builder) map_has_string_keys_ptr(block BlockID, state ValueID) ValueID {
+	return b.block_struct_field_ptr(block, state, b.map_state_type, 8)
 }
 
 // generate_map_set_sized_body supports generate map set sized body handling for Builder.
@@ -7635,18 +7661,6 @@ fn (mut b Builder) generate_map_set_sized_body(func_id int) {
 	b.block_instr3(.br, entry, b.void_type, has_state, ValueID(blk_ready), ValueID(blk_init))
 
 	new_state := b.emit_map_state_alloc(blk_init, key_size_arg, val_size_arg)
-	// A map first written here came from a zeroed value and has no callbacks.
-	if b.m.target.ptr_size == 8 {
-		if string_eq_id := b.fn_ids['map_eq_string'] {
-			string_size := b.m.get_or_add_const(b.i64_type, '${b.m.type_size(b.str_type)}')
-			if_string := b.block_instr2(.eq, blk_init, b.i1_type, key_size_arg, string_size)
-			string_eq := b.m.add_value(.func_ref, b.i64_type, 'map_eq_string', string_eq_id)
-			eq_value := b.block_instr3(.select, blk_init, b.i64_type, if_string, string_eq,
-				b.m.get_or_add_const(b.i64_type, '0'))
-			eq_slot := b.map_state_field_ptr(blk_init, new_state, 10)
-			b.block_instr2(.store, blk_init, b.void_type, eq_value, eq_slot)
-		}
-	}
 	b.block_instr2(.store, blk_init, b.void_type, new_state, state_field_ptr)
 	b.block_instr2(.store, blk_init, b.void_type, new_state, state_slot)
 	b.block_instr1(.jmp, blk_init, b.void_type, ValueID(blk_ready))
@@ -15529,6 +15543,16 @@ fn (mut b Builder) fix_native_map_callback_args(mut args []ValueID) []ValueID {
 		return args
 	}
 	key_size := key_size_value.name.int()
+	if b.m.target.ptr_size == 8 && args[0] > 0 && b.m.values[args[0]].name == 'new_map'
+		&& key_size == b.m.type_size(b.str_type) {
+		// As wide as a string, but not one: `[3]u64`.
+		equal := b.m.values[args[4]]
+		if !(equal.kind == .func_ref && equal.name == 'map_eq_string') {
+			if bytes_id := b.runtime_fn_ids['v3_new_map_bytes'] {
+				args[0] = b.m.add_value(.func_ref, b.map_type, 'v3_new_map_bytes', bytes_id)
+			}
+		}
+	}
 	if key_size !in [1, 2, 4, 8, 16] {
 		return args
 	}
