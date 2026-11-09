@@ -209,6 +209,39 @@ fn test_fastc_native_bridge_overlapped_validation_reports_changed_inputs() ! {
 	}
 }
 
+fn test_fastc_native_failed_build_with_changed_inputs_runs_again() ! {
+	$if !skip_fastc ? {
+		root := os.join_path(os.vtmp_dir(), 'fastc_native_checked_result_${os.getpid()}')
+		os.mkdir_all(root)!
+		defer { os.rmdir_all(root) or {} }
+		header := os.join_path(root, 'native.h')
+		os.write_file(header, '#include <stdio.h>\n')!
+		signature := v3_fastc_native_read_signature(header)
+		failed := V3FastCCompileResult{
+			command: 'tcc'
+			output:  'native.h:1: error: include file not found'
+		}
+		// A failure with unchanged native inputs is the program's own.
+		mut unchanged := V3FastcNativeValidation{
+			overlap: true
+		}
+		assert unchanged.add([header], [signature], [], 1)
+		kept := v3_fastc_native_checked_result(failed, mut unchanged)
+		assert !kept.native_inputs_changed
+		assert kept.output == failed.output
+		// A header that changed under its reused manifest can name a framework the
+		// recorded dependencies lack: the build runs again as a cache miss.
+		os.write_file(header, '#include <Cocoa/Cocoa.h>\n')!
+		mut changed := V3FastcNativeValidation{
+			overlap: true
+		}
+		assert changed.add([header], [signature], [], 1)
+		retried := v3_fastc_native_checked_result(failed, mut changed)
+		assert retried.native_inputs_changed
+		assert !retried.success
+	}
+}
+
 fn test_fastc_native_preprocessed_cache_ignores_only_unused_macros() ! {
 	$if macos && !skip_fastc ? {
 		root := os.join_path(os.vtmp_dir(), 'fastc_native_preprocessed_${os.getpid()}')

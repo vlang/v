@@ -58,9 +58,26 @@ $if !skip_fastc ? {
 		if native_compiler_version != '' {
 			validation.stats.compiler_versions[v3_fastc_native_compiler] = native_compiler_version
 		}
-		defer {
-			validation.wait()
+		result := compile_v3_fastc_tcc_generation_attempt(generation, bin_file, prefs, environment_flags, user_flags, link_flags, sdk, is_debug, cache_enabled, keep_c, parallel_cc, mut prestarted, mut validation)
+		return v3_fastc_native_checked_result(result, mut validation)
+	}
+
+	// v3_fastc_native_checked_result joins the validation of a build's reused native
+	// manifests. A build that failed while one of them no longer matched its inputs (a
+	// retained header that now includes a framework the recorded dependencies lack)
+	// reports `native_inputs_changed`, so it runs again as a cache miss instead of
+	// failing against the stale manifest.
+	fn v3_fastc_native_checked_result(result V3FastCCompileResult, mut validation V3FastcNativeValidation) V3FastCCompileResult {
+		valid := validation.wait()
+		if !result.success && !result.native_inputs_changed && !valid {
+			return V3FastCCompileResult{
+				native_inputs_changed: true
+			}
 		}
+		return result
+	}
+
+	fn compile_v3_fastc_tcc_generation_attempt(generation &fastc.GenerationResult, bin_file string, prefs &pref.Preferences, environment_flags []string, user_flags []string, link_flags []string, sdk string, is_debug bool, cache_enabled bool, keep_c bool, parallel_cc bool, mut prestarted fastc.FastcPrestartedCUnits, mut validation V3FastcNativeValidation) V3FastCCompileResult {
 		mut flags := environment_flags.clone()
 		flags << generation.c_flags
 		flags << user_flags
