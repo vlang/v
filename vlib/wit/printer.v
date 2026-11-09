@@ -25,6 +25,25 @@ pub fn (d WitDoc) str() string {
 						out << '\t}'
 					}
 				}
+				.resource {
+					if r := it.resource {
+						out << '\tresource ${r.name} {'
+						for m in r.methods {
+							mut ps := []string{}
+							for p in m.params { ps << '${p.name}: ${p.typ.str()}' }
+							if m.results.len == 0 {
+								out << '\t\t${m.name}: func(${ps.join(', ')});'
+							} else if m.results.len == 1 {
+								out << '\t\t${m.name}: func(${ps.join(', ')}) -> ${m.results[0].str()};'
+							} else {
+								mut rs := []string{}
+								for rr in m.results { rs << rr.str() }
+								out << '\t\t${m.name}: func(${ps.join(', ')}) -> (${rs.join(', ')});'
+							}
+						}
+						out << '\t}'
+					}
+				}
 				.func {
 					if f := it.func {
 						mut ps := []string{}
