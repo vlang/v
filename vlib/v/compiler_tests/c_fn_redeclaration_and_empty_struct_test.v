@@ -82,7 +82,8 @@ fn test_v3_c_fn_redeclarations_and_empty_struct_defaults() {
 		os.exec([v3_bin, '-no-memory-limit', compatible_root, '-b', 'c', '-o', '${compatible_out}'])
 	assert compatible_result.exit_code == 0, compatible_result.output
 	compatible_c := os.read_file(compatible_out + '.c')!
-	expected_c_call := if os.user_os() == 'windows' { 'abs(' } else { 'fcntl(-1' }
+	// Match the entire Windows call: the generated C also defines math__abs.
+	expected_c_call := if os.user_os() == 'windows' { 'abs((int)(arg))' } else { 'fcntl(-1' }
 	compatible_calls := compatible_c.split_into_lines().filter(it.contains(expected_c_call))
 	assert compatible_calls.len == 1, compatible_calls.str()
 	assert compatible_calls[0].contains('(int)(arg)'), compatible_calls[0]
