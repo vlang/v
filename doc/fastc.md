@@ -43,6 +43,7 @@ FastC uses all available CPU cores for generation by default. Native bridge prog
 six TinyCC units to reduce repeated header processing. `-parallel-cc` permits up to twelve
 concurrent TinyCC units for these programs, without reducing the C generation worker count.
 `VJOBS` overrides these defaults; `-no-parallel` selects one worker.
+Uncached macOS builds stream generated units directly to TinyCC as rendering finishes.
 Explicit macro directives retain their source-file order around native implementations.
 With `-o program.c`, FastC writes C without invoking a native compiler or linker.
 C output is published only after the buffered writes, final flush, and close succeed.

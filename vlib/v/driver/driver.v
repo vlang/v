@@ -9593,7 +9593,7 @@ $if !skip_fastc ? {
 		mut feeding_units := fastc.FastcFeedingCUnits{}
 		mut feeds_prestarted := false
 		$if macos {
-			if !cache_enabled && prefs.building_v {
+			if !cache_enabled {
 				if uses_prestarted {
 					feeding_units = fastc.fastc_begin_render_prestarted_c_units(mut prestarted, unit_prefix, pieces, units, jobs) or {
 						fastc.write_c_pieces(source_file, pieces) or {}
