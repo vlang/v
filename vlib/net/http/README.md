@@ -150,6 +150,17 @@ NUL, is malformed: its stream is reset and the handler is not called. A request 
 than `http.max_headers` fields, counting the `Host` field that `:authority` becomes, is
 answered with `431 Request Header Fields Too Large`.
 
+HTTP/1.1 `Content-Length` bodies are limited to 8 MiB by default before the server allocates
+their storage. Set `Server.max_http1_request_body_size` to another positive byte count to
+change the limit, or to `0` for no limit. A request above the limit receives `413 Request
+Entity Too Large` and the connection is closed. This setting applies to plain and TLS
+HTTP/1.1; HTTP/2 keeps its separate 8 MiB server limit. `parse_request` uses the same safe
+8 MiB default when called directly. Use `parse_request_with_body_limit` when a parser caller
+needs to set a different limit. Use an unlimited setting only when all clients are trusted.
+Negative limits are rejected. Invalid, overflowing, or conflicting `Content-Length` fields,
+and unsupported `Transfer-Encoding` fields, receive `400 Bad Request` and close the
+connection. Chunked request bodies are not supported by this parser.
+
 ## Identifying the client
 
 `Request.remote_addr` is the address of the peer that sent the request — the

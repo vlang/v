@@ -136,7 +136,7 @@ jobs:
         if: steps.platform.outputs.supported == 'true'
         shell: bash
         run: |
-          if [[ ${{ matrix.os }} == 'macos-14' ]]; then
+          if [[ ${{ matrix.target }} == 'macos_arm64' ]]; then
             rm -rf thirdparty/tcc
             git clone --branch thirdparty-macos-arm64 --depth=1 https://github.com/vlang/tccbin thirdparty/tcc
           fi

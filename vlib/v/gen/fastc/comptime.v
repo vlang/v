@@ -336,8 +336,8 @@ fn (mut g Parser) parse_comptime_match_statement() !bool {
 			branch_matches = !selected
 		} else {
 			for {
-				target_type := g.parse_type()!
-				branch_matches = branch_matches || g.underlying_alias_type(subject_type) == g.underlying_alias_type(target_type)
+				target_type := g.parse_comptime_type_pattern()!
+				branch_matches = branch_matches || g.comptime_type_matches(subject_type, target_type, false)
 				if g.tok != .comma {
 					break
 				}
@@ -780,7 +780,6 @@ fn (g &Parser) comptime_variant_matches(variant u32, type_c string) bool {
 // runtime type id elsewhere, and a bare `v` (`T(v)`) is the variant's zero value.
 fn (g &Parser) substitute_comptime_variant(source_file FastcSourceFile, loop_var string, variant u32) FastcSourceFile {
 	body := source_file.source
-	variant_c := flat.source_type_name(variant)
 	unaliased := g.underlying_alias_type(variant)
 	file := token.File.unindexed('cvariant', body.len)
 	mut s := scanner.new_scanner(g.prefs, .normal)
@@ -862,7 +861,7 @@ fn (g &Parser) substitute_comptime_variant(source_file FastcSourceFile, loop_var
 					start:       var_pos
 					end:         end
 					replacement: if in_zero {
-						flat.source_type_name(typ)
+						g.capture_type_source(typ) or { flat.source_type_name(typ) }
 					} else {
 						'C.__v_typeid_${flat.source_type_name(typ)}'
 					}
@@ -873,13 +872,15 @@ fn (g &Parser) substitute_comptime_variant(source_file FastcSourceFile, loop_var
 				tok = next
 				continue
 			}
+			// Expanded operands are parsed as V again; type-id references keep their C identities.
+			variant_source := g.capture_type_source(variant) or { flat.source_type_name(variant) }
 			edits << FastcSourceEdit{
 				start:       var_pos
 				end:         s.offset
 				replacement: if previous in [.key_is, .not_is] {
-					variant_c
+					variant_source
 				} else {
-					'\$zero(${variant_c})'
+					'\$zero(${variant_source})'
 				}
 			}
 		}
@@ -1176,11 +1177,14 @@ fn (g &Parser) read_comptime_is_type(mut s scanner.Scanner) (string, int, token.
 	return g.resolve_type_name_c(name), name_end, next_token
 }
 
-// resolve_type_name_c resolves an unqualified type name to its C spelling: a
-// primitive keeps its own name, a declared type maps through the type key.
+// resolve_type_name_c resolves the storage spelling used by field type patterns.
 fn (g &Parser) resolve_type_name_c(name string) string {
-	if fastc_primitive_c_type(name) != none {
-		return name
+	if name == 'isize' || name == 'usize' {
+		// An unknown type group cannot match a scalar or a container element.
+		return '@removed_integer'
+	}
+	if primitive := fastc_primitive_c_type(name) {
+		return primitive
 	}
 	key := g.resolve_declared_type_key(name) or { return name }
 	return fastc_c_declared_type_name(flat.source_type_name(key))
@@ -1333,7 +1337,7 @@ fn (mut g Parser) parse_comptime_unary() !bool {
 			target_type = flat.source_type_id(g.lit)
 			g.next()
 		} else {
-			target_type = g.parse_type()!
+			target_type = g.parse_comptime_type_pattern()!
 		}
 		mut left_type := g.comptime_named_type(name)
 		if subject_pointer_depth > 0 {
@@ -1400,7 +1404,54 @@ fn (g &Parser) comptime_named_type(name string) u32 {
 	return flat.source_type_id(name)
 }
 
+// parse_comptime_type_pattern leaves legacy compatibility branches unreachable.
+// These names are not constructible FastC types, including uint's private C spelling.
+fn (mut g Parser) parse_comptime_type_pattern() !u32 {
+	if g.tok == .name && (g.lit == 'isize' || g.lit == 'usize') {
+		if g.lit in g.imports {
+			mut look := g.s
+			if look.scan() == .dot {
+				return g.parse_comptime_composite_type_pattern()
+			}
+		}
+		g.next()
+		return 0
+	}
+	if g.tok == .name && g.lit !in ['map', 'chan', 'thread'] {
+		mut offset := g.s.offset
+		for offset < g.s.src.len && fastc_source_space_byte(g.s.src[offset]) {
+			offset++
+		}
+		if offset >= g.s.src.len || g.s.src[offset] !in [`[`, `.`, `/`] {
+			return g.parse_type()
+		}
+	}
+	return g.parse_comptime_composite_type_pattern()
+}
+
+// parse_comptime_composite_type_pattern saves recovery state only for wrappers
+// and qualified or generic names; ordinary names keep the normal type parser path.
+fn (mut g Parser) parse_comptime_composite_type_pattern() !u32 {
+	first := g.tok
+	start := g.s
+	return g.parse_type() or {
+		if !err.msg().contains(fastc_removed_integer_type('isize'))
+			&& !err.msg().contains(fastc_removed_integer_type('usize')) {
+			return err
+		}
+		// A removed element makes the entire composite pattern nonmatching. Consume
+		// its remaining syntax without resolving types, including nested wrappers.
+		mut boundary := start
+		next := fastc_skip_global_type(mut boundary, first, g.path)!
+		g.s = boundary
+		g.tok = next
+		g.lit = boundary.lit
+		u32(0)
+	}
+}
+
 fn (g &Parser) comptime_type_matches(left_type u32, target_type u32, target_is_group bool) bool {
+	if target_type == 0 { return false }
 	left := g.underlying_alias_type(left_type)
 	if !target_is_group {
 		target := g.underlying_alias_type(target_type)
@@ -1480,28 +1531,39 @@ fn (g &Parser) type_implements_interface(typ u32, iface u32) bool {
 		return false
 	}
 	iface_key := g.semantic_type_key(iface)
-	mut names := g.interface_method_names_memo[iface_key] or {
-		prefix := flat.source_type_name(iface_key) + '.'
-		mut found := []string{}
-		for key, _ in g.functions {
-			if key.starts_with(prefix) && !key[prefix.len..].contains('.') {
-				found << key[prefix.len..]
+	indexed := iface_key in g.interface_method_names
+	pair := (u64(typ) << 32) | u64(iface_key)
+	if indexed {
+		if implemented := g.interface_implementation_memo[pair] { return implemented }
+	}
+	names := g.interface_method_names[iface_key] or {
+		g.interface_method_names_memo[iface_key] or {
+			prefix := flat.source_type_name(iface_key) + '.'
+			mut found := []string{}
+			for key, _ in g.functions {
+				if key.starts_with(prefix) && !key[prefix.len..].contains('.') {
+					found << key[prefix.len..]
+				}
 			}
+			mut w := unsafe { &Parser(g) }
+			w.interface_method_names_memo[iface_key] = found
+			found
 		}
-		mut w := unsafe { &Parser(g) }
-		w.interface_method_names_memo[iface_key] = found
-		found
 	}
-	if names.len == 0 {
-		return false
-	}
+	mut implemented := names.len > 0
 	for name in names {
 		key, _ := g.resolve_method(typ, name)
 		if key !in g.functions {
-			return false
+			implemented = false
+			break
 		}
 	}
-	return true
+	// Only the shared declaration index guarantees immutable function/type tables.
+	if indexed {
+		mut w := unsafe { &Parser(g) }
+		w.interface_implementation_memo[pair] = implemented
+	}
+	return implemented
 }
 
 fn (mut g Parser) skip_open_block() ! {
@@ -1617,7 +1679,7 @@ fn (mut g Parser) read_comptime_embed_file() !string {
 		'to_string', 'str' {
 			g.last_expression_type = flat.source_type_string
 			g.last_expression = []FastcExpressionToken{}
-			return '_S(${fastc_embed_c_string_value(content)})'
+			return '_S(${fastc_embed_c_string_value(content, '', '')})'
 		}
 		else {
 			return g.unsupported('`\$embed_file` accessor `.${accessor}()`')
@@ -1677,7 +1739,7 @@ fn fastc_collect_embedded_payloads(source string, path string, prefs &pref.Prefe
 				name := fastc_embed_symbol(resolved)
 				if name !in payloads {
 					content := os.read_file(resolved) or { return error('fastc cannot read embedded file `${resolved}`') }
-					payloads[name] = 'const u8 ${name}[] = ${fastc_embed_c_string_value(content)};\n'
+					payloads[name] = fastc_embed_c_string_value(content, 'const u8 ${name}[] = ', ';\n')
 				}
 				scan = look
 			}
@@ -1688,9 +1750,9 @@ fn fastc_collect_embedded_payloads(source string, path string, prefs &pref.Prefe
 
 // fastc_embed_c_string_value preserves every byte, including NUL and non-UTF-8
 // data. Three-digit octal escapes cannot absorb a following hexadecimal digit.
-@[direct_array_access]
-fn fastc_embed_c_string_value(content string) string {
-	mut length := content.len + 2
+@[direct_array_access; manualfree]
+fn fastc_embed_c_string_value(content string, prefix string, suffix string) string {
+	mut length := prefix.len + content.len + 2 + suffix.len
 	for c in content {
 		if c == `"` || c == `\\` {
 			length++
@@ -1698,9 +1760,12 @@ fn fastc_embed_c_string_value(content string) string {
 			length += 3
 		}
 	}
-	mut result := []u8{len: length}
-	result[0] = `"`
-	mut offset := 1
+	// The returned string owns this allocation; the array is only a borrowed write view.
+	data := unsafe { malloc_noscan(length + 1) }
+	mut result := unsafe { data.vbytes(length + 1) }
+	unsafe { vmemcpy(data, prefix.str, prefix.len) }
+	result[prefix.len] = `"`
+	mut offset := prefix.len + 1
 	for c in content {
 		if c == `"` || c == `\\` {
 			result[offset] = `\\`
@@ -1718,7 +1783,10 @@ fn fastc_embed_c_string_value(content string) string {
 		}
 	}
 	result[offset] = `"`
-	return result.bytestr()
+	offset++
+	unsafe { vmemcpy(data + offset, suffix.str, suffix.len) }
+	result[length] = 0
+	return unsafe { tos(data, length) }
 }
 
 // fastc_string_literal_content returns the raw text inside a scanned string

@@ -11731,6 +11731,10 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 	}
 	asm_end := clamp_source_offset(p.prev_tok_end, p.s.src.len)
 	raw_source := if asm_pos >= 0 && asm_pos < asm_end { p.s.src[asm_pos..asm_end] } else { '' }
+	if !p.prefs.is_fmt && normalized_asm_arch == 'ppc' && !is_raw
+		&& (p.prefs.backend != 'c' || has_unsupported_content) {
+		p.record_diagnostic('PowerPC inline assembly requires the `raw` modifier', asm_pos)
+	}
 	// An empty template with only a memory clobber is architecture independent;
 	// it lowers to a compiler barrier even when the block names another ISA.
 	can_lower := (!has_unsupported_content && has_memory_clobber)
@@ -11758,7 +11762,7 @@ fn (mut p Parser) asm_stmt() flat.NodeId {
 
 // inline_asm_c_lowering_arches are the architectures whose inline assembly the C backend
 // lowers to GNU `asm()`.
-const inline_asm_c_lowering_arches = ['amd64', 'arm64', 'x86', 'riscv64']
+const inline_asm_c_lowering_arches = ['amd64', 'arm64', 'x86', 'riscv64', 'ppc']
 
 fn (p &Parser) supports_c_inline_asm_lowering() bool {
 	return p.prefs.backend == 'c' && p.prefs.target.arch in inline_asm_c_lowering_arches

@@ -670,6 +670,11 @@ fn (mut g Parser) temporary_name(_ string) string {
 	return name
 }
 
+// callback_signature_key separates callback metadata from emitted C temporary names.
+fn (mut g Parser) callback_signature_key() string {
+	return g.current_function + ':' + g.temporary_name('callback_signature')
+}
+
 fn (g &Parser) temporary_namespace(kind string) string {
 	mut index := 0
 	for {
@@ -677,7 +682,7 @@ fn (g &Parser) temporary_namespace(kind string) string {
 		prefix := namespace + '_'
 		mut collision := false
 		for local_name in g.locals.keys() {
-			if fastc_c_identifier(local_name).starts_with(prefix) {
+			if fastc_c_value_identifier(local_name).starts_with(prefix) {
 				collision = true
 				break
 			}
@@ -803,6 +808,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 	g.last_function_c_name = ''
 	g.type_memo.clear()
 	g.locals = map[string]FastcLocal{}
+	if g.option_origins.len > 0 { g.option_origins = map[string]FastcOptionOrigin{} }
 	g.temp_id = 0
 	g.direct_array_access = g.pending_direct_array_access
 	g.pending_direct_array_access = false
@@ -879,7 +885,7 @@ fn (mut g Parser) parse_function(enabled bool) ! {
 		} else {
 			receiver_type
 		}
-		params << '${fastc_output_c_type(flat.source_type_name(receiver_parameter_type))} ${fastc_c_identifier(receiver_name)}'
+		params << '${fastc_output_c_type(flat.source_type_name(receiver_parameter_type))} ${fastc_c_value_identifier(receiver_name)}'
 		g.type_memo.clear()
 		g.locals[receiver_name] = FastcLocal{
 			is_mut:       receiver_is_mut
@@ -1497,6 +1503,7 @@ fn (mut g Parser) skip_c_function_declaration() ! {
 fn (mut g Parser) parse_script() ! {
 	g.type_memo.clear()
 	g.locals = map[string]FastcLocal{}
+	if g.option_origins.len > 0 { g.option_origins = map[string]FastcOptionOrigin{} }
 	g.has_main = true
 	main_name := fastc_c_main_name(g.prefs)
 	g.protos.writeln('int ${main_name}(void);')
@@ -1580,7 +1587,7 @@ fn (mut g Parser) parse_parameters(function_key string, parameter_offset int) ![
 				blank_index++
 				'_fastc_unused_${blank_index}'
 			} else {
-				fastc_c_identifier(parameter_name)
+				fastc_c_value_identifier(parameter_name)
 			}
 			if is_fn_pointer {
 				// Declare a real function pointer with the type's prototype, so `f(x)`
@@ -1817,9 +1824,73 @@ fn fastc_scalar_zero_literal_type(name string) ?string {
 	return fastc_output_c_type(mapped)
 }
 
+// fastc_primitive_c_type accepts V primitive spellings, excluding removed aliases.
+// The emitter still uses its private C storage identities internally.
+// It is asked about most identifiers of every expression, so it compares the
+// spelling directly: interning each probed name contended on the shared type table.
 fn fastc_primitive_c_type(raw_type string) ?string {
-	mapped := fastc_primitive_c_type_id(flat.source_type_id(raw_type)) or { return none }
-	return flat.source_type_name(mapped)
+	match raw_type.len {
+		2 {
+			if raw_type == 'i8' { return 'i8' }
+			if raw_type == 'u8' { return 'u8' }
+		}
+		3 {
+			match raw_type[0] {
+				`f` {
+					if raw_type == 'f32' { return 'f32' }
+					if raw_type == 'f64' { return 'f64' }
+				}
+				`i` {
+					if raw_type == 'i16' { return 'i16' }
+					if raw_type == 'i32' { return 'i32' }
+					if raw_type == 'i64' { return 'i64' }
+					if raw_type == 'int' { return 'int' }
+				}
+				`u` {
+					if raw_type == 'u16' { return 'u16' }
+					if raw_type == 'u32' { return 'u32' }
+					if raw_type == 'u64' { return 'u64' }
+				}
+				`m` {
+					if raw_type == 'map' { return 'map' }
+				}
+				`a` {
+					if raw_type == 'any' { return 'voidptr' }
+				}
+				else {}
+			}
+		}
+		4 {
+			if raw_type == 'bool' { return 'bool' }
+			if raw_type == 'char' { return 'char' }
+			if raw_type == 'rune' { return 'rune' }
+			if raw_type == 'chan' { return 'chan' }
+			if raw_type == 'uint' { return 'usize' }
+		}
+		5 {
+			if raw_type == 'array' { return 'array' }
+		}
+		6 {
+			if raw_type == 'string' { return 'string' }
+			if raw_type == 'Option' { return 'Option' }
+		}
+		7 {
+			if raw_type == 'voidptr' { return 'voidptr' }
+			if raw_type == 'byteptr' { return 'byteptr' }
+			if raw_type == 'charptr' { return 'charptr' }
+		}
+		10 {
+			if raw_type == '__v_result' { return '__v_result' }
+		}
+		11 {
+			if raw_type == 'int_literal' { return 'i64' }
+		}
+		13 {
+			if raw_type == 'float_literal' { return 'f64' }
+		}
+		else {}
+	}
+	return none
 }
 
 fn fastc_expression_tokens_contain(tokens []FastcExpressionToken, wanted token.Token) bool {
@@ -1873,4 +1944,9 @@ fn fastc_all_true(values []bool) bool {
 		}
 	}
 	return true
+}
+
+fn fastc_removed_integer_type(name string) string {
+	replacement := if name == 'isize' { 'int' } else { 'uint' }
+	return 'type `${name}`; use `${replacement}` instead'
 }

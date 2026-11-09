@@ -700,11 +700,8 @@ fn dir_is_module(dir string) bool {
 	if dir.len == 0 || !os.is_dir(dir) {
 		return false
 	}
-	entries := os.ls(dir) or { return false }
-	for entry in entries {
-		if entry.ends_with('.v') {
-			return true
-		}
+	if dir_has_v_entry(dir) or { return false } {
+		return true
 	}
 	manifest := vmod.from_file(os.join_path_single(dir, 'v.mod')) or { return false }
 	source_root := manifest.source_root(dir)

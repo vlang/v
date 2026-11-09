@@ -1,6 +1,5 @@
 module arm64
 
-import encoding.binary
 import v.ssa
 
 // Gen stores state for ARM64 code generation.

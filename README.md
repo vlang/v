@@ -136,8 +136,9 @@ v up
 ```
 
 This also refreshes the bundled TCC binaries used for fast C compilation.
-It then runs `v wipe-cache` to clear module, object, temporary, and compiled tool caches,
-even when V is already up to date. Subsequent builds recreate the caches they need;
+When the V checkout or TCC changes, or the compiler is rebuilt, it runs `v wipe-cache`
+to clear module, object, temporary, and compiled tool caches. If nothing changes,
+the caches are preserved. Subsequent builds recreate the caches they need;
 `v up` does not replay previously recorded build configurations or test selectors.
 
 > [!NOTE]
@@ -355,6 +356,8 @@ shell/editor after that, so that it can pick up the new PATH variable.
 > There is no need to run `v symlink` more than once - v will still be available, even after
 > `v up`, restarts, and so on. You only need to run it again if you decide to move the V repo
 > folder somewhere else.
+
+`v symlink` preserves shared compiler temporary files, including the directory selected by `VTMP`.
 
 ## Editor/IDE Plugins
 

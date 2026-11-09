@@ -8,4 +8,3 @@ fn test_shell_shim_content_quotes_literal_windows_path() {
 	path := r"D:\tools\v lang$dollar`backtick's\v.exe"
 	assert shell_shim_content(path) == '#!/bin/sh\nexec \'D:/tools/v lang$dollar`backtick\'"\'"\'s/v.exe\' "$@"\n'
 }
-

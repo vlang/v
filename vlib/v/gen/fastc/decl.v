@@ -1275,9 +1275,10 @@ fn (g &Parser) global_initializer_is_constant(source string, allow_temporaries b
 			&& !is_temporary_copy {
 			return false
 		}
+		// This is generated C, so private integer storage names are valid casts.
 		if previous == `.` || name in ['NULL', 'true', 'false', 'sizeof', '_S', 'struct', 'union',
 			'void', 'signed', 'unsigned', 'long', 'short', 'size_t', 'uintptr_t', 'intptr_t']
-			|| fastc_primitive_c_type(name) != none || g.declared_type_c_names.contains(name)
+			|| fastc_primitive_c_type_id(flat.source_type_id(name)) != none || g.declared_type_c_names.contains(name)
 			|| name.starts_with('FixedArray_') || name.starts_with('Array_') || fastc_source_type_key_exists(g.declared_types, '#Cstruct#${name}')
 			|| fastc_source_type_key_exists(g.declared_types, '#Ctypedef#${name}') {
 			previous = `a`
@@ -1586,11 +1587,12 @@ mut:
 	// which the parallel pre-pass does not have yet.
 	used_field_defaults bool
 	values              []FastcConstantValue
-	constant_types      flat.TypeTextBindings
-	composite_types     map[string]bool
-	fixed_array_types   flat.TypeTextBindings
-	failed              bool
-	error_message       string
+	// Only this file's additions; callers already own the inherited bindings.
+	constant_types    flat.TypeTextBindings
+	composite_types   map[string]bool
+	fixed_array_types flat.TypeTextBindings
+	failed            bool
+	error_message     string
 }
 
 struct FastcIndexedConstantFileResult {
@@ -1607,7 +1609,7 @@ fn fastc_parse_constant_file(ctx &FastcConstantGenContext, source_file FastcSour
 			// Initializer rendering creates short-lived token and inference tables.
 			// Interned type IDs already outlive this disposable allocation scope.
 			scope := unsafe { prealloc_scope_begin() }
-			result := fastc_parse_constant_file_unscoped(ctx, source_file, constant_types.fork())
+			result := fastc_parse_constant_file_unscoped(ctx, source_file, constant_types.fork_sharing_keys())
 			unsafe { prealloc_scope_leave(scope) }
 			owned := fastc_clone_constant_file_result(result)
 			unsafe { prealloc_scope_free_after(scope) }
@@ -1708,10 +1710,14 @@ fn fastc_parse_constant_file_unscoped(ctx &FastcConstantGenContext, source_file 
 			error_message: 'fastc scanner error at byte ${diagnostic.offset} in ${source_file.path}: ${diagnostic.message}'
 		}
 	}
+	mut added_types := flat.TypeTextBindings{}
+	for value in values {
+		added_types.set_id(value.key, value.typ)
+	}
 	return FastcConstantFileResult{
 		used_field_defaults: gen.used_field_defaults
 		values:              values
-		constant_types:      gen.constant_types.move()
+		constant_types:      added_types
 		composite_types:     gen.composite_types
 		fixed_array_types:   gen.fixed_array_types
 	}
@@ -1775,7 +1781,18 @@ fn fastc_constant_candidates(ordered_sources []FastcSourceFile, constant_sources
 // types available to struct field defaults. Independent results from the
 // authoritative parallel pass are reused; only order-dependent candidates are
 // parsed again before the defaults are rendered.
-fn fastc_seed_constant_types(ctx &FastcConstantGenContext, candidates []FastcSourceFile, parallel_results []FastcConstantFileResult, mut constant_types flat.TypeTextBindings) {
+// FastcSeededConstantFile is the in-order seed parse of a constant file whose
+// initializers read constants of other files, with the types those constants had.
+struct FastcSeededConstantFile {
+	result FastcConstantFileResult
+	// external_types holds the type of every constant whose type the initializers read
+	// from the constant types, as the seed parse saw it (0 when it was unknown); see
+	// fastc_constant_external_types.
+	external_types map[string]u32
+}
+
+fn fastc_seed_constant_types(ctx &FastcConstantGenContext, candidates []FastcSourceFile, parallel_results []FastcConstantFileResult, mut constant_types flat.TypeTextBindings) []FastcSeededConstantFile {
+	mut seeded := []FastcSeededConstantFile{len: candidates.len}
 	for index, candidate in candidates {
 		if index < parallel_results.len {
 			result := parallel_results[index]
@@ -1787,12 +1804,57 @@ fn fastc_seed_constant_types(ctx &FastcConstantGenContext, candidates []FastcSou
 				continue
 			}
 		}
-		mut result := fastc_parse_constant_file(ctx, candidate, constant_types)
+		result := fastc_parse_constant_file(ctx, candidate, constant_types)
 		if result.failed {
-			return
+			return seeded
 		}
-		constant_types = result.constant_types.move()
+		seeded[index] = FastcSeededConstantFile{
+			result:         result
+			external_types: fastc_constant_external_types(result, constant_types)
+		}
+		for key, typ in result.constant_types.ids {
+			constant_types.set_id(key, typ)
+		}
 	}
+	return seeded
+}
+
+// fastc_constant_external_types returns the types `constant_types` holds for the
+// constants whose types the file's initializers read from it: the constants of other
+// files, and the file's own constants that an initializer reads before their
+// declaration (`const copied = later` above `const later = ...`). Only a constant
+// declared earlier in the file is typed by the parse itself.
+fn fastc_constant_external_types(result FastcConstantFileResult, constant_types flat.TypeTextBindings) map[string]u32 {
+	mut positions := map[string]int{}
+	for index, value in result.values {
+		positions[value.key] = index
+	}
+	mut types := map[string]u32{}
+	for index, value in result.values {
+		for dependency in value.dependencies {
+			position := positions[dependency] or { -1 }
+			if position < 0 || position >= index {
+				types[dependency] = constant_types.value_id(dependency)
+			}
+		}
+	}
+	return types
+}
+
+// fastc_seeded_constant_file_reusable reports whether the seed parse of a file is
+// what an in-order parse from `constant_types` yields: type inference consults only
+// the types of the constants an initializer depends on (see
+// fastc_constant_file_is_independent), and none of those changed since.
+fn fastc_seeded_constant_file_reusable(seeded FastcSeededConstantFile, constant_types flat.TypeTextBindings) bool {
+	if seeded.result.failed || seeded.result.used_field_defaults || seeded.result.values.len == 0 {
+		return false
+	}
+	for dependency, typ in seeded.external_types {
+		if constant_types.value_id(dependency) != typ {
+			return false
+		}
+	}
+	return true
 }
 
 fn fastc_field_defaults_reference_constants(struct_field_info map[string][]FastcStructField, constants map[string]string) bool {
@@ -1862,7 +1924,7 @@ fn fastc_v_string_end(source string, quote int, raw bool) int {
 	return source.len
 }
 
-fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pref.Preferences, declared_types map[u32]bool, declared_type_c_names flat.TypeTextBindings, fastc_prefixed_c_names []string, declared_kinds map[u32]FastcDeclaredTypeKind, enum_flags map[u32]bool, enum_field_types flat.TypeTextBindings, alias_base_types flat.TypeTextBindings, struct_fields map[string]flat.TypeTextBindings, struct_field_info map[string][]FastcStructField, sum_types map[string]bool, sum_type_variants map[u64]bool, mut pending_defaults FastcPendingFieldDefaults, functions map[string]FastcFunctionSignature, function_c_names map[string]string, constants map[string]string, public_constants map[string]bool, globals map[string]string, public_globals map[string]bool, initial_parallel_results []FastcConstantFileResult, mut constant_types flat.TypeTextBindings) !FastcConstantDeclarations {
+fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pref.Preferences, declared_types map[u32]bool, declared_type_c_names flat.TypeTextBindings, fastc_prefixed_c_names []string, declared_kinds map[u32]FastcDeclaredTypeKind, enum_flags map[u32]bool, enum_field_types flat.TypeTextBindings, alias_base_types flat.TypeTextBindings, struct_fields map[string]flat.TypeTextBindings, struct_field_info map[string][]FastcStructField, sum_types map[string]bool, sum_type_variants map[u64]bool, mut pending_defaults FastcPendingFieldDefaults, functions map[string]FastcFunctionSignature, function_c_names map[string]string, constants map[string]string, public_constants map[string]bool, globals map[string]string, public_globals map[string]bool, initial_parallel_results []FastcConstantFileResult, seeded []FastcSeededConstantFile, mut constant_types flat.TypeTextBindings) !FastcConstantDeclarations {
 	mut values := []FastcConstantValue{}
 	mut composite_types := map[string]bool{}
 	mut fixed_array_types := flat.TypeTextBindings{}
@@ -1939,12 +2001,20 @@ fn fastc_generate_constant_declarations(candidates []FastcSourceFile, prefs &pre
 				continue
 			}
 		}
-		serial_count++
-		mut serial := fastc_parse_constant_file(&merge_ctx, candidate, constant_types)
+		mut serial := FastcConstantFileResult{}
+		if index < seeded.len && fastc_seeded_constant_file_reusable(seeded[index], constant_types) {
+			// The seed pass already parsed this file in order with the same inputs.
+			serial = seeded[index].result
+		} else {
+			serial_count++
+			serial = fastc_parse_constant_file(&merge_ctx, candidate, constant_types)
+		}
 		if serial.failed {
 			return error(serial.error_message)
 		}
-		constant_types = serial.constant_types.move()
+		for key, typ in serial.constant_types.ids {
+			constant_types.set_id(key, typ)
+		}
 		values << serial.values
 		for name, _ in serial.composite_types {
 			composite_types[name] = true
@@ -2311,6 +2381,11 @@ fn (g &Parser) constant_expression_requires_runtime_storage(tokens []FastcExpres
 		return true
 	}
 	for i, item in tokens {
+		// Build metadata changes between compilations. Keep its value in the
+		// initializer unit so shared declarations and native owners stay stable.
+		if item.is_build_metadata {
+			return true
+		}
 		if item.tok in [.lcbr, .lsbr] {
 			return true
 		}
@@ -3630,6 +3705,9 @@ fn fastc_emit_enum_declaration(mut scan scanner.Scanner, source_file FastcSource
 	tok = scan.scan()
 	if tok == .key_as {
 		tok = scan.scan()
+		if tok == .name && scan.lit in ['isize', 'usize'] {
+			return error('fastc parser does not support ${fastc_removed_integer_type(scan.lit)} in ${source_file.path}')
+		}
 		// Accept any integer backing type (`as u32`, `as u8`, ...). The C typedef is
 		// still `int` (or `u64` for flag enums); values are emitted with an explicit
 		// cast, so a narrower/wider spelling does not change the generated C.

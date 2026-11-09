@@ -15,9 +15,11 @@ sources and dependencies have not changed since the executable's recorded revisi
 Documentation and test-only changes do not trigger a rebuild. An unknown revision,
 a failed source comparison, or -prod, -skip_v_self or -skip_current forces rebuilding.
 
-After a successful update, it runs `v wipe-cache` to clear module, object,
+After a successful update that changes the V checkout or TCC, or rebuilds the compiler,
+it runs `v wipe-cache` to clear module, object,
 temporary, and compiled tool caches, including VCACHE, VTMP, V3CACHE, and
-VTOOLS_CACHE_DIR. This also runs when V is already up to date. Subsequent builds
+VTOOLS_CACHE_DIR. When nothing changes, the caches are preserved. If the TCC revision
+cannot be determined, the caches are cleared conservatively. Subsequent builds
 recreate the caches they need. Previously recorded build configurations and test
 selectors are not replayed. A failed cache cleanup makes the update fail.
 On Windows, the cached updater exits before its launcher wipes the caches,

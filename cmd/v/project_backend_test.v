@@ -216,6 +216,17 @@ fn test_generated_sources_reach_a_pinned_compiler_unchanged() {
 }
 
 fn test_fail_fast_stops_before_the_next_project_backend() {
+	// The hosted test runner may itself enable fail-fast. Start with an unset flag
+	// so the first invocation tests the default behavior, then enable it below.
+	previous_fail_fast := os.getenv_opt('VTEST_FAIL_FAST')
+	os.unsetenv('VTEST_FAIL_FAST')
+	defer {
+		if value := previous_fail_fast {
+			os.setenv('VTEST_FAIL_FAST', value, true)
+		} else {
+			os.unsetenv('VTEST_FAIL_FAST')
+		}
+	}
 	plain := project_backend_fixture('fail_fast_plain', '')
 	c_project := project_backend_fixture('fail_fast_c', "Module {\n\tname: 'app'\n\tbackend: 'c'\n}\n")
 	for root in [plain, c_project] {
@@ -230,9 +241,6 @@ fn test_fail_fast_stops_before_the_next_project_backend() {
 	assert flag.output.count('Summary for all V _test.v files') == 1, flag.output
 	// The test runner also reads fail-fast from the environment.
 	os.setenv('VTEST_FAIL_FAST', '1', true)
-	defer {
-		os.unsetenv('VTEST_FAIL_FAST')
-	}
 	env := run_launcher_in(os.dir(plain), ['test', plain, c_project], '')
 	assert env.exit_code == 1, env.output
 	assert env.output.count('Summary for all V _test.v files') == 1, env.output

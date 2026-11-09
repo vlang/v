@@ -380,7 +380,7 @@ fn (g &Parser) render_method_call_expression(tokens []FastcExpressionToken, rend
 						origin_key, _ := g.resolve_method(local.smartcast_origin_type, tokens[i].lit)
 						if origin_key in g.functions || origin_key in g.mono_functions {
 							receiver_type = local.smartcast_origin_type
-							unnarrowed_receiver = fastc_c_identifier(receiver_tokens[0].lit)
+							unnarrowed_receiver = fastc_c_value_identifier(receiver_tokens[0].lit)
 						}
 					}
 				}

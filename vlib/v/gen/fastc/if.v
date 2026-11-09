@@ -745,7 +745,7 @@ fn (mut g Parser) parse_if() !bool {
 				guard_function.fn_return_type
 			}
 			c_return_type := fastc_output_c_type(flat.source_type_name(return_type))
-			name := fastc_c_identifier(guard_name)
+			name := fastc_c_value_identifier(guard_name)
 			g.write_line('${c_return_type} (*${name})(${parameters}) = (${c_return_type} (*)(${parameters}))(${guard_function_source});')
 			g.locals[guard_name] = FastcLocal{
 				is_mut:               guard_is_mut
@@ -754,7 +754,7 @@ fn (mut g Parser) parse_if() !bool {
 				fn_option_value_type: guard_function.fn_option_value_type
 			}
 		} else if guard_erased_generic {
-			name := fastc_c_identifier(guard_name)
+			name := fastc_c_value_identifier(guard_name)
 			if flat.source_type_query(guard_type).has(.c_pointer_suffix) {
 				g.write_line('${fastc_output_c_type(flat.source_type_name(guard_type))} ${name} = ${g.option_value_expression(guard_type, guard_option)};')
 			} else {
@@ -771,7 +771,7 @@ fn (mut g Parser) parse_if() !bool {
 			}
 		} else {
 			function_alias := g.functions[flat.source_type_name(guard_type)] or { fastc_callable_signature(guard_type) or { FastcFunctionSignature{} } }
-			g.write_line('${fastc_output_c_type(flat.source_type_name(guard_type))} ${fastc_c_identifier(guard_name)} = ${g.option_value_expression(guard_type, guard_option)};')
+			g.write_line('${fastc_output_c_type(flat.source_type_name(guard_type))} ${fastc_c_value_identifier(guard_name)} = ${g.option_value_expression(guard_type, guard_option)};')
 			g.locals[guard_name] = FastcLocal{
 				is_mut:               guard_is_mut
 				typ:                  guard_type
@@ -891,9 +891,9 @@ fn (mut g Parser) parse_if() !bool {
 				g.member_smartcasts[opt_name] = FastcMemberSmartcast{
 					typ:    base_source_id
 					source: if g.prefs.target_libc_headers {
-						'(V_FASTC_OPTION_STORAGE(${fastc_output_c_type(flat.source_type_name(base))}, (${fastc_c_identifier(opt_name)}))->value)'
+						'(V_FASTC_OPTION_STORAGE(${fastc_output_c_type(flat.source_type_name(base))}, (${fastc_c_value_identifier(opt_name)}))->value)'
 					} else {
-						'(*((${fastc_output_c_type(flat.source_type_name(base))} *)${fastc_c_identifier(opt_name)}.data))'
+						'(*((${fastc_output_c_type(flat.source_type_name(base))} *)${fastc_c_value_identifier(opt_name)}.data))'
 					}
 				}
 			}
@@ -938,7 +938,9 @@ fn (mut g Parser) parse_if() !bool {
 				if !local.is_mut && !local.is_reference && local.option_value_type != 0 {
 					shadow := g.temporary_name('nonnull_option')
 					payload := local.option_value_type
-					g.write_line('${fastc_output_c_type(flat.source_type_name(payload))} ${shadow} = ${g.option_value_expression(payload, g.local_c_name(name))};')
+					origin := g.local_c_name(name)
+					g.write_line('${fastc_output_c_type(flat.source_type_name(payload))} ${shadow} = ${g.option_value_expression(payload, origin)};')
+					g.option_origins[shadow] = FastcOptionOrigin{ source: origin, typ: payload }
 					g.set_scoped_local(name, FastcLocal{ ...local, typ: payload, option_value_type: 0, c_name: shadow })
 				}
 			}
@@ -1096,7 +1098,7 @@ fn (mut g Parser) parse_if_multi_return_guard(names []string) !bool {
 			continue
 		}
 		component_type := fastc_normalize_inferred_type(component_types[i])
-		c_name := fastc_c_identifier(name)
+		c_name := fastc_c_value_identifier(name)
 		c_type := fastc_output_c_type(flat.source_type_name(component_type))
 		g.write_line('${c_type} ${c_name} = (${c_type}){0};')
 		g.write_line('memcpy(&${c_name}, V_FASTC_MULTI_SOURCE(${multi_return}.values[${i}], sizeof(${c_name})), sizeof(${c_name}));')
@@ -1731,6 +1733,11 @@ fn fastc_box_expression(value_type string, expression string) string {
 	return '({ ${storage_type} __vf_bv = (${expression}); v_fastc_interface_box(&__vf_bv, sizeof(${storage_type})); })'
 }
 
+fn fastc_heap_copy_expression(value_type string, expression string) string {
+	storage_type := fastc_output_c_type(value_type)
+	return '({ ${storage_type} __vf_heap_value = (${expression}); v_fastc_heap_copy(&__vf_heap_value, sizeof(${storage_type})); })'
+}
+
 // read_if_expression_multi_return_guard lowers `if a, b := opt_multi() { x } else { y }`
 // used as an expression: the option is unwrapped, its multi-return components bound in
 // the then-branch, and the selected branch's value produced as a statement-expression.
@@ -1759,7 +1766,7 @@ fn (mut g Parser) read_if_expression_multi_return_guard(names []string, branch_e
 			continue
 		}
 		component_type := fastc_normalize_inferred_type(component_types[i])
-		c_name := fastc_c_identifier(name)
+		c_name := fastc_c_value_identifier(name)
 		c_type := fastc_output_c_type(flat.source_type_name(component_type))
 		binds += '${c_type} ${c_name} = (${c_type}){0}; memcpy(&${c_name}, V_FASTC_MULTI_SOURCE(${multi_return}.values[${i}], sizeof(${c_name})), sizeof(${c_name})); '
 		g.locals[name] = FastcLocal{
@@ -2062,9 +2069,9 @@ fn (mut g Parser) read_if_expression() !string {
 			g.member_smartcasts[opt_name] = FastcMemberSmartcast{
 				typ:    base
 				source: if g.prefs.target_libc_headers {
-					'(V_FASTC_OPTION_STORAGE(${fastc_output_c_type(flat.source_type_name(base))}, (${fastc_c_identifier(opt_name)}))->value)'
+					'(V_FASTC_OPTION_STORAGE(${fastc_output_c_type(flat.source_type_name(base))}, (${fastc_c_value_identifier(opt_name)}))->value)'
 				} else {
-					'(*((${fastc_output_c_type(flat.source_type_name(base))} *)${fastc_c_identifier(opt_name)}.data))'
+					'(*((${fastc_output_c_type(flat.source_type_name(base))} *)${fastc_c_value_identifier(opt_name)}.data))'
 				}
 			}
 		}
@@ -2073,6 +2080,18 @@ fn (mut g Parser) read_if_expression() !string {
 		g.read_return_expression_branch()!
 	} else {
 		g.read_block_expression_value()!
+	}
+	// Resolve an option branch's payload while the guard and narrowed locals that
+	// the branch reads (`if h := opt { h.flush() } else { none }`) are in scope.
+	then_read_type := g.last_expression_type
+	then_read_option_value_type := if then_read_type in [fastc_type_option, fastc_type_result] {
+		if g.last_expression.len > 0 {
+			g.option_value_type_for_expression(g.last_expression)
+		} else {
+			g.last_option_value_type
+		}
+	} else {
+		u32(0)
 	}
 	for i, path in narrowed_names {
 		if narrowed_had[i] {
@@ -2105,7 +2124,7 @@ fn (mut g Parser) read_if_expression() !string {
 	}
 	if guard_name != '' {
 		if guard_name != '_' {
-			then_expression = '({ ${fastc_output_c_type(flat.source_type_name(guard_type))} ${fastc_c_identifier(guard_name)} = ${g.option_value_expression(guard_type, guard_option)}; ${then_expression}; })'
+			then_expression = '({ ${fastc_output_c_type(flat.source_type_name(guard_type))} ${fastc_c_value_identifier(guard_name)} = ${g.option_value_expression(guard_type, guard_option)}; ${then_expression}; })'
 		}
 		if had_guard {
 			g.locals[guard_name] = previous_guard
@@ -2114,7 +2133,10 @@ fn (mut g Parser) read_if_expression() !string {
 		}
 	}
 	mut then_type := g.last_expression_type
-	mut then_option_value_type := (if then_type in [fastc_type_option, fastc_type_result] {
+	mut then_option_value_type := (if then_type in [fastc_type_option, fastc_type_result]
+		&& then_type == then_read_type {
+		then_read_option_value_type
+	} else if then_type in [fastc_type_option, fastc_type_result] {
 		(if g.last_expression.len > 0 {
 			g.option_value_type_for_expression(g.last_expression)
 		} else {

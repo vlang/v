@@ -123,7 +123,7 @@ jobs:
         run: ./v -silent -cc gcc -cflags -fsanitize=address,leak,undefined,shift,shift-exponent,shift-base,integer-divide-by-zero,unreachable,vla-bound,null,return,signed-integer-overflow,bounds,bounds-strict,alignment,object-size,float-divide-by-zero,float-cast-overflow,nonnull-attribute,returns-nonnull-attribute,bool,enum,vptr test-self -asan-compiler cmd/tools
 
   tools-macos:
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 20
     strategy:
       matrix:

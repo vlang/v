@@ -424,6 +424,22 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 			typ:    fastc_type_option
 		}
 	}
+	// `&Sum(variant)` first constructs a sum carrier, then gives that computed
+	// value stable storage. Reinterpreting a struct variant as Sum* is invalid C.
+	if g.selfhost && tokens[0].tok == .amp && flat.source_type_syntax(c_type).c_pointer_depth() == 1 {
+		base := fastc_trim_pointer_type(c_type)
+		if flat.source_type_name(base) in g.sum_types {
+			inner_type := g.infer_expression_type(inner_tokens) or { u32(0) }
+			if inner_type != 0 && !fastc_is_pointer_type(inner_type)
+				&& (inner_type == base || g.sumtype_has_variant(base, fastc_normalize_inferred_type(inner_type))) {
+				boxed := g.render_cast_expression(tokens[1..]) or { return none }
+				return FastcRenderedExpression{
+					source: g.value_address_expression(base, boxed.source, []FastcExpressionToken{})
+					typ:    c_type
+				}
+			}
+		}
+	}
 	// A conversion into a boxed sum type (`Expr(EmptyExpr(0))`) is a box, not a C cast: the
 	// concrete variant value is stored behind `_object` with its own type id. Casting the
 	// variant straight to the `{_object,_typ}` struct is invalid C, and matters for

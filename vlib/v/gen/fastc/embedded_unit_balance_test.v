@@ -57,17 +57,17 @@ fn test_large_embedded_payloads_leave_the_first_unit() {
 		extern_texts:   [declaration]
 	}
 	split := fastc_split_payload_unit(pieces, units, 4)
-	assert split.source == 'typedef unsigned char u8;\n' + definition
+	assert split.source() == 'typedef unsigned char u8;\n' + definition
 	assert split.units.define_texts == [declaration]
 	assert fastc_render_c_unit(pieces, &split.units, 0, 0, 1).contains(declaration)
 	// A build that keeps one unit retains the definition in place.
 	single := fastc_split_payload_unit(pieces, units, 1)
-	assert single.source == ''
+	assert single.source() == ''
 	assert single.units.define_texts == [definition]
 	// Small payloads are not worth a separate object.
 	small := FastcUnitLayout{
 		...units
 		define_texts: ['const u8 __vf_embed_small[] = "x";\n']
 	}
-	assert fastc_split_payload_unit(pieces, small, 4).source == ''
+	assert fastc_split_payload_unit(pieces, small, 4).source() == ''
 }
