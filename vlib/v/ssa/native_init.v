@@ -96,7 +96,7 @@ fn (b &Builder) native_global_selector_addr(node flat.Node) ?ValueID {
 	for root.kind == .selector && root.children_count > 0 {
 		root = b.a.nodes[int(b.a.child(&root, 0))]
 	}
-	if root.kind == .ident && root.value_text() in b.vars {
+	if root.kind == .ident && b.vars.has(root.value_text()) {
 		return none
 	}
 	name := b.selector_qualified_name(node)

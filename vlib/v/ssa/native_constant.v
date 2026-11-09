@@ -113,6 +113,7 @@ fn (mut b Builder) register_native_initializers() {
 				typ := b.resolve_struct_storage_type(type_name_source_id, module_name)
 				addr := b.m.add_global('__const_' + ssa_c_name(name), typ)
 				b.global_vars[name] = addr
+				b.var_templates.clear()
 				b.global_type_names.set_id(name, type_name_source_id)
 				b.global_aliases[module_name + '.' + field.value] = name
 			}
@@ -193,7 +194,7 @@ fn (b &Builder) native_const_storage_type_name(field flat.Node, expr_id flat.Nod
 	return b.infer_v_type(expr_id)
 }
 
-fn (b &Builder) native_initializer_references(function int, names map[ValueID]string, mut visited map[int]bool, mut references map[string]bool) {
+fn (b &Builder) native_initializer_references(function int, names []string, mut visited map[int]bool, mut references map[string]bool) {
 	if function < 0 || function >= b.m.funcs.len || visited[function] {
 		return
 	}
@@ -208,8 +209,8 @@ fn (b &Builder) native_initializer_references(function int, names map[ValueID]st
 				if instruction.op == .phi && index % 2 == 1 {
 					continue
 				}
-				if name := names[operand] {
-					references[name] = true
+				if int(operand) < names.len && names[int(operand)].len > 0 {
+					references[names[int(operand)]] = true
 				}
 			}
 			if instruction.op in [.call, .call_sret] && instruction.operands.len > 0 {
@@ -223,10 +224,11 @@ fn (b &Builder) native_initializer_references(function int, names map[ValueID]st
 }
 
 fn (mut b Builder) build_native_initializer_functions() {
-	mut names := map[ValueID]string{}
+	// Indexed by value: this walks every instruction of the program.
+	mut names := []string{len: b.m.values.len}
 	for name, _ in b.native_initializers {
 		if addr := b.global_vars[name] {
-			names[addr] = name
+			names[int(addr)] = name
 		}
 	}
 	mut required := map[string]bool{}

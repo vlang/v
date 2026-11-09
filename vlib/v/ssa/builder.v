@@ -81,7 +81,9 @@ mut:
 	cur_func           int
 	cur_func_ret_type  u32
 	cur_block          BlockID
-	vars               map[string]ValueID
+	vars               VarTable
+	var_templates      map[string]&ModuleVarTemplate
+	call_candidates    map[string]string
 	// Outer bindings hidden by inner declarations, restored when their scope ends.
 	shadowed_bindings []ShadowedBinding
 	global_vars       map[string]ValueID
@@ -194,7 +196,7 @@ struct VarBinding {
 
 struct BuilderScope {
 	active     bool
-	vars       map[string]ValueID
+	vars       VarTable
 	type_names flat.TypeTextBindings
 	// Position in Builder.shadowed_bindings when the scope opened.
 	shadow_mark int
@@ -280,7 +282,7 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 		used_fns:                 used_fns
 		used_fn_normalized:       map[string]bool{}
 		used_fn_suffixes:         map[string]bool{}
-		vars:                     map[string]ValueID{}
+		vars:                     VarTable{}
 		global_vars:              map[string]ValueID{}
 		global_type_names:        flat.TypeTextBindings{}
 		global_imports:           map[string]string{}
@@ -417,7 +419,7 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 	b.register_types()
 	b.register_struct_field_defaults()
 	b.register_globals()
-	b.global_vars = b.vars.clone()
+	b.global_vars = b.vars.locals.clone()
 	b.register_functions()
 	if b.m.target.ptr_size == 8 { b.register_native_initializers() }
 	b.build_functions()
@@ -1536,7 +1538,7 @@ fn (mut b Builder) register_globals() {
 						f.value
 					}
 					addr := b.m.add_global(name, typ)
-					b.vars[name] = addr
+					b.vars.set(name, addr)
 					if b.m.target.ptr_size == 4 && f.children_count > 0 {
 						b.cur_module = cur_module
 						b.initialize_global(b.m.values[addr].index, b.a.child(f, 0))
@@ -1587,11 +1589,11 @@ fn (mut b Builder) register_globals() {
 							'C.stderr' { c_standard_stream_symbol('stderr', b.m.target) }
 							else { f.value.all_after('C.') }
 						}
-						b.vars[f.value] = b.m.add_external_global(symbol, typ)
+						b.vars.set(f.value, b.m.add_external_global(symbol, typ))
 						b.global_type_names.set_id(f.value, type_name)
 						continue
 					}
-					b.vars[name] = b.m.add_global(ssa_c_name(name), typ)
+					b.vars.set(name, b.m.add_global(ssa_c_name(name), typ))
 					b.global_type_names.set_id(name, type_name)
 					b.global_aliases[cur_module + '.' + f.value] = name
 				}
@@ -1905,16 +1907,16 @@ fn global_integer_literal(value string) i64 {
 
 // ensure_runtime_global supports ensure runtime global handling for Builder.
 fn (mut b Builder) ensure_runtime_global(name string, typ TypeID) {
-	if name in b.vars {
+	if b.vars.has(name) {
 		return
 	}
 	for v in b.m.values {
 		if v.kind == .global && v.name == name {
-			b.vars[name] = v.id
+			b.vars.set(name, v.id)
 			return
 		}
 	}
-	b.vars[name] = b.m.add_global(name, typ)
+	b.vars.set(name, b.m.add_global(name, typ))
 }
 
 // register_functions updates register functions state for ssa.
@@ -2647,7 +2649,7 @@ fn (b &Builder) source_selector_name(node flat.Node) ?string {
 		return none
 	}
 	base := b.a.child_node(&node, 0)
-	if base.kind != .ident || base.value_text() in b.vars {
+	if base.kind != .ident || b.vars.has(base.value_text()) {
 		return none
 	}
 	module_name := b.source_import_name(node, base.value_text()) or { return none }
@@ -8131,8 +8133,8 @@ fn (mut b Builder) generate_arguments_body(func_id int) {
 	ptr_i64 := b.m.type_store.get_ptr(b.i64_type)
 
 	entry := b.m.add_block(func_id, 'entry')
-	argc_global := b.vars['g_main_argc']
-	argv_global := b.vars['g_main_argv']
+	argc_global := b.vars.value('g_main_argc')
+	argv_global := b.vars.value('g_main_argv')
 	argc := b.block_instr1(.load, entry, b.i64_type, argc_global)
 	argv := b.block_instr1(.load, entry, ptr_ptr_i8, argv_global)
 
@@ -9444,7 +9446,7 @@ fn (mut b Builder) build_function(node flat.Node, module_name string) {
 
 			alloca := b.emit0(.alloca, b.m.type_store.get_ptr(typ))
 			b.emit2(.store, b.void_type, param_val, alloca)
-			b.vars[child.value_text()] = alloca
+			b.vars.set(child.value_text(), alloca)
 			b.var_type_names.set_id(child.value_text(), typ_name_source_id_2)
 			if child.is_mut && b.is_pointer_type(typ) {
 				b.mut_param_names[child.value_text()] = true
@@ -9546,17 +9548,38 @@ fn (mut b Builder) reset_function_state() {
 	b.defer_active_slots.clear()
 	b.pending_loop_label = ''
 	b.loop_targets.clear()
+	template := b.module_var_template()
+	b.vars = VarTable{
+		base: template
+	}
+	b.var_type_names.base = &template.type_names
+}
+
+// module_var_template returns the globals visible from the current module:
+// global names, their aliases and the module's own short names. A function used
+// to copy them all into its table when it started, 40% of building SSA for a
+// large program; now it reads them through this shared table, the way Go keeps
+// package scope apart from function scope (types2.Scope.Parent).
+fn (mut b Builder) module_var_template() &ModuleVarTemplate {
+	if existing := b.var_templates[b.cur_module] {
+		return existing
+	}
+	mut template := &ModuleVarTemplate{
+		type_names: flat.TypeTextBindings{
+			texts: b.var_type_names.texts
+		}
+	}
 	for name, val_id in b.global_vars {
-		b.vars[name] = val_id
+		template.vars[name] = val_id
 		if typ_source_id := b.global_type_names.type_id(name) {
-			b.var_type_names.set_id(name, typ_source_id)
+			template.type_names.set_id(name, typ_source_id)
 		}
 	}
 	for alias, name in b.global_aliases {
 		if addr := b.global_vars[name] {
-			b.vars[alias] = addr
+			template.vars[alias] = addr
 			if typ_source_id := b.global_type_names.type_id(name) {
-				b.var_type_names.set_id(alias, typ_source_id)
+				template.type_names.set_id(alias, typ_source_id)
 			}
 		}
 	}
@@ -9566,9 +9589,9 @@ fn (mut b Builder) reset_function_state() {
 			if name.starts_with(prefix) {
 				short := name[prefix.len..]
 				if !short.contains('.') {
-					b.vars[short] = val_id
+					template.vars[short] = val_id
 					if typ_source_id := b.global_type_names.type_id(name) {
-						b.var_type_names.set_id(short, typ_source_id)
+						template.type_names.set_id(short, typ_source_id)
 					}
 				}
 			}
@@ -9577,9 +9600,65 @@ fn (mut b Builder) reset_function_state() {
 	if b.source_modules.len > 0 && b.cur_module !in ['', 'main', 'builtin'] {
 		for name, val_id in b.global_vars {
 			if name.starts_with(b.cur_module + '.') {
-				b.vars[name[b.cur_module.len + 1..]] = val_id
+				template.vars[name[b.cur_module.len + 1..]] = val_id
 			}
 		}
+	}
+	b.var_templates[b.cur_module] = template
+	return template
+}
+
+// ModuleVarTemplate is the set of names every function of a module starts with.
+@[heap]
+struct ModuleVarTemplate {
+mut:
+	vars       map[string]ValueID
+	type_names flat.TypeTextBindings
+}
+
+// VarTable holds a function's locals over the shared names of its module.
+struct VarTable {
+mut:
+	locals map[string]ValueID
+	base   &ModuleVarTemplate = unsafe { nil }
+}
+
+fn (t &VarTable) get(name string) ?ValueID {
+	if value := t.locals[name] {
+		return value
+	}
+	if t.base != unsafe { nil } {
+		if value := t.base.vars[name] {
+			return value
+		}
+	}
+	return none
+}
+
+fn (t &VarTable) value(name string) ValueID {
+	return t.get(name) or { ValueID(0) }
+}
+
+fn (t &VarTable) has(name string) bool {
+	return name in t.locals || (t.base != unsafe { nil } && name in t.base.vars)
+}
+
+fn (mut t VarTable) set(name string, value ValueID) {
+	t.locals[name] = value
+}
+
+fn (mut t VarTable) delete(name string) {
+	t.locals.delete(name)
+}
+
+fn (mut t VarTable) clear() {
+	t.locals.clear()
+}
+
+fn (t &VarTable) clone() VarTable {
+	return VarTable{
+		locals: t.locals.clone()
+		base:   t.base
 	}
 }
 
@@ -9645,7 +9724,7 @@ fn (b &Builder) save_var_binding(name string) VarBinding {
 	if name.len == 0 {
 		return VarBinding{}
 	}
-	if addr := b.vars[name] {
+	if addr := b.vars.get(name) {
 		return VarBinding{
 			exists: true
 			addr:   addr
@@ -9661,7 +9740,7 @@ fn (mut b Builder) restore_var_binding(name string, binding VarBinding) {
 		return
 	}
 	if binding.exists {
-		b.vars[name] = binding.addr
+		b.vars.set(name, binding.addr)
 		if binding.typ != 0 {
 			b.var_type_names.set_id(name, binding.typ)
 		} else {
@@ -9679,7 +9758,7 @@ fn (mut b Builder) bind_loop_var(name string, typ TypeID, typ_name_id u32) Value
 		return ValueID(0)
 	}
 	slot := b.emit0(.alloca, b.m.type_store.get_ptr(typ))
-	b.vars[name] = slot
+	b.vars.set(name, slot)
 	if typ_name_id != 0 {
 		b.var_type_names.set_id(name, typ_name_id)
 	}
@@ -10140,13 +10219,13 @@ fn (mut b Builder) build_decl_assign(node flat.Node) {
 		alloca := b.emit0(.alloca, b.m.type_store.get_ptr(rhs_type))
 		b.emit2(.store, b.void_type, rhs_val, alloca)
 		if lhs.kind == .ident {
-			if lhs.value_text() in b.vars {
+			if b.vars.has(lhs.value_text()) {
 				b.shadowed_bindings << ShadowedBinding{
 					name:    lhs.value_text()
 					binding: b.save_var_binding(lhs.value_text())
 				}
 			}
-			b.vars[lhs.value_text()] = alloca
+			b.vars.set(lhs.value_text(), alloca)
 			rhs_type_name_source_id := b.checked_expr_type_name(rhs_id)
 			b.var_type_names.set_id(lhs.value_text(), if declared_type_source_id != 0 {
 				declared_type_source_id
@@ -10201,7 +10280,7 @@ fn (mut b Builder) build_assign(node flat.Node) {
 			continue
 		}
 		if lhs.kind == .ident {
-			if addr := b.vars[lhs.value_text()] {
+			if addr := b.vars.get(lhs.value_text()) {
 				if node.op == .assign {
 					rhs_val := if parallel_values.len > 0 {
 						parallel_values[i / 2]
@@ -10737,7 +10816,7 @@ fn (mut b Builder) build_map_for_in(node flat.Node, key_id flat.NodeId, val_id f
 			// its uses are dereferenced, so `v = x` updates the map.
 			ref_slot := b.emit0(.alloca, b.m.type_store.get_ptr(b.value_type(val_ptr)))
 			b.emit2(.store, b.void_type, val_ptr, ref_slot)
-			b.vars[val_name] = ref_slot
+			b.vars.set(val_name, ref_slot)
 		} else {
 			val_val := b.emit1(.load, val_type, val_ptr)
 			b.emit2(.store, b.void_type, val_val, val_alloca)
@@ -10947,7 +11026,7 @@ fn (mut b Builder) activate_if_guard(guard IfGuardState) {
 	}
 	value := b.emit1(.load, guard.typ, typed_value_ptr)
 	b.emit2(.store, b.void_type, value, guard.slot)
-	b.vars[guard.name] = guard.slot
+	b.vars.set(guard.name, guard.slot)
 	if guard.typ_name != 0 {
 		b.var_type_names.set_id(guard.name, guard.typ_name)
 	}
@@ -11355,7 +11434,7 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 				type_name_source_id_2 := type_name_source_id
 
 				size = b.sizeof_type_name(type_name_source_id_2)
-			} else if addr := b.vars[operand_text] {
+			} else if addr := b.vars.get(operand_text) {
 				size = b.m.type_size(b.deref_type(addr))
 			} else {
 				size = b.sizeof_type_name(node.source_value_id())
@@ -11376,7 +11455,7 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 			return b.m.get_or_add_const(b.i64_type, '${offset}')
 		}
 		.ident {
-			if addr := b.vars[node.value_text()] {
+			if addr := b.vars.get(node.value_text()) {
 				addr_val := b.m.values[addr]
 				if addr_val.kind == .argument {
 					return addr
@@ -13617,7 +13696,7 @@ fn (mut b Builder) build_qualified_infix_call(node flat.Node) ?ValueID {
 	if lhs_name.len == 0 {
 		return none
 	}
-	if _ := b.vars[lhs_name] {
+	if _ := b.vars.get(lhs_name) {
 		return none
 	}
 	rhs := b.a.nodes[int(rhs_id)]
@@ -13676,7 +13755,7 @@ fn (mut b Builder) build_direct_call(resolved_name string, node flat.Node) Value
 			if pt.kind == .ptr_t {
 				arg_node := b.a.nodes[int(arg_id)]
 				if arg_node.kind == .ident {
-					if addr := b.vars[arg_node.value_text()] {
+					if addr := b.vars.get(arg_node.value_text()) {
 						if b.should_pass_ident_addr_for_ptr_param(addr, param_type, true) {
 							args << addr
 							continue
@@ -13789,7 +13868,7 @@ fn (mut b Builder) emit_runtime_call(name string, ret_type TypeID, values []Valu
 // slot; a cast such as &&u8(g_main_argv) must not load through it (that read
 // argv[0] in place of argv and crashed every getenv on macOS arm64).
 fn (b &Builder) is_entry_argv_load(value ValueID) bool {
-	argv_global := b.vars['g_main_argv'] or { return false }
+	argv_global := b.vars.get('g_main_argv') or { return false }
 	val := b.m.values[value]
 	if val.kind != .instruction {
 		return false
@@ -14233,7 +14312,7 @@ fn (mut b Builder) build_prefix(node flat.Node, _id flat.NodeId) ValueID {
 		return b.build_heap_struct_init(child_id, child)
 	}
 	if node.op == .amp && child.kind == .ident {
-		if addr := b.vars[child.value_text()] {
+		if addr := b.vars.get(child.value_text()) {
 			// Fixed-array locals hold their storage pointer. Taking their address
 			// must expose the array bytes rather than the pointer's local slot.
 			storage_type := b.deref_type(addr)
@@ -14341,7 +14420,8 @@ fn (mut b Builder) const_global_addr(name string, expr_id flat.NodeId) ?ValueID 
 	}
 	val_id := b.m.add_global(global_name, typ_id)
 	b.global_vars[global_name] = val_id
-	b.vars[global_name] = val_id
+	b.var_templates.clear()
+	b.vars.set(global_name, val_id)
 	return val_id
 }
 
@@ -14385,7 +14465,7 @@ fn (mut b Builder) build_lvalue_addr(id flat.NodeId) ValueID {
 			return b.build_lvalue_addr(b.a.child(&node, 0))
 		}
 		.ident {
-			if addr := b.vars[node.value_text()] {
+			if addr := b.vars.get(node.value_text()) {
 				elem_type := b.deref_type(addr)
 				if elem_type > 0 && elem_type < b.m.type_store.types.len {
 					elem := b.m.type_store.types[elem_type]
@@ -14419,7 +14499,7 @@ fn (mut b Builder) build_lvalue_addr(id flat.NodeId) ValueID {
 
 fn (mut b Builder) build_selector_addr(node flat.Node) ValueID {
 	if name := b.source_selector_name(node) {
-		if addr := b.vars[name] {
+		if addr := b.vars.get(name) {
 			return addr
 		}
 	}
@@ -14439,7 +14519,7 @@ fn (mut b Builder) build_selector_addr(node flat.Node) ValueID {
 		return b.get_field_ptr(base_ptr, node.value_text())
 	}
 	if base.kind == .ident {
-		if addr := b.vars[base.value_text()] {
+		if addr := b.vars.get(base.value_text()) {
 			if field_ptr := b.smartcast_sum_selector_addr(addr, base_id, node.value_text()) {
 				return field_ptr
 			}
@@ -14525,7 +14605,7 @@ fn (b &Builder) pointer_cast_struct_name(id flat.NodeId) ?u32 {
 
 fn (mut b Builder) build_arrow_selector_base_ptr(base_id flat.NodeId, base flat.Node) ValueID {
 	if base.kind == .ident {
-		if addr := b.vars[base.value_text()] {
+		if addr := b.vars.get(base.value_text()) {
 			return b.emit1(.load, b.deref_type(addr), addr)
 		}
 	}
@@ -15196,13 +15276,13 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 			callee_var_names << '${b.cur_module}.${actual_name}'
 		}
 		for var_name in callee_var_names {
-			if addr := b.vars[var_name] {
+			if addr := b.vars.get(var_name) {
 				callee := b.emit1(.load, b.deref_type(addr), addr)
 				return b.build_indirect_call_value(id, node, fn_node_id, callee)
 			}
 		}
 		if fn_node.kind == .ident {
-			if _ := b.vars[fn_node.value_text()] {
+			if _ := b.vars.get(fn_node.value_text()) {
 				return b.build_indirect_call(id, node, fn_node_id)
 			}
 		} else if fn_node.kind == .selector && b.is_function_value_expr(fn_node_id) {
@@ -15277,7 +15357,7 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 			if pt.kind == .ptr_t {
 				base_node := b.a.nodes[int(base_id)]
 				if base_node.kind == .ident {
-					if addr := b.vars[base_node.value_text()] {
+					if addr := b.vars.get(base_node.value_text()) {
 						if b.should_pass_ident_addr_for_ptr_param(addr, param_types[0], true) {
 							args << addr
 						} else {
@@ -15347,7 +15427,7 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 			if pt.kind == .ptr_t {
 				arg_node := b.a.nodes[int(arg_id)]
 				if arg_node.kind == .ident {
-					if addr := b.vars[arg_node.value_text()] {
+					if addr := b.vars.get(arg_node.value_text()) {
 						if b.should_pass_ident_addr_for_ptr_param(addr, param_type, allow_pointer_slot) {
 							args << addr
 							continue
@@ -15838,10 +15918,22 @@ fn (mut b Builder) map_array_elem_size_arg(id flat.NodeId, node flat.Node) ?Valu
 	return b.m.get_or_add_const(b.i64_type, actual_size.str())
 }
 
-fn (b &Builder) unqualified_call_candidate(name string, arg_count int) ?string {
+fn (mut b Builder) unqualified_call_candidate(name string, arg_count int) ?string {
+	key := '${name}:${arg_count}'
+	if cached := b.call_candidates[key] {
+		return if cached.len > 0 { cached } else { none }
+	}
+	found := b.find_unqualified_call_candidate(name, arg_count) or { '' }
+	b.call_candidates[key] = found
+	return if found.len > 0 { found } else { none }
+}
+
+fn (b &Builder) find_unqualified_call_candidate(name string, arg_count int) ?string {
 	mut fallback := ''
+	dotted := '.${name}'
+	underscored := '__${name}'
 	for candidate, _ in b.fn_ids {
-		if !candidate.ends_with('.${name}') && !candidate.ends_with('__${name}') {
+		if !candidate.ends_with(dotted) && !candidate.ends_with(underscored) {
 			continue
 		}
 		if !b.fn_param_count_matches(candidate, arg_count) {
@@ -16361,7 +16453,7 @@ fn (b &Builder) call_base_is_array(base_id flat.NodeId) bool {
 	}
 	base_node := b.a.nodes[int(base_id)]
 	if base_node.kind == .ident {
-		if addr := b.vars[base_node.value_text()] {
+		if addr := b.vars.get(base_node.value_text()) {
 			if b.storage_points_to_array(addr) {
 				return true
 			}
@@ -16539,7 +16631,7 @@ fn (b &Builder) is_local_function_value(call_id flat.NodeId, id flat.NodeId) boo
 	if _ := b.resolved_call_name(call_id) {
 		return false
 	}
-	addr := b.vars[b.a.nodes[int(id)].value_text()] or { return false }
+	addr := b.vars.get(b.a.nodes[int(id)].value_text()) or { return false }
 	if b.m.values[addr].kind == .global {
 		return false
 	}
@@ -16687,7 +16779,7 @@ fn (mut b Builder) build_const_i32_array_arg(id flat.NodeId) ?ValueID {
 	if node.kind != .ident {
 		return none
 	}
-	if _ := b.vars[node.value_text()] {
+	if _ := b.vars.get(node.value_text()) {
 		return none
 	}
 	expr_id := b.lookup_const_expr(node.value_text()) or { return none }
@@ -16851,7 +16943,7 @@ fn (mut b Builder) build_map_set_call(node flat.Node) ValueID {
 				key_node = b.a.nodes[int(key_id)]
 			}
 			if key_node.kind == .ident {
-				if addr := b.vars[key_node.value] {
+				if addr := b.vars.get(key_node.value) {
 					if b.deref_type(addr) == b.wide_integer_type() {
 						args << addr
 						continue
@@ -17252,7 +17344,7 @@ fn (b &Builder) should_pass_ident_addr_for_ptr_param(addr ValueID, param_type Ty
 
 fn (mut b Builder) build_selector(node flat.Node) ValueID {
 	if name := b.source_selector_name(node) {
-		if addr := b.vars[name] {
+		if addr := b.vars.get(name) {
 			return b.emit1(.load, b.deref_type(addr), addr)
 		}
 		if expr_id := b.lookup_const_expr(name) {
@@ -17360,7 +17452,7 @@ fn (mut b Builder) build_selector(node flat.Node) ValueID {
 		if expr_id := b.lookup_const_expr(const_name) {
 			return b.build_expr(expr_id)
 		}
-		if addr := b.vars[base.value_text()] {
+		if addr := b.vars.get(base.value_text()) {
 			if b.is_option_like_var(base.value_text()) {
 				field_ptr := b.get_field_ptr(addr, field_name)
 				return b.emit1(.load, b.deref_type(field_ptr), field_ptr)
@@ -17634,7 +17726,7 @@ fn (b &Builder) is_option_like_var(name string) bool {
 fn (b &Builder) selector_has_addressable_root(node &flat.Node) bool {
 	match node.kind {
 		.ident {
-			if _ := b.vars[node.value_text()] {
+			if _ := b.vars.get(node.value_text()) {
 				return true
 			}
 		}
@@ -19241,7 +19333,7 @@ fn (b &Builder) infer_v_type(id flat.NodeId) u32 {
 			return flat.source_type_bool
 		}
 		.ident {
-			if addr := b.vars[node.value_text()] {
+			if addr := b.vars.get(node.value_text()) {
 				val := b.m.values[addr]
 				if val.typ == b.str_type || (val.typ > 0 && val.typ < b.m.type_store.types.len
 					&& b.m.type_store.types[val.typ].kind == .ptr_t
