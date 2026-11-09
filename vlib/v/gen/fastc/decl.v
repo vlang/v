@@ -1785,8 +1785,9 @@ fn fastc_constant_candidates(ordered_sources []FastcSourceFile, constant_sources
 // initializers read constants of other files, with the types those constants had.
 struct FastcSeededConstantFile {
 	result FastcConstantFileResult
-	// external_types holds the type of every constant of another file that the
-	// initializers depend on, as the seed parse saw it (0 when it was unknown).
+	// external_types holds the type of every constant whose type the initializers read
+	// from the constant types, as the seed parse saw it (0 when it was unknown); see
+	// fastc_constant_external_types.
 	external_types map[string]u32
 }
 
@@ -1819,16 +1820,20 @@ fn fastc_seed_constant_types(ctx &FastcConstantGenContext, candidates []FastcSou
 }
 
 // fastc_constant_external_types returns the types `constant_types` holds for the
-// constants of other files that the file's initializers depend on.
+// constants whose types the file's initializers read from it: the constants of other
+// files, and the file's own constants that an initializer reads before their
+// declaration (`const copied = later` above `const later = ...`). Only a constant
+// declared earlier in the file is typed by the parse itself.
 fn fastc_constant_external_types(result FastcConstantFileResult, constant_types flat.TypeTextBindings) map[string]u32 {
-	mut declared := map[string]bool{}
-	for value in result.values {
-		declared[value.key] = true
+	mut positions := map[string]int{}
+	for index, value in result.values {
+		positions[value.key] = index
 	}
 	mut types := map[string]u32{}
-	for value in result.values {
+	for index, value in result.values {
 		for dependency in value.dependencies {
-			if dependency !in declared {
+			position := positions[dependency] or { -1 }
+			if position < 0 || position >= index {
 				types[dependency] = constant_types.value_id(dependency)
 			}
 		}
