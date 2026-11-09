@@ -942,3 +942,17 @@ fn test_map_with_string_sized_keys() {
 		assert output == '7 8 2', output
 	}
 }
+
+// 2^64 + 2^40 + 1 lies just above a halfway point of f32. Rounded to f64 first,
+// it lands exactly on that point and rounds down.
+fn test_128_bit_to_f32_rounds_once() {
+	$if macos && arm64 {
+		output := run_arm64('wide_to_f32', 'fn main() {
+	big := (u128(1) << 64) + (u128(1) << 40) + 1
+	println(f32(big) == f32(18446746272732807168.0))
+	println(f32(-i128(big)) == f32(-18446746272732807168.0))
+}
+')
+		assert output == 'true\ntrue', output
+	}
+}

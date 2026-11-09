@@ -12766,13 +12766,18 @@ fn (mut b Builder) convert_wide_integer(value ValueID, target_type TypeID, signe
 	from_type := b.value_type(value)
 	if from_type == wide_type {
 		if b.is_float_type(target_type) {
-			helper := if signed { '__floattidf' } else { '__floatuntidf' }
+			// compiler-rt rounds to the target width at once, like Zig's
+			// floatFromBigInt (lib/compiler_rt/float_from_int.zig); going through
+			// f64 first would round an `f32` result twice.
+			float_type := if target_type == b.f32_type { b.f32_type } else { b.f64_type }
+			width := if float_type == b.f32_type { 'sf' } else { 'df' }
+			helper := if signed { '__floatti${width}' } else { '__floatunti${width}' }
 			if helper !in b.fn_ids {
-				b.register_extern(helper, b.f64_type, [wide_type])
+				b.register_extern(helper, float_type, [wide_type])
 			}
-			ref := b.m.add_value(.func_ref, b.f64_type, helper, b.fn_ids[helper])
-			double := b.emit2(.call, b.f64_type, ref, value)
-			return b.coerce_numeric_value(double, target_type)
+			ref := b.m.add_value(.func_ref, float_type, helper, b.fn_ids[helper])
+			converted := b.emit2(.call, float_type, ref, value)
+			return b.coerce_numeric_value(converted, target_type)
 		}
 		low, _ := b.wide_integer_limbs(b.cur_block, value)
 		if b.is_int_type(target_type) {
