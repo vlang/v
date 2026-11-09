@@ -782,6 +782,18 @@ fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 	// still match: the plan with their current metadata, written back below.
 	mut refreshed_lines := []string{}
 	mut refreshed := false
+	// A plan names hundreds of SDK headers. Read their metadata up front on worker
+	// threads; the checks below consume it in order.
+	mut dependency_paths := []string{}
+	for line in lines {
+		if line.starts_with('dependency=') {
+			entry := line.all_after('dependency=')
+			first_tab := entry.index('\t') or { break }
+			dependency_paths << entry[..first_tab]
+		}
+	}
+	dependency_metadata := c_link_plan_dependency_metadata(dependency_paths)
+	mut dependency_index := 0
 	for line_index, line in lines {
 		if line_index == 0 {
 			continue
@@ -812,7 +824,13 @@ fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 			if path.len == 0 || expected_signature.len == 0 {
 				return none
 			}
-			actual_metadata := modulecache.file_metadata_signature(path)
+			actual_metadata := if dependency_index < dependency_metadata.len
+				&& dependency_paths[dependency_index] == path {
+				dependency_metadata[dependency_index]
+			} else {
+				modulecache.file_metadata_signature(path)
+			}
+			dependency_index++
 			if actual_metadata.len == 0 || actual_metadata != expected_metadata {
 				actual_signature := c_object_file_signature(path, false, mut stats)
 				if actual_signature.len == 0 || actual_signature != expected_signature {
@@ -856,6 +874,32 @@ fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 		os.mv(temp_path, plan_path) or { os.rm(temp_path) or {} }
 	}
 	return plan
+}
+
+// c_link_plan_dependency_metadata returns the metadata signature of every path, read
+// by worker threads when there are many: stat calls scale across threads.
+fn c_link_plan_dependency_metadata(paths []string) []string {
+	if paths.len < 64 {
+		return c_link_plan_metadata_range(paths)
+	}
+	reader_count := 8
+	mut pending := []thread []string{}
+	for i in 0 .. reader_count {
+		pending << spawn c_link_plan_metadata_range(paths[paths.len * i / reader_count..paths.len * (i + 1) / reader_count])
+	}
+	mut metadata := []string{cap: paths.len}
+	for worker in pending {
+		metadata << worker.wait()
+	}
+	return metadata
+}
+
+fn c_link_plan_metadata_range(paths []string) []string {
+	mut metadata := []string{cap: paths.len}
+	for path in paths {
+		metadata << modulecache.file_metadata_signature(path)
+	}
+	return metadata
 }
 
 fn write_c_link_plan(plan_path string, flags []string, stats &CObjectCacheStats) ! {
