@@ -51,13 +51,15 @@ fn (mut b Builder) build_native_initialization() {
 		native_module_init_order(name, module_imports, mut visited, mut order)
 	}
 	mut initialized := map[string]bool{}
+	mut initializers_by_module := map[string][]string{}
+	for initializer_name in b.native_initializer_order {
+		initializers_by_module[b.native_initializers[initializer_name].module_name] << initializer_name
+	}
 	for name in order {
 		b.cur_module = name
 		b.reset_function_state()
-		for initializer_name in b.native_initializer_order {
-			if b.native_initializers[initializer_name].module_name == name {
-				b.emit_native_initializer(initializer_name, mut initialized)
-			}
+		for initializer_name in initializers_by_module[name] {
+			b.emit_native_initializer(initializer_name, mut initialized)
 		}
 		if fn_id := init_functions[name] {
 			function := b.m.funcs[fn_id]

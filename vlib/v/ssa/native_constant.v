@@ -196,6 +196,7 @@ fn (b &Builder) native_const_storage_type_name(field flat.Node, expr_id flat.Nod
 	return b.infer_v_type(expr_id)
 }
 
+@[direct_array_access]
 fn (b &Builder) native_initializer_references(function int, names []string, mut visited map[int]bool, mut references map[string]bool) {
 	if function < 0 || function >= b.m.funcs.len || visited[function] {
 		return
@@ -203,7 +204,7 @@ fn (b &Builder) native_initializer_references(function int, names []string, mut 
 	visited[function] = true
 	for block in b.m.funcs[function].blocks {
 		for value_id in b.m.blocks[block].instrs {
-			instruction := b.m.instrs[b.m.values[value_id].index]
+			instruction := unsafe { &b.m.instrs[b.m.values[value_id].index] }
 			if instruction.op in [.br, .jmp, .switch_] {
 				continue
 			}
@@ -227,7 +228,17 @@ fn (b &Builder) native_initializer_references(function int, names []string, mut 
 
 fn (mut b Builder) build_native_initializer_functions() {
 	// Indexed by value: this walks every instruction of the program.
-	mut names := []string{len: b.m.values.len}
+	mut last_address := -1
+	for name, _ in b.native_initializers {
+		if addr := b.global_vars[name] {
+			if int(addr) > last_address {
+				last_address = int(addr)
+			}
+		}
+	}
+	// Addresses are registered before any body, so this table stays small while
+	// the instruction walk below visits every value of the program.
+	mut names := []string{len: last_address + 1}
 	for name, _ in b.native_initializers {
 		if addr := b.global_vars[name] {
 			names[int(addr)] = name

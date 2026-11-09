@@ -528,7 +528,15 @@ pub mut:
 	c_extern_symbols map[string]string
 	// `@[export: 'name']` functions: SSA function name -> exported C name.
 	export_aliases map[string]string
+	// Function name -> index, so registering a symbol does not scan funcs.
+	func_index map[string]int
 mut:
+	// A function worker builds one body at a time: constants are interned per
+	// function, and values of the worker's earlier functions are out of bounds.
+	is_function_worker   bool
+	function_consts      map[string]ValueID
+	seed_value_end       int
+	fragment_value_start int
 	// Layout queries are hot in both SSA construction and native codegen. Keep
 	// their scratch and completed sizes on the module instead of allocating two
 	// type-table-sized arrays for every query.
@@ -774,10 +782,9 @@ pub fn (mut m Module) discard_emission_since(value_count int, instruction_count 
 // add_block updates add block state for Module.
 pub fn (mut m Module) add_block(func_id int, name string) BlockID {
 	id := BlockID(m.blocks.len)
-	unique := '${name}_${id}'
 	m.blocks << BasicBlock{
 		id:     id
-		name:   unique
+		name:   name
 		parent: func_id
 	}
 	mut f := m.funcs[func_id]
@@ -789,12 +796,11 @@ pub fn (mut m Module) add_block(func_id int, name string) BlockID {
 
 // new_function supports new function handling for Module.
 pub fn (mut m Module) new_function(name string, ret TypeID) int {
-	for i, f in m.funcs {
-		if f.name == name {
-			return i
-		}
+	if existing := m.func_index[name] {
+		return existing
 	}
 	id := m.funcs.len
+	m.func_index[name] = id
 	m.funcs << Function{
 		id:   id
 		name: name
@@ -807,6 +813,7 @@ pub fn (mut m Module) new_function(name string, ret TypeID) int {
 // name index and therefore does not need new_function's linear duplicate scan.
 pub fn (mut m Module) add_function(name string, ret TypeID) int {
 	id := m.funcs.len
+	m.func_index[name] = id
 	m.funcs << Function{
 		id:   id
 		name: name
@@ -882,7 +889,14 @@ pub fn (mut m Module) add_global_with_data(name string, elem_type TypeID, is_con
 // add_external_global registers (or reuses) a global defined outside this module
 // (e.g. C runtime globals such as __stdoutp). Returns the global pointer value.
 pub fn (mut m Module) add_external_global(name string, typ TypeID) ValueID {
-	for v in m.values {
+	for i := 0; i < m.values.len; i++ {
+		if m.is_function_worker && i == m.seed_value_end {
+			i = m.fragment_value_start
+			if i >= m.values.len {
+				break
+			}
+		}
+		v := m.values[i]
 		if v.kind == .global && v.name == name {
 			return v.id
 		}
@@ -904,6 +918,14 @@ pub fn (mut m Module) get_or_add_const(typ TypeID, name string) ValueID {
 		if existing > 0 {
 			return existing
 		}
+	}
+	if m.is_function_worker {
+		if existing := m.function_consts[key] {
+			return existing
+		}
+		id := m.add_value(.constant, typ, name, 0)
+		m.function_consts[key] = id
+		return id
 	}
 	id := m.add_value(.constant, typ, name, 0)
 	m.const_cache[key] = id

@@ -185,6 +185,17 @@ mut:
 	sum_by_ssa_type         map[TypeID]u32
 	sum_by_ssa_type_sums    int = -1
 	sum_by_ssa_type_structs int = -1
+	// Parallel body construction (see worker.v).
+	is_worker         bool
+	seed_types        int
+	seed_fn_ids       map[string]int
+	spawn_counter     int
+	deferred_stubs    map[int]DeferredInterfaceStub
+	type_requests     map[int]LazyTypeRequest
+	merged_global_ids map[string]int
+	// Worker-built functions had their string literals expanded by the worker.
+	materialized_functions []bool
+	generated_interface_stubs map[string]bool
 }
 
 // VarBinding represents var binding data used by ssa.
@@ -771,6 +782,16 @@ fn (mut b Builder) register_multi_return_types() {
 
 // register_multi_return_type updates register multi return type state for ssa.
 fn (mut b Builder) register_multi_return_type(ret types.MultiReturn) TypeID {
+	typ := b.register_multi_return_type_inner(ret)
+	b.note_lazy_type(typ, LazyTypeRequest{
+		kind:         .multi_return
+		module_name:  b.cur_module
+		multi_return: ret
+	})
+	return typ
+}
+
+fn (mut b Builder) register_multi_return_type_inner(ret types.MultiReturn) TypeID {
 	name := b.multi_return_c_type(ret)
 	name_id := flat.source_type_id(name)
 	source_id := types.Type(ret).source_type_id()
@@ -947,6 +968,16 @@ fn checker_type_contains_function(typ types.Type) bool {
 }
 
 fn (mut b Builder) register_checker_sum_type(name_id u32) TypeID {
+	typ := b.register_checker_sum_type_inner(name_id)
+	b.note_lazy_type(typ, LazyTypeRequest{
+		kind:        .sum_type
+		name_id:     name_id
+		module_name: b.cur_module
+	})
+	return typ
+}
+
+fn (mut b Builder) register_checker_sum_type_inner(name_id u32) TypeID {
 	name := flat.source_type_name(name_id)
 	existing_id := b.struct_types[name_id] or { TypeID(0) }
 	if existing_id > 0 && existing_id < b.m.type_store.types.len
@@ -1105,6 +1136,16 @@ fn (mut b Builder) register_struct_type_name(name u32, module_name string, typ_i
 // register_checker_interface materializes the runtime interface box used by
 // native method dispatch: {object pointer, concrete type id, boxed ownership}.
 fn (mut b Builder) register_checker_interface(name_id u32) ?TypeID {
+	typ := b.register_checker_interface_inner(name_id) or { return none }
+	b.note_lazy_type(typ, LazyTypeRequest{
+		kind:        .interface_box
+		name_id:     name_id
+		module_name: b.cur_module
+	})
+	return typ
+}
+
+fn (mut b Builder) register_checker_interface_inner(name_id u32) ?TypeID {
 	if b.tc == unsafe { nil } || name_id == 0 {
 		return none
 	}
@@ -9061,7 +9102,9 @@ fn (b &Builder) c_variant_function_names() map[string]bool {
 fn (mut b Builder) build_functions() {
 	c_variant_names := b.c_variant_function_names()
 	mut cur_module := ''
-	for node in b.a.nodes {
+	mut jobs := []FunctionJob{}
+	mut job_for_function := []bool{len: b.m.funcs.len}
+	for node_index, node in b.a.nodes {
 		if node.kind == .file {
 			cur_module = ''
 			continue
@@ -9115,9 +9158,21 @@ fn (mut b Builder) build_functions() {
 				b.mark_fn_prototype(fn_name)
 				continue
 			}
-			b.build_function(node, cur_module)
+			func_id := b.fn_ids[fn_name]
+			// Same-named declarations (a generic fallback and an arch-specific
+			// body): the first in source order is the one that runs.
+			if func_id < job_for_function.len && job_for_function[func_id] {
+				continue
+			}
+			job_for_function[func_id] = true
+			jobs << FunctionJob{
+				node_index:  node_index
+				module_name: cur_module
+				func_id:     func_id
+			}
 		}
 	}
+	b.run_function_jobs(mut jobs)
 	if b.top_level_main && !b.skip_fn_bodies && b.hot_fn.len == 0 {
 		b.build_top_level_main()
 	}
@@ -12807,6 +12862,9 @@ fn (mut b Builder) wide_integer_type() TypeID {
 		fields:      [b.u64_type, b.u64_type]
 		field_names: ['low', 'high']
 	})
+	b.note_lazy_type(b.wide_int_type, LazyTypeRequest{
+		kind: .wide_integer
+	})
 	return b.wide_int_type
 }
 
@@ -14431,6 +14489,15 @@ fn (mut b Builder) const_global_addr(name string, expr_id flat.NodeId) ?ValueID 
 	if val_id := b.global_vars[global_name] {
 		return val_id
 	}
+	if b.is_worker {
+		// Global by name at the merge; the address value stays with this function.
+		if val_id := b.vars.get(global_name) {
+			return val_id
+		}
+		val_id := b.m.add_global(global_name, typ_id)
+		b.vars.set(global_name, val_id)
+		return val_id
+	}
 	val_id := b.m.add_global(global_name, typ_id)
 	b.global_vars[global_name] = val_id
 	for _, mut template in b.var_templates {
@@ -14697,7 +14764,8 @@ fn (mut b Builder) build_spawn_expr(node flat.Node) ValueID {
 		}
 		b.emit2(.store, b.void_type, arg, field)
 	}
-	name := '__ssa_spawn_${b.m.funcs.len}'
+	name := '__ssa_spawn_${b.cur_func}_${b.spawn_counter}'
+	b.spawn_counter++
 	trampoline_id := b.register_synthetic_function(name, ptr_i8, [ptr_i8])
 	b.generate_spawn_trampoline(trampoline_id, packet_type, call.typ, node.is_detached_spawn(),
 		never_returns)
@@ -15042,7 +15110,8 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 			}
 			if found_name == fn_node.value_text() {
 				base_is_array := b.call_base_is_array(base_id)
-				for fname, _ in b.fn_ids {
+				fn_names := unsafe { if b.is_worker { b.seed_fn_ids } else { b.fn_ids } }
+				for fname, _ in fn_names {
 					if fname.ends_with('.${fn_node.value_text()}') || fname.ends_with('__${fn_node.value_text()}') {
 						if fname.starts_with('array.') && !base_is_array {
 							continue
@@ -15623,6 +15692,12 @@ fn (mut b Builder) register_interface_method_stub(name string, base_id flat.Node
 	if existing := b.fn_ids[name] {
 		return existing
 	}
+	stub_name := if name.len > 0 { name } else { '${interface_name}.${method_name}' }
+	// A call without a qualified name reaches here each time; one dispatch body
+	// is enough, even though the signature stub registered earlier is replaced.
+	if !b.is_worker && b.generated_interface_stubs[stub_name] {
+		return b.fn_ids[stub_name]
+	}
 	decl_key := b.tc.interface_method_signature_key(interface_id, method_name) or {
 		'${interface_name}.${method_name}'
 	}
@@ -15635,8 +15710,17 @@ fn (mut b Builder) register_interface_method_stub(name string, base_id flat.Node
 		ssa_params << b.resolve_type(flat.source_type_id(receiver_type))
 	}
 	ret_type := b.ssa_type_from_checker_type(ret)
-	stub_name := if name.len > 0 { name } else { '${interface_name}.${method_name}' }
 	stub_id := b.register_synthetic_function(stub_name, ret_type, ssa_params)
+	if b.is_worker {
+		b.deferred_stubs[stub_id] = DeferredInterfaceStub{
+			name:        name
+			base_id:     base_id
+			method:      method
+			module_name: b.cur_module
+		}
+		return stub_id
+	}
+	b.generated_interface_stubs[stub_name] = true
 	b.generate_interface_method_dispatch(stub_id, interface_id, stub_name, method_name, ssa_params,
 		ret_type)
 	return stub_id
@@ -15957,7 +16041,8 @@ fn (b &Builder) find_unqualified_call_candidate(name string, arg_count int) ?str
 	mut fallback := ''
 	dotted := '.${name}'
 	underscored := '__${name}'
-	for candidate, _ in b.fn_ids {
+	candidates := unsafe { if b.is_worker { b.seed_fn_ids } else { b.fn_ids } }
+	for candidate, _ in candidates {
 		if !candidate.ends_with(dotted) && !candidate.ends_with(underscored) {
 			continue
 		}
@@ -18581,6 +18666,16 @@ fn (b &Builder) struct_literal_type(name_id u32) (TypeID, u32) {
 // register_checker_generic_struct materializes a concrete generic struct layout
 // from the checker, which substitutes fields such as `[]T` with `[]int`.
 fn (mut b Builder) register_checker_generic_struct(name string) ?TypeID {
+	typ := b.register_checker_generic_struct_inner(name) or { return none }
+	b.note_lazy_type(typ, LazyTypeRequest{
+		kind:        .generic_struct
+		name:        name
+		module_name: b.cur_module
+	})
+	return typ
+}
+
+fn (mut b Builder) register_checker_generic_struct_inner(name string) ?TypeID {
 	if b.tc == unsafe { nil } || !name.contains('[') || name.starts_with('[]')
 		|| name.starts_with('map[')
 		|| (name.starts_with('[') && b.is_fixed_array_type_name(flat.source_type_id(name))) {
@@ -19084,6 +19179,18 @@ fn (mut b Builder) option_type_id(base_name_id u32, is_result bool) TypeID {
 }
 
 fn (mut b Builder) option_type_id_with_payload(base_name_id u32, base_typ TypeID, is_result bool) TypeID {
+	typ := b.option_type_id_with_payload_inner(base_name_id, base_typ, is_result)
+	b.note_lazy_type(typ, LazyTypeRequest{
+		kind:        .option
+		name_id:     base_name_id
+		module_name: b.cur_module
+		base_typ:    base_typ
+		is_result:   is_result
+	})
+	return typ
+}
+
+fn (mut b Builder) option_type_id_with_payload_inner(base_name_id u32, base_typ TypeID, is_result bool) TypeID {
 	key := flat.source_type_composition_one(if is_result { .result } else { .option }, base_name_id)
 	if typ := b.option_types[key] {
 		return typ
