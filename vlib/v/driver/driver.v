@@ -14724,8 +14724,16 @@ pub fn run(args []string) {
 			eprintln('arm64: linking with the system linker for ${arm64_link_reason}')
 		}
 		mut arm64_c_side_info := Arm64CSide{}
-		mut arm64_c_constants := map[string]Arm64CConstant{}
-		mut arm64_c_struct_layouts := map[string]Arm64CStructLayout{}
+		mut arm64_c_probes := Arm64CProbes{}
+		arm64_link_inputs := Arm64LinkInputs{
+			environment_cflags: environment_c_flags
+			optimization_flags: v3_prod_c_object_optimization_flags(is_prod, no_prod_options, false,
+				parallel_cc, false)
+			target:             prefs.target
+			c99:                c99
+			no_std:             no_std
+		}
+		mut arm64_link_preparation := []thread Arm64PreparedLink{}
 		// Like cgo, read the C constants that the builder does not know from the
 		// C compiler even when the built-in linker links the program: system
 		// headers alone (`C.FIONREAD`, `C.KERN_SUCCESS`) need no system linker.
@@ -14755,17 +14763,27 @@ pub fn run(args []string) {
 				eprintln(err.msg())
 				exit(1)
 			}
-			constant_names := if arm64_link_mode == .external {
-				arm64_c_constant_names(a)
-			} else {
-				arm64_unknown_c_constants
-			}
-			arm64_c_constants = arm64_probe_c_constants(constant_names, arm64_c_side_info)
-			b.step('arm64 C constants')
 			if arm64_link_mode == .external {
-				arm64_c_struct_layouts = arm64_probe_c_struct_layouts(arm64_c_structs(a), arm64_c_side_info)
-				b.step('arm64 C struct layouts')
+				arm64_link_preparation << spawn arm64_prepare_link_inputs(arm64_c_side_info, arm64_link_inputs)
 			}
+			arm64_c_probes = arm64_probe_c_side(Arm64CProbeRequest{
+				functions: if arm64_link_mode == .external {
+					arm64_c_function_decl_names(a)
+				} else {
+					[]string{}
+				}
+				constants: if arm64_link_mode == .external {
+					arm64_c_constant_names(a)
+				} else {
+					arm64_unknown_c_constants
+				}
+				structs:   if arm64_link_mode == .external {
+					arm64_c_structs(a)
+				} else {
+					[]Arm64CStruct{}
+				}
+			}, arm64_c_side_info)
+			b.step('arm64 C probes')
 		}
 		if msg := unsupported_backend_error(a, &pre_tc, used_fns, backend) {
 			clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
@@ -14774,14 +14792,14 @@ pub fn run(args []string) {
 		}
 		$if !skip_arm64 ? {
 			mut arm64_ssa_c_constants := map[string]ssa.NativeCConstant{}
-			for name, constant in arm64_c_constants {
+			for name, constant in arm64_c_probes.constants {
 				arm64_ssa_c_constants[name] = ssa.NativeCConstant{
 					value:    constant.value
 					is_float: constant.is_float
 				}
 			}
 			mut arm64_ssa_c_struct_layouts := map[string]ssa.NativeCStructLayout{}
-			for name, layout in arm64_c_struct_layouts {
+			for name, layout in arm64_c_probes.structs {
 				arm64_ssa_c_struct_layouts[name] = ssa.NativeCStructLayout{
 					size:    layout.size
 					align:   layout.align
@@ -14831,7 +14849,7 @@ pub fn run(args []string) {
 			g.freestanding = 'freestanding' in prefs.user_defines
 			g.gc_runtime = 'gcboehm' in prefs.user_defines && arm64_link_mode == .external
 			if arm64_link_mode == .external {
-				probed := arm64_probe_c_functions(g.c_extern_call_names(), arm64_c_side_info)
+				probed := arm64_c_function_kinds(g.c_extern_call_names(), arm64_c_probes, arm64_c_side_info)
 				mut kinds := map[string]arm64.CFunctionKind{}
 				for name, kind in probed {
 					kinds[name] = if kind == .macro { arm64.CFunctionKind.macro } else { .internal }
@@ -14894,17 +14912,24 @@ pub fn run(args []string) {
 					exit(1)
 				}
 				b.step('arm64 object')
+				prepared_link := if arm64_link_preparation.len == 1 {
+					arm64_link_preparation[0].wait()
+				} else {
+					arm64_prepare_link_inputs(arm64_c_side_info, arm64_link_inputs)
+				}
+				if prepared_link.error.len > 0 {
+					os.rm(obj_file) or {}
+					clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)
+					eprintln(prepared_link.error)
+					exit(1)
+				}
 				arm64_external_link(arm64_c_side_info, Arm64ExternalLink{
-					object:             obj_file
-					output:             bin_file
-					environment_cflags: environment_c_flags
-					link_ld_flags:      link_ld_flags
-					optimization_flags: v3_prod_c_object_optimization_flags(is_prod,
-						no_prod_options, false, parallel_cc, false)
-					target:             prefs.target
-					c99:                c99
-					no_std:             no_std
-					show_cc:            show_cc
+					object:        obj_file
+					output:        bin_file
+					link_ld_flags: link_ld_flags
+					link_flags:    prepared_link.flags
+					target:        prefs.target
+					show_cc:       show_cc
 				}) or {
 					os.rm(obj_file) or {}
 					clear_macos_v3_compiler_error_fallback(macos_v3_fallback_file)

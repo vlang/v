@@ -117,12 +117,61 @@ fn test_native_c_support_source_follows_the_target() {
 }
 
 fn test_arm64_c_constant_probe_lines_isolate_each_name() {
-	text := arm64_c_constant_probe_lines(['FOO', 'BAR', 'BAZ'], [true, false, true])
-	assert text.contains('#line 1 "${arm64_c_constant_probe_file}"')
+	text := arm64_c_constant_probe_lines(['FOO', 'BAR', 'BAZ'], [true, false, true], 0)
+	assert text.contains('#line 1 "${arm64_c_probe_file}"')
 	assert !text.contains('(BAR)')
-	assert text.contains('#line 3 "${arm64_c_constant_probe_file}"')
+	assert text.contains('#line 3 "${arm64_c_probe_file}"')
 	assert text.contains('__v_cconst_i_2 = (long long)(BAZ)')
 	assert arm64_is_c_identifier('SOKOL_MAX_IMAGES')
 	assert !arm64_is_c_identifier('a.b')
 	assert !arm64_is_c_identifier('1abc')
+}
+
+fn test_arm64_c_constants_leave_declared_c_functions_to_the_function_probe() {
+	mut a := flat.FlatAst.new()
+	a.add_node(flat.Node{
+		kind:  .c_fn_decl
+		value: 'C.ext_add'
+	})
+	for name in ['ext_add', 'EXT_LIMIT'] {
+		child := a.add_node(flat.Node{
+			kind:  .ident
+			value: 'C'
+		})
+		start := a.children.len
+		a.add_child(child)
+		a.add_node(flat.Node{
+			kind:           .selector
+			value:          name
+			children_start: start
+			children_count: 1
+		})
+	}
+	assert arm64_c_constant_names(a) == ['EXT_LIMIT']
+	names := arm64_c_function_decl_names(a)
+	assert 'ext_add' in names
+	assert 'strtod' in names
+}
+
+fn test_arm64_c_probe_lines_share_one_line_space() {
+	keep := []bool{len: 4, init: true}
+	functions := arm64_c_function_probe_lines(['first'], keep, 0)
+	assert functions.contains('#line 1 "${arm64_c_probe_file}"')
+	constants := arm64_c_constant_probe_lines(['SECOND'], keep, 1)
+	assert constants.contains('#line 2 "${arm64_c_probe_file}"')
+	structs := arm64_c_struct_probe_lines([
+		Arm64CStruct{
+			v_name: 'C.third'
+			c_type: 'struct third'
+			fields: ['f']
+		},
+	], keep, 2)
+	assert structs.contains('#line 3 "${arm64_c_probe_file}"')
+	assert structs.contains('#line 4 "${arm64_c_probe_file}"')
+}
+
+fn test_arm64_c_compiler_replaces_tinycc() {
+	assert arm64_c_compiler('') == 'cc'
+	assert arm64_c_compiler('tcc') == 'cc'
+	assert arm64_c_compiler('clang') == 'clang'
 }
