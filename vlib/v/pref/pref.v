@@ -109,6 +109,8 @@ pub:
 pub mut:
 	// hot_fn extracts raw machine code for a single function only (hot reload).
 	hot_fn string
+	// wasm_cabi enables canonical-ABI string params for wasm exports.
+	wasm_cabi bool
 	// component requests wrapping the wasm output into a WebAssembly component.
 	component bool
 	// wit_file is the path to a WIT file used with -component.
