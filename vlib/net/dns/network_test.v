@@ -62,14 +62,14 @@ fn test_network_lookup_mx_gmail_com() {
 	}
 }
 
-fn test_network_new_resolver_uses_resolv_conf() {
+fn test_network_new_resolver_uses_the_system_configuration() {
 	if skip_if_disabled() {
 		return
 	}
 	mut r := new_resolver()!
 	assert r.servers.len >= 1
-	// We don't assert the exact server (depends on /etc/resolv.conf),
-	// but it must answer.
+	// We don't assert the exact server (it depends on /etc/resolv.conf, or on
+	// the network adapters on Windows), but it must answer.
 	addrs := r.lookup_a('a.root-servers.net')!
 	assert addrs.len >= 1
 }

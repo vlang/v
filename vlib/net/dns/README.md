@@ -30,8 +30,10 @@ fn main() {
 ## Configuration
 
 `new_resolver` reads `/etc/resolv.conf`: its `nameserver` entries, and the `timeout:n` and
-`attempts:n` options. Names are queried exactly as given. When the file lists no nameserver,
-`new_resolver` returns an error, and the servers are set through `Resolver.servers`.
+`attempts:n` options. On Windows, except on 32-bit x86, it takes the DNS servers of the network
+adapters that are up, as `GetAdaptersAddresses` lists them, with the default timeout and
+attempts. Names are queried exactly as given. When the system lists no server, `new_resolver`
+returns an error, and the servers are set through `Resolver.servers`.
 
 ## Security
 

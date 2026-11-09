@@ -44,11 +44,12 @@ pub:
 	attempts int           = default_attempts
 }
 
-// new_resolver builds a Resolver from the servers and options of
-// /etc/resolv.conf, and returns an error when the file lists no nameserver.
-// `Resolver.servers` sets the servers directly.
+// new_resolver builds a Resolver from the system DNS configuration: the
+// servers and options of /etc/resolv.conf, or on Windows the DNS servers of
+// the network adapters that are up. It returns an error when the system lists
+// no server. `Resolver.servers` sets the servers directly.
 pub fn new_resolver() !Resolver {
-	conf := parse_resolv_conf('/etc/resolv.conf') or {
+	conf := system_config() or {
 		return error('net.dns: no system DNS configuration (${err.msg()}); set Resolver.servers')
 	}
 	return Resolver{

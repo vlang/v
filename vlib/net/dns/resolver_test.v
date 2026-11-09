@@ -154,6 +154,42 @@ fn test_parse_resolv_conf_empty_returns_error() {
 	}
 }
 
+// ---------- Windows adapter DNS servers ----------
+
+// windows_sockaddr_in6 builds a Windows SOCKADDR_IN6 for `addr` and `scope_id`.
+fn windows_sockaddr_in6(addr [16]u8, scope_id u32) []u8 {
+	mut sockaddr := [u8(23), 0, 0, 0, 0, 0, 0, 0]
+	sockaddr << addr[..]
+	sockaddr << [u8(scope_id), u8(scope_id >> 8), u8(scope_id >> 16), u8(scope_id >> 24)]
+	return sockaddr
+}
+
+fn test_windows_sockaddr_server_formats_ipv4_and_ipv6_servers() {
+	sockaddr_in := [u8(2), 0, 0, 0, 192, 168, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0]
+	assert windows_sockaddr_server(sockaddr_in)? == '192.168.0.1:53'
+	global := [u8(0x20), 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]!
+	assert windows_sockaddr_server(windows_sockaddr_in6(global, 0))? == '[2001:db8::1]:53'
+	link_local := [u8(0xfe), 0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]!
+	assert windows_sockaddr_server(windows_sockaddr_in6(link_local, 12))? == '[fe80::1%12]:53'
+}
+
+fn test_windows_sockaddr_server_skips_placeholders_and_other_families() {
+	for last in [u8(1), 2, 3] {
+		placeholder := [u8(0xfe), 0xc0, 0, 0, 0, 0, 0xff, 0xff, 0, 0, 0, 0, 0, 0, 0, last]!
+		if server := windows_sockaddr_server(windows_sockaddr_in6(placeholder, 0)) {
+			assert false, 'fec0:0:0:ffff::${last} is not a server, got ${server}'
+		}
+	}
+	site_local := [u8(0xfe), 0xc0, 0, 0, 0, 0, 0xff, 0xff, 0, 0, 0, 0, 0, 0, 0, 4]!
+	assert windows_sockaddr_server(windows_sockaddr_in6(site_local, 0))? == '[fec0:0:0:ffff::4]:53'
+	for sockaddr in [[u8(2), 0, 0, 0, 10, 0], [u8(23), 0, 0, 0], [u8(1), 0, 47, 116, 109, 112],
+		[]u8{}] {
+		if server := windows_sockaddr_server(sockaddr) {
+			assert false, '${sockaddr} is not a server, got ${server}'
+		}
+	}
+}
+
 // ---------- query() over FakeTransport ----------
 
 fn test_query_uses_first_server_and_returns_decoded_message() {
