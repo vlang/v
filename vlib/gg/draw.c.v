@@ -270,9 +270,13 @@ fn rect_filled_screen_axis(scale f32, start f32, size f32) (f32, f32) {
 	if math.abs(size) == 1 && start == math.floor(start) && scale != math.floor(scale) {
 		// A logical hairline can otherwise cover different numbers of pixels at
 		// fractional DPI scales. Round its origin and thickness independently.
-		origin := f32(math.round(start * scale))
+		lower := if size < 0 { start + size } else { start }
+		origin := f32(math.round(lower * scale))
 		thickness := f32(math.max(1, math.round(scale)))
-		return origin, origin + if size < 0 { -thickness } else { thickness }
+		if size < 0 {
+			return origin + thickness, origin
+		}
+		return origin, origin + thickness
 	}
 	return start * scale, (start + size) * scale
 }
