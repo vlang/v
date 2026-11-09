@@ -1679,7 +1679,7 @@ fn (mut g Parser) read_comptime_embed_file() !string {
 		'to_string', 'str' {
 			g.last_expression_type = flat.source_type_string
 			g.last_expression = []FastcExpressionToken{}
-			return '_S(${fastc_embed_c_string_value(content)})'
+			return '_S(${fastc_embed_c_string_value(content, '', '')})'
 		}
 		else {
 			return g.unsupported('`\$embed_file` accessor `.${accessor}()`')
@@ -1739,7 +1739,7 @@ fn fastc_collect_embedded_payloads(source string, path string, prefs &pref.Prefe
 				name := fastc_embed_symbol(resolved)
 				if name !in payloads {
 					content := os.read_file(resolved) or { return error('fastc cannot read embedded file `${resolved}`') }
-					payloads[name] = 'const u8 ${name}[] = ${fastc_embed_c_string_value(content)};\n'
+					payloads[name] = fastc_embed_c_string_value(content, 'const u8 ${name}[] = ', ';\n')
 				}
 				scan = look
 			}
@@ -1750,9 +1750,9 @@ fn fastc_collect_embedded_payloads(source string, path string, prefs &pref.Prefe
 
 // fastc_embed_c_string_value preserves every byte, including NUL and non-UTF-8
 // data. Three-digit octal escapes cannot absorb a following hexadecimal digit.
-@[direct_array_access]
-fn fastc_embed_c_string_value(content string) string {
-	mut length := content.len + 2
+@[direct_array_access; manualfree]
+fn fastc_embed_c_string_value(content string, prefix string, suffix string) string {
+	mut length := prefix.len + content.len + 2 + suffix.len
 	for c in content {
 		if c == `"` || c == `\\` {
 			length++
@@ -1760,9 +1760,12 @@ fn fastc_embed_c_string_value(content string) string {
 			length += 3
 		}
 	}
-	mut result := []u8{len: length}
-	result[0] = `"`
-	mut offset := 1
+	// The returned string owns this allocation; the array is only a borrowed write view.
+	data := unsafe { malloc_noscan(length + 1) }
+	mut result := unsafe { data.vbytes(length + 1) }
+	unsafe { vmemcpy(data, prefix.str, prefix.len) }
+	result[prefix.len] = `"`
+	mut offset := prefix.len + 1
 	for c in content {
 		if c == `"` || c == `\\` {
 			result[offset] = `\\`
@@ -1780,7 +1783,10 @@ fn fastc_embed_c_string_value(content string) string {
 		}
 	}
 	result[offset] = `"`
-	return result.bytestr()
+	offset++
+	unsafe { vmemcpy(data + offset, suffix.str, suffix.len) }
+	result[length] = 0
+	return unsafe { tos(data, length) }
 }
 
 // fastc_string_literal_content returns the raw text inside a scanned string
