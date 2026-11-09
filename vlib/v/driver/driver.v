@@ -57,6 +57,8 @@ $if !skip_ssa ? {
 
 $if !skip_wasm ? {
 	import v.gen.wasm as wasmgen
+	import wasm
+	import wit
 }
 // vfmt on
 
@@ -10059,6 +10061,8 @@ pub fn run(args []string) {
 	mut is_livemain := false
 	mut is_liveshared := false
 	mut hot_fn := ''
+	mut component_flag := false
+	mut wit_file_path := ''
 	mut subsystem := pref.Subsystem.auto
 	mut icon_path := ''
 	mut is_strict := false
@@ -10236,6 +10240,12 @@ pub fn run(args []string) {
 			backend = normalize_backend_name(args[i].all_after('='))
 			backend_explicit = !backend_from_project
 			i++
+		} else if args[i] == '-component' {
+			component_flag = true
+			i++
+		} else if args[i] == '-wit' && i + 1 < args.len {
+			wit_file_path = args[i + 1]
+			i += 2
 		} else if args[i] == '-cross' {
 			// A modifier, not a target: it combines with `-os`/`-cc`, as in
 			// `v -cross -os windows -cc msvc`. See `v help build-c`.
@@ -11422,6 +11432,18 @@ pub fn run(args []string) {
 		eprintln('fastc-phase driver.prefs ${driver_sw.elapsed().microseconds()}us')
 	}
 	prefs.target = target
+	prefs.component = component_flag
+	prefs.wit_file = wit_file_path
+	if prefs.component {
+		if prefs.wit_file == '' {
+			eprintln('error: -component requires -wit <file.wit>')
+			exit(1)
+		}
+		if backend != 'wasm' {
+			eprintln('error: -component requires -b wasm')
+			exit(1)
+		}
+	}
 	prefs.output_cross_c = output_cross_c
 	prefs.thread_stack_size = if thread_stack_size_set {
 		thread_stack_size
@@ -14822,6 +14844,30 @@ pub fn run(args []string) {
 			g.write(output_file) or {
 				eprintln('error writing ${output_file}')
 				exit(1)
+			}
+			if prefs.component {
+				// Invoke WIT parser + component wrapper (native flow).
+				wit_src := os.read_file(prefs.wit_file) or {
+					eprintln('error reading wit file ${prefs.wit_file}')
+					exit(1)
+				}
+				_ := wit.parse(wit_src) or {
+					eprintln('error parsing wit file ${prefs.wit_file}: ${err}')
+					exit(1)
+				}
+				core := os.read_file(output_file) or {
+					eprintln('error reading ${output_file}')
+					exit(1)
+				}
+				// Component output path
+				comp_out := output_file.all_before_last('.wasm') + '.component.wasm'
+				// Write wrapped component (minimal: wrap core module)
+				wrapped := wasm.wrap_core_module(core.bytes())
+				os.write_file_array(comp_out, wrapped) or {
+					eprintln('error writing ${comp_out}')
+					exit(1)
+				}
+				eprintln('component: wrote ${comp_out}')
 			}
 			for warning in g.warnings_list() {
 				eprintln('wasm: ${warning}')
