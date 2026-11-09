@@ -166,6 +166,45 @@ fn test_merge_doc_comments_starts_a_list_after_text_on_a_new_line() {
 	assert doc.merge_doc_comments(comments).trim_space() == 'The fields are:\n- `a` is a\n- `b` is b\nSearch order:\n1. first\n2. second'
 }
 
+fn test_the_text_around_an_example_is_kept() {
+	mod_dir := os.join_path(os.vtmp_dir(), 'vdoc_examples_text_${os.getpid()}')
+	os.rmdir_all(mod_dir) or {}
+	os.mkdir_all(mod_dir)!
+	defer { os.rmdir_all(mod_dir) or {} }
+	os.write_file(os.join_path(mod_dir, 'ex.v'), 'module ex
+
+// first describes first.
+// Example:
+// ```v
+// assert 1 == 1
+// ```
+// More text after the example.
+pub fn first() {}
+
+// second describes second.
+// Example: assert 2 == 2
+// More text after a one-line example.
+pub fn second() {}
+
+// third describes third.
+// Example:
+//   assert 3 == 3
+// More text.
+pub fn third() {}
+')!
+	mod_doc := doc.generate(mod_dir, true, true, .auto)!
+	first := mod_doc.contents['first']!
+	assert first.merge_comments_without_examples() == 'first describes first. More text after the example.'
+	assert first.examples() == ['assert 1 == 1']
+	second := mod_doc.contents['second']!
+	assert second.merge_comments_without_examples() == 'second describes second. More text after a one-line example.'
+	assert second.examples() == ['assert 2 == 2']
+	// Without a code block after it, an `Example:` line is text, like the lines after it.
+	third := mod_doc.contents['third']!
+	assert third.merge_comments_without_examples() == 'third describes third. Example: assert 3 == 3 More text.'
+	assert third.examples() == []
+}
+
 fn test_merge_doc_comments_preserves_readme_markdown() {
 	readme := '# Description
 
