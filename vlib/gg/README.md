@@ -22,6 +22,12 @@ and ellipse radii scale with `Context.scale`, including rotated ellipses. A conf
 starts at its first endpoint and clips its final dash at the second endpoint. On macOS,
 `native_rendering` draws both axis-aligned and diagonal lines on the native Cocoa surface.
 
+For GPU filled rectangles, an integer-positioned dimension of one logical pixel is aligned
+to framebuffer pixels at fractional DPI scales. Its thickness is the display scale rounded
+to the nearest whole pixel, with a minimum of one pixel, independent of its starting position.
+For example, at 150% scaling both one-unit-wide rectangles at `x: 47` and `x: 50` are two
+framebuffer pixels wide. This also applies to `draw_rect_filled_no_context()`.
+
 ## Image buffers and cache IDs
 
 Image loaders produce four-channel RGBA pixels. When initializing an `Image` directly with
