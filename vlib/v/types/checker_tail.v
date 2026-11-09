@@ -10275,12 +10275,14 @@ fn (mut tc TypeChecker) resolve_call_info_uncached(id flat.NodeId, node flat.Nod
 					}
 				}
 				'join' {
-					return CallInfo{
-						name:         'array.join'
-						params:       tarr2(base_type, builtin_string_type)
-						return_type:  builtin_string_type
-						has_receiver: true
-						params_known: true
+					if array_method_takes_element('join', clean_array.elem_type) {
+						return CallInfo{
+							name:         'array.join'
+							params:       tarr2(base_type, builtin_string_type)
+							return_type:  builtin_string_type
+							has_receiver: true
+							params_known: true
+						}
 					}
 				}
 				'index', 'last_index' {
@@ -23012,12 +23014,31 @@ fn (tc &TypeChecker) is_known_call(node flat.Node) bool {
 	return false
 }
 
+// array_method_takes_element reports whether builtin `method` applies to an array
+// of `elem`. A method belongs to the receiver type it is declared on, with no
+// fallback to the array shape (Go types2 LookupFieldOrMethod, Zig fieldCallBind).
+// A generic element is checked when the function is instantiated.
+fn array_method_takes_element(method string, elem Type) bool {
+	if method !in ['bytestr', 'join'] {
+		return true
+	}
+	clean := unalias_type(elem)
+	if clean is Unknown || (clean is Struct && is_bare_generic_param(clean.name())) {
+		return true
+	}
+	return if method == 'bytestr' { is_byte_type(clean) } else { clean is String }
+}
+
 fn (tc &TypeChecker) is_known_array_receiver_method(receiver &Type, method string) bool {
 	if receiver is Array {
 		for mname in receiver_method_name_candidates(receiver, method, tc.cur_module) {
 			if mname in tc.fn_ret_types {
 				return true
 			}
+		}
+		// These two are declared for one element type, as `fn (a []string) join`.
+		if !array_method_takes_element(method, receiver.elem_type) {
+			return false
 		}
 		// Keep this in sync with the synthetic array receiver methods handled in
 		// resolve_call_info/resolve_type, including `[]thread T.wait()`.
