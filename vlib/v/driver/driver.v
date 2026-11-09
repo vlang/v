@@ -925,7 +925,7 @@ fn write_c_link_plan(plan_path string, flags []string, stats &CObjectCacheStats)
 	mut dependencies := stats.file_signatures.keys()
 	dependencies.sort()
 	for dependency in dependencies {
-		metadata := modulecache.file_metadata_signature(dependency)
+		metadata := modulecache.file_metadata_signature_from_before_build(dependency)
 		out.writeln('dependency=${dependency}\t${metadata}\t${stats.file_signatures[dependency]}')
 	}
 	out.writeln('complete=1')

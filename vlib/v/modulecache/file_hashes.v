@@ -91,6 +91,24 @@ pub fn file_changed_during_build(path string) bool {
 		|| coarse_mtime_is_recent(m.mtime_seconds, m.mtime_nanoseconds, time.utc().unix())
 }
 
+// build_is_marked reports whether this process is a build that marked its start,
+// which enable_file_hash_memo does before any input is read.
+fn build_is_marked() bool {
+	return !isnil(g_file_hash_memo)
+}
+
+// file_metadata_signature_from_before_build is file_metadata_signature for a
+// stamp that records the file next to a content signature taken earlier. It is
+// empty for a file changed during the build, so the next build compares the
+// contents instead of trusting metadata that describe a later version of the file
+// (isProblematicTimestamp and the zeroed mtime in Build/Cache.zig).
+pub fn file_metadata_signature_from_before_build(path string) string {
+	if build_is_marked() && file_changed_during_build(path) {
+		return ''
+	}
+	return file_metadata_signature(path)
+}
+
 struct FileMetadata {
 	device            u64
 	inode             u64

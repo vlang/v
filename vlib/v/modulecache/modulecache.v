@@ -928,6 +928,27 @@ fn (m &Manager) source_signature(source_files []string) string {
 	return m.source_signature_details(source_files).signature
 }
 
+// sources_changed_during_build reports whether a source file may be newer than
+// what this build compiled. Stamps are written after compiling and sign the
+// sources as they are then, so publishing one would vouch for the edited file
+// with an artifact of its earlier version. Go fixes a build's view of a file once
+// (cache.FileHash) and Zig writes the digests taken in Manifest.hit; V's stamps
+// hash again, so they are not written at all.
+fn (m &Manager) sources_changed_during_build(source_files []string) bool {
+	if !build_is_marked() {
+		return false
+	}
+	for path in m.real_source_paths(source_files) {
+		if file_changed_during_build(path) {
+			if os.getenv('V3_CACHE_TRACE') != '' {
+				eprintln('  V3 module cache not published: ${path} changed during the build')
+			}
+			return true
+		}
+	}
+	return false
+}
+
 fn (m &Manager) cacheable_source_signature(source_files []string) ?string {
 	details := m.source_signature_details(source_files)
 	if !details.cacheable {
@@ -1555,6 +1576,10 @@ pub fn (m &Manager) write_entry(module_name string, source_files []string, heade
 	}
 	entry := m.entry(module_name, source_files)
 	write_atomic(entry.header, header)!
+	if m.sources_changed_during_build(source_files) {
+		os.rm(entry.header_stamp) or {}
+		return entry
+	}
 	write_atomic(entry.header_stamp, header_entry_stamp(m.salt, m.source_signature(source_files), header))!
 	return entry
 }
@@ -1566,6 +1591,10 @@ pub fn (m &Manager) write_header(module_name string, source_files []string, head
 	}
 	entry := m.entry(module_name, source_files)
 	write_atomic(entry.header, header)!
+	if m.sources_changed_during_build(source_files) {
+		os.rm(entry.header_stamp) or {}
+		return entry
+	}
 	write_atomic(entry.header_stamp, header_entry_stamp(m.salt, m.source_signature(source_files), header))!
 	return entry
 }
@@ -1768,6 +1797,9 @@ pub fn (m &Manager) write_cgen(source_files []string, generation_signature strin
 	os.rm(entry.prepared_stamp) or {}
 	write_atomic(entry.source, source)!
 	write_atomic(entry.metadata, metadata)!
+	if m.sources_changed_during_build(source_files) {
+		return entry
+	}
 	stamp := cgen_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs, generation_signature)
 	write_atomic(entry.stamp, stamp)!
 	return entry
@@ -2092,6 +2124,9 @@ pub fn (m &Manager) write_program_executable(source_files []string, generation_s
 	if link_files.len != link_identities.len {
 		return error('the link inputs have no identities')
 	}
+	if m.sources_changed_during_build(source_files) {
+		return error('a source file changed during the build')
+	}
 	slot := m.program_executable_slot(source_files)
 	identity := m.program_executable_identity(source_files, generation_signature, dependency_inputs,
 		link_signature) or { return error('the program sources cannot be cached') }
@@ -2170,6 +2205,11 @@ fn program_executable_of_stamp(stamp string, slot string) string {
 pub fn (m &Manager) write_stamp(module_name string, source_files []string, dependency_inputs map[string]string, compile_signature string) ! {
 	entry := m.entry(module_name, source_files)
 	object_entry := m.object_entry(module_name, source_files, compile_signature)
+	if m.sources_changed_during_build(source_files) {
+		os.rm(object_entry.object_stamp) or {}
+		os.rm(entry.object_stamp) or {}
+		return
+	}
 	stamp := object_entry_stamp(m.salt, m.source_signature(source_files), dependency_inputs, compile_signature)
 	write_atomic(object_entry.object_stamp, stamp)!
 	write_atomic(entry.object_stamp, stamp)!
@@ -2236,7 +2276,7 @@ fn object_entry_stamp(salt string, source_hash string, dependency_inputs map[str
 	mut paths := dependency_inputs.keys()
 	paths.sort()
 	for path in paths {
-		out.writeln('dependency=${path}\t${dependency_inputs[path]}\t${file_metadata_signature(path)}')
+		out.writeln('dependency=${path}\t${dependency_inputs[path]}\t${file_metadata_signature_from_before_build(path)}')
 	}
 	return out.str()
 }
