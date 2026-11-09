@@ -547,7 +547,7 @@ pub fn (mut d DCtx) free_dctx() uint {
 }
 
 // store_array compress an `array`'s data, and store it to file `fname`.
-// extra compression parameters can be set by `params`
+// Extra compression parameters can be set by `params`.
 // WARNING: Because struct padding, some data in struct may be marked unused.
 // So, when `store_array`, it will cause memory fsanitize fail with 'use-of-uninitialized-value'.
 // It can be safely ignored.
