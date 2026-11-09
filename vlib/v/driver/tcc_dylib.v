@@ -31,8 +31,7 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 	flags << cgen.cache_directive_flags(a, prefs.vroot, prefs.target, prefs.compile_values)
 	flags = v3_tcc_dylib_native_flags(flags)
 	for flag in flags {
-		clean := flag.trim_space()
-		if clean.starts_with('@') || clean.starts_with('--config') || clean.starts_with('-specs') || clean.starts_with('--specs') || clean.starts_with('-include-pch') || clean.starts_with('-Wp,') {
+		if v3_native_flag_is_opaque(flag) {
 			return V3NativeInputClosure{ unassignable: 'opaque native compiler options' }
 		}
 	}
@@ -138,6 +137,15 @@ fn v3_tcc_dylib_native_closure(a &flat.FlatAst, prefs &pref.Preferences, user_fl
 		functions:      functions
 		native_sources: sources
 	}
+}
+
+// v3_native_flag_is_opaque reports whether a C compiler option makes the compiler
+// read options or inputs that the command line does not show.
+fn v3_native_flag_is_opaque(flag string) bool {
+	clean := flag.trim_space()
+	return clean.starts_with('@') || clean.starts_with('--config') || clean.starts_with('-specs')
+		|| clean.starts_with('--specs') || clean.starts_with('-include-pch')
+		|| clean.starts_with('-Wp,')
 }
 
 // Objective-C imports have the same header dependencies as C includes.

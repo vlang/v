@@ -207,33 +207,302 @@ fn test_unchanged_build_entry_key_belongs_to_this_process() {
 	assert v3_unchanged_build_entry_key() == ''
 }
 
-fn test_link_libraries_resolve_to_the_files_the_linker_reads() {
+fn aged_write(path string, content string) ! {
+	os.mkdir_all(os.dir(path))!
+	os.write_file(path, content)!
+	age_unchanged_build_source(path)!
+}
+
+// native_receipt_inputs is a receipt of a build of the fixture with `flags`.
+fn native_receipt_inputs(f ReceiptFixture, flags []string, probe string) UnchangedBuildInputs {
+	return UnchangedBuildInputs{
+		sources:       [f.source]
+		dirs:          [f.source_dir]
+		output_dir:    f.root
+		flags:         flags
+		probe:         probe
+		language:      'c'
+		compiler:      'cc'
+		cache_dir:     f.cache_dir
+		target_os:     'linux'
+		vroot:         os.join_path(f.root, 'no_vroot')
+		project_roots: [f.root]
+	}
+}
+
+// publish_native_receipt records a receipt prepared from `inputs` under `key`.
+fn publish_native_receipt(f ReceiptFixture, key string, inputs UnchangedBuildInputs) {
+	age_unchanged_build_source(f.source_dir) or { panic(err) }
+	stamp := v3_unchanged_build_prepare(inputs)
+	assert stamp.ok
+	assert v3_publish_unchanged_build(f.cache_dir, key, f.executable, stamp)
+	assert v3_restore_unchanged_build(f.cache_dir, key, f.destination, '')
+}
+
+fn test_receipt_covers_the_headers_of_external_c_sources() {
+	f := receipt_fixture('external_c')!
+	defer { os.rmdir_all(f.root) or {} }
+	source := os.join_path(f.source_dir, 'native_unit.c')
+	header := os.join_path(f.source_dir, 'unit_only.h')
+	aged_write(header, '#define NATIVE_VALUE 1\n')!
+	aged_write(source, '#include "unit_only.h"\nint native_value(void) { return NATIVE_VALUE; }\n')!
+	publish_native_receipt(f, 'external', native_receipt_inputs(f, [source], ''))
+	aged_write(header, '#define NATIVE_VALUE 2\n')!
+	assert !v3_restore_unchanged_build(f.cache_dir, 'external', f.destination, '')
+}
+
+fn test_receipt_covers_the_source_of_an_object_it_compiles() {
+	f := receipt_fixture('adjacent_c')!
+	defer { os.rmdir_all(f.root) or {} }
+	object := os.join_path(f.source_dir, 'built.o')
+	source := os.join_path(f.source_dir, 'built.c')
+	header := os.join_path(f.source_dir, 'built.h')
+	aged_write(header, '#define NATIVE_VALUE 1\n')!
+	aged_write(source, '#include "built.h"\nint native_value(void) { return NATIVE_VALUE; }\n')!
+	publish_native_receipt(f, 'object', native_receipt_inputs(f, [object], ''))
+	aged_write(header, '#define NATIVE_VALUE 2\n')!
+	assert !v3_restore_unchanged_build(f.cache_dir, 'object', f.destination, '')
+}
+
+fn test_receipt_is_not_published_without_the_dependencies_of_a_c_source() {
+	f := receipt_fixture('broken_c')!
+	defer { os.rmdir_all(f.root) or {} }
+	source := os.join_path(f.source_dir, 'broken.c')
+	aged_write(source, '#include "does_not_exist.h"\n')!
+	assert !v3_unchanged_build_prepare(native_receipt_inputs(f, [source], '')).ok
+}
+
+fn test_receipt_is_not_published_with_options_that_hide_inputs() {
+	f := receipt_fixture('opaque')!
+	defer { os.rmdir_all(f.root) or {} }
+	assert !v3_unchanged_build_prepare(native_receipt_inputs(f, ['@response_file'], '')).ok
+}
+
+fn test_receipt_is_not_published_for_a_module_found_above_the_project() {
+	f := receipt_fixture('above_project')!
+	defer { os.rmdir_all(f.root) or {} }
+	mut inputs := native_receipt_inputs(f, [], '')
+	inputs = UnchangedBuildInputs{
+		...inputs
+		project_roots: [os.join_path(f.root, 'elsewhere')]
+	}
+	assert !v3_unchanged_build_prepare(inputs).ok
+}
+
+fn test_receipt_sees_a_header_added_earlier_in_the_search() {
+	f := receipt_fixture('search_order')!
+	defer { os.rmdir_all(f.root) or {} }
+	earlier := os.join_path(f.root, 'earlier')
+	later := os.join_path(f.root, 'later')
+	os.mkdir_all(earlier)!
+	aged_write(os.join_path(later, 'choice.h'), 'static int choice(void) { return 1; }\n')!
+	age_unchanged_build_source(earlier)!
+	publish_native_receipt(f, 'search', native_receipt_inputs(f, ['-I', earlier, '-I', later],
+		'#include <choice.h>\n'))
+	aged_write(os.join_path(earlier, 'choice.h'), 'static int choice(void) { return 2; }\n')!
+	assert !v3_restore_unchanged_build(f.cache_dir, 'search', f.destination, '')
+}
+
+fn test_dependency_manifest_is_scanned_again_when_a_header_shadows_one_of_it() {
+	root := os.join_path(os.vtmp_dir(), 'v3_dependency_shadow_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	earlier := os.join_path(root, 'earlier')
+	later := os.join_path(root, 'later')
+	os.mkdir_all(earlier)!
+	aged_write(os.join_path(later, 'choice.h'), '#define CHOICE 1\n')!
+	source := os.join_path(root, 'probe.c')
+	aged_write(source, '#include <choice.h>\n')!
+	args := ['-I', earlier, '-I', later, '-x', 'c', '-w']
+	cache := os.join_path(root, 'cache')
+	mut stats := CObjectCacheStats{}
+	first := cached_c_object_dependencies(cache, 'cc', args, source, mut stats)
+	assert !first.used_fallback
+	assert os.join_path(earlier, 'choice.h') in first.missing
+	assert stats.dependency_scans == 1
+	again := cached_c_object_dependencies(cache, 'cc', args, source, mut stats)
+	assert stats.dependency_scans == 1
+	assert again.missing == first.missing
+	aged_write(os.join_path(earlier, 'choice.h'), '#define CHOICE 2\n')!
+	shadowed := cached_c_object_dependencies(cache, 'cc', args, source, mut stats)
+	assert stats.dependency_scans == 2
+	assert shadowed.files.any(it.ends_with('earlier/choice.h'))
+	assert !shadowed.files.any(it.ends_with('later/choice.h'))
+}
+
+fn test_dependency_manifests_of_sources_in_other_directories_stay_apart() {
+	root := os.join_path(os.vtmp_dir(), 'v3_dependency_dirs_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	mut sources := []string{}
+	for name in ['one', 'two'] {
+		aged_write(os.join_path(root, name, 'local.h'), '#define LOCAL 1\n')!
+		source := os.join_path(root, name, 'unit.c')
+		aged_write(source, '#include "local.h"\n')!
+		sources << source
+	}
+	cache := os.join_path(root, 'cache')
+	args := ['-x', 'c', '-w']
+	mut stats := CObjectCacheStats{}
+	assert !cached_c_object_dependencies(cache, 'cc', args, sources[0], mut stats).used_fallback
+	second := cached_c_object_dependencies(cache, 'cc', args, sources[1], mut stats)
+	assert second.files.any(it.ends_with('two/local.h'))
+	assert !second.files.any(it.ends_with('one/local.h'))
+}
+
+fn test_c_object_manifest_is_invalid_when_a_file_appears_at_an_absent_path() {
+	root := os.join_path(os.vtmp_dir(), 'v3_object_manifest_absent_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	header := os.join_path(root, 'header.h')
+	object := os.join_path(root, 'cached.o')
+	absent := os.join_path(root, 'earlier.h')
+	aged_write(header, '#define A 1\n')!
+	aged_write(object, 'object')!
+	manifest := os.join_path(root, 'request.manifest')
+	mut stats := CObjectCacheStats{}
+	write_c_object_manifest(manifest, object, &CObjectDependencies{
+		files:   [header]
+		missing: [absent]
+	}, mut stats)!
+	assert valid_c_object_manifest(manifest, mut stats)? == object
+	assert absent in stats.missing_candidates
+	os.write_file(absent, '#define A 2\n')!
+	if _ := valid_c_object_manifest(manifest, mut stats) {
+		assert false, 'the manifest passed over a file at an absent path'
+	}
+}
+
+fn test_missing_include_candidates_follow_the_order_of_the_search() {
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_include_candidates_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	first := os.join_path(root, 'first')
+	second := os.join_path(root, 'second')
+	system := os.join_path(root, 'system')
+	frameworks := os.join_path(root, 'frameworks')
+	project := os.join_path(root, 'project')
+	never := os.join_path(root, 'never')
+	os.mkdir_all(first)!
+	os.mkdir_all(os.join_path(frameworks, 'Kit.framework', 'Headers'))!
+	aged_write(os.join_path(second, 'sub', 'found.h'), '')!
+	aged_write(os.join_path(system, 'plain.h'), '')!
+	aged_write(os.join_path(frameworks, 'Kit.framework', 'Headers', 'kit.h'), '')!
+	aged_write(os.join_path(project, 'own.h'), '')!
+	search := V3IncludeSearch{
+		dirs:       [first, second, system, frameworks]
+		frameworks: [frameworks]
+		absent:     [never]
+	}
+	read := [os.join_path(second, 'sub', 'found.h'), os.join_path(system, 'plain.h'),
+		os.join_path(frameworks, 'Kit.framework', 'Headers', 'kit.h'), os.join_path(project, 'own.h')]
+	missing := v3_missing_include_candidates(search, [first, second], read, time.utc().unix())?
+	assert never in missing
+	// `sub` is not in `first`: that one path stands for all that would be below it.
+	assert os.join_path(first, 'sub') in missing
+	assert os.join_path(first, 'plain.h') in missing
+	assert os.join_path(second, 'plain.h') in missing
+	// The name of a file of a framework, in directories of plain headers.
+	assert os.join_path(system, 'Kit') in missing
+	// The directory of the program's own header is searched first for all of them.
+	assert os.join_path(project, 'plain.h') in missing
+	assert !missing.any(it.starts_with(frameworks))
+}
+
+fn test_missing_include_candidates_do_not_trust_a_file_newer_than_the_scan() {
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_include_recent_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	first := os.join_path(root, 'first')
+	second := os.join_path(root, 'second')
+	aged_write(os.join_path(second, 'found.h'), '')!
+	os.mkdir_all(first)!
+	os.write_file(os.join_path(first, 'found.h'), '')!
+	search := V3IncludeSearch{
+		dirs: [first, second]
+	}
+	before := time.utc().unix() - 5
+	if _ := v3_missing_include_candidates(search, [first, second], [os.join_path(second, 'found.h')],
+		before)
+	{
+		assert false, 'a header that appeared during the scan was accepted'
+	}
+}
+
+fn test_receipt_covers_every_form_of_a_library_however_it_is_linked() {
 	root := os.join_path(os.vtmp_dir(), 'v3_receipt_libs_${os.getpid()}')
 	defer { os.rmdir_all(root) or {} }
 	lib_dir := os.join_path(root, 'lib')
+	earlier := os.join_path(root, 'earlier')
 	framework_dir := os.join_path(root, 'frameworks', 'Native.framework')
-	os.mkdir_all(lib_dir)!
+	os.mkdir_all(earlier)!
 	os.mkdir_all(framework_dir)!
-	os.write_file(os.join_path(lib_dir, 'libnative.a'), 'archive')!
-	os.write_file(os.join_path(framework_dir, 'Native'), 'binary')!
-	found := v3_link_library_files(['-L', lib_dir, '-lnative', '-F${os.join_path(root, 'frameworks')}',
-		'-framework', 'Native'], 'linux')
-	assert found.ok
+	aged_write(os.join_path(lib_dir, 'libnative.a'), '!<arch>\n')!
+	aged_write(os.join_path(lib_dir, 'libnative.so'), '\x7fELF\x02\x01\x01\x00\x00')!
+	aged_write(os.join_path(framework_dir, 'Native'), '\xcf\xfa\xed\xfe\x00\x00')!
+	found := v3_unchanged_build_link_inputs(['-L', earlier, '-L', lib_dir, '-Wl,-Bstatic', '-lnative',
+		'-Wl,-Bdynamic', '-F${os.join_path(root, 'frameworks')}', '-framework', 'Native'],
+		'cc', '', 'linux', os.join_path(root, 'cache'))
+	assert found.ok, found.reason
 	assert os.real_path(os.join_path(lib_dir, 'libnative.a')) in found.files
+	assert os.real_path(os.join_path(lib_dir, 'libnative.so')) in found.files
 	assert os.real_path(os.join_path(framework_dir, 'Native')) in found.files
+	// A library added earlier in the search would be the one linked.
+	assert os.join_path(earlier, 'libnative.a') in found.missing
+	assert os.join_path(earlier, 'libnative.so') in found.missing
 	// A library that no directory holds cannot be verified on Linux.
-	assert !v3_link_library_files(['-L', lib_dir, '-lmissing_receipt_lib'], 'linux').ok
+	assert !v3_unchanged_build_link_inputs(['-L', lib_dir, '-lmissing_receipt_lib'], 'cc', '',
+		'linux', os.join_path(root, 'cache')).ok
 	$if macos {
 		// On macOS it may live in the dyld shared cache: the system version stands for it.
-		missing := v3_link_library_files(['-lmissing_receipt_lib'], 'macos')
+		missing := v3_unchanged_build_link_inputs(['-lmissing_receipt_lib'], 'cc', '', 'macos',
+			os.join_path(root, 'cache'))
 		assert missing.ok
 		assert '/System/Library/CoreServices/SystemVersion.plist' in missing.files
 	}
 }
 
+fn test_receipt_is_not_published_with_an_unknown_linker_option() {
+	root := os.join_path(os.vtmp_dir(), 'v3_receipt_unknown_link_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	assert !v3_unchanged_build_link_inputs(['-Wl,--reads-a-file-we-do-not-know'], 'cc', '', 'linux',
+		root).ok
+}
+
+fn test_receipt_covers_the_manifest_that_selects_the_sources() {
+	f := receipt_fixture('manifest')!
+	defer { os.rmdir_all(f.root) or {} }
+	manifest := os.join_path(f.source_dir, 'v.mod')
+	os.mkdir_all(os.join_path(f.source_dir, 'one'))!
+	age_unchanged_build_source(os.join_path(f.source_dir, 'one'))!
+	aged_write(manifest, "Module{ name: 'p' subdirs: ['one'] }\n")!
+	publish_native_receipt(f, 'manifest', native_receipt_inputs(f, [], ''))
+	aged_write(manifest, "Module{ name: 'p' subdirs: ['two'] }\n")!
+	assert !v3_restore_unchanged_build(f.cache_dir, 'manifest', f.destination, '')
+}
+
+fn test_project_manifest_inputs_walk_up_to_the_nearest_manifest() {
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_manifest_walk_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	project := os.join_path(root, 'project')
+	source_dir := os.join_path(project, 'src', 'deep')
+	selected := os.join_path(project, 'selected', 'below')
+	os.mkdir_all(source_dir)!
+	os.mkdir_all(selected)!
+	aged_write(os.join_path(project, 'v.mod'), "Module{ name: 'p' subdirs: ['selected', 'absent'] }\n")!
+	found := v3_project_manifest_inputs([source_dir], os.join_path(root, 'vroot'))
+	assert os.real_path(os.join_path(project, 'v.mod')) in found.files
+	assert project in found.dirs
+	// A manifest created nearer to the sources would be the one that counts.
+	assert os.join_path(source_dir, 'v.mod') in found.missing
+	assert os.join_path(project, 'src', 'v.mod') in found.missing
+	assert os.join_path(project, 'src', '.v.mod.stop') in found.missing
+	assert !found.missing.any(it == os.join_path(root, 'v.mod'))
+	// A directory that `subdirs` reaches can get sources without any being there yet.
+	assert selected in found.dirs
+	assert os.join_path(project, 'absent') in found.missing
+}
+
 fn test_pkgconfig_directive_packages_skip_options_and_versions() {
-	assert v3_pkgconfig_packages('--cflags --libs gtk+-3.0 >= 3.24 glib-2.0') == ['gtk+-3.0',
-		'glib-2.0']
+	assert v3_pkgconfig_packages('--cflags --libs gtk+-3.0 >= 3.24 glib-2.0') == [
+		'gtk+-3.0',
+		'glib-2.0',
+	]
 	assert v3_pkgconfig_packages('sdl2') == ['sdl2']
 }
 

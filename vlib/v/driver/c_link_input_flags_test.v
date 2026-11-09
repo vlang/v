@@ -382,7 +382,7 @@ fn test_link_plan_tracks_objects_not_object_named_option_operands() {
 	// A file used only as an option operand must not become a required object.
 	os.rm(operand)!
 	assert valid_c_link_plan(manifest, mut read_stats) != none
-	os.write_file(manifest, payload.replace('v3-c-link-plan-v5', 'v3-c-link-plan-v4'))!
+	os.write_file(manifest, payload.replace('v3-c-link-plan-v6', 'v3-c-link-plan-v5'))!
 	assert valid_c_link_plan(manifest, mut read_stats) == none
 	os.write_file(manifest, payload)!
 	os.rm(object)!

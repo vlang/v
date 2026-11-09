@@ -189,6 +189,23 @@ fn v3_include_search_args(args []string) []string {
 	return search
 }
 
+// v3_include_search_language returns the language whose search `args` compile
+// with: C++ has directories of its own.
+fn v3_include_search_language(args []string) string {
+	mut language := 'c'
+	for i, arg in args {
+		if arg.trim_space() == '-x' && i + 1 < args.len {
+			given := args[i + 1].trim_space()
+			if given in ['c++', 'objective-c', 'objective-c++'] {
+				language = given
+			} else if given == 'c' {
+				language = 'c'
+			}
+		}
+	}
+	return language
+}
+
 // v3_include_search returns where `compiler` looks for an included file when it
 // compiles with `args` in the directory `cc_dir`. It asks the compiler, once for a
 // module cache, a set of arguments and an environment: the answer is kept there for
@@ -196,8 +213,10 @@ fn v3_include_search_args(args []string) []string {
 // are not.
 fn v3_include_search(manager &modulecache.Manager, compiler string, args []string, cc_dir string) ?V3IncludeSearch {
 	search_args := v3_include_search_args(args)
-	mut identity := ['v3-include-search-2', os.real_path(compiler), v3_cache_file_identity(compiler),
-		('objective-c' in args).str()]
+	language := v3_include_search_language(args)
+	compiler_path := os.find_abs_path_of_executable(compiler) or { compiler }
+	mut identity := ['v3-include-search-3', os.real_path(compiler_path),
+		v3_cache_file_identity(compiler_path), language]
 	identity << search_args
 	for name in v3_link_environment_names {
 		identity << '${name}=${os.getenv(name)}'
@@ -212,8 +231,7 @@ fn v3_include_search(manager &modulecache.Manager, compiler string, args []strin
 		}
 	}
 	mut query := search_args.clone()
-	query << ['-x', if 'objective-c' in args { 'objective-c' } else { 'c' }, '-E', '-v',
-		os.path_devnull]
+	query << ['-x', language, '-E', '-v', os.path_devnull]
 	// The compiler says where it searches on its standard error, in the language
 	// of the user unless it is asked for another.
 	result := v3_run_in_c_locale(compiler, query, cc_dir)

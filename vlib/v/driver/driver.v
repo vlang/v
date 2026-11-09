@@ -581,11 +581,15 @@ mut:
 	temporary_objects         []string
 	compiler_versions         map[string]string
 	file_signatures           map[string]string
+	missing_candidates        map[string]bool
 	link_plan_signature       string
 }
 
 struct CObjectDependencies {
-	files         []string
+	files []string
+	// The paths where a file that is not there would have been read instead of
+	// one of `files` (v3_missing_include_candidates).
+	missing       []string
 	used_fallback bool
 }
 
@@ -759,7 +763,7 @@ fn prepare_c_flags_for_link(flags []string, environment_c_flags []string, primar
 fn c_link_plan_path(cache_dir string, flags []string, object_flags &CObjectFlagPlan, c99 bool, no_std bool, pic_flag string, target_args []string, target pref.Target, compiler string, use_platform_non_c_compiler bool, mut stats CObjectCacheStats) string {
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-c-link-plan-v5', os.getwd(), flags.join('\x00'),
+	for identity in ['v3-c-link-plan-v6', os.getwd(), flags.join('\x00'),
 		object_flags.environment_flags.join('\x00'), object_flags.primary_compiler,
 		object_flags.primary_compiler_flags.join('\x00'), object_flags.common_flags.join('\x00'),
 		c99.str(), no_std.str(), pic_flag, target_args.join('\x00'), compiler_path, compiler_version,
@@ -774,7 +778,7 @@ fn c_link_plan_path(cache_dir string, flags []string, object_flags &CObjectFlagP
 fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 	content := os.read_file(plan_path) or { return none }
 	lines := content.split_into_lines()
-	if lines.len < 5 || lines[0] != 'format=v3-c-link-plan-v5' {
+	if lines.len < 5 || lines[0] != 'format=v3-c-link-plan-v6' {
 		return none
 	}
 	mut plan := CLinkPlan{}
@@ -854,6 +858,10 @@ fn valid_c_link_plan(plan_path string, mut stats CObjectCacheStats) ?CLinkPlan {
 					continue
 				}
 			}
+		} else if line.starts_with('missing=') {
+			if os.exists(line.all_after('missing=')) {
+				return none
+			}
 		} else if line == 'complete=1' {
 			complete = true
 		} else {
@@ -909,7 +917,7 @@ fn c_link_plan_metadata_range(paths []string) []string {
 
 fn write_c_link_plan(plan_path string, flags []string, stats &CObjectCacheStats) ! {
 	mut out := strings.new_builder(256 + flags.len * 64 + stats.file_signatures.len * 96)
-	out.writeln('format=v3-c-link-plan-v5')
+	out.writeln('format=v3-c-link-plan-v6')
 	out.writeln('requests=${stats.requests}')
 	out.writeln('direct_objects=${stats.direct_objects}')
 	out.writeln('dependency_files=${stats.dependency_files}')
@@ -927,6 +935,11 @@ fn write_c_link_plan(plan_path string, flags []string, stats &CObjectCacheStats)
 	for dependency in dependencies {
 		metadata := modulecache.file_metadata_signature_from_before_build(dependency)
 		out.writeln('dependency=${dependency}\t${metadata}\t${stats.file_signatures[dependency]}')
+	}
+	mut missing := stats.missing_candidates.keys()
+	missing.sort()
+	for path in missing {
+		out.writeln('missing=${path}')
 	}
 	out.writeln('complete=1')
 	temp_path := '${plan_path}.tmp.${tempname.unique_token()}'
@@ -1823,7 +1836,7 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 		return cached_obj
 	}
 	stats.dependency_scans++
-	dependencies := c_object_dependencies(compiler, args, source_file)
+	dependencies := c_object_tracked_dependencies(compiler, args, source_file, '', cache_dir)
 	stats.dependency_files += dependencies.files.len
 	if dependencies.used_fallback {
 		stats.dependency_scan_fallbacks++
@@ -1843,7 +1856,7 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	if os.exists(cached_obj) {
 		stats.content_key_hits++
 		trace_c_object_cache('hit', cache_key, 'compiler, target, argv, and dependency contents matched', dependencies.files.len)
-		write_c_object_manifest(manifest_path, cached_obj, dependencies.files, mut stats) or {}
+		write_c_object_manifest(manifest_path, cached_obj, &dependencies, mut stats) or {}
 		return cached_obj
 	}
 	stats.misses++
@@ -1877,7 +1890,7 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 	if !publish_native_c_object(temp_obj, cached_obj)! {
 		stats.publish_races++
 	}
-	write_c_object_manifest(manifest_path, cached_obj, dependencies.files, mut stats) or {}
+	write_c_object_manifest(manifest_path, cached_obj, &dependencies, mut stats) or {}
 	return cached_obj
 }
 
@@ -1919,7 +1932,7 @@ fn c_object_manifest_path(cache_dir string, obj_path string, compiler string, co
 fn valid_c_object_manifest(manifest_path string, mut stats CObjectCacheStats) ?string {
 	content := os.read_file(manifest_path) or { return none }
 	lines := content.split_into_lines()
-	if lines.len < 3 || lines[0] != 'format=v3-c-object-manifest-v1'
+	if lines.len < 3 || lines[0] != 'format=v3-c-object-manifest-v2'
 		|| !lines[1].starts_with('object=') {
 		return none
 	}
@@ -1928,7 +1941,16 @@ fn valid_c_object_manifest(manifest_path string, mut stats CObjectCacheStats) ?s
 		return none
 	}
 	mut dependency_count := 0
+	mut missing := []string{}
 	for line in lines[2..] {
+		if line.starts_with('missing=') {
+			path := line.all_after('missing=')
+			if os.exists(path) {
+				return none
+			}
+			missing << path
+			continue
+		}
 		if !line.starts_with('dependency=') {
 			return none
 		}
@@ -1948,6 +1970,9 @@ fn valid_c_object_manifest(manifest_path string, mut stats CObjectCacheStats) ?s
 	if dependency_count == 0 {
 		return none
 	}
+	for path in missing {
+		stats.missing_candidates[path] = true
+	}
 	stats.dependency_manifest_hits++
 	stats.content_key_hits++
 	stats.dependency_files += dependency_count
@@ -1955,11 +1980,15 @@ fn valid_c_object_manifest(manifest_path string, mut stats CObjectCacheStats) ?s
 	return object_path
 }
 
-fn write_c_object_manifest(manifest_path string, object_path string, dependencies []string, mut stats CObjectCacheStats) ! {
-	mut out := strings.new_builder(128 + dependencies.len * 96)
-	out.writeln('format=v3-c-object-manifest-v1')
+fn write_c_object_manifest(manifest_path string, object_path string, dependencies &CObjectDependencies, mut stats CObjectCacheStats) ! {
+	mut out := strings.new_builder(128 + dependencies.files.len * 96)
+	out.writeln('format=v3-c-object-manifest-v2')
 	out.writeln('object=${object_path}')
-	for dependency in dependencies {
+	for path in dependencies.missing {
+		out.writeln('missing=${path}')
+		stats.missing_candidates[path] = true
+	}
+	for dependency in dependencies.files {
 		signature := c_object_file_signature(dependency, false, mut stats)
 		if signature.len == 0 {
 			return error('failed to sign C object dependency ${dependency}')
@@ -2081,14 +2110,59 @@ fn c_object_dependencies_in(compiler string, compile_args []string, source_file 
 	return c_object_dependencies_from_output(result.output, source_file)
 }
 
+// c_object_tracked_dependencies is c_object_dependencies with the paths where a
+// new file would be read instead of a file of the list: a file list alone, like
+// the depfile of Zig's updateCObject that Build/Cache.zig Manifest.hit checks,
+// says nothing of a header added earlier in the search. Go hashes every header of
+// a package, so a new one changes its action (work.Builder.buildActionID, p.HFiles).
+// When the compiler cannot tell where it searches, the scan falls back as a failed
+// one.
+// `record_dir` keeps the answer of the compiler about its search.
+fn c_object_tracked_dependencies(compiler string, compile_args []string, source_file string, work_dir string, record_dir string) CObjectDependencies {
+	// Whole seconds, and one to spare for a file system that rounds them.
+	before := time.utc().unix() - 1
+	dependencies := c_object_dependencies_in(compiler, compile_args, source_file, work_dir)
+	if dependencies.used_fallback {
+		return dependencies
+	}
+	fallback := CObjectDependencies{
+		files:         [source_file]
+		used_fallback: true
+	}
+	build_dir := if work_dir.len > 0 { work_dir } else { os.getwd() }
+	manager := modulecache.Manager{
+		dir:     record_dir
+		enabled: record_dir.len > 0
+	}
+	mut read := []string{cap: dependencies.files.len}
+	source_real := os.real_path(source_file)
+	for path in dependencies.files {
+		if os.real_path(path) != source_real {
+			read << if os.is_abs_path(path) { path } else { os.join_path(build_dir, path) }
+		}
+	}
+	search := if pref.ccompiler_is_tinycc(compiler) {
+		v3_tcc_include_search(&manager, compiler, compile_args, build_dir)
+	} else {
+		v3_include_search(&manager, compiler, compile_args, build_dir) or { return fallback }
+	}
+	missing := v3_missing_include_candidates(search, v3_given_include_dirs(compile_args,
+		build_dir), read, before) or { return fallback }
+	return CObjectDependencies{
+		files:   dependencies.files
+		missing: missing
+	}
+}
+
 // cached_c_object_dependencies is c_object_dependencies for a scan that every
 // build of a program repeats on a generated source, under a new name each time.
 // It reuses the list of an earlier scan with the same compiler, arguments and
 // preprocessor lines of the source while each file in it keeps its contents, as
 // the manifests of cached C objects do and as Zig's Cache.Manifest checks its
-// files, instead of preprocessing all of them again. Only the preprocessor
-// lines decide which files the source includes, so an edit of the program's
-// code reuses the list.
+// files and no file has appeared where the compiler looks, instead of
+// preprocessing all of them again. Only the preprocessor lines and the directory
+// of the source decide which files it includes, so an edit of the program's code
+// reuses the list.
 fn cached_c_object_dependencies(cache_dir string, compiler string, compile_args []string, source_file string, mut stats CObjectCacheStats) CObjectDependencies {
 	source := os.read_file(source_file) or { '' }
 	if cache_dir.len == 0 || source.len == 0 {
@@ -2096,30 +2170,35 @@ fn cached_c_object_dependencies(cache_dir string, compiler string, compile_args 
 	}
 	compiler_path, compiler_version := c_object_compiler_identity(compiler, mut stats)
 	mut hash := u64(1469598103934665603)
-	for identity in ['v3-c-dependency-manifest-v2', compiler_path, compiler_version,
-		compile_args.join('\x00'), c_preprocessor_lines(source)] {
+	for identity in ['v3-c-dependency-manifest-v3', compiler_path, compiler_version,
+		os.real_path(os.dir(source_file)), compile_args.join('\x00'), c_preprocessor_lines(source)] {
 		hash = c_hash_bytes(hash, identity.bytes())
 		hash = c_hash_bytes(hash, [u8(0xff)])
 	}
 	manifest_path := os.join_path(cache_dir, 'dependencies_${hash.hex()}.manifest')
 	trim_c_dependency_manifests(cache_dir)
-	if files := valid_c_dependency_manifest(manifest_path, mut stats) {
+	if manifest := valid_c_dependency_manifest(manifest_path, mut stats) {
 		mark_c_dependency_manifest_used(manifest_path)
-		mut all := files.clone()
+		mut all := manifest.files.clone()
 		all << source_file
 		all.sort()
 		return CObjectDependencies{
-			files: all
+			files:   all
+			missing: manifest.missing
 		}
 	}
 	stats.dependency_scans++
-	dependencies := c_object_dependencies(compiler, compile_args, source_file)
+	dependencies := c_object_tracked_dependencies(compiler, compile_args, source_file, '',
+		cache_dir)
 	if dependencies.used_fallback {
 		return dependencies
 	}
 	source_real := os.real_path(source_file)
 	mut out := strings.new_builder(128 + dependencies.files.len * 96)
-	out.writeln('format=v3-c-dependency-manifest-v1')
+	out.writeln('format=v3-c-dependency-manifest-v2')
+	for path in dependencies.missing {
+		out.writeln('missing=${path}')
+	}
 	for dependency in dependencies.files {
 		if os.real_path(dependency) == source_real {
 			continue
@@ -2205,16 +2284,26 @@ fn c_preprocessor_lines(source string) string {
 	return out.str()
 }
 
-// valid_c_dependency_manifest returns the files of a dependency manifest, when
-// each of them still has the contents it had when the manifest was written.
-fn valid_c_dependency_manifest(manifest_path string, mut stats CObjectCacheStats) ?[]string {
+// valid_c_dependency_manifest returns the files and absent paths of a dependency
+// manifest, when each file still has the contents it had when the manifest was
+// written and each absent path is still absent.
+fn valid_c_dependency_manifest(manifest_path string, mut stats CObjectCacheStats) ?CObjectDependencies {
 	content := os.read_file(manifest_path) or { return none }
 	lines := content.split_into_lines()
-	if lines.len < 1 || lines[0] != 'format=v3-c-dependency-manifest-v1' {
+	if lines.len < 1 || lines[0] != 'format=v3-c-dependency-manifest-v2' {
 		return none
 	}
 	mut files := []string{cap: lines.len - 1}
+	mut missing := []string{}
 	for line in lines[1..] {
+		if line.starts_with('missing=') {
+			path := line.all_after('missing=')
+			if os.exists(path) {
+				return none
+			}
+			missing << path
+			continue
+		}
 		if !line.starts_with('dependency=') {
 			return none
 		}
@@ -2229,7 +2318,10 @@ fn valid_c_dependency_manifest(manifest_path string, mut stats CObjectCacheStats
 		files << path
 	}
 	stats.dependency_manifest_hits++
-	return files
+	return CObjectDependencies{
+		files:   files
+		missing: missing
+	}
 }
 
 fn c_object_dependencies_from_output(output string, source_file string) CObjectDependencies {
@@ -3227,7 +3319,8 @@ fn run_v3_parallel_c_compile_task(raw_task voidptr) voidptr {
 
 fn run_v3_parallel_c_dependency_task(raw_task voidptr) voidptr {
 	mut task := unsafe { &V3ParallelCCompileTask(raw_task) }
-	task.dependencies = c_object_dependencies_in(task.compiler, task.dependency_args, task.source_path, task.dir)
+	task.dependencies = c_object_tracked_dependencies(task.compiler, task.dependency_args,
+		task.source_path, task.dir, os.dir(task.manifest_path))
 	return unsafe { nil }
 }
 
@@ -3697,7 +3790,7 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 		if os.is_file(task.cache_object) {
 			cache_stats.content_key_hits++
 			objects[task.object_index] = task.cache_object
-			write_c_object_manifest(task.manifest_path, task.cache_object, task.dependencies.files, mut cache_stats) or {}
+			write_c_object_manifest(task.manifest_path, task.cache_object, &task.dependencies, mut cache_stats) or {}
 			if show_command {
 				println('  > ${cmdexec.display(c_compiler, task.args)} (cached)')
 			}
@@ -3761,7 +3854,7 @@ fn compile_v3_parallel_c(source_path string, c_compiler string, c_flag_plan &V3C
 		}
 		os.rm(local_object) or {}
 		objects[task.object_index] = task.cache_object
-		write_c_object_manifest(task.manifest_path, task.cache_object, task.dependencies.files, mut cache_stats) or {}
+		write_c_object_manifest(task.manifest_path, task.cache_object, &task.dependencies, mut cache_stats) or {}
 	}
 	mut link_inputs := objects.clone()
 	link_inputs << native_support_inputs
@@ -5095,7 +5188,7 @@ fn persistent_program_cache_enabled(cache_enabled bool, test_input bool, vtmp_di
 		&& (!os.base(vtmp_dir).starts_with('tsession_') || os.getenv('V3CACHE') != '')
 }
 
-const v3_unchanged_build_cache_version = 'v3-unchanged-build-2'
+const v3_unchanged_build_cache_version = 'v3-unchanged-build-3'
 
 // v3_unchanged_build_cache_opted_in reports whether a build may restore the
 // executable of an earlier build of the same program before parsing it. A
@@ -5150,6 +5243,10 @@ fn v3_unchanged_build_key(prefs &pref.Preferences, c_compiler string, bin_file s
 		os.getenv('CFLAGS'),
 		os.getenv('LDFLAGS'),
 		os.getenv('PKG_CONFIG_PATH'),
+		os.getenv('CXX'),
+		os.getenv('VCOVDIR'),
+		os.getenv('VBUILD_FACTS'),
+		os.getenv('VBUILD_DEFINES'),
 		v3_link_environment_signature(),
 		output_args.join('\x00'),
 	]
@@ -5160,12 +5257,14 @@ fn v3_unchanged_build_key(prefs &pref.Preferences, c_compiler string, bin_file s
 // v3_publish_unchanged_build): the program's V sources, verified one by one and
 // as a whole by their source signature (content digests, `$env` reads, `v.mod`
 // hashes, pkg-config probes and the build-time pseudo variables), the other
-// files it read, verified by content, and the directories whose entries decide
-// which files a module has.
+// files it read, verified by content, the directories whose entries decide
+// which files a module has, and the paths where a file that is not there would
+// be read instead of one of them.
 struct UnchangedBuildReceipt {
 	sources []string
 	files   []string
 	dirs    []string
+	missing []string
 	// output_dir is the directory of the executable. Writing the executable
 	// changes its metadata, so its V entries are compared instead.
 	output_dir string
@@ -5268,6 +5367,12 @@ fn v3_restore_unchanged_build(cache_dir string, key string, destination string, 
 					return false
 				}
 			}
+			'missing' {
+				if parts.len != 2 || os.exists(parts[1]) {
+					unchanged_build_trace('miss: a file appeared: ${parts[1]}')
+					return false
+				}
+			}
 			else {
 				return false
 			}
@@ -5317,7 +5422,7 @@ fn v3_unchanged_build_stamp(receipt UnchangedBuildReceipt, cache_dir string, bui
 	if receipt.sources.len == 0 {
 		return UnchangedBuildStamp{}
 	}
-	for path in [...receipt.sources, ...receipt.files, ...receipt.dirs] {
+	for path in [...receipt.sources, ...receipt.files, ...receipt.dirs, ...receipt.missing] {
 		if path.contains_any('\t\r\n') {
 			return UnchangedBuildStamp{}
 		}
@@ -5354,6 +5459,13 @@ fn v3_unchanged_build_stamp(receipt UnchangedBuildReceipt, cache_dir string, bui
 			return UnchangedBuildStamp{}
 		}
 		stamp.writeln('${kind}\t${path}\t${signature}')
+	}
+	for path in receipt.missing {
+		if os.exists(path) {
+			unchanged_build_trace('cannot record: ${path} appeared during the build')
+			return UnchangedBuildStamp{}
+		}
+		stamp.writeln('missing\t${path}')
 	}
 	stamp.writeln('sources\t${source_signature}')
 	return UnchangedBuildStamp{
@@ -5402,10 +5514,15 @@ struct UnchangedBuildInputs {
 	language        string
 	compiler        string
 	tcc_include_dir string
+	tcc_lib_dir     string
 	cache_dir       string
 	build_time      string
 	target_os       string
 	packages        []string
+	vroot           string
+	// A source outside these roots was found by walking up from its importer,
+	// where a nearer directory of the same name would take its place.
+	project_roots []string
 }
 
 // v3_unchanged_build_inputs collects the inputs of a receipt from a parsed AST.
@@ -5430,6 +5547,16 @@ fn v3_unchanged_build_inputs(a &flat.FlatAst, prefs &pref.Preferences, source_fi
 	}
 	mut dirs := dir_set.keys()
 	dirs.sort()
+	// Bootstrap checkouts can symlink vlib to the original repository.
+	mut project_roots := [vroot.trim_right(os.path_separator),
+		os.real_path(os.join_path(prefs.vroot, 'vlib'))]
+	project_roots << os.vmodules_paths().map(os.real_path(it))
+	project_roots << prefs.module_search_paths.map(os.real_path(it))
+	if prefs.module_resolution_root != '' {
+		root := os.real_path(prefs.module_resolution_root)
+		project_roots << root
+		project_roots << util.nearest_vmod_root(root) or { root }
+	}
 	return UnchangedBuildInputs{
 		sources:         sources
 		dirs:            dirs
@@ -5446,10 +5573,17 @@ fn v3_unchanged_build_inputs(a &flat.FlatAst, prefs &pref.Preferences, source_fi
 		} else {
 			''
 		}
+		tcc_lib_dir:     if tinycc {
+			v3_tcc_resource_flags(prefs.vroot).library_arg.all_after('-L')
+		} else {
+			''
+		}
 		cache_dir:       cache_dir
 		build_time:      v3_unchanged_build_build_time(prefs)
 		target_os:       prefs.target.os.str()
 		packages:        v3_unchanged_build_pkgconfig_packages(a)
+		vroot:           vroot
+		project_roots:   project_roots
 	}
 }
 
@@ -5466,34 +5600,71 @@ fn v3_unchanged_build_pkgconfig_packages(a &flat.FlatAst) []string {
 }
 
 // v3_unchanged_build_prepare finds the native files of a receipt and signs all
-// its inputs. It reads no AST, so it runs beside the build.
+// its inputs. It reads no AST, so it runs beside the build. Where the set of
+// inputs cannot be told, it records no receipt and the next build runs in full.
 fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
+	all_flags := [...inputs.flags, ...inputs.link_flags]
+	if all_flags.any(v3_native_flag_is_opaque(it)) {
+		unchanged_build_trace('cannot record: an option of the C compiler names inputs that are not known')
+		return UnchangedBuildStamp{}
+	}
+	for source in inputs.sources {
+		if !v3_path_is_below_one_of(source, inputs.project_roots) {
+			unchanged_build_trace('cannot record: ${source} was found outside the project')
+			return UnchangedBuildStamp{}
+		}
+	}
 	mut file_set := map[string]bool{}
+	mut missing_set := map[string]bool{}
 	for path in inputs.resources {
 		file_set[os.real_path(path)] = true
 	}
-	if inputs.probe.trim_space().len > 0 {
-		probe_path := os.join_path(os.vtmp_dir(), 'v3_unchanged_native_${tempname.unique_token()}.c')
-		os.write_file(probe_path, inputs.probe) or { return UnchangedBuildStamp{} }
-		defer {
+	// TinyCC cannot preprocess Objective-C and needs its host SDK flags to
+	// find system headers. The system compiler lists the same user and SDK
+	// headers; TinyCC's own headers are recorded here.
+	manifest_compiler := if inputs.tcc_include_dir.len > 0 { 'cc' } else { inputs.compiler }
+	if inputs.tcc_include_dir.len > 0 {
+		for header in os.walk_ext(inputs.tcc_include_dir, '.h') {
+			file_set[os.real_path(header)] = true
+		}
+	}
+	mut stats := CObjectCacheStats{}
+	mut probe_path := ''
+	defer {
+		if probe_path.len > 0 {
 			os.rm(probe_path) or {}
 		}
-		mut args := c_object_compile_flags(inputs.flags)
-		args << ['-x', inputs.language, '-w']
-		// TinyCC cannot preprocess Objective-C and needs its host SDK flags to
-		// find system headers. The system compiler lists the same user and SDK
-		// headers; TinyCC's own headers are recorded here.
-		manifest_compiler := if inputs.tcc_include_dir.len > 0 { 'cc' } else { inputs.compiler }
-		if inputs.tcc_include_dir.len > 0 {
-			for header in os.walk_ext(inputs.tcc_include_dir, '.h') {
-				file_set[os.real_path(header)] = true
-			}
+	}
+	mut units := []V3ReceiptNativeUnit{}
+	if inputs.probe.trim_space().len > 0 {
+		probe_path = os.join_path(os.vtmp_dir(), 'v3_unchanged_native_${tempname.unique_token()}.c')
+		os.write_file(probe_path, inputs.probe) or { return UnchangedBuildStamp{} }
+		units << V3ReceiptNativeUnit{
+			path:     probe_path
+			compiler: manifest_compiler
+			args:     ['-x', inputs.language, '-w']
 		}
-		mut stats := CObjectCacheStats{}
-		deps := cached_c_object_dependencies(inputs.cache_dir, manifest_compiler, args, probe_path, mut
+	}
+	for source in v3_external_native_sources(all_flags) {
+		language := c_source_language(source, '')
+		mut extra := ['-w']
+		if language.len > 0 {
+			extra << ['-x', language]
+		}
+		units << V3ReceiptNativeUnit{
+			path:     source
+			compiler: c_source_object_compiler(language, manifest_compiler, false, inputs.target_os)
+			args:     extra
+		}
+	}
+	compile_flags := c_object_compile_flags(inputs.flags)
+	for unit in units {
+		mut args := compile_flags.clone()
+		args << unit.args
+		deps := cached_c_object_dependencies(inputs.cache_dir, unit.compiler, args, unit.path, mut
 			stats)
 		if deps.used_fallback {
-			unchanged_build_trace('cannot record: the native dependency manifest is unavailable')
+			unchanged_build_trace('cannot record: the native dependencies of ${unit.path} are unavailable')
 			return UnchangedBuildStamp{}
 		}
 		for path in deps.files {
@@ -5501,8 +5672,10 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 				file_set[os.real_path(path)] = true
 			}
 		}
+		for path in deps.missing {
+			missing_set[path] = true
+		}
 	}
-	all_flags := [...inputs.flags, ...inputs.link_flags]
 	for flag in all_flags {
 		clean := flag.trim_space()
 		if clean.len > 0 && !clean.starts_with('-') && os.is_file(clean) {
@@ -5510,16 +5683,20 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 		}
 	}
 	mut dir_list := inputs.dirs.clone()
-	for link_inputs in [v3_link_library_files(all_flags, inputs.target_os),
-		v3_pkgconfig_files(inputs.packages)] {
-		if !link_inputs.ok {
-			unchanged_build_trace('cannot record: a linked library or pkg-config file was not found')
+	for found in [v3_unchanged_build_link_inputs(all_flags, manifest_compiler, inputs.tcc_lib_dir,
+		inputs.target_os, inputs.cache_dir), v3_pkgconfig_files(inputs.packages),
+		v3_project_manifest_inputs(inputs.dirs, inputs.vroot), v3_module_root_inputs()] {
+		if !found.ok {
+			unchanged_build_trace('cannot record: ${found.reason}')
 			return UnchangedBuildStamp{}
 		}
-		for path in link_inputs.files {
+		for path in found.files {
 			file_set[path] = true
 		}
-		for dir in link_inputs.dirs {
+		for path in found.missing {
+			missing_set[path] = true
+		}
+		for dir in found.dirs {
 			if dir !in dir_list {
 				dir_list << dir
 			}
@@ -5527,10 +5704,13 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 	}
 	mut files := file_set.keys()
 	files.sort()
+	mut missing := missing_set.keys()
+	missing.sort()
 	return v3_unchanged_build_stamp(UnchangedBuildReceipt{
 		sources:    inputs.sources
 		files:      files
 		dirs:       dir_list
+		missing:    missing
 		output_dir: inputs.output_dir
 	}, inputs.cache_dir, inputs.build_time)
 }
@@ -13272,7 +13452,11 @@ pub fn run(args []string) {
 		mut source_set := map[string]bool{}
 		// A module read from its cached declaration header is recorded by the
 		// sources it was cached from; the header itself belongs to the cache.
-		cache_root := if cache_state.manager.enabled { os.real_path(cache_state.manager.dir) } else { '' }
+		cache_root := if cache_state.manager.enabled {
+			os.real_path(cache_state.manager.dir)
+		} else {
+			''
+		}
 		for _, file in a.source_files {
 			path := a.real_source_path(file.name)
 			if cache_root.len > 0 && path.starts_with(cache_root) {
@@ -19332,6 +19516,10 @@ fn v3_large_cold_cache_directory_signature(path string) string {
 	mut entries := os.ls(path) or { return '' }
 	mut relevant := []string{cap: entries.len}
 	for entry in entries {
+		// The directory of the build beside its output comes and goes.
+		if entry.contains('.v3cc.') {
+			continue
+		}
 		entry_path := os.join_path_single(path, entry)
 		if os.is_dir(entry_path) {
 			relevant << 'd:${entry}'

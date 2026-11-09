@@ -263,6 +263,123 @@ fn v3_include_path_below(name string, framework bool) ?string {
 	return '${name[..slash]}.framework/Headers/${name[slash + 1..]}'
 }
 
+// v3_given_include_dirs returns the absolute directories that `args` tell a C
+// compiler to search, as opposed to the ones it searches on its own.
+fn v3_given_include_dirs(args []string, build_dir string) []string {
+	names := ['-I', '-isystem', '-iquote', '-idirafter', '-iframework', '-F']
+	search_args := v3_include_search_args(args)
+	mut dirs := []string{}
+	mut i := 0
+	for i < search_args.len {
+		arg := search_args[i]
+		i++
+		mut dir := ''
+		if arg in names {
+			if i < search_args.len {
+				dir = search_args[i]
+				i++
+			}
+		} else {
+			for name in names {
+				if arg.starts_with(name) {
+					dir = arg[name.len..].trim_space()
+					break
+				}
+			}
+		}
+		if dir.len > 0 {
+			dirs << os.norm_path(if os.is_abs_path(dir) {
+				dir
+			} else {
+				os.join_path(build_dir, dir)
+			})
+		}
+	}
+	return dirs
+}
+
+// v3_missing_include_candidates returns the paths that have to stay absent for a
+// compiler to read the headers `read` again: those of each directory that it
+// searches before the one where it found a header, and of the directories of the
+// program's own headers, which it searches first for a name in quotation marks. A
+// path below a directory that is not there is that directory. Zig's Cache.Manifest
+// and Odin's try_cached_build check only the files that they recorded, so a new
+// file earlier in a search goes unseen there. It returns none when one of the paths
+// holds a file newer than `before`, in seconds, from before the compiler started:
+// that file may or may not be what it read. V does not open the headers, so it
+// cannot tell what a header asks `__has_include` about.
+fn v3_missing_include_candidates(search V3IncludeSearch, given []string, read []string, before i64) ?[]string {
+	roots := search.dirs.map(os.norm_path(it))
+	frameworks := search.frameworks.map(os.norm_path(it))
+	headers := read.map(os.norm_path(it))
+	own_roots := roots.filter(it !in given)
+	mut quote_dirs := map[string]bool{}
+	for header in headers {
+		if !own_roots.any(v3_path_is_below(header, it)) {
+			quote_dirs[os.dir(header)] = true
+		}
+	}
+	mut missing := map[string]bool{}
+	for dir in search.absent {
+		missing[os.norm_path(dir)] = true
+	}
+	mut there := map[string]bool{}
+	for header in headers {
+		mut found := -1
+		for i, root in roots {
+			if v3_path_is_below(header, root) {
+				found = i
+				break
+			}
+		}
+		if found < 0 {
+			// It was found beside the file that names it, which is searched first.
+			continue
+		}
+		root := roots[found]
+		name := v3_include_name_below(header[root.len + 1..], root in frameworks) or { continue }
+		mut earlier := quote_dirs.keys()
+		earlier << roots[..found]
+		for dir in earlier {
+			below := v3_include_path_below(name, dir in frameworks) or { continue }
+			if os.join_path_single(dir, below) == header {
+				continue
+			}
+			if !v3_note_missing_below(dir, below, before, mut there, mut missing) {
+				return none
+			}
+		}
+	}
+	mut result := missing.keys()
+	result.sort()
+	return result
+}
+
+// v3_note_missing_below records the first part of the way from `dir` to `below`
+// that is not there. It returns false when all of it is, and is recent.
+fn v3_note_missing_below(dir string, below string, before i64, mut there map[string]bool, mut missing map[string]bool) bool {
+	mut current := dir
+	for part in below.split(os.path_separator) {
+		current = os.join_path_single(current, part)
+		exists := there[current] or {
+			found := os.exists(current)
+			there[current] = found
+			found
+		}
+		if !exists {
+			missing[current] = true
+			return true
+		}
+	}
+	return v3_path_is_older_than(dir, below, before)
+}
+
+// v3_path_is_below reports whether `path` is inside the directory `dir`.
+fn v3_path_is_below(path string, dir string) bool {
+	return path.len > dir.len && path.starts_with(dir)
+		&& (path[dir.len] == os.path_separator[0] || dir.ends_with(os.path_separator))
+}
+
 // v3_header_inputs returns what a compilation of `unit` depends on, given the
 // files that the compiler `read` for it, where it looks for an included file, and
 // a time `before`, in seconds, from before it started.
