@@ -2,6 +2,22 @@ module wasm
 
 import encoding.leb128
 
+pub enum ComponentSection as u8 {
+	custom_section
+	core_module_section = 1
+	core_instance_section
+	core_type_section
+	component_section
+	instance_section
+	alias_section
+	type_section
+	canon_section
+	start_section
+	import_section
+	export_section
+	value_section
+}
+
 // ---- helpers ----
 
 fn read_uleb128(data []u8, ip &int) u32 {
