@@ -6,8 +6,9 @@ import v.ssa
 //
 // Every SSA value used to live in its own stack slot, so each use was a load and
 // each result a store. This pass gives scalar integer and pointer results a home
-// in the callee-saved registers x19-x28. Those survive calls, so no spill code
-// is needed around them, and the generator keeps using x8-x17 as scratch.
+// in the callee-saved registers x19-x28, and floats in d8-d15. Those survive
+// calls, so no spill code is needed around them, and the generator keeps using
+// x8-x17 and d0-d7 as scratch.
 //
 // It is a linear scan over live intervals: the shape of Go's allocator
 // (cmd/compile/internal/ssa/regalloc.go), which also evicts the value used
@@ -17,10 +18,25 @@ import v.ssa
 // registers a function allocated, and only those are saved in the prologue.
 //
 // A value's slot is replaced by its register, so code that reads a slot
-// directly (aggregates, floats) only ever sees values this pass leaves alone.
+// directly (aggregates) only ever sees values this pass leaves alone.
 
 const first_allocatable_reg = 19
 const last_allocatable_reg = 28
+const first_float_reg = 8
+const last_float_reg = 15
+
+// A float value's home is d8-d15, recorded above the integer register numbers.
+const float_home_base = 64
+
+@[inline]
+fn is_float_home(home int) bool {
+	return home >= float_home_base
+}
+
+@[inline]
+fn float_home_reg(home int) int {
+	return home - float_home_base
+}
 
 // A function with more cross-block state than this keeps those values in slots.
 const regalloc_max_bitset_bytes = 64 * 1024 * 1024
@@ -58,8 +74,8 @@ fn (g &Gen) regalloc_eligible(val_id int, instr ssa.Instruction) bool {
 
 fn (g &Gen) regalloc_scalar(val_id int) bool {
 	val := g.m.values[val_id]
-	if val.typ <= 0 || val.typ >= g.m.type_store.types.len || g.is_float_type(val.typ)
-		|| g.is_aggregate_type(val.typ) || g.is_value_aggregate_type(val.typ) {
+	if val.typ <= 0 || val.typ >= g.m.type_store.types.len || g.is_aggregate_type(val.typ)
+		|| g.is_value_aggregate_type(val.typ) {
 		return false
 	}
 	return g.m.type_size(val.typ) <= 8
@@ -91,6 +107,7 @@ fn (g &Gen) regalloc_successors(blk_id int) ?[]int {
 // program, and map lookups here were the generator's hot spot.
 fn (mut g Gen) regalloc_function(func &ssa.Function) int {
 	g.clear_value_homes()
+	g.saved_float_pairs = 0
 	g.ensure_regalloc_tables()
 	mut list := []LiveInterval{}
 	mut crossing := []int{}
@@ -210,7 +227,17 @@ fn (mut g Gen) regalloc_function(func &ssa.Function) int {
 	}
 	mut live := list.filter(it.end > it.start && !(skip_crossing && it.crosses))
 	live.sort(a.start < b.start)
-	return g.linear_scan(mut live)
+	mut integers := []LiveInterval{cap: live.len}
+	mut floats := []LiveInterval{}
+	for iv in live {
+		if g.is_float_type(g.m.values[iv.value].typ) {
+			floats << iv
+		} else {
+			integers << iv
+		}
+	}
+	g.saved_float_pairs = g.linear_scan(mut floats, first_float_reg, last_float_reg, float_home_base)
+	return g.linear_scan(mut integers, first_allocatable_reg, last_allocatable_reg, 0)
 }
 
 fn (mut g Gen) ensure_regalloc_tables() {
@@ -332,9 +359,9 @@ fn (mut g Gen) extend_cross_block_intervals(func &ssa.Function, crossing []int, 
 
 // linear_scan hands out x19-x28 by interval start, evicting the interval that
 // ends furthest away, and returns the number of register pairs in use.
-fn (mut g Gen) linear_scan(mut intervals []LiveInterval) int {
+fn (mut g Gen) linear_scan(mut intervals []LiveInterval, first_reg int, last_reg int, home_base int) int {
 	mut free := []int{cap: 10}
-	for reg := last_allocatable_reg; reg >= first_allocatable_reg; reg-- {
+	for reg := last_reg; reg >= first_reg; reg-- {
 		free << reg
 	}
 	mut active := []LiveInterval{cap: 10}
@@ -371,13 +398,13 @@ fn (mut g Gen) linear_scan(mut intervals []LiveInterval) int {
 		}
 	}
 	for val_id, reg in assigned {
-		g.value_homes[val_id] = u8(reg)
+		g.value_homes[val_id] = u8(reg + home_base)
 		g.value_home_ids << val_id
 	}
 	if highest == 0 {
 		return 0
 	}
-	return (highest - first_allocatable_reg) / 2 + 1
+	return (highest - first_reg) / 2 + 1
 }
 
 // retarget_last_instruction makes the instruction that just computed scratch
@@ -411,6 +438,36 @@ fn instruction_writes_rd(word u32) bool {
 	}
 }
 
+// gen_float_binop_in_registers computes an f64 operation directly on the home
+// registers of its operands and result. A float without a home, or an f32
+// operand widened by the operation, takes the general path.
+fn (mut g Gen) gen_float_binop_in_registers(fop ssa.OpCode, lhs_id int, rhs_id int, val_id int) bool {
+	result_home := g.value_home_reg(val_id)
+	if !is_float_home(result_home) || g.is_f32_type(g.m.values[lhs_id].typ)
+		|| g.is_f32_type(g.m.values[rhs_id].typ) {
+		return false
+	}
+	lhs_home := g.value_home_reg(lhs_id)
+	rhs_home := g.value_home_reg(rhs_id)
+	lhs_scratch, rhs_scratch := float_operand_regs(lhs_id, rhs_id)
+	lhs_reg := if is_float_home(lhs_home) { float_home_reg(lhs_home) } else { lhs_scratch }
+	rhs_reg := if is_float_home(rhs_home) { float_home_reg(rhs_home) } else { rhs_scratch }
+	if !is_float_home(lhs_home) {
+		g.load_float_operand(lhs_id, lhs_scratch)
+	}
+	if !is_float_home(rhs_home) && rhs_scratch != lhs_scratch {
+		g.load_float_operand(rhs_id, rhs_scratch)
+	}
+	dest := float_home_reg(result_home)
+	g.emit32(match fop {
+		.fadd { asm_fadd_d(dest, lhs_reg, rhs_reg) }
+		.fsub { asm_fsub_d(dest, lhs_reg, rhs_reg) }
+		.fmul { asm_fmul_d(dest, lhs_reg, rhs_reg) }
+		else { asm_fdiv_d(dest, lhs_reg, rhs_reg) }
+	})
+	return true
+}
+
 // emit_save_callee_pairs stores the callee-saved pairs the function uses, in the
 // order frame-mode compact unwinding expects: x19, x20 just below fp, then the
 // following pairs.
@@ -418,11 +475,17 @@ fn (mut g Gen) emit_save_callee_pairs(pairs int) {
 	for i in 0 .. pairs {
 		g.emit32(asm_stp_offset(Reg(20 + 2 * i), Reg(19 + 2 * i), fp, i32(-2 * (i + 1))))
 	}
+	for i in 0 .. g.saved_float_pairs {
+		g.emit32(asm_stp_d_offset(9 + 2 * i, 8 + 2 * i, fp, i32(-2 * (pairs + i + 1))))
+	}
 }
 
 fn (mut g Gen) emit_restore_callee_pairs(pairs int) {
 	for i in 0 .. pairs {
 		g.emit32(asm_ldp_offset(Reg(20 + 2 * i), Reg(19 + 2 * i), fp, i32(-2 * (i + 1))))
+	}
+	for i in 0 .. g.saved_float_pairs {
+		g.emit32(asm_ldp_d_offset(9 + 2 * i, 8 + 2 * i, fp, i32(-2 * (pairs + i + 1))))
 	}
 }
 

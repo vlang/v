@@ -18,6 +18,7 @@ mut:
 	slot_value_count     int
 	stack_size           int
 	saved_callee_pairs   int
+	saved_float_pairs    int
 	current_instr_start  int
 	value_homes          []u8
 	value_home_ids       []int
@@ -604,7 +605,7 @@ fn (mut g Gen) gen_func(func_idx int) {
 	// fp - 8, fp - 16, ...: the callee-saved pairs this function uses
 	// below them: local slots
 	g.saved_callee_pairs = g.regalloc_function(&func)
-	mut slot_offset := g.saved_callee_pairs * 16
+	mut slot_offset := (g.saved_callee_pairs + g.saved_float_pairs) * 16
 	g.cur_func_ret_type = func.typ
 	g.cur_func_sret_offset = 0
 	if g.is_large_struct_type(func.typ) {
@@ -681,8 +682,8 @@ fn (mut g Gen) gen_func(func_idx int) {
 	g.emit32(asm_mov_fp_sp())
 	g.emit_frame_allocation(g.stack_size)
 	g.emit_save_callee_pairs(g.saved_callee_pairs)
-	if g.saved_callee_pairs > 0 {
-		g.macho.unwind_saved_pairs[sym_name] = g.saved_callee_pairs
+	if g.saved_callee_pairs + g.saved_float_pairs > 0 {
+		g.macho.unwind_saved_pairs[sym_name] = g.saved_callee_pairs | (g.saved_float_pairs << 4)
 	}
 	if g.cur_func_sret_offset != 0 {
 		g.emit_store_fp(8, g.cur_func_sret_offset)
@@ -2285,6 +2286,10 @@ fn (mut g Gen) load_val(val_id int, reg int) int {
 	}
 	home := g.value_home_reg(val_id)
 	if home != 0 {
+		if is_float_home(home) {
+			g.emit32(asm_fmov_x_d(Reg(reg), float_home_reg(home)))
+			return reg
+		}
 		return home
 	}
 	val := g.m.values[val_id]
@@ -2360,6 +2365,10 @@ fn (mut g Gen) load_val(val_id int, reg int) int {
 fn (mut g Gen) store_val(reg int, val_id int) {
 	home := g.value_home_reg(val_id)
 	if home != 0 {
+		if is_float_home(home) {
+			g.emit32(asm_fmov_d_x(float_home_reg(home), Reg(reg)))
+			return
+		}
 		if reg != home && !g.retarget_last_instruction(reg, home) {
 			g.emit32(asm_mov_reg(Reg(home), Reg(reg)))
 		}
@@ -2933,6 +2942,13 @@ fn (g &Gen) is_f32_type(typ_id ssa.TypeID) bool {
 // compiler. A slot these forms do not cover falls back to an integer load plus
 // an `fmov`, so the caller keeps one correct path for every frame size.
 fn (mut g Gen) load_d_from_slot(val_id int, dreg int) bool {
+	home := g.value_home_reg(val_id)
+	if is_float_home(home) {
+		if float_home_reg(home) != dreg {
+			g.emit32(asm_fmov_d_d(dreg, float_home_reg(home)))
+		}
+		return true
+	}
 	off := g.stack_slot(val_id) or { return false }
 	sp_offset := g.stack_size + g.transient_stack_size + off
 	if off < 0 && sp_offset >= 0 && sp_offset < 32768 && sp_offset % 8 == 0 {
@@ -2954,6 +2970,13 @@ fn (mut g Gen) load_d_from_slot(val_id int, dreg int) bool {
 // load_s_from_slot is load_d_from_slot at f32 width: the value's four bytes go
 // into the `s` register the instruction names, with no widening.
 fn (mut g Gen) load_s_from_slot(val_id int, sreg int) bool {
+	home := g.value_home_reg(val_id)
+	if is_float_home(home) {
+		if float_home_reg(home) != sreg {
+			g.emit32(asm_fmov_d_d(sreg, float_home_reg(home)))
+		}
+		return true
+	}
 	off := g.stack_slot(val_id) or { return false }
 	sp_offset := g.stack_size + g.transient_stack_size + off
 	if off < 0 && sp_offset >= 0 && sp_offset < 16384 && sp_offset % 8 == 0 {
@@ -2977,6 +3000,13 @@ fn (mut g Gen) load_s_from_slot(val_id int, sreg int) bool {
 // and leaves the rest to that path, so the slot is written exactly as before,
 // only without the `fmov` that copies the bits through x8 first.
 fn (mut g Gen) store_d_to_slot(dreg int, val_id int) bool {
+	home := g.value_home_reg(val_id)
+	if is_float_home(home) {
+		if float_home_reg(home) != dreg {
+			g.emit32(asm_fmov_d_d(float_home_reg(home), dreg))
+		}
+		return true
+	}
 	off := g.stack_slot(val_id) or { return false }
 	sp_offset := g.stack_size + g.transient_stack_size + off
 	if off < 0 && sp_offset >= 0 && sp_offset < 32768 && sp_offset % 8 == 0 {
@@ -3128,6 +3158,9 @@ fn (mut g Gen) gen_float_binop(fop ssa.OpCode, lhs_id int, rhs_id int, val_id in
 		return
 	}
 
+	if fop != .frem && g.gen_float_binop_in_registers(fop, lhs_id, rhs_id, val_id) {
+		return
+	}
 	lhs_reg, rhs_reg := float_operand_regs(lhs_id, rhs_id)
 	g.load_float_operand(lhs_id, lhs_reg) // d0
 	if rhs_reg != lhs_reg {

@@ -982,3 +982,36 @@ fn main() {
 		assert output == '6\n820', output
 	}
 }
+
+// Floats live in d8-d15 and survive calls, recursion and conversions.
+fn test_float_values_in_registers() {
+	$if macos && arm64 {
+		output := run_arm64('float_registers', "struct Point {
+	x f32
+	y f32
+	z f32
+}
+
+fn length2(a Point) f32 {
+	return a.x * a.x + a.y * a.y + a.z * a.z
+}
+
+fn mix(a f64, b f32, c int) f64 {
+	return a * f64(b) + f64(c) / 3.0
+}
+
+fn accumulate(n int, total f64) f64 {
+	return if n == 0 { total } else { accumulate(n - 1, total * 1.5 + f64(n)) }
+}
+
+fn main() {
+	mut sum := f32(0)
+	for i in 0 .. 10 {
+		sum += f32(i) * 0.5
+	}
+	println('\${sum} \${length2(Point{1, 2, 3})} \${mix(2.5, 3.0, 7):.4f} \${accumulate(10, 0.25):.3f}')
+}
+")
+		assert output == '22.5 14.0 9.8333 941.057', output
+	}
+}

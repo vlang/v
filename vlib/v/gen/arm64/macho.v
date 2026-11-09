@@ -438,7 +438,9 @@ fn (m &MachOObject) compact_unwind(reloc_index []int, shadowed map[int]bool) ([]
 		write_u64_le(mut entries, 0) // the function: an external relocation's addend
 		write_u32_le(mut entries, u32(end - start))
 		saved_pairs := m.unwind_saved_pairs[m.symbols[index].name] or { 0 }
-		write_u32_le(mut entries, unwind_arm64_mode_frame | ((u32(1) << saved_pairs) - 1))
+		x_pairs := u32(saved_pairs) & 0xf
+		d_pairs := (u32(saved_pairs) >> 4) & 0xf
+		write_u32_le(mut entries, unwind_arm64_mode_frame | ((u32(1) << x_pairs) - 1) | (((u32(1) << d_pairs) - 1) << 8))
 		write_u64_le(mut entries, 0) // personality
 		write_u64_le(mut entries, 0) // LSDA
 	}

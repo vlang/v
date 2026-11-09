@@ -329,6 +329,21 @@ fn asm_str_imm_b(rt Reg, rn Reg, imm12 u32) u32 {
 	return 0x39000000 | (imm12 << 10) | (u32(rn) << 5) | u32(rt)
 }
 
+// fmov dd, dn
+fn asm_fmov_d_d(dd int, dn int) u32 {
+	return 0x1E604000 | (u32(dn) << 5) | u32(dd)
+}
+
+// stp dt, dt2, [rn, #simm7] (signed offset scaled by 8)
+fn asm_stp_d_offset(dt int, dt2 int, rn Reg, simm7 i32) u32 {
+	return 0x6D000000 | (u32(simm7 & 0x7F) << 15) | (u32(dt2) << 10) | (u32(rn) << 5) | u32(dt)
+}
+
+// ldp dt, dt2, [rn, #simm7] (signed offset scaled by 8)
+fn asm_ldp_d_offset(dt int, dt2 int, rn Reg, simm7 i32) u32 {
+	return 0x6D400000 | (u32(simm7 & 0x7F) << 15) | (u32(dt2) << 10) | (u32(rn) << 5) | u32(dt)
+}
+
 // stp rt, rt2, [rn, #simm7] (store pair, signed offset scaled by 8)
 // simm7 is byte offset / 8; range -512..504 step 8
 fn asm_stp_offset(rt Reg, rt2 Reg, rn Reg, simm7 i32) u32 {
