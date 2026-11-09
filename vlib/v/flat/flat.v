@@ -862,6 +862,9 @@ pub fn (mut n Node) set_generic_params_and_constraint_ids(params []string, const
 @[heap]
 pub struct FlatAst {
 pub mut:
+	// guard_exhaustive_match makes the transformer stop on a value that no branch
+	// of an exhaustive value `match` names. Set for the native backend.
+	guard_exhaustive_match bool
 	nodes           []Node
 	children        []NodeId
 	user_code_start int

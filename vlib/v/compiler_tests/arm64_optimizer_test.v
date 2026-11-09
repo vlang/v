@@ -187,3 +187,36 @@ fn main() {
 }
 ", '6.0')
 }
+
+// A value-position `match` stops on a value no branch names.
+fn test_value_match_without_a_matching_branch() {
+	$if macos && arm64 {
+		root := os.join_path(os.vtmp_dir(), 'arm64_value_match_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'main.v')
+		os.write_file(source, "enum Color {
+	red
+	green
+}
+
+fn main() {
+	bad := unsafe { Color(99) }
+	x := match bad {
+		.red { 1 }
+		.green { 2 }
+	}
+	println(x)
+}
+") or { panic(err) }
+		output := os.join_path(root, 'main')
+		compiled := cmdexec.run(@VEXE, ['-w', '-b', 'arm64', '-o', output, source])
+		assert compiled.exit_code == 0, compiled.output
+		run := cmdexec.run_with_timeout(output, []string{}, 20000)
+		assert run.exit_code == 1, run.output
+		assert run.output.contains('match: no branch for the value'), run.output
+	}
+}

@@ -12123,6 +12123,7 @@ pub fn run(args []string) {
 		}
 	}
 	mut a := p.a
+	a.guard_exhaustive_match = backend == 'arm64'
 	if !current_no_parallel {
 		// Later parallel stages can run inside disposable arenas. Ensure the shared
 		// pool itself is owned by the compilation arena before any such stage starts.
