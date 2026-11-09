@@ -649,7 +649,7 @@ $if !skip_fastc ? {
 				return dependencies
 			}
 		}
-		dependencies := v3_tcc_dylib_program_dependencies('/usr/bin/clang', args, path, '-std=gnu11')!
+		dependencies := v3_tcc_dylib_program_dependencies('/usr/bin/clang', args, path, '-std=gnu11', dir, mut stats)!
 		// The TinyCC framework include directory contains symlinks to SDK Headers.
 		// Canonical manifest paths retain their owning .framework for link selection.
 		canonical := dependencies.map(os.real_path(it))
