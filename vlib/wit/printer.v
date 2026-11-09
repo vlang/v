@@ -11,6 +11,12 @@ pub fn (d WitDoc) str() string {
 		out << ''
 		out << 'interface ${iface.name} {'
 		for it in iface.items {
+			if it.kind == .use {
+				if u := it.use_ {
+					out << '\tuse ${u.path}.{${u.items.join(', ')}};'
+				}
+				continue
+			}
 			match it.kind {
 				.record {
 					if r := it.record {
