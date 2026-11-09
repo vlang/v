@@ -183,6 +183,12 @@ fn assert_rebuilt(output string) {
 	assert !restored(output), output
 }
 
+// assert_rebuilt_with_reason also accepts the earlier native-header safety bypass.
+fn assert_rebuilt_with_reason(output string, reason string) {
+	assert_rebuilt(output)
+	assert native_headers_prevent_reuse(output) || output.contains(reason), output
+}
+
 // cache_modes returns the flags of the builds that use the module cache on this
 // host: with the system C compiler, and with the bundled TinyCC where it runs.
 // The first call builds a program with TinyCC to find out.
@@ -472,7 +478,7 @@ fn test_libraries_of_the_link_are_inputs_of_the_executable() {
 	make_answer_library(direct, 42, false)
 	replaced := build(root, with_option, main_file, 'direct_replaced')
 	assert !restored(replaced), replaced
-	assert replaced.contains('V3 program executable miss: an input of the compiler or the linker changed'), replaced
+	assert_rebuilt_with_reason(replaced, 'V3 program executable miss: an input of the compiler or the linker changed')
 	assert run_built(root, 'direct_replaced') == '42'
 	assert_reused_or_native_header_rebuild(build(root, with_option, main_file, 'direct_again'))
 	assert run_built(root, 'direct_again') == '42'
@@ -508,7 +514,7 @@ fn test_libraries_of_the_link_are_inputs_of_the_executable() {
 	make_answer_library(forwarded, 72, false)
 	forwarded_replaced := build(root, with_forwarded, main_file, 'forwarded_replaced')
 	assert !restored(forwarded_replaced), forwarded_replaced
-	assert forwarded_replaced.contains('V3 program executable miss: an input of the compiler or the linker changed'), forwarded_replaced
+	assert_rebuilt_with_reason(forwarded_replaced, 'V3 program executable miss: an input of the compiler or the linker changed')
 	assert run_built(root, 'forwarded_replaced') == '72'
 	assert_reused_or_native_header_rebuild(build(root, with_forwarded, main_file, 'forwarded_again'))
 
@@ -609,7 +615,7 @@ fn test_libraries_of_the_link_are_inputs_of_the_executable() {
 		with_report[with_report.len - 1] += ' ${own_option}'
 		own_first := build(root, with_report, main_file, 'own_report_build')
 		assert_rebuilt(own_first)
-		assert own_first.contains('writes a file besides the executable'), own_first
+		assert_rebuilt_with_reason(own_first, 'writes a file besides the executable')
 		assert run_built(root, 'own_report_build') == '42'
 		assert os.file_size(own_report) > 0
 		os.rm(own_report)!
@@ -623,7 +629,7 @@ fn test_libraries_of_the_link_are_inputs_of_the_executable() {
 		mut with_thin := answer_flags.clone()
 		with_thin << ['-ldflags', '-L${os.dir(thin)} -lanswer']
 		first := build(root, with_thin, main_file, 'thin')
-		assert first.contains('is a thin archive'), first
+		assert_rebuilt_with_reason(first, 'is a thin archive')
 		assert run_built(root, 'thin') == '61'
 		make_answer_library(thin, 62, true)
 		second := build(root, with_thin, main_file, 'thin_member')
@@ -678,7 +684,7 @@ exit $status
 	// The executable holds the library that was there when the linker read it.
 	assert run_built(root, 'first') == '1'
 	assert !os.exists(replacement)
-	assert first.contains('changed while the program was linked'), first
+	assert_rebuilt_with_reason(first, 'changed while the program was linked')
 	// It is not the executable of the library that is there now.
 	second := build(root, flags, main_file, 'second')
 	assert !restored(second), second

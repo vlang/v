@@ -1240,6 +1240,7 @@ pub fn build_v_args_failed(args []string) bool {
 	return false
 }
 
+// building_any_v_binaries_failed builds the debug and production V executables, reporting failures.
 pub fn building_any_v_binaries_failed() bool {
 	eheader('Building V binaries...')
 	eprintln('VFLAGS is: "' + os.getenv('VFLAGS') + '"')
@@ -1248,13 +1249,37 @@ pub fn building_any_v_binaries_failed() bool {
 	vlib_should_be_present(parent_dir)
 	os.chdir(parent_dir) or { panic(err) }
 	mut failed := false
-	v_build_commands := ['${vexe} -o v_g             -g  cmd/v',
-		'${vexe} -o v_prod_g  -prod -g  cmd/v', '${vexe} -o v_cg            -cg cmd/v',
-		'${vexe} -o v_prod_cg -prod -cg cmd/v', '${vexe} -o v_prod    -prod     cmd/v']
+	mut inherited_options := os.split_args(os.getenv('VFLAGS')) or { panic(err) }
+	inherited_options << '-prod'
+	production_cc := if pref.tcc_with_prod_requested(inherited_options) {
+		pref.find_system_assembler() or {
+			eprintln('Production V binaries require GCC or Clang when VFLAGS selects TinyCC')
+			return true
+		}
+	} else {
+		''
+	}
+	if production_cc != '' {
+		eprintln('Using ${production_cc} for production V binaries')
+	}
+	v_build_options := [
+		['-o', 'v_g', '-g'],
+		['-o', 'v_prod_g', '-prod', '-g'],
+		['-o', 'v_cg', '-cg'],
+		['-o', 'v_prod_cg', '-prod', '-cg'],
+		['-o', 'v_prod', '-prod'],
+	]
 	mut bmark := benchmark.new_benchmark()
-	for cmd in v_build_commands {
+	for options in v_build_options {
+		mut args := [vexe]
+		args << options
+		if '-prod' in options && production_cc != '' {
+			args << ['-cc', production_cc]
+		}
+		args << 'cmd/v'
+		cmd := args.map(os.quoted_path(it)).join(' ')
 		bmark.step()
-		if build_v_args_failed(os.split_args(cmd) or { panic(err) }) {
+		if build_v_args_failed(args) {
 			bmark.fail()
 			failed = true
 			eprintln(bmark.step_message_fail('command: ${cmd} . See details above ^^^^^^^'))

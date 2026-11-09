@@ -58,7 +58,7 @@ pub fn validate_pointer_values() {
 	for key, mut value in entries {
 		entries[key] = value
 	}
-	assert entries['first'] == first
+	assert (entries['first'] or { panic('missing first entry') }) == first
 }
 
 // validate_reference_iteration checks that copies of explicit map references still alias entries.

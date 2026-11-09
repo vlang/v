@@ -9,8 +9,9 @@ fn test_fifo_accepts_darwin_mkfifo_binding() {
 	// Darwin's mode_t is u16; importing os must preserve a matching C binding.
 	os.write_file(source, 'import os\nfn C.mkfifo(path &char, mode u16) i32\nfn main() { _ := os.args }\n')!
 	for target in ['macos', 'ios'] {
+		// Override an inherited MSVC selection; these are frontend-only Darwin checks.
 		result := os.exec([@VEXE, '-new-compiler', '-no-retry-compilation', '-no-parallel', '-os',
-			target, '-check', source])
+			target, '-cc', 'clang', '-check', source])
 		assert result.exit_code == 0, '${target}: ${result.output}'
 	}
 }

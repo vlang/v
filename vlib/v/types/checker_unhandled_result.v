@@ -12,7 +12,7 @@ import v.flat
 pub fn (mut tc TypeChecker) warn_unhandled_result_calls() {
 	saved_file := tc.cur_file
 	for idx in tc.a.user_code_start .. tc.a.nodes.len {
-		node := tc.a.nodes[idx]
+		node := tc.a.node(flat.NodeId(idx))
 		if node.kind != .call {
 			continue
 		}
@@ -58,7 +58,7 @@ fn (tc &TypeChecker) unhandled_result_spot(id flat.NodeId, call flat.Node) (bool
 	parent := tc.a.node(parent_id)
 	match parent.kind {
 		.expr_stmt {
-			if tc.or_tail_result_is_returned(parent_id) {
+			if tc.branch_tail_result_is_handled(parent_id) {
 				return false, false
 			}
 			return true, tc.is_in_defer(parent_id)
@@ -88,29 +88,39 @@ fn (tc &TypeChecker) unhandled_result_spot(id flat.NodeId, call flat.Node) (bool
 	}
 }
 
-// or_tail_result_is_returned reports whether the statement `stmt_id` ends the
-// `or {}` block of `return a() or { b() }` in a function that returns a Result:
-// the Result of `b()` is returned as it is, error included.
-fn (tc &TypeChecker) or_tail_result_is_returned(stmt_id flat.NodeId) bool {
-	block_id := tc.direct_parent_id(stmt_id)
-	if !tc.valid_node_id(block_id) {
+// branch_tail_result_is_handled reports whether a branch tail reaches an `or {}`
+// or propagation operator, or an explicit return in a Result-returning function.
+// Earlier statements in those branches still drop their Results.
+fn (tc &TypeChecker) branch_tail_result_is_handled(stmt_id flat.NodeId) bool {
+	mut returned := flat.empty_node
+	mut child := stmt_id
+	for _ in 0 .. 256 {
+		parent_id := tc.direct_parent_id(child)
+		if !tc.valid_node_id(parent_id) {
+			return false
+		}
+		parent := tc.a.node(parent_id)
+		if parent.kind == .or_expr && parent.children_count > 0
+			&& tc.a.child(parent, 0) == child {
+			return true
+		}
+		if parent.kind == .return_stmt {
+			if parent.children_count != 1 || tc.a.child(parent, 0) != child {
+				return false
+			}
+			returned = parent_id
+			break
+		}
+		if parent.kind !in [.paren, .expr_stmt, .block, .match_branch, .if_expr, .match_stmt, .or_expr]
+			|| !tc.expr_is_value_tail_of(parent_id, child) {
+			return false
+		}
+		child = parent_id
+	}
+	if !tc.valid_node_id(returned) {
 		return false
 	}
-	block := tc.a.node(block_id)
-	if block.kind != .block || block.children_count == 0
-		|| tc.a.child(block, block.children_count - 1) != stmt_id {
-		return false
-	}
-	or_id := tc.direct_parent_id(block_id)
-	if !tc.valid_node_id(or_id) {
-		return false
-	}
-	or_node := tc.a.node(or_id)
-	if or_node.kind != .or_expr || or_node.children_count != 2 || or_node.value in ['!', '?']
-		|| tc.a.child(or_node, 1) != block_id || tc.direct_parent_kind(or_id) != .return_stmt {
-		return false
-	}
-	mut current := tc.direct_parent_id(or_id)
+	mut current := returned
 	for _ in 0 .. 256 {
 		current = tc.direct_parent_id(current)
 		if !tc.valid_node_id(current) {

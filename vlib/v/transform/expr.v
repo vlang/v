@@ -1103,7 +1103,7 @@ fn (mut t Transformer) transform_infix_struct_ops(_id flat.NodeId, node flat.Nod
 		lhs := t.stable_expr_for_reuse(lhs_id)
 		rhs_expr := t.transform_expr_for_type(rhs_id, lhs_type)
 		rhs := t.stable_transformed_expr_for_reuse(rhs_expr, lhs_type, 'eq_rhs')
-		if field_eq := t.make_struct_field_eq_expr(lhs, rhs, struct_type) {
+		if field_eq := t.make_struct_value_eq_expr(lhs, rhs, struct_type, []EqualityTypeVisit{}) {
 			if node.op == .ne {
 				return t.make_prefix(.not, field_eq)
 			}
@@ -1396,7 +1396,7 @@ fn (mut t Transformer) transform_transformed_struct_eq(node flat.Node, lhs flat.
 	}
 	cmp_lhs := t.stable_transformed_expr_for_reuse(lhs, lhs_type, 'eq_lhs')
 	cmp_rhs := t.stable_transformed_expr_for_reuse(rhs, rhs_type, 'eq_rhs')
-	if field_eq := t.make_struct_field_eq_expr(cmp_lhs, cmp_rhs, lhs_struct_type) {
+	if field_eq := t.make_struct_value_eq_expr(cmp_lhs, cmp_rhs, lhs_struct_type, []EqualityTypeVisit{}) {
 		if node.op == .ne {
 			return t.make_prefix(.not, field_eq)
 		}
@@ -3464,7 +3464,7 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 		if EqualityTypeVisit{ typ: struct_type_id, kind: .struct_type } in seen {
 			return t.make_recursive_struct_eq_expr(lhs, rhs, struct_type_id)
 		}
-		if field_eq := t.make_struct_field_eq_expr_with_seen(lhs, rhs, struct_type_id, seen) {
+		if field_eq := t.make_struct_value_eq_expr(lhs, rhs, struct_type_id, seen) {
 			return field_eq
 		}
 		cmp := t.make_call_typed('C.memcmp', [t.make_prefix(.amp, lhs), t.make_prefix(.amp, rhs),
@@ -3477,7 +3477,10 @@ fn (mut t Transformer) make_membership_eq_expr_with_seen(lhs flat.NodeId, rhs fl
 // A repeated struct type needs a runtime call, rather than another inline
 // expansion or a byte comparison of its strings and container descriptors.
 fn (mut t Transformer) make_recursive_struct_eq_expr(lhs flat.NodeId, rhs flat.NodeId, struct_type_id u32) flat.NodeId {
-	struct_type := flat.source_type_name(struct_type_id)
+	// Name and type the helper after the `main.` lock of a bare main struct that an
+	// imported module also declares, or the helper would compare the module's type.
+	locked_type_id := t.lock_colliding_main_generic_type_text(struct_type_id, t.cur_module)
+	struct_type := flat.source_type_name(locked_type_id)
 	helper_module := if t.sum_eq_helper_module.len > 0 {
 		t.sum_eq_helper_module
 	} else if t.validating_generic_spec {
@@ -3491,14 +3494,86 @@ fn (mut t Transformer) make_recursive_struct_eq_expr(lhs flat.NodeId, rhs flat.N
 	helper := if helper_module == 'main' { '${base}__v3_program' } else { base }
 	if helper !in t.sum_eq_types {
 		t.sum_eq_types[helper] = SumEqRequest{
-			struct_name:   struct_type_id
+			struct_name:   locked_type_id
 			module:        t.cur_module
 			file:          t.cur_file
 			helper_module: helper_module
 		}
 	}
+	// The helper takes both structs by reference: by value, every comparison copies
+	// them into its arguments, and tcc's arm64 backend crashes passing a struct larger
+	// than about 4 KB by value.
+	lhs_addr := t.struct_eq_operand_addr(t.struct_equality_operand(lhs, locked_type_id, 'struct_eq_lhs'), locked_type_id)
+	rhs_addr := t.struct_eq_operand_addr(t.struct_equality_operand(rhs, locked_type_id, 'struct_eq_rhs'), locked_type_id)
 	t.mark_fn_used_name(helper)
-	return t.make_call_typed(helper, [lhs, rhs], flat.source_type_bool)
+	return t.make_call_typed(helper, [lhs_addr, rhs_addr], flat.source_type_bool)
+}
+
+// struct_eq_operand_addr returns the address of a stable struct equality operand.
+// A struct literal is addressed as its C compound literal rather than through a
+// temp, so it stays in the comparison, where a failed assert reads its value.
+fn (mut t Transformer) struct_eq_operand_addr(value flat.NodeId, typ_id u32) flat.NodeId {
+	if int(value) >= 0 && t.a.nodes[int(value)].kind == .struct_init {
+		// `&` directly on a struct literal would allocate it on the heap.
+		paren := t.make_paren(value)
+		t.set_node_typ(int(paren), typ_id)
+		return t.make_prefix(.amp, paren)
+	}
+	return t.runtime_addr(value, typ_id)
+}
+
+// A flat struct with more fields than this still compares through its helper.
+const struct_eq_inline_field_limit = 16
+
+// make_struct_value_eq_expr compares two struct values. A struct with a nested
+// aggregate field calls its out-of-line helper; that helper's body compares its
+// own fields and calls the helpers of nested aggregates in turn. Expanding the
+// nested comparisons inline repeated whole object graphs at every comparison:
+// one `==` on two references to a large struct produced megabytes of C.
+// Helpers are requested only by comparisons that are transformed, so a struct
+// that is never compared gets none. A comparison nested in an interface
+// comparison stays inline, because that expansion's cycle fallback only sees the
+// types visited by the current expansion. C and anonymous structs stay inline as
+// well: an anonymous struct nested in a C struct is an unnamed C struct, which a
+// helper over the V type cannot take.
+fn (mut t Transformer) make_struct_value_eq_expr(lhs flat.NodeId, rhs flat.NodeId, struct_type_id u32, seen []EqualityTypeVisit) ?flat.NodeId {
+	struct_type := t.lock_colliding_main_generic_type_text(struct_type_id, t.cur_module)
+	if seen.any(it.kind == .interface_type) || struct_eq_type_is_c_or_anonymous(struct_type)
+		|| t.struct_eq_is_flat(struct_type_id) {
+		return t.make_struct_field_eq_expr_with_seen(lhs, rhs, struct_type_id, seen)
+	}
+	t.lookup_struct_info(struct_type) or { return none }
+	return t.make_recursive_struct_eq_expr(lhs, rhs, struct_type_id)
+}
+
+fn struct_eq_type_is_c_or_anonymous(struct_type u32) bool {
+	name := flat.source_type_name(struct_type)
+	short := name.all_after_last('.')
+	return name.starts_with('C.') || short.starts_with('AnonStruct_') || short.starts_with('AnonUnion_')
+}
+
+// struct_eq_is_flat reports whether every field of a struct compares directly:
+// scalars, enums and fixed arrays of them, pointers (by identity) and strings.
+// A struct that cannot be looked up keeps the inline path and its fallbacks.
+fn (t &Transformer) struct_eq_is_flat(struct_type_id u32) bool {
+	struct_type := t.lock_colliding_main_generic_type_text(struct_type_id, t.cur_module)
+	info := t.lookup_struct_info(struct_type) or { return true }
+	if info.fields.len > struct_eq_inline_field_limit {
+		return false
+	}
+	for field in info.fields {
+		field_type := t.lookup_struct_field_type(struct_type, field.name) or {
+			if field.typ != 0 { field.typ } else { field.raw_typ }
+		}
+		if t.membership_type_is_pointer(field_type)
+			|| t.membership_container_type(field_type) == flat.source_type_string {
+			continue
+		}
+		if t.type_needs_semantic_eq(field_type) {
+			return false
+		}
+	}
+	return true
 }
 
 fn (mut t Transformer) box_membership_interface_eq_rhs(rhs flat.NodeId, interface_type_id u32) ?flat.NodeId {
@@ -3684,24 +3759,27 @@ pub fn (mut t Transformer) synthesize_sum_eq_helpers() []string {
 	return new_names
 }
 
+// build_struct_eq_helper_fn appends `fn __v3_struct_eq_<T>(a &T, b &T) bool`, which
+// compares the fields of `*a` and `*b` through the references, without copying.
 fn (mut t Transformer) build_struct_eq_helper_fn(struct_type_id u32, helper string) {
 	saved_pending := t.pending_stmts
 	t.pending_stmts = []flat.NodeId{}
+	ref_type_id := flat.source_type_composition_one(.pointer, struct_type_id)
 	param_a := t.a.add_node(flat.Node{
 		kind:  .param
 		value: '__struct_eq_a'
-		typ:   struct_type_id
+		typ:   ref_type_id
 	})
 	param_b := t.a.add_node(flat.Node{
 		kind:  .param
 		value: '__struct_eq_b'
-		typ:   struct_type_id
+		typ:   ref_type_id
 	})
 	lhs := t.make_ident('__struct_eq_a')
-	t.set_node_typ(int(lhs), struct_type_id)
+	t.set_node_typ(int(lhs), ref_type_id)
 	rhs := t.make_ident('__struct_eq_b')
-	t.set_node_typ(int(rhs), struct_type_id)
-	eq := t.make_struct_field_eq_expr(lhs, rhs, struct_type_id) or {
+	t.set_node_typ(int(rhs), ref_type_id)
+	eq := t.make_struct_fields_eq_expr(lhs, rhs, struct_type_id, []EqualityTypeVisit{}) or {
 		t.pending_stmts = saved_pending
 		return
 	}
@@ -3723,7 +3801,7 @@ fn (mut t Transformer) build_struct_eq_helper_fn(struct_type_id u32, helper stri
 	})
 	t.ensure_node_context_map_capacity()
 	t.mark_node_context(fn_decl, helper_module, t.cur_file)
-	t.register_sum_eq_helper_signature(helper, struct_type_id)
+	t.register_sum_eq_helper_signature(helper, ref_type_id)
 }
 
 // build_sum_eq_helper_fn appends `fn __v3_sum_eq_<Sum>(a Sum, b Sum) bool` to the
@@ -4162,17 +4240,21 @@ fn (mut t Transformer) refine_contextual_map_ident_type(id flat.NodeId, map_type
 	t.set_node_typ(int(id), map_type_id)
 }
 
-fn (mut t Transformer) make_struct_field_eq_expr(lhs flat.NodeId, rhs flat.NodeId, struct_type_id u32) ?flat.NodeId {
-	return t.make_struct_field_eq_expr_with_seen(lhs, rhs, struct_type_id, []EqualityTypeVisit{})
+fn (mut t Transformer) make_struct_field_eq_expr_with_seen(lhs flat.NodeId, rhs flat.NodeId, struct_type_id u32, seen []EqualityTypeVisit) ?flat.NodeId {
+	struct_type := t.lock_colliding_main_generic_type_text(struct_type_id, t.cur_module)
+	t.lookup_struct_info(struct_type) or { return none }
+	lhs_value := t.struct_equality_operand(lhs, struct_type, 'struct_eq_lhs')
+	rhs_value := t.struct_equality_operand(rhs, struct_type, 'struct_eq_rhs')
+	return t.make_struct_fields_eq_expr(lhs_value, rhs_value, struct_type_id, seen)
 }
 
-fn (mut t Transformer) make_struct_field_eq_expr_with_seen(lhs flat.NodeId, rhs flat.NodeId, struct_type_id u32, seen []EqualityTypeVisit) ?flat.NodeId {
+// make_struct_fields_eq_expr compares the fields of two stable struct operands:
+// values, or references whose fields are selected through them.
+fn (mut t Transformer) make_struct_fields_eq_expr(lhs_value flat.NodeId, rhs_value flat.NodeId, struct_type_id u32, seen []EqualityTypeVisit) ?flat.NodeId {
 	// A main-module struct is spelled bare, which an imported module with a
 	// same-named struct reads as its own: compare the fields of the `main.` lock.
 	struct_type := t.lock_colliding_main_generic_type_text(struct_type_id, t.cur_module)
 	info := t.lookup_struct_info(struct_type) or { return none }
-	lhs_value := t.struct_equality_operand(lhs, struct_type, 'struct_eq_lhs')
-	rhs_value := t.struct_equality_operand(rhs, struct_type, 'struct_eq_rhs')
 	mut next_seen := seen.clone()
 	next_seen << EqualityTypeVisit{ typ: struct_type_id, kind: .struct_type }
 	mut eq := flat.empty_node

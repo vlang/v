@@ -34,9 +34,11 @@ struct Val {
 fn index() {
 }
 
+// vfmt off
 struct Cfg {
-	user_name string @[GetRoute: '/cfg'; GetRoute_method:; GetRoute_1: post]
+	user_name string @[GetRoute('/cfg', method: .post)]
 }
+// vfmt on
 
 enum Level {
 	debug  @[Val: 'd']

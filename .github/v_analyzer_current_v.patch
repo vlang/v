@@ -1,0 +1,174 @@
+diff --git a/build.vsh b/build.vsh
+index 02ec5f1..d3a9577 100644
+--- a/build.vsh
++++ b/build.vsh
+@@ -56,7 +56,9 @@ fn detect_build_os() {
+ }
+ 
+ fn (m ReleaseMode) compile_cmd() string {
+-	base_build_cmd := '${os.quoted_path(@VEXE)} ${os.quoted_path(@VMODROOT)} -o ${quoted_path(bin_path)} -no-parallel'
++	source_path := os.join_path(@VMODROOT, 'src')
++	module_path := '${source_path}|@vlib|@vmodules'
++	base_build_cmd := '${os.quoted_path(@VEXE)} -o ${quoted_path(bin_path)} -no-parallel -path ${os.quoted_path(module_path)}'
+ 	cc := if v := os.getenv_opt('CC') {
+ 		'-cc ${v}'
+ 	} else {
+@@ -100,7 +102,7 @@ fn (m ReleaseMode) compile_cmd() string {
+ 		// => Adding the flags below allows v-analyzer to be compiled with -cstrict, and wider range of supported C compilers
+ 		resulting_cmd += ' -cflags "-Wno-misleading-indentation -Wno-jump-misses-init -Wno-error=jump-misses-init -Wno-typedef-redefinition"'
+ 	}
+-	return resulting_cmd
++	return '${resulting_cmd} ${os.quoted_path(source_path)}'
+ }
+ 
+ fn prepare_output_dir() string {
+diff --git a/src/lsp/initialize.v b/src/lsp/initialize.v
+index ada1b1d..a742641 100644
+--- a/src/lsp/initialize.v
++++ b/src/lsp/initialize.v
+@@ -7,7 +7,7 @@ type LSPAny = []LSPAny | map[string]LSPAny | f64 | bool | string
+ // response: InitializeResult
+ pub struct InitializeParams {
+ pub mut:
+-	process_id  int = -2         @[json: processId]
++	process_id  int = -2    @[json: processId]
+ 	client_info ClientInfo  @[json: clientInfo]
+ 	root_uri    DocumentUri @[json: rootUri]
+ 	root_path   DocumentUri @[json: rootPath]
+diff --git a/src/project/flavors/WinToolchainFlavor.v b/src/project/flavors/WinToolchainFlavor.v
+index bd7b8b4..375ac39 100644
+--- a/src/project/flavors/WinToolchainFlavor.v
++++ b/src/project/flavors/WinToolchainFlavor.v
+@@ -6,7 +6,7 @@ pub struct WinToolchainFlavor {}
+ 
+ fn (s &WinToolchainFlavor) get_home_page_candidates() []string {
+ 	mut res := []string{}
+-	result := os.execute('where v')
++	result := os.exec(['where', 'v'])
+ 	if result.exit_code == 0 {
+ 		res << os.dir(result.output.trim_space())
+ 	}
+diff --git a/src/server/inspections/compiler/utils.v b/src/server/inspections/compiler/utils.v
+index c54d0b4..5bf0829 100644
+--- a/src/server/inspections/compiler/utils.v
++++ b/src/server/inspections/compiler/utils.v
+@@ -63,7 +63,7 @@ fn exec_compiler_diagnostics(compiler_path string, uri lsp.DocumentUri, project_
+ 	is_script := filepath.ends_with('.vsh') || filepath.ends_with('.vv')
+ 
+ 	check_target := if is_script { filepath } else { project_root }
+-	res := os.execute('${compiler_path} -enable-globals -shared -check ${check_target}')
++	res := os.exec([compiler_path, '-enable-globals', '-shared', '-check', check_target])
+ 
+ 	if res.exit_code == 0 {
+ 		return none
+diff --git a/src/streams/streams.v b/src/streams/streams.v
+index 7500dd9..74fa72e 100644
+--- a/src/streams/streams.v
++++ b/src/streams/streams.v
+@@ -144,7 +144,7 @@ struct SocketStream {
+ 	log_label string = 'v-analyzer'
+ 	log       bool   = true
+ mut:
+-	conn   &net.TcpConn       = &net.TcpConn(net.listen_tcp(.ip, '80')!)
++	conn   &net.TcpConn @[required]
+ 	reader &io.BufferedReader = unsafe { nil }
+ pub mut:
+ 	port  int = 5007
+diff --git a/src/utils.v b/src/utils.v
+index bf4ffef..f51eeac 100644
+--- a/src/utils.v
++++ b/src/utils.v
+@@ -42,25 +42,19 @@ pub fn download_install_vsh() ! {
+ }
+ 
+ pub fn call_install_vsh(cmd string) !int {
++	mut args := ['v', analyzer_install_script_path]
++	args << cmd.fields()
+ 	$if windows {
+-		// On Windows we cannot use `os.Command` because it doesn't support Windows
+-		res := os.execute('v ${analyzer_install_script_path} ${cmd}')
++		res := os.exec(args)
+ 		println(res.output)
+ 		return res.exit_code
+ 	}
+ 
+-	mut command := os.Command{
+-		path:            'v ${analyzer_install_script_path} ${cmd}'
+-		redirect_stdout: true
+-	}
+-
+-	command.start()!
+-
+-	for !command.eof {
+-		println(command.read_line())
+-	}
+-
+-	command.close()!
+-
+-	return command.exit_code
++	// The installer may prompt before building from source, so inherit standard input.
++	mut command := os.new_process(os.find_abs_path_of_executable(args[0])!)
++	command.set_args(args[1..])
++	command.run()
++	command.wait()
++	command.close()
++	return command.code
+ }
+diff --git a/tree_sitter_v/bindings/bindings.c.v b/tree_sitter_v/bindings/bindings.c.v
+index 3b07687..c4aa730 100644
+--- a/tree_sitter_v/bindings/bindings.c.v
++++ b/tree_sitter_v/bindings/bindings.c.v
+@@ -57,7 +57,7 @@ fn new_ts_parser() &C.TSParser {
+ 
+ @[inline]
+ fn (mut p C.TSParser) parse(old_tree &TSTree, input C.TSInput) &TSTree {
+-	return &TSTree(C.ts_parser_parse(p, voidptr(old_tree), input))
++	return unsafe { &TSTree(C.ts_parser_parse(p, voidptr(old_tree), input)) }
+ }
+ 
+ @[inline]
+@@ -82,7 +82,7 @@ fn (mut p C.TSParser) parse_string_with_old_tree(content string, old_tree &TSTre
+ 
+ @[inline]
+ fn (mut p C.TSParser) parse_string_with_old_tree_and_len(content string, old_tree &TSTree, len u32) &TSTree {
+-	return &TSTree(C.ts_parser_parse_string(p, voidptr(old_tree), &char(content.str), len))
++	return unsafe { &TSTree(C.ts_parser_parse_string(p, voidptr(old_tree), &char(content.str), len)) }
+ }
+ 
+ @[inline]
+@@ -91,7 +91,7 @@ fn (mut p C.TSParser) parse_bytes(content []u8) &TSTree {
+ }
+ 
+ fn byte_array_input_read(pl voidptr, byte_index u32, position C.TSPoint, bytes_read &u32) &char {
+-	payload := *(&[]u8(pl))
++	payload := unsafe { *(&[]u8(pl)) }
+ 	if byte_index >= u32(payload.len) {
+ 		unsafe {
+ 			*bytes_read = 0
+@@ -140,22 +140,22 @@ fn C.ts_tree_get_changed_ranges(old_tree &C.TSTree, new_tree &C.TSTree, count &u
+ 
+ @[inline]
+ fn (tree &TSTree) copy() &TSTree {
+-	return &TSTree(C.ts_tree_copy(voidptr(tree)))
++	return unsafe { &TSTree(C.ts_tree_copy(voidptr(tree))) }
+ }
+ 
+ @[inline]
+ fn (tree &TSTree) root_node() C.TSNode {
+-	return C.ts_tree_root_node(&C.TSTree(tree))
++	return C.ts_tree_root_node(unsafe { &C.TSTree(tree) })
+ }
+ 
+ @[inline]
+ fn (tree &TSTree) edit(input_edit &C.TSInputEdit) {
+-	C.ts_tree_edit(&C.TSTree(tree), input_edit)
++	C.ts_tree_edit(unsafe { &C.TSTree(tree) }, input_edit)
+ }
+ 
+ fn (tree &TSTree) get_changed_ranges(new_tree &TSTree) []C.TSRange {
+ 	mut len := u32(0)
+-	buf := C.ts_tree_get_changed_ranges(&C.TSTree(tree), &C.TSTree(new_tree), &len)
++	buf := unsafe { C.ts_tree_get_changed_ranges(&C.TSTree(tree), &C.TSTree(new_tree), &len) }
+ 	element_size := int(sizeof(C.TSRange))
+ 
+ 	return unsafe {

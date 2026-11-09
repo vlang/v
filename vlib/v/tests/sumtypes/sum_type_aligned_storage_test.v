@@ -95,18 +95,19 @@ fn test_fixed_sum_array_conversion_preserves_element_alignment() {
 }
 
 fn test_maps_preserve_sum_alignment_across_storage_operations() {
+	// Checked entry pointers borrow each map only until its next mutation.
 	mut values := map[int]AlignedSum{}
 	for i in 0 .. 40 {
 		values[i] = SumSmallValue{i}
 	}
 	values.reserve(200)
 	for i in 0 .. 40 {
-		assert aligned_sum_value(values[i]) == i
+		assert aligned_sum_value(unsafe { &values[i] or { panic('missing entry') } }) == i
 	}
 	mut cloned := values.clone()
 	values.clear()
 	values[50] = SumSmallValue{50}
-	assert aligned_sum_value(values[50]) == 50
+	assert aligned_sum_value(unsafe { &values[50] or { panic('missing entry') } }) == 50
 	cloned.delete(0)
 	exported := cloned.values()
 	assert exported.len == 39
@@ -116,18 +117,18 @@ fn test_maps_preserve_sum_alignment_across_storage_operations() {
 	mut empty := map[int]AlignedSum{}
 	mut copied_empty := empty.clone()
 	copied_empty[1] = SumSmallValue{51}
-	assert aligned_sum_value(copied_empty[1]) == 51
+	assert aligned_sum_value(unsafe { &copied_empty[1] or { panic('missing entry') } }) == 51
 	moved := empty.move()
 	empty[2] = SumSmallValue{52}
-	assert aligned_sum_value(empty[2]) == 52
+	assert aligned_sum_value(unsafe { &empty[2] or { panic('missing entry') } }) == 52
 	mut reserved := map[int]AlignedSum{}
 	reserved.reserve(100)
 	reserved[1] = SumSmallValue{54}
-	assert aligned_sum_value(reserved[1]) == 54
+	assert aligned_sum_value(unsafe { &reserved[1] or { panic('missing entry') } }) == 54
 	literal := {
 		1: AlignedSum(SumSmallValue{53})
 	}
-	assert aligned_sum_value(literal[1]) == 53
+	assert aligned_sum_value(unsafe { &literal[1] or { panic('missing entry') } }) == 53
 	unsafe {
 		values.free()
 		cloned.free()
@@ -151,5 +152,6 @@ fn test_default_collections_preserve_sum_alignment() {
 	holder.values << SumSmallValue{61}
 	holder.lookup[1] = SumSmallValue{62}
 	assert aligned_sum_value(holder.values[0]) == 61
-	assert aligned_sum_value(holder.lookup[1]) == 62
+	// No map mutation occurs while its entry is borrowed.
+	assert aligned_sum_value(unsafe { &holder.lookup[1] or { panic('missing entry') } }) == 62
 }

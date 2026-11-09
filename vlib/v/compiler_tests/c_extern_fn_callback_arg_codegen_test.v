@@ -92,7 +92,10 @@ fn test_c_extern_fn_callback_arg_is_not_cast() {
 	src := extern_cb_write_source()
 	c_path := src + '.c'
 	header := src + '.h'
-	exe := src + '.out'
+	mut exe := src + '.out'
+	$if windows {
+		exe += '.exe'
+	}
 	defer {
 		os.rm(v3_bin) or {}
 		os.rm(src) or {}
@@ -134,6 +137,7 @@ fn test_c_extern_fn_callback_arg_is_not_cast() {
 
 	build_program := os.exec([v3_bin, '-o', exe, '${src}'])
 	assert build_program.exit_code == 0, build_program.output
+	assert os.is_file(exe), 'compiler did not produce ${exe}: ${build_program.output}'
 	run := os.exec([exe])
 	assert run.exit_code == 0, run.output
 	assert run.output.trim_space().split_into_lines() == ['8', '8', '8', '8', '3', '3', '2', '9']

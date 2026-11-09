@@ -669,7 +669,9 @@ fn module_alias_target_from_source(source string) ?string {
 	return target
 }
 
-fn vmod_root_for_dir(start string) ?string {
+// vmod_root_for_dir returns the nearest directory at or above `start` that holds a `v.mod`.
+// A `.v.mod.stop` marker or a `.git`, `.hg` or `.svn` entry ends the walk.
+pub fn vmod_root_for_dir(start string) ?string {
 	mut dir := os.real_path(start)
 	for dir.len > 0 {
 		if os.is_file(os.join_path_single(dir, 'v.mod')) {
@@ -698,11 +700,8 @@ fn dir_is_module(dir string) bool {
 	if dir.len == 0 || !os.is_dir(dir) {
 		return false
 	}
-	entries := os.ls(dir) or { return false }
-	for entry in entries {
-		if entry.ends_with('.v') {
-			return true
-		}
+	if dir_has_v_entry(dir) or { return false } {
+		return true
 	}
 	manifest := vmod.from_file(os.join_path_single(dir, 'v.mod')) or { return false }
 	source_root := manifest.source_root(dir)
@@ -1280,7 +1279,6 @@ pub fn directive_target_arch(prefix string) ?string {
 	return none
 }
 
-// normalized_target_os supports normalized target os handling for Preferences.
 // ccompiler_can_assemble reports whether `ccompiler` is a GCC or Clang compatible
 // driver, one that preprocesses and assembles a `.S` file with `-c`. tcc and MSVC
 // cannot; a `cc` or `gcc` name is trusted only after its version output rules
@@ -1291,7 +1289,6 @@ pub fn ccompiler_can_assemble(ccompiler string) bool {
 		|| real_name in ['cl', 'cl.exe'] {
 		return false
 	}
-	quoted_ccompiler := os.quoted_path(ccompiler)
 	for version_flag in ['--version', '-v'] {
 		res := os.exec([ccompiler, '${version_flag}'])
 		output := res.output.to_lower_ascii()

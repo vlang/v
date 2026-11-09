@@ -38,6 +38,7 @@ const usage = 'Usage: v up [options]\n' +
 	'  -prod              Compile the updated V with the -prod flag.\n' +
 	'  -skills            Refresh the installed agent skills that fell behind.\n' +
 	'  -skip_v_self       Rebuild with make or makev.bat instead of `v self`.\n' +
+	'                     Windows ARM64 uses the native PowerShell bootstrap script.\n' +
 	'  -skip_current      Recompile even when the checkout is already at the\n' +
 	'                     revision.\n' +
 	'  -h, -help, --help  Show this help and exit.\n' +
@@ -102,8 +103,9 @@ fn main() {
 	os.setenv('VTMP', os.abs_path(os.vtmp_dir()), true)
 	os.chdir(app.vroot)!
 	println('Updating V...')
+	previous_checkout_hash := version.githash(app.vroot) or { '' }
 	app.update_from_master()
-	if !app.update_tcc() {
+	tcc_updated := app.update_tcc() or {
 		app.show_current_v_version()
 		eprintln('Updating TCC *failed*.')
 		eprintln('Try running `${get_tcc_update_cmd()}` .')
@@ -115,12 +117,15 @@ fn main() {
 		if !os.exists(app.current_vexe_path()) { @VCURRENTHASH } else { '' }
 	}
 	current_hash_from_filesystem := version.githash(vroot) or { '' }
+	mut needs_cache_wipe := tcc_updated || previous_checkout_hash == ''
+		|| previous_checkout_hash != current_hash_from_filesystem
 	if !app.skip_current && !app.is_prod && !app.skip_v_self
 		&& current_v_hash != '' && current_hash_from_filesystem != ''
 		&& current_v_hash == current_hash_from_filesystem {
 		println('V is already updated.')
 		current_vexe_path := app.current_vexe_path()
-		if !os.exists(current_vexe_path) {
+		missing_compiler := !os.exists(current_vexe_path)
+		if missing_compiler {
 			eprintln('`${current_vexe_path}` is missing, trying `${get_make_cmd_name()}` to restore it...')
 			if !app.make('') {
 				app.show_current_v_version()
@@ -129,7 +134,7 @@ fn main() {
 				exit(1)
 			}
 		}
-		app.finish_update()
+		app.finish_update(needs_cache_wipe || missing_compiler)
 		return
 	}
 	if os.user_os() == 'windows' {
@@ -143,6 +148,7 @@ fn main() {
 			eprintln('Try running `${get_make_cmd_name()}` .')
 			exit(1)
 		}
+		needs_cache_wipe = true
 	} else {
 		println('> compiler sources did not change, not recompiling V.')
 	}
@@ -151,11 +157,12 @@ fn main() {
 		eprintln('`v up` failed. Run `cd ${os.quoted_path(app.vroot)} && ${v_upstream_pull_command()} && ${get_make_cmd_name()}` to finish updating V.')
 		exit(1)
 	}
-	app.finish_update()
+	app.finish_update(needs_cache_wipe)
 }
 
-// finish_update lets the Windows launcher clean caches after this executable exits.
-fn (app App) finish_update() {
+// finish_update reports the result and clears caches only when the update requires it.
+// On Windows, the launcher cleans caches after this executable exits.
+fn (app App) finish_update(needs_cache_wipe bool) {
 	// Private handshake; keep in sync with cmd/v/toolcache.v.
 	deferred_wipe_exit_code := 80
 	app.show_current_v_version()
@@ -164,12 +171,12 @@ fn (app App) finish_update() {
 	} $else {
 		false
 	}
-	if !defer_cleanup {
+	if needs_cache_wipe && !defer_cleanup {
 		app.wipe_cache()
 	}
 	app.report_skills()
 	app.report_fmt_hook()
-	if defer_cleanup {
+	if needs_cache_wipe && defer_cleanup {
 		exit(deferred_wipe_exit_code)
 	}
 }
@@ -343,12 +350,18 @@ fn v_upstream_pull_command() string {
 	return 'git pull --rebase ${v_upstream_url} ${v_upstream_branch}'
 }
 
-fn (app App) update_tcc() bool {
+// update_tcc returns whether TCC changed. Unknown revisions require cache cleanup too.
+fn (app App) update_tcc() !bool {
+	$if windows && arm64 {
+		app.vprintln('> Windows ARM64 uses MSVC; no bundled TCC update is needed.')
+		return false
+	}
 	command := get_tcc_update_cmd()
 	if os.user_os() != 'windows' {
 		make_sure_cmd_is_available(get_tcc_make_cmd_name())
 	}
-	println('> updating TCC ...')
+	println('> checking for TCC updates ...')
+	old_revision := tcc_revision()
 	result := os.exec(if os.user_os() == 'windows' && command == 'makev.bat' {
 		['cmd.exe', '/d', '/c', 'makev.bat']
 	} else {
@@ -357,11 +370,33 @@ fn (app App) update_tcc() bool {
 	if result.exit_code != 0 {
 		eprintln('> `${command}` failed:')
 		eprintln(result.output)
-		return false
+		return error('failed to update TCC')
 	}
 	app.vprintln(result.output)
-	println('> done updating TCC.')
-	return true
+	new_revision := tcc_revision()
+	if new_revision == '' {
+		println('> done updating TCC.')
+	} else if new_revision == old_revision {
+		println('> TCC is already up to date.')
+	} else {
+		println('> updated TCC to ${new_revision#[..7]}.')
+	}
+	return old_revision == '' || new_revision == '' || old_revision != new_revision
+}
+
+// tcc_revision returns the commit of the bundled TCC checkout, or '' when there is
+// no such checkout or git cannot read it.
+fn tcc_revision() string {
+	tcc_dir := os.join_path('thirdparty', 'tcc')
+	// Without its own .git, git would report the revision of the V checkout around it.
+	if !os.exists(os.join_path(tcc_dir, '.git')) {
+		return ''
+	}
+	result := os.exec(['git', '-C', tcc_dir, 'rev-parse', 'HEAD'])
+	if result.exit_code != 0 {
+		return ''
+	}
+	return result.output.trim_space()
 }
 
 // compiler_sources_unchanged checks whether nothing the compiler is built from
@@ -437,11 +472,18 @@ fn (app App) recompile_vup() bool {
 fn (app App) make(_vself string) bool {
 	println('> running make ...')
 	make := get_make_cmd_name()
-	make_result := os.exec(if os.user_os() == 'windows' {
-		['cmd.exe', '/d', '/c', 'makev.bat']
-	} else {
-		[make]
-	})
+	mut command := []string{}
+	$if windows && arm64 {
+		command = ['pwsh', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+			os.join_path(app.vroot, 'cmd', 'tools', 'builders', 'windows_arm64_release.ps1')]
+	} $else {
+		command = if os.user_os() == 'windows' {
+			['cmd.exe', '/d', '/c', 'makev.bat']
+		} else {
+			[make]
+		}
+	}
+	make_result := os.exec(command)
 	if make_result.exit_code != 0 {
 		eprintln('> ${make} failed:')
 		eprintln('> make output:')
@@ -587,6 +629,9 @@ fn (app App) install_git() {
 }
 
 fn get_make_cmd_name() string {
+	$if windows && arm64 {
+		return 'cmd/tools/builders/windows_arm64_release.ps1'
+	}
 	if os.user_os() == 'windows' {
 		return 'makev.bat'
 	}

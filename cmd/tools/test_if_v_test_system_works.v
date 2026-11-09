@@ -4,6 +4,7 @@ module main
 // and that it exits with code 1, when at least 1 FAIL happen.
 import os
 import rand
+import strings
 import time
 
 const vexe = os.quoted_path(get_vexe_path())
@@ -91,7 +92,7 @@ fn check_assert_continues_works() ! {
 
 fn check_ok(cmd string) MyResult {
 	println('>   check_ok cmd: ${cmd}')
-	res := os.exec(os.split_args(cmd) or { panic(err) })
+	res := run_check(cmd)
 	if res.exit_code != 0 {
 		eprintln('>   check_ok failed.\n${res.output}')
 		exit(1)
@@ -101,12 +102,33 @@ fn check_ok(cmd string) MyResult {
 
 fn check_fail(cmd string) MyResult {
 	println('> check_fail cmd: ${cmd}')
-	res := os.exec(os.split_args(cmd) or { panic(err) })
+	res := run_check(cmd)
 	if res.exit_code == 0 {
 		eprintln('> check_fail succeeded, but it should have failed.\n${res.output}')
 		exit(1)
 	}
 	return res.output
+}
+
+fn run_check(cmd string) os.Result {
+	args := os.split_args(cmd) or { panic(err) }
+	mut child := os.start_new_command_args(args) or {
+		return os.Result{ exit_code: -1, output: err.msg() }
+	}
+	mut output := strings.new_builder(1024)
+	for !child.eof {
+		line := child.read_line()
+		output.write_string(line)
+		eprint(line)
+		if !child.eof {
+			output.write_u8(`\n`)
+			eprint('\n')
+		}
+		// Keep progress visible even when a nested compiler never exits.
+		flush_stderr()
+	}
+	child.close() or { panic(err) }
+	return os.Result{ exit_code: child.exit_code, output: output.str() }
 }
 
 fn is_expected_compile_output(output string) bool {

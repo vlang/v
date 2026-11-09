@@ -43,11 +43,15 @@ two accesses happen at the very same time. V threads run in parallel, so:
   V threads can detect despite the sleeps, so the intentional race can still be checked;
 * `test_race_as_func3` sleeps in its thread, to get the order that it needs.
 
-gcc's ThreadSanitizer instrumentation does not see the reads and writes of whole struct
-values in call arguments and results (a struct passed by value, a struct result stored
-through the return slot), which V uses for strings, arrays and maps. `v -race` uses clang when
-it is installed, and the 20 tests that only pass with it count as known gcc limitations when
-the suite runs with gcc.
+gcc's ThreadSanitizer instrumentation can miss reads and writes of whole struct values in
+call arguments and results, which V uses for strings, arrays and maps. Race builds explicitly
+record reads of addressable string headers before they are copied, including concatenation,
+comparison, and slicing. The annotation evaluates the source address once and does not change
+mutable argument passing or take addresses of C rvalue expressions.
+
+Other aggregate copies still rely on the C compiler's instrumentation. `v -race` uses clang
+when it is installed; remaining misses listed in `gcc_known_misses` count as known gcc
+limitations when the suite runs with gcc.
 
 ## Not translated
 

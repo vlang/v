@@ -29,6 +29,41 @@ fn fastc_skip_attribute(mut scan scanner.Scanner) !token.Token {
 	return tok
 }
 
+// fastc_scan_attribute_texts consumes one `@[...]` attribute and returns the token after it,
+// plus each `;`-separated entry as written in the source, trimmed (`json: 'Red'`).
+fn fastc_scan_attribute_texts(mut scan scanner.Scanner) !(token.Token, []string) {
+	start := scan.offset
+	mut tok := scan.scan()
+	mut depth := 1
+	mut texts := []string{}
+	mut entry_start := start
+	for {
+		if tok == .eof {
+			return error('fastc parser does not support unfinished attribute')
+		}
+		if tok == .lsbr {
+			depth++
+		} else if tok == .rsbr {
+			depth--
+			if depth == 0 {
+				break
+			}
+		} else if tok == .semicolon && depth == 1 && scan.lit == ';' {
+			text := scan.src[entry_start..scan.pos].trim_space()
+			if text != '' {
+				texts << text
+			}
+			entry_start = scan.offset
+		}
+		tok = scan.scan()
+	}
+	text := scan.src[entry_start..scan.pos].trim_space()
+	if text != '' {
+		texts << text
+	}
+	return scan.scan(), texts
+}
+
 fn fastc_shared_parameter_is_name(scan scanner.Scanner, path string, module_name string, imports map[string]string, declared_types map[u32]bool, allow_short_placeholders bool) bool {
 	mut lookahead := scan
 	first := lookahead.scan()
@@ -40,6 +75,22 @@ fn fastc_shared_parameter_is_name(scan scanner.Scanner, path string, module_name
 	}
 	_, boundary := fastc_scan_type(mut lookahead, first, path, module_name, imports, declared_types, allow_short_placeholders) or { return false }
 	return boundary in [.comma, .semicolon, .rpar, .eof]
+}
+
+// fastc_skip_struct_field_attributes consumes every `@[...]` attribute that follows a
+// field's type or default. It returns the next token and the required/skip flags.
+fn fastc_skip_struct_field_attributes(mut scan scanner.Scanner, first token.Token) !(token.Token, bool, bool) {
+	mut tok := first
+	mut is_required := false
+	mut is_skip := false
+	for tok == .attribute {
+		mut attribute_is_required := false
+		mut attribute_is_skip := false
+		tok, attribute_is_required, attribute_is_skip = fastc_scan_struct_field_attribute(mut scan)!
+		is_required = is_required || attribute_is_required
+		is_skip = is_skip || attribute_is_skip
+	}
+	return tok, is_required, is_skip
 }
 
 fn fastc_scan_struct_field_attribute(mut scan scanner.Scanner) !(token.Token, bool, bool) {
@@ -92,7 +143,8 @@ fn fastc_skip_field_default_from_token(mut scan scanner.Scanner, first token.Tok
 	mut brackets := 0
 	mut braces := 0
 	for tok != .eof {
-		if parens == 0 && brackets == 0 && braces == 0 && tok in [.semicolon, .rcbr] {
+		// A top-level `@[` ends the default: the caller parses the field attributes.
+		if parens == 0 && brackets == 0 && braces == 0 && tok in [.semicolon, .rcbr, .attribute] {
 			return tok
 		}
 		match tok {
@@ -140,6 +192,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 	mut next_declaration_is_c_extern := false
 	mut next_declaration_is_markused := false
 	mut next_export_name := ''
+	mut next_c_symbol := ''
 	mut previous_tok := token.Token.unknown
 	mut skip_index := 0
 	mut tok := scan.scan()
@@ -162,6 +215,9 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 			if attribute.export_name != '' {
 				next_export_name = attribute.export_name
 			}
+			if attribute.c_symbol != '' {
+				next_c_symbol = attribute.c_symbol
+			}
 			continue
 		}
 		if brace_depth == 0 && tok == .key_global {
@@ -172,6 +228,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 			next_declaration_is_c_extern = false
 			next_declaration_is_markused = false
 			next_export_name = ''
+			next_c_symbol = ''
 			previous_tok = .unknown
 			continue
 		}
@@ -190,6 +247,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 					next_declaration_is_c_extern = false
 					next_declaration_is_markused = false
 					next_export_name = ''
+					next_c_symbol = ''
 					previous_tok = .unknown
 					continue
 				}
@@ -506,6 +564,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 				is_c_extern:                   is_c_function && next_declaration_is_c_extern
 				is_markused:                   !is_c_function && next_declaration_is_markused
 				export_name:                   if is_c_function { '' } else { next_export_name }
+				c_symbol:                      if is_c_function { next_c_symbol } else { '' }
 				module_name:                   header.module_name
 				path:                          path
 				position:                      declaration_offset
@@ -521,6 +580,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 						next_declaration_is_c_extern = false
 						next_declaration_is_markused = false
 						next_export_name = ''
+						next_c_symbol = ''
 						continue
 					}
 				}
@@ -530,6 +590,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 			next_declaration_is_c_extern = false
 			next_declaration_is_markused = false
 			next_export_name = ''
+			next_c_symbol = ''
 			continue
 		}
 		if brace_depth == 0 && tok in [.key_struct, .key_enum, .key_interface, .key_type, .key_union,
@@ -538,6 +599,7 @@ fn collect_function_signatures_at(source string, source_offset int, path string,
 			next_declaration_is_c_extern = false
 			next_declaration_is_markused = false
 			next_export_name = ''
+			next_c_symbol = ''
 		}
 		if tok == .lcbr && brace_depth == 0 {
 			skipped, next_skip := fastc_skip_recorded_body(mut scan, skips, skip_index)
@@ -706,6 +768,10 @@ fn fastc_skip_global_declaration(mut scan scanner.Scanner, path string) !token.T
 	mut expression_can_end := false
 	for tok != .eof {
 		if depth == 0 {
+			if tok == .semicolon && fastc_semicolon_continues_value(scan) {
+				tok = scan.scan()
+				continue
+			}
 			if tok in [.semicolon, .rpar] {
 				return tok
 			}
@@ -984,6 +1050,10 @@ fn fastc_collect_referenced_function_names(sources []FastcSourceFile, prefs &pre
 	}
 	for name in top_level_references.keys() {
 		used[name] = true
+	}
+	if fastc_program_uses_gc(prefs) {
+		// The startup sequence calls it (see fastc_gc_startup_initializer).
+		used['gc_runtime_init'] = true
 	}
 	// Native callers enter exported V functions without a V call site. Their
 	// transitive callees must participate in the same reachability traversal.
@@ -1517,8 +1587,7 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 			parameter_is_mut = true
 			tok = look.scan()
 		}
-		if !fastc_parameter_is_type_only(look, tok, path, module_name, imports, declared_types,
-			allow_short_placeholders) {
+		if !fastc_parameter_is_type_only(look, tok, path, module_name, imports, declared_types, allow_short_placeholders) {
 			tok = look.scan()
 		}
 		parameter_type_source_id_2_2_2_2, next_token := fastc_scan_type(mut look, tok, path, module_name, imports, declared_types, allow_short_placeholders)!
@@ -1558,7 +1627,26 @@ fn fastc_peek_function_type(scan scanner.Scanner, path string, module_name strin
 fn fastc_parameter_is_type_only(scan scanner.Scanner, first token.Token, path string, module_name string, imports map[string]string, declared_types map[u32]bool, allow_short_placeholders bool) bool {
 	mut look := scan
 	_, next_token := fastc_scan_type(mut look, first, path, module_name, imports, declared_types,
-		allow_short_placeholders) or { return false }
+		allow_short_placeholders) or {
+		if !err.msg().contains(fastc_removed_integer_type('isize'))
+			&& !err.msg().contains(fastc_removed_integer_type('usize')) {
+			return false
+		}
+		// A removed spelling can still be a parameter name or an array dimension
+		// in a named parameter, as in `usize []int` or `map [usize]int`.
+		if first in [.name, .key_shared, .key_module, .key_type] {
+			mut named := scan
+			type_token := named.scan()
+			if _, after_type := fastc_scan_type(mut named, type_token, path, module_name,
+				imports, declared_types, allow_short_placeholders) {
+				if after_type in [.comma, .semicolon, .rpar] {
+					return false
+				}
+			}
+		}
+		// Preserve the removed-type diagnostic when there is no valid named form.
+		return true
+	}
 	return next_token in [.comma, .semicolon, .rpar]
 }
 
@@ -1801,6 +1889,33 @@ fn fastc_scan_type_bytes(mut scan scanner.Scanner, first token.Token, path strin
 		type_module = imported_module
 		is_imported_type = type_module != module_name
 	}
+	if type_module != 'C' && (raw_type == 'isize' || raw_type == 'usize') {
+		return error('fastc parser does not support ${fastc_removed_integer_type(raw_type)} in ${path}')
+	}
+	if tok == .lsbr {
+		argument_start := scan
+		mut depth := 1
+		mut has_legacy_name := false
+		for depth > 0 {
+			tok = scan.scan()
+			if tok == .eof {
+				return error('fastc parser does not support unfinished generic type in ${path}')
+			}
+			if tok == .name && fastc_is_removed_integer_name(scan.lit) {
+				has_legacy_name = true
+			}
+			if tok == .lsbr {
+				depth++
+			} else if tok == .rsbr {
+				depth--
+			}
+		}
+		if has_legacy_name {
+			fastc_validate_removed_generic_argument_types(argument_start, path, module_name,
+				imports, declared_types, allow_short_placeholders)!
+		}
+		tok = scan.scan()
+	}
 	type_key := fastc_type_key(type_module, raw_type)
 	if is_imported_type && type_module != 'builtin' && fastc_source_type_key_exists(declared_types, type_key) && !fastc_source_type_key_value(declared_types, type_key) {
 		return error('fastc parser does not support private type `${raw_type}` from imported module `${type_module}` in ${path}')
@@ -1841,25 +1956,42 @@ fn fastc_scan_type_bytes(mut scan scanner.Scanner, first token.Token, path strin
 			base = fastc_c_declared_type_name(type_key)
 		}
 	}
-	if tok == .lsbr {
-		mut depth := 1
-		for depth > 0 {
-			tok = scan.scan()
-			if tok == .eof {
-				return error('fastc parser does not support unfinished generic type in ${path}')
-			}
-			if tok == .lsbr {
-				depth++
-			} else if tok == .rsbr {
-				depth--
-			}
-		}
-		tok = scan.scan()
-	}
+
 	if optional {
 		return wrapper, tok
 	}
 	return base + '*'.repeat(pointers), tok
+}
+
+// fastc_validate_removed_generic_argument_types distinguishes types from module
+// qualifiers, array dimensions, and named callback parameters in erased arguments.
+fn fastc_validate_removed_generic_argument_types(scan scanner.Scanner, path string, module_name string, imports map[string]string, declared_types map[u32]bool, allow_short_placeholders bool) ! {
+	mut look := scan
+	mut tok := fastc_scan_skip_semicolons(mut look, look.scan())
+	for tok !in [.rsbr, .eof] {
+		start := look
+		tok = fastc_scan_generic_argument_type(mut look, tok, path, module_name, imports,
+			declared_types, allow_short_placeholders) or {
+			if err.msg().contains(fastc_removed_integer_type('isize'))
+				|| err.msg().contains(fastc_removed_integer_type('usize')) {
+				return err
+			}
+			// Other unresolved arguments retain the existing generic erasure behavior.
+			look = start
+			fastc_skip_global_type(mut look, tok, path) or { return }
+		}
+		tok = fastc_scan_skip_semicolons(mut look, tok)
+		if tok != .comma {
+			return
+		}
+		tok = fastc_scan_skip_semicolons(mut look, look.scan())
+	}
+}
+
+fn fastc_scan_generic_argument_type(mut scan scanner.Scanner, first token.Token, path string, module_name string, imports map[string]string, declared_types map[u32]bool, allow_short_placeholders bool) !token.Token {
+	_, next := fastc_scan_type_bytes(mut scan, first, path, module_name, imports, declared_types,
+		allow_short_placeholders)!
+	return next
 }
 
 fn fastc_composite_type_part(typ string) string {
@@ -1935,8 +2067,10 @@ fn fastc_fixed_length_atom(tokens []FastcExpressionToken, start int, module_name
 		return error('fastc parser does not support fixed array dimension token `${item.tok.str()}`')
 	}
 	if start + 1 < tokens.len && tokens[start + 1].tok == .lpar {
-		if item.lit !in ['int', 'u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64', 'uint', 'usize',
-			'isize'] {
+		if item.lit == 'isize' || item.lit == 'usize' {
+			return error('fastc parser does not support ${fastc_removed_integer_type(item.lit)}')
+		}
+		if item.lit !in ['int', 'u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64', 'uint'] {
 			return error('fastc parser does not support function call in fixed array dimension')
 		}
 		value, end := fastc_fixed_length_expression(tokens, start + 2, 1, module_name, imports, declared_types)!

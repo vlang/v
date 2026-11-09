@@ -1,6 +1,8 @@
 module x64
 
-import os
+$if linux && amd64 {
+	import os
+}
 
 fn test_native_stdlib_core_semantics() {
 	$if linux && amd64 {

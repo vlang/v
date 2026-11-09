@@ -760,6 +760,7 @@ fn (g &FlatGen) collect_prelude_scan_from(id flat.NodeId, mut scan FnPreludeScan
 	g.collect_prelude_scan_node(id, node, mut scan, collect_defers)
 }
 
+@[direct_array_access]
 fn (g &FlatGen) collect_prelude_scan_node(id flat.NodeId, node &flat.Node, mut scan FnPreludeScan, collect_defers bool) {
 	mut child_collect_defers := collect_defers
 	if collect_defers
@@ -793,10 +794,23 @@ fn (g &FlatGen) collect_prelude_scan_node(id flat.NodeId, node &flat.Node, mut s
 	}
 	start := node.children_start
 	end := start + int(node.children_count)
-	if start >= 0 && end <= g.a.children.len {
+	// The walk never grows the AST, so its arrays can be read through local headers
+	// instead of being reloaded through `g.a` after every scan update.
+	children := g.a.children
+	if start >= 0 && end <= children.len {
+		nodes := g.a.nodes
 		for i in start .. end {
 			// The child range is checked above; avoid per-child bounds checks in this hot walk.
-			g.collect_prelude_scan_from(unsafe { g.a.children[i] }, mut scan, child_collect_defers)
+			child_id := int(children[i])
+			if child_id < 0 || child_id >= nodes.len {
+				continue
+			}
+			child := unsafe { &nodes[child_id] }
+			if child.children_count == 0
+				&& child.kind !in [.defer_stmt, .lock_expr, .label_stmt] {
+				continue
+			}
+			g.collect_prelude_scan_node(flat.NodeId(child_id), child, mut scan, child_collect_defers)
 		}
 	}
 	if pushed_lock {
@@ -5375,17 +5389,27 @@ fn (g &FlatGen) debugger_smartcast_vars(node flat.Node) map[string]DebuggerSmart
 	return result
 }
 
+// Use the loaded runtime identity, which can retain the canonical module name
+// instead of its declared short name when imports need to remain distinct.
+fn (g &FlatGen) debugger_runtime_module_name() string {
+	if 'v.debug.g_debugger' in g.global_types {
+		return 'v.debug'
+	}
+	return 'debug'
+}
+
 fn (mut g FlatGen) gen_debugger_stmt(node flat.Node) {
 	position := g.a.source_position(node.pos) or { return }
 	vars := g.debugger_scope_vars()
 	smartcast_vars := g.debugger_smartcast_vars(node)
 	scope_name := '__v3_debug_scope_${g.tmp_count}'
 	g.tmp_count++
-	info_type := g.cname('debug.DebugContextInfo')
-	var_type := g.cname('debug.DebugContextVar')
-	debugger_type := g.cname('debug.Debugger')
-	interact_fn := g.cname('debug.Debugger.interact')
-	debugger_global := g.cname('debug.g_debugger')
+	runtime_module := g.debugger_runtime_module_name()
+	info_type := g.cname('${runtime_module}.DebugContextInfo')
+	var_type := g.cname('${runtime_module}.DebugContextVar')
+	debugger_type := g.cname('${runtime_module}.Debugger')
+	interact_fn := g.fn_c_name_in_module(runtime_module, 'Debugger.interact')
+	debugger_global := g.global_c_name('${runtime_module}.g_debugger')
 	file_literal := debugger_string_literal(position.filename)
 	module_literal := debugger_string_literal(if g.tc.cur_module.len > 0 {
 		g.tc.cur_module
@@ -6391,7 +6415,7 @@ fn (g &FlatGen) local_fn_call_return_type(call_id flat.NodeId, call_node flat.No
 			return node_type
 		}
 	}
-	if name := g.tc.resolved_call_name(call_id) {
+	if name := g.resolved_call_name(call_id) {
 		if name.starts_with('C.') {
 			if ret := g.module_c_fn_return_type(name) {
 				return ret
@@ -6612,20 +6636,9 @@ fn (g &FlatGen) declared_call_return_type_uncached(call_id flat.NodeId) (types.T
 				return *local_fn.return_type, unsafe { nil }
 			}
 		}
-		if ret := g.module_c_fn_return_type(fn_node.value) {
-			return ret, unsafe { nil }
-		}
-		if rt := g.fn_decl_return_type_reference_for_call_name(fn_node.value) {
-			return *rt, rt
-		}
-		if ret := g.tc.fn_ret_types[fn_node.value] {
-			return ret, unsafe { nil }
-		}
-		cfn := g.cname(fn_node.value)
-		if cfn != fn_node.value {
-			if ret := g.tc.fn_ret_types[cfn] {
-				return ret, unsafe { nil }
-			}
+		found, ret, canonical := g.ident_callee_declared_return_type(fn_node.value)
+		if found {
+			return ret, canonical
 		}
 	}
 	// Indirect call through an fn-pointer value (local var, param, or struct field
@@ -6641,6 +6654,52 @@ fn (g &FlatGen) declared_call_return_type_uncached(call_id flat.NodeId) (types.T
 		return *callee_t.return_type, unsafe { nil }
 	}
 	return types.Type(types.void_), unsafe { nil }
+}
+
+// ident_callee_declared_return_type is the declaration part of
+// declared_call_return_type_uncached for a plain callee name: the module C
+// function table, the collected declarations and the checker signatures, in
+// that order. The answer depends only on the name and the body's module, so it
+// is memoized per body; a body calls the same few names many times.
+fn (g &FlatGen) ident_callee_declared_return_type(name string) (bool, types.Type, &types.Type) {
+	mut memo := g.body_context_type_memo()
+	if isnil(memo) || memo.callee_returns.len == 0 {
+		return g.ident_callee_declared_return_type_uncached(name)
+	}
+	slot := c_name_recent_slot(name) & (body_callee_return_slots - 1)
+	// The masked slot is in bounds; borrow the entry without copying its type.
+	entry := unsafe { &memo.callee_returns[slot] }
+	if entry.generation == memo.generation && entry.name == name {
+		return entry.found, entry.value, entry.canonical
+	}
+	found, ret, canonical := g.ident_callee_declared_return_type_uncached(name)
+	memo.callee_returns[slot] = BodyCalleeReturnQuery{
+		name:       name
+		generation: memo.generation
+		found:      found
+		value:      ret
+		canonical:  canonical
+	}
+	return found, ret, canonical
+}
+
+fn (g &FlatGen) ident_callee_declared_return_type_uncached(name string) (bool, types.Type, &types.Type) {
+	if ret := g.module_c_fn_return_type(name) {
+		return true, ret, unsafe { nil }
+	}
+	if rt := g.fn_decl_return_type_reference_for_call_name(name) {
+		return true, *rt, rt
+	}
+	if ret := g.tc.fn_ret_types[name] {
+		return true, ret, unsafe { nil }
+	}
+	cfn := g.cname(name)
+	if cfn != name {
+		if ret := g.tc.fn_ret_types[cfn] {
+			return true, ret, unsafe { nil }
+		}
+	}
+	return false, types.Type(types.void_), unsafe { nil }
 }
 
 fn (g &FlatGen) selector_call_return_type(fn_node flat.Node) ?types.Type {
@@ -6914,7 +6973,7 @@ fn (g &FlatGen) expr_really_returns_optional(id flat.NodeId) bool {
 		if declared is types.OptionType || declared is types.ResultType {
 			return true
 		}
-		if fname := g.tc.resolved_call_name(id) {
+		if fname := g.resolved_call_name(id) {
 			ret_type := g.tc.fn_ret_types[fname] or { return false }
 			return ret_type is types.OptionType || ret_type is types.ResultType
 		}
@@ -7444,8 +7503,58 @@ fn (g &FlatGen) usable_expr_type_reference_uncached(id flat.NodeId) &types.Type 
 		if typ !is types.Unknown && typ !is types.Void {
 			return typ
 		}
+	} else {
+		// Without a checked type, resolve_type_reference reaches resolve_type_slow,
+		// whose answer for these kinds is fixed by the node alone; skip the body
+		// memo and the checker's dispatch for them.
+		if int(id) >= 0 && int(id) < g.a.nodes.len {
+			if fixed := g.fixed_unchecked_node_type(unsafe { &g.a.nodes[int(id)] }) {
+				return g.tc.intern_type_reference(fixed)
+			}
+		}
 	}
 	return g.body_resolve_type_reference(id)
+}
+
+// fixed_unchecked_node_type mirrors the checker's resolution of a node that has
+// no checked expression type when that resolution does not depend on operands,
+// scopes or memos: resolve_type_slow's literal table, and the comparison/logical
+// operator rule of resolve_type_nonliteral, which precedes every operand read
+// (and is only bypassed by a diagnostic on the node, so it is skipped when any
+// diagnostics exist).
+fn (g &FlatGen) fixed_unchecked_node_type(node &flat.Node) ?types.Type {
+	match node.kind {
+		.int_literal {
+			if g.tc.translated_files.len == 0 {
+				return types.Type(types.int_)
+			}
+		}
+		.float_literal {
+			return types.Type(types.f64_)
+		}
+		.bool_literal {
+			return types.Type(types.bool_)
+		}
+		.char_literal {
+			if !node.value.starts_with('c:') {
+				return types.Type(types.rune_)
+			}
+		}
+		.nil_literal {
+			return types.Type(types.voidptr_)
+		}
+		.sizeof_expr, .offsetof_expr {
+			return types.Type(types.u32_)
+		}
+		.infix {
+			if g.tc.errors.len == 0
+				&& node.op in [.eq, .ne, .lt, .gt, .le, .ge, .logical_and, .logical_or] {
+				return types.Type(types.bool_)
+			}
+		}
+		else {}
+	}
+	return none
 }
 
 fn (g &FlatGen) specialized_selector_method_call_return_type(node flat.Node, fn_node flat.Node) ?types.Type {
@@ -10490,7 +10599,7 @@ fn (mut g FlatGen) precompute_local_name_exceptions() {
 
 // A missing bit proves that none of the immutable global tables can resolve
 // the name. Collisions only retain the complete lookup.
-@[inline]
+@[direct_array_access; inline]
 fn global_name_filter_slot(name string) int {
 	mut hash := u32(name.len) * 131
 	if name.len > 0 {
@@ -10554,7 +10663,8 @@ fn (g &FlatGen) local_decl_cname(name string) string {
 
 fn (g &FlatGen) local_name_needs_global_suffix(name string) bool {
 	if g.local_global_suffix_names_ready {
-		return name in g.local_global_suffix_names
+		return cgen_name_may_be_in(g.local_global_suffix_len_bits, name)
+			&& name in g.local_global_suffix_names
 	}
 	mut cache := g.local_global_shadow_facts
 	if !isnil(cache) {
@@ -10588,7 +10698,34 @@ fn (mut g FlatGen) precompute_local_global_suffix_names() {
 			g.local_global_suffix_names[name] = true
 		}
 	}
+	g.local_global_suffix_len_bits = cgen_name_len_bits(g.local_global_suffix_names)
 	g.local_global_suffix_names_ready = true
+}
+
+// cgen_name_len_bits indexes a name set by first byte and length: bit
+// min(len, 63) of entry names[0] is set for every name in `names`. A name whose
+// bit is clear is not in the set, so hot lookups skip hashing most misses.
+@[direct_array_access]
+fn cgen_name_len_bits(names map[string]bool) []u64 {
+	mut bits := []u64{len: 256}
+	for name, _ in names {
+		if name.len > 0 {
+			bits[name[0]] |= u64(1) << cgen_name_len_bit(name.len)
+		}
+	}
+	return bits
+}
+
+@[inline]
+fn cgen_name_len_bit(len int) int {
+	return if len < 63 { len } else { 63 }
+}
+
+// cgen_name_may_be_in reports whether `bits` (see cgen_name_len_bits) admits `name`.
+@[direct_array_access; inline]
+fn cgen_name_may_be_in(bits []u64, name string) bool {
+	return bits.len != 256 || name.len == 0
+		|| bits[name[0]] & (u64(1) << cgen_name_len_bit(name.len)) != 0
 }
 
 // The runtime's own `array` struct is typed into C under that name, and a local
@@ -10607,7 +10744,8 @@ fn (g &FlatGen) local_name_shadows_c_typedef(name string) bool {
 		// precompute_c_typedef_shadow_names), so only a shadow name itself can
 		// map to one.
 		if g.c_typedef_shadow_names_plain && cgen_is_word_identifier(name)
-			&& name !in g.c_typedef_shadow_names {
+			&& (!cgen_name_may_be_in(g.c_typedef_shadow_len_bits, name)
+				|| name !in g.c_typedef_shadow_names) {
 			return false
 		}
 		return g.cname(name) in g.c_typedef_shadow_names
@@ -10671,6 +10809,7 @@ fn (mut g FlatGen) precompute_c_typedef_shadow_names() {
 		}
 	}
 	g.c_typedef_shadow_names_plain = plain
+	g.c_typedef_shadow_len_bits = cgen_name_len_bits(g.c_typedef_shadow_names)
 	g.c_typedef_shadow_names_ready = true
 }
 
@@ -10919,7 +11058,7 @@ fn (g &FlatGen) noreturn_call_id(id flat.NodeId) ?flat.NodeId {
 // is_noreturn_call reports whether is noreturn call applies in c.
 fn (g &FlatGen) is_noreturn_call(id flat.NodeId) bool {
 	call_id := g.noreturn_call_id(id) or { return false }
-	if g.tc.resolved_call_name(call_id) != none {
+	if g.resolved_call_name(call_id) != none {
 		return g.tc.resolved_call_never_returns(call_id)
 	}
 	call := g.a.nodes[int(call_id)]
@@ -11320,7 +11459,7 @@ fn (g &FlatGen) expr_is_error_call(id flat.NodeId) bool {
 	if fn_node.value !in ['error', 'error_with_code'] {
 		return false
 	}
-	if resolved := g.tc.resolved_call_name(id) {
+	if resolved := g.resolved_call_name(id) {
 		return resolved in ['error', 'error_with_code', 'builtin.error', 'builtin.error_with_code']
 	}
 	if fn_node.kind != .ident {

@@ -55,7 +55,7 @@ fi
 [ "${VTEST_SKIP_OWNERSHIP:-}" = 1 ] || exit 93
 [ -z "${VTEST_RESUME_OWNER:-}" ] || exit 99
 case "$3" in
-    *_gcc) compiler=gcc; flags='' ;;
+    *_gcc) compiler=gcc; flags='-cc gcc' ;;
     *_clang) compiler=clang; flags='-cc clang' ;;
     *) compiler=tcc; flags='-cc tcc -no-retry-compilation' ;;
 esac

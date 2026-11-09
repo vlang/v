@@ -403,10 +403,19 @@ fn (mut z Zip) read_current_data() ![]u8 {
 		return error('szip: inconsistent entry name')
 	}
 	// With a data descriptor, the central directory carries the final sizes and checksum.
-	if flags & 8 == 0 && (read_u32(data, pos + 14) != e.crc32
-		|| u64(read_u32(data, pos + 18)) != e.csize
-		|| u64(read_u32(data, pos + 22)) != e.size) {
-		return error('szip: inconsistent entry metadata')
+	if flags & 8 == 0 {
+		mut local_csize := u64(read_u32(data, pos + 18))
+		mut local_size := u64(read_u32(data, pos + 22))
+		if local_size == 0xffffffff || local_csize == 0xffffffff {
+			// Writers can reserve ZIP64 local sizes even when the final sizes
+			// fit in the ordinary central directory, as NumPy does for NPZ files.
+			zip64_size, zip64_csize := read_local_zip64_sizes(data[pos + 30 + name_len..data_start])!
+			if local_size == 0xffffffff { local_size = zip64_size }
+			if local_csize == 0xffffffff { local_csize = zip64_csize }
+		}
+		if read_u32(data, pos + 14) != e.crc32 || local_csize != e.csize || local_size != e.size {
+			return error('szip: inconsistent entry metadata')
+		}
 	}
 	data_end := data_start + int(e.csize)
 	if flags & 8 != 0 {
@@ -442,6 +451,39 @@ fn (mut z Zip) read_current_data() ![]u8 {
 		return error('szip: directory entry contains data')
 	}
 	return decoded
+}
+
+// read_local_zip64_sizes reads the two sizes required in a ZIP64 local extra
+// field (APPNOTE 4.5.3), checking every extra-field boundary before reading it.
+fn read_local_zip64_sizes(extra []u8) !(u64, u64) {
+	mut pos := 0
+	mut found := false
+	mut size := u64(0)
+	mut csize := u64(0)
+	for pos < extra.len {
+		if extra.len - pos < 4 {
+			return error('szip: truncated local extra field')
+		}
+		tag := read_u16(extra, pos)
+		field_len := int(read_u16(extra, pos + 2))
+		pos += 4
+		if field_len > extra.len - pos {
+			return error('szip: truncated local extra field')
+		}
+		if tag == 0x0001 {
+			if found || field_len < 16 {
+				return error('szip: invalid ZIP64 local extra field')
+			}
+			size = u64(read_u32(extra, pos)) | (u64(read_u32(extra, pos + 4)) << 32)
+			csize = u64(read_u32(extra, pos + 8)) | (u64(read_u32(extra, pos + 12)) << 32)
+			found = true
+		}
+		pos += field_len
+	}
+	if !found {
+		return error('szip: missing ZIP64 local extra field')
+	}
+	return size, csize
 }
 
 pub fn (mut z Zip) read_entry_buf(buf voidptr, in_bsize int) !int {

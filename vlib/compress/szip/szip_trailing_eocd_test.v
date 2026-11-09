@@ -75,7 +75,7 @@ fn test_rejects_embedded_empty_eocd() ! {
 	// Strip the outer end record: only the embedded empty zip's signature
 	// remains inside the file.
 	mut bytes := os.read_bytes(outer_path)!
-	bytes = bytes[0 .. bytes.len - 22]
+	bytes = bytes[0..bytes.len - 22]
 	os.write_bytes(outer_path, bytes)!
 	mut rejected := false
 	szip.open(outer_path, .no_compression, .read_only) or {

@@ -1,17 +1,35 @@
+@[attribute]
+struct Tag {
+	value int
+}
+
+@[attribute]
+struct DocAttr {
+	value string
+}
+
+@[attribute]
+struct Eplain {}
+
+@[attribute]
+struct Ek {
+	value string
+}
+
 // Characterization of struct-field and enum-value attributes.
 // Fields and enum values expose raw strings via `.attrs` (quotes
 // preserved) and, like declarations, typed `VAttribute` values via
 // `.attributes`. The custom-attributes work must preserve the
 // `.attrs` strings.
 struct FieldAttrStrings {
-	name  string @[json: 'userName'; required; tag: 7]
+	name  string @[json: 'userName'; required; Tag: 7]
 	flag  bool   @[skip]
 	plain int
 }
 
 @[DocAttr: 'top']
 enum ValAttrStrings {
-	alpha  @[eplain; ek: 'ev']
+	alpha  @[Eplain; Ek: 'ev']
 	beta
 }
 
@@ -24,7 +42,7 @@ fn test_field_attrs_strings() {
 	}
 	assert names == ['name', 'flag', 'plain']
 	assert attrs == [
-		["json: 'userName'", 'required', 'tag: 7'],
+		["json: 'userName'", 'required', 'Tag: 7'],
 		['skip'],
 		[],
 	]
@@ -37,7 +55,7 @@ fn test_field_attributes_view() {
 			got << '${field.name}:${attr.name}|${attr.has_arg}|${attr.arg}'
 		}
 	}
-	assert got == ['name:json|true|userName', 'name:required|false|', 'name:tag|true|7',
+	assert got == ['name:json|true|userName', 'name:required|false|', 'name:Tag|true|7',
 		'flag:skip|false|']
 }
 
@@ -50,7 +68,7 @@ fn test_enum_value_attrs_strings() {
 	}
 	assert names == ['alpha', 'beta']
 	assert attrs == [
-		['eplain', "ek: 'ev'"],
+		['Eplain', "Ek: 'ev'"],
 		[],
 	]
 }

@@ -6,10 +6,14 @@ import v.pref
 import v.scanner
 import v.token
 
-// fastc_target_runtime_preferences selects bodyless libc bindings supplied by
-// the target headers and FastC's native declaration emitter.
+// fastc_target_runtime_preferences selects FastC's canonical integer declarations
+// and the libc bindings supplied by target headers when requested.
 fn fastc_target_runtime_preferences(prefs &pref.Preferences) pref.Preferences {
 	mut scoped := *prefs
+	if 'fastc_backend' !in scoped.user_defines {
+		scoped.user_defines = scoped.user_defines.clone()
+		scoped.user_defines << 'fastc_backend'
+	}
 	if scoped.target_libc_headers {
 		scoped.user_defines = scoped.user_defines.clone()
 		for define in ['v3_c_extern_declarations', 'no_segfault_handler'] {
@@ -218,6 +222,10 @@ fn fastc_native_quoted_include_path(directive string, source_path string, prefs 
 	}
 	if header.contains('@VMODROOT') {
 		header = header.replace('@VMODROOT', fastc_vmod_root_for_file(source_path))
+	}
+	if header.contains('@DIR') {
+		// Match the emitted directive (fastc_resolve_c_pseudo_paths).
+		header = header.replace('@DIR', os.real_path(os.dir(os.real_path(source_path))))
 	}
 	if !os.is_abs_path(header) {
 		header = os.join_path(os.dir(source_path), header)

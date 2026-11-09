@@ -997,12 +997,14 @@ fn v3_default_link_library_dirs(manager &modulecache.Manager, linker string, bas
 const v3_link_environment_names = ['LIBRARY_PATH', 'CPATH', 'C_INCLUDE_PATH', 'OBJC_INCLUDE_PATH',
 	'COMPILER_PATH', 'GCC_EXEC_PREFIX', 'LD_RUN_PATH', 'LD_LIBRARY_PATH', 'GNUTARGET', 'LDEMULATION',
 	'SDKROOT', 'MACOSX_DEPLOYMENT_TARGET', 'DEVELOPER_DIR', 'TOOLCHAINS', 'CCC_OVERRIDE_OPTIONS',
-	'SOURCE_DATE_EPOCH', 'ZERO_AR_DATE']
+	'SOURCE_DATE_EPOCH', 'ZERO_AR_DATE', 'CPLUS_INCLUDE_PATH', 'INCLUDE', 'LIB', 'LIBPATH', 'CL',
+	'_CL_', 'LINK', '_LINK_', 'VCINSTALLDIR', 'VCToolsInstallDir', 'VCToolsVersion', 'WindowsSdkDir',
+	'WindowsSDKVersion', 'UniversalCRTSdkDir', 'UCRTVersion']
 
 // v3_link_environment_signature returns the part of the environment that decides,
 // along with its arguments, what a command that compiles and links a program
 // reads and makes. It belongs to the identity of an executable that a later build
-// may take in place of running the command: the files that the command read can
+// or native object that a later build may take in place of running the command: the files that the command read can
 // all be as they were while the environment sends it to others.
 fn v3_link_environment_signature() string {
 	mut parts := []string{cap: v3_link_environment_names.len}

@@ -320,7 +320,7 @@ fn test_self_build_defaults_to_c_backend() {
 	}
 	build := os.exec([vexe, '-o', '${tool}', os.join_path(vroot, 'cmd', 'tools', 'vself.v')])
 	assert build.exit_code == 0, build.output
-	// Ordinary and production self-builds must not opt into optional backends.
+	// Ordinary rebuilds stay small; production builds optimize and train FastC.
 	default_result :=
 		os.exec(['env', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-o',
 			'/tmp/vself_fastc_default_test'])
@@ -334,7 +334,17 @@ fn test_self_build_defaults_to_c_backend() {
 		os.exec(['env', 'VFLAGS=', 'VEXE=' + '${noop}', '${tool}', 'self', '-prod', '-o',
 			'/tmp/vself_fastc_prod_test'])
 	assert prod_result.exit_code == 0, prod_result.output
-	assert !prod_result.output.contains('-compile-backend'), prod_result.output
+	assert prod_result.output.contains('-compile-backend fastc'), prod_result.output
+	assert !prod_result.output.contains('-d skip_fastc'), prod_result.output
+	for backend in ['arm64', 'x64', 'wasm', 'eval', 'ssa'] {
+		assert prod_result.output.contains('-d skip_${backend}'), prod_result.output
+	}
+	assert_vself_preserves_full_cli(prod_result.output)
+	prod_vflags_result := os.exec(['env', 'VFLAGS=-prod', 'VEXE=${noop}', tool, 'self', '-o',
+		'/tmp/vself_fastc_prod_vflags_test'])
+	assert prod_vflags_result.exit_code == 0, prod_vflags_result.output
+	assert prod_vflags_result.output.contains('-compile-backend fastc'), prod_vflags_result.output
+	assert !prod_vflags_result.output.contains('-d skip_fastc'), prod_vflags_result.output
 	for opt_in in [['-compile-backend', 'fastc'], ['-all-backends']] {
 		result := os.exec(['env', 'VFLAGS=', 'VEXE=${noop}', tool, 'self', ...opt_in, '-o',
 			'/tmp/vself_backend_opt_in_test'])
@@ -355,12 +365,20 @@ fn test_self_build_defaults_to_c_backend() {
 		result := os.exec(args)
 		assert result.exit_code == 0, result.output
 		assert !result.output.contains('-compile-backend'), result.output
+		prod_opt_out := os.exec(['env', 'VFLAGS=', 'VEXE=${noop}', tool, 'self', '-prod', ...opt_out,
+			'-o', '/tmp/vself_fastc_prod_opt_out_test'])
+		assert prod_opt_out.exit_code == 0, prod_opt_out.output
+		assert !prod_opt_out.output.contains('-compile-backend'), prod_opt_out.output
 	}
 	vflags_result :=
 		os.exec(['env', 'VFLAGS=-d skip_fastc', 'VEXE=' + '${noop}', '${tool}', 'self', '-o',
 			'/tmp/vself_fastc_vflags_test'])
 	assert vflags_result.exit_code == 0, vflags_result.output
 	assert !vflags_result.output.contains('-compile-backend'), vflags_result.output
+	prod_skip_result := os.exec(['env', 'VFLAGS=-d skip_fastc', 'VEXE=${noop}', tool, 'self', '-prod',
+		'-o', '/tmp/vself_fastc_prod_skip_test'])
+	assert prod_skip_result.exit_code == 0, prod_skip_result.output
+	assert !prod_skip_result.output.contains('-compile-backend'), prod_skip_result.output
 }
 
 fn test_self_bootstrap_handles_the_old_peak_rss_return_type() ! {

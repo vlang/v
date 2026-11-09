@@ -56,6 +56,7 @@ pub fn (a Any) string() string {
 		// ... certain call-patterns to this function will cause a memory corruption.
 		// See `tests/toml_memory_corruption_test.v` for a matching regression test.
 		string { return (a as string).clone() }
+		f64 { return a.str() }
 		DateTime { return a.str().clone() }
 		Date { return a.str().clone() }
 		Time { return a.str().clone() }
@@ -98,31 +99,41 @@ pub fn (a Any) to_toml() string {
 	}
 }
 
-// int returns `Any` as an 32-bit integer.
+// int returns `Any` as an integer, or zero for an integer outside its range.
 pub fn (a Any) int() int {
 	match a {
 		int { return a }
-		i64, f32, f64, bool { return int(a) }
+		u64 {
+			limit := if sizeof(int) == 4 { u64(2147483647) } else { u64(9223372036854775807) }
+			return if a <= limit { int(a) } else { 0 }
+		}
+		i64 {
+			if sizeof(int) == 4 && (a < -2147483648 || a > 2147483647) { return 0 }
+			return int(a)
+		}
+		f32, f64, bool { return int(a) }
 		// time.Time { return int(0) } // TODO
 		else { return 0 }
 	}
 }
 
-// i64 returns `Any` as a 64-bit integer.
+// i64 returns `Any` as a 64-bit integer, or zero for an unsigned value outside its range.
 pub fn (a Any) i64() i64 {
 	match a {
 		i64 { return a }
+		u64 { return if a <= u64(9223372036854775807) { i64(a) } else { i64(0) } }
 		int, f32, f64, bool { return i64(a) }
 		// time.Time { return i64(0) } // TODO
 		else { return 0 }
 	}
 }
 
-// u64 returns `Any` as a 64-bit unsigned integer.
+// u64 returns `Any` as a 64-bit unsigned integer, or zero for a negative integer.
 pub fn (a Any) u64() u64 {
 	match a {
 		u64 { return a }
-		int, i64, f32, f64, bool { return u64(a) }
+		int, i64 { return if a >= 0 { u64(a) } else { u64(0) } }
+		f32, f64, bool { return u64(a) }
 		// time.Time { return u64(0) } // TODO
 		else { return 0 }
 	}
@@ -132,7 +143,7 @@ pub fn (a Any) u64() u64 {
 pub fn (a Any) f32() f32 {
 	match a {
 		f32 { return a }
-		int, i64, f64 { return f32(a) }
+		int, i64, u64, f64 { return f32(a) }
 		// time.Time { return f32(0) } // TODO
 		else { return 0.0 }
 	}
@@ -142,7 +153,7 @@ pub fn (a Any) f32() f32 {
 pub fn (a Any) f64() f64 {
 	match a {
 		f64 { return a }
-		int, i64, f32 { return f64(a) }
+		int, i64, u64, f32 { return f64(a) }
 		// time.Time { return f64(0) } // TODO
 		else { return 0.0 }
 	}

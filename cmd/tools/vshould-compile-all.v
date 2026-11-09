@@ -6,6 +6,15 @@ const should_clean = os.args.contains('-c')
 fn main() {
 	log.use_stdout()
 	unbuffer_stdout()
+	inherited_flags := os.split_args(os.getenv('VFLAGS')) or { panic(err) }
+	// Default C builds can reuse module objects. Only override the backend when
+	// VFLAGS selected one explicitly; -b c asks for uncached, complete C output.
+	native_backend_options := if inherited_flags.any(it in ['-b', '-backend']
+		|| it.starts_with('-b=') || it.starts_with('-backend=')) {
+		'-b c'
+	} else {
+		''
+	}
 	mut files := []string{}
 	args := os.args#[2..].filter(it != '-c')
 	for a in args {
@@ -58,7 +67,7 @@ fn main() {
 			continue
 		}
 		//
-		mut backend_options := '-b c'
+		mut backend_options := native_backend_options
 		if example.ends_with('.wasm.v') {
 			backend_options = '-b wasm -os browser'
 		}
@@ -71,7 +80,7 @@ fn main() {
 			skipped_files << example
 			continue
 		}
-		cmd := '${os.quoted_path(@VEXE)} ${backend_options} ${os.quoted_path(example)}'
+		cmd := [os.quoted_path(@VEXE), backend_options, os.quoted_path(example)].filter(it != '').join(' ')
 		log.info('> compiling program ${idx + 1:4}/${files.len:-4}: ${cmd}')
 		if 0 != os.system_args([@VEXE, ...(os.split_args(backend_options) or { panic(err) }),
 			'${example}']) {

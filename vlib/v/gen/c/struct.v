@@ -8,6 +8,7 @@ import v.types { unalias_type }
 import strings
 
 const struct_init_option_source_type = flat.source_type_id('__v_option')
+const struct_init_union_source_type = flat.source_type_id('union')
 const cgen_embed_file_data_source_type = flat.source_type_id('embed_file.EmbedFileData')
 
 struct PromotedStructInitField {
@@ -160,7 +161,8 @@ fn (mut g FlatGen) gen_struct_field_expr(value_id flat.NodeId, expected types.Ty
 }
 
 fn is_anonymous_struct_type_name(name_id u32) bool {
-	return flat.source_type_query(flat.source_type_syntax(name_id).unqualified()).has(.anon_struct_prefix)
+	query := flat.source_type_query(flat.source_type_syntax(name_id).unqualified())
+	return query.has(.anon_struct_prefix) || query.has(.anon_union_prefix)
 }
 
 fn struct_init_has_main_type_lock(type_name string) bool {
@@ -189,7 +191,7 @@ fn (mut g FlatGen) struct_init_effective_type_name(id flat.NodeId, node flat.Nod
 		// that clone, so it must not replace the explicit spelling.
 		return node.source_value_id()
 	}
-	if node.source_value_id() == flat.source_type_id('struct') {
+	if node.source_value_id() == flat.source_type_id('struct') || node.source_value_id() == struct_init_union_source_type {
 		expected := types.unwrap_pointer(g.expected_expr_type)
 		if expected is types.Struct && is_anonymous_struct_type_name(expected.source_type_id()) {
 			return expected.source_type_id()
@@ -411,6 +413,7 @@ fn (g &FlatGen) embed_payload_node_indexes() []i32 {
 fn (mut g FlatGen) gen_embed_file_blobs() {
 	mut defined := 0
 	mut seen := map[string]bool{}
+	linkage_attr := g.object_file_variable_linkage()
 	for i in g.embed_payload_node_indexes() {
 		node := unsafe { &g.a.nodes[i] }
 		if node.kind != .string_literal || !node.is_embed_payload() {
@@ -429,7 +432,7 @@ fn (mut g FlatGen) gen_embed_file_blobs() {
 			// `.incbin`; see embed_incbin_payloads. No size split is needed there:
 			// the C object size limit is about initializers, which that object
 			// does not have.
-			g.writeln('extern const unsigned char _v_embed_blob_${sym}[];')
+			g.writeln('${linkage_attr}extern const unsigned char _v_embed_blob_${sym}[];')
 			defined++
 			continue
 		}
@@ -444,7 +447,7 @@ fn (mut g FlatGen) gen_embed_file_blobs() {
 		// prefix per unit, and a `static` pointer would leave every unit but the
 		// one that runs `_vinit` holding its own null copy. gen_embed_blob_joined
 		// defines it, next to the `_vinit` that fills it.
-		g.writeln('extern u8* _v_embed_joined_${sym};')
+		g.writeln('${linkage_attr}extern u8* _v_embed_joined_${sym};')
 		defined++
 	}
 	if defined > 0 {
@@ -572,8 +575,9 @@ fn (mut g FlatGen) embed_payload_uses_incbin(sym string) bool {
 // gen_embed_blob_joined defines the buffers that _vinit fills, and is emitted
 // right before it so that the definition lands in the same translation unit.
 fn (mut g FlatGen) gen_embed_blob_joined() {
+	linkage_attr := g.object_file_variable_linkage()
 	for blob in g.chunked_embed_blobs() {
-		g.writeln('u8* _v_embed_joined_${blob.sym} = NULL;')
+		g.writeln('${linkage_attr}u8* _v_embed_joined_${blob.sym} = NULL;')
 	}
 }
 
@@ -2815,7 +2819,11 @@ fn (mut g FlatGen) gen_default_value_for_clean_type(clean_typ types.Type) {
 				g.write(g.sum_initializer_suffix(false))
 				return
 			}
-			g.gen_default_value_for_type(variant_type)
+			if variant_type is types.ArrayFixed {
+				g.write(g.empty_fixed_array_initializer_string(variant_type))
+			} else {
+				g.gen_default_value_for_type(variant_type)
+			}
 			g.write(g.sum_initializer_suffix(false))
 			return
 		}
@@ -7545,14 +7553,24 @@ fn (mut g FlatGen) referenced_c_structs() map[u32]bool {
 		g.tc.cur_module = old_module
 	}
 	// These operators have integer result types, so their type operands do not
-	// appear in the checked expression-type tables below.
-	for idx in 0 .. g.a.nodes.len {
-		// The AST stays immutable while collecting references.
-		node := unsafe { &g.a.nodes[idx] }
-		if node.kind == .offsetof_expr || (node.kind == .sizeof_expr && node.children_count == 0) {
+	// appear in the checked expression-type tables below. collect_gen_info indexes
+	// them; standalone generators without that index scan every node.
+	if g.sizeof_offsetof_nodes_ready {
+		for idx in g.sizeof_offsetof_node_ids {
+			// The AST stays immutable while collecting references.
+			node := unsafe { &g.a.nodes[idx] }
 			g.tc.cur_file = g.node_source_file(node)
 			g.tc.cur_module = g.tc.file_modules[g.tc.cur_file] or { old_module }
 			g.collect_c_struct_type_refs(g.tc.parse_type(node.source_value_id()), mut seen)
+		}
+	} else {
+		for idx in 0 .. g.a.nodes.len {
+			node := unsafe { &g.a.nodes[idx] }
+			if node.kind == .offsetof_expr || (node.kind == .sizeof_expr && node.children_count == 0) {
+				g.tc.cur_file = g.node_source_file(node)
+				g.tc.cur_module = g.tc.file_modules[g.tc.cur_file] or { old_module }
+				g.collect_c_struct_type_refs(g.tc.parse_type(node.source_value_id()), mut seen)
+			}
 		}
 	}
 	// Alias preseeding can emit wrappers, array typedefs, and callback signatures

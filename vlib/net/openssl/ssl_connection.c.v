@@ -4,7 +4,9 @@ import io
 import net
 import time
 
-// SSLConn is the current connection
+// SSLConn is a TLS connection. It does not synchronize access to its TLS context.
+// Calls on the same connection must be serialized, including read, write, timeout
+// changes, and close/shutdown. One reader and one writer must not call it concurrently.
 pub struct SSLConn {
 pub:
 	config SSLConnectConfig

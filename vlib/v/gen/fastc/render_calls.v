@@ -238,6 +238,9 @@ fn (g &Parser) typeof_display_name(typ_id u32) string {
 	if fastc_primitive_c_type_id(typ_id) != none {
 		return typ
 	}
+	if payload := fastc_typed_option_payload(typ_id) {
+		return '?' + g.typeof_display_name(payload)
+	}
 	if flat.source_type_query(typ_id).has(.c_array_prefix) {
 		if element := g.array_element_type(typ_id) {
 			return '[]' + g.typeof_display_name(element)
@@ -419,6 +422,22 @@ fn (g &Parser) render_cast_expression(tokens []FastcExpressionToken) ?FastcRende
 				g.option_success_expression(flat.source_type_id('Option'), c_type, inner)
 			}
 			typ:    fastc_type_option
+		}
+	}
+	// `&Sum(variant)` first constructs a sum carrier, then gives that computed
+	// value stable storage. Reinterpreting a struct variant as Sum* is invalid C.
+	if g.selfhost && tokens[0].tok == .amp && flat.source_type_syntax(c_type).c_pointer_depth() == 1 {
+		base := fastc_trim_pointer_type(c_type)
+		if flat.source_type_name(base) in g.sum_types {
+			inner_type := g.infer_expression_type(inner_tokens) or { u32(0) }
+			if inner_type != 0 && !fastc_is_pointer_type(inner_type)
+				&& (inner_type == base || g.sumtype_has_variant(base, fastc_normalize_inferred_type(inner_type))) {
+				boxed := g.render_cast_expression(tokens[1..]) or { return none }
+				return FastcRenderedExpression{
+					source: g.value_address_expression(base, boxed.source, []FastcExpressionToken{})
+					typ:    c_type
+				}
+			}
 		}
 	}
 	// A conversion into a boxed sum type (`Expr(EmptyExpr(0))`) is a box, not a C cast: the

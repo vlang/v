@@ -2,7 +2,10 @@ module fastc
 
 import os
 import v.pref
-import v.cmdexec
+
+$if macos {
+	import v.cmdexec
+}
 
 fn test_fastc_imports_modules_declared_only_in_manifest_subdirectories() ! {
 	root := os.join_path(os.vtmp_dir(), 'fastc_manifest_module_${os.getpid()}')

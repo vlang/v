@@ -44,6 +44,7 @@ pub fn exec_args(arguments []string) {
 // ci_argv replaces the program `v` with `vexe`, also after leading `NAME=value`
 // assignments, which are then run through `env`. An explicit leading `env`
 // program is kept, so `['env', 'VJOBS=1', 'v', ...]` does not depend on PATH.
+// Valgrind's compiler argument is resolved in the same way.
 fn ci_argv(arguments []string, vexe string) []string {
 	mut argv := arguments.clone()
 	has_env_program := argv.len > 0 && argv[0] == 'env'
@@ -51,8 +52,15 @@ fn ci_argv(arguments []string, vexe string) []string {
 	for program_index < argv.len && is_env_assignment(argv[program_index]) {
 		program_index++
 	}
-	if program_index < argv.len && argv[program_index] == 'v' {
-		argv[program_index] = vexe
+	mut compiler_index := program_index
+	if compiler_index < argv.len && argv[compiler_index] == 'valgrind' {
+		compiler_index++
+		for compiler_index < argv.len && argv[compiler_index].starts_with('-') {
+			compiler_index++
+		}
+	}
+	if compiler_index < argv.len && argv[compiler_index] == 'v' {
+		argv[compiler_index] = vexe
 	}
 	if program_index > 0 && !has_env_program {
 		argv.prepend('env')

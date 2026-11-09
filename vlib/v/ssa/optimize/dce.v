@@ -91,7 +91,7 @@ fn dead_code_elimination(mut m ssa.Module) {
 
 fn instruction_has_side_effects(op ssa.OpCode) bool {
 	return op in [.store, .call, .call_indirect, .call_sret, .ret, .br, .jmp, .switch_, .unreachable,
-		.assign, .fence, .cmpxchg, .atomicrmw, .go_call, .spawn_call]
+		.assign, .fence, .cmpxchg, .atomicrmw, .go_call, .spawn_call, .inline_asm]
 }
 
 // remove_use updates remove use state for optimize.

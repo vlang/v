@@ -1224,6 +1224,9 @@ fn (g &Parser) render_raw_expression_tokens_impl(tokens []FastcExpressionToken, 
 				item.lit
 			} else if previous == .dot {
 				fastc_c_identifier(item.lit)
+			} else if previous == .comma && fastc_is_removed_integer_name(item.lit)
+				&& fastc_token_is_offsetof_member(tokens, i) {
+				fastc_c_identifier(item.lit)
 			} else {
 				g.resolved_expression_name(item.lit, previous)
 			}
@@ -1277,6 +1280,16 @@ fn (g &Parser) render_raw_expression_tokens_impl(tokens []FastcExpressionToken, 
 		previous_module_separator = module_separator
 	}
 	return g.render_enum_alias_member_references(tokens, fastc_take_string(mut result))
+}
+
+// __offsetof's second argument names a field even when a local has the same name.
+// Raw rendering is also used for nested calls and array elements, after the
+// streaming expression reader has already resolved the field correctly.
+fn fastc_token_is_offsetof_member(tokens []FastcExpressionToken, index int) bool {
+	prefix := tokens[..index + 1]
+	open := fastc_innermost_open_index(prefix)
+	return open > 0 && prefix[open].tok == .lpar && prefix[open - 1].lit == '__offsetof'
+		&& fastc_call_argument_index(prefix, open) == 1
 }
 
 fn (g &Parser) expression_dot_is_module_separator(tokens []FastcExpressionToken, index int) bool {
@@ -1472,21 +1485,23 @@ fn (g &Parser) type_from_expression_tokens_bytes(tokens []FastcExpressionToken) 
 		return fastc_thread_type_name(value_type) + '*'.repeat(pointers)
 	}
 	if remaining.len == 1 && remaining[0].tok == .name {
-		if fastc_callable_signature(flat.source_type_id(remaining[0].lit)) != none {
-			return remaining[0].lit + '*'.repeat(pointers)
+		name := remaining[0].lit
+		// Casts probe every called name (`f(x)`). The callable, array, map and option
+		// spellings below are recognized by their text, so only those are interned.
+		if name.starts_with('__vf_callable_')
+			&& fastc_callable_signature(flat.source_type_id(name)) != none {
+			return name + '*'.repeat(pointers)
 		}
-		mut base := fastc_primitive_c_type(remaining[0].lit) or { '' }
+		mut base := fastc_primitive_c_type(name) or { '' }
 		if base == '' {
-			if type_key := g.resolve_declared_type_key(remaining[0].lit) {
+			if type_key := g.resolve_declared_type_key(name) {
 				base = fastc_c_declared_type_name(flat.source_type_name(type_key))
+			} else if name.starts_with('Array_') || name.starts_with('Map_')
+				|| name.starts_with('FixedArray_') || (name.starts_with('__vf_option_')
+				&& fastc_typed_option_payload(flat.source_type_id(name)) != none) {
+				base = name
 			} else {
-				raw := flat.source_type_id(remaining[0].lit)
-				query := flat.source_type_query(raw)
-				if query.has(.c_array_prefix) || query.has(.c_map_prefix) || query.has(.c_fixed_array_prefix) || fastc_typed_option_payload(raw) != none {
-					base = remaining[0].lit
-				} else {
-					return none
-				}
+				return none
 			}
 		}
 		return base + '*'.repeat(pointers)

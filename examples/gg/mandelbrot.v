@@ -39,8 +39,9 @@ mut:
 	ntasks  int      = runtime.nr_jobs()
 }
 
+// The worker masks iterations with 15, so the palette needs all 16 entries.
 const colors = [gg.black, gg.blue, gg.red, gg.green, gg.yellow, gg.orange, gg.purple, gg.white,
-	gg.indigo, gg.violet, gg.black, gg.blue, gg.orange, gg.yellow, gg.green].map(u32(it.abgr8()))
+	gg.indigo, gg.violet, gg.black, gg.blue, gg.orange, gg.yellow, gg.green, gg.black].map(u32(it.abgr8()))
 
 struct MandelChunk {
 	cview ViewRect

@@ -379,12 +379,6 @@ NB: the build flags are shared with the run command too:
     NB: in the future, this will be turned ON by default,
     and will become an error, after vlib modules are cleaned up.
 
-  -check-return
-    Note about all calls, that ignore the return value of
-    the corresponding fn/method.
-    NB: this is still experimental, the rules for it will
-    change, it may be dropped completely, or it may become the default.
-
 For C-specific build flags, use `v help build-c`.
 For JS-specific build flags, use `v help build-js`.
 For WebAssembly-specific build flags, use `v help build-wasm`.

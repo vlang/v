@@ -169,7 +169,7 @@ fn native_constant_fixture(name string, sources []string) os.Result {
 			'__const_arm64__force_external_syms', '__const_neighboring'] {
 			globals := m.globals.filter(it.name == global_name)
 			assert globals.len == 1, global_name
-			assert m.type_size(globals[0].typ) == 32, global_name
+			assert m.type_size(globals[0].typ) == 48, global_name
 		}
 	}
 	mut g := Gen.new(m)

@@ -42,6 +42,7 @@ fn join_chunks_buffer(size int) &u8 {
 // `data()` free of the lazy mutation that two threads reading the same embedded
 // constant would race on.
 //
+// If the chunk table ends before len bytes, the remaining bytes are zero-filled.
 // The buffer lives as long as the program, like the static bytes it replaces.
 @[markused]
 pub fn join_chunks(chunks &EmbedFileChunk, len int) &u8 {
@@ -65,6 +66,9 @@ pub fn join_chunks(chunks &EmbedFileChunk, len int) &u8 {
 			vmemcpy(buffer + offset, chunk.data, int(n))
 			offset += n
 			chunk++
+		}
+		if offset < len {
+			vmemset(buffer + offset, 0, len - offset)
 		}
 		return buffer
 	}
@@ -108,12 +112,16 @@ pub fn (mut ed EmbedFileData) free() {
 	}
 }
 
+// to_string returns an independent, zero-terminated copy of the embedded bytes.
+// Embedded zero bytes are preserved and do not shorten the returned string.
 pub fn (original &EmbedFileData) to_string() string {
 	unsafe {
 		mut ed := &EmbedFileData(original)
 		// Loading the file sets `len`, so the bytes are taken before the length is read.
 		payload := ed.data()
-		the_copy := &u8(memdup(payload, ed.len))
+		the_copy := malloc_noscan(ed.len + 1)
+		vmemcpy(the_copy, payload, ed.len)
+		the_copy[ed.len] = 0
 		return the_copy.vstring_with_len(ed.len)
 	}
 }

@@ -293,7 +293,9 @@ fn fastc_canonical_vroot(vroot string) string {
 }
 
 fn fastc_tcc_backtrace_enabled(target_os string, target_arch string) bool {
+	// Win64's TinyCC runtime intercepts exceptions before their system handlers.
 	return !(target_os == 'macos' && target_arch == 'arm64')
+		&& !(target_os == 'windows' && target_arch == 'amd64')
 }
 
 fn tcc_host_system_flags(target_os string) []string {
@@ -307,6 +309,11 @@ fn tcc_host_system_flags(target_os string) []string {
 			flags << '-I${os.join_path(sdk_root, 'usr', 'include')}'
 			flags << '-L${os.join_path(sdk_root, 'usr', 'lib')}'
 		}
+	}
+	// Mirror the driver's v3_tcc_linux_uapi_flags: arm64 <signal.h> uses `__u128`,
+	// which <linux/types.h> leaves undefined for TinyCC.
+	if target_os == 'linux' && pref.host_arch() == 'arm64' {
+		flags << '-D__u128=__uint128_t'
 	}
 	return flags
 }
@@ -414,11 +421,14 @@ pub fn run(args []string) {
 		'skip_eval']
 	backtrace_enabled := fastc_tcc_backtrace_enabled(prefs.normalized_target_os(), prefs.target.arch)
 	// Mirror the driver's TinyCC compatibility plan (add_v3_tcc_compat_defines):
-	// TCC's backtrace runtime cannot be linked on macOS arm64, so builtin must
-	// not reference tcc_backtrace there. Descendant generations then compile
+	// TCC's backtrace runtime is incompatible with macOS arm64 and Windows amd64,
+	// so builtin must not reference tcc_backtrace there. Descendant generations compile
 	// builtin exactly like the first FastC generation did.
 	if !backtrace_enabled {
 		prefs.user_defines << 'no_backtrace'
+	}
+	if prefs.normalized_target_os() == 'windows' && prefs.target.arch == 'amd64' {
+		prefs.user_defines << 'windows_tcc_unhandled_filter'
 	}
 
 	bench := os.getenv('FASTC_BENCH') != ''

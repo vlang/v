@@ -4,6 +4,49 @@ import os
 import v.cmdexec
 import v.pref
 
+fn test_fastc_embedded_literals_roundtrip_through_c_compilers() {
+	$if !macos && !linux {
+		return
+	}
+	root := os.join_path(os.vtmp_dir(), 'fastc_embed_literal_${os.getpid()}')
+	os.mkdir_all(root) or { panic(err) }
+	defer { os.rmdir_all(root) or {} }
+	mut payload := []u8{}
+	for i in 0 .. 256 {
+		payload << u8(i)
+	}
+	payload << [u8(0), `7`, u8(1), `f`, `"`, `\\`]
+	mut compilers := ['cc']
+	tcc := os.join_path(@VEXEROOT, 'thirdparty', 'tcc', 'tcc.exe')
+	if os.is_file(tcc) {
+		compilers << tcc
+	}
+	for compiler in compilers {
+		for bytes in [payload, []u8{}] {
+			content := bytes.bytestr()
+			definition := fastc_embed_c_string_value(content, 'const u8 payload[] = ', ';\n')
+			assert definition == 'const u8 payload[] = ${fastc_embed_c_string_value(content, '', '')};\n'
+			c_file := os.join_path(root, 'literal.c')
+			program := os.join_path(root, 'literal')
+			output := os.join_path(root, 'payload.bin')
+			os.write_file(c_file, '#include <stdio.h>\ntypedef unsigned char u8;\n${definition}
+int main(int argc, char **argv) {
+	if (argc != 2 || sizeof(payload) != ${bytes.len + 1}) return 1;
+	FILE *out = fopen(argv[1], "wb");
+	if (!out) return 2;
+	if (fwrite(payload, 1, sizeof(payload) - 1, out) != sizeof(payload) - 1) return 3;
+	return fclose(out) != 0;
+}
+') or { panic(err) }
+			build := cmdexec.run(compiler, ['-o', program, c_file])
+			assert build.exit_code == 0, build.output
+			run := cmdexec.run(program, [output])
+			assert run.exit_code == 0, run.output
+			assert os.read_bytes(output) or { panic(err) } == bytes
+		}
+	}
+}
+
 fn test_fastc_deferred_embedded_payloads_keep_selected_branches_and_errors() {
 	root := os.join_path(os.vtmp_dir(), 'fastc_deferred_embed_${os.getpid()}')
 	os.mkdir_all(root) or { panic(err) }

@@ -101,11 +101,12 @@ pub:
 // new_client instance a new websocket client
 pub fn new_client(address string, opt ClientOpt) !&Client {
 	uri := parse_uri(address)!
+	is_ssl := address.starts_with('wss')
 	return &Client{
 		conn:          unsafe { nil }
 		is_server:     false
-		ssl_conn:      ssl.new_ssl_conn()!
-		is_ssl:        address.starts_with('wss')
+		ssl_conn:      if is_ssl { ssl.new_ssl_conn()! } else { unsafe { nil } }
+		is_ssl:        is_ssl
 		logger:        opt.logger
 		uri:           uri
 		proxy_url:     opt.proxy_url
@@ -536,7 +537,9 @@ fn (ws &Client) assert_not_connected() ! {
 pub fn (mut ws Client) reset_state() ! {
 	lock ws.client_state {
 		ws.client_state.state = .closed
-		ws.ssl_conn = ssl.new_ssl_conn()!
+		if ws.is_ssl {
+			ws.ssl_conn = ssl.new_ssl_conn()!
+		}
 		ws.flags = []
 		ws.fragments = []
 	}

@@ -19,7 +19,7 @@ fn testsuite_begin() {
 	test_utils.set_test_env(os.join_path(range_test_path, 'build_store'))
 	os.setenv('VEXE', range_vexe, true)
 	// Compile once, so changing the isolated module store does not rebuild the tool.
-	cmd_ok_args(@LOCATION, [range_vexe, '-new-compiler', '-no-retry-compilation', '-cc', 'clang',
+	cmd_ok_args(@LOCATION, [range_vexe, '-new-compiler', '-no-retry-compilation', '-cc', @CCOMPILER,
 		'-gc', 'none', '-o', range_vpm_exe, os.join_path(@VEXEROOT, 'cmd', 'tools', 'vpm')])
 }
 

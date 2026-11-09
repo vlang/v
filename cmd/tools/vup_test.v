@@ -78,15 +78,20 @@ fn vup_report_fixture() !(string, string, string, string) {
 	os.write_file(os.join_path(root, '.git', 'HEAD'), 'ref: refs/heads/master\n')!
 	os.write_file(os.join_path(git_refs, 'master'),
 		'abcdef0123456789abcdef0123456789abcdef01\n')!
+	os.mkdir_all(os.join_path(root, 'thirdparty', 'tcc', '.git'))!
 
 	bin_dir := os.join_path(root, 'bin')
 	os.mkdir_all(bin_dir)!
+	// OpenBSD's POSIX shell has no printf builtin; expose it to the isolated PATH.
+	printf := os.find_abs_path_of_executable('printf')!
+	os.symlink(printf, os.join_path(bin_dir, 'printf'))!
 	// Every stand-in records its call in `calls.log`, so a test can tell that an
 	// update never started.
 	log_call := 'printf "%s %s\\n" "\${0##*/}" "\$*" >> ' +
 		os.quoted_path(os.join_path(root, 'calls.log')) + '\n'
 	write_executable(os.join_path(bin_dir, 'git'), '#!/bin/sh\n' + log_call +
-		'if [ "\$1" = "pull" ]; then\n  echo "Already up to date."\nfi\nexit 0\n')!
+		'if [ "\$1" = "-C" ]; then\n  echo "1111111111111111111111111111111111111111"\n' +
+		'elif [ "\$1" = "pull" ]; then\n  echo "Already up to date."\nfi\nexit 0\n')!
 	write_executable(os.join_path(bin_dir, 'make'), '#!/bin/sh\n' + log_call + 'exit 0\n')!
 	// The BSDs and Solaris refresh TCC with `gmake`, which has to be found on PATH.
 	write_executable(os.join_path(bin_dir, 'gmake'), '#!/bin/sh\n' + log_call + 'exit 0\n')!
@@ -114,7 +119,7 @@ fn run_vup(root string, home string, tool string, bin_dir string, extra ...strin
 	return os.exec(args)
 }
 
-fn test_vup_wipes_caches_instead_of_replaying_configurations() ! {
+fn test_vup_preserves_caches_without_updates_and_wipes_after_rebuilds() ! {
 	$if windows {
 		return
 	}
@@ -141,11 +146,12 @@ fn test_vup_wipes_caches_instead_of_replaying_configurations() ! {
 		os.join_path(home, '.v', 'tools')]
 	// Repeat the already-current path, and exercise forced rebuilds and verbose updates too.
 	for options in [[]string{}, []string{}, ['-skip_current'], ['-prod'], ['-skip_v_self'], ['-v']] {
+		should_wipe := options.any(it in ['-skip_current', '-prod', '-skip_v_self'])
 		for target in targets {
 			os.mkdir_all(target)!
 			os.write_file(os.join_path(target, 'stale'), 'old cache data')!
 		}
-		// Historical configurations, including test selectors, must be removed without replay.
+		// Historical configurations, including test selectors, must never be replayed.
 		for i in 0 .. 128 {
 			dir := os.join_path(v3cache, 'v3_module_cache_deadbeef', 'configuration_${i}')
 			os.mkdir_all(dir)!
@@ -157,17 +163,24 @@ fn test_vup_wipes_caches_instead_of_replaying_configurations() ! {
 			'VEXE=' + os.join_path(root, 'v'), tool, ...options])
 		assert result.exit_code == 0, result.output
 		for target in targets {
-			assert !os.exists(os.join_path(target, 'stale')), target
+			assert os.exists(os.join_path(target, 'stale')) == !should_wipe, target
 		}
-		assert os.ls(cache)!.len == 0
-		assert os.ls(tmp)!.len == 0
-		assert os.ls(v3cache)!.len == 0
+		if should_wipe {
+			assert os.ls(cache)!.len == 0
+			assert os.ls(tmp)!.len == 0
+			assert os.ls(v3cache)!.len == 0
+		} else {
+			for i in 0 .. 128 {
+				assert os.read_file(os.join_path(v3cache, 'v3_module_cache_deadbeef',
+					'configuration_${i}', 'stale'))! == '-gc none -run-only test_selected'
+			}
+		}
 		calls := os.read_file(log)!.split_into_lines()
-		assert calls.filter(it == 'wipe-cache').len == 1, calls.str()
+		assert calls.filter(it == 'wipe-cache').len == if should_wipe { 1 } else { 0 }, calls.str()
 		assert !calls.any(it.contains('vup_cache_refresh_') || it.contains('-run-only')), calls.str()
 		assert !result.output.contains('Refreshing module cache'), result.output
 		assert !result.output.contains('build configurations checked'), result.output
-		assert result.output.contains('was wiped.'), result.output
+		assert result.output.contains('was wiped.') == should_wipe, result.output
 	}
 }
 
@@ -189,7 +202,7 @@ fn test_vup_resolves_relative_cache_paths_before_entering_checkout() ! {
 		'  printf "%s\\n" "\$VCACHE" "\$VTMP" "\$V3CACHE" "\$VTOOLS_CACHE_DIR" > ' +
 		os.quoted_path(log) + '\n  exit 0\nfi\necho "V 0.5.2 abcdef0"\nexit 0\n')!
 	os.chdir(project)!
-	for options in [[]string{}, ['-skip_current']] {
+	for options in [['-prod'], ['-skip_current']] {
 		result := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v'),
 			'VCACHE=.module cache', 'VTMP=.tmp cache', 'V3CACHE=.v3 cache',
 			'VTOOLS_CACHE_DIR=.tool cache', tool, ...options])
@@ -197,6 +210,35 @@ fn test_vup_resolves_relative_cache_paths_before_entering_checkout() ! {
 		assert os.read_file(log)!.split_into_lines() == ['.module cache', '.tmp cache', '.v3 cache',
 			'.tool cache'].map(os.join_path(project, it))
 	}
+}
+
+fn test_vup_wipes_caches_when_the_checkout_changes_without_rebuilding() ! {
+	$if windows {
+		return
+	}
+	root, home, tool, bin_dir := vup_report_fixture()!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	// Simulate a documentation-only pull: the checkout moves, but the compiler
+	// implementation still matches the existing executable.
+	ref := os.join_path(root, '.git', 'refs', 'heads', 'master')
+	write_executable(os.join_path(bin_dir, 'git'), '#!/bin/sh\n' +
+		'if [ "\$1" = "-C" ]; then\n  echo "1111111111111111111111111111111111111111"\n' +
+		'elif [ "\$1" = "pull" ]; then\n' +
+		'  echo "fedcba9876543210fedcba9876543210fedcba98" > ' + os.quoted_path(ref) +
+		'\nfi\nexit 0\n')!
+	updated := run_vup(root, home, tool, bin_dir)!
+	assert updated.exit_code == 0, updated.output
+	assert updated.output.contains('not recompiling V.'), updated.output
+	log := os.join_path(root, 'calls.log')
+	assert os.read_file(log)!.contains('v wipe-cache\n')
+	// On the next run neither checkout changes. The compiler's older recorded
+	// revision must not cause another cache wipe.
+	os.write_file(log, '')!
+	unchanged := run_vup(root, home, tool, bin_dir)!
+	assert unchanged.exit_code == 0, unchanged.output
+	assert !os.read_file(log)!.contains('v wipe-cache\n')
 }
 
 fn test_vup_wipes_default_cache_from_relative_vmodules() ! {
@@ -217,7 +259,7 @@ fn test_vup_wipes_default_cache_from_relative_vmodules() ! {
 	os.chdir(project)!
 	caller_cache := os.join_path(project, '.vmodules with spaces', '.cache')
 	checkout_cache := os.join_path(root, '.vmodules with spaces', '.cache')
-	for options in [[]string{}, ['-skip_current']] {
+	for options in [['-prod'], ['-skip_current']] {
 		for cache in [caller_cache, checkout_cache] {
 			os.mkdir_all(cache)!
 			os.write_file(os.join_path(cache, 'stale'), 'cached object')!
@@ -264,7 +306,7 @@ fn test_vup_reports_real_cache_filesystem_failures() ! {
 				os.write_file(blocker, 'a file cannot contain a cache directory')!
 				os.join_path(blocker, 'cache')
 			}
-			for options in [[]string{}, ['-skip_current']] {
+			for options in [['-prod'], ['-skip_current']] {
 				result := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}',
 					'XDG_CACHE_HOME=' + os.join_path(home, '.cache'),
 					'VEXE=' + os.join_path(root, 'v'), 'VCACHE=${cache}',
@@ -306,7 +348,7 @@ fn test_vup_requests_deferred_windows_cleanup_only_after_success() ! {
 		os.write_file(log, '')!
 		result := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v'),
 			'VUP_DEFER_CACHE_WIPE=1', tool, ...options])
-		expected := if '-h' in options {
+		expected := if options.len == 0 || '-h' in options {
 			0
 		} else if '--unknown' in options {
 			1
@@ -316,14 +358,17 @@ fn test_vup_requests_deferred_windows_cleanup_only_after_success() ! {
 		assert result.exit_code == expected, result.output
 		calls := os.read_file(log)!
 		assert !calls.contains('wipe-cache'), calls
-		if expected == 80 {
+		if options.len == 0 || expected == 80 {
 			assert result.output.contains('Current V version:'), result.output
 			assert result.output.contains('skills: can be refreshed: alpha'), result.output
 		} else {
 			assert calls == '', calls
 		}
 	}
-	write_executable(os.join_path(bin_dir, 'make'), '#!/bin/sh\nexit 9\n')!
+	// TCC refresh uses gmake on the BSDs and Solaris, and make on other Unix hosts.
+	for make_name in ['make', 'gmake'] {
+		write_executable(os.join_path(bin_dir, make_name), '#!/bin/sh\nexit 9\n')!
+	}
 	failed := os.exec(['env', 'PATH=${bin_dir}', 'HOME=${home}', 'VEXE=' + os.join_path(root, 'v'),
 		'VUP_DEFER_CACHE_WIPE=1', tool])
 	assert failed.exit_code == 1, failed.output
@@ -341,7 +386,7 @@ fn test_vup_reports_cache_wipe_failures() ! {
 	write_executable(os.join_path(root, 'v'), '#!/bin/sh\n' +
 		'if [ "\$1" = "wipe-cache" ]; then echo "cache cleanup failed" >&2; exit 9; fi\n' +
 		'echo "V 0.5.2 abcdef0"\nexit 0\n')!
-	for options in [[]string{}, ['-skip_current']] {
+	for options in [['-prod'], ['-skip_current']] {
 		result := run_vup(root, home, tool, bin_dir, ...options)!
 		assert result.exit_code != 0, result.output
 		assert result.output.contains('cache cleanup failed'), result.output
@@ -389,6 +434,7 @@ fn test_vup_rebuilds_for_transitive_dependencies_and_honors_rebuild_options() ! 
 		'printf "v %s\\n" "\$*" >> ' + os.quoted_path(log) + '\n' +
 		'echo "V 0.5.2 ${hash[..7]}"\nexit 0\n')!
 	write_executable(os.join_path(bin_dir, 'git'), '#!/bin/sh\n' +
+		'if [ "\$1" = "-C" ]; then\n  echo "1111111111111111111111111111111111111111"\nfi\n' +
 		'if [ "\$1" = "diff" ]; then\n  exec ' + os.quoted_path(git) + ' -C ' +
 		os.quoted_path(sources) + ' "\$@"\nfi\nexit 0\n')!
 	for path in paths {
@@ -399,6 +445,7 @@ fn test_vup_rebuilds_for_transitive_dependencies_and_honors_rebuild_options() ! 
 		calls := os.read_file(log)!
 		should_rebuild := !path.ends_with('_test.v') && !path.ends_with('.md')
 		assert calls.contains('v self\n') == should_rebuild, '${path}: ${calls}'
+		assert calls.contains('v wipe-cache\n') == should_rebuild, '${path}: ${calls}'
 		assert result.output.contains('not recompiling V.') == !should_rebuild, result.output
 		os.write_file(os.join_path(sources, path), 'original\n')!
 	}
@@ -433,6 +480,39 @@ fn test_vup_rebuilds_for_transitive_dependencies_and_honors_rebuild_options() ! 
 	assert unknown_checkout.exit_code == 0, unknown_checkout.output
 	assert !unknown_checkout.output.contains('V is already updated.'), unknown_checkout.output
 	assert os.read_file(log)!.contains('v self\n')
+}
+
+fn test_vup_preserves_native_windows_arm64_on_bootstrap_rebuild() ! {
+	$if windows {
+		return
+	}
+	root, home, _, bin_dir := vup_report_fixture()!
+	defer { os.rmdir_all(root) or {} }
+	// Exercise the ARM64 command path with process fixtures on this host. The
+	// Windows C-generation test also checks the unmodified target-specific code.
+	source := os.read_file(os.join_path(vroot, 'cmd', 'tools', 'vup.v'))!
+	assert source.count('$if windows && arm64 {') == 3
+	file := os.join_path(root, 'vup_arm64.v')
+	os.write_file(file, source.replace('$if windows && arm64 {', '$if !windows {'))!
+	tool := os.join_path(root, 'vup_arm64')
+	build := os.exec([vexe, '-o', tool, file])
+	assert build.exit_code == 0, build.output
+	bootstrap_log := os.join_path(root, 'bootstrap.log')
+	bootstrap := os.join_path(root, 'cmd', 'tools', 'builders', 'windows_arm64_release.ps1')
+	write_executable(os.join_path(bin_dir, 'pwsh'), '#!/bin/sh\n' +
+		'printf "%s\\n" "\$@" > ' + os.quoted_path(bootstrap_log) + '\nexit 0\n')!
+	result := run_vup(root, home, tool, bin_dir, '-skip_v_self')!
+	assert result.exit_code == 0, result.output
+	assert os.read_file(bootstrap_log)!.split_into_lines() == ['-NoProfile', '-ExecutionPolicy',
+		'Bypass', '-File', bootstrap]
+	calls := os.read_file(os.join_path(root, 'calls.log'))!
+	assert !calls.contains('make'), calls
+	assert !calls.contains('latest_tcc'), calls
+	write_executable(os.join_path(bin_dir, 'pwsh'), '#!/bin/sh\necho "ARM64 bootstrap failed"\nexit 9\n')!
+	failed := run_vup(root, home, tool, bin_dir, '-skip_v_self')!
+	assert failed.exit_code != 0, failed.output
+	assert failed.output.contains('ARM64 bootstrap failed'), failed.output
+	assert failed.output.contains('Recompiling V *failed*.'), failed.output
 }
 
 fn test_vup_reports_both_groups_and_names_the_scope_to_use() ! {
@@ -590,6 +670,11 @@ fn test_vup_generates_windows_c_without_handle_type_errors() ! {
 		assert result.exit_code == 0, result.output
 		assert os.is_file(c_file)
 	}
+	arm64 := os.join_path(test_root, 'vup_arm64.c')
+	arm64_result := os.exec([compiler, '-new-compiler', '-g', '-gc', 'none', '-nocache', '-os',
+		'windows', '-arch', 'arm64', '-cc', 'msvc', '-o', arm64, source])
+	assert arm64_result.exit_code == 0, arm64_result.output
+	assert os.is_file(arm64)
 }
 
 fn write_executable(path string, content string) ! {
@@ -616,13 +701,16 @@ fn test_vup_checks_primary_compiler_when_built_by_v1_fallback() ! {
 	os.mkdir_all(git_refs)!
 	os.write_file(os.join_path(test_root, '.git', 'HEAD'), 'ref: refs/heads/master\n')!
 	os.write_file(os.join_path(git_refs, 'master'), 'abcdef0123456789abcdef0123456789abcdef01\n')!
+	os.mkdir_all(os.join_path(test_root, 'thirdparty', 'tcc', '.git'))!
 
 	bin_dir := os.join_path(test_root, 'bin')
 	os.mkdir_all(bin_dir)!
 	log_file := os.join_path(test_root, 'compiler.log')
 	write_executable(os.join_path(test_root, 'v'), '#!/bin/sh\n' + 'printf "%s\\n" "\$*" >> ${os.quoted_path(log_file)}\n' + 'if [ "\$1" = "wipe-cache" ]; then exit 0; fi\nif [ "\$1" = "version" ]; then\n' + '  echo "V 0.5.2 abcdef0"\n' + '  exit 0\n' + 'fi\n' + 'exit 1\n')!
 	write_executable(os.join_path(test_root, 'v1_fallback'), '#!/bin/sh\n' + 'printf "fallback %s\\n" "\$*" >> ${os.quoted_path(log_file)}\n' + 'exit 1\n')!
-	write_executable(os.join_path(bin_dir, 'git'), '#!/bin/sh\n' + 'if [ "\$1" = "pull" ]; then\n' + '  echo "Already up to date."\n' + 'fi\n' + 'exit 0\n')!
+	write_executable(os.join_path(bin_dir, 'git'), '#!/bin/sh\n' +
+		'if [ "\$1" = "-C" ]; then\n  echo "1111111111111111111111111111111111111111"\n' +
+		'elif [ "\$1" = "pull" ]; then\n  echo "Already up to date."\nfi\nexit 0\n')!
 	write_executable(os.join_path(bin_dir, 'make'), '#!/bin/sh\nexit 0\n')!
 	write_executable(os.join_path(bin_dir, 'gmake'), '#!/bin/sh\nexit 0\n')!
 
@@ -633,7 +721,7 @@ fn test_vup_checks_primary_compiler_when_built_by_v1_fallback() ! {
 	assert result.output.contains('V is already updated.'), result.output
 	compiler_calls := os.read_file(log_file)!
 	assert !compiler_calls.contains('fallback'), compiler_calls
-	assert compiler_calls.trim_space().split_into_lines() == ['version', 'version', 'wipe-cache'], compiler_calls
+	assert compiler_calls.trim_space().split_into_lines() == ['version', 'version'], compiler_calls
 }
 
 fn test_vup_restores_missing_primary_compiler_when_built_by_v1_fallback() ! {
@@ -666,12 +754,20 @@ fn test_vup_restores_missing_primary_compiler_when_built_by_v1_fallback() ! {
 	os.mkdir_all(bin_dir)!
 	make_log := os.join_path(test_root, 'make.log')
 	fallback_log := os.join_path(test_root, 'fallback.log')
+	compiler_log := os.join_path(test_root, 'compiler.log')
+	restored_v := os.join_path(test_root, 'restored_v')
+	write_executable(restored_v, '#!/bin/sh\n' +
+		'printf "%s\\n" "\$*" >> ' + os.quoted_path(compiler_log) + '\n' +
+		'echo "V 0.5.2 abcdef0"\nexit 0\n')!
 	write_executable(os.join_path(test_root, 'v1_fallback'), '#!/bin/sh\n' + 'printf "%s\\n" "\$*" >> ${os.quoted_path(fallback_log)}\n' + 'if [ "\$1" = "version" ]; then\n' + '  echo "V 0.5.2 abcdef0"\n' + '  exit 0\n' + 'fi\n' + 'exit 1\n')!
-	write_executable(os.join_path(bin_dir, 'git'), '#!/bin/sh\n' + 'if [ "\$1" = "pull" ]; then\n' + '  echo "Already up to date."\n' + 'fi\n' + 'exit 0\n')!
+	os.mkdir_all(os.join_path(test_root, 'thirdparty', 'tcc', '.git'))!
+	write_executable(os.join_path(bin_dir, 'git'), '#!/bin/sh\n' +
+		'if [ "\$1" = "-C" ]; then\n  echo "1111111111111111111111111111111111111111"\n' +
+		'elif [ "\$1" = "pull" ]; then\n  echo "Already up to date."\nfi\nexit 0\n')!
 	write_executable(os.join_path(bin_dir, 'make'), '#!/bin/sh\n' +
 		'printf "make:%s\\n" "\$*" >> ${os.quoted_path(make_log)}\n' +
 		'if [ "\$#" = "0" ]; then\n' +
-		'  printf "#!/bin/sh\\necho V 0.5.2 abcdef0\\nexit 0\\n" > ' +
+		'  cp ' + os.quoted_path(restored_v) + ' ' +
 		os.quoted_path(os.join_path(test_root, 'v')) + '\n' +
 		'  chmod +x ' + os.quoted_path(os.join_path(test_root, 'v')) + '\nfi\nexit 0\n')!
 	write_executable(os.join_path(bin_dir, 'gmake'), '#!/bin/sh\n' + 'printf "gmake:%s\\n" "\$*" >> ${os.quoted_path(make_log)}\n' + 'exit 0\n')!
@@ -686,6 +782,7 @@ fn test_vup_restores_missing_primary_compiler_when_built_by_v1_fallback() ! {
 	tcc_make_call := $if freebsd || openbsd || netbsd || dragonfly || solaris { 'gmake:latest_tcc' } $else { 'make:latest_tcc' }
 	assert make_calls.trim_space().split_into_lines() == [tcc_make_call, 'make:'], make_calls
 	assert !os.exists(fallback_log), os.read_file(fallback_log) or { '' }
+	assert os.read_file(compiler_log)!.contains('wipe-cache\n')
 }
 
 fn test_vup_help_lists_the_flags_without_touching_anything() ! {
@@ -753,4 +850,58 @@ fn test_vup_rejects_unknown_options_before_updating() ! {
 	assert result.exit_code == 0, result.output
 	assert result.output.contains('V is already updated.'), result.output
 	assert os.read_file(calls_log)!.contains('git pull'), result.output
+}
+
+fn test_vup_says_whether_tcc_changed() ! {
+	$if windows {
+		return
+	}
+	root, home, tool, bin_dir := vup_report_fixture()!
+	defer {
+		os.rmdir_all(root) or {}
+	}
+	// The git stand-in reports the TCC checkout at the revision in `tcc_head`, and
+	// the TCC refresh moves it to the one in `tcc_next`, when there is one. Only
+	// the stand-ins are on PATH, so they use shell builtins. The BSDs and Solaris
+	// refresh TCC with `gmake`, so both names get the refresh.
+	os.mkdir_all(os.join_path(root, 'thirdparty', 'tcc', '.git'))!
+	tcc_head := os.join_path(root, 'tcc_head')
+	tcc_next := os.join_path(root, 'tcc_next')
+	os.write_file(tcc_head, '1111111111111111111111111111111111111111\n')!
+	write_executable(os.join_path(bin_dir, 'git'), '#!/bin/sh\n' +
+		'if [ "\$1" = "-C" ] && [ "\$3" = "rev-parse" ]; then\n' +
+		'  read -r rev < ${os.quoted_path(tcc_head)}\n  echo "\$rev"\nfi\nexit 0\n')!
+	for make_name in ['make', 'gmake'] {
+		write_executable(os.join_path(bin_dir, make_name), '#!/bin/sh\n' +
+			'if [ -f ${os.quoted_path(tcc_next)} ]; then\n' +
+			'  read -r rev < ${os.quoted_path(tcc_next)}\n  echo "\$rev" > ${os.quoted_path(tcc_head)}\n' +
+			'fi\nexit 0\n')!
+	}
+
+	unchanged := run_vup(root, home, tool, bin_dir)!
+	assert unchanged.exit_code == 0, unchanged.output
+	assert unchanged.output.contains('> checking for TCC updates ...'), unchanged.output
+	assert unchanged.output.contains('> TCC is already up to date.'), unchanged.output
+	assert !unchanged.output.contains('> updated TCC'), unchanged.output
+	log := os.join_path(root, 'calls.log')
+	assert !os.read_file(log)!.contains('v wipe-cache\n')
+
+	os.write_file(tcc_next, '2222222222222222222222222222222222222222\n')!
+	updated := run_vup(root, home, tool, bin_dir)!
+	assert updated.exit_code == 0, updated.output
+	assert updated.output.contains('> updated TCC to 2222222.'), updated.output
+	assert !updated.output.contains('already up to date'), updated.output
+	assert os.read_file(log)!.contains('v wipe-cache\n')
+	os.write_file(log, '')!
+	current := run_vup(root, home, tool, bin_dir)!
+	assert current.exit_code == 0, current.output
+	assert !os.read_file(log)!.contains('v wipe-cache\n')
+	// An unreadable TCC revision cannot establish that the native inputs stayed
+	// the same, so keep clearing caches conservatively in that case.
+	write_executable(os.join_path(bin_dir, 'git'), '#!/bin/sh\n' +
+		'if [ "\$1" = "-C" ]; then exit 1; fi\nexit 0\n')!
+	os.write_file(log, '')!
+	unknown := run_vup(root, home, tool, bin_dir)!
+	assert unknown.exit_code == 0, unknown.output
+	assert os.read_file(log)!.contains('v wipe-cache\n')
 }

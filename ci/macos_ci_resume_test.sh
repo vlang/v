@@ -28,9 +28,20 @@ runner="$work/runner"
 checkout="$work/checkout with spaces"
 mkdir "$checkout"
 fake_v="$work/fake v"
+mkdir -p "$work/thirdparty/tcc"
+printf '#!/bin/sh\nexit 0\n' > "$work/thirdparty/tcc/tcc.exe"
+chmod +x "$work/thirdparty/tcc/tcc.exe"
 cat > "$fake_v" <<'MOCK'
 #!/bin/sh
 set -eu
+if [ "$1" = -silent ] && [ "$2" = vlib/v/util/machosign/macho_sign_test.v ]; then
+    [ "$CI" = true ] && [ "$GITHUB_ACTIONS" = true ] || exit 91
+    [ "$VFLAGS" = '-cc clang' ] && [ "$V_MACOS_V3_NO_FALLBACK" = 1 ] || exit 92
+    [ -z "${VTEST_ONLY_FN:-}" ] || exit 89
+    echo signing >> signing.log
+    [ ! -f fail-signing ] || exit 23
+    exit 0
+fi
 if [ "$1" = doctor ]; then
     [ "${VTEST_FAIL_FAST:-}" = 0 ] && [ "${VJOBS:-}" = 8 ] || exit 94
     [ -z "${V_MACOS_CI_TASK_PROGRESS:-}" ] && [ -z "${VTEST_RESUME_DIR:-}" ] || exit 95
@@ -46,6 +57,7 @@ fi
 [ "$1" = run ] && [ "$2" = ci/macos_ci.vsh ] || exit 90
 [ "$CI" = true ] && [ "$GITHUB_ACTIONS" = true ] || exit 91
 [ "$VFLAGS" = '-cc clang' ] && [ "$V_MACOS_V3_NO_FALLBACK" = 1 ] || exit 92
+[ "$VTEST_ONLY" = unrelated_test.v ] && [ "$VTEST_ONLY_FN" = test_unrelated ] || exit 88
 [ "${VTEST_FAIL_FAST:-}" = 1 ] && [ "${VJOBS:-}" = 1 ] || exit 93
 case "$V_MACOS_CI_TASK_PROGRESS" in */"$3") ;; *) exit 96 ;; esac
 case "$VTEST_RESUME_DIR" in "$V_MACOS_CI_TASK_PROGRESS"/tests/*) ;; *) exit 97 ;; esac
@@ -61,11 +73,16 @@ run_ci() {
     expected_status=$1
     shift
     : > "$checkout/tasks.log"
+    : > "$checkout/signing.log"
     status=0
     # ci must override inherited non-fail-fast/parallel settings; direct tasks must not.
-    (cd "$checkout" && VTEST_FAIL_FAST=0 VJOBS=8 V_CI_VEXE="$fake_v" \
+    (cd "$checkout" && VTEST_FAIL_FAST=0 VJOBS=8 VTEST_ONLY=unrelated_test.v \
+        VTEST_ONLY_FN=test_unrelated V_CI_VEXE="$fake_v" \
         "$runner" "$@") > "$work/output" 2>&1 || status=$?
     [ "$status" -eq "$expected_status" ] || fail "exit $status, expected $expected_status"
+    if [ "$(uname -s)" = Darwin ] && [ "$1" = ci ] && [ "$#" -eq 1 ]; then
+        [ "$(cat "$checkout/signing.log")" = signing ] || fail 'CI skipped fresh signing check'
+    fi
 }
 
 # Read the ordered plan, so adding a CI task does not require copying its name here.
@@ -93,6 +110,25 @@ printf '%s\n' "$failed_task" > "$work/one"
 cmp "$work/one" "$checkout/tasks.log"
 cmp "$work/saved" "$checkpoint"
 [ -f "$checkpoint.d/retained" ] || fail 'retry discarded per-test progress'
+
+# The native signing check must run before resuming and preserve existing progress
+# on failure. Missing TinyCC must fail instead of letting the signing test return.
+if [ "$(uname -s)" = Darwin ]; then
+    touch "$checkout/fail-signing"
+    run_ci 23 ci
+    [ ! -s "$checkout/tasks.log" ] || fail 'CI continued after signing failure'
+    cmp "$work/saved" "$checkpoint"
+    [ -f "$checkpoint.d/retained" ] || fail 'signing failure discarded per-test progress'
+    rm "$checkout/fail-signing"
+    mv "$work/thirdparty/tcc/tcc.exe" "$work/thirdparty/tcc/saved-tcc"
+    status=0
+    (cd "$checkout" && V_CI_VEXE="$fake_v" "$runner" ci) > "$work/output" 2>&1 || status=$?
+    [ "$status" -eq 1 ] || fail 'missing TinyCC did not fail CI'
+    grep -q 'Mach-O signing check requires TinyCC' "$work/output" || fail 'missing TinyCC not reported'
+    [ ! -s "$checkout/tasks.log" ] || fail 'CI continued without TinyCC'
+    cmp "$work/saved" "$checkpoint"
+    mv "$work/thirdparty/tcc/saved-tcc" "$work/thirdparty/tcc/tcc.exe"
+fi
 
 # A fix resumes at the failed task; completion clears progress; the next run is full.
 rm "$checkout/fail-task"

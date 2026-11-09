@@ -83,8 +83,9 @@ __global g_source_type_compositions [source_type_composition_slots]voidptr
 @[direct_array_access; inline]
 pub fn source_type_composition(kind SourceTypeComposition, parts []u32) u32 {
 	mut hash := u64(kind) + u64(14_695_981_039_346_656_037)
-	for part in parts {
-		hash = (hash ^ u64(part)) * u64(1_099_511_628_211)
+	// An index loop keeps the direct access: a value iteration checks each bound.
+	for index in 0 .. parts.len {
+		hash = (hash ^ u64(parts[index])) * u64(1_099_511_628_211)
 	}
 	hash ^= hash >> 32
 	slot := int(hash & u64(source_type_composition_slots - 1))
@@ -154,8 +155,8 @@ fn source_type_composition_find(slot int, kind SourceTypeComposition, parts []u3
 	for !isnil(entry) {
 		if entry.hash == hash && entry.kind == kind && entry.len == parts.len {
 			mut equal := true
-			for index, part in parts {
-				if unsafe { entry.parts()[index] } != part {
+			for index in 0 .. parts.len {
+				if unsafe { entry.parts()[index] } != parts[index] {
 					equal = false
 					break
 				}

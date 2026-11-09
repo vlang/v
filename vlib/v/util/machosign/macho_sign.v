@@ -14,6 +14,16 @@ const macho_magic_64 = u32(0xfeedfacf)
 const macho_lc_segment_64 = u32(0x19)
 const macho_lc_code_signature = u32(0x1d)
 const macho_lc_dyld_chained_fixups = u32(0x80000034)
+const macho_lc_uuid = u32(0x1b)
+const macho_lc_rpath = u32(0x8000001c)
+const macho_lc_build_version = u32(0x32)
+const macho_platform_macos = u32(1)
+const macho_cpu_type_arm64 = u32(0x0100000c)
+// tinycc_macos_version is the minimum and SDK version TinyCC records: macOS 10.6.
+const tinycc_macos_version = u32(0x000a0600)
+// macos_arm64_min_version is the first macOS for arm64, 11.0.
+const macos_arm64_min_version = u32(0x000b0000)
+const macho_uuid_size = 24
 const dyld_chained_fixups_header_size = 28
 const dyld_chained_ptr_start_none = u16(0xffff)
 const macho_header_size = 32
@@ -89,6 +99,9 @@ mut:
 	// The chained fixups that fastc_trim_chained_fixup_pages changed, if any.
 	fixups_start int
 	fixups_end   int
+	// The code that fastc_fix_tinycc_arm64_sp_offsets changed, if any.
+	text_start int
+	text_end   int
 }
 
 fn fastc_macho_sign_capacity(original_len int, ident string) int {
@@ -101,11 +114,14 @@ fn fastc_macho_sign_capacity(original_len int, ident string) int {
 // empty requirements blob and an empty CMS wrapper), replacing any signature
 // it has. The identifier is the file name, as `codesign -s -` uses.
 pub fn sign_adhoc(path string) ! {
-	$if macos {
-		fastc_sign_macho_adhoc_mapped(path)!
-	} $else {
-		fastc_sign_macho_adhoc_buffered(path)!
+	// Portable bootstrap snapshots omit the Darwin-only source file.
+	$if !cross ? {
+		$if macos {
+			fastc_sign_macho_adhoc_mapped(path)!
+			return
+		}
 	}
+	fastc_sign_macho_adhoc_buffered(path)!
 }
 
 fn fastc_sign_macho_adhoc_buffered(path string) ! {
@@ -135,6 +151,12 @@ fn fastc_sign_macho_adhoc_buffered(path string) ! {
 			return err
 		}
 	}
+	if patch.text_end > patch.text_start {
+		out.write_to(u64(patch.text_start), file[patch.text_start..patch.text_end]) or {
+			out.close()
+			return err
+		}
+	}
 	out.write_to(u64(patch.tail_start), file[patch.tail_start..patch.final_len]) or {
 		out.close()
 		return err
@@ -157,6 +179,10 @@ fn fastc_patch_macho_signature(mut file []u8, original_len int, path string) !Fa
 	if original_len < macho_header_size || fastc_read_u32_le(file, 0) != macho_magic_64 {
 		return error('`${path}` is not a 64-bit Mach-O file')
 	}
+	// Before the build version changes: it identifies a TinyCC executable.
+	text_start, text_end := fastc_fix_tinycc_arm64_sp_offsets(mut file, original_len)
+	written_load_end := fastc_modernize_tinycc_load_commands(mut file, original_len,
+		fastc_host_macos_version())
 	mut ncmds := int(fastc_read_u32_le(file, 16))
 	mut sizeofcmds := int(fastc_read_u32_le(file, 20))
 	mut linkedit_cmd := -1
@@ -247,7 +273,11 @@ fn fastc_patch_macho_signature(mut file []u8, original_len int, path string) !Fa
 		return error('`${path}`: signature size mismatch')
 	}
 	unsafe { vmemcpy(&u8(file.data) + code_limit, signature.data, signature.len) }
-	load_end := macho_header_size + sizeofcmds
+	mut load_end := macho_header_size + sizeofcmds
+	if written_load_end > load_end {
+		// Dropped load commands left zeros that must reach the file too.
+		load_end = written_load_end
+	}
 	return FastcMachoPatch{
 		original_len: original_len
 		tail_start:   tail_start
@@ -255,7 +285,236 @@ fn fastc_patch_macho_signature(mut file []u8, original_len int, path string) !Fa
 		final_len:    code_limit + signature.len
 		fixups_start: fixups_start
 		fixups_end:   fixups_end
+		text_start:   text_start
+		text_end:     text_end
 	}
+}
+
+// fastc_fix_tinycc_arm64_sp_offsets corrects the stack addresses that TinyCC computes
+// for offsets of 4096 and more on arm64. Its `arm64_spoff` emits `add xd, xzr, x30`
+// (the shifted-register form, where register 31 is the zero register) where
+// `add xd, sp, x30, uxtx` was meant, so a struct argument copied that far into the
+// outgoing arguments was written to the address of its offset. TinyCC emits this
+// instruction nowhere else, and no compiler emits it on purpose: it moves x30.
+// It returns the range of `file` that changed; an empty one when nothing did.
+fn fastc_fix_tinycc_arm64_sp_offsets(mut file []u8, original_len int) (int, int) {
+	if fastc_read_u32_le(file, 4) != macho_cpu_type_arm64 {
+		return 0, 0
+	}
+	ncmds := int(fastc_read_u32_le(file, 16))
+	load_end := macho_header_size + int(fastc_read_u32_le(file, 20))
+	if load_end > original_len {
+		return 0, 0
+	}
+	mut is_tinycc := false
+	mut text_offset := 0
+	mut text_size := 0
+	mut offset := macho_header_size
+	for _ in 0 .. ncmds {
+		if offset + 8 > load_end {
+			return 0, 0
+		}
+		cmd := fastc_read_u32_le(file, offset)
+		cmdsize := int(fastc_read_u32_le(file, offset + 4))
+		if cmdsize < 8 || offset + cmdsize > load_end {
+			return 0, 0
+		}
+		if cmd == macho_lc_build_version && cmdsize >= 24
+			&& fastc_read_u32_le(file, offset + 8) == macho_platform_macos
+			&& fastc_read_u32_le(file, offset + 12) == tinycc_macos_version
+			&& fastc_read_u32_le(file, offset + 16) == tinycc_macos_version {
+			is_tinycc = true
+		} else if cmd == macho_lc_segment_64 && fastc_c_string_at(file, offset + 8, 16) == '__TEXT' {
+			nsects := int(fastc_read_u32_le(file, offset + 64))
+			for k in 0 .. nsects {
+				section := offset + 72 + k * 80
+				if section + 80 > offset + cmdsize {
+					break
+				}
+				if fastc_c_string_at(file, section, 16) == '__text' {
+					text_size = int(fastc_read_u64_le(file, section + 40))
+					text_offset = int(fastc_read_u32_le(file, section + 48))
+				}
+			}
+		}
+		offset += cmdsize
+	}
+	if !is_tinycc || text_size <= 0 || text_offset < load_end
+		|| text_offset + text_size > original_len {
+		return 0, 0
+	}
+	return fastc_rewrite_tinycc_sp_adds(mut file, text_offset, text_offset + (text_size & ~3))
+}
+
+// fastc_rewrite_tinycc_sp_adds rewrites `add/sub xd, xzr, x30` to
+// `add/sub xd, sp, x30, uxtx` in the 4-byte aligned code file[start..end].
+@[direct_array_access]
+fn fastc_rewrite_tinycc_sp_adds(mut file []u8, start int, end int) (int, int) {
+	mut changed_start := 0
+	mut changed_end := 0
+	if start % 4 != 0 {
+		return 0, 0
+	}
+	// Mach-O code is little endian, like every host that runs V; one load per word
+	// keeps the scan of a large program's code to a few milliseconds.
+	words := unsafe { &u32(&u8(file.data) + start) }
+	for i in 0 .. (end - start) / 4 {
+		word := unsafe { words[i] }
+		// Bit 30 selects add or sub, bits 0-4 the destination.
+		if word & 0xbfffffe0 == 0x8b1e03e0 {
+			unsafe {
+				words[i] = (word & 0xc000001f) | 0x0b3e63e0
+			}
+			at := start + i * 4
+			if changed_end == 0 {
+				changed_start = at
+			}
+			changed_end = at + 4
+		}
+	}
+	return changed_start, changed_end
+}
+
+// fastc_host_macos_version returns the running macOS version in the Mach-O encoding
+// (major << 16 | minor << 8 | patch), or 0 on another system.
+fn fastc_host_macos_version() u32 {
+	if os.user_os() != 'macos' {
+		return 0
+	}
+	plist := os.read_file('/System/Library/CoreServices/SystemVersion.plist') or { return 0 }
+	key := plist.index('<key>ProductVersion</key>') or { return 0 }
+	rest := plist[key..]
+	start := rest.index('<string>') or { return 0 }
+	end := rest.index('</string>') or { return 0 }
+	if end <= start {
+		return 0
+	}
+	parts := rest[start + '<string>'.len..end].split('.')
+	major := parts[0].int()
+	minor := if parts.len > 1 { parts[1].int() } else { 0 }
+	patch := if parts.len > 2 { parts[2].int() } else { 0 }
+	if major <= 0 || major > 0xffff || minor < 0 || minor > 0xff || patch < 0 || patch > 0xff {
+		return 0
+	}
+	return (u32(major) << 16) | (u32(minor) << 8) | u32(patch)
+}
+
+// fastc_modernize_tinycc_load_commands gives an executable linked by TinyCC the SDK
+// version that the platform linker records. TinyCC records macOS 10.6, so AppKit
+// keeps its 10.6 behaviour for the program: other button and text field layout,
+// and no image formats added since. A current SDK version makes dyld require a
+// UUID and reject a repeated rpath, as it does for any program, so a UUID is added
+// and repeated rpaths are dropped too. Executables of other linkers, which record a
+// real version, are left alone. It returns the end of the original load commands,
+// which a caller writes back.
+fn fastc_modernize_tinycc_load_commands(mut file []u8, original_len int, sdk_version u32) int {
+	ncmds := int(fastc_read_u32_le(file, 16))
+	sizeofcmds := int(fastc_read_u32_le(file, 20))
+	original_end := macho_header_size + sizeofcmds
+	if sdk_version == 0 || original_end > original_len {
+		return original_end
+	}
+	mut build_version := -1
+	mut has_uuid := false
+	mut offset := macho_header_size
+	for _ in 0 .. ncmds {
+		if offset + 8 > original_end {
+			return original_end
+		}
+		cmd := fastc_read_u32_le(file, offset)
+		cmdsize := int(fastc_read_u32_le(file, offset + 4))
+		if cmdsize < 8 || offset + cmdsize > original_end {
+			return original_end
+		}
+		if cmd == macho_lc_build_version && cmdsize >= 24
+			&& fastc_read_u32_le(file, offset + 8) == macho_platform_macos
+			&& fastc_read_u32_le(file, offset + 12) == tinycc_macos_version
+			&& fastc_read_u32_le(file, offset + 16) == tinycc_macos_version {
+			build_version = offset
+		} else if cmd == macho_lc_uuid {
+			has_uuid = true
+		}
+		offset += cmdsize
+	}
+	if build_version < 0 || sdk_version <= tinycc_macos_version {
+		return original_end
+	}
+	min_version := if fastc_read_u32_le(file, 4) == macho_cpu_type_arm64 {
+		macos_arm64_min_version
+	} else {
+		tinycc_macos_version
+	}
+	fastc_write_u32_le(mut file, build_version + 12, min_version)
+	fastc_write_u32_le(mut file, build_version + 16, sdk_version)
+	// Drop repeated rpaths, moving the later commands down over them.
+	mut rpaths := map[string]bool{}
+	mut kept := 0
+	mut end := macho_header_size
+	offset = macho_header_size
+	for _ in 0 .. ncmds {
+		cmd := fastc_read_u32_le(file, offset)
+		cmdsize := int(fastc_read_u32_le(file, offset + 4))
+		mut keep := true
+		if cmd == macho_lc_rpath && cmdsize > 12 {
+			path_offset := int(fastc_read_u32_le(file, offset + 8))
+			if path_offset < cmdsize {
+				rpath := fastc_c_string_at(file, offset + path_offset, cmdsize - path_offset)
+				keep = rpath !in rpaths
+				rpaths[rpath] = true
+			}
+		}
+		if keep {
+			if end != offset {
+				unsafe { vmemmove(&u8(file.data) + end, &u8(file.data) + offset, cmdsize) }
+			}
+			end += cmdsize
+			kept++
+		}
+		offset += cmdsize
+	}
+	for k in end .. original_end {
+		file[k] = 0
+	}
+	// The UUID also leaves room for the signature command that may follow it.
+	mut has_room := !has_uuid && end + macho_uuid_size + 16 <= original_len
+	if has_room {
+		for k in end .. end + macho_uuid_size + 16 {
+			if file[k] != 0 {
+				has_room = false
+				break
+			}
+		}
+	}
+	if has_room {
+		// ld64 hashes its whole output; the load commands, the symbol strings at the
+		// end and the size identify the build without another pass over the file.
+		tail := if original_len - 65536 > end { original_len - 65536 } else { end }
+		mut identity := []u8{cap: end + original_len - tail + 4}
+		for k in 0 .. end {
+			identity << file[k]
+		}
+		for k in tail .. original_len {
+			identity << file[k]
+		}
+		identity << u8(original_len)
+		identity << u8(original_len >> 8)
+		identity << u8(original_len >> 16)
+		identity << u8(original_len >> 24)
+		digest := sha256.sum256(identity)
+		fastc_write_u32_le(mut file, end, macho_lc_uuid)
+		fastc_write_u32_le(mut file, end + 4, u32(macho_uuid_size))
+		for k in 0 .. 16 {
+			file[end + 8 + k] = digest[k]
+		}
+		// RFC 4122 version 3 and variant bits, as ld64 sets them.
+		file[end + 8 + 6] = (file[end + 8 + 6] & 0x0f) | 0x30
+		file[end + 8 + 8] = (file[end + 8 + 8] & 0x3f) | 0x80
+		end += macho_uuid_size
+		kept++
+	}
+	fastc_write_u32_le(mut file, 16, u32(kept))
+	fastc_write_u32_le(mut file, 20, u32(end - macho_header_size))
+	return original_end
 }
 
 // fastc_trim_chained_fixup_pages makes the chained fixups of each segment list
@@ -406,33 +665,10 @@ fn fastc_adhoc_signature(file []u8, code_limit int, ident string, text_limit u64
 	for _ in 0 .. cs_hash_size {
 		sig << u8(0)
 	}
-	// The page hashes: the system digest on macOS (where the signature is
-	// used); elsewhere V's SHA-256, which a self-hosted (TinyCC-built)
-	// compiler runs at a few tens of MB/s, so the pages are split over
-	// worker threads.
 	mut page_hashes := []u8{len: n_pages * cs_hash_size}
 	data_ptr := unsafe { &u8(file.data) }
 	hashes_ptr := unsafe { &u8(page_hashes.data) }
-	$if macos {
-		fastc_hash_code_pages_native(data_ptr, hashes_ptr, n_pages, code_limit)
-	} $else {
-		if n_pages >= 64 {
-			worker_count := 8
-			mut workers := [
-				spawn fastc_hash_code_pages(data_ptr, hashes_ptr, 0, n_pages / worker_count, code_limit),
-			]
-			for worker in 1 .. worker_count {
-				start := n_pages * worker / worker_count
-				end := n_pages * (worker + 1) / worker_count
-				workers << spawn fastc_hash_code_pages(data_ptr, hashes_ptr, start, end, code_limit)
-			}
-			for worker in workers {
-				worker.wait()
-			}
-		} else {
-			fastc_hash_code_pages(data_ptr, hashes_ptr, 0, n_pages, code_limit)
-		}
-	}
+	fastc_hash_signature_pages(data_ptr, hashes_ptr, n_pages, code_limit)
 	sig << page_hashes
 	for sig.len < req_blob_offset {
 		sig << u8(0)
@@ -441,6 +677,33 @@ fn fastc_adhoc_signature(file []u8, code_limit int, ident string, text_limit u64
 	fastc_push_u32_be(mut sig, cs_blob_wrapper_magic)
 	fastc_push_u32_be(mut sig, u32(cms_size))
 	return sig
+}
+
+// Native macOS builds use the system digest; portable snapshots and other
+// hosts split V's SHA-256 work over threads, as before.
+fn fastc_hash_signature_pages(data_ptr &u8, hashes_ptr &u8, n_pages int, code_limit int) {
+	$if !cross ? {
+		$if macos {
+			fastc_hash_code_pages_native(data_ptr, hashes_ptr, n_pages, code_limit)
+			return
+		}
+	}
+	if n_pages >= 64 {
+		worker_count := 8
+		mut workers := [
+			spawn fastc_hash_code_pages(data_ptr, hashes_ptr, 0, n_pages / worker_count, code_limit),
+		]
+		for worker in 1 .. worker_count {
+			start := n_pages * worker / worker_count
+			end := n_pages * (worker + 1) / worker_count
+			workers << spawn fastc_hash_code_pages(data_ptr, hashes_ptr, start, end, code_limit)
+		}
+		for worker in workers {
+			worker.wait()
+		}
+	} else {
+		fastc_hash_code_pages(data_ptr, hashes_ptr, 0, n_pages, code_limit)
+	}
 }
 
 // fastc_hash_code_pages writes the SHA-256 of the pages [page_start, page_end)

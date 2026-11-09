@@ -2,6 +2,7 @@
 // vtest retry: 3
 module main
 
+import io
 import net
 import net.html
 import net.http
@@ -108,10 +109,17 @@ fn test_https_chunked_body_is_returned_by_http_get_text() {
 	expected_body := concurrent_large_response_body()
 	server := spawn serve_chunked_html_response(mut listener, expected_body)
 
-	body := http.get_text('https://127.0.0.1:${port}/chunked')
+	resp := http.fetch(
+		url:      'https://127.0.0.1:${port}/chunked'
+		validate: false
+	) or {
+		server.wait()
+		assert false, 'fetch failed: ${err}'
+		return
+	}
 	server.wait()
 
-	assert body == expected_body
+	assert resp.body == expected_body
 }
 
 fn concurrent_large_response_body() string {
@@ -146,8 +154,10 @@ fn serve_incomplete_https_response(mut listener mbedtls.SSLListener) bool {
 		conn.write_string('HTTP/1.1 200 OK\r\nContent-Length: 2\r\n') or { return false }
 		conn.set_read_timeout(time.second)
 		mut drain_buf := []u8{len: 128}
-		_ = conn.read(mut drain_buf) or { return err.code() != net.err_timed_out_code }
-		return false
+		// TLS close_notify returns zero; a socket EOF returns io.Eof.
+		// Other errors, including mbedTLS timeouts, do not prove peer closure.
+		read := conn.read(mut drain_buf) or { return err is io.Eof }
+		return read == 0
 	}
 	return false
 }

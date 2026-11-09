@@ -3,6 +3,11 @@ module unix
 import os
 import time
 
+fn testsuite_begin() {
+	// Relative socket names stay within sun_path even when the CI scratch path is long.
+	os.chdir(os.vtmp_dir()) or { panic(err) }
+}
+
 fn test_deadline_getters_agree_with_wait_state() ! {
 	mut conn := StreamConn{}
 	mut listener := StreamListener{}
@@ -38,7 +43,7 @@ fn connect_after_deadline_chunk_delay(path string) {
 fn test_select_deadline_retries_chunks_and_preserves_unset_sentinels() ! {
 	future := time.parse_iso8601('9999-12-31T23:59:59Z')!
 	for i, deadline in [time.Time{}, time.unix(0), future] {
-		path := os.join_path(os.vtmp_dir(), 'v_unix_chunk_${os.getpid()}_${i}.sock')
+		path := 'v_unix_chunk_${os.getpid()}_${i}.sock'
 		os.rm(path) or {}
 		mut listener := listen_stream(path)!
 		defer {
