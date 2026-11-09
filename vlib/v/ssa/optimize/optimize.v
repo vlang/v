@@ -27,6 +27,7 @@ pub fn optimize(mut m ssa.Module) {
 
 // optimize_with_options supports optimize with options handling for optimize.
 pub fn optimize_with_options(mut m ssa.Module, opts OptimizeOptions) {
+	m.track_uses = true
 	rebuild_use_lists(mut m)
 	build_cfg(mut m)
 	verify_ssa(m, 'initial normalization')
@@ -148,7 +149,8 @@ fn rebuild_use_lists(mut m ssa.Module) {
 							break
 						}
 					}
-					if op_id >= 0 && op_id < m.values.len && !already_recorded {
+					if op_id >= 0 && op_id < m.values.len && !already_recorded
+						&& m.values[op_id].has_use_list() {
 						mut op_val := m.values[op_id]
 						op_val.uses << val_id
 						m.values[op_id] = op_val

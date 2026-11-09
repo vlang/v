@@ -96,7 +96,7 @@ fn instruction_has_side_effects(op ssa.OpCode) bool {
 
 // remove_use updates remove use state for optimize.
 fn remove_use(mut m ssa.Module, val_id int, user_id int) {
-	if val_id < 0 || val_id >= m.values.len {
+	if val_id < 0 || val_id >= m.values.len || !m.values[val_id].has_use_list() {
 		return
 	}
 	mut val := m.values[val_id]

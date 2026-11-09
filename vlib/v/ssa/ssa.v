@@ -267,6 +267,14 @@ pub enum ValueKind {
 }
 
 // Value represents value data used by ssa.
+// has_use_list reports whether a value keeps its users. Constants and symbols
+// have too many (a single `0` is used all over a large program) and nothing asks
+// for them; their lists made building and pruning quadratic.
+@[inline]
+pub fn (v &Value) has_use_list() bool {
+	return v.kind !in [.constant, .global, .func_ref, .string_literal]
+}
+
 pub struct Value {
 pub mut:
 	id    ValueID
@@ -600,11 +608,7 @@ pub fn (mut m Module) add_instr(op OpCode, block BlockID, typ TypeID, operands [
 			if !m.instrs[instr_idx].is_value_operand(oi) {
 				continue
 			}
-			if op_id > 0 && op_id < m.values.len && val_id !in m.values[op_id].uses {
-				mut op_val := m.values[op_id]
-				op_val.uses << val_id
-				m.values[op_id] = op_val
-			}
+			m.add_value_user(op_id, val_id)
 		}
 	}
 	return val_id
@@ -629,11 +633,7 @@ pub fn (mut m Module) add_instr_front(op OpCode, block BlockID, typ TypeID, oper
 			if !m.instrs[instr_idx].is_value_operand(oi) {
 				continue
 			}
-			if op_id > 0 && op_id < m.values.len && val_id !in m.values[op_id].uses {
-				mut op_val := m.values[op_id]
-				op_val.uses << val_id
-				m.values[op_id] = op_val
-			}
+			m.add_value_user(op_id, val_id)
 		}
 	}
 	return val_id
@@ -649,18 +649,14 @@ pub fn (mut m Module) append_phi_operands(phi_val_id ValueID, val ValueID, block
 	instr.operands << val
 	instr.operands << block_id
 	m.instrs[instr_idx] = instr
-	if m.track_uses && val > 0 && val < m.values.len {
-		if phi_val_id !in m.values[val].uses {
-			mut op_val := m.values[val]
-			op_val.uses << phi_val_id
-			m.values[val] = op_val
-		}
+	if m.track_uses {
+		m.add_value_user(val, phi_val_id)
 	}
 }
 
 // remove_value_user removes one instruction from a value's unique user list.
 pub fn (mut m Module) remove_value_user(value_id ValueID, user_id ValueID) {
-	if value_id <= 0 || value_id >= m.values.len {
+	if value_id <= 0 || value_id >= m.values.len || !m.values[value_id].has_use_list() {
 		return
 	}
 	mut value := m.values[value_id]
@@ -674,7 +670,8 @@ pub fn (mut m Module) remove_value_user(value_id ValueID, user_id ValueID) {
 
 // add_value_user records one instruction in a value's unique user list.
 pub fn (mut m Module) add_value_user(value_id ValueID, user_id ValueID) {
-	if value_id <= 0 || value_id >= m.values.len || user_id <= 0 || user_id >= m.values.len {
+	if value_id <= 0 || value_id >= m.values.len || user_id <= 0 || user_id >= m.values.len
+		|| !m.values[value_id].has_use_list() {
 		return
 	}
 	if user_id in m.values[value_id].uses {
@@ -1175,11 +1172,7 @@ pub fn (mut m Module) replace_uses(old_id ValueID, new_id ValueID) {
 		}
 		if changed {
 			m.instrs[val.index] = instr
-			if user_id !in m.values[new_id].uses {
-				mut new_val := m.values[new_id]
-				new_val.uses << user_id
-				m.values[new_id] = new_val
-			}
+			m.add_value_user(new_id, user_id)
 		}
 	}
 	mut old_val := m.values[old_id]

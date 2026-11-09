@@ -14789,7 +14789,7 @@ pub fn run(args []string) {
 			}
 			// SSA + ARM64 native backend
 			mut m := ssa.build_with_options(a, used_fns, pre_tc, ssa.BuildOptions{
-				track_uses:           is_prod
+				track_uses:           false // optimize() rebuilds them
 				thread_stack_size:    prefs.thread_stack_size
 				test_files:           test_files
 				test_run_only:        run_only
