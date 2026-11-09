@@ -94,6 +94,28 @@ fn main() {
 ", '3')
 }
 
+// A `return` inside `$if` leaves the following `return` in the same block.
+fn test_inlining_stops_at_the_first_return() {
+	check('dead_return', "fn truth(a int) bool {
+	return a > 0
+}
+
+fn wrapper(a int) bool {
+	\$if macos {
+		return truth(a)
+	}
+	\$if !macos {
+		return truth(a)
+	}
+	return false
+}
+
+fn main() {
+	println(wrapper(3))
+}
+", 'true')
+}
+
 fn test_common_subexpressions_across_branches() {
 	check('cse', "fn f(a int, b int, flag bool) int {
 	x := a * b + 7

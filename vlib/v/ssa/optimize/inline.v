@@ -239,6 +239,12 @@ fn inline_call(mut m ssa.Module, caller int, blk_id int, at int, callee int) ?in
 			value_map[int(old_id)] = new_id
 			blk_copied << new_id
 			blk_originals << old_id
+			// Code after a block's terminator never runs. It exists after `$if`
+			// branches that end in `return`; copied, a second `ret` would give
+			// the phi a second value from the same block.
+			if instr.op in [.ret, .br, .jmp, .switch_, .unreachable] {
+				break
+			}
 		}
 		copied << blk_copied
 		originals << blk_originals
