@@ -5397,7 +5397,12 @@ fn (g &Parser) render_channel_property_expression(tokens []FastcExpressionToken,
 		} else {
 			'${g.channel_runtime_name(tokens[i].lit)}(${receiver.source})'
 		}
-		replaced := fastc_replace(rendered, raw, property)
+		mut replaced := fastc_replace(rendered, raw, property)
+		if replaced == rendered {
+			// A channel promoted from an embedded struct renders through its
+			// embedded path (`app->__embedded_0.results`), not the raw spelling.
+			replaced = fastc_replace(rendered, '${receiver.source}.${tokens[i].lit}', property)
+		}
 		if replaced != rendered {
 			rendered = replaced
 			changed = true
