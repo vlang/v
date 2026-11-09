@@ -831,6 +831,12 @@ enum Local {
 	b
 }
 
+@[flag]
+enum Small as u8 {
+	x
+	y
+}
+
 fn local(value Local) Local {
 	return value
 }
@@ -839,12 +845,14 @@ fn main() {
 	mut flags := Local.zero()
 	empty := flags.is_empty()
 	flags.set(.b)
+	mut small := Small.zero()
+	small.set_all()
 	mut queue := jobs.Queue{}
-	println('\${empty} \${flags.is_empty()} \${local(Local.zero()).is_empty()} \${queue.add(.layout)} \${queue.pending.is_empty()}')
+	println('\${small.all(.x | .y)} \${empty} \${flags.is_empty()} \${local(Local.zero()).is_empty()} \${queue.add(.layout)} \${queue.pending.is_empty()}')
 }
 "
 		}, []string{})
-		assert output == 'true false true true false', output
+		assert output == 'true true false true true false', output
 	}
 }
 

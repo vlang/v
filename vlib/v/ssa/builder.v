@@ -14837,7 +14837,7 @@ fn (mut b Builder) build_call(id flat.NodeId, node flat.Node) ValueID {
 		}
 	}
 	if fn_node.kind == .selector && fn_node.children_count > 0
-		&& fn_node.value_text() in ['set', 'clear', 'has', 'all', 'is_empty'] {
+		&& fn_node.value_text() in ['set', 'clear', 'has', 'all', 'is_empty', 'set_all'] {
 		if result := b.build_flag_enum_method_call(b.a.child(&fn_node, 0), fn_node.value_text(),
 			node)
 		{
@@ -15976,7 +15976,7 @@ fn (mut b Builder) build_typed_call_arg(id flat.NodeId, param_type TypeID, allow
 }
 
 fn (mut b Builder) build_flag_enum_method_call(base_id flat.NodeId, method string, node flat.Node) ?ValueID {
-	if node.children_count != (if method == 'is_empty' { 1 } else { 2 }) {
+	if node.children_count != (if method in ['is_empty', 'set_all'] { 1 } else { 2 }) {
 		return none
 	}
 	flag_type_name_source_id := b.flag_enum_expr_type_name(base_id)
@@ -15989,6 +15989,13 @@ fn (mut b Builder) build_flag_enum_method_call(base_id flat.NodeId, method strin
 	if method == 'is_empty' {
 		current := b.emit1(.load, flag_type, base_addr)
 		return b.emit2(.eq, b.i1_type, current, b.m.get_or_add_const(flag_type, '0'))
+	}
+	if method == 'set_all' {
+		// The transformer lowers this for plain flag enums; one with a backing
+		// type reaches the builder.
+		all_bits := b.flag_enum_all_bits(flag_type_name_source_id)
+		b.emit2(.store, b.void_type, b.m.get_or_add_const(flag_type, all_bits.str()), base_addr)
+		return b.m.get_or_add_const(b.i64_type, '0')
 	}
 	mut flag := if node.children_count > 1 {
 		arg_id := b.a.child(&node, 1)
@@ -16021,6 +16028,19 @@ fn (mut b Builder) build_flag_enum_method_call(base_id flat.NodeId, method strin
 	}
 	b.emit2(.store, b.void_type, result, base_addr)
 	return b.m.get_or_add_const(b.i64_type, '0')
+}
+
+fn (b &Builder) flag_enum_all_bits(flag_type_name_id u32) u64 {
+	clean_id := ssa_pointer_base_source_type(flag_type_name_id)
+	prefixes := [flat.source_type_name(clean_id) + '.',
+		flat.source_type_name(flat.source_type_syntax(clean_id).first_dot_suffix()) + '.']
+	mut all_bits := u64(0)
+	for key, value in b.enum_values {
+		if prefixes.any(key.starts_with(it) && !key[it.len..].contains('.')) {
+			all_bits |= u64(1) << value
+		}
+	}
+	return all_bits
 }
 
 fn (b &Builder) flag_enum_mask_for_expr(node flat.Node, flag_type_name_id u32) ?int {
