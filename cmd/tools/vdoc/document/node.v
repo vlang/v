@@ -70,13 +70,12 @@ pub fn (dc DocNode) merge_comments_without_examples() string {
 		}
 		if comments[i].is_multi_line_example() {
 			if i + 1 == comments.len || !comments[i + 1].has_triple_backtick() {
-				eprintln('${dc.file_path}:${dc.pos.line_nr}: warning: expected code block after empty example line:')
+				eprintln('${dc.file_path}:${dc.pos.line_nr}: warning: expected code block after empty example line, so it is shown as text:')
 				eprintln('// ```')
 				if i + 1 < comments.len {
 					eprintln('Found:')
 					eprintln('//' + comments[i + 1].text[1..])
 				}
-				// Without a code block, there is no example to leave out.
 				sans_examples << comments[i]
 				continue
 			}
