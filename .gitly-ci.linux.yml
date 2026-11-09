@@ -2,7 +2,7 @@
 # Build the exact pushed source, then exercise its compiler and test runner.
 variables:
   VJOBS: "1"
-  VTEST_FAIL_FAST: "0"
+  VTEST_FAIL_FAST: "1"
   VTEST_MAX_COMPILATION_RETRIES: "1"
   VTEST_SHOW_START: "1"
   VTEST_REPORT_RUNNING_PERIOD_MS: "30000"

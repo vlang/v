@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Keep serial V test suites running and report kernel-confirmed OOM failures."""
+"""Stop serial V test suites on their first failure or kernel-confirmed OOM."""
 import os
 from pathlib import Path
 import re
@@ -62,7 +62,7 @@ class OOMReporter:
     def finish(self):
         self.check()
         if self.failures:
-            self.output.write(b'\n[gitly_ci] OOM failures (remaining tests were allowed to run):\n')
+            self.output.write(b'\n[gitly_ci] OOM failure (test suite stopped):\n')
             for name, count in self.failures.items():
                 self.output.write(f'  OOM  {name} ({count} killed)\n'.encode())
             self.output.flush()
@@ -70,18 +70,24 @@ class OOMReporter:
 
 def supervise(arguments, group=Path('/sys/fs/cgroup'), output=None):
     output = output or sys.stdout.buffer
-    environment = dict(os.environ, VJOBS='1', VTEST_FAIL_FAST='0',
+    environment = dict(os.environ, VJOBS='1', VTEST_FAIL_FAST='1',
                        VTEST_SHOW_START='1', VTEST_MAX_COMPILATION_RETRIES='1')
     reporter = OOMReporter(group, output)
     process = subprocess.Popen(arguments, env=environment, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT, start_new_session=True)
     previous_handlers = {}
+    oom_stopped = False
 
     def forward(signum, _frame):
         try:
             os.killpg(process.pid, signum)
         except ProcessLookupError:
             pass
+        except PermissionError:
+            # macOS can report EPERM for a group whose leader just became a
+            # zombie. A still-running command must never hide a signal error.
+            if process.poll() is None:
+                raise
 
     try:
         for signum in (signal.SIGTERM, signal.SIGINT):
@@ -96,12 +102,17 @@ def supervise(arguments, group=Path('/sys/fs/cgroup'), output=None):
                     else:
                         selector.unregister(key.fileobj)
                 reporter.check()
+                if reporter.failures and not oom_stopped:
+                    # A nested compiler can die while its parent keeps running.
+                    # Stop the entire suite, including descendants holding stdout.
+                    forward(signal.SIGKILL, None)
+                    oom_stopped = True
         code = process.wait()
         reporter.finish()
         if code < 0:
             code = 128 - code
         # A test's own retry/ignored-failure policy must not hide a kernel OOM.
-        return 137 if reporter.failures and code == 0 else code
+        return 137 if reporter.failures else code
     finally:
         for signum, handler in previous_handlers.items():
             signal.signal(signum, handler)
