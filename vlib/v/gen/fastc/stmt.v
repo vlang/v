@@ -3471,7 +3471,7 @@ fn (mut g Parser) parse_declaration_after_name(name string, is_mut bool, is_stat
 	mut fn_signature_key := if g.last_expression.len == 1 { g.last_expression[0].lit } else { '' }
 	if signature := g.callable_signature_for_expression(g.last_expression) {
 		function_alias = signature
-		fn_signature_key = g.temporary_name('callback_signature')
+		fn_signature_key = g.callback_signature_key()
 		g.mono_functions[fn_signature_key] = signature
 	}
 	g.set_scoped_local(name, FastcLocal{

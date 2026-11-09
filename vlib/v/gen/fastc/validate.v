@@ -1192,6 +1192,7 @@ fn (g &Parser) validate_expression_mutation_lvalue(tokens []FastcExpressionToken
 
 // struct_direct_member_type caches only finalized file-generation descriptors.
 // Source and synthetic field names outlive this file worker's heap memo.
+@[inline]
 fn (g &Parser) struct_direct_member_type(receiver_type_id u32, field_name string) u32 {
 	if isnil(g.type_descriptor_memo) || receiver_type_id == 0 {
 		return g.struct_direct_member_type_uncached(receiver_type_id, field_name)
@@ -1201,11 +1202,32 @@ fn (g &Parser) struct_direct_member_type(receiver_type_id u32, field_name string
 		&& memo.direct_member_field == field_name {
 		return memo.direct_member_type
 	}
-	resolved := g.struct_direct_member_type_uncached(receiver_type_id, field_name)
+	resolved := g.struct_direct_member_type_miss(receiver_type_id, field_name)
 	memo.direct_member_receiver = receiver_type_id
 	memo.direct_member_field = field_name
 	memo.direct_member_type = resolved
 	memo.direct_member_known = true
+	return resolved
+}
+
+@[direct_array_access]
+fn (g &Parser) struct_direct_member_type_miss(receiver_type_id u32, field_name string) u32 {
+	mut slot_key := receiver_type_id
+	if field_name.len > 0 {
+		slot_key ^= u32(field_name[0]) * 17 + u32(field_name[field_name.len - 1])
+	}
+	slot := int(slot_key & 63)
+	mut memo := g.type_descriptor_memo
+	entry := memo.direct_members[slot]
+	if entry.receiver == receiver_type_id && entry.field == field_name {
+		return entry.typ
+	}
+	resolved := g.struct_direct_member_type_uncached(receiver_type_id, field_name)
+	memo.direct_members[slot] = FastcDirectMemberMemoEntry{
+		receiver: receiver_type_id
+		field:    field_name
+		typ:      resolved
+	}
 	return resolved
 }
 

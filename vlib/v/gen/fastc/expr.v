@@ -1178,8 +1178,19 @@ fn (mut g Parser) lower_or_expression(mut result strings.Builder, mut expression
 		option_expression = method_call.source
 		option_value_type = g.option_value_type_for_expression(option_tokens)
 	}
+	mut narrowed_option := false
+	operand_tokens := if grouped_operand { grouped_value_tokens } else { option_tokens }
+	if operand_tokens.len == 1 && operand_tokens[0].tok == .name {
+		if local := g.locals[operand_tokens[0].lit] {
+			if origin := g.option_origins[local.c_name] {
+				option_expression = origin.source
+				option_value_type = origin.typ
+				narrowed_option = true
+			}
+		}
+	}
 	// The `or` result is the option payload, not the enclosing expression's type.
-	option_container_type := if lookup_option {
+	option_container_type := if lookup_option || narrowed_option {
 		'Option'
 	} else {
 		g.option_container_c_type(if grouped_operand {

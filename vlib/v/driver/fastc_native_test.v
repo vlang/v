@@ -338,6 +338,7 @@ fn test_fastc_native_signatures_cover_block_boundaries_and_refresh() ! {
 			os.write_file_array(path, []u8{len: size, init: u8(index % 251)})!
 			signature := v3_fastc_native_file_signature(path, true, mut stats)
 			assert signature.starts_with('word-v1:')
+			assert v3_fastc_native_read_signature(path) == signature
 			assert signature !in signatures
 			signatures << signature
 		}
@@ -347,6 +348,7 @@ fn test_fastc_native_signatures_cover_block_boundaries_and_refresh() ! {
 			bytes[offset] ^= 1
 			os.write_file_array(path, bytes)!
 			assert v3_fastc_native_file_signature(path, false, mut stats) == original
+			assert !v3_fastc_native_dependencies_match([path], [original])
 			assert v3_fastc_native_file_signature(path, true, mut stats) != original
 			os.write_file_array(path, []u8{len: 131073, init: u8(index % 251)})!
 			assert v3_fastc_native_file_signature(path, true, mut stats) == original

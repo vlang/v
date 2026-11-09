@@ -145,13 +145,15 @@ parameter shadowing ends with its function and does not affect later constants.
 Function-pointer fields and parameters support mixed named and unnamed parameter types.
 Native function parameters can also name imported V types, such as `gg.Color`.
 Function aliases support nested callback parameter types, including callbacks taking callbacks.
+Callback aliases and loop callbacks do not affect option values captured by later closures.
 Field iteration supports `field.is_shared` and passing `field.attrs` to helper functions.
 Enum value iteration provides each value's `attrs`, and `$for attr in Enum.attributes` provides
 the `name`, `arg` and `has_arg` of the enum's own attributes.
 Member and operator continuations can follow comments on a new line.
 `$zero(Type)` supports scalars, pointers, enums, structs, dynamic arrays, and maps.
 Optional collection elements preserve their payload types. Array guards and `or` fallbacks
-handle both missing indices and stored `none` elements. Struct equality compares optional,
+handle both missing indices and stored `none` elements. Explicit unwrapping remains valid after
+terminal `none` guards. Struct equality compares optional,
 map, array, sum-type, and interface fields by value. Function values retain their signatures
 through options, collections, captures, and returned callbacks; `spawn` accepts callback fields.
 Project imports honor explicit `-path` search roots, including replacements for vlib modules.

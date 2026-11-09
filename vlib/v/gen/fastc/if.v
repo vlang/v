@@ -938,7 +938,9 @@ fn (mut g Parser) parse_if() !bool {
 				if !local.is_mut && !local.is_reference && local.option_value_type != 0 {
 					shadow := g.temporary_name('nonnull_option')
 					payload := local.option_value_type
-					g.write_line('${fastc_output_c_type(flat.source_type_name(payload))} ${shadow} = ${g.option_value_expression(payload, g.local_c_name(name))};')
+					origin := g.local_c_name(name)
+					g.write_line('${fastc_output_c_type(flat.source_type_name(payload))} ${shadow} = ${g.option_value_expression(payload, origin)};')
+					g.option_origins[shadow] = FastcOptionOrigin{ source: origin, typ: payload }
 					g.set_scoped_local(name, FastcLocal{ ...local, typ: payload, option_value_type: 0, c_name: shadow })
 				}
 			}
