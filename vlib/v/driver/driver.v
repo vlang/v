@@ -13156,8 +13156,10 @@ pub fn run(args []string) {
 		// A plain build of a program checks the bodies of the standard library that
 		// the program can reach, not the others (see types.skip_unreachable_library_bodies).
 		// What else needs every body checked keeps them all: a check without a build,
-		// a test, the compiler itself, a module cache that compiles whole modules.
-		skip_library_bodies := backend == 'c' && !check_only && !is_checker_fixture && !building_v
+		// a test, a module cache that compiles whole modules, and the compiler itself,
+		// which reaches most of its library: checking it round by round costs more
+		// than the bodies it would leave out.
+		skip_library_bodies := backend in ['c', 'arm64'] && !check_only && !is_checker_fixture && !building_v
 			&& test_files.len == 0 && !no_skip_unused && !is_vsh_input && !is_repl && !is_prof
 			&& !is_trace_calls && coverage_dir.len == 0 && !trivial_literal_output
 			&& !incremental_cache_hit && !generic_cache_hit && !cache_state.manager.enabled

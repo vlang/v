@@ -52,6 +52,35 @@ fn main() {
 	}
 }
 
+// A plain arm64 build checks only the library bodies that the program reaches.
+fn test_arm64_leaves_unreached_library_bodies_unchecked() {
+	$if macos && arm64 {
+		root := os.join_path(os.vtmp_dir(), 'arm64_ssa_lazy_bodies_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root) or { panic(err) }
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		source := os.join_path(root, 'main.v')
+		os.write_file(source, "import os
+
+fn main() {
+	println(os.file_name('a/b.txt'))
+}
+") or {
+			panic(err)
+		}
+		output := os.join_path(root, 'main')
+		compiled := cmdexec.run(@VEXE, ['-b', 'arm64', '-nocache', '-v', '-o', output, source])
+		assert compiled.exit_code == 0, compiled.output
+		assert compiled.output.contains('left unchecked'), compiled.output
+		assert compiled.output.contains(' 0 left unchecked') == false, compiled.output
+		ran := cmdexec.run(output, [])
+		assert ran.exit_code == 0, ran.output
+		assert ran.output.trim_space() == 'b.txt'
+	}
+}
+
 // gg's `App` must not take over the layout of the program's own `App`.
 fn test_module_struct_keeps_program_struct_name() {
 	$if macos && arm64 {
