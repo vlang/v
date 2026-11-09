@@ -155,6 +155,8 @@ const n_ext = u8(0x01)
 const n_undf = u8(0x00)
 const n_sect = u8(0x0e)
 const s_regular = u32(0)
+const s_attr_debug = u32(0x02000000)
+const unwind_arm64_mode_frame = u32(0x04000000)
 const s_attr_pure_instructions = u32(0x80000000)
 const s_attr_some_instructions = u32(0x00000400)
 
@@ -200,8 +202,9 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 	text_len := m.text_data.len
 	const_addr := text_len
 	const_len := m.str_data.len
-	data_addr := (const_addr + const_len + 7) & ~7
+	data_addr := (const_addr + const_len + 15) & ~15
 	data_len := m.data_data.len
+	unwind_addr := (data_addr + data_len + 7) & ~7
 
 	// Generator symbol values are already the section addresses used below: text
 	// offsets, `text_len + string offset` and `align8(text_len + strings) + data
@@ -276,7 +279,9 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 	}
 	n_syms := out_index
 
-	n_sects := 3
+	unwind_entries, unwind_relocs := m.compact_unwind(reloc_index, shadowed)
+	unwind_len := unwind_entries.len
+	n_sects := 4
 	header_size := 32
 	seg_cmd_size := 72 + 80 * n_sects
 	build_version_cmd_size := 24
@@ -287,9 +292,10 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 	text_off := (header_size + load_cmds_size + 15) & ~15
 	const_off := text_off + const_addr
 	data_off := text_off + data_addr
-	seg_filesize := data_addr + data_len
+	seg_filesize := unwind_addr + unwind_len
 	reloc_off := (text_off + seg_filesize + 7) & ~7
-	sym_off := reloc_off + m.relocs.len * 8
+	unwind_reloc_off := reloc_off + m.relocs.len * 8
+	sym_off := unwind_reloc_off + unwind_relocs.len
 	str_off := sym_off + symtab.len
 
 	mut buf := []u8{cap: str_off + strtab.len}
@@ -319,8 +325,10 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 		m.relocs.len, s_regular | s_attr_pure_instructions | s_attr_some_instructions)
 	write_section_64(mut buf, '__const', '__TEXT', const_addr, const_len, const_off, 0, 0, 0,
 		s_regular)
-	write_section_64(mut buf, '__data', '__DATA', data_addr, data_len, data_off, 3, 0, 0,
+	write_section_64(mut buf, '__data', '__DATA', data_addr, data_len, data_off, 4, 0, 0,
 		s_regular)
+	write_section_64(mut buf, '__compact_unwind', '__LD', unwind_addr, unwind_len,
+		text_off + unwind_addr, 3, unwind_reloc_off, unwind_relocs.len / 8, s_attr_debug)
 
 	// LC_BUILD_VERSION
 	write_u32_le(mut buf, u32(lc_build_version_cmd))
@@ -361,6 +369,10 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 		buf << 0
 	}
 	buf << m.data_data
+	for buf.len < text_off + unwind_addr {
+		buf << 0
+	}
+	buf << unwind_entries
 	for buf.len < reloc_off {
 		buf << 0
 	}
@@ -380,12 +392,53 @@ pub fn (mut m MachOObject) write_object(path string, opts MachOObjectOptions) ! 
 		info |= u32(r.type_) << 28
 		write_u32_le(mut buf, info)
 	}
+	buf << unwind_relocs
 	buf << symtab
 	buf << strtab
 
 	if !write_file_array_raw(path, buf) {
 		return error('failed to write Mach-O object `${path}`')
 	}
+}
+
+// compact_unwind returns the `__LD,__compact_unwind` entries of the object, one
+// per function, and their relocations. Every V function starts with
+// `stp x29, x30, [sp, #-16]!; mov x29, sp`, so each is described by the frame
+// mode encoding. With it the system linker builds `__unwind_info`, and an
+// Objective-C exception or an `_Unwind_Backtrace` can cross V frames. Layout as
+// in Zig's src/link/MachO/UnwindInfo.zig, which reads what compilers emit here.
+fn (m &MachOObject) compact_unwind(reloc_index []int, shadowed map[int]bool) ([]u8, []u8) {
+	mut functions := []int{}
+	for i, sym in m.symbols {
+		if sym.type_ & n_sect == n_sect && sym.sect == 1 {
+			functions << i
+		}
+	}
+	functions.sort_with_compare(fn [m] (a &int, b &int) int {
+		return int(i64(m.symbols[*a].value) - i64(m.symbols[*b].value))
+	})
+	mut entries := []u8{cap: functions.len * 32}
+	mut relocs := []u8{cap: functions.len * 8}
+	for position, index in functions {
+		start := m.symbols[index].value
+		end := if position + 1 < functions.len {
+			m.symbols[functions[position + 1]].value
+		} else {
+			u64(m.text_data.len)
+		}
+		if end <= start || shadowed[index] {
+			continue
+		}
+		write_u32_le(mut relocs, u32(entries.len))
+		// r_symbolnum, r_length 3 (8 bytes), r_extern, ARM64_RELOC_UNSIGNED
+		write_u32_le(mut relocs, (u32(reloc_index[index]) & 0xffffff) | (3 << 25) | (1 << 27))
+		write_u64_le(mut entries, 0) // the function: an external relocation's addend
+		write_u32_le(mut entries, u32(end - start))
+		write_u32_le(mut entries, unwind_arm64_mode_frame)
+		write_u64_le(mut entries, 0) // personality
+		write_u64_le(mut entries, 0) // LSDA
+	}
+	return entries, relocs
 }
 
 // The generator takes the address of a C function with ADRP + ADD, which the

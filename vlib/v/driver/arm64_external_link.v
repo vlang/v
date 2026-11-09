@@ -309,8 +309,14 @@ mut:
 fn arm64_c_side(opts Arm64CSideOptions) !Arm64CSide {
 	prefs := opts.prefs
 	compiler := if opts.c_compiler in ['', 'tinyc', 'tcc'] { 'cc' } else { opts.c_compiler }
-	target_args := c_compiler_target_args(prefs.target, compiler, opts.compiler_explicit, '')!
+	mut target_args := c_compiler_target_args(prefs.target, compiler, opts.compiler_explicit, '')!
 	mut flags := opts.user_c_flags.clone()
+	// The object says macOS 11.0, the first release for Apple silicon. Odin sets
+	// the same floor explicitly (src/linker.cpp); without it the executable would
+	// require the build machine's macOS.
+	if prefs.target.os == 'macos' && !flags.any(it.contains('mmacosx-version-min')) {
+		target_args << '-mmacosx-version-min=11.0'
+	}
 	flags << cgen.cache_directive_flags(opts.a, prefs.vroot, prefs.target, prefs.compile_values)
 	support := native_c_support_source(opts.a, prefs.vroot, prefs.target, prefs.compile_values)
 	mut args := []string{}

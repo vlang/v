@@ -274,3 +274,43 @@ fn test_arm64_lays_out_c_structs_and_orders_headers_like_the_c_backend() {
 		assert run.output.trim_space() == '41\n7.5\n3', run.output
 	}
 }
+
+// `__LD,__compact_unwind` lets an exception thrown below a V frame reach the
+// handler above it.
+fn test_arm64_objc_exception_crosses_v_frames() {
+	$if macos && arm64 {
+		root := os.join_path(os.vtmp_dir(), 'arm64_external_unwind_${os.getpid()}')
+		os.rmdir_all(root) or {}
+		os.mkdir_all(root)!
+		defer {
+			os.rmdir_all(root) or {}
+		}
+		os.write_file(os.join_path(root, 'v.mod'), '')!
+		os.write_file(os.join_path(root, 'ex.h'), '#import <Foundation/Foundation.h>
+int v_callback(void);
+static inline int ex_throw(void) { @throw [NSException exceptionWithName:@"x" reason:@"y" userInfo:nil]; }
+static inline int ex_call(void) { @try { return v_callback(); } @catch (NSException *e) { return 42; } }
+')!
+		os.write_file(os.join_path(root, 'main.v'), "#flag -framework Foundation
+#include \"@VMODROOT/ex.h\"
+
+fn C.ex_throw() int
+fn C.ex_call() int
+
+@[export: 'v_callback']
+fn v_callback() int {
+	return C.ex_throw() + 1
+}
+
+fn main() {
+	println(C.ex_call())
+}
+")!
+		output := os.join_path(root, 'main')
+		compiled := cmdexec.run(@VEXE, ['-b', 'arm64', '-o', output, os.join_path(root, 'main.v')])
+		assert compiled.exit_code == 0, compiled.output
+		run := cmdexec.run(output, []string{})
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == '42', run.output
+	}
+}

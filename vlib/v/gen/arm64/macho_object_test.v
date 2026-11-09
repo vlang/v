@@ -187,7 +187,7 @@ fn test_write_object_is_a_relocatable_object_for_the_system_linker() {
 	assert o.sections['__text'][1] == 28
 	assert o.sections['__const'][0] == 28
 	assert o.sections['__data'][0] == 32 // align8(28 + 3)
-	assert o.sections['__data'][3] == 3
+	assert o.sections['__data'][3] == 4
 	assert o.text_bytes.len == 28
 	// LC_DYSYMTAB groups: locals, external definitions, undefined.
 	assert o.ilocal == 0

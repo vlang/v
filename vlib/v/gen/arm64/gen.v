@@ -478,6 +478,13 @@ fn (g &Gen) reachable_functions() []bool {
 	return reach
 }
 
+// align_global_offset rounds a data offset up for the global's own alignment,
+// at least eight bytes. A `u128` global needs sixteen when C reads it.
+fn (g &Gen) align_global_offset(offset u64, global_index int) u64 {
+	alignment := u64(if g.m.type_align(g.m.globals[global_index].typ) > 8 { 16 } else { 8 })
+	return (offset + alignment - 1) & ~(alignment - 1)
+}
+
 // gen_pre_pass emits pre pass output for arm64.
 fn (mut g Gen) gen_pre_pass() {
 	mut data_offset := u64(0)
@@ -485,7 +492,7 @@ fn (mut g Gen) gen_pre_pass() {
 		if g.m.globals[gi].linkage == .external {
 			continue
 		}
-		data_offset = (data_offset + 7) & ~u64(7)
+		data_offset = g.align_global_offset(data_offset, gi)
 		g.macho.add_symbol('_' + g.m.globals[gi].name, data_offset, true, 3)
 		size := g.m.type_size(g.m.globals[gi].typ)
 		data_offset += u64(if size > 0 { size } else { 8 })
@@ -501,7 +508,7 @@ fn (mut g Gen) gen_post_pass() {
 		if g.m.globals[gi].linkage == .external {
 			continue
 		}
-		globals_end = (globals_end + 7) & ~u64(7)
+		globals_end = g.align_global_offset(globals_end, gi)
 		size := g.m.type_size(g.m.globals[gi].typ)
 		globals_end += u64(if size > 0 { size } else { 8 })
 	}
@@ -547,7 +554,7 @@ fn (mut g Gen) gen_post_pass() {
 	}
 
 	cstring_base := u64(g.text_offset())
-	data_base := (cstring_base + u64(g.macho.str_data.len) + 7) & ~u64(7)
+	data_base := (cstring_base + u64(g.macho.str_data.len) + 15) & ~u64(15)
 	for i in 0 .. g.macho.symbols.len {
 		if g.macho.symbols[i].sect == 2 {
 			g.macho.symbols[i].value += cstring_base

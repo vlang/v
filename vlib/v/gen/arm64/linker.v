@@ -1252,6 +1252,12 @@ fn (mut l Linker) write_text_with_relocations() {
 					exit(1)
 				}
 				rel := i64(sym_addr) - i64(pc)
+				if rel < -(i64(1) << 27) || rel >= (i64(1) << 27) {
+					// Zig and ld64 insert thunks (src/link/MachO/Thunk.zig). Programs of
+					// this size link externally, where the system linker does that.
+					eprintln('LINKER: `${sym_name}` is out of `bl` range; link with -d arm64_external_link')
+					exit(1)
+				}
 				imm26 := (rel >> 2) & 0x3FFFFFF
 				instr := read_u32_le(text, r.addr)
 				new_instr := (instr & 0xFC000000) | u32(imm26)
