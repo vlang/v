@@ -23,7 +23,10 @@ fn read_uleb128(data []u8, ip &int) u32 {
 fn read_name(data []u8, ip &int) string {
 	n := read_uleb128(data, ip)
 	mut i := *ip
-	if i + int(n) > data.len { unsafe { *ip = i }; return '' }
+	if i + int(n) > data.len {
+		unsafe { *ip = i }
+		return ''
+	}
 	s := data[i..i + int(n)].bytestr()
 	i += int(n)
 	unsafe { *ip = i }
@@ -167,12 +170,18 @@ pub fn wrap_core_module(core []u8) []u8 {
 		// check params/results supported and at most one result
 		mut ok := true
 		for p in ft.params {
-			if core_to_component_valtype(p) < 0 { ok = false; break }
+			if core_to_component_valtype(p) < 0 {
+				ok = false
+				break
+			}
 		}
 		if ok {
 			if ft.results.len > 1 { ok = false }
 			for r in ft.results {
-				if core_to_component_valtype(r) < 0 { ok = false; break }
+				if core_to_component_valtype(r) < 0 {
+					ok = false
+					break
+				}
 			}
 		}
 		if ok { liftable << e }
@@ -180,8 +189,14 @@ pub fn wrap_core_module(core []u8) []u8 {
 	if liftable.len == 0 {
 		// fallback: just wrap module
 		mut out := []u8{}
-		out << u8(0x00); out << u8(0x61); out << u8(0x73); out << u8(0x6d)
-		out << u8(0x0d); out << u8(0x00); out << u8(0x01); out << u8(0x00)
+		out << u8(0x00)
+		out << u8(0x61)
+		out << u8(0x73)
+		out << u8(0x6d)
+		out << u8(0x0d)
+		out << u8(0x00)
+		out << u8(0x01)
+		out << u8(0x00)
 		mut payload := []u8{}
 		payload << core
 		write_section(mut out, 1, payload)
@@ -257,8 +272,14 @@ pub fn wrap_core_module(core []u8) []u8 {
 
 	// Assemble
 	mut out := []u8{}
-	out << u8(0x00); out << u8(0x61); out << u8(0x73); out << u8(0x6d)
-	out << u8(0x0d); out << u8(0x00); out << u8(0x01); out << u8(0x00)
+	out << u8(0x00)
+	out << u8(0x61)
+	out << u8(0x73)
+	out << u8(0x6d)
+	out << u8(0x0d)
+	out << u8(0x00)
+	out << u8(0x01)
+	out << u8(0x00)
 
 	// type section id 7
 	write_section(mut out, 7, type_payload)
@@ -284,7 +305,6 @@ pub fn component_preamble() []u8 {
 
 pub fn is_component(bytes []u8) bool {
 	if bytes.len < 8 { return false }
-	return bytes[0] == 0x00 && bytes[1] == 0x61 && bytes[2] == 0x73 && bytes[3] == 0x6d &&
-		bytes[4] == 0x0d && bytes[5] == 0x00 && bytes[6] == 0x01 && bytes[7] == 0x00
+	return bytes[0] == 0x00 && bytes[1] == 0x61 && bytes[2] == 0x73 && bytes[3] == 0x6d
+		&& bytes[4] == 0x0d && bytes[5] == 0x00 && bytes[6] == 0x01 && bytes[7] == 0x00
 }
-
