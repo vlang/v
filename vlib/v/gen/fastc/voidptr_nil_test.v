@@ -84,3 +84,34 @@ fn test_fastc_typed_pointer_nil_still_requires_unsafe() {
 		assert message.contains('`nil` outside an `unsafe` block'), message
 	}
 }
+
+fn test_fastc_typed_pointer_nil_comparisons_match_the_c_backend() ! {
+	root := os.join_path(os.vtmp_dir(), 'fastc_nil_comparisons_${os.getpid()}')
+	os.mkdir_all(root)!
+	defer { os.rmdir_all(root) or {} }
+	source := os.join_path(root, 'main.v')
+	os.write_file(source, r'module main
+import os
+type Handle = &int
+fn main() {
+    _ = os.args
+    value := 42
+    pointer := &value
+    missing := unsafe { &int(nil) }
+    alias := Handle(pointer)
+    assert pointer != nil && nil != pointer
+    assert missing == nil && nil == missing
+    assert alias != nil && nil != alias
+    assert (unsafe { C.getenv(c"PATH") } != nil) == true
+    println("pointer comparisons work")
+}
+')!
+	for backend in ['c', 'fastc'] {
+		program := os.join_path(root, backend)
+		build := cmdexec.run(@VEXE, ['-b', backend, '-o', program, root])
+		assert build.exit_code == 0, build.output
+		run := cmdexec.run(program, [])
+		assert run.exit_code == 0, run.output
+		assert run.output.trim_space() == 'pointer comparisons work', run.output
+	}
+}

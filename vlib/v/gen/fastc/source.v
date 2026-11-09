@@ -2049,7 +2049,7 @@ fn fastc_source_contains_word(source string, word string) bool {
 	if word.len == 0 { return false }
 	mut start := 0
 	for {
-		index := source.index_after_(word, start)
+		index := fastc_source_text_index(source, word, start)
 		if index < 0 { return false }
 		if fastc_source_word_at(source, index, word) { return true }
 		start = index + word.len
@@ -2062,10 +2062,15 @@ fn fastc_source_contains_word(source string, word string) bool {
 @[direct_array_access]
 fn fastc_source_last_word_index(source string, word string) int {
 	if word.len == 0 { return -1 }
-	for i := source.len - word.len; i >= 0; i-- {
-		if source[i] == word[0] && fastc_source_word_at(source, i, word) { return i }
+	mut last := -1
+	mut start := 0
+	for {
+		index := fastc_source_text_index(source, word, start)
+		if index < 0 { break }
+		if fastc_source_word_at(source, index, word) { last = index }
+		start = index + word.len
 	}
-	return -1
+	return last
 }
 
 @[direct_array_access]

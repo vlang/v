@@ -94,6 +94,10 @@ and source positions.
 
 Ordinary programs support the following constructs:
 
+- Typed pointer comparisons with `nil` in either operand order, including values returned
+  from C calls. Assigning `nil` to a typed pointer still requires `unsafe`.
+- Method calls on pointer fields promoted through embedded structs, including calls inside
+  arithmetic and compound assignments.
 - Functions, primitive parameters and return values, local variables, constants, and explicit
   global variables enabled with `-enable-globals`.
 - Integer, boolean, and string expressions; string interpolation; `print` and `println` for

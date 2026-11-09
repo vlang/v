@@ -384,12 +384,16 @@ fn fastc_token_continues_top_level_value(tok token.Token) bool {
 // locations while omitting the tokens between declarations.
 fn fastc_append_filtered_source_span(source string, previous_end int, start int, end int, mut out strings.Builder, mut source_origins []FastcSourceOrigin) {
 	mut last_newline := -1
-	for i in previous_end .. start {
-		if source[i] == `\n` {
-			out.write_u8(`\n`)
-			last_newline = i
-		}
+	mut newlines := 0
+	mut offset := previous_end
+	for offset < start {
+		next := fastc_next_source_byte(source, offset, start, `\n`)
+		if next == start { break }
+		newlines++
+		last_newline = next
+		offset = next + 1
 	}
+	out.write_repeated_rune(`\n`, newlines)
 	column_start := if last_newline >= 0 { last_newline + 1 } else { previous_end }
 	out.write_repeated_rune(` `, start - column_start)
 	source_origins << FastcSourceOrigin{

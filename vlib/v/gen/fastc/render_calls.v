@@ -107,6 +107,9 @@ fn (g &Parser) render_call_result_member_expression(tokens []FastcExpressionToke
 		is_storage: g.member_expression_refers_to_storage(base_tokens)
 	}]
 	members << tokens[close + 1..]
+	if mapped := g.render_map_expression(members) {
+		return mapped
+	}
 	if indexed := g.render_array_access_expression(members) {
 		return indexed
 	}
@@ -919,7 +922,8 @@ fn (g &Parser) resolve_method(receiver_type u32, name string) (string, []string)
 		}
 	}
 	layout_type := flat.source_type_name(fastc_trim_pointer_type(receiver_type))
-	for field in g.struct_field_info[layout_type] {
+	fields := g.struct_field_info[layout_type] or { return direct, []string{} }
+	for field in fields {
 		if !field.name.starts_with('__embedded_') {
 			continue
 		}
