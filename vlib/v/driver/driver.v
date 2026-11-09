@@ -191,6 +191,18 @@ const v3_inline_source_prefix = '.v3_inline_'
 const v3_stdin_source_prefix = '.v3_stdin_'
 const v3_embedded_env = 'V_MACOS_V3_EMBEDDED'
 
+// v3_type_diagnostics_printed reports whether this build printed a diagnostic of
+// the checker, and with `value` remembers that it did.
+fn v3_type_diagnostics_printed(value bool) bool {
+	unsafe {
+		mut static printed := false
+		if value {
+			printed = true
+		}
+		return printed
+	}
+}
+
 fn v3_parser_diagnostics_printed(value bool) bool {
 	// The restart helpers are also called from cache preparation functions, so
 	// retain this process-local bit without threading it through every cache path.
@@ -5455,6 +5467,13 @@ fn trim_unchanged_build_cache(cache_dir string) {
 			os.rm(path) or {}
 		}
 	}
+}
+
+// v3_build_printed_diagnostics reports whether this build, or the process that
+// restarted into it, told the user something about the program.
+fn v3_build_printed_diagnostics() bool {
+	return v3_type_diagnostics_printed(false) || v3_parser_diagnostics_printed(false)
+		|| v3_internal_parser_diagnostics_printed_flag in os.args
 }
 
 // v3_unchanged_build_copy places a copy of `source` at `destination` through a
@@ -17574,7 +17593,10 @@ Please install the corresponding development package/libraries and make sure the
 			cleanup_c_build_dir(cc_dir)
 		}
 		if unchanged_build_cache_enabled {
-			stamp := if unchanged_build_preparation.len == 1 {
+			// A restored executable prints nothing, so a build that has something to
+			// say about the program runs again. Go replays the output of a cached
+			// action instead (work/buildid.go, showStdout).
+			stamp := if unchanged_build_preparation.len == 1 && !v3_build_printed_diagnostics() {
 				unchanged_build_preparation[0].wait()
 			} else {
 				UnchangedBuildStamp{}
@@ -21715,6 +21737,7 @@ fn is_bare_generic_fntype_decl_error(err types.TypeError) bool {
 // print_type_diagnostic prints one diagnostic of the checker: a line of JSON with
 // `-json-errors`, else the message with its source excerpt and details.
 fn print_type_diagnostic(mut run compiler_errors.DiagnosticRun, a &flat.FlatAst, severity string, diagnostic types.TypeError) {
+	v3_type_diagnostics_printed(true)
 	if compiler_errors.json_output() {
 		eprintln(compiler_errors.json_error(severity, diagnostic.msg, diagnostic.details, a,
 			diagnostic.node, diagnostic.pos))
