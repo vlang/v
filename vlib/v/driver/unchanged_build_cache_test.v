@@ -498,6 +498,104 @@ fn test_project_manifest_inputs_walk_up_to_the_nearest_manifest() {
 	assert os.join_path(project, 'absent') in found.missing
 }
 
+fn test_receipt_covers_the_headers_that_only_tinycc_includes() {
+	f := receipt_fixture('tinycc_view')!
+	defer { os.rmdir_all(f.root) or {} }
+	side := os.join_path(f.source_dir, 'tcc_side.h')
+	wrapper := os.join_path(f.source_dir, 'wrapper.h')
+	aged_write(side, '#define VALUE 1\n')!
+	aged_write(wrapper, '#ifdef __TINYC__\n#include "tcc_side.h"\n#endif\n')!
+	tcc_headers := os.join_path(f.root, 'tcc_headers')
+	os.mkdir_all(tcc_headers)!
+	publish_native_receipt(f, 'tinycc', UnchangedBuildInputs{
+		...native_receipt_inputs(f, [], '#include "${wrapper}"\n')
+		tcc_include_dir: tcc_headers
+	})
+	aged_write(side, '#define VALUE 2\n')!
+	assert !v3_restore_unchanged_build(f.cache_dir, 'tinycc', f.destination, '')
+}
+
+fn test_dependency_key_sees_an_include_that_a_comment_hid() {
+	commented := 'int a;\n/*\n#include "b.h"\n*/\n'
+	assert c_preprocessor_lines(commented) != c_preprocessor_lines('int a;\n#include "b.h"\n')
+}
+
+fn test_receipt_sees_a_source_that_would_be_taken_first_for_an_object() {
+	f := receipt_fixture('object_source_order')!
+	defer { os.rmdir_all(f.root) or {} }
+	object := os.join_path(f.source_dir, 'built.o')
+	aged_write(os.join_path(f.source_dir, 'built.cpp'), 'int native_value(void) { return 1; }\n')!
+	found := v3_external_native_sources([object])
+	assert found.files == [os.join_path(f.source_dir, 'built.cpp')]
+	assert object in found.missing
+	assert os.join_path(f.source_dir, 'built.c') in found.missing
+	assert os.join_path(f.source_dir, 'built.cc') in found.missing
+	assert os.join_path(f.source_dir, 'built.m') !in found.missing
+	publish_native_receipt(f, 'order', native_receipt_inputs(f, [object], ''))
+	aged_write(os.join_path(f.source_dir, 'built.c'), 'int native_value(void) { return 2; }\n')!
+	assert !v3_restore_unchanged_build(f.cache_dir, 'order', f.destination, '')
+}
+
+fn test_c_link_plan_is_invalid_when_a_file_appears_at_an_absent_path() {
+	root := os.join_path(os.vtmp_dir(), 'v3_link_plan_absent_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	os.mkdir_all(root)!
+	plan := os.join_path(root, 'link.manifest')
+	absent := os.join_path(root, 'object.o')
+	mut stats := CObjectCacheStats{}
+	stats.missing_candidates[absent] = true
+	write_c_link_plan(plan, []string{}, &stats)!
+	mut read_stats := CObjectCacheStats{}
+	assert valid_c_link_plan(plan, mut read_stats) != none
+	os.write_file(absent, 'object')!
+	assert valid_c_link_plan(plan, mut read_stats) == none
+}
+
+fn test_module_shadow_inputs_cover_nearer_copies_of_a_module() {
+	root := os.join_path(os.real_path(os.vtmp_dir()), 'v3_module_shadow_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	global := os.join_path(root, 'global')
+	other := os.join_path(root, 'other')
+	project := os.join_path(root, 'project')
+	os.mkdir_all(os.join_path(global, 'abc', 'inner'))!
+	os.mkdir_all(other)!
+	os.mkdir_all(os.join_path(project, 'abc'))!
+	found := v3_module_shadow_inputs([project, os.join_path(global, 'abc'),
+		os.join_path(global, 'abc', 'inner')], [global, other], [project])
+	// An empty directory of that name in the project may get the sources of the module.
+	assert os.join_path(project, 'abc') in found.dirs
+	assert os.join_path(project, 'abc', 'inner') in found.missing
+	assert os.join_path(other, 'abc') in found.missing
+	assert !found.missing.any(it.starts_with(global))
+}
+
+fn test_probe_of_a_receipt_is_named_by_its_directives() {
+	root := os.join_path(os.vtmp_dir(), 'v3_receipt_probe_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	first := v3_unchanged_build_probe_file(root, '#include <stdio.h>\n')?
+	assert v3_unchanged_build_probe_file(root, '#include <stdio.h>\n')? == first
+	assert v3_unchanged_build_probe_file(root, '#include <math.h>\n')? != first
+	assert os.read_file(first)! == '#include <stdio.h>\n'
+	assert os.ls(root)!.filter(it.ends_with('.tmp')).len == 0
+}
+
+fn test_unused_receipts_are_trimmed() {
+	root := os.join_path(os.vtmp_dir(), 'v3_receipt_trim_${os.getpid()}')
+	defer { os.rmdir_all(root) or {} }
+	os.mkdir_all(root)!
+	old := time.utc().unix() - (c_dependency_manifest_unused_days + 1) * 24 * 3600
+	for name in ['old.stamp', 'old.exe', 'orphan.exe', 'native_probe_old.c', 'kept.stamp', 'kept.exe'] {
+		os.write_file(os.join_path(root, name), '')!
+		if !name.starts_with('kept') {
+			os.utime(os.join_path(root, name), old, old)!
+		}
+	}
+	trim_unchanged_build_cache(root)
+	mut left := os.ls(root)!.filter(it != 'receipts.trim')
+	left.sort()
+	assert left == ['kept.exe', 'kept.stamp']
+}
+
 fn test_pkgconfig_directive_packages_skip_options_and_versions() {
 	assert v3_pkgconfig_packages('--cflags --libs gtk+-3.0 >= 3.24 glib-2.0') == [
 		'gtk+-3.0',

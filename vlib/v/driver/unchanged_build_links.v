@@ -29,20 +29,22 @@ struct V3ReceiptNativeUnit {
 }
 
 // v3_external_native_sources returns the C sources that the flags of a build hand
-// to the compiler, or that it compiles to an object that the flags name.
-fn v3_external_native_sources(flags []string) []string {
-	mut sources := []string{}
+// to the compiler, or that it compiles to an object that the flags name, and the
+// paths that have to stay absent for those objects to come from the same sources.
+fn v3_external_native_sources(flags []string) UnchangedBuildLinkInputs {
+	mut result := UnchangedBuildLinkInputs{}
 	for index in c_link_input_indices(flags) {
 		clean := flags[index].trim_space()
 		if c_flag_is_c_source_file(clean) && os.is_file(clean) {
-			sources << clean
+			result.files << clean
 		} else if c_flag_is_object_file(clean) && !os.exists(clean) {
 			if source := c_source_from_object_file(clean) {
-				sources << source
+				result.files << source
+				result.missing << c_object_absent_inputs(clean, source)
 			}
 		}
 	}
-	return sources
+	return result
 }
 
 // v3_unchanged_build_link_inputs finds what the link of a build reads with the
@@ -151,15 +153,42 @@ fn (mut result UnchangedBuildLinkInputs) add_subdir_tree(path string) {
 	}
 }
 
-// v3_module_root_inputs returns the global module directories, where a new module
-// would be found before one in a directory above the project.
-fn v3_module_root_inputs() UnchangedBuildLinkInputs {
+// v3_module_shadow_inputs returns where another copy of a module of the build
+// would be found instead of it, or would be merged with it: the same path below the
+// directories of the program and of its project, and below the other module roots.
+// A directory there may get sources; a path that is absent has to stay absent.
+fn v3_module_shadow_inputs(source_dirs []string, module_roots []string, project_dirs []string) UnchangedBuildLinkInputs {
 	mut result := UnchangedBuildLinkInputs{}
-	for root in os.vmodules_paths() {
-		if os.is_dir(root) {
-			result.dirs << os.real_path(root)
-		} else {
-			result.missing << root
+	mut places := project_dirs.clone()
+	for dir in source_dirs {
+		if !module_roots.any(v3_path_is_below(dir, it)) && dir !in places {
+			places << dir
+		}
+	}
+	places << module_roots
+	mut seen := map[string]bool{}
+	for dir in source_dirs {
+		for root in module_roots {
+			if !v3_path_is_below(dir, root) {
+				continue
+			}
+			relative := dir[root.len + 1..]
+			for place in places {
+				if place == root {
+					continue
+				}
+				candidate := os.join_path_single(place, relative)
+				if candidate in seen {
+					continue
+				}
+				seen[candidate] = true
+				if os.is_dir(candidate) {
+					result.dirs << os.real_path(candidate)
+				} else {
+					result.missing << candidate
+				}
+			}
+			break
 		}
 	}
 	return result

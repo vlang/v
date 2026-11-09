@@ -1715,6 +1715,9 @@ fn ensure_c_object_file(obj_path string, source_language string, object_flags &C
 	source_file := c_source_from_object_file(obj_path) or {
 		return error('missing C object ${obj_path}, and no adjacent .c/.cc/.cpp/.m/.mm/.S source was found')
 	}
+	for path in c_object_absent_inputs(obj_path, source_file) {
+		stats.missing_candidates[path] = true
+	}
 	return compile_cached_c_source_object(obj_path, source_file, source_language, object_flags,
 		c99, no_std, pic_flag, target_args, target, c_compiler, use_platform_non_c_compiler,
 		uncached_dir, mut stats)
@@ -1831,7 +1834,10 @@ fn compile_cached_c_source_object(obj_path string, source_file string, source_la
 		stats.temporary_objects << msvc_obj
 		return msvc_obj
 	}
-	manifest_path := c_object_manifest_path(cache_dir, obj_path, compiler, args, target, mut stats)
+	// The same object can come from another source, when one that is taken first appears.
+	manifest_path := c_object_manifest_path(cache_dir, obj_path, compiler, [...args,
+		os.real_path(source_file)],
+		target, mut stats)
 	if cached_obj := valid_c_object_manifest(manifest_path, mut stats) {
 		return cached_obj
 	}
@@ -2251,35 +2257,35 @@ fn trim_c_dependency_manifests(cache_dir string) {
 	}
 }
 
-// c_preprocessor_lines returns the lines of C `source` that start with `#`
-// (after blanks), which decide the files that the source includes.
-fn c_preprocessor_lines(source string) string {
-	mut out := strings.new_builder(4096)
-	mut pos := 0
-	for pos < source.len {
-		mut end := source.index_after_('\n', pos)
-		if end < 0 {
-			end = source.len
-		}
-		mut start := pos
-		for start < end && source[start] in [` `, `\t`] {
-			start++
-		}
-		if start < end && source[start] == `#` {
-			out.write_string(source[start..end])
-			out.write_u8(`\n`)
-			// A directive continues on the lines after a trailing backslash.
-			for end < source.len && end > start && source[end - 1] == `\\` {
-				start = end + 1
-				end = source.index_after_('\n', start)
-				if end < 0 {
-					end = source.len
-				}
-				out.write_string(source[start..end])
-				out.write_u8(`\n`)
+// c_preprocessor_lines keeps the lines of C `text` that can change what the
+// preprocessor opens: directives (also after a comment, or spelled `%:`), comment
+// delimiters, and continued lines. The other lines are ordinary declarations.
+fn c_preprocessor_lines(text string) string {
+	mut out := strings.new_builder(text.len / 8)
+	mut start := 0
+	mut continued := false
+	for start < text.len {
+		mut end := start
+		mut keep := continued
+		for end < text.len && text[end] != `\n` {
+			c := text[end]
+			if c == `#` || (c == `%` && end + 1 < text.len && text[end + 1] == `:`)
+				|| (c == `/` && end + 1 < text.len && text[end + 1] == `*`)
+				|| (c == `*` && end + 1 < text.len && text[end + 1] == `/`) {
+				keep = true
 			}
+			end++
 		}
-		pos = end + 1
+		mut last := end - 1
+		if last >= start && text[last] == `\r` {
+			last--
+		}
+		continued = last >= start && text[last] == `\\`
+		if keep || continued {
+			out.write_string(text[start..end])
+			out.write_u8(`\n`)
+		}
+		start = end + 1
 	}
 	return out.str()
 }
@@ -2376,15 +2382,33 @@ fn c_object_dependencies_from_output(output string, source_file string) CObjectD
 	}
 }
 
+const c_object_source_extensions = ['.c', '.cc', '.cpp', '.m', '.mm', '.S']
+
 fn c_source_from_object_file(obj_path string) ?string {
 	base := obj_path.all_before_last('.')
-	for ext in ['.c', '.cc', '.cpp', '.m', '.mm', '.S'] {
+	for ext in c_object_source_extensions {
 		source_file := base + ext
 		if os.exists(source_file) {
 			return source_file
 		}
 	}
 	return none
+}
+
+// c_object_absent_inputs returns the paths that have to stay absent for an object
+// that is not there to be built from `source_file` again: the object, and the
+// sources that c_source_from_object_file would take first.
+fn c_object_absent_inputs(obj_path string, source_file string) []string {
+	base := obj_path.all_before_last('.')
+	mut absent := [obj_path]
+	for ext in c_object_source_extensions {
+		candidate := base + ext
+		if candidate == source_file {
+			break
+		}
+		absent << candidate
+	}
+	return absent
 }
 
 // v3_tcc_link_has_incompatible_objects keeps foreign objects off macOS TinyCC.
@@ -5383,7 +5407,54 @@ fn v3_restore_unchanged_build(cache_dir string, key string, destination string, 
 		unchanged_build_trace('miss: sources changed')
 		return false
 	}
+	mark_c_dependency_manifest_used(stamp_path)
 	return v3_unchanged_build_copy(executable, destination)
+}
+
+// v3_unchanged_build_probe_file returns a file in the cache that holds the native
+// directives `probe`. It is named by them: a build that ends before its receipt is
+// prepared leaves nothing new behind, and the receipts of a program share one file.
+fn v3_unchanged_build_probe_file(cache_dir string, probe string) ?string {
+	path := os.join_path(cache_dir, 'native_probe_${sha256.hexhash(probe)[..24]}.c')
+	if os.is_file(path) {
+		mark_c_dependency_manifest_used(path)
+		return path
+	}
+	os.mkdir_all(cache_dir, mode: 0o700) or { return none }
+	temporary := '${path}.${os.getpid()}.${tempname.unique_token()}.tmp'
+	os.write_file(temporary, probe) or { return none }
+	os.mv(temporary, path) or {
+		os.rm(temporary) or {}
+		return none
+	}
+	return path
+}
+
+// trim_unchanged_build_cache removes, at most once a day, the receipts that no
+// build used for c_dependency_manifest_unused_days, as Go trims its build cache
+// (cmd/go/internal/cache/cache.go, Trim).
+fn trim_unchanged_build_cache(cache_dir string) {
+	marker := os.join_path(cache_dir, 'receipts.trim')
+	now := time.utc().unix()
+	if os.is_file(marker) && now - os.file_last_mod_unix(marker) < c_dependency_manifest_trim_seconds {
+		return
+	}
+	os.mkdir_all(cache_dir, mode: 0o700) or { return }
+	os.write_file(marker, '') or { return }
+	cutoff := now - c_dependency_manifest_unused_days * 24 * 3600
+	for entry in os.ls(cache_dir) or { return } {
+		path := os.join_path(cache_dir, entry)
+		if os.file_last_mod_unix(path) >= cutoff {
+			continue
+		}
+		if entry.ends_with('.stamp') {
+			os.rm(path) or {}
+			os.rm(path.all_before_last('.stamp') + '.exe') or {}
+		} else if entry.starts_with('native_probe_') || entry.ends_with('.tmp')
+			|| (entry.ends_with('.exe') && !os.is_file(path.all_before_last('.exe') + '.stamp')) {
+			os.rm(path) or {}
+		}
+	}
 }
 
 // v3_unchanged_build_copy places a copy of `source` at `destination` through a
@@ -5523,6 +5594,9 @@ struct UnchangedBuildInputs {
 	// A source outside these roots was found by walking up from its importer,
 	// where a nearer directory of the same name would take its place.
 	project_roots []string
+	// Where an import can be found, for the modules of the build (v3_module_shadow_inputs).
+	module_roots []string
+	project_dirs []string
 }
 
 // v3_unchanged_build_inputs collects the inputs of a receipt from a parsed AST.
@@ -5548,15 +5622,18 @@ fn v3_unchanged_build_inputs(a &flat.FlatAst, prefs &pref.Preferences, source_fi
 	mut dirs := dir_set.keys()
 	dirs.sort()
 	// Bootstrap checkouts can symlink vlib to the original repository.
-	mut project_roots := [vroot.trim_right(os.path_separator),
-		os.real_path(os.join_path(prefs.vroot, 'vlib'))]
-	project_roots << os.vmodules_paths().map(os.real_path(it))
-	project_roots << prefs.module_search_paths.map(os.real_path(it))
+	mut module_roots := [os.real_path(os.join_path(prefs.vroot, 'vlib'))]
+	module_roots << os.vmodules_paths().map(os.real_path(it))
+	module_roots << prefs.module_search_paths.map(os.real_path(it))
+	mut project_dirs := []string{}
 	if prefs.module_resolution_root != '' {
 		root := os.real_path(prefs.module_resolution_root)
-		project_roots << root
-		project_roots << util.nearest_vmod_root(root) or { root }
+		project_dirs << root
+		project_dirs << util.nearest_vmod_root(root) or { root }
 	}
+	mut project_roots := [vroot.trim_right(os.path_separator)]
+	project_roots << module_roots
+	project_roots << project_dirs
 	return UnchangedBuildInputs{
 		sources:         sources
 		dirs:            dirs
@@ -5584,6 +5661,8 @@ fn v3_unchanged_build_inputs(a &flat.FlatAst, prefs &pref.Preferences, source_fi
 		packages:        v3_unchanged_build_pkgconfig_packages(a)
 		vroot:           vroot
 		project_roots:   project_roots
+		module_roots:    module_roots
+		project_dirs:    project_dirs
 	}
 }
 
@@ -5629,23 +5708,24 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 		}
 	}
 	mut stats := CObjectCacheStats{}
+	trim_unchanged_build_cache(inputs.cache_dir)
 	mut probe_path := ''
-	defer {
-		if probe_path.len > 0 {
-			os.rm(probe_path) or {}
-		}
-	}
 	mut units := []V3ReceiptNativeUnit{}
 	if inputs.probe.trim_space().len > 0 {
-		probe_path = os.join_path(os.vtmp_dir(), 'v3_unchanged_native_${tempname.unique_token()}.c')
-		os.write_file(probe_path, inputs.probe) or { return UnchangedBuildStamp{} }
+		probe_path = v3_unchanged_build_probe_file(inputs.cache_dir, inputs.probe) or {
+			return UnchangedBuildStamp{}
+		}
 		units << V3ReceiptNativeUnit{
 			path:     probe_path
 			compiler: manifest_compiler
 			args:     ['-x', inputs.language, '-w']
 		}
 	}
-	for source in v3_external_native_sources(all_flags) {
+	external := v3_external_native_sources(all_flags)
+	for path in external.missing {
+		missing_set[path] = true
+	}
+	for source in external.files {
 		language := c_source_language(source, '')
 		mut extra := ['-w']
 		if language.len > 0 {
@@ -5655,6 +5735,17 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 			path:     source
 			compiler: c_source_object_compiler(language, manifest_compiler, false, inputs.target_os)
 			args:     extra
+		}
+	}
+	if inputs.tcc_include_dir.len > 0 {
+		// TinyCC defines its own macro, which headers can choose other files by.
+		for unit in units.clone() {
+			if 'c' in unit.args {
+				units << V3ReceiptNativeUnit{
+					...unit
+					args: [...unit.args, '-D__TINYC__=1', '-D__has_extension(x)=0']
+				}
+			}
 		}
 	}
 	compile_flags := c_object_compile_flags(inputs.flags)
@@ -5685,7 +5776,8 @@ fn v3_unchanged_build_prepare(inputs UnchangedBuildInputs) UnchangedBuildStamp {
 	mut dir_list := inputs.dirs.clone()
 	for found in [v3_unchanged_build_link_inputs(all_flags, manifest_compiler, inputs.tcc_lib_dir,
 		inputs.target_os, inputs.cache_dir), v3_pkgconfig_files(inputs.packages),
-		v3_project_manifest_inputs(inputs.dirs, inputs.vroot), v3_module_root_inputs()] {
+		v3_project_manifest_inputs(inputs.dirs, inputs.vroot),
+		v3_module_shadow_inputs(inputs.dirs, inputs.module_roots, inputs.project_dirs)] {
 		if !found.ok {
 			unchanged_build_trace('cannot record: ${found.reason}')
 			return UnchangedBuildStamp{}
