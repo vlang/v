@@ -1897,6 +1897,9 @@ fn (mut tc TypeChecker) run_parallel_check(items []CheckWorkItem, bodies_only bo
 		tc.check_top_level_declaration_values()
 	}
 	tc.timing_profile('  [ttime]   ck tl values     ${f64(tlv_sw.elapsed().microseconds()) / 1000.0:7.2f} ms')
+	// Answer this once here: every fork inherits it instead of scanning the
+	// top-level declarations of the whole program for itself.
+	tc.program_declares_constraints()
 	split_sw := time.new_stopwatch()
 	mut chunk_target := n_jobs
 	if tc.scope_parallel_check_workers {
