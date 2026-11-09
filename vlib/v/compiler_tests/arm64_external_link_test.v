@@ -12,6 +12,7 @@ const external_link_header = '#pragma once
 enum ext_color { EXT_RED = 3, EXT_GREEN = 40 };
 #define EXT_LIMIT (EXT_GREEN + 2)
 #define EXT_SCALE 2.5
+#define EXT_BIG 0xfedcba9876543210ULL
 #define EXT_TWICE(x) ((x) * 2)
 static inline int32_t ext_add_inline(int32_t a, int32_t b) { return a + b; }
 typedef struct ext_pair { double x; double y; } ext_pair;
@@ -67,6 +68,7 @@ fn main() {
 	println(C.ext_half(3.0))
 	println(int(C.EXT_RED) + int(C.EXT_LIMIT))
 	println(f64(C.EXT_SCALE))
+	println(u64(C.EXT_BIG))
 	println(ext_same_name() + C.ext_call_same_name())
 	println(C.ext_call_back(4))
 	println(C.CFAbsoluteTimeGetCurrent() > 0)
@@ -80,6 +82,7 @@ const external_link_expected = '5
 1.5
 45
 2.5
+18364758544493064720
 47
 41
 true'

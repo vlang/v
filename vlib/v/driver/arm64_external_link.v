@@ -484,7 +484,7 @@ fn arm64_c_constant_probe_lines(names []string, keep []bool) string {
 			continue
 		}
 		out << '#line ${i + 1} "${arm64_c_constant_probe_file}"'
-		out << 'V_CCONST_KEEP const double __v_cconst_f_${i} = (double)(${name}); V_CCONST_KEEP const int __v_cconst_k_${i} = _Generic((${name}), float: 1, double: 1, long double: 1, default: 0); V_CCONST_KEEP const long long __v_cconst_i_${i} = (long long)(${name});'
+		out << 'V_CCONST_KEEP const double __v_cconst_f_${i} = (double)(${name}); V_CCONST_KEEP const int __v_cconst_k_${i} = _Generic((${name}), float: 1, double: 1, long double: 1, unsigned long: 2, unsigned long long: 2, default: 0); V_CCONST_KEEP const long long __v_cconst_i_${i} = (long long)(${name});'
 	}
 	return out.join('\n') + '\n'
 }
@@ -503,32 +503,37 @@ fn arm64_probe_preamble() string {
 	return preamble
 }
 
-// arm64_compile_probe compiles `count` probe lines, written by `lines` for the
-// ones still kept, after the program's C side, and returns the symbols with
-// `symbol_prefix` and which lines were kept. Each line carries a `#line` in
-// `probe_file`, so a line that is an error (a name or field the headers do not
-// have) is dropped and the probe is compiled again, as cgo does; each round
-// removes at least one line.
-fn arm64_compile_probe(count int, lines fn ([]bool) string, probe_file string, symbol_prefix string, support_text string, compiler string, compile_args []string) ?(map[string][]u8, []bool) {
-	token := '${os.getpid()}_${tempname.unique_token()}'
-	probe_source := os.join_path(os.vtmp_dir(), 'v3_arm64_probe_${token}.c')
-	probe_object := os.join_path(os.vtmp_dir(), 'v3_arm64_probe_${token}.o')
-	defer {
-		os.rm(probe_source) or {}
-		os.rm(probe_object) or {}
+// arm64_probe_compile_flags returns the flags of a probe compile. Like cgo's
+// gccCmd (cmd/cgo/gcc.go), link-time optimization stays off, so the object has
+// real data to read, and clang is told to report every error at once.
+fn arm64_probe_compile_flags(compiler string) []string {
+	mut flags := ['-w', '-fno-lto']
+	if os.user_os() == 'macos' || os.file_name(compiler).contains('clang') {
+		flags << '-ferror-limit=0'
 	}
-	preamble := arm64_probe_preamble()
-	mut keep := []bool{len: count, init: true}
-	mut compiled := false
-	for _ in 0 .. 4 {
-		text := support_text + preamble + lines(keep)
-		os.write_file(probe_source, text) or { return none }
+	return flags
+}
+
+// arm64_run_probe compiles the probe lines written by `lines` for the entries
+// still in `keep`, after `prefix` (the program's C side and any preamble), into
+// `object`. Each line carries a `#line` in `probe_file`, so a line that is an
+// error (a name or field the headers do not have) is dropped and the probe is
+// compiled again, as cgo does. The loop ends because every round removes at
+// least one line; when none can be blamed, the C side itself does not compile
+// and the real compile reports it.
+fn arm64_run_probe(mut keep []bool, lines fn ([]bool) string, probe_file string, prefix string, compiler string, compile_args []string, object string) bool {
+	source := object.all_before_last('.') + '.c'
+	defer {
+		os.rm(source) or {}
+	}
+	for {
+		os.write_file(source, prefix + lines(keep)) or { return false }
 		mut args := compile_args.clone()
-		args << ['-ferror-limit=0', '-c', probe_source, '-o', probe_object]
+		args << arm64_probe_compile_flags(compiler)
+		args << ['-c', source, '-o', object]
 		res := cmdexec.run(compiler, args)
 		if res.exit_code == 0 {
-			compiled = true
-			break
+			return true
 		}
 		mut dropped := false
 		for line in res.output.split_into_lines() {
@@ -536,20 +541,35 @@ fn arm64_compile_probe(count int, lines fn ([]bool) string, probe_file string, s
 				continue
 			}
 			index := line.all_after(':').all_before(':').int() - 1
-			if index >= 0 && index < count && keep[index] {
+			if index >= 0 && index < keep.len && keep[index] {
 				keep[index] = false
 				dropped = true
 			}
 		}
 		if !dropped {
-			// The C side itself does not compile; the real compile reports it.
-			return none
+			return false
 		}
 	}
-	if !compiled {
+	return false
+}
+
+fn arm64_probe_object_path(kind string) string {
+	return os.join_path(os.vtmp_dir(), 'v3_arm64_${kind}_${os.getpid()}_${tempname.unique_token()}.o')
+}
+
+// arm64_compile_probe runs a probe after the system headers and returns the
+// symbols with `symbol_prefix` and which lines were kept.
+fn arm64_compile_probe(count int, lines fn ([]bool) string, probe_file string, symbol_prefix string, support_text string, compiler string, compile_args []string) ?(map[string][]u8, []bool) {
+	object := arm64_probe_object_path('probe')
+	defer {
+		os.rm(object) or {}
+	}
+	mut keep := []bool{len: count, init: true}
+	if !arm64_run_probe(mut keep, lines, probe_file, support_text + arm64_probe_preamble(), compiler,
+		compile_args, object) {
 		return none
 	}
-	symbols := macho_object_symbol_bytes(probe_object, symbol_prefix) or { return none }
+	symbols := macho_object_symbol_bytes(object, symbol_prefix) or { return none }
 	return symbols, keep
 }
 
@@ -581,7 +601,7 @@ fn arm64_probe_c_constants(names []string, support_text string, compiler string,
 		if kind.len < 4 {
 			continue
 		}
-		if kind[0] != 0 {
+		if kind[0] == 1 {
 			bits := symbols['___v_cconst_f_${i}'] or { continue }
 			if bits.len < 8 {
 				continue
@@ -593,8 +613,10 @@ fn arm64_probe_c_constants(names []string, support_text string, compiler string,
 			}
 		} else {
 			value := arm64_probe_symbol_i64(symbols, '___v_cconst_i_${i}') or { continue }
+			// The value is read as a `long long`; like cgo's guessKinds, an
+			// unsigned constant above 2^63 keeps its unsigned spelling.
 			result[name] = Arm64CConstant{
-				value: value.str()
+				value: if kind[0] == 2 { u64(value).str() } else { value.str() }
 			}
 		}
 	}
@@ -743,66 +765,44 @@ const arm64_c_function_probe_file = '__v_cfn__'
 // symbol the linker can bind V's calls to. Like the constants, they are found
 // by compiling a probe with the program's C side; a name that the headers do
 // not declare fails on its own line and is left for the linker.
+fn arm64_c_function_probe_lines(names []string, keep []bool) string {
+	mut lines := []string{}
+	lines << '#define V_CFN_KEEP __attribute__((used, visibility("hidden")))'
+	for i, name in names {
+		if !keep[i] {
+			continue
+		}
+		lines << '#line ${i + 1} "${arm64_c_function_probe_file}"'
+		lines << '#ifdef ${name}'
+		lines << '#line ${i + 1} "${arm64_c_function_probe_file}"'
+		lines << 'V_CFN_KEEP const int __v_cfn_macro_${i} = 1;'
+		lines << '#else'
+		lines << '#line ${i + 1} "${arm64_c_function_probe_file}"'
+		lines << 'V_CFN_KEEP void *const __v_cfn_addr_${i} = (void *)&${name};'
+		lines << '#endif'
+	}
+	return lines.join('\n') + '\n'
+}
+
 fn arm64_probe_c_functions(names []string, support_text string, compiler string, compile_args []string) map[string]Arm64CFunctionKind {
 	mut result := map[string]Arm64CFunctionKind{}
 	if names.len == 0 {
 		return result
 	}
-	token := '${os.getpid()}_${tempname.unique_token()}'
-	probe_source := os.join_path(os.vtmp_dir(), 'v3_arm64_cfn_${token}.c')
-	probe_object := os.join_path(os.vtmp_dir(), 'v3_arm64_cfn_${token}.o')
+	object := arm64_probe_object_path('cfn')
 	defer {
-		os.rm(probe_source) or {}
-		os.rm(probe_object) or {}
+		os.rm(object) or {}
 	}
 	mut keep := []bool{len: names.len}
 	for i, name in names {
 		keep[i] = arm64_is_c_identifier(name)
 	}
-	mut compiled := false
-	for _ in 0 .. 4 {
-		mut lines := []string{}
-		lines << '#define V_CFN_KEEP __attribute__((used, visibility("hidden")))'
-		for i, name in names {
-			if !keep[i] {
-				continue
-			}
-			lines << '#line ${i + 1} "${arm64_c_function_probe_file}"'
-			lines << '#ifdef ${name}'
-			lines << '#line ${i + 1} "${arm64_c_function_probe_file}"'
-			lines << 'V_CFN_KEEP const int __v_cfn_macro_${i} = 1;'
-			lines << '#else'
-			lines << '#line ${i + 1} "${arm64_c_function_probe_file}"'
-			lines << 'V_CFN_KEEP void *const __v_cfn_addr_${i} = (void *)&${name};'
-			lines << '#endif'
-		}
-		os.write_file(probe_source, support_text + lines.join('\n') + '\n') or { return result }
-		mut args := compile_args.clone()
-		args << ['-ferror-limit=0', '-c', probe_source, '-o', probe_object]
-		res := cmdexec.run(compiler, args)
-		if res.exit_code == 0 {
-			compiled = true
-			break
-		}
-		mut dropped := false
-		for line in res.output.split_into_lines() {
-			if !line.starts_with('${arm64_c_function_probe_file}:') {
-				continue
-			}
-			index := line.all_after(':').all_before(':').int() - 1
-			if index >= 0 && index < names.len && keep[index] {
-				keep[index] = false
-				dropped = true
-			}
-		}
-		if !dropped {
-			return result
-		}
-	}
-	if !compiled {
+	if !arm64_run_probe(mut keep, fn [names] (keep []bool) string {
+		return arm64_c_function_probe_lines(names, keep)
+	}, arm64_c_function_probe_file, support_text, compiler, compile_args, object) {
 		return result
 	}
-	symbols := macho_object_symbols(probe_object) or { return result }
+	symbols := macho_object_symbols(object) or { return result }
 	mut local_functions := map[string]bool{}
 	mut macros := map[string]bool{}
 	for sym in symbols {
