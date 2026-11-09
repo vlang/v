@@ -14,12 +14,17 @@ fn filled_rect_samples() []DrawRectParams {
 }
 
 fn filled_rect_frame(scale f32, batched bool, rects []DrawRectParams, clip ?DrawRectParams) render.Frame {
+	return filled_rect_frame_sized(scale, batched, rects, clip, Size{160, 260})
+}
+
+fn filled_rect_frame_sized(scale f32, batched bool, rects []DrawRectParams, clip ?DrawRectParams,
+	logical_size Size) render.Frame {
 	r := render.new_context(max_vertices: 32, max_commands: 8)
 	defer {
 		r.destroy()
 	}
-	width := int(160 * scale)
-	height := int(260 * scale)
+	width := int(logical_size.width * scale)
+	height := int(logical_size.height * scale)
 	r.matrix_mode_projection()
 	r.ortho(0, f32(width), f32(height), 0, -1, 1)
 	ctx := Context{
@@ -154,6 +159,55 @@ fn test_scissors_with_nonpositive_dimensions_remain_empty() {
 					}
 					frame := filled_rect_frame(scale, batched, [rect], clip)
 					assert frame.pixels.all(it == 0)
+				}
+			}
+		}
+	}
+}
+
+fn test_one_pixel_filled_rectangles_keep_full_thickness_at_framebuffer_edges() {
+	edges := [
+		DrawRectParams{ x: 0, y: 10, w: 1, h: 20, color: red },
+		DrawRectParams{ x: 99, y: 10, w: 1, h: 20, color: red },
+		DrawRectParams{ x: 10, y: 0, w: 20, h: 1, color: blue },
+		DrawRectParams{ x: 10, y: 99, w: 20, h: 1, color: blue },
+		DrawRectParams{ x: 99, y: 99, w: 1, h: 1, color: red },
+	]
+	for scale in [f32(0.75), 1, 1.25, 1.5, 1.75, 2, 2.5] {
+		thickness := int(math.round(scale))
+		for batched in [false, true] {
+			for axes in 0 .. 4 {
+				mut rects := []DrawRectParams{}
+				for rect in edges {
+					rects << DrawRectParams{
+						...rect
+						x: if axes & 1 != 0 { rect.x + rect.w } else { rect.x }
+						y: if axes & 2 != 0 { rect.y + rect.h } else { rect.y }
+						w: if axes & 1 != 0 { -rect.w } else { rect.w }
+						h: if axes & 2 != 0 { -rect.h } else { rect.h }
+					}
+				}
+				for clipped in [false, true] {
+					frame := if clipped {
+						filled_rect_frame_sized(scale, batched, rects,
+							DrawRectParams{ w: 100, h: 100 }, Size{100, 100})
+					} else {
+						filled_rect_frame_sized(scale, batched, rects, none, Size{100, 100})
+					}
+					case := 'scale=${scale}, batched=${batched}, axes=${axes}, clipped=${clipped}'
+					for x in 0 .. frame.width {
+						covered := frame.pixels[int(20 * scale) * frame.width + x] != 0
+						assert covered == (x < thickness || x >= frame.width - thickness), 'vertical border: x=${x}, ${case}'
+					}
+					for y in 0 .. frame.height {
+						covered := frame.pixels[y * frame.width + int(20 * scale)] != 0
+						assert covered == (y < thickness || y >= frame.height - thickness), 'horizontal border: y=${y}, ${case}'
+					}
+					for y in frame.height - thickness .. frame.height {
+						for x in frame.width - thickness .. frame.width {
+							assert frame.pixels[y * frame.width + x] != 0, 'bottom-right corner: x=${x}, y=${y}, ${case}'
+						}
+					}
 				}
 			}
 		}

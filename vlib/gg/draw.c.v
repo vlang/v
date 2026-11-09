@@ -269,10 +269,12 @@ pub fn (ctx &Context) draw_rect_empty_no_context(x f32, y f32, w f32, h f32, c C
 fn rect_filled_screen_axis(scale f32, start f32, size f32) (f32, f32) {
 	if math.abs(size) == 1 && start == math.floor(start) && scale != math.floor(scale) {
 		// A logical hairline can otherwise cover different numbers of pixels at
-		// fractional DPI scales. Round its origin and thickness independently.
+		// fractional DPI scales. Round its thickness and keep it within the
+		// scaled rectangle's enclosing framebuffer pixels.
 		lower := if size < 0 { start + size } else { start }
-		origin := f32(math.round(lower * scale))
 		thickness := f32(math.max(1, math.round(scale)))
+		enclosing_end := f32(math.ceil((lower + 1) * scale))
+		origin := math.min(f32(math.round(lower * scale)), enclosing_end - thickness)
 		if size < 0 {
 			return origin + thickness, origin
 		}
