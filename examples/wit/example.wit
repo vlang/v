@@ -1,0 +1,12 @@
+package example:demo@0.1.0;
+
+interface calc {
+	record point { x: f64, y: f64 }
+	add: func(a: s32, b: s32) -> s32;
+	scale: func(p: point, factor: f64) -> point;
+}
+
+world app {
+	import calc;
+	export run: func() -> string;
+}
