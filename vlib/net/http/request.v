@@ -30,6 +30,24 @@ pub type RequestProgressBodyFn = fn (request &Request, chunk []u8, body_read_so_
 
 pub type RequestFinishFn = fn (request &Request, final_size u64) !
 
+// RequestBodyLimitError is returned when a declared Content-Length exceeds the configured limit.
+pub struct RequestBodyLimitError {
+	Error
+}
+
+// msg returns why a declared request body exceeds the configured limit.
+pub fn (_ RequestBodyLimitError) msg() string {
+	return 'request body exceeds the configured limit'
+}
+
+struct RequestFramingError {
+	Error
+}
+
+fn (_ RequestFramingError) msg() string {
+	return 'invalid or unsupported request body framing'
+}
+
 // Request holds information about an HTTP request (either received by
 // a server or to be sent by a client)
 pub struct Request {
@@ -71,7 +89,7 @@ pub mut:
 	read_timeout  i64 = 30 * time.second
 	write_timeout i64 = 30 * time.second
 
-	validate                 bool // when true, certificate failures will stop further processing
+	validate                 bool = true // abort on an invalid certificate; false skips it, except HTTP/3 which always verifies
 	verify                   string
 	cert                     string
 	cert_key                 string
@@ -1030,23 +1048,62 @@ pub fn (req &Request) referer() string {
 // parse_request parses a raw HTTP request into a Request object.
 // See also: `parse_request_head`, which parses only the headers.
 pub fn parse_request(mut reader io.BufferedReader) !Request {
-	mut request := parse_request_head(mut reader)!
+	return parse_request_with_body_limit(mut reader, default_max_http1_request_body_size)
+}
 
-	// body
-	mut body := []u8{}
-	if length := request.header.get(.content_length) {
-		n := length.int()
-		if n > 0 {
-			body = []u8{len: n}
-			mut count := 0
-			for count < body.len {
-				count += reader.read(mut body[count..]) or { break }
-			}
-		}
+// parse_request_with_body_limit parses a request with an explicit Content-Length body limit.
+// A limit of 0 allows any body size; a negative limit returns an error.
+pub fn parse_request_with_body_limit(mut reader io.BufferedReader, max_body_size int) !Request {
+	if max_body_size < 0 {
+		return error('max_body_size must be 0 (unlimited) or a positive number of bytes')
+	}
+	mut request := parse_request_head(mut reader)!
+	if request.header.contains(.transfer_encoding) {
+		return RequestFramingError{}
 	}
 
-	request.data = body.bytestr()
+	length_values := request.header.values(.content_length)
+	mut body_size := -1
+	for value in length_values {
+		length := parse_request_content_length(value)!
+		if body_size >= 0 && length != body_size {
+			return RequestFramingError{}
+		}
+		body_size = length
+	}
+
+	if body_size > 0 {
+		if max_body_size > 0 && body_size > max_body_size {
+			return RequestBodyLimitError{}
+		}
+		mut body := []u8{len: body_size}
+		mut count := 0
+		for count < body.len {
+			count += reader.read(mut body[count..]) or { break }
+		}
+		request.data = body.bytestr()
+	}
 	return request
+}
+
+// parse_request_content_length rejects signs, invalid characters, and integer overflow.
+fn parse_request_content_length(value string) !int {
+	trimmed := value.trim(' \t')
+	if trimmed.len == 0 {
+		return RequestFramingError{}
+	}
+	mut length := 0
+	for ch in trimmed {
+		if ch < `0` || ch > `9` {
+			return RequestFramingError{}
+		}
+		digit := int(ch - `0`)
+		if length > (max_int - digit) / 10 {
+			return RequestFramingError{}
+		}
+		length = length * 10 + digit
+	}
+	return length
 }
 
 // parse_request_head parses *only* the header of a raw HTTP request into a Request object

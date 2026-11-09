@@ -1,3 +1,6 @@
+// vtest build: !linux && !freebsd
+// The tests return immediately on these platforms. Importing clipboard still
+// requires X11 development headers that minimal headless CI images may lack.
 import clipboard
 
 fn run_test(is_primary bool) {

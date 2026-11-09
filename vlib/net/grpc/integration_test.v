@@ -102,6 +102,7 @@ fn start_tls_server(port int) (&http.Server, thread) {
 fn tls_client(port int) Client {
 	return Client{
 		base_url: 'https://127.0.0.1:${port}'
+		validate: false
 	}
 }
 
@@ -146,6 +147,30 @@ fn test_integration_unary_over_tls_h2() {
 	// the caller as metadata
 	assert 'grpc-status' !in reply.metadata
 	assert 'grpc-message' !in reply.metadata
+}
+
+// test_integration_default_validate_rejects_self_signed_server checks the
+// default: Client.validate is true, so the self-signed loopback certificate is
+// rejected unless the caller opts out. tls_client sets validate: false.
+fn test_integration_default_validate_rejects_self_signed_server() {
+	if skip_without_tls_server_backend() {
+		return
+	}
+	port := pick_port() or {
+		assert false, 'pick_port: ${err}'
+		return
+	}
+	mut srv, t := start_tls_server(port)
+	defer {
+		srv.close()
+		t.wait()
+	}
+	mut c := Client{
+		base_url: 'https://127.0.0.1:${port}'
+	}
+	if _ := c.unary('/tls.Echo/Unary', 'ping'.bytes()) {
+		assert false, 'default validate must reject the self-signed server'
+	}
 }
 
 // test_integration_response_is_http2 pins that the negotiated protocol really

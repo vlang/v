@@ -359,6 +359,11 @@ fn (g &Parser) capture_type_source(typ_id u32) ?string {
 		element := g.array_element_type(typ_id)?
 		return '[]' + g.capture_type_source(element)?
 	}
+	if flat.source_type_query(typ_id).has(.c_fixed_array_prefix) {
+		length := fastc_fixed_array_length_id(typ_id)?
+		element := fastc_fixed_array_element_type(typ_id)?
+		return '[' + length + ']' + g.capture_type_source(element)?
+	}
 	if flat.source_type_query(typ_id).has(.c_map_prefix) {
 		key_source_id, value_source_id := g.map_key_value_types(typ_id)?
 		key := key_source_id
@@ -367,7 +372,13 @@ fn (g &Parser) capture_type_source(typ_id u32) ?string {
 		return 'map[' + g.capture_type_source(key)? + ']' + g.capture_type_source(value)?
 	}
 	if fastc_primitive_c_type_id(typ_id) != none {
-		return typ
+		// Capture parameters are parsed as V source again, so private integer
+		// spellings must use their public names, including within composite types.
+		return match typ_id {
+			flat.source_type_isize { 'int' }
+			flat.source_type_usize { 'uint' }
+			else { typ }
+		}
 	}
 	signature := g.functions[typ] or { g.mono_functions[typ] or { fastc_callable_signature(typ_id) or { FastcFunctionSignature{} } } }
 	if signature.return_type != 0 {

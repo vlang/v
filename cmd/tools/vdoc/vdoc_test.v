@@ -111,6 +111,41 @@ fn test_get_module_list() {
 	assert !mod_list.any(it.contains(os.join_path(tpath, 'delta')))
 }
 
+fn test_vlib_builtin_docs_exclude_alternative_runtimes() {
+	root := os.join_path(tpath, 'builtin_docs', 'vlib')
+	builtin_dir := os.join_path(root, 'builtin')
+	os.mkdir_all(builtin_dir)!
+	os.cp(os.join_path(os.dir(vexe_path), 'vlib', '.vdocignore'), os.join_path(root, '.vdocignore'))!
+	os.write_file(os.join_path(root, 'v.mod'), "Module { name: 'vlib_docs' }\n")!
+	os.write_file(os.join_path(builtin_dir, 'builtin.v'), 'module builtin\n\npub fn builtin_api() {}\n')!
+	// Use every alternative runtime in vlib, including newly added bare targets.
+	for entry in os.ls(os.join_path(os.dir(vexe_path), 'vlib', 'builtin'))! {
+		if !entry.ends_with('_bare') && entry !in ['js', 'wasm'] {
+			continue
+		}
+		runtime_dir := os.join_path(builtin_dir, entry)
+		os.mkdir_all(runtime_dir)!
+		os.write_file(os.join_path(runtime_dir, 'runtime.v'), 'module builtin\n\npub fn runtime_api() {}\n')!
+	}
+	mut expected := [builtin_dir]
+	for name in ['closure', 'overflow', 'wchar'] {
+		module_dir := os.join_path(builtin_dir, name)
+		os.mkdir_all(module_dir)!
+		os.write_file(os.join_path(module_dir, 'module.v'), 'module ${name}\n\npub fn public_api() {}\n')!
+		expected << module_dir
+	}
+	assert get_modules(root) == expected
+	output := os.join_path(tpath, 'builtin_docs', 'output')
+	os.exec_opt([vexe_path, 'doc', '-m', '-f', 'html', '-os', 'cross', '-no-timestamp', '-o', output,
+		root])!
+	html := os.read_file(os.join_path(output, 'builtin.html'))!
+	assert html.contains('id="builtin_api"')
+	assert !html.contains('runtime_api')
+	for name in ['closure', 'overflow', 'wchar'] {
+		assert os.exists(os.join_path(output, 'builtin.${name}.html'))
+	}
+}
+
 fn test_html_highlight_escapes_html_tokens() {
 	code := 'fn main() {
 	// <h1>owned</h1>

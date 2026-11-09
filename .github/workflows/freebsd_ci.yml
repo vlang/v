@@ -28,6 +28,20 @@ jobs:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: bootstrap
+            tasks: v_doctor build_v_with_prealloc verify_v_test_works build_fast_script
+          - suite: modules
+            tasks: check_math check_compress test_inline_assembly
+          - suite: essential
+            tasks: run_essential_tests
+          - suite: examples
+            tasks: build_examples
+    env:
+      V_CI_TASKS: ${{ matrix.tasks }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -43,11 +57,13 @@ jobs:
           cpu_count: 2
           shell: sh
           sync_files: runner-to-vm
+          environment_variables: V_CI_TASKS
 
       - name: Tests on FreeBSD with tcc
         id: tests-freebsd-tcc
         shell: cpa.sh {0}
         run: |
+          set -eu
           sudo pkg install -y git pkgconf sqlite3 gmake boehm-gc-threaded libiconv
           # Install DB packages needed to build examples
           sudo pkg install -y mariadb118-client postgresql18-client
@@ -67,12 +83,30 @@ jobs:
           export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
           export VFLAGS='-cc tcc -no-retry-compilation'
           echo "::endgroup::"
-          ./v run ci/freebsd_ci.vsh all
+          status=0
+          for task in $V_CI_TASKS; do
+            ./v run ci/freebsd_ci.vsh "$task" || status=$?
+          done
+          exit "$status"
 
   clang-freebsd:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: bootstrap
+            tasks: v_doctor build_v_with_prealloc verify_v_test_works build_fast_script
+          - suite: modules
+            tasks: check_math check_compress test_inline_assembly
+          - suite: essential
+            tasks: run_essential_tests
+          - suite: examples
+            tasks: build_examples
+    env:
+      V_CI_TASKS: ${{ matrix.tasks }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -88,11 +122,13 @@ jobs:
           cpu_count: 2
           shell: sh
           sync_files: runner-to-vm
+          environment_variables: V_CI_TASKS
 
       - name: Tests on FreeBSD with clang
         id: tests-freebsd-clang
         shell: cpa.sh {0}
         run: |
+          set -eu
           sudo pkg install -y git pkgconf sqlite3 gmake boehm-gc-threaded libiconv
           # Install DB packages needed to build examples
           sudo pkg install -y mariadb118-client postgresql18-client
@@ -112,12 +148,30 @@ jobs:
           export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
           export VFLAGS='-cc clang'
           echo "::endgroup::"
-          ./v run ci/freebsd_ci.vsh all
+          status=0
+          for task in $V_CI_TASKS; do
+            ./v run ci/freebsd_ci.vsh "$task" || status=$?
+          done
+          exit "$status"
 
   gcc-freebsd:
     if: github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: bootstrap
+            tasks: v_doctor build_v_with_prealloc verify_v_test_works build_fast_script
+          - suite: modules
+            tasks: check_math check_compress test_inline_assembly
+          - suite: essential
+            tasks: run_essential_tests
+          - suite: examples
+            tasks: build_examples
+    env:
+      V_CI_TASKS: ${{ matrix.tasks }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -133,11 +187,13 @@ jobs:
           cpu_count: 2
           shell: sh
           sync_files: runner-to-vm
+          environment_variables: V_CI_TASKS
 
       - name: Tests on FreeBSD with gcc
         id: tests-freebsd-gcc
         shell: cpa.sh {0}
         run: |
+          set -eu
           sudo pkg install -y git pkgconf sqlite3 gmake boehm-gc-threaded libiconv gcc
           # Install DB packages needed to build examples
           sudo pkg install -y mariadb118-client postgresql18-client
@@ -157,4 +213,8 @@ jobs:
           export VTEST_SHOW_LONGEST_BY_TOTALTIME=3
           export VFLAGS='-cc gcc'
           echo "::endgroup::"
-          ./v run ci/freebsd_ci.vsh all
+          status=0
+          for task in $V_CI_TASKS; do
+            ./v run ci/freebsd_ci.vsh "$task" || status=$?
+          done
+          exit "$status"

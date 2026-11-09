@@ -745,7 +745,7 @@ fn (mut g Parser) parse_if() !bool {
 				guard_function.fn_return_type
 			}
 			c_return_type := fastc_output_c_type(flat.source_type_name(return_type))
-			name := fastc_c_identifier(guard_name)
+			name := fastc_c_value_identifier(guard_name)
 			g.write_line('${c_return_type} (*${name})(${parameters}) = (${c_return_type} (*)(${parameters}))(${guard_function_source});')
 			g.locals[guard_name] = FastcLocal{
 				is_mut:               guard_is_mut
@@ -754,7 +754,7 @@ fn (mut g Parser) parse_if() !bool {
 				fn_option_value_type: guard_function.fn_option_value_type
 			}
 		} else if guard_erased_generic {
-			name := fastc_c_identifier(guard_name)
+			name := fastc_c_value_identifier(guard_name)
 			if flat.source_type_query(guard_type).has(.c_pointer_suffix) {
 				g.write_line('${fastc_output_c_type(flat.source_type_name(guard_type))} ${name} = ${g.option_value_expression(guard_type, guard_option)};')
 			} else {
@@ -771,7 +771,7 @@ fn (mut g Parser) parse_if() !bool {
 			}
 		} else {
 			function_alias := g.functions[flat.source_type_name(guard_type)] or { fastc_callable_signature(guard_type) or { FastcFunctionSignature{} } }
-			g.write_line('${fastc_output_c_type(flat.source_type_name(guard_type))} ${fastc_c_identifier(guard_name)} = ${g.option_value_expression(guard_type, guard_option)};')
+			g.write_line('${fastc_output_c_type(flat.source_type_name(guard_type))} ${fastc_c_value_identifier(guard_name)} = ${g.option_value_expression(guard_type, guard_option)};')
 			g.locals[guard_name] = FastcLocal{
 				is_mut:               guard_is_mut
 				typ:                  guard_type
@@ -891,9 +891,9 @@ fn (mut g Parser) parse_if() !bool {
 				g.member_smartcasts[opt_name] = FastcMemberSmartcast{
 					typ:    base_source_id
 					source: if g.prefs.target_libc_headers {
-						'(V_FASTC_OPTION_STORAGE(${fastc_output_c_type(flat.source_type_name(base))}, (${fastc_c_identifier(opt_name)}))->value)'
+						'(V_FASTC_OPTION_STORAGE(${fastc_output_c_type(flat.source_type_name(base))}, (${fastc_c_value_identifier(opt_name)}))->value)'
 					} else {
-						'(*((${fastc_output_c_type(flat.source_type_name(base))} *)${fastc_c_identifier(opt_name)}.data))'
+						'(*((${fastc_output_c_type(flat.source_type_name(base))} *)${fastc_c_value_identifier(opt_name)}.data))'
 					}
 				}
 			}
@@ -967,6 +967,9 @@ fn (mut g Parser) parse_if() !bool {
 				smartcast_copy_is_boxed:       previous_smartcast.smartcast_origin_type == 0 || previous_smartcast.smartcast_copy_is_boxed
 				smartcast_origin_source:       smartcast_storage
 			})
+		}
+		if then_terminates && smartcast_name == '' && !condition_has_top_level_and {
+			g.bind_negated_member_fallthrough(cond_tokens)
 		}
 		return false
 	}
@@ -1093,7 +1096,7 @@ fn (mut g Parser) parse_if_multi_return_guard(names []string) !bool {
 			continue
 		}
 		component_type := fastc_normalize_inferred_type(component_types[i])
-		c_name := fastc_c_identifier(name)
+		c_name := fastc_c_value_identifier(name)
 		c_type := fastc_output_c_type(flat.source_type_name(component_type))
 		g.write_line('${c_type} ${c_name} = (${c_type}){0};')
 		g.write_line('memcpy(&${c_name}, V_FASTC_MULTI_SOURCE(${multi_return}.values[${i}], sizeof(${c_name})), sizeof(${c_name}));')
@@ -1315,6 +1318,81 @@ fn fastc_split_top_level_and(tokens []FastcExpressionToken) [][]FastcExpressionT
 }
 
 // fastc_first_top_level_is returns the index of the first top-level `is` in tokens.
+// bind_negated_member_fallthrough narrows a member past `if x.f !is T || … { return }`:
+// the block is left only when `x.f` is `T`, so later reads see the variant until the
+// enclosing block ends. Bare locals are narrowed by parse_if itself.
+fn (mut g Parser) bind_negated_member_fallthrough(cond_tokens []FastcExpressionToken) {
+	mut depth := 0
+	mut operand_end := cond_tokens.len
+	mut not_is := -1
+	for i, item in cond_tokens {
+		match item.tok {
+			.lpar, .lsbr, .lcbr { depth++ }
+			.rpar, .rsbr, .rcbr { depth-- }
+			.not_is {
+				if depth == 0 && not_is < 0 {
+					not_is = i
+				}
+			}
+			.logical_or {
+				if depth == 0 {
+					operand_end = i
+					break
+				}
+			}
+			else {}
+		}
+	}
+	if not_is <= 0 || not_is + 1 >= operand_end {
+		return
+	}
+	left_tokens := cond_tokens[..not_is]
+	path := fastc_indexed_member_chain_path(left_tokens) or { return }
+	if !path.contains('.') {
+		return
+	}
+	// The narrowed member is read again after the condition, so its path, including any
+	// index, may only read: a call, an `if` or `match`, an increment or a channel receive
+	// would run twice.
+	for item in left_tokens {
+		if item.tok !in [.name, .number, .string, .char, .dot, .lsbr, .rsbr, .plus, .minus, .mul,
+			.div, .mod, .amp, .xor, .pipe, .left_shift, .right_shift, .key_true, .key_false]
+			|| (item.has_source() && !fastc_rendered_read_only(item.source_text())) {
+			return
+		}
+	}
+	mut left_type := fastc_normalize_inferred_type(g.infer_member_access_type(left_tokens, 0,
+		left_tokens.len) or { return })
+	previous_cast := g.member_smartcasts[path] or { FastcMemberSmartcast{} }
+	if previous_cast.subject_type != u32(0) {
+		left_type = previous_cast.subject_type
+	}
+	target_type := g.type_from_expression_tokens(cond_tokens[not_is + 1..operand_end]) or {
+		return
+	}
+	if left_type == u32(0) || target_type == u32(0) || !g.is_boxed_type(left_type) {
+		return
+	}
+	mut left_source := g.render_member_receiver(left_tokens) or { return }
+	if previous_cast.subject_source != '' {
+		left_source = previous_cast.subject_source
+	}
+	value_type := fastc_normalize_inferred_type(target_type)
+	variant := fastc_trim_pointer_type(value_type)
+	access := if flat.source_type_query(left_type).has(.c_pointer_suffix) { '->' } else { '.' }
+	member_tmp := g.temporary_name('smartcast_member')
+	variant_c_type := fastc_output_c_type(flat.source_type_name(variant))
+	g.write_line('${variant_c_type} *${member_tmp} = (${variant_c_type} *)(${left_source})${access}_object;')
+	view_type, view_source := g.narrowed_member_view(variant, value_type, member_tmp)
+	g.set_scoped_member_smartcast(path, FastcMemberSmartcast{
+		typ:            view_type
+		value_type:     value_type
+		source:         view_source
+		subject_source: left_source
+		subject_type:   left_type
+	})
+}
+
 fn fastc_first_top_level_is(tokens []FastcExpressionToken) int {
 	mut depth := 0
 	for i, item in tokens {
@@ -1681,7 +1759,7 @@ fn (mut g Parser) read_if_expression_multi_return_guard(names []string, branch_e
 			continue
 		}
 		component_type := fastc_normalize_inferred_type(component_types[i])
-		c_name := fastc_c_identifier(name)
+		c_name := fastc_c_value_identifier(name)
 		c_type := fastc_output_c_type(flat.source_type_name(component_type))
 		binds += '${c_type} ${c_name} = (${c_type}){0}; memcpy(&${c_name}, V_FASTC_MULTI_SOURCE(${multi_return}.values[${i}], sizeof(${c_name})), sizeof(${c_name})); '
 		g.locals[name] = FastcLocal{
@@ -1777,6 +1855,34 @@ fn (g &Parser) fastc_common_sum_type(a u32, b u32) ?u32 {
 	return none
 }
 
+// fastc_tokens_have_none reports a `none` token.
+fn fastc_tokens_have_none(tokens []FastcExpressionToken) bool {
+	for item in tokens {
+		if item.tok == .key_none {
+			return true
+		}
+	}
+	return false
+}
+
+// fastc_tokens_have_top_level_or reports a `||` outside any brackets.
+fn fastc_tokens_have_top_level_or(tokens []FastcExpressionToken) bool {
+	mut depth := 0
+	for item in tokens {
+		match item.tok {
+			.lpar, .lsbr, .lcbr { depth++ }
+			.rpar, .rsbr, .rcbr { depth-- }
+			.logical_or {
+				if depth == 0 {
+					return true
+				}
+			}
+			else {}
+		}
+	}
+	return false
+}
+
 fn (mut g Parser) read_if_expression() !string {
 	outer_expected_type_source_id := g.expected_expression_type
 	outer_expected_type := outer_expected_type_source_id
@@ -1815,6 +1921,14 @@ fn (mut g Parser) read_if_expression() !string {
 	}
 	g.expected_expression_type = u32(0)
 	mut condition := g.read_condition_expression([token.Token.semicolon, token.Token.lcbr])!
+	// `if opt != none { … }` narrows the option local to its value in the branch, as in
+	// the statement form. Only a condition naming `none` without a top-level `||` can.
+	narrowed_options := if fastc_tokens_have_none(g.last_expression)
+		&& !fastc_tokens_have_top_level_or(g.last_expression) {
+		g.detect_option_none_narrowings(g.last_expression)
+	} else {
+		[]string{}
+	}
 	mut guard_name := ''
 	mut guard_type := u32(0)
 	mut guard_option := ''
@@ -1932,10 +2046,40 @@ fn (mut g Parser) read_if_expression() !string {
 			}
 		}
 	}
+	mut narrowed_names := []string{}
+	mut narrowed_had := []bool{}
+	mut narrowed_previous := []FastcMemberSmartcast{}
+	if guard_name == '' {
+		for opt_name in narrowed_options {
+			if opt_name in previous_member_smartcasts || opt_name in had_local_shadows {
+				continue
+			}
+			local := g.locals[opt_name] or { continue }
+			base := local.option_value_type
+			narrowed_names << opt_name
+			narrowed_had << (opt_name in g.member_smartcasts)
+			narrowed_previous << g.member_smartcasts[opt_name] or { FastcMemberSmartcast{} }
+			g.member_smartcasts[opt_name] = FastcMemberSmartcast{
+				typ:    base
+				source: if g.prefs.target_libc_headers {
+					'(V_FASTC_OPTION_STORAGE(${fastc_output_c_type(flat.source_type_name(base))}, (${fastc_c_value_identifier(opt_name)}))->value)'
+				} else {
+					'(*((${fastc_output_c_type(flat.source_type_name(base))} *)${fastc_c_value_identifier(opt_name)}.data))'
+				}
+			}
+		}
+	}
 	mut then_expression := if g.tok == .key_return {
 		g.read_return_expression_branch()!
 	} else {
 		g.read_block_expression_value()!
+	}
+	for i, path in narrowed_names {
+		if narrowed_had[i] {
+			g.member_smartcasts[path] = narrowed_previous[i]
+		} else {
+			g.member_smartcasts.delete(path)
+		}
 	}
 	if fastc_fixed_array_element_type(g.last_expression_type) != none && g.fixed_array_uses_raw_storage(g.last_expression) {
 		then_expression = g.render_call_argument_expression(g.last_expression, g.last_expression_type) or { then_expression }
@@ -1961,7 +2105,7 @@ fn (mut g Parser) read_if_expression() !string {
 	}
 	if guard_name != '' {
 		if guard_name != '_' {
-			then_expression = '({ ${fastc_output_c_type(flat.source_type_name(guard_type))} ${fastc_c_identifier(guard_name)} = ${g.option_value_expression(guard_type, guard_option)}; ${then_expression}; })'
+			then_expression = '({ ${fastc_output_c_type(flat.source_type_name(guard_type))} ${fastc_c_value_identifier(guard_name)} = ${g.option_value_expression(guard_type, guard_option)}; ${then_expression}; })'
 		}
 		if had_guard {
 			g.locals[guard_name] = previous_guard
@@ -2293,4 +2437,27 @@ fn (mut g Parser) bind_else_non_none_option(tokens []FastcExpressionToken) {
 	shadow := g.temporary_name('nonnull_option')
 	g.write_line('${fastc_output_c_type(flat.source_type_name(payload))} ${shadow} = ${g.option_value_expression(payload, g.local_c_name(name))};')
 	g.set_scoped_local(name, FastcLocal{ ...local, typ: payload, option_value_type: 0, c_name: shadow })
+}
+
+// fastc_rendered_read_only reports whether the C text of an already rendered operand
+// only reads: no statement expression, conditional, increment, assignment or call.
+fn fastc_rendered_read_only(text string) bool {
+	for i, c in text {
+		if c in [`;`, `{`, `?`, `=`] {
+			return false
+		}
+		if i > 0 && ((c == `+` && text[i - 1] == `+`) || (c == `-` && text[i - 1] == `-`)) {
+			return false
+		}
+		if c == `(` {
+			mut j := i - 1
+			for j >= 0 && text[j] == ` ` {
+				j--
+			}
+			if j >= 0 && (text[j].is_letter() || text[j].is_digit() || text[j] == `_`) {
+				return false
+			}
+		}
+	}
+	return true
 }

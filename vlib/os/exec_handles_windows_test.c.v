@@ -1,10 +1,18 @@
 module os
 
-fn C.GetProcessHandleCount(voidptr, &C.DWORD) i32
+// Preserve the SDK calling convention and pointer types at the indirect call.
+#define v_os_exec_test_handle_count(address, process, count) (((BOOL (WINAPI *)(HANDLE, PDWORD))(address))((process), (count)))
+
+fn C.v_os_exec_test_handle_count(address voidptr, process voidptr, count &C.DWORD) i32
 
 fn exec_test_handle_count() u32 {
+	// The bundled TCC import library omits GetProcessHandleCount.
+	kernel32 := C.GetModuleHandleA(c'kernel32.dll')
+	assert kernel32 != 0
+	address := C.GetProcAddress(kernel32, c'GetProcessHandleCount')
+	assert address != unsafe { nil }
 	mut count := C.DWORD(0)
-	assert C.GetProcessHandleCount(C.GetCurrentProcess(), &count) != 0
+	assert C.v_os_exec_test_handle_count(address, C.GetCurrentProcess(), &count) != 0
 	return u32(count)
 }
 

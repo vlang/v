@@ -2,6 +2,30 @@ module fastc
 
 import os
 import v.cmdexec
+import v.flat
+import v.pref
+
+fn test_constant_file_results_only_publish_added_types() ! {
+	prefs := pref.new_preferences()
+	mut inherited := flat.TypeTextBindings{}
+	inherited.set('base', 'int')
+	context := FastcConstantGenContext{
+		prefs:     prefs
+		constants: {
+			'base':  'main__base'
+			'added': 'main__added'
+		}
+	}
+	result := fastc_parse_constant_file(&context, FastcSourceFile{
+		path:   'main.v'
+		source: 'const added = base + 1\n'
+		header: FastcSourceHeader{ module_name: 'main' }
+	}, inherited)
+	assert !result.failed, result.error_message
+	assert result.constant_types.ids.len == 1
+	assert result.constant_types.value('added') == 'int'
+	assert inherited.value('base') == 'int'
+}
 
 fn test_fastc_interpolated_constant_keeps_imported_dependencies() {
 	$if !macos && !linux {

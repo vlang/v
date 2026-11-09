@@ -328,6 +328,9 @@ fn (g &Parser) nil_ends_value(allow_boolean bool) bool {
 }
 
 fn (g &Parser) expression_name(previous token.Token, qualified_name_owner string) !string {
+	if g.lit == 'isize' || g.lit == 'usize' {
+		g.validate_expression_name(g.lit, previous)!
+	}
 	if g.selfhost {
 		return g.resolved_expression_name(g.lit, previous)
 	}
@@ -363,7 +366,7 @@ fn (g &Parser) local_c_name(name string) string {
 			return local.c_name
 		}
 	}
-	return fastc_c_identifier(name)
+	return fastc_c_value_identifier(name)
 }
 
 fn (g &Parser) resolved_expression_name(name string, previous token.Token) string {
@@ -380,7 +383,7 @@ fn (g &Parser) resolved_expression_name(name string, previous token.Token) strin
 	if previous != .dot && name !in g.locals {
 		return g.resolved_nonlocal_expression_name_cached(name)
 	}
-	return fastc_c_identifier(name)
+	return if previous == .dot { fastc_c_identifier(name) } else { fastc_c_value_identifier(name) }
 }
 
 fn (g &Parser) resolved_nonlocal_expression_name_cached(name string) string {
@@ -471,6 +474,23 @@ fn (g &Parser) resolved_nonlocal_expression_name(name string) string {
 }
 
 fn (g &Parser) validate_expression_name(name string, previous token.Token) ! {
+	if previous != .dot && (name == 'isize' || name == 'usize') {
+		mut lookahead := g.s
+		next := lookahead.scan()
+		if next == .dot && name in g.imports {
+			return
+		}
+		is_type := previous in [.key_is, .not_is, .key_as]
+			|| (previous == .rsbr && next == .lcbr)
+		if is_type || (next !in [.colon, .decl_assign] && name !in g.locals && name !in g.imports
+			&& fastc_selective_import_key(name) !in g.imports
+			&& g.unqualified_function_key(name) !in g.functions
+			&& fastc_constant_key(g.module_name, name) !in g.constants
+			&& fastc_constant_key('builtin', name) !in g.constants
+			&& g.unqualified_global_key(name) == none) {
+			return g.unsupported(fastc_removed_integer_type(name))
+		}
+	}
 	// Self-host sources have already passed the bootstrap compiler. Their unresolved
 	// names are deliberately left for C to diagnose, so none of the lookup work below
 	// can change the result.
