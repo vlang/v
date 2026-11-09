@@ -25,6 +25,8 @@ const arm64_force_external_syms = ['_malloc', '_free', '_calloc', '_realloc', '_
 	'_pthread_mutex_init', '_pthread_mutex_lock', '_pthread_mutex_trylock', '_pthread_mutex_unlock',
 	'_pthread_mutex_destroy', '_pthread_self', '_pthread_create', '_pthread_join', '_pthread_detach',
 	'_pthread_attr_init', '_pthread_attr_setstacksize', '_pthread_attr_destroy',
+	'_pthread_attr_set_qos_class_np', '_pthread_key_create', '_pthread_getspecific',
+	'_pthread_setspecific',
 	'_pthread_rwlockattr_init', '_pthread_rwlockattr_setpshared', '_pthread_rwlockattr_destroy',
 	'_pthread_rwlock_init', '_pthread_rwlock_rdlock', '_pthread_rwlock_wrlock',
 	'_pthread_rwlock_tryrdlock', '_pthread_rwlock_trywrlock', '_pthread_rwlock_unlock',
@@ -438,6 +440,7 @@ pub fn build_with_options(a_ &flat.FlatAst, used_fns map[string]bool, tc &types.
 		b.build_native_test_main(opts.test_files, opts.test_run_only)
 		b.build_native_initialization()
 	}
+	if b.target_lowers_atomics() { b.lower_native_thread_locals() }
 	if b.m.target.ptr_size == 4 { b.canonicalize_internal_function_refs() }
 	if b.m.target.ptr_size == 8 { b.materialize_native_string_literals() }
 	return b.m
@@ -702,7 +705,7 @@ fn native_c_struct_abi(struct_name string, target TargetData) ?NativeCStructAbi 
 		}
 	}
 	// Declared empty in V: one pointer-sized word in C.
-	if struct_name == 'C.atomic_uintptr_t' {
+	if struct_name in ['C.atomic_uintptr_t', 'C.pthread_t'] {
 		return NativeCStructAbi{
 			field_names: ['opaque']
 			field_types: flat.TypeTextList.from_names([if pointer_size == 8 { 'u64' } else { 'u32' }])
@@ -2164,6 +2167,12 @@ fn (mut b Builder) register_functions() {
 	b.register_extern('pthread_attr_init', b.i32_type, [ptr_i8])
 	b.register_extern('pthread_attr_setstacksize', b.i32_type, [ptr_i8, b.u64_type])
 	b.register_extern('pthread_attr_destroy', b.i32_type, [ptr_i8])
+	b.register_extern('pthread_key_create', b.i32_type, [ptr_i8, ptr_i8])
+	b.register_extern('pthread_getspecific', ptr_i8, [b.u64_type])
+	b.register_extern('pthread_setspecific', b.i32_type, [b.u64_type, ptr_i8])
+	if !b.m.target.is_linux() {
+		b.register_extern('pthread_attr_set_qos_class_np', b.i32_type, [ptr_i8, b.i32_type, b.i32_type])
+	}
 	b.register_extern('getpid', b.i64_type, []TypeID{})
 	b.register_extern('clock', b.i64_type, []TypeID{})
 	b.register_extern('mach_absolute_time', b.i64_type, []TypeID{})
@@ -6734,7 +6743,7 @@ fn (mut b Builder) register_pthread_compat_stubs() {
 	p_create << ptr_i8
 	p_create << ptr_i8
 	if create_id := b.register_runtime_c_function('v3_pthread_create', b.i32_type, p_create) {
-		b.generate_const_body_with_params(create_id, b.i32_type, '11', p_create)
+		b.generate_pthread_create_body(create_id)
 	}
 	mut p_setkind := []TypeID{}
 	p_setkind << ptr_i8
@@ -6820,6 +6829,48 @@ fn (mut b Builder) generate_noop_body(func_id int, params []TypeID) {
 		_ := b.func_add_argument(func_id, param_type, 'arg${i}')
 	}
 	b.block_instr0(.ret, entry, b.void_type)
+}
+
+// generate_pthread_create_body starts a joinable thread with an explicit stack,
+// as the C helper of the same name does (gen/c/bootstrap_runtime.v).
+fn (mut b Builder) generate_pthread_create_body(func_id int) {
+	ptr_i8 := b.m.type_store.get_ptr(b.i8_type)
+	entry := b.m.add_block(func_id, 'entry')
+	handle := b.func_add_argument(func_id, ptr_i8, 'thread')
+	stack_size := b.func_add_argument(func_id, b.i64_type, 'stack_size')
+	start := b.func_add_argument(func_id, ptr_i8, 'start')
+	arg := b.func_add_argument(func_id, ptr_i8, 'arg')
+	configure := b.m.add_block(func_id, 'configure')
+	create := b.m.add_block(func_id, 'create')
+	stack_failed := b.m.add_block(func_id, 'stack_failed')
+	init_failed := b.m.add_block(func_id, 'init_failed')
+	// Darwin's opaque pthread_attr_t fits in this aligned reservation.
+	attr_type := b.m.type_store.get_array(b.u64_type, 16)
+	attr_slot := b.block_instr0(.alloca, entry, b.m.type_store.get_ptr(attr_type))
+	attr := b.block_instr1(.bitcast, entry, ptr_i8, attr_slot)
+	zero := b.m.get_or_add_const(b.i32_type, '0')
+	init_ref := b.m.add_value(.func_ref, b.void_type, 'pthread_attr_init', b.fn_ids['pthread_attr_init'])
+	init_status := b.block_instr2(.call, entry, b.i32_type, init_ref, attr)
+	init_ok := b.block_instr2(.eq, entry, b.i1_type, init_status, zero)
+	b.block_instr3(.br, entry, b.void_type, init_ok, ValueID(configure), ValueID(init_failed))
+	b.block_instr1(.ret, init_failed, b.void_type, init_status)
+	if qos_id := b.fn_ids['pthread_attr_set_qos_class_np'] {
+		// Compiler workers belong on the performance cores.
+		qos_ref := b.m.add_value(.func_ref, b.void_type, 'pthread_attr_set_qos_class_np', qos_id)
+		user_initiated := b.m.get_or_add_const(b.i32_type, '25')
+		b.block_instr4(.call, configure, b.i32_type, qos_ref, attr, user_initiated, zero)
+	}
+	stack_ref := b.m.add_value(.func_ref, b.void_type, 'pthread_attr_setstacksize', b.fn_ids['pthread_attr_setstacksize'])
+	stack_status := b.block_instr3(.call, configure, b.i32_type, stack_ref, attr, stack_size)
+	stack_ok := b.block_instr2(.eq, configure, b.i1_type, stack_status, zero)
+	b.block_instr3(.br, configure, b.void_type, stack_ok, ValueID(create), ValueID(stack_failed))
+	create_ref := b.m.add_value(.func_ref, b.void_type, 'pthread_create', b.fn_ids['pthread_create'])
+	create_status := b.m.add_instr(.call, create, b.i32_type, [create_ref, handle, attr, start, arg])
+	destroy_ref := b.m.add_value(.func_ref, b.void_type, 'pthread_attr_destroy', b.fn_ids['pthread_attr_destroy'])
+	b.block_instr2(.call, create, b.i32_type, destroy_ref, attr)
+	b.block_instr1(.ret, create, b.void_type, create_status)
+	b.block_instr2(.call, stack_failed, b.i32_type, destroy_ref, attr)
+	b.block_instr1(.ret, stack_failed, b.void_type, stack_status)
 }
 
 fn (mut b Builder) generate_const_body_with_params(func_id int, ret TypeID, value string, params []TypeID) {
@@ -16144,6 +16195,12 @@ fn (mut b Builder) build_typed_call_arg(id flat.NodeId, param_type TypeID, allow
 		slot := b.emit0(.alloca, param_type)
 		b.emit2(.store, b.void_type, value, slot)
 		return slot
+	}
+	if argument.kind in [.selector, .index] && b.is_pointer_type(value_type)
+		&& param_type == b.m.type_store.get_ptr(b.i8_type) {
+		// A field or element of type `&voidptr` is the pointer itself. Only a
+		// variable holding a mutable pointer needs the load below.
+		return b.emit1(.bitcast, param_type, value)
 	}
 	return b.coerce_value_for_type(value, param_type)
 }
