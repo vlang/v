@@ -701,6 +701,13 @@ fn native_c_struct_abi(struct_name string, target TargetData) ?NativeCStructAbi 
 				'[256]char', '[256]char'])
 		}
 	}
+	// Declared empty in V: one pointer-sized word in C.
+	if struct_name == 'C.atomic_uintptr_t' {
+		return NativeCStructAbi{
+			field_names: ['opaque']
+			field_types: flat.TypeTextList.from_names([if pointer_size == 8 { 'u64' } else { 'u32' }])
+		}
+	}
 	if struct_name == 'C.pthread_mutex_t' {
 		return NativeCStructAbi{
 			field_names: ['opaque']
@@ -1369,6 +1376,10 @@ fn qualify_type_ref_name(name_id u32, module_name string) u32 {
 		} else {
 			.option
 		}, inner)
+	}
+	if shape.has(.channel_type) && syntax.raw_base() != 0 {
+		inner := qualify_type_ref_name(syntax.raw_base(), module_name)
+		return flat.source_type_id('chan ${flat.source_type_name(inner)}')
 	}
 	if shape.has(.array_type) {
 		return flat.source_type_composition_one(.array, qualify_type_ref_name(syntax.raw_base(), module_name))
@@ -10038,7 +10049,9 @@ fn (mut b Builder) build_stmt(id flat.NodeId) {
 			}
 		}
 		.select_stmt {
-			b.build_select_placeholder(node)
+			if !b.target_lowers_atomics() || b.build_channel_select(node, false) == none {
+				b.build_select_placeholder(node)
+			}
 		}
 		.asm_stmt {
 			b.build_inline_asm_stmt(node)
@@ -11669,6 +11682,11 @@ fn (mut b Builder) build_expr(id flat.NodeId) ValueID {
 			return b.m.get_or_add_const(b.i64_type, '0')
 		}
 		.select_stmt {
+			if b.target_lowers_atomics() {
+				if ran := b.build_channel_select(node, true) {
+					return ran
+				}
+			}
 			b.build_select_placeholder(node)
 			return b.m.get_or_add_const(b.i64_type, '0')
 		}
@@ -13310,6 +13328,10 @@ fn (mut b Builder) build_wide_integer_comparison(node flat.Node) ValueID {
 }
 
 fn (mut b Builder) build_infix(id flat.NodeId, node flat.Node) ValueID {
+	if node.op == .arrow && b.target_lowers_atomics()
+		&& b.build_channel_send(b.a.child(&node, 0), b.a.child(&node, 1)) {
+		return b.m.get_or_add_const(b.i64_type, '0')
+	}
 	// Comparisons have a bool result, so the result-type wide dispatch cannot
 	// catch them. Never send either wide operand to a scalar instruction.
 	if node.children_count >= 2
@@ -14317,6 +14339,11 @@ fn (mut b Builder) build_short_circuit(node flat.Node) ValueID {
 }
 
 fn (mut b Builder) build_prefix(node flat.Node, _id flat.NodeId) ValueID {
+	if node.op == .arrow && b.target_lowers_atomics() {
+		if received := b.build_channel_receive(b.a.child(&node, 0)) {
+			return received
+		}
+	}
 	mut child_id := b.a.child(&node, 0)
 	mut child := b.a.nodes[int(child_id)]
 	for node.op == .amp && child.kind == .paren && child.children_count > 0 {
@@ -17392,11 +17419,17 @@ fn (b &Builder) should_pass_ident_addr_for_ptr_param(addr ValueID, param_type Ty
 	if arg_type <= 0 || arg_type >= b.m.type_store.types.len {
 		return true
 	}
+	// A function value is pointer-sized and goes by value too.
 	arg := b.m.type_store.types[arg_type]
-	return arg.kind != .ptr_t
+	return arg.kind !in [.ptr_t, .func_t]
 }
 
 fn (mut b Builder) build_selector(node flat.Node) ValueID {
+	if b.target_lowers_atomics() && node.value_text() in ['closed', 'len', 'cap'] {
+		if property := b.build_channel_property(node) {
+			return property
+		}
+	}
 	if name := b.source_selector_name(node) {
 		if addr := b.vars.get(name) {
 			return b.emit1(.load, b.deref_type(addr), addr)
@@ -18231,6 +18264,11 @@ fn (mut b Builder) build_storable_field_value(expr_id flat.NodeId, field_type_na
 fn (mut b Builder) build_struct_init(id flat.NodeId, node flat.Node) ValueID {
 	type_id := node.source_value_id()
 	type_shape := flat.source_type_shape(type_id)
+	if type_shape.has(.channel_type) && b.target_lowers_atomics() {
+		if channel := b.build_channel_init(node) {
+			return channel
+		}
+	}
 	if flat.source_type_syntax(type_id).raw_base() != 0
 		&& (type_shape.has(.option_type) || type_shape.has(.result_type)) {
 		// Transformed optional literals may be their type's first use. Register
@@ -18909,6 +18947,10 @@ fn (b &Builder) embedded_field_path(owner TypeID, name string, seen []TypeID) ?[
 fn (mut b Builder) resolve_type(name_id u32) TypeID {
 	if typ := b.primitive_type_id(name_id) {
 		return typ
+	}
+	if flat.source_type_shape(name_id).has(.channel_type) {
+		// A channel is a pointer to its sync.Channel, whatever it carries.
+		return b.m.type_store.get_ptr(b.i8_type)
 	}
 	shape := flat.source_type_shape(name_id)
 	syntax := flat.source_type_syntax(name_id)
