@@ -209,16 +209,39 @@ $if !skip_fastc ? {
 		// Only the platform compiler opens the headers and native implementations.
 		dir := os.join_path(os.vtmp_dir(), 'v3_fastc_native')
 		ensure_native_object_cache_dir(dir)!
-		declarations := v3_fastc_native_declarations(dir, head)
 		bindings := v3_tcc_dylib_function_bindings(functions).owner
 		adapters := v3_fastc_native_args_adapters(generation, prefs, functions)
-		mut owner_builder := strings.new_builder(declarations.len + bindings.len + adapters.len * 512)
-		owner_builder.write_string(declarations)
-		owner_builder.write_string(bindings)
+		mut adapter_sides := strings.new_builder(adapters.len * 512)
 		for adapter in adapters {
-			owner_builder.write_string(adapter.native_side())
+			adapter_sides.write_string(adapter.native_side())
 		}
-		owner := owner_builder.str()
+		adapter_text := adapter_sides.str()
+		// The owner is the head's declarations plus the bindings and adapters, keyed
+		// below by its content hash. A reused head finds that hash beside its cached
+		// declarations, so the owner is only assembled when its source is missing.
+		owner_seed := c_hash_bytes(u64(1469598103934665603), 'v3-fastc-native-v3'.bytes())
+		declarations_path := v3_fastc_native_declarations_path(dir, head)
+		owner_hash_path := if declarations_path == '' {
+			''
+		} else {
+			mut parts_hash := contenthash.sum64_string(bindings, u64(1469598103934665603))
+			parts_hash = contenthash.sum64_string(adapter_text, parts_hash)
+			declarations_path + '.owner-${parts_hash.hex()}'
+		}
+		mut owner := ''
+		mut owner_hash := u64(0)
+		if owner_hash_path != '' {
+			owner_hash = (os.read_file(owner_hash_path) or { '' }).u64()
+		}
+		if owner_hash == 0 {
+			owner = v3_fastc_native_declarations(dir, head) + bindings + adapter_text
+			owner_hash = contenthash.sum64_string(owner, owner_seed)
+			if owner_hash_path != '' {
+				staged_hash := owner_hash_path + '.tmp.' + tempname.unique_token()
+				os.write_file(staged_hash, owner_hash.str()) or {}
+				os.mv(staged_hash, owner_hash_path) or { os.rm(staged_hash) or {} }
+			}
+		}
 		if bench_phases {
 			eprintln('fastc-phase native.owner ${sw.elapsed().microseconds()}us')
 		}
@@ -232,13 +255,15 @@ $if !skip_fastc ? {
 		}
 		// Invalidate owners whose manifests did not validate the preprocessing snapshot.
 		// Archive paths also keep changed library searches from reusing an old owner.
-		mut hash := c_hash_bytes(u64(1469598103934665603), 'v3-fastc-native-v3'.bytes())
-		hash = contenthash.sum64_string(owner, hash)
+		mut hash := owner_hash
 		hash = c_hash_bytes(hash, prepared.join('\x00').bytes())
 		hash = c_hash_bytes(hash, archives.join('\x00').bytes())
 		key := hash.hex()
 		path := os.join_path(dir, key + '.m')
 		if !os.is_file(path) {
+			if owner == '' {
+				owner = v3_fastc_native_declarations(dir, head) + bindings + adapter_text
+			}
 			staged_source := path + '.tmp.' + tempname.unique_token()
 			os.write_file(staged_source, owner)!
 			publish_native_c_object(staged_source, path)!
@@ -405,18 +430,27 @@ $if !skip_fastc ? {
 	// v3_fastc_native_declarations derives the native owner's declarations from the program
 	// head. It is a function of that text and of this compiler, so the result is kept beside
 	// the native cache under both; recomputing it dominated reuse of a warm native library.
-	// The head is hashed piece by piece; its text is joined only when the declarations
-	// are not cached yet.
-	fn v3_fastc_native_declarations(dir string, head []string) string {
+	// v3_fastc_native_declarations_path names the cached declarations of a head for this
+	// compiler, or is empty when the compiler's file identity is unavailable. The head
+	// is hashed piece by piece.
+	fn v3_fastc_native_declarations_path(dir string, head []string) string {
 		executable := os.executable()
 		identity := modulecache.file_metadata_signature(executable)
 		if identity == '' {
-			return v3_fastc_native_owner_declarations(modulecache.declaration_header(head.join('')))
+			return ''
 		}
 		mut hash := c_hash_bytes(u64(1469598103934665603), 'v3-fastc-native-declarations-v2'.bytes())
 		hash = c_hash_bytes(hash, '${executable}\x00${identity}\x00'.bytes())
 		hash = v3_fastc_hash_pieces(head, hash)
-		path := os.join_path(dir, 'declarations_${hash.hex()}.h')
+		return os.join_path(dir, 'declarations_${hash.hex()}.h')
+	}
+
+	// The head's text is joined only when the declarations are not cached yet.
+	fn v3_fastc_native_declarations(dir string, head []string) string {
+		path := v3_fastc_native_declarations_path(dir, head)
+		if path == '' {
+			return v3_fastc_native_owner_declarations(modulecache.declaration_header(head.join('')))
+		}
 		if cached := os.read_file(path) {
 			return cached
 		}
