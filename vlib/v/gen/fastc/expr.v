@@ -3542,9 +3542,24 @@ fn (g &Parser) classify_shared_token(previous token.Token) FastcSharedTokenClass
 
 fn (g &Parser) render_constant_references(tokens []FastcExpressionToken, source string) string {
 	mut rendered := source
+	// Each replacement below rewrites every occurrence of its name, so a repeated name
+	// would only rescan the text. Long initializers repeat names thousands of times.
+	track_seen := tokens.len >= 16
+	mut seen := map[string]bool{}
 	for i, item in tokens {
 		if item.tok != .name || (i > 0 && tokens[i - 1].tok == .dot) || (i + 1 < tokens.len && tokens[i + 1].tok == .colon) || item.lit in g.locals {
 			continue
+		}
+		if track_seen {
+			seen_key := if i + 1 < tokens.len && tokens[i + 1].tok == .lpar {
+				item.lit + '('
+			} else {
+				item.lit
+			}
+			if seen_key in seen {
+				continue
+			}
+			seen[seen_key] = true
 		}
 		if i + 1 < tokens.len && tokens[i + 1].tok == .lpar {
 			if fastc_primitive_c_type(item.lit) != none {
