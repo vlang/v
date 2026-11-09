@@ -32,6 +32,22 @@ sed -n 's/^[[:space:]]*run: v run ci\/linux_ci.vsh \([^ ]*\)$/\1/p' \
 [ -s "$work/tasks" ] || fail 'could not read the CI task list'
 cmp "$work/tasks" "$work/workflow-tasks" || fail 'CI task plan differs from the workflow'
 
+# Direct workflow tasks inherit their compiler from the job, while aggregate CI
+# selects it in ci_vflags. Keep both paths on the same compiler for every lane.
+for compiler in tcc gcc clang; do
+    flags=$(awk -v job="$compiler-linux:" '
+        /^  [^ ]/ { selected = $1 == job }
+        selected && /^      VFLAGS:/ {
+            sub(/^      VFLAGS:[[:space:]]*/, "")
+            print
+            exit
+        }
+    ' "$repo/.github/workflows/linux_ci.yml")
+    expected="-cc $compiler"
+    [ "$compiler" != tcc ] || expected="$expected -no-retry-compilation"
+    [ "$flags" = "$expected" ] || fail "$compiler workflow compiler flags differ from aggregate CI"
+done
+
 runner="$work/runner"
 "$vexe" -o "$runner" "$repo/ci/linux_ci.vsh"
 checkout="$work/checkout with spaces"

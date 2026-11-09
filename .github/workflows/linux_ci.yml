@@ -50,11 +50,15 @@ jobs:
         env:
           V_MACOS_V3_NO_FALLBACK: 1
         run: make -j4 && ./v symlink
+      - name: Check Linux CI runner contracts
+        id: runner_contracts
+        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
+        run: sh ci/linux_ci_resume_test.sh
       # Cheapest high-signal check first: a `v vet`/`v fmt -verify` failure must not
       # cost the whole compile matrix below, and this ordering costs no extra runner.
       - name: All code is formatted
         id: format
-        if: ${{ success() && !cancelled() && steps.build.outcome == 'success' }}
+        if: ${{ success() && !cancelled() && steps.runner_contracts.outcome == 'success' }}
         run: v run ci/linux_ci.vsh all_code_is_formatted_tcc
       - name: Assert V is the default compiler (fail if V1 is silently used)
         id: canary
@@ -172,6 +176,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 121
     env:
+      VFLAGS: -cc gcc
       # Stop a failing test session at its first failure instead of running the
       # whole suite to completion; the remaining files add no signal.
       VTEST_FAIL_FAST: '1'
