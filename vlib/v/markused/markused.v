@@ -741,7 +741,8 @@ fn mark_used_with_test_files(a &flat.FlatAst, tc &types.TypeChecker, test_files 
 			iface_id := iface_name_source_id
 			for method in tc.interface_abstract_method_names(iface_id) {
 				key := tc.interface_method_signature_key(iface_id, method) or { continue }
-				if (tc.fn_type_files[key] or { '' }).ends_with('.vh') {
+				if cache_modules[iface_name.all_before_last('.')]
+					|| (tc.fn_type_files[key] or { '' }).ends_with('.vh') {
 					enqueue('${iface_name}.${method}', mut used, mut queue)
 				}
 			}

@@ -6613,15 +6613,16 @@ fn (mut g FlatGen) note_c_postinclude_directive(source_file string) {
 // the link. Such a file ships no header, so the V declaration is the only prototype
 // the translation unit can get.
 fn c_flag_links_c_source(flag string) bool {
-	return c_flag_links_file(flag, ['.c', '.cpp', '.cc', '.m', '.mm', '.o', '.obj'], true)
+	return c_flag_links_file(flag, ['.c', '.cpp', '.cc', '.m', '.mm', '.o', '.obj'], true,
+		false)
 }
 
-// c_flag_links_c_library reports whether a flag links a library by path.
+// c_flag_links_c_library reports whether a flag links a library by name or path.
 fn c_flag_links_c_library(flag string) bool {
-	return c_flag_links_file(flag, ['.a', '.so', '.dylib', '.lib'], false)
+	return c_flag_links_file(flag, ['.a', '.so', '.dylib', '.lib'], false, true)
 }
 
-fn c_flag_links_file(flag string, extensions []string, forced_source bool) bool {
+fn c_flag_links_file(flag string, extensions []string, forced_source bool, named_libraries bool) bool {
 	mut skip_path := false
 	mut next_language := false
 	mut language := ''
@@ -6648,7 +6649,11 @@ fn c_flag_links_file(flag string, extensions []string, forced_source bool) bool 
 			|| arg in ['-F', '-D', '-U', '-iquote', '-idirafter', '-iprefix', '-iwithprefix',
 				'-iwithprefixbefore', '-isysroot', '--sysroot', '-target', '-arch', '-framework',
 				'-weak_framework', '-o', '-MF', '-MT', '-MQ']
-		if arg.starts_with('-Wl,') && c_linker_flag_links_file(arg, extensions) {
+		if named_libraries && (arg.starts_with('-l') || arg == '--library'
+			|| arg.starts_with('--library=')) {
+			return true
+		}
+		if arg.starts_with('-Wl,') && c_linker_flag_links_file(arg, extensions, named_libraries) {
 			return true
 		}
 		if arg.starts_with('-') {
@@ -6668,7 +6673,7 @@ fn c_flag_links_file(flag string, extensions []string, forced_source bool) bool 
 
 // Linker pass-through arguments can name input objects and archives directly.
 // Search paths, output files and other option operands do not provide symbols.
-fn c_linker_flag_links_file(flag string, extensions []string) bool {
+fn c_linker_flag_links_file(flag string, extensions []string, named_libraries bool) bool {
 	mut skip_operand := false
 	for arg in flag['-Wl,'.len..].split(',') {
 		if skip_operand {
@@ -6682,6 +6687,10 @@ fn c_linker_flag_links_file(flag string, extensions []string) bool {
 			'-exported_symbols_list', '-unexported_symbols_list', '-order_file'] {
 			skip_operand = true
 			continue
+		}
+		if named_libraries && (arg.starts_with('-l') || arg == '--library'
+			|| arg.starts_with('--library=')) {
+			return true
 		}
 		if arg.starts_with('-') {
 			continue
@@ -6702,7 +6711,7 @@ fn (mut g FlatGen) note_c_flag_directive(module_name string, source_file string,
 	if source_file.len > 0 && c_flag_links_c_source(flag) {
 		g.files_linking_c_sources[source_file] = true
 	}
-	if module_name.len > 0 && (flag.contains('-l') || c_flag_links_c_library(flag))
+	if module_name.len > 0 && c_flag_links_c_library(flag)
 		&& !g.c_source_file_is_in_vlib(source_file) {
 		g.mods_with_c_libs[module_name] = true
 	}

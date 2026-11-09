@@ -111,7 +111,8 @@ pub fn (nn i128) char_str() string {
 // Four bits at a time keeps this working on the portable representation, which
 // carries no 128-bit arithmetic of its own.
 fn u128_to_hex(nn u128, max_digits int, full bool) string {
-	mut buf := []u8{len: max_digits}
+	// Like u64_to_hex, keep this usable by the minimal backtrace runtime.
+	mut buf := [33]u8{}
 	mut value := nn
 	for i := max_digits - 1; i >= 0; i-- {
 		digit := u8(value & u128(0xF))
@@ -124,7 +125,9 @@ fn u128_to_hex(nn u128, max_digits int, full bool) string {
 			start++
 		}
 	}
-	return buf[start..].bytestr()
+	length := max_digits - start
+	// Copy the digits and their terminating zero out of the stack buffer.
+	return unsafe { tos(memdup(&buf[start], length + 1), length) }
 }
 
 fn u128_to_bin(nn u128) string {

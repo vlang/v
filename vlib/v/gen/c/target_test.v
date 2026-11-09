@@ -652,6 +652,23 @@ fn test_c_flag_linkage_uses_resolved_target_arguments() {
 	}
 }
 
+fn test_c_flag_library_options_ignore_path_and_macro_operands() {
+	for flag in ['-include /tmp/build-logs/helper.o', '-I /tmp/build-logs/include',
+		'-L /tmp/build-logs/lib', '-DNAME=-lfoo', '-D NAME=-lfoo', '-Wl,-rpath,/tmp/build-logs',
+		'-Wl,-L,/tmp/build-logs', '-Wl,--library-path,/tmp/build-logs'] {
+		mut g := FlatGen.new()
+		g.note_c_flag_directive('main', 'flags.c.v', flag)
+		assert !g.mods_with_c_libs['main'], flag
+	}
+	for flag in ['-lm', '-l foo', '-L /tmp/build-logs/lib -lfoo', '-Wl,-lfoo', '-Wl,-l,foo',
+		'-Wl,--library=foo', '-Wl,--library,foo', '/tmp/build-logs/libfoo.a'] {
+		mut g := FlatGen.new()
+		g.note_c_flag_directive('main', 'flags.c.v', flag)
+		assert g.mods_with_c_libs['main'], flag
+		assert !g.files_linking_c_sources['flags.c.v'], flag
+	}
+}
+
 fn assert_c_flag_directive_order(main_flags string, sys_flags string, expected []string) {
 	dir := os.join_path(os.vtmp_dir(), 'v3_c_flag_start_markers_${os.getpid()}')
 	os.rmdir_all(dir) or {}
