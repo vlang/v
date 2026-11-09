@@ -3139,11 +3139,12 @@ For these more rare cases, you can use: `defer(fn) {}` instead of just `defer {}
 
 #### Recovering from panics
 
-A panic runs the pending `defer` blocks of every function on the stack, newest
-first. Calling `recover()` directly in one of these blocks stops the panic, and
-returns its message. The function that deferred the block then runs its other
-deferred blocks, and returns normally, with the zero value of its result type.
-This works like `recover` in Go.
+In a program that calls `recover()`, a panic runs the pending `defer` blocks of
+every function on the stack, newest first. Calling `recover()` directly in one
+of these blocks stops the panic, and returns its message. The function that
+deferred the block then runs its other deferred blocks, and returns normally,
+with the zero value of its result type. `recover()` itself works like `recover`
+in Go.
 
 ```v
 fn parse_age(s string) int {
@@ -3168,10 +3169,14 @@ fn main() {
 `recover()` returns `none` when there is no panic, and when it is not called
 directly in a deferred block that runs because of the panic (for example, in a
 function that such a block calls). A block can also run cleanup code without
-calling `recover()`: the panic then goes on to the callers, and if nothing
-recovers it, the program prints the message and exits once all deferred blocks
-ran. Runtime errors that panic, like an array index out of range, can be
+calling `recover()` itself: the panic then goes on to the callers, and if
+nothing recovers it, the program prints the message and exits once all deferred
+blocks ran. Runtime errors that panic, like an array index out of range, can be
 recovered as well. Signals, like a segmentation fault, cannot.
+
+Any call to `recover()` that `main` can reach counts, even one in a branch that
+is never taken. In a program without one, a panic runs no deferred blocks: the
+program prints the message and exits.
 
 ### Goto
 
